@@ -1,4 +1,5 @@
 import { AddRepositoryModal } from "./components/AddRepositoryModal";
+import { CreateWorktreeModal } from "./components/CreateWorktreeModal";
 import { Sidebar } from "./components/Sidebar";
 import { Terminal } from "./components/Terminal";
 import { TerminalTabs } from "./components/TerminalTabs";
@@ -31,6 +32,7 @@ export function App() {
 				</main>
 			</div>
 			<AddRepositoryModal />
+			<CreateWorktreeModal />
 		</>
 	);
 }
