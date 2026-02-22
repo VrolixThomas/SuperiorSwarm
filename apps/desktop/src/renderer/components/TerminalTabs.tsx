@@ -89,7 +89,7 @@ export function TerminalTabs() {
 			>
 				{tabs.map((tab, i) => {
 					const isActive = tab.id === activeTabId;
-					const prevIsActive = i > 0 && tabs[i - 1].id === activeTabId;
+					const prevIsActive = i > 0 && tabs[i - 1]?.id === activeTabId;
 
 					return (
 						<Fragment key={tab.id}>
