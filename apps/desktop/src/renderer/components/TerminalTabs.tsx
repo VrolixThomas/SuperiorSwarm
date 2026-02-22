@@ -113,7 +113,7 @@ export function TerminalTabs() {
 				<button
 					type="button"
 					aria-label="New tab"
-					onClick={addTab}
+					onClick={() => addTab()}
 					className="flex h-[30px] w-[30px] items-center justify-center rounded-[6px] border-none bg-transparent text-[var(--text-quaternary)] transition-all duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-tertiary)]"
 					style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
 				>

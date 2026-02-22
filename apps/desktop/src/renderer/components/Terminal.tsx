@@ -39,7 +39,7 @@ function buildTerminalTheme(): ITheme {
 	};
 }
 
-export function Terminal({ id }: { id: string }) {
+export function Terminal({ id, cwd }: { id: string; cwd?: string }) {
 	const ref = useRef<HTMLDivElement>(null);
 
 	useEffect(() => {
@@ -106,7 +106,7 @@ export function Terminal({ id }: { id: string }) {
 		let cleanupExit: (() => void) | undefined;
 
 		if (api) {
-			api.terminal.create(id).catch((err: Error) => {
+			api.terminal.create(id, cwd || undefined).catch((err: Error) => {
 				console.error("Failed to create PTY:", err);
 				term.write(`\r\n\x1b[31m[Failed to create terminal: ${err.message}]\x1b[0m\r\n`);
 			});
