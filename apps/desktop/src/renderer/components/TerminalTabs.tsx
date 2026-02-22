@@ -78,7 +78,13 @@ function Tab({
 }
 
 export function TerminalTabs() {
-	const { tabs, activeTabId, setActiveTab, removeTab, addTab } = useTerminalStore();
+	const tabs = useTerminalStore((s) => s.getVisibleTabs());
+	const activeTabId = useTerminalStore((s) => s.activeTabId);
+	const setActiveTab = useTerminalStore((s) => s.setActiveTab);
+	const removeTab = useTerminalStore((s) => s.removeTab);
+	const addTab = useTerminalStore((s) => s.addTab);
+	const activeWorkspaceId = useTerminalStore((s) => s.activeWorkspaceId);
+	const activeWorkspaceCwd = useTerminalStore((s) => s.activeWorkspaceCwd);
 	const detachMutation = trpc.workspaces.detachTerminal.useMutation();
 
 	return (
@@ -121,8 +127,15 @@ export function TerminalTabs() {
 				<button
 					type="button"
 					aria-label="New tab"
-					onClick={() => addTab()}
-					className="flex h-[30px] w-[30px] items-center justify-center rounded-[6px] border-none bg-transparent text-[var(--text-quaternary)] transition-all duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-tertiary)]"
+					disabled={!activeWorkspaceId}
+					onClick={() => {
+						if (!activeWorkspaceId) return;
+						const tabId = addTab(activeWorkspaceId, activeWorkspaceCwd);
+						window.electron.terminal.create(tabId, activeWorkspaceCwd).catch((err: Error) => {
+							console.error("Failed to create terminal:", err);
+						});
+					}}
+					className="flex h-[30px] w-[30px] items-center justify-center rounded-[6px] border-none bg-transparent text-[var(--text-quaternary)] transition-all duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-tertiary)] disabled:opacity-30 disabled:cursor-default"
 					style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
 				>
 					<svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none">

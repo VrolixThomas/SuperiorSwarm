@@ -123,7 +123,7 @@ export function WorkspaceItem({ workspace, projectName, projectRepoPath }: Works
 		},
 	});
 
-	const isActive = useTerminalStore((s) => s.getTabByWorkspace(workspace.id) !== undefined);
+	const isActive = useTerminalStore((s) => s.activeWorkspaceId === workspace.id);
 
 	const handleClick = useCallback(() => {
 		const cwd =
@@ -131,12 +131,15 @@ export function WorkspaceItem({ workspace, projectName, projectRepoPath }: Works
 				? workspace.worktreePath
 				: projectRepoPath;
 
-		const title = `${projectName}: ${workspace.name}`;
 		const store = useTerminalStore.getState();
-		const existingTab = store.getTabByWorkspace(workspace.id);
-		const tabId = store.openWorkspace(workspace.id, cwd, title);
+		store.setActiveWorkspace(workspace.id, cwd);
 
-		if (!existingTab) {
+		// Auto-create first terminal if none exist for this workspace
+		const existing = store.getTabsByWorkspace(workspace.id);
+		if (existing.length === 0) {
+			const title = `${projectName}: ${workspace.name}`;
+			const tabId = store.addTab(workspace.id, cwd, title);
+
 			window.electron.terminal.create(tabId, cwd).catch((err: Error) => {
 				console.error("Failed to create workspace terminal:", err);
 			});
@@ -161,7 +164,15 @@ export function WorkspaceItem({ workspace, projectName, projectRepoPath }: Works
 			`Delete worktree "${workspace.name}"? This will remove the worktree directory.`
 		);
 		if (confirmed) {
-			useTerminalStore.getState().closeWorkspace(workspace.id);
+			const store = useTerminalStore.getState();
+			const wsTabs = store.getTabsByWorkspace(workspace.id);
+			for (const tab of wsTabs) {
+				window.electron.terminal.dispose(tab.id);
+				store.removeTab(tab.id);
+			}
+			if (store.activeWorkspaceId === workspace.id) {
+				store.setActiveWorkspace("", "");
+			}
 			deleteWorkspace.mutate({ id: workspace.id });
 		}
 		setContextMenu(null);

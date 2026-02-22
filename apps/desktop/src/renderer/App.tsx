@@ -6,7 +6,9 @@ import { TerminalTabs } from "./components/TerminalTabs";
 import { useTerminalStore } from "./stores/terminal";
 
 export function App() {
-	const { tabs, activeTabId } = useTerminalStore();
+	const visibleTabs = useTerminalStore((s) => s.getVisibleTabs());
+	const activeTabId = useTerminalStore((s) => s.activeTabId);
+	const activeWorkspaceId = useTerminalStore((s) => s.activeWorkspaceId);
 
 	return (
 		<>
@@ -15,12 +17,17 @@ export function App() {
 				<main className="flex min-w-0 flex-1 flex-col">
 					<TerminalTabs />
 					<div className="relative flex-1 overflow-hidden">
-						{tabs.length === 0 && (
+						{!activeWorkspaceId && (
 							<div className="flex h-full items-center justify-center text-[13px] text-[var(--text-quaternary)]">
 								Select a workspace to open a terminal
 							</div>
 						)}
-						{tabs.map((tab) => (
+						{activeWorkspaceId && visibleTabs.length === 0 && (
+							<div className="flex h-full items-center justify-center text-[13px] text-[var(--text-quaternary)]">
+								No terminals open — click + to create one
+							</div>
+						)}
+						{visibleTabs.map((tab) => (
 							<div
 								key={tab.id}
 								className={`absolute inset-0 ${tab.id === activeTabId ? "visible" : "invisible"}`}
