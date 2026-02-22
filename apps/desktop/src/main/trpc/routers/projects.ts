@@ -5,7 +5,7 @@ import { eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { z } from "zod";
 import { getDb } from "../../db";
-import { projects } from "../../db/schema";
+import { projects, workspaces } from "../../db/schema";
 import {
 	cloneRepo,
 	detectDefaultBranch,
@@ -108,6 +108,18 @@ export const projectsRouter = router({
 						})
 						.where(eq(projects.id, id))
 						.run();
+					db.insert(workspaces)
+						.values({
+							id: nanoid(),
+							projectId: id,
+							type: "branch",
+							name: defaultBranch,
+							worktreeId: null,
+							terminalId: null,
+							createdAt: new Date(),
+							updatedAt: new Date(),
+						})
+						.run();
 					cloneProgressMap.delete(id);
 				})
 				.catch((err) => {
@@ -159,6 +171,20 @@ export const projectsRouter = router({
 		};
 
 		db.insert(projects).values(project).run();
+
+		// Auto-create the branch workspace
+		db.insert(workspaces)
+			.values({
+				id: nanoid(),
+				projectId: project.id,
+				type: "branch",
+				name: defaultBranch,
+				worktreeId: null,
+				terminalId: null,
+				createdAt: now,
+				updatedAt: now,
+			})
+			.run();
 		return project;
 	}),
 
@@ -196,6 +222,19 @@ export const projectsRouter = router({
 			};
 
 			db.insert(projects).values(project).run();
+
+			db.insert(workspaces)
+				.values({
+					id: nanoid(),
+					projectId: project.id,
+					type: "branch",
+					name: "main",
+					worktreeId: null,
+					terminalId: null,
+					createdAt: now,
+					updatedAt: now,
+				})
+				.run();
 			return project;
 		}),
 
