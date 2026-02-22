@@ -23,6 +23,25 @@
 	--accent: #0a84ff;
 	--accent-hover: #409cff;
 
+	/* Terminal — ANSI palette */
+	--term-selection: rgba(255, 255, 255, 0.15);
+	--term-black: #1a1a1a;
+	--term-red: #ff6b6b;
+	--term-green: #69db7c;
+	--term-yellow: #ffd43b;
+	--term-blue: #74c0fc;
+	--term-magenta: #da77f2;
+	--term-cyan: #66d9e8;
+	--term-white: #e5e5e5;
+	--term-bright-black: #555555;
+	--term-bright-red: #ff8787;
+	--term-bright-green: #8ce99a;
+	--term-bright-yellow: #ffe066;
+	--term-bright-blue: #a5d8ff;
+	--term-bright-magenta: #e599f7;
+	--term-bright-cyan: #99e9f2;
+	--term-bright-white: #ffffff;
+
 	/* Shadows */
 	--shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
 	--shadow-md: 0 2px 8px rgba(0, 0, 0, 0.4);

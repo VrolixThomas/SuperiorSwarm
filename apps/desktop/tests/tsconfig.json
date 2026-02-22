@@ -1,0 +1,10 @@
+{
+	"extends": "@branchflux/typescript-config/base.json",
+	"compilerOptions": {
+		"target": "ES2022",
+		"module": "ESNext",
+		"moduleResolution": "bundler",
+		"types": ["bun-types"]
+	},
+	"include": ["./**/*", "../src/shared/**/*"]
+}

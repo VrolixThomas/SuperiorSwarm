@@ -5,19 +5,45 @@ import { SearchAddon } from "@xterm/addon-search";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
+import type { ITheme } from "@xterm/xterm";
 import { Terminal as XTerm } from "@xterm/xterm";
 import { useEffect, useRef } from "react";
+import { CmdBuffer } from "../../shared/lib/cmd-buffer";
 import { useTerminalStore } from "../stores/terminal";
+
+function buildTerminalTheme(): ITheme {
+	const s = getComputedStyle(document.documentElement);
+	const v = (name: string) => s.getPropertyValue(name).trim();
+	return {
+		background: v("--bg-base"),
+		foreground: v("--text"),
+		cursor: v("--text"),
+		cursorAccent: v("--bg-base"),
+		selectionBackground: v("--term-selection"),
+		black: v("--term-black"),
+		red: v("--term-red"),
+		green: v("--term-green"),
+		yellow: v("--term-yellow"),
+		blue: v("--term-blue"),
+		magenta: v("--term-magenta"),
+		cyan: v("--term-cyan"),
+		white: v("--term-white"),
+		brightBlack: v("--term-bright-black"),
+		brightRed: v("--term-bright-red"),
+		brightGreen: v("--term-bright-green"),
+		brightYellow: v("--term-bright-yellow"),
+		brightBlue: v("--term-bright-blue"),
+		brightMagenta: v("--term-bright-magenta"),
+		brightCyan: v("--term-bright-cyan"),
+		brightWhite: v("--term-bright-white"),
+	};
+}
 
 export function Terminal({ id }: { id: string }) {
 	const ref = useRef<HTMLDivElement>(null);
 
 	useEffect(() => {
 		if (!ref.current) return;
-
-		const rootStyles = getComputedStyle(document.documentElement);
-		const bg = rootStyles.getPropertyValue("--bg-base").trim();
-		const fg = rootStyles.getPropertyValue("--text").trim();
 
 		const term = new XTerm({
 			allowProposedApi: true,
@@ -26,29 +52,7 @@ export function Terminal({ id }: { id: string }) {
 			fontFamily: '"SF Mono", Menlo, Monaco, "Courier New", monospace',
 			lineHeight: 1.2,
 			scrollback: 10000,
-			theme: {
-				background: bg,
-				foreground: fg,
-				cursor: fg,
-				cursorAccent: bg,
-				selectionBackground: "rgba(255, 255, 255, 0.15)",
-				black: "#1a1a1a",
-				red: "#ff6b6b",
-				green: "#69db7c",
-				yellow: "#ffd43b",
-				blue: "#74c0fc",
-				magenta: "#da77f2",
-				cyan: "#66d9e8",
-				white: "#e5e5e5",
-				brightBlack: "#555",
-				brightRed: "#ff8787",
-				brightGreen: "#8ce99a",
-				brightYellow: "#ffe066",
-				brightBlue: "#a5d8ff",
-				brightMagenta: "#e599f7",
-				brightCyan: "#99e9f2",
-				brightWhite: "#ffffff",
-			},
+			theme: buildTerminalTheme(),
 		});
 
 		const fit = new FitAddon();
@@ -74,6 +78,25 @@ export function Terminal({ id }: { id: string }) {
 
 		// ImageAddon: must load after open() and after the renderer addon
 		term.loadAddon(new ImageAddon());
+
+		// Reactive theme: watch for CSS variable changes (theme toggle, OS dark/light)
+		let rafId = 0;
+		const applyTheme = () => {
+			rafId = 0;
+			term.options.theme = buildTerminalTheme();
+		};
+		const scheduleTheme = () => {
+			if (!rafId) rafId = requestAnimationFrame(applyTheme);
+		};
+
+		const themeObserver = new MutationObserver(scheduleTheme);
+		themeObserver.observe(document.documentElement, {
+			attributes: true,
+			attributeFilter: ["class", "style", "data-theme"],
+		});
+
+		const mql = matchMedia("(prefers-color-scheme: dark)");
+		mql.addEventListener("change", scheduleTheme);
 
 		requestAnimationFrame(() => fit.fit());
 
@@ -129,113 +152,15 @@ export function Terminal({ id }: { id: string }) {
 
 			// Command-buffer heuristic: tracks user keystrokes to derive a tab title
 			// for shells that don't emit OSC titles (vanilla zsh/bash on macOS).
-			let cmdBuf = "";
-			// Escape parser states:
-			// 0 = normal, 1 = after ESC, 2 = in CSI (params/intermediates),
-			// 3 = in SS3, 4 = in string-terminated sequence (OSC/DCS/APC),
-			// 5 = saw ESC inside string-terminated (looking for backslash to end)
-			let esc: 0 | 1 | 2 | 3 | 4 | 5 = 0;
-			let csiFinished = ""; // tracks the last CSI final params for bracket-paste detection
-			let inPaste = false;
+			const cmd = new CmdBuffer();
 
 			term.onData((data) => {
 				api.terminal.write(id, data);
-
-				// Skip buffering when in alternate screen (vim, less, etc.)
 				if (term.buffer.active.type === "alternate") return;
 
-				for (const ch of data) {
-					const code = ch.charCodeAt(0);
-
-					// ── Escape sequence state machine ──
-					// Consumes full sequences so they never pollute cmdBuf.
-
-					// State 5: inside string-terminated body, saw ESC — check for backslash (ST)
-					if (esc === 5) {
-						esc = code === 0x5c /* \ */ ? 0 : 4;
-						continue;
-					}
-
-					// State 4: inside string-terminated body (OSC/DCS/APC) — consume until ST or BEL
-					if (esc === 4) {
-						if (code === 0x1b)
-							esc = 5; // might be ST (ESC \)
-						else if (code === 0x07) esc = 0; // BEL terminates OSC
-						continue;
-					}
-
-					// State 3: SS3 — consume one final byte (0x40-0x7E) then done
-					if (esc === 3) {
-						// Some terminals send params before the final byte; consume those too
-						if (code >= 0x30 && code <= 0x3f) continue;
-						esc = 0;
-						continue;
-					}
-
-					// State 2: CSI — consume param bytes (0x30-0x3F), intermediates (0x20-0x2F),
-					// then final byte (0x40-0x7E)
-					if (esc === 2) {
-						if (code >= 0x30 && code <= 0x3f) {
-							csiFinished += ch;
-							continue;
-						}
-						if (code >= 0x20 && code <= 0x2f) continue; // intermediate bytes
-						if (code >= 0x40 && code <= 0x7e) {
-							// Detect bracketed paste boundaries
-							if (ch === "~") {
-								if (csiFinished === "200") inPaste = true;
-								else if (csiFinished === "201") {
-									inPaste = false;
-									cmdBuf = ""; // discard pasted text from buffer
-								}
-							}
-							csiFinished = "";
-							esc = 0;
-						}
-						continue;
-					}
-
-					// State 1: after ESC — determine which family
-					if (esc === 1) {
-						esc = 0;
-						if (ch === "[") {
-							esc = 2;
-							csiFinished = "";
-						} else if (ch === "O") {
-							esc = 3; // SS3
-						} else if (ch === "]" || ch === "P" || ch === "_" || ch === "^" || ch === "X") {
-							esc = 4; // string-terminated (OSC/DCS/APC/PM/SOS)
-						} else if (ch === "N") {
-							esc = 3; // SS2 — same shape as SS3 (consume one byte)
-						}
-						// For Alt+<key> (ESC + printable) or bare ESC, the byte is consumed here
-						continue;
-					}
-
-					// State 0: normal — check for ESC start
-					if (code === 0x1b) {
-						esc = 1;
-						continue;
-					}
-
-					// ── Command buffer tracking ──
-					if (inPaste) continue;
-
-					if (ch === "\r") {
-						const name = cmdBuf.trim();
-						if (name) {
-							// Only update title if no OSC title was received in the last second
-							const elapsed = Date.now() - oscTitleAt;
-							if (elapsed > 1000) setTitle(truncTitle(name));
-						}
-						cmdBuf = "";
-					} else if (code === 0x7f || code === 0x08) {
-						cmdBuf = cmdBuf.slice(0, -1);
-					} else if (code === 0x03) {
-						cmdBuf = "";
-					} else if (code >= 0x20) {
-						cmdBuf += ch;
-					}
+				const name = cmd.feed(data);
+				if (name && Date.now() - oscTitleAt > 1000) {
+					setTitle(truncTitle(name));
 				}
 			});
 
@@ -254,6 +179,9 @@ export function Terminal({ id }: { id: string }) {
 			cleanupExit?.();
 			window.removeEventListener("resize", onResize);
 			observer.disconnect();
+			themeObserver.disconnect();
+			mql.removeEventListener("change", scheduleTheme);
+			if (rafId) cancelAnimationFrame(rafId);
 			api?.terminal.dispose(id);
 			term.dispose();
 		};

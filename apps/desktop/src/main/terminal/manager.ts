@@ -80,9 +80,13 @@ class TerminalManager {
 	}
 
 	disposeAll(): void {
-		for (const [id] of this.terminals) {
-			this.dispose(id);
+		for (const [, terminal] of this.terminals) {
+			terminal.cleanup();
+			// SIGKILL ensures child processes die immediately so node-pty's native
+			// ThreadSafeFunction has no pending I/O during Node environment teardown.
+			terminal.pty.kill("SIGKILL");
 		}
+		this.terminals.clear();
 	}
 }
 

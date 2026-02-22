@@ -12,7 +12,7 @@ function Tab({
 	onSelect: () => void;
 	onClose: () => void;
 }) {
-	const closeRef = useRef<HTMLSpanElement>(null);
+	const closeRef = useRef<HTMLButtonElement>(null);
 
 	const showClose = useCallback(() => {
 		if (!isActive && closeRef.current) closeRef.current.style.opacity = "1";
@@ -22,12 +22,20 @@ function Tab({
 	}, [isActive]);
 
 	return (
-		<button
-			type="button"
+		<div
+			role="tab"
+			tabIndex={0}
+			aria-selected={isActive}
 			onClick={onSelect}
+			onKeyDown={(e) => {
+				if (e.key === "Enter" || e.key === " ") {
+					e.preventDefault();
+					onSelect();
+				}
+			}}
 			onMouseEnter={showClose}
 			onMouseLeave={hideClose}
-			className={`group relative flex h-[36px] max-w-[220px] shrink-0 items-center gap-2 rounded-[7px] pl-4 pr-2 text-[13px] transition-all duration-[120ms] ${
+			className={`group relative flex h-[36px] max-w-[220px] shrink-0 cursor-pointer select-none items-center gap-2 rounded-[7px] pl-4 pr-2 text-[13px] transition-all duration-[120ms] ${
 				isActive
 					? "bg-[var(--bg-elevated)] text-[var(--text)] shadow-[0_1px_3px_rgba(0,0,0,0.4),inset_0_0.5px_0_rgba(255,255,255,0.04)]"
 					: "bg-transparent text-[var(--text-tertiary)] hover:bg-[rgba(255,255,255,0.04)] hover:text-[var(--text-secondary)]"
@@ -40,19 +48,15 @@ function Tab({
 
 			<span className="min-w-0 truncate">{tab.title}</span>
 
-			<span
+			<button
+				type="button"
 				ref={closeRef}
+				aria-label="Close tab"
 				onClick={(e) => {
 					e.stopPropagation();
 					onClose();
 				}}
-				onKeyDown={(e) => {
-					if (e.key === "Enter") {
-						e.stopPropagation();
-						onClose();
-					}
-				}}
-				className={`flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-[5px] transition-all duration-[120ms] hover:bg-[var(--bg-overlay)] hover:text-[var(--text)] ${
+				className={`flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-[5px] border-none bg-transparent p-0 transition-all duration-[120ms] hover:bg-[var(--bg-overlay)] hover:text-[var(--text)] ${
 					isActive
 						? "text-[var(--text-tertiary)] opacity-100"
 						: "text-[var(--text-quaternary)] opacity-0"
@@ -66,8 +70,8 @@ function Tab({
 						strokeLinecap="round"
 					/>
 				</svg>
-			</span>
-		</button>
+			</button>
+		</div>
 	);
 }
 
@@ -79,7 +83,10 @@ export function TerminalTabs() {
 			className="flex h-[52px] shrink-0 items-end border-b border-[var(--border-subtle)] bg-[var(--bg-surface)]"
 			style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
 		>
-			<div className="scrollbar-hide flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto px-1 pb-[7px]">
+			<div
+				role="tablist"
+				className="scrollbar-hide flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto px-1 pb-[7px]"
+			>
 				{tabs.map((tab, i) => {
 					const isActive = tab.id === activeTabId;
 					const prevIsActive = i > 0 && tabs[i - 1].id === activeTabId;
@@ -105,6 +112,7 @@ export function TerminalTabs() {
 			<div className="shrink-0 pb-[7px] pr-2">
 				<button
 					type="button"
+					aria-label="New tab"
 					onClick={addTab}
 					className="flex h-[30px] w-[30px] items-center justify-center rounded-[6px] border-none bg-transparent text-[var(--text-quaternary)] transition-all duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-tertiary)]"
 					style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}

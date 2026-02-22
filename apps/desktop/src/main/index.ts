@@ -56,3 +56,16 @@ app.on("window-all-closed", () => {
 		app.quit();
 	}
 });
+
+// When electron-vite dev server stops or restarts, the Electron process receives
+// a signal but has no handler, so it exits without cleaning up node-pty's native
+// ThreadSafeFunctions. During Node's environment teardown those callbacks fire and
+// call Napi::Error::ThrowAsJavaScriptException() which is illegal at that point,
+// causing SIGABRT and a macOS "quit unexpectedly" crash dialog on the next launch.
+// Catching the signals lets us dispose PTY processes before the environment tears down.
+for (const signal of ["SIGTERM", "SIGHUP", "SIGINT"] as const) {
+	process.on(signal, () => {
+		terminalManager.disposeAll();
+		app.exit(0);
+	});
+}
