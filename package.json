@@ -1,0 +1,20 @@
+{
+	"name": "branchflux",
+	"version": "0.1.0",
+	"private": true,
+	"workspaces": ["apps/*", "packages/*", "tooling/*"],
+	"scripts": {
+		"dev": "turbo run dev",
+		"build": "turbo run build",
+		"lint": "turbo run lint",
+		"format": "biome format --write .",
+		"check": "biome check --write .",
+		"type-check": "turbo run type-check"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^1.9.4",
+		"turbo": "^2.8.10",
+		"typescript": "^5.7.2"
+	},
+	"packageManager": "bun@1.1.38"
+}

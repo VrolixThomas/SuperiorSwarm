@@ -1,0 +1,11 @@
+{
+	"extends": "@branchflux/typescript-config/react.json",
+	"compilerOptions": {
+		"outDir": "dist/renderer",
+		"baseUrl": ".",
+		"paths": {
+			"@/*": ["./src/renderer/*"]
+		}
+	},
+	"include": ["src/renderer/**/*", "src/shared/**/*"]
+}

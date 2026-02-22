@@ -1,0 +1,99 @@
+@import "tailwindcss";
+@import "@xterm/xterm/css/xterm.css";
+
+:root {
+	/* Backgrounds — 4 elevation levels */
+	--bg-base: #0a0a0a;
+	--bg-surface: #141414;
+	--bg-elevated: #1c1c1e;
+	--bg-overlay: #2c2c2e;
+
+	/* Borders & dividers */
+	--border: rgba(255, 255, 255, 0.06);
+	--border-subtle: rgba(255, 255, 255, 0.04);
+	--border-active: rgba(255, 255, 255, 0.1);
+
+	/* Text — 4 levels */
+	--text: #f5f5f7;
+	--text-secondary: #a1a1a6;
+	--text-tertiary: #6e6e73;
+	--text-quaternary: #48484a;
+
+	/* Accent */
+	--accent: #0a84ff;
+	--accent-hover: #409cff;
+
+	/* Shadows */
+	--shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+	--shadow-md: 0 2px 8px rgba(0, 0, 0, 0.4);
+
+	/* Motion */
+	--transition-fast: 120ms ease;
+	--transition-normal: 200ms ease;
+
+	/* Radii */
+	--radius-sm: 6px;
+	--radius-md: 8px;
+	--radius-lg: 10px;
+}
+
+@layer base {
+	* {
+		margin: 0;
+		padding: 0;
+		box-sizing: border-box;
+	}
+}
+
+html,
+body,
+#root {
+	width: 100%;
+	height: 100%;
+	overflow: hidden;
+	background: var(--bg-base);
+	color: var(--text);
+	font-family: "SF Pro", "SF Pro Text", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+		sans-serif;
+	font-size: 13px;
+	font-feature-settings: "cv02", "cv03", "cv04";
+	-webkit-font-smoothing: antialiased;
+}
+
+/* xterm must fill its parent */
+.xterm-container {
+	width: 100%;
+	height: 100%;
+}
+
+.xterm-container .xterm {
+	height: 100%;
+	padding: 4px 0 0 12px;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+	width: 6px;
+}
+
+::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+	background: rgba(255, 255, 255, 0.08);
+	border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+	background: rgba(255, 255, 255, 0.14);
+}
+
+/* Hide scrollbar in tab strip */
+.scrollbar-hide::-webkit-scrollbar {
+	display: none;
+}
+.scrollbar-hide {
+	-ms-overflow-style: none;
+	scrollbar-width: none;
+}

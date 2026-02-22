@@ -1,0 +1,7 @@
+{
+	"extends": "@branchflux/typescript-config/node.json",
+	"compilerOptions": {
+		"outDir": "dist/main"
+	},
+	"include": ["src/main/**/*"]
+}
