@@ -1,17 +1,8 @@
+import type { SessionSaveData } from "../../shared/types";
 import { getDb } from "./index";
 import * as schema from "./schema";
 
-export interface SessionSaveData {
-	sessions: Array<{
-		id: string;
-		workspaceId: string;
-		title: string;
-		cwd: string;
-		scrollback: string | null;
-		sortOrder: number;
-	}>;
-	state: Record<string, string>;
-}
+export type { SessionSaveData };
 
 export function saveTerminalSessions(data: SessionSaveData): void {
 	const db = getDb();
