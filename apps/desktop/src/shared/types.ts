@@ -14,3 +14,19 @@ export interface TrpcAPI {
 export interface DialogAPI {
 	openDirectory: () => Promise<string[] | null>;
 }
+
+export interface SessionSaveData {
+	sessions: Array<{
+		id: string;
+		workspaceId: string;
+		title: string;
+		cwd: string;
+		scrollback: string | null;
+		sortOrder: number;
+	}>;
+	state: Record<string, string>;
+}
+
+export interface SessionAPI {
+	saveSync: (data: SessionSaveData) => { ok: boolean };
+}
