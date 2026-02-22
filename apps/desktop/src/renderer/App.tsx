@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { AddRepositoryModal } from "./components/AddRepositoryModal";
 import { Sidebar } from "./components/Sidebar";
 import { Terminal } from "./components/Terminal";
 import { TerminalTabs } from "./components/TerminalTabs";
@@ -14,21 +15,24 @@ export function App() {
 	}, []);
 
 	return (
-		<div className="flex h-screen bg-[var(--bg-base)]">
-			<Sidebar />
-			<main className="flex min-w-0 flex-1 flex-col">
-				<TerminalTabs />
-				<div className="relative flex-1 overflow-hidden">
-					{tabs.map((tab) => (
-						<div
-							key={tab.id}
-							className={`absolute inset-0 ${tab.id === activeTabId ? "visible" : "invisible"}`}
-						>
-							<Terminal id={tab.id} />
-						</div>
-					))}
-				</div>
-			</main>
-		</div>
+		<>
+			<div className="flex h-screen bg-[var(--bg-base)]">
+				<Sidebar />
+				<main className="flex min-w-0 flex-1 flex-col">
+					<TerminalTabs />
+					<div className="relative flex-1 overflow-hidden">
+						{tabs.map((tab) => (
+							<div
+								key={tab.id}
+								className={`absolute inset-0 ${tab.id === activeTabId ? "visible" : "invisible"}`}
+							>
+								<Terminal id={tab.id} />
+							</div>
+						))}
+					</div>
+				</main>
+			</div>
+			<AddRepositoryModal />
+		</>
 	);
 }
