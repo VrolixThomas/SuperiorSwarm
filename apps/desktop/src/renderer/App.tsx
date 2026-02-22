@@ -13,14 +13,16 @@ const SAVE_INTERVAL_MS = 30_000;
 function collectSnapshot() {
 	const { tabs, activeTabId, activeWorkspaceId, activeWorkspaceCwd } = useTerminalStore.getState();
 
-	const sessions = tabs.map((tab, i) => ({
-		id: tab.id,
-		workspaceId: tab.workspaceId,
-		title: tab.title,
-		cwd: tab.cwd,
-		scrollback: scrollbackRegistry.get(tab.id)?.() ?? null,
-		sortOrder: i,
-	}));
+	const sessions = tabs
+		.filter((tab) => tab.workspaceId)
+		.map((tab, i) => ({
+			id: tab.id,
+			workspaceId: tab.workspaceId,
+			title: tab.title,
+			cwd: tab.cwd,
+			scrollback: scrollbackRegistry.get(tab.id)?.() ?? null,
+			sortOrder: i,
+		}));
 
 	const state: Record<string, string> = {};
 	if (activeTabId) state["activeTabId"] = activeTabId;
@@ -39,6 +41,8 @@ export function App() {
 	const [savedScrollback, setSavedScrollback] = useState<Record<string, string>>({});
 
 	const saveMutation = trpc.terminalSessions.save.useMutation();
+	const saveMutateRef = useRef(saveMutation.mutate);
+	saveMutateRef.current = saveMutation.mutate;
 	const restoreQuery = trpc.terminalSessions.restore.useQuery(undefined, {
 		staleTime: Number.POSITIVE_INFINITY,
 		refetchOnMount: false,
@@ -78,12 +82,12 @@ export function App() {
 		const interval = setInterval(() => {
 			const snapshot = collectSnapshot();
 			if (snapshot.sessions.length > 0) {
-				saveMutation.mutate(snapshot);
+				saveMutateRef.current(snapshot);
 			}
 		}, SAVE_INTERVAL_MS);
 
 		return () => clearInterval(interval);
-	}, [saveMutation]);
+	}, []);
 
 	// Save on quit (sync IPC)
 	useEffect(() => {
