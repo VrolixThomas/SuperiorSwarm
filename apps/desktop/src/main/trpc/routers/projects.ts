@@ -142,10 +142,14 @@ export const projectsRouter = router({
 				})
 				.catch((err) => {
 					console.error(`Clone failed for ${id}:`, err);
-					db.update(projects)
-						.set({ status: "error", updatedAt: new Date() })
-						.where(eq(projects.id, id))
-						.run();
+					try {
+						db.update(projects)
+							.set({ status: "error", updatedAt: new Date() })
+							.where(eq(projects.id, id))
+							.run();
+					} catch (dbErr) {
+						console.error(`Failed to update error status for ${id}:`, dbErr);
+					}
 					cloneProgressMap.delete(id);
 				});
 
