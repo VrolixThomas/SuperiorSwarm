@@ -1,6 +1,5 @@
 import { TRPCClientError, type TRPCLink } from "@trpc/client";
 import { observable } from "@trpc/server/observable";
-import superjson from "superjson";
 import type { AppRouter } from "../../main/trpc/routers";
 
 export function ipcLink(): TRPCLink<AppRouter> {
@@ -10,7 +9,7 @@ export function ipcLink(): TRPCLink<AppRouter> {
 				const { type, path, input } = op;
 
 				window.electron.trpc
-					.request({ type, path, input: superjson.serialize(input) })
+					.request({ type, path, input })
 					.then((response) => {
 						const data = response as
 							| { result: { data: unknown } }
