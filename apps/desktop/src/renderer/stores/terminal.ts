@@ -2,7 +2,7 @@ import { create } from "zustand";
 
 export interface TerminalTab {
 	id: string;
-	workspaceId: string | null;
+	workspaceId: string;
 	title: string;
 	cwd: string;
 }
@@ -10,13 +10,21 @@ export interface TerminalTab {
 interface TerminalStore {
 	tabs: TerminalTab[];
 	activeTabId: string | null;
-	addTab: (cwd?: string) => string;
+	activeWorkspaceId: string | null;
+	activeWorkspaceCwd: string;
+
+	// Workspace selection
+	setActiveWorkspace: (workspaceId: string, cwd: string) => void;
+
+	// Tab management (always bound to a workspace)
+	addTab: (workspaceId: string, cwd: string, title?: string) => string;
 	removeTab: (id: string) => void;
 	setActiveTab: (id: string) => void;
 	updateTabTitle: (id: string, title: string) => void;
-	openWorkspace: (workspaceId: string, cwd: string, title: string) => string;
-	closeWorkspace: (workspaceId: string) => void;
-	getTabByWorkspace: (workspaceId: string) => TerminalTab | undefined;
+
+	// Queries
+	getTabsByWorkspace: (workspaceId: string) => TerminalTab[];
+	getVisibleTabs: () => TerminalTab[];
 }
 
 let counter = 0;
@@ -24,14 +32,25 @@ let counter = 0;
 export const useTerminalStore = create<TerminalStore>((set, get) => ({
 	tabs: [],
 	activeTabId: null,
+	activeWorkspaceId: null,
+	activeWorkspaceCwd: "",
 
-	addTab: (cwd?: string) => {
+	setActiveWorkspace: (workspaceId, cwd) => {
+		const state = get();
+		const wsTabs = state.tabs.filter((t) => t.workspaceId === workspaceId);
+		set({
+			activeWorkspaceId: workspaceId,
+			activeWorkspaceCwd: cwd,
+			activeTabId:
+				wsTabs.find((t) => t.id === state.activeTabId)?.id ?? wsTabs[0]?.id ?? null,
+		});
+	},
+
+	addTab: (workspaceId, cwd, title) => {
 		const id = `terminal-${++counter}`;
+		const tabTitle = title ?? `Terminal ${counter}`;
 		set((state) => ({
-			tabs: [
-				...state.tabs,
-				{ id, workspaceId: null, title: `Terminal ${counter}`, cwd: cwd ?? "" },
-			],
+			tabs: [...state.tabs, { id, workspaceId, title: tabTitle, cwd }],
 			activeTabId: id,
 		}));
 		return id;
@@ -42,8 +61,12 @@ export const useTerminalStore = create<TerminalStore>((set, get) => ({
 			const filtered = state.tabs.filter((t) => t.id !== id);
 			let nextActive = state.activeTabId;
 			if (state.activeTabId === id) {
+				const closedTab = state.tabs.find((t) => t.id === id);
+				const wsTabs = closedTab
+					? filtered.filter((t) => t.workspaceId === closedTab.workspaceId)
+					: filtered;
 				const idx = state.tabs.findIndex((t) => t.id === id);
-				nextActive = filtered[Math.min(idx, filtered.length - 1)]?.id ?? null;
+				nextActive = wsTabs[Math.min(idx, wsTabs.length - 1)]?.id ?? null;
 			}
 			return { tabs: filtered, activeTabId: nextActive };
 		});
@@ -56,28 +79,13 @@ export const useTerminalStore = create<TerminalStore>((set, get) => ({
 			tabs: state.tabs.map((t) => (t.id === id ? { ...t, title } : t)),
 		})),
 
-	openWorkspace: (workspaceId, cwd, title) => {
-		const existing = get().getTabByWorkspace(workspaceId);
-		if (existing) {
-			set({ activeTabId: existing.id });
-			return existing.id;
-		}
-		const id = `terminal-ws-${++counter}`;
-		set((state) => ({
-			tabs: [...state.tabs, { id, workspaceId, title, cwd }],
-			activeTabId: id,
-		}));
-		return id;
+	getTabsByWorkspace: (workspaceId) => {
+		return get().tabs.filter((t) => t.workspaceId === workspaceId);
 	},
 
-	closeWorkspace: (workspaceId) => {
-		const tab = get().getTabByWorkspace(workspaceId);
-		if (tab) {
-			get().removeTab(tab.id);
-		}
-	},
-
-	getTabByWorkspace: (workspaceId) => {
-		return get().tabs.find((t) => t.workspaceId === workspaceId);
+	getVisibleTabs: () => {
+		const state = get();
+		if (!state.activeWorkspaceId) return [];
+		return state.tabs.filter((t) => t.workspaceId === state.activeWorkspaceId);
 	},
 }));
