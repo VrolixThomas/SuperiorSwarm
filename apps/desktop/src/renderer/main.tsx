@@ -32,5 +32,5 @@ createRoot(root).render(
 		<ErrorBoundary>
 			<Root />
 		</ErrorBoundary>
-	</StrictMode>,
+	</StrictMode>
 );

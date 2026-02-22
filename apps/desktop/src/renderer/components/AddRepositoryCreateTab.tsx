@@ -81,9 +81,7 @@ export function AddRepositoryCreateTab() {
 			</button>
 
 			{createMutation.isError && (
-				<p className="text-[13px] text-[var(--term-red)]">
-					{createMutation.error.message}
-				</p>
+				<p className="text-[13px] text-[var(--term-red)]">{createMutation.error.message}</p>
 			)}
 		</form>
 	);

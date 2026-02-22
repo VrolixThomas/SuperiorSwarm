@@ -43,21 +43,13 @@ export function AddRepositoryModal() {
 			<div className="w-[480px] rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-surface)] shadow-[var(--shadow-md)]">
 				{/* Header */}
 				<div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
-					<h2 className="text-[15px] font-semibold text-[var(--text)]">
-						Add Repository
-					</h2>
+					<h2 className="text-[15px] font-semibold text-[var(--text)]">Add Repository</h2>
 					<button
 						type="button"
 						onClick={closeAddModal}
 						className="flex h-6 w-6 items-center justify-center rounded-[var(--radius-sm)] text-[var(--text-tertiary)] transition-all duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-secondary)]"
 					>
-						<svg
-							aria-hidden="true"
-							width="14"
-							height="14"
-							viewBox="0 0 16 16"
-							fill="none"
-						>
+						<svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none">
 							<path
 								d="M4 4l8 8M12 4l-8 8"
 								stroke="currentColor"

@@ -18,11 +18,7 @@ interface ProjectContextMenuProps {
 	onClose: () => void;
 }
 
-export function ProjectContextMenu({
-	project,
-	position,
-	onClose,
-}: ProjectContextMenuProps) {
+export function ProjectContextMenu({ project, position, onClose }: ProjectContextMenuProps) {
 	const menuRef = useRef<HTMLDivElement>(null);
 	const [showColors, setShowColors] = useState(false);
 	const [adjusted, setAdjusted] = useState(position);
@@ -61,16 +57,12 @@ export function ProjectContextMenu({
 	// Close on click outside
 	useEffect(() => {
 		function handleClickOutside(e: MouseEvent) {
-			if (
-				menuRef.current &&
-				!menuRef.current.contains(e.target as Node)
-			) {
+			if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
 				onClose();
 			}
 		}
 		document.addEventListener("mousedown", handleClickOutside);
-		return () =>
-			document.removeEventListener("mousedown", handleClickOutside);
+		return () => document.removeEventListener("mousedown", handleClickOutside);
 	}, [onClose]);
 
 	// Close on Escape
@@ -98,9 +90,7 @@ export function ProjectContextMenu({
 	}
 
 	function handleRemove() {
-		const confirmed = window.confirm(
-			"Remove project? This won't delete files."
-		);
+		const confirmed = window.confirm("Remove project? This won't delete files.");
 		if (confirmed) {
 			deleteMutation.mutate({ id: project.id });
 		}
@@ -157,10 +147,7 @@ export function ProjectContextMenu({
 							className="size-4 shrink-0 rounded-full transition-all duration-[120ms] hover:scale-125"
 							style={{
 								backgroundColor: color,
-								outline:
-									project.color === color
-										? "2px solid var(--text)"
-										: "none",
+								outline: project.color === color ? "2px solid var(--text)" : "none",
 								outlineOffset: 1,
 							}}
 							onClick={() => handleColorChange(color)}

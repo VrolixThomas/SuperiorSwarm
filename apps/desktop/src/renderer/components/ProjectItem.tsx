@@ -9,11 +9,7 @@ interface ProjectItemProps {
 	onSelect: () => void;
 }
 
-export function ProjectItem({
-	project,
-	isSelected,
-	onSelect,
-}: ProjectItemProps) {
+export function ProjectItem({ project, isSelected, onSelect }: ProjectItemProps) {
 	const isCloning = project.status === "cloning";
 	const isError = project.status === "error";
 
@@ -45,26 +41,19 @@ export function ProjectItem({
 
 	return (
 		<>
-			<div
-				role="button"
-				tabIndex={0}
+			<button
+				type="button"
 				onClick={onSelect}
 				onContextMenu={(e) => {
 					e.preventDefault();
 					setContextMenu({ x: e.clientX, y: e.clientY });
 				}}
-				onKeyDown={(e) => {
-					if (e.key === "Enter" || e.key === " ") {
-						e.preventDefault();
-						onSelect();
-					}
-				}}
 				className={[
-					"flex items-center gap-2 px-3 py-1.5 rounded-[6px] cursor-pointer",
-					"transition-all duration-[120ms]",
+					"flex w-full items-center gap-2 border-none px-3 py-1.5 rounded-[6px] cursor-pointer",
+					"transition-all duration-[120ms] text-left",
 					isSelected
 						? "bg-[var(--bg-elevated)] text-[var(--text)]"
-						: "text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]",
+						: "bg-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]",
 				].join(" ")}
 			>
 				{/* Color dot */}
@@ -79,23 +68,16 @@ export function ProjectItem({
 
 				{/* Name and status */}
 				<div className="min-w-0 flex-1">
-					<div
-						className={[
-							"truncate text-[13px]",
-							isCloning ? "opacity-60" : "",
-						].join(" ")}
-					>
+					<div className={["truncate text-[13px]", isCloning ? "opacity-60" : ""].join(" ")}>
 						{project.name}
 					</div>
 					{isCloning && (
 						<div className="text-[11px] text-[var(--text-quaternary)]">
-							{progress
-								? `${progress.stage}... ${progress.progress}%`
-								: "Cloning..."}
+							{progress ? `${progress.stage}... ${progress.progress}%` : "Cloning..."}
 						</div>
 					)}
 				</div>
-			</div>
+			</button>
 
 			{contextMenu && (
 				<ProjectContextMenu

@@ -42,9 +42,7 @@ export function AddRepositoryOpenTab() {
 				{openMutation.isPending ? "Opening..." : "Browse..."}
 			</button>
 
-			{error && (
-				<p className="text-[13px] text-[var(--term-red)]">{error}</p>
-			)}
+			{error && <p className="text-[13px] text-[var(--term-red)]">{error}</p>}
 		</div>
 	);
 }

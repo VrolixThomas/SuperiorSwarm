@@ -9,10 +9,7 @@ import { ipcMain } from "electron";
 export function setupTRPCIPC(appRouter: AnyRouter): void {
 	ipcMain.handle(
 		"trpc:request",
-		async (
-			_event,
-			{ type, path, input }: { type: string; path: string; input?: unknown }
-		) => {
+		async (_event, { type, path, input }: { type: string; path: string; input?: unknown }) => {
 			try {
 				const result = await callTRPCProcedure({
 					router: appRouter,

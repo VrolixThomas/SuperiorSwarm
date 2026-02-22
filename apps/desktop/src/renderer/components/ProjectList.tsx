@@ -1,5 +1,5 @@
-import { trpc } from "../trpc/client";
 import { useProjectStore } from "../stores/projects";
+import { trpc } from "../trpc/client";
 import { ProjectItem } from "./ProjectItem";
 
 export function ProjectList() {

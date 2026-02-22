@@ -31,10 +31,7 @@ export function AddRepositoryCloneTab() {
 	return (
 		<form onSubmit={handleSubmit} className="flex flex-col gap-4 p-4">
 			<div className="flex flex-col gap-1.5">
-				<label
-					htmlFor="clone-url"
-					className="text-[13px] font-medium text-[var(--text-secondary)]"
-				>
+				<label htmlFor="clone-url" className="text-[13px] font-medium text-[var(--text-secondary)]">
 					Repository URL
 				</label>
 				<input
@@ -48,10 +45,7 @@ export function AddRepositoryCloneTab() {
 			</div>
 
 			<div className="flex flex-col gap-1.5">
-				<label
-					htmlFor="clone-dir"
-					className="text-[13px] font-medium text-[var(--text-secondary)]"
-				>
+				<label htmlFor="clone-dir" className="text-[13px] font-medium text-[var(--text-secondary)]">
 					Directory
 				</label>
 				<div className="flex gap-2">
@@ -81,9 +75,7 @@ export function AddRepositoryCloneTab() {
 			</button>
 
 			{cloneMutation.isError && (
-				<p className="text-[13px] text-[var(--term-red)]">
-					{cloneMutation.error.message}
-				</p>
+				<p className="text-[13px] text-[var(--term-red)]">{cloneMutation.error.message}</p>
 			)}
 		</form>
 	);
