@@ -20,11 +20,11 @@ export function extractRepoName(url: string): string {
 
 export function parseGitHubUrl(url: string): { owner: string; repo: string } | null {
 	const httpsMatch = url.match(/github\.com\/([^/]+)\/([^/.]+)/);
-	if (httpsMatch) {
+	if (httpsMatch?.[1] && httpsMatch[2]) {
 		return { owner: httpsMatch[1], repo: httpsMatch[2] };
 	}
 	const sshMatch = url.match(/github\.com:([^/]+)\/([^/.]+)/);
-	if (sshMatch) {
+	if (sshMatch?.[1] && sshMatch[2]) {
 		return { owner: sshMatch[1], repo: sshMatch[2] };
 	}
 	return null;
@@ -42,23 +42,20 @@ export async function cloneRepo(
 	targetPath: string,
 	onProgress?: (progress: CloneProgress) => void
 ): Promise<void> {
-	const git = simpleGit();
-	const options: Record<string, null> = { "--progress": null };
+	const git = onProgress
+		? simpleGit({
+				progress(event: SimpleGitProgressEvent) {
+					onProgress({
+						stage: event.stage,
+						progress: event.progress,
+						processed: event.processed,
+						total: event.total,
+					});
+				},
+			})
+		: simpleGit();
 
-	if (onProgress) {
-		await git.clone(url, targetPath, options, {
-			progress(event: SimpleGitProgressEvent) {
-				onProgress({
-					stage: event.stage,
-					progress: event.progress,
-					processed: event.processed,
-					total: event.total,
-				});
-			},
-		});
-	} else {
-		await git.clone(url, targetPath, options);
-	}
+	await git.clone(url, targetPath, ["--progress"]);
 }
 
 export async function initRepo(path: string, initialBranch = "main"): Promise<void> {
