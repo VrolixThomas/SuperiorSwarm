@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import { safeStorage } from "electron";
 import { getDb } from "../db";
 import { atlassianAuth } from "../db/schema";
 import {
@@ -12,9 +13,29 @@ import {
 
 type Service = "jira" | "bitbucket";
 
+function encrypt(value: string): string {
+	if (safeStorage.isEncryptionAvailable()) {
+		return safeStorage.encryptString(value).toString("base64");
+	}
+	return value;
+}
+
+function decrypt(value: string): string {
+	if (safeStorage.isEncryptionAvailable()) {
+		return safeStorage.decryptString(Buffer.from(value, "base64"));
+	}
+	return value;
+}
+
 export function getAuth(service: Service) {
 	const db = getDb();
-	return db.select().from(atlassianAuth).where(eq(atlassianAuth.service, service)).get() ?? null;
+	const row = db.select().from(atlassianAuth).where(eq(atlassianAuth.service, service)).get();
+	if (!row) return null;
+	return {
+		...row,
+		accessToken: decrypt(row.accessToken),
+		refreshToken: decrypt(row.refreshToken),
+	};
 }
 
 export function saveAuth(data: {
@@ -23,29 +44,34 @@ export function saveAuth(data: {
 	refreshToken: string;
 	expiresIn: number;
 	cloudId?: string;
+	siteUrl?: string;
 	accountId: string;
 	displayName?: string;
 }) {
 	const db = getDb();
 	const expiresAt = new Date(Date.now() + data.expiresIn * 1000);
+	const encAccessToken = encrypt(data.accessToken);
+	const encRefreshToken = encrypt(data.refreshToken);
 
 	db.insert(atlassianAuth)
 		.values({
 			service: data.service,
-			accessToken: data.accessToken,
-			refreshToken: data.refreshToken,
+			accessToken: encAccessToken,
+			refreshToken: encRefreshToken,
 			expiresAt,
 			cloudId: data.cloudId ?? null,
+			siteUrl: data.siteUrl ?? null,
 			accountId: data.accountId,
 			displayName: data.displayName ?? null,
 		})
 		.onConflictDoUpdate({
 			target: atlassianAuth.service,
 			set: {
-				accessToken: data.accessToken,
-				refreshToken: data.refreshToken,
+				accessToken: encAccessToken,
+				refreshToken: encRefreshToken,
 				expiresAt,
 				cloudId: data.cloudId ?? null,
+				siteUrl: data.siteUrl ?? null,
 				accountId: data.accountId,
 				displayName: data.displayName ?? null,
 			},
@@ -102,20 +128,12 @@ async function refreshBitbucketToken(refreshToken: string): Promise<{
 	return res.json();
 }
 
-/**
- * Returns a valid access token for the given service.
- * Refreshes automatically if expired. Returns null if not connected.
- */
-export async function getValidToken(service: Service): Promise<string | null> {
+// Guard against concurrent refresh requests for the same service
+const refreshPromises = new Map<Service, Promise<string | null>>();
+
+async function doRefresh(service: Service): Promise<string | null> {
 	const auth = getAuth(service);
 	if (!auth) return null;
-
-	// Refresh if expiring within 60 seconds
-	const now = new Date();
-	const bufferMs = 60_000;
-	if (auth.expiresAt.getTime() - now.getTime() > bufferMs) {
-		return auth.accessToken;
-	}
 
 	try {
 		const refreshFn = service === "jira" ? refreshJiraToken : refreshBitbucketToken;
@@ -127,6 +145,7 @@ export async function getValidToken(service: Service): Promise<string | null> {
 			refreshToken: result.refresh_token,
 			expiresIn: result.expires_in,
 			cloudId: auth.cloudId ?? undefined,
+			siteUrl: auth.siteUrl ?? undefined,
 			accountId: auth.accountId,
 			displayName: auth.displayName ?? undefined,
 		});
@@ -140,8 +159,36 @@ export async function getValidToken(service: Service): Promise<string | null> {
 }
 
 /**
+ * Returns a valid access token for the given service.
+ * Refreshes automatically if expired. Returns null if not connected.
+ * Deduplicates concurrent refresh calls per service.
+ */
+export async function getValidToken(service: Service): Promise<string | null> {
+	const auth = getAuth(service);
+	if (!auth) return null;
+
+	// Token still valid — return it
+	const now = new Date();
+	const bufferMs = 60_000;
+	if (auth.expiresAt.getTime() - now.getTime() > bufferMs) {
+		return auth.accessToken;
+	}
+
+	// Deduplicate concurrent refreshes
+	const existing = refreshPromises.get(service);
+	if (existing) return existing;
+
+	const promise = doRefresh(service).finally(() => {
+		refreshPromises.delete(service);
+	});
+	refreshPromises.set(service, promise);
+	return promise;
+}
+
+/**
  * Authenticated fetch — adds Bearer token, refreshes if needed.
  * Throws if not connected or refresh fails.
+ * Automatically cleans up auth on 401 responses.
  */
 export async function atlassianFetch(service: Service, url: string, init?: RequestInit): Promise<Response> {
 	const token = await getValidToken(service);
@@ -149,7 +196,7 @@ export async function atlassianFetch(service: Service, url: string, init?: Reque
 		throw new Error(`Not connected to ${service}`);
 	}
 
-	return fetch(url, {
+	const res = await fetch(url, {
 		...init,
 		headers: {
 			...init?.headers,
@@ -157,4 +204,11 @@ export async function atlassianFetch(service: Service, url: string, init?: Reque
 			Accept: "application/json",
 		},
 	});
+
+	if (res.status === 401) {
+		deleteAuth(service);
+		throw new Error(`${service} session expired. Please reconnect.`);
+	}
+
+	return res;
 }

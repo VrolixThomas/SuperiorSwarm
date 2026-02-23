@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { shell } from "electron";
 import { saveAuth } from "./auth";
@@ -16,12 +17,16 @@ import {
 	OAUTH_CALLBACK_URL,
 } from "./constants";
 
+let oauthInProgress = false;
+
 function randomState(): string {
-	return Math.random().toString(36).slice(2) + Date.now().toString(36);
+	return randomBytes(32).toString("hex");
 }
 
 function waitForCallback(expectedState: string): Promise<string> {
 	return new Promise((resolve, reject) => {
+		let timeoutId: ReturnType<typeof setTimeout>;
+
 		const server = createServer((req: IncomingMessage, res: ServerResponse) => {
 			const url = new URL(req.url ?? "/", `http://localhost:${OAUTH_CALLBACK_PORT}`);
 
@@ -38,6 +43,7 @@ function waitForCallback(expectedState: string): Promise<string> {
 			res.writeHead(200, { "Content-Type": "text/html" });
 			res.end("<html><body><h2>Authorization complete. You can close this tab.</h2></body></html>");
 
+			clearTimeout(timeoutId);
 			server.close();
 
 			if (error) {
@@ -51,10 +57,14 @@ function waitForCallback(expectedState: string): Promise<string> {
 			}
 		});
 
+		server.on("error", (err) => {
+			reject(new Error(`Failed to start OAuth callback server: ${err.message}`));
+		});
+
 		server.listen(OAUTH_CALLBACK_PORT);
 
 		// Timeout after 5 minutes
-		setTimeout(() => {
+		timeoutId = setTimeout(() => {
 			server.close();
 			reject(new Error("OAuth flow timed out"));
 		}, 5 * 60 * 1000);
@@ -98,6 +108,7 @@ async function exchangeBitbucketCode(code: string): Promise<{
 		body: new URLSearchParams({
 			grant_type: "authorization_code",
 			code,
+			redirect_uri: OAUTH_CALLBACK_URL,
 		}),
 	});
 	if (!res.ok) {
@@ -108,7 +119,7 @@ async function exchangeBitbucketCode(code: string): Promise<{
 
 async function fetchJiraCloudId(accessToken: string): Promise<{
 	cloudId: string;
-	siteName: string;
+	siteUrl: string;
 }> {
 	const res = await fetch(JIRA_ACCESSIBLE_RESOURCES_URL, {
 		headers: {
@@ -124,7 +135,7 @@ async function fetchJiraCloudId(accessToken: string): Promise<{
 		throw new Error("No Jira sites found for this account");
 	}
 	const site = resources[0]!;
-	return { cloudId: site.id, siteName: site.name };
+	return { cloudId: site.id, siteUrl: site.url };
 }
 
 async function fetchJiraUser(accessToken: string, cloudId: string): Promise<{
@@ -165,43 +176,56 @@ async function fetchBitbucketUser(accessToken: string): Promise<{
 }
 
 export async function connectJira(): Promise<void> {
-	const state = randomState();
-	const authUrl = `${JIRA_AUTH_URL}?audience=api.atlassian.com&client_id=${JIRA_CLIENT_ID}&scope=${encodeURIComponent(JIRA_SCOPES)}&redirect_uri=${encodeURIComponent(OAUTH_CALLBACK_URL)}&state=${state}&response_type=code&prompt=consent`;
+	if (oauthInProgress) throw new Error("OAuth flow already in progress");
+	oauthInProgress = true;
+	try {
+		const state = randomState();
+		const authUrl = `${JIRA_AUTH_URL}?audience=api.atlassian.com&client_id=${JIRA_CLIENT_ID}&scope=${encodeURIComponent(JIRA_SCOPES)}&redirect_uri=${encodeURIComponent(OAUTH_CALLBACK_URL)}&state=${state}&response_type=code&prompt=consent`;
 
-	shell.openExternal(authUrl);
-	const code = await waitForCallback(state);
-	const tokens = await exchangeJiraCode(code);
-	const { cloudId } = await fetchJiraCloudId(tokens.access_token);
-	const user = await fetchJiraUser(tokens.access_token, cloudId);
+		shell.openExternal(authUrl);
+		const code = await waitForCallback(state);
+		const tokens = await exchangeJiraCode(code);
+		const { cloudId, siteUrl } = await fetchJiraCloudId(tokens.access_token);
+		const user = await fetchJiraUser(tokens.access_token, cloudId);
 
-	saveAuth({
-		service: "jira",
-		accessToken: tokens.access_token,
-		refreshToken: tokens.refresh_token,
-		expiresIn: tokens.expires_in,
-		cloudId,
-		accountId: user.accountId,
-		displayName: user.displayName,
-	});
+		saveAuth({
+			service: "jira",
+			accessToken: tokens.access_token,
+			refreshToken: tokens.refresh_token,
+			expiresIn: tokens.expires_in,
+			cloudId,
+			siteUrl,
+			accountId: user.accountId,
+			displayName: user.displayName,
+		});
+	} finally {
+		oauthInProgress = false;
+	}
 }
 
 export async function connectBitbucket(): Promise<void> {
-	const state = randomState();
-	const authUrl = `${BITBUCKET_AUTH_URL}?client_id=${BITBUCKET_CLIENT_ID}&response_type=code&state=${state}`;
+	if (oauthInProgress) throw new Error("OAuth flow already in progress");
+	oauthInProgress = true;
+	try {
+		const state = randomState();
+		const authUrl = `${BITBUCKET_AUTH_URL}?client_id=${BITBUCKET_CLIENT_ID}&response_type=code&state=${state}`;
 
-	shell.openExternal(authUrl);
-	const code = await waitForCallback(state);
-	const tokens = await exchangeBitbucketCode(code);
-	const user = await fetchBitbucketUser(tokens.access_token);
+		shell.openExternal(authUrl);
+		const code = await waitForCallback(state);
+		const tokens = await exchangeBitbucketCode(code);
+		const user = await fetchBitbucketUser(tokens.access_token);
 
-	saveAuth({
-		service: "bitbucket",
-		accessToken: tokens.access_token,
-		refreshToken: tokens.refresh_token,
-		expiresIn: tokens.expires_in,
-		accountId: user.accountId,
-		displayName: user.displayName,
-	});
+		saveAuth({
+			service: "bitbucket",
+			accessToken: tokens.access_token,
+			refreshToken: tokens.refresh_token,
+			expiresIn: tokens.expires_in,
+			accountId: user.accountId,
+			displayName: user.displayName,
+		});
+	} finally {
+		oauthInProgress = false;
+	}
 }
 
 export async function connectAll(): Promise<{ jira: boolean; bitbucket: boolean }> {

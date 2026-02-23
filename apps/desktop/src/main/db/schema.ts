@@ -77,6 +77,7 @@ export const atlassianAuth = sqliteTable("atlassian_auth", {
 	refreshToken: text("refresh_token").notNull(),
 	expiresAt: integer("expires_at", { mode: "timestamp" }).notNull(),
 	cloudId: text("cloud_id"),
+	siteUrl: text("site_url"),
 	accountId: text("account_id").notNull(),
 	displayName: text("display_name"),
 });

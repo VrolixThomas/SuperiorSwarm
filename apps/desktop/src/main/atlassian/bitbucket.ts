@@ -67,7 +67,7 @@ export async function getMyPullRequests(): Promise<BitbucketPullRequest[]> {
 
 	for (const { workspace, repoSlug } of repos) {
 		try {
-			const url = `${BITBUCKET_API_BASE}/repositories/${workspace}/${repoSlug}/pullrequests?state=OPEN&q=author.account_id%3D%22${auth.accountId}%22`;
+			const url = `${BITBUCKET_API_BASE}/repositories/${workspace}/${repoSlug}/pullrequests?state=OPEN&pagelen=50&q=author.account_id%3D%22${auth.accountId}%22`;
 			const res = await atlassianFetch("bitbucket", url);
 			if (!res.ok) continue;
 
@@ -94,7 +94,7 @@ export async function getReviewRequests(): Promise<BitbucketPullRequest[]> {
 
 	for (const { workspace, repoSlug } of repos) {
 		try {
-			const url = `${BITBUCKET_API_BASE}/repositories/${workspace}/${repoSlug}/pullrequests?state=OPEN&q=reviewers.account_id%3D%22${auth.accountId}%22`;
+			const url = `${BITBUCKET_API_BASE}/repositories/${workspace}/${repoSlug}/pullrequests?state=OPEN&pagelen=50&q=reviewers.account_id%3D%22${auth.accountId}%22`;
 			const res = await atlassianFetch("bitbucket", url);
 			if (!res.ok) continue;
 

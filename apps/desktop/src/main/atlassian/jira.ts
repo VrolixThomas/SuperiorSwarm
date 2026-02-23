@@ -40,6 +40,7 @@ export async function getMyIssues(): Promise<JiraIssue[]> {
 	}
 
 	const data = (await res.json()) as { issues: JiraApiIssue[] };
+	const baseUrl = auth.siteUrl ?? `https://api.atlassian.com/ex/jira/${auth.cloudId}`;
 
 	return data.issues.map((issue) => ({
 		key: issue.key,
@@ -49,7 +50,7 @@ export async function getMyIssues(): Promise<JiraIssue[]> {
 		priority: issue.fields.priority?.name ?? "None",
 		issueType: issue.fields.issuetype.name,
 		projectKey: issue.fields.project.key,
-		webUrl: `https://api.atlassian.com/ex/jira/${auth.cloudId}/browse/${issue.key}`,
+		webUrl: `${baseUrl}/browse/${issue.key}`,
 		createdAt: issue.fields.created,
 		updatedAt: issue.fields.updated,
 	}));
