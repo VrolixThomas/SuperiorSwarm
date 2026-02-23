@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { BrowserWindow, app, dialog, ipcMain } from "electron";
+import { BrowserWindow, app, dialog, ipcMain, shell } from "electron";
 import { initializeDatabase } from "./db";
 import {
 	type SessionSaveData,
@@ -70,6 +70,12 @@ app.whenReady().then(() => {
 			}
 		}
 	);
+
+	ipcMain.handle("shell:openExternal", async (_event, url: string) => {
+		if (typeof url === "string" && (url.startsWith("https://") || url.startsWith("http://"))) {
+			await shell.openExternal(url);
+		}
+	});
 
 	ipcMain.handle("dialog:openDirectory", async () => {
 		const result = await dialog.showOpenDialog({

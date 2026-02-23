@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { DialogAPI, SessionAPI, SessionSaveData, TerminalAPI, TrpcAPI } from "../shared/types";
+import type { DialogAPI, SessionAPI, SessionSaveData, ShellAPI, TerminalAPI, TrpcAPI } from "../shared/types";
 
 function createDispatcher<T extends unknown[]>(channel: string) {
 	const listeners = new Map<string, (...args: T) => void>();
@@ -40,9 +40,14 @@ const sessionAPI: SessionAPI = {
 		ipcRenderer.sendSync("terminal-sessions:save-sync", data) as { ok: boolean },
 };
 
+const shellAPI: ShellAPI = {
+	openExternal: (url: string) => ipcRenderer.invoke("shell:openExternal", url),
+};
+
 contextBridge.exposeInMainWorld("electron", {
 	terminal: terminalAPI,
 	trpc: trpcAPI,
 	dialog: dialogAPI,
 	session: sessionAPI,
+	shell: shellAPI,
 });
