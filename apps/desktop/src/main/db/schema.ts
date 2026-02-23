@@ -70,3 +70,16 @@ export const sessionState = sqliteTable("session_state", {
 	key: text("key").primaryKey(),
 	value: text("value").notNull(),
 });
+
+export const atlassianAuth = sqliteTable("atlassian_auth", {
+	service: text("service", { enum: ["jira", "bitbucket"] }).primaryKey(),
+	accessToken: text("access_token").notNull(),
+	refreshToken: text("refresh_token").notNull(),
+	expiresAt: integer("expires_at", { mode: "timestamp" }).notNull(),
+	cloudId: text("cloud_id"),
+	accountId: text("account_id").notNull(),
+	displayName: text("display_name"),
+});
+
+export type AtlassianAuth = typeof atlassianAuth.$inferSelect;
+export type NewAtlassianAuth = typeof atlassianAuth.$inferInsert;
