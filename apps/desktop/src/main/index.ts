@@ -49,6 +49,10 @@ app.whenReady().then(() => {
 		initializeDatabase();
 	} catch (err) {
 		console.error("[db] Failed to initialize database:", err);
+		dialog.showErrorBoxSync(
+			"Database Error",
+			`BranchFlux failed to initialize its database and cannot start.\n\n${String(err)}`,
+		);
 		app.quit();
 		return;
 	}
