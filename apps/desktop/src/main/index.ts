@@ -45,7 +45,13 @@ function createWindow() {
 
 app.whenReady().then(() => {
 	setupTerminalIPC();
-	initializeDatabase();
+	try {
+		initializeDatabase();
+	} catch (err) {
+		console.error("[db] Failed to initialize database:", err);
+		app.quit();
+		return;
+	}
 	setupTRPCIPC(appRouter);
 
 	ipcMain.on(
