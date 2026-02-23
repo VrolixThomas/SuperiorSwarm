@@ -8,7 +8,7 @@ import {
 	initRepo,
 	listBranches,
 	listWorktrees,
-	parseGitHubUrl,
+	parseRemoteInfo,
 	removeWorktree,
 	validateGitUrl,
 } from "../src/main/git/operations";
@@ -49,23 +49,57 @@ describe("extractRepoName", () => {
 	});
 });
 
-describe("parseGitHubUrl", () => {
-	test("parses HTTPS URL", () => {
-		expect(parseGitHubUrl("https://github.com/owner/repo.git")).toEqual({
+describe("parseRemoteInfo", () => {
+	test("parses GitHub HTTPS URL", () => {
+		expect(parseRemoteInfo("https://github.com/owner/repo.git")).toEqual({
+			host: "github.com",
 			owner: "owner",
 			repo: "repo",
 		});
 	});
 
-	test("parses SSH URL", () => {
-		expect(parseGitHubUrl("git@github.com:owner/repo.git")).toEqual({
+	test("parses GitHub SSH URL", () => {
+		expect(parseRemoteInfo("git@github.com:owner/repo.git")).toEqual({
+			host: "github.com",
 			owner: "owner",
 			repo: "repo",
 		});
 	});
 
-	test("returns null for non-GitHub URL", () => {
-		expect(parseGitHubUrl("https://gitlab.com/owner/repo.git")).toBeNull();
+	test("parses GitLab HTTPS URL", () => {
+		expect(parseRemoteInfo("https://gitlab.com/owner/repo.git")).toEqual({
+			host: "gitlab.com",
+			owner: "owner",
+			repo: "repo",
+		});
+	});
+
+	test("parses Bitbucket SSH URL", () => {
+		expect(parseRemoteInfo("git@bitbucket.org:team/project.git")).toEqual({
+			host: "bitbucket.org",
+			owner: "team",
+			repo: "project",
+		});
+	});
+
+	test("parses self-hosted GitLab URL", () => {
+		expect(parseRemoteInfo("https://git.company.com/team/app.git")).toEqual({
+			host: "git.company.com",
+			owner: "team",
+			repo: "app",
+		});
+	});
+
+	test("parses URL without .git suffix", () => {
+		expect(parseRemoteInfo("https://github.com/owner/repo")).toEqual({
+			host: "github.com",
+			owner: "owner",
+			repo: "repo",
+		});
+	});
+
+	test("returns null for invalid URL", () => {
+		expect(parseRemoteInfo("not-a-url")).toBeNull();
 	});
 });
 

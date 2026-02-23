@@ -18,15 +18,27 @@ export function extractRepoName(url: string): string {
 	return cleaned.split("/").pop() ?? cleaned;
 }
 
-export function parseGitHubUrl(url: string): { owner: string; repo: string } | null {
-	const httpsMatch = url.match(/github\.com\/([^/]+)\/([^/.]+)/);
-	if (httpsMatch?.[1] && httpsMatch[2]) {
-		return { owner: httpsMatch[1], repo: httpsMatch[2] };
+export interface RemoteInfo {
+	host: string;
+	owner: string;
+	repo: string;
+}
+
+export function parseRemoteInfo(url: string): RemoteInfo | null {
+	const cleaned = url.replace(/\.git$/, "");
+
+	// HTTPS: https://host/owner/repo
+	const httpsMatch = cleaned.match(/^https?:\/\/([^/]+)\/([^/]+)\/([^/]+)$/);
+	if (httpsMatch?.[1] && httpsMatch[2] && httpsMatch[3]) {
+		return { host: httpsMatch[1], owner: httpsMatch[2], repo: httpsMatch[3] };
 	}
-	const sshMatch = url.match(/github\.com:([^/]+)\/([^/.]+)/);
-	if (sshMatch?.[1] && sshMatch[2]) {
-		return { owner: sshMatch[1], repo: sshMatch[2] };
+
+	// SSH: git@host:owner/repo
+	const sshMatch = cleaned.match(/^git@([^:]+):([^/]+)\/([^/]+)$/);
+	if (sshMatch?.[1] && sshMatch[2] && sshMatch[3]) {
+		return { host: sshMatch[1], owner: sshMatch[2], repo: sshMatch[3] };
 	}
+
 	return null;
 }
 
@@ -105,13 +117,13 @@ export async function detectDefaultBranch(repoPath: string): Promise<string> {
 
 export async function parseRemoteUrl(
 	repoPath: string
-): Promise<{ owner: string; repo: string } | null> {
+): Promise<RemoteInfo | null> {
 	try {
 		const git = simpleGit(repoPath);
 		const remotes = await git.getRemotes(true);
 		const origin = remotes.find((r) => r.name === "origin");
 		if (!origin?.refs?.fetch) return null;
-		return parseGitHubUrl(origin.refs.fetch);
+		return parseRemoteInfo(origin.refs.fetch);
 	} catch {
 		return null;
 	}
