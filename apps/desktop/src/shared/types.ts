@@ -30,3 +30,7 @@ export interface SessionSaveData {
 export interface SessionAPI {
 	saveSync: (data: SessionSaveData) => { ok: boolean };
 }
+
+export interface ShellAPI {
+	openExternal: (url: string) => Promise<void>;
+}
