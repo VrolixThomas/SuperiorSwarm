@@ -1,4 +1,5 @@
 import { router } from "../index";
+import { atlassianRouter } from "./atlassian";
 import { branchesRouter } from "./branches";
 import { projectsRouter } from "./projects";
 import { terminalSessionsRouter } from "./terminal-sessions";
@@ -9,6 +10,7 @@ export const appRouter = router({
 	workspaces: workspacesRouter,
 	branches: branchesRouter,
 	terminalSessions: terminalSessionsRouter,
+	atlassian: atlassianRouter,
 });
 
 export type AppRouter = typeof appRouter;
