@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useDiffStore } from "../stores/diff";
 import { useTerminalStore } from "../stores/terminal";
 import { trpc } from "../trpc/client";
 
@@ -129,6 +130,7 @@ export function WorkspaceItem({ workspace, projectName, projectRepoPath }: Works
 	deleteWorkspaceRef.current = deleteWorkspace.mutate;
 
 	const isActive = useTerminalStore((s) => s.activeWorkspaceId === workspace.id);
+	const setActiveDiff = useDiffStore((s) => s.setActiveDiff);
 
 	const handleClick = useCallback(() => {
 		const cwd =
@@ -181,7 +183,7 @@ export function WorkspaceItem({ workspace, projectName, projectRepoPath }: Works
 	}, [workspace.id, workspace.name]);
 
 	return (
-		<>
+		<div className="relative group">
 			<button
 				type="button"
 				onClick={handleClick}
@@ -203,6 +205,24 @@ export function WorkspaceItem({ workspace, projectName, projectRepoPath }: Works
 				<span className="truncate text-[13px]">{workspace.name}</span>
 			</button>
 
+			<button
+				type="button"
+				onClick={(e) => {
+					e.stopPropagation();
+					setActiveDiff({
+						type: "working-tree",
+						repoPath:
+							workspace.type === "worktree" && workspace.worktreePath
+								? workspace.worktreePath
+								: projectRepoPath,
+					});
+				}}
+				className="absolute right-8 top-1/2 -translate-y-1/2 rounded px-1.5 py-0.5 text-[11px] text-[var(--text-quaternary)] opacity-0 transition-all duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--accent)] group-hover:opacity-100"
+				title="Open diff viewer"
+			>
+				⊞
+			</button>
+
 			{contextMenu && (
 				<WorkspaceContextMenu
 					position={contextMenu}
@@ -210,6 +230,6 @@ export function WorkspaceItem({ workspace, projectName, projectRepoPath }: Works
 					onDelete={handleDelete}
 				/>
 			)}
-		</>
+		</div>
 	);
 }
