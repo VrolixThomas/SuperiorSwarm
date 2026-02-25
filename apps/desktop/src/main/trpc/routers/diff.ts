@@ -1,6 +1,10 @@
 import simpleGit from "simple-git";
+import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { detectLanguage, parseUnifiedDiff } from "../../git/operations";
+import { getDb } from "../../db";
+import { extensionPaths } from "../../db/schema";
+import { atlassianFetch } from "../../atlassian/auth";
 import { publicProcedure, router } from "../index";
 
 function computeStats(files: ReturnType<typeof parseUnifiedDiff>) {
@@ -58,5 +62,80 @@ export const diffRouter = router({
 				// File doesn't exist at this ref (e.g. newly added file has no "original")
 				return { content: "", language: detectLanguage(input.filePath) };
 			}
+		}),
+
+	getPRDiff: publicProcedure
+		.input(
+			z.object({
+				repoPath: z.string(),
+				prId: z.number(),
+				workspaceSlug: z.string(),
+				repoSlug: z.string(),
+			}),
+		)
+		.query(async ({ input }) => {
+			// Fetch raw unified diff from Bitbucket API
+			const response = await atlassianFetch(
+				"bitbucket",
+				`https://api.bitbucket.org/2.0/repositories/${input.workspaceSlug}/${input.repoSlug}/pullrequests/${input.prId}/diff`,
+			);
+
+			if (!response.ok) {
+				throw new Error(`Bitbucket diff request failed: ${response.status}`);
+			}
+
+			const rawDiff = await response.text();
+			const files = parseUnifiedDiff(rawDiff);
+
+			// Also fetch PR metadata for the panel title
+			const prResponse = await atlassianFetch(
+				"bitbucket",
+				`https://api.bitbucket.org/2.0/repositories/${input.workspaceSlug}/${input.repoSlug}/pullrequests/${input.prId}`,
+			);
+			const prData = prResponse.ok
+				? ((await prResponse.json()) as {
+						title?: string;
+						source?: { branch?: { name?: string } };
+						destination?: { branch?: { name?: string } };
+					})
+				: null;
+
+			return {
+				files,
+				stats: computeStats(files),
+				pr: {
+					title: prData?.title ?? `PR #${input.prId}`,
+					sourceBranch: prData?.source?.branch?.name ?? "",
+					targetBranch: prData?.destination?.branch?.name ?? "",
+				},
+			};
+		}),
+
+	listExtensions: publicProcedure.query(() => {
+		const db = getDb();
+		return db.select().from(extensionPaths).all();
+	}),
+
+	addExtension: publicProcedure
+		.input(z.object({ path: z.string() }))
+		.mutation(({ input }) => {
+			const db = getDb();
+			const result = db
+				.insert(extensionPaths)
+				.values({ path: input.path })
+				.returning()
+				.get();
+			return result;
+		}),
+
+	toggleExtension: publicProcedure
+		.input(z.object({ id: z.number(), enabled: z.boolean() }))
+		.mutation(({ input }) => {
+			const db = getDb();
+			db.update(extensionPaths)
+				.set({ enabled: input.enabled })
+				.where(eq(extensionPaths.id, input.id))
+				.run();
+			return { ok: true };
 		}),
 });
