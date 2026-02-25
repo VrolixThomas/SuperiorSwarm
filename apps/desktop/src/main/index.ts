@@ -85,6 +85,15 @@ app.whenReady().then(() => {
 		return result.filePaths;
 	});
 
+	ipcMain.handle("dialog:openFile", async (_event, filters?: Array<{ name: string; extensions: string[] }>) => {
+		const result = await dialog.showOpenDialog({
+			properties: ["openFile"],
+			filters: filters ?? [{ name: "VS Code Extension", extensions: ["vsix"] }],
+		});
+		if (result.canceled || result.filePaths.length === 0) return null;
+		return result.filePaths[0] ?? null;
+	});
+
 	createWindow();
 
 	app.on("activate", () => {

@@ -13,6 +13,7 @@ export interface TrpcAPI {
 
 export interface DialogAPI {
 	openDirectory: () => Promise<string[] | null>;
+	openFile: (filters?: Array<{ name: string; extensions: string[] }>) => Promise<string | null>;
 }
 
 export interface SessionSaveData {
