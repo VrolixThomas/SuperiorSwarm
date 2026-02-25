@@ -84,3 +84,28 @@ export const atlassianAuth = sqliteTable("atlassian_auth", {
 
 export type AtlassianAuth = typeof atlassianAuth.$inferSelect;
 export type NewAtlassianAuth = typeof atlassianAuth.$inferInsert;
+
+export const diffSessions = sqliteTable("diff_sessions", {
+	id: integer("id").primaryKey({ autoIncrement: true }),
+	type: text("type", { enum: ["pr", "branch", "working-tree"] }).notNull(),
+	contextJson: text("context_json").notNull(),
+	repoPath: text("repo_path").notNull(),
+	createdAt: integer("created_at", { mode: "timestamp" })
+		.notNull()
+		.$defaultFn(() => new Date()),
+});
+
+export type DiffSession = typeof diffSessions.$inferSelect;
+export type NewDiffSession = typeof diffSessions.$inferInsert;
+
+export const extensionPaths = sqliteTable("extension_paths", {
+	id: integer("id").primaryKey({ autoIncrement: true }),
+	path: text("path").notNull().unique(),
+	enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+	installedAt: integer("installed_at", { mode: "timestamp" })
+		.notNull()
+		.$defaultFn(() => new Date()),
+});
+
+export type ExtensionPath = typeof extensionPaths.$inferSelect;
+export type NewExtensionPath = typeof extensionPaths.$inferInsert;
