@@ -35,6 +35,12 @@ function copyMigrationsPlugin() {
 export default defineConfig({
 	main: {
 		plugins: [externalizeDepsPlugin(), copyMigrationsPlugin()],
+		define: {
+			"process.env.JIRA_CLIENT_ID": JSON.stringify(process.env.JIRA_CLIENT_ID ?? ""),
+			"process.env.JIRA_CLIENT_SECRET": JSON.stringify(process.env.JIRA_CLIENT_SECRET ?? ""),
+			"process.env.BITBUCKET_CLIENT_ID": JSON.stringify(process.env.BITBUCKET_CLIENT_ID ?? ""),
+			"process.env.BITBUCKET_CLIENT_SECRET": JSON.stringify(process.env.BITBUCKET_CLIENT_SECRET ?? ""),
+		},
 		build: {
 			rollupOptions: {
 				input: {

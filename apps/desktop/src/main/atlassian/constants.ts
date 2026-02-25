@@ -1,10 +1,11 @@
-// OAuth credentials — embedded in app binary.
-// These are scoped to user-authorized tokens only.
-export const JIRA_CLIENT_ID = "PLACEHOLDER_JIRA_CLIENT_ID";
-export const JIRA_CLIENT_SECRET = "PLACEHOLDER_JIRA_CLIENT_SECRET";
+// OAuth credentials injected at build time via environment variables.
+// Set these in .env (gitignored) or your CI/CD environment.
+// See .env.example for the required variables.
+export const JIRA_CLIENT_ID = process.env.JIRA_CLIENT_ID ?? "";
+export const JIRA_CLIENT_SECRET = process.env.JIRA_CLIENT_SECRET ?? "";
 
-export const BITBUCKET_CLIENT_ID = "PLACEHOLDER_BITBUCKET_CLIENT_ID";
-export const BITBUCKET_CLIENT_SECRET = "PLACEHOLDER_BITBUCKET_CLIENT_SECRET";
+export const BITBUCKET_CLIENT_ID = process.env.BITBUCKET_CLIENT_ID ?? "";
+export const BITBUCKET_CLIENT_SECRET = process.env.BITBUCKET_CLIENT_SECRET ?? "";
 
 export const OAUTH_CALLBACK_PORT = 27391;
 export const OAUTH_CALLBACK_URL = `http://localhost:${OAUTH_CALLBACK_PORT}/callback`;
