@@ -22,15 +22,7 @@ export type TabItem =
 			filePath: string;
 			title: string;
 			language: string;
-	  }
-	| {
-			kind: "file-tree";
-			id: string;
-			workspaceId: string;
-			diffCtx: DiffContext;
-			title: string;
 	  };
-
 // ─── Store interface ─────────────────────────────────────────────────────────
 
 interface TabStore {
@@ -39,6 +31,7 @@ interface TabStore {
 	activeWorkspaceId: string | null;
 	activeWorkspaceCwd: string;
 	diffMode: "split" | "inline";
+	diffPanel: { open: boolean; diffCtx: DiffContext | null };
 
 	// Queries
 	getVisibleTabs: () => TabItem[];
@@ -57,7 +50,8 @@ interface TabStore {
 	addTerminalTab: (workspaceId: string, cwd: string, title?: string) => string;
 
 	// Diff convenience
-	openDiff: (workspaceId: string, diffCtx: DiffContext) => string;
+	toggleDiffPanel: (diffCtx: DiffContext) => void;
+	closeDiffPanel: () => void;
 	openDiffFile: (
 		workspaceId: string,
 		diffCtx: DiffContext,
@@ -80,16 +74,12 @@ interface TabStore {
 
 let terminalCounter = 0;
 let fileTabCounter = 0;
-let fileTreeCounter = 0;
 
 function nextTerminalId(): string {
 	return `terminal-${++terminalCounter}`;
 }
 function nextFileTabId(): string {
 	return `file-tab-${++fileTabCounter}`;
-}
-function nextFileTreeId(): string {
-	return `file-tree-${++fileTreeCounter}`;
 }
 
 // ─── Dedup key for diff-file tabs ────────────────────────────────────────────
@@ -119,6 +109,7 @@ export const useTabStore = create<TabStore>((set, get) => ({
 	activeWorkspaceId: null,
 	activeWorkspaceCwd: "",
 	diffMode: "split",
+	diffPanel: { open: false, diffCtx: null },
 
 	getVisibleTabs: () => {
 		const { tabs, activeWorkspaceId } = get();
@@ -165,6 +156,7 @@ export const useTabStore = create<TabStore>((set, get) => ({
 			activeWorkspaceId: workspaceId,
 			activeWorkspaceCwd: cwd,
 			activeTabId: currentStillVisible?.id ?? wsTabs[0]?.id ?? null,
+			diffPanel: { open: false, diffCtx: null },
 		});
 	},
 
@@ -179,33 +171,21 @@ export const useTabStore = create<TabStore>((set, get) => ({
 		return id;
 	},
 
-	openDiff: (workspaceId, diffCtx) => {
-		const { tabs } = get();
-		// Deduplicate: if a file-tree tab for this repo already exists in this workspace, activate it
-		const existing = tabs.find(
-			(t) =>
-				t.kind === "file-tree" &&
-				t.workspaceId === workspaceId &&
-				t.diffCtx.repoPath === diffCtx.repoPath
-		);
-		if (existing) {
-			set({ activeTabId: existing.id });
-			return existing.id;
+	toggleDiffPanel: (diffCtx) => {
+		const { diffPanel } = get();
+		if (
+			diffPanel.open &&
+			diffPanel.diffCtx?.repoPath === diffCtx.repoPath &&
+			diffPanel.diffCtx?.type === diffCtx.type
+		) {
+			set({ diffPanel: { open: false, diffCtx: null } });
+		} else {
+			set({ diffPanel: { open: true, diffCtx } });
 		}
+	},
 
-		const id = nextFileTreeId();
-		const title =
-			diffCtx.type === "pr"
-				? diffCtx.title
-				: diffCtx.type === "branch"
-					? `${diffCtx.baseBranch}..${diffCtx.headBranch}`
-					: "Working Tree";
-		const tab: TabItem = { kind: "file-tree", id, workspaceId, diffCtx, title };
-		set((s) => ({
-			tabs: [...s.tabs, tab],
-			activeTabId: id,
-		}));
-		return id;
+	closeDiffPanel: () => {
+		set({ diffPanel: { open: false, diffCtx: null } });
 	},
 
 	openDiffFile: (workspaceId, diffCtx, filePath, language) => {
@@ -241,12 +221,15 @@ export const useTabStore = create<TabStore>((set, get) => ({
 	},
 
 	closeDiff: (workspaceId, repoPath) => {
+		const { diffPanel } = get();
+		const closePanel = diffPanel.open && diffPanel.diffCtx?.repoPath === repoPath;
+
 		set((s) => {
 			const filtered = s.tabs.filter(
 				(t) =>
 					!(
 						t.workspaceId === workspaceId &&
-						(t.kind === "file-tree" || t.kind === "diff-file") &&
+						t.kind === "diff-file" &&
 						t.diffCtx.repoPath === repoPath
 					)
 			);
@@ -255,7 +238,11 @@ export const useTabStore = create<TabStore>((set, get) => ({
 				const wsTabs = filtered.filter((t) => t.workspaceId === workspaceId);
 				nextActive = wsTabs[0]?.id ?? null;
 			}
-			return { tabs: filtered, activeTabId: nextActive };
+			return {
+				tabs: filtered,
+				activeTabId: nextActive,
+				...(closePanel ? { diffPanel: { open: false, diffCtx: null } } : {}),
+			};
 		});
 	},
 
