@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useProjectStore } from "../stores/projects";
 import { trpc } from "../trpc/client";
 
 const COLORS = [
@@ -84,6 +85,11 @@ export function ProjectContextMenu({ project, position, onClose }: ProjectContex
 		onClose();
 	}
 
+	function handleSharedFiles() {
+		useProjectStore.getState().openSharedFilesPanel(project.id);
+		onClose();
+	}
+
 	function handleColorChange(color: string) {
 		updateMutation.mutate({ id: project.id, color });
 		onClose();
@@ -155,6 +161,19 @@ export function ProjectContextMenu({ project, position, onClose }: ProjectContex
 					))}
 				</div>
 			)}
+			<div className="my-0.5 border-t border-[var(--border-subtle)]" />
+			<div
+				role="menuitem"
+				tabIndex={0}
+				className={itemClass}
+				onClick={handleSharedFiles}
+				onKeyDown={(e) => {
+					if (e.key === "Enter") handleSharedFiles();
+				}}
+			>
+				Shared Files
+			</div>
+			<div className="my-0.5 border-t border-[var(--border-subtle)]" />
 			<div
 				role="menuitem"
 				tabIndex={0}
