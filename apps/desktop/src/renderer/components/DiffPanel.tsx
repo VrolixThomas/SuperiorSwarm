@@ -5,14 +5,10 @@ import { trpc } from "../trpc/client";
 import { ExtensionManager } from "./ExtensionManager";
 import { FileTree } from "./FileTreeNode";
 
-interface FileTreeContentProps {
-	diffCtx: DiffContext;
-	workspaceId: string;
-}
-
-export function FileTreeContent({ diffCtx, workspaceId }: FileTreeContentProps) {
+function DiffPanelContent({ diffCtx }: { diffCtx: DiffContext }) {
 	const [showExtensions, setShowExtensions] = useState(false);
-	const closeDiff = useTabStore((s) => s.closeDiff);
+	const closeDiffPanel = useTabStore((s) => s.closeDiffPanel);
+	const activeWorkspaceId = useTabStore((s) => s.activeWorkspaceId);
 
 	const branchDiffQuery = trpc.diff.getBranchDiff.useQuery(
 		diffCtx.type === "branch"
@@ -59,15 +55,22 @@ export function FileTreeContent({ diffCtx, workspaceId }: FileTreeContentProps) 
 	const isLoading =
 		branchDiffQuery.isLoading || workingTreeQuery.isLoading || prDiffQuery.isLoading;
 
+	const title =
+		diffCtx.type === "pr"
+			? diffCtx.title
+			: diffCtx.type === "branch"
+				? `${diffCtx.baseBranch}..${diffCtx.headBranch}`
+				: "Working Tree";
+
 	return (
-		<div className="flex h-full flex-col overflow-hidden bg-[var(--bg-surface)]">
+		<div className="flex h-full flex-col overflow-hidden">
 			{/* Header */}
 			<div className="flex shrink-0 items-center gap-2 border-b border-[var(--border)] px-3 py-1.5">
-				<span className="flex-1 text-[11px] font-medium uppercase tracking-wide text-[var(--text-quaternary)]">
-					Changed Files
+				<span className="flex-1 truncate text-[11px] font-medium uppercase tracking-wide text-[var(--text-quaternary)]">
+					{title}
 				</span>
 				{stats && (
-					<span className="text-[11px] text-[var(--text-quaternary)]">
+					<span className="shrink-0 text-[11px] text-[var(--text-quaternary)]">
 						<span className="text-[var(--term-green)]">+{stats.added + stats.changed}</span>
 						{" / "}
 						<span className="text-[var(--term-red)]">-{stats.removed}</span>
@@ -75,38 +78,31 @@ export function FileTreeContent({ diffCtx, workspaceId }: FileTreeContentProps) 
 				)}
 				<button
 					type="button"
-					onClick={() => closeDiff(workspaceId, diffCtx.repoPath)}
+					onClick={() => setShowExtensions(true)}
 					className="rounded p-0.5 text-[var(--text-quaternary)] hover:text-[var(--text-secondary)]"
-					title="Close diff"
+					title="Manage extensions"
 				>
-					<svg aria-hidden="true" width="9" height="9" viewBox="0 0 9 9" fill="none">
+					<svg aria-hidden="true" width="11" height="11" viewBox="0 0 16 16" fill="none">
+						<path d="M8 10a2 2 0 100-4 2 2 0 000 4z" stroke="currentColor" strokeWidth="1.3" />
 						<path
-							d="M2 2l5 5M7 2l-5 5"
+							d="M13.5 8a5.5 5.5 0 01-.4 2M2.5 8a5.5 5.5 0 01.4-2M8 2.5a5.5 5.5 0 012 .4M8 13.5a5.5 5.5 0 01-2-.4"
 							stroke="currentColor"
-							strokeWidth="1.4"
+							strokeWidth="1.3"
 							strokeLinecap="round"
 						/>
 					</svg>
 				</button>
 				<button
 					type="button"
-					onClick={() => setShowExtensions(true)}
+					onClick={closeDiffPanel}
 					className="rounded p-0.5 text-[var(--text-quaternary)] hover:text-[var(--text-secondary)]"
-					title="Manage extensions"
+					title="Close panel"
 				>
-					<svg
-						aria-hidden="true"
-						width="11"
-						height="11"
-						viewBox="0 0 16 16"
-						fill="none"
-						className="text-[var(--text-quaternary)]"
-					>
-						<path d="M8 10a2 2 0 100-4 2 2 0 000 4z" stroke="currentColor" strokeWidth="1.3" />
+					<svg aria-hidden="true" width="9" height="9" viewBox="0 0 9 9" fill="none">
 						<path
-							d="M13.5 8a5.5 5.5 0 01-.4 2M2.5 8a5.5 5.5 0 01.4-2M8 2.5a5.5 5.5 0 012 .4M8 13.5a5.5 5.5 0 01-2-.4"
+							d="M2 2l5 5M7 2l-5 5"
 							stroke="currentColor"
-							strokeWidth="1.3"
+							strokeWidth="1.4"
 							strokeLinecap="round"
 						/>
 					</svg>
@@ -121,7 +117,7 @@ export function FileTreeContent({ diffCtx, workspaceId }: FileTreeContentProps) 
 					</div>
 				)}
 				{!isLoading && files && files.length > 0 && (
-					<FileTree files={files} diffCtx={diffCtx} workspaceId={workspaceId} />
+					<FileTree files={files} diffCtx={diffCtx} workspaceId={activeWorkspaceId ?? ""} />
 				)}
 				{!isLoading && files && files.length === 0 && (
 					<div className="px-3 py-2 text-[12px] text-[var(--text-quaternary)]">No changes</div>
@@ -130,5 +126,17 @@ export function FileTreeContent({ diffCtx, workspaceId }: FileTreeContentProps) 
 
 			{showExtensions && <ExtensionManager onClose={() => setShowExtensions(false)} />}
 		</div>
+	);
+}
+
+export function DiffPanel() {
+	const diffPanel = useTabStore((s) => s.diffPanel);
+
+	if (!diffPanel.open) return null;
+
+	return (
+		<aside className="flex h-full w-[280px] shrink-0 flex-col border-l border-[var(--border-subtle)] bg-[var(--bg-surface)]">
+			<DiffPanelContent diffCtx={diffPanel.diffCtx} />
+		</aside>
 	);
 }
