@@ -1,0 +1,1 @@
+ALTER TABLE `atlassian_auth` ADD `site_url` text;

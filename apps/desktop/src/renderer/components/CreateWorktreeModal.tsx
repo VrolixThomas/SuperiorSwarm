@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useProjectStore } from "../stores/projects";
-import { useTerminalStore } from "../stores/terminal";
+import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 
 export function CreateWorktreeModal() {
@@ -37,9 +37,9 @@ export function CreateWorktreeModal() {
 				const cwd = `${normalizedPath}-worktrees/${workspace.name}`;
 				const title = `${projectName}: ${workspace.name}`;
 
-				const store = useTerminalStore.getState();
+				const store = useTabStore.getState();
 				store.setActiveWorkspace(workspace.id, cwd);
-				const tabId = store.addTab(workspace.id, cwd, title);
+				const tabId = store.addTerminalTab(workspace.id, cwd, title);
 
 				attachTerminal.mutate({
 					workspaceId: workspace.id,
