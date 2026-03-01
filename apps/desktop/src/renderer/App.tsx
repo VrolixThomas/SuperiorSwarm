@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
+import { Group, Panel, Separator } from "react-resizable-panels";
 import { AddRepositoryModal } from "./components/AddRepositoryModal";
 import { CreateWorktreeModal } from "./components/CreateWorktreeModal";
 import { FileTreePanel } from "./components/FileTreePanel";
@@ -37,7 +37,7 @@ function collectSnapshot() {
 export function App() {
 	// Track scrollback per tab id for restored sessions
 	const [savedScrollback, setSavedScrollback] = useState<Record<string, string>>({});
-	const isPanelOpen = useDiffStore((s) => s.isPanelOpen);
+	const activeDiff = useDiffStore((s) => s.activeDiff);
 
 	const saveMutation = trpc.terminalSessions.save.useMutation();
 	const saveMutateRef = useRef(saveMutation.mutate);
@@ -105,16 +105,16 @@ export function App() {
 		<>
 			<div className="flex h-screen overflow-hidden bg-[var(--bg-base)]">
 				<Sidebar />
-				{isPanelOpen ? (
-					<PanelGroup direction="horizontal" className="flex min-w-0 flex-1">
-						<Panel minSize={40}>
-							<MainContentArea savedScrollback={savedScrollback} />
-						</Panel>
-						<PanelResizeHandle className="w-px bg-[var(--bg-overlay)] hover:bg-[var(--accent)] transition-colors cursor-col-resize" />
-						<Panel defaultSize={25} minSize={15} maxSize={40} className="flex flex-col overflow-hidden">
+				{activeDiff ? (
+					<Group orientation="horizontal" className="flex min-w-0 flex-1 overflow-hidden">
+						<Panel defaultSize={20} minSize={14} maxSize={35}>
 							<FileTreePanel />
 						</Panel>
-					</PanelGroup>
+						<Separator className="w-px bg-[var(--border)] hover:bg-[var(--accent)] cursor-col-resize transition-colors" />
+						<Panel>
+							<MainContentArea savedScrollback={savedScrollback} />
+						</Panel>
+					</Group>
 				) : (
 					<MainContentArea savedScrollback={savedScrollback} />
 				)}

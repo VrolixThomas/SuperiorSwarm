@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useDiffStore } from "../stores/diff";
+import { useTabsStore } from "../stores/tabs";
 import { trpc } from "../trpc/client";
 import { ExtensionManager } from "./ExtensionManager";
 import { FileTree } from "./FileTreeNode";
@@ -7,6 +8,8 @@ import { FileTree } from "./FileTreeNode";
 export function FileTreePanel() {
 	const { activeDiff } = useDiffStore();
 	const [showExtensions, setShowExtensions] = useState(false);
+	const { closeAllDiffTabs, setActivePane } = useTabsStore();
+	const { closeDiff } = useDiffStore();
 
 	// Fetch the file list for the active diff context
 	const branchDiffQuery = trpc.diff.getBranchDiff.useQuery(
@@ -64,6 +67,18 @@ export function FileTreePanel() {
 						<span className="text-[var(--term-red)]">-{stats.removed}</span>
 					</span>
 				)}
+				<button
+					type="button"
+					onClick={() => {
+						if (activeDiff) closeAllDiffTabs(activeDiff.repoPath);
+						closeDiff();
+						setActivePane({ kind: "terminal" });
+					}}
+					className="rounded p-0.5 text-[var(--text-quaternary)] hover:text-[var(--text-secondary)]"
+					title="Close diff"
+				>
+					✕
+				</button>
 				<button
 					type="button"
 					onClick={() => setShowExtensions(true)}

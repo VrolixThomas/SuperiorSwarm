@@ -1,10 +1,11 @@
-import simpleGit from "simple-git";
 import { eq } from "drizzle-orm";
+import simpleGit from "simple-git";
 import { z } from "zod";
-import { detectLanguage, parseUnifiedDiff } from "../../git/operations";
+import { atlassianFetch } from "../../atlassian/auth";
 import { getDb } from "../../db";
 import { extensionPaths } from "../../db/schema";
-import { atlassianFetch } from "../../atlassian/auth";
+import { readWorkingTreeFile, saveWorkingTreeFile } from "../../git/file-ops";
+import { detectLanguage, parseUnifiedDiff } from "../../git/operations";
 import { publicProcedure, router } from "../index";
 
 function computeStats(files: ReturnType<typeof parseUnifiedDiff>) {
@@ -22,7 +23,7 @@ export const diffRouter = router({
 				repoPath: z.string(),
 				baseBranch: z.string(),
 				headBranch: z.string(),
-			}),
+			})
 		)
 		.query(async ({ input }) => {
 			const git = simpleGit(input.repoPath);
@@ -51,17 +52,35 @@ export const diffRouter = router({
 				repoPath: z.string(),
 				ref: z.string(),
 				filePath: z.string(),
-			}),
+			})
 		)
 		.query(async ({ input }) => {
+			const language = detectLanguage(input.filePath);
+			// Empty ref means read from working tree (unstaged file on disk)
+			if (input.ref === "") {
+				const content = await readWorkingTreeFile(input.repoPath, input.filePath);
+				return { content, language };
+			}
 			const git = simpleGit(input.repoPath);
 			try {
 				const content = await git.show([`${input.ref}:${input.filePath}`]);
-				return { content, language: detectLanguage(input.filePath) };
+				return { content, language };
 			} catch {
-				// File doesn't exist at this ref (e.g. newly added file has no "original")
-				return { content: "", language: detectLanguage(input.filePath) };
+				return { content: "", language };
 			}
+		}),
+
+	saveFileContent: publicProcedure
+		.input(
+			z.object({
+				repoPath: z.string(),
+				filePath: z.string(),
+				content: z.string(),
+			}),
+		)
+		.mutation(async ({ input }) => {
+			await saveWorkingTreeFile(input.repoPath, input.filePath, input.content);
+			return { ok: true };
 		}),
 
 	getPRDiff: publicProcedure
@@ -71,13 +90,13 @@ export const diffRouter = router({
 				prId: z.number(),
 				workspaceSlug: z.string(),
 				repoSlug: z.string(),
-			}),
+			})
 		)
 		.query(async ({ input }) => {
 			// Fetch raw unified diff from Bitbucket API
 			const response = await atlassianFetch(
 				"bitbucket",
-				`https://api.bitbucket.org/2.0/repositories/${input.workspaceSlug}/${input.repoSlug}/pullrequests/${input.prId}/diff`,
+				`https://api.bitbucket.org/2.0/repositories/${input.workspaceSlug}/${input.repoSlug}/pullrequests/${input.prId}/diff`
 			);
 
 			if (!response.ok) {
@@ -90,7 +109,7 @@ export const diffRouter = router({
 			// Also fetch PR metadata for the panel title
 			const prResponse = await atlassianFetch(
 				"bitbucket",
-				`https://api.bitbucket.org/2.0/repositories/${input.workspaceSlug}/${input.repoSlug}/pullrequests/${input.prId}`,
+				`https://api.bitbucket.org/2.0/repositories/${input.workspaceSlug}/${input.repoSlug}/pullrequests/${input.prId}`
 			);
 			const prData = prResponse.ok
 				? ((await prResponse.json()) as {
@@ -116,17 +135,11 @@ export const diffRouter = router({
 		return db.select().from(extensionPaths).all();
 	}),
 
-	addExtension: publicProcedure
-		.input(z.object({ path: z.string() }))
-		.mutation(({ input }) => {
-			const db = getDb();
-			const result = db
-				.insert(extensionPaths)
-				.values({ path: input.path })
-				.returning()
-				.get();
-			return result;
-		}),
+	addExtension: publicProcedure.input(z.object({ path: z.string() })).mutation(({ input }) => {
+		const db = getDb();
+		const result = db.insert(extensionPaths).values({ path: input.path }).returning().get();
+		return result;
+	}),
 
 	toggleExtension: publicProcedure
 		.input(z.object({ id: z.number(), enabled: z.boolean() }))

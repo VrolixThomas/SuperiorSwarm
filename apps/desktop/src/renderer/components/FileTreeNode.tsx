@@ -1,6 +1,8 @@
 import { useState } from "react";
-import type { DiffFile } from "../../main/git/operations";
+import type { DiffFile } from "../../shared/diff-types";
+import { detectLanguage } from "../../shared/diff-types";
 import { useDiffStore } from "../stores/diff";
+import { useTabsStore } from "../stores/tabs";
 
 interface TreeNode {
 	name: string;
@@ -44,14 +46,30 @@ const STATUS_LABELS: Record<DiffFile["status"], string> = {
 };
 
 function FileNode({ node }: { node: TreeNode }) {
-	const { openFile, setOpenFile } = useDiffStore();
+	const { openFileTab, fileTabs, activePane } = useTabsStore();
+	const { activeDiff } = useDiffStore();
 	const file = node.file!;
-	const isActive = openFile === file.path;
+
+	const isActive =
+		activePane.kind === "file" &&
+		fileTabs.find((t) => t.id === activePane.tabId)?.filePath === file.path;
+
+	function handleClick() {
+		if (!activeDiff) return;
+		const filename = file.path.split("/").pop() ?? file.path;
+		openFileTab({
+			type: "diff-file",
+			diffCtx: activeDiff,
+			filePath: file.path,
+			title: filename,
+			language: detectLanguage(file.path),
+		});
+	}
 
 	return (
 		<button
 			type="button"
-			onClick={() => setOpenFile(file.path)}
+			onClick={handleClick}
 			className={[
 				"flex w-full items-center gap-1.5 rounded px-2 py-0.5 text-left text-[12px] transition-all duration-[120ms]",
 				isActive
@@ -65,7 +83,9 @@ function FileNode({ node }: { node: TreeNode }) {
 			<span className="min-w-0 flex-1 truncate">{node.name}</span>
 			<span className="shrink-0 text-[10px] text-[var(--text-quaternary)]">
 				{file.additions > 0 && <span className="text-[var(--term-green)]">+{file.additions}</span>}
-				{file.deletions > 0 && <span className="ml-0.5 text-[var(--term-red)]">-{file.deletions}</span>}
+				{file.deletions > 0 && (
+					<span className="ml-0.5 text-[var(--term-red)]">-{file.deletions}</span>
+				)}
 			</span>
 		</button>
 	);
@@ -100,7 +120,7 @@ function FolderNode({ node, depth }: { node: TreeNode; depth: number }) {
 						<FileNode key={child.path} node={child} />
 					) : (
 						<FolderNode key={child.path} node={child} depth={depth + 1} />
-					),
+					)
 				)}
 		</div>
 	);

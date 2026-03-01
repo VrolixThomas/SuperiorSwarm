@@ -115,9 +115,7 @@ export async function detectDefaultBranch(repoPath: string): Promise<string> {
 	return "main";
 }
 
-export async function parseRemoteUrl(
-	repoPath: string
-): Promise<RemoteInfo | null> {
+export async function parseRemoteUrl(repoPath: string): Promise<RemoteInfo | null> {
 	try {
 		const git = simpleGit(repoPath);
 		const remotes = await git.getRemotes(true);
@@ -188,36 +186,8 @@ export async function hasUncommittedChanges(repoPath: string): Promise<boolean> 
 	return status.trim().length > 0;
 }
 
-export interface DiffLine {
-	type: "context" | "added" | "removed";
-	content: string;
-	oldLineNumber?: number;
-	newLineNumber?: number;
-}
-
-export interface DiffHunk {
-	header: string;
-	oldStart: number;
-	oldLines: number;
-	newStart: number;
-	newLines: number;
-	lines: DiffLine[];
-}
-
-export interface DiffFile {
-	path: string;
-	oldPath?: string;
-	status: "added" | "modified" | "deleted" | "renamed" | "binary";
-	additions: number;
-	deletions: number;
-	hunks: DiffHunk[];
-}
-
-export interface DiffStats {
-	added: number;
-	removed: number;
-	changed: number;
-}
+export type { DiffLine, DiffHunk, DiffFile, DiffStats } from "../../shared/diff-types";
+import type { DiffFile, DiffHunk, DiffLine } from "../../shared/diff-types";
 
 export function parseUnifiedDiff(rawDiff: string): DiffFile[] {
 	if (!rawDiff.trim()) return [];
@@ -282,10 +252,10 @@ export function parseUnifiedDiff(rawDiff: string): DiffFile[] {
 				continue;
 			}
 
-			const oldStart = parseInt(hunkMatch[1] ?? "1", 10);
-			const oldLineCount = parseInt(hunkMatch[2] ?? "1", 10);
-			const newStart = parseInt(hunkMatch[3] ?? "1", 10);
-			const newLineCount = parseInt(hunkMatch[4] ?? "1", 10);
+			const oldStart = Number.parseInt(hunkMatch[1] ?? "1", 10);
+			const oldLineCount = Number.parseInt(hunkMatch[2] ?? "1", 10);
+			const newStart = Number.parseInt(hunkMatch[3] ?? "1", 10);
+			const newLineCount = Number.parseInt(hunkMatch[4] ?? "1", 10);
 			lineIdx++;
 
 			const hunkLines: DiffLine[] = [];
@@ -339,39 +309,4 @@ export function parseUnifiedDiff(rawDiff: string): DiffFile[] {
 	return files;
 }
 
-export function detectLanguage(filePath: string): string {
-	const ext = filePath.split(".").pop()?.toLowerCase() ?? "";
-	const map: Record<string, string> = {
-		ts: "typescript",
-		tsx: "typescript",
-		js: "javascript",
-		jsx: "javascript",
-		mjs: "javascript",
-		cjs: "javascript",
-		json: "json",
-		css: "css",
-		scss: "scss",
-		less: "less",
-		html: "html",
-		htm: "html",
-		md: "markdown",
-		mdx: "markdown",
-		py: "python",
-		go: "go",
-		rs: "rust",
-		java: "java",
-		rb: "ruby",
-		sh: "shell",
-		bash: "shell",
-		zsh: "shell",
-		yml: "yaml",
-		yaml: "yaml",
-		toml: "toml",
-		xml: "xml",
-		sql: "sql",
-		graphql: "graphql",
-		gql: "graphql",
-		dockerfile: "dockerfile",
-	};
-	return map[ext] ?? "plaintext";
-}
+export { detectLanguage } from "../../shared/diff-types";

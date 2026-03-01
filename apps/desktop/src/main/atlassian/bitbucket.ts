@@ -14,6 +14,8 @@ export interface BitbucketPullRequest {
 	webUrl: string;
 	createdOn: string;
 	updatedOn: string;
+	source?: { branch?: { name: string } };
+	destination?: { branch?: { name: string } };
 }
 
 interface BitbucketApiPR {
@@ -21,7 +23,8 @@ interface BitbucketApiPR {
 	title: string;
 	state: string;
 	author: { display_name: string };
-	source: { repository: { full_name: string } };
+	source: { repository: { full_name: string }; branch?: { name?: string } };
+	destination?: { branch?: { name?: string } };
 	links: { html: { href: string } };
 	created_on: string;
 	updated_on: string;
@@ -38,6 +41,10 @@ function mapPR(pr: BitbucketApiPR, workspace: string, repoSlug: string): Bitbuck
 		webUrl: pr.links.html.href,
 		createdOn: pr.created_on,
 		updatedOn: pr.updated_on,
+		source: pr.source.branch ? { branch: { name: pr.source.branch.name ?? "" } } : undefined,
+		destination: pr.destination?.branch
+			? { branch: { name: pr.destination.branch.name ?? "" } }
+			: undefined,
 	};
 }
 

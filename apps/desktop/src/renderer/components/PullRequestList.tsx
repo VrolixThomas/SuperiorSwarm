@@ -52,6 +52,8 @@ export function PullRequestList() {
 										repoSlug: pr.repoSlug,
 										repoPath: "", // TODO: resolve from project list by matching repoSlug
 										title: `#${pr.id} ${pr.title}`,
+										sourceBranch: pr.source?.branch?.name ?? "",
+										targetBranch: pr.destination?.branch?.name ?? "",
 									})
 								}
 								className="shrink-0 rounded px-1.5 py-1 text-[11px] text-[var(--text-quaternary)] transition-all duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--accent)]"
@@ -90,6 +92,8 @@ export function PullRequestList() {
 										repoSlug: pr.repoSlug,
 										repoPath: "", // TODO: resolve from project list by matching repoSlug
 										title: `#${pr.id} ${pr.title}`,
+										sourceBranch: pr.source?.branch?.name ?? "",
+										targetBranch: pr.destination?.branch?.name ?? "",
 									})
 								}
 								className="shrink-0 rounded px-1.5 py-1 text-[11px] text-[var(--text-quaternary)] transition-all duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--accent)]"
