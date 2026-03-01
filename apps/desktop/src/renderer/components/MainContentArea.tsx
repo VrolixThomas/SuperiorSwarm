@@ -1,8 +1,8 @@
 import { useShallow } from "zustand/react/shallow";
-import { useTabsStore } from "../stores/tabs";
-import { useTerminalStore } from "../stores/terminal";
+import { useTabStore } from "../stores/tab-store";
 import { DiffFileTab } from "./DiffFileTab";
 import { FileEditor } from "./FileEditor";
+import { FileTreeContent } from "./FileTreeContent";
 import { TabBar } from "./TabBar";
 import { Terminal } from "./Terminal";
 
@@ -11,76 +11,75 @@ interface MainContentAreaProps {
 }
 
 export function MainContentArea({ savedScrollback }: MainContentAreaProps) {
-	const visibleTabs = useTerminalStore(useShallow((s) => s.getVisibleTabs()));
-	const activeTerminalTabId = useTerminalStore((s) => s.activeTabId);
-	const activeWorkspaceId = useTerminalStore((s) => s.activeWorkspaceId);
-	const { fileTabs, activePane } = useTabsStore();
+	const visibleTabs = useTabStore(useShallow((s) => s.getVisibleTabs()));
+	const activeTabId = useTabStore((s) => s.activeTabId);
+	const activeWorkspaceId = useTabStore((s) => s.activeWorkspaceId);
 
-	const activeFileTab =
-		activePane.kind === "file"
-			? fileTabs.find((t) => t.id === activePane.tabId)
-			: null;
-
-	const showTerminal = activePane.kind === "terminal";
+	const activeTab = visibleTabs.find((t) => t.id === activeTabId) ?? null;
+	const terminalTabs = visibleTabs.filter((t) => t.kind === "terminal");
 
 	return (
 		<main className="flex min-w-0 flex-1 flex-col overflow-hidden">
 			<TabBar />
 			<div className="relative flex-1 overflow-hidden">
-				{/* Terminal layer — always mounted to preserve PTY state; hidden when file tab is active */}
-				<div
-					className={`absolute inset-0 flex flex-col ${showTerminal ? "" : "invisible pointer-events-none"}`}
-				>
-					{!activeWorkspaceId && showTerminal && (
-						<div className="flex h-full items-center justify-center text-[13px] text-[var(--text-quaternary)]">
-							Select a workspace to open a terminal
-						</div>
-					)}
-					{activeWorkspaceId && visibleTabs.length === 0 && showTerminal && (
-						<div className="flex h-full items-center justify-center text-[13px] text-[var(--text-quaternary)]">
-							No terminals open — click + to create one
-						</div>
-					)}
-					{visibleTabs.map((tab) => (
-						<div
-							key={tab.id}
-							className={`absolute inset-0 ${tab.id === activeTerminalTabId ? "visible" : "invisible"}`}
-						>
-							<Terminal
-								id={tab.id}
-								cwd={tab.cwd || undefined}
-								initialContent={savedScrollback[tab.id]}
-							/>
-						</div>
-					))}
-				</div>
-
-				{/* File/diff layer — rendered on top when a file tab is active */}
-				{activeFileTab && (
-					<div className="absolute inset-0">
-						{activeFileTab.type === "diff-file" && (
-							<DiffFileTab
-								key={`${activeFileTab.diffCtx.repoPath}:${activeFileTab.filePath}`}
-								diffCtx={activeFileTab.diffCtx}
-								filePath={activeFileTab.filePath}
-								language={activeFileTab.language}
-							/>
-						)}
-						{activeFileTab.type === "file" && (
-							<FileEditor
-								key={`${activeFileTab.repoPath}:${activeFileTab.filePath}`}
-								repoPath={activeFileTab.repoPath}
-								filePath={activeFileTab.filePath}
-								language={activeFileTab.language}
-							/>
-						)}
+				{/* Empty state: no workspace selected */}
+				{!activeWorkspaceId && (
+					<div className="flex h-full items-center justify-center text-[13px] text-[var(--text-quaternary)]">
+						Select a workspace to open a terminal
 					</div>
 				)}
 
-				{/* Empty state when file tab active but no tab found */}
-				{!showTerminal && !activeFileTab && (
+				{/* Empty state: workspace selected but no tabs */}
+				{activeWorkspaceId && visibleTabs.length === 0 && (
 					<div className="flex h-full items-center justify-center text-[13px] text-[var(--text-quaternary)]">
-						Select a file from the file tree
+						No terminals open — click + to create one
+					</div>
+				)}
+
+				{/* Terminal tabs: ALWAYS mounted, toggled visible/invisible via CSS */}
+				{terminalTabs.map((tab) => (
+					<div
+						key={tab.id}
+						className={`absolute inset-0 ${tab.id === activeTabId ? "visible" : "invisible"}`}
+					>
+						<Terminal
+							id={tab.id}
+							cwd={tab.kind === "terminal" ? tab.cwd : undefined}
+							initialContent={savedScrollback[tab.id]}
+						/>
+					</div>
+				))}
+
+				{/* Non-terminal tabs: only the active one renders */}
+				{activeTab?.kind === "diff-file" && (
+					<div className="absolute inset-0">
+						<DiffFileTab
+							key={`${activeTab.diffCtx.repoPath}:${activeTab.filePath}`}
+							diffCtx={activeTab.diffCtx}
+							filePath={activeTab.filePath}
+							language={activeTab.language}
+						/>
+					</div>
+				)}
+
+				{activeTab?.kind === "file" && (
+					<div className="absolute inset-0">
+						<FileEditor
+							key={`${activeTab.repoPath}:${activeTab.filePath}`}
+							repoPath={activeTab.repoPath}
+							filePath={activeTab.filePath}
+							language={activeTab.language}
+						/>
+					</div>
+				)}
+
+				{activeTab?.kind === "file-tree" && (
+					<div className="absolute inset-0">
+						<FileTreeContent
+							key={`tree:${activeTab.diffCtx.repoPath}`}
+							diffCtx={activeTab.diffCtx}
+							workspaceId={activeTab.workspaceId}
+						/>
 					</div>
 				)}
 			</div>

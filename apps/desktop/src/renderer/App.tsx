@@ -1,30 +1,26 @@
 import { useEffect, useRef, useState } from "react";
-import { Group, Panel, Separator } from "react-resizable-panels";
 import { AddRepositoryModal } from "./components/AddRepositoryModal";
 import { CreateWorktreeModal } from "./components/CreateWorktreeModal";
-import { FileTreePanel } from "./components/FileTreePanel";
 import { MainContentArea } from "./components/MainContentArea";
 import { Sidebar } from "./components/Sidebar";
 import { scrollbackRegistry } from "./components/Terminal";
-import { useDiffStore } from "./stores/diff";
-import { useTerminalStore } from "./stores/terminal";
+import { useTabStore } from "./stores/tab-store";
 import { trpc } from "./trpc/client";
 
 const SAVE_INTERVAL_MS = 30_000;
 
 function collectSnapshot() {
-	const { tabs, activeTabId, activeWorkspaceId, activeWorkspaceCwd } = useTerminalStore.getState();
+	const { tabs, activeTabId, activeWorkspaceId, activeWorkspaceCwd } = useTabStore.getState();
 
-	const sessions = tabs
-		.filter((tab) => tab.workspaceId)
-		.map((tab, i) => ({
-			id: tab.id,
-			workspaceId: tab.workspaceId,
-			title: tab.title,
-			cwd: tab.cwd,
-			scrollback: scrollbackRegistry.get(tab.id)?.() ?? null,
-			sortOrder: i,
-		}));
+	const terminalTabs = tabs.filter((t) => t.kind === "terminal" && t.workspaceId);
+	const sessions = terminalTabs.map((tab, i) => ({
+		id: tab.id,
+		workspaceId: tab.workspaceId,
+		title: tab.title,
+		cwd: tab.kind === "terminal" ? tab.cwd : "",
+		scrollback: scrollbackRegistry.get(tab.id)?.() ?? null,
+		sortOrder: i,
+	}));
 
 	const state: Record<string, string> = {};
 	if (activeTabId) state["activeTabId"] = activeTabId;
@@ -35,9 +31,7 @@ function collectSnapshot() {
 }
 
 export function App() {
-	// Track scrollback per tab id for restored sessions
 	const [savedScrollback, setSavedScrollback] = useState<Record<string, string>>({});
-	const activeDiff = useDiffStore((s) => s.activeDiff);
 
 	const saveMutation = trpc.terminalSessions.save.useMutation();
 	const saveMutateRef = useRef(saveMutation.mutate);
@@ -66,7 +60,7 @@ export function App() {
 		}
 		setSavedScrollback(scrollbacks);
 
-		useTerminalStore
+		useTabStore
 			.getState()
 			.hydrate(
 				sessions,
@@ -105,19 +99,7 @@ export function App() {
 		<>
 			<div className="flex h-screen overflow-hidden bg-[var(--bg-base)]">
 				<Sidebar />
-				{activeDiff ? (
-					<Group orientation="horizontal" className="flex min-w-0 flex-1 overflow-hidden">
-						<Panel defaultSize={20} minSize={14} maxSize={35}>
-							<FileTreePanel />
-						</Panel>
-						<Separator className="w-px bg-[var(--border)] hover:bg-[var(--accent)] cursor-col-resize transition-colors" />
-						<Panel>
-							<MainContentArea savedScrollback={savedScrollback} />
-						</Panel>
-					</Group>
-				) : (
-					<MainContentArea savedScrollback={savedScrollback} />
-				)}
+				<MainContentArea savedScrollback={savedScrollback} />
 			</div>
 			<AddRepositoryModal />
 			<CreateWorktreeModal />
