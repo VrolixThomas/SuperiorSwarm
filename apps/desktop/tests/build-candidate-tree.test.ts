@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { buildCandidateTree, type CandidateEntry } from "../src/main/trpc/build-candidate-tree";
+import { buildCandidateTree, countFiles, type CandidateEntry } from "../src/main/trpc/build-candidate-tree";
 
 describe("buildCandidateTree", () => {
 	test("returns empty array for empty input", () => {
@@ -77,5 +77,23 @@ describe("buildCandidateTree", () => {
 		expect(configNode.children![0]?.type).toBe("file");
 		expect(configNode.children![1]?.name).toBe("secrets");
 		expect(configNode.children![1]?.type).toBe("directory");
+	});
+});
+
+describe("countFiles", () => {
+	test("returns 0 for empty entry with no children", () => {
+		const entry: CandidateEntry = { name: "empty", relativePath: "empty", type: "directory", children: [] };
+		expect(countFiles(entry)).toBe(0);
+	});
+
+	test("returns 1 for a file entry", () => {
+		const entry: CandidateEntry = { name: ".env", relativePath: ".env", type: "file" };
+		expect(countFiles(entry)).toBe(1);
+	});
+
+	test("counts all nested files", () => {
+		const tree = buildCandidateTree(["dist/a.js", "dist/b.js", "dist/sub/c.js"]);
+		const distNode = tree.find((e) => e.name === "dist")!;
+		expect(countFiles(distNode)).toBe(3);
 	});
 });
