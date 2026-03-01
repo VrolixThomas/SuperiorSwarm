@@ -9,7 +9,7 @@
 	"license": "MIT",
 	"private": true,
 	"scripts": {
-		"postinstall": "[ ! -d node_modules/node-pty ] || find node_modules/node-pty -name spawn-helper -exec chmod +x {} +",
+		"postinstall": "[ ! -d node_modules/node-pty ] || find node_modules/node-pty -name spawn-helper -exec chmod +x {} + && electron-rebuild -f -w better-sqlite3",
 		"dev": "electron-vite dev",
 		"build": "electron-vite build",
 		"preview": "electron-vite preview",
@@ -47,8 +47,10 @@
 	},
 	"devDependencies": {
 		"@branchflux/typescript-config": "workspace:*",
+		"@electron/rebuild": "^4.0.3",
 		"@tailwindcss/postcss": "^4.0.0",
 		"@types/better-sqlite3": "^7.6.12",
+		"@types/bun": "^1.2.0",
 		"@types/node": "^22.10.5",
 		"@types/react": "^19.0.6",
 		"@types/react-dom": "^19.0.2",
@@ -59,7 +61,6 @@
 		"electron-vite": "^4.0.0",
 		"postcss": "^8.4.49",
 		"tailwindcss": "^4.0.0",
-		"@types/bun": "^1.2.0",
 		"typescript": "^5.7.2",
 		"vite": "^6.0.7"
 	}

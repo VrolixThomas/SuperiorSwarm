@@ -1,7 +1,21 @@
-import { copyFileSync, existsSync, mkdirSync, readdirSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import react from "@vitejs/plugin-react";
 import { defineConfig, externalizeDepsPlugin } from "electron-vite";
+
+// Load .env file into process.env for the define block below
+const envPath = resolve(__dirname, ".env");
+if (existsSync(envPath)) {
+	for (const line of readFileSync(envPath, "utf-8").split("\n")) {
+		const trimmed = line.trim();
+		if (!trimmed || trimmed.startsWith("#")) continue;
+		const eqIdx = trimmed.indexOf("=");
+		if (eqIdx === -1) continue;
+		const key = trimmed.slice(0, eqIdx).trim();
+		const value = trimmed.slice(eqIdx + 1).trim();
+		if (!process.env[key]) process.env[key] = value;
+	}
+}
 
 function copyMigrationsPlugin() {
 	return {
@@ -35,6 +49,14 @@ function copyMigrationsPlugin() {
 export default defineConfig({
 	main: {
 		plugins: [externalizeDepsPlugin(), copyMigrationsPlugin()],
+		define: {
+			"process.env.JIRA_CLIENT_ID": JSON.stringify(process.env.JIRA_CLIENT_ID ?? ""),
+			"process.env.JIRA_CLIENT_SECRET": JSON.stringify(process.env.JIRA_CLIENT_SECRET ?? ""),
+			"process.env.BITBUCKET_CLIENT_ID": JSON.stringify(process.env.BITBUCKET_CLIENT_ID ?? ""),
+			"process.env.BITBUCKET_CLIENT_SECRET": JSON.stringify(
+				process.env.BITBUCKET_CLIENT_SECRET ?? ""
+			),
+		},
 		build: {
 			rollupOptions: {
 				input: {
@@ -63,6 +85,7 @@ export default defineConfig({
 			alias: {
 				"@": resolve(__dirname, "src/renderer"),
 			},
+			dedupe: ["monaco-editor"],
 		},
 		build: {
 			rollupOptions: {

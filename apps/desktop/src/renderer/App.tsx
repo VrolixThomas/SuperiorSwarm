@@ -1,28 +1,27 @@
 import { useEffect, useRef, useState } from "react";
-import { useShallow } from "zustand/react/shallow";
 import { AddRepositoryModal } from "./components/AddRepositoryModal";
 import { CreateWorktreeModal } from "./components/CreateWorktreeModal";
+import { DiffPanel } from "./components/DiffPanel";
+import { MainContentArea } from "./components/MainContentArea";
 import { Sidebar } from "./components/Sidebar";
-import { Terminal, scrollbackRegistry } from "./components/Terminal";
-import { TerminalTabs } from "./components/TerminalTabs";
-import { useTerminalStore } from "./stores/terminal";
+import { scrollbackRegistry } from "./components/Terminal";
+import { useTabStore } from "./stores/tab-store";
 import { trpc } from "./trpc/client";
 
 const SAVE_INTERVAL_MS = 30_000;
 
 function collectSnapshot() {
-	const { tabs, activeTabId, activeWorkspaceId, activeWorkspaceCwd } = useTerminalStore.getState();
+	const { tabs, activeTabId, activeWorkspaceId, activeWorkspaceCwd } = useTabStore.getState();
 
-	const sessions = tabs
-		.filter((tab) => tab.workspaceId)
-		.map((tab, i) => ({
-			id: tab.id,
-			workspaceId: tab.workspaceId,
-			title: tab.title,
-			cwd: tab.cwd,
-			scrollback: scrollbackRegistry.get(tab.id)?.() ?? null,
-			sortOrder: i,
-		}));
+	const terminalTabs = tabs.filter((t) => t.kind === "terminal" && t.workspaceId);
+	const sessions = terminalTabs.map((tab, i) => ({
+		id: tab.id,
+		workspaceId: tab.workspaceId,
+		title: tab.title,
+		cwd: tab.kind === "terminal" ? tab.cwd : "",
+		scrollback: scrollbackRegistry.get(tab.id)?.() ?? null,
+		sortOrder: i,
+	}));
 
 	const state: Record<string, string> = {};
 	if (activeTabId) state["activeTabId"] = activeTabId;
@@ -33,11 +32,6 @@ function collectSnapshot() {
 }
 
 export function App() {
-	const visibleTabs = useTerminalStore(useShallow((s) => s.getVisibleTabs()));
-	const activeTabId = useTerminalStore((s) => s.activeTabId);
-	const activeWorkspaceId = useTerminalStore((s) => s.activeWorkspaceId);
-
-	// Track scrollback per tab id for restored sessions
 	const [savedScrollback, setSavedScrollback] = useState<Record<string, string>>({});
 
 	const saveMutation = trpc.terminalSessions.save.useMutation();
@@ -67,7 +61,7 @@ export function App() {
 		}
 		setSavedScrollback(scrollbacks);
 
-		useTerminalStore
+		useTabStore
 			.getState()
 			.hydrate(
 				sessions,
@@ -104,35 +98,10 @@ export function App() {
 
 	return (
 		<>
-			<div className="flex h-screen bg-[var(--bg-base)]">
+			<div className="flex h-screen overflow-hidden bg-[var(--bg-base)]">
 				<Sidebar />
-				<main className="flex min-w-0 flex-1 flex-col">
-					<TerminalTabs />
-					<div className="relative flex-1 overflow-hidden">
-						{!activeWorkspaceId && (
-							<div className="flex h-full items-center justify-center text-[13px] text-[var(--text-quaternary)]">
-								Select a workspace to open a terminal
-							</div>
-						)}
-						{activeWorkspaceId && visibleTabs.length === 0 && (
-							<div className="flex h-full items-center justify-center text-[13px] text-[var(--text-quaternary)]">
-								No terminals open — click + to create one
-							</div>
-						)}
-						{visibleTabs.map((tab) => (
-							<div
-								key={tab.id}
-								className={`absolute inset-0 ${tab.id === activeTabId ? "visible" : "invisible"}`}
-							>
-								<Terminal
-									id={tab.id}
-									cwd={tab.cwd || undefined}
-									initialContent={savedScrollback[tab.id]}
-								/>
-							</div>
-						))}
-					</div>
-				</main>
+				<MainContentArea savedScrollback={savedScrollback} />
+				<DiffPanel />
 			</div>
 			<AddRepositoryModal />
 			<CreateWorktreeModal />

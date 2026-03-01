@@ -1,0 +1,1 @@
+{"root":["./cmd-buffer.test.ts","./debug-backslash.test.ts","./debug-detailed.test.ts","./diff-parser-edge-cases.test.ts","./diff-parser.test.ts","./diff-save.test.ts","./git-operations.test.ts","../src/shared/diff-types.ts","../src/shared/types.ts","../src/shared/lib/cmd-buffer.ts"],"errors":true,"version":"5.9.3"}

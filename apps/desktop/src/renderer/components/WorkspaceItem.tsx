@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useTerminalStore } from "../stores/terminal";
+import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 
 interface WorkspaceData {
@@ -128,7 +128,8 @@ export function WorkspaceItem({ workspace, projectName, projectRepoPath }: Works
 	const deleteWorkspaceRef = useRef(deleteWorkspace.mutate);
 	deleteWorkspaceRef.current = deleteWorkspace.mutate;
 
-	const isActive = useTerminalStore((s) => s.activeWorkspaceId === workspace.id);
+	const isActive = useTabStore((s) => s.activeWorkspaceId === workspace.id);
+	const toggleDiffPanel = useTabStore((s) => s.toggleDiffPanel);
 
 	const handleClick = useCallback(() => {
 		const cwd =
@@ -136,16 +137,14 @@ export function WorkspaceItem({ workspace, projectName, projectRepoPath }: Works
 				? workspace.worktreePath
 				: projectRepoPath;
 
-		const store = useTerminalStore.getState();
+		const store = useTabStore.getState();
 		store.setActiveWorkspace(workspace.id, cwd);
 
-		// Auto-create first terminal if none exist for this workspace.
-		// PTY creation is handled by the Terminal component's useEffect — only
-		// add the tab to the store here; mounting <Terminal> spawns the PTY.
 		const existing = store.getTabsByWorkspace(workspace.id);
-		if (existing.length === 0) {
+		const hasTerminal = existing.some((t) => t.kind === "terminal");
+		if (!hasTerminal) {
 			const title = `${projectName}: ${workspace.name}`;
-			const tabId = store.addTab(workspace.id, cwd, title);
+			const tabId = store.addTerminalTab(workspace.id, cwd, title);
 
 			attachTerminalRef.current({
 				workspaceId: workspace.id,
@@ -166,10 +165,12 @@ export function WorkspaceItem({ workspace, projectName, projectRepoPath }: Works
 			`Delete worktree "${workspace.name}"? This will remove the worktree directory.`
 		);
 		if (confirmed) {
-			const store = useTerminalStore.getState();
+			const store = useTabStore.getState();
 			const wsTabs = store.getTabsByWorkspace(workspace.id);
 			for (const tab of wsTabs) {
-				window.electron.terminal.dispose(tab.id);
+				if (tab.kind === "terminal") {
+					window.electron.terminal.dispose(tab.id);
+				}
 				store.removeTab(tab.id);
 			}
 			if (store.activeWorkspaceId === workspace.id) {
@@ -181,7 +182,7 @@ export function WorkspaceItem({ workspace, projectName, projectRepoPath }: Works
 	}, [workspace.id, workspace.name]);
 
 	return (
-		<>
+		<div className="relative group">
 			<button
 				type="button"
 				onClick={handleClick}
@@ -203,6 +204,24 @@ export function WorkspaceItem({ workspace, projectName, projectRepoPath }: Works
 				<span className="truncate text-[13px]">{workspace.name}</span>
 			</button>
 
+			<button
+				type="button"
+				onClick={(e) => {
+					e.stopPropagation();
+					toggleDiffPanel({
+						type: "working-tree",
+						repoPath:
+							workspace.type === "worktree" && workspace.worktreePath
+								? workspace.worktreePath
+								: projectRepoPath,
+					});
+				}}
+				className="absolute right-8 top-1/2 -translate-y-1/2 rounded px-1.5 py-0.5 text-[11px] text-[var(--text-quaternary)] opacity-0 transition-all duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--accent)] group-hover:opacity-100"
+				title="Open diff viewer"
+			>
+				⊞
+			</button>
+
 			{contextMenu && (
 				<WorkspaceContextMenu
 					position={contextMenu}
@@ -210,6 +229,6 @@ export function WorkspaceItem({ workspace, projectName, projectRepoPath }: Works
 					onDelete={handleDelete}
 				/>
 			)}
-		</>
+		</div>
 	);
 }
