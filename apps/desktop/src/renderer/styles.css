@@ -10,7 +10,7 @@
 
 	/* Borders & dividers */
 	--border: rgba(255, 255, 255, 0.06);
-	--border-subtle: rgba(255, 255, 255, 0.04);
+	--border-subtle: rgba(255, 255, 255, 0.07);
 	--border-active: rgba(255, 255, 255, 0.1);
 
 	/* Text — 4 levels */
@@ -54,6 +54,16 @@
 	--radius-sm: 6px;
 	--radius-md: 8px;
 	--radius-lg: 10px;
+
+	/* Tab bar */
+	--bg-tab-bar: #111113;
+	--tab-active-bg: #1c1c1e;
+	--tab-inactive-bg: transparent;
+	--tab-border: rgba(255, 255, 255, 0.08);
+
+	/* Typography */
+	--font-ui: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+	--font-mono: "SF Mono", "JetBrains Mono", "Fira Code", monospace;
 }
 
 @layer base {
