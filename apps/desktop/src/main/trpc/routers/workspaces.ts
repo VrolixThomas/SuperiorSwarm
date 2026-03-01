@@ -3,8 +3,9 @@ import { eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { z } from "zod";
 import { getDb } from "../../db";
-import { projects, workspaces, worktrees } from "../../db/schema";
+import { projects, sharedFiles, workspaces, worktrees } from "../../db/schema";
 import { createWorktree, hasUncommittedChanges, removeWorktree } from "../../git/operations";
+import { symlinkSharedFiles } from "../../shared-files";
 import { publicProcedure, router } from "../index";
 
 function worktreeBasePath(repoPath: string): string {
@@ -83,6 +84,21 @@ export const workspacesRouter = router({
 			};
 
 			db.insert(workspaces).values(workspace).run();
+
+			// Symlink shared files from main repo to new worktree
+			const sharedEntries = db
+				.select()
+				.from(sharedFiles)
+				.where(eq(sharedFiles.projectId, input.projectId))
+				.all();
+
+			if (sharedEntries.length > 0) {
+				await symlinkSharedFiles(
+					project.repoPath,
+					worktreePath,
+					sharedEntries.map((e) => ({ relativePath: e.relativePath }))
+				);
+			}
 
 			return workspace;
 		}),
