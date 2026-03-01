@@ -1,7 +1,9 @@
 import { type BrowserWindow, ipcMain } from "electron";
 import { serverManager } from "./server-manager";
 
-export function setupLspIPC(_mainWindow: BrowserWindow): void {
+export function setupLspIPC(mainWindow: BrowserWindow): void {
+	serverManager.setMainWindow(mainWindow);
+
 	// Handle LSP requests (request-response pattern)
 	ipcMain.handle(
 		"lsp:request",
