@@ -130,6 +130,7 @@ export function WorkspaceItem({ workspace, projectName, projectRepoPath }: Works
 
 	const isActive = useTabStore((s) => s.activeWorkspaceId === workspace.id);
 	const toggleDiffPanel = useTabStore((s) => s.toggleDiffPanel);
+	const openExplorer = useTabStore((s) => s.openExplorer);
 
 	const handleClick = useCallback(() => {
 		const cwd =
@@ -202,6 +203,25 @@ export function WorkspaceItem({ workspace, projectName, projectRepoPath }: Works
 			>
 				<BranchIcon className="shrink-0 opacity-50" />
 				<span className="truncate text-[13px]">{workspace.name}</span>
+			</button>
+
+			<button
+				type="button"
+				onClick={(e) => {
+					e.stopPropagation();
+					openExplorer();
+				}}
+				className="absolute right-16 top-1/2 -translate-y-1/2 rounded px-1.5 py-0.5 text-[11px] text-[var(--text-quaternary)] opacity-0 transition-all duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--accent)] group-hover:opacity-100"
+				title="Open file explorer"
+			>
+				<svg aria-hidden="true" width="11" height="11" viewBox="0 0 16 16" fill="none">
+					<path
+						d="M2 3h5l1.5 2H14v8H2V3z"
+						stroke="currentColor"
+						strokeWidth="1.3"
+						strokeLinejoin="round"
+					/>
+				</svg>
 			</button>
 
 			<button
