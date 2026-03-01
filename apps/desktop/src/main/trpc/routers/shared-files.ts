@@ -7,7 +7,7 @@ import { z } from "zod";
 import { getDb } from "../../db";
 import { projects, sharedFiles, worktrees } from "../../db/schema";
 import { symlinkSharedFiles } from "../../shared-files";
-import { buildCandidateTree } from "../build-candidate-tree";
+import { buildSmartCandidateTree } from "../build-candidate-tree";
 import { publicProcedure, router } from "../index";
 
 /**
@@ -129,7 +129,7 @@ export const sharedFilesRouter = router({
 			const existingSet = new Set(existing.map((e) => e.relativePath));
 
 			const filtered = ignoredFiles.filter((f) => !existingSet.has(f)).sort();
-			return buildCandidateTree(filtered);
+		return buildSmartCandidateTree(filtered, (p) => ig.ignores(p));
 		}),
 
 	sync: publicProcedure
