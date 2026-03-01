@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { AddRepositoryModal } from "./components/AddRepositoryModal";
 import { CreateWorktreeModal } from "./components/CreateWorktreeModal";
+import { DiffPanel } from "./components/DiffPanel";
 import { MainContentArea } from "./components/MainContentArea";
 import { Sidebar } from "./components/Sidebar";
 import { scrollbackRegistry } from "./components/Terminal";
@@ -100,6 +101,7 @@ export function App() {
 			<div className="flex h-screen overflow-hidden bg-[var(--bg-base)]">
 				<Sidebar />
 				<MainContentArea savedScrollback={savedScrollback} />
+				<DiffPanel />
 			</div>
 			<AddRepositoryModal />
 			<CreateWorktreeModal />
