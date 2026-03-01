@@ -53,7 +53,9 @@ function DiffPanelContent({ diffCtx }: { diffCtx: DiffContext }) {
 				: prDiffQuery.data?.stats;
 
 	const isLoading =
-		branchDiffQuery.isLoading || workingTreeQuery.isLoading || prDiffQuery.isLoading;
+		(diffCtx.type === "branch" && branchDiffQuery.isFetching) ||
+		(diffCtx.type === "working-tree" && workingTreeQuery.isFetching) ||
+		(diffCtx.type === "pr" && prDiffQuery.isFetching);
 
 	const title =
 		diffCtx.type === "pr"
@@ -116,10 +118,15 @@ function DiffPanelContent({ diffCtx }: { diffCtx: DiffContext }) {
 						Loading...
 					</div>
 				)}
-				{!isLoading && files && files.length > 0 && (
-					<FileTree files={files} diffCtx={diffCtx} workspaceId={activeWorkspaceId ?? ""} />
+				{!isLoading && !activeWorkspaceId && (
+					<div className="px-3 py-2 text-[12px] text-[var(--text-quaternary)]">
+						Select a workspace
+					</div>
 				)}
-				{!isLoading && files && files.length === 0 && (
+				{!isLoading && activeWorkspaceId && files && files.length > 0 && (
+					<FileTree files={files} diffCtx={diffCtx} workspaceId={activeWorkspaceId} />
+				)}
+				{!isLoading && activeWorkspaceId && files && files.length === 0 && (
 					<div className="px-3 py-2 text-[12px] text-[var(--text-quaternary)]">No changes</div>
 				)}
 			</div>
