@@ -23,9 +23,13 @@ export type TabItem =
 			title: string;
 			language: string;
 	  };
-export type DiffPanelState = { open: false; diffCtx: null } | { open: true; diffCtx: DiffContext };
+export type PanelMode = "diff" | "explorer";
 
-export const PANEL_CLOSED: DiffPanelState = { open: false, diffCtx: null };
+export type RightPanelState =
+	| { open: false }
+	| { open: true; mode: PanelMode; diffCtx: DiffContext | null };
+
+export const PANEL_CLOSED: RightPanelState = { open: false };
 
 // ─── Store interface ─────────────────────────────────────────────────────────
 
@@ -35,7 +39,7 @@ interface TabStore {
 	activeWorkspaceId: string | null;
 	activeWorkspaceCwd: string;
 	diffMode: "split" | "inline";
-	diffPanel: DiffPanelState;
+	rightPanel: RightPanelState;
 
 	// Queries
 	getVisibleTabs: () => TabItem[];
@@ -56,6 +60,8 @@ interface TabStore {
 	// Diff convenience
 	toggleDiffPanel: (diffCtx: DiffContext) => void;
 	closeDiffPanel: () => void;
+	openExplorer: () => void;
+	togglePanelMode: () => void;
 	openDiffFile: (
 		workspaceId: string,
 		diffCtx: DiffContext,
@@ -129,7 +135,7 @@ export const useTabStore = create<TabStore>((set, get) => ({
 	activeWorkspaceId: null,
 	activeWorkspaceCwd: "",
 	diffMode: "split",
-	diffPanel: PANEL_CLOSED,
+	rightPanel: PANEL_CLOSED,
 
 	getVisibleTabs: () => {
 		const { tabs, activeWorkspaceId } = get();
@@ -176,7 +182,7 @@ export const useTabStore = create<TabStore>((set, get) => ({
 			activeWorkspaceId: workspaceId,
 			activeWorkspaceCwd: cwd,
 			activeTabId: currentStillVisible?.id ?? wsTabs[0]?.id ?? null,
-			diffPanel: PANEL_CLOSED,
+			rightPanel: PANEL_CLOSED,
 		});
 	},
 
@@ -192,16 +198,49 @@ export const useTabStore = create<TabStore>((set, get) => ({
 	},
 
 	toggleDiffPanel: (diffCtx) => {
-		const { diffPanel } = get();
-		if (diffPanel.open && diffContextsEqual(diffPanel.diffCtx, diffCtx)) {
-			set({ diffPanel: PANEL_CLOSED });
+		const { rightPanel } = get();
+		if (
+			rightPanel.open &&
+			rightPanel.mode === "diff" &&
+			rightPanel.diffCtx &&
+			diffContextsEqual(rightPanel.diffCtx, diffCtx)
+		) {
+			set({ rightPanel: PANEL_CLOSED });
 		} else {
-			set({ diffPanel: { open: true, diffCtx } });
+			set({ rightPanel: { open: true, mode: "diff", diffCtx } });
 		}
 	},
 
 	closeDiffPanel: () => {
-		set({ diffPanel: PANEL_CLOSED });
+		set({ rightPanel: PANEL_CLOSED });
+	},
+
+	openExplorer: () => {
+		const { rightPanel } = get();
+		if (rightPanel.open && rightPanel.mode === "explorer") {
+			set({ rightPanel: PANEL_CLOSED });
+		} else {
+			set({
+				rightPanel: {
+					open: true,
+					mode: "explorer",
+					diffCtx: rightPanel.open ? rightPanel.diffCtx : null,
+				},
+			});
+		}
+	},
+
+	togglePanelMode: () => {
+		const { rightPanel } = get();
+		if (!rightPanel.open) return;
+		if (rightPanel.mode === "explorer") {
+			// Only switch to diff if we have a diffCtx
+			if (rightPanel.diffCtx) {
+				set({ rightPanel: { ...rightPanel, mode: "diff" } });
+			}
+		} else {
+			set({ rightPanel: { ...rightPanel, mode: "explorer" } });
+		}
 	},
 
 	openDiffFile: (workspaceId, diffCtx, filePath, language) => {
@@ -237,8 +276,8 @@ export const useTabStore = create<TabStore>((set, get) => ({
 	},
 
 	closeDiff: (workspaceId, repoPath) => {
-		const { diffPanel } = get();
-		const closePanel = diffPanel.open && diffPanel.diffCtx.repoPath === repoPath;
+		const { rightPanel } = get();
+		const closePanel = rightPanel.open && rightPanel.diffCtx?.repoPath === repoPath;
 
 		set((s) => {
 			const filtered = s.tabs.filter(
@@ -257,7 +296,7 @@ export const useTabStore = create<TabStore>((set, get) => ({
 			return {
 				tabs: filtered,
 				activeTabId: nextActive,
-				...(closePanel ? { diffPanel: PANEL_CLOSED } : {}),
+				...(closePanel ? { rightPanel: PANEL_CLOSED } : {}),
 			};
 		});
 	},
