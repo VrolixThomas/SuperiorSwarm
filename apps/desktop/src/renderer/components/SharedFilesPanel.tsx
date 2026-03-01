@@ -31,6 +31,13 @@ function countFiles(entry: CandidateEntry): number {
 	return entry.children.reduce((sum, child) => sum + countFiles(child), 0);
 }
 
+function hasAnyMatch(entry: CandidateEntry, q: string): boolean {
+	if (q === "") return true;
+	const lower = q.toLowerCase();
+	if (entry.type === "file") return entry.relativePath.toLowerCase().includes(lower);
+	return (entry.children ?? []).some((child) => hasAnyMatch(child, q));
+}
+
 function CandidateNode({
 	entry,
 	depth,
@@ -38,6 +45,7 @@ function CandidateNode({
 	toggleCandidate,
 	expandedPaths,
 	toggleExpanded,
+	searchQuery,
 }: {
 	entry: CandidateEntry;
 	depth: number;
@@ -45,33 +53,41 @@ function CandidateNode({
 	toggleCandidate: (path: string) => void;
 	expandedPaths: Set<string>;
 	toggleExpanded: (path: string) => void;
+	searchQuery: string;
 }) {
 	if (entry.type === "file") {
+		if (searchQuery && !entry.relativePath.toLowerCase().includes(searchQuery.toLowerCase())) {
+			return null;
+		}
 		return (
 			<div
-				className="flex items-center gap-2 px-3 py-1.5 text-[12px] border-b border-[var(--border-subtle)] last:border-b-0"
-				style={{ paddingLeft: `${12 + depth * 16}px` }}
+				className="flex items-center gap-2 py-1.5 text-[12px] border-b border-[var(--border-active)] last:border-b-0"
+				style={{ paddingLeft: `${12 + depth * 16}px`, paddingRight: "12px" }}
 			>
 				<CheckboxButton
 					checked={selectedCandidates.has(entry.relativePath)}
 					onClick={() => toggleCandidate(entry.relativePath)}
 				/>
-				<span className="flex-1 truncate font-[var(--font-mono)] text-[var(--text-tertiary)]">
+				<span className="flex-1 truncate font-[var(--font-mono)] text-[var(--text-secondary)]">
 					{entry.name}
 				</span>
 			</div>
 		);
 	}
 
-	const isExpanded = expandedPaths.has(entry.relativePath);
+	if (searchQuery && !hasAnyMatch(entry, searchQuery)) return null;
+
+	const isExpanded =
+		expandedPaths.has(entry.relativePath) ||
+		(searchQuery !== "" && hasAnyMatch(entry, searchQuery));
 	const fileCount = countFiles(entry);
 
 	return (
 		<>
 			<button
 				type="button"
-				className="flex w-full items-center gap-2 px-3 py-1.5 text-[12px] border-b border-[var(--border-subtle)] last:border-b-0 cursor-pointer transition-all duration-[120ms] hover:bg-[var(--bg-elevated)]"
-				style={{ paddingLeft: `${12 + depth * 16}px` }}
+				className="flex w-full items-center gap-2 py-1.5 text-[12px] border-b border-[var(--border-active)] last:border-b-0 cursor-pointer transition-all duration-[120ms] hover:bg-[var(--bg-elevated)]"
+				style={{ paddingLeft: `${12 + depth * 16}px`, paddingRight: "12px" }}
 				onClick={() => toggleExpanded(entry.relativePath)}
 			>
 				<svg
@@ -79,7 +95,7 @@ function CandidateNode({
 					width="10"
 					height="10"
 					viewBox="0 0 10 10"
-					className={`shrink-0 text-[var(--text-quaternary)] transition-transform duration-[120ms] ${isExpanded ? "rotate-90" : ""}`}
+					className={`shrink-0 text-[var(--accent)] transition-transform duration-[120ms] ${isExpanded ? "rotate-90" : ""}`}
 				>
 					<path
 						d="M3 1l4 4-4 4"
@@ -90,10 +106,10 @@ function CandidateNode({
 						strokeLinejoin="round"
 					/>
 				</svg>
-				<span className="flex-1 truncate font-[var(--font-mono)] text-[var(--text-secondary)]">
+				<span className="flex-1 truncate font-[var(--font-mono)] text-[var(--text)]">
 					{entry.name}/
 				</span>
-				<span className="shrink-0 rounded-full bg-[var(--bg-overlay)] px-1.5 py-0.5 text-[10px] tabular-nums text-[var(--text-quaternary)]">
+				<span className="shrink-0 rounded-full bg-[rgba(10,132,255,0.15)] px-1.5 py-0.5 text-[10px] tabular-nums text-[var(--accent-hover)]">
 					{fileCount}
 				</span>
 			</button>
@@ -107,6 +123,7 @@ function CandidateNode({
 						toggleCandidate={toggleCandidate}
 						expandedPaths={expandedPaths}
 						toggleExpanded={toggleExpanded}
+						searchQuery={searchQuery}
 					/>
 				))}
 		</>
@@ -120,6 +137,7 @@ export function SharedFilesPanel() {
 	const [manualPath, setManualPath] = useState("");
 	const [selectedCandidates, setSelectedCandidates] = useState<Set<string>>(new Set());
 	const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
+	const [searchQuery, setSearchQuery] = useState("");
 
 	const utils = trpc.useUtils();
 
@@ -168,6 +186,7 @@ export function SharedFilesPanel() {
 		setManualPath("");
 		setSelectedCandidates(new Set());
 		setExpandedPaths(new Set());
+		setSearchQuery("");
 	}, [projectId]);
 
 	// Escape key to close
@@ -334,8 +353,17 @@ export function SharedFilesPanel() {
 					{/* Discovered candidates */}
 					{candidates.length > 0 && (
 						<div className="pb-3">
-							<div className="text-[11px] font-medium uppercase tracking-[0.05em] text-[var(--text-quaternary)] pb-1.5">
-								Discovered
+							<div className="flex items-center justify-between pb-1.5">
+								<span className="text-[11px] font-medium uppercase tracking-[0.05em] text-[var(--text-quaternary)]">
+									Discovered
+								</span>
+								<input
+									type="search"
+									value={searchQuery}
+									onChange={(e) => setSearchQuery(e.target.value)}
+									placeholder="Filter..."
+									className="h-5 w-28 rounded border border-[var(--border)] bg-[var(--bg-elevated)] px-2 text-[11px] font-[var(--font-mono)] text-[var(--text)] placeholder:text-[var(--text-quaternary)] focus:border-[var(--accent)] focus:outline-none"
+								/>
 							</div>
 							<div className="rounded-[var(--radius-sm)] border border-[var(--border-subtle)] max-h-48 overflow-y-auto">
 								{candidates.map((entry) => (
@@ -347,6 +375,7 @@ export function SharedFilesPanel() {
 										toggleCandidate={toggleCandidate}
 										expandedPaths={expandedPaths}
 										toggleExpanded={toggleExpanded}
+										searchQuery={searchQuery}
 									/>
 								))}
 							</div>
