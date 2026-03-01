@@ -71,7 +71,7 @@ export function countFiles(entry: CandidateEntry): number {
  */
 export function buildSmartCandidateTree(
 	paths: string[],
-	isIgnoredDir: (dirPath: string) => boolean,
+	isIgnoredDir: (dirPath: string) => boolean
 ): CandidateEntry[] {
 	if (paths.length === 0) return [];
 
@@ -89,8 +89,12 @@ export function buildSmartCandidateTree(
 			}
 		}
 		if (foundRoot !== null) {
-			if (!ignoredDirGroups.has(foundRoot)) ignoredDirGroups.set(foundRoot, []);
-			ignoredDirGroups.get(foundRoot)!.push(filePath);
+			let group = ignoredDirGroups.get(foundRoot);
+			if (!group) {
+				group = [];
+				ignoredDirGroups.set(foundRoot, group);
+			}
+			group.push(filePath);
 		} else {
 			directFiles.push(filePath);
 		}

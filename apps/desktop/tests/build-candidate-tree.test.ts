@@ -111,10 +111,7 @@ describe("buildSmartCandidateTree", () => {
 	});
 
 	test("files in a gitignored dir are grouped under that dir", () => {
-		const result = buildSmartCandidateTree(
-			["dist/index.js", "dist/utils.js"],
-			(p) => p === "dist",
-		);
+		const result = buildSmartCandidateTree(["dist/index.js", "dist/utils.js"], (p) => p === "dist");
 		expect(result).toHaveLength(1);
 		expect(result[0]?.name).toBe("dist");
 		expect(result[0]?.type).toBe("directory");
@@ -137,7 +134,7 @@ describe("buildSmartCandidateTree", () => {
 	test("direct files come before directory entries", () => {
 		const result = buildSmartCandidateTree(
 			["apps/desktop/.env", "dist/index.js"],
-			(p) => p === "dist",
+			(p) => p === "dist"
 		);
 		expect(result).toHaveLength(2);
 		expect(result[0]?.type).toBe("file");
@@ -151,7 +148,7 @@ describe("buildSmartCandidateTree", () => {
 		const isIgnored = (p: string) => p === "apps/desktop/dist";
 		const result = buildSmartCandidateTree(
 			["apps/desktop/dist/main.js", "apps/desktop/.env"],
-			isIgnored,
+			isIgnored
 		);
 		// direct file
 		expect(result.find((e) => e.type === "file")?.name).toBe("apps/desktop/.env");
@@ -162,10 +159,7 @@ describe("buildSmartCandidateTree", () => {
 	});
 
 	test("children of gitignored dir have correct full relativePaths", () => {
-		const result = buildSmartCandidateTree(
-			["dist/sub/file.js"],
-			(p) => p === "dist",
-		);
+		const result = buildSmartCandidateTree(["dist/sub/file.js"], (p) => p === "dist");
 		const distNode = result[0]!;
 		const subNode = distNode.children![0]!;
 		expect(subNode.name).toBe("sub");
@@ -176,7 +170,7 @@ describe("buildSmartCandidateTree", () => {
 	test("multiple gitignored dirs each get their own node", () => {
 		const result = buildSmartCandidateTree(
 			[".turbo/cache/file.json", "dist/index.js"],
-			(p) => p === "dist" || p === ".turbo",
+			(p) => p === "dist" || p === ".turbo"
 		);
 		expect(result).toHaveLength(2);
 		const names = result.map((e) => e.name).sort();
