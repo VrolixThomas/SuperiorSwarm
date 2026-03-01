@@ -68,6 +68,7 @@ export function MainContentArea({ savedScrollback }: MainContentAreaProps) {
 							repoPath={activeTab.repoPath}
 							filePath={activeTab.filePath}
 							language={activeTab.language}
+							initialPosition={activeTab.initialPosition}
 						/>
 					</div>
 				)}

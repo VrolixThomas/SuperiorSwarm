@@ -7,9 +7,10 @@ interface FileEditorProps {
 	repoPath: string;
 	filePath: string;
 	language: string;
+	initialPosition?: { lineNumber: number; column: number };
 }
 
-export function FileEditor({ repoPath, filePath, language }: FileEditorProps) {
+export function FileEditor({ repoPath, filePath, language, initialPosition }: FileEditorProps) {
 	const containerRef = useRef<HTMLDivElement>(null);
 	const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
 	const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -54,6 +55,11 @@ export function FileEditor({ repoPath, filePath, language }: FileEditorProps) {
 		const model = monaco.editor.createModel(data.content, language);
 		editor.setModel(model);
 
+		if (initialPosition) {
+			editor.setPosition(initialPosition);
+			editor.revealPositionInCenter(initialPosition);
+		}
+
 		const sub = model.onDidChangeContent(() => {
 			if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
 			saveTimerRef.current = setTimeout(() => {
@@ -67,7 +73,7 @@ export function FileEditor({ repoPath, filePath, language }: FileEditorProps) {
 			model.dispose();
 		};
 		// biome-ignore lint/correctness/useExhaustiveDependencies: saveMutation identity is stable
-	}, [data, language, repoPath, filePath]);
+	}, [data, language, repoPath, filePath, initialPosition]);
 
 	if (isLoading) {
 		return (
