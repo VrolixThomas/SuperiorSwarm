@@ -186,6 +186,29 @@ export async function hasUncommittedChanges(repoPath: string): Promise<boolean> 
 	return status.trim().length > 0;
 }
 
+export async function stageFiles(repoPath: string, paths: string[]): Promise<void> {
+	if (paths.length === 0) return;
+	const git = simpleGit(repoPath);
+	await git.add(paths);
+}
+
+export async function unstageFiles(repoPath: string, paths: string[]): Promise<void> {
+	if (paths.length === 0) return;
+	const git = simpleGit(repoPath);
+	await git.reset(["HEAD", "--", ...paths]);
+}
+
+export async function commitChanges(repoPath: string, message: string): Promise<{ hash: string }> {
+	const git = simpleGit(repoPath);
+	const result = await git.commit(message);
+	return { hash: result.commit };
+}
+
+export async function pushBranch(repoPath: string): Promise<void> {
+	const git = simpleGit(repoPath);
+	await git.push();
+}
+
 export type { DiffLine, DiffHunk, DiffFile, DiffStats } from "../../shared/diff-types";
 import type { DiffFile, DiffHunk, DiffLine } from "../../shared/diff-types";
 
