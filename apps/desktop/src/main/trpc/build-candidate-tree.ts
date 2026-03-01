@@ -57,6 +57,13 @@ export function buildCandidateTree(paths: string[]): CandidateEntry[] {
 	return result;
 }
 
+/** Recursively count all file entries under a CandidateEntry. */
+export function countFiles(entry: CandidateEntry): number {
+	if (entry.type === "file") return 1;
+	if (!entry.children) return 0;
+	return entry.children.reduce((sum, child) => sum + countFiles(child), 0);
+}
+
 function fixRelativePaths(entries: CandidateEntry[], prefix: string): void {
 	for (const entry of entries) {
 		entry.relativePath = `${prefix}/${entry.relativePath}`;
