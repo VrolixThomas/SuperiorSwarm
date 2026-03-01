@@ -8,6 +8,7 @@ import { trpc } from "./trpc/client";
 import { ipcLink } from "./trpc/ipc-link";
 
 // Monaco web workers — required for language features (syntax, validation, etc.)
+import * as monaco from "monaco-editor";
 import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
 import tsWorker from "monaco-editor/esm/vs/language/typescript/ts.worker?worker";
 import jsonWorker from "monaco-editor/esm/vs/language/json/json.worker?worker";
@@ -23,6 +24,18 @@ self.MonacoEnvironment = {
 		return new editorWorker();
 	},
 };
+
+// Disable Monaco's built-in TypeScript/JavaScript diagnostics — they use default
+// compiler options (no tsconfig.json awareness) and produce false positives.
+// Real diagnostics come from the LSP language server instead.
+monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions({
+	noSemanticValidation: true,
+	noSyntaxValidation: true,
+});
+monaco.languages.typescript.javascriptDefaults.setDiagnosticsOptions({
+	noSemanticValidation: true,
+	noSyntaxValidation: true,
+});
 
 function Root() {
 	const [queryClient] = useState(() => new QueryClient());
