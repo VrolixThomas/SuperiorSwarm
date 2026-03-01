@@ -1,4 +1,6 @@
 import * as monaco from "monaco-editor";
+import { detectLanguage } from "../../shared/diff-types";
+import { useTabStore } from "../stores/tab-store";
 
 const disposables = new Map<string, monaco.IDisposable[]>();
 
@@ -242,6 +244,52 @@ export function sendDidClose(repoPath: string, languageId: string, uri: string):
 			textDocument: { uri },
 		},
 	});
+}
+
+export function setupGoToDefinitionHandler(): void {
+	// Monaco's built-in go-to-definition already works for same-file navigation.
+	// For cross-file, we need to handle the case where the target file isn't open.
+	// We override the editor opener to open new tabs instead.
+
+	const editorService = (monaco.editor as any).StaticServices?.codeEditorService?.get();
+	if (editorService) {
+		const originalOpenCodeEditor = editorService.openCodeEditor.bind(editorService);
+		editorService.openCodeEditor = async (input: any, source: any, sideBySide: any) => {
+			const uri = input?.resource?.toString();
+			if (uri?.startsWith("file://")) {
+				const repoPath = extractRepoPath(uri) ?? findRepoPathFromUri(uri);
+				if (repoPath) {
+					const filePath = uri.replace(`file://${repoPath}/`, "");
+					const language = detectLanguage(filePath);
+					const position = input.options?.selection
+						? {
+								lineNumber: input.options.selection.startLineNumber,
+								column: input.options.selection.startColumn,
+							}
+						: undefined;
+
+					const workspaceId = useTabStore.getState().activeWorkspaceId;
+					if (workspaceId) {
+						useTabStore
+							.getState()
+							.openFile(workspaceId, repoPath, filePath, language, position);
+						return null;
+					}
+				}
+			}
+			return originalOpenCodeEditor(input, source, sideBySide);
+		};
+	}
+}
+
+function findRepoPathFromUri(uri: string): string | null {
+	// Try to find a matching repoPath from our model map
+	for (const [, repoPath] of modelRepoMap) {
+		if (uri.startsWith(`file://${repoPath}`)) {
+			return repoPath;
+		}
+	}
+	return null;
 }
 
 export function disposeProviders(languageId: string): void {
