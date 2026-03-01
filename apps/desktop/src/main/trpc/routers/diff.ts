@@ -8,6 +8,8 @@ import { readWorkingTreeFile, saveWorkingTreeFile } from "../../git/file-ops";
 import {
 	commitChanges,
 	detectLanguage,
+	getCurrentBranch,
+	getUntrackedFiles,
 	parseUnifiedDiff,
 	pushBranch,
 	stageFiles,
@@ -53,22 +55,33 @@ export const diffRouter = router({
 			return { files, stats: computeStats(files) };
 		}),
 
-	getStagedDiff: publicProcedure
+	getWorkingTreeStatus: publicProcedure
 		.input(z.object({ repoPath: z.string() }))
 		.query(async ({ input }) => {
 			const git = simpleGit(input.repoPath);
-			const rawDiff = await git.diff(["--cached", "--unified=3", "--no-color"]);
-			const files = parseUnifiedDiff(rawDiff);
-			return { files, stats: computeStats(files) };
-		}),
 
-	getUnstagedDiff: publicProcedure
-		.input(z.object({ repoPath: z.string() }))
-		.query(async ({ input }) => {
-			const git = simpleGit(input.repoPath);
-			const rawDiff = await git.diff(["--unified=3", "--no-color"]);
-			const files = parseUnifiedDiff(rawDiff);
-			return { files, stats: computeStats(files) };
+			const [stagedRaw, unstagedRaw, untrackedPaths, branch] = await Promise.all([
+				git.diff(["--cached", "--unified=3", "--no-color"]),
+				git.diff(["--unified=3", "--no-color"]),
+				getUntrackedFiles(input.repoPath),
+				getCurrentBranch(input.repoPath),
+			]);
+
+			const stagedFiles = parseUnifiedDiff(stagedRaw);
+			const unstagedFiles = parseUnifiedDiff(unstagedRaw);
+
+			// Add untracked files as synthetic "added" entries
+			for (const filePath of untrackedPaths) {
+				unstagedFiles.push({
+					path: filePath,
+					status: "added",
+					additions: 0,
+					deletions: 0,
+					hunks: [],
+				});
+			}
+
+			return { stagedFiles, unstagedFiles, branch };
 		}),
 
 	stageFiles: publicProcedure

@@ -186,6 +186,25 @@ export async function hasUncommittedChanges(repoPath: string): Promise<boolean> 
 	return status.trim().length > 0;
 }
 
+export async function getUntrackedFiles(repoPath: string): Promise<string[]> {
+	const git = simpleGit(repoPath);
+	const status = await git.raw(["status", "--porcelain"]);
+	return status
+		.split("\n")
+		.filter((line) => line.startsWith("?? "))
+		.map((line) => line.slice(3).replace(/\/$/, ""));
+}
+
+export async function getCurrentBranch(repoPath: string): Promise<string> {
+	const git = simpleGit(repoPath);
+	try {
+		const branch = await git.raw(["rev-parse", "--abbrev-ref", "HEAD"]);
+		return branch.trim();
+	} catch {
+		return "HEAD";
+	}
+}
+
 export async function stageFiles(repoPath: string, paths: string[]): Promise<void> {
 	if (paths.length === 0) return;
 	const git = simpleGit(repoPath);
