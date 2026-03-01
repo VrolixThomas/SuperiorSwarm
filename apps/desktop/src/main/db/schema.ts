@@ -109,3 +109,15 @@ export const extensionPaths = sqliteTable("extension_paths", {
 
 export type ExtensionPath = typeof extensionPaths.$inferSelect;
 export type NewExtensionPath = typeof extensionPaths.$inferInsert;
+
+export const sharedFiles = sqliteTable("shared_files", {
+	id: text("id").primaryKey(),
+	projectId: text("project_id")
+		.notNull()
+		.references(() => projects.id, { onDelete: "cascade" }),
+	relativePath: text("relative_path").notNull(),
+	createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+});
+
+export type SharedFile = typeof sharedFiles.$inferSelect;
+export type NewSharedFile = typeof sharedFiles.$inferInsert;
