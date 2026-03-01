@@ -66,7 +66,8 @@ export function SharedFilesPanel() {
 
 	const syncMutation = trpc.sharedFiles.sync.useMutation();
 
-	// Reset state when panel opens/closes
+	// Reset state when panel opens for a different project
+	// biome-ignore lint/correctness/useExhaustiveDependencies: intentionally resets when projectId changes
 	useEffect(() => {
 		setManualPath("");
 		setSelectedCandidates(new Set());
