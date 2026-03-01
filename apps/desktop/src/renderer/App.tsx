@@ -5,10 +5,7 @@ import { DiffPanel } from "./components/DiffPanel";
 import { MainContentArea } from "./components/MainContentArea";
 import { Sidebar } from "./components/Sidebar";
 import { scrollbackRegistry } from "./components/Terminal";
-import {
-	setupDiagnosticsListener,
-	setupGoToDefinitionHandler,
-} from "./lsp/monaco-lsp-bridge";
+import { setupDiagnosticsListener, setupGoToDefinitionHandler } from "./lsp/monaco-lsp-bridge";
 import { useTabStore } from "./stores/tab-store";
 import { trpc } from "./trpc/client";
 

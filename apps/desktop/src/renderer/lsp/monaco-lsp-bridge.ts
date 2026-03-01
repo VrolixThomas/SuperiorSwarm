@@ -270,9 +270,7 @@ export function setupGoToDefinitionHandler(): void {
 
 					const workspaceId = useTabStore.getState().activeWorkspaceId;
 					if (workspaceId) {
-						useTabStore
-							.getState()
-							.openFile(workspaceId, repoPath, filePath, language, position);
+						useTabStore.getState().openFile(workspaceId, repoPath, filePath, language, position);
 						return null;
 					}
 				}
@@ -305,41 +303,39 @@ let diagnosticsCleanup: (() => void) | null = null;
 export function setupDiagnosticsListener(): void {
 	if (diagnosticsCleanup) return;
 
-	diagnosticsCleanup = window.electron.lsp.onNotification(
-		(_serverId, method, params) => {
-			if (method !== "textDocument/publishDiagnostics") return;
-			const { uri, diagnostics } = params as {
-				uri: string;
-				diagnostics: Array<{
-					range: {
-						start: { line: number; character: number };
-						end: { line: number; character: number };
-					};
-					message: string;
-					severity?: number;
-					source?: string;
-					code?: number | string;
-				}>;
-			};
+	diagnosticsCleanup = window.electron.lsp.onNotification((_serverId, method, params) => {
+		if (method !== "textDocument/publishDiagnostics") return;
+		const { uri, diagnostics } = params as {
+			uri: string;
+			diagnostics: Array<{
+				range: {
+					start: { line: number; character: number };
+					end: { line: number; character: number };
+				};
+				message: string;
+				severity?: number;
+				source?: string;
+				code?: number | string;
+			}>;
+		};
 
-			const modelUri = monaco.Uri.parse(uri);
-			const model = monaco.editor.getModel(modelUri);
-			if (!model) return;
+		const modelUri = monaco.Uri.parse(uri);
+		const model = monaco.editor.getModel(modelUri);
+		if (!model) return;
 
-			const markers: monaco.editor.IMarkerData[] = diagnostics.map((d) => ({
-				startLineNumber: d.range.start.line + 1,
-				startColumn: d.range.start.character + 1,
-				endLineNumber: d.range.end.line + 1,
-				endColumn: d.range.end.character + 1,
-				message: d.message,
-				severity: convertSeverity(d.severity),
-				source: d.source,
-				code: d.code?.toString(),
-			}));
+		const markers: monaco.editor.IMarkerData[] = diagnostics.map((d) => ({
+			startLineNumber: d.range.start.line + 1,
+			startColumn: d.range.start.character + 1,
+			endLineNumber: d.range.end.line + 1,
+			endColumn: d.range.end.character + 1,
+			message: d.message,
+			severity: convertSeverity(d.severity),
+			source: d.source,
+			code: d.code?.toString(),
+		}));
 
-			monaco.editor.setModelMarkers(model, "lsp", markers);
-		},
-	);
+		monaco.editor.setModelMarkers(model, "lsp", markers);
+	});
 }
 
 function convertSeverity(severity?: number): monaco.MarkerSeverity {
