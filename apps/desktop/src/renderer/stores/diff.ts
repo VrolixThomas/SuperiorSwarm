@@ -1,26 +1,6 @@
 import { create } from "zustand";
-
-export type DiffContext =
-	| {
-			type: "pr";
-			prId: number;
-			workspaceSlug: string;
-			repoSlug: string;
-			repoPath: string;
-			title: string;
-			sourceBranch: string;
-			targetBranch: string;
-	  }
-	| {
-			type: "branch";
-			baseBranch: string;
-			headBranch: string;
-			repoPath: string;
-	  }
-	| {
-			type: "working-tree";
-			repoPath: string;
-	  };
+export type { DiffContext } from "../../shared/diff-types";
+import type { DiffContext } from "../../shared/diff-types";
 
 interface DiffStore {
 	activeDiff: DiffContext | null;

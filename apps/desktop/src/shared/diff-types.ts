@@ -29,6 +29,28 @@ export interface DiffStats {
 	changed: number;
 }
 
+export type DiffContext =
+	| {
+			type: "pr";
+			prId: number;
+			workspaceSlug: string;
+			repoSlug: string;
+			repoPath: string;
+			title: string;
+			sourceBranch: string;
+			targetBranch: string;
+	  }
+	| {
+			type: "branch";
+			baseBranch: string;
+			headBranch: string;
+			repoPath: string;
+	  }
+	| {
+			type: "working-tree";
+			repoPath: string;
+	  };
+
 export function detectLanguage(filePath: string): string {
 	const ext = filePath.split(".").pop()?.toLowerCase() ?? "";
 	const map: Record<string, string> = {
