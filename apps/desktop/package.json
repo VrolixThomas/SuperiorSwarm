@@ -40,7 +40,6 @@
 		"node-pty": "^1.1.0",
 		"react": "^19.0.0",
 		"react-dom": "^19.0.0",
-		"react-resizable-panels": "^4.6.5",
 		"simple-git": "^3.27.0",
 		"superjson": "^2.2.2",
 		"zod": "^4.3.6",
