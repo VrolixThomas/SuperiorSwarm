@@ -4,6 +4,7 @@ import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import { ExtensionManager } from "./ExtensionManager";
 import { FileTree } from "./FileTreeNode";
+import { WorkingTreePanel } from "./WorkingTreePanel";
 
 function DiffPanelContent({ diffCtx }: { diffCtx: DiffContext }) {
 	const [showExtensions, setShowExtensions] = useState(false);
@@ -21,11 +22,6 @@ function DiffPanelContent({ diffCtx }: { diffCtx: DiffContext }) {
 		{ enabled: diffCtx.type === "branch", staleTime: 30_000 }
 	);
 
-	const workingTreeQuery = trpc.diff.getWorkingTreeDiff.useQuery(
-		{ repoPath: diffCtx.repoPath },
-		{ enabled: diffCtx.type === "working-tree", staleTime: 10_000 }
-	);
-
 	const prDiffQuery = trpc.diff.getPRDiff.useQuery(
 		diffCtx.type === "pr"
 			? {
@@ -41,20 +37,19 @@ function DiffPanelContent({ diffCtx }: { diffCtx: DiffContext }) {
 	const files =
 		diffCtx.type === "branch"
 			? branchDiffQuery.data?.files
-			: diffCtx.type === "working-tree"
-				? workingTreeQuery.data?.files
-				: prDiffQuery.data?.files;
+			: diffCtx.type === "pr"
+				? prDiffQuery.data?.files
+				: undefined;
 
 	const stats =
 		diffCtx.type === "branch"
 			? branchDiffQuery.data?.stats
-			: diffCtx.type === "working-tree"
-				? workingTreeQuery.data?.stats
-				: prDiffQuery.data?.stats;
+			: diffCtx.type === "pr"
+				? prDiffQuery.data?.stats
+				: undefined;
 
 	const isLoading =
 		(diffCtx.type === "branch" && branchDiffQuery.isFetching) ||
-		(diffCtx.type === "working-tree" && workingTreeQuery.isFetching) ||
 		(diffCtx.type === "pr" && prDiffQuery.isFetching);
 
 	const title =
@@ -111,25 +106,35 @@ function DiffPanelContent({ diffCtx }: { diffCtx: DiffContext }) {
 				</button>
 			</div>
 
-			{/* File list */}
-			<div className="flex-1 overflow-y-auto px-1 py-1">
-				{isLoading && (
-					<div className="flex items-center justify-center py-4 text-[12px] text-[var(--text-quaternary)]">
-						Loading...
-					</div>
-				)}
-				{!isLoading && !activeWorkspaceId && (
+			{/* Body — branch on context type */}
+			{diffCtx.type === "working-tree" ? (
+				activeWorkspaceId ? (
+					<WorkingTreePanel diffCtx={diffCtx} workspaceId={activeWorkspaceId} />
+				) : (
 					<div className="px-3 py-2 text-[12px] text-[var(--text-quaternary)]">
 						Select a workspace
 					</div>
-				)}
-				{!isLoading && activeWorkspaceId && files && files.length > 0 && (
-					<FileTree files={files} diffCtx={diffCtx} workspaceId={activeWorkspaceId} />
-				)}
-				{!isLoading && activeWorkspaceId && files && files.length === 0 && (
-					<div className="px-3 py-2 text-[12px] text-[var(--text-quaternary)]">No changes</div>
-				)}
-			</div>
+				)
+			) : (
+				<div className="flex-1 overflow-y-auto px-1 py-1">
+					{isLoading && (
+						<div className="flex items-center justify-center py-4 text-[12px] text-[var(--text-quaternary)]">
+							Loading...
+						</div>
+					)}
+					{!isLoading && !activeWorkspaceId && (
+						<div className="px-3 py-2 text-[12px] text-[var(--text-quaternary)]">
+							Select a workspace
+						</div>
+					)}
+					{!isLoading && activeWorkspaceId && files && files.length > 0 && (
+						<FileTree files={files} diffCtx={diffCtx} workspaceId={activeWorkspaceId} />
+					)}
+					{!isLoading && activeWorkspaceId && files && files.length === 0 && (
+						<div className="px-3 py-2 text-[12px] text-[var(--text-quaternary)]">No changes</div>
+					)}
+				</div>
+			)}
 
 			{showExtensions && <ExtensionManager onClose={() => setShowExtensions(false)} />}
 		</div>
