@@ -3,6 +3,7 @@ import { AddRepositoryModal } from "./components/AddRepositoryModal";
 import { CreateWorktreeModal } from "./components/CreateWorktreeModal";
 import { DiffPanel } from "./components/DiffPanel";
 import { MainContentArea } from "./components/MainContentArea";
+import { SharedFilesPanel } from "./components/SharedFilesPanel";
 import { Sidebar } from "./components/Sidebar";
 import { scrollbackRegistry } from "./components/Terminal";
 import { useTabStore } from "./stores/tab-store";
@@ -105,6 +106,7 @@ export function App() {
 			</div>
 			<AddRepositoryModal />
 			<CreateWorktreeModal />
+			<SharedFilesPanel />
 		</>
 	);
 }
