@@ -1,7 +1,14 @@
 import { join } from "node:path";
-import { BrowserWindow, app } from "electron";
+import { BrowserWindow, app, dialog, ipcMain } from "electron";
+import { initializeDatabase } from "./db";
+import {
+	type SessionSaveData,
+	saveTerminalSessions,
+} from "./db/session-persistence";
 import { setupTerminalIPC } from "./terminal/ipc";
 import { terminalManager } from "./terminal/manager";
+import { setupTRPCIPC } from "./trpc/ipc-link";
+import { appRouter } from "./trpc/routers";
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -38,6 +45,40 @@ function createWindow() {
 
 app.whenReady().then(() => {
 	setupTerminalIPC();
+	try {
+		initializeDatabase();
+	} catch (err) {
+		console.error("[db] Failed to initialize database:", err);
+		dialog.showErrorBoxSync(
+			"Database Error",
+			`BranchFlux failed to initialize its database and cannot start.\n\n${String(err)}`,
+		);
+		app.quit();
+		return;
+	}
+	setupTRPCIPC(appRouter);
+
+	ipcMain.on(
+		"terminal-sessions:save-sync",
+		(event, data: SessionSaveData) => {
+			try {
+				saveTerminalSessions(data);
+				event.returnValue = { ok: true };
+			} catch (err) {
+				console.error("Failed to save terminal sessions on quit:", err);
+				event.returnValue = { ok: false };
+			}
+		}
+	);
+
+	ipcMain.handle("dialog:openDirectory", async () => {
+		const result = await dialog.showOpenDialog({
+			properties: ["openDirectory", "multiSelections"],
+		});
+		if (result.canceled) return null;
+		return result.filePaths;
+	});
+
 	createWindow();
 
 	app.on("activate", () => {

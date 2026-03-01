@@ -8,8 +8,9 @@ function assertNonEmptyString(value: unknown, name: string): asserts value is st
 }
 
 export function setupTerminalIPC(): void {
-	ipcMain.handle("terminal:create", (event, id: unknown) => {
+	ipcMain.handle("terminal:create", (event, id: unknown, cwd: unknown) => {
 		assertNonEmptyString(id, "id");
+		const cwdStr = typeof cwd === "string" && cwd.length > 0 ? cwd : undefined;
 		if (terminalManager.has(id)) {
 			throw new Error(`Terminal with id "${id}" already exists`);
 		}
@@ -29,7 +30,8 @@ export function setupTerminalIPC(): void {
 					if (!window.isDestroyed()) {
 						window.webContents.send("terminal:exit", id, exitCode);
 					}
-				}
+				},
+				cwdStr
 			);
 		} catch (error) {
 			console.error(`Failed to create terminal ${id}:`, error);

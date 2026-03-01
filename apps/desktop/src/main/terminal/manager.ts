@@ -27,14 +27,19 @@ function resolveEnv(): Record<string, string> {
 class TerminalManager {
 	private terminals: Map<string, TerminalInstance> = new Map();
 
-	create(id: string, onData: (data: string) => void, onExit: (code: number) => void): void {
+	create(
+		id: string,
+		onData: (data: string) => void,
+		onExit: (code: number) => void,
+		cwd?: string
+	): void {
 		const shell = resolveShell();
 
 		const ptyProcess = pty.spawn(shell, ["-l"], {
 			name: "xterm-256color",
 			cols: 80,
 			rows: 24,
-			cwd: homedir(),
+			cwd: cwd || homedir(),
 			env: resolveEnv(),
 		});
 

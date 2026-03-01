@@ -1,4 +1,9 @@
+import { useProjectStore } from "../stores/projects";
+import { ProjectList } from "./ProjectList";
+
 export function Sidebar() {
+	const { openAddModal } = useProjectStore();
+
 	return (
 		<aside className="flex h-full w-[220px] shrink-0 flex-col border-r border-[var(--border-subtle)] bg-[var(--bg-surface)]">
 			{/* Traffic light clearance — empty drag region */}
@@ -19,8 +24,36 @@ export function Sidebar() {
 				</span>
 			</div>
 
-			{/* Empty space */}
-			<div className="flex-1" />
+			{/* Add Repository */}
+			<div className="px-2 pb-2">
+				<button
+					type="button"
+					onClick={openAddModal}
+					className="flex w-full items-center gap-2 rounded-[6px] px-3 py-1.5 text-[13px] text-[var(--text-tertiary)] transition-all duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-secondary)]"
+				>
+					<svg
+						aria-hidden="true"
+						width="14"
+						height="14"
+						viewBox="0 0 16 16"
+						fill="none"
+						className="shrink-0"
+					>
+						<path
+							d="M8 3v10M3 8h10"
+							stroke="currentColor"
+							strokeWidth="1.5"
+							strokeLinecap="round"
+						/>
+					</svg>
+					Add Repository
+				</button>
+			</div>
+
+			{/* Project list */}
+			<div className="flex-1 overflow-y-auto py-1">
+				<ProjectList />
+			</div>
 
 			{/* Footer */}
 			<div className="border-t border-[var(--border-subtle)] p-2">
