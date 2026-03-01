@@ -46,6 +46,7 @@ export class ServerManager {
 	private servers = new Map<string, ServerInstance>();
 	private restartCounts = new Map<string, number>();
 	private restartTimers = new Set<ReturnType<typeof setTimeout>>();
+	private unavailableServers = new Set<string>();
 	private static MAX_RESTARTS = 3;
 	private mainWindow: BrowserWindow | null = null;
 
@@ -81,6 +82,9 @@ export class ServerManager {
 
 		const key = this.serverKey(configId, repoPath);
 
+		// Check if this server has permanently failed (command not found)
+		if (this.unavailableServers.has(configId)) return null;
+
 		let childProcess: ChildProcess;
 		try {
 			childProcess = spawn(config.command, config.args, {
@@ -89,6 +93,7 @@ export class ServerManager {
 			});
 		} catch {
 			console.error(`[LSP] Failed to spawn ${config.command}. Is it installed?`);
+			this.unavailableServers.add(configId);
 			return null;
 		}
 
@@ -97,6 +102,28 @@ export class ServerManager {
 			childProcess.kill();
 			return null;
 		}
+
+		// Wait for the process to confirm it's actually running (not ENOENT)
+		const spawnResult = await new Promise<boolean>((resolve) => {
+			const onSpawn = () => {
+				cleanup();
+				resolve(true);
+			};
+			const onError = (err: Error) => {
+				cleanup();
+				console.error(`[LSP] Failed to spawn ${config.command}: ${err.message}`);
+				this.unavailableServers.add(configId);
+				resolve(false);
+			};
+			const cleanup = () => {
+				childProcess.removeListener("spawn", onSpawn);
+				childProcess.removeListener("error", onError);
+			};
+			childProcess.on("spawn", onSpawn);
+			childProcess.on("error", onError);
+		});
+
+		if (!spawnResult) return null;
 
 		const connection = createMessageConnection(childProcess.stdout, childProcess.stdin);
 
@@ -111,6 +138,11 @@ export class ServerManager {
 		};
 
 		this.servers.set(key, instance);
+
+		childProcess.on("error", () => {
+			// Handle post-spawn errors (e.g. process killed externally).
+			// The exit handler below takes care of cleanup and crash recovery.
+		});
 
 		childProcess.on("exit", (code) => {
 			console.warn(`[LSP] ${config.command} exited with code ${code}`);
@@ -179,6 +211,8 @@ export class ServerManager {
 			return connection;
 		} catch (err) {
 			console.error(`[LSP] Failed to initialize ${config.command}:`, err);
+			// Mark as shutting down to prevent crash recovery for init failures
+			instance.shuttingDown = true;
 			connection.dispose();
 			childProcess.kill();
 			this.servers.delete(key);
