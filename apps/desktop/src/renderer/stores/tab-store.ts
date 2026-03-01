@@ -23,9 +23,9 @@ export type TabItem =
 			title: string;
 			language: string;
 	  };
-type DiffPanelState = { open: false; diffCtx: null } | { open: true; diffCtx: DiffContext };
+export type DiffPanelState = { open: false; diffCtx: null } | { open: true; diffCtx: DiffContext };
 
-const PANEL_CLOSED: DiffPanelState = { open: false, diffCtx: null };
+export const PANEL_CLOSED: DiffPanelState = { open: false, diffCtx: null };
 
 // ─── Store interface ─────────────────────────────────────────────────────────
 
@@ -90,6 +90,22 @@ function nextFileTabId(): string {
 
 function diffFileKey(diffCtx: DiffContext, filePath: string): string {
 	return `diff-file:${diffCtx.repoPath}:${filePath}`;
+}
+
+// ─── DiffContext identity comparison ─────────────────────────────────────────
+
+export function diffContextsEqual(a: DiffContext, b: DiffContext): boolean {
+	if (a.type !== b.type || a.repoPath !== b.repoPath) return false;
+	switch (a.type) {
+		case "working-tree":
+			return true;
+		case "branch":
+			return (
+				a.baseBranch === (b as typeof a).baseBranch && a.headBranch === (b as typeof a).headBranch
+			);
+		case "pr":
+			return a.prId === (b as typeof a).prId;
+	}
 }
 
 // ─── Next-neighbor selection ─────────────────────────────────────────────────
@@ -177,11 +193,7 @@ export const useTabStore = create<TabStore>((set, get) => ({
 
 	toggleDiffPanel: (diffCtx) => {
 		const { diffPanel } = get();
-		if (
-			diffPanel.open &&
-			diffPanel.diffCtx.repoPath === diffCtx.repoPath &&
-			diffPanel.diffCtx.type === diffCtx.type
-		) {
+		if (diffPanel.open && diffContextsEqual(diffPanel.diffCtx, diffCtx)) {
 			set({ diffPanel: PANEL_CLOSED });
 		} else {
 			set({ diffPanel: { open: true, diffCtx } });
