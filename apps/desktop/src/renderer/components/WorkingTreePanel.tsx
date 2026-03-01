@@ -14,41 +14,52 @@ export function WorkingTreePanel({
 
 	const utils = trpc.useUtils();
 
-	const stagedQuery = trpc.diff.getStagedDiff.useQuery(
+	const statusQuery = trpc.diff.getWorkingTreeStatus.useQuery(
 		{ repoPath: diffCtx.repoPath },
 		{ staleTime: 5_000 }
 	);
 
-	const unstagedQuery = trpc.diff.getUnstagedDiff.useQuery(
-		{ repoPath: diffCtx.repoPath },
-		{ staleTime: 5_000 }
-	);
-
-	const invalidateBoth = () => {
-		utils.diff.getStagedDiff.invalidate({ repoPath: diffCtx.repoPath });
-		utils.diff.getUnstagedDiff.invalidate({ repoPath: diffCtx.repoPath });
+	const invalidate = () => {
+		utils.diff.getWorkingTreeStatus.invalidate({ repoPath: diffCtx.repoPath });
 	};
 
-	const stageMutation = trpc.diff.stageFiles.useMutation({ onSuccess: invalidateBoth });
-	const unstageMutation = trpc.diff.unstageFiles.useMutation({ onSuccess: invalidateBoth });
+	const stageMutation = trpc.diff.stageFiles.useMutation({ onSuccess: invalidate });
+	const unstageMutation = trpc.diff.unstageFiles.useMutation({ onSuccess: invalidate });
 
 	const commitMutation = trpc.diff.commit.useMutation({
 		onSuccess: () => {
 			setCommitMsg("");
 			pushMutation.reset();
-			invalidateBoth();
+			invalidate();
 		},
 	});
 
 	const pushMutation = trpc.diff.push.useMutation();
 
-	const stagedFiles = stagedQuery.data?.files ?? [];
-	const unstagedFiles = unstagedQuery.data?.files ?? [];
-	const isLoading = stagedQuery.isLoading || unstagedQuery.isLoading;
+	const stagedFiles = statusQuery.data?.stagedFiles ?? [];
+	const unstagedFiles = statusQuery.data?.unstagedFiles ?? [];
+	const branch = statusQuery.data?.branch ?? "";
+	const isLoading = statusQuery.isLoading;
 	const canCommit = stagedFiles.length > 0 && commitMsg.trim().length > 0;
 
 	return (
 		<div className="flex flex-1 flex-col overflow-hidden">
+			{/* Branch indicator */}
+			{branch && (
+				<div className="flex shrink-0 items-center gap-1.5 border-b border-[var(--border)] px-3 py-1">
+					<svg
+						aria-hidden="true"
+						width="10"
+						height="10"
+						viewBox="0 0 16 16"
+						fill="currentColor"
+						className="shrink-0 text-[var(--text-quaternary)]"
+					>
+						<path d="M9.5 3.25a2.25 2.25 0 1 1 3 2.122V6A2.5 2.5 0 0 1 10 8.5H6a1 1 0 0 0-1 1v1.128a2.251 2.251 0 1 1-1.5 0V5.372a2.25 2.25 0 1 1 1.5 0v1.836A2.5 2.5 0 0 1 6 7h4a1 1 0 0 0 1-1v-.628A2.25 2.25 0 0 1 9.5 3.25Z" />
+					</svg>
+					<span className="truncate text-[12px] text-[var(--text-tertiary)]">{branch}</span>
+				</div>
+			)}
 			{/* Commit area */}
 			<div className="flex shrink-0 flex-col gap-1.5 border-b border-[var(--border)] px-2 py-2">
 				<textarea
