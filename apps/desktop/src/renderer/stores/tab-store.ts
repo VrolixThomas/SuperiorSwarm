@@ -23,6 +23,10 @@ export type TabItem =
 			title: string;
 			language: string;
 	  };
+type DiffPanelState = { open: false; diffCtx: null } | { open: true; diffCtx: DiffContext };
+
+const PANEL_CLOSED: DiffPanelState = { open: false, diffCtx: null };
+
 // ─── Store interface ─────────────────────────────────────────────────────────
 
 interface TabStore {
@@ -31,7 +35,7 @@ interface TabStore {
 	activeWorkspaceId: string | null;
 	activeWorkspaceCwd: string;
 	diffMode: "split" | "inline";
-	diffPanel: { open: boolean; diffCtx: DiffContext | null };
+	diffPanel: DiffPanelState;
 
 	// Queries
 	getVisibleTabs: () => TabItem[];
@@ -109,7 +113,7 @@ export const useTabStore = create<TabStore>((set, get) => ({
 	activeWorkspaceId: null,
 	activeWorkspaceCwd: "",
 	diffMode: "split",
-	diffPanel: { open: false, diffCtx: null },
+	diffPanel: PANEL_CLOSED,
 
 	getVisibleTabs: () => {
 		const { tabs, activeWorkspaceId } = get();
@@ -156,7 +160,7 @@ export const useTabStore = create<TabStore>((set, get) => ({
 			activeWorkspaceId: workspaceId,
 			activeWorkspaceCwd: cwd,
 			activeTabId: currentStillVisible?.id ?? wsTabs[0]?.id ?? null,
-			diffPanel: { open: false, diffCtx: null },
+			diffPanel: PANEL_CLOSED,
 		});
 	},
 
@@ -175,17 +179,17 @@ export const useTabStore = create<TabStore>((set, get) => ({
 		const { diffPanel } = get();
 		if (
 			diffPanel.open &&
-			diffPanel.diffCtx?.repoPath === diffCtx.repoPath &&
-			diffPanel.diffCtx?.type === diffCtx.type
+			diffPanel.diffCtx.repoPath === diffCtx.repoPath &&
+			diffPanel.diffCtx.type === diffCtx.type
 		) {
-			set({ diffPanel: { open: false, diffCtx: null } });
+			set({ diffPanel: PANEL_CLOSED });
 		} else {
 			set({ diffPanel: { open: true, diffCtx } });
 		}
 	},
 
 	closeDiffPanel: () => {
-		set({ diffPanel: { open: false, diffCtx: null } });
+		set({ diffPanel: PANEL_CLOSED });
 	},
 
 	openDiffFile: (workspaceId, diffCtx, filePath, language) => {
@@ -222,7 +226,7 @@ export const useTabStore = create<TabStore>((set, get) => ({
 
 	closeDiff: (workspaceId, repoPath) => {
 		const { diffPanel } = get();
-		const closePanel = diffPanel.open && diffPanel.diffCtx?.repoPath === repoPath;
+		const closePanel = diffPanel.open && diffPanel.diffCtx.repoPath === repoPath;
 
 		set((s) => {
 			const filtered = s.tabs.filter(
@@ -241,7 +245,7 @@ export const useTabStore = create<TabStore>((set, get) => ({
 			return {
 				tabs: filtered,
 				activeTabId: nextActive,
-				...(closePanel ? { diffPanel: { open: false, diffCtx: null } } : {}),
+				...(closePanel ? { diffPanel: PANEL_CLOSED } : {}),
 			};
 		});
 	},
