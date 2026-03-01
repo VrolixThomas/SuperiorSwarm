@@ -5,7 +5,14 @@ import { atlassianFetch } from "../../atlassian/auth";
 import { getDb } from "../../db";
 import { extensionPaths } from "../../db/schema";
 import { readWorkingTreeFile, saveWorkingTreeFile } from "../../git/file-ops";
-import { detectLanguage, parseUnifiedDiff } from "../../git/operations";
+import {
+	commitChanges,
+	detectLanguage,
+	parseUnifiedDiff,
+	pushBranch,
+	stageFiles,
+	unstageFiles,
+} from "../../git/operations";
 import { publicProcedure, router } from "../index";
 
 function computeStats(files: ReturnType<typeof parseUnifiedDiff>) {
@@ -45,6 +52,46 @@ export const diffRouter = router({
 			const files = parseUnifiedDiff(rawDiff);
 			return { files, stats: computeStats(files) };
 		}),
+
+	getStagedDiff: publicProcedure
+		.input(z.object({ repoPath: z.string() }))
+		.query(async ({ input }) => {
+			const git = simpleGit(input.repoPath);
+			const rawDiff = await git.diff(["--cached", "--unified=3", "--no-color"]);
+			const files = parseUnifiedDiff(rawDiff);
+			return { files, stats: computeStats(files) };
+		}),
+
+	getUnstagedDiff: publicProcedure
+		.input(z.object({ repoPath: z.string() }))
+		.query(async ({ input }) => {
+			const git = simpleGit(input.repoPath);
+			const rawDiff = await git.diff(["--unified=3", "--no-color"]);
+			const files = parseUnifiedDiff(rawDiff);
+			return { files, stats: computeStats(files) };
+		}),
+
+	stageFiles: publicProcedure
+		.input(z.object({ repoPath: z.string(), paths: z.array(z.string()) }))
+		.mutation(async ({ input }) => {
+			await stageFiles(input.repoPath, input.paths);
+		}),
+
+	unstageFiles: publicProcedure
+		.input(z.object({ repoPath: z.string(), paths: z.array(z.string()) }))
+		.mutation(async ({ input }) => {
+			await unstageFiles(input.repoPath, input.paths);
+		}),
+
+	commit: publicProcedure
+		.input(z.object({ repoPath: z.string(), message: z.string().min(1) }))
+		.mutation(async ({ input }) => {
+			return await commitChanges(input.repoPath, input.message);
+		}),
+
+	push: publicProcedure.input(z.object({ repoPath: z.string() })).mutation(async ({ input }) => {
+		await pushBranch(input.repoPath);
+	}),
 
 	getFileContent: publicProcedure
 		.input(
