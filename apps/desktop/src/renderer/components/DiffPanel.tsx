@@ -4,6 +4,7 @@ import { type PanelMode, useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import { ExtensionManager } from "./ExtensionManager";
 import { FileSection, FileTree } from "./FileTreeNode";
+import { RepoFileTree } from "./RepoFileTree";
 import { WorkingTreeCommitBar } from "./WorkingTreeCommitBar";
 
 function WorkingTreeSections({
@@ -353,6 +354,8 @@ function ExplorerPanelContent() {
 	const closeDiffPanel = useTabStore((s) => s.closeDiffPanel);
 	const rightPanel = useTabStore((s) => s.rightPanel);
 	const togglePanelMode = useTabStore((s) => s.togglePanelMode);
+	const activeWorkspaceId = useTabStore((s) => s.activeWorkspaceId);
+	const activeWorkspaceCwd = useTabStore((s) => s.activeWorkspaceCwd);
 
 	return (
 		<div className="flex h-full flex-col overflow-hidden">
@@ -364,9 +367,17 @@ function ExplorerPanelContent() {
 				onClose={closeDiffPanel}
 			/>
 			<div className="flex-1 overflow-y-auto px-1 py-1">
-				<div className="px-3 py-2 text-[12px] text-[var(--text-quaternary)]">
-					File explorer coming soon
-				</div>
+				{!activeWorkspaceId && (
+					<div className="px-3 py-2 text-[12px] text-[var(--text-quaternary)]">
+						Select a workspace
+					</div>
+				)}
+				{activeWorkspaceId && activeWorkspaceCwd && (
+					<RepoFileTree
+						repoPath={activeWorkspaceCwd}
+						workspaceId={activeWorkspaceId}
+					/>
+				)}
 			</div>
 		</div>
 	);
