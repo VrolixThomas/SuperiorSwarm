@@ -5,7 +5,7 @@ import {
 	type InitializeParams,
 	type MessageConnection,
 	createMessageConnection,
-} from "vscode-languageserver-protocol/node";
+} from "vscode-languageserver-protocol/node.js";
 
 export interface ServerConfig {
 	id: string;
