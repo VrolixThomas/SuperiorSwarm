@@ -69,11 +69,19 @@ function FileNode({
 	}
 
 	return (
-		<button
-			type="button"
+		// biome-ignore lint/a11y/useSemanticElements: Cannot use <button> — this element contains a child <button> for the action icon, and nested buttons are invalid HTML that breaks event propagation.
+		<div
+			role="button"
+			tabIndex={0}
 			onClick={handleClick}
+			onKeyDown={(e) => {
+				if (e.key === "Enter" || e.key === " ") {
+					e.preventDefault();
+					handleClick();
+				}
+			}}
 			className={[
-				"group flex w-full items-center gap-1.5 rounded px-2 py-0.5 text-left text-[12px] transition-all duration-[120ms]",
+				"group flex w-full cursor-pointer items-center gap-1.5 rounded px-2 py-0.5 text-left text-[12px] transition-all duration-[120ms]",
 				isActive
 					? "bg-[var(--bg-elevated)] text-[var(--text)]"
 					: "text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]",
@@ -102,7 +110,7 @@ function FileNode({
 					{actionButton.icon}
 				</button>
 			)}
-		</button>
+		</div>
 	);
 }
 

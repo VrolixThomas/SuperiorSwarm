@@ -1,15 +1,74 @@
 import { useState } from "react";
-import type { DiffContext } from "../../shared/diff-types";
+import type { DiffContext, DiffFile } from "../../shared/diff-types";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import { ExtensionManager } from "./ExtensionManager";
-import { FileTree } from "./FileTreeNode";
-import { WorkingTreePanel } from "./WorkingTreePanel";
+import { FileSection, FileTree } from "./FileTreeNode";
+import { WorkingTreeCommitBar } from "./WorkingTreeCommitBar";
+
+function WorkingTreeSections({
+	statusData,
+	diffCtx,
+	workspaceId,
+	onStage,
+	onUnstage,
+}: {
+	statusData: { stagedFiles: DiffFile[]; unstagedFiles: DiffFile[] };
+	diffCtx: DiffContext;
+	workspaceId: string;
+	onStage: (paths: string[]) => void;
+	onUnstage: (paths: string[]) => void;
+}) {
+	const { stagedFiles, unstagedFiles } = statusData;
+
+	if (stagedFiles.length === 0 && unstagedFiles.length === 0) {
+		return <div className="px-3 py-2 text-[12px] text-[var(--text-quaternary)]">No changes</div>;
+	}
+
+	return (
+		<>
+			<FileSection
+				label="Staged Changes"
+				files={stagedFiles}
+				diffCtx={diffCtx}
+				workspaceId={workspaceId}
+				actionButton={{
+					icon: "−",
+					title: "Unstage file",
+					onClick: (path) => onUnstage([path]),
+				}}
+				bulkAction={{
+					icon: "−",
+					title: "Unstage all",
+					onClick: () => onUnstage(stagedFiles.map((f) => f.path)),
+				}}
+			/>
+			<FileSection
+				label="Changes"
+				files={unstagedFiles}
+				diffCtx={diffCtx}
+				workspaceId={workspaceId}
+				actionButton={{
+					icon: "+",
+					title: "Stage file",
+					onClick: (path) => onStage([path]),
+				}}
+				bulkAction={{
+					icon: "+",
+					title: "Stage all",
+					onClick: () => onStage(unstagedFiles.map((f) => f.path)),
+				}}
+			/>
+		</>
+	);
+}
 
 function DiffPanelContent({ diffCtx }: { diffCtx: DiffContext }) {
 	const [showExtensions, setShowExtensions] = useState(false);
 	const closeDiffPanel = useTabStore((s) => s.closeDiffPanel);
 	const activeWorkspaceId = useTabStore((s) => s.activeWorkspaceId);
+
+	const utils = trpc.useUtils();
 
 	const branchDiffQuery = trpc.diff.getBranchDiff.useQuery(
 		diffCtx.type === "branch"
@@ -20,6 +79,11 @@ function DiffPanelContent({ diffCtx }: { diffCtx: DiffContext }) {
 				}
 			: { repoPath: "", baseBranch: "", headBranch: "" },
 		{ enabled: diffCtx.type === "branch", staleTime: 30_000 }
+	);
+
+	const workingTreeQuery = trpc.diff.getWorkingTreeDiff.useQuery(
+		{ repoPath: diffCtx.repoPath },
+		{ enabled: diffCtx.type === "working-tree", staleTime: 10_000 }
 	);
 
 	const prDiffQuery = trpc.diff.getPRDiff.useQuery(
@@ -34,23 +98,46 @@ function DiffPanelContent({ diffCtx }: { diffCtx: DiffContext }) {
 		{ enabled: diffCtx.type === "pr", staleTime: 60_000 }
 	);
 
+	// Background query for staged/unstaged split (only for working-tree)
+	const statusQuery = trpc.diff.getWorkingTreeStatus.useQuery(
+		{ repoPath: diffCtx.repoPath },
+		{ enabled: diffCtx.type === "working-tree", staleTime: 5_000 }
+	);
+
+	const invalidateWorkingTree = () => {
+		utils.diff.getWorkingTreeDiff.invalidate({ repoPath: diffCtx.repoPath });
+		utils.diff.getWorkingTreeStatus.invalidate({ repoPath: diffCtx.repoPath });
+	};
+
+	const stageMutation = trpc.diff.stageFiles.useMutation({
+		onSuccess: invalidateWorkingTree,
+	});
+
+	const unstageMutation = trpc.diff.unstageFiles.useMutation({
+		onSuccess: invalidateWorkingTree,
+	});
+
 	const files =
 		diffCtx.type === "branch"
 			? branchDiffQuery.data?.files
-			: diffCtx.type === "pr"
-				? prDiffQuery.data?.files
-				: undefined;
+			: diffCtx.type === "working-tree"
+				? workingTreeQuery.data?.files
+				: prDiffQuery.data?.files;
 
 	const stats =
 		diffCtx.type === "branch"
 			? branchDiffQuery.data?.stats
-			: diffCtx.type === "pr"
-				? prDiffQuery.data?.stats
-				: undefined;
+			: diffCtx.type === "working-tree"
+				? workingTreeQuery.data?.stats
+				: prDiffQuery.data?.stats;
 
 	const isLoading =
 		(diffCtx.type === "branch" && branchDiffQuery.isFetching) ||
+		(diffCtx.type === "working-tree" && workingTreeQuery.isFetching) ||
 		(diffCtx.type === "pr" && prDiffQuery.isFetching);
+
+	// When status query has resolved, use its staged/unstaged split
+	const hasStatusData = diffCtx.type === "working-tree" && statusQuery.data != null;
 
 	const title =
 		diffCtx.type === "pr"
@@ -106,35 +193,56 @@ function DiffPanelContent({ diffCtx }: { diffCtx: DiffContext }) {
 				</button>
 			</div>
 
-			{/* Body — branch on context type */}
-			{diffCtx.type === "working-tree" ? (
-				activeWorkspaceId ? (
-					<WorkingTreePanel diffCtx={diffCtx} workspaceId={activeWorkspaceId} />
-				) : (
+			{/* Working-tree commit bar */}
+			{diffCtx.type === "working-tree" && activeWorkspaceId && (
+				<WorkingTreeCommitBar diffCtx={diffCtx} />
+			)}
+
+			{/* File list */}
+			<div className="flex-1 overflow-y-auto px-1 py-1">
+				{isLoading && (
+					<div className="flex items-center justify-center py-4 text-[12px] text-[var(--text-quaternary)]">
+						Loading...
+					</div>
+				)}
+				{!isLoading && !activeWorkspaceId && (
 					<div className="px-3 py-2 text-[12px] text-[var(--text-quaternary)]">
 						Select a workspace
 					</div>
-				)
-			) : (
-				<div className="flex-1 overflow-y-auto px-1 py-1">
-					{isLoading && (
-						<div className="flex items-center justify-center py-4 text-[12px] text-[var(--text-quaternary)]">
-							Loading...
-						</div>
-					)}
-					{!isLoading && !activeWorkspaceId && (
-						<div className="px-3 py-2 text-[12px] text-[var(--text-quaternary)]">
-							Select a workspace
-						</div>
-					)}
-					{!isLoading && activeWorkspaceId && files && files.length > 0 && (
-						<FileTree files={files} diffCtx={diffCtx} workspaceId={activeWorkspaceId} />
-					)}
-					{!isLoading && activeWorkspaceId && files && files.length === 0 && (
-						<div className="px-3 py-2 text-[12px] text-[var(--text-quaternary)]">No changes</div>
-					)}
-				</div>
-			)}
+				)}
+				{!isLoading && activeWorkspaceId && hasStatusData && (
+					<WorkingTreeSections
+						statusData={statusQuery.data}
+						diffCtx={diffCtx}
+						workspaceId={activeWorkspaceId}
+						onStage={(paths) => stageMutation.mutate({ repoPath: diffCtx.repoPath, paths })}
+						onUnstage={(paths) => unstageMutation.mutate({ repoPath: diffCtx.repoPath, paths })}
+					/>
+				)}
+				{!isLoading && activeWorkspaceId && !hasStatusData && files && files.length > 0 && (
+					<FileTree
+						files={files}
+						diffCtx={diffCtx}
+						workspaceId={activeWorkspaceId}
+						actionButton={
+							diffCtx.type === "working-tree"
+								? {
+										icon: "+",
+										title: "Stage file",
+										onClick: (path) =>
+											stageMutation.mutate({
+												repoPath: diffCtx.repoPath,
+												paths: [path],
+											}),
+									}
+								: undefined
+						}
+					/>
+				)}
+				{!isLoading && activeWorkspaceId && !hasStatusData && files && files.length === 0 && (
+					<div className="px-3 py-2 text-[12px] text-[var(--text-quaternary)]">No changes</div>
+				)}
+			</div>
 
 			{showExtensions && <ExtensionManager onClose={() => setShowExtensions(false)} />}
 		</div>
