@@ -1,6 +1,13 @@
 import * as monaco from "monaco-editor";
 import { useEffect, useRef } from "react";
 import { EDITOR_THEME, ensureThemeRegistered } from "../lib/monacoTheme";
+import {
+	registerLspProviders,
+	sendDidChange,
+	sendDidClose,
+	sendDidOpen,
+	setModelRepoPath,
+} from "../lsp/monaco-lsp-bridge";
 import { trpc } from "../trpc/client";
 
 interface FileEditorProps {
@@ -41,10 +48,10 @@ export function FileEditor({ repoPath, filePath, language, initialPosition }: Fi
 			editor.dispose();
 			editorRef.current = null;
 		};
-		// biome-ignore lint/correctness/useExhaustiveDependencies: editor created once on mount
 	}, []);
 
 	// Load content into editor when query data arrives or language changes
+	// biome-ignore lint/correctness/useExhaustiveDependencies: saveMutation.mutate identity is stable
 	useEffect(() => {
 		const editor = editorRef.current;
 		if (!editor || !data) return;
@@ -52,7 +59,10 @@ export function FileEditor({ repoPath, filePath, language, initialPosition }: Fi
 		const prev = editor.getModel();
 		if (prev) prev.dispose();
 
-		const model = monaco.editor.createModel(data.content, language);
+		const fileUri = monaco.Uri.file(`${repoPath}/${filePath}`);
+		const existingModel = monaco.editor.getModel(fileUri);
+		if (existingModel) existingModel.dispose();
+		const model = monaco.editor.createModel(data.content, language, fileUri);
 		editor.setModel(model);
 
 		if (initialPosition) {
@@ -60,19 +70,39 @@ export function FileEditor({ repoPath, filePath, language, initialPosition }: Fi
 			editor.revealPositionInCenter(initialPosition);
 		}
 
+		// LSP integration
+		const uri = model.uri.toString();
+		const supportedLspLanguages = ["typescript", "javascript", "python"];
+		const lspEnabled = supportedLspLanguages.includes(language);
+
+		if (lspEnabled) {
+			setModelRepoPath(uri, repoPath);
+			registerLspProviders(language);
+			sendDidOpen(repoPath, language, uri, data.content);
+		}
+
+		let version = 1;
+
 		const sub = model.onDidChangeContent(() => {
 			if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
 			saveTimerRef.current = setTimeout(() => {
 				saveMutation.mutate({ repoPath, filePath, content: model.getValue() });
 			}, 500);
+
+			if (lspEnabled) {
+				version++;
+				sendDidChange(repoPath, language, uri, model.getValue(), version);
+			}
 		});
 
 		return () => {
 			sub.dispose();
 			if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+			if (lspEnabled) {
+				sendDidClose(repoPath, language, uri);
+			}
 			model.dispose();
 		};
-		// biome-ignore lint/correctness/useExhaustiveDependencies: saveMutation identity is stable
 	}, [data, language, repoPath, filePath, initialPosition]);
 
 	if (isLoading) {
