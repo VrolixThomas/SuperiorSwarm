@@ -64,6 +64,62 @@ export function countFiles(entry: CandidateEntry): number {
 	return entry.children.reduce((sum, child) => sum + countFiles(child), 0);
 }
 
+/**
+ * Like buildCandidateTree, but groups files under their topmost *gitignored*
+ * ancestor directory. Files with no gitignored ancestor appear as root-level
+ * file entries with their full relative path as the name.
+ */
+export function buildSmartCandidateTree(
+	paths: string[],
+	isIgnoredDir: (dirPath: string) => boolean,
+): CandidateEntry[] {
+	if (paths.length === 0) return [];
+
+	const ignoredDirGroups = new Map<string, string[]>();
+	const directFiles: string[] = [];
+
+	for (const filePath of paths) {
+		const parts = filePath.split("/");
+		let foundRoot: string | null = null;
+		for (let i = 1; i < parts.length; i++) {
+			const prefix = parts.slice(0, i).join("/");
+			if (isIgnoredDir(prefix)) {
+				foundRoot = prefix;
+				break;
+			}
+		}
+		if (foundRoot !== null) {
+			if (!ignoredDirGroups.has(foundRoot)) ignoredDirGroups.set(foundRoot, []);
+			ignoredDirGroups.get(foundRoot)!.push(filePath);
+		} else {
+			directFiles.push(filePath);
+		}
+	}
+
+	const result: CandidateEntry[] = [];
+
+	// Direct files first (individually gitignored, parent dir is not ignored)
+	for (const filePath of directFiles.sort()) {
+		result.push({ name: filePath, relativePath: filePath, type: "file" });
+	}
+
+	// Gitignored directories second, sorted alphabetically
+	for (const [ignoredDir, filePaths] of [...ignoredDirGroups.entries()].sort()) {
+		const childPaths = filePaths.map((p) => p.slice(ignoredDir.length + 1));
+		const children = buildCandidateTree(childPaths);
+		fixRelativePaths(children, ignoredDir);
+		const dirName = ignoredDir.split("/").pop()!;
+		result.push({
+			name: dirName,
+			relativePath: ignoredDir,
+			type: "directory",
+			children,
+		});
+	}
+
+	return result;
+}
+
 function fixRelativePaths(entries: CandidateEntry[], prefix: string): void {
 	for (const entry of entries) {
 		entry.relativePath = `${prefix}/${entry.relativePath}`;
