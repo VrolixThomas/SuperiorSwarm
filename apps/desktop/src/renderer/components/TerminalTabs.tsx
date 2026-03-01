@@ -1,5 +1,8 @@
 import { Fragment, useCallback, useRef } from "react";
+import { useShallow } from "zustand/react/shallow";
+import type { TerminalTab } from "../stores/terminal";
 import { useTerminalStore } from "../stores/terminal";
+import { trpc } from "../trpc/client";
 
 function Tab({
 	tab,
@@ -7,7 +10,7 @@ function Tab({
 	onSelect,
 	onClose,
 }: {
-	tab: { id: string; title: string };
+	tab: TerminalTab;
 	isActive: boolean;
 	onSelect: () => void;
 	onClose: () => void;
@@ -76,7 +79,14 @@ function Tab({
 }
 
 export function TerminalTabs() {
-	const { tabs, activeTabId, setActiveTab, removeTab, addTab } = useTerminalStore();
+	const tabs = useTerminalStore(useShallow((s) => s.getVisibleTabs()));
+	const activeTabId = useTerminalStore((s) => s.activeTabId);
+	const setActiveTab = useTerminalStore((s) => s.setActiveTab);
+	const removeTab = useTerminalStore((s) => s.removeTab);
+	const addTab = useTerminalStore((s) => s.addTab);
+	const activeWorkspaceId = useTerminalStore((s) => s.activeWorkspaceId);
+	const activeWorkspaceCwd = useTerminalStore((s) => s.activeWorkspaceCwd);
+	const detachMutation = trpc.workspaces.detachTerminal.useMutation();
 
 	return (
 		<div
@@ -89,7 +99,7 @@ export function TerminalTabs() {
 			>
 				{tabs.map((tab, i) => {
 					const isActive = tab.id === activeTabId;
-					const prevIsActive = i > 0 && tabs[i - 1].id === activeTabId;
+					const prevIsActive = i > 0 && tabs[i - 1]?.id === activeTabId;
 
 					return (
 						<Fragment key={tab.id}>
@@ -102,7 +112,12 @@ export function TerminalTabs() {
 								tab={tab}
 								isActive={isActive}
 								onSelect={() => setActiveTab(tab.id)}
-								onClose={() => removeTab(tab.id)}
+								onClose={() => {
+									if (tab.workspaceId) {
+										detachMutation.mutate({ workspaceId: tab.workspaceId });
+									}
+									removeTab(tab.id);
+								}}
 							/>
 						</Fragment>
 					);
@@ -113,8 +128,12 @@ export function TerminalTabs() {
 				<button
 					type="button"
 					aria-label="New tab"
-					onClick={addTab}
-					className="flex h-[30px] w-[30px] items-center justify-center rounded-[6px] border-none bg-transparent text-[var(--text-quaternary)] transition-all duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-tertiary)]"
+					disabled={!activeWorkspaceId}
+					onClick={() => {
+						if (!activeWorkspaceId) return;
+						addTab(activeWorkspaceId, activeWorkspaceCwd);
+					}}
+					className="flex h-[30px] w-[30px] items-center justify-center rounded-[6px] border-none bg-transparent text-[var(--text-quaternary)] transition-all duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-tertiary)] disabled:opacity-30 disabled:cursor-default"
 					style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
 				>
 					<svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none">
