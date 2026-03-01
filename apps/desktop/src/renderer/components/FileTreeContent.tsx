@@ -120,7 +120,9 @@ export function FileTreeContent({ diffCtx, workspaceId }: FileTreeContentProps) 
 						Loading...
 					</div>
 				)}
-				{!isLoading && files && files.length > 0 && <FileTree files={files} />}
+				{!isLoading && files && files.length > 0 && (
+					<FileTree files={files} diffCtx={diffCtx} workspaceId={workspaceId} />
+				)}
 				{!isLoading && files && files.length === 0 && (
 					<div className="px-3 py-2 text-[12px] text-[var(--text-quaternary)]">No changes</div>
 				)}

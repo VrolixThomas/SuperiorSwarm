@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
-import type { DiffContext } from "../stores/diff";
-import { useDiffStore } from "../stores/diff";
+import type { DiffContext } from "../../shared/diff-types";
+import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import { DiffEditor } from "./DiffEditor";
 
@@ -22,7 +22,8 @@ function refsForContext(ctx: DiffContext): { originalRef: string; modifiedRef: s
 }
 
 export function DiffFileTab({ diffCtx, filePath, language }: DiffFileTabProps) {
-	const { diffMode, setDiffMode } = useDiffStore();
+	const diffMode = useTabStore((s) => s.diffMode);
+	const setDiffMode = useTabStore((s) => s.setDiffMode);
 	const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 	useEffect(() => {
@@ -37,12 +38,12 @@ export function DiffFileTab({ diffCtx, filePath, language }: DiffFileTabProps) {
 
 	const originalQuery = trpc.diff.getFileContent.useQuery(
 		{ repoPath: diffCtx.repoPath, ref: originalRef, filePath },
-		{ staleTime: 30_000 },
+		{ staleTime: 30_000 }
 	);
 
 	const modifiedQuery = trpc.diff.getFileContent.useQuery(
 		{ repoPath: diffCtx.repoPath, ref: modifiedRef, filePath },
-		{ staleTime: diffCtx.type === "working-tree" ? 5_000 : 30_000 },
+		{ staleTime: diffCtx.type === "working-tree" ? 5_000 : 30_000 }
 	);
 
 	function handleModifiedChange(content: string) {

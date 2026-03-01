@@ -1,8 +1,8 @@
 import { useState } from "react";
+import type { DiffContext } from "../../shared/diff-types";
 import type { DiffFile } from "../../shared/diff-types";
 import { detectLanguage } from "../../shared/diff-types";
-import { useDiffStore } from "../stores/diff";
-import { useTabsStore } from "../stores/tabs";
+import { useTabStore } from "../stores/tab-store";
 
 interface TreeNode {
 	name: string;
@@ -45,25 +45,21 @@ const STATUS_LABELS: Record<DiffFile["status"], string> = {
 	binary: "B",
 };
 
-function FileNode({ node }: { node: TreeNode }) {
-	const { openFileTab, fileTabs, activePane } = useTabsStore();
-	const { activeDiff } = useDiffStore();
+function FileNode({
+	node,
+	diffCtx,
+	workspaceId,
+}: { node: TreeNode; diffCtx: DiffContext; workspaceId: string }) {
+	const activeTabId = useTabStore((s) => s.activeTabId);
+	const tabs = useTabStore((s) => s.tabs);
+	const openDiffFile = useTabStore((s) => s.openDiffFile);
 	const file = node.file!;
 
-	const isActive =
-		activePane.kind === "file" &&
-		fileTabs.find((t) => t.id === activePane.tabId)?.filePath === file.path;
+	const activeTab = tabs.find((t) => t.id === activeTabId);
+	const isActive = activeTab?.kind === "diff-file" && activeTab.filePath === file.path;
 
 	function handleClick() {
-		if (!activeDiff) return;
-		const filename = file.path.split("/").pop() ?? file.path;
-		openFileTab({
-			type: "diff-file",
-			diffCtx: activeDiff,
-			filePath: file.path,
-			title: filename,
-			language: detectLanguage(file.path),
-		});
+		openDiffFile(workspaceId, diffCtx, file.path, detectLanguage(file.path));
 	}
 
 	return (
@@ -91,10 +87,14 @@ function FileNode({ node }: { node: TreeNode }) {
 	);
 }
 
-function FolderNode({ node, depth }: { node: TreeNode; depth: number }) {
+function FolderNode({
+	node,
+	depth,
+	diffCtx,
+	workspaceId,
+}: { node: TreeNode; depth: number; diffCtx: DiffContext; workspaceId: string }) {
 	const [expanded, setExpanded] = useState(true);
 	const children = Object.values(node.children).sort((a, b) => {
-		// Folders before files
 		const aIsFolder = Object.keys(a.children).length > 0;
 		const bIsFolder = Object.keys(b.children).length > 0;
 		if (aIsFolder && !bIsFolder) return -1;
@@ -117,16 +117,26 @@ function FolderNode({ node, depth }: { node: TreeNode; depth: number }) {
 			{expanded &&
 				children.map((child) =>
 					child.file ? (
-						<FileNode key={child.path} node={child} />
+						<FileNode key={child.path} node={child} diffCtx={diffCtx} workspaceId={workspaceId} />
 					) : (
-						<FolderNode key={child.path} node={child} depth={depth + 1} />
+						<FolderNode
+							key={child.path}
+							node={child}
+							depth={depth + 1}
+							diffCtx={diffCtx}
+							workspaceId={workspaceId}
+						/>
 					)
 				)}
 		</div>
 	);
 }
 
-export function FileTree({ files }: { files: DiffFile[] }) {
+export function FileTree({
+	files,
+	diffCtx,
+	workspaceId,
+}: { files: DiffFile[]; diffCtx: DiffContext; workspaceId: string }) {
 	const root = buildTree(files);
-	return <FolderNode node={root} depth={0} />;
+	return <FolderNode node={root} depth={0} diffCtx={diffCtx} workspaceId={workspaceId} />;
 }

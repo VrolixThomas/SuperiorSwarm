@@ -1,94 +1,59 @@
 import { Fragment, useCallback, useRef } from "react";
 import { useShallow } from "zustand/react/shallow";
-import type { FileTab } from "../stores/tabs";
-import { useTabsStore } from "../stores/tabs";
-import type { TerminalTab } from "../stores/terminal";
-import { useTerminalStore } from "../stores/terminal";
+import type { TabItem } from "../stores/tab-store";
+import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 
-// ─── Terminal tab pill ───────────────────────────────────────────────────────
+// ─── Tab kind visual config ─────────────────────────────────────────────────
 
-function TerminalTabPill({
-	tab,
-	isActive,
-	onSelect,
-	onClose,
-}: {
-	tab: TerminalTab;
-	isActive: boolean;
-	onSelect: () => void;
-	onClose: () => void;
-}) {
-	const closeRef = useRef<HTMLButtonElement>(null);
-	const showClose = useCallback(() => {
-		if (!isActive && closeRef.current) closeRef.current.style.opacity = "1";
-	}, [isActive]);
-	const hideClose = useCallback(() => {
-		if (!isActive && closeRef.current) closeRef.current.style.opacity = "0";
-	}, [isActive]);
-
-	return (
-		<div
-			role="tab"
-			tabIndex={0}
-			aria-selected={isActive}
-			onClick={onSelect}
-			onKeyDown={(e) => {
-				if (e.key === "Enter" || e.key === " ") {
-					e.preventDefault();
-					onSelect();
-				}
-			}}
-			onMouseEnter={showClose}
-			onMouseLeave={hideClose}
-			className={`group relative flex h-[36px] max-w-[220px] shrink-0 cursor-pointer select-none items-center gap-2 rounded-[7px] pl-3 pr-2 text-[13px] transition-all duration-[120ms] ${
-				isActive
-					? "bg-[var(--tab-active-bg)] text-[var(--text)] shadow-[0_1px_3px_rgba(0,0,0,0.4),inset_0_0.5px_0_rgba(255,255,255,0.04)]"
-					: "bg-[var(--tab-inactive-bg)] text-[var(--text-tertiary)] hover:bg-[rgba(255,255,255,0.04)] hover:text-[var(--text-secondary)]"
-			}`}
-			style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-		>
-			{isActive && (
-				<span className="absolute inset-x-2.5 bottom-0 h-[2px] rounded-full bg-[var(--accent)]" />
-			)}
+function TabIcon({ kind }: { kind: TabItem["kind"] }) {
+	if (kind === "terminal") {
+		return (
 			<span className="shrink-0 font-mono text-[10px] text-[var(--text-quaternary)]">&gt;_</span>
-			<span className="min-w-0 truncate">{tab.title}</span>
-			<button
-				type="button"
-				ref={closeRef}
-				aria-label="Close tab"
-				onClick={(e) => {
-					e.stopPropagation();
-					onClose();
-				}}
-				className={`flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-[5px] border-none bg-transparent p-0 transition-all duration-[120ms] hover:bg-[var(--bg-overlay)] hover:text-[var(--text)] ${
-					isActive
-						? "text-[var(--text-tertiary)] opacity-100"
-						: "text-[var(--text-quaternary)] opacity-0"
-				}`}
+		);
+	}
+	if (kind === "diff-file") {
+		return (
+			<span className="shrink-0 h-[6px] w-[6px] rounded-full bg-[var(--term-yellow)] opacity-70" />
+		);
+	}
+	if (kind === "file-tree") {
+		return (
+			<svg
+				aria-hidden="true"
+				width="11"
+				height="11"
+				viewBox="0 0 16 16"
+				fill="none"
+				className="shrink-0 text-[var(--text-quaternary)]"
 			>
-				<svg aria-hidden="true" width="9" height="9" viewBox="0 0 9 9" fill="none">
-					<path
-						d="M2 2l5 5M7 2l-5 5"
-						stroke="currentColor"
-						strokeWidth="1.4"
-						strokeLinecap="round"
-					/>
-				</svg>
-			</button>
-		</div>
-	);
+				<path
+					d="M2 3h5l2 2h5v8H2V3z"
+					stroke="currentColor"
+					strokeWidth="1.3"
+					strokeLinejoin="round"
+					fill="none"
+				/>
+			</svg>
+		);
+	}
+	// "file" kind — no special icon
+	return null;
 }
 
-// ─── File tab pill ───────────────────────────────────────────────────────────
+function accentColor(kind: TabItem["kind"]): string {
+	return kind === "diff-file" ? "bg-[var(--term-yellow)]" : "bg-[var(--accent)]";
+}
 
-function FileTabPill({
+// ─── Unified tab pill ────────────────────────────────────────────────────────
+
+function TabPill({
 	tab,
 	isActive,
 	onSelect,
 	onClose,
 }: {
-	tab: FileTab;
+	tab: TabItem;
 	isActive: boolean;
 	onSelect: () => void;
 	onClose: () => void;
@@ -100,8 +65,6 @@ function FileTabPill({
 	const hideClose = useCallback(() => {
 		if (!isActive && closeRef.current) closeRef.current.style.opacity = "0";
 	}, [isActive]);
-
-	const isDiffFile = tab.type === "diff-file";
 
 	return (
 		<div
@@ -126,14 +89,10 @@ function FileTabPill({
 		>
 			{isActive && (
 				<span
-					className={`absolute inset-x-2.5 bottom-0 h-[2px] rounded-full ${
-						isDiffFile ? "bg-[var(--term-yellow)]" : "bg-[var(--accent)]"
-					}`}
+					className={`absolute inset-x-2.5 bottom-0 h-[2px] rounded-full ${accentColor(tab.kind)}`}
 				/>
 			)}
-			{isDiffFile && (
-				<span className="shrink-0 h-[6px] w-[6px] rounded-full bg-[var(--term-yellow)] opacity-70" />
-			)}
+			<TabIcon kind={tab.kind} />
 			<span className="min-w-0 truncate">{tab.title}</span>
 			<button
 				type="button"
@@ -165,19 +124,16 @@ function FileTabPill({
 // ─── Main TabBar ─────────────────────────────────────────────────────────────
 
 export function TabBar() {
-	const terminalTabs = useTerminalStore(useShallow((s) => s.getVisibleTabs()));
-	const activeTerminalTabId = useTerminalStore((s) => s.activeTabId);
-	const setTerminalActiveTab = useTerminalStore((s) => s.setActiveTab);
-	const removeTerminalTab = useTerminalStore((s) => s.removeTab);
-	const addTerminalTab = useTerminalStore((s) => s.addTab);
-	const activeWorkspaceId = useTerminalStore((s) => s.activeWorkspaceId);
-	const activeWorkspaceCwd = useTerminalStore((s) => s.activeWorkspaceCwd);
-
-	const { fileTabs, activePane, closeFileTab, setActivePane } = useTabsStore();
+	const visibleTabs = useTabStore(useShallow((s) => s.getVisibleTabs()));
+	const activeTabId = useTabStore((s) => s.activeTabId);
+	const setActiveTab = useTabStore((s) => s.setActiveTab);
+	const removeTab = useTabStore((s) => s.removeTab);
+	const addTerminalTab = useTabStore((s) => s.addTerminalTab);
+	const closeDiff = useTabStore((s) => s.closeDiff);
+	const activeWorkspaceId = useTabStore((s) => s.activeWorkspaceId);
+	const activeWorkspaceCwd = useTabStore((s) => s.activeWorkspaceCwd);
 
 	const detachMutation = trpc.workspaces.detachTerminal.useMutation();
-
-	const isTerminalPaneActive = activePane.kind === "terminal";
 
 	return (
 		<div
@@ -188,13 +144,9 @@ export function TabBar() {
 				role="tablist"
 				className="scrollbar-hide flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto px-1 pb-[7px]"
 			>
-				{/* Terminal tabs */}
-				{terminalTabs.map((tab, i) => {
-					const isActive = isTerminalPaneActive && tab.id === activeTerminalTabId;
-					const prevIsActive =
-						i > 0 &&
-						isTerminalPaneActive &&
-						terminalTabs[i - 1]?.id === activeTerminalTabId;
+				{visibleTabs.map((tab, i) => {
+					const isActive = tab.id === activeTabId;
+					const prevIsActive = i > 0 && visibleTabs[i - 1]?.id === activeTabId;
 
 					return (
 						<Fragment key={tab.id}>
@@ -202,41 +154,24 @@ export function TabBar() {
 								<div className="mx-px h-[14px] w-px shrink-0 rounded-full bg-[var(--border)]" />
 							)}
 							{i > 0 && (isActive || prevIsActive) && <div className="w-1 shrink-0" />}
-							<TerminalTabPill
+							<TabPill
 								tab={tab}
 								isActive={isActive}
-								onSelect={() => {
-									setTerminalActiveTab(tab.id);
-									setActivePane({ kind: "terminal" });
-								}}
+								onSelect={() => setActiveTab(tab.id)}
 								onClose={() => {
-									if (tab.workspaceId) {
-										detachMutation.mutate({ workspaceId: tab.workspaceId });
+									if (tab.kind === "terminal" && tab.workspaceId) {
+										detachMutation.mutate({
+											workspaceId: tab.workspaceId,
+										});
 									}
-									removeTerminalTab(tab.id);
+									if (tab.kind === "file-tree" && activeWorkspaceId) {
+										closeDiff(activeWorkspaceId, tab.diffCtx.repoPath);
+										return;
+									}
+									removeTab(tab.id);
 								}}
 							/>
 						</Fragment>
-					);
-				})}
-
-				{/* Divider between terminal and file tabs */}
-				{terminalTabs.length > 0 && fileTabs.length > 0 && (
-					<div className="mx-1 h-[14px] w-px shrink-0 rounded-full bg-[var(--border)]" />
-				)}
-
-				{/* File/diff tabs */}
-				{fileTabs.map((tab) => {
-					const isActive =
-						activePane.kind === "file" && activePane.tabId === tab.id;
-					return (
-						<FileTabPill
-							key={tab.id}
-							tab={tab}
-							isActive={isActive}
-							onSelect={() => setActivePane({ kind: "file", tabId: tab.id })}
-							onClose={() => closeFileTab(tab.id)}
-						/>
 					);
 				})}
 			</div>
@@ -249,9 +184,7 @@ export function TabBar() {
 					disabled={!activeWorkspaceId}
 					onClick={() => {
 						if (!activeWorkspaceId) return;
-						const id = addTerminalTab(activeWorkspaceId, activeWorkspaceCwd);
-						setTerminalActiveTab(id);
-						setActivePane({ kind: "terminal" });
+						addTerminalTab(activeWorkspaceId, activeWorkspaceCwd);
 					}}
 					className="flex h-[30px] w-[30px] items-center justify-center rounded-[6px] border-none bg-transparent text-[var(--text-quaternary)] transition-all duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-tertiary)] disabled:cursor-default disabled:opacity-30"
 					style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
