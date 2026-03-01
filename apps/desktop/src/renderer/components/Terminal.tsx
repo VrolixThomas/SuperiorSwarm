@@ -10,7 +10,7 @@ import type { ITheme } from "@xterm/xterm";
 import { Terminal as XTerm } from "@xterm/xterm";
 import { useEffect, useRef } from "react";
 import { CmdBuffer } from "../../shared/lib/cmd-buffer";
-import { useTerminalStore } from "../stores/terminal";
+import { useTabStore } from "../stores/tab-store";
 
 // Global registry: maps tab id → serialize function
 // Used by the session save logic to collect scrollback from all mounted terminals
@@ -205,7 +205,7 @@ export function Terminal({
 
 			const MAX_TITLE = 48;
 			const truncTitle = (t: string) => (t.length > MAX_TITLE ? `${t.slice(0, MAX_TITLE)}…` : t);
-			const setTitle = (title: string) => useTerminalStore.getState().updateTabTitle(id, title);
+			const setTitle = (title: string) => useTabStore.getState().updateTabTitle(id, title);
 
 			// onTitleChange fires when the shell sends OSC 0/2 (fish, oh-my-zsh, etc.).
 			// When active, it takes priority over the command-buffer heuristic.

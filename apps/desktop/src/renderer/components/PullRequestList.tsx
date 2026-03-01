@@ -1,17 +1,24 @@
-import { useDiffStore } from "../stores/diff";
+import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 
 export function PullRequestList() {
-	const { data: myPRs, isLoading: loadingMy } = trpc.atlassian.getMyPullRequests.useQuery(undefined, {
-		staleTime: 30_000,
-		refetchInterval: 60_000,
-	});
-	const { data: reviewPRs, isLoading: loadingReviews } = trpc.atlassian.getReviewRequests.useQuery(undefined, {
-		staleTime: 30_000,
-		refetchInterval: 60_000,
-	});
+	const { data: myPRs, isLoading: loadingMy } = trpc.atlassian.getMyPullRequests.useQuery(
+		undefined,
+		{
+			staleTime: 30_000,
+			refetchInterval: 60_000,
+		}
+	);
+	const { data: reviewPRs, isLoading: loadingReviews } = trpc.atlassian.getReviewRequests.useQuery(
+		undefined,
+		{
+			staleTime: 30_000,
+			refetchInterval: 60_000,
+		}
+	);
 
-	const setActiveDiff = useDiffStore((s) => s.setActiveDiff);
+	const openDiff = useTabStore((s) => s.openDiff);
+	const activeWorkspaceId = useTabStore((s) => s.activeWorkspaceId);
 
 	const isLoading = loadingMy || loadingReviews;
 	const totalCount = (myPRs?.length ?? 0) + (reviewPRs?.length ?? 0);
@@ -32,7 +39,10 @@ export function PullRequestList() {
 						My PRs ({myPRs.length})
 					</div>
 					{myPRs.map((pr) => (
-						<div key={`my-${pr.workspace}-${pr.repoSlug}-${pr.id}`} className="flex items-center gap-0.5">
+						<div
+							key={`my-${pr.workspace}-${pr.repoSlug}-${pr.id}`}
+							className="flex items-center gap-0.5"
+						>
 							<button
 								type="button"
 								onClick={() => window.electron.shell.openExternal(pr.webUrl)}
@@ -45,7 +55,7 @@ export function PullRequestList() {
 							<button
 								type="button"
 								onClick={() =>
-									setActiveDiff({
+									openDiff(activeWorkspaceId ?? "", {
 										type: "pr",
 										prId: pr.id,
 										workspaceSlug: pr.workspace,
@@ -72,7 +82,10 @@ export function PullRequestList() {
 						Reviews ({reviewPRs.length})
 					</div>
 					{reviewPRs.map((pr) => (
-						<div key={`review-${pr.workspace}-${pr.repoSlug}-${pr.id}`} className="flex items-center gap-0.5">
+						<div
+							key={`review-${pr.workspace}-${pr.repoSlug}-${pr.id}`}
+							className="flex items-center gap-0.5"
+						>
 							<button
 								type="button"
 								onClick={() => window.electron.shell.openExternal(pr.webUrl)}
@@ -85,7 +98,7 @@ export function PullRequestList() {
 							<button
 								type="button"
 								onClick={() =>
-									setActiveDiff({
+									openDiff(activeWorkspaceId ?? "", {
 										type: "pr",
 										prId: pr.id,
 										workspaceSlug: pr.workspace,

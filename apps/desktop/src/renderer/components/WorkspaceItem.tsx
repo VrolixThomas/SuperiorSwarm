@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useDiffStore } from "../stores/diff";
-import { useTerminalStore } from "../stores/terminal";
+import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 
 interface WorkspaceData {
@@ -129,8 +128,8 @@ export function WorkspaceItem({ workspace, projectName, projectRepoPath }: Works
 	const deleteWorkspaceRef = useRef(deleteWorkspace.mutate);
 	deleteWorkspaceRef.current = deleteWorkspace.mutate;
 
-	const isActive = useTerminalStore((s) => s.activeWorkspaceId === workspace.id);
-	const setActiveDiff = useDiffStore((s) => s.setActiveDiff);
+	const isActive = useTabStore((s) => s.activeWorkspaceId === workspace.id);
+	const openDiff = useTabStore((s) => s.openDiff);
 
 	const handleClick = useCallback(() => {
 		const cwd =
@@ -138,16 +137,14 @@ export function WorkspaceItem({ workspace, projectName, projectRepoPath }: Works
 				? workspace.worktreePath
 				: projectRepoPath;
 
-		const store = useTerminalStore.getState();
+		const store = useTabStore.getState();
 		store.setActiveWorkspace(workspace.id, cwd);
 
-		// Auto-create first terminal if none exist for this workspace.
-		// PTY creation is handled by the Terminal component's useEffect — only
-		// add the tab to the store here; mounting <Terminal> spawns the PTY.
 		const existing = store.getTabsByWorkspace(workspace.id);
-		if (existing.length === 0) {
+		const hasTerminal = existing.some((t) => t.kind === "terminal");
+		if (!hasTerminal) {
 			const title = `${projectName}: ${workspace.name}`;
-			const tabId = store.addTab(workspace.id, cwd, title);
+			const tabId = store.addTerminalTab(workspace.id, cwd, title);
 
 			attachTerminalRef.current({
 				workspaceId: workspace.id,
@@ -168,10 +165,12 @@ export function WorkspaceItem({ workspace, projectName, projectRepoPath }: Works
 			`Delete worktree "${workspace.name}"? This will remove the worktree directory.`
 		);
 		if (confirmed) {
-			const store = useTerminalStore.getState();
+			const store = useTabStore.getState();
 			const wsTabs = store.getTabsByWorkspace(workspace.id);
 			for (const tab of wsTabs) {
-				window.electron.terminal.dispose(tab.id);
+				if (tab.kind === "terminal") {
+					window.electron.terminal.dispose(tab.id);
+				}
 				store.removeTab(tab.id);
 			}
 			if (store.activeWorkspaceId === workspace.id) {
@@ -209,7 +208,7 @@ export function WorkspaceItem({ workspace, projectName, projectRepoPath }: Works
 				type="button"
 				onClick={(e) => {
 					e.stopPropagation();
-					setActiveDiff({
+					openDiff(workspace.id, {
 						type: "working-tree",
 						repoPath:
 							workspace.type === "worktree" && workspace.worktreePath
