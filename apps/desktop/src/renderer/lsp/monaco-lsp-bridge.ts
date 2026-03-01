@@ -252,10 +252,71 @@ export function disposeProviders(languageId: string): void {
 	}
 }
 
+let diagnosticsCleanup: (() => void) | null = null;
+
+export function setupDiagnosticsListener(): void {
+	if (diagnosticsCleanup) return;
+
+	diagnosticsCleanup = window.electron.lsp.onNotification(
+		(_serverId, method, params) => {
+			if (method !== "textDocument/publishDiagnostics") return;
+			const { uri, diagnostics } = params as {
+				uri: string;
+				diagnostics: Array<{
+					range: {
+						start: { line: number; character: number };
+						end: { line: number; character: number };
+					};
+					message: string;
+					severity?: number;
+					source?: string;
+					code?: number | string;
+				}>;
+			};
+
+			const modelUri = monaco.Uri.parse(uri);
+			const model = monaco.editor.getModel(modelUri);
+			if (!model) return;
+
+			const markers: monaco.editor.IMarkerData[] = diagnostics.map((d) => ({
+				startLineNumber: d.range.start.line + 1,
+				startColumn: d.range.start.character + 1,
+				endLineNumber: d.range.end.line + 1,
+				endColumn: d.range.end.character + 1,
+				message: d.message,
+				severity: convertSeverity(d.severity),
+				source: d.source,
+				code: d.code?.toString(),
+			}));
+
+			monaco.editor.setModelMarkers(model, "lsp", markers);
+		},
+	);
+}
+
+function convertSeverity(severity?: number): monaco.MarkerSeverity {
+	switch (severity) {
+		case 1:
+			return monaco.MarkerSeverity.Error;
+		case 2:
+			return monaco.MarkerSeverity.Warning;
+		case 3:
+			return monaco.MarkerSeverity.Info;
+		case 4:
+			return monaco.MarkerSeverity.Hint;
+		default:
+			return monaco.MarkerSeverity.Error;
+	}
+}
+
 export function disposeAllProviders(): void {
 	for (const [, toDispose] of disposables) {
 		for (const d of toDispose) d.dispose();
 	}
 	disposables.clear();
 	modelRepoMap.clear();
+	if (diagnosticsCleanup) {
+		diagnosticsCleanup();
+		diagnosticsCleanup = null;
+	}
 }

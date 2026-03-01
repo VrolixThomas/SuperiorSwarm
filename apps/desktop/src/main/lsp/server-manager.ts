@@ -1,5 +1,6 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { pathToFileURL } from "node:url";
+import type { BrowserWindow } from "electron";
 import {
 	type InitializeParams,
 	type MessageConnection,
@@ -46,6 +47,11 @@ export class ServerManager {
 	private restartCounts = new Map<string, number>();
 	private restartTimers = new Set<ReturnType<typeof setTimeout>>();
 	private static MAX_RESTARTS = 3;
+	private mainWindow: BrowserWindow | null = null;
+
+	setMainWindow(window: BrowserWindow): void {
+		this.mainWindow = window;
+	}
 
 	private serverKey(configId: string, repoPath: string): string {
 		return `${configId}:${repoPath}`;
@@ -160,6 +166,15 @@ export class ServerManager {
 			await connection.sendRequest("initialize", initParams);
 			connection.sendNotification("initialized", {});
 			instance.initialized = true;
+
+			connection.onNotification("textDocument/publishDiagnostics", (params) => {
+				this.mainWindow?.webContents.send(
+					"lsp:notification-from-server",
+					config.id,
+					"textDocument/publishDiagnostics",
+					params
+				);
+			});
 
 			return connection;
 		} catch (err) {
