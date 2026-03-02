@@ -9,10 +9,7 @@ export interface FileEntry {
 	size?: number;
 }
 
-export async function listDirectory(
-	repoPath: string,
-	dirPath: string = "",
-): Promise<FileEntry[]> {
+export async function listDirectory(repoPath: string, dirPath = ""): Promise<FileEntry[]> {
 	const fullDir = dirPath ? join(repoPath, dirPath) : repoPath;
 
 	const git = simpleGit(repoPath);

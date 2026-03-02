@@ -71,7 +71,7 @@ function ExplorerFolderNode({
 
 	const dirQuery = trpc.diff.listDirectory.useQuery(
 		{ repoPath, dirPath: entry.path },
-		{ enabled: expanded, staleTime: 30_000 },
+		{ enabled: expanded, staleTime: 30_000 }
 	);
 
 	const children = dirQuery.data?.entries ?? [];
@@ -103,7 +103,7 @@ function ExplorerFolderNode({
 							repoPath={repoPath}
 							workspaceId={workspaceId}
 						/>
-					),
+					)
 				)}
 			{expanded && dirQuery.isFetching && children.length === 0 && (
 				<div className="px-2 py-0.5 text-[11px] text-[var(--text-quaternary)]">Loading...</div>
@@ -119,10 +119,7 @@ export function RepoFileTree({
 	repoPath: string;
 	workspaceId: string;
 }) {
-	const rootQuery = trpc.diff.listDirectory.useQuery(
-		{ repoPath },
-		{ staleTime: 30_000 },
-	);
+	const rootQuery = trpc.diff.listDirectory.useQuery({ repoPath }, { staleTime: 30_000 });
 
 	if (rootQuery.isLoading) {
 		return (
@@ -158,7 +155,7 @@ export function RepoFileTree({
 						repoPath={repoPath}
 						workspaceId={workspaceId}
 					/>
-				),
+				)
 			)}
 		</div>
 	);

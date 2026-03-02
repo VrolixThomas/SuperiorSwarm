@@ -267,18 +267,8 @@ function DiffPanelContent({ diffCtx }: { diffCtx: DiffContext }) {
 						className="rounded p-0.5 text-[var(--text-quaternary)] hover:text-[var(--text-secondary)]"
 						title="Manage extensions"
 					>
-						<svg
-							aria-hidden="true"
-							width="11"
-							height="11"
-							viewBox="0 0 16 16"
-							fill="none"
-						>
-							<path
-								d="M8 10a2 2 0 100-4 2 2 0 000 4z"
-								stroke="currentColor"
-								strokeWidth="1.3"
-							/>
+						<svg aria-hidden="true" width="11" height="11" viewBox="0 0 16 16" fill="none">
+							<path d="M8 10a2 2 0 100-4 2 2 0 000 4z" stroke="currentColor" strokeWidth="1.3" />
 							<path
 								d="M13.5 8a5.5 5.5 0 01-.4 2M2.5 8a5.5 5.5 0 01.4-2M8 2.5a5.5 5.5 0 012 .4M8 13.5a5.5 5.5 0 01-2-.4"
 								stroke="currentColor"
@@ -313,9 +303,7 @@ function DiffPanelContent({ diffCtx }: { diffCtx: DiffContext }) {
 						diffCtx={diffCtx}
 						workspaceId={activeWorkspaceId}
 						onStage={(paths) => stageMutation.mutate({ repoPath: diffCtx.repoPath, paths })}
-						onUnstage={(paths) =>
-							unstageMutation.mutate({ repoPath: diffCtx.repoPath, paths })
-						}
+						onUnstage={(paths) => unstageMutation.mutate({ repoPath: diffCtx.repoPath, paths })}
 					/>
 				)}
 				{!isLoading && activeWorkspaceId && !hasStatusData && files && files.length > 0 && (
@@ -339,9 +327,7 @@ function DiffPanelContent({ diffCtx }: { diffCtx: DiffContext }) {
 					/>
 				)}
 				{!isLoading && activeWorkspaceId && !hasStatusData && files && files.length === 0 && (
-					<div className="px-3 py-2 text-[12px] text-[var(--text-quaternary)]">
-						No changes
-					</div>
+					<div className="px-3 py-2 text-[12px] text-[var(--text-quaternary)]">No changes</div>
 				)}
 			</div>
 
@@ -373,10 +359,7 @@ function ExplorerPanelContent() {
 					</div>
 				)}
 				{activeWorkspaceId && activeWorkspaceCwd && (
-					<RepoFileTree
-						repoPath={activeWorkspaceCwd}
-						workspaceId={activeWorkspaceId}
-					/>
+					<RepoFileTree repoPath={activeWorkspaceCwd} workspaceId={activeWorkspaceId} />
 				)}
 			</div>
 		</div>

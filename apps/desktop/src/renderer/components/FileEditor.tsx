@@ -105,13 +105,18 @@ export function FileEditor({ repoPath, filePath, language, initialPosition }: Fi
 		};
 	}, [data, language, repoPath, filePath, initialPosition]);
 
-	if (isLoading) {
-		return (
-			<div className="flex h-full items-center justify-center text-[13px] text-[var(--text-quaternary)]">
-				Loading…
-			</div>
-		);
-	}
-
-	return <div ref={containerRef} className="h-full w-full" />;
+	return (
+		<>
+			{isLoading && (
+				<div className="flex h-full items-center justify-center text-[13px] text-[var(--text-quaternary)]">
+					Loading…
+				</div>
+			)}
+			<div
+				ref={containerRef}
+				className="h-full w-full"
+				style={isLoading ? { display: "none" } : undefined}
+			/>
+		</>
+	);
 }
