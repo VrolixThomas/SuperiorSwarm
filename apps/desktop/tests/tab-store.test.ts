@@ -48,7 +48,7 @@ const prCtxB: DiffContext = {
 };
 
 function assertPanelOpen(
-	panel: RightPanelState,
+	panel: RightPanelState
 ): asserts panel is Extract<RightPanelState, { open: true }> {
 	expect(panel.open).toBe(true);
 }

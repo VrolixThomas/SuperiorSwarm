@@ -75,7 +75,7 @@ interface TabStore {
 		repoPath: string,
 		filePath: string,
 		language: string,
-		initialPosition?: { lineNumber: number; column: number },
+		initialPosition?: { lineNumber: number; column: number }
 	) => string;
 	setDiffMode: (mode: "split" | "inline") => void;
 
@@ -327,9 +327,7 @@ export const useTabStore = create<TabStore>((set, get) => ({
 			if (initialPosition && existing.kind === "file") {
 				set((s) => ({
 					tabs: s.tabs.map((t) =>
-						t.id === existing.id && t.kind === "file"
-							? { ...t, initialPosition }
-							: t
+						t.id === existing.id && t.kind === "file" ? { ...t, initialPosition } : t
 					),
 					activeTabId: existing.id,
 				}));
