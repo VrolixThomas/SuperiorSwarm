@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useProjectStore } from "../stores/projects";
 import { trpc } from "../trpc/client";
 
@@ -7,13 +7,23 @@ function CheckboxButton({ checked, onClick }: { checked: boolean; onClick: () =>
 		<button
 			type="button"
 			onClick={onClick}
-			className={`shrink-0 h-4 w-4 rounded border text-[10px] ${
+			className={`shrink-0 h-[14px] w-[14px] rounded-[3px] flex items-center justify-center transition-all duration-100 ${
 				checked
-					? "border-[var(--accent)] bg-[var(--accent)] text-white"
-					: "border-[var(--border)] text-transparent"
+					? "bg-[var(--accent)] border border-[var(--accent)]"
+					: "border border-[rgba(255,255,255,0.2)] hover:border-[rgba(255,255,255,0.45)]"
 			}`}
 		>
-			&#10003;
+			{checked && (
+				<svg width="8" height="6" viewBox="0 0 8 6" fill="none" aria-hidden="true">
+					<path
+						d="M1 3l2 2 4-4"
+						stroke="white"
+						strokeWidth="1.5"
+						strokeLinecap="round"
+						strokeLinejoin="round"
+					/>
+				</svg>
+			)}
 		</button>
 	);
 }
@@ -56,19 +66,22 @@ function CandidateNode({
 	searchQuery: string;
 }) {
 	if (entry.type === "file") {
-		if (searchQuery && !hasAnyMatch(entry, searchQuery)) {
-			return null;
-		}
+		if (searchQuery && !hasAnyMatch(entry, searchQuery)) return null;
 		return (
 			<div
-				className="flex items-center gap-2 py-1.5 text-[12px] border-b border-[var(--border-active)] last:border-b-0"
-				style={{ paddingLeft: `${12 + depth * 16}px`, paddingRight: "12px" }}
+				className="flex items-center gap-2.5 border-b border-[rgba(255,255,255,0.05)] last:border-b-0 group hover:bg-[rgba(255,255,255,0.03)] transition-colors duration-75"
+				style={{
+					paddingTop: "7px",
+					paddingBottom: "7px",
+					paddingLeft: `${14 + depth * 16}px`,
+					paddingRight: "12px",
+				}}
 			>
 				<CheckboxButton
 					checked={selectedCandidates.has(entry.relativePath)}
 					onClick={() => toggleCandidate(entry.relativePath)}
 				/>
-				<span className="flex-1 truncate font-[var(--font-mono)] text-[var(--text-secondary)]">
+				<span className="flex-1 truncate text-[11.5px] font-[var(--font-mono)] text-[rgba(255,255,255,0.62)] group-hover:text-[rgba(255,255,255,0.82)] transition-colors duration-75 leading-none">
 					{entry.name}
 				</span>
 			</div>
@@ -85,19 +98,24 @@ function CandidateNode({
 		<>
 			<button
 				type="button"
-				className="flex w-full items-center gap-2 py-1.5 text-[12px] border-b border-[var(--border-active)] last:border-b-0 cursor-pointer transition-all duration-[120ms] hover:bg-[var(--bg-elevated)]"
-				style={{ paddingLeft: `${12 + depth * 16}px`, paddingRight: "12px" }}
+				className="flex w-full items-center gap-2.5 border-b border-[rgba(255,255,255,0.05)] last:border-b-0 group hover:bg-[rgba(255,255,255,0.03)] transition-colors duration-75 cursor-pointer"
+				style={{
+					paddingTop: "7px",
+					paddingBottom: "7px",
+					paddingLeft: `${14 + depth * 16}px`,
+					paddingRight: "12px",
+				}}
 				onClick={() => toggleExpanded(entry.relativePath)}
 			>
 				<svg
 					aria-hidden="true"
-					width="10"
-					height="10"
-					viewBox="0 0 10 10"
-					className={`shrink-0 text-[var(--accent)] transition-transform duration-[120ms] ${isExpanded ? "rotate-90" : ""}`}
+					width="9"
+					height="9"
+					viewBox="0 0 9 9"
+					className={`shrink-0 text-[rgba(255,255,255,0.28)] group-hover:text-[var(--accent)] transition-all duration-150 ${isExpanded ? "rotate-90" : ""}`}
 				>
 					<path
-						d="M3 1l4 4-4 4"
+						d="M2.5 1.5l4 3-4 3"
 						fill="none"
 						stroke="currentColor"
 						strokeWidth="1.5"
@@ -105,10 +123,10 @@ function CandidateNode({
 						strokeLinejoin="round"
 					/>
 				</svg>
-				<span className="flex-1 truncate font-[var(--font-mono)] text-[var(--text)]">
+				<span className="flex-1 truncate text-[11.5px] font-[var(--font-mono)] text-[rgba(255,255,255,0.82)] group-hover:text-white transition-colors duration-75 leading-none">
 					{entry.name}/
 				</span>
-				<span className="shrink-0 rounded-full bg-[rgba(10,132,255,0.15)] px-1.5 py-0.5 text-[10px] tabular-nums text-[var(--accent-hover)]">
+				<span className="shrink-0 rounded-[4px] bg-[rgba(10,132,255,0.1)] border border-[rgba(10,132,255,0.18)] px-[5px] py-[2px] text-[9.5px] tabular-nums text-[rgba(10,132,255,0.85)] font-medium leading-none">
 					{fileCount}
 				</span>
 			</button>
@@ -137,6 +155,8 @@ export function SharedFilesPanel() {
 	const [selectedCandidates, setSelectedCandidates] = useState<Set<string>>(new Set());
 	const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
 	const [searchQuery, setSearchQuery] = useState("");
+	const [confirmingAdd, setConfirmingAdd] = useState(false);
+	const confirmTimerRef = useRef<number | undefined>(undefined);
 
 	const utils = trpc.useUtils();
 
@@ -186,6 +206,7 @@ export function SharedFilesPanel() {
 		setSelectedCandidates(new Set());
 		setExpandedPaths(new Set());
 		setSearchQuery("");
+		setConfirmingAdd(false);
 	}, [projectId]);
 
 	// Escape key to close
@@ -197,6 +218,11 @@ export function SharedFilesPanel() {
 		document.addEventListener("keydown", handleKeyDown);
 		return () => document.removeEventListener("keydown", handleKeyDown);
 	}, [projectId, closePanel]);
+
+	// Cleanup confirm timer on unmount
+	useEffect(() => {
+		return () => clearTimeout(confirmTimerRef.current);
+	}, []);
 
 	if (!projectId) return null;
 
@@ -226,6 +252,13 @@ export function SharedFilesPanel() {
 
 	function handleAddSelected() {
 		if (!projectId || selectedCandidates.size === 0) return;
+		if (!confirmingAdd) {
+			setConfirmingAdd(true);
+			confirmTimerRef.current = window.setTimeout(() => setConfirmingAdd(false), 3000);
+			return;
+		}
+		clearTimeout(confirmTimerRef.current);
+		setConfirmingAdd(false);
 		addBatchMutation.mutate({
 			projectId,
 			relativePaths: [...selectedCandidates],
@@ -248,33 +281,44 @@ export function SharedFilesPanel() {
 	const projectName = projectQuery.data?.name ?? "Project";
 	const candidates = candidatesQuery.data ?? [];
 	const activeFiles = sharedFilesQuery.data ?? [];
+	const totalDiscoveredFiles = candidates.reduce((sum, entry) => sum + countFiles(entry), 0);
 
 	return (
 		<div
-			className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+			className="fixed inset-0 z-50 flex items-center justify-center bg-black/[0.62] backdrop-blur-[4px]"
 			onClick={(e) => {
 				if (e.target === e.currentTarget) closePanel();
 			}}
 			onKeyDown={() => {}}
 			role="presentation"
 		>
-			<div className="w-[520px] max-h-[80vh] flex flex-col rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-surface)] shadow-[var(--shadow-md)]">
+			<div
+				className="w-[540px] max-h-[82vh] flex flex-col rounded-[14px] bg-[#111114] border border-[rgba(255,255,255,0.1)]"
+				style={{
+					boxShadow: "0 32px 96px rgba(0,0,0,0.72), inset 0 0 0 0.5px rgba(255,255,255,0.04)",
+				}}
+			>
 				{/* Header */}
-				<div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3 shrink-0">
-					<h2 className="text-[15px] font-semibold text-[var(--text)]">
-						Shared Files
-						<span className="ml-2 text-[13px] font-normal text-[var(--text-tertiary)]">
+				<div className="flex items-start justify-between px-5 pt-5 pb-[18px] shrink-0">
+					<div className="min-w-0 pr-4">
+						<h2
+							className="text-[15px] font-semibold text-white leading-none"
+							style={{ letterSpacing: "-0.012em" }}
+						>
+							Shared Files
+						</h2>
+						<p className="text-[11.5px] text-[rgba(255,255,255,0.38)] mt-[7px] leading-none font-[var(--font-mono)] truncate">
 							{projectName}
-						</span>
-					</h2>
+						</p>
+					</div>
 					<button
 						type="button"
 						onClick={closePanel}
-						className="flex h-6 w-6 items-center justify-center rounded-[var(--radius-sm)] text-[var(--text-tertiary)] transition-all duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-secondary)]"
+						className="shrink-0 h-7 w-7 rounded-full flex items-center justify-center text-[rgba(255,255,255,0.28)] hover:text-[rgba(255,255,255,0.75)] hover:bg-[rgba(255,255,255,0.08)] transition-all duration-100"
 					>
-						<svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none">
+						<svg aria-hidden="true" width="11" height="11" viewBox="0 0 11 11" fill="none">
 							<path
-								d="M4 4l8 8M12 4l-8 8"
+								d="M1 1l9 9M10 1L1 10"
 								stroke="currentColor"
 								strokeWidth="1.5"
 								strokeLinecap="round"
@@ -284,22 +328,22 @@ export function SharedFilesPanel() {
 				</div>
 
 				{/* Description */}
-				<div className="px-4 pt-3 pb-2 shrink-0">
-					<p className="text-[12px] text-[var(--text-tertiary)]">
-						These files are symlinked from the main repo to all worktrees. Changes in any location
-						are reflected everywhere.
+				<div className="px-5 pb-[15px] border-b border-[rgba(255,255,255,0.06)] shrink-0">
+					<p className="text-[11.5px] leading-[1.55] text-[rgba(255,255,255,0.32)]">
+						Symlinked from the main repo into every worktree. Changes anywhere are reflected
+						everywhere.
 					</p>
 				</div>
 
 				{/* Scrollable content */}
-				<div className="flex-1 overflow-y-auto px-4">
+				<div className="flex-1 overflow-y-auto">
 					{/* Error display */}
 					{(addMutation.isError ||
 						addBatchMutation.isError ||
 						removeMutation.isError ||
 						syncMutation.isError) && (
-						<div className="pb-3">
-							<p className="text-[12px] text-[var(--term-red)]">
+						<div className="mx-4 mt-4 rounded-[8px] bg-[rgba(255,69,58,0.08)] border border-[rgba(255,69,58,0.22)] px-3 py-[9px]">
+							<p className="text-[11.5px] text-[#ff453a]">
 								{addMutation.error?.message ??
 									addBatchMutation.error?.message ??
 									removeMutation.error?.message ??
@@ -307,36 +351,49 @@ export function SharedFilesPanel() {
 							</p>
 						</div>
 					)}
+
 					{/* Active shared files */}
 					{activeFiles.length > 0 && (
-						<div className="pb-3">
-							<div className="text-[11px] font-medium uppercase tracking-[0.05em] text-[var(--text-quaternary)] pb-1.5">
-								Active ({activeFiles.length})
+						<div className="pt-4">
+							<div className="flex items-center gap-2 px-5 pb-[10px]">
+								<span className="text-[9.5px] font-semibold uppercase tracking-[0.09em] text-[rgba(255,255,255,0.3)]">
+									Active
+								</span>
+								<span className="text-[9px] font-semibold tabular-nums rounded-[3px] px-[5px] py-[2px] leading-none text-[rgba(255,255,255,0.25)] bg-[rgba(255,255,255,0.06)]">
+									{activeFiles.length}
+								</span>
 							</div>
-							<div className="rounded-[var(--radius-sm)] border border-[var(--border-subtle)]">
+							<div className="border-t border-[rgba(255,255,255,0.06)]">
 								{activeFiles.map((file) => (
 									<div
 										key={file.id}
-										className="flex items-center gap-2 px-3 py-1.5 text-[12px] border-b border-[var(--border-subtle)] last:border-b-0"
+										className="flex items-center gap-2.5 px-5 py-2 group hover:bg-[rgba(255,255,255,0.03)] transition-colors duration-75 border-b border-[rgba(255,255,255,0.05)] last:border-b-0"
 									>
-										<span className="flex-1 truncate font-[var(--font-mono)] text-[var(--text-secondary)]">
+										<svg
+											aria-hidden="true"
+											width="10"
+											height="11"
+											viewBox="0 0 10 11"
+											fill="none"
+											className="shrink-0 text-[rgba(255,255,255,0.18)]"
+										>
+											<path
+												d="M1.5 1h5l3 3v6a.5.5 0 01-.5.5h-7A.5.5 0 011 10V1.5A.5.5 0 011.5 1z"
+												fill="currentColor"
+											/>
+										</svg>
+										<span className="flex-1 truncate text-[11.5px] font-[var(--font-mono)] leading-none text-[rgba(255,255,255,0.62)]">
 											{file.relativePath}
 										</span>
 										<button
 											type="button"
 											onClick={() => removeMutation.mutate({ id: file.id })}
-											className="shrink-0 rounded p-0.5 text-[var(--text-quaternary)] transition-all duration-[120ms] hover:text-[var(--term-red)]"
+											className="shrink-0 h-5 w-5 rounded-[4px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-100 text-[rgba(255,255,255,0.2)] hover:text-[#ff453a] hover:bg-[rgba(255,69,58,0.12)]"
 											title="Remove from shared files"
 										>
-											<svg
-												aria-hidden="true"
-												width="12"
-												height="12"
-												viewBox="0 0 16 16"
-												fill="none"
-											>
+											<svg aria-hidden="true" width="8" height="8" viewBox="0 0 8 8" fill="none">
 												<path
-													d="M4 4l8 8M12 4l-8 8"
+													d="M1 1l6 6M7 1L1 7"
 													stroke="currentColor"
 													strokeWidth="1.5"
 													strokeLinecap="round"
@@ -351,21 +408,30 @@ export function SharedFilesPanel() {
 
 					{/* Discovered candidates */}
 					{candidates.length > 0 && (
-						<div className="pb-3">
-							<div className="flex items-center justify-between pb-1.5">
-								<span className="text-[11px] font-medium uppercase tracking-[0.05em] text-[var(--text-quaternary)]">
-									Discovered
-								</span>
+						<div
+							className={`pt-4${activeFiles.length > 0 ? " mt-2 border-t border-[rgba(255,255,255,0.06)]" : ""}`}
+						>
+							<div className="flex items-center justify-between px-5 pb-[10px]">
+								<div className="flex items-center gap-2">
+									<span className="text-[9.5px] font-semibold uppercase tracking-[0.09em] text-[rgba(255,255,255,0.3)]">
+										Discovered
+									</span>
+									{totalDiscoveredFiles > 0 && (
+										<span className="text-[9px] font-semibold tabular-nums rounded-[3px] px-[5px] py-[2px] leading-none text-[rgba(255,255,255,0.25)] bg-[rgba(255,255,255,0.06)]">
+											{totalDiscoveredFiles}
+										</span>
+									)}
+								</div>
 								<input
 									type="search"
 									aria-label="Filter discovered files"
 									value={searchQuery}
 									onChange={(e) => setSearchQuery(e.target.value)}
-									placeholder="Filter..."
-									className="h-5 w-28 rounded border border-[var(--border)] bg-[var(--bg-elevated)] px-2 text-[11px] font-[var(--font-mono)] text-[var(--text)] placeholder:text-[var(--text-quaternary)] focus:border-[var(--accent)] focus:outline-none"
+									placeholder="Filter…"
+									className="h-[22px] w-24 rounded-[5px] border border-[rgba(255,255,255,0.1)] bg-[rgba(255,255,255,0.04)] px-2 text-[10.5px] font-[var(--font-mono)] text-[rgba(255,255,255,0.72)] placeholder:text-[rgba(255,255,255,0.2)] focus:border-[var(--accent)] focus:outline-none transition-colors duration-100"
 								/>
 							</div>
-							<div className="rounded-[var(--radius-sm)] border border-[var(--border-subtle)] max-h-48 overflow-y-auto">
+							<div className="border-t border-[rgba(255,255,255,0.06)] max-h-52 overflow-y-auto">
 								{candidates.map((entry) => (
 									<CandidateNode
 										key={entry.relativePath}
@@ -380,33 +446,86 @@ export function SharedFilesPanel() {
 								))}
 							</div>
 							{selectedCandidates.size > 0 && (
-								<button
-									type="button"
-									onClick={handleAddSelected}
-									disabled={addBatchMutation.isPending}
-									className="mt-2 rounded-[var(--radius-sm)] bg-[var(--accent)] px-3 py-1.5 text-[12px] font-medium text-white transition-all duration-[120ms] hover:bg-[var(--accent-hover)] disabled:opacity-50"
-								>
-									Add Selected ({selectedCandidates.size})
-								</button>
+								<div className="px-4 pt-2 pb-1">
+									<button
+										type="button"
+										onClick={handleAddSelected}
+										disabled={addBatchMutation.isPending}
+										className={`w-full flex items-center justify-center gap-2 rounded-[8px] py-2 text-[12px] font-semibold transition-all duration-200 disabled:opacity-40 ${
+											confirmingAdd
+												? "bg-[rgba(48,209,88,0.12)] border border-[rgba(48,209,88,0.28)] text-[#30d158]"
+												: "bg-[var(--accent)] border border-[rgba(255,255,255,0.1)] text-white hover:bg-[var(--accent-hover)]"
+										}`}
+									>
+										{confirmingAdd ? (
+											<>
+												<svg
+													aria-hidden="true"
+													width="12"
+													height="10"
+													viewBox="0 0 12 10"
+													fill="none"
+												>
+													<path
+														d="M1 5l3.5 3.5 6.5-8"
+														stroke="currentColor"
+														strokeWidth="1.5"
+														strokeLinecap="round"
+														strokeLinejoin="round"
+													/>
+												</svg>
+												Confirm — add {selectedCandidates.size}{" "}
+												{selectedCandidates.size === 1 ? "file" : "files"}
+											</>
+										) : (
+											<>
+												Add {selectedCandidates.size}{" "}
+												{selectedCandidates.size === 1 ? "file" : "files"} to shared
+												<svg
+													aria-hidden="true"
+													width="11"
+													height="10"
+													viewBox="0 0 11 10"
+													fill="none"
+												>
+													<path
+														d="M1 5h9M6.5 1.5L10 5l-3.5 3.5"
+														stroke="currentColor"
+														strokeWidth="1.5"
+														strokeLinecap="round"
+														strokeLinejoin="round"
+													/>
+												</svg>
+											</>
+										)}
+									</button>
+								</div>
 							)}
 						</div>
 					)}
 
+					{/* No candidates empty state */}
 					{candidates.length === 0 && !candidatesQuery.isLoading && (
-						<div className="pb-3">
-							<div className="text-[11px] font-medium uppercase tracking-[0.05em] text-[var(--text-quaternary)] pb-1.5">
-								Discovered
+						<div
+							className={`pt-4 pb-3 px-5${activeFiles.length > 0 ? " mt-2 border-t border-[rgba(255,255,255,0.06)]" : ""}`}
+						>
+							<div className="flex items-center gap-2 pb-[10px]">
+								<span className="text-[9.5px] font-semibold uppercase tracking-[0.09em] text-[rgba(255,255,255,0.3)]">
+									Discovered
+								</span>
 							</div>
-							<p className="text-[12px] text-[var(--text-quaternary)]">
+							<p className="text-[12px] text-[rgba(255,255,255,0.22)]">
 								No additional gitignored files found.
 							</p>
 						</div>
 					)}
 
 					{/* Manual add */}
-					<div className="pb-3">
-						<div className="text-[11px] font-medium uppercase tracking-[0.05em] text-[var(--text-quaternary)] pb-1.5">
-							Add Manually
+					<div className="pt-4 pb-4 px-5 mt-2 border-t border-[rgba(255,255,255,0.06)]">
+						<div className="flex items-center gap-2 pb-3">
+							<span className="text-[9.5px] font-semibold uppercase tracking-[0.09em] text-[rgba(255,255,255,0.3)]">
+								Add Manually
+							</span>
 						</div>
 						<form onSubmit={handleManualAdd} className="flex gap-2">
 							<input
@@ -414,12 +533,12 @@ export function SharedFilesPanel() {
 								value={manualPath}
 								onChange={(e) => setManualPath(e.target.value)}
 								placeholder="relative/path/to/file"
-								className="flex-1 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-1.5 text-[12px] font-[var(--font-mono)] text-[var(--text)] placeholder:text-[var(--text-quaternary)] focus:border-[var(--accent)] focus:outline-none"
+								className="flex-1 rounded-[7px] border border-[rgba(255,255,255,0.1)] bg-[rgba(255,255,255,0.04)] px-3 py-[7px] text-[12px] font-[var(--font-mono)] text-[rgba(255,255,255,0.8)] placeholder:text-[rgba(255,255,255,0.2)] focus:border-[var(--accent)] focus:outline-none transition-colors duration-100"
 							/>
 							<button
 								type="submit"
 								disabled={!manualPath.trim() || addMutation.isPending}
-								className="shrink-0 rounded-[var(--radius-sm)] bg-[var(--accent)] px-3 py-1.5 text-[12px] font-medium text-white transition-all duration-[120ms] hover:bg-[var(--accent-hover)] disabled:opacity-50"
+								className="shrink-0 rounded-[7px] border border-[rgba(255,255,255,0.1)] bg-[rgba(255,255,255,0.07)] px-[14px] py-[7px] text-[12px] font-medium text-[rgba(255,255,255,0.65)] hover:bg-[rgba(255,255,255,0.12)] hover:text-[rgba(255,255,255,0.9)] transition-all duration-100 disabled:opacity-30"
 							>
 								Add
 							</button>
@@ -428,19 +547,19 @@ export function SharedFilesPanel() {
 				</div>
 
 				{/* Footer */}
-				<div className="flex items-center justify-between border-t border-[var(--border)] px-4 py-3 shrink-0">
-					<p className="text-[11px] text-[var(--text-quaternary)]">
+				<div className="flex items-center justify-between border-t border-[rgba(255,255,255,0.06)] px-5 py-3 shrink-0">
+					<p className="text-[11px] text-[rgba(255,255,255,0.25)]">
 						{syncMutation.isSuccess
 							? `Synced ${syncMutation.data.synced} worktree${syncMutation.data.synced === 1 ? "" : "s"}`
-							: "Symlinks are created on worktree creation"}
+							: "Symlinks created on worktree creation"}
 					</p>
 					<button
 						type="button"
 						onClick={handleSync}
 						disabled={syncMutation.isPending || activeFiles.length === 0}
-						className="rounded-[var(--radius-sm)] bg-[var(--bg-elevated)] border border-[var(--border)] px-3 py-1.5 text-[12px] font-medium text-[var(--text-secondary)] transition-all duration-[120ms] hover:bg-[var(--bg-overlay)] hover:text-[var(--text)] disabled:opacity-50"
+						className="rounded-[7px] border border-[rgba(255,255,255,0.1)] bg-[rgba(255,255,255,0.05)] px-3 py-1.5 text-[11.5px] font-medium text-[rgba(255,255,255,0.5)] hover:bg-[rgba(255,255,255,0.09)] hover:text-[rgba(255,255,255,0.75)] transition-all duration-100 disabled:opacity-30"
 					>
-						{syncMutation.isPending ? "Syncing..." : "Sync All Worktrees"}
+						{syncMutation.isPending ? "Syncing…" : "Sync All Worktrees"}
 					</button>
 				</div>
 			</div>
