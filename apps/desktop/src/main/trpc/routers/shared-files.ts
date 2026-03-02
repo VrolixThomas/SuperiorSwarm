@@ -129,7 +129,7 @@ export const sharedFilesRouter = router({
 			const existingSet = new Set(existing.map((e) => e.relativePath));
 
 			const filtered = ignoredFiles.filter((f) => !existingSet.has(f)).sort();
-		return buildSmartCandidateTree(filtered, (p) => ig.ignores(p));
+			return buildSmartCandidateTree(filtered, (p) => ig.ignores(p));
 		}),
 
 	sync: publicProcedure
