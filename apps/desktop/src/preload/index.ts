@@ -40,7 +40,7 @@ const trpcAPI: TrpcAPI = {
 
 const dialogAPI: DialogAPI = {
 	openDirectory: () => ipcRenderer.invoke("dialog:openDirectory"),
-	openFile: (filters) => ipcRenderer.invoke("dialog:openFile", filters),
+	openFile: (options) => ipcRenderer.invoke("dialog:openFile", options),
 };
 
 const sessionAPI: SessionAPI = {

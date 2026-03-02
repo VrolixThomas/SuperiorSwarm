@@ -81,10 +81,17 @@ app.whenReady().then(() => {
 
 	ipcMain.handle(
 		"dialog:openFile",
-		async (_event, filters?: Array<{ name: string; extensions: string[] }>) => {
+		async (
+			_event,
+			options?: {
+				defaultPath?: string;
+				filters?: Array<{ name: string; extensions: string[] }>;
+			}
+		) => {
 			const result = await dialog.showOpenDialog({
 				properties: ["openFile"],
-				filters: filters ?? [{ name: "VS Code Extension", extensions: ["vsix"] }],
+				defaultPath: options?.defaultPath,
+				filters: options?.filters ?? [{ name: "All Files", extensions: ["*"] }],
 			});
 			if (result.canceled || result.filePaths.length === 0) return null;
 			return result.filePaths[0] ?? null;

@@ -232,7 +232,7 @@ export function SharedFilesPanel() {
 		const repoPath = projectQuery.data?.repoPath;
 		if (!repoPath) return;
 		setPickerError(null);
-		const absolutePath = await window.electron.dialog.openFile();
+		const absolutePath = await window.electron.dialog.openFile({ defaultPath: repoPath });
 		if (!absolutePath) return;
 		const prefix = repoPath.endsWith("/") ? repoPath : `${repoPath}/`;
 		if (!absolutePath.startsWith(prefix)) {
