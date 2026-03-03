@@ -56,6 +56,8 @@ export default defineConfig({
 			"process.env.BITBUCKET_CLIENT_SECRET": JSON.stringify(
 				process.env.BITBUCKET_CLIENT_SECRET ?? ""
 			),
+			"process.env.LINEAR_CLIENT_ID": JSON.stringify(process.env.LINEAR_CLIENT_ID ?? ""),
+			"process.env.LINEAR_CLIENT_SECRET": JSON.stringify(process.env.LINEAR_CLIENT_SECRET ?? ""),
 		},
 		build: {
 			rollupOptions: {

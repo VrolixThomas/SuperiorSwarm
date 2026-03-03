@@ -43,6 +43,13 @@
 			"when": 1772481685136,
 			"tag": "0005_sour_hobgoblin",
 			"breakpoints": true
+		},
+		{
+			"idx": 6,
+			"version": "6",
+			"when": 1772559174318,
+			"tag": "0006_heavy_prism",
+			"breakpoints": true
 		}
 	]
 }
