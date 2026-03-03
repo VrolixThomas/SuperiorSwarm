@@ -84,21 +84,25 @@ export function IssueContextMenu({
 		>
 			{/* State picker */}
 			<div className="px-3 py-1.5">
-				<select
-					className="w-full rounded bg-[var(--bg-overlay)] px-2 py-1 text-[13px] text-[var(--text-secondary)] outline-none"
-					value={issue.stateId}
-					onChange={(e) => {
-						onStateUpdate(issue.id, e.target.value);
-					}}
-					onClick={(e) => e.stopPropagation()}
-					onKeyDown={(e) => e.stopPropagation()}
-				>
-					{states?.map((s) => (
-						<option key={s.id} value={s.id}>
-							{s.name}
-						</option>
-					))}
-				</select>
+				{states ? (
+					<select
+						className="w-full rounded bg-[var(--bg-overlay)] px-2 py-1 text-[13px] text-[var(--text-secondary)] outline-none"
+						value={issue.stateId}
+						onChange={(e) => {
+							onStateUpdate(issue.id, e.target.value);
+						}}
+						onClick={(e) => e.stopPropagation()}
+						onKeyDown={(e) => e.stopPropagation()}
+					>
+						{states.map((s) => (
+							<option key={s.id} value={s.id}>
+								{s.name}
+							</option>
+						))}
+					</select>
+				) : (
+					<div className="px-2 py-1 text-[11px] text-[var(--text-quaternary)]">Loading…</div>
+				)}
 			</div>
 
 			<div className="my-1 border-t border-[var(--border)]" />
