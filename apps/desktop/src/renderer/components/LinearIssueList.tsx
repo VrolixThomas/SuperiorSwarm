@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import { type BranchIssue, CreateBranchFromIssueModal } from "./CreateBranchFromIssueModal";
@@ -25,7 +25,7 @@ function StatePicker({ issueId, currentStateId, teamId, onUpdate }: StatePickerP
 			value={currentStateId}
 			onChange={(e) => onUpdate(issueId, e.target.value)}
 			onClick={(e) => e.stopPropagation()}
-			onKeyDown={() => {}}
+			onKeyDown={(e) => e.stopPropagation()}
 		>
 			{states.map((s) => (
 				<option key={s.id} value={s.id}>
@@ -68,8 +68,9 @@ export function LinearIssueList() {
 	const { data: linkedIssues } = trpc.linear.getLinkedIssues.useQuery(undefined, {
 		staleTime: 30_000,
 	});
-	const linkedMap = new Map<string, LinkedWorkspace[]>();
-	if (linkedIssues) {
+	const linkedMap = useMemo(() => {
+		const map = new Map<string, LinkedWorkspace[]>();
+		if (!linkedIssues) return map;
 		for (const l of linkedIssues) {
 			if (l.worktreePath === null) continue;
 			const entry: LinkedWorkspace = {
@@ -77,14 +78,15 @@ export function LinearIssueList() {
 				workspaceName: l.workspaceName,
 				worktreePath: l.worktreePath,
 			};
-			const existing = linkedMap.get(l.linearIssueId);
+			const existing = map.get(l.linearIssueId);
 			if (existing) {
 				existing.push(entry);
 			} else {
-				linkedMap.set(l.linearIssueId, [entry]);
+				map.set(l.linearIssueId, [entry]);
 			}
 		}
-	}
+		return map;
+	}, [linkedIssues]);
 
 	// Navigate to a single workspace (with terminal tab creation)
 	const navigateToWorkspace = useCallback((ws: LinkedWorkspace) => {
@@ -222,7 +224,7 @@ export function LinearIssueList() {
 											strokeWidth="2"
 											strokeLinecap="round"
 											strokeLinejoin="round"
-											className="shrink-0 text-[var(--accent)]"
+											className="relative z-10 shrink-0 text-[var(--accent)]"
 										>
 											<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
 											<path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
@@ -234,10 +236,10 @@ export function LinearIssueList() {
 								{isHovered && (
 									<div className="pointer-events-none absolute inset-y-0 right-0 flex items-center">
 										<div
-											className="pointer-events-none w-6 bg-gradient-to-r from-transparent to-[var(--bg-base)]"
+											className="pointer-events-none w-6 bg-gradient-to-r from-transparent to-[var(--bg-elevated)]"
 											style={{ height: "100%" }}
 										/>
-										<div className="pointer-events-auto flex items-center gap-1 bg-[var(--bg-base)] pr-2">
+										<div className="pointer-events-auto flex items-center gap-1 bg-[var(--bg-elevated)] pr-2">
 											<StatePicker
 												issueId={issue.id}
 												currentStateId={issue.stateId}
