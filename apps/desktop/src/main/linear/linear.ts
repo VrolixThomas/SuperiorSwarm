@@ -143,7 +143,7 @@ export async function getTeamStates(teamId: string): Promise<LinearWorkflowState
 	const data = await gql<{ workflowStates: { nodes: RawStateNode[] } }>(
 		`
 		query TeamStates($teamId: ID!) {
-			workflowStates(filter: { team: { id: { eq: $teamId } } }, orderBy: position) {
+			workflowStates(filter: { team: { id: { eq: $teamId } } }) {
 				nodes { id name color type position }
 			}
 		}
