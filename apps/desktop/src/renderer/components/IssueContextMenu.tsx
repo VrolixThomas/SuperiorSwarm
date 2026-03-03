@@ -30,10 +30,14 @@ export function IssueContextMenu({
 	const menuRef = useRef<HTMLDivElement>(null);
 	const [adjusted, setAdjusted] = useState(position);
 
-	const { data: states } = trpc.linear.getTeamStates.useQuery(
+	const { data: states, error: statesError } = trpc.linear.getTeamStates.useQuery(
 		{ teamId: issue.teamId },
-		{ staleTime: 5 * 60_000 }
+		{ staleTime: 5 * 60_000, retry: 1 }
 	);
+
+	if (statesError) {
+		console.error("getTeamStates failed:", statesError.message, "teamId:", issue.teamId);
+	}
 
 	// Reset adjusted position when position prop changes
 	useEffect(() => {
@@ -112,6 +116,8 @@ export function IssueContextMenu({
 							</option>
 						))}
 					</select>
+				) : statesError ? (
+					<div className="px-2 py-1 text-[11px] text-red-400">Failed to load states</div>
 				) : (
 					<div className="px-2 py-1 text-[11px] text-[var(--text-quaternary)]">Loading…</div>
 				)}
