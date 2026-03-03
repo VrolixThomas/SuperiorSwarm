@@ -1,7 +1,7 @@
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { getDb } from "../../db";
-import { linearBranchIssues, sessionState } from "../../db/schema";
+import { linearBranchIssues, sessionState, workspaces, worktrees } from "../../db/schema";
 import { deleteAuth, getAuth } from "../../linear/auth";
 import { getAssignedIssues, getTeamStates, getTeams, updateIssueState } from "../../linear/linear";
 import { connectLinear } from "../../linear/oauth-flow";
@@ -91,29 +91,19 @@ export const linearRouter = router({
 				.run();
 		}),
 
-	unlinkIssue: publicProcedure
-		.input(z.object({ workspaceId: z.string(), linearIssueId: z.string() }))
-		.mutation(({ input }) => {
-			const db = getDb();
-			db.delete(linearBranchIssues)
-				.where(
-					and(
-						eq(linearBranchIssues.workspaceId, input.workspaceId),
-						eq(linearBranchIssues.linearIssueId, input.linearIssueId)
-					)
-				)
-				.run();
-		}),
-
-	getLinkedIssues: publicProcedure
-		.input(z.object({ workspaceId: z.string() }))
-		.query(({ input }) => {
-			const db = getDb();
-			const rows = db
-				.select()
-				.from(linearBranchIssues)
-				.where(eq(linearBranchIssues.workspaceId, input.workspaceId))
-				.all();
-			return rows.map((r) => r.linearIssueId);
-		}),
+	getLinkedIssues: publicProcedure.query(() => {
+		const db = getDb();
+		const rows = db
+			.select({
+				linearIssueId: linearBranchIssues.linearIssueId,
+				workspaceId: linearBranchIssues.workspaceId,
+				workspaceName: workspaces.name,
+				worktreePath: worktrees.path,
+			})
+			.from(linearBranchIssues)
+			.leftJoin(workspaces, eq(workspaces.id, linearBranchIssues.workspaceId))
+			.leftJoin(worktrees, eq(worktrees.id, workspaces.worktreeId))
+			.all();
+		return rows;
+	}),
 });
