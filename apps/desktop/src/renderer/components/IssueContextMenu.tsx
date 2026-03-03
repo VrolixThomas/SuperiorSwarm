@@ -35,11 +35,16 @@ export function IssueContextMenu({
 		{ staleTime: 5 * 60_000 }
 	);
 
+	// Reset adjusted position when position prop changes
+	useEffect(() => {
+		setAdjusted(position);
+	}, [position]);
+
 	// Viewport clamping
 	useEffect(() => {
 		if (!menuRef.current) return;
 		const rect = menuRef.current.getBoundingClientRect();
-		let { x, y } = position;
+		let { x, y } = adjusted;
 
 		if (x + rect.width > window.innerWidth) {
 			x = window.innerWidth - rect.width - 8;
@@ -48,10 +53,10 @@ export function IssueContextMenu({
 			y = window.innerHeight - rect.height - 8;
 		}
 
-		if (x !== position.x || y !== position.y) {
+		if (x !== adjusted.x || y !== adjusted.y) {
 			setAdjusted({ x, y });
 		}
-	}, [position]);
+	}, [adjusted]);
 
 	// Click outside → close
 	useEffect(() => {
@@ -64,7 +69,7 @@ export function IssueContextMenu({
 		return () => document.removeEventListener("mousedown", handleClickOutside);
 	}, [onClose]);
 
-	// Escape → close
+	// Escape, scroll, resize → close
 	useEffect(() => {
 		function handleKeyDown(e: KeyboardEvent) {
 			if (e.key === "Escape") {
@@ -72,7 +77,13 @@ export function IssueContextMenu({
 			}
 		}
 		document.addEventListener("keydown", handleKeyDown);
-		return () => document.removeEventListener("keydown", handleKeyDown);
+		window.addEventListener("scroll", onClose, true);
+		window.addEventListener("resize", onClose);
+		return () => {
+			document.removeEventListener("keydown", handleKeyDown);
+			window.removeEventListener("scroll", onClose, true);
+			window.removeEventListener("resize", onClose);
+		};
 	}, [onClose]);
 
 	return (
@@ -90,6 +101,7 @@ export function IssueContextMenu({
 						value={issue.stateId}
 						onChange={(e) => {
 							onStateUpdate(issue.id, e.target.value);
+							onClose();
 						}}
 						onClick={(e) => e.stopPropagation()}
 						onKeyDown={(e) => e.stopPropagation()}
