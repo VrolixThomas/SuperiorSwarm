@@ -19,6 +19,8 @@ export function WorkspacePopover({ position, workspaces, onClose, onCreateBranch
 	const menuRef = useRef<HTMLDivElement>(null);
 	const [adjusted, setAdjusted] = useState(position);
 	const attachTerminal = trpc.workspaces.attachTerminal.useMutation();
+	const attachTerminalRef = useRef(attachTerminal.mutate);
+	attachTerminalRef.current = attachTerminal.mutate;
 
 	useEffect(() => {
 		if (!menuRef.current) return;
@@ -67,17 +69,18 @@ export function WorkspacePopover({ position, workspaces, onClose, onCreateBranch
 			if (!hasTerminal) {
 				const title = ws.workspaceName ?? ws.workspaceId;
 				const tabId = store.addTerminalTab(ws.workspaceId, ws.worktreePath, title);
-				attachTerminal.mutate({ workspaceId: ws.workspaceId, terminalId: tabId });
+				attachTerminalRef.current({ workspaceId: ws.workspaceId, terminalId: tabId });
 			}
 
 			onClose();
 		},
-		[onClose, attachTerminal]
+		[onClose]
 	);
 
 	return (
 		<div
 			ref={menuRef}
+			role="menu"
 			className="fixed z-50 min-w-[180px] max-w-[260px] rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-elevated)] py-1 shadow-[var(--shadow-md)]"
 			style={{ left: adjusted.x, top: adjusted.y }}
 		>
@@ -86,6 +89,7 @@ export function WorkspacePopover({ position, workspaces, onClose, onCreateBranch
 				<button
 					key={ws.workspaceId}
 					type="button"
+					role="menuitem"
 					className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] text-[var(--text-secondary)] transition-all duration-[120ms] hover:bg-[var(--bg-overlay)]"
 					onClick={() => navigateToWorkspace(ws)}
 				>
@@ -111,11 +115,12 @@ export function WorkspacePopover({ position, workspaces, onClose, onCreateBranch
 			))}
 
 			{/* Divider */}
-			<div className="my-1 border-t border-[var(--border)]" />
+			{workspaces.length > 0 && <div className="my-1 border-t border-[var(--border)]" />}
 
 			{/* Create branch action */}
 			<button
 				type="button"
+				role="menuitem"
 				className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] text-[var(--text-tertiary)] transition-all duration-[120ms] hover:bg-[var(--bg-overlay)] hover:text-[var(--text-secondary)]"
 				onClick={() => {
 					onClose();
