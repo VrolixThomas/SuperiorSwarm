@@ -1,5 +1,6 @@
 import { useProjectStore } from "../stores/projects";
 import { AtlassianPanel } from "./AtlassianPanel";
+import { LinearPanel } from "./LinearPanel";
 import { ProjectList } from "./ProjectList";
 
 export function Sidebar() {
@@ -51,11 +52,14 @@ export function Sidebar() {
 				</button>
 			</div>
 
-			{/* Project list + Atlassian */}
+			{/* Project list + Integrations */}
 			<div className="flex-1 overflow-y-auto py-1">
 				<ProjectList />
 				<div className="mt-2 border-t border-[var(--border-subtle)] pt-2">
 					<AtlassianPanel />
+				</div>
+				<div className="mt-2 border-t border-[var(--border-subtle)] pt-2">
+					<LinearPanel />
 				</div>
 			</div>
 

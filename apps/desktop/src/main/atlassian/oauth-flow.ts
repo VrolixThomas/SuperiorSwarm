@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { type IncomingMessage, type ServerResponse, createServer } from "node:http";
 import { shell } from "electron";
+import { acquireOAuthLock, releaseOAuthLock } from "../oauth-lock";
 import { saveAuth } from "./auth";
 import {
 	BITBUCKET_AUTH_URL,
@@ -16,8 +17,6 @@ import {
 	OAUTH_CALLBACK_PORT,
 	OAUTH_CALLBACK_URL,
 } from "./constants";
-
-let oauthInProgress = false;
 
 function randomState(): string {
 	return randomBytes(32).toString("hex");
@@ -195,8 +194,7 @@ async function fetchBitbucketUser(accessToken: string): Promise<{
 }
 
 export async function connectJira(): Promise<void> {
-	if (oauthInProgress) throw new Error("OAuth flow already in progress");
-	oauthInProgress = true;
+	acquireOAuthLock();
 	try {
 		const state = randomState();
 		const { codePromise } = await startCallbackServer(state);
@@ -223,13 +221,12 @@ export async function connectJira(): Promise<void> {
 		});
 		console.log("[oauth] Jira connected successfully");
 	} finally {
-		oauthInProgress = false;
+		releaseOAuthLock();
 	}
 }
 
 export async function connectBitbucket(): Promise<void> {
-	if (oauthInProgress) throw new Error("OAuth flow already in progress");
-	oauthInProgress = true;
+	acquireOAuthLock();
 	try {
 		const state = randomState();
 		const { codePromise } = await startCallbackServer(state);
@@ -253,7 +250,7 @@ export async function connectBitbucket(): Promise<void> {
 		});
 		console.log("[oauth] Bitbucket connected successfully");
 	} finally {
-		oauthInProgress = false;
+		releaseOAuthLock();
 	}
 }
 
