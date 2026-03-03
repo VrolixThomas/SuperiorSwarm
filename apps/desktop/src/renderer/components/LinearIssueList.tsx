@@ -2,48 +2,21 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import { type BranchIssue, CreateBranchFromIssueModal } from "./CreateBranchFromIssueModal";
+import { IssueContextMenu } from "./IssueContextMenu";
 import { type LinkedWorkspace, WorkspacePopover } from "./WorkspacePopover";
-
-interface StatePickerProps {
-	issueId: string;
-	currentStateId: string;
-	teamId: string;
-	onUpdate: (issueId: string, stateId: string) => void;
-}
-
-function StatePicker({ issueId, currentStateId, teamId, onUpdate }: StatePickerProps) {
-	const { data: states } = trpc.linear.getTeamStates.useQuery(
-		{ teamId },
-		{ staleTime: 5 * 60_000 }
-	);
-
-	if (!states) return null;
-
-	return (
-		<select
-			className="rounded bg-[var(--bg-elevated)] px-1 py-0.5 text-[10px] text-[var(--text-tertiary)] outline-none"
-			value={currentStateId}
-			onChange={(e) => onUpdate(issueId, e.target.value)}
-			onClick={(e) => e.stopPropagation()}
-			onKeyDown={(e) => e.stopPropagation()}
-		>
-			{states.map((s) => (
-				<option key={s.id} value={s.id}>
-					{s.name}
-				</option>
-			))}
-		</select>
-	);
-}
 
 export function LinearIssueList() {
 	const utils = trpc.useUtils();
-	const [hoveredIssueId, setHoveredIssueId] = useState<string | null>(null);
 	const [openModalIssue, setOpenModalIssue] = useState<BranchIssue | null>(null);
 	const [popover, setPopover] = useState<{
 		position: { x: number; y: number };
 		issue: BranchIssue;
 		workspaces: LinkedWorkspace[];
+	} | null>(null);
+	const [contextMenu, setContextMenu] = useState<{
+		position: { x: number; y: number };
+		issue: BranchIssue;
+		workspaces: LinkedWorkspace[] | undefined;
 	} | null>(null);
 	const attachTerminal = trpc.workspaces.attachTerminal.useMutation();
 	const attachTerminalRef = useRef(attachTerminal.mutate);
@@ -167,121 +140,95 @@ export function LinearIssueList() {
 				) : (
 					issues.map((issue) => {
 						const linked = linkedMap.get(issue.id);
-						const isHovered = hoveredIssueId === issue.id;
 
 						return (
-							<div
+							<button
 								key={issue.id}
-								className="group relative"
-								onMouseEnter={() => setHoveredIssueId(issue.id)}
-								onMouseLeave={() => setHoveredIssueId(null)}
-							>
-								<button
-									type="button"
-									onClick={(e) => {
-										if (!linked) {
-											setOpenModalIssue(issue);
-										} else if (linked.length === 1 && linked[0]) {
-											navigateToWorkspace(linked[0]);
-										} else {
-											const rect = e.currentTarget.getBoundingClientRect();
-											setPopover({
-												position: { x: rect.left, y: rect.bottom + 4 },
-												issue,
-												workspaces: linked,
-											});
-										}
-									}}
-									className={`flex w-full items-center gap-1.5 rounded-[6px] px-3 py-1 text-left text-[12px] transition-all duration-[120ms] hover:bg-[var(--bg-elevated)] ${
-										linked
-											? "text-[var(--text-secondary)]"
-											: "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
-									}`}
-									title={
-										linked
-											? `Open workspace for ${issue.identifier}`
-											: `${issue.identifier}: ${issue.title}`
+								type="button"
+								onClick={(e) => {
+									if (!linked) {
+										setOpenModalIssue(issue);
+									} else if (linked.length === 1 && linked[0]) {
+										navigateToWorkspace(linked[0]);
+									} else {
+										const rect = e.currentTarget.getBoundingClientRect();
+										setPopover({
+											position: { x: rect.left, y: rect.bottom + 4 },
+											issue,
+											workspaces: linked,
+										});
 									}
-								>
-									{/* Status dot */}
-									<span
-										className="h-2 w-2 shrink-0 rounded-full"
-										style={{ backgroundColor: issue.stateColor }}
-									/>
-									<span className="shrink-0 font-medium text-[var(--text-quaternary)]">
-										{issue.identifier}
-									</span>
-									<span className="min-w-0 flex-1 truncate">{issue.title}</span>
-									{/* Chain icon — visible when linked */}
-									{linked && (
-										<svg
-											aria-hidden="true"
-											width="10"
-											height="10"
-											viewBox="0 0 24 24"
-											fill="none"
-											stroke="currentColor"
-											strokeWidth="2"
-											strokeLinecap="round"
-											strokeLinejoin="round"
-											className="relative z-10 shrink-0 text-[var(--accent)]"
-										>
-											<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
-											<path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
-										</svg>
-									)}
-								</button>
-
-								{/* Hover actions — opaque overlay with left fade */}
-								{isHovered && (
-									<div className="pointer-events-none absolute inset-y-0 right-0 flex items-center">
-										<div
-											className="pointer-events-none w-6 bg-gradient-to-r from-transparent to-[var(--bg-elevated)]"
-											style={{ height: "100%" }}
-										/>
-										<div className="pointer-events-auto flex items-center gap-1 bg-[var(--bg-elevated)] pr-2">
-											<StatePicker
-												issueId={issue.id}
-												currentStateId={issue.stateId}
-												teamId={issue.teamId}
-												onUpdate={(id, stateId) =>
-													updateStateMutation.mutate({ issueId: id, stateId })
-												}
-											/>
-											{/* External link to open in Linear */}
-											<button
-												type="button"
-												onClick={(e) => {
-													e.stopPropagation();
-													window.electron.shell.openExternal(issue.url);
-												}}
-												className="flex items-center justify-center rounded px-1 py-0.5 text-[var(--text-quaternary)] hover:text-[var(--text-tertiary)]"
-												title="Open in Linear"
-											>
-												<svg
-													aria-hidden="true"
-													width="10"
-													height="10"
-													viewBox="0 0 16 16"
-													fill="none"
-													stroke="currentColor"
-													strokeWidth="1.5"
-													strokeLinecap="round"
-													strokeLinejoin="round"
-												>
-													<path d="M6 3H3a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1v-3" />
-													<path d="M10 2h4v4" />
-													<path d="M14 2L8 8" />
-												</svg>
-											</button>
-										</div>
-									</div>
+								}}
+								onContextMenu={(e) => {
+									e.preventDefault();
+									setContextMenu({
+										position: { x: e.clientX, y: e.clientY },
+										issue,
+										workspaces: linked,
+									});
+								}}
+								className={`flex w-full items-center gap-1.5 rounded-[6px] px-3 py-1 text-left text-[12px] transition-all duration-[120ms] hover:bg-[var(--bg-elevated)] ${
+									linked
+										? "text-[var(--text-secondary)]"
+										: "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
+								}`}
+								title={
+									linked
+										? `Open workspace for ${issue.identifier}`
+										: `${issue.identifier}: ${issue.title}`
+								}
+							>
+								{/* Status dot */}
+								<span
+									className="h-2 w-2 shrink-0 rounded-full"
+									style={{ backgroundColor: issue.stateColor }}
+								/>
+								<span className="shrink-0 font-medium text-[var(--text-quaternary)]">
+									{issue.identifier}
+								</span>
+								<span className="min-w-0 flex-1 truncate">{issue.title}</span>
+								{/* Chain icon — visible when linked */}
+								{linked && (
+									<svg
+										aria-hidden="true"
+										width="10"
+										height="10"
+										viewBox="0 0 24 24"
+										fill="none"
+										stroke="currentColor"
+										strokeWidth="2"
+										strokeLinecap="round"
+										strokeLinejoin="round"
+										className="shrink-0 text-[var(--accent)]"
+									>
+										<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+										<path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+									</svg>
 								)}
-							</div>
+							</button>
 						);
 					})
 				)}
 			</div>
+
+			{/* Context menu */}
+			{contextMenu && (
+				<IssueContextMenu
+					position={contextMenu.position}
+					issue={contextMenu.issue}
+					workspaces={contextMenu.workspaces}
+					onClose={() => setContextMenu(null)}
+					onStateUpdate={(issueId, stateId) => updateStateMutation.mutate({ issueId, stateId })}
+					onCreateBranch={() => {
+						setContextMenu(null);
+						setOpenModalIssue(contextMenu.issue);
+					}}
+					onNavigateToWorkspace={(ws) => {
+						navigateToWorkspace(ws);
+						setContextMenu(null);
+					}}
+				/>
+			)}
 
 			{/* Workspace popover */}
 			{popover && (
