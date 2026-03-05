@@ -146,10 +146,12 @@ export class ServerManager {
 
 		childProcess.on("exit", (code) => {
 			console.warn(`[LSP] ${config.command} exited with code ${code}`);
+			const shuttingDown = instance.shuttingDown;
+			const crashedDocs = shuttingDown ? new Set<string>() : new Set(instance.openDocuments);
 			this.servers.delete(key);
 			connection.dispose();
-			if (!instance.shuttingDown) {
-				this.handleCrash(configId, repoPath);
+			if (!shuttingDown) {
+				this.handleCrash(configId, repoPath, crashedDocs);
 			}
 		});
 
@@ -220,7 +222,7 @@ export class ServerManager {
 		}
 	}
 
-	private handleCrash(configId: string, repoPath: string): void {
+	private handleCrash(configId: string, repoPath: string, openDocuments: Set<string>): void {
 		const key = this.serverKey(configId, repoPath);
 		const count = (this.restartCounts.get(key) ?? 0) + 1;
 		this.restartCounts.set(key, count);
@@ -235,8 +237,13 @@ export class ServerManager {
 
 		const timer = setTimeout(async () => {
 			this.restartTimers.delete(timer);
-			await this.startServer(configId, repoPath);
-			// The renderer will need to re-send didOpen for previously tracked documents
+			const connection = await this.startServer(configId, repoPath);
+			// Notify the renderer to re-send didOpen for previously open documents
+			if (connection && openDocuments.size > 0) {
+				this.mainWindow?.webContents.send("lsp:server-restarted", configId, repoPath, [
+					...openDocuments,
+				]);
+			}
 		}, delay);
 		this.restartTimers.add(timer);
 	}

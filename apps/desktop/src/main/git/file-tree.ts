@@ -1,5 +1,5 @@
 import { readdir, stat } from "node:fs/promises";
-import { join } from "node:path";
+import { resolve } from "node:path";
 import simpleGit from "simple-git";
 
 export interface FileEntry {
@@ -10,12 +10,18 @@ export interface FileEntry {
 }
 
 export async function listDirectory(repoPath: string, dirPath = ""): Promise<FileEntry[]> {
-	const fullDir = dirPath ? join(repoPath, dirPath) : repoPath;
+	const base = resolve(repoPath);
+	const fullDir = dirPath ? resolve(repoPath, dirPath) : base;
+
+	// Prevent path traversal: resolved dir must be within repoPath
+	if (fullDir !== base && !fullDir.startsWith(`${base}/`)) {
+		throw new Error(`Path traversal attempt: ${dirPath}`);
+	}
 
 	const git = simpleGit(repoPath);
 	let ignoredPaths: Set<string>;
 	try {
-		const statusResult = await git.status();
+		const statusResult = await git.status(["--ignored"]);
 		ignoredPaths = new Set(statusResult.ignored ?? []);
 	} catch {
 		ignoredPaths = new Set();
@@ -41,7 +47,7 @@ export async function listDirectory(repoPath: string, dirPath = ""): Promise<Fil
 			});
 		} else if (dirent.isFile()) {
 			try {
-				const fileStat = await stat(join(fullDir, dirent.name));
+				const fileStat = await stat(resolve(fullDir, dirent.name));
 				entries.push({
 					name: dirent.name,
 					path: relativePath,

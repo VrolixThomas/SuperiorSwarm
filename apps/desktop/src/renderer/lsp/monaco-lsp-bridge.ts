@@ -43,6 +43,7 @@ export function registerLspProviders(languageId: string): void {
 					: ((result.result as { items?: unknown[] }).items ?? []);
 
 				return {
+					// biome-ignore lint/suspicious/noExplicitAny: LSP completion item shape comes from untyped IPC
 					suggestions: items.map((item: any) => ({
 						label: item.label,
 						kind: item.kind ?? monaco.languages.CompletionItemKind.Text,
@@ -55,6 +56,7 @@ export function registerLspProviders(languageId: string): void {
 						documentation: item.documentation,
 						sortText: item.sortText,
 						filterText: item.filterText,
+						// biome-ignore lint/suspicious/noExplicitAny: Monaco range type mismatch; inferred from word context
 						range: undefined as any, // Monaco will infer from word
 					})),
 				};
@@ -84,16 +86,19 @@ export function registerLspProviders(languageId: string): void {
 				});
 
 				if (result.error || !result.result) return null;
+				// biome-ignore lint/suspicious/noExplicitAny: LSP hover response shape from untyped IPC
 				const hover = result.result as { contents: any; range?: any };
 
 				const contents = Array.isArray(hover.contents)
-					? hover.contents.map((c: any) =>
+					? // biome-ignore lint/suspicious/noExplicitAny: LSP MarkedString union from untyped IPC
+						hover.contents.map((c: any) =>
 							typeof c === "string" ? { value: c } : { value: c.value ?? "" }
 						)
 					: [
 							typeof hover.contents === "string"
 								? { value: hover.contents }
-								: { value: (hover.contents as any).value ?? "" },
+								: // biome-ignore lint/suspicious/noExplicitAny: LSP MarkedString union from untyped IPC
+									{ value: (hover.contents as any).value ?? "" },
 						];
 
 				return { contents };
@@ -164,12 +169,14 @@ export function registerLspProviders(languageId: string): void {
 function convertLocations(result: unknown): monaco.languages.Location[] | null {
 	if (!result) return null;
 	const locations = Array.isArray(result) ? result : [result];
+	// biome-ignore lint/suspicious/noExplicitAny: LSP Location/LocationLink shape from untyped IPC
 	return locations.map((loc: any) => ({
 		uri: monaco.Uri.parse(loc.uri ?? loc.targetUri),
 		range: convertRange(loc.range ?? loc.targetRange),
 	}));
 }
 
+// biome-ignore lint/suspicious/noExplicitAny: LSP Range shape from untyped IPC
 function convertRange(range: any): monaco.IRange {
 	if (!range)
 		return {
@@ -246,38 +253,43 @@ export function sendDidClose(repoPath: string, languageId: string, uri: string):
 	});
 }
 
-export function setupGoToDefinitionHandler(): void {
+export function setupGoToDefinitionHandler(): () => void {
 	// Monaco's built-in go-to-definition already works for same-file navigation.
-	// For cross-file, we need to handle the case where the target file isn't open.
-	// We override the editor opener to open new tabs instead.
+	// For cross-file, we use the public registerEditorOpener API to open new tabs.
+	const disposable = monaco.editor.registerEditorOpener({
+		openCodeEditor(_source, resource, selectionOrPosition) {
+			const uri = resource.toString();
+			if (!uri.startsWith("file://")) return false;
 
-	const editorService = (monaco.editor as any).StaticServices?.codeEditorService?.get();
-	if (editorService) {
-		const originalOpenCodeEditor = editorService.openCodeEditor.bind(editorService);
-		editorService.openCodeEditor = async (input: any, source: any, sideBySide: any) => {
-			const uri = input?.resource?.toString();
-			if (uri?.startsWith("file://")) {
-				const repoPath = extractRepoPath(uri) ?? findRepoPathFromUri(uri);
-				if (repoPath) {
-					const filePath = uri.replace(`file://${repoPath}/`, "");
-					const language = detectLanguage(filePath);
-					const position = input.options?.selection
-						? {
-								lineNumber: input.options.selection.startLineNumber,
-								column: input.options.selection.startColumn,
-							}
-						: undefined;
+			const repoPath = extractRepoPath(uri) ?? findRepoPathFromUri(uri);
+			if (!repoPath) return false;
 
-					const workspaceId = useTabStore.getState().activeWorkspaceId;
-					if (workspaceId) {
-						useTabStore.getState().openFile(workspaceId, repoPath, filePath, language, position);
-						return null;
-					}
+			const filePath = uri.replace(`file://${repoPath}/`, "");
+			const language = detectLanguage(filePath);
+
+			let position: { lineNumber: number; column: number } | undefined;
+			if (selectionOrPosition) {
+				if ("startLineNumber" in selectionOrPosition) {
+					position = {
+						lineNumber: selectionOrPosition.startLineNumber,
+						column: selectionOrPosition.startColumn,
+					};
+				} else {
+					position = {
+						lineNumber: selectionOrPosition.lineNumber,
+						column: selectionOrPosition.column,
+					};
 				}
 			}
-			return originalOpenCodeEditor(input, source, sideBySide);
-		};
-	}
+
+			const workspaceId = useTabStore.getState().activeWorkspaceId;
+			if (!workspaceId) return false;
+
+			useTabStore.getState().openFile(workspaceId, repoPath, filePath, language, position);
+			return true;
+		},
+	});
+	return () => disposable.dispose();
 }
 
 function findRepoPathFromUri(uri: string): string | null {
@@ -351,6 +363,17 @@ function convertSeverity(severity?: number): monaco.MarkerSeverity {
 		default:
 			return monaco.MarkerSeverity.Error;
 	}
+}
+
+export function setupServerRestartListener(): () => void {
+	return window.electron.lsp.onServerRestarted((_configId, repoPath, uris) => {
+		for (const uri of uris) {
+			const model = monaco.editor.getModel(monaco.Uri.parse(uri));
+			if (!model) continue;
+			const languageId = model.getLanguageId();
+			sendDidOpen(repoPath, languageId, uri, model.getValue());
+		}
+	});
 }
 
 export function disposeAllProviders(): void {

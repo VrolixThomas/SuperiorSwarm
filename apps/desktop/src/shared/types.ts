@@ -52,4 +52,7 @@ export interface LspAPI {
 	onNotification: (
 		callback: (serverId: string, method: string, params: unknown) => void
 	) => () => void;
+	onServerRestarted: (
+		callback: (configId: string, repoPath: string, uris: string[]) => void
+	) => () => void;
 }

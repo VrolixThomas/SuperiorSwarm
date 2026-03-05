@@ -77,6 +77,7 @@ interface TabStore {
 		language: string,
 		initialPosition?: { lineNumber: number; column: number }
 	) => string;
+	clearInitialPosition: (tabId: string) => void;
 	setDiffMode: (mode: "split" | "inline") => void;
 
 	// Session restore
@@ -354,6 +355,14 @@ export const useTabStore = create<TabStore>((set, get) => ({
 			activeTabId: id,
 		}));
 		return id;
+	},
+
+	clearInitialPosition: (tabId) => {
+		set((s) => ({
+			tabs: s.tabs.map((t) =>
+				t.id === tabId && t.kind === "file" ? { ...t, initialPosition: undefined } : t
+			),
+		}));
 	},
 
 	setDiffMode: (mode) => set({ diffMode: mode }),

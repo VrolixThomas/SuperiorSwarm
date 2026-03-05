@@ -5,7 +5,11 @@ import { DiffPanel } from "./components/DiffPanel";
 import { MainContentArea } from "./components/MainContentArea";
 import { Sidebar } from "./components/Sidebar";
 import { scrollbackRegistry } from "./components/Terminal";
-import { setupDiagnosticsListener, setupGoToDefinitionHandler } from "./lsp/monaco-lsp-bridge";
+import {
+	setupDiagnosticsListener,
+	setupGoToDefinitionHandler,
+	setupServerRestartListener,
+} from "./lsp/monaco-lsp-bridge";
 import { useTabStore } from "./stores/tab-store";
 import { trpc } from "./trpc/client";
 
@@ -97,10 +101,15 @@ export function App() {
 		return () => window.removeEventListener("beforeunload", handleBeforeUnload);
 	}, []);
 
-	// LSP diagnostics listener and go-to-definition handler
+	// LSP diagnostics listener, go-to-definition handler, and crash restart listener
 	useEffect(() => {
 		setupDiagnosticsListener();
-		setupGoToDefinitionHandler();
+		const cleanupGotoDef = setupGoToDefinitionHandler();
+		const cleanupRestartListener = setupServerRestartListener();
+		return () => {
+			cleanupGotoDef();
+			cleanupRestartListener();
+		};
 	}, []);
 
 	return (
