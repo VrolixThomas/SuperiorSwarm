@@ -118,33 +118,43 @@ export async function getTeams(): Promise<LinearTeam[]> {
 
 export async function getAssignedIssues(teamId?: string): Promise<LinearIssue[]> {
 	const issueFields = `id identifier title url
-					state { id name color type }
-					team { id name }`;
+		state { id name color type }
+		team { id name }`;
 
-	const data = teamId
-		? await gql<{ issues: { nodes: RawIssueNode[] } }>(
-				`
-				query AssignedIssues($teamId: String!) {
-					issues(
-						first: 50
-						filter: { assignee: { isMe: { eq: true } }, team: { id: { eq: $teamId } } }
-						orderBy: updatedAt
-					) {
-						nodes { ${issueFields} }
-					}
-				}
-			`,
-				{ teamId }
-			)
-		: await gql<{ issues: { nodes: RawIssueNode[] } }>(`
-				query {
-					issues(first: 50, filter: { assignee: { isMe: { eq: true } } }, orderBy: updatedAt) {
-						nodes { ${issueFields} }
-					}
-				}
-			`);
+	const allNodes: RawIssueNode[] = [];
+	let cursor: string | null = null;
+	let hasNextPage = true;
 
-	return data.issues.nodes.map(mapIssueNode);
+	while (hasNextPage) {
+		const data = await gql<{
+			issues: {
+				nodes: RawIssueNode[];
+				pageInfo: { hasNextPage: boolean; endCursor: string | null };
+			};
+		}>(
+			`query AssignedIssues($cursor: String, $teamId: String) {
+				issues(
+					first: 50
+					after: $cursor
+					filter: {
+						assignee: { isMe: { eq: true } }
+						${teamId ? "team: { id: { eq: $teamId } }" : ""}
+					}
+					orderBy: updatedAt
+				) {
+					nodes { ${issueFields} }
+					pageInfo { hasNextPage endCursor }
+				}
+			}`,
+			{ cursor, teamId: teamId ?? null }
+		);
+
+		allNodes.push(...data.issues.nodes);
+		hasNextPage = data.issues.pageInfo.hasNextPage;
+		cursor = data.issues.pageInfo.endCursor;
+	}
+
+	return allNodes.map(mapIssueNode);
 }
 
 export async function getTeamStates(teamId: string): Promise<LinearWorkflowState[]> {
