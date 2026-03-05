@@ -160,3 +160,38 @@ export const linearBranchIssues = sqliteTable(
 
 export type LinearBranchIssue = typeof linearBranchIssues.$inferSelect;
 export type NewLinearBranchIssue = typeof linearBranchIssues.$inferInsert;
+
+export const githubAuth = sqliteTable("github_auth", {
+	id: text("id").primaryKey(),
+	accessToken: text("access_token").notNull(),
+	accountId: text("account_id").notNull(),
+	displayName: text("display_name"),
+});
+
+export type GithubAuth = typeof githubAuth.$inferSelect;
+export type NewGithubAuth = typeof githubAuth.$inferInsert;
+
+export const githubBranchPrs = sqliteTable(
+	"github_branch_prs",
+	{
+		id: text("id").primaryKey(),
+		workspaceId: text("workspace_id")
+			.notNull()
+			.references(() => workspaces.id, { onDelete: "cascade" }),
+		prRepoOwner: text("pr_repo_owner").notNull(),
+		prRepoName: text("pr_repo_name").notNull(),
+		prNumber: integer("pr_number").notNull(),
+		createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+	},
+	(table) => [
+		uniqueIndex("github_branch_prs_workspace_pr_unique").on(
+			table.workspaceId,
+			table.prRepoOwner,
+			table.prRepoName,
+			table.prNumber
+		),
+	]
+);
+
+export type GithubBranchPr = typeof githubBranchPrs.$inferSelect;
+export type NewGithubBranchPr = typeof githubBranchPrs.$inferInsert;
