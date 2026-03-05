@@ -4,8 +4,8 @@ import { initializeDatabase } from "./db";
 import { type SessionSaveData, saveTerminalSessions } from "./db/session-persistence";
 import { setupLspIPC } from "./lsp/ipc-handler";
 import { serverManager } from "./lsp/server-manager";
+import { daemonClient } from "./terminal/daemon-client";
 import { setupTerminalIPC } from "./terminal/ipc";
-import { terminalManager } from "./terminal/manager";
 import { setupTRPCIPC } from "./trpc/ipc-link";
 import { appRouter } from "./trpc/routers";
 
@@ -42,7 +42,7 @@ function createWindow() {
 	}
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
 	setupTerminalIPC();
 	try {
 		initializeDatabase();
@@ -54,6 +54,13 @@ app.whenReady().then(() => {
 		);
 		app.quit();
 		return;
+	}
+	const dbPath = join(app.getPath("userData"), "branchflux.db");
+	const daemonScriptPath = join(__dirname, "daemon.cjs");
+	try {
+		await daemonClient.connect(dbPath, daemonScriptPath);
+	} catch (err) {
+		console.error("[main] Failed to connect to terminal daemon:", err);
 	}
 	setupTRPCIPC(appRouter);
 
@@ -114,7 +121,8 @@ app.whenReady().then(() => {
 });
 
 app.on("before-quit", () => {
-	terminalManager.disposeAll();
+	daemonClient.setQuitting();
+	daemonClient.detachAll();
 	serverManager.disposeAll();
 });
 
@@ -132,7 +140,8 @@ app.on("window-all-closed", () => {
 // Catching the signals lets us dispose PTY processes before the environment tears down.
 for (const signal of ["SIGTERM", "SIGHUP", "SIGINT"] as const) {
 	process.on(signal, () => {
-		terminalManager.disposeAll();
+		daemonClient.setQuitting();
+		daemonClient.detachAll();
 		serverManager.disposeAll();
 		app.exit(0);
 	});
