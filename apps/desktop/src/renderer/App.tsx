@@ -5,7 +5,6 @@ import { DiffPanel } from "./components/DiffPanel";
 import { MainContentArea } from "./components/MainContentArea";
 import { SharedFilesPanel } from "./components/SharedFilesPanel";
 import { Sidebar } from "./components/Sidebar";
-import { scrollbackRegistry } from "./components/Terminal";
 import {
 	setupDiagnosticsListener,
 	setupGoToDefinitionHandler,
@@ -25,7 +24,7 @@ function collectSnapshot() {
 		workspaceId: tab.workspaceId,
 		title: tab.title,
 		cwd: tab.kind === "terminal" ? tab.cwd : "",
-		scrollback: scrollbackRegistry.get(tab.id)?.() ?? null,
+		// scrollback omitted — daemon owns that column
 		sortOrder: i,
 	}));
 

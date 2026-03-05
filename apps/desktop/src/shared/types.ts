@@ -25,7 +25,7 @@ export interface SessionSaveData {
 		workspaceId: string;
 		title: string;
 		cwd: string;
-		scrollback: string | null;
+		// scrollback removed — daemon owns this column
 		sortOrder: number;
 	}>;
 	state: Record<string, string>;
