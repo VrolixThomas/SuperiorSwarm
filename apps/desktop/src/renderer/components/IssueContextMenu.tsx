@@ -1,19 +1,16 @@
 import { useEffect, useRef, useState } from "react";
-import { trpc } from "../trpc/client";
+import type { TicketStatus } from "../../shared/tickets";
 import type { LinkedWorkspace } from "./WorkspacePopover";
 
 interface IssueContextMenuProps {
 	position: { x: number; y: number };
-	issue: {
-		id: string;
-		identifier: string;
-		url: string;
-		stateId: string;
-		teamId: string;
-	};
+	issue: { id: string; identifier: string; url: string };
 	workspaces: LinkedWorkspace[] | undefined;
+	states?: TicketStatus[];
+	statesLoading?: boolean;
+	onStateUpdate?: (stateId: string) => void;
+	openInLabel: string; // "Open in Linear" | "Open in Jira"
 	onClose: () => void;
-	onStateUpdate: (issueId: string, stateId: string) => void;
 	onCreateBranch: () => void;
 	onNavigateToWorkspace: (ws: LinkedWorkspace) => void;
 }
@@ -22,22 +19,16 @@ export function IssueContextMenu({
 	position,
 	issue,
 	workspaces,
-	onClose,
+	states,
+	statesLoading,
 	onStateUpdate,
+	openInLabel,
+	onClose,
 	onCreateBranch,
 	onNavigateToWorkspace,
 }: IssueContextMenuProps) {
 	const menuRef = useRef<HTMLDivElement>(null);
 	const [adjusted, setAdjusted] = useState(position);
-
-	const { data: states, error: statesError } = trpc.linear.getTeamStates.useQuery(
-		{ teamId: issue.teamId },
-		{ staleTime: 5 * 60_000, retry: 1 }
-	);
-
-	if (statesError) {
-		console.error("getTeamStates failed:", statesError.message, "teamId:", issue.teamId);
-	}
 
 	// Viewport clamping — runs once per position change
 	useEffect(() => {
@@ -99,30 +90,28 @@ export function IssueContextMenu({
 				{states ? (
 					<select
 						className="w-full rounded bg-[var(--bg-overlay)] px-2 py-1 text-[13px] text-[var(--text-secondary)] outline-none"
-						value={issue.stateId}
 						onChange={(e) => {
-							onStateUpdate(issue.id, e.target.value);
+							onStateUpdate?.(e.target.value);
 							onClose();
 						}}
 						onClick={(e) => e.stopPropagation()}
 						onKeyDown={(e) => e.stopPropagation()}
 					>
+						<option value="">Update status…</option>
 						{states.map((s) => (
 							<option key={s.id} value={s.id}>
 								{s.name}
 							</option>
 						))}
 					</select>
-				) : statesError ? (
-					<div className="px-2 py-1 text-[11px] text-red-400">Failed to load states</div>
-				) : (
+				) : statesLoading ? (
 					<div className="px-2 py-1 text-[11px] text-[var(--text-quaternary)]">Loading…</div>
-				)}
+				) : null}
 			</div>
 
-			<div className="my-1 border-t border-[var(--border)]" />
+			{states && <div className="my-1 border-t border-[var(--border)]" />}
 
-			{/* Open in Linear */}
+			{/* Open in external provider */}
 			<button
 				type="button"
 				role="menuitem"
@@ -132,7 +121,7 @@ export function IssueContextMenu({
 					onClose();
 				}}
 			>
-				<span>Open in Linear</span>
+				<span>{openInLabel}</span>
 				<svg
 					aria-hidden="true"
 					width="12"
