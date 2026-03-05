@@ -28,9 +28,7 @@ export function LinearIssueList() {
 	const { data: selectedTeamId } = trpc.linear.getSelectedTeam.useQuery(undefined, {
 		staleTime: Number.POSITIVE_INFINITY,
 	});
-	const setTeamMutation = trpc.linear.setSelectedTeam.useMutation({
-		onSuccess: () => utils.linear.getAssignedIssues.invalidate(),
-	});
+	const setTeamMutation = trpc.linear.setSelectedTeam.useMutation();
 
 	// Issues
 	const { data: issues, isLoading } = trpc.linear.getAssignedIssues.useQuery(undefined, {
@@ -130,7 +128,12 @@ export function LinearIssueList() {
 						<select
 							className="w-full rounded bg-[var(--bg-elevated)] px-2 py-1 text-[11px] text-[var(--text-tertiary)] outline-none"
 							value={selectedTeamId ?? ""}
-							onChange={(e) => setTeamMutation.mutate({ teamId: e.target.value || null })}
+							onChange={(e) =>
+							setTeamMutation.mutate(
+								{ teamId: e.target.value || null },
+								{ onSuccess: () => utils.linear.getAssignedIssues.invalidate() },
+							)
+						}
 						>
 							<option value="">All teams</option>
 							{teams.map((t) => (
