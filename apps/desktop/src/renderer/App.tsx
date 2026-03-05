@@ -6,6 +6,11 @@ import { MainContentArea } from "./components/MainContentArea";
 import { SharedFilesPanel } from "./components/SharedFilesPanel";
 import { Sidebar } from "./components/Sidebar";
 import { scrollbackRegistry } from "./components/Terminal";
+import {
+	setupDiagnosticsListener,
+	setupGoToDefinitionHandler,
+	setupServerRestartListener,
+} from "./lsp/monaco-lsp-bridge";
 import { useTabStore } from "./stores/tab-store";
 import { trpc } from "./trpc/client";
 
@@ -95,6 +100,17 @@ export function App() {
 
 		window.addEventListener("beforeunload", handleBeforeUnload);
 		return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+	}, []);
+
+	// LSP diagnostics listener, go-to-definition handler, and crash restart listener
+	useEffect(() => {
+		setupDiagnosticsListener();
+		const cleanupGotoDef = setupGoToDefinitionHandler();
+		const cleanupRestartListener = setupServerRestartListener();
+		return () => {
+			cleanupGotoDef();
+			cleanupRestartListener();
+		};
 	}, []);
 
 	return (

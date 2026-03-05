@@ -26,6 +26,7 @@ export function DiffEditor({
 	}, [onModifiedChange]);
 
 	// Create the diff editor once on mount
+	// biome-ignore lint/correctness/useExhaustiveDependencies: editor created once on mount, renderSideBySide updated separately
 	useEffect(() => {
 		if (!containerRef.current) return;
 		ensureThemeRegistered();
@@ -47,7 +48,6 @@ export function DiffEditor({
 			editor.dispose();
 			editorRef.current = null;
 		};
-		// biome-ignore lint/correctness/useExhaustiveDependencies: editor created once on mount
 	}, []);
 
 	// Recreate models when content or language changes

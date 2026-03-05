@@ -65,9 +65,11 @@ export function MainContentArea({ savedScrollback }: MainContentAreaProps) {
 					<div className="absolute inset-0">
 						<FileEditor
 							key={`${activeTab.repoPath}:${activeTab.filePath}`}
+							tabId={activeTab.id}
 							repoPath={activeTab.repoPath}
 							filePath={activeTab.filePath}
 							language={activeTab.language}
+							initialPosition={activeTab.initialPosition}
 						/>
 					</div>
 				)}

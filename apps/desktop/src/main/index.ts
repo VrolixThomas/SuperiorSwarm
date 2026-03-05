@@ -2,6 +2,8 @@ import { join } from "node:path";
 import { BrowserWindow, app, dialog, ipcMain, shell } from "electron";
 import { initializeDatabase } from "./db";
 import { type SessionSaveData, saveTerminalSessions } from "./db/session-persistence";
+import { setupLspIPC } from "./lsp/ipc-handler";
+import { serverManager } from "./lsp/server-manager";
 import { setupTerminalIPC } from "./terminal/ipc";
 import { terminalManager } from "./terminal/manager";
 import { setupTRPCIPC } from "./trpc/ipc-link";
@@ -100,6 +102,10 @@ app.whenReady().then(() => {
 
 	createWindow();
 
+	if (mainWindow) {
+		setupLspIPC(mainWindow);
+	}
+
 	app.on("activate", () => {
 		if (BrowserWindow.getAllWindows().length === 0) {
 			createWindow();
@@ -109,6 +115,7 @@ app.whenReady().then(() => {
 
 app.on("before-quit", () => {
 	terminalManager.disposeAll();
+	serverManager.disposeAll();
 });
 
 app.on("window-all-closed", () => {
@@ -126,6 +133,7 @@ app.on("window-all-closed", () => {
 for (const signal of ["SIGTERM", "SIGHUP", "SIGINT"] as const) {
 	process.on(signal, () => {
 		terminalManager.disposeAll();
+		serverManager.disposeAll();
 		app.exit(0);
 	});
 }

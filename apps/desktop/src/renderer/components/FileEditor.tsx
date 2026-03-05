@@ -1,22 +1,51 @@
 import * as monaco from "monaco-editor";
 import { useEffect, useRef } from "react";
 import { EDITOR_THEME, ensureThemeRegistered } from "../lib/monacoTheme";
+import {
+	registerLspProviders,
+	sendDidChange,
+	sendDidClose,
+	sendDidOpen,
+	setModelRepoPath,
+} from "../lsp/monaco-lsp-bridge";
+import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 
 interface FileEditorProps {
+	tabId: string;
 	repoPath: string;
 	filePath: string;
 	language: string;
+	initialPosition?: { lineNumber: number; column: number };
 }
 
-export function FileEditor({ repoPath, filePath, language }: FileEditorProps) {
+export function FileEditor({
+	tabId,
+	repoPath,
+	filePath,
+	language,
+	initialPosition,
+}: FileEditorProps) {
 	const containerRef = useRef<HTMLDivElement>(null);
 	const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
 	const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+	// Capture initialPosition on mount only; subsequent re-renders (e.g. after store clear) do not update it
+	const initialPositionRef = useRef(initialPosition);
+	const clearInitialPosition = useTabStore((s) => s.clearInitialPosition);
 	const saveMutation = trpc.diff.saveFileContent.useMutation();
 
+	// Clear initialPosition from store immediately so re-mounts (tab switch away/back) do not re-navigate.
+	// tabId and clearInitialPosition are intentionally excluded: this runs on mount only, and tabId
+	// is stable for the lifetime of this component instance (it changes only when the key prop changes).
+	// biome-ignore lint/correctness/useExhaustiveDependencies: mount-only effect, deps excluded intentionally
+	useEffect(() => {
+		if (initialPositionRef.current) {
+			clearInitialPosition(tabId);
+		}
+	}, []);
+
 	const { data, isLoading } = trpc.diff.getFileContent.useQuery(
-		{ repoPath, ref: "HEAD", filePath },
+		{ repoPath, ref: "", filePath },
 		{ staleTime: 30_000 }
 	);
 
@@ -40,10 +69,11 @@ export function FileEditor({ repoPath, filePath, language }: FileEditorProps) {
 			editor.dispose();
 			editorRef.current = null;
 		};
-		// biome-ignore lint/correctness/useExhaustiveDependencies: editor created once on mount
 	}, []);
 
-	// Load content into editor when query data arrives or language changes
+	// Load content into editor when query data arrives or language changes.
+	// Note: only one FileEditor mounts per URI at a time (enforced by MainContentArea key prop).
+	// biome-ignore lint/correctness/useExhaustiveDependencies: saveMutation.mutate identity is stable; initialPositionRef is a ref (intentionally excluded)
 	useEffect(() => {
 		const editor = editorRef.current;
 		if (!editor || !data) return;
@@ -51,31 +81,67 @@ export function FileEditor({ repoPath, filePath, language }: FileEditorProps) {
 		const prev = editor.getModel();
 		if (prev) prev.dispose();
 
-		const model = monaco.editor.createModel(data.content, language);
+		const fileUri = monaco.Uri.file(`${repoPath}/${filePath}`);
+		const existingModel = monaco.editor.getModel(fileUri);
+		if (existingModel) existingModel.dispose();
+		const model = monaco.editor.createModel(data.content, language, fileUri);
 		editor.setModel(model);
+
+		// Use the ref (captured at mount) so re-renders after store clear do not re-navigate
+		const position = initialPositionRef.current;
+		if (position) {
+			editor.setPosition(position);
+			editor.revealPositionInCenter(position);
+			initialPositionRef.current = undefined; // consume once
+		}
+
+		// LSP integration
+		const uri = model.uri.toString();
+		const supportedLspLanguages = ["typescript", "javascript", "python"];
+		const lspEnabled = supportedLspLanguages.includes(language);
+
+		if (lspEnabled) {
+			setModelRepoPath(uri, repoPath);
+			registerLspProviders(language);
+			sendDidOpen(repoPath, language, uri, data.content);
+		}
+
+		let version = 1;
 
 		const sub = model.onDidChangeContent(() => {
 			if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
 			saveTimerRef.current = setTimeout(() => {
 				saveMutation.mutate({ repoPath, filePath, content: model.getValue() });
 			}, 500);
+
+			if (lspEnabled) {
+				version++;
+				sendDidChange(repoPath, language, uri, model.getValue(), version);
+			}
 		});
 
 		return () => {
 			sub.dispose();
 			if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+			if (lspEnabled) {
+				sendDidClose(repoPath, language, uri);
+			}
 			model.dispose();
 		};
-		// biome-ignore lint/correctness/useExhaustiveDependencies: saveMutation identity is stable
 	}, [data, language, repoPath, filePath]);
 
-	if (isLoading) {
-		return (
-			<div className="flex h-full items-center justify-center text-[13px] text-[var(--text-quaternary)]">
-				Loading…
-			</div>
-		);
-	}
-
-	return <div ref={containerRef} className="h-full w-full" />;
+	return (
+		<>
+			{isLoading && (
+				<div className="flex h-full items-center justify-center text-[13px] text-[var(--text-quaternary)]">
+					Loading…
+				</div>
+			)}
+			<div
+				ref={containerRef}
+				className="h-full w-full"
+				style={isLoading ? { display: "none" } : undefined}
+			/>
+		</>
+	);
 }

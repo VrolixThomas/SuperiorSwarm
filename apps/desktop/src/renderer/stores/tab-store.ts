@@ -22,10 +22,15 @@ export type TabItem =
 			filePath: string;
 			title: string;
 			language: string;
+			initialPosition?: { lineNumber: number; column: number };
 	  };
-export type DiffPanelState = { open: false; diffCtx: null } | { open: true; diffCtx: DiffContext };
+export type PanelMode = "diff" | "explorer";
 
-export const PANEL_CLOSED: DiffPanelState = { open: false, diffCtx: null };
+export type RightPanelState =
+	| { open: false }
+	| { open: true; mode: PanelMode; diffCtx: DiffContext | null };
+
+export const PANEL_CLOSED: RightPanelState = { open: false };
 
 // ─── Store interface ─────────────────────────────────────────────────────────
 
@@ -35,7 +40,7 @@ interface TabStore {
 	activeWorkspaceId: string | null;
 	activeWorkspaceCwd: string;
 	diffMode: "split" | "inline";
-	diffPanel: DiffPanelState;
+	rightPanel: RightPanelState;
 
 	// Queries
 	getVisibleTabs: () => TabItem[];
@@ -56,6 +61,8 @@ interface TabStore {
 	// Diff convenience
 	toggleDiffPanel: (diffCtx: DiffContext) => void;
 	closeDiffPanel: () => void;
+	openExplorer: () => void;
+	togglePanelMode: () => void;
 	openDiffFile: (
 		workspaceId: string,
 		diffCtx: DiffContext,
@@ -63,6 +70,14 @@ interface TabStore {
 		language: string
 	) => string;
 	closeDiff: (workspaceId: string, repoPath: string) => void;
+	openFile: (
+		workspaceId: string,
+		repoPath: string,
+		filePath: string,
+		language: string,
+		initialPosition?: { lineNumber: number; column: number }
+	) => string;
+	clearInitialPosition: (tabId: string) => void;
 	setDiffMode: (mode: "split" | "inline") => void;
 
 	// Session restore
@@ -90,6 +105,10 @@ function nextFileTabId(): string {
 
 function diffFileKey(diffCtx: DiffContext, filePath: string): string {
 	return `diff-file:${diffCtx.repoPath}:${filePath}`;
+}
+
+function fileKey(repoPath: string, filePath: string): string {
+	return `file:${repoPath}:${filePath}`;
 }
 
 // ─── DiffContext identity comparison ─────────────────────────────────────────
@@ -129,7 +148,7 @@ export const useTabStore = create<TabStore>((set, get) => ({
 	activeWorkspaceId: null,
 	activeWorkspaceCwd: "",
 	diffMode: "split",
-	diffPanel: PANEL_CLOSED,
+	rightPanel: PANEL_CLOSED,
 
 	getVisibleTabs: () => {
 		const { tabs, activeWorkspaceId } = get();
@@ -176,7 +195,7 @@ export const useTabStore = create<TabStore>((set, get) => ({
 			activeWorkspaceId: workspaceId,
 			activeWorkspaceCwd: cwd,
 			activeTabId: currentStillVisible?.id ?? wsTabs[0]?.id ?? null,
-			diffPanel: PANEL_CLOSED,
+			rightPanel: PANEL_CLOSED,
 		});
 	},
 
@@ -192,16 +211,49 @@ export const useTabStore = create<TabStore>((set, get) => ({
 	},
 
 	toggleDiffPanel: (diffCtx) => {
-		const { diffPanel } = get();
-		if (diffPanel.open && diffContextsEqual(diffPanel.diffCtx, diffCtx)) {
-			set({ diffPanel: PANEL_CLOSED });
+		const { rightPanel } = get();
+		if (
+			rightPanel.open &&
+			rightPanel.mode === "diff" &&
+			rightPanel.diffCtx &&
+			diffContextsEqual(rightPanel.diffCtx, diffCtx)
+		) {
+			set({ rightPanel: PANEL_CLOSED });
 		} else {
-			set({ diffPanel: { open: true, diffCtx } });
+			set({ rightPanel: { open: true, mode: "diff", diffCtx } });
 		}
 	},
 
 	closeDiffPanel: () => {
-		set({ diffPanel: PANEL_CLOSED });
+		set({ rightPanel: PANEL_CLOSED });
+	},
+
+	openExplorer: () => {
+		const { rightPanel } = get();
+		if (rightPanel.open && rightPanel.mode === "explorer") {
+			set({ rightPanel: PANEL_CLOSED });
+		} else {
+			set({
+				rightPanel: {
+					open: true,
+					mode: "explorer",
+					diffCtx: rightPanel.open ? rightPanel.diffCtx : null,
+				},
+			});
+		}
+	},
+
+	togglePanelMode: () => {
+		const { rightPanel } = get();
+		if (!rightPanel.open) return;
+		if (rightPanel.mode === "explorer") {
+			// Only switch to diff if we have a diffCtx
+			if (rightPanel.diffCtx) {
+				set({ rightPanel: { ...rightPanel, mode: "diff" } });
+			}
+		} else {
+			set({ rightPanel: { ...rightPanel, mode: "explorer" } });
+		}
 	},
 
 	openDiffFile: (workspaceId, diffCtx, filePath, language) => {
@@ -237,8 +289,8 @@ export const useTabStore = create<TabStore>((set, get) => ({
 	},
 
 	closeDiff: (workspaceId, repoPath) => {
-		const { diffPanel } = get();
-		const closePanel = diffPanel.open && diffPanel.diffCtx.repoPath === repoPath;
+		const { rightPanel } = get();
+		const closePanel = rightPanel.open && rightPanel.diffCtx?.repoPath === repoPath;
 
 		set((s) => {
 			const filtered = s.tabs.filter(
@@ -257,9 +309,60 @@ export const useTabStore = create<TabStore>((set, get) => ({
 			return {
 				tabs: filtered,
 				activeTabId: nextActive,
-				...(closePanel ? { diffPanel: PANEL_CLOSED } : {}),
+				...(closePanel ? { rightPanel: PANEL_CLOSED } : {}),
 			};
 		});
+	},
+
+	openFile: (workspaceId, repoPath, filePath, language, initialPosition) => {
+		const { tabs } = get();
+		const key = fileKey(repoPath, filePath);
+		const existing = tabs.find(
+			(t) =>
+				t.kind === "file" &&
+				t.workspaceId === workspaceId &&
+				fileKey(t.repoPath, t.filePath) === key
+		);
+		if (existing) {
+			// If reopening with a new position, update the tab
+			if (initialPosition && existing.kind === "file") {
+				set((s) => ({
+					tabs: s.tabs.map((t) =>
+						t.id === existing.id && t.kind === "file" ? { ...t, initialPosition } : t
+					),
+					activeTabId: existing.id,
+				}));
+			} else {
+				set({ activeTabId: existing.id });
+			}
+			return existing.id;
+		}
+
+		const id = nextFileTabId();
+		const title = filePath.split("/").pop() ?? filePath;
+		const tab: TabItem = {
+			kind: "file",
+			id,
+			workspaceId,
+			repoPath,
+			filePath,
+			title,
+			language,
+			initialPosition,
+		};
+		set((s) => ({
+			tabs: [...s.tabs, tab],
+			activeTabId: id,
+		}));
+		return id;
+	},
+
+	clearInitialPosition: (tabId) => {
+		set((s) => ({
+			tabs: s.tabs.map((t) =>
+				t.id === tabId && t.kind === "file" ? { ...t, initialPosition: undefined } : t
+			),
+		}));
 	},
 
 	setDiffMode: (mode) => set({ diffMode: mode }),
