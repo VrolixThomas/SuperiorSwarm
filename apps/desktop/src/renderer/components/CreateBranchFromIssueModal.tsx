@@ -59,6 +59,7 @@ export function CreateBranchFromIssueModal({ issue, onClose }: Props) {
 	const attachTerminal = trpc.workspaces.attachTerminal.useMutation();
 	const linkIssueMutation = trpc.linear.linkIssue.useMutation({
 		onSuccess: () => utils.linear.getLinkedIssues.invalidate(),
+		onError: (err) => console.error("[linkIssue] Failed to link issue to workspace:", err.message),
 	});
 
 	const createMutation = trpc.workspaces.create.useMutation({
