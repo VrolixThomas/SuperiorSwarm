@@ -144,7 +144,7 @@ export function RepoFileTree({
 					<ExplorerFolderNode
 						key={entry.path}
 						entry={entry}
-						depth={1}
+						depth={0}
 						repoPath={repoPath}
 						workspaceId={workspaceId}
 					/>

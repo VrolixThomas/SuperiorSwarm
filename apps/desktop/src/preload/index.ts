@@ -68,6 +68,18 @@ const lspAPI: LspAPI = {
 		ipcRenderer.on("lsp:notification-from-server", handler);
 		return () => ipcRenderer.removeListener("lsp:notification-from-server", handler);
 	},
+	onServerRestarted: (callback) => {
+		const handler = (
+			_event: Electron.IpcRendererEvent,
+			configId: string,
+			repoPath: string,
+			uris: string[]
+		) => {
+			callback(configId, repoPath, uris);
+		};
+		ipcRenderer.on("lsp:server-restarted", handler);
+		return () => ipcRenderer.removeListener("lsp:server-restarted", handler);
+	},
 };
 
 contextBridge.exposeInMainWorld("electron", {

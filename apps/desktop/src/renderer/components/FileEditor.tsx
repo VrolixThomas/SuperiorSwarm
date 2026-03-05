@@ -8,23 +8,44 @@ import {
 	sendDidOpen,
 	setModelRepoPath,
 } from "../lsp/monaco-lsp-bridge";
+import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 
 interface FileEditorProps {
+	tabId: string;
 	repoPath: string;
 	filePath: string;
 	language: string;
 	initialPosition?: { lineNumber: number; column: number };
 }
 
-export function FileEditor({ repoPath, filePath, language, initialPosition }: FileEditorProps) {
+export function FileEditor({
+	tabId,
+	repoPath,
+	filePath,
+	language,
+	initialPosition,
+}: FileEditorProps) {
 	const containerRef = useRef<HTMLDivElement>(null);
 	const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
 	const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+	// Capture initialPosition on mount only; subsequent re-renders (e.g. after store clear) do not update it
+	const initialPositionRef = useRef(initialPosition);
+	const clearInitialPosition = useTabStore((s) => s.clearInitialPosition);
 	const saveMutation = trpc.diff.saveFileContent.useMutation();
 
+	// Clear initialPosition from store immediately so re-mounts (tab switch away/back) do not re-navigate.
+	// tabId and clearInitialPosition are intentionally excluded: this runs on mount only, and tabId
+	// is stable for the lifetime of this component instance (it changes only when the key prop changes).
+	// biome-ignore lint/correctness/useExhaustiveDependencies: mount-only effect, deps excluded intentionally
+	useEffect(() => {
+		if (initialPositionRef.current) {
+			clearInitialPosition(tabId);
+		}
+	}, []);
+
 	const { data, isLoading } = trpc.diff.getFileContent.useQuery(
-		{ repoPath, ref: "HEAD", filePath },
+		{ repoPath, ref: "", filePath },
 		{ staleTime: 30_000 }
 	);
 
@@ -50,8 +71,9 @@ export function FileEditor({ repoPath, filePath, language, initialPosition }: Fi
 		};
 	}, []);
 
-	// Load content into editor when query data arrives or language changes
-	// biome-ignore lint/correctness/useExhaustiveDependencies: saveMutation.mutate identity is stable
+	// Load content into editor when query data arrives or language changes.
+	// Note: only one FileEditor mounts per URI at a time (enforced by MainContentArea key prop).
+	// biome-ignore lint/correctness/useExhaustiveDependencies: saveMutation.mutate identity is stable; initialPositionRef is a ref (intentionally excluded)
 	useEffect(() => {
 		const editor = editorRef.current;
 		if (!editor || !data) return;
@@ -65,9 +87,12 @@ export function FileEditor({ repoPath, filePath, language, initialPosition }: Fi
 		const model = monaco.editor.createModel(data.content, language, fileUri);
 		editor.setModel(model);
 
-		if (initialPosition) {
-			editor.setPosition(initialPosition);
-			editor.revealPositionInCenter(initialPosition);
+		// Use the ref (captured at mount) so re-renders after store clear do not re-navigate
+		const position = initialPositionRef.current;
+		if (position) {
+			editor.setPosition(position);
+			editor.revealPositionInCenter(position);
+			initialPositionRef.current = undefined; // consume once
 		}
 
 		// LSP integration
@@ -103,7 +128,7 @@ export function FileEditor({ repoPath, filePath, language, initialPosition }: Fi
 			}
 			model.dispose();
 		};
-	}, [data, language, repoPath, filePath, initialPosition]);
+	}, [data, language, repoPath, filePath]);
 
 	return (
 		<>
