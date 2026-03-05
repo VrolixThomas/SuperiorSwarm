@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { slugifyBranchName } from "../src/renderer/components/CreateBranchFromIssueModal";
+import { slugifyBranchName } from "../src/renderer/lib/slugify";
 
 describe("slugifyBranchName", () => {
 	test("basic identifier + title", () => {
