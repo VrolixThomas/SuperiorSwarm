@@ -3,11 +3,10 @@ import type { ClientMessage, DaemonMessage } from "../shared/daemon-protocol";
 import type { PtyManager } from "./pty-manager";
 import type { ScrollbackStore } from "./scrollback-store";
 
-let clientIdCounter = 0;
-
 export class SocketServer {
 	private server: Server;
 	private clients = new Map<string, Socket>();
+	private clientIdCounter = 0;
 
 	constructor(
 		private ptyManager: PtyManager,
@@ -38,7 +37,7 @@ export class SocketServer {
 	}
 
 	private onConnection(socket: Socket): void {
-		const clientId = `client-${++clientIdCounter}`;
+		const clientId = `client-${++this.clientIdCounter}`;
 		this.clients.set(clientId, socket);
 
 		this.send(socket, { type: "ready" });
@@ -46,6 +45,11 @@ export class SocketServer {
 		let lineBuffer = "";
 		socket.on("data", (chunk) => {
 			lineBuffer += chunk.toString("utf-8");
+			if (lineBuffer.length > 64_000) {
+				console.warn("[socket-server] line buffer overflow, resetting");
+				lineBuffer = "";
+				return;
+			}
 			for (;;) {
 				const newline = lineBuffer.indexOf("\n");
 				if (newline === -1) break;
@@ -55,7 +59,9 @@ export class SocketServer {
 				try {
 					const msg = JSON.parse(line) as ClientMessage;
 					this.handleMessage(clientId, socket, msg);
-				} catch {}
+				} catch {
+					console.warn("[socket-server] failed to parse message from client");
+				}
 			}
 		});
 
