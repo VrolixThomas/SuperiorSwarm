@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import type { WorkflowStateType } from "../../main/linear/linear";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 
@@ -13,7 +14,7 @@ export interface BranchIssue {
 	teamId: string;
 	stateId: string;
 	stateName: string;
-	stateType: string;
+	stateType: WorkflowStateType;
 	teamName: string;
 }
 
