@@ -26,10 +26,12 @@ function resolveShell(): string {
 }
 
 function resolveEnv(): Record<string, string> {
-	const env = { ...process.env } as Record<string, string>;
+	const base = Object.fromEntries(
+		Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined)
+	);
 	const defaults = "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin";
-	env["PATH"] = env["PATH"] ? `${env["PATH"]}:${defaults}` : defaults;
-	return env;
+	base["PATH"] = base["PATH"] ? `${base["PATH"]}:${defaults}` : defaults;
+	return base;
 }
 
 export class PtyManager {
@@ -99,11 +101,21 @@ export class PtyManager {
 	}
 
 	write(id: string, data: string): void {
-		this.terminals.get(id)?.pty.write(data);
+		const terminal = this.terminals.get(id);
+		if (!terminal) {
+			console.warn(`[pty-manager] write: terminal "${id}" not found`);
+			return;
+		}
+		terminal.pty.write(data);
 	}
 
 	resize(id: string, cols: number, rows: number): void {
-		this.terminals.get(id)?.pty.resize(cols, rows);
+		const terminal = this.terminals.get(id);
+		if (!terminal) {
+			console.warn(`[pty-manager] resize: terminal "${id}" not found`);
+			return;
+		}
+		terminal.pty.resize(cols, rows);
 	}
 
 	dispose(id: string): void {
