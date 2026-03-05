@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { WorkflowStateType } from "../../main/linear/linear";
+import { slugifyBranchName } from "../lib/slugify";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 
@@ -16,21 +17,6 @@ export interface BranchIssue {
 	stateName: string;
 	stateType: WorkflowStateType;
 	teamName: string;
-}
-
-// ── Pure utility (exported for testing) ──────────────────────────────────────
-
-export function slugifyBranchName(identifier: string, title: string): string {
-	const id = identifier.toLowerCase();
-	const slug = title
-		.toLowerCase()
-		.replace(/[^a-z0-9\s-]/g, "")
-		.trim()
-		.replace(/\s+/g, "-")
-		.replace(/-+/g, "-")
-		.slice(0, 50)
-		.replace(/-+$/, "");
-	return `${id}/${slug}`;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
