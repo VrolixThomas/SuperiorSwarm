@@ -127,3 +127,36 @@ export const sharedFiles = sqliteTable(
 
 export type SharedFile = typeof sharedFiles.$inferSelect;
 export type NewSharedFile = typeof sharedFiles.$inferInsert;
+
+export const linearAuth = sqliteTable("linear_auth", {
+	id: text("id").primaryKey(),
+	accessToken: text("access_token").notNull(),
+	refreshToken: text("refresh_token").notNull(),
+	expiresAt: integer("expires_at", { mode: "timestamp" }).notNull(),
+	accountId: text("account_id").notNull(),
+	displayName: text("display_name"),
+});
+
+export type LinearAuth = typeof linearAuth.$inferSelect;
+export type NewLinearAuth = typeof linearAuth.$inferInsert;
+
+export const linearBranchIssues = sqliteTable(
+	"linear_branch_issues",
+	{
+		id: text("id").primaryKey(),
+		workspaceId: text("workspace_id")
+			.notNull()
+			.references(() => workspaces.id, { onDelete: "cascade" }),
+		linearIssueId: text("linear_issue_id").notNull(),
+		createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+	},
+	(table) => [
+		uniqueIndex("linear_branch_issues_workspace_issue_unique").on(
+			table.workspaceId,
+			table.linearIssueId
+		),
+	]
+);
+
+export type LinearBranchIssue = typeof linearBranchIssues.$inferSelect;
+export type NewLinearBranchIssue = typeof linearBranchIssues.$inferInsert;
