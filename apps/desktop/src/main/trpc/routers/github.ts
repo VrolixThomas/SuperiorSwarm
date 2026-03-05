@@ -1,7 +1,7 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { getDb } from "../../db";
-import { githubBranchPrs, workspaces, worktrees } from "../../db/schema";
+import { githubBranchPrs, projects, workspaces, worktrees } from "../../db/schema";
 import { deleteAuth, getAuth } from "../../github/auth";
 import { getMyPRs, getPRComments } from "../../github/github";
 import { connectGitHub } from "../../github/oauth-flow";
@@ -35,6 +35,17 @@ export const githubRouter = router({
 		.input(z.object({ owner: z.string(), repo: z.string(), number: z.number() }))
 		.query(async ({ input }) => {
 			return getPRComments(input.owner, input.repo, input.number);
+		}),
+
+	getProjectsByRepo: publicProcedure
+		.input(z.object({ owner: z.string(), repo: z.string() }))
+		.query(({ input }) => {
+			const db = getDb();
+			return db
+				.select()
+				.from(projects)
+				.where(and(eq(projects.githubOwner, input.owner), eq(projects.githubRepo, input.repo)))
+				.all();
 		}),
 
 	linkPR: publicProcedure

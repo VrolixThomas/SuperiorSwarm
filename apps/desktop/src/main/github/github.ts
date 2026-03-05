@@ -7,6 +7,7 @@ export interface GitHubPR {
 	number: number;
 	title: string;
 	url: string;
+	branchName: string;
 	state: "open" | "closed";
 	isDraft: boolean;
 	repoOwner: string;
@@ -51,7 +52,11 @@ interface RawCommentNode {
 
 // ── Pure mapping functions (exported for testing) ─────────────────────────────
 
-export function mapPRNode(node: RawSearchIssueNode, role: "author" | "reviewer"): GitHubPR {
+export function mapPRNode(
+	node: RawSearchIssueNode,
+	role: "author" | "reviewer",
+	branchName: string
+): GitHubPR {
 	// repository_url is like "https://api.github.com/repos/owner/name"
 	const parts = node.repository_url.split("/");
 	const repoName = parts[parts.length - 1] ?? "";
@@ -62,6 +67,7 @@ export function mapPRNode(node: RawSearchIssueNode, role: "author" | "reviewer")
 		number: node.number,
 		title: node.title,
 		url: node.html_url,
+		branchName,
 		state: node.state,
 		isDraft: node.draft,
 		repoOwner,
@@ -110,24 +116,43 @@ async function searchPRs(query: string): Promise<RawSearchIssueNode[]> {
 // ── Public API functions ──────────────────────────────────────────────────────
 
 export async function getMyPRs(): Promise<GitHubPR[]> {
-	const [authored, reviewing] = await Promise.all([
+	const [authoredNodes, reviewingNodes] = await Promise.all([
 		searchPRs("is:pr is:open author:@me"),
 		searchPRs("is:pr is:open review-requested:@me"),
 	]);
 
 	const seen = new Set<number>();
-	const result: GitHubPR[] = [];
+	const nodes: { node: RawSearchIssueNode; role: "author" | "reviewer" }[] = [];
 
-	for (const node of authored) {
+	for (const node of authoredNodes) {
 		seen.add(node.id);
-		result.push(mapPRNode(node, "author"));
+		nodes.push({ node, role: "author" });
 	}
 
-	for (const node of reviewing) {
+	for (const node of reviewingNodes) {
 		if (!seen.has(node.id)) {
-			result.push(mapPRNode(node, "reviewer"));
+			nodes.push({ node, role: "reviewer" });
 		}
 	}
+
+	// Fetch full PR details to get branch names (head.ref)
+	const result = await Promise.all(
+		nodes.map(async ({ node, role }) => {
+			let branchName = "unknown";
+			if (node.pull_request?.url) {
+				try {
+					const prRes = await githubFetch(node.pull_request.url.replace("https://api.github.com", ""));
+					if (prRes.ok) {
+						const prData = (await prRes.json()) as { head: { ref: string } };
+						branchName = prData.head.ref;
+					}
+				} catch (err) {
+					console.error(`Failed to fetch branch name for PR #${node.number}:`, err);
+				}
+			}
+			return mapPRNode(node, role, branchName);
+		})
+	);
 
 	return result;
 }

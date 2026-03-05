@@ -18,13 +18,14 @@ describe("mapPRNode", () => {
 			repository_url: "https://api.github.com/repos/acme/app",
 		};
 
-		const result = mapPRNode(node, "author");
+		const result = mapPRNode(node, "author", "fix-login-bug");
 
 		expect(result).toEqual({
 			id: 1001,
 			number: 42,
 			title: "Fix the login bug",
 			url: "https://github.com/acme/app/pull/42",
+			branchName: "fix-login-bug",
 			state: "open",
 			isDraft: false,
 			repoOwner: "acme",
@@ -51,9 +52,10 @@ describe("mapPRNode", () => {
 			repository_url: "https://api.github.com/repos/org/repo",
 		};
 
-		const result = mapPRNode(node, "reviewer");
+		const result = mapPRNode(node, "reviewer", "add-dark-mode");
 
 		expect(result.role).toBe("reviewer");
+		expect(result.branchName).toBe("add-dark-mode");
 		expect(result.isDraft).toBe(true);
 		expect(result.repoOwner).toBe("org");
 		expect(result.repoName).toBe("repo");
