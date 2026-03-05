@@ -25,13 +25,14 @@ describe("slugifyBranchName", () => {
 	test("truncates long title slug to 50 chars", () => {
 		const long = "a".repeat(60);
 		const result = slugifyBranchName("ENG-1", long);
-		const slug = result.split("/")[1]!;
+		const parts = result.split("/");
+		const slug = parts[1] ?? "";
 		expect(slug.length).toBeLessThanOrEqual(50);
 	});
 
 	test("trims trailing hyphens after truncation", () => {
 		// Title that would end with a hyphen after truncation
-		const title = "a".repeat(49) + " b";
+		const title = `${"a".repeat(49)} b`;
 		const result = slugifyBranchName("ENG-1", title);
 		expect(result.endsWith("-")).toBe(false);
 	});

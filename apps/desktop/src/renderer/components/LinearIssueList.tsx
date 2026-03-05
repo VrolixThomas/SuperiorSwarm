@@ -129,11 +129,11 @@ export function LinearIssueList() {
 							className="w-full rounded bg-[var(--bg-elevated)] px-2 py-1 text-[11px] text-[var(--text-tertiary)] outline-none"
 							value={selectedTeamId ?? ""}
 							onChange={(e) =>
-							setTeamMutation.mutate(
-								{ teamId: e.target.value || null },
-								{ onSuccess: () => utils.linear.getAssignedIssues.invalidate() },
-							)
-						}
+								setTeamMutation.mutate(
+									{ teamId: e.target.value || null },
+									{ onSuccess: () => utils.linear.getAssignedIssues.invalidate() }
+								)
+							}
 						>
 							<option value="">All teams</option>
 							{teams.map((t) => (
