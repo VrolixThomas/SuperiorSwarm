@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { PANEL_CLOSED, diffContextsEqual, useTabStore } from "../src/renderer/stores/tab-store";
+import {
+	PANEL_CLOSED,
+	type RightPanelState,
+	diffContextsEqual,
+	useTabStore,
+} from "../src/renderer/stores/tab-store";
 import type { DiffContext } from "../src/shared/diff-types";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -42,6 +47,12 @@ const prCtxB: DiffContext = {
 	targetBranch: "main",
 };
 
+function assertPanelOpen(
+	panel: RightPanelState
+): asserts panel is Extract<RightPanelState, { open: true }> {
+	expect(panel.open).toBe(true);
+}
+
 function resetStore() {
 	useTabStore.setState({
 		tabs: [],
@@ -49,7 +60,7 @@ function resetStore() {
 		activeWorkspaceId: null,
 		activeWorkspaceCwd: "",
 		diffMode: "split",
-		diffPanel: PANEL_CLOSED,
+		rightPanel: PANEL_CLOSED,
 	});
 }
 
@@ -96,48 +107,57 @@ describe("toggleDiffPanel", () => {
 
 	test("opens panel when closed", () => {
 		useTabStore.getState().toggleDiffPanel(workingTreeCtx);
-		const { diffPanel } = useTabStore.getState();
-		expect(diffPanel.open).toBe(true);
-		expect(diffPanel.diffCtx).toEqual(workingTreeCtx);
+		const { rightPanel } = useTabStore.getState();
+		assertPanelOpen(rightPanel);
+		expect(rightPanel.mode).toBe("diff");
+		expect(rightPanel.diffCtx).toEqual(workingTreeCtx);
 	});
 
 	test("closes panel when toggling same context", () => {
 		useTabStore.getState().toggleDiffPanel(workingTreeCtx);
 		useTabStore.getState().toggleDiffPanel(workingTreeCtx);
-		const { diffPanel } = useTabStore.getState();
-		expect(diffPanel.open).toBe(false);
-		expect(diffPanel.diffCtx).toBeNull();
+		const { rightPanel } = useTabStore.getState();
+		expect(rightPanel.open).toBe(false);
 	});
 
 	test("switches context when toggling different context", () => {
 		useTabStore.getState().toggleDiffPanel(workingTreeCtx);
 		useTabStore.getState().toggleDiffPanel(branchCtxA);
-		const { diffPanel } = useTabStore.getState();
-		expect(diffPanel.open).toBe(true);
-		expect(diffPanel.diffCtx).toEqual(branchCtxA);
+		const { rightPanel } = useTabStore.getState();
+		assertPanelOpen(rightPanel);
+		expect(rightPanel.diffCtx).toEqual(branchCtxA);
 	});
 
 	test("switches to different PR instead of closing", () => {
 		useTabStore.getState().toggleDiffPanel(prCtxA);
 		useTabStore.getState().toggleDiffPanel(prCtxB);
-		const { diffPanel } = useTabStore.getState();
-		expect(diffPanel.open).toBe(true);
-		expect(diffPanel.diffCtx).toEqual(prCtxB);
+		const { rightPanel } = useTabStore.getState();
+		assertPanelOpen(rightPanel);
+		expect(rightPanel.diffCtx).toEqual(prCtxB);
 	});
 
 	test("closes same PR when toggling again", () => {
 		useTabStore.getState().toggleDiffPanel(prCtxA);
 		useTabStore.getState().toggleDiffPanel(prCtxA);
-		const { diffPanel } = useTabStore.getState();
-		expect(diffPanel.open).toBe(false);
+		const { rightPanel } = useTabStore.getState();
+		expect(rightPanel.open).toBe(false);
 	});
 
 	test("switches to different branch instead of closing", () => {
 		useTabStore.getState().toggleDiffPanel(branchCtxA);
 		useTabStore.getState().toggleDiffPanel(branchCtxB);
-		const { diffPanel } = useTabStore.getState();
-		expect(diffPanel.open).toBe(true);
-		expect(diffPanel.diffCtx).toEqual(branchCtxB);
+		const { rightPanel } = useTabStore.getState();
+		assertPanelOpen(rightPanel);
+		expect(rightPanel.diffCtx).toEqual(branchCtxB);
+	});
+
+	test("switches from explorer mode to diff when toggling diff panel", () => {
+		useTabStore.getState().openExplorer();
+		useTabStore.getState().toggleDiffPanel(workingTreeCtx);
+		const { rightPanel } = useTabStore.getState();
+		assertPanelOpen(rightPanel);
+		expect(rightPanel.mode).toBe("diff");
+		expect(rightPanel.diffCtx).toEqual(workingTreeCtx);
 	});
 });
 
@@ -149,14 +169,14 @@ describe("closeDiffPanel", () => {
 	test("closes an open panel", () => {
 		useTabStore.getState().toggleDiffPanel(workingTreeCtx);
 		useTabStore.getState().closeDiffPanel();
-		const { diffPanel } = useTabStore.getState();
-		expect(diffPanel).toEqual(PANEL_CLOSED);
+		const { rightPanel } = useTabStore.getState();
+		expect(rightPanel).toEqual(PANEL_CLOSED);
 	});
 
 	test("is a no-op when already closed", () => {
 		useTabStore.getState().closeDiffPanel();
-		const { diffPanel } = useTabStore.getState();
-		expect(diffPanel).toEqual(PANEL_CLOSED);
+		const { rightPanel } = useTabStore.getState();
+		expect(rightPanel).toEqual(PANEL_CLOSED);
 	});
 });
 
@@ -168,8 +188,8 @@ describe("setActiveWorkspace", () => {
 	test("clears the diff panel when switching workspaces", () => {
 		useTabStore.getState().toggleDiffPanel(workingTreeCtx);
 		useTabStore.getState().setActiveWorkspace("ws-1", "/path");
-		const { diffPanel } = useTabStore.getState();
-		expect(diffPanel).toEqual(PANEL_CLOSED);
+		const { rightPanel } = useTabStore.getState();
+		expect(rightPanel).toEqual(PANEL_CLOSED);
 	});
 });
 
@@ -183,16 +203,16 @@ describe("closeDiff", () => {
 		addTerminalTab("ws-1", "/repo");
 		toggleDiffPanel(workingTreeCtx);
 		closeDiff("ws-1", "/repo");
-		const { diffPanel } = useTabStore.getState();
-		expect(diffPanel).toEqual(PANEL_CLOSED);
+		const { rightPanel } = useTabStore.getState();
+		expect(rightPanel).toEqual(PANEL_CLOSED);
 	});
 
 	test("does not close panel when repoPath differs", () => {
 		const { toggleDiffPanel, closeDiff } = useTabStore.getState();
 		toggleDiffPanel(workingTreeCtx);
 		closeDiff("ws-1", "/other-repo");
-		const { diffPanel } = useTabStore.getState();
-		expect(diffPanel.open).toBe(true);
+		const { rightPanel } = useTabStore.getState();
+		expect(rightPanel.open).toBe(true);
 	});
 
 	test("removes diff-file tabs for matching workspace and repoPath", () => {
@@ -213,5 +233,112 @@ describe("closeDiff", () => {
 
 		closeDiff("ws-2", "/repo");
 		expect(useTabStore.getState().tabs).toHaveLength(1);
+	});
+});
+
+// ── openExplorer ─────────────────────────────────────────────────────────────
+
+describe("openExplorer", () => {
+	beforeEach(resetStore);
+
+	test("opens panel in explorer mode", () => {
+		useTabStore.getState().openExplorer();
+		const { rightPanel } = useTabStore.getState();
+		assertPanelOpen(rightPanel);
+		expect(rightPanel.mode).toBe("explorer");
+		expect(rightPanel.diffCtx).toBeNull();
+	});
+
+	test("toggles closed when already in explorer mode", () => {
+		useTabStore.getState().openExplorer();
+		useTabStore.getState().openExplorer();
+		const { rightPanel } = useTabStore.getState();
+		expect(rightPanel.open).toBe(false);
+	});
+
+	test("preserves diffCtx when switching from diff to explorer", () => {
+		useTabStore.getState().toggleDiffPanel(workingTreeCtx);
+		useTabStore.getState().openExplorer();
+		const { rightPanel } = useTabStore.getState();
+		assertPanelOpen(rightPanel);
+		expect(rightPanel.mode).toBe("explorer");
+		expect(rightPanel.diffCtx).toEqual(workingTreeCtx);
+	});
+});
+
+// ── togglePanelMode ──────────────────────────────────────────────────────────
+
+describe("togglePanelMode", () => {
+	beforeEach(resetStore);
+
+	test("switches from explorer to diff when diffCtx exists", () => {
+		useTabStore.getState().toggleDiffPanel(workingTreeCtx);
+		useTabStore.getState().openExplorer();
+		useTabStore.getState().togglePanelMode();
+		const { rightPanel } = useTabStore.getState();
+		assertPanelOpen(rightPanel);
+		expect(rightPanel.mode).toBe("diff");
+	});
+
+	test("does not switch to diff when no diffCtx", () => {
+		useTabStore.getState().openExplorer();
+		useTabStore.getState().togglePanelMode();
+		const { rightPanel } = useTabStore.getState();
+		assertPanelOpen(rightPanel);
+		expect(rightPanel.mode).toBe("explorer");
+	});
+
+	test("switches from diff to explorer", () => {
+		useTabStore.getState().toggleDiffPanel(workingTreeCtx);
+		useTabStore.getState().togglePanelMode();
+		const { rightPanel } = useTabStore.getState();
+		assertPanelOpen(rightPanel);
+		expect(rightPanel.mode).toBe("explorer");
+	});
+});
+
+// ── openFile ─────────────────────────────────────────────────────────────────
+
+describe("openFile", () => {
+	beforeEach(resetStore);
+
+	test("opens a new file tab", () => {
+		const { openFile, setActiveWorkspace } = useTabStore.getState();
+		setActiveWorkspace("ws-1", "/repo");
+		const id = openFile("ws-1", "/repo", "src/main.ts", "typescript");
+		const { tabs, activeTabId } = useTabStore.getState();
+		expect(tabs).toHaveLength(1);
+		expect(activeTabId).toBe(id);
+		const tab = tabs[0]!;
+		expect(tab.kind).toBe("file");
+		if (tab.kind === "file") {
+			expect(tab.filePath).toBe("src/main.ts");
+			expect(tab.repoPath).toBe("/repo");
+		}
+	});
+
+	test("deduplicates by repoPath + filePath", () => {
+		const { openFile } = useTabStore.getState();
+		const id1 = openFile("ws-1", "/repo", "src/main.ts", "typescript");
+		const id2 = openFile("ws-1", "/repo", "src/main.ts", "typescript");
+		expect(id1).toBe(id2);
+		expect(useTabStore.getState().tabs).toHaveLength(1);
+	});
+
+	test("opens different files as separate tabs", () => {
+		const { openFile } = useTabStore.getState();
+		openFile("ws-1", "/repo", "src/main.ts", "typescript");
+		openFile("ws-1", "/repo", "src/util.ts", "typescript");
+		expect(useTabStore.getState().tabs).toHaveLength(2);
+	});
+
+	test("updates initialPosition on existing tab", () => {
+		const { openFile } = useTabStore.getState();
+		openFile("ws-1", "/repo", "src/main.ts", "typescript");
+		openFile("ws-1", "/repo", "src/main.ts", "typescript", { lineNumber: 10, column: 5 });
+		const tab = useTabStore.getState().tabs[0]!;
+		if (tab.kind === "file") {
+			expect(tab.initialPosition).toEqual({ lineNumber: 10, column: 5 });
+		}
 	});
 });

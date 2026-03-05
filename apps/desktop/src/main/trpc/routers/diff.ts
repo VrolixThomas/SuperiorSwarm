@@ -5,6 +5,7 @@ import { atlassianFetch } from "../../atlassian/auth";
 import { getDb } from "../../db";
 import { extensionPaths } from "../../db/schema";
 import { readWorkingTreeFile, saveWorkingTreeFile } from "../../git/file-ops";
+import { listDirectory } from "../../git/file-tree";
 import {
 	commitChanges,
 	detectLanguage,
@@ -210,5 +211,17 @@ export const diffRouter = router({
 				.where(eq(extensionPaths.id, input.id))
 				.run();
 			return { ok: true };
+		}),
+
+	listDirectory: publicProcedure
+		.input(
+			z.object({
+				repoPath: z.string(),
+				dirPath: z.string().optional(),
+			})
+		)
+		.query(async ({ input }) => {
+			const entries = await listDirectory(input.repoPath, input.dirPath);
+			return { entries };
 		}),
 });

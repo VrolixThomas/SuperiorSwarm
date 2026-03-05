@@ -1,4 +1,11 @@
-import type { DialogAPI, SessionAPI, ShellAPI, TerminalAPI, TrpcAPI } from "../shared/types";
+import type {
+	DialogAPI,
+	LspAPI,
+	SessionAPI,
+	ShellAPI,
+	TerminalAPI,
+	TrpcAPI,
+} from "../shared/types";
 
 export interface ElectronAPI {
 	terminal: TerminalAPI;
@@ -6,6 +13,7 @@ export interface ElectronAPI {
 	dialog: DialogAPI;
 	session: SessionAPI;
 	shell: ShellAPI;
+	lsp: LspAPI;
 }
 
 declare global {
