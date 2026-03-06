@@ -97,7 +97,7 @@ export class SocketServer {
 						(code, finalBuffer) => {
 							this.send(socket, { type: "exit", id: msg.id, code });
 							if (finalBuffer.length > 0) {
-								this.scrollbackStore.flush([{ id: msg.id, cwd: "", buffer: finalBuffer }]);
+								this.scrollbackStore.flush([{ id: msg.id, buffer: finalBuffer }]);
 							}
 						},
 						clientId
@@ -120,7 +120,7 @@ export class SocketServer {
 					(code, finalBuffer) => {
 						this.send(socket, { type: "exit", id: msg.id, code });
 						if (finalBuffer.length > 0) {
-							this.scrollbackStore.flush([{ id: msg.id, cwd: "", buffer: finalBuffer }]);
+							this.scrollbackStore.flush([{ id: msg.id, buffer: finalBuffer }]);
 						}
 					},
 					clientId
@@ -148,7 +148,7 @@ export class SocketServer {
 				const buf = this.ptyManager.getBuffer(msg.id);
 				const session = this.ptyManager.list().find((s) => s.id === msg.id);
 				if (buf.length > 0 && session) {
-					this.scrollbackStore.flush([{ id: msg.id, cwd: session.cwd, buffer: buf }]);
+					this.scrollbackStore.flush([{ id: msg.id, buffer: buf }]);
 				}
 				this.ptyManager.dispose(msg.id);
 				break;

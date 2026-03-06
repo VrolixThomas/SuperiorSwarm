@@ -51,7 +51,7 @@ class MockPtyManager {
 }
 
 class MockScrollbackStore {
-	flush(_sessions: Array<{ id: string; cwd: string; buffer: string }>): void {}
+	flush(_sessions: Array<{ id: string; buffer: string }>): void {}
 	close(): void {}
 }
 

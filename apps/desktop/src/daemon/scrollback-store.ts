@@ -19,7 +19,7 @@ export class ScrollbackStore {
 		this.stmt = this.db.prepare("UPDATE terminal_sessions SET scrollback = ? WHERE id = ?");
 	}
 
-	flush(sessions: Array<{ id: string; cwd: string; buffer: string }>): void {
+	flush(sessions: Array<{ id: string; buffer: string }>): void {
 		const tx = this.db.transaction(() => {
 			for (const { id, buffer } of sessions) {
 				if (buffer.length > 0) {

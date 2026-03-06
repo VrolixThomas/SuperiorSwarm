@@ -38,7 +38,7 @@ describe("ScrollbackStore", () => {
 			 VALUES (?, 'ws1', 'Terminal 1', '/tmp', NULL, 0, ?)`
 		).run("term-1", Date.now());
 
-		store.flush([{ id: "term-1", cwd: "/tmp", buffer: "hello world output" }]);
+		store.flush([{ id: "term-1", buffer: "hello world output" }]);
 
 		const row = db
 			.prepare("SELECT scrollback FROM terminal_sessions WHERE id = ?")
@@ -47,7 +47,7 @@ describe("ScrollbackStore", () => {
 	});
 
 	test("flush is a no-op for missing rows (does not throw)", () => {
-		expect(() => store.flush([{ id: "nonexistent", cwd: "/tmp", buffer: "data" }])).not.toThrow();
+		expect(() => store.flush([{ id: "nonexistent", buffer: "data" }])).not.toThrow();
 	});
 
 	test("flush skips entries with empty buffer", () => {
@@ -56,7 +56,7 @@ describe("ScrollbackStore", () => {
 			 VALUES (?, 'ws1', 'Terminal 1', '/tmp', 'previous', 0, ?)`
 		).run("term-1", Date.now());
 
-		store.flush([{ id: "term-1", cwd: "/tmp", buffer: "" }]);
+		store.flush([{ id: "term-1", buffer: "" }]);
 
 		const row = db
 			.prepare("SELECT scrollback FROM terminal_sessions WHERE id = ?")
@@ -73,9 +73,9 @@ describe("ScrollbackStore", () => {
 		}
 
 		store.flush([
-			{ id: "t1", cwd: "/tmp", buffer: "output1" },
-			{ id: "t2", cwd: "/tmp", buffer: "output2" },
-			{ id: "t3", cwd: "/tmp", buffer: "output3" },
+			{ id: "t1", buffer: "output1" },
+			{ id: "t2", buffer: "output2" },
+			{ id: "t3", buffer: "output3" },
 		]);
 
 		for (const [id, expected] of [
