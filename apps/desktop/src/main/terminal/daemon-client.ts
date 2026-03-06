@@ -24,6 +24,9 @@ export class DaemonClient {
 	private callbacks = new Map<string, TerminalCallbacks>();
 	private pendingListeners = new Map<string, Array<(msg: DaemonMessage) => void>>();
 	private isQuitting = false;
+	// Sessions that were attached (background PTYs) rather than freshly created.
+	// These must not be killed on dispose — they survive tab close and app restarts.
+	private attachedSessions = new Set<string>();
 
 	constructor(private socketPath: string = DEFAULT_SOCKET_PATH) {}
 
@@ -75,6 +78,7 @@ export class DaemonClient {
 		onData: (data: string) => void,
 		onExit: (code: number) => void
 	): Promise<void> {
+		this.attachedSessions.delete(id);
 		this.callbacks.set(id, { onData, onExit, cwd });
 		this.liveSessions.add(id);
 		this.send({ type: "create", id, cwd });
@@ -86,6 +90,7 @@ export class DaemonClient {
 		onExit: (code: number) => void,
 		cwd?: string
 	): Promise<void> {
+		this.attachedSessions.add(id);
 		this.callbacks.set(id, { onData, onExit, cwd });
 		this.send({ type: "attach", id });
 	}
@@ -100,8 +105,15 @@ export class DaemonClient {
 
 	dispose(id: string): void {
 		if (this.isQuitting) return;
+		const wasAttached = this.attachedSessions.has(id);
 		this.callbacks.delete(id);
 		this.liveSessions.delete(id);
+		this.attachedSessions.delete(id);
+		if (wasAttached) {
+			// Background session — just drop local listeners, keep the PTY running
+			// in the daemon so it can be reattached (React StrictMode, hot reload, etc.)
+			return;
+		}
 		this.send({ type: "dispose", id });
 	}
 
