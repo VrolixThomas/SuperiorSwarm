@@ -35,9 +35,6 @@ export class SocketServer {
 	flush(): void {
 		const buffers = this.ptyManager.getAllBuffers();
 		this.scrollbackStore.flush(buffers);
-		for (const { id } of buffers) {
-			this.ptyManager.resetBuffer(id);
-		}
 	}
 
 	private onConnection(socket: Socket): void {

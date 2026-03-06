@@ -345,26 +345,6 @@ describe("PtyManager", () => {
 		expect(manager.getBuffer("t1")).toBe("");
 	});
 
-	// -- resetBuffer --
-
-	test("resetBuffer on fresh terminal keeps buffer empty", () => {
-		setup();
-		manager.create(
-			"t1",
-			undefined,
-			() => {},
-			() => {},
-			"c1"
-		);
-		manager.resetBuffer("t1");
-		expect(manager.getBuffer("t1")).toBe("");
-	});
-
-	test("resetBuffer on nonexistent terminal does not throw", () => {
-		setup();
-		expect(() => manager.resetBuffer("nope")).not.toThrow();
-	});
-
 	// -- getAllBuffers --
 
 	test("getAllBuffers returns entries for all terminals", () => {

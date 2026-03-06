@@ -157,11 +157,6 @@ export class PtyManager {
 		return this.terminals.get(id)?.buffer ?? "";
 	}
 
-	resetBuffer(id: string): void {
-		const entry = this.terminals.get(id);
-		if (entry) entry.buffer = "";
-	}
-
 	getAllBuffers(): Array<{ id: string; cwd: string; buffer: string }> {
 		return [...this.terminals.entries()].map(([id, e]) => ({
 			id,

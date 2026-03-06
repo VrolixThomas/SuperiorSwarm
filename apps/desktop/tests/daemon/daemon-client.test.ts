@@ -7,14 +7,18 @@ import { DaemonClient } from "../../src/main/terminal/daemon-client";
 
 const TEST_SOCKET = join(tmpdir(), `branchflux-client-test-${process.pid}.sock`);
 
-function startMockDaemon(): Promise<{ server: Server; lastSocket: () => Socket | null }> {
+function startMockDaemon(
+	onMessage?: (msg: unknown) => void,
+	sessions?: Array<{ id: string; cwd: string; pid: number }>
+): Promise<{ server: Server; lastSocket: () => Socket | null }> {
+	const sessionList = sessions ?? [{ id: "term-1", cwd: "/tmp", pid: 99 }];
 	return new Promise((resolve) => {
 		let lastSock: Socket | null = null;
 		const server = createServer((socket) => {
 			lastSock = socket;
 			// Send ready
 			socket.write(`${JSON.stringify({ type: "ready" })}\n`);
-			// Handle list request → respond with one live session
+			// Handle list request → respond with sessions
 			let buf = "";
 			socket.on("data", (chunk) => {
 				buf += chunk.toString();
@@ -25,10 +29,9 @@ function startMockDaemon(): Promise<{ server: Server; lastSocket: () => Socket |
 					if (!line) continue;
 					try {
 						const msg = JSON.parse(line);
+						onMessage?.(msg);
 						if (msg.type === "list") {
-							socket.write(
-								`${JSON.stringify({ type: "sessions", sessions: [{ id: "term-1", cwd: "/tmp", pid: 99 }] })}\n`
-							);
+							socket.write(`${JSON.stringify({ type: "sessions", sessions: sessionList })}\n`);
 						}
 					} catch {}
 				}
@@ -115,5 +118,74 @@ describe("DaemonClient", () => {
 
 		// After reconnect, client should have refreshed session list
 		expect(client.hasLiveSession("term-1")).toBe(true);
+	}, 10_000);
+
+	test("re-attaches sessions with callbacks after reconnect", async () => {
+		// Attach to term-1 (which the daemon reports as alive)
+		let exitCode: number | null = null;
+		await client.attach(
+			"term-1",
+			() => {},
+			(code) => {
+				exitCode = code;
+			}
+		);
+
+		// Destroy the daemon to simulate crash
+		const sock = daemon.lastSocket();
+		sock?.destroy();
+		daemon.server.close();
+
+		await new Promise<void>((r) => setTimeout(r, 200));
+
+		// Restart daemon — track messages the new daemon receives
+		if (existsSync(TEST_SOCKET)) rmSync(TEST_SOCKET);
+		const received: unknown[] = [];
+		daemon = await startMockDaemon((msg) => {
+			received.push(msg);
+		});
+
+		// Wait for reconnection
+		await new Promise<void>((r) => setTimeout(r, 2_000));
+
+		// The client should have re-sent an attach for term-1
+		const attachMsgs = received.filter((m) => {
+			const msg = m as Record<string, unknown>;
+			return msg["type"] === "attach" && msg["id"] === "term-1";
+		});
+		expect(attachMsgs.length).toBeGreaterThanOrEqual(1);
+		// onExit should NOT have been called since the session is still alive
+		expect(exitCode).toBeNull();
+	}, 10_000);
+
+	test("calls onExit(-1) for sessions that died during disconnect", async () => {
+		// Attach to term-1
+		let exitCode: number | null = null;
+		await client.attach(
+			"term-1",
+			() => {},
+			(code) => {
+				exitCode = code;
+			}
+		);
+
+		// Destroy the daemon
+		const sock = daemon.lastSocket();
+		sock?.destroy();
+		daemon.server.close();
+
+		await new Promise<void>((r) => setTimeout(r, 200));
+
+		// Restart daemon with NO sessions — simulates PTY died while disconnected
+		if (existsSync(TEST_SOCKET)) rmSync(TEST_SOCKET);
+		daemon = await startMockDaemon(undefined, []);
+
+		// Wait for reconnection
+		await new Promise<void>((r) => setTimeout(r, 2_000));
+
+		// The client should have called onExit(-1) for the dead session
+		expect(exitCode).toBe(-1);
+		// And it should no longer be in liveSessions
+		expect(client.hasLiveSession("term-1")).toBe(false);
 	}, 10_000);
 });

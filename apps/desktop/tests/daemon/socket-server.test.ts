@@ -44,7 +44,6 @@ class MockPtyManager {
 	getBuffer(_id: string): string {
 		return "";
 	}
-	resetBuffer(_id: string): void {}
 	getAllBuffers(): Array<{ id: string; cwd: string; buffer: string }> {
 		return [];
 	}

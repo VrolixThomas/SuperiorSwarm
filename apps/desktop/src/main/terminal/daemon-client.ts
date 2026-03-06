@@ -79,6 +79,19 @@ export class DaemonClient {
 			}
 		}
 
+		// Re-attach sessions that have active callbacks after reconnect.
+		// Sessions still alive in the daemon get a fresh attach message;
+		// sessions that died while disconnected get an onExit(-1) cleanup.
+		for (const [id, cb] of this.callbacks) {
+			if (this.liveSessions.has(id)) {
+				this.send({ type: "attach", id });
+			} else {
+				cb.onExit(-1);
+				this.callbacks.delete(id);
+				this.attachedSessions.delete(id);
+			}
+		}
+
 		this.reconnectAttempts = 0;
 		this.onConnectionStatusChange?.(true);
 	}
