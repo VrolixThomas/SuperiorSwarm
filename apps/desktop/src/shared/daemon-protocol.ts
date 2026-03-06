@@ -1,3 +1,8 @@
+import { homedir } from "node:os";
+import { join } from "node:path";
+
+export const BRANCHFLUX_DIR = join(homedir(), ".branchflux");
+
 export type ClientMessage =
 	| { type: "create"; id: string; cwd?: string }
 	| { type: "attach"; id: string }

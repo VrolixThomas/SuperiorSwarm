@@ -1,11 +1,12 @@
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, openSync, readFileSync, rmSync } from "node:fs";
 import { type Socket, connect } from "node:net";
-import { homedir } from "node:os";
 import { join } from "node:path";
-import type { ClientMessage, DaemonMessage } from "../../shared/daemon-protocol";
-
-const BRANCHFLUX_DIR = join(homedir(), ".branchflux");
+import {
+	BRANCHFLUX_DIR,
+	type ClientMessage,
+	type DaemonMessage,
+} from "../../shared/daemon-protocol";
 const DEFAULT_SOCKET_PATH = join(BRANCHFLUX_DIR, "daemon.sock");
 const PID_PATH = join(BRANCHFLUX_DIR, "daemon.pid");
 const CONNECT_TIMEOUT_MS = 5_000;

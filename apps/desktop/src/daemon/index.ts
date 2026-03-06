@@ -1,11 +1,9 @@
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
+import { BRANCHFLUX_DIR } from "../shared/daemon-protocol";
 import { PtyManager } from "./pty-manager";
 import { ScrollbackStore } from "./scrollback-store";
 import { SocketServer } from "./socket-server";
-
-const BRANCHFLUX_DIR = join(homedir(), ".branchflux");
 const SOCKET_PATH = join(BRANCHFLUX_DIR, "daemon.sock");
 const PID_PATH = join(BRANCHFLUX_DIR, "daemon.pid");
 const DB_PATH = process.env["BRANCHFLUX_DB_PATH"] ?? "";
