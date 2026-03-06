@@ -122,6 +122,10 @@ export class PtyManager {
 	dispose(id: string): void {
 		const entry = this.terminals.get(id);
 		if (entry) {
+			// Clear exit listeners before killing so the SIGKILL doesn't trigger a
+			// spurious exit notification to connected clients. Dispose is intentional
+			// closure, not a terminal-exited event.
+			entry.exitListeners.clear();
 			try {
 				entry.pty.kill("SIGKILL");
 			} catch {}
