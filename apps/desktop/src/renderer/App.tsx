@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { AddRepositoryModal } from "./components/AddRepositoryModal";
 import { CreateWorktreeModal } from "./components/CreateWorktreeModal";
+import { DaemonStatus } from "./components/DaemonStatus";
 import { DiffPanel } from "./components/DiffPanel";
 import { MainContentArea } from "./components/MainContentArea";
 import { SharedFilesPanel } from "./components/SharedFilesPanel";
@@ -122,6 +123,7 @@ export function App() {
 			<AddRepositoryModal />
 			<CreateWorktreeModal />
 			<SharedFilesPanel />
+			<DaemonStatus />
 		</>
 	);
 }
