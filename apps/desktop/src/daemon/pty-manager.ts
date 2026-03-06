@@ -9,7 +9,7 @@ interface TerminalEntry {
 	cwd: string;
 	buffer: string;
 	dataListeners: Map<string, (data: string) => void>;
-	exitListeners: Map<string, (code: number) => void>;
+	exitListeners: Map<string, (code: number, finalBuffer: string) => void>;
 }
 
 export function trimBuffer(buffer: string, maxBytes: number): string {
@@ -41,7 +41,7 @@ export class PtyManager {
 		id: string,
 		cwd: string | undefined,
 		onData: (data: string) => void,
-		onExit: (code: number) => void,
+		onExit: (code: number, finalBuffer: string) => void,
 		clientId: string
 	): void {
 		if (this.terminals.has(id)) {
@@ -72,8 +72,9 @@ export class PtyManager {
 		});
 
 		ptyProcess.onExit(({ exitCode }) => {
-			for (const cb of entry.exitListeners.values()) cb(exitCode);
+			const finalBuffer = entry.buffer; // capture before delete
 			this.terminals.delete(id);
+			for (const cb of entry.exitListeners.values()) cb(exitCode, finalBuffer);
 		});
 
 		this.terminals.set(id, entry);
@@ -83,7 +84,7 @@ export class PtyManager {
 	attach(
 		id: string,
 		onData: (data: string) => void,
-		onExit: (code: number) => void,
+		onExit: (code: number, finalBuffer: string) => void,
 		clientId: string
 	): string | null {
 		const entry = this.terminals.get(id);
