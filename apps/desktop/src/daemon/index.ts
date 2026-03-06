@@ -33,7 +33,28 @@ const socketServer = new SocketServer(ptyManager, scrollbackStore, SOCKET_PATH);
 
 const flushInterval = setInterval(() => socketServer.flush(), FLUSH_INTERVAL_MS);
 
+const IDLE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+let idleTimer: ReturnType<typeof setTimeout> | null = null;
+
+function checkIdle(): void {
+	if (socketServer.clientCount === 0 && ptyManager.terminalCount === 0) {
+		if (!idleTimer) {
+			idleTimer = setTimeout(() => {
+				console.log("[daemon] idle timeout reached, shutting down");
+				shutdown();
+			}, IDLE_TIMEOUT_MS);
+		}
+	} else if (idleTimer) {
+		clearTimeout(idleTimer);
+		idleTimer = null;
+	}
+}
+
+const idleCheckInterval = setInterval(checkIdle, 30_000);
+
 function shutdown(): void {
+	clearInterval(idleCheckInterval);
+	if (idleTimer) clearTimeout(idleTimer);
 	clearInterval(flushInterval);
 	socketServer.flush();
 	socketServer.close();

@@ -141,6 +141,10 @@ export class PtyManager {
 		return this.terminals.has(id);
 	}
 
+	get terminalCount(): number {
+		return this.terminals.size;
+	}
+
 	list(): Array<{ id: string; cwd: string; pid: number }> {
 		return [...this.terminals.entries()].map(([id, e]) => ({
 			id,

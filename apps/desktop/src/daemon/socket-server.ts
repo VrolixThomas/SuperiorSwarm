@@ -28,6 +28,10 @@ export class SocketServer {
 		this.clients.clear();
 	}
 
+	get clientCount(): number {
+		return this.clients.size;
+	}
+
 	flush(): void {
 		const buffers = this.ptyManager.getAllBuffers();
 		this.scrollbackStore.flush(buffers);
