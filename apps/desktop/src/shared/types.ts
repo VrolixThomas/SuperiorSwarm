@@ -39,6 +39,10 @@ export interface ShellAPI {
 	openExternal: (url: string) => Promise<void>;
 }
 
+export interface DaemonAPI {
+	onStatus: (callback: (connected: boolean) => void) => () => void;
+}
+
 export interface LspAPI {
 	sendRequest: (opts: {
 		languageId: string;

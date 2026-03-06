@@ -1,4 +1,5 @@
 import type {
+	DaemonAPI,
 	DialogAPI,
 	LspAPI,
 	SessionAPI,
@@ -14,6 +15,7 @@ export interface ElectronAPI {
 	session: SessionAPI;
 	shell: ShellAPI;
 	lsp: LspAPI;
+	daemon: DaemonAPI;
 }
 
 declare global {
