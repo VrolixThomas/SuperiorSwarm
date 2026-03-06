@@ -107,13 +107,14 @@ export class DaemonClient {
 		if (this.isQuitting) return;
 		const wasAttached = this.attachedSessions.has(id);
 		this.callbacks.delete(id);
-		this.liveSessions.delete(id);
 		this.attachedSessions.delete(id);
 		if (wasAttached) {
-			// Background session — just drop local listeners, keep the PTY running
-			// in the daemon so it can be reattached (React StrictMode, hot reload, etc.)
+			// Background session — drop local callbacks but keep the id in liveSessions
+			// so the next terminal:create IPC call uses attach (not create).
+			// The PTY continues running in the daemon unaffected.
 			return;
 		}
+		this.liveSessions.delete(id);
 		this.send({ type: "dispose", id });
 	}
 
