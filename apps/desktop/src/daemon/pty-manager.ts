@@ -168,6 +168,7 @@ export class PtyManager {
 
 	disposeAll(): void {
 		for (const [, entry] of this.terminals) {
+			entry.exitListeners.clear();
 			try {
 				entry.pty.kill("SIGKILL");
 			} catch {}
