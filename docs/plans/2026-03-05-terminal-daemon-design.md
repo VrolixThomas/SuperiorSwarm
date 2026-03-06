@@ -171,8 +171,8 @@ apps/desktop/src/main/terminal/
 
 ### Daemon spawn timeout
 - App polls socket for readiness for up to 5 seconds after spawning
-- If daemon never becomes ready, app falls back to in-process PTY mode with a console warning
-- Terminals work normally; they just don't persist across restarts
+- If daemon never becomes ready, app shows an error in affected terminal tabs and continues reconnection attempts
+- Terminals are unavailable until the daemon connects; they do not fall back to in-process mode
 
 ### Multiple Electron instances
 - Both connect to the same daemon socket

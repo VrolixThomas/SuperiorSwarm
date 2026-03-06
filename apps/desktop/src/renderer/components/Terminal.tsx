@@ -127,7 +127,9 @@ export function Terminal({
 				})
 				.catch((err: Error) => {
 					console.error("Failed to create PTY:", err);
-					term.write(`\r\n\x1b[31m[Failed to create terminal: ${err.message}]\x1b[0m\r\n`);
+					term.write(
+						`\r\n\x1b[31m[Terminal daemon is unavailable]\x1b[0m\r\n\x1b[90mThe background terminal daemon could not be reached.\r\nReconnection will be attempted automatically.\r\nError: ${err.message}\x1b[0m\r\n`
+					);
 				});
 
 			// Shift+Enter: send \n (LF) instead of \r (CR) for multiline editing
