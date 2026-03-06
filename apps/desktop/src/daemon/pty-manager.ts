@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import * as pty from "node-pty";
 
-const MAX_BUFFER_BYTES = 200_000;
+const MAX_BUFFER_CHARS = 200_000;
 
 interface TerminalEntry {
 	pty: pty.IPty;
@@ -67,7 +67,7 @@ export class PtyManager {
 		};
 
 		ptyProcess.onData((data) => {
-			entry.buffer = trimBuffer(entry.buffer + data, MAX_BUFFER_BYTES);
+			entry.buffer = trimBuffer(entry.buffer + data, MAX_BUFFER_CHARS);
 			for (const cb of entry.dataListeners.values()) cb(data);
 		});
 
