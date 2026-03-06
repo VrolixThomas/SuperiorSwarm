@@ -56,7 +56,7 @@ app.whenReady().then(async () => {
 		return;
 	}
 	const dbPath = join(app.getPath("userData"), "branchflux.db");
-	const daemonScriptPath = join(__dirname, "daemon.cjs");
+	const daemonScriptPath = join(__dirname, "daemon.js");
 	try {
 		await daemonClient.connect(dbPath, daemonScriptPath);
 	} catch (err) {
