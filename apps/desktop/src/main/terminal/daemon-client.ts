@@ -1,5 +1,14 @@
 import { spawn } from "node:child_process";
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, rmSync } from "node:fs";
+import {
+	closeSync,
+	existsSync,
+	mkdirSync,
+	openSync,
+	readFileSync,
+	rmSync,
+	statSync,
+	writeFileSync,
+} from "node:fs";
 import { type Socket, connect } from "node:net";
 import { join } from "node:path";
 import {
@@ -322,6 +331,19 @@ export class DaemonClient {
 		}
 
 		const logPath = join(BRANCHFLUX_DIR, "daemon.log");
+
+		// Truncate log to prevent unbounded growth across daemon restarts
+		const MAX_LOG_BYTES = 50_000;
+		try {
+			if (existsSync(logPath)) {
+				const stat = statSync(logPath);
+				if (stat.size > MAX_LOG_BYTES) {
+					const content = readFileSync(logPath, "utf-8");
+					writeFileSync(logPath, content.slice(-MAX_LOG_BYTES));
+				}
+			}
+		} catch {}
+
 		const logFd = openSync(logPath, "a");
 		const child = spawn(process.execPath, [daemonScriptPath], {
 			detached: true,
