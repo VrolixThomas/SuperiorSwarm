@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, openSync, readFileSync, rmSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, rmSync } from "node:fs";
 import { type Socket, connect } from "node:net";
 import { join } from "node:path";
 import {
@@ -265,6 +265,7 @@ export class DaemonClient {
 			},
 		});
 		child.unref();
+		closeSync(logFd);
 	}
 
 	private async waitForSocket(): Promise<void> {
