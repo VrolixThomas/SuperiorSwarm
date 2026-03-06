@@ -70,6 +70,7 @@ export class DaemonClient {
 		await this.waitForMessage("ready");
 
 		// Request and cache the live session list
+		this.liveSessions.clear();
 		this.send({ type: "list" });
 		const sessionsMsg = await this.waitForMessage("sessions");
 		if (sessionsMsg.type === "sessions") {

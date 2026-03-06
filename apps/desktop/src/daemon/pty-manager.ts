@@ -12,9 +12,9 @@ interface TerminalEntry {
 	exitListeners: Map<string, (code: number, finalBuffer: string) => void>;
 }
 
-export function trimBuffer(buffer: string, maxBytes: number): string {
-	if (buffer.length <= maxBytes) return buffer;
-	return buffer.slice(buffer.length - maxBytes);
+export function trimBuffer(buffer: string, maxChars: number): string {
+	if (buffer.length <= maxChars) return buffer;
+	return buffer.slice(buffer.length - maxChars);
 }
 
 function resolveShell(): string {
