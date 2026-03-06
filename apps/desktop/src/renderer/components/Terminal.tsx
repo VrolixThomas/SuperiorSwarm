@@ -108,21 +108,27 @@ export function Terminal({
 
 		requestAnimationFrame(() => fit.fit());
 
-		// Replay saved scrollback content before connecting PTY
-		if (initialContentRef.current) {
-			term.write(initialContentRef.current);
-		}
-
 		// Wire up PTY if running inside Electron
 		const api = window.electron;
 		let cleanupData: (() => void) | undefined;
 		let cleanupExit: (() => void) | undefined;
 
 		if (api) {
-			api.terminal.create(id, cwdRef.current || undefined).catch((err: Error) => {
-				console.error("Failed to create PTY:", err);
-				term.write(`\r\n\x1b[31m[Failed to create terminal: ${err.message}]\x1b[0m\r\n`);
-			});
+			api.terminal
+				.create(id, cwdRef.current || undefined)
+				.then(({ wasAttached }) => {
+					// Only replay saved scrollback for fresh sessions.
+					// Attached sessions (live background PTYs) send their current buffer
+					// via onData — writing initialContent too would stack old content
+					// before the live buffer and misplace the cursor inside TUI apps.
+					if (!wasAttached && initialContentRef.current) {
+						term.write(initialContentRef.current);
+					}
+				})
+				.catch((err: Error) => {
+					console.error("Failed to create PTY:", err);
+					term.write(`\r\n\x1b[31m[Failed to create terminal: ${err.message}]\x1b[0m\r\n`);
+				});
 
 			// Shift+Enter: send \n (LF) instead of \r (CR) for multiline editing
 			// in raw-mode applications (Claude Code, fish, zsh, etc.)

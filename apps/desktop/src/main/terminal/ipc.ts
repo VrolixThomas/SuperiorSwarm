@@ -13,7 +13,7 @@ export function setupTerminalIPC(): void {
 		const cwdStr = typeof cwd === "string" && cwd.length > 0 ? cwd : undefined;
 
 		const window = BrowserWindow.fromWebContents(event.sender);
-		if (!window) return;
+		if (!window) return { wasAttached: false };
 
 		const onData = (data: string) => {
 			if (!window.isDestroyed()) {
@@ -29,9 +29,10 @@ export function setupTerminalIPC(): void {
 		try {
 			if (daemonClient.hasLiveSession(id)) {
 				await daemonClient.attach(id, onData, onExit, cwdStr);
-			} else {
-				await daemonClient.create(id, cwdStr, onData, onExit);
+				return { wasAttached: true };
 			}
+			await daemonClient.create(id, cwdStr, onData, onExit);
+			return { wasAttached: false };
 		} catch (error) {
 			console.error(`Failed to create/attach terminal ${id}:`, error);
 			throw error;
