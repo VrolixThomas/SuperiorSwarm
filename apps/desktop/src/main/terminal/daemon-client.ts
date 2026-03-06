@@ -14,6 +14,7 @@ const CONNECT_POLL_MS = 100;
 interface TerminalCallbacks {
 	onData: (data: string) => void;
 	onExit: (code: number) => void;
+	cwd?: string;
 }
 
 export class DaemonClient {
@@ -74,7 +75,7 @@ export class DaemonClient {
 		onData: (data: string) => void,
 		onExit: (code: number) => void
 	): Promise<void> {
-		this.callbacks.set(id, { onData, onExit });
+		this.callbacks.set(id, { onData, onExit, cwd });
 		this.liveSessions.add(id);
 		this.send({ type: "create", id, cwd });
 	}
@@ -82,9 +83,10 @@ export class DaemonClient {
 	async attach(
 		id: string,
 		onData: (data: string) => void,
-		onExit: (code: number) => void
+		onExit: (code: number) => void,
+		cwd?: string
 	): Promise<void> {
-		this.callbacks.set(id, { onData, onExit });
+		this.callbacks.set(id, { onData, onExit, cwd });
 		this.send({ type: "attach", id });
 	}
 
@@ -170,7 +172,8 @@ export class DaemonClient {
 				console.error(`[daemon-client] error for terminal ${msg.id}: ${msg.message}`);
 				// If attach failed because the session wasn't found, fall back to create
 				if (msg.message === "session not found" && this.callbacks.has(msg.id)) {
-					this.send({ type: "create", id: msg.id });
+					const stored = this.callbacks.get(msg.id);
+					this.send({ type: "create", id: msg.id, cwd: stored?.cwd });
 				}
 				break;
 			}
@@ -178,11 +181,25 @@ export class DaemonClient {
 	}
 
 	private waitForMessage<T extends DaemonMessage["type"]>(
-		type: T
+		type: T,
+		timeoutMs = 5_000
 	): Promise<Extract<DaemonMessage, { type: T }>> {
-		return new Promise((resolve) => {
+		return new Promise((resolve, reject) => {
+			const timer = setTimeout(() => {
+				const pending = this.pendingListeners.get(type);
+				if (pending) {
+					const idx = pending.indexOf(handler);
+					if (idx !== -1) pending.splice(idx, 1);
+					if (pending.length === 0) this.pendingListeners.delete(type);
+				}
+				reject(new Error(`Timed out waiting for daemon message: ${type}`));
+			}, timeoutMs);
+			const handler = (msg: DaemonMessage) => {
+				clearTimeout(timer);
+				resolve(msg as Extract<DaemonMessage, { type: T }>);
+			};
 			const listeners = this.pendingListeners.get(type) ?? [];
-			listeners.push((msg) => resolve(msg as Extract<DaemonMessage, { type: T }>));
+			listeners.push(handler);
 			this.pendingListeners.set(type, listeners);
 		});
 	}

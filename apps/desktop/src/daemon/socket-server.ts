@@ -94,11 +94,10 @@ export class SocketServer {
 								data: Buffer.from(data, "utf-8").toString("base64"),
 							});
 						},
-						(code) => {
+						(code, finalBuffer) => {
 							this.send(socket, { type: "exit", id: msg.id, code });
-							const buf = this.ptyManager.getBuffer(msg.id);
-							if (buf.length > 0) {
-								this.scrollbackStore.flush([{ id: msg.id, cwd: "", buffer: buf }]);
+							if (finalBuffer.length > 0) {
+								this.scrollbackStore.flush([{ id: msg.id, cwd: "", buffer: finalBuffer }]);
 							}
 						},
 						clientId
@@ -118,7 +117,7 @@ export class SocketServer {
 							data: Buffer.from(data, "utf-8").toString("base64"),
 						});
 					},
-					(code) => {
+					(code, _finalBuffer) => {
 						this.send(socket, { type: "exit", id: msg.id, code });
 					},
 					clientId
