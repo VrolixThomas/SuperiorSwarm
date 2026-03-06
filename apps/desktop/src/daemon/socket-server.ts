@@ -117,8 +117,11 @@ export class SocketServer {
 							data: Buffer.from(data, "utf-8").toString("base64"),
 						});
 					},
-					(code, _finalBuffer) => {
+					(code, finalBuffer) => {
 						this.send(socket, { type: "exit", id: msg.id, code });
+						if (finalBuffer.length > 0) {
+							this.scrollbackStore.flush([{ id: msg.id, cwd: "", buffer: finalBuffer }]);
+						}
 					},
 					clientId
 				);
