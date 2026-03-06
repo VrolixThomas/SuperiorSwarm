@@ -130,6 +130,11 @@ export class DaemonClient {
 
 		this.socket.on("data", (chunk) => {
 			this.lineBuffer += chunk.toString("utf-8");
+			if (this.lineBuffer.length > 64_000) {
+				console.warn("[daemon-client] line buffer overflow, resetting");
+				this.lineBuffer = "";
+				return;
+			}
 			let newline: number;
 			for (;;) {
 				newline = this.lineBuffer.indexOf("\n");
