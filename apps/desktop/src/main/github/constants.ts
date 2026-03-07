@@ -10,5 +10,6 @@ export const GITHUB_AUTH_URL = "https://github.com/login/oauth/authorize";
 export const GITHUB_TOKEN_URL = "https://github.com/login/oauth/access_token";
 export const GITHUB_API_BASE = "https://api.github.com";
 
-// repo scope covers read access to both public and private repositories
+// "repo" is the minimum OAuth scope required to read pull requests on private repositories.
+// GitHub does not offer a finer-grained read-only PR scope for classic OAuth apps.
 export const GITHUB_SCOPES = "repo";
