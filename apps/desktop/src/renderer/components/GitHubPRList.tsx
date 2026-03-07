@@ -114,9 +114,12 @@ function PRRow({
 				}`}
 				title={`${pr.repoOwner}/${pr.repoName}#${pr.number}`}
 			>
-				{/* Expand/Collapse toggle */}
-				<button
-					type="button"
+				{/* Expand/Collapse toggle — must remain a div, not a button, because
+				    nesting <button> inside <button> is invalid HTML and breaks the
+				    outer row button's click handler. */}
+				{/* biome-ignore lint/a11y/useSemanticElements: cannot nest <button> inside <button> */}
+				<div
+					role="button"
 					tabIndex={0}
 					onClick={(e) => {
 						e.stopPropagation();
@@ -144,7 +147,7 @@ function PRRow({
 					>
 						<path d="m9 18 6-6-6-6" />
 					</svg>
-				</button>
+				</div>
 
 				{/* Draft indicator */}
 				{pr.isDraft && (
