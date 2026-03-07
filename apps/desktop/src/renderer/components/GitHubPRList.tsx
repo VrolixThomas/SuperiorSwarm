@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { GitHubPR } from "../../main/github/github";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
@@ -75,6 +75,18 @@ function PRRow({
 }) {
 	const [expanded, setExpanded] = useState(false);
 	const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+	const contextMenuRef = useRef<HTMLDivElement>(null);
+
+	useEffect(() => {
+		if (!contextMenu) return;
+		const handleClickOutside = (e: MouseEvent) => {
+			if (contextMenuRef.current && !contextMenuRef.current.contains(e.target as Node)) {
+				setContextMenu(null);
+			}
+		};
+		document.addEventListener("mousedown", handleClickOutside);
+		return () => document.removeEventListener("mousedown", handleClickOutside);
+	}, [contextMenu]);
 
 	const isLinked = !!linked && linked.length > 0;
 
@@ -175,9 +187,9 @@ function PRRow({
 			{/* Simple context menu */}
 			{contextMenu && (
 				<div
+					ref={contextMenuRef}
 					className="fixed z-50 min-w-[160px] rounded-[6px] border border-[var(--border-subtle)] bg-[var(--bg-overlay)] py-1 shadow-lg"
 					style={{ top: contextMenu.y, left: contextMenu.x }}
-					onMouseLeave={() => setContextMenu(null)}
 				>
 					<button
 						type="button"
