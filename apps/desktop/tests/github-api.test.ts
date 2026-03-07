@@ -1,3 +1,4 @@
+import "./preload-electron-mock";
 import { describe, expect, test } from "bun:test";
 import { mapCommentNode, mapPRNode } from "../src/main/github/github";
 

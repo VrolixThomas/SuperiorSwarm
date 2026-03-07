@@ -7,8 +7,8 @@ import {
 	GITHUB_AUTH_URL,
 	GITHUB_CLIENT_ID,
 	GITHUB_CLIENT_SECRET,
-	GITHUB_TOKEN_URL,
 	GITHUB_SCOPES,
+	GITHUB_TOKEN_URL,
 	OAUTH_CALLBACK_PORT,
 	OAUTH_CALLBACK_URL,
 } from "./constants";
@@ -105,7 +105,9 @@ async function exchangeCode(code: string): Promise<{ access_token: string }> {
 	return { access_token: data.access_token };
 }
 
-async function fetchViewer(accessToken: string): Promise<{ id: number; login: string; name: string | null }> {
+async function fetchViewer(
+	accessToken: string
+): Promise<{ id: number; login: string; name: string | null }> {
 	const res = await fetch("https://api.github.com/user", {
 		headers: {
 			Authorization: `Bearer ${accessToken}`,
