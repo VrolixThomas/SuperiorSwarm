@@ -86,3 +86,44 @@ export async function githubFetch(path: string, options: RequestInit = {}): Prom
 
 	return res;
 }
+
+/**
+ * Authenticated request to the GitHub GraphQL API.
+ * Returns the `data` field of the response, typed as T.
+ * Throws if not connected, on HTTP errors, or on GraphQL errors.
+ */
+export async function githubGraphQL<T>(
+	query: string,
+	variables: Record<string, unknown>
+): Promise<T> {
+	const token = getValidToken();
+	if (!token) throw new Error("Not connected to GitHub");
+
+	const res = await fetch(`${GITHUB_API_BASE}/graphql`, {
+		method: "POST",
+		headers: {
+			Authorization: `Bearer ${token}`,
+			"Content-Type": "application/json",
+			"X-GitHub-Api-Version": "2022-11-28",
+		},
+		body: JSON.stringify({ query, variables }),
+	});
+
+	if (res.status === 401) {
+		deleteAuth();
+		throw new Error("GitHub session expired. Please reconnect.");
+	}
+
+	if (!res.ok) {
+		throw new Error(`GitHub GraphQL request failed: ${res.status} ${await res.text()}`);
+	}
+
+	const json = (await res.json()) as { data?: T; errors?: { message: string }[] };
+	if (json.errors && json.errors.length > 0) {
+		throw new Error(`GitHub GraphQL error: ${json.errors.map((e) => e.message).join(", ")}`);
+	}
+	if (!json.data) {
+		throw new Error("GitHub GraphQL response missing data field");
+	}
+	return json.data;
+}
