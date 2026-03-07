@@ -8,6 +8,7 @@ interface DiffEditorProps {
 	language: string;
 	renderSideBySide: boolean;
 	onModifiedChange?: (content: string) => void;
+	onEditorReady?: (editor: monaco.editor.IStandaloneDiffEditor) => void;
 }
 
 export function DiffEditor({
@@ -16,14 +17,19 @@ export function DiffEditor({
 	language,
 	renderSideBySide,
 	onModifiedChange,
+	onEditorReady,
 }: DiffEditorProps) {
 	const containerRef = useRef<HTMLDivElement>(null);
 	const editorRef = useRef<monaco.editor.IStandaloneDiffEditor | null>(null);
-	// Keep onModifiedChange ref stable so the model subscription always calls the latest prop
+	// Keep callback refs stable so effects always use the latest prop
 	const onChangeRef = useRef(onModifiedChange);
 	useEffect(() => {
 		onChangeRef.current = onModifiedChange;
 	}, [onModifiedChange]);
+	const onEditorReadyRef = useRef(onEditorReady);
+	useEffect(() => {
+		onEditorReadyRef.current = onEditorReady;
+	}, [onEditorReady]);
 
 	// Create the diff editor once on mount
 	// biome-ignore lint/correctness/useExhaustiveDependencies: editor created once on mount, renderSideBySide updated separately
@@ -42,8 +48,10 @@ export function DiffEditor({
 			folding: true,
 			wordWrap: "off",
 			automaticLayout: true,
+			glyphMargin: true,
 		});
 		editorRef.current = editor;
+		onEditorReadyRef.current?.(editor);
 		return () => {
 			editor.dispose();
 			editorRef.current = null;
