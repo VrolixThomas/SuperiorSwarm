@@ -17,7 +17,7 @@ export function LinearPanel() {
 			utils.linear.getTeams.invalidate();
 			utils.linear.getSelectedTeam.invalidate();
 			utils.linear.getAssignedIssues.invalidate();
-			utils.linear.getLinkedIssues.invalidate();
+						utils.tickets.getLinkedTickets.invalidate();
 		},
 	});
 

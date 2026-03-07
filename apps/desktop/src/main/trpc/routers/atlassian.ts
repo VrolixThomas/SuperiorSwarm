@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { deleteAuth, getAuth } from "../../atlassian/auth";
 import { getMyPullRequests, getReviewRequests } from "../../atlassian/bitbucket";
-import { getMyIssues } from "../../atlassian/jira";
+import { getIssueTransitions, getMyIssues, updateIssueStatus } from "../../atlassian/jira";
 import { connectAll, connectBitbucket, connectJira } from "../../atlassian/oauth-flow";
 import { publicProcedure, router } from "../index";
 
@@ -67,4 +67,16 @@ export const atlassianRouter = router({
 	getMyIssues: publicProcedure.query(async () => {
 		return getMyIssues();
 	}),
+
+	getIssueTransitions: publicProcedure
+		.input(z.object({ issueKey: z.string() }))
+		.query(async ({ input }) => {
+			return getIssueTransitions(input.issueKey);
+		}),
+
+	updateIssueStatus: publicProcedure
+		.input(z.object({ issueKey: z.string(), transitionId: z.string() }))
+		.mutation(async ({ input }) => {
+			return updateIssueStatus(input.issueKey, input.transitionId);
+		}),
 });

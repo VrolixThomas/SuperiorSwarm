@@ -1,22 +1,24 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { LinearIssue } from "../../main/linear/linear";
+import type { TicketIssue, TicketStatus } from "../../shared/tickets";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
-import { type BranchIssue, CreateBranchFromIssueModal } from "./CreateBranchFromIssueModal";
+import { CreateBranchFromIssueModal } from "./CreateBranchFromIssueModal";
 import { IssueContextMenu } from "./IssueContextMenu";
 import { StateIcon } from "./StateIcon";
 import { type LinkedWorkspace, WorkspacePopover } from "./WorkspacePopover";
 
 export function LinearIssueList() {
 	const utils = trpc.useUtils();
-	const [openModalIssue, setOpenModalIssue] = useState<BranchIssue | null>(null);
+	const [openModalIssue, setOpenModalIssue] = useState<TicketIssue | null>(null);
 	const [popover, setPopover] = useState<{
 		position: { x: number; y: number };
-		issue: BranchIssue;
+		issue: TicketIssue;
 		workspaces: LinkedWorkspace[];
 	} | null>(null);
 	const [contextMenu, setContextMenu] = useState<{
 		position: { x: number; y: number };
-		issue: BranchIssue;
+		issue: TicketIssue;
 		workspaces: LinkedWorkspace[] | undefined;
 	} | null>(null);
 	const attachTerminal = trpc.workspaces.attachTerminal.useMutation();
@@ -31,43 +33,64 @@ export function LinearIssueList() {
 	const setTeamMutation = trpc.linear.setSelectedTeam.useMutation();
 
 	// Issues
-	const { data: issues, isLoading } = trpc.linear.getAssignedIssues.useQuery(undefined, {
+	const { data: rawIssues, isLoading } = trpc.linear.getAssignedIssues.useQuery(undefined, {
 		staleTime: 30_000,
 		refetchInterval: 60_000,
 	});
 
 	// Prefetch team states so the context menu state picker never shows "Loading..."
 	useEffect(() => {
-		if (!issues) return;
-		const teamIds = new Set(issues.map((i) => i.teamId));
+		if (!rawIssues) return;
+		const teamIds = new Set(rawIssues.map((i) => i.teamId));
 		for (const teamId of teamIds) {
 			utils.linear.getTeamStates.prefetch({ teamId }, { staleTime: 5 * 60_000 });
 		}
-	}, [issues, utils]);
+	}, [rawIssues, utils]);
 
-	// Linked issues → Map<linearIssueId, LinkedWorkspace[]>
-	const { data: linkedIssues } = trpc.linear.getLinkedIssues.useQuery(undefined, {
+	// Linked tickets → Map<ticketId, LinkedWorkspace[]>
+	const { data: linkedTickets } = trpc.tickets.getLinkedTickets.useQuery(undefined, {
 		staleTime: 30_000,
 	});
 	const linkedMap = useMemo(() => {
 		const map = new Map<string, LinkedWorkspace[]>();
-		if (!linkedIssues) return map;
-		for (const l of linkedIssues) {
-			if (l.worktreePath === null) continue;
+		if (!linkedTickets) return map;
+		for (const l of linkedTickets) {
+			if (l.provider !== "linear" || l.worktreePath === null) continue;
 			const entry: LinkedWorkspace = {
 				workspaceId: l.workspaceId,
 				workspaceName: l.workspaceName,
 				worktreePath: l.worktreePath,
 			};
-			const existing = map.get(l.linearIssueId);
+			const existing = map.get(l.ticketId);
 			if (existing) {
 				existing.push(entry);
 			} else {
-				map.set(l.linearIssueId, [entry]);
+				map.set(l.ticketId, [entry]);
 			}
 		}
 		return map;
-	}, [linkedIssues]);
+	}, [linkedTickets]);
+
+	// Mapping function
+	const mapToTicketIssue = useCallback((issue: LinearIssue): TicketIssue => {
+		return {
+			provider: "linear",
+			id: issue.id,
+			identifier: issue.identifier,
+			title: issue.title,
+			url: issue.url,
+			status: {
+				id: issue.stateId,
+				name: issue.stateName,
+				color: issue.stateColor,
+			},
+			groupId: issue.teamId,
+		};
+	}, []);
+
+	const issues = useMemo(() => {
+		return rawIssues?.map(mapToTicketIssue);
+	}, [rawIssues, mapToTicketIssue]);
 
 	// Navigate to a single workspace (with terminal tab creation)
 	const navigateToWorkspace = useCallback((ws: LinkedWorkspace) => {
@@ -98,7 +121,11 @@ export function LinearIssueList() {
 						...issue,
 						stateId,
 						...(newState
-							? { stateName: newState.name, stateColor: newState.color, stateType: newState.type }
+							? {
+									stateName: newState.name,
+									stateColor: newState.color,
+									stateType: newState.type,
+								}
 							: {}),
 					};
 				});
@@ -110,6 +137,13 @@ export function LinearIssueList() {
 		},
 		onSettled: () => utils.linear.getAssignedIssues.invalidate(),
 	});
+
+	// Get states for context menu
+	const { data: contextMenuStates, isLoading: contextMenuStatesLoading } =
+		trpc.linear.getTeamStates.useQuery(
+			{ teamId: contextMenu?.issue.groupId ?? "" },
+			{ enabled: !!contextMenu?.issue.groupId, staleTime: 5 * 60_000 }
+		);
 
 	if (isLoading && !issues) {
 		return (
@@ -151,8 +185,9 @@ export function LinearIssueList() {
 						No issues assigned
 					</div>
 				) : (
-					issues.map((issue) => {
+					issues.map((issue, idx) => {
 						const linked = linkedMap.get(issue.id);
+						const rawIssue = rawIssues?.[idx];
 
 						return (
 							<button
@@ -191,7 +226,10 @@ export function LinearIssueList() {
 										: `${issue.identifier}: ${issue.title}`
 								}
 							>
-								<StateIcon type={issue.stateType} color={issue.stateColor} />
+								<StateIcon
+									type={rawIssue?.stateType ?? "default"}
+									color={issue.status.color}
+								/>
 								<span className="shrink-0 font-medium text-[var(--text-quaternary)]">
 									{issue.identifier}
 								</span>
@@ -226,8 +264,13 @@ export function LinearIssueList() {
 					position={contextMenu.position}
 					issue={contextMenu.issue}
 					workspaces={contextMenu.workspaces}
+					states={contextMenuStates}
+					statesLoading={contextMenuStatesLoading}
+					openInLabel="Open in Linear"
 					onClose={() => setContextMenu(null)}
-					onStateUpdate={(issueId, stateId) => updateStateMutation.mutate({ issueId, stateId })}
+					onStateUpdate={(stateId) =>
+						updateStateMutation.mutate({ issueId: contextMenu.issue.id, stateId })
+					}
 					onCreateBranch={() => {
 						setContextMenu(null);
 						setOpenModalIssue(contextMenu.issue);
