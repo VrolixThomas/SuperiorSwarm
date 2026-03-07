@@ -140,26 +140,28 @@ export const linearAuth = sqliteTable("linear_auth", {
 export type LinearAuth = typeof linearAuth.$inferSelect;
 export type NewLinearAuth = typeof linearAuth.$inferInsert;
 
-export const linearBranchIssues = sqliteTable(
-	"linear_branch_issues",
+export const ticketBranchLinks = sqliteTable(
+	"ticket_branch_links",
 	{
 		id: text("id").primaryKey(),
 		workspaceId: text("workspace_id")
 			.notNull()
 			.references(() => workspaces.id, { onDelete: "cascade" }),
-		linearIssueId: text("linear_issue_id").notNull(),
+		provider: text("provider", { enum: ["linear", "jira"] }).notNull(),
+		ticketId: text("ticket_id").notNull(),
 		createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
 	},
 	(table) => [
-		uniqueIndex("linear_branch_issues_workspace_issue_unique").on(
+		uniqueIndex("ticket_branch_links_workspace_provider_ticket_unique").on(
 			table.workspaceId,
-			table.linearIssueId
+			table.provider,
+			table.ticketId
 		),
 	]
 );
 
-export type LinearBranchIssue = typeof linearBranchIssues.$inferSelect;
-export type NewLinearBranchIssue = typeof linearBranchIssues.$inferInsert;
+export type TicketBranchLink = typeof ticketBranchLinks.$inferSelect;
+export type NewTicketBranchLink = typeof ticketBranchLinks.$inferInsert;
 
 export const githubAuth = sqliteTable("github_auth", {
 	id: text("id").primaryKey(),

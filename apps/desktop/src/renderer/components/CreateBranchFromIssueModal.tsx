@@ -1,28 +1,13 @@
 import { useEffect, useRef, useState } from "react";
-import type { WorkflowStateType } from "../../main/linear/linear";
+import type { TicketIssue } from "../../shared/tickets";
 import { slugifyBranchName } from "../lib/slugify";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 
-// ── Types ─────────────────────────────────────────────────────────────────────
-
-export interface BranchIssue {
-	id: string;
-	identifier: string;
-	title: string;
-	url: string;
-	stateColor: string;
-	teamId: string;
-	stateId: string;
-	stateName: string;
-	stateType: WorkflowStateType;
-	teamName: string;
-}
-
 // ── Component ─────────────────────────────────────────────────────────────────
 
 interface Props {
-	issue: BranchIssue | null;
+	issue: TicketIssue | null;
 	onClose: () => void;
 }
 
@@ -44,15 +29,20 @@ export function CreateBranchFromIssueModal({ issue, onClose }: Props) {
 	);
 
 	const attachTerminal = trpc.workspaces.attachTerminal.useMutation();
-	const linkIssueMutation = trpc.linear.linkIssue.useMutation({
-		onSuccess: () => utils.linear.getLinkedIssues.invalidate(),
-		onError: (err) => console.error("[linkIssue] Failed to link issue to workspace:", err.message),
+	const linkTicketMutation = trpc.tickets.linkTicket.useMutation({
+		onSuccess: () => utils.tickets.getLinkedTickets.invalidate(),
+		onError: (err) =>
+			console.error("[linkTicket] Failed to link ticket to workspace:", err.message),
 	});
 
 	const createMutation = trpc.workspaces.create.useMutation({
 		onSuccess: (workspace) => {
 			if (issue) {
-				linkIssueMutation.mutate({ workspaceId: workspace.id, linearIssueId: issue.id });
+				linkTicketMutation.mutate({
+					provider: issue.provider,
+					ticketId: issue.id,
+					workspaceId: workspace.id,
+				});
 			}
 			utils.workspaces.listByProject.invalidate();
 
@@ -173,7 +163,7 @@ export function CreateBranchFromIssueModal({ issue, onClose }: Props) {
 				<div className="flex items-center gap-2 border-b border-[var(--border)] px-4 py-2.5">
 					<span
 						className="h-1.5 w-1.5 shrink-0 rounded-full"
-						style={{ backgroundColor: issue.stateColor }}
+						style={{ backgroundColor: issue.status.color }}
 					/>
 					<span className="shrink-0 text-[12px] font-medium text-[var(--text-quaternary)]">
 						{issue.identifier}

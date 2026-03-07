@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type {
+	DaemonAPI,
 	DialogAPI,
 	LspAPI,
 	SessionAPI,
@@ -82,6 +83,16 @@ const lspAPI: LspAPI = {
 	},
 };
 
+const daemonAPI: DaemonAPI = {
+	onStatus: (callback: (connected: boolean) => void) => {
+		const listener = (_event: Electron.IpcRendererEvent, connected: boolean) => callback(connected);
+		ipcRenderer.on("daemon:status", listener);
+		return () => {
+			ipcRenderer.removeListener("daemon:status", listener);
+		};
+	},
+};
+
 contextBridge.exposeInMainWorld("electron", {
 	terminal: terminalAPI,
 	trpc: trpcAPI,
@@ -89,4 +100,5 @@ contextBridge.exposeInMainWorld("electron", {
 	session: sessionAPI,
 	shell: shellAPI,
 	lsp: lspAPI,
+	daemon: daemonAPI,
 });

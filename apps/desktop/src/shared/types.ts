@@ -1,5 +1,5 @@
 export interface TerminalAPI {
-	create: (id: string, cwd?: string) => Promise<void>;
+	create: (id: string, cwd?: string) => Promise<{ wasAttached: boolean }>;
 	write: (id: string, data: string) => Promise<void>;
 	resize: (id: string, cols: number, rows: number) => Promise<void>;
 	dispose: (id: string) => Promise<void>;
@@ -25,7 +25,7 @@ export interface SessionSaveData {
 		workspaceId: string;
 		title: string;
 		cwd: string;
-		scrollback: string | null;
+		// scrollback removed — daemon owns this column
 		sortOrder: number;
 	}>;
 	state: Record<string, string>;
@@ -37,6 +37,10 @@ export interface SessionAPI {
 
 export interface ShellAPI {
 	openExternal: (url: string) => Promise<void>;
+}
+
+export interface DaemonAPI {
+	onStatus: (callback: (connected: boolean) => void) => () => void;
 }
 
 export interface LspAPI {

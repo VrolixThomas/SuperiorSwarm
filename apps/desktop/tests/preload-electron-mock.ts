@@ -1,3 +1,4 @@
+import { Database as BunDatabase } from "bun:sqlite";
 import { mock } from "bun:test";
 
 mock.module("electron", () => ({
@@ -22,3 +23,50 @@ mock.module("electron", () => ({
 		showOpenDialog: async () => ({ canceled: true, filePaths: [] }),
 	},
 }));
+
+// Shim better-sqlite3 with bun:sqlite so tests can run without the native addon.
+mock.module("better-sqlite3", () => {
+	class Database {
+		private _db: BunDatabase;
+
+		constructor(path: string, _opts?: unknown) {
+			this._db = new BunDatabase(path);
+		}
+
+		get open(): boolean {
+			return !this._db.closed;
+		}
+
+		pragma(str: string): unknown {
+			return this._db.exec(`PRAGMA ${str}`);
+		}
+
+		exec(sql: string): this {
+			this._db.exec(sql);
+			return this;
+		}
+
+		prepare(sql: string) {
+			const stmt = this._db.query(sql);
+			return {
+				run: (...params: unknown[]) => stmt.run(...params),
+				get: (...params: unknown[]) => stmt.get(...params),
+				all: (...params: unknown[]) => stmt.all(...params),
+			};
+		}
+
+		transaction<T>(fn: () => T): () => T {
+			return () => {
+				const tx = this._db.transaction(fn);
+				return tx();
+			};
+		}
+
+		close(): void {
+			this._db.close();
+		}
+	}
+
+	// Default export compatible with `new Database(path)` usage.
+	return { default: Database };
+});

@@ -20,6 +20,7 @@ export function AtlassianPanel() {
 			utils.atlassian.getMyPullRequests.invalidate();
 			utils.atlassian.getReviewRequests.invalidate();
 			utils.atlassian.getMyIssues.invalidate();
+			utils.tickets.getLinkedTickets.invalidate();
 		},
 	});
 
