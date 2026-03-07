@@ -4,6 +4,7 @@ import { shell } from "electron";
 import { acquireOAuthLock, releaseOAuthLock } from "../oauth-lock";
 import { saveAuth } from "./auth";
 import {
+	GITHUB_API_BASE,
 	GITHUB_AUTH_URL,
 	GITHUB_CLIENT_ID,
 	GITHUB_CLIENT_SECRET,
@@ -108,7 +109,7 @@ async function exchangeCode(code: string): Promise<{ access_token: string }> {
 async function fetchViewer(
 	accessToken: string
 ): Promise<{ id: number; login: string; name: string | null }> {
-	const res = await fetch("https://api.github.com/user", {
+	const res = await fetch(`${GITHUB_API_BASE}/user`, {
 		headers: {
 			Authorization: `Bearer ${accessToken}`,
 			Accept: "application/vnd.github+json",
