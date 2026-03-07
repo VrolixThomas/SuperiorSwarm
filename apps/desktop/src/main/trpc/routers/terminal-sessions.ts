@@ -8,7 +8,7 @@ const sessionInput = z.object({
 	workspaceId: z.string(),
 	title: z.string(),
 	cwd: z.string(),
-	scrollback: z.string().nullable(),
+	// scrollback removed — daemon writes this column
 	sortOrder: z.number().int(),
 });
 
