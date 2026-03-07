@@ -195,3 +195,26 @@ export const githubBranchPrs = sqliteTable(
 
 export type GithubBranchPr = typeof githubBranchPrs.$inferSelect;
 export type NewGithubBranchPr = typeof githubBranchPrs.$inferInsert;
+
+export const githubPrFileViewed = sqliteTable(
+	"github_pr_file_viewed",
+	{
+		id: text("id").primaryKey(),
+		prOwner: text("pr_owner").notNull(),
+		prRepo: text("pr_repo").notNull(),
+		prNumber: integer("pr_number").notNull(),
+		filePath: text("file_path").notNull(),
+		viewedAt: integer("viewed_at", { mode: "timestamp" }).notNull(),
+	},
+	(table) => [
+		uniqueIndex("github_pr_file_viewed_unique").on(
+			table.prOwner,
+			table.prRepo,
+			table.prNumber,
+			table.filePath
+		),
+	]
+);
+
+export type GithubPrFileViewed = typeof githubPrFileViewed.$inferSelect;
+export type NewGithubPrFileViewed = typeof githubPrFileViewed.$inferInsert;
