@@ -2,6 +2,7 @@ import { useShallow } from "zustand/react/shallow";
 import { useTabStore } from "../stores/tab-store";
 import { DiffFileTab } from "./DiffFileTab";
 import { FileEditor } from "./FileEditor";
+import { PRReviewFileTab } from "./PRReviewFileTab";
 import { TabBar } from "./TabBar";
 import { Terminal } from "./Terminal";
 
@@ -70,6 +71,17 @@ export function MainContentArea({ savedScrollback }: MainContentAreaProps) {
 							filePath={activeTab.filePath}
 							language={activeTab.language}
 							initialPosition={activeTab.initialPosition}
+						/>
+					</div>
+				)}
+
+				{activeTab?.kind === "pr-review-file" && (
+					<div className="absolute inset-0">
+						<PRReviewFileTab
+							key={`${activeTab.prCtx.owner}/${activeTab.prCtx.repo}#${activeTab.prCtx.number}:${activeTab.filePath}`}
+							prCtx={activeTab.prCtx}
+							filePath={activeTab.filePath}
+							language={activeTab.language}
 						/>
 					</div>
 				)}
