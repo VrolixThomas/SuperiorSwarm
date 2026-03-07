@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { AddRepositoryModal } from "./components/AddRepositoryModal";
 import { CreateWorktreeModal } from "./components/CreateWorktreeModal";
+import { DaemonStatus } from "./components/DaemonStatus";
 import { DiffPanel } from "./components/DiffPanel";
 import { MainContentArea } from "./components/MainContentArea";
 import { SharedFilesPanel } from "./components/SharedFilesPanel";
 import { Sidebar } from "./components/Sidebar";
-import { scrollbackRegistry } from "./components/Terminal";
 import {
 	setupDiagnosticsListener,
 	setupGoToDefinitionHandler,
@@ -25,7 +25,7 @@ function collectSnapshot() {
 		workspaceId: tab.workspaceId,
 		title: tab.title,
 		cwd: tab.kind === "terminal" ? tab.cwd : "",
-		scrollback: scrollbackRegistry.get(tab.id)?.() ?? null,
+		// scrollback omitted — daemon owns that column
 		sortOrder: i,
 	}));
 
@@ -123,6 +123,7 @@ export function App() {
 			<AddRepositoryModal />
 			<CreateWorktreeModal />
 			<SharedFilesPanel />
+			<DaemonStatus />
 		</>
 	);
 }
