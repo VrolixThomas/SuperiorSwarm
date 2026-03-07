@@ -69,7 +69,7 @@ describe("mapPRDetails", () => {
 			baseRefName: "main",
 		};
 
-		const result = mapPRDetails(raw as any);
+		const result = mapPRDetails(raw as unknown as Parameters<typeof mapPRDetails>[0]);
 
 		expect(result.title).toBe("Fix auth bug");
 		expect(result.reviewDecision).toBe("REVIEW_REQUIRED");
@@ -101,7 +101,7 @@ describe("mapPRDetails", () => {
 			headRefName: "docs",
 			baseRefName: "main",
 		};
-		const result = mapPRDetails(raw as any);
+		const result = mapPRDetails(raw as unknown as Parameters<typeof mapPRDetails>[0]);
 		expect(result.ciState).toBeNull();
 		expect(result.checks).toHaveLength(0);
 	});

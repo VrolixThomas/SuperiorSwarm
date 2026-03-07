@@ -115,8 +115,8 @@ function PRRow({
 				title={`${pr.repoOwner}/${pr.repoName}#${pr.number}`}
 			>
 				{/* Expand/Collapse toggle */}
-				<div
-					role="button"
+				<button
+					type="button"
 					tabIndex={0}
 					onClick={(e) => {
 						e.stopPropagation();
@@ -144,7 +144,7 @@ function PRRow({
 					>
 						<path d="m9 18 6-6-6-6" />
 					</svg>
-				</div>
+				</button>
 
 				{/* Draft indicator */}
 				{pr.isDraft && (
