@@ -197,7 +197,11 @@ function useInlineCommentZones(
 		modEditor.changeViewZones((acc) => {
 			for (const id of zoneIdsRef.current) acc.removeZone(id);
 		});
-		for (const root of rootsRef.current) root.unmount();
+		// Defer React root unmounts to avoid "synchronously unmount during render" warning
+		const staleRoots = rootsRef.current;
+		queueMicrotask(() => {
+			for (const root of staleRoots) root.unmount();
+		});
 		zoneIdsRef.current = [];
 		rootsRef.current = [];
 
@@ -280,7 +284,10 @@ function useInlineCommentZones(
 			modEditor.changeViewZones((acc) => {
 				for (const id of newZoneIds) acc.removeZone(id);
 			});
-			for (const root of newRoots) root.unmount();
+			// Defer React root unmounts to avoid "synchronously unmount during render" warning
+			queueMicrotask(() => {
+				for (const root of newRoots) root.unmount();
+			});
 		};
 	}, [editor, threads, pendingLine, onReply, onResolve, onSaveNew, onCancelNew]);
 }

@@ -126,3 +126,53 @@ body,
 	-ms-overflow-style: none;
 	scrollbar-width: none;
 }
+
+/* ── PR review: Monaco diff-editor decorations ────────────────────────────── */
+
+/* Gutter dot for unresolved review threads */
+.pr-thread-unresolved-gutter {
+	width: 6px !important;
+	margin-left: 4px;
+	border-radius: 50%;
+	background: #fbbf24; /* amber-400 */
+}
+
+/* Gutter dot for resolved review threads */
+.pr-thread-resolved-gutter {
+	width: 6px !important;
+	margin-left: 4px;
+	border-radius: 50%;
+	background: #4ade80; /* green-400 */
+	opacity: 0.5;
+}
+
+/* Subtle line highlight for unresolved threads */
+.pr-thread-unresolved-line {
+	background: rgba(251, 191, 36, 0.06);
+}
+
+/* Plus icon in gutter on hover for adding new comments */
+.pr-gutter-plus-icon {
+	cursor: pointer;
+	opacity: 0.5;
+	transition: opacity 120ms ease;
+}
+
+.pr-gutter-plus-icon::after {
+	content: "+";
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 16px;
+	height: 16px;
+	font-size: 14px;
+	font-weight: 600;
+	line-height: 1;
+	color: var(--accent);
+	border-radius: 3px;
+	background: rgba(10, 132, 255, 0.12);
+}
+
+.pr-gutter-plus-icon:hover {
+	opacity: 1;
+}

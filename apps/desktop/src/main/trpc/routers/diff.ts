@@ -123,12 +123,18 @@ export const diffRouter = router({
 				return { content, language };
 			}
 			const git = simpleGit(input.repoPath);
-			try {
-				const content = await git.show([`${input.ref}:${input.filePath}`]);
-				return { content, language };
-			} catch {
-				return { content: "", language };
+			// Try the ref as-is first, then fall back to origin/<ref> for remote
+			// tracking branches (GitHub returns bare branch names like "main"
+			// but locally the branch may only exist as "origin/main").
+			for (const ref of [input.ref, `origin/${input.ref}`]) {
+				try {
+					const content = await git.show([`${ref}:${input.filePath}`]);
+					return { content, language };
+				} catch {
+					// try next ref variant
+				}
 			}
+			return { content: "", language };
 		}),
 
 	saveFileContent: publicProcedure
