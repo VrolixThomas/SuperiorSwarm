@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
+import type { GitHubPR } from "../../main/github/github";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
-import type { GitHubPR } from "../../main/github/github";
 
 interface Props {
 	pr: GitHubPR | null;
@@ -124,7 +124,7 @@ export function CreateWorktreeFromPRModal({ pr, onClose }: Props) {
 				{/* Form */}
 				<form onSubmit={handleSubmit} className="flex flex-col gap-4 p-4">
 					<div className="flex flex-col gap-1.5">
-						<label className="text-[13px] font-medium text-[var(--text-secondary)]">PR</label>
+						<span className="text-[13px] font-medium text-[var(--text-secondary)]">PR</span>
 						<div className="rounded-[var(--radius-sm)] bg-[var(--bg-elevated)] px-3 py-2 text-[13px] text-[var(--text-tertiary)]">
 							#{pr.number}: {pr.title}
 						</div>
@@ -132,8 +132,14 @@ export function CreateWorktreeFromPRModal({ pr, onClose }: Props) {
 
 					{projectsQuery.data && projectsQuery.data.length > 1 && (
 						<div className="flex flex-col gap-1.5">
-							<label className="text-[13px] font-medium text-[var(--text-secondary)]">Project</label>
+							<label
+								htmlFor="project-select"
+								className="text-[13px] font-medium text-[var(--text-secondary)]"
+							>
+								Project
+							</label>
 							<select
+								id="project-select"
 								value={selectedProjectId}
 								onChange={(e) => setSelectedProjectId(e.target.value)}
 								className="w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-2 text-[13px] text-[var(--text)] outline-none focus:border-[var(--accent)]"
@@ -148,10 +154,14 @@ export function CreateWorktreeFromPRModal({ pr, onClose }: Props) {
 					)}
 
 					<div className="flex flex-col gap-1.5">
-						<label className="text-[13px] font-medium text-[var(--text-secondary)]">
+						<label
+							htmlFor="branch-name-input"
+							className="text-[13px] font-medium text-[var(--text-secondary)]"
+						>
 							Branch Name
 						</label>
 						<input
+							id="branch-name-input"
 							type="text"
 							value={branchName}
 							onChange={(e) => setBranchName(e.target.value)}
@@ -160,10 +170,14 @@ export function CreateWorktreeFromPRModal({ pr, onClose }: Props) {
 					</div>
 
 					<div className="flex flex-col gap-1.5">
-						<label className="text-[13px] font-medium text-[var(--text-secondary)]">
+						<label
+							htmlFor="base-branch-select"
+							className="text-[13px] font-medium text-[var(--text-secondary)]"
+						>
 							Base Branch
 						</label>
 						<select
+							id="base-branch-select"
 							value={baseBranch}
 							onChange={(e) => setBaseBranch(e.target.value)}
 							className="w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-2 text-[13px] text-[var(--text)] outline-none focus:border-[var(--accent)]"
