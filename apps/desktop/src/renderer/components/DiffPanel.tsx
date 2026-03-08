@@ -1,4 +1,3 @@
-import { useState } from "react";
 import type { DiffContext } from "../../shared/diff-types";
 import { type PanelMode, useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
@@ -64,7 +63,10 @@ function PanelHeader({
 function DiffPanelContent({ diffCtx }: { diffCtx: DiffContext }) {
 	const togglePanelMode = useTabStore((s) => s.togglePanelMode);
 	const activeWorkspaceId = useTabStore((s) => s.activeWorkspaceId);
-	const [baseBranch, setBaseBranch] = useState<string | null>(null);
+	const setBaseBranch = useTabStore((s) => s.setBaseBranch);
+	const storedBaseBranch = useTabStore((s) =>
+		activeWorkspaceId ? s.baseBranchByWorkspace[activeWorkspaceId] : undefined
+	);
 
 	const utils = trpc.useUtils();
 
@@ -74,7 +76,7 @@ function DiffPanelContent({ diffCtx }: { diffCtx: DiffContext }) {
 		{ staleTime: 60_000 }
 	);
 
-	const effectiveBaseBranch = baseBranch ?? defaultBranchQuery.data?.branch ?? "main";
+	const effectiveBaseBranch = storedBaseBranch ?? defaultBranchQuery.data?.branch ?? "main";
 
 	// Working tree status (staged/unstaged split)
 	const statusQuery = trpc.diff.getWorkingTreeStatus.useQuery(
@@ -155,7 +157,9 @@ function DiffPanelContent({ diffCtx }: { diffCtx: DiffContext }) {
 					repoPath={diffCtx.repoPath}
 					currentBranch={currentBranch}
 					baseBranch={effectiveBaseBranch}
-					onBaseBranchChange={setBaseBranch}
+					onBaseBranchChange={(branch) => {
+						if (activeWorkspaceId) setBaseBranch(activeWorkspaceId, branch);
+					}}
 				/>
 			)}
 

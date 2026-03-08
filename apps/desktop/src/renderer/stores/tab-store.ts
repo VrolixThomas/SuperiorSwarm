@@ -51,6 +51,7 @@ interface TabStore {
 	activeWorkspaceCwd: string;
 	diffMode: "split" | "inline";
 	rightPanel: RightPanelState;
+	baseBranchByWorkspace: Record<string, string>;
 
 	// Queries
 	getVisibleTabs: () => TabItem[];
@@ -98,6 +99,10 @@ interface TabStore {
 	) => string;
 	clearInitialPosition: (tabId: string) => void;
 	setDiffMode: (mode: "split" | "inline") => void;
+
+	// Base branch per workspace
+	setBaseBranch: (workspaceId: string, branch: string) => void;
+	getBaseBranch: (workspaceId: string) => string | undefined;
 
 	// Session restore
 	hydrate: (
@@ -178,6 +183,7 @@ export const useTabStore = create<TabStore>((set, get) => ({
 	activeWorkspaceCwd: "",
 	diffMode: "split",
 	rightPanel: defaultPanelForCwd(""),
+	baseBranchByWorkspace: {},
 
 	getVisibleTabs: () => {
 		const { tabs, activeWorkspaceId } = get();
@@ -427,6 +433,13 @@ export const useTabStore = create<TabStore>((set, get) => ({
 	},
 
 	setDiffMode: (mode) => set({ diffMode: mode }),
+
+	setBaseBranch: (workspaceId, branch) =>
+		set((s) => ({
+			baseBranchByWorkspace: { ...s.baseBranchByWorkspace, [workspaceId]: branch },
+		})),
+
+	getBaseBranch: (workspaceId) => get().baseBranchByWorkspace[workspaceId],
 
 	hydrate: (sessions, activeTab, activeWs, activeCwd) => {
 		const maxId = sessions.reduce((max, s) => {
