@@ -35,11 +35,7 @@ export function AtlassianPanel() {
 			)}
 			{hasJira && (
 				<div className="mt-2 border-t border-[var(--border-subtle)] pt-2">
-					<SectionHeader
-						label="Jira"
-						isOpen={jiraOpen}
-						onToggle={() => setJiraOpen(!jiraOpen)}
-					/>
+					<SectionHeader label="Jira" isOpen={jiraOpen} onToggle={() => setJiraOpen(!jiraOpen)} />
 					{jiraOpen && (
 						<div className="px-2">
 							<JiraIssueList />

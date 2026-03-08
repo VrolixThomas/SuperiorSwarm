@@ -1,12 +1,15 @@
+import { useState } from "react";
 import { useProjectStore } from "../stores/projects";
-import { AtlassianPanel } from "./AtlassianPanel";
-import { GitHubPanel } from "./GitHubPanel";
-import { LinearPanel } from "./LinearPanel";
 import { ProjectList } from "./ProjectList";
+import { PullRequestsTab } from "./PullRequestsTab";
+import { SectionHeader } from "./SectionHeader";
 import { SettingsView } from "./SettingsView";
+import { TicketsTab } from "./TicketsTab";
 
 export function Sidebar() {
 	const { openAddModal, sidebarView, openSettings } = useProjectStore();
+	const [ticketsOpen, setTicketsOpen] = useState(true);
+	const [prsOpen, setPrsOpen] = useState(true);
 
 	return (
 		<aside className="flex h-full w-[220px] shrink-0 flex-col border-r border-[var(--border-subtle)] bg-[var(--bg-surface)]">
@@ -58,12 +61,29 @@ export function Sidebar() {
 						</button>
 					</div>
 
-					{/* Project list + Integrations */}
+					{/* Project list + Unified tickets/PRs */}
 					<div className="flex-1 overflow-y-auto py-1">
 						<ProjectList />
-						<AtlassianPanel />
-						<LinearPanel />
-						<GitHubPanel />
+
+						{/* Tickets Section */}
+						<div className="mt-2 border-t border-[var(--border-subtle)] pt-2">
+							<SectionHeader
+								label="Tickets"
+								isOpen={ticketsOpen}
+								onToggle={() => setTicketsOpen(!ticketsOpen)}
+							/>
+							{ticketsOpen && <TicketsTab />}
+						</div>
+
+						{/* Pull Requests Section */}
+						<div className="mt-2 border-t border-[var(--border-subtle)] pt-2">
+							<SectionHeader
+								label="Pull Requests"
+								isOpen={prsOpen}
+								onToggle={() => setPrsOpen(!prsOpen)}
+							/>
+							{prsOpen && <PullRequestsTab />}
+						</div>
 					</div>
 
 					{/* Footer — Settings button */}
