@@ -18,6 +18,8 @@ interface ProjectStore {
 	sidebarView: "main" | "settings";
 	openSettings: () => void;
 	closeSettings: () => void;
+	sidebarCollapsed: boolean;
+	setSidebarCollapsed: (collapsed: boolean) => void;
 }
 
 export const useProjectStore = create<ProjectStore>((set) => ({
@@ -28,6 +30,8 @@ export const useProjectStore = create<ProjectStore>((set) => ({
 	createWorktreeProjectId: null,
 	sharedFilesProjectId: null,
 	sidebarView: "main",
+	sidebarCollapsed: false,
+	setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
 
 	selectProject: (id) => set({ selectedProjectId: id }),
 
