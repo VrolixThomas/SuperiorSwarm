@@ -1,16 +1,55 @@
+import { useCallback, useRef, useState } from "react";
+import type { Project } from "../../main/db/schema";
 import { useProjectStore } from "../stores/projects";
 import { trpc } from "../trpc/client";
+import { ProjectItem } from "./ProjectItem";
+import { PullRequestsTab } from "./PullRequestsTab";
+import { RailFlyout } from "./RailFlyout";
+import { TicketsTab } from "./TicketsTab";
 
 interface SidebarRailProps {
 	onExpand: (section?: "tickets" | "prs") => void;
 }
 
+type FlyoutTarget = { kind: "project"; project: Project } | { kind: "tickets" } | { kind: "prs" };
+
 export function SidebarRail({ onExpand }: SidebarRailProps) {
 	const { openAddModal, openSettings } = useProjectStore();
 	const { data: projectsList } = trpc.projects.list.useQuery();
 
+	const [flyout, setFlyout] = useState<FlyoutTarget | null>(null);
+	const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
+	const dismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const railRef = useRef<HTMLDivElement>(null);
+
+	const cancelDismiss = useCallback(() => {
+		if (dismissTimer.current) {
+			clearTimeout(dismissTimer.current);
+			dismissTimer.current = null;
+		}
+	}, []);
+
+	const scheduleDismiss = useCallback(() => {
+		cancelDismiss();
+		dismissTimer.current = setTimeout(() => {
+			setFlyout(null);
+			setAnchorRect(null);
+		}, 150);
+	}, [cancelDismiss]);
+
+	const openFlyout = useCallback(
+		(target: FlyoutTarget, el: HTMLElement) => {
+			cancelDismiss();
+			setFlyout(target);
+			setAnchorRect(el.getBoundingClientRect());
+		},
+		[cancelDismiss]
+	);
+
+	const railWidth = railRef.current?.getBoundingClientRect().width ?? 56;
+
 	return (
-		<div className="flex h-full w-full flex-col items-center bg-[var(--bg-surface)]">
+		<div ref={railRef} className="flex h-full w-full flex-col items-center bg-[var(--bg-surface)]">
 			{/* Traffic light clearance */}
 			<div
 				className="w-full shrink-0"
@@ -41,8 +80,15 @@ export function SidebarRail({ onExpand }: SidebarRailProps) {
 						key={project.id}
 						type="button"
 						title={project.name}
+						onMouseEnter={(e) => openFlyout({ kind: "project", project }, e.currentTarget)}
+						onMouseLeave={scheduleDismiss}
 						onClick={() => onExpand()}
-						className="flex size-8 shrink-0 items-center justify-center rounded-[6px] text-[11px] font-medium text-[var(--text-secondary)] transition-colors duration-[120ms] hover:bg-[var(--bg-elevated)]"
+						className={[
+							"flex size-8 shrink-0 items-center justify-center rounded-[6px] text-[11px] font-medium transition-colors duration-[120ms] hover:bg-[var(--bg-elevated)]",
+							flyout?.kind === "project" && flyout.project.id === project.id
+								? "bg-[var(--bg-elevated)] text-[var(--text)]"
+								: "text-[var(--text-secondary)]",
+						].join(" ")}
 						style={{
 							borderLeft: `2px solid ${project.color ?? "transparent"}`,
 						}}
@@ -52,14 +98,21 @@ export function SidebarRail({ onExpand }: SidebarRailProps) {
 				))}
 			</div>
 
-			{/* Section icons with badges */}
+			{/* Section icons */}
 			<div className="flex flex-col items-center gap-1 border-t border-[var(--border-subtle)] py-2">
 				{/* Tickets icon */}
 				<button
 					type="button"
 					title="Tickets"
+					onMouseEnter={(e) => openFlyout({ kind: "tickets" }, e.currentTarget)}
+					onMouseLeave={scheduleDismiss}
 					onClick={() => onExpand("tickets")}
-					className="flex size-8 items-center justify-center rounded-[6px] text-[var(--text-tertiary)] transition-colors duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-secondary)]"
+					className={[
+						"flex size-8 items-center justify-center rounded-[6px] transition-colors duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-secondary)]",
+						flyout?.kind === "tickets"
+							? "bg-[var(--bg-elevated)] text-[var(--text-secondary)]"
+							: "text-[var(--text-tertiary)]",
+					].join(" ")}
 				>
 					<svg
 						aria-hidden="true"
@@ -81,8 +134,15 @@ export function SidebarRail({ onExpand }: SidebarRailProps) {
 				<button
 					type="button"
 					title="Pull Requests"
+					onMouseEnter={(e) => openFlyout({ kind: "prs" }, e.currentTarget)}
+					onMouseLeave={scheduleDismiss}
 					onClick={() => onExpand("prs")}
-					className="flex size-8 items-center justify-center rounded-[6px] text-[var(--text-tertiary)] transition-colors duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-secondary)]"
+					className={[
+						"flex size-8 items-center justify-center rounded-[6px] transition-colors duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-secondary)]",
+						flyout?.kind === "prs"
+							? "bg-[var(--bg-elevated)] text-[var(--text-secondary)]"
+							: "text-[var(--text-tertiary)]",
+					].join(" ")}
 				>
 					<svg
 						aria-hidden="true"
@@ -127,6 +187,24 @@ export function SidebarRail({ onExpand }: SidebarRailProps) {
 					</svg>
 				</button>
 			</div>
+
+			{/* Flyout portal */}
+			{flyout && anchorRect && (
+				<RailFlyout
+					anchorRect={anchorRect}
+					railWidth={railWidth}
+					onMouseEnter={cancelDismiss}
+					onMouseLeave={scheduleDismiss}
+				>
+					{flyout.kind === "project" && (
+						<div className="p-2">
+							<ProjectItem project={flyout.project} isExpanded onToggle={() => {}} />
+						</div>
+					)}
+					{flyout.kind === "tickets" && <TicketsTab />}
+					{flyout.kind === "prs" && <PullRequestsTab />}
+				</RailFlyout>
+			)}
 		</div>
 	);
 }
