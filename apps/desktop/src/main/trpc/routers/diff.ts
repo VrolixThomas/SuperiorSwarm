@@ -8,9 +8,12 @@ import { readWorkingTreeFile, saveWorkingTreeFile } from "../../git/file-ops";
 import { listDirectory } from "../../git/file-tree";
 import {
 	commitChanges,
+	detectDefaultBranch,
 	detectLanguage,
+	getCommitsAhead,
 	getCurrentBranch,
 	getUntrackedFiles,
+	listBranches,
 	parseUnifiedDiff,
 	pushBranch,
 	stageFiles,
@@ -229,5 +232,25 @@ export const diffRouter = router({
 		.query(async ({ input }) => {
 			const entries = await listDirectory(input.repoPath, input.dirPath);
 			return { entries };
+		}),
+
+	getCommitsAhead: publicProcedure
+		.input(z.object({ repoPath: z.string(), baseBranch: z.string() }))
+		.query(async ({ input }) => {
+			return await getCommitsAhead(input.repoPath, input.baseBranch);
+		}),
+
+	getDefaultBranch: publicProcedure
+		.input(z.object({ repoPath: z.string() }))
+		.query(async ({ input }) => {
+			const branch = await detectDefaultBranch(input.repoPath);
+			return { branch };
+		}),
+
+	listBranches: publicProcedure
+		.input(z.object({ repoPath: z.string() }))
+		.query(async ({ input }) => {
+			const branches = await listBranches(input.repoPath);
+			return { branches };
 		}),
 });

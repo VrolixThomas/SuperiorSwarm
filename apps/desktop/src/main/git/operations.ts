@@ -238,6 +238,48 @@ export async function pushBranch(repoPath: string): Promise<void> {
 	await git.push();
 }
 
+export interface CommitInfo {
+	hash: string;
+	shortHash: string;
+	message: string;
+	time: string;
+	additions: number;
+	deletions: number;
+	files: DiffFile[];
+}
+
+export async function getCommitsAhead(repoPath: string, baseBranch: string): Promise<CommitInfo[]> {
+	const git = simpleGit(repoPath);
+
+	// Get commits between base and HEAD
+	const log = await git.log({
+		from: baseBranch,
+		to: "HEAD",
+		format: { hash: "%H", shortHash: "%h", message: "%s", time: "%ar" },
+	});
+
+	const commits: CommitInfo[] = [];
+	for (const entry of log.all) {
+		// Get diff for each commit
+		const rawDiff = await git.diff([`${entry.hash}~1..${entry.hash}`, "--unified=0", "--no-color"]);
+		const files = parseUnifiedDiff(rawDiff);
+		const additions = files.reduce((sum, f) => sum + f.additions, 0);
+		const deletions = files.reduce((sum, f) => sum + f.deletions, 0);
+
+		commits.push({
+			hash: entry.hash,
+			shortHash: entry.shortHash,
+			message: entry.message,
+			time: entry.time,
+			additions,
+			deletions,
+			files,
+		});
+	}
+
+	return commits;
+}
+
 export type { DiffLine, DiffHunk, DiffFile, DiffStats } from "../../shared/diff-types";
 import type { DiffFile, DiffHunk, DiffLine } from "../../shared/diff-types";
 
