@@ -331,9 +331,7 @@ export function DiffPanel() {
 				<>
 					<PanelHeader mode="diff" onSetMode={() => {}} />
 					<div className="flex flex-1 items-center justify-center">
-						<span className="text-[12px] text-[var(--text-quaternary)]">
-							Select a workspace
-						</span>
+						<span className="text-[12px] text-[var(--text-quaternary)]">Select a workspace</span>
 					</div>
 				</>
 			)}

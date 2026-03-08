@@ -4,10 +4,8 @@ import { BRANCHFLUX_DIR } from "../shared/daemon-protocol";
 import { PtyManager } from "./pty-manager";
 import { ScrollbackStore } from "./scrollback-store";
 import { SocketServer } from "./socket-server";
-const SOCKET_PATH =
-	process.env["BRANCHFLUX_SOCKET_PATH"] ?? join(BRANCHFLUX_DIR, "daemon.sock");
-const PID_PATH =
-	process.env["BRANCHFLUX_PID_PATH"] ?? join(BRANCHFLUX_DIR, "daemon.pid");
+const SOCKET_PATH = process.env["BRANCHFLUX_SOCKET_PATH"] ?? join(BRANCHFLUX_DIR, "daemon.sock");
+const PID_PATH = process.env["BRANCHFLUX_PID_PATH"] ?? join(BRANCHFLUX_DIR, "daemon.pid");
 const DB_PATH = process.env["BRANCHFLUX_DB_PATH"] ?? "";
 const FLUSH_INTERVAL_MS = 30_000;
 
