@@ -1,10 +1,15 @@
 import { dirname, join } from "node:path";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { z } from "zod";
 import { getDb } from "../../db";
-import { projects, sharedFiles, workspaces, worktrees } from "../../db/schema";
-import { createWorktree, hasUncommittedChanges, removeWorktree } from "../../git/operations";
+import { githubBranchPrs, projects, sharedFiles, workspaces, worktrees } from "../../db/schema";
+import {
+	checkoutBranchWorktree,
+	createWorktree,
+	hasUncommittedChanges,
+	removeWorktree,
+} from "../../git/operations";
 import { symlinkSharedFiles } from "../../shared-files";
 import { publicProcedure, router } from "../index";
 
@@ -98,6 +103,134 @@ export const workspacesRouter = router({
 					worktreePath,
 					sharedEntries.map((e) => ({ relativePath: e.relativePath }))
 				);
+			}
+
+			return workspace;
+		}),
+
+	linkFromPR: publicProcedure
+		.input(
+			z.object({
+				projectId: z.string(),
+				prBranch: z.string().min(1),
+				prOwner: z.string(),
+				prRepo: z.string(),
+				prNumber: z.number(),
+			})
+		)
+		.mutation(async ({ input }) => {
+			const db = getDb();
+			const project = db.select().from(projects).where(eq(projects.id, input.projectId)).get();
+
+			if (!project) {
+				throw new Error("Project not found");
+			}
+
+			// Check if a workspace already exists for this branch in this project
+			const existingWorktree = db
+				.select({ worktreeId: worktrees.id })
+				.from(worktrees)
+				.where(and(eq(worktrees.projectId, input.projectId), eq(worktrees.branch, input.prBranch)))
+				.get();
+
+			let workspaceId: string;
+
+			if (existingWorktree) {
+				// Reuse existing workspace
+				const existingWorkspace = db
+					.select()
+					.from(workspaces)
+					.where(eq(workspaces.worktreeId, existingWorktree.worktreeId))
+					.get();
+
+				if (!existingWorkspace) {
+					throw new Error("Workspace for existing worktree not found");
+				}
+
+				workspaceId = existingWorkspace.id;
+			} else {
+				// Create a new worktree for the existing remote branch
+				const worktreePath = join(worktreeBasePath(project.repoPath), input.prBranch);
+				await checkoutBranchWorktree(project.repoPath, worktreePath, input.prBranch);
+
+				const now = new Date();
+				const worktreeId = nanoid();
+				workspaceId = nanoid();
+
+				db.insert(worktrees)
+					.values({
+						id: worktreeId,
+						projectId: input.projectId,
+						path: worktreePath,
+						branch: input.prBranch,
+						baseBranch: project.defaultBranch,
+						createdAt: now,
+						updatedAt: now,
+					})
+					.run();
+
+				db.insert(workspaces)
+					.values({
+						id: workspaceId,
+						projectId: input.projectId,
+						type: "worktree",
+						name: input.prBranch,
+						worktreeId,
+						terminalId: null,
+						createdAt: now,
+						updatedAt: now,
+					})
+					.run();
+
+				// Symlink shared files
+				const sharedEntries = db
+					.select()
+					.from(sharedFiles)
+					.where(eq(sharedFiles.projectId, input.projectId))
+					.all();
+
+				if (sharedEntries.length > 0) {
+					await symlinkSharedFiles(
+						project.repoPath,
+						worktreePath,
+						sharedEntries.map((e) => ({ relativePath: e.relativePath }))
+					);
+				}
+			}
+
+			// Link the PR to the workspace
+			db.insert(githubBranchPrs)
+				.values({
+					id: nanoid(),
+					workspaceId,
+					prRepoOwner: input.prOwner,
+					prRepoName: input.prRepo,
+					prNumber: input.prNumber,
+					createdAt: new Date(),
+				})
+				.onConflictDoNothing()
+				.run();
+
+			// Return the workspace with worktree path for navigation
+			const workspace = db
+				.select({
+					id: workspaces.id,
+					projectId: workspaces.projectId,
+					type: workspaces.type,
+					name: workspaces.name,
+					worktreeId: workspaces.worktreeId,
+					terminalId: workspaces.terminalId,
+					createdAt: workspaces.createdAt,
+					updatedAt: workspaces.updatedAt,
+					worktreePath: worktrees.path,
+				})
+				.from(workspaces)
+				.leftJoin(worktrees, eq(workspaces.worktreeId, worktrees.id))
+				.where(eq(workspaces.id, workspaceId))
+				.get();
+
+			if (!workspace) {
+				throw new Error("Failed to retrieve workspace after linking");
 			}
 
 			return workspace;

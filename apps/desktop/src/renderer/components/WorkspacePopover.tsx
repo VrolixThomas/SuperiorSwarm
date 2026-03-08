@@ -139,7 +139,7 @@ export function WorkspacePopover({ position, workspaces, onClose, onCreateBranch
 				>
 					<path d="M8 3v10M3 8h10" />
 				</svg>
-				<span>Create branch</span>
+				<span>Add workspace</span>
 			</button>
 		</div>
 	);

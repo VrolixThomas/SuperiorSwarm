@@ -252,7 +252,15 @@ export const useTabStore = create<TabStore>((set, get) => ({
 		}
 		const id = nextFileTabId();
 		const title = filePath.split("/").pop() ?? filePath;
-		const tab: TabItem = { kind: "pr-review-file", id, workspaceId, prCtx, filePath, title, language };
+		const tab: TabItem = {
+			kind: "pr-review-file",
+			id,
+			workspaceId,
+			prCtx,
+			filePath,
+			title,
+			language,
+		};
 		set((s) => ({ tabs: [...s.tabs, tab], activeTabId: id }));
 		return id;
 	},

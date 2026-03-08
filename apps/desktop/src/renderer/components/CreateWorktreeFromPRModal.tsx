@@ -10,8 +10,6 @@ interface Props {
 
 export function CreateWorktreeFromPRModal({ pr, onClose }: Props) {
 	const [selectedProjectId, setSelectedProjectId] = useState("");
-	const [branchName, setBranchName] = useState("");
-	const [baseBranch, setBaseBranch] = useState("");
 	const utils = trpc.useUtils();
 
 	const projectsQuery = trpc.github.getProjectsByRepo.useQuery(
@@ -19,38 +17,18 @@ export function CreateWorktreeFromPRModal({ pr, onClose }: Props) {
 		{ enabled: !!pr, staleTime: 60_000 }
 	);
 
-	const branchesQuery = trpc.branches.list.useQuery(
-		{ projectId: selectedProjectId },
-		{ enabled: !!selectedProjectId }
-	);
-
 	const attachTerminal = trpc.workspaces.attachTerminal.useMutation();
 
-	const linkPRMutation = trpc.github.linkPR.useMutation({
-		onSuccess: () => utils.github.getLinkedPRs.invalidate(),
-		onError: (err) => console.error("[linkPR] Failed to link PR to workspace:", err.message),
-	});
-
-	const createMutation = trpc.workspaces.create.useMutation({
+	const linkFromPRMutation = trpc.workspaces.linkFromPR.useMutation({
 		onSuccess: (workspace) => {
-			if (pr) {
-				linkPRMutation.mutate({
-					workspaceId: workspace.id,
-					owner: pr.repoOwner,
-					repo: pr.repoName,
-					number: pr.number,
-				});
-			}
 			utils.workspaces.listByProject.invalidate();
+			utils.github.getLinkedPRs.invalidate();
 
-			const project = projectsQuery.data?.find((p) => p.id === selectedProjectId);
-			if (project) {
-				const normalizedPath = project.repoPath.replace(/\/+$/, "");
-				const cwd = `${normalizedPath}-worktrees/${workspace.name}`;
-				const title = `${project.name}: ${workspace.name}`;
+			if (workspace.worktreePath) {
+				const title = workspace.name;
 				const store = useTabStore.getState();
-				store.setActiveWorkspace(workspace.id, cwd);
-				const tabId = store.addTerminalTab(workspace.id, cwd, title);
+				store.setActiveWorkspace(workspace.id, workspace.worktreePath);
+				const tabId = store.addTerminalTab(workspace.id, workspace.worktreePath, title);
 				attachTerminal.mutate({ workspaceId: workspace.id, terminalId: tabId });
 			}
 			onClose();
@@ -59,36 +37,24 @@ export function CreateWorktreeFromPRModal({ pr, onClose }: Props) {
 
 	// Pre-select the project if only one matches
 	useEffect(() => {
-		if (projectsQuery.data && projectsQuery.data.length > 0 && !selectedProjectId) {
-			setSelectedProjectId(projectsQuery.data[0].id);
+		const first = projectsQuery.data?.[0];
+		if (first && !selectedProjectId) {
+			setSelectedProjectId(first.id);
 		}
 	}, [projectsQuery.data, selectedProjectId]);
-
-	// Pre-fill branch name from PR
-	useEffect(() => {
-		if (pr) {
-			setBranchName(pr.branchName);
-		}
-	}, [pr]);
-
-	// Default base branch
-	useEffect(() => {
-		if (branchesQuery.data && branchesQuery.data.length > 0 && !baseBranch) {
-			const first = branchesQuery.data[0];
-			if (first) setBaseBranch(first);
-		}
-	}, [branchesQuery.data, baseBranch]);
 
 	if (!pr) return null;
 
 	const handleSubmit = (e: React.FormEvent) => {
 		e.preventDefault();
-		if (!selectedProjectId || !branchName.trim()) return;
+		if (!selectedProjectId) return;
 
-		createMutation.mutate({
+		linkFromPRMutation.mutate({
 			projectId: selectedProjectId,
-			branch: branchName.trim(),
-			baseBranch: baseBranch || undefined,
+			prBranch: pr.branchName,
+			prOwner: pr.repoOwner,
+			prRepo: pr.repoName,
+			prNumber: pr.number,
 		});
 	};
 
@@ -98,7 +64,9 @@ export function CreateWorktreeFromPRModal({ pr, onClose }: Props) {
 			onClick={(e) => {
 				if (e.target === e.currentTarget) onClose();
 			}}
-			onKeyDown={() => {}}
+			onKeyDown={(e) => {
+				if (e.key === "Escape") onClose();
+			}}
 			role="presentation"
 		>
 			<div className="w-[480px] rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-surface)] shadow-[var(--shadow-md)]">
@@ -130,6 +98,13 @@ export function CreateWorktreeFromPRModal({ pr, onClose }: Props) {
 						</div>
 					</div>
 
+					<div className="flex flex-col gap-1.5">
+						<span className="text-[13px] font-medium text-[var(--text-secondary)]">Branch</span>
+						<div className="rounded-[var(--radius-sm)] bg-[var(--bg-elevated)] px-3 py-2 text-[13px] text-[var(--text)]">
+							{pr.branchName}
+						</div>
+					</div>
+
 					{projectsQuery.data && projectsQuery.data.length > 1 && (
 						<div className="flex flex-col gap-1.5">
 							<label
@@ -153,53 +128,16 @@ export function CreateWorktreeFromPRModal({ pr, onClose }: Props) {
 						</div>
 					)}
 
-					<div className="flex flex-col gap-1.5">
-						<label
-							htmlFor="branch-name-input"
-							className="text-[13px] font-medium text-[var(--text-secondary)]"
-						>
-							Branch Name
-						</label>
-						<input
-							id="branch-name-input"
-							type="text"
-							value={branchName}
-							onChange={(e) => setBranchName(e.target.value)}
-							className="w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-2 text-[13px] text-[var(--text)] outline-none focus:border-[var(--accent)]"
-						/>
-					</div>
-
-					<div className="flex flex-col gap-1.5">
-						<label
-							htmlFor="base-branch-select"
-							className="text-[13px] font-medium text-[var(--text-secondary)]"
-						>
-							Base Branch
-						</label>
-						<select
-							id="base-branch-select"
-							value={baseBranch}
-							onChange={(e) => setBaseBranch(e.target.value)}
-							className="w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-2 text-[13px] text-[var(--text)] outline-none focus:border-[var(--accent)]"
-						>
-							{branchesQuery.data?.map((b) => (
-								<option key={b} value={b}>
-									{b}
-								</option>
-							))}
-						</select>
-					</div>
-
 					<button
 						type="submit"
-						disabled={!selectedProjectId || !branchName.trim() || createMutation.isPending}
+						disabled={!selectedProjectId || linkFromPRMutation.isPending}
 						className="w-full rounded-[var(--radius-md)] bg-[var(--accent)] px-4 py-2 text-[13px] font-medium text-white transition-all duration-[120ms] hover:bg-[var(--accent-hover)] disabled:opacity-50"
 					>
-						{createMutation.isPending ? "Creating Workspace..." : "Create Workspace & Link PR"}
+						{linkFromPRMutation.isPending ? "Linking..." : "Link PR"}
 					</button>
 
-					{createMutation.isError && (
-						<p className="text-[12px] text-red-400">{createMutation.error.message}</p>
+					{linkFromPRMutation.isError && (
+						<p className="text-[12px] text-red-400">{linkFromPRMutation.error.message}</p>
 					)}
 				</form>
 			</div>

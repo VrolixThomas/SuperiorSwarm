@@ -143,6 +143,16 @@ export async function createWorktree(
 	await git.raw(["worktree", "add", "-b", branch, worktreePath, baseBranch]);
 }
 
+export async function checkoutBranchWorktree(
+	repoPath: string,
+	worktreePath: string,
+	branch: string
+): Promise<void> {
+	const git = simpleGit(repoPath);
+	await git.fetch("origin", branch);
+	await git.raw(["worktree", "add", worktreePath, branch]);
+}
+
 export async function removeWorktree(repoPath: string, worktreePath: string): Promise<void> {
 	const git = simpleGit(repoPath);
 	await git.raw(["worktree", "remove", worktreePath, "--force"]);
