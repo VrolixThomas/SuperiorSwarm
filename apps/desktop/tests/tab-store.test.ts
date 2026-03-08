@@ -180,16 +180,26 @@ describe("closeDiffPanel", () => {
 	});
 });
 
-// ── setActiveWorkspace clears panel ──────────────────────────────────────────
+// ── setActiveWorkspace opens panel for new cwd ──────────────────────────────
 
 describe("setActiveWorkspace", () => {
 	beforeEach(resetStore);
 
-	test("clears the diff panel when switching workspaces", () => {
+	test("opens the diff panel with working-tree context for the new cwd", () => {
 		useTabStore.getState().toggleDiffPanel(workingTreeCtx);
 		useTabStore.getState().setActiveWorkspace("ws-1", "/path");
 		const { rightPanel } = useTabStore.getState();
-		expect(rightPanel).toEqual(PANEL_CLOSED);
+		assertPanelOpen(rightPanel);
+		expect(rightPanel.mode).toBe("diff");
+		expect(rightPanel.diffCtx).toEqual({ type: "working-tree", repoPath: "/path" });
+	});
+
+	test("opens the diff panel with null diffCtx when cwd is empty", () => {
+		useTabStore.getState().setActiveWorkspace("ws-1", "");
+		const { rightPanel } = useTabStore.getState();
+		assertPanelOpen(rightPanel);
+		expect(rightPanel.mode).toBe("diff");
+		expect(rightPanel.diffCtx).toBeNull();
 	});
 });
 
