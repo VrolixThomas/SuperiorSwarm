@@ -387,7 +387,6 @@ export function GitHubPRList() {
 					position={popover.position}
 					workspaces={popover.workspaces}
 					onClose={() => setPopover(null)}
-					onSelect={(ws) => navigateToWorkspace(ws, popover.pr)}
 					onCreateBranch={() => {
 						setPopover(null);
 						handleLink(popover.pr);

@@ -179,11 +179,9 @@ export const githubRouter = router({
 			return submitReview(input);
 		}),
 
-	resolveThread: publicProcedure
-		.input(z.object({ threadId: z.string() }))
-		.mutation(({ input }) => {
-			return resolveThread(input.threadId);
-		}),
+	resolveThread: publicProcedure.input(z.object({ threadId: z.string() })).mutation(({ input }) => {
+		return resolveThread(input.threadId);
+	}),
 
 	addReviewComment: publicProcedure
 		.input(z.object({ threadId: z.string(), body: z.string() }))

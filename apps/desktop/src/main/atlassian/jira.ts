@@ -1,4 +1,4 @@
-import { type TicketStatus } from "../../shared/tickets";
+import type { TicketStatus } from "../../shared/tickets";
 import { atlassianFetch, getAuth } from "./auth";
 
 export interface JiraIssue {

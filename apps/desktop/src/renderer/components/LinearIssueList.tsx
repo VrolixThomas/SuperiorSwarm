@@ -226,10 +226,7 @@ export function LinearIssueList() {
 										: `${issue.identifier}: ${issue.title}`
 								}
 							>
-								<StateIcon
-									type={rawIssue?.stateType ?? "default"}
-									color={issue.status.color}
-								/>
+								<StateIcon type={rawIssue?.stateType ?? "default"} color={issue.status.color} />
 								<span className="shrink-0 font-medium text-[var(--text-quaternary)]">
 									{issue.identifier}
 								</span>
