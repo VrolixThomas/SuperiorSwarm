@@ -4,12 +4,17 @@ import { initializeDatabase } from "./db";
 import { type SessionSaveData, saveTerminalSessions } from "./db/session-persistence";
 import { setupLspIPC } from "./lsp/ipc-handler";
 import { serverManager } from "./lsp/server-manager";
-import { daemonClient } from "./terminal/daemon-client";
+import { DaemonClient } from "./terminal/daemon-client";
 import { setupTerminalIPC } from "./terminal/ipc";
 import { setupTRPCIPC } from "./trpc/ipc-link";
 import { appRouter } from "./trpc/routers";
+import {
+	daemonInstanceId,
+	daemonPaths,
+} from "../shared/daemon-protocol";
 
 let mainWindow: BrowserWindow | null = null;
+let daemonClient: DaemonClient;
 
 function createWindow() {
 	mainWindow = new BrowserWindow({
@@ -43,12 +48,20 @@ function createWindow() {
 }
 
 app.whenReady().then(async () => {
-	setupTerminalIPC();
+	const instanceId = daemonInstanceId(__dirname);
+	const paths = daemonPaths(instanceId);
+	daemonClient = new DaemonClient(
+		paths.socketPath,
+		paths.pidPath,
+		paths.logPath
+	);
+
+	setupTerminalIPC(daemonClient);
 	try {
 		initializeDatabase();
 	} catch (err) {
 		console.error("[db] Failed to initialize database:", err);
-		dialog.showErrorBoxSync(
+		dialog.showErrorBox(
 			"Database Error",
 			`BranchFlux failed to initialize its database and cannot start.\n\n${String(err)}`
 		);
