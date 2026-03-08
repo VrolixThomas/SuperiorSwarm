@@ -116,7 +116,7 @@ function RailProjectItem({
 	const hoveredWsData = workspacesList?.find((ws) => ws.id === hoveredWs);
 
 	return (
-		<div className="flex w-full flex-col items-center rounded-[8px] bg-[var(--bg-elevated)]/40 px-1.5 py-1.5">
+		<div className="flex w-full flex-col items-stretch rounded-[8px] border border-[var(--border)] bg-[var(--bg-elevated)] px-1.5 py-1.5">
 			{/* Project initials button */}
 			<button
 				type="button"
@@ -125,7 +125,7 @@ function RailProjectItem({
 				onMouseLeave={scheduleDismiss}
 				onClick={onExpand}
 				className={[
-					"flex size-8 shrink-0 items-center justify-center rounded-[6px] text-[11px] font-medium transition-colors duration-[120ms] hover:bg-[var(--bg-overlay)]",
+					"flex h-8 shrink-0 items-center justify-center rounded-[6px] text-[11px] font-medium transition-colors duration-[120ms] hover:bg-[var(--bg-overlay)]",
 					isFlyoutActive
 						? "bg-[var(--bg-overlay)] text-[var(--text)]"
 						: "text-[var(--text-secondary)]",
@@ -139,7 +139,7 @@ function RailProjectItem({
 
 			{/* Worktree pills */}
 			{visiblePills && visiblePills.length > 0 && (
-				<div className="flex w-full flex-col items-center gap-0.5 pt-1">
+				<div className="flex flex-col gap-0.5 pt-1">
 					{visiblePills.map((ws) => {
 						const isActive = activeWorkspaceId === ws.id;
 						return (
@@ -150,10 +150,10 @@ function RailProjectItem({
 								onMouseEnter={(e) => showInfoCard(ws.id, e.currentTarget)}
 								onMouseLeave={hideInfoCard}
 								className={[
-									"w-full truncate rounded-[4px] px-1.5 py-[3px] text-[10px] leading-tight text-center transition-colors duration-[120ms]",
+									"truncate rounded-[4px] px-1.5 py-[3px] text-[10px] leading-tight text-left transition-colors duration-[120ms]",
 									isActive
-										? "bg-[color-mix(in_srgb,var(--accent)_12%,transparent)] text-[var(--text)] shadow-[inset_2px_0_0_var(--accent)]"
-										: "bg-[var(--bg-elevated)] text-[var(--text-tertiary)] hover:bg-[var(--bg-overlay)] hover:text-[var(--text-secondary)]",
+										? "bg-[var(--accent)]/15 text-[var(--text)] shadow-[inset_2px_0_0_var(--accent)]"
+										: "bg-[var(--bg-overlay)] text-[var(--text-tertiary)] hover:brightness-125 hover:text-[var(--text-secondary)]",
 								].join(" ")}
 							>
 								{smartAbbrev(ws.name)}
