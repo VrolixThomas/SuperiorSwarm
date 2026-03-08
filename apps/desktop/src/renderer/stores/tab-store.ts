@@ -109,7 +109,8 @@ interface TabStore {
 		sessions: Array<{ id: string; workspaceId: string; title: string; cwd: string }>,
 		activeTabId: string | null,
 		activeWorkspaceId: string | null,
-		activeWorkspaceCwd: string
+		activeWorkspaceCwd: string,
+		extraState?: Record<string, string>
 	) => void;
 }
 
@@ -441,12 +442,21 @@ export const useTabStore = create<TabStore>((set, get) => ({
 
 	getBaseBranch: (workspaceId) => get().baseBranchByWorkspace[workspaceId],
 
-	hydrate: (sessions, activeTab, activeWs, activeCwd) => {
+	hydrate: (sessions, activeTab, activeWs, activeCwd, extraState) => {
 		const maxId = sessions.reduce((max, s) => {
 			const match = s.id.match(/^terminal-(\d+)$/);
 			return match ? Math.max(max, Number(match[1])) : max;
 		}, 0);
 		terminalCounter = maxId;
+
+		let baseBranchByWorkspace: Record<string, string> = {};
+		if (extraState?.["baseBranchByWorkspace"]) {
+			try {
+				baseBranchByWorkspace = JSON.parse(extraState["baseBranchByWorkspace"]);
+			} catch {
+				// ignore malformed data
+			}
+		}
 
 		set({
 			tabs: sessions.map((s) => ({
@@ -460,6 +470,7 @@ export const useTabStore = create<TabStore>((set, get) => ({
 			activeWorkspaceId: activeWs,
 			activeWorkspaceCwd: activeCwd,
 			rightPanel: defaultPanelForCwd(activeCwd),
+			baseBranchByWorkspace,
 		});
 	},
 }));

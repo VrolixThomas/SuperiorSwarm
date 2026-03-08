@@ -19,7 +19,8 @@ import { trpc } from "./trpc/client";
 const SAVE_INTERVAL_MS = 30_000;
 
 function collectSnapshot() {
-	const { tabs, activeTabId, activeWorkspaceId, activeWorkspaceCwd } = useTabStore.getState();
+	const { tabs, activeTabId, activeWorkspaceId, activeWorkspaceCwd, baseBranchByWorkspace } =
+		useTabStore.getState();
 
 	const terminalTabs = tabs.filter((t) => t.kind === "terminal" && t.workspaceId);
 	const sessions = terminalTabs.map((tab, i) => ({
@@ -35,6 +36,9 @@ function collectSnapshot() {
 	if (activeTabId) state["activeTabId"] = activeTabId;
 	if (activeWorkspaceId) state["activeWorkspaceId"] = activeWorkspaceId;
 	if (activeWorkspaceCwd) state["activeWorkspaceCwd"] = activeWorkspaceCwd;
+	if (Object.keys(baseBranchByWorkspace).length > 0) {
+		state["baseBranchByWorkspace"] = JSON.stringify(baseBranchByWorkspace);
+	}
 
 	return { sessions, state };
 }
@@ -75,7 +79,8 @@ export function App() {
 				sessions,
 				state["activeTabId"] ?? null,
 				state["activeWorkspaceId"] ?? null,
-				state["activeWorkspaceCwd"] ?? ""
+				state["activeWorkspaceCwd"] ?? "",
+				state
 			);
 	}, [restoreQuery.data]);
 
