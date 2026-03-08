@@ -134,6 +134,12 @@ function prReviewFileKey(prCtx: GitHubPRContext, filePath: string): string {
 	return `pr-review-file:${prCtx.owner}/${prCtx.repo}#${prCtx.number}:${filePath}`;
 }
 
+function defaultPanelForCwd(cwd: string): RightPanelState {
+	return cwd
+		? { open: true, mode: "diff", diffCtx: { type: "working-tree", repoPath: cwd } }
+		: { open: true, mode: "diff", diffCtx: null };
+}
+
 // ─── DiffContext identity comparison ─────────────────────────────────────────
 
 export function diffContextsEqual(a: DiffContext, b: DiffContext): boolean {
@@ -171,7 +177,7 @@ export const useTabStore = create<TabStore>((set, get) => ({
 	activeWorkspaceId: null,
 	activeWorkspaceCwd: "",
 	diffMode: "split",
-	rightPanel: { open: true, mode: "diff" as PanelMode, diffCtx: null },
+	rightPanel: defaultPanelForCwd(""),
 
 	getVisibleTabs: () => {
 		const { tabs, activeWorkspaceId } = get();
@@ -218,9 +224,7 @@ export const useTabStore = create<TabStore>((set, get) => ({
 			activeWorkspaceId: workspaceId,
 			activeWorkspaceCwd: cwd,
 			activeTabId: currentStillVisible?.id ?? wsTabs[0]?.id ?? null,
-			rightPanel: cwd
-				? { open: true, mode: "diff", diffCtx: { type: "working-tree", repoPath: cwd } }
-				: { open: true, mode: "diff", diffCtx: null },
+			rightPanel: defaultPanelForCwd(cwd),
 		});
 	},
 
@@ -442,9 +446,7 @@ export const useTabStore = create<TabStore>((set, get) => ({
 			activeTabId: activeTab,
 			activeWorkspaceId: activeWs,
 			activeWorkspaceCwd: activeCwd,
-			rightPanel: activeCwd
-				? { open: true, mode: "diff", diffCtx: { type: "working-tree", repoPath: activeCwd } }
-				: { open: true, mode: "diff", diffCtx: null },
+			rightPanel: defaultPanelForCwd(activeCwd),
 		});
 	},
 }));
