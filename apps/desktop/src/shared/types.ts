@@ -40,6 +40,7 @@ export interface ShellAPI {
 }
 
 export interface DaemonAPI {
+	getStatus: () => Promise<boolean>;
 	onStatus: (callback: (connected: boolean) => void) => () => void;
 }
 

@@ -63,6 +63,10 @@ export function setupTerminalIPC(daemonClient: DaemonClient): void {
 		daemonClient.dispose(id);
 	});
 
+	ipcMain.handle("daemon:status", () => {
+		return daemonClient.isConnected;
+	});
+
 	daemonClient.setConnectionStatusCallback((connected: boolean) => {
 		for (const win of BrowserWindow.getAllWindows()) {
 			if (!win.isDestroyed()) {

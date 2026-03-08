@@ -1,15 +1,20 @@
 import { useEffect, useState } from "react";
 
 export function DaemonStatus() {
-	const [connected, setConnected] = useState(true);
+	const [connected, setConnected] = useState<boolean | null>(null);
 
 	useEffect(() => {
 		const api = window.electron;
 		if (!api?.daemon) return;
+
+		// Query initial status — don't assume connected
+		api.daemon.getStatus().then(setConnected);
+
+		// Subscribe to live updates
 		return api.daemon.onStatus(setConnected);
 	}, []);
 
-	if (connected) return null;
+	if (connected !== false) return null;
 
 	return (
 		<div

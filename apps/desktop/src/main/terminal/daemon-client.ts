@@ -48,6 +48,10 @@ export class DaemonClient {
 		private logPath: string
 	) {}
 
+	get isConnected(): boolean {
+		return this.socket !== null && !this.socket.destroyed;
+	}
+
 	setConnectionStatusCallback(cb: (connected: boolean) => void): void {
 		this.onConnectionStatusChange = cb;
 	}
@@ -116,7 +120,11 @@ export class DaemonClient {
 	}
 
 	detachAll(): void {
-		this.send({ type: "detach-all" });
+		try {
+			this.send({ type: "detach-all" });
+		} catch {
+			// Best effort — if the socket is already gone, there's nothing to detach from
+		}
 	}
 
 	async create(
@@ -128,7 +136,14 @@ export class DaemonClient {
 		this.attachedSessions.delete(id);
 		this.callbacks.set(id, { onData, onExit, cwd });
 		this.liveSessions.add(id);
-		this.send({ type: "create", id, cwd });
+		try {
+			this.send({ type: "create", id, cwd });
+		} catch (err) {
+			// Roll back local state if we couldn't reach the daemon
+			this.callbacks.delete(id);
+			this.liveSessions.delete(id);
+			throw err;
+		}
 	}
 
 	async attach(
@@ -139,14 +154,23 @@ export class DaemonClient {
 	): Promise<void> {
 		this.attachedSessions.add(id);
 		this.callbacks.set(id, { onData, onExit, cwd });
-		this.send({ type: "attach", id });
+		try {
+			this.send({ type: "attach", id });
+		} catch (err) {
+			// Roll back local state if we couldn't reach the daemon
+			this.callbacks.delete(id);
+			this.attachedSessions.delete(id);
+			throw err;
+		}
 	}
 
 	write(id: string, data: string): void {
+		if (!this.isConnected) return;
 		this.send({ type: "write", id, data });
 	}
 
 	resize(id: string, cols: number, rows: number): void {
+		if (!this.isConnected) return;
 		this.send({ type: "resize", id, cols, rows });
 	}
 
@@ -162,7 +186,11 @@ export class DaemonClient {
 			return;
 		}
 		this.liveSessions.delete(id);
-		this.send({ type: "dispose", id });
+		try {
+			this.send({ type: "dispose", id });
+		} catch {
+			// Best effort — the PTY will be cleaned up by idle timeout if unreachable
+		}
 	}
 
 	private attemptReconnect(): void {
@@ -202,11 +230,12 @@ export class DaemonClient {
 	}
 
 	private send(msg: ClientMessage): void {
-		if (this.socket && !this.socket.destroyed) {
-			const ok = this.socket.write(`${JSON.stringify(msg)}\n`);
-			if (!ok) {
-				console.warn("[daemon-client] socket backpressure detected");
-			}
+		if (!this.socket || this.socket.destroyed) {
+			throw new Error("Daemon not connected");
+		}
+		const ok = this.socket.write(`${JSON.stringify(msg)}\n`);
+		if (!ok) {
+			console.warn("[daemon-client] socket backpressure detected");
 		}
 	}
 

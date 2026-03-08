@@ -84,6 +84,7 @@ const lspAPI: LspAPI = {
 };
 
 const daemonAPI: DaemonAPI = {
+	getStatus: () => ipcRenderer.invoke("daemon:status"),
 	onStatus: (callback: (connected: boolean) => void) => {
 		const listener = (_event: Electron.IpcRendererEvent, connected: boolean) => callback(connected);
 		ipcRenderer.on("daemon:status", listener);

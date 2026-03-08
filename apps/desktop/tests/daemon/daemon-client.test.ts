@@ -194,4 +194,51 @@ describe("DaemonClient", () => {
 		// And it should no longer be in liveSessions
 		expect(client.hasLiveSession("term-1")).toBe(false);
 	}, 10_000);
+
+	test("create throws when socket is disconnected", async () => {
+		// Disconnect the client so the socket is null
+		client.disconnect();
+
+		await expect(
+			client.create(
+				"new-term",
+				"/tmp",
+				() => {},
+				() => {}
+			)
+		).rejects.toThrow("not connected");
+	});
+
+	test("attach throws when socket is disconnected", async () => {
+		client.disconnect();
+
+		await expect(
+			client.attach(
+				"term-1",
+				() => {},
+				() => {}
+			)
+		).rejects.toThrow("not connected");
+	});
+
+	test("write silently no-ops when socket is disconnected", () => {
+		client.disconnect();
+
+		expect(() => client.write("term-1", "ls\n")).not.toThrow();
+	});
+
+	test("resize silently no-ops when socket is disconnected", () => {
+		client.disconnect();
+
+		expect(() => client.resize("term-1", 80, 24)).not.toThrow();
+	});
+
+	test("isConnected returns true when socket is active", () => {
+		expect(client.isConnected).toBe(true);
+	});
+
+	test("isConnected returns false after disconnect", () => {
+		client.disconnect();
+		expect(client.isConnected).toBe(false);
+	});
 });

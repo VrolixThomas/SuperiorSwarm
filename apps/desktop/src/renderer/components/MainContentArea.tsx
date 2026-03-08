@@ -19,7 +19,7 @@ export function MainContentArea({ savedScrollback }: MainContentAreaProps) {
 	const terminalTabs = visibleTabs.filter((t) => t.kind === "terminal");
 
 	return (
-		<main className="flex min-w-0 flex-1 flex-col overflow-hidden">
+		<main className="flex h-full min-w-0 flex-col overflow-hidden">
 			<TabBar />
 			<div className="relative flex-1 overflow-hidden">
 				{/* Empty state: no workspace selected */}

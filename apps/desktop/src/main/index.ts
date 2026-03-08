@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import { BrowserWindow, app, dialog, ipcMain, shell } from "electron";
+import { daemonInstanceId, daemonPaths } from "../shared/daemon-protocol";
 import { initializeDatabase } from "./db";
 import { type SessionSaveData, saveTerminalSessions } from "./db/session-persistence";
 import { setupLspIPC } from "./lsp/ipc-handler";
@@ -8,10 +9,6 @@ import { DaemonClient } from "./terminal/daemon-client";
 import { setupTerminalIPC } from "./terminal/ipc";
 import { setupTRPCIPC } from "./trpc/ipc-link";
 import { appRouter } from "./trpc/routers";
-import {
-	daemonInstanceId,
-	daemonPaths,
-} from "../shared/daemon-protocol";
 
 let mainWindow: BrowserWindow | null = null;
 let daemonClient: DaemonClient;
@@ -50,11 +47,7 @@ function createWindow() {
 app.whenReady().then(async () => {
 	const instanceId = daemonInstanceId(__dirname);
 	const paths = daemonPaths(instanceId);
-	daemonClient = new DaemonClient(
-		paths.socketPath,
-		paths.pidPath,
-		paths.logPath
-	);
+	daemonClient = new DaemonClient(paths.socketPath, paths.pidPath, paths.logPath);
 
 	setupTerminalIPC(daemonClient);
 	try {
