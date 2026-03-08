@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Group, Panel, Separator, useDefaultLayout, usePanelRef } from "react-resizable-panels";
 import { AddRepositoryModal } from "./components/AddRepositoryModal";
 import { CreateWorktreeModal } from "./components/CreateWorktreeModal";
 import { DaemonStatus } from "./components/DaemonStatus";
@@ -11,6 +12,7 @@ import {
 	setupGoToDefinitionHandler,
 	setupServerRestartListener,
 } from "./lsp/monaco-lsp-bridge";
+import { useProjectStore } from "./stores/projects";
 import { useTabStore } from "./stores/tab-store";
 import { trpc } from "./trpc/client";
 
@@ -113,13 +115,59 @@ export function App() {
 		};
 	}, []);
 
+	const sidebarPanelRef = usePanelRef();
+	const setSidebarCollapsed = useProjectStore((s) => s.setSidebarCollapsed);
+	const sidebarCollapsed = useProjectStore((s) => s.sidebarCollapsed);
+	const rightPanel = useTabStore((s) => s.rightPanel);
+
+	const { defaultLayout, onLayoutChanged } = useDefaultLayout({
+		id: "app-layout",
+		storage: localStorage,
+	});
+
 	return (
 		<>
-			<div className="flex h-screen overflow-hidden bg-[var(--bg-base)]">
-				<Sidebar />
-				<MainContentArea savedScrollback={savedScrollback} />
-				<DiffPanel />
-			</div>
+			<Group
+				orientation="horizontal"
+				defaultLayout={defaultLayout}
+				onLayoutChanged={onLayoutChanged}
+				className="h-screen overflow-hidden bg-[var(--bg-base)]"
+			>
+				<Panel
+					id="sidebar"
+					panelRef={sidebarPanelRef}
+					defaultSize="15.3%"
+					minSize="12.5%"
+					maxSize="27.8%"
+					collapsible
+					collapsedSize="3.9%"
+					onResize={() => {
+						const isCollapsed = sidebarPanelRef.current?.isCollapsed() ?? false;
+						setSidebarCollapsed(isCollapsed);
+					}}
+					className="overflow-hidden"
+				>
+					<Sidebar
+						collapsed={sidebarCollapsed}
+						onExpand={() => sidebarPanelRef.current?.expand()}
+					/>
+				</Panel>
+
+				<Separator className="panel-resize-handle" />
+
+				<Panel id="main" minSize="30%">
+					<MainContentArea savedScrollback={savedScrollback} />
+				</Panel>
+
+				{rightPanel.open && (
+					<>
+						<Separator className="panel-resize-handle" />
+						<Panel id="diff" defaultSize="19.4%" minSize="10%" maxSize="40%">
+							<DiffPanel />
+						</Panel>
+					</>
+				)}
+			</Group>
 			<AddRepositoryModal />
 			<CreateWorktreeModal />
 			<SharedFilesPanel />
