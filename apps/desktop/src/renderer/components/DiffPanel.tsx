@@ -66,78 +66,47 @@ function WorkingTreeSections({
 }
 
 function PanelHeader({
-	title,
 	mode,
-	hasDiffCtx,
 	stats,
-	onToggleMode,
-	onClose,
+	onSetMode,
 	extraButtons,
 }: {
-	title: string;
 	mode: PanelMode;
-	hasDiffCtx: boolean;
 	stats?: { added: number; removed: number; changed: number };
-	onToggleMode: () => void;
-	onClose: () => void;
+	onSetMode: (mode: PanelMode) => void;
 	extraButtons?: React.ReactNode;
 }) {
 	return (
 		<div className="flex shrink-0 items-center gap-2 border-b border-[var(--border)] px-3 py-1.5">
-			{/* Mode toggle buttons */}
-			<div className="flex gap-0.5">
+			{/* Segmented control */}
+			<div className="flex rounded-[6px] bg-[var(--bg-base)] p-0.5">
 				<button
 					type="button"
-					onClick={() => {
-						if (mode !== "diff") onToggleMode();
-					}}
-					disabled={!hasDiffCtx}
+					onClick={() => onSetMode("diff")}
 					className={[
-						"rounded p-0.5 transition-colors",
+						"rounded-[4px] px-2 py-0.5 text-[11px] font-medium transition-all duration-[120ms]",
 						mode === "diff"
-							? "text-[var(--text-secondary)]"
-							: hasDiffCtx
-								? "text-[var(--text-quaternary)] hover:text-[var(--text-secondary)]"
-								: "text-[var(--text-quaternary)] opacity-30 cursor-default",
+							? "bg-[var(--bg-elevated)] text-[var(--text-secondary)] shadow-[0_1px_2px_rgba(0,0,0,0.2)]"
+							: "text-[var(--text-quaternary)] hover:text-[var(--text-tertiary)]",
 					].join(" ")}
-					title="Diff view"
 				>
-					<svg aria-hidden="true" width="12" height="12" viewBox="0 0 16 16" fill="none">
-						<path
-							d="M5 3v10M11 3v10M2 8h12"
-							stroke="currentColor"
-							strokeWidth="1.3"
-							strokeLinecap="round"
-						/>
-					</svg>
+					Changes
 				</button>
 				<button
 					type="button"
-					onClick={() => {
-						if (mode !== "explorer") onToggleMode();
-					}}
+					onClick={() => onSetMode("explorer")}
 					className={[
-						"rounded p-0.5 transition-colors",
+						"rounded-[4px] px-2 py-0.5 text-[11px] font-medium transition-all duration-[120ms]",
 						mode === "explorer"
-							? "text-[var(--text-secondary)]"
-							: "text-[var(--text-quaternary)] hover:text-[var(--text-secondary)]",
+							? "bg-[var(--bg-elevated)] text-[var(--text-secondary)] shadow-[0_1px_2px_rgba(0,0,0,0.2)]"
+							: "text-[var(--text-quaternary)] hover:text-[var(--text-tertiary)]",
 					].join(" ")}
-					title="File explorer"
 				>
-					<svg aria-hidden="true" width="12" height="12" viewBox="0 0 16 16" fill="none">
-						<path
-							d="M2 3h5l1.5 2H14v8H2V3z"
-							stroke="currentColor"
-							strokeWidth="1.3"
-							strokeLinejoin="round"
-						/>
-					</svg>
+					Files
 				</button>
 			</div>
 
-			<span className="flex-1 truncate text-[11px] font-medium uppercase tracking-wide text-[var(--text-quaternary)]">
-				{title}
-			</span>
+			<div className="flex-1" />
 
 			{stats && (
 				<span className="shrink-0 text-[11px] text-[var(--text-quaternary)]">
@@ -148,29 +117,12 @@ function PanelHeader({
 			)}
 
 			{extraButtons}
-
-			<button
-				type="button"
-				onClick={onClose}
-				className="rounded p-0.5 text-[var(--text-quaternary)] hover:text-[var(--text-secondary)]"
-				title="Close panel"
-			>
-				<svg aria-hidden="true" width="9" height="9" viewBox="0 0 9 9" fill="none">
-					<path
-						d="M2 2l5 5M7 2l-5 5"
-						stroke="currentColor"
-						strokeWidth="1.4"
-						strokeLinecap="round"
-					/>
-				</svg>
-			</button>
 		</div>
 	);
 }
 
 function DiffPanelContent({ diffCtx }: { diffCtx: DiffContext }) {
 	const [showExtensions, setShowExtensions] = useState(false);
-	const closeDiffPanel = useTabStore((s) => s.closeDiffPanel);
 	const togglePanelMode = useTabStore((s) => s.togglePanelMode);
 	const activeWorkspaceId = useTabStore((s) => s.activeWorkspaceId);
 
@@ -245,22 +197,14 @@ function DiffPanelContent({ diffCtx }: { diffCtx: DiffContext }) {
 	// When status query has resolved, use its staged/unstaged split
 	const hasStatusData = diffCtx.type === "working-tree" && statusQuery.data != null;
 
-	const title =
-		diffCtx.type === "pr"
-			? diffCtx.title
-			: diffCtx.type === "branch"
-				? `${diffCtx.baseBranch}..${diffCtx.headBranch}`
-				: "Working Tree";
-
 	return (
 		<div className="flex h-full flex-col overflow-hidden">
 			<PanelHeader
-				title={title}
 				mode="diff"
-				hasDiffCtx={true}
 				stats={stats ?? undefined}
-				onToggleMode={togglePanelMode}
-				onClose={closeDiffPanel}
+				onSetMode={(m) => {
+					if (m !== "diff") togglePanelMode();
+				}}
 				extraButtons={
 					<button
 						type="button"
@@ -338,8 +282,6 @@ function DiffPanelContent({ diffCtx }: { diffCtx: DiffContext }) {
 }
 
 function ExplorerPanelContent() {
-	const closeDiffPanel = useTabStore((s) => s.closeDiffPanel);
-	const rightPanel = useTabStore((s) => s.rightPanel);
 	const togglePanelMode = useTabStore((s) => s.togglePanelMode);
 	const activeWorkspaceId = useTabStore((s) => s.activeWorkspaceId);
 	const activeWorkspaceCwd = useTabStore((s) => s.activeWorkspaceCwd);
@@ -347,11 +289,10 @@ function ExplorerPanelContent() {
 	return (
 		<div className="flex h-full flex-col overflow-hidden">
 			<PanelHeader
-				title="Explorer"
 				mode="explorer"
-				hasDiffCtx={rightPanel.open ? rightPanel.diffCtx !== null : false}
-				onToggleMode={togglePanelMode}
-				onClose={closeDiffPanel}
+				onSetMode={(m) => {
+					if (m !== "explorer") togglePanelMode();
+				}}
 			/>
 			<div className="flex-1 overflow-y-auto px-1 py-1">
 				{!activeWorkspaceId && (
