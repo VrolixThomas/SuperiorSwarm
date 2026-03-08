@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { DiffContext } from "../../shared/diff-types";
 import { type PanelMode, useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
+import { BranchChanges } from "./BranchChanges";
 import { CommittedStack } from "./CommittedStack";
 import { DraftCommitCard } from "./DraftCommitCard";
 import { PRReviewPanel } from "./PRReviewPanel";
@@ -189,6 +190,19 @@ function DiffPanelContent({ diffCtx }: { diffCtx: DiffContext }) {
 								workspaceId={activeWorkspaceId}
 							/>
 						</div>
+
+						{/* Branch changes — full diff vs base */}
+						{currentBranch && (
+							<div className="mt-1 mb-4">
+								<BranchChanges
+									repoPath={diffCtx.repoPath}
+									baseBranch={effectiveBaseBranch}
+									currentBranch={currentBranch}
+									diffCtx={diffCtx}
+									workspaceId={activeWorkspaceId}
+								/>
+							</div>
+						)}
 					</>
 				)}
 			</div>
