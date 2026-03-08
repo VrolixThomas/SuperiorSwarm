@@ -171,7 +171,7 @@ export const useTabStore = create<TabStore>((set, get) => ({
 	activeWorkspaceId: null,
 	activeWorkspaceCwd: "",
 	diffMode: "split",
-	rightPanel: PANEL_CLOSED,
+	rightPanel: { open: true, mode: "diff" as PanelMode, diffCtx: null },
 
 	getVisibleTabs: () => {
 		const { tabs, activeWorkspaceId } = get();
@@ -218,7 +218,9 @@ export const useTabStore = create<TabStore>((set, get) => ({
 			activeWorkspaceId: workspaceId,
 			activeWorkspaceCwd: cwd,
 			activeTabId: currentStillVisible?.id ?? wsTabs[0]?.id ?? null,
-			rightPanel: PANEL_CLOSED,
+			rightPanel: cwd
+				? { open: true, mode: "diff", diffCtx: { type: "working-tree", repoPath: cwd } }
+				: { open: true, mode: "diff", diffCtx: null },
 		});
 	},
 
@@ -440,6 +442,9 @@ export const useTabStore = create<TabStore>((set, get) => ({
 			activeTabId: activeTab,
 			activeWorkspaceId: activeWs,
 			activeWorkspaceCwd: activeCwd,
+			rightPanel: activeCwd
+				? { open: true, mode: "diff", diffCtx: { type: "working-tree", repoPath: activeCwd } }
+				: { open: true, mode: "diff", diffCtx: null },
 		});
 	},
 }));
