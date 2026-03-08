@@ -143,7 +143,7 @@ export function App() {
 						const isCollapsed = sidebarPanelRef.current?.isCollapsed() ?? false;
 						setSidebarCollapsed(isCollapsed);
 					}}
-					className="overflow-hidden"
+					className="overflow-hidden bg-[var(--bg-surface)]"
 				>
 					<Sidebar
 						collapsed={sidebarCollapsed}

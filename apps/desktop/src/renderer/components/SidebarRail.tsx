@@ -637,8 +637,8 @@ export function SidebarRail({ onExpand }: SidebarRailProps) {
 				/>
 			</div>
 
-			{/* Settings */}
-			<div className="border-t border-[var(--border-subtle)] p-2">
+			{/* Settings — pinned to bottom */}
+			<div className="shrink-0 border-t border-[var(--border-subtle)] p-2">
 				<button
 					type="button"
 					title="Settings"
