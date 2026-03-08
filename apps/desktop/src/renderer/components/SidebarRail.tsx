@@ -1,12 +1,18 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { Project } from "../../main/db/schema";
+import type { GitHubPR } from "../../main/github/github";
+import type { GitHubPRContext } from "../../shared/github-types";
+import type { TicketIssue } from "../../shared/tickets";
 import { useProjectStore } from "../stores/projects";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
+import { CreateBranchFromIssueModal } from "./CreateBranchFromIssueModal";
+import { CreateWorktreeFromPRModal } from "./CreateWorktreeFromPRModal";
 import { ProjectItem } from "./ProjectItem";
 import { PullRequestsTab } from "./PullRequestsTab";
 import { RailFlyout } from "./RailFlyout";
 import { TicketsTab } from "./TicketsTab";
+import { type LinkedWorkspace, WorkspacePopover } from "./WorkspacePopover";
 
 /** Extract a short, meaningful label from a branch/worktree name. */
 function smartAbbrev(name: string): string {
@@ -216,8 +222,62 @@ function RailTicketsSection({ flyout, openFlyout, scheduleDismiss, onExpand }: R
 		staleTime: 30_000,
 	});
 
+	const { data: linkedTickets } = trpc.tickets.getLinkedTickets.useQuery(undefined, {
+		staleTime: 30_000,
+	});
+
+	const linkedMap = useMemo(() => {
+		const map = new Map<string, LinkedWorkspace[]>();
+		if (!linkedTickets) return map;
+		for (const l of linkedTickets) {
+			if (l.worktreePath === null) continue;
+			const entry: LinkedWorkspace = {
+				workspaceId: l.workspaceId,
+				workspaceName: l.workspaceName,
+				worktreePath: l.worktreePath,
+			};
+			const key = `${l.provider}:${l.ticketId}`;
+			const existing = map.get(key);
+			if (existing) {
+				existing.push(entry);
+			} else {
+				map.set(key, [entry]);
+			}
+		}
+		return map;
+	}, [linkedTickets]);
+
+	const attachTerminal = trpc.workspaces.attachTerminal.useMutation();
+	const attachTerminalRef = useRef(attachTerminal.mutate);
+	attachTerminalRef.current = attachTerminal.mutate;
+
+	const navigateToWorkspace = useCallback((ws: LinkedWorkspace) => {
+		const store = useTabStore.getState();
+		store.setActiveWorkspace(ws.workspaceId, ws.worktreePath);
+		const existing = store.getTabsByWorkspace(ws.workspaceId);
+		const hasTerminal = existing.some((t) => t.kind === "terminal");
+		if (!hasTerminal) {
+			const title = ws.workspaceName ?? ws.workspaceId;
+			const tabId = store.addTerminalTab(ws.workspaceId, ws.worktreePath, title);
+			attachTerminalRef.current({ workspaceId: ws.workspaceId, terminalId: tabId });
+		}
+	}, []);
+
+	const [openModalIssue, setOpenModalIssue] = useState<TicketIssue | null>(null);
+	const [ticketPopover, setTicketPopover] = useState<{
+		position: { x: number; y: number };
+		issue: TicketIssue;
+		workspaces: LinkedWorkspace[];
+	} | null>(null);
+
 	const tickets = useMemo(() => {
-		const items: { id: string; label: string; title: string; color?: string }[] = [];
+		const items: {
+			id: string;
+			label: string;
+			title: string;
+			color?: string;
+			ticketIssue: TicketIssue;
+		}[] = [];
 		if (jiraIssues) {
 			for (const issue of jiraIssues) {
 				items.push({
@@ -225,6 +285,19 @@ function RailTicketsSection({ flyout, openFlyout, scheduleDismiss, onExpand }: R
 					label: issue.key,
 					title: `${issue.key}: ${issue.summary}`,
 					color: issue.statusColor,
+					ticketIssue: {
+						provider: "jira",
+						id: issue.key,
+						identifier: issue.key,
+						title: issue.summary,
+						url: issue.webUrl,
+						status: {
+							id: issue.status,
+							name: issue.status,
+							color: issue.statusColor,
+						},
+						groupId: issue.projectKey,
+					},
 				});
 			}
 		}
@@ -235,6 +308,19 @@ function RailTicketsSection({ flyout, openFlyout, scheduleDismiss, onExpand }: R
 					label: issue.identifier,
 					title: `${issue.identifier}: ${issue.title}`,
 					color: issue.stateColor,
+					ticketIssue: {
+						provider: "linear",
+						id: issue.id,
+						identifier: issue.identifier,
+						title: issue.title,
+						url: issue.url,
+						status: {
+							id: issue.stateId,
+							name: issue.stateName,
+							color: issue.stateColor,
+						},
+						groupId: issue.teamId,
+					},
 				});
 			}
 		}
@@ -282,82 +368,114 @@ function RailTicketsSection({ flyout, openFlyout, scheduleDismiss, onExpand }: R
 	const hoveredData = tickets.find((t) => t.id === hoveredId);
 
 	return (
-		<div className="flex w-full flex-col items-stretch rounded-[8px] border border-[var(--border)] bg-[var(--bg-elevated)] px-1.5 py-1.5">
-			{/* Tickets icon header */}
-			<button
-				type="button"
-				title="Tickets"
-				onMouseEnter={(e) => openFlyout({ kind: "tickets" }, e.currentTarget)}
-				onMouseLeave={scheduleDismiss}
-				onClick={onExpand}
-				className={[
-					"flex h-8 shrink-0 items-center justify-center rounded-[6px] transition-colors duration-[120ms] hover:bg-[var(--bg-overlay)]",
-					isFlyoutActive
-						? "bg-[var(--bg-overlay)] text-[var(--text)]"
-						: "text-[var(--text-secondary)]",
-				].join(" ")}
-			>
-				<svg
-					aria-hidden="true"
-					width="14"
-					height="14"
-					viewBox="0 0 24 24"
-					fill="none"
-					stroke="currentColor"
-					strokeWidth="1.5"
-					strokeLinecap="round"
-					strokeLinejoin="round"
+		<>
+			<div className="flex w-full flex-col items-stretch rounded-[8px] border border-[var(--border)] bg-[var(--bg-elevated)] px-1.5 py-1.5">
+				{/* Tickets icon header */}
+				<button
+					type="button"
+					title="Tickets"
+					onMouseEnter={(e) => openFlyout({ kind: "tickets" }, e.currentTarget)}
+					onMouseLeave={scheduleDismiss}
+					onClick={onExpand}
+					className={[
+						"flex h-8 shrink-0 items-center justify-center rounded-[6px] transition-colors duration-[120ms] hover:bg-[var(--bg-overlay)]",
+						isFlyoutActive
+							? "bg-[var(--bg-overlay)] text-[var(--text)]"
+							: "text-[var(--text-secondary)]",
+					].join(" ")}
 				>
-					<path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
-					<rect x="9" y="3" width="6" height="4" rx="1" />
-				</svg>
-			</button>
+					<svg
+						aria-hidden="true"
+						width="14"
+						height="14"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						strokeWidth="1.5"
+						strokeLinecap="round"
+						strokeLinejoin="round"
+					>
+						<path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
+						<rect x="9" y="3" width="6" height="4" rx="1" />
+					</svg>
+				</button>
 
-			{/* Ticket pills */}
-			{visibleTickets.length > 0 && (
-				<div className="flex flex-col gap-0.5 pt-1">
-					{visibleTickets.map((ticket) => (
-						<button
-							key={ticket.id}
-							type="button"
-							onClick={onExpand}
-							onMouseEnter={(e) => showInfoCard(ticket.id, e.currentTarget)}
-							onMouseLeave={hideInfoCard}
-							className="truncate rounded-[4px] bg-[var(--bg-overlay)] px-1.5 py-[3px] text-[10px] leading-tight text-left text-[var(--text-tertiary)] transition-colors duration-[120ms] hover:brightness-125 hover:text-[var(--text-secondary)]"
-						>
-							{ticket.label}
-						</button>
-					))}
-					{tickets.length > MAX_PILLS && (
-						<button
-							type="button"
-							onClick={onExpand}
-							className="rounded-[4px] px-1.5 py-[2px] text-[9px] text-left text-[var(--text-quaternary)] hover:text-[var(--text-tertiary)]"
-						>
-							+{tickets.length - MAX_PILLS} more
-						</button>
-					)}
-				</div>
-			)}
-
-			{/* Hover info card */}
-			{hoveredData && hoverRect && (
-				<div
-					className="fixed z-50 rounded-[6px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2.5 py-1.5 shadow-[var(--shadow-md)] animate-[flyout-in_120ms_ease-out]"
-					style={{
-						left: hoverRect.right + 8,
-						top: hoverRect.top + hoverRect.height / 2,
-						transform: "translateY(-50%)",
-					}}
-					onMouseEnter={cancelInfoDismiss}
-					onMouseLeave={hideInfoCard}
-				>
-					<div className="max-w-[200px] whitespace-nowrap text-[12px] text-[var(--text)] truncate">
-						{hoveredData.title}
+				{/* Ticket pills */}
+				{visibleTickets.length > 0 && (
+					<div className="flex flex-col gap-0.5 pt-1">
+						{visibleTickets.map((ticket) => {
+							const linked = linkedMap.get(ticket.id);
+							return (
+								<button
+									key={ticket.id}
+									type="button"
+									onClick={(e) => {
+										if (!linked) {
+											setOpenModalIssue(ticket.ticketIssue);
+										} else if (linked.length === 1 && linked[0]) {
+											navigateToWorkspace(linked[0]);
+										} else {
+											const rect = e.currentTarget.getBoundingClientRect();
+											setTicketPopover({
+												position: { x: rect.right + 8, y: rect.top },
+												issue: ticket.ticketIssue,
+												workspaces: linked,
+											});
+										}
+									}}
+									onMouseEnter={(e) => showInfoCard(ticket.id, e.currentTarget)}
+									onMouseLeave={hideInfoCard}
+									className="truncate rounded-[4px] bg-[var(--bg-overlay)] px-1.5 py-[3px] text-[10px] leading-tight text-left text-[var(--text-tertiary)] transition-colors duration-[120ms] hover:brightness-125 hover:text-[var(--text-secondary)]"
+								>
+									{ticket.label}
+								</button>
+							);
+						})}
+						{tickets.length > MAX_PILLS && (
+							<button
+								type="button"
+								onClick={onExpand}
+								className="rounded-[4px] px-1.5 py-[2px] text-[9px] text-left text-[var(--text-quaternary)] hover:text-[var(--text-tertiary)]"
+							>
+								+{tickets.length - MAX_PILLS} more
+							</button>
+						)}
 					</div>
-				</div>
+				)}
+
+				{/* Hover info card */}
+				{hoveredData && hoverRect && (
+					<div
+						className="fixed z-50 rounded-[6px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2.5 py-1.5 shadow-[var(--shadow-md)] animate-[flyout-in_120ms_ease-out]"
+						style={{
+							left: hoverRect.right + 8,
+							top: hoverRect.top + hoverRect.height / 2,
+							transform: "translateY(-50%)",
+						}}
+						onMouseEnter={cancelInfoDismiss}
+						onMouseLeave={hideInfoCard}
+					>
+						<div className="max-w-[200px] whitespace-nowrap text-[12px] text-[var(--text)] truncate">
+							{hoveredData.title}
+						</div>
+					</div>
+				)}
+			</div>
+
+			{ticketPopover && (
+				<WorkspacePopover
+					position={ticketPopover.position}
+					workspaces={ticketPopover.workspaces}
+					onClose={() => setTicketPopover(null)}
+					onCreateBranch={() => {
+						setTicketPopover(null);
+						setOpenModalIssue(ticketPopover.issue);
+					}}
+				/>
 			)}
-		</div>
+
+			<CreateBranchFromIssueModal issue={openModalIssue} onClose={() => setOpenModalIssue(null)} />
+		</>
 	);
 }
 
@@ -387,12 +505,76 @@ function RailPRsSection({ flyout, openFlyout, scheduleDismiss, onExpand }: RailS
 		staleTime: 30_000,
 	});
 
+	const { data: linkedPRs } = trpc.github.getLinkedPRs.useQuery(undefined, {
+		staleTime: 30_000,
+	});
+
+	const prLinkedMap = useMemo(() => {
+		const map = new Map<string, LinkedWorkspace[]>();
+		if (!linkedPRs) return map;
+		for (const l of linkedPRs) {
+			if (l.worktreePath === null) continue;
+			const key = `${l.prRepoOwner}/${l.prRepoName}#${l.prNumber}`;
+			const entry: LinkedWorkspace = {
+				workspaceId: l.workspaceId,
+				workspaceName: l.workspaceName,
+				worktreePath: l.worktreePath,
+			};
+			const existing = map.get(key);
+			if (existing) {
+				existing.push(entry);
+			} else {
+				map.set(key, [entry]);
+			}
+		}
+		return map;
+	}, [linkedPRs]);
+
+	const attachTerminal = trpc.workspaces.attachTerminal.useMutation();
+	const attachTerminalRef = useRef(attachTerminal.mutate);
+	attachTerminalRef.current = attachTerminal.mutate;
+
+	const navigateToWorkspace = useCallback((ws: LinkedWorkspace, ghPR?: GitHubPR) => {
+		const store = useTabStore.getState();
+		store.setActiveWorkspace(ws.workspaceId, ws.worktreePath);
+		if (ghPR) {
+			const prCtx: GitHubPRContext = {
+				owner: ghPR.repoOwner,
+				repo: ghPR.repoName,
+				number: ghPR.number,
+				title: ghPR.title,
+				sourceBranch: ghPR.branchName,
+				targetBranch: "main",
+				repoPath: ws.worktreePath,
+			};
+			store.openPRReviewPanel(ws.workspaceId, prCtx);
+		}
+		const existing = store.getTabsByWorkspace(ws.workspaceId);
+		const hasTerminal = existing.some((t) => t.kind === "terminal");
+		if (!hasTerminal) {
+			const title = ws.workspaceName ?? ws.workspaceId;
+			const tabId = store.addTerminalTab(ws.workspaceId, ws.worktreePath, title);
+			attachTerminalRef.current({ workspaceId: ws.workspaceId, terminalId: tabId });
+		}
+	}, []);
+
+	const [openModalPR, setOpenModalPR] = useState<GitHubPR | null>(null);
+	const [prPopover, setPrPopover] = useState<{
+		position: { x: number; y: number };
+		githubPR: GitHubPR;
+		workspaces: LinkedWorkspace[];
+	} | null>(null);
+
 	const prs = useMemo(() => {
 		const items: {
 			id: string;
 			label: string;
 			title: string;
 			state: "open" | "merged" | "closed";
+			provider: "github" | "bitbucket";
+			url: string;
+			githubPR?: GitHubPR;
+			linkKey?: string;
 		}[] = [];
 		const seenBb = new Set<string>();
 
@@ -405,6 +587,8 @@ function RailPRsSection({ flyout, openFlyout, scheduleDismiss, onExpand }: RailS
 				label: `#${pr.id}`,
 				title: `${pr.workspace}/${pr.repoSlug} #${pr.id}: ${pr.title}`,
 				state: pr.state === "MERGED" ? "merged" : pr.state === "DECLINED" ? "closed" : "open",
+				provider: "bitbucket",
+				url: pr.webUrl,
 			});
 		}
 
@@ -414,6 +598,10 @@ function RailPRsSection({ flyout, openFlyout, scheduleDismiss, onExpand }: RailS
 				label: `#${pr.number}`,
 				title: `${pr.repoOwner}/${pr.repoName} #${pr.number}: ${pr.title}`,
 				state: pr.state === "closed" ? "closed" : "open",
+				provider: "github",
+				url: pr.url,
+				githubPR: pr,
+				linkKey: `${pr.repoOwner}/${pr.repoName}#${pr.number}`,
 			});
 		}
 
@@ -462,85 +650,123 @@ function RailPRsSection({ flyout, openFlyout, scheduleDismiss, onExpand }: RailS
 	const hoveredData = prs.find((p) => p.id === hoveredId);
 
 	return (
-		<div className="flex w-full flex-col items-stretch rounded-[8px] border border-[var(--border)] bg-[var(--bg-elevated)] px-1.5 py-1.5">
-			{/* PRs icon header */}
-			<button
-				type="button"
-				title="Pull Requests"
-				onMouseEnter={(e) => openFlyout({ kind: "prs" }, e.currentTarget)}
-				onMouseLeave={scheduleDismiss}
-				onClick={onExpand}
-				className={[
-					"flex h-8 shrink-0 items-center justify-center rounded-[6px] transition-colors duration-[120ms] hover:bg-[var(--bg-overlay)]",
-					isFlyoutActive
-						? "bg-[var(--bg-overlay)] text-[var(--text)]"
-						: "text-[var(--text-secondary)]",
-				].join(" ")}
-			>
-				<svg
-					aria-hidden="true"
-					width="14"
-					height="14"
-					viewBox="0 0 24 24"
-					fill="none"
-					stroke="currentColor"
-					strokeWidth="1.5"
-					strokeLinecap="round"
-					strokeLinejoin="round"
+		<>
+			<div className="flex w-full flex-col items-stretch rounded-[8px] border border-[var(--border)] bg-[var(--bg-elevated)] px-1.5 py-1.5">
+				{/* PRs icon header */}
+				<button
+					type="button"
+					title="Pull Requests"
+					onMouseEnter={(e) => openFlyout({ kind: "prs" }, e.currentTarget)}
+					onMouseLeave={scheduleDismiss}
+					onClick={onExpand}
+					className={[
+						"flex h-8 shrink-0 items-center justify-center rounded-[6px] transition-colors duration-[120ms] hover:bg-[var(--bg-overlay)]",
+						isFlyoutActive
+							? "bg-[var(--bg-overlay)] text-[var(--text)]"
+							: "text-[var(--text-secondary)]",
+					].join(" ")}
 				>
-					<circle cx="18" cy="18" r="3" />
-					<circle cx="6" cy="6" r="3" />
-					<path d="M6 9v12M18 9v0" />
-					<path d="M13 6h3a2 2 0 0 1 2 2v1" />
-				</svg>
-			</button>
+					<svg
+						aria-hidden="true"
+						width="14"
+						height="14"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						strokeWidth="1.5"
+						strokeLinecap="round"
+						strokeLinejoin="round"
+					>
+						<circle cx="18" cy="18" r="3" />
+						<circle cx="6" cy="6" r="3" />
+						<path d="M6 9v12M18 9v0" />
+						<path d="M13 6h3a2 2 0 0 1 2 2v1" />
+					</svg>
+				</button>
 
-			{/* PR pills */}
-			{visiblePRs.length > 0 && (
-				<div className="flex flex-col gap-0.5 pt-1">
-					{visiblePRs.map((pr) => (
-						<button
-							key={pr.id}
-							type="button"
-							onClick={onExpand}
-							onMouseEnter={(e) => showInfoCard(pr.id, e.currentTarget)}
-							onMouseLeave={hideInfoCard}
-							className="flex items-center gap-1 truncate rounded-[4px] bg-[var(--bg-overlay)] px-1.5 py-[3px] text-[10px] leading-tight text-left text-[var(--text-tertiary)] transition-colors duration-[120ms] hover:brightness-125 hover:text-[var(--text-secondary)]"
-						>
-							<div className={`size-1.5 shrink-0 rounded-full ${stateColors[pr.state]}`} />
-							{pr.label}
-						</button>
-					))}
-					{prs.length > MAX_PILLS && (
-						<button
-							type="button"
-							onClick={onExpand}
-							className="rounded-[4px] px-1.5 py-[2px] text-[9px] text-left text-[var(--text-quaternary)] hover:text-[var(--text-tertiary)]"
-						>
-							+{prs.length - MAX_PILLS} more
-						</button>
-					)}
-				</div>
-			)}
-
-			{/* Hover info card */}
-			{hoveredData && hoverRect && (
-				<div
-					className="fixed z-50 rounded-[6px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2.5 py-1.5 shadow-[var(--shadow-md)] animate-[flyout-in_120ms_ease-out]"
-					style={{
-						left: hoverRect.right + 8,
-						top: hoverRect.top + hoverRect.height / 2,
-						transform: "translateY(-50%)",
-					}}
-					onMouseEnter={cancelInfoDismiss}
-					onMouseLeave={hideInfoCard}
-				>
-					<div className="max-w-[200px] text-[12px] text-[var(--text)] truncate">
-						{hoveredData.title}
+				{/* PR pills */}
+				{visiblePRs.length > 0 && (
+					<div className="flex flex-col gap-0.5 pt-1">
+						{visiblePRs.map((pr) => {
+							const linked = pr.linkKey ? prLinkedMap.get(pr.linkKey) : undefined;
+							return (
+								<button
+									key={pr.id}
+									type="button"
+									onClick={(e) => {
+										if (pr.provider === "bitbucket") {
+											window.electron.shell.openExternal(pr.url);
+										} else if (pr.githubPR) {
+											if (!linked || linked.length === 0) {
+												setOpenModalPR(pr.githubPR);
+											} else if (linked.length === 1 && linked[0]) {
+												navigateToWorkspace(linked[0], pr.githubPR);
+											} else {
+												const rect = e.currentTarget.getBoundingClientRect();
+												setPrPopover({
+													position: { x: rect.right + 8, y: rect.top },
+													githubPR: pr.githubPR,
+													workspaces: linked,
+												});
+											}
+										}
+									}}
+									onMouseEnter={(e) => showInfoCard(pr.id, e.currentTarget)}
+									onMouseLeave={hideInfoCard}
+									className="flex items-center gap-1 truncate rounded-[4px] bg-[var(--bg-overlay)] px-1.5 py-[3px] text-[10px] leading-tight text-left text-[var(--text-tertiary)] transition-colors duration-[120ms] hover:brightness-125 hover:text-[var(--text-secondary)]"
+								>
+									<div className={`size-1.5 shrink-0 rounded-full ${stateColors[pr.state]}`} />
+									{pr.label}
+								</button>
+							);
+						})}
+						{prs.length > MAX_PILLS && (
+							<button
+								type="button"
+								onClick={onExpand}
+								className="rounded-[4px] px-1.5 py-[2px] text-[9px] text-left text-[var(--text-quaternary)] hover:text-[var(--text-tertiary)]"
+							>
+								+{prs.length - MAX_PILLS} more
+							</button>
+						)}
 					</div>
-				</div>
+				)}
+
+				{/* Hover info card */}
+				{hoveredData && hoverRect && (
+					<div
+						className="fixed z-50 rounded-[6px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2.5 py-1.5 shadow-[var(--shadow-md)] animate-[flyout-in_120ms_ease-out]"
+						style={{
+							left: hoverRect.right + 8,
+							top: hoverRect.top + hoverRect.height / 2,
+							transform: "translateY(-50%)",
+						}}
+						onMouseEnter={cancelInfoDismiss}
+						onMouseLeave={hideInfoCard}
+					>
+						<div className="max-w-[200px] text-[12px] text-[var(--text)] truncate">
+							{hoveredData.title}
+						</div>
+					</div>
+				)}
+			</div>
+
+			{prPopover && (
+				<WorkspacePopover
+					position={prPopover.position}
+					workspaces={prPopover.workspaces}
+					onClose={() => setPrPopover(null)}
+					onCreateBranch={() => {
+						setPrPopover(null);
+						if (prPopover.githubPR) {
+							setOpenModalPR(prPopover.githubPR);
+						}
+					}}
+				/>
 			)}
-		</div>
+
+			<CreateWorktreeFromPRModal pr={openModalPR} onClose={() => setOpenModalPR(null)} />
+		</>
 	);
 }
 
