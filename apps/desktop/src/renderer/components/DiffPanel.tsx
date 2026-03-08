@@ -373,7 +373,7 @@ export function DiffPanel() {
 	if (!rightPanel.open) return null;
 
 	return (
-		<aside className="flex h-full w-[280px] shrink-0 flex-col border-l border-[var(--border-subtle)] bg-[var(--bg-surface)]">
+		<div className="flex h-full w-full flex-col overflow-hidden bg-[var(--bg-surface)]">
 			{rightPanel.mode === "pr-review" && rightPanel.prCtx ? (
 				<PRReviewPanel prCtx={rightPanel.prCtx} />
 			) : rightPanel.mode === "diff" && rightPanel.diffCtx ? (
@@ -381,6 +381,6 @@ export function DiffPanel() {
 			) : (
 				<ExplorerPanelContent />
 			)}
-		</aside>
+		</div>
 	);
 }
