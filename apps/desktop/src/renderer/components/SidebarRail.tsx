@@ -14,13 +14,16 @@ function smartAbbrev(name: string): string {
 	const ticketMatch = name.match(/^[A-Za-z]+-(\d+)/);
 	if (ticketMatch) return ticketMatch[1]!;
 
-	// 2. Short names: main, dev → as-is
+	// 2. Short names (≤5 chars): main, dev → as-is
 	if (name.length <= 5) return name;
 
 	// 3. Strip common prefixes, take first meaningful segment
 	const stripped = name.replace(/^(?:feature|fix|hotfix|bugfix|chore|release)[/-]/, "");
 	const segment = stripped.split(/[-/]/)[0] ?? stripped;
-	return segment.slice(0, 5);
+	// If the segment itself is short enough, use it whole
+	if (segment.length <= 5) return segment;
+	// Otherwise truncate with ellipsis so it's clearly abbreviated
+	return `${segment.slice(0, 4)}\u2026`;
 }
 
 interface SidebarRailProps {
@@ -113,7 +116,7 @@ function RailProjectItem({
 	const hoveredWsData = workspacesList?.find((ws) => ws.id === hoveredWs);
 
 	return (
-		<div className="flex flex-col items-center">
+		<div className="flex w-full flex-col items-center rounded-[8px] bg-[var(--bg-elevated)]/40 px-1.5 py-1.5">
 			{/* Project initials button */}
 			<button
 				type="button"
@@ -122,9 +125,9 @@ function RailProjectItem({
 				onMouseLeave={scheduleDismiss}
 				onClick={onExpand}
 				className={[
-					"flex size-8 shrink-0 items-center justify-center rounded-[6px] text-[11px] font-medium transition-colors duration-[120ms] hover:bg-[var(--bg-elevated)]",
+					"flex size-8 shrink-0 items-center justify-center rounded-[6px] text-[11px] font-medium transition-colors duration-[120ms] hover:bg-[var(--bg-overlay)]",
 					isFlyoutActive
-						? "bg-[var(--bg-elevated)] text-[var(--text)]"
+						? "bg-[var(--bg-overlay)] text-[var(--text)]"
 						: "text-[var(--text-secondary)]",
 				].join(" ")}
 				style={{
@@ -136,7 +139,7 @@ function RailProjectItem({
 
 			{/* Worktree pills */}
 			{visiblePills && visiblePills.length > 0 && (
-				<div className="flex flex-col items-center gap-1 pt-1 pb-0.5">
+				<div className="flex w-full flex-col items-center gap-0.5 pt-1">
 					{visiblePills.map((ws) => {
 						const isActive = activeWorkspaceId === ws.id;
 						return (
@@ -147,10 +150,10 @@ function RailProjectItem({
 								onMouseEnter={(e) => showInfoCard(ws.id, e.currentTarget)}
 								onMouseLeave={hideInfoCard}
 								className={[
-									"max-w-[44px] truncate rounded-[4px] px-1.5 py-0.5 text-[10px] leading-tight transition-colors duration-[120ms]",
+									"w-full truncate rounded-[4px] px-1.5 py-[3px] text-[10px] leading-tight text-center transition-colors duration-[120ms]",
 									isActive
-										? "border-l-2 border-l-[var(--accent)] bg-[var(--bg-elevated)] text-[var(--text)]"
-										: "bg-transparent text-[var(--text-tertiary)] hover:bg-[var(--bg-overlay)] hover:text-[var(--text-secondary)]",
+										? "bg-[color-mix(in_srgb,var(--accent)_12%,transparent)] text-[var(--text)] shadow-[inset_2px_0_0_var(--accent)]"
+										: "bg-[var(--bg-elevated)] text-[var(--text-tertiary)] hover:bg-[var(--bg-overlay)] hover:text-[var(--text-secondary)]",
 								].join(" ")}
 							>
 								{smartAbbrev(ws.name)}
@@ -244,8 +247,8 @@ export function SidebarRail({ onExpand }: SidebarRailProps) {
 				</svg>
 			</button>
 
-			{/* Project initials + worktree dots */}
-			<div className="flex flex-1 flex-col items-center gap-1.5 overflow-y-auto py-1">
+			{/* Project groups */}
+			<div className="flex flex-1 flex-col items-center gap-2 overflow-y-auto px-1 py-1">
 				{projectsList?.map((project) => (
 					<RailProjectItem
 						key={project.id}
