@@ -8,14 +8,19 @@ import { PullRequestsTab } from "./PullRequestsTab";
 import { RailFlyout } from "./RailFlyout";
 import { TicketsTab } from "./TicketsTab";
 
-/** Deterministic HSL color from a branch name string. */
-function branchColor(name: string): string {
-	let hash = 0;
-	for (let i = 0; i < name.length; i++) {
-		hash = name.charCodeAt(i) + ((hash << 5) - hash);
-	}
-	const hue = ((hash % 360) + 360) % 360;
-	return `hsl(${hue} 55% 60%)`;
+/** Extract a short, meaningful label from a branch/worktree name. */
+function smartAbbrev(name: string): string {
+	// 1. Ticket-prefixed: PROJ-123-fix-login → "123"
+	const ticketMatch = name.match(/^[A-Za-z]+-(\d+)/);
+	if (ticketMatch) return ticketMatch[1]!;
+
+	// 2. Short names: main, dev → as-is
+	if (name.length <= 5) return name;
+
+	// 3. Strip common prefixes, take first meaningful segment
+	const stripped = name.replace(/^(?:feature|fix|hotfix|bugfix|chore|release)[/-]/, "");
+	const segment = stripped.split(/[-/]/)[0] ?? stripped;
+	return segment.slice(0, 5);
 }
 
 interface SidebarRailProps {
@@ -24,7 +29,7 @@ interface SidebarRailProps {
 
 type FlyoutTarget = { kind: "project"; project: Project } | { kind: "tickets" } | { kind: "prs" };
 
-const MAX_DOTS = 5;
+const MAX_PILLS = 5;
 
 interface RailProjectItemProps {
 	project: Project;
@@ -51,7 +56,41 @@ function RailProjectItem({
 	const attachTerminalRef = useRef(attachTerminal.mutate);
 	attachTerminalRef.current = attachTerminal.mutate;
 
-	const handleDotClick = useCallback(
+	const [hoveredWs, setHoveredWs] = useState<string | null>(null);
+	const [hoverRect, setHoverRect] = useState<DOMRect | null>(null);
+	const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const dismissHoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+	const showInfoCard = useCallback((wsId: string, el: HTMLElement) => {
+		if (dismissHoverTimer.current) {
+			clearTimeout(dismissHoverTimer.current);
+			dismissHoverTimer.current = null;
+		}
+		hoverTimer.current = setTimeout(() => {
+			setHoveredWs(wsId);
+			setHoverRect(el.getBoundingClientRect());
+		}, 200);
+	}, []);
+
+	const hideInfoCard = useCallback(() => {
+		if (hoverTimer.current) {
+			clearTimeout(hoverTimer.current);
+			hoverTimer.current = null;
+		}
+		dismissHoverTimer.current = setTimeout(() => {
+			setHoveredWs(null);
+			setHoverRect(null);
+		}, 150);
+	}, []);
+
+	const cancelInfoDismiss = useCallback(() => {
+		if (dismissHoverTimer.current) {
+			clearTimeout(dismissHoverTimer.current);
+			dismissHoverTimer.current = null;
+		}
+	}, []);
+
+	const handlePillClick = useCallback(
 		(ws: { id: string; type: string; name: string; worktreePath: string | null }) => {
 			const cwd = ws.type === "worktree" && ws.worktreePath ? ws.worktreePath : project.repoPath;
 
@@ -70,8 +109,8 @@ function RailProjectItem({
 	);
 
 	const isFlyoutActive = flyout?.kind === "project" && flyout.project.id === project.id;
-
-	const visibleDots = workspacesList?.slice(0, MAX_DOTS);
+	const visiblePills = workspacesList?.slice(0, MAX_PILLS);
+	const hoveredWsData = workspacesList?.find((ws) => ws.id === hoveredWs);
 
 	return (
 		<div className="flex flex-col items-center">
@@ -95,26 +134,50 @@ function RailProjectItem({
 				{project.name.slice(0, 2).toUpperCase()}
 			</button>
 
-			{/* Worktree dots */}
-			{visibleDots && visibleDots.length > 0 && (
+			{/* Worktree pills */}
+			{visiblePills && visiblePills.length > 0 && (
 				<div className="flex flex-col items-center gap-1 pt-1 pb-0.5">
-					{visibleDots.map((ws) => (
-						<button
-							key={ws.id}
-							type="button"
-							title={ws.name}
-							onClick={() => handleDotClick(ws)}
-							className="flex items-center justify-center p-[6px]"
-						>
-							<div
-								className="size-2 rounded-full transition-shadow duration-[120ms]"
-								style={{
-									backgroundColor: branchColor(ws.name),
-									boxShadow: activeWorkspaceId === ws.id ? "0 0 0 2px var(--accent)" : "none",
-								}}
-							/>
-						</button>
-					))}
+					{visiblePills.map((ws) => {
+						const isActive = activeWorkspaceId === ws.id;
+						return (
+							<button
+								key={ws.id}
+								type="button"
+								onClick={() => handlePillClick(ws)}
+								onMouseEnter={(e) => showInfoCard(ws.id, e.currentTarget)}
+								onMouseLeave={hideInfoCard}
+								className={[
+									"max-w-[44px] truncate rounded-[4px] px-1.5 py-0.5 text-[10px] leading-tight transition-colors duration-[120ms]",
+									isActive
+										? "border-l-2 border-l-[var(--accent)] bg-[var(--bg-elevated)] text-[var(--text)]"
+										: "bg-transparent text-[var(--text-tertiary)] hover:bg-[var(--bg-overlay)] hover:text-[var(--text-secondary)]",
+								].join(" ")}
+							>
+								{smartAbbrev(ws.name)}
+							</button>
+						);
+					})}
+				</div>
+			)}
+
+			{/* Hover info card */}
+			{hoveredWsData && hoverRect && (
+				<div
+					className="fixed z-50 rounded-[6px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2.5 py-1.5 shadow-[var(--shadow-md)] animate-[flyout-in_120ms_ease-out]"
+					style={{
+						left: hoverRect.right + 8,
+						top: hoverRect.top + hoverRect.height / 2,
+						transform: "translateY(-50%)",
+					}}
+					onMouseEnter={cancelInfoDismiss}
+					onMouseLeave={hideInfoCard}
+				>
+					<div className="whitespace-nowrap text-[12px] text-[var(--text)]">
+						{hoveredWsData.name}
+					</div>
+					<div className="whitespace-nowrap text-[10px] text-[var(--text-quaternary)]">
+						{hoveredWsData.type}
+					</div>
 				</div>
 			)}
 		</div>
