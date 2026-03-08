@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useRef } from "react";
 import { useShallow } from "zustand/react/shallow";
+import { useProjectStore } from "../stores/projects";
 import type { TabItem } from "../stores/tab-store";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
@@ -111,6 +112,7 @@ export function TabBar() {
 	const addTerminalTab = useTabStore((s) => s.addTerminalTab);
 	const activeWorkspaceId = useTabStore((s) => s.activeWorkspaceId);
 	const activeWorkspaceCwd = useTabStore((s) => s.activeWorkspaceCwd);
+	const sidebarCollapsed = useProjectStore((s) => s.sidebarCollapsed);
 
 	const detachMutation = trpc.workspaces.detachTerminal.useMutation();
 
@@ -121,7 +123,7 @@ export function TabBar() {
 		>
 			<div
 				role="tablist"
-				className="scrollbar-hide flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto px-1 pb-[7px]"
+				className={`scrollbar-hide flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto pb-[7px] transition-[padding] duration-[120ms] ${sidebarCollapsed ? "pl-3 pr-1" : "px-1"}`}
 			>
 				{visibleTabs.map((tab, i) => {
 					const isActive = tab.id === activeTabId;

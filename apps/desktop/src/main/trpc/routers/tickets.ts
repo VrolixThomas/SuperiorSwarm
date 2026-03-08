@@ -1,8 +1,10 @@
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { getDb } from "../../db";
-import { ticketBranchLinks, workspaces, worktrees } from "../../db/schema";
+import { sessionState, ticketBranchLinks, workspaces, worktrees } from "../../db/schema";
 import { publicProcedure, router } from "../index";
+
+const COLLAPSED_GROUPS_KEY = "sidebar_collapsed_groups";
 
 export const ticketsRouter = router({
 	linkTicket: publicProcedure
@@ -43,4 +45,27 @@ export const ticketsRouter = router({
 			.all();
 		return rows;
 	}),
+
+	getCollapsedGroups: publicProcedure.query(() => {
+		const db = getDb();
+		const row = db
+			.select()
+			.from(sessionState)
+			.where(eq(sessionState.key, COLLAPSED_GROUPS_KEY))
+			.get();
+		return row?.value ? (JSON.parse(row.value) as string[]) : [];
+	}),
+
+	setCollapsedGroups: publicProcedure
+		.input(z.object({ groups: z.array(z.string()) }))
+		.mutation(({ input }) => {
+			const db = getDb();
+			db.insert(sessionState)
+				.values({ key: COLLAPSED_GROUPS_KEY, value: JSON.stringify(input.groups) })
+				.onConflictDoUpdate({
+					target: sessionState.key,
+					set: { value: JSON.stringify(input.groups) },
+				})
+				.run();
+		}),
 });

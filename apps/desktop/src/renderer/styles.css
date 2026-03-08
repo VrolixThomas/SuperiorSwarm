@@ -45,6 +45,7 @@
 	/* Shadows */
 	--shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
 	--shadow-md: 0 2px 8px rgba(0, 0, 0, 0.4);
+	--shadow-lg: 0 4px 24px rgba(0, 0, 0, 0.5);
 
 	/* Motion */
 	--transition-fast: 120ms ease;
@@ -175,4 +176,48 @@ body,
 
 .pr-gutter-plus-icon:hover {
 	opacity: 1;
+}
+
+/* ── Panel resize handles ─────────────────────────────────────────────────── */
+
+.panel-resize-handle {
+	position: relative;
+	width: 1px;
+	background: var(--border-subtle);
+	transition: background-color var(--transition-fast);
+}
+
+.panel-resize-handle::after {
+	content: "";
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	left: -2px;
+	width: 5px;
+	cursor: col-resize;
+}
+
+.panel-resize-handle[data-separator="hover"] {
+	background: var(--text-quaternary);
+}
+
+.panel-resize-handle[data-separator="active"] {
+	background: var(--accent);
+}
+
+/* ── Rail flyout ──────────────────────────────────────────────────────────── */
+
+@keyframes flyout-in {
+	from {
+		opacity: 0;
+		transform: translateX(-4px);
+	}
+	to {
+		opacity: 1;
+		transform: translateX(0);
+	}
+}
+
+.rail-flyout {
+	animation: flyout-in var(--transition-fast) both;
 }
