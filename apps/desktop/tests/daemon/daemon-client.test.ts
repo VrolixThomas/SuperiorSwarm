@@ -6,6 +6,8 @@ import { join } from "node:path";
 import { DaemonClient } from "../../src/main/terminal/daemon-client";
 
 const TEST_SOCKET = join(tmpdir(), `branchflux-client-test-${process.pid}.sock`);
+const TEST_PID = join(tmpdir(), `branchflux-client-test-${process.pid}.pid`);
+const TEST_LOG = join(tmpdir(), `branchflux-client-test-${process.pid}.log`);
 
 function startMockDaemon(
 	onMessage?: (msg: unknown) => void,
@@ -47,8 +49,10 @@ describe("DaemonClient", () => {
 
 	beforeEach(async () => {
 		if (existsSync(TEST_SOCKET)) rmSync(TEST_SOCKET);
+		if (existsSync(TEST_PID)) rmSync(TEST_PID);
+		if (existsSync(TEST_LOG)) rmSync(TEST_LOG);
 		daemon = await startMockDaemon();
-		client = new DaemonClient(TEST_SOCKET);
+		client = new DaemonClient(TEST_SOCKET, TEST_PID, TEST_LOG);
 		await client.connect();
 	});
 
@@ -56,6 +60,8 @@ describe("DaemonClient", () => {
 		client.disconnect();
 		daemon.server.close();
 		if (existsSync(TEST_SOCKET)) rmSync(TEST_SOCKET);
+		if (existsSync(TEST_PID)) rmSync(TEST_PID);
+		if (existsSync(TEST_LOG)) rmSync(TEST_LOG);
 	});
 
 	test("hasLiveSession returns true for daemon-reported sessions", () => {
