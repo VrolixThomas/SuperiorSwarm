@@ -15,21 +15,17 @@ export function RailFlyout({
 	onMouseEnter,
 	onMouseLeave,
 }: RailFlyoutProps) {
-	// Position flyout so its top aligns with the anchor element.
-	// If the content would overflow the bottom, shift upward (but never above margin).
 	const margin = 8;
 	const preferredMaxHeight = 500;
 	const maxHeight = Math.min(preferredMaxHeight, window.innerHeight - margin * 2);
-	const spaceBelow = window.innerHeight - anchorRect.top - margin;
 
-	let top: number;
-	if (spaceBelow >= maxHeight) {
-		// Enough room below the anchor — align top edges
-		top = anchorRect.top;
-	} else {
-		// Not enough room — push upward, clamped to top margin
-		top = Math.max(margin, window.innerHeight - margin - maxHeight);
-	}
+	// Ideal: align flyout top with the anchor top.
+	// If that would overflow the bottom, shift up just enough to fit.
+	// Never go above the top margin.
+	const idealTop = anchorRect.top;
+	const bottom = idealTop + maxHeight;
+	const overflow = bottom - (window.innerHeight - margin);
+	const top = Math.max(margin, overflow > 0 ? idealTop - overflow : idealTop);
 
 	return createPortal(
 		<div
