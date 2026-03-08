@@ -10,14 +10,11 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { type Socket, connect } from "node:net";
-import { join } from "node:path";
 import {
 	BRANCHFLUX_DIR,
 	type ClientMessage,
 	type DaemonMessage,
 } from "../../shared/daemon-protocol";
-const DEFAULT_SOCKET_PATH = join(BRANCHFLUX_DIR, "daemon.sock");
-const PID_PATH = join(BRANCHFLUX_DIR, "daemon.pid");
 const CONNECT_TIMEOUT_MS = 5_000;
 const CONNECT_POLL_MS = 100;
 
@@ -45,7 +42,11 @@ export class DaemonClient {
 	private daemonScriptPath: string | undefined;
 	private onConnectionStatusChange: ((connected: boolean) => void) | null = null;
 
-	constructor(private socketPath: string = DEFAULT_SOCKET_PATH) {}
+	constructor(
+		private socketPath: string,
+		private pidPath: string,
+		private logPath: string
+	) {}
 
 	setConnectionStatusCallback(cb: (connected: boolean) => void): void {
 		this.onConnectionStatusChange = cb;
@@ -327,9 +328,9 @@ export class DaemonClient {
 		}
 
 		// Check for stale PID — if the process still exists, wait for it to bind
-		if (existsSync(PID_PATH)) {
+		if (existsSync(this.pidPath)) {
 			try {
-				const pid = Number(readFileSync(PID_PATH, "utf-8").trim());
+				const pid = Number(readFileSync(this.pidPath, "utf-8").trim());
 				if (pid) {
 					try {
 						process.kill(pid, 0); // throws if process doesn't exist
@@ -337,28 +338,26 @@ export class DaemonClient {
 					} catch {
 						// process is gone, clean up stale file
 						try {
-							rmSync(PID_PATH);
+							rmSync(this.pidPath);
 						} catch {}
 					}
 				}
 			} catch {}
 		}
 
-		const logPath = join(BRANCHFLUX_DIR, "daemon.log");
-
 		// Truncate log to prevent unbounded growth across daemon restarts
 		const MAX_LOG_BYTES = 50_000;
 		try {
-			if (existsSync(logPath)) {
-				const stat = statSync(logPath);
+			if (existsSync(this.logPath)) {
+				const stat = statSync(this.logPath);
 				if (stat.size > MAX_LOG_BYTES) {
-					const content = readFileSync(logPath, "utf-8");
-					writeFileSync(logPath, content.slice(-MAX_LOG_BYTES));
+					const content = readFileSync(this.logPath, "utf-8");
+					writeFileSync(this.logPath, content.slice(-MAX_LOG_BYTES));
 				}
 			}
 		} catch {}
 
-		const logFd = openSync(logPath, "a");
+		const logFd = openSync(this.logPath, "a");
 		const child = spawn(process.execPath, [daemonScriptPath], {
 			detached: true,
 			stdio: ["ignore", logFd, logFd],
@@ -366,6 +365,9 @@ export class DaemonClient {
 				...process.env,
 				ELECTRON_RUN_AS_NODE: "1",
 				BRANCHFLUX_DB_PATH: dbPath,
+				BRANCHFLUX_SOCKET_PATH: this.socketPath,
+				BRANCHFLUX_PID_PATH: this.pidPath,
+				BRANCHFLUX_LOG_PATH: this.logPath,
 			},
 		});
 		child.unref();
@@ -381,5 +383,3 @@ export class DaemonClient {
 		throw new Error(`Daemon socket did not appear within ${CONNECT_TIMEOUT_MS}ms`);
 	}
 }
-
-export const daemonClient = new DaemonClient();
