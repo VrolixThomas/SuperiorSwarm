@@ -49,25 +49,6 @@ export const diffRouter = router({
 			return { files, stats: computeStats(files) };
 		}),
 
-	getBranchDiffTwoDot: publicProcedure
-		.input(
-			z.object({
-				repoPath: z.string(),
-				baseBranch: z.string(),
-				headBranch: z.string(),
-			})
-		)
-		.query(async ({ input }) => {
-			const git = simpleGit(input.repoPath);
-			const rawDiff = await git.diff([
-				`${input.baseBranch}..${input.headBranch}`,
-				"--unified=3",
-				"--no-color",
-			]);
-			const files = parseUnifiedDiff(rawDiff);
-			return { files, stats: computeStats(files) };
-		}),
-
 	getWorkingTreeDiff: publicProcedure
 		.input(z.object({ repoPath: z.string() }))
 		.query(async ({ input }) => {

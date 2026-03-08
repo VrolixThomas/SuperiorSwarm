@@ -121,11 +121,6 @@ function DiffPanelContent({ diffCtx }: { diffCtx: DiffContext }) {
 			repoPath: diffCtx.repoPath,
 			baseBranch: effectiveBaseBranch,
 		});
-		utils.diff.getBranchDiffTwoDot.invalidate({
-			repoPath: diffCtx.repoPath,
-			baseBranch: effectiveBaseBranch,
-			headBranch: currentBranch,
-		});
 	};
 
 	const stageMutation = trpc.diff.stageFiles.useMutation({
