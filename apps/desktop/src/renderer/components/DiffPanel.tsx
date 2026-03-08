@@ -313,14 +313,29 @@ export function DiffPanel() {
 
 	if (!rightPanel.open) return null;
 
+	if (rightPanel.mode === "pr-review" && rightPanel.prCtx) {
+		return (
+			<div className="flex h-full w-full flex-col overflow-hidden bg-[var(--bg-surface)]">
+				<PRReviewPanel prCtx={rightPanel.prCtx} />
+			</div>
+		);
+	}
+
 	return (
 		<div className="flex h-full w-full flex-col overflow-hidden bg-[var(--bg-surface)]">
-			{rightPanel.mode === "pr-review" && rightPanel.prCtx ? (
-				<PRReviewPanel prCtx={rightPanel.prCtx} />
-			) : rightPanel.mode === "diff" && rightPanel.diffCtx ? (
+			{rightPanel.mode === "diff" && rightPanel.diffCtx ? (
 				<DiffPanelContent diffCtx={rightPanel.diffCtx} />
-			) : (
+			) : rightPanel.mode === "explorer" ? (
 				<ExplorerPanelContent />
+			) : (
+				<>
+					<PanelHeader mode="diff" onSetMode={() => {}} />
+					<div className="flex flex-1 items-center justify-center">
+						<span className="text-[12px] text-[var(--text-quaternary)]">
+							Select a workspace
+						</span>
+					</div>
+				</>
 			)}
 		</div>
 	);
