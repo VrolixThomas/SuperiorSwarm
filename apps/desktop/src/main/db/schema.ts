@@ -162,3 +162,61 @@ export const ticketBranchLinks = sqliteTable(
 
 export type TicketBranchLink = typeof ticketBranchLinks.$inferSelect;
 export type NewTicketBranchLink = typeof ticketBranchLinks.$inferInsert;
+
+export const githubAuth = sqliteTable("github_auth", {
+	id: text("id").primaryKey(),
+	accessToken: text("access_token").notNull(),
+	accountId: text("account_id").notNull(),
+	displayName: text("display_name"),
+});
+
+export type GithubAuth = typeof githubAuth.$inferSelect;
+export type NewGithubAuth = typeof githubAuth.$inferInsert;
+
+export const githubBranchPrs = sqliteTable(
+	"github_branch_prs",
+	{
+		id: text("id").primaryKey(),
+		workspaceId: text("workspace_id")
+			.notNull()
+			.references(() => workspaces.id, { onDelete: "cascade" }),
+		prRepoOwner: text("pr_repo_owner").notNull(),
+		prRepoName: text("pr_repo_name").notNull(),
+		prNumber: integer("pr_number").notNull(),
+		createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+	},
+	(table) => [
+		uniqueIndex("github_branch_prs_workspace_pr_unique").on(
+			table.workspaceId,
+			table.prRepoOwner,
+			table.prRepoName,
+			table.prNumber
+		),
+	]
+);
+
+export type GithubBranchPr = typeof githubBranchPrs.$inferSelect;
+export type NewGithubBranchPr = typeof githubBranchPrs.$inferInsert;
+
+export const githubPrFileViewed = sqliteTable(
+	"github_pr_file_viewed",
+	{
+		id: text("id").primaryKey(),
+		prOwner: text("pr_owner").notNull(),
+		prRepo: text("pr_repo").notNull(),
+		prNumber: integer("pr_number").notNull(),
+		filePath: text("file_path").notNull(),
+		viewedAt: integer("viewed_at", { mode: "timestamp" }).notNull(),
+	},
+	(table) => [
+		uniqueIndex("github_pr_file_viewed_unique").on(
+			table.prOwner,
+			table.prRepo,
+			table.prNumber,
+			table.filePath
+		),
+	]
+);
+
+export type GithubPrFileViewed = typeof githubPrFileViewed.$inferSelect;
+export type NewGithubPrFileViewed = typeof githubPrFileViewed.$inferInsert;

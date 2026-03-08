@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { DiffContext } from "../../shared/diff-types";
+import type { GitHubPRContext } from "../../shared/github-types";
 
 // ─── Tab types ───────────────────────────────────────────────────────────────
 
@@ -23,12 +24,21 @@ export type TabItem =
 			title: string;
 			language: string;
 			initialPosition?: { lineNumber: number; column: number };
+	  }
+	| {
+			kind: "pr-review-file";
+			id: string;
+			workspaceId: string;
+			prCtx: GitHubPRContext;
+			filePath: string;
+			title: string;
+			language: string;
 	  };
-export type PanelMode = "diff" | "explorer";
+export type PanelMode = "diff" | "explorer" | "pr-review";
 
 export type RightPanelState =
 	| { open: false }
-	| { open: true; mode: PanelMode; diffCtx: DiffContext | null };
+	| { open: true; mode: PanelMode; diffCtx: DiffContext | null; prCtx?: GitHubPRContext };
 
 export const PANEL_CLOSED: RightPanelState = { open: false };
 
@@ -57,6 +67,15 @@ interface TabStore {
 
 	// Terminal convenience — matches old API signature used by WorkspaceItem/CreateWorktreeModal
 	addTerminalTab: (workspaceId: string, cwd: string, title?: string) => string;
+
+	// PR review
+	openPRReviewPanel: (workspaceId: string, prCtx: GitHubPRContext) => void;
+	openPRReviewFile: (
+		workspaceId: string,
+		prCtx: GitHubPRContext,
+		filePath: string,
+		language: string
+	) => string;
 
 	// Diff convenience
 	toggleDiffPanel: (diffCtx: DiffContext) => void;
@@ -109,6 +128,10 @@ function diffFileKey(diffCtx: DiffContext, filePath: string): string {
 
 function fileKey(repoPath: string, filePath: string): string {
 	return `file:${repoPath}:${filePath}`;
+}
+
+function prReviewFileKey(prCtx: GitHubPRContext, filePath: string): string {
+	return `pr-review-file:${prCtx.owner}/${prCtx.repo}#${prCtx.number}:${filePath}`;
 }
 
 // ─── DiffContext identity comparison ─────────────────────────────────────────
@@ -207,6 +230,38 @@ export const useTabStore = create<TabStore>((set, get) => ({
 			tabs: [...s.tabs, tab],
 			activeTabId: id,
 		}));
+		return id;
+	},
+
+	openPRReviewPanel: (_workspaceId, prCtx) => {
+		set({ rightPanel: { open: true, mode: "pr-review", diffCtx: null, prCtx } });
+	},
+
+	openPRReviewFile: (workspaceId, prCtx, filePath, language) => {
+		const { tabs } = get();
+		const key = prReviewFileKey(prCtx, filePath);
+		const existing = tabs.find(
+			(t) =>
+				t.kind === "pr-review-file" &&
+				t.workspaceId === workspaceId &&
+				prReviewFileKey(t.prCtx, t.filePath) === key
+		);
+		if (existing) {
+			set({ activeTabId: existing.id });
+			return existing.id;
+		}
+		const id = nextFileTabId();
+		const title = filePath.split("/").pop() ?? filePath;
+		const tab: TabItem = {
+			kind: "pr-review-file",
+			id,
+			workspaceId,
+			prCtx,
+			filePath,
+			title,
+			language,
+		};
+		set((s) => ({ tabs: [...s.tabs, tab], activeTabId: id }));
 		return id;
 	},
 

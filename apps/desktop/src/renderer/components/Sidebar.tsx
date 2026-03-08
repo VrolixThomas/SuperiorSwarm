@@ -1,5 +1,6 @@
 import { useProjectStore } from "../stores/projects";
 import { AtlassianPanel } from "./AtlassianPanel";
+import { GitHubPanel } from "./GitHubPanel";
 import { LinearPanel } from "./LinearPanel";
 import { ProjectList } from "./ProjectList";
 
@@ -60,6 +61,9 @@ export function Sidebar() {
 				</div>
 				<div className="mt-2 border-t border-[var(--border-subtle)] pt-2">
 					<LinearPanel />
+				</div>
+				<div className="mt-2 border-t border-[var(--border-subtle)] pt-2">
+					<GitHubPanel />
 				</div>
 			</div>
 

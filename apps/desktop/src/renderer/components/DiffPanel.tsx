@@ -4,6 +4,7 @@ import { type PanelMode, useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import { ExtensionManager } from "./ExtensionManager";
 import { FileSection, FileTree } from "./FileTreeNode";
+import { PRReviewPanel } from "./PRReviewPanel";
 import { RepoFileTree } from "./RepoFileTree";
 import { WorkingTreeCommitBar } from "./WorkingTreeCommitBar";
 
@@ -373,7 +374,9 @@ export function DiffPanel() {
 
 	return (
 		<aside className="flex h-full w-[280px] shrink-0 flex-col border-l border-[var(--border-subtle)] bg-[var(--bg-surface)]">
-			{rightPanel.mode === "diff" && rightPanel.diffCtx ? (
+			{rightPanel.mode === "pr-review" && rightPanel.prCtx ? (
+				<PRReviewPanel prCtx={rightPanel.prCtx} />
+			) : rightPanel.mode === "diff" && rightPanel.diffCtx ? (
 				<DiffPanelContent diffCtx={rightPanel.diffCtx} />
 			) : (
 				<ExplorerPanelContent />

@@ -1,8 +1,8 @@
 {
-	"id": "8a5e725e-d24d-473e-9035-bebd2c8794fe",
-	"prevId": "681bac3f-896c-4270-9d28-c157d415eef9",
 	"version": "6",
 	"dialect": "sqlite",
+	"id": "99784001-7026-407a-bae5-74aae800bc21",
+	"prevId": "8a5e725e-d24d-473e-9035-bebd2c8794fe",
 	"tables": {
 		"atlassian_auth": {
 			"name": "atlassian_auth",
@@ -160,6 +160,170 @@
 			"uniqueConstraints": {},
 			"checkConstraints": {}
 		},
+		"github_auth": {
+			"name": "github_auth",
+			"columns": {
+				"id": {
+					"name": "id",
+					"type": "text",
+					"primaryKey": true,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"access_token": {
+					"name": "access_token",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"account_id": {
+					"name": "account_id",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"display_name": {
+					"name": "display_name",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				}
+			},
+			"indexes": {},
+			"foreignKeys": {},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {},
+			"checkConstraints": {}
+		},
+		"github_branch_prs": {
+			"name": "github_branch_prs",
+			"columns": {
+				"id": {
+					"name": "id",
+					"type": "text",
+					"primaryKey": true,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"workspace_id": {
+					"name": "workspace_id",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"pr_repo_owner": {
+					"name": "pr_repo_owner",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"pr_repo_name": {
+					"name": "pr_repo_name",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"pr_number": {
+					"name": "pr_number",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"created_at": {
+					"name": "created_at",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				}
+			},
+			"indexes": {
+				"github_branch_prs_workspace_pr_unique": {
+					"name": "github_branch_prs_workspace_pr_unique",
+					"columns": ["workspace_id", "pr_repo_owner", "pr_repo_name", "pr_number"],
+					"isUnique": true
+				}
+			},
+			"foreignKeys": {
+				"github_branch_prs_workspace_id_workspaces_id_fk": {
+					"name": "github_branch_prs_workspace_id_workspaces_id_fk",
+					"tableFrom": "github_branch_prs",
+					"tableTo": "workspaces",
+					"columnsFrom": ["workspace_id"],
+					"columnsTo": ["id"],
+					"onDelete": "cascade",
+					"onUpdate": "no action"
+				}
+			},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {},
+			"checkConstraints": {}
+		},
+		"github_pr_file_viewed": {
+			"name": "github_pr_file_viewed",
+			"columns": {
+				"id": {
+					"name": "id",
+					"type": "text",
+					"primaryKey": true,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"pr_owner": {
+					"name": "pr_owner",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"pr_repo": {
+					"name": "pr_repo",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"pr_number": {
+					"name": "pr_number",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"file_path": {
+					"name": "file_path",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"viewed_at": {
+					"name": "viewed_at",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				}
+			},
+			"indexes": {
+				"github_pr_file_viewed_unique": {
+					"name": "github_pr_file_viewed_unique",
+					"columns": ["pr_owner", "pr_repo", "pr_number", "file_path"],
+					"isUnique": true
+				}
+			},
+			"foreignKeys": {},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {},
+			"checkConstraints": {}
+		},
 		"linear_auth": {
 			"name": "linear_auth",
 			"columns": {
@@ -208,60 +372,6 @@
 			},
 			"indexes": {},
 			"foreignKeys": {},
-			"compositePrimaryKeys": {},
-			"uniqueConstraints": {},
-			"checkConstraints": {}
-		},
-		"linear_branch_issues": {
-			"name": "linear_branch_issues",
-			"columns": {
-				"id": {
-					"name": "id",
-					"type": "text",
-					"primaryKey": true,
-					"notNull": true,
-					"autoincrement": false
-				},
-				"workspace_id": {
-					"name": "workspace_id",
-					"type": "text",
-					"primaryKey": false,
-					"notNull": true,
-					"autoincrement": false
-				},
-				"linear_issue_id": {
-					"name": "linear_issue_id",
-					"type": "text",
-					"primaryKey": false,
-					"notNull": true,
-					"autoincrement": false
-				},
-				"created_at": {
-					"name": "created_at",
-					"type": "integer",
-					"primaryKey": false,
-					"notNull": true,
-					"autoincrement": false
-				}
-			},
-			"indexes": {
-				"linear_branch_issues_workspace_issue_unique": {
-					"name": "linear_branch_issues_workspace_issue_unique",
-					"columns": ["workspace_id", "linear_issue_id"],
-					"isUnique": true
-				}
-			},
-			"foreignKeys": {
-				"linear_branch_issues_workspace_id_workspaces_id_fk": {
-					"name": "linear_branch_issues_workspace_id_workspaces_id_fk",
-					"tableFrom": "linear_branch_issues",
-					"columnsFrom": ["workspace_id"],
-					"tableTo": "workspaces",
-					"columnsTo": ["id"],
-					"onUpdate": "no action",
-					"onDelete": "cascade"
-				}
-			},
 			"compositePrimaryKeys": {},
 			"uniqueConstraints": {},
 			"checkConstraints": {}
@@ -421,11 +531,11 @@
 				"shared_files_project_id_projects_id_fk": {
 					"name": "shared_files_project_id_projects_id_fk",
 					"tableFrom": "shared_files",
-					"columnsFrom": ["project_id"],
 					"tableTo": "projects",
+					"columnsFrom": ["project_id"],
 					"columnsTo": ["id"],
-					"onUpdate": "no action",
-					"onDelete": "cascade"
+					"onDelete": "cascade",
+					"onUpdate": "no action"
 				}
 			},
 			"compositePrimaryKeys": {},
@@ -490,11 +600,72 @@
 				"terminal_sessions_workspace_id_workspaces_id_fk": {
 					"name": "terminal_sessions_workspace_id_workspaces_id_fk",
 					"tableFrom": "terminal_sessions",
-					"columnsFrom": ["workspace_id"],
 					"tableTo": "workspaces",
+					"columnsFrom": ["workspace_id"],
 					"columnsTo": ["id"],
-					"onUpdate": "no action",
-					"onDelete": "cascade"
+					"onDelete": "cascade",
+					"onUpdate": "no action"
+				}
+			},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {},
+			"checkConstraints": {}
+		},
+		"ticket_branch_links": {
+			"name": "ticket_branch_links",
+			"columns": {
+				"id": {
+					"name": "id",
+					"type": "text",
+					"primaryKey": true,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"workspace_id": {
+					"name": "workspace_id",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"provider": {
+					"name": "provider",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"ticket_id": {
+					"name": "ticket_id",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"created_at": {
+					"name": "created_at",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				}
+			},
+			"indexes": {
+				"ticket_branch_links_workspace_provider_ticket_unique": {
+					"name": "ticket_branch_links_workspace_provider_ticket_unique",
+					"columns": ["workspace_id", "provider", "ticket_id"],
+					"isUnique": true
+				}
+			},
+			"foreignKeys": {
+				"ticket_branch_links_workspace_id_workspaces_id_fk": {
+					"name": "ticket_branch_links_workspace_id_workspaces_id_fk",
+					"tableFrom": "ticket_branch_links",
+					"tableTo": "workspaces",
+					"columnsFrom": ["workspace_id"],
+					"columnsTo": ["id"],
+					"onDelete": "cascade",
+					"onUpdate": "no action"
 				}
 			},
 			"compositePrimaryKeys": {},
@@ -566,20 +737,20 @@
 				"workspaces_project_id_projects_id_fk": {
 					"name": "workspaces_project_id_projects_id_fk",
 					"tableFrom": "workspaces",
-					"columnsFrom": ["project_id"],
 					"tableTo": "projects",
+					"columnsFrom": ["project_id"],
 					"columnsTo": ["id"],
-					"onUpdate": "no action",
-					"onDelete": "cascade"
+					"onDelete": "cascade",
+					"onUpdate": "no action"
 				},
 				"workspaces_worktree_id_worktrees_id_fk": {
 					"name": "workspaces_worktree_id_worktrees_id_fk",
 					"tableFrom": "workspaces",
-					"columnsFrom": ["worktree_id"],
 					"tableTo": "worktrees",
+					"columnsFrom": ["worktree_id"],
 					"columnsTo": ["id"],
-					"onUpdate": "no action",
-					"onDelete": "cascade"
+					"onDelete": "cascade",
+					"onUpdate": "no action"
 				}
 			},
 			"compositePrimaryKeys": {},
@@ -650,11 +821,11 @@
 				"worktrees_project_id_projects_id_fk": {
 					"name": "worktrees_project_id_projects_id_fk",
 					"tableFrom": "worktrees",
-					"columnsFrom": ["project_id"],
 					"tableTo": "projects",
+					"columnsFrom": ["project_id"],
 					"columnsTo": ["id"],
-					"onUpdate": "no action",
-					"onDelete": "cascade"
+					"onDelete": "cascade",
+					"onUpdate": "no action"
 				}
 			},
 			"compositePrimaryKeys": {},
@@ -665,9 +836,9 @@
 	"views": {},
 	"enums": {},
 	"_meta": {
-		"columns": {},
 		"schemas": {},
-		"tables": {}
+		"tables": {},
+		"columns": {}
 	},
 	"internal": {
 		"indexes": {}
