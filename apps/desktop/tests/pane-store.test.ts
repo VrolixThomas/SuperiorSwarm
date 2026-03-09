@@ -14,6 +14,12 @@ import type { LayoutNode, Pane, SplitNode } from "../src/shared/pane-types";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
+function getLayoutOrThrow(wsId: string): LayoutNode {
+	const layout = usePaneStore.getState().getLayout(wsId);
+	if (!layout) throw new Error(`Expected layout for ${wsId} to exist`);
+	return layout;
+}
+
 function makeTab(id: string, wsId = "ws-1"): TabItem {
 	return { kind: "terminal", id, workspaceId: wsId, title: `Tab ${id}`, cwd: "/tmp" };
 }
@@ -187,7 +193,7 @@ describe("splitPane", () => {
 
 		const newPaneId = usePaneStore.getState().splitPane("ws-1", originalId, "horizontal");
 
-		const updated = usePaneStore.getState().getLayout("ws-1")!;
+		const updated = getLayoutOrThrow("ws-1");
 		expect(updated.type).toBe("split");
 		const split = updated as SplitNode;
 		expect(split.direction).toBe("horizontal");
@@ -202,7 +208,7 @@ describe("splitPane", () => {
 		const layout = usePaneStore.getState().ensureLayout("ws-1") as Pane;
 		usePaneStore.getState().splitPane("ws-1", layout.id, "vertical");
 
-		const updated = usePaneStore.getState().getLayout("ws-1")! as SplitNode;
+		const updated = getLayoutOrThrow("ws-1") as SplitNode;
 		expect(updated.direction).toBe("vertical");
 	});
 
@@ -215,7 +221,7 @@ describe("splitPane", () => {
 
 		const newPaneId = usePaneStore.getState().splitPane("ws-1", layout.id, "horizontal", tab2);
 
-		const updated = usePaneStore.getState().getLayout("ws-1")! as SplitNode;
+		const updated = getLayoutOrThrow("ws-1") as SplitNode;
 		const originalPane = updated.children[0] as Pane;
 		const newPane = updated.children[1] as Pane;
 
@@ -241,7 +247,7 @@ describe("splitPane", () => {
 		// Second split: split the NEW pane vertically
 		const newPaneId2 = usePaneStore.getState().splitPane("ws-1", newPaneId1, "vertical");
 
-		const root = usePaneStore.getState().getLayout("ws-1")! as SplitNode;
+		const root = getLayoutOrThrow("ws-1") as SplitNode;
 		expect(root.type).toBe("split");
 		expect(root.children[0].id).toBe(originalId);
 
@@ -262,7 +268,7 @@ describe("closePane", () => {
 		const layout = usePaneStore.getState().ensureLayout("ws-1") as Pane;
 		usePaneStore.getState().closePane("ws-1", layout.id);
 
-		const afterClose = usePaneStore.getState().getLayout("ws-1")!;
+		const afterClose = getLayoutOrThrow("ws-1");
 		expect(afterClose.type).toBe("pane");
 		expect(afterClose.id).toBe(layout.id);
 	});
@@ -275,7 +281,7 @@ describe("closePane", () => {
 		// Close the new pane — original should become root again
 		usePaneStore.getState().closePane("ws-1", newPaneId);
 
-		const afterClose = usePaneStore.getState().getLayout("ws-1")!;
+		const afterClose = getLayoutOrThrow("ws-1");
 		expect(afterClose.type).toBe("pane");
 		expect(afterClose.id).toBe(originalId);
 	});
@@ -291,7 +297,7 @@ describe("closePane", () => {
 		// Close pane3 — pane2 should replace the inner split
 		usePaneStore.getState().closePane("ws-1", pane3Id);
 
-		const root = usePaneStore.getState().getLayout("ws-1")! as SplitNode;
+		const root = getLayoutOrThrow("ws-1") as SplitNode;
 		expect(root.type).toBe("split");
 		expect(root.children[0].id).toBe(originalId);
 		expect(root.children[1].type).toBe("pane");
@@ -309,9 +315,9 @@ describe("tab operations", () => {
 		const tab = makeTab("t1");
 		usePaneStore.getState().addTabToPane("ws-1", layout.id, tab);
 
-		const pane = usePaneStore.getState().getLayout("ws-1")! as Pane;
+		const pane = getLayoutOrThrow("ws-1") as Pane;
 		expect(pane.tabs).toHaveLength(1);
-		expect(pane.tabs[0]!.id).toBe("t1");
+		expect(pane.tabs[0]?.id).toBe("t1");
 		expect(pane.activeTabId).toBe("t1");
 	});
 
@@ -324,7 +330,7 @@ describe("tab operations", () => {
 		// Remove the middle tab
 		usePaneStore.getState().removeTabFromPane("ws-1", layout.id, "t2");
 
-		const pane = usePaneStore.getState().getLayout("ws-1")! as Pane;
+		const pane = getLayoutOrThrow("ws-1") as Pane;
 		expect(pane.tabs.map((t) => t.id)).toEqual(["t1", "t3"]);
 		// Should select neighbor at same index (t3) or fallback to previous
 		expect(pane.activeTabId).toBe("t3");
@@ -338,7 +344,7 @@ describe("tab operations", () => {
 		// Active is t2 (last added). Remove t2 — should select t1.
 		usePaneStore.getState().removeTabFromPane("ws-1", layout.id, "t2");
 
-		const pane = usePaneStore.getState().getLayout("ws-1")! as Pane;
+		const pane = getLayoutOrThrow("ws-1") as Pane;
 		expect(pane.activeTabId).toBe("t1");
 	});
 
@@ -354,7 +360,7 @@ describe("tab operations", () => {
 		// Remove the only tab from the new pane — should auto-close it
 		usePaneStore.getState().removeTabFromPane("ws-1", newPaneId, "t2");
 
-		const afterRemove = usePaneStore.getState().getLayout("ws-1")!;
+		const afterRemove = getLayoutOrThrow("ws-1");
 		expect(afterRemove.type).toBe("pane");
 		expect(afterRemove.id).toBe(originalId);
 	});
@@ -370,7 +376,7 @@ describe("tab operations", () => {
 		// Move t2 from new pane to original — new pane becomes empty and auto-closes
 		usePaneStore.getState().moveTabBetweenPanes("ws-1", newPaneId, originalId, "t2");
 
-		const afterMove = usePaneStore.getState().getLayout("ws-1")!;
+		const afterMove = getLayoutOrThrow("ws-1");
 		expect(afterMove.type).toBe("pane");
 		expect(afterMove.id).toBe(originalId);
 		expect((afterMove as Pane).tabs.map((t) => t.id)).toEqual(["t1", "t2"]);
@@ -387,7 +393,7 @@ describe("tab operations", () => {
 		// Move t2 from original to new — original still has t1
 		usePaneStore.getState().moveTabBetweenPanes("ws-1", originalId, newPaneId, "t2");
 
-		const root = usePaneStore.getState().getLayout("ws-1")! as SplitNode;
+		const root = getLayoutOrThrow("ws-1") as SplitNode;
 		expect(root.type).toBe("split");
 		const origPane = root.children[0] as Pane;
 		const newPane = root.children[1] as Pane;
@@ -402,7 +408,7 @@ describe("tab operations", () => {
 
 		usePaneStore.getState().setActiveTabInPane("ws-1", layout.id, "t1");
 
-		const pane = usePaneStore.getState().getLayout("ws-1")! as Pane;
+		const pane = getLayoutOrThrow("ws-1") as Pane;
 		expect(pane.activeTabId).toBe("t1");
 	});
 
@@ -412,8 +418,8 @@ describe("tab operations", () => {
 
 		usePaneStore.getState().updateTabTitleInPane("t1", "New Title");
 
-		const pane = usePaneStore.getState().getLayout("ws-1")! as Pane;
-		expect(pane.tabs[0]!.title).toBe("New Title");
+		const pane = getLayoutOrThrow("ws-1") as Pane;
+		expect(pane.tabs[0]?.title).toBe("New Title");
 	});
 
 	test("findPaneForTab finds the pane containing a tab", () => {
@@ -422,7 +428,7 @@ describe("tab operations", () => {
 
 		const pane = usePaneStore.getState().findPaneForTab("ws-1", "t1");
 		expect(pane).not.toBeNull();
-		expect(pane!.id).toBe(layout.id);
+		expect(pane?.id).toBe(layout.id);
 	});
 
 	test("findPaneForTab returns null for unknown tab", () => {
@@ -472,7 +478,7 @@ describe("focus", () => {
 
 		const focused = usePaneStore.getState().getFocusedPane("ws-1");
 		expect(focused).not.toBeNull();
-		expect(focused!.id).toBe(layout.id);
+		expect(focused?.id).toBe(layout.id);
 	});
 
 	test("getFocusedPane returns null when no pane is focused", () => {
@@ -490,12 +496,12 @@ describe("setPaneRatio", () => {
 		const layout = usePaneStore.getState().ensureLayout("ws-1") as Pane;
 		usePaneStore.getState().splitPane("ws-1", layout.id, "horizontal");
 
-		const split = usePaneStore.getState().getLayout("ws-1")! as SplitNode;
+		const split = getLayoutOrThrow("ws-1") as SplitNode;
 		expect(split.ratio).toBe(0.5);
 
 		usePaneStore.getState().setPaneRatio("ws-1", split.id, 0.7);
 
-		const updated = usePaneStore.getState().getLayout("ws-1")! as SplitNode;
+		const updated = getLayoutOrThrow("ws-1") as SplitNode;
 		expect(updated.ratio).toBe(0.7);
 	});
 });
@@ -510,13 +516,13 @@ describe("swapSplitChildren", () => {
 		const originalId = layout.id;
 		const newPaneId = usePaneStore.getState().splitPane("ws-1", originalId, "horizontal");
 
-		const before = usePaneStore.getState().getLayout("ws-1")! as SplitNode;
+		const before = getLayoutOrThrow("ws-1") as SplitNode;
 		expect(before.children[0].id).toBe(originalId);
 		expect(before.children[1].id).toBe(newPaneId);
 
 		usePaneStore.getState().swapSplitChildren("ws-1", before.id);
 
-		const after = usePaneStore.getState().getLayout("ws-1")! as SplitNode;
+		const after = getLayoutOrThrow("ws-1") as SplitNode;
 		expect(after.children[0].id).toBe(newPaneId);
 		expect(after.children[1].id).toBe(originalId);
 	});
@@ -525,12 +531,12 @@ describe("swapSplitChildren", () => {
 		const layout = usePaneStore.getState().ensureLayout("ws-1") as Pane;
 		usePaneStore.getState().splitPane("ws-1", layout.id, "horizontal");
 
-		const split = usePaneStore.getState().getLayout("ws-1")! as SplitNode;
+		const split = getLayoutOrThrow("ws-1") as SplitNode;
 		usePaneStore.getState().setPaneRatio("ws-1", split.id, 0.3);
 
 		usePaneStore.getState().swapSplitChildren("ws-1", split.id);
 
-		const after = usePaneStore.getState().getLayout("ws-1")! as SplitNode;
+		const after = getLayoutOrThrow("ws-1") as SplitNode;
 		expect(after.ratio).toBeCloseTo(0.7);
 	});
 
@@ -538,12 +544,12 @@ describe("swapSplitChildren", () => {
 		const layout = usePaneStore.getState().ensureLayout("ws-1") as Pane;
 		usePaneStore.getState().splitPane("ws-1", layout.id, "horizontal");
 
-		const split = usePaneStore.getState().getLayout("ws-1")! as SplitNode;
+		const split = getLayoutOrThrow("ws-1") as SplitNode;
 		expect(split.ratio).toBe(0.5);
 
 		usePaneStore.getState().swapSplitChildren("ws-1", split.id);
 
-		const after = usePaneStore.getState().getLayout("ws-1")! as SplitNode;
+		const after = getLayoutOrThrow("ws-1") as SplitNode;
 		expect(after.ratio).toBe(0.5);
 	});
 
@@ -551,12 +557,12 @@ describe("swapSplitChildren", () => {
 		const layout = usePaneStore.getState().ensureLayout("ws-1") as Pane;
 		usePaneStore.getState().splitPane("ws-1", layout.id, "horizontal");
 
-		const before = usePaneStore.getState().getLayout("ws-1")! as SplitNode;
+		const before = getLayoutOrThrow("ws-1") as SplitNode;
 		const beforeChildren = [before.children[0].id, before.children[1].id];
 
 		usePaneStore.getState().swapSplitChildren("ws-1", "nonexistent-split");
 
-		const after = usePaneStore.getState().getLayout("ws-1")! as SplitNode;
+		const after = getLayoutOrThrow("ws-1") as SplitNode;
 		expect(after.children[0].id).toBe(beforeChildren[0]);
 		expect(after.children[1].id).toBe(beforeChildren[1]);
 		expect(after.ratio).toBe(before.ratio);
