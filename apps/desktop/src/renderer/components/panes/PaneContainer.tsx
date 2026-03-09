@@ -19,12 +19,17 @@ export function PaneContainer({
 	const splitPane = usePaneStore((s) => s.splitPane);
 	const closePane = usePaneStore((s) => s.closePane);
 	const isFocused = focusedPaneId === pane.id;
-	const allPanes = usePaneStore((s) => {
+	// O(1) check: a split root means at least 2 panes exist
+	const canClosePane = usePaneStore((s) => {
 		const layout = s.layouts[workspaceId];
-		return layout ? getAllPanes(layout) : [];
+		return layout ? layout.type === "split" : false;
 	});
-	const paneIndex = allPanes.findIndex((p) => p.id === pane.id) + 1;
-	const canClosePane = allPanes.length > 1;
+	const paneIndex = usePaneStore((s) => {
+		const layout = s.layouts[workspaceId];
+		if (!layout) return 1;
+		const panes = getAllPanes(layout);
+		return panes.findIndex((p) => p.id === pane.id) + 1;
+	});
 
 	const [contextMenu, setContextMenu] = useState<{
 		x: number;

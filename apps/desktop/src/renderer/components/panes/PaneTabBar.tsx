@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useRef, useState } from "react";
 import type { Pane } from "../../../shared/pane-types";
-import { getAllPanes, usePaneStore } from "../../stores/pane-store";
+import { usePaneStore } from "../../stores/pane-store";
 import type { TabItem } from "../../stores/tab-store";
 import { useTabStore } from "../../stores/tab-store";
 import { trpc } from "../../trpc/client";
@@ -116,9 +116,10 @@ export function PaneTabBar({
 	const closePane = usePaneStore((s) => s.closePane);
 	const addTerminalTab = useTabStore((s) => s.addTerminalTab);
 	const activeWorkspaceCwd = useTabStore((s) => s.activeWorkspaceCwd);
-	const allPanes = usePaneStore((s) => {
+	// O(1) check: a split root means at least 2 panes exist
+	const canClosePane = usePaneStore((s) => {
 		const layout = s.layouts[workspaceId];
-		return layout ? getAllPanes(layout) : [];
+		return layout ? layout.type === "split" : false;
 	});
 
 	const detachMutation = trpc.workspaces.detachTerminal.useMutation();
@@ -142,8 +143,6 @@ export function PaneTabBar({
 		e.stopPropagation();
 		setContextMenu({ x: e.clientX, y: e.clientY });
 	}, []);
-
-	const canClosePane = allPanes.length > 1;
 
 	return (
 		<div
