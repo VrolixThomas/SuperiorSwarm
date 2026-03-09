@@ -116,6 +116,7 @@ interface PaneStore {
 	): string;
 	closePane(workspaceId: string, paneId: string): void;
 	setPaneRatio(workspaceId: string, splitId: string, ratio: number): void;
+	swapSplitChildren(workspaceId: string, splitId: string): void;
 
 	// Focus
 	setFocusedPane(paneId: string): void;
@@ -246,6 +247,22 @@ export const usePaneStore = create<PaneStore>((set, get) => ({
 
 		const updated: SplitNode = { ...split, ratio };
 		const newRoot = replaceNodeInTree(root, splitId, updated);
+		set((s) => ({ layouts: { ...s.layouts, [workspaceId]: newRoot } }));
+	},
+
+	swapSplitChildren: (workspaceId, splitId) => {
+		const root = get().layouts[workspaceId];
+		if (!root) return;
+
+		const split = findSplitById(root, splitId);
+		if (!split) return;
+
+		const swapped: SplitNode = {
+			...split,
+			children: [split.children[1], split.children[0]],
+			ratio: 1 - split.ratio,
+		};
+		const newRoot = replaceNodeInTree(root, splitId, swapped);
 		set((s) => ({ layouts: { ...s.layouts, [workspaceId]: newRoot } }));
 	},
 

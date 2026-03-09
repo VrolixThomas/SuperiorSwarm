@@ -246,3 +246,19 @@ body,
 .rail-flyout {
 	animation: flyout-in var(--transition-fast) both;
 }
+
+/* ── Drop zone overlays (tab drag-to-edge splitting) ─────────────────────── */
+
+.drop-zone-highlight {
+	background: rgba(10, 132, 255, 0.15);
+	border: 1px dashed var(--accent);
+	border-radius: 4px;
+	pointer-events: auto;
+	transition: opacity 80ms;
+}
+
+.drop-zone-center-highlight {
+	background: rgba(10, 132, 255, 0.08);
+	border: 1px dashed var(--accent);
+	border-radius: 4px;
+}

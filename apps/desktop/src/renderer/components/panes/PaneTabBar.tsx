@@ -4,6 +4,7 @@ import { usePaneStore } from "../../stores/pane-store";
 import type { TabItem } from "../../stores/tab-store";
 import { useTabStore } from "../../stores/tab-store";
 import { trpc } from "../../trpc/client";
+import { TAB_DRAG_MIME } from "./DropZoneOverlay";
 import { PaneContextMenu } from "./PaneContextMenu";
 
 function TabIcon({ kind }: { kind: TabItem["kind"] }) {
@@ -27,12 +28,14 @@ function accentColor(kind: TabItem["kind"]): string {
 function TabPill({
 	tab,
 	isActive,
+	paneId,
 	onSelect,
 	onClose,
 	onContextMenu,
 }: {
 	tab: TabItem;
 	isActive: boolean;
+	paneId: string;
 	onSelect: () => void;
 	onClose: () => void;
 	onContextMenu: (e: React.MouseEvent) => void;
@@ -45,11 +48,24 @@ function TabPill({
 		if (!isActive && closeRef.current) closeRef.current.style.opacity = "0";
 	}, [isActive]);
 
+	const handleDragStart = useCallback(
+		(e: React.DragEvent) => {
+			e.dataTransfer.setData(
+				TAB_DRAG_MIME,
+				JSON.stringify({ tabId: tab.id, sourcePaneId: paneId })
+			);
+			e.dataTransfer.effectAllowed = "move";
+		},
+		[tab.id, paneId]
+	);
+
 	return (
 		<div
 			role="tab"
 			tabIndex={0}
 			aria-selected={isActive}
+			draggable
+			onDragStart={handleDragStart}
 			onClick={onSelect}
 			onContextMenu={onContextMenu}
 			onKeyDown={(e) => {
@@ -171,6 +187,7 @@ export function PaneTabBar({
 							<TabPill
 								tab={tab}
 								isActive={isActive}
+								paneId={pane.id}
 								onSelect={() => setActiveTabInPane(workspaceId, pane.id, tab.id)}
 								onClose={() => {
 									if (tab.kind === "terminal" && tab.workspaceId) {
