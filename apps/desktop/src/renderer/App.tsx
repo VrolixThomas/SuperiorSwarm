@@ -19,7 +19,10 @@ import { trpc } from "./trpc/client";
 const SAVE_INTERVAL_MS = 30_000;
 
 function collectSnapshot() {
-	const { tabs, activeTabId, activeWorkspaceId, activeWorkspaceCwd } = useTabStore.getState();
+	const store = useTabStore.getState();
+	const { activeWorkspaceId, activeWorkspaceCwd } = store;
+	const tabs = store.getAllTabs();
+	const activeTabId = store.getActiveTabId();
 
 	const terminalTabs = tabs.filter((t) => t.kind === "terminal" && t.workspaceId);
 	const sessions = terminalTabs.map((tab, i) => ({

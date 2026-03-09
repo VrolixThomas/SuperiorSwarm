@@ -107,7 +107,7 @@ export function PaneTabBar({
 }) {
 	const setActiveTabInPane = usePaneStore((s) => s.setActiveTabInPane);
 	const removeTabFromPane = usePaneStore((s) => s.removeTabFromPane);
-	const addTabToPane = usePaneStore((s) => s.addTabToPane);
+	const setFocusedPane = usePaneStore((s) => s.setFocusedPane);
 	const addTerminalTab = useTabStore((s) => s.addTerminalTab);
 	const activeWorkspaceCwd = useTabStore((s) => s.activeWorkspaceCwd);
 
@@ -157,13 +157,10 @@ export function PaneTabBar({
 				<button
 					type="button"
 					aria-label="New terminal tab"
-					// TODO(Task 5): addTerminalTab will delegate to pane-store, remove manual addTabToPane
 					onClick={() => {
-						const tabId = addTerminalTab(workspaceId, activeWorkspaceCwd);
-						const tab = useTabStore.getState().tabs.find((t) => t.id === tabId);
-						if (tab) {
-							addTabToPane(workspaceId, pane.id, tab);
-						}
+						// Focus this pane so addTerminalTab adds the tab here
+						setFocusedPane(pane.id);
+						addTerminalTab(workspaceId, activeWorkspaceCwd);
 					}}
 					className="flex h-[24px] w-[24px] items-center justify-center rounded-[5px] border-none bg-transparent text-[var(--text-quaternary)] transition-all duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-tertiary)]"
 				>

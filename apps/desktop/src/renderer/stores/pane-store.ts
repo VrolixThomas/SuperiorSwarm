@@ -133,6 +133,7 @@ interface PaneStore {
 	): void;
 	setActiveTabInPane(workspaceId: string, paneId: string, tabId: string): void;
 	updateTabTitleInPane(tabId: string, title: string): void;
+	updateTabInPanes(tabId: string, updater: (tab: TabItem) => TabItem): void;
 
 	// Find which pane contains a given tab
 	findPaneForTab(workspaceId: string, tabId: string): Pane | null;
@@ -382,6 +383,29 @@ export const usePaneStore = create<PaneStore>((set, get) => ({
 				return {
 					...pane,
 					tabs: pane.tabs.map((t) => (t.id === tabId ? { ...t, title } : t)),
+				};
+			});
+			newLayouts[wsId] = newRoot;
+			if (newRoot !== root) changed = true;
+		}
+
+		if (changed) {
+			set({ layouts: newLayouts });
+		}
+	},
+
+	updateTabInPanes: (tabId, updater) => {
+		const { layouts } = get();
+		const newLayouts: Record<string, LayoutNode> = {};
+		let changed = false;
+
+		for (const [wsId, root] of Object.entries(layouts)) {
+			const newRoot = updateAllPanesInTree(root, (pane) => {
+				const hasTab = pane.tabs.some((t) => t.id === tabId);
+				if (!hasTab) return pane;
+				return {
+					...pane,
+					tabs: pane.tabs.map((t) => (t.id === tabId ? updater(t) : t)),
 				};
 			});
 			newLayouts[wsId] = newRoot;

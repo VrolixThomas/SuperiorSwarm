@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, test } from "bun:test";
+import { getAllPanes, usePaneStore } from "../src/renderer/stores/pane-store";
 import {
 	PANEL_CLOSED,
 	type RightPanelState,
@@ -54,14 +55,23 @@ function assertPanelOpen(
 }
 
 function resetStore() {
+	usePaneStore.setState({ layouts: {}, focusedPaneId: null });
 	useTabStore.setState({
-		tabs: [],
-		activeTabId: null,
 		activeWorkspaceId: null,
 		activeWorkspaceCwd: "",
 		diffMode: "split",
 		rightPanel: PANEL_CLOSED,
 	});
+}
+
+/** Get all tabs for a workspace from pane-store. */
+function getTabsForWorkspace(workspaceId: string) {
+	return useTabStore.getState().getTabsByWorkspace(workspaceId);
+}
+
+/** Get the active tab ID (from pane-store via tab-store). */
+function getActiveTabId() {
+	return useTabStore.getState().getActiveTabId();
 }
 
 // ── diffContextsEqual ────────────────────────────────────────────────────────
@@ -210,6 +220,7 @@ describe("closeDiff", () => {
 
 	test("closes panel when repoPath matches", () => {
 		const { toggleDiffPanel, addTerminalTab, closeDiff } = useTabStore.getState();
+		useTabStore.getState().setActiveWorkspace("ws-1", "/repo");
 		addTerminalTab("ws-1", "/repo");
 		toggleDiffPanel(workingTreeCtx);
 		closeDiff("ws-1", "/repo");
@@ -231,18 +242,19 @@ describe("closeDiff", () => {
 		openDiffFile("ws-1", workingTreeCtx, "src/main.ts", "typescript");
 		openDiffFile("ws-1", workingTreeCtx, "src/util.ts", "typescript");
 
-		expect(useTabStore.getState().tabs).toHaveLength(2);
+		expect(getTabsForWorkspace("ws-1")).toHaveLength(2);
 
 		closeDiff("ws-1", "/repo");
-		expect(useTabStore.getState().tabs).toHaveLength(0);
+		expect(getTabsForWorkspace("ws-1")).toHaveLength(0);
 	});
 
 	test("does not remove diff-file tabs for non-matching workspace", () => {
-		const { openDiffFile, closeDiff } = useTabStore.getState();
+		const { openDiffFile, closeDiff, setActiveWorkspace } = useTabStore.getState();
+		setActiveWorkspace("ws-1", "/repo");
 		openDiffFile("ws-1", workingTreeCtx, "src/main.ts", "typescript");
 
 		closeDiff("ws-2", "/repo");
-		expect(useTabStore.getState().tabs).toHaveLength(1);
+		expect(getTabsForWorkspace("ws-1")).toHaveLength(1);
 	});
 });
 
@@ -316,39 +328,87 @@ describe("openFile", () => {
 		const { openFile, setActiveWorkspace } = useTabStore.getState();
 		setActiveWorkspace("ws-1", "/repo");
 		const id = openFile("ws-1", "/repo", "src/main.ts", "typescript");
-		const { tabs, activeTabId } = useTabStore.getState();
+		const tabs = getTabsForWorkspace("ws-1");
+		const activeTabId = getActiveTabId();
 		expect(tabs).toHaveLength(1);
 		expect(activeTabId).toBe(id);
-		const tab = tabs[0]!;
-		expect(tab.kind).toBe("file");
-		if (tab.kind === "file") {
+		const tab = tabs[0];
+		expect(tab?.kind).toBe("file");
+		if (tab?.kind === "file") {
 			expect(tab.filePath).toBe("src/main.ts");
 			expect(tab.repoPath).toBe("/repo");
 		}
 	});
 
 	test("deduplicates by repoPath + filePath", () => {
-		const { openFile } = useTabStore.getState();
+		const { openFile, setActiveWorkspace } = useTabStore.getState();
+		setActiveWorkspace("ws-1", "/repo");
 		const id1 = openFile("ws-1", "/repo", "src/main.ts", "typescript");
 		const id2 = openFile("ws-1", "/repo", "src/main.ts", "typescript");
 		expect(id1).toBe(id2);
-		expect(useTabStore.getState().tabs).toHaveLength(1);
+		expect(getTabsForWorkspace("ws-1")).toHaveLength(1);
 	});
 
 	test("opens different files as separate tabs", () => {
-		const { openFile } = useTabStore.getState();
+		const { openFile, setActiveWorkspace } = useTabStore.getState();
+		setActiveWorkspace("ws-1", "/repo");
 		openFile("ws-1", "/repo", "src/main.ts", "typescript");
 		openFile("ws-1", "/repo", "src/util.ts", "typescript");
-		expect(useTabStore.getState().tabs).toHaveLength(2);
+		expect(getTabsForWorkspace("ws-1")).toHaveLength(2);
 	});
 
 	test("updates initialPosition on existing tab", () => {
-		const { openFile } = useTabStore.getState();
+		const { openFile, setActiveWorkspace } = useTabStore.getState();
+		setActiveWorkspace("ws-1", "/repo");
 		openFile("ws-1", "/repo", "src/main.ts", "typescript");
 		openFile("ws-1", "/repo", "src/main.ts", "typescript", { lineNumber: 10, column: 5 });
-		const tab = useTabStore.getState().tabs[0]!;
-		if (tab.kind === "file") {
+		const tabs = getTabsForWorkspace("ws-1");
+		const tab = tabs[0];
+		if (tab?.kind === "file") {
 			expect(tab.initialPosition).toEqual({ lineNumber: 10, column: 5 });
 		}
+	});
+});
+
+// ── addTerminalTab ───────────────────────────────────────────────────────────
+
+describe("addTerminalTab", () => {
+	beforeEach(resetStore);
+
+	test("adds a terminal tab to the focused pane", () => {
+		useTabStore.getState().setActiveWorkspace("ws-1", "/repo");
+		const id = useTabStore.getState().addTerminalTab("ws-1", "/repo");
+		const tabs = getTabsForWorkspace("ws-1");
+		expect(tabs).toHaveLength(1);
+		expect(tabs[0]?.kind).toBe("terminal");
+		expect(tabs[0]?.id).toBe(id);
+	});
+
+	test("sets the new tab as active", () => {
+		useTabStore.getState().setActiveWorkspace("ws-1", "/repo");
+		const id = useTabStore.getState().addTerminalTab("ws-1", "/repo");
+		expect(getActiveTabId()).toBe(id);
+	});
+});
+
+// ── hydrate ──────────────────────────────────────────────────────────────────
+
+describe("hydrate", () => {
+	beforeEach(resetStore);
+
+	test("restores sessions into pane-store", () => {
+		useTabStore.getState().hydrate(
+			[
+				{ id: "terminal-1", workspaceId: "ws-1", title: "T1", cwd: "/repo" },
+				{ id: "terminal-2", workspaceId: "ws-1", title: "T2", cwd: "/repo" },
+			],
+			"terminal-1",
+			"ws-1",
+			"/repo"
+		);
+		const tabs = getTabsForWorkspace("ws-1");
+		expect(tabs).toHaveLength(2);
+		expect(getActiveTabId()).toBe("terminal-1");
+		expect(useTabStore.getState().activeWorkspaceId).toBe("ws-1");
 	});
 });

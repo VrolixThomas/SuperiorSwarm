@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type { DiffContext } from "../../shared/diff-types";
 import type { GitHubPRContext } from "../../shared/github-types";
+import type { Pane } from "../../shared/pane-types";
 
 // ─── Tab types ───────────────────────────────────────────────────────────────
 
@@ -45,18 +46,21 @@ export const PANEL_CLOSED: RightPanelState = { open: false };
 // ─── Store interface ─────────────────────────────────────────────────────────
 
 interface TabStore {
-	tabs: TabItem[];
-	activeTabId: string | null;
+	// UI-level state (not pane-level)
 	activeWorkspaceId: string | null;
 	activeWorkspaceCwd: string;
 	diffMode: "split" | "inline";
 	rightPanel: RightPanelState;
 
+	// Derived — reads from pane-store for backwards compat
+	getAllTabs: () => TabItem[];
+	getActiveTabId: () => string | null;
+
 	// Queries
 	getVisibleTabs: () => TabItem[];
 	getTabsByWorkspace: (workspaceId: string) => TabItem[];
 
-	// Tab management
+	// Tab management (delegates to pane-store)
 	addTab: (tab: TabItem) => string;
 	removeTab: (id: string) => void;
 	setActiveTab: (id: string) => void;
@@ -65,7 +69,7 @@ interface TabStore {
 	// Workspace
 	setActiveWorkspace: (workspaceId: string, cwd: string) => void;
 
-	// Terminal convenience — matches old API signature used by WorkspaceItem/CreateWorktreeModal
+	// Terminal convenience
 	addTerminalTab: (workspaceId: string, cwd: string, title?: string) => string;
 
 	// PR review
@@ -120,7 +124,7 @@ function nextFileTabId(): string {
 	return `file-tab-${++fileTabCounter}`;
 }
 
-// ─── Dedup key for diff-file tabs ────────────────────────────────────────────
+// ─── Dedup key helpers ───────────────────────────────────────────────────────
 
 function diffFileKey(diffCtx: DiffContext, filePath: string): string {
 	return `diff-file:${diffCtx.repoPath}:${filePath}`;
@@ -156,74 +160,141 @@ export function diffContextsEqual(a: DiffContext, b: DiffContext): boolean {
 	}
 }
 
-// ─── Next-neighbor selection ─────────────────────────────────────────────────
+// ─── Pane-store access helpers ───────────────────────────────────────────────
 
-function pickNextTab(
-	tabs: TabItem[],
-	removedId: string,
-	workspaceId: string | null
-): string | null {
-	const wsTabs = workspaceId ? tabs.filter((t) => t.workspaceId === workspaceId) : tabs;
-	const idx = wsTabs.findIndex((t) => t.id === removedId);
-	const remaining = wsTabs.filter((t) => t.id !== removedId);
-	return remaining[Math.min(idx, remaining.length - 1)]?.id ?? null;
+/** Lazily import pane-store to avoid circular-import issues at module init. */
+function pane() {
+	// Dynamic require at call time — the module is already loaded by then.
+	// eslint-disable-next-line @typescript-eslint/no-require-imports
+	return require("./pane-store") as typeof import("./pane-store");
+}
+
+/** Get pane-store state (shorthand). */
+function ps() {
+	return pane().usePaneStore.getState();
+}
+
+/** Get all panes from a layout node (shorthand). */
+function getAll(node: import("../../shared/pane-types").LayoutNode) {
+	return pane().getAllPanes(node);
+}
+
+/** Collect all tabs across every pane for a given workspace layout. */
+function allTabsForWorkspace(workspaceId: string): TabItem[] {
+	const root = ps().layouts[workspaceId];
+	if (!root) return [];
+	return getAll(root).flatMap((p) => p.tabs);
+}
+
+/** Get the focused pane for a workspace, falling back to the first pane. */
+function resolveFocusedPane(workspaceId: string): Pane | null {
+	const state = ps();
+	const layout = state.ensureLayout(workspaceId);
+	const focused = state.getFocusedPane(workspaceId);
+	if (focused) return focused;
+	const panes = getAll(layout);
+	const first = panes[0] ?? null;
+	if (first) state.setFocusedPane(first.id);
+	return first;
+}
+
+/** Search all panes in a workspace for a tab matching a predicate. */
+function findTabInWorkspace(
+	workspaceId: string,
+	predicate: (tab: TabItem) => boolean
+): { tab: TabItem; pane: Pane } | null {
+	const root = ps().layouts[workspaceId];
+	if (!root) return null;
+	for (const p of getAll(root)) {
+		const tab = p.tabs.find(predicate);
+		if (tab) return { tab, pane: p };
+	}
+	return null;
 }
 
 // ─── Store ───────────────────────────────────────────────────────────────────
 
-export const useTabStore = create<TabStore>((set, get) => ({
-	tabs: [],
-	activeTabId: null,
+export const useTabStore = create<TabStore>()((set, get) => ({
+	// UI-level state
 	activeWorkspaceId: null,
 	activeWorkspaceCwd: "",
 	diffMode: "split",
 	rightPanel: defaultPanelForCwd(""),
 
+	// ── Derived properties ──────────────────────────────────────────────
+
+	getAllTabs: () => {
+		const state = ps();
+		return Object.values(state.layouts).flatMap((root) => getAll(root).flatMap((p) => p.tabs));
+	},
+
+	getActiveTabId: () => {
+		const wsId = get().activeWorkspaceId;
+		if (!wsId) return null;
+		const focused = ps().getFocusedPane(wsId);
+		return focused?.activeTabId ?? null;
+	},
+
+	// ── Queries ─────────────────────────────────────────────────────────
+
 	getVisibleTabs: () => {
-		const { tabs, activeWorkspaceId } = get();
+		const { activeWorkspaceId } = get();
 		if (!activeWorkspaceId) return [];
-		return tabs.filter((t) => t.workspaceId === activeWorkspaceId);
+		return allTabsForWorkspace(activeWorkspaceId);
 	},
 
 	getTabsByWorkspace: (workspaceId) => {
-		return get().tabs.filter((t) => t.workspaceId === workspaceId);
+		return allTabsForWorkspace(workspaceId);
 	},
 
+	// ── Tab management (delegates to pane-store) ────────────────────────
+
 	addTab: (tab) => {
-		set((s) => ({
-			tabs: [...s.tabs, tab],
-			activeTabId: tab.id,
-		}));
+		ps().ensureLayout(tab.workspaceId);
+		const focused = resolveFocusedPane(tab.workspaceId);
+		if (focused) {
+			ps().addTabToPane(tab.workspaceId, focused.id, tab);
+		}
 		return tab.id;
 	},
 
 	removeTab: (id) => {
-		set((s) => {
-			const tab = s.tabs.find((t) => t.id === id);
-			const filtered = s.tabs.filter((t) => t.id !== id);
-			let nextActive = s.activeTabId;
-			if (s.activeTabId === id) {
-				nextActive = pickNextTab(s.tabs, id, tab?.workspaceId ?? s.activeWorkspaceId);
-			}
-			return { tabs: filtered, activeTabId: nextActive };
-		});
+		const wsId = get().activeWorkspaceId;
+		if (!wsId) return;
+		const found = ps().findPaneForTab(wsId, id);
+		if (found) {
+			ps().removeTabFromPane(wsId, found.id, id);
+		}
 	},
 
-	setActiveTab: (id) => set({ activeTabId: id }),
+	setActiveTab: (id) => {
+		const wsId = get().activeWorkspaceId;
+		if (!wsId) return;
+		const found = ps().findPaneForTab(wsId, id);
+		if (found) {
+			ps().setActiveTabInPane(wsId, found.id, id);
+			ps().setFocusedPane(found.id);
+		}
+	},
 
-	updateTabTitle: (id, title) =>
-		set((s) => ({
-			tabs: s.tabs.map((t) => (t.id === id ? { ...t, title } : t)),
-		})),
+	updateTabTitle: (id, title) => {
+		ps().updateTabTitleInPane(id, title);
+	},
 
 	setActiveWorkspace: (workspaceId, cwd) => {
-		const { tabs, activeTabId } = get();
-		const wsTabs = tabs.filter((t) => t.workspaceId === workspaceId);
-		const currentStillVisible = wsTabs.find((t) => t.id === activeTabId);
+		ps().ensureLayout(workspaceId);
+		// Try to keep focus on existing pane, or set to first pane
+		const focused = ps().getFocusedPane(workspaceId);
+		if (!focused) {
+			const root = ps().layouts[workspaceId];
+			if (root) {
+				const first = getAll(root)[0];
+				if (first) ps().setFocusedPane(first.id);
+			}
+		}
 		set({
 			activeWorkspaceId: workspaceId,
 			activeWorkspaceCwd: cwd,
-			activeTabId: currentStillVisible?.id ?? wsTabs[0]?.id ?? null,
 			rightPanel: defaultPanelForCwd(cwd),
 		});
 	},
@@ -232,10 +303,11 @@ export const useTabStore = create<TabStore>((set, get) => ({
 		const id = nextTerminalId();
 		const tabTitle = title ?? `Terminal ${terminalCounter}`;
 		const tab: TabItem = { kind: "terminal", id, workspaceId, title: tabTitle, cwd };
-		set((s) => ({
-			tabs: [...s.tabs, tab],
-			activeTabId: id,
-		}));
+		ps().ensureLayout(workspaceId);
+		const focused = resolveFocusedPane(workspaceId);
+		if (focused) {
+			ps().addTabToPane(workspaceId, focused.id, tab);
+		}
 		return id;
 	},
 
@@ -244,17 +316,18 @@ export const useTabStore = create<TabStore>((set, get) => ({
 	},
 
 	openPRReviewFile: (workspaceId, prCtx, filePath, language) => {
-		const { tabs } = get();
 		const key = prReviewFileKey(prCtx, filePath);
-		const existing = tabs.find(
+		const found = findTabInWorkspace(
+			workspaceId,
 			(t) =>
 				t.kind === "pr-review-file" &&
 				t.workspaceId === workspaceId &&
 				prReviewFileKey(t.prCtx, t.filePath) === key
 		);
-		if (existing) {
-			set({ activeTabId: existing.id });
-			return existing.id;
+		if (found) {
+			ps().setActiveTabInPane(workspaceId, found.pane.id, found.tab.id);
+			ps().setFocusedPane(found.pane.id);
+			return found.tab.id;
 		}
 		const id = nextFileTabId();
 		const title = filePath.split("/").pop() ?? filePath;
@@ -267,7 +340,11 @@ export const useTabStore = create<TabStore>((set, get) => ({
 			title,
 			language,
 		};
-		set((s) => ({ tabs: [...s.tabs, tab], activeTabId: id }));
+		ps().ensureLayout(workspaceId);
+		const focused = resolveFocusedPane(workspaceId);
+		if (focused) {
+			ps().addTabToPane(workspaceId, focused.id, tab);
+		}
 		return id;
 	},
 
@@ -308,7 +385,6 @@ export const useTabStore = create<TabStore>((set, get) => ({
 		const { rightPanel } = get();
 		if (!rightPanel.open) return;
 		if (rightPanel.mode === "explorer") {
-			// Only switch to diff if we have a diffCtx
 			if (rightPanel.diffCtx) {
 				set({ rightPanel: { ...rightPanel, mode: "diff" } });
 			}
@@ -318,17 +394,18 @@ export const useTabStore = create<TabStore>((set, get) => ({
 	},
 
 	openDiffFile: (workspaceId, diffCtx, filePath, language) => {
-		const { tabs } = get();
 		const key = diffFileKey(diffCtx, filePath);
-		const existing = tabs.find(
+		const found = findTabInWorkspace(
+			workspaceId,
 			(t) =>
 				t.kind === "diff-file" &&
 				t.workspaceId === workspaceId &&
 				diffFileKey(t.diffCtx, t.filePath) === key
 		);
-		if (existing) {
-			set({ activeTabId: existing.id });
-			return existing.id;
+		if (found) {
+			ps().setActiveTabInPane(workspaceId, found.pane.id, found.tab.id);
+			ps().setFocusedPane(found.pane.id);
+			return found.tab.id;
 		}
 
 		const id = nextFileTabId();
@@ -342,10 +419,11 @@ export const useTabStore = create<TabStore>((set, get) => ({
 			title,
 			language,
 		};
-		set((s) => ({
-			tabs: [...s.tabs, tab],
-			activeTabId: id,
-		}));
+		ps().ensureLayout(workspaceId);
+		const focused = resolveFocusedPane(workspaceId);
+		if (focused) {
+			ps().addTabToPane(workspaceId, focused.id, tab);
+		}
 		return id;
 	},
 
@@ -353,50 +431,46 @@ export const useTabStore = create<TabStore>((set, get) => ({
 		const { rightPanel } = get();
 		const closePanel = rightPanel.open && rightPanel.diffCtx?.repoPath === repoPath;
 
-		set((s) => {
-			const filtered = s.tabs.filter(
-				(t) =>
-					!(
+		const root = ps().layouts[workspaceId];
+		if (root) {
+			// Iterate all panes and remove matching diff-file tabs
+			for (const p of getAll(root)) {
+				const matchingTabs = p.tabs.filter(
+					(t) =>
 						t.workspaceId === workspaceId &&
 						t.kind === "diff-file" &&
 						t.diffCtx.repoPath === repoPath
-					)
-			);
-			let nextActive = s.activeTabId;
-			if (s.activeTabId && !filtered.find((t) => t.id === s.activeTabId)) {
-				const wsTabs = filtered.filter((t) => t.workspaceId === workspaceId);
-				nextActive = wsTabs[0]?.id ?? null;
+				);
+				for (const tab of matchingTabs) {
+					ps().removeTabFromPane(workspaceId, p.id, tab.id);
+				}
 			}
-			return {
-				tabs: filtered,
-				activeTabId: nextActive,
-				...(closePanel ? { rightPanel: PANEL_CLOSED } : {}),
-			};
-		});
+		}
+
+		if (closePanel) {
+			set({ rightPanel: PANEL_CLOSED });
+		}
 	},
 
 	openFile: (workspaceId, repoPath, filePath, language, initialPosition) => {
-		const { tabs } = get();
 		const key = fileKey(repoPath, filePath);
-		const existing = tabs.find(
+		const found = findTabInWorkspace(
+			workspaceId,
 			(t) =>
 				t.kind === "file" &&
 				t.workspaceId === workspaceId &&
 				fileKey(t.repoPath, t.filePath) === key
 		);
-		if (existing) {
-			// If reopening with a new position, update the tab
-			if (initialPosition && existing.kind === "file") {
-				set((s) => ({
-					tabs: s.tabs.map((t) =>
-						t.id === existing.id && t.kind === "file" ? { ...t, initialPosition } : t
-					),
-					activeTabId: existing.id,
-				}));
-			} else {
-				set({ activeTabId: existing.id });
+		if (found) {
+			if (initialPosition && found.tab.kind === "file") {
+				// Update the tab's initialPosition in the pane-store
+				ps().updateTabInPanes(found.tab.id, (t) =>
+					t.kind === "file" ? { ...t, initialPosition } : t
+				);
 			}
-			return existing.id;
+			ps().setActiveTabInPane(workspaceId, found.pane.id, found.tab.id);
+			ps().setFocusedPane(found.pane.id);
+			return found.tab.id;
 		}
 
 		const id = nextFileTabId();
@@ -411,19 +485,18 @@ export const useTabStore = create<TabStore>((set, get) => ({
 			language,
 			initialPosition,
 		};
-		set((s) => ({
-			tabs: [...s.tabs, tab],
-			activeTabId: id,
-		}));
+		ps().ensureLayout(workspaceId);
+		const focused = resolveFocusedPane(workspaceId);
+		if (focused) {
+			ps().addTabToPane(workspaceId, focused.id, tab);
+		}
 		return id;
 	},
 
 	clearInitialPosition: (tabId) => {
-		set((s) => ({
-			tabs: s.tabs.map((t) =>
-				t.id === tabId && t.kind === "file" ? { ...t, initialPosition: undefined } : t
-			),
-		}));
+		ps().updateTabInPanes(tabId, (t) =>
+			t.kind === "file" ? { ...t, initialPosition: undefined } : t
+		);
 	},
 
 	setDiffMode: (mode) => set({ diffMode: mode }),
@@ -435,15 +508,37 @@ export const useTabStore = create<TabStore>((set, get) => ({
 		}, 0);
 		terminalCounter = maxId;
 
+		const tabs: TabItem[] = sessions.map((s) => ({
+			kind: "terminal" as const,
+			id: s.id,
+			workspaceId: s.workspaceId,
+			title: s.title,
+			cwd: s.cwd,
+		}));
+
+		// Group tabs by workspace and hydrate into pane-store
+		const tabsByWorkspace = new Map<string, TabItem[]>();
+		for (const tab of tabs) {
+			const existing = tabsByWorkspace.get(tab.workspaceId) ?? [];
+			existing.push(tab);
+			tabsByWorkspace.set(tab.workspaceId, existing);
+		}
+
+		const { createDefaultPane } = pane();
+		for (const [wsId, wsTabs] of tabsByWorkspace) {
+			const newPane = createDefaultPane(wsTabs);
+			// If the activeTab is in this workspace, set it as the active tab in the pane
+			if (activeTab && wsTabs.some((t) => t.id === activeTab)) {
+				newPane.activeTabId = activeTab;
+			}
+			ps().hydrateLayout(wsId, newPane);
+			// Focus the pane if this is the active workspace
+			if (wsId === activeWs) {
+				ps().setFocusedPane(newPane.id);
+			}
+		}
+
 		set({
-			tabs: sessions.map((s) => ({
-				kind: "terminal" as const,
-				id: s.id,
-				workspaceId: s.workspaceId,
-				title: s.title,
-				cwd: s.cwd,
-			})),
-			activeTabId: activeTab,
 			activeWorkspaceId: activeWs,
 			activeWorkspaceCwd: activeCwd,
 			rightPanel: defaultPanelForCwd(activeCwd),
