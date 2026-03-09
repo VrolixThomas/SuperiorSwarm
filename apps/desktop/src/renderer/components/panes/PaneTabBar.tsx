@@ -1,9 +1,10 @@
-import { Fragment, useCallback, useRef } from "react";
+import { Fragment, useCallback, useRef, useState } from "react";
 import type { Pane } from "../../../shared/pane-types";
-import { usePaneStore } from "../../stores/pane-store";
+import { getAllPanes, usePaneStore } from "../../stores/pane-store";
 import type { TabItem } from "../../stores/tab-store";
 import { useTabStore } from "../../stores/tab-store";
 import { trpc } from "../../trpc/client";
+import { PaneContextMenu } from "./PaneContextMenu";
 
 function TabIcon({ kind }: { kind: TabItem["kind"] }) {
 	if (kind === "terminal") {
@@ -28,11 +29,13 @@ function TabPill({
 	isActive,
 	onSelect,
 	onClose,
+	onContextMenu,
 }: {
 	tab: TabItem;
 	isActive: boolean;
 	onSelect: () => void;
 	onClose: () => void;
+	onContextMenu: (e: React.MouseEvent) => void;
 }) {
 	const closeRef = useRef<HTMLButtonElement>(null);
 	const showClose = useCallback(() => {
@@ -48,6 +51,7 @@ function TabPill({
 			tabIndex={0}
 			aria-selected={isActive}
 			onClick={onSelect}
+			onContextMenu={onContextMenu}
 			onKeyDown={(e) => {
 				if (e.key === "Enter" || e.key === " ") {
 					e.preventDefault();
@@ -108,13 +112,44 @@ export function PaneTabBar({
 	const setActiveTabInPane = usePaneStore((s) => s.setActiveTabInPane);
 	const removeTabFromPane = usePaneStore((s) => s.removeTabFromPane);
 	const setFocusedPane = usePaneStore((s) => s.setFocusedPane);
+	const splitPane = usePaneStore((s) => s.splitPane);
+	const closePane = usePaneStore((s) => s.closePane);
 	const addTerminalTab = useTabStore((s) => s.addTerminalTab);
 	const activeWorkspaceCwd = useTabStore((s) => s.activeWorkspaceCwd);
+	const allPanes = usePaneStore((s) => {
+		const layout = s.layouts[workspaceId];
+		return layout ? getAllPanes(layout) : [];
+	});
 
 	const detachMutation = trpc.workspaces.detachTerminal.useMutation();
 
+	const [contextMenu, setContextMenu] = useState<{
+		x: number;
+		y: number;
+		tab?: TabItem;
+	} | null>(null);
+
+	const handleTabContextMenu = useCallback((e: React.MouseEvent, tab: TabItem) => {
+		e.preventDefault();
+		e.stopPropagation();
+		setContextMenu({ x: e.clientX, y: e.clientY, tab });
+	}, []);
+
+	const handleBarContextMenu = useCallback((e: React.MouseEvent) => {
+		// Only trigger on empty area (the bar itself or the tablist padding)
+		if ((e.target as HTMLElement).closest("[role=tab]")) return;
+		e.preventDefault();
+		e.stopPropagation();
+		setContextMenu({ x: e.clientX, y: e.clientY });
+	}, []);
+
+	const canClosePane = allPanes.length > 1;
+
 	return (
-		<div className="flex h-[36px] shrink-0 items-center border-b border-[var(--tab-border)] bg-[var(--bg-tab-bar)]">
+		<div
+			className="flex h-[36px] shrink-0 items-center border-b border-[var(--tab-border)] bg-[var(--bg-tab-bar)]"
+			onContextMenu={handleBarContextMenu}
+		>
 			{/* Pane index indicator */}
 			<div className="flex h-full w-[28px] shrink-0 items-center justify-center text-[11px] font-medium text-[var(--text-quaternary)]">
 				{paneIndex}
@@ -146,6 +181,7 @@ export function PaneTabBar({
 									}
 									removeTabFromPane(workspaceId, pane.id, tab.id);
 								}}
+								onContextMenu={(e) => handleTabContextMenu(e, tab)}
 							/>
 						</Fragment>
 					);
@@ -174,6 +210,17 @@ export function PaneTabBar({
 					</svg>
 				</button>
 			</div>
+
+			{contextMenu && (
+				<PaneContextMenu
+					x={contextMenu.x}
+					y={contextMenu.y}
+					onSplitRight={() => splitPane(workspaceId, pane.id, "horizontal", contextMenu.tab)}
+					onSplitDown={() => splitPane(workspaceId, pane.id, "vertical", contextMenu.tab)}
+					onClosePane={canClosePane ? () => closePane(workspaceId, pane.id) : undefined}
+					onClose={() => setContextMenu(null)}
+				/>
+			)}
 		</div>
 	);
 }
