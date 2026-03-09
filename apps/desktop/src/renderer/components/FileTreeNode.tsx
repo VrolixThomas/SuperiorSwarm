@@ -56,8 +56,8 @@ function FileNode({
 	workspaceId: string;
 	actionButton?: { icon: string; title: string; onClick: (path: string) => void };
 }) {
-	const activeTabId = useTabStore((s) => s.activeTabId);
-	const tabs = useTabStore((s) => s.tabs);
+	const activeTabId = useTabStore((s) => s.getActiveTabId());
+	const tabs = useTabStore((s) => s.getVisibleTabs());
 	const openDiffFile = useTabStore((s) => s.openDiffFile);
 	const file = node.file!;
 
