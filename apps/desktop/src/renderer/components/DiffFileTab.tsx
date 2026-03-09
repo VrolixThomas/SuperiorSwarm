@@ -32,7 +32,13 @@ export function DiffFileTab({ diffCtx, filePath, language }: DiffFileTabProps) {
 		};
 	}, []);
 
-	const saveMutation = trpc.diff.saveFileContent.useMutation();
+	const utils = trpc.useUtils();
+	const saveMutation = trpc.diff.saveFileContent.useMutation({
+		onSuccess: () => {
+			utils.diff.getWorkingTreeDiff.invalidate({ repoPath: diffCtx.repoPath });
+			utils.diff.getWorkingTreeStatus.invalidate({ repoPath: diffCtx.repoPath });
+		},
+	});
 
 	const { originalRef, modifiedRef } = refsForContext(diffCtx);
 

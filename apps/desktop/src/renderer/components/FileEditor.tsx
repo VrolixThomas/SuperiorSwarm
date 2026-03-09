@@ -32,7 +32,13 @@ export function FileEditor({
 	// Capture initialPosition on mount only; subsequent re-renders (e.g. after store clear) do not update it
 	const initialPositionRef = useRef(initialPosition);
 	const clearInitialPosition = useTabStore((s) => s.clearInitialPosition);
-	const saveMutation = trpc.diff.saveFileContent.useMutation();
+	const utils = trpc.useUtils();
+	const saveMutation = trpc.diff.saveFileContent.useMutation({
+		onSuccess: () => {
+			utils.diff.getWorkingTreeDiff.invalidate({ repoPath });
+			utils.diff.getWorkingTreeStatus.invalidate({ repoPath });
+		},
+	});
 
 	// Clear initialPosition from store immediately so re-mounts (tab switch away/back) do not re-navigate.
 	// tabId and clearInitialPosition are intentionally excluded: this runs on mount only, and tabId

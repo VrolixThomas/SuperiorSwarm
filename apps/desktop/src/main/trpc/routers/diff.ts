@@ -40,8 +40,12 @@ export const diffRouter = router({
 		)
 		.query(async ({ input }) => {
 			const git = simpleGit(input.repoPath);
+			const mergeBase = await git
+				.raw(["merge-base", input.baseBranch, input.headBranch])
+				.then((r) => r.trim())
+				.catch(() => input.baseBranch);
 			const rawDiff = await git.diff([
-				`${input.baseBranch}...${input.headBranch}`,
+				`${mergeBase}..${input.headBranch}`,
 				"--unified=3",
 				"--no-color",
 			]);

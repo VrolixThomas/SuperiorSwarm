@@ -81,13 +81,13 @@ function DiffPanelContent({ diffCtx }: { diffCtx: DiffContext }) {
 	// Working tree status (staged/unstaged split)
 	const statusQuery = trpc.diff.getWorkingTreeStatus.useQuery(
 		{ repoPath: diffCtx.repoPath },
-		{ enabled: diffCtx.type === "working-tree", staleTime: 5_000 }
+		{ enabled: diffCtx.type === "working-tree", staleTime: 30_000 }
 	);
 
 	// Working tree diff (for stats)
 	const workingTreeQuery = trpc.diff.getWorkingTreeDiff.useQuery(
 		{ repoPath: diffCtx.repoPath },
-		{ enabled: diffCtx.type === "working-tree", staleTime: 10_000 }
+		{ enabled: diffCtx.type === "working-tree", staleTime: 30_000 }
 	);
 
 	// Branch diff (for non-working-tree contexts)
@@ -114,21 +114,19 @@ function DiffPanelContent({ diffCtx }: { diffCtx: DiffContext }) {
 		{ enabled: diffCtx.type === "pr", staleTime: 60_000 }
 	);
 
-	const invalidateWorkingTree = () => {
+	const invalidateAll = () => {
 		utils.diff.getWorkingTreeDiff.invalidate({ repoPath: diffCtx.repoPath });
 		utils.diff.getWorkingTreeStatus.invalidate({ repoPath: diffCtx.repoPath });
-		utils.diff.getCommitsAhead.invalidate({
-			repoPath: diffCtx.repoPath,
-			baseBranch: effectiveBaseBranch,
-		});
+		utils.diff.getCommitsAhead.invalidate({ repoPath: diffCtx.repoPath });
+		utils.diff.getBranchDiff.invalidate();
 	};
 
 	const stageMutation = trpc.diff.stageFiles.useMutation({
-		onSuccess: invalidateWorkingTree,
+		onSuccess: invalidateAll,
 	});
 
 	const unstageMutation = trpc.diff.unstageFiles.useMutation({
-		onSuccess: invalidateWorkingTree,
+		onSuccess: invalidateAll,
 	});
 
 	const stats =
@@ -158,7 +156,12 @@ function DiffPanelContent({ diffCtx }: { diffCtx: DiffContext }) {
 					currentBranch={currentBranch}
 					baseBranch={effectiveBaseBranch}
 					onBaseBranchChange={(branch) => {
-						if (activeWorkspaceId) setBaseBranch(activeWorkspaceId, branch);
+						if (activeWorkspaceId) {
+							setBaseBranch(activeWorkspaceId, branch);
+							// Force refetch of all queries that depend on baseBranch
+							utils.diff.getBranchDiff.invalidate();
+							utils.diff.getCommitsAhead.invalidate();
+						}
 					}}
 				/>
 			)}
@@ -181,7 +184,7 @@ function DiffPanelContent({ diffCtx }: { diffCtx: DiffContext }) {
 								unstagedFiles={statusQuery.data.unstagedFiles}
 								onStage={(paths) => stageMutation.mutate({ repoPath: diffCtx.repoPath, paths })}
 								onUnstage={(paths) => unstageMutation.mutate({ repoPath: diffCtx.repoPath, paths })}
-								onInvalidate={invalidateWorkingTree}
+								onInvalidate={invalidateAll}
 							/>
 						)}
 
