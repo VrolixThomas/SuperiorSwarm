@@ -1,7 +1,10 @@
+import { useCallback, useEffect, useRef } from "react";
 import { Group, Panel, Separator } from "react-resizable-panels";
 import type { LayoutNode } from "../../../shared/pane-types";
 import { usePaneStore } from "../../stores/pane-store";
 import { PaneContainer } from "./PaneContainer";
+
+const RATIO_DEBOUNCE_MS = 200;
 
 export function LayoutRenderer({
 	node,
@@ -23,15 +26,43 @@ export function LayoutRenderer({
 	const secondSize = (1 - node.ratio) * 100;
 	const setPaneRatio = usePaneStore((s) => s.setPaneRatio);
 
-	return (
-		<Group
-			orientation={orientation}
-			onLayoutChanged={(sizes: number[]) => {
-				if (sizes[0] !== undefined) {
-					setPaneRatio(workspaceId, node.id, sizes[0] / 100);
+	// Debounce ratio commits: track latest sizes in a ref and only write to
+	// the store after dragging settles (RATIO_DEBOUNCE_MS of inactivity).
+	const latestRatioRef = useRef<number | null>(null);
+	const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+	const commitRatio = useCallback(() => {
+		const ratio = latestRatioRef.current;
+		if (ratio !== null) {
+			setPaneRatio(workspaceId, node.id, ratio);
+			latestRatioRef.current = null;
+		}
+	}, [setPaneRatio, workspaceId, node.id]);
+
+	// Cleanup debounce timer on unmount
+	useEffect(() => {
+		return () => {
+			if (debounceTimerRef.current !== null) {
+				clearTimeout(debounceTimerRef.current);
+			}
+		};
+	}, []);
+
+	const handleLayoutChanged = useCallback(
+		(sizes: number[]) => {
+			if (sizes[0] !== undefined) {
+				latestRatioRef.current = sizes[0] / 100;
+				if (debounceTimerRef.current !== null) {
+					clearTimeout(debounceTimerRef.current);
 				}
-			}}
-		>
+				debounceTimerRef.current = setTimeout(commitRatio, RATIO_DEBOUNCE_MS);
+			}
+		},
+		[commitRatio]
+	);
+
+	return (
+		<Group orientation={orientation} onLayoutChanged={handleLayoutChanged}>
 			<Panel id={`${node.id}-first`} defaultSize={`${firstSize}%`}>
 				<LayoutRenderer
 					node={node.children[0]}

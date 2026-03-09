@@ -55,6 +55,7 @@ export const terminalSessionsRouter = router({
 		const db = getDb();
 		db.delete(schema.terminalSessions).run();
 		db.delete(schema.sessionState).run();
+		db.delete(schema.paneLayouts).run();
 		return { ok: true };
 	}),
 });

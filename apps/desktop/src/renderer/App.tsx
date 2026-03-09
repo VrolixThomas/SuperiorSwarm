@@ -151,7 +151,11 @@ export function App() {
 		// Hydrate pane layouts (must happen after tab hydration so tabs exist in pane-store)
 		if (paneLayouts && Object.keys(paneLayouts).length > 0) {
 			const paneState = usePaneStore.getState();
-			// Collect all tabs from all workspaces after hydration
+			// ORDERING DEPENDENCY: tab-store.hydrate() above must run first because it
+			// populates pane-store layouts (via the onTabsChanged listener). We pull tabs
+			// from those already-hydrated layouts so that deserializeLayout can resolve
+			// tabIds back to full TabItem objects. If this runs before hydrate(), the
+			// layouts map will be empty and deserialization will silently drop all tabs.
 			const allRestoredTabs: TabItem[] = Object.values(paneState.layouts).flatMap((root) => {
 				const collectTabs = (n: LayoutNode): TabItem[] => {
 					if (n.type === "pane") return n.tabs;
