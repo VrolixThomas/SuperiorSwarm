@@ -71,6 +71,17 @@ export const sessionState = sqliteTable("session_state", {
 	value: text("value").notNull(),
 });
 
+export const paneLayouts = sqliteTable("pane_layouts", {
+	workspaceId: text("workspace_id")
+		.primaryKey()
+		.references(() => workspaces.id, { onDelete: "cascade" }),
+	layout: text("layout").notNull(), // JSON serialized layout tree
+	updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+});
+
+export type PaneLayout = typeof paneLayouts.$inferSelect;
+export type NewPaneLayout = typeof paneLayouts.$inferInsert;
+
 export const atlassianAuth = sqliteTable("atlassian_auth", {
 	service: text("service", { enum: ["jira", "bitbucket"] }).primaryKey(),
 	accessToken: text("access_token").notNull(),
