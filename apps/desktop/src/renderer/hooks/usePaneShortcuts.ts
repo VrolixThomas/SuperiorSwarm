@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import type { LayoutNode } from "../../shared/pane-types";
-import { findParentSplit, getAllPanes, usePaneStore } from "../stores/pane-store";
+import { findParentSplit, findSplitById, getAllPanes, usePaneStore } from "../stores/pane-store";
 import { useTabStore } from "../stores/tab-store";
 
 // ─── Directional helpers ─────────────────────────────────────────────────────
@@ -29,7 +29,7 @@ function findDirectionalNeighbor(root: LayoutNode, paneId: string, dir: Directio
 	const wantsFirst = dir === "ArrowLeft" || dir === "ArrowUp";
 
 	for (const { splitId, childId } of chain) {
-		const split = findSplitNodeById(root, splitId);
+		const split = findSplitById(root, splitId);
 		if (!split) continue;
 
 		const splitIsHorizontal = split.direction === "horizontal";
@@ -54,18 +54,6 @@ function findDirectionalNeighbor(root: LayoutNode, paneId: string, dir: Directio
 	return null;
 }
 
-/** Re-find a split node by ID (type-safe variant of findSplitById). */
-function findSplitNodeById(
-	node: LayoutNode,
-	splitId: string
-): Extract<LayoutNode, { type: "split" }> | null {
-	if (node.type === "pane") return null;
-	if (node.id === splitId) return node;
-	return (
-		findSplitNodeById(node.children[0], splitId) ?? findSplitNodeById(node.children[1], splitId)
-	);
-}
-
 // ─── Hook ────────────────────────────────────────────────────────────────────
 
 export function usePaneShortcuts() {
@@ -80,7 +68,7 @@ export function usePaneShortcuts() {
 			const paneState = usePaneStore.getState();
 
 			// ── Cmd+\ — split right ─────────────────────────────────────────
-			if (!e.shiftKey && e.key === "\\") {
+			if (!e.shiftKey && e.code === "Backslash") {
 				e.preventDefault();
 				const focused = paneState.getFocusedPane(wsId);
 				if (focused) {
@@ -90,8 +78,7 @@ export function usePaneShortcuts() {
 			}
 
 			// ── Cmd+Shift+\ — split down ────────────────────────────────────
-			if (e.shiftKey && e.key === "|") {
-				// On macOS, Shift+\ produces "|"
+			if (e.shiftKey && e.code === "Backslash") {
 				e.preventDefault();
 				const focused = paneState.getFocusedPane(wsId);
 				if (focused) {
