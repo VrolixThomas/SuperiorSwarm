@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { getDb, schema } from "../../db";
-import { saveTerminalSessions } from "../../db/session-persistence";
+import { savePaneLayouts, saveTerminalSessions } from "../../db/session-persistence";
 import { publicProcedure, router } from "../index";
 
 const sessionInput = z.object({
@@ -15,11 +15,15 @@ const sessionInput = z.object({
 const saveInput = z.object({
 	sessions: z.array(sessionInput),
 	state: z.record(z.string(), z.string()),
+	paneLayouts: z.record(z.string(), z.string()).optional(),
 });
 
 export const terminalSessionsRouter = router({
 	save: publicProcedure.input(saveInput).mutation(async ({ input }) => {
 		saveTerminalSessions(input);
+		if (input.paneLayouts) {
+			savePaneLayouts(input.paneLayouts);
+		}
 		return { ok: true };
 	}),
 
@@ -38,7 +42,13 @@ export const terminalSessionsRouter = router({
 			state[row.key] = row.value;
 		}
 
-		return { sessions, state };
+		const layoutRows = db.select().from(schema.paneLayouts).all();
+		const paneLayouts: Record<string, string> = {};
+		for (const row of layoutRows) {
+			paneLayouts[row.workspaceId] = row.layout;
+		}
+
+		return { sessions, state, paneLayouts };
 	}),
 
 	clear: publicProcedure.mutation(async () => {

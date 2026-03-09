@@ -2,7 +2,11 @@ import { join } from "node:path";
 import { BrowserWindow, app, dialog, ipcMain, shell } from "electron";
 import { daemonInstanceId, daemonPaths } from "../shared/daemon-protocol";
 import { initializeDatabase } from "./db";
-import { type SessionSaveData, saveTerminalSessions } from "./db/session-persistence";
+import {
+	type SessionSaveData,
+	savePaneLayouts,
+	saveTerminalSessions,
+} from "./db/session-persistence";
 import { setupLspIPC } from "./lsp/ipc-handler";
 import { serverManager } from "./lsp/server-manager";
 import { DaemonClient } from "./terminal/daemon-client";
@@ -73,6 +77,9 @@ app.whenReady().then(async () => {
 	ipcMain.on("terminal-sessions:save-sync", (event, data: SessionSaveData) => {
 		try {
 			saveTerminalSessions(data);
+			if (data.paneLayouts) {
+				savePaneLayouts(data.paneLayouts);
+			}
 			event.returnValue = { ok: true };
 		} catch (err) {
 			console.error("Failed to save terminal sessions on quit:", err);

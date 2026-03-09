@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Group, Panel, Separator, useDefaultLayout, usePanelRef } from "react-resizable-panels";
+import type { LayoutNode, SerializedLayoutNode } from "../shared/pane-types";
 import { AddRepositoryModal } from "./components/AddRepositoryModal";
 import { CreateWorktreeModal } from "./components/CreateWorktreeModal";
 import { DaemonStatus } from "./components/DaemonStatus";
@@ -13,11 +14,70 @@ import {
 	setupGoToDefinitionHandler,
 	setupServerRestartListener,
 } from "./lsp/monaco-lsp-bridge";
+import { usePaneStore } from "./stores/pane-store";
 import { useProjectStore } from "./stores/projects";
+import type { TabItem } from "./stores/tab-store";
 import { useTabStore } from "./stores/tab-store";
 import { trpc } from "./trpc/client";
 
 const SAVE_INTERVAL_MS = 30_000;
+
+function serializeLayout(node: LayoutNode): SerializedLayoutNode {
+	if (node.type === "pane") {
+		return {
+			type: "pane",
+			id: node.id,
+			tabIds: node.tabs.map((t) => t.id),
+			activeTabId: node.activeTabId,
+		};
+	}
+	return {
+		type: "split",
+		id: node.id,
+		direction: node.direction,
+		ratio: node.ratio,
+		children: [serializeLayout(node.children[0]), serializeLayout(node.children[1])],
+	};
+}
+
+function deserializeLayout(node: SerializedLayoutNode, tabs: TabItem[]): LayoutNode | null {
+	if (node.type === "pane") {
+		const paneTabs = node.tabIds
+			.map((id) => tabs.find((t) => t.id === id))
+			.filter((t): t is TabItem => t != null);
+		return {
+			type: "pane",
+			id: node.id,
+			tabs: paneTabs,
+			activeTabId: paneTabs.find((t) => t.id === node.activeTabId)?.id ?? paneTabs[0]?.id ?? null,
+		};
+	}
+	const first = deserializeLayout(node.children[0], tabs);
+	const second = deserializeLayout(node.children[1], tabs);
+	if (!first || !second) return first || second || null;
+	return {
+		type: "split",
+		id: node.id,
+		direction: node.direction,
+		ratio: node.ratio,
+		children: [first, second],
+	};
+}
+
+function extractMaxIds(node: LayoutNode): { maxPaneId: number; maxSplitId: number } {
+	if (node.type === "pane") {
+		const match = node.id.match(/^pane-(\d+)$/);
+		return { maxPaneId: match ? Number(match[1]) : 0, maxSplitId: 0 };
+	}
+	const splitMatch = node.id.match(/^split-(\d+)$/);
+	const splitId = splitMatch ? Number(splitMatch[1]) : 0;
+	const left = extractMaxIds(node.children[0]);
+	const right = extractMaxIds(node.children[1]);
+	return {
+		maxPaneId: Math.max(left.maxPaneId, right.maxPaneId),
+		maxSplitId: Math.max(splitId, left.maxSplitId, right.maxSplitId),
+	};
+}
 
 function collectSnapshot() {
 	const store = useTabStore.getState();
@@ -40,7 +100,13 @@ function collectSnapshot() {
 	if (activeWorkspaceId) state["activeWorkspaceId"] = activeWorkspaceId;
 	if (activeWorkspaceCwd) state["activeWorkspaceCwd"] = activeWorkspaceCwd;
 
-	return { sessions, state };
+	const paneLayouts: Record<string, string> = {};
+	const layouts = usePaneStore.getState().layouts;
+	for (const [wsId, layout] of Object.entries(layouts)) {
+		paneLayouts[wsId] = JSON.stringify(serializeLayout(layout));
+	}
+
+	return { sessions, state, paneLayouts };
 }
 
 export function App() {
@@ -62,7 +128,7 @@ export function App() {
 		if (hasRestored.current || !restoreQuery.data) return;
 		hasRestored.current = true;
 
-		const { sessions, state } = restoreQuery.data;
+		const { sessions, state, paneLayouts } = restoreQuery.data;
 		if (sessions.length === 0) return;
 
 		const scrollbacks: Record<string, string> = {};
@@ -81,6 +147,39 @@ export function App() {
 				state["activeWorkspaceId"] ?? null,
 				state["activeWorkspaceCwd"] ?? ""
 			);
+
+		// Hydrate pane layouts (must happen after tab hydration so tabs exist in pane-store)
+		if (paneLayouts && Object.keys(paneLayouts).length > 0) {
+			const paneState = usePaneStore.getState();
+			// Collect all tabs from all workspaces after hydration
+			const allRestoredTabs: TabItem[] = Object.values(paneState.layouts).flatMap((root) => {
+				const collectTabs = (n: LayoutNode): TabItem[] => {
+					if (n.type === "pane") return n.tabs;
+					return [...collectTabs(n.children[0]), ...collectTabs(n.children[1])];
+				};
+				return collectTabs(root);
+			});
+
+			let maxPaneId = 0;
+			let maxSplitId = 0;
+
+			for (const [wsId, layoutJson] of Object.entries(paneLayouts)) {
+				try {
+					const serialized = JSON.parse(layoutJson) as SerializedLayoutNode;
+					const layout = deserializeLayout(serialized, allRestoredTabs);
+					if (layout) {
+						paneState.hydrateLayout(wsId, layout);
+						const ids = extractMaxIds(layout);
+						maxPaneId = Math.max(maxPaneId, ids.maxPaneId);
+						maxSplitId = Math.max(maxSplitId, ids.maxSplitId);
+					}
+				} catch (e) {
+					console.warn(`Failed to restore pane layout for workspace ${wsId}:`, e);
+				}
+			}
+
+			paneState.resetCounters(maxPaneId, maxSplitId);
+		}
 	}, [restoreQuery.data]);
 
 	// Periodic save

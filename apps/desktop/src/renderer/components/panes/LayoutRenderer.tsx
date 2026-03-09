@@ -1,5 +1,6 @@
 import { Group, Panel, Separator } from "react-resizable-panels";
 import type { LayoutNode } from "../../../shared/pane-types";
+import { usePaneStore } from "../../stores/pane-store";
 import { PaneContainer } from "./PaneContainer";
 
 export function LayoutRenderer({
@@ -20,10 +21,17 @@ export function LayoutRenderer({
 	const orientation = node.direction === "horizontal" ? "horizontal" : "vertical";
 	const firstSize = node.ratio * 100;
 	const secondSize = (1 - node.ratio) * 100;
+	const setPaneRatio = usePaneStore((s) => s.setPaneRatio);
 
-	// TODO(Task 11): Add onLayout callback to sync user-dragged sizes back to setPaneRatio()
 	return (
-		<Group orientation={orientation}>
+		<Group
+			orientation={orientation}
+			onLayoutChanged={(sizes: number[]) => {
+				if (sizes[0] !== undefined) {
+					setPaneRatio(workspaceId, node.id, sizes[0] / 100);
+				}
+			}}
+		>
 			<Panel id={`${node.id}-first`} defaultSize={`${firstSize}%`}>
 				<LayoutRenderer
 					node={node.children[0]}
