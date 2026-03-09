@@ -7,6 +7,7 @@ import { DiffPanel } from "./components/DiffPanel";
 import { MainContentArea } from "./components/MainContentArea";
 import { SharedFilesPanel } from "./components/SharedFilesPanel";
 import { Sidebar } from "./components/Sidebar";
+import { usePaneShortcuts } from "./hooks/usePaneShortcuts";
 import {
 	setupDiagnosticsListener,
 	setupGoToDefinitionHandler,
@@ -117,6 +118,8 @@ export function App() {
 			cleanupRestartListener();
 		};
 	}, []);
+
+	usePaneShortcuts();
 
 	const sidebarPanelRef = usePanelRef();
 	const setSidebarCollapsed = useProjectStore((s) => s.setSidebarCollapsed);
