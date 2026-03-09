@@ -10,7 +10,6 @@ export function DropZoneOverlay({
 	onDrop,
 }: {
 	paneId: string;
-	workspaceId: string;
 	onDrop: (zone: DropZone, tabId: string, sourcePaneId: string) => void;
 }) {
 	const [activeZone, setActiveZone] = useState<DropZone | null>(null);
@@ -42,6 +41,7 @@ export function DropZoneOverlay({
 
 			try {
 				const data = JSON.parse(raw) as { tabId: string; sourcePaneId: string };
+				if (!data?.tabId || !data?.sourcePaneId) return;
 				// Don't drop on the same pane's center — that's a no-op
 				if (zone === "center" && data.sourcePaneId === paneId) return;
 				onDrop(zone, data.tabId, data.sourcePaneId);

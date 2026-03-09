@@ -136,6 +136,15 @@ interface PaneStore {
 	updateTabTitleInPane(tabId: string, title: string): void;
 	updateTabInPanes(tabId: string, updater: (tab: TabItem) => TabItem): void;
 
+	// Edge-drop: split + optional swap + move tab, all in one set()
+	dropTabOnEdge(
+		workspaceId: string,
+		sourcePaneId: string,
+		targetPaneId: string,
+		tabId: string,
+		zone: "left" | "right" | "top" | "bottom"
+	): void;
+
 	// Find which pane contains a given tab
 	findPaneForTab(workspaceId: string, tabId: string): Pane | null;
 
@@ -374,6 +383,113 @@ export const usePaneStore = create<PaneStore>((set, get) => ({
 		// Auto-close source if empty
 		if (sourceTabs.length === 0) {
 			get().closePane(workspaceId, sourcePaneId);
+		}
+	},
+
+	dropTabOnEdge: (workspaceId, sourcePaneId, targetPaneId, tabId, zone) => {
+		let root = get().layouts[workspaceId];
+		if (!root) return;
+
+		const sourcePane = findPaneById(root, sourcePaneId);
+		if (!sourcePane) return;
+
+		const tab = sourcePane.tabs.find((t) => t.id === tabId);
+		if (!tab) return;
+
+		// 1. Split the target pane
+		const direction: "horizontal" | "vertical" =
+			zone === "left" || zone === "right" ? "horizontal" : "vertical";
+
+		const newPane = createDefaultPane();
+		const newPaneId = newPane.id;
+
+		const originalPane = findPaneById(root, targetPaneId);
+		if (!originalPane) return;
+
+		// When source and target are the same pane, the split should use tabs
+		// with the dragged tab already removed from the original.
+		const isSamePane = sourcePaneId === targetPaneId;
+
+		const splitChildren: [LayoutNode, LayoutNode] = [
+			isSamePane
+				? (() => {
+						const filteredTabs = originalPane.tabs.filter((t) => t.id !== tabId);
+						return {
+							...originalPane,
+							tabs: filteredTabs,
+							activeTabId:
+								originalPane.activeTabId === tabId
+									? pickNextActiveTab(originalPane.tabs, tabId)
+									: originalPane.activeTabId,
+						};
+					})()
+				: originalPane,
+			newPane,
+		];
+
+		const splitNode: SplitNode = {
+			type: "split",
+			id: nextSplitId(),
+			direction,
+			ratio: 0.5,
+			children: splitChildren,
+		};
+
+		root = replaceNodeInTree(root, targetPaneId, splitNode);
+
+		// 2. If zone is left/top, swap children so new pane is on the correct side
+		if (zone === "left" || zone === "top") {
+			const split = findSplitById(root, splitNode.id);
+			if (split) {
+				const swapped: SplitNode = {
+					...split,
+					children: [split.children[1], split.children[0]],
+					ratio: 1 - split.ratio,
+				};
+				root = replaceNodeInTree(root, splitNode.id, swapped);
+			}
+		}
+
+		// 3. Move the tab to the new pane
+		root = updatePaneInTree(root, newPaneId, (p) => ({
+			...p,
+			tabs: [tab],
+			activeTabId: tab.id,
+		}));
+
+		// 4. Remove tab from source pane (if source != target; same-pane handled above)
+		let sourceEmpty = false;
+		if (!isSamePane) {
+			const srcPane = findPaneById(root, sourcePaneId);
+			if (srcPane) {
+				const filteredTabs = srcPane.tabs.filter((t) => t.id !== tabId);
+				sourceEmpty = filteredTabs.length === 0;
+				root = updatePaneInTree(root, sourcePaneId, (p) => ({
+					...p,
+					tabs: filteredTabs,
+					activeTabId: p.activeTabId === tabId ? pickNextActiveTab(p.tabs, tabId) : p.activeTabId,
+				}));
+			}
+		} else {
+			// For same-pane drops, check if the original pane (now first child) is empty
+			const origChild = findPaneById(root, targetPaneId);
+			if (origChild && origChild.tabs.length === 0) {
+				sourceEmpty = true;
+			}
+		}
+
+		set((s) => ({
+			layouts: { ...s.layouts, [workspaceId]: root },
+			focusedPaneId: newPaneId,
+		}));
+
+		// 5. Auto-close the source pane if empty
+		if (sourceEmpty) {
+			if (isSamePane) {
+				get().closePane(workspaceId, targetPaneId);
+			} else {
+				get().closePane(workspaceId, sourcePaneId);
+			}
 		}
 	},
 

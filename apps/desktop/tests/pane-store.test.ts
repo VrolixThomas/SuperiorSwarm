@@ -500,6 +500,69 @@ describe("setPaneRatio", () => {
 	});
 });
 
+// ── swapSplitChildren ────────────────────────────────────────────────────────
+
+describe("swapSplitChildren", () => {
+	beforeEach(resetStore);
+
+	test("reverses the order of children", () => {
+		const layout = usePaneStore.getState().ensureLayout("ws-1") as Pane;
+		const originalId = layout.id;
+		const newPaneId = usePaneStore.getState().splitPane("ws-1", originalId, "horizontal");
+
+		const before = usePaneStore.getState().getLayout("ws-1")! as SplitNode;
+		expect(before.children[0].id).toBe(originalId);
+		expect(before.children[1].id).toBe(newPaneId);
+
+		usePaneStore.getState().swapSplitChildren("ws-1", before.id);
+
+		const after = usePaneStore.getState().getLayout("ws-1")! as SplitNode;
+		expect(after.children[0].id).toBe(newPaneId);
+		expect(after.children[1].id).toBe(originalId);
+	});
+
+	test("inverts ratio (0.3 becomes 0.7)", () => {
+		const layout = usePaneStore.getState().ensureLayout("ws-1") as Pane;
+		usePaneStore.getState().splitPane("ws-1", layout.id, "horizontal");
+
+		const split = usePaneStore.getState().getLayout("ws-1")! as SplitNode;
+		usePaneStore.getState().setPaneRatio("ws-1", split.id, 0.3);
+
+		usePaneStore.getState().swapSplitChildren("ws-1", split.id);
+
+		const after = usePaneStore.getState().getLayout("ws-1")! as SplitNode;
+		expect(after.ratio).toBeCloseTo(0.7);
+	});
+
+	test("keeps ratio at 0.5 when swapped", () => {
+		const layout = usePaneStore.getState().ensureLayout("ws-1") as Pane;
+		usePaneStore.getState().splitPane("ws-1", layout.id, "horizontal");
+
+		const split = usePaneStore.getState().getLayout("ws-1")! as SplitNode;
+		expect(split.ratio).toBe(0.5);
+
+		usePaneStore.getState().swapSplitChildren("ws-1", split.id);
+
+		const after = usePaneStore.getState().getLayout("ws-1")! as SplitNode;
+		expect(after.ratio).toBe(0.5);
+	});
+
+	test("no-op on invalid splitId", () => {
+		const layout = usePaneStore.getState().ensureLayout("ws-1") as Pane;
+		usePaneStore.getState().splitPane("ws-1", layout.id, "horizontal");
+
+		const before = usePaneStore.getState().getLayout("ws-1")! as SplitNode;
+		const beforeChildren = [before.children[0].id, before.children[1].id];
+
+		usePaneStore.getState().swapSplitChildren("ws-1", "nonexistent-split");
+
+		const after = usePaneStore.getState().getLayout("ws-1")! as SplitNode;
+		expect(after.children[0].id).toBe(beforeChildren[0]);
+		expect(after.children[1].id).toBe(beforeChildren[1]);
+		expect(after.ratio).toBe(before.ratio);
+	});
+});
+
 // ── Persistence ──────────────────────────────────────────────────────────────
 
 describe("persistence", () => {
