@@ -61,7 +61,7 @@ function ThreadWidget({
 					</p>
 				</div>
 
-				{/* Accept / Decline buttons */}
+				{/* Accept / Decline buttons or status */}
 				{aiThread.status === "pending" && (
 					<div className="flex gap-1.5 border-t border-[var(--border-subtle)] px-3 py-1.5">
 						<button
@@ -78,6 +78,12 @@ function ThreadWidget({
 						>
 							Decline
 						</button>
+					</div>
+				)}
+				{aiThread.status === "approved" && (
+					<div className="flex items-center gap-1 border-t border-[var(--border-subtle)] px-3 py-1 text-[10px] text-[#30d158]">
+						<span>&#10003;</span>
+						<span>Accepted</span>
 					</div>
 				)}
 			</div>
