@@ -27,6 +27,25 @@ export interface GitHubReviewThread {
 	comments: GitHubReviewComment[];
 }
 
+/** An AI draft comment transformed into a thread-like structure for unified rendering */
+export interface AIDraftThread {
+	id: string;
+	isAIDraft: true;
+	draftCommentId: string;
+	path: string;
+	line: number | null;
+	diffSide: "LEFT" | "RIGHT";
+	body: string;
+	status: "pending" | "approved" | "rejected" | "edited";
+	userEdit: string | null;
+	createdAt: string;
+}
+
+/** Union type for rendering — either a real GitHub thread or an AI draft */
+export type UnifiedThread =
+	| (GitHubReviewThread & { isAIDraft?: false })
+	| AIDraftThread;
+
 export interface GitHubCheckRun {
 	name: string;
 	status: string;
