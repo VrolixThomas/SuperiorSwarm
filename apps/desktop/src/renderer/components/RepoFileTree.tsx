@@ -933,8 +933,8 @@ export function RepoFileTree({
 
 	// ── Store ──────────────────────────────────────────────────
 	const openFile = useTabStore((s) => s.openFile);
-	const activeTabId = useTabStore((s) => s.activeTabId);
-	const tabs = useTabStore((s) => s.tabs);
+	const activeTabId = useTabStore((s) => s.getActiveTabId());
+	const tabs = useTabStore((s) => s.getVisibleTabs());
 
 	const activeTab = tabs.find((t) => t.id === activeTabId);
 	const activeFilePath =
