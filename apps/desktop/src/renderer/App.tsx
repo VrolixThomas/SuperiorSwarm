@@ -104,7 +104,7 @@ function extractMaxIds(node: LayoutNode): {
 
 function collectSnapshot() {
 	const store = useTabStore.getState();
-	const { activeWorkspaceId, activeWorkspaceCwd } = store;
+	const { activeWorkspaceId, activeWorkspaceCwd, baseBranchByWorkspace } = store;
 	const tabs = store.getAllTabs();
 	const activeTabId = store.getActiveTabId();
 
@@ -122,6 +122,9 @@ function collectSnapshot() {
 	if (activeTabId) state["activeTabId"] = activeTabId;
 	if (activeWorkspaceId) state["activeWorkspaceId"] = activeWorkspaceId;
 	if (activeWorkspaceCwd) state["activeWorkspaceCwd"] = activeWorkspaceCwd;
+	if (Object.keys(baseBranchByWorkspace).length > 0) {
+		state["baseBranchByWorkspace"] = JSON.stringify(baseBranchByWorkspace);
+	}
 
 	const paneLayouts: Record<string, string> = {};
 	const layouts = usePaneStore.getState().layouts;
@@ -171,7 +174,8 @@ export function App() {
 					sessions,
 					state["activeTabId"] ?? null,
 					state["activeWorkspaceId"] ?? null,
-					state["activeWorkspaceCwd"] ?? ""
+					state["activeWorkspaceCwd"] ?? "",
+					state
 				);
 		}
 
@@ -257,12 +261,26 @@ export function App() {
 	usePaneShortcuts();
 
 	const sidebarPanelRef = usePanelRef();
+	const diffPanelRef = usePanelRef();
 	const setSidebarCollapsed = useProjectStore((s) => s.setSidebarCollapsed);
 	const sidebarCollapsed = useProjectStore((s) => s.sidebarCollapsed);
+	const rightPanelOpen = useTabStore((s) => s.rightPanel.open);
+	const closeDiffPanel = useTabStore((s) => s.closeDiffPanel);
+	const openRightPanel = useTabStore((s) => s.openRightPanel);
 	const { defaultLayout, onLayoutChanged } = useDefaultLayout({
 		id: "app-layout",
 		storage: localStorage,
 	});
+
+	// Sync panel collapse/expand with store state
+	useEffect(() => {
+		if (!diffPanelRef.current) return;
+		if (rightPanelOpen && diffPanelRef.current.isCollapsed()) {
+			diffPanelRef.current.expand();
+		} else if (!rightPanelOpen && !diffPanelRef.current.isCollapsed()) {
+			diffPanelRef.current.collapse();
+		}
+	}, [rightPanelOpen, diffPanelRef]);
 
 	return (
 		<>
@@ -299,10 +317,44 @@ export function App() {
 				</Panel>
 
 				<Separator className="panel-resize-handle" />
-				<Panel id="diff" defaultSize="19.4%" minSize="10%" maxSize="40%">
-					<DiffPanel />
+				<Panel
+					id="diff"
+					panelRef={diffPanelRef}
+					defaultSize="19.4%"
+					minSize="10%"
+					maxSize="40%"
+					collapsible
+					collapsedSize="0%"
+					onResize={() => {
+						const collapsed = diffPanelRef.current?.isCollapsed() ?? false;
+						if (collapsed && rightPanelOpen) closeDiffPanel();
+					}}
+				>
+					<DiffPanel onClose={closeDiffPanel} />
 				</Panel>
 			</Group>
+			{!rightPanelOpen && (
+				<button
+					type="button"
+					onClick={openRightPanel}
+					className="fixed top-1/2 right-0 z-10 -translate-y-1/2 rounded-l-md border border-r-0 border-[var(--border)] bg-[var(--bg-surface)] px-1 py-5 text-[var(--text-quaternary)] transition-colors duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-tertiary)]"
+					title="Open panel"
+				>
+					<svg
+						width="8"
+						height="14"
+						viewBox="0 0 8 14"
+						fill="none"
+						stroke="currentColor"
+						strokeWidth="1.5"
+						strokeLinecap="round"
+						strokeLinejoin="round"
+						aria-hidden="true"
+					>
+						<path d="M7 1L1 7l6 6" />
+					</svg>
+				</button>
+			)}
 			<AddRepositoryModal />
 			<CreateWorktreeModal />
 			<SharedFilesPanel />

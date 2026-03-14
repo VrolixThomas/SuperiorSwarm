@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
 function safeResolve(repoPath: string, filePath: string): string {
@@ -27,4 +27,25 @@ export async function saveWorkingTreeFile(
 	const fullPath = safeResolve(repoPath, filePath);
 	await mkdir(dirname(fullPath), { recursive: true });
 	await writeFile(fullPath, content, "utf-8");
+}
+
+export async function createDirectory(repoPath: string, dirPath: string): Promise<void> {
+	const fullPath = safeResolve(repoPath, dirPath);
+	await mkdir(fullPath, { recursive: true });
+}
+
+export async function deleteFile(repoPath: string, filePath: string): Promise<void> {
+	const fullPath = safeResolve(repoPath, filePath);
+	await rm(fullPath, { recursive: true });
+}
+
+export async function renameFile(
+	repoPath: string,
+	oldPath: string,
+	newPath: string
+): Promise<void> {
+	const fullOld = safeResolve(repoPath, oldPath);
+	const fullNew = safeResolve(repoPath, newPath);
+	await mkdir(dirname(fullNew), { recursive: true });
+	await rename(fullOld, fullNew);
 }

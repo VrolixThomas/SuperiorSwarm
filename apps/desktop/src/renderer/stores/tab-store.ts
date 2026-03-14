@@ -52,6 +52,7 @@ interface TabStore {
 	activeWorkspaceCwd: string;
 	diffMode: "split" | "inline";
 	rightPanel: RightPanelState;
+	baseBranchByWorkspace: Record<string, string>;
 	/** @internal Bumped when pane-store changes so derived selectors re-evaluate. */
 	_paneVersion: number;
 
@@ -87,6 +88,7 @@ interface TabStore {
 	// Diff convenience
 	toggleDiffPanel: (diffCtx: DiffContext) => void;
 	closeDiffPanel: () => void;
+	openRightPanel: () => void;
 	openExplorer: () => void;
 	togglePanelMode: () => void;
 	openDiffFile: (
@@ -106,12 +108,17 @@ interface TabStore {
 	clearInitialPosition: (tabId: string) => void;
 	setDiffMode: (mode: "split" | "inline") => void;
 
+	// Base branch per workspace
+	setBaseBranch: (workspaceId: string, branch: string) => void;
+	getBaseBranch: (workspaceId: string) => string | undefined;
+
 	// Session restore
 	hydrate: (
 		sessions: Array<{ id: string; workspaceId: string; title: string; cwd: string }>,
 		activeTabId: string | null,
 		activeWorkspaceId: string | null,
-		activeWorkspaceCwd: string
+		activeWorkspaceCwd: string,
+		extraState?: Record<string, string>
 	) => void;
 }
 
@@ -220,6 +227,7 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 	activeWorkspaceCwd: "",
 	diffMode: "split",
 	rightPanel: defaultPanelForCwd(""),
+	baseBranchByWorkspace: {},
 	_paneVersion: 0,
 
 	// ── Derived properties ──────────────────────────────────────────────
@@ -367,6 +375,12 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 		set({ rightPanel: PANEL_CLOSED });
 	},
 
+	openRightPanel: () => {
+		const { rightPanel, activeWorkspaceCwd } = get();
+		if (rightPanel.open) return;
+		set({ rightPanel: defaultPanelForCwd(activeWorkspaceCwd) });
+	},
+
 	openExplorer: () => {
 		const { rightPanel } = get();
 		if (rightPanel.open && rightPanel.mode === "explorer") {
@@ -502,12 +516,28 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 
 	setDiffMode: (mode) => set({ diffMode: mode }),
 
-	hydrate: (sessions, activeTab, activeWs, activeCwd) => {
+	setBaseBranch: (workspaceId, branch) =>
+		set((s) => ({
+			baseBranchByWorkspace: { ...s.baseBranchByWorkspace, [workspaceId]: branch },
+		})),
+
+	getBaseBranch: (workspaceId) => get().baseBranchByWorkspace[workspaceId],
+
+	hydrate: (sessions, activeTab, activeWs, activeCwd, extraState) => {
 		const maxId = sessions.reduce((max, s) => {
 			const match = s.id.match(/^terminal-(\d+)$/);
 			return match ? Math.max(max, Number(match[1])) : max;
 		}, 0);
 		terminalCounter = maxId;
+
+		let baseBranchByWorkspace: Record<string, string> = {};
+		if (extraState?.["baseBranchByWorkspace"]) {
+			try {
+				baseBranchByWorkspace = JSON.parse(extraState["baseBranchByWorkspace"]);
+			} catch {
+				// ignore malformed data
+			}
+		}
 
 		const tabs: TabItem[] = sessions.map((s) => ({
 			kind: "terminal" as const,
@@ -542,6 +572,7 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 			activeWorkspaceId: activeWs,
 			activeWorkspaceCwd: activeCwd,
 			rightPanel: defaultPanelForCwd(activeCwd),
+			baseBranchByWorkspace,
 		});
 	},
 }));

@@ -4,13 +4,22 @@ import { z } from "zod";
 import { atlassianFetch } from "../../atlassian/auth";
 import { getDb } from "../../db";
 import { extensionPaths } from "../../db/schema";
-import { readWorkingTreeFile, saveWorkingTreeFile } from "../../git/file-ops";
-import { listDirectory } from "../../git/file-tree";
+import {
+	createDirectory,
+	deleteFile,
+	readWorkingTreeFile,
+	renameFile,
+	saveWorkingTreeFile,
+} from "../../git/file-ops";
+import { listAllEntries, listDirectory } from "../../git/file-tree";
 import {
 	commitChanges,
+	detectDefaultBranch,
 	detectLanguage,
+	getCommitsAhead,
 	getCurrentBranch,
 	getUntrackedFiles,
+	listBranches,
 	parseUnifiedDiff,
 	pushBranch,
 	stageFiles,
@@ -37,8 +46,12 @@ export const diffRouter = router({
 		)
 		.query(async ({ input }) => {
 			const git = simpleGit(input.repoPath);
+			const mergeBase = await git
+				.raw(["merge-base", input.baseBranch, input.headBranch])
+				.then((r) => r.trim())
+				.catch(() => input.baseBranch);
 			const rawDiff = await git.diff([
-				`${input.baseBranch}...${input.headBranch}`,
+				`${mergeBase}..${input.headBranch}`,
 				"--unified=3",
 				"--no-color",
 			]);
@@ -229,5 +242,63 @@ export const diffRouter = router({
 		.query(async ({ input }) => {
 			const entries = await listDirectory(input.repoPath, input.dirPath);
 			return { entries };
+		}),
+
+	getCommitsAhead: publicProcedure
+		.input(z.object({ repoPath: z.string(), baseBranch: z.string() }))
+		.query(async ({ input }) => {
+			return await getCommitsAhead(input.repoPath, input.baseBranch);
+		}),
+
+	getDefaultBranch: publicProcedure
+		.input(z.object({ repoPath: z.string() }))
+		.query(async ({ input }) => {
+			const branch = await detectDefaultBranch(input.repoPath);
+			return { branch };
+		}),
+
+	listBranches: publicProcedure
+		.input(z.object({ repoPath: z.string() }))
+		.query(async ({ input }) => {
+			const branches = await listBranches(input.repoPath);
+			return { branches };
+		}),
+
+	listAllFiles: publicProcedure
+		.input(z.object({ repoPath: z.string() }))
+		.query(async ({ input }) => {
+			const entries = await listAllEntries(input.repoPath);
+			return { entries };
+		}),
+
+	revealInFinder: publicProcedure
+		.input(z.object({ absolutePath: z.string() }))
+		.mutation(async ({ input }) => {
+			const { shell } = await import("electron");
+			shell.showItemInFolder(input.absolutePath);
+		}),
+
+	createFile: publicProcedure
+		.input(z.object({ repoPath: z.string(), filePath: z.string() }))
+		.mutation(async ({ input }) => {
+			await saveWorkingTreeFile(input.repoPath, input.filePath, "");
+		}),
+
+	createFolder: publicProcedure
+		.input(z.object({ repoPath: z.string(), dirPath: z.string() }))
+		.mutation(async ({ input }) => {
+			await createDirectory(input.repoPath, input.dirPath);
+		}),
+
+	deleteFileOrFolder: publicProcedure
+		.input(z.object({ repoPath: z.string(), targetPath: z.string() }))
+		.mutation(async ({ input }) => {
+			await deleteFile(input.repoPath, input.targetPath);
+		}),
+
+	renameFileOrFolder: publicProcedure
+		.input(z.object({ repoPath: z.string(), oldPath: z.string(), newPath: z.string() }))
+		.mutation(async ({ input }) => {
+			await renameFile(input.repoPath, input.oldPath, input.newPath);
 		}),
 });
