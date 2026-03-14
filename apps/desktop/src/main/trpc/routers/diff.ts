@@ -11,7 +11,7 @@ import {
 	renameFile,
 	saveWorkingTreeFile,
 } from "../../git/file-ops";
-import { listDirectory } from "../../git/file-tree";
+import { listAllEntries, listDirectory } from "../../git/file-tree";
 import {
 	commitChanges,
 	detectDefaultBranch,
@@ -267,15 +267,8 @@ export const diffRouter = router({
 	listAllFiles: publicProcedure
 		.input(z.object({ repoPath: z.string() }))
 		.query(async ({ input }) => {
-			const git = simpleGit(input.repoPath);
-			const [tracked, untracked] = await Promise.all([
-				git.raw(["ls-files"]),
-				git.raw(["ls-files", "--others", "--exclude-standard"]),
-			]);
-			const files = [...tracked.trim().split("\n"), ...untracked.trim().split("\n")]
-				.filter(Boolean)
-				.sort();
-			return { files };
+			const entries = await listAllEntries(input.repoPath);
+			return { entries };
 		}),
 
 	revealInFinder: publicProcedure

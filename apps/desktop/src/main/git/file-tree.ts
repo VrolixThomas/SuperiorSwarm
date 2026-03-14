@@ -72,3 +72,58 @@ export async function listDirectory(repoPath: string, dirPath = ""): Promise<Fil
 
 	return entries;
 }
+
+export interface FlatEntry {
+	path: string;
+	type: "file" | "directory";
+}
+
+/**
+ * Recursively list all files and directories in a repo, respecting .gitignore.
+ * Returns flat entries with their type so the client can build a tree that
+ * includes empty directories (which `git ls-files` would miss).
+ */
+export async function listAllEntries(repoPath: string): Promise<FlatEntry[]> {
+	const base = resolve(repoPath);
+	const git = simpleGit(repoPath);
+
+	// Use git check-ignore to test paths in bulk
+	let ignoredPaths: Set<string>;
+	try {
+		const statusResult = await git.status(["--ignored"]);
+		ignoredPaths = new Set(statusResult.ignored ?? []);
+	} catch {
+		ignoredPaths = new Set();
+	}
+
+	const results: FlatEntry[] = [];
+
+	async function walk(dirRelative: string) {
+		const fullDir = dirRelative ? resolve(base, dirRelative) : base;
+		let dirents;
+		try {
+			dirents = await readdir(fullDir, { withFileTypes: true });
+		} catch {
+			return;
+		}
+
+		for (const dirent of dirents) {
+			if (dirent.name === ".git") continue;
+
+			const relativePath = dirRelative ? `${dirRelative}/${dirent.name}` : dirent.name;
+
+			if (ignoredPaths.has(relativePath) || ignoredPaths.has(`${relativePath}/`)) continue;
+
+			if (dirent.isDirectory()) {
+				results.push({ path: relativePath, type: "directory" });
+				await walk(relativePath);
+			} else if (dirent.isFile()) {
+				results.push({ path: relativePath, type: "file" });
+			}
+		}
+	}
+
+	await walk("");
+	results.sort((a, b) => a.path.localeCompare(b.path));
+	return results;
+}

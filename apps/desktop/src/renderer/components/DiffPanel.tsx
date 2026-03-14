@@ -267,6 +267,31 @@ function ExplorerPanelContent({ onClose }: { onClose?: () => void }) {
 	);
 }
 
+function PanelEdgeClose({ onClose }: { onClose: () => void }) {
+	return (
+		<button
+			type="button"
+			onClick={onClose}
+			className="absolute top-1/2 left-0 z-10 -translate-x-1/2 -translate-y-1/2 rounded-l-md border border-r-0 border-[var(--border)] bg-[var(--bg-surface)] px-1 py-5 text-[var(--text-quaternary)] transition-colors duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-tertiary)]"
+			title="Close panel"
+		>
+			<svg
+				width="8"
+				height="14"
+				viewBox="0 0 8 14"
+				fill="none"
+				stroke="currentColor"
+				strokeWidth="1.5"
+				strokeLinecap="round"
+				strokeLinejoin="round"
+				aria-hidden="true"
+			>
+				<path d="M1 1l6 6-6 6" />
+			</svg>
+		</button>
+	);
+}
+
 export function DiffPanel({ onClose }: { onClose?: () => void }) {
 	const rightPanel = useTabStore((s) => s.rightPanel);
 
@@ -274,14 +299,16 @@ export function DiffPanel({ onClose }: { onClose?: () => void }) {
 
 	if (rightPanel.mode === "pr-review" && rightPanel.prCtx) {
 		return (
-			<div className="flex h-full w-full flex-col overflow-hidden bg-[var(--bg-surface)]">
+			<div className="relative flex h-full w-full flex-col overflow-hidden bg-[var(--bg-surface)]">
+				{onClose && <PanelEdgeClose onClose={onClose} />}
 				<PRReviewPanel prCtx={rightPanel.prCtx} />
 			</div>
 		);
 	}
 
 	return (
-		<div className="flex h-full w-full flex-col overflow-hidden bg-[var(--bg-surface)]">
+		<div className="relative flex h-full w-full flex-col overflow-hidden bg-[var(--bg-surface)]">
+			{onClose && <PanelEdgeClose onClose={onClose} />}
 			{rightPanel.mode === "diff" && rightPanel.diffCtx ? (
 				<DiffPanelContent diffCtx={rightPanel.diffCtx} onClose={onClose} />
 			) : rightPanel.mode === "explorer" ? (
