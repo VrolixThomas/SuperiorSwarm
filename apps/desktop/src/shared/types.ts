@@ -29,6 +29,7 @@ export interface SessionSaveData {
 		sortOrder: number;
 	}>;
 	state: Record<string, string>;
+	paneLayouts?: Record<string, string>;
 }
 
 export interface SessionAPI {

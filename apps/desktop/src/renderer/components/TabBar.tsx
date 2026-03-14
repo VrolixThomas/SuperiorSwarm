@@ -106,7 +106,7 @@ function TabPill({
 
 export function TabBar() {
 	const visibleTabs = useTabStore(useShallow((s) => s.getVisibleTabs()));
-	const activeTabId = useTabStore((s) => s.activeTabId);
+	const activeTabId = useTabStore((s) => s.getActiveTabId());
 	const setActiveTab = useTabStore((s) => s.setActiveTab);
 	const removeTab = useTabStore((s) => s.removeTab);
 	const addTerminalTab = useTabStore((s) => s.addTerminalTab);
