@@ -348,14 +348,7 @@ function SubmitReview({
 		<div className="shrink-0 border-t border-[var(--border-subtle)]">
 			{/* Accepted AI comments banner */}
 			{acceptedCount > 0 && (
-				<div
-					className="flex items-center justify-between gap-2 px-3 py-2"
-					style={{
-						background:
-							"linear-gradient(135deg, rgba(167, 139, 250, 0.08) 0%, rgba(10, 132, 255, 0.06) 100%)",
-						borderBottom: "1px solid var(--border-subtle)",
-					}}
-				>
+				<div className="flex items-center justify-between gap-2 border-b border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 py-2">
 					<div className="flex items-center gap-2">
 						<span className="ai-badge">AI</span>
 						<span className="text-[11px] text-[var(--text-secondary)]">
@@ -366,10 +359,7 @@ function SubmitReview({
 						type="button"
 						disabled={isSubmitting}
 						onClick={handlePostAIOnly}
-						className="shrink-0 rounded-[4px] px-2.5 py-1 text-[10px] font-semibold text-white transition-all disabled:opacity-50"
-						style={{
-							background: "linear-gradient(135deg, #a78bfa 0%, #818cf8 100%)",
-						}}
+						className="shrink-0 rounded-[4px] bg-[var(--bg-overlay)] px-2.5 py-1 text-[10px] font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-surface)] disabled:opacity-50"
 					>
 						{isSubmitting ? "Posting…" : "Post Comments"}
 					</button>
