@@ -1,9 +1,10 @@
 // apps/desktop/src/renderer/components/PRReviewPanel.tsx
 import { useState } from "react";
 import { detectLanguage } from "../../shared/diff-types";
-import type { GitHubPRContext, GitHubPRDetails } from "../../shared/github-types";
+import type { AIDraftThread, GitHubPRContext, GitHubPRDetails } from "../../shared/github-types";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
+import { CommentOverview } from "./CommentOverview";
 
 // ── CI State icon ─────────────────────────────────────────────────────────────
 
@@ -113,11 +114,13 @@ function FileList({
 	prCtx,
 	viewedFiles,
 	onToggleViewed,
+	aiThreads,
 }: {
 	details: GitHubPRDetails;
 	prCtx: GitHubPRContext;
 	viewedFiles: Set<string>;
 	onToggleViewed: (path: string, viewed: boolean) => void;
+	aiThreads: AIDraftThread[];
 }) {
 	const openPRReviewFile = useTabStore((s) => s.openPRReviewFile);
 	const activeWorkspaceId = useTabStore((s) => s.activeWorkspaceId);
@@ -125,6 +128,11 @@ function FileList({
 	const threadCountByFile = new Map<string, number>();
 	for (const t of details.reviewThreads) {
 		if (!t.isResolved) {
+			threadCountByFile.set(t.path, (threadCountByFile.get(t.path) ?? 0) + 1);
+		}
+	}
+	for (const t of aiThreads) {
+		if (t.status === "pending") {
 			threadCountByFile.set(t.path, (threadCountByFile.get(t.path) ?? 0) + 1);
 		}
 	}
@@ -210,9 +218,27 @@ function FileList({
 
 // ── Zone 3: Submit review ─────────────────────────────────────────────────────
 
-function SubmitReview({ prCtx, onSubmitted }: { prCtx: GitHubPRContext; onSubmitted: () => void }) {
+function SubmitReview({
+	prCtx,
+	aiThreads,
+	headCommitOid,
+	onSubmitted,
+}: {
+	prCtx: GitHubPRContext;
+	aiThreads: AIDraftThread[];
+	headCommitOid: string;
+	onSubmitted: () => void;
+}) {
 	const [body, setBody] = useState("");
+	const [isSubmitting, setIsSubmitting] = useState(false);
+	const [submitResult, setSubmitResult] = useState<{
+		posted: number;
+		failed: number;
+	} | null>(null);
 	const utils = trpc.useUtils();
+
+	const createThread = trpc.github.createReviewThread.useMutation();
+	const updateDraftComment = trpc.aiReview.updateDraftComment.useMutation();
 
 	const submit = trpc.github.submitReview.useMutation({
 		onSuccess: () => {
@@ -226,6 +252,54 @@ function SubmitReview({ prCtx, onSubmitted }: { prCtx: GitHubPRContext; onSubmit
 			onSubmitted();
 		},
 	});
+
+	const handleSubmit = async (verdict: "COMMENT" | "APPROVE" | "REQUEST_CHANGES") => {
+		setIsSubmitting(true);
+		setSubmitResult(null);
+
+		// Post accepted AI comments as review threads
+		const approvedComments = aiThreads.filter((t) => t.status === "approved");
+		let posted = 0;
+		let failed = 0;
+
+		for (const comment of approvedComments) {
+			if (comment.line == null) continue;
+			try {
+				await createThread.mutateAsync({
+					owner: prCtx.owner,
+					repo: prCtx.repo,
+					prNumber: prCtx.number,
+					body: comment.userEdit ?? comment.body,
+					commitId: headCommitOid,
+					path: comment.path,
+					line: comment.line,
+					side: comment.diffSide,
+				});
+				await updateDraftComment.mutateAsync({
+					commentId: comment.draftCommentId,
+					status: "approved",
+				});
+				posted++;
+			} catch {
+				failed++;
+			}
+		}
+
+		if (approvedComments.length > 0) {
+			setSubmitResult({ posted, failed });
+		}
+
+		// Submit the review verdict
+		submit.mutate({
+			owner: prCtx.owner,
+			repo: prCtx.repo,
+			prNumber: prCtx.number,
+			verdict,
+			body,
+		});
+
+		setIsSubmitting(false);
+	};
 
 	return (
 		<div className="shrink-0 border-t border-[var(--border-subtle)] px-3 py-2">
@@ -241,16 +315,8 @@ function SubmitReview({ prCtx, onSubmitted }: { prCtx: GitHubPRContext; onSubmit
 					<button
 						key={verdict}
 						type="button"
-						disabled={submit.isPending}
-						onClick={() =>
-							submit.mutate({
-								owner: prCtx.owner,
-								repo: prCtx.repo,
-								prNumber: prCtx.number,
-								verdict,
-								body,
-							})
-						}
+						disabled={submit.isPending || isSubmitting}
+						onClick={() => handleSubmit(verdict)}
 						className={`flex-1 rounded-[4px] py-1 text-[10px] font-medium transition-colors disabled:opacity-50 ${
 							verdict === "APPROVE"
 								? "bg-green-900/40 text-green-400 hover:bg-green-900/60"
@@ -267,6 +333,18 @@ function SubmitReview({ prCtx, onSubmitted }: { prCtx: GitHubPRContext; onSubmit
 					</button>
 				))}
 			</div>
+			{submitResult && (
+				<div
+					className={`mt-1.5 rounded-[4px] px-2 py-1 text-[10px] ${
+						submitResult.failed > 0
+							? "bg-red-900/20 text-red-400"
+							: "bg-green-900/20 text-green-400"
+					}`}
+				>
+					{submitResult.posted} AI comment{submitResult.posted !== 1 ? "s" : ""} posted.
+					{submitResult.failed > 0 && ` ${submitResult.failed} failed.`}
+				</div>
+			)}
 		</div>
 	);
 }
@@ -296,6 +374,33 @@ export function PRReviewPanel({ prCtx }: { prCtx: GitHubPRContext }) {
 			}),
 	});
 
+	// ── AI review draft queries ──────────────────────────────────────────────
+	const prIdentifier = `${prCtx.owner}/${prCtx.repo}#${prCtx.number}`;
+	const reviewDraftsQuery = trpc.aiReview.getReviewDrafts.useQuery(undefined, {
+		staleTime: 5_000,
+	});
+	const matchingDraft = reviewDraftsQuery.data?.find((d) => d.prIdentifier === prIdentifier);
+	const aiDraftQuery = trpc.aiReview.getReviewDraft.useQuery(
+		{ draftId: matchingDraft?.id ?? "" },
+		{ enabled: !!matchingDraft?.id }
+	);
+
+	const aiThreads: AIDraftThread[] = (aiDraftQuery.data?.comments ?? [])
+		.filter((c) => c.status !== "rejected")
+		.map((c) => ({
+			id: `ai-${c.id}`,
+			isAIDraft: true as const,
+			draftCommentId: c.id,
+			path: c.filePath,
+			line: c.lineNumber,
+			diffSide: (c.side as "LEFT" | "RIGHT") ?? "RIGHT",
+			body: c.body,
+			status: c.status as "pending" | "approved" | "rejected" | "edited",
+			userEdit: c.userEdit ?? null,
+			createdAt:
+				typeof c.createdAt === "string" ? c.createdAt : new Date(c.createdAt).toISOString(),
+		}));
+
 	if (isLoading || !details) {
 		return (
 			<div className="flex flex-col gap-2 p-3">
@@ -313,6 +418,7 @@ export function PRReviewPanel({ prCtx }: { prCtx: GitHubPRContext }) {
 				details={details}
 				prCtx={prCtx}
 				viewedFiles={viewedFiles}
+				aiThreads={aiThreads}
 				onToggleViewed={(path, viewed) =>
 					markViewed.mutate({
 						owner: prCtx.owner,
@@ -323,15 +429,19 @@ export function PRReviewPanel({ prCtx }: { prCtx: GitHubPRContext }) {
 					})
 				}
 			/>
+			{details && <CommentOverview details={details} prCtx={prCtx} aiThreads={aiThreads} />}
 			<SubmitReview
 				prCtx={prCtx}
-				onSubmitted={() =>
+				aiThreads={aiThreads}
+				headCommitOid={details?.headCommitOid ?? ""}
+				onSubmitted={() => {
 					utils.github.getPRDetails.invalidate({
 						owner: prCtx.owner,
 						repo: prCtx.repo,
 						number: prCtx.number,
-					})
-				}
+					});
+					aiDraftQuery.refetch();
+				}}
 			/>
 		</div>
 	);
