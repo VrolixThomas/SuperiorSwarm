@@ -5,6 +5,22 @@ import * as schema from "./schema";
 
 export type { SessionSaveData };
 
+export function savePaneLayouts(layouts: Record<string, string>): void {
+	const db = getDb();
+	const now = new Date();
+	db.transaction((tx) => {
+		for (const [workspaceId, layoutJson] of Object.entries(layouts)) {
+			tx.insert(schema.paneLayouts)
+				.values({ workspaceId, layout: layoutJson, updatedAt: now })
+				.onConflictDoUpdate({
+					target: schema.paneLayouts.workspaceId,
+					set: { layout: layoutJson, updatedAt: now },
+				})
+				.run();
+		}
+	});
+}
+
 export function saveTerminalSessions(data: SessionSaveData): void {
 	const db = getDb();
 	const now = new Date();

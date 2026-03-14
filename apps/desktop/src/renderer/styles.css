@@ -205,6 +205,31 @@ body,
 	background: var(--accent);
 }
 
+.panel-resize-handle-vertical {
+	position: relative;
+	height: 1px;
+	background: var(--border-subtle);
+	transition: background-color var(--transition-fast);
+}
+
+.panel-resize-handle-vertical::after {
+	content: "";
+	position: absolute;
+	left: 0;
+	right: 0;
+	top: -2px;
+	height: 5px;
+	cursor: row-resize;
+}
+
+.panel-resize-handle-vertical[data-separator="hover"] {
+	background: var(--text-quaternary);
+}
+
+.panel-resize-handle-vertical[data-separator="active"] {
+	background: var(--accent);
+}
+
 /* ── Rail flyout ──────────────────────────────────────────────────────────── */
 
 @keyframes flyout-in {
@@ -220,4 +245,20 @@ body,
 
 .rail-flyout {
 	animation: flyout-in var(--transition-fast) both;
+}
+
+/* ── Drop zone overlays (tab drag-to-edge splitting) ─────────────────────── */
+
+.drop-zone-highlight {
+	background: rgba(10, 132, 255, 0.15);
+	border: 1px dashed var(--accent);
+	border-radius: 4px;
+	pointer-events: auto;
+	transition: opacity 80ms;
+}
+
+.drop-zone-center-highlight {
+	background: rgba(10, 132, 255, 0.08);
+	border: 1px dashed var(--accent);
+	border-radius: 4px;
 }
