@@ -1,5 +1,5 @@
 // apps/desktop/src/renderer/components/CommentOverview.tsx
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { detectLanguage } from "../../shared/diff-types";
 import type {
 	AIDraftThread,
@@ -23,21 +23,32 @@ function threadDate(t: UnifiedThread): string {
 	return (t as GitHubReviewThread).comments[0]?.createdAt ?? "";
 }
 
-// ── Thread card for the overview ─────────────────────────────────────────────
+// ── Thread card ──────────────────────────────────────────────────────────────
 
 function ThreadCard({
 	thread,
 	prCtx,
 	onAccept,
 	onDecline,
+	onReply,
+	onResolve,
 }: {
 	thread: UnifiedThread;
 	prCtx: GitHubPRContext;
 	onAccept?: (id: string) => void;
 	onDecline?: (id: string) => void;
+	onReply?: (threadId: string, body: string) => void;
+	onResolve?: (threadId: string) => void;
 }) {
 	const openPRReviewFile = useTabStore((s) => s.openPRReviewFile);
 	const activeWorkspaceId = useTabStore((s) => s.activeWorkspaceId);
+	const [replyOpen, setReplyOpen] = useState(false);
+	const [replyBody, setReplyBody] = useState("");
+	const replyRef = useRef<HTMLTextAreaElement>(null);
+
+	useEffect(() => {
+		if (replyOpen) replyRef.current?.focus();
+	}, [replyOpen]);
 
 	const filename = thread.path.split("/").pop() ?? thread.path;
 	const isAI = !!thread.isAIDraft;
@@ -50,10 +61,10 @@ function ThreadCard({
 	if (isAI) {
 		const ai = thread as AIDraftThread;
 		return (
-			<div className="mx-2 mb-1.5 overflow-hidden rounded-[6px] border border-[var(--border-subtle)] bg-[var(--bg-surface)]"
+			<div
+				className="mx-2 mb-1.5 overflow-hidden rounded-[6px] border border-[var(--border-subtle)] bg-[var(--bg-surface)]"
 				style={{ borderLeft: "2px solid #a78bfa" }}
 			>
-				{/* Header */}
 				<div className="flex items-center gap-1.5 border-b border-[var(--border-subtle)] px-3 py-1">
 					<span className="ai-badge">AI</span>
 					<button
@@ -69,13 +80,9 @@ function ThreadCard({
 						<span className="text-[10px] text-[#30d158]">&#10003; Accepted</span>
 					)}
 				</div>
-
-				{/* Body */}
 				<div className="px-3 py-2 text-[11px] text-[var(--text-secondary)] whitespace-pre-wrap">
 					{ai.userEdit ?? ai.body}
 				</div>
-
-				{/* Actions */}
 				{ai.status === "pending" && onAccept && onDecline && (
 					<div className="flex gap-1.5 border-t border-[var(--border-subtle)] px-3 py-1.5">
 						<button
@@ -113,8 +120,18 @@ function ThreadCard({
 					{gh.line != null && `:${gh.line}`}
 				</button>
 				<div className="flex-1" />
-				{gh.isResolved && (
+				{gh.isResolved ? (
 					<span className="text-[10px] text-green-400">Resolved</span>
+				) : (
+					onResolve && (
+						<button
+							type="button"
+							onClick={() => onResolve(gh.id)}
+							className="text-[10px] text-[var(--text-quaternary)] hover:text-[var(--text-tertiary)]"
+						>
+							Resolve
+						</button>
+					)
 				)}
 			</div>
 
@@ -135,6 +152,57 @@ function ThreadCard({
 					</p>
 				</div>
 			))}
+
+			{/* Reply */}
+			{!gh.isResolved && onReply && (
+				<div className="border-t border-[var(--border-subtle)]">
+					{!replyOpen ? (
+						<button
+							type="button"
+							onClick={() => setReplyOpen(true)}
+							className="w-full px-3 py-1.5 text-left text-[10px] text-[var(--text-quaternary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-tertiary)] transition-colors"
+						>
+							Reply…
+						</button>
+					) : (
+						<div className="flex flex-col gap-1.5 p-2">
+							<textarea
+								ref={replyRef}
+								value={replyBody}
+								onChange={(e) => setReplyBody(e.target.value)}
+								rows={2}
+								placeholder="Write a reply…"
+								className="w-full resize-none rounded-[4px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 py-1 text-[11px] text-[var(--text-secondary)] placeholder-[var(--text-quaternary)] outline-none focus:border-[var(--accent)]"
+							/>
+							<div className="flex gap-1.5">
+								<button
+									type="button"
+									onClick={() => {
+										if (replyBody.trim()) {
+											onReply(gh.id, replyBody.trim());
+											setReplyBody("");
+											setReplyOpen(false);
+										}
+									}}
+									className="rounded-[4px] bg-[var(--accent)] px-2 py-0.5 text-[10px] font-medium text-white hover:opacity-80"
+								>
+									Reply
+								</button>
+								<button
+									type="button"
+									onClick={() => {
+										setReplyOpen(false);
+										setReplyBody("");
+									}}
+									className="text-[10px] text-[var(--text-quaternary)] hover:text-[var(--text-tertiary)]"
+								>
+									Cancel
+								</button>
+							</div>
+						</div>
+					)}
+				</div>
+			)}
 		</div>
 	);
 }
@@ -162,11 +230,28 @@ export function CommentOverview({
 }) {
 	const [sortMode, setSortMode] = useState<SortMode>("by-file");
 	const [collapsed, setCollapsed] = useState(false);
+	const utils = trpc.useUtils();
 
 	const updateDraftComment = trpc.aiReview.updateDraftComment.useMutation({
-		onSuccess: () => {
-			// Parent will refetch via aiDraft query
-		},
+		onSuccess: () => utils.aiReview.getReviewDraft.invalidate(),
+	});
+
+	const addComment = trpc.github.addReviewComment.useMutation({
+		onSuccess: () =>
+			utils.github.getPRDetails.invalidate({
+				owner: prCtx.owner,
+				repo: prCtx.repo,
+				number: prCtx.number,
+			}),
+	});
+
+	const resolveThread = trpc.github.resolveThread.useMutation({
+		onSuccess: () =>
+			utils.github.getPRDetails.invalidate({
+				owner: prCtx.owner,
+				repo: prCtx.repo,
+				number: prCtx.number,
+			}),
 	});
 
 	const handleAccept = (draftCommentId: string) => {
@@ -175,6 +260,14 @@ export function CommentOverview({
 
 	const handleDecline = (draftCommentId: string) => {
 		updateDraftComment.mutate({ commentId: draftCommentId, status: "rejected" });
+	};
+
+	const handleReply = (threadId: string, body: string) => {
+		addComment.mutate({ threadId, body });
+	};
+
+	const handleResolve = (threadId: string) => {
+		resolveThread.mutate({ threadId });
 	};
 
 	const allThreads: UnifiedThread[] = useMemo(() => {
@@ -218,6 +311,8 @@ export function CommentOverview({
 			prCtx={prCtx}
 			onAccept={handleAccept}
 			onDecline={handleDecline}
+			onReply={handleReply}
+			onResolve={handleResolve}
 		/>
 	);
 
