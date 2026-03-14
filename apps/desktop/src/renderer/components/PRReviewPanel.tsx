@@ -394,7 +394,7 @@ export function PRReviewPanel({ prCtx }: { prCtx: GitHubPRContext }) {
 	);
 
 	const aiThreads: AIDraftThread[] = (aiDraftQuery.data?.comments ?? [])
-		.filter((c) => c.status !== "rejected" && c.status !== "submitted")
+		.filter((c) => c.status === "pending" || c.status === "edited")
 		.map((c) => ({
 			id: `ai-${c.id}`,
 			isAIDraft: true as const,

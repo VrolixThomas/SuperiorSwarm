@@ -582,7 +582,7 @@ export function PRReviewFileTab({ prCtx, filePath, language }: PRReviewFileTabPr
 
 	// Threads for this file — merge GitHub threads with AI draft threads
 	const aiThreads: AIDraftThread[] = (aiDraftQuery.data?.comments ?? [])
-		.filter((c) => c.status !== "rejected" && c.status !== "submitted")
+		.filter((c) => c.status === "pending" || c.status === "edited")
 		.map((c) => ({
 			id: `ai-${c.id}`,
 			isAIDraft: true as const,
