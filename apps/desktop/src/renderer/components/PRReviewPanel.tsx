@@ -303,47 +303,83 @@ function SubmitReview({
 
 	const acceptedCount = aiThreads.filter((t) => t.status === "approved").length;
 
+	const handlePostAIOnly = async () => {
+		setIsSubmitting(true);
+		setSubmitResult(null);
+
+		const approvedComments = aiThreads.filter((t) => t.status === "approved");
+		let posted = 0;
+		let failed = 0;
+
+		for (const comment of approvedComments) {
+			if (comment.line == null) continue;
+			try {
+				await createThread.mutateAsync({
+					owner: prCtx.owner,
+					repo: prCtx.repo,
+					prNumber: prCtx.number,
+					body: comment.userEdit ?? comment.body,
+					commitId: headCommitOid,
+					path: comment.path,
+					line: comment.line,
+					side: comment.diffSide,
+				});
+				await updateDraftComment.mutateAsync({
+					commentId: comment.draftCommentId,
+					status: "submitted",
+				});
+				posted++;
+			} catch {
+				failed++;
+			}
+		}
+
+		setSubmitResult({ posted, failed });
+		setIsSubmitting(false);
+		utils.github.getPRDetails.invalidate({
+			owner: prCtx.owner,
+			repo: prCtx.repo,
+			number: prCtx.number,
+		});
+		onSubmitted();
+	};
+
 	return (
-		<div className="shrink-0 border-t border-[var(--border-subtle)] px-3 py-2">
-			<textarea
-				value={body}
-				onChange={(e) => setBody(e.target.value)}
-				placeholder="Review comment (optional)"
-				rows={3}
-				className="w-full resize-none rounded-[4px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 py-1.5 text-[11px] text-[var(--text-secondary)] placeholder-[var(--text-quaternary)] outline-none focus:border-[var(--accent)]"
-			/>
+		<div className="shrink-0 border-t border-[var(--border-subtle)]">
+			{/* Accepted AI comments banner */}
 			{acceptedCount > 0 && (
-				<div className="mt-1 text-[10px] text-[var(--text-quaternary)]">
-					{acceptedCount} accepted AI comment{acceptedCount !== 1 ? "s" : ""} will be posted
-					to GitHub when you submit.
+				<div
+					className="flex items-center justify-between gap-2 px-3 py-2"
+					style={{
+						background:
+							"linear-gradient(135deg, rgba(167, 139, 250, 0.08) 0%, rgba(10, 132, 255, 0.06) 100%)",
+						borderBottom: "1px solid var(--border-subtle)",
+					}}
+				>
+					<div className="flex items-center gap-2">
+						<span className="ai-badge">AI</span>
+						<span className="text-[11px] text-[var(--text-secondary)]">
+							{acceptedCount} comment{acceptedCount !== 1 ? "s" : ""} ready to post
+						</span>
+					</div>
+					<button
+						type="button"
+						disabled={isSubmitting}
+						onClick={handlePostAIOnly}
+						className="shrink-0 rounded-[4px] px-2.5 py-1 text-[10px] font-semibold text-white transition-all disabled:opacity-50"
+						style={{
+							background: "linear-gradient(135deg, #a78bfa 0%, #818cf8 100%)",
+						}}
+					>
+						{isSubmitting ? "Posting…" : "Post Comments"}
+					</button>
 				</div>
 			)}
-			<div className="mt-1.5 flex gap-1.5">
-				{(["COMMENT", "APPROVE", "REQUEST_CHANGES"] as const).map((verdict) => (
-					<button
-						key={verdict}
-						type="button"
-						disabled={submit.isPending || isSubmitting}
-						onClick={() => handleSubmit(verdict)}
-						className={`flex-1 rounded-[4px] py-1 text-[10px] font-medium transition-colors disabled:opacity-50 ${
-							verdict === "APPROVE"
-								? "bg-green-900/40 text-green-400 hover:bg-green-900/60"
-								: verdict === "REQUEST_CHANGES"
-									? "bg-red-900/40 text-red-400 hover:bg-red-900/60"
-									: "bg-[var(--bg-elevated)] text-[var(--text-tertiary)] hover:bg-[var(--bg-overlay)]"
-						}`}
-					>
-						{verdict === "APPROVE"
-							? "Approve"
-							: verdict === "REQUEST_CHANGES"
-								? "Request Changes"
-								: "Comment"}
-					</button>
-				))}
-			</div>
+
+			{/* Result feedback */}
 			{submitResult && (
 				<div
-					className={`mt-1.5 rounded-[4px] px-2 py-1 text-[10px] ${
+					className={`px-3 py-1.5 text-[10px] ${
 						submitResult.failed > 0
 							? "bg-red-900/20 text-red-400"
 							: "bg-green-900/20 text-green-400"
@@ -353,6 +389,40 @@ function SubmitReview({
 					{submitResult.failed > 0 && ` ${submitResult.failed} failed.`}
 				</div>
 			)}
+
+			{/* Review submission */}
+			<div className="px-3 py-2">
+				<textarea
+					value={body}
+					onChange={(e) => setBody(e.target.value)}
+					placeholder="Review comment (optional)"
+					rows={3}
+					className="w-full resize-none rounded-[4px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 py-1.5 text-[11px] text-[var(--text-secondary)] placeholder-[var(--text-quaternary)] outline-none focus:border-[var(--accent)]"
+				/>
+				<div className="mt-1.5 flex gap-1.5">
+					{(["COMMENT", "APPROVE", "REQUEST_CHANGES"] as const).map((verdict) => (
+						<button
+							key={verdict}
+							type="button"
+							disabled={submit.isPending || isSubmitting}
+							onClick={() => handleSubmit(verdict)}
+							className={`flex-1 rounded-[4px] py-1 text-[10px] font-medium transition-colors disabled:opacity-50 ${
+								verdict === "APPROVE"
+									? "bg-green-900/40 text-green-400 hover:bg-green-900/60"
+									: verdict === "REQUEST_CHANGES"
+										? "bg-red-900/40 text-red-400 hover:bg-red-900/60"
+										: "bg-[var(--bg-elevated)] text-[var(--text-tertiary)] hover:bg-[var(--bg-overlay)]"
+							}`}
+						>
+							{verdict === "APPROVE"
+								? "Approve"
+								: verdict === "REQUEST_CHANGES"
+									? "Request Changes"
+									: "Comment"}
+						</button>
+					))}
+				</div>
+			</div>
 		</div>
 	);
 }
