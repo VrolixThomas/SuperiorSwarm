@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useShallow } from "zustand/react/shallow";
 import type { DiffFile } from "../../shared/diff-types";
 import { detectLanguage } from "../../shared/diff-types";
 import { useTabStore } from "../stores/tab-store";
@@ -934,7 +935,7 @@ export function RepoFileTree({
 	// ── Store ──────────────────────────────────────────────────
 	const openFile = useTabStore((s) => s.openFile);
 	const activeTabId = useTabStore((s) => s.getActiveTabId());
-	const tabs = useTabStore((s) => s.getVisibleTabs());
+	const tabs = useTabStore(useShallow((s) => s.getVisibleTabs()));
 
 	const activeTab = tabs.find((t) => t.id === activeTabId);
 	const activeFilePath =
