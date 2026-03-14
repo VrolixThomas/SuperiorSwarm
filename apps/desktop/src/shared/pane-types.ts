@@ -26,11 +26,11 @@ export type LayoutNode = Pane | SplitNode;
 
 // ─── Serialized types (for DB persistence) ───────────────────────────────────
 
-/** Serialized leaf — stores tab references instead of full objects. */
+/** Serialized leaf — stores full tab objects for persistence. */
 export interface SerializedPane {
 	type: "pane";
 	id: string;
-	tabIds: string[];
+	tabs: TabItem[];
 	activeTabId: string | null;
 }
 

@@ -52,6 +52,8 @@ interface TabStore {
 	activeWorkspaceCwd: string;
 	diffMode: "split" | "inline";
 	rightPanel: RightPanelState;
+	/** @internal Bumped when pane-store changes so derived selectors re-evaluate. */
+	_paneVersion: number;
 
 	// Derived — reads from pane-store for backwards compat
 	getAllTabs: () => TabItem[];
@@ -123,6 +125,10 @@ function nextTerminalId(): string {
 }
 function nextFileTabId(): string {
 	return `file-tab-${++fileTabCounter}`;
+}
+
+export function resetFileTabCounter(max: number): void {
+	fileTabCounter = max;
 }
 
 // ─── Dedup key helpers ───────────────────────────────────────────────────────
@@ -214,6 +220,7 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 	activeWorkspaceCwd: "",
 	diffMode: "split",
 	rightPanel: defaultPanelForCwd(""),
+	_paneVersion: 0,
 
 	// ── Derived properties ──────────────────────────────────────────────
 
@@ -538,3 +545,12 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 		});
 	},
 }));
+
+// ─── Cross-store subscription bridge ─────────────────────────────────────────
+// Tab-store's derived methods (getVisibleTabs, getActiveTabId) read from
+// pane-store. Components subscribed to tab-store won't see pane-store changes
+// unless we notify them. Bumping _paneVersion triggers Zustand's raw state
+// comparison, so cached selector results are re-evaluated.
+usePaneStore.subscribe(() => {
+	useTabStore.setState((s) => ({ _paneVersion: s._paneVersion + 1 }));
+});

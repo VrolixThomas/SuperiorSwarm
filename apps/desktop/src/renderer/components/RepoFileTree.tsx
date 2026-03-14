@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { detectLanguage } from "../../shared/diff-types";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
@@ -20,7 +21,7 @@ function ExplorerFileNode({
 	workspaceId: string;
 }) {
 	const activeTabId = useTabStore((s) => s.getActiveTabId());
-	const tabs = useTabStore((s) => s.getVisibleTabs());
+	const tabs = useTabStore(useShallow((s) => s.getVisibleTabs()));
 	const openFile = useTabStore((s) => s.openFile);
 
 	const activeTab = tabs.find((t) => t.id === activeTabId);

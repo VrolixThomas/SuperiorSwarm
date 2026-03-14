@@ -75,6 +75,9 @@ export function PaneContainer({
 			setIsDragOver(false);
 			dragCounterRef.current = 0;
 
+			// No-op: dropping on same pane's center
+			if (zone === "center" && sourcePaneId === pane.id) return;
+
 			if (zone === "center") {
 				moveTabBetweenPanes(workspaceId, sourcePaneId, pane.id, tabId);
 				return;

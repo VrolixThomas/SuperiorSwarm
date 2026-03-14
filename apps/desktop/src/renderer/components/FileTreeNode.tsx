@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useShallow } from "zustand/react/shallow";
 import type { DiffContext } from "../../shared/diff-types";
 import type { DiffFile } from "../../shared/diff-types";
 import { detectLanguage } from "../../shared/diff-types";
@@ -57,7 +58,7 @@ function FileNode({
 	actionButton?: { icon: string; title: string; onClick: (path: string) => void };
 }) {
 	const activeTabId = useTabStore((s) => s.getActiveTabId());
-	const tabs = useTabStore((s) => s.getVisibleTabs());
+	const tabs = useTabStore(useShallow((s) => s.getVisibleTabs()));
 	const openDiffFile = useTabStore((s) => s.openDiffFile);
 	const file = node.file!;
 

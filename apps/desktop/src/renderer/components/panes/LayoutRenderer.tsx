@@ -6,21 +6,15 @@ import { PaneContainer } from "./PaneContainer";
 
 const RATIO_DEBOUNCE_MS = 200;
 
-export function LayoutRenderer({
+function SplitRenderer({
 	node,
 	workspaceId,
 	savedScrollback,
 }: {
-	node: LayoutNode;
+	node: LayoutNode & { type: "split" };
 	workspaceId: string;
 	savedScrollback: Record<string, string>;
 }) {
-	if (node.type === "pane") {
-		return (
-			<PaneContainer pane={node} workspaceId={workspaceId} savedScrollback={savedScrollback} />
-		);
-	}
-
 	const orientation = node.direction === "horizontal" ? "horizontal" : "vertical";
 	const firstSize = node.ratio * 100;
 	const secondSize = (1 - node.ratio) * 100;
@@ -84,4 +78,22 @@ export function LayoutRenderer({
 			</Panel>
 		</Group>
 	);
+}
+
+export function LayoutRenderer({
+	node,
+	workspaceId,
+	savedScrollback,
+}: {
+	node: LayoutNode;
+	workspaceId: string;
+	savedScrollback: Record<string, string>;
+}) {
+	if (node.type === "pane") {
+		return (
+			<PaneContainer pane={node} workspaceId={workspaceId} savedScrollback={savedScrollback} />
+		);
+	}
+
+	return <SplitRenderer node={node} workspaceId={workspaceId} savedScrollback={savedScrollback} />;
 }

@@ -17,7 +17,7 @@ import {
 import { usePaneStore } from "./stores/pane-store";
 import { useProjectStore } from "./stores/projects";
 import type { TabItem } from "./stores/tab-store";
-import { useTabStore } from "./stores/tab-store";
+import { resetFileTabCounter, useTabStore } from "./stores/tab-store";
 import { trpc } from "./trpc/client";
 
 const SAVE_INTERVAL_MS = 30_000;
@@ -27,7 +27,9 @@ function serializeLayout(node: LayoutNode): SerializedLayoutNode {
 		return {
 			type: "pane",
 			id: node.id,
-			tabIds: node.tabs.map((t) => t.id),
+			tabs: node.tabs.map((t) =>
+				t.kind === "file" ? { ...t, initialPosition: undefined } : t
+			),
 			activeTabId: node.activeTabId,
 		};
 	}
@@ -40,11 +42,22 @@ function serializeLayout(node: LayoutNode): SerializedLayoutNode {
 	};
 }
 
-function deserializeLayout(node: SerializedLayoutNode, tabs: TabItem[]): LayoutNode | null {
+function deserializeLayout(
+	node: SerializedLayoutNode,
+	terminalMap: Map<string, TabItem>
+): LayoutNode | null {
 	if (node.type === "pane") {
-		const paneTabs = node.tabIds
-			.map((id) => tabs.find((t) => t.id === id))
+		const paneTabs = node.tabs
+			.map((saved) => {
+				if (saved.kind === "terminal") {
+					// Terminal tabs: use fresh session data from backend
+					return terminalMap.get(saved.id) ?? null;
+				}
+				// File tabs: use directly from serialized data
+				return saved;
+			})
 			.filter((t): t is TabItem => t != null);
+		if (paneTabs.length === 0) return null;
 		return {
 			type: "pane",
 			id: node.id,
@@ -52,8 +65,8 @@ function deserializeLayout(node: SerializedLayoutNode, tabs: TabItem[]): LayoutN
 			activeTabId: paneTabs.find((t) => t.id === node.activeTabId)?.id ?? paneTabs[0]?.id ?? null,
 		};
 	}
-	const first = deserializeLayout(node.children[0], tabs);
-	const second = deserializeLayout(node.children[1], tabs);
+	const first = deserializeLayout(node.children[0], terminalMap);
+	const second = deserializeLayout(node.children[1], terminalMap);
 	if (!first || !second) return first || second || null;
 	return {
 		type: "split",
@@ -64,10 +77,19 @@ function deserializeLayout(node: SerializedLayoutNode, tabs: TabItem[]): LayoutN
 	};
 }
 
-function extractMaxIds(node: LayoutNode): { maxPaneId: number; maxSplitId: number } {
+function extractMaxIds(node: LayoutNode): {
+	maxPaneId: number;
+	maxSplitId: number;
+	maxFileTabId: number;
+} {
 	if (node.type === "pane") {
 		const match = node.id.match(/^pane-(\d+)$/);
-		return { maxPaneId: match ? Number(match[1]) : 0, maxSplitId: 0 };
+		let maxFileTabId = 0;
+		for (const tab of node.tabs) {
+			const ftMatch = tab.id.match(/^file-tab-(\d+)$/);
+			if (ftMatch) maxFileTabId = Math.max(maxFileTabId, Number(ftMatch[1]));
+		}
+		return { maxPaneId: match ? Number(match[1]) : 0, maxSplitId: 0, maxFileTabId };
 	}
 	const splitMatch = node.id.match(/^split-(\d+)$/);
 	const splitId = splitMatch ? Number(splitMatch[1]) : 0;
@@ -76,6 +98,7 @@ function extractMaxIds(node: LayoutNode): { maxPaneId: number; maxSplitId: numbe
 	return {
 		maxPaneId: Math.max(left.maxPaneId, right.maxPaneId),
 		maxSplitId: Math.max(splitId, left.maxSplitId, right.maxSplitId),
+		maxFileTabId: Math.max(left.maxFileTabId, right.maxFileTabId),
 	};
 }
 
@@ -129,7 +152,9 @@ export function App() {
 		hasRestored.current = true;
 
 		const { sessions, state, paneLayouts } = restoreQuery.data;
-		if (sessions.length === 0) return;
+		const hasSessions = sessions.length > 0;
+		const hasLayouts = paneLayouts && Object.keys(paneLayouts).length > 0;
+		if (!hasSessions && !hasLayouts) return;
 
 		const scrollbacks: Record<string, string> = {};
 		for (const session of sessions) {
@@ -139,43 +164,49 @@ export function App() {
 		}
 		setSavedScrollback(scrollbacks);
 
-		useTabStore
-			.getState()
-			.hydrate(
-				sessions,
-				state["activeTabId"] ?? null,
-				state["activeWorkspaceId"] ?? null,
-				state["activeWorkspaceCwd"] ?? ""
-			);
+		if (hasSessions) {
+			useTabStore
+				.getState()
+				.hydrate(
+					sessions,
+					state["activeTabId"] ?? null,
+					state["activeWorkspaceId"] ?? null,
+					state["activeWorkspaceCwd"] ?? ""
+				);
+		}
 
-		// Hydrate pane layouts (must happen after tab hydration so tabs exist in pane-store)
-		if (paneLayouts && Object.keys(paneLayouts).length > 0) {
+		// Hydrate pane layouts (must happen after tab hydration so terminal tabs exist)
+		if (hasLayouts) {
 			const paneState = usePaneStore.getState();
-			// ORDERING DEPENDENCY: tab-store.hydrate() above must run first because it
-			// populates pane-store layouts (via the onTabsChanged listener). We pull tabs
-			// from those already-hydrated layouts so that deserializeLayout can resolve
-			// tabIds back to full TabItem objects. If this runs before hydrate(), the
-			// layouts map will be empty and deserialization will silently drop all tabs.
-			const allRestoredTabs: TabItem[] = Object.values(paneState.layouts).flatMap((root) => {
-				const collectTabs = (n: LayoutNode): TabItem[] => {
-					if (n.type === "pane") return n.tabs;
-					return [...collectTabs(n.children[0]), ...collectTabs(n.children[1])];
+
+			// Build terminal tab lookup from hydrated pane-store layouts
+			const terminalMap = new Map<string, TabItem>();
+			for (const root of Object.values(paneState.layouts)) {
+				const collectTabs = (n: LayoutNode): void => {
+					if (n.type === "pane") {
+						for (const tab of n.tabs) terminalMap.set(tab.id, tab);
+						return;
+					}
+					collectTabs(n.children[0]);
+					collectTabs(n.children[1]);
 				};
-				return collectTabs(root);
-			});
+				collectTabs(root);
+			}
 
 			let maxPaneId = 0;
 			let maxSplitId = 0;
+			let maxFileTabId = 0;
 
 			for (const [wsId, layoutJson] of Object.entries(paneLayouts)) {
 				try {
 					const serialized = JSON.parse(layoutJson) as SerializedLayoutNode;
-					const layout = deserializeLayout(serialized, allRestoredTabs);
+					const layout = deserializeLayout(serialized, terminalMap);
 					if (layout) {
 						paneState.hydrateLayout(wsId, layout);
 						const ids = extractMaxIds(layout);
 						maxPaneId = Math.max(maxPaneId, ids.maxPaneId);
 						maxSplitId = Math.max(maxSplitId, ids.maxSplitId);
+						maxFileTabId = Math.max(maxFileTabId, ids.maxFileTabId);
 					}
 				} catch (e) {
 					console.warn(`Failed to restore pane layout for workspace ${wsId}:`, e);
@@ -183,6 +214,7 @@ export function App() {
 			}
 
 			paneState.resetCounters(maxPaneId, maxSplitId);
+			resetFileTabCounter(maxFileTabId);
 		}
 	}, [restoreQuery.data]);
 
@@ -190,7 +222,7 @@ export function App() {
 	useEffect(() => {
 		const interval = setInterval(() => {
 			const snapshot = collectSnapshot();
-			if (snapshot.sessions.length > 0) {
+			if (snapshot.sessions.length > 0 || Object.keys(snapshot.paneLayouts).length > 0) {
 				saveMutateRef.current(snapshot);
 			}
 		}, SAVE_INTERVAL_MS);
@@ -202,7 +234,7 @@ export function App() {
 	useEffect(() => {
 		const handleBeforeUnload = () => {
 			const snapshot = collectSnapshot();
-			if (snapshot.sessions.length > 0) {
+			if (snapshot.sessions.length > 0 || Object.keys(snapshot.paneLayouts).length > 0) {
 				window.electron.session.saveSync(snapshot);
 			}
 		};

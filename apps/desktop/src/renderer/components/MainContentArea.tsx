@@ -1,4 +1,3 @@
-import { useEffect } from "react";
 import { usePaneStore } from "../stores/pane-store";
 import { useTabStore } from "../stores/tab-store";
 import { LayoutRenderer } from "./panes/LayoutRenderer";
@@ -6,13 +5,6 @@ import { LayoutRenderer } from "./panes/LayoutRenderer";
 export function MainContentArea({ savedScrollback }: { savedScrollback: Record<string, string> }) {
 	const activeWorkspaceId = useTabStore((s) => s.activeWorkspaceId);
 	const layout = usePaneStore((s) => (activeWorkspaceId ? s.layouts[activeWorkspaceId] : null));
-
-	// Ensure a default layout exists — in an effect to avoid state mutation during render
-	useEffect(() => {
-		if (activeWorkspaceId && !layout) {
-			usePaneStore.getState().ensureLayout(activeWorkspaceId);
-		}
-	}, [activeWorkspaceId, layout]);
 
 	if (!activeWorkspaceId || !layout) {
 		return (
