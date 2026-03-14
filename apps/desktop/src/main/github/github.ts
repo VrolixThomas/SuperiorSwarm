@@ -303,10 +303,45 @@ async function fetchBranchNames(
 }
 
 export async function getMyPRs(): Promise<GitHubPR[]> {
-	const [authoredNodes, reviewingNodes] = await Promise.all([
+	// Resolve actual username — @me may not work for review-requested in all token types
+	let username = "@me";
+	try {
+		const userRes = await githubFetch("/user");
+		if (userRes.ok) {
+			const user = (await userRes.json()) as { login: string };
+			username = user.login;
+		}
+	} catch {
+		// Fall back to @me
+	}
+
+	// Fetch user's team memberships for team-based review requests
+	const teamSlugs: string[] = [];
+	try {
+		const teamsRes = await githubFetch("/user/teams?per_page=100");
+		if (teamsRes.ok) {
+			const teams = (await teamsRes.json()) as { slug: string; organization: { login: string } }[];
+			for (const t of teams) {
+				teamSlugs.push(`${t.organization.login}/${t.slug}`);
+			}
+		}
+	} catch {
+		// Non-critical — team review requests just won't be found
+	}
+
+	const searches: Promise<RawSearchIssueNode[]>[] = [
 		searchPRs("is:pr is:open author:@me"),
-		searchPRs("is:pr is:open review-requested:@me"),
-	]);
+		searchPRs(`is:pr is:open review-requested:${username}`),
+		searchPRs(`is:pr is:open reviewed-by:${username} -author:${username}`),
+	];
+
+	// Add team-based review request searches
+	for (const slug of teamSlugs) {
+		searches.push(searchPRs(`is:pr is:open team-review-requested:${slug}`));
+	}
+
+	const [authoredNodes, reviewRequestedNodes, reviewedByNodes, ...teamNodes] =
+		await Promise.all(searches);
 
 	const seen = new Set<number>();
 	const nodes: { node: RawSearchIssueNode; role: "author" | "reviewer" }[] = [];
@@ -316,8 +351,14 @@ export async function getMyPRs(): Promise<GitHubPR[]> {
 		nodes.push({ node, role: "author" });
 	}
 
-	for (const node of reviewingNodes) {
+	const allReviewerNodes = [
+		...reviewRequestedNodes,
+		...reviewedByNodes,
+		...teamNodes.flat(),
+	];
+	for (const node of allReviewerNodes) {
 		if (!seen.has(node.id)) {
+			seen.add(node.id);
 			nodes.push({ node, role: "reviewer" });
 		}
 	}
