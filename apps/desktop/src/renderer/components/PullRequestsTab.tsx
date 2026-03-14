@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { BitbucketPullRequest } from "../../main/atlassian/bitbucket";
 import type { GitHubPR } from "../../main/github/github";
 import { useTabStore } from "../stores/tab-store";
@@ -95,6 +95,113 @@ export function PullRequestsTab() {
 		staleTime: Number.POSITIVE_INFINITY,
 	});
 	const setCollapsedMutation = trpc.tickets.setCollapsedGroups.useMutation();
+
+	const reviewDrafts = trpc.aiReview.getReviewDrafts.useQuery(undefined, {
+		staleTime: 3_000,
+		refetchInterval: 5_000,
+	});
+	const attachTerminalMut = trpc.workspaces.attachTerminal.useMutation();
+	const attachTerminalRef2 = useRef(attachTerminalMut.mutate);
+	attachTerminalRef2.current = attachTerminalMut.mutate;
+
+	const [reviewError, setReviewError] = useState<string | null>(null);
+	const triggerReview = trpc.aiReview.triggerReview.useMutation({
+		onSuccess: (launchInfo) => {
+			setReviewError(null);
+			reviewDrafts.refetch();
+			utils.workspaces.listByProject.invalidate();
+
+			if (!launchInfo.workspaceId || !launchInfo.worktreePath) return;
+
+			// Create workspace terminal and run the launch script
+			const tabStore = useTabStore.getState();
+			tabStore.setActiveWorkspace(launchInfo.workspaceId, launchInfo.worktreePath);
+			const tabId = tabStore.addTerminalTab(
+				launchInfo.workspaceId,
+				launchInfo.worktreePath,
+				`AI Review`
+			);
+			attachTerminalRef2.current({
+				workspaceId: launchInfo.workspaceId,
+				terminalId: tabId,
+			});
+
+			// Run the launch script after shell initializes
+			setTimeout(() => {
+				window.electron.terminal.write(tabId, `bash '${launchInfo.launchScript}'\n`);
+			}, 500);
+		},
+		onError: (err) => {
+			setReviewError(err.message);
+			reviewDrafts.refetch();
+		},
+	});
+
+	const dismissReview = trpc.aiReview.dismissReview.useMutation({
+		onSuccess: () => reviewDrafts.refetch(),
+	});
+
+	const settings = trpc.aiReview.getSettings.useQuery();
+	const { data: projectsList } = trpc.projects.list.useQuery();
+	const triggeredRef = useRef(new Set<string>());
+
+	useEffect(() => {
+		if (!settings.data?.autoReviewEnabled || !reviewDrafts.data) return;
+
+		const existingIdentifiers = new Set(reviewDrafts.data.map((d) => d.prIdentifier));
+
+		// Auto-trigger for GitHub reviewer PRs
+		for (const pr of ghPRs ?? []) {
+			if (pr.role !== "reviewer") continue;
+			const identifier = `${pr.repoOwner}/${pr.repoName}#${pr.number}`;
+			if (existingIdentifiers.has(identifier) || triggeredRef.current.has(identifier)) continue;
+			const project = projectsList?.find(
+				(p) => p.githubOwner === pr.repoOwner && p.githubRepo === pr.repoName
+			);
+			triggeredRef.current.add(identifier);
+			triggerReview.mutate({
+				provider: "github",
+				identifier,
+				title: pr.title,
+				author: "",
+				sourceBranch: pr.branchName,
+				targetBranch: project?.defaultBranch ?? "main",
+				repoPath: project?.repoPath ?? "",
+			});
+		}
+
+		// Auto-trigger for Bitbucket review PRs
+		for (const pr of bbReviewPRs ?? []) {
+			const identifier = `${pr.workspace}/${pr.repoSlug}#${pr.id}`;
+			if (existingIdentifiers.has(identifier) || triggeredRef.current.has(identifier)) continue;
+			triggeredRef.current.add(identifier);
+			triggerReview.mutate({
+				provider: "bitbucket",
+				identifier,
+				title: pr.title,
+				author: pr.author,
+				sourceBranch: pr.source?.branch?.name ?? "",
+				targetBranch: pr.destination?.branch?.name ?? "main",
+				repoPath: "",
+			});
+		}
+	}, [ghPRs, bbReviewPRs, reviewDrafts.data, settings.data, projectsList]);
+
+	const store = useTabStore();
+
+	function getReviewStatus(prIdentifier: string) {
+		return reviewDrafts.data?.find((d) => d.prIdentifier === prIdentifier);
+	}
+
+	function getPrIdentifier(pr: MergedPR): string {
+		if (pr.provider === "github" && pr.githubPR) {
+			return `${pr.githubPR.repoOwner}/${pr.githubPR.repoName}#${pr.githubPR.number}`;
+		}
+		if (pr.provider === "bitbucket" && pr.bitbucketPR) {
+			return `${pr.bitbucketPR.workspace}/${pr.bitbucketPR.repoSlug}#${pr.bitbucketPR.id}`;
+		}
+		return pr.id;
+	}
 
 	const collapsedGroups = useMemo(() => new Set(collapsedGroupsList ?? []), [collapsedGroupsList]);
 
@@ -271,6 +378,11 @@ export function PullRequestsTab() {
 					{linkError}
 				</div>
 			)}
+			{reviewError && (
+				<div className="mx-3 my-1 rounded-[var(--radius-sm)] bg-[var(--bg-elevated)] px-3 py-2 text-[11px] text-red-400">
+					{reviewError}
+				</div>
+			)}
 
 			<div className="flex flex-col">
 				{[...grouped.entries()].map(([repoKey, group]) => {
@@ -360,6 +472,128 @@ export function PullRequestsTab() {
 												)}
 												<span className="min-w-0 flex-1 truncate">{pr.title}</span>
 												{pr.reviewDecision && <ReviewBadge decision={pr.reviewDecision} />}
+												{/* AI Review status */}
+												{(() => {
+													const identifier = getPrIdentifier(pr);
+													const draft = getReviewStatus(identifier);
+													if (draft?.status === "ready") {
+														return (
+															<button
+																type="button"
+																className="shrink-0 cursor-pointer rounded-[4px] border-none bg-[rgba(48,209,88,0.15)] px-1.5 py-0.5 text-[10px] font-medium text-[#30d158]"
+																onClick={(e) => {
+																	e.stopPropagation();
+																	// Open the standard PR review panel
+																	if (
+																		pr.provider === "github" &&
+																		pr.githubPR
+																	) {
+																		const project =
+																			projectsList?.find(
+																				(p) =>
+																					p.githubOwner ===
+																						pr.githubPR!
+																							.repoOwner &&
+																					p.githubRepo ===
+																						pr.githubPR!.repoName
+																			);
+																		store.openPRReviewPanel(
+																			store.activeWorkspaceId ?? "",
+																			{
+																				owner: pr.githubPR.repoOwner,
+																				repo: pr.githubPR.repoName,
+																				number: pr.githubPR.number,
+																				title: pr.title,
+																				sourceBranch:
+																					pr.githubPR.branchName,
+																				targetBranch:
+																					project?.defaultBranch ??
+																					"main",
+																				repoPath:
+																					project?.repoPath ?? "",
+																			}
+																		);
+																	}
+																}}
+															>
+																AI Review Ready
+															</button>
+														);
+													}
+													if (draft?.status === "in_progress") {
+														return (
+															<span className="flex shrink-0 items-center gap-1 rounded-[4px] bg-[rgba(255,214,10,0.15)] px-1.5 py-0.5 text-[10px] font-medium text-[#ffd60a]">
+																<span className="inline-block size-1.5 animate-pulse rounded-full bg-[#ffd60a]" />
+																Reviewing...
+															</span>
+														);
+													}
+													if (draft?.status === "queued") {
+														return (
+															<span className="shrink-0 rounded-[4px] bg-[var(--bg-elevated)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--text-quaternary)]">
+																Queued
+															</span>
+														);
+													}
+													if (draft?.status === "failed") {
+														return (
+															<button
+																type="button"
+																className="shrink-0 cursor-pointer rounded-[4px] border-none bg-[rgba(255,69,58,0.15)] px-1.5 py-0.5 text-[10px] font-medium text-[#ff453a] transition-colors hover:bg-[rgba(255,69,58,0.25)]"
+																onClick={(e) => {
+																	e.stopPropagation();
+																	dismissReview.mutate({ draftId: draft.id });
+																}}
+															>
+																Failed — Retry
+															</button>
+														);
+													}
+													if (!draft) {
+														const handleTrigger = () => {
+															if (pr.provider === "github" && pr.githubPR) {
+																const project = projectsList?.find(
+																	(p) =>
+																		p.githubOwner === pr.githubPR!.repoOwner &&
+																		p.githubRepo === pr.githubPR!.repoName
+																);
+																triggerReview.mutate({
+																	provider: "github",
+																	identifier,
+																	title: pr.title,
+																	author: "",
+																	sourceBranch: pr.githubPR.branchName,
+																	targetBranch: project?.defaultBranch ?? "main",
+																	repoPath: project?.repoPath ?? "",
+																});
+															}
+															if (pr.provider === "bitbucket" && pr.bitbucketPR) {
+																triggerReview.mutate({
+																	provider: "bitbucket",
+																	identifier,
+																	title: pr.title,
+																	author: pr.bitbucketPR.author,
+																	sourceBranch: pr.bitbucketPR.source?.branch?.name ?? "",
+																	targetBranch: pr.bitbucketPR.destination?.branch?.name ?? "main",
+																	repoPath: "",
+																});
+															}
+														};
+														return (
+															<button
+																type="button"
+																className="shrink-0 cursor-pointer rounded-[4px] border-none bg-[var(--bg-elevated)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--text-tertiary)] transition-colors hover:bg-[var(--bg-overlay)] hover:text-[var(--text-secondary)]"
+																onClick={(e) => {
+																	e.stopPropagation();
+																	handleTrigger();
+																}}
+															>
+																Review with AI
+															</button>
+														);
+													}
+													return null;
+												})()}
 												{/* Provider icon badge */}
 												<div className="shrink-0 opacity-40">
 													{pr.provider === "github" ? (
