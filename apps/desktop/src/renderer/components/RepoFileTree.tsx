@@ -208,11 +208,16 @@ function searchFiles(query: string, files: string[]): FuzzyResult[] {
 
 // ─── Tree Building ──────────────────────────────────────────────────────────────
 
-function buildTree(paths: string[]): TreeNode[] {
+interface FlatEntry {
+	path: string;
+	type: "file" | "directory";
+}
+
+function buildTree(entries: FlatEntry[]): TreeNode[] {
 	const root: TreeNode[] = [];
 
-	for (const filePath of paths) {
-		const parts = filePath.split("/");
+	for (const entry of entries) {
+		const parts = entry.path.split("/");
 		let current = root;
 		let currentPath = "";
 
@@ -226,7 +231,7 @@ function buildTree(paths: string[]): TreeNode[] {
 				existing = {
 					name: part,
 					path: currentPath,
-					type: isLast ? "file" : "directory",
+					type: isLast ? entry.type : "directory",
 					children: [],
 				};
 				current.push(existing);
@@ -917,7 +922,7 @@ export function RepoFileTree({
 	const [contextMenu, setContextMenu] = useState<{
 		x: number;
 		y: number;
-		node: TreeNode;
+		node?: TreeNode;
 	} | null>(null);
 	const [inlineInput, setInlineInput] = useState<InlineInputMode>(null);
 	const [initialExpanded, setInitialExpanded] = useState(false);
@@ -940,7 +945,7 @@ export function RepoFileTree({
 	const filesQuery = trpc.diff.listAllFiles.useQuery({ repoPath }, { staleTime: 60_000 });
 	const statusQuery = trpc.diff.getWorkingTreeStatus.useQuery({ repoPath }, { staleTime: 30_000 });
 
-	const allFiles = filesQuery.data?.files ?? [];
+	const allEntries: FlatEntry[] = filesQuery.data?.entries ?? [];
 
 	// ── Mutations ──────────────────────────────────────────────
 	const invalidateFiles = useCallback(() => {
@@ -969,21 +974,21 @@ export function RepoFileTree({
 	}, [statusQuery.data]);
 
 	// ── Filter hidden files ────────────────────────────────────
-	const visibleFiles = useMemo(() => {
-		if (showHidden) return allFiles;
-		return allFiles.filter((f) => {
-			const segments = f.split("/");
+	const visibleEntries = useMemo(() => {
+		if (showHidden) return allEntries;
+		return allEntries.filter((e) => {
+			const segments = e.path.split("/");
 			return !segments.some((s) => s.startsWith(".") && s !== ".");
 		});
-	}, [allFiles, showHidden]);
+	}, [allEntries, showHidden]);
 
 	// ── Tree ───────────────────────────────────────────────────
-	const rawTree = useMemo(() => buildTree(visibleFiles), [visibleFiles]);
+	const rawTree = useMemo(() => buildTree(visibleEntries), [visibleEntries]);
 	const tree = useMemo(() => (compact ? compactTreeNodes(rawTree) : rawTree), [rawTree, compact]);
 
 	// Auto-expand root-level dirs on first load
 	useEffect(() => {
-		if (visibleFiles.length > 0 && !initialExpanded) {
+		if (visibleEntries.length > 0 && !initialExpanded) {
 			const rootDirs = new Set<string>();
 			for (const node of tree) {
 				if (node.type === "directory") {
@@ -993,12 +998,16 @@ export function RepoFileTree({
 			setExpanded(rootDirs);
 			setInitialExpanded(true);
 		}
-	}, [visibleFiles, tree, initialExpanded]);
+	}, [visibleEntries, tree, initialExpanded]);
 
 	// ── Search ─────────────────────────────────────────────────
+	const visibleFilePaths = useMemo(
+		() => visibleEntries.filter((e) => e.type === "file").map((e) => e.path),
+		[visibleEntries]
+	);
 	const searchResults = useMemo(
-		() => searchFiles(searchQuery, visibleFiles),
-		[searchQuery, visibleFiles]
+		() => searchFiles(searchQuery, visibleFilePaths),
+		[searchQuery, visibleFilePaths]
 	);
 
 	const searchMatchPaths = useMemo(
@@ -1401,7 +1410,7 @@ export function RepoFileTree({
 		);
 	}
 
-	if (allFiles.length === 0) {
+	if (allEntries.length === 0) {
 		return (
 			<div className="flex h-full items-center justify-center py-8 text-[12px] text-[var(--text-quaternary)]">
 				Empty repository
@@ -1446,6 +1455,30 @@ export function RepoFileTree({
 				onFocus={() => {
 					if (!focusedPath && visibleNodes.length > 0) {
 						setFocusedPath(visibleNodes[0]?.path ?? null);
+					}
+				}}
+				onContextMenu={(e) => {
+					// Only handle right-click on empty space (not bubbled from a tree node)
+					if (e.target === e.currentTarget || !(e.target as HTMLElement).closest("[data-path]")) {
+						e.preventDefault();
+						const items: ContextMenuItem[] = [
+							{
+								label: "New File",
+								action: () => {
+									setInlineInput({ type: "new-file", parentPath: "", depth: 0 });
+									setContextMenu(null);
+								},
+							},
+							{
+								label: "New Folder",
+								action: () => {
+									setInlineInput({ type: "new-folder", parentPath: "", depth: 0 });
+									setContextMenu(null);
+								},
+							},
+						];
+						setContextMenu({ x: e.clientX, y: e.clientY });
+						contextMenuItemsRef.current = items;
 					}
 				}}
 			>

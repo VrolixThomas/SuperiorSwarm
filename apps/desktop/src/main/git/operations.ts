@@ -198,7 +198,9 @@ export async function hasUncommittedChanges(repoPath: string): Promise<boolean> 
 
 export async function getUntrackedFiles(repoPath: string): Promise<string[]> {
 	const git = simpleGit(repoPath);
-	const status = await git.raw(["status", "--porcelain"]);
+	// -uall lists individual files inside untracked directories
+	// instead of just the directory name (default -unormal)
+	const status = await git.raw(["status", "--porcelain", "-uall"]);
 	return status
 		.split("\n")
 		.filter((line) => line.startsWith("?? "))
