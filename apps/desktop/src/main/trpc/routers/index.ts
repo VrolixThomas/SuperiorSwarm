@@ -8,6 +8,7 @@ import { projectsRouter } from "./projects";
 import { sharedFilesRouter } from "./shared-files";
 import { terminalSessionsRouter } from "./terminal-sessions";
 import { ticketsRouter } from "./tickets";
+import { updatesRouter } from "./updates";
 import { workspacesRouter } from "./workspaces";
 
 export const appRouter = router({
@@ -21,6 +22,7 @@ export const appRouter = router({
 	linear: linearRouter,
 	github: githubRouter,
 	tickets: ticketsRouter,
+	updates: updatesRouter,
 });
 
 export type AppRouter = typeof appRouter;
