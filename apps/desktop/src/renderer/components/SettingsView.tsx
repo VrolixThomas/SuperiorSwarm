@@ -1,5 +1,6 @@
 import { useProjectStore } from "../stores/projects";
 import { trpc } from "../trpc/client";
+import { AboutSection } from "./AboutSection";
 
 function IntegrationRow({
 	name,
@@ -195,6 +196,8 @@ export function SettingsView() {
 						onDisconnect={() => githubDisconnect.mutate()}
 					/>
 				</div>
+
+				<AboutSection />
 			</div>
 		</div>
 	);
