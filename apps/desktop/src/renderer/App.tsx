@@ -52,7 +52,7 @@ function deserializeLayout(
 					return terminalMap.get(saved.id) ?? null;
 				}
 				// Filter out stale ai-review-summary tabs from previous versions
-				if ((saved as any).kind === "ai-review-summary") {
+				if ((saved as { kind: string }).kind === "ai-review-summary") {
 					return null;
 				}
 				// File tabs: use directly from serialized data
