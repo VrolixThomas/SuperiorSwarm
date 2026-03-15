@@ -4,6 +4,8 @@ import type { LayoutNode, SerializedLayoutNode } from "../shared/pane-types";
 import { AddRepositoryModal } from "./components/AddRepositoryModal";
 import { CreateWorktreeModal } from "./components/CreateWorktreeModal";
 import { DaemonStatus } from "./components/DaemonStatus";
+import { UpdateToast } from "./components/UpdateToast";
+import { WhatsNewModal } from "./components/WhatsNewModal";
 import { DiffPanel } from "./components/DiffPanel";
 import { MainContentArea } from "./components/MainContentArea";
 import { SharedFilesPanel } from "./components/SharedFilesPanel";
@@ -16,6 +18,7 @@ import {
 } from "./lsp/monaco-lsp-bridge";
 import { usePaneStore } from "./stores/pane-store";
 import { useProjectStore } from "./stores/projects";
+import { useUpdateStore } from "./stores/update-store";
 import type { TabItem } from "./stores/tab-store";
 import { resetFileTabCounter, useTabStore } from "./stores/tab-store";
 import { trpc } from "./trpc/client";
@@ -260,6 +263,35 @@ export function App() {
 
 	usePaneShortcuts();
 
+	// Query update status on mount and trigger toast if needed
+	const updateStatus = trpc.updates.getStatus.useQuery(undefined, {
+		staleTime: Number.POSITIVE_INFINITY,
+		refetchOnMount: false,
+		refetchOnWindowFocus: false,
+		refetchOnReconnect: false,
+	});
+
+	const hasCheckedUpdate = useRef(false);
+	useEffect(() => {
+		if (hasCheckedUpdate.current || !updateStatus.data) return;
+		hasCheckedUpdate.current = true;
+
+		const { pendingNotification, updateAvailable, updateVersion, downloadProgress, updateDownloaded } =
+			updateStatus.data;
+
+		if (pendingNotification) {
+			const { type, version, summary } = pendingNotification;
+			const toastType = type === "patch" ? "patch" : "new-version";
+			useUpdateStore.getState().showToast(toastType as "new-version" | "patch", version, summary);
+		}
+
+		if (updateDownloaded && updateVersion) {
+			useUpdateStore.getState().setUpdateReady(updateVersion);
+		} else if (downloadProgress != null && updateVersion) {
+			useUpdateStore.getState().setDownloadProgress(downloadProgress);
+		}
+	}, [updateStatus.data]);
+
 	const sidebarPanelRef = usePanelRef();
 	const diffPanelRef = usePanelRef();
 	const setSidebarCollapsed = useProjectStore((s) => s.setSidebarCollapsed);
@@ -359,6 +391,8 @@ export function App() {
 			<CreateWorktreeModal />
 			<SharedFilesPanel />
 			<DaemonStatus />
+			<UpdateToast />
+			<WhatsNewModal />
 		</>
 	);
 }
