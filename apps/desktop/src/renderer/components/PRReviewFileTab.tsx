@@ -38,31 +38,47 @@ function ThreadWidget({
 
 	if (isAI) {
 		const aiThread = thread as AIDraftThread;
+		const isUserPending = aiThread.status === "user-pending";
+		const isAiPending = aiThread.status === "pending";
 		return (
 			<div
 				onMouseDown={(e) => e.stopPropagation()}
 				className="mx-2 my-1 rounded-[6px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[11px] shadow-md overflow-hidden"
-				style={{ borderLeft: "2px solid #a78bfa" }}
+				style={{ borderLeft: isUserPending ? "2px solid var(--accent)" : "2px solid #a78bfa" }}
 			>
-				{/* AI Thread header */}
+				{/* Header */}
 				<div className="flex items-center justify-between border-b border-[var(--border-subtle)] px-3 py-1">
 					<div className="flex items-center gap-1.5">
-						<span className="ai-badge">AI</span>
+						{!isUserPending && <span className="ai-badge">AI</span>}
 						<span className="text-[10px] font-medium text-[var(--text-tertiary)]">
-							BranchFlux AI
+							{isUserPending ? "You" : "BranchFlux AI"}
 						</span>
+						{isUserPending && (
+							<span className="rounded-[3px] border border-[var(--border-active)] bg-[var(--bg-overlay)] px-1.5 py-px text-[9px] font-semibold uppercase tracking-wide text-[var(--text-tertiary)]">
+								Pending
+							</span>
+						)}
 					</div>
+					{isUserPending && (
+						<button
+							type="button"
+							onClick={() => onDeclineDraft?.(aiThread.draftCommentId)}
+							className="text-[10px] text-[var(--text-quaternary)] hover:text-[var(--term-red)]"
+						>
+							Delete
+						</button>
+					)}
 				</div>
 
-				{/* AI comment body */}
+				{/* Comment body */}
 				<div className="px-3 py-2">
 					<p className="text-[var(--text-tertiary)] whitespace-pre-wrap">
 						{aiThread.userEdit ?? aiThread.body}
 					</p>
 				</div>
 
-				{/* Accept / Decline buttons or status */}
-				{aiThread.status === "pending" && (
+				{/* Accept / Decline buttons for AI suggestions */}
+				{isAiPending && (
 					<div className="flex gap-1.5 border-t border-[var(--border-subtle)] px-3 py-1.5">
 						<button
 							type="button"
@@ -78,12 +94,6 @@ function ThreadWidget({
 						>
 							Decline
 						</button>
-					</div>
-				)}
-				{aiThread.status === "approved" && (
-					<div className="flex items-center gap-1 border-t border-[var(--border-subtle)] px-3 py-1 text-[10px] text-[#30d158]">
-						<span>&#10003;</span>
-						<span>Accepted</span>
 					</div>
 				)}
 			</div>
@@ -297,12 +307,24 @@ function useInlineCommentZones(
 				domNode.addEventListener("mousedown", (e) => e.stopPropagation());
 				domNode.addEventListener("keydown", (e) => e.stopPropagation());
 
+					// Estimate height based on content length — each ~60 chars wraps to a new line
+				const estimateBodyHeight = (text: string) => {
+					const lines = Math.max(1, Math.ceil(text.length / 60));
+					return lines * 16 + 12;
+				};
+
 				const estimatedPx = lineThreads.reduce((sum, t) => {
 					if (t.isAIDraft) {
 						const ai = t as AIDraftThread;
-						return sum + 32 + 48 + 40 + (ai.status === "pending" ? 36 : 0);
+						const bodyH = estimateBodyHeight(ai.userEdit ?? ai.body);
+						return sum + 32 + bodyH + (ai.status === "pending" ? 36 : 24);
 					}
-					return sum + 32 + (t as GitHubReviewThread).comments.length * 48 + 40;
+					const gh = t as GitHubReviewThread;
+					const commentsH = gh.comments.reduce(
+						(s, c) => s + 24 + estimateBodyHeight(c.body),
+						0
+					);
+					return sum + 32 + commentsH + 36;
 				}, 0);
 				const lineHeight = modEditor.getOption(monaco.editor.EditorOption.lineHeight);
 				const heightInLines = Math.ceil(estimatedPx / lineHeight);
@@ -533,8 +555,31 @@ export function PRReviewFileTab({ prCtx, filePath, language }: PRReviewFileTabPr
 		{ enabled: !!matchingDraft?.id }
 	);
 
+	const invalidateDrafts = () => {
+		utils.aiReview.getReviewDrafts.invalidate();
+		utils.aiReview.getReviewDraft.invalidate();
+	};
+
 	const updateDraftComment = trpc.aiReview.updateDraftComment.useMutation({
-		onSuccess: () => aiDraftQuery.refetch(),
+		onSuccess: invalidateDrafts,
+	});
+
+	// Review mutations
+	const addComment = trpc.github.addReviewComment.useMutation({
+		onSuccess: () =>
+			utils.github.getPRDetails.invalidate({
+				owner: prCtx.owner,
+				repo: prCtx.repo,
+				number: prCtx.number,
+			}),
+	});
+	const resolveThread = trpc.github.resolveThread.useMutation({
+		onSuccess: () =>
+			utils.github.getPRDetails.invalidate({
+				owner: prCtx.owner,
+				repo: prCtx.repo,
+				number: prCtx.number,
+			}),
 	});
 
 	// Viewed state
@@ -552,37 +597,14 @@ export function PRReviewFileTab({ prCtx, filePath, language }: PRReviewFileTabPr
 			}),
 	});
 
-	// Review mutations
-	const addComment = trpc.github.addReviewComment.useMutation({
-		onSuccess: () =>
-			utils.github.getPRDetails.invalidate({
-				owner: prCtx.owner,
-				repo: prCtx.repo,
-				number: prCtx.number,
-			}),
-	});
-	const createThread = trpc.github.createReviewThread.useMutation({
-		onSuccess: () => {
-			setPendingLine(null);
-			utils.github.getPRDetails.invalidate({
-				owner: prCtx.owner,
-				repo: prCtx.repo,
-				number: prCtx.number,
-			});
-		},
-	});
-	const resolveThread = trpc.github.resolveThread.useMutation({
-		onSuccess: () =>
-			utils.github.getPRDetails.invalidate({
-				owner: prCtx.owner,
-				repo: prCtx.repo,
-				number: prCtx.number,
-			}),
-	});
 
-	// Threads for this file — merge GitHub threads with AI draft threads
-	const aiThreads: AIDraftThread[] = (aiDraftQuery.data?.comments ?? [])
-		.filter((c) => c.status === "pending" || c.status === "edited")
+
+	// Threads for this file — merge GitHub threads with draft threads (AI + user)
+	const draftThreads: AIDraftThread[] = (aiDraftQuery.data?.comments ?? [])
+		.filter(
+			(c) =>
+				c.status === "pending" || c.status === "edited" || c.status === "user-pending"
+		)
 		.map((c) => ({
 			id: `ai-${c.id}`,
 			isAIDraft: true as const,
@@ -591,15 +613,15 @@ export function PRReviewFileTab({ prCtx, filePath, language }: PRReviewFileTabPr
 			line: c.lineNumber,
 			diffSide: (c.side as "LEFT" | "RIGHT") ?? "RIGHT",
 			body: c.body,
-			status: c.status as "pending" | "approved" | "rejected" | "edited",
+			status: c.status as AIDraftThread["status"],
 			userEdit: c.userEdit ?? null,
 			createdAt:
 				typeof c.createdAt === "string" ? c.createdAt : new Date(c.createdAt).toISOString(),
 		}));
 
 	const githubFileThreads = (prDetails?.reviewThreads ?? []).filter((t) => t.path === filePath);
-	const aiFileThreads = aiThreads.filter((t) => t.path === filePath);
-	const fileThreads: UnifiedThread[] = [...githubFileThreads, ...aiFileThreads];
+	const draftFileThreads = draftThreads.filter((t) => t.path === filePath);
+	const fileThreads: UnifiedThread[] = [...githubFileThreads, ...draftFileThreads];
 
 	// Thread navigation
 	const unresolvedLines = fileThreads
@@ -626,29 +648,33 @@ export function PRReviewFileTab({ prCtx, filePath, language }: PRReviewFileTabPr
 
 	const handleReply = useCallback(
 		(threadId: string, body: string) => {
-			addComment.mutate({
-				threadId,
-				body,
-			});
+			addComment.mutate({ threadId, body });
 		},
 		[addComment]
 	);
 
+	const addUserComment = trpc.aiReview.addUserComment.useMutation({
+		onSuccess: () => {
+			setPendingLine(null);
+			invalidateDrafts();
+		},
+	});
+
 	const handleSaveNew = useCallback(
 		(body: string) => {
 			if (pendingLine === null) return;
-			createThread.mutate({
-				owner: prCtx.owner,
-				repo: prCtx.repo,
-				prNumber: prCtx.number,
-				body,
-				commitId,
-				path: filePath,
-				line: pendingLine,
+			addUserComment.mutate({
+				prIdentifier: `${prCtx.owner}/${prCtx.repo}#${prCtx.number}`,
+				prTitle: prCtx.title,
+				sourceBranch: prCtx.sourceBranch,
+				targetBranch: prCtx.targetBranch,
+				filePath,
+				lineNumber: pendingLine,
 				side: "RIGHT",
+				body,
 			});
 		},
-		[pendingLine, prCtx, commitId, filePath, createThread]
+		[pendingLine, prCtx, filePath, addUserComment]
 	);
 
 	const handleResolve = useCallback(
@@ -660,7 +686,7 @@ export function PRReviewFileTab({ prCtx, filePath, language }: PRReviewFileTabPr
 
 	const handleAcceptDraft = useCallback(
 		(draftCommentId: string) => {
-			updateDraftComment.mutate({ commentId: draftCommentId, status: "approved" });
+			updateDraftComment.mutate({ commentId: draftCommentId, status: "user-pending" });
 		},
 		[updateDraftComment]
 	);

@@ -335,7 +335,10 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 
 	openPRReviewPanel: (workspaceId, prCtx) => {
 		set({ rightPanel: { open: true, mode: "pr-review", diffCtx: null, prCtx } });
-		get().openPROverview(workspaceId, prCtx);
+		// Defer tab creation to next microtask — opening the tab mutates pane-store,
+		// which fires the cross-store bridge (bumps _paneVersion), which would cause
+		// an infinite setState cascade if done synchronously in the same commit.
+		queueMicrotask(() => get().openPROverview(workspaceId, prCtx));
 	},
 	openPRReviewFile: (workspaceId, prCtx, filePath, language) => {
 		const key = prReviewFileKey(prCtx, filePath);

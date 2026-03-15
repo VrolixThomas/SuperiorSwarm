@@ -36,7 +36,7 @@ export interface AIDraftThread {
 	line: number | null;
 	diffSide: "LEFT" | "RIGHT";
 	body: string;
-	status: "pending" | "approved" | "rejected" | "edited" | "submitted";
+	status: "pending" | "approved" | "rejected" | "edited" | "submitted" | "user-pending";
 	userEdit: string | null;
 	createdAt: string;
 }

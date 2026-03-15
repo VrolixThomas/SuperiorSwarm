@@ -23,7 +23,7 @@ export function Sidebar({ collapsed, onExpand }: SidebarProps) {
 		staleTime: 5_000,
 	});
 	const hasAINotification = (reviewDraftsQuery.data ?? []).some(
-		(d) => d.status === "ready" || d.status === "failed",
+		(d) => d.status === "ready" || d.status === "failed"
 	);
 
 	const handleExpand = (section?: "tickets" | "prs") => {

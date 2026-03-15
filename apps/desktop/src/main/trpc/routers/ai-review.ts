@@ -72,7 +72,7 @@ export const aiReviewRouter = router({
 		.input(
 			z.object({
 				commentId: z.string(),
-				status: z.enum(["approved", "rejected", "edited", "submitted"]),
+				status: z.enum(["approved", "rejected", "edited", "submitted", "user-pending"]),
 				userEdit: z.string().optional(),
 			})
 		)
@@ -92,30 +92,65 @@ export const aiReviewRouter = router({
 	addUserComment: publicProcedure
 		.input(
 			z.object({
-				reviewDraftId: z.string(),
+				prIdentifier: z.string(),
+				prTitle: z.string(),
+				sourceBranch: z.string().optional(),
+				targetBranch: z.string().optional(),
 				filePath: z.string(),
 				lineNumber: z.number().optional(),
+				side: z.enum(["LEFT", "RIGHT"]).optional(),
 				body: z.string(),
 			})
 		)
 		.mutation(({ input }) => {
 			const db = getDb();
-			const id = randomUUID();
 			const now = new Date();
 
+			// Find or create a review draft for this PR
+			let draft = db
+				.select()
+				.from(schema.reviewDrafts)
+				.where(eq(schema.reviewDrafts.prIdentifier, input.prIdentifier))
+				.get();
+
+			if (!draft) {
+				const draftId = randomUUID();
+				db.insert(schema.reviewDrafts)
+					.values({
+						id: draftId,
+						prProvider: "github",
+						prIdentifier: input.prIdentifier,
+						prTitle: input.prTitle,
+						prAuthor: "",
+						sourceBranch: input.sourceBranch ?? "",
+						targetBranch: input.targetBranch ?? "",
+						status: "ready",
+						createdAt: now,
+						updatedAt: now,
+					})
+					.run();
+				draft = db
+					.select()
+					.from(schema.reviewDrafts)
+					.where(eq(schema.reviewDrafts.id, draftId))
+					.get()!;
+			}
+
+			const id = randomUUID();
 			db.insert(schema.draftComments)
 				.values({
 					id,
-					reviewDraftId: input.reviewDraftId,
+					reviewDraftId: draft.id,
 					filePath: input.filePath,
 					lineNumber: input.lineNumber ?? null,
+					side: input.side ?? null,
 					body: input.body,
-					status: "approved", // User's own comments are pre-approved
+					status: "user-pending",
 					createdAt: now,
 				})
 				.run();
 
-			return { id, status: "approved" };
+			return { id, status: "user-pending" };
 		}),
 
 	submitReview: publicProcedure

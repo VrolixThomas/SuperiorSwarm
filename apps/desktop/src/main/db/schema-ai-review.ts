@@ -44,7 +44,7 @@ export const draftComments = sqliteTable("draft_comments", {
 	lineNumber: integer("line_number"),
 	side: text("side"), // "LEFT" | "RIGHT"
 	body: text("body").notNull(),
-	status: text("status").notNull().default("pending"), // pending | approved | rejected | edited
+	status: text("status").notNull().default("pending"), // pending | approved | rejected | edited | user-pending
 	userEdit: text("user_edit"),
 	createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
 });

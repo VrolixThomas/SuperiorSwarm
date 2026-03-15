@@ -31,11 +31,12 @@ export function SubmitReviewModal({
 		setIsSubmitting(true);
 		setResult(null);
 
-		// Post accepted AI comments
+		// Post all pending comments as new review threads
 		let posted = 0;
 		let failed = 0;
-		for (const comment of aiThreads) {
-			if (comment.line == null) continue;
+		const postable = aiThreads.filter((c) => c.line != null);
+		const skipped = aiThreads.length - postable.length;
+		for (const comment of postable) {
 			try {
 				await createThread.mutateAsync({
 					owner: prCtx.owner,
@@ -58,7 +59,7 @@ export function SubmitReviewModal({
 		}
 
 		if (aiThreads.length > 0) {
-			setResult({ posted, failed });
+			setResult({ posted, failed: failed + skipped });
 		}
 
 		// Submit verdict
@@ -112,24 +113,24 @@ export function SubmitReviewModal({
 				<div className="border-b border-[var(--border-subtle)] px-5 py-3">
 					{aiThreads.length > 0 && (
 						<div className="mb-1.5 flex items-center gap-2">
-							<span className="ai-badge">AI</span>
 							<span className="text-[11px] text-[var(--text-tertiary)]">
-								{aiThreads.length} accepted comment
+								{aiThreads.length} pending comment
 								{aiThreads.length !== 1 ? "s" : ""} will be posted
 							</span>
 						</div>
 					)}
 					{pendingCount > 0 && (
 						<div className="flex items-center gap-2">
-							<span className="text-[11px] text-yellow-400">&#x26A0;</span>
+							<span className="ai-badge">AI</span>
 							<span className="text-[11px] text-[var(--text-tertiary)]">
-								{pendingCount} suggestion{pendingCount !== 1 ? "s" : ""} not yet triaged
+								{pendingCount} AI suggestion{pendingCount !== 1 ? "s" : ""} not yet
+								triaged
 							</span>
 						</div>
 					)}
 					{aiThreads.length === 0 && pendingCount === 0 && (
 						<span className="text-[11px] text-[var(--text-quaternary)]">
-							No AI comments to post
+							No pending comments
 						</span>
 					)}
 				</div>

@@ -1,7 +1,7 @@
 import type { Pane } from "../../../shared/pane-types";
-import { PROverviewTab } from "../PROverviewTab";
 import { DiffFileTab } from "../DiffFileTab";
 import { FileEditor } from "../FileEditor";
+import { PROverviewTab } from "../PROverviewTab";
 import { PRReviewFileTab } from "../PRReviewFileTab";
 import { Terminal } from "../Terminal";
 

@@ -89,7 +89,9 @@ function PRHeader({ details, prCtx }: { details: GitHubPRDetails; prCtx: GitHubP
 				<span
 					className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-medium ${stateColor[details.state] ?? ""}`}
 				>
-					{details.isDraft ? "Draft" : details.state.charAt(0) + details.state.slice(1).toLowerCase()}
+					{details.isDraft
+						? "Draft"
+						: details.state.charAt(0) + details.state.slice(1).toLowerCase()}
 				</span>
 
 				{/* Review decision pill */}
@@ -130,11 +132,7 @@ function PRHeader({ details, prCtx }: { details: GitHubPRDetails; prCtx: GitHubP
 							className="flex items-center gap-1.5 text-[11px] text-[var(--text-secondary)]"
 						>
 							<div className="relative">
-								<img
-									src={r.avatarUrl}
-									alt={r.login}
-									className="h-5 w-5 rounded-full"
-								/>
+								<img src={r.avatarUrl} alt={r.login} className="h-5 w-5 rounded-full" />
 								{r.decision && (
 									<span
 										className={`absolute -bottom-0.5 -right-0.5 text-[8px] font-bold ${reviewerDecisionColor[r.decision] ?? ""}`}
@@ -326,13 +324,9 @@ function GitHubThreadCard({
 				>
 					<div className="mb-0.5 flex items-center gap-1.5 text-[10px]">
 						<span className="font-medium text-[var(--text-secondary)]">{c.author}</span>
-						<span className="text-[var(--text-quaternary)]">
-							{relativeTime(c.createdAt)}
-						</span>
+						<span className="text-[var(--text-quaternary)]">{relativeTime(c.createdAt)}</span>
 					</div>
-					<p className="text-[11px] text-[var(--text-tertiary)] whitespace-pre-wrap">
-						{c.body}
-					</p>
+					<p className="text-[11px] text-[var(--text-tertiary)] whitespace-pre-wrap">{c.body}</p>
 				</div>
 			))}
 
@@ -403,8 +397,13 @@ function CommentsFeed({
 }) {
 	const utils = trpc.useUtils();
 
+	const invalidateDrafts = () => {
+		utils.aiReview.getReviewDrafts.invalidate();
+		utils.aiReview.getReviewDraft.invalidate();
+	};
+
 	const updateDraftComment = trpc.aiReview.updateDraftComment.useMutation({
-		onSuccess: () => utils.aiReview.getReviewDraft.invalidate(),
+		onSuccess: invalidateDrafts,
 	});
 
 	const addComment = trpc.github.addReviewComment.useMutation({
@@ -426,7 +425,7 @@ function CommentsFeed({
 	});
 
 	const handleAccept = (draftCommentId: string) => {
-		updateDraftComment.mutate({ commentId: draftCommentId, status: "approved" });
+		updateDraftComment.mutate({ commentId: draftCommentId, status: "user-pending" });
 	};
 
 	const handleDismiss = (draftCommentId: string) => {
@@ -434,7 +433,9 @@ function CommentsFeed({
 	};
 
 	const handleReply = (threadId: string, body: string) => {
-		addComment.mutate({ threadId, body });
+		addComment.mutate({ threadId,
+			body,
+		});
 	};
 
 	const handleResolve = (threadId: string) => {
@@ -470,9 +471,7 @@ function CommentsFeed({
 
 	if (allThreads.length === 0) {
 		return (
-			<div className="mx-6 mt-5 text-[12px] text-[var(--text-quaternary)]">
-				No comments yet.
-			</div>
+			<div className="mx-6 mt-5 text-[12px] text-[var(--text-quaternary)]">No comments yet.</div>
 		);
 	}
 
@@ -524,7 +523,7 @@ function CommentsFeed({
 export function PROverviewTab({ prCtx }: { prCtx: GitHubPRContext }) {
 	const { data: details, isLoading } = trpc.github.getPRDetails.useQuery(
 		{ owner: prCtx.owner, repo: prCtx.repo, number: prCtx.number },
-		{ staleTime: 30_000 },
+		{ staleTime: 30_000 }
 	);
 
 	// ── AI review draft queries ───────────────────────────────────────────
@@ -535,11 +534,11 @@ export function PROverviewTab({ prCtx }: { prCtx: GitHubPRContext }) {
 	const matchingDraft = reviewDraftsQuery.data?.find((d) => d.prIdentifier === prIdentifier);
 	const aiDraftQuery = trpc.aiReview.getReviewDraft.useQuery(
 		{ draftId: matchingDraft?.id ?? "" },
-		{ enabled: !!matchingDraft?.id },
+		{ enabled: !!matchingDraft?.id }
 	);
 
 	const mapComment = (
-		c: NonNullable<typeof aiDraftQuery.data>["comments"][number],
+		c: NonNullable<typeof aiDraftQuery.data>["comments"][number]
 	): AIDraftThread => ({
 		id: `ai-${c.id}`,
 		isAIDraft: true as const,
@@ -550,13 +549,15 @@ export function PROverviewTab({ prCtx }: { prCtx: GitHubPRContext }) {
 		body: c.body,
 		status: c.status as AIDraftThread["status"],
 		userEdit: c.userEdit ?? null,
-		createdAt:
-			typeof c.createdAt === "string" ? c.createdAt : new Date(c.createdAt).toISOString(),
+		createdAt: typeof c.createdAt === "string" ? c.createdAt : new Date(c.createdAt).toISOString(),
 	});
 
-	// Only show pending/edited AI comments (not approved/rejected/submitted)
+	// Show AI suggestions (pending/edited) and user-pending drafts
 	const aiThreads: AIDraftThread[] = (aiDraftQuery.data?.comments ?? [])
-		.filter((c) => c.status === "pending" || c.status === "edited")
+		.filter(
+			(c) =>
+				c.status === "pending" || c.status === "edited" || c.status === "user-pending"
+		)
 		.map(mapComment);
 
 	const summaryMarkdown = aiDraftQuery.data?.summaryMarkdown ?? null;

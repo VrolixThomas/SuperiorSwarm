@@ -484,35 +484,21 @@ export function PullRequestsTab() {
 																onClick={(e) => {
 																	e.stopPropagation();
 																	// Open the standard PR review panel
-																	if (
-																		pr.provider === "github" &&
-																		pr.githubPR
-																	) {
-																		const project =
-																			projectsList?.find(
-																				(p) =>
-																					p.githubOwner ===
-																						pr.githubPR!
-																							.repoOwner &&
-																					p.githubRepo ===
-																						pr.githubPR!.repoName
-																			);
-																		store.openPRReviewPanel(
-																			store.activeWorkspaceId ?? "",
-																			{
-																				owner: pr.githubPR.repoOwner,
-																				repo: pr.githubPR.repoName,
-																				number: pr.githubPR.number,
-																				title: pr.title,
-																				sourceBranch:
-																					pr.githubPR.branchName,
-																				targetBranch:
-																					project?.defaultBranch ??
-																					"main",
-																				repoPath:
-																					project?.repoPath ?? "",
-																			}
+																	if (pr.provider === "github" && pr.githubPR) {
+																		const project = projectsList?.find(
+																			(p) =>
+																				p.githubOwner === pr.githubPR!.repoOwner &&
+																				p.githubRepo === pr.githubPR!.repoName
 																		);
+																		store.openPRReviewPanel(store.activeWorkspaceId ?? "", {
+																			owner: pr.githubPR.repoOwner,
+																			repo: pr.githubPR.repoName,
+																			number: pr.githubPR.number,
+																			title: pr.title,
+																			sourceBranch: pr.githubPR.branchName,
+																			targetBranch: project?.defaultBranch ?? "main",
+																			repoPath: project?.repoPath ?? "",
+																		});
 																	}
 																}}
 															>
