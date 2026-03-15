@@ -479,7 +479,6 @@ export function PRReviewPanel({ prCtx }: { prCtx: GitHubPRContext }) {
 
 	const activeWorkspaceId = useTabStore((s) => s.activeWorkspaceId);
 	const openPROverview = useTabStore((s) => s.openPROverview);
-	const hasSummary = !!aiDraftQuery.data?.summaryMarkdown;
 
 	if (isLoading || !details) {
 		return (
