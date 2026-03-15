@@ -37,11 +37,11 @@ export type TabItem =
 			language: string;
 	  }
 	| {
-			kind: "ai-review-summary";
+			kind: "pr-overview";
 			id: string;
 			workspaceId: string;
 			title: string;
-			draftId: string;
+			prCtx: GitHubPRContext;
 	  };
 export type PanelMode = "diff" | "explorer" | "pr-review";
 
@@ -96,7 +96,7 @@ interface TabStore {
 		filePath: string,
 		language: string
 	) => string;
-	openAIReviewSummary: (workspaceId: string, draftId: string, prTitle: string) => string;
+	openPROverview: (workspaceId: string, prCtx: GitHubPRContext) => string;
 
 	// Diff convenience
 	toggleDiffPanel: (diffCtx: DiffContext) => void;
@@ -333,8 +333,9 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 		return id;
 	},
 
-	openPRReviewPanel: (_workspaceId, prCtx) => {
+	openPRReviewPanel: (workspaceId, prCtx) => {
 		set({ rightPanel: { open: true, mode: "pr-review", diffCtx: null, prCtx } });
+		get().openPROverview(workspaceId, prCtx);
 	},
 	openPRReviewFile: (workspaceId, prCtx, filePath, language) => {
 		const key = prReviewFileKey(prCtx, filePath);
@@ -369,10 +370,14 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 		return id;
 	},
 
-	openAIReviewSummary: (workspaceId, draftId, prTitle) => {
+	openPROverview: (workspaceId, prCtx) => {
 		const found = findTabInWorkspace(
 			workspaceId,
-			(t) => t.kind === "ai-review-summary" && t.draftId === draftId
+			(t) =>
+				t.kind === "pr-overview" &&
+				t.prCtx.owner === prCtx.owner &&
+				t.prCtx.repo === prCtx.repo &&
+				t.prCtx.number === prCtx.number
 		);
 		if (found) {
 			ps().setActiveTabInPane(workspaceId, found.pane.id, found.tab.id);
@@ -381,11 +386,11 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 		}
 		const id = nextFileTabId();
 		const tab: TabItem = {
-			kind: "ai-review-summary",
+			kind: "pr-overview",
 			id,
 			workspaceId,
-			title: `Summary: ${prTitle}`,
-			draftId,
+			title: `PR: ${prCtx.title}`,
+			prCtx,
 		};
 		ps().ensureLayout(workspaceId);
 		const focused = resolveFocusedPane(workspaceId);
