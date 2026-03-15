@@ -51,6 +51,10 @@ function deserializeLayout(
 					// Terminal tabs: use fresh session data from backend
 					return terminalMap.get(saved.id) ?? null;
 				}
+				// Filter out stale ai-review-summary tabs from previous versions
+				if ((saved as any).kind === "ai-review-summary") {
+					return null;
+				}
 				// File tabs: use directly from serialized data
 				return saved;
 			})
