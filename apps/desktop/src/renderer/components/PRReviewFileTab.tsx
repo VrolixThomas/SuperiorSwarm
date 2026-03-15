@@ -307,7 +307,7 @@ function useInlineCommentZones(
 				domNode.addEventListener("mousedown", (e) => e.stopPropagation());
 				domNode.addEventListener("keydown", (e) => e.stopPropagation());
 
-					// Estimate height based on content length — each ~60 chars wraps to a new line
+				// Estimate height based on content length — each ~60 chars wraps to a new line
 				const estimateBodyHeight = (text: string) => {
 					const lines = Math.max(1, Math.ceil(text.length / 60));
 					return lines * 16 + 12;
@@ -320,10 +320,7 @@ function useInlineCommentZones(
 						return sum + 32 + bodyH + (ai.status === "pending" ? 36 : 24);
 					}
 					const gh = t as GitHubReviewThread;
-					const commentsH = gh.comments.reduce(
-						(s, c) => s + 24 + estimateBodyHeight(c.body),
-						0
-					);
+					const commentsH = gh.comments.reduce((s, c) => s + 24 + estimateBodyHeight(c.body), 0);
 					return sum + 32 + commentsH + 36;
 				}, 0);
 				const lineHeight = modEditor.getOption(monaco.editor.EditorOption.lineHeight);
@@ -567,12 +564,12 @@ export function PRReviewFileTab({ prCtx, filePath, language }: PRReviewFileTabPr
 	// AI review draft for this PR
 	const prIdentifier = `${prCtx.owner}/${prCtx.repo}#${prCtx.number}`;
 	const reviewDraftsQuery = trpc.aiReview.getReviewDrafts.useQuery(undefined, {
-		staleTime: 5_000,
+		staleTime: 30_000,
 	});
 	const matchingDraft = reviewDraftsQuery.data?.find((d) => d.prIdentifier === prIdentifier);
 	const aiDraftQuery = trpc.aiReview.getReviewDraft.useQuery(
 		{ draftId: matchingDraft?.id ?? "" },
-		{ enabled: !!matchingDraft?.id }
+		{ enabled: !!matchingDraft?.id, staleTime: 30_000 }
 	);
 
 	const invalidateDrafts = () => {
@@ -617,31 +614,35 @@ export function PRReviewFileTab({ prCtx, filePath, language }: PRReviewFileTabPr
 			}),
 	});
 
-
-
 	// Threads for this file — merge GitHub threads with draft threads (AI + user)
-	const draftThreads: AIDraftThread[] = (aiDraftQuery.data?.comments ?? [])
-		.filter(
-			(c) =>
-				c.status === "pending" || c.status === "edited" || c.status === "user-pending"
-		)
-		.map((c) => ({
-			id: `ai-${c.id}`,
-			isAIDraft: true as const,
-			draftCommentId: c.id,
-			path: c.filePath,
-			line: c.lineNumber,
-			diffSide: (c.side as "LEFT" | "RIGHT") ?? "RIGHT",
-			body: c.body,
-			status: c.status as AIDraftThread["status"],
-			userEdit: c.userEdit ?? null,
-			createdAt:
-				typeof c.createdAt === "string" ? c.createdAt : new Date(c.createdAt).toISOString(),
-		}));
+	// Memoized to avoid recreating view zones on every background query refetch
+	const draftComments = aiDraftQuery.data?.comments;
+	const reviewThreads = prDetails?.reviewThreads;
 
-	const githubFileThreads = (prDetails?.reviewThreads ?? []).filter((t) => t.path === filePath);
-	const draftFileThreads = draftThreads.filter((t) => t.path === filePath);
-	const fileThreads: UnifiedThread[] = [...githubFileThreads, ...draftFileThreads];
+	const fileThreads: UnifiedThread[] = useMemo(() => {
+		const draftFileThreads: AIDraftThread[] = (draftComments ?? [])
+			.filter(
+				(c) =>
+					(c.status === "pending" || c.status === "edited" || c.status === "user-pending") &&
+					c.filePath === filePath
+			)
+			.map((c) => ({
+				id: `ai-${c.id}`,
+				isAIDraft: true as const,
+				draftCommentId: c.id,
+				path: c.filePath,
+				line: c.lineNumber,
+				diffSide: (c.side as "LEFT" | "RIGHT") ?? "RIGHT",
+				body: c.body,
+				status: c.status as AIDraftThread["status"],
+				userEdit: c.userEdit ?? null,
+				createdAt:
+					typeof c.createdAt === "string" ? c.createdAt : new Date(c.createdAt).toISOString(),
+			}));
+
+		const githubFileThreads = (reviewThreads ?? []).filter((t) => t.path === filePath);
+		return [...githubFileThreads, ...draftFileThreads];
+	}, [draftComments, reviewThreads, filePath]);
 
 	// Thread navigation
 	const unresolvedLines = fileThreads
@@ -670,7 +671,7 @@ export function PRReviewFileTab({ prCtx, filePath, language }: PRReviewFileTabPr
 		(threadId: string, body: string) => {
 			addComment.mutate({ threadId, body });
 		},
-		[addComment]
+		[addComment.mutate]
 	);
 
 	const addUserComment = trpc.aiReview.addUserComment.useMutation({
@@ -680,43 +681,51 @@ export function PRReviewFileTab({ prCtx, filePath, language }: PRReviewFileTabPr
 		},
 	});
 
+	// Use a ref for prCtx so handleSaveNew doesn't change identity when the parent
+	// re-renders with the same prCtx data but a different object reference.
+	const prCtxRef = useRef(prCtx);
+	prCtxRef.current = prCtx;
+
 	const handleSaveNew = useCallback(
 		(body: string) => {
 			if (pendingLine === null) return;
+			const ctx = prCtxRef.current;
 			addUserComment.mutate({
-				prIdentifier: `${prCtx.owner}/${prCtx.repo}#${prCtx.number}`,
-				prTitle: prCtx.title,
-				sourceBranch: prCtx.sourceBranch,
-				targetBranch: prCtx.targetBranch,
+				prIdentifier: `${ctx.owner}/${ctx.repo}#${ctx.number}`,
+				prTitle: ctx.title,
+				sourceBranch: ctx.sourceBranch,
+				targetBranch: ctx.targetBranch,
 				filePath,
 				lineNumber: pendingLine,
 				side: "RIGHT",
 				body,
 			});
 		},
-		[pendingLine, prCtx, filePath, addUserComment]
+		[pendingLine, filePath, addUserComment.mutate]
 	);
 
 	const handleResolve = useCallback(
 		(threadId: string) => {
 			resolveThread.mutate({ threadId });
 		},
-		[resolveThread]
+		[resolveThread.mutate]
 	);
 
 	const handleAcceptDraft = useCallback(
 		(draftCommentId: string) => {
 			updateDraftComment.mutate({ commentId: draftCommentId, status: "user-pending" });
 		},
-		[updateDraftComment]
+		[updateDraftComment.mutate]
 	);
 
 	const handleDeclineDraft = useCallback(
 		(draftCommentId: string) => {
 			updateDraftComment.mutate({ commentId: draftCommentId, status: "rejected" });
 		},
-		[updateDraftComment]
+		[updateDraftComment.mutate]
 	);
+
+	const handleCancelNew = useCallback(() => setPendingLine(null), []);
 
 	// Hooks for inline zones + decorations + gutter actions
 	useInlineCommentZones(
@@ -726,7 +735,7 @@ export function PRReviewFileTab({ prCtx, filePath, language }: PRReviewFileTabPr
 		handleReply,
 		handleResolve,
 		handleSaveNew,
-		() => setPendingLine(null),
+		handleCancelNew,
 		handleAcceptDraft,
 		handleDeclineDraft
 	);
