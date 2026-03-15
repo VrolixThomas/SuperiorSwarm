@@ -1,10 +1,5 @@
 import { z } from "zod";
-import {
-	clearPendingNotification,
-	fetchReleaseNotes,
-	getUpdaterState,
-	markVersionSeen,
-} from "../../updater";
+import { fetchReleaseNotes, getUpdaterState, markVersionSeen } from "../../updater";
 import { publicProcedure, router } from "../index";
 
 export const updatesRouter = router({
