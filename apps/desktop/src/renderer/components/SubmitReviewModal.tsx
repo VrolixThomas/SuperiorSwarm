@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { AIDraftThread, GitHubPRContext } from "../../shared/github-types";
 import { trpc } from "../trpc/client";
 
@@ -62,30 +62,42 @@ export function SubmitReviewModal({
 		}
 
 		// Submit verdict
-		await submitReview.mutateAsync({
-			owner: prCtx.owner,
-			repo: prCtx.repo,
-			prNumber: prCtx.number,
-			verdict,
-			body,
-		});
-
-		setIsSubmitting(false);
-		onSubmitted();
+		try {
+			await submitReview.mutateAsync({
+				owner: prCtx.owner,
+				repo: prCtx.repo,
+				prNumber: prCtx.number,
+				verdict,
+				body,
+			});
+			onSubmitted();
+		} catch {
+			setResult((prev) => ({
+				posted: prev?.posted ?? 0,
+				failed: (prev?.failed ?? 0) + 1,
+			}));
+		} finally {
+			setIsSubmitting(false);
+		}
 	};
+
+	const overlayRef = useRef<HTMLDivElement>(null);
+
+	useEffect(() => {
+		const handleKey = (e: KeyboardEvent) => {
+			if (e.key === "Escape") onClose();
+		};
+		document.addEventListener("keydown", handleKey);
+		return () => document.removeEventListener("keydown", handleKey);
+	}, [onClose]);
 
 	return (
 		<div
+			ref={overlayRef}
 			className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
 			onClick={(e) => {
 				if (e.target === e.currentTarget) onClose();
 			}}
-			onKeyDown={(e) => {
-				if (e.key === "Escape") onClose();
-			}}
-			role="dialog"
-			aria-modal="true"
-			tabIndex={-1}
 		>
 			<div className="w-[420px] overflow-hidden rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] shadow-2xl">
 				{/* Header */}
@@ -111,8 +123,7 @@ export function SubmitReviewModal({
 						<div className="flex items-center gap-2">
 							<span className="text-[11px] text-yellow-400">&#x26A0;</span>
 							<span className="text-[11px] text-[var(--text-tertiary)]">
-								{pendingCount} suggestion{pendingCount !== 1 ? "s" : ""} not yet
-								triaged
+								{pendingCount} suggestion{pendingCount !== 1 ? "s" : ""} not yet triaged
 							</span>
 						</div>
 					)}

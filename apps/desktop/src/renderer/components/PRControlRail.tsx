@@ -9,7 +9,7 @@ import { SubmitReviewModal } from "./SubmitReviewModal";
 
 function StatusLine({ details }: { details: GitHubPRDetails }) {
 	const reviewLabel = details.reviewDecision
-		? details.reviewDecision.toLowerCase().replace("_", " ")
+		? details.reviewDecision.toLowerCase().replaceAll("_", " ")
 		: "no reviews";
 
 	const ciLabel =
@@ -121,12 +121,7 @@ function FileNavigator({
 								type="button"
 								onClick={() => {
 									if (!activeWorkspaceId) return;
-									openPRReviewFile(
-										activeWorkspaceId,
-										prCtx,
-										file.path,
-										detectLanguage(file.path),
-									);
+									openPRReviewFile(activeWorkspaceId, prCtx, file.path, detectLanguage(file.path));
 								}}
 								className={[
 									"min-w-0 flex-1 truncate text-left font-mono text-[11px] transition-colors hover:text-[var(--text-secondary)]",
@@ -210,9 +205,7 @@ function SubmitReviewButton({
 			>
 				Submit Review
 				{acceptedCount > 0 && (
-					<span className="rounded-full bg-green-400/20 px-1.5 text-[10px]">
-						{acceptedCount}
-					</span>
+					<span className="rounded-full bg-green-400/20 px-1.5 text-[10px]">{acceptedCount}</span>
 				)}
 			</button>
 		</div>
@@ -228,13 +221,13 @@ export function PRControlRail({ prCtx }: { prCtx: GitHubPRContext }) {
 	// ── PR details ────────────────────────────────────────────────────────
 	const { data: details, isLoading } = trpc.github.getPRDetails.useQuery(
 		{ owner: prCtx.owner, repo: prCtx.repo, number: prCtx.number },
-		{ staleTime: 30_000 },
+		{ staleTime: 30_000 }
 	);
 
 	// ── Viewed files ──────────────────────────────────────────────────────
 	const { data: viewedFilesList } = trpc.github.getViewedFiles.useQuery(
 		{ owner: prCtx.owner, repo: prCtx.repo, number: prCtx.number },
-		{ staleTime: 30_000 },
+		{ staleTime: 30_000 }
 	);
 	const viewedFiles = new Set(viewedFilesList ?? []);
 
@@ -255,11 +248,11 @@ export function PRControlRail({ prCtx }: { prCtx: GitHubPRContext }) {
 	const matchingDraft = reviewDraftsQuery.data?.find((d) => d.prIdentifier === prIdentifier);
 	const aiDraftQuery = trpc.aiReview.getReviewDraft.useQuery(
 		{ draftId: matchingDraft?.id ?? "" },
-		{ enabled: !!matchingDraft?.id },
+		{ enabled: !!matchingDraft?.id }
 	);
 
 	const mapComment = (
-		c: NonNullable<typeof aiDraftQuery.data>["comments"][number],
+		c: NonNullable<typeof aiDraftQuery.data>["comments"][number]
 	): AIDraftThread => ({
 		id: `ai-${c.id}`,
 		isAIDraft: true as const,
@@ -270,8 +263,7 @@ export function PRControlRail({ prCtx }: { prCtx: GitHubPRContext }) {
 		body: c.body,
 		status: c.status as AIDraftThread["status"],
 		userEdit: c.userEdit ?? null,
-		createdAt:
-			typeof c.createdAt === "string" ? c.createdAt : new Date(c.createdAt).toISOString(),
+		createdAt: typeof c.createdAt === "string" ? c.createdAt : new Date(c.createdAt).toISOString(),
 	});
 
 	const aiThreads: AIDraftThread[] = (aiDraftQuery.data?.comments ?? [])
@@ -301,8 +293,7 @@ export function PRControlRail({ prCtx }: { prCtx: GitHubPRContext }) {
 	const activeTabId = useTabStore((s) => s.getActiveTabId());
 	const allTabs = useTabStore((s) => s.getVisibleTabs());
 	const activeTab = allTabs.find((t) => t.id === activeTabId);
-	const activeFilePath =
-		activeTab?.kind === "pr-review-file" ? activeTab.filePath : null;
+	const activeFilePath = activeTab?.kind === "pr-review-file" ? activeTab.filePath : null;
 
 	// ── PR overview navigation ────────────────────────────────────────────
 	const activeWorkspaceId = useTabStore((s) => s.activeWorkspaceId);
@@ -352,10 +343,7 @@ export function PRControlRail({ prCtx }: { prCtx: GitHubPRContext }) {
 				}}
 			/>
 
-			<SubmitReviewButton
-				acceptedCount={acceptedCount}
-				onClick={() => setShowSubmitModal(true)}
-			/>
+			<SubmitReviewButton acceptedCount={acceptedCount} onClick={() => setShowSubmitModal(true)} />
 
 			{showSubmitModal && (
 				<SubmitReviewModal
@@ -371,6 +359,7 @@ export function PRControlRail({ prCtx }: { prCtx: GitHubPRContext }) {
 							repo: prCtx.repo,
 							number: prCtx.number,
 						});
+						utils.github.getMyPRs.invalidate();
 						aiDraftQuery.refetch();
 					}}
 				/>
