@@ -21,7 +21,11 @@ export function SubmitReviewModal({
 }: SubmitReviewModalProps) {
 	const [body, setBody] = useState("");
 	const [isSubmitting, setIsSubmitting] = useState(false);
-	const [result, setResult] = useState<{ posted: number; failed: number } | null>(null);
+	const [result, setResult] = useState<{
+		posted: number;
+		failed: number;
+		errors: string[];
+	} | null>(null);
 
 	const createThread = trpc.github.createReviewThread.useMutation();
 	const updateDraftComment = trpc.aiReview.updateDraftComment.useMutation();
@@ -31,11 +35,19 @@ export function SubmitReviewModal({
 		setIsSubmitting(true);
 		setResult(null);
 
+		if (!headCommitOid) {
+			setResult({ posted: 0, failed: aiThreads.length, errors: ["Missing head commit SHA"] });
+			setIsSubmitting(false);
+			return;
+		}
+
 		// Post all pending comments as new review threads
 		let posted = 0;
 		let failed = 0;
-		const postable = aiThreads.filter((c) => c.line != null);
-		const skipped = aiThreads.length - postable.length;
+		const errors: string[] = [];
+		const postable = aiThreads.filter(
+			(c): c is AIDraftThread & { line: number } => c.line != null
+		);
 		for (const comment of postable) {
 			try {
 				await createThread.mutateAsync({
@@ -53,33 +65,53 @@ export function SubmitReviewModal({
 					status: "submitted",
 				});
 				posted++;
-			} catch {
+			} catch (err) {
 				failed++;
+				const msg =
+					err instanceof Error ? err.message : typeof err === "string" ? err : "Unknown error";
+				errors.push(`${comment.path}:${comment.line} — ${msg}`);
+				console.error("[SubmitReview] Failed to post comment:", comment.path, comment.line, err);
 			}
 		}
 
 		if (aiThreads.length > 0) {
-			setResult({ posted, failed: failed + skipped });
+			setResult({ posted, failed, errors });
 		}
 
-		// Submit verdict
-		try {
-			await submitReview.mutateAsync({
-				owner: prCtx.owner,
-				repo: prCtx.repo,
-				prNumber: prCtx.number,
-				verdict,
-				body,
-			});
-			onSubmitted();
-		} catch {
-			setResult((prev) => ({
-				posted: prev?.posted ?? 0,
-				failed: (prev?.failed ?? 0) + 1,
-			}));
-		} finally {
-			setIsSubmitting(false);
+		// Submit verdict — only when there's an explicit verdict or body text.
+		// "COMMENT" with empty body just posts the inline comments (already done above).
+		const needsVerdict = verdict !== "COMMENT" || body.trim().length > 0;
+
+		if (needsVerdict) {
+			// Skip verdict if all comments failed
+			if (failed > 0 && posted === 0 && aiThreads.length > 0) {
+				setIsSubmitting(false);
+				return;
+			}
+
+			try {
+				await submitReview.mutateAsync({
+					owner: prCtx.owner,
+					repo: prCtx.repo,
+					prNumber: prCtx.number,
+					verdict,
+					body,
+				});
+			} catch (err) {
+				const msg = err instanceof Error ? err.message : "Review submission failed";
+				console.error("[SubmitReview] Failed to submit verdict:", err);
+				errors.push(msg);
+				failed++;
+				setResult({ posted, failed, errors });
+				setIsSubmitting(false);
+				return;
+			}
 		}
+
+		if (failed === 0) {
+			onSubmitted();
+		}
+		setIsSubmitting(false);
 	};
 
 	const overlayRef = useRef<HTMLDivElement>(null);
@@ -140,8 +172,17 @@ export function SubmitReviewModal({
 					<div
 						className={`px-5 py-2 text-[10px] ${result.failed > 0 ? "bg-red-900/20 text-red-400" : "bg-green-900/20 text-green-400"}`}
 					>
-						{result.posted} comment{result.posted !== 1 ? "s" : ""} posted.
-						{result.failed > 0 && ` ${result.failed} failed.`}
+						<div>
+							{result.posted} comment{result.posted !== 1 ? "s" : ""} posted.
+							{result.failed > 0 && ` ${result.failed} failed.`}
+						</div>
+						{result.errors.length > 0 && (
+							<div className="mt-1 max-h-[60px] overflow-y-auto font-mono">
+								{result.errors.map((e, i) => (
+									<div key={i}>{e}</div>
+								))}
+							</div>
+						)}
 					</div>
 				)}
 
