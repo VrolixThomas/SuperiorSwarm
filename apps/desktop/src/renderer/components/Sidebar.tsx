@@ -1,11 +1,13 @@
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useProjectStore } from "../stores/projects";
+import { trpc } from "../trpc/client";
 import { ProjectList } from "./ProjectList";
 import { PullRequestsTab } from "./PullRequestsTab";
-import { SectionHeader } from "./SectionHeader";
 import { SettingsView } from "./SettingsView";
 import { SidebarRail } from "./SidebarRail";
 import { TicketsTab } from "./TicketsTab";
+
+type SidebarSegment = "repos" | "tickets" | "prs";
 
 interface SidebarProps {
 	collapsed: boolean;
@@ -14,24 +16,22 @@ interface SidebarProps {
 
 export function Sidebar({ collapsed, onExpand }: SidebarProps) {
 	const { openAddModal, sidebarView, openSettings } = useProjectStore();
-	const [ticketsOpen, setTicketsOpen] = useState(true);
-	const [prsOpen, setPrsOpen] = useState(true);
-	const ticketsRef = useRef<HTMLDivElement>(null);
-	const prsRef = useRef<HTMLDivElement>(null);
+	const [segment, setSegment] = useState<SidebarSegment>("repos");
+
+	// Check if any AI reviews need attention (ready or failed)
+	const reviewDraftsQuery = trpc.aiReview.getReviewDrafts.useQuery(undefined, {
+		staleTime: 5_000,
+	});
+	const hasAINotification = (reviewDraftsQuery.data ?? []).some(
+		(d) => d.status === "ready" || d.status === "failed",
+	);
 
 	const handleExpand = (section?: "tickets" | "prs") => {
 		onExpand(section);
-		// After expand, scroll to section
 		if (section === "tickets") {
-			requestAnimationFrame(() => {
-				setTicketsOpen(true);
-				ticketsRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-			});
+			setSegment("tickets");
 		} else if (section === "prs") {
-			requestAnimationFrame(() => {
-				setPrsOpen(true);
-				prsRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-			});
+			setSegment("prs");
 		}
 	};
 
@@ -41,7 +41,7 @@ export function Sidebar({ collapsed, onExpand }: SidebarProps) {
 
 	return (
 		<div className="flex h-full w-full flex-col overflow-hidden bg-[var(--bg-surface)]">
-			{/* Traffic light clearance — empty drag region */}
+			{/* Traffic light clearance */}
 			<div
 				className="shrink-0"
 				style={
@@ -82,32 +82,39 @@ export function Sidebar({ collapsed, onExpand }: SidebarProps) {
 						</button>
 					</div>
 
-					{/* Project list + Unified tickets/PRs */}
-					<div className="flex-1 overflow-y-auto py-1">
+					{/* Project list — always visible */}
+					<div className="overflow-y-auto border-b border-[var(--border-subtle)]">
 						<ProjectList />
-
-						{/* Tickets Section */}
-						<div ref={ticketsRef} className="mt-2 border-t border-[var(--border-subtle)] pt-2">
-							<SectionHeader
-								label="Tickets"
-								isOpen={ticketsOpen}
-								onToggle={() => setTicketsOpen(!ticketsOpen)}
-							/>
-							{ticketsOpen && <TicketsTab />}
-						</div>
-
-						{/* Pull Requests Section */}
-						<div ref={prsRef} className="mt-2 border-t border-[var(--border-subtle)] pt-2">
-							<SectionHeader
-								label="Pull Requests"
-								isOpen={prsOpen}
-								onToggle={() => setPrsOpen(!prsOpen)}
-							/>
-							{prsOpen && <PullRequestsTab />}
-						</div>
 					</div>
 
-					{/* Footer — Settings button */}
+					{/* Segmented control */}
+					<div className="flex gap-1 px-2 py-1.5 border-b border-[var(--border-subtle)]">
+						{(["repos", "tickets", "prs"] as const).map((seg) => (
+							<button
+								key={seg}
+								type="button"
+								onClick={() => setSegment(seg)}
+								className={`relative flex-1 rounded-[5px] py-1 text-[10px] font-medium capitalize transition-colors ${
+									segment === seg
+										? "bg-[var(--bg-elevated)] text-[var(--text-secondary)]"
+										: "text-[var(--text-quaternary)] hover:text-[var(--text-tertiary)]"
+								}`}
+							>
+								{seg === "prs" ? "PRs" : seg.charAt(0).toUpperCase() + seg.slice(1)}
+								{seg === "prs" && hasAINotification && segment !== "prs" && (
+									<span className="absolute right-1.5 top-1 h-1.5 w-1.5 rounded-full bg-[#30d158]" />
+								)}
+							</button>
+						))}
+					</div>
+
+					{/* Segment content */}
+					<div className="flex-1 overflow-y-auto">
+						{segment === "tickets" && <TicketsTab />}
+						{segment === "prs" && <PullRequestsTab />}
+					</div>
+
+					{/* Footer — Settings */}
 					<div className="border-t border-[var(--border-subtle)] p-2">
 						<button
 							type="button"
