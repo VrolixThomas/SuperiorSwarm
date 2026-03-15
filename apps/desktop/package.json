@@ -71,5 +71,14 @@
 		"tailwindcss": "^4.0.0",
 		"typescript": "^5.7.2",
 		"vite": "^6.0.7"
+	},
+	"build": {
+		"appId": "com.branchflux.app",
+		"productName": "BranchFlux",
+		"publish": {
+			"provider": "github",
+			"owner": "VrolixThomas",
+			"repo": "BranchFlux"
+		}
 	}
 }
