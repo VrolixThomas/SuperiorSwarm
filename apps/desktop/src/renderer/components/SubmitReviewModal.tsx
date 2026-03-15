@@ -45,9 +45,7 @@ export function SubmitReviewModal({
 		let posted = 0;
 		let failed = 0;
 		const errors: string[] = [];
-		const postable = aiThreads.filter(
-			(c): c is AIDraftThread & { line: number } => c.line != null
-		);
+		const postable = aiThreads.filter((c): c is AIDraftThread & { line: number } => c.line != null);
 		for (const comment of postable) {
 			try {
 				await createThread.mutateAsync({
@@ -155,15 +153,12 @@ export function SubmitReviewModal({
 						<div className="flex items-center gap-2">
 							<span className="ai-badge">AI</span>
 							<span className="text-[11px] text-[var(--text-tertiary)]">
-								{pendingCount} AI suggestion{pendingCount !== 1 ? "s" : ""} not yet
-								triaged
+								{pendingCount} AI suggestion{pendingCount !== 1 ? "s" : ""} not yet triaged
 							</span>
 						</div>
 					)}
 					{aiThreads.length === 0 && pendingCount === 0 && (
-						<span className="text-[11px] text-[var(--text-quaternary)]">
-							No pending comments
-						</span>
+						<span className="text-[11px] text-[var(--text-quaternary)]">No pending comments</span>
 					)}
 				</div>
 

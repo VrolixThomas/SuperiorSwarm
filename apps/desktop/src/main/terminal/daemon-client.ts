@@ -244,9 +244,15 @@ export class DaemonClient {
 
 		this.socket.on("data", (chunk) => {
 			this.lineBuffer += chunk.toString("utf-8");
-			if (this.lineBuffer.length > 64_000) {
+			if (this.lineBuffer.length > 512_000) {
 				console.warn("[daemon-client] line buffer overflow, resetting");
-				this.lineBuffer = "";
+				// Try to salvage: find the last newline and keep everything after it
+				const lastNewline = this.lineBuffer.lastIndexOf("\n");
+				if (lastNewline !== -1) {
+					this.lineBuffer = this.lineBuffer.slice(lastNewline + 1);
+				} else {
+					this.lineBuffer = "";
+				}
 				return;
 			}
 			let newline: number;
