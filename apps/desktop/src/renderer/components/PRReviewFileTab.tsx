@@ -1,6 +1,6 @@
 // apps/desktop/src/renderer/components/PRReviewFileTab.tsx
 import * as monaco from "monaco-editor";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import type {
 	AIDraftThread,
@@ -447,7 +447,8 @@ function useThreadDecorations(
 
 function useGutterPlusButton(
 	editor: monaco.editor.IStandaloneDiffEditor | null,
-	onAddThread: (line: number) => void
+	onAddThread: (line: number) => void,
+	validLines?: Set<number>
 ) {
 	const decorationRef = useRef<monaco.editor.IEditorDecorationsCollection | null>(null);
 
@@ -457,9 +458,11 @@ function useGutterPlusButton(
 
 		decorationRef.current = modEditor.createDecorationsCollection([]);
 
+		const isValidLine = (line: number) => !validLines || validLines.has(line);
+
 		const moveSub = modEditor.onMouseMove((e) => {
 			const line = e.target.position?.lineNumber;
-			if (!line) {
+			if (!line || !isValidLine(line)) {
 				decorationRef.current?.clear();
 				return;
 			}
@@ -497,7 +500,7 @@ function useGutterPlusButton(
 
 			if (isGutter) {
 				const line = e.target.position?.lineNumber;
-				if (line) onAddThread(line);
+				if (line && isValidLine(line)) onAddThread(line);
 			}
 		});
 
@@ -507,7 +510,7 @@ function useGutterPlusButton(
 			clickSub.dispose();
 			decorationRef.current?.clear();
 		};
-	}, [editor, onAddThread]);
+	}, [editor, onAddThread, validLines]);
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
@@ -537,6 +540,23 @@ export function PRReviewFileTab({ prCtx, filePath, language }: PRReviewFileTabPr
 		{ repoPath: prCtx.repoPath, ref: prCtx.sourceBranch, filePath },
 		{ staleTime: 60_000 }
 	);
+
+	// Diff hunks — used to restrict comments to lines GitHub will accept
+	const branchDiffQuery = trpc.diff.getBranchDiff.useQuery(
+		{ repoPath: prCtx.repoPath, baseBranch: prCtx.targetBranch, headBranch: prCtx.sourceBranch },
+		{ staleTime: 60_000 }
+	);
+	const validDiffLines = useMemo(() => {
+		const fileData = branchDiffQuery.data?.files.find((f) => f.path === filePath);
+		if (!fileData) return undefined;
+		const lines = new Set<number>();
+		for (const hunk of fileData.hunks) {
+			for (const dl of hunk.lines) {
+				if (dl.newLineNumber != null) lines.add(dl.newLineNumber);
+			}
+		}
+		return lines;
+	}, [branchDiffQuery.data, filePath]);
 
 	// PR details (threads)
 	const { data: prDetails } = trpc.github.getPRDetails.useQuery(
@@ -711,7 +731,7 @@ export function PRReviewFileTab({ prCtx, filePath, language }: PRReviewFileTabPr
 		handleDeclineDraft
 	);
 	useThreadDecorations(editorInstance, fileThreads);
-	useGutterPlusButton(editorInstance, (line) => setPendingLine(line));
+	useGutterPlusButton(editorInstance, (line) => setPendingLine(line), validDiffLines);
 
 	const isLoading = originalQuery.isLoading || modifiedQuery.isLoading;
 
