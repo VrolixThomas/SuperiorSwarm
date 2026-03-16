@@ -90,3 +90,21 @@ export interface GitHubPRDetails {
 	targetBranch: string;
 	headCommitOid: string;
 }
+
+/** Subset of GitHubPRDetails used for sidebar list enrichment */
+export interface GitHubPREnriched {
+	owner: string;
+	repo: string;
+	number: number;
+	author: string;
+	authorAvatarUrl: string;
+	reviewers: GitHubReviewer[];
+	ciState: "SUCCESS" | "FAILURE" | "PENDING" | "NEUTRAL" | null;
+	reviewDecision: "APPROVED" | "CHANGES_REQUESTED" | "REVIEW_REQUIRED" | null;
+	unresolvedThreadCount: number;
+	files: { additions: number; deletions: number; count: number };
+	headCommitOid: string;
+	mergeable: "MERGEABLE" | "CONFLICTING" | "UNKNOWN";
+	isDraft: boolean;
+	updatedAt: string;
+}
