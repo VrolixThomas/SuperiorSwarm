@@ -112,7 +112,7 @@ function AIReviewBadge({
 }: {
 	pr: MergedPR;
 	identifier: string;
-	getReviewStatus: (id: string) => { id: string; status: string } | undefined;
+	getReviewStatus: (id: string) => { id: string; status: string; commitSha?: string | null } | undefined;
 	projectsList:
 		| Array<{
 				id: string;
@@ -240,6 +240,7 @@ function RichPRItem({
 	enrichmentLoading,
 	isReviewer,
 	identifier,
+	lastReviewCommitSha,
 	getReviewStatus,
 	projectsList,
 	store,
@@ -252,7 +253,8 @@ function RichPRItem({
 	enrichmentLoading: boolean;
 	isReviewer: boolean;
 	identifier: string;
-	getReviewStatus: (id: string) => { id: string; status: string } | undefined;
+	lastReviewCommitSha: string | null | undefined;
+	getReviewStatus: (id: string) => { id: string; status: string; commitSha?: string | null } | undefined;
 	projectsList:
 		| Array<{
 				id: string;
@@ -275,6 +277,11 @@ function RichPRItem({
 				: enriched?.isDraft
 					? "#484848"
 					: "#3fb950";
+
+	const hasNewCommits =
+		enriched?.headCommitOid != null &&
+		lastReviewCommitSha != null &&
+		enriched.headCommitOid !== lastReviewCommitSha;
 
 	const sourceBranch = pr.githubPR?.branchName ?? pr.bitbucketPR?.source?.branch?.name ?? "";
 	const targetBranch = enriched
@@ -373,6 +380,13 @@ function RichPRItem({
 
 				{/* CI status */}
 				{enriched && <CIBadge state={enriched.ciState} />}
+
+				{/* New commits since last review */}
+				{hasNewCommits && (
+					<span style={{ color: "#d29922", display: "flex", alignItems: "center", gap: 3, fontSize: 11 }}>
+						● New commits
+					</span>
+				)}
 
 				{/* Unresolved comments */}
 				{enriched && enriched.unresolvedThreadCount > 0 && (
@@ -937,6 +951,8 @@ export function PullRequestsTab() {
 											isReviewer &&
 											reviewerPRsForEnrichment.length > 0 &&
 											enrichmentQuery.isLoading;
+										const lastReviewCommitSha =
+											getReviewStatus(identifier)?.commitSha ?? null;
 
 										return (
 											<RichPRItem
@@ -946,6 +962,7 @@ export function PullRequestsTab() {
 												enrichmentLoading={enrichmentLoading}
 												isReviewer={isReviewer}
 												identifier={identifier}
+												lastReviewCommitSha={lastReviewCommitSha}
 												getReviewStatus={getReviewStatus}
 												projectsList={projectsList}
 												store={store}
