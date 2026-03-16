@@ -111,18 +111,18 @@ export function PullRequestsTab() {
 			reviewDrafts.refetch();
 			utils.workspaces.listByProject.invalidate();
 
-			if (!launchInfo.workspaceId || !launchInfo.worktreePath) return;
+			if (!launchInfo.reviewWorkspaceId || !launchInfo.worktreePath) return;
 
 			// Create workspace terminal and run the launch script
 			const tabStore = useTabStore.getState();
-			tabStore.setActiveWorkspace(launchInfo.workspaceId, launchInfo.worktreePath);
+			tabStore.setActiveWorkspace(launchInfo.reviewWorkspaceId, launchInfo.worktreePath);
 			const tabId = tabStore.addTerminalTab(
-				launchInfo.workspaceId,
+				launchInfo.reviewWorkspaceId,
 				launchInfo.worktreePath,
 				`AI Review`
 			);
 			attachTerminalRef2.current({
-				workspaceId: launchInfo.workspaceId,
+				workspaceId: launchInfo.reviewWorkspaceId,
 				terminalId: tabId,
 			});
 
@@ -158,6 +158,7 @@ export function PullRequestsTab() {
 			const project = projectsList?.find(
 				(p) => p.githubOwner === pr.repoOwner && p.githubRepo === pr.repoName
 			);
+			if (!project) continue;
 			triggeredRef.current.add(identifier);
 			triggerReview.mutate({
 				provider: "github",
@@ -165,8 +166,9 @@ export function PullRequestsTab() {
 				title: pr.title,
 				author: "",
 				sourceBranch: pr.branchName,
-				targetBranch: project?.defaultBranch ?? "main",
-				repoPath: project?.repoPath ?? "",
+				targetBranch: project.defaultBranch ?? "main",
+				repoPath: project.repoPath,
+				projectId: project.id,
 			});
 		}
 
@@ -174,6 +176,8 @@ export function PullRequestsTab() {
 		for (const pr of bbReviewPRs ?? []) {
 			const identifier = `${pr.workspace}/${pr.repoSlug}#${pr.id}`;
 			if (existingIdentifiers.has(identifier) || triggeredRef.current.has(identifier)) continue;
+			// Bitbucket PRs need a tracked project to proceed
+			// TODO: resolve bitbucket project mapping
 			triggeredRef.current.add(identifier);
 			triggerReview.mutate({
 				provider: "bitbucket",
@@ -183,6 +187,7 @@ export function PullRequestsTab() {
 				sourceBranch: pr.source?.branch?.name ?? "",
 				targetBranch: pr.destination?.branch?.name ?? "main",
 				repoPath: "",
+				projectId: "",
 			});
 		}
 	}, [ghPRs, bbReviewPRs, reviewDrafts.data, settings.data, projectsList]);
@@ -543,17 +548,20 @@ export function PullRequestsTab() {
 																		p.githubOwner === pr.githubPR!.repoOwner &&
 																		p.githubRepo === pr.githubPR!.repoName
 																);
+																if (!project) return;
 																triggerReview.mutate({
 																	provider: "github",
 																	identifier,
 																	title: pr.title,
 																	author: "",
 																	sourceBranch: pr.githubPR.branchName,
-																	targetBranch: project?.defaultBranch ?? "main",
-																	repoPath: project?.repoPath ?? "",
+																	targetBranch: project.defaultBranch ?? "main",
+																	repoPath: project.repoPath,
+																	projectId: project.id,
 																});
 															}
 															if (pr.provider === "bitbucket" && pr.bitbucketPR) {
+																// TODO: resolve bitbucket project mapping
 																triggerReview.mutate({
 																	provider: "bitbucket",
 																	identifier,
@@ -562,6 +570,7 @@ export function PullRequestsTab() {
 																	sourceBranch: pr.bitbucketPR.source?.branch?.name ?? "",
 																	targetBranch: pr.bitbucketPR.destination?.branch?.name ?? "main",
 																	repoPath: "",
+																	projectId: "",
 																});
 															}
 														};
