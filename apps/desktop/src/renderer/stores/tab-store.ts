@@ -86,7 +86,7 @@ interface TabStore {
 	setActiveWorkspace: (
 		workspaceId: string,
 		cwd: string,
-		options?: { rightPanel?: RightPanelState },
+		options?: { rightPanel?: RightPanelState }
 	) => void;
 
 	// Terminal convenience

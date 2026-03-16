@@ -131,13 +131,14 @@ function ChangesTab({
 				path: f.path,
 				additions: f.additions,
 				deletions: f.deletions,
-				changeType: f.status === "added"
-					? "ADDED"
-					: f.status === "deleted"
-						? "DELETED"
-						: f.status === "renamed"
-							? "RENAMED"
-							: "MODIFIED",
+				changeType:
+					f.status === "added"
+						? "ADDED"
+						: f.status === "deleted"
+							? "DELETED"
+							: f.status === "renamed"
+								? "RENAMED"
+								: "MODIFIED",
 			}))
 		: details.files.map((f) => ({
 				path: f.path,
@@ -173,9 +174,7 @@ function ChangesTab({
 			<div className="flex-1 overflow-y-auto">
 				{/* Loading state for custom base */}
 				{isCustomBase && branchDiffQuery.isLoading && (
-					<div className="px-3 py-4 text-[12px] text-[var(--text-quaternary)]">
-						Loading diff…
-					</div>
+					<div className="px-3 py-4 text-[12px] text-[var(--text-quaternary)]">Loading diff…</div>
 				)}
 
 				{/* Branch changes card with integrated review progress */}
@@ -213,10 +212,7 @@ function ChangesTab({
 									<div
 										className="h-full rounded-full bg-[var(--accent)] transition-all duration-200"
 										style={{
-											width:
-												files.length > 0
-													? `${(viewed / files.length) * 100}%`
-													: "0%",
+											width: files.length > 0 ? `${(viewed / files.length) * 100}%` : "0%",
 										}}
 									/>
 								</div>
@@ -230,8 +226,7 @@ function ChangesTab({
 							<div className="border-t border-[var(--border-subtle)] py-0.5">
 								{files.length === 0 && (
 									<div className="px-2 py-2 text-[12px] text-[var(--text-quaternary)]">
-										No changes vs{" "}
-										<span className="font-medium">{baseBranch}</span>
+										No changes vs <span className="font-medium">{baseBranch}</span>
 									</div>
 								)}
 								{files.map((file) => {
@@ -262,9 +257,7 @@ function ChangesTab({
 														? "text-[var(--accent)]"
 														: "text-[var(--text-quaternary)] hover:text-[var(--text-tertiary)]",
 												].join(" ")}
-												title={
-													isViewed ? "Mark as unviewed" : "Mark as viewed"
-												}
+												title={isViewed ? "Mark as unviewed" : "Mark as viewed"}
 											>
 												{isViewed ? "\u2713" : "\u25CB"}
 											</button>
@@ -307,14 +300,10 @@ function ChangesTab({
 											{/* +/- stats */}
 											<span className="shrink-0 text-[10px] text-[var(--text-quaternary)]">
 												{file.additions > 0 && (
-													<span className="text-[var(--term-green)]">
-														+{file.additions}
-													</span>
+													<span className="text-[var(--term-green)]">+{file.additions}</span>
 												)}
 												{file.deletions > 0 && (
-													<span className="ml-0.5 text-[var(--term-red)]">
-														-{file.deletions}
-													</span>
+													<span className="ml-0.5 text-[var(--term-red)]">-{file.deletions}</span>
 												)}
 											</span>
 										</div>
@@ -338,14 +327,11 @@ function ChangesTab({
 						)}
 					</div>
 					{commitsQuery.isLoading && (
-						<div className="px-3 py-2 text-[12px] text-[var(--text-quaternary)]">
-							Loading...
-						</div>
+						<div className="px-3 py-2 text-[12px] text-[var(--text-quaternary)]">Loading...</div>
 					)}
 					{!commitsQuery.isLoading && commits.length === 0 && (
 						<div className="px-3 py-2 text-[12px] text-[var(--text-quaternary)]">
-							No commits ahead of{" "}
-							<span className="font-medium">{baseBranch}</span>
+							No commits ahead of <span className="font-medium">{baseBranch}</span>
 						</div>
 					)}
 					{commits.map((commit) => (
@@ -401,9 +387,7 @@ function PRCommitCard({
 					<span className="min-w-0 flex-1 truncate text-[12px] text-[var(--text-secondary)]">
 						{commit.message}
 					</span>
-					<span className="shrink-0 text-[11px] text-[var(--text-quaternary)]">
-						{commit.time}
-					</span>
+					<span className="shrink-0 text-[11px] text-[var(--text-quaternary)]">{commit.time}</span>
 				</div>
 				<div className="flex w-full items-center gap-2">
 					<span className="text-[11px]">
@@ -436,12 +420,7 @@ function PRCommitCard({
 								type="button"
 								onClick={() => {
 									if (!activeWorkspaceId) return;
-									openPRReviewFile(
-										activeWorkspaceId,
-										prCtx,
-										file.path,
-										detectLanguage(file.path)
-									);
+									openPRReviewFile(activeWorkspaceId, prCtx, file.path, detectLanguage(file.path));
 								}}
 								className="flex w-full items-center gap-1.5 rounded px-2 py-0.5 text-left text-[12px] text-[var(--text-secondary)] transition-colors duration-[120ms] hover:bg-[var(--bg-elevated)]"
 							>
@@ -454,9 +433,7 @@ function PRCommitCard({
 										<span className="text-[var(--term-green)]">+{file.additions}</span>
 									)}
 									{file.deletions > 0 && (
-										<span className="ml-0.5 text-[var(--term-red)]">
-											-{file.deletions}
-										</span>
+										<span className="ml-0.5 text-[var(--term-red)]">-{file.deletions}</span>
 									)}
 								</span>
 							</button>
@@ -725,9 +702,7 @@ function CommentThreadCard({
 							{new Date(c.createdAt).toLocaleDateString()}
 						</span>
 					</div>
-					<p className="text-[11px] text-[var(--text-tertiary)] whitespace-pre-wrap">
-						{c.body}
-					</p>
+					<p className="text-[11px] text-[var(--text-tertiary)] whitespace-pre-wrap">{c.body}</p>
 				</div>
 			))}
 
@@ -897,8 +872,7 @@ export function PRControlRail({ prCtx }: { prCtx: GitHubPRContext }) {
 		body: c.body,
 		status: c.status as AIDraftThread["status"],
 		userEdit: c.userEdit ?? null,
-		createdAt:
-			typeof c.createdAt === "string" ? c.createdAt : new Date(c.createdAt).toISOString(),
+		createdAt: typeof c.createdAt === "string" ? c.createdAt : new Date(c.createdAt).toISOString(),
 	});
 
 	const aiThreads: AIDraftThread[] = (aiDraftQuery.data?.comments ?? [])

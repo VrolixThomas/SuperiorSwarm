@@ -272,17 +272,11 @@ export const workspacesRouter = router({
 			if (pathExists && !input.force) {
 				const dirty = await hasUncommittedChanges(worktree.path);
 				if (dirty) {
-					throw new Error(
-						"Worktree has uncommitted changes. Commit or discard them first."
-					);
+					throw new Error("Worktree has uncommitted changes. Commit or discard them first.");
 				}
 			}
 
-			const project = db
-				.select()
-				.from(projects)
-				.where(eq(projects.id, workspace.projectId))
-				.get();
+			const project = db.select().from(projects).where(eq(projects.id, workspace.projectId)).get();
 
 			if (!project) {
 				throw new Error("Project not found");

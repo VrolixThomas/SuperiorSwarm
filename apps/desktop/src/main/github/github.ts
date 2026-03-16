@@ -461,7 +461,7 @@ export async function getPRDetails(
 }
 
 export async function getPRListEnrichment(
-	prs: Array<{ owner: string; repo: string; number: number }>,
+	prs: Array<{ owner: string; repo: string; number: number }>
 ): Promise<GitHubPREnriched[]> {
 	const results: GitHubPREnriched[] = [];
 	const batches: Array<Array<(typeof prs)[number]>> = [];
@@ -475,16 +475,14 @@ export async function getPRListEnrichment(
 				const details = await getPRDetails(pr.owner, pr.repo, pr.number);
 				if (!details) return null;
 
-				const unresolvedThreadCount = details.reviewThreads.filter(
-					(t) => !t.isResolved,
-				).length;
+				const unresolvedThreadCount = details.reviewThreads.filter((t) => !t.isResolved).length;
 				const fileStats = details.files.reduce(
 					(acc, f) => ({
 						additions: acc.additions + f.additions,
 						deletions: acc.deletions + f.deletions,
 						count: acc.count + 1,
 					}),
-					{ additions: 0, deletions: 0, count: 0 },
+					{ additions: 0, deletions: 0, count: 0 }
 				);
 
 				return {
@@ -503,7 +501,7 @@ export async function getPRListEnrichment(
 					isDraft: details.isDraft,
 					updatedAt: new Date().toISOString(),
 				} satisfies GitHubPREnriched;
-			}),
+			})
 		);
 
 		for (const result of settled) {

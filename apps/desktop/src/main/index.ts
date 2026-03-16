@@ -71,9 +71,7 @@ app.whenReady().then(async () => {
 	// Clear ephemeral terminal IDs (reset across sessions)
 	{
 		const db = getDb();
-		db.update(schema.reviewWorkspaces)
-			.set({ terminalId: null, updatedAt: new Date() })
-			.run();
+		db.update(schema.reviewWorkspaces).set({ terminalId: null, updatedAt: new Date() }).run();
 	}
 	const dbPath = join(app.getPath("userData"), "branchflux.db");
 	const daemonScriptPath = join(__dirname, "daemon.js");
