@@ -1,6 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { mkdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import Database from "better-sqlite3";
@@ -13,7 +11,6 @@ import { draftComments, reviewDrafts } from "../db/schema-ai-review";
 const REVIEW_DRAFT_ID = process.env.REVIEW_DRAFT_ID!;
 const PR_METADATA = JSON.parse(process.env.PR_METADATA!);
 const DB_PATH = process.env.DB_PATH!;
-const WORKTREE_PATH = process.env.WORKTREE_PATH!;
 
 // Connect to SQLite with WAL mode and busy timeout for concurrent access
 const sqlite = new Database(DB_PATH);
@@ -81,25 +78,17 @@ server.tool(
 		markdown: z.string().describe("Full review summary in markdown format"),
 	},
 	async ({ markdown }) => {
-		// Save to .branchflux/review-summary.md in the worktree
-		const branchfluxDir = join(WORKTREE_PATH, ".branchflux");
-		mkdirSync(branchfluxDir, { recursive: true });
-		const filePath = join(branchfluxDir, "review-summary.md");
-		writeFileSync(filePath, markdown, "utf-8");
-
-		// Update the review draft in DB
 		const now = new Date();
 		db.update(reviewDrafts)
 			.set({
 				summaryMarkdown: markdown,
-				summaryFilePath: filePath,
 				updatedAt: now,
 			})
 			.where(eq(reviewDrafts.id, REVIEW_DRAFT_ID))
 			.run();
 
 		return {
-			content: [{ type: "text", text: JSON.stringify({ status: "saved", file_path: filePath }) }],
+			content: [{ type: "text", text: JSON.stringify({ status: "saved" }) }],
 		};
 	}
 );
