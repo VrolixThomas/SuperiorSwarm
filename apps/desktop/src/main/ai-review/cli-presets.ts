@@ -15,6 +15,7 @@ type CleanupFn = () => void;
 export interface LaunchOptions {
 	mcpServerPath: string;
 	worktreePath: string;
+	reviewDir: string;
 	promptFilePath: string;
 	dbPath: string;
 	reviewDraftId: string;
@@ -63,7 +64,6 @@ export const CLI_PRESETS: Record<string, CliPreset> = {
 							REVIEW_DRAFT_ID: reviewDraftId,
 							PR_METADATA: prMetadata,
 							DB_PATH: dbPath,
-							WORKTREE_PATH: worktreePath,
 						},
 					},
 				},
@@ -80,15 +80,14 @@ export const CLI_PRESETS: Record<string, CliPreset> = {
 		name: "gemini",
 		label: "Gemini CLI",
 		command: "gemini",
-		buildArgs: ({ worktreePath, promptFilePath }) => [
+		buildArgs: ({ reviewDir, promptFilePath }) => [
 			"--mcp-config",
-			join(worktreePath, ".branchflux", "mcp-config.json"),
+			join(reviewDir, "mcp-config.json"),
 			"-p",
 			`"$(cat '${promptFilePath}')"`,
 		],
-		setupMcp: ({ worktreePath, mcpServerPath }) => {
-			const dir = join(worktreePath, ".branchflux");
-			const configPath = writeTempMcpConfig(dir, "mcp-config.json", mcpServerPath);
+		setupMcp: ({ reviewDir, mcpServerPath }) => {
+			const configPath = writeTempMcpConfig(reviewDir, "mcp-config.json", mcpServerPath);
 			return () => {
 				try {
 					rmSync(configPath);
@@ -107,6 +106,7 @@ export const CLI_PRESETS: Record<string, CliPreset> = {
 			return () => {
 				try {
 					rmSync(configPath);
+					rmSync(dir, { recursive: true });
 				} catch {}
 			};
 		},
@@ -122,6 +122,7 @@ export const CLI_PRESETS: Record<string, CliPreset> = {
 			return () => {
 				try {
 					rmSync(configPath);
+					rmSync(dir, { recursive: true });
 				} catch {}
 			};
 		},

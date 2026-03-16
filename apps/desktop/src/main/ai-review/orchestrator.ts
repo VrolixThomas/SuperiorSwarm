@@ -268,11 +268,11 @@ async function startReview(draftId: string, repoPath: string): Promise<ReviewLau
 			prUrl: "",
 		};
 
-		// Write prompt and launch script to .branchflux/ in the worktree
-		const branchfluxDir = join(worktreePath, ".branchflux");
-		mkdirSync(branchfluxDir, { recursive: true });
+		// Write prompt and launch script to app data review directory
+		const reviewDir = join(app.getPath("userData"), "reviews", draft.id);
+		mkdirSync(reviewDir, { recursive: true });
 
-		const promptFilePath = join(branchfluxDir, "review-prompt.txt");
+		const promptFilePath = join(reviewDir, "review-prompt.txt");
 		writeFileSync(
 			promptFilePath,
 			buildReviewPrompt({
@@ -288,6 +288,7 @@ async function startReview(draftId: string, repoPath: string): Promise<ReviewLau
 		const launchOpts: LaunchOptions = {
 			mcpServerPath,
 			worktreePath,
+			reviewDir,
 			promptFilePath,
 			dbPath,
 			reviewDraftId: draft.id,
@@ -304,14 +305,13 @@ async function startReview(draftId: string, repoPath: string): Promise<ReviewLau
 		const cliCommand = [preset.command, ...args].join(" ");
 
 		// Write a launch script that sets env vars (if not handled by MCP config) and runs the CLI
-		const launchScript = join(branchfluxDir, "start-review.sh");
+		const launchScript = join(reviewDir, "start-review.sh");
 		const envLines = preset.setupMcp
-			? [] // Env vars are in the MCP config file (e.g., .mcp.json for Claude)
+			? []
 			: [
 					`export REVIEW_DRAFT_ID='${draft.id}'`,
 					`export PR_METADATA='${launchOpts.prMetadata.replace(/'/g, "'\\''")}'`,
 					`export DB_PATH='${dbPath}'`,
-					`export WORKTREE_PATH='${worktreePath}'`,
 				];
 		const scriptContent = ["#!/bin/bash", ...envLines, "", cliCommand].join("\n");
 		writeFileSync(launchScript, scriptContent, "utf-8");
