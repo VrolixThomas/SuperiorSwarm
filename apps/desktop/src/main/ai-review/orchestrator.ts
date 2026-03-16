@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { eq, inArray } from "drizzle-orm";
 import { app } from "electron";
@@ -22,6 +22,52 @@ interface ActiveReview {
 }
 
 const activeReviews = new Map<string, ActiveReview>();
+
+/** Clean up review artifacts for a completed/failed review */
+function cleanupReview(draftId: string): void {
+	// Run MCP config cleanup if tracked
+	const active = activeReviews.get(draftId);
+	if (active?.cleanup) {
+		try {
+			active.cleanup();
+		} catch {}
+	}
+	activeReviews.delete(draftId);
+
+	// Remove review directory from app data
+	const reviewDir = join(app.getPath("userData"), "reviews", draftId);
+	try {
+		rmSync(reviewDir, { recursive: true, force: true });
+	} catch {}
+}
+
+let pollInterval: ReturnType<typeof setInterval> | null = null;
+
+function startPollingIfNeeded(): void {
+	if (pollInterval || activeReviews.size === 0) return;
+
+	pollInterval = setInterval(() => {
+		if (activeReviews.size === 0) {
+			clearInterval(pollInterval!);
+			pollInterval = null;
+			return;
+		}
+
+		const db = getDb();
+		const draftIds = [...activeReviews.keys()];
+		const drafts = db
+			.select()
+			.from(schema.reviewDrafts)
+			.where(inArray(schema.reviewDrafts.id, draftIds))
+			.all();
+
+		for (const draft of drafts) {
+			if (draft.status === "ready" || draft.status === "failed") {
+				cleanupReview(draft.id);
+			}
+		}
+	}, 10_000);
+}
 
 /** Get current AI review settings, creating defaults if needed */
 export function getSettings(): schema.AiReviewSettings {
@@ -299,6 +345,7 @@ async function startReview(draftId: string, repoPath: string): Promise<ReviewLau
 		// for others it writes their specific config files
 		const cleanupMcp = preset.setupMcp?.(launchOpts) ?? null;
 		activeReviews.set(draft.id, { draftId: draft.id, cleanup: cleanupMcp });
+		startPollingIfNeeded();
 
 		// Build the CLI command args
 		const args = preset.buildArgs(launchOpts);
@@ -331,5 +378,53 @@ async function startReview(draftId: string, repoPath: string): Promise<ReviewLau
 			.run();
 		activeReviews.delete(draft.id);
 		throw err;
+	}
+}
+
+/** Clean up stale in_progress reviews from a previous session */
+export function cleanupStaleReviews(): void {
+	const db = getDb();
+	const stale = db
+		.select()
+		.from(schema.reviewDrafts)
+		.where(eq(schema.reviewDrafts.status, "in_progress"))
+		.all();
+
+	for (const draft of stale) {
+		// Try to clean up MCP configs from worktree (try all known paths)
+		if (draft.worktreePath) {
+			const mcpPaths = [
+				join(draft.worktreePath, ".mcp.json"),
+				join(draft.worktreePath, ".codex", "config.json"),
+				join(draft.worktreePath, ".opencode", "config.json"),
+			];
+			for (const p of mcpPaths) {
+				try {
+					rmSync(p);
+				} catch {}
+			}
+			// Try removing empty dirs
+			for (const dir of [".codex", ".opencode"]) {
+				try {
+					rmSync(join(draft.worktreePath, dir), { recursive: true });
+				} catch {}
+			}
+		}
+
+		// Remove review dir from app data
+		const reviewDir = join(app.getPath("userData"), "reviews", draft.id);
+		try {
+			rmSync(reviewDir, { recursive: true, force: true });
+		} catch {}
+
+		// Mark as failed
+		db.update(schema.reviewDrafts)
+			.set({ status: "failed", updatedAt: new Date() })
+			.where(eq(schema.reviewDrafts.id, draft.id))
+			.run();
+	}
+
+	if (stale.length > 0) {
+		console.log(`[ai-review] Cleaned up ${stale.length} stale review(s)`);
 	}
 }
