@@ -112,7 +112,9 @@ function AIReviewBadge({
 }: {
 	pr: MergedPR;
 	identifier: string;
-	getReviewStatus: (id: string) => { id: string; status: string; commitSha?: string | null } | undefined;
+	getReviewStatus: (
+		id: string
+	) => { id: string; status: string; commitSha?: string | null } | undefined;
 	projectsList:
 		| Array<{
 				id: string;
@@ -247,6 +249,7 @@ function RichPRItem({
 	triggerReview,
 	dismissReview,
 	onClick,
+	onContextMenu,
 }: {
 	pr: MergedPR;
 	enriched: GitHubPREnriched | undefined;
@@ -254,7 +257,9 @@ function RichPRItem({
 	isReviewer: boolean;
 	identifier: string;
 	lastReviewCommitSha: string | null | undefined;
-	getReviewStatus: (id: string) => { id: string; status: string; commitSha?: string | null } | undefined;
+	getReviewStatus: (
+		id: string
+	) => { id: string; status: string; commitSha?: string | null } | undefined;
 	projectsList:
 		| Array<{
 				id: string;
@@ -268,6 +273,7 @@ function RichPRItem({
 	triggerReview: { mutate: (args: Record<string, string>) => void };
 	dismissReview: { mutate: (args: { draftId: string }) => void };
 	onClick: (e: React.MouseEvent) => void;
+	onContextMenu?: (e: React.MouseEvent) => void;
 }) {
 	const borderLeftColor =
 		pr.state === "merged"
@@ -298,6 +304,7 @@ function RichPRItem({
 		<button
 			type="button"
 			onClick={onClick}
+			onContextMenu={onContextMenu}
 			className={`group flex w-full flex-col gap-0.5 rounded-[6px] px-2.5 py-1.5 text-left text-[12px] transition-all duration-[120ms] hover:bg-[var(--bg-elevated)] ${
 				isReviewer
 					? "cursor-pointer text-[var(--text-secondary)]"
@@ -383,7 +390,15 @@ function RichPRItem({
 
 				{/* New commits since last review */}
 				{hasNewCommits && (
-					<span style={{ color: "#d29922", display: "flex", alignItems: "center", gap: 3, fontSize: 11 }}>
+					<span
+						style={{
+							color: "#d29922",
+							display: "flex",
+							alignItems: "center",
+							gap: 3,
+							fontSize: 11,
+						}}
+					>
 						● New commits
 					</span>
 				)}
@@ -559,6 +574,21 @@ export function PullRequestsTab() {
 
 	const getOrCreateMutation = trpc.reviewWorkspaces.getOrCreate.useMutation();
 
+	// ── Cleanup mutation + all review workspaces ──────────────────────────────
+
+	const removeWorktreeMutation = trpc.reviewWorkspaces.removeWorktree.useMutation();
+	const { data: allReviewWorkspaces } = trpc.reviewWorkspaces.listAll.useQuery(undefined, {
+		staleTime: 30_000,
+	});
+
+	// ── PR state tracking for auto-cleanup on merge/close ──────────────────────
+	// (prevPRStatesRef declared here; the effect that reads `grouped` is placed
+	//  after the `grouped` useMemo, below the auto-trigger effect)
+
+	const prevPRStatesRef = useRef<Map<string, string>>(new Map());
+	const removeWorktreeMutateRef = useRef(removeWorktreeMutation.mutate);
+	removeWorktreeMutateRef.current = removeWorktreeMutation.mutate;
+
 	// ── Auto-trigger effect ──────────────────────────────────────────────────
 
 	useEffect(() => {
@@ -721,6 +751,49 @@ export function PullRequestsTab() {
 
 		return groups;
 	}, [bbMyPRs, bbReviewPRs, ghPRs]);
+
+	// ── PR state tracking effect (auto-cleanup on merge/close) ────────────────
+
+	useEffect(() => {
+		if (!allReviewWorkspaces) return;
+
+		// Build current state map: prIdentifier → normalized state
+		// Inline identifier logic to avoid adding getPrIdentifier to deps
+		const currentStates = new Map<string, string>();
+		for (const [, group] of grouped) {
+			for (const pr of group.items) {
+				let identifier: string;
+				if (pr.provider === "github" && pr.githubPR) {
+					identifier = `${pr.githubPR.repoOwner}/${pr.githubPR.repoName}#${pr.githubPR.number}`;
+				} else if (pr.provider === "bitbucket" && pr.bitbucketPR) {
+					identifier = `${pr.bitbucketPR.workspace}/${pr.bitbucketPR.repoSlug}#${pr.bitbucketPR.id}`;
+				} else {
+					identifier = pr.id;
+				}
+				currentStates.set(identifier, pr.state);
+			}
+		}
+
+		// Detect transitions from open → merged/closed
+		for (const [identifier, prevState] of prevPRStatesRef.current) {
+			const newState = currentStates.get(identifier);
+			const wasOpen = prevState === "open";
+			const isNowClosed = newState === "closed" || newState === "merged" || newState === undefined;
+			if (wasOpen && isNowClosed) {
+				const reviewWorkspace = allReviewWorkspaces.find(
+					(rw) => rw.prIdentifier === identifier && rw.worktreeId !== null
+				);
+				if (reviewWorkspace) {
+					removeWorktreeMutateRef.current({
+						reviewWorkspaceId: reviewWorkspace.id,
+						force: true,
+					});
+				}
+			}
+		}
+
+		prevPRStatesRef.current = currentStates;
+	}, [grouped, allReviewWorkspaces]);
 
 	// ── Navigation ────────────────────────────────────────────────────────────
 
@@ -951,8 +1024,26 @@ export function PullRequestsTab() {
 											isReviewer &&
 											reviewerPRsForEnrichment.length > 0 &&
 											enrichmentQuery.isLoading;
-										const lastReviewCommitSha =
-											getReviewStatus(identifier)?.commitSha ?? null;
+										const lastReviewCommitSha = getReviewStatus(identifier)?.commitSha ?? null;
+
+										const reviewWorkspace = allReviewWorkspaces?.find(
+											(rw) => rw.prIdentifier === identifier && rw.worktreeId !== null
+										);
+										const handleContextMenu = reviewWorkspace
+											? (e: React.MouseEvent) => {
+													e.preventDefault();
+													if (
+														window.confirm(
+															"Remove the review worktree? This will delete local files."
+														)
+													) {
+														removeWorktreeMutation.mutate({
+															reviewWorkspaceId: reviewWorkspace.id,
+															force: true,
+														});
+													}
+												}
+											: undefined;
 
 										return (
 											<RichPRItem
@@ -969,6 +1060,7 @@ export function PullRequestsTab() {
 												triggerReview={triggerReview}
 												dismissReview={dismissReview}
 												onClick={(e) => handlePRClick(pr, e)}
+												onContextMenu={handleContextMenu}
 											/>
 										);
 									})}

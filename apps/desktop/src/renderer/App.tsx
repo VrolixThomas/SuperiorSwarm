@@ -156,7 +156,7 @@ export function App() {
 		if (hasRestored.current || !restoreQuery.data) return;
 		hasRestored.current = true;
 
-		const { sessions, state, paneLayouts } = restoreQuery.data;
+		const { sessions, state, paneLayouts, workspaceMeta } = restoreQuery.data;
 		const hasSessions = sessions.length > 0;
 		const hasLayouts = paneLayouts && Object.keys(paneLayouts).length > 0;
 		if (!hasSessions && !hasLayouts) return;
@@ -204,6 +204,10 @@ export function App() {
 			let maxFileTabId = 0;
 
 			for (const [wsId, layoutJson] of Object.entries(paneLayouts)) {
+				if (workspaceMeta && !workspaceMeta[wsId]) {
+					// Orphaned layout — workspace no longer exists, skip it
+					continue;
+				}
 				try {
 					const serialized = JSON.parse(layoutJson) as SerializedLayoutNode;
 					const layout = deserializeLayout(serialized, terminalMap);
