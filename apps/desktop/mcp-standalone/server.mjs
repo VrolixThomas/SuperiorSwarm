@@ -1,7 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdirSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { join } from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
@@ -13,10 +11,9 @@ const Database = require("better-sqlite3");
 const REVIEW_DRAFT_ID = process.env.REVIEW_DRAFT_ID;
 const PR_METADATA = JSON.parse(process.env.PR_METADATA || "{}");
 const DB_PATH = process.env.DB_PATH;
-const WORKTREE_PATH = process.env.WORKTREE_PATH;
 
-if (!REVIEW_DRAFT_ID || !DB_PATH || !WORKTREE_PATH) {
-	console.error("Missing required env vars: REVIEW_DRAFT_ID, DB_PATH, WORKTREE_PATH");
+if (!REVIEW_DRAFT_ID || !DB_PATH) {
+	console.error("Missing required env vars: REVIEW_DRAFT_ID, DB_PATH");
 	process.exit(1);
 }
 
@@ -77,20 +74,13 @@ server.tool(
 		markdown: z.string().describe("Full review summary in markdown format"),
 	},
 	async ({ markdown }) => {
-		// Save to .branchflux/review-summary.md in the worktree
-		const branchfluxDir = join(WORKTREE_PATH, ".branchflux");
-		mkdirSync(branchfluxDir, { recursive: true });
-		const filePath = join(branchfluxDir, "review-summary.md");
-		writeFileSync(filePath, markdown, "utf-8");
-
-		// Update the review draft in DB
 		const now = Math.floor(Date.now() / 1000);
 		db.prepare(
-			`UPDATE review_drafts SET summary_markdown = ?, summary_file_path = ?, updated_at = ? WHERE id = ?`
-		).run(markdown, filePath, now, REVIEW_DRAFT_ID);
+			`UPDATE review_drafts SET summary_markdown = ?, updated_at = ? WHERE id = ?`
+		).run(markdown, now, REVIEW_DRAFT_ID);
 
 		return {
-			content: [{ type: "text", text: JSON.stringify({ status: "saved", file_path: filePath }) }],
+			content: [{ type: "text", text: JSON.stringify({ status: "saved" }) }],
 		};
 	}
 );
