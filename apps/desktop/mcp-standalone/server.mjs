@@ -75,9 +75,11 @@ server.tool(
 	},
 	async ({ markdown }) => {
 		const now = Math.floor(Date.now() / 1000);
-		db.prepare(
-			`UPDATE review_drafts SET summary_markdown = ?, updated_at = ? WHERE id = ?`
-		).run(markdown, now, REVIEW_DRAFT_ID);
+		db.prepare(`UPDATE review_drafts SET summary_markdown = ?, updated_at = ? WHERE id = ?`).run(
+			markdown,
+			now,
+			REVIEW_DRAFT_ID
+		);
 
 		return {
 			content: [{ type: "text", text: JSON.stringify({ status: "saved" }) }],
