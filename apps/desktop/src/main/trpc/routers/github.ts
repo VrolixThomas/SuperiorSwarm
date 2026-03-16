@@ -215,9 +215,9 @@ export const githubRouter = router({
 						owner: z.string(),
 						repo: z.string(),
 						number: z.number(),
-					}),
+					})
 				),
-			}),
+			})
 		)
 		.query(async ({ input }) => {
 			const auth = getAuth();

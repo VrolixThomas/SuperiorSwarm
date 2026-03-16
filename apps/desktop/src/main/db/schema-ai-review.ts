@@ -69,9 +69,9 @@ export const reviewWorkspaces = sqliteTable(
 		uniqueIndex("review_workspaces_project_pr_unique").on(
 			table.projectId,
 			table.prProvider,
-			table.prIdentifier,
+			table.prIdentifier
 		),
-	],
+	]
 );
 
 export type ReviewWorkspace = typeof reviewWorkspaces.$inferSelect;

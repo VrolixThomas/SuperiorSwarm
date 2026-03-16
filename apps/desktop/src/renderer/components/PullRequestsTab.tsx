@@ -497,7 +497,7 @@ export function PullRequestsTab() {
 		staleTime: 3_000,
 		refetchInterval: 5_000,
 	});
-	const attachTerminalMut = trpc.workspaces.attachTerminal.useMutation();
+	const attachTerminalMut = trpc.reviewWorkspaces.attachTerminal.useMutation();
 	const attachTerminalRef2 = useRef(attachTerminalMut.mutate);
 	attachTerminalRef2.current = attachTerminalMut.mutate;
 
@@ -506,20 +506,22 @@ export function PullRequestsTab() {
 		onSuccess: (launchInfo) => {
 			setReviewError(null);
 			reviewDrafts.refetch();
-			utils.workspaces.listByProject.invalidate();
+			allReviewWorkspacesQuery.refetch();
 
 			if (!launchInfo.reviewWorkspaceId || !launchInfo.worktreePath) return;
 
 			// Create workspace terminal and run the launch script
 			const tabStore = useTabStore.getState();
-			tabStore.setActiveWorkspace(launchInfo.reviewWorkspaceId, launchInfo.worktreePath);
+			tabStore.setActiveWorkspace(launchInfo.reviewWorkspaceId, launchInfo.worktreePath, {
+				rightPanel: { open: true, mode: "pr-review", diffCtx: null },
+			});
 			const tabId = tabStore.addTerminalTab(
 				launchInfo.reviewWorkspaceId,
 				launchInfo.worktreePath,
 				"AI Review"
 			);
 			attachTerminalRef2.current({
-				workspaceId: launchInfo.reviewWorkspaceId,
+				reviewWorkspaceId: launchInfo.reviewWorkspaceId,
 				terminalId: tabId,
 			});
 
@@ -577,9 +579,10 @@ export function PullRequestsTab() {
 	// ── Cleanup mutation + all review workspaces ──────────────────────────────
 
 	const removeWorktreeMutation = trpc.reviewWorkspaces.removeWorktree.useMutation();
-	const { data: allReviewWorkspaces } = trpc.reviewWorkspaces.listAll.useQuery(undefined, {
+	const allReviewWorkspacesQuery = trpc.reviewWorkspaces.listAll.useQuery(undefined, {
 		staleTime: 30_000,
 	});
+	const allReviewWorkspaces = allReviewWorkspacesQuery.data;
 
 	// ── PR state tracking for auto-cleanup on merge/close ──────────────────────
 	// (prevPRStatesRef declared here; the effect that reads `grouped` is placed

@@ -433,9 +433,7 @@ function CommentsFeed({
 	};
 
 	const handleReply = (threadId: string, body: string) => {
-		addComment.mutate({ threadId,
-			body,
-		});
+		addComment.mutate({ threadId, body });
 	};
 
 	const handleResolve = (threadId: string) => {
@@ -554,10 +552,7 @@ export function PROverviewTab({ prCtx }: { prCtx: GitHubPRContext }) {
 
 	// Show AI suggestions (pending/edited) and user-pending drafts
 	const aiThreads: AIDraftThread[] = (aiDraftQuery.data?.comments ?? [])
-		.filter(
-			(c) =>
-				c.status === "pending" || c.status === "edited" || c.status === "user-pending"
-		)
+		.filter((c) => c.status === "pending" || c.status === "edited" || c.status === "user-pending")
 		.map(mapComment);
 
 	const summaryMarkdown = aiDraftQuery.data?.summaryMarkdown ?? null;

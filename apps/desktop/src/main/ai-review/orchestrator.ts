@@ -193,7 +193,11 @@ export async function queueReview(prData: {
  * Prepare a review — create worktree, workspace DB records, build CLI command.
  * Returns launch info so the renderer can create the terminal and run the command.
  */
-async function startReview(draftId: string, repoPath: string, projectId: string): Promise<ReviewLaunchInfo> {
+async function startReview(
+	draftId: string,
+	repoPath: string,
+	projectId: string
+): Promise<ReviewLaunchInfo> {
 	const db = getDb();
 	const now = new Date();
 
@@ -267,8 +271,8 @@ async function startReview(draftId: string, repoPath: string, projectId: string)
 				and(
 					eq(schema.reviewWorkspaces.projectId, projectId),
 					eq(schema.reviewWorkspaces.prProvider, draft.prProvider),
-					eq(schema.reviewWorkspaces.prIdentifier, draft.prIdentifier),
-				),
+					eq(schema.reviewWorkspaces.prIdentifier, draft.prIdentifier)
+				)
 			)
 			.get();
 
@@ -276,9 +280,7 @@ async function startReview(draftId: string, repoPath: string, projectId: string)
 		if (existing) {
 			reviewWorkspaceId = existing.id;
 			if (existing.worktreeId) {
-				db.delete(schema.worktrees)
-					.where(eq(schema.worktrees.id, existing.worktreeId))
-					.run();
+				db.delete(schema.worktrees).where(eq(schema.worktrees.id, existing.worktreeId)).run();
 			}
 		} else {
 			reviewWorkspaceId = nanoid();
@@ -422,12 +424,9 @@ export function cleanupStaleReviews(): void {
 		.from(schema.reviewDrafts)
 		.leftJoin(
 			schema.reviewWorkspaces,
-			eq(schema.reviewWorkspaces.reviewDraftId, schema.reviewDrafts.id),
+			eq(schema.reviewWorkspaces.reviewDraftId, schema.reviewDrafts.id)
 		)
-		.leftJoin(
-			schema.worktrees,
-			eq(schema.reviewWorkspaces.worktreeId, schema.worktrees.id),
-		)
+		.leftJoin(schema.worktrees, eq(schema.reviewWorkspaces.worktreeId, schema.worktrees.id))
 		.where(eq(schema.reviewDrafts.status, "in_progress"))
 		.all();
 
@@ -439,15 +438,21 @@ export function cleanupStaleReviews(): void {
 				join(worktreePath, ".opencode", "config.json"),
 			];
 			for (const p of mcpPaths) {
-				try { rmSync(p); } catch {}
+				try {
+					rmSync(p);
+				} catch {}
 			}
 			for (const dir of [".codex", ".opencode"]) {
-				try { rmSync(join(worktreePath, dir), { recursive: true }); } catch {}
+				try {
+					rmSync(join(worktreePath, dir), { recursive: true });
+				} catch {}
 			}
 		}
 
 		const reviewDir = join(app.getPath("userData"), "reviews", draftId);
-		try { rmSync(reviewDir, { recursive: true, force: true }); } catch {}
+		try {
+			rmSync(reviewDir, { recursive: true, force: true });
+		} catch {}
 
 		db.update(schema.reviewDrafts)
 			.set({ status: "failed", updatedAt: new Date() })
