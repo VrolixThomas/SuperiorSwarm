@@ -1,4 +1,4 @@
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 // Single-row config table for global AI review settings
 export const aiReviewSettings = sqliteTable("ai_review_settings", {
@@ -25,8 +25,6 @@ export const reviewDrafts = sqliteTable("review_drafts", {
 	status: text("status").notNull().default("queued"), // queued | in_progress | ready | submitted | failed
 	commitSha: text("commit_sha"),
 	summaryMarkdown: text("summary_markdown"),
-	summaryFilePath: text("summary_file_path"),
-	worktreePath: text("worktree_path"),
 	createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
 	updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
 });
@@ -51,3 +49,30 @@ export const draftComments = sqliteTable("draft_comments", {
 
 export type DraftComment = typeof draftComments.$inferSelect;
 export type NewDraftComment = typeof draftComments.$inferInsert;
+
+export const reviewWorkspaces = sqliteTable(
+	"review_workspaces",
+	{
+		id: text("id").primaryKey(),
+		reviewDraftId: text("review_draft_id").references(() => reviewDrafts.id, {
+			onDelete: "set null",
+		}),
+		worktreeId: text("worktree_id"), // FK to worktrees.id enforced in migration SQL
+		projectId: text("project_id").notNull(), // FK to projects.id enforced in migration SQL
+		prProvider: text("pr_provider").notNull(), // "github" | "bitbucket"
+		prIdentifier: text("pr_identifier").notNull(), // "owner/repo#123"
+		terminalId: text("terminal_id"),
+		createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+		updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+	},
+	(table) => [
+		uniqueIndex("review_workspaces_project_pr_unique").on(
+			table.projectId,
+			table.prProvider,
+			table.prIdentifier,
+		),
+	],
+);
+
+export type ReviewWorkspace = typeof reviewWorkspaces.$inferSelect;
+export type NewReviewWorkspace = typeof reviewWorkspaces.$inferInsert;

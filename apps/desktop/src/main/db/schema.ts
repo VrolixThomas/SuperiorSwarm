@@ -53,9 +53,7 @@ export type NewWorkspace = typeof workspaces.$inferInsert;
 
 export const terminalSessions = sqliteTable("terminal_sessions", {
 	id: text("id").primaryKey(),
-	workspaceId: text("workspace_id")
-		.notNull()
-		.references(() => workspaces.id, { onDelete: "cascade" }),
+	workspaceId: text("workspace_id").notNull(),
 	title: text("title").notNull(),
 	cwd: text("cwd").notNull(),
 	scrollback: text("scrollback"),
@@ -72,9 +70,7 @@ export const sessionState = sqliteTable("session_state", {
 });
 
 export const paneLayouts = sqliteTable("pane_layouts", {
-	workspaceId: text("workspace_id")
-		.primaryKey()
-		.references(() => workspaces.id, { onDelete: "cascade" }),
+	workspaceId: text("workspace_id").primaryKey(),
 	layout: text("layout").notNull(), // JSON serialized layout tree
 	updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
 });
@@ -242,4 +238,7 @@ export {
 	draftComments,
 	type DraftComment,
 	type NewDraftComment,
+	reviewWorkspaces,
+	type ReviewWorkspace,
+	type NewReviewWorkspace,
 } from "./schema-ai-review";
