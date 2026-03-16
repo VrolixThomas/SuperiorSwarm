@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { getDb, schema } from "../../db";
 import { savePaneLayouts, saveTerminalSessions } from "../../db/session-persistence";
@@ -48,7 +49,57 @@ export const terminalSessionsRouter = router({
 			paneLayouts[row.workspaceId] = row.layout;
 		}
 
-		return { sessions, state, paneLayouts };
+		// Build workspace metadata for resolving cwd and type
+		const repoWorkspaces = db
+			.select({
+				id: schema.workspaces.id,
+				worktreePath: schema.worktrees.path,
+				repoPath: schema.projects.repoPath,
+			})
+			.from(schema.workspaces)
+			.leftJoin(schema.worktrees, eq(schema.workspaces.worktreeId, schema.worktrees.id))
+			.leftJoin(schema.projects, eq(schema.workspaces.projectId, schema.projects.id))
+			.all();
+
+		const rvWorkspaces = db
+			.select({
+				id: schema.reviewWorkspaces.id,
+				worktreePath: schema.worktrees.path,
+				repoPath: schema.projects.repoPath,
+				prProvider: schema.reviewWorkspaces.prProvider,
+				prIdentifier: schema.reviewWorkspaces.prIdentifier,
+			})
+			.from(schema.reviewWorkspaces)
+			.leftJoin(schema.worktrees, eq(schema.reviewWorkspaces.worktreeId, schema.worktrees.id))
+			.leftJoin(schema.projects, eq(schema.reviewWorkspaces.projectId, schema.projects.id))
+			.all();
+
+		const workspaceMeta: Record<
+			string,
+			{
+				type: "repo" | "review";
+				cwd: string;
+				prProvider?: string;
+				prIdentifier?: string;
+			}
+		> = {};
+
+		for (const ws of repoWorkspaces) {
+			workspaceMeta[ws.id] = {
+				type: "repo",
+				cwd: ws.worktreePath ?? ws.repoPath ?? "",
+			};
+		}
+		for (const rw of rvWorkspaces) {
+			workspaceMeta[rw.id] = {
+				type: "review",
+				cwd: rw.worktreePath ?? rw.repoPath ?? "",
+				prProvider: rw.prProvider,
+				prIdentifier: rw.prIdentifier,
+			};
+		}
+
+		return { sessions, state, paneLayouts, workspaceMeta };
 	}),
 
 	clear: publicProcedure.mutation(async () => {
