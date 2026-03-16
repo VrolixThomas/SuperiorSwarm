@@ -62,57 +62,76 @@ export const reviewWorkspacesRouter = router({
 			return newRecord;
 		}),
 
-	listByProject: publicProcedure
-		.input(z.object({ projectId: z.string() }))
-		.query(({ input }) => {
-			const db = getDb();
-			return db
-				.select({
-					id: reviewWorkspaces.id,
-					reviewDraftId: reviewWorkspaces.reviewDraftId,
-					worktreeId: reviewWorkspaces.worktreeId,
-					projectId: reviewWorkspaces.projectId,
-					prProvider: reviewWorkspaces.prProvider,
-					prIdentifier: reviewWorkspaces.prIdentifier,
-					terminalId: reviewWorkspaces.terminalId,
-					createdAt: reviewWorkspaces.createdAt,
-					updatedAt: reviewWorkspaces.updatedAt,
-					worktreePath: worktrees.path,
-					draftStatus: reviewDrafts.status,
-					draftCommitSha: reviewDrafts.commitSha,
-				})
-				.from(reviewWorkspaces)
-				.leftJoin(worktrees, eq(reviewWorkspaces.worktreeId, worktrees.id))
-				.leftJoin(reviewDrafts, eq(reviewWorkspaces.reviewDraftId, reviewDrafts.id))
-				.where(eq(reviewWorkspaces.projectId, input.projectId))
-				.all();
-		}),
+	listByProject: publicProcedure.input(z.object({ projectId: z.string() })).query(({ input }) => {
+		const db = getDb();
+		return db
+			.select({
+				id: reviewWorkspaces.id,
+				reviewDraftId: reviewWorkspaces.reviewDraftId,
+				worktreeId: reviewWorkspaces.worktreeId,
+				projectId: reviewWorkspaces.projectId,
+				prProvider: reviewWorkspaces.prProvider,
+				prIdentifier: reviewWorkspaces.prIdentifier,
+				terminalId: reviewWorkspaces.terminalId,
+				createdAt: reviewWorkspaces.createdAt,
+				updatedAt: reviewWorkspaces.updatedAt,
+				worktreePath: worktrees.path,
+				draftStatus: reviewDrafts.status,
+				draftCommitSha: reviewDrafts.commitSha,
+			})
+			.from(reviewWorkspaces)
+			.leftJoin(worktrees, eq(reviewWorkspaces.worktreeId, worktrees.id))
+			.leftJoin(reviewDrafts, eq(reviewWorkspaces.reviewDraftId, reviewDrafts.id))
+			.where(eq(reviewWorkspaces.projectId, input.projectId))
+			.all();
+	}),
 
-	get: publicProcedure
-		.input(z.object({ id: z.string() }))
-		.query(({ input }) => {
-			const db = getDb();
-			return db
-				.select({
-					id: reviewWorkspaces.id,
-					reviewDraftId: reviewWorkspaces.reviewDraftId,
-					worktreeId: reviewWorkspaces.worktreeId,
-					projectId: reviewWorkspaces.projectId,
-					prProvider: reviewWorkspaces.prProvider,
-					prIdentifier: reviewWorkspaces.prIdentifier,
-					terminalId: reviewWorkspaces.terminalId,
-					createdAt: reviewWorkspaces.createdAt,
-					updatedAt: reviewWorkspaces.updatedAt,
-					worktreePath: worktrees.path,
-					draftStatus: reviewDrafts.status,
-					draftCommitSha: reviewDrafts.commitSha,
-				})
-				.from(reviewWorkspaces)
-				.leftJoin(worktrees, eq(reviewWorkspaces.worktreeId, worktrees.id))
-				.leftJoin(reviewDrafts, eq(reviewWorkspaces.reviewDraftId, reviewDrafts.id))
-				.where(eq(reviewWorkspaces.id, input.id))
-				.get();
-		}),
+	listAll: publicProcedure.query(() => {
+		const db = getDb();
+		return db
+			.select({
+				id: reviewWorkspaces.id,
+				reviewDraftId: reviewWorkspaces.reviewDraftId,
+				worktreeId: reviewWorkspaces.worktreeId,
+				projectId: reviewWorkspaces.projectId,
+				prProvider: reviewWorkspaces.prProvider,
+				prIdentifier: reviewWorkspaces.prIdentifier,
+				terminalId: reviewWorkspaces.terminalId,
+				createdAt: reviewWorkspaces.createdAt,
+				updatedAt: reviewWorkspaces.updatedAt,
+				worktreePath: worktrees.path,
+				draftStatus: reviewDrafts.status,
+				draftCommitSha: reviewDrafts.commitSha,
+			})
+			.from(reviewWorkspaces)
+			.leftJoin(worktrees, eq(reviewWorkspaces.worktreeId, worktrees.id))
+			.leftJoin(reviewDrafts, eq(reviewWorkspaces.reviewDraftId, reviewDrafts.id))
+			.all();
+	}),
+
+	get: publicProcedure.input(z.object({ id: z.string() })).query(({ input }) => {
+		const db = getDb();
+		return db
+			.select({
+				id: reviewWorkspaces.id,
+				reviewDraftId: reviewWorkspaces.reviewDraftId,
+				worktreeId: reviewWorkspaces.worktreeId,
+				projectId: reviewWorkspaces.projectId,
+				prProvider: reviewWorkspaces.prProvider,
+				prIdentifier: reviewWorkspaces.prIdentifier,
+				terminalId: reviewWorkspaces.terminalId,
+				createdAt: reviewWorkspaces.createdAt,
+				updatedAt: reviewWorkspaces.updatedAt,
+				worktreePath: worktrees.path,
+				draftStatus: reviewDrafts.status,
+				draftCommitSha: reviewDrafts.commitSha,
+			})
+			.from(reviewWorkspaces)
+			.leftJoin(worktrees, eq(reviewWorkspaces.worktreeId, worktrees.id))
+			.leftJoin(reviewDrafts, eq(reviewWorkspaces.reviewDraftId, reviewDrafts.id))
+			.where(eq(reviewWorkspaces.id, input.id))
+			.get();
+	}),
 
 	createWorktree: publicProcedure
 		.input(
@@ -251,9 +270,7 @@ export const reviewWorkspacesRouter = router({
 			if (pathExists && !input.force) {
 				const dirty = await hasUncommittedChanges(worktree.path);
 				if (dirty) {
-					throw new Error(
-						"Worktree has uncommitted changes. Commit or discard them first."
-					);
+					throw new Error("Worktree has uncommitted changes. Commit or discard them first.");
 				}
 			}
 
