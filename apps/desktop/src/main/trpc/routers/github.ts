@@ -15,6 +15,7 @@ import {
 	getMyPRs,
 	getPRComments,
 	getPRDetails,
+	getPRListEnrichment,
 	resolveThread,
 	submitReview,
 } from "../../github/github";
@@ -204,5 +205,23 @@ export const githubRouter = router({
 		)
 		.mutation(({ input }) => {
 			return createReviewThread(input);
+		}),
+
+	getPRListEnrichment: publicProcedure
+		.input(
+			z.object({
+				prs: z.array(
+					z.object({
+						owner: z.string(),
+						repo: z.string(),
+						number: z.number(),
+					}),
+				),
+			}),
+		)
+		.query(async ({ input }) => {
+			const auth = getAuth();
+			if (!auth) return [];
+			return getPRListEnrichment(input.prs);
 		}),
 });

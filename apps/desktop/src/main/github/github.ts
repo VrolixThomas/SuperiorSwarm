@@ -1,3 +1,4 @@
+import type { GitHubPREnriched } from "../../shared/github-types";
 import { githubFetch, githubGraphQL } from "./auth";
 
 // ── Public types ──────────────────────────────────────────────────────────────
@@ -457,6 +458,62 @@ export async function getPRDetails(
 		number,
 	});
 	return mapPRDetails(data.repository.pullRequest);
+}
+
+export async function getPRListEnrichment(
+	prs: Array<{ owner: string; repo: string; number: number }>,
+): Promise<GitHubPREnriched[]> {
+	const results: GitHubPREnriched[] = [];
+	const batches: Array<Array<(typeof prs)[number]>> = [];
+	for (let i = 0; i < prs.length; i += 5) {
+		batches.push(prs.slice(i, i + 5));
+	}
+
+	for (const batch of batches) {
+		const settled = await Promise.allSettled(
+			batch.map(async (pr) => {
+				const details = await getPRDetails(pr.owner, pr.repo, pr.number);
+				if (!details) return null;
+
+				const unresolvedThreadCount = details.reviewThreads.filter(
+					(t) => !t.isResolved,
+				).length;
+				const fileStats = details.files.reduce(
+					(acc, f) => ({
+						additions: acc.additions + f.additions,
+						deletions: acc.deletions + f.deletions,
+						count: acc.count + 1,
+					}),
+					{ additions: 0, deletions: 0, count: 0 },
+				);
+
+				return {
+					owner: pr.owner,
+					repo: pr.repo,
+					number: pr.number,
+					author: details.author,
+					authorAvatarUrl: details.authorAvatarUrl,
+					reviewers: details.reviewers,
+					ciState: details.ciState,
+					reviewDecision: details.reviewDecision,
+					unresolvedThreadCount,
+					files: fileStats,
+					headCommitOid: details.headCommitOid,
+					mergeable: "UNKNOWN" as const,
+					isDraft: details.isDraft,
+					updatedAt: new Date().toISOString(),
+				} satisfies GitHubPREnriched;
+			}),
+		);
+
+		for (const result of settled) {
+			if (result.status === "fulfilled" && result.value) {
+				results.push(result.value);
+			}
+		}
+	}
+
+	return results;
 }
 
 export async function createReviewThread(params: {
