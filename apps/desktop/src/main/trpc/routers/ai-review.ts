@@ -62,6 +62,7 @@ export const aiReviewRouter = router({
 				sourceBranch: z.string(),
 				targetBranch: z.string(),
 				repoPath: z.string(),
+				projectId: z.string(),
 			})
 		)
 		.mutation(async ({ input }) => {
