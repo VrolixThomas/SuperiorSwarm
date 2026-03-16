@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { BrowserWindow, app, dialog, ipcMain, shell } from "electron";
 import { daemonInstanceId, daemonPaths } from "../shared/daemon-protocol";
+import { cleanupStaleReviews } from "./ai-review/orchestrator";
 import { initializeDatabase } from "./db";
 import {
 	type SessionSaveData,
@@ -65,6 +66,7 @@ app.whenReady().then(async () => {
 		app.quit();
 		return;
 	}
+	cleanupStaleReviews();
 	const dbPath = join(app.getPath("userData"), "branchflux.db");
 	const daemonScriptPath = join(__dirname, "daemon.js");
 	try {
