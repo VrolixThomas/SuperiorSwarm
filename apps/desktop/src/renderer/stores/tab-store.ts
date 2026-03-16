@@ -83,7 +83,11 @@ interface TabStore {
 	updateTabTitle: (id: string, title: string) => void;
 
 	// Workspace
-	setActiveWorkspace: (workspaceId: string, cwd: string) => void;
+	setActiveWorkspace: (
+		workspaceId: string,
+		cwd: string,
+		options?: { rightPanel?: RightPanelState },
+	) => void;
 
 	// Terminal convenience
 	addTerminalTab: (workspaceId: string, cwd: string, title?: string) => string;
@@ -303,7 +307,7 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 		ps().updateTabTitleInPane(id, title);
 	},
 
-	setActiveWorkspace: (workspaceId, cwd) => {
+	setActiveWorkspace: (workspaceId, cwd, options) => {
 		ps().ensureLayout(workspaceId);
 		// Try to keep focus on existing pane, or set to first pane
 		const focused = ps().getFocusedPane(workspaceId);
@@ -317,7 +321,7 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 		set({
 			activeWorkspaceId: workspaceId,
 			activeWorkspaceCwd: cwd,
-			rightPanel: defaultPanelForCwd(cwd),
+			rightPanel: options?.rightPanel ?? defaultPanelForCwd(cwd),
 		});
 	},
 

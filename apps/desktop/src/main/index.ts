@@ -2,7 +2,8 @@ import { join } from "node:path";
 import { BrowserWindow, app, dialog, ipcMain, shell } from "electron";
 import { daemonInstanceId, daemonPaths } from "../shared/daemon-protocol";
 import { cleanupStaleReviews } from "./ai-review/orchestrator";
-import { initializeDatabase } from "./db";
+import { getDb, initializeDatabase } from "./db";
+import * as schema from "./db/schema";
 import {
 	type SessionSaveData,
 	savePaneLayouts,
@@ -67,6 +68,13 @@ app.whenReady().then(async () => {
 		return;
 	}
 	cleanupStaleReviews();
+	// Clear ephemeral terminal IDs (reset across sessions)
+	{
+		const db = getDb();
+		db.update(schema.reviewWorkspaces)
+			.set({ terminalId: null, updatedAt: new Date() })
+			.run();
+	}
 	const dbPath = join(app.getPath("userData"), "branchflux.db");
 	const daemonScriptPath = join(__dirname, "daemon.js");
 	try {
