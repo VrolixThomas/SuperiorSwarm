@@ -1,6 +1,9 @@
 import { execSync } from "node:child_process";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import { DEFAULT_REVIEW_GUIDELINES } from "../../shared/review-prompt";
+
+export { DEFAULT_REVIEW_GUIDELINES };
 
 export interface CliPreset {
 	name: string;
@@ -142,11 +145,6 @@ export function isCliInstalled(command: string): boolean {
 		return false;
 	}
 }
-
-/** Default review guidelines — used when user hasn't set a custom prompt */
-export const DEFAULT_REVIEW_GUIDELINES = `Focus on: bugs, security issues, performance problems, code style, logic errors, and missing edge cases.
-
-IMPORTANT: Do NOT modify any files. This is a read-only code review.`;
 
 /** Build the locked MCP tool instructions block */
 function buildMcpInstructions(targetBranch: string): string {

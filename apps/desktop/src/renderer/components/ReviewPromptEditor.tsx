@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { DEFAULT_REVIEW_GUIDELINES } from "../../main/ai-review/cli-presets";
+import { DEFAULT_REVIEW_GUIDELINES } from "../../shared/review-prompt";
 import { trpc } from "../trpc/client";
 
 export function ReviewPromptEditor({ onBack }: { onBack: () => void }) {
