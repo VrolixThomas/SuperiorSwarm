@@ -481,6 +481,9 @@ function CommentsTab({
 			utils.aiReview.getReviewDrafts.invalidate();
 			utils.aiReview.getReviewDraft.invalidate();
 		},
+		onError: (err) => {
+			console.error("[ai-review] Follow-up review failed:", err);
+		},
 	});
 
 	const invalidateDrafts = () => {
@@ -574,9 +577,17 @@ function CommentsTab({
 							type="button"
 							onClick={() => triggerFollowUp.mutate({ reviewChainId })}
 							disabled={triggerFollowUp.isPending}
-							className="flex items-center gap-1.5 rounded-[6px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2.5 py-1 text-[12px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-overlay)] hover:text-[var(--text)]"
+							className={`flex items-center gap-1.5 rounded-[6px] border px-2.5 py-1 text-[12px] transition-colors ${
+								triggerFollowUp.isError
+									? "border-[#f85149] text-[#f85149]"
+									: "border-[var(--border-subtle)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:bg-[var(--bg-overlay)] hover:text-[var(--text)]"
+							}`}
 						>
-							Re-review
+							{triggerFollowUp.isPending
+								? "Starting..."
+								: triggerFollowUp.isError
+									? "Failed"
+									: "Re-review"}
 						</button>
 					)}
 					{summaryMarkdown && (
