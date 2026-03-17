@@ -125,7 +125,7 @@ function AIReviewBadge({
 		  }>
 		| undefined;
 	store: ReturnType<typeof useTabStore>;
-	triggerReview: { mutate: (args: Record<string, string>) => void };
+	triggerReview: (args: Record<string, string>, prCtx?: GitHubPRContext) => void;
 	dismissReview: { mutate: (args: { draftId: string }) => void };
 }) {
 	const draft = getReviewStatus(identifier);
@@ -194,7 +194,16 @@ function AIReviewBadge({
 					(p) => p.githubOwner === pr.githubPR!.repoOwner && p.githubRepo === pr.githubPR!.repoName
 				);
 				if (!project) return;
-				triggerReview.mutate({
+				const prCtx: GitHubPRContext = {
+					owner: pr.githubPR.repoOwner,
+					repo: pr.githubPR.repoName,
+					number: pr.githubPR.number,
+					title: pr.title,
+					sourceBranch: pr.githubPR.branchName,
+					targetBranch: project.defaultBranch ?? "main",
+					repoPath: project.repoPath,
+				};
+				triggerReview({
 					provider: "github",
 					identifier,
 					title: pr.title,
@@ -203,10 +212,10 @@ function AIReviewBadge({
 					targetBranch: project.defaultBranch ?? "main",
 					repoPath: project.repoPath,
 					projectId: project.id,
-				});
+				}, prCtx);
 			}
 			if (pr.provider === "bitbucket" && pr.bitbucketPR) {
-				triggerReview.mutate({
+				triggerReview({
 					provider: "bitbucket",
 					identifier,
 					title: pr.title,
@@ -270,7 +279,7 @@ function RichPRItem({
 		  }>
 		| undefined;
 	store: ReturnType<typeof useTabStore>;
-	triggerReview: { mutate: (args: Record<string, string>) => void };
+	triggerReview: (args: Record<string, string>, prCtx?: GitHubPRContext) => void;
 	dismissReview: { mutate: (args: { draftId: string }) => void };
 	onClick: (e: React.MouseEvent) => void;
 	onContextMenu?: (e: React.MouseEvent) => void;
@@ -502,6 +511,8 @@ export function PullRequestsTab() {
 	attachTerminalRef2.current = attachTerminalMut.mutate;
 
 	const [reviewError, setReviewError] = useState<string | null>(null);
+	// Store PR context for the pending triggerReview call so onSuccess can use it
+	const pendingReviewCtxRef = useRef<GitHubPRContext | null>(null);
 	const triggerReview = trpc.aiReview.triggerReview.useMutation({
 		onSuccess: (launchInfo) => {
 			setReviewError(null);
@@ -510,11 +521,21 @@ export function PullRequestsTab() {
 
 			if (!launchInfo.reviewWorkspaceId || !launchInfo.worktreePath) return;
 
-			// Create workspace terminal and run the launch script
 			const tabStore = useTabStore.getState();
+			const prCtx = pendingReviewCtxRef.current;
+
 			tabStore.setActiveWorkspace(launchInfo.reviewWorkspaceId, launchInfo.worktreePath, {
-				rightPanel: { open: true, mode: "pr-review", diffCtx: null },
+				rightPanel: prCtx
+					? { open: true, mode: "pr-review", diffCtx: null, prCtx }
+					: { open: true, mode: "pr-review", diffCtx: null },
 			});
+
+			// Create PR overview tab if prCtx is available
+			if (prCtx) {
+				tabStore.openPROverview(launchInfo.reviewWorkspaceId, prCtx);
+			}
+
+			// Create terminal and run the launch script
 			const tabId = tabStore.addTerminalTab(
 				launchInfo.reviewWorkspaceId,
 				launchInfo.worktreePath,
@@ -525,16 +546,26 @@ export function PullRequestsTab() {
 				terminalId: tabId,
 			});
 
-			// Run the launch script after shell initializes
 			setTimeout(() => {
 				window.electron.terminal.write(tabId, `bash '${launchInfo.launchScript}'\n`);
 			}, 500);
+
+			pendingReviewCtxRef.current = null;
 		},
 		onError: (err) => {
 			setReviewError(err.message);
 			reviewDrafts.refetch();
+			pendingReviewCtxRef.current = null;
 		},
 	});
+
+	const triggerReviewWithCtx = useCallback(
+		(args: Record<string, string>, prCtx?: GitHubPRContext) => {
+			pendingReviewCtxRef.current = prCtx ?? null;
+			triggerReview.mutate(args);
+		},
+		[triggerReview.mutate],
+	);
 
 	const dismissReview = trpc.aiReview.dismissReview.useMutation({
 		onSuccess: () => reviewDrafts.refetch(),
@@ -575,6 +606,7 @@ export function PullRequestsTab() {
 	// ── getOrCreate mutation (Change 2) ──────────────────────────────────────
 
 	const getOrCreateMutation = trpc.reviewWorkspaces.getOrCreate.useMutation();
+	const createWorktreeMutation = trpc.reviewWorkspaces.createWorktree.useMutation();
 
 	// ── Cleanup mutation + all review workspaces ──────────────────────────────
 
@@ -609,16 +641,27 @@ export function PullRequestsTab() {
 			);
 			if (!project) continue;
 			triggeredRef.current.add(identifier);
-			triggerReview.mutate({
-				provider: "github",
-				identifier,
-				title: pr.title,
-				author: "",
-				sourceBranch: pr.branchName,
-				targetBranch: project.defaultBranch ?? "main",
-				repoPath: project.repoPath,
-				projectId: project.id,
-			});
+			triggerReviewWithCtx(
+				{
+					provider: "github",
+					identifier,
+					title: pr.title,
+					author: "",
+					sourceBranch: pr.branchName,
+					targetBranch: project.defaultBranch ?? "main",
+					repoPath: project.repoPath,
+					projectId: project.id,
+				},
+				{
+					owner: pr.repoOwner,
+					repo: pr.repoName,
+					number: pr.number,
+					title: pr.title,
+					sourceBranch: pr.branchName,
+					targetBranch: project.defaultBranch ?? "main",
+					repoPath: project.repoPath,
+				},
+			);
 		}
 
 		// Auto-trigger for Bitbucket review PRs
@@ -639,7 +682,7 @@ export function PullRequestsTab() {
 				projectId: "",
 			});
 		}
-	}, [ghPRs, bbReviewPRs, reviewDrafts.data, settings.data, projectsList, triggerReview.mutate]);
+	}, [ghPRs, bbReviewPRs, reviewDrafts.data, settings.data, projectsList, triggerReviewWithCtx]);
 
 	const store = useTabStore();
 
@@ -837,7 +880,6 @@ export function PullRequestsTab() {
 			prProvider: "github" | "bitbucket",
 			prIdentifier: string,
 			repoPath: string,
-			worktreePath: string | null,
 			prCtx: GitHubPRContext
 		) => {
 			const rw = await getOrCreateMutation.mutateAsync({
@@ -846,7 +888,31 @@ export function PullRequestsTab() {
 				prIdentifier,
 			});
 
-			const cwd = worktreePath ?? repoPath;
+			// Resolve worktree path: check existing data, or create a new worktree
+			let resolvedWorktreePath: string | null = null;
+
+			// Check if worktree already exists (e.g., from a prior AI review)
+			const existingRw = allReviewWorkspaces?.find(
+				(w) => w.prIdentifier === prIdentifier && w.worktreePath,
+			);
+			if (existingRw?.worktreePath) {
+				resolvedWorktreePath = existingRw.worktreePath;
+			} else if (!rw.worktreeId) {
+				// No worktree exists — create one
+				try {
+					const result = await createWorktreeMutation.mutateAsync({
+						reviewWorkspaceId: rw.id,
+						sourceBranch: prCtx.sourceBranch,
+						targetBranch: prCtx.targetBranch,
+					});
+					resolvedWorktreePath = result.worktreePath;
+					allReviewWorkspacesQuery.refetch();
+				} catch (err) {
+					console.error("[pr-workspace] Failed to create worktree:", err);
+				}
+			}
+
+			const cwd = resolvedWorktreePath ?? repoPath;
 			const tabStore = useTabStore.getState();
 			tabStore.setActiveWorkspace(rw.id, cwd, {
 				rightPanel: { open: true, mode: "pr-review", diffCtx: null, prCtx },
@@ -858,7 +924,7 @@ export function PullRequestsTab() {
 				tabStore.openPROverview(rw.id, prCtx);
 			}
 		},
-		[getOrCreateMutation]
+		[getOrCreateMutation, createWorktreeMutation, allReviewWorkspaces, allReviewWorkspacesQuery],
 	);
 
 	const handleGitHubLink = useCallback(
@@ -917,7 +983,6 @@ export function PullRequestsTab() {
 					"github",
 					prIdentifier,
 					project.repoPath,
-					null, // worktreePath resolved later if needed
 					prCtx
 				);
 				return;
@@ -1060,7 +1125,7 @@ export function PullRequestsTab() {
 												getReviewStatus={getReviewStatus}
 												projectsList={projectsList}
 												store={store}
-												triggerReview={triggerReview}
+												triggerReview={triggerReviewWithCtx}
 												dismissReview={dismissReview}
 												onClick={(e) => handlePRClick(pr, e)}
 												onContextMenu={handleContextMenu}
