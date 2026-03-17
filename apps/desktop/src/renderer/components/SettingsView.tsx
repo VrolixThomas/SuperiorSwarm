@@ -295,7 +295,71 @@ export function SettingsView() {
 						>
 							<div
 								className={`absolute top-[2px] size-[18px] rounded-full bg-white transition-transform ${
-									(aiSettings?.skipPermissions ?? true)
+									(aiSettings?.skipPermissions ?? true) ? "translate-x-[20px]" : "translate-x-[2px]"
+								}`}
+							/>
+						</button>
+					</div>
+
+					{/* Auto-approve resolutions */}
+					<div className="flex items-center justify-between rounded-[8px] px-3 py-2.5 transition-colors hover:bg-[var(--bg-elevated)]">
+						<div className="flex flex-col gap-0.5">
+							<span className="text-[13px] font-medium text-[var(--text)]">
+								Auto-approve resolutions
+							</span>
+							<span className="text-[11px] text-[var(--text-tertiary)]">
+								AI resolution decisions skip manual approval
+							</span>
+						</div>
+						<button
+							type="button"
+							onClick={() =>
+								updateAiSettings.mutate({
+									autoApproveResolutions: !aiSettings?.autoApproveResolutions,
+								})
+							}
+							className={`relative h-[24px] w-[42px] shrink-0 cursor-pointer rounded-full border-none transition-colors ${
+								aiSettings?.autoApproveResolutions
+									? "bg-[var(--accent)]"
+									: "bg-[var(--bg-elevated)]"
+							}`}
+						>
+							<div
+								className={`absolute top-[3px] size-[18px] rounded-full bg-white shadow-sm transition-transform ${
+									aiSettings?.autoApproveResolutions
+										? "translate-x-[20px]"
+										: "translate-x-[2px]"
+								}`}
+							/>
+						</button>
+					</div>
+
+					{/* Auto-publish resolutions */}
+					<div className="flex items-center justify-between rounded-[8px] px-3 py-2.5 transition-colors hover:bg-[var(--bg-elevated)]">
+						<div className="flex flex-col gap-0.5">
+							<span className="text-[13px] font-medium text-[var(--text)]">
+								Auto-publish resolutions
+							</span>
+							<span className="text-[11px] text-[var(--text-tertiary)]">
+								Approved resolutions publish to platform automatically
+							</span>
+						</div>
+						<button
+							type="button"
+							onClick={() =>
+								updateAiSettings.mutate({
+									autoPublishResolutions: !aiSettings?.autoPublishResolutions,
+								})
+							}
+							className={`relative h-[24px] w-[42px] shrink-0 cursor-pointer rounded-full border-none transition-colors ${
+								aiSettings?.autoPublishResolutions
+									? "bg-[var(--accent)]"
+									: "bg-[var(--bg-elevated)]"
+							}`}
+						>
+							<div
+								className={`absolute top-[3px] size-[18px] rounded-full bg-white shadow-sm transition-transform ${
+									aiSettings?.autoPublishResolutions
 										? "translate-x-[20px]"
 										: "translate-x-[2px]"
 								}`}
@@ -306,13 +370,9 @@ export function SettingsView() {
 					{/* Review Guidelines */}
 					<div className="flex items-center justify-between rounded-[8px] px-3 py-2.5 transition-colors hover:bg-[var(--bg-elevated)]">
 						<div className="flex flex-col gap-0.5">
-							<span className="text-[13px] font-medium text-[var(--text)]">
-								Review Guidelines
-							</span>
+							<span className="text-[13px] font-medium text-[var(--text)]">Review Guidelines</span>
 							<span className="text-[11px] text-[var(--text-tertiary)]">
-								{aiSettings?.customPrompt
-									? "Custom instructions"
-									: "Default instructions"}
+								{aiSettings?.customPrompt ? "Custom instructions" : "Default instructions"}
 							</span>
 						</div>
 						<button
