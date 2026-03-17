@@ -183,3 +183,74 @@ Provider: ${metadata.provider}`;
 
 	return `${prContext}\n\n${guidelines}\n${mcpInstructions}`;
 }
+
+export interface PreviousCommentContext {
+	id: string;
+	filePath: string;
+	lineNumber: number | null;
+	body: string;
+	platformStatus: "open" | "resolved-on-platform";
+}
+
+/** Build the follow-up review prompt for subsequent review rounds */
+export function buildFollowUpPrompt(metadata: {
+	title: string;
+	author: string;
+	sourceBranch: string;
+	targetBranch: string;
+	provider: string;
+	customPrompt?: string | null;
+	roundNumber: number;
+	previousCommitSha: string;
+	currentCommitSha: string;
+	previousComments: PreviousCommentContext[];
+}): string {
+	const prContext = `You are reviewing Pull Request: ${metadata.title}
+Author: ${metadata.author}
+Source: ${metadata.sourceBranch} → Target: ${metadata.targetBranch}
+Provider: ${metadata.provider}`;
+
+	const commentLines = metadata.previousComments
+		.map((c, i) => {
+			const location = c.lineNumber ? `${c.filePath}:${c.lineNumber}` : c.filePath;
+			const status =
+				c.platformStatus === "resolved-on-platform"
+					? "resolved by author on platform"
+					: "still on PR";
+			const preview = c.body.length > 100 ? `${c.body.slice(0, 100)}...` : c.body;
+			return `${i + 1}. [${location}] "${preview}" -- STATUS: ${status} (id: ${c.id})`;
+		})
+		.join("\n");
+
+	const reviewHistory = `This is review round ${metadata.roundNumber}. Previous review was on commit ${metadata.previousCommitSha.slice(0, 8)}.
+Current HEAD is ${metadata.currentCommitSha.slice(0, 8)}.
+
+Previous comments and their current state:
+${commentLines}`;
+
+	const guidelines = metadata.customPrompt?.trim() || DEFAULT_REVIEW_GUIDELINES;
+
+	const mcpInstructions = buildFollowUpMcpInstructions(metadata.targetBranch);
+
+	return `${prContext}\n\n=== REVIEW HISTORY ===\n${reviewHistory}\n\n${guidelines}\n${mcpInstructions}`;
+}
+
+/** Build the locked MCP tool instructions block for follow-up reviews */
+function buildFollowUpMcpInstructions(targetBranch: string): string {
+	return `
+You MUST use the BranchFlux MCP tools to complete your follow-up review:
+
+1. Call \`get_pr_metadata\` to understand the PR context
+2. Call \`get_previous_comments\` to get the full details of previous review comments
+3. Explore the codebase and review the changes (use git diff origin/${targetBranch}...HEAD)
+4. For each previous comment, assess whether the new code addresses it:
+   - If resolved by new code: call \`resolve_comment\` with the previous comment ID and your reasoning
+   - If the author resolved it on the platform but the fix looks wrong: call \`flag_comment\` with the previous comment ID and why the fix is insufficient
+   - If still unresolved: do nothing (it stays open)
+5. Review new changes for any NEW issues — call \`add_draft_comment\` as before
+6. Call \`set_review_summary\` with an updated summary covering this round's findings
+7. Call \`finish_review\` to signal you are done
+
+IMPORTANT: You MUST call finish_review when done. Do NOT skip any MCP tool steps.
+IMPORTANT: Do NOT modify any files. This is a read-only code review.`;
+}
