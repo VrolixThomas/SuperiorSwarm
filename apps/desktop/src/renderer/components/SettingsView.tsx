@@ -1,5 +1,7 @@
+import { useState } from "react";
 import { useProjectStore } from "../stores/projects";
 import { trpc } from "../trpc/client";
+import { ReviewPromptEditor } from "./ReviewPromptEditor";
 
 function IntegrationRow({
 	name,
@@ -58,6 +60,11 @@ function IntegrationRow({
 export function SettingsView() {
 	const { closeSettings } = useProjectStore();
 	const utils = trpc.useUtils();
+	const [view, setView] = useState<"main" | "prompt-editor">("main");
+
+	if (view === "prompt-editor") {
+		return <ReviewPromptEditor onBack={() => setView("main")} />;
+	}
 
 	// Atlassian (Jira + Bitbucket)
 	const { data: atlassianStatus } = trpc.atlassian.getStatus.useQuery(undefined, {
@@ -293,6 +300,27 @@ export function SettingsView() {
 										: "translate-x-[2px]"
 								}`}
 							/>
+						</button>
+					</div>
+
+					{/* Review Guidelines */}
+					<div className="flex items-center justify-between rounded-[8px] px-3 py-2.5 transition-colors hover:bg-[var(--bg-elevated)]">
+						<div className="flex flex-col gap-0.5">
+							<span className="text-[13px] font-medium text-[var(--text)]">
+								Review Guidelines
+							</span>
+							<span className="text-[11px] text-[var(--text-tertiary)]">
+								{aiSettings?.customPrompt
+									? "Custom instructions"
+									: "Default instructions"}
+							</span>
+						</div>
+						<button
+							type="button"
+							onClick={() => setView("prompt-editor")}
+							className="rounded-[5px] border border-[var(--border)] px-2.5 py-1 text-[11px] font-medium text-[var(--text-tertiary)] transition-colors hover:bg-[var(--bg-elevated)] hover:text-[var(--text-secondary)]"
+						>
+							Edit
 						</button>
 					</div>
 
