@@ -461,10 +461,14 @@ function CommentsTab({
 	details,
 	prCtx,
 	aiThreads,
+	summaryMarkdown,
+	onShowSummary,
 }: {
 	details: GitHubPRDetails;
 	prCtx: GitHubPRContext;
 	aiThreads: AIDraftThread[];
+	summaryMarkdown: string | null;
+	onShowSummary: () => void;
 }) {
 	const [sortMode, setSortMode] = useState<SortMode>("by-file");
 	const utils = trpc.useUtils();
@@ -525,7 +529,7 @@ function CommentsTab({
 		);
 	}, [allThreads, sortMode]);
 
-	if (allThreads.length === 0) {
+	if (allThreads.length === 0 && !summaryMarkdown) {
 		return (
 			<div className="flex flex-1 items-center justify-center">
 				<span className="text-[12px] text-[var(--text-quaternary)]">No comments yet</span>
@@ -556,15 +560,26 @@ function CommentsTab({
 				<span className="text-[11px] text-[var(--text-tertiary)]">
 					{allThreads.length} thread{allThreads.length !== 1 ? "s" : ""}
 				</span>
-				<select
-					value={sortMode}
-					onChange={(e) => setSortMode(e.target.value as SortMode)}
-					className="rounded-[4px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-1.5 py-0.5 text-[10px] text-[var(--text-tertiary)] outline-none"
-				>
-					<option value="by-file">By file</option>
-					<option value="by-reviewer">By reviewer</option>
-					<option value="latest-first">Latest first</option>
-				</select>
+				<div className="flex items-center gap-1.5">
+					{summaryMarkdown && (
+						<button
+							type="button"
+							onClick={onShowSummary}
+							className="flex items-center gap-1 rounded-[4px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-1.5 py-0.5 text-[10px] text-[var(--text-tertiary)] outline-none transition-colors hover:text-[var(--text-secondary)]"
+						>
+							✦ Summary
+						</button>
+					)}
+					<select
+						value={sortMode}
+						onChange={(e) => setSortMode(e.target.value as SortMode)}
+						className="rounded-[4px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-1.5 py-0.5 text-[10px] text-[var(--text-tertiary)] outline-none"
+					>
+						<option value="by-file">By file</option>
+						<option value="by-reviewer">By reviewer</option>
+						<option value="latest-first">Latest first</option>
+					</select>
+				</div>
 			</div>
 
 			{/* Thread list */}
@@ -959,6 +974,8 @@ export function PRControlRail({ prCtx }: { prCtx: GitHubPRContext }) {
 					details={details}
 					prCtx={prCtx}
 					aiThreads={[...aiThreads, ...userPendingThreads]}
+					summaryMarkdown={aiDraftQuery.data?.summaryMarkdown ?? null}
+					onShowSummary={() => activeWorkspaceId && openPROverview(activeWorkspaceId, prCtx)}
 				/>
 			)}
 			{tab === "files" && prCtx.repoPath && activeWorkspaceId && (
