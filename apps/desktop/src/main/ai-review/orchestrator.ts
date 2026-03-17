@@ -493,12 +493,6 @@ export async function queueFollowUpReview(reviewChainId: string): Promise<Review
 
 	if (!workspace) throw new Error("No review workspace found for this chain");
 
-	const worktree = workspace.worktreeId
-		? db.select().from(schema.worktrees).where(eq(schema.worktrees.id, workspace.worktreeId)).get()
-		: null;
-
-	if (!worktree) throw new Error("No worktree found for review workspace");
-
 	const project = db
 		.select()
 		.from(schema.projects)
@@ -506,6 +500,61 @@ export async function queueFollowUpReview(reviewChainId: string): Promise<Review
 		.get();
 
 	if (!project) throw new Error("Project not found for review workspace");
+
+	// Check if worktree exists, recreate if needed
+	let worktreePath: string;
+	const existingWorktree = workspace.worktreeId
+		? db.select().from(schema.worktrees).where(eq(schema.worktrees.id, workspace.worktreeId)).get()
+		: null;
+
+	if (existingWorktree?.path && existsSync(existingWorktree.path)) {
+		worktreePath = existingWorktree.path;
+	} else {
+		// Worktree was cleaned up — recreate it
+		const worktreeName = `pr-review-${latestDraft.prIdentifier.replace(/[^a-zA-Z0-9]/g, "-")}`;
+		const parentDir = join(dirname(project.repoPath), `${project.repoPath.split("/").pop()}-worktrees`);
+		worktreePath = join(parentDir, worktreeName);
+
+		// Remove stale worktree if path exists
+		if (existsSync(worktreePath)) {
+			const { execSync } = await import("node:child_process");
+			try {
+				execSync(`git worktree remove --force '${worktreePath}'`, { cwd: project.repoPath });
+			} catch {
+				rmSync(worktreePath, { recursive: true, force: true });
+				execSync("git worktree prune", { cwd: project.repoPath });
+			}
+		}
+
+		await checkoutBranchWorktree(project.repoPath, worktreePath, latestDraft.sourceBranch);
+
+		// Create worktree DB record
+		const worktreeId = nanoid();
+		const now2 = new Date();
+
+		// Clean up stale DB record at same path
+		const staleWt = db.select().from(schema.worktrees).where(eq(schema.worktrees.path, worktreePath)).get();
+		if (staleWt) {
+			db.delete(schema.worktrees).where(eq(schema.worktrees.id, staleWt.id)).run();
+		}
+
+		db.insert(schema.worktrees)
+			.values({
+				id: worktreeId,
+				projectId: workspace.projectId,
+				path: worktreePath,
+				branch: latestDraft.sourceBranch,
+				baseBranch: latestDraft.targetBranch,
+				createdAt: now2,
+				updatedAt: now2,
+			})
+			.run();
+
+		db.update(schema.reviewWorkspaces)
+			.set({ worktreeId, updatedAt: now2 })
+			.where(eq(schema.reviewWorkspaces.id, workspace.id))
+			.run();
+	}
 
 	// Create follow-up draft
 	const id = randomUUID();
@@ -529,7 +578,7 @@ export async function queueFollowUpReview(reviewChainId: string): Promise<Review
 		})
 		.run();
 
-	return startFollowUpReview(id, worktree.path, project.repoPath, workspace.projectId);
+	return startFollowUpReview(id, worktreePath, project.repoPath, workspace.projectId);
 }
 
 async function startFollowUpReview(
