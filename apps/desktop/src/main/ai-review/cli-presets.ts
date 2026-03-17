@@ -6,6 +6,7 @@ export interface CliPreset {
 	name: string;
 	label: string;
 	command: string;
+	permissionFlag?: string;
 	buildArgs: (opts: LaunchOptions) => string[];
 	setupMcp?: (opts: LaunchOptions) => CleanupFn;
 }
@@ -42,6 +43,7 @@ export const CLI_PRESETS: Record<string, CliPreset> = {
 		name: "claude",
 		label: "Claude Code",
 		command: "claude",
+		permissionFlag: "--dangerously-skip-permissions",
 		buildArgs: ({ promptFilePath }) => [
 			`"Review this PR. Read ${promptFilePath} for detailed instructions and use the BranchFlux MCP tools."`,
 		],
@@ -80,6 +82,7 @@ export const CLI_PRESETS: Record<string, CliPreset> = {
 		name: "gemini",
 		label: "Gemini CLI",
 		command: "gemini",
+		permissionFlag: "--yolo",
 		buildArgs: ({ reviewDir, promptFilePath }) => [
 			"--mcp-config",
 			join(reviewDir, "mcp-config.json"),
@@ -99,6 +102,7 @@ export const CLI_PRESETS: Record<string, CliPreset> = {
 		name: "codex",
 		label: "Codex",
 		command: "codex",
+		permissionFlag: "--full-auto",
 		buildArgs: ({ promptFilePath }) => [`"$(cat '${promptFilePath}')"`],
 		setupMcp: ({ worktreePath, mcpServerPath }) => {
 			const dir = join(worktreePath, ".codex");
