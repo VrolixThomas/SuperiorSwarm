@@ -117,6 +117,24 @@ export async function getReviewRequests(): Promise<BitbucketPullRequest[]> {
 	return allPRs;
 }
 
+/** Get the current state and head SHA of a Bitbucket pull request */
+export async function getPRState(
+	workspace: string,
+	repoSlug: string,
+	prId: number
+): Promise<{ headSha: string; state: string }> {
+	const res = await atlassianFetch(
+		"bitbucket",
+		`${BITBUCKET_API_BASE}/repositories/${workspace}/${repoSlug}/pullrequests/${prId}`
+	);
+	if (!res.ok) throw new Error(`Bitbucket get PR failed: ${res.status}`);
+	const data = (await res.json()) as {
+		source: { commit: { hash: string } };
+		state: string;
+	};
+	return { headSha: data.source.commit.hash, state: data.state };
+}
+
 /** Post a comment on a Bitbucket pull request */
 export async function createPRComment(
 	workspace: string,
@@ -125,7 +143,7 @@ export async function createPRComment(
 	body: string,
 	filePath?: string,
 	line?: number
-): Promise<void> {
+): Promise<{ id: number }> {
 	const payload: Record<string, unknown> = {
 		content: { raw: body },
 	};
@@ -137,13 +155,41 @@ export async function createPRComment(
 		};
 	}
 
-	await atlassianFetch(
+	const res = await atlassianFetch(
 		"bitbucket",
-		`https://api.bitbucket.org/2.0/repositories/${workspace}/${repoSlug}/pullrequests/${prId}/comments`,
+		`${BITBUCKET_API_BASE}/repositories/${workspace}/${repoSlug}/pullrequests/${prId}/comments`,
 		{
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify(payload),
 		}
 	);
+	if (!res.ok) throw new Error(`Bitbucket create comment failed: ${res.status}`);
+	const data = (await res.json()) as { id: number };
+	return { id: data.id };
+}
+
+/** Reply to an existing comment on a Bitbucket pull request */
+export async function replyToPRComment(
+	workspace: string,
+	repoSlug: string,
+	prId: number,
+	parentCommentId: number,
+	body: string
+): Promise<{ id: number }> {
+	const res = await atlassianFetch(
+		"bitbucket",
+		`${BITBUCKET_API_BASE}/repositories/${workspace}/${repoSlug}/pullrequests/${prId}/comments`,
+		{
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				content: { raw: body },
+				parent: { id: parentCommentId },
+			}),
+		}
+	);
+	if (!res.ok) throw new Error(`Bitbucket reply comment failed: ${res.status}`);
+	const data = (await res.json()) as { id: number };
+	return { id: data.id };
 }
