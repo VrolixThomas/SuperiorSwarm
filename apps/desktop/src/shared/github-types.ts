@@ -39,6 +39,8 @@ export interface AIDraftThread {
 	status: "pending" | "approved" | "rejected" | "edited" | "submitted" | "user-pending";
 	userEdit: string | null;
 	createdAt: string;
+	resolution?: string | null;
+	roundNumber?: number;
 }
 
 /** Union type for rendering — either a real GitHub thread or an AI draft */
