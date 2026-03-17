@@ -1,8 +1,14 @@
 import { eq } from "drizzle-orm";
-import { createPRComment } from "../atlassian/bitbucket";
+import { createPRComment, replyToPRComment } from "../atlassian/bitbucket";
 import { getDb } from "../db";
 import * as schema from "../db/schema";
-import { createReviewThread, submitReview } from "../github/github";
+import {
+	addReviewThreadReply,
+	createReviewThread,
+	resolveThread,
+	submitReview,
+	unresolveThread,
+} from "../github/github";
 
 interface PublishResult {
 	success: boolean;
@@ -32,13 +38,18 @@ export async function publishReview(draftId: string): Promise<PublishResult> {
 
 	if (!draft) return { success: false, postedCount: 0, errors: ["Draft not found"] };
 
-	// Get approved and edited comments
+	// Get approved and edited comments (excluding resolution comments handled separately)
 	const comments = db
 		.select()
 		.from(schema.draftComments)
 		.where(eq(schema.draftComments.reviewDraftId, draftId))
 		.all()
-		.filter((c) => c.status === "approved" || c.status === "edited");
+		.filter(
+			(c) =>
+				(c.status === "approved" || c.status === "edited") &&
+				c.resolution !== "resolved-by-code" &&
+				c.resolution !== "incorrectly-resolved"
+		);
 
 	const { ownerOrWorkspace, repo, number: prNumber } = parsePrIdentifier(draft.prIdentifier);
 	const errors: string[] = [];
@@ -121,6 +132,55 @@ export async function publishReview(draftId: string): Promise<PublishResult> {
 			} catch (err) {
 				errors.push(`Failed to post review summary: ${err}`);
 			}
+		}
+	}
+
+	// Handle resolution comments from follow-up reviews
+	const resolutionComments = db
+		.select()
+		.from(schema.draftComments)
+		.where(eq(schema.draftComments.reviewDraftId, draftId))
+		.all()
+		.filter(
+			(c) =>
+				(c.status === "approved" || c.status === "edited") &&
+				(c.resolution === "resolved-by-code" || c.resolution === "incorrectly-resolved")
+		);
+
+	for (const comment of resolutionComments) {
+		if (!comment.previousCommentId) continue;
+
+		// Find the original comment to get its platformCommentId
+		const originalComment = db
+			.select()
+			.from(schema.draftComments)
+			.where(eq(schema.draftComments.id, comment.previousCommentId))
+			.get();
+
+		if (!originalComment?.platformCommentId) continue;
+
+		const body =
+			comment.status === "edited" && comment.userEdit ? comment.userEdit : comment.body;
+
+		try {
+			if (draft.prProvider === "github") {
+				await addReviewThreadReply({
+					threadId: originalComment.platformCommentId,
+					body,
+				});
+
+				if (comment.resolution === "resolved-by-code") {
+					await resolveThread(originalComment.platformCommentId);
+				} else if (comment.resolution === "incorrectly-resolved") {
+					await unresolveThread(originalComment.platformCommentId);
+				}
+			} else if (draft.prProvider === "bitbucket") {
+				const parentId = Number.parseInt(originalComment.platformCommentId, 10);
+				await replyToPRComment(ownerOrWorkspace, repo, prNumber, parentId, body);
+			}
+			postedCount++;
+		} catch (err) {
+			errors.push(`Failed to post resolution for ${comment.filePath}: ${err}`);
 		}
 	}
 
