@@ -156,9 +156,7 @@ function AISummaryCard({ summaryMarkdown }: { summaryMarkdown: string }) {
 	const [collapsed, setCollapsed] = useState(false);
 
 	return (
-		<div
-			className="mx-6 mt-5 overflow-hidden rounded-[8px] border border-[var(--border-subtle)]"
-		>
+		<div className="mx-6 mt-5 overflow-hidden rounded-[8px] border border-[var(--border-subtle)]">
 			<button
 				type="button"
 				onClick={() => setCollapsed((v) => !v)}
@@ -208,9 +206,7 @@ function AICommentCard({
 	};
 
 	return (
-		<div
-			className="overflow-hidden rounded-[6px] border border-[var(--border-subtle)] bg-[var(--bg-surface)]"
-		>
+		<div className="overflow-hidden rounded-[6px] border border-[var(--border-subtle)] bg-[var(--bg-surface)]">
 			<div className="flex items-center gap-1.5 border-b border-[var(--border-subtle)] px-3 py-1.5">
 				<span className="ai-badge">AI</span>
 				<button
@@ -524,7 +520,9 @@ export function PROverviewTab({ prCtx }: { prCtx: GitHubPRContext }) {
 	const reviewDraftsQuery = trpc.aiReview.getReviewDrafts.useQuery(undefined, {
 		staleTime: 5_000,
 	});
-	const matchingDraft = reviewDraftsQuery.data?.find((d) => d.prIdentifier === prIdentifier);
+	const matchingDraft = reviewDraftsQuery.data
+		?.filter((d) => d.prIdentifier === prIdentifier)
+		.sort((a, b) => (b.roundNumber ?? 1) - (a.roundNumber ?? 1))[0];
 	const aiDraftQuery = trpc.aiReview.getReviewDraft.useQuery(
 		{ draftId: matchingDraft?.id ?? "" },
 		{ enabled: !!matchingDraft?.id }

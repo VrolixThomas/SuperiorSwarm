@@ -565,7 +565,9 @@ export function PRReviewFileTab({ prCtx, filePath, language }: PRReviewFileTabPr
 	const reviewDraftsQuery = trpc.aiReview.getReviewDrafts.useQuery(undefined, {
 		staleTime: 30_000,
 	});
-	const matchingDraft = reviewDraftsQuery.data?.find((d) => d.prIdentifier === prIdentifier);
+	const matchingDraft = reviewDraftsQuery.data
+		?.filter((d) => d.prIdentifier === prIdentifier)
+		.sort((a, b) => (b.roundNumber ?? 1) - (a.roundNumber ?? 1))[0];
 	const aiDraftQuery = trpc.aiReview.getReviewDraft.useQuery(
 		{ draftId: matchingDraft?.id ?? "" },
 		{ enabled: !!matchingDraft?.id, staleTime: 30_000 }
