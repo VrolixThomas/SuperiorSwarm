@@ -463,17 +463,25 @@ function CommentsTab({
 	aiThreads,
 	summaryMarkdown,
 	onShowSummary,
+	reviewChainId,
 }: {
 	details: GitHubPRDetails;
 	prCtx: GitHubPRContext;
 	aiThreads: AIDraftThread[];
 	summaryMarkdown: string | null;
 	onShowSummary: () => void;
+	reviewChainId: string | null;
 }) {
 	const [sortMode, setSortMode] = useState<SortMode>("by-file");
 	const utils = trpc.useUtils();
 	const openPRReviewFile = useTabStore((s) => s.openPRReviewFile);
 	const activeWorkspaceId = useTabStore((s) => s.activeWorkspaceId);
+	const triggerFollowUp = trpc.aiReview.triggerFollowUp.useMutation({
+		onSuccess: () => {
+			utils.aiReview.getReviewDrafts.invalidate();
+			utils.aiReview.getReviewDraft.invalidate();
+		},
+	});
 
 	const invalidateDrafts = () => {
 		utils.aiReview.getReviewDrafts.invalidate();
@@ -561,6 +569,16 @@ function CommentsTab({
 					{allThreads.length} thread{allThreads.length !== 1 ? "s" : ""}
 				</span>
 				<div className="flex items-center gap-1.5">
+					{reviewChainId && (
+						<button
+							type="button"
+							onClick={() => triggerFollowUp.mutate({ reviewChainId })}
+							disabled={triggerFollowUp.isPending}
+							className="flex items-center gap-1.5 rounded-[6px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2.5 py-1 text-[12px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-overlay)] hover:text-[var(--text)]"
+						>
+							Re-review
+						</button>
+					)}
 					{summaryMarkdown && (
 						<button
 							type="button"
@@ -631,9 +649,7 @@ function CommentThreadCard({
 	if (isAI) {
 		const ai = thread as AIDraftThread;
 		return (
-			<div
-				className="mx-2 mb-1.5 overflow-hidden rounded-[6px] border border-[var(--border-subtle)] bg-[var(--bg-surface)]"
-			>
+			<div className="mx-2 mb-1.5 overflow-hidden rounded-[6px] border border-[var(--border-subtle)] bg-[var(--bg-surface)]">
 				<div className="flex items-center gap-1.5 border-b border-[var(--border-subtle)] px-3 py-1">
 					<span className="ai-badge">AI</span>
 					<button
@@ -645,6 +661,21 @@ function CommentThreadCard({
 						{ai.line != null && `:${ai.line}`}
 					</button>
 					<div className="flex-1" />
+					{ai.roundNumber != null && ai.roundNumber > 1 && (
+						<span className="text-[10px] text-[var(--text-quaternary)]">
+							Round {ai.roundNumber}
+						</span>
+					)}
+					{ai.resolution === "resolved-by-code" && (
+						<span className="flex items-center gap-1 text-[11px] text-[#32d74b]">
+							<span>&#10003;</span> Resolved
+						</span>
+					)}
+					{ai.resolution === "incorrectly-resolved" && (
+						<span className="flex items-center gap-1 text-[11px] text-[#ff9f0a]">
+							<span>&#9888;</span> Flagged
+						</span>
+					)}
 					{ai.status === "user-pending" && (
 						<span className="rounded-[3px] border border-[var(--border-active)] bg-[var(--bg-overlay)] px-1.5 py-px text-[9px] font-semibold uppercase tracking-wide text-[var(--text-tertiary)]">
 							Pending
@@ -874,6 +905,9 @@ export function PRControlRail({ prCtx }: { prCtx: GitHubPRContext }) {
 		{ enabled: !!matchingDraft?.id }
 	);
 
+	const draftRoundNumber = aiDraftQuery.data?.roundNumber ?? 1;
+	const draftReviewChainId = aiDraftQuery.data?.reviewChainId ?? null;
+
 	const mapComment = (
 		c: NonNullable<typeof aiDraftQuery.data>["comments"][number]
 	): AIDraftThread => ({
@@ -887,6 +921,8 @@ export function PRControlRail({ prCtx }: { prCtx: GitHubPRContext }) {
 		status: c.status as AIDraftThread["status"],
 		userEdit: c.userEdit ?? null,
 		createdAt: typeof c.createdAt === "string" ? c.createdAt : new Date(c.createdAt).toISOString(),
+		resolution: c.resolution ?? null,
+		roundNumber: draftRoundNumber,
 	});
 
 	const aiThreads: AIDraftThread[] = (aiDraftQuery.data?.comments ?? [])
@@ -975,6 +1011,7 @@ export function PRControlRail({ prCtx }: { prCtx: GitHubPRContext }) {
 					aiThreads={[...aiThreads, ...userPendingThreads]}
 					summaryMarkdown={aiDraftQuery.data?.summaryMarkdown ?? null}
 					onShowSummary={() => activeWorkspaceId && openPROverview(activeWorkspaceId, prCtx)}
+					reviewChainId={draftReviewChainId}
 				/>
 			)}
 			{tab === "files" && prCtx.repoPath && activeWorkspaceId && (
