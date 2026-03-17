@@ -318,17 +318,15 @@ export function SettingsView() {
 									autoApproveResolutions: !aiSettings?.autoApproveResolutions,
 								})
 							}
-							className={`relative h-[24px] w-[42px] shrink-0 cursor-pointer rounded-full border-none transition-colors ${
+							className={`relative h-[22px] w-[40px] shrink-0 cursor-pointer rounded-full border-none transition-colors ${
 								aiSettings?.autoApproveResolutions
 									? "bg-[var(--accent)]"
 									: "bg-[var(--bg-elevated)]"
 							}`}
 						>
 							<div
-								className={`absolute top-[3px] size-[18px] rounded-full bg-white shadow-sm transition-transform ${
-									aiSettings?.autoApproveResolutions
-										? "translate-x-[20px]"
-										: "translate-x-[2px]"
+								className={`absolute top-[2px] size-[18px] rounded-full bg-white transition-transform ${
+									aiSettings?.autoApproveResolutions ? "translate-x-[20px]" : "translate-x-[2px]"
 								}`}
 							/>
 						</button>
@@ -351,17 +349,15 @@ export function SettingsView() {
 									autoPublishResolutions: !aiSettings?.autoPublishResolutions,
 								})
 							}
-							className={`relative h-[24px] w-[42px] shrink-0 cursor-pointer rounded-full border-none transition-colors ${
+							className={`relative h-[22px] w-[40px] shrink-0 cursor-pointer rounded-full border-none transition-colors ${
 								aiSettings?.autoPublishResolutions
 									? "bg-[var(--accent)]"
 									: "bg-[var(--bg-elevated)]"
 							}`}
 						>
 							<div
-								className={`absolute top-[3px] size-[18px] rounded-full bg-white shadow-sm transition-transform ${
-									aiSettings?.autoPublishResolutions
-										? "translate-x-[20px]"
-										: "translate-x-[2px]"
+								className={`absolute top-[2px] size-[18px] rounded-full bg-white transition-transform ${
+									aiSettings?.autoPublishResolutions ? "translate-x-[20px]" : "translate-x-[2px]"
 								}`}
 							/>
 						</button>
