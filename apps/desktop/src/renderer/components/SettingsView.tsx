@@ -62,10 +62,6 @@ export function SettingsView() {
 	const utils = trpc.useUtils();
 	const [view, setView] = useState<"main" | "prompt-editor">("main");
 
-	if (view === "prompt-editor") {
-		return <ReviewPromptEditor onBack={() => setView("main")} />;
-	}
-
 	// Atlassian (Jira + Bitbucket)
 	const { data: atlassianStatus } = trpc.atlassian.getStatus.useQuery(undefined, {
 		staleTime: 30_000,
@@ -122,6 +118,10 @@ export function SettingsView() {
 	const updateAiSettings = trpc.aiReview.updateSettings.useMutation({
 		onSuccess: () => utils.aiReview.getSettings.invalidate(),
 	});
+
+	if (view === "prompt-editor") {
+		return <ReviewPromptEditor onBack={() => setView("main")} />;
+	}
 
 	return (
 		<div className="flex h-full flex-col">
