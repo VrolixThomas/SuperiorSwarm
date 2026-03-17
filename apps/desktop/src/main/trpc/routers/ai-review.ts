@@ -1,10 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
+import { startPolling } from "../../ai-review/commit-poller";
 import {
 	getReviewDraft,
 	getReviewDrafts,
 	getSettings,
+	queueFollowUpReview,
 	queueReview,
 } from "../../ai-review/orchestrator";
 import { publishReview } from "../../ai-review/review-publisher";
@@ -25,6 +27,8 @@ export const aiReviewRouter = router({
 				skipPermissions: z.boolean().optional(),
 				customPrompt: z.string().nullable().optional(),
 				maxConcurrentReviews: z.number().min(1).max(10).optional(),
+				autoApproveResolutions: z.boolean().optional(),
+				autoPublishResolutions: z.boolean().optional(),
 			})
 		)
 		.mutation(({ input }) => {
@@ -43,6 +47,10 @@ export const aiReviewRouter = router({
 			}
 			if (input.maxConcurrentReviews !== undefined)
 				updates.maxConcurrentReviews = input.maxConcurrentReviews;
+			if (input.autoApproveResolutions !== undefined)
+				updates.autoApproveResolutions = input.autoApproveResolutions ? 1 : 0;
+			if (input.autoPublishResolutions !== undefined)
+				updates.autoPublishResolutions = input.autoPublishResolutions ? 1 : 0;
 
 			db.update(schema.aiReviewSettings)
 				.set(updates)
@@ -75,6 +83,12 @@ export const aiReviewRouter = router({
 		)
 		.mutation(async ({ input }) => {
 			return queueReview(input);
+		}),
+
+	triggerFollowUp: publicProcedure
+		.input(z.object({ reviewChainId: z.string() }))
+		.mutation(async ({ input }) => {
+			return queueFollowUpReview(input.reviewChainId);
 		}),
 
 	updateDraftComment: publicProcedure
@@ -165,15 +179,17 @@ export const aiReviewRouter = router({
 	submitReview: publicProcedure
 		.input(z.object({ draftId: z.string() }))
 		.mutation(async ({ input }) => {
-			return publishReview(input.draftId);
+			const result = await publishReview(input.draftId);
+			startPolling();
+			return result;
 		}),
 
 	dismissReview: publicProcedure.input(z.object({ draftId: z.string() })).mutation(({ input }) => {
 		const db = getDb();
-		db.delete(schema.draftComments)
-			.where(eq(schema.draftComments.reviewDraftId, input.draftId))
+		db.update(schema.reviewDrafts)
+			.set({ status: "dismissed", updatedAt: new Date() })
+			.where(eq(schema.reviewDrafts.id, input.draftId))
 			.run();
-		db.delete(schema.reviewDrafts).where(eq(schema.reviewDrafts.id, input.draftId)).run();
 		return { success: true };
 	}),
 });
