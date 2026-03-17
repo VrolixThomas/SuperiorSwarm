@@ -452,13 +452,31 @@ export async function queueFollowUpReview(reviewChainId: string): Promise<Review
 	const db = getDb();
 
 	// Find the latest draft in this chain
-	const latestDraft = db
+	// Try finding by reviewChainId first, fall back to draft ID for pre-migration drafts
+	let chainDrafts = db
 		.select()
 		.from(schema.reviewDrafts)
 		.where(eq(schema.reviewDrafts.reviewChainId, reviewChainId))
-		.all()
-		.sort((a, b) => b.roundNumber - a.roundNumber)[0];
+		.all();
 
+	if (chainDrafts.length === 0) {
+		// Pre-migration draft: reviewChainId is null, the passed ID is the draft's own ID
+		const draft = db
+			.select()
+			.from(schema.reviewDrafts)
+			.where(eq(schema.reviewDrafts.id, reviewChainId))
+			.get();
+		if (draft) {
+			// Backfill the chain ID
+			db.update(schema.reviewDrafts)
+				.set({ reviewChainId, roundNumber: 1, updatedAt: new Date() })
+				.where(eq(schema.reviewDrafts.id, reviewChainId))
+				.run();
+			chainDrafts = [{ ...draft, reviewChainId, roundNumber: 1 }];
+		}
+	}
+
+	const latestDraft = chainDrafts.sort((a, b) => b.roundNumber - a.roundNumber)[0];
 	if (!latestDraft) throw new Error(`No drafts found for chain ${reviewChainId}`);
 
 	// Find the review workspace
