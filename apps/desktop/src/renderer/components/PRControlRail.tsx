@@ -930,10 +930,18 @@ export function PRControlRail({ prCtx }: { prCtx: GitHubPRContext }) {
 	const reviewDraftsQuery = trpc.aiReview.getReviewDrafts.useQuery(undefined, {
 		staleTime: 5_000,
 	});
-	// Find the latest draft for this PR (highest roundNumber, or most recent if no roundNumber)
-	const matchingDraft = reviewDraftsQuery.data
-		?.filter((d) => d.prIdentifier === prIdentifier)
-		.sort((a, b) => (b.roundNumber ?? 1) - (a.roundNumber ?? 1))[0];
+	// Find the latest actionable draft for this PR: prefer ready > in_progress > queued, then highest round
+	const matchingDraft = (() => {
+		const drafts = reviewDraftsQuery.data?.filter((d) => d.prIdentifier === prIdentifier) ?? [];
+		if (drafts.length === 0) return undefined;
+		const statusPriority: Record<string, number> = { ready: 0, "in_progress": 1, queued: 2, submitted: 3, failed: 4 };
+		return drafts.sort((a, b) => {
+			const pa = statusPriority[a.status] ?? 5;
+			const pb = statusPriority[b.status] ?? 5;
+			if (pa !== pb) return pa - pb;
+			return (b.roundNumber ?? 1) - (a.roundNumber ?? 1);
+		})[0];
+	})();
 	const aiDraftQuery = trpc.aiReview.getReviewDraft.useQuery(
 		{ draftId: matchingDraft?.id ?? "" },
 		{ enabled: !!matchingDraft?.id }
