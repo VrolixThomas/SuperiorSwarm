@@ -143,23 +143,18 @@ export function isCliInstalled(command: string): boolean {
 	}
 }
 
-/** Build the review prompt from PR metadata */
-export function buildReviewPrompt(metadata: {
-	title: string;
-	author: string;
-	sourceBranch: string;
-	targetBranch: string;
-	provider: string;
-}): string {
-	return `You are reviewing Pull Request: ${metadata.title}
-Author: ${metadata.author}
-Source: ${metadata.sourceBranch} → Target: ${metadata.targetBranch}
-Provider: ${metadata.provider}
+/** Default review guidelines — used when user hasn't set a custom prompt */
+export const DEFAULT_REVIEW_GUIDELINES = `Focus on: bugs, security issues, performance problems, code style, logic errors, and missing edge cases.
 
-Use the BranchFlux MCP tools to complete your review:
+IMPORTANT: Do NOT modify any files. This is a read-only code review.`;
+
+/** Build the locked MCP tool instructions block */
+function buildMcpInstructions(targetBranch: string): string {
+	return `
+You MUST use the BranchFlux MCP tools to complete your review:
 
 1. Call \`get_pr_metadata\` to understand the PR context
-2. Explore the codebase and review the changes (use git diff origin/${metadata.targetBranch}...HEAD to see the changes)
+2. Explore the codebase and review the changes (use git diff origin/${targetBranch}...HEAD to see the changes)
 3. For each issue or suggestion, call \`add_draft_comment\` with the file path, line number, and your comment
 4. When done reviewing all files, call \`set_review_summary\` with a markdown summary including:
    - Overview of changes
@@ -168,6 +163,25 @@ Use the BranchFlux MCP tools to complete your review:
    - Recommendations
 5. Call \`finish_review\` to signal you are done
 
-IMPORTANT: Do NOT modify any files. This is a read-only code review.
-Focus on: bugs, security issues, performance problems, code style, logic errors, and missing edge cases.`;
+IMPORTANT: You MUST call finish_review when done. Do NOT skip any MCP tool steps.`;
+}
+
+/** Build the review prompt from PR metadata */
+export function buildReviewPrompt(metadata: {
+	title: string;
+	author: string;
+	sourceBranch: string;
+	targetBranch: string;
+	provider: string;
+	customPrompt?: string | null;
+}): string {
+	const prContext = `You are reviewing Pull Request: ${metadata.title}
+Author: ${metadata.author}
+Source: ${metadata.sourceBranch} → Target: ${metadata.targetBranch}
+Provider: ${metadata.provider}`;
+
+	const guidelines = metadata.customPrompt?.trim() || DEFAULT_REVIEW_GUIDELINES;
+	const mcpInstructions = buildMcpInstructions(metadata.targetBranch);
+
+	return `${prContext}\n\n${guidelines}\n${mcpInstructions}`;
 }
