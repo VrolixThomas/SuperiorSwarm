@@ -13,10 +13,12 @@ Add a small neutral "Summary" button in the CommentsTab's sort control bar. Clic
 ### `PRControlRail.tsx` — `CommentsTab` component
 
 **New props:**
-- `summaryMarkdown: string | null` — used only to conditionally render the button (non-null = show)
+- `summaryMarkdown: string | null` — used only to conditionally render the button (truthy = show; null and empty string both hide it)
 - `onShowSummary: () => void` — click handler
 
-**Button placement:** Inside the existing sort control bar div (line ~555), between the thread count span and the sort dropdown. The button only renders when `summaryMarkdown` is non-null.
+**Button placement:** Inside the existing sort control bar div (line ~555), between the thread count span and the sort dropdown. The button only renders when `summaryMarkdown` is truthy.
+
+**Edge case — no threads:** The CommentsTab has an early return when `allThreads.length === 0` that renders before the sort bar. When a summary exists but there are no comment threads, always render the sort bar (with just the Summary button) instead of the "No comments yet" empty state.
 
 **Styling:** Matches the sort dropdown's neutral style — `--text-tertiary` text color, `--border-subtle` border, same font size and padding. A small sparkle character (`✦`) before the label "Summary".
 
