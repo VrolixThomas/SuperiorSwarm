@@ -284,15 +284,6 @@ function RichPRItem({
 	onClick: (e: React.MouseEvent) => void;
 	onContextMenu?: (e: React.MouseEvent) => void;
 }) {
-	const borderLeftColor =
-		pr.state === "merged"
-			? "#a371f7"
-			: pr.state === "closed"
-				? "#f85149"
-				: enriched?.isDraft
-					? "#484848"
-					: "#3fb950";
-
 	const hasNewCommits =
 		enriched?.headCommitOid != null &&
 		lastReviewCommitSha != null &&
@@ -319,7 +310,6 @@ function RichPRItem({
 					? "cursor-pointer text-[var(--text-secondary)]"
 					: "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
 			}`}
-			style={{ borderLeft: `3px solid ${borderLeftColor}` }}
 			title={`${pr.repoDisplay}#${pr.number}: ${pr.title}`}
 		>
 			{/* Row 1: Title + PR number */}

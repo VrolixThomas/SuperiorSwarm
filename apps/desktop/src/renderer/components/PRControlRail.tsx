@@ -633,7 +633,6 @@ function CommentThreadCard({
 		return (
 			<div
 				className="mx-2 mb-1.5 overflow-hidden rounded-[6px] border border-[var(--border-subtle)] bg-[var(--bg-surface)]"
-				style={{ borderLeft: "2px solid #a78bfa" }}
 			>
 				<div className="flex items-center gap-1.5 border-b border-[var(--border-subtle)] px-3 py-1">
 					<span className="ai-badge">AI</span>

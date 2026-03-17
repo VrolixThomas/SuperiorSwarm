@@ -158,7 +158,6 @@ function AISummaryCard({ summaryMarkdown }: { summaryMarkdown: string }) {
 	return (
 		<div
 			className="mx-6 mt-5 overflow-hidden rounded-[8px] border border-[var(--border-subtle)]"
-			style={{ borderLeft: "3px solid #a78bfa" }}
 		>
 			<button
 				type="button"
@@ -211,7 +210,6 @@ function AICommentCard({
 	return (
 		<div
 			className="overflow-hidden rounded-[6px] border border-[var(--border-subtle)] bg-[var(--bg-surface)]"
-			style={{ borderLeft: "3px solid #a78bfa" }}
 		>
 			<div className="flex items-center gap-1.5 border-b border-[var(--border-subtle)] px-3 py-1.5">
 				<span className="ai-badge">AI</span>
@@ -283,14 +281,11 @@ function GitHubThreadCard({
 		openPRReviewFile(activeWorkspaceId, prCtx, thread.path, detectLanguage(thread.path));
 	};
 
-	const borderColor = thread.isResolved ? "#30d158" : "#fbbf24";
-
 	return (
 		<div
 			className={`overflow-hidden rounded-[6px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] ${
 				thread.isResolved ? "opacity-50" : ""
 			}`}
-			style={{ borderLeft: `3px solid ${borderColor}` }}
 		>
 			{/* Header */}
 			<div className="flex items-center gap-1.5 border-b border-[var(--border-subtle)] px-3 py-1.5">
