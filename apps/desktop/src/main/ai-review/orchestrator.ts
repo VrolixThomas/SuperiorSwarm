@@ -605,7 +605,7 @@ async function startFollowUpReview(
 	try {
 		const { execSync } = await import("node:child_process");
 		execSync("git fetch origin", { cwd: worktreePath });
-		execSync(`git checkout origin/${draft.sourceBranch}`, { cwd: worktreePath });
+		execSync(`git reset --hard origin/${draft.sourceBranch}`, { cwd: worktreePath });
 
 		const commitSha = execSync("git rev-parse HEAD", { cwd: worktreePath }).toString().trim();
 
