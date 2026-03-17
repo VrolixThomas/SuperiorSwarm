@@ -44,7 +44,6 @@ function ThreadWidget({
 			<div
 				onMouseDown={(e) => e.stopPropagation()}
 				className="mx-2 my-1 rounded-[6px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[11px] shadow-md overflow-hidden"
-				style={{ borderLeft: isUserPending ? "2px solid var(--accent)" : "2px solid #a78bfa" }}
 			>
 				{/* Header */}
 				<div className="flex items-center justify-between border-b border-[var(--border-subtle)] px-3 py-1">
