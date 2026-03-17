@@ -1,0 +1,1 @@
+ALTER TABLE `ai_review_settings` ADD `custom_prompt` text;
