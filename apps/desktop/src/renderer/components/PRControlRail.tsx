@@ -930,7 +930,10 @@ export function PRControlRail({ prCtx }: { prCtx: GitHubPRContext }) {
 	const reviewDraftsQuery = trpc.aiReview.getReviewDrafts.useQuery(undefined, {
 		staleTime: 5_000,
 	});
-	const matchingDraft = reviewDraftsQuery.data?.find((d) => d.prIdentifier === prIdentifier);
+	// Find the latest draft for this PR (highest roundNumber, or most recent if no roundNumber)
+	const matchingDraft = reviewDraftsQuery.data
+		?.filter((d) => d.prIdentifier === prIdentifier)
+		.sort((a, b) => (b.roundNumber ?? 1) - (a.roundNumber ?? 1))[0];
 	const aiDraftQuery = trpc.aiReview.getReviewDraft.useQuery(
 		{ draftId: matchingDraft?.id ?? "" },
 		{ enabled: !!matchingDraft?.id }
