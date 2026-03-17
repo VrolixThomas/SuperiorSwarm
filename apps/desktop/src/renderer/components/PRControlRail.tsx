@@ -906,7 +906,7 @@ export function PRControlRail({ prCtx }: { prCtx: GitHubPRContext }) {
 	);
 
 	const draftRoundNumber = aiDraftQuery.data?.roundNumber ?? 1;
-	const draftReviewChainId = aiDraftQuery.data?.reviewChainId ?? null;
+	const draftReviewChainId = aiDraftQuery.data?.reviewChainId ?? matchingDraft?.id ?? null;
 
 	const mapComment = (
 		c: NonNullable<typeof aiDraftQuery.data>["comments"][number]
