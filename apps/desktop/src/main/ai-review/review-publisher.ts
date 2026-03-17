@@ -52,7 +52,7 @@ export async function publishReview(draftId: string): Promise<PublishResult> {
 					comment.status === "edited" && comment.userEdit ? comment.userEdit : comment.body;
 
 				if (comment.lineNumber) {
-					await createReviewThread({
+					const result = await createReviewThread({
 						owner: ownerOrWorkspace,
 						repo,
 						prNumber,
@@ -62,6 +62,11 @@ export async function publishReview(draftId: string): Promise<PublishResult> {
 						line: comment.lineNumber,
 						side: (comment.side as "LEFT" | "RIGHT") ?? "RIGHT",
 					});
+					// Save platform comment ID for follow-up resolution
+					db.update(schema.draftComments)
+						.set({ platformCommentId: result.nodeId })
+						.where(eq(schema.draftComments.id, comment.id))
+						.run();
 				}
 				postedCount++;
 			} catch (err) {
@@ -90,7 +95,7 @@ export async function publishReview(draftId: string): Promise<PublishResult> {
 				const body =
 					comment.status === "edited" && comment.userEdit ? comment.userEdit : comment.body;
 
-				await createPRComment(
+				const result = await createPRComment(
 					ownerOrWorkspace,
 					repo,
 					prNumber,
@@ -98,6 +103,11 @@ export async function publishReview(draftId: string): Promise<PublishResult> {
 					comment.lineNumber ? comment.filePath : undefined,
 					comment.lineNumber ?? undefined
 				);
+				// Save platform comment ID
+				db.update(schema.draftComments)
+					.set({ platformCommentId: String(result.id) })
+					.where(eq(schema.draftComments.id, comment.id))
+					.run();
 				postedCount++;
 			} catch (err) {
 				errors.push(`Failed to post comment on ${comment.filePath}:${comment.lineNumber}: ${err}`);
