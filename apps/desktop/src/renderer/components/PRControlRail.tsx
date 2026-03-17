@@ -476,10 +476,30 @@ function CommentsTab({
 	const utils = trpc.useUtils();
 	const openPRReviewFile = useTabStore((s) => s.openPRReviewFile);
 	const activeWorkspaceId = useTabStore((s) => s.activeWorkspaceId);
+	const attachTerminal = trpc.reviewWorkspaces.attachTerminal.useMutation();
 	const triggerFollowUp = trpc.aiReview.triggerFollowUp.useMutation({
-		onSuccess: () => {
+		onSuccess: (launchInfo) => {
 			utils.aiReview.getReviewDrafts.invalidate();
 			utils.aiReview.getReviewDraft.invalidate();
+
+			if (!launchInfo.reviewWorkspaceId || !launchInfo.worktreePath) return;
+
+			const tabStore = useTabStore.getState();
+
+			// Create terminal and run the launch script
+			const tabId = tabStore.addTerminalTab(
+				launchInfo.reviewWorkspaceId,
+				launchInfo.worktreePath,
+				"AI Re-review"
+			);
+			attachTerminal.mutate({
+				reviewWorkspaceId: launchInfo.reviewWorkspaceId,
+				terminalId: tabId,
+			});
+
+			setTimeout(() => {
+				window.electron.terminal.write(tabId, `bash '${launchInfo.launchScript}'\n`);
+			}, 500);
 		},
 		onError: (err) => {
 			console.error("[ai-review] Follow-up review failed:", err);
