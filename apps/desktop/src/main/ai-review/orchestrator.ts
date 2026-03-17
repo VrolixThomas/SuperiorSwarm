@@ -88,6 +88,7 @@ export function getSettings(): schema.AiReviewSettings {
 			id: "default",
 			cliPreset: "claude",
 			autoReviewEnabled: 0,
+			skipPermissions: 1,
 			maxConcurrentReviews: 3,
 			updatedAt: now,
 		})
@@ -381,7 +382,12 @@ async function startReview(
 
 		// Build the CLI command args
 		const args = preset.buildArgs(launchOpts);
-		const cliCommand = [preset.command, ...args].join(" ");
+		const parts = [preset.command];
+		if (settings.skipPermissions && preset.permissionFlag) {
+			parts.push(preset.permissionFlag);
+		}
+		parts.push(...args);
+		const cliCommand = parts.join(" ");
 
 		// Write a launch script that sets env vars (if not handled by MCP config) and runs the CLI
 		const launchScript = join(reviewDir, "start-review.sh");
