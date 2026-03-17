@@ -1,13 +1,20 @@
 import { randomUUID } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, not } from "drizzle-orm";
 import { app } from "electron";
 import { nanoid } from "nanoid";
 import { getDb } from "../db";
 import * as schema from "../db/schema";
 import { checkoutBranchWorktree } from "../git/operations";
-import { CLI_PRESETS, type LaunchOptions, buildReviewPrompt, isCliInstalled } from "./cli-presets";
+import { getGitHubReviewThreads } from "../github/github";
+import {
+	CLI_PRESETS,
+	type LaunchOptions,
+	buildFollowUpPrompt,
+	buildReviewPrompt,
+	isCliInstalled,
+} from "./cli-presets";
 
 export interface ReviewLaunchInfo {
 	draftId: string;
@@ -127,7 +134,11 @@ export function getReviewDrafts(statuses?: string[]) {
 			.where(inArray(schema.reviewDrafts.status, statuses))
 			.all();
 	}
-	return db.select().from(schema.reviewDrafts).all();
+	return db
+		.select()
+		.from(schema.reviewDrafts)
+		.where(not(eq(schema.reviewDrafts.status, "dismissed")))
+		.all();
 }
 
 /** Get a single review draft with its comments */
@@ -182,6 +193,8 @@ export async function queueReview(prData: {
 			sourceBranch: prData.sourceBranch,
 			targetBranch: prData.targetBranch,
 			status: "queued",
+			reviewChainId: id, // Chain starts with own ID
+			roundNumber: 1,
 			createdAt: now,
 			updatedAt: now,
 		})
@@ -416,6 +429,290 @@ async function startReview(
 			.where(eq(schema.reviewDrafts.id, draft.id))
 			.run();
 		activeReviews.delete(draft.id);
+		throw err;
+	}
+}
+
+function parsePrIdentifier(identifier: string): {
+	ownerOrWorkspace: string;
+	repo: string;
+	number: number;
+} {
+	const [ownerRepo, numStr] = identifier.split("#");
+	const [ownerOrWorkspace, repo] = ownerRepo!.split("/");
+	return {
+		ownerOrWorkspace: ownerOrWorkspace!,
+		repo: repo!,
+		number: Number.parseInt(numStr!, 10),
+	};
+}
+
+/** Queue a follow-up review for an existing review chain */
+export async function queueFollowUpReview(reviewChainId: string): Promise<ReviewLaunchInfo> {
+	const db = getDb();
+
+	// Find the latest draft in this chain
+	const latestDraft = db
+		.select()
+		.from(schema.reviewDrafts)
+		.where(eq(schema.reviewDrafts.reviewChainId, reviewChainId))
+		.all()
+		.sort((a, b) => b.roundNumber - a.roundNumber)[0];
+
+	if (!latestDraft) throw new Error(`No drafts found for chain ${reviewChainId}`);
+
+	// Find the review workspace
+	const workspace = db
+		.select()
+		.from(schema.reviewWorkspaces)
+		.where(
+			and(
+				eq(schema.reviewWorkspaces.prProvider, latestDraft.prProvider),
+				eq(schema.reviewWorkspaces.prIdentifier, latestDraft.prIdentifier)
+			)
+		)
+		.get();
+
+	if (!workspace) throw new Error("No review workspace found for this chain");
+
+	const worktree = workspace.worktreeId
+		? db.select().from(schema.worktrees).where(eq(schema.worktrees.id, workspace.worktreeId)).get()
+		: null;
+
+	if (!worktree) throw new Error("No worktree found for review workspace");
+
+	const project = db
+		.select()
+		.from(schema.projects)
+		.where(eq(schema.projects.id, workspace.projectId))
+		.get();
+
+	if (!project) throw new Error("Project not found for review workspace");
+
+	// Create follow-up draft
+	const id = randomUUID();
+	const now = new Date();
+
+	db.insert(schema.reviewDrafts)
+		.values({
+			id,
+			prProvider: latestDraft.prProvider,
+			prIdentifier: latestDraft.prIdentifier,
+			prTitle: latestDraft.prTitle,
+			prAuthor: latestDraft.prAuthor,
+			sourceBranch: latestDraft.sourceBranch,
+			targetBranch: latestDraft.targetBranch,
+			status: "queued",
+			reviewChainId,
+			roundNumber: latestDraft.roundNumber + 1,
+			previousDraftId: latestDraft.id,
+			createdAt: now,
+			updatedAt: now,
+		})
+		.run();
+
+	return startFollowUpReview(id, worktree.path, project.repoPath, workspace.projectId);
+}
+
+async function startFollowUpReview(
+	draftId: string,
+	worktreePath: string,
+	repoPath: string,
+	projectId: string
+): Promise<ReviewLaunchInfo> {
+	const db = getDb();
+	const now = new Date();
+
+	const draft = db
+		.select()
+		.from(schema.reviewDrafts)
+		.where(eq(schema.reviewDrafts.id, draftId))
+		.get();
+	if (!draft) throw new Error(`Follow-up draft ${draftId} not found`);
+
+	db.update(schema.reviewDrafts)
+		.set({ status: "in_progress", updatedAt: now })
+		.where(eq(schema.reviewDrafts.id, draftId))
+		.run();
+
+	try {
+		const { execSync } = await import("node:child_process");
+		execSync("git fetch origin", { cwd: worktreePath });
+		execSync(`git checkout origin/${draft.sourceBranch}`, { cwd: worktreePath });
+
+		const commitSha = execSync("git rev-parse HEAD", { cwd: worktreePath }).toString().trim();
+
+		db.update(schema.reviewDrafts)
+			.set({ commitSha, updatedAt: new Date() })
+			.where(eq(schema.reviewDrafts.id, draftId))
+			.run();
+
+		// Get previous draft's comments
+		const previousComments = draft.previousDraftId
+			? db
+					.select()
+					.from(schema.draftComments)
+					.where(eq(schema.draftComments.reviewDraftId, draft.previousDraftId))
+					.all()
+			: [];
+
+		const previousDraft = draft.previousDraftId
+			? db
+					.select()
+					.from(schema.reviewDrafts)
+					.where(eq(schema.reviewDrafts.id, draft.previousDraftId))
+					.get()
+			: null;
+
+		// Pre-fetch platform resolution status for GitHub
+		if (
+			previousComments.length > 0 &&
+			previousComments.some((c) => c.platformCommentId) &&
+			draft.prProvider === "github"
+		) {
+			try {
+				const { ownerOrWorkspace, repo, number: prNumber } = parsePrIdentifier(draft.prIdentifier);
+				const threads = await getGitHubReviewThreads(ownerOrWorkspace, repo, prNumber);
+				for (const comment of previousComments) {
+					if (!comment.platformCommentId) continue;
+					const thread = threads.find((t) => t.nodeId === comment.platformCommentId);
+					if (thread?.isResolved) {
+						db.update(schema.draftComments)
+							.set({ resolution: "resolved-on-platform" })
+							.where(eq(schema.draftComments.id, comment.id))
+							.run();
+						// Update in-memory copy too
+						comment.resolution = "resolved-on-platform";
+					}
+				}
+			} catch (err) {
+				console.error("[ai-review] Failed to pre-fetch platform resolution status:", err);
+			}
+		}
+
+		// Build follow-up prompt
+		const settings = getSettings();
+		const preset = CLI_PRESETS[settings.cliPreset];
+		if (!preset) throw new Error(`Unknown CLI preset: ${settings.cliPreset}`);
+
+		const dbPath = join(app.getPath("userData"), "branchflux.db");
+		const mcpServerPath = resolve(__dirname, "mcp-server.js");
+		const reviewDir = join(app.getPath("userData"), "reviews", draftId);
+		mkdirSync(reviewDir, { recursive: true });
+
+		const promptFilePath = join(reviewDir, "review-prompt.txt");
+		writeFileSync(
+			promptFilePath,
+			buildFollowUpPrompt({
+				title: draft.prTitle,
+				author: draft.prAuthor,
+				sourceBranch: draft.sourceBranch,
+				targetBranch: draft.targetBranch,
+				provider: draft.prProvider,
+				customPrompt: settings.customPrompt,
+				roundNumber: draft.roundNumber,
+				previousCommitSha: previousDraft?.commitSha ?? "unknown",
+				currentCommitSha: commitSha,
+				previousComments: previousComments.map((c) => ({
+					id: c.id,
+					filePath: c.filePath,
+					lineNumber: c.lineNumber,
+					body: c.body,
+					platformStatus: (c.resolution === "resolved-on-platform"
+						? "resolved-on-platform"
+						: "open") as "open" | "resolved-on-platform",
+				})),
+			}),
+			"utf-8"
+		);
+
+		const prMetadata = {
+			title: draft.prTitle,
+			description: "",
+			author: draft.prAuthor,
+			sourceBranch: draft.sourceBranch,
+			targetBranch: draft.targetBranch,
+			reviewers: [],
+			provider: draft.prProvider,
+			prUrl: "",
+		};
+
+		const launchOpts: LaunchOptions = {
+			mcpServerPath,
+			worktreePath,
+			reviewDir,
+			promptFilePath,
+			dbPath,
+			reviewDraftId: draftId,
+			prMetadata: JSON.stringify(prMetadata),
+		};
+
+		const cleanupMcp = preset.setupMcp?.(launchOpts) ?? null;
+
+		// Update review workspace to point to new draft
+		db.update(schema.reviewWorkspaces)
+			.set({ reviewDraftId: draftId, updatedAt: new Date() })
+			.where(
+				and(
+					eq(schema.reviewWorkspaces.projectId, projectId),
+					eq(schema.reviewWorkspaces.prProvider, draft.prProvider),
+					eq(schema.reviewWorkspaces.prIdentifier, draft.prIdentifier)
+				)
+			)
+			.run();
+
+		const workspace = db
+			.select()
+			.from(schema.reviewWorkspaces)
+			.where(
+				and(
+					eq(schema.reviewWorkspaces.projectId, projectId),
+					eq(schema.reviewWorkspaces.prProvider, draft.prProvider),
+					eq(schema.reviewWorkspaces.prIdentifier, draft.prIdentifier)
+				)
+			)
+			.get();
+
+		activeReviews.set(draftId, {
+			draftId,
+			reviewWorkspaceId: workspace!.id,
+			cleanup: cleanupMcp,
+		});
+		startPollingIfNeeded();
+
+		const args = preset.buildArgs(launchOpts);
+		const parts = [preset.command];
+		if (settings.skipPermissions && preset.permissionFlag) {
+			parts.push(preset.permissionFlag);
+		}
+		parts.push(...args);
+		const cliCommand = parts.join(" ");
+
+		const launchScript = join(reviewDir, "start-review.sh");
+		const envLines = preset.setupMcp
+			? []
+			: [
+					`export REVIEW_DRAFT_ID='${draftId}'`,
+					`export PR_METADATA='${launchOpts.prMetadata.replace(/'/g, "'\\''")}'`,
+					`export DB_PATH='${dbPath}'`,
+				];
+		const scriptContent = ["#!/bin/bash", ...envLines, "", cliCommand].join("\n");
+		writeFileSync(launchScript, scriptContent, "utf-8");
+		chmodSync(launchScript, 0o755);
+
+		return {
+			draftId,
+			reviewWorkspaceId: workspace!.id,
+			worktreePath,
+			launchScript,
+		};
+	} catch (err) {
+		console.error(`[ai-review] startFollowUpReview failed for ${draftId}:`, err);
+		db.update(schema.reviewDrafts)
+			.set({ status: "failed", updatedAt: new Date() })
+			.where(eq(schema.reviewDrafts.id, draftId))
+			.run();
+		activeReviews.delete(draftId);
 		throw err;
 	}
 }
