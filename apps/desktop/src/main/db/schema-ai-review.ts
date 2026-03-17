@@ -6,6 +6,7 @@ export const aiReviewSettings = sqliteTable("ai_review_settings", {
 	cliPreset: text("cli_preset").notNull().default("claude"),
 	cliFlags: text("cli_flags"),
 	autoReviewEnabled: integer("auto_review_enabled").notNull().default(0),
+	skipPermissions: integer("skip_permissions").notNull().default(1),
 	maxConcurrentReviews: integer("max_concurrent_reviews").notNull().default(3),
 	updatedAt: integer("updated_at", { mode: "timestamp" }),
 });
