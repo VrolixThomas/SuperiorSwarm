@@ -132,6 +132,151 @@ server.tool(
 	}
 );
 
+// Tool: get_previous_comments
+server.tool(
+	"get_previous_comments",
+	"Get all comments from the previous review round with their resolution status",
+	{},
+	async () => {
+		const currentDraft = db
+			.select()
+			.from(reviewDrafts)
+			.where(eq(reviewDrafts.id, REVIEW_DRAFT_ID))
+			.get();
+
+		if (!currentDraft?.previousDraftId) {
+			return {
+				content: [
+					{
+						type: "text",
+						text: JSON.stringify({ comments: [], message: "No previous review round" }),
+					},
+				],
+			};
+		}
+
+		const previousComments = db
+			.select()
+			.from(draftComments)
+			.where(eq(draftComments.reviewDraftId, currentDraft.previousDraftId))
+			.all();
+
+		const result = previousComments.map((c) => ({
+			id: c.id,
+			filePath: c.filePath,
+			lineNumber: c.lineNumber,
+			side: c.side,
+			body: c.body,
+			status: c.status,
+			platformCommentId: c.platformCommentId,
+			platformStatus: c.resolution ?? "open",
+		}));
+
+		return {
+			content: [{ type: "text", text: JSON.stringify({ comments: result }) }],
+		};
+	}
+);
+
+// Tool: resolve_comment
+server.tool(
+	"resolve_comment",
+	"Mark a previous review comment as resolved by new code",
+	{
+		previous_comment_id: z.string().describe("The ID of the previous comment being resolved"),
+		reason: z.string().describe("Explanation of how the new code resolves this comment"),
+	},
+	async ({ previous_comment_id, reason }) => {
+		const id = randomUUID();
+		const now = new Date();
+
+		const prevComment = db
+			.select()
+			.from(draftComments)
+			.where(eq(draftComments.id, previous_comment_id))
+			.get();
+
+		if (!prevComment) {
+			return {
+				content: [{ type: "text", text: JSON.stringify({ error: "Previous comment not found" }) }],
+			};
+		}
+
+		db.insert(draftComments)
+			.values({
+				id,
+				reviewDraftId: REVIEW_DRAFT_ID,
+				filePath: prevComment.filePath,
+				lineNumber: prevComment.lineNumber,
+				side: prevComment.side,
+				body: `Resolved: ${reason}`,
+				status: "pending",
+				previousCommentId: previous_comment_id,
+				resolution: "resolved-by-code",
+				resolutionReason: reason,
+				createdAt: now,
+			})
+			.run();
+
+		return {
+			content: [{ type: "text", text: JSON.stringify({ id, resolution: "resolved-by-code" }) }],
+		};
+	}
+);
+
+// Tool: flag_comment
+server.tool(
+	"flag_comment",
+	"Flag a previous comment that was resolved by the author but the fix appears incorrect",
+	{
+		previous_comment_id: z.string().describe("The ID of the previous comment being flagged"),
+		reason: z
+			.string()
+			.describe("Explanation of why the author's resolution is incorrect or incomplete"),
+	},
+	async ({ previous_comment_id, reason }) => {
+		const id = randomUUID();
+		const now = new Date();
+
+		const prevComment = db
+			.select()
+			.from(draftComments)
+			.where(eq(draftComments.id, previous_comment_id))
+			.get();
+
+		if (!prevComment) {
+			return {
+				content: [{ type: "text", text: JSON.stringify({ error: "Previous comment not found" }) }],
+			};
+		}
+
+		db.insert(draftComments)
+			.values({
+				id,
+				reviewDraftId: REVIEW_DRAFT_ID,
+				filePath: prevComment.filePath,
+				lineNumber: prevComment.lineNumber,
+				side: prevComment.side,
+				body: `Flagged: ${reason}`,
+				status: "pending",
+				previousCommentId: previous_comment_id,
+				resolution: "incorrectly-resolved",
+				resolutionReason: reason,
+				createdAt: now,
+			})
+			.run();
+
+		return {
+			content: [
+				{
+					type: "text",
+					text: JSON.stringify({ id, resolution: "incorrectly-resolved" }),
+				},
+			],
+		};
+	}
+);
+
 // Start the server
 async function main() {
 	const transport = new StdioServerTransport();
