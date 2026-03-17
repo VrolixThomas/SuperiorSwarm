@@ -360,6 +360,7 @@ async function startReview(
 				sourceBranch: draft.sourceBranch,
 				targetBranch: draft.targetBranch,
 				provider: draft.prProvider,
+				customPrompt: settings.customPrompt,
 			}),
 			"utf-8"
 		);
