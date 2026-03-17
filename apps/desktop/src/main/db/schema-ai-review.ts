@@ -9,6 +9,8 @@ export const aiReviewSettings = sqliteTable("ai_review_settings", {
 	skipPermissions: integer("skip_permissions").notNull().default(1),
 	customPrompt: text("custom_prompt"),
 	maxConcurrentReviews: integer("max_concurrent_reviews").notNull().default(3),
+	autoApproveResolutions: integer("auto_approve_resolutions").notNull().default(0),
+	autoPublishResolutions: integer("auto_publish_resolutions").notNull().default(0),
 	updatedAt: integer("updated_at", { mode: "timestamp" }),
 });
 
@@ -27,6 +29,9 @@ export const reviewDrafts = sqliteTable("review_drafts", {
 	status: text("status").notNull().default("queued"), // queued | in_progress | ready | submitted | failed
 	commitSha: text("commit_sha"),
 	summaryMarkdown: text("summary_markdown"),
+	reviewChainId: text("review_chain_id"),
+	roundNumber: integer("round_number").notNull().default(1),
+	previousDraftId: text("previous_draft_id"),
 	createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
 	updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
 });
@@ -46,6 +51,10 @@ export const draftComments = sqliteTable("draft_comments", {
 	body: text("body").notNull(),
 	status: text("status").notNull().default("pending"), // pending | approved | rejected | edited | user-pending
 	userEdit: text("user_edit"),
+	previousCommentId: text("previous_comment_id"),
+	resolution: text("resolution"), // resolved-by-code | incorrectly-resolved | still-open | new
+	resolutionReason: text("resolution_reason"),
+	platformCommentId: text("platform_comment_id"),
 	createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
 });
 
