@@ -92,6 +92,13 @@
       "when": 1773771038919,
       "tag": "0012_luxuriant_black_widow",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1773772507696,
+      "tag": "0013_majestic_hulk",
+      "breakpoints": true
     }
   ]
 }
