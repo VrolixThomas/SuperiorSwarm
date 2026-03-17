@@ -263,6 +263,39 @@ export function SettingsView() {
 						</button>
 					</div>
 
+					{/* Skip Permissions Toggle */}
+					<div className="flex items-center justify-between rounded-[8px] px-3 py-2.5 transition-colors hover:bg-[var(--bg-elevated)]">
+						<div className="flex flex-col gap-0.5">
+							<span className="text-[13px] font-medium text-[var(--text)]">
+								Auto-accept tool calls
+							</span>
+							<span className="text-[11px] text-[var(--text-tertiary)]">
+								Skip permission prompts during AI review
+							</span>
+						</div>
+						<button
+							type="button"
+							onClick={() =>
+								updateAiSettings.mutate({
+									skipPermissions: !(aiSettings?.skipPermissions ?? true),
+								})
+							}
+							className={`relative h-[22px] w-[40px] rounded-full transition-colors ${
+								(aiSettings?.skipPermissions ?? true)
+									? "bg-[var(--accent)]"
+									: "bg-[var(--bg-elevated)]"
+							}`}
+						>
+							<div
+								className={`absolute top-[2px] size-[18px] rounded-full bg-white transition-transform ${
+									(aiSettings?.skipPermissions ?? true)
+										? "translate-x-[20px]"
+										: "translate-x-[2px]"
+								}`}
+							/>
+						</button>
+					</div>
+
 					{/* Max Concurrent Reviews */}
 					<div className="flex items-center justify-between rounded-[8px] px-3 py-2.5 transition-colors hover:bg-[var(--bg-elevated)]">
 						<div className="flex flex-col gap-0.5">
