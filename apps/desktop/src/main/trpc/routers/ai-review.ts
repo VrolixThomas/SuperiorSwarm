@@ -23,6 +23,7 @@ export const aiReviewRouter = router({
 				cliPreset: z.enum(["claude", "gemini", "codex", "opencode"]).optional(),
 				autoReviewEnabled: z.boolean().optional(),
 				skipPermissions: z.boolean().optional(),
+				customPrompt: z.string().nullable().optional(),
 				maxConcurrentReviews: z.number().min(1).max(10).optional(),
 			})
 		)
@@ -36,6 +37,10 @@ export const aiReviewRouter = router({
 				updates.autoReviewEnabled = input.autoReviewEnabled ? 1 : 0;
 			if (input.skipPermissions !== undefined)
 				updates.skipPermissions = input.skipPermissions ? 1 : 0;
+			if (input.customPrompt !== undefined) {
+				const trimmed = input.customPrompt?.trim();
+				updates.customPrompt = trimmed || null;
+			}
 			if (input.maxConcurrentReviews !== undefined)
 				updates.maxConcurrentReviews = input.maxConcurrentReviews;
 
