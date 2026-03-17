@@ -523,7 +523,7 @@ export async function createReviewThread(params: {
 	path: string;
 	line: number;
 	side: "LEFT" | "RIGHT";
-}): Promise<{ id: number }> {
+}): Promise<{ id: number; nodeId: string }> {
 	const res = await githubFetch(
 		`/repos/${params.owner}/${params.repo}/pulls/${params.prNumber}/comments`,
 		{
@@ -539,8 +539,8 @@ export async function createReviewThread(params: {
 		}
 	);
 	if (!res.ok) throw new Error(`GitHub create thread failed: ${res.status} ${await res.text()}`);
-	const data = (await res.json()) as { id: number };
-	return { id: data.id };
+	const data = (await res.json()) as { id: number; node_id: string };
+	return { id: data.id, nodeId: data.node_id };
 }
 
 export async function addReviewThreadReply(params: {
@@ -590,4 +590,68 @@ export async function resolveThread(threadId: string): Promise<void> {
     }
   `;
 	await githubGraphQL<unknown>(mutation, { threadId });
+}
+
+export async function unresolveThread(threadId: string): Promise<void> {
+	const mutation = `
+    mutation UnresolveReviewThread($threadId: ID!) {
+      unresolveReviewThread(input: { threadId: $threadId }) {
+        thread { id isResolved }
+      }
+    }
+  `;
+	await githubGraphQL<unknown>(mutation, { threadId });
+}
+
+export async function getPRState(
+	owner: string,
+	repo: string,
+	prNumber: number
+): Promise<{ headSha: string; state: string; merged: boolean }> {
+	const res = await githubFetch(`/repos/${owner}/${repo}/pulls/${prNumber}`);
+	if (!res.ok) throw new Error(`GitHub get PR failed: ${res.status}`);
+	const data = (await res.json()) as { head: { sha: string }; state: string; merged: boolean };
+	return { headSha: data.head.sha, state: data.state, merged: data.merged };
+}
+
+export async function getGitHubReviewThreads(
+	owner: string,
+	repo: string,
+	prNumber: number
+): Promise<Array<{ nodeId: string; isResolved: boolean }>> {
+	const query = `
+    query GetReviewThreads($owner: String!, $repo: String!, $prNumber: Int!) {
+      repository(owner: $owner, name: $repo) {
+        pullRequest(number: $prNumber) {
+          reviewThreads(first: 100) {
+            nodes {
+              id
+              isResolved
+              comments(first: 1) {
+                nodes { id }
+              }
+            }
+          }
+        }
+      }
+    }
+  `;
+	const data = await githubGraphQL<{
+		repository: {
+			pullRequest: {
+				reviewThreads: {
+					nodes: Array<{
+						id: string;
+						isResolved: boolean;
+						comments: { nodes: Array<{ id: string }> };
+					}>;
+				};
+			};
+		};
+	}>(query, { owner, repo, prNumber });
+
+	return data.repository.pullRequest.reviewThreads.nodes.map((t) => ({
+		nodeId: t.id,
+		isResolved: t.isResolved,
+	}));
 }
