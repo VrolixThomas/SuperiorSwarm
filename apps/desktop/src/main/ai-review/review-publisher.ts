@@ -159,8 +159,7 @@ export async function publishReview(draftId: string): Promise<PublishResult> {
 
 		if (!originalComment?.platformCommentId) continue;
 
-		const body =
-			comment.status === "edited" && comment.userEdit ? comment.userEdit : comment.body;
+		const body = comment.status === "edited" && comment.userEdit ? comment.userEdit : comment.body;
 
 		try {
 			if (draft.prProvider === "github") {

@@ -203,16 +203,19 @@ function AIReviewBadge({
 					targetBranch: project.defaultBranch ?? "main",
 					repoPath: project.repoPath,
 				};
-				triggerReview({
-					provider: "github",
-					identifier,
-					title: pr.title,
-					author: "",
-					sourceBranch: pr.githubPR.branchName,
-					targetBranch: project.defaultBranch ?? "main",
-					repoPath: project.repoPath,
-					projectId: project.id,
-				}, prCtx);
+				triggerReview(
+					{
+						provider: "github",
+						identifier,
+						title: pr.title,
+						author: "",
+						sourceBranch: pr.githubPR.branchName,
+						targetBranch: project.defaultBranch ?? "main",
+						repoPath: project.repoPath,
+						projectId: project.id,
+					},
+					prCtx
+				);
 			}
 			if (pr.provider === "bitbucket" && pr.bitbucketPR) {
 				triggerReview({
@@ -554,7 +557,7 @@ export function PullRequestsTab() {
 			pendingReviewCtxRef.current = prCtx ?? null;
 			triggerReview.mutate(args);
 		},
-		[triggerReview.mutate],
+		[triggerReview.mutate]
 	);
 
 	const dismissReview = trpc.aiReview.dismissReview.useMutation({
@@ -650,7 +653,7 @@ export function PullRequestsTab() {
 					sourceBranch: pr.branchName,
 					targetBranch: project.defaultBranch ?? "main",
 					repoPath: project.repoPath,
-				},
+				}
 			);
 		}
 
@@ -883,7 +886,7 @@ export function PullRequestsTab() {
 
 			// Check if worktree already exists (e.g., from a prior AI review)
 			const existingRw = allReviewWorkspaces?.find(
-				(w) => w.prIdentifier === prIdentifier && w.worktreePath,
+				(w) => w.prIdentifier === prIdentifier && w.worktreePath
 			);
 			if (existingRw?.worktreePath) {
 				resolvedWorktreePath = existingRw.worktreePath;
@@ -914,7 +917,7 @@ export function PullRequestsTab() {
 				tabStore.openPROverview(rw.id, prCtx);
 			}
 		},
-		[getOrCreateMutation, createWorktreeMutation, allReviewWorkspaces, allReviewWorkspacesQuery],
+		[getOrCreateMutation, createWorktreeMutation, allReviewWorkspaces, allReviewWorkspacesQuery]
 	);
 
 	const handleGitHubLink = useCallback(
@@ -968,13 +971,7 @@ export function PullRequestsTab() {
 					repoPath: project.repoPath,
 				};
 
-				openPRWorkspace(
-					project.id,
-					"github",
-					prIdentifier,
-					project.repoPath,
-					prCtx
-				);
+				openPRWorkspace(project.id, "github", prIdentifier, project.repoPath, prCtx);
 				return;
 			}
 

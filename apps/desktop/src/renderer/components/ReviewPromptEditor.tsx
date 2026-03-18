@@ -98,13 +98,7 @@ export function ReviewPromptEditor({ onBack }: { onBack: () => void }) {
 				{/* Locked MCP preview */}
 				<div className="flex shrink-0 flex-col gap-1 pb-3">
 					<span className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-[0.05em] text-[var(--text-quaternary)]">
-						<svg
-							aria-hidden="true"
-							width="10"
-							height="10"
-							viewBox="0 0 16 16"
-							fill="currentColor"
-						>
+						<svg aria-hidden="true" width="10" height="10" viewBox="0 0 16 16" fill="currentColor">
 							<path d="M4 7V5a4 4 0 1 1 8 0v2h1a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h1zm2 0h4V5a2 2 0 1 0-4 0v2z" />
 						</svg>
 						MCP Tool Instructions (always appended)
@@ -114,8 +108,8 @@ export function ReviewPromptEditor({ onBack }: { onBack: () => void }) {
 						<p>2. Explore codebase and review changes via git diff</p>
 						<p>3. Call `add_draft_comment` for each issue found</p>
 						<p>
-							4. Call `set_review_summary` with markdown summary (overview, changes
-							per file, risk, recommendations)
+							4. Call `set_review_summary` with markdown summary (overview, changes per file, risk,
+							recommendations)
 						</p>
 						<p>5. Call `finish_review` when done</p>
 					</div>
