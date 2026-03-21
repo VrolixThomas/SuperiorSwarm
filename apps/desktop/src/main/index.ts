@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { BrowserWindow, app, dialog, ipcMain, shell } from "electron";
 import { daemonInstanceId, daemonPaths } from "../shared/daemon-protocol";
 import { startPolling } from "./ai-review/commit-poller";
+import { startPolling as startPRPolling } from "./ai-review/pr-poller";
 import { cleanupStaleReviews } from "./ai-review/orchestrator";
 import { getDb, initializeDatabase } from "./db";
 import * as schema from "./db/schema";
@@ -70,6 +71,7 @@ app.whenReady().then(async () => {
 	}
 	cleanupStaleReviews();
 	startPolling();
+	startPRPolling();
 	// Clear ephemeral terminal IDs (reset across sessions)
 	{
 		const db = getDb();

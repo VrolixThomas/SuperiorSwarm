@@ -5,6 +5,7 @@ import { branchesRouter } from "./branches";
 import { diffRouter } from "./diff";
 import { githubRouter } from "./github";
 import { linearRouter } from "./linear";
+import { prPollerRouter } from "./pr-poller";
 import { projectsRouter } from "./projects";
 import { sharedFilesRouter } from "./shared-files";
 import { terminalSessionsRouter } from "./terminal-sessions";
@@ -23,6 +24,7 @@ export const appRouter = router({
 	linear: linearRouter,
 	github: githubRouter,
 	tickets: ticketsRouter,
+	prPoller: prPollerRouter,
 });
 
 export type AppRouter = typeof appRouter;
