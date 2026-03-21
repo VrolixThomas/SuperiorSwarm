@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
+import { cleanupReviewWorkspace } from "../../ai-review/cleanup";
 import { startPolling } from "../../ai-review/commit-poller";
 import {
 	getReviewDraft,
@@ -194,62 +195,9 @@ export const aiReviewRouter = router({
 	}),
 
 	dismissReview: publicProcedure
-		.input(z.object({ draftId: z.string() }))
+		.input(z.object({ workspaceId: z.string() }))
 		.mutation(async ({ input }) => {
-			const db = getDb();
-			const draft = db
-				.select()
-				.from(schema.reviewDrafts)
-				.where(eq(schema.reviewDrafts.id, input.draftId))
-				.get();
-
-			if (!draft) return { success: true };
-
-			// Find and clean up worktree
-			const workspace = db
-				.select()
-				.from(schema.reviewWorkspaces)
-				.where(eq(schema.reviewWorkspaces.prIdentifier, draft.prIdentifier))
-				.get();
-
-			if (workspace?.worktreeId) {
-				const worktree = db
-					.select()
-					.from(schema.worktrees)
-					.where(eq(schema.worktrees.id, workspace.worktreeId))
-					.get();
-
-				if (worktree?.path) {
-					const project = db
-						.select()
-						.from(schema.projects)
-						.where(eq(schema.projects.id, workspace.projectId))
-						.get();
-
-					if (project) {
-						try {
-							const { removeWorktree } = await import("../../git/operations");
-							await removeWorktree(project.repoPath, worktree.path);
-						} catch {
-							// Non-fatal — worktree may already be gone
-						}
-					}
-
-					db.delete(schema.worktrees)
-						.where(eq(schema.worktrees.id, workspace.worktreeId))
-						.run();
-					db.update(schema.reviewWorkspaces)
-						.set({ worktreeId: null, updatedAt: new Date() })
-						.where(eq(schema.reviewWorkspaces.id, workspace.id))
-						.run();
-				}
-			}
-
-			db.update(schema.reviewDrafts)
-				.set({ status: "dismissed", updatedAt: new Date() })
-				.where(eq(schema.reviewDrafts.id, input.draftId))
-				.run();
-
+			await cleanupReviewWorkspace(input.workspaceId);
 			return { success: true };
 		}),
 });
