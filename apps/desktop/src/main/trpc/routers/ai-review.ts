@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { cleanupReviewWorkspace } from "../../ai-review/cleanup";
 import { startPolling } from "../../ai-review/commit-poller";
@@ -13,6 +13,7 @@ import {
 import { publishReview } from "../../ai-review/review-publisher";
 import { getDb } from "../../db";
 import * as schema from "../../db/schema";
+import { checkoutBranchWorktree, removeWorktree } from "../../git/operations";
 import { publicProcedure, router } from "../index";
 
 export const aiReviewRouter = router({
@@ -83,13 +84,113 @@ export const aiReviewRouter = router({
 			})
 		)
 		.mutation(async ({ input }) => {
-			return queueReview(input);
+			if (!input.repoPath) {
+				throw new Error(
+					"Cannot start review: this PR's repository is not tracked in BranchFlux. " +
+						"Add the repository as a project first."
+				);
+			}
+
+			// 1. Get or create review workspace + worktree
+			const wsResult = await ensureReviewWorkspace({
+				projectId: input.projectId,
+				prProvider: input.provider,
+				prIdentifier: input.identifier,
+				prTitle: input.title,
+				sourceBranch: input.sourceBranch,
+				targetBranch: input.targetBranch,
+			});
+
+			// 2. Pass workspace info to orchestrator
+			return queueReview({
+				prProvider: input.provider,
+				prIdentifier: input.identifier,
+				prTitle: input.title,
+				prAuthor: input.author,
+				sourceBranch: input.sourceBranch,
+				targetBranch: input.targetBranch,
+				workspaceId: wsResult.workspaceId,
+				worktreePath: wsResult.worktreePath,
+			});
 		}),
 
 	triggerFollowUp: publicProcedure
 		.input(z.object({ reviewChainId: z.string() }))
 		.mutation(async ({ input }) => {
-			return queueFollowUpReview(input.reviewChainId);
+			const db = getDb();
+
+			// Find the latest draft in this chain to get PR info
+			let chainDrafts = db
+				.select()
+				.from(schema.reviewDrafts)
+				.where(eq(schema.reviewDrafts.reviewChainId, input.reviewChainId))
+				.all();
+
+			if (chainDrafts.length === 0) {
+				// Pre-migration draft
+				const draft = db
+					.select()
+					.from(schema.reviewDrafts)
+					.where(eq(schema.reviewDrafts.id, input.reviewChainId))
+					.get();
+				if (draft) {
+					chainDrafts = [draft];
+				}
+			}
+
+			const latestDraft = chainDrafts.sort((a, b) => b.roundNumber - a.roundNumber)[0];
+			if (!latestDraft) throw new Error(`No drafts found for chain ${input.reviewChainId}`);
+
+			// Find the workspace for this PR
+			const workspace = db
+				.select()
+				.from(schema.workspaces)
+				.where(
+					and(
+						eq(schema.workspaces.prProvider, latestDraft.prProvider),
+						eq(schema.workspaces.prIdentifier, latestDraft.prIdentifier),
+						eq(schema.workspaces.type, "review")
+					)
+				)
+				.get();
+
+			if (!workspace) throw new Error("Review workspace not found for this PR");
+
+			const project = db
+				.select()
+				.from(schema.projects)
+				.where(eq(schema.projects.id, workspace.projectId))
+				.get();
+			if (!project) throw new Error("Project not found for review workspace");
+
+			// Get worktree path and update to latest
+			const worktree = workspace.worktreeId
+				? db
+						.select()
+						.from(schema.worktrees)
+						.where(eq(schema.worktrees.id, workspace.worktreeId))
+						.get()
+				: null;
+
+			if (!worktree?.path) throw new Error("Worktree not found for review workspace");
+
+			// Fetch latest changes
+			const { execSync } = await import("node:child_process");
+			try {
+				execSync("git fetch origin", { cwd: worktree.path, stdio: "pipe" });
+				execSync(`git reset --hard origin/${latestDraft.sourceBranch}`, {
+					cwd: worktree.path,
+					stdio: "pipe",
+				});
+			} catch (err) {
+				console.error("[ai-review] Failed to update worktree, continuing with current state:", err);
+			}
+
+			return queueFollowUpReview({
+				reviewChainId: input.reviewChainId,
+				workspaceId: workspace.id,
+				worktreePath: worktree.path,
+			});
 		}),
 
 	updateDraftComment: publicProcedure
@@ -201,3 +302,133 @@ export const aiReviewRouter = router({
 			return { success: true };
 		}),
 });
+
+/**
+ * Get or create a review workspace + worktree for a PR.
+ * This is the inline equivalent of workspacesRouter.getOrCreateReview
+ * but called directly from the ai-review router to avoid cross-router calls.
+ */
+async function ensureReviewWorkspace(opts: {
+	projectId: string;
+	prProvider: string;
+	prIdentifier: string;
+	prTitle: string;
+	sourceBranch: string;
+	targetBranch: string;
+}): Promise<{ workspaceId: string; worktreePath: string }> {
+	const { dirname, join } = await import("node:path");
+	const { nanoid } = await import("nanoid");
+	const db = getDb();
+
+	// 1. Check for existing review workspace
+	let workspace = db
+		.select()
+		.from(schema.workspaces)
+		.where(
+			and(
+				eq(schema.workspaces.projectId, opts.projectId),
+				eq(schema.workspaces.prProvider, opts.prProvider),
+				eq(schema.workspaces.prIdentifier, opts.prIdentifier)
+			)
+		)
+		.get();
+
+	// 2. Create if not exists
+	if (!workspace) {
+		const id = nanoid();
+		const now = new Date();
+		const name = `PR #${opts.prIdentifier.split("#")[1]}: ${opts.prTitle}`;
+		db.insert(schema.workspaces)
+			.values({
+				id,
+				projectId: opts.projectId,
+				name,
+				type: "review",
+				prProvider: opts.prProvider,
+				prIdentifier: opts.prIdentifier,
+				createdAt: now,
+				updatedAt: now,
+			})
+			.run();
+		workspace = db.select().from(schema.workspaces).where(eq(schema.workspaces.id, id)).get()!;
+	}
+
+	// 3. Ensure worktree exists
+	const project = db
+		.select()
+		.from(schema.projects)
+		.where(eq(schema.projects.id, opts.projectId))
+		.get();
+	if (!project) throw new Error("Project not found");
+
+	function worktreeBasePath(repoPath: string): string {
+		const parent = dirname(repoPath);
+		const name = repoPath.split("/").pop() ?? "repo";
+		return join(parent, `${name}-worktrees`);
+	}
+
+	if (!workspace.worktreeId) {
+		// Compute worktree path
+		const sanitizedId = opts.prIdentifier.replace(/[^a-zA-Z0-9-]/g, "-");
+		const wtPath = join(worktreeBasePath(project.repoPath), `pr-review-${sanitizedId}`);
+
+		// Clean up stale worktree at same path if it exists
+		const { existsSync, rmSync } = await import("node:fs");
+		if (existsSync(wtPath)) {
+			try {
+				await removeWorktree(project.repoPath, wtPath);
+			} catch {
+				rmSync(wtPath, { recursive: true, force: true });
+				const { execSync } = await import("node:child_process");
+				try {
+					execSync("git worktree prune", { cwd: project.repoPath, stdio: "pipe" });
+				} catch {}
+			}
+		}
+
+		await checkoutBranchWorktree(project.repoPath, wtPath, opts.sourceBranch);
+
+		const now = new Date();
+		const worktreeId = nanoid();
+		db.insert(schema.worktrees)
+			.values({
+				id: worktreeId,
+				projectId: opts.projectId,
+				path: wtPath,
+				branch: opts.sourceBranch,
+				baseBranch: opts.targetBranch,
+				createdAt: now,
+				updatedAt: now,
+			})
+			.run();
+
+		db.update(schema.workspaces)
+			.set({ worktreeId, updatedAt: now })
+			.where(eq(schema.workspaces.id, workspace.id))
+			.run();
+
+		return { workspaceId: workspace.id, worktreePath: wtPath };
+	}
+
+	// Worktree exists — update to latest
+	const worktree = db
+		.select()
+		.from(schema.worktrees)
+		.where(eq(schema.worktrees.id, workspace.worktreeId))
+		.get();
+
+	if (!worktree?.path) throw new Error("Worktree record not found");
+
+	const { execSync } = await import("node:child_process");
+	try {
+		execSync("git fetch origin", { cwd: worktree.path, stdio: "pipe" });
+		execSync(`git reset --hard origin/${opts.sourceBranch}`, {
+			cwd: worktree.path,
+			stdio: "pipe",
+		});
+	} catch (err) {
+		console.error("[ai-review] Failed to update worktree, continuing with current state:", err);
+	}
+
+	return { workspaceId: workspace.id, worktreePath: worktree.path };
+}
