@@ -472,7 +472,9 @@ async function startReview(
 					`export PR_METADATA='${launchOpts.prMetadata.replace(/'/g, "'\\''")}'`,
 					`export DB_PATH='${dbPath}'`,
 				];
-		const scriptContent = ["#!/bin/bash", ...envLines, "", cliCommand].join("\n");
+		const scriptContent = ["#!/bin/bash", `cd '${worktreePath}'`, ...envLines, "", cliCommand].join(
+			"\n"
+		);
 		writeFileSync(launchScript, scriptContent, "utf-8");
 		chmodSync(launchScript, 0o755);
 
@@ -754,7 +756,9 @@ async function startFollowUpReview(
 					`export PR_METADATA='${launchOpts.prMetadata.replace(/'/g, "'\\''")}'`,
 					`export DB_PATH='${dbPath}'`,
 				];
-		const scriptContent = ["#!/bin/bash", ...envLines, "", cliCommand].join("\n");
+		const scriptContent = ["#!/bin/bash", `cd '${worktreePath}'`, ...envLines, "", cliCommand].join(
+			"\n"
+		);
 		writeFileSync(launchScript, scriptContent, "utf-8");
 		chmodSync(launchScript, 0o755);
 
