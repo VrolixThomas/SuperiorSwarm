@@ -486,7 +486,10 @@ function CommentsTab({
 
 			const tabStore = useTabStore.getState();
 
-			// Create terminal and run the launch script
+			// Switch to the review workspace
+			tabStore.setActiveWorkspace(launchInfo.reviewWorkspaceId, launchInfo.worktreePath);
+
+			// Create a fresh terminal tab and run the launch script
 			const tabId = tabStore.addTerminalTab(
 				launchInfo.reviewWorkspaceId,
 				launchInfo.worktreePath,
