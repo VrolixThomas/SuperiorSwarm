@@ -133,6 +133,37 @@ export const reviewWorkspacesRouter = router({
 			.get();
 	}),
 
+	ensureWorktree: publicProcedure
+		.input(
+			z.object({
+				projectId: z.string(),
+				prProvider: z.enum(["github", "bitbucket"]),
+				prIdentifier: z.string(),
+				sourceBranch: z.string(),
+				targetBranch: z.string(),
+			})
+		)
+		.mutation(async ({ input }) => {
+			const db = getDb();
+			const project = db
+				.select()
+				.from(projects)
+				.where(eq(projects.id, input.projectId))
+				.get();
+
+			if (!project) throw new Error("Project not found");
+
+			const { ensureReviewWorktree } = await import("../../ai-review/orchestrator");
+			return ensureReviewWorktree({
+				projectId: input.projectId,
+				repoPath: project.repoPath,
+				prProvider: input.prProvider,
+				prIdentifier: input.prIdentifier,
+				sourceBranch: input.sourceBranch,
+				targetBranch: input.targetBranch,
+			});
+		}),
+
 	createWorktree: publicProcedure
 		.input(
 			z.object({
