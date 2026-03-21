@@ -19,6 +19,7 @@ import {
 import { setupLspIPC } from "./lsp/ipc-handler";
 import { serverManager } from "./lsp/server-manager";
 import { DaemonClient } from "./terminal/daemon-client";
+import { setDaemonClient } from "./terminal/daemon-instance";
 import { setupTerminalIPC } from "./terminal/ipc";
 import { setupTRPCIPC } from "./trpc/ipc-link";
 import { appRouter } from "./trpc/routers";
@@ -61,6 +62,7 @@ app.whenReady().then(async () => {
 	const instanceId = daemonInstanceId(__dirname);
 	const paths = daemonPaths(instanceId);
 	daemonClient = new DaemonClient(paths.socketPath, paths.pidPath, paths.logPath);
+	setDaemonClient(daemonClient);
 
 	setupTerminalIPC(daemonClient);
 	try {
