@@ -2,8 +2,8 @@ import { and, eq } from "drizzle-orm";
 import { getDb } from "../db";
 import { projects, workspaces, worktrees } from "../db/schema";
 import { reviewDrafts } from "../db/schema-ai-review";
-import { validateTransition } from "./orchestrator";
 import { removeWorktree } from "../git/operations";
+import { validateTransition } from "./orchestrator";
 
 /**
  * Full cleanup of a review workspace: removes worktree from disk,

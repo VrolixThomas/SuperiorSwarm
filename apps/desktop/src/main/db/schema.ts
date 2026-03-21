@@ -56,11 +56,7 @@ export const workspaces = sqliteTable(
 		updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
 	},
 	(table) => [
-		uniqueIndex("workspaces_pr_unique").on(
-			table.projectId,
-			table.prProvider,
-			table.prIdentifier
-		),
+		uniqueIndex("workspaces_pr_unique").on(table.projectId, table.prProvider, table.prIdentifier),
 	]
 );
 

@@ -87,7 +87,8 @@ export async function publishReview(draftId: string): Promise<PublishResult> {
 		.where(eq(schema.reviewDrafts.id, draftId))
 		.get();
 
-	if (!draft) return { success: false, postedCount: 0, skippedCount: 0, errors: ["Draft not found"] };
+	if (!draft)
+		return { success: false, postedCount: 0, skippedCount: 0, errors: ["Draft not found"] };
 
 	// Get approved and edited comments (excluding resolution comments handled separately)
 	const comments = db
@@ -148,9 +149,10 @@ export async function publishReview(draftId: string): Promise<PublishResult> {
 						filePath = resolved.path;
 					}
 
-					const commentBody = filePath !== comment.filePath
-						? `*(File was renamed from \`${comment.filePath}\`)*\n\n${body}`
-						: body;
+					const commentBody =
+						filePath !== comment.filePath
+							? `*(File was renamed from \`${comment.filePath}\`)*\n\n${body}`
+							: body;
 
 					const result = await createReviewThread({
 						owner: ownerOrWorkspace,

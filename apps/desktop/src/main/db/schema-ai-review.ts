@@ -60,4 +60,3 @@ export const draftComments = sqliteTable("draft_comments", {
 
 export type DraftComment = typeof draftComments.$inferSelect;
 export type NewDraftComment = typeof draftComments.$inferInsert;
-

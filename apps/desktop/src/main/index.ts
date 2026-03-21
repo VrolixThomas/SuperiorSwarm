@@ -1,10 +1,14 @@
 import { join } from "node:path";
 import { BrowserWindow, app, dialog, ipcMain, shell } from "electron";
 import { daemonInstanceId, daemonPaths } from "../shared/daemon-protocol";
-import { startPolling } from "./ai-review/commit-poller";
 import { cleanupReviewWorkspace, findReviewWorkspaceByPR } from "./ai-review/cleanup";
+import { startPolling } from "./ai-review/commit-poller";
 import { cleanupStaleReviews } from "./ai-review/orchestrator";
-import { onNewPRDetected, onPRClosedDetected, startPolling as startPRPolling } from "./ai-review/pr-poller";
+import {
+	onNewPRDetected,
+	onPRClosedDetected,
+	startPolling as startPRPolling,
+} from "./ai-review/pr-poller";
 import { getDb, initializeDatabase } from "./db";
 import * as schema from "./db/schema";
 import {
@@ -93,7 +97,7 @@ app.whenReady().then(async () => {
 	// Clear ephemeral terminal IDs (reset across sessions)
 	{
 		const db = getDb();
-		db.update(schema.reviewWorkspaces).set({ terminalId: null, updatedAt: new Date() }).run();
+		db.update(schema.workspaces).set({ terminalId: null, updatedAt: new Date() }).run();
 	}
 	const dbPath = join(app.getPath("userData"), "branchflux.db");
 	const daemonScriptPath = join(__dirname, "daemon.js");

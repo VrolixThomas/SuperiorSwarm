@@ -568,7 +568,13 @@ export function PRReviewFileTab({ prCtx, filePath, language }: PRReviewFileTabPr
 	const matchingDraft = (() => {
 		const drafts = reviewDraftsQuery.data?.filter((d) => d.prIdentifier === prIdentifier) ?? [];
 		if (drafts.length === 0) return undefined;
-		const statusPriority: Record<string, number> = { ready: 0, "in_progress": 1, queued: 2, submitted: 3, failed: 4 };
+		const statusPriority: Record<string, number> = {
+			ready: 0,
+			in_progress: 1,
+			queued: 2,
+			submitted: 3,
+			failed: 4,
+		};
 		return drafts.sort((a, b) => {
 			const pa = statusPriority[a.status] ?? 5;
 			const pb = statusPriority[b.status] ?? 5;

@@ -1,10 +1,10 @@
-import { getDb } from "../db";
-import { projects } from "../db/schema";
+import type { CachedPR } from "../../shared/review-types";
 import { getAuth as getBitbucketAuth } from "../atlassian/auth";
 import { getMyPullRequests, getReviewRequests } from "../atlassian/bitbucket";
+import { getDb } from "../db";
+import { projects } from "../db/schema";
 import { getValidToken } from "../github/auth";
 import { getMyPRs } from "../github/github";
-import type { CachedPR } from "../../shared/review-types";
 
 const POLL_INTERVAL_MS = 60_000;
 
@@ -55,9 +55,7 @@ function getProjectIdForBitbucket(workspace: string, repoSlug: string): string {
 	// We do a best-effort match on repo path containing the workspace/repoSlug pattern.
 	const match = allProjects.find((p) => {
 		const path = p.repoPath.toLowerCase();
-		return (
-			path.includes(`${workspace.toLowerCase()}/${repoSlug.toLowerCase()}`)
-		);
+		return path.includes(`${workspace.toLowerCase()}/${repoSlug.toLowerCase()}`);
 	});
 	return match?.id ?? "";
 }
@@ -92,9 +90,7 @@ function mapGitHubPR(pr: Awaited<ReturnType<typeof getMyPRs>>[number]): CachedPR
 	};
 }
 
-function mapBitbucketPR(
-	pr: Awaited<ReturnType<typeof getMyPullRequests>>[number]
-): CachedPR {
+function mapBitbucketPR(pr: Awaited<ReturnType<typeof getMyPullRequests>>[number]): CachedPR {
 	const identifier = `${pr.workspace}/${pr.repoSlug}#${pr.id}`;
 	// Bitbucket states: OPEN, MERGED, DECLINED, SUPERSEDED
 	const rawState = pr.state.toUpperCase();
@@ -145,10 +141,7 @@ async function fetchAllPRs(): Promise<CachedPR[]> {
 	// Bitbucket
 	if (getBitbucketAuth("bitbucket")) {
 		try {
-			const [authored, reviewing] = await Promise.all([
-				getMyPullRequests(),
-				getReviewRequests(),
-			]);
+			const [authored, reviewing] = await Promise.all([getMyPullRequests(), getReviewRequests()]);
 
 			const seen = new Set<string>();
 			for (const pr of authored) {

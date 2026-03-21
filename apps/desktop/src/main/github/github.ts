@@ -615,9 +615,7 @@ export async function getPRFiles(
 	repo: string,
 	prNumber: number
 ): Promise<PRFileInfo[]> {
-	const res = await githubFetch(
-		`/repos/${owner}/${repo}/pulls/${prNumber}/files?per_page=100`
-	);
+	const res = await githubFetch(`/repos/${owner}/${repo}/pulls/${prNumber}/files?per_page=100`);
 	if (!res.ok) throw new Error(`GitHub get PR files failed: ${res.status}`);
 	const data = (await res.json()) as Array<{
 		filename: string;

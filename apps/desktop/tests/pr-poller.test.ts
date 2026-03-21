@@ -5,10 +5,7 @@ describe("PR poller cache", () => {
 		const cache = new Map<string, { identifier: string }>();
 		cache.set("owner/repo#1", { identifier: "owner/repo#1" });
 
-		const fetched = [
-			{ identifier: "owner/repo#1" },
-			{ identifier: "owner/repo#2" },
-		];
+		const fetched = [{ identifier: "owner/repo#1" }, { identifier: "owner/repo#2" }];
 
 		const newPRs = fetched.filter((pr) => !cache.has(pr.identifier));
 		expect(newPRs).toHaveLength(1);

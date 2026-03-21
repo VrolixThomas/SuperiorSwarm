@@ -2,9 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { detectLanguage } from "../../shared/diff-types";
 import type {
 	AIDraftThread,
-	PRContext,
 	GitHubPRDetails,
 	GitHubReviewThread,
+	PRContext,
 	UnifiedThread,
 } from "../../shared/github-types";
 import { useTabStore } from "../stores/tab-store";
@@ -476,7 +476,7 @@ function CommentsTab({
 	const utils = trpc.useUtils();
 	const openPRReviewFile = useTabStore((s) => s.openPRReviewFile);
 	const activeWorkspaceId = useTabStore((s) => s.activeWorkspaceId);
-	const attachTerminal = trpc.reviewWorkspaces.attachTerminal.useMutation();
+	const attachTerminal = trpc.workspaces.attachTerminal.useMutation();
 	const triggerFollowUp = trpc.aiReview.triggerFollowUp.useMutation({
 		onSuccess: (launchInfo) => {
 			utils.aiReview.getReviewDrafts.invalidate();
@@ -496,7 +496,7 @@ function CommentsTab({
 				"AI Re-review"
 			);
 			attachTerminal.mutate({
-				reviewWorkspaceId: launchInfo.reviewWorkspaceId,
+				workspaceId: launchInfo.reviewWorkspaceId,
 				terminalId: tabId,
 			});
 
@@ -937,7 +937,13 @@ export function PRControlRail({ prCtx }: { prCtx: PRContext }) {
 	const matchingDraft = (() => {
 		const drafts = reviewDraftsQuery.data?.filter((d) => d.prIdentifier === prIdentifier) ?? [];
 		if (drafts.length === 0) return undefined;
-		const statusPriority: Record<string, number> = { ready: 0, "in_progress": 1, queued: 2, submitted: 3, failed: 4 };
+		const statusPriority: Record<string, number> = {
+			ready: 0,
+			in_progress: 1,
+			queued: 2,
+			submitted: 3,
+			failed: 4,
+		};
 		return drafts.sort((a, b) => {
 			const pa = statusPriority[a.status] ?? 5;
 			const pb = statusPriority[b.status] ?? 5;

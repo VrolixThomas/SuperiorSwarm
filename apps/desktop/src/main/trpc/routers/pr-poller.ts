@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { publicProcedure, router } from "../index";
 import { getCachedPRs, refreshNow } from "../../ai-review/pr-poller";
+import { publicProcedure, router } from "../index";
 
 export const prPollerRouter = router({
 	getCachedPRs: publicProcedure

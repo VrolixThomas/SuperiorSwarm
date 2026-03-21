@@ -138,12 +138,19 @@ server.tool(
 
 		if (!currentDraft?.previous_draft_id) {
 			return {
-				content: [{ type: "text", text: JSON.stringify({ comments: [], message: "No previous review round" }) }],
+				content: [
+					{
+						type: "text",
+						text: JSON.stringify({ comments: [], message: "No previous review round" }),
+					},
+				],
 			};
 		}
 
 		const previousComments = db
-			.prepare("SELECT id, file_path, line_number, side, body, status, platform_comment_id, resolution FROM draft_comments WHERE review_draft_id = ?")
+			.prepare(
+				"SELECT id, file_path, line_number, side, body, status, platform_comment_id, resolution FROM draft_comments WHERE review_draft_id = ?"
+			)
 			.all(currentDraft.previous_draft_id);
 
 		const result = previousComments.map((c) => ({
@@ -188,7 +195,17 @@ server.tool(
 		db.prepare(
 			`INSERT INTO draft_comments (id, review_draft_id, file_path, line_number, side, body, status, previous_comment_id, resolution, resolution_reason, created_at)
 			 VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, 'resolved-by-code', ?, ?)`
-		).run(id, REVIEW_DRAFT_ID, prevComment.file_path, prevComment.line_number, prevComment.side, `Resolved: ${reason}`, previous_comment_id, reason, now);
+		).run(
+			id,
+			REVIEW_DRAFT_ID,
+			prevComment.file_path,
+			prevComment.line_number,
+			prevComment.side,
+			`Resolved: ${reason}`,
+			previous_comment_id,
+			reason,
+			now
+		);
 
 		return {
 			content: [{ type: "text", text: JSON.stringify({ id, resolution: "resolved-by-code" }) }],
@@ -202,7 +219,9 @@ server.tool(
 	"Flag a previous comment that was resolved by the author but the fix appears incorrect",
 	{
 		previous_comment_id: z.string().describe("The ID of the previous comment being flagged"),
-		reason: z.string().describe("Explanation of why the author's resolution is incorrect or incomplete"),
+		reason: z
+			.string()
+			.describe("Explanation of why the author's resolution is incorrect or incomplete"),
 	},
 	async ({ previous_comment_id, reason }) => {
 		const prevComment = db
@@ -221,7 +240,17 @@ server.tool(
 		db.prepare(
 			`INSERT INTO draft_comments (id, review_draft_id, file_path, line_number, side, body, status, previous_comment_id, resolution, resolution_reason, created_at)
 			 VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, 'incorrectly-resolved', ?, ?)`
-		).run(id, REVIEW_DRAFT_ID, prevComment.file_path, prevComment.line_number, prevComment.side, `Flagged: ${reason}`, previous_comment_id, reason, now);
+		).run(
+			id,
+			REVIEW_DRAFT_ID,
+			prevComment.file_path,
+			prevComment.line_number,
+			prevComment.side,
+			`Flagged: ${reason}`,
+			previous_comment_id,
+			reason,
+			now
+		);
 
 		return {
 			content: [{ type: "text", text: JSON.stringify({ id, resolution: "incorrectly-resolved" }) }],
