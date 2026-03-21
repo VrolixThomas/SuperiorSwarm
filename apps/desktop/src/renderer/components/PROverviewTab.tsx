@@ -2,9 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { detectLanguage } from "../../shared/diff-types";
 import type {
 	AIDraftThread,
-	GitHubPRContext,
 	GitHubPRDetails,
 	GitHubReviewThread,
+	PRContext,
 	UnifiedThread,
 } from "../../shared/github-types";
 import { useTabStore } from "../stores/tab-store";
@@ -28,7 +28,7 @@ function relativeTime(dateStr: string): string {
 
 // ── PRHeader ──────────────────────────────────────────────────────────────────
 
-function PRHeader({ details, prCtx }: { details: GitHubPRDetails; prCtx: GitHubPRContext }) {
+function PRHeader({ details, prCtx }: { details: GitHubPRDetails; prCtx: PRContext }) {
 	const stateColor: Record<string, string> = {
 		OPEN: "bg-green-900/40 text-[#30d158]",
 		CLOSED: "bg-red-900/40 text-[#ff453a]",
@@ -191,7 +191,7 @@ function AICommentCard({
 	onDismiss,
 }: {
 	thread: AIDraftThread;
-	prCtx: GitHubPRContext;
+	prCtx: PRContext;
 	onAccept: (id: string) => void;
 	onDismiss: (id: string) => void;
 }) {
@@ -256,7 +256,7 @@ function GitHubThreadCard({
 	onResolve,
 }: {
 	thread: GitHubReviewThread;
-	prCtx: GitHubPRContext;
+	prCtx: PRContext;
 	onReply: (threadId: string, body: string) => void;
 	onResolve: (threadId: string) => void;
 }) {
@@ -383,7 +383,7 @@ function CommentsFeed({
 	aiThreads,
 }: {
 	details: GitHubPRDetails;
-	prCtx: GitHubPRContext;
+	prCtx: PRContext;
 	aiThreads: AIDraftThread[];
 }) {
 	const utils = trpc.useUtils();
@@ -509,7 +509,7 @@ function CommentsFeed({
 
 // ── Root: PROverviewTab ───────────────────────────────────────────────────────
 
-export function PROverviewTab({ prCtx }: { prCtx: GitHubPRContext }) {
+export function PROverviewTab({ prCtx }: { prCtx: PRContext }) {
 	const { data: details, isLoading } = trpc.github.getPRDetails.useQuery(
 		{ owner: prCtx.owner, repo: prCtx.repo, number: prCtx.number },
 		{ staleTime: 30_000 }

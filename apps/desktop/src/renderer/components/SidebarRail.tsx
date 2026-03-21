@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { Project } from "../../main/db/schema";
 import type { GitHubPR } from "../../main/github/github";
-import type { GitHubPRContext } from "../../shared/github-types";
+import type { PRContext } from "../../shared/github-types";
 import type { TicketIssue } from "../../shared/tickets";
 import { useProjectStore } from "../stores/projects";
 import { useTabStore } from "../stores/tab-store";
@@ -538,7 +538,8 @@ function RailPRsSection({ flyout, openFlyout, scheduleDismiss, onExpand }: RailS
 		const store = useTabStore.getState();
 		store.setActiveWorkspace(ws.workspaceId, ws.worktreePath);
 		if (ghPR) {
-			const prCtx: GitHubPRContext = {
+			const prCtx: PRContext = {
+				provider: "github",
 				owner: ghPR.repoOwner,
 				repo: ghPR.repoName,
 				number: ghPR.number,

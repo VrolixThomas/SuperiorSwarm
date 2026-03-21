@@ -1,6 +1,7 @@
 // apps/desktop/src/shared/github-types.ts
 
-export interface GitHubPRContext {
+export interface PRContext {
+	provider: "github" | "bitbucket";
 	owner: string;
 	repo: string;
 	number: number;

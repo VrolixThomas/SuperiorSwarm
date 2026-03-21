@@ -4,8 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import type {
 	AIDraftThread,
-	GitHubPRContext,
 	GitHubReviewThread,
+	PRContext,
 	UnifiedThread,
 } from "../../shared/github-types";
 import { useTabStore } from "../stores/tab-store";
@@ -512,7 +512,7 @@ function useGutterPlusButton(
 // ── Main component ────────────────────────────────────────────────────────────
 
 interface PRReviewFileTabProps {
-	prCtx: GitHubPRContext;
+	prCtx: PRContext;
 	filePath: string;
 	language: string;
 }
