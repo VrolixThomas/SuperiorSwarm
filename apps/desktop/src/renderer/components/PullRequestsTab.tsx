@@ -963,16 +963,19 @@ export function PullRequestsTab() {
 			workspaceIdMapRef.current.set(prIdentifier, ws.id);
 
 			const cwd = ws.worktreePath ?? repoPath;
+			// Update prCtx.repoPath to the worktree path so git queries
+			// (getCommitsAhead, getBranchDiff) run in the correct directory
+			const resolvedPrCtx = { ...prCtx, repoPath: cwd };
 			const tabStore = useTabStore.getState();
 			tabStore.setWorkspaceMetadata(ws.id, { type: "review" });
 			tabStore.setActiveWorkspace(ws.id, cwd, {
-				rightPanel: { open: true, mode: "pr-review", diffCtx: null, prCtx },
+				rightPanel: { open: true, mode: "pr-review", diffCtx: null, prCtx: resolvedPrCtx },
 			});
 
 			// Create initial PR overview tab if no tabs exist for this workspace
 			const existingTabs = tabStore.getTabsByWorkspace(ws.id);
 			if (existingTabs.length === 0) {
-				tabStore.openPROverview(ws.id, prCtx);
+				tabStore.openPROverview(ws.id, resolvedPrCtx);
 			}
 		},
 		[getOrCreateReviewMutation]
