@@ -40,9 +40,16 @@ export interface ShellAPI {
 	openExternal: (url: string) => Promise<void>;
 }
 
+export interface DaemonInspectorData {
+	daemonSessions: Array<{ id: string; cwd: string; pid: number }>;
+	liveSessions: string[];
+	callbackIds: string[];
+}
+
 export interface DaemonAPI {
 	getStatus: () => Promise<boolean>;
 	onStatus: (callback: (connected: boolean) => void) => () => void;
+	listSessions: () => Promise<DaemonInspectorData>;
 }
 
 export interface LspAPI {
