@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { DaemonInspectorData } from "../../shared/types";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
@@ -20,6 +20,8 @@ export function DaemonInspector({ onClose }: { onClose: () => void }) {
 		staleTime: 0,
 		refetchOnMount: true,
 	});
+	const dbRefetchRef = useRef(dbQuery.refetch);
+	dbRefetchRef.current = dbQuery.refetch;
 
 	const allTabs = useTabStore((s) => s.getAllTabs)();
 	const terminalTabs = allTabs.filter((t) => t.kind === "terminal");
@@ -37,17 +39,20 @@ export function DaemonInspector({ onClose }: { onClose: () => void }) {
 				error: err instanceof Error ? err.message : "Failed to query daemon",
 			});
 		}
-		dbQuery.refetch();
-	}, [dbQuery]);
+		dbRefetchRef.current();
+	}, []);
 
 	const [killing, setKilling] = useState(false);
+	const rendererTabIdsRef = useRef(rendererTabIds);
+	rendererTabIdsRef.current = rendererTabIds;
 
 	const killOrphaned = useCallback(async () => {
 		if (!state.daemon) return;
 		setKilling(true);
 		const callbackSet = new Set(state.daemon.callbackIds);
+		const currentRendererIds = rendererTabIdsRef.current;
 		const orphanIds = state.daemon.daemonSessions
-			.filter((s) => !rendererTabIds.has(s.id) && !callbackSet.has(s.id))
+			.filter((s) => !currentRendererIds.has(s.id) && !callbackSet.has(s.id))
 			.map((s) => s.id);
 		for (const id of orphanIds) {
 			try {
@@ -58,7 +63,7 @@ export function DaemonInspector({ onClose }: { onClose: () => void }) {
 		}
 		setKilling(false);
 		refresh();
-	}, [state.daemon, rendererTabIds, refresh]);
+	}, [state.daemon, refresh]);
 
 	useEffect(() => {
 		refresh();
