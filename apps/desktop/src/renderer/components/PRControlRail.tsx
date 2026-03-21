@@ -944,7 +944,7 @@ export function PRControlRail({ prCtx }: { prCtx: GitHubPRContext }) {
 	})();
 	const aiDraftQuery = trpc.aiReview.getReviewDraft.useQuery(
 		{ draftId: matchingDraft?.id ?? "" },
-		{ enabled: !!matchingDraft?.id }
+		{ enabled: !!matchingDraft?.id, refetchInterval: 5_000 }
 	);
 
 	const draftRoundNumber = aiDraftQuery.data?.roundNumber ?? 1;
