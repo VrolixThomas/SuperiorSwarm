@@ -31,6 +31,7 @@ const terminalAPI: TerminalAPI = {
 	write: (id: string, data: string) => ipcRenderer.invoke("terminal:write", id, data),
 	resize: (id: string, cols: number, rows: number) =>
 		ipcRenderer.invoke("terminal:resize", id, cols, rows),
+	detach: (id: string) => ipcRenderer.invoke("terminal:detach", id),
 	dispose: (id: string) => ipcRenderer.invoke("terminal:dispose", id),
 	onData: (id: string, callback: (data: string) => void) => dataDispatcher.add(id, callback),
 	onExit: (id: string, callback: (exitCode: number) => void) => exitDispatcher.add(id, callback),
@@ -92,6 +93,7 @@ const daemonAPI: DaemonAPI = {
 			ipcRenderer.removeListener("daemon:status", listener);
 		};
 	},
+	listSessions: () => ipcRenderer.invoke("daemon:listSessions"),
 };
 
 contextBridge.exposeInMainWorld("electron", {
