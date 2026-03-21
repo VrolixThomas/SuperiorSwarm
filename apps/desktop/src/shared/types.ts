@@ -2,6 +2,7 @@ export interface TerminalAPI {
 	create: (id: string, cwd?: string) => Promise<{ wasAttached: boolean }>;
 	write: (id: string, data: string) => Promise<void>;
 	resize: (id: string, cols: number, rows: number) => Promise<void>;
+	detach: (id: string) => Promise<void>;
 	dispose: (id: string) => Promise<void>;
 	onData: (id: string, callback: (data: string) => void) => () => void;
 	onExit: (id: string, callback: (exitCode: number) => void) => () => void;

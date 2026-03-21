@@ -183,6 +183,18 @@ export class DaemonClient {
 		this.send({ type: "resize", id, cols, rows });
 	}
 
+	/** Detach from a PTY without killing it. The PTY keeps running in the daemon. */
+	detach(id: string): void {
+		this.callbacks.delete(id);
+		// Keep id in liveSessions so re-attach works on next create call
+		try {
+			this.send({ type: "detach", id });
+		} catch {
+			// Best effort
+		}
+	}
+
+	/** Kill a PTY in the daemon. Used when the user explicitly closes a tab. */
 	dispose(id: string): void {
 		if (this.isQuitting) return;
 		this.callbacks.delete(id);

@@ -203,7 +203,7 @@ export function Terminal({
 			themeObserver.disconnect();
 			mql.removeEventListener("change", scheduleTheme);
 			if (rafId) cancelAnimationFrame(rafId);
-			api?.terminal.dispose(id);
+			api?.terminal.detach(id);
 			term.dispose();
 		};
 	}, [id]);

@@ -58,6 +58,11 @@ export function setupTerminalIPC(daemonClient: DaemonClient): void {
 		daemonClient.resize(id, cols as number, rows as number);
 	});
 
+	ipcMain.handle("terminal:detach", (_event, id: unknown) => {
+		assertNonEmptyString(id, "id");
+		daemonClient.detach(id);
+	});
+
 	ipcMain.handle("terminal:dispose", (_event, id: unknown) => {
 		assertNonEmptyString(id, "id");
 		daemonClient.dispose(id);

@@ -190,10 +190,14 @@ export function PaneTabBar({
 								paneId={pane.id}
 								onSelect={() => setActiveTabInPane(workspaceId, pane.id, tab.id)}
 								onClose={() => {
-									if (tab.kind === "terminal" && tab.workspaceId) {
-										detachMutation.mutate({
-											workspaceId: tab.workspaceId,
-										});
+									if (tab.kind === "terminal") {
+										// Kill the PTY before removing the tab
+										window.electron.terminal.dispose(tab.id);
+										if (tab.workspaceId) {
+											detachMutation.mutate({
+												workspaceId: tab.workspaceId,
+											});
+										}
 									}
 									removeTabFromPane(workspaceId, pane.id, tab.id);
 								}}
