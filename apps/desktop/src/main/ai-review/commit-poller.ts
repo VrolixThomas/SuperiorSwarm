@@ -1,3 +1,4 @@
+import { and, eq } from "drizzle-orm";
 import { getPRState as getBitbucketPRState } from "../atlassian/bitbucket";
 import { getDb } from "../db";
 import * as schema from "../db/schema";
@@ -120,7 +121,58 @@ async function pollChain(chain: WatchedChain): Promise<void> {
 
 	if (settings.autoReviewEnabled) {
 		try {
-			await queueFollowUpReview(chain.reviewChainId);
+			const db = getDb();
+			// Find workspace and worktree for this PR
+			const workspace = db
+				.select()
+				.from(schema.workspaces)
+				.where(
+					and(
+						eq(schema.workspaces.prProvider, chain.prProvider),
+						eq(schema.workspaces.prIdentifier, chain.prIdentifier),
+						eq(schema.workspaces.type, "review")
+					)
+				)
+				.get();
+			if (!workspace?.worktreeId) {
+				console.error(`[commit-poller] No workspace for ${chain.prIdentifier}`);
+				return;
+			}
+			const worktree = db
+				.select()
+				.from(schema.worktrees)
+				.where(eq(schema.worktrees.id, workspace.worktreeId))
+				.get();
+			if (!worktree?.path) {
+				console.error(`[commit-poller] No worktree for ${chain.prIdentifier}`);
+				return;
+			}
+
+			// Fetch latest changes in worktree
+			const { execSync } = await import("node:child_process");
+			const latestDraft = db
+				.select()
+				.from(schema.reviewDrafts)
+				.where(eq(schema.reviewDrafts.reviewChainId, chain.reviewChainId))
+				.all()
+				.sort((a, b) => b.roundNumber - a.roundNumber)[0];
+			if (latestDraft) {
+				try {
+					execSync("git fetch origin", { cwd: worktree.path, stdio: "pipe" });
+					execSync(`git reset --hard origin/${latestDraft.sourceBranch}`, {
+						cwd: worktree.path,
+						stdio: "pipe",
+					});
+				} catch (err) {
+					console.error("[commit-poller] Failed to update worktree:", err);
+				}
+			}
+
+			await queueFollowUpReview({
+				reviewChainId: chain.reviewChainId,
+				workspaceId: workspace.id,
+				worktreePath: worktree.path,
+			});
 		} catch (err) {
 			console.error(`[commit-poller] Auto follow-up failed for ${chain.prIdentifier}:`, err);
 		}
