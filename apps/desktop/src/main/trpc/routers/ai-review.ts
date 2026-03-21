@@ -9,6 +9,7 @@ import {
 	getSettings,
 	queueFollowUpReview,
 	queueReview,
+	validateTransition,
 } from "../../ai-review/orchestrator";
 import { publishReview } from "../../ai-review/review-publisher";
 import { getDb } from "../../db";
@@ -288,6 +289,14 @@ export const aiReviewRouter = router({
 
 	cancelReview: publicProcedure.input(z.object({ draftId: z.string() })).mutation(({ input }) => {
 		const db = getDb();
+		const draft = db
+			.select({ status: schema.reviewDrafts.status })
+			.from(schema.reviewDrafts)
+			.where(eq(schema.reviewDrafts.id, input.draftId))
+			.get();
+		if (draft) {
+			validateTransition(draft.status, "failed");
+		}
 		db.update(schema.reviewDrafts)
 			.set({ status: "failed", updatedAt: new Date() })
 			.where(eq(schema.reviewDrafts.id, input.draftId))

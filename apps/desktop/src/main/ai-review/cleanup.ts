@@ -1,7 +1,8 @@
 import { and, eq } from "drizzle-orm";
 import { getDb } from "../db";
-import { projects, worktrees, workspaces } from "../db/schema";
+import { projects, workspaces, worktrees } from "../db/schema";
 import { reviewDrafts } from "../db/schema-ai-review";
+import { validateTransition } from "./orchestrator";
 import { removeWorktree } from "../git/operations";
 
 /**
@@ -42,10 +43,22 @@ export async function cleanupReviewWorkspace(workspaceId: string): Promise<void>
 
 	// 3. Dismiss all related drafts for this PR
 	if (workspace.prProvider && workspace.prIdentifier) {
-		db.update(reviewDrafts)
-			.set({ status: "dismissed" })
+		const drafts = db
+			.select({ id: reviewDrafts.id, status: reviewDrafts.status })
+			.from(reviewDrafts)
 			.where(eq(reviewDrafts.prIdentifier, workspace.prIdentifier))
-			.run();
+			.all();
+		for (const draft of drafts) {
+			try {
+				validateTransition(draft.status, "dismissed");
+				db.update(reviewDrafts)
+					.set({ status: "dismissed" })
+					.where(eq(reviewDrafts.id, draft.id))
+					.run();
+			} catch {
+				// Skip drafts already in a terminal state that doesn't allow dismissed
+			}
+		}
 	}
 
 	// 4. Delete workspace record
@@ -59,7 +72,7 @@ export async function cleanupReviewWorkspace(workspaceId: string): Promise<void>
 export function findReviewWorkspaceByPR(
 	prProvider: string,
 	prIdentifier: string,
-	projectId?: string,
+	projectId?: string
 ): string | undefined {
 	const db = getDb();
 

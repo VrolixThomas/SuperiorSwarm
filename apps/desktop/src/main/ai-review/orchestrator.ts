@@ -29,6 +29,23 @@ interface ActiveReview {
 
 const activeReviews = new Map<string, ActiveReview>();
 
+// ─── State machine ────────────────────────────────────────────────────────────
+
+const VALID_TRANSITIONS: Record<string, string[]> = {
+	queued: ["in_progress", "failed", "dismissed"],
+	in_progress: ["ready", "failed", "dismissed"],
+	ready: ["submitted", "failed", "dismissed"],
+	submitted: ["dismissed"],
+	failed: ["queued", "dismissed"],
+};
+
+export function validateTransition(currentStatus: string, newStatus: string): void {
+	const allowed = VALID_TRANSITIONS[currentStatus];
+	if (!allowed?.includes(newStatus)) {
+		throw new Error(`Invalid draft status transition: ${currentStatus} → ${newStatus}`);
+	}
+}
+
 /** Clean up review artifacts for a completed/failed review */
 function cleanupReview(draftId: string): void {
 	// Run MCP config cleanup if tracked
@@ -237,6 +254,7 @@ async function startReview(params: {
 	if (!draft) throw new Error(`Review draft ${draftId} not found`);
 
 	// Mark as in_progress
+	validateTransition(draft.status, "in_progress");
 	db.update(schema.reviewDrafts)
 		.set({ status: "in_progress", updatedAt: now })
 		.where(eq(schema.reviewDrafts.id, draft.id))
@@ -477,6 +495,7 @@ async function startFollowUpReview(params: {
 		.get();
 	if (!draft) throw new Error(`Follow-up draft ${draftId} not found`);
 
+	validateTransition(draft.status, "in_progress");
 	db.update(schema.reviewDrafts)
 		.set({ status: "in_progress", updatedAt: now })
 		.where(eq(schema.reviewDrafts.id, draftId))
