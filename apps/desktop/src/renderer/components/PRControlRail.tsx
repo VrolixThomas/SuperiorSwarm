@@ -150,9 +150,13 @@ function ChangesTab({
 	const totalAdditions = useMemo(() => files.reduce((s, f) => s + f.additions, 0), [files]);
 	const totalDeletions = useMemo(() => files.reduce((s, f) => s + f.deletions, 0), [files]);
 
-	// Commits query
+	// Commits query — use origin/<baseBranch> because worktrees may not have
+	// a local tracking branch for the target (e.g. no local "main", only "origin/main")
+	const commitsBaseBranch = baseBranch.startsWith("origin/")
+		? baseBranch
+		: `origin/${baseBranch}`;
 	const commitsQuery = trpc.diff.getCommitsAhead.useQuery(
-		{ repoPath: prCtx.repoPath, baseBranch },
+		{ repoPath: prCtx.repoPath, baseBranch: commitsBaseBranch },
 		{ staleTime: 30_000, enabled: !!prCtx.repoPath }
 	);
 	const commits = commitsQuery.data ?? [];
@@ -486,7 +490,17 @@ function CommentsTab({
 
 			const tabStore = useTabStore.getState();
 
-			// Switch to the review workspace
+			// Set workspace metadata BEFORE activating so type-aware activation works
+			tabStore.setWorkspaceMetadata(launchInfo.reviewWorkspaceId, {
+				type: "review",
+				prProvider: prCtx.provider,
+				prIdentifier: `${prCtx.owner}/${prCtx.repo}#${prCtx.number}`,
+				prTitle: prCtx.title,
+				sourceBranch: prCtx.sourceBranch,
+				targetBranch: prCtx.targetBranch,
+			});
+
+			// Switch to the review workspace — auto-sets PR panel mode
 			tabStore.setActiveWorkspace(launchInfo.reviewWorkspaceId, launchInfo.worktreePath);
 
 			// Create a fresh terminal tab and run the launch script
