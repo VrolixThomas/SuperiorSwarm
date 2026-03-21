@@ -1,6 +1,8 @@
+import { eq } from "drizzle-orm";
 import { getPRState as getBitbucketPRState } from "../atlassian/bitbucket";
 import { getDb } from "../db";
 import * as schema from "../db/schema";
+import { removeWorktree } from "../git/operations";
 import { getPRState as getGitHubPRState } from "../github/github";
 import { getSettings, queueFollowUpReview } from "./orchestrator";
 
@@ -101,7 +103,8 @@ async function pollChain(chain: WatchedChain): Promise<void> {
 	}
 
 	if (prState === "merged" || prState === "closed") {
-		console.log(`[commit-poller] PR ${chain.prIdentifier} is ${prState}, stopping watch`);
+		console.log(`[commit-poller] PR ${chain.prIdentifier} is ${prState}, cleaning up`);
+		await cleanupChainWorktree(chain.prIdentifier);
 		return;
 	}
 
@@ -127,6 +130,47 @@ async function pollChain(chain: WatchedChain): Promise<void> {
 			newSha: headSha,
 		});
 	}
+}
+
+async function cleanupChainWorktree(prIdentifier: string): Promise<void> {
+	const db = getDb();
+
+	const workspace = db
+		.select()
+		.from(schema.reviewWorkspaces)
+		.where(eq(schema.reviewWorkspaces.prIdentifier, prIdentifier))
+		.get();
+
+	if (!workspace?.worktreeId) return;
+
+	const worktree = db
+		.select()
+		.from(schema.worktrees)
+		.where(eq(schema.worktrees.id, workspace.worktreeId))
+		.get();
+
+	if (worktree?.path) {
+		const project = db
+			.select()
+			.from(schema.projects)
+			.where(eq(schema.projects.id, workspace.projectId))
+			.get();
+
+		if (project) {
+			try {
+				await removeWorktree(project.repoPath, worktree.path);
+			} catch (err) {
+				console.error("[commit-poller] Failed to remove worktree:", err);
+			}
+		}
+
+		db.delete(schema.worktrees).where(eq(schema.worktrees.id, workspace.worktreeId)).run();
+	}
+
+	db.update(schema.reviewWorkspaces)
+		.set({ worktreeId: null, updatedAt: new Date() })
+		.where(eq(schema.reviewWorkspaces.id, workspace.id))
+		.run();
 }
 
 export function onNewCommits(handler: NewCommitsHandler): void {
