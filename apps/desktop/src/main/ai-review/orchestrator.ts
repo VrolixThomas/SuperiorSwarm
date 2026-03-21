@@ -303,6 +303,23 @@ export async function queueReview(prData: {
 	repoPath: string;
 	projectId: string;
 }): Promise<ReviewLaunchInfo> {
+	const db = getDb();
+
+	// Guard: reject if there's already an in_progress or queued review for this PR
+	const activeForPR = db
+		.select()
+		.from(schema.reviewDrafts)
+		.where(
+			and(
+				eq(schema.reviewDrafts.prIdentifier, prData.identifier),
+				inArray(schema.reviewDrafts.status, ["in_progress", "queued"])
+			)
+		)
+		.get();
+	if (activeForPR) {
+		throw new Error("A review is already in progress for this PR");
+	}
+
 	if (!prData.repoPath) {
 		throw new Error(
 			"Cannot start review: this PR's repository is not tracked in BranchFlux. " +
@@ -310,7 +327,6 @@ export async function queueReview(prData: {
 		);
 	}
 
-	const db = getDb();
 	const id = randomUUID();
 	const now = new Date();
 
@@ -512,6 +528,21 @@ function parsePrIdentifier(identifier: string): {
 /** Queue a follow-up review for an existing review chain */
 export async function queueFollowUpReview(reviewChainId: string): Promise<ReviewLaunchInfo> {
 	const db = getDb();
+
+	// Guard: reject if there's already an in_progress or queued review for this chain
+	const activeInChain = db
+		.select()
+		.from(schema.reviewDrafts)
+		.where(
+			and(
+				eq(schema.reviewDrafts.reviewChainId, reviewChainId),
+				inArray(schema.reviewDrafts.status, ["in_progress", "queued"])
+			)
+		)
+		.get();
+	if (activeInChain) {
+		throw new Error("A review is already in progress for this PR");
+	}
 
 	// Find the latest draft in this chain
 	// Try finding by reviewChainId first, fall back to draft ID for pre-migration drafts
