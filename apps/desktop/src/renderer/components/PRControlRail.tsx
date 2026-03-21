@@ -498,8 +498,8 @@ function CommentsTab({
 			});
 
 			setTimeout(() => {
-				window.electron.terminal.write(tabId, `bash '${launchInfo.launchScript}'\n`);
-			}, 500);
+				window.electron.terminal.write(tabId, `bash '${launchInfo.launchScript}'\r`);
+			}, 1000);
 		},
 		onError: (err) => {
 			console.error("[ai-review] Follow-up review failed:", err);

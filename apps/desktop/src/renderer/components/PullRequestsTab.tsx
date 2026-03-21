@@ -109,6 +109,7 @@ function AIReviewBadge({
 	store,
 	triggerReview,
 	dismissReview,
+	cancelReview,
 }: {
 	pr: MergedPR;
 	identifier: string;
@@ -127,6 +128,7 @@ function AIReviewBadge({
 	store: ReturnType<typeof useTabStore>;
 	triggerReview: (args: Record<string, string>, prCtx?: GitHubPRContext) => void;
 	dismissReview: { mutate: (args: { draftId: string }) => void };
+	cancelReview: { mutate: (args: { draftId: string }) => void };
 }) {
 	const draft = getReviewStatus(identifier);
 
@@ -160,10 +162,18 @@ function AIReviewBadge({
 	}
 	if (draft?.status === "in_progress") {
 		return (
-			<span className="flex shrink-0 items-center gap-1 rounded-[4px] bg-[rgba(255,214,10,0.15)] px-1.5 py-0.5 text-[10px] font-medium text-[#ffd60a]">
-				<span className="inline-block size-1.5 animate-pulse rounded-full bg-[#ffd60a]" />
+			<button
+				type="button"
+				className="flex shrink-0 cursor-pointer items-center gap-1 rounded-[4px] border-none bg-[rgba(255,214,10,0.15)] px-1.5 py-0.5 text-[10px] font-medium text-[#ffd60a] transition-colors hover:bg-[rgba(255,69,58,0.15)] hover:text-[#ff453a]"
+				onClick={(e) => {
+					e.stopPropagation();
+					cancelReview.mutate({ draftId: draft.id });
+				}}
+				title="Click to cancel review"
+			>
+				<span className="inline-block size-1.5 animate-pulse rounded-full bg-current" />
 				AI...
-			</span>
+			</button>
 		);
 	}
 	if (draft?.status === "queued") {
@@ -260,6 +270,7 @@ function RichPRItem({
 	store,
 	triggerReview,
 	dismissReview,
+	cancelReview,
 	onClick,
 	onContextMenu,
 }: {
@@ -284,6 +295,7 @@ function RichPRItem({
 	store: ReturnType<typeof useTabStore>;
 	triggerReview: (args: Record<string, string>, prCtx?: GitHubPRContext) => void;
 	dismissReview: { mutate: (args: { draftId: string }) => void };
+	cancelReview: { mutate: (args: { draftId: string }) => void };
 	onClick: (e: React.MouseEvent) => void;
 	onContextMenu?: (e: React.MouseEvent) => void;
 }) {
@@ -439,6 +451,7 @@ function RichPRItem({
 					store={store}
 					triggerReview={triggerReview}
 					dismissReview={dismissReview}
+					cancelReview={cancelReview}
 				/>
 			</div>
 		</button>
@@ -561,6 +574,10 @@ export function PullRequestsTab() {
 	);
 
 	const dismissReview = trpc.aiReview.dismissReview.useMutation({
+		onSuccess: () => reviewDrafts.refetch(),
+	});
+
+	const cancelReview = trpc.aiReview.cancelReview.useMutation({
 		onSuccess: () => reviewDrafts.refetch(),
 	});
 
@@ -1114,6 +1131,7 @@ export function PullRequestsTab() {
 												store={store}
 												triggerReview={triggerReviewWithCtx}
 												dismissReview={dismissReview}
+												cancelReview={cancelReview}
 												onClick={(e) => handlePRClick(pr, e)}
 												onContextMenu={handleContextMenu}
 											/>

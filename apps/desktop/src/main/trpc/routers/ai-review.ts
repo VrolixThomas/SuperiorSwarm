@@ -184,6 +184,15 @@ export const aiReviewRouter = router({
 			return result;
 		}),
 
+	cancelReview: publicProcedure.input(z.object({ draftId: z.string() })).mutation(({ input }) => {
+		const db = getDb();
+		db.update(schema.reviewDrafts)
+			.set({ status: "failed", updatedAt: new Date() })
+			.where(eq(schema.reviewDrafts.id, input.draftId))
+			.run();
+		return { success: true };
+	}),
+
 	dismissReview: publicProcedure.input(z.object({ draftId: z.string() })).mutation(({ input }) => {
 		const db = getDb();
 		db.update(schema.reviewDrafts)
