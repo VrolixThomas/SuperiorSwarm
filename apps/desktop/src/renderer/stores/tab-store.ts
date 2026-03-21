@@ -155,11 +155,14 @@ interface TabStore {
 
 // ─── ID generation ───────────────────────────────────────────────────────────
 
-let terminalCounter = 0;
+let terminalDisplayCounter = 0;
 let fileTabCounter = 0;
 
 function nextTerminalId(): string {
-	return `terminal-${++terminalCounter}`;
+	return `terminal-${crypto.randomUUID()}`;
+}
+function nextTerminalTitle(): string {
+	return `Terminal ${++terminalDisplayCounter}`;
 }
 function nextFileTabId(): string {
 	return `file-tab-${++fileTabCounter}`;
@@ -394,7 +397,7 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 
 	addTerminalTab: (workspaceId, cwd, title) => {
 		const id = nextTerminalId();
-		const tabTitle = title ?? `Terminal ${terminalCounter}`;
+		const tabTitle = title ?? nextTerminalTitle();
 		const tab: TabItem = { kind: "terminal", id, workspaceId, title: tabTitle, cwd };
 		ps().ensureLayout(workspaceId);
 		const focused = resolveFocusedPane(workspaceId);
@@ -641,12 +644,6 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 	getBaseBranch: (workspaceId) => get().baseBranchByWorkspace[workspaceId],
 
 	hydrate: (sessions, activeTab, activeWs, activeCwd, extraState) => {
-		const maxId = sessions.reduce((max, s) => {
-			const match = s.id.match(/^terminal-(\d+)$/);
-			return match ? Math.max(max, Number(match[1])) : max;
-		}, 0);
-		terminalCounter = maxId;
-
 		let baseBranchByWorkspace: Record<string, string> = {};
 		if (extraState?.["baseBranchByWorkspace"]) {
 			try {
