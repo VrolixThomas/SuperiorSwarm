@@ -67,6 +67,13 @@ export function setupTerminalIPC(daemonClient: DaemonClient): void {
 		return daemonClient.isConnected;
 	});
 
+	ipcMain.handle("daemon:listSessions", async () => {
+		const daemonSessions = await daemonClient.listSessions();
+		const liveSessions = Array.from(daemonClient.getLiveSessions());
+		const callbackIds = daemonClient.getCallbackIds();
+		return { daemonSessions, liveSessions, callbackIds };
+	});
+
 	daemonClient.setConnectionStatusCallback((connected: boolean) => {
 		for (const win of BrowserWindow.getAllWindows()) {
 			if (!win.isDestroyed()) {
