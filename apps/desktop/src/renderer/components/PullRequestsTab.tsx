@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { BitbucketPullRequest } from "../../main/atlassian/bitbucket";
 import type { GitHubPR } from "../../main/github/github";
-import type { PRContext, GitHubPREnriched, GitHubReviewer } from "../../shared/github-types";
+import type { GitHubPREnriched, GitHubReviewer, PRContext } from "../../shared/github-types";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import { CreateWorktreeFromPRModal } from "./CreateWorktreeFromPRModal";
@@ -110,6 +110,7 @@ function AIReviewBadge({
 	triggerReview,
 	dismissReview,
 	cancelReview,
+	getWorkspaceId,
 }: {
 	pr: MergedPR;
 	identifier: string;
@@ -125,10 +126,23 @@ function AIReviewBadge({
 				defaultBranch: string;
 		  }>
 		| undefined;
-	store: ReturnType<typeof useTabStore>;
-	triggerReview: (args: Record<string, string>, prCtx?: PRContext) => void;
-	dismissReview: { mutate: (args: { draftId: string }) => void };
+	store: ReturnType<typeof useTabStore.getState>;
+	triggerReview: (
+		args: {
+			provider: "github" | "bitbucket";
+			identifier: string;
+			title: string;
+			author: string;
+			sourceBranch: string;
+			targetBranch: string;
+			repoPath: string;
+			projectId: string;
+		},
+		prCtx?: PRContext
+	) => void;
+	dismissReview: { mutate: (args: { workspaceId: string }) => void };
 	cancelReview: { mutate: (args: { draftId: string }) => void };
+	getWorkspaceId: (prIdentifier: string) => string | undefined;
 }) {
 	const draft = getReviewStatus(identifier);
 
@@ -145,6 +159,7 @@ function AIReviewBadge({
 								p.githubOwner === pr.githubPR!.repoOwner && p.githubRepo === pr.githubPR!.repoName
 						);
 						store.openPRReviewPanel(store.activeWorkspaceId ?? "", {
+							provider: "github",
 							owner: pr.githubPR.repoOwner,
 							repo: pr.githubPR.repoName,
 							number: pr.githubPR.number,
@@ -190,7 +205,8 @@ function AIReviewBadge({
 				className="shrink-0 cursor-pointer rounded-[4px] border-none bg-[rgba(255,69,58,0.15)] px-1.5 py-0.5 text-[10px] font-medium text-[#ff453a] transition-colors hover:bg-[rgba(255,69,58,0.25)]"
 				onClick={(e) => {
 					e.stopPropagation();
-					dismissReview.mutate({ draftId: draft.id });
+					const wsId = getWorkspaceId(identifier);
+					if (wsId) dismissReview.mutate({ workspaceId: wsId });
 				}}
 			>
 				Failed
@@ -272,6 +288,7 @@ function RichPRItem({
 	triggerReview,
 	dismissReview,
 	cancelReview,
+	getWorkspaceId,
 	onClick,
 	onContextMenu,
 }: {
@@ -293,10 +310,23 @@ function RichPRItem({
 				defaultBranch: string;
 		  }>
 		| undefined;
-	store: ReturnType<typeof useTabStore>;
-	triggerReview: (args: Record<string, string>, prCtx?: PRContext) => void;
-	dismissReview: { mutate: (args: { draftId: string }) => void };
+	store: ReturnType<typeof useTabStore.getState>;
+	triggerReview: (
+		args: {
+			provider: "github" | "bitbucket";
+			identifier: string;
+			title: string;
+			author: string;
+			sourceBranch: string;
+			targetBranch: string;
+			repoPath: string;
+			projectId: string;
+		},
+		prCtx?: PRContext
+	) => void;
+	dismissReview: { mutate: (args: { workspaceId: string }) => void };
 	cancelReview: { mutate: (args: { draftId: string }) => void };
+	getWorkspaceId: (prIdentifier: string) => string | undefined;
 	onClick: (e: React.MouseEvent) => void;
 	onContextMenu?: (e: React.MouseEvent) => void;
 }) {
@@ -453,6 +483,7 @@ function RichPRItem({
 					triggerReview={triggerReview}
 					dismissReview={dismissReview}
 					cancelReview={cancelReview}
+					getWorkspaceId={getWorkspaceId}
 				/>
 			</div>
 		</button>
@@ -513,24 +544,37 @@ export function PullRequestsTab() {
 		staleTime: 3_000,
 		refetchInterval: 5_000,
 	});
-	const attachTerminalMut = trpc.reviewWorkspaces.attachTerminal.useMutation();
-	const attachTerminalRef2 = useRef(attachTerminalMut.mutate);
-	attachTerminalRef2.current = attachTerminalMut.mutate;
+
+	// ── PR poller cache (backend-driven list) ─────────────────────────────────
+	// Fetched here to warm the TanStack Query cache; the Sidebar badge reads it separately.
+	trpc.prPoller.getCachedPRs.useQuery(undefined, {
+		staleTime: 10_000,
+		refetchInterval: 30_000,
+	});
 
 	const [reviewError, setReviewError] = useState<string | null>(null);
 	// Store PR context for the pending triggerReview call so onSuccess can use it
 	const pendingReviewCtxRef = useRef<PRContext | null>(null);
+	// Local map of prIdentifier → workspaceId, populated when workspaces are created
+	const workspaceIdMapRef = useRef<Map<string, string>>(new Map());
+
 	const triggerReview = trpc.aiReview.triggerReview.useMutation({
 		onSuccess: (launchInfo) => {
 			setReviewError(null);
 			reviewDrafts.refetch();
-			allReviewWorkspacesQuery.refetch();
 
 			if (!launchInfo.reviewWorkspaceId || !launchInfo.worktreePath) return;
 
-			const tabStore = useTabStore.getState();
+			// Track workspace ID for dismiss/cleanup lookups
 			const prCtx = pendingReviewCtxRef.current;
+			if (prCtx) {
+				const identifier = `${prCtx.owner}/${prCtx.repo}#${prCtx.number}`;
+				workspaceIdMapRef.current.set(identifier, launchInfo.reviewWorkspaceId);
+			}
 
+			const tabStore = useTabStore.getState();
+
+			tabStore.setWorkspaceMetadata(launchInfo.reviewWorkspaceId, { type: "review" });
 			tabStore.setActiveWorkspace(launchInfo.reviewWorkspaceId, launchInfo.worktreePath, {
 				rightPanel: prCtx
 					? { open: true, mode: "pr-review", diffCtx: null, prCtx }
@@ -548,8 +592,8 @@ export function PullRequestsTab() {
 				launchInfo.worktreePath,
 				"AI Review"
 			);
-			attachTerminalRef2.current({
-				reviewWorkspaceId: launchInfo.reviewWorkspaceId,
+			attachTerminalRef.current({
+				workspaceId: launchInfo.reviewWorkspaceId,
 				terminalId: tabId,
 			});
 
@@ -567,7 +611,19 @@ export function PullRequestsTab() {
 	});
 
 	const triggerReviewWithCtx = useCallback(
-		(args: Record<string, string>, prCtx?: PRContext) => {
+		(
+			args: {
+				provider: "github" | "bitbucket";
+				identifier: string;
+				title: string;
+				author: string;
+				sourceBranch: string;
+				targetBranch: string;
+				repoPath: string;
+				projectId: string;
+			},
+			prCtx?: PRContext
+		) => {
 			pendingReviewCtxRef.current = prCtx ?? null;
 			triggerReview.mutate(args);
 		},
@@ -614,26 +670,21 @@ export function PullRequestsTab() {
 		return map;
 	}, [enrichmentQuery.data]);
 
-	// ── getOrCreate mutation (Change 2) ──────────────────────────────────────
+	// ── getOrCreateReview mutation ────────────────────────────────────────────
 
-	const getOrCreateMutation = trpc.reviewWorkspaces.getOrCreate.useMutation();
-	const createWorktreeMutation = trpc.reviewWorkspaces.createWorktree.useMutation();
+	const getOrCreateReviewMutation = trpc.workspaces.getOrCreateReview.useMutation();
 
-	// ── Cleanup mutation + all review workspaces ──────────────────────────────
+	// ── Cleanup mutation ──────────────────────────────────────────────────────
 
-	const removeWorktreeMutation = trpc.reviewWorkspaces.removeWorktree.useMutation();
-	const allReviewWorkspacesQuery = trpc.reviewWorkspaces.listAll.useQuery(undefined, {
-		staleTime: 30_000,
-	});
-	const allReviewWorkspaces = allReviewWorkspacesQuery.data;
+	const cleanupReviewMutation = trpc.workspaces.cleanupReviewWorkspace.useMutation();
 
 	// ── PR state tracking for auto-cleanup on merge/close ──────────────────────
 	// (prevPRStatesRef declared here; the effect that reads `grouped` is placed
 	//  after the `grouped` useMemo, below the auto-trigger effect)
 
 	const prevPRStatesRef = useRef<Map<string, string>>(new Map());
-	const removeWorktreeMutateRef = useRef(removeWorktreeMutation.mutate);
-	removeWorktreeMutateRef.current = removeWorktreeMutation.mutate;
+	const cleanupReviewMutateRef = useRef(cleanupReviewMutation.mutate);
+	cleanupReviewMutateRef.current = cleanupReviewMutation.mutate;
 
 	// ── Auto-trigger effect ──────────────────────────────────────────────────
 
@@ -664,6 +715,7 @@ export function PullRequestsTab() {
 					projectId: project.id,
 				},
 				{
+					provider: "github",
 					owner: pr.repoOwner,
 					repo: pr.repoName,
 					number: pr.number,
@@ -812,8 +864,6 @@ export function PullRequestsTab() {
 	// ── PR state tracking effect (auto-cleanup on merge/close) ────────────────
 
 	useEffect(() => {
-		if (!allReviewWorkspaces) return;
-
 		// Build current state map: prIdentifier → normalized state
 		// Inline identifier logic to avoid adding getPrIdentifier to deps
 		const currentStates = new Map<string, string>();
@@ -831,26 +881,22 @@ export function PullRequestsTab() {
 			}
 		}
 
-		// Detect transitions from open → merged/closed
+		// Detect transitions from open → merged/closed; clean up known workspaces
 		for (const [identifier, prevState] of prevPRStatesRef.current) {
 			const newState = currentStates.get(identifier);
 			const wasOpen = prevState === "open";
 			const isNowClosed = newState === "closed" || newState === "merged" || newState === undefined;
 			if (wasOpen && isNowClosed) {
-				const reviewWorkspace = allReviewWorkspaces.find(
-					(rw) => rw.prIdentifier === identifier && rw.worktreeId !== null
-				);
-				if (reviewWorkspace) {
-					removeWorktreeMutateRef.current({
-						reviewWorkspaceId: reviewWorkspace.id,
-						force: true,
-					});
+				const workspaceId = workspaceIdMapRef.current.get(identifier);
+				if (workspaceId) {
+					cleanupReviewMutateRef.current({ workspaceId });
+					workspaceIdMapRef.current.delete(identifier);
 				}
 			}
 		}
 
 		prevPRStatesRef.current = currentStates;
-	}, [grouped, allReviewWorkspaces]);
+	}, [grouped]);
 
 	// ── Navigation ────────────────────────────────────────────────────────────
 
@@ -884,7 +930,7 @@ export function PullRequestsTab() {
 		}
 	}, []);
 
-	// ── Click handler for opening PR workspace (Change 3) ────────────────────
+	// ── Click handler for opening PR workspace ───────────────────────────────
 
 	const openPRWorkspace = useCallback(
 		async (
@@ -894,49 +940,33 @@ export function PullRequestsTab() {
 			repoPath: string,
 			prCtx: PRContext
 		) => {
-			const rw = await getOrCreateMutation.mutateAsync({
+			// getOrCreateReview creates workspace + worktree atomically
+			const ws = await getOrCreateReviewMutation.mutateAsync({
 				projectId,
 				prProvider,
 				prIdentifier,
+				prTitle: prCtx.title,
+				sourceBranch: prCtx.sourceBranch,
+				targetBranch: prCtx.targetBranch,
 			});
 
-			// Resolve worktree path: check existing data, or create a new worktree
-			let resolvedWorktreePath: string | null = null;
+			// Track workspace ID for dismiss/cleanup lookups
+			workspaceIdMapRef.current.set(prIdentifier, ws.id);
 
-			// Check if worktree already exists (e.g., from a prior AI review)
-			const existingRw = allReviewWorkspaces?.find(
-				(w) => w.prIdentifier === prIdentifier && w.worktreePath
-			);
-			if (existingRw?.worktreePath) {
-				resolvedWorktreePath = existingRw.worktreePath;
-			} else if (!rw.worktreeId) {
-				// No worktree exists — create one
-				try {
-					const result = await createWorktreeMutation.mutateAsync({
-						reviewWorkspaceId: rw.id,
-						sourceBranch: prCtx.sourceBranch,
-						targetBranch: prCtx.targetBranch,
-					});
-					resolvedWorktreePath = result.worktreePath;
-					allReviewWorkspacesQuery.refetch();
-				} catch (err) {
-					console.error("[pr-workspace] Failed to create worktree:", err);
-				}
-			}
-
-			const cwd = resolvedWorktreePath ?? repoPath;
+			const cwd = ws.worktreePath ?? repoPath;
 			const tabStore = useTabStore.getState();
-			tabStore.setActiveWorkspace(rw.id, cwd, {
+			tabStore.setWorkspaceMetadata(ws.id, { type: "review" });
+			tabStore.setActiveWorkspace(ws.id, cwd, {
 				rightPanel: { open: true, mode: "pr-review", diffCtx: null, prCtx },
 			});
 
 			// Create initial PR overview tab if no tabs exist for this workspace
-			const existingTabs = tabStore.getTabsByWorkspace(rw.id);
+			const existingTabs = tabStore.getTabsByWorkspace(ws.id);
 			if (existingTabs.length === 0) {
-				tabStore.openPROverview(rw.id, prCtx);
+				tabStore.openPROverview(ws.id, prCtx);
 			}
 		},
-		[getOrCreateMutation, createWorktreeMutation, allReviewWorkspaces, allReviewWorkspacesQuery]
+		[getOrCreateReviewMutation]
 	);
 
 	const handleGitHubLink = useCallback(
@@ -1101,10 +1131,8 @@ export function PullRequestsTab() {
 											enrichmentQuery.isLoading;
 										const lastReviewCommitSha = getReviewStatus(identifier)?.commitSha ?? null;
 
-										const reviewWorkspace = allReviewWorkspaces?.find(
-											(rw) => rw.prIdentifier === identifier && rw.worktreeId !== null
-										);
-										const handleContextMenu = reviewWorkspace
+										const knownWorkspaceId = workspaceIdMapRef.current.get(identifier);
+										const handleContextMenu = knownWorkspaceId
 											? (e: React.MouseEvent) => {
 													e.preventDefault();
 													if (
@@ -1112,10 +1140,8 @@ export function PullRequestsTab() {
 															"Remove the review worktree? This will delete local files."
 														)
 													) {
-														removeWorktreeMutation.mutate({
-															reviewWorkspaceId: reviewWorkspace.id,
-															force: true,
-														});
+														cleanupReviewMutation.mutate({ workspaceId: knownWorkspaceId });
+														workspaceIdMapRef.current.delete(identifier);
 													}
 												}
 											: undefined;
@@ -1135,6 +1161,7 @@ export function PullRequestsTab() {
 												triggerReview={triggerReviewWithCtx}
 												dismissReview={dismissReview}
 												cancelReview={cancelReview}
+												getWorkspaceId={(id) => workspaceIdMapRef.current.get(id)}
 												onClick={(e) => handlePRClick(pr, e)}
 												onContextMenu={handleContextMenu}
 											/>

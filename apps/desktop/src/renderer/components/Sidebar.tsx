@@ -26,6 +26,13 @@ export function Sidebar({ collapsed, onExpand }: SidebarProps) {
 		(d) => d.status === "ready" || d.status === "failed"
 	);
 
+	// Check if there are new PRs from the backend poller
+	const cachedPRs = trpc.prPoller.getCachedPRs.useQuery(undefined, {
+		staleTime: 10_000,
+		refetchInterval: 30_000,
+	});
+	const hasNewPRs = (cachedPRs.data?.length ?? 0) > 0;
+
 	const handleExpand = (section?: "tickets" | "prs") => {
 		onExpand(section);
 		if (section === "tickets") {
@@ -70,7 +77,7 @@ export function Sidebar({ collapsed, onExpand }: SidebarProps) {
 								}`}
 							>
 								{seg === "prs" ? "PRs" : seg.charAt(0).toUpperCase() + seg.slice(1)}
-								{seg === "prs" && hasAINotification && segment !== "prs" && (
+								{seg === "prs" && (hasAINotification || hasNewPRs) && segment !== "prs" && (
 									<span className="absolute right-1.5 top-1 h-1.5 w-1.5 rounded-full bg-[#30d158]" />
 								)}
 							</button>
