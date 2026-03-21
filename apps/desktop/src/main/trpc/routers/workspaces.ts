@@ -4,6 +4,7 @@ import { nanoid } from "nanoid";
 import { z } from "zod";
 import { getDb } from "../../db";
 import { githubBranchPrs, projects, sharedFiles, workspaces, worktrees } from "../../db/schema";
+import { reviewDrafts } from "../../db/schema-ai-review";
 import {
 	checkoutBranchWorktree,
 	createWorktree,
@@ -30,12 +31,18 @@ export const workspacesRouter = router({
 				name: workspaces.name,
 				worktreeId: workspaces.worktreeId,
 				terminalId: workspaces.terminalId,
+				prProvider: workspaces.prProvider,
+				prIdentifier: workspaces.prIdentifier,
+				reviewDraftId: workspaces.reviewDraftId,
 				createdAt: workspaces.createdAt,
 				updatedAt: workspaces.updatedAt,
 				worktreePath: worktrees.path,
+				draftStatus: reviewDrafts.status,
+				draftCommitSha: reviewDrafts.commitSha,
 			})
 			.from(workspaces)
 			.leftJoin(worktrees, eq(workspaces.worktreeId, worktrees.id))
+			.leftJoin(reviewDrafts, eq(workspaces.reviewDraftId, reviewDrafts.id))
 			.where(eq(workspaces.projectId, input.projectId))
 			.all();
 	}),
@@ -307,5 +314,127 @@ export const workspacesRouter = router({
 				.set({ terminalId: null, updatedAt: new Date() })
 				.where(eq(workspaces.id, input.workspaceId))
 				.run();
+		}),
+
+	getOrCreateReview: publicProcedure
+		.input(
+			z.object({
+				projectId: z.string(),
+				prProvider: z.enum(["github", "bitbucket"]),
+				prIdentifier: z.string(),
+				prTitle: z.string(),
+				sourceBranch: z.string(),
+				targetBranch: z.string(),
+			})
+		)
+		.mutation(async ({ input }) => {
+			const db = getDb();
+
+			// 1. Check for existing review workspace
+			let workspace = db
+				.select()
+				.from(workspaces)
+				.where(
+					and(
+						eq(workspaces.projectId, input.projectId),
+						eq(workspaces.prProvider, input.prProvider),
+						eq(workspaces.prIdentifier, input.prIdentifier)
+					)
+				)
+				.get();
+
+			// 2. Create if not exists
+			if (!workspace) {
+				const id = nanoid();
+				const now = new Date();
+				const name = `PR #${input.prIdentifier.split("#")[1]}: ${input.prTitle}`;
+				db.insert(workspaces)
+					.values({
+						id,
+						projectId: input.projectId,
+						name,
+						type: "review",
+						prProvider: input.prProvider,
+						prIdentifier: input.prIdentifier,
+						createdAt: now,
+						updatedAt: now,
+					})
+					.run();
+				workspace = db.select().from(workspaces).where(eq(workspaces.id, id)).get()!;
+			}
+
+			// 3. Ensure worktree exists
+			const project = db.select().from(projects).where(eq(projects.id, input.projectId)).get();
+			if (!project) throw new Error("Project not found");
+
+			if (!workspace.worktreeId) {
+				// Compute worktree path
+				const sanitizedId = input.prIdentifier.replace(/[^a-zA-Z0-9-]/g, "-");
+				const wtPath = join(worktreeBasePath(project.repoPath), `pr-review-${sanitizedId}`);
+
+				// Clean up stale worktree at same path if it exists
+				const { existsSync, rmSync } = await import("node:fs");
+				if (existsSync(wtPath)) {
+					try {
+						await removeWorktree(project.repoPath, wtPath);
+					} catch {
+						rmSync(wtPath, { recursive: true, force: true });
+						const { default: simpleGit } = await import("simple-git");
+						await simpleGit(project.repoPath)
+							.raw(["worktree", "prune"])
+							.catch(() => {});
+					}
+				}
+
+				await checkoutBranchWorktree(project.repoPath, wtPath, input.sourceBranch);
+
+				const now = new Date();
+				const worktreeId = nanoid();
+				db.insert(worktrees)
+					.values({
+						id: worktreeId,
+						projectId: input.projectId,
+						path: wtPath,
+						branch: input.sourceBranch,
+						baseBranch: input.targetBranch,
+						createdAt: now,
+						updatedAt: now,
+					})
+					.run();
+
+				db.update(workspaces)
+					.set({ worktreeId, updatedAt: now })
+					.where(eq(workspaces.id, workspace.id))
+					.run();
+
+				workspace = db.select().from(workspaces).where(eq(workspaces.id, workspace.id)).get()!;
+			} else {
+				// Worktree exists — update to latest
+				const worktree = db
+					.select()
+					.from(worktrees)
+					.where(eq(worktrees.id, workspace.worktreeId))
+					.get();
+				if (worktree?.path) {
+					const { default: simpleGit } = await import("simple-git");
+					const git = simpleGit(worktree.path);
+					await git.fetch("origin");
+					await git.reset(["--hard", `origin/${input.sourceBranch}`]);
+				}
+			}
+
+			// 4. Return workspace with worktree path
+			const worktree = workspace.worktreeId
+				? db.select().from(worktrees).where(eq(worktrees.id, workspace.worktreeId)).get()
+				: null;
+
+			return { ...workspace, worktreePath: worktree?.path ?? null };
+		}),
+
+	cleanupReviewWorkspace: publicProcedure
+		.input(z.object({ workspaceId: z.string() }))
+		.mutation(async ({ input }) => {
+			const { cleanupReviewWorkspace } = await import("../../ai-review/cleanup");
+			await cleanupReviewWorkspace(input.workspaceId);
 		}),
 });
