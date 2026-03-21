@@ -603,6 +603,34 @@ export async function unresolveThread(threadId: string): Promise<void> {
 	await githubGraphQL<unknown>(mutation, { threadId });
 }
 
+export interface PRFileInfo {
+	path: string;
+	status: "added" | "modified" | "removed" | "renamed";
+	previousPath?: string;
+}
+
+/** Get PR files with rename detection via REST API */
+export async function getPRFiles(
+	owner: string,
+	repo: string,
+	prNumber: number
+): Promise<PRFileInfo[]> {
+	const res = await githubFetch(
+		`/repos/${owner}/${repo}/pulls/${prNumber}/files?per_page=100`
+	);
+	if (!res.ok) throw new Error(`GitHub get PR files failed: ${res.status}`);
+	const data = (await res.json()) as Array<{
+		filename: string;
+		status: string;
+		previous_filename?: string;
+	}>;
+	return data.map((f) => ({
+		path: f.filename,
+		status: f.status as PRFileInfo["status"],
+		previousPath: f.previous_filename,
+	}));
+}
+
 export async function getPRState(
 	owner: string,
 	repo: string,
