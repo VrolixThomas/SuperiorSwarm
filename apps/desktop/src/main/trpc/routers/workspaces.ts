@@ -3,7 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { z } from "zod";
 import { getDb } from "../../db";
-import { githubBranchPrs, projects, sharedFiles, workspaces, worktrees } from "../../db/schema";
+import { githubBranchPrs, projects, sharedFiles, terminalSessions, workspaces, worktrees } from "../../db/schema";
 import { reviewDrafts } from "../../db/schema-ai-review";
 import {
 	checkoutBranchWorktree,
@@ -12,6 +12,7 @@ import {
 	removeWorktree,
 } from "../../git/operations";
 import { symlinkSharedFiles } from "../../shared-files";
+import { getDaemonClient } from "../../terminal/daemon-instance";
 import { publicProcedure, router } from "../index";
 
 function worktreeBasePath(repoPath: string): string {
@@ -268,6 +269,21 @@ export const workspacesRouter = router({
 				.get();
 
 			if (!worktree) {
+				// Dispose daemon terminals before deleting workspace
+				const wsSessions = db
+					.select({ id: terminalSessions.id })
+					.from(terminalSessions)
+					.where(eq(terminalSessions.workspaceId, input.id))
+					.all();
+				const daemon = getDaemonClient();
+				for (const session of wsSessions) {
+					daemon?.dispose(session.id);
+				}
+				if (wsSessions.length > 0) {
+					db.delete(terminalSessions)
+						.where(eq(terminalSessions.workspaceId, input.id))
+						.run();
+				}
 				// Worktree record missing — just clean up the workspace
 				db.delete(workspaces).where(eq(workspaces.id, input.id)).run();
 				return;
@@ -291,6 +307,22 @@ export const workspacesRouter = router({
 
 			if (pathExists) {
 				await removeWorktree(project.repoPath, worktree.path);
+			}
+
+			// Dispose daemon terminals before cascade deletes the workspace
+			const wsSessions = db
+				.select({ id: terminalSessions.id })
+				.from(terminalSessions)
+				.where(eq(terminalSessions.workspaceId, input.id))
+				.all();
+			const daemon = getDaemonClient();
+			for (const session of wsSessions) {
+				daemon?.dispose(session.id);
+			}
+			if (wsSessions.length > 0) {
+				db.delete(terminalSessions)
+					.where(eq(terminalSessions.workspaceId, input.id))
+					.run();
 			}
 
 			db.delete(worktrees).where(eq(worktrees.id, worktree.id)).run();

@@ -1,8 +1,9 @@
 import { and, eq } from "drizzle-orm";
 import { getDb } from "../db";
-import { projects, workspaces, worktrees } from "../db/schema";
+import { projects, terminalSessions, workspaces, worktrees } from "../db/schema";
 import { reviewDrafts } from "../db/schema-ai-review";
 import { removeWorktree } from "../git/operations";
+import { getDaemonClient } from "../terminal/daemon-instance";
 import { validateTransition } from "./orchestrator";
 
 /**
@@ -59,6 +60,22 @@ export async function cleanupReviewWorkspace(workspaceId: string): Promise<void>
 				// Skip drafts already in a terminal state that doesn't allow dismissed
 			}
 		}
+	}
+
+	// 5. Dispose daemon terminals and delete terminal_sessions rows
+	const sessions = db
+		.select({ id: terminalSessions.id })
+		.from(terminalSessions)
+		.where(eq(terminalSessions.workspaceId, workspaceId))
+		.all();
+	const daemon = getDaemonClient();
+	for (const session of sessions) {
+		daemon?.dispose(session.id);
+	}
+	if (sessions.length > 0) {
+		db.delete(terminalSessions)
+			.where(eq(terminalSessions.workspaceId, workspaceId))
+			.run();
 	}
 
 	// 4. Delete workspace record
