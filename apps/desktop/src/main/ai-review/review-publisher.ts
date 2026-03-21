@@ -3,8 +3,11 @@ import { createPRComment, replyToPRComment } from "../atlassian/bitbucket";
 import { getDb } from "../db";
 import * as schema from "../db/schema";
 import {
+	type PRFileInfo,
 	addReviewThreadReply,
 	createReviewThread,
+	getPRFiles,
+	getPRState,
 	resolveThread,
 	submitReview,
 	unresolveThread,
@@ -13,6 +16,7 @@ import {
 interface PublishResult {
 	success: boolean;
 	postedCount: number;
+	skippedCount: number;
 	errors: string[];
 }
 
@@ -27,6 +31,53 @@ function parsePrIdentifier(identifier: string): {
 	return { ownerOrWorkspace: ownerOrWorkspace!, repo: repo!, number: Number.parseInt(numStr!, 10) };
 }
 
+/**
+ * Build a map of valid file paths and a rename map (old → new) from PR files.
+ * Used to validate and remap comment paths before publishing.
+ */
+function buildPathMaps(files: PRFileInfo[]): {
+	validPaths: Set<string>;
+	renameMap: Map<string, string>;
+} {
+	const validPaths = new Set<string>();
+	const renameMap = new Map<string, string>();
+
+	for (const f of files) {
+		if (f.status !== "removed") {
+			validPaths.add(f.path);
+		}
+		if (f.status === "renamed" && f.previousPath) {
+			renameMap.set(f.previousPath, f.path);
+		}
+	}
+
+	return { validPaths, renameMap };
+}
+
+/**
+ * Resolve a comment's file path against the current PR diff.
+ * Returns the resolved path, or null if the file no longer exists.
+ */
+function resolveCommentPath(
+	filePath: string,
+	validPaths: Set<string>,
+	renameMap: Map<string, string>
+): { path: string; renamed: boolean; originalPath?: string } | null {
+	// Path exists in current diff — use as-is
+	if (validPaths.has(filePath)) {
+		return { path: filePath, renamed: false };
+	}
+
+	// Check if file was renamed
+	const newPath = renameMap.get(filePath);
+	if (newPath) {
+		return { path: newPath, renamed: true, originalPath: filePath };
+	}
+
+	// File no longer exists in PR diff
+	return null;
+}
+
 /** Publish approved draft comments to GitHub or Bitbucket */
 export async function publishReview(draftId: string): Promise<PublishResult> {
 	const db = getDb();
@@ -36,7 +87,7 @@ export async function publishReview(draftId: string): Promise<PublishResult> {
 		.where(eq(schema.reviewDrafts.id, draftId))
 		.get();
 
-	if (!draft) return { success: false, postedCount: 0, errors: ["Draft not found"] };
+	if (!draft) return { success: false, postedCount: 0, skippedCount: 0, errors: ["Draft not found"] };
 
 	// Get approved and edited comments (excluding resolution comments handled separately)
 	const comments = db
@@ -54,8 +105,28 @@ export async function publishReview(draftId: string): Promise<PublishResult> {
 	const { ownerOrWorkspace, repo, number: prNumber } = parsePrIdentifier(draft.prIdentifier);
 	const errors: string[] = [];
 	let postedCount = 0;
+	let skippedCount = 0;
 
 	if (draft.prProvider === "github") {
+		// Fetch current PR state and files for path validation
+		let commitId = draft.commitSha!;
+		let validPaths = new Set<string>();
+		let renameMap = new Map<string, string>();
+
+		try {
+			const [prState, prFiles] = await Promise.all([
+				getPRState(ownerOrWorkspace, repo, prNumber),
+				getPRFiles(ownerOrWorkspace, repo, prNumber),
+			]);
+			commitId = prState.headSha;
+			const maps = buildPathMaps(prFiles);
+			validPaths = maps.validPaths;
+			renameMap = maps.renameMap;
+		} catch (err) {
+			console.error("[review-publisher] Failed to fetch PR state/files, using stored commit:", err);
+			// Fall back to stored commit SHA and skip path validation
+		}
+
 		// Post inline comments via GitHub API
 		for (const comment of comments) {
 			try {
@@ -63,13 +134,31 @@ export async function publishReview(draftId: string): Promise<PublishResult> {
 					comment.status === "edited" && comment.userEdit ? comment.userEdit : comment.body;
 
 				if (comment.lineNumber) {
+					// Validate and remap file path if we have PR file info
+					let filePath = comment.filePath;
+					if (validPaths.size > 0) {
+						const resolved = resolveCommentPath(filePath, validPaths, renameMap);
+						if (!resolved) {
+							skippedCount++;
+							errors.push(
+								`Skipped comment on ${filePath}:${comment.lineNumber} — file no longer exists in PR`
+							);
+							continue;
+						}
+						filePath = resolved.path;
+					}
+
+					const commentBody = filePath !== comment.filePath
+						? `*(File was renamed from \`${comment.filePath}\`)*\n\n${body}`
+						: body;
+
 					const result = await createReviewThread({
 						owner: ownerOrWorkspace,
 						repo,
 						prNumber,
-						body,
-						commitId: draft.commitSha!,
-						path: comment.filePath,
+						body: commentBody,
+						commitId,
+						path: filePath,
 						line: comment.lineNumber,
 						side: (comment.side as "LEFT" | "RIGHT") ?? "RIGHT",
 					});
@@ -189,5 +278,5 @@ export async function publishReview(draftId: string): Promise<PublishResult> {
 		.where(eq(schema.reviewDrafts.id, draftId))
 		.run();
 
-	return { success: errors.length === 0, postedCount, errors };
+	return { success: errors.length === 0, postedCount, skippedCount, errors };
 }
