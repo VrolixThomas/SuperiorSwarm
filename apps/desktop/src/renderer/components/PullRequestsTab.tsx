@@ -574,7 +574,16 @@ export function PullRequestsTab() {
 
 			const tabStore = useTabStore.getState();
 
-			tabStore.setWorkspaceMetadata(launchInfo.reviewWorkspaceId, { type: "review" });
+			tabStore.setWorkspaceMetadata(launchInfo.reviewWorkspaceId, {
+				type: "review",
+				prProvider: prCtx?.provider,
+				prIdentifier: prCtx
+					? `${prCtx.owner}/${prCtx.repo}#${prCtx.number}`
+					: undefined,
+				prTitle: prCtx?.title,
+				sourceBranch: prCtx?.sourceBranch,
+				targetBranch: prCtx?.targetBranch,
+			});
 			tabStore.setActiveWorkspace(launchInfo.reviewWorkspaceId, launchInfo.worktreePath, {
 				rightPanel: prCtx
 					? { open: true, mode: "pr-review", diffCtx: null, prCtx }
