@@ -247,15 +247,23 @@ async function startReview(
 		const worktreePath = join(parentDir, worktreeName);
 
 		// Remove stale worktree if it exists from a previous failed attempt
-		if (existsSync(worktreePath)) {
+		{
 			const { execSync } = await import("node:child_process");
+			// Always prune stale worktree entries first
 			try {
-				execSync(`git worktree remove --force '${worktreePath}'`, { cwd: repoPath });
-			} catch {
-				// If git worktree remove fails, try direct removal
-				const { rmSync } = await import("node:fs");
-				rmSync(worktreePath, { recursive: true, force: true });
 				execSync("git worktree prune", { cwd: repoPath });
+			} catch {}
+
+			if (existsSync(worktreePath)) {
+				try {
+					execSync(`git worktree remove --force '${worktreePath}'`, { cwd: repoPath });
+				} catch {
+					// If git worktree remove fails, try direct removal + prune
+					rmSync(worktreePath, { recursive: true, force: true });
+					try {
+						execSync("git worktree prune", { cwd: repoPath });
+					} catch {}
+				}
 			}
 		}
 
@@ -516,13 +524,21 @@ export async function queueFollowUpReview(reviewChainId: string): Promise<Review
 		worktreePath = join(parentDir, worktreeName);
 
 		// Remove stale worktree if path exists
-		if (existsSync(worktreePath)) {
+		{
 			const { execSync } = await import("node:child_process");
 			try {
-				execSync(`git worktree remove --force '${worktreePath}'`, { cwd: project.repoPath });
-			} catch {
-				rmSync(worktreePath, { recursive: true, force: true });
 				execSync("git worktree prune", { cwd: project.repoPath });
+			} catch {}
+
+			if (existsSync(worktreePath)) {
+				try {
+					execSync(`git worktree remove --force '${worktreePath}'`, { cwd: project.repoPath });
+				} catch {
+					rmSync(worktreePath, { recursive: true, force: true });
+					try {
+						execSync("git worktree prune", { cwd: project.repoPath });
+					} catch {}
+				}
 			}
 		}
 
