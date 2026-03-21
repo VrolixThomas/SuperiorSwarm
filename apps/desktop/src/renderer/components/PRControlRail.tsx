@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { detectLanguage } from "../../shared/diff-types";
 import type {
 	AIDraftThread,
-	GitHubPRContext,
+	PRContext,
 	GitHubPRDetails,
 	GitHubReviewThread,
 	UnifiedThread,
@@ -106,7 +106,7 @@ function ChangesTab({
 	activeFilePath,
 }: {
 	details: GitHubPRDetails;
-	prCtx: GitHubPRContext;
+	prCtx: PRContext;
 	viewedFiles: Set<string>;
 	onToggleViewed: (path: string, viewed: boolean) => void;
 	commentCountByFile: Map<string, number>;
@@ -364,7 +364,7 @@ function PRCommitCard({
 		deletions: number;
 		files: { path: string; status: string; additions: number; deletions: number }[];
 	};
-	prCtx: GitHubPRContext;
+	prCtx: PRContext;
 }) {
 	const [expanded, setExpanded] = useState(false);
 	const openPRReviewFile = useTabStore((s) => s.openPRReviewFile);
@@ -466,7 +466,7 @@ function CommentsTab({
 	reviewChainId,
 }: {
 	details: GitHubPRDetails;
-	prCtx: GitHubPRContext;
+	prCtx: PRContext;
 	aiThreads: AIDraftThread[];
 	summaryMarkdown: string | null;
 	onShowSummary: () => void;
@@ -662,7 +662,7 @@ function CommentThreadCard({
 	onNavigate,
 }: {
 	thread: UnifiedThread;
-	prCtx: GitHubPRContext;
+	prCtx: PRContext;
 	onAccept?: (id: string) => void;
 	onDecline?: (id: string) => void;
 	onReply?: (threadId: string, body: string) => void;
@@ -900,7 +900,7 @@ function SubmitReviewButton({
 
 // ── Root: PRControlRail ─────────────────────────────────────────────────────
 
-export function PRControlRail({ prCtx }: { prCtx: GitHubPRContext }) {
+export function PRControlRail({ prCtx }: { prCtx: PRContext }) {
 	const [tab, setTab] = useState<PRTab>("files");
 	const [showSubmitModal, setShowSubmitModal] = useState(false);
 	const utils = trpc.useUtils();

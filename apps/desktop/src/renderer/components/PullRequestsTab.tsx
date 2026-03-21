@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { BitbucketPullRequest } from "../../main/atlassian/bitbucket";
 import type { GitHubPR } from "../../main/github/github";
-import type { GitHubPRContext, GitHubPREnriched, GitHubReviewer } from "../../shared/github-types";
+import type { PRContext, GitHubPREnriched, GitHubReviewer } from "../../shared/github-types";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import { CreateWorktreeFromPRModal } from "./CreateWorktreeFromPRModal";
@@ -126,7 +126,7 @@ function AIReviewBadge({
 		  }>
 		| undefined;
 	store: ReturnType<typeof useTabStore>;
-	triggerReview: (args: Record<string, string>, prCtx?: GitHubPRContext) => void;
+	triggerReview: (args: Record<string, string>, prCtx?: PRContext) => void;
 	dismissReview: { mutate: (args: { draftId: string }) => void };
 	cancelReview: { mutate: (args: { draftId: string }) => void };
 }) {
@@ -204,7 +204,8 @@ function AIReviewBadge({
 					(p) => p.githubOwner === pr.githubPR!.repoOwner && p.githubRepo === pr.githubPR!.repoName
 				);
 				if (!project) return;
-				const prCtx: GitHubPRContext = {
+				const prCtx: PRContext = {
+					provider: "github",
 					owner: pr.githubPR.repoOwner,
 					repo: pr.githubPR.repoName,
 					number: pr.githubPR.number,
@@ -293,7 +294,7 @@ function RichPRItem({
 		  }>
 		| undefined;
 	store: ReturnType<typeof useTabStore>;
-	triggerReview: (args: Record<string, string>, prCtx?: GitHubPRContext) => void;
+	triggerReview: (args: Record<string, string>, prCtx?: PRContext) => void;
 	dismissReview: { mutate: (args: { draftId: string }) => void };
 	cancelReview: { mutate: (args: { draftId: string }) => void };
 	onClick: (e: React.MouseEvent) => void;
@@ -518,7 +519,7 @@ export function PullRequestsTab() {
 
 	const [reviewError, setReviewError] = useState<string | null>(null);
 	// Store PR context for the pending triggerReview call so onSuccess can use it
-	const pendingReviewCtxRef = useRef<GitHubPRContext | null>(null);
+	const pendingReviewCtxRef = useRef<PRContext | null>(null);
 	const triggerReview = trpc.aiReview.triggerReview.useMutation({
 		onSuccess: (launchInfo) => {
 			setReviewError(null);
@@ -566,7 +567,7 @@ export function PullRequestsTab() {
 	});
 
 	const triggerReviewWithCtx = useCallback(
-		(args: Record<string, string>, prCtx?: GitHubPRContext) => {
+		(args: Record<string, string>, prCtx?: PRContext) => {
 			pendingReviewCtxRef.current = prCtx ?? null;
 			triggerReview.mutate(args);
 		},
@@ -858,7 +859,8 @@ export function PullRequestsTab() {
 		store.setActiveWorkspace(ws.workspaceId, ws.worktreePath);
 
 		if (pr.githubPR) {
-			const prCtx: GitHubPRContext = {
+			const prCtx: PRContext = {
+				provider: "github",
 				owner: pr.githubPR.repoOwner,
 				repo: pr.githubPR.repoName,
 				number: pr.githubPR.number,
@@ -890,7 +892,7 @@ export function PullRequestsTab() {
 			prProvider: "github" | "bitbucket",
 			prIdentifier: string,
 			repoPath: string,
-			prCtx: GitHubPRContext
+			prCtx: PRContext
 		) => {
 			const rw = await getOrCreateMutation.mutateAsync({
 				projectId,
@@ -978,7 +980,8 @@ export function PullRequestsTab() {
 				}
 
 				const prIdentifier = `${ghPR.repoOwner}/${ghPR.repoName}#${ghPR.number}`;
-				const prCtx: GitHubPRContext = {
+				const prCtx: PRContext = {
+					provider: "github",
 					owner: ghPR.repoOwner,
 					repo: ghPR.repoName,
 					number: ghPR.number,

@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import type { DiffContext } from "../../shared/diff-types";
-import type { GitHubPRContext } from "../../shared/github-types";
+import type { PRContext } from "../../shared/github-types";
 import type { Pane } from "../../shared/pane-types";
 import { createDefaultPane, getAllPanes, usePaneStore } from "./pane-store";
 
@@ -31,7 +31,7 @@ export type TabItem =
 			kind: "pr-review-file";
 			id: string;
 			workspaceId: string;
-			prCtx: GitHubPRContext;
+			prCtx: PRContext;
 			filePath: string;
 			title: string;
 			language: string;
@@ -41,7 +41,7 @@ export type TabItem =
 			id: string;
 			workspaceId: string;
 			title: string;
-			prCtx: GitHubPRContext;
+			prCtx: PRContext;
 	  };
 export type PanelMode = "diff" | "explorer" | "pr-review";
 
@@ -51,7 +51,7 @@ export type RightPanelState =
 			open: true;
 			mode: PanelMode;
 			diffCtx: DiffContext | null;
-			prCtx?: GitHubPRContext;
+			prCtx?: PRContext;
 	  };
 
 export const PANEL_CLOSED: RightPanelState = { open: false };
@@ -93,14 +93,14 @@ interface TabStore {
 	addTerminalTab: (workspaceId: string, cwd: string, title?: string) => string;
 
 	// PR review
-	openPRReviewPanel: (workspaceId: string, prCtx: GitHubPRContext) => void;
+	openPRReviewPanel: (workspaceId: string, prCtx: PRContext) => void;
 	openPRReviewFile: (
 		workspaceId: string,
-		prCtx: GitHubPRContext,
+		prCtx: PRContext,
 		filePath: string,
 		language: string
 	) => string;
-	openPROverview: (workspaceId: string, prCtx: GitHubPRContext) => string;
+	openPROverview: (workspaceId: string, prCtx: PRContext) => string;
 
 	// Diff convenience
 	toggleDiffPanel: (diffCtx: DiffContext) => void;
@@ -165,7 +165,7 @@ function fileKey(repoPath: string, filePath: string): string {
 	return `file:${repoPath}:${filePath}`;
 }
 
-function prReviewFileKey(prCtx: GitHubPRContext, filePath: string): string {
+function prReviewFileKey(prCtx: PRContext, filePath: string): string {
 	return `pr-review-file:${prCtx.owner}/${prCtx.repo}#${prCtx.number}:${filePath}`;
 }
 
