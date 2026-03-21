@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import type { AIDraftThread, GitHubPRContext } from "../../shared/github-types";
+import type { AIDraftThread, PRContext } from "../../shared/github-types";
 import { trpc } from "../trpc/client";
 
 interface SubmitReviewModalProps {
-	prCtx: GitHubPRContext;
+	prCtx: PRContext;
 	aiThreads: AIDraftThread[];
 	pendingCount: number;
 	headCommitOid: string;
