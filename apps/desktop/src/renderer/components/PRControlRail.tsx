@@ -489,25 +489,30 @@ function CommentsTab({
 			if (!launchInfo.reviewWorkspaceId || !launchInfo.worktreePath) return;
 
 			const tabStore = useTabStore.getState();
+			const alreadyActive =
+				tabStore.activeWorkspaceId === launchInfo.reviewWorkspaceId;
 
-			// Set workspace metadata BEFORE activating so type-aware activation works
-			tabStore.setWorkspaceMetadata(launchInfo.reviewWorkspaceId, {
-				type: "review",
-				prProvider: prCtx.provider,
-				prIdentifier: `${prCtx.owner}/${prCtx.repo}#${prCtx.number}`,
-				prTitle: prCtx.title,
-				sourceBranch: prCtx.sourceBranch,
-				targetBranch: prCtx.targetBranch,
-			});
+			if (!alreadyActive) {
+				// Only switch workspace if we're not already there
+				tabStore.setWorkspaceMetadata(launchInfo.reviewWorkspaceId, {
+					type: "review",
+					prProvider: prCtx.provider,
+					prIdentifier: `${prCtx.owner}/${prCtx.repo}#${prCtx.number}`,
+					prTitle: prCtx.title,
+					sourceBranch: prCtx.sourceBranch,
+					targetBranch: prCtx.targetBranch,
+				});
+				tabStore.setActiveWorkspace(
+					launchInfo.reviewWorkspaceId,
+					launchInfo.worktreePath,
+				);
+			}
 
-			// Switch to the review workspace — auto-sets PR panel mode
-			tabStore.setActiveWorkspace(launchInfo.reviewWorkspaceId, launchInfo.worktreePath);
-
-			// Create a fresh terminal tab and run the launch script
+			// Create a fresh terminal tab for the re-review
 			const tabId = tabStore.addTerminalTab(
 				launchInfo.reviewWorkspaceId,
 				launchInfo.worktreePath,
-				"AI Re-review"
+				"AI Re-review",
 			);
 			attachTerminal.mutate({
 				workspaceId: launchInfo.reviewWorkspaceId,
@@ -515,7 +520,10 @@ function CommentsTab({
 			});
 
 			setTimeout(() => {
-				window.electron.terminal.write(tabId, `bash '${launchInfo.launchScript}'\r`);
+				window.electron.terminal.write(
+					tabId,
+					`bash '${launchInfo.launchScript}'\r`,
+				);
 			}, 1000);
 		},
 		onError: (err) => {

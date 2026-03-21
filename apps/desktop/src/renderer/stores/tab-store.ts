@@ -377,7 +377,12 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 				activeWorkspaceCwd: cwd,
 				rightPanel: { open: true, mode: "pr-review", diffCtx: null, prCtx },
 			});
-			queueMicrotask(() => get().openPROverview(workspaceId, prCtx));
+			// Only open PR overview on first activation (no existing tabs yet).
+			// If tabs already exist, the user has their own tab arrangement — don't steal focus.
+			const existingTabs = findTabInWorkspace(workspaceId, () => true);
+			if (!existingTabs) {
+				queueMicrotask(() => get().openPROverview(workspaceId, prCtx));
+			}
 		} else {
 			set({
 				activeWorkspaceId: workspaceId,
