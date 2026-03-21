@@ -1,4 +1,5 @@
 import { integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { reviewDrafts } from "./schema-ai-review";
 
 export const projects = sqliteTable("projects", {
 	id: text("id").primaryKey(),
@@ -33,20 +34,35 @@ export const worktrees = sqliteTable("worktrees", {
 export type Worktree = typeof worktrees.$inferSelect;
 export type NewWorktree = typeof worktrees.$inferInsert;
 
-export const workspaces = sqliteTable("workspaces", {
-	id: text("id").primaryKey(),
-	projectId: text("project_id")
-		.notNull()
-		.references(() => projects.id, { onDelete: "cascade" }),
-	type: text("type", { enum: ["branch", "worktree"] }).notNull(),
-	name: text("name").notNull(),
-	worktreeId: text("worktree_id").references(() => worktrees.id, {
-		onDelete: "cascade",
-	}),
-	terminalId: text("terminal_id"),
-	createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
-	updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
-});
+export const workspaces = sqliteTable(
+	"workspaces",
+	{
+		id: text("id").primaryKey(),
+		projectId: text("project_id")
+			.notNull()
+			.references(() => projects.id, { onDelete: "cascade" }),
+		type: text("type", { enum: ["branch", "worktree", "review"] }).notNull(),
+		name: text("name").notNull(),
+		worktreeId: text("worktree_id").references(() => worktrees.id, {
+			onDelete: "cascade",
+		}),
+		terminalId: text("terminal_id"),
+		prProvider: text("pr_provider"),
+		prIdentifier: text("pr_identifier"),
+		reviewDraftId: text("review_draft_id").references(() => reviewDrafts.id, {
+			onDelete: "set null",
+		}),
+		createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+		updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+	},
+	(table) => [
+		uniqueIndex("workspaces_pr_unique").on(
+			table.projectId,
+			table.prProvider,
+			table.prIdentifier
+		),
+	]
+);
 
 export type Workspace = typeof workspaces.$inferSelect;
 export type NewWorkspace = typeof workspaces.$inferInsert;
@@ -238,7 +254,4 @@ export {
 	draftComments,
 	type DraftComment,
 	type NewDraftComment,
-	reviewWorkspaces,
-	type ReviewWorkspace,
-	type NewReviewWorkspace,
 } from "./schema-ai-review";
