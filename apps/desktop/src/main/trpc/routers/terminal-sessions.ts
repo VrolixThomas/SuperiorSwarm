@@ -1,4 +1,3 @@
-import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { getDb, schema } from "../../db";
 import { savePaneLayouts, saveTerminalSessions } from "../../db/session-persistence";
@@ -50,52 +49,48 @@ export const terminalSessionsRouter = router({
 		}
 
 		// Build workspace metadata for resolving cwd and type
-		const repoWorkspaces = db
+		const projectRows = db.select().from(schema.projects).all();
+		const projectMap: Record<string, (typeof projectRows)[number]> = {};
+		for (const p of projectRows) {
+			projectMap[p.id] = p;
+		}
+
+		const worktreeRows = db.select().from(schema.worktrees).all();
+		const worktreeMap: Record<string, (typeof worktreeRows)[number]> = {};
+		for (const wt of worktreeRows) {
+			worktreeMap[wt.id] = wt;
+		}
+
+		const allWorkspaces = db
 			.select({
 				id: schema.workspaces.id,
-				worktreePath: schema.worktrees.path,
-				repoPath: schema.projects.repoPath,
+				type: schema.workspaces.type,
+				projectId: schema.workspaces.projectId,
+				worktreeId: schema.workspaces.worktreeId,
+				prProvider: schema.workspaces.prProvider,
+				prIdentifier: schema.workspaces.prIdentifier,
 			})
 			.from(schema.workspaces)
-			.leftJoin(schema.worktrees, eq(schema.workspaces.worktreeId, schema.worktrees.id))
-			.leftJoin(schema.projects, eq(schema.workspaces.projectId, schema.projects.id))
 			.all();
 
-		const rvWorkspaces = db
-			.select({
-				id: schema.reviewWorkspaces.id,
-				worktreePath: schema.worktrees.path,
-				repoPath: schema.projects.repoPath,
-				prProvider: schema.reviewWorkspaces.prProvider,
-				prIdentifier: schema.reviewWorkspaces.prIdentifier,
-			})
-			.from(schema.reviewWorkspaces)
-			.leftJoin(schema.worktrees, eq(schema.reviewWorkspaces.worktreeId, schema.worktrees.id))
-			.leftJoin(schema.projects, eq(schema.reviewWorkspaces.projectId, schema.projects.id))
-			.all();
+		type WorkspaceMeta = {
+			type: "repo" | "review";
+			cwd: string;
+			prProvider?: string;
+			prIdentifier?: string;
+		};
 
-		const workspaceMeta: Record<
-			string,
-			{
-				type: "repo" | "review";
-				cwd: string;
-				prProvider?: string;
-				prIdentifier?: string;
-			}
-		> = {};
+		const workspaceMeta: Record<string, WorkspaceMeta> = {};
+		for (const ws of allWorkspaces) {
+			const project = projectMap[ws.projectId];
+			if (!project) continue;
 
-		for (const ws of repoWorkspaces) {
+			const worktree = ws.worktreeId ? worktreeMap[ws.worktreeId] : null;
 			workspaceMeta[ws.id] = {
-				type: "repo",
-				cwd: ws.worktreePath ?? ws.repoPath ?? "",
-			};
-		}
-		for (const rw of rvWorkspaces) {
-			workspaceMeta[rw.id] = {
-				type: "review",
-				cwd: rw.worktreePath ?? rw.repoPath ?? "",
-				prProvider: rw.prProvider,
-				prIdentifier: rw.prIdentifier,
+				type: ws.type === "review" ? "review" : "repo",
+				cwd: worktree?.path ?? project.repoPath,
+				prProvider: ws.prProvider ?? undefined,
+				prIdentifier: ws.prIdentifier ?? undefined,
 			};
 		}
 
