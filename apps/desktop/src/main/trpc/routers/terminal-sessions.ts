@@ -97,6 +97,32 @@ export const terminalSessionsRouter = router({
 		return { sessions, state, paneLayouts, workspaceMeta };
 	}),
 
+	listAll: publicProcedure.query(() => {
+		const db = getDb();
+		const sessions = db.select().from(schema.terminalSessions).all();
+		const allWorkspaces = db
+			.select({
+				id: schema.workspaces.id,
+				name: schema.workspaces.name,
+				type: schema.workspaces.type,
+				prIdentifier: schema.workspaces.prIdentifier,
+			})
+			.from(schema.workspaces)
+			.all();
+		const workspaceMap: Record<
+			string,
+			{ name: string; type: string; prIdentifier: string | null }
+		> = {};
+		for (const ws of allWorkspaces) {
+			workspaceMap[ws.id] = {
+				name: ws.name,
+				type: ws.type,
+				prIdentifier: ws.prIdentifier,
+			};
+		}
+		return { sessions, workspaceMap };
+	}),
+
 	clear: publicProcedure.mutation(async () => {
 		const db = getDb();
 		db.delete(schema.terminalSessions).run();
