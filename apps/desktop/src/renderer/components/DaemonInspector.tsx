@@ -40,6 +40,26 @@ export function DaemonInspector({ onClose }: { onClose: () => void }) {
 		dbQuery.refetch();
 	}, [dbQuery]);
 
+	const [killing, setKilling] = useState(false);
+
+	const killOrphaned = useCallback(async () => {
+		if (!state.daemon) return;
+		setKilling(true);
+		const callbackSet = new Set(state.daemon.callbackIds);
+		const orphanIds = state.daemon.daemonSessions
+			.filter((s) => !rendererTabIds.has(s.id) && !callbackSet.has(s.id))
+			.map((s) => s.id);
+		for (const id of orphanIds) {
+			try {
+				await window.electron.terminal.dispose(id);
+			} catch {
+				// best effort
+			}
+		}
+		setKilling(false);
+		refresh();
+	}, [state.daemon, rendererTabIds, refresh]);
+
 	useEffect(() => {
 		refresh();
 	}, [refresh]);
@@ -81,6 +101,14 @@ export function DaemonInspector({ onClose }: { onClose: () => void }) {
 						)}
 					</div>
 					<div className="flex items-center gap-2">
+						<button
+							type="button"
+							onClick={killOrphaned}
+							disabled={killing || state.loading || !state.daemon}
+							className="rounded-md px-2 py-1 text-[11px] text-[var(--term-red)] transition-colors hover:bg-[rgba(255,69,58,0.1)] disabled:opacity-50"
+						>
+							{killing ? "Killing..." : "Kill Orphaned"}
+						</button>
 						<button
 							type="button"
 							onClick={refresh}
