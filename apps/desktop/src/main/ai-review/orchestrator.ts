@@ -161,6 +161,137 @@ export function getReviewDraft(draftId: string) {
 	return { ...draft, comments };
 }
 
+/**
+ * Ensure a worktree exists for a PR review. Returns the worktree path.
+ * If one already exists (DB record + directory on disk), reuses it and fetches latest.
+ * If not, creates a new one.
+ */
+export async function ensureReviewWorktree(opts: {
+	projectId: string;
+	repoPath: string;
+	prProvider: string;
+	prIdentifier: string;
+	sourceBranch: string;
+	targetBranch: string;
+}): Promise<{ worktreePath: string; reviewWorkspaceId: string }> {
+	const db = getDb();
+
+	// Get or create review workspace
+	let workspace = db
+		.select()
+		.from(schema.reviewWorkspaces)
+		.where(
+			and(
+				eq(schema.reviewWorkspaces.projectId, opts.projectId),
+				eq(schema.reviewWorkspaces.prProvider, opts.prProvider),
+				eq(schema.reviewWorkspaces.prIdentifier, opts.prIdentifier)
+			)
+		)
+		.get();
+
+	if (!workspace) {
+		const now = new Date();
+		const id = nanoid();
+		db.insert(schema.reviewWorkspaces)
+			.values({
+				id,
+				projectId: opts.projectId,
+				prProvider: opts.prProvider,
+				prIdentifier: opts.prIdentifier,
+				createdAt: now,
+				updatedAt: now,
+			})
+			.run();
+		workspace = db
+			.select()
+			.from(schema.reviewWorkspaces)
+			.where(eq(schema.reviewWorkspaces.id, id))
+			.get()!;
+	}
+
+	// Check if worktree already exists on disk
+	const existingWorktree = workspace.worktreeId
+		? db.select().from(schema.worktrees).where(eq(schema.worktrees.id, workspace.worktreeId)).get()
+		: null;
+
+	if (existingWorktree?.path && existsSync(existingWorktree.path)) {
+		// Worktree exists — fetch latest
+		const { execSync } = await import("node:child_process");
+		try {
+			execSync("git fetch origin", { cwd: existingWorktree.path, stdio: "pipe" });
+			execSync(`git reset --hard origin/${opts.sourceBranch}`, {
+				cwd: existingWorktree.path,
+				stdio: "pipe",
+			});
+		} catch (err) {
+			console.error("[ai-review] Failed to update worktree, continuing with current state:", err);
+		}
+		return { worktreePath: existingWorktree.path, reviewWorkspaceId: workspace.id };
+	}
+
+	// Worktree doesn't exist — create it
+	const worktreeName = `pr-review-${opts.prIdentifier.replace(/[^a-zA-Z0-9]/g, "-")}`;
+	const parentDir = join(dirname(opts.repoPath), `${opts.repoPath.split("/").pop()}-worktrees`);
+	const worktreePath = join(parentDir, worktreeName);
+
+	// Prune stale git worktree entries
+	const { execSync } = await import("node:child_process");
+	try {
+		execSync("git worktree prune", { cwd: opts.repoPath, stdio: "pipe" });
+	} catch {}
+
+	// If directory exists on disk but isn't tracked in our DB, clean it up
+	if (existsSync(worktreePath)) {
+		try {
+			execSync(`git worktree remove --force '${worktreePath}'`, {
+				cwd: opts.repoPath,
+				stdio: "pipe",
+			});
+		} catch {
+			rmSync(worktreePath, { recursive: true, force: true });
+			try {
+				execSync("git worktree prune", { cwd: opts.repoPath, stdio: "pipe" });
+			} catch {}
+		}
+	}
+
+	await checkoutBranchWorktree(opts.repoPath, worktreePath, opts.sourceBranch);
+
+	// Create worktree DB record
+	const worktreeId = nanoid();
+	const now = new Date();
+
+	// Clean up any stale DB record at same path
+	const staleWt = db
+		.select()
+		.from(schema.worktrees)
+		.where(eq(schema.worktrees.path, worktreePath))
+		.get();
+	if (staleWt) {
+		db.delete(schema.worktrees).where(eq(schema.worktrees.id, staleWt.id)).run();
+	}
+
+	db.insert(schema.worktrees)
+		.values({
+			id: worktreeId,
+			projectId: opts.projectId,
+			path: worktreePath,
+			branch: opts.sourceBranch,
+			baseBranch: opts.targetBranch,
+			createdAt: now,
+			updatedAt: now,
+		})
+		.run();
+
+	// Link worktree to review workspace
+	db.update(schema.reviewWorkspaces)
+		.set({ worktreeId, updatedAt: now })
+		.where(eq(schema.reviewWorkspaces.id, workspace.id))
+		.run();
+
+	return { worktreePath, reviewWorkspaceId: workspace.id };
+}
+
 /** Queue a new review for a PR. Returns launch info for the renderer to create the terminal. */
 export async function queueReview(prData: {
 	provider: "github" | "bitbucket";
@@ -241,39 +372,20 @@ async function startReview(
 			throw new Error("Cannot start review: repository not tracked as a project");
 		}
 
-		// Create worktree for the PR branch
-		const worktreeName = `pr-review-${draft.prIdentifier.replace(/[^a-zA-Z0-9]/g, "-")}`;
-		const parentDir = join(dirname(repoPath), `${repoPath.split("/").pop()}-worktrees`);
-		const worktreePath = join(parentDir, worktreeName);
-
-		// Remove stale worktree if it exists from a previous failed attempt
-		{
-			const { execSync } = await import("node:child_process");
-			// Always prune stale worktree entries first
-			try {
-				execSync("git worktree prune", { cwd: repoPath });
-			} catch {}
-
-			if (existsSync(worktreePath)) {
-				try {
-					execSync(`git worktree remove --force '${worktreePath}'`, { cwd: repoPath });
-				} catch {
-					// If git worktree remove fails, try direct removal + prune
-					rmSync(worktreePath, { recursive: true, force: true });
-					try {
-						execSync("git worktree prune", { cwd: repoPath });
-					} catch {}
-				}
-			}
-		}
-
-		await checkoutBranchWorktree(repoPath, worktreePath, draft.sourceBranch);
+		// Ensure worktree exists (creates if needed, reuses if already there)
+		const { worktreePath, reviewWorkspaceId } = await ensureReviewWorktree({
+			projectId,
+			repoPath,
+			prProvider: draft.prProvider,
+			prIdentifier: draft.prIdentifier,
+			sourceBranch: draft.sourceBranch,
+			targetBranch: draft.targetBranch,
+		});
 
 		// Capture commit SHA
 		const { execSync } = await import("node:child_process");
 		const commitSha = execSync("git rev-parse HEAD", { cwd: worktreePath }).toString().trim();
 
-		// Resolve DB path using Electron's userData path
 		const dbPath = join(app.getPath("userData"), "branchflux.db");
 
 		db.update(schema.reviewDrafts)
@@ -281,69 +393,9 @@ async function startReview(
 			.where(eq(schema.reviewDrafts.id, draft.id))
 			.run();
 
-		// Create worktree + review workspace DB records
-		const worktreeId = nanoid();
-
-		// Get or create review workspace
-		const now2 = new Date();
-		const existing = db
-			.select()
-			.from(schema.reviewWorkspaces)
-			.where(
-				and(
-					eq(schema.reviewWorkspaces.projectId, projectId),
-					eq(schema.reviewWorkspaces.prProvider, draft.prProvider),
-					eq(schema.reviewWorkspaces.prIdentifier, draft.prIdentifier)
-				)
-			)
-			.get();
-
-		let reviewWorkspaceId: string;
-		if (existing) {
-			reviewWorkspaceId = existing.id;
-			if (existing.worktreeId) {
-				db.delete(schema.worktrees).where(eq(schema.worktrees.id, existing.worktreeId)).run();
-			}
-		} else {
-			reviewWorkspaceId = nanoid();
-			db.insert(schema.reviewWorkspaces)
-				.values({
-					id: reviewWorkspaceId,
-					projectId,
-					prProvider: draft.prProvider,
-					prIdentifier: draft.prIdentifier,
-					createdAt: now2,
-					updatedAt: now2,
-				})
-				.run();
-		}
-
-		// Clean up stale worktree DB record at same filesystem path
-		const staleWt = db
-			.select()
-			.from(schema.worktrees)
-			.where(eq(schema.worktrees.path, worktreePath))
-			.get();
-		if (staleWt) {
-			db.delete(schema.worktrees).where(eq(schema.worktrees.id, staleWt.id)).run();
-		}
-
-		// Insert worktree record
-		db.insert(schema.worktrees)
-			.values({
-				id: worktreeId,
-				projectId,
-				path: worktreePath,
-				branch: draft.sourceBranch,
-				baseBranch: draft.targetBranch,
-				createdAt: now,
-				updatedAt: now,
-			})
-			.run();
-
-		// Link worktree and draft to review workspace
+		// Link draft to review workspace
 		db.update(schema.reviewWorkspaces)
-			.set({ worktreeId, reviewDraftId: draft.id, updatedAt: now2 })
+			.set({ reviewDraftId: draft.id, updatedAt: new Date() })
 			.where(eq(schema.reviewWorkspaces.id, reviewWorkspaceId))
 			.run();
 
@@ -499,78 +551,21 @@ export async function queueFollowUpReview(reviewChainId: string): Promise<Review
 		)
 		.get();
 
-	if (!workspace) throw new Error("No review workspace found for this chain");
-
-	const project = db
-		.select()
-		.from(schema.projects)
-		.where(eq(schema.projects.id, workspace.projectId))
-		.get();
+	const project = workspace
+		? db.select().from(schema.projects).where(eq(schema.projects.id, workspace.projectId)).get()
+		: null;
 
 	if (!project) throw new Error("Project not found for review workspace");
 
-	// Check if worktree exists, recreate if needed
-	let worktreePath: string;
-	const existingWorktree = workspace.worktreeId
-		? db.select().from(schema.worktrees).where(eq(schema.worktrees.id, workspace.worktreeId)).get()
-		: null;
-
-	if (existingWorktree?.path && existsSync(existingWorktree.path)) {
-		worktreePath = existingWorktree.path;
-	} else {
-		// Worktree was cleaned up — recreate it
-		const worktreeName = `pr-review-${latestDraft.prIdentifier.replace(/[^a-zA-Z0-9]/g, "-")}`;
-		const parentDir = join(dirname(project.repoPath), `${project.repoPath.split("/").pop()}-worktrees`);
-		worktreePath = join(parentDir, worktreeName);
-
-		// Remove stale worktree if path exists
-		{
-			const { execSync } = await import("node:child_process");
-			try {
-				execSync("git worktree prune", { cwd: project.repoPath });
-			} catch {}
-
-			if (existsSync(worktreePath)) {
-				try {
-					execSync(`git worktree remove --force '${worktreePath}'`, { cwd: project.repoPath });
-				} catch {
-					rmSync(worktreePath, { recursive: true, force: true });
-					try {
-						execSync("git worktree prune", { cwd: project.repoPath });
-					} catch {}
-				}
-			}
-		}
-
-		await checkoutBranchWorktree(project.repoPath, worktreePath, latestDraft.sourceBranch);
-
-		// Create worktree DB record
-		const worktreeId = nanoid();
-		const now2 = new Date();
-
-		// Clean up stale DB record at same path
-		const staleWt = db.select().from(schema.worktrees).where(eq(schema.worktrees.path, worktreePath)).get();
-		if (staleWt) {
-			db.delete(schema.worktrees).where(eq(schema.worktrees.id, staleWt.id)).run();
-		}
-
-		db.insert(schema.worktrees)
-			.values({
-				id: worktreeId,
-				projectId: workspace.projectId,
-				path: worktreePath,
-				branch: latestDraft.sourceBranch,
-				baseBranch: latestDraft.targetBranch,
-				createdAt: now2,
-				updatedAt: now2,
-			})
-			.run();
-
-		db.update(schema.reviewWorkspaces)
-			.set({ worktreeId, updatedAt: now2 })
-			.where(eq(schema.reviewWorkspaces.id, workspace.id))
-			.run();
-	}
+	// Ensure worktree exists (creates if needed, reuses if already there)
+	const { worktreePath, reviewWorkspaceId } = await ensureReviewWorktree({
+		projectId: project.id,
+		repoPath: project.repoPath,
+		prProvider: latestDraft.prProvider,
+		prIdentifier: latestDraft.prIdentifier,
+		sourceBranch: latestDraft.sourceBranch,
+		targetBranch: latestDraft.targetBranch,
+	});
 
 	// Create follow-up draft
 	const id = randomUUID();
@@ -594,14 +589,20 @@ export async function queueFollowUpReview(reviewChainId: string): Promise<Review
 		})
 		.run();
 
-	return startFollowUpReview(id, worktreePath, project.repoPath, workspace.projectId);
+	// Link draft to review workspace
+	db.update(schema.reviewWorkspaces)
+		.set({ reviewDraftId: id, updatedAt: now })
+		.where(eq(schema.reviewWorkspaces.id, reviewWorkspaceId))
+		.run();
+
+	return startFollowUpReview(id, worktreePath, project.repoPath, reviewWorkspaceId);
 }
 
 async function startFollowUpReview(
 	draftId: string,
 	worktreePath: string,
 	repoPath: string,
-	projectId: string
+	reviewWorkspaceId: string
 ): Promise<ReviewLaunchInfo> {
 	const db = getDb();
 	const now = new Date();
@@ -619,10 +620,8 @@ async function startFollowUpReview(
 		.run();
 
 	try {
+		// Worktree already updated by ensureReviewWorktree — just capture commit SHA
 		const { execSync } = await import("node:child_process");
-		execSync("git fetch origin", { cwd: worktreePath });
-		execSync(`git reset --hard origin/${draft.sourceBranch}`, { cwd: worktreePath });
-
 		const commitSha = execSync("git rev-parse HEAD", { cwd: worktreePath }).toString().trim();
 
 		db.update(schema.reviewDrafts)
@@ -732,33 +731,9 @@ async function startFollowUpReview(
 
 		const cleanupMcp = preset.setupMcp?.(launchOpts) ?? null;
 
-		// Update review workspace to point to new draft
-		db.update(schema.reviewWorkspaces)
-			.set({ reviewDraftId: draftId, updatedAt: new Date() })
-			.where(
-				and(
-					eq(schema.reviewWorkspaces.projectId, projectId),
-					eq(schema.reviewWorkspaces.prProvider, draft.prProvider),
-					eq(schema.reviewWorkspaces.prIdentifier, draft.prIdentifier)
-				)
-			)
-			.run();
-
-		const workspace = db
-			.select()
-			.from(schema.reviewWorkspaces)
-			.where(
-				and(
-					eq(schema.reviewWorkspaces.projectId, projectId),
-					eq(schema.reviewWorkspaces.prProvider, draft.prProvider),
-					eq(schema.reviewWorkspaces.prIdentifier, draft.prIdentifier)
-				)
-			)
-			.get();
-
 		activeReviews.set(draftId, {
 			draftId,
-			reviewWorkspaceId: workspace!.id,
+			reviewWorkspaceId,
 			cleanup: cleanupMcp,
 		});
 		startPollingIfNeeded();
@@ -785,7 +760,7 @@ async function startFollowUpReview(
 
 		return {
 			draftId,
-			reviewWorkspaceId: workspace!.id,
+			reviewWorkspaceId,
 			worktreePath,
 			launchScript,
 		};
