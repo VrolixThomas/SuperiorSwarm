@@ -2,8 +2,9 @@ import { join } from "node:path";
 import { BrowserWindow, app, dialog, ipcMain, shell } from "electron";
 import { daemonInstanceId, daemonPaths } from "../shared/daemon-protocol";
 import { startPolling } from "./ai-review/commit-poller";
-import { startPolling as startPRPolling } from "./ai-review/pr-poller";
+import { cleanupReviewWorkspace, findReviewWorkspaceByPR } from "./ai-review/cleanup";
 import { cleanupStaleReviews } from "./ai-review/orchestrator";
+import { onNewPRDetected, onPRClosedDetected, startPolling as startPRPolling } from "./ai-review/pr-poller";
 import { getDb, initializeDatabase } from "./db";
 import * as schema from "./db/schema";
 import {
@@ -72,6 +73,23 @@ app.whenReady().then(async () => {
 	cleanupStaleReviews();
 	startPolling();
 	startPRPolling();
+
+	onNewPRDetected((pr) => {
+		for (const win of BrowserWindow.getAllWindows()) {
+			win.webContents.send("new-pr-review-request", pr);
+		}
+	});
+
+	onPRClosedDetected(async (pr) => {
+		const wsId = findReviewWorkspaceByPR(pr.provider, pr.identifier);
+		if (wsId) {
+			await cleanupReviewWorkspace(wsId);
+		}
+		for (const win of BrowserWindow.getAllWindows()) {
+			win.webContents.send("pr-closed", pr);
+		}
+	});
+
 	// Clear ephemeral terminal IDs (reset across sessions)
 	{
 		const db = getDb();

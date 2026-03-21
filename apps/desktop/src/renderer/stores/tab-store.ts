@@ -96,6 +96,7 @@ interface TabStore {
 
 	// Workspace
 	setWorkspaceMetadata: (id: string, meta: WorkspaceMetadata) => void;
+	cleanupWorkspace: (workspaceId: string) => void;
 	setActiveWorkspace: (
 		workspaceId: string,
 		cwd: string,
@@ -323,6 +324,15 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 
 	setWorkspaceMetadata: (id, meta) => {
 		set((s) => ({ workspaceMetadata: { ...s.workspaceMetadata, [id]: meta } }));
+	},
+
+	cleanupWorkspace: (workspaceId) => {
+		const state = get();
+		const { [workspaceId]: _, ...rest } = state.workspaceMetadata;
+		set({ workspaceMetadata: rest });
+		if (state.activeWorkspaceId === workspaceId) {
+			set({ activeWorkspaceId: null, activeWorkspaceCwd: "" });
+		}
 	},
 
 	setActiveWorkspace: (workspaceId, cwd, options) => {
