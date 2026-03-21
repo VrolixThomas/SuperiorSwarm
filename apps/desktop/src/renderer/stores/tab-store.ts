@@ -56,6 +56,17 @@ export type RightPanelState =
 
 export const PANEL_CLOSED: RightPanelState = { open: false };
 
+// ─── Workspace metadata ───────────────────────────────────────────────────────
+
+export interface WorkspaceMetadata {
+	type: string;
+	prProvider?: string;
+	prIdentifier?: string;
+	prTitle?: string;
+	sourceBranch?: string;
+	targetBranch?: string;
+}
+
 // ─── Store interface ─────────────────────────────────────────────────────────
 
 interface TabStore {
@@ -65,6 +76,7 @@ interface TabStore {
 	diffMode: "split" | "inline";
 	rightPanel: RightPanelState;
 	baseBranchByWorkspace: Record<string, string>;
+	workspaceMetadata: Record<string, WorkspaceMetadata>;
 	/** @internal Bumped when pane-store changes so derived selectors re-evaluate. */
 	_paneVersion: number;
 
@@ -83,6 +95,7 @@ interface TabStore {
 	updateTabTitle: (id: string, title: string) => void;
 
 	// Workspace
+	setWorkspaceMetadata: (id: string, meta: WorkspaceMetadata) => void;
 	setActiveWorkspace: (
 		workspaceId: string,
 		cwd: string,
@@ -245,6 +258,7 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 	diffMode: "split",
 	rightPanel: defaultPanelForCwd(""),
 	baseBranchByWorkspace: {},
+	workspaceMetadata: {},
 	_paneVersion: 0,
 
 	// ── Derived properties ──────────────────────────────────────────────
@@ -307,6 +321,10 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 		ps().updateTabTitleInPane(id, title);
 	},
 
+	setWorkspaceMetadata: (id, meta) => {
+		set((s) => ({ workspaceMetadata: { ...s.workspaceMetadata, [id]: meta } }));
+	},
+
 	setActiveWorkspace: (workspaceId, cwd, options) => {
 		ps().ensureLayout(workspaceId);
 		// Try to keep focus on existing pane, or set to first pane
@@ -318,11 +336,45 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 				if (first) ps().setFocusedPane(first.id);
 			}
 		}
-		set({
-			activeWorkspaceId: workspaceId,
-			activeWorkspaceCwd: cwd,
-			rightPanel: options?.rightPanel ?? defaultPanelForCwd(cwd),
-		});
+
+		// If a rightPanel override is supplied, honour it and skip type detection
+		if (options?.rightPanel) {
+			set({
+				activeWorkspaceId: workspaceId,
+				activeWorkspaceCwd: cwd,
+				rightPanel: options.rightPanel,
+			});
+			return;
+		}
+
+		const meta = get().workspaceMetadata[workspaceId];
+
+		if (meta?.type === "review" && meta.prProvider && meta.prIdentifier) {
+			const [ownerRepo, numStr] = meta.prIdentifier.split("#");
+			const [owner, repo] = (ownerRepo ?? "").split("/");
+			const prCtx: PRContext = {
+				provider: meta.prProvider as "github" | "bitbucket",
+				owner: owner ?? "",
+				repo: repo ?? "",
+				number: Number.parseInt(numStr ?? "0", 10),
+				title: meta.prTitle ?? "",
+				sourceBranch: meta.sourceBranch ?? "",
+				targetBranch: meta.targetBranch ?? "",
+				repoPath: cwd,
+			};
+			set({
+				activeWorkspaceId: workspaceId,
+				activeWorkspaceCwd: cwd,
+				rightPanel: { open: true, mode: "pr-review", diffCtx: null, prCtx },
+			});
+			queueMicrotask(() => get().openPROverview(workspaceId, prCtx));
+		} else {
+			set({
+				activeWorkspaceId: workspaceId,
+				activeWorkspaceCwd: cwd,
+				rightPanel: defaultPanelForCwd(cwd),
+			});
+		}
 	},
 
 	addTerminalTab: (workspaceId, cwd, title) => {
