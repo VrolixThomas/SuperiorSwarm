@@ -18,6 +18,8 @@
 		"db:generate": "drizzle-kit generate"
 	},
 	"dependencies": {
+		"@modelcontextprotocol/sdk": "^1.27.1",
+		"@modelcontextprotocol/sdk": "^1.27.1",
 		"@monaco-editor/react": "^4.6.0",
 		"@tanstack/react-query": "^5.62.11",
 		"@tanstack/react-router": "^1.94.1",
@@ -44,7 +46,12 @@
 		"react-dom": "^19.0.0",
 		"react-markdown": "^10.1.0",
 		"react-resizable-panels": "^4.7.2",
+<<<<<<< HEAD
 		"semver": "^7.7.4",
+=======
+		"rehype-highlight": "^7.0.2",
+		"remark-gfm": "^4.0.1",
+>>>>>>> refs/remotes/origin/main
 		"simple-git": "^3.27.0",
 		"superjson": "^2.2.2",
 		"vscode-jsonrpc": "^8.2.1",
@@ -71,6 +78,21 @@
 		"tailwindcss": "^4.0.0",
 		"typescript": "^5.7.2",
 		"vite": "^6.0.7"
+	},
+	"build": {
+		"appId": "com.branchflux.app",
+		"productName": "BranchFlux",
+		"publish": {
+			"provider": "github",
+			"owner": "VrolixThomas",
+			"repo": "BranchFlux"
+		}
+		"electron-updater": "^6.8.3",
+		"react-markdown": "^10.1.0",
+		"rehype-highlight": "^7.0.2",
+		"remark-gfm": "^4.0.1",
+		"semver": "^7.7.4",
+		"@types/semver": "^7.7.1",
 	},
 	"build": {
 		"appId": "com.branchflux.app",

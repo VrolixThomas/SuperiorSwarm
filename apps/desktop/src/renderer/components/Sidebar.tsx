@@ -1,8 +1,11 @@
-import { useRef, useState } from "react";
+import { useState } from "react";
+import type { SidebarSegment } from "../../shared/types";
 import { useProjectStore } from "../stores/projects";
+import { useTabStore } from "../stores/tab-store";
+import { trpc } from "../trpc/client";
+import { DaemonInspector } from "./DaemonInspector";
 import { ProjectList } from "./ProjectList";
 import { PullRequestsTab } from "./PullRequestsTab";
-import { SectionHeader } from "./SectionHeader";
 import { SettingsView } from "./SettingsView";
 import { SidebarRail } from "./SidebarRail";
 import { TicketsTab } from "./TicketsTab";
@@ -14,24 +17,31 @@ interface SidebarProps {
 
 export function Sidebar({ collapsed, onExpand }: SidebarProps) {
 	const { openAddModal, sidebarView, openSettings } = useProjectStore();
-	const [ticketsOpen, setTicketsOpen] = useState(true);
-	const [prsOpen, setPrsOpen] = useState(true);
-	const ticketsRef = useRef<HTMLDivElement>(null);
-	const prsRef = useRef<HTMLDivElement>(null);
+	const segment = useTabStore((s) => s.sidebarSegment);
+	const setSidebarSegment = useTabStore((s) => s.setSidebarSegment);
+	const [showDaemonInspector, setShowDaemonInspector] = useState(false);
+
+	// Check if any AI reviews need attention (ready or failed)
+	const reviewDraftsQuery = trpc.aiReview.getReviewDrafts.useQuery(undefined, {
+		staleTime: 5_000,
+	});
+	const hasAINotification = (reviewDraftsQuery.data ?? []).some(
+		(d) => d.status === "ready" || d.status === "failed"
+	);
+
+	// Check if there are new PRs from the backend poller
+	const cachedPRs = trpc.prPoller.getCachedPRs.useQuery(undefined, {
+		staleTime: 10_000,
+		refetchInterval: 30_000,
+	});
+	const hasNewPRs = (cachedPRs.data?.length ?? 0) > 0;
 
 	const handleExpand = (section?: "tickets" | "prs") => {
 		onExpand(section);
-		// After expand, scroll to section
 		if (section === "tickets") {
-			requestAnimationFrame(() => {
-				setTicketsOpen(true);
-				ticketsRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-			});
+			setSidebarSegment("tickets");
 		} else if (section === "prs") {
-			requestAnimationFrame(() => {
-				setPrsOpen(true);
-				prsRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-			});
+			setSidebarSegment("prs");
 		}
 	};
 
@@ -41,7 +51,7 @@ export function Sidebar({ collapsed, onExpand }: SidebarProps) {
 
 	return (
 		<div className="flex h-full w-full flex-col overflow-hidden bg-[var(--bg-surface)]">
-			{/* Traffic light clearance — empty drag region */}
+			{/* Traffic light clearance */}
 			<div
 				className="shrink-0"
 				style={
@@ -56,63 +66,69 @@ export function Sidebar({ collapsed, onExpand }: SidebarProps) {
 				<SettingsView />
 			) : (
 				<>
-					{/* Add Repository */}
-					<div className="px-2 pb-2">
-						<button
-							type="button"
-							onClick={openAddModal}
-							className="flex w-full items-center gap-2 rounded-[6px] px-3 py-1.5 text-[13px] text-[var(--text-tertiary)] transition-all duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-secondary)]"
-						>
-							<svg
-								aria-hidden="true"
-								width="14"
-								height="14"
-								viewBox="0 0 16 16"
-								fill="none"
-								className="shrink-0"
+					{/* Segmented control — always at top */}
+					<div className="flex gap-1 px-2 py-1.5 border-b border-[var(--border-subtle)]">
+						{(["repos", "tickets", "prs"] as const).map((seg) => (
+							<button
+								key={seg}
+								type="button"
+								onClick={() => setSidebarSegment(seg)}
+								className={`relative flex-1 rounded-[5px] py-1 text-[10px] font-medium capitalize transition-colors ${
+									segment === seg
+										? "bg-[var(--bg-elevated)] text-[var(--text-secondary)]"
+										: "text-[var(--text-quaternary)] hover:text-[var(--text-tertiary)]"
+								}`}
 							>
-								<path
-									d="M8 3v10M3 8h10"
-									stroke="currentColor"
-									strokeWidth="1.5"
-									strokeLinecap="round"
-								/>
-							</svg>
-							<span className="truncate">Add Repository</span>
-						</button>
+								{seg === "prs" ? "PRs" : seg.charAt(0).toUpperCase() + seg.slice(1)}
+								{seg === "prs" && (hasAINotification || hasNewPRs) && segment !== "prs" && (
+									<span className="absolute right-1.5 top-1 h-1.5 w-1.5 rounded-full bg-[#30d158]" />
+								)}
+							</button>
+						))}
 					</div>
 
-					{/* Project list + Unified tickets/PRs */}
-					<div className="flex-1 overflow-y-auto py-1">
-						<ProjectList />
-
-						{/* Tickets Section */}
-						<div ref={ticketsRef} className="mt-2 border-t border-[var(--border-subtle)] pt-2">
-							<SectionHeader
-								label="Tickets"
-								isOpen={ticketsOpen}
-								onToggle={() => setTicketsOpen(!ticketsOpen)}
-							/>
-							{ticketsOpen && <TicketsTab />}
-						</div>
-
-						{/* Pull Requests Section */}
-						<div ref={prsRef} className="mt-2 border-t border-[var(--border-subtle)] pt-2">
-							<SectionHeader
-								label="Pull Requests"
-								isOpen={prsOpen}
-								onToggle={() => setPrsOpen(!prsOpen)}
-							/>
-							{prsOpen && <PullRequestsTab />}
-						</div>
+					{/* Segment content */}
+					<div className="flex-1 overflow-y-auto">
+						{segment === "repos" && (
+							<>
+								{/* Add Repository */}
+								<div className="px-2 py-2">
+									<button
+										type="button"
+										onClick={openAddModal}
+										className="flex w-full items-center gap-2 rounded-[6px] px-3 py-1.5 text-[13px] text-[var(--text-tertiary)] transition-all duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-secondary)]"
+									>
+										<svg
+											aria-hidden="true"
+											width="14"
+											height="14"
+											viewBox="0 0 16 16"
+											fill="none"
+											className="shrink-0"
+										>
+											<path
+												d="M8 3v10M3 8h10"
+												stroke="currentColor"
+												strokeWidth="1.5"
+												strokeLinecap="round"
+											/>
+										</svg>
+										<span className="truncate">Add Repository</span>
+									</button>
+								</div>
+								<ProjectList />
+							</>
+						)}
+						{segment === "tickets" && <TicketsTab />}
+						{segment === "prs" && <PullRequestsTab />}
 					</div>
 
-					{/* Footer — Settings button */}
-					<div className="border-t border-[var(--border-subtle)] p-2">
+					{/* Footer — Settings + Daemon Inspector */}
+					<div className="flex items-center gap-1 border-t border-[var(--border-subtle)] p-2">
 						<button
 							type="button"
 							onClick={openSettings}
-							className="flex w-full items-center gap-2 rounded-[6px] px-3 py-1.5 text-[13px] text-[var(--text-tertiary)] transition-all duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-secondary)]"
+							className="flex flex-1 items-center gap-2 rounded-[6px] px-3 py-1.5 text-[13px] text-[var(--text-tertiary)] transition-all duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-secondary)]"
 						>
 							<svg
 								aria-hidden="true"
@@ -131,7 +147,31 @@ export function Sidebar({ collapsed, onExpand }: SidebarProps) {
 							</svg>
 							<span className="truncate">Settings</span>
 						</button>
+						<button
+							type="button"
+							onClick={() => setShowDaemonInspector(true)}
+							title="Daemon Inspector"
+							className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-[6px] text-[var(--text-quaternary)] transition-all duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-secondary)]"
+						>
+							<svg
+								aria-hidden="true"
+								width="14"
+								height="14"
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								strokeWidth="1.5"
+								strokeLinecap="round"
+								strokeLinejoin="round"
+							>
+								<polyline points="4 17 10 11 4 5" />
+								<line x1="12" y1="19" x2="20" y2="19" />
+							</svg>
+						</button>
 					</div>
+					{showDaemonInspector && (
+						<DaemonInspector onClose={() => setShowDaemonInspector(false)} />
+					)}
 				</>
 			)}
 		</div>

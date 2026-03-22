@@ -61,6 +61,7 @@ function resetStore() {
 		activeWorkspaceCwd: "",
 		diffMode: "split",
 		rightPanel: PANEL_CLOSED,
+		workspaceMetadata: {},
 	});
 }
 
@@ -388,6 +389,41 @@ describe("addTerminalTab", () => {
 		useTabStore.getState().setActiveWorkspace("ws-1", "/repo");
 		const id = useTabStore.getState().addTerminalTab("ws-1", "/repo");
 		expect(getActiveTabId()).toBe(id);
+	});
+});
+
+// ── review workspace activation ──────────────────────────────────────────────
+
+describe("review workspace activation", () => {
+	beforeEach(resetStore);
+
+	test("setActiveWorkspace with review type sets pr-review panel mode", () => {
+		const store = useTabStore.getState();
+		// Store workspace metadata first
+		store.setWorkspaceMetadata("ws-review-1", {
+			type: "review",
+			prProvider: "github",
+			prIdentifier: "owner/repo#16",
+			prTitle: "Create Claude.md",
+			sourceBranch: "patch-testreview",
+			targetBranch: "main",
+		});
+
+		store.setActiveWorkspace("ws-review-1", "/path/to/worktree");
+
+		const state = useTabStore.getState();
+		expect(state.rightPanel.mode).toBe("pr-review");
+		expect(state.rightPanel.prCtx).toBeTruthy();
+		expect(state.rightPanel.prCtx?.repoPath).toBe("/path/to/worktree");
+		expect(state.rightPanel.prCtx?.provider).toBe("github");
+	});
+
+	test("setActiveWorkspace with non-review type uses default diff panel", () => {
+		const store = useTabStore.getState();
+		store.setActiveWorkspace("ws-branch-1", "/path/to/repo");
+
+		const state = useTabStore.getState();
+		expect(state.rightPanel.mode).not.toBe("pr-review");
 	});
 });
 
