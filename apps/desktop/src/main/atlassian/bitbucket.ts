@@ -14,6 +14,7 @@ export interface BitbucketPullRequest {
 	webUrl: string;
 	createdOn: string;
 	updatedOn: string;
+	commentCount: number;
 	source?: { branch?: { name: string } };
 	destination?: { branch?: { name: string } };
 }
@@ -28,6 +29,7 @@ interface BitbucketApiPR {
 	links: { html: { href: string } };
 	created_on: string;
 	updated_on: string;
+	comment_count: number;
 }
 
 function mapPR(pr: BitbucketApiPR, workspace: string, repoSlug: string): BitbucketPullRequest {
@@ -41,6 +43,7 @@ function mapPR(pr: BitbucketApiPR, workspace: string, repoSlug: string): Bitbuck
 		webUrl: pr.links.html.href,
 		createdOn: pr.created_on,
 		updatedOn: pr.updated_on,
+		commentCount: pr.comment_count ?? 0,
 		source: pr.source.branch ? { branch: { name: pr.source.branch.name ?? "" } } : undefined,
 		destination: pr.destination?.branch
 			? { branch: { name: pr.destination.branch.name ?? "" } }
@@ -168,6 +171,40 @@ export async function createPRComment(
 	if (!res.ok) throw new Error(`Bitbucket create comment failed: ${res.status}`);
 	const data = (await res.json()) as { id: number };
 	return { id: data.id };
+}
+
+/** Fetch all comments on a Bitbucket pull request */
+export async function getBitbucketPRComments(
+	workspace: string,
+	repoSlug: string,
+	prId: number,
+): Promise<
+	Array<{
+		id: number;
+		author: string;
+		body: string;
+		filePath: string | null;
+		lineNumber: number | null;
+		createdAt: string;
+		parentId: number | null;
+	}>
+> {
+	const resp = await atlassianFetch(
+		"bitbucket",
+		`${BITBUCKET_API_BASE}/repositories/${workspace}/${repoSlug}/pullrequests/${prId}/comments?pagelen=100`,
+	);
+	if (!resp.ok) throw new Error(`Bitbucket comments fetch failed: ${resp.status}`);
+	const data = (await resp.json()) as { values?: any[] };
+
+	return (data.values ?? []).map((c: any) => ({
+		id: c.id,
+		author: c.user?.display_name ?? c.user?.nickname ?? "unknown",
+		body: c.content?.raw ?? "",
+		filePath: c.inline?.path ?? null,
+		lineNumber: c.inline?.to ?? c.inline?.from ?? null,
+		createdAt: c.created_on ?? "",
+		parentId: c.parent?.id ?? null,
+	}));
 }
 
 /** Reply to an existing comment on a Bitbucket pull request */

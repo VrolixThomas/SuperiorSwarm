@@ -87,10 +87,14 @@ function mapGitHubPR(pr: Awaited<ReturnType<typeof getMyPRs>>[number]): CachedPR
 		repoOwner: pr.repoOwner,
 		repoName: pr.repoName,
 		projectId: getProjectIdForGitHub(pr.repoOwner, pr.repoName),
+		role: pr.role,
 	};
 }
 
-function mapBitbucketPR(pr: Awaited<ReturnType<typeof getMyPullRequests>>[number]): CachedPR {
+function mapBitbucketPR(
+	pr: Awaited<ReturnType<typeof getMyPullRequests>>[number],
+	role: "author" | "reviewer",
+): CachedPR {
 	const identifier = `${pr.workspace}/${pr.repoSlug}#${pr.id}`;
 	// Bitbucket states: OPEN, MERGED, DECLINED, SUPERSEDED
 	const rawState = pr.state.toUpperCase();
@@ -110,7 +114,7 @@ function mapBitbucketPR(pr: Awaited<ReturnType<typeof getMyPullRequests>>[number
 		author: { login: pr.author, avatarUrl: "" },
 		reviewers: [],
 		ciStatus: null,
-		commentCount: 0,
+		commentCount: pr.commentCount ?? 0,
 		changedFiles: 0,
 		additions: 0,
 		deletions: 0,
@@ -118,6 +122,7 @@ function mapBitbucketPR(pr: Awaited<ReturnType<typeof getMyPullRequests>>[number
 		repoOwner: pr.workspace,
 		repoName: pr.repoSlug,
 		projectId: getProjectIdForBitbucket(pr.workspace, pr.repoSlug),
+		role,
 	};
 }
 
@@ -145,14 +150,14 @@ async function fetchAllPRs(): Promise<CachedPR[]> {
 
 			const seen = new Set<string>();
 			for (const pr of authored) {
-				const mapped = mapBitbucketPR(pr);
+				const mapped = mapBitbucketPR(pr, "author");
 				if (!seen.has(mapped.identifier)) {
 					seen.add(mapped.identifier);
 					results.push(mapped);
 				}
 			}
 			for (const pr of reviewing) {
-				const mapped = mapBitbucketPR(pr);
+				const mapped = mapBitbucketPR(pr, "reviewer");
 				if (!seen.has(mapped.identifier)) {
 					seen.add(mapped.identifier);
 					results.push(mapped);
