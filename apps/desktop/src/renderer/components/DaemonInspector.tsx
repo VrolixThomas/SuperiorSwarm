@@ -84,9 +84,7 @@ export function DaemonInspector({ onClose }: { onClose: () => void }) {
 		refresh();
 	}, [refresh]);
 
-	const daemonSessionIds = new Set(
-		state.daemon?.daemonSessions.map((s) => s.id) ?? [],
-	);
+	const daemonSessionIds = new Set(state.daemon?.daemonSessions.map((s) => s.id) ?? []);
 	const dbSessionIds = new Set(dbQuery.data?.sessions.map((s) => s.id) ?? []);
 	const allIds = new Set([...daemonSessionIds, ...dbSessionIds, ...rendererTabIds]);
 
@@ -109,9 +107,7 @@ export function DaemonInspector({ onClose }: { onClose: () => void }) {
 				{/* Header */}
 				<div className="flex shrink-0 items-center justify-between border-b border-[var(--border)] px-4 py-3">
 					<div className="flex items-center gap-3">
-						<span className="text-[13px] font-medium text-[var(--text)]">
-							System Inspector
-						</span>
+						<span className="text-[13px] font-medium text-[var(--text)]">System Inspector</span>
 						<div className="flex gap-0.5 rounded-md bg-[var(--bg-base)] p-0.5">
 							{(["terminals", "worktrees"] as const).map((t) => (
 								<button
@@ -196,7 +192,12 @@ function TerminalsTab({
 	rendererTabIds,
 }: {
 	state: { daemon: DaemonInspectorData | null; error: string | null };
-	dbQuery: { sessions: Array<{ id: string; workspaceId: string; cwd: string }>; workspaceMap: Record<string, { name: string; type: string; prIdentifier: string | null }> } | undefined;
+	dbQuery:
+		| {
+				sessions: Array<{ id: string; workspaceId: string; cwd: string }>;
+				workspaceMap: Record<string, { name: string; type: string; prIdentifier: string | null }>;
+		  }
+		| undefined;
 	allIds: Set<string>;
 	rendererTabIds: Set<string>;
 }) {
@@ -212,9 +213,7 @@ function TerminalsTab({
 			</div>
 
 			{state.error && (
-				<div className="shrink-0 px-4 py-2 text-[12px] text-[var(--term-red)]">
-					{state.error}
-				</div>
+				<div className="shrink-0 px-4 py-2 text-[12px] text-[var(--term-red)]">{state.error}</div>
 			)}
 
 			{/* Session rows */}
@@ -256,18 +255,12 @@ function TerminalsTab({
 								}`}
 							>
 								<div className="flex items-center gap-2">
-									<span className="font-mono text-[11px] text-[var(--text-secondary)]">
-										{id}
-									</span>
+									<span className="font-mono text-[11px] text-[var(--text-secondary)]">{id}</span>
 									{ds && (
-										<span className="text-[10px] text-[var(--text-quaternary)]">
-											PID {ds.pid}
-										</span>
+										<span className="text-[10px] text-[var(--text-quaternary)]">PID {ds.pid}</span>
 									)}
 									{badge && (
-										<span
-											className={`rounded px-1 py-0.5 text-[9px] font-semibold ${badgeColor}`}
-										>
+										<span className={`rounded px-1 py-0.5 text-[9px] font-semibold ${badgeColor}`}>
 											{badge}
 										</span>
 									)}
@@ -294,9 +287,7 @@ function TerminalsTab({
 										</span>
 									)}
 									{!ws && db?.workspaceId && (
-										<span className="text-[var(--term-yellow)]">
-											workspace deleted
-										</span>
+										<span className="text-[var(--term-yellow)]">workspace deleted</span>
 									)}
 									<span className="text-[var(--text-quaternary)]">
 										{[
@@ -377,10 +368,7 @@ function WorktreesTab({
 					<KV label="Total" value={worktrees.length} />
 					<KV label="On disk" value={worktrees.filter((w) => w.existsOnDisk).length} />
 					<KV label="In DB" value={worktrees.filter((w) => w.inDb).length} />
-					<KV
-						label="Ghosts"
-						value={worktrees.filter((w) => !w.existsOnDisk).length}
-					/>
+					<KV label="Ghosts" value={worktrees.filter((w) => !w.existsOnDisk).length} />
 				</div>
 				{worktrees.some((w) => !w.existsOnDisk) && (
 					<button
@@ -415,69 +403,69 @@ function WorktreesTab({
 									}`}
 								>
 									<div className="flex items-center justify-between">
-									<div className="flex items-center gap-2">
-										<span className="font-mono text-[11px] text-[var(--text-secondary)]">
-											{shortPath(wt.path)}
-										</span>
-										{wt.isMain && (
-											<span className="rounded bg-[var(--term-blue)] px-1 py-0.5 text-[9px] font-semibold text-white">
-												MAIN
+										<div className="flex items-center gap-2">
+											<span className="font-mono text-[11px] text-[var(--text-secondary)]">
+												{shortPath(wt.path)}
 											</span>
-										)}
-										{wt.workspaceType === "review" && (
-											<span className="rounded bg-[var(--term-magenta)] px-1 py-0.5 text-[9px] font-semibold text-white">
-												REVIEW
-											</span>
-										)}
-										{isStale && (
-											<span className="rounded bg-[var(--term-red)] px-1 py-0.5 text-[9px] font-semibold text-white">
-												MISSING FROM DISK
-											</span>
-										)}
-										{isOrphaned && (
-											<span className="rounded bg-[var(--term-yellow)] px-1 py-0.5 text-[9px] font-semibold text-black">
-												NO WORKSPACE
-											</span>
+											{wt.isMain && (
+												<span className="rounded bg-[var(--term-blue)] px-1 py-0.5 text-[9px] font-semibold text-white">
+													MAIN
+												</span>
+											)}
+											{wt.workspaceType === "review" && (
+												<span className="rounded bg-[var(--term-magenta)] px-1 py-0.5 text-[9px] font-semibold text-white">
+													REVIEW
+												</span>
+											)}
+											{isStale && (
+												<span className="rounded bg-[var(--term-red)] px-1 py-0.5 text-[9px] font-semibold text-white">
+													MISSING FROM DISK
+												</span>
+											)}
+											{isOrphaned && (
+												<span className="rounded bg-[var(--term-yellow)] px-1 py-0.5 text-[9px] font-semibold text-black">
+													NO WORKSPACE
+												</span>
+											)}
+										</div>
+										{!wt.isMain && wt.existsOnDisk && (
+											<>
+												{confirmPath === wt.path ? (
+													<div className="flex items-center gap-1">
+														<button
+															type="button"
+															onClick={() => {
+																removeMutation.mutate({
+																	path: wt.path,
+																	repoPath: wt.repoPath,
+																});
+																setConfirmPath(null);
+															}}
+															className="rounded px-1.5 py-0.5 text-[10px] text-[var(--term-red)] transition-colors hover:bg-[rgba(255,69,58,0.1)]"
+														>
+															Confirm
+														</button>
+														<button
+															type="button"
+															onClick={() => setConfirmPath(null)}
+															className="rounded px-1.5 py-0.5 text-[10px] text-[var(--text-quaternary)] transition-colors hover:bg-[var(--bg-elevated)]"
+														>
+															Cancel
+														</button>
+													</div>
+												) : (
+													<button
+														type="button"
+														onClick={() => setConfirmPath(wt.path)}
+														disabled={removeMutation.isPending}
+														className="rounded px-1.5 py-0.5 text-[10px] text-[var(--text-quaternary)] transition-colors hover:bg-[rgba(255,69,58,0.1)] hover:text-[var(--term-red)] disabled:opacity-50"
+													>
+														Remove
+													</button>
+												)}
+											</>
 										)}
 									</div>
-									{!wt.isMain && wt.existsOnDisk && (
-										<>
-											{confirmPath === wt.path ? (
-												<div className="flex items-center gap-1">
-													<button
-														type="button"
-														onClick={() => {
-															removeMutation.mutate({
-																path: wt.path,
-																repoPath: wt.repoPath,
-															});
-															setConfirmPath(null);
-														}}
-														className="rounded px-1.5 py-0.5 text-[10px] text-[var(--term-red)] transition-colors hover:bg-[rgba(255,69,58,0.1)]"
-													>
-														Confirm
-													</button>
-													<button
-														type="button"
-														onClick={() => setConfirmPath(null)}
-														className="rounded px-1.5 py-0.5 text-[10px] text-[var(--text-quaternary)] transition-colors hover:bg-[var(--bg-elevated)]"
-													>
-														Cancel
-													</button>
-												</div>
-											) : (
-												<button
-													type="button"
-													onClick={() => setConfirmPath(wt.path)}
-													disabled={removeMutation.isPending}
-													className="rounded px-1.5 py-0.5 text-[10px] text-[var(--text-quaternary)] transition-colors hover:bg-[rgba(255,69,58,0.1)] hover:text-[var(--term-red)] disabled:opacity-50"
-												>
-													Remove
-												</button>
-											)}
-										</>
-									)}
-								</div>
 									<div
 										className="mt-0.5 font-mono text-[10px] text-[var(--text-quaternary)]"
 										title={wt.path}
@@ -490,9 +478,7 @@ function WorktreesTab({
 										</span>
 										{wt.workspaceName && <span>workspace: {wt.workspaceName}</span>}
 										<span className="text-[var(--text-quaternary)]">
-											{[wt.existsOnDisk && "disk", wt.inDb && "db"]
-												.filter(Boolean)
-												.join(", ")}
+											{[wt.existsOnDisk && "disk", wt.inDb && "db"].filter(Boolean).join(", ")}
 										</span>
 									</div>
 								</div>
@@ -516,9 +502,7 @@ function KV({ label, value }: { label: string; value: number | string }) {
 	return (
 		<div className="flex items-center gap-1.5">
 			<span className="text-[var(--text-quaternary)]">{label}:</span>
-			<span className="font-mono font-medium text-[var(--text-secondary)]">
-				{value}
-			</span>
+			<span className="font-mono font-medium text-[var(--text-secondary)]">{value}</span>
 		</div>
 	);
 }

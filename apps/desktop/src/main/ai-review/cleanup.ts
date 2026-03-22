@@ -73,9 +73,7 @@ export async function cleanupReviewWorkspace(workspaceId: string): Promise<void>
 		daemon?.dispose(session.id);
 	}
 	if (sessions.length > 0) {
-		db.delete(terminalSessions)
-			.where(eq(terminalSessions.workspaceId, workspaceId))
-			.run();
+		db.delete(terminalSessions).where(eq(terminalSessions.workspaceId, workspaceId)).run();
 	}
 
 	// 4. Delete workspace record

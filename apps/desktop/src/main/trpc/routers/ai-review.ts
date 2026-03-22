@@ -219,9 +219,7 @@ export const aiReviewRouter = router({
 		.input(z.object({ commentId: z.string() }))
 		.mutation(({ input }) => {
 			const db = getDb();
-			db.delete(schema.draftComments)
-				.where(eq(schema.draftComments.id, input.commentId))
-				.run();
+			db.delete(schema.draftComments).where(eq(schema.draftComments.id, input.commentId)).run();
 			return { success: true };
 		}),
 

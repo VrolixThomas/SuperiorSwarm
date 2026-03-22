@@ -169,9 +169,7 @@ export function Sidebar({ collapsed, onExpand }: SidebarProps) {
 							</svg>
 						</button>
 					</div>
-					{showDaemonInspector && (
-						<DaemonInspector onClose={() => setShowDaemonInspector(false)} />
-					)}
+					{showDaemonInspector && <DaemonInspector onClose={() => setShowDaemonInspector(false)} />}
 				</>
 			)}
 		</div>

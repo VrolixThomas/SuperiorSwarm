@@ -38,6 +38,7 @@
 		"drizzle-orm": "^0.45.1",
 		"ignore": "^7.0.5",
 		"monaco-editor": "^0.55.0",
+		"monaco-vim": "^0.4.4",
 		"nanoid": "^5.1.6",
 		"node-pty": "^1.1.0",
 		"react": "^19.0.0",

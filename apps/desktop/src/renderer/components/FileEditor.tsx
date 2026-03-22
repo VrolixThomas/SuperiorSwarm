@@ -1,5 +1,6 @@
 import * as monaco from "monaco-editor";
-import { useEffect, useRef } from "react";
+import { initVimMode } from "monaco-vim";
+import { useEffect, useRef, useState } from "react";
 import { EDITOR_THEME, ensureThemeRegistered } from "../lib/monacoTheme";
 import {
 	registerLspProviders,
@@ -8,6 +9,7 @@ import {
 	sendDidOpen,
 	setModelRepoPath,
 } from "../lsp/monaco-lsp-bridge";
+import { useEditorSettingsStore } from "../stores/editor-settings";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 
@@ -33,6 +35,10 @@ export function FileEditor({
 	const initialPositionRef = useRef(initialPosition);
 	const clearInitialPosition = useTabStore((s) => s.clearInitialPosition);
 	const utils = trpc.useUtils();
+	const vimStatusRef = useRef<HTMLDivElement>(null);
+	const vimModeRef = useRef<ReturnType<typeof initVimMode> | null>(null);
+	const [editorReady, setEditorReady] = useState(false);
+	const vimEnabled = useEditorSettingsStore((s) => s.vimEnabled);
 	const saveMutation = trpc.diff.saveFileContent.useMutation({
 		onSuccess: () => {
 			utils.diff.getWorkingTreeDiff.invalidate({ repoPath });
@@ -71,7 +77,9 @@ export function FileEditor({
 			automaticLayout: true,
 		});
 		editorRef.current = editor;
+		setEditorReady(true);
 		return () => {
+			setEditorReady(false);
 			editor.dispose();
 			editorRef.current = null;
 		};
@@ -136,6 +144,21 @@ export function FileEditor({
 		};
 	}, [data, language, repoPath, filePath]);
 
+	// biome-ignore lint/correctness/useExhaustiveDependencies: editorReady is an intentional trigger to re-run after editor creation
+	useEffect(() => {
+		const editor = editorRef.current;
+		if (!editor) return;
+
+		if (vimEnabled && vimStatusRef.current) {
+			vimModeRef.current = initVimMode(editor, vimStatusRef.current);
+		}
+
+		return () => {
+			vimModeRef.current?.dispose();
+			vimModeRef.current = null;
+		};
+	}, [vimEnabled, editorReady]);
+
 	return (
 		<>
 			{isLoading && (
@@ -144,10 +167,17 @@ export function FileEditor({
 				</div>
 			)}
 			<div
-				ref={containerRef}
-				className="h-full w-full"
+				className="flex h-full w-full flex-col"
 				style={isLoading ? { display: "none" } : undefined}
-			/>
+			>
+				<div ref={containerRef} className="min-h-0 flex-1" />
+				{vimEnabled && (
+					<div
+						ref={vimStatusRef}
+						className="flex h-5 shrink-0 items-center border-t border-[var(--border)] bg-[var(--bg-elevated)] px-2 font-mono text-[11px] text-[var(--text-secondary)]"
+					/>
+				)}
+			</div>
 		</>
 	);
 }

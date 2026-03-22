@@ -111,9 +111,7 @@ export class DaemonClient {
 		return this.liveSessions.has(id);
 	}
 
-	async listSessions(): Promise<
-		Array<{ id: string; cwd: string; pid: number }>
-	> {
+	async listSessions(): Promise<Array<{ id: string; cwd: string; pid: number }>> {
 		if (!this.isConnected) return [];
 		this.send({ type: "list" });
 		const msg = await this.waitForMessage("sessions");

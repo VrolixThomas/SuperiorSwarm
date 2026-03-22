@@ -152,9 +152,7 @@ function ChangesTab({
 
 	// Commits query — use origin/<baseBranch> because worktrees may not have
 	// a local tracking branch for the target (e.g. no local "main", only "origin/main")
-	const commitsBaseBranch = baseBranch.startsWith("origin/")
-		? baseBranch
-		: `origin/${baseBranch}`;
+	const commitsBaseBranch = baseBranch.startsWith("origin/") ? baseBranch : `origin/${baseBranch}`;
 	const commitsQuery = trpc.diff.getCommitsAhead.useQuery(
 		{ repoPath: prCtx.repoPath, baseBranch: commitsBaseBranch },
 		{ staleTime: 30_000, enabled: !!prCtx.repoPath }
@@ -489,8 +487,7 @@ function CommentsTab({
 			if (!launchInfo.reviewWorkspaceId || !launchInfo.worktreePath) return;
 
 			const tabStore = useTabStore.getState();
-			const alreadyActive =
-				tabStore.activeWorkspaceId === launchInfo.reviewWorkspaceId;
+			const alreadyActive = tabStore.activeWorkspaceId === launchInfo.reviewWorkspaceId;
 
 			if (!alreadyActive) {
 				// Only switch workspace if we're not already there
@@ -502,17 +499,14 @@ function CommentsTab({
 					sourceBranch: prCtx.sourceBranch,
 					targetBranch: prCtx.targetBranch,
 				});
-				tabStore.setActiveWorkspace(
-					launchInfo.reviewWorkspaceId,
-					launchInfo.worktreePath,
-				);
+				tabStore.setActiveWorkspace(launchInfo.reviewWorkspaceId, launchInfo.worktreePath);
 			}
 
 			// Create a fresh terminal tab for the re-review
 			const tabId = tabStore.addTerminalTab(
 				launchInfo.reviewWorkspaceId,
 				launchInfo.worktreePath,
-				"AI Re-review",
+				"AI Re-review"
 			);
 			attachTerminal.mutate({
 				workspaceId: launchInfo.reviewWorkspaceId,
@@ -520,10 +514,7 @@ function CommentsTab({
 			});
 
 			setTimeout(() => {
-				window.electron.terminal.write(
-					tabId,
-					`bash '${launchInfo.launchScript}'\r`,
-				);
+				window.electron.terminal.write(tabId, `bash '${launchInfo.launchScript}'\r`);
 			}, 1000);
 		},
 		onError: (err) => {
