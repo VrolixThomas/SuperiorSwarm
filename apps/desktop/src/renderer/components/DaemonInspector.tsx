@@ -345,6 +345,10 @@ function WorktreesTab({
 }: { data: WorktreeEntry[] | undefined; loading: boolean; onRefresh: () => void }) {
 	const removeMutation = trpc.terminalSessions.removeWorktree.useMutation({
 		onSuccess: () => onRefresh(),
+		onError: (err) => console.error("[removeWorktree]", err.message),
+	});
+	const pruneMutation = trpc.terminalSessions.pruneWorktrees.useMutation({
+		onSuccess: () => onRefresh(),
 	});
 	const [confirmPath, setConfirmPath] = useState<string | null>(null);
 
@@ -368,14 +372,26 @@ function WorktreesTab({
 
 	return (
 		<>
-			<div className="flex shrink-0 gap-4 border-b border-[var(--border-subtle)] px-4 py-2 text-[11px]">
-				<KV label="Total worktrees" value={worktrees.length} />
-				<KV label="On disk" value={worktrees.filter((w) => w.existsOnDisk).length} />
-				<KV label="In DB" value={worktrees.filter((w) => w.inDb).length} />
-				<KV
-					label="Orphaned (no workspace)"
-					value={worktrees.filter((w) => !w.workspaceName && !w.isMain).length}
-				/>
+			<div className="flex shrink-0 items-center justify-between border-b border-[var(--border-subtle)] px-4 py-2 text-[11px]">
+				<div className="flex gap-4">
+					<KV label="Total" value={worktrees.length} />
+					<KV label="On disk" value={worktrees.filter((w) => w.existsOnDisk).length} />
+					<KV label="In DB" value={worktrees.filter((w) => w.inDb).length} />
+					<KV
+						label="Ghosts"
+						value={worktrees.filter((w) => !w.existsOnDisk).length}
+					/>
+				</div>
+				{worktrees.some((w) => !w.existsOnDisk) && (
+					<button
+						type="button"
+						onClick={() => pruneMutation.mutate()}
+						disabled={pruneMutation.isPending}
+						className="rounded-md px-2 py-1 text-[11px] text-[var(--term-red)] transition-colors hover:bg-[rgba(255,69,58,0.1)] disabled:opacity-50"
+					>
+						{pruneMutation.isPending ? "Pruning..." : "Prune Ghosts"}
+					</button>
+				)}
 			</div>
 			<div className="min-h-0 flex-1 overflow-y-auto">
 				{Array.from(byProject.entries()).map(([projectName, entries]) => (
@@ -424,7 +440,7 @@ function WorktreesTab({
 											</span>
 										)}
 									</div>
-									{!wt.isMain && (
+									{!wt.isMain && wt.existsOnDisk && (
 										<>
 											{confirmPath === wt.path ? (
 												<div className="flex items-center gap-1">
