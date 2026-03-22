@@ -11,6 +11,8 @@ export const aiReviewSettings = sqliteTable("ai_review_settings", {
 	maxConcurrentReviews: integer("max_concurrent_reviews").notNull().default(3),
 	autoApproveResolutions: integer("auto_approve_resolutions").notNull().default(0),
 	autoPublishResolutions: integer("auto_publish_resolutions").notNull().default(0),
+	autoSolveEnabled: integer("auto_solve_enabled").notNull().default(0),
+	solvePrompt: text("solve_prompt"),
 	updatedAt: integer("updated_at", { mode: "timestamp" }),
 });
 
