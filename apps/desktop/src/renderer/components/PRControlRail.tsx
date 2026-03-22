@@ -540,6 +540,10 @@ function CommentsTab({
 		onSuccess: invalidateDrafts,
 	});
 
+	const deleteDraftComment = trpc.aiReview.deleteDraftComment.useMutation({
+		onSuccess: invalidateDrafts,
+	});
+
 	const addComment = trpc.github.addReviewComment.useMutation({
 		onSuccess: () =>
 			utils.github.getPRDetails.invalidate({
@@ -600,6 +604,7 @@ function CommentsTab({
 			prCtx={prCtx}
 			onAccept={(id) => updateDraftComment.mutate({ commentId: id, status: "user-pending" })}
 			onDecline={(id) => updateDraftComment.mutate({ commentId: id, status: "rejected" })}
+			onDelete={(id) => deleteDraftComment.mutate({ commentId: id })}
 			onReply={(threadId, body) => addComment.mutate({ threadId, body })}
 			onResolve={(threadId) => resolveThread.mutate({ threadId })}
 			onNavigate={(path) => {
@@ -679,6 +684,7 @@ function CommentThreadCard({
 	prCtx,
 	onAccept,
 	onDecline,
+	onDelete,
 	onReply,
 	onResolve,
 	onNavigate,
@@ -687,6 +693,7 @@ function CommentThreadCard({
 	prCtx: PRContext;
 	onAccept?: (id: string) => void;
 	onDecline?: (id: string) => void;
+	onDelete?: (id: string) => void;
 	onReply?: (threadId: string, body: string) => void;
 	onResolve?: (threadId: string) => void;
 	onNavigate: (path: string) => void;
@@ -737,6 +744,11 @@ function CommentThreadCard({
 							Pending
 						</span>
 					)}
+					{ai.status === "error" && (
+						<span className="rounded-[3px] border border-[rgba(255,69,58,0.3)] bg-[rgba(255,69,58,0.12)] px-1.5 py-px text-[9px] font-semibold uppercase tracking-wide text-[#ff453a]">
+							Failed
+						</span>
+					)}
 				</div>
 				<div className="px-3 py-2 text-[11px] text-[var(--text-secondary)] whitespace-pre-wrap">
 					{ai.userEdit ?? ai.body}
@@ -756,6 +768,17 @@ function CommentThreadCard({
 							className="rounded-[4px] px-2 py-0.5 text-[10px] bg-[var(--bg-elevated)] text-[var(--text-tertiary)] hover:opacity-80"
 						>
 							Decline
+						</button>
+					</div>
+				)}
+				{ai.status === "error" && onDelete && (
+					<div className="flex gap-1.5 border-t border-[var(--border-subtle)] px-3 py-1.5">
+						<button
+							type="button"
+							onClick={() => onDelete(ai.draftCommentId)}
+							className="rounded-[4px] px-2 py-0.5 text-[10px] font-medium bg-[rgba(255,69,58,0.15)] text-[#ff453a] hover:opacity-80"
+						>
+							Remove
 						</button>
 					</div>
 				)}
@@ -999,7 +1022,7 @@ export function PRControlRail({ prCtx }: { prCtx: PRContext }) {
 	});
 
 	const aiThreads: AIDraftThread[] = (aiDraftQuery.data?.comments ?? [])
-		.filter((c) => c.status === "pending" || c.status === "edited")
+		.filter((c) => c.status === "pending" || c.status === "edited" || c.status === "error")
 		.map(mapComment);
 
 	// User-pending = accepted AI comments + user-authored drafts — all published on submit

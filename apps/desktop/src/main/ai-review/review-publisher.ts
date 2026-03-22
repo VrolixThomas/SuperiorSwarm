@@ -128,51 +128,55 @@ export async function publishReview(draftId: string): Promise<PublishResult> {
 			// Fall back to stored commit SHA and skip path validation
 		}
 
-		// Post inline comments via GitHub API
+		// Post comments via GitHub API
 		for (const comment of comments) {
 			try {
 				const body =
 					comment.status === "edited" && comment.userEdit ? comment.userEdit : comment.body;
 
-				if (comment.lineNumber) {
-					// Validate and remap file path if we have PR file info
-					let filePath = comment.filePath;
-					if (validPaths.size > 0) {
-						const resolved = resolveCommentPath(filePath, validPaths, renameMap);
-						if (!resolved) {
-							skippedCount++;
-							errors.push(
-								`Skipped comment on ${filePath}:${comment.lineNumber} — file no longer exists in PR`
-							);
-							continue;
-						}
-						filePath = resolved.path;
+				// Validate and remap file path if we have PR file info
+				let filePath = comment.filePath;
+				if (validPaths.size > 0) {
+					const resolved = resolveCommentPath(filePath, validPaths, renameMap);
+					if (!resolved) {
+						skippedCount++;
+						errors.push(
+							`Skipped comment on ${filePath}${comment.lineNumber ? `:${comment.lineNumber}` : ""} — file no longer exists in PR`
+						);
+						continue;
 					}
-
-					const commentBody =
-						filePath !== comment.filePath
-							? `*(File was renamed from \`${comment.filePath}\`)*\n\n${body}`
-							: body;
-
-					const result = await createReviewThread({
-						owner: ownerOrWorkspace,
-						repo,
-						prNumber,
-						body: commentBody,
-						commitId,
-						path: filePath,
-						line: comment.lineNumber,
-						side: (comment.side as "LEFT" | "RIGHT") ?? "RIGHT",
-					});
-					// Save platform comment ID for follow-up resolution
-					db.update(schema.draftComments)
-						.set({ platformCommentId: result.nodeId })
-						.where(eq(schema.draftComments.id, comment.id))
-						.run();
+					filePath = resolved.path;
 				}
+
+				const commentBody =
+					filePath !== comment.filePath
+						? `*(File was renamed from \`${comment.filePath}\`)*\n\n${body}`
+						: body;
+
+				const result = await createReviewThread({
+					owner: ownerOrWorkspace,
+					repo,
+					prNumber,
+					body: commentBody,
+					commitId,
+					path: filePath,
+					...(comment.lineNumber
+						? {
+								line: comment.lineNumber,
+								side: (comment.side as "LEFT" | "RIGHT") ?? "RIGHT",
+							}
+						: {}),
+				});
+				// Save platform comment ID for follow-up resolution
+				db.update(schema.draftComments)
+					.set({ platformCommentId: result.nodeId })
+					.where(eq(schema.draftComments.id, comment.id))
+					.run();
 				postedCount++;
 			} catch (err) {
-				errors.push(`Failed to post comment on ${comment.filePath}:${comment.lineNumber}: ${err}`);
+				errors.push(
+					`Failed to post comment on ${comment.filePath}${comment.lineNumber ? `:${comment.lineNumber}` : ""}: ${err}`
+				);
 			}
 		}
 
@@ -202,7 +206,7 @@ export async function publishReview(draftId: string): Promise<PublishResult> {
 					repo,
 					prNumber,
 					body,
-					comment.lineNumber ? comment.filePath : undefined,
+					comment.filePath,
 					comment.lineNumber ?? undefined
 				);
 				// Save platform comment ID
@@ -212,7 +216,7 @@ export async function publishReview(draftId: string): Promise<PublishResult> {
 					.run();
 				postedCount++;
 			} catch (err) {
-				errors.push(`Failed to post comment on ${comment.filePath}:${comment.lineNumber}: ${err}`);
+				errors.push(`Failed to post comment on ${comment.filePath}${comment.lineNumber ? `:${comment.lineNumber}` : ""}: ${err}`);
 			}
 		}
 

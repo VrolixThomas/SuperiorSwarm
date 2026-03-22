@@ -199,8 +199,8 @@ export const githubRouter = router({
 				body: z.string(),
 				commitId: z.string(),
 				path: z.string(),
-				line: z.number(),
-				side: z.enum(["LEFT", "RIGHT"]),
+				line: z.number().optional(),
+				side: z.enum(["LEFT", "RIGHT"]).optional(),
 			})
 		)
 		.mutation(({ input }) => {

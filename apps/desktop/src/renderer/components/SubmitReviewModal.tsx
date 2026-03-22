@@ -45,8 +45,7 @@ export function SubmitReviewModal({
 		let posted = 0;
 		let failed = 0;
 		const errors: string[] = [];
-		const postable = aiThreads.filter((c): c is AIDraftThread & { line: number } => c.line != null);
-		for (const comment of postable) {
+		for (const comment of aiThreads) {
 			try {
 				await createThread.mutateAsync({
 					owner: prCtx.owner,
@@ -55,8 +54,9 @@ export function SubmitReviewModal({
 					body: comment.userEdit ?? comment.body,
 					commitId: headCommitOid,
 					path: comment.path,
-					line: comment.line,
-					side: comment.diffSide,
+					...(comment.line != null
+						? { line: comment.line, side: comment.diffSide }
+						: {}),
 				});
 				await updateDraftComment.mutateAsync({
 					commentId: comment.draftCommentId,
@@ -67,8 +67,17 @@ export function SubmitReviewModal({
 				failed++;
 				const msg =
 					err instanceof Error ? err.message : typeof err === "string" ? err : "Unknown error";
-				errors.push(`${comment.path}:${comment.line} — ${msg}`);
+				errors.push(`${comment.path}${comment.line != null ? `:${comment.line}` : ""} — ${msg}`);
 				console.error("[SubmitReview] Failed to post comment:", comment.path, comment.line, err);
+				// Mark failed comment as error so user can see and remove it
+				try {
+					await updateDraftComment.mutateAsync({
+						commentId: comment.draftCommentId,
+						status: "error",
+					});
+				} catch {
+					// Best-effort — don't block the loop
+				}
 			}
 		}
 
@@ -106,7 +115,7 @@ export function SubmitReviewModal({
 			}
 		}
 
-		if (failed === 0) {
+		if (posted > 0 || aiThreads.length === 0) {
 			onSubmitted();
 		}
 		setIsSubmitting(false);

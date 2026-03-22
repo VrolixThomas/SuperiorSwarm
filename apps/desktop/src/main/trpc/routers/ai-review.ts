@@ -198,7 +198,7 @@ export const aiReviewRouter = router({
 		.input(
 			z.object({
 				commentId: z.string(),
-				status: z.enum(["approved", "rejected", "edited", "submitted", "user-pending"]),
+				status: z.enum(["approved", "rejected", "edited", "submitted", "user-pending", "error"]),
 				userEdit: z.string().optional(),
 			})
 		)
@@ -212,6 +212,16 @@ export const aiReviewRouter = router({
 				.where(eq(schema.draftComments.id, input.commentId))
 				.run();
 
+			return { success: true };
+		}),
+
+	deleteDraftComment: publicProcedure
+		.input(z.object({ commentId: z.string() }))
+		.mutation(({ input }) => {
+			const db = getDb();
+			db.delete(schema.draftComments)
+				.where(eq(schema.draftComments.id, input.commentId))
+				.run();
 			return { success: true };
 		}),
 
