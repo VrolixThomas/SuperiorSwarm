@@ -1,7 +1,16 @@
 import { join } from "node:path";
 import { BrowserWindow, app, dialog, ipcMain, shell } from "electron";
 import { daemonInstanceId, daemonPaths } from "../shared/daemon-protocol";
-import { initializeDatabase } from "./db";
+import { cleanupReviewWorkspace, findReviewWorkspaceByPR } from "./ai-review/cleanup";
+import { startPolling } from "./ai-review/commit-poller";
+import { cleanupStaleReviews } from "./ai-review/orchestrator";
+import {
+	onNewPRDetected,
+	onPRClosedDetected,
+	startPolling as startPRPolling,
+} from "./ai-review/pr-poller";
+import { getDb, initializeDatabase } from "./db";
+import * as schema from "./db/schema";
 import {
 	type SessionSaveData,
 	savePaneLayouts,
@@ -10,6 +19,7 @@ import {
 import { setupLspIPC } from "./lsp/ipc-handler";
 import { serverManager } from "./lsp/server-manager";
 import { DaemonClient } from "./terminal/daemon-client";
+import { setDaemonClient } from "./terminal/daemon-instance";
 import { setupTerminalIPC } from "./terminal/ipc";
 import { setupTRPCIPC } from "./trpc/ipc-link";
 import { appRouter } from "./trpc/routers";
@@ -52,6 +62,7 @@ app.whenReady().then(async () => {
 	const instanceId = daemonInstanceId(__dirname);
 	const paths = daemonPaths(instanceId);
 	daemonClient = new DaemonClient(paths.socketPath, paths.pidPath, paths.logPath);
+	setDaemonClient(daemonClient);
 
 	setupTerminalIPC(daemonClient);
 	try {
@@ -64,6 +75,31 @@ app.whenReady().then(async () => {
 		);
 		app.quit();
 		return;
+	}
+	cleanupStaleReviews();
+	startPolling();
+	startPRPolling();
+
+	onNewPRDetected((pr) => {
+		for (const win of BrowserWindow.getAllWindows()) {
+			win.webContents.send("new-pr-review-request", pr);
+		}
+	});
+
+	onPRClosedDetected(async (pr) => {
+		const wsId = findReviewWorkspaceByPR(pr.provider, pr.identifier);
+		if (wsId) {
+			await cleanupReviewWorkspace(wsId);
+		}
+		for (const win of BrowserWindow.getAllWindows()) {
+			win.webContents.send("pr-closed", pr);
+		}
+	});
+
+	// Clear ephemeral terminal IDs (reset across sessions)
+	{
+		const db = getDb();
+		db.update(schema.workspaces).set({ terminalId: null, updatedAt: new Date() }).run();
 	}
 	const dbPath = join(app.getPath("userData"), "branchflux.db");
 	const daemonScriptPath = join(__dirname, "daemon.js");

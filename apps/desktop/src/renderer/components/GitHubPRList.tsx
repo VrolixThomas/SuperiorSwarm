@@ -280,7 +280,8 @@ export function GitHubPRList() {
 		const store = useTabStore.getState();
 		store.setActiveWorkspace(ws.workspaceId, ws.worktreePath);
 
-		const prCtx: import("../../shared/github-types").GitHubPRContext = {
+		const prCtx: import("../../shared/github-types").PRContext = {
+			provider: "github",
 			owner: pr.repoOwner,
 			repo: pr.repoName,
 			number: pr.number,

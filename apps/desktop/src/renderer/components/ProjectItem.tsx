@@ -121,14 +121,16 @@ export function ProjectItem({ project, isExpanded, onToggle }: ProjectItemProps)
 			{/* Expanded workspace list */}
 			{isExpanded && isReady && workspacesList && (
 				<div className="flex flex-col gap-0.5 pt-0.5">
-					{workspacesList.map((ws) => (
-						<WorkspaceItem
-							key={ws.id}
-							workspace={ws}
-							projectName={project.name}
-							projectRepoPath={project.repoPath}
-						/>
-					))}
+					{workspacesList
+						.filter((ws) => ws.type !== "review")
+						.map((ws) => (
+							<WorkspaceItem
+								key={ws.id}
+								workspace={ws}
+								projectName={project.name}
+								projectRepoPath={project.repoPath}
+							/>
+						))}
 
 					{/* New Worktree button */}
 					<button
