@@ -1,4 +1,5 @@
 import { integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { reviewDrafts } from "./schema-ai-review";
 
 export const projects = sqliteTable("projects", {
 	id: text("id").primaryKey(),
@@ -33,29 +34,38 @@ export const worktrees = sqliteTable("worktrees", {
 export type Worktree = typeof worktrees.$inferSelect;
 export type NewWorktree = typeof worktrees.$inferInsert;
 
-export const workspaces = sqliteTable("workspaces", {
-	id: text("id").primaryKey(),
-	projectId: text("project_id")
-		.notNull()
-		.references(() => projects.id, { onDelete: "cascade" }),
-	type: text("type", { enum: ["branch", "worktree"] }).notNull(),
-	name: text("name").notNull(),
-	worktreeId: text("worktree_id").references(() => worktrees.id, {
-		onDelete: "cascade",
-	}),
-	terminalId: text("terminal_id"),
-	createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
-	updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
-});
+export const workspaces = sqliteTable(
+	"workspaces",
+	{
+		id: text("id").primaryKey(),
+		projectId: text("project_id")
+			.notNull()
+			.references(() => projects.id, { onDelete: "cascade" }),
+		type: text("type", { enum: ["branch", "worktree", "review"] }).notNull(),
+		name: text("name").notNull(),
+		worktreeId: text("worktree_id").references(() => worktrees.id, {
+			onDelete: "cascade",
+		}),
+		terminalId: text("terminal_id"),
+		prProvider: text("pr_provider"),
+		prIdentifier: text("pr_identifier"),
+		reviewDraftId: text("review_draft_id").references(() => reviewDrafts.id, {
+			onDelete: "set null",
+		}),
+		createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+		updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+	},
+	(table) => [
+		uniqueIndex("workspaces_pr_unique").on(table.projectId, table.prProvider, table.prIdentifier),
+	]
+);
 
 export type Workspace = typeof workspaces.$inferSelect;
 export type NewWorkspace = typeof workspaces.$inferInsert;
 
 export const terminalSessions = sqliteTable("terminal_sessions", {
 	id: text("id").primaryKey(),
-	workspaceId: text("workspace_id")
-		.notNull()
-		.references(() => workspaces.id, { onDelete: "cascade" }),
+	workspaceId: text("workspace_id").notNull(),
 	title: text("title").notNull(),
 	cwd: text("cwd").notNull(),
 	scrollback: text("scrollback"),
@@ -72,9 +82,7 @@ export const sessionState = sqliteTable("session_state", {
 });
 
 export const paneLayouts = sqliteTable("pane_layouts", {
-	workspaceId: text("workspace_id")
-		.primaryKey()
-		.references(() => workspaces.id, { onDelete: "cascade" }),
+	workspaceId: text("workspace_id").primaryKey(),
 	layout: text("layout").notNull(), // JSON serialized layout tree
 	updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
 });
@@ -231,3 +239,15 @@ export const githubPrFileViewed = sqliteTable(
 
 export type GithubPrFileViewed = typeof githubPrFileViewed.$inferSelect;
 export type NewGithubPrFileViewed = typeof githubPrFileViewed.$inferInsert;
+
+export {
+	aiReviewSettings,
+	type AiReviewSettings,
+	type NewAiReviewSettings,
+	reviewDrafts,
+	type ReviewDraft,
+	type NewReviewDraft,
+	draftComments,
+	type DraftComment,
+	type NewDraftComment,
+} from "./schema-ai-review";

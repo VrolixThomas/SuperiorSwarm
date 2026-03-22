@@ -58,6 +58,11 @@ export function setupTerminalIPC(daemonClient: DaemonClient): void {
 		daemonClient.resize(id, cols as number, rows as number);
 	});
 
+	ipcMain.handle("terminal:detach", (_event, id: unknown) => {
+		assertNonEmptyString(id, "id");
+		daemonClient.detach(id);
+	});
+
 	ipcMain.handle("terminal:dispose", (_event, id: unknown) => {
 		assertNonEmptyString(id, "id");
 		daemonClient.dispose(id);
@@ -65,6 +70,13 @@ export function setupTerminalIPC(daemonClient: DaemonClient): void {
 
 	ipcMain.handle("daemon:status", () => {
 		return daemonClient.isConnected;
+	});
+
+	ipcMain.handle("daemon:listSessions", async () => {
+		const daemonSessions = await daemonClient.listSessions();
+		const liveSessions = Array.from(daemonClient.getLiveSessions());
+		const callbackIds = daemonClient.getCallbackIds();
+		return { daemonSessions, liveSessions, callbackIds };
 	});
 
 	daemonClient.setConnectionStatusCallback((connected: boolean) => {

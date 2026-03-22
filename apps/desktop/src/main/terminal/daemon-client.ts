@@ -31,9 +31,6 @@ export class DaemonClient {
 	private callbacks = new Map<string, TerminalCallbacks>();
 	private pendingListeners = new Map<string, Array<(msg: DaemonMessage) => void>>();
 	private isQuitting = false;
-	// Sessions that were attached (background PTYs) rather than freshly created.
-	// These must not be killed on dispose — they survive tab close and app restarts.
-	private attachedSessions = new Set<string>();
 	private reconnecting = false;
 	private reconnectAttempts = 0;
 	private maxReconnectAttempts = 10;
@@ -93,7 +90,6 @@ export class DaemonClient {
 			} else {
 				cb.onExit(-1);
 				this.callbacks.delete(id);
-				this.attachedSessions.delete(id);
 			}
 		}
 
@@ -115,6 +111,23 @@ export class DaemonClient {
 		return this.liveSessions.has(id);
 	}
 
+	async listSessions(): Promise<
+		Array<{ id: string; cwd: string; pid: number }>
+	> {
+		if (!this.isConnected) return [];
+		this.send({ type: "list" });
+		const msg = await this.waitForMessage("sessions");
+		return msg.type === "sessions" ? msg.sessions : [];
+	}
+
+	getLiveSessions(): Set<string> {
+		return new Set(this.liveSessions);
+	}
+
+	getCallbackIds(): string[] {
+		return Array.from(this.callbacks.keys());
+	}
+
 	setQuitting(): void {
 		this.isQuitting = true;
 	}
@@ -133,7 +146,6 @@ export class DaemonClient {
 		onData: (data: string) => void,
 		onExit: (code: number) => void
 	): Promise<void> {
-		this.attachedSessions.delete(id);
 		this.callbacks.set(id, { onData, onExit, cwd });
 		this.liveSessions.add(id);
 		try {
@@ -152,14 +164,11 @@ export class DaemonClient {
 		onExit: (code: number) => void,
 		cwd?: string
 	): Promise<void> {
-		this.attachedSessions.add(id);
 		this.callbacks.set(id, { onData, onExit, cwd });
 		try {
 			this.send({ type: "attach", id });
 		} catch (err) {
-			// Roll back local state if we couldn't reach the daemon
 			this.callbacks.delete(id);
-			this.attachedSessions.delete(id);
 			throw err;
 		}
 	}
@@ -174,17 +183,21 @@ export class DaemonClient {
 		this.send({ type: "resize", id, cols, rows });
 	}
 
+	/** Detach from a PTY without killing it. The PTY keeps running in the daemon. */
+	detach(id: string): void {
+		this.callbacks.delete(id);
+		// Keep id in liveSessions so re-attach works on next create call
+		try {
+			this.send({ type: "detach", id });
+		} catch {
+			// Best effort
+		}
+	}
+
+	/** Kill a PTY in the daemon. Used when the user explicitly closes a tab. */
 	dispose(id: string): void {
 		if (this.isQuitting) return;
-		const wasAttached = this.attachedSessions.has(id);
 		this.callbacks.delete(id);
-		this.attachedSessions.delete(id);
-		if (wasAttached) {
-			// Background session — drop local callbacks but keep the id in liveSessions
-			// so the next terminal:create IPC call uses attach (not create).
-			// The PTY continues running in the daemon unaffected.
-			return;
-		}
 		this.liveSessions.delete(id);
 		try {
 			this.send({ type: "dispose", id });
@@ -244,9 +257,15 @@ export class DaemonClient {
 
 		this.socket.on("data", (chunk) => {
 			this.lineBuffer += chunk.toString("utf-8");
-			if (this.lineBuffer.length > 64_000) {
+			if (this.lineBuffer.length > 512_000) {
 				console.warn("[daemon-client] line buffer overflow, resetting");
-				this.lineBuffer = "";
+				// Try to salvage: find the last newline and keep everything after it
+				const lastNewline = this.lineBuffer.lastIndexOf("\n");
+				if (lastNewline !== -1) {
+					this.lineBuffer = this.lineBuffer.slice(lastNewline + 1);
+				} else {
+					this.lineBuffer = "";
+				}
 				return;
 			}
 			let newline: number;

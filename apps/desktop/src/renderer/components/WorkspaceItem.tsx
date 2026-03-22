@@ -124,6 +124,9 @@ export function WorkspaceItem({ workspace, projectName, projectRepoPath }: Works
 		onSuccess: () => {
 			utils.workspaces.listByProject.invalidate();
 		},
+		onError: (err) => {
+			window.alert(`Failed to delete worktree: ${err.message}`);
+		},
 	});
 	const deleteWorkspaceRef = useRef(deleteWorkspace.mutate);
 	deleteWorkspaceRef.current = deleteWorkspace.mutate;
@@ -175,7 +178,7 @@ export function WorkspaceItem({ workspace, projectName, projectRepoPath }: Works
 			if (store.activeWorkspaceId === workspace.id) {
 				store.setActiveWorkspace("", "");
 			}
-			deleteWorkspaceRef.current({ id: workspace.id });
+			deleteWorkspaceRef.current({ id: workspace.id, force: true });
 		}
 		setContextMenu(null);
 	}, [workspace.id, workspace.name]);

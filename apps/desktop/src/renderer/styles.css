@@ -178,6 +178,32 @@ body,
 	opacity: 1;
 }
 
+/* AI draft comment decorations */
+.pr-thread-ai-draft-gutter {
+	width: 6px !important;
+	margin-left: 4px;
+	border-radius: 50%;
+	background: #a78bfa; /* violet-400 */
+}
+
+.pr-thread-ai-draft-line {
+	background: rgba(167, 139, 250, 0.06);
+}
+
+/* AI badge pill */
+.ai-badge {
+	display: inline-flex;
+	align-items: center;
+	gap: 3px;
+	padding: 1px 6px;
+	border-radius: 4px;
+	background: rgba(167, 139, 250, 0.15);
+	color: #a78bfa;
+	font-size: 10px;
+	font-weight: 600;
+	line-height: 16px;
+}
+
 /* ── Panel resize handles ─────────────────────────────────────────────────── */
 
 .panel-resize-handle {
@@ -261,4 +287,66 @@ body,
 	background: rgba(10, 132, 255, 0.08);
 	border: 1px dashed var(--accent);
 	border-radius: 4px;
+}
+
+/* ── Markdown body styles for AI review panels ───────────────────────────── */
+
+.markdown-body {
+	color: var(--text);
+}
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3 {
+	color: var(--text);
+	margin-top: 1em;
+	margin-bottom: 0.5em;
+}
+.markdown-body p {
+	color: var(--text-secondary);
+	margin-bottom: 0.75em;
+}
+.markdown-body a {
+	color: var(--accent);
+}
+.markdown-body code {
+	background: var(--bg-elevated);
+	padding: 2px 6px;
+	border-radius: 4px;
+	font-size: 12px;
+}
+.markdown-body pre {
+	background: var(--bg-elevated);
+	padding: 12px;
+	border-radius: var(--radius-md);
+	overflow-x: auto;
+}
+.markdown-body pre code {
+	background: none;
+	padding: 0;
+}
+.markdown-body ul,
+.markdown-body ol {
+	padding-left: 20px;
+	color: var(--text-secondary);
+}
+.markdown-body li {
+	margin-bottom: 4px;
+}
+.markdown-body table {
+	border-collapse: collapse;
+	width: 100%;
+}
+.markdown-body th,
+.markdown-body td {
+	border: 1px solid var(--bg-overlay);
+	padding: 6px 12px;
+	text-align: left;
+}
+.markdown-body th {
+	background: var(--bg-elevated);
+}
+.markdown-body blockquote {
+	border-left: 3px solid var(--accent);
+	padding-left: 12px;
+	color: var(--text-tertiary);
 }

@@ -1,0 +1,1 @@
+ALTER TABLE `ai_review_settings` ADD `skip_permissions` integer DEFAULT 1 NOT NULL;
