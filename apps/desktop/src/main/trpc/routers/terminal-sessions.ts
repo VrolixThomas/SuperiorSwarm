@@ -244,24 +244,20 @@ export const terminalSessionsRouter = router({
 				}
 			}
 
-			// 3. Remove worktree from disk + git registry
+			// 3. Remove worktree from disk
 			const { existsSync, rmSync } = await import("node:fs");
-			const { default: simpleGit } = await import("simple-git");
-			const pathExists = existsSync(input.path);
-
-			if (pathExists) {
+			if (existsSync(input.path)) {
 				try {
 					await removeWorktree(input.repoPath, input.path);
 				} catch {
 					// Force remove if git worktree remove fails
 					rmSync(input.path, { recursive: true, force: true });
+					const { default: simpleGit } = await import("simple-git");
+					await simpleGit(input.repoPath)
+						.raw(["worktree", "prune"])
+						.catch(() => {});
 				}
 			}
-
-			// Always prune — cleans up git's .git/worktrees/ entries for missing paths
-			await simpleGit(input.repoPath)
-				.raw(["worktree", "prune"])
-				.catch(() => {});
 
 			// 4. Delete DB records (cascade deletes workspaces)
 			if (dbWorktree) {
@@ -270,6 +266,20 @@ export const terminalSessionsRouter = router({
 
 			return { ok: true };
 		}),
+
+	pruneWorktrees: publicProcedure.mutation(async () => {
+		const db = getDb();
+		const allProjects = db.select().from(schema.projects).all();
+		const { default: simpleGit } = await import("simple-git");
+		for (const project of allProjects) {
+			try {
+				await simpleGit(project.repoPath).raw(["worktree", "prune"]);
+			} catch {
+				// repo might not exist
+			}
+		}
+		return { ok: true };
+	}),
 
 	clear: publicProcedure.mutation(async () => {
 		const db = getDb();
