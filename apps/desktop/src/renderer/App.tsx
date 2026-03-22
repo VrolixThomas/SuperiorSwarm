@@ -14,6 +14,7 @@ import {
 	setupGoToDefinitionHandler,
 	setupServerRestartListener,
 } from "./lsp/monaco-lsp-bridge";
+import { useEditorSettingsStore } from "./stores/editor-settings";
 import { usePaneStore } from "./stores/pane-store";
 import { useProjectStore } from "./stores/projects";
 import type { TabItem } from "./stores/tab-store";
@@ -134,6 +135,9 @@ function collectSnapshot() {
 		state["workspaceMetadata"] = JSON.stringify(workspaceMetadata);
 	}
 
+	const { vimEnabled } = useEditorSettingsStore.getState();
+	if (vimEnabled) state["vimMode"] = "true";
+
 	const paneLayouts: Record<string, string> = {};
 	const layouts = usePaneStore.getState().layouts;
 	for (const [wsId, layout] of Object.entries(layouts)) {
@@ -165,6 +169,10 @@ export function App() {
 		const { sessions, state, paneLayouts, workspaceMeta } = restoreQuery.data;
 		const hasSessions = sessions.length > 0;
 		const hasLayouts = paneLayouts && Object.keys(paneLayouts).length > 0;
+
+		// Hydrate editor settings (independent of sessions/layouts)
+		useEditorSettingsStore.getState().hydrateVimMode(state["vimMode"]);
+
 		if (!hasSessions && !hasLayouts) return;
 
 		const scrollbacks: Record<string, string> = {};
