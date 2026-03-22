@@ -86,17 +86,39 @@ export const CLI_PRESETS: Record<string, CliPreset> = {
 		label: "Gemini CLI",
 		command: "gemini",
 		permissionFlag: "--yolo",
-		buildArgs: ({ reviewDir, promptFilePath }) => [
-			"--mcp-config",
-			join(reviewDir, "mcp-config.json"),
+		buildArgs: ({ promptFilePath }) => [
 			"-p",
 			`"$(cat '${promptFilePath}')"`,
 		],
-		setupMcp: ({ reviewDir, mcpServerPath }) => {
-			const configPath = writeTempMcpConfig(reviewDir, "mcp-config.json", mcpServerPath);
+		setupMcp: ({ worktreePath, reviewDraftId, prMetadata, dbPath }) => {
+			// Gemini CLI reads MCP config from .gemini/settings.json in the project root
+			const standaloneServerPath = resolve(
+				dirname(__dirname),
+				"..",
+				"mcp-standalone",
+				"server.mjs"
+			);
+			const dir = join(worktreePath, ".gemini");
+			mkdirSync(dir, { recursive: true });
+			const configPath = join(dir, "settings.json");
+			const config = {
+				mcpServers: {
+					branchflux: {
+						command: "node",
+						args: [standaloneServerPath],
+						env: {
+							REVIEW_DRAFT_ID: reviewDraftId,
+							PR_METADATA: prMetadata,
+							DB_PATH: dbPath,
+						},
+					},
+				},
+			};
+			writeFileSync(configPath, JSON.stringify(config, null, 2), "utf-8");
 			return () => {
 				try {
 					rmSync(configPath);
+					rmSync(dir, { recursive: true });
 				} catch {}
 			};
 		},
@@ -122,14 +144,36 @@ export const CLI_PRESETS: Record<string, CliPreset> = {
 		name: "opencode",
 		label: "OpenCode",
 		command: "opencode",
-		buildArgs: ({ promptFilePath }) => [`"$(cat '${promptFilePath}')"`],
-		setupMcp: ({ worktreePath, mcpServerPath }) => {
-			const dir = join(worktreePath, ".opencode");
-			const configPath = writeTempMcpConfig(dir, "config.json", mcpServerPath);
+		buildArgs: ({ promptFilePath }) => [
+			"--prompt",
+			`"$(cat '${promptFilePath}')"`,
+		],
+		setupMcp: ({ worktreePath, reviewDraftId, prMetadata, dbPath }) => {
+			// OpenCode reads MCP config from opencode.json in the project root
+			const standaloneServerPath = resolve(
+				dirname(__dirname),
+				"..",
+				"mcp-standalone",
+				"server.mjs"
+			);
+			const configPath = join(worktreePath, "opencode.json");
+			const config = {
+				mcp: {
+					branchflux: {
+						type: "local",
+						command: ["node", standaloneServerPath],
+						environment: {
+							REVIEW_DRAFT_ID: reviewDraftId,
+							PR_METADATA: prMetadata,
+							DB_PATH: dbPath,
+						},
+					},
+				},
+			};
+			writeFileSync(configPath, JSON.stringify(config, null, 2), "utf-8");
 			return () => {
 				try {
 					rmSync(configPath);
-					rmSync(dir, { recursive: true });
 				} catch {}
 			};
 		},
@@ -143,6 +187,15 @@ export function isCliInstalled(command: string): boolean {
 		return true;
 	} catch {
 		return false;
+	}
+}
+
+/** Resolve the absolute path to a CLI tool, or return the command name as fallback */
+export function resolveCliPath(command: string): string {
+	try {
+		return execSync(`which ${command}`, { encoding: "utf-8" }).trim();
+	} catch {
+		return command;
 	}
 }
 

@@ -647,6 +647,10 @@ export function PullRequestsTab() {
 		onSuccess: () => reviewDrafts.refetch(),
 	});
 
+	const markCommitSeen = trpc.aiReview.markCommitSeen.useMutation({
+		onSuccess: () => reviewDrafts.refetch(),
+	});
+
 	const settings = trpc.aiReview.getSettings.useQuery();
 	const { data: projectsList } = trpc.projects.list.useQuery();
 	const triggeredRef = useRef(new Set<string>());
@@ -759,7 +763,12 @@ export function PullRequestsTab() {
 	const store = useTabStore();
 
 	function getReviewStatus(prIdentifier: string) {
-		return reviewDrafts.data?.find((d) => d.prIdentifier === prIdentifier);
+		// Return the most recent draft for this PR (latest commitSha is most relevant)
+		const matches = reviewDrafts.data?.filter((d) => d.prIdentifier === prIdentifier);
+		if (!matches || matches.length === 0) return undefined;
+		return matches.reduce((latest, d) =>
+			new Date(d.createdAt).getTime() > new Date(latest.createdAt).getTime() ? d : latest
+		);
 	}
 
 	function getPrIdentifier(pr: MergedPR): string {
@@ -1041,6 +1050,15 @@ export function PullRequestsTab() {
 				};
 
 				openPRWorkspace(project.id, "github", prIdentifier, project.repoPath, prCtx);
+
+				// Mark the current head commit as seen to clear "New commits" indicator
+				const enriched = enrichmentMap.get(prIdentifier);
+				if (enriched?.headCommitOid) {
+					markCommitSeen.mutate({
+						prIdentifier,
+						commitSha: enriched.headCommitOid,
+					});
+				}
 				return;
 			}
 
@@ -1060,7 +1078,7 @@ export function PullRequestsTab() {
 				});
 			}
 		},
-		[projectsList, linkedMap, openPRWorkspace, navigateToWorkspace, handleGitHubLink]
+		[projectsList, linkedMap, openPRWorkspace, navigateToWorkspace, handleGitHubLink, enrichmentMap, markCommitSeen]
 	);
 
 	// ── Render Helpers ────────────────────────────────────────────────────────
