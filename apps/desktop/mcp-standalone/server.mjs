@@ -258,6 +258,195 @@ server.tool(
 	}
 );
 
+// Tool: get_review_comments
+server.tool(
+	"get_review_comments",
+	"Get all pending review comments for the current resolution session",
+	{},
+	async () => {
+		const sessionId = process.env.RESOLUTION_SESSION_ID;
+
+		const comments = db
+			.prepare(
+				"SELECT id, author, file_path, line_number, body FROM resolution_comments WHERE session_id = ? AND status = 'pending'"
+			)
+			.all(sessionId);
+
+		const result = comments.map((c) => ({
+			id: c.id,
+			author: c.author,
+			filePath: c.file_path,
+			lineNumber: c.line_number,
+			body: c.body,
+		}));
+
+		return {
+			content: [{ type: "text", text: JSON.stringify({ comments: result }) }],
+		};
+	}
+);
+
+// Tool: resolve_and_commit
+server.tool(
+	"resolve_and_commit",
+	"Stage modified files, commit with the given message, create a resolution group, and mark comments as resolved",
+	{
+		comment_ids: z.array(z.string()).describe("Array of resolution comment IDs to mark as resolved"),
+		message: z.string().describe("Commit message to use"),
+	},
+	async ({ comment_ids, message }) => {
+		const sessionId = process.env.RESOLUTION_SESSION_ID;
+		const { execSync } = require("node:child_process");
+
+		// Detect modified files (both staged and unstaged)
+		let modifiedFiles = [];
+		try {
+			const unstagedOutput = execSync("git diff --name-only", { encoding: "utf8" }).trim();
+			const stagedOutput = execSync("git diff --cached --name-only", { encoding: "utf8" }).trim();
+			const allFiles = [
+				...(unstagedOutput ? unstagedOutput.split("\n") : []),
+				...(stagedOutput ? stagedOutput.split("\n") : []),
+			];
+			modifiedFiles = [...new Set(allFiles.filter(Boolean))];
+		} catch (err) {
+			return {
+				content: [
+					{ type: "text", text: JSON.stringify({ error: "Failed to detect modified files", detail: err.message }) },
+				],
+			};
+		}
+
+		if (modifiedFiles.length === 0) {
+			return {
+				content: [{ type: "text", text: JSON.stringify({ error: "No modified files to commit" }) }],
+			};
+		}
+
+		// Stage only the detected modified files
+		try {
+			for (const file of modifiedFiles) {
+				execSync(`git add -- ${JSON.stringify(file)}`, { encoding: "utf8" });
+			}
+		} catch (err) {
+			return {
+				content: [
+					{ type: "text", text: JSON.stringify({ error: "Failed to stage files", detail: err.message }) },
+				],
+			};
+		}
+
+		// Commit
+		let commitSha;
+		try {
+			execSync(`git commit -m ${JSON.stringify(message)}`, { encoding: "utf8" });
+			commitSha = execSync("git rev-parse HEAD", { encoding: "utf8" }).trim();
+		} catch (err) {
+			return {
+				content: [
+					{ type: "text", text: JSON.stringify({ error: "Failed to commit", detail: err.message }) },
+				],
+			};
+		}
+
+		// Create resolution_groups row
+		const groupId = randomUUID();
+
+		db.prepare(
+			`INSERT INTO resolution_groups (id, session_id, commit_sha, commit_message, status, created_at, updated_at)
+			 VALUES (?, ?, ?, ?, 'applied', CAST(strftime('%s', 'now') AS INTEGER), CAST(strftime('%s', 'now') AS INTEGER))`
+		).run(groupId, sessionId, commitSha, message);
+
+		// Update matching resolution_comments to resolved
+		const updateStmt = db.prepare(
+			`UPDATE resolution_comments SET status = 'resolved', group_id = ?, updated_at = CAST(strftime('%s', 'now') AS INTEGER) WHERE id = ? AND session_id = ?`
+		);
+		for (const commentId of comment_ids) {
+			updateStmt.run(groupId, commentId, sessionId);
+		}
+
+		return {
+			content: [
+				{
+					type: "text",
+					text: JSON.stringify({ groupId, commitSha, filesChanged: modifiedFiles }),
+				},
+			],
+		};
+	}
+);
+
+// Tool: skip_comment
+server.tool(
+	"skip_comment",
+	"Mark a review comment as skipped with a reason",
+	{
+		comment_id: z.string().describe("The ID of the resolution comment to skip"),
+		reason: z.string().describe("Reason for skipping this comment"),
+	},
+	async ({ comment_id, reason }) => {
+		const sessionId = process.env.RESOLUTION_SESSION_ID;
+
+		const result = db
+			.prepare(
+				`UPDATE resolution_comments SET status = 'skipped', skip_reason = ?, updated_at = CAST(strftime('%s', 'now') AS INTEGER) WHERE id = ? AND session_id = ?`
+			)
+			.run(reason, comment_id, sessionId);
+
+		if (result.changes === 0) {
+			return {
+				content: [{ type: "text", text: JSON.stringify({ error: "Comment not found in this session" }) }],
+			};
+		}
+
+		return {
+			content: [{ type: "text", text: JSON.stringify({ status: "skipped", comment_id }) }],
+		};
+	}
+);
+
+// Tool: finish_resolution
+server.tool(
+	"finish_resolution",
+	"Mark the resolution session as done and return a summary of resolved, skipped comments and groups",
+	{},
+	async () => {
+		const sessionId = process.env.RESOLUTION_SESSION_ID;
+
+		const resolvedRow = db
+			.prepare(
+				"SELECT COUNT(*) as count FROM resolution_comments WHERE session_id = ? AND status = 'resolved'"
+			)
+			.get(sessionId);
+
+		const skippedRow = db
+			.prepare(
+				"SELECT COUNT(*) as count FROM resolution_comments WHERE session_id = ? AND status = 'skipped'"
+			)
+			.get(sessionId);
+
+		const groupsRow = db
+			.prepare("SELECT COUNT(*) as count FROM resolution_groups WHERE session_id = ?")
+			.get(sessionId);
+
+		db.prepare(
+			`UPDATE resolution_sessions SET status = 'done', updated_at = CAST(strftime('%s', 'now') AS INTEGER) WHERE id = ?`
+		).run(sessionId);
+
+		return {
+			content: [
+				{
+					type: "text",
+					text: JSON.stringify({
+						resolved: resolvedRow?.count ?? 0,
+						skipped: skippedRow?.count ?? 0,
+						groups: groupsRow?.count ?? 0,
+					}),
+				},
+			],
+		};
+	}
+);
+
 // Start the server
 async function main() {
 	const transport = new StdioServerTransport();
