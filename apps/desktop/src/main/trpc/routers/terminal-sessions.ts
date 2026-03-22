@@ -1,6 +1,9 @@
+import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { getDb, schema } from "../../db";
 import { savePaneLayouts, saveTerminalSessions } from "../../db/session-persistence";
+import { removeWorktree } from "../../git/operations";
+import { getDaemonClient } from "../../terminal/daemon-instance";
 import { publicProcedure, router } from "../index";
 
 const sessionInput = z.object({
@@ -202,6 +205,66 @@ export const terminalSessionsRouter = router({
 
 		return results;
 	}),
+
+	removeWorktree: publicProcedure
+		.input(z.object({ path: z.string(), repoPath: z.string() }))
+		.mutation(async ({ input }) => {
+			const db = getDb();
+
+			// 1. Find DB worktree record by path
+			const dbWorktree = db
+				.select()
+				.from(schema.worktrees)
+				.where(eq(schema.worktrees.path, input.path))
+				.get();
+
+			// 2. Dispose any daemon terminals for workspaces using this worktree
+			if (dbWorktree) {
+				const linkedWorkspaces = db
+					.select({ id: schema.workspaces.id })
+					.from(schema.workspaces)
+					.where(eq(schema.workspaces.worktreeId, dbWorktree.id))
+					.all();
+
+				const daemon = getDaemonClient();
+				for (const ws of linkedWorkspaces) {
+					const sessions = db
+						.select({ id: schema.terminalSessions.id })
+						.from(schema.terminalSessions)
+						.where(eq(schema.terminalSessions.workspaceId, ws.id))
+						.all();
+					for (const s of sessions) {
+						daemon?.dispose(s.id);
+					}
+					db.delete(schema.terminalSessions)
+						.where(eq(schema.terminalSessions.workspaceId, ws.id))
+						.run();
+				}
+			}
+
+			// 3. Remove worktree from disk
+			const { existsSync } = await import("node:fs");
+			if (existsSync(input.path)) {
+				try {
+					await removeWorktree(input.repoPath, input.path);
+				} catch {
+					// If git worktree remove fails, try pruning
+					const { default: simpleGit } = await import("simple-git");
+					const { rmSync } = await import("node:fs");
+					rmSync(input.path, { recursive: true, force: true });
+					await simpleGit(input.repoPath)
+						.raw(["worktree", "prune"])
+						.catch(() => {});
+				}
+			}
+
+			// 4. Delete DB records (cascade deletes workspaces)
+			if (dbWorktree) {
+				db.delete(schema.worktrees).where(eq(schema.worktrees.id, dbWorktree.id)).run();
+			}
+
+			return { ok: true };
+		}),
 
 	clear: publicProcedure.mutation(async () => {
 		const db = getDb();

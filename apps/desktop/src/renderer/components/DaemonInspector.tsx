@@ -176,7 +176,11 @@ export function DaemonInspector({ onClose }: { onClose: () => void }) {
 						rendererTabIds={rendererTabIds}
 					/>
 				) : (
-					<WorktreesTab data={worktreeQuery.data} loading={worktreeQuery.isLoading} />
+					<WorktreesTab
+						data={worktreeQuery.data}
+						loading={worktreeQuery.isLoading}
+						onRefresh={() => worktreeQuery.refetch()}
+					/>
 				)}
 			</div>
 		</div>
@@ -337,7 +341,13 @@ type WorktreeEntry = {
 function WorktreesTab({
 	data,
 	loading,
-}: { data: WorktreeEntry[] | undefined; loading: boolean }) {
+	onRefresh,
+}: { data: WorktreeEntry[] | undefined; loading: boolean; onRefresh: () => void }) {
+	const removeMutation = trpc.terminalSessions.removeWorktree.useMutation({
+		onSuccess: () => onRefresh(),
+	});
+	const [confirmPath, setConfirmPath] = useState<string | null>(null);
+
 	if (loading) {
 		return (
 			<div className="px-4 py-8 text-center text-[12px] text-[var(--text-quaternary)]">
@@ -388,9 +398,10 @@ function WorktreesTab({
 												: ""
 									}`}
 								>
+									<div className="flex items-center justify-between">
 									<div className="flex items-center gap-2">
 										<span className="font-mono text-[11px] text-[var(--text-secondary)]">
-											{wt.isMain ? shortPath(wt.path) : shortPath(wt.path)}
+											{shortPath(wt.path)}
 										</span>
 										{wt.isMain && (
 											<span className="rounded bg-[var(--term-blue)] px-1 py-0.5 text-[9px] font-semibold text-white">
@@ -413,6 +424,44 @@ function WorktreesTab({
 											</span>
 										)}
 									</div>
+									{!wt.isMain && (
+										<>
+											{confirmPath === wt.path ? (
+												<div className="flex items-center gap-1">
+													<button
+														type="button"
+														onClick={() => {
+															removeMutation.mutate({
+																path: wt.path,
+																repoPath: wt.repoPath,
+															});
+															setConfirmPath(null);
+														}}
+														className="rounded px-1.5 py-0.5 text-[10px] text-[var(--term-red)] transition-colors hover:bg-[rgba(255,69,58,0.1)]"
+													>
+														Confirm
+													</button>
+													<button
+														type="button"
+														onClick={() => setConfirmPath(null)}
+														className="rounded px-1.5 py-0.5 text-[10px] text-[var(--text-quaternary)] transition-colors hover:bg-[var(--bg-elevated)]"
+													>
+														Cancel
+													</button>
+												</div>
+											) : (
+												<button
+													type="button"
+													onClick={() => setConfirmPath(wt.path)}
+													disabled={removeMutation.isPending}
+													className="rounded px-1.5 py-0.5 text-[10px] text-[var(--text-quaternary)] transition-colors hover:bg-[rgba(255,69,58,0.1)] hover:text-[var(--term-red)] disabled:opacity-50"
+												>
+													Remove
+												</button>
+											)}
+										</>
+									)}
+								</div>
 									<div
 										className="mt-0.5 font-mono text-[10px] text-[var(--text-quaternary)]"
 										title={wt.path}
