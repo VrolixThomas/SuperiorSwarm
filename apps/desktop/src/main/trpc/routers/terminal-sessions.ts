@@ -209,6 +209,7 @@ export const terminalSessionsRouter = router({
 	removeWorktree: publicProcedure
 		.input(z.object({ path: z.string(), repoPath: z.string() }))
 		.mutation(async ({ input }) => {
+			console.log("[removeWorktree] Removing:", input.path, "from repo:", input.repoPath);
 			const db = getDb();
 
 			// 1. Find DB worktree record by path
@@ -217,6 +218,7 @@ export const terminalSessionsRouter = router({
 				.from(schema.worktrees)
 				.where(eq(schema.worktrees.path, input.path))
 				.get();
+			console.log("[removeWorktree] DB record:", dbWorktree ? "found" : "not found");
 
 			// 2. Dispose any daemon terminals for workspaces using this worktree
 			if (dbWorktree) {
@@ -242,21 +244,24 @@ export const terminalSessionsRouter = router({
 				}
 			}
 
-			// 3. Remove worktree from disk
-			const { existsSync } = await import("node:fs");
-			if (existsSync(input.path)) {
+			// 3. Remove worktree from disk + git registry
+			const { existsSync, rmSync } = await import("node:fs");
+			const { default: simpleGit } = await import("simple-git");
+			const pathExists = existsSync(input.path);
+
+			if (pathExists) {
 				try {
 					await removeWorktree(input.repoPath, input.path);
 				} catch {
-					// If git worktree remove fails, try pruning
-					const { default: simpleGit } = await import("simple-git");
-					const { rmSync } = await import("node:fs");
+					// Force remove if git worktree remove fails
 					rmSync(input.path, { recursive: true, force: true });
-					await simpleGit(input.repoPath)
-						.raw(["worktree", "prune"])
-						.catch(() => {});
 				}
 			}
+
+			// Always prune — cleans up git's .git/worktrees/ entries for missing paths
+			await simpleGit(input.repoPath)
+				.raw(["worktree", "prune"])
+				.catch(() => {});
 
 			// 4. Delete DB records (cascade deletes workspaces)
 			if (dbWorktree) {
