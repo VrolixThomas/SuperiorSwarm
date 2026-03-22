@@ -1,3 +1,4 @@
+import React from "react";
 import type { DiffContext } from "../../shared/diff-types";
 import { type PanelMode, useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
@@ -7,6 +8,10 @@ import { DraftCommitCard } from "./DraftCommitCard";
 import { PRControlRail } from "./PRControlRail";
 import { RepoFileTree } from "./RepoFileTree";
 import { SmartHeaderBar } from "./SmartHeaderBar";
+
+const PRCommentsRail = React.lazy(() =>
+	import("./PRCommentsRail").then((m) => ({ default: m.PRCommentsRail })),
+);
 
 function PanelHeader({
 	mode,
@@ -296,6 +301,17 @@ export function DiffPanel({ onClose }: { onClose?: () => void }) {
 	const rightPanel = useTabStore((s) => s.rightPanel);
 
 	if (!rightPanel.open) return null;
+
+	if (rightPanel.mode === "pr-comments" && rightPanel.prCtx) {
+		return (
+			<div className="relative flex h-full w-full flex-col overflow-hidden bg-[var(--bg-surface)]">
+				{onClose && <PanelEdgeClose onClose={onClose} />}
+				<React.Suspense fallback={null}>
+					<PRCommentsRail prCtx={rightPanel.prCtx} />
+				</React.Suspense>
+			</div>
+		);
+	}
 
 	if (rightPanel.mode === "pr-review" && rightPanel.prCtx) {
 		return (
