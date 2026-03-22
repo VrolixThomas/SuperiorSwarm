@@ -1,6 +1,7 @@
 // apps/desktop/src/shared/github-types.ts
 
-export interface GitHubPRContext {
+export interface PRContext {
+	provider: "github" | "bitbucket";
 	owner: string;
 	repo: string;
 	number: number;
@@ -26,6 +27,25 @@ export interface GitHubReviewThread {
 	diffSide: "LEFT" | "RIGHT";
 	comments: GitHubReviewComment[];
 }
+
+/** An AI draft comment transformed into a thread-like structure for unified rendering */
+export interface AIDraftThread {
+	id: string;
+	isAIDraft: true;
+	draftCommentId: string;
+	path: string;
+	line: number | null;
+	diffSide: "LEFT" | "RIGHT";
+	body: string;
+	status: "pending" | "approved" | "rejected" | "edited" | "submitted" | "user-pending" | "error";
+	userEdit: string | null;
+	createdAt: string;
+	resolution?: string | null;
+	roundNumber?: number;
+}
+
+/** Union type for rendering — either a real GitHub thread or an AI draft */
+export type UnifiedThread = (GitHubReviewThread & { isAIDraft?: false }) | AIDraftThread;
 
 export interface GitHubCheckRun {
 	name: string;
@@ -72,4 +92,22 @@ export interface GitHubPRDetails {
 	sourceBranch: string;
 	targetBranch: string;
 	headCommitOid: string;
+}
+
+/** Subset of GitHubPRDetails used for sidebar list enrichment */
+export interface GitHubPREnriched {
+	owner: string;
+	repo: string;
+	number: number;
+	author: string;
+	authorAvatarUrl: string;
+	reviewers: GitHubReviewer[];
+	ciState: "SUCCESS" | "FAILURE" | "PENDING" | "NEUTRAL" | null;
+	reviewDecision: "APPROVED" | "CHANGES_REQUESTED" | "REVIEW_REQUIRED" | null;
+	unresolvedThreadCount: number;
+	files: { additions: number; deletions: number; count: number };
+	headCommitOid: string;
+	mergeable: "MERGEABLE" | "CONFLICTING" | "UNKNOWN";
+	isDraft: boolean;
+	updatedAt: string;
 }

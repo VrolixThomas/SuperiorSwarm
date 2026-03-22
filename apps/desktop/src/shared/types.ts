@@ -2,6 +2,7 @@ export interface TerminalAPI {
 	create: (id: string, cwd?: string) => Promise<{ wasAttached: boolean }>;
 	write: (id: string, data: string) => Promise<void>;
 	resize: (id: string, cols: number, rows: number) => Promise<void>;
+	detach: (id: string) => Promise<void>;
 	dispose: (id: string) => Promise<void>;
 	onData: (id: string, callback: (data: string) => void) => () => void;
 	onExit: (id: string, callback: (exitCode: number) => void) => () => void;
@@ -40,9 +41,16 @@ export interface ShellAPI {
 	openExternal: (url: string) => Promise<void>;
 }
 
+export interface DaemonInspectorData {
+	daemonSessions: Array<{ id: string; cwd: string; pid: number }>;
+	liveSessions: string[];
+	callbackIds: string[];
+}
+
 export interface DaemonAPI {
 	getStatus: () => Promise<boolean>;
 	onStatus: (callback: (connected: boolean) => void) => () => void;
+	listSessions: () => Promise<DaemonInspectorData>;
 }
 
 export interface LspAPI {
@@ -65,3 +73,5 @@ export interface LspAPI {
 		callback: (configId: string, repoPath: string, uris: string[]) => void
 	) => () => void;
 }
+
+export type SidebarSegment = "repos" | "tickets" | "prs";
