@@ -1,5 +1,6 @@
 import { router } from "../index";
 import { aiReviewRouter } from "./ai-review";
+import { commentSolverRouter } from "./comment-solver";
 import { atlassianRouter } from "./atlassian";
 import { branchesRouter } from "./branches";
 import { diffRouter } from "./diff";
@@ -14,6 +15,7 @@ import { workspacesRouter } from "./workspaces";
 
 export const appRouter = router({
 	aiReview: aiReviewRouter,
+	commentSolver: commentSolverRouter,
 	projects: projectsRouter,
 	workspaces: workspacesRouter,
 	branches: branchesRouter,
