@@ -148,11 +148,12 @@ export async function createPRComment(
 		content: { raw: body },
 	};
 
-	if (filePath && line) {
-		payload.inline = {
-			path: filePath,
-			to: line,
-		};
+	if (filePath) {
+		const inline: Record<string, unknown> = { path: filePath };
+		if (line) {
+			inline.to = line;
+		}
+		payload.inline = inline;
 	}
 
 	const res = await atlassianFetch(

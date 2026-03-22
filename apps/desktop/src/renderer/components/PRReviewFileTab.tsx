@@ -20,12 +20,14 @@ function ThreadWidget({
 	onResolve,
 	onAcceptDraft,
 	onDeclineDraft,
+	onDeleteDraft,
 }: {
 	thread: UnifiedThread;
 	onReply: (body: string) => void;
 	onResolve: () => void;
 	onAcceptDraft?: (draftCommentId: string) => void;
 	onDeclineDraft?: (draftCommentId: string) => void;
+	onDeleteDraft?: (draftCommentId: string) => void;
 }) {
 	const [replyOpen, setReplyOpen] = useState(false);
 	const [replyBody, setReplyBody] = useState("");
@@ -40,6 +42,7 @@ function ThreadWidget({
 		const aiThread = thread as AIDraftThread;
 		const isUserPending = aiThread.status === "user-pending";
 		const isAiPending = aiThread.status === "pending";
+		const isError = aiThread.status === "error";
 		return (
 			<div
 				onMouseDown={(e) => e.stopPropagation()}
@@ -57,6 +60,11 @@ function ThreadWidget({
 								Pending
 							</span>
 						)}
+						{isError && (
+							<span className="rounded-[3px] border border-[rgba(255,69,58,0.3)] bg-[rgba(255,69,58,0.12)] px-1.5 py-px text-[9px] font-semibold uppercase tracking-wide text-[#ff453a]">
+								Failed
+							</span>
+						)}
 					</div>
 					{isUserPending && (
 						<button
@@ -65,6 +73,15 @@ function ThreadWidget({
 							className="text-[10px] text-[var(--text-quaternary)] hover:text-[var(--term-red)]"
 						>
 							Delete
+						</button>
+					)}
+					{isError && (
+						<button
+							type="button"
+							onClick={() => onDeleteDraft?.(aiThread.draftCommentId)}
+							className="text-[10px] text-[var(--text-quaternary)] hover:text-[var(--term-red)]"
+						>
+							Remove
 						</button>
 					)}
 				</div>
@@ -260,7 +277,8 @@ function useInlineCommentZones(
 	onSaveNew: (body: string) => void,
 	onCancelNew: () => void,
 	onAcceptDraft?: (draftCommentId: string) => void,
-	onDeclineDraft?: (draftCommentId: string) => void
+	onDeclineDraft?: (draftCommentId: string) => void,
+	onDeleteDraft?: (draftCommentId: string) => void
 ) {
 	const zoneIdsRef = useRef<string[]>([]);
 	const rootsRef = useRef<ReturnType<typeof createRoot>[]>([]);
@@ -340,6 +358,7 @@ function useInlineCommentZones(
 								onResolve={() => onResolve(t.id)}
 								onAcceptDraft={onAcceptDraft}
 								onDeclineDraft={onDeclineDraft}
+								onDeleteDraft={onDeleteDraft}
 							/>
 						))}
 					</div>
@@ -596,6 +615,10 @@ export function PRReviewFileTab({ prCtx, filePath, language }: PRReviewFileTabPr
 		onSuccess: invalidateDrafts,
 	});
 
+	const deleteDraftComment = trpc.aiReview.deleteDraftComment.useMutation({
+		onSuccess: invalidateDrafts,
+	});
+
 	// Review mutations
 	const addComment = trpc.github.addReviewComment.useMutation({
 		onSuccess: () =>
@@ -740,6 +763,13 @@ export function PRReviewFileTab({ prCtx, filePath, language }: PRReviewFileTabPr
 		[updateDraftComment.mutate]
 	);
 
+	const handleDeleteDraft = useCallback(
+		(draftCommentId: string) => {
+			deleteDraftComment.mutate({ commentId: draftCommentId });
+		},
+		[deleteDraftComment.mutate]
+	);
+
 	const handleCancelNew = useCallback(() => setPendingLine(null), []);
 
 	// Hooks for inline zones + decorations + gutter actions
@@ -752,7 +782,8 @@ export function PRReviewFileTab({ prCtx, filePath, language }: PRReviewFileTabPr
 		handleSaveNew,
 		handleCancelNew,
 		handleAcceptDraft,
-		handleDeclineDraft
+		handleDeclineDraft,
+		handleDeleteDraft
 	);
 	useThreadDecorations(editorInstance, fileThreads);
 	useGutterPlusButton(editorInstance, (line) => setPendingLine(line), validDiffLines);

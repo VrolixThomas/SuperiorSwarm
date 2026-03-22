@@ -521,21 +521,28 @@ export async function createReviewThread(params: {
 	body: string;
 	commitId: string;
 	path: string;
-	line: number;
-	side: "LEFT" | "RIGHT";
+	line?: number;
+	side?: "LEFT" | "RIGHT";
 }): Promise<{ id: number; nodeId: string }> {
+	const payload: Record<string, unknown> = {
+		body: params.body,
+		commit_id: params.commitId,
+		path: params.path,
+	};
+
+	if (params.line != null) {
+		payload.line = params.line;
+		payload.side = params.side ?? "RIGHT";
+	} else {
+		payload.subject_type = "file";
+	}
+
 	const res = await githubFetch(
 		`/repos/${params.owner}/${params.repo}/pulls/${params.prNumber}/comments`,
 		{
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({
-				body: params.body,
-				commit_id: params.commitId,
-				path: params.path,
-				line: params.line,
-				side: params.side,
-			}),
+			body: JSON.stringify(payload),
 		}
 	);
 	if (!res.ok) throw new Error(`GitHub create thread failed: ${res.status} ${await res.text()}`);
