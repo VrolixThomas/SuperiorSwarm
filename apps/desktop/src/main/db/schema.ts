@@ -56,7 +56,7 @@ export const workspaces = sqliteTable(
 		updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
 	},
 	(table) => [
-		uniqueIndex("workspaces_pr_unique").on(table.projectId, table.prProvider, table.prIdentifier),
+		uniqueIndex("workspaces_pr_unique").on(table.projectId, table.prProvider, table.prIdentifier, table.type),
 	]
 );
 
@@ -251,3 +251,18 @@ export {
 	type DraftComment,
 	type NewDraftComment,
 } from "./schema-ai-review";
+
+export {
+	commentSolveSessions,
+	type CommentSolveSession,
+	type NewCommentSolveSession,
+	commentGroups,
+	type CommentGroup,
+	type NewCommentGroup,
+	prComments,
+	type PrComment,
+	type NewPrComment,
+	commentReplies,
+	type CommentReply,
+	type NewCommentReply,
+} from "./schema-comment-solver";
