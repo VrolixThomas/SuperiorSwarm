@@ -1,0 +1,45 @@
+export const DEFAULT_SOLVE_GUIDELINES =
+	"Fix the review comments by making the requested code changes. Focus on understanding the reviewer's intent and making precise, minimal changes.";
+
+export interface SolvePromptOptions {
+	prTitle: string;
+	sourceBranch: string;
+	targetBranch: string;
+	commentCount: number;
+	customPrompt: string | null;
+}
+
+export function buildSolvePrompt(opts: SolvePromptOptions): string {
+	const guidelines = opts.customPrompt || DEFAULT_SOLVE_GUIDELINES;
+
+	return `PR Context:
+- Title: ${opts.prTitle}
+- Branch: ${opts.sourceBranch} → ${opts.targetBranch}
+- Unresolved comments: ${opts.commentCount}
+
+You are helping the PR author fix review comments. Reviewers have left feedback
+that needs to be addressed through code changes.
+
+Guidelines:
+${guidelines}
+
+Instructions:
+1. Call get_pr_comments to fetch all unresolved comments
+2. Analyze comments and group related ones using submit_grouping
+   - Group by semantic similarity (comments about the same concern)
+   - A file may have comments in different groups
+   - You determine the optimal grouping
+3. For each group (in order):
+   a. Call start_fix_group(groupId) to get the full comment details
+   b. Read the relevant files and understand the codebase context
+   c. Make code changes that address the comments
+   d. For each comment in the group:
+      - If you can fix it: call mark_comment_fixed(commentId)
+      - If unclear: make a best-effort fix AND call mark_comment_unclear(commentId, replyBody)
+        explaining your interpretation and asking for clarification
+   e. Call finish_fix_group(groupId) to commit your changes
+4. Call finish_solving when all groups are done
+
+IMPORTANT: Do NOT call git add or git commit yourself. The finish_fix_group tool handles committing.
+`;
+}
