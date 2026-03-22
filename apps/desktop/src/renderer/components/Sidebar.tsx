@@ -1,5 +1,7 @@
 import { useState } from "react";
+import type { SidebarSegment } from "../../shared/types";
 import { useProjectStore } from "../stores/projects";
+import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import { DaemonInspector } from "./DaemonInspector";
 import { ProjectList } from "./ProjectList";
@@ -8,8 +10,6 @@ import { SettingsView } from "./SettingsView";
 import { SidebarRail } from "./SidebarRail";
 import { TicketsTab } from "./TicketsTab";
 
-type SidebarSegment = "repos" | "tickets" | "prs";
-
 interface SidebarProps {
 	collapsed: boolean;
 	onExpand: (section?: "tickets" | "prs") => void;
@@ -17,7 +17,8 @@ interface SidebarProps {
 
 export function Sidebar({ collapsed, onExpand }: SidebarProps) {
 	const { openAddModal, sidebarView, openSettings } = useProjectStore();
-	const [segment, setSegment] = useState<SidebarSegment>("repos");
+	const segment = useTabStore((s) => s.sidebarSegment);
+	const setSidebarSegment = useTabStore((s) => s.setSidebarSegment);
 	const [showDaemonInspector, setShowDaemonInspector] = useState(false);
 
 	// Check if any AI reviews need attention (ready or failed)
@@ -38,9 +39,9 @@ export function Sidebar({ collapsed, onExpand }: SidebarProps) {
 	const handleExpand = (section?: "tickets" | "prs") => {
 		onExpand(section);
 		if (section === "tickets") {
-			setSegment("tickets");
+			setSidebarSegment("tickets");
 		} else if (section === "prs") {
-			setSegment("prs");
+			setSidebarSegment("prs");
 		}
 	};
 
@@ -71,7 +72,7 @@ export function Sidebar({ collapsed, onExpand }: SidebarProps) {
 							<button
 								key={seg}
 								type="button"
-								onClick={() => setSegment(seg)}
+								onClick={() => setSidebarSegment(seg)}
 								className={`relative flex-1 rounded-[5px] py-1 text-[10px] font-medium capitalize transition-colors ${
 									segment === seg
 										? "bg-[var(--bg-elevated)] text-[var(--text-secondary)]"

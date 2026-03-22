@@ -967,7 +967,14 @@ export function PullRequestsTab() {
 			// (getCommitsAhead, getBranchDiff) run in the correct directory
 			const resolvedPrCtx = { ...prCtx, repoPath: cwd };
 			const tabStore = useTabStore.getState();
-			tabStore.setWorkspaceMetadata(ws.id, { type: "review" });
+			tabStore.setWorkspaceMetadata(ws.id, {
+				type: "review",
+				prProvider: resolvedPrCtx.provider,
+				prIdentifier: `${resolvedPrCtx.owner}/${resolvedPrCtx.repo}#${resolvedPrCtx.number}`,
+				prTitle: resolvedPrCtx.title,
+				sourceBranch: resolvedPrCtx.sourceBranch,
+				targetBranch: resolvedPrCtx.targetBranch,
+			});
 			tabStore.setActiveWorkspace(ws.id, cwd, {
 				rightPanel: { open: true, mode: "pr-review", diffCtx: null, prCtx: resolvedPrCtx },
 			});
