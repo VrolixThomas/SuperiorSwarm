@@ -1,6 +1,6 @@
 import * as monaco from "monaco-editor";
-import { useEffect, useRef, useState } from "react";
 import { initVimMode } from "monaco-vim";
+import { useEffect, useRef, useState } from "react";
 import { EDITOR_THEME, ensureThemeRegistered } from "../lib/monacoTheme";
 import {
 	registerLspProviders,
@@ -144,6 +144,7 @@ export function FileEditor({
 		};
 	}, [data, language, repoPath, filePath]);
 
+	// biome-ignore lint/correctness/useExhaustiveDependencies: editorReady is an intentional trigger to re-run after editor creation
 	useEffect(() => {
 		const editor = editorRef.current;
 		if (!editor) return;

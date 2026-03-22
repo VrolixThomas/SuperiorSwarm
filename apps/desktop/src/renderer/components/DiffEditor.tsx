@@ -99,6 +99,7 @@ export function DiffEditor({
 	}, [renderSideBySide]);
 
 	// Attach or detach vim mode on the modified (right) editor
+	// biome-ignore lint/correctness/useExhaustiveDependencies: editorReady is an intentional trigger to re-run after editor creation
 	useEffect(() => {
 		const editor = editorRef.current;
 		if (!editor) return;
