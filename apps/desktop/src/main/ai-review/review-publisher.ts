@@ -216,7 +216,9 @@ export async function publishReview(draftId: string): Promise<PublishResult> {
 					.run();
 				postedCount++;
 			} catch (err) {
-				errors.push(`Failed to post comment on ${comment.filePath}${comment.lineNumber ? `:${comment.lineNumber}` : ""}: ${err}`);
+				errors.push(
+					`Failed to post comment on ${comment.filePath}${comment.lineNumber ? `:${comment.lineNumber}` : ""}: ${err}`
+				);
 			}
 		}
 

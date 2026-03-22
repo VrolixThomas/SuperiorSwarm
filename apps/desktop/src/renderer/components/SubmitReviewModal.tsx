@@ -54,9 +54,7 @@ export function SubmitReviewModal({
 					body: comment.userEdit ?? comment.body,
 					commitId: headCommitOid,
 					path: comment.path,
-					...(comment.line != null
-						? { line: comment.line, side: comment.diffSide }
-						: {}),
+					...(comment.line != null ? { line: comment.line, side: comment.diffSide } : {}),
 				});
 				await updateDraftComment.mutateAsync({
 					commentId: comment.draftCommentId,
