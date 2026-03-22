@@ -1,6 +1,7 @@
 import type { Pane } from "../../../shared/pane-types";
 import { DiffFileTab } from "../DiffFileTab";
 import { FileEditor } from "../FileEditor";
+import { PROverviewTab } from "../PROverviewTab";
 import { PRReviewFileTab } from "../PRReviewFileTab";
 import { Terminal } from "../Terminal";
 
@@ -66,6 +67,14 @@ export function PaneContent({
 						prCtx={activeTab.prCtx}
 						filePath={activeTab.filePath}
 						language={activeTab.language}
+					/>
+				</div>
+			)}
+			{activeTab?.kind === "pr-overview" && (
+				<div className="absolute inset-0">
+					<PROverviewTab
+						key={`${activeTab.prCtx.owner}/${activeTab.prCtx.repo}#${activeTab.prCtx.number}`}
+						prCtx={activeTab.prCtx}
 					/>
 				</div>
 			)}
