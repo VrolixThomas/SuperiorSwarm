@@ -1,3 +1,4 @@
+import type { GitHubPREnriched } from "../../shared/github-types";
 import { githubFetch, githubGraphQL } from "./auth";
 
 // ── Public types ──────────────────────────────────────────────────────────────
@@ -303,10 +304,45 @@ async function fetchBranchNames(
 }
 
 export async function getMyPRs(): Promise<GitHubPR[]> {
-	const [authoredNodes, reviewingNodes] = await Promise.all([
+	// Resolve actual username — @me may not work for review-requested in all token types
+	let username = "@me";
+	try {
+		const userRes = await githubFetch("/user");
+		if (userRes.ok) {
+			const user = (await userRes.json()) as { login: string };
+			username = user.login;
+		}
+	} catch {
+		// Fall back to @me
+	}
+
+	// Fetch user's team memberships for team-based review requests
+	const teamSlugs: string[] = [];
+	try {
+		const teamsRes = await githubFetch("/user/teams?per_page=100");
+		if (teamsRes.ok) {
+			const teams = (await teamsRes.json()) as { slug: string; organization: { login: string } }[];
+			for (const t of teams) {
+				teamSlugs.push(`${t.organization.login}/${t.slug}`);
+			}
+		}
+	} catch {
+		// Non-critical — team review requests just won't be found
+	}
+
+	const searches: Promise<RawSearchIssueNode[]>[] = [
 		searchPRs("is:pr is:open author:@me"),
-		searchPRs("is:pr is:open review-requested:@me"),
-	]);
+		searchPRs(`is:pr is:open review-requested:${username}`),
+		searchPRs(`is:pr is:open reviewed-by:${username} -author:${username}`),
+	];
+
+	// Add team-based review request searches
+	for (const slug of teamSlugs) {
+		searches.push(searchPRs(`is:pr is:open team-review-requested:${slug}`));
+	}
+
+	const [authoredNodes, reviewRequestedNodes, reviewedByNodes, ...teamNodes] =
+		await Promise.all(searches);
 
 	const seen = new Set<number>();
 	const nodes: { node: RawSearchIssueNode; role: "author" | "reviewer" }[] = [];
@@ -316,8 +352,10 @@ export async function getMyPRs(): Promise<GitHubPR[]> {
 		nodes.push({ node, role: "author" });
 	}
 
-	for (const node of reviewingNodes) {
+	const allReviewerNodes = [...reviewRequestedNodes, ...reviewedByNodes, ...teamNodes.flat()];
+	for (const node of allReviewerNodes) {
 		if (!seen.has(node.id)) {
+			seen.add(node.id);
 			nodes.push({ node, role: "reviewer" });
 		}
 	}
@@ -422,6 +460,60 @@ export async function getPRDetails(
 	return mapPRDetails(data.repository.pullRequest);
 }
 
+export async function getPRListEnrichment(
+	prs: Array<{ owner: string; repo: string; number: number }>
+): Promise<GitHubPREnriched[]> {
+	const results: GitHubPREnriched[] = [];
+	const batches: Array<Array<(typeof prs)[number]>> = [];
+	for (let i = 0; i < prs.length; i += 5) {
+		batches.push(prs.slice(i, i + 5));
+	}
+
+	for (const batch of batches) {
+		const settled = await Promise.allSettled(
+			batch.map(async (pr) => {
+				const details = await getPRDetails(pr.owner, pr.repo, pr.number);
+				if (!details) return null;
+
+				const unresolvedThreadCount = details.reviewThreads.filter((t) => !t.isResolved).length;
+				const fileStats = details.files.reduce(
+					(acc, f) => ({
+						additions: acc.additions + f.additions,
+						deletions: acc.deletions + f.deletions,
+						count: acc.count + 1,
+					}),
+					{ additions: 0, deletions: 0, count: 0 }
+				);
+
+				return {
+					owner: pr.owner,
+					repo: pr.repo,
+					number: pr.number,
+					author: details.author,
+					authorAvatarUrl: details.authorAvatarUrl,
+					reviewers: details.reviewers,
+					ciState: details.ciState,
+					reviewDecision: details.reviewDecision,
+					unresolvedThreadCount,
+					files: fileStats,
+					headCommitOid: details.headCommitOid,
+					mergeable: "UNKNOWN" as const,
+					isDraft: details.isDraft,
+					updatedAt: new Date().toISOString(),
+				} satisfies GitHubPREnriched;
+			})
+		);
+
+		for (const result of settled) {
+			if (result.status === "fulfilled" && result.value) {
+				results.push(result.value);
+			}
+		}
+	}
+
+	return results;
+}
+
 export async function createReviewThread(params: {
 	owner: string;
 	repo: string;
@@ -429,26 +521,33 @@ export async function createReviewThread(params: {
 	body: string;
 	commitId: string;
 	path: string;
-	line: number;
-	side: "LEFT" | "RIGHT";
-}): Promise<{ id: number }> {
+	line?: number;
+	side?: "LEFT" | "RIGHT";
+}): Promise<{ id: number; nodeId: string }> {
+	const payload: Record<string, unknown> = {
+		body: params.body,
+		commit_id: params.commitId,
+		path: params.path,
+	};
+
+	if (params.line != null) {
+		payload.line = params.line;
+		payload.side = params.side ?? "RIGHT";
+	} else {
+		payload.subject_type = "file";
+	}
+
 	const res = await githubFetch(
 		`/repos/${params.owner}/${params.repo}/pulls/${params.prNumber}/comments`,
 		{
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({
-				body: params.body,
-				commit_id: params.commitId,
-				path: params.path,
-				line: params.line,
-				side: params.side,
-			}),
+			body: JSON.stringify(payload),
 		}
 	);
 	if (!res.ok) throw new Error(`GitHub create thread failed: ${res.status} ${await res.text()}`);
-	const data = (await res.json()) as { id: number };
-	return { id: data.id };
+	const data = (await res.json()) as { id: number; node_id: string };
+	return { id: data.id, nodeId: data.node_id };
 }
 
 export async function addReviewThreadReply(params: {
@@ -498,4 +597,94 @@ export async function resolveThread(threadId: string): Promise<void> {
     }
   `;
 	await githubGraphQL<unknown>(mutation, { threadId });
+}
+
+export async function unresolveThread(threadId: string): Promise<void> {
+	const mutation = `
+    mutation UnresolveReviewThread($threadId: ID!) {
+      unresolveReviewThread(input: { threadId: $threadId }) {
+        thread { id isResolved }
+      }
+    }
+  `;
+	await githubGraphQL<unknown>(mutation, { threadId });
+}
+
+export interface PRFileInfo {
+	path: string;
+	status: "added" | "modified" | "removed" | "renamed";
+	previousPath?: string;
+}
+
+/** Get PR files with rename detection via REST API */
+export async function getPRFiles(
+	owner: string,
+	repo: string,
+	prNumber: number
+): Promise<PRFileInfo[]> {
+	const res = await githubFetch(`/repos/${owner}/${repo}/pulls/${prNumber}/files?per_page=100`);
+	if (!res.ok) throw new Error(`GitHub get PR files failed: ${res.status}`);
+	const data = (await res.json()) as Array<{
+		filename: string;
+		status: string;
+		previous_filename?: string;
+	}>;
+	return data.map((f) => ({
+		path: f.filename,
+		status: f.status as PRFileInfo["status"],
+		previousPath: f.previous_filename,
+	}));
+}
+
+export async function getPRState(
+	owner: string,
+	repo: string,
+	prNumber: number
+): Promise<{ headSha: string; state: string; merged: boolean }> {
+	const res = await githubFetch(`/repos/${owner}/${repo}/pulls/${prNumber}`);
+	if (!res.ok) throw new Error(`GitHub get PR failed: ${res.status}`);
+	const data = (await res.json()) as { head: { sha: string }; state: string; merged: boolean };
+	return { headSha: data.head.sha, state: data.state, merged: data.merged };
+}
+
+export async function getGitHubReviewThreads(
+	owner: string,
+	repo: string,
+	prNumber: number
+): Promise<Array<{ nodeId: string; isResolved: boolean }>> {
+	const query = `
+    query GetReviewThreads($owner: String!, $repo: String!, $prNumber: Int!) {
+      repository(owner: $owner, name: $repo) {
+        pullRequest(number: $prNumber) {
+          reviewThreads(first: 100) {
+            nodes {
+              id
+              isResolved
+              comments(first: 1) {
+                nodes { id }
+              }
+            }
+          }
+        }
+      }
+    }
+  `;
+	const data = await githubGraphQL<{
+		repository: {
+			pullRequest: {
+				reviewThreads: {
+					nodes: Array<{
+						id: string;
+						isResolved: boolean;
+						comments: { nodes: Array<{ id: string }> };
+					}>;
+				};
+			};
+		};
+	}>(query, { owner, repo, prNumber });
+
+	return data.repository.pullRequest.reviewThreads.nodes.map((t) => ({
+		nodeId: t.id,
+		isResolved: t.isResolved,
+	}));
 }

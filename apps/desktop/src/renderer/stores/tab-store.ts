@@ -1,7 +1,8 @@
 import { create } from "zustand";
 import type { DiffContext } from "../../shared/diff-types";
-import type { GitHubPRContext } from "../../shared/github-types";
+import type { PRContext } from "../../shared/github-types";
 import type { Pane } from "../../shared/pane-types";
+import type { SidebarSegment } from "../../shared/types";
 import { createDefaultPane, getAllPanes, usePaneStore } from "./pane-store";
 
 // ─── Tab types ───────────────────────────────────────────────────────────────
@@ -31,18 +32,41 @@ export type TabItem =
 			kind: "pr-review-file";
 			id: string;
 			workspaceId: string;
-			prCtx: GitHubPRContext;
+			prCtx: PRContext;
 			filePath: string;
 			title: string;
 			language: string;
+	  }
+	| {
+			kind: "pr-overview";
+			id: string;
+			workspaceId: string;
+			title: string;
+			prCtx: PRContext;
 	  };
 export type PanelMode = "diff" | "explorer" | "pr-review";
 
 export type RightPanelState =
 	| { open: false }
-	| { open: true; mode: PanelMode; diffCtx: DiffContext | null; prCtx?: GitHubPRContext };
+	| {
+			open: true;
+			mode: PanelMode;
+			diffCtx: DiffContext | null;
+			prCtx?: PRContext;
+	  };
 
 export const PANEL_CLOSED: RightPanelState = { open: false };
+
+// ─── Workspace metadata ───────────────────────────────────────────────────────
+
+export interface WorkspaceMetadata {
+	type: string;
+	prProvider?: string;
+	prIdentifier?: string;
+	prTitle?: string;
+	sourceBranch?: string;
+	targetBranch?: string;
+}
 
 // ─── Store interface ─────────────────────────────────────────────────────────
 
@@ -53,8 +77,11 @@ interface TabStore {
 	diffMode: "split" | "inline";
 	rightPanel: RightPanelState;
 	baseBranchByWorkspace: Record<string, string>;
+	workspaceMetadata: Record<string, WorkspaceMetadata>;
 	/** @internal Bumped when pane-store changes so derived selectors re-evaluate. */
 	_paneVersion: number;
+	sidebarSegment: SidebarSegment;
+	activeWorkspaceBySegment: Record<SidebarSegment, { id: string; cwd: string } | null>;
 
 	// Derived — reads from pane-store for backwards compat
 	getAllTabs: () => TabItem[];
@@ -71,19 +98,27 @@ interface TabStore {
 	updateTabTitle: (id: string, title: string) => void;
 
 	// Workspace
-	setActiveWorkspace: (workspaceId: string, cwd: string) => void;
+	setWorkspaceMetadata: (id: string, meta: WorkspaceMetadata) => void;
+	cleanupWorkspace: (workspaceId: string) => void;
+	setSidebarSegment: (segment: SidebarSegment) => void;
+	setActiveWorkspace: (
+		workspaceId: string,
+		cwd: string,
+		options?: { rightPanel?: RightPanelState }
+	) => void;
 
 	// Terminal convenience
 	addTerminalTab: (workspaceId: string, cwd: string, title?: string) => string;
 
 	// PR review
-	openPRReviewPanel: (workspaceId: string, prCtx: GitHubPRContext) => void;
+	openPRReviewPanel: (workspaceId: string, prCtx: PRContext) => void;
 	openPRReviewFile: (
 		workspaceId: string,
-		prCtx: GitHubPRContext,
+		prCtx: PRContext,
 		filePath: string,
 		language: string
 	) => string;
+	openPROverview: (workspaceId: string, prCtx: PRContext) => string;
 
 	// Diff convenience
 	toggleDiffPanel: (diffCtx: DiffContext) => void;
@@ -124,11 +159,14 @@ interface TabStore {
 
 // ─── ID generation ───────────────────────────────────────────────────────────
 
-let terminalCounter = 0;
+let terminalDisplayCounter = 0;
 let fileTabCounter = 0;
 
 function nextTerminalId(): string {
-	return `terminal-${++terminalCounter}`;
+	return `terminal-${crypto.randomUUID()}`;
+}
+function nextTerminalTitle(): string {
+	return `Terminal ${++terminalDisplayCounter}`;
 }
 function nextFileTabId(): string {
 	return `file-tab-${++fileTabCounter}`;
@@ -148,7 +186,7 @@ function fileKey(repoPath: string, filePath: string): string {
 	return `file:${repoPath}:${filePath}`;
 }
 
-function prReviewFileKey(prCtx: GitHubPRContext, filePath: string): string {
+function prReviewFileKey(prCtx: PRContext, filePath: string): string {
 	return `pr-review-file:${prCtx.owner}/${prCtx.repo}#${prCtx.number}:${filePath}`;
 }
 
@@ -156,6 +194,34 @@ function defaultPanelForCwd(cwd: string): RightPanelState {
 	return cwd
 		? { open: true, mode: "diff", diffCtx: { type: "working-tree", repoPath: cwd } }
 		: { open: true, mode: "diff", diffCtx: null };
+}
+
+/** Derive the correct right panel state from workspace metadata. */
+function panelForWorkspace(
+	cwd: string,
+	meta: WorkspaceMetadata | undefined
+): RightPanelState {
+	if (meta?.type === "review" && meta.prProvider && meta.prIdentifier) {
+		const [ownerRepo, numStr] = meta.prIdentifier.split("#");
+		const [owner, repo] = (ownerRepo ?? "").split("/");
+		const prCtx: PRContext = {
+			provider: meta.prProvider as "github" | "bitbucket",
+			owner: owner ?? "",
+			repo: repo ?? "",
+			number: Number.parseInt(numStr ?? "0", 10),
+			title: meta.prTitle ?? "",
+			sourceBranch: meta.sourceBranch ?? "",
+			targetBranch: meta.targetBranch ?? "",
+			repoPath: cwd,
+		};
+		return { open: true, mode: "pr-review", diffCtx: null, prCtx };
+	}
+	return defaultPanelForCwd(cwd);
+}
+
+/** Determine which sidebar segment a workspace belongs to. */
+function segmentForWorkspace(meta: WorkspaceMetadata | undefined): SidebarSegment {
+	return meta?.type === "review" ? "prs" : "repos";
 }
 
 // ─── DiffContext identity comparison ─────────────────────────────────────────
@@ -228,7 +294,10 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 	diffMode: "split",
 	rightPanel: defaultPanelForCwd(""),
 	baseBranchByWorkspace: {},
+	workspaceMetadata: {},
 	_paneVersion: 0,
+	sidebarSegment: "repos" as SidebarSegment,
+	activeWorkspaceBySegment: { repos: null, tickets: null, prs: null },
 
 	// ── Derived properties ──────────────────────────────────────────────
 
@@ -290,9 +359,46 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 		ps().updateTabTitleInPane(id, title);
 	},
 
-	setActiveWorkspace: (workspaceId, cwd) => {
+	setWorkspaceMetadata: (id, meta) => {
+		set((s) => ({ workspaceMetadata: { ...s.workspaceMetadata, [id]: meta } }));
+	},
+
+	cleanupWorkspace: (workspaceId) => {
+		const state = get();
+		const { [workspaceId]: _, ...rest } = state.workspaceMetadata;
+
+		const updatedBySegment = { ...state.activeWorkspaceBySegment };
+		for (const seg of ["repos", "tickets", "prs"] as SidebarSegment[]) {
+			if (updatedBySegment[seg]?.id === workspaceId) {
+				updatedBySegment[seg] = null;
+			}
+		}
+
+		set({
+			workspaceMetadata: rest,
+			activeWorkspaceBySegment: updatedBySegment,
+		});
+		if (state.activeWorkspaceId === workspaceId) {
+			set({ activeWorkspaceId: null, activeWorkspaceCwd: "" });
+		}
+	},
+
+	setSidebarSegment: (segment) => {
+		set({ sidebarSegment: segment });
+		const entry = get().activeWorkspaceBySegment[segment];
+		if (entry) {
+			get().setActiveWorkspace(entry.id, entry.cwd);
+		} else {
+			set({
+				activeWorkspaceId: null,
+				activeWorkspaceCwd: "",
+				rightPanel: PANEL_CLOSED,
+			});
+		}
+	},
+
+	setActiveWorkspace: (workspaceId, cwd, options) => {
 		ps().ensureLayout(workspaceId);
-		// Try to keep focus on existing pane, or set to first pane
 		const focused = ps().getFocusedPane(workspaceId);
 		if (!focused) {
 			const root = ps().layouts[workspaceId];
@@ -301,16 +407,48 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 				if (first) ps().setFocusedPane(first.id);
 			}
 		}
+
+		const meta = get().workspaceMetadata[workspaceId];
+		const segment = segmentForWorkspace(meta);
+
+		// Update per-segment tracking
+		set((s) => ({
+			activeWorkspaceBySegment: {
+				...s.activeWorkspaceBySegment,
+				[segment]: { id: workspaceId, cwd },
+			},
+		}));
+
+		// If a rightPanel override is supplied, honour it and skip type detection
+		if (options?.rightPanel) {
+			set({
+				activeWorkspaceId: workspaceId,
+				activeWorkspaceCwd: cwd,
+				rightPanel: options.rightPanel,
+			});
+			return;
+		}
+
+		const panel = panelForWorkspace(cwd, meta);
 		set({
 			activeWorkspaceId: workspaceId,
 			activeWorkspaceCwd: cwd,
-			rightPanel: defaultPanelForCwd(cwd),
+			rightPanel: panel,
 		});
+
+		// Only open PR overview on first activation (no existing tabs yet)
+		if (meta?.type === "review" && meta.prProvider && meta.prIdentifier) {
+			const existingTabs = findTabInWorkspace(workspaceId, () => true);
+			if (!existingTabs && panel.open && panel.mode === "pr-review" && panel.prCtx) {
+				const prCtx = panel.prCtx;
+				queueMicrotask(() => get().openPROverview(workspaceId, prCtx));
+			}
+		}
 	},
 
 	addTerminalTab: (workspaceId, cwd, title) => {
 		const id = nextTerminalId();
-		const tabTitle = title ?? `Terminal ${terminalCounter}`;
+		const tabTitle = title ?? nextTerminalTitle();
 		const tab: TabItem = { kind: "terminal", id, workspaceId, title: tabTitle, cwd };
 		ps().ensureLayout(workspaceId);
 		const focused = resolveFocusedPane(workspaceId);
@@ -320,10 +458,13 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 		return id;
 	},
 
-	openPRReviewPanel: (_workspaceId, prCtx) => {
+	openPRReviewPanel: (workspaceId, prCtx) => {
 		set({ rightPanel: { open: true, mode: "pr-review", diffCtx: null, prCtx } });
+		// Defer tab creation to next microtask — opening the tab mutates pane-store,
+		// which fires the cross-store bridge (bumps _paneVersion), which would cause
+		// an infinite setState cascade if done synchronously in the same commit.
+		queueMicrotask(() => get().openPROverview(workspaceId, prCtx));
 	},
-
 	openPRReviewFile: (workspaceId, prCtx, filePath, language) => {
 		const key = prReviewFileKey(prCtx, filePath);
 		const found = findTabInWorkspace(
@@ -348,6 +489,36 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 			filePath,
 			title,
 			language,
+		};
+		ps().ensureLayout(workspaceId);
+		const focused = resolveFocusedPane(workspaceId);
+		if (focused) {
+			ps().addTabToPane(workspaceId, focused.id, tab);
+		}
+		return id;
+	},
+
+	openPROverview: (workspaceId, prCtx) => {
+		const found = findTabInWorkspace(
+			workspaceId,
+			(t) =>
+				t.kind === "pr-overview" &&
+				t.prCtx.owner === prCtx.owner &&
+				t.prCtx.repo === prCtx.repo &&
+				t.prCtx.number === prCtx.number
+		);
+		if (found) {
+			ps().setActiveTabInPane(workspaceId, found.pane.id, found.tab.id);
+			ps().setFocusedPane(found.pane.id);
+			return found.tab.id;
+		}
+		const id = nextFileTabId();
+		const tab: TabItem = {
+			kind: "pr-overview",
+			id,
+			workspaceId,
+			title: `PR: ${prCtx.title}`,
+			prCtx,
 		};
 		ps().ensureLayout(workspaceId);
 		const focused = resolveFocusedPane(workspaceId);
@@ -524,18 +695,56 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 	getBaseBranch: (workspaceId) => get().baseBranchByWorkspace[workspaceId],
 
 	hydrate: (sessions, activeTab, activeWs, activeCwd, extraState) => {
-		const maxId = sessions.reduce((max, s) => {
-			const match = s.id.match(/^terminal-(\d+)$/);
-			return match ? Math.max(max, Number(match[1])) : max;
-		}, 0);
-		terminalCounter = maxId;
-
 		let baseBranchByWorkspace: Record<string, string> = {};
 		if (extraState?.["baseBranchByWorkspace"]) {
 			try {
 				baseBranchByWorkspace = JSON.parse(extraState["baseBranchByWorkspace"]);
 			} catch {
 				// ignore malformed data
+			}
+		}
+
+		// Restore workspace metadata
+		let workspaceMetadata: Record<string, WorkspaceMetadata> = {};
+		if (extraState?.["workspaceMetadata"]) {
+			try {
+				workspaceMetadata = JSON.parse(extraState["workspaceMetadata"]);
+			} catch {
+				// ignore malformed data
+			}
+		}
+
+		// Restore sidebar segment (validate against known values)
+		const validSegments = new Set<string>(["repos", "tickets", "prs"]);
+		let sidebarSegment: SidebarSegment = validSegments.has(extraState?.["sidebarSegment"] ?? "")
+			? (extraState!["sidebarSegment"] as SidebarSegment)
+			: "repos";
+
+		// Restore per-segment active workspace
+		let activeWorkspaceBySegment: Record<
+			SidebarSegment,
+			{ id: string; cwd: string } | null
+		> = {
+			repos: null,
+			tickets: null,
+			prs: null,
+		};
+		if (extraState?.["activeWorkspaceBySegment"]) {
+			try {
+				activeWorkspaceBySegment = {
+					...activeWorkspaceBySegment,
+					...JSON.parse(extraState["activeWorkspaceBySegment"]),
+				};
+			} catch {
+				// ignore malformed data
+			}
+		} else if (activeWs) {
+			// Backwards compat: migrate single activeWorkspaceId to per-segment
+			const meta = workspaceMetadata[activeWs];
+			const segment = segmentForWorkspace(meta);
+			activeWorkspaceBySegment[segment] = { id: activeWs, cwd: activeCwd };
+			if (!extraState?.["sidebarSegment"]) {
+				sidebarSegment = segment;
 			}
 		}
 
@@ -547,7 +756,6 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 			cwd: s.cwd,
 		}));
 
-		// Group tabs by workspace and hydrate into pane-store
 		const tabsByWorkspace = new Map<string, TabItem[]>();
 		for (const tab of tabs) {
 			const existing = tabsByWorkspace.get(tab.workspaceId) ?? [];
@@ -557,22 +765,30 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 
 		for (const [wsId, wsTabs] of tabsByWorkspace) {
 			const newPane = createDefaultPane(wsTabs);
-			// If the activeTab is in this workspace, set it as the active tab in the pane
 			if (activeTab && wsTabs.some((t) => t.id === activeTab)) {
 				newPane.activeTabId = activeTab;
 			}
 			ps().hydrateLayout(wsId, newPane);
-			// Focus the pane if this is the active workspace
 			if (wsId === activeWs) {
 				ps().setFocusedPane(newPane.id);
 			}
 		}
 
+		// Derive right panel from the active workspace for the restored segment
+		const activeEntry = activeWorkspaceBySegment[sidebarSegment];
+		const activeId = activeEntry?.id ?? activeWs;
+		const activeMeta = activeId ? workspaceMetadata[activeId] : undefined;
+		const activeCwdResolved = activeEntry?.cwd ?? activeCwd;
+		const rightPanel = panelForWorkspace(activeCwdResolved, activeMeta);
+
 		set({
-			activeWorkspaceId: activeWs,
-			activeWorkspaceCwd: activeCwd,
-			rightPanel: defaultPanelForCwd(activeCwd),
+			activeWorkspaceId: activeId ?? null,
+			activeWorkspaceCwd: activeCwdResolved,
+			rightPanel,
 			baseBranchByWorkspace,
+			workspaceMetadata,
+			sidebarSegment,
+			activeWorkspaceBySegment,
 		});
 	},
 }));

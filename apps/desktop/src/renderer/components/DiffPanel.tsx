@@ -4,7 +4,7 @@ import { trpc } from "../trpc/client";
 import { BranchChanges } from "./BranchChanges";
 import { CommittedStack } from "./CommittedStack";
 import { DraftCommitCard } from "./DraftCommitCard";
-import { PRReviewPanel } from "./PRReviewPanel";
+import { PRControlRail } from "./PRControlRail";
 import { RepoFileTree } from "./RepoFileTree";
 import { SmartHeaderBar } from "./SmartHeaderBar";
 
@@ -301,7 +301,7 @@ export function DiffPanel({ onClose }: { onClose?: () => void }) {
 		return (
 			<div className="relative flex h-full w-full flex-col overflow-hidden bg-[var(--bg-surface)]">
 				{onClose && <PanelEdgeClose onClose={onClose} />}
-				<PRReviewPanel prCtx={rightPanel.prCtx} />
+				<PRControlRail prCtx={rightPanel.prCtx} />
 			</div>
 		);
 	}

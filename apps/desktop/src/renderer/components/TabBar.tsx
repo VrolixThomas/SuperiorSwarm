@@ -140,10 +140,13 @@ export function TabBar() {
 								isActive={isActive}
 								onSelect={() => setActiveTab(tab.id)}
 								onClose={() => {
-									if (tab.kind === "terminal" && tab.workspaceId) {
-										detachMutation.mutate({
-											workspaceId: tab.workspaceId,
-										});
+									if (tab.kind === "terminal") {
+										window.electron.terminal.dispose(tab.id);
+										if (tab.workspaceId) {
+											detachMutation.mutate({
+												workspaceId: tab.workspaceId,
+											});
+										}
 									}
 									removeTab(tab.id);
 								}}

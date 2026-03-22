@@ -27,9 +27,7 @@ function serializeLayout(node: LayoutNode): SerializedLayoutNode {
 		return {
 			type: "pane",
 			id: node.id,
-			tabs: node.tabs.map((t) =>
-				t.kind === "file" ? { ...t, initialPosition: undefined } : t
-			),
+			tabs: node.tabs.map((t) => (t.kind === "file" ? { ...t, initialPosition: undefined } : t)),
 			activeTabId: node.activeTabId,
 		};
 	}
@@ -52,6 +50,10 @@ function deserializeLayout(
 				if (saved.kind === "terminal") {
 					// Terminal tabs: use fresh session data from backend
 					return terminalMap.get(saved.id) ?? null;
+				}
+				// Filter out stale ai-review-summary tabs from previous versions
+				if ((saved as { kind: string }).kind === "ai-review-summary") {
+					return null;
 				}
 				// File tabs: use directly from serialized data
 				return saved;
@@ -125,6 +127,12 @@ function collectSnapshot() {
 	if (Object.keys(baseBranchByWorkspace).length > 0) {
 		state["baseBranchByWorkspace"] = JSON.stringify(baseBranchByWorkspace);
 	}
+	const { sidebarSegment, activeWorkspaceBySegment, workspaceMetadata } = store;
+	if (sidebarSegment) state["sidebarSegment"] = sidebarSegment;
+	state["activeWorkspaceBySegment"] = JSON.stringify(activeWorkspaceBySegment);
+	if (Object.keys(workspaceMetadata).length > 0) {
+		state["workspaceMetadata"] = JSON.stringify(workspaceMetadata);
+	}
 
 	const paneLayouts: Record<string, string> = {};
 	const layouts = usePaneStore.getState().layouts;
@@ -154,7 +162,7 @@ export function App() {
 		if (hasRestored.current || !restoreQuery.data) return;
 		hasRestored.current = true;
 
-		const { sessions, state, paneLayouts } = restoreQuery.data;
+		const { sessions, state, paneLayouts, workspaceMeta } = restoreQuery.data;
 		const hasSessions = sessions.length > 0;
 		const hasLayouts = paneLayouts && Object.keys(paneLayouts).length > 0;
 		if (!hasSessions && !hasLayouts) return;
@@ -177,6 +185,20 @@ export function App() {
 					state["activeWorkspaceCwd"] ?? "",
 					state
 				);
+		}
+
+		// Backfill workspace metadata from backend for workspaces not already saved client-side
+		if (workspaceMeta) {
+			const tabState = useTabStore.getState();
+			for (const [wsId, meta] of Object.entries(workspaceMeta)) {
+				if (!tabState.workspaceMetadata[wsId]) {
+					tabState.setWorkspaceMetadata(wsId, {
+						type: meta.type === "review" ? "review" : meta.type,
+						prProvider: meta.prProvider,
+						prIdentifier: meta.prIdentifier,
+					});
+				}
+			}
 		}
 
 		// Hydrate pane layouts (must happen after tab hydration so terminal tabs exist)
@@ -202,6 +224,10 @@ export function App() {
 			let maxFileTabId = 0;
 
 			for (const [wsId, layoutJson] of Object.entries(paneLayouts)) {
+				if (workspaceMeta && !workspaceMeta[wsId]) {
+					// Orphaned layout — workspace no longer exists, skip it
+					continue;
+				}
 				try {
 					const serialized = JSON.parse(layoutJson) as SerializedLayoutNode;
 					const layout = deserializeLayout(serialized, terminalMap);
