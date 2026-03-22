@@ -177,7 +177,7 @@ export async function createPRComment(
 export async function getBitbucketPRComments(
 	workspace: string,
 	repoSlug: string,
-	prId: number,
+	prId: number
 ): Promise<
 	Array<{
 		id: number;
@@ -191,7 +191,7 @@ export async function getBitbucketPRComments(
 > {
 	const resp = await atlassianFetch(
 		"bitbucket",
-		`${BITBUCKET_API_BASE}/repositories/${workspace}/${repoSlug}/pullrequests/${prId}/comments?pagelen=100`,
+		`${BITBUCKET_API_BASE}/repositories/${workspace}/${repoSlug}/pullrequests/${prId}/comments?pagelen=100`
 	);
 	if (!resp.ok) throw new Error(`Bitbucket comments fetch failed: ${resp.status}`);
 	const data = (await resp.json()) as { values?: any[] };

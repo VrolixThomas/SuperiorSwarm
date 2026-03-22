@@ -10,7 +10,7 @@ import { RepoFileTree } from "./RepoFileTree";
 import { SmartHeaderBar } from "./SmartHeaderBar";
 
 const PRCommentsRail = React.lazy(() =>
-	import("./PRCommentsRail").then((m) => ({ default: m.PRCommentsRail })),
+	import("./PRCommentsRail").then((m) => ({ default: m.PRCommentsRail }))
 );
 
 function PanelHeader({

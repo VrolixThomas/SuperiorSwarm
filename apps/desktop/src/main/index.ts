@@ -4,13 +4,13 @@ import { daemonInstanceId, daemonPaths } from "../shared/daemon-protocol";
 import { cleanupReviewWorkspace, findReviewWorkspaceByPR } from "./ai-review/cleanup";
 import { startPolling } from "./ai-review/commit-poller";
 import { cleanupStaleReviews } from "./ai-review/orchestrator";
-import { cleanupStaleResolutionSessions } from "./ai-review/resolution-orchestrator";
 import {
 	onNewPRDetected,
 	onNewReviewComments,
 	onPRClosedDetected,
 	startPolling as startPRPolling,
 } from "./ai-review/pr-poller";
+import { cleanupStaleResolutionSessions } from "./ai-review/resolution-orchestrator";
 import { getDb, initializeDatabase } from "./db";
 import * as schema from "./db/schema";
 import {

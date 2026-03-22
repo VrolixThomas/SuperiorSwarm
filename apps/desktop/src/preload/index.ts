@@ -99,7 +99,10 @@ const daemonAPI: DaemonAPI = {
 
 const reviewAPI: ReviewAPI = {
 	onNewReviewComments: (callback: (data: { prIdentifier: string; newCount: number }) => void) => {
-		const handler = (_event: Electron.IpcRendererEvent, data: { prIdentifier: string; newCount: number }) => callback(data);
+		const handler = (
+			_event: Electron.IpcRendererEvent,
+			data: { prIdentifier: string; newCount: number }
+		) => callback(data);
 		ipcRenderer.on("new-review-comments", handler);
 		return () => ipcRenderer.removeListener("new-review-comments", handler);
 	},

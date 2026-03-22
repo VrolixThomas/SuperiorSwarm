@@ -1,3 +1,4 @@
+import { and, eq, isNull } from "drizzle-orm";
 import type { CachedPR } from "../../shared/review-types";
 import { getAuth as getBitbucketAuth } from "../atlassian/auth";
 import { getMyPullRequests, getReviewRequests } from "../atlassian/bitbucket";
@@ -5,7 +6,6 @@ import { getDb } from "../db";
 import { projects, workspaces } from "../db/schema";
 import { getValidToken } from "../github/auth";
 import { getMyPRs } from "../github/github";
-import { and, eq, isNull } from "drizzle-orm";
 
 const POLL_INTERVAL_MS = 60_000;
 
@@ -31,7 +31,7 @@ export function onPRClosedDetected(handler: (pr: CachedPR) => void): void {
 }
 
 export function onNewReviewComments(
-	handler: (prIdentifier: string, newCount: number) => void,
+	handler: (prIdentifier: string, newCount: number) => void
 ): void {
 	onNewReviewCommentsHandler = handler;
 }
@@ -104,7 +104,7 @@ function mapGitHubPR(pr: Awaited<ReturnType<typeof getMyPRs>>[number]): CachedPR
 
 function mapBitbucketPR(
 	pr: Awaited<ReturnType<typeof getMyPullRequests>>[number],
-	role: "author" | "reviewer",
+	role: "author" | "reviewer"
 ): CachedPR {
 	const identifier = `${pr.workspace}/${pr.repoSlug}#${pr.id}`;
 	// Bitbucket states: OPEN, MERGED, DECLINED, SUPERSEDED
@@ -256,9 +256,7 @@ async function doPoll(): Promise<void> {
 						})
 						.where(eq(workspaces.id, ws.id))
 						.run();
-					console.log(
-						`[pr-poller] Linked workspace ${ws.id} to PR ${pr.identifier}`
-					);
+					console.log(`[pr-poller] Linked workspace ${ws.id} to PR ${pr.identifier}`);
 					break;
 				}
 			}
@@ -269,9 +267,7 @@ async function doPoll(): Promise<void> {
 		const currentCount = pr.commentCount;
 		if (prevCount !== undefined && currentCount > prevCount) {
 			const newCount = currentCount - prevCount;
-			console.log(
-				`[pr-poller] New review comments on ${pr.identifier}: +${newCount}`
-			);
+			console.log(`[pr-poller] New review comments on ${pr.identifier}: +${newCount}`);
 			onNewReviewCommentsHandler?.(pr.identifier, newCount);
 		}
 		previousCommentCounts.set(pr.identifier, currentCount);

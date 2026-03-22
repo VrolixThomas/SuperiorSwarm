@@ -1,44 +1,46 @@
 import { eq } from "drizzle-orm";
 import { z } from "zod";
-import { getDb } from "../../db";
-import { resolutionComments, resolutionGroups, resolutionSessions } from "../../db/schema-resolution";
 import {
 	fetchReviewComments,
 	markSessionFailed,
 	startResolutionSession,
 } from "../../ai-review/resolution-orchestrator";
 import { pushAndReply, revertAll, revertGroup } from "../../ai-review/resolution-publisher";
+import { getDb } from "../../db";
+import {
+	resolutionComments,
+	resolutionGroups,
+	resolutionSessions,
+} from "../../db/schema-resolution";
 import { publicProcedure, router } from "../index";
 
 export const resolutionRouter = router({
-	getSession: publicProcedure
-		.input(z.object({ workspaceId: z.string() }))
-		.query(({ input }) => {
-			const db = getDb();
+	getSession: publicProcedure.input(z.object({ workspaceId: z.string() })).query(({ input }) => {
+		const db = getDb();
 
-			const session = db
-				.select()
-				.from(resolutionSessions)
-				.where(eq(resolutionSessions.workspaceId, input.workspaceId))
-				.all()
-				.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
+		const session = db
+			.select()
+			.from(resolutionSessions)
+			.where(eq(resolutionSessions.workspaceId, input.workspaceId))
+			.all()
+			.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
 
-			if (!session) return null;
+		if (!session) return null;
 
-			const groups = db
-				.select()
-				.from(resolutionGroups)
-				.where(eq(resolutionGroups.sessionId, session.id))
-				.all();
+		const groups = db
+			.select()
+			.from(resolutionGroups)
+			.where(eq(resolutionGroups.sessionId, session.id))
+			.all();
 
-			const comments = db
-				.select()
-				.from(resolutionComments)
-				.where(eq(resolutionComments.sessionId, session.id))
-				.all();
+		const comments = db
+			.select()
+			.from(resolutionComments)
+			.where(eq(resolutionComments.sessionId, session.id))
+			.all();
 
-			return { ...session, groups, comments };
-		}),
+		return { ...session, groups, comments };
+	}),
 
 	startResolution: publicProcedure
 		.input(

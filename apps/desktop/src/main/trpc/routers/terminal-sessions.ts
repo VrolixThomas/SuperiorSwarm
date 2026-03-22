@@ -161,9 +161,7 @@ export const terminalSessionsRouter = router({
 				const diskWorktrees = await listWorktrees(project.repoPath);
 				for (const dw of diskWorktrees) {
 					const dbMatch = dbWorktrees.find((db) => db.path === dw.path);
-					const wsMatch = dbMatch
-						? allWorkspaces.find((ws) => ws.worktreeId === dbMatch.id)
-						: null;
+					const wsMatch = dbMatch ? allWorkspaces.find((ws) => ws.worktreeId === dbMatch.id) : null;
 					results.push({
 						path: dw.path,
 						branch: dw.branch,

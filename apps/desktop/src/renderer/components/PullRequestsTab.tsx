@@ -577,9 +577,7 @@ export function PullRequestsTab() {
 			tabStore.setWorkspaceMetadata(launchInfo.reviewWorkspaceId, {
 				type: "review",
 				prProvider: prCtx?.provider,
-				prIdentifier: prCtx
-					? `${prCtx.owner}/${prCtx.repo}#${prCtx.number}`
-					: undefined,
+				prIdentifier: prCtx ? `${prCtx.owner}/${prCtx.repo}#${prCtx.number}` : undefined,
 				prTitle: prCtx?.title,
 				sourceBranch: prCtx?.sourceBranch,
 				targetBranch: prCtx?.targetBranch,
@@ -1078,7 +1076,15 @@ export function PullRequestsTab() {
 				});
 			}
 		},
-		[projectsList, linkedMap, openPRWorkspace, navigateToWorkspace, handleGitHubLink, enrichmentMap, markCommitSeen]
+		[
+			projectsList,
+			linkedMap,
+			openPRWorkspace,
+			navigateToWorkspace,
+			handleGitHubLink,
+			enrichmentMap,
+			markCommitSeen,
+		]
 	);
 
 	// ── Render Helpers ────────────────────────────────────────────────────────

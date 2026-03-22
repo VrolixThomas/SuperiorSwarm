@@ -291,7 +291,9 @@ server.tool(
 	"resolve_and_commit",
 	"Stage modified files, commit with the given message, create a resolution group, and mark comments as resolved",
 	{
-		comment_ids: z.array(z.string()).describe("Array of resolution comment IDs to mark as resolved"),
+		comment_ids: z
+			.array(z.string())
+			.describe("Array of resolution comment IDs to mark as resolved"),
 		message: z.string().describe("Commit message to use"),
 	},
 	async ({ comment_ids, message }) => {
@@ -311,7 +313,10 @@ server.tool(
 		} catch (err) {
 			return {
 				content: [
-					{ type: "text", text: JSON.stringify({ error: "Failed to detect modified files", detail: err.message }) },
+					{
+						type: "text",
+						text: JSON.stringify({ error: "Failed to detect modified files", detail: err.message }),
+					},
 				],
 			};
 		}
@@ -330,7 +335,10 @@ server.tool(
 		} catch (err) {
 			return {
 				content: [
-					{ type: "text", text: JSON.stringify({ error: "Failed to stage files", detail: err.message }) },
+					{
+						type: "text",
+						text: JSON.stringify({ error: "Failed to stage files", detail: err.message }),
+					},
 				],
 			};
 		}
@@ -343,7 +351,10 @@ server.tool(
 		} catch (err) {
 			return {
 				content: [
-					{ type: "text", text: JSON.stringify({ error: "Failed to commit", detail: err.message }) },
+					{
+						type: "text",
+						text: JSON.stringify({ error: "Failed to commit", detail: err.message }),
+					},
 				],
 			};
 		}
@@ -394,7 +405,9 @@ server.tool(
 
 		if (result.changes === 0) {
 			return {
-				content: [{ type: "text", text: JSON.stringify({ error: "Comment not found in this session" }) }],
+				content: [
+					{ type: "text", text: JSON.stringify({ error: "Comment not found in this session" }) },
+				],
 			};
 		}
 

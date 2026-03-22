@@ -151,11 +151,7 @@ export async function revertGroup(groupId: string, worktreePath: string): Promis
 	const db = getDb();
 	const now = new Date();
 
-	const group = db
-		.select()
-		.from(resolutionGroups)
-		.where(eq(resolutionGroups.id, groupId))
-		.get();
+	const group = db.select().from(resolutionGroups).where(eq(resolutionGroups.id, groupId)).get();
 
 	if (!group) throw new Error(`Resolution group ${groupId} not found`);
 
@@ -184,9 +180,7 @@ export async function revertAll(sessionId: string, worktreePath: string): Promis
 	const appliedGroups = db
 		.select()
 		.from(resolutionGroups)
-		.where(
-			and(eq(resolutionGroups.sessionId, sessionId), eq(resolutionGroups.status, "applied"))
-		)
+		.where(and(eq(resolutionGroups.sessionId, sessionId), eq(resolutionGroups.status, "applied")))
 		.orderBy(desc(resolutionGroups.createdAt))
 		.all();
 

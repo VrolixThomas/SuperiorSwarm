@@ -137,9 +137,7 @@ function CommentsTab({ prCtx }: { prCtx: PRContext }) {
 
 							{/* Comment body */}
 							<div className="mt-1.5 text-[11px] leading-relaxed text-[var(--text-tertiary)]">
-								{comment.body.length > 200
-									? `${comment.body.slice(0, 200)}...`
-									: comment.body}
+								{comment.body.length > 200 ? `${comment.body.slice(0, 200)}...` : comment.body}
 							</div>
 						</div>
 					</div>
@@ -197,9 +195,7 @@ function ResolvedTab({ prCtx }: { prCtx: PRContext }) {
 	if (!session) {
 		return (
 			<div className="flex flex-1 flex-col items-center justify-center gap-2 px-4 text-center">
-				<span className="text-[12px] text-[var(--text-quaternary)]">
-					No resolution session yet
-				</span>
+				<span className="text-[12px] text-[var(--text-quaternary)]">No resolution session yet</span>
 				<span className="text-[10px] text-[var(--text-quaternary)]">
 					Start by resolving comments from the Comments tab
 				</span>
@@ -217,9 +213,7 @@ function ResolvedTab({ prCtx }: { prCtx: PRContext }) {
 	const handleViewDiff = (groupId: string) => {
 		if (!activeWorkspaceId) return;
 		// Find any files associated with this group's resolved comments
-		const groupComments = allComments.filter(
-			(c) => c.groupId === groupId && c.filePath
-		);
+		const groupComments = allComments.filter((c) => c.groupId === groupId && c.filePath);
 		const firstFile = groupComments[0];
 		if (firstFile?.filePath) {
 			openPRReviewFile(
@@ -252,9 +246,7 @@ function ResolvedTab({ prCtx }: { prCtx: PRContext }) {
 			<div className="flex-1 overflow-y-auto px-1.5 py-2">
 				{/* Commit groups */}
 				{groups.map((group) => {
-					const groupResolvedComments = resolvedComments.filter(
-						(c) => c.groupId === group.id
-					);
+					const groupResolvedComments = resolvedComments.filter((c) => c.groupId === group.id);
 					const shortSha = group.commitSha.slice(0, 7);
 
 					return (
@@ -297,10 +289,7 @@ function ResolvedTab({ prCtx }: { prCtx: PRContext }) {
 							{groupResolvedComments.length > 0 && (
 								<div className="border-t border-[var(--border-subtle)]">
 									{groupResolvedComments.map((comment) => (
-										<div
-											key={comment.id}
-											className="flex items-start gap-1.5 px-3 py-1.5"
-										>
+										<div key={comment.id} className="flex items-start gap-1.5 px-3 py-1.5">
 											<span className="mt-0.5 shrink-0 text-[10px] text-[var(--term-green)]">
 												&#10003;
 											</span>
@@ -351,9 +340,7 @@ function ResolvedTab({ prCtx }: { prCtx: PRContext }) {
 										)}
 									</div>
 									<div className="mt-1 text-[10px] text-[var(--text-quaternary)]">
-										{comment.body.length > 100
-											? `${comment.body.slice(0, 100)}...`
-											: comment.body}
+										{comment.body.length > 100 ? `${comment.body.slice(0, 100)}...` : comment.body}
 									</div>
 									{comment.skipReason && (
 										<div className="mt-1 text-[10px] italic text-[var(--text-quaternary)]">
@@ -392,10 +379,7 @@ function ResolvedTab({ prCtx }: { prCtx: PRContext }) {
 						<div
 							className="h-full rounded-full bg-[var(--accent)] transition-all duration-200"
 							style={{
-								width:
-									totalComments > 0
-										? `${(totalActionable / totalComments) * 100}%`
-										: "0%",
+								width: totalComments > 0 ? `${(totalActionable / totalComments) * 100}%` : "0%",
 							}}
 						/>
 					</div>
@@ -484,12 +468,7 @@ function ChangesTab({ prCtx }: { prCtx: PRContext }) {
 							type="button"
 							onClick={() => {
 								if (!activeWorkspaceId) return;
-								openPRReviewFile(
-									activeWorkspaceId,
-									prCtx,
-									file.path,
-									detectLanguage(file.path)
-								);
+								openPRReviewFile(activeWorkspaceId, prCtx, file.path, detectLanguage(file.path));
 							}}
 							className="flex w-full items-center gap-1.5 px-3 py-[3px] text-left transition-colors duration-[120ms] hover:bg-[var(--bg-elevated)]"
 						>
