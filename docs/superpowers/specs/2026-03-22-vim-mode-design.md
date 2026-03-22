@@ -8,10 +8,10 @@ Add native vim keybinding support to all Monaco editor instances in BranchFlux u
 
 **In scope:**
 - Vim mode in `FileEditor` (standalone code editor)
-- Vim mode in `DiffEditor` (modified side of diff views, including PR review)
+- Vim mode in `DiffEditor` (modified side of diff views, including PR review and branch/working-tree diffs)
 - Global on/off toggle in Settings UI
 - Vim status bar (mode indicator + command line) below each editor
-- Persistence via `sessionState` table
+- Persistence via existing `sessionState` save cycle
 
 **Out of scope:**
 - Terminal emulator (xterm.js) — vim already works natively in the terminal
@@ -24,13 +24,12 @@ Add native vim keybinding support to all Monaco editor instances in BranchFlux u
 
 ### Persistence
 
-Use the existing `sessionState` key-value table:
-- Key: `"vimMode"`
-- Value: `"true"` or `"false"` (default: `"false"`)
+Integrate into the existing `sessionState` periodic save cycle in `App.tsx`. The `collectSnapshot()` function builds a `state` key-value map from Zustand stores which is atomically written to the `sessionState` table every 30 seconds (and on quit). Adding vim mode follows this established pattern:
 
-Exposed via tRPC procedures on the existing `session` router (or a minimal new `editorSettings` router):
-- `editorSettings.getVimMode` — query returning boolean
-- `editorSettings.setVimMode` — mutation accepting boolean
+- `collectSnapshot()` reads `vimEnabled` from the `useEditorSettingsStore` and writes `state["vimMode"] = "true"` (or omits the key when false)
+- On restore, `hydrate()` reads `state["vimMode"]` and sets the store value
+
+This requires **no new tRPC router or backend code**. The setting piggybacks on the existing session persistence infrastructure, just like `baseBranchByWorkspace`, `sidebarSegment`, and other renderer-side state.
 
 ### Renderer State
 
@@ -43,9 +42,7 @@ interface EditorSettingsStore {
 }
 ```
 
-On app startup, the store is hydrated from the tRPC query. When toggled, it:
-1. Updates local Zustand state (immediate UI response)
-2. Fires the tRPC mutation (async persistence)
+**Hydration timing:** The store is hydrated during the existing session restore flow in `App.tsx`. The `restoreQuery` returns all `sessionState` rows, and `hydrate()` already processes them. The vim mode value is read from `state["vimMode"]` alongside all other session state. Since editors don't mount until after the restore completes (the app shows a loading state until then), there is no flash of incorrect vim state.
 
 All Monaco editor components subscribe to `vimEnabled` from this store.
 
@@ -63,23 +60,25 @@ All Monaco editor components subscribe to `vimEnabled` from this store.
 
 **DiffEditor (`src/renderer/components/DiffEditor.tsx`):**
 
-1. Same status bar pattern below the diff editor container
-2. Attach vim mode to `editor.getModifiedEditor()` — this returns an `ICodeEditor` compatible with `initVimMode()`
-3. Original side remains read-only (no vim attachment needed)
-4. Same dynamic toggle and cleanup lifecycle as FileEditor
+1. Wrap the editor div and a status bar div in a flex column container (same pattern as FileEditor)
+2. Status bar: a `<div>` rendered below the diff editor container, only when `vimEnabled` is true
+3. Attach vim mode to `editor.getModifiedEditor()` — this returns an `ICodeEditor` compatible with `initVimMode()`. The modified editor sub-instance is stable across `setModel()` calls, so vim mode survives model swaps without re-initialization
+4. Original side remains read-only (no vim attachment needed)
+5. Same dynamic toggle and cleanup lifecycle as FileEditor
 
-**PRReviewFileTab (`src/renderer/components/PRReviewFileTab.tsx`):**
+**Consumers of DiffEditor:**
 
-No changes needed — it uses `DiffEditor` which handles vim internally.
+- `PRReviewFileTab.tsx` — uses DiffEditor for PR review diffs. No changes needed since vim is handled inside DiffEditor itself
+- `DiffFileTab.tsx` — uses DiffEditor for branch/working-tree diffs. No changes needed for the same reason
 
 ### Settings UI
 
-New "Editor" section in `SettingsView.tsx`, positioned between "Integrations" and "AI Code Review":
+New "Editor" section in `SettingsView.tsx`, positioned between the "Integrations" section and the "AI Code Review" section inside the existing `overflow-y-auto` scrollable area:
 
 - Section header: `EDITOR` (matching existing uppercase label style)
 - Single row: "Vim Mode" label, "Vim keybindings in code editors" description, toggle switch
 - Toggle switch uses the same component pattern as existing toggles (round slider, accent color when on)
-- Toggle calls `setVimEnabled()` on the store, which handles persistence
+- Toggle calls `setVimEnabled()` on the store; persistence happens automatically via the periodic save cycle
 
 ### Status Bar Styling
 
@@ -98,22 +97,25 @@ The vim status bar rendered below each Monaco editor:
 ## Data Flow
 
 ```
-Settings Toggle
+Settings Toggle (SettingsView)
     ↓
 useEditorSettingsStore.setVimEnabled(true)
-    ↓ (zustand)                    ↓ (tRPC mutation)
-FileEditor / DiffEditor           sessionState table
-subscribes to vimEnabled           key="vimMode" value="true"
+    ↓ (zustand subscription)              ↓ (periodic save cycle)
+FileEditor / DiffEditor                  collectSnapshot() → sessionState table
+subscribes to vimEnabled                  state["vimMode"] = "true"
     ↓
 initVimMode(editor, statusBar)
     ↓
 monaco-vim attaches keybindings
 status bar shows "-- NORMAL --"
+
+On app restart:
+sessionState restore → state["vimMode"] → hydrate store → editors read vimEnabled
 ```
 
 ## Dependencies
 
-- `monaco-vim` — npm package, ~25KB. Purpose-built vim emulation for Monaco Editor.
+- `monaco-vim` — npm package, ~25KB. Purpose-built vim emulation for Monaco Editor. Install in `apps/desktop/package.json` alongside the existing `monaco-editor` dependency.
 
 ## Files to Create/Modify
 
@@ -123,14 +125,14 @@ status bar shows "-- NORMAL --"
 | `src/renderer/components/FileEditor.tsx` | Modify | Add vim mode attachment and status bar |
 | `src/renderer/components/DiffEditor.tsx` | Modify | Add vim mode on modified editor and status bar |
 | `src/renderer/components/SettingsView.tsx` | Modify | Add "Editor" section with vim toggle |
-| `src/main/trpc/routers/editor-settings.ts` | Create | tRPC router for vim setting CRUD |
-| `src/main/trpc/index.ts` | Modify | Register new router |
-| `package.json` | Modify | Add `monaco-vim` dependency |
+| `src/renderer/App.tsx` | Modify | Add vimMode to collectSnapshot() and hydrate flow |
+| `apps/desktop/package.json` | Modify | Add `monaco-vim` dependency |
 
 ## Edge Cases
 
 - **Editor recreation:** When content/language changes cause model recreation in FileEditor, the vim mode instance stays attached to the editor (not the model). No re-initialization needed.
-- **DiffEditor model swap:** Same as above — vim attaches to the editor instance, not the model.
+- **DiffEditor model swap:** The modified editor sub-instance returned by `getModifiedEditor()` is stable across `setModel()` calls on the diff editor, so the vim mode instance persists across model swaps without re-initialization.
 - **Multiple editors open:** Each editor manages its own `VimMode` instance independently. The status bar reflects the focused editor's state.
-- **Vim `:w` command:** `monaco-vim` fires a save event. FileEditor already has auto-save on content change, so `:w` will trigger the existing save debounce naturally.
-- **Vim `:q` command:** Could be wired to close the current tab. Initially, leave unhandled (noop). Can be added later if desired.
+- **Vim `:w` command:** `monaco-vim` fires a custom save event, not a Monaco content change event. Since FileEditor already auto-saves on every keystroke with a 500ms debounce, the file is always saved. The `:w` command is effectively a noop. If explicit `:w` handling is desired later, it can be wired via `Vim.defineEx`.
+- **Vim `:q` command:** Left unhandled (noop). Could be wired to close the current tab in a future iteration.
+- **PR review DiffEditor:** In `PRReviewFileTab`, the DiffEditor is used without `onModifiedChange`, meaning vim edit commands (like `dd`, `x`) would mutate the in-memory buffer but nothing persists. This is harmless — the buffer resets on tab switch. The original diff content is read-only on the left side. If this becomes confusing, a future enhancement could make the DiffEditor read-only when no `onModifiedChange` is provided.
