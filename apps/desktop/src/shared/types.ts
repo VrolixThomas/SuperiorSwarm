@@ -73,3 +73,5 @@ export interface LspAPI {
 		callback: (configId: string, repoPath: string, uris: string[]) => void
 	) => () => void;
 }
+
+export type SidebarSegment = "repos" | "tickets" | "prs";

@@ -127,6 +127,12 @@ function collectSnapshot() {
 	if (Object.keys(baseBranchByWorkspace).length > 0) {
 		state["baseBranchByWorkspace"] = JSON.stringify(baseBranchByWorkspace);
 	}
+	const { sidebarSegment, activeWorkspaceBySegment, workspaceMetadata } = store;
+	if (sidebarSegment) state["sidebarSegment"] = sidebarSegment;
+	state["activeWorkspaceBySegment"] = JSON.stringify(activeWorkspaceBySegment);
+	if (Object.keys(workspaceMetadata).length > 0) {
+		state["workspaceMetadata"] = JSON.stringify(workspaceMetadata);
+	}
 
 	const paneLayouts: Record<string, string> = {};
 	const layouts = usePaneStore.getState().layouts;
@@ -179,6 +185,20 @@ export function App() {
 					state["activeWorkspaceCwd"] ?? "",
 					state
 				);
+		}
+
+		// Backfill workspace metadata from backend for workspaces not already saved client-side
+		if (workspaceMeta) {
+			const tabState = useTabStore.getState();
+			for (const [wsId, meta] of Object.entries(workspaceMeta)) {
+				if (!tabState.workspaceMetadata[wsId]) {
+					tabState.setWorkspaceMetadata(wsId, {
+						type: meta.type === "review" ? "review" : meta.type,
+						prProvider: meta.prProvider,
+						prIdentifier: meta.prIdentifier,
+					});
+				}
+			}
 		}
 
 		// Hydrate pane layouts (must happen after tab hydration so terminal tabs exist)
