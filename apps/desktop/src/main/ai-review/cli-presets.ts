@@ -86,10 +86,7 @@ export const CLI_PRESETS: Record<string, CliPreset> = {
 		label: "Gemini CLI",
 		command: "gemini",
 		permissionFlag: "--yolo",
-		buildArgs: ({ promptFilePath }) => [
-			"-p",
-			`"$(cat '${promptFilePath}')"`,
-		],
+		buildArgs: ({ promptFilePath }) => ["-p", `"$(cat '${promptFilePath}')"`],
 		setupMcp: ({ worktreePath, reviewDraftId, prMetadata, dbPath }) => {
 			// Gemini CLI reads MCP config from .gemini/settings.json in the project root
 			const standaloneServerPath = resolve(
@@ -144,10 +141,7 @@ export const CLI_PRESETS: Record<string, CliPreset> = {
 		name: "opencode",
 		label: "OpenCode",
 		command: "opencode",
-		buildArgs: ({ promptFilePath }) => [
-			"--prompt",
-			`"$(cat '${promptFilePath}')"`,
-		],
+		buildArgs: ({ promptFilePath }) => ["--prompt", `"$(cat '${promptFilePath}')"`],
 		setupMcp: ({ worktreePath, reviewDraftId, prMetadata, dbPath }) => {
 			// OpenCode reads MCP config from opencode.json in the project root
 			const standaloneServerPath = resolve(

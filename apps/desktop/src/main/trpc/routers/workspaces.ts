@@ -3,7 +3,14 @@ import { and, eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { z } from "zod";
 import { getDb } from "../../db";
-import { githubBranchPrs, projects, sharedFiles, terminalSessions, workspaces, worktrees } from "../../db/schema";
+import {
+	githubBranchPrs,
+	projects,
+	sharedFiles,
+	terminalSessions,
+	workspaces,
+	worktrees,
+} from "../../db/schema";
 import { reviewDrafts } from "../../db/schema-ai-review";
 import {
 	checkoutBranchWorktree,
@@ -280,9 +287,7 @@ export const workspacesRouter = router({
 					daemon?.dispose(session.id);
 				}
 				if (wsSessions.length > 0) {
-					db.delete(terminalSessions)
-						.where(eq(terminalSessions.workspaceId, input.id))
-						.run();
+					db.delete(terminalSessions).where(eq(terminalSessions.workspaceId, input.id)).run();
 				}
 				// Worktree record missing — just clean up the workspace
 				db.delete(workspaces).where(eq(workspaces.id, input.id)).run();
@@ -320,9 +325,7 @@ export const workspacesRouter = router({
 				daemon?.dispose(session.id);
 			}
 			if (wsSessions.length > 0) {
-				db.delete(terminalSessions)
-					.where(eq(terminalSessions.workspaceId, input.id))
-					.run();
+				db.delete(terminalSessions).where(eq(terminalSessions.workspaceId, input.id)).run();
 			}
 
 			db.delete(worktrees).where(eq(worktrees.id, worktree.id)).run();

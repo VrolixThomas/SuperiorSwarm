@@ -197,10 +197,7 @@ function defaultPanelForCwd(cwd: string): RightPanelState {
 }
 
 /** Derive the correct right panel state from workspace metadata. */
-function panelForWorkspace(
-	cwd: string,
-	meta: WorkspaceMetadata | undefined
-): RightPanelState {
+function panelForWorkspace(cwd: string, meta: WorkspaceMetadata | undefined): RightPanelState {
 	if (meta?.type === "review" && meta.prProvider && meta.prIdentifier) {
 		const [ownerRepo, numStr] = meta.prIdentifier.split("#");
 		const [owner, repo] = (ownerRepo ?? "").split("/");
@@ -721,10 +718,7 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 			: "repos";
 
 		// Restore per-segment active workspace
-		let activeWorkspaceBySegment: Record<
-			SidebarSegment,
-			{ id: string; cwd: string } | null
-		> = {
+		let activeWorkspaceBySegment: Record<SidebarSegment, { id: string; cwd: string } | null> = {
 			repos: null,
 			tickets: null,
 			prs: null,
