@@ -404,21 +404,21 @@ export const workspacesRouter = router({
 				const sanitizedId = input.prIdentifier.replace(/[^a-zA-Z0-9-]/g, "-");
 				const wtPath = join(worktreeBasePath(project.repoPath), `pr-review-${sanitizedId}`);
 
-				// Clean up stale worktree at same path if it exists
-				const { existsSync, rmSync } = await import("node:fs");
-				if (existsSync(wtPath)) {
+				const { existsSync } = await import("node:fs");
+				if (!existsSync(wtPath)) {
+					// Worktree doesn't exist on disk — create it
+					await checkoutBranchWorktree(project.repoPath, wtPath, input.sourceBranch);
+				} else {
+					// Worktree already exists on disk — reuse it, just fetch latest
+					const { default: simpleGit } = await import("simple-git");
 					try {
-						await removeWorktree(project.repoPath, wtPath);
-					} catch {
-						rmSync(wtPath, { recursive: true, force: true });
-						const { default: simpleGit } = await import("simple-git");
-						await simpleGit(project.repoPath)
-							.raw(["worktree", "prune"])
-							.catch(() => {});
+						const git = simpleGit(wtPath);
+						await git.fetch("origin");
+						await git.reset(["--hard", `origin/${input.sourceBranch}`]);
+					} catch (err) {
+						console.error("[workspaces] Failed to update existing worktree, continuing:", err);
 					}
 				}
-
-				await checkoutBranchWorktree(project.repoPath, wtPath, input.sourceBranch);
 
 				const now = new Date();
 				const worktreeId = nanoid();

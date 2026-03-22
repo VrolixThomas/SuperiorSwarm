@@ -12,6 +12,7 @@ import {
 	buildFollowUpPrompt,
 	buildReviewPrompt,
 	isCliInstalled,
+	resolveCliPath,
 } from "./cli-presets";
 
 export interface ReviewLaunchInfo {
@@ -337,9 +338,10 @@ async function startReview(params: {
 		});
 		startPollingIfNeeded();
 
-		// Build the CLI command args
+		// Build the CLI command args — resolve absolute path to avoid PATH timing issues
 		const args = preset.buildArgs(launchOpts);
-		const parts = [preset.command];
+		const resolvedCommand = resolveCliPath(preset.command);
+		const parts = [resolvedCommand];
 		if (settings.skipPermissions && preset.permissionFlag) {
 			parts.push(preset.permissionFlag);
 		}
@@ -355,9 +357,23 @@ async function startReview(params: {
 					`export PR_METADATA='${launchOpts.prMetadata.replace(/'/g, "'\\''")}'`,
 					`export DB_PATH='${dbPath}'`,
 				];
-		const scriptContent = ["#!/bin/bash", `cd '${worktreePath}'`, ...envLines, "", cliCommand].join(
-			"\n"
-		);
+		// For TUI-mode CLIs (no prompt arg), show the prompt file path
+		const hintLines =
+			args.length === 0
+				? [
+						`echo "Review prompt: ${launchOpts.promptFilePath}"`,
+						`echo "Paste the contents into the chat, or run: cat '${launchOpts.promptFilePath}'"`,
+						"echo",
+					]
+				: [];
+		const scriptContent = [
+			"#!/bin/bash",
+			`cd '${worktreePath}'`,
+			...envLines,
+			"",
+			...hintLines,
+			cliCommand,
+		].join("\n");
 		writeFileSync(launchScript, scriptContent, "utf-8");
 		chmodSync(launchScript, 0o755);
 
@@ -621,7 +637,8 @@ async function startFollowUpReview(params: {
 		startPollingIfNeeded();
 
 		const args = preset.buildArgs(launchOpts);
-		const parts = [preset.command];
+		const resolvedCommand = resolveCliPath(preset.command);
+		const parts = [resolvedCommand];
 		if (settings.skipPermissions && preset.permissionFlag) {
 			parts.push(preset.permissionFlag);
 		}

@@ -320,6 +320,27 @@ export const aiReviewRouter = router({
 			await cleanupReviewWorkspace(input.workspaceId);
 			return { success: true };
 		}),
+
+	markCommitSeen: publicProcedure
+		.input(z.object({ prIdentifier: z.string(), commitSha: z.string() }))
+		.mutation(({ input }) => {
+			const db = getDb();
+			const draft = db
+				.select()
+				.from(schema.reviewDrafts)
+				.where(eq(schema.reviewDrafts.prIdentifier, input.prIdentifier))
+				.all()
+				.filter((d) => d.status !== "dismissed")
+				.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
+
+			if (draft) {
+				db.update(schema.reviewDrafts)
+					.set({ commitSha: input.commitSha, updatedAt: new Date() })
+					.where(eq(schema.reviewDrafts.id, draft.id))
+					.run();
+			}
+			return { success: true };
+		}),
 });
 
 /**
@@ -391,22 +412,26 @@ async function ensureReviewWorkspace(opts: {
 		const sanitizedId = opts.prIdentifier.replace(/[^a-zA-Z0-9-]/g, "-");
 		const wtPath = join(worktreeBasePath(project.repoPath), `pr-review-${sanitizedId}`);
 
-		// Clean up stale worktree at same path if it exists
-		const { existsSync, rmSync } = await import("node:fs");
-		if (existsSync(wtPath)) {
+		const { existsSync } = await import("node:fs");
+		if (!existsSync(wtPath)) {
+			// Worktree doesn't exist on disk — create it
+			await checkoutBranchWorktree(project.repoPath, wtPath, opts.sourceBranch);
+		} else {
+			// Worktree already exists on disk (e.g., previous cleanup deleted DB records
+			// but failed to remove the directory). Reuse it — just fetch latest.
+			const { execSync } = await import("node:child_process");
 			try {
-				await removeWorktree(project.repoPath, wtPath);
-			} catch {
-				rmSync(wtPath, { recursive: true, force: true });
-				const { execSync } = await import("node:child_process");
-				try {
-					execSync("git worktree prune", { cwd: project.repoPath, stdio: "pipe" });
-				} catch {}
+				execSync("git fetch origin", { cwd: wtPath, stdio: "pipe" });
+				execSync(`git reset --hard origin/${opts.sourceBranch}`, {
+					cwd: wtPath,
+					stdio: "pipe",
+				});
+			} catch (err) {
+				console.error("[ai-review] Failed to update existing worktree, continuing:", err);
 			}
 		}
 
-		await checkoutBranchWorktree(project.repoPath, wtPath, opts.sourceBranch);
-
+		// Register worktree in DB and link to workspace
 		const now = new Date();
 		const worktreeId = nanoid();
 		db.insert(schema.worktrees)
