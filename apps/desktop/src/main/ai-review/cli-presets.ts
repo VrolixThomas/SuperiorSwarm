@@ -86,10 +86,7 @@ export const CLI_PRESETS: Record<string, CliPreset> = {
 		label: "Gemini CLI",
 		command: "gemini",
 		permissionFlag: "--yolo",
-		buildArgs: ({ promptFilePath }) => [
-			"-p",
-			`"$(cat '${promptFilePath}')"`,
-		],
+		buildArgs: ({ promptFilePath }) => ["-p", `"$(cat '${promptFilePath}')"`],
 		setupMcp: ({ worktreePath, reviewDraftId, prMetadata, dbPath }) => {
 			// Gemini CLI reads MCP config from .gemini/settings.json in the project root
 			const standaloneServerPath = resolve(
@@ -144,10 +141,7 @@ export const CLI_PRESETS: Record<string, CliPreset> = {
 		name: "opencode",
 		label: "OpenCode",
 		command: "opencode",
-		buildArgs: ({ promptFilePath }) => [
-			"--prompt",
-			`"$(cat '${promptFilePath}')"`,
-		],
+		buildArgs: ({ promptFilePath }) => ["--prompt", `"$(cat '${promptFilePath}')"`],
 		setupMcp: ({ worktreePath, reviewDraftId, prMetadata, dbPath }) => {
 			// OpenCode reads MCP config from opencode.json in the project root
 			const standaloneServerPath = resolve(
@@ -306,4 +300,17 @@ You MUST use the BranchFlux MCP tools to complete your follow-up review:
 
 IMPORTANT: You MUST call finish_review when done. Do NOT skip any MCP tool steps.
 IMPORTANT: Do NOT modify any files. This is a read-only code review.`;
+}
+
+/** Build the MCP tool instructions for resolution sessions */
+export function buildResolutionMcpInstructions(): string {
+	return [
+		"## MCP Tools Available:",
+		"- get_review_comments() — returns all review comments to resolve",
+		"- resolve_and_commit(comment_ids, message) — stage changed files, commit, and record resolution",
+		"- skip_comment(comment_id, reason) — mark a comment as skipped",
+		"- finish_resolution() — signal you are done resolving comments",
+		"",
+		"You MUST call finish_resolution() when you are done.",
+	].join("\n");
 }
