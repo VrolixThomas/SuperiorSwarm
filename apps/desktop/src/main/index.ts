@@ -4,6 +4,7 @@ import { daemonInstanceId, daemonPaths } from "../shared/daemon-protocol";
 import { cleanupReviewWorkspace, findReviewWorkspaceByPR } from "./ai-review/cleanup";
 import { startPolling } from "./ai-review/commit-poller";
 import { cleanupStaleReviews } from "./ai-review/orchestrator";
+import { cleanupStaleResolutionSessions } from "./ai-review/resolution-orchestrator";
 import {
 	onNewPRDetected,
 	onNewReviewComments,
@@ -78,6 +79,7 @@ app.whenReady().then(async () => {
 		return;
 	}
 	cleanupStaleReviews();
+	cleanupStaleResolutionSessions();
 	startPolling();
 	startPRPolling();
 
