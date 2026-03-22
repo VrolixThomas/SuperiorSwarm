@@ -1,6 +1,8 @@
 import * as monaco from "monaco-editor";
-import { useEffect, useRef } from "react";
+import { initVimMode } from "monaco-vim";
+import { useEffect, useRef, useState } from "react";
 import { EDITOR_THEME, ensureThemeRegistered } from "../lib/monacoTheme";
+import { useEditorSettingsStore } from "../stores/editor-settings";
 
 interface DiffEditorProps {
 	original: string;
@@ -31,6 +33,11 @@ export function DiffEditor({
 		onEditorReadyRef.current = onEditorReady;
 	}, [onEditorReady]);
 
+	const vimStatusRef = useRef<HTMLDivElement>(null);
+	const vimModeRef = useRef<ReturnType<typeof initVimMode> | null>(null);
+	const [editorReady, setEditorReady] = useState(false);
+	const vimEnabled = useEditorSettingsStore((s) => s.vimEnabled);
+
 	// Create the diff editor once on mount
 	// biome-ignore lint/correctness/useExhaustiveDependencies: editor created once on mount, renderSideBySide updated separately
 	useEffect(() => {
@@ -51,8 +58,10 @@ export function DiffEditor({
 			glyphMargin: true,
 		});
 		editorRef.current = editor;
+		setEditorReady(true);
 		onEditorReadyRef.current?.(editor);
 		return () => {
+			setEditorReady(false);
 			editor.dispose();
 			editorRef.current = null;
 		};
@@ -89,5 +98,30 @@ export function DiffEditor({
 		editorRef.current?.updateOptions({ renderSideBySide });
 	}, [renderSideBySide]);
 
-	return <div ref={containerRef} className="h-full w-full" />;
+	// Attach or detach vim mode on the modified (right) editor
+	useEffect(() => {
+		const editor = editorRef.current;
+		if (!editor) return;
+
+		if (vimEnabled && vimStatusRef.current) {
+			vimModeRef.current = initVimMode(editor.getModifiedEditor(), vimStatusRef.current);
+		}
+
+		return () => {
+			vimModeRef.current?.dispose();
+			vimModeRef.current = null;
+		};
+	}, [vimEnabled, editorReady]);
+
+	return (
+		<div className="flex h-full w-full flex-col">
+			<div ref={containerRef} className="min-h-0 flex-1" />
+			{vimEnabled && (
+				<div
+					ref={vimStatusRef}
+					className="flex h-5 shrink-0 items-center border-t border-[var(--border)] bg-[var(--bg-elevated)] px-2 font-mono text-[11px] text-[var(--text-secondary)]"
+				/>
+			)}
+		</div>
+	);
 }
