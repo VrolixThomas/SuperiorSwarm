@@ -123,6 +123,86 @@ export const terminalSessionsRouter = router({
 		return { sessions, workspaceMap };
 	}),
 
+	listWorktrees: publicProcedure.query(async () => {
+		const db = getDb();
+		const allProjects = db.select().from(schema.projects).all();
+		const dbWorktrees = db.select().from(schema.worktrees).all();
+		const allWorkspaces = db
+			.select({
+				id: schema.workspaces.id,
+				name: schema.workspaces.name,
+				type: schema.workspaces.type,
+				worktreeId: schema.workspaces.worktreeId,
+			})
+			.from(schema.workspaces)
+			.all();
+
+		const { listWorktrees } = await import("../../git/operations");
+
+		const results: Array<{
+			path: string;
+			branch: string;
+			isMain: boolean;
+			projectName: string;
+			repoPath: string;
+			inDb: boolean;
+			dbId: string | null;
+			workspaceName: string | null;
+			workspaceType: string | null;
+			existsOnDisk: boolean;
+		}> = [];
+
+		// Get disk worktrees per project
+		for (const project of allProjects) {
+			try {
+				const diskWorktrees = await listWorktrees(project.repoPath);
+				for (const dw of diskWorktrees) {
+					const dbMatch = dbWorktrees.find((db) => db.path === dw.path);
+					const wsMatch = dbMatch
+						? allWorkspaces.find((ws) => ws.worktreeId === dbMatch.id)
+						: null;
+					results.push({
+						path: dw.path,
+						branch: dw.branch,
+						isMain: dw.isMain,
+						projectName: project.name,
+						repoPath: project.repoPath,
+						inDb: !!dbMatch,
+						dbId: dbMatch?.id ?? null,
+						workspaceName: wsMatch?.name ?? null,
+						workspaceType: wsMatch?.type ?? null,
+						existsOnDisk: true,
+					});
+				}
+			} catch {
+				// Project repo might not exist
+			}
+		}
+
+		// Find DB-only worktrees (in DB but not on disk)
+		const diskPaths = new Set(results.map((r) => r.path));
+		for (const dbWt of dbWorktrees) {
+			if (!diskPaths.has(dbWt.path)) {
+				const project = allProjects.find((p) => p.id === dbWt.projectId);
+				const wsMatch = allWorkspaces.find((ws) => ws.worktreeId === dbWt.id);
+				results.push({
+					path: dbWt.path,
+					branch: dbWt.branch,
+					isMain: false,
+					projectName: project?.name ?? "Unknown",
+					repoPath: project?.repoPath ?? "",
+					inDb: true,
+					dbId: dbWt.id,
+					workspaceName: wsMatch?.name ?? null,
+					workspaceType: wsMatch?.type ?? null,
+					existsOnDisk: false,
+				});
+			}
+		}
+
+		return results;
+	}),
+
 	clear: publicProcedure.mutation(async () => {
 		const db = getDb();
 		db.delete(schema.terminalSessions).run();

@@ -3,13 +3,22 @@ import type { DaemonInspectorData } from "../../shared/types";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 
+type Tab = "terminals" | "worktrees";
+
 interface InspectorState {
 	daemon: DaemonInspectorData | null;
 	loading: boolean;
 	error: string | null;
 }
 
+/** Show just the last meaningful part of a path (last 2 segments). */
+function shortPath(p: string): string {
+	const parts = p.split("/");
+	return parts.length > 2 ? parts.slice(-2).join("/") : p;
+}
+
 export function DaemonInspector({ onClose }: { onClose: () => void }) {
+	const [tab, setTab] = useState<Tab>("terminals");
 	const [state, setState] = useState<InspectorState>({
 		daemon: null,
 		loading: true,
@@ -22,6 +31,12 @@ export function DaemonInspector({ onClose }: { onClose: () => void }) {
 	});
 	const dbRefetchRef = useRef(dbQuery.refetch);
 	dbRefetchRef.current = dbQuery.refetch;
+
+	const worktreeQuery = trpc.terminalSessions.listWorktrees.useQuery(undefined, {
+		staleTime: 0,
+		refetchOnMount: true,
+		enabled: tab === "worktrees",
+	});
 
 	const allTabs = useTabStore((s) => s.getAllTabs)();
 	const terminalTabs = allTabs.filter((t) => t.kind === "terminal");
@@ -75,7 +90,6 @@ export function DaemonInspector({ onClose }: { onClose: () => void }) {
 	const dbSessionIds = new Set(dbQuery.data?.sessions.map((s) => s.id) ?? []);
 	const allIds = new Set([...daemonSessionIds, ...dbSessionIds, ...rendererTabIds]);
 
-	// Close on Escape
 	useEffect(() => {
 		const handler = (e: KeyboardEvent) => {
 			if (e.key === "Escape") onClose();
@@ -91,32 +105,47 @@ export function DaemonInspector({ onClose }: { onClose: () => void }) {
 				if (e.target === e.currentTarget) onClose();
 			}}
 		>
-			<div className="relative max-h-[80vh] w-[700px] overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] shadow-2xl">
+			<div className="relative flex max-h-[85vh] w-[900px] flex-col overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] shadow-2xl">
 				{/* Header */}
-				<div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
-					<div className="flex items-center gap-2">
+				<div className="flex shrink-0 items-center justify-between border-b border-[var(--border)] px-4 py-3">
+					<div className="flex items-center gap-3">
 						<span className="text-[13px] font-medium text-[var(--text)]">
-							Daemon Inspector
+							System Inspector
 						</span>
-						{state.daemon && (
-							<span className="rounded-full bg-[var(--bg-elevated)] px-2 py-0.5 text-[10px] text-[var(--text-tertiary)]">
-								{state.daemon.daemonSessions.length} PTY
-								{state.daemon.daemonSessions.length !== 1 ? "s" : ""}
-							</span>
-						)}
+						<div className="flex gap-0.5 rounded-md bg-[var(--bg-base)] p-0.5">
+							{(["terminals", "worktrees"] as const).map((t) => (
+								<button
+									key={t}
+									type="button"
+									onClick={() => setTab(t)}
+									className={`rounded-[4px] px-2.5 py-1 text-[11px] font-medium capitalize transition-colors ${
+										tab === t
+											? "bg-[var(--bg-elevated)] text-[var(--text-secondary)]"
+											: "text-[var(--text-quaternary)] hover:text-[var(--text-tertiary)]"
+									}`}
+								>
+									{t}
+								</button>
+							))}
+						</div>
 					</div>
 					<div className="flex items-center gap-2">
+						{tab === "terminals" && (
+							<button
+								type="button"
+								onClick={killOrphaned}
+								disabled={killing || state.loading || !state.daemon}
+								className="rounded-md px-2 py-1 text-[11px] text-[var(--term-red)] transition-colors hover:bg-[rgba(255,69,58,0.1)] disabled:opacity-50"
+							>
+								{killing ? "Killing..." : "Kill Orphaned"}
+							</button>
+						)}
 						<button
 							type="button"
-							onClick={killOrphaned}
-							disabled={killing || state.loading || !state.daemon}
-							className="rounded-md px-2 py-1 text-[11px] text-[var(--term-red)] transition-colors hover:bg-[rgba(255,69,58,0.1)] disabled:opacity-50"
-						>
-							{killing ? "Killing..." : "Kill Orphaned"}
-						</button>
-						<button
-							type="button"
-							onClick={refresh}
+							onClick={() => {
+								refresh();
+								if (tab === "worktrees") worktreeQuery.refetch();
+							}}
 							disabled={state.loading}
 							className="rounded-md px-2 py-1 text-[11px] text-[var(--text-tertiary)] transition-colors hover:bg-[var(--bg-elevated)] hover:text-[var(--text-secondary)] disabled:opacity-50"
 						>
@@ -139,163 +168,286 @@ export function DaemonInspector({ onClose }: { onClose: () => void }) {
 					</div>
 				</div>
 
-				{/* Summary bar */}
-				<div className="flex gap-4 border-b border-[var(--border-subtle)] px-4 py-2 text-[11px]">
-					<SummaryItem
-						label="Daemon PTYs"
-						value={state.daemon?.daemonSessions.length ?? "?"}
+				{tab === "terminals" ? (
+					<TerminalsTab
+						state={state}
+						dbQuery={dbQuery.data}
+						allIds={allIds}
+						rendererTabIds={rendererTabIds}
 					/>
-					<SummaryItem
-						label="Client liveSessions"
-						value={state.daemon?.liveSessions.length ?? "?"}
-					/>
-					<SummaryItem
-						label="Callbacks"
-						value={state.daemon?.callbackIds.length ?? "?"}
-					/>
-					<SummaryItem label="DB rows" value={dbQuery.data?.sessions.length ?? "?"} />
-					<SummaryItem label="Renderer tabs" value={terminalTabs.length} />
-				</div>
-
-				{/* Error */}
-				{state.error && (
-					<div className="px-4 py-2 text-[12px] text-[var(--term-red)]">
-						{state.error}
-					</div>
+				) : (
+					<WorktreesTab data={worktreeQuery.data} loading={worktreeQuery.isLoading} />
 				)}
-
-				{/* Session list */}
-				<div className="max-h-[60vh] overflow-y-auto">
-					<table className="w-full text-[11px]">
-						<thead>
-							<tr className="border-b border-[var(--border-subtle)] text-left text-[var(--text-quaternary)]">
-								<th className="px-4 py-1.5 font-medium">ID</th>
-								<th className="px-2 py-1.5 font-medium">PID</th>
-								<th className="px-2 py-1.5 font-medium">CWD</th>
-								<th className="px-2 py-1.5 font-medium">Workspace</th>
-								<th className="px-2 py-1.5 font-medium">State</th>
-							</tr>
-						</thead>
-						<tbody>
-							{Array.from(allIds)
-								.sort()
-								.map((id) => {
-									const daemonSession = state.daemon?.daemonSessions.find(
-										(s) => s.id === id,
-									);
-									const dbSession = dbQuery.data?.sessions.find(
-										(s) => s.id === id,
-									);
-									const wsInfo = dbSession?.workspaceId
-										? dbQuery.data?.workspaceMap[dbSession.workspaceId]
-										: null;
-									const inRenderer = rendererTabIds.has(id);
-									const inLive =
-										state.daemon?.liveSessions.includes(id) ?? false;
-									const hasCallback =
-										state.daemon?.callbackIds.includes(id) ?? false;
-
-									const flags: string[] = [];
-									if (daemonSession) flags.push("daemon");
-									if (inLive) flags.push("live");
-									if (hasCallback) flags.push("callback");
-									if (dbSession) flags.push("db");
-									if (inRenderer) flags.push("renderer");
-
-									// Detect problems
-									const isOrphaned =
-										daemonSession && !inRenderer && !hasCallback;
-									const isGhost = !daemonSession && inLive;
-									const isDbOnly = dbSession && !daemonSession && !inRenderer;
-
-									let statusColor = "text-[var(--text-tertiary)]";
-									let statusLabel = flags.join(", ");
-									if (isOrphaned) {
-										statusColor = "text-[var(--term-yellow)]";
-										statusLabel = "ORPHANED — " + statusLabel;
-									} else if (isGhost) {
-										statusColor = "text-[var(--term-red)]";
-										statusLabel = "GHOST (in liveSessions, not in daemon) — " + statusLabel;
-									} else if (isDbOnly) {
-										statusColor = "text-[var(--term-magenta)]";
-										statusLabel = "DB ONLY — " + statusLabel;
-									}
-
-									const cwd =
-										daemonSession?.cwd ?? dbSession?.cwd ?? "—";
-									const shortCwd = cwd.length > 40
-										? "..." + cwd.slice(-37)
-										: cwd;
-
-									return (
-										<tr
-											key={id}
-											className={`border-b border-[var(--border-subtle)] ${
-												isOrphaned || isGhost
-													? "bg-[rgba(255,200,0,0.04)]"
-													: ""
-											}`}
-										>
-											<td className="px-4 py-1.5 font-mono text-[var(--text-secondary)]">
-												{id.length > 20 ? id.slice(0, 10) + "..." + id.slice(-6) : id}
-											</td>
-											<td className="px-2 py-1.5 font-mono text-[var(--text-tertiary)]">
-												{daemonSession?.pid ?? "—"}
-											</td>
-											<td
-												className="max-w-[180px] truncate px-2 py-1.5 font-mono text-[var(--text-tertiary)]"
-												title={cwd}
-											>
-												{shortCwd}
-											</td>
-											<td className="max-w-[140px] truncate px-2 py-1.5 text-[var(--text-tertiary)]">
-												{wsInfo ? (
-													<span title={wsInfo.name}>
-														<span
-															className={`mr-1 inline-block h-1.5 w-1.5 rounded-full ${
-																wsInfo.type === "review"
-																	? "bg-[var(--term-magenta)]"
-																	: "bg-[var(--term-green)]"
-															}`}
-														/>
-														{wsInfo.name}
-													</span>
-												) : dbSession?.workspaceId ? (
-													<span className="text-[var(--term-yellow)]" title={dbSession.workspaceId}>
-														{dbSession.workspaceId.slice(0, 12)}... (deleted?)
-													</span>
-												) : (
-													"—"
-												)}
-											</td>
-											<td className={`px-2 py-1.5 ${statusColor}`}>
-												{statusLabel}
-											</td>
-										</tr>
-									);
-								})}
-							{allIds.size === 0 && (
-								<tr>
-									<td
-										colSpan={5}
-										className="px-4 py-6 text-center text-[var(--text-quaternary)]"
-									>
-										No terminal sessions found
-									</td>
-								</tr>
-							)}
-						</tbody>
-					</table>
-				</div>
 			</div>
 		</div>
 	);
 }
 
-function SummaryItem({
-	label,
-	value,
-}: { label: string; value: number | string }) {
+// ─── Terminals Tab ───────────────────────────────────────────────────────────
+
+function TerminalsTab({
+	state,
+	dbQuery,
+	allIds,
+	rendererTabIds,
+}: {
+	state: { daemon: DaemonInspectorData | null; error: string | null };
+	dbQuery: { sessions: Array<{ id: string; workspaceId: string; cwd: string }>; workspaceMap: Record<string, { name: string; type: string; prIdentifier: string | null }> } | undefined;
+	allIds: Set<string>;
+	rendererTabIds: Set<string>;
+}) {
+	return (
+		<>
+			{/* Summary bar */}
+			<div className="flex shrink-0 gap-4 border-b border-[var(--border-subtle)] px-4 py-2 text-[11px]">
+				<KV label="Daemon PTYs" value={state.daemon?.daemonSessions.length ?? "?"} />
+				<KV label="liveSessions" value={state.daemon?.liveSessions.length ?? "?"} />
+				<KV label="Callbacks" value={state.daemon?.callbackIds.length ?? "?"} />
+				<KV label="DB rows" value={dbQuery?.sessions.length ?? "?"} />
+				<KV label="Renderer" value={rendererTabIds.size} />
+			</div>
+
+			{state.error && (
+				<div className="shrink-0 px-4 py-2 text-[12px] text-[var(--term-red)]">
+					{state.error}
+				</div>
+			)}
+
+			{/* Session rows */}
+			<div className="min-h-0 flex-1 overflow-y-auto">
+				{Array.from(allIds)
+					.sort()
+					.map((id) => {
+						const ds = state.daemon?.daemonSessions.find((s) => s.id === id);
+						const db = dbQuery?.sessions.find((s) => s.id === id);
+						const ws = db?.workspaceId ? dbQuery?.workspaceMap[db.workspaceId] : null;
+						const inRenderer = rendererTabIds.has(id);
+						const inLive = state.daemon?.liveSessions.includes(id) ?? false;
+						const hasCb = state.daemon?.callbackIds.includes(id) ?? false;
+
+						const isOrphaned = !!ds && !inRenderer && !hasCb;
+						const isGhost = !ds && inLive;
+						const isDbOnly = !!db && !ds && !inRenderer;
+
+						const cwd = ds?.cwd ?? db?.cwd ?? "";
+
+						let badge = "";
+						let badgeColor = "";
+						if (isOrphaned) {
+							badge = "ORPHANED";
+							badgeColor = "bg-[var(--term-yellow)] text-black";
+						} else if (isGhost) {
+							badge = "GHOST";
+							badgeColor = "bg-[var(--term-red)] text-white";
+						} else if (isDbOnly) {
+							badge = "DB ONLY";
+							badgeColor = "bg-[var(--term-magenta)] text-white";
+						}
+
+						return (
+							<div
+								key={id}
+								className={`border-b border-[var(--border-subtle)] px-4 py-2 ${
+									isOrphaned || isGhost ? "bg-[rgba(255,200,0,0.03)]" : ""
+								}`}
+							>
+								<div className="flex items-center gap-2">
+									<span className="font-mono text-[11px] text-[var(--text-secondary)]">
+										{id}
+									</span>
+									{ds && (
+										<span className="text-[10px] text-[var(--text-quaternary)]">
+											PID {ds.pid}
+										</span>
+									)}
+									{badge && (
+										<span
+											className={`rounded px-1 py-0.5 text-[9px] font-semibold ${badgeColor}`}
+										>
+											{badge}
+										</span>
+									)}
+								</div>
+								{cwd && (
+									<div
+										className="mt-0.5 font-mono text-[10px] text-[var(--text-quaternary)]"
+										title={cwd}
+									>
+										{cwd}
+									</div>
+								)}
+								<div className="mt-0.5 flex items-center gap-2 text-[10px]">
+									{ws && (
+										<span className="text-[var(--text-tertiary)]">
+											<span
+												className={`mr-1 inline-block h-1.5 w-1.5 rounded-full ${
+													ws.type === "review"
+														? "bg-[var(--term-magenta)]"
+														: "bg-[var(--term-green)]"
+												}`}
+											/>
+											{ws.name}
+										</span>
+									)}
+									{!ws && db?.workspaceId && (
+										<span className="text-[var(--term-yellow)]">
+											workspace deleted
+										</span>
+									)}
+									<span className="text-[var(--text-quaternary)]">
+										{[
+											ds && "daemon",
+											inLive && "live",
+											hasCb && "callback",
+											db && "db",
+											inRenderer && "renderer",
+										]
+											.filter(Boolean)
+											.join(", ")}
+									</span>
+								</div>
+							</div>
+						);
+					})}
+				{allIds.size === 0 && (
+					<div className="px-4 py-8 text-center text-[12px] text-[var(--text-quaternary)]">
+						No terminal sessions found
+					</div>
+				)}
+			</div>
+		</>
+	);
+}
+
+// ─── Worktrees Tab ───────────────────────────────────────────────────────────
+
+type WorktreeEntry = {
+	path: string;
+	branch: string;
+	isMain: boolean;
+	projectName: string;
+	repoPath: string;
+	inDb: boolean;
+	dbId: string | null;
+	workspaceName: string | null;
+	workspaceType: string | null;
+	existsOnDisk: boolean;
+};
+
+function WorktreesTab({
+	data,
+	loading,
+}: { data: WorktreeEntry[] | undefined; loading: boolean }) {
+	if (loading) {
+		return (
+			<div className="px-4 py-8 text-center text-[12px] text-[var(--text-quaternary)]">
+				Loading worktrees...
+			</div>
+		);
+	}
+
+	const worktrees = data ?? [];
+
+	// Group by project
+	const byProject = new Map<string, WorktreeEntry[]>();
+	for (const wt of worktrees) {
+		const existing = byProject.get(wt.projectName) ?? [];
+		existing.push(wt);
+		byProject.set(wt.projectName, existing);
+	}
+
+	return (
+		<>
+			<div className="flex shrink-0 gap-4 border-b border-[var(--border-subtle)] px-4 py-2 text-[11px]">
+				<KV label="Total worktrees" value={worktrees.length} />
+				<KV label="On disk" value={worktrees.filter((w) => w.existsOnDisk).length} />
+				<KV label="In DB" value={worktrees.filter((w) => w.inDb).length} />
+				<KV
+					label="Orphaned (no workspace)"
+					value={worktrees.filter((w) => !w.workspaceName && !w.isMain).length}
+				/>
+			</div>
+			<div className="min-h-0 flex-1 overflow-y-auto">
+				{Array.from(byProject.entries()).map(([projectName, entries]) => (
+					<div key={projectName}>
+						<div className="sticky top-0 border-b border-[var(--border-subtle)] bg-[var(--bg-base)] px-4 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-quaternary)]">
+							{projectName}
+						</div>
+						{entries.map((wt) => {
+							const isOrphaned = !wt.workspaceName && !wt.isMain;
+							const isStale = !wt.existsOnDisk;
+
+							return (
+								<div
+									key={wt.path}
+									className={`border-b border-[var(--border-subtle)] px-4 py-2 ${
+										isStale
+											? "bg-[rgba(255,69,58,0.03)]"
+											: isOrphaned
+												? "bg-[rgba(255,200,0,0.03)]"
+												: ""
+									}`}
+								>
+									<div className="flex items-center gap-2">
+										<span className="font-mono text-[11px] text-[var(--text-secondary)]">
+											{wt.isMain ? shortPath(wt.path) : shortPath(wt.path)}
+										</span>
+										{wt.isMain && (
+											<span className="rounded bg-[var(--term-blue)] px-1 py-0.5 text-[9px] font-semibold text-white">
+												MAIN
+											</span>
+										)}
+										{wt.workspaceType === "review" && (
+											<span className="rounded bg-[var(--term-magenta)] px-1 py-0.5 text-[9px] font-semibold text-white">
+												REVIEW
+											</span>
+										)}
+										{isStale && (
+											<span className="rounded bg-[var(--term-red)] px-1 py-0.5 text-[9px] font-semibold text-white">
+												MISSING FROM DISK
+											</span>
+										)}
+										{isOrphaned && (
+											<span className="rounded bg-[var(--term-yellow)] px-1 py-0.5 text-[9px] font-semibold text-black">
+												NO WORKSPACE
+											</span>
+										)}
+									</div>
+									<div
+										className="mt-0.5 font-mono text-[10px] text-[var(--text-quaternary)]"
+										title={wt.path}
+									>
+										{wt.path}
+									</div>
+									<div className="mt-0.5 flex items-center gap-3 text-[10px] text-[var(--text-tertiary)]">
+										<span>
+											branch: <span className="text-[var(--term-cyan)]">{wt.branch}</span>
+										</span>
+										{wt.workspaceName && <span>workspace: {wt.workspaceName}</span>}
+										<span className="text-[var(--text-quaternary)]">
+											{[wt.existsOnDisk && "disk", wt.inDb && "db"]
+												.filter(Boolean)
+												.join(", ")}
+										</span>
+									</div>
+								</div>
+							);
+						})}
+					</div>
+				))}
+				{worktrees.length === 0 && (
+					<div className="px-4 py-8 text-center text-[12px] text-[var(--text-quaternary)]">
+						No worktrees found
+					</div>
+				)}
+			</div>
+		</>
+	);
+}
+
+// ─── Shared ──────────────────────────────────────────────────────────────────
+
+function KV({ label, value }: { label: string; value: number | string }) {
 	return (
 		<div className="flex items-center gap-1.5">
 			<span className="text-[var(--text-quaternary)]">{label}:</span>
