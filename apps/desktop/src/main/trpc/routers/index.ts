@@ -1,8 +1,8 @@
 import { router } from "../index";
 import { aiReviewRouter } from "./ai-review";
-import { commentSolverRouter } from "./comment-solver";
 import { atlassianRouter } from "./atlassian";
 import { branchesRouter } from "./branches";
+import { commentSolverRouter } from "./comment-solver";
 import { diffRouter } from "./diff";
 import { githubRouter } from "./github";
 import { linearRouter } from "./linear";
