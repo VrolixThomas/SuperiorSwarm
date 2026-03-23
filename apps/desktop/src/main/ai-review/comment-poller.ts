@@ -1,0 +1,195 @@
+import { eq, inArray } from "drizzle-orm";
+import { getAuth as getBitbucketAuth, atlassianFetch } from "../atlassian/auth";
+import { BITBUCKET_API_BASE } from "../atlassian/constants";
+import { getDb } from "../db";
+import * as schema from "../db/schema";
+import { getValidToken } from "../github/auth";
+import { getPRComments } from "../github/github";
+
+const POLL_INTERVAL_MS = 60_000;
+
+export interface NewCommentsEvent {
+	workspaceId: string;
+	prProvider: string;
+	prIdentifier: string;
+	newCommentIds: string[];
+}
+
+type NewCommentsHandler = (event: NewCommentsEvent) => void;
+
+let pollTimer: ReturnType<typeof setInterval> | null = null;
+let onNewCommentsHandler: NewCommentsHandler | null = null;
+
+// ── Public event registration ───────────────────────────────────────────────
+
+export function onNewCommentsDetected(handler: NewCommentsHandler): void {
+	onNewCommentsHandler = handler;
+}
+
+// ── Identifier parsing ──────────────────────────────────────────────────────
+
+function parsePrIdentifier(identifier: string): {
+	ownerOrWorkspace: string;
+	repo: string;
+	number: number;
+} {
+	const [ownerRepo, numStr] = identifier.split("#");
+	const [ownerOrWorkspace, repo] = ownerRepo!.split("/");
+	return {
+		ownerOrWorkspace: ownerOrWorkspace!,
+		repo: repo!,
+		number: Number.parseInt(numStr!, 10),
+	};
+}
+
+// ── Fetch comments from platform ────────────────────────────────────────────
+
+interface PlatformComment {
+	platformId: string;
+}
+
+async function fetchGitHubComments(identifier: string): Promise<PlatformComment[]> {
+	const { ownerOrWorkspace, repo, number } = parsePrIdentifier(identifier);
+	const comments = await getPRComments(ownerOrWorkspace, repo, number);
+	return comments.map((c) => ({ platformId: String(c.id) }));
+}
+
+async function fetchBitbucketComments(identifier: string): Promise<PlatformComment[]> {
+	const { ownerOrWorkspace, repo, number } = parsePrIdentifier(identifier);
+	const url = `${BITBUCKET_API_BASE}/repositories/${ownerOrWorkspace}/${repo}/pullrequests/${number}/comments?pagelen=100`;
+	const res = await atlassianFetch("bitbucket", url);
+	if (!res.ok) throw new Error(`Bitbucket get PR comments failed: ${res.status}`);
+	const data = (await res.json()) as { values: Array<{ id: number }> };
+	return data.values.map((c) => ({ platformId: String(c.id) }));
+}
+
+// ── Known comment IDs from DB ────────────────────────────────────────────────
+
+function getKnownPlatformCommentIds(prIdentifier: string): Set<string> {
+	const db = getDb();
+
+	const sessions = db
+		.select({ id: schema.commentSolveSessions.id })
+		.from(schema.commentSolveSessions)
+		.where(eq(schema.commentSolveSessions.prIdentifier, prIdentifier))
+		.all();
+
+	if (sessions.length === 0) return new Set();
+
+	const sessionIds = sessions.map((s) => s.id);
+
+	const comments = db
+		.select({ platformCommentId: schema.prComments.platformCommentId })
+		.from(schema.prComments)
+		.where(inArray(schema.prComments.solveSessionId, sessionIds))
+		.all();
+
+	return new Set(comments.map((c) => c.platformCommentId));
+}
+
+// ── Poll a single workspace ──────────────────────────────────────────────────
+
+async function pollWorkspace(workspace: schema.Workspace): Promise<void> {
+	const { id: workspaceId, prProvider, prIdentifier } = workspace;
+	if (!prProvider || !prIdentifier) return;
+
+	let platformComments: PlatformComment[];
+	try {
+		if (prProvider === "github") {
+			if (!getValidToken()) return;
+			platformComments = await fetchGitHubComments(prIdentifier);
+		} else {
+			if (!getBitbucketAuth("bitbucket")) return;
+			platformComments = await fetchBitbucketComments(prIdentifier);
+		}
+	} catch (err) {
+		console.error(`[comment-poller] Failed to fetch comments for ${prIdentifier}:`, err);
+		return;
+	}
+
+	const knownIds = getKnownPlatformCommentIds(prIdentifier);
+
+	const newCommentIds = platformComments
+		.map((c) => c.platformId)
+		.filter((id) => !knownIds.has(id));
+
+	if (newCommentIds.length === 0) return;
+
+	console.log(
+		`[comment-poller] ${newCommentIds.length} new comment(s) on ${prIdentifier} (workspace ${workspaceId})`
+	);
+
+	const db = getDb();
+	const settings = db
+		.select()
+		.from(schema.aiReviewSettings)
+		.where(eq(schema.aiReviewSettings.id, "default"))
+		.get();
+
+	const autoSolveEnabled = settings?.autoSolveEnabled === 1;
+
+	if (autoSolveEnabled) {
+		// Emit to renderer — the renderer or a registered main-process handler triggers solve
+		const { BrowserWindow } = await import("electron");
+		for (const win of BrowserWindow.getAllWindows()) {
+			win.webContents.send("new-pr-comments-detected", {
+				workspaceId,
+				prProvider,
+				prIdentifier,
+				newCommentIds,
+				auto: true,
+			} satisfies NewCommentsEvent & { auto: boolean });
+		}
+	} else if (onNewCommentsHandler) {
+		onNewCommentsHandler({ workspaceId, prProvider, prIdentifier, newCommentIds });
+	}
+}
+
+// ── Core poll cycle ──────────────────────────────────────────────────────────
+
+async function doPoll(): Promise<void> {
+	const db = getDb();
+
+	const allWorkspaces = db
+		.select()
+		.from(schema.workspaces)
+		.where(eq(schema.workspaces.type, "worktree"))
+		.all();
+
+	const linked = allWorkspaces.filter(
+		(ws) => ws.prProvider !== null && ws.prIdentifier !== null
+	);
+
+	if (linked.length === 0) return;
+
+	for (const workspace of linked) {
+		try {
+			await pollWorkspace(workspace);
+		} catch (err) {
+			console.error(
+				`[comment-poller] Error polling workspace ${workspace.id} (${workspace.prIdentifier}):`,
+				err
+			);
+		}
+	}
+}
+
+// ── Public control API ───────────────────────────────────────────────────────
+
+export function startCommentPoller(): void {
+	if (pollTimer) return;
+
+	console.log("[comment-poller] Starting background comment polling");
+	doPoll().catch((err) => console.error("[comment-poller] Initial poll error:", err));
+	pollTimer = setInterval(() => {
+		doPoll().catch((err) => console.error("[comment-poller] Poll cycle error:", err));
+	}, POLL_INTERVAL_MS);
+}
+
+export function stopCommentPoller(): void {
+	if (pollTimer) {
+		clearInterval(pollTimer);
+		pollTimer = null;
+		console.log("[comment-poller] Stopped");
+	}
+}
