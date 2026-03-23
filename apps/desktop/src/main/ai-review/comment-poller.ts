@@ -1,10 +1,11 @@
-import { eq, inArray } from "drizzle-orm";
+import { eq, inArray, isNull, and } from "drizzle-orm";
 import { atlassianFetch, getAuth as getBitbucketAuth } from "../atlassian/auth";
 import { BITBUCKET_API_BASE } from "../atlassian/constants";
 import { getDb } from "../db";
 import * as schema from "../db/schema";
 import { getValidToken } from "../github/auth";
 import { getPRComments } from "../github/github";
+import { getCachedPRs } from "./pr-poller";
 
 const POLL_INTERVAL_MS = 60_000;
 
@@ -143,10 +144,66 @@ async function pollWorkspace(workspace: schema.Workspace): Promise<void> {
 	}
 }
 
+// ── Reconcile unlinked workspaces with PR cache ─────────────────────────────
+
+function reconcileUnlinkedWorkspaces(): void {
+	const db = getDb();
+
+	// Find worktree workspaces without a PR link
+	const unlinked = db
+		.select()
+		.from(schema.workspaces)
+		.where(
+			and(
+				eq(schema.workspaces.type, "worktree"),
+				isNull(schema.workspaces.prProvider)
+			)
+		)
+		.all();
+
+	if (unlinked.length === 0) return;
+
+	// Get worktree records to match by branch name
+	for (const ws of unlinked) {
+		if (!ws.worktreeId) continue;
+
+		const worktree = db
+			.select()
+			.from(schema.worktrees)
+			.where(eq(schema.worktrees.id, ws.worktreeId))
+			.get();
+
+		if (!worktree) continue;
+
+		// Check PR cache for a matching open authored PR
+		const cachedPRs = getCachedPRs(ws.projectId);
+		const match = cachedPRs.find(
+			(pr) => pr.sourceBranch === worktree.branch && pr.state === "open"
+		);
+
+		if (match) {
+			console.log(
+				`[comment-poller] Auto-linked workspace "${ws.name}" to PR ${match.identifier}`
+			);
+			db.update(schema.workspaces)
+				.set({
+					prProvider: match.provider,
+					prIdentifier: match.identifier,
+					updatedAt: new Date(),
+				})
+				.where(eq(schema.workspaces.id, ws.id))
+				.run();
+		}
+	}
+}
+
 // ── Core poll cycle ──────────────────────────────────────────────────────────
 
 async function doPoll(): Promise<void> {
 	const db = getDb();
+
+	// First, try to link any unlinked workspaces to their PRs
+	reconcileUnlinkedWorkspaces();
 
 	const allWorkspaces = db
 		.select()
