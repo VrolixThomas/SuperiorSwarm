@@ -256,7 +256,9 @@ function DiffPanelContent({ diffCtx, onClose }: { diffCtx: DiffContext; onClose?
 			/>
 
 			{activeTab === "comments" && activeWorkspaceId ? (
-				<CommentsTab workspaceId={activeWorkspaceId} />
+				<div className="flex flex-1 flex-col min-h-0 overflow-hidden">
+					<CommentsTab workspaceId={activeWorkspaceId} />
+				</div>
 			) : (
 				<>
 					{/* Smart header bar — only for working-tree mode */}
@@ -292,9 +294,7 @@ function DiffPanelContent({ diffCtx, onClose }: { diffCtx: DiffContext; onClose?
 										diffCtx={diffCtx}
 										stagedFiles={statusQuery.data.stagedFiles}
 										unstagedFiles={statusQuery.data.unstagedFiles}
-										onStage={(paths) =>
-											stageMutation.mutate({ repoPath: diffCtx.repoPath, paths })
-										}
+										onStage={(paths) => stageMutation.mutate({ repoPath: diffCtx.repoPath, paths })}
 										onUnstage={(paths) =>
 											unstageMutation.mutate({ repoPath: diffCtx.repoPath, paths })
 										}
