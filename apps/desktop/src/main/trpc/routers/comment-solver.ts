@@ -305,9 +305,7 @@ export const commentSolverRouter = router({
 				if (!wt) throw new Error("Worktree not found");
 
 				const cached = getCachedPRs(workspace.projectId);
-				const match = cached.find(
-					(pr) => pr.sourceBranch === wt.branch && pr.state === "open"
-				);
+				const match = cached.find((pr) => pr.sourceBranch === wt.branch && pr.state === "open");
 				if (!match) {
 					throw new Error(
 						`No open PR found for branch "${wt.branch}". Make sure a pull request exists and the PR poller has run.`
@@ -473,7 +471,15 @@ export const commentSolverRouter = router({
 			}
 
 			// 8. Queue the solve job and return launch info
-			return queueSolve(sessionId);
+			try {
+				return await queueSolve(sessionId);
+			} catch (err) {
+				// If queueSolve fails, clean up the session so it doesn't get stuck
+				db.delete(schema.commentSolveSessions)
+					.where(eq(schema.commentSolveSessions.id, sessionId))
+					.run();
+				throw err;
+			}
 		}),
 
 	/**
