@@ -187,7 +187,7 @@ function UnsolvedState({ workspaceId }: { workspaceId: string }) {
 	// Error state
 	if (commentsQuery.isError) {
 		return (
-			<div className="flex h-full flex-col bg-[var(--bg-base)]">
+			<div className="flex flex-1 min-h-0 flex-col bg-[var(--bg-base)]">
 				<PRHeader title={prTitle} prNumber={prNumber} sourceBranch={sourceBranch} />
 				<div className="flex flex-1 flex-col items-center justify-center gap-3">
 					<div className="max-w-[280px] text-center text-[11px] text-[#ff453a]">
@@ -208,7 +208,7 @@ function UnsolvedState({ workspaceId }: { workspaceId: string }) {
 	// Loading state
 	if (commentsQuery.isLoading) {
 		return (
-			<div className="flex h-full flex-col bg-[var(--bg-base)]">
+			<div className="flex flex-1 min-h-0 flex-col bg-[var(--bg-base)]">
 				<PRHeader title={prTitle} prNumber={prNumber} sourceBranch={sourceBranch} />
 				<div className="flex flex-1 flex-col items-center justify-center gap-3">
 					{[1, 2, 3].map((i) => (
@@ -227,7 +227,7 @@ function UnsolvedState({ workspaceId }: { workspaceId: string }) {
 	// Empty state
 	if (comments.length === 0) {
 		return (
-			<div className="flex h-full flex-col bg-[var(--bg-base)]">
+			<div className="flex flex-1 min-h-0 flex-col bg-[var(--bg-base)]">
 				<PRHeader title={prTitle} prNumber={prNumber} sourceBranch={sourceBranch} />
 				<div className="flex flex-1 items-center justify-center">
 					<span className="text-[12px] text-[var(--text-quaternary)]">No comments on this PR</span>
@@ -237,7 +237,7 @@ function UnsolvedState({ workspaceId }: { workspaceId: string }) {
 	}
 
 	return (
-		<div className="flex h-full flex-col bg-[var(--bg-base)]">
+		<div className="flex flex-1 min-h-0 flex-col bg-[var(--bg-base)]">
 			<PRHeader title={prTitle} prNumber={prNumber} sourceBranch={sourceBranch} />
 
 			{/* Comment cards */}
@@ -392,7 +392,7 @@ function InProgressState({
 	const sourceBranch = meta?.sourceBranch ?? null;
 
 	return (
-		<div className="flex h-full flex-col bg-[var(--bg-base)]">
+		<div className="flex flex-1 min-h-0 flex-col bg-[var(--bg-base)]">
 			<PRHeader
 				title={prTitle}
 				prNumber={prNumber}
@@ -766,7 +766,7 @@ function SolvedState({
 	// Failed session error state
 	if (session.status === "failed") {
 		return (
-			<div className="flex h-full flex-col bg-[var(--bg-base)]">
+			<div className="flex flex-1 min-h-0 flex-col bg-[var(--bg-base)]">
 				<PRHeader
 					title={prTitle}
 					prNumber={prNumber}
@@ -792,7 +792,7 @@ function SolvedState({
 	}
 
 	return (
-		<div className="flex h-full flex-col overflow-hidden bg-[var(--bg-base)]">
+		<div className="flex flex-1 min-h-0 flex-col overflow-hidden bg-[var(--bg-base)]">
 			<PRHeader
 				title={prTitle}
 				prNumber={prNumber}
