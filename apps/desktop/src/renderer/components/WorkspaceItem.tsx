@@ -8,6 +8,7 @@ interface WorkspaceData {
 	name: string;
 	terminalId: string | null;
 	worktreePath: string | null;
+	prProvider: string | null;
 }
 
 interface WorkspaceItemProps {
@@ -133,6 +134,17 @@ export function WorkspaceItem({ workspace, projectName, projectRepoPath }: Works
 
 	const isActive = useTabStore((s) => s.activeWorkspaceId === workspace.id);
 
+	const solveSessionsQuery = trpc.commentSolver.getSolveSessions.useQuery(
+		{ workspaceId: workspace.id },
+		{ enabled: workspace.prProvider != null, staleTime: 30_000 }
+	);
+
+	const sessions = solveSessionsQuery.data ?? [];
+	const hasReadySessions = sessions.some((s) => s.status === "ready");
+	const hasUnresolvedComments = sessions.some(
+		(s) => s.status === "queued" || s.status === "in_progress"
+	);
+
 	const handleClick = useCallback(() => {
 		const cwd =
 			workspace.type === "worktree" && workspace.worktreePath
@@ -204,6 +216,18 @@ export function WorkspaceItem({ workspace, projectName, projectRepoPath }: Works
 			>
 				<BranchIcon className="shrink-0 opacity-50" />
 				<span className="truncate text-[13px]">{workspace.name}</span>
+				{hasReadySessions && (
+					<span
+						className="ml-auto shrink-0 size-[6px] rounded-full bg-[#0a84ff]"
+						title="Fixes ready for review"
+					/>
+				)}
+				{!hasReadySessions && hasUnresolvedComments && (
+					<span
+						className="ml-auto shrink-0 size-[6px] rounded-full bg-[var(--accent)]"
+						title="Unresolved comments"
+					/>
+				)}
 			</button>
 
 			{contextMenu && (
