@@ -4,6 +4,7 @@ import { trpc } from "../trpc/client";
 import { BranchChanges } from "./BranchChanges";
 import { CommittedStack } from "./CommittedStack";
 import { DraftCommitCard } from "./DraftCommitCard";
+import { CommentSolvePanel } from "./CommentSolvePanel";
 import { PRControlRail } from "./PRControlRail";
 import { RepoFileTree } from "./RepoFileTree";
 import { SmartHeaderBar } from "./SmartHeaderBar";
@@ -294,6 +295,7 @@ function PanelEdgeClose({ onClose }: { onClose: () => void }) {
 
 export function DiffPanel({ onClose }: { onClose?: () => void }) {
 	const rightPanel = useTabStore((s) => s.rightPanel);
+	const activeWorkspaceId = useTabStore((s) => s.activeWorkspaceId);
 
 	if (!rightPanel.open) return null;
 
@@ -302,6 +304,15 @@ export function DiffPanel({ onClose }: { onClose?: () => void }) {
 			<div className="relative flex h-full w-full flex-col overflow-hidden bg-[var(--bg-surface)]">
 				{onClose && <PanelEdgeClose onClose={onClose} />}
 				<PRControlRail prCtx={rightPanel.prCtx} />
+			</div>
+		);
+	}
+
+	if (rightPanel.mode === "comment-solve") {
+		return (
+			<div className="relative flex h-full w-full flex-col overflow-hidden bg-[var(--bg-surface)]">
+				{onClose && <PanelEdgeClose onClose={onClose} />}
+				<CommentSolvePanel workspaceId={activeWorkspaceId ?? ""} />
 			</div>
 		);
 	}
