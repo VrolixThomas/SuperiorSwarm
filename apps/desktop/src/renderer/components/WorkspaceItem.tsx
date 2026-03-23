@@ -161,7 +161,7 @@ export function WorkspaceItem({ workspace, projectName, projectRepoPath }: Works
 			// Create terminal tab for the AI solver
 			const tabId = store.addTerminalTab(workspace.id, cwd, "AI Solver");
 			window.electron.terminal.create(tabId, cwd).then(() => {
-				window.electron.terminal.write(tabId, `${launch.launchScript}\n`);
+				window.electron.terminal.write(tabId, `bash '${launch.launchScript}'\n`);
 			});
 		},
 		onError: (err) => {
