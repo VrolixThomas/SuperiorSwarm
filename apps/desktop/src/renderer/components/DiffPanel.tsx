@@ -2,7 +2,6 @@ import type { DiffContext } from "../../shared/diff-types";
 import { type PanelMode, useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import { BranchChanges } from "./BranchChanges";
-import { CommentSolvePanel } from "./CommentSolvePanel";
 import { CommittedStack } from "./CommittedStack";
 import { DraftCommitCard } from "./DraftCommitCard";
 import { PRControlRail } from "./PRControlRail";
@@ -295,7 +294,6 @@ function PanelEdgeClose({ onClose }: { onClose: () => void }) {
 
 export function DiffPanel({ onClose }: { onClose?: () => void }) {
 	const rightPanel = useTabStore((s) => s.rightPanel);
-	const activeWorkspaceId = useTabStore((s) => s.activeWorkspaceId);
 
 	if (!rightPanel.open) return null;
 
@@ -304,15 +302,6 @@ export function DiffPanel({ onClose }: { onClose?: () => void }) {
 			<div className="relative flex h-full w-full flex-col overflow-hidden bg-[var(--bg-surface)]">
 				{onClose && <PanelEdgeClose onClose={onClose} />}
 				<PRControlRail prCtx={rightPanel.prCtx} />
-			</div>
-		);
-	}
-
-	if (rightPanel.mode === "comment-solve") {
-		return (
-			<div className="relative flex h-full w-full flex-col overflow-hidden bg-[var(--bg-surface)]">
-				{onClose && <PanelEdgeClose onClose={onClose} />}
-				<CommentSolvePanel workspaceId={activeWorkspaceId ?? ""} />
 			</div>
 		);
 	}

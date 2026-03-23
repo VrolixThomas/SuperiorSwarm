@@ -157,7 +157,6 @@ export function WorkspaceItem({ workspace, projectName, projectRepoPath }: Works
 			const cwd = launch.worktreePath;
 			const store = useTabStore.getState();
 			store.setActiveWorkspace(workspace.id, cwd);
-			store.openCommentSolvePanel(workspace.id);
 			// Create terminal tab for the AI solver
 			const tabId = store.addTerminalTab(workspace.id, cwd, "AI Solver");
 			window.electron.terminal.create(tabId, cwd).then(() => {

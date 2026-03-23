@@ -43,8 +43,19 @@ export type TabItem =
 			workspaceId: string;
 			title: string;
 			prCtx: PRContext;
+	  }
+	| {
+			kind: "comment-fix-file";
+			id: string;
+			workspaceId: string;
+			groupId: string;
+			filePath: string;
+			commitHash: string;
+			title: string;
+			language: string;
+			repoPath: string;
 	  };
-export type PanelMode = "diff" | "explorer" | "pr-review" | "comment-solve";
+export type PanelMode = "diff" | "explorer" | "pr-review";
 
 export type RightPanelState =
 	| { open: false }
@@ -112,7 +123,6 @@ interface TabStore {
 
 	// PR review
 	openPRReviewPanel: (workspaceId: string, prCtx: PRContext) => void;
-	openCommentSolvePanel: (workspaceId: string) => void;
 	openPRReviewFile: (
 		workspaceId: string,
 		prCtx: PRContext,
@@ -120,6 +130,15 @@ interface TabStore {
 		language: string
 	) => string;
 	openPROverview: (workspaceId: string, prCtx: PRContext) => string;
+
+	openCommentFixFile: (
+		workspaceId: string,
+		groupId: string,
+		filePath: string,
+		commitHash: string,
+		repoPath: string,
+		language: string
+	) => string;
 
 	// Diff convenience
 	toggleDiffPanel: (diffCtx: DiffContext) => void;
@@ -213,9 +232,6 @@ function panelForWorkspace(cwd: string, meta: WorkspaceMetadata | undefined): Ri
 			repoPath: cwd,
 		};
 		return { open: true, mode: "pr-review", diffCtx: null, prCtx };
-	}
-	if (meta?.type !== "review" && meta?.prProvider && meta.prIdentifier) {
-		return { open: true, mode: "comment-solve", diffCtx: null };
 	}
 	return defaultPanelForCwd(cwd);
 }
@@ -466,9 +482,6 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 		// an infinite setState cascade if done synchronously in the same commit.
 		queueMicrotask(() => get().openPROverview(workspaceId, prCtx));
 	},
-	openCommentSolvePanel: (_workspaceId) => {
-		set({ rightPanel: { open: true, mode: "comment-solve", diffCtx: null } });
-	},
 	openPRReviewFile: (workspaceId, prCtx, filePath, language) => {
 		const key = prReviewFileKey(prCtx, filePath);
 		const found = findTabInWorkspace(
@@ -523,6 +536,42 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 			workspaceId,
 			title: `PR: ${prCtx.title}`,
 			prCtx,
+		};
+		ps().ensureLayout(workspaceId);
+		const focused = resolveFocusedPane(workspaceId);
+		if (focused) {
+			ps().addTabToPane(workspaceId, focused.id, tab);
+		}
+		return id;
+	},
+
+	openCommentFixFile: (workspaceId, groupId, filePath, commitHash, repoPath, language) => {
+		const key = `comment-fix:${groupId}:${filePath}`;
+		const found = findTabInWorkspace(
+			workspaceId,
+			(t) =>
+				t.kind === "comment-fix-file" &&
+				t.workspaceId === workspaceId &&
+				`comment-fix:${t.groupId}:${t.filePath}` === key
+		);
+		if (found) {
+			ps().setActiveTabInPane(workspaceId, found.pane.id, found.tab.id);
+			ps().setFocusedPane(found.pane.id);
+			return found.tab.id;
+		}
+		const id = nextFileTabId();
+		const filename = filePath.split("/").pop() ?? filePath;
+		const title = `${filename} (fix)`;
+		const tab: TabItem = {
+			kind: "comment-fix-file",
+			id,
+			workspaceId,
+			groupId,
+			filePath,
+			commitHash,
+			title,
+			language,
+			repoPath,
 		};
 		ps().ensureLayout(workspaceId);
 		const focused = resolveFocusedPane(workspaceId);
