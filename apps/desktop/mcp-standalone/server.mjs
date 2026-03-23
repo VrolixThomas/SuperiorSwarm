@@ -1,5 +1,5 @@
-import { randomUUID } from "node:crypto";
 import { execSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -84,9 +84,11 @@ if (!isSolverMode) {
 		},
 		async ({ markdown }) => {
 			const now = Math.floor(Date.now() / 1000);
-			db.prepare(
-				`UPDATE review_drafts SET summary_markdown = ?, updated_at = ? WHERE id = ?`
-			).run(markdown, now, REVIEW_DRAFT_ID);
+			db.prepare("UPDATE review_drafts SET summary_markdown = ?, updated_at = ? WHERE id = ?").run(
+				markdown,
+				now,
+				REVIEW_DRAFT_ID
+			);
 
 			return {
 				content: [{ type: "text", text: JSON.stringify({ status: "saved" }) }],
@@ -323,7 +325,7 @@ if (isSolverMode) {
 				 VALUES (?, ?, ?, 'pending', ?)`
 			);
 			const updateComment = db.prepare(
-				`UPDATE pr_comments SET group_id = ? WHERE id = ? AND solve_session_id = ?`
+				"UPDATE pr_comments SET group_id = ? WHERE id = ? AND solve_session_id = ?"
 			);
 
 			const transaction = db.transaction((groups) => {
@@ -357,7 +359,7 @@ if (isSolverMode) {
 		},
 		async ({ group_id }) => {
 			const group = db
-				.prepare(`SELECT label FROM comment_groups WHERE id = ? AND solve_session_id = ?`)
+				.prepare("SELECT label FROM comment_groups WHERE id = ? AND solve_session_id = ?")
 				.get(group_id, SOLVE_SESSION_ID);
 
 			if (!group) {
@@ -404,9 +406,7 @@ if (isSolverMode) {
 		},
 		async ({ comment_id }) => {
 			const result = db
-				.prepare(
-					`UPDATE pr_comments SET status = 'fixed' WHERE id = ? AND solve_session_id = ?`
-				)
+				.prepare(`UPDATE pr_comments SET status = 'fixed' WHERE id = ? AND solve_session_id = ?`)
 				.run(comment_id, SOLVE_SESSION_ID);
 
 			if (result.changes === 0) {
@@ -467,7 +467,7 @@ if (isSolverMode) {
 		async ({ group_id }) => {
 			try {
 				const group = db
-					.prepare(`SELECT label FROM comment_groups WHERE id = ? AND solve_session_id = ?`)
+					.prepare("SELECT label FROM comment_groups WHERE id = ? AND solve_session_id = ?")
 					.get(group_id, SOLVE_SESSION_ID);
 
 				if (!group) {

@@ -21,9 +21,9 @@ function parsePrIdentifier(identifier: string): {
 	const match = identifier.match(/^(.+?)\/(.+?)#(\d+)$/);
 	if (!match) throw new Error(`Invalid PR identifier: ${identifier}`);
 	return {
-		ownerOrWorkspace: match[1]!,
-		repo: match[2]!,
-		number: Number.parseInt(match[3]!, 10),
+		ownerOrWorkspace: match[1] ?? "",
+		repo: match[2] ?? "",
+		number: Number.parseInt(match[3] ?? "", 10),
 	};
 }
 
@@ -63,11 +63,7 @@ export async function publishSolve(sessionId: string): Promise<PublishSolveResul
 	}
 
 	const worktree = workspace.worktreeId
-		? db
-				.select()
-				.from(schema.worktrees)
-				.where(eq(schema.worktrees.id, workspace.worktreeId))
-				.get()
+		? db.select().from(schema.worktrees).where(eq(schema.worktrees.id, workspace.worktreeId)).get()
 		: undefined;
 
 	if (!worktree) {
@@ -132,17 +128,14 @@ export async function publishSolve(sessionId: string): Promise<PublishSolveResul
 			.select()
 			.from(schema.prComments)
 			.where(
-				and(
-					eq(schema.prComments.solveSessionId, sessionId),
-					eq(schema.prComments.status, "fixed")
-				)
+				and(eq(schema.prComments.solveSessionId, sessionId), eq(schema.prComments.status, "fixed"))
 			)
 			.all()
 			.filter((c) => c.threadId != null);
 
 		for (const comment of fixedComments) {
 			try {
-				await resolveThread(comment.threadId!);
+				await resolveThread(comment.threadId ?? "");
 				threadsResolved++;
 			} catch (err) {
 				errors.push(`Failed to resolve thread ${comment.threadId}: ${err}`);

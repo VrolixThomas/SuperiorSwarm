@@ -1,5 +1,5 @@
 import { eq, inArray } from "drizzle-orm";
-import { getAuth as getBitbucketAuth, atlassianFetch } from "../atlassian/auth";
+import { atlassianFetch, getAuth as getBitbucketAuth } from "../atlassian/auth";
 import { BITBUCKET_API_BASE } from "../atlassian/constants";
 import { getDb } from "../db";
 import * as schema from "../db/schema";
@@ -34,11 +34,11 @@ function parsePrIdentifier(identifier: string): {
 	number: number;
 } {
 	const [ownerRepo, numStr] = identifier.split("#");
-	const [ownerOrWorkspace, repo] = ownerRepo!.split("/");
+	const [ownerOrWorkspace, repo] = (ownerRepo ?? "").split("/");
 	return {
-		ownerOrWorkspace: ownerOrWorkspace!,
-		repo: repo!,
-		number: Number.parseInt(numStr!, 10),
+		ownerOrWorkspace: ownerOrWorkspace ?? "",
+		repo: repo ?? "",
+		number: Number.parseInt(numStr ?? "", 10),
 	};
 }
 
@@ -109,9 +109,7 @@ async function pollWorkspace(workspace: schema.Workspace): Promise<void> {
 
 	const knownIds = getKnownPlatformCommentIds(prIdentifier);
 
-	const newCommentIds = platformComments
-		.map((c) => c.platformId)
-		.filter((id) => !knownIds.has(id));
+	const newCommentIds = platformComments.map((c) => c.platformId).filter((id) => !knownIds.has(id));
 
 	if (newCommentIds.length === 0) return;
 
@@ -156,9 +154,7 @@ async function doPoll(): Promise<void> {
 		.where(eq(schema.workspaces.type, "worktree"))
 		.all();
 
-	const linked = allWorkspaces.filter(
-		(ws) => ws.prProvider !== null && ws.prIdentifier !== null
-	);
+	const linked = allWorkspaces.filter((ws) => ws.prProvider !== null && ws.prIdentifier !== null);
 
 	if (linked.length === 0) return;
 

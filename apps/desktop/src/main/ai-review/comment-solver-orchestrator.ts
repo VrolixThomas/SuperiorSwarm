@@ -1,14 +1,14 @@
+import { execSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { execSync } from "node:child_process";
 import { and, eq, inArray, not } from "drizzle-orm";
 import { app } from "electron";
+import type { SolveLaunchInfo } from "../../shared/solve-types";
 import { getDb } from "../db";
 import * as schema from "../db/schema";
 import { CLI_PRESETS, type LaunchOptions, isCliInstalled, resolveCliPath } from "./cli-presets";
 import { buildSolvePrompt } from "./solve-prompt";
-import type { SolveLaunchInfo } from "../../shared/solve-types";
 
 // ─── State machine ────────────────────────────────────────────────────────────
 
@@ -51,11 +51,13 @@ function getSettings(): schema.AiReviewSettings {
 		})
 		.run();
 
-	return db
+	const inserted = db
 		.select()
 		.from(schema.aiReviewSettings)
 		.where(eq(schema.aiReviewSettings.id, "default"))
-		.get()!;
+		.get();
+	if (!inserted) throw new Error("Failed to initialize AI review settings");
+	return inserted;
 }
 
 /**
@@ -135,10 +137,7 @@ export async function queueSolve(sessionId: string): Promise<SolveLaunchInfo> {
 		.select()
 		.from(schema.prComments)
 		.where(
-			and(
-				eq(schema.prComments.solveSessionId, sessionId),
-				eq(schema.prComments.status, "open")
-			)
+			and(eq(schema.prComments.solveSessionId, sessionId), eq(schema.prComments.status, "open"))
 		)
 		.all();
 
@@ -224,13 +223,9 @@ export async function queueSolve(sessionId: string): Promise<SolveLaunchInfo> {
 					`export DB_PATH='${dbPath}'`,
 					`export WORKTREE_PATH='${worktreePath}'`,
 				];
-		const scriptContent = [
-			"#!/bin/bash",
-			`cd '${worktreePath}'`,
-			...envLines,
-			"",
-			cliCommand,
-		].join("\n");
+		const scriptContent = ["#!/bin/bash", `cd '${worktreePath}'`, ...envLines, "", cliCommand].join(
+			"\n"
+		);
 		writeFileSync(launchScript, scriptContent, "utf-8");
 		chmodSync(launchScript, 0o755);
 

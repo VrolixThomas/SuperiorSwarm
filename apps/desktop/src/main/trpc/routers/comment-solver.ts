@@ -25,9 +25,9 @@ function parsePrIdentifier(identifier: string): {
 	const match = identifier.match(/^(.+?)\/(.+?)#(\d+)$/);
 	if (!match) throw new Error(`Invalid PR identifier: ${identifier}`);
 	return {
-		owner: match[1]!,
-		repo: match[2]!,
-		number: Number.parseInt(match[3]!, 10),
+		owner: match[1] ?? "",
+		repo: match[2] ?? "",
+		number: Number.parseInt(match[3] ?? "", 10),
 	};
 }
 
@@ -172,13 +172,11 @@ export const commentSolverRouter = router({
 	/**
 	 * Get a single solve session assembled with groups, comments, and replies.
 	 */
-	getSolveSession: publicProcedure
-		.input(z.object({ sessionId: z.string() }))
-		.query(({ input }) => {
-			const info = assembleSolveSession(input.sessionId);
-			if (!info) throw new Error(`Solve session ${input.sessionId} not found`);
-			return info;
-		}),
+	getSolveSession: publicProcedure.input(z.object({ sessionId: z.string() })).query(({ input }) => {
+		const info = assembleSolveSession(input.sessionId);
+		if (!info) throw new Error(`Solve session ${input.sessionId} not found`);
+		return info;
+	}),
 
 	/**
 	 * Get platform comments for a PR that are not yet in any active solve session.
@@ -314,9 +312,7 @@ export const commentSolverRouter = router({
 				knownPlatformIds = new Set(knownComments.map((c) => c.platformCommentId));
 			}
 
-			const newComments = rawComments.filter(
-				(c) => !knownPlatformIds.has(String(c.id))
-			);
+			const newComments = rawComments.filter((c) => !knownPlatformIds.has(String(c.id)));
 
 			if (newComments.length === 0) {
 				throw new Error("No new unresolved comments to solve");
@@ -366,28 +362,26 @@ export const commentSolverRouter = router({
 	/**
 	 * Approve a fixed group (transitions "fixed" → "approved").
 	 */
-	approveGroup: publicProcedure
-		.input(z.object({ groupId: z.string() }))
-		.mutation(({ input }) => {
-			const db = getDb();
-			const group = db
-				.select()
-				.from(schema.commentGroups)
-				.where(eq(schema.commentGroups.id, input.groupId))
-				.get();
+	approveGroup: publicProcedure.input(z.object({ groupId: z.string() })).mutation(({ input }) => {
+		const db = getDb();
+		const group = db
+			.select()
+			.from(schema.commentGroups)
+			.where(eq(schema.commentGroups.id, input.groupId))
+			.get();
 
-			if (!group) throw new Error(`Comment group ${input.groupId} not found`);
-			if (group.status !== "fixed") {
-				throw new Error(`Cannot approve group with status "${group.status}" — expected "fixed"`);
-			}
+		if (!group) throw new Error(`Comment group ${input.groupId} not found`);
+		if (group.status !== "fixed") {
+			throw new Error(`Cannot approve group with status "${group.status}" — expected "fixed"`);
+		}
 
-			db.update(schema.commentGroups)
-				.set({ status: "approved" })
-				.where(eq(schema.commentGroups.id, input.groupId))
-				.run();
+		db.update(schema.commentGroups)
+			.set({ status: "approved" })
+			.where(eq(schema.commentGroups.id, input.groupId))
+			.run();
 
-			return { success: true };
-		}),
+		return { success: true };
+	}),
 
 	/**
 	 * Revert a fix group by running git revert on its commit.
@@ -468,15 +462,11 @@ export const commentSolverRouter = router({
 	/**
 	 * Delete a comment reply.
 	 */
-	deleteReply: publicProcedure
-		.input(z.object({ replyId: z.string() }))
-		.mutation(({ input }) => {
-			const db = getDb();
-			db.delete(schema.commentReplies)
-				.where(eq(schema.commentReplies.id, input.replyId))
-				.run();
-			return { success: true };
-		}),
+	deleteReply: publicProcedure.input(z.object({ replyId: z.string() })).mutation(({ input }) => {
+		const db = getDb();
+		db.delete(schema.commentReplies).where(eq(schema.commentReplies.id, input.replyId)).run();
+		return { success: true };
+	}),
 
 	/**
 	 * Push commits and post approved replies to the platform.
@@ -498,9 +488,7 @@ export const commentSolverRouter = router({
 				(g) => g.status !== "approved" && g.status !== "reverted"
 			);
 			if (unapprovedGroups.length > 0) {
-				throw new Error(
-					`Cannot publish: ${unapprovedGroups.length} group(s) not yet approved`
-				);
+				throw new Error(`Cannot publish: ${unapprovedGroups.length} group(s) not yet approved`);
 			}
 
 			// Validate no draft replies remain
