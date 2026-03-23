@@ -5,6 +5,7 @@ import {
 	queueSolve,
 	revertGroup as revertGroupOrchestrator,
 } from "../../ai-review/comment-solver-orchestrator";
+import { getCachedPRs } from "../../ai-review/pr-poller";
 import { publishSolve } from "../../ai-review/solve-publisher";
 import { atlassianFetch } from "../../atlassian/auth";
 import { BITBUCKET_API_BASE } from "../../atlassian/constants";
@@ -226,15 +227,50 @@ export const commentSolverRouter = router({
 			const db = getDb();
 
 			// 1. Fetch workspace
-			const workspace = db
+			let workspace = db
 				.select()
 				.from(schema.workspaces)
 				.where(eq(schema.workspaces.id, input.workspaceId))
 				.get();
 
 			if (!workspace) throw new Error(`Workspace ${input.workspaceId} not found`);
-			if (!workspace.prProvider) throw new Error("Workspace has no prProvider set");
-			if (!workspace.prIdentifier) throw new Error("Workspace has no prIdentifier set");
+
+			// Auto-detect PR if not linked yet
+			if (!workspace.prProvider || !workspace.prIdentifier) {
+				if (!workspace.worktreeId) throw new Error("Workspace has no worktree linked");
+				const wt = db
+					.select()
+					.from(schema.worktrees)
+					.where(eq(schema.worktrees.id, workspace.worktreeId))
+					.get();
+				if (!wt) throw new Error("Worktree not found");
+
+				const cached = getCachedPRs(workspace.projectId);
+				const match = cached.find(
+					(pr) => pr.sourceBranch === wt.branch && pr.state === "open"
+				);
+				if (!match) {
+					throw new Error(
+						`No open PR found for branch "${wt.branch}". Make sure a pull request exists and the PR poller has run.`
+					);
+				}
+
+				// Link the workspace to its PR
+				db.update(schema.workspaces)
+					.set({
+						prProvider: match.provider,
+						prIdentifier: match.identifier,
+						updatedAt: new Date(),
+					})
+					.where(eq(schema.workspaces.id, workspace.id))
+					.run();
+
+				workspace = {
+					...workspace,
+					prProvider: match.provider,
+					prIdentifier: match.identifier,
+				};
+			}
 
 			// 2. Fetch worktree
 			if (!workspace.worktreeId) throw new Error("Workspace has no worktree linked");

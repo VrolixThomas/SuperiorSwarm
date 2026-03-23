@@ -44,10 +44,12 @@ function WorkspaceContextMenu({
 	position,
 	onClose,
 	onDelete,
+	onSolveComments,
 }: {
 	position: { x: number; y: number };
 	onClose: () => void;
 	onDelete: () => void;
+	onSolveComments?: () => void;
 }) {
 	const menuRef = useRef<HTMLDivElement>(null);
 	const [adjusted, setAdjusted] = useState(position);
@@ -95,6 +97,19 @@ function WorkspaceContextMenu({
 			className="fixed z-50 min-w-[160px] rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-elevated)] py-1 shadow-[var(--shadow-md)]"
 			style={{ left: adjusted.x, top: adjusted.y }}
 		>
+			{onSolveComments && (
+				<div
+					role="menuitem"
+					tabIndex={0}
+					className="px-3 py-1.5 text-[13px] cursor-pointer hover:bg-[var(--bg-overlay)] transition-all duration-[120ms] text-[var(--accent)]"
+					onClick={onSolveComments}
+					onKeyDown={(e) => {
+						if (e.key === "Enter") onSolveComments();
+					}}
+				>
+					Solve Comments
+				</div>
+			)}
 			<div
 				role="menuitem"
 				tabIndex={0}
@@ -133,6 +148,26 @@ export function WorkspaceItem({ workspace, projectName, projectRepoPath }: Works
 	deleteWorkspaceRef.current = deleteWorkspace.mutate;
 
 	const isActive = useTabStore((s) => s.activeWorkspaceId === workspace.id);
+
+	const triggerSolve = trpc.commentSolver.triggerSolve.useMutation({
+		onSuccess: (launch) => {
+			utils.workspaces.listByProject.invalidate();
+			utils.commentSolver.getSolveSessions.invalidate();
+			// Open the workspace and switch to solve panel
+			const cwd = launch.worktreePath;
+			const store = useTabStore.getState();
+			store.setActiveWorkspace(workspace.id, cwd);
+			store.openCommentSolvePanel(workspace.id);
+			// Create terminal tab for the AI solver
+			const tabId = store.addTerminalTab(workspace.id, cwd, "AI Solver");
+			window.electron.terminal.create(tabId, cwd).then(() => {
+				window.electron.terminal.write(tabId, `${launch.launchScript}\n`);
+			});
+		},
+		onError: (err) => {
+			window.alert(`Failed to solve comments: ${err.message}`);
+		},
+	});
 
 	const solveSessionsQuery = trpc.commentSolver.getSolveSessions.useQuery(
 		{ workspaceId: workspace.id },
@@ -173,6 +208,11 @@ export function WorkspaceItem({ workspace, projectName, projectRepoPath }: Works
 		projectName,
 		projectRepoPath,
 	]);
+
+	const handleSolveComments = useCallback(() => {
+		setContextMenu(null);
+		triggerSolve.mutate({ workspaceId: workspace.id });
+	}, [workspace.id, triggerSolve]);
 
 	const handleDelete = useCallback(() => {
 		const confirmed = window.confirm(
@@ -235,6 +275,7 @@ export function WorkspaceItem({ workspace, projectName, projectRepoPath }: Works
 					position={contextMenu}
 					onClose={() => setContextMenu(null)}
 					onDelete={handleDelete}
+					onSolveComments={workspace.type === "worktree" ? handleSolveComments : undefined}
 				/>
 			)}
 		</div>
