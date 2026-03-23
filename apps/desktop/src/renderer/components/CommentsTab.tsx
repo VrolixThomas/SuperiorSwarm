@@ -260,11 +260,29 @@ function UnsolvedState({ workspaceId }: { workspaceId: string }) {
 									<span className="text-[10px] font-medium text-[var(--text-secondary)]">
 										{comment.author}
 									</span>
-									{filename && (
-										<span className="font-mono text-[10px] text-[var(--text-quaternary)]">
+									{comment.filePath && (
+										<button
+											type="button"
+											onClick={() => {
+												const cwd = useTabStore.getState().activeWorkspaceCwd;
+												if (!cwd) return;
+												const lang = detectLanguage(comment.filePath ?? "");
+												useTabStore.getState().openFile(
+													workspaceId,
+													cwd,
+													comment.filePath ?? "",
+													lang,
+													comment.lineNumber != null
+														? { lineNumber: comment.lineNumber, column: 1 }
+														: undefined
+												);
+											}}
+											className="font-mono text-[10px] text-[var(--accent)] hover:underline"
+											title={comment.filePath}
+										>
 											{filename}
 											{comment.lineNumber != null && `:${comment.lineNumber}`}
-										</span>
+										</button>
 									)}
 									<div className="flex-1" />
 									{isSkipped && (
