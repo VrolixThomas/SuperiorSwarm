@@ -99,14 +99,6 @@ export async function queueSolve(sessionId: string): Promise<SolveLaunchInfo> {
 
 	const worktreePath = worktree.path;
 
-	// Validate clean worktree
-	const gitStatus = execSync("git status --porcelain", { cwd: worktreePath }).toString().trim();
-	if (gitStatus.length > 0) {
-		throw new Error(
-			"Worktree has uncommitted changes. Please commit or stash your changes before starting a solve session."
-		);
-	}
-
 	// Validate no other active sessions for this workspace (excluding self)
 	const activeForWorkspace = db
 		.select()

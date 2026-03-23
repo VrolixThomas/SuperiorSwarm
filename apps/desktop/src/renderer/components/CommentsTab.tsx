@@ -397,43 +397,17 @@ function UnsolvedState({ workspaceId }: { workspaceId: string }) {
 
 // ── State 2: In Progress ──────────────────────────────────────────────────────
 
-function InProgressState({
-	session,
-	workspaceId,
-}: {
-	session: { id: string; status: string };
-	workspaceId: string;
-}) {
-	const meta = useTabStore((s) => s.workspaceMetadata[workspaceId]);
-	const prTitle = meta?.prTitle ?? "Pull Request";
-	const prNumber = meta?.prIdentifier?.match(/#(\d+)$/)?.[1] ?? null;
-	const sourceBranch = meta?.sourceBranch ?? null;
-
+/** Small banner shown at the top of the comments tab when a solve is in progress */
+function SolvingBanner() {
 	return (
-		<div className="flex flex-1 min-h-0 flex-col bg-[var(--bg-base)]">
-			<PRHeader
-				title={prTitle}
-				prNumber={prNumber}
-				sourceBranch={sourceBranch}
-				statusText="solving..."
-				statusColor="#ffd54f"
+		<div className="flex items-center gap-2 border-b border-[var(--accent)] bg-[rgba(10,132,255,0.08)] px-3 py-1.5">
+			<div
+				className="h-3 w-3 shrink-0 rounded-full border-[1.5px] border-[var(--border-subtle)] border-t-[var(--accent)]"
+				style={{ animation: "spin 0.8s linear infinite" }}
 			/>
-
-			<div className="flex flex-1 flex-col items-center justify-center gap-4">
-				{/* Spinner */}
-				<div
-					className="h-8 w-8 rounded-full border-2 border-[var(--border-subtle)] border-t-[var(--accent)]"
-					style={{ animation: "spin 0.8s linear infinite" }}
-				/>
-				<div className="text-[12px] text-[var(--text-secondary)]">
-					AI is analyzing and fixing comments...
-				</div>
-				<div className="text-[10px] text-[var(--text-quaternary)]">
-					Watch progress in the AI Solver terminal tab
-				</div>
-			</div>
-
-			{/* CSS keyframe for spinner */}
+			<span className="text-[10px] text-[var(--accent)]">
+				AI is solving comments — check the AI Solver terminal tab
+			</span>
 			<style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
 		</div>
 	);
@@ -904,13 +878,19 @@ export function CommentsTab({ workspaceId }: CommentsTabProps) {
 		return <UnsolvedState workspaceId={workspaceId} />;
 	}
 
-	// State 2: In progress (queued or in_progress)
-	if (latestSession.status === "queued" || latestSession.status === "in_progress") {
-		return <InProgressState session={latestSession} workspaceId={workspaceId} />;
-	}
+	const isSolving =
+		latestSession.status === "queued" || latestSession.status === "in_progress";
 
-	// Session exists but still loading full data
+	// Session exists but still loading full data — show unsolved view with banner if solving
 	if (!fullSession) {
+		if (isSolving) {
+			return (
+				<div className="flex flex-1 min-h-0 flex-col bg-[var(--bg-base)]">
+					<SolvingBanner />
+					<UnsolvedState workspaceId={workspaceId} />
+				</div>
+			);
+		}
 		return (
 			<div className="flex h-full flex-col items-center justify-center gap-3 bg-[var(--bg-base)]">
 				{[1, 2, 3].map((i) => (
@@ -925,6 +905,11 @@ export function CommentsTab({ workspaceId }: CommentsTabProps) {
 		);
 	}
 
-	// State 3: Solved (ready/submitted/failed)
-	return <SolvedState session={fullSession} workspaceId={workspaceId} />;
+	// State 3: Solved (ready/submitted/failed) — or in progress with partial data
+	return (
+		<div className="flex flex-1 min-h-0 flex-col bg-[var(--bg-base)]">
+			{isSolving && <SolvingBanner />}
+			<SolvedState session={fullSession} workspaceId={workspaceId} />
+		</div>
+	);
 }
