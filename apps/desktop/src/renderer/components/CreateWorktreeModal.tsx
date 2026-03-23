@@ -102,9 +102,7 @@ export function CreateWorktreeModal() {
 
 	// Branches that already have worktrees
 	const existingWorktreeBranches = new Set(
-		(workspacesQuery.data ?? [])
-			.map((ws) => ws.name)
-			.filter(Boolean)
+		(workspacesQuery.data ?? []).map((ws) => ws.name).filter(Boolean)
 	);
 
 	// Available branches for checkout (remote branches minus those already checked out)
@@ -140,8 +138,7 @@ export function CreateWorktreeModal() {
 	const errorMessage =
 		mode === "new" ? createMutation.error?.message : checkoutMutation.error?.message;
 
-	const isSubmitDisabled =
-		isPending || (mode === "new" ? !branchName.trim() : !selectedBranch);
+	const isSubmitDisabled = isPending || (mode === "new" ? !branchName.trim() : !selectedBranch);
 
 	return (
 		<div
@@ -175,9 +172,7 @@ export function CreateWorktreeModal() {
 				{/* Form */}
 				<form onSubmit={handleSubmit} className="flex flex-col gap-4 p-4">
 					{/* Mode toggle */}
-					<div
-						className="flex rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-elevated)] p-0.5"
-					>
+					<div className="flex rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-elevated)] p-0.5">
 						<button
 							type="button"
 							onClick={() => setMode("new")}
@@ -268,9 +263,11 @@ export function CreateWorktreeModal() {
 							{(branchesQuery.isPending || workspacesQuery.isPending) && (
 								<p className="text-[12px] text-[var(--text-tertiary)]">Loading branches...</p>
 							)}
-							{!branchesQuery.isPending && !workspacesQuery.isPending && filteredBranches.length === 0 && (
-								<p className="text-[12px] text-[var(--text-tertiary)]">No branches available</p>
-							)}
+							{!branchesQuery.isPending &&
+								!workspacesQuery.isPending &&
+								filteredBranches.length === 0 && (
+									<p className="text-[12px] text-[var(--text-tertiary)]">No branches available</p>
+								)}
 							{filteredBranches.length > 0 && (
 								<div className="max-h-[180px] overflow-y-auto rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-elevated)]">
 									{filteredBranches.map((branch) => (
@@ -283,14 +280,8 @@ export function CreateWorktreeModal() {
 											}}
 											className="w-full px-3 py-2 text-left text-[13px] transition-all duration-[120ms] hover:bg-[var(--bg-overlay)]"
 											style={{
-												color:
-													selectedBranch === branch
-														? "var(--accent)"
-														: "var(--text)",
-												background:
-													selectedBranch === branch
-														? "var(--bg-overlay)"
-														: "transparent",
+												color: selectedBranch === branch ? "var(--accent)" : "var(--text)",
+												background: selectedBranch === branch ? "var(--bg-overlay)" : "transparent",
 											}}
 										>
 											{branch}
@@ -315,9 +306,7 @@ export function CreateWorktreeModal() {
 								: "Checkout Branch"}
 					</button>
 
-					{isError && (
-						<p className="text-[13px] text-[var(--term-red)]">{errorMessage}</p>
-					)}
+					{isError && <p className="text-[13px] text-[var(--term-red)]">{errorMessage}</p>}
 				</form>
 			</div>
 		</div>
