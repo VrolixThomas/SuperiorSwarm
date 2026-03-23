@@ -120,7 +120,115 @@ export const workspacesRouter = router({
 				);
 			}
 
-			return workspace;
+			// Auto-detect authored PR for the new branch
+			const { getCachedPRs } = await import("../../ai-review/pr-poller");
+			const matchingPR = getCachedPRs(input.projectId).find(
+				(pr) => pr.sourceBranch === input.branch && pr.state === "open"
+			);
+			if (matchingPR) {
+				db.update(workspaces)
+					.set({
+						prProvider: matchingPR.provider,
+						prIdentifier: matchingPR.identifier,
+						updatedAt: new Date(),
+					})
+					.where(eq(workspaces.id, workspaceId))
+					.run();
+			}
+
+			return {
+				...workspace,
+				prProvider: matchingPR?.provider ?? null,
+				prIdentifier: matchingPR?.identifier ?? null,
+			};
+		}),
+
+	checkoutExisting: publicProcedure
+		.input(
+			z.object({
+				projectId: z.string(),
+				branch: z.string().min(1),
+			})
+		)
+		.mutation(async ({ input }) => {
+			const db = getDb();
+			const project = db.select().from(projects).where(eq(projects.id, input.projectId)).get();
+
+			if (!project) {
+				throw new Error("Project not found");
+			}
+
+			const worktreePath = join(worktreeBasePath(project.repoPath), input.branch);
+
+			await checkoutBranchWorktree(project.repoPath, worktreePath, input.branch);
+
+			const now = new Date();
+			const worktreeId = nanoid();
+			const workspaceId = nanoid();
+
+			db.insert(worktrees)
+				.values({
+					id: worktreeId,
+					projectId: input.projectId,
+					path: worktreePath,
+					branch: input.branch,
+					baseBranch: input.branch,
+					createdAt: now,
+					updatedAt: now,
+				})
+				.run();
+
+			const workspace = {
+				id: workspaceId,
+				projectId: input.projectId,
+				type: "worktree" as const,
+				name: input.branch,
+				worktreeId,
+				terminalId: null as string | null,
+				prProvider: null as string | null,
+				prIdentifier: null as string | null,
+				createdAt: now,
+				updatedAt: now,
+			};
+
+			db.insert(workspaces).values(workspace).run();
+
+			// Symlink shared files from main repo to new worktree
+			const sharedEntries = db
+				.select()
+				.from(sharedFiles)
+				.where(eq(sharedFiles.projectId, input.projectId))
+				.all();
+
+			if (sharedEntries.length > 0) {
+				await symlinkSharedFiles(
+					project.repoPath,
+					worktreePath,
+					sharedEntries.map((e) => ({ relativePath: e.relativePath }))
+				);
+			}
+
+			// Auto-detect authored PR for this branch
+			const { getCachedPRs } = await import("../../ai-review/pr-poller");
+			const matchingPR = getCachedPRs(input.projectId).find(
+				(pr) => pr.sourceBranch === input.branch && pr.state === "open"
+			);
+			if (matchingPR) {
+				db.update(workspaces)
+					.set({
+						prProvider: matchingPR.provider,
+						prIdentifier: matchingPR.identifier,
+						updatedAt: new Date(),
+					})
+					.where(eq(workspaces.id, workspaceId))
+					.run();
+			}
+
+			return {
+				...workspace,
+				prProvider: matchingPR?.provider ?? null,
+				prIdentifier: matchingPR?.identifier ?? null,
+			};
 		}),
 
 	linkFromPR: publicProcedure
