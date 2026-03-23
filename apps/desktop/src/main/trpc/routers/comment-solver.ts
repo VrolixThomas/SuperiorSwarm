@@ -218,11 +218,70 @@ export const commentSolverRouter = router({
 		}),
 
 	/**
+	 * Fetch live PR comments for a workspace's linked PR.
+	 * Returns raw platform comments without any session context.
+	 */
+	getWorkspaceComments: publicProcedure
+		.input(z.object({ workspaceId: z.string() }))
+		.query(async ({ input }) => {
+			const db = getDb();
+
+			const workspace = db
+				.select()
+				.from(schema.workspaces)
+				.where(eq(schema.workspaces.id, input.workspaceId))
+				.get();
+
+			if (!workspace || !workspace.prProvider || !workspace.prIdentifier) {
+				return [];
+			}
+
+			const { owner, repo, number: prNumber } = parsePrIdentifier(workspace.prIdentifier);
+
+			type WorkspaceComment = {
+				platformId: string;
+				author: string;
+				body: string;
+				filePath: string | null;
+				lineNumber: number | null;
+				createdAt: string;
+			};
+
+			if (workspace.prProvider === "github") {
+				const ghComments = await getPRComments(owner, repo, prNumber);
+				return ghComments.map(
+					(c): WorkspaceComment => ({
+						platformId: String(c.id),
+						author: c.author,
+						body: c.body,
+						filePath: c.path ?? null,
+						lineNumber: c.line ?? null,
+						createdAt: c.createdAt,
+					})
+				);
+			} else if (workspace.prProvider === "bitbucket") {
+				const bbComments = await getBitbucketPRComments(owner, repo, prNumber);
+				return bbComments.map(
+					(c): WorkspaceComment => ({
+						platformId: String(c.id),
+						author: c.author,
+						body: c.body,
+						filePath: c.filePath,
+						lineNumber: c.lineNumber,
+						createdAt: "",
+					})
+				);
+			}
+
+			return [];
+		}),
+
+	/**
 	 * Main entry point: fetch PR comments from platform, create a solve session,
 	 * and queue the AI solve job.
 	 */
 	triggerSolve: publicProcedure
-		.input(z.object({ workspaceId: z.string() }))
+		.input(z.object({ workspaceId: z.string(), excludeCommentIds: z.array(z.string()).optional() }))
 		.mutation(async ({ input }): Promise<SolveLaunchInfo> => {
 			const db = getDb();
 
@@ -368,7 +427,11 @@ export const commentSolverRouter = router({
 
 			const newComments = rawComments.filter((c) => !knownPlatformIds.has(String(c.id)));
 
-			if (newComments.length === 0) {
+			const commentsToInsert = newComments.filter(
+				(c) => !input.excludeCommentIds?.includes(String(c.id))
+			);
+
+			if (commentsToInsert.length === 0) {
 				throw new Error("No new unresolved comments to solve");
 			}
 
@@ -392,7 +455,7 @@ export const commentSolverRouter = router({
 				.run();
 
 			// 7. Insert new comments into prComments
-			for (const comment of newComments) {
+			for (const comment of commentsToInsert) {
 				db.insert(schema.prComments)
 					.values({
 						id: randomUUID(),
