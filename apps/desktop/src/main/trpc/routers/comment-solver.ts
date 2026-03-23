@@ -324,26 +324,44 @@ export const commentSolverRouter = router({
 				throw new Error(`Unsupported PR provider: ${workspace.prProvider}`);
 			}
 
-			// 5. Filter out comments already known in active sessions for this PR
-			const existingSessions = db
+			// 5. Clean up stuck sessions (queued/in_progress/failed) — they never completed
+			const stuckSessions = db
 				.select({ id: schema.commentSolveSessions.id })
 				.from(schema.commentSolveSessions)
 				.where(
 					and(
 						eq(schema.commentSolveSessions.prIdentifier, workspace.prIdentifier),
-						not(eq(schema.commentSolveSessions.status, "dismissed"))
+						inArray(schema.commentSolveSessions.status, ["queued", "in_progress", "failed"])
 					)
 				)
 				.all();
 
-			const existingSessionIds = existingSessions.map((s) => s.id);
+			for (const stuck of stuckSessions) {
+				db.delete(schema.commentSolveSessions)
+					.where(eq(schema.commentSolveSessions.id, stuck.id))
+					.run();
+			}
+
+			// 6. Filter out comments already known in successfully completed sessions
+			const completedSessions = db
+				.select({ id: schema.commentSolveSessions.id })
+				.from(schema.commentSolveSessions)
+				.where(
+					and(
+						eq(schema.commentSolveSessions.prIdentifier, workspace.prIdentifier),
+						inArray(schema.commentSolveSessions.status, ["ready", "submitted"])
+					)
+				)
+				.all();
+
+			const completedSessionIds = completedSessions.map((s) => s.id);
 
 			let knownPlatformIds = new Set<string>();
-			if (existingSessionIds.length > 0) {
+			if (completedSessionIds.length > 0) {
 				const knownComments = db
 					.select({ platformCommentId: schema.prComments.platformCommentId })
 					.from(schema.prComments)
-					.where(inArray(schema.prComments.solveSessionId, existingSessionIds))
+					.where(inArray(schema.prComments.solveSessionId, completedSessionIds))
 					.all();
 				knownPlatformIds = new Set(knownComments.map((c) => c.platformCommentId));
 			}
