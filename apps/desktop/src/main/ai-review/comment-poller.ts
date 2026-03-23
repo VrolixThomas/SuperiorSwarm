@@ -193,6 +193,18 @@ function reconcileUnlinkedWorkspaces(): void {
 				})
 				.where(eq(schema.workspaces.id, ws.id))
 				.run();
+
+			// Notify renderer so it can refresh workspace data
+			import("electron").then(({ BrowserWindow }) => {
+				for (const win of BrowserWindow.getAllWindows()) {
+					win.webContents.send("workspace-pr-linked", {
+						workspaceId: ws.id,
+						projectId: ws.projectId,
+						prProvider: match.provider,
+						prIdentifier: match.identifier,
+					});
+				}
+			});
 		}
 	}
 }
