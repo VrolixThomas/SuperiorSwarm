@@ -441,6 +441,58 @@ export function SettingsView() {
 							))}
 						</select>
 					</div>
+
+					{/* Auto-solve PR comments */}
+					<div className="flex items-center justify-between rounded-[8px] px-3 py-2.5 transition-colors hover:bg-[var(--bg-elevated)]">
+						<div className="flex flex-col gap-0.5">
+							<span className="text-[13px] font-medium text-[var(--text)]">
+								Auto-solve PR comments
+							</span>
+							<span className="text-[11px] text-[var(--text-tertiary)]">
+								Automatically fix review comments when detected
+							</span>
+						</div>
+						<button
+							type="button"
+							onClick={() =>
+								updateAiSettings.mutate({
+									autoSolveEnabled: !aiSettings?.autoSolveEnabled,
+								})
+							}
+							className={`relative h-[22px] w-[40px] shrink-0 cursor-pointer rounded-full border-none transition-colors ${
+								aiSettings?.autoSolveEnabled ? "bg-[var(--accent)]" : "bg-[var(--bg-elevated)]"
+							}`}
+						>
+							<div
+								className={`absolute top-[2px] size-[18px] rounded-full bg-white transition-transform ${
+									aiSettings?.autoSolveEnabled ? "translate-x-[20px]" : "translate-x-[2px]"
+								}`}
+							/>
+						</button>
+					</div>
+
+					{/* Custom solve instructions */}
+					<div className="flex flex-col gap-2 rounded-[8px] px-3 py-2.5 transition-colors hover:bg-[var(--bg-elevated)]">
+						<div className="flex flex-col gap-0.5">
+							<span className="text-[13px] font-medium text-[var(--text)]">
+								Custom solve instructions
+							</span>
+							<span className="text-[11px] text-[var(--text-tertiary)]">
+								Additional guidance for the AI when resolving comments
+							</span>
+						</div>
+						<textarea
+							value={aiSettings?.solvePrompt ?? ""}
+							onChange={(e) =>
+								updateAiSettings.mutate({
+									solvePrompt: e.target.value || null,
+								})
+							}
+							rows={4}
+							placeholder="Leave blank to use default instructions…"
+							className="w-full resize-none rounded-[6px] border border-[var(--border)] bg-[var(--bg-base)] px-2.5 py-2 font-mono text-[11px] text-[var(--text)] placeholder-[var(--text-quaternary)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
+						/>
+					</div>
 				</div>
 			</div>
 		</div>
