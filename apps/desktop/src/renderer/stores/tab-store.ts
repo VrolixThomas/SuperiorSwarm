@@ -44,7 +44,7 @@ export type TabItem =
 			title: string;
 			prCtx: PRContext;
 	  };
-export type PanelMode = "diff" | "explorer" | "pr-review";
+export type PanelMode = "diff" | "explorer" | "pr-review" | "comment-solve";
 
 export type RightPanelState =
 	| { open: false }
@@ -112,6 +112,7 @@ interface TabStore {
 
 	// PR review
 	openPRReviewPanel: (workspaceId: string, prCtx: PRContext) => void;
+	openCommentSolvePanel: (workspaceId: string) => void;
 	openPRReviewFile: (
 		workspaceId: string,
 		prCtx: PRContext,
@@ -212,6 +213,9 @@ function panelForWorkspace(cwd: string, meta: WorkspaceMetadata | undefined): Ri
 			repoPath: cwd,
 		};
 		return { open: true, mode: "pr-review", diffCtx: null, prCtx };
+	}
+	if (meta?.type !== "review" && meta?.prProvider && meta.prIdentifier) {
+		return { open: true, mode: "comment-solve", diffCtx: null };
 	}
 	return defaultPanelForCwd(cwd);
 }
@@ -461,6 +465,9 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 		// which fires the cross-store bridge (bumps _paneVersion), which would cause
 		// an infinite setState cascade if done synchronously in the same commit.
 		queueMicrotask(() => get().openPROverview(workspaceId, prCtx));
+	},
+	openCommentSolvePanel: (_workspaceId) => {
+		set({ rightPanel: { open: true, mode: "comment-solve", diffCtx: null } });
 	},
 	openPRReviewFile: (workspaceId, prCtx, filePath, language) => {
 		const key = prReviewFileKey(prCtx, filePath);
