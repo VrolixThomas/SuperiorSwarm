@@ -521,20 +521,8 @@ function SolvedGroupCard({
 	const filePaths = uniqueFilePaths(group.comments);
 	const repoPath = useTabStore((s) => s.activeWorkspaceCwd);
 
-	// Determine active file from currently open tab
-	const activeTabId = useTabStore((s) => s.getActiveTabId());
-	const allTabs = useTabStore((s) => s.getVisibleTabs());
-	const activeTab = useMemo(
-		() => allTabs.find((t) => t.id === activeTabId) ?? null,
-		[allTabs, activeTabId]
-	);
-	const activeFilePath = useMemo(() => {
-		if (!activeTab) return null;
-		if (activeTab.kind === "comment-fix-file" && activeTab.groupId === group.id) {
-			return activeTab.filePath;
-		}
-		return null;
-	}, [activeTab, group.id]);
+	// Track which file is active — avoid calling store methods in selectors (causes infinite re-renders)
+	const [activeFilePath, setActiveFilePath] = useState<string | null>(null);
 
 	const revertGroup = trpc.commentSolver.revertGroup.useMutation();
 	const approveGroup = trpc.commentSolver.approveGroup.useMutation();
@@ -566,6 +554,7 @@ function SolvedGroupCard({
 
 	const handleFileClick = (filePath: string) => {
 		if (!group.commitHash) return;
+		setActiveFilePath(filePath);
 		useTabStore
 			.getState()
 			.openCommentFixFile(
