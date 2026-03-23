@@ -1,9 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type {
-	SolveCommentInfo,
-	SolveGroupInfo,
-	SolveSessionInfo,
-} from "../../shared/solve-types";
+import type { SolveCommentInfo, SolveGroupInfo, SolveSessionInfo } from "../../shared/solve-types";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import { SolveActionBar } from "./SolveActionBar";
@@ -128,6 +124,8 @@ function PRHeader({
 
 function UnsolvedState({ workspaceId }: { workspaceId: string }) {
 	const [skippedIds, setSkippedIds] = useState<Set<string>>(new Set());
+	const [replyingTo, setReplyingTo] = useState<string | null>(null);
+	const [replyText, setReplyText] = useState("");
 	const commentsQuery = trpc.commentSolver.getWorkspaceComments.useQuery(
 		{ workspaceId },
 		{ staleTime: 10_000 }
@@ -220,9 +218,7 @@ function UnsolvedState({ workspaceId }: { workspaceId: string }) {
 							style={{ width: `${180 - i * 30}px` }}
 						/>
 					))}
-					<div className="mt-2 text-[11px] text-[var(--text-quaternary)]">
-						Loading comments...
-					</div>
+					<div className="mt-2 text-[11px] text-[var(--text-quaternary)]">Loading comments...</div>
 				</div>
 			</div>
 		);
@@ -234,9 +230,7 @@ function UnsolvedState({ workspaceId }: { workspaceId: string }) {
 			<div className="flex h-full flex-col bg-[var(--bg-base)]">
 				<PRHeader title={prTitle} prNumber={prNumber} sourceBranch={sourceBranch} />
 				<div className="flex flex-1 items-center justify-center">
-					<span className="text-[12px] text-[var(--text-quaternary)]">
-						No comments on this PR
-					</span>
+					<span className="text-[12px] text-[var(--text-quaternary)]">No comments on this PR</span>
 				</div>
 			</div>
 		);
@@ -251,17 +245,13 @@ function UnsolvedState({ workspaceId }: { workspaceId: string }) {
 				<div className="flex flex-col gap-1.5">
 					{comments.map((comment) => {
 						const isSkipped = skippedIds.has(comment.platformId);
-						const filename = comment.filePath
-							? comment.filePath.split("/").pop()
-							: null;
+						const filename = comment.filePath ? comment.filePath.split("/").pop() : null;
 
 						return (
-							<button
+							<div
 								key={comment.platformId}
-								type="button"
-								onClick={() => toggleSkip(comment.platformId)}
 								className={[
-									"w-full text-left rounded-[6px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] transition-opacity duration-150",
+									"w-full rounded-[6px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] transition-opacity duration-150",
 									isSkipped ? "opacity-40" : "",
 								].join(" ")}
 							>
@@ -273,8 +263,7 @@ function UnsolvedState({ workspaceId }: { workspaceId: string }) {
 									{filename && (
 										<span className="font-mono text-[10px] text-[var(--text-quaternary)]">
 											{filename}
-											{comment.lineNumber != null &&
-												`:${comment.lineNumber}`}
+											{comment.lineNumber != null && `:${comment.lineNumber}`}
 										</span>
 									)}
 									<div className="flex-1" />
@@ -288,7 +277,81 @@ function UnsolvedState({ workspaceId }: { workspaceId: string }) {
 								<div className="px-3 py-2 text-[11px] text-[var(--text-tertiary)] whitespace-pre-wrap">
 									{comment.body}
 								</div>
-							</button>
+								{/* Reply textarea */}
+								{replyingTo === comment.platformId && (
+									<div className="px-3 py-2 border-t border-[var(--border-subtle)]">
+										<textarea
+											value={replyText}
+											onChange={(e) => setReplyText(e.target.value)}
+											placeholder="Write a reply..."
+											className="w-full resize-none rounded-[4px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 py-1.5 text-[11px] text-[var(--text)] placeholder:text-[var(--text-quaternary)] focus:border-[var(--accent)] focus:outline-none"
+											rows={3}
+										/>
+										<div className="flex justify-end gap-1.5 mt-1.5">
+											<button
+												type="button"
+												onClick={() => { setReplyingTo(null); setReplyText(""); }}
+												className="rounded-[4px] px-2.5 py-1 text-[10px] font-medium text-[var(--text-tertiary)] hover:bg-[var(--bg-overlay)] transition-colors"
+											>
+												Cancel
+											</button>
+											<button
+												type="button"
+												onClick={() => {
+													// Post reply - for now just close the textarea
+													// The actual posting will be done when we implement the pushAndPost flow
+													setReplyingTo(null);
+													setReplyText("");
+												}}
+												disabled={!replyText.trim()}
+												className="rounded-[4px] bg-[var(--accent)] px-2.5 py-1 text-[10px] font-medium text-white hover:bg-[var(--accent-hover)] disabled:opacity-40 transition-colors"
+											>
+												Post Reply
+											</button>
+										</div>
+									</div>
+								)}
+								{/* Card actions */}
+								<div className="flex items-center gap-1.5 px-3 py-1.5 border-t border-[var(--border-subtle)]">
+									<button
+										type="button"
+										onClick={(e) => {
+											e.stopPropagation();
+											// Toggle reply textarea visibility
+											setReplyingTo(replyingTo === comment.platformId ? null : comment.platformId);
+										}}
+										className="rounded-[4px] px-2 py-0.5 text-[10px] font-medium text-[var(--text-tertiary)] hover:bg-[var(--bg-overlay)] hover:text-[var(--text-secondary)] transition-colors"
+									>
+										Reply
+									</button>
+									<button
+										type="button"
+										onClick={(e) => {
+											e.stopPropagation();
+											// TODO: resolve via GitHub/Bitbucket API - for now this is a placeholder
+										}}
+										className="rounded-[4px] px-2 py-0.5 text-[10px] font-medium text-[var(--text-tertiary)] hover:bg-[var(--bg-overlay)] hover:text-[var(--text-secondary)] transition-colors"
+									>
+										Resolve
+									</button>
+									<div className="flex-1" />
+									<button
+										type="button"
+										onClick={(e) => {
+											e.stopPropagation();
+											toggleSkip(comment.platformId);
+										}}
+										className={[
+											"rounded-[4px] px-2 py-0.5 text-[10px] font-medium transition-colors",
+											isSkipped
+												? "bg-[var(--bg-overlay)] text-[var(--text-secondary)]"
+												: "text-[var(--text-quaternary)] hover:bg-[var(--bg-overlay)] hover:text-[var(--text-tertiary)]",
+										].join(" ")}
+									>
+										{isSkipped ? "Include" : "Skip"}
+									</button>
+								</div>
+							</div>
 						);
 					})}
 				</div>
@@ -297,9 +360,7 @@ function UnsolvedState({ workspaceId }: { workspaceId: string }) {
 			{/* Solve button */}
 			<div className="shrink-0 border-t border-[var(--border)] bg-[var(--bg-elevated)] px-4 py-2.5">
 				{triggerSolve.isError && (
-					<div className="mb-2 text-[10px] text-[#ff453a]">
-						{triggerSolve.error.message}
-					</div>
+					<div className="mb-2 text-[10px] text-[#ff453a]">{triggerSolve.error.message}</div>
 				)}
 				<button
 					type="button"
@@ -398,9 +459,7 @@ function ReplyEditor({
 	return (
 		<div className="mt-2 rounded-[6px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)]">
 			<div className="flex items-center gap-1.5 border-b border-[var(--border-subtle)] px-3 py-1.5">
-				<span className="text-[10px] font-medium text-[var(--text-tertiary)]">
-					Draft Reply
-				</span>
+				<span className="text-[10px] font-medium text-[var(--text-tertiary)]">Draft Reply</span>
 				<div className="flex-1" />
 				{isApproved && (
 					<span className="rounded-[3px] bg-[rgba(10,132,255,0.15)] px-1.5 py-px text-[9px] font-semibold uppercase tracking-wide text-[#0a84ff]">
@@ -479,10 +538,7 @@ function SolvedGroupCard({
 	);
 	const activeFilePath = useMemo(() => {
 		if (!activeTab) return null;
-		if (
-			activeTab.kind === "comment-fix-file" &&
-			activeTab.groupId === group.id
-		) {
+		if (activeTab.kind === "comment-fix-file" && activeTab.groupId === group.id) {
 			return activeTab.filePath;
 		}
 		return null;
@@ -518,14 +574,16 @@ function SolvedGroupCard({
 
 	const handleFileClick = (filePath: string) => {
 		if (!group.commitHash) return;
-		useTabStore.getState().openCommentFixFile(
-			workspaceId,
-			group.id,
-			filePath,
-			group.commitHash,
-			repoPath,
-			detectLanguage(filePath)
-		);
+		useTabStore
+			.getState()
+			.openCommentFixFile(
+				workspaceId,
+				group.id,
+				filePath,
+				group.commitHash,
+				repoPath,
+				detectLanguage(filePath)
+			);
 	};
 
 	return (
@@ -563,9 +621,7 @@ function SolvedGroupCard({
 			{filePaths.length > 0 && (
 				<div className="border-b border-[var(--border-subtle)]">
 					{filePaths.map((fp) => {
-						const fileComments = group.comments.filter(
-							(c) => c.filePath === fp
-						);
+						const fileComments = group.comments.filter((c) => c.filePath === fp);
 						const filename = fp.split("/").pop() ?? fp;
 						const isActive = activeFilePath === fp;
 
@@ -581,9 +637,7 @@ function SolvedGroupCard({
 										: "border-l-2 border-l-transparent hover:bg-[var(--bg-elevated)]",
 								].join(" ")}
 							>
-								<span className="text-[10px] text-[var(--text-quaternary)]">
-									&#128196;
-								</span>
+								<span className="text-[10px] text-[var(--text-quaternary)]">&#128196;</span>
 								<span
 									className="min-w-0 flex-1 truncate text-[11px] text-[var(--text-secondary)]"
 									style={{ fontFamily: "var(--font-mono)" }}
@@ -603,19 +657,15 @@ function SolvedGroupCard({
 			{/* Comments nested under file context */}
 			<div className="flex flex-col gap-0 divide-y divide-[var(--border-subtle)]">
 				{group.comments.map((comment) => {
-					const commentStatus =
-						COMMENT_STATUS_STYLES[comment.status] ?? COMMENT_STATUS_STYLES.open;
-					const isAddressed =
-						comment.status === "fixed" || comment.status === "wont_fix";
+					const commentStatus = COMMENT_STATUS_STYLES[comment.status] ?? COMMENT_STATUS_STYLES.open;
+					const isAddressed = comment.status === "fixed" || comment.status === "wont_fix";
 					const needsClarification = comment.status === "unclear";
 
 					return (
 						<div key={comment.id} className="px-3 py-2">
 							{/* Comment author + status */}
 							<div className="mb-0.5 flex items-center gap-1.5 text-[10px]">
-								<span className="font-medium text-[var(--text-secondary)]">
-									{comment.author}
-								</span>
+								<span className="font-medium text-[var(--text-secondary)]">{comment.author}</span>
 								<span className="flex-1" />
 								{isAddressed && (
 									<span className="flex items-center gap-0.5 text-[#6fdb6f]">
@@ -644,9 +694,7 @@ function SolvedGroupCard({
 								{comment.body}
 							</p>
 							{/* Reply editor for unclear comments */}
-							{comment.reply && (
-								<ReplyEditor comment={comment} sessionId={sessionId} />
-							)}
+							{comment.reply && <ReplyEditor comment={comment} sessionId={sessionId} />}
 						</div>
 					);
 				})}
@@ -694,9 +742,7 @@ function SolvedState({
 
 	const prTitle = meta?.prTitle ?? session.prTitle ?? "Pull Request";
 	const prNumber =
-		meta?.prIdentifier?.match(/#(\d+)$/)?.[1] ??
-		session.prIdentifier.match(/#(\d+)$/)?.[1] ??
-		null;
+		meta?.prIdentifier?.match(/#(\d+)$/)?.[1] ?? session.prIdentifier.match(/#(\d+)$/)?.[1] ?? null;
 	const sourceBranch = meta?.sourceBranch ?? session.sourceBranch ?? null;
 
 	const totalComments = session.groups.reduce((sum, g) => sum + g.comments.length, 0);
@@ -761,9 +807,7 @@ function SolvedState({
 			<div className="flex-1 overflow-y-auto px-3 py-2">
 				{session.groups.length === 0 ? (
 					<div className="flex h-full items-center justify-center">
-						<span className="text-[12px] text-[var(--text-quaternary)]">
-							No fix groups created
-						</span>
+						<span className="text-[12px] text-[var(--text-quaternary)]">No fix groups created</span>
 					</div>
 				) : (
 					<div className="flex flex-col gap-2.5">
@@ -835,9 +879,7 @@ export function CommentsTab({ workspaceId }: CommentsTabProps) {
 							style={{ width: `${180 - i * 30}px` }}
 						/>
 					))}
-					<div className="mt-2 text-[11px] text-[var(--text-quaternary)]">
-						Loading sessions...
-					</div>
+					<div className="mt-2 text-[11px] text-[var(--text-quaternary)]">Loading sessions...</div>
 				</div>
 			);
 		}
@@ -846,9 +888,7 @@ export function CommentsTab({ workspaceId }: CommentsTabProps) {
 
 	// State 2: In progress (queued or in_progress)
 	if (latestSession.status === "queued" || latestSession.status === "in_progress") {
-		return (
-			<InProgressState session={latestSession} workspaceId={workspaceId} />
-		);
+		return <InProgressState session={latestSession} workspaceId={workspaceId} />;
 	}
 
 	// Session exists but still loading full data
@@ -862,9 +902,7 @@ export function CommentsTab({ workspaceId }: CommentsTabProps) {
 						style={{ width: `${180 - i * 30}px` }}
 					/>
 				))}
-				<div className="mt-2 text-[11px] text-[var(--text-quaternary)]">
-					Loading session...
-				</div>
+				<div className="mt-2 text-[11px] text-[var(--text-quaternary)]">Loading session...</div>
 			</div>
 		);
 	}
