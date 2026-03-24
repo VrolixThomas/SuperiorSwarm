@@ -1,3 +1,4 @@
+import type React from "react";
 import { useRef, useState } from "react";
 import type {
 	AIDraftThread,
@@ -33,6 +34,7 @@ export function CommentThreadCard({
 	onReply,
 	onResolve,
 	onNavigate,
+	extraAction,
 }: {
 	thread: UnifiedThread;
 	prCtx: PRContext;
@@ -42,6 +44,7 @@ export function CommentThreadCard({
 	onReply?: (threadId: string, body: string) => void;
 	onResolve?: (threadId: string) => void;
 	onNavigate: (path: string) => void;
+	extraAction?: React.ReactNode;
 }) {
 	const [replyBody, setReplyBody] = useState("");
 	const replyRef = useRef<HTMLTextAreaElement>(null);
@@ -153,6 +156,7 @@ export function CommentThreadCard({
 						</button>
 					)
 				)}
+				{extraAction}
 			</div>
 
 			{gh.comments.map((c) => (

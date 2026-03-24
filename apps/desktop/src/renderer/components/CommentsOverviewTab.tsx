@@ -270,22 +270,16 @@ export function CommentsOverviewTab({ workspaceId }: CommentsOverviewTabProps) {
 					onNavigate={handleNavigate}
 					onReply={handleReply}
 					onResolve={handleResolve}
+					extraAction={
+						<button
+							type="button"
+							onClick={() => toggleSkip(t.id)}
+							className="text-[9px] text-[var(--text-quaternary)] hover:text-[var(--text-tertiary)] transition-colors"
+						>
+							{isSkipped ? "Include" : "Skip"}
+						</button>
+					}
 				/>
-				{/* Per-comment actions: Skip/Include */}
-				<div className="mx-2 -mt-0.5 mb-1.5 flex items-center gap-2 px-3 pb-1 text-[10px]">
-					<button
-						type="button"
-						onClick={() => toggleSkip(t.id)}
-						className={[
-							"transition-colors",
-							isSkipped
-								? "text-[var(--text-secondary)] hover:text-[var(--text)]"
-								: "text-[var(--text-quaternary)] hover:text-[var(--text-tertiary)]",
-						].join(" ")}
-					>
-						{isSkipped ? "Include in solve" : "Exclude from solve"}
-					</button>
-				</div>
 			</div>
 		);
 	};
