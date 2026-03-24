@@ -3,14 +3,15 @@ import type { DiffContext } from "../../shared/diff-types";
 import { type PanelMode, useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import { BranchChanges } from "./BranchChanges";
-import { CommentsTab } from "./CommentsTab";
+import { CommentsOverviewTab } from "./CommentsOverviewTab";
+import { AIFixesTab } from "./AIFixesTab";
 import { CommittedStack } from "./CommittedStack";
 import { DraftCommitCard } from "./DraftCommitCard";
 import { PRControlRail } from "./PRControlRail";
 import { RepoFileTree } from "./RepoFileTree";
 import { SmartHeaderBar } from "./SmartHeaderBar";
 
-type DiffPanelTab = "changes" | "files" | "comments";
+type DiffPanelTab = "changes" | "files" | "comments" | "ai-fixes";
 
 function PanelHeader({
 	mode,
@@ -83,6 +84,18 @@ function PanelHeader({
 									{commentCount}
 								</span>
 							)}
+						</button>
+						<button
+							type="button"
+							onClick={() => onSetTab("ai-fixes")}
+							className={[
+								"rounded-[4px] px-3 py-0.5 text-[11px] font-medium transition-all duration-[120ms]",
+								activeTab === "ai-fixes"
+									? "bg-[var(--bg-elevated)] text-[var(--text-secondary)] shadow-[var(--shadow-sm)]"
+									: "text-[var(--text-quaternary)] hover:text-[var(--text-tertiary)]",
+							].join(" ")}
+						>
+							AI Fixes
 						</button>
 					</>
 				) : (
@@ -257,7 +270,11 @@ function DiffPanelContent({ diffCtx, onClose }: { diffCtx: DiffContext; onClose?
 
 			{activeTab === "comments" && activeWorkspaceId ? (
 				<div className="flex flex-1 flex-col min-h-0 overflow-hidden">
-					<CommentsTab workspaceId={activeWorkspaceId} />
+					<CommentsOverviewTab workspaceId={activeWorkspaceId} />
+				</div>
+			) : activeTab === "ai-fixes" && activeWorkspaceId ? (
+				<div className="flex flex-1 flex-col min-h-0 overflow-hidden">
+					<AIFixesTab workspaceId={activeWorkspaceId} />
 				</div>
 			) : (
 				<>
