@@ -592,6 +592,25 @@ export const commentSolverRouter = router({
 	}),
 
 	/**
+	 * Add a new draft reply to a comment.
+	 */
+	addReply: publicProcedure
+		.input(z.object({ commentId: z.string(), body: z.string() }))
+		.mutation(({ input }) => {
+			const db = getDb();
+			const id = randomUUID();
+			db.insert(schema.commentReplies)
+				.values({
+					id,
+					prCommentId: input.commentId,
+					body: input.body,
+					status: "draft",
+				})
+				.run();
+			return { id, success: true };
+		}),
+
+	/**
 	 * Push commits and post approved replies to the platform.
 	 * Validates all groups are approved and all replies are resolved first.
 	 */

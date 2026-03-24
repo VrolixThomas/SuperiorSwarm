@@ -137,6 +137,12 @@ function CommitGroupCard({
 		},
 	});
 
+	const addReply = trpc.commentSolver.addReply.useMutation({
+		onSuccess: () => {
+			utils.commentSolver.getSolveSession.invalidate({ sessionId });
+		},
+	});
+
 	const handleFollowUp = () => {
 		// Find existing AI Solver terminal tab for this workspace
 		const tabStore = useTabStore.getState();
@@ -375,24 +381,40 @@ function CommitGroupCard({
 							{/* Inline reply input (when no reply exists) — single click to start typing */}
 							{!comment.reply && (
 								<div className="mt-1.5">
-									<input
-										type="text"
+									<textarea
 										placeholder="Reply..."
 										value={addingReplyTo === comment.id ? newReplyText : ""}
+										rows={addingReplyTo === comment.id && newReplyText ? Math.min(Math.max(newReplyText.split("\n").length, 2), 6) : 1}
 										onFocus={() => { if (addingReplyTo !== comment.id) { setAddingReplyTo(comment.id); setNewReplyText(""); } }}
 										onChange={(e) => { setAddingReplyTo(comment.id); setNewReplyText(e.target.value); }}
 										onKeyDown={(e) => {
-											if (e.key === "Enter" && newReplyText.trim()) {
+											if (e.key === "Enter" && !e.shiftKey && newReplyText.trim()) {
+												e.preventDefault();
+												addReply.mutate({
+													commentId: comment.id,
+													body: newReplyText.trim(),
+												});
 												setAddingReplyTo(null);
 												setNewReplyText("");
 											}
 											if (e.key === "Escape") {
 												setAddingReplyTo(null);
 												setNewReplyText("");
+												(e.target as HTMLTextAreaElement).blur();
 											}
 										}}
-										className="w-full rounded-[4px] border border-transparent bg-transparent px-0 py-0.5 text-[11px] text-[var(--text)] placeholder:text-[var(--text-quaternary)] focus:border-[var(--border-subtle)] focus:bg-[var(--bg-elevated)] focus:px-2 focus:outline-none transition-all"
+										className={[
+											"w-full resize-none rounded-[4px] text-[11px] text-[var(--text)] placeholder:text-[var(--text-quaternary)] transition-all focus:outline-none",
+											addingReplyTo === comment.id
+												? "border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 py-1.5"
+												: "border border-transparent bg-transparent px-0 py-0.5",
+										].join(" ")}
 									/>
+									{addingReplyTo === comment.id && newReplyText && (
+										<div className="mt-0.5 text-[9px] text-[var(--text-quaternary)]">
+											Enter to save · Shift+Enter for new line · Esc to cancel
+										</div>
+									)}
 								</div>
 							)}
 						</div>
