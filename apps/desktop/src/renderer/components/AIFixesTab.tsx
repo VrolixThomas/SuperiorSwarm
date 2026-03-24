@@ -63,35 +63,35 @@ function SolvingBanner() {
 
 // ── Progress Bar ──────────────────────────────────────────────────────────────
 
-function ProgressBar({
+function ProgressSummary({
 	resolved,
 	pending,
 	unclear,
-	total,
 }: {
 	resolved: number;
 	pending: number;
 	unclear: number;
-	total: number;
 }) {
-	if (total === 0) return null;
-
-	const resolvedPct = (resolved / total) * 100;
-	const unclearPct = (unclear / total) * 100;
-	// pending fills the gap
-
 	return (
-		<div className="flex items-center gap-3">
-			<div className="flex h-[6px] flex-1 overflow-hidden rounded-[3px] bg-[#333]">
-				{resolved > 0 && <div className="bg-[#34c759]" style={{ width: `${resolvedPct}%` }} />}
-				{pending > 0 && (
-					<div className="bg-[#333]" style={{ width: `${(pending / total) * 100}%` }} />
-				)}
-				{unclear > 0 && <div className="bg-[#ff453a]" style={{ width: `${unclearPct}%` }} />}
-			</div>
-			<span className="shrink-0 text-[11px] font-medium text-[var(--text-secondary)]">
-				{resolved} / {total}
-			</span>
+		<div className="flex items-center gap-3 text-[10px]">
+			{resolved > 0 && (
+				<span className="flex items-center gap-1">
+					<span className="inline-block h-[5px] w-[5px] rounded-full bg-[#34c759]" />
+					<span className="text-[var(--text-secondary)]">{resolved} resolved</span>
+				</span>
+			)}
+			{pending > 0 && (
+				<span className="flex items-center gap-1">
+					<span className="inline-block h-[5px] w-[5px] rounded-full bg-[var(--text-quaternary)]" />
+					<span className="text-[var(--text-secondary)]">{pending} pending</span>
+				</span>
+			)}
+			{unclear > 0 && (
+				<span className="flex items-center gap-1">
+					<span className="inline-block h-[5px] w-[5px] rounded-full bg-[#ff453a]" />
+					<span className="text-[var(--text-secondary)]">{unclear} unclear</span>
+				</span>
+			)}
 		</div>
 	);
 }
@@ -127,7 +127,7 @@ function CommitGroupCard({
 		(c) => c.status === "fixed" || c.status === "wont_fix"
 	).length;
 	const allFixed = fixedComments === totalComments && totalComments > 0;
-	const canApprove = allFixed && group.status === "fixed";
+	const canApprove = group.status === "fixed";
 
 	// Badge color: green when all resolved, accent when partial, gray when pending
 	const badgeBg = allFixed
@@ -227,17 +227,28 @@ function CommitGroupCard({
 			{/* Expanded content: comments */}
 			{expanded && (
 				<div className="flex flex-col gap-0 divide-y divide-[var(--border-subtle)] border-t border-[var(--border-subtle)]">
-					{group.comments.map((comment) => (
+					{group.comments.map((comment) => {
+						const commentFilename = comment.filePath ? comment.filePath.split("/").pop() : null;
+						return (
 						<div key={comment.id} className="px-3 py-2">
-							{/* Comment author + line */}
+							{/* Comment author + file:line */}
 							<div className="mb-0.5 flex items-center gap-1.5 text-[10px]">
 								<span className="font-bold text-[var(--text-secondary)]">{comment.author}</span>
-								{comment.lineNumber != null && (
-									<span className="text-[var(--text-quaternary)]">line {comment.lineNumber}</span>
+								{commentFilename && (
+									<button
+										type="button"
+										onClick={() => handleFileClick(comment.filePath)}
+										className="text-[var(--accent)] hover:underline"
+										style={{ fontFamily: "var(--font-mono)" }}
+										title={comment.filePath}
+									>
+										{commentFilename}
+										{comment.lineNumber != null && `:${comment.lineNumber}`}
+									</button>
 								)}
 							</div>
-							{/* Comment body */}
-							<p className="whitespace-pre-wrap text-[11px] text-[var(--text-tertiary)]">
+							{/* Comment body — full text, no truncation */}
+							<p className="whitespace-pre-wrap text-[11px] leading-[1.5] text-[var(--text-tertiary)]">
 								{comment.body}
 							</p>
 							{/* Draft reply */}
@@ -252,7 +263,8 @@ function CommitGroupCard({
 								</div>
 							)}
 						</div>
-					))}
+						);
+					})}
 				</div>
 			)}
 		</div>
@@ -352,29 +364,13 @@ function ActiveState({
 				</div>
 				{/* PR title */}
 				<h1 className="mt-1 text-[14px] font-semibold text-[var(--text)]">{prTitle}</h1>
-				{/* Progress bar */}
-				<div className="mt-2">
-					<ProgressBar
+				{/* Subtle status summary */}
+				<div className="mt-1.5">
+					<ProgressSummary
 						resolved={resolved}
 						pending={pendingComments}
 						unclear={unclearComments}
-						total={totalComments}
 					/>
-				</div>
-				{/* Legend */}
-				<div className="mt-1.5 flex items-center gap-3 text-[10px] text-[var(--text-tertiary)]">
-					<span className="flex items-center gap-1">
-						<span className="inline-block h-[6px] w-[6px] rounded-full bg-[#34c759]" />
-						{resolved} resolved
-					</span>
-					<span className="flex items-center gap-1">
-						<span className="inline-block h-[6px] w-[6px] rounded-full bg-[#333]" />
-						{pendingComments} pending
-					</span>
-					<span className="flex items-center gap-1">
-						<span className="inline-block h-[6px] w-[6px] rounded-full bg-[#ff453a]" />
-						{unclearComments} unclear
-					</span>
 				</div>
 			</div>
 
