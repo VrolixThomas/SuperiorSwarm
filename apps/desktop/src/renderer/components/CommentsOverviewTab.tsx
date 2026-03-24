@@ -214,16 +214,24 @@ export function CommentsOverviewTab({ workspaceId }: CommentsOverviewTabProps) {
 		useTabStore.getState().openFile(workspaceId, cwd, path, detectLanguage(path), undefined);
 	};
 
+	const addReviewComment = trpc.github.addReviewComment.useMutation({
+		onSuccess: () => {
+			commentsQuery.refetch();
+		},
+	});
+
+	const resolveThreadMutation = trpc.github.resolveThread.useMutation({
+		onSuccess: () => {
+			commentsQuery.refetch();
+		},
+	});
+
 	const handleReply = (threadId: string, body: string) => {
-		// Post reply to the platform via GitHub/Bitbucket API
-		// For now this is a stub — the actual API call will be wired later
-		console.log("[CommentsOverviewTab] Reply stub:", threadId, body);
+		addReviewComment.mutate({ threadId, body });
 	};
 
 	const handleResolve = (threadId: string) => {
-		// Resolve the thread on the platform
-		// For now this is a stub — the actual API call will be wired later
-		console.log("[CommentsOverviewTab] Resolve stub:", threadId);
+		resolveThreadMutation.mutate({ threadId });
 	};
 
 	const renderThread = (t: UnifiedThread) => {
