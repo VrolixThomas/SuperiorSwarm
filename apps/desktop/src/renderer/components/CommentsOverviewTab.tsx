@@ -208,22 +208,53 @@ export function CommentsOverviewTab({ workspaceId }: CommentsOverviewTabProps) {
 		);
 	};
 
-	const renderThread = (t: UnifiedThread) => (
-		<CommentThreadCard
-			key={t.id}
-			thread={t}
-			prCtx={prCtx}
-			onNavigate={(path) => {
-				const cwd = useTabStore.getState().activeWorkspaceCwd;
-				if (!cwd) return;
-				useTabStore
-					.getState()
-					.openFile(workspaceId, cwd, path, detectLanguage(path), undefined);
-			}}
-			onReply={undefined}
-			onResolve={undefined}
-		/>
-	);
+	const handleNavigate = (path: string) => {
+		const cwd = useTabStore.getState().activeWorkspaceCwd;
+		if (!cwd) return;
+		useTabStore.getState().openFile(workspaceId, cwd, path, detectLanguage(path), undefined);
+	};
+
+	const handleReply = (threadId: string, body: string) => {
+		// Post reply to the platform via GitHub/Bitbucket API
+		// For now this is a stub — the actual API call will be wired later
+		console.log("[CommentsOverviewTab] Reply stub:", threadId, body);
+	};
+
+	const handleResolve = (threadId: string) => {
+		// Resolve the thread on the platform
+		// For now this is a stub — the actual API call will be wired later
+		console.log("[CommentsOverviewTab] Resolve stub:", threadId);
+	};
+
+	const renderThread = (t: UnifiedThread) => {
+		const isSkipped = skippedIds.has(t.id);
+		return (
+			<div key={t.id} className={isSkipped ? "opacity-40" : ""}>
+				<CommentThreadCard
+					thread={t}
+					prCtx={prCtx}
+					onNavigate={handleNavigate}
+					onReply={handleReply}
+					onResolve={handleResolve}
+				/>
+				{/* Per-comment actions: Skip/Include */}
+				<div className="mx-2 -mt-0.5 mb-1.5 flex items-center gap-2 px-3 pb-1 text-[10px]">
+					<button
+						type="button"
+						onClick={() => toggleSkip(t.id)}
+						className={[
+							"transition-colors",
+							isSkipped
+								? "text-[var(--text-secondary)] hover:text-[var(--text)]"
+								: "text-[var(--text-quaternary)] hover:text-[var(--text-tertiary)]",
+						].join(" ")}
+					>
+						{isSkipped ? "Include in solve" : "Exclude from solve"}
+					</button>
+				</div>
+			</div>
+		);
+	};
 
 	// ── Error state ───────────────────────────────────────────────────────
 
