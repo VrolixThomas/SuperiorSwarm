@@ -1,29 +1,15 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { detectLanguage } from "../../shared/diff-types";
+import type { PRContext, UnifiedThread } from "../../shared/github-types";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
+import { CommentThreadCard, threadAuthor, threadDate } from "./CommentThreadCard";
+import type { SortMode } from "./CommentThreadCard";
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
 interface CommentsOverviewTabProps {
 	workspaceId: string;
-}
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function detectLanguage(filePath: string): string {
-	const ext = filePath.split(".").pop()?.toLowerCase() ?? "";
-	const map: Record<string, string> = {
-		ts: "typescript",
-		tsx: "typescriptreact",
-		js: "javascript",
-		jsx: "javascriptreact",
-		py: "python",
-		go: "go",
-		json: "json",
-		css: "css",
-		html: "html",
-	};
-	return map[ext] ?? "plaintext";
 }
 
 // ── PR Header ─────────────────────────────────────────────────────────────────
@@ -93,8 +79,7 @@ function SolvingBanner() {
 
 export function CommentsOverviewTab({ workspaceId }: CommentsOverviewTabProps) {
 	const [skippedIds, setSkippedIds] = useState<Set<string>>(new Set());
-	const [replyingTo, setReplyingTo] = useState<string | null>(null);
-	const [replyText, setReplyText] = useState("");
+	const [sortMode, setSortMode] = useState<SortMode>("by-file");
 
 	const commentsQuery = trpc.commentSolver.getWorkspaceComments.useQuery(
 		{ workspaceId },
@@ -115,9 +100,52 @@ export function CommentsOverviewTab({ workspaceId }: CommentsOverviewTabProps) {
 	const prNumber = meta?.prIdentifier?.match(/#(\d+)$/)?.[1] ?? null;
 	const sourceBranch = meta?.sourceBranch ?? null;
 
+	// Build PRContext from workspace metadata
+	const prCtx: PRContext = useMemo(() => {
+		const identifier = meta?.prIdentifier ?? "";
+		const [ownerRepo = "", numStr = "0"] = identifier.split("#");
+		const [owner = "", repo = ""] = ownerRepo.split("/");
+		return {
+			provider: (meta?.prProvider ?? "github") as "github" | "bitbucket",
+			owner,
+			repo,
+			number: parseInt(numStr, 10) || 0,
+			title: meta?.prTitle ?? "",
+			sourceBranch: meta?.sourceBranch ?? "",
+			targetBranch: meta?.targetBranch ?? "",
+			repoPath: useTabStore.getState().activeWorkspaceCwd,
+		};
+	}, [meta]);
+
 	// Check if a solve session is in progress
 	const sessions = sessionsQuery.data ?? [];
 	const isSessionInProgress = sessions.some((s) => s.status === "queued" || s.status === "running");
+
+	// Transform raw comments into UnifiedThread format
+	const threads: UnifiedThread[] = useMemo(
+		() =>
+			comments.map((c) => ({
+				id: c.platformId,
+				isResolved: false,
+				path: c.filePath ?? "",
+				line: c.lineNumber ?? null,
+				diffSide: "RIGHT" as const,
+				isAIDraft: false as const,
+				comments: [
+					{
+						id: c.platformId,
+						body: c.body,
+						author: c.author,
+						authorAvatarUrl: "",
+						createdAt: c.createdAt,
+					},
+				],
+			})),
+		[comments]
+	);
+
+	// Skipped IDs track platformIds; map them to thread ids (same value here)
+	const includedCount = threads.length - skippedIds.size;
 
 	const toggleSkip = (platformId: string) => {
 		setSkippedIds((prev) => {
@@ -131,7 +159,25 @@ export function CommentsOverviewTab({ workspaceId }: CommentsOverviewTabProps) {
 		});
 	};
 
-	const includedCount = comments.length - skippedIds.size;
+	// Grouped / sorted views
+	const grouped = useMemo(() => {
+		if (sortMode === "latest-first") return null;
+		const map = new Map<string, UnifiedThread[]>();
+		for (const t of threads) {
+			const key = sortMode === "by-file" ? t.path : threadAuthor(t);
+			const list = map.get(key);
+			if (list) list.push(t);
+			else map.set(key, [t]);
+		}
+		return map;
+	}, [threads, sortMode]);
+
+	const flatSorted = useMemo(() => {
+		if (sortMode !== "latest-first") return null;
+		return [...threads].sort(
+			(a, b) => new Date(threadDate(b)).getTime() - new Date(threadDate(a)).getTime()
+		);
+	}, [threads, sortMode]);
 
 	const handleSolve = () => {
 		triggerSolve.mutate(
@@ -161,6 +207,23 @@ export function CommentsOverviewTab({ workspaceId }: CommentsOverviewTabProps) {
 			}
 		);
 	};
+
+	const renderThread = (t: UnifiedThread) => (
+		<CommentThreadCard
+			key={t.id}
+			thread={t}
+			prCtx={prCtx}
+			onNavigate={(path) => {
+				const cwd = useTabStore.getState().activeWorkspaceCwd;
+				if (!cwd) return;
+				useTabStore
+					.getState()
+					.openFile(workspaceId, cwd, path, detectLanguage(path), undefined);
+			}}
+			onReply={undefined}
+			onResolve={undefined}
+		/>
+	);
 
 	// ── Error state ───────────────────────────────────────────────────────
 
@@ -240,157 +303,40 @@ export function CommentsOverviewTab({ workspaceId }: CommentsOverviewTabProps) {
 				title={prTitle}
 				prNumber={prNumber}
 				sourceBranch={sourceBranch}
-				commentCount={comments.length}
+				commentCount={threads.length}
 			/>
 
 			{isSessionInProgress && <SolvingBanner />}
 
-			{/* Comment cards */}
-			<div className="flex-1 overflow-y-auto px-3 py-2">
-				<div className="flex flex-col gap-1.5">
-					{comments.map((comment) => {
-						const isSkipped = skippedIds.has(comment.platformId);
-						const filename = comment.filePath ? comment.filePath.split("/").pop() : null;
+			{/* Sort control */}
+			<div className="flex shrink-0 items-center justify-between border-b border-[var(--border-subtle)] px-3 py-1.5">
+				<span className="text-[11px] text-[var(--text-tertiary)]">
+					{threads.length} thread{threads.length !== 1 ? "s" : ""}
+				</span>
+				<select
+					value={sortMode}
+					onChange={(e) => setSortMode(e.target.value as SortMode)}
+					className="rounded-[4px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-1.5 py-0.5 text-[10px] text-[var(--text-tertiary)] outline-none"
+				>
+					<option value="by-file">By file</option>
+					<option value="by-reviewer">By reviewer</option>
+					<option value="latest-first">Latest first</option>
+				</select>
+			</div>
 
-						return (
-							<div
-								key={comment.platformId}
-								className={[
-									"w-full rounded-[6px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] transition-opacity duration-150",
-									isSkipped ? "opacity-40" : "",
-								].join(" ")}
-							>
-								{/* Card header */}
-								<div className="flex items-center gap-1.5 border-b border-[var(--border-subtle)] px-3 py-1">
-									<span className="text-[10px] font-medium text-[var(--text-secondary)]">
-										{comment.author}
-									</span>
-									{comment.filePath && (
-										<button
-											type="button"
-											onClick={() => {
-												const cwd = useTabStore.getState().activeWorkspaceCwd;
-												if (!cwd) return;
-												const lang = detectLanguage(comment.filePath ?? "");
-												useTabStore.getState().openFile(
-													workspaceId,
-													cwd,
-													comment.filePath ?? "",
-													lang,
-													comment.lineNumber != null
-														? {
-																lineNumber: comment.lineNumber,
-																column: 1,
-															}
-														: undefined
-												);
-											}}
-											className="font-mono text-[10px] text-[var(--accent)] hover:underline"
-											title={comment.filePath}
-										>
-											{filename}
-											{comment.lineNumber != null && `:${comment.lineNumber}`}
-										</button>
-									)}
-									<div className="flex-1" />
-									{isSkipped && (
-										<span className="rounded-[3px] bg-[var(--bg-overlay)] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-[var(--text-tertiary)]">
-											Skipped
-										</span>
-									)}
+			{/* Thread list */}
+			<div className="flex-1 overflow-y-auto py-1">
+				{sortMode === "latest-first" && flatSorted
+					? flatSorted.map(renderThread)
+					: grouped &&
+						Array.from(grouped.entries()).map(([key, groupThreads]) => (
+							<div key={key}>
+								<div className="px-3 pt-2 pb-0.5 text-[10px] font-medium uppercase tracking-wide text-[var(--text-quaternary)]">
+									{key}
 								</div>
-
-								{/* Card body */}
-								<div className="px-3 py-2 text-[11px] text-[var(--text-tertiary)] whitespace-pre-wrap">
-									{comment.body}
-								</div>
-
-								{/* Reply textarea */}
-								{replyingTo === comment.platformId && (
-									<div className="border-t border-[var(--border-subtle)] px-3 py-2">
-										<textarea
-											value={replyText}
-											onChange={(e) => setReplyText(e.target.value)}
-											placeholder="Write a reply..."
-											className="w-full resize-none rounded-[4px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 py-1.5 text-[11px] text-[var(--text)] placeholder:text-[var(--text-quaternary)] focus:border-[var(--accent)] focus:outline-none"
-											rows={3}
-										/>
-										<div className="mt-1.5 flex justify-end gap-1.5">
-											<button
-												type="button"
-												onClick={() => {
-													setReplyingTo(null);
-													setReplyText("");
-												}}
-												className="rounded-[4px] px-2.5 py-1 text-[10px] font-medium text-[var(--text-tertiary)] hover:bg-[var(--bg-overlay)] transition-colors"
-											>
-												Cancel
-											</button>
-											<button
-												type="button"
-												onClick={() => {
-													// Post reply placeholder — actual posting via pushAndPost flow
-													setReplyingTo(null);
-													setReplyText("");
-												}}
-												disabled={!replyText.trim()}
-												className="rounded-[4px] bg-[var(--accent)] px-2.5 py-1 text-[10px] font-medium text-white hover:bg-[var(--accent-hover)] disabled:opacity-40 transition-colors"
-											>
-												Post Reply
-											</button>
-										</div>
-									</div>
-								)}
-
-								{/* Card actions */}
-								<div className="flex items-center gap-1.5 border-t border-[var(--border-subtle)] px-3 py-1.5">
-									<button
-										type="button"
-										onClick={(e) => {
-											e.stopPropagation();
-											if (replyingTo === comment.platformId) {
-												setReplyingTo(null);
-												setReplyText("");
-											} else {
-												setReplyingTo(comment.platformId);
-												setReplyText("");
-											}
-										}}
-										className="rounded-[4px] px-2 py-0.5 text-[10px] font-medium text-[var(--text-tertiary)] hover:bg-[var(--bg-overlay)] hover:text-[var(--text-secondary)] transition-colors"
-									>
-										Reply
-									</button>
-									<button
-										type="button"
-										onClick={(e) => {
-											e.stopPropagation();
-											// TODO: resolve via GitHub/Bitbucket API
-										}}
-										className="rounded-[4px] px-2 py-0.5 text-[10px] font-medium text-[var(--text-tertiary)] hover:bg-[var(--bg-overlay)] hover:text-[var(--text-secondary)] transition-colors"
-									>
-										Resolve
-									</button>
-									<div className="flex-1" />
-									<button
-										type="button"
-										onClick={(e) => {
-											e.stopPropagation();
-											toggleSkip(comment.platformId);
-										}}
-										className={[
-											"rounded-[4px] px-2 py-0.5 text-[10px] font-medium transition-colors",
-											isSkipped
-												? "bg-[var(--bg-overlay)] text-[var(--text-secondary)]"
-												: "text-[var(--text-quaternary)] hover:bg-[var(--bg-overlay)] hover:text-[var(--text-tertiary)]",
-										].join(" ")}
-									>
-										{isSkipped ? "Include" : "Skip"}
-									</button>
-								</div>
+								{groupThreads.map(renderThread)}
 							</div>
-						);
-					})}
-				</div>
+						))}
 			</div>
 
 			{/* Solve button */}
