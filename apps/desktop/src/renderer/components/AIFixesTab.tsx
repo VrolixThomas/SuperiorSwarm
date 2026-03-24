@@ -163,7 +163,7 @@ function CommitGroupCard({
 				<span className="shrink-0 text-[10px] text-[var(--text-quaternary)]">
 					{expanded ? "\u25BE" : "\u25B8"}
 				</span>
-				<span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-[var(--text-secondary)]">
+				<span className="min-w-0 flex-1 text-[12px] font-semibold text-[var(--text-secondary)]">
 					{group.label}
 				</span>
 				<span
@@ -238,7 +238,7 @@ function CommitGroupCard({
 									<button
 										type="button"
 										onClick={() => handleFileClick(comment.filePath)}
-										className="text-[var(--accent)] hover:underline"
+										className="text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:underline"
 										style={{ fontFamily: "var(--font-mono)" }}
 										title={comment.filePath}
 									>
