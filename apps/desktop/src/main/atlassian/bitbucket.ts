@@ -194,3 +194,23 @@ export async function replyToPRComment(
 	const data = (await res.json()) as { id: number };
 	return { id: data.id };
 }
+
+/** Resolve or unresolve a comment on a Bitbucket pull request */
+export async function resolvePRComment(
+	workspace: string,
+	repoSlug: string,
+	prId: number,
+	commentId: number,
+	resolved: boolean
+): Promise<void> {
+	const res = await atlassianFetch(
+		"bitbucket",
+		`${BITBUCKET_API_BASE}/repositories/${workspace}/${repoSlug}/pullrequests/${prId}/comments/${commentId}`,
+		{
+			method: "PUT",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ resolved }),
+		}
+	);
+	if (!res.ok) throw new Error(`Bitbucket resolve comment failed: ${res.status}`);
+}
