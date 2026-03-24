@@ -30,7 +30,7 @@ function PanelHeader({
 		{ key: "changes", label: "Changes" },
 		{ key: "files", label: "Files" },
 		{ key: "comments", label: "Comments", badge: commentCount && commentCount > 0 ? commentCount : undefined },
-		{ key: "ai-fixes", label: "AI Fixes" },
+		{ key: "ai-fixes", label: "Fixes" },
 	];
 
 	return (
@@ -42,7 +42,7 @@ function PanelHeader({
 						type="button"
 						onClick={() => onSetTab(t.key)}
 						className={[
-							"flex items-center gap-1 rounded-[4px] px-3 py-0.5 text-[11px] font-medium transition-all duration-[120ms]",
+							"flex items-center gap-1 whitespace-nowrap rounded-[4px] px-3 py-0.5 text-[11px] font-medium transition-all duration-[120ms]",
 							activeTab === t.key
 								? "bg-[var(--bg-elevated)] text-[var(--text-secondary)] shadow-[var(--shadow-sm)]"
 								: "text-[var(--text-quaternary)] hover:text-[var(--text-tertiary)]",
