@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import type {
 	AIDraftThread,
 	GitHubReviewThread,
@@ -43,13 +43,8 @@ export function CommentThreadCard({
 	onResolve?: (threadId: string) => void;
 	onNavigate: (path: string) => void;
 }) {
-	const [replyOpen, setReplyOpen] = useState(false);
 	const [replyBody, setReplyBody] = useState("");
 	const replyRef = useRef<HTMLTextAreaElement>(null);
-
-	useEffect(() => {
-		if (replyOpen) replyRef.current?.focus();
-	}, [replyOpen]);
 
 	const filename = thread.path.split("/").pop() ?? thread.path;
 	const isAI = !!thread.isAIDraft;
@@ -176,50 +171,34 @@ export function CommentThreadCard({
 			))}
 
 			{!gh.isResolved && onReply && (
-				<div className="border-t border-[var(--border-subtle)]">
-					{!replyOpen ? (
-						<button
-							type="button"
-							onClick={() => setReplyOpen(true)}
-							className="w-full px-3 py-1.5 text-left text-[10px] text-[var(--text-quaternary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-tertiary)] transition-colors"
-						>
-							Reply…
-						</button>
-					) : (
-						<div className="flex flex-col gap-1.5 p-2">
-							<textarea
-								ref={replyRef}
-								value={replyBody}
-								onChange={(e) => setReplyBody(e.target.value)}
-								rows={2}
-								placeholder="Write a reply…"
-								className="w-full resize-none rounded-[4px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 py-1 text-[11px] text-[var(--text-secondary)] placeholder-[var(--text-quaternary)] outline-none focus:border-[var(--accent)]"
-							/>
-							<div className="flex gap-1.5">
-								<button
-									type="button"
-									onClick={() => {
-										if (replyBody.trim()) {
-											onReply(gh.id, replyBody.trim());
-											setReplyBody("");
-											setReplyOpen(false);
-										}
-									}}
-									className="rounded-[4px] bg-[var(--accent)] px-2 py-0.5 text-[10px] font-medium text-white hover:opacity-80"
-								>
-									Reply
-								</button>
-								<button
-									type="button"
-									onClick={() => {
-										setReplyOpen(false);
-										setReplyBody("");
-									}}
-									className="text-[10px] text-[var(--text-quaternary)] hover:text-[var(--text-tertiary)]"
-								>
-									Cancel
-								</button>
-							</div>
+				<div className="px-3 pb-2">
+					<textarea
+						ref={replyRef}
+						value={replyBody}
+						onChange={(e) => setReplyBody(e.target.value)}
+						rows={replyBody ? Math.min(Math.max(replyBody.split("\n").length, 2), 6) : 1}
+						placeholder="Reply..."
+						onKeyDown={(e) => {
+							if (e.key === "Enter" && !e.shiftKey && replyBody.trim()) {
+								e.preventDefault();
+								onReply(gh.id, replyBody.trim());
+								setReplyBody("");
+							}
+							if (e.key === "Escape") {
+								setReplyBody("");
+								(e.target as HTMLTextAreaElement).blur();
+							}
+						}}
+						className={[
+							"w-full resize-none rounded-[4px] text-[11px] text-[var(--text)] placeholder:text-[var(--text-quaternary)] transition-all focus:outline-none",
+							replyBody
+								? "border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 py-1.5"
+								: "border border-transparent bg-transparent px-0 py-0.5 focus:border-[var(--border-subtle)] focus:bg-[var(--bg-elevated)] focus:px-2",
+						].join(" ")}
+					/>
+					{replyBody && (
+						<div className="mt-0.5 text-[9px] text-[var(--text-quaternary)]">
+							Enter to send &middot; Shift+Enter for new line &middot; Esc to cancel
 						</div>
 					)}
 				</div>
