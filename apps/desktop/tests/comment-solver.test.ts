@@ -176,9 +176,10 @@ describe("Comment Solver", () => {
 				VALUES (?, 'github', 'owner/repo#1', 'Test PR', 'feature', 'main', 'queued', 'ws-schema', ?, ?)
 			`).run(id, NOW, NOW);
 
-			const row = db
-				.prepare("SELECT * FROM comment_solve_sessions WHERE id = ?")
-				.get(id) as Record<string, unknown>;
+			const row = db.prepare("SELECT * FROM comment_solve_sessions WHERE id = ?").get(id) as Record<
+				string,
+				unknown
+			>;
 
 			expect(row).toBeDefined();
 			expect(row["status"]).toBe("queued");
@@ -230,12 +231,8 @@ describe("Comment Solver", () => {
 
 			db.prepare("DELETE FROM comment_solve_sessions WHERE id = ?").run(sessionId);
 
-			const group = db
-				.prepare("SELECT * FROM comment_groups WHERE id = 'cg-cascade'")
-				.get();
-			const comment = db
-				.prepare("SELECT * FROM pr_comments WHERE id = 'cc-1'")
-				.get();
+			const group = db.prepare("SELECT * FROM comment_groups WHERE id = 'cg-cascade'").get();
+			const comment = db.prepare("SELECT * FROM pr_comments WHERE id = 'cc-1'").get();
 
 			expect(group).toBeNull();
 			expect(comment).toBeNull();
@@ -263,9 +260,10 @@ describe("Comment Solver", () => {
 				UPDATE pr_comments SET group_id = 'grp-A' WHERE id IN ('gc-1', 'gc-2')
 			`).run();
 
-			const group = db
-				.prepare("SELECT * FROM comment_groups WHERE id = 'grp-A'")
-				.get() as Record<string, unknown>;
+			const group = db.prepare("SELECT * FROM comment_groups WHERE id = 'grp-A'").get() as Record<
+				string,
+				unknown
+			>;
 			expect(group).toBeDefined();
 			expect(group["label"]).toBe("Naming issues");
 			expect(group["status"]).toBe("pending");
@@ -286,9 +284,10 @@ describe("Comment Solver", () => {
 
 			db.prepare("UPDATE pr_comments SET group_id = 'grp-B' WHERE id = 'gc-3'").run();
 
-			const row = db
-				.prepare("SELECT group_id FROM pr_comments WHERE id = 'gc-3'")
-				.get() as Record<string, unknown>;
+			const row = db.prepare("SELECT group_id FROM pr_comments WHERE id = 'gc-3'").get() as Record<
+				string,
+				unknown
+			>;
 			expect(row["group_id"]).toBe("grp-B");
 		});
 	});
@@ -306,9 +305,10 @@ describe("Comment Solver", () => {
 		test("mark_comment_fixed updates status", () => {
 			db.prepare("UPDATE pr_comments SET status = 'fixed' WHERE id = 'fix-c-1'").run();
 
-			const row = db
-				.prepare("SELECT status FROM pr_comments WHERE id = 'fix-c-1'")
-				.get() as Record<string, unknown>;
+			const row = db.prepare("SELECT status FROM pr_comments WHERE id = 'fix-c-1'").get() as Record<
+				string,
+				unknown
+			>;
 			expect(row["status"]).toBe("fixed");
 		});
 
@@ -372,9 +372,9 @@ describe("Comment Solver", () => {
 		 * Returns the group IDs that block reverting `groupId`.
 		 */
 		function getBlockers(groupId: string): string[] {
-			const group = db
-				.prepare("SELECT * FROM comment_groups WHERE id = ?")
-				.get(groupId) as Record<string, unknown> | undefined;
+			const group = db.prepare("SELECT * FROM comment_groups WHERE id = ?").get(groupId) as
+				| Record<string, unknown>
+				| undefined;
 
 			if (!group) throw new Error(`Group ${groupId} not found`);
 

@@ -1,4 +1,4 @@
-import { eq, inArray, isNull, and } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { atlassianFetch, getAuth as getBitbucketAuth } from "../atlassian/auth";
 import { BITBUCKET_API_BASE } from "../atlassian/constants";
 import { getDb } from "../db";
@@ -153,12 +153,7 @@ function reconcileUnlinkedWorkspaces(): void {
 	const unlinked = db
 		.select()
 		.from(schema.workspaces)
-		.where(
-			and(
-				eq(schema.workspaces.type, "worktree"),
-				isNull(schema.workspaces.prProvider)
-			)
-		)
+		.where(and(eq(schema.workspaces.type, "worktree"), isNull(schema.workspaces.prProvider)))
 		.all();
 
 	if (unlinked.length === 0) return;
@@ -182,9 +177,7 @@ function reconcileUnlinkedWorkspaces(): void {
 		);
 
 		if (match) {
-			console.log(
-				`[comment-poller] Auto-linked workspace "${ws.name}" to PR ${match.identifier}`
-			);
+			console.log(`[comment-poller] Auto-linked workspace "${ws.name}" to PR ${match.identifier}`);
 			db.update(schema.workspaces)
 				.set({
 					prProvider: match.provider,
