@@ -193,53 +193,61 @@ function CommitGroupCard({
 
 	return (
 		<div className="overflow-hidden rounded-[6px] border border-[var(--border-subtle)] bg-[var(--bg-surface)]">
-			{/* Header row — clickable to toggle */}
+			{/* Header — two rows: label row + actions row */}
 			<button
 				type="button"
 				onClick={() => setExpanded((prev) => !prev)}
-				className="flex w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-[var(--bg-elevated)]"
+				className="w-full px-3 py-1.5 text-left transition-colors hover:bg-[var(--bg-elevated)]"
 			>
-				<span className="shrink-0 text-[10px] text-[var(--text-quaternary)]">
-					{expanded ? "\u25BE" : "\u25B8"}
-				</span>
-				<span className="min-w-0 flex-1 text-[12px] font-semibold text-[var(--text-secondary)]">
-					{group.label}
-				</span>
-				<span
-					className="shrink-0 rounded-[3px] px-1.5 py-px text-[9px] font-semibold"
-					style={{ backgroundColor: badgeBg, color: badgeText }}
-				>
-					{fixedComments} / {totalComments}
-				</span>
-				{canApprove && (
-					<button
-						type="button"
+				{/* Row 1: chevron + label + badge */}
+				<div className="flex items-start gap-1.5">
+					<span className="mt-0.5 shrink-0 text-[10px] text-[var(--text-quaternary)]">
+						{expanded ? "\u25BE" : "\u25B8"}
+					</span>
+					<span className="min-w-0 flex-1 text-[12px] font-semibold leading-snug text-[var(--text-secondary)]">
+						{group.label}
+					</span>
+					<span
+						className="mt-0.5 shrink-0 rounded-[3px] px-1.5 py-px text-[9px] font-semibold"
+						style={{ backgroundColor: badgeBg, color: badgeText }}
+					>
+						{fixedComments} / {totalComments}
+					</span>
+				</div>
+				{/* Row 2: actions */}
+				<div className="mt-1 flex items-center gap-2 pl-4">
+					{canApprove && (
+						<span
+							role="button"
+							tabIndex={0}
+							onClick={(e) => {
+								e.stopPropagation();
+								approveGroup.mutate({ groupId: group.id });
+							}}
+							onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); approveGroup.mutate({ groupId: group.id }); } }}
+							className="rounded-[4px] bg-[rgba(48,209,88,0.15)] px-2 py-0.5 text-[10px] font-medium text-[#30d158] hover:opacity-80"
+						>
+							{approveGroup.isPending ? "..." : "Approve"}
+						</span>
+					)}
+					{group.status === "approved" && (
+						<span className="rounded-[3px] bg-[rgba(10,132,255,0.15)] px-1.5 py-px text-[9px] font-semibold uppercase tracking-wide text-[#0a84ff]">
+							Approved
+						</span>
+					)}
+					<span
+						role="button"
+						tabIndex={0}
 						onClick={(e) => {
 							e.stopPropagation();
-							approveGroup.mutate({ groupId: group.id });
+							handleFollowUp();
 						}}
-						disabled={approveGroup.isPending}
-						className="shrink-0 rounded-[4px] bg-[rgba(48,209,88,0.15)] px-2.5 py-0.5 text-[10px] font-medium text-[#30d158] hover:opacity-80 disabled:opacity-50"
+						onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); handleFollowUp(); } }}
+						className="rounded-[4px] px-2 py-0.5 text-[10px] text-[var(--text-quaternary)] hover:text-[var(--text-secondary)] transition-colors"
 					>
-						{approveGroup.isPending ? "Approving..." : "Approve"}
-					</button>
-				)}
-				{group.status === "approved" && (
-					<span className="shrink-0 rounded-[3px] bg-[rgba(10,132,255,0.15)] px-1.5 py-px text-[9px] font-semibold uppercase tracking-wide text-[#0a84ff]">
-						Approved
+						Follow up
 					</span>
-				)}
-				<button
-					type="button"
-					onClick={(e) => {
-						e.stopPropagation();
-						handleFollowUp();
-					}}
-					className="shrink-0 rounded-[4px] px-2 py-0.5 text-[10px] font-medium text-[var(--text-quaternary)] hover:bg-[var(--bg-overlay)] hover:text-[var(--text-secondary)] transition-colors"
-					title="Continue AI conversation about this group"
-				>
-					Follow up
-				</button>
+				</div>
 			</button>
 
 			{/* Sub-header: commit hash + file names */}
@@ -364,46 +372,27 @@ function CommitGroupCard({
 									</div>
 								</div>
 							)}
-							{/* Add reply (when no reply exists) */}
-							{!comment.reply && addingReplyTo !== comment.id && (
-								<button
-									type="button"
-									onClick={() => { setAddingReplyTo(comment.id); setNewReplyText(""); }}
-									className="mt-1 text-[10px] text-[var(--text-quaternary)] hover:text-[var(--text-secondary)]"
-								>
-									+ Add reply
-								</button>
-							)}
-							{!comment.reply && addingReplyTo === comment.id && (
-								<div className="mt-2 rounded-[4px] border border-[var(--border-subtle)] bg-[rgba(255,255,255,0.04)] px-2.5 py-1.5">
-									<textarea
-										value={newReplyText}
-										onChange={(e) => setNewReplyText(e.target.value)}
-										placeholder="Write a reply..."
-										className="w-full resize-none rounded-[4px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 py-1.5 text-[11px] text-[var(--text)] placeholder:text-[var(--text-quaternary)] focus:border-[var(--accent)] focus:outline-none"
-										rows={3}
-									/>
-									<div className="mt-1 flex justify-end gap-1.5">
-										<button
-											type="button"
-											onClick={() => setAddingReplyTo(null)}
-											className="rounded-[4px] px-2 py-0.5 text-[10px] text-[var(--text-tertiary)] hover:bg-[var(--bg-overlay)]"
-										>
-											Cancel
-										</button>
-										<button
-											type="button"
-											onClick={() => {
-												// For now close — actual API posting handled by pushAndPost
+							{/* Inline reply input (when no reply exists) — single click to start typing */}
+							{!comment.reply && (
+								<div className="mt-1.5">
+									<input
+										type="text"
+										placeholder="Reply..."
+										value={addingReplyTo === comment.id ? newReplyText : ""}
+										onFocus={() => { if (addingReplyTo !== comment.id) { setAddingReplyTo(comment.id); setNewReplyText(""); } }}
+										onChange={(e) => { setAddingReplyTo(comment.id); setNewReplyText(e.target.value); }}
+										onKeyDown={(e) => {
+											if (e.key === "Enter" && newReplyText.trim()) {
 												setAddingReplyTo(null);
 												setNewReplyText("");
-											}}
-											disabled={!newReplyText.trim()}
-											className="rounded-[4px] bg-[var(--accent)] px-2 py-0.5 text-[10px] text-white hover:opacity-80 disabled:opacity-40"
-										>
-											Save draft
-										</button>
-									</div>
+											}
+											if (e.key === "Escape") {
+												setAddingReplyTo(null);
+												setNewReplyText("");
+											}
+										}}
+										className="w-full rounded-[4px] border border-transparent bg-transparent px-0 py-0.5 text-[11px] text-[var(--text)] placeholder:text-[var(--text-quaternary)] focus:border-[var(--border-subtle)] focus:bg-[var(--bg-elevated)] focus:px-2 focus:outline-none transition-all"
+									/>
 								</div>
 							)}
 						</div>
