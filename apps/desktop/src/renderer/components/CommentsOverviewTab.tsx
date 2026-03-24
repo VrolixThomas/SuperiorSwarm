@@ -214,24 +214,36 @@ export function CommentsOverviewTab({ workspaceId }: CommentsOverviewTabProps) {
 		useTabStore.getState().openFile(workspaceId, cwd, path, detectLanguage(path), undefined);
 	};
 
-	const addReviewComment = trpc.github.addReviewComment.useMutation({
-		onSuccess: () => {
-			commentsQuery.refetch();
-		},
+	const provider = meta?.prProvider ?? "github";
+
+	// GitHub APIs
+	const ghAddComment = trpc.github.addReviewComment.useMutation({
+		onSuccess: () => commentsQuery.refetch(),
+	});
+	const ghResolveThread = trpc.github.resolveThread.useMutation({
+		onSuccess: () => commentsQuery.refetch(),
 	});
 
-	const resolveThreadMutation = trpc.github.resolveThread.useMutation({
-		onSuccess: () => {
-			commentsQuery.refetch();
-		},
-	});
+	// Bitbucket reply — needs workspace/repo/prNumber parsed from prIdentifier
+	const bbReplyComment = trpc.atlassian.replyToPRComment
+		? undefined
+		: undefined; // Bitbucket reply not yet exposed as tRPC — fall back to stub
 
 	const handleReply = (threadId: string, body: string) => {
-		addReviewComment.mutate({ threadId, body });
+		if (provider === "github") {
+			ghAddComment.mutate({ threadId, body });
+		} else {
+			// Bitbucket: replyToPRComment needs (workspace, repoSlug, prId, parentCommentId, body)
+			// Not yet exposed as tRPC procedure — logged for now
+			console.warn("[CommentsOverviewTab] Bitbucket reply not yet wired as tRPC");
+		}
 	};
 
 	const handleResolve = (threadId: string) => {
-		resolveThreadMutation.mutate({ threadId });
+		if (provider === "github") {
+			ghResolveThread.mutate({ threadId });
+		}
+		// Bitbucket doesn't have a thread resolve concept in the same way
 	};
 
 	const renderThread = (t: UnifiedThread) => {
