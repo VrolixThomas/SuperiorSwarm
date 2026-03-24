@@ -36,14 +36,11 @@ function PanelHeader({
 		<div className="flex shrink-0 items-center gap-2 border-b border-[var(--border)] px-3 py-2">
 			{/* Segmented control */}
 			<div className="flex rounded-[var(--radius-sm)] bg-[var(--bg-base)] p-0.5">
-				{hasPR && onSetTab && activeTab ? (
+				{onSetTab && activeTab ? (
 					<>
 						<button
 							type="button"
-							onClick={() => {
-								onSetTab("changes");
-								onSetMode("diff");
-							}}
+							onClick={() => onSetTab("changes")}
 							className={[
 								"rounded-[4px] px-3 py-0.5 text-[11px] font-medium transition-all duration-[120ms]",
 								activeTab === "changes"
@@ -55,10 +52,7 @@ function PanelHeader({
 						</button>
 						<button
 							type="button"
-							onClick={() => {
-								onSetTab("files");
-								onSetMode("explorer");
-							}}
+							onClick={() => onSetTab("files")}
 							className={[
 								"rounded-[4px] px-3 py-0.5 text-[11px] font-medium transition-all duration-[120ms]",
 								activeTab === "files"
@@ -98,34 +92,7 @@ function PanelHeader({
 							AI Fixes
 						</button>
 					</>
-				) : (
-					<>
-						<button
-							type="button"
-							onClick={() => onSetMode("diff")}
-							className={[
-								"rounded-[4px] px-3 py-0.5 text-[11px] font-medium transition-all duration-[120ms]",
-								mode === "diff"
-									? "bg-[var(--bg-elevated)] text-[var(--text-secondary)] shadow-[var(--shadow-sm)]"
-									: "text-[var(--text-quaternary)] hover:text-[var(--text-tertiary)]",
-							].join(" ")}
-						>
-							Changes
-						</button>
-						<button
-							type="button"
-							onClick={() => onSetMode("explorer")}
-							className={[
-								"rounded-[4px] px-3 py-0.5 text-[11px] font-medium transition-all duration-[120ms]",
-								mode === "explorer"
-									? "bg-[var(--bg-elevated)] text-[var(--text-secondary)] shadow-[var(--shadow-sm)]"
-									: "text-[var(--text-quaternary)] hover:text-[var(--text-tertiary)]",
-							].join(" ")}
-						>
-							Files
-						</button>
-					</>
-				)}
+				) : null}
 			</div>
 
 			<div className="flex-1" />
@@ -167,6 +134,7 @@ function DiffPanelContent({ diffCtx, onClose }: { diffCtx: DiffContext; onClose?
 	const [activeTab, setActiveTab] = useState<DiffPanelTab>("changes");
 	const togglePanelMode = useTabStore((s) => s.togglePanelMode);
 	const activeWorkspaceId = useTabStore((s) => s.activeWorkspaceId);
+	const activeWorkspaceCwd = useTabStore((s) => s.activeWorkspaceCwd);
 	const setBaseBranch = useTabStore((s) => s.setBaseBranch);
 	const storedBaseBranch = useTabStore((s) =>
 		activeWorkspaceId ? s.baseBranchByWorkspace[activeWorkspaceId] : undefined
@@ -275,6 +243,10 @@ function DiffPanelContent({ diffCtx, onClose }: { diffCtx: DiffContext; onClose?
 			) : activeTab === "ai-fixes" && activeWorkspaceId ? (
 				<div className="flex flex-1 flex-col min-h-0 overflow-hidden">
 					<AIFixesTab workspaceId={activeWorkspaceId} />
+				</div>
+			) : activeTab === "files" && activeWorkspaceId && activeWorkspaceCwd ? (
+				<div className="flex flex-1 flex-col min-h-0 overflow-hidden">
+					<RepoFileTree repoPath={activeWorkspaceCwd} workspaceId={activeWorkspaceId} />
 				</div>
 			) : (
 				<>
@@ -417,10 +389,8 @@ export function DiffPanel({ onClose }: { onClose?: () => void }) {
 	return (
 		<div className="relative flex h-full w-full flex-col overflow-hidden bg-[var(--bg-surface)]">
 			{onClose && <PanelEdgeClose onClose={onClose} />}
-			{rightPanel.mode === "diff" && rightPanel.diffCtx ? (
+			{rightPanel.diffCtx ? (
 				<DiffPanelContent diffCtx={rightPanel.diffCtx} onClose={onClose} />
-			) : rightPanel.mode === "explorer" ? (
-				<ExplorerPanelContent onClose={onClose} />
 			) : (
 				<>
 					<PanelHeader mode="diff" onSetMode={() => {}} onClose={onClose} />
