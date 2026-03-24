@@ -111,6 +111,10 @@ function CommitGroupCard({
 }) {
 	const [expanded, setExpanded] = useState(defaultExpanded);
 	const [activeFile, setActiveFile] = useState<string | null>(null);
+	const [editingReply, setEditingReply] = useState<string | null>(null);
+	const [editReplyText, setEditReplyText] = useState("");
+	const [addingReplyTo, setAddingReplyTo] = useState<string | null>(null);
+	const [newReplyText, setNewReplyText] = useState("");
 	const repoPath = useTabStore((s) => s.activeWorkspaceCwd);
 	const utils = trpc.useUtils();
 
@@ -119,6 +123,41 @@ function CommitGroupCard({
 			utils.commentSolver.getSolveSession.invalidate({ sessionId });
 		},
 	});
+
+	const updateReply = trpc.commentSolver.updateReply.useMutation({
+		onSuccess: () => {
+			utils.commentSolver.getSolveSession.invalidate({ sessionId });
+			setEditingReply(null);
+		},
+	});
+
+	const deleteReply = trpc.commentSolver.deleteReply.useMutation({
+		onSuccess: () => {
+			utils.commentSolver.getSolveSession.invalidate({ sessionId });
+		},
+	});
+
+	const handleFollowUp = () => {
+		// Find existing AI Solver terminal tab for this workspace
+		const tabStore = useTabStore.getState();
+		const tabs = tabStore.getTabsByWorkspace(workspaceId);
+		const solverTab = tabs.find(
+			(t) => t.kind === "terminal" && t.title === "AI Solver"
+		);
+
+		if (solverTab) {
+			// Switch to the existing terminal
+			tabStore.setActiveTab(solverTab.id);
+		} else {
+			// Create new terminal and resume the conversation
+			const cwd = repoPath;
+			const tabId = tabStore.addTerminalTab(workspaceId, cwd, "AI Solver");
+			window.electron.terminal.create(tabId, cwd).then(() => {
+				// Use --continue to resume the last Claude conversation in this directory
+				window.electron.terminal.write(tabId, "claude --continue\n");
+			});
+		}
+	};
 
 	const shortHash = group.commitHash ? group.commitHash.slice(0, 7) : null;
 	const filePaths = uniqueFilePaths(group.comments);
@@ -190,6 +229,17 @@ function CommitGroupCard({
 						Approved
 					</span>
 				)}
+				<button
+					type="button"
+					onClick={(e) => {
+						e.stopPropagation();
+						handleFollowUp();
+					}}
+					className="shrink-0 rounded-[4px] px-2 py-0.5 text-[10px] font-medium text-[var(--text-quaternary)] hover:bg-[var(--bg-overlay)] hover:text-[var(--text-secondary)] transition-colors"
+					title="Continue AI conversation about this group"
+				>
+					Follow up
+				</button>
 			</button>
 
 			{/* Sub-header: commit hash + file names */}
@@ -251,15 +301,109 @@ function CommitGroupCard({
 							<p className="whitespace-pre-wrap text-[11px] leading-[1.5] text-[var(--text-tertiary)]">
 								{comment.body}
 							</p>
-							{/* Draft reply */}
-							{comment.reply && (
+							{/* Draft reply — editable */}
+							{comment.reply && editingReply !== comment.reply.id && (
 								<div className="mt-2 rounded-[4px] border border-[rgba(255,255,255,0.06)] bg-[rgba(255,255,255,0.04)] px-2.5 py-1.5">
-									<span className="text-[10px] font-medium text-[var(--text-quaternary)]">
-										Draft reply:
-									</span>
+									<div className="flex items-center justify-between">
+										<span className="text-[10px] font-medium text-[var(--text-quaternary)]">
+											Draft reply:
+										</span>
+										<div className="flex gap-1">
+											<button
+												type="button"
+												onClick={() => {
+													setEditingReply(comment.reply!.id);
+													setEditReplyText(comment.reply!.body);
+												}}
+												className="text-[9px] text-[var(--text-quaternary)] hover:text-[var(--text-secondary)]"
+											>
+												Edit
+											</button>
+											<button
+												type="button"
+												onClick={() => deleteReply.mutate({ replyId: comment.reply!.id })}
+												className="text-[9px] text-[#ff453a] hover:opacity-80"
+											>
+												Delete
+											</button>
+										</div>
+									</div>
 									<p className="mt-0.5 whitespace-pre-wrap text-[11px] text-[var(--text-tertiary)]">
 										{comment.reply.body}
 									</p>
+								</div>
+							)}
+							{/* Editing reply */}
+							{comment.reply && editingReply === comment.reply.id && (
+								<div className="mt-2 rounded-[4px] border border-[var(--accent)] bg-[rgba(255,255,255,0.04)] px-2.5 py-1.5">
+									<span className="text-[10px] font-medium text-[var(--text-quaternary)]">
+										Edit reply:
+									</span>
+									<textarea
+										value={editReplyText}
+										onChange={(e) => setEditReplyText(e.target.value)}
+										className="mt-1 w-full resize-none rounded-[4px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 py-1.5 text-[11px] text-[var(--text)] focus:border-[var(--accent)] focus:outline-none"
+										rows={3}
+									/>
+									<div className="mt-1 flex justify-end gap-1.5">
+										<button
+											type="button"
+											onClick={() => setEditingReply(null)}
+											className="rounded-[4px] px-2 py-0.5 text-[10px] text-[var(--text-tertiary)] hover:bg-[var(--bg-overlay)]"
+										>
+											Cancel
+										</button>
+										<button
+											type="button"
+											onClick={() => updateReply.mutate({ replyId: comment.reply!.id, body: editReplyText })}
+											disabled={!editReplyText.trim() || updateReply.isPending}
+											className="rounded-[4px] bg-[var(--accent)] px-2 py-0.5 text-[10px] text-white hover:opacity-80 disabled:opacity-40"
+										>
+											Save
+										</button>
+									</div>
+								</div>
+							)}
+							{/* Add reply (when no reply exists) */}
+							{!comment.reply && addingReplyTo !== comment.id && (
+								<button
+									type="button"
+									onClick={() => { setAddingReplyTo(comment.id); setNewReplyText(""); }}
+									className="mt-1 text-[10px] text-[var(--text-quaternary)] hover:text-[var(--text-secondary)]"
+								>
+									+ Add reply
+								</button>
+							)}
+							{!comment.reply && addingReplyTo === comment.id && (
+								<div className="mt-2 rounded-[4px] border border-[var(--border-subtle)] bg-[rgba(255,255,255,0.04)] px-2.5 py-1.5">
+									<textarea
+										value={newReplyText}
+										onChange={(e) => setNewReplyText(e.target.value)}
+										placeholder="Write a reply..."
+										className="w-full resize-none rounded-[4px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 py-1.5 text-[11px] text-[var(--text)] placeholder:text-[var(--text-quaternary)] focus:border-[var(--accent)] focus:outline-none"
+										rows={3}
+									/>
+									<div className="mt-1 flex justify-end gap-1.5">
+										<button
+											type="button"
+											onClick={() => setAddingReplyTo(null)}
+											className="rounded-[4px] px-2 py-0.5 text-[10px] text-[var(--text-tertiary)] hover:bg-[var(--bg-overlay)]"
+										>
+											Cancel
+										</button>
+										<button
+											type="button"
+											onClick={() => {
+												// For now close — actual API posting handled by pushAndPost
+												setAddingReplyTo(null);
+												setNewReplyText("");
+											}}
+											disabled={!newReplyText.trim()}
+											className="rounded-[4px] bg-[var(--accent)] px-2 py-0.5 text-[10px] text-white hover:opacity-80 disabled:opacity-40"
+										>
+											Save draft
+										</button>
+									</div>
 								</div>
 							)}
 						</div>
