@@ -258,7 +258,6 @@ function DiffPanelContent({ diffCtx, onClose }: { diffCtx: DiffContext; onClose?
 	);
 }
 
-
 function PanelEdgeClose({ onClose }: { onClose: () => void }) {
 	return (
 		<button

@@ -5,8 +5,8 @@ import { getDb } from "../db";
 import * as schema from "../db/schema";
 import { getValidToken } from "../github/auth";
 import { getPRComments } from "../github/github";
-import { getCachedPRs } from "./pr-poller";
 import { parsePrIdentifier } from "./pr-identifier";
+import { getCachedPRs } from "./pr-poller";
 
 const POLL_INTERVAL_MS = 60_000;
 
