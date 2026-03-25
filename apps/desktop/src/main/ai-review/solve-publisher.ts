@@ -5,6 +5,7 @@ import { getDb } from "../db";
 import * as schema from "../db/schema";
 import { addReviewThreadReply, resolveThread } from "../github/github";
 import { parsePrIdentifier } from "./pr-identifier";
+import { resolveSessionWorktree } from "./solve-session-resolver";
 
 export interface PublishSolveResult {
 	pushed: boolean;
@@ -21,42 +22,16 @@ export async function publishSolve(sessionId: string): Promise<PublishSolveResul
 	let repliesPosted = 0;
 	let threadsResolved = 0;
 
-	// 1. Fetch the session
-	const session = db
-		.select()
-		.from(schema.commentSolveSessions)
-		.where(eq(schema.commentSolveSessions.id, sessionId))
-		.get();
-
-	if (!session) {
-		return { pushed: false, repliesPosted: 0, threadsResolved: 0, errors: ["Session not found"] };
+	// 1. Resolve session → workspace → worktree
+	let resolved: ReturnType<typeof resolveSessionWorktree>;
+	try {
+		resolved = resolveSessionWorktree(sessionId);
+	} catch (err) {
+		return { pushed: false, repliesPosted: 0, threadsResolved: 0, errors: [String(err)] };
 	}
+	const { session, worktree } = resolved;
 
-	// 2. Fetch workspace → worktree
-	const workspace = db
-		.select()
-		.from(schema.workspaces)
-		.where(eq(schema.workspaces.id, session.workspaceId))
-		.get();
-
-	if (!workspace) {
-		return {
-			pushed: false,
-			repliesPosted: 0,
-			threadsResolved: 0,
-			errors: ["Workspace not found"],
-		};
-	}
-
-	const worktree = workspace.worktreeId
-		? db.select().from(schema.worktrees).where(eq(schema.worktrees.id, workspace.worktreeId)).get()
-		: undefined;
-
-	if (!worktree) {
-		return { pushed: false, repliesPosted: 0, threadsResolved: 0, errors: ["Worktree not found"] };
-	}
-
-	// 3. Git push
+	// 2. Git push
 	try {
 		execSync("git push", { cwd: worktree.path, stdio: "pipe" });
 		pushed = true;

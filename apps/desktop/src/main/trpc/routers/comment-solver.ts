@@ -13,6 +13,7 @@ import { getDb } from "../../db";
 import * as schema from "../../db/schema";
 import { getPRComments } from "../../github/github";
 import { parsePrIdentifier } from "../../ai-review/pr-identifier";
+import { resolveSessionWorktree } from "../../ai-review/solve-session-resolver";
 import type { SolveLaunchInfo, SolveSessionInfo } from "../../shared/solve-types";
 import { publicProcedure, router } from "../index";
 
@@ -500,42 +501,14 @@ export const commentSolverRouter = router({
 		.mutation(async ({ input }) => {
 			const db = getDb();
 
-			// Find the group to get the session
 			const group = db
 				.select()
 				.from(schema.commentGroups)
 				.where(eq(schema.commentGroups.id, input.groupId))
 				.get();
-
 			if (!group) throw new Error(`Comment group ${input.groupId} not found`);
-
-			// Find the session → workspace → worktree for the path
-			const session = db
-				.select()
-				.from(schema.commentSolveSessions)
-				.where(eq(schema.commentSolveSessions.id, group.solveSessionId))
-				.get();
-
-			if (!session) throw new Error(`Solve session ${group.solveSessionId} not found`);
-
-			const workspace = db
-				.select()
-				.from(schema.workspaces)
-				.where(eq(schema.workspaces.id, session.workspaceId))
-				.get();
-
-			if (!workspace) throw new Error(`Workspace ${session.workspaceId} not found`);
-			if (!workspace.worktreeId) throw new Error("Workspace has no worktree linked");
-
-			const worktree = db
-				.select()
-				.from(schema.worktrees)
-				.where(eq(schema.worktrees.id, workspace.worktreeId))
-				.get();
-
-			if (!worktree) throw new Error("Worktree not found");
-
-			await revertGroupOrchestrator(input.groupId, worktree.path);
+			const { worktreePath } = resolveSessionWorktree(group.solveSessionId);
+			await revertGroupOrchestrator(input.groupId, worktreePath);
 			return { success: true };
 		}),
 
@@ -667,25 +640,15 @@ export const commentSolverRouter = router({
 
 			if (!session) throw new Error(`Solve session ${input.sessionId} not found`);
 
-			// Fetch workspace and worktree
-			const workspace = db
-				.select()
-				.from(schema.workspaces)
-				.where(eq(schema.workspaces.id, session.workspaceId))
-				.get();
-
-			if (!workspace) throw new Error(`Workspace ${session.workspaceId} not found`);
-
-			const worktree = workspace.worktreeId
-				? db
-						.select()
-						.from(schema.worktrees)
-						.where(eq(schema.worktrees.id, workspace.worktreeId))
-						.get()
-				: null;
+			let worktreePath: string | null = null;
+			try {
+				worktreePath = resolveSessionWorktree(input.sessionId).worktreePath;
+			} catch {
+				// Worktree may have been deleted — still allow dismiss
+			}
 
 			// Fetch groups that have commits to revert, ordered in reverse
-			if (worktree) {
+			if (worktreePath) {
 				const groups = db
 					.select()
 					.from(schema.commentGroups)
@@ -700,7 +663,7 @@ export const commentSolverRouter = router({
 
 				for (const group of groupsToRevert) {
 					try {
-						await revertGroupOrchestrator(group.id, worktree.path);
+						await revertGroupOrchestrator(group.id, worktreePath);
 					} catch (err) {
 						console.error(`[comment-solver] Failed to revert group ${group.id}:`, err);
 						// Continue reverting remaining groups

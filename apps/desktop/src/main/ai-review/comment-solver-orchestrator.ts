@@ -9,6 +9,7 @@ import { getDb } from "../db";
 import * as schema from "../db/schema";
 import { CLI_PRESETS, type LaunchOptions, isCliInstalled, resolveCliPath } from "./cli-presets";
 import { buildSolvePrompt } from "./solve-prompt";
+import { resolveSessionWorktree } from "./solve-session-resolver";
 
 // ─── State machine ────────────────────────────────────────────────────────────
 
@@ -68,36 +69,7 @@ function getSettings(): schema.AiReviewSettings {
 export async function queueSolve(sessionId: string): Promise<SolveLaunchInfo> {
 	const db = getDb();
 
-	// Fetch the session
-	const session = db
-		.select()
-		.from(schema.commentSolveSessions)
-		.where(eq(schema.commentSolveSessions.id, sessionId))
-		.get();
-
-	if (!session) throw new Error(`Solve session ${sessionId} not found`);
-
-	// Fetch workspace
-	const workspace = db
-		.select()
-		.from(schema.workspaces)
-		.where(eq(schema.workspaces.id, session.workspaceId))
-		.get();
-
-	if (!workspace) throw new Error(`Workspace ${session.workspaceId} not found`);
-
-	// Fetch worktree
-	if (!workspace.worktreeId) throw new Error(`Workspace ${workspace.id} has no worktree`);
-
-	const worktree = db
-		.select()
-		.from(schema.worktrees)
-		.where(eq(schema.worktrees.id, workspace.worktreeId))
-		.get();
-
-	if (!worktree) throw new Error(`Worktree ${workspace.worktreeId} not found`);
-
-	const worktreePath = worktree.path;
+	const { session, workspace, worktreePath } = resolveSessionWorktree(sessionId);
 
 	// Validate no other active sessions for this workspace (excluding self)
 	const activeForWorkspace = db
