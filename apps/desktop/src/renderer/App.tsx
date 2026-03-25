@@ -134,6 +134,10 @@ function collectSnapshot() {
 	if (Object.keys(workspaceMetadata).length > 0) {
 		state["workspaceMetadata"] = JSON.stringify(workspaceMetadata);
 	}
+	const { activeTicketProject } = store;
+	if (activeTicketProject) {
+		state["activeTicketProject"] = JSON.stringify(activeTicketProject);
+	}
 
 	const { vimEnabled } = useEditorSettingsStore.getState();
 	if (vimEnabled) state["vimMode"] = "true";

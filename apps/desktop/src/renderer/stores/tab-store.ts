@@ -94,6 +94,14 @@ interface TabStore {
 	sidebarSegment: SidebarSegment;
 	activeWorkspaceBySegment: Record<SidebarSegment, { id: string; cwd: string } | null>;
 
+	// Ticket canvas state
+	activeTicketProject: { id: string; provider: "jira" | "linear" } | "all" | null;
+	selectedTicketId: string | null;
+	ticketDetailOpen: boolean;
+	setActiveTicketProject: (project: { id: string; provider: "jira" | "linear" } | "all") => void;
+	setSelectedTicket: (ticketId: string | null) => void;
+	closeTicketDetail: () => void;
+
 	// Derived — reads from pane-store for backwards compat
 	getAllTabs: () => TabItem[];
 	getActiveTabId: () => string | null;
@@ -315,6 +323,21 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 	_paneVersion: 0,
 	sidebarSegment: "repos" as SidebarSegment,
 	activeWorkspaceBySegment: { repos: null, tickets: null, prs: null },
+
+	activeTicketProject: "all",
+	selectedTicketId: null,
+	ticketDetailOpen: false,
+
+	setActiveTicketProject: (project) =>
+		set({ activeTicketProject: project, selectedTicketId: null, ticketDetailOpen: false }),
+
+	setSelectedTicket: (ticketId) =>
+		set({
+			selectedTicketId: ticketId,
+			ticketDetailOpen: ticketId !== null,
+		}),
+
+	closeTicketDetail: () => set({ selectedTicketId: null, ticketDetailOpen: false }),
 
 	// ── Derived properties ──────────────────────────────────────────────
 
@@ -795,6 +818,15 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 			activeWorkspaceBySegment[segment] = { id: activeWs, cwd: activeCwd };
 			if (!extraState?.["sidebarSegment"]) {
 				sidebarSegment = segment;
+			}
+		}
+
+		if (extraState?.["activeTicketProject"]) {
+			try {
+				const parsed = JSON.parse(extraState["activeTicketProject"]);
+				set({ activeTicketProject: parsed });
+			} catch {
+				// ignore invalid JSON
 			}
 		}
 
