@@ -1,5 +1,4 @@
 import { useCallback, useMemo, useRef, useState } from "react";
-import { Group, Panel, Separator } from "react-resizable-panels";
 import type { MergedTicketIssue, TicketViewMode } from "../../../shared/tickets";
 import { useTicketsData } from "../../hooks/useTicketsData";
 import { useTabStore } from "../../stores/tab-store";
@@ -32,7 +31,7 @@ export function TicketsCanvas() {
 
 	const { data: savedViewMode } = trpc.tickets.getViewMode.useQuery(
 		{ projectId },
-		{ staleTime: Number.POSITIVE_INFINITY }
+		{ staleTime: Number.POSITIVE_INFINITY },
 	);
 	const setViewModeMutation = trpc.tickets.setViewMode.useMutation();
 	const [localViewMode, setLocalViewMode] = useState<TicketViewMode | null>(null);
@@ -44,7 +43,7 @@ export function TicketsCanvas() {
 			setViewModeMutation.mutate({ projectId, mode });
 			utils.tickets.getViewMode.setData({ projectId }, mode);
 		},
-		[projectId, setViewModeMutation, utils]
+		[projectId, setViewModeMutation, utils],
 	);
 
 	// Reset local override when project changes
@@ -85,17 +84,18 @@ export function TicketsCanvas() {
 				});
 			}
 		},
-		[setSidebarSegment]
+		[setSidebarSegment],
 	);
 
 	// ── Context menu state fetching ──────────────────────────────────────────
-	const { data: linearStates, isLoading: linearStatesLoading } = trpc.linear.getTeamStates.useQuery(
-		{ teamId: contextMenu?.issue.groupId ?? "" },
-		{
-			enabled: !!contextMenu && contextMenu.issue.provider === "linear",
-			staleTime: 5 * 60_000,
-		}
-	);
+	const { data: linearStates, isLoading: linearStatesLoading } =
+		trpc.linear.getTeamStates.useQuery(
+			{ teamId: contextMenu?.issue.groupId ?? "" },
+			{
+				enabled: !!contextMenu && contextMenu.issue.provider === "linear",
+				staleTime: 5 * 60_000,
+			},
+		);
 
 	const { data: jiraTransitions, isLoading: jiraTransitionsLoading } =
 		trpc.atlassian.getIssueTransitions.useQuery(
@@ -103,7 +103,7 @@ export function TicketsCanvas() {
 			{
 				enabled: !!contextMenu && contextMenu.issue.provider === "jira",
 				staleTime: 60_000,
-			}
+			},
 		);
 
 	const updateLinearState = trpc.linear.updateIssueState.useMutation({
@@ -118,7 +118,7 @@ export function TicketsCanvas() {
 		(issue: MergedTicketIssue) => {
 			setSelectedTicket(issue.id);
 		},
-		[setSelectedTicket]
+		[setSelectedTicket],
 	);
 
 	const handleTicketContextMenu = useCallback(
@@ -131,7 +131,7 @@ export function TicketsCanvas() {
 				workspaces: linkedMap.get(key),
 			});
 		},
-		[linkedMap]
+		[linkedMap],
 	);
 
 	// ── Derived display values ───────────────────────────────────────────────
@@ -139,7 +139,6 @@ export function TicketsCanvas() {
 
 	const projectName = useMemo(() => {
 		if (activeTicketProject === "all" || activeTicketProject === null) return "All Tickets";
-		// Try to find a matching issue for a display name
 		const sample = filteredIssues[0];
 		if (sample?.teamName) return sample.teamName;
 		if (sample?.projectKey) return sample.projectKey;
@@ -156,6 +155,8 @@ export function TicketsCanvas() {
 		if (!selectedTicketId) return null;
 		return filteredIssues.find((i) => i.id === selectedTicketId) ?? null;
 	}, [selectedTicketId, filteredIssues]);
+
+	const showDetail = ticketDetailOpen && selectedIssue;
 
 	// ── Empty / loading states ───────────────────────────────────────────────
 	if (isEmpty) {
@@ -188,61 +189,73 @@ export function TicketsCanvas() {
 				viewMode={viewMode}
 				onViewModeChange={handleViewModeChange}
 			/>
-			<Group orientation="vertical">
-				<Panel>
-					{viewMode === "board" && (
-						<TicketsBoardView
-							columns={columns}
-							linkedMap={linkedMap}
-							selectedTicketId={selectedTicketId}
-							showProvider={showProvider}
-							onTicketClick={handleTicketClick}
-							onTicketContextMenu={handleTicketContextMenu}
-						/>
-					)}
-					{viewMode === "list" && (
-						<TicketsListView
-							columns={columns}
-							linkedMap={linkedMap}
-							selectedTicketId={selectedTicketId}
-							showProvider={showProvider}
-							onTicketClick={handleTicketClick}
-							onTicketContextMenu={handleTicketContextMenu}
-						/>
-					)}
-					{viewMode === "table" && (
-						<TicketsTableView
-							issues={filteredIssues}
-							linkedMap={linkedMap}
-							selectedTicketId={selectedTicketId}
-							onTicketClick={handleTicketClick}
-							onTicketContextMenu={handleTicketContextMenu}
-						/>
-					)}
-				</Panel>
-				{ticketDetailOpen && selectedIssue && (
-					<>
-						<Separator className="panel-resize-handle" />
-						<Panel defaultSize={35} minSize={20}>
-							<TicketDetailPanel
-								issue={selectedIssue}
-								linked={linkedMap.get(`${selectedIssue.provider}:${selectedIssue.id}`)}
-								onCreateBranch={() => setOpenModalIssue(selectedIssue)}
-								onNavigateToWorkspace={navigateToWorkspace}
-							/>
-						</Panel>
-					</>
+
+			{/* View area */}
+			<div
+				className={`min-h-0 overflow-hidden ${showDetail ? "flex-1 basis-1/2" : "flex-1"}`}
+			>
+				{viewMode === "board" && (
+					<TicketsBoardView
+						columns={columns}
+						linkedMap={linkedMap}
+						selectedTicketId={selectedTicketId}
+						showProvider={showProvider}
+						onTicketClick={handleTicketClick}
+						onTicketContextMenu={handleTicketContextMenu}
+					/>
 				)}
-			</Group>
+				{viewMode === "list" && (
+					<TicketsListView
+						columns={columns}
+						linkedMap={linkedMap}
+						selectedTicketId={selectedTicketId}
+						showProvider={showProvider}
+						onTicketClick={handleTicketClick}
+						onTicketContextMenu={handleTicketContextMenu}
+					/>
+				)}
+				{viewMode === "table" && (
+					<TicketsTableView
+						issues={filteredIssues}
+						linkedMap={linkedMap}
+						selectedTicketId={selectedTicketId}
+						onTicketClick={handleTicketClick}
+						onTicketContextMenu={handleTicketContextMenu}
+					/>
+				)}
+			</div>
+
+			{/* Detail panel */}
+			{showDetail && (
+				<>
+					<div className="h-px shrink-0 bg-[var(--border)]" />
+					<div className="min-h-0 flex-1 basis-1/2 overflow-hidden">
+						<TicketDetailPanel
+							issue={selectedIssue}
+							linked={linkedMap.get(
+								`${selectedIssue.provider}:${selectedIssue.id}`,
+							)}
+							onCreateBranch={() => setOpenModalIssue(selectedIssue)}
+							onNavigateToWorkspace={navigateToWorkspace}
+						/>
+					</div>
+				</>
+			)}
 
 			{contextMenu && (
 				<IssueContextMenu
 					position={contextMenu.position}
 					issue={contextMenu.issue}
 					workspaces={contextMenu.workspaces}
-					states={contextMenu.issue.provider === "linear" ? linearStates : jiraTransitions}
+					states={
+						contextMenu.issue.provider === "linear"
+							? linearStates
+							: jiraTransitions
+					}
 					statesLoading={
-						contextMenu.issue.provider === "linear" ? linearStatesLoading : jiraTransitionsLoading
+						contextMenu.issue.provider === "linear"
+							? linearStatesLoading
+							: jiraTransitionsLoading
 					}
 					openInLabel={`Open in ${contextMenu.issue.provider === "linear" ? "Linear" : "Jira"}`}
 					onClose={() => setContextMenu(null)}
@@ -270,7 +283,10 @@ export function TicketsCanvas() {
 				/>
 			)}
 
-			<CreateBranchFromIssueModal issue={openModalIssue} onClose={() => setOpenModalIssue(null)} />
+			<CreateBranchFromIssueModal
+				issue={openModalIssue}
+				onClose={() => setOpenModalIssue(null)}
+			/>
 		</main>
 	);
 }
