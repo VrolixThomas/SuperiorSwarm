@@ -16,20 +16,18 @@ type DiffPanelTab = "changes" | "files" | "comments" | "ai-fixes";
 function PanelHeader({
 	activeTab,
 	onSetTab,
-	commentCount,
 	stats,
 	onClose,
 }: {
 	activeTab: DiffPanelTab;
 	onSetTab: (tab: DiffPanelTab) => void;
-	commentCount?: number;
 	stats?: { added: number; removed: number; changed: number };
 	onClose?: () => void;
 }) {
 	const tabs: { key: DiffPanelTab; label: string; badge?: number }[] = [
 		{ key: "changes", label: "Changes" },
 		{ key: "files", label: "Files" },
-		{ key: "comments", label: "Comments", badge: commentCount && commentCount > 0 ? commentCount : undefined },
+		{ key: "comments", label: "Comments" },
 		{ key: "ai-fixes", label: "Fixes" },
 	];
 
@@ -98,18 +96,7 @@ function DiffPanelContent({ diffCtx, onClose }: { diffCtx: DiffContext; onClose?
 	const storedBaseBranch = useTabStore((s) =>
 		activeWorkspaceId ? s.baseBranchByWorkspace[activeWorkspaceId] : undefined
 	);
-	const meta = useTabStore((s) =>
-		activeWorkspaceId ? s.workspaceMetadata[activeWorkspaceId] : undefined
-	);
-	const hasPR = !!meta?.prProvider;
-
 	const utils = trpc.useUtils();
-
-	const commentsQuery = trpc.commentSolver.getWorkspaceComments.useQuery(
-		{ workspaceId: activeWorkspaceId ?? "" },
-		{ enabled: hasPR && !!activeWorkspaceId, staleTime: 30_000 }
-	);
-	const commentCount = commentsQuery.data?.length ?? 0;
 
 	// Fetch default branch to use as initial base
 	const defaultBranchQuery = trpc.diff.getDefaultBranch.useQuery(
@@ -185,19 +172,14 @@ function DiffPanelContent({ diffCtx, onClose }: { diffCtx: DiffContext; onClose?
 			<PanelHeader
 				activeTab={activeTab}
 				onSetTab={setActiveTab}
-				commentCount={commentCount}
 				stats={activeTab === "changes" ? (stats ?? undefined) : undefined}
 				onClose={onClose}
 			/>
 
 			{activeTab === "comments" && activeWorkspaceId ? (
-				<div className="flex flex-1 flex-col min-h-0 overflow-hidden">
-					<CommentsOverviewTab workspaceId={activeWorkspaceId} />
-				</div>
+				<CommentsOverviewTab workspaceId={activeWorkspaceId} />
 			) : activeTab === "ai-fixes" && activeWorkspaceId ? (
-				<div className="flex flex-1 flex-col min-h-0 overflow-hidden">
-					<AIFixesTab workspaceId={activeWorkspaceId} />
-				</div>
+				<AIFixesTab workspaceId={activeWorkspaceId} />
 			) : activeTab === "files" && activeWorkspaceId && activeWorkspaceCwd ? (
 				<div className="flex flex-1 flex-col min-h-0 overflow-hidden">
 					<RepoFileTree repoPath={activeWorkspaceCwd} workspaceId={activeWorkspaceId} />
