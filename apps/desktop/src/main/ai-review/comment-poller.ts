@@ -103,28 +103,7 @@ async function pollWorkspace(workspace: schema.Workspace): Promise<void> {
 		`[comment-poller] ${newCommentIds.length} new comment(s) on ${prIdentifier} (workspace ${workspaceId})`
 	);
 
-	const db = getDb();
-	const settings = db
-		.select()
-		.from(schema.aiReviewSettings)
-		.where(eq(schema.aiReviewSettings.id, "default"))
-		.get();
-
-	const autoSolveEnabled = settings?.autoSolveEnabled === 1;
-
-	if (autoSolveEnabled) {
-		// Emit to renderer — the renderer or a registered main-process handler triggers solve
-		const { BrowserWindow } = await import("electron");
-		for (const win of BrowserWindow.getAllWindows()) {
-			win.webContents.send("new-pr-comments-detected", {
-				workspaceId,
-				prProvider,
-				prIdentifier,
-				newCommentIds,
-				auto: true,
-			} satisfies NewCommentsEvent & { auto: boolean });
-		}
-	} else if (onNewCommentsHandler) {
+	if (onNewCommentsHandler) {
 		onNewCommentsHandler({ workspaceId, prProvider, prIdentifier, newCommentIds });
 	}
 }
@@ -171,18 +150,6 @@ function reconcileUnlinkedWorkspaces(): void {
 				})
 				.where(eq(schema.workspaces.id, ws.id))
 				.run();
-
-			// Notify renderer so it can refresh workspace data
-			import("electron").then(({ BrowserWindow }) => {
-				for (const win of BrowserWindow.getAllWindows()) {
-					win.webContents.send("workspace-pr-linked", {
-						workspaceId: ws.id,
-						projectId: ws.projectId,
-						prProvider: match.provider,
-						prIdentifier: match.identifier,
-					});
-				}
-			});
 		}
 	}
 }
