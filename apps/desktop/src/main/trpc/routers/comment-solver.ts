@@ -12,25 +12,11 @@ import { BITBUCKET_API_BASE } from "../../atlassian/constants";
 import { getDb } from "../../db";
 import * as schema from "../../db/schema";
 import { getPRComments } from "../../github/github";
+import { parsePrIdentifier } from "../../ai-review/pr-identifier";
 import type { SolveLaunchInfo, SolveSessionInfo } from "../../shared/solve-types";
 import { publicProcedure, router } from "../index";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-/** Parse a pr_identifier like "owner/repo#123" into parts */
-function parsePrIdentifier(identifier: string): {
-	owner: string;
-	repo: string;
-	number: number;
-} {
-	const match = identifier.match(/^(.+?)\/(.+?)#(\d+)$/);
-	if (!match) throw new Error(`Invalid PR identifier: ${identifier}`);
-	return {
-		owner: match[1] ?? "",
-		repo: match[2] ?? "",
-		number: Number.parseInt(match[3] ?? "", 10),
-	};
-}
 
 interface BitbucketApiComment {
 	id: number;

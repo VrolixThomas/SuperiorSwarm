@@ -4,27 +4,13 @@ import { replyToPRComment } from "../atlassian/bitbucket";
 import { getDb } from "../db";
 import * as schema from "../db/schema";
 import { addReviewThreadReply, resolveThread } from "../github/github";
+import { parsePrIdentifier } from "./pr-identifier";
 
 export interface PublishSolveResult {
 	pushed: boolean;
 	repliesPosted: number;
 	threadsResolved: number;
 	errors: string[];
-}
-
-/** Parse a pr_identifier like "owner/repo#123" into parts */
-function parsePrIdentifier(identifier: string): {
-	ownerOrWorkspace: string;
-	repo: string;
-	number: number;
-} {
-	const match = identifier.match(/^(.+?)\/(.+?)#(\d+)$/);
-	if (!match) throw new Error(`Invalid PR identifier: ${identifier}`);
-	return {
-		ownerOrWorkspace: match[1] ?? "",
-		repo: match[2] ?? "",
-		number: Number.parseInt(match[3] ?? "", 10),
-	};
 }
 
 /** Push commits and post approved replies to GitHub/Bitbucket */
@@ -95,7 +81,7 @@ export async function publishSolve(sessionId: string): Promise<PublishSolveResul
 		)
 		.all();
 
-	const { ownerOrWorkspace, repo, number: prNumber } = parsePrIdentifier(session.prIdentifier);
+	const { owner, repo, number: prNumber } = parsePrIdentifier(session.prIdentifier);
 
 	for (const { reply, comment } of approvedReplies) {
 		try {
@@ -107,7 +93,7 @@ export async function publishSolve(sessionId: string): Promise<PublishSolveResul
 				await addReviewThreadReply({ threadId: comment.threadId, body: reply.body });
 			} else if (session.prProvider === "bitbucket") {
 				const parentCommentId = Number.parseInt(comment.platformCommentId, 10);
-				await replyToPRComment(ownerOrWorkspace, repo, prNumber, parentCommentId, reply.body);
+				await replyToPRComment(owner, repo, prNumber, parentCommentId, reply.body);
 			}
 
 			// Update reply status to "posted"
