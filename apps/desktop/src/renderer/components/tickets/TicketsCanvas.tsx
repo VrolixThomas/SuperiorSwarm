@@ -201,8 +201,9 @@ export function TicketsCanvas() {
 				onViewModeChange={handleViewModeChange}
 			/>
 
-			<Group orientation="vertical" className="flex-1 overflow-hidden">
-				<Panel id="ticket-view" minSize={20}>
+			<div className="min-h-0 flex-1">
+			<Group orientation="vertical" className="h-full">
+				<Panel id="ticket-view" minSize="20%">
 					{viewMode === "board" && (
 						<TicketsBoardView
 							columns={columns}
@@ -234,15 +235,15 @@ export function TicketsCanvas() {
 					)}
 				</Panel>
 
-				<Separator className="panel-resize-handle" />
+				<Separator className="panel-resize-handle-vertical" />
 
 				<Panel
 					id="ticket-detail"
 					panelRef={detailPanelRef}
-					defaultSize={40}
-					minSize={15}
+					defaultSize="40%"
+					minSize="15%"
 					collapsible
-					collapsedSize={0}
+					collapsedSize="0%"
 					onResize={() => {
 						const collapsed = detailPanelRef.current?.isCollapsed() ?? true;
 						if (collapsed && ticketDetailOpen) {
@@ -262,6 +263,7 @@ export function TicketsCanvas() {
 					)}
 				</Panel>
 			</Group>
+			</div>
 
 			{contextMenu && (
 				<IssueContextMenu
