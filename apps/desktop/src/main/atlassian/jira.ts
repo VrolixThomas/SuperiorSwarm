@@ -108,3 +108,62 @@ export async function updateIssueStatus(issueKey: string, transitionId: string):
 		throw new Error(`Jira status update failed: ${res.status} ${await res.text()}`);
 	}
 }
+
+export interface JiraIssueDetail {
+	description: string;
+	comments: Array<{
+		id: string;
+		author: string;
+		avatarUrl?: string;
+		body: string;
+		createdAt: string;
+	}>;
+}
+
+export async function getIssueDetail(issueKey: string): Promise<JiraIssueDetail> {
+	const auth = getAuth("jira");
+	if (!auth || !auth.cloudId) return { description: "", comments: [] };
+
+	const url = `https://api.atlassian.com/ex/jira/${auth.cloudId}/rest/api/3/issue/${encodeURIComponent(issueKey)}?fields=description,comment`;
+
+	const res = await atlassianFetch("jira", url);
+	if (!res.ok) {
+		throw new Error(`Jira issue detail fetch failed: ${res.status} ${await res.text()}`);
+	}
+
+	const data = (await res.json()) as {
+		fields: {
+			description: { content?: Array<{ content?: Array<{ text?: string }> }> } | string | null;
+			comment?: {
+				comments: Array<{
+					id: string;
+					author: { displayName: string; avatarUrls?: Record<string, string> };
+					body: { content?: Array<{ content?: Array<{ text?: string }> }> } | string;
+					created: string;
+				}>;
+			};
+		};
+	};
+
+	const extractText = (adf: unknown): string => {
+		if (typeof adf === "string") return adf;
+		if (!adf || typeof adf !== "object") return "";
+		const node = adf as { text?: string; content?: unknown[] };
+		if (node.text) return node.text;
+		if (Array.isArray(node.content)) {
+			return node.content.map(extractText).join("\n");
+		}
+		return "";
+	};
+
+	const description = extractText(data.fields.description);
+	const comments = (data.fields.comment?.comments ?? []).map((c) => ({
+		id: c.id,
+		author: c.author.displayName,
+		avatarUrl: c.author.avatarUrls?.["24x24"],
+		body: extractText(c.body),
+		createdAt: c.created,
+	}));
+
+	return { description, comments };
+}
