@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Group, Panel, Separator, usePanelRef } from "react-resizable-panels";
+import { Group, Panel, Separator, useDefaultLayout, usePanelRef } from "react-resizable-panels";
 import type { MergedTicketIssue, TicketViewMode } from "../../../shared/tickets";
 import { useTicketsData } from "../../hooks/useTicketsData";
 import { useTabStore } from "../../stores/tab-store";
@@ -56,6 +56,11 @@ export function TicketsCanvas() {
 
 	// ── Detail panel (resizable) ─────────────────────────────────────────────
 	const detailPanelRef = usePanelRef();
+	const { defaultLayout: ticketPanelLayout, onLayoutChanged: onTicketLayoutChanged } =
+		useDefaultLayout({
+			id: "ticket-detail-layout",
+			storage: localStorage,
+		});
 
 	useEffect(() => {
 		if (!detailPanelRef.current) return;
@@ -202,7 +207,7 @@ export function TicketsCanvas() {
 			/>
 
 			<div className="min-h-0 flex-1">
-			<Group orientation="vertical" className="h-full">
+			<Group orientation="vertical" className="h-full" defaultLayout={ticketPanelLayout} onLayoutChanged={onTicketLayoutChanged}>
 				<Panel id="ticket-view" minSize="20%">
 					{viewMode === "board" && (
 						<TicketsBoardView
