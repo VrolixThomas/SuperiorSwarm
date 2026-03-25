@@ -413,14 +413,9 @@ function ActiveState({
 	// Comment-level stats
 	const allComments = session.groups.flatMap((g) => g.comments);
 	const totalComments = allComments.length;
-	const resolvedComments = allComments.filter(
+	const resolved = allComments.filter(
 		(c) => c.status === "fixed" || c.status === "wont_fix"
 	).length;
-	// Also count groups that are fully approved as resolved
-	const approvedGroupComments = session.groups
-		.filter((g) => g.status === "approved")
-		.flatMap((g) => g.comments).length;
-	const resolved = Math.max(resolvedComments, approvedGroupComments);
 	const unclearComments = allComments.filter((c) => c.status === "unclear").length;
 	const pendingComments = totalComments - resolved - unclearComments;
 

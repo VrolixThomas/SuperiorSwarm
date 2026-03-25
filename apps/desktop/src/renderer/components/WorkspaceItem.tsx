@@ -141,7 +141,7 @@ export function WorkspaceItem({ workspace, projectName, projectRepoPath }: Works
 
 	const sessions = solveSessionsQuery.data ?? [];
 	const hasReadySessions = sessions.some((s) => s.status === "ready");
-	const hasUnresolvedComments = sessions.some(
+	const hasSolveInProgress = sessions.some(
 		(s) => s.status === "queued" || s.status === "in_progress"
 	);
 
@@ -222,7 +222,7 @@ export function WorkspaceItem({ workspace, projectName, projectRepoPath }: Works
 						title="Fixes ready for review"
 					/>
 				)}
-				{!hasReadySessions && hasUnresolvedComments && (
+				{!hasReadySessions && hasSolveInProgress && (
 					<span
 						className="ml-auto shrink-0 size-[6px] rounded-full bg-[var(--accent)]"
 						title="Unresolved comments"
