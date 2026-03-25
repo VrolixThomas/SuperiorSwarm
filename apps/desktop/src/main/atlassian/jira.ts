@@ -83,7 +83,9 @@ export async function getIssueTransitions(issueKey: string): Promise<TicketStatu
 		throw new Error(`Jira transitions fetch failed: ${res.status} ${await res.text()}`);
 	}
 
-	const data = (await res.json()) as { transitions: any[] };
+	const data = (await res.json()) as {
+		transitions: { id: string; name: string; to: { statusCategory: { key: string } } }[];
+	};
 
 	return data.transitions.map((t) => ({
 		id: t.id,
