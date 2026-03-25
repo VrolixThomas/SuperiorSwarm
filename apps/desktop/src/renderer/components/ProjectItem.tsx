@@ -65,7 +65,7 @@ export function ProjectItem({ project, isExpanded, onToggle }: ProjectItemProps)
 	// Fetch workspaces when expanded and project is ready
 	const { data: workspacesList } = trpc.workspaces.listByProject.useQuery(
 		{ projectId: project.id },
-		{ enabled: isExpanded && isReady }
+		{ enabled: isExpanded && isReady, refetchInterval: 60_000 }
 	);
 
 	const openCreateWorktreeModal = useProjectStore((s) => s.openCreateWorktreeModal);

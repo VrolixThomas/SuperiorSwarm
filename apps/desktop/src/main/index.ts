@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { BrowserWindow, app, dialog, ipcMain, shell } from "electron";
 import { daemonInstanceId, daemonPaths } from "../shared/daemon-protocol";
 import { cleanupReviewWorkspace, findReviewWorkspaceByPR } from "./ai-review/cleanup";
+import { startCommentPoller, stopCommentPoller } from "./ai-review/comment-poller";
 import { startPolling } from "./ai-review/commit-poller";
 import { cleanupStaleReviews } from "./ai-review/orchestrator";
 import {
@@ -79,6 +80,7 @@ app.whenReady().then(async () => {
 	cleanupStaleReviews();
 	startPolling();
 	startPRPolling();
+	startCommentPoller();
 
 	onNewPRDetected((pr) => {
 		for (const win of BrowserWindow.getAllWindows()) {
@@ -170,6 +172,7 @@ app.whenReady().then(async () => {
 });
 
 app.on("before-quit", () => {
+	stopCommentPoller();
 	daemonClient.setQuitting();
 	daemonClient.detachAll();
 	serverManager.disposeAll();

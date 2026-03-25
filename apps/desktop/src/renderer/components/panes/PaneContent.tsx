@@ -1,4 +1,5 @@
 import type { Pane } from "../../../shared/pane-types";
+import { CommentFixFileTab } from "../CommentFixFileTab";
 import { DiffFileTab } from "../DiffFileTab";
 import { FileEditor } from "../FileEditor";
 import { PROverviewTab } from "../PROverviewTab";
@@ -75,6 +76,17 @@ export function PaneContent({
 					<PROverviewTab
 						key={`${activeTab.prCtx.owner}/${activeTab.prCtx.repo}#${activeTab.prCtx.number}`}
 						prCtx={activeTab.prCtx}
+					/>
+				</div>
+			)}
+			{activeTab?.kind === "comment-fix-file" && (
+				<div className="absolute inset-0">
+					<CommentFixFileTab
+						key={`${activeTab.groupId}:${activeTab.filePath}`}
+						repoPath={activeTab.repoPath}
+						filePath={activeTab.filePath}
+						commitHash={activeTab.commitHash}
+						language={activeTab.language}
 					/>
 				</div>
 			)}
