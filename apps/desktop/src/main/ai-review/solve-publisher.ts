@@ -23,7 +23,6 @@ export async function publishSolve(sessionId: string): Promise<PublishSolveResul
 	let repliesPosted = 0;
 	let threadsResolved = 0;
 
-	// 1. Resolve session → workspace → worktree
 	let resolved: ReturnType<typeof resolveSessionWorktree>;
 	try {
 		resolved = resolveSessionWorktree(sessionId);
@@ -32,7 +31,6 @@ export async function publishSolve(sessionId: string): Promise<PublishSolveResul
 	}
 	const { session, worktree } = resolved;
 
-	// 2. Git push
 	try {
 		execSync("git push", { cwd: worktree.path, stdio: "pipe" });
 		pushed = true;
@@ -40,8 +38,6 @@ export async function publishSolve(sessionId: string): Promise<PublishSolveResul
 		errors.push(`Git push failed: ${err}`);
 		// Continue — still try to post replies even if push fails
 	}
-
-	// 4. Post approved replies
 	const approvedReplies = db
 		.select({
 			reply: schema.commentReplies,
@@ -84,7 +80,7 @@ export async function publishSolve(sessionId: string): Promise<PublishSolveResul
 		}
 	}
 
-	// 5. Resolve threads for fixed comments (GitHub only)
+	// Resolve threads for fixed comments (GitHub only)
 	if (session.prProvider === "github") {
 		const fixedComments = db
 			.select()
@@ -108,7 +104,6 @@ export async function publishSolve(sessionId: string): Promise<PublishSolveResul
 		}
 	}
 
-	// 6. Update session status to "submitted"
 	validateSolveTransition(session.status, "submitted");
 	db.update(schema.commentSolveSessions)
 		.set({ status: "submitted", updatedAt: new Date() })
