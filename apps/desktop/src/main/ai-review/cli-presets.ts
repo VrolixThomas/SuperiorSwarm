@@ -27,7 +27,12 @@ export interface LaunchOptions {
 	solveSessionId?: string; // When set, MCP uses solve mode instead of review mode
 }
 
-function writeTempMcpConfig(dir: string, filename: string, mcpServerPath: string): string {
+function writeTempMcpConfig(
+	dir: string,
+	filename: string,
+	mcpServerPath: string,
+	env?: Record<string, string>
+): string {
 	mkdirSync(dir, { recursive: true });
 	const configPath = join(dir, filename);
 	const config = {
@@ -35,11 +40,28 @@ function writeTempMcpConfig(dir: string, filename: string, mcpServerPath: string
 			branchflux: {
 				command: "node",
 				args: [mcpServerPath],
+				...(env ? { env } : {}),
 			},
 		},
 	};
 	writeFileSync(configPath, JSON.stringify(config, null, 2), "utf-8");
 	return configPath;
+}
+
+function buildMcpEnv(opts: LaunchOptions): Record<string, string> {
+	if (opts.solveSessionId) {
+		return {
+			SOLVE_SESSION_ID: opts.solveSessionId,
+			PR_METADATA: opts.prMetadata,
+			DB_PATH: opts.dbPath,
+			WORKTREE_PATH: opts.worktreePath,
+		};
+	}
+	return {
+		REVIEW_DRAFT_ID: opts.reviewDraftId,
+		PR_METADATA: opts.prMetadata,
+		DB_PATH: opts.dbPath,
+	};
 }
 
 export const CLI_PRESETS: Record<string, CliPreset> = {
@@ -66,18 +88,7 @@ export const CLI_PRESETS: Record<string, CliPreset> = {
 					branchflux: {
 						command: "node",
 						args: [standaloneServerPath],
-						env: opts.solveSessionId
-							? {
-									SOLVE_SESSION_ID: opts.solveSessionId,
-									PR_METADATA: opts.prMetadata,
-									DB_PATH: opts.dbPath,
-									WORKTREE_PATH: opts.worktreePath,
-								}
-							: {
-									REVIEW_DRAFT_ID: opts.reviewDraftId,
-									PR_METADATA: opts.prMetadata,
-									DB_PATH: opts.dbPath,
-								},
+						env: buildMcpEnv(opts),
 					},
 				},
 			};
@@ -111,18 +122,7 @@ export const CLI_PRESETS: Record<string, CliPreset> = {
 					branchflux: {
 						command: "node",
 						args: [standaloneServerPath],
-						env: opts.solveSessionId
-							? {
-									SOLVE_SESSION_ID: opts.solveSessionId,
-									PR_METADATA: opts.prMetadata,
-									DB_PATH: opts.dbPath,
-									WORKTREE_PATH: opts.worktreePath,
-								}
-							: {
-									REVIEW_DRAFT_ID: opts.reviewDraftId,
-									PR_METADATA: opts.prMetadata,
-									DB_PATH: opts.dbPath,
-								},
+						env: buildMcpEnv(opts),
 					},
 				},
 			};
@@ -141,9 +141,9 @@ export const CLI_PRESETS: Record<string, CliPreset> = {
 		command: "codex",
 		permissionFlag: "--full-auto",
 		buildArgs: ({ promptFilePath }) => [`"$(cat '${promptFilePath}')"`],
-		setupMcp: ({ worktreePath, mcpServerPath }) => {
-			const dir = join(worktreePath, ".codex");
-			const configPath = writeTempMcpConfig(dir, "config.json", mcpServerPath);
+		setupMcp: (opts) => {
+			const dir = join(opts.worktreePath, ".codex");
+			const configPath = writeTempMcpConfig(dir, "config.json", opts.mcpServerPath, buildMcpEnv(opts));
 			return () => {
 				try {
 					rmSync(configPath);
@@ -171,18 +171,7 @@ export const CLI_PRESETS: Record<string, CliPreset> = {
 					branchflux: {
 						type: "local",
 						command: ["node", standaloneServerPath],
-						environment: opts.solveSessionId
-							? {
-									SOLVE_SESSION_ID: opts.solveSessionId,
-									PR_METADATA: opts.prMetadata,
-									DB_PATH: opts.dbPath,
-									WORKTREE_PATH: opts.worktreePath,
-								}
-							: {
-									REVIEW_DRAFT_ID: opts.reviewDraftId,
-									PR_METADATA: opts.prMetadata,
-									DB_PATH: opts.dbPath,
-								},
+						environment: buildMcpEnv(opts),
 					},
 				},
 			};
