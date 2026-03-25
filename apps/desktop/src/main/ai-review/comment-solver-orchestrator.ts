@@ -85,7 +85,6 @@ export async function queueSolve(sessionId: string): Promise<SolveLaunchInfo> {
 		)
 		.get()!;
 
-	// Transition status to in_progress
 	const now = new Date();
 	validateSolveTransition(session.status, "in_progress");
 	db.update(schema.commentSolveSessions)
@@ -94,7 +93,6 @@ export async function queueSolve(sessionId: string): Promise<SolveLaunchInfo> {
 		.run();
 
 	try {
-		// Capture commit SHA
 		const commitSha = execSync("git rev-parse HEAD", { cwd: worktreePath }).toString().trim();
 
 		db.update(schema.commentSolveSessions)
