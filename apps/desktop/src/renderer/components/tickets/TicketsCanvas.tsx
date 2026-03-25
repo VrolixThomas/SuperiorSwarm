@@ -1,4 +1,5 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Group, Panel, Separator, usePanelRef } from "react-resizable-panels";
 import type { MergedTicketIssue, TicketViewMode } from "../../../shared/tickets";
 import { useTicketsData } from "../../hooks/useTicketsData";
 import { useTabStore } from "../../stores/tab-store";
@@ -52,6 +53,18 @@ export function TicketsCanvas() {
 		prevProjectIdRef.current = projectId;
 		setLocalViewMode(null);
 	}
+
+	// ── Detail panel (resizable) ─────────────────────────────────────────────
+	const detailPanelRef = usePanelRef();
+
+	useEffect(() => {
+		if (!detailPanelRef.current) return;
+		if (ticketDetailOpen && detailPanelRef.current.isCollapsed()) {
+			detailPanelRef.current.expand();
+		} else if (!ticketDetailOpen && !detailPanelRef.current.isCollapsed()) {
+			detailPanelRef.current.collapse();
+		}
+	}, [ticketDetailOpen, detailPanelRef]);
 
 	// ── Context menu ─────────────────────────────────────────────────────────
 	const [contextMenu, setContextMenu] = useState<{
@@ -156,8 +169,6 @@ export function TicketsCanvas() {
 		return filteredIssues.find((i) => i.id === selectedTicketId) ?? null;
 	}, [selectedTicketId, filteredIssues]);
 
-	const showDetail = ticketDetailOpen && selectedIssue;
-
 	// ── Empty / loading states ───────────────────────────────────────────────
 	if (isEmpty) {
 		return (
@@ -190,46 +201,56 @@ export function TicketsCanvas() {
 				onViewModeChange={handleViewModeChange}
 			/>
 
-			{/* View area */}
-			<div
-				className={`min-h-0 overflow-hidden ${showDetail ? "flex-1 basis-1/2" : "flex-1"}`}
-			>
-				{viewMode === "board" && (
-					<TicketsBoardView
-						columns={columns}
-						linkedMap={linkedMap}
-						selectedTicketId={selectedTicketId}
-						showProvider={showProvider}
-						onTicketClick={handleTicketClick}
-						onTicketContextMenu={handleTicketContextMenu}
-					/>
-				)}
-				{viewMode === "list" && (
-					<TicketsListView
-						columns={columns}
-						linkedMap={linkedMap}
-						selectedTicketId={selectedTicketId}
-						showProvider={showProvider}
-						onTicketClick={handleTicketClick}
-						onTicketContextMenu={handleTicketContextMenu}
-					/>
-				)}
-				{viewMode === "table" && (
-					<TicketsTableView
-						issues={filteredIssues}
-						linkedMap={linkedMap}
-						selectedTicketId={selectedTicketId}
-						onTicketClick={handleTicketClick}
-						onTicketContextMenu={handleTicketContextMenu}
-					/>
-				)}
-			</div>
+			<Group orientation="vertical" className="flex-1 overflow-hidden">
+				<Panel id="ticket-view" minSize={20}>
+					{viewMode === "board" && (
+						<TicketsBoardView
+							columns={columns}
+							linkedMap={linkedMap}
+							selectedTicketId={selectedTicketId}
+							showProvider={showProvider}
+							onTicketClick={handleTicketClick}
+							onTicketContextMenu={handleTicketContextMenu}
+						/>
+					)}
+					{viewMode === "list" && (
+						<TicketsListView
+							columns={columns}
+							linkedMap={linkedMap}
+							selectedTicketId={selectedTicketId}
+							showProvider={showProvider}
+							onTicketClick={handleTicketClick}
+							onTicketContextMenu={handleTicketContextMenu}
+						/>
+					)}
+					{viewMode === "table" && (
+						<TicketsTableView
+							issues={filteredIssues}
+							linkedMap={linkedMap}
+							selectedTicketId={selectedTicketId}
+							onTicketClick={handleTicketClick}
+							onTicketContextMenu={handleTicketContextMenu}
+						/>
+					)}
+				</Panel>
 
-			{/* Detail panel */}
-			{showDetail && (
-				<>
-					<div className="h-px shrink-0 bg-[var(--border)]" />
-					<div className="min-h-0 flex-1 basis-1/2 overflow-hidden">
+				<Separator className="panel-resize-handle" />
+
+				<Panel
+					id="ticket-detail"
+					panelRef={detailPanelRef}
+					defaultSize={0}
+					minSize={15}
+					collapsible
+					collapsedSize={0}
+					onResize={() => {
+						const collapsed = detailPanelRef.current?.isCollapsed() ?? true;
+						if (collapsed && ticketDetailOpen) {
+							useTabStore.getState().closeTicketDetail();
+						}
+					}}
+				>
+					{selectedIssue && (
 						<TicketDetailPanel
 							issue={selectedIssue}
 							linked={linkedMap.get(
@@ -238,9 +259,9 @@ export function TicketsCanvas() {
 							onCreateBranch={() => setOpenModalIssue(selectedIssue)}
 							onNavigateToWorkspace={navigateToWorkspace}
 						/>
-					</div>
-				</>
-			)}
+					)}
+				</Panel>
+			</Group>
 
 			{contextMenu && (
 				<IssueContextMenu
