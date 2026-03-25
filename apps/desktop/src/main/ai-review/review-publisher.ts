@@ -12,23 +12,13 @@ import {
 	submitReview,
 	unresolveThread,
 } from "../github/github";
+import { parsePrIdentifier } from "./pr-identifier";
 
 interface PublishResult {
 	success: boolean;
 	postedCount: number;
 	skippedCount: number;
 	errors: string[];
-}
-
-/** Parse a pr_identifier like "owner/repo#123" into parts */
-function parsePrIdentifier(identifier: string): {
-	ownerOrWorkspace: string;
-	repo: string;
-	number: number;
-} {
-	const [ownerRepo, numStr] = identifier.split("#");
-	const [ownerOrWorkspace, repo] = ownerRepo!.split("/");
-	return { ownerOrWorkspace: ownerOrWorkspace!, repo: repo!, number: Number.parseInt(numStr!, 10) };
 }
 
 /**
@@ -103,7 +93,7 @@ export async function publishReview(draftId: string): Promise<PublishResult> {
 				c.resolution !== "incorrectly-resolved"
 		);
 
-	const { ownerOrWorkspace, repo, number: prNumber } = parsePrIdentifier(draft.prIdentifier);
+	const { owner, repo, number: prNumber } = parsePrIdentifier(draft.prIdentifier);
 	const errors: string[] = [];
 	let postedCount = 0;
 	let skippedCount = 0;
@@ -116,8 +106,8 @@ export async function publishReview(draftId: string): Promise<PublishResult> {
 
 		try {
 			const [prState, prFiles] = await Promise.all([
-				getPRState(ownerOrWorkspace, repo, prNumber),
-				getPRFiles(ownerOrWorkspace, repo, prNumber),
+				getPRState(owner, repo, prNumber),
+				getPRFiles(owner, repo, prNumber),
 			]);
 			commitId = prState.headSha;
 			const maps = buildPathMaps(prFiles);
@@ -154,7 +144,7 @@ export async function publishReview(draftId: string): Promise<PublishResult> {
 						: body;
 
 				const result = await createReviewThread({
-					owner: ownerOrWorkspace,
+					owner: owner,
 					repo,
 					prNumber,
 					body: commentBody,
@@ -184,7 +174,7 @@ export async function publishReview(draftId: string): Promise<PublishResult> {
 		if (draft.summaryMarkdown) {
 			try {
 				await submitReview({
-					owner: ownerOrWorkspace,
+					owner: owner,
 					repo,
 					prNumber,
 					verdict: "COMMENT",
@@ -202,7 +192,7 @@ export async function publishReview(draftId: string): Promise<PublishResult> {
 					comment.status === "edited" && comment.userEdit ? comment.userEdit : comment.body;
 
 				const result = await createPRComment(
-					ownerOrWorkspace,
+					owner,
 					repo,
 					prNumber,
 					body,
@@ -225,7 +215,7 @@ export async function publishReview(draftId: string): Promise<PublishResult> {
 		// Post summary as a general comment
 		if (draft.summaryMarkdown) {
 			try {
-				await createPRComment(ownerOrWorkspace, repo, prNumber, draft.summaryMarkdown);
+				await createPRComment(owner, repo, prNumber, draft.summaryMarkdown);
 			} catch (err) {
 				errors.push(`Failed to post review summary: ${err}`);
 			}
@@ -272,7 +262,7 @@ export async function publishReview(draftId: string): Promise<PublishResult> {
 				}
 			} else if (draft.prProvider === "bitbucket") {
 				const parentId = Number.parseInt(originalComment.platformCommentId, 10);
-				await replyToPRComment(ownerOrWorkspace, repo, prNumber, parentId, body);
+				await replyToPRComment(owner, repo, prNumber, parentId, body);
 			}
 			postedCount++;
 		} catch (err) {
