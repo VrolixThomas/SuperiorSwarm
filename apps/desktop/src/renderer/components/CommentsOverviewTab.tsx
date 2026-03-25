@@ -93,7 +93,7 @@ export function CommentsOverviewTab({ workspaceId }: CommentsOverviewTabProps) {
 			provider: (meta?.prProvider ?? "github") as "github" | "bitbucket",
 			owner,
 			repo,
-			number: parseInt(numStr, 10) || 0,
+			number: Number.parseInt(numStr, 10) || 0,
 			title: meta?.prTitle ?? "",
 			sourceBranch: meta?.sourceBranch ?? "",
 			targetBranch: meta?.targetBranch ?? "",
@@ -103,7 +103,9 @@ export function CommentsOverviewTab({ workspaceId }: CommentsOverviewTabProps) {
 
 	// Check if a solve session is in progress
 	const sessions = sessionsQuery.data ?? [];
-	const isSessionInProgress = sessions.some((s) => s.status === "queued" || s.status === "in_progress");
+	const isSessionInProgress = sessions.some(
+		(s) => s.status === "queued" || s.status === "in_progress"
+	);
 
 	// Transform raw comments into UnifiedThread format
 	const threads: UnifiedThread[] = useMemo(
@@ -224,7 +226,7 @@ export function CommentsOverviewTab({ workspaceId }: CommentsOverviewTabProps) {
 				workspace: prCtx.owner,
 				repoSlug: prCtx.repo,
 				prId: prCtx.number,
-				parentCommentId: parseInt(threadId, 10),
+				parentCommentId: Number.parseInt(threadId, 10),
 				body,
 			});
 		}
@@ -238,7 +240,7 @@ export function CommentsOverviewTab({ workspaceId }: CommentsOverviewTabProps) {
 				workspace: prCtx.owner,
 				repoSlug: prCtx.repo,
 				prId: prCtx.number,
-				commentId: parseInt(threadId, 10),
+				commentId: Number.parseInt(threadId, 10),
 				resolved: true,
 			});
 		}

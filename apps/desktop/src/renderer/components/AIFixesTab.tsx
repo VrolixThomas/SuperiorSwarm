@@ -111,9 +111,7 @@ function CommitGroupCard({
 		// Find existing AI Solver terminal tab for this workspace
 		const tabStore = useTabStore.getState();
 		const tabs = tabStore.getTabsByWorkspace(workspaceId);
-		const solverTab = tabs.find(
-			(t) => t.kind === "terminal" && t.title === "AI Solver"
-		);
+		const solverTab = tabs.find((t) => t.kind === "terminal" && t.title === "AI Solver");
 
 		if (solverTab) {
 			// Switch to the existing terminal
@@ -194,7 +192,12 @@ function CommitGroupCard({
 								e.stopPropagation();
 								approveGroup.mutate({ groupId: group.id });
 							}}
-							onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); approveGroup.mutate({ groupId: group.id }); } }}
+							onKeyDown={(e) => {
+								if (e.key === "Enter") {
+									e.stopPropagation();
+									approveGroup.mutate({ groupId: group.id });
+								}
+							}}
 							className="rounded-[4px] bg-[rgba(48,209,88,0.15)] px-2 py-0.5 text-[10px] font-medium text-[#30d158] hover:opacity-80"
 						>
 							{approveGroup.isPending ? "..." : "Approve"}
@@ -212,7 +215,12 @@ function CommitGroupCard({
 							e.stopPropagation();
 							handleFollowUp();
 						}}
-						onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); handleFollowUp(); } }}
+						onKeyDown={(e) => {
+							if (e.key === "Enter") {
+								e.stopPropagation();
+								handleFollowUp();
+							}
+						}}
 						className="rounded-[4px] px-2 py-0.5 text-[10px] text-[var(--text-quaternary)] hover:text-[var(--text-secondary)] transition-colors"
 					>
 						Follow up
@@ -258,130 +266,144 @@ function CommitGroupCard({
 					{group.comments.map((comment) => {
 						const commentFilename = comment.filePath ? comment.filePath.split("/").pop() : null;
 						return (
-						<div key={comment.id} className="px-3 py-2">
-							{/* Comment author + file:line */}
-							<div className="mb-0.5 flex items-center gap-1.5 text-[10px]">
-								<span className="font-bold text-[var(--text-secondary)]">{comment.author}</span>
-								{commentFilename && (
-									<button
-										type="button"
-										onClick={() => handleFileClick(comment.filePath)}
-										className="text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:underline"
-										style={{ fontFamily: "var(--font-mono)" }}
-										title={comment.filePath}
-									>
-										{commentFilename}
-										{comment.lineNumber != null && `:${comment.lineNumber}`}
-									</button>
-								)}
-							</div>
-							{/* Comment body — full text, no truncation */}
-							<p className="whitespace-pre-wrap text-[11px] leading-[1.5] text-[var(--text-tertiary)]">
-								{comment.body}
-							</p>
-							{/* Draft reply — editable */}
-							{comment.reply && editingReply !== comment.reply.id && (
-								<div className="mt-2 rounded-[4px] border border-[rgba(255,255,255,0.06)] bg-[rgba(255,255,255,0.04)] px-2.5 py-1.5">
-									<div className="flex items-center justify-between">
-										<span className="text-[10px] font-medium text-[var(--text-quaternary)]">
-											Draft reply:
-										</span>
-										<div className="flex gap-1">
-											<button
-												type="button"
-												onClick={() => {
-													setEditingReply(comment.reply!.id);
-													setEditReplyText(comment.reply!.body);
-												}}
-												className="text-[9px] text-[var(--text-quaternary)] hover:text-[var(--text-secondary)]"
-											>
-												Edit
-											</button>
-											<button
-												type="button"
-												onClick={() => deleteReply.mutate({ replyId: comment.reply!.id })}
-												className="text-[9px] text-[#ff453a] hover:opacity-80"
-											>
-												Delete
-											</button>
-										</div>
-									</div>
-									<p className="mt-0.5 whitespace-pre-wrap text-[11px] text-[var(--text-tertiary)]">
-										{comment.reply.body}
-									</p>
-								</div>
-							)}
-							{/* Editing reply */}
-							{comment.reply && editingReply === comment.reply.id && (
-								<div className="mt-2 rounded-[4px] border border-[var(--accent)] bg-[rgba(255,255,255,0.04)] px-2.5 py-1.5">
-									<span className="text-[10px] font-medium text-[var(--text-quaternary)]">
-										Edit reply:
-									</span>
-									<textarea
-										value={editReplyText}
-										onChange={(e) => setEditReplyText(e.target.value)}
-										className="mt-1 w-full resize-none rounded-[4px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 py-1.5 text-[11px] text-[var(--text)] focus:border-[var(--accent)] focus:outline-none"
-										rows={3}
-									/>
-									<div className="mt-1 flex justify-end gap-1.5">
+							<div key={comment.id} className="px-3 py-2">
+								{/* Comment author + file:line */}
+								<div className="mb-0.5 flex items-center gap-1.5 text-[10px]">
+									<span className="font-bold text-[var(--text-secondary)]">{comment.author}</span>
+									{commentFilename && (
 										<button
 											type="button"
-											onClick={() => setEditingReply(null)}
-											className="rounded-[4px] px-2 py-0.5 text-[10px] text-[var(--text-tertiary)] hover:bg-[var(--bg-overlay)]"
+											onClick={() => handleFileClick(comment.filePath)}
+											className="text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:underline"
+											style={{ fontFamily: "var(--font-mono)" }}
+											title={comment.filePath}
 										>
-											Cancel
+											{commentFilename}
+											{comment.lineNumber != null && `:${comment.lineNumber}`}
 										</button>
-										<button
-											type="button"
-											onClick={() => updateReply.mutate({ replyId: comment.reply!.id, body: editReplyText })}
-											disabled={!editReplyText.trim() || updateReply.isPending}
-											className="rounded-[4px] bg-[var(--accent)] px-2 py-0.5 text-[10px] text-white hover:opacity-80 disabled:opacity-40"
-										>
-											Save
-										</button>
-									</div>
-								</div>
-							)}
-							{/* Inline reply input (when no reply exists) — single click to start typing */}
-							{!comment.reply && (
-								<div className="mt-1.5">
-									<textarea
-										placeholder="Reply..."
-										value={addingReplyTo === comment.id ? newReplyText : ""}
-										rows={addingReplyTo === comment.id && newReplyText ? Math.min(Math.max(newReplyText.split("\n").length, 2), 6) : 1}
-										onFocus={() => { if (addingReplyTo !== comment.id) { setAddingReplyTo(comment.id); setNewReplyText(""); } }}
-										onChange={(e) => { setAddingReplyTo(comment.id); setNewReplyText(e.target.value); }}
-										onKeyDown={(e) => {
-											if (e.key === "Enter" && !e.shiftKey && newReplyText.trim()) {
-												e.preventDefault();
-												addReply.mutate({
-													commentId: comment.id,
-													body: newReplyText.trim(),
-												});
-												setAddingReplyTo(null);
-												setNewReplyText("");
-											}
-											if (e.key === "Escape") {
-												setAddingReplyTo(null);
-												setNewReplyText("");
-												(e.target as HTMLTextAreaElement).blur();
-											}
-										}}
-										className={[
-											"w-full resize-none rounded-[4px] text-[11px] text-[var(--text)] placeholder:text-[var(--text-quaternary)] transition-all focus:outline-none",
-											addingReplyTo === comment.id
-												? "border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 py-1.5"
-												: "border border-transparent bg-transparent px-0 py-0.5",
-										].join(" ")}
-									/>
-									{addingReplyTo === comment.id && newReplyText && (
-										<div className="mt-0.5 text-[9px] text-[var(--text-quaternary)]">
-											Enter to save · Shift+Enter for new line · Esc to cancel
-										</div>
 									)}
 								</div>
-							)}
-						</div>
+								{/* Comment body — full text, no truncation */}
+								<p className="whitespace-pre-wrap text-[11px] leading-[1.5] text-[var(--text-tertiary)]">
+									{comment.body}
+								</p>
+								{/* Draft reply — editable */}
+								{comment.reply && editingReply !== comment.reply.id && (
+									<div className="mt-2 rounded-[4px] border border-[rgba(255,255,255,0.06)] bg-[rgba(255,255,255,0.04)] px-2.5 py-1.5">
+										<div className="flex items-center justify-between">
+											<span className="text-[10px] font-medium text-[var(--text-quaternary)]">
+												Draft reply:
+											</span>
+											<div className="flex gap-1">
+												<button
+													type="button"
+													onClick={() => {
+														setEditingReply(comment.reply!.id);
+														setEditReplyText(comment.reply!.body);
+													}}
+													className="text-[9px] text-[var(--text-quaternary)] hover:text-[var(--text-secondary)]"
+												>
+													Edit
+												</button>
+												<button
+													type="button"
+													onClick={() => deleteReply.mutate({ replyId: comment.reply!.id })}
+													className="text-[9px] text-[#ff453a] hover:opacity-80"
+												>
+													Delete
+												</button>
+											</div>
+										</div>
+										<p className="mt-0.5 whitespace-pre-wrap text-[11px] text-[var(--text-tertiary)]">
+											{comment.reply.body}
+										</p>
+									</div>
+								)}
+								{/* Editing reply */}
+								{comment.reply && editingReply === comment.reply.id && (
+									<div className="mt-2 rounded-[4px] border border-[var(--accent)] bg-[rgba(255,255,255,0.04)] px-2.5 py-1.5">
+										<span className="text-[10px] font-medium text-[var(--text-quaternary)]">
+											Edit reply:
+										</span>
+										<textarea
+											value={editReplyText}
+											onChange={(e) => setEditReplyText(e.target.value)}
+											className="mt-1 w-full resize-none rounded-[4px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 py-1.5 text-[11px] text-[var(--text)] focus:border-[var(--accent)] focus:outline-none"
+											rows={3}
+										/>
+										<div className="mt-1 flex justify-end gap-1.5">
+											<button
+												type="button"
+												onClick={() => setEditingReply(null)}
+												className="rounded-[4px] px-2 py-0.5 text-[10px] text-[var(--text-tertiary)] hover:bg-[var(--bg-overlay)]"
+											>
+												Cancel
+											</button>
+											<button
+												type="button"
+												onClick={() =>
+													updateReply.mutate({ replyId: comment.reply!.id, body: editReplyText })
+												}
+												disabled={!editReplyText.trim() || updateReply.isPending}
+												className="rounded-[4px] bg-[var(--accent)] px-2 py-0.5 text-[10px] text-white hover:opacity-80 disabled:opacity-40"
+											>
+												Save
+											</button>
+										</div>
+									</div>
+								)}
+								{/* Inline reply input (when no reply exists) — single click to start typing */}
+								{!comment.reply && (
+									<div className="mt-1.5">
+										<textarea
+											placeholder="Reply..."
+											value={addingReplyTo === comment.id ? newReplyText : ""}
+											rows={
+												addingReplyTo === comment.id && newReplyText
+													? Math.min(Math.max(newReplyText.split("\n").length, 2), 6)
+													: 1
+											}
+											onFocus={() => {
+												if (addingReplyTo !== comment.id) {
+													setAddingReplyTo(comment.id);
+													setNewReplyText("");
+												}
+											}}
+											onChange={(e) => {
+												setAddingReplyTo(comment.id);
+												setNewReplyText(e.target.value);
+											}}
+											onKeyDown={(e) => {
+												if (e.key === "Enter" && !e.shiftKey && newReplyText.trim()) {
+													e.preventDefault();
+													addReply.mutate({
+														commentId: comment.id,
+														body: newReplyText.trim(),
+													});
+													setAddingReplyTo(null);
+													setNewReplyText("");
+												}
+												if (e.key === "Escape") {
+													setAddingReplyTo(null);
+													setNewReplyText("");
+													(e.target as HTMLTextAreaElement).blur();
+												}
+											}}
+											className={[
+												"w-full resize-none rounded-[4px] text-[11px] text-[var(--text)] placeholder:text-[var(--text-quaternary)] transition-all focus:outline-none",
+												addingReplyTo === comment.id
+													? "border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 py-1.5"
+													: "border border-transparent bg-transparent px-0 py-0.5",
+											].join(" ")}
+										/>
+										{addingReplyTo === comment.id && newReplyText && (
+											<div className="mt-0.5 text-[9px] text-[var(--text-quaternary)]">
+												Enter to save · Shift+Enter for new line · Esc to cancel
+											</div>
+										)}
+									</div>
+								)}
+							</div>
 						);
 					})}
 				</div>

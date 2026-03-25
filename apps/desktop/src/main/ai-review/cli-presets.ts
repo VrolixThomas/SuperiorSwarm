@@ -143,7 +143,12 @@ export const CLI_PRESETS: Record<string, CliPreset> = {
 		buildArgs: ({ promptFilePath }) => [`"$(cat '${promptFilePath}')"`],
 		setupMcp: (opts) => {
 			const dir = join(opts.worktreePath, ".codex");
-			const configPath = writeTempMcpConfig(dir, "config.json", opts.mcpServerPath, buildMcpEnv(opts));
+			const configPath = writeTempMcpConfig(
+				dir,
+				"config.json",
+				opts.mcpServerPath,
+				buildMcpEnv(opts)
+			);
 			return () => {
 				try {
 					rmSync(configPath);
