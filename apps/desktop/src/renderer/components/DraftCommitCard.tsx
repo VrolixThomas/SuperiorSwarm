@@ -114,10 +114,7 @@ export function DraftCommitCard({
 	const allStaged = allFiles.length > 0 && allFiles.every((f) => stagedPaths.has(f.path));
 
 	return (
-		<div
-			className="mx-1.5 mt-2 overflow-hidden rounded-[var(--radius-md)] border border-[var(--border-active)] bg-[var(--bg-elevated)] shadow-[var(--shadow-md)]"
-			style={{ borderTopColor: "var(--accent)", borderTopWidth: 2 }}
-		>
+		<div className="mx-1.5 mt-2 overflow-hidden rounded-[var(--radius-md)] border border-[var(--border-active)] bg-[var(--bg-elevated)] shadow-[var(--shadow-md)]">
 			{/* Card header */}
 			<div className="flex items-center gap-2 px-3 py-1.5">
 				<span className="text-[11px] font-medium uppercase tracking-[0.05em] text-[var(--text-quaternary)]">

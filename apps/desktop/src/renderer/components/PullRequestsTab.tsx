@@ -518,10 +518,6 @@ export function PullRequestsTab() {
 	const hasBitbucket = atlassianStatus?.bitbucket.connected;
 	const hasGitHub = githubStatus?.connected;
 
-	const { data: bbMyPRs } = trpc.atlassian.getMyPullRequests.useQuery(undefined, {
-		enabled: hasBitbucket,
-		staleTime: 30_000,
-	});
 	const { data: bbReviewPRs } = trpc.atlassian.getReviewRequests.useQuery(undefined, {
 		enabled: hasBitbucket,
 		staleTime: 30_000,
@@ -819,8 +815,8 @@ export function PullRequestsTab() {
 		const merged: MergedPR[] = [];
 		const seenBb = new Set<string>();
 
-		// Bitbucket PRs
-		for (const pr of [...(bbMyPRs ?? []), ...(bbReviewPRs ?? [])]) {
+		// Bitbucket PRs — only review requests, not authored PRs
+		for (const pr of bbReviewPRs ?? []) {
 			const key = `${pr.workspace}/${pr.repoSlug}#${pr.id}`;
 			if (seenBb.has(key)) continue;
 			seenBb.add(key);
@@ -838,8 +834,9 @@ export function PullRequestsTab() {
 			});
 		}
 
-		// GitHub PRs
+		// GitHub PRs — only PRs where the user is a reviewer, not authored PRs
 		for (const pr of ghPRs ?? []) {
+			if (pr.role !== "reviewer") continue;
 			merged.push({
 				provider: "github",
 				id: `gh-${pr.repoOwner}-${pr.repoName}-${pr.number}`,
@@ -875,7 +872,7 @@ export function PullRequestsTab() {
 		}
 
 		return groups;
-	}, [bbMyPRs, bbReviewPRs, ghPRs]);
+	}, [bbReviewPRs, ghPRs]);
 
 	// ── PR state tracking effect (auto-cleanup on merge/close) ────────────────
 
@@ -1089,7 +1086,7 @@ export function PullRequestsTab() {
 
 	// ── Render Helpers ────────────────────────────────────────────────────────
 
-	const isLoading = (hasBitbucket && !bbMyPRs && !bbReviewPRs) || (hasGitHub && !ghPRs);
+	const isLoading = (hasBitbucket && !bbReviewPRs) || (hasGitHub && !ghPRs);
 
 	if (!hasBitbucket && !hasGitHub) {
 		return (

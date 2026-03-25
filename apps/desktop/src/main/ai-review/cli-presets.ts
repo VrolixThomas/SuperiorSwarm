@@ -24,9 +24,15 @@ export interface LaunchOptions {
 	dbPath: string;
 	reviewDraftId: string;
 	prMetadata: string; // JSON string
+	solveSessionId?: string; // When set, MCP uses solve mode instead of review mode
 }
 
-function writeTempMcpConfig(dir: string, filename: string, mcpServerPath: string): string {
+function writeTempMcpConfig(
+	dir: string,
+	filename: string,
+	mcpServerPath: string,
+	env?: Record<string, string>
+): string {
 	mkdirSync(dir, { recursive: true });
 	const configPath = join(dir, filename);
 	const config = {
@@ -34,11 +40,28 @@ function writeTempMcpConfig(dir: string, filename: string, mcpServerPath: string
 			branchflux: {
 				command: "node",
 				args: [mcpServerPath],
+				...(env ? { env } : {}),
 			},
 		},
 	};
 	writeFileSync(configPath, JSON.stringify(config, null, 2), "utf-8");
 	return configPath;
+}
+
+function buildMcpEnv(opts: LaunchOptions): Record<string, string> {
+	if (opts.solveSessionId) {
+		return {
+			SOLVE_SESSION_ID: opts.solveSessionId,
+			PR_METADATA: opts.prMetadata,
+			DB_PATH: opts.dbPath,
+			WORKTREE_PATH: opts.worktreePath,
+		};
+	}
+	return {
+		REVIEW_DRAFT_ID: opts.reviewDraftId,
+		PR_METADATA: opts.prMetadata,
+		DB_PATH: opts.dbPath,
+	};
 }
 
 export const CLI_PRESETS: Record<string, CliPreset> = {
@@ -50,7 +73,7 @@ export const CLI_PRESETS: Record<string, CliPreset> = {
 		buildArgs: ({ promptFilePath }) => [
 			`"Review this PR. Read ${promptFilePath} for detailed instructions and use the BranchFlux MCP tools."`,
 		],
-		setupMcp: ({ worktreePath, reviewDraftId, prMetadata, dbPath }) => {
+		setupMcp: (opts) => {
 			// Claude Code reads MCP config from .mcp.json in the project root
 			// Use standalone server with system Node (Electron's Node has incompatible native modules)
 			const standaloneServerPath = resolve(
@@ -59,17 +82,13 @@ export const CLI_PRESETS: Record<string, CliPreset> = {
 				"mcp-standalone",
 				"server.mjs"
 			);
-			const configPath = join(worktreePath, ".mcp.json");
+			const configPath = join(opts.worktreePath, ".mcp.json");
 			const config = {
 				mcpServers: {
 					branchflux: {
 						command: "node",
 						args: [standaloneServerPath],
-						env: {
-							REVIEW_DRAFT_ID: reviewDraftId,
-							PR_METADATA: prMetadata,
-							DB_PATH: dbPath,
-						},
+						env: buildMcpEnv(opts),
 					},
 				},
 			};
@@ -87,7 +106,7 @@ export const CLI_PRESETS: Record<string, CliPreset> = {
 		command: "gemini",
 		permissionFlag: "--yolo",
 		buildArgs: ({ promptFilePath }) => ["-p", `"$(cat '${promptFilePath}')"`],
-		setupMcp: ({ worktreePath, reviewDraftId, prMetadata, dbPath }) => {
+		setupMcp: (opts) => {
 			// Gemini CLI reads MCP config from .gemini/settings.json in the project root
 			const standaloneServerPath = resolve(
 				dirname(__dirname),
@@ -95,7 +114,7 @@ export const CLI_PRESETS: Record<string, CliPreset> = {
 				"mcp-standalone",
 				"server.mjs"
 			);
-			const dir = join(worktreePath, ".gemini");
+			const dir = join(opts.worktreePath, ".gemini");
 			mkdirSync(dir, { recursive: true });
 			const configPath = join(dir, "settings.json");
 			const config = {
@@ -103,11 +122,7 @@ export const CLI_PRESETS: Record<string, CliPreset> = {
 					branchflux: {
 						command: "node",
 						args: [standaloneServerPath],
-						env: {
-							REVIEW_DRAFT_ID: reviewDraftId,
-							PR_METADATA: prMetadata,
-							DB_PATH: dbPath,
-						},
+						env: buildMcpEnv(opts),
 					},
 				},
 			};
@@ -126,9 +141,14 @@ export const CLI_PRESETS: Record<string, CliPreset> = {
 		command: "codex",
 		permissionFlag: "--full-auto",
 		buildArgs: ({ promptFilePath }) => [`"$(cat '${promptFilePath}')"`],
-		setupMcp: ({ worktreePath, mcpServerPath }) => {
-			const dir = join(worktreePath, ".codex");
-			const configPath = writeTempMcpConfig(dir, "config.json", mcpServerPath);
+		setupMcp: (opts) => {
+			const dir = join(opts.worktreePath, ".codex");
+			const configPath = writeTempMcpConfig(
+				dir,
+				"config.json",
+				opts.mcpServerPath,
+				buildMcpEnv(opts)
+			);
 			return () => {
 				try {
 					rmSync(configPath);
@@ -142,7 +162,7 @@ export const CLI_PRESETS: Record<string, CliPreset> = {
 		label: "OpenCode",
 		command: "opencode",
 		buildArgs: ({ promptFilePath }) => ["--prompt", `"$(cat '${promptFilePath}')"`],
-		setupMcp: ({ worktreePath, reviewDraftId, prMetadata, dbPath }) => {
+		setupMcp: (opts) => {
 			// OpenCode reads MCP config from opencode.json in the project root
 			const standaloneServerPath = resolve(
 				dirname(__dirname),
@@ -150,17 +170,13 @@ export const CLI_PRESETS: Record<string, CliPreset> = {
 				"mcp-standalone",
 				"server.mjs"
 			);
-			const configPath = join(worktreePath, "opencode.json");
+			const configPath = join(opts.worktreePath, "opencode.json");
 			const config = {
 				mcp: {
 					branchflux: {
 						type: "local",
 						command: ["node", standaloneServerPath],
-						environment: {
-							REVIEW_DRAFT_ID: reviewDraftId,
-							PR_METADATA: prMetadata,
-							DB_PATH: dbPath,
-						},
+						environment: buildMcpEnv(opts),
 					},
 				},
 			};

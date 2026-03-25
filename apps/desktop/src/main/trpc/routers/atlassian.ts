@@ -1,6 +1,11 @@
 import { z } from "zod";
 import { deleteAuth, getAuth } from "../../atlassian/auth";
-import { getMyPullRequests, getReviewRequests } from "../../atlassian/bitbucket";
+import {
+	getMyPullRequests,
+	getReviewRequests,
+	replyToPRComment,
+	resolvePRComment,
+} from "../../atlassian/bitbucket";
 import { getIssueTransitions, getMyIssues, updateIssueStatus } from "../../atlassian/jira";
 import { connectAll, connectBitbucket, connectJira } from "../../atlassian/oauth-flow";
 import { publicProcedure, router } from "../index";
@@ -78,5 +83,45 @@ export const atlassianRouter = router({
 		.input(z.object({ issueKey: z.string(), transitionId: z.string() }))
 		.mutation(async ({ input }) => {
 			return updateIssueStatus(input.issueKey, input.transitionId);
+		}),
+
+	replyToPRComment: publicProcedure
+		.input(
+			z.object({
+				workspace: z.string(),
+				repoSlug: z.string(),
+				prId: z.number(),
+				parentCommentId: z.number(),
+				body: z.string(),
+			})
+		)
+		.mutation(async ({ input }) => {
+			return replyToPRComment(
+				input.workspace,
+				input.repoSlug,
+				input.prId,
+				input.parentCommentId,
+				input.body
+			);
+		}),
+
+	resolvePRComment: publicProcedure
+		.input(
+			z.object({
+				workspace: z.string(),
+				repoSlug: z.string(),
+				prId: z.number(),
+				commentId: z.number(),
+				resolved: z.boolean(),
+			})
+		)
+		.mutation(async ({ input }) => {
+			return resolvePRComment(
+				input.workspace,
+				input.repoSlug,
+				input.prId,
+				input.commentId,
+				input.resolved
+			);
 		}),
 });
