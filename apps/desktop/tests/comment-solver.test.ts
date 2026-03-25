@@ -160,8 +160,8 @@ describe("Comment Solver", () => {
 			expect(() => validateSolveTransition("queued", "submitted")).toThrow(
 				"Invalid solve session status transition"
 			);
-			// Unknown status
-			expect(() => validateSolveTransition("nonexistent", "queued")).toThrow(
+			// Dismissed has no valid transitions
+			expect(() => validateSolveTransition("dismissed", "queued")).toThrow(
 				"Invalid solve session status transition"
 			);
 		});

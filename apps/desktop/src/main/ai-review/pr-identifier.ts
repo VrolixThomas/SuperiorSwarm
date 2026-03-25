@@ -6,9 +6,10 @@ export function parsePrIdentifier(identifier: string): {
 } {
 	const match = identifier.match(/^(.+?)\/(.+?)#(\d+)$/);
 	if (!match) throw new Error(`Invalid PR identifier: ${identifier}`);
+	const [, owner, repo, num] = match;
 	return {
-		owner: match[1]!,
-		repo: match[2]!,
-		number: Number.parseInt(match[3]!, 10),
+		owner: owner ?? "",
+		repo: repo ?? "",
+		number: Number.parseInt(num ?? "", 10),
 	};
 }

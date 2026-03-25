@@ -8,8 +8,8 @@ import type { SolveLaunchInfo, SolveSessionStatus } from "../../shared/solve-typ
 import { getDb } from "../db";
 import * as schema from "../db/schema";
 import { CLI_PRESETS, type LaunchOptions, isCliInstalled, resolveCliPath } from "./cli-presets";
-import { buildSolvePrompt } from "./solve-prompt";
 import { getSettings } from "./orchestrator";
+import { buildSolvePrompt } from "./solve-prompt";
 import { resolveSessionWorktree } from "./solve-session-resolver";
 
 // ─── State machine ────────────────────────────────────────────────────────────
@@ -76,14 +76,14 @@ export async function queueSolve(sessionId: string): Promise<SolveLaunchInfo> {
 		throw new Error(`CLI tool '${preset.command}' is not installed`);
 	}
 
-	// Count open comments for this session
-	const { value: commentCount } = db
+	const countResult = db
 		.select({ value: count() })
 		.from(schema.prComments)
 		.where(
 			and(eq(schema.prComments.solveSessionId, sessionId), eq(schema.prComments.status, "open"))
 		)
-		.get()!;
+		.get();
+	const commentCount = countResult?.value ?? 0;
 
 	const now = new Date();
 	validateSolveTransition(session.status, "in_progress");
