@@ -1,8 +1,8 @@
-import { execSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { and, eq, inArray, not } from "drizzle-orm";
+import { and, count, eq, gt, inArray, not } from "drizzle-orm";
 import { app } from "electron";
 import type { SolveLaunchInfo } from "../../shared/solve-types";
 import { getDb } from "../db";
@@ -39,6 +39,14 @@ export async function queueSolve(sessionId: string): Promise<SolveLaunchInfo> {
 
 	const { session, workspace, worktreePath } = resolveSessionWorktree(sessionId);
 
+	// Validate worktree is clean
+	const gitStatus = execFileSync("git", ["status", "--porcelain"], { cwd: worktreePath })
+		.toString()
+		.trim();
+	if (gitStatus) {
+		throw new Error("Worktree has uncommitted changes. Commit or stash them before solving.");
+	}
+
 	// Validate no other active sessions for this workspace (excluding self)
 	const activeForWorkspace = db
 		.select()
@@ -65,15 +73,13 @@ export async function queueSolve(sessionId: string): Promise<SolveLaunchInfo> {
 	}
 
 	// Count open comments for this session
-	const openComments = db
-		.select()
+	const { value: commentCount } = db
+		.select({ value: count() })
 		.from(schema.prComments)
 		.where(
 			and(eq(schema.prComments.solveSessionId, sessionId), eq(schema.prComments.status, "open"))
 		)
-		.all();
-
-	const commentCount = openComments.length;
+		.get()!;
 
 	// Transition status to in_progress
 	const now = new Date();
@@ -212,11 +218,11 @@ export async function revertGroup(groupId: string, worktreePath: string): Promis
 			and(
 				eq(schema.commentGroups.solveSessionId, group.solveSessionId),
 				not(eq(schema.commentGroups.status, "reverted")),
-				not(eq(schema.commentGroups.id, groupId))
+				not(eq(schema.commentGroups.id, groupId)),
+				gt(schema.commentGroups.order, group.order)
 			)
 		)
-		.all()
-		.filter((g) => g.order > group.order);
+		.all();
 
 	if (blockers.length > 0) {
 		throw new Error(
