@@ -13,7 +13,14 @@ import * as schema from "../../db/schema";
 import { getPRComments } from "../../github/github";
 import { parsePrIdentifier } from "../../ai-review/pr-identifier";
 import { resolveSessionWorktree } from "../../ai-review/solve-session-resolver";
-import type { SolveLaunchInfo, SolveSessionInfo } from "../../shared/solve-types";
+import type {
+	SolveCommentStatus,
+	SolveGroupStatus,
+	SolveLaunchInfo,
+	SolveReplyStatus,
+	SolveSessionInfo,
+	SolveSessionStatus,
+} from "../../shared/solve-types";
 import { publicProcedure, router } from "../index";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -37,49 +44,63 @@ function assembleSolveSession(sessionId: string): SolveSessionInfo | null {
 		.orderBy(schema.commentGroups.order)
 		.all();
 
-	const groupInfos = groups.map((group) => {
-		const comments = db
-			.select()
-			.from(schema.prComments)
-			.where(eq(schema.prComments.groupId, group.id))
-			.all();
+	const allComments = db
+		.select()
+		.from(schema.prComments)
+		.where(eq(schema.prComments.solveSessionId, sessionId))
+		.all();
 
-		const commentInfos = comments.map((comment) => {
-			const reply = db
-				.select()
-				.from(schema.commentReplies)
-				.where(eq(schema.commentReplies.prCommentId, comment.id))
-				.get();
+	const commentIds = allComments.map((c) => c.id);
+	const allReplies =
+		commentIds.length > 0
+			? db
+					.select()
+					.from(schema.commentReplies)
+					.where(inArray(schema.commentReplies.prCommentId, commentIds))
+					.all()
+			: [];
 
-			return {
-				id: comment.id,
-				platformCommentId: comment.platformCommentId,
-				author: comment.author,
-				body: comment.body,
-				filePath: comment.filePath,
-				lineNumber: comment.lineNumber ?? null,
-				side: comment.side ?? null,
-				threadId: comment.threadId ?? null,
-				status: comment.status as import("../../shared/solve-types").SolveCommentStatus,
-				commitSha: comment.commitSha ?? null,
-				groupId: comment.groupId ?? null,
-				reply: reply
-					? {
-							id: reply.id,
-							body: reply.body,
-							status: reply.status as import("../../shared/solve-types").SolveReplyStatus,
-						}
-					: null,
-			};
-		});
+	const repliesByCommentId = new Map<string, (typeof allReplies)[0]>();
+	for (const reply of allReplies) {
+		repliesByCommentId.set(reply.prCommentId, reply);
+	}
+
+	const commentsByGroupId = new Map<string, typeof allComments>();
+	for (const comment of allComments) {
+		const key = comment.groupId ?? "__ungrouped__";
+		const arr = commentsByGroupId.get(key) ?? [];
+		arr.push(comment);
+		commentsByGroupId.set(key, arr);
+	}
+
+	const groupInfos: SolveSessionInfo["groups"] = groups.map((group) => {
+		const comments = commentsByGroupId.get(group.id) ?? [];
 
 		return {
 			id: group.id,
 			label: group.label,
-			status: group.status as import("../../shared/solve-types").SolveGroupStatus,
+			status: group.status as SolveGroupStatus,
 			commitHash: group.commitHash ?? null,
 			order: group.order,
-			comments: commentInfos,
+			comments: comments.map((comment) => {
+				const reply = repliesByCommentId.get(comment.id);
+				return {
+					id: comment.id,
+					platformCommentId: comment.platformCommentId,
+					author: comment.author,
+					body: comment.body,
+					filePath: comment.filePath,
+					lineNumber: comment.lineNumber ?? null,
+					side: comment.side ?? null,
+					threadId: comment.threadId ?? null,
+					status: comment.status as SolveCommentStatus,
+					commitSha: comment.commitSha ?? null,
+					groupId: comment.groupId ?? null,
+					reply: reply
+						? { id: reply.id, body: reply.body, status: reply.status as SolveReplyStatus }
+						: null,
+				};
+			}),
 		};
 	});
 
@@ -90,7 +111,7 @@ function assembleSolveSession(sessionId: string): SolveSessionInfo | null {
 		prTitle: session.prTitle,
 		sourceBranch: session.sourceBranch,
 		targetBranch: session.targetBranch,
-		status: session.status as import("../../shared/solve-types").SolveSessionStatus,
+		status: session.status as SolveSessionStatus,
 		commitSha: session.commitSha ?? null,
 		workspaceId: session.workspaceId,
 		createdAt: session.createdAt,
