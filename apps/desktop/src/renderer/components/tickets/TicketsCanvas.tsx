@@ -239,7 +239,7 @@ export function TicketsCanvas() {
 				<Panel
 					id="ticket-detail"
 					panelRef={detailPanelRef}
-					defaultSize={0}
+					defaultSize={40}
 					minSize={15}
 					collapsible
 					collapsedSize={0}
