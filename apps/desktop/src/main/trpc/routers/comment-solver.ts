@@ -7,8 +7,7 @@ import {
 } from "../../ai-review/comment-solver-orchestrator";
 import { getCachedPRs } from "../../ai-review/pr-poller";
 import { publishSolve } from "../../ai-review/solve-publisher";
-import { atlassianFetch } from "../../atlassian/auth";
-import { BITBUCKET_API_BASE } from "../../atlassian/constants";
+import { getBitbucketPRComments } from "../../atlassian/bitbucket";
 import { getDb } from "../../db";
 import * as schema from "../../db/schema";
 import { getPRComments } from "../../github/github";
@@ -18,41 +17,6 @@ import type { SolveLaunchInfo, SolveSessionInfo } from "../../shared/solve-types
 import { publicProcedure, router } from "../index";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-interface BitbucketApiComment {
-	id: number;
-	content: { raw: string };
-	author: { display_name: string };
-	created_on: string;
-	inline?: { path?: string; to?: number };
-}
-
-/** Fetch PR comments from Bitbucket */
-async function getBitbucketPRComments(
-	workspace: string,
-	repoSlug: string,
-	prId: number
-): Promise<
-	Array<{
-		id: number;
-		body: string;
-		author: string;
-		filePath: string | null;
-		lineNumber: number | null;
-	}>
-> {
-	const url = `${BITBUCKET_API_BASE}/repositories/${workspace}/${repoSlug}/pullrequests/${prId}/comments?pagelen=100`;
-	const res = await atlassianFetch("bitbucket", url);
-	if (!res.ok) throw new Error(`Bitbucket get PR comments failed: ${res.status}`);
-	const data = (await res.json()) as { values: BitbucketApiComment[] };
-	return data.values.map((c) => ({
-		id: c.id,
-		body: c.content.raw,
-		author: c.author.display_name,
-		filePath: c.inline?.path ?? null,
-		lineNumber: c.inline?.to ?? null,
-	}));
-}
 
 /** Assemble a SolveSessionInfo from DB records */
 function assembleSolveSession(sessionId: string): SolveSessionInfo | null {
@@ -255,7 +219,7 @@ export const commentSolverRouter = router({
 						body: c.body,
 						filePath: c.filePath,
 						lineNumber: c.lineNumber,
-						createdAt: "",
+						createdAt: c.createdAt,
 					})
 				);
 			}

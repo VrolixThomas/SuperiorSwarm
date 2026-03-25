@@ -214,3 +214,51 @@ export async function resolvePRComment(
 	);
 	if (!res.ok) throw new Error(`Bitbucket resolve comment failed: ${res.status}`);
 }
+
+export interface BitbucketComment {
+	id: number;
+	body: string;
+	author: string;
+	filePath: string | null;
+	lineNumber: number | null;
+	createdAt: string;
+}
+
+/** Fetch all comments on a Bitbucket pull request (follows pagination) */
+export async function getBitbucketPRComments(
+	workspace: string,
+	repoSlug: string,
+	prId: number
+): Promise<BitbucketComment[]> {
+	const comments: BitbucketComment[] = [];
+	let url: string | null =
+		`${BITBUCKET_API_BASE}/repositories/${workspace}/${repoSlug}/pullrequests/${prId}/comments?pagelen=100`;
+
+	while (url) {
+		const res = await atlassianFetch("bitbucket", url);
+		if (!res.ok) throw new Error(`Bitbucket get PR comments failed: ${res.status}`);
+		const data = (await res.json()) as {
+			values: Array<{
+				id: number;
+				content: { raw: string };
+				author: { display_name: string };
+				created_on: string;
+				inline?: { path?: string; to?: number };
+			}>;
+			next?: string;
+		};
+		for (const c of data.values) {
+			comments.push({
+				id: c.id,
+				body: c.content.raw,
+				author: c.author.display_name,
+				filePath: c.inline?.path ?? null,
+				lineNumber: c.inline?.to ?? null,
+				createdAt: c.created_on,
+			});
+		}
+		url = data.next ?? null;
+	}
+
+	return comments;
+}

@@ -1,6 +1,6 @@
 import { and, eq, inArray, isNull } from "drizzle-orm";
-import { atlassianFetch, getAuth as getBitbucketAuth } from "../atlassian/auth";
-import { BITBUCKET_API_BASE } from "../atlassian/constants";
+import { getAuth as getBitbucketAuth } from "../atlassian/auth";
+import { getBitbucketPRComments } from "../atlassian/bitbucket";
 import { getDb } from "../db";
 import * as schema from "../db/schema";
 import { getValidToken } from "../github/auth";
@@ -42,11 +42,8 @@ async function fetchGitHubComments(identifier: string): Promise<PlatformComment[
 
 async function fetchBitbucketComments(identifier: string): Promise<PlatformComment[]> {
 	const { owner, repo, number } = parsePrIdentifier(identifier);
-	const url = `${BITBUCKET_API_BASE}/repositories/${owner}/${repo}/pullrequests/${number}/comments?pagelen=100`;
-	const res = await atlassianFetch("bitbucket", url);
-	if (!res.ok) throw new Error(`Bitbucket get PR comments failed: ${res.status}`);
-	const data = (await res.json()) as { values: Array<{ id: number }> };
-	return data.values.map((c) => ({ platformId: String(c.id) }));
+	const comments = await getBitbucketPRComments(owner, repo, number);
+	return comments.map((c) => ({ platformId: String(c.id) }));
 }
 
 // ── Known comment IDs from DB ────────────────────────────────────────────────
