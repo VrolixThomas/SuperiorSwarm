@@ -119,7 +119,7 @@ export function CommentsOverviewTab({ workspaceId }: CommentsOverviewTabProps) {
 
 	// Check if a solve session is in progress
 	const sessions = sessionsQuery.data ?? [];
-	const isSessionInProgress = sessions.some((s) => s.status === "queued" || s.status === "running");
+	const isSessionInProgress = sessions.some((s) => s.status === "queued" || s.status === "in_progress");
 
 	// Transform raw comments into UnifiedThread format
 	const threads: UnifiedThread[] = useMemo(
