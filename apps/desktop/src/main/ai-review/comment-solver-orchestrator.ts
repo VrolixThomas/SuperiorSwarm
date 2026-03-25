@@ -4,7 +4,7 @@ import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { and, count, eq, gt, inArray, not } from "drizzle-orm";
 import { app } from "electron";
-import type { SolveLaunchInfo } from "../../shared/solve-types";
+import type { SolveLaunchInfo, SolveSessionStatus } from "../../shared/solve-types";
 import { getDb } from "../db";
 import * as schema from "../db/schema";
 import { CLI_PRESETS, type LaunchOptions, isCliInstalled, resolveCliPath } from "./cli-presets";
@@ -14,17 +14,21 @@ import { resolveSessionWorktree } from "./solve-session-resolver";
 
 // ─── State machine ────────────────────────────────────────────────────────────
 
-const VALID_SOLVE_TRANSITIONS: Record<string, string[]> = {
+const VALID_SOLVE_TRANSITIONS: Record<SolveSessionStatus, SolveSessionStatus[]> = {
 	queued: ["in_progress", "failed", "dismissed"],
 	in_progress: ["ready", "failed", "dismissed"],
 	ready: ["submitted", "failed", "dismissed"],
 	submitted: ["dismissed"],
 	failed: ["dismissed"],
+	dismissed: [],
 };
 
-export function validateSolveTransition(currentStatus: string, newStatus: string): void {
+export function validateSolveTransition(
+	currentStatus: SolveSessionStatus,
+	newStatus: SolveSessionStatus
+): void {
 	const allowed = VALID_SOLVE_TRANSITIONS[currentStatus];
-	if (!allowed?.includes(newStatus)) {
+	if (!allowed.includes(newStatus)) {
 		throw new Error(`Invalid solve session status transition: ${currentStatus} → ${newStatus}`);
 	}
 }
