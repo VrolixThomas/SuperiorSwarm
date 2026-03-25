@@ -186,3 +186,56 @@ export async function updateIssueState(issueId: string, stateId: string): Promis
 		throw new Error("Linear issue state update failed");
 	}
 }
+
+export interface LinearIssueDetail {
+	description: string;
+	comments: Array<{
+		id: string;
+		author: string;
+		avatarUrl?: string;
+		body: string;
+		createdAt: string;
+	}>;
+}
+
+export async function getIssueDetail(issueId: string): Promise<LinearIssueDetail> {
+	const data = await gql<{
+		issue: {
+			description: string | null;
+			comments: {
+				nodes: Array<{
+					id: string;
+					body: string;
+					createdAt: string;
+					user: { name: string; avatarUrl: string | null } | null;
+				}>;
+			};
+		};
+	}>(
+		`query IssueDetail($id: String!) {
+			issue(id: $id) {
+				description
+				comments {
+					nodes {
+						id
+						body
+						createdAt
+						user { name avatarUrl }
+					}
+				}
+			}
+		}`,
+		{ id: issueId }
+	);
+
+	return {
+		description: data.issue.description ?? "",
+		comments: data.issue.comments.nodes.map((c) => ({
+			id: c.id,
+			author: c.user?.name ?? "Unknown",
+			avatarUrl: c.user?.avatarUrl ?? undefined,
+			body: c.body,
+			createdAt: c.createdAt,
+		})),
+	};
+}
