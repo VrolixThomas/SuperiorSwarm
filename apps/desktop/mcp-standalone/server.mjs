@@ -1,4 +1,4 @@
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -478,25 +478,23 @@ if (isSolverMode) {
 				}
 
 				const cwd = WORKTREE_PATH || process.cwd();
-				const label = group.label.replace(/"/g, '\\"');
 
-				execSync("git add -A", { cwd });
+				execFileSync("git", ["add", "-A"], { cwd });
 
 				for (const path of [".mcp.json", ".gemini/", "opencode.json", ".codex/"]) {
 					try {
-						execSync(`git reset HEAD "${path}"`, { cwd });
+						execFileSync("git", ["reset", "HEAD", path], { cwd });
 					} catch {
 						// Ignore errors — file may not exist or not be staged
 					}
 				}
 
-				execSync(`git commit -m "fix: ${label}"`, { cwd });
+				execFileSync("git", ["commit", "-m", `fix: ${group.label}`], { cwd });
 
-				const hashOutput = execSync("git rev-parse HEAD", { cwd });
+				const hashOutput = execFileSync("git", ["rev-parse", "HEAD"], { cwd });
 				const hash = hashOutput.toString().trim();
 				const shortHash = hash.slice(0, 7);
 
-				const now = Math.floor(Date.now() / 1000);
 				db.prepare(
 					`UPDATE comment_groups SET status = 'fixed', commit_hash = ? WHERE id = ? AND solve_session_id = ?`
 				).run(hash, group_id, SOLVE_SESSION_ID);
