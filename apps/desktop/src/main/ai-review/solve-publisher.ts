@@ -4,6 +4,7 @@ import { replyToPRComment } from "../atlassian/bitbucket";
 import { getDb } from "../db";
 import * as schema from "../db/schema";
 import { addReviewThreadReply, resolveThread } from "../github/github";
+import { validateSolveTransition } from "./comment-solver-orchestrator";
 import { parsePrIdentifier } from "./pr-identifier";
 import { resolveSessionWorktree } from "./solve-session-resolver";
 
@@ -58,28 +59,28 @@ export async function publishSolve(sessionId: string): Promise<PublishSolveResul
 
 	const { owner, repo, number: prNumber } = parsePrIdentifier(session.prIdentifier);
 
-	for (const { reply, comment } of approvedReplies) {
-		try {
+	const replyResults = await Promise.allSettled(
+		approvedReplies.map(async ({ reply, comment }) => {
 			if (session.prProvider === "github") {
-				if (!comment.threadId) {
-					errors.push(`Skipping reply for comment ${comment.id} — no threadId`);
-					continue;
-				}
+				if (!comment.threadId) throw new Error(`No threadId for comment ${comment.id}`);
 				await addReviewThreadReply({ threadId: comment.threadId, body: reply.body });
 			} else if (session.prProvider === "bitbucket") {
 				const parentCommentId = Number.parseInt(comment.platformCommentId, 10);
 				await replyToPRComment(owner, repo, prNumber, parentCommentId, reply.body);
 			}
-
-			// Update reply status to "posted"
 			db.update(schema.commentReplies)
 				.set({ status: "posted" })
 				.where(eq(schema.commentReplies.id, reply.id))
 				.run();
+			return reply.id;
+		})
+	);
 
+	for (const result of replyResults) {
+		if (result.status === "fulfilled") {
 			repliesPosted++;
-		} catch (err) {
-			errors.push(`Failed to post reply for comment ${comment.platformCommentId}: ${err}`);
+		} else {
+			errors.push(`Failed to post reply: ${result.reason}`);
 		}
 	}
 
@@ -94,17 +95,21 @@ export async function publishSolve(sessionId: string): Promise<PublishSolveResul
 			.all()
 			.filter((c) => c.threadId != null);
 
-		for (const comment of fixedComments) {
-			try {
-				await resolveThread(comment.threadId ?? "");
+		const resolveResults = await Promise.allSettled(
+			fixedComments.map((comment) => resolveThread(comment.threadId ?? ""))
+		);
+
+		for (const result of resolveResults) {
+			if (result.status === "fulfilled") {
 				threadsResolved++;
-			} catch (err) {
-				errors.push(`Failed to resolve thread ${comment.threadId}: ${err}`);
+			} else {
+				errors.push(`Failed to resolve thread: ${result.reason}`);
 			}
 		}
 	}
 
 	// 6. Update session status to "submitted"
+	validateSolveTransition(session.status, "submitted");
 	db.update(schema.commentSolveSessions)
 		.set({ status: "submitted", updatedAt: new Date() })
 		.where(eq(schema.commentSolveSessions.id, sessionId))
