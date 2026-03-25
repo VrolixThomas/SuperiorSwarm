@@ -1,10 +1,16 @@
 import { usePaneStore } from "../stores/pane-store";
 import { useTabStore } from "../stores/tab-store";
 import { LayoutRenderer } from "./panes/LayoutRenderer";
+import { TicketsCanvas } from "./tickets/TicketsCanvas";
 
 export function MainContentArea({ savedScrollback }: { savedScrollback: Record<string, string> }) {
+	const sidebarSegment = useTabStore((s) => s.sidebarSegment);
 	const activeWorkspaceId = useTabStore((s) => s.activeWorkspaceId);
 	const layout = usePaneStore((s) => (activeWorkspaceId ? s.layouts[activeWorkspaceId] : null));
+
+	if (sidebarSegment === "tickets") {
+		return <TicketsCanvas />;
+	}
 
 	if (!activeWorkspaceId || !layout) {
 		return (
