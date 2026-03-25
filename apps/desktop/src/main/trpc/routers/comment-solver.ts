@@ -405,42 +405,44 @@ export const commentSolverRouter = router({
 				throw new Error("No new unresolved comments to solve");
 			}
 
-			// 6. Create solve session record
+			// 6. Create solve session record and insert comments atomically
 			const sessionId = randomUUID();
 			const now = new Date();
 
-			db.insert(schema.commentSolveSessions)
-				.values({
-					id: sessionId,
-					prProvider: workspace.prProvider,
-					prIdentifier: workspace.prIdentifier,
-					prTitle: workspace.name,
-					sourceBranch: worktree.branch,
-					targetBranch: worktree.baseBranch,
-					status: "queued",
-					workspaceId: workspace.id,
-					createdAt: now,
-					updatedAt: now,
-				})
-				.run();
-
-			// 7. Insert new comments into prComments
-			for (const comment of commentsToInsert) {
-				db.insert(schema.prComments)
+			db.transaction((tx) => {
+				tx.insert(schema.commentSolveSessions)
 					.values({
-						id: randomUUID(),
-						solveSessionId: sessionId,
-						platformCommentId: String(comment.id),
-						author: comment.author,
-						body: comment.body,
-						filePath: comment.filePath ?? "",
-						lineNumber: comment.lineNumber ?? null,
-						side: comment.side ?? null,
-						threadId: comment.threadId ?? null,
-						status: "open",
+						id: sessionId,
+						prProvider: workspace.prProvider,
+						prIdentifier: workspace.prIdentifier,
+						prTitle: workspace.name,
+						sourceBranch: worktree.branch,
+						targetBranch: worktree.baseBranch,
+						status: "queued",
+						workspaceId: workspace.id,
+						createdAt: now,
+						updatedAt: now,
 					})
 					.run();
-			}
+
+				// 7. Insert new comments into prComments
+				for (const comment of commentsToInsert) {
+					tx.insert(schema.prComments)
+						.values({
+							id: randomUUID(),
+							solveSessionId: sessionId,
+							platformCommentId: String(comment.id),
+							author: comment.author,
+							body: comment.body,
+							filePath: comment.filePath ?? "",
+							lineNumber: comment.lineNumber ?? null,
+							side: comment.side ?? null,
+							threadId: comment.threadId ?? null,
+							status: "open",
+						})
+						.run();
+				}
+			});
 
 			// 8. Queue the solve job and return launch info
 			try {
