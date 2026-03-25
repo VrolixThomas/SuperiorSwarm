@@ -68,4 +68,30 @@ export const ticketsRouter = router({
 				})
 				.run();
 		}),
+
+	getViewMode: publicProcedure.input(z.object({ projectId: z.string() })).query(({ input }) => {
+		const db = getDb();
+		const key = `tickets_view_mode_${input.projectId}`;
+		const row = db.select().from(sessionState).where(eq(sessionState.key, key)).get();
+		return (row?.value as "board" | "list" | "table") ?? "board";
+	}),
+
+	setViewMode: publicProcedure
+		.input(
+			z.object({
+				projectId: z.string(),
+				mode: z.enum(["board", "list", "table"]),
+			})
+		)
+		.mutation(({ input }) => {
+			const db = getDb();
+			const key = `tickets_view_mode_${input.projectId}`;
+			db.insert(sessionState)
+				.values({ key, value: input.mode })
+				.onConflictDoUpdate({
+					target: sessionState.key,
+					set: { value: input.mode },
+				})
+				.run();
+		}),
 });
