@@ -9,6 +9,7 @@ import { getDb } from "../db";
 import * as schema from "../db/schema";
 import { CLI_PRESETS, type LaunchOptions, isCliInstalled, resolveCliPath } from "./cli-presets";
 import { buildSolvePrompt } from "./solve-prompt";
+import { getSettings } from "./orchestrator";
 import { resolveSessionWorktree } from "./solve-session-resolver";
 
 // ─── State machine ────────────────────────────────────────────────────────────
@@ -26,39 +27,6 @@ export function validateSolveTransition(currentStatus: string, newStatus: string
 	if (!allowed?.includes(newStatus)) {
 		throw new Error(`Invalid solve session status transition: ${currentStatus} → ${newStatus}`);
 	}
-}
-
-/** Get current AI review settings, creating defaults if needed */
-function getSettings(): schema.AiReviewSettings {
-	const db = getDb();
-	const existing = db
-		.select()
-		.from(schema.aiReviewSettings)
-		.where(eq(schema.aiReviewSettings.id, "default"))
-		.get();
-
-	if (existing) return existing;
-
-	// Insert defaults
-	const now = new Date();
-	db.insert(schema.aiReviewSettings)
-		.values({
-			id: "default",
-			cliPreset: "claude",
-			autoReviewEnabled: 0,
-			skipPermissions: 1,
-			maxConcurrentReviews: 3,
-			updatedAt: now,
-		})
-		.run();
-
-	const inserted = db
-		.select()
-		.from(schema.aiReviewSettings)
-		.where(eq(schema.aiReviewSettings.id, "default"))
-		.get();
-	if (!inserted) throw new Error("Failed to initialize AI review settings");
-	return inserted;
 }
 
 /**
