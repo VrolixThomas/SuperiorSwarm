@@ -14,6 +14,7 @@ import {
 	isCliInstalled,
 	resolveCliPath,
 } from "./cli-presets";
+import { parsePrIdentifier } from "./pr-identifier";
 
 export interface ReviewLaunchInfo {
 	draftId: string;
@@ -394,20 +395,6 @@ async function startReview(params: {
 	}
 }
 
-function parsePrIdentifier(identifier: string): {
-	ownerOrWorkspace: string;
-	repo: string;
-	number: number;
-} {
-	const [ownerRepo, numStr] = identifier.split("#");
-	const [ownerOrWorkspace, repo] = ownerRepo!.split("/");
-	return {
-		ownerOrWorkspace: ownerOrWorkspace!,
-		repo: repo!,
-		number: Number.parseInt(numStr!, 10),
-	};
-}
-
 /** Queue a follow-up review for an existing review chain */
 export async function queueFollowUpReview(params: {
 	reviewChainId: string;
@@ -551,8 +538,8 @@ async function startFollowUpReview(params: {
 			draft.prProvider === "github"
 		) {
 			try {
-				const { ownerOrWorkspace, repo, number: prNumber } = parsePrIdentifier(draft.prIdentifier);
-				const threads = await getGitHubReviewThreads(ownerOrWorkspace, repo, prNumber);
+				const { owner, repo, number: prNumber } = parsePrIdentifier(draft.prIdentifier);
+				const threads = await getGitHubReviewThreads(owner, repo, prNumber);
 				for (const comment of previousComments) {
 					if (!comment.platformCommentId) continue;
 					const thread = threads.find((t) => t.nodeId === comment.platformCommentId);

@@ -6,6 +6,7 @@ import * as schema from "../db/schema";
 import { getValidToken } from "../github/auth";
 import { getPRComments } from "../github/github";
 import { getCachedPRs } from "./pr-poller";
+import { parsePrIdentifier } from "./pr-identifier";
 
 const POLL_INTERVAL_MS = 60_000;
 
@@ -27,22 +28,6 @@ export function onNewCommentsDetected(handler: NewCommentsHandler): void {
 	onNewCommentsHandler = handler;
 }
 
-// ── Identifier parsing ──────────────────────────────────────────────────────
-
-function parsePrIdentifier(identifier: string): {
-	ownerOrWorkspace: string;
-	repo: string;
-	number: number;
-} {
-	const [ownerRepo, numStr] = identifier.split("#");
-	const [ownerOrWorkspace, repo] = (ownerRepo ?? "").split("/");
-	return {
-		ownerOrWorkspace: ownerOrWorkspace ?? "",
-		repo: repo ?? "",
-		number: Number.parseInt(numStr ?? "", 10),
-	};
-}
-
 // ── Fetch comments from platform ────────────────────────────────────────────
 
 interface PlatformComment {
@@ -50,14 +35,14 @@ interface PlatformComment {
 }
 
 async function fetchGitHubComments(identifier: string): Promise<PlatformComment[]> {
-	const { ownerOrWorkspace, repo, number } = parsePrIdentifier(identifier);
-	const comments = await getPRComments(ownerOrWorkspace, repo, number);
+	const { owner, repo, number } = parsePrIdentifier(identifier);
+	const comments = await getPRComments(owner, repo, number);
 	return comments.map((c) => ({ platformId: String(c.id) }));
 }
 
 async function fetchBitbucketComments(identifier: string): Promise<PlatformComment[]> {
-	const { ownerOrWorkspace, repo, number } = parsePrIdentifier(identifier);
-	const url = `${BITBUCKET_API_BASE}/repositories/${ownerOrWorkspace}/${repo}/pullrequests/${number}/comments?pagelen=100`;
+	const { owner, repo, number } = parsePrIdentifier(identifier);
+	const url = `${BITBUCKET_API_BASE}/repositories/${owner}/${repo}/pullrequests/${number}/comments?pagelen=100`;
 	const res = await atlassianFetch("bitbucket", url);
 	if (!res.ok) throw new Error(`Bitbucket get PR comments failed: ${res.status}`);
 	const data = (await res.json()) as { values: Array<{ id: number }> };
