@@ -108,7 +108,8 @@ app.whenReady().then(async () => {
 	try {
 		await daemonClient.connect(dbPath, daemonScriptPath);
 	} catch (err) {
-		console.error("[main] Failed to connect to terminal daemon:", err);
+		console.error("[main] Failed to connect to terminal daemon, will retry:", err);
+		daemonClient.startReconnecting();
 	}
 	setupTRPCIPC(appRouter);
 
