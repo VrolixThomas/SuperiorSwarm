@@ -9,7 +9,7 @@ import {
 import {
 	getIssueDetail,
 	getIssueTransitions,
-	getMyIssues,
+	getMyIssuesWithDone,
 	updateIssueStatus,
 } from "../../atlassian/jira";
 import { connectAll, connectBitbucket, connectJira } from "../../atlassian/oauth-flow";
@@ -75,7 +75,8 @@ export const atlassianRouter = router({
 	}),
 
 	getMyIssues: publicProcedure.query(async () => {
-		return getMyIssues();
+		const { getDoneCutoffDays } = await import("../../tickets/cache");
+		return getMyIssuesWithDone(getDoneCutoffDays());
 	}),
 
 	getIssueDetail: publicProcedure
