@@ -1,0 +1,47 @@
+import { useEffect } from "react";
+import { useProjectStore } from "../../stores/projects";
+import { AboutSettings } from "./AboutSettings";
+import { AIReviewSettings } from "./AIReviewSettings";
+import { GeneralSettings } from "./GeneralSettings";
+import { IntegrationsSettings } from "./IntegrationsSettings";
+import { SettingsNav } from "./SettingsNav";
+
+function SettingsContent() {
+	const category = useProjectStore((s) => s.settingsCategory);
+
+	switch (category) {
+		case "general":
+			return <GeneralSettings />;
+		case "integrations":
+			return <IntegrationsSettings />;
+		case "ai-review":
+			return <AIReviewSettings />;
+		case "about":
+			return <AboutSettings />;
+	}
+}
+
+export function SettingsPage() {
+	const closeSettings = useProjectStore((s) => s.closeSettings);
+
+	useEffect(() => {
+		const handleKeyDown = (e: KeyboardEvent) => {
+			if (e.key === "Escape") {
+				closeSettings();
+			}
+		};
+		window.addEventListener("keydown", handleKeyDown);
+		return () => window.removeEventListener("keydown", handleKeyDown);
+	}, [closeSettings]);
+
+	return (
+		<div className="flex h-screen overflow-hidden bg-[var(--bg-base)]">
+			<SettingsNav />
+			<div className="flex-1 overflow-y-auto">
+				<div className="mx-auto max-w-[640px] px-12 py-8 pt-[84px]">
+					<SettingsContent />
+				</div>
+			</div>
+		</div>
+	);
+}
