@@ -8,7 +8,7 @@ import { ProjectList } from "./ProjectList";
 import { PullRequestsTab } from "./PullRequestsTab";
 import { SettingsView } from "./SettingsView";
 import { SidebarRail } from "./SidebarRail";
-import { TicketsTab } from "./TicketsTab";
+import { TicketsSidebar } from "./tickets/TicketsSidebar";
 
 interface SidebarProps {
 	collapsed: boolean;
@@ -119,7 +119,7 @@ export function Sidebar({ collapsed, onExpand }: SidebarProps) {
 								<ProjectList />
 							</>
 						)}
-						{segment === "tickets" && <TicketsTab />}
+						{segment === "tickets" && <TicketsSidebar />}
 						{segment === "prs" && <PullRequestsTab />}
 					</div>
 

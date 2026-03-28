@@ -134,6 +134,10 @@ function collectSnapshot() {
 	if (Object.keys(workspaceMetadata).length > 0) {
 		state["workspaceMetadata"] = JSON.stringify(workspaceMetadata);
 	}
+	const { activeTicketProject } = store;
+	if (activeTicketProject) {
+		state["activeTicketProject"] = JSON.stringify(activeTicketProject);
+	}
 
 	const { vimEnabled } = useEditorSettingsStore.getState();
 	if (vimEnabled) state["vimMode"] = "true";
@@ -299,6 +303,7 @@ export function App() {
 	const setSidebarCollapsed = useProjectStore((s) => s.setSidebarCollapsed);
 	const sidebarCollapsed = useProjectStore((s) => s.sidebarCollapsed);
 	const rightPanelOpen = useTabStore((s) => s.rightPanel.open);
+	const sidebarSegment = useTabStore((s) => s.sidebarSegment);
 	const closeDiffPanel = useTabStore((s) => s.closeDiffPanel);
 	const openRightPanel = useTabStore((s) => s.openRightPanel);
 	const { defaultLayout, onLayoutChanged } = useDefaultLayout({
@@ -306,15 +311,20 @@ export function App() {
 		storage: localStorage,
 	});
 
-	// Sync panel collapse/expand with store state
+	// Sync panel collapse/expand with store state.
+	// Always collapse when on tickets segment — the diff panel is not relevant.
 	useEffect(() => {
 		if (!diffPanelRef.current) return;
+		if (sidebarSegment === "tickets") {
+			if (!diffPanelRef.current.isCollapsed()) diffPanelRef.current.collapse();
+			return;
+		}
 		if (rightPanelOpen && diffPanelRef.current.isCollapsed()) {
 			diffPanelRef.current.expand();
 		} else if (!rightPanelOpen && !diffPanelRef.current.isCollapsed()) {
 			diffPanelRef.current.collapse();
 		}
-	}, [rightPanelOpen, diffPanelRef]);
+	}, [rightPanelOpen, diffPanelRef, sidebarSegment]);
 
 	return (
 		<>
@@ -367,7 +377,7 @@ export function App() {
 					<DiffPanel onClose={closeDiffPanel} />
 				</Panel>
 			</Group>
-			{!rightPanelOpen && (
+			{!rightPanelOpen && sidebarSegment !== "tickets" && (
 				<button
 					type="button"
 					onClick={openRightPanel}
