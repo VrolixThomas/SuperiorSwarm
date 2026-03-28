@@ -245,6 +245,16 @@ export const githubPrFileViewed = sqliteTable(
 export type GithubPrFileViewed = typeof githubPrFileViewed.$inferSelect;
 export type NewGithubPrFileViewed = typeof githubPrFileViewed.$inferInsert;
 
+export const ticketCache = sqliteTable("ticket_cache", {
+	id: text("id").primaryKey(), // "provider:ticketId" e.g. "jira:PI-2787"
+	provider: text("provider", { enum: ["linear", "jira"] }).notNull(),
+	data: text("data").notNull(), // JSON-serialized JiraIssue or LinearIssue
+	groupId: text("group_id").notNull(), // projectKey or teamId
+	updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+});
+
+export type TicketCacheRow = typeof ticketCache.$inferSelect;
+
 export {
 	aiReviewSettings,
 	type AiReviewSettings,
