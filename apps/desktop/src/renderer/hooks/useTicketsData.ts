@@ -90,6 +90,7 @@ export function useTicketsData() {
 					groupId: issue.projectKey,
 					projectKey: issue.projectKey,
 					updatedAt: issue.updatedAt,
+					statusCategory: issue.statusCategory,
 				});
 			}
 		}
@@ -133,8 +134,8 @@ export function useTicketsData() {
 		for (const issue of filteredIssues) {
 			const cat = normalizeStatusCategory(
 				issue.provider,
-				issue.provider === "jira" ? issue.status.name : undefined,
-				issue.stateType
+				issue.statusCategory,
+				issue.stateType,
 			);
 			byCategory.get(cat)?.push(issue);
 		}
