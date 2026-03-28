@@ -21,7 +21,7 @@ export function TicketsCanvas() {
 	const setSelectedTicket = useTabStore((s) => s.setSelectedTicket);
 	const setSidebarSegment = useTabStore((s) => s.setSidebarSegment);
 
-	const { columns, filteredIssues, linkedMap, isLoading, isEmpty, activeTicketProject } =
+	const { columns, filteredIssues, linkedMap, isLoading, isEmpty, activeTicketProject, lastFetched } =
 		useTicketsData();
 
 	// ── View mode (persisted per project) ────────────────────────────────────
@@ -204,6 +204,7 @@ export function TicketsCanvas() {
 				ticketCount={filteredIssues.length}
 				viewMode={viewMode}
 				onViewModeChange={handleViewModeChange}
+				lastFetched={lastFetched}
 			/>
 
 			<div className="min-h-0 flex-1">
