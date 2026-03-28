@@ -23,6 +23,7 @@ export interface MergedTicketIssue extends TicketIssue {
 	teamName?: string;
 	projectKey?: string;
 	updatedAt?: string;
+	statusCategory?: string;
 }
 
 export type TicketViewMode = "board" | "list" | "table";
