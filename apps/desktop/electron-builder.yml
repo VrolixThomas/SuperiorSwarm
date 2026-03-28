@@ -1,0 +1,21 @@
+appId: com.branchflux.app
+productName: BranchFlux
+directories:
+  buildResources: build
+  output: dist
+files:
+  - out/**/*
+asarUnpack:
+  - "out/main/daemon.js"
+  - "out/main/chunks/**/*"
+  - "out/main/db/migrations/**/*"
+  - "node_modules/better-sqlite3/**/*"
+  - "node_modules/node-pty/**/*"
+mac:
+  category: public.app-category.developer-tools
+  icon: build/icon.icns
+  target:
+    - dmg
+    - zip
+dmg:
+  artifactName: ${name}-${version}-mac.${ext}
