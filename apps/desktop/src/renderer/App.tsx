@@ -8,6 +8,7 @@ import { DiffPanel } from "./components/DiffPanel";
 import { MainContentArea } from "./components/MainContentArea";
 import { SharedFilesPanel } from "./components/SharedFilesPanel";
 import { Sidebar } from "./components/Sidebar";
+import { SettingsPage } from "./components/settings/SettingsPage";
 import { usePaneShortcuts } from "./hooks/usePaneShortcuts";
 import {
 	setupDiagnosticsListener,
@@ -298,6 +299,7 @@ export function App() {
 	const diffPanelRef = usePanelRef();
 	const setSidebarCollapsed = useProjectStore((s) => s.setSidebarCollapsed);
 	const sidebarCollapsed = useProjectStore((s) => s.sidebarCollapsed);
+	const sidebarView = useProjectStore((s) => s.sidebarView);
 	const rightPanelOpen = useTabStore((s) => s.rightPanel.open);
 	const closeDiffPanel = useTabStore((s) => s.closeDiffPanel);
 	const openRightPanel = useTabStore((s) => s.openRightPanel);
@@ -315,6 +317,10 @@ export function App() {
 			diffPanelRef.current.collapse();
 		}
 	}, [rightPanelOpen, diffPanelRef]);
+
+	if (sidebarView === "settings") {
+		return <SettingsPage />;
+	}
 
 	return (
 		<>

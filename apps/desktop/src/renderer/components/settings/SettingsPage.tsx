@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { useProjectStore } from "../../stores/projects";
-import { AboutSettings } from "./AboutSettings";
 import { AIReviewSettings } from "./AIReviewSettings";
+import { AboutSettings } from "./AboutSettings";
 import { GeneralSettings } from "./GeneralSettings";
 import { IntegrationsSettings } from "./IntegrationsSettings";
 import { SettingsNav } from "./SettingsNav";
