@@ -391,6 +391,13 @@ export class DaemonClient {
 			} catch {}
 		}
 
+		// Remove stale socket so waitForSocket blocks until the new daemon creates one
+		if (existsSync(this.socketPath)) {
+			try {
+				rmSync(this.socketPath);
+			} catch {}
+		}
+
 		// Truncate log to prevent unbounded growth across daemon restarts
 		const MAX_LOG_BYTES = 50_000;
 		try {

@@ -241,4 +241,25 @@ describe("DaemonClient", () => {
 		client.disconnect();
 		expect(client.isConnected).toBe(false);
 	});
+
+	test("connects successfully when stale socket file exists", async () => {
+		// Disconnect the client from beforeEach and stop the mock daemon
+		client.disconnect();
+		daemon.server.close();
+
+		// Leave the socket file behind (simulating a crashed daemon)
+		// TEST_SOCKET still exists on disk from the mock daemon
+
+		// Start a fresh mock daemon that will listen on the same path
+		// but only AFTER the stale socket is removed
+		const reconnectDaemon = await startMockDaemon();
+
+		// Create a new client and connect — it should handle the stale socket
+		const freshClient = new DaemonClient(TEST_SOCKET, TEST_PID, TEST_LOG);
+		await freshClient.connect();
+
+		expect(freshClient.isConnected).toBe(true);
+		freshClient.disconnect();
+		reconnectDaemon.server.close();
+	}, 10_000);
 });
