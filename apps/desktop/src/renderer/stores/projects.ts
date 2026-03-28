@@ -16,6 +16,8 @@ interface ProjectStore {
 	openSharedFilesPanel: (projectId: string) => void;
 	closeSharedFilesPanel: () => void;
 	sidebarView: "main" | "settings";
+	settingsCategory: "general" | "integrations" | "ai-review" | "about";
+	setSettingsCategory: (category: "general" | "integrations" | "ai-review" | "about") => void;
 	openSettings: () => void;
 	closeSettings: () => void;
 	sidebarCollapsed: boolean;
@@ -30,6 +32,8 @@ export const useProjectStore = create<ProjectStore>((set) => ({
 	createWorktreeProjectId: null,
 	sharedFilesProjectId: null,
 	sidebarView: "main",
+	settingsCategory: "general",
+	setSettingsCategory: (category) => set({ settingsCategory: category }),
 	sidebarCollapsed: false,
 	setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
 
@@ -57,6 +61,6 @@ export const useProjectStore = create<ProjectStore>((set) => ({
 	openSharedFilesPanel: (projectId) => set({ sharedFilesProjectId: projectId }),
 	closeSharedFilesPanel: () => set({ sharedFilesProjectId: null }),
 
-	openSettings: () => set({ sidebarView: "settings" }),
+	openSettings: () => set({ sidebarView: "settings", settingsCategory: "general" }),
 	closeSettings: () => set({ sidebarView: "main" }),
 }));
