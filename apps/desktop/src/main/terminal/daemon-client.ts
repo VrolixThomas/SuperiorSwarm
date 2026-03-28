@@ -204,6 +204,11 @@ export class DaemonClient {
 		}
 	}
 
+	/** Kick off the reconnection loop (e.g. after initial connect failure). */
+	startReconnecting(): void {
+		this.attemptReconnect();
+	}
+
 	private attemptReconnect(): void {
 		if (this.reconnecting || this.isQuitting) return;
 		this.reconnecting = true;

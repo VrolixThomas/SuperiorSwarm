@@ -11,9 +11,11 @@ const TEST_LOG = join(tmpdir(), `branchflux-client-test-${process.pid}.log`);
 
 function startMockDaemon(
 	onMessage?: (msg: unknown) => void,
-	sessions?: Array<{ id: string; cwd: string; pid: number }>
+	sessions?: Array<{ id: string; cwd: string; pid: number }>,
+	socketPath?: string
 ): Promise<{ server: Server; lastSocket: () => Socket | null }> {
 	const sessionList = sessions ?? [{ id: "term-1", cwd: "/tmp", pid: 99 }];
+	const listenPath = socketPath ?? TEST_SOCKET;
 	return new Promise((resolve) => {
 		let lastSock: Socket | null = null;
 		const server = createServer((socket) => {
@@ -39,7 +41,7 @@ function startMockDaemon(
 				}
 			});
 		});
-		server.listen(TEST_SOCKET, () => resolve({ server, lastSocket: () => lastSock }));
+		server.listen(listenPath, () => resolve({ server, lastSocket: () => lastSock }));
 	});
 }
 
@@ -261,5 +263,42 @@ describe("DaemonClient", () => {
 		expect(freshClient.isConnected).toBe(true);
 		freshClient.disconnect();
 		reconnectDaemon.server.close();
+	}, 10_000);
+
+	test("startReconnecting connects to a daemon that appears later", async () => {
+		// Create a client with no daemon running
+		const noSocket = join(tmpdir(), `branchflux-reconnect-test-${process.pid}.sock`);
+		const noPid = join(tmpdir(), `branchflux-reconnect-test-${process.pid}.pid`);
+		const noLog = join(tmpdir(), `branchflux-reconnect-test-${process.pid}.log`);
+		if (existsSync(noSocket)) rmSync(noSocket);
+
+		const freshClient = new DaemonClient(noSocket, noPid, noLog);
+
+		// Initial connect fails — no daemon running
+		let connectFailed = false;
+		try {
+			await freshClient.connect();
+		} catch {
+			connectFailed = true;
+		}
+		expect(connectFailed).toBe(true);
+
+		// Kick off reconnection
+		freshClient.startReconnecting();
+
+		// Start a mock daemon after a short delay (simulates daemon becoming available)
+		await new Promise<void>((r) => setTimeout(r, 500));
+		const lateDaemon = await startMockDaemon(undefined, undefined, noSocket);
+
+		// Wait for reconnection (first attempt at 1s backoff)
+		await new Promise<void>((r) => setTimeout(r, 2_000));
+
+		expect(freshClient.isConnected).toBe(true);
+
+		freshClient.disconnect();
+		lateDaemon.server.close();
+		if (existsSync(noSocket)) rmSync(noSocket);
+		if (existsSync(noPid)) rmSync(noPid);
+		if (existsSync(noLog)) rmSync(noLog);
 	}, 10_000);
 });
