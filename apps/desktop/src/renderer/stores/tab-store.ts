@@ -623,9 +623,10 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 	},
 
 	openRightPanel: () => {
-		const { rightPanel, activeWorkspaceCwd } = get();
+		const { rightPanel, activeWorkspaceCwd, activeWorkspaceId, workspaceMetadata } = get();
 		if (rightPanel.open) return;
-		set({ rightPanel: defaultPanelForCwd(activeWorkspaceCwd) });
+		const meta = activeWorkspaceId ? workspaceMetadata[activeWorkspaceId] : undefined;
+		set({ rightPanel: panelForWorkspace(activeWorkspaceCwd, meta) });
 	},
 
 	openExplorer: () => {
