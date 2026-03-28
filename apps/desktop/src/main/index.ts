@@ -104,7 +104,7 @@ app.whenReady().then(async () => {
 		db.update(schema.workspaces).set({ terminalId: null, updatedAt: new Date() }).run();
 	}
 	const dbPath = join(app.getPath("userData"), "branchflux.db");
-	const daemonScriptPath = join(__dirname, "daemon.js");
+	const daemonScriptPath = join(__dirname.replace("app.asar", "app.asar.unpacked"), "daemon.js");
 	try {
 		await daemonClient.connect(dbPath, daemonScriptPath);
 	} catch (err) {
