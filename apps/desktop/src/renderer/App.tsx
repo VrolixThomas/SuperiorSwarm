@@ -365,7 +365,7 @@ export function App() {
 					id="diff"
 					panelRef={diffPanelRef}
 					defaultSize="19.4%"
-					minSize="10%"
+					minSize={200}
 					maxSize="40%"
 					collapsible
 					collapsedSize="0%"

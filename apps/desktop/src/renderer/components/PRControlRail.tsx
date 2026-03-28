@@ -13,8 +13,16 @@ import type { SortMode } from "./CommentThreadCard";
 import { RepoFileTree } from "./RepoFileTree";
 import { SmartHeaderBar } from "./SmartHeaderBar";
 import { SubmitReviewModal } from "./SubmitReviewModal";
+import { Tooltip } from "./Tooltip";
+import { changesIcon, commentsIcon, filesIcon, sparkleIcon } from "./panel-icons";
 
 type PRTab = "changes" | "comments" | "files";
+
+const prTabIcons: Record<PRTab, React.ReactNode> = {
+	changes: changesIcon,
+	comments: commentsIcon,
+	files: filesIcon,
+};
 
 // ── Tab header (segmented control) ──────────────────────────────────────────
 
@@ -39,24 +47,25 @@ function PRTabHeader({
 		<div className="flex shrink-0 items-center gap-2 border-b border-[var(--border)] px-3 py-2">
 			<div className="flex rounded-[var(--radius-sm)] bg-[var(--bg-base)] p-0.5">
 				{tabs.map((t) => (
-					<button
-						key={t.key}
-						type="button"
-						onClick={() => onSetTab(t.key)}
-						className={[
-							"flex items-center gap-1 rounded-[4px] px-3 py-0.5 text-[11px] font-medium transition-all duration-[120ms]",
-							tab === t.key
-								? "bg-[var(--bg-elevated)] text-[var(--text-secondary)] shadow-[var(--shadow-sm)]"
-								: "text-[var(--text-quaternary)] hover:text-[var(--text-tertiary)]",
-						].join(" ")}
-					>
-						{t.label}
-						{t.badge != null && (
-							<span className="rounded-full bg-[var(--bg-overlay)] px-1 text-[9px] text-[var(--text-tertiary)]">
-								{t.badge}
-							</span>
-						)}
-					</button>
+					<Tooltip key={t.key} label={t.label}>
+						<button
+							type="button"
+							onClick={() => onSetTab(t.key)}
+							className={[
+								"flex items-center gap-1 rounded-[4px] px-2 py-1 transition-all duration-[120ms]",
+								tab === t.key
+									? "bg-[var(--bg-elevated)] text-[var(--text-secondary)] shadow-[var(--shadow-sm)]"
+									: "text-[var(--text-quaternary)] hover:text-[var(--text-tertiary)]",
+							].join(" ")}
+						>
+							{prTabIcons[t.key]}
+							{t.badge != null && (
+								<span className="rounded-full bg-[var(--bg-overlay)] px-1 text-[9px] text-[var(--text-tertiary)]">
+									{t.badge}
+								</span>
+							)}
+						</button>
+					</Tooltip>
 				))}
 			</div>
 			<div className="flex-1" />
@@ -597,49 +606,67 @@ function CommentsTab({
 
 	return (
 		<div className="flex flex-1 flex-col overflow-hidden">
-			{/* Sort control */}
-			<div className="flex shrink-0 items-center justify-between border-b border-[var(--border-subtle)] px-3 py-1.5">
-				<span className="text-[11px] text-[var(--text-tertiary)]">
-					{allThreads.length} thread{allThreads.length !== 1 ? "s" : ""}
-				</span>
-				<div className="flex items-center gap-1.5">
-					{reviewChainId && (
+			{/* Toolbar */}
+			<div className="flex shrink-0 items-center gap-2 border-b border-[var(--border-subtle)] px-3 py-1.5">
+				{reviewChainId && (
+					<Tooltip
+						label={
+							triggerFollowUp.isPending
+								? "Starting..."
+								: triggerFollowUp.isError
+									? "Re-review failed"
+									: "Re-review"
+						}
+					>
 						<button
 							type="button"
 							onClick={() => triggerFollowUp.mutate({ reviewChainId })}
 							disabled={triggerFollowUp.isPending}
-							className={`flex items-center gap-1.5 rounded-[6px] border px-2.5 py-1 text-[12px] transition-colors ${
+							className={[
+								"flex h-6 w-6 items-center justify-center rounded-[var(--radius-sm)] transition-colors",
 								triggerFollowUp.isError
-									? "border-[#f85149] text-[#f85149]"
-									: "border-[var(--border-subtle)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:bg-[var(--bg-overlay)] hover:text-[var(--text)]"
-							}`}
+									? "text-[#f85149]"
+									: "text-[var(--text-quaternary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-tertiary)]",
+							].join(" ")}
 						>
-							{triggerFollowUp.isPending
-								? "Starting..."
-								: triggerFollowUp.isError
-									? "Failed"
-									: "Re-review"}
+							<svg
+								width="13"
+								height="13"
+								viewBox="0 0 16 16"
+								fill="none"
+								stroke="currentColor"
+								strokeWidth="1.5"
+								strokeLinecap="round"
+								strokeLinejoin="round"
+								aria-hidden="true"
+							>
+								<path d="M2 8a6 6 0 0 1 10.3-4.2M14 8a6 6 0 0 1-10.3 4.2" />
+								<path d="M14 2v4h-4M2 14v-4h4" />
+							</svg>
 						</button>
-					)}
-					{summaryMarkdown && (
+					</Tooltip>
+				)}
+				{summaryMarkdown && (
+					<Tooltip label="Summary">
 						<button
 							type="button"
 							onClick={onShowSummary}
-							className="flex items-center gap-1 rounded-[4px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-1.5 py-0.5 text-[10px] text-[var(--text-tertiary)] outline-none transition-colors hover:text-[var(--text-secondary)]"
+							className="flex h-6 w-6 items-center justify-center rounded-[var(--radius-sm)] text-[var(--text-quaternary)] transition-colors hover:bg-[var(--bg-elevated)] hover:text-[var(--text-tertiary)]"
 						>
-							✦ Summary
+							{sparkleIcon}
 						</button>
-					)}
-					<select
-						value={sortMode}
-						onChange={(e) => setSortMode(e.target.value as SortMode)}
-						className="rounded-[4px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-1.5 py-0.5 text-[10px] text-[var(--text-tertiary)] outline-none"
-					>
-						<option value="by-file">By file</option>
-						<option value="by-reviewer">By reviewer</option>
-						<option value="latest-first">Latest first</option>
-					</select>
-				</div>
+					</Tooltip>
+				)}
+				<div className="flex-1" />
+				<select
+					value={sortMode}
+					onChange={(e) => setSortMode(e.target.value as SortMode)}
+					className="rounded-[4px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-1.5 py-0.5 text-[10px] text-[var(--text-tertiary)] outline-none"
+				>
+					<option value="by-file">By file</option>
+					<option value="by-reviewer">By reviewer</option>
+					<option value="latest-first">Latest first</option>
+				</select>
 			</div>
 
 			{/* Thread list */}
