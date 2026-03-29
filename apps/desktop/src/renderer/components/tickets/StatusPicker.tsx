@@ -16,12 +16,12 @@ export function StatusPicker({ issue, onStatusChange }: StatusPickerProps) {
 	const { data: jiraTransitions, isLoading: jiraLoading } =
 		trpc.atlassian.getIssueTransitions.useQuery(
 			{ issueKey: issue.id },
-			{ enabled: open && issue.provider === "jira", staleTime: 5 * 60_000 },
+			{ enabled: open && issue.provider === "jira", staleTime: 5 * 60_000 }
 		);
 
 	const { data: linearStates, isLoading: linearLoading } = trpc.linear.getTeamStates.useQuery(
 		{ teamId: issue.groupId },
-		{ enabled: open && issue.provider === "linear", staleTime: 5 * 60_000 },
+		{ enabled: open && issue.provider === "linear", staleTime: 5 * 60_000 }
 	);
 
 	const states = issue.provider === "jira" ? jiraTransitions : linearStates;

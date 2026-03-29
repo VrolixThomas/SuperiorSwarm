@@ -171,7 +171,7 @@ export function TicketsCanvas() {
 				});
 			}
 		},
-		[updateJiraStatus, updateLinearState],
+		[updateJiraStatus, updateLinearState]
 	);
 
 	// ── Derived display values ───────────────────────────────────────────────
