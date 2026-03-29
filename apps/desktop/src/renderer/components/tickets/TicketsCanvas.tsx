@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Group, Panel, Separator, useDefaultLayout, usePanelRef } from "react-resizable-panels";
 import type { MergedTicketIssue, TicketViewMode } from "../../../shared/tickets";
+import { useTicketDragDrop } from "../../hooks/useTicketDragDrop";
 import { useTicketsData } from "../../hooks/useTicketsData";
 import { useTabStore } from "../../stores/tab-store";
 import { trpc } from "../../trpc/client";
@@ -29,6 +30,8 @@ export function TicketsCanvas() {
 		activeTicketProject,
 		lastFetched,
 	} = useTicketsData();
+
+	const dnd = useTicketDragDrop(columns);
 
 	// ── View mode (persisted per project) ────────────────────────────────────
 	const projectId = useMemo(() => {
@@ -225,6 +228,7 @@ export function TicketsCanvas() {
 								showProvider={showProvider}
 								onTicketClick={handleTicketClick}
 								onTicketContextMenu={handleTicketContextMenu}
+								dnd={dnd}
 							/>
 						)}
 						{viewMode === "list" && (
