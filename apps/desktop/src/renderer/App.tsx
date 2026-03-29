@@ -21,6 +21,7 @@ import { useProjectStore } from "./stores/projects";
 import type { TabItem } from "./stores/tab-store";
 import { resetFileTabCounter, useTabStore } from "./stores/tab-store";
 import { trpc } from "./trpc/client";
+import { LoginScreen } from "./components/LoginScreen";
 
 const SAVE_INTERVAL_MS = 30_000;
 
@@ -153,6 +154,37 @@ function collectSnapshot() {
 }
 
 export function App() {
+	const sessionQuery = trpc.auth.getSession.useQuery(undefined, {
+		retry: false,
+		staleTime: 5 * 60 * 1000,
+	});
+
+	if (sessionQuery.isLoading) {
+		return (
+			<div
+				style={{
+					display: "flex",
+					alignItems: "center",
+					justifyContent: "center",
+					height: "100vh",
+					background: "var(--bg-base)",
+					color: "var(--text-tertiary)",
+					fontSize: "14px",
+				}}
+			>
+				Loading...
+			</div>
+		);
+	}
+
+	if (!sessionQuery.data) {
+		return <LoginScreen />;
+	}
+
+	return <AuthenticatedApp />;
+}
+
+function AuthenticatedApp() {
 	const [savedScrollback, setSavedScrollback] = useState<Record<string, string>>({});
 
 	const saveMutation = trpc.terminalSessions.save.useMutation();
