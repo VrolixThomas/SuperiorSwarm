@@ -381,6 +381,21 @@ describe("PtyManager", () => {
 
 	// -- PIDs are unique per terminal --
 
+	test("create passes custom env to spawned PTY", () => {
+		setup();
+		const customEnv = { AGENT_NOTIFY_PORT: "27392", AGENT_NOTIFY_SESSION_ID: "test-123" };
+		manager.create(
+			"env-test",
+			"/tmp",
+			() => {},
+			() => {},
+			"client-1",
+			customEnv
+		);
+		expect(manager.has("env-test")).toBe(true);
+		manager.dispose("env-test");
+	});
+
 	test("each terminal gets a unique PID", () => {
 		setup();
 		manager.create(
