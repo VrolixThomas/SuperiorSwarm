@@ -142,12 +142,13 @@ export class DaemonClient {
 		id: string,
 		cwd: string | undefined,
 		onData: (data: string) => void,
-		onExit: (code: number) => void
+		onExit: (code: number) => void,
+		env?: Record<string, string>
 	): Promise<void> {
 		this.callbacks.set(id, { onData, onExit, cwd });
 		this.liveSessions.add(id);
 		try {
-			this.send({ type: "create", id, cwd });
+			this.send({ type: "create", id, cwd, env });
 		} catch (err) {
 			// Roll back local state if we couldn't reach the daemon
 			this.callbacks.delete(id);

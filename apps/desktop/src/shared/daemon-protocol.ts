@@ -23,7 +23,7 @@ export function daemonPaths(instanceId: string): DaemonPaths {
 }
 
 export type ClientMessage =
-	| { type: "create"; id: string; cwd?: string }
+	| { type: "create"; id: string; cwd?: string; env?: Record<string, string> }
 	| { type: "attach"; id: string }
 	| { type: "detach"; id: string }
 	| { type: "detach-all" }
