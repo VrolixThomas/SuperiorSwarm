@@ -143,6 +143,7 @@ export async function getIssueTransitions(issueKey: string): Promise<TicketStatu
 		id: t.id,
 		name: t.name,
 		color: mapStatusToColor(t.to.statusCategory.key),
+		categoryKey: t.to.statusCategory.key,
 	}));
 }
 
