@@ -60,6 +60,8 @@ export default defineConfig({
 			"process.env.LINEAR_CLIENT_SECRET": JSON.stringify(process.env.LINEAR_CLIENT_SECRET ?? ""),
 			"process.env.GITHUB_CLIENT_ID": JSON.stringify(process.env.GITHUB_CLIENT_ID ?? ""),
 			"process.env.GITHUB_CLIENT_SECRET": JSON.stringify(process.env.GITHUB_CLIENT_SECRET ?? ""),
+			"process.env.SUPABASE_URL": JSON.stringify(process.env.SUPABASE_URL ?? ""),
+			"process.env.SUPABASE_ANON_KEY": JSON.stringify(process.env.SUPABASE_ANON_KEY ?? ""),
 		},
 		build: {
 			rollupOptions: {
