@@ -6,11 +6,12 @@ directories:
 files:
   - out/**/*
 asarUnpack:
-  - "out/main/daemon.js"
-  - "out/main/chunks/**/*"
-  - "out/main/db/migrations/**/*"
   - "node_modules/better-sqlite3/**/*"
   - "node_modules/node-pty/**/*"
+  - "node_modules/bindings/**/*"
+  - "node_modules/file-uri-to-path/**/*"
+  - "out/main/db/migrations/**/*"
+npmRebuild: true
 mac:
   category: public.app-category.developer-tools
   icon: build/icon.icns
