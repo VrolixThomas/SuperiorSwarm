@@ -5,6 +5,7 @@ import { AddRepositoryModal } from "./components/AddRepositoryModal";
 import { CreateWorktreeModal } from "./components/CreateWorktreeModal";
 import { DaemonStatus } from "./components/DaemonStatus";
 import { DiffPanel } from "./components/DiffPanel";
+import { LoginScreen } from "./components/LoginScreen";
 import { MainContentArea } from "./components/MainContentArea";
 import { SharedFilesPanel } from "./components/SharedFilesPanel";
 import { Sidebar } from "./components/Sidebar";
@@ -153,6 +154,37 @@ function collectSnapshot() {
 }
 
 export function App() {
+	const sessionQuery = trpc.auth.getSession.useQuery(undefined, {
+		retry: false,
+		staleTime: 5 * 60 * 1000,
+	});
+
+	if (sessionQuery.isLoading) {
+		return (
+			<div
+				style={{
+					display: "flex",
+					alignItems: "center",
+					justifyContent: "center",
+					height: "100vh",
+					background: "var(--bg-base)",
+					color: "var(--text-tertiary)",
+					fontSize: "14px",
+				}}
+			>
+				Loading...
+			</div>
+		);
+	}
+
+	if (!sessionQuery.data) {
+		return <LoginScreen />;
+	}
+
+	return <AuthenticatedApp />;
+}
+
+function AuthenticatedApp() {
 	const [savedScrollback, setSavedScrollback] = useState<Record<string, string>>({});
 
 	const saveMutation = trpc.terminalSessions.save.useMutation();

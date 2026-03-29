@@ -1,4 +1,4 @@
-import { notInArray } from "drizzle-orm";
+import { notInArray, notLike } from "drizzle-orm";
 import type { SessionSaveData } from "../../shared/types";
 import { getDb } from "./index";
 import * as schema from "./schema";
@@ -63,7 +63,10 @@ export function saveTerminalSessions(data: SessionSaveData): void {
 		}
 
 		// Session state: replace entirely (renderer owns this)
-		tx.delete(schema.sessionState).run();
+		// Preserve supabase_session: keys — those are managed by the Supabase auth adapter
+		tx.delete(schema.sessionState)
+			.where(notLike(schema.sessionState.key, "supabase_session:%"))
+			.run();
 		for (const [key, value] of Object.entries(data.state)) {
 			tx.insert(schema.sessionState).values({ key, value }).run();
 		}
