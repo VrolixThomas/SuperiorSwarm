@@ -91,17 +91,17 @@ export function Sidebar({ collapsed, onExpand }: SidebarProps) {
 					<div className="flex-1 overflow-y-auto">
 						{segment === "repos" && (
 							<>
-								{/* Add Repository */}
-								<div className="px-2 py-2">
+								<ProjectList />
+								<div className="px-2 py-1.5">
 									<button
 										type="button"
 										onClick={openAddModal}
-										className="flex w-full items-center gap-2 rounded-[6px] px-3 py-1.5 text-[13px] text-[var(--text-tertiary)] transition-all duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-secondary)]"
+										className="flex w-full items-center gap-2 rounded-[6px] px-3 py-1.5 text-[12px] text-[var(--text-quaternary)] transition-all duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-tertiary)]"
 									>
 										<svg
 											aria-hidden="true"
-											width="14"
-											height="14"
+											width="13"
+											height="13"
 											viewBox="0 0 16 16"
 											fill="none"
 											className="shrink-0"
@@ -116,7 +116,6 @@ export function Sidebar({ collapsed, onExpand }: SidebarProps) {
 										<span className="truncate">Add Repository</span>
 									</button>
 								</div>
-								<ProjectList />
 							</>
 						)}
 						{segment === "tickets" && <TicketsSidebar />}
