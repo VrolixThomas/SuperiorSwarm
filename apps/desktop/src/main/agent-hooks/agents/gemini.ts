@@ -54,7 +54,6 @@ export function mergeGeminiHooks(settingsPath: string, hookCommand: string): voi
 
 export const geminiConfig: AgentHookConfig = {
 	name: "gemini",
-	settingsPath: "",
 	hookEvents: HOOK_EVENTS,
 	mapEvent(rawEvent: string): AgentAlert | null {
 		return EVENT_MAP[rawEvent] ?? null;

@@ -1,4 +1,5 @@
 import type {
+	AgentAlertAPI,
 	DaemonAPI,
 	DialogAPI,
 	LspAPI,
@@ -16,6 +17,7 @@ export interface ElectronAPI {
 	shell: ShellAPI;
 	lsp: LspAPI;
 	daemon: DaemonAPI;
+	agentAlert: AgentAlertAPI;
 }
 
 declare global {

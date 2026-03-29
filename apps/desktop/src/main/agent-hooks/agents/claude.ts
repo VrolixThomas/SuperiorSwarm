@@ -68,7 +68,6 @@ export function mergeClaudeHooks(settingsPath: string, hookCommand: string): voi
 
 export const claudeConfig: AgentHookConfig = {
 	name: "claude",
-	settingsPath: "",
 	hookEvents: HOOK_EVENTS,
 	mapEvent(rawEvent: string): AgentAlert | null {
 		return EVENT_MAP[rawEvent] ?? null;
