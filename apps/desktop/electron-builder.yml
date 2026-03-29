@@ -1,7 +1,7 @@
 appId: com.branchflux.app
 productName: BranchFlux
 directories:
-  buildResources: build
+  buildResources: resources
   output: dist
 files:
   - out/**/*
@@ -14,7 +14,7 @@ asarUnpack:
 npmRebuild: true
 mac:
   category: public.app-category.developer-tools
-  icon: build/icon.icns
+  icon: resources/icon.icns
   target:
     - dmg
     - zip
