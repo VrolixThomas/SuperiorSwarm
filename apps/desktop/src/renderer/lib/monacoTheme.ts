@@ -1,6 +1,6 @@
 import * as monaco from "monaco-editor";
 
-export const EDITOR_THEME = "branchflux-dark";
+export const EDITOR_THEME = "superiorswarm-dark";
 
 let registered = false;
 

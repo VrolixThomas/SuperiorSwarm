@@ -3,7 +3,7 @@ import { useCallback, useState } from "react";
 export type DropZone = "left" | "right" | "top" | "bottom" | "center";
 
 /** MIME type used for tab drag-and-drop data. */
-export const TAB_DRAG_MIME = "application/x-branchflux-tab";
+export const TAB_DRAG_MIME = "application/x-superiorswarm-tab";
 
 export function DropZoneOverlay({
 	paneId,
