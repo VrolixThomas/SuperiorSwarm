@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import type { MergedTicketIssue, NormalizedStatusCategory } from "../../../shared/tickets";
-import { normalizeStatusCategory } from "../../../shared/tickets";
+import { formatRelativeTime, normalizeStatusCategory } from "../../../shared/tickets";
 import { StateIcon } from "../StateIcon";
 import type { LinkedWorkspace } from "../WorkspacePopover";
 
@@ -21,16 +21,6 @@ const STATUS_RANK: Record<NormalizedStatusCategory, number> = {
 	backlog: 2,
 	done: 3,
 };
-
-function formatRelativeTime(dateStr?: string): string {
-	if (!dateStr) return "";
-	const diff = Date.now() - new Date(dateStr).getTime();
-	const hours = Math.floor(diff / 3_600_000);
-	if (hours < 1) return "just now";
-	if (hours < 24) return `${hours}h ago`;
-	const days = Math.floor(hours / 24);
-	return `${days}d ago`;
-}
 
 export function TicketsTableView({
 	issues,
@@ -61,16 +51,8 @@ export function TicketsTableView({
 				case "title":
 					return dir * a.title.localeCompare(b.title);
 				case "status": {
-					const catA = normalizeStatusCategory(
-						a.provider,
-						a.provider === "jira" ? a.status.name : undefined,
-						a.stateType
-					);
-					const catB = normalizeStatusCategory(
-						b.provider,
-						b.provider === "jira" ? b.status.name : undefined,
-						b.stateType
-					);
+					const catA = normalizeStatusCategory(a.provider, a.statusCategory, a.stateType);
+					const catB = normalizeStatusCategory(b.provider, b.statusCategory, b.stateType);
 					return dir * (STATUS_RANK[catA] - STATUS_RANK[catB]);
 				}
 				case "project":
