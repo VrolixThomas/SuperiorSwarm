@@ -37,7 +37,7 @@ function DroppableColumn({
 	const sortableIds = col.items.map((issue) => `${issue.provider}:${issue.id}`);
 
 	return (
-		<div key={col.category} className="flex min-w-[200px] flex-1 flex-col gap-1.5">
+		<div className="flex min-w-[200px] flex-1 flex-col gap-1.5">
 			<div className="flex items-center gap-1.5 px-1 py-1 text-[9px] font-semibold uppercase tracking-[0.3px] text-[var(--text-tertiary)]">
 				<StateIcon type={columnStateType(col.category)} color={col.color} size={8} />
 				<span>{col.label}</span>
@@ -82,6 +82,7 @@ export function TicketsBoardView({
 			collisionDetection={dnd.collisionDetection}
 			onDragStart={dnd.handleDragStart}
 			onDragEnd={dnd.handleDragEnd}
+			onDragCancel={dnd.handleDragCancel}
 		>
 			<div className="flex h-full gap-2.5 overflow-x-auto px-3 py-2">
 				{columns.map((col) => (

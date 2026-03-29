@@ -147,7 +147,7 @@ export function useTicketDragDrop(columns: StatusColumn[]) {
 							undefined,
 							snapshotRef.current.jira as ReturnType<typeof utils.atlassian.getMyIssues.getData>
 						);
-					} else if (snapshotRef.current.linear) {
+					} else if (issue.provider === "linear" && snapshotRef.current.linear) {
 						utils.linear.getAssignedIssues.setData(
 							undefined,
 							snapshotRef.current.linear as ReturnType<
@@ -166,11 +166,16 @@ export function useTicketDragDrop(columns: StatusColumn[]) {
 		[findIssueAndColumn, utils, updateJiraStatus, updateLinearState]
 	);
 
+	const handleDragCancel = useCallback(() => {
+		setActiveIssue(null);
+	}, []);
+
 	return {
 		sensors,
 		activeIssue,
 		collisionDetection: closestCenter,
 		handleDragStart,
 		handleDragEnd,
+		handleDragCancel,
 	};
 }

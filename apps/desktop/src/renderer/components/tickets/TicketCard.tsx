@@ -26,6 +26,7 @@ export function TicketCard({
 	const sortableId = `${issue.provider}:${issue.id}`;
 	const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
 		id: sortableId,
+		disabled: isDragOverlay,
 	});
 
 	const style: React.CSSProperties = {
