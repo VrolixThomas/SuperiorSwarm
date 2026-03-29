@@ -104,7 +104,7 @@ describe("parseRemoteInfo", () => {
 });
 
 describe("worktree operations", () => {
-	const testDir = join(realpathSync(tmpdir()), `branchflux-test-${Date.now()}`);
+	const testDir = join(realpathSync(tmpdir()), `superiorswarm-test-${Date.now()}`);
 	const repoPath = join(testDir, "main-repo");
 	const worktreePath = join(testDir, "main-repo-worktrees", "feature-test");
 
@@ -144,7 +144,7 @@ describe("worktree operations", () => {
 });
 
 describe("listBranches", () => {
-	const testDir = join(realpathSync(tmpdir()), `branchflux-branches-${Date.now()}`);
+	const testDir = join(realpathSync(tmpdir()), `superiorswarm-branches-${Date.now()}`);
 	const repoPath = join(testDir, "repo");
 
 	beforeAll(async () => {

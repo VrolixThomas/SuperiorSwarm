@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { SocketServer } from "../../src/daemon/socket-server";
 import type { DaemonMessage } from "../../src/shared/daemon-protocol";
 
-const TEST_SOCKET = join(tmpdir(), `branchflux-test-${process.pid}.sock`);
+const TEST_SOCKET = join(tmpdir(), `superiorswarm-test-${process.pid}.sock`);
 
 // Minimal mock PtyManager that satisfies the PtyManager interface
 class MockPtyManager {
