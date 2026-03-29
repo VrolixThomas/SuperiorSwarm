@@ -53,7 +53,11 @@ const sqliteStorage = {
 const supabaseUrl = process.env["SUPABASE_URL"];
 const supabaseAnonKey = process.env["SUPABASE_ANON_KEY"];
 
-export const supabase = createClient(supabaseUrl!, supabaseAnonKey!, {
+if (!supabaseUrl || !supabaseAnonKey) {
+	throw new Error("SUPABASE_URL and SUPABASE_ANON_KEY must be set in .env");
+}
+
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 	auth: {
 		storage: sqliteStorage,
 		autoRefreshToken: true,
