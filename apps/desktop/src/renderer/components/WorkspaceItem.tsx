@@ -27,7 +27,7 @@ interface WorkspaceItemProps {
  * - needs-input: animated breathing dots (yellow tint, faster)
  * - task-complete: static dots (green tint)
  */
-function SwarmIndicator({ alert }: { alert: AgentAlert }) {
+export function SwarmIndicator({ alert, className }: { alert: AgentAlert; className?: string }) {
 	const animated = alert !== "task-complete";
 	const dur = alert === "needs-input" ? "2s" : "3.2s";
 
@@ -45,7 +45,7 @@ function SwarmIndicator({ alert }: { alert: AgentAlert }) {
 			width="22"
 			height="22"
 			viewBox="0 0 100 100"
-			className="ml-auto shrink-0"
+			className={`shrink-0 ${className ?? ""}`}
 			aria-label={
 				alert === "active"
 					? "Agent working"
@@ -370,7 +370,7 @@ export function WorkspaceItem({
 						</span>
 					)}
 				</div>
-				{alert && <SwarmIndicator alert={alert} />}
+				{alert && <SwarmIndicator alert={alert} className="ml-auto" />}
 			</button>
 
 			{contextMenu && (
