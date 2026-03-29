@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { BitbucketPullRequest } from "../../main/atlassian/bitbucket";
 import type { GitHubPR } from "../../main/github/github";
+import type { AgentAlert } from "../../shared/agent-events";
 import type { GitHubPREnriched, GitHubReviewer, PRContext } from "../../shared/github-types";
+import { useAgentAlertStore } from "../stores/agent-alert-store";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import { CreateWorktreeFromPRModal } from "./CreateWorktreeFromPRModal";
+import { SwarmIndicator } from "./WorkspaceItem";
 import { type LinkedWorkspace, WorkspacePopover } from "./WorkspacePopover";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -29,6 +32,14 @@ function initials(name: string): string {
 		.join("");
 }
 
+function getHealthColor(pr: MergedPR, enriched?: GitHubPREnriched): string {
+	if (enriched?.mergeable === "CONFLICTING") return "#f85149";
+	if (enriched?.ciState === "FAILURE") return "#f85149";
+	if (pr.reviewDecision === "CHANGES_REQUESTED") return "#d29922";
+	if (pr.reviewDecision === "APPROVED") return "#3fb950";
+	return "#484848";
+}
+
 // ── Shared sub-components ────────────────────────────────────────────────────
 
 function ReviewerAvatar({ reviewer }: { reviewer: GitHubReviewer }) {
@@ -50,25 +61,6 @@ function ReviewerAvatar({ reviewer }: { reviewer: GitHubReviewer }) {
 		>
 			{initials(reviewer.login)}
 		</div>
-	);
-}
-
-function CIBadge({ state }: { state: GitHubPREnriched["ciState"] }) {
-	if (!state) return null;
-	const config = {
-		SUCCESS: { color: "#3fb950", label: "CI" },
-		FAILURE: { color: "#f85149", label: "CI" },
-		PENDING: { color: "#d29922", label: "CI" },
-		NEUTRAL: { color: "#484848", label: "CI" },
-	} as const;
-	const { color, label } = config[state];
-	return (
-		<span
-			className="shrink-0 rounded-[3px] px-1 py-px text-[9px] font-semibold leading-tight"
-			style={{ color, border: `1px solid ${color}40` }}
-		>
-			{label}
-		</span>
 	);
 }
 
@@ -99,180 +91,6 @@ interface MergedPR {
 	commentCount?: number;
 }
 
-// ── AI Review Status Badge ───────────────────────────────────────────────────
-
-function AIReviewBadge({
-	pr,
-	identifier,
-	getReviewStatus,
-	projectsList,
-	store,
-	triggerReview,
-	dismissReview,
-	cancelReview,
-	getWorkspaceId,
-}: {
-	pr: MergedPR;
-	identifier: string;
-	getReviewStatus: (
-		id: string
-	) => { id: string; status: string; commitSha?: string | null } | undefined;
-	projectsList:
-		| Array<{
-				id: string;
-				githubOwner: string | null;
-				githubRepo: string | null;
-				repoPath: string;
-				defaultBranch: string;
-		  }>
-		| undefined;
-	store: ReturnType<typeof useTabStore.getState>;
-	triggerReview: (
-		args: {
-			provider: "github" | "bitbucket";
-			identifier: string;
-			title: string;
-			author: string;
-			sourceBranch: string;
-			targetBranch: string;
-			repoPath: string;
-			projectId: string;
-		},
-		prCtx?: PRContext
-	) => void;
-	dismissReview: { mutate: (args: { workspaceId: string }) => void };
-	cancelReview: { mutate: (args: { draftId: string }) => void };
-	getWorkspaceId: (prIdentifier: string) => string | undefined;
-}) {
-	const draft = getReviewStatus(identifier);
-
-	if (draft?.status === "ready") {
-		return (
-			<button
-				type="button"
-				className="shrink-0 cursor-pointer rounded-[4px] border-none bg-[rgba(48,209,88,0.15)] px-1.5 py-0.5 text-[10px] font-medium text-[#30d158]"
-				onClick={(e) => {
-					e.stopPropagation();
-					if (pr.provider === "github" && pr.githubPR) {
-						const project = projectsList?.find(
-							(p) =>
-								p.githubOwner === pr.githubPR!.repoOwner && p.githubRepo === pr.githubPR!.repoName
-						);
-						store.openPRReviewPanel(store.activeWorkspaceId ?? "", {
-							provider: "github",
-							owner: pr.githubPR.repoOwner,
-							repo: pr.githubPR.repoName,
-							number: pr.githubPR.number,
-							title: pr.title,
-							sourceBranch: pr.githubPR.branchName,
-							targetBranch: project?.defaultBranch ?? "main",
-							repoPath: project?.repoPath ?? "",
-						});
-					}
-				}}
-			>
-				AI Ready
-			</button>
-		);
-	}
-	if (draft?.status === "in_progress") {
-		return (
-			<button
-				type="button"
-				className="flex shrink-0 cursor-pointer items-center gap-1 rounded-[4px] border-none bg-[rgba(255,214,10,0.15)] px-1.5 py-0.5 text-[10px] font-medium text-[#ffd60a] transition-colors hover:bg-[rgba(255,69,58,0.15)] hover:text-[#ff453a]"
-				onClick={(e) => {
-					e.stopPropagation();
-					cancelReview.mutate({ draftId: draft.id });
-				}}
-				title="Click to cancel review"
-			>
-				<span className="inline-block size-1.5 animate-pulse rounded-full bg-current" />
-				AI...
-			</button>
-		);
-	}
-	if (draft?.status === "queued") {
-		return (
-			<span className="shrink-0 rounded-[4px] bg-[var(--bg-elevated)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--text-quaternary)]">
-				Queued
-			</span>
-		);
-	}
-	if (draft?.status === "failed") {
-		return (
-			<button
-				type="button"
-				className="shrink-0 cursor-pointer rounded-[4px] border-none bg-[rgba(255,69,58,0.15)] px-1.5 py-0.5 text-[10px] font-medium text-[#ff453a] transition-colors hover:bg-[rgba(255,69,58,0.25)]"
-				onClick={(e) => {
-					e.stopPropagation();
-					const wsId = getWorkspaceId(identifier);
-					if (wsId) dismissReview.mutate({ workspaceId: wsId });
-				}}
-			>
-				Failed
-			</button>
-		);
-	}
-	if (!draft) {
-		const handleTrigger = () => {
-			if (pr.provider === "github" && pr.githubPR) {
-				const project = projectsList?.find(
-					(p) => p.githubOwner === pr.githubPR!.repoOwner && p.githubRepo === pr.githubPR!.repoName
-				);
-				if (!project) return;
-				const prCtx: PRContext = {
-					provider: "github",
-					owner: pr.githubPR.repoOwner,
-					repo: pr.githubPR.repoName,
-					number: pr.githubPR.number,
-					title: pr.title,
-					sourceBranch: pr.githubPR.branchName,
-					targetBranch: project.defaultBranch ?? "main",
-					repoPath: project.repoPath,
-				};
-				triggerReview(
-					{
-						provider: "github",
-						identifier,
-						title: pr.title,
-						author: "",
-						sourceBranch: pr.githubPR.branchName,
-						targetBranch: project.defaultBranch ?? "main",
-						repoPath: project.repoPath,
-						projectId: project.id,
-					},
-					prCtx
-				);
-			}
-			if (pr.provider === "bitbucket" && pr.bitbucketPR) {
-				triggerReview({
-					provider: "bitbucket",
-					identifier,
-					title: pr.title,
-					author: pr.bitbucketPR.author,
-					sourceBranch: pr.bitbucketPR.source?.branch?.name ?? "",
-					targetBranch: pr.bitbucketPR.destination?.branch?.name ?? "main",
-					repoPath: "",
-					projectId: "",
-				});
-			}
-		};
-		return (
-			<button
-				type="button"
-				className="shrink-0 cursor-pointer rounded-[4px] border-none bg-[var(--bg-elevated)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--text-tertiary)] transition-colors hover:bg-[var(--bg-overlay)] hover:text-[var(--text-secondary)]"
-				onClick={(e) => {
-					e.stopPropagation();
-					handleTrigger();
-				}}
-			>
-				AI
-			</button>
-		);
-	}
-	return null;
-}
-
 // ── Rich PR List Item ────────────────────────────────────────────────────────
 
 function RichPRItem({
@@ -281,14 +99,8 @@ function RichPRItem({
 	enrichmentLoading,
 	isReviewer,
 	identifier,
-	lastReviewCommitSha,
-	getReviewStatus,
+	agentAlert,
 	projectsList,
-	store,
-	triggerReview,
-	dismissReview,
-	cancelReview,
-	getWorkspaceId,
 	onClick,
 	onContextMenu,
 }: {
@@ -297,10 +109,7 @@ function RichPRItem({
 	enrichmentLoading: boolean;
 	isReviewer: boolean;
 	identifier: string;
-	lastReviewCommitSha: string | null | undefined;
-	getReviewStatus: (
-		id: string
-	) => { id: string; status: string; commitSha?: string | null } | undefined;
+	agentAlert: AgentAlert | undefined;
 	projectsList:
 		| Array<{
 				id: string;
@@ -310,41 +119,21 @@ function RichPRItem({
 				defaultBranch: string;
 		  }>
 		| undefined;
-	store: ReturnType<typeof useTabStore.getState>;
-	triggerReview: (
-		args: {
-			provider: "github" | "bitbucket";
-			identifier: string;
-			title: string;
-			author: string;
-			sourceBranch: string;
-			targetBranch: string;
-			repoPath: string;
-			projectId: string;
-		},
-		prCtx?: PRContext
-	) => void;
-	dismissReview: { mutate: (args: { workspaceId: string }) => void };
-	cancelReview: { mutate: (args: { draftId: string }) => void };
-	getWorkspaceId: (prIdentifier: string) => string | undefined;
 	onClick: (e: React.MouseEvent) => void;
 	onContextMenu?: (e: React.MouseEvent) => void;
 }) {
-	const hasNewCommits =
-		enriched?.headCommitOid != null &&
-		lastReviewCommitSha != null &&
-		enriched.headCommitOid !== lastReviewCommitSha;
-
 	const sourceBranch = pr.githubPR?.branchName ?? pr.bitbucketPR?.source?.branch?.name ?? "";
 	const targetBranch = enriched
-		? undefined // enriched doesn't carry targetBranch but we can get it from project
+		? undefined
 		: pr.bitbucketPR?.destination?.branch?.name;
 	const project = pr.githubPR
 		? projectsList?.find(
-				(p) => p.githubOwner === pr.githubPR!.repoOwner && p.githubRepo === pr.githubPR!.repoName
+				(p) =>
+					p.githubOwner === pr.githubPR!.repoOwner && p.githubRepo === pr.githubPR!.repoName
 			)
 		: undefined;
 	const resolvedTarget = targetBranch ?? project?.defaultBranch ?? "main";
+	const healthColor = getHealthColor(pr, enriched);
 
 	return (
 		<button
@@ -358,47 +147,54 @@ function RichPRItem({
 			}`}
 			title={`${pr.repoDisplay}#${pr.number}: ${pr.title}`}
 		>
-			{/* Row 1: Title + PR number */}
-			<div className="flex items-start gap-1.5">
+			{/* Row 1: Title + SwarmIndicator + health dot + PR number */}
+			<div className="flex items-center gap-1">
 				<span className="min-w-0 flex-1 truncate text-[12px] leading-tight">{pr.title}</span>
+				{agentAlert && <SwarmIndicator alert={agentAlert} />}
+				<span
+					className="size-1.5 shrink-0 rounded-full"
+					style={{ backgroundColor: healthColor }}
+					title={
+						healthColor === "#3fb950"
+							? "Approved"
+							: healthColor === "#d29922"
+								? "Changes requested"
+								: healthColor === "#f85149"
+									? "Conflicts or CI failure"
+									: "Pending review"
+					}
+				/>
 				<span className="shrink-0 font-mono text-[10px] text-[var(--text-quaternary)]">
 					#{pr.number}
 				</span>
 			</div>
 
-			{/* Row 2: Branch info + time since update */}
+			{/* Row 2: Branch info */}
 			<div className="flex items-center gap-1 text-[10px] text-[var(--text-quaternary)]">
 				<span className="min-w-0 truncate font-mono">{sourceBranch}</span>
 				<span className="shrink-0">{">"}</span>
 				<span className="shrink-0 truncate font-mono">{resolvedTarget}</span>
-				{enriched?.updatedAt && (
-					<span className="ml-auto shrink-0 tabular-nums">{timeAgo(enriched.updatedAt)}</span>
-				)}
 			</div>
 
 			{/* Row 3: Author + Reviewers */}
 			{(enriched || enrichmentLoading) && (
-				<div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-[var(--text-quaternary)]">
+				<div className="mt-0.5 flex items-center gap-1 text-[10px] text-[var(--text-quaternary)]">
 					{enriched ? (
 						<>
-							{/* Author */}
-							<div className="flex items-center gap-1">
-								<div
-									className="flex size-4 shrink-0 items-center justify-center rounded-full text-[7px] font-bold text-[var(--text-tertiary)]"
-									style={{ backgroundColor: "var(--bg-overlay)" }}
-									title={enriched.author}
-								>
-									{initials(enriched.author)}
-								</div>
-								<span className="truncate">{enriched.author}</span>
+							<span className="shrink-0 text-[8px] uppercase tracking-[0.05em] text-[var(--text-quaternary)] opacity-50">
+								by
+							</span>
+							<div
+								className="flex size-4 shrink-0 items-center justify-center rounded-full text-[7px] font-bold text-[var(--text-tertiary)]"
+								style={{ backgroundColor: "var(--bg-overlay)" }}
+								title={enriched.author}
+							>
+								{initials(enriched.author)}
 							</div>
+							<span className="truncate">{enriched.author}</span>
 
-							{/* Divider */}
-							{enriched.reviewers.length > 0 && (
-								<span className="text-[var(--text-quaternary)] opacity-30">|</span>
-							)}
+							{enriched.reviewers.length > 0 && <span className="flex-1" />}
 
-							{/* Reviewer avatars */}
 							<div className="flex items-center gap-0.5">
 								{enriched.reviewers.map((r) => (
 									<ReviewerAvatar key={r.login} reviewer={r} />
@@ -410,82 +206,6 @@ function RichPRItem({
 					)}
 				</div>
 			)}
-
-			{/* Row 4: Activity indicators */}
-			<div className="mt-0.5 flex items-center gap-1.5">
-				{/* Draft badge */}
-				{(enriched?.isDraft ?? pr.isDraft) && (
-					<span className="rounded-[3px] bg-[var(--bg-overlay)] px-1 py-px text-[9px] font-medium text-[var(--text-quaternary)]">
-						Draft
-					</span>
-				)}
-
-				{/* Merge conflicts */}
-				{enriched?.mergeable === "CONFLICTING" && (
-					<span
-						className="rounded-[3px] px-1 py-px text-[9px] font-semibold leading-tight"
-						style={{ color: "#f85149", border: "1px solid rgba(248,81,73,0.25)" }}
-					>
-						Conflict
-					</span>
-				)}
-
-				{/* CI status */}
-				{enriched && <CIBadge state={enriched.ciState} />}
-
-				{/* New commits since last review */}
-				{hasNewCommits && (
-					<span
-						style={{
-							color: "#d29922",
-							display: "flex",
-							alignItems: "center",
-							gap: 3,
-							fontSize: 11,
-						}}
-					>
-						● New commits
-					</span>
-				)}
-
-				{/* Unresolved comments */}
-				{enriched && enriched.unresolvedThreadCount > 0 && (
-					<span className="flex items-center gap-0.5 text-[9px] text-[var(--text-quaternary)]">
-						<svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-							<path d="M1 2.75C1 1.784 1.784 1 2.75 1h10.5c.966 0 1.75.784 1.75 1.75v7.5A1.75 1.75 0 0113.25 12H9.06l-2.573 2.573A1.458 1.458 0 014 13.543V12H2.75A1.75 1.75 0 011 10.25v-7.5z" />
-						</svg>
-						{enriched.unresolvedThreadCount}
-					</span>
-				)}
-
-				{/* Files changed */}
-				{enriched && enriched.files.count > 0 && (
-					<span className="flex items-center gap-0.5 text-[9px] text-[var(--text-quaternary)]">
-						<svg width="9" height="9" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-							<path d="M2 1.75C2 .784 2.784 0 3.75 0h6.586c.464 0 .909.184 1.237.513l2.914 2.914c.329.328.513.773.513 1.237v9.586A1.75 1.75 0 0113.25 16h-9.5A1.75 1.75 0 012 14.25V1.75z" />
-						</svg>
-						{enriched.files.count}
-						<span className="text-green-500">+{enriched.files.additions}</span>
-						<span className="text-red-400">-{enriched.files.deletions}</span>
-					</span>
-				)}
-
-				{/* Spacer to push AI badge right */}
-				<span className="flex-1" />
-
-				{/* AI Review badge */}
-				<AIReviewBadge
-					pr={pr}
-					identifier={identifier}
-					getReviewStatus={getReviewStatus}
-					projectsList={projectsList}
-					store={store}
-					triggerReview={triggerReview}
-					dismissReview={dismissReview}
-					cancelReview={cancelReview}
-					getWorkspaceId={getWorkspaceId}
-				/>
-			</div>
 		</button>
 	);
 }
@@ -755,6 +475,7 @@ export function PullRequestsTab() {
 	}, [ghPRs, bbReviewPRs, reviewDrafts.data, settings.data, projectsList, triggerReviewWithCtx]);
 
 	const store = useTabStore();
+	const agentAlerts = useAgentAlertStore((s) => s.alerts);
 
 	function getReviewStatus(prIdentifier: string) {
 		// Return the most recent draft for this PR (latest commitSha is most relevant)
@@ -1169,8 +890,6 @@ export function PullRequestsTab() {
 											isReviewer &&
 											reviewerPRsForEnrichment.length > 0 &&
 											enrichmentQuery.isLoading;
-										const lastReviewCommitSha = getReviewStatus(identifier)?.commitSha ?? null;
-
 										const knownWorkspaceId = workspaceIdMapRef.current.get(identifier);
 										const handleContextMenu = knownWorkspaceId
 											? (e: React.MouseEvent) => {
@@ -1194,14 +913,12 @@ export function PullRequestsTab() {
 												enrichmentLoading={enrichmentLoading}
 												isReviewer={isReviewer}
 												identifier={identifier}
-												lastReviewCommitSha={lastReviewCommitSha}
-												getReviewStatus={getReviewStatus}
+												agentAlert={(() => {
+													const wsId = workspaceIdMapRef.current.get(identifier);
+													if (!wsId) return undefined;
+													return agentAlerts[wsId];
+												})()}
 												projectsList={projectsList}
-												store={store}
-												triggerReview={triggerReviewWithCtx}
-												dismissReview={dismissReview}
-												cancelReview={cancelReview}
-												getWorkspaceId={(id) => workspaceIdMapRef.current.get(id)}
 												onClick={(e) => handlePRClick(pr, e)}
 												onContextMenu={handleContextMenu}
 											/>
