@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { MergedTicketIssue } from "../../../shared/tickets";
+import { columnStateType } from "../../../shared/tickets";
 import type { StatusColumn } from "../../hooks/useTicketsData";
 import { StateIcon } from "../StateIcon";
 import type { LinkedWorkspace } from "../WorkspacePopover";
@@ -11,21 +12,6 @@ interface TicketsListViewProps {
 	showProvider: boolean;
 	onTicketClick: (issue: MergedTicketIssue) => void;
 	onTicketContextMenu: (e: React.MouseEvent, issue: MergedTicketIssue) => void;
-}
-
-function columnStateType(category: string): string {
-	switch (category) {
-		case "backlog":
-			return "backlog";
-		case "todo":
-			return "unstarted";
-		case "in_progress":
-			return "started";
-		case "done":
-			return "completed";
-		default:
-			return "default";
-	}
 }
 
 export function TicketsListView({

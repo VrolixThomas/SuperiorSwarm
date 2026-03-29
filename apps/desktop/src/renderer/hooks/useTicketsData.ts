@@ -41,7 +41,7 @@ export function useTicketsData() {
 	// ── Cache-first loading ──────────────────────────────────────────────────
 	const { data: cached, isLoading: cacheLoading } = trpc.tickets.getCachedTickets.useQuery(
 		undefined,
-		{ staleTime: 5_000 },
+		{ staleTime: 5_000 }
 	);
 
 	// Also keep the direct API queries for backward compat with sidebar
@@ -164,8 +164,7 @@ export function useTicketsData() {
 		if (activeTicketProject === "all" || activeTicketProject === null) return allIssues;
 		return allIssues.filter(
 			(issue) =>
-				issue.provider === activeTicketProject.provider &&
-				issue.groupId === activeTicketProject.id,
+				issue.provider === activeTicketProject.provider && issue.groupId === activeTicketProject.id
 		);
 	}, [allIssues, activeTicketProject]);
 
@@ -175,11 +174,7 @@ export function useTicketsData() {
 			byCategory.set(cat, []);
 		}
 		for (const issue of filteredIssues) {
-			const cat = normalizeStatusCategory(
-				issue.provider,
-				issue.statusCategory,
-				issue.stateType,
-			);
+			const cat = normalizeStatusCategory(issue.provider, issue.statusCategory, issue.stateType);
 			byCategory.get(cat)?.push(issue);
 		}
 		return STATUS_ORDER.map((cat) => ({

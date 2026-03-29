@@ -204,6 +204,11 @@ export class DaemonClient {
 		}
 	}
 
+	/** Kick off the reconnection loop (e.g. after initial connect failure). */
+	startReconnecting(): void {
+		this.attemptReconnect();
+	}
+
 	private attemptReconnect(): void {
 		if (this.reconnecting || this.isQuitting) return;
 		this.reconnecting = true;
@@ -388,6 +393,13 @@ export class DaemonClient {
 						} catch {}
 					}
 				}
+			} catch {}
+		}
+
+		// Remove stale socket so waitForSocket blocks until the new daemon creates one
+		if (existsSync(this.socketPath)) {
+			try {
+				rmSync(this.socketPath);
 			} catch {}
 		}
 
