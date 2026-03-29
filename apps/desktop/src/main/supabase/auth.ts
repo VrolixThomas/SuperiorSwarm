@@ -33,9 +33,7 @@ function startCallbackServer(): Promise<{
 			const error = url.searchParams.get("error");
 
 			res.writeHead(200, { "Content-Type": "text/html" });
-			res.end(
-				"<html><body><h2>Authorization complete. You can close this tab.</h2></body></html>"
-			);
+			res.end("<html><body><h2>Authorization complete. You can close this tab.</h2></body></html>");
 
 			clearTimeout(timeoutId);
 			server.close();
@@ -66,10 +64,12 @@ function startCallbackServer(): Promise<{
 	});
 }
 
-export async function signIn(provider: OAuthProvider): Promise<{ success: boolean; error?: string }> {
+export async function signIn(
+	provider: OAuthProvider
+): Promise<{ success: boolean; error?: string }> {
 	acquireOAuthLock();
 	try {
-		const { codePromise } = await startCallbackServer();
+		const { server, codePromise } = await startCallbackServer();
 
 		const { data, error } = await supabase.auth.signInWithOAuth({
 			provider,
@@ -80,6 +80,7 @@ export async function signIn(provider: OAuthProvider): Promise<{ success: boolea
 		});
 
 		if (error || !data.url) {
+			server.close();
 			return { success: false, error: error?.message ?? "Failed to generate auth URL" };
 		}
 
