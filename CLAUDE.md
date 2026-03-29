@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-BranchFlux is an Electron desktop app for Git workflow management with Jira and Bitbucket (Atlassian) integration. It provides a terminal multiplexer for managing workspaces, branches, and worktrees within Git repositories.
+SuperiorSwarm is an Electron desktop app for Git workflow management with Jira and Bitbucket (Atlassian) integration. It provides a terminal multiplexer for managing workspaces, branches, and worktrees within Git repositories.
 
 ## Commands
 

@@ -32,7 +32,7 @@ db.pragma("busy_timeout = 5000");
 db.pragma("foreign_keys = ON");
 
 const server = new McpServer({
-	name: "branchflux",
+	name: "superiorswarm",
 	version: "1.0.0",
 });
 

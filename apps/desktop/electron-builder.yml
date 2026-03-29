@@ -1,5 +1,5 @@
-appId: com.branchflux.app
-productName: BranchFlux
+appId: com.superiorswarm.app
+productName: SuperiorSwarm
 directories:
   buildResources: resources
   output: dist

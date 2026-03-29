@@ -5,9 +5,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DaemonClient } from "../../src/main/terminal/daemon-client";
 
-const TEST_SOCKET = join(tmpdir(), `branchflux-client-test-${process.pid}.sock`);
-const TEST_PID = join(tmpdir(), `branchflux-client-test-${process.pid}.pid`);
-const TEST_LOG = join(tmpdir(), `branchflux-client-test-${process.pid}.log`);
+const TEST_SOCKET = join(tmpdir(), `superiorswarm-client-test-${process.pid}.sock`);
+const TEST_PID = join(tmpdir(), `superiorswarm-client-test-${process.pid}.pid`);
+const TEST_LOG = join(tmpdir(), `superiorswarm-client-test-${process.pid}.log`);
 
 function startMockDaemon(
 	onMessage?: (msg: unknown) => void,
@@ -267,9 +267,9 @@ describe("DaemonClient", () => {
 
 	test("startReconnecting connects to a daemon that appears later", async () => {
 		// Create a client with no daemon running
-		const noSocket = join(tmpdir(), `branchflux-reconnect-test-${process.pid}.sock`);
-		const noPid = join(tmpdir(), `branchflux-reconnect-test-${process.pid}.pid`);
-		const noLog = join(tmpdir(), `branchflux-reconnect-test-${process.pid}.log`);
+		const noSocket = join(tmpdir(), `superiorswarm-reconnect-test-${process.pid}.sock`);
+		const noPid = join(tmpdir(), `superiorswarm-reconnect-test-${process.pid}.pid`);
+		const noLog = join(tmpdir(), `superiorswarm-reconnect-test-${process.pid}.log`);
 		if (existsSync(noSocket)) rmSync(noSocket);
 
 		const freshClient = new DaemonClient(noSocket, noPid, noLog);

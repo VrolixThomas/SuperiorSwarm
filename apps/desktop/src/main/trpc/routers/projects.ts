@@ -50,7 +50,7 @@ function assertSafePath(baseDir: string, childName: string): string {
 	return resolvedTarget;
 }
 
-const DEFAULT_PROJECTS_DIR = join(homedir(), "BranchFlux", "projects");
+const DEFAULT_PROJECTS_DIR = join(homedir(), "SuperiorSwarm", "projects");
 
 // In-memory clone progress tracking
 const cloneProgressMap = new Map<string, { stage: string; progress: number }>();
