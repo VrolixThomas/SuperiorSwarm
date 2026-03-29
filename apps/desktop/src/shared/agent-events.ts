@@ -15,8 +15,6 @@ export const AGENT_NOTIFY_PORT = 27392;
 export interface AgentHookConfig {
 	/** Identifier for this agent, e.g. "claude" */
 	name: string;
-	/** Path to the agent's settings file, e.g. ~/.claude/settings.json */
-	settingsPath: string;
 	/** Hook events to register for in the agent's config */
 	hookEvents: string[];
 	/** Map a raw agent event name to our alert type. Return null to ignore. */

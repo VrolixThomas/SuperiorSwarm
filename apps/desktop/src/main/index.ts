@@ -2,7 +2,7 @@ import { join } from "node:path";
 import { BrowserWindow, app, dialog, ipcMain, shell } from "electron";
 import { AGENT_NOTIFY_PORT } from "../shared/agent-events";
 import { daemonInstanceId, daemonPaths } from "../shared/daemon-protocol";
-import { createAlertListener } from "./agent-hooks/listener";
+import { type AgentAlertListener, createAlertListener } from "./agent-hooks/listener";
 import { setupAgentHooks } from "./agent-hooks/setup";
 import { cleanupReviewWorkspace, findReviewWorkspaceByPR } from "./ai-review/cleanup";
 import { startCommentPoller, stopCommentPoller } from "./ai-review/comment-poller";
@@ -30,6 +30,7 @@ import { appRouter } from "./trpc/routers";
 
 let mainWindow: BrowserWindow | null = null;
 let daemonClient: DaemonClient;
+let alertListener: AgentAlertListener | null = null;
 
 function createWindow() {
 	mainWindow = new BrowserWindow({
@@ -75,7 +76,7 @@ app.whenReady().then(async () => {
 	await setupAgentHooks();
 
 	// Agent notification listener
-	const alertListener = createAlertListener(AGENT_NOTIFY_PORT);
+	alertListener = createAlertListener(AGENT_NOTIFY_PORT);
 	try {
 		await alertListener.start();
 	} catch (err) {
@@ -196,6 +197,7 @@ app.whenReady().then(async () => {
 });
 
 app.on("before-quit", () => {
+	alertListener?.stop();
 	stopCommentPoller();
 	daemonClient.setQuitting();
 	daemonClient.detachAll();
@@ -216,6 +218,7 @@ app.on("window-all-closed", () => {
 // Catching the signals lets us dispose PTY processes before the environment tears down.
 for (const signal of ["SIGTERM", "SIGHUP", "SIGINT"] as const) {
 	process.on(signal, () => {
+		alertListener?.stop();
 		daemonClient.setQuitting();
 		daemonClient.detachAll();
 		serverManager.disposeAll();

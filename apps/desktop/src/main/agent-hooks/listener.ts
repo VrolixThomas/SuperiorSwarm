@@ -74,7 +74,13 @@ export function createAlertListener(port: number): AgentAlertListener {
 			return new Promise<void>((resolve, reject) => {
 				server = httpServer;
 				httpServer.once("error", reject);
-				httpServer.listen(port, "127.0.0.1", () => resolve());
+				httpServer.listen(port, "127.0.0.1", () => {
+					httpServer.removeListener("error", reject);
+					httpServer.on("error", (err) => {
+						console.error("[agent-listener] server error:", err);
+					});
+					resolve();
+				});
 			});
 		},
 		stop() {

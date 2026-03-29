@@ -109,9 +109,8 @@ export function ProjectItem({
 
 					{/* + button (create worktree) */}
 					{isReady && (
-						<span
-							role="button"
-							tabIndex={0}
+						<button
+							type="button"
 							onClick={(e) => {
 								e.stopPropagation();
 								openCreateWorktreeModal(project.id);
@@ -132,7 +131,7 @@ export function ProjectItem({
 							title="New Worktree"
 						>
 							+
-						</span>
+						</button>
 					)}
 
 					{/* Chevron (right side) */}

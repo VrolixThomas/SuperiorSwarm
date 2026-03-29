@@ -3,7 +3,6 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { AgentAlert, AgentHookConfig } from "../../../shared/agent-events";
 
-
 // The plugin normalizes OpenCode events to these names before calling on-event.sh
 const EVENT_MAP: Record<string, AgentAlert> = {
 	Start: "active",
@@ -84,7 +83,6 @@ function buildPluginSource(port: number): string {
 
 export const opencodeConfig: AgentHookConfig = {
 	name: "opencode",
-	settingsPath: "",
 	hookEvents: Object.keys(EVENT_MAP),
 	mapEvent(rawEvent: string): AgentAlert | null {
 		return EVENT_MAP[rawEvent] ?? null;

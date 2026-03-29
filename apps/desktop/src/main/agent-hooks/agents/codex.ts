@@ -53,7 +53,6 @@ export function mergeCodexHooks(settingsPath: string, hookCommand: string): void
 
 export const codexConfig: AgentHookConfig = {
 	name: "codex",
-	settingsPath: "",
 	hookEvents: HOOK_EVENTS,
 	mapEvent(rawEvent: string): AgentAlert | null {
 		return EVENT_MAP[rawEvent] ?? null;
