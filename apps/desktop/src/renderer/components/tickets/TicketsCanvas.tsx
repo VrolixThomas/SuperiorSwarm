@@ -256,6 +256,7 @@ export function TicketsCanvas() {
 								showProvider={showProvider}
 								onTicketClick={handleTicketClick}
 								onTicketContextMenu={handleTicketContextMenu}
+								dnd={dnd}
 							/>
 						)}
 						{viewMode === "table" && (
