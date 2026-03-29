@@ -17,8 +17,7 @@ export function useAgentAlertListener(): void {
 			// Use provided workspaceId, or fall back to active workspace
 			// (needed for agents like OpenCode whose plugins run in a shared
 			// server process without per-terminal context)
-			const workspaceId =
-				event.workspaceId || useTabStore.getState().activeWorkspaceId;
+			const workspaceId = event.workspaceId || useTabStore.getState().activeWorkspaceId;
 			if (!workspaceId) return;
 
 			useAgentAlertStore.getState().setAlert(workspaceId, alert);
