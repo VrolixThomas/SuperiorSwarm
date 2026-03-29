@@ -3,6 +3,7 @@ import type { MergedTicketIssue, NormalizedStatusCategory } from "../../../share
 import { formatRelativeTime, normalizeStatusCategory } from "../../../shared/tickets";
 import { StateIcon } from "../StateIcon";
 import type { LinkedWorkspace } from "../WorkspacePopover";
+import { StatusPicker } from "./StatusPicker";
 
 type SortField = "identifier" | "title" | "status" | "project" | "provider" | "updatedAt";
 type SortDirection = "asc" | "desc";
@@ -13,6 +14,7 @@ interface TicketsTableViewProps {
 	selectedTicketId: string | null;
 	onTicketClick: (issue: MergedTicketIssue) => void;
 	onTicketContextMenu: (e: React.MouseEvent, issue: MergedTicketIssue) => void;
+	onStatusChange: (issue: MergedTicketIssue, transitionOrStateId: string) => void;
 }
 
 const STATUS_RANK: Record<NormalizedStatusCategory, number> = {
@@ -28,6 +30,7 @@ export function TicketsTableView({
 	selectedTicketId,
 	onTicketClick,
 	onTicketContextMenu,
+	onStatusChange,
 }: TicketsTableViewProps) {
 	const [sortField, setSortField] = useState<SortField>("status");
 	const [sortDir, setSortDir] = useState<SortDirection>("asc");
@@ -145,11 +148,7 @@ export function TicketsTableView({
 						<span className="min-w-0 flex-1 truncate text-[11px] text-[var(--text-secondary)]">
 							{issue.title}
 						</span>
-						<span className="w-[80px] shrink-0">
-							<span className="rounded-[4px] bg-[rgba(255,255,255,0.04)] px-1.5 py-0.5 text-[9px] text-[var(--text-tertiary)]">
-								{issue.status.name}
-							</span>
-						</span>
+						<StatusPicker issue={issue} onStatusChange={onStatusChange} />
 						<span className="w-[50px] shrink-0 text-[10px] text-[var(--text-tertiary)]">
 							{issue.teamName || issue.projectKey || issue.groupId}
 						</span>

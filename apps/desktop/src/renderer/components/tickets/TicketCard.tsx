@@ -1,3 +1,5 @@
+import { useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import type { MergedTicketIssue } from "../../../shared/tickets";
 import { StateIcon } from "../StateIcon";
 import type { LinkedWorkspace } from "../WorkspacePopover";
@@ -7,6 +9,7 @@ interface TicketCardProps {
 	isSelected: boolean;
 	linked: LinkedWorkspace[] | undefined;
 	showProvider: boolean;
+	isDragOverlay?: boolean;
 	onClick: () => void;
 	onContextMenu: (e: React.MouseEvent) => void;
 }
@@ -16,9 +19,22 @@ export function TicketCard({
 	isSelected,
 	linked,
 	showProvider,
+	isDragOverlay,
 	onClick,
 	onContextMenu,
 }: TicketCardProps) {
+	const sortableId = `${issue.provider}:${issue.id}`;
+	const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+		id: sortableId,
+		disabled: isDragOverlay,
+	});
+
+	const style: React.CSSProperties = {
+		transform: CSS.Transform.toString(transform),
+		transition,
+		opacity: isDragging ? 0.3 : 1,
+	};
+
 	const isLinked = linked && linked.length > 0;
 
 	let borderClass: string;
@@ -30,14 +46,22 @@ export function TicketCard({
 		borderClass = "border-[rgba(255,255,255,0.03)] bg-[#111] hover:bg-[#161618]";
 	}
 
+	if (isDragOverlay) {
+		borderClass = "border-[rgba(10,132,255,0.3)] bg-[#1a1a1c] shadow-lg";
+	}
+
 	return (
 		<button
+			ref={isDragOverlay ? undefined : setNodeRef}
+			style={isDragOverlay ? { transform: "scale(1.02)" } : style}
 			type="button"
 			onClick={onClick}
 			onContextMenu={onContextMenu}
 			className={`relative flex w-full flex-col gap-1 rounded-[6px] border px-2.5 py-2 text-left transition-all duration-[120ms] ${borderClass}`}
+			{...(isDragOverlay ? {} : attributes)}
+			{...(isDragOverlay ? {} : listeners)}
 		>
-			{isSelected && (
+			{isSelected && !isDragOverlay && (
 				<div className="absolute bottom-1 left-[-1px] top-1 w-[2px] rounded-[1px] bg-[var(--accent)]" />
 			)}
 			<div className="flex items-center gap-1.5">

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Group, Panel, Separator, useDefaultLayout, usePanelRef } from "react-resizable-panels";
 import type { MergedTicketIssue, TicketViewMode } from "../../../shared/tickets";
+import { useTicketDragDrop } from "../../hooks/useTicketDragDrop";
 import { useTicketsData } from "../../hooks/useTicketsData";
 import { useTabStore } from "../../stores/tab-store";
 import { trpc } from "../../trpc/client";
@@ -133,6 +134,8 @@ export function TicketsCanvas() {
 		onSettled: () => utils.atlassian.getMyIssues.invalidate(),
 	});
 
+	const dnd = useTicketDragDrop(columns, { updateJiraStatus, updateLinearState });
+
 	// ── Ticket click / context menu handlers ─────────────────────────────────
 	const handleTicketClick = useCallback(
 		(issue: MergedTicketIssue) => {
@@ -152,6 +155,23 @@ export function TicketsCanvas() {
 			});
 		},
 		[linkedMap]
+	);
+
+	const handleStatusChange = useCallback(
+		(issue: MergedTicketIssue, transitionOrStateId: string) => {
+			if (issue.provider === "jira") {
+				updateJiraStatus.mutate({
+					issueKey: issue.id,
+					transitionId: transitionOrStateId,
+				});
+			} else {
+				updateLinearState.mutate({
+					issueId: issue.id,
+					stateId: transitionOrStateId,
+				});
+			}
+		},
+		[updateJiraStatus, updateLinearState]
 	);
 
 	// ── Derived display values ───────────────────────────────────────────────
@@ -225,6 +245,7 @@ export function TicketsCanvas() {
 								showProvider={showProvider}
 								onTicketClick={handleTicketClick}
 								onTicketContextMenu={handleTicketContextMenu}
+								dnd={dnd}
 							/>
 						)}
 						{viewMode === "list" && (
@@ -235,6 +256,7 @@ export function TicketsCanvas() {
 								showProvider={showProvider}
 								onTicketClick={handleTicketClick}
 								onTicketContextMenu={handleTicketContextMenu}
+								dnd={dnd}
 							/>
 						)}
 						{viewMode === "table" && (
@@ -244,6 +266,7 @@ export function TicketsCanvas() {
 								selectedTicketId={selectedTicketId}
 								onTicketClick={handleTicketClick}
 								onTicketContextMenu={handleTicketContextMenu}
+								onStatusChange={handleStatusChange}
 							/>
 						)}
 					</Panel>
