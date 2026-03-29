@@ -117,7 +117,9 @@ export function columnToJiraCategory(column: NormalizedStatusCategory): string {
 }
 
 /** Maps a board column category to the Linear stateType for state matching. */
-export function columnToLinearStateType(column: NormalizedStatusCategory): string {
+export function columnToLinearStateType(
+	column: NormalizedStatusCategory
+): "backlog" | "unstarted" | "started" | "completed" {
 	switch (column) {
 		case "backlog":
 			return "backlog";

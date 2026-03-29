@@ -14,8 +14,14 @@ import { columnToJiraCategory, columnToLinearStateType } from "../../shared/tick
 import { trpc } from "../trpc/client";
 import type { StatusColumn } from "./useTicketsData";
 
-export function useTicketDragDrop(columns: StatusColumn[]) {
+interface StatusMutations {
+	updateJiraStatus: ReturnType<typeof trpc.atlassian.updateIssueStatus.useMutation>;
+	updateLinearState: ReturnType<typeof trpc.linear.updateIssueState.useMutation>;
+}
+
+export function useTicketDragDrop(columns: StatusColumn[], mutations: StatusMutations) {
 	const utils = trpc.useUtils();
+	const { updateJiraStatus, updateLinearState } = mutations;
 
 	// ── Sensors ──────────────────────────────────────────────────────────────
 	const sensors = useSensors(
@@ -25,10 +31,6 @@ export function useTicketDragDrop(columns: StatusColumn[]) {
 
 	// ── Drag state ───────────────────────────────────────────────────────────
 	const [activeIssue, setActiveIssue] = useState<MergedTicketIssue | null>(null);
-
-	// ── Mutations (reuse existing) ───────────────────────────────────────────
-	const updateJiraStatus = trpc.atlassian.updateIssueStatus.useMutation();
-	const updateLinearState = trpc.linear.updateIssueState.useMutation();
 
 	// Keep a ref to the pre-update query snapshots for rollback
 	const snapshotRef = useRef<{
@@ -91,10 +93,10 @@ export function useTicketDragDrop(columns: StatusColumn[]) {
 			}
 
 			// ── Optimistic update ────────────────────────────────────────────
-			snapshotRef.current = {
-				jira: utils.atlassian.getMyIssues.getData(),
-				linear: utils.linear.getAssignedIssues.getData(),
-			};
+			snapshotRef.current =
+				issue.provider === "jira"
+					? { jira: utils.atlassian.getMyIssues.getData(), linear: undefined }
+					: { jira: undefined, linear: utils.linear.getAssignedIssues.getData() };
 
 			if (issue.provider === "jira") {
 				utils.atlassian.getMyIssues.setData(undefined, (old) => {
@@ -107,9 +109,7 @@ export function useTicketDragDrop(columns: StatusColumn[]) {
 				utils.linear.getAssignedIssues.setData(undefined, (old) => {
 					if (!old) return old;
 					return old.map((i) =>
-						i.id === issue.id
-							? { ...i, stateType: columnToLinearStateType(resolvedTarget) as any }
-							: i
+						i.id === issue.id ? { ...i, stateType: columnToLinearStateType(resolvedTarget) } : i
 					);
 				});
 			}
@@ -158,9 +158,6 @@ export function useTicketDragDrop(columns: StatusColumn[]) {
 				}
 			} finally {
 				snapshotRef.current = null;
-				// Sync with server
-				utils.atlassian.getMyIssues.invalidate();
-				utils.linear.getAssignedIssues.invalidate();
 			}
 		},
 		[findIssueAndColumn, utils, updateJiraStatus, updateLinearState]

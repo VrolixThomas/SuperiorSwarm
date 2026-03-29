@@ -221,14 +221,7 @@ export function TicketsListView({
 					<SortableListRow
 						issue={dnd.activeIssue}
 						isSelected={false}
-						isLinked={
-							(() => {
-								const linked = linkedMap.get(
-									`${dnd.activeIssue.provider}:${dnd.activeIssue.id}`,
-								);
-								return !!(linked && linked.length > 0);
-							})()
-						}
+						isLinked={!!linkedMap.get(`${dnd.activeIssue.provider}:${dnd.activeIssue.id}`)?.length}
 						showProvider={showProvider}
 						isDragOverlay
 						onClick={() => {}}

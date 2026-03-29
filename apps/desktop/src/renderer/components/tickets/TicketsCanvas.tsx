@@ -31,8 +31,6 @@ export function TicketsCanvas() {
 		lastFetched,
 	} = useTicketsData();
 
-	const dnd = useTicketDragDrop(columns);
-
 	// ── View mode (persisted per project) ────────────────────────────────────
 	const projectId = useMemo(() => {
 		if (activeTicketProject === "all" || activeTicketProject === null) return "all";
@@ -135,6 +133,8 @@ export function TicketsCanvas() {
 	const updateJiraStatus = trpc.atlassian.updateIssueStatus.useMutation({
 		onSettled: () => utils.atlassian.getMyIssues.invalidate(),
 	});
+
+	const dnd = useTicketDragDrop(columns, { updateJiraStatus, updateLinearState });
 
 	// ── Ticket click / context menu handlers ─────────────────────────────────
 	const handleTicketClick = useCallback(
