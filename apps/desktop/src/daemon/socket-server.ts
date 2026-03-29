@@ -101,7 +101,8 @@ export class SocketServer {
 								this.scrollbackStore.flush([{ id: msg.id, buffer: finalBuffer }]);
 							}
 						},
-						clientId
+						clientId,
+						msg.env
 					);
 				} catch (err) {
 					this.send(socket, { type: "error", id: msg.id, message: String(err) });
