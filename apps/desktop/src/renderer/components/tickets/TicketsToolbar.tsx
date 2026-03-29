@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import type { TicketViewMode } from "../../../shared/tickets";
 
 interface TicketsToolbarProps {
@@ -33,6 +34,11 @@ export function TicketsToolbar({
 	onViewModeChange,
 	lastFetched,
 }: TicketsToolbarProps) {
+	const [, setTick] = useState(0);
+	useEffect(() => {
+		const id = setInterval(() => setTick((t) => t + 1), 60_000);
+		return () => clearInterval(id);
+	}, []);
 	const staleness = formatStaleness(lastFetched);
 
 	return (
