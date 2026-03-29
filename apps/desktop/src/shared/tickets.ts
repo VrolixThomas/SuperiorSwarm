@@ -4,6 +4,7 @@ export interface TicketStatus {
 	id: string; // stateId (Linear) or transitionId (Jira)
 	name: string;
 	color: string; // hex color for the status dot
+	categoryKey?: string; // Jira statusCategory key (e.g. "new", "indeterminate", "done")
 }
 
 export interface TicketIssue {
@@ -100,5 +101,31 @@ export function normalizeStatusCategory(
 			return "done";
 		default:
 			return "todo";
+	}
+}
+
+/** Maps a board column category to the Jira statusCategory key for transition matching. */
+export function columnToJiraCategory(column: NormalizedStatusCategory): string {
+	switch (column) {
+		case "in_progress":
+			return "indeterminate";
+		case "done":
+			return "done";
+		default:
+			return "new";
+	}
+}
+
+/** Maps a board column category to the Linear stateType for state matching. */
+export function columnToLinearStateType(column: NormalizedStatusCategory): string {
+	switch (column) {
+		case "backlog":
+			return "backlog";
+		case "in_progress":
+			return "started";
+		case "done":
+			return "completed";
+		default:
+			return "unstarted";
 	}
 }
