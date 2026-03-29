@@ -20,10 +20,7 @@ function decrypt(value: string): string {
 	return value;
 }
 
-/**
- * Custom storage adapter that persists Supabase session data
- * to the SQLite sessionState KV table, encrypted via safeStorage.
- */
+// Supabase defaults to localStorage, which is unavailable in the Electron main process
 const sqliteStorage = {
 	getItem(key: string): string | null {
 		const db = getDb();
@@ -35,11 +32,12 @@ const sqliteStorage = {
 	setItem(key: string, value: string): void {
 		const db = getDb();
 		const storageKey = `${STORAGE_KEY}:${key}`;
+		const encrypted = encrypt(value);
 		db.insert(sessionState)
-			.values({ key: storageKey, value: encrypt(value) })
+			.values({ key: storageKey, value: encrypted })
 			.onConflictDoUpdate({
 				target: sessionState.key,
-				set: { value: encrypt(value) },
+				set: { value: encrypted },
 			})
 			.run();
 	},

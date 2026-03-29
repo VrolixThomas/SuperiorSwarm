@@ -3,8 +3,7 @@
 export const LINEAR_CLIENT_ID = process.env.LINEAR_CLIENT_ID ?? "";
 export const LINEAR_CLIENT_SECRET = process.env.LINEAR_CLIENT_SECRET ?? "";
 
-// Reuse the shared OAuth callback port/URL from the Atlassian integration
-export { OAUTH_CALLBACK_PORT, OAUTH_CALLBACK_URL } from "../atlassian/constants";
+export { OAUTH_CALLBACK_PORT, OAUTH_CALLBACK_URL } from "../oauth-constants";
 
 export const LINEAR_AUTH_URL = "https://linear.app/oauth/authorize";
 export const LINEAR_TOKEN_URL = "https://api.linear.app/oauth/token";

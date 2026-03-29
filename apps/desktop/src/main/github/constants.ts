@@ -3,8 +3,7 @@
 export const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID ?? "";
 export const GITHUB_CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET ?? "";
 
-// Reuse the shared OAuth callback port/URL from the Atlassian integration
-export { OAUTH_CALLBACK_PORT, OAUTH_CALLBACK_URL } from "../atlassian/constants";
+export { OAUTH_CALLBACK_PORT, OAUTH_CALLBACK_URL } from "../oauth-constants";
 
 export const GITHUB_AUTH_URL = "https://github.com/login/oauth/authorize";
 export const GITHUB_TOKEN_URL = "https://github.com/login/oauth/access_token";

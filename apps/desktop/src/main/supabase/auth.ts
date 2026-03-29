@@ -1,14 +1,14 @@
 import { type IncomingMessage, type ServerResponse, createServer } from "node:http";
 import { shell } from "electron";
+import { OAUTH_CALLBACK_PORT } from "../oauth-constants";
 import { acquireOAuthLock, releaseOAuthLock } from "../oauth-lock";
 import { supabase } from "./client";
-
-const OAUTH_CALLBACK_PORT = 27391;
 
 type OAuthProvider = "github" | "google";
 
 function startCallbackServer(): Promise<{
 	server: ReturnType<typeof createServer>;
+	timeoutId: ReturnType<typeof setTimeout>;
 	codePromise: Promise<string>;
 }> {
 	return new Promise((resolveStart, rejectStart) => {
@@ -59,7 +59,7 @@ function startCallbackServer(): Promise<{
 				},
 				5 * 60 * 1000
 			);
-			resolveStart({ server, codePromise });
+			resolveStart({ server, timeoutId, codePromise });
 		});
 	});
 }
@@ -69,7 +69,7 @@ export async function signIn(
 ): Promise<{ success: boolean; error?: string }> {
 	acquireOAuthLock();
 	try {
-		const { server, codePromise } = await startCallbackServer();
+		const { server, timeoutId, codePromise } = await startCallbackServer();
 
 		const { data, error } = await supabase.auth.signInWithOAuth({
 			provider,
@@ -80,6 +80,7 @@ export async function signIn(
 		});
 
 		if (error || !data.url) {
+			clearTimeout(timeoutId);
 			server.close();
 			return { success: false, error: error?.message ?? "Failed to generate auth URL" };
 		}
