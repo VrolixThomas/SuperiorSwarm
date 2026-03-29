@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-export const BRANCHFLUX_DIR = join(homedir(), ".branchflux");
+export const SUPERIORSWARM_DIR = join(homedir(), ".superiorswarm");
 
 export function daemonInstanceId(appDir: string): string {
 	return createHash("sha256").update(appDir).digest("hex").slice(0, 12);
@@ -16,9 +16,9 @@ export interface DaemonPaths {
 
 export function daemonPaths(instanceId: string): DaemonPaths {
 	return {
-		socketPath: join(BRANCHFLUX_DIR, `daemon-${instanceId}.sock`),
-		pidPath: join(BRANCHFLUX_DIR, `daemon-${instanceId}.pid`),
-		logPath: join(BRANCHFLUX_DIR, `daemon-${instanceId}.log`),
+		socketPath: join(SUPERIORSWARM_DIR, `daemon-${instanceId}.sock`),
+		pidPath: join(SUPERIORSWARM_DIR, `daemon-${instanceId}.pid`),
+		logPath: join(SUPERIORSWARM_DIR, `daemon-${instanceId}.log`),
 	};
 }
 

@@ -1,11 +1,11 @@
 {
-	"name": "branchflux",
-	"productName": "BranchFlux",
+	"name": "superiorswarm",
+	"productName": "SuperiorSwarm",
 	"version": "0.1.0",
-	"description": "BranchFlux Desktop Application",
+	"description": "SuperiorSwarm Desktop Application",
 	"main": "./out/main/index.js",
 	"type": "module",
-	"author": "branchflux",
+	"author": "superiorswarm",
 	"license": "MIT",
 	"private": true,
 	"scripts": {
@@ -57,7 +57,7 @@
 		"zustand": "^5.0.2"
 	},
 	"devDependencies": {
-		"@branchflux/typescript-config": "workspace:*",
+		"@superiorswarm/typescript-config": "workspace:*",
 		"@electron/rebuild": "^4.0.3",
 		"@tailwindcss/postcss": "^4.0.0",
 		"@types/better-sqlite3": "^7.6.12",

@@ -4,7 +4,7 @@ import { trpc } from "../trpc/client";
 
 export function AddRepositoryCloneTab() {
 	const [url, setUrl] = useState("");
-	const [directory, setDirectory] = useState("~/BranchFlux/projects/");
+	const [directory, setDirectory] = useState("~/SuperiorSwarm/projects/");
 	const utils = trpc.useUtils();
 	const { closeAddModal } = useProjectStore();
 

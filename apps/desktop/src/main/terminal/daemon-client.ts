@@ -11,9 +11,9 @@ import {
 } from "node:fs";
 import { type Socket, connect } from "node:net";
 import {
-	BRANCHFLUX_DIR,
 	type ClientMessage,
 	type DaemonMessage,
+	SUPERIORSWARM_DIR,
 } from "../../shared/daemon-protocol";
 const CONNECT_TIMEOUT_MS = 5_000;
 const CONNECT_POLL_MS = 100;
@@ -375,8 +375,8 @@ export class DaemonClient {
 	}
 
 	private async spawnDaemon(dbPath: string, daemonScriptPath: string): Promise<void> {
-		if (!existsSync(BRANCHFLUX_DIR)) {
-			mkdirSync(BRANCHFLUX_DIR, { recursive: true });
+		if (!existsSync(SUPERIORSWARM_DIR)) {
+			mkdirSync(SUPERIORSWARM_DIR, { recursive: true });
 		}
 
 		// Check for stale PID — if the process still exists, wait for it to bind
@@ -423,10 +423,10 @@ export class DaemonClient {
 			env: {
 				...process.env,
 				ELECTRON_RUN_AS_NODE: "1",
-				BRANCHFLUX_DB_PATH: dbPath,
-				BRANCHFLUX_SOCKET_PATH: this.socketPath,
-				BRANCHFLUX_PID_PATH: this.pidPath,
-				BRANCHFLUX_LOG_PATH: this.logPath,
+				SUPERIORSWARM_DB_PATH: dbPath,
+				SUPERIORSWARM_SOCKET_PATH: this.socketPath,
+				SUPERIORSWARM_PID_PATH: this.pidPath,
+				SUPERIORSWARM_LOG_PATH: this.logPath,
 			},
 		});
 		child.unref();

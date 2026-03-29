@@ -10,7 +10,7 @@ let _db: ReturnType<typeof drizzle<typeof schema>> | null = null;
 
 function getDbPath(): string {
 	const userDataPath = app.getPath("userData");
-	return join(userDataPath, "branchflux.db");
+	return join(userDataPath, "superiorswarm.db");
 }
 
 export function getDb() {
