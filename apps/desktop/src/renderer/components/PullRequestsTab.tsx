@@ -341,13 +341,6 @@ export function PullRequestsTab() {
 		[triggerReview.mutate]
 	);
 
-	const dismissReview = trpc.aiReview.dismissReview.useMutation({
-		onSuccess: () => reviewDrafts.refetch(),
-	});
-
-	const cancelReview = trpc.aiReview.cancelReview.useMutation({
-		onSuccess: () => reviewDrafts.refetch(),
-	});
 
 	const markCommitSeen = trpc.aiReview.markCommitSeen.useMutation({
 		onSuccess: () => reviewDrafts.refetch(),
@@ -465,14 +458,6 @@ export function PullRequestsTab() {
 	const store = useTabStore();
 	const agentAlerts = useAgentAlertStore((s) => s.alerts);
 
-	function getReviewStatus(prIdentifier: string) {
-		// Return the most recent draft for this PR (latest commitSha is most relevant)
-		const matches = reviewDrafts.data?.filter((d) => d.prIdentifier === prIdentifier);
-		if (!matches || matches.length === 0) return undefined;
-		return matches.reduce((latest, d) =>
-			new Date(d.createdAt).getTime() > new Date(latest.createdAt).getTime() ? d : latest
-		);
-	}
 
 	function getPrIdentifier(pr: MergedPR): string {
 		if (pr.provider === "github" && pr.githubPR) {
@@ -879,6 +864,9 @@ export function PullRequestsTab() {
 											reviewerPRsForEnrichment.length > 0 &&
 											enrichmentQuery.isLoading;
 										const knownWorkspaceId = workspaceIdMapRef.current.get(identifier);
+										const agentAlert = knownWorkspaceId
+											? agentAlerts[knownWorkspaceId]
+											: undefined;
 										const handleContextMenu = knownWorkspaceId
 											? (e: React.MouseEvent) => {
 													e.preventDefault();
@@ -901,11 +889,7 @@ export function PullRequestsTab() {
 												enrichmentLoading={enrichmentLoading}
 												isReviewer={isReviewer}
 												identifier={identifier}
-												agentAlert={(() => {
-													const wsId = workspaceIdMapRef.current.get(identifier);
-													if (!wsId) return undefined;
-													return agentAlerts[wsId];
-												})()}
+												agentAlert={agentAlert}
 												projectsList={projectsList}
 												onClick={(e) => handlePRClick(pr, e)}
 												onContextMenu={handleContextMenu}
