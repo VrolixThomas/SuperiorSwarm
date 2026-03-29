@@ -157,6 +157,23 @@ export function TicketsCanvas() {
 		[linkedMap]
 	);
 
+	const handleStatusChange = useCallback(
+		(issue: MergedTicketIssue, transitionOrStateId: string) => {
+			if (issue.provider === "jira") {
+				updateJiraStatus.mutate({
+					issueKey: issue.id,
+					transitionId: transitionOrStateId,
+				});
+			} else {
+				updateLinearState.mutate({
+					issueId: issue.id,
+					stateId: transitionOrStateId,
+				});
+			}
+		},
+		[updateJiraStatus, updateLinearState],
+	);
+
 	// ── Derived display values ───────────────────────────────────────────────
 	const showProvider = activeTicketProject === "all";
 
@@ -248,6 +265,7 @@ export function TicketsCanvas() {
 								selectedTicketId={selectedTicketId}
 								onTicketClick={handleTicketClick}
 								onTicketContextMenu={handleTicketContextMenu}
+								onStatusChange={handleStatusChange}
 							/>
 						)}
 					</Panel>
