@@ -334,27 +334,63 @@ export function WorkspaceItem({
 						: undefined
 				}
 			>
-				<span
-					className={[
-						"truncate text-[13px]",
-						isActive ? "text-[#d4d4dc]" : isInActiveProject ? "text-[#707078]" : "text-[#505058]",
-					].join(" ")}
-				>
-					{workspace.name}
-				</span>
+				<div className="flex-1 min-w-0">
+					<span
+						className={[
+							"truncate text-[13px] block",
+							isActive
+								? "text-[#d4d4dc]"
+								: isInActiveProject
+									? "text-[#707078]"
+									: "text-[#505058]",
+						].join(" ")}
+					>
+						{workspace.name}
+					</span>
+					{hasSolveInProgress && (
+						<span className="flex items-center gap-1 mt-0.5">
+							<svg
+								width="10"
+								height="10"
+								viewBox="0 0 16 16"
+								fill="none"
+								className="shrink-0"
+							>
+								<path
+									d="M2 3a1 1 0 011-1h10a1 1 0 011 1v7a1 1 0 01-1 1H5l-3 3V3z"
+									stroke="var(--text-quaternary)"
+									strokeWidth="1.3"
+								/>
+							</svg>
+							<span className="text-[10px] text-[var(--text-quaternary)]">
+								solving comments
+							</span>
+						</span>
+					)}
+					{!hasSolveInProgress && hasReadySessions && (
+						<span className="flex items-center gap-1 mt-0.5">
+							<svg
+								width="10"
+								height="10"
+								viewBox="0 0 16 16"
+								fill="none"
+								className="shrink-0"
+							>
+								<path
+									d="M5 8l2 2 4-4"
+									stroke="var(--term-green)"
+									strokeWidth="1.5"
+									strokeLinecap="round"
+									strokeLinejoin="round"
+								/>
+							</svg>
+							<span className="text-[10px] text-[#3e3e46]">
+								comments resolved
+							</span>
+						</span>
+					)}
+				</div>
 				{alert && <SwarmIndicator alert={alert} />}
-				{!alert && hasReadySessions && (
-					<span
-						className="ml-auto shrink-0 size-[6px] rounded-full bg-[#0a84ff]"
-						title="Fixes ready for review"
-					/>
-				)}
-				{!alert && !hasReadySessions && hasSolveInProgress && (
-					<span
-						className="ml-auto shrink-0 size-[6px] rounded-full bg-[var(--accent)]"
-						title="Unresolved comments"
-					/>
-				)}
 			</button>
 
 			{contextMenu && (
