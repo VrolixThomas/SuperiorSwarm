@@ -11,8 +11,8 @@ import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { useCallback, useRef, useState } from "react";
 import type { MergedTicketIssue, NormalizedStatusCategory } from "../../shared/tickets";
 import { columnToJiraCategory, columnToLinearStateType } from "../../shared/tickets";
-import type { StatusColumn } from "./useTicketsData";
 import { trpc } from "../trpc/client";
+import type { StatusColumn } from "./useTicketsData";
 
 export function useTicketDragDrop(columns: StatusColumn[]) {
 	const utils = trpc.useUtils();
@@ -20,7 +20,7 @@ export function useTicketDragDrop(columns: StatusColumn[]) {
 	// ── Sensors ──────────────────────────────────────────────────────────────
 	const sensors = useSensors(
 		useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-		useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+		useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
 	);
 
 	// ── Drag state ───────────────────────────────────────────────────────────
@@ -41,13 +41,13 @@ export function useTicketDragDrop(columns: StatusColumn[]) {
 		(issueId: string): { issue: MergedTicketIssue; column: NormalizedStatusCategory } | null => {
 			for (const col of columns) {
 				const issue = col.items.find(
-					(i) => `${i.provider}:${i.id}` === issueId || i.id === issueId,
+					(i) => `${i.provider}:${i.id}` === issueId || i.id === issueId
 				);
 				if (issue) return { issue, column: col.category };
 			}
 			return null;
 		},
-		[columns],
+		[columns]
 	);
 
 	// ── Drag handlers ────────────────────────────────────────────────────────
@@ -56,7 +56,7 @@ export function useTicketDragDrop(columns: StatusColumn[]) {
 			const result = findIssueAndColumn(String(event.active.id));
 			if (result) setActiveIssue(result.issue);
 		},
-		[findIssueAndColumn],
+		[findIssueAndColumn]
 	);
 
 	const handleDragEnd = useCallback(
@@ -100,9 +100,7 @@ export function useTicketDragDrop(columns: StatusColumn[]) {
 				utils.atlassian.getMyIssues.setData(undefined, (old) => {
 					if (!old) return old;
 					return old.map((i) =>
-						i.key === issue.id
-							? { ...i, statusCategory: columnToJiraCategory(resolvedTarget) }
-							: i,
+						i.key === issue.id ? { ...i, statusCategory: columnToJiraCategory(resolvedTarget) } : i
 					);
 				});
 			} else {
@@ -111,7 +109,7 @@ export function useTicketDragDrop(columns: StatusColumn[]) {
 					return old.map((i) =>
 						i.id === issue.id
 							? { ...i, stateType: columnToLinearStateType(resolvedTarget) as any }
-							: i,
+							: i
 					);
 				});
 			}
@@ -147,14 +145,14 @@ export function useTicketDragDrop(columns: StatusColumn[]) {
 					if (issue.provider === "jira" && snapshotRef.current.jira) {
 						utils.atlassian.getMyIssues.setData(
 							undefined,
-							snapshotRef.current.jira as ReturnType<typeof utils.atlassian.getMyIssues.getData>,
+							snapshotRef.current.jira as ReturnType<typeof utils.atlassian.getMyIssues.getData>
 						);
 					} else if (snapshotRef.current.linear) {
 						utils.linear.getAssignedIssues.setData(
 							undefined,
 							snapshotRef.current.linear as ReturnType<
 								typeof utils.linear.getAssignedIssues.getData
-							>,
+							>
 						);
 					}
 				}
@@ -165,7 +163,7 @@ export function useTicketDragDrop(columns: StatusColumn[]) {
 				utils.linear.getAssignedIssues.invalidate();
 			}
 		},
-		[findIssueAndColumn, utils, updateJiraStatus, updateLinearState],
+		[findIssueAndColumn, utils, updateJiraStatus, updateLinearState]
 	);
 
 	return {
