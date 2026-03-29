@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { MergedTicketIssue } from "../../../shared/tickets";
 import { trpc } from "../../trpc/client";
-import { StateIcon } from "../StateIcon";
 
 interface StatusPickerProps {
 	issue: MergedTicketIssue;

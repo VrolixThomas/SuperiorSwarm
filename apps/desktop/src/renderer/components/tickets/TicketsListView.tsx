@@ -222,10 +222,12 @@ export function TicketsListView({
 						issue={dnd.activeIssue}
 						isSelected={false}
 						isLinked={
-							!!(
-								linkedMap.get(`${dnd.activeIssue.provider}:${dnd.activeIssue.id}`) &&
-								linkedMap.get(`${dnd.activeIssue.provider}:${dnd.activeIssue.id}`)!.length > 0
-							)
+							(() => {
+								const linked = linkedMap.get(
+									`${dnd.activeIssue.provider}:${dnd.activeIssue.id}`,
+								);
+								return !!(linked && linked.length > 0);
+							})()
 						}
 						showProvider={showProvider}
 						isDragOverlay
