@@ -24,14 +24,9 @@ export function TicketCard({
 	onContextMenu,
 }: TicketCardProps) {
 	const sortableId = `${issue.provider}:${issue.id}`;
-	const {
-		attributes,
-		listeners,
-		setNodeRef,
-		transform,
-		transition,
-		isDragging,
-	} = useSortable({ id: sortableId });
+	const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+		id: sortableId,
+	});
 
 	const style: React.CSSProperties = {
 		transform: CSS.Transform.toString(transform),

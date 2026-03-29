@@ -2,11 +2,11 @@ import { DndContext, DragOverlay, useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import type { MergedTicketIssue } from "../../../shared/tickets";
 import { columnStateType } from "../../../shared/tickets";
+import type { useTicketDragDrop } from "../../hooks/useTicketDragDrop";
 import type { StatusColumn } from "../../hooks/useTicketsData";
 import { StateIcon } from "../StateIcon";
 import type { LinkedWorkspace } from "../WorkspacePopover";
 import { TicketCard } from "./TicketCard";
-import type { useTicketDragDrop } from "../../hooks/useTicketDragDrop";
 
 interface TicketsBoardViewProps {
 	columns: StatusColumn[];
