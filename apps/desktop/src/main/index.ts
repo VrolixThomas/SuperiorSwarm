@@ -96,7 +96,7 @@ app.whenReady().then(async () => {
 		console.error("[db] Failed to initialize database:", err);
 		dialog.showErrorBox(
 			"Database Error",
-			`BranchFlux failed to initialize its database and cannot start.\n\n${String(err)}`
+			`SuperiorSwarm failed to initialize its database and cannot start.\n\n${String(err)}`
 		);
 		app.quit();
 		return;
@@ -127,7 +127,7 @@ app.whenReady().then(async () => {
 		const db = getDb();
 		db.update(schema.workspaces).set({ terminalId: null, updatedAt: new Date() }).run();
 	}
-	const dbPath = join(app.getPath("userData"), "branchflux.db");
+	const dbPath = join(app.getPath("userData"), "superiorswarm.db");
 	const daemonScriptPath = join(app.getAppPath(), "out", "main", "daemon.js");
 	try {
 		await daemonClient.connect(dbPath, daemonScriptPath);

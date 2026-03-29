@@ -100,7 +100,7 @@ export async function queueSolve(sessionId: string): Promise<SolveLaunchInfo> {
 			.where(eq(schema.commentSolveSessions.id, sessionId))
 			.run();
 
-		const dbPath = join(app.getPath("userData"), "branchflux.db");
+		const dbPath = join(app.getPath("userData"), "superiorswarm.db");
 		const mcpServerPath = resolve(__dirname, "mcp-server.js");
 
 		// Build solve prompt

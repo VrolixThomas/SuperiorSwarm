@@ -10,7 +10,7 @@ import type {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 export function threadAuthor(t: UnifiedThread): string {
-	if (t.isAIDraft) return "BranchFlux AI";
+	if (t.isAIDraft) return "SuperiorSwarm AI";
 	return (t as GitHubReviewThread).comments[0]?.author ?? "Unknown";
 }
 
