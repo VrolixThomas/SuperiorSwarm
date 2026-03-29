@@ -1,5 +1,6 @@
 import { useCallback, useEffect } from "react";
 import type { MergedTicketIssue } from "../../../shared/tickets";
+import { formatRelativeTime } from "../../../shared/tickets";
 import { useTabStore } from "../../stores/tab-store";
 import { trpc } from "../../trpc/client";
 import { StateIcon } from "../StateIcon";
@@ -10,16 +11,6 @@ interface TicketDetailPanelProps {
 	linked: LinkedWorkspace[] | undefined;
 	onCreateBranch: () => void;
 	onNavigateToWorkspace: (ws: LinkedWorkspace) => void;
-}
-
-function formatDate(dateStr: string): string {
-	const diff = Date.now() - new Date(dateStr).getTime();
-	const hours = Math.floor(diff / 3_600_000);
-	if (hours < 1) return "just now";
-	if (hours < 24) return `${hours}h ago`;
-	const days = Math.floor(hours / 24);
-	if (days < 30) return `${days}d ago`;
-	return new Date(dateStr).toLocaleDateString();
 }
 
 export function TicketDetailPanel({
@@ -150,7 +141,7 @@ export function TicketDetailPanel({
 											<div className="text-[11px]">
 												<span className="font-medium text-[var(--text)]">{comment.author}</span>{" "}
 												<span className="text-[var(--text-quaternary)]">
-													· {formatDate(comment.createdAt)}
+													· {formatRelativeTime(comment.createdAt)}
 												</span>
 											</div>
 											<p className="mt-0.5 whitespace-pre-wrap text-[11px] leading-[1.5] text-[var(--text-secondary)]">

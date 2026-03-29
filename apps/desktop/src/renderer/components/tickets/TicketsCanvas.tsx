@@ -19,7 +19,6 @@ export function TicketsCanvas() {
 	const selectedTicketId = useTabStore((s) => s.selectedTicketId);
 	const ticketDetailOpen = useTabStore((s) => s.ticketDetailOpen);
 	const setSelectedTicket = useTabStore((s) => s.setSelectedTicket);
-	const setSidebarSegment = useTabStore((s) => s.setSidebarSegment);
 
 	const {
 		columns,
@@ -92,25 +91,22 @@ export function TicketsCanvas() {
 	const attachTerminalRef = useRef(attachTerminal.mutate);
 	attachTerminalRef.current = attachTerminal.mutate;
 
-	const navigateToWorkspace = useCallback(
-		(ws: LinkedWorkspace) => {
-			const store = useTabStore.getState();
-			store.setActiveWorkspace(ws.workspaceId, ws.worktreePath);
-			store.setSidebarSegment("repos");
+	const navigateToWorkspace = useCallback((ws: LinkedWorkspace) => {
+		const store = useTabStore.getState();
+		store.setActiveWorkspace(ws.workspaceId, ws.worktreePath);
+		store.setSidebarSegment("repos");
 
-			const existing = store.getTabsByWorkspace(ws.workspaceId);
-			const hasTerminal = existing.some((t) => t.kind === "terminal");
-			if (!hasTerminal) {
-				const title = ws.workspaceName ?? ws.workspaceId;
-				const tabId = store.addTerminalTab(ws.workspaceId, ws.worktreePath, title);
-				attachTerminalRef.current({
-					workspaceId: ws.workspaceId,
-					terminalId: tabId,
-				});
-			}
-		},
-		[setSidebarSegment]
-	);
+		const existing = store.getTabsByWorkspace(ws.workspaceId);
+		const hasTerminal = existing.some((t) => t.kind === "terminal");
+		if (!hasTerminal) {
+			const title = ws.workspaceName ?? ws.workspaceId;
+			const tabId = store.addTerminalTab(ws.workspaceId, ws.worktreePath, title);
+			attachTerminalRef.current({
+				workspaceId: ws.workspaceId,
+				terminalId: tabId,
+			});
+		}
+	}, []);
 
 	// ── Context menu state fetching ──────────────────────────────────────────
 	const { data: linearStates, isLoading: linearStatesLoading } = trpc.linear.getTeamStates.useQuery(

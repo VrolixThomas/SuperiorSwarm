@@ -41,6 +41,22 @@ function mapStatusToColor(categoryKey: string): string {
 	}
 }
 
+function mapApiIssue(issue: JiraApiIssue, baseUrl: string): JiraIssue {
+	return {
+		key: issue.key,
+		summary: issue.fields.summary,
+		status: issue.fields.status.name,
+		statusCategory: issue.fields.status.statusCategory.key,
+		statusColor: mapStatusToColor(issue.fields.status.statusCategory.key),
+		priority: issue.fields.priority?.name ?? "None",
+		issueType: issue.fields.issuetype.name,
+		projectKey: issue.fields.project.key,
+		webUrl: `${baseUrl}/browse/${issue.key}`,
+		createdAt: issue.fields.created,
+		updatedAt: issue.fields.updated,
+	};
+}
+
 export async function getMyIssues(): Promise<JiraIssue[]> {
 	const auth = getAuth("jira");
 	if (!auth || !auth.cloudId) return [];
@@ -57,88 +73,46 @@ export async function getMyIssues(): Promise<JiraIssue[]> {
 	const data = (await res.json()) as { issues: JiraApiIssue[] };
 	const baseUrl = auth.siteUrl ?? `https://api.atlassian.com/ex/jira/${auth.cloudId}`;
 
-	return data.issues.map((issue) => ({
-		key: issue.key,
-		summary: issue.fields.summary,
-		status: issue.fields.status.name,
-		statusCategory: issue.fields.status.statusCategory.key,
-		statusColor: mapStatusToColor(issue.fields.status.statusCategory.key),
-		priority: issue.fields.priority?.name ?? "None",
-		issueType: issue.fields.issuetype.name,
-		projectKey: issue.fields.project.key,
-		webUrl: `${baseUrl}/browse/${issue.key}`,
-		createdAt: issue.fields.created,
-		updatedAt: issue.fields.updated,
-	}));
+	return data.issues.map((issue) => mapApiIssue(issue, baseUrl));
 }
 
 export async function getMyIssuesWithDone(cutoffDays: number): Promise<JiraIssue[]> {
-	// 1. Fetch unresolved issues (existing logic)
 	const unresolved = await getMyIssues();
 
-	// 2. Try to fetch done issues from active sprint
 	const auth = getAuth("jira");
 	if (!auth || !auth.cloudId) return unresolved;
 
 	const fields = "summary,status,priority,issuetype,project,created,updated";
 	const baseUrl = auth.siteUrl ?? `https://api.atlassian.com/ex/jira/${auth.cloudId}`;
 
+	async function fetchDoneByJql(jql: string): Promise<JiraIssue[]> {
+		const url = `https://api.atlassian.com/ex/jira/${auth?.cloudId}/rest/api/3/search/jql?jql=${encodeURIComponent(jql)}&fields=${fields}&maxResults=50`;
+		const res = await atlassianFetch("jira", url);
+		if (!res.ok) return [];
+		const data = (await res.json()) as { issues: JiraApiIssue[] };
+		return data.issues.map((issue) => mapApiIssue(issue, baseUrl));
+	}
+
 	let doneIssues: JiraIssue[] = [];
 
-	// Try sprint-based query first
 	try {
-		const sprintJql =
-			"assignee = currentUser() AND resolution IS NOT EMPTY AND sprint in openSprints() ORDER BY updated DESC";
-		const sprintUrl = `https://api.atlassian.com/ex/jira/${auth.cloudId}/rest/api/3/search/jql?jql=${encodeURIComponent(sprintJql)}&fields=${fields}&maxResults=50`;
-		const res = await atlassianFetch("jira", sprintUrl);
-		if (res.ok) {
-			const data = (await res.json()) as { issues: JiraApiIssue[] };
-			doneIssues = data.issues.map((issue) => ({
-				key: issue.key,
-				summary: issue.fields.summary,
-				status: issue.fields.status.name,
-				statusCategory: issue.fields.status.statusCategory.key,
-				statusColor: mapStatusToColor(issue.fields.status.statusCategory.key),
-				priority: issue.fields.priority?.name ?? "None",
-				issueType: issue.fields.issuetype.name,
-				projectKey: issue.fields.project.key,
-				webUrl: `${baseUrl}/browse/${issue.key}`,
-				createdAt: issue.fields.created,
-				updatedAt: issue.fields.updated,
-			}));
-		}
+		doneIssues = await fetchDoneByJql(
+			"assignee = currentUser() AND resolution IS NOT EMPTY AND sprint in openSprints() ORDER BY updated DESC"
+		);
 	} catch {
 		// Sprint query failed — project may not use sprints
 	}
 
-	// Fall back to time-based if sprint query returned nothing
 	if (doneIssues.length === 0) {
 		try {
-			const timeJql = `assignee = currentUser() AND resolution IS NOT EMPTY AND updated >= -${cutoffDays}d ORDER BY updated DESC`;
-			const timeUrl = `https://api.atlassian.com/ex/jira/${auth.cloudId}/rest/api/3/search/jql?jql=${encodeURIComponent(timeJql)}&fields=${fields}&maxResults=50`;
-			const res = await atlassianFetch("jira", timeUrl);
-			if (res.ok) {
-				const data = (await res.json()) as { issues: JiraApiIssue[] };
-				doneIssues = data.issues.map((issue) => ({
-					key: issue.key,
-					summary: issue.fields.summary,
-					status: issue.fields.status.name,
-					statusCategory: issue.fields.status.statusCategory.key,
-					statusColor: mapStatusToColor(issue.fields.status.statusCategory.key),
-					priority: issue.fields.priority?.name ?? "None",
-					issueType: issue.fields.issuetype.name,
-					projectKey: issue.fields.project.key,
-					webUrl: `${baseUrl}/browse/${issue.key}`,
-					createdAt: issue.fields.created,
-					updatedAt: issue.fields.updated,
-				}));
-			}
+			doneIssues = await fetchDoneByJql(
+				`assignee = currentUser() AND resolution IS NOT EMPTY AND updated >= -${cutoffDays}d ORDER BY updated DESC`
+			);
 		} catch {
 			// Time query also failed — return unresolved only
 		}
 	}
 
-	// Merge, dedup by key
 	const seen = new Set(unresolved.map((i) => i.key));
 	for (const issue of doneIssues) {
 		if (!seen.has(issue.key)) {
