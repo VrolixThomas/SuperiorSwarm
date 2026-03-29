@@ -145,23 +145,38 @@ describe("worktree operations", () => {
 
 describe("listBranches", () => {
 	const testDir = join(realpathSync(tmpdir()), `superiorswarm-branches-${Date.now()}`);
+	const originPath = join(testDir, "origin");
 	const repoPath = join(testDir, "repo");
 
 	beforeAll(async () => {
 		mkdirSync(testDir, { recursive: true });
-		await initRepo(repoPath, "main");
+
+		// Create a bare "origin" with two branches
+		await initRepo(originPath, "main");
+		const originGit = (await import("simple-git")).default(originPath);
+		await originGit.raw(["commit", "--allow-empty", "-m", "initial commit"]);
+		await originGit.branch(["remote-only"]);
+
+		// Clone so the repo has a real remote
+		const sg = (await import("simple-git")).default();
+		await sg.clone(originPath, repoPath);
 		const git = (await import("simple-git")).default(repoPath);
-		await git.raw(["commit", "--allow-empty", "-m", "initial commit"]);
-		await git.branch(["develop"]);
+		await git.branch(["local-only"]);
 	});
 
 	afterAll(() => {
 		rmSync(testDir, { recursive: true, force: true });
 	});
 
-	test("lists local branches", async () => {
+	test("lists both local and remote branches", async () => {
 		const branches = await listBranches(repoPath);
 		expect(branches).toContain("main");
-		expect(branches).toContain("develop");
+		expect(branches).toContain("local-only");
+		expect(branches).toContain("remote-only");
+	});
+
+	test("does not include HEAD pointer entries", async () => {
+		const branches = await listBranches(repoPath);
+		expect(branches.some((b) => b.includes("HEAD"))).toBe(false);
 	});
 });
