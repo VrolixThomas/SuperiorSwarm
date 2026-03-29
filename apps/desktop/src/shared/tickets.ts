@@ -48,6 +48,32 @@ export interface TicketComment {
 	createdAt: string;
 }
 
+export function formatRelativeTime(dateStr: string | undefined): string {
+	if (!dateStr) return "";
+	const diff = Date.now() - new Date(dateStr).getTime();
+	const hours = Math.floor(diff / 3_600_000);
+	if (hours < 1) return "just now";
+	if (hours < 24) return `${hours}h ago`;
+	const days = Math.floor(hours / 24);
+	if (days < 30) return `${days}d ago`;
+	return new Date(dateStr).toLocaleDateString();
+}
+
+export function columnStateType(category: string): string {
+	switch (category) {
+		case "backlog":
+			return "backlog";
+		case "todo":
+			return "unstarted";
+		case "in_progress":
+			return "started";
+		case "done":
+			return "completed";
+		default:
+			return "default";
+	}
+}
+
 export function normalizeStatusCategory(
 	provider: TicketProvider,
 	statusCategory?: string,
@@ -59,12 +85,10 @@ export function normalizeStatusCategory(
 				return "in_progress";
 			case "done":
 				return "done";
-			case "new":
 			default:
 				return "todo";
 		}
 	}
-	// Linear
 	switch (stateType) {
 		case "triage":
 		case "backlog":
@@ -74,7 +98,6 @@ export function normalizeStatusCategory(
 		case "completed":
 		case "cancelled":
 			return "done";
-		case "unstarted":
 		default:
 			return "todo";
 	}

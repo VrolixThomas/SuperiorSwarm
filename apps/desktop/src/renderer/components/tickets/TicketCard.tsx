@@ -21,18 +21,21 @@ export function TicketCard({
 }: TicketCardProps) {
 	const isLinked = linked && linked.length > 0;
 
+	let borderClass: string;
+	if (isSelected) {
+		borderClass = "border-[rgba(10,132,255,0.3)] bg-[#1a1a1c]";
+	} else if (isLinked) {
+		borderClass = "border-[rgba(10,132,255,0.12)] bg-[#111] hover:bg-[#161618]";
+	} else {
+		borderClass = "border-[rgba(255,255,255,0.03)] bg-[#111] hover:bg-[#161618]";
+	}
+
 	return (
 		<button
 			type="button"
 			onClick={onClick}
 			onContextMenu={onContextMenu}
-			className={`relative flex w-full flex-col gap-1 rounded-[6px] border px-2.5 py-2 text-left transition-all duration-[120ms] ${
-				isSelected
-					? "border-[rgba(10,132,255,0.3)] bg-[#1a1a1c]"
-					: isLinked
-						? "border-[rgba(10,132,255,0.12)] bg-[#111] hover:bg-[#161618]"
-						: "border-[rgba(255,255,255,0.03)] bg-[#111] hover:bg-[#161618]"
-			}`}
+			className={`relative flex w-full flex-col gap-1 rounded-[6px] border px-2.5 py-2 text-left transition-all duration-[120ms] ${borderClass}`}
 		>
 			{isSelected && (
 				<div className="absolute bottom-1 left-[-1px] top-1 w-[2px] rounded-[1px] bg-[var(--accent)]" />
