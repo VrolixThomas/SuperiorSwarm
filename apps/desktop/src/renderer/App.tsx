@@ -8,6 +8,7 @@ import { DiffPanel } from "./components/DiffPanel";
 import { MainContentArea } from "./components/MainContentArea";
 import { SharedFilesPanel } from "./components/SharedFilesPanel";
 import { Sidebar } from "./components/Sidebar";
+import { useAgentAlertListener } from "./hooks/useAgentAlertListener";
 import { usePaneShortcuts } from "./hooks/usePaneShortcuts";
 import {
 	setupDiagnosticsListener,
@@ -297,6 +298,7 @@ export function App() {
 	}, []);
 
 	usePaneShortcuts();
+	useAgentAlertListener();
 
 	const sidebarPanelRef = usePanelRef();
 	const diffPanelRef = usePanelRef();

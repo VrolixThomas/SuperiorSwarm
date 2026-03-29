@@ -25,12 +25,15 @@ function resolveShell(): string {
 	return "/bin/sh";
 }
 
-function resolveEnv(): Record<string, string> {
+function resolveEnv(extra?: Record<string, string>): Record<string, string> {
 	const base = Object.fromEntries(
 		Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined)
 	);
 	const defaults = "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin";
 	base["PATH"] = base["PATH"] ? `${base["PATH"]}:${defaults}` : defaults;
+	if (extra) {
+		Object.assign(base, extra);
+	}
 	return base;
 }
 
@@ -42,7 +45,8 @@ export class PtyManager {
 		cwd: string | undefined,
 		onData: (data: string) => void,
 		onExit: (code: number, finalBuffer: string) => void,
-		clientId: string
+		clientId: string,
+		env?: Record<string, string>
 	): void {
 		if (this.terminals.has(id)) {
 			throw new Error(`Terminal "${id}" already exists`);
@@ -55,7 +59,7 @@ export class PtyManager {
 			cols: 80,
 			rows: 24,
 			cwd: resolvedCwd,
-			env: resolveEnv(),
+			env: resolveEnv(env),
 		});
 
 		const entry: TerminalEntry = {
