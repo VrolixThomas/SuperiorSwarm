@@ -1,4 +1,3 @@
-// apps/desktop/src/main/tickets/cache.ts
 import { and, eq, notInArray } from "drizzle-orm";
 import type { JiraIssue } from "../atlassian/jira";
 import { getDb } from "../db";
@@ -24,77 +23,63 @@ export function getCachedLinearIssues(): LinearIssue[] {
 
 // ── Cache write ──────────────────────────────────────────────────────────────
 
-export function upsertJiraIssues(issues: JiraIssue[]): void {
+function upsertAndPrune(
+	provider: "jira" | "linear",
+	entries: { id: string; data: string; groupId: string }[]
+): void {
 	const db = getDb();
 	const now = new Date();
-	const currentIds: string[] = [];
 
-	for (const issue of issues) {
-		const id = `jira:${issue.key}`;
-		currentIds.push(id);
-		db.insert(ticketCache)
-			.values({
-				id,
-				provider: "jira",
-				data: JSON.stringify(issue),
-				groupId: issue.projectKey,
-				updatedAt: now,
-			})
-			.onConflictDoUpdate({
-				target: ticketCache.id,
-				set: {
-					data: JSON.stringify(issue),
-					groupId: issue.projectKey,
+	db.transaction((tx) => {
+		const currentIds: string[] = [];
+
+		for (const entry of entries) {
+			currentIds.push(entry.id);
+			tx.insert(ticketCache)
+				.values({
+					id: entry.id,
+					provider,
+					data: entry.data,
+					groupId: entry.groupId,
 					updatedAt: now,
-				},
-			})
-			.run();
-	}
+				})
+				.onConflictDoUpdate({
+					target: ticketCache.id,
+					set: { data: entry.data, groupId: entry.groupId, updatedAt: now },
+				})
+				.run();
+		}
 
-	// Prune tickets no longer returned by the API
-	if (currentIds.length > 0) {
-		db.delete(ticketCache)
-			.where(and(eq(ticketCache.provider, "jira"), notInArray(ticketCache.id, currentIds)))
-			.run();
-	} else {
-		db.delete(ticketCache).where(eq(ticketCache.provider, "jira")).run();
-	}
+		if (currentIds.length > 0) {
+			tx.delete(ticketCache)
+				.where(and(eq(ticketCache.provider, provider), notInArray(ticketCache.id, currentIds)))
+				.run();
+		} else {
+			tx.delete(ticketCache).where(eq(ticketCache.provider, provider)).run();
+		}
+	});
+}
+
+export function upsertJiraIssues(issues: JiraIssue[]): void {
+	upsertAndPrune(
+		"jira",
+		issues.map((issue) => ({
+			id: `jira:${issue.key}`,
+			data: JSON.stringify(issue),
+			groupId: issue.projectKey,
+		}))
+	);
 }
 
 export function upsertLinearIssues(issues: LinearIssue[]): void {
-	const db = getDb();
-	const now = new Date();
-	const currentIds: string[] = [];
-
-	for (const issue of issues) {
-		const id = `linear:${issue.id}`;
-		currentIds.push(id);
-		db.insert(ticketCache)
-			.values({
-				id,
-				provider: "linear",
-				data: JSON.stringify(issue),
-				groupId: issue.teamId,
-				updatedAt: now,
-			})
-			.onConflictDoUpdate({
-				target: ticketCache.id,
-				set: {
-					data: JSON.stringify(issue),
-					groupId: issue.teamId,
-					updatedAt: now,
-				},
-			})
-			.run();
-	}
-
-	if (currentIds.length > 0) {
-		db.delete(ticketCache)
-			.where(and(eq(ticketCache.provider, "linear"), notInArray(ticketCache.id, currentIds)))
-			.run();
-	} else {
-		db.delete(ticketCache).where(eq(ticketCache.provider, "linear")).run();
-	}
+	upsertAndPrune(
+		"linear",
+		issues.map((issue) => ({
+			id: `linear:${issue.id}`,
+			data: JSON.stringify(issue),
+			groupId: issue.teamId,
+		}))
+	);
 }
 
 // ── Last-fetched timestamp ───────────────────────────────────────────────────
