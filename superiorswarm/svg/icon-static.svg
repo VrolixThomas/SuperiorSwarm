@@ -1,0 +1,61 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1024" height="1024" rx="226" fill="#0e0e14"/>
+
+  <defs>
+    <filter id="c" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="28" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="lg" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur stdDeviation="18" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="md" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="11" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="sm" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="7" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <radialGradient id="bg" cx="38%" cy="32%" r="55%">
+      <stop offset="0%" stop-color="#191928"/>
+      <stop offset="100%" stop-color="#0c0c0c"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1024" height="1024" rx="226" fill="url(#bg)"/>
+
+  <!-- LARGE nodes -->
+  <circle cx="440" cy="420" r="51" fill="#f0a060" filter="url(#lg)"/>
+  <circle cx="604" cy="461" r="45" fill="#e07030" filter="url(#lg)"/>
+  <circle cx="491" cy="604" r="41" fill="#f0b070" filter="url(#lg)"/>
+  <circle cx="358" cy="563" r="36" fill="#c05828" opacity=".88" filter="url(#lg)"/>
+  <circle cx="645" cy="378" r="34" fill="#e07030" filter="url(#lg)"/>
+
+  <!-- MEDIUM nodes -->
+  <circle cx="747" cy="542" r="30" fill="#e07030" filter="url(#md)"/>
+  <circle cx="297" cy="379" r="27" fill="#c05828" opacity=".82" filter="url(#md)"/>
+  <circle cx="583" cy="727" r="29" fill="#f0a060" filter="url(#md)"/>
+  <circle cx="707" cy="317" r="25" fill="#f0b070" filter="url(#md)"/>
+  <circle cx="256" cy="624" r="24" fill="#a04020" opacity=".78" filter="url(#md)"/>
+  <circle cx="768" cy="420" r="26" fill="#e07030" filter="url(#md)"/>
+  <circle cx="399" cy="747" r="23" fill="#c05828" opacity=".72" filter="url(#md)"/>
+  <circle cx="686" cy="655" r="21" fill="#d06830" opacity=".75" filter="url(#md)"/>
+
+  <!-- SMALL dots -->
+  <circle cx="829" cy="645" r="17" fill="#e07030" opacity=".55" filter="url(#sm)"/>
+  <circle cx="195" cy="481" r="15" fill="#a04020" opacity=".45"/>
+  <circle cx="624" cy="850" r="16" fill="#f0a060" opacity=".48" filter="url(#sm)"/>
+  <circle cx="850" cy="358" r="14" fill="#e07030" opacity=".38"/>
+  <circle cx="154" cy="563" r="13" fill="#a04020" opacity=".34"/>
+  <circle cx="522" cy="891" r="15" fill="#f0a060" opacity=".38" filter="url(#sm)"/>
+  <circle cx="870" cy="522" r="12" fill="#c05828" opacity=".28"/>
+  <circle cx="317" cy="829" r="11" fill="#a04020" opacity=".26"/>
+  <circle cx="788" cy="246" r="13" fill="#f0b070" opacity=".32"/>
+  <circle cx="215" cy="297" r="11" fill="#c05828" opacity=".24"/>
+
+  <!-- CORE -->
+  <circle cx="512" cy="512" r="87" fill="white" opacity=".92" filter="url(#c)"/>
+  <circle cx="512" cy="512" r="49" fill="white"/>
+</svg>

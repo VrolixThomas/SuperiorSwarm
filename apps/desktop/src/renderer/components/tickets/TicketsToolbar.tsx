@@ -42,9 +42,7 @@ export function TicketsToolbar({
 				{providerLabel} · {ticketCount} tickets
 			</span>
 			{staleness && (
-				<span className="text-[10px] text-[var(--text-quaternary)] opacity-60">
-					· {staleness}
-				</span>
+				<span className="text-[10px] text-[var(--text-quaternary)] opacity-60">· {staleness}</span>
 			)}
 			<div className="flex-1" />
 			<div className="flex gap-0.5 rounded-[6px] bg-[var(--bg-elevated)] p-[2px]">

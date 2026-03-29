@@ -1,8 +1,8 @@
 // apps/desktop/src/main/tickets/cache.ts
 import { and, eq, notInArray } from "drizzle-orm";
+import type { JiraIssue } from "../atlassian/jira";
 import { getDb } from "../db";
 import { sessionState, ticketCache } from "../db/schema";
-import type { JiraIssue } from "../atlassian/jira";
 import type { LinearIssue } from "../linear/linear";
 
 const LAST_FETCHED_KEY = "tickets_last_fetched";
@@ -12,21 +12,13 @@ const DONE_CUTOFF_KEY = "tickets_done_cutoff_days";
 
 export function getCachedJiraIssues(): JiraIssue[] {
 	const db = getDb();
-	const rows = db
-		.select()
-		.from(ticketCache)
-		.where(eq(ticketCache.provider, "jira"))
-		.all();
+	const rows = db.select().from(ticketCache).where(eq(ticketCache.provider, "jira")).all();
 	return rows.map((r) => JSON.parse(r.data) as JiraIssue);
 }
 
 export function getCachedLinearIssues(): LinearIssue[] {
 	const db = getDb();
-	const rows = db
-		.select()
-		.from(ticketCache)
-		.where(eq(ticketCache.provider, "linear"))
-		.all();
+	const rows = db.select().from(ticketCache).where(eq(ticketCache.provider, "linear")).all();
 	return rows.map((r) => JSON.parse(r.data) as LinearIssue);
 }
 
@@ -62,12 +54,7 @@ export function upsertJiraIssues(issues: JiraIssue[]): void {
 	// Prune tickets no longer returned by the API
 	if (currentIds.length > 0) {
 		db.delete(ticketCache)
-			.where(
-				and(
-					eq(ticketCache.provider, "jira"),
-					notInArray(ticketCache.id, currentIds),
-				),
-			)
+			.where(and(eq(ticketCache.provider, "jira"), notInArray(ticketCache.id, currentIds)))
 			.run();
 	} else {
 		db.delete(ticketCache).where(eq(ticketCache.provider, "jira")).run();
@@ -103,12 +90,7 @@ export function upsertLinearIssues(issues: LinearIssue[]): void {
 
 	if (currentIds.length > 0) {
 		db.delete(ticketCache)
-			.where(
-				and(
-					eq(ticketCache.provider, "linear"),
-					notInArray(ticketCache.id, currentIds),
-				),
-			)
+			.where(and(eq(ticketCache.provider, "linear"), notInArray(ticketCache.id, currentIds)))
 			.run();
 	} else {
 		db.delete(ticketCache).where(eq(ticketCache.provider, "linear")).run();
@@ -119,11 +101,7 @@ export function upsertLinearIssues(issues: LinearIssue[]): void {
 
 export function getLastFetched(): string | null {
 	const db = getDb();
-	const row = db
-		.select()
-		.from(sessionState)
-		.where(eq(sessionState.key, LAST_FETCHED_KEY))
-		.get();
+	const row = db.select().from(sessionState).where(eq(sessionState.key, LAST_FETCHED_KEY)).get();
 	return row?.value ?? null;
 }
 
@@ -143,11 +121,7 @@ export function setLastFetched(): void {
 
 export function getDoneCutoffDays(): number {
 	const db = getDb();
-	const row = db
-		.select()
-		.from(sessionState)
-		.where(eq(sessionState.key, DONE_CUTOFF_KEY))
-		.get();
+	const row = db.select().from(sessionState).where(eq(sessionState.key, DONE_CUTOFF_KEY)).get();
 	const parsed = Number(row?.value);
 	return Number.isFinite(parsed) && parsed > 0 ? parsed : 14;
 }
