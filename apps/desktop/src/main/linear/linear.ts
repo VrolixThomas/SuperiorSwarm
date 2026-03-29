@@ -159,7 +159,7 @@ export async function getAssignedIssues(teamId?: string): Promise<LinearIssue[]>
 
 export async function getAssignedIssuesWithDone(
 	teamId?: string,
-	cutoffDays: number = 14,
+	cutoffDays = 14
 ): Promise<LinearIssue[]> {
 	const issueFields = `id identifier title url
 		state { id name color type }
@@ -192,7 +192,7 @@ export async function getAssignedIssuesWithDone(
 					pageInfo { hasNextPage endCursor }
 				}
 			}`,
-			teamId ? { cursor, teamId } : { cursor },
+			teamId ? { cursor, teamId } : { cursor }
 		);
 
 		activeNodes.push(...data.issues.nodes);
@@ -225,7 +225,7 @@ export async function getAssignedIssuesWithDone(
 					pageInfo { hasNextPage endCursor }
 				}
 			}`,
-			teamId ? { teamId } : undefined,
+			teamId ? { teamId } : undefined
 		);
 		doneNodes = cycleData.issues.nodes;
 	} catch {
@@ -260,7 +260,7 @@ export async function getAssignedIssuesWithDone(
 						pageInfo { hasNextPage endCursor }
 					}
 				}`,
-				teamId ? { cutoffDate: cutoffIso, teamId } : { cutoffDate: cutoffIso },
+				teamId ? { cutoffDate: cutoffIso, teamId } : { cutoffDate: cutoffIso }
 			);
 			doneNodes = timeData.issues.nodes;
 		} catch {

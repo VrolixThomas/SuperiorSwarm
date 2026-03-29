@@ -19,10 +19,16 @@ export function TicketsCanvas() {
 	const selectedTicketId = useTabStore((s) => s.selectedTicketId);
 	const ticketDetailOpen = useTabStore((s) => s.ticketDetailOpen);
 	const setSelectedTicket = useTabStore((s) => s.setSelectedTicket);
-	const setSidebarSegment = useTabStore((s) => s.setSidebarSegment);
 
-	const { columns, filteredIssues, linkedMap, isLoading, isEmpty, activeTicketProject, lastFetched } =
-		useTicketsData();
+	const {
+		columns,
+		filteredIssues,
+		linkedMap,
+		isLoading,
+		isEmpty,
+		activeTicketProject,
+		lastFetched,
+	} = useTicketsData();
 
 	// ── View mode (persisted per project) ────────────────────────────────────
 	const projectId = useMemo(() => {
@@ -32,7 +38,7 @@ export function TicketsCanvas() {
 
 	const { data: savedViewMode } = trpc.tickets.getViewMode.useQuery(
 		{ projectId },
-		{ staleTime: Number.POSITIVE_INFINITY },
+		{ staleTime: Number.POSITIVE_INFINITY }
 	);
 	const setViewModeMutation = trpc.tickets.setViewMode.useMutation();
 	const [localViewMode, setLocalViewMode] = useState<TicketViewMode | null>(null);
@@ -44,7 +50,7 @@ export function TicketsCanvas() {
 			setViewModeMutation.mutate({ projectId, mode });
 			utils.tickets.getViewMode.setData({ projectId }, mode);
 		},
-		[projectId, setViewModeMutation, utils],
+		[projectId, setViewModeMutation, utils]
 	);
 
 	// Reset local override when project changes
@@ -85,35 +91,31 @@ export function TicketsCanvas() {
 	const attachTerminalRef = useRef(attachTerminal.mutate);
 	attachTerminalRef.current = attachTerminal.mutate;
 
-	const navigateToWorkspace = useCallback(
-		(ws: LinkedWorkspace) => {
-			const store = useTabStore.getState();
-			store.setActiveWorkspace(ws.workspaceId, ws.worktreePath);
-			store.setSidebarSegment("repos");
+	const navigateToWorkspace = useCallback((ws: LinkedWorkspace) => {
+		const store = useTabStore.getState();
+		store.setActiveWorkspace(ws.workspaceId, ws.worktreePath);
+		store.setSidebarSegment("repos");
 
-			const existing = store.getTabsByWorkspace(ws.workspaceId);
-			const hasTerminal = existing.some((t) => t.kind === "terminal");
-			if (!hasTerminal) {
-				const title = ws.workspaceName ?? ws.workspaceId;
-				const tabId = store.addTerminalTab(ws.workspaceId, ws.worktreePath, title);
-				attachTerminalRef.current({
-					workspaceId: ws.workspaceId,
-					terminalId: tabId,
-				});
-			}
-		},
-		[setSidebarSegment],
-	);
+		const existing = store.getTabsByWorkspace(ws.workspaceId);
+		const hasTerminal = existing.some((t) => t.kind === "terminal");
+		if (!hasTerminal) {
+			const title = ws.workspaceName ?? ws.workspaceId;
+			const tabId = store.addTerminalTab(ws.workspaceId, ws.worktreePath, title);
+			attachTerminalRef.current({
+				workspaceId: ws.workspaceId,
+				terminalId: tabId,
+			});
+		}
+	}, []);
 
 	// ── Context menu state fetching ──────────────────────────────────────────
-	const { data: linearStates, isLoading: linearStatesLoading } =
-		trpc.linear.getTeamStates.useQuery(
-			{ teamId: contextMenu?.issue.groupId ?? "" },
-			{
-				enabled: !!contextMenu && contextMenu.issue.provider === "linear",
-				staleTime: 5 * 60_000,
-			},
-		);
+	const { data: linearStates, isLoading: linearStatesLoading } = trpc.linear.getTeamStates.useQuery(
+		{ teamId: contextMenu?.issue.groupId ?? "" },
+		{
+			enabled: !!contextMenu && contextMenu.issue.provider === "linear",
+			staleTime: 5 * 60_000,
+		}
+	);
 
 	const { data: jiraTransitions, isLoading: jiraTransitionsLoading } =
 		trpc.atlassian.getIssueTransitions.useQuery(
@@ -121,7 +123,7 @@ export function TicketsCanvas() {
 			{
 				enabled: !!contextMenu && contextMenu.issue.provider === "jira",
 				staleTime: 60_000,
-			},
+			}
 		);
 
 	const updateLinearState = trpc.linear.updateIssueState.useMutation({
@@ -136,7 +138,7 @@ export function TicketsCanvas() {
 		(issue: MergedTicketIssue) => {
 			setSelectedTicket(issue.id);
 		},
-		[setSelectedTicket],
+		[setSelectedTicket]
 	);
 
 	const handleTicketContextMenu = useCallback(
@@ -149,7 +151,7 @@ export function TicketsCanvas() {
 				workspaces: linkedMap.get(key),
 			});
 		},
-		[linkedMap],
+		[linkedMap]
 	);
 
 	// ── Derived display values ───────────────────────────────────────────────
@@ -208,67 +210,70 @@ export function TicketsCanvas() {
 			/>
 
 			<div className="min-h-0 flex-1">
-			<Group orientation="vertical" className="h-full" defaultLayout={ticketPanelLayout} onLayoutChanged={onTicketLayoutChanged}>
-				<Panel id="ticket-view" minSize="20%">
-					{viewMode === "board" && (
-						<TicketsBoardView
-							columns={columns}
-							linkedMap={linkedMap}
-							selectedTicketId={selectedTicketId}
-							showProvider={showProvider}
-							onTicketClick={handleTicketClick}
-							onTicketContextMenu={handleTicketContextMenu}
-						/>
-					)}
-					{viewMode === "list" && (
-						<TicketsListView
-							columns={columns}
-							linkedMap={linkedMap}
-							selectedTicketId={selectedTicketId}
-							showProvider={showProvider}
-							onTicketClick={handleTicketClick}
-							onTicketContextMenu={handleTicketContextMenu}
-						/>
-					)}
-					{viewMode === "table" && (
-						<TicketsTableView
-							issues={filteredIssues}
-							linkedMap={linkedMap}
-							selectedTicketId={selectedTicketId}
-							onTicketClick={handleTicketClick}
-							onTicketContextMenu={handleTicketContextMenu}
-						/>
-					)}
-				</Panel>
-
-				<Separator className="panel-resize-handle-vertical" />
-
-				<Panel
-					id="ticket-detail"
-					panelRef={detailPanelRef}
-					defaultSize="40%"
-					minSize="15%"
-					collapsible
-					collapsedSize="0%"
-					onResize={() => {
-						const collapsed = detailPanelRef.current?.isCollapsed() ?? true;
-						if (collapsed && ticketDetailOpen) {
-							useTabStore.getState().closeTicketDetail();
-						}
-					}}
+				<Group
+					orientation="vertical"
+					className="h-full"
+					defaultLayout={ticketPanelLayout}
+					onLayoutChanged={onTicketLayoutChanged}
 				>
-					{selectedIssue && (
-						<TicketDetailPanel
-							issue={selectedIssue}
-							linked={linkedMap.get(
-								`${selectedIssue.provider}:${selectedIssue.id}`,
-							)}
-							onCreateBranch={() => setOpenModalIssue(selectedIssue)}
-							onNavigateToWorkspace={navigateToWorkspace}
-						/>
-					)}
-				</Panel>
-			</Group>
+					<Panel id="ticket-view" minSize="20%">
+						{viewMode === "board" && (
+							<TicketsBoardView
+								columns={columns}
+								linkedMap={linkedMap}
+								selectedTicketId={selectedTicketId}
+								showProvider={showProvider}
+								onTicketClick={handleTicketClick}
+								onTicketContextMenu={handleTicketContextMenu}
+							/>
+						)}
+						{viewMode === "list" && (
+							<TicketsListView
+								columns={columns}
+								linkedMap={linkedMap}
+								selectedTicketId={selectedTicketId}
+								showProvider={showProvider}
+								onTicketClick={handleTicketClick}
+								onTicketContextMenu={handleTicketContextMenu}
+							/>
+						)}
+						{viewMode === "table" && (
+							<TicketsTableView
+								issues={filteredIssues}
+								linkedMap={linkedMap}
+								selectedTicketId={selectedTicketId}
+								onTicketClick={handleTicketClick}
+								onTicketContextMenu={handleTicketContextMenu}
+							/>
+						)}
+					</Panel>
+
+					<Separator className="panel-resize-handle-vertical" />
+
+					<Panel
+						id="ticket-detail"
+						panelRef={detailPanelRef}
+						defaultSize="40%"
+						minSize="15%"
+						collapsible
+						collapsedSize="0%"
+						onResize={() => {
+							const collapsed = detailPanelRef.current?.isCollapsed() ?? true;
+							if (collapsed && ticketDetailOpen) {
+								useTabStore.getState().closeTicketDetail();
+							}
+						}}
+					>
+						{selectedIssue && (
+							<TicketDetailPanel
+								issue={selectedIssue}
+								linked={linkedMap.get(`${selectedIssue.provider}:${selectedIssue.id}`)}
+								onCreateBranch={() => setOpenModalIssue(selectedIssue)}
+								onNavigateToWorkspace={navigateToWorkspace}
+							/>
+						)}
+					</Panel>
+				</Group>
 			</div>
 
 			{contextMenu && (
@@ -276,15 +281,9 @@ export function TicketsCanvas() {
 					position={contextMenu.position}
 					issue={contextMenu.issue}
 					workspaces={contextMenu.workspaces}
-					states={
-						contextMenu.issue.provider === "linear"
-							? linearStates
-							: jiraTransitions
-					}
+					states={contextMenu.issue.provider === "linear" ? linearStates : jiraTransitions}
 					statesLoading={
-						contextMenu.issue.provider === "linear"
-							? linearStatesLoading
-							: jiraTransitionsLoading
+						contextMenu.issue.provider === "linear" ? linearStatesLoading : jiraTransitionsLoading
 					}
 					openInLabel={`Open in ${contextMenu.issue.provider === "linear" ? "Linear" : "Jira"}`}
 					onClose={() => setContextMenu(null)}
@@ -312,10 +311,7 @@ export function TicketsCanvas() {
 				/>
 			)}
 
-			<CreateBranchFromIssueModal
-				issue={openModalIssue}
-				onClose={() => setOpenModalIssue(null)}
-			/>
+			<CreateBranchFromIssueModal issue={openModalIssue} onClose={() => setOpenModalIssue(null)} />
 		</main>
 	);
 }
