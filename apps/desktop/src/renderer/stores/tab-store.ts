@@ -43,6 +43,17 @@ export type TabItem =
 			workspaceId: string;
 			title: string;
 			prCtx: PRContext;
+	  }
+	| {
+			kind: "comment-fix-file";
+			id: string;
+			workspaceId: string;
+			groupId: string;
+			filePath: string;
+			commitHash: string;
+			title: string;
+			language: string;
+			repoPath: string;
 	  };
 export type PanelMode = "diff" | "explorer" | "pr-review";
 
@@ -83,6 +94,14 @@ interface TabStore {
 	sidebarSegment: SidebarSegment;
 	activeWorkspaceBySegment: Record<SidebarSegment, { id: string; cwd: string } | null>;
 
+	// Ticket canvas state
+	activeTicketProject: { id: string; provider: "jira" | "linear" } | "all" | null;
+	selectedTicketId: string | null;
+	ticketDetailOpen: boolean;
+	setActiveTicketProject: (project: { id: string; provider: "jira" | "linear" } | "all") => void;
+	setSelectedTicket: (ticketId: string | null) => void;
+	closeTicketDetail: () => void;
+
 	// Derived — reads from pane-store for backwards compat
 	getAllTabs: () => TabItem[];
 	getActiveTabId: () => string | null;
@@ -119,6 +138,15 @@ interface TabStore {
 		language: string
 	) => string;
 	openPROverview: (workspaceId: string, prCtx: PRContext) => string;
+
+	openCommentFixFile: (
+		workspaceId: string,
+		groupId: string,
+		filePath: string,
+		commitHash: string,
+		repoPath: string,
+		language: string
+	) => string;
 
 	// Diff convenience
 	toggleDiffPanel: (diffCtx: DiffContext) => void;
@@ -197,10 +225,7 @@ function defaultPanelForCwd(cwd: string): RightPanelState {
 }
 
 /** Derive the correct right panel state from workspace metadata. */
-function panelForWorkspace(
-	cwd: string,
-	meta: WorkspaceMetadata | undefined
-): RightPanelState {
+function panelForWorkspace(cwd: string, meta: WorkspaceMetadata | undefined): RightPanelState {
 	if (meta?.type === "review" && meta.prProvider && meta.prIdentifier) {
 		const [ownerRepo, numStr] = meta.prIdentifier.split("#");
 		const [owner, repo] = (ownerRepo ?? "").split("/");
@@ -298,6 +323,21 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 	_paneVersion: 0,
 	sidebarSegment: "repos" as SidebarSegment,
 	activeWorkspaceBySegment: { repos: null, tickets: null, prs: null },
+
+	activeTicketProject: "all",
+	selectedTicketId: null,
+	ticketDetailOpen: false,
+
+	setActiveTicketProject: (project) =>
+		set({ activeTicketProject: project, selectedTicketId: null, ticketDetailOpen: false }),
+
+	setSelectedTicket: (ticketId) =>
+		set({
+			selectedTicketId: ticketId,
+			ticketDetailOpen: ticketId !== null,
+		}),
+
+	closeTicketDetail: () => set({ selectedTicketId: null, ticketDetailOpen: false }),
 
 	// ── Derived properties ──────────────────────────────────────────────
 
@@ -528,6 +568,42 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 		return id;
 	},
 
+	openCommentFixFile: (workspaceId, groupId, filePath, commitHash, repoPath, language) => {
+		const key = `comment-fix:${groupId}:${filePath}`;
+		const found = findTabInWorkspace(
+			workspaceId,
+			(t) =>
+				t.kind === "comment-fix-file" &&
+				t.workspaceId === workspaceId &&
+				`comment-fix:${t.groupId}:${t.filePath}` === key
+		);
+		if (found) {
+			ps().setActiveTabInPane(workspaceId, found.pane.id, found.tab.id);
+			ps().setFocusedPane(found.pane.id);
+			return found.tab.id;
+		}
+		const id = nextFileTabId();
+		const filename = filePath.split("/").pop() ?? filePath;
+		const title = `${filename} (fix)`;
+		const tab: TabItem = {
+			kind: "comment-fix-file",
+			id,
+			workspaceId,
+			groupId,
+			filePath,
+			commitHash,
+			title,
+			language,
+			repoPath,
+		};
+		ps().ensureLayout(workspaceId);
+		const focused = resolveFocusedPane(workspaceId);
+		if (focused) {
+			ps().addTabToPane(workspaceId, focused.id, tab);
+		}
+		return id;
+	},
+
 	toggleDiffPanel: (diffCtx) => {
 		const { rightPanel } = get();
 		if (
@@ -547,9 +623,10 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 	},
 
 	openRightPanel: () => {
-		const { rightPanel, activeWorkspaceCwd } = get();
+		const { rightPanel, activeWorkspaceCwd, activeWorkspaceId, workspaceMetadata } = get();
 		if (rightPanel.open) return;
-		set({ rightPanel: defaultPanelForCwd(activeWorkspaceCwd) });
+		const meta = activeWorkspaceId ? workspaceMetadata[activeWorkspaceId] : undefined;
+		set({ rightPanel: panelForWorkspace(activeWorkspaceCwd, meta) });
 	},
 
 	openExplorer: () => {
@@ -721,10 +798,7 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 			: "repos";
 
 		// Restore per-segment active workspace
-		let activeWorkspaceBySegment: Record<
-			SidebarSegment,
-			{ id: string; cwd: string } | null
-		> = {
+		let activeWorkspaceBySegment: Record<SidebarSegment, { id: string; cwd: string } | null> = {
 			repos: null,
 			tickets: null,
 			prs: null,
@@ -745,6 +819,15 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 			activeWorkspaceBySegment[segment] = { id: activeWs, cwd: activeCwd };
 			if (!extraState?.["sidebarSegment"]) {
 				sidebarSegment = segment;
+			}
+		}
+
+		if (extraState?.["activeTicketProject"]) {
+			try {
+				const parsed = JSON.parse(extraState["activeTicketProject"]);
+				set({ activeTicketProject: parsed });
+			} catch {
+				// ignore invalid JSON
 			}
 		}
 

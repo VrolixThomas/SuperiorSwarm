@@ -42,13 +42,16 @@ function buildTerminalTheme(): ITheme {
 export function Terminal({
 	id,
 	cwd,
+	workspaceId,
 	initialContent,
-}: { id: string; cwd?: string; initialContent?: string }) {
+}: { id: string; cwd?: string; workspaceId?: string; initialContent?: string }) {
 	const ref = useRef<HTMLDivElement>(null);
 	const cwdRef = useRef(cwd);
 	const initialContentRef = useRef(initialContent);
+	const workspaceIdRef = useRef(workspaceId);
 	cwdRef.current = cwd;
 	initialContentRef.current = initialContent;
+	workspaceIdRef.current = workspaceId;
 
 	useEffect(() => {
 		if (!ref.current) return;
@@ -115,7 +118,7 @@ export function Terminal({
 
 		if (api) {
 			api.terminal
-				.create(id, cwdRef.current || undefined)
+				.create(id, cwdRef.current || undefined, workspaceIdRef.current)
 				.then(({ wasAttached }) => {
 					// Only replay saved scrollback for fresh sessions.
 					// Attached sessions (live background PTYs) send their current buffer

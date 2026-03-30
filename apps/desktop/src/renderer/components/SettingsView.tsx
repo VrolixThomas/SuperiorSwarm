@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useEditorSettingsStore } from "../stores/editor-settings";
 import { useProjectStore } from "../stores/projects";
 import { trpc } from "../trpc/client";
 import { ReviewPromptEditor } from "./ReviewPromptEditor";
@@ -120,6 +121,9 @@ export function SettingsView() {
 		onSuccess: () => utils.aiReview.getSettings.invalidate(),
 	});
 
+	const vimEnabled = useEditorSettingsStore((s) => s.vimEnabled);
+	const setVimEnabled = useEditorSettingsStore((s) => s.setVimEnabled);
+
 	if (view === "prompt-editor") {
 		return <ReviewPromptEditor onBack={() => setView("main")} />;
 	}
@@ -210,6 +214,37 @@ export function SettingsView() {
 						onConnect={() => githubConnect.mutate()}
 						onDisconnect={() => githubDisconnect.mutate()}
 					/>
+				</div>
+
+				{/* Editor section */}
+				<div className="mt-6 px-3 pb-2">
+					<span className="text-[11px] font-medium uppercase tracking-[0.05em] text-[var(--text-quaternary)]">
+						Editor
+					</span>
+				</div>
+
+				<div className="flex flex-col gap-0.5 px-3">
+					<div className="flex items-center justify-between rounded-[8px] px-3 py-2.5 transition-colors hover:bg-[var(--bg-elevated)]">
+						<div className="flex flex-col gap-0.5">
+							<span className="text-[13px] font-medium text-[var(--text)]">Vim Mode</span>
+							<span className="text-[11px] text-[var(--text-tertiary)]">
+								Vim keybindings in code editors
+							</span>
+						</div>
+						<button
+							type="button"
+							onClick={() => setVimEnabled(!vimEnabled)}
+							className={`relative h-[22px] w-[40px] rounded-full transition-colors ${
+								vimEnabled ? "bg-[var(--accent)]" : "bg-[var(--bg-elevated)]"
+							}`}
+						>
+							<div
+								className={`absolute top-[2px] size-[18px] rounded-full bg-white transition-transform ${
+									vimEnabled ? "translate-x-[20px]" : "translate-x-[2px]"
+								}`}
+							/>
+						</button>
+					</div>
 				</div>
 
 				{/* AI Code Review section */}
@@ -406,6 +441,58 @@ export function SettingsView() {
 								</option>
 							))}
 						</select>
+					</div>
+
+					{/* Auto-solve PR comments */}
+					<div className="flex items-center justify-between rounded-[8px] px-3 py-2.5 transition-colors hover:bg-[var(--bg-elevated)]">
+						<div className="flex flex-col gap-0.5">
+							<span className="text-[13px] font-medium text-[var(--text)]">
+								Auto-solve PR comments
+							</span>
+							<span className="text-[11px] text-[var(--text-tertiary)]">
+								Automatically fix review comments when detected
+							</span>
+						</div>
+						<button
+							type="button"
+							onClick={() =>
+								updateAiSettings.mutate({
+									autoSolveEnabled: !aiSettings?.autoSolveEnabled,
+								})
+							}
+							className={`relative h-[22px] w-[40px] shrink-0 cursor-pointer rounded-full border-none transition-colors ${
+								aiSettings?.autoSolveEnabled ? "bg-[var(--accent)]" : "bg-[var(--bg-elevated)]"
+							}`}
+						>
+							<div
+								className={`absolute top-[2px] size-[18px] rounded-full bg-white transition-transform ${
+									aiSettings?.autoSolveEnabled ? "translate-x-[20px]" : "translate-x-[2px]"
+								}`}
+							/>
+						</button>
+					</div>
+
+					{/* Custom solve instructions */}
+					<div className="flex flex-col gap-2 rounded-[8px] px-3 py-2.5 transition-colors hover:bg-[var(--bg-elevated)]">
+						<div className="flex flex-col gap-0.5">
+							<span className="text-[13px] font-medium text-[var(--text)]">
+								Custom solve instructions
+							</span>
+							<span className="text-[11px] text-[var(--text-tertiary)]">
+								Additional guidance for the AI when resolving comments
+							</span>
+						</div>
+						<textarea
+							value={aiSettings?.solvePrompt ?? ""}
+							onChange={(e) =>
+								updateAiSettings.mutate({
+									solvePrompt: e.target.value || null,
+								})
+							}
+							rows={4}
+							placeholder="Leave blank to use default instructions…"
+							className="w-full resize-none rounded-[6px] border border-[var(--border)] bg-[var(--bg-base)] px-2.5 py-2 font-mono text-[11px] text-[var(--text)] placeholder-[var(--text-quaternary)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
+						/>
 					</div>
 				</div>
 

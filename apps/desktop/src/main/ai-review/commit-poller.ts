@@ -5,6 +5,7 @@ import * as schema from "../db/schema";
 import { getPRState as getGitHubPRState } from "../github/github";
 import { cleanupReviewWorkspace, findReviewWorkspaceByPR } from "./cleanup";
 import { getSettings, queueFollowUpReview } from "./orchestrator";
+import { parsePrIdentifier } from "./pr-identifier";
 
 const POLL_INTERVAL_MS = 60_000;
 
@@ -24,20 +25,6 @@ type NewCommitsHandler = (event: {
 
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 let onNewCommitsHandler: NewCommitsHandler | null = null;
-
-function parsePrIdentifier(identifier: string): {
-	ownerOrWorkspace: string;
-	repo: string;
-	number: number;
-} {
-	const [ownerRepo, numStr] = identifier.split("#");
-	const [ownerOrWorkspace, repo] = ownerRepo!.split("/");
-	return {
-		ownerOrWorkspace: ownerOrWorkspace!,
-		repo: repo!,
-		number: Number.parseInt(numStr!, 10),
-	};
-}
 
 function getActiveChains(): WatchedChain[] {
 	const db = getDb();
@@ -87,17 +74,17 @@ async function pollAllChains(): Promise<void> {
 }
 
 async function pollChain(chain: WatchedChain): Promise<void> {
-	const { ownerOrWorkspace, repo, number: prNumber } = parsePrIdentifier(chain.prIdentifier);
+	const { owner, repo, number: prNumber } = parsePrIdentifier(chain.prIdentifier);
 
 	let headSha: string;
 	let prState: string;
 
 	if (chain.prProvider === "github") {
-		const result = await getGitHubPRState(ownerOrWorkspace, repo, prNumber);
+		const result = await getGitHubPRState(owner, repo, prNumber);
 		headSha = result.headSha;
 		prState = result.merged ? "merged" : result.state;
 	} else {
-		const result = await getBitbucketPRState(ownerOrWorkspace, repo, prNumber);
+		const result = await getBitbucketPRState(owner, repo, prNumber);
 		headSha = result.headSha;
 		prState = result.state.toLowerCase();
 	}

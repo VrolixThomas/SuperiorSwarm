@@ -5,15 +5,18 @@ import { AddRepositoryModal } from "./components/AddRepositoryModal";
 import { CreateWorktreeModal } from "./components/CreateWorktreeModal";
 import { DaemonStatus } from "./components/DaemonStatus";
 import { DiffPanel } from "./components/DiffPanel";
+import { LoginScreen } from "./components/LoginScreen";
 import { MainContentArea } from "./components/MainContentArea";
 import { SharedFilesPanel } from "./components/SharedFilesPanel";
 import { Sidebar } from "./components/Sidebar";
+import { useAgentAlertListener } from "./hooks/useAgentAlertListener";
 import { usePaneShortcuts } from "./hooks/usePaneShortcuts";
 import {
 	setupDiagnosticsListener,
 	setupGoToDefinitionHandler,
 	setupServerRestartListener,
 } from "./lsp/monaco-lsp-bridge";
+import { useEditorSettingsStore } from "./stores/editor-settings";
 import { usePaneStore } from "./stores/pane-store";
 import { useProjectStore } from "./stores/projects";
 import type { TabItem } from "./stores/tab-store";
@@ -136,6 +139,13 @@ function collectSnapshot() {
 	if (Object.keys(workspaceMetadata).length > 0) {
 		state["workspaceMetadata"] = JSON.stringify(workspaceMetadata);
 	}
+	const { activeTicketProject } = store;
+	if (activeTicketProject) {
+		state["activeTicketProject"] = JSON.stringify(activeTicketProject);
+	}
+
+	const { vimEnabled } = useEditorSettingsStore.getState();
+	if (vimEnabled) state["vimMode"] = "true";
 
 	const paneLayouts: Record<string, string> = {};
 	const layouts = usePaneStore.getState().layouts;
@@ -147,6 +157,37 @@ function collectSnapshot() {
 }
 
 export function App() {
+	const sessionQuery = trpc.auth.getSession.useQuery(undefined, {
+		retry: false,
+		staleTime: 5 * 60 * 1000,
+	});
+
+	if (sessionQuery.isLoading) {
+		return (
+			<div
+				style={{
+					display: "flex",
+					alignItems: "center",
+					justifyContent: "center",
+					height: "100vh",
+					background: "var(--bg-base)",
+					color: "var(--text-tertiary)",
+					fontSize: "14px",
+				}}
+			>
+				Loading...
+			</div>
+		);
+	}
+
+	if (!sessionQuery.data) {
+		return <LoginScreen />;
+	}
+
+	return <AuthenticatedApp />;
+}
+
+function AuthenticatedApp() {
 	const [savedScrollback, setSavedScrollback] = useState<Record<string, string>>({});
 
 	const saveMutation = trpc.terminalSessions.save.useMutation();
@@ -168,6 +209,10 @@ export function App() {
 		const { sessions, state, paneLayouts, workspaceMeta } = restoreQuery.data;
 		const hasSessions = sessions.length > 0;
 		const hasLayouts = paneLayouts && Object.keys(paneLayouts).length > 0;
+
+		// Hydrate editor settings (independent of sessions/layouts)
+		useEditorSettingsStore.getState().hydrateVimMode(state["vimMode"]);
+
 		if (!hasSessions && !hasLayouts) return;
 
 		const scrollbacks: Record<string, string> = {};
@@ -288,6 +333,7 @@ export function App() {
 	}, []);
 
 	usePaneShortcuts();
+	useAgentAlertListener();
 
 	// Query update status on mount and trigger toast if needed
 	const updateStatus = trpc.updates.getStatus.useQuery(undefined, {
@@ -323,6 +369,7 @@ export function App() {
 	const setSidebarCollapsed = useProjectStore((s) => s.setSidebarCollapsed);
 	const sidebarCollapsed = useProjectStore((s) => s.sidebarCollapsed);
 	const rightPanelOpen = useTabStore((s) => s.rightPanel.open);
+	const sidebarSegment = useTabStore((s) => s.sidebarSegment);
 	const closeDiffPanel = useTabStore((s) => s.closeDiffPanel);
 	const openRightPanel = useTabStore((s) => s.openRightPanel);
 	const { defaultLayout, onLayoutChanged } = useDefaultLayout({
@@ -330,15 +377,20 @@ export function App() {
 		storage: localStorage,
 	});
 
-	// Sync panel collapse/expand with store state
+	// Sync panel collapse/expand with store state.
+	// Always collapse when on tickets segment — the diff panel is not relevant.
 	useEffect(() => {
 		if (!diffPanelRef.current) return;
+		if (sidebarSegment === "tickets") {
+			if (!diffPanelRef.current.isCollapsed()) diffPanelRef.current.collapse();
+			return;
+		}
 		if (rightPanelOpen && diffPanelRef.current.isCollapsed()) {
 			diffPanelRef.current.expand();
 		} else if (!rightPanelOpen && !diffPanelRef.current.isCollapsed()) {
 			diffPanelRef.current.collapse();
 		}
-	}, [rightPanelOpen, diffPanelRef]);
+	}, [rightPanelOpen, diffPanelRef, sidebarSegment]);
 
 	return (
 		<>
@@ -379,7 +431,7 @@ export function App() {
 					id="diff"
 					panelRef={diffPanelRef}
 					defaultSize="19.4%"
-					minSize="10%"
+					minSize={200}
 					maxSize="40%"
 					collapsible
 					collapsedSize="0%"
@@ -391,7 +443,7 @@ export function App() {
 					<DiffPanel onClose={closeDiffPanel} />
 				</Panel>
 			</Group>
-			{!rightPanelOpen && (
+			{!rightPanelOpen && sidebarSegment !== "tickets" && (
 				<button
 					type="button"
 					onClick={openRightPanel}

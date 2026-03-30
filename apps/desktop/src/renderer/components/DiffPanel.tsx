@@ -1,64 +1,64 @@
+import { useState } from "react";
 import type { DiffContext } from "../../shared/diff-types";
-import { type PanelMode, useTabStore } from "../stores/tab-store";
+import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
+import { AIFixesTab } from "./AIFixesTab";
 import { BranchChanges } from "./BranchChanges";
+import { CommentsOverviewTab } from "./CommentsOverviewTab";
 import { CommittedStack } from "./CommittedStack";
 import { DraftCommitCard } from "./DraftCommitCard";
 import { PRControlRail } from "./PRControlRail";
 import { RepoFileTree } from "./RepoFileTree";
 import { SmartHeaderBar } from "./SmartHeaderBar";
+import { Tooltip } from "./Tooltip";
+import { changesIcon, commentsIcon, filesIcon, sparkleIcon } from "./panel-icons";
+
+type DiffPanelTab = "changes" | "files" | "comments" | "ai-fixes";
+
+const panelTabIcons: Record<DiffPanelTab, React.ReactNode> = {
+	changes: changesIcon,
+	files: filesIcon,
+	comments: commentsIcon,
+	"ai-fixes": sparkleIcon,
+};
 
 function PanelHeader({
-	mode,
-	stats,
-	onSetMode,
+	activeTab,
+	onSetTab,
 	onClose,
 }: {
-	mode: PanelMode;
-	stats?: { added: number; removed: number; changed: number };
-	onSetMode: (mode: PanelMode) => void;
+	activeTab: DiffPanelTab;
+	onSetTab: (tab: DiffPanelTab) => void;
 	onClose?: () => void;
 }) {
+	const tabs: { key: DiffPanelTab; label: string }[] = [
+		{ key: "changes", label: "Changes" },
+		{ key: "files", label: "Files" },
+		{ key: "comments", label: "Comments" },
+		{ key: "ai-fixes", label: "Fixes" },
+	];
+
 	return (
 		<div className="flex shrink-0 items-center gap-2 border-b border-[var(--border)] px-3 py-2">
-			{/* Segmented control */}
 			<div className="flex rounded-[var(--radius-sm)] bg-[var(--bg-base)] p-0.5">
-				<button
-					type="button"
-					onClick={() => onSetMode("diff")}
-					className={[
-						"rounded-[4px] px-3 py-0.5 text-[11px] font-medium transition-all duration-[120ms]",
-						mode === "diff"
-							? "bg-[var(--bg-elevated)] text-[var(--text-secondary)] shadow-[var(--shadow-sm)]"
-							: "text-[var(--text-quaternary)] hover:text-[var(--text-tertiary)]",
-					].join(" ")}
-				>
-					Changes
-				</button>
-				<button
-					type="button"
-					onClick={() => onSetMode("explorer")}
-					className={[
-						"rounded-[4px] px-3 py-0.5 text-[11px] font-medium transition-all duration-[120ms]",
-						mode === "explorer"
-							? "bg-[var(--bg-elevated)] text-[var(--text-secondary)] shadow-[var(--shadow-sm)]"
-							: "text-[var(--text-quaternary)] hover:text-[var(--text-tertiary)]",
-					].join(" ")}
-				>
-					Files
-				</button>
+				{tabs.map((t) => (
+					<Tooltip key={t.key} label={t.label}>
+						<button
+							type="button"
+							onClick={() => onSetTab(t.key)}
+							className={[
+								"flex items-center gap-1 rounded-[4px] px-2 py-1 transition-all duration-[120ms]",
+								activeTab === t.key
+									? "bg-[var(--bg-elevated)] text-[var(--text-secondary)] shadow-[var(--shadow-sm)]"
+									: "text-[var(--text-quaternary)] hover:text-[var(--text-tertiary)]",
+							].join(" ")}
+						>
+							{panelTabIcons[t.key]}
+						</button>
+					</Tooltip>
+				))}
 			</div>
-
 			<div className="flex-1" />
-
-			{stats && (
-				<div className="flex items-center rounded-full bg-[var(--bg-base)] px-2 py-0.5 text-[11px]">
-					<span className="text-[var(--term-green)]">+{stats.added + stats.changed}</span>
-					<span className="mx-1 text-[var(--text-quaternary)]">/</span>
-					<span className="text-[var(--term-red)]">-{stats.removed}</span>
-				</div>
-			)}
-
 			{onClose && (
 				<button
 					type="button"
@@ -85,13 +85,13 @@ function PanelHeader({
 }
 
 function DiffPanelContent({ diffCtx, onClose }: { diffCtx: DiffContext; onClose?: () => void }) {
-	const togglePanelMode = useTabStore((s) => s.togglePanelMode);
+	const [activeTab, setActiveTab] = useState<DiffPanelTab>("changes");
 	const activeWorkspaceId = useTabStore((s) => s.activeWorkspaceId);
+	const activeWorkspaceCwd = useTabStore((s) => s.activeWorkspaceCwd);
 	const setBaseBranch = useTabStore((s) => s.setBaseBranch);
 	const storedBaseBranch = useTabStore((s) =>
 		activeWorkspaceId ? s.baseBranchByWorkspace[activeWorkspaceId] : undefined
 	);
-
 	const utils = trpc.useUtils();
 
 	// Fetch default branch to use as initial base
@@ -106,36 +106,6 @@ function DiffPanelContent({ diffCtx, onClose }: { diffCtx: DiffContext; onClose?
 	const statusQuery = trpc.diff.getWorkingTreeStatus.useQuery(
 		{ repoPath: diffCtx.repoPath },
 		{ enabled: diffCtx.type === "working-tree", staleTime: 30_000 }
-	);
-
-	// Working tree diff (for stats)
-	const workingTreeQuery = trpc.diff.getWorkingTreeDiff.useQuery(
-		{ repoPath: diffCtx.repoPath },
-		{ enabled: diffCtx.type === "working-tree", staleTime: 30_000 }
-	);
-
-	// Branch diff (for non-working-tree contexts)
-	const branchDiffQuery = trpc.diff.getBranchDiff.useQuery(
-		diffCtx.type === "branch"
-			? {
-					repoPath: diffCtx.repoPath,
-					baseBranch: diffCtx.baseBranch,
-					headBranch: diffCtx.headBranch,
-				}
-			: { repoPath: "", baseBranch: "", headBranch: "" },
-		{ enabled: diffCtx.type === "branch", staleTime: 30_000 }
-	);
-
-	const prDiffQuery = trpc.diff.getPRDiff.useQuery(
-		diffCtx.type === "pr"
-			? {
-					repoPath: diffCtx.repoPath,
-					prId: diffCtx.prId,
-					workspaceSlug: diffCtx.workspaceSlug,
-					repoSlug: diffCtx.repoSlug,
-				}
-			: { repoPath: "", prId: 0, workspaceSlug: "", repoSlug: "" },
-		{ enabled: diffCtx.type === "pr", staleTime: 60_000 }
 	);
 
 	const invalidateAll = () => {
@@ -153,116 +123,91 @@ function DiffPanelContent({ diffCtx, onClose }: { diffCtx: DiffContext; onClose?
 		onSuccess: invalidateAll,
 	});
 
-	const stats =
-		diffCtx.type === "working-tree"
-			? workingTreeQuery.data?.stats
-			: diffCtx.type === "branch"
-				? branchDiffQuery.data?.stats
-				: prDiffQuery.data?.stats;
-
 	const currentBranch = statusQuery.data?.branch ?? "";
 	const hasStatusData = diffCtx.type === "working-tree" && statusQuery.data != null;
 
 	return (
 		<div className="flex h-full flex-col overflow-hidden">
-			<PanelHeader
-				mode="diff"
-				stats={stats ?? undefined}
-				onSetMode={(m) => {
-					if (m !== "diff") togglePanelMode();
-				}}
-				onClose={onClose}
-			/>
+			<PanelHeader activeTab={activeTab} onSetTab={setActiveTab} onClose={onClose} />
 
-			{/* Smart header bar — only for working-tree mode */}
-			{diffCtx.type === "working-tree" && currentBranch && (
-				<SmartHeaderBar
-					repoPath={diffCtx.repoPath}
-					currentBranch={currentBranch}
-					baseBranch={effectiveBaseBranch}
-					onBaseBranchChange={(branch) => {
-						if (activeWorkspaceId) {
-							setBaseBranch(activeWorkspaceId, branch);
-							// Force refetch of all queries that depend on baseBranch
-							utils.diff.getBranchDiff.invalidate();
-							utils.diff.getCommitsAhead.invalidate();
-						}
-					}}
-				/>
-			)}
+			{activeTab === "comments" && activeWorkspaceId ? (
+				<CommentsOverviewTab workspaceId={activeWorkspaceId} />
+			) : activeTab === "ai-fixes" && activeWorkspaceId ? (
+				<AIFixesTab workspaceId={activeWorkspaceId} />
+			) : activeTab === "files" && activeWorkspaceId && activeWorkspaceCwd ? (
+				<div className="flex flex-1 flex-col min-h-0 overflow-hidden">
+					<RepoFileTree repoPath={activeWorkspaceCwd} workspaceId={activeWorkspaceId} />
+				</div>
+			) : (
+				<>
+					{/* Smart header bar — only for working-tree mode */}
+					{diffCtx.type === "working-tree" && currentBranch && (
+						<SmartHeaderBar
+							repoPath={diffCtx.repoPath}
+							currentBranch={currentBranch}
+							baseBranch={effectiveBaseBranch}
+							onBaseBranchChange={(branch) => {
+								if (activeWorkspaceId) {
+									setBaseBranch(activeWorkspaceId, branch);
+									// Force refetch of all queries that depend on baseBranch
+									utils.diff.getBranchDiff.invalidate();
+									utils.diff.getCommitsAhead.invalidate();
+								}
+							}}
+						/>
+					)}
 
-			{/* Scrollable timeline content */}
-			<div className="flex-1 overflow-y-auto">
-				{!activeWorkspaceId && (
-					<div className="px-3 py-4 text-[12px] text-[var(--text-quaternary)]">
-						Select a workspace
-					</div>
-				)}
-
-				{activeWorkspaceId && diffCtx.type === "working-tree" && (
-					<>
-						{/* Draft commit card */}
-						{hasStatusData && (
-							<DraftCommitCard
-								diffCtx={diffCtx}
-								stagedFiles={statusQuery.data.stagedFiles}
-								unstagedFiles={statusQuery.data.unstagedFiles}
-								onStage={(paths) => stageMutation.mutate({ repoPath: diffCtx.repoPath, paths })}
-								onUnstage={(paths) => unstageMutation.mutate({ repoPath: diffCtx.repoPath, paths })}
-								onInvalidate={invalidateAll}
-							/>
-						)}
-
-						{/* Committed stack */}
-						<div className="mt-3">
-							<CommittedStack
-								repoPath={diffCtx.repoPath}
-								baseBranch={effectiveBaseBranch}
-								diffCtx={diffCtx}
-								workspaceId={activeWorkspaceId}
-							/>
-						</div>
-
-						{/* Branch changes — full diff vs base */}
-						{currentBranch && (
-							<div className="mt-1 mb-4">
-								<BranchChanges
-									repoPath={diffCtx.repoPath}
-									baseBranch={effectiveBaseBranch}
-									currentBranch={currentBranch}
-									diffCtx={diffCtx}
-									workspaceId={activeWorkspaceId}
-								/>
+					{/* Scrollable timeline content */}
+					<div className="flex-1 overflow-y-auto">
+						{!activeWorkspaceId && (
+							<div className="px-3 py-4 text-[12px] text-[var(--text-quaternary)]">
+								Select a workspace
 							</div>
 						)}
-					</>
-				)}
-			</div>
-		</div>
-	);
-}
 
-function ExplorerPanelContent({ onClose }: { onClose?: () => void }) {
-	const togglePanelMode = useTabStore((s) => s.togglePanelMode);
-	const activeWorkspaceId = useTabStore((s) => s.activeWorkspaceId);
-	const activeWorkspaceCwd = useTabStore((s) => s.activeWorkspaceCwd);
+						{activeWorkspaceId && diffCtx.type === "working-tree" && (
+							<>
+								{/* Draft commit card */}
+								{hasStatusData && (
+									<DraftCommitCard
+										diffCtx={diffCtx}
+										stagedFiles={statusQuery.data.stagedFiles}
+										unstagedFiles={statusQuery.data.unstagedFiles}
+										onStage={(paths) => stageMutation.mutate({ repoPath: diffCtx.repoPath, paths })}
+										onUnstage={(paths) =>
+											unstageMutation.mutate({ repoPath: diffCtx.repoPath, paths })
+										}
+										onInvalidate={invalidateAll}
+									/>
+								)}
 
-	return (
-		<div className="flex h-full flex-col overflow-hidden">
-			<PanelHeader
-				mode="explorer"
-				onSetMode={(m) => {
-					if (m !== "explorer") togglePanelMode();
-				}}
-				onClose={onClose}
-			/>
-			{!activeWorkspaceId ? (
-				<div className="flex flex-1 items-center justify-center">
-					<span className="text-[12px] text-[var(--text-quaternary)]">Select a workspace</span>
-				</div>
-			) : activeWorkspaceCwd ? (
-				<RepoFileTree repoPath={activeWorkspaceCwd} workspaceId={activeWorkspaceId} />
-			) : null}
+								{/* Committed stack */}
+								<div className="mt-3">
+									<CommittedStack
+										repoPath={diffCtx.repoPath}
+										baseBranch={effectiveBaseBranch}
+										diffCtx={diffCtx}
+										workspaceId={activeWorkspaceId}
+									/>
+								</div>
+
+								{/* Branch changes — full diff vs base */}
+								{currentBranch && (
+									<div className="mt-1 mb-4">
+										<BranchChanges
+											repoPath={diffCtx.repoPath}
+											baseBranch={effectiveBaseBranch}
+											currentBranch={currentBranch}
+											diffCtx={diffCtx}
+											workspaceId={activeWorkspaceId}
+										/>
+									</div>
+								)}
+							</>
+						)}
+					</div>
+				</>
+			)}
 		</div>
 	);
 }
@@ -309,13 +254,11 @@ export function DiffPanel({ onClose }: { onClose?: () => void }) {
 	return (
 		<div className="relative flex h-full w-full flex-col overflow-hidden bg-[var(--bg-surface)]">
 			{onClose && <PanelEdgeClose onClose={onClose} />}
-			{rightPanel.mode === "diff" && rightPanel.diffCtx ? (
+			{rightPanel.diffCtx ? (
 				<DiffPanelContent diffCtx={rightPanel.diffCtx} onClose={onClose} />
-			) : rightPanel.mode === "explorer" ? (
-				<ExplorerPanelContent onClose={onClose} />
 			) : (
 				<>
-					<PanelHeader mode="diff" onSetMode={() => {}} onClose={onClose} />
+					<PanelHeader activeTab="changes" onSetTab={() => {}} onClose={onClose} />
 					<div className="flex flex-1 items-center justify-center">
 						<span className="text-[12px] text-[var(--text-quaternary)]">Select a workspace</span>
 					</div>

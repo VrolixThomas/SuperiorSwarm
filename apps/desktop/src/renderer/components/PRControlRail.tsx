@@ -1,20 +1,28 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { detectLanguage } from "../../shared/diff-types";
 import type {
 	AIDraftThread,
 	GitHubPRDetails,
-	GitHubReviewThread,
 	PRContext,
 	UnifiedThread,
 } from "../../shared/github-types";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
+import { CommentThreadCard, threadAuthor, threadDate } from "./CommentThreadCard";
+import type { SortMode } from "./CommentThreadCard";
 import { RepoFileTree } from "./RepoFileTree";
 import { SmartHeaderBar } from "./SmartHeaderBar";
 import { SubmitReviewModal } from "./SubmitReviewModal";
+import { Tooltip } from "./Tooltip";
+import { changesIcon, commentsIcon, filesIcon, sparkleIcon } from "./panel-icons";
 
 type PRTab = "changes" | "comments" | "files";
-type SortMode = "by-file" | "by-reviewer" | "latest-first";
+
+const prTabIcons: Record<PRTab, React.ReactNode> = {
+	changes: changesIcon,
+	comments: commentsIcon,
+	files: filesIcon,
+};
 
 // ── Tab header (segmented control) ──────────────────────────────────────────
 
@@ -39,24 +47,25 @@ function PRTabHeader({
 		<div className="flex shrink-0 items-center gap-2 border-b border-[var(--border)] px-3 py-2">
 			<div className="flex rounded-[var(--radius-sm)] bg-[var(--bg-base)] p-0.5">
 				{tabs.map((t) => (
-					<button
-						key={t.key}
-						type="button"
-						onClick={() => onSetTab(t.key)}
-						className={[
-							"flex items-center gap-1 rounded-[4px] px-3 py-0.5 text-[11px] font-medium transition-all duration-[120ms]",
-							tab === t.key
-								? "bg-[var(--bg-elevated)] text-[var(--text-secondary)] shadow-[var(--shadow-sm)]"
-								: "text-[var(--text-quaternary)] hover:text-[var(--text-tertiary)]",
-						].join(" ")}
-					>
-						{t.label}
-						{t.badge != null && (
-							<span className="rounded-full bg-[var(--bg-overlay)] px-1 text-[9px] text-[var(--text-tertiary)]">
-								{t.badge}
-							</span>
-						)}
-					</button>
+					<Tooltip key={t.key} label={t.label}>
+						<button
+							type="button"
+							onClick={() => onSetTab(t.key)}
+							className={[
+								"flex items-center gap-1 rounded-[4px] px-2 py-1 transition-all duration-[120ms]",
+								tab === t.key
+									? "bg-[var(--bg-elevated)] text-[var(--text-secondary)] shadow-[var(--shadow-sm)]"
+									: "text-[var(--text-quaternary)] hover:text-[var(--text-tertiary)]",
+							].join(" ")}
+						>
+							{prTabIcons[t.key]}
+							{t.badge != null && (
+								<span className="rounded-full bg-[var(--bg-overlay)] px-1 text-[9px] text-[var(--text-tertiary)]">
+									{t.badge}
+								</span>
+							)}
+						</button>
+					</Tooltip>
 				))}
 			</div>
 			<div className="flex-1" />
@@ -152,9 +161,7 @@ function ChangesTab({
 
 	// Commits query — use origin/<baseBranch> because worktrees may not have
 	// a local tracking branch for the target (e.g. no local "main", only "origin/main")
-	const commitsBaseBranch = baseBranch.startsWith("origin/")
-		? baseBranch
-		: `origin/${baseBranch}`;
+	const commitsBaseBranch = baseBranch.startsWith("origin/") ? baseBranch : `origin/${baseBranch}`;
 	const commitsQuery = trpc.diff.getCommitsAhead.useQuery(
 		{ repoPath: prCtx.repoPath, baseBranch: commitsBaseBranch },
 		{ staleTime: 30_000, enabled: !!prCtx.repoPath }
@@ -451,16 +458,6 @@ function PRCommitCard({
 
 // ── Comments tab ────────────────────────────────────────────────────────────
 
-function threadAuthor(t: UnifiedThread): string {
-	if (t.isAIDraft) return "BranchFlux AI";
-	return (t as GitHubReviewThread).comments[0]?.author ?? "Unknown";
-}
-
-function threadDate(t: UnifiedThread): string {
-	if (t.isAIDraft) return t.createdAt;
-	return (t as GitHubReviewThread).comments[0]?.createdAt ?? "";
-}
-
 function CommentsTab({
 	details,
 	prCtx,
@@ -489,8 +486,7 @@ function CommentsTab({
 			if (!launchInfo.reviewWorkspaceId || !launchInfo.worktreePath) return;
 
 			const tabStore = useTabStore.getState();
-			const alreadyActive =
-				tabStore.activeWorkspaceId === launchInfo.reviewWorkspaceId;
+			const alreadyActive = tabStore.activeWorkspaceId === launchInfo.reviewWorkspaceId;
 
 			if (!alreadyActive) {
 				// Only switch workspace if we're not already there
@@ -502,17 +498,14 @@ function CommentsTab({
 					sourceBranch: prCtx.sourceBranch,
 					targetBranch: prCtx.targetBranch,
 				});
-				tabStore.setActiveWorkspace(
-					launchInfo.reviewWorkspaceId,
-					launchInfo.worktreePath,
-				);
+				tabStore.setActiveWorkspace(launchInfo.reviewWorkspaceId, launchInfo.worktreePath);
 			}
 
 			// Create a fresh terminal tab for the re-review
 			const tabId = tabStore.addTerminalTab(
 				launchInfo.reviewWorkspaceId,
 				launchInfo.worktreePath,
-				"AI Re-review",
+				"AI Re-review"
 			);
 			attachTerminal.mutate({
 				workspaceId: launchInfo.reviewWorkspaceId,
@@ -520,10 +513,7 @@ function CommentsTab({
 			});
 
 			setTimeout(() => {
-				window.electron.terminal.write(
-					tabId,
-					`bash '${launchInfo.launchScript}'\r`,
-				);
+				window.electron.terminal.write(tabId, `bash '${launchInfo.launchScript}'\r`);
 			}, 1000);
 		},
 		onError: (err) => {
@@ -616,49 +606,67 @@ function CommentsTab({
 
 	return (
 		<div className="flex flex-1 flex-col overflow-hidden">
-			{/* Sort control */}
-			<div className="flex shrink-0 items-center justify-between border-b border-[var(--border-subtle)] px-3 py-1.5">
-				<span className="text-[11px] text-[var(--text-tertiary)]">
-					{allThreads.length} thread{allThreads.length !== 1 ? "s" : ""}
-				</span>
-				<div className="flex items-center gap-1.5">
-					{reviewChainId && (
+			{/* Toolbar */}
+			<div className="flex shrink-0 items-center gap-2 border-b border-[var(--border-subtle)] px-3 py-1.5">
+				{reviewChainId && (
+					<Tooltip
+						label={
+							triggerFollowUp.isPending
+								? "Starting..."
+								: triggerFollowUp.isError
+									? "Re-review failed"
+									: "Re-review"
+						}
+					>
 						<button
 							type="button"
 							onClick={() => triggerFollowUp.mutate({ reviewChainId })}
 							disabled={triggerFollowUp.isPending}
-							className={`flex items-center gap-1.5 rounded-[6px] border px-2.5 py-1 text-[12px] transition-colors ${
+							className={[
+								"flex h-6 w-6 items-center justify-center rounded-[var(--radius-sm)] transition-colors",
 								triggerFollowUp.isError
-									? "border-[#f85149] text-[#f85149]"
-									: "border-[var(--border-subtle)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:bg-[var(--bg-overlay)] hover:text-[var(--text)]"
-							}`}
+									? "text-[#f85149]"
+									: "text-[var(--text-quaternary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-tertiary)]",
+							].join(" ")}
 						>
-							{triggerFollowUp.isPending
-								? "Starting..."
-								: triggerFollowUp.isError
-									? "Failed"
-									: "Re-review"}
+							<svg
+								width="13"
+								height="13"
+								viewBox="0 0 16 16"
+								fill="none"
+								stroke="currentColor"
+								strokeWidth="1.5"
+								strokeLinecap="round"
+								strokeLinejoin="round"
+								aria-hidden="true"
+							>
+								<path d="M2 8a6 6 0 0 1 10.3-4.2M14 8a6 6 0 0 1-10.3 4.2" />
+								<path d="M14 2v4h-4M2 14v-4h4" />
+							</svg>
 						</button>
-					)}
-					{summaryMarkdown && (
+					</Tooltip>
+				)}
+				{summaryMarkdown && (
+					<Tooltip label="Summary">
 						<button
 							type="button"
 							onClick={onShowSummary}
-							className="flex items-center gap-1 rounded-[4px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-1.5 py-0.5 text-[10px] text-[var(--text-tertiary)] outline-none transition-colors hover:text-[var(--text-secondary)]"
+							className="flex h-6 w-6 items-center justify-center rounded-[var(--radius-sm)] text-[var(--text-quaternary)] transition-colors hover:bg-[var(--bg-elevated)] hover:text-[var(--text-tertiary)]"
 						>
-							✦ Summary
+							{sparkleIcon}
 						</button>
-					)}
-					<select
-						value={sortMode}
-						onChange={(e) => setSortMode(e.target.value as SortMode)}
-						className="rounded-[4px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-1.5 py-0.5 text-[10px] text-[var(--text-tertiary)] outline-none"
-					>
-						<option value="by-file">By file</option>
-						<option value="by-reviewer">By reviewer</option>
-						<option value="latest-first">Latest first</option>
-					</select>
-				</div>
+					</Tooltip>
+				)}
+				<div className="flex-1" />
+				<select
+					value={sortMode}
+					onChange={(e) => setSortMode(e.target.value as SortMode)}
+					className="rounded-[4px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-1.5 py-0.5 text-[10px] text-[var(--text-tertiary)] outline-none"
+				>
+					<option value="by-file">By file</option>
+					<option value="by-reviewer">By reviewer</option>
+					<option value="latest-first">Latest first</option>
+				</select>
 			</div>
 
 			{/* Thread list */}
@@ -675,210 +683,6 @@ function CommentsTab({
 							</div>
 						))}
 			</div>
-		</div>
-	);
-}
-
-function CommentThreadCard({
-	thread,
-	prCtx,
-	onAccept,
-	onDecline,
-	onDelete,
-	onReply,
-	onResolve,
-	onNavigate,
-}: {
-	thread: UnifiedThread;
-	prCtx: PRContext;
-	onAccept?: (id: string) => void;
-	onDecline?: (id: string) => void;
-	onDelete?: (id: string) => void;
-	onReply?: (threadId: string, body: string) => void;
-	onResolve?: (threadId: string) => void;
-	onNavigate: (path: string) => void;
-}) {
-	const [replyOpen, setReplyOpen] = useState(false);
-	const [replyBody, setReplyBody] = useState("");
-	const replyRef = useRef<HTMLTextAreaElement>(null);
-
-	useEffect(() => {
-		if (replyOpen) replyRef.current?.focus();
-	}, [replyOpen]);
-
-	const filename = thread.path.split("/").pop() ?? thread.path;
-	const isAI = !!thread.isAIDraft;
-
-	if (isAI) {
-		const ai = thread as AIDraftThread;
-		return (
-			<div className="mx-2 mb-1.5 overflow-hidden rounded-[6px] border border-[var(--border-subtle)] bg-[var(--bg-surface)]">
-				<div className="flex items-center gap-1.5 border-b border-[var(--border-subtle)] px-3 py-1">
-					<span className="ai-badge">AI</span>
-					<button
-						type="button"
-						onClick={() => onNavigate(thread.path)}
-						className="font-mono text-[10px] text-[var(--text-quaternary)] hover:text-[var(--accent)]"
-					>
-						{filename}
-						{ai.line != null && `:${ai.line}`}
-					</button>
-					<div className="flex-1" />
-					{ai.roundNumber != null && ai.roundNumber > 1 && (
-						<span className="text-[10px] text-[var(--text-quaternary)]">
-							Round {ai.roundNumber}
-						</span>
-					)}
-					{ai.resolution === "resolved-by-code" && (
-						<span className="flex items-center gap-1 text-[11px] text-[#32d74b]">
-							<span>&#10003;</span> Resolved
-						</span>
-					)}
-					{ai.resolution === "incorrectly-resolved" && (
-						<span className="flex items-center gap-1 text-[11px] text-[#ff9f0a]">
-							<span>&#9888;</span> Flagged
-						</span>
-					)}
-					{ai.status === "user-pending" && (
-						<span className="rounded-[3px] border border-[var(--border-active)] bg-[var(--bg-overlay)] px-1.5 py-px text-[9px] font-semibold uppercase tracking-wide text-[var(--text-tertiary)]">
-							Pending
-						</span>
-					)}
-					{ai.status === "error" && (
-						<span className="rounded-[3px] border border-[rgba(255,69,58,0.3)] bg-[rgba(255,69,58,0.12)] px-1.5 py-px text-[9px] font-semibold uppercase tracking-wide text-[#ff453a]">
-							Failed
-						</span>
-					)}
-				</div>
-				<div className="px-3 py-2 text-[11px] text-[var(--text-secondary)] whitespace-pre-wrap">
-					{ai.userEdit ?? ai.body}
-				</div>
-				{ai.status === "pending" && onAccept && onDecline && (
-					<div className="flex gap-1.5 border-t border-[var(--border-subtle)] px-3 py-1.5">
-						<button
-							type="button"
-							onClick={() => onAccept(ai.draftCommentId)}
-							className="rounded-[4px] px-2 py-0.5 text-[10px] font-medium bg-[rgba(48,209,88,0.15)] text-[#30d158] hover:opacity-80"
-						>
-							Accept
-						</button>
-						<button
-							type="button"
-							onClick={() => onDecline(ai.draftCommentId)}
-							className="rounded-[4px] px-2 py-0.5 text-[10px] bg-[var(--bg-elevated)] text-[var(--text-tertiary)] hover:opacity-80"
-						>
-							Decline
-						</button>
-					</div>
-				)}
-				{ai.status === "error" && onDelete && (
-					<div className="flex gap-1.5 border-t border-[var(--border-subtle)] px-3 py-1.5">
-						<button
-							type="button"
-							onClick={() => onDelete(ai.draftCommentId)}
-							className="rounded-[4px] px-2 py-0.5 text-[10px] font-medium bg-[rgba(255,69,58,0.15)] text-[#ff453a] hover:opacity-80"
-						>
-							Remove
-						</button>
-					</div>
-				)}
-			</div>
-		);
-	}
-
-	// GitHub thread
-	const gh = thread as GitHubReviewThread;
-	return (
-		<div className="mx-2 mb-1.5 overflow-hidden rounded-[6px] border border-[var(--border-subtle)] bg-[var(--bg-surface)]">
-			<div className="flex items-center gap-1.5 border-b border-[var(--border-subtle)] px-3 py-1">
-				<button
-					type="button"
-					onClick={() => onNavigate(thread.path)}
-					className="font-mono text-[10px] text-[var(--text-quaternary)] hover:text-[var(--accent)]"
-				>
-					{filename}
-					{gh.line != null && `:${gh.line}`}
-				</button>
-				<div className="flex-1" />
-				{gh.isResolved ? (
-					<span className="text-[10px] text-green-400">Resolved</span>
-				) : (
-					onResolve && (
-						<button
-							type="button"
-							onClick={() => onResolve(gh.id)}
-							className="text-[10px] text-[var(--text-quaternary)] hover:text-[var(--text-tertiary)]"
-						>
-							Resolve
-						</button>
-					)
-				)}
-			</div>
-
-			{gh.comments.map((c) => (
-				<div
-					key={c.id}
-					className="border-b border-[var(--border-subtle)] px-3 py-2 last:border-b-0"
-				>
-					<div className="mb-0.5 flex items-center gap-1.5 text-[10px]">
-						<span className="font-medium text-[var(--text-secondary)]">{c.author}</span>
-						<span className="text-[var(--text-quaternary)]">
-							{new Date(c.createdAt).toLocaleDateString()}
-						</span>
-					</div>
-					<p className="text-[11px] text-[var(--text-tertiary)] whitespace-pre-wrap">{c.body}</p>
-				</div>
-			))}
-
-			{!gh.isResolved && onReply && (
-				<div className="border-t border-[var(--border-subtle)]">
-					{!replyOpen ? (
-						<button
-							type="button"
-							onClick={() => setReplyOpen(true)}
-							className="w-full px-3 py-1.5 text-left text-[10px] text-[var(--text-quaternary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-tertiary)] transition-colors"
-						>
-							Reply…
-						</button>
-					) : (
-						<div className="flex flex-col gap-1.5 p-2">
-							<textarea
-								ref={replyRef}
-								value={replyBody}
-								onChange={(e) => setReplyBody(e.target.value)}
-								rows={2}
-								placeholder="Write a reply…"
-								className="w-full resize-none rounded-[4px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 py-1 text-[11px] text-[var(--text-secondary)] placeholder-[var(--text-quaternary)] outline-none focus:border-[var(--accent)]"
-							/>
-							<div className="flex gap-1.5">
-								<button
-									type="button"
-									onClick={() => {
-										if (replyBody.trim()) {
-											onReply(gh.id, replyBody.trim());
-											setReplyBody("");
-											setReplyOpen(false);
-										}
-									}}
-									className="rounded-[4px] bg-[var(--accent)] px-2 py-0.5 text-[10px] font-medium text-white hover:opacity-80"
-								>
-									Reply
-								</button>
-								<button
-									type="button"
-									onClick={() => {
-										setReplyOpen(false);
-										setReplyBody("");
-									}}
-									className="text-[10px] text-[var(--text-quaternary)] hover:text-[var(--text-tertiary)]"
-								>
-									Cancel
-								</button>
-							</div>
-						</div>
-					)}
-				</div>
-			)}
 		</div>
 	);
 }

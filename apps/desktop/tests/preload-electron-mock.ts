@@ -8,7 +8,7 @@ mock.module("electron", () => ({
 		decryptString: (b: Buffer) => b.toString(),
 	},
 	app: {
-		getPath: (_name: string) => `/tmp/branchflux-test-${process.pid}`,
+		getPath: (_name: string) => `/tmp/superiorswarm-test-${process.pid}`,
 		isPackaged: false,
 	},
 	ipcMain: {

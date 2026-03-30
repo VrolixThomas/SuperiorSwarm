@@ -1,7 +1,9 @@
 import { router } from "../index";
 import { aiReviewRouter } from "./ai-review";
 import { atlassianRouter } from "./atlassian";
+import { authRouter } from "./auth";
 import { branchesRouter } from "./branches";
+import { commentSolverRouter } from "./comment-solver";
 import { diffRouter } from "./diff";
 import { githubRouter } from "./github";
 import { linearRouter } from "./linear";
@@ -14,7 +16,9 @@ import { updatesRouter } from "./updates";
 import { workspacesRouter } from "./workspaces";
 
 export const appRouter = router({
+	auth: authRouter,
 	aiReview: aiReviewRouter,
+	commentSolver: commentSolverRouter,
 	projects: projectsRouter,
 	workspaces: workspacesRouter,
 	branches: branchesRouter,

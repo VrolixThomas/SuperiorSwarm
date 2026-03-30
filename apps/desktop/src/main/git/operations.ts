@@ -186,8 +186,19 @@ export async function listWorktrees(repoPath: string): Promise<WorktreeInfo[]> {
 
 export async function listBranches(repoPath: string): Promise<string[]> {
 	const git = simpleGit(repoPath);
-	const result = await git.branchLocal();
-	return result.all;
+	try {
+		await git.fetch("origin");
+	} catch {
+		// No remote configured or unreachable — fall back to local branches only
+	}
+	const result = await git.branch(["-a"]);
+	const branches = new Set<string>();
+	for (const name of result.all) {
+		if (name.includes("/HEAD")) continue;
+		const clean = name.replace(/^remotes\/origin\//, "");
+		branches.add(clean);
+	}
+	return [...branches].sort();
 }
 
 export async function hasUncommittedChanges(repoPath: string): Promise<boolean> {

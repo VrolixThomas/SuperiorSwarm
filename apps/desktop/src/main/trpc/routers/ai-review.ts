@@ -32,6 +32,8 @@ export const aiReviewRouter = router({
 				maxConcurrentReviews: z.number().min(1).max(10).optional(),
 				autoApproveResolutions: z.boolean().optional(),
 				autoPublishResolutions: z.boolean().optional(),
+				autoSolveEnabled: z.boolean().optional(),
+				solvePrompt: z.string().nullable().optional(),
 			})
 		)
 		.mutation(({ input }) => {
@@ -54,6 +56,12 @@ export const aiReviewRouter = router({
 				updates.autoApproveResolutions = input.autoApproveResolutions ? 1 : 0;
 			if (input.autoPublishResolutions !== undefined)
 				updates.autoPublishResolutions = input.autoPublishResolutions ? 1 : 0;
+			if (input.autoSolveEnabled !== undefined)
+				updates.autoSolveEnabled = input.autoSolveEnabled ? 1 : 0;
+			if (input.solvePrompt !== undefined) {
+				const trimmed = input.solvePrompt?.trim();
+				updates.solvePrompt = trimmed || null;
+			}
 
 			db.update(schema.aiReviewSettings)
 				.set(updates)
@@ -87,7 +95,7 @@ export const aiReviewRouter = router({
 		.mutation(async ({ input }) => {
 			if (!input.repoPath) {
 				throw new Error(
-					"Cannot start review: this PR's repository is not tracked in BranchFlux. " +
+					"Cannot start review: this PR's repository is not tracked in SuperiorSwarm. " +
 						"Add the repository as a project first."
 				);
 			}
@@ -219,9 +227,7 @@ export const aiReviewRouter = router({
 		.input(z.object({ commentId: z.string() }))
 		.mutation(({ input }) => {
 			const db = getDb();
-			db.delete(schema.draftComments)
-				.where(eq(schema.draftComments.id, input.commentId))
-				.run();
+			db.delete(schema.draftComments).where(eq(schema.draftComments.id, input.commentId)).run();
 			return { success: true };
 		}),
 

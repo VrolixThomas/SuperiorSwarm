@@ -9,36 +9,17 @@ interface ProjectItemProps {
 	project: Project;
 	isExpanded: boolean;
 	onToggle: () => void;
+	activeWorkspaceId: string;
 }
 
-function ChevronIcon({ expanded }: { expanded: boolean }) {
-	return (
-		<svg
-			aria-hidden="true"
-			width="8"
-			height="8"
-			viewBox="0 0 8 8"
-			fill="none"
-			className={[
-				"shrink-0 transition-transform duration-[120ms]",
-				expanded ? "rotate-90" : "rotate-0",
-			].join(" ")}
-		>
-			<path
-				d="M2 1l3 3-3 3"
-				stroke="currentColor"
-				strokeWidth="1.3"
-				strokeLinecap="round"
-				strokeLinejoin="round"
-			/>
-		</svg>
-	);
-}
-
-export function ProjectItem({ project, isExpanded, onToggle }: ProjectItemProps) {
+export function ProjectItem({
+	project,
+	isExpanded,
+	onToggle,
+	activeWorkspaceId,
+}: ProjectItemProps) {
 	const isCloning = project.status === "cloning";
 	const isReady = project.status === "ready";
-	const isError = project.status === "error";
 
 	// Poll clone progress when cloning
 	const { data: progress } = trpc.projects.cloneProgress.useQuery(
@@ -65,7 +46,7 @@ export function ProjectItem({ project, isExpanded, onToggle }: ProjectItemProps)
 	// Fetch workspaces when expanded and project is ready
 	const { data: workspacesList } = trpc.workspaces.listByProject.useQuery(
 		{ projectId: project.id },
-		{ enabled: isExpanded && isReady }
+		{ enabled: isExpanded && isReady, refetchInterval: 60_000 }
 	);
 
 	const openCreateWorktreeModal = useProjectStore((s) => s.openCreateWorktreeModal);
@@ -75,93 +56,122 @@ export function ProjectItem({ project, isExpanded, onToggle }: ProjectItemProps)
 		y: number;
 	} | null>(null);
 
+	// Determine if this project contains the active workspace
+	const visibleWorkspaces = workspacesList?.filter((ws) => ws.type !== "review") ?? [];
+	const isActiveProject = visibleWorkspaces.some((ws) => ws.id === activeWorkspaceId);
+
 	return (
-		<>
-			<button
-				type="button"
-				onClick={isReady ? onToggle : undefined}
-				onContextMenu={(e) => {
-					e.preventDefault();
-					setContextMenu({ x: e.clientX, y: e.clientY });
-				}}
-				className={[
-					"flex w-full items-center gap-2 border-none px-3 py-1.5 rounded-[6px] cursor-pointer",
-					"transition-all duration-[120ms] text-left",
-					isExpanded
-						? "bg-[var(--bg-elevated)] text-[var(--text)]"
-						: "bg-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]",
-				].join(" ")}
+		<div>
+			{/* Project group container — gets accent stripe when active */}
+			<div
+				style={
+					isActiveProject && isExpanded
+						? {
+								borderLeft: "2px solid rgba(10, 132, 255, 0.19)",
+								borderRadius: 2,
+							}
+						: undefined
+				}
 			>
-				{/* Chevron */}
-				<ChevronIcon expanded={isExpanded} />
-
-				{/* Color dot */}
-				<div
-					className="size-2 shrink-0 rounded-full"
-					style={{
-						backgroundColor: isError
-							? "var(--term-red)"
-							: (project.color ?? "var(--text-quaternary)"),
+				{/* Project header */}
+				<button
+					type="button"
+					onClick={isReady ? onToggle : undefined}
+					onContextMenu={(e) => {
+						e.preventDefault();
+						setContextMenu({ x: e.clientX, y: e.clientY });
 					}}
-				/>
-
-				{/* Name and status */}
-				<div className="min-w-0 flex-1">
-					<div className={["truncate text-[13px]", isCloning ? "opacity-60" : ""].join(" ")}>
-						{project.name}
-					</div>
-					{isCloning && (
-						<div className="text-[11px] text-[var(--text-quaternary)]">
-							{progress ? `${progress.stage}... ${progress.progress}%` : "Cloning..."}
+					className={[
+						"flex w-full items-center gap-2 border-none px-3 py-1.5 cursor-pointer",
+						"transition-all duration-[120ms] text-left",
+						isActiveProject && isExpanded ? "rounded-r-[8px] rounded-l-none" : "rounded-[8px]",
+						isActiveProject ? "text-[var(--text)]" : "text-[#505058]",
+						isActiveProject && isExpanded
+							? "bg-gradient-to-br from-[#1a1a24] to-[#16161e]"
+							: "bg-transparent hover:bg-[var(--bg-elevated)]",
+					].join(" ")}
+				>
+					{/* Name and clone status */}
+					<div className="min-w-0 flex-1">
+						<div
+							className={["truncate text-[13px] font-semibold", isCloning ? "opacity-60" : ""].join(
+								" "
+							)}
+						>
+							{project.name}
 						</div>
-					)}
-				</div>
-			</button>
+						{isCloning && (
+							<div className="text-[11px] text-[var(--text-quaternary)]">
+								{progress ? `${progress.stage}... ${progress.progress}%` : "Cloning..."}
+							</div>
+						)}
+					</div>
 
-			{/* Expanded workspace list */}
-			{isExpanded && isReady && workspacesList && (
-				<div className="flex flex-col gap-0.5 pt-0.5">
-					{workspacesList
-						.filter((ws) => ws.type !== "review")
-						.map((ws) => (
+					{/* + button (create worktree) */}
+					{isReady && (
+						<button
+							type="button"
+							onClick={(e) => {
+								e.stopPropagation();
+								openCreateWorktreeModal(project.id);
+							}}
+							onKeyDown={(e) => {
+								if (e.key === "Enter") {
+									e.stopPropagation();
+									openCreateWorktreeModal(project.id);
+								}
+							}}
+							className={[
+								"flex h-5 w-5 shrink-0 items-center justify-center rounded text-[14px]",
+								"transition-colors duration-[120ms]",
+								isActiveProject
+									? "text-[var(--text-quaternary)] hover:text-[var(--text-secondary)]"
+									: "text-[#3a3a42] hover:text-[#505058]",
+							].join(" ")}
+							title="New Worktree"
+						>
+							+
+						</button>
+					)}
+
+					{/* Chevron (right side) */}
+					<svg
+						aria-hidden="true"
+						width="10"
+						height="10"
+						viewBox="0 0 10 10"
+						fill="none"
+						className={[
+							"shrink-0 transition-transform duration-[120ms]",
+							isExpanded ? "rotate-90" : "rotate-0",
+							isActiveProject ? "text-[var(--text-quaternary)]" : "text-[#3a3a42]",
+						].join(" ")}
+					>
+						<path
+							d="M3 1.5L7 5L3 8.5"
+							stroke="currentColor"
+							strokeWidth="1.3"
+							strokeLinecap="round"
+							strokeLinejoin="round"
+						/>
+					</svg>
+				</button>
+
+				{/* Expanded workspace list */}
+				{isExpanded && isReady && workspacesList && (
+					<div className="flex flex-col pt-0.5">
+						{visibleWorkspaces.map((ws) => (
 							<WorkspaceItem
 								key={ws.id}
 								workspace={ws}
 								projectName={project.name}
 								projectRepoPath={project.repoPath}
+								isInActiveProject={isActiveProject}
 							/>
 						))}
-
-					{/* New Worktree button */}
-					<button
-						type="button"
-						onClick={() => openCreateWorktreeModal(project.id)}
-						className={[
-							"flex w-full items-center gap-1.5 border-none pl-7 pr-3 py-1 rounded-[6px] cursor-pointer",
-							"bg-transparent text-[11px] text-[var(--text-tertiary)]",
-							"transition-all duration-[120ms]",
-							"hover:bg-[var(--bg-elevated)] hover:text-[var(--text-secondary)]",
-						].join(" ")}
-					>
-						<svg
-							aria-hidden="true"
-							width="10"
-							height="10"
-							viewBox="0 0 16 16"
-							fill="none"
-							className="shrink-0"
-						>
-							<path
-								d="M8 3v10M3 8h10"
-								stroke="currentColor"
-								strokeWidth="1.5"
-								strokeLinecap="round"
-							/>
-						</svg>
-						New Worktree
-					</button>
-				</div>
-			)}
+					</div>
+				)}
+			</div>
 
 			{contextMenu && (
 				<ProjectContextMenu
@@ -170,6 +180,6 @@ export function ProjectItem({ project, isExpanded, onToggle }: ProjectItemProps)
 					onClose={() => setContextMenu(null)}
 				/>
 			)}
-		</>
+		</div>
 	);
 }

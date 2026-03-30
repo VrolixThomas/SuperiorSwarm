@@ -7,8 +7,11 @@ export function CreateWorktreeModal() {
 	const { isCreateWorktreeModalOpen, createWorktreeProjectId, closeCreateWorktreeModal } =
 		useProjectStore();
 
+	const [mode, setMode] = useState<"new" | "existing">("new");
 	const [branchName, setBranchName] = useState("");
 	const [baseBranch, setBaseBranch] = useState("");
+	const [selectedBranch, setSelectedBranch] = useState("");
+	const [branchSearch, setBranchSearch] = useState("");
 	const utils = trpc.useUtils();
 
 	const projectId = createWorktreeProjectId ?? "";
@@ -23,33 +26,40 @@ export function CreateWorktreeModal() {
 		{ enabled: isCreateWorktreeModalOpen && projectId !== "" }
 	);
 
+	const workspacesQuery = trpc.workspaces.listByProject.useQuery(
+		{ projectId },
+		{ enabled: isCreateWorktreeModalOpen && projectId !== "" }
+	);
+
 	const attachTerminal = trpc.workspaces.attachTerminal.useMutation();
 
-	const createMutation = trpc.workspaces.create.useMutation({
-		onSuccess: (workspace) => {
-			utils.workspaces.listByProject.invalidate();
+	const onSuccess = (workspace: { id: string; name: string }) => {
+		utils.workspaces.listByProject.invalidate();
 
-			const repoPath = projectQuery.data?.repoPath;
-			const projectName = projectQuery.data?.name ?? "Project";
+		const repoPath = projectQuery.data?.repoPath;
+		const projectName = projectQuery.data?.name ?? "Project";
 
-			if (repoPath) {
-				const normalizedPath = repoPath.replace(/\/+$/, "");
-				const cwd = `${normalizedPath}-worktrees/${workspace.name}`;
-				const title = `${projectName}: ${workspace.name}`;
+		if (repoPath) {
+			const normalizedPath = repoPath.replace(/\/+$/, "");
+			const cwd = `${normalizedPath}-worktrees/${workspace.name}`;
+			const title = `${projectName}: ${workspace.name}`;
 
-				const store = useTabStore.getState();
-				store.setActiveWorkspace(workspace.id, cwd);
-				const tabId = store.addTerminalTab(workspace.id, cwd, title);
+			const store = useTabStore.getState();
+			store.setActiveWorkspace(workspace.id, cwd);
+			const tabId = store.addTerminalTab(workspace.id, cwd, title);
 
-				attachTerminal.mutate({
-					workspaceId: workspace.id,
-					terminalId: tabId,
-				});
-			}
+			attachTerminal.mutate({
+				workspaceId: workspace.id,
+				terminalId: tabId,
+			});
+		}
 
-			closeCreateWorktreeModal();
-		},
-	});
+		closeCreateWorktreeModal();
+	};
+
+	const createMutation = trpc.workspaces.create.useMutation({ onSuccess });
+
+	const checkoutMutation = trpc.workspaces.checkoutExisting.useMutation({ onSuccess });
 
 	// Set default base branch when branches load
 	useEffect(() => {
@@ -64,11 +74,15 @@ export function CreateWorktreeModal() {
 	// Reset form state when modal opens/closes
 	useEffect(() => {
 		if (!isCreateWorktreeModalOpen) {
+			setMode("new");
 			setBranchName("");
 			setBaseBranch("");
+			setSelectedBranch("");
+			setBranchSearch("");
 			createMutation.reset();
+			checkoutMutation.reset();
 		}
-	}, [isCreateWorktreeModalOpen, createMutation.reset]);
+	}, [isCreateWorktreeModalOpen, createMutation.reset, checkoutMutation.reset]);
 
 	// Escape key to close
 	useEffect(() => {
@@ -86,16 +100,45 @@ export function CreateWorktreeModal() {
 
 	if (!isCreateWorktreeModalOpen) return null;
 
+	// Branches that already have worktrees
+	const existingWorktreeBranches = new Set(
+		(workspacesQuery.data ?? []).map((ws) => ws.name).filter(Boolean)
+	);
+
+	// Available branches for checkout (remote branches minus those already checked out)
+	const availableBranches = (branchesQuery.data ?? []).filter(
+		(branch) => !existingWorktreeBranches.has(branch)
+	);
+
+	const filteredBranches = branchSearch
+		? availableBranches.filter((b) => b.toLowerCase().includes(branchSearch.toLowerCase()))
+		: availableBranches;
+
 	const handleSubmit = (e: React.FormEvent) => {
 		e.preventDefault();
-		if (!branchName.trim() || !projectId) return;
 
-		createMutation.mutate({
-			projectId,
-			branch: branchName.trim(),
-			baseBranch: baseBranch || undefined,
-		});
+		if (mode === "new") {
+			if (!branchName.trim() || !projectId) return;
+			createMutation.mutate({
+				projectId,
+				branch: branchName.trim(),
+				baseBranch: baseBranch || undefined,
+			});
+		} else {
+			if (!selectedBranch || !projectId) return;
+			checkoutMutation.mutate({
+				projectId,
+				branch: selectedBranch,
+			});
+		}
 	};
+
+	const isPending = mode === "new" ? createMutation.isPending : checkoutMutation.isPending;
+	const isError = mode === "new" ? createMutation.isError : checkoutMutation.isError;
+	const errorMessage =
+		mode === "new" ? createMutation.error?.message : checkoutMutation.error?.message;
+
+	const isSubmitDisabled = isPending || (mode === "new" ? !branchName.trim() : !selectedBranch);
 
 	return (
 		<div
@@ -128,57 +171,142 @@ export function CreateWorktreeModal() {
 
 				{/* Form */}
 				<form onSubmit={handleSubmit} className="flex flex-col gap-4 p-4">
-					<div className="flex flex-col gap-1.5">
-						<label
-							htmlFor="worktree-branch"
-							className="text-[13px] font-medium text-[var(--text-secondary)]"
+					{/* Mode toggle */}
+					<div className="flex rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-elevated)] p-0.5">
+						<button
+							type="button"
+							onClick={() => setMode("new")}
+							className="flex-1 rounded-[4px] px-3 py-1.5 text-[13px] font-medium transition-all duration-[120ms]"
+							style={{
+								background: mode === "new" ? "var(--bg-overlay)" : "transparent",
+								color: mode === "new" ? "var(--text)" : "var(--text-tertiary)",
+							}}
 						>
-							Branch Name
-						</label>
-						<input
-							id="worktree-branch"
-							type="text"
-							value={branchName}
-							onChange={(e) => setBranchName(e.target.value)}
-							placeholder="feature-branch-name"
-							className="w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-2 text-[13px] text-[var(--text)] placeholder:text-[var(--text-quaternary)] focus:border-[var(--accent)] focus:outline-none"
-						/>
+							New branch
+						</button>
+						<button
+							type="button"
+							onClick={() => setMode("existing")}
+							className="flex-1 rounded-[4px] px-3 py-1.5 text-[13px] font-medium transition-all duration-[120ms]"
+							style={{
+								background: mode === "existing" ? "var(--bg-overlay)" : "transparent",
+								color: mode === "existing" ? "var(--text)" : "var(--text-tertiary)",
+							}}
+						>
+							Existing branch
+						</button>
 					</div>
 
-					<div className="flex flex-col gap-1.5">
-						<label
-							htmlFor="worktree-base"
-							className="text-[13px] font-medium text-[var(--text-secondary)]"
-						>
-							Base Branch
-						</label>
-						<select
-							id="worktree-base"
-							value={baseBranch}
-							onChange={(e) => setBaseBranch(e.target.value)}
-							disabled={branchesQuery.isPending}
-							className="w-full appearance-none rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-2 text-[13px] text-[var(--text)] focus:border-[var(--accent)] focus:outline-none disabled:opacity-50"
-						>
-							{branchesQuery.isPending && <option value="">Loading branches...</option>}
-							{branchesQuery.data?.map((branch) => (
-								<option key={branch} value={branch}>
-									{branch}
-								</option>
-							))}
-						</select>
-					</div>
+					{mode === "new" && (
+						<>
+							<div className="flex flex-col gap-1.5">
+								<label
+									htmlFor="worktree-branch"
+									className="text-[13px] font-medium text-[var(--text-secondary)]"
+								>
+									Branch Name
+								</label>
+								<input
+									id="worktree-branch"
+									type="text"
+									value={branchName}
+									onChange={(e) => setBranchName(e.target.value)}
+									placeholder="feature-branch-name"
+									className="w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-2 text-[13px] text-[var(--text)] placeholder:text-[var(--text-quaternary)] focus:border-[var(--accent)] focus:outline-none"
+								/>
+							</div>
+
+							<div className="flex flex-col gap-1.5">
+								<label
+									htmlFor="worktree-base"
+									className="text-[13px] font-medium text-[var(--text-secondary)]"
+								>
+									Base Branch
+								</label>
+								<select
+									id="worktree-base"
+									value={baseBranch}
+									onChange={(e) => setBaseBranch(e.target.value)}
+									disabled={branchesQuery.isPending}
+									className="w-full appearance-none rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-2 text-[13px] text-[var(--text)] focus:border-[var(--accent)] focus:outline-none disabled:opacity-50"
+								>
+									{branchesQuery.isPending && <option value="">Loading branches...</option>}
+									{branchesQuery.data?.map((branch) => (
+										<option key={branch} value={branch}>
+											{branch}
+										</option>
+									))}
+								</select>
+							</div>
+						</>
+					)}
+
+					{mode === "existing" && (
+						<div className="flex flex-col gap-1.5">
+							<label
+								htmlFor="worktree-existing-search"
+								className="text-[13px] font-medium text-[var(--text-secondary)]"
+							>
+								Branch
+							</label>
+							<input
+								id="worktree-existing-search"
+								type="text"
+								value={branchSearch}
+								onChange={(e) => {
+									setBranchSearch(e.target.value);
+									setSelectedBranch("");
+								}}
+								placeholder="Search branches..."
+								className="w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-2 text-[13px] text-[var(--text)] placeholder:text-[var(--text-quaternary)] focus:border-[var(--accent)] focus:outline-none"
+							/>
+							{(branchesQuery.isPending || workspacesQuery.isPending) && (
+								<p className="text-[12px] text-[var(--text-tertiary)]">Loading branches...</p>
+							)}
+							{!branchesQuery.isPending &&
+								!workspacesQuery.isPending &&
+								filteredBranches.length === 0 && (
+									<p className="text-[12px] text-[var(--text-tertiary)]">No branches available</p>
+								)}
+							{filteredBranches.length > 0 && (
+								<div className="max-h-[180px] overflow-y-auto rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-elevated)]">
+									{filteredBranches.map((branch) => (
+										<button
+											key={branch}
+											type="button"
+											onClick={() => {
+												setSelectedBranch(branch);
+												setBranchSearch(branch);
+											}}
+											className="w-full px-3 py-2 text-left text-[13px] transition-all duration-[120ms] hover:bg-[var(--bg-overlay)]"
+											style={{
+												color: selectedBranch === branch ? "var(--accent)" : "var(--text)",
+												background: selectedBranch === branch ? "var(--bg-overlay)" : "transparent",
+											}}
+										>
+											{branch}
+										</button>
+									))}
+								</div>
+							)}
+						</div>
+					)}
 
 					<button
 						type="submit"
-						disabled={!branchName.trim() || createMutation.isPending}
+						disabled={isSubmitDisabled}
 						className="w-full rounded-[var(--radius-md)] bg-[var(--accent)] px-4 py-2 text-[13px] font-medium text-white transition-all duration-[120ms] hover:bg-[var(--accent-hover)] disabled:opacity-50"
 					>
-						{createMutation.isPending ? "Creating..." : "Create Worktree"}
+						{isPending
+							? mode === "new"
+								? "Creating..."
+								: "Checking out..."
+							: mode === "new"
+								? "Create Worktree"
+								: "Checkout Branch"}
 					</button>
 
-					{createMutation.isError && (
-						<p className="text-[13px] text-[var(--term-red)]">{createMutation.error.message}</p>
-					)}
+					{isError && <p className="text-[13px] text-[var(--term-red)]">{errorMessage}</p>}
 				</form>
 			</div>
 		</div>

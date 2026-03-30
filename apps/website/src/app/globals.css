@@ -1,0 +1,82 @@
+@import "tailwindcss";
+
+@theme {
+	--color-bg-base: #050507;
+	--color-bg-surface: #0d0d10;
+	--color-bg-elevated: #111114;
+	--color-bg-overlay: #1a1a1e;
+	--color-accent: #c4956c;
+	--color-accent-dim: rgba(196, 149, 108, 0.12);
+	--color-brand: #e07030;
+	--color-brand-glow: rgba(224, 112, 48, 0.15);
+	--color-text-primary: #f5f5f7;
+	--color-text-secondary: #a1a1a6;
+	--color-text-muted: #636366;
+	--color-text-faint: #48484a;
+	--color-border: rgba(255, 255, 255, 0.08);
+	--color-green: #28c840;
+	--color-yellow: #febc2e;
+	--color-red: #ff5f57;
+	--color-purple: #c084fc;
+	--color-jira-blue: #2684ff;
+	--color-linear-purple: #5e6ad2;
+	--color-github-white: #f0f0f0;
+	--color-bitbucket-blue: #0052cc;
+	--font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+	--font-mono: "Geist Mono", "SF Mono", "Fira Code", monospace;
+}
+
+/* Prevent horizontal overflow on mobile from glow effects */
+html,
+body {
+	overflow-x: hidden;
+}
+
+/* Focus rings for keyboard navigation */
+a:focus-visible,
+button:focus-visible {
+	outline: 2px solid var(--color-accent);
+	outline-offset: 2px;
+	border-radius: 4px;
+}
+
+/* Glow halo breathing animation for mockup */
+@keyframes glow-breathe {
+	0%,
+	100% {
+		opacity: 0.5;
+	}
+	50% {
+		opacity: 1;
+	}
+}
+
+/* Particle drift animation — vertical only, horizontal variety from initial left position */
+@keyframes particle-drift {
+	0% {
+		transform: translateY(0);
+		opacity: 0;
+	}
+	10% {
+		opacity: 1;
+	}
+	90% {
+		opacity: 1;
+	}
+	100% {
+		transform: translateY(-100vh);
+		opacity: 0;
+	}
+}
+
+/* Footer particle upward drift */
+@keyframes particle-rise {
+	0% {
+		transform: translateY(0);
+		opacity: 0.6;
+	}
+	100% {
+		transform: translateY(-80px);
+		opacity: 0;
+	}
+}

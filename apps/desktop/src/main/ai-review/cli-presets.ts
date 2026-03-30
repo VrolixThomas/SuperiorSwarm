@@ -24,21 +24,44 @@ export interface LaunchOptions {
 	dbPath: string;
 	reviewDraftId: string;
 	prMetadata: string; // JSON string
+	solveSessionId?: string; // When set, MCP uses solve mode instead of review mode
 }
 
-function writeTempMcpConfig(dir: string, filename: string, mcpServerPath: string): string {
+function writeTempMcpConfig(
+	dir: string,
+	filename: string,
+	mcpServerPath: string,
+	env?: Record<string, string>
+): string {
 	mkdirSync(dir, { recursive: true });
 	const configPath = join(dir, filename);
 	const config = {
 		mcpServers: {
-			branchflux: {
+			superiorswarm: {
 				command: "node",
 				args: [mcpServerPath],
+				...(env ? { env } : {}),
 			},
 		},
 	};
 	writeFileSync(configPath, JSON.stringify(config, null, 2), "utf-8");
 	return configPath;
+}
+
+function buildMcpEnv(opts: LaunchOptions): Record<string, string> {
+	if (opts.solveSessionId) {
+		return {
+			SOLVE_SESSION_ID: opts.solveSessionId,
+			PR_METADATA: opts.prMetadata,
+			DB_PATH: opts.dbPath,
+			WORKTREE_PATH: opts.worktreePath,
+		};
+	}
+	return {
+		REVIEW_DRAFT_ID: opts.reviewDraftId,
+		PR_METADATA: opts.prMetadata,
+		DB_PATH: opts.dbPath,
+	};
 }
 
 export const CLI_PRESETS: Record<string, CliPreset> = {
@@ -48,9 +71,9 @@ export const CLI_PRESETS: Record<string, CliPreset> = {
 		command: "claude",
 		permissionFlag: "--dangerously-skip-permissions",
 		buildArgs: ({ promptFilePath }) => [
-			`"Review this PR. Read ${promptFilePath} for detailed instructions and use the BranchFlux MCP tools."`,
+			`"Review this PR. Read ${promptFilePath} for detailed instructions and use the SuperiorSwarm MCP tools."`,
 		],
-		setupMcp: ({ worktreePath, reviewDraftId, prMetadata, dbPath }) => {
+		setupMcp: (opts) => {
 			// Claude Code reads MCP config from .mcp.json in the project root
 			// Use standalone server with system Node (Electron's Node has incompatible native modules)
 			const standaloneServerPath = resolve(
@@ -59,17 +82,13 @@ export const CLI_PRESETS: Record<string, CliPreset> = {
 				"mcp-standalone",
 				"server.mjs"
 			);
-			const configPath = join(worktreePath, ".mcp.json");
+			const configPath = join(opts.worktreePath, ".mcp.json");
 			const config = {
 				mcpServers: {
-					branchflux: {
+					superiorswarm: {
 						command: "node",
 						args: [standaloneServerPath],
-						env: {
-							REVIEW_DRAFT_ID: reviewDraftId,
-							PR_METADATA: prMetadata,
-							DB_PATH: dbPath,
-						},
+						env: buildMcpEnv(opts),
 					},
 				},
 			};
@@ -86,11 +105,8 @@ export const CLI_PRESETS: Record<string, CliPreset> = {
 		label: "Gemini CLI",
 		command: "gemini",
 		permissionFlag: "--yolo",
-		buildArgs: ({ promptFilePath }) => [
-			"-p",
-			`"$(cat '${promptFilePath}')"`,
-		],
-		setupMcp: ({ worktreePath, reviewDraftId, prMetadata, dbPath }) => {
+		buildArgs: ({ promptFilePath }) => ["-p", `"$(cat '${promptFilePath}')"`],
+		setupMcp: (opts) => {
 			// Gemini CLI reads MCP config from .gemini/settings.json in the project root
 			const standaloneServerPath = resolve(
 				dirname(__dirname),
@@ -98,19 +114,15 @@ export const CLI_PRESETS: Record<string, CliPreset> = {
 				"mcp-standalone",
 				"server.mjs"
 			);
-			const dir = join(worktreePath, ".gemini");
+			const dir = join(opts.worktreePath, ".gemini");
 			mkdirSync(dir, { recursive: true });
 			const configPath = join(dir, "settings.json");
 			const config = {
 				mcpServers: {
-					branchflux: {
+					superiorswarm: {
 						command: "node",
 						args: [standaloneServerPath],
-						env: {
-							REVIEW_DRAFT_ID: reviewDraftId,
-							PR_METADATA: prMetadata,
-							DB_PATH: dbPath,
-						},
+						env: buildMcpEnv(opts),
 					},
 				},
 			};
@@ -129,9 +141,14 @@ export const CLI_PRESETS: Record<string, CliPreset> = {
 		command: "codex",
 		permissionFlag: "--full-auto",
 		buildArgs: ({ promptFilePath }) => [`"$(cat '${promptFilePath}')"`],
-		setupMcp: ({ worktreePath, mcpServerPath }) => {
-			const dir = join(worktreePath, ".codex");
-			const configPath = writeTempMcpConfig(dir, "config.json", mcpServerPath);
+		setupMcp: (opts) => {
+			const dir = join(opts.worktreePath, ".codex");
+			const configPath = writeTempMcpConfig(
+				dir,
+				"config.json",
+				opts.mcpServerPath,
+				buildMcpEnv(opts)
+			);
 			return () => {
 				try {
 					rmSync(configPath);
@@ -144,11 +161,8 @@ export const CLI_PRESETS: Record<string, CliPreset> = {
 		name: "opencode",
 		label: "OpenCode",
 		command: "opencode",
-		buildArgs: ({ promptFilePath }) => [
-			"--prompt",
-			`"$(cat '${promptFilePath}')"`,
-		],
-		setupMcp: ({ worktreePath, reviewDraftId, prMetadata, dbPath }) => {
+		buildArgs: ({ promptFilePath }) => ["--prompt", `"$(cat '${promptFilePath}')"`],
+		setupMcp: (opts) => {
 			// OpenCode reads MCP config from opencode.json in the project root
 			const standaloneServerPath = resolve(
 				dirname(__dirname),
@@ -156,17 +170,13 @@ export const CLI_PRESETS: Record<string, CliPreset> = {
 				"mcp-standalone",
 				"server.mjs"
 			);
-			const configPath = join(worktreePath, "opencode.json");
+			const configPath = join(opts.worktreePath, "opencode.json");
 			const config = {
 				mcp: {
-					branchflux: {
+					superiorswarm: {
 						type: "local",
 						command: ["node", standaloneServerPath],
-						environment: {
-							REVIEW_DRAFT_ID: reviewDraftId,
-							PR_METADATA: prMetadata,
-							DB_PATH: dbPath,
-						},
+						environment: buildMcpEnv(opts),
 					},
 				},
 			};
@@ -202,7 +212,7 @@ export function resolveCliPath(command: string): string {
 /** Build the locked MCP tool instructions block */
 function buildMcpInstructions(targetBranch: string): string {
 	return `
-You MUST use the BranchFlux MCP tools to complete your review:
+You MUST use the SuperiorSwarm MCP tools to complete your review:
 
 1. Call \`get_pr_metadata\` to understand the PR context
 2. Explore the codebase and review the changes (use git diff origin/${targetBranch}...HEAD to see the changes)
@@ -291,7 +301,7 @@ ${commentLines}`;
 /** Build the locked MCP tool instructions block for follow-up reviews */
 function buildFollowUpMcpInstructions(targetBranch: string): string {
 	return `
-You MUST use the BranchFlux MCP tools to complete your follow-up review:
+You MUST use the SuperiorSwarm MCP tools to complete your follow-up review:
 
 1. Call \`get_pr_metadata\` to understand the PR context
 2. Call \`get_previous_comments\` to get the full details of previous review comments

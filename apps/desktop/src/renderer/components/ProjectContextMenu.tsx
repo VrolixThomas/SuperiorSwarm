@@ -2,17 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import { useProjectStore } from "../stores/projects";
 import { trpc } from "../trpc/client";
 
-const COLORS = [
-	"#0a84ff",
-	"#30d158",
-	"#ff9f0a",
-	"#ff375f",
-	"#bf5af2",
-	"#64d2ff",
-	"#ffd60a",
-	"#ff6482",
-];
-
 interface ProjectContextMenuProps {
 	project: { id: string; name: string; color: string | null };
 	position: { x: number; y: number };
@@ -21,7 +10,6 @@ interface ProjectContextMenuProps {
 
 export function ProjectContextMenu({ project, position, onClose }: ProjectContextMenuProps) {
 	const menuRef = useRef<HTMLDivElement>(null);
-	const [showColors, setShowColors] = useState(false);
 	const [adjusted, setAdjusted] = useState(position);
 	const utils = trpc.useUtils();
 
@@ -90,11 +78,6 @@ export function ProjectContextMenu({ project, position, onClose }: ProjectContex
 		onClose();
 	}
 
-	function handleColorChange(color: string) {
-		updateMutation.mutate({ id: project.id, color });
-		onClose();
-	}
-
 	function handleRemove() {
 		const confirmed = window.confirm("Remove project? This won't delete files.");
 		if (confirmed) {
@@ -132,35 +115,6 @@ export function ProjectContextMenu({ project, position, onClose }: ProjectContex
 			>
 				Rename
 			</div>
-			<div
-				role="menuitem"
-				tabIndex={0}
-				className={itemClass}
-				onClick={() => setShowColors(!showColors)}
-				onKeyDown={(e) => {
-					if (e.key === "Enter") setShowColors(!showColors);
-				}}
-			>
-				Change Color
-			</div>
-			{showColors && (
-				<div className="flex flex-wrap gap-1.5 px-3 py-2">
-					{COLORS.map((color) => (
-						<button
-							key={color}
-							type="button"
-							aria-label={`Set color ${color}`}
-							className="size-4 shrink-0 rounded-full transition-all duration-[120ms] hover:scale-125"
-							style={{
-								backgroundColor: color,
-								outline: project.color === color ? "2px solid var(--text)" : "none",
-								outlineOffset: 1,
-							}}
-							onClick={() => handleColorChange(color)}
-						/>
-					))}
-				</div>
-			)}
 			<div className="my-0.5 border-t border-[var(--border-subtle)]" />
 			<div
 				role="menuitem"

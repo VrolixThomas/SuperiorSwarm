@@ -1,0 +1,22 @@
+appId: com.superiorswarm.app
+productName: SuperiorSwarm
+directories:
+  buildResources: resources
+  output: dist
+files:
+  - out/**/*
+asarUnpack:
+  - "node_modules/better-sqlite3/**/*"
+  - "node_modules/node-pty/**/*"
+  - "node_modules/bindings/**/*"
+  - "node_modules/file-uri-to-path/**/*"
+  - "out/main/db/migrations/**/*"
+npmRebuild: true
+mac:
+  category: public.app-category.developer-tools
+  icon: resources/icon.icns
+  target:
+    - dmg
+    - zip
+dmg:
+  artifactName: ${name}-${version}-mac.${ext}

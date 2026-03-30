@@ -14,6 +14,7 @@ import {
 	isCliInstalled,
 	resolveCliPath,
 } from "./cli-presets";
+import { parsePrIdentifier } from "./pr-identifier";
 
 export interface ReviewLaunchInfo {
 	draftId: string;
@@ -266,7 +267,7 @@ async function startReview(params: {
 		const { execSync } = await import("node:child_process");
 		const commitSha = execSync("git rev-parse HEAD", { cwd: worktreePath }).toString().trim();
 
-		const dbPath = join(app.getPath("userData"), "branchflux.db");
+		const dbPath = join(app.getPath("userData"), "superiorswarm.db");
 
 		db.update(schema.reviewDrafts)
 			.set({ commitSha, updatedAt: new Date() })
@@ -392,20 +393,6 @@ async function startReview(params: {
 		activeReviews.delete(draft.id);
 		throw err;
 	}
-}
-
-function parsePrIdentifier(identifier: string): {
-	ownerOrWorkspace: string;
-	repo: string;
-	number: number;
-} {
-	const [ownerRepo, numStr] = identifier.split("#");
-	const [ownerOrWorkspace, repo] = ownerRepo!.split("/");
-	return {
-		ownerOrWorkspace: ownerOrWorkspace!,
-		repo: repo!,
-		number: Number.parseInt(numStr!, 10),
-	};
 }
 
 /** Queue a follow-up review for an existing review chain */
@@ -551,8 +538,8 @@ async function startFollowUpReview(params: {
 			draft.prProvider === "github"
 		) {
 			try {
-				const { ownerOrWorkspace, repo, number: prNumber } = parsePrIdentifier(draft.prIdentifier);
-				const threads = await getGitHubReviewThreads(ownerOrWorkspace, repo, prNumber);
+				const { owner, repo, number: prNumber } = parsePrIdentifier(draft.prIdentifier);
+				const threads = await getGitHubReviewThreads(owner, repo, prNumber);
 				for (const comment of previousComments) {
 					if (!comment.platformCommentId) continue;
 					const thread = threads.find((t) => t.nodeId === comment.platformCommentId);
@@ -575,7 +562,7 @@ async function startFollowUpReview(params: {
 		const preset = CLI_PRESETS[settings.cliPreset];
 		if (!preset) throw new Error(`Unknown CLI preset: ${settings.cliPreset}`);
 
-		const dbPath = join(app.getPath("userData"), "branchflux.db");
+		const dbPath = join(app.getPath("userData"), "superiorswarm.db");
 		const mcpServerPath = resolve(__dirname, "mcp-server.js");
 		const reviewDir = join(app.getPath("userData"), "reviews", draftId);
 		mkdirSync(reviewDir, { recursive: true });
