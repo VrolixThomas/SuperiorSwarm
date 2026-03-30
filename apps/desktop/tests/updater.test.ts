@@ -1,6 +1,6 @@
 import "./preload-electron-mock";
 import { describe, expect, test } from "bun:test";
-import { getVersionDiffType, extractReleaseSummary } from "../src/main/updater";
+import { extractReleaseSummary, getVersionDiffType } from "../src/main/updater";
 
 describe("getVersionDiffType", () => {
 	test("returns 'major' for major version bump", () => {
@@ -26,10 +26,9 @@ describe("getVersionDiffType", () => {
 
 describe("extractReleaseSummary", () => {
 	test("extracts first non-heading line as summary", () => {
-		const md = "## What's New\n\nWorkspace templates and Linear integration.\n\n### Details\nMore text.";
-		expect(extractReleaseSummary(md)).toBe(
-			"Workspace templates and Linear integration."
-		);
+		const md =
+			"## What's New\n\nWorkspace templates and Linear integration.\n\n### Details\nMore text.";
+		expect(extractReleaseSummary(md)).toBe("Workspace templates and Linear integration.");
 	});
 
 	test("returns null for empty body", () => {

@@ -1,5 +1,5 @@
-import { app } from "electron";
 import { eq } from "drizzle-orm";
+import { app } from "electron";
 import * as semver from "semver";
 import { getDb } from "./db";
 import { sessionState } from "./db/schema";
@@ -8,10 +8,7 @@ import { sessionState } from "./db/schema";
 
 export type VersionDiffType = "major" | "minor" | "patch";
 
-export function getVersionDiffType(
-	oldVersion: string,
-	newVersion: string
-): VersionDiffType | null {
+export function getVersionDiffType(oldVersion: string, newVersion: string): VersionDiffType | null {
 	if (!semver.valid(oldVersion) || !semver.valid(newVersion)) return null;
 	const diff = semver.diff(oldVersion, newVersion);
 	if (diff === "major" || diff === "premajor") return "major";
@@ -120,11 +117,7 @@ export function clearPendingNotification(): void {
 
 function getLastSeenVersion(): string | null {
 	const db = getDb();
-	const row = db
-		.select()
-		.from(sessionState)
-		.where(eq(sessionState.key, "lastSeenVersion"))
-		.get();
+	const row = db.select().from(sessionState).where(eq(sessionState.key, "lastSeenVersion")).get();
 	return row?.value ?? null;
 }
 
