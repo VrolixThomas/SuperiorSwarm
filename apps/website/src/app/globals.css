@@ -26,6 +26,12 @@
 	--font-mono: "Geist Mono", "SF Mono", "Fira Code", monospace;
 }
 
+/* Prevent horizontal overflow on mobile from glow effects */
+html,
+body {
+	overflow-x: hidden;
+}
+
 /* Focus rings for keyboard navigation */
 a:focus-visible,
 button:focus-visible {
