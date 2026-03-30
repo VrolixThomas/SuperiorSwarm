@@ -15,7 +15,7 @@ export function UpdateToast() {
 	const markSeen = trpc.updates.markVersionSeen.useMutation();
 	const releaseNotes = trpc.updates.getReleaseNotes.useQuery(
 		{ version: version ?? undefined },
-		{ enabled: toastState === "new-version" && !!version },
+		{ enabled: toastState === "new-version" && !!version }
 	);
 	const installUpdate = trpc.updates.installUpdate.useMutation();
 
@@ -64,9 +64,7 @@ export function UpdateToast() {
 					</span>
 				</div>
 				{summary && (
-					<p className="mb-2.5 text-[11px] leading-[1.5] text-[var(--text-secondary)]">
-						{summary}
-					</p>
+					<p className="mb-2.5 text-[11px] leading-[1.5] text-[var(--text-secondary)]">{summary}</p>
 				)}
 				<div className="flex items-center">
 					{summary && (
@@ -97,9 +95,7 @@ export function UpdateToast() {
 				<div className="flex items-center justify-between">
 					<div className="flex items-center gap-1.5">
 						<div className="size-[5px] shrink-0 rounded-full bg-[var(--text-tertiary)]" />
-						<span className="text-[11px] text-[var(--text-secondary)]">
-							Updated to v{version}
-						</span>
+						<span className="text-[11px] text-[var(--text-secondary)]">Updated to v{version}</span>
 					</div>
 					<button
 						type="button"

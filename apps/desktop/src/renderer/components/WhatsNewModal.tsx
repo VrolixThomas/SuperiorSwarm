@@ -43,9 +43,7 @@ export function WhatsNewModal() {
 						<h2 className="text-[15px] font-semibold text-[var(--text)]">
 							What's New in BranchFlux
 						</h2>
-						<p className="mt-0.5 text-[11px] text-[var(--text-tertiary)]">
-							Version {version}
-						</p>
+						<p className="mt-0.5 text-[11px] text-[var(--text-tertiary)]">Version {version}</p>
 					</div>
 					<button
 						type="button"

@@ -4,8 +4,6 @@ import type { LayoutNode, SerializedLayoutNode } from "../shared/pane-types";
 import { AddRepositoryModal } from "./components/AddRepositoryModal";
 import { CreateWorktreeModal } from "./components/CreateWorktreeModal";
 import { DaemonStatus } from "./components/DaemonStatus";
-import { UpdateToast } from "./components/UpdateToast";
-import { WhatsNewModal } from "./components/WhatsNewModal";
 import { DiffPanel } from "./components/DiffPanel";
 import { MainContentArea } from "./components/MainContentArea";
 import { SharedFilesPanel } from "./components/SharedFilesPanel";
@@ -18,10 +16,12 @@ import {
 } from "./lsp/monaco-lsp-bridge";
 import { usePaneStore } from "./stores/pane-store";
 import { useProjectStore } from "./stores/projects";
-import { useUpdateStore } from "./stores/update-store";
 import type { TabItem } from "./stores/tab-store";
 import { resetFileTabCounter, useTabStore } from "./stores/tab-store";
 import { trpc } from "./trpc/client";
+import { UpdateToast } from "./components/UpdateToast";
+import { WhatsNewModal } from "./components/WhatsNewModal";
+import { useUpdateStore } from "./stores/update-store";
 
 const SAVE_INTERVAL_MS = 30_000;
 
@@ -302,7 +302,7 @@ export function App() {
 		if (hasCheckedUpdate.current || !updateStatus.data) return;
 		hasCheckedUpdate.current = true;
 
-		const { pendingNotification, updateAvailable, updateVersion, downloadProgress, updateDownloaded } =
+		const { pendingNotification, updateVersion, downloadProgress, updateDownloaded } =
 			updateStatus.data;
 
 		if (pendingNotification) {
