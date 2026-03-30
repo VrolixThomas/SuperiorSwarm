@@ -75,7 +75,7 @@ export function WaitlistForm() {
 				/>
 			</div>
 
-			<div className="flex w-full max-w-sm items-center gap-2">
+			<div className="flex w-full max-w-sm flex-col items-stretch gap-2 sm:flex-row sm:items-center">
 				<input
 					type="email"
 					required
