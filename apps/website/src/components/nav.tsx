@@ -54,7 +54,7 @@ export function Nav() {
 				</a>
 				<a
 					href="#waitlist"
-					className="rounded-full bg-accent px-4 py-1.5 text-xs font-medium text-bg-base transition-shadow hover:shadow-[0_0_16px_rgba(196,149,108,0.25)]"
+					className="shrink-0 whitespace-nowrap rounded-full bg-accent px-3 py-1.5 text-[11px] font-medium text-bg-base transition-shadow hover:shadow-[0_0_16px_rgba(196,149,108,0.25)] md:px-4 md:text-xs"
 				>
 					Join Waitlist
 				</a>
