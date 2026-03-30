@@ -111,13 +111,10 @@ function RichPRItem({
 	onContextMenu?: (e: React.MouseEvent) => void;
 }) {
 	const sourceBranch = pr.githubPR?.branchName ?? pr.bitbucketPR?.source?.branch?.name ?? "";
-	const targetBranch = enriched
-		? undefined
-		: pr.bitbucketPR?.destination?.branch?.name;
+	const targetBranch = enriched ? undefined : pr.bitbucketPR?.destination?.branch?.name;
 	const project = pr.githubPR
 		? projectsList?.find(
-				(p) =>
-					p.githubOwner === pr.githubPR!.repoOwner && p.githubRepo === pr.githubPR!.repoName
+				(p) => p.githubOwner === pr.githubPR!.repoOwner && p.githubRepo === pr.githubPR!.repoName
 			)
 		: undefined;
 	const resolvedTarget = targetBranch ?? project?.defaultBranch ?? "main";
@@ -341,7 +338,6 @@ export function PullRequestsTab() {
 		[triggerReview.mutate]
 	);
 
-
 	const markCommitSeen = trpc.aiReview.markCommitSeen.useMutation({
 		onSuccess: () => reviewDrafts.refetch(),
 	});
@@ -457,7 +453,6 @@ export function PullRequestsTab() {
 
 	const store = useTabStore();
 	const agentAlerts = useAgentAlertStore((s) => s.alerts);
-
 
 	function getPrIdentifier(pr: MergedPR): string {
 		if (pr.provider === "github" && pr.githubPR) {
@@ -864,9 +859,7 @@ export function PullRequestsTab() {
 											reviewerPRsForEnrichment.length > 0 &&
 											enrichmentQuery.isLoading;
 										const knownWorkspaceId = workspaceIdMapRef.current.get(identifier);
-										const agentAlert = knownWorkspaceId
-											? agentAlerts[knownWorkspaceId]
-											: undefined;
+										const agentAlert = knownWorkspaceId ? agentAlerts[knownWorkspaceId] : undefined;
 										const handleContextMenu = knownWorkspaceId
 											? (e: React.MouseEvent) => {
 													e.preventDefault();
