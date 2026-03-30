@@ -22,12 +22,7 @@ export function Tooltip({
 	const hide = () => setVisible(false);
 
 	return (
-		<span
-			ref={triggerRef}
-			className="inline-flex"
-			onMouseEnter={show}
-			onMouseLeave={hide}
-		>
+		<span ref={triggerRef} className="inline-flex" onMouseEnter={show} onMouseLeave={hide}>
 			{children}
 			{visible &&
 				createPortal(
