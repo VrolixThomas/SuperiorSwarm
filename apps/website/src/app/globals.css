@@ -26,10 +26,9 @@
 	--font-mono: "Geist Mono", "SF Mono", "Fira Code", monospace;
 }
 
-/* Prevent horizontal overflow on mobile from glow effects */
-html,
+/* Clip horizontal overflow from glow effects without blocking scroll */
 body {
-	overflow-x: hidden;
+	overflow-x: clip;
 }
 
 /* Focus rings for keyboard navigation */
