@@ -297,6 +297,63 @@ export function BranchPalette({ projectId, onCheckout, onOpenActionMenu }: Props
 								</div>
 							)}
 
+							{/* Quick actions */}
+							{!searchQuery && (
+								<div className="mb-2 flex flex-wrap gap-1.5 px-2">
+									{creatingBranch ? (
+										<input
+											autoFocus
+											value={newBranchName}
+											onChange={(e) => setNewBranchName(e.target.value)}
+											onKeyDown={(e) => {
+												if (e.key === "Enter" && newBranchName) {
+													createMutation.mutate({
+														projectId,
+														name: newBranchName,
+														baseBranch: currentBranch?.name ?? "main",
+													});
+												}
+												if (e.key === "Escape") setCreatingBranch(false);
+											}}
+											placeholder="Branch name..."
+											className="flex-1 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-elevated)] px-2 py-1 text-[12px] text-[var(--text)] placeholder:text-[var(--text-quaternary)] focus:border-[var(--accent)] focus:outline-none"
+										/>
+									) : (
+										<>
+											<button
+												type="button"
+												onClick={() => setCreatingBranch(true)}
+												className="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[rgba(255,255,255,0.04)] px-2.5 py-1 text-[12px] text-[var(--text-secondary)] transition-all duration-[var(--transition-fast)] hover:bg-[var(--bg-overlay)]"
+											>
+												+ New Branch
+											</button>
+											<button
+												type="button"
+												onClick={() => fetchMutation.mutate({ projectId })}
+												className="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[rgba(255,255,255,0.04)] px-2.5 py-1 text-[12px] text-[var(--text-secondary)] transition-all duration-[var(--transition-fast)] hover:bg-[var(--bg-overlay)]"
+											>
+												Fetch All
+											</button>
+											<button
+												type="button"
+												onClick={() => pushMutation.mutate({ projectId })}
+												className="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[rgba(255,255,255,0.04)] px-2.5 py-1 text-[12px] text-[var(--text-secondary)] transition-all duration-[var(--transition-fast)] hover:bg-[var(--bg-overlay)]"
+											>
+												Push
+											</button>
+											<button
+												type="button"
+												onClick={() => pullMutation.mutate({ projectId })}
+												className="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[rgba(255,255,255,0.04)] px-2.5 py-1 text-[12px] text-[var(--text-secondary)] transition-all duration-[var(--transition-fast)] hover:bg-[var(--bg-overlay)]"
+											>
+												Pull
+											</button>
+										</>
+									)}
+								</div>
+							)}
+							<div className="mx-2 mb-2 h-px bg-[var(--border-subtle)]" />
+
 							{/* Local branches */}
 							{localBranches.length > 0 && (
 								<div className="mb-1">
