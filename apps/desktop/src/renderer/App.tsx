@@ -350,6 +350,7 @@ function AuthenticatedApp() {
 			utils.branches.getStatus.invalidate();
 			utils.branches.list.invalidate();
 		},
+		onError: (err) => console.error("[App] checkout failed:", err.message),
 	});
 	const mergeStartMutation = trpc.merge.start.useMutation({
 		onError: (err) => console.error("[App] merge.start failed:", err.message),
@@ -648,6 +649,11 @@ function AuthenticatedApp() {
 							repoPath,
 						});
 					}}
+					onNewBranch={() => {
+						setActionMenu(null);
+						openPalette();
+					}}
+					isMerging={useBranchStore.getState().mergeState !== null}
 				/>
 			)}
 		</>

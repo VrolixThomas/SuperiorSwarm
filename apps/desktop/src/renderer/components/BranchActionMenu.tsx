@@ -11,6 +11,8 @@ interface Props {
 	onMerge: (branch: string) => void;
 	onRebase: (ontoBranch: string) => void;
 	onCompare: (branch: string) => void;
+	onNewBranch?: (baseBranch: string) => void;
+	isMerging?: boolean;
 }
 
 export function BranchActionMenu({
@@ -23,6 +25,8 @@ export function BranchActionMenu({
 	onMerge,
 	onRebase,
 	onCompare,
+	onNewBranch,
+	isMerging,
 }: Props) {
 	const menuRef = useRef<HTMLDivElement>(null);
 	const renameInputRef = useRef<HTMLInputElement>(null);
@@ -110,40 +114,34 @@ export function BranchActionMenu({
 	}, [onClose, renaming, branch]);
 
 	function handleCheckout() {
-		console.log("[BranchActionMenu] handleCheckout", branch);
-		onCheckout(branch);
+onCheckout(branch);
 		onClose();
 	}
 
 	function handleNewBranch() {
-		console.log("[BranchActionMenu] handleNewBranch from", branch);
+		if (onNewBranch) {
+			onNewBranch(branch);
+		}
 		onClose();
-		window.dispatchEvent(
-			new CustomEvent("branch:new-from", { detail: { baseBranch: branch, projectId } })
-		);
 	}
 
 	function handleMerge() {
-		console.log("[BranchActionMenu] handleMerge", branch);
-		onMerge(branch);
+onMerge(branch);
 		onClose();
 	}
 
 	function handleRebase() {
-		console.log("[BranchActionMenu] handleRebase onto", branch);
-		onRebase(branch);
+onRebase(branch);
 		onClose();
 	}
 
 	function handleCompare() {
-		console.log("[BranchActionMenu] handleCompare", branch);
-		onCompare(branch);
+onCompare(branch);
 		onClose();
 	}
 
 	function handlePush() {
-		console.log("[BranchActionMenu] handlePush", branch);
-		pushMutation.mutate({ projectId, branch });
+pushMutation.mutate({ projectId, branch });
 	}
 
 	function handleDeleteClick() {
@@ -247,10 +245,10 @@ export function BranchActionMenu({
 			{!isCurrentBranch && (
 				<>
 					{separator}
-					<button type="button" role="menuitem" className={itemClass} onClick={handleMerge}>
+					<button type="button" role="menuitem" className={itemClass} onClick={handleMerge} disabled={isMerging}>
 						Merge &lsquo;{branch}&rsquo; into current
 					</button>
-					<button type="button" role="menuitem" className={itemClass} onClick={handleRebase}>
+					<button type="button" role="menuitem" className={itemClass} onClick={handleRebase} disabled={isMerging}>
 						Rebase current onto &lsquo;{branch}&rsquo;
 					</button>
 				</>
