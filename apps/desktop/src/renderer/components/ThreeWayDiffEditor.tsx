@@ -62,7 +62,7 @@ export function ThreeWayDiffEditor({
 		const resultEditor = monaco.editor.create(resultRef.current, {
 			...commonOptions,
 			readOnly: false,
-			value: content.ours,
+			value: content.base,
 			language,
 		});
 
@@ -121,8 +121,8 @@ export function ThreeWayDiffEditor({
 			theirsModel.setValue(content.theirs);
 		}
 		const resultModel = result.getModel();
-		if (resultModel && resultModel.getValue() !== content.ours) {
-			resultModel.setValue(content.ours);
+		if (resultModel && resultModel.getValue() !== content.base) {
+			resultModel.setValue(content.base);
 		}
 		const oursModel = ours.getModel();
 		if (oursModel && oursModel.getValue() !== content.ours) {
