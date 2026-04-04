@@ -90,14 +90,16 @@ export const branchesRouter = router({
 			return { success: true };
 		}),
 
-	getStatus: publicProcedure.input(z.object({ projectId: z.string() })).query(async ({ input }) => {
-		const db = getDb();
-		const project = await db.query.projects.findFirst({
-			where: eq(projects.id, input.projectId),
-		});
-		if (!project) throw new Error("Project not found");
-		return getBranchStatus(project.repoPath);
-	}),
+	getStatus: publicProcedure
+		.input(z.object({ projectId: z.string(), cwd: z.string().optional() }))
+		.query(async ({ input }) => {
+			const db = getDb();
+			const project = await db.query.projects.findFirst({
+				where: eq(projects.id, input.projectId),
+			});
+			if (!project) throw new Error("Project not found");
+			return getBranchStatus(input.cwd ?? project.repoPath);
+		}),
 
 	getInfo: publicProcedure
 		.input(z.object({ projectId: z.string(), branch: z.string() }))
