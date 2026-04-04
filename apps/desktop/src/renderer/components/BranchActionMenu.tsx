@@ -1,5 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { trpc } from "../trpc/client";
+import { useClickOutside } from "../hooks/useClickOutside";
+import { useEscapeKey } from "../hooks/useEscapeKey";
 
 interface Props {
 	projectId: string;
@@ -81,31 +83,19 @@ export function BranchActionMenu({
 	}, [renaming]);
 
 	// Click outside → close
-	useEffect(() => {
-		function handleClickOutside(e: MouseEvent) {
-			if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-				onClose();
-			}
-		}
-		document.addEventListener("mousedown", handleClickOutside);
-		return () => document.removeEventListener("mousedown", handleClickOutside);
-	}, [onClose]);
+	useClickOutside(menuRef, onClose);
 
-	// Escape → close
-	useEffect(() => {
-		function handleKeyDown(e: KeyboardEvent) {
-			if (e.key === "Escape") {
-				if (renaming) {
-					setRenaming(false);
-					setRenameValue(branch);
-				} else {
-					onClose();
-				}
-			}
+	// Escape → close (or cancel rename)
+	const handleEscape = useCallback(() => {
+		if (renaming) {
+			setRenaming(false);
+			setRenameValue(branch);
+		} else {
+			onClose();
 		}
-		document.addEventListener("keydown", handleKeyDown);
-		return () => document.removeEventListener("keydown", handleKeyDown);
 	}, [onClose, renaming, branch]);
+
+	useEscapeKey(handleEscape);
 
 	function handleMerge() {
 		onMerge(branch);
