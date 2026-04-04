@@ -37,15 +37,26 @@ export const updatesRouter = router({
 		try {
 			const { autoUpdater } = await import("electron-updater");
 			const result = await autoUpdater.checkForUpdates();
-			const state = getUpdaterState();
+			const updateInfo = result?.updateInfo;
+			if (updateInfo) {
+				const current = app.getVersion();
+				const latest = updateInfo.version;
+				const hasUpdate = latest !== current;
+				return {
+					updateAvailable: hasUpdate,
+					version: latest,
+					error: null,
+				};
+			}
 			return {
-				updateAvailable: state.updateAvailable,
-				version: result?.updateInfo.version ?? null,
+				updateAvailable: false,
+				version: null,
 				error: null,
 			};
 		} catch (err) {
-			console.error("[updater] Check for updates failed:", err);
-			return { updateAvailable: false, version: null, error: "Check failed" };
+			const message = err instanceof Error ? err.message : String(err);
+			console.error("[updater] Check for updates failed:", message);
+			return { updateAvailable: false, version: null, error: message };
 		}
 	}),
 
