@@ -29,13 +29,11 @@ export const mergeRouter = router({
 			return mergeBranch(repoPath, input.branch);
 		}),
 
-	abort: publicProcedure
-		.input(z.object({ projectId: z.string() }))
-		.mutation(async ({ input }) => {
-			const repoPath = await getRepoPath(input.projectId);
-			await abortMerge(repoPath);
-			return { success: true };
-		}),
+	abort: publicProcedure.input(z.object({ projectId: z.string() })).mutation(async ({ input }) => {
+		const repoPath = await getRepoPath(input.projectId);
+		await abortMerge(repoPath);
+		return { success: true };
+	}),
 
 	getConflicts: publicProcedure
 		.input(z.object({ projectId: z.string() }))

@@ -120,7 +120,7 @@ export function BranchActionMenu({
 		// Fire a custom event for the palette to pick up, or call a passed-in callback.
 		// Here we dispatch a custom DOM event so the parent can open the new-branch dialog.
 		window.dispatchEvent(
-			new CustomEvent("branch:new-from", { detail: { baseBranch: branch, projectId } }),
+			new CustomEvent("branch:new-from", { detail: { baseBranch: branch, projectId } })
 		);
 	}
 
@@ -274,12 +274,7 @@ export function BranchActionMenu({
 			</button>
 
 			{/* Rename */}
-			<button
-				type="button"
-				role="menuitem"
-				className={itemClass}
-				onClick={() => setRenaming(true)}
-			>
+			<button type="button" role="menuitem" className={itemClass} onClick={() => setRenaming(true)}>
 				Rename…
 			</button>
 

@@ -14,17 +14,15 @@ import { listBranches, sortBranchesWithDefault } from "../../git/operations";
 import { publicProcedure, router } from "../index";
 
 export const branchesRouter = router({
-	list: publicProcedure
-		.input(z.object({ projectId: z.string() }))
-		.query(async ({ input }) => {
-			const db = getDb();
-			const project = await db.query.projects.findFirst({
-				where: eq(projects.id, input.projectId),
-			});
-			if (!project) throw new Error("Project not found");
-			const branches = await listBranches(project.repoPath);
-			return sortBranchesWithDefault(branches, project.defaultBranch);
-		}),
+	list: publicProcedure.input(z.object({ projectId: z.string() })).query(async ({ input }) => {
+		const db = getDb();
+		const project = await db.query.projects.findFirst({
+			where: eq(projects.id, input.projectId),
+		});
+		if (!project) throw new Error("Project not found");
+		const branches = await listBranches(project.repoPath);
+		return sortBranchesWithDefault(branches, project.defaultBranch);
+	}),
 
 	checkout: publicProcedure
 		.input(z.object({ projectId: z.string(), branch: z.string() }))
@@ -44,7 +42,7 @@ export const branchesRouter = router({
 				projectId: z.string(),
 				name: z.string().min(1),
 				baseBranch: z.string(),
-			}),
+			})
 		)
 		.mutation(async ({ input }) => {
 			const db = getDb();
@@ -62,7 +60,7 @@ export const branchesRouter = router({
 				projectId: z.string(),
 				branch: z.string(),
 				force: z.boolean().optional().default(false),
-			}),
+			})
 		)
 		.mutation(async ({ input }) => {
 			const db = getDb();
@@ -80,7 +78,7 @@ export const branchesRouter = router({
 				projectId: z.string(),
 				oldName: z.string(),
 				newName: z.string().min(1),
-			}),
+			})
 		)
 		.mutation(async ({ input }) => {
 			const db = getDb();
@@ -92,16 +90,14 @@ export const branchesRouter = router({
 			return { success: true };
 		}),
 
-	getStatus: publicProcedure
-		.input(z.object({ projectId: z.string() }))
-		.query(async ({ input }) => {
-			const db = getDb();
-			const project = await db.query.projects.findFirst({
-				where: eq(projects.id, input.projectId),
-			});
-			if (!project) throw new Error("Project not found");
-			return getBranchStatus(project.repoPath);
-		}),
+	getStatus: publicProcedure.input(z.object({ projectId: z.string() })).query(async ({ input }) => {
+		const db = getDb();
+		const project = await db.query.projects.findFirst({
+			where: eq(projects.id, input.projectId),
+		});
+		if (!project) throw new Error("Project not found");
+		return getBranchStatus(project.repoPath);
+	}),
 
 	getInfo: publicProcedure
 		.input(z.object({ projectId: z.string(), branch: z.string() }))

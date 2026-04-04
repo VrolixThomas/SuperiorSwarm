@@ -365,7 +365,7 @@ function AuthenticatedApp() {
 
 	const workspacesQuery = trpc.workspaces.listByProject.useQuery(
 		{ projectId: selectedProjectId ?? "" },
-		{ enabled: !!selectedProjectId },
+		{ enabled: !!selectedProjectId }
 	);
 
 	const handleCheckout = useCallback(
@@ -376,13 +376,13 @@ function AuthenticatedApp() {
 			const wsData = workspacesQuery.data ?? [];
 			const existing = wsData.find((ws) => ws.name === branch && ws.worktreePath);
 			if (existing) {
-				useTabStore.getState().setActiveWorkspace(existing.id, existing.worktreePath!);
+				useTabStore.getState().setActiveWorkspace(existing.id, existing.worktreePath ?? "");
 				return;
 			}
 
 			checkoutMutation.mutate({ projectId: selectedProjectId, branch });
 		},
-		[selectedProjectId, workspacesQuery.data, checkoutMutation],
+		[selectedProjectId, workspacesQuery.data, checkoutMutation]
 	);
 
 	function handleMerge(branch: string) {

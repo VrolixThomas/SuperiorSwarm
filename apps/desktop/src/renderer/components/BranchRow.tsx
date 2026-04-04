@@ -10,10 +10,18 @@ interface Props {
 
 export function BranchRow({ branch, isSelected, onSelect, onContextMenu, onActionClick }: Props) {
 	return (
+		// biome-ignore lint/a11y/useSemanticElements: listbox option rows need div to hold complex content
 		<div
 			role="option"
 			aria-selected={isSelected}
+			tabIndex={0}
 			onClick={onSelect}
+			onKeyDown={(e) => {
+				if (e.key === "Enter" || e.key === " ") {
+					e.preventDefault();
+					onSelect();
+				}
+			}}
 			onContextMenu={onContextMenu}
 			className={[
 				"group flex items-center gap-2 rounded-[var(--radius-sm)] px-2 py-1.5 text-[13px] transition-all duration-[var(--transition-fast)] cursor-pointer",
@@ -22,6 +30,7 @@ export function BranchRow({ branch, isSelected, onSelect, onContextMenu, onActio
 		>
 			{branch.isDefault ? (
 				<svg
+					aria-hidden="true"
 					width="14"
 					height="14"
 					viewBox="0 0 24 24"
@@ -34,6 +43,7 @@ export function BranchRow({ branch, isSelected, onSelect, onContextMenu, onActio
 				</svg>
 			) : (
 				<svg
+					aria-hidden="true"
 					width="14"
 					height="14"
 					viewBox="0 0 24 24"
@@ -79,6 +89,7 @@ export function BranchRow({ branch, isSelected, onSelect, onContextMenu, onActio
 				className="ml-auto shrink-0 rounded-[var(--radius-sm)] p-0.5 opacity-0 transition-opacity duration-[var(--transition-fast)] group-hover:opacity-60 hover:!opacity-100"
 			>
 				<svg
+					aria-hidden="true"
 					width="14"
 					height="14"
 					viewBox="0 0 24 24"

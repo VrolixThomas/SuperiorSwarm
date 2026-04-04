@@ -61,7 +61,7 @@ export const useBranchStore = create<BranchStore>()((set) => ({
 				mergeState: {
 					...state.mergeState,
 					conflicts: state.mergeState.conflicts.map((f) =>
-						f.path === path ? { ...f, status: "resolved" as const } : f,
+						f.path === path ? { ...f, status: "resolved" as const } : f
 					),
 				},
 			};

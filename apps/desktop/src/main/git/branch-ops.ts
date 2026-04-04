@@ -11,18 +11,14 @@ export async function checkoutBranch(repoPath: string, branch: string): Promise<
 export async function createBranch(
 	repoPath: string,
 	name: string,
-	baseBranch: string,
+	baseBranch: string
 ): Promise<void> {
 	const git = simpleGit(repoPath);
 	await git.checkoutBranch(name, baseBranch);
 	await git.checkout(baseBranch);
 }
 
-export async function deleteBranch(
-	repoPath: string,
-	name: string,
-	force: boolean,
-): Promise<void> {
+export async function deleteBranch(repoPath: string, name: string, force: boolean): Promise<void> {
 	const git = simpleGit(repoPath);
 	if (force) {
 		await git.branch(["-D", name]);
@@ -34,7 +30,7 @@ export async function deleteBranch(
 export async function renameBranch(
 	repoPath: string,
 	oldName: string,
-	newName: string,
+	newName: string
 ): Promise<void> {
 	const git = simpleGit(repoPath);
 	await git.branch(["-m", oldName, newName]);
@@ -58,8 +54,8 @@ export async function getBranchStatus(repoPath: string): Promise<BranchStatus> {
 				`${branch}...${tracking}`,
 			]);
 			const parts = result.trim().split(/\s+/);
-			ahead = parseInt(parts[0] ?? "0", 10);
-			behind = parseInt(parts[1] ?? "0", 10);
+			ahead = Number.parseInt(parts[0] ?? "0", 10);
+			behind = Number.parseInt(parts[1] ?? "0", 10);
 		} catch {
 			// No tracking branch or upstream gone
 		}
@@ -82,7 +78,7 @@ export async function getBranchStatus(repoPath: string): Promise<BranchStatus> {
 
 export async function getBranchInfo(
 	repoPath: string,
-	branchName: string,
+	branchName: string
 ): Promise<{
 	lastCommit: { hash: string; message: string; date: string; author: string } | null;
 	tracking: string | null;
@@ -112,12 +108,9 @@ export async function getBranchInfo(
 	let behind = 0;
 
 	try {
-		tracking =
-			(await git.raw(["config", "--get", `branch.${branchName}.merge`])).trim() || null;
+		tracking = (await git.raw(["config", "--get", `branch.${branchName}.merge`])).trim() || null;
 		if (tracking) {
-			const remote = (
-				await git.raw(["config", "--get", `branch.${branchName}.remote`])
-			).trim();
+			const remote = (await git.raw(["config", "--get", `branch.${branchName}.remote`])).trim();
 			const remoteBranch = `${remote}/${tracking.replace("refs/heads/", "")}`;
 			const result = await git.raw([
 				"rev-list",
@@ -126,8 +119,8 @@ export async function getBranchInfo(
 				`${branchName}...${remoteBranch}`,
 			]);
 			const parts = result.trim().split(/\s+/);
-			ahead = parseInt(parts[0] ?? "0", 10);
-			behind = parseInt(parts[1] ?? "0", 10);
+			ahead = Number.parseInt(parts[0] ?? "0", 10);
+			behind = Number.parseInt(parts[1] ?? "0", 10);
 			tracking = remoteBranch;
 		}
 	} catch {

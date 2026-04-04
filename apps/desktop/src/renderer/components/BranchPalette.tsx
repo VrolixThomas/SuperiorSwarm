@@ -25,6 +25,7 @@ export function BranchPalette({ projectId, onCheckout, onOpenActionMenu }: Props
 	} = useBranchStore();
 
 	const inputRef = useRef<HTMLInputElement>(null);
+	const newBranchInputRef = useRef<HTMLInputElement>(null);
 	const listRef = useRef<HTMLDivElement>(null);
 	const [remoteCollapsed, setRemoteCollapsed] = useState(true);
 	const [creatingBranch, setCreatingBranch] = useState(false);
@@ -44,7 +45,7 @@ export function BranchPalette({ projectId, onCheckout, onOpenActionMenu }: Props
 
 	const workspacesQuery = trpc.workspaces.listByProject.useQuery(
 		{ projectId },
-		{ enabled: isPaletteOpen },
+		{ enabled: isPaletteOpen }
 	);
 
 	const createMutation = trpc.branches.create.useMutation({
@@ -67,7 +68,7 @@ export function BranchPalette({ projectId, onCheckout, onOpenActionMenu }: Props
 
 		// Build a set of branch names that have workspaces
 		const branchesWithWorkspace = new Set(
-			wsData.filter((ws) => ws.worktreePath).map((ws) => ws.name),
+			wsData.filter((ws) => ws.worktreePath).map((ws) => ws.name)
 		);
 
 		return names.map((name) => ({
@@ -111,6 +112,7 @@ export function BranchPalette({ projectId, onCheckout, onOpenActionMenu }: Props
 	}, [currentBranch, localBranches, remoteBranches, remoteCollapsed]);
 
 	// Reset selected index when search/branches change
+	// biome-ignore lint/correctness/useExhaustiveDependencies: searchQuery triggers reset but isn't read inside effect
 	useEffect(() => {
 		setSelectedIndex(0);
 	}, [searchQuery, setSelectedIndex]);
@@ -123,7 +125,15 @@ export function BranchPalette({ projectId, onCheckout, onOpenActionMenu }: Props
 		}
 	}, [isPaletteOpen]);
 
+	// Focus new branch input when creating branch mode activates
+	useEffect(() => {
+		if (creatingBranch) {
+			setTimeout(() => newBranchInputRef.current?.focus(), 0);
+		}
+	}, [creatingBranch]);
+
 	// Scroll selected row into view
+	// biome-ignore lint/correctness/useExhaustiveDependencies: selectedIndex triggers scroll but isn't read inside effect
 	useEffect(() => {
 		if (!listRef.current) return;
 		const selected = listRef.current.querySelector('[aria-selected="true"]');
@@ -170,11 +180,13 @@ export function BranchPalette({ projectId, onCheckout, onOpenActionMenu }: Props
 
 	return (
 		// Backdrop
+		// biome-ignore lint/a11y/useKeyWithClickEvents: keyboard handled via document event listener in useEffect
 		<div
 			className="fixed inset-0 z-50 flex items-start justify-center pt-[12vh]"
 			onClick={closePalette}
 		>
 			{/* Panel */}
+			{/* biome-ignore lint/a11y/useKeyWithClickEvents: stopPropagation on click only; keyboard nav handled by document listener */}
 			<div
 				className="flex w-[480px] max-h-[70vh] flex-col overflow-hidden rounded-[var(--radius-lg)] border border-[var(--border-active)] bg-[var(--bg-overlay)] shadow-[var(--shadow-lg)] backdrop-blur-md"
 				onClick={(e) => e.stopPropagation()}
@@ -182,6 +194,7 @@ export function BranchPalette({ projectId, onCheckout, onOpenActionMenu }: Props
 				{/* Search bar */}
 				<div className="flex items-center gap-2 border-b border-[var(--border)] px-3 py-2.5">
 					<svg
+						aria-hidden="true"
 						width="14"
 						height="14"
 						viewBox="0 0 24 24"
@@ -208,6 +221,7 @@ export function BranchPalette({ projectId, onCheckout, onOpenActionMenu }: Props
 							className="shrink-0 text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
 						>
 							<svg
+								aria-hidden="true"
 								width="12"
 								height="12"
 								viewBox="0 0 24 24"
@@ -222,6 +236,8 @@ export function BranchPalette({ projectId, onCheckout, onOpenActionMenu }: Props
 				</div>
 
 				{/* Branch list */}
+				{/* biome-ignore lint/a11y/useSemanticElements: command palette listbox cannot use <select> */}
+				{/* biome-ignore lint/a11y/useFocusableInteractive: listbox focus managed by keyboard event listener */}
 				<div ref={listRef} className="overflow-y-auto p-1.5" role="listbox">
 					{branchesQuery.isLoading ? (
 						<div className="px-3 py-6 text-center text-[12px] text-[var(--text-tertiary)]">
@@ -264,6 +280,7 @@ export function BranchPalette({ projectId, onCheckout, onOpenActionMenu }: Props
 												{status.ahead > 0 && (
 													<span className="flex items-center gap-0.5 text-[var(--text-secondary)]">
 														<svg
+															aria-hidden="true"
 															width="10"
 															height="10"
 															viewBox="0 0 24 24"
@@ -279,6 +296,7 @@ export function BranchPalette({ projectId, onCheckout, onOpenActionMenu }: Props
 												{status.behind > 0 && (
 													<span className="flex items-center gap-0.5 text-[var(--text-secondary)]">
 														<svg
+															aria-hidden="true"
 															width="10"
 															height="10"
 															viewBox="0 0 24 24"
@@ -302,7 +320,7 @@ export function BranchPalette({ projectId, onCheckout, onOpenActionMenu }: Props
 								<div className="mb-2 flex flex-wrap gap-1.5 px-2">
 									{creatingBranch ? (
 										<input
-											autoFocus
+											ref={newBranchInputRef}
 											value={newBranchName}
 											onChange={(e) => setNewBranchName(e.target.value)}
 											onKeyDown={(e) => {
@@ -399,6 +417,7 @@ export function BranchPalette({ projectId, onCheckout, onOpenActionMenu }: Props
 										className="mb-0.5 flex w-full items-center gap-1 px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-[var(--text-quaternary)] hover:text-[var(--text-tertiary)] transition-colors duration-[var(--transition-fast)]"
 									>
 										<svg
+											aria-hidden="true"
 											width="10"
 											height="10"
 											viewBox="0 0 24 24"

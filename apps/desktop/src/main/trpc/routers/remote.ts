@@ -23,18 +23,14 @@ export const remoteRouter = router({
 			return { success: true };
 		}),
 
-	pull: publicProcedure
-		.input(z.object({ projectId: z.string() }))
-		.mutation(async ({ input }) => {
-			const repoPath = await getRepoPath(input.projectId);
-			return pull(repoPath);
-		}),
+	pull: publicProcedure.input(z.object({ projectId: z.string() })).mutation(async ({ input }) => {
+		const repoPath = await getRepoPath(input.projectId);
+		return pull(repoPath);
+	}),
 
-	fetch: publicProcedure
-		.input(z.object({ projectId: z.string() }))
-		.mutation(async ({ input }) => {
-			const repoPath = await getRepoPath(input.projectId);
-			await fetchAll(repoPath);
-			return { success: true };
-		}),
+	fetch: publicProcedure.input(z.object({ projectId: z.string() })).mutation(async ({ input }) => {
+		const repoPath = await getRepoPath(input.projectId);
+		await fetchAll(repoPath);
+		return { success: true };
+	}),
 });
