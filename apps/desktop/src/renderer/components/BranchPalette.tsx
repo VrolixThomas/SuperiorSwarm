@@ -46,7 +46,7 @@ export function BranchPalette({ projectId, onOpenActionMenu }: Props) {
 
 	const workspacesQuery = trpc.workspaces.listByProject.useQuery(
 		{ projectId },
-		{ enabled: isPaletteOpen }
+		{ enabled: isPaletteOpen, staleTime: 10_000 }
 	);
 
 	const createMutation = trpc.branches.create.useMutation({

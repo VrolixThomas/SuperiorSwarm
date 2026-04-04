@@ -13,7 +13,7 @@ export function MainContentArea({ savedScrollback }: { savedScrollback: Record<s
 	// Derive projectId from active workspace for the BranchChip
 	const wsQuery = trpc.workspaces.getById.useQuery(
 		{ id: activeWorkspaceId ?? "" },
-		{ enabled: !!activeWorkspaceId }
+		{ enabled: !!activeWorkspaceId, staleTime: 30_000 }
 	);
 	const projectId = wsQuery.data?.projectId ?? null;
 
