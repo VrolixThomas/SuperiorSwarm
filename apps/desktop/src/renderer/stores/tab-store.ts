@@ -54,6 +54,15 @@ export type TabItem =
 			title: string;
 			language: string;
 			repoPath: string;
+	  }
+	| {
+			kind: "merge-conflict";
+			id: string;
+			workspaceId: string;
+			title: string;
+			mergeType: "merge" | "rebase";
+			sourceBranch: string;
+			targetBranch: string;
 	  };
 export type PanelMode = "diff" | "explorer" | "pr-review";
 
@@ -146,6 +155,13 @@ interface TabStore {
 		commitHash: string,
 		repoPath: string,
 		language: string
+	) => string;
+
+	openMergeConflict: (
+		workspaceId: string,
+		mergeType: "merge" | "rebase",
+		sourceBranch: string,
+		targetBranch: string,
 	) => string;
 
 	// Diff convenience
@@ -601,6 +617,25 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 		if (focused) {
 			ps().addTabToPane(workspaceId, focused.id, tab);
 		}
+		return id;
+	},
+
+	openMergeConflict: (workspaceId, mergeType, sourceBranch, targetBranch) => {
+		const id = nextFileTabId();
+		const label =
+			mergeType === "merge"
+				? `Merge: ${sourceBranch} → ${targetBranch}`
+				: `Rebase: ${targetBranch} onto ${sourceBranch}`;
+		const tab: TabItem = {
+			kind: "merge-conflict",
+			id,
+			workspaceId,
+			title: label,
+			mergeType,
+			sourceBranch,
+			targetBranch,
+		};
+		get().addTab(tab);
 		return id;
 	},
 
