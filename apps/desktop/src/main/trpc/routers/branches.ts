@@ -24,14 +24,15 @@ export const branchesRouter = router({
 	}),
 
 	checkout: publicProcedure
-		.input(z.object({ projectId: z.string(), branch: z.string() }))
+		.input(z.object({ projectId: z.string(), branch: z.string(), cwd: z.string().optional() }))
 		.mutation(async ({ input }) => {
 			const db = getDb();
 			const project = await db.query.projects.findFirst({
 				where: eq(projects.id, input.projectId),
 			});
 			if (!project) throw new Error("Project not found");
-			await checkoutBranch(project.repoPath, input.branch);
+			// Use the workspace CWD if provided (for worktree contexts), otherwise the main repo
+			await checkoutBranch(input.cwd ?? project.repoPath, input.branch);
 			return { success: true };
 		}),
 

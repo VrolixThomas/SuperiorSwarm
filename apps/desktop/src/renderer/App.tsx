@@ -387,7 +387,9 @@ function AuthenticatedApp() {
 				return;
 			}
 
-			checkoutMutation.mutate({ projectId: activeProjectId, branch });
+			// Use the active workspace's CWD so checkout works in worktrees
+			const cwd = useTabStore.getState().activeWorkspaceCwd;
+			checkoutMutation.mutate({ projectId: activeProjectId, branch, cwd: cwd || undefined });
 		},
 		[activeProjectId, workspacesQuery.data, checkoutMutation]
 	);
