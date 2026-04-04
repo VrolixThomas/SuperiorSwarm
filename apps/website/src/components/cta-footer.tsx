@@ -3,8 +3,8 @@
 import { SITE } from "@/lib/constants";
 import { useReducedMotion } from "motion/react";
 import { useMemo } from "react";
-import { WaitlistForm } from "./waitlist-form";
 import { Section } from "./section";
+import { WaitlistForm } from "./waitlist-form";
 
 function generateFooterParticles() {
 	return Array.from({ length: 10 }, (_, i) => ({

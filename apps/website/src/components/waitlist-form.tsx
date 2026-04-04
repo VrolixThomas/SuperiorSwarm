@@ -52,9 +52,7 @@ export function WaitlistForm() {
 		return (
 			<div className="flex flex-col items-center gap-2">
 				<p className="text-[15px] font-medium text-accent">You're already on the list.</p>
-				<p className="text-[13px] text-text-secondary">
-					We'll reach out when it's time.
-				</p>
+				<p className="text-[13px] text-text-secondary">We'll reach out when it's time.</p>
 			</div>
 		);
 	}
