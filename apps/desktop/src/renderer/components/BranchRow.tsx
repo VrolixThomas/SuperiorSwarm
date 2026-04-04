@@ -3,7 +3,7 @@ import type { BranchInfo } from "../../shared/branch-types";
 interface Props {
 	branch: BranchInfo;
 	isSelected: boolean;
-	onSelect: () => void;
+	onSelect: (e: React.MouseEvent) => void;
 	onContextMenu: (e: React.MouseEvent) => void;
 	onActionClick: (e: React.MouseEvent) => void;
 }
@@ -19,7 +19,7 @@ export function BranchRow({ branch, isSelected, onSelect, onContextMenu, onActio
 			onKeyDown={(e) => {
 				if (e.key === "Enter" || e.key === " ") {
 					e.preventDefault();
-					onSelect();
+					onSelect(e as unknown as React.MouseEvent);
 				}
 			}}
 			onContextMenu={onContextMenu}
