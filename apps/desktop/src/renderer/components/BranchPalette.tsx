@@ -25,11 +25,8 @@ export function BranchPalette({ projectId, onOpenActionMenu }: Props) {
 	} = useBranchStore();
 
 	const inputRef = useRef<HTMLInputElement>(null);
-	const newBranchInputRef = useRef<HTMLInputElement>(null);
 	const listRef = useRef<HTMLDivElement>(null);
 	const [remoteCollapsed, setRemoteCollapsed] = useState(true);
-	const [creatingBranch, setCreatingBranch] = useState(false);
-	const [newBranchName, setNewBranchName] = useState("");
 
 	const utils = trpc.useUtils();
 
@@ -49,18 +46,20 @@ export function BranchPalette({ projectId, onOpenActionMenu }: Props) {
 		{ enabled: isPaletteOpen, staleTime: 10_000 }
 	);
 
-	const createMutation = trpc.branches.create.useMutation({
-		onSuccess: () => {
-			utils.branches.list.invalidate();
-			setCreatingBranch(false);
-			setNewBranchName("");
-		},
-	});
 	const fetchMutation = trpc.remote.fetch.useMutation({
 		onSuccess: () => utils.branches.list.invalidate(),
 	});
-	const pushMutation = trpc.remote.push.useMutation();
-	const pullMutation = trpc.remote.pull.useMutation();
+	const pushMutation = trpc.remote.push.useMutation({
+		onSuccess: () => utils.branches.getStatus.invalidate(),
+	});
+	const pullMutation = trpc.remote.pull.useMutation({
+		onSuccess: () => {
+			utils.branches.getStatus.invalidate();
+			utils.branches.list.invalidate();
+			utils.diff.getWorkingTreeStatus.invalidate();
+			utils.diff.getWorkingTreeDiff.invalidate();
+		},
+	});
 
 	const allBranches: BranchInfo[] = useMemo(() => {
 		const branches = branchesQuery.data ?? [];
@@ -121,12 +120,6 @@ export function BranchPalette({ projectId, onOpenActionMenu }: Props) {
 		}
 	}, [isPaletteOpen]);
 
-	// Focus new branch input when creating branch mode activates
-	useEffect(() => {
-		if (creatingBranch) {
-			setTimeout(() => newBranchInputRef.current?.focus(), 0);
-		}
-	}, [creatingBranch]);
 
 	// Scroll selected row into view
 	// biome-ignore lint/correctness/useExhaustiveDependencies: selectedIndex triggers scroll but isn't read inside effect
@@ -326,57 +319,30 @@ export function BranchPalette({ projectId, onOpenActionMenu }: Props) {
 							{/* Quick actions */}
 							{!searchQuery && (
 								<div className="mb-2 flex flex-wrap gap-1.5 px-2">
-									{creatingBranch ? (
-										<input
-											ref={newBranchInputRef}
-											value={newBranchName}
-											onChange={(e) => setNewBranchName(e.target.value)}
-											onKeyDown={(e) => {
-												if (e.key === "Enter" && newBranchName) {
-													createMutation.mutate({
-														projectId,
-														name: newBranchName,
-														baseBranch: currentBranch?.name ?? "main",
-														cwd: cwd || undefined,
-													});
-												}
-												if (e.key === "Escape") setCreatingBranch(false);
-											}}
-											placeholder="Branch name..."
-											className="flex-1 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-elevated)] px-2 py-1 text-[12px] text-[var(--text)] placeholder:text-[var(--text-quaternary)] focus:border-[var(--accent)] focus:outline-none"
-										/>
-									) : (
-										<>
-											<button
-												type="button"
-												onClick={() => setCreatingBranch(true)}
-												className="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[rgba(255,255,255,0.04)] px-2.5 py-1 text-[12px] text-[var(--text-secondary)] transition-all duration-[var(--transition-fast)] hover:bg-[var(--bg-overlay)]"
-											>
-												+ New Branch
-											</button>
-											<button
-												type="button"
-												onClick={() => fetchMutation.mutate({ projectId, cwd: cwd || undefined })}
-												className="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[rgba(255,255,255,0.04)] px-2.5 py-1 text-[12px] text-[var(--text-secondary)] transition-all duration-[var(--transition-fast)] hover:bg-[var(--bg-overlay)]"
-											>
-												Fetch All
-											</button>
-											<button
-												type="button"
-												onClick={() => pushMutation.mutate({ projectId, cwd: cwd || undefined })}
-												className="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[rgba(255,255,255,0.04)] px-2.5 py-1 text-[12px] text-[var(--text-secondary)] transition-all duration-[var(--transition-fast)] hover:bg-[var(--bg-overlay)]"
-											>
-												Push
-											</button>
-											<button
-												type="button"
-												onClick={() => pullMutation.mutate({ projectId, cwd: cwd || undefined })}
-												className="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[rgba(255,255,255,0.04)] px-2.5 py-1 text-[12px] text-[var(--text-secondary)] transition-all duration-[var(--transition-fast)] hover:bg-[var(--bg-overlay)]"
-											>
-												Pull
-											</button>
-										</>
-									)}
+									<button
+										type="button"
+										onClick={() => fetchMutation.mutate({ projectId, cwd: cwd || undefined })}
+										disabled={fetchMutation.isPending}
+										className="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[rgba(255,255,255,0.04)] px-2.5 py-1 text-[12px] text-[var(--text-secondary)] transition-all duration-[var(--transition-fast)] hover:bg-[var(--bg-overlay)] disabled:opacity-40"
+									>
+										{fetchMutation.isPending ? "Fetching…" : "Fetch All"}
+									</button>
+									<button
+										type="button"
+										onClick={() => pushMutation.mutate({ projectId, cwd: cwd || undefined })}
+										disabled={pushMutation.isPending}
+										className="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[rgba(255,255,255,0.04)] px-2.5 py-1 text-[12px] text-[var(--text-secondary)] transition-all duration-[var(--transition-fast)] hover:bg-[var(--bg-overlay)] disabled:opacity-40"
+									>
+										{pushMutation.isPending ? "Pushing…" : "Push"}
+									</button>
+									<button
+										type="button"
+										onClick={() => pullMutation.mutate({ projectId, cwd: cwd || undefined })}
+										disabled={pullMutation.isPending}
+										className="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[rgba(255,255,255,0.04)] px-2.5 py-1 text-[12px] text-[var(--text-secondary)] transition-all duration-[var(--transition-fast)] hover:bg-[var(--bg-overlay)] disabled:opacity-40"
+									>
+										{pullMutation.isPending ? "Pulling…" : "Pull"}
+									</button>
 								</div>
 							)}
 							<div className="mx-2 mb-2 h-px bg-[var(--border-subtle)]" />

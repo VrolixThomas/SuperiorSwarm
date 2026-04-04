@@ -4,6 +4,23 @@ import simpleGit from "simple-git";
 import type { BranchInfo, BranchStatus } from "../../shared/branch-types";
 import { resolveGitDir } from "./operations";
 
+async function getAheadBehind(
+	git: ReturnType<typeof simpleGit>,
+	local: string,
+	remote: string
+): Promise<{ ahead: number; behind: number }> {
+	try {
+		const raw = await git.raw(["rev-list", "--left-right", "--count", `${local}...${remote}`]);
+		const parts = raw.trim().split(/\s+/);
+		return {
+			ahead: Number.parseInt(parts[0] ?? "0", 10),
+			behind: Number.parseInt(parts[1] ?? "0", 10),
+		};
+	} catch {
+		return { ahead: 0, behind: 0 };
+	}
+}
+
 export async function checkoutBranch(repoPath: string, branch: string): Promise<void> {
 	const git = simpleGit(repoPath);
 	await git.checkout(branch);
@@ -15,8 +32,7 @@ export async function createBranch(
 	baseBranch: string
 ): Promise<void> {
 	const git = simpleGit(repoPath);
-	await git.checkoutBranch(name, baseBranch);
-	await git.checkout(baseBranch);
+	await git.branch([name, baseBranch]);
 }
 
 export async function deleteBranch(repoPath: string, name: string, force: boolean): Promise<void> {
@@ -43,24 +59,9 @@ export async function getBranchStatus(repoPath: string): Promise<BranchStatus> {
 	const branch = status.current ?? "HEAD";
 	const tracking = status.tracking || null;
 
-	let ahead = 0;
-	let behind = 0;
-
-	if (tracking) {
-		try {
-			const result = await git.raw([
-				"rev-list",
-				"--left-right",
-				"--count",
-				`${branch}...${tracking}`,
-			]);
-			const parts = result.trim().split(/\s+/);
-			ahead = Number.parseInt(parts[0] ?? "0", 10);
-			behind = Number.parseInt(parts[1] ?? "0", 10);
-		} catch {
-			// No tracking branch or upstream gone
-		}
-	}
+	const { ahead, behind } = tracking
+		? await getAheadBehind(git, branch, tracking)
+		: { ahead: 0, behind: 0 };
 
 	const gitDir = await resolveGitDir(repoPath);
 	let state: BranchStatus["state"] = "clean";
@@ -95,7 +96,6 @@ export async function listBranchesDetailed(
 		}
 	}
 
-	// Track which branches exist locally and remotely
 	const localSet = new Set<string>();
 	const remoteSet = new Set<string>();
 	const trackingMap = new Map<string, string>(); // local name → remote tracking ref
@@ -118,24 +118,14 @@ export async function listBranchesDetailed(
 		}
 	}
 
-	// Get ahead/behind for local branches with tracking
-	for (const [localName, tracking] of trackingMap) {
-		try {
-			const raw = await git.raw([
-				"rev-list",
-				"--left-right",
-				"--count",
-				`${localName}...${tracking}`,
-			]);
-			const parts = raw.trim().split(/\s+/);
-			aheadBehindMap.set(localName, {
-				ahead: Number.parseInt(parts[0] ?? "0", 10),
-				behind: Number.parseInt(parts[1] ?? "0", 10),
-			});
-		} catch {
-			// Tracking ref may be gone
-		}
-	}
+	await Promise.all(
+		[...trackingMap].map(async ([localName, tracking]) => {
+			const ab = await getAheadBehind(git, localName, tracking);
+			if (ab.ahead !== 0 || ab.behind !== 0) {
+				aheadBehindMap.set(localName, ab);
+			}
+		})
+	);
 
 	// Build unified branch list
 	const allNames = new Set([...localSet, ...remoteSet]);
@@ -206,15 +196,9 @@ export async function getBranchInfo(
 		if (tracking) {
 			const remote = (await git.raw(["config", "--get", `branch.${branchName}.remote`])).trim();
 			const remoteBranch = `${remote}/${tracking.replace("refs/heads/", "")}`;
-			const result = await git.raw([
-				"rev-list",
-				"--left-right",
-				"--count",
-				`${branchName}...${remoteBranch}`,
-			]);
-			const parts = result.trim().split(/\s+/);
-			ahead = Number.parseInt(parts[0] ?? "0", 10);
-			behind = Number.parseInt(parts[1] ?? "0", 10);
+			const ab = await getAheadBehind(git, branchName, remoteBranch);
+			ahead = ab.ahead;
+			behind = ab.behind;
 			tracking = remoteBranch;
 		}
 	} catch {
