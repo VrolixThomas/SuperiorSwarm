@@ -1,5 +1,6 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { writeFile } from "node:fs/promises";
+import { join, resolve } from "node:path";
 import simpleGit from "simple-git";
 import type {
 	ConflictContent,
@@ -130,8 +131,12 @@ export async function markFileResolved(
 	filePath: string,
 	resolvedContent: string
 ): Promise<void> {
-	const fullPath = join(repoPath, filePath);
-	writeFileSync(fullPath, resolvedContent, "utf-8");
+	const base = resolve(repoPath);
+	const fullPath = resolve(repoPath, filePath);
+	if (!fullPath.startsWith(`${base}/`) && fullPath !== base) {
+		throw new Error(`Path traversal attempt: ${filePath}`);
+	}
+	await writeFile(fullPath, resolvedContent, "utf-8");
 	const git = simpleGit(repoPath);
 	await git.add(filePath);
 }
