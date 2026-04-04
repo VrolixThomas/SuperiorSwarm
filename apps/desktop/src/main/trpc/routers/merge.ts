@@ -48,7 +48,7 @@ export const mergeRouter = router({
 				filePath: z.string(),
 				content: z.string(),
 				cwd: z.string().optional(),
-			}),
+			})
 		)
 		.mutation(async ({ input }) => {
 			const path = await resolvePath(input.projectId, input.cwd);
@@ -59,7 +59,9 @@ export const mergeRouter = router({
 		}),
 
 	applyAndCommit: publicProcedure
-		.input(z.object({ projectId: z.string(), message: z.string().min(1), cwd: z.string().optional() }))
+		.input(
+			z.object({ projectId: z.string(), message: z.string().min(1), cwd: z.string().optional() })
+		)
 		.mutation(async ({ input }) => {
 			const path = await resolvePath(input.projectId, input.cwd);
 			await commitChanges(path, input.message);

@@ -231,7 +231,7 @@ body,
 /* ── Merge conflict: result panel decorations ────────────────────────────── */
 
 .merge-conflict-pending {
-	background: rgba(255, 159, 10, 0.1);
+	background: rgba(255, 69, 58, 0.12);
 }
 
 .merge-conflict-resolved {
@@ -239,9 +239,9 @@ body,
 }
 
 .merge-conflict-gutter-pending {
-	width: 3px !important;
-	margin-left: 2px;
-	background: #ff9f0a;
+	width: 4px !important;
+	margin-left: 1px;
+	background: #ff453a;
 	border-radius: 1px;
 }
 
@@ -251,6 +251,31 @@ body,
 	background: #30d158;
 	border-radius: 1px;
 	opacity: 0.5;
+}
+
+/* Auto-merged changes in result (non-conflicting) */
+.merge-auto-theirs {
+	background: rgba(10, 132, 255, 0.06);
+}
+
+.merge-auto-ours {
+	background: rgba(191, 90, 242, 0.06);
+}
+
+.merge-auto-gutter-theirs {
+	width: 3px !important;
+	margin-left: 2px;
+	background: #0a84ff;
+	border-radius: 1px;
+	opacity: 0.4;
+}
+
+.merge-auto-gutter-ours {
+	width: 3px !important;
+	margin-left: 2px;
+	background: #bf5af2;
+	border-radius: 1px;
+	opacity: 0.4;
 }
 
 /* ── Panel resize handles ─────────────────────────────────────────────────── */

@@ -70,14 +70,14 @@ export async function continueRebase(repoPath: string): Promise<RebaseResult> {
 }
 
 export async function getRebaseProgress(
-	repoPath: string,
+	repoPath: string
 ): Promise<{ current: number; total: number } | undefined> {
 	const gitDir = await resolveGitDir(repoPath);
 	const rebaseMergeDir = join(gitDir, "rebase-merge");
 	try {
 		const current = Number.parseInt(
 			readFileSync(join(rebaseMergeDir, "msgnum"), "utf-8").trim(),
-			10,
+			10
 		);
 		const total = Number.parseInt(readFileSync(join(rebaseMergeDir, "end"), "utf-8").trim(), 10);
 		return { current, total };
@@ -112,7 +112,7 @@ export async function getConflictingFiles(repoPath: string): Promise<ConflictFil
 
 export async function getConflictContent(
 	repoPath: string,
-	filePath: string,
+	filePath: string
 ): Promise<ConflictContent> {
 	const git = simpleGit(repoPath);
 
@@ -128,7 +128,7 @@ export async function getConflictContent(
 export async function markFileResolved(
 	repoPath: string,
 	filePath: string,
-	resolvedContent: string,
+	resolvedContent: string
 ): Promise<void> {
 	const fullPath = join(repoPath, filePath);
 	writeFileSync(fullPath, resolvedContent, "utf-8");

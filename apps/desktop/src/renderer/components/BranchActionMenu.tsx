@@ -114,7 +114,7 @@ export function BranchActionMenu({
 	}, [onClose, renaming, branch]);
 
 	function handleCheckout() {
-onCheckout(branch);
+		onCheckout(branch);
 		onClose();
 	}
 
@@ -126,22 +126,22 @@ onCheckout(branch);
 	}
 
 	function handleMerge() {
-onMerge(branch);
+		onMerge(branch);
 		onClose();
 	}
 
 	function handleRebase() {
-onRebase(branch);
+		onRebase(branch);
 		onClose();
 	}
 
 	function handleCompare() {
-onCompare(branch);
+		onCompare(branch);
 		onClose();
 	}
 
 	function handlePush() {
-pushMutation.mutate({ projectId, branch });
+		pushMutation.mutate({ projectId, branch });
 	}
 
 	function handleDeleteClick() {
@@ -245,10 +245,22 @@ pushMutation.mutate({ projectId, branch });
 			{!isCurrentBranch && (
 				<>
 					{separator}
-					<button type="button" role="menuitem" className={itemClass} onClick={handleMerge} disabled={isMerging}>
+					<button
+						type="button"
+						role="menuitem"
+						className={itemClass}
+						onClick={handleMerge}
+						disabled={isMerging}
+					>
 						Merge &lsquo;{branch}&rsquo; into current
 					</button>
-					<button type="button" role="menuitem" className={itemClass} onClick={handleRebase} disabled={isMerging}>
+					<button
+						type="button"
+						role="menuitem"
+						className={itemClass}
+						onClick={handleRebase}
+						disabled={isMerging}
+					>
 						Rebase current onto &lsquo;{branch}&rsquo;
 					</button>
 				</>

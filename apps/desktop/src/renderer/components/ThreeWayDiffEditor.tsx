@@ -8,45 +8,90 @@ import {
 	computeSideDiffs,
 	computeThreeWayMerge,
 	resolveHunk,
+	toggleHunkAccepted,
 } from "../lib/three-way-merge";
 
 // ── Inline accept bar rendered inside a Monaco view zone ────────────────────
 
 function HunkAcceptBar({
 	hunkId,
+	theirsCount,
+	oursCount,
 	onAccept,
 }: {
 	hunkId: string;
+	theirsCount: number;
+	oursCount: number;
 	onAccept: (id: string, res: "theirs" | "ours" | "both") => void;
 }) {
 	return (
 		<div
-			className="flex items-center gap-1.5 px-3 py-1"
-			style={{ background: "var(--bg-surface)" }}
+			className="flex items-center gap-2 border-b border-[rgba(255,69,58,0.2)] px-3 py-1.5"
+			style={{ background: "rgba(255, 69, 58, 0.06)" }}
 		>
-			<span className="text-[11px] text-[var(--text-quaternary)]">Conflict:</span>
+			<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#ff453a" strokeWidth="2" className="shrink-0">
+				<circle cx="12" cy="12" r="10" /><path d="M12 8v4" /><path d="M12 16h.01" />
+			</svg>
+			<span className="text-[11px] font-medium text-[#ff453a]">Conflict</span>
+			<span className="text-[11px] text-[var(--text-quaternary)]">—</span>
 			<button
 				type="button"
 				onClick={() => onAccept(hunkId, "theirs")}
-				className="rounded px-2 py-0.5 text-[11px] font-medium"
-				style={{ color: "#0a84ff", background: "rgba(10, 132, 255, 0.12)" }}
+				className="rounded px-2 py-0.5 text-[11px] font-medium transition-colors hover:brightness-110"
+				style={{ color: "#0a84ff", background: "rgba(10, 132, 255, 0.15)" }}
 			>
-				Accept Theirs
+				← Accept Theirs ({theirsCount} line{theirsCount !== 1 ? "s" : ""})
 			</button>
 			<button
 				type="button"
 				onClick={() => onAccept(hunkId, "ours")}
-				className="rounded px-2 py-0.5 text-[11px] font-medium"
-				style={{ color: "#bf5af2", background: "rgba(191, 90, 242, 0.12)" }}
+				className="rounded px-2 py-0.5 text-[11px] font-medium transition-colors hover:brightness-110"
+				style={{ color: "#bf5af2", background: "rgba(191, 90, 242, 0.15)" }}
 			>
-				Accept Yours
+				Accept Yours ({oursCount} line{oursCount !== 1 ? "s" : ""}) →
 			</button>
 			<button
 				type="button"
 				onClick={() => onAccept(hunkId, "both")}
-				className="rounded px-2 py-0.5 text-[11px] text-[var(--text-tertiary)] hover:bg-[var(--bg-elevated)]"
+				className="rounded px-2 py-0.5 text-[11px] text-[var(--text-tertiary)] transition-colors hover:bg-[var(--bg-elevated)]"
 			>
-				Accept Both
+				Both
+			</button>
+		</div>
+	);
+}
+
+// ── Auto-merged change indicator (clickable to toggle) ─────────────────────
+
+function AutoMergedBar({
+	hunkId,
+	source,
+	accepted,
+	lineCount,
+	onToggle,
+}: {
+	hunkId: string;
+	source: string;
+	accepted: boolean;
+	lineCount: number;
+	onToggle: (id: string) => void;
+}) {
+	const sourceLabel = source === "theirs" ? "theirs" : source === "ours" ? "yours" : "both sides";
+	return (
+		<div
+			className="flex items-center gap-1.5 px-3 py-0.5"
+			style={{ background: "var(--bg-surface)", borderBottom: "1px solid var(--border-subtle)" }}
+		>
+			<button
+				type="button"
+				onClick={() => onToggle(hunkId)}
+				className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] transition-colors hover:bg-[var(--bg-elevated)]"
+				style={{ color: accepted ? "#30d158" : "var(--text-quaternary)" }}
+			>
+				{accepted ? "✓" : "○"} {lineCount} line{lineCount !== 1 ? "s" : ""} from {sourceLabel}
+				<span className="text-[var(--text-quaternary)]">
+					{accepted ? "(click to exclude)" : "(click to include)"}
+				</span>
 			</button>
 		</div>
 	);
@@ -259,7 +304,7 @@ export function ThreeWayDiffEditor({
 		oursDecoRef.current = editor.createDecorationsCollection(decorations);
 	}, [content]);
 
-	// ── Apply conflict decorations to result (center) panel ─────────────────
+	// ── Apply decorations to result (center) panel ─────────────────────────
 
 	useEffect(() => {
 		const editor = resultEditorRef.current;
@@ -267,12 +312,14 @@ export function ThreeWayDiffEditor({
 
 		resultDecoRef.current?.clear();
 
-		const decorations: monaco.editor.IModelDeltaDecoration[] = hunks
-			.filter((h) => h.type === "conflict")
-			.map((h) => {
-				const endLine = h.startLine + Math.max(h.resultLines.length - 1, 0);
+		const decorations: monaco.editor.IModelDeltaDecoration[] = [];
+
+		for (const h of hunks) {
+			const endLine = h.startLine + Math.max(h.resultLines.length - 1, 0);
+
+			if (h.type === "conflict") {
 				const isPending = h.status === "pending";
-				return {
+				decorations.push({
 					range: new monaco.Range(h.startLine, 1, endLine, 1),
 					options: {
 						isWholeLine: true,
@@ -281,13 +328,30 @@ export function ThreeWayDiffEditor({
 							? "merge-conflict-gutter-pending"
 							: "merge-conflict-gutter-resolved",
 					},
-				};
-			});
+				});
+			} else if (h.type === "ok" && h.source) {
+				// Auto-merged non-conflicting changes — show subtle decoration
+				const gutterClass = h.source === "theirs" ? "merge-auto-gutter-theirs"
+					: h.source === "ours" ? "merge-auto-gutter-ours"
+					: "merge-auto-gutter-theirs";
+				const bgClass = h.source === "theirs" ? "merge-auto-theirs"
+					: h.source === "ours" ? "merge-auto-ours"
+					: "merge-auto-theirs";
+				decorations.push({
+					range: new monaco.Range(h.startLine, 1, endLine, 1),
+					options: {
+						isWholeLine: true,
+						className: bgClass,
+						linesDecorationsClassName: gutterClass,
+					},
+				});
+			}
+		}
 
 		resultDecoRef.current = editor.createDecorationsCollection(decorations);
 	}, [hunks]);
 
-	// ── Hunk accept handler ─────────────────────────────────────────────────
+	// ── Hunk accept handler (for conflicts) ────────────────────────────────
 
 	const handleAccept = useCallback(
 		(hunkId: string, resolution: "theirs" | "ours" | "both") => {
@@ -295,10 +359,21 @@ export function ThreeWayDiffEditor({
 			setHunks(result.hunks);
 			setMergedContent(result.mergedContent);
 		},
-		[hunks]
+		[hunks],
 	);
 
-	// ── View zones for pending conflict hunks ───────────────────────────────
+	// ── Toggle handler (for auto-merged non-conflict changes) ───────────────
+
+	const handleToggle = useCallback(
+		(hunkId: string) => {
+			const result = toggleHunkAccepted(hunks, hunkId);
+			setHunks(result.hunks);
+			setMergedContent(result.mergedContent);
+		},
+		[hunks],
+	);
+
+	// ── View zones for conflict hunks + auto-merged change indicators ──────
 
 	useEffect(() => {
 		const editor = resultEditorRef.current;
@@ -315,29 +390,56 @@ export function ThreeWayDiffEditor({
 		zoneIdsRef.current = [];
 		rootsRef.current = [];
 
-		const pendingConflicts = hunks.filter((h) => h.type === "conflict" && h.status === "pending");
-		if (pendingConflicts.length === 0) return;
+		// Collect hunks that need view zones: pending conflicts + auto-merged changes with a source
+		const zonableHunks = hunks.filter(
+			(h) =>
+				(h.type === "conflict" && h.status === "pending") ||
+				(h.type === "ok" && h.source),
+		);
+		if (zonableHunks.length === 0) return;
 
 		const newZoneIds: string[] = [];
 		const newRoots: ReturnType<typeof createRoot>[] = [];
 
 		editor.changeViewZones((acc) => {
-			for (const hunk of pendingConflicts) {
+			for (const hunk of zonableHunks) {
 				const domNode = document.createElement("div");
 				domNode.style.pointerEvents = "auto";
 				domNode.style.zIndex = "10";
 				domNode.addEventListener("mousedown", (e) => e.stopPropagation());
 
+				const isConflict = hunk.type === "conflict";
+
 				const zoneId = acc.addZone({
 					afterLineNumber: hunk.startLine - 1,
-					heightInLines: 2,
+					heightInLines: isConflict ? 2 : 1,
 					domNode,
 				});
 				newZoneIds.push(zoneId);
 
 				const root = createRoot(domNode);
 				newRoots.push(root);
-				root.render(<HunkAcceptBar hunkId={hunk.id} onAccept={handleAccept} />);
+
+				if (isConflict) {
+					root.render(
+						<HunkAcceptBar
+							hunkId={hunk.id}
+							theirsCount={hunk.theirsLines.length}
+							oursCount={hunk.oursLines.length}
+							onAccept={handleAccept}
+						/>,
+					);
+				} else {
+					root.render(
+						<AutoMergedBar
+							hunkId={hunk.id}
+							source={hunk.source ?? "both sides"}
+							accepted={hunk.accepted}
+							lineCount={hunk.resultLines.length}
+							onToggle={handleToggle}
+						/>,
+					);
+				}
 			}
 		});
 
@@ -352,14 +454,15 @@ export function ThreeWayDiffEditor({
 				for (const root of newRoots) root.unmount();
 			});
 		};
-	}, [hunks, handleAccept]);
+	}, [hunks, handleAccept, handleToggle]);
 
 	// ── Derived state ───────────────────────────────────────────────────────
 
 	const conflictHunks = hunks.filter((h) => h.type === "conflict");
 	const resolvedCount = conflictHunks.filter((h) => h.status === "resolved").length;
 	const totalConflicts = conflictHunks.length;
-	const allResolved = totalConflicts > 0 && resolvedCount === totalConflicts;
+	const allResolved = totalConflicts === 0 || resolvedCount === totalConflicts;
+	const autoMergedCount = hunks.filter((h) => h.type === "ok" && h.source).length;
 
 	// ── Quick accept-all helpers ────────────────────────────────────────────
 
@@ -478,9 +581,14 @@ export function ThreeWayDiffEditor({
 				{totalConflicts > 0 && (
 					<span
 						className="shrink-0 text-[11px] font-medium"
-						style={{ color: allResolved ? "#30d158" : "#ff9f0a" }}
+						style={{ color: allResolved ? "#30d158" : "#ff453a" }}
 					>
-						{resolvedCount} of {totalConflicts} conflict{totalConflicts !== 1 ? "s" : ""} resolved
+						{resolvedCount}/{totalConflicts} conflict{totalConflicts !== 1 ? "s" : ""} resolved
+					</span>
+				)}
+				{autoMergedCount > 0 && (
+					<span className="shrink-0 text-[11px] text-[var(--text-quaternary)]">
+						{autoMergedCount} auto-merged
 					</span>
 				)}
 

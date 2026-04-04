@@ -38,11 +38,11 @@ export function BranchPalette({ projectId, onCheckout, onOpenActionMenu }: Props
 
 	const branchesQuery = trpc.branches.list.useQuery(
 		{ projectId, cwd: cwd || undefined },
-		{ enabled: isPaletteOpen, staleTime: 10_000 },
+		{ enabled: isPaletteOpen, staleTime: 10_000 }
 	);
 	const statusQuery = trpc.branches.getStatus.useQuery(
 		{ projectId, cwd: cwd || undefined },
-		{ enabled: isPaletteOpen, staleTime: 10_000 },
+		{ enabled: isPaletteOpen, staleTime: 10_000 }
 	);
 
 	const workspacesQuery = trpc.workspaces.listByProject.useQuery(
@@ -69,7 +69,7 @@ export function BranchPalette({ projectId, onCheckout, onOpenActionMenu }: Props
 
 		// Enrich with workspace info
 		const branchesWithWorkspace = new Set(
-			wsData.filter((ws) => ws.worktreePath).map((ws) => ws.name),
+			wsData.filter((ws) => ws.worktreePath).map((ws) => ws.name)
 		);
 
 		return branches.map((b) => ({
@@ -96,7 +96,7 @@ export function BranchPalette({ projectId, onCheckout, onOpenActionMenu }: Props
 	// Branches that ONLY exist on remote (not checked out locally)
 	const remoteOnlyBranches = useMemo(
 		() => filtered.filter((b) => b.isRemote && !b.isLocal),
-		[filtered],
+		[filtered]
 	);
 
 	// Flat list of selectable branches for keyboard navigation (current + local + remote if expanded)
@@ -184,7 +184,16 @@ export function BranchPalette({ projectId, onCheckout, onOpenActionMenu }: Props
 
 		document.addEventListener("keydown", handleKeyDown);
 		return () => document.removeEventListener("keydown", handleKeyDown);
-	}, [isPaletteOpen, selectedIndex, navigableBranches, closePalette, setSelectedIndex, onCheckout, onOpenActionMenu, currentBranch]);
+	}, [
+		isPaletteOpen,
+		selectedIndex,
+		navigableBranches,
+		closePalette,
+		setSelectedIndex,
+		onCheckout,
+		onOpenActionMenu,
+		currentBranch,
+	]);
 
 	if (!isPaletteOpen) return null;
 

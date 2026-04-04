@@ -41,7 +41,7 @@ export const branchesRouter = router({
 				name: z.string().min(1),
 				baseBranch: z.string(),
 				cwd: z.string().optional(),
-			}),
+			})
 		)
 		.mutation(async ({ input }) => {
 			const path = await resolvePath(input.projectId, input.cwd);
@@ -56,7 +56,7 @@ export const branchesRouter = router({
 				branch: z.string(),
 				force: z.boolean().optional().default(false),
 				cwd: z.string().optional(),
-			}),
+			})
 		)
 		.mutation(async ({ input }) => {
 			const path = await resolvePath(input.projectId, input.cwd);
@@ -71,7 +71,7 @@ export const branchesRouter = router({
 				oldName: z.string(),
 				newName: z.string().min(1),
 				cwd: z.string().optional(),
-			}),
+			})
 		)
 		.mutation(async ({ input }) => {
 			const path = await resolvePath(input.projectId, input.cwd);

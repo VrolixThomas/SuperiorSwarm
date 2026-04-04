@@ -6,9 +6,12 @@ export interface MergeHunk {
 	id: string;
 	type: "ok" | "conflict";
 	status: "auto" | "pending" | "resolved";
+	/** Which side this hunk came from (null = unchanged base content) */
+	source?: "theirs" | "ours" | "both" | null;
+	/** Whether this auto-merged change is accepted (reviewable non-conflict changes) */
+	accepted: boolean;
 	startLine: number;
 	resultLines: string[];
-	// Only populated for conflict hunks
 	oursLines: string[];
 	theirsLines: string[];
 	baseLines: string[];
@@ -65,15 +68,35 @@ export function computeThreeWayMerge(base: string, ours: string, theirs: string)
 
 	for (const section of sections) {
 		if ("ok" in section) {
+			// Determine which side this ok chunk came from by checking against base
+			const okText = section.ok.join("\n");
+			const baseText = baseLines.join("\n");
+			const oursText = oursLines.join("\n");
+			const theirsText = theirsLines.join("\n");
+
+			// If this ok section contains lines not in the base, figure out the source
+			let source: "theirs" | "ours" | "both" | null = null;
+			const inBase = baseText.includes(okText) || section.ok.every((l) => baseLines.includes(l));
+			if (!inBase) {
+				const inOurs = oursText.includes(okText) || section.ok.every((l) => oursLines.includes(l));
+				const inTheirs = theirsText.includes(okText) || section.ok.every((l) => theirsLines.includes(l));
+				if (inTheirs && !inOurs) source = "theirs";
+				else if (inOurs && !inTheirs) source = "ours";
+				else if (inOurs && inTheirs) source = "both";
+			}
+
 			hunks.push({
 				id: nextId(),
 				type: "ok",
 				status: "auto",
-				startLine: 0, // recalculated below
+				source,
+				accepted: true,
+				startLine: 0,
 				resultLines: section.ok,
-				oursLines: [],
+				// For toggleable ok hunks: store the auto-merged lines for re-acceptance
+				oursLines: source ? [...section.ok] : [],
 				theirsLines: [],
-				baseLines: [],
+				baseLines: [], // base equivalent not available from diff3; toggle removes the change entirely
 			});
 		} else {
 			hasConflicts = true;
@@ -82,8 +105,9 @@ export function computeThreeWayMerge(base: string, ours: string, theirs: string)
 				id: nextId(),
 				type: "conflict",
 				status: "pending",
+				accepted: false,
 				startLine: 0,
-				// Use ours as placeholder in merged content (matches spec)
+				// Use ours as placeholder in merged content
 				resultLines: [...sectionOurs],
 				oursLines: [...sectionOurs],
 				theirsLines: [...sectionTheirs],
@@ -101,7 +125,7 @@ export function computeThreeWayMerge(base: string, ours: string, theirs: string)
 export function resolveHunk(
 	hunks: MergeHunk[],
 	hunkId: string,
-	resolution: MergeResolution,
+	resolution: MergeResolution
 ): { hunks: MergeHunk[]; mergedContent: string } {
 	const updated = hunks.map((hunk) => {
 		if (hunk.id !== hunkId) return hunk;
@@ -122,12 +146,38 @@ export function resolveHunk(
 				break;
 		}
 
-		return { ...hunk, resultLines, status: "resolved" as const };
+		return { ...hunk, resultLines, status: "resolved" as const, accepted: true };
 	});
 
 	const numbered = recalcLineNumbers(updated);
 	const mergedContent = buildMergedContent(numbered);
 
+	return { hunks: numbered, mergedContent };
+}
+
+/** Toggle acceptance of an auto-merged (non-conflicting) hunk. Stores original lines for re-acceptance. */
+export function toggleHunkAccepted(
+	hunks: MergeHunk[],
+	hunkId: string,
+): { hunks: MergeHunk[]; mergedContent: string } {
+	const updated = hunks.map((hunk) => {
+		if (hunk.id !== hunkId || hunk.type !== "ok" || !hunk.source) return hunk;
+		const nowAccepted = !hunk.accepted;
+		if (nowAccepted) {
+			// Re-accept: restore the original auto-merged lines (stored in oursLines for ok hunks)
+			return { ...hunk, accepted: true, resultLines: [...hunk.oursLines] };
+		}
+		// Un-accept: store current resultLines in oursLines for later restoration, then use baseLines
+		return {
+			...hunk,
+			accepted: false,
+			oursLines: [...hunk.resultLines], // save for re-acceptance
+			resultLines: [...hunk.baseLines],
+		};
+	});
+
+	const numbered = recalcLineNumbers(updated);
+	const mergedContent = buildMergedContent(numbered);
 	return { hunks: numbered, mergedContent };
 }
 

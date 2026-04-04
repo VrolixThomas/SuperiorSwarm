@@ -31,7 +31,7 @@ export function MergeConflictPane({ projectId, mergeType, sourceBranch, targetBr
 
 	const conflictQuery = trpc.merge.getFileConflict.useQuery(
 		{ projectId, filePath: activeFile ?? "", cwd },
-		{ enabled: !!activeFile },
+		{ enabled: !!activeFile }
 	);
 
 	const resolveMutation = trpc.merge.resolveFile.useMutation({

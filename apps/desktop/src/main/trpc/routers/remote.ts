@@ -5,7 +5,9 @@ import { resolvePath } from "./shared";
 
 export const remoteRouter = router({
 	push: publicProcedure
-		.input(z.object({ projectId: z.string(), branch: z.string().optional(), cwd: z.string().optional() }))
+		.input(
+			z.object({ projectId: z.string(), branch: z.string().optional(), cwd: z.string().optional() })
+		)
 		.mutation(async ({ input }) => {
 			const path = await resolvePath(input.projectId, input.cwd);
 			await push(path, input.branch);

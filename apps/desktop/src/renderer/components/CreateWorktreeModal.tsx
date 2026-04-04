@@ -121,18 +121,14 @@ export function CreateWorktreeModal() {
 	);
 
 	// Available branches for checkout (remote branches minus those already checked out)
-	const availableBranches = branchNames.filter(
-		(branch) => !existingWorktreeBranches.has(branch)
-	);
+	const availableBranches = branchNames.filter((branch) => !existingWorktreeBranches.has(branch));
 
 	const filteredBranches = branchSearch
 		? availableBranches.filter((b) => b.toLowerCase().includes(branchSearch.toLowerCase()))
 		: availableBranches;
 
 	const filteredBaseBranches = baseBranchSearch
-		? branchNames.filter((b) =>
-				b.toLowerCase().includes(baseBranchSearch.toLowerCase())
-			)
+		? branchNames.filter((b) => b.toLowerCase().includes(baseBranchSearch.toLowerCase()))
 		: branchNames;
 
 	const handleSubmit = (e: React.FormEvent) => {

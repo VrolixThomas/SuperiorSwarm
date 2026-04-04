@@ -371,19 +371,19 @@ function AuthenticatedApp() {
 	const activeWorkspaceId = useTabStore((s) => s.activeWorkspaceId);
 	const activeWorkspaceQuery = trpc.workspaces.getById.useQuery(
 		{ id: activeWorkspaceId ?? "" },
-		{ enabled: !!activeWorkspaceId },
+		{ enabled: !!activeWorkspaceId }
 	);
 	const activeProjectId = activeWorkspaceQuery.data?.projectId ?? null;
 
 	const workspacesQuery = trpc.workspaces.listByProject.useQuery(
 		{ projectId: activeProjectId ?? "" },
-		{ enabled: !!activeProjectId },
+		{ enabled: !!activeProjectId }
 	);
 
 	const activeCwd = useTabStore((s) => s.activeWorkspaceCwd);
 	const branchStatusQuery = trpc.branches.getStatus.useQuery(
 		{ projectId: activeProjectId ?? "", cwd: activeCwd || undefined },
-		{ enabled: !!activeProjectId },
+		{ enabled: !!activeProjectId }
 	);
 
 	const handleCheckout = useCallback(
@@ -429,7 +429,7 @@ function AuthenticatedApp() {
 						useTabStore.getState().openMergeConflict(workspaceId, "merge", branch, currentBranch);
 					}
 				},
-			},
+			}
 		);
 	}
 
@@ -458,7 +458,7 @@ function AuthenticatedApp() {
 							.openMergeConflict(workspaceId, "rebase", ontoBranch, currentBranch);
 					}
 				},
-			},
+			}
 		);
 	}
 

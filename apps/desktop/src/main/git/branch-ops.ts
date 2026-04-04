@@ -66,10 +66,7 @@ export async function getBranchStatus(repoPath: string): Promise<BranchStatus> {
 	let state: BranchStatus["state"] = "clean";
 	if (existsSync(join(gitDir, "MERGE_HEAD"))) {
 		state = "merging";
-	} else if (
-		existsSync(join(gitDir, "rebase-merge")) ||
-		existsSync(join(gitDir, "rebase-apply"))
-	) {
+	} else if (existsSync(join(gitDir, "rebase-merge")) || existsSync(join(gitDir, "rebase-apply"))) {
 		state = "rebasing";
 	} else if (existsSync(join(gitDir, "CHERRY_PICK_HEAD"))) {
 		state = "cherry-picking";
@@ -81,7 +78,7 @@ export async function getBranchStatus(repoPath: string): Promise<BranchStatus> {
 export async function listBranchesDetailed(
 	repoPath: string,
 	defaultBranch: string,
-	cwd?: string,
+	cwd?: string
 ): Promise<BranchInfo[]> {
 	const git = simpleGit(repoPath);
 	const result = await git.branch(["-a", "-vv"]);

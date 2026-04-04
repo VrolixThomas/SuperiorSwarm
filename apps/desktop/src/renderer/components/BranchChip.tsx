@@ -8,7 +8,7 @@ export function BranchChip({ projectId }: { projectId: string }) {
 
 	const statusQuery = trpc.branches.getStatus.useQuery(
 		{ projectId, cwd: cwd || undefined },
-		{ refetchInterval: 10_000 },
+		{ refetchInterval: 10_000 }
 	);
 
 	const status = statusQuery.data;
