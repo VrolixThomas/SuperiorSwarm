@@ -17,7 +17,7 @@ export interface MergeHunk {
 	baseLines: string[];
 }
 
-export interface MergeResult {
+export interface ThreeWayMergeResult {
 	mergedContent: string;
 	hunks: MergeHunk[];
 	hasConflicts: boolean;
@@ -35,6 +35,10 @@ function nextId(): string {
 	return `hunk-${++hunkCounter}`;
 }
 
+export function resetHunkCounter(): void {
+	hunkCounter = 0;
+}
+
 function splitLines(text: string): string[] {
 	if (text === "") return [];
 	// Strip trailing newline so we don't get a spurious empty element
@@ -44,7 +48,7 @@ function splitLines(text: string): string[] {
 
 function buildMergedContent(hunks: MergeHunk[]): string {
 	const lines = hunks.flatMap((h) => h.resultLines);
-	return lines.length > 0 ? lines.join("\n") + "\n" : "";
+	return lines.length > 0 ? `${lines.join("\n")}\n` : "";
 }
 
 function recalcLineNumbers(hunks: MergeHunk[]): MergeHunk[] {
@@ -56,33 +60,36 @@ function recalcLineNumbers(hunks: MergeHunk[]): MergeHunk[] {
 	});
 }
 
-export function computeThreeWayMerge(base: string, ours: string, theirs: string): MergeResult {
+export function computeThreeWayMerge(
+	base: string,
+	ours: string,
+	theirs: string
+): ThreeWayMergeResult {
 	const baseLines = splitLines(base);
 	const oursLines = splitLines(ours);
 	const theirsLines = splitLines(theirs);
 
 	const sections = diff3Merge(oursLines, baseLines, theirsLines);
 
+	const baseSet = new Set(baseLines);
+	const oursSet = new Set(oursLines);
+	const theirsSet = new Set(theirsLines);
+
 	const hunks: MergeHunk[] = [];
 	let hasConflicts = false;
 
 	for (const section of sections) {
 		if ("ok" in section) {
-			// Determine which side this ok chunk came from by checking against base
-			const okText = section.ok.join("\n");
-			const baseText = baseLines.join("\n");
-			const oursText = oursLines.join("\n");
-			const theirsText = theirsLines.join("\n");
-
-			// If this ok section contains lines not in the base, figure out the source
+			// Determine source: if every line exists in base, it's unchanged base content.
+			// Otherwise check ours/theirs to attribute the auto-merged change.
 			let source: "theirs" | "ours" | "both" | null = null;
-			const inBase = baseText.includes(okText) || section.ok.every((l) => baseLines.includes(l));
-			if (!inBase) {
-				const inOurs = oursText.includes(okText) || section.ok.every((l) => oursLines.includes(l));
-				const inTheirs = theirsText.includes(okText) || section.ok.every((l) => theirsLines.includes(l));
-				if (inTheirs && !inOurs) source = "theirs";
-				else if (inOurs && !inTheirs) source = "ours";
-				else if (inOurs && inTheirs) source = "both";
+			const allInBase = section.ok.every((l) => baseSet.has(l));
+			if (!allInBase) {
+				const allInOurs = section.ok.every((l) => oursSet.has(l));
+				const allInTheirs = section.ok.every((l) => theirsSet.has(l));
+				if (allInTheirs && !allInOurs) source = "theirs";
+				else if (allInOurs && !allInTheirs) source = "ours";
+				else if (allInOurs && allInTheirs) source = "both";
 			}
 
 			hunks.push({
@@ -158,7 +165,7 @@ export function resolveHunk(
 /** Toggle acceptance of an auto-merged (non-conflicting) hunk. Stores original lines for re-acceptance. */
 export function toggleHunkAccepted(
 	hunks: MergeHunk[],
-	hunkId: string,
+	hunkId: string
 ): { hunks: MergeHunk[]; mergedContent: string } {
 	const updated = hunks.map((hunk) => {
 		if (hunk.id !== hunkId || hunk.type !== "ok" || !hunk.source) return hunk;
