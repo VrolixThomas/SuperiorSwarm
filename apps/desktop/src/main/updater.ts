@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import { app } from "electron";
+import { autoUpdater } from "electron-updater";
 import * as semver from "semver";
 import { getDb } from "./db";
 import { sessionState } from "./db/schema";
@@ -170,33 +171,28 @@ export async function initializeUpdater(): Promise<void> {
 	}
 
 	// Set up electron-updater
-	try {
-		const { autoUpdater } = await import("electron-updater");
-		autoUpdater.autoDownload = true;
-		autoUpdater.autoInstallOnAppQuit = true;
+	autoUpdater.autoDownload = true;
+	autoUpdater.autoInstallOnAppQuit = true;
 
-		autoUpdater.on("update-available", (info) => {
-			state.updateAvailable = true;
-			state.updateVersion = info.version;
-		});
+	autoUpdater.on("update-available", (info) => {
+		state.updateAvailable = true;
+		state.updateVersion = info.version;
+	});
 
-		autoUpdater.on("download-progress", (progress) => {
-			state.downloadProgress = Math.round(progress.percent);
-		});
+	autoUpdater.on("download-progress", (progress) => {
+		state.downloadProgress = Math.round(progress.percent);
+	});
 
-		autoUpdater.on("update-downloaded", () => {
-			state.updateDownloaded = true;
-			state.downloadProgress = null;
-		});
+	autoUpdater.on("update-downloaded", () => {
+		state.updateDownloaded = true;
+		state.downloadProgress = null;
+	});
 
-		autoUpdater.on("error", (err) => {
-			console.error("[updater] Auto-update error:", err);
-		});
+	autoUpdater.on("error", (err) => {
+		console.error("[updater] Auto-update error:", err);
+	});
 
-		autoUpdater.checkForUpdates().catch((err) => {
-			console.error("[updater] Failed to check for updates:", err);
-		});
-	} catch (err) {
-		console.error("[updater] Failed to initialize electron-updater:", err);
-	}
+	autoUpdater.checkForUpdates().catch((err) => {
+		console.error("[updater] Failed to check for updates:", err);
+	});
 }
