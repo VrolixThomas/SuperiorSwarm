@@ -1,29 +1,33 @@
 import { describe, expect, mock, test } from "bun:test";
-import { hasNonTextPayload, interceptPaste } from "../src/renderer/components/terminal-paste";
+import { hasImageOrFilePayload, interceptPaste } from "../src/renderer/components/terminal-paste";
 
 function fakeDataTransfer(types: string[]): DataTransfer {
 	return { types } as unknown as DataTransfer;
 }
 
-describe("hasNonTextPayload", () => {
+describe("hasImageOrFilePayload", () => {
 	test("returns true for image types", () => {
-		expect(hasNonTextPayload(fakeDataTransfer(["Files", "image/png"]))).toBe(true);
+		expect(hasImageOrFilePayload(fakeDataTransfer(["Files", "image/png"]))).toBe(true);
 	});
 
 	test("returns false for text-only", () => {
-		expect(hasNonTextPayload(fakeDataTransfer(["text/plain"]))).toBe(false);
+		expect(hasImageOrFilePayload(fakeDataTransfer(["text/plain"]))).toBe(false);
 	});
 
 	test("returns false for empty types", () => {
-		expect(hasNonTextPayload(fakeDataTransfer([]))).toBe(false);
+		expect(hasImageOrFilePayload(fakeDataTransfer([]))).toBe(false);
 	});
 
-	test("returns true for mixed types including non-text", () => {
-		expect(hasNonTextPayload(fakeDataTransfer(["text/plain", "text/html"]))).toBe(true);
+	test("returns false for text/html without images", () => {
+		expect(hasImageOrFilePayload(fakeDataTransfer(["text/plain", "text/html"]))).toBe(false);
 	});
 
 	test("returns true for Files type alone", () => {
-		expect(hasNonTextPayload(fakeDataTransfer(["Files"]))).toBe(true);
+		expect(hasImageOrFilePayload(fakeDataTransfer(["Files"]))).toBe(true);
+	});
+
+	test("returns true for image MIME type alone", () => {
+		expect(hasImageOrFilePayload(fakeDataTransfer(["image/png"]))).toBe(true);
 	});
 });
 
