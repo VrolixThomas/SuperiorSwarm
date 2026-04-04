@@ -148,7 +148,15 @@ export function ThreeWayDiffEditor({
 
 	// View zone tracking
 	const zoneMapRef = useRef<
-		Map<string, { zoneId: string; root: ReturnType<typeof createRoot>; domNode: HTMLDivElement }>
+		Map<
+			string,
+			{
+				zoneId: string;
+				root: ReturnType<typeof createRoot>;
+				domNode: HTMLDivElement;
+				afterLineNumber: number;
+			}
+		>
 	>(new Map());
 
 	const language = detectLanguage(filePath);
@@ -423,8 +431,8 @@ export function ThreeWayDiffEditor({
 		const toAdd: typeof zonableHunks = [];
 		for (const hunk of zonableHunks) {
 			const existing = zoneMap.get(hunk.id);
-			if (existing) {
-				// Re-render in place — React handles the diff
+			if (existing && existing.afterLineNumber === hunk.startLine - 1) {
+				// Position unchanged — re-render in place, React handles the diff
 				const isConflict = hunk.type === "conflict";
 				if (isConflict) {
 					existing.root.render(
@@ -447,6 +455,14 @@ export function ThreeWayDiffEditor({
 					);
 				}
 			} else {
+				if (existing) {
+					// Position shifted — remove old zone so it can be re-created at the new line
+					editor.changeViewZones((acc) => {
+						acc.removeZone(existing.zoneId);
+					});
+					queueMicrotask(() => existing.root.unmount());
+					zoneMap.delete(hunk.id);
+				}
 				toAdd.push(hunk);
 			}
 		}
@@ -460,14 +476,15 @@ export function ThreeWayDiffEditor({
 					domNode.addEventListener("mousedown", (e) => e.stopPropagation());
 
 					const isConflict = hunk.type === "conflict";
+					const afterLineNumber = hunk.startLine - 1;
 					const zoneId = acc.addZone({
-						afterLineNumber: hunk.startLine - 1,
+						afterLineNumber,
 						heightInLines: isConflict ? 2 : 1,
 						domNode,
 					});
 
 					const root = createRoot(domNode);
-					zoneMap.set(hunk.id, { zoneId, root, domNode });
+					zoneMap.set(hunk.id, { zoneId, root, domNode, afterLineNumber });
 
 					if (isConflict) {
 						root.render(
