@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useUpdateStore } from "../stores/update-store";
-import { MarkdownRenderer } from "./MarkdownRenderer";
 import { trpc } from "../trpc/client";
+import { MarkdownRenderer } from "./MarkdownRenderer";
 
 export function WhatsNewModal() {
 	const show = useUpdateStore((s) => s.showWhatsNewModal);

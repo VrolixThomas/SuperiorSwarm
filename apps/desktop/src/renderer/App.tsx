@@ -9,6 +9,8 @@ import { LoginScreen } from "./components/LoginScreen";
 import { MainContentArea } from "./components/MainContentArea";
 import { SharedFilesPanel } from "./components/SharedFilesPanel";
 import { Sidebar } from "./components/Sidebar";
+import { UpdateToast } from "./components/UpdateToast";
+import { WhatsNewModal } from "./components/WhatsNewModal";
 import { useAgentAlertListener } from "./hooks/useAgentAlertListener";
 import { usePaneShortcuts } from "./hooks/usePaneShortcuts";
 import {
@@ -21,10 +23,8 @@ import { usePaneStore } from "./stores/pane-store";
 import { useProjectStore } from "./stores/projects";
 import type { TabItem } from "./stores/tab-store";
 import { resetFileTabCounter, useTabStore } from "./stores/tab-store";
-import { trpc } from "./trpc/client";
-import { UpdateToast } from "./components/UpdateToast";
-import { WhatsNewModal } from "./components/WhatsNewModal";
 import { useUpdateStore } from "./stores/update-store";
+import { trpc } from "./trpc/client";
 
 const SAVE_INTERVAL_MS = 30_000;
 
