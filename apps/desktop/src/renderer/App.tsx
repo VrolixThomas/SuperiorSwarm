@@ -641,17 +641,6 @@ function AuthenticatedApp() {
 					onCheckout={handleCheckout}
 					onMerge={handleMerge}
 					onRebase={handleRebase}
-					onCompare={(branch) => {
-						setActionMenu(null);
-						const repoPath = useTabStore.getState().activeWorkspaceCwd || "";
-						const currentBr = branchStatusQuery.data?.branch ?? "HEAD";
-						useTabStore.getState().toggleDiffPanel({
-							type: "branch",
-							baseBranch: branch,
-							headBranch: currentBr,
-							repoPath,
-						});
-					}}
 					onNewBranch={() => {
 						setActionMenu(null);
 						openPalette();

@@ -10,7 +10,6 @@ interface Props {
 	onCheckout: (branch: string) => void;
 	onMerge: (branch: string) => void;
 	onRebase: (ontoBranch: string) => void;
-	onCompare: (branch: string) => void;
 	onNewBranch?: (baseBranch: string) => void;
 	isMerging?: boolean;
 }
@@ -24,7 +23,6 @@ export function BranchActionMenu({
 	onCheckout,
 	onMerge,
 	onRebase,
-	onCompare,
 	onNewBranch,
 	isMerging,
 }: Props) {
@@ -132,11 +130,6 @@ export function BranchActionMenu({
 
 	function handleRebase() {
 		onRebase(branch);
-		onClose();
-	}
-
-	function handleCompare() {
-		onCompare(branch);
 		onClose();
 	}
 
@@ -264,13 +257,6 @@ export function BranchActionMenu({
 						Rebase current onto &lsquo;{branch}&rsquo;
 					</button>
 				</>
-			)}
-
-			{/* Compare */}
-			{!isCurrentBranch && (
-				<button type="button" role="menuitem" className={itemClass} onClick={handleCompare}>
-					Compare with current
-				</button>
 			)}
 
 			{separator}
