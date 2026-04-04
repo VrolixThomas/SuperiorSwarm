@@ -379,30 +379,6 @@ function AuthenticatedApp() {
 		{ enabled: !!activeProjectId }
 	);
 
-	// Query the project to get repoPath (needed for navigating to main workspace)
-	const projectQuery = trpc.projects.list.useQuery();
-	const activeProject = projectQuery.data?.find((p) => p.id === activeProjectId);
-
-	// Navigate to a branch's workspace if one exists. In the worktree model,
-	// each workspace IS a branch — we don't do git checkout within worktrees.
-	const handleBranchSelect = useCallback(
-		(branch: string) => {
-			if (!activeProjectId) return;
-
-			const wsData = workspacesQuery.data ?? [];
-			const existing = wsData.find((ws) => ws.name === branch);
-			if (existing) {
-				const targetCwd = existing.worktreePath ?? activeProject?.repoPath ?? "";
-				if (targetCwd) {
-					useTabStore.getState().setActiveWorkspace(existing.id, targetCwd);
-				}
-			}
-			// If no workspace exists for this branch, do nothing — user should
-			// create a worktree for it via the "+" button or "New Branch" action.
-		},
-		[activeProjectId, workspacesQuery.data, activeProject],
-	);
-
 	function handleMerge(branch: string) {
 		if (!activeProjectId) return;
 		if (useBranchStore.getState().mergeState !== null) return;
@@ -623,7 +599,6 @@ function AuthenticatedApp() {
 			{activeProjectId && (
 				<BranchPalette
 					projectId={activeProjectId}
-					onSelect={handleBranchSelect}
 					onOpenActionMenu={(branch, currentBranch, position) => {
 						setActionMenu({ branch, currentBranch, position });
 					}}
@@ -638,13 +613,6 @@ function AuthenticatedApp() {
 					onClose={() => setActionMenu(null)}
 					onMerge={handleMerge}
 					onRebase={handleRebase}
-					onNewWorkspace={() => {
-						setActionMenu(null);
-						closePalette();
-						if (activeProjectId) {
-							useProjectStore.getState().openCreateWorktreeModal(activeProjectId);
-						}
-					}}
 					isMerging={useBranchStore.getState().mergeState !== null}
 				/>
 			)}
