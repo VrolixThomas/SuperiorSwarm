@@ -16,13 +16,11 @@ export function PaneContainer({
 	workspaceId: string;
 	savedScrollback: Record<string, string>;
 }) {
-	const focusedPaneId = usePaneStore((s) => s.focusedPaneId);
 	const setFocusedPane = usePaneStore((s) => s.setFocusedPane);
 	const splitPane = usePaneStore((s) => s.splitPane);
 	const closePane = usePaneStore((s) => s.closePane);
 	const moveTabBetweenPanes = usePaneStore((s) => s.moveTabBetweenPanes);
 	const dropTabOnEdge = usePaneStore((s) => s.dropTabOnEdge);
-	const isFocused = focusedPaneId === pane.id;
 	// O(1) check: a split root means at least 2 panes exist
 	const canClosePane = usePaneStore((s) => {
 		const layout = s.layouts[workspaceId];
@@ -91,7 +89,7 @@ export function PaneContainer({
 
 	return (
 		<div
-			className={`relative flex h-full flex-col overflow-hidden ${isFocused ? "ring-1 ring-[var(--accent)]" : ""}`}
+			className="relative flex h-full flex-col overflow-hidden"
 			onMouseDown={() => setFocusedPane(pane.id)}
 			onContextMenu={handleContextMenu}
 			onDragEnter={handleDragEnter}
