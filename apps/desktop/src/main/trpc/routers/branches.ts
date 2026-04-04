@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { getDb } from "../../db";
 import { projects } from "../../db/schema";
-import { listBranches } from "../../git/operations";
+import { listBranches, sortBranchesWithDefault } from "../../git/operations";
 import { publicProcedure, router } from "../index";
 
 export const branchesRouter = router({
@@ -14,6 +14,7 @@ export const branchesRouter = router({
 			throw new Error("Project not found");
 		}
 
-		return listBranches(project.repoPath);
+		const branches = await listBranches(project.repoPath);
+		return sortBranchesWithDefault(branches, project.defaultBranch);
 	}),
 });
