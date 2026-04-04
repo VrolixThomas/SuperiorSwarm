@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Group, Panel, Separator, useDefaultLayout, usePanelRef } from "react-resizable-panels";
 import type { LayoutNode, SerializedLayoutNode } from "../shared/pane-types";
 import { AddRepositoryModal } from "./components/AddRepositoryModal";
@@ -20,13 +20,13 @@ import {
 	setupGoToDefinitionHandler,
 	setupServerRestartListener,
 } from "./lsp/monaco-lsp-bridge";
+import { useBranchStore } from "./stores/branch-store";
 import { useEditorSettingsStore } from "./stores/editor-settings";
 import { usePaneStore } from "./stores/pane-store";
 import { useProjectStore } from "./stores/projects";
 import type { TabItem } from "./stores/tab-store";
 import { resetFileTabCounter, useTabStore } from "./stores/tab-store";
 import { useUpdateStore } from "./stores/update-store";
-import { useBranchStore } from "./stores/branch-store";
 import { trpc } from "./trpc/client";
 
 const SAVE_INTERVAL_MS = 30_000;
@@ -363,10 +363,27 @@ function AuthenticatedApp() {
 	const selectedProjectId = useProjectStore((s) => s.selectedProjectId);
 	const { openPalette, closePalette, isPaletteOpen, setMergeState } = useBranchStore();
 
-	function handleCheckout(branch: string) {
-		if (!selectedProjectId) return;
-		checkoutMutation.mutate({ projectId: selectedProjectId, branch });
-	}
+	const workspacesQuery = trpc.workspaces.listByProject.useQuery(
+		{ projectId: selectedProjectId ?? "" },
+		{ enabled: !!selectedProjectId },
+	);
+
+	const handleCheckout = useCallback(
+		(branch: string) => {
+			if (!selectedProjectId) return;
+
+			// If the branch already has a workspace with a worktree, navigate to it
+			const wsData = workspacesQuery.data ?? [];
+			const existing = wsData.find((ws) => ws.name === branch && ws.worktreePath);
+			if (existing) {
+				useTabStore.getState().setActiveWorkspace(existing.id, existing.worktreePath!);
+				return;
+			}
+
+			checkoutMutation.mutate({ projectId: selectedProjectId, branch });
+		},
+		[selectedProjectId, workspacesQuery.data, checkoutMutation],
+	);
 
 	function handleMerge(branch: string) {
 		if (!selectedProjectId) return;
@@ -388,7 +405,7 @@ function AuthenticatedApp() {
 						useTabStore.getState().openMergeConflict(workspaceId, "merge", branch, currentBranch);
 					}
 				},
-			},
+			}
 		);
 	}
 
@@ -409,10 +426,12 @@ function AuthenticatedApp() {
 							activeFilePath: result.files[0] ?? null,
 							rebaseProgress: result.progress ?? null,
 						});
-						useTabStore.getState().openMergeConflict(workspaceId, "rebase", ontoBranch, currentBranch);
+						useTabStore
+							.getState()
+							.openMergeConflict(workspaceId, "rebase", ontoBranch, currentBranch);
 					}
 				},
-			},
+			}
 		);
 	}
 
