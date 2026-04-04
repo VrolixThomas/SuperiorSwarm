@@ -34,7 +34,7 @@ export function extractReleaseSummary(body: string | null | undefined): string |
 // --- GitHub release notes fetching ---
 
 const GITHUB_OWNER = "VrolixThomas";
-const GITHUB_REPO = "BranchFlux";
+const GITHUB_REPO = "SuperiorSwarm";
 
 export async function fetchReleaseNotes(
 	version: string
@@ -171,7 +171,13 @@ export async function initializeUpdater(): Promise<void> {
 		}
 	}
 
-	// Set up electron-updater (imported dynamically to avoid issues in dev)
+	// Skip electron-updater in dev mode — it requires a packaged app
+	if (!app.isPackaged) {
+		console.log("[updater] Skipping auto-updater in dev mode");
+		return;
+	}
+
+	// Set up electron-updater
 	try {
 		const { autoUpdater } = await import("electron-updater");
 		autoUpdater.autoDownload = true;
@@ -195,7 +201,6 @@ export async function initializeUpdater(): Promise<void> {
 			console.error("[updater] Auto-update error:", err);
 		});
 
-		// Check for updates in background
 		autoUpdater.checkForUpdates().catch((err) => {
 			console.error("[updater] Failed to check for updates:", err);
 		});
