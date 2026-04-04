@@ -188,6 +188,20 @@ export function BranchPalette({ projectId, onOpenActionMenu }: Props) {
 
 	const status = statusQuery.data;
 
+	function branchCallbacks(branchName: string) {
+		const cur = currentBranch?.name ?? "";
+		return {
+			onSelect: (e: React.MouseEvent) =>
+				onOpenActionMenu(branchName, cur, { x: e.clientX, y: e.clientY }),
+			onContextMenu: (e: React.MouseEvent) => {
+				e.preventDefault();
+				onOpenActionMenu(branchName, cur, { x: e.clientX, y: e.clientY });
+			},
+			onActionClick: (e: React.MouseEvent) =>
+				onOpenActionMenu(branchName, cur, { x: e.clientX, y: e.clientY }),
+		};
+	}
+
 	return (
 		// Backdrop
 		// biome-ignore lint/a11y/useKeyWithClickEvents: keyboard handled via document event listener in useEffect
@@ -245,7 +259,6 @@ export function BranchPalette({ projectId, onOpenActionMenu }: Props) {
 					)}
 				</div>
 
-				{/* Branch list */}
 				{/* biome-ignore lint/a11y/useSemanticElements: command palette listbox cannot use <select> */}
 				{/* biome-ignore lint/a11y/useFocusableInteractive: listbox focus managed by keyboard event listener */}
 				<div ref={listRef} className="overflow-y-auto p-1.5" role="listbox">
@@ -266,25 +279,7 @@ export function BranchPalette({ projectId, onOpenActionMenu }: Props) {
 											<BranchRow
 												branch={currentBranch}
 												isSelected={selectedIndex === 0}
-												onSelect={(e) => {
-													onOpenActionMenu(currentBranch.name, currentBranch.name, {
-														x: e.clientX,
-														y: e.clientY,
-													});
-												}}
-												onContextMenu={(e) => {
-													e.preventDefault();
-													onOpenActionMenu(currentBranch.name, currentBranch.name, {
-														x: e.clientX,
-														y: e.clientY,
-													});
-												}}
-												onActionClick={(e) =>
-													onOpenActionMenu(currentBranch.name, currentBranch.name, {
-														x: e.clientX,
-														y: e.clientY,
-													})
-												}
+												{...branchCallbacks(currentBranch.name)}
 											/>
 										</div>
 										{/* Ahead/behind badges */}
@@ -399,25 +394,7 @@ export function BranchPalette({ projectId, onOpenActionMenu }: Props) {
 												key={branch.name}
 												branch={branch}
 												isSelected={selectedIndex === navIndex}
-												onSelect={(e) => {
-													onOpenActionMenu(branch.name, currentBranch?.name ?? "", {
-														x: e.clientX,
-														y: e.clientY,
-													});
-												}}
-												onContextMenu={(e) => {
-													e.preventDefault();
-													onOpenActionMenu(branch.name, currentBranch?.name ?? "", {
-														x: e.clientX,
-														y: e.clientY,
-													});
-												}}
-												onActionClick={(e) =>
-													onOpenActionMenu(branch.name, currentBranch?.name ?? "", {
-														x: e.clientX,
-														y: e.clientY,
-													})
-}
+												{...branchCallbacks(branch.name)}
 											/>
 										);
 									})}
@@ -454,25 +431,7 @@ export function BranchPalette({ projectId, onOpenActionMenu }: Props) {
 													key={branch.name}
 													branch={branch}
 													isSelected={selectedIndex === navIndex}
-													onSelect={(e) => {
-														onOpenActionMenu(branch.name, currentBranch?.name ?? "", {
-															x: e.clientX,
-															y: e.clientY,
-														});
-													}}
-													onContextMenu={(e) => {
-														e.preventDefault();
-														onOpenActionMenu(branch.name, currentBranch?.name ?? "", {
-															x: e.clientX,
-															y: e.clientY,
-														});
-													}}
-													onActionClick={(e) =>
-														onOpenActionMenu(branch.name, currentBranch?.name ?? "", {
-															x: e.clientX,
-															y: e.clientY,
-														})
-													}
+													{...branchCallbacks(branch.name)}
 												/>
 											);
 										})}

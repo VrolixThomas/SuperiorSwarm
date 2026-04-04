@@ -29,16 +29,26 @@ function HunkAcceptBar({
 			className="flex items-center gap-2 border-b border-[rgba(255,69,58,0.2)] px-3 py-1.5"
 			style={{ background: "rgba(255, 69, 58, 0.06)" }}
 		>
-			<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#ff453a" strokeWidth="2" className="shrink-0">
-				<circle cx="12" cy="12" r="10" /><path d="M12 8v4" /><path d="M12 16h.01" />
+			<svg
+				width="12"
+				height="12"
+				viewBox="0 0 24 24"
+				fill="none"
+				stroke="var(--color-danger)"
+				strokeWidth="2"
+				className="shrink-0"
+			>
+				<circle cx="12" cy="12" r="10" />
+				<path d="M12 8v4" />
+				<path d="M12 16h.01" />
 			</svg>
-			<span className="text-[11px] font-medium text-[#ff453a]">Conflict</span>
+			<span className="text-[11px] font-medium text-[var(--color-danger)]">Conflict</span>
 			<span className="text-[11px] text-[var(--text-quaternary)]">—</span>
 			<button
 				type="button"
 				onClick={() => onAccept(hunkId, "theirs")}
 				className="rounded px-2 py-0.5 text-[11px] font-medium transition-colors hover:brightness-110"
-				style={{ color: "#0a84ff", background: "rgba(10, 132, 255, 0.15)" }}
+				style={{ color: "var(--accent)", background: "rgba(10, 132, 255, 0.15)" }}
 			>
 				← Accept Theirs ({theirsCount} line{theirsCount !== 1 ? "s" : ""})
 			</button>
@@ -46,7 +56,7 @@ function HunkAcceptBar({
 				type="button"
 				onClick={() => onAccept(hunkId, "ours")}
 				className="rounded px-2 py-0.5 text-[11px] font-medium transition-colors hover:brightness-110"
-				style={{ color: "#bf5af2", background: "rgba(191, 90, 242, 0.15)" }}
+				style={{ color: "var(--color-purple)", background: "rgba(191, 90, 242, 0.15)" }}
 			>
 				Accept Yours ({oursCount} line{oursCount !== 1 ? "s" : ""}) →
 			</button>
@@ -86,7 +96,7 @@ function AutoMergedBar({
 				type="button"
 				onClick={() => onToggle(hunkId)}
 				className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] transition-colors hover:bg-[var(--bg-elevated)]"
-				style={{ color: accepted ? "#30d158" : "var(--text-quaternary)" }}
+				style={{ color: accepted ? "var(--color-success)" : "var(--text-quaternary)" }}
 			>
 				{accepted ? "✓" : "○"} {lineCount} line{lineCount !== 1 ? "s" : ""} from {sourceLabel}
 				<span className="text-[var(--text-quaternary)]">
@@ -116,16 +126,13 @@ export function ThreeWayDiffEditor({
 	targetBranch,
 	onResolve,
 }: Props) {
-	// State: merge hunks and merged text
 	const [hunks, setHunks] = useState<MergeHunk[]>([]);
 	const [mergedContent, setMergedContent] = useState("");
 
-	// Refs for three editor containers
 	const theirsRef = useRef<HTMLDivElement>(null);
 	const resultRef = useRef<HTMLDivElement>(null);
 	const oursRef = useRef<HTMLDivElement>(null);
 
-	// Refs for editor instances
 	const theirsEditorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
 	const resultEditorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
 	const oursEditorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
@@ -331,12 +338,18 @@ export function ThreeWayDiffEditor({
 				});
 			} else if (h.type === "ok" && h.source) {
 				// Auto-merged non-conflicting changes — show subtle decoration
-				const gutterClass = h.source === "theirs" ? "merge-auto-gutter-theirs"
-					: h.source === "ours" ? "merge-auto-gutter-ours"
-					: "merge-auto-gutter-theirs";
-				const bgClass = h.source === "theirs" ? "merge-auto-theirs"
-					: h.source === "ours" ? "merge-auto-ours"
-					: "merge-auto-theirs";
+				const gutterClass =
+					h.source === "theirs"
+						? "merge-auto-gutter-theirs"
+						: h.source === "ours"
+							? "merge-auto-gutter-ours"
+							: "merge-auto-gutter-theirs";
+				const bgClass =
+					h.source === "theirs"
+						? "merge-auto-theirs"
+						: h.source === "ours"
+							? "merge-auto-ours"
+							: "merge-auto-theirs";
 				decorations.push({
 					range: new monaco.Range(h.startLine, 1, endLine, 1),
 					options: {
@@ -359,7 +372,7 @@ export function ThreeWayDiffEditor({
 			setHunks(result.hunks);
 			setMergedContent(result.mergedContent);
 		},
-		[hunks],
+		[hunks]
 	);
 
 	// ── Toggle handler (for auto-merged non-conflict changes) ───────────────
@@ -370,7 +383,7 @@ export function ThreeWayDiffEditor({
 			setHunks(result.hunks);
 			setMergedContent(result.mergedContent);
 		},
-		[hunks],
+		[hunks]
 	);
 
 	// ── View zones for conflict hunks + auto-merged change indicators ──────
@@ -392,9 +405,7 @@ export function ThreeWayDiffEditor({
 
 		// Collect hunks that need view zones: pending conflicts + auto-merged changes with a source
 		const zonableHunks = hunks.filter(
-			(h) =>
-				(h.type === "conflict" && h.status === "pending") ||
-				(h.type === "ok" && h.source),
+			(h) => (h.type === "conflict" && h.status === "pending") || (h.type === "ok" && h.source)
 		);
 		if (zonableHunks.length === 0) return;
 
@@ -427,7 +438,7 @@ export function ThreeWayDiffEditor({
 							theirsCount={hunk.theirsLines.length}
 							oursCount={hunk.oursLines.length}
 							onAccept={handleAccept}
-						/>,
+						/>
 					);
 				} else {
 					root.render(
@@ -437,7 +448,7 @@ export function ThreeWayDiffEditor({
 							accepted={hunk.accepted}
 							lineCount={hunk.resultLines.length}
 							onToggle={handleToggle}
-						/>,
+						/>
 					);
 				}
 			}
@@ -456,8 +467,6 @@ export function ThreeWayDiffEditor({
 		};
 	}, [hunks, handleAccept, handleToggle]);
 
-	// ── Derived state ───────────────────────────────────────────────────────
-
 	const conflictHunks = hunks.filter((h) => h.type === "conflict");
 	const resolvedCount = conflictHunks.filter((h) => h.status === "resolved").length;
 	const totalConflicts = conflictHunks.length;
@@ -466,28 +475,11 @@ export function ThreeWayDiffEditor({
 
 	// ── Quick accept-all helpers ────────────────────────────────────────────
 
-	function acceptAllSide(side: "theirs" | "ours") {
+	function acceptAll(resolution: "theirs" | "ours" | "both") {
 		let current = hunks;
 		for (const h of current) {
 			if (h.type === "conflict" && h.status === "pending") {
-				const result = resolveHunk(current, h.id, side);
-				current = result.hunks;
-			}
-		}
-		// Recompute from the final state
-		const finalResult = resolveHunk(current, "__noop__", "ours");
-		// resolveHunk with unknown id returns hunks unchanged, so just use current
-		const lines = current.flatMap((h) => h.resultLines);
-		const finalContent = lines.length > 0 ? `${lines.join("\n")}\n` : "";
-		setHunks(current);
-		setMergedContent(finalContent);
-	}
-
-	function acceptAllBoth() {
-		let current = hunks;
-		for (const h of current) {
-			if (h.type === "conflict" && h.status === "pending") {
-				const result = resolveHunk(current, h.id, "both");
+				const result = resolveHunk(current, h.id, resolution);
 				current = result.hunks;
 			}
 		}
@@ -513,13 +505,13 @@ export function ThreeWayDiffEditor({
 			<div className="flex h-9 shrink-0 items-stretch border-b border-[var(--border)]">
 				{/* Theirs header */}
 				<div className="flex flex-1 items-center gap-2 border-r border-[var(--border)] bg-[var(--bg-surface)] px-3">
-					<span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: "#0a84ff" }} />
+					<span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: "var(--accent)" }} />
 					<span className="min-w-0 flex-1 truncate text-[12px] font-medium text-[var(--text-secondary)]">
 						Theirs ({sourceBranch})
 					</span>
 					<button
 						type="button"
-						onClick={() => acceptAllSide("theirs")}
+						onClick={() => acceptAll("theirs")}
 						className="shrink-0 rounded px-2 py-0.5 text-[11px] text-[var(--text-tertiary)] transition-colors hover:bg-[var(--bg-elevated)] hover:text-[var(--text)]"
 					>
 						Accept All
@@ -530,7 +522,7 @@ export function ThreeWayDiffEditor({
 				<div className="flex flex-1 items-center gap-2 border-r border-[var(--border)] bg-[var(--bg-surface)] px-3">
 					<span
 						className="h-2 w-2 shrink-0 rounded-full"
-						style={{ backgroundColor: allResolved ? "#30d158" : "#ff9f0a" }}
+						style={{ backgroundColor: allResolved ? "var(--color-success)" : "var(--color-warning)" }}
 					/>
 					<span className="min-w-0 flex-1 truncate text-[12px] font-medium text-[var(--text-secondary)]">
 						Result
@@ -541,7 +533,7 @@ export function ThreeWayDiffEditor({
 						disabled={totalConflicts > 0 && !allResolved}
 						className="shrink-0 rounded px-2 py-0.5 text-[11px] font-medium transition-colors disabled:opacity-40"
 						style={{
-							color: "#30d158",
+							color: "var(--color-success)",
 							background: "rgba(48, 209, 88, 0.12)",
 						}}
 					>
@@ -551,13 +543,13 @@ export function ThreeWayDiffEditor({
 
 				{/* Yours header */}
 				<div className="flex flex-1 items-center gap-2 bg-[var(--bg-surface)] px-3">
-					<span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: "#bf5af2" }} />
+					<span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: "var(--color-purple)" }} />
 					<span className="min-w-0 flex-1 truncate text-[12px] font-medium text-[var(--text-secondary)]">
 						Yours ({targetBranch})
 					</span>
 					<button
 						type="button"
-						onClick={() => acceptAllSide("ours")}
+						onClick={() => acceptAll("ours")}
 						className="shrink-0 rounded px-2 py-0.5 text-[11px] text-[var(--text-tertiary)] transition-colors hover:bg-[var(--bg-elevated)] hover:text-[var(--text)]"
 					>
 						Accept All
@@ -581,7 +573,7 @@ export function ThreeWayDiffEditor({
 				{totalConflicts > 0 && (
 					<span
 						className="shrink-0 text-[11px] font-medium"
-						style={{ color: allResolved ? "#30d158" : "#ff453a" }}
+						style={{ color: allResolved ? "var(--color-success)" : "var(--color-danger)" }}
 					>
 						{resolvedCount}/{totalConflicts} conflict{totalConflicts !== 1 ? "s" : ""} resolved
 					</span>
@@ -595,23 +587,23 @@ export function ThreeWayDiffEditor({
 				<span className="shrink-0 text-[11px] text-[var(--text-tertiary)]">Quick accept:</span>
 				<button
 					type="button"
-					onClick={() => acceptAllSide("theirs")}
+					onClick={() => acceptAll("theirs")}
 					className="shrink-0 rounded px-2 py-0.5 text-[11px] transition-colors hover:bg-[var(--bg-elevated)]"
-					style={{ color: "#0a84ff" }}
+					style={{ color: "var(--accent)" }}
 				>
 					Theirs
 				</button>
 				<button
 					type="button"
-					onClick={() => acceptAllSide("ours")}
+					onClick={() => acceptAll("ours")}
 					className="shrink-0 rounded px-2 py-0.5 text-[11px] transition-colors hover:bg-[var(--bg-elevated)]"
-					style={{ color: "#bf5af2" }}
+					style={{ color: "var(--color-purple)" }}
 				>
 					Yours
 				</button>
 				<button
 					type="button"
-					onClick={acceptAllBoth}
+					onClick={() => acceptAll("both")}
 					className="shrink-0 rounded px-2 py-0.5 text-[11px] text-[var(--text-tertiary)] transition-colors hover:bg-[var(--bg-elevated)] hover:text-[var(--text)]"
 				>
 					Both

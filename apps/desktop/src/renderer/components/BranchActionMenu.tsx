@@ -200,7 +200,6 @@ export function BranchActionMenu({
 			className="fixed z-[60] min-w-[200px] rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-elevated)] py-1 shadow-[var(--shadow-md)]"
 			style={{ left: adjusted.x, top: adjusted.y }}
 		>
-			{/* Branch name header */}
 			<div className="px-3 pb-1 pt-0.5 text-[11px] text-[var(--text-tertiary)]">
 				<span className="font-mono">{branch}</span>
 			</div>
@@ -209,7 +208,6 @@ export function BranchActionMenu({
 			{/* Merge — hidden for current branch */}
 			{!isCurrentBranch && (
 				<>
-					{separator}
 					<button
 						type="button"
 						role="menuitem"
@@ -262,7 +260,7 @@ export function BranchActionMenu({
 							type="button"
 							onClick={handleDeleteClick}
 							disabled={deleteMutation.isPending}
-							className="flex-1 rounded-[var(--radius-sm)] bg-[#ff453a] px-2 py-0.5 text-[12px] text-white transition-opacity hover:opacity-80 disabled:opacity-40"
+							className="flex-1 rounded-[var(--radius-sm)] bg-[var(--color-danger)] px-2 py-0.5 text-[12px] text-white transition-opacity hover:opacity-80 disabled:opacity-40"
 						>
 							{deleteMutation.isPending ? "Deleting…" : "Delete"}
 						</button>
@@ -279,7 +277,7 @@ export function BranchActionMenu({
 				<button
 					type="button"
 					role="menuitem"
-					className={`${dangerClass} text-[#ff453a]`}
+					className={`${dangerClass} text-[var(--color-danger)]`}
 					onClick={handleDeleteClick}
 				>
 					Delete

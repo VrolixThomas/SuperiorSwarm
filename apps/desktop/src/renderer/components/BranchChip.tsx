@@ -8,7 +8,7 @@ export function BranchChip({ projectId }: { projectId: string }) {
 
 	const statusQuery = trpc.branches.getStatus.useQuery(
 		{ projectId, cwd: cwd || undefined },
-		{ refetchInterval: 10_000 },
+		{ refetchInterval: 10_000 }
 	);
 
 	const status = statusQuery.data;
@@ -47,7 +47,7 @@ export function BranchChip({ projectId }: { projectId: string }) {
 					height="12"
 					viewBox="0 0 24 24"
 					fill="none"
-					stroke={status?.state === "merging" ? "#ff453a" : "#ff9f0a"}
+					stroke={status?.state === "merging" ? "var(--color-danger)" : "var(--color-warning)"}
 					strokeWidth="2"
 				>
 					<circle cx="12" cy="12" r="10" />
@@ -76,8 +76,8 @@ export function BranchChip({ projectId }: { projectId: string }) {
 					"max-w-[180px] truncate font-medium",
 					isConflict
 						? status?.state === "merging"
-							? "text-[#ff453a]"
-							: "text-[#ff9f0a]"
+							? "text-[var(--color-danger)]"
+							: "text-[var(--color-warning)]"
 						: "text-[var(--text)]",
 				].join(" ")}
 			>
@@ -89,12 +89,12 @@ export function BranchChip({ projectId }: { projectId: string }) {
 			</span>
 
 			{!isConflict && status && status.ahead > 0 && (
-				<span className="rounded-full bg-[rgba(48,209,88,0.1)] px-1.5 text-[10px] text-[#30d158]">
+				<span className="rounded-full bg-[rgba(48,209,88,0.1)] px-1.5 text-[10px] text-[var(--color-success)]">
 					↑{status.ahead}
 				</span>
 			)}
 			{!isConflict && status && status.behind > 0 && (
-				<span className="rounded-full bg-[rgba(255,159,10,0.1)] px-1.5 text-[10px] text-[#ff9f0a]">
+				<span className="rounded-full bg-[rgba(255,159,10,0.1)] px-1.5 text-[10px] text-[var(--color-warning)]">
 					↓{status.behind}
 				</span>
 			)}

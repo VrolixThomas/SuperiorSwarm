@@ -36,7 +36,7 @@ export function ConflictFileSidebar({ files, activeFile, onSelectFile }: Props) 
 									height="12"
 									viewBox="0 0 24 24"
 									fill="none"
-									stroke="#ff9f0a"
+									stroke="var(--color-warning)"
 									strokeWidth="2"
 									className="shrink-0"
 								>
@@ -72,7 +72,7 @@ export function ConflictFileSidebar({ files, activeFile, onSelectFile }: Props) 
 									height="12"
 									viewBox="0 0 24 24"
 									fill="none"
-									stroke="#30d158"
+									stroke="var(--color-success)"
 									strokeWidth="2"
 									className="shrink-0"
 								>

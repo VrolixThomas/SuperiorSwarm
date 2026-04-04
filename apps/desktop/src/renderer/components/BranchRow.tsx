@@ -36,7 +36,7 @@ export function BranchRow({ branch, isSelected, onSelect, onContextMenu, onActio
 					height="14"
 					viewBox="0 0 24 24"
 					fill="none"
-					stroke="#ff9f0a"
+					stroke="var(--color-warning)"
 					strokeWidth="2"
 					className="shrink-0"
 				>
@@ -90,12 +90,12 @@ export function BranchRow({ branch, isSelected, onSelect, onContextMenu, onActio
 			)}
 			{/* Ahead/behind badges */}
 			{branch.ahead > 0 && (
-				<span className="shrink-0 rounded-full bg-[rgba(48,209,88,0.1)] px-1.5 text-[10px] text-[#30d158]">
+				<span className="shrink-0 rounded-full bg-[rgba(48,209,88,0.1)] px-1.5 text-[10px] text-[var(--color-success)]">
 					↑{branch.ahead}
 				</span>
 			)}
 			{branch.behind > 0 && (
-				<span className="shrink-0 rounded-full bg-[rgba(255,159,10,0.1)] px-1.5 text-[10px] text-[#ff9f0a]">
+				<span className="shrink-0 rounded-full bg-[rgba(255,159,10,0.1)] px-1.5 text-[10px] text-[var(--color-warning)]">
 					↓{branch.behind}
 				</span>
 			)}
