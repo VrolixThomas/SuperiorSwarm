@@ -7,10 +7,9 @@ interface Props {
 	currentBranch: string;
 	position: { x: number; y: number };
 	onClose: () => void;
-	onCheckout: (branch: string) => void;
 	onMerge: (branch: string) => void;
 	onRebase: (ontoBranch: string) => void;
-	onNewBranch?: (baseBranch: string) => void;
+	onNewWorkspace?: (baseBranch: string) => void;
 	isMerging?: boolean;
 }
 
@@ -20,10 +19,9 @@ export function BranchActionMenu({
 	currentBranch,
 	position,
 	onClose,
-	onCheckout,
 	onMerge,
 	onRebase,
-	onNewBranch,
+	onNewWorkspace,
 	isMerging,
 }: Props) {
 	const menuRef = useRef<HTMLDivElement>(null);
@@ -111,14 +109,9 @@ export function BranchActionMenu({
 		return () => document.removeEventListener("keydown", handleKeyDown);
 	}, [onClose, renaming, branch]);
 
-	function handleCheckout() {
-		onCheckout(branch);
-		onClose();
-	}
-
-	function handleNewBranch() {
-		if (onNewBranch) {
-			onNewBranch(branch);
+	function handleNewWorkspace() {
+		if (onNewWorkspace) {
+			onNewWorkspace(branch);
 		}
 		onClose();
 	}
@@ -222,16 +215,9 @@ export function BranchActionMenu({
 			</div>
 			{separator}
 
-			{/* Checkout — hidden for current branch */}
-			{!isCurrentBranch && (
-				<button type="button" role="menuitem" className={itemClass} onClick={handleCheckout}>
-					Checkout
-				</button>
-			)}
-
-			{/* New Branch from */}
-			<button type="button" role="menuitem" className={itemClass} onClick={handleNewBranch}>
-				New Branch from &lsquo;{branch}&rsquo;…
+			{/* New Workspace from */}
+			<button type="button" role="menuitem" className={itemClass} onClick={handleNewWorkspace}>
+				New Workspace from &lsquo;{branch}&rsquo;…
 			</button>
 
 			{/* Merge — hidden for current branch */}

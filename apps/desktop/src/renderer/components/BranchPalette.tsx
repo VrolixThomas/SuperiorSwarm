@@ -7,7 +7,7 @@ import { BranchRow } from "./BranchRow";
 
 interface Props {
 	projectId: string;
-	onCheckout: (branch: string) => void;
+	onSelect: (branch: string) => void;
 	onOpenActionMenu: (
 		branch: string,
 		currentBranch: string,
@@ -15,7 +15,7 @@ interface Props {
 	) => void;
 }
 
-export function BranchPalette({ projectId, onCheckout, onOpenActionMenu }: Props) {
+export function BranchPalette({ projectId, onSelect, onOpenActionMenu }: Props) {
 	const {
 		isPaletteOpen,
 		searchQuery,
@@ -161,7 +161,7 @@ export function BranchPalette({ projectId, onCheckout, onOpenActionMenu }: Props
 				e.preventDefault();
 				const branch = navigableBranches[selectedIndex];
 				if (branch && !branch.isCurrent) {
-					onCheckout(branch.name);
+					onSelect(branch.name);
 					closePalette();
 				}
 				return;
@@ -190,7 +190,7 @@ export function BranchPalette({ projectId, onCheckout, onOpenActionMenu }: Props
 		navigableBranches,
 		closePalette,
 		setSelectedIndex,
-		onCheckout,
+		onSelect,
 		onOpenActionMenu,
 		currentBranch,
 	]);
@@ -408,7 +408,7 @@ export function BranchPalette({ projectId, onCheckout, onOpenActionMenu }: Props
 												branch={branch}
 												isSelected={selectedIndex === navIndex}
 												onSelect={() => {
-													onCheckout(branch.name);
+													onSelect(branch.name);
 													closePalette();
 												}}
 												onContextMenu={(e) => {
@@ -461,7 +461,7 @@ export function BranchPalette({ projectId, onCheckout, onOpenActionMenu }: Props
 													branch={branch}
 													isSelected={selectedIndex === navIndex}
 													onSelect={() => {
-														onCheckout(branch.name);
+														onSelect(branch.name);
 														closePalette();
 													}}
 													onContextMenu={(e) => {
@@ -505,7 +505,7 @@ export function BranchPalette({ projectId, onCheckout, onOpenActionMenu }: Props
 						<kbd className="rounded bg-[rgba(255,255,255,0.06)] px-1 py-0.5 font-mono text-[10px]">
 							↵
 						</kbd>
-						checkout
+						select
 					</span>
 					<span className="flex items-center gap-1">
 						<kbd className="rounded bg-[rgba(255,255,255,0.06)] px-1 py-0.5 font-mono text-[10px]">
