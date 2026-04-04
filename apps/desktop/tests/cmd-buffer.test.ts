@@ -157,6 +157,15 @@ describe("CmdBuffer", () => {
 		expect(buf.feed("\r")).toBe("clean");
 	});
 
+	// ── CSI u (kitty keyboard protocol) ──
+
+	test("Shift+Enter CSI u sequence is consumed without polluting buffer", () => {
+		buf.feed("hello");
+		buf.feed("\x1b[13;2u"); // Shift+Enter in CSI u encoding
+		buf.feed(" world");
+		expect(buf.feed("\r")).toBe("hello world");
+	});
+
 	// ── Mixed / integration ──
 
 	test("interleaved sequences and typing", () => {

@@ -135,10 +135,12 @@ export function Terminal({
 					);
 				});
 
-			// Shift+Enter: send \n (LF) instead of \r (CR) for multiline editing
-			// in raw-mode applications (Claude Code, fish, zsh, etc.)
+			// Shift+Enter: send CSI u sequence for multiline editing
+			// in raw-mode applications (Claude Code, fish, zsh, etc.).
+			// We suppress both keydown and keyup to prevent xterm from
+			// also emitting \r through its onData path.
+			let shiftEnterPending = false;
 			term.attachCustomKeyEventHandler((event: KeyboardEvent) => {
-				if (event.type !== "keydown") return true;
 				if (
 					event.key === "Enter" &&
 					event.shiftKey &&
@@ -146,7 +148,10 @@ export function Terminal({
 					!event.altKey &&
 					!event.metaKey
 				) {
-					api.terminal.write(id, "\n");
+					if (event.type === "keydown") {
+						shiftEnterPending = true;
+						api.terminal.write(id, "\x1b[13;2u");
+					}
 					return false;
 				}
 				return true;
@@ -179,6 +184,12 @@ export function Terminal({
 			const cmd = new CmdBuffer();
 
 			term.onData((data) => {
+				// Suppress the \r that xterm may still emit after our
+				// Shift+Enter handler already sent the CSI u sequence.
+				if (shiftEnterPending) {
+					shiftEnterPending = false;
+					if (data === "\r") return;
+				}
 				api.terminal.write(id, data);
 				if (term.buffer.active.type === "alternate") return;
 
