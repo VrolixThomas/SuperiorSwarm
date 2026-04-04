@@ -156,28 +156,29 @@ function collectSnapshot() {
 	return { sessions, state, paneLayouts };
 }
 
+function dismissSplash() {
+	const splash = document.getElementById("splash");
+	if (splash) {
+		splash.classList.add("hidden");
+		setTimeout(() => splash.remove(), 300);
+	}
+}
+
 export function App() {
 	const sessionQuery = trpc.auth.getSession.useQuery(undefined, {
 		retry: false,
 		staleTime: 5 * 60 * 1000,
 	});
 
+	useEffect(() => {
+		if (!sessionQuery.isLoading) {
+			dismissSplash();
+		}
+	}, [sessionQuery.isLoading]);
+
 	if (sessionQuery.isLoading) {
-		return (
-			<div
-				style={{
-					display: "flex",
-					alignItems: "center",
-					justifyContent: "center",
-					height: "100vh",
-					background: "var(--bg-base)",
-					color: "var(--text-tertiary)",
-					fontSize: "14px",
-				}}
-			>
-				Loading...
-			</div>
-		);
+		// Splash screen in index.html handles the visual — render nothing here
+		return null;
 	}
 
 	if (!sessionQuery.data) {
