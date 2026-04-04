@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Group, Panel, Separator, useDefaultLayout, usePanelRef } from "react-resizable-panels";
 import type { LayoutNode, SerializedLayoutNode } from "../shared/pane-types";
 import { AddRepositoryModal } from "./components/AddRepositoryModal";
+import { BranchPalette } from "./components/BranchPalette";
 import { CreateWorktreeModal } from "./components/CreateWorktreeModal";
 import { DaemonStatus } from "./components/DaemonStatus";
 import { DiffPanel } from "./components/DiffPanel";
@@ -24,6 +25,7 @@ import { useProjectStore } from "./stores/projects";
 import type { TabItem } from "./stores/tab-store";
 import { resetFileTabCounter, useTabStore } from "./stores/tab-store";
 import { useUpdateStore } from "./stores/update-store";
+import { useBranchStore } from "./stores/branch-store";
 import { trpc } from "./trpc/client";
 
 const SAVE_INTERVAL_MS = 30_000;
@@ -340,6 +342,24 @@ function AuthenticatedApp() {
 	usePaneShortcuts();
 	useAgentAlertListener();
 
+	// Cmd+Shift+B — toggle branch palette
+	const selectedProjectId = useProjectStore((s) => s.selectedProjectId);
+	const { openPalette, closePalette, isPaletteOpen } = useBranchStore();
+	useEffect(() => {
+		function handleKeyDown(e: KeyboardEvent) {
+			if (e.key === "b" && e.metaKey && e.shiftKey) {
+				e.preventDefault();
+				if (isPaletteOpen) {
+					closePalette();
+				} else if (selectedProjectId) {
+					openPalette();
+				}
+			}
+		}
+		document.addEventListener("keydown", handleKeyDown);
+		return () => document.removeEventListener("keydown", handleKeyDown);
+	}, [isPaletteOpen, openPalette, closePalette, selectedProjectId]);
+
 	// Query update status on mount and poll when an update is being downloaded
 	const updateStore = useUpdateStore();
 	const isDownloading = updateStore.toastState === "downloading";
@@ -481,6 +501,13 @@ function AuthenticatedApp() {
 			<DaemonStatus />
 			<UpdateToast />
 			<WhatsNewModal />
+			{selectedProjectId && (
+				<BranchPalette
+					projectId={selectedProjectId}
+					onCheckout={() => {/* TODO: wire in Task 12 */}}
+					onOpenActionMenu={() => {/* TODO: wire in Task 12 */}}
+				/>
+			)}
 		</>
 	);
 }

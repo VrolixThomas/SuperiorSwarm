@@ -1,0 +1,110 @@
+import type { BranchInfo } from "../../shared/branch-types";
+
+interface Props {
+	branch: BranchInfo;
+	isSelected: boolean;
+	onSelect: () => void;
+	onContextMenu: (e: React.MouseEvent) => void;
+	onActionClick: () => void;
+}
+
+export function BranchRow({ branch, isSelected, onSelect, onContextMenu, onActionClick }: Props) {
+	return (
+		<div
+			role="option"
+			aria-selected={isSelected}
+			onClick={onSelect}
+			onContextMenu={onContextMenu}
+			className={[
+				"group flex items-center gap-2 rounded-[var(--radius-sm)] px-2 py-1.5 text-[13px] transition-all duration-[var(--transition-fast)] cursor-pointer",
+				isSelected ? "bg-[rgba(255,255,255,0.06)]" : "hover:bg-[rgba(255,255,255,0.04)]",
+			].join(" ")}
+		>
+			{branch.isDefault ? (
+				<svg
+					width="14"
+					height="14"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="#ff9f0a"
+					strokeWidth="2"
+					className="shrink-0"
+				>
+					<path d="m12 2 3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.77 5.82 21 7 14.14l-5-4.87 6.91-1.01z" />
+				</svg>
+			) : (
+				<svg
+					width="14"
+					height="14"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="var(--text-tertiary)"
+					strokeWidth="2"
+					className="shrink-0"
+				>
+					<path d="M6 3v12" />
+					<circle cx="18" cy="6" r="3" />
+					<circle cx="6" cy="18" r="3" />
+					<path d="M18 9a9 9 0 0 1-9 9" />
+				</svg>
+			)}
+			<span className="min-w-0 truncate text-[var(--text)]">{branch.name}</span>
+			{branch.isDefault && (
+				<span className="shrink-0 rounded-[4px] bg-[rgba(255,255,255,0.04)] px-1.5 text-[10px] text-[var(--text-quaternary)]">
+					default
+				</span>
+			)}
+			{branch.hasWorkspace && (
+				<div
+					className="h-[6px] w-[6px] shrink-0 rounded-full bg-[var(--accent)]"
+					title="Has workspace"
+				/>
+			)}
+			{branch.tracking && (
+				<span className="ml-auto shrink-0 text-[11px] text-[var(--text-quaternary)]">
+					{branch.tracking}
+				</span>
+			)}
+			{branch.lastCommit && (
+				<span className="shrink-0 text-[11px] text-[var(--text-quaternary)]">
+					{formatRelativeTime(branch.lastCommit.date)}
+				</span>
+			)}
+			<button
+				type="button"
+				onClick={(e) => {
+					e.stopPropagation();
+					onActionClick();
+				}}
+				className="ml-auto shrink-0 rounded-[var(--radius-sm)] p-0.5 opacity-0 transition-opacity duration-[var(--transition-fast)] group-hover:opacity-60 hover:!opacity-100"
+			>
+				<svg
+					width="14"
+					height="14"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="var(--text-quaternary)"
+					strokeWidth="2"
+				>
+					<circle cx="12" cy="12" r="1" />
+					<circle cx="19" cy="12" r="1" />
+					<circle cx="5" cy="12" r="1" />
+				</svg>
+			</button>
+		</div>
+	);
+}
+
+function formatRelativeTime(dateStr: string): string {
+	const date = new Date(dateStr);
+	const now = Date.now();
+	const diffMs = now - date.getTime();
+	const diffMin = Math.floor(diffMs / 60_000);
+	if (diffMin < 1) return "just now";
+	if (diffMin < 60) return `${diffMin}m ago`;
+	const diffHr = Math.floor(diffMin / 60);
+	if (diffHr < 24) return `${diffHr}h ago`;
+	const diffDay = Math.floor(diffHr / 24);
+	if (diffDay < 30) return `${diffDay}d ago`;
+	return `${Math.floor(diffDay / 30)}mo ago`;
+}
