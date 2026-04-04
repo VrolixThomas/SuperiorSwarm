@@ -68,8 +68,8 @@ export function saveTerminalSessions(data: SessionSaveData): void {
 			.where(
 				and(
 					notLike(schema.sessionState.key, "supabase_session:%"),
-					ne(schema.sessionState.key, "lastSeenVersion"),
-				),
+					ne(schema.sessionState.key, "lastSeenVersion")
+				)
 			)
 			.run();
 		for (const [key, value] of Object.entries(data.state)) {

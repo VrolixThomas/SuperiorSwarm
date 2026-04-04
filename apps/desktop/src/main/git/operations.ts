@@ -201,10 +201,7 @@ export async function listBranches(repoPath: string): Promise<string[]> {
 	return [...branches].sort();
 }
 
-export function sortBranchesWithDefault(
-	branches: string[],
-	defaultBranch: string,
-): string[] {
+export function sortBranchesWithDefault(branches: string[], defaultBranch: string): string[] {
 	const sorted = branches.filter((b) => b !== defaultBranch).sort();
 	if (branches.includes(defaultBranch)) {
 		sorted.unshift(defaultBranch);

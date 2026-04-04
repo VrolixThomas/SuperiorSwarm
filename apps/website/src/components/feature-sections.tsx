@@ -19,14 +19,12 @@ function PrIntelligenceVisual() {
 						<span className="rounded-[3px] bg-accent-dim px-1.5 py-px text-[9px] font-semibold text-accent">
 							AI
 						</span>
-						<span className="font-mono text-[10px] text-text-faint">
-							chat-service.ts:47
-						</span>
+						<span className="font-mono text-[10px] text-text-faint">chat-service.ts:47</span>
 						<span className="ml-auto text-[10px] text-text-faint">PR #34</span>
 					</div>
 					<p className="px-3 py-2 text-[11px] leading-relaxed text-text-secondary">
-						Messages are dispatched without a queue. If two agents respond simultaneously,
-						messages will interleave. Add a message queue that serializes writes.
+						Messages are dispatched without a queue. If two agents respond simultaneously, messages
+						will interleave. Add a message queue that serializes writes.
 					</p>
 					<div className="flex items-center gap-2 border-t border-border px-3 py-1.5">
 						<button
@@ -48,9 +46,7 @@ function PrIntelligenceVisual() {
 				<div className="rounded-[6px] border border-border bg-bg-surface">
 					<div className="flex items-center gap-2 px-3 py-2">
 						<span className="text-[11px] text-green">✓</span>
-						<span className="text-[11px] font-medium text-text-primary">
-							2/2 comments resolved
-						</span>
+						<span className="text-[11px] font-medium text-text-primary">2/2 comments resolved</span>
 						<span className="ml-auto font-mono text-[10px] text-text-faint">a7f3c21</span>
 					</div>
 				</div>
@@ -66,7 +62,10 @@ function AgentOrchestrationVisual() {
 			<div className="pointer-events-none absolute h-[300px] w-[300px] rounded-full bg-[radial-gradient(ellipse,rgba(196,149,108,0.06)_0%,transparent_70%)]" />
 
 			{/* Mini terminal multiplexer — matches real app window */}
-			<div className="relative w-[300px] overflow-hidden rounded-[6px] border border-border bg-bg-elevated" aria-hidden="true">
+			<div
+				className="relative w-[300px] overflow-hidden rounded-[6px] border border-border bg-bg-elevated"
+				aria-hidden="true"
+			>
 				{/* Window chrome with agent indicator */}
 				<div className="flex items-center justify-between border-b border-border px-2.5 py-1.5">
 					<div className="flex items-center gap-1.5">
@@ -110,21 +109,14 @@ function AgentOrchestrationVisual() {
 				{/* Terminal content — matches real Claude Code session */}
 				<div className="bg-bg-base px-3 py-2 font-mono text-[10px] leading-relaxed">
 					<div className="text-text-muted">
-						~/SuperiorSwarm on{" "}
-						<span className="text-purple">feature/inline-agent-chat</span>
+						~/SuperiorSwarm on <span className="text-purple">feature/inline-agent-chat</span>
 					</div>
-					<div className="text-text-faint">
-						{">"} implement the ChatPanel component
-					</div>
+					<div className="text-text-faint">{">"} implement the ChatPanel component</div>
 					<div className="mt-1.5 text-text-faint">
 						<span className="text-text-muted">{"│"}</span> Analyzing codebase...
 					</div>
-					<div className="text-green">
-						✓ Created src/renderer/hooks/useAgentChat.ts
-					</div>
-					<div className="text-green">
-						✓ Created src/renderer/components/ChatPanel.tsx
-					</div>
+					<div className="text-green">✓ Created src/renderer/hooks/useAgentChat.ts</div>
+					<div className="text-green">✓ Created src/renderer/components/ChatPanel.tsx</div>
 				</div>
 			</div>
 		</div>
@@ -138,16 +130,17 @@ function IntegrationVisual() {
 			<div className="pointer-events-none absolute h-[300px] w-[300px] rounded-full bg-[radial-gradient(ellipse,rgba(196,149,108,0.06)_0%,transparent_70%)]" />
 
 			{/* Mini sidebar — matches real app Sidebar with segmented control */}
-			<div className="relative w-[260px] overflow-hidden rounded-[6px] border border-border bg-bg-surface" aria-hidden="true">
+			<div
+				className="relative w-[260px] overflow-hidden rounded-[6px] border border-border bg-bg-surface"
+				aria-hidden="true"
+			>
 				{/* Segmented control — matches real sidebar tabs */}
 				<div className="flex gap-1 border-b border-border px-2 py-1.5">
 					{["Repos", "Tickets", "PRs"].map((tab) => (
 						<span
 							key={tab}
 							className={`flex-1 rounded-[5px] py-1 text-center text-[10px] font-medium ${
-								tab === "Tickets"
-									? "bg-bg-elevated text-text-secondary"
-									: "text-text-faint"
+								tab === "Tickets" ? "bg-bg-elevated text-text-secondary" : "text-text-faint"
 							}`}
 						>
 							{tab}
@@ -163,7 +156,11 @@ function IntegrationVisual() {
 					</div>
 
 					{[
-						{ key: "SUP-12", title: "Inline agent chatting in terminal panes", status: "In Progress" },
+						{
+							key: "SUP-12",
+							title: "Inline agent chatting in terminal panes",
+							status: "In Progress",
+						},
 						{ key: "SUP-11", title: "Worktree shared files configuration UI", status: "Todo" },
 						{ key: "SUP-10", title: "Review draft follow-up rounds", status: "Todo" },
 						{ key: "SUP-9", title: "Terminal scrollback persistence", status: "Done" },
@@ -175,15 +172,33 @@ function IntegrationVisual() {
 							}`}
 						>
 							{/* Status icon — matches real ticket status icons */}
-							<svg className="size-[10px] shrink-0" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+							<svg
+								className="size-[10px] shrink-0"
+								viewBox="0 0 14 14"
+								fill="none"
+								aria-hidden="true"
+							>
 								{ticket.status === "In Progress" ? (
-									<circle cx="7" cy="7" r="5.5" stroke="#febc2e" strokeWidth="1.5" strokeDasharray="8 4" />
+									<circle
+										cx="7"
+										cy="7"
+										r="5.5"
+										stroke="#febc2e"
+										strokeWidth="1.5"
+										strokeDasharray="8 4"
+									/>
 								) : ticket.status === "Todo" ? (
 									<circle cx="7" cy="7" r="5.5" stroke="#636366" strokeWidth="1.5" />
 								) : (
 									<>
 										<circle cx="7" cy="7" r="5.5" stroke="#28c840" strokeWidth="1.5" />
-										<path d="M4.5 7.5L6 9L9.5 5.5" stroke="#28c840" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+										<path
+											d="M4.5 7.5L6 9L9.5 5.5"
+											stroke="#28c840"
+											strokeWidth="1.5"
+											strokeLinecap="round"
+											strokeLinejoin="round"
+										/>
 									</>
 								)}
 							</svg>
@@ -196,7 +211,14 @@ function IntegrationVisual() {
 				{/* Footer — matches real sidebar footer */}
 				<div className="flex items-center gap-1 border-t border-border p-2">
 					<div className="flex flex-1 items-center gap-2 rounded-[6px] px-2 py-1 text-[11px] text-text-faint">
-						<svg className="size-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+						<svg
+							className="size-3"
+							viewBox="0 0 16 16"
+							fill="none"
+							stroke="currentColor"
+							strokeWidth="1.5"
+							aria-hidden="true"
+						>
 							<circle cx="8" cy="8" r="6" />
 							<path d="M8 5v3l2 2" strokeLinecap="round" />
 						</svg>

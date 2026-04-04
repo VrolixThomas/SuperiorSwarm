@@ -185,12 +185,7 @@ describe("listBranches", () => {
 describe("sortBranchesWithDefault", () => {
 	test("pins default branch first", () => {
 		const branches = ["alpha", "beta", "main", "zeta"];
-		expect(sortBranchesWithDefault(branches, "main")).toEqual([
-			"main",
-			"alpha",
-			"beta",
-			"zeta",
-		]);
+		expect(sortBranchesWithDefault(branches, "main")).toEqual(["main", "alpha", "beta", "zeta"]);
 	});
 
 	test("does not duplicate default branch", () => {
@@ -202,11 +197,7 @@ describe("sortBranchesWithDefault", () => {
 
 	test("handles missing default branch gracefully", () => {
 		const branches = ["alpha", "beta", "zeta"];
-		expect(sortBranchesWithDefault(branches, "main")).toEqual([
-			"alpha",
-			"beta",
-			"zeta",
-		]);
+		expect(sortBranchesWithDefault(branches, "main")).toEqual(["alpha", "beta", "zeta"]);
 	});
 
 	test("works with empty list", () => {
