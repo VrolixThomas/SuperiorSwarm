@@ -379,6 +379,12 @@ function AuthenticatedApp() {
 		{ enabled: !!activeProjectId },
 	);
 
+	const activeCwd = useTabStore((s) => s.activeWorkspaceCwd);
+	const branchStatusQuery = trpc.branches.getStatus.useQuery(
+		{ projectId: activeProjectId ?? "", cwd: activeCwd || undefined },
+		{ enabled: !!activeProjectId },
+	);
+
 	const handleCheckout = useCallback(
 		(branch: string) => {
 			if (!activeProjectId) return;
@@ -399,10 +405,11 @@ function AuthenticatedApp() {
 	);
 
 	function handleMerge(branch: string) {
-		console.log("[App] handleMerge called", { branch, activeProjectId });
 		if (!activeProjectId) return;
+		if (useBranchStore.getState().mergeState !== null) return; // Already merging/rebasing
 		const cwd = useTabStore.getState().activeWorkspaceCwd || undefined;
-		console.log("[App] merge.start mutating", { projectId: activeProjectId, branch, cwd });
+		// Capture current branch before mutation — actionMenu will be null by onSuccess time
+		const currentBranch = branchStatusQuery.data?.branch ?? "";
 		mergeStartMutation.mutate(
 			{ projectId: activeProjectId, branch, cwd },
 			{
@@ -410,7 +417,6 @@ function AuthenticatedApp() {
 					utils.branches.getStatus.invalidate();
 					if (result.status === "conflict" && result.files) {
 						const workspaceId = useTabStore.getState().activeWorkspaceId ?? "";
-						const currentBranch = actionMenu?.currentBranch ?? "";
 						setMergeState({
 							type: "merge",
 							sourceBranch: branch,
@@ -421,16 +427,16 @@ function AuthenticatedApp() {
 						});
 						useTabStore.getState().openMergeConflict(workspaceId, "merge", branch, currentBranch);
 					}
-					// If status is "ok", merge succeeded cleanly — status invalidation updates the chip
 				},
 			},
 		);
 	}
 
 	function handleRebase(ontoBranch: string) {
-		console.log("[App] handleRebase called", { ontoBranch, activeProjectId });
 		if (!activeProjectId) return;
+		if (useBranchStore.getState().mergeState !== null) return; // Already merging/rebasing
 		const cwd = useTabStore.getState().activeWorkspaceCwd || undefined;
+		const currentBranch = branchStatusQuery.data?.branch ?? "";
 		rebaseStartMutation.mutate(
 			{ projectId: activeProjectId, ontoBranch, cwd },
 			{
@@ -438,7 +444,6 @@ function AuthenticatedApp() {
 					utils.branches.getStatus.invalidate();
 					if (result.status === "conflict" && result.files) {
 						const workspaceId = useTabStore.getState().activeWorkspaceId ?? "";
-						const currentBranch = actionMenu?.currentBranch ?? "";
 						setMergeState({
 							type: "rebase",
 							sourceBranch: ontoBranch,
@@ -632,7 +637,17 @@ function AuthenticatedApp() {
 					onCheckout={handleCheckout}
 					onMerge={handleMerge}
 					onRebase={handleRebase}
-					onCompare={() => setActionMenu(null)}
+					onCompare={(branch) => {
+						setActionMenu(null);
+						const repoPath = useTabStore.getState().activeWorkspaceCwd || "";
+						const currentBr = branchStatusQuery.data?.branch ?? "HEAD";
+						useTabStore.getState().toggleDiffPanel({
+							type: "branch",
+							baseBranch: branch,
+							headBranch: currentBr,
+							repoPath,
+						});
+					}}
 				/>
 			)}
 		</>

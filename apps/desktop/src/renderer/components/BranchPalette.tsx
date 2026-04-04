@@ -164,12 +164,27 @@ export function BranchPalette({ projectId, onCheckout, onOpenActionMenu }: Props
 					onCheckout(branch.name);
 					closePalette();
 				}
+				return;
+			}
+			if (e.key === "ArrowRight" || e.key === "Tab") {
+				e.preventDefault();
+				const branch = navigableBranches[selectedIndex];
+				if (branch) {
+					const selectedEl = listRef.current?.querySelector('[aria-selected="true"]');
+					if (selectedEl) {
+						const rect = selectedEl.getBoundingClientRect();
+						onOpenActionMenu(branch.name, currentBranch?.name ?? "", {
+							x: rect.right,
+							y: rect.top,
+						});
+					}
+				}
 			}
 		}
 
 		document.addEventListener("keydown", handleKeyDown);
 		return () => document.removeEventListener("keydown", handleKeyDown);
-	}, [isPaletteOpen, selectedIndex, navigableBranches, closePalette, setSelectedIndex, onCheckout]);
+	}, [isPaletteOpen, selectedIndex, navigableBranches, closePalette, setSelectedIndex, onCheckout, onOpenActionMenu, currentBranch]);
 
 	if (!isPaletteOpen) return null;
 
@@ -482,6 +497,12 @@ export function BranchPalette({ projectId, onCheckout, onOpenActionMenu }: Props
 							↵
 						</kbd>
 						checkout
+					</span>
+					<span className="flex items-center gap-1">
+						<kbd className="rounded bg-[rgba(255,255,255,0.06)] px-1 py-0.5 font-mono text-[10px]">
+							→
+						</kbd>
+						actions
 					</span>
 					<span className="flex items-center gap-1">
 						<kbd className="rounded bg-[rgba(255,255,255,0.06)] px-1 py-0.5 font-mono text-[10px]">
