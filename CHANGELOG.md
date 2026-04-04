@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.2.3 (2026-04-05)
+
+### What's New
+
+The Changes tab now appears above Commits in the branch view for a more natural workflow. Minor UI cleanup removing a stray blue line.
+
+### Changes
+
+- **SUP-11**: switch order of changes tab and remove blue line (#45)
+
 ## v0.2.2 (2026-04-04)
 
 ### What's New
