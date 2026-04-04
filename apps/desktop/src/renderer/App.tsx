@@ -351,8 +351,12 @@ function AuthenticatedApp() {
 			utils.branches.list.invalidate();
 		},
 	});
-	const mergeStartMutation = trpc.merge.start.useMutation();
-	const rebaseStartMutation = trpc.rebase.start.useMutation();
+	const mergeStartMutation = trpc.merge.start.useMutation({
+		onError: (err) => console.error("[App] merge.start failed:", err.message),
+	});
+	const rebaseStartMutation = trpc.rebase.start.useMutation({
+		onError: (err) => console.error("[App] rebase.start failed:", err.message),
+	});
 
 	const [actionMenu, setActionMenu] = useState<{
 		branch: string;
@@ -395,8 +399,10 @@ function AuthenticatedApp() {
 	);
 
 	function handleMerge(branch: string) {
+		console.log("[App] handleMerge called", { branch, activeProjectId });
 		if (!activeProjectId) return;
 		const cwd = useTabStore.getState().activeWorkspaceCwd || undefined;
+		console.log("[App] merge.start mutating", { projectId: activeProjectId, branch, cwd });
 		mergeStartMutation.mutate(
 			{ projectId: activeProjectId, branch, cwd },
 			{
@@ -422,6 +428,7 @@ function AuthenticatedApp() {
 	}
 
 	function handleRebase(ontoBranch: string) {
+		console.log("[App] handleRebase called", { ontoBranch, activeProjectId });
 		if (!activeProjectId) return;
 		const cwd = useTabStore.getState().activeWorkspaceCwd || undefined;
 		rebaseStartMutation.mutate(

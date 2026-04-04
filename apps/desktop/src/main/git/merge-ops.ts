@@ -7,6 +7,7 @@ import type {
 	MergeResult,
 	RebaseResult,
 } from "../../shared/branch-types";
+import { resolveGitDir } from "./operations";
 
 export async function mergeBranch(repoPath: string, branch: string): Promise<MergeResult> {
 	const git = simpleGit(repoPath);
@@ -14,7 +15,8 @@ export async function mergeBranch(repoPath: string, branch: string): Promise<Mer
 		await git.merge([branch]);
 		return { status: "ok" };
 	} catch (err) {
-		if (existsSync(join(repoPath, ".git", "MERGE_HEAD"))) {
+		const gitDir = await resolveGitDir(repoPath);
+		if (existsSync(join(gitDir, "MERGE_HEAD"))) {
 			const files = await getConflictingFiles(repoPath);
 			return { status: "conflict", files: files.map((f) => f.path) };
 		}
@@ -33,11 +35,12 @@ export async function rebaseBranch(repoPath: string, ontoBranch: string): Promis
 		await git.rebase([ontoBranch]);
 		return { status: "ok" };
 	} catch {
-		const rebaseMergeDir = join(repoPath, ".git", "rebase-merge");
-		const rebaseApplyDir = join(repoPath, ".git", "rebase-apply");
+		const gitDir = await resolveGitDir(repoPath);
+		const rebaseMergeDir = join(gitDir, "rebase-merge");
+		const rebaseApplyDir = join(gitDir, "rebase-apply");
 		if (existsSync(rebaseMergeDir) || existsSync(rebaseApplyDir)) {
 			const files = await getConflictingFiles(repoPath);
-			const progress = getRebaseProgress(repoPath);
+			const progress = await getRebaseProgress(repoPath);
 			return { status: "conflict", files: files.map((f) => f.path), progress };
 		}
 		throw new Error("Rebase failed");
@@ -55,24 +58,26 @@ export async function continueRebase(repoPath: string): Promise<RebaseResult> {
 		await git.rebase(["--continue"]);
 		return { status: "ok" };
 	} catch {
-		const rebaseMergeDir = join(repoPath, ".git", "rebase-merge");
+		const gitDir = await resolveGitDir(repoPath);
+		const rebaseMergeDir = join(gitDir, "rebase-merge");
 		if (existsSync(rebaseMergeDir)) {
 			const files = await getConflictingFiles(repoPath);
-			const progress = getRebaseProgress(repoPath);
+			const progress = await getRebaseProgress(repoPath);
 			return { status: "conflict", files: files.map((f) => f.path), progress };
 		}
 		throw new Error("Rebase continue failed");
 	}
 }
 
-export function getRebaseProgress(
-	repoPath: string
-): { current: number; total: number } | undefined {
-	const rebaseMergeDir = join(repoPath, ".git", "rebase-merge");
+export async function getRebaseProgress(
+	repoPath: string,
+): Promise<{ current: number; total: number } | undefined> {
+	const gitDir = await resolveGitDir(repoPath);
+	const rebaseMergeDir = join(gitDir, "rebase-merge");
 	try {
 		const current = Number.parseInt(
 			readFileSync(join(rebaseMergeDir, "msgnum"), "utf-8").trim(),
-			10
+			10,
 		);
 		const total = Number.parseInt(readFileSync(join(rebaseMergeDir, "end"), "utf-8").trim(), 10);
 		return { current, total };
@@ -107,7 +112,7 @@ export async function getConflictingFiles(repoPath: string): Promise<ConflictFil
 
 export async function getConflictContent(
 	repoPath: string,
-	filePath: string
+	filePath: string,
 ): Promise<ConflictContent> {
 	const git = simpleGit(repoPath);
 
@@ -123,7 +128,7 @@ export async function getConflictContent(
 export async function markFileResolved(
 	repoPath: string,
 	filePath: string,
-	resolvedContent: string
+	resolvedContent: string,
 ): Promise<void> {
 	const fullPath = join(repoPath, filePath);
 	writeFileSync(fullPath, resolvedContent, "utf-8");

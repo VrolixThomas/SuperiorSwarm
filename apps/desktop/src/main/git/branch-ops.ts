@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import simpleGit from "simple-git";
 import type { BranchInfo, BranchStatus } from "../../shared/branch-types";
+import { resolveGitDir } from "./operations";
 
 export async function checkoutBranch(repoPath: string, branch: string): Promise<void> {
 	const git = simpleGit(repoPath);
@@ -61,15 +62,16 @@ export async function getBranchStatus(repoPath: string): Promise<BranchStatus> {
 		}
 	}
 
+	const gitDir = await resolveGitDir(repoPath);
 	let state: BranchStatus["state"] = "clean";
-	if (existsSync(join(repoPath, ".git", "MERGE_HEAD"))) {
+	if (existsSync(join(gitDir, "MERGE_HEAD"))) {
 		state = "merging";
 	} else if (
-		existsSync(join(repoPath, ".git", "rebase-merge")) ||
-		existsSync(join(repoPath, ".git", "rebase-apply"))
+		existsSync(join(gitDir, "rebase-merge")) ||
+		existsSync(join(gitDir, "rebase-apply"))
 	) {
 		state = "rebasing";
-	} else if (existsSync(join(repoPath, ".git", "CHERRY_PICK_HEAD"))) {
+	} else if (existsSync(join(gitDir, "CHERRY_PICK_HEAD"))) {
 		state = "cherry-picking";
 	}
 

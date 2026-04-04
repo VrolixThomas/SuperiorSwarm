@@ -49,7 +49,7 @@ export const rebaseRouter = router({
 		.query(async ({ input }) => {
 			const path = await resolvePath(input.projectId, input.cwd);
 			const files = await getConflictingFiles(path);
-			const progress = getRebaseProgress(path);
+			const progress = await getRebaseProgress(path);
 			return { files, progress };
 		}),
 });

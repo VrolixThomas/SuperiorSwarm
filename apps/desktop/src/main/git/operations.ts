@@ -1,4 +1,5 @@
 import { existsSync, mkdirSync } from "node:fs";
+import { resolve } from "node:path";
 import simpleGit, { type SimpleGitProgressEvent } from "simple-git";
 
 export function validateGitUrl(url: string): boolean {
@@ -86,6 +87,13 @@ export async function getGitRoot(path: string): Promise<string | null> {
 	} catch {
 		return null;
 	}
+}
+
+/** Resolve the actual .git directory, works for both normal repos and worktrees. */
+export async function resolveGitDir(repoPath: string): Promise<string> {
+	const git = simpleGit(repoPath);
+	const raw = await git.revparse(["--git-dir"]);
+	return resolve(repoPath, raw.trim());
 }
 
 export async function isGitRepo(path: string): Promise<boolean> {

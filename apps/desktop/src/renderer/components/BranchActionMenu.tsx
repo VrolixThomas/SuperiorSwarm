@@ -110,36 +110,39 @@ export function BranchActionMenu({
 	}, [onClose, renaming, branch]);
 
 	function handleCheckout() {
+		console.log("[BranchActionMenu] handleCheckout", branch);
 		onCheckout(branch);
 		onClose();
 	}
 
 	function handleNewBranch() {
-		// Delegate to parent — passes branch name as the base
+		console.log("[BranchActionMenu] handleNewBranch from", branch);
 		onClose();
-		// Fire a custom event for the palette to pick up, or call a passed-in callback.
-		// Here we dispatch a custom DOM event so the parent can open the new-branch dialog.
 		window.dispatchEvent(
 			new CustomEvent("branch:new-from", { detail: { baseBranch: branch, projectId } })
 		);
 	}
 
 	function handleMerge() {
+		console.log("[BranchActionMenu] handleMerge", branch);
 		onMerge(branch);
 		onClose();
 	}
 
 	function handleRebase() {
+		console.log("[BranchActionMenu] handleRebase onto", branch);
 		onRebase(branch);
 		onClose();
 	}
 
 	function handleCompare() {
+		console.log("[BranchActionMenu] handleCompare", branch);
 		onCompare(branch);
 		onClose();
 	}
 
 	function handlePush() {
+		console.log("[BranchActionMenu] handlePush", branch);
 		pushMutation.mutate({ projectId, branch });
 	}
 
