@@ -8,9 +8,9 @@ import {
 	deleteBranch,
 	getBranchInfo,
 	getBranchStatus,
+	listBranchesDetailed,
 	renameBranch,
 } from "../../git/branch-ops";
-import { listBranches, sortBranchesWithDefault } from "../../git/operations";
 import { publicProcedure, router } from "../index";
 
 export const branchesRouter = router({
@@ -20,8 +20,7 @@ export const branchesRouter = router({
 			where: eq(projects.id, input.projectId),
 		});
 		if (!project) throw new Error("Project not found");
-		const branches = await listBranches(project.repoPath);
-		return sortBranchesWithDefault(branches, project.defaultBranch);
+		return listBranchesDetailed(project.repoPath, project.defaultBranch);
 	}),
 
 	checkout: publicProcedure

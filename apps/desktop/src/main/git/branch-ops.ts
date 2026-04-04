@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import simpleGit from "simple-git";
-import type { BranchStatus } from "../../shared/branch-types";
+import type { BranchInfo, BranchStatus } from "../../shared/branch-types";
 
 export async function checkoutBranch(repoPath: string, branch: string): Promise<void> {
 	const git = simpleGit(repoPath);
@@ -74,6 +74,97 @@ export async function getBranchStatus(repoPath: string): Promise<BranchStatus> {
 	}
 
 	return { branch, tracking, ahead, behind, state };
+}
+
+export async function listBranchesDetailed(
+	repoPath: string,
+	defaultBranch: string,
+): Promise<BranchInfo[]> {
+	const git = simpleGit(repoPath);
+
+	// Fetch to ensure we have latest remote refs
+	try {
+		await git.fetch("origin");
+	} catch {
+		// No remote or unreachable
+	}
+
+	const result = await git.branch(["-a", "-vv"]);
+	const current = result.current;
+
+	// Track which branches exist locally and remotely
+	const localSet = new Set<string>();
+	const remoteSet = new Set<string>();
+	const trackingMap = new Map<string, string>(); // local name → remote tracking ref
+	const aheadBehindMap = new Map<string, { ahead: number; behind: number }>();
+
+	for (const [name, info] of Object.entries(result.branches)) {
+		if (name.includes("/HEAD")) continue;
+
+		if (name.startsWith("remotes/origin/")) {
+			const clean = name.replace(/^remotes\/origin\//, "");
+			remoteSet.add(clean);
+		} else {
+			localSet.add(name);
+			// Parse tracking info from the label field (e.g. "[origin/main: ahead 2, behind 1]")
+			const label = info.label ?? "";
+			const trackMatch = label.match(/\[([^\]:]+)/);
+			if (trackMatch) {
+				trackingMap.set(name, trackMatch[1]);
+			}
+		}
+	}
+
+	// Get ahead/behind for local branches with tracking
+	for (const [localName, tracking] of trackingMap) {
+		try {
+			const raw = await git.raw([
+				"rev-list",
+				"--left-right",
+				"--count",
+				`${localName}...${tracking}`,
+			]);
+			const parts = raw.trim().split(/\s+/);
+			aheadBehindMap.set(localName, {
+				ahead: Number.parseInt(parts[0] ?? "0", 10),
+				behind: Number.parseInt(parts[1] ?? "0", 10),
+			});
+		} catch {
+			// Tracking ref may be gone
+		}
+	}
+
+	// Build unified branch list
+	const allNames = new Set([...localSet, ...remoteSet]);
+	const branches: BranchInfo[] = [];
+
+	for (const name of allNames) {
+		const isLocal = localSet.has(name);
+		const isRemote = remoteSet.has(name);
+		const ab = aheadBehindMap.get(name);
+
+		branches.push({
+			name,
+			isLocal,
+			isRemote,
+			tracking: trackingMap.get(name) ?? null,
+			lastCommit: null, // Populated lazily if needed
+			hasWorkspace: false, // Set by the caller (renderer)
+			isDefault: name === defaultBranch,
+			isCurrent: name === current,
+			ahead: ab?.ahead ?? 0,
+			behind: ab?.behind ?? 0,
+		});
+	}
+
+	// Sort: default first, then current, then alphabetical
+	branches.sort((a, b) => {
+		if (a.isDefault !== b.isDefault) return a.isDefault ? -1 : 1;
+		if (a.isCurrent !== b.isCurrent) return a.isCurrent ? -1 : 1;
+		return a.name.localeCompare(b.name);
+	});
+
+	return branches;
 }
 
 export async function getBranchInfo(
