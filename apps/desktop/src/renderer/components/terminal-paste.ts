@@ -1,12 +1,15 @@
 import type { Terminal } from "@xterm/xterm";
 
+/** Raw Ctrl+V byte — signals the PTY process to read the system clipboard. */
+const CTRL_V = "\x16";
+
 /**
- * Check whether the clipboard contains any non-text payload (images, files, etc.).
+ * Check whether the clipboard contains binary payload (images, files).
+ * Text-based types like text/html are intentionally excluded.
  */
-export function hasNonTextPayload(clipboardData: DataTransfer): boolean {
+export function hasImageOrFilePayload(clipboardData: DataTransfer): boolean {
 	const types = Array.from(clipboardData.types);
-	if (types.length === 0) return false;
-	return types.some((type) => type !== "text/plain");
+	return types.some((type) => type === "Files" || type.startsWith("image/"));
 }
 
 /**
@@ -39,10 +42,10 @@ export function interceptPaste(
 			return;
 		}
 
-		if (hasNonTextPayload(clipboardData)) {
+		if (hasImageOrFilePayload(clipboardData)) {
 			event.preventDefault();
 			event.stopImmediatePropagation();
-			writeToPty("\x16");
+			writeToPty(CTRL_V);
 			return;
 		}
 	};
