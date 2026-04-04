@@ -1,6 +1,6 @@
-import { useCallback, useEffect } from "react";
-import Markdown from "react-markdown";
+import { useEffect, useRef } from "react";
 import { useUpdateStore } from "../stores/update-store";
+import { MarkdownRenderer } from "./MarkdownRenderer";
 import { trpc } from "../trpc/client";
 
 export function WhatsNewModal() {
@@ -10,20 +10,22 @@ export function WhatsNewModal() {
 	const closeWhatsNew = useUpdateStore((s) => s.closeWhatsNew);
 
 	const markSeen = trpc.updates.markVersionSeen.useMutation();
+	const markSeenRef = useRef(markSeen.mutate);
+	markSeenRef.current = markSeen.mutate;
 
-	const handleClose = useCallback(() => {
-		if (version) markSeen.mutate({ version });
+	const handleClose = () => {
+		if (version) markSeenRef.current({ version });
 		closeWhatsNew();
-	}, [version, closeWhatsNew, markSeen]);
+	};
 
 	useEffect(() => {
 		if (!show) return;
 		const handleKeyDown = (e: KeyboardEvent) => {
-			if (e.key === "Escape") handleClose();
+			if (e.key === "Escape") closeWhatsNew();
 		};
 		document.addEventListener("keydown", handleKeyDown);
 		return () => document.removeEventListener("keydown", handleKeyDown);
-	}, [show, handleClose]);
+	}, [show, closeWhatsNew]);
 
 	if (!show || !version) return null;
 
@@ -41,7 +43,7 @@ export function WhatsNewModal() {
 				<div className="flex shrink-0 items-center justify-between border-b border-[var(--border)] px-5 py-4">
 					<div>
 						<h2 className="text-[15px] font-semibold text-[var(--text)]">
-							What's New in BranchFlux
+							What's New in SuperiorSwarm
 						</h2>
 						<p className="mt-0.5 text-[11px] text-[var(--text-tertiary)]">Version {version}</p>
 					</div>
@@ -64,9 +66,7 @@ export function WhatsNewModal() {
 				{/* Scrollable content */}
 				<div className="flex-1 overflow-y-auto px-5 py-4">
 					{releaseNotes ? (
-						<div className="prose-invert prose-sm max-w-none text-[13px] leading-[1.6] text-[var(--text-secondary)] [&_h1]:mb-2 [&_h1]:mt-4 [&_h1]:text-[15px] [&_h1]:font-semibold [&_h1]:text-[var(--text)] [&_h2]:mb-2 [&_h2]:mt-3 [&_h2]:text-[14px] [&_h2]:font-semibold [&_h2]:text-[var(--text)] [&_h3]:mb-1.5 [&_h3]:mt-2 [&_h3]:text-[13px] [&_h3]:font-semibold [&_h3]:text-[var(--text)] [&_img]:my-3 [&_img]:rounded-[var(--radius-md)] [&_img]:border [&_img]:border-[var(--border)] [&_li]:mb-1 [&_p]:mb-2 [&_pre]:rounded-[var(--radius-sm)] [&_pre]:bg-[var(--bg-elevated)] [&_pre]:p-3 [&_code]:rounded-[3px] [&_code]:bg-[var(--bg-elevated)] [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-[12px] [&_ul]:mb-2 [&_ul]:list-disc [&_ul]:pl-5">
-							<Markdown>{releaseNotes}</Markdown>
-						</div>
+						<MarkdownRenderer content={releaseNotes} />
 					) : (
 						<p className="text-center text-[13px] text-[var(--text-tertiary)]">
 							No release notes available for this version.

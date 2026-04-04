@@ -82,14 +82,5 @@
 		"tailwindcss": "^4.0.0",
 		"typescript": "^5.7.2",
 		"vite": "^6.0.7"
-	},
-	"build": {
-		"appId": "com.superiorswarm.app",
-		"productName": "SuperiorSwarm",
-		"publish": {
-			"provider": "github",
-			"owner": "VrolixThomas",
-			"repo": "SuperiorSwarm"
-		}
 	}
 }

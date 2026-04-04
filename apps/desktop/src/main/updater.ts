@@ -3,6 +3,7 @@ import { app } from "electron";
 import * as semver from "semver";
 import { getDb } from "./db";
 import { sessionState } from "./db/schema";
+import { GITHUB_API_BASE } from "./github/constants";
 
 // --- Pure utility functions (exported for testing) ---
 
@@ -36,44 +37,35 @@ export function extractReleaseSummary(body: string | null | undefined): string |
 const GITHUB_OWNER = "VrolixThomas";
 const GITHUB_REPO = "SuperiorSwarm";
 
+const releaseNotesCache = new Map<string, { body: string; publishedAt: string }>();
+
 export async function fetchReleaseNotes(
 	version: string
 ): Promise<{ body: string; publishedAt: string } | null> {
+	const cached = releaseNotesCache.get(version);
+	if (cached) return cached;
+
 	const tags = [`v${version}`, version];
 	for (const tag of tags) {
 		try {
 			const res = await fetch(
-				`https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/tags/${tag}`,
+				`${GITHUB_API_BASE}/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/tags/${tag}`,
 				{
 					headers: { Accept: "application/vnd.github.v3+json" },
 				}
 			);
 			if (res.ok) {
 				const data = (await res.json()) as { body?: string; published_at?: string };
-				return {
+				const result = {
 					body: data.body ?? "",
 					publishedAt: data.published_at ?? "",
 				};
+				releaseNotesCache.set(version, result);
+				return result;
 			}
 		} catch {
 			// Network error — try next tag or give up
 		}
-	}
-	// Fallback: try latest release
-	try {
-		const res = await fetch(
-			`https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`,
-			{ headers: { Accept: "application/vnd.github.v3+json" } }
-		);
-		if (res.ok) {
-			const data = (await res.json()) as { body?: string; published_at?: string };
-			return {
-				body: data.body ?? "",
-				publishedAt: data.published_at ?? "",
-			};
-		}
-	} catch {
-		// Offline — no release notes available
 	}
 	return null;
 }

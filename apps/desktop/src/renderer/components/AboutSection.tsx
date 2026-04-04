@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useUpdateStore } from "../stores/update-store";
 import { trpc } from "../trpc/client";
 
@@ -8,9 +9,10 @@ export function AboutSection() {
 	const checkForUpdates = trpc.updates.checkForUpdates.useMutation({
 		onSuccess: () => statusQuery.refetch(),
 	});
+	const [showNotes, setShowNotes] = useState(false);
 	const releaseNotesQuery = trpc.updates.getReleaseNotes.useQuery(
 		{ version: statusQuery.data?.currentVersion },
-		{ enabled: !!statusQuery.data?.currentVersion }
+		{ enabled: showNotes && !!statusQuery.data?.currentVersion }
 	);
 	const installUpdate = trpc.updates.installUpdate.useMutation();
 
@@ -22,6 +24,7 @@ export function AboutSection() {
 	const updateDownloaded = statusQuery.data?.updateDownloaded ?? false;
 
 	const handleViewReleaseNotes = () => {
+		setShowNotes(true);
 		openWhatsNew(currentVersion, releaseNotesQuery.data?.body ?? null);
 	};
 
@@ -125,8 +128,8 @@ export function AboutSection() {
 			{/* Footer info */}
 			<div className="mt-4 border-t border-[var(--border)] px-3 pt-3">
 				<div className="text-[10px] leading-[1.6] text-[var(--text-quaternary)]">
-					BranchFlux v{currentVersion} · {navigator.platform}
-					<br />© {new Date().getFullYear()} BranchFlux
+					SuperiorSwarm v{currentVersion} · {navigator.platform}
+					<br />© {new Date().getFullYear()} SuperiorSwarm
 				</div>
 			</div>
 		</div>
