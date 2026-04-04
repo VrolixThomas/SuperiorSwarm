@@ -2,6 +2,7 @@ import type { Pane } from "../../../shared/pane-types";
 import { CommentFixFileTab } from "../CommentFixFileTab";
 import { DiffFileTab } from "../DiffFileTab";
 import { FileEditor } from "../FileEditor";
+import { MergeConflictPane } from "../MergeConflictPane";
 import { PROverviewTab } from "../PROverviewTab";
 import { PRReviewFileTab } from "../PRReviewFileTab";
 import { Terminal } from "../Terminal";
@@ -89,6 +90,11 @@ export function PaneContent({
 						commitHash={activeTab.commitHash}
 						language={activeTab.language}
 					/>
+				</div>
+			)}
+			{activeTab?.kind === "merge-conflict" && (
+				<div className="absolute inset-0">
+					<MergeConflictPane key={activeTab.id} />
 				</div>
 			)}
 		</div>
