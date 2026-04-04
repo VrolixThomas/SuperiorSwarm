@@ -8,16 +8,29 @@ export function BranchChip({ projectId }: { projectId: string }) {
 
 	const statusQuery = trpc.branches.getStatus.useQuery(
 		{ projectId, cwd: cwd || undefined },
-		{ refetchInterval: 10_000 }
+		{ refetchInterval: 10_000 },
 	);
 
 	const status = statusQuery.data;
 	const isConflict = status?.state === "merging" || status?.state === "rebasing";
 
+	function handleClick() {
+		if (isConflict) {
+			// Focus the merge-conflict tab if one exists
+			const tabStore = useTabStore.getState();
+			const mergeTab = tabStore.getAllTabs().find((t) => t.kind === "merge-conflict");
+			if (mergeTab) {
+				tabStore.setActiveTab(mergeTab.id);
+				return;
+			}
+		}
+		openPalette();
+	}
+
 	return (
 		<button
 			type="button"
-			onClick={openPalette}
+			onClick={handleClick}
 			className={[
 				"flex items-center gap-1.5 rounded-[var(--radius-sm)] px-2 py-1 text-[12px] transition-all duration-[var(--transition-fast)]",
 				isConflict

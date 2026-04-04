@@ -19,6 +19,16 @@ export function MergeConflictPane({ projectId, mergeType, sourceBranch, targetBr
 	const markFileResolved = useBranchStore((s) => s.markFileResolved);
 	const clearMergeState = useBranchStore((s) => s.clearMergeState);
 
+	// Close the merge-conflict tab from the pane system
+	function closeMergeTab() {
+		const tabStore = useTabStore.getState();
+		const allTabs = tabStore.getAllTabs();
+		const mergeTab = allTabs.find((t) => t.kind === "merge-conflict");
+		if (mergeTab) {
+			tabStore.removeTab(mergeTab.id);
+		}
+	}
+
 	const [commitMessage, setCommitMessage] = useState(
 		mergeType === "merge"
 			? `Merge branch '${sourceBranch}'`
@@ -44,28 +54,33 @@ export function MergeConflictPane({ projectId, mergeType, sourceBranch, targetBr
 	const abortMerge = trpc.merge.abort.useMutation({
 		onSuccess: () => {
 			clearMergeState();
-			utils.branches.getStatus.invalidate({ projectId });
+			utils.branches.getStatus.invalidate();
+			// Close the merge-conflict tab
+			closeMergeTab();
 		},
 	});
 
 	const abortRebase = trpc.rebase.abort.useMutation({
 		onSuccess: () => {
 			clearMergeState();
-			utils.branches.getStatus.invalidate({ projectId });
+			utils.branches.getStatus.invalidate();
+			closeMergeTab();
 		},
 	});
 
 	const applyAndCommit = trpc.merge.applyAndCommit.useMutation({
 		onSuccess: () => {
 			clearMergeState();
-			utils.branches.getStatus.invalidate({ projectId });
+			utils.branches.getStatus.invalidate();
+			closeMergeTab();
 		},
 	});
 
 	const rebaseContinue = trpc.rebase.continue.useMutation({
 		onSuccess: () => {
 			clearMergeState();
-			utils.branches.getStatus.invalidate({ projectId });
+			utils.branches.getStatus.invalidate();
+			closeMergeTab();
 		},
 	});
 

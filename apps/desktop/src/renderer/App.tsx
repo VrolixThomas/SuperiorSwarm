@@ -407,9 +407,10 @@ function AuthenticatedApp() {
 
 	function handleMerge(branch: string) {
 		if (!activeProjectId) return;
-		if (useBranchStore.getState().mergeState !== null) return; // Already merging/rebasing
+		if (useBranchStore.getState().mergeState !== null) return;
+		closePalette();
+		setActionMenu(null);
 		const cwd = useTabStore.getState().activeWorkspaceCwd || undefined;
-		// Capture current branch before mutation — actionMenu will be null by onSuccess time
 		const currentBranch = branchStatusQuery.data?.branch ?? "";
 		mergeStartMutation.mutate(
 			{ projectId: activeProjectId, branch, cwd },
@@ -435,7 +436,9 @@ function AuthenticatedApp() {
 
 	function handleRebase(ontoBranch: string) {
 		if (!activeProjectId) return;
-		if (useBranchStore.getState().mergeState !== null) return; // Already merging/rebasing
+		if (useBranchStore.getState().mergeState !== null) return;
+		closePalette();
+		setActionMenu(null);
 		const cwd = useTabStore.getState().activeWorkspaceCwd || undefined;
 		const currentBranch = branchStatusQuery.data?.branch ?? "";
 		rebaseStartMutation.mutate(
