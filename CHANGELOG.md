@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.2.2 (2026-04-04)
+
+### What's New
+
+Fixed auto-updates not working in packaged builds. The updater module was excluded from the app bundle, causing "Check for updates" to silently fail.
+
+### Changes
+
+- fix: bundle electron-updater instead of dynamic import
+
 ## v0.2.1 (2026-04-04)
 
 ### What's New
