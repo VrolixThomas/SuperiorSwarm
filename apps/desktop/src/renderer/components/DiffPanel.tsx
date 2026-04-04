@@ -102,8 +102,7 @@ function DiffPanelContent({ diffCtx, onClose }: { diffCtx: DiffContext; onClose?
 
 	// Resolve projectId from repoPath so we can pass it down to BranchChip
 	const projectsQuery = trpc.projects.list.useQuery(undefined, { staleTime: 60_000 });
-	const projectId =
-		projectsQuery.data?.find((p) => p.repoPath === diffCtx.repoPath)?.id ?? null;
+	const projectId = projectsQuery.data?.find((p) => p.repoPath === diffCtx.repoPath)?.id ?? null;
 
 	const effectiveBaseBranch = storedBaseBranch ?? defaultBranchQuery.data?.branch ?? "main";
 

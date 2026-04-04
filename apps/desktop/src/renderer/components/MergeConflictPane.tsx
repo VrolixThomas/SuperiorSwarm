@@ -20,7 +20,7 @@ export function MergeConflictPane({ projectId, mergeType, sourceBranch, targetBr
 	const [commitMessage, setCommitMessage] = useState(
 		mergeType === "merge"
 			? `Merge branch '${sourceBranch}'`
-			: `Rebase ${targetBranch} onto ${sourceBranch}`,
+			: `Rebase ${targetBranch} onto ${sourceBranch}`
 	);
 
 	const utils = trpc.useUtils();
@@ -29,7 +29,7 @@ export function MergeConflictPane({ projectId, mergeType, sourceBranch, targetBr
 
 	const conflictQuery = trpc.merge.getFileConflict.useQuery(
 		{ projectId, filePath: activeFile ?? "" },
-		{ enabled: !!activeFile },
+		{ enabled: !!activeFile }
 	);
 
 	const resolveMutation = trpc.merge.resolveFile.useMutation({
@@ -115,6 +115,7 @@ export function MergeConflictPane({ projectId, mergeType, sourceBranch, targetBr
 				<div className="flex items-center gap-1.5 text-[13px]">
 					<span className="font-medium text-[var(--text)]">{sourceBranch}</span>
 					<svg
+						aria-hidden="true"
 						width="14"
 						height="14"
 						viewBox="0 0 24 24"

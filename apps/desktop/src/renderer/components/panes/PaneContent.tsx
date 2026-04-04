@@ -19,7 +19,7 @@ export function PaneContent({
 }) {
 	const workspaceQuery = trpc.workspaces.getById.useQuery(
 		{ id: workspaceId },
-		{ staleTime: 60_000 },
+		{ staleTime: 60_000 }
 	);
 	const projectId = workspaceQuery.data?.projectId ?? null;
 

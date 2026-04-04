@@ -32,6 +32,7 @@ export function ThreeWayDiffEditor({
 	const language = detectLanguage(filePath);
 
 	// Create the three editors once on mount
+	// biome-ignore lint/correctness/useExhaustiveDependencies: editors created once on mount, content updates handled separately
 	useEffect(() => {
 		if (!theirsRef.current || !resultRef.current || !oursRef.current) return;
 
@@ -106,8 +107,6 @@ export function ThreeWayDiffEditor({
 			resultEditorRef.current = null;
 			oursEditorRef.current = null;
 		};
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-		// biome-ignore lint/correctness/useExhaustiveDependencies: editors created once on mount
 	}, []);
 
 	// Update editor content when props change without recreating editors
@@ -161,10 +160,7 @@ export function ThreeWayDiffEditor({
 			<div className="flex h-9 shrink-0 items-stretch border-b border-[var(--border)]">
 				{/* Theirs header */}
 				<div className="flex flex-1 items-center gap-2 border-r border-[var(--border)] bg-[var(--bg-surface)] px-3">
-					<span
-						className="h-2 w-2 shrink-0 rounded-full"
-						style={{ backgroundColor: "#0a84ff" }}
-					/>
+					<span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: "#0a84ff" }} />
 					<span className="min-w-0 flex-1 truncate text-[12px] font-medium text-[var(--text-secondary)]">
 						Theirs ({sourceBranch})
 					</span>
@@ -179,10 +175,7 @@ export function ThreeWayDiffEditor({
 
 				{/* Result header */}
 				<div className="flex flex-1 items-center gap-2 border-r border-[var(--border)] bg-[var(--bg-surface)] px-3">
-					<span
-						className="h-2 w-2 shrink-0 rounded-full"
-						style={{ backgroundColor: "#30d158" }}
-					/>
+					<span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: "#30d158" }} />
 					<span className="min-w-0 flex-1 truncate text-[12px] font-medium text-[var(--text-secondary)]">
 						Result
 					</span>
@@ -201,10 +194,7 @@ export function ThreeWayDiffEditor({
 
 				{/* Yours header */}
 				<div className="flex flex-1 items-center gap-2 bg-[var(--bg-surface)] px-3">
-					<span
-						className="h-2 w-2 shrink-0 rounded-full"
-						style={{ backgroundColor: "#bf5af2" }}
-					/>
+					<span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: "#bf5af2" }} />
 					<span className="min-w-0 flex-1 truncate text-[12px] font-medium text-[var(--text-secondary)]">
 						Yours ({targetBranch})
 					</span>

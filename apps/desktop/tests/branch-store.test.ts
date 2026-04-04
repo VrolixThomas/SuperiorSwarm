@@ -60,7 +60,7 @@ describe("merge state", () => {
 
 		const state = useBranchStore.getState();
 		expect(state.mergeState).not.toBeNull();
-		expect(state.mergeState!.sourceBranch).toBe("main");
+		expect(state.mergeState?.sourceBranch).toBe("main");
 
 		store.clearMergeState();
 		expect(useBranchStore.getState().mergeState).toBeNull();
@@ -81,9 +81,9 @@ describe("merge state", () => {
 		});
 
 		store.markFileResolved("a.txt");
-		const conflicts = useBranchStore.getState().mergeState!.conflicts;
-		const resolved = conflicts.find((f) => f.path === "a.txt");
-		expect(resolved!.status).toBe("resolved");
+		const conflicts = useBranchStore.getState().mergeState?.conflicts;
+		const resolved = conflicts?.find((f) => f.path === "a.txt");
+		expect(resolved?.status).toBe("resolved");
 	});
 
 	test("sets active conflict file", () => {
@@ -98,6 +98,6 @@ describe("merge state", () => {
 		});
 
 		store.setActiveConflictFile("a.txt");
-		expect(useBranchStore.getState().mergeState!.activeFilePath).toBe("a.txt");
+		expect(useBranchStore.getState().mergeState?.activeFilePath).toBe("a.txt");
 	});
 });

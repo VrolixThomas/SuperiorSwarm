@@ -59,9 +59,7 @@ export function SmartHeaderBar({
 				{projectId && <BranchChip projectId={projectId} />}
 
 				{/* Divider between chip and base branch picker */}
-				{projectId && (
-					<span className="text-[11px] text-[var(--text-quaternary)]">→</span>
-				)}
+				{projectId && <span className="text-[11px] text-[var(--text-quaternary)]">→</span>}
 
 				{/* Base branch picker label (hidden when chip is present to avoid redundancy) */}
 				{!projectId && (

@@ -161,7 +161,7 @@ interface TabStore {
 		workspaceId: string,
 		mergeType: "merge" | "rebase",
 		sourceBranch: string,
-		targetBranch: string,
+		targetBranch: string
 	) => string;
 
 	// Diff convenience

@@ -28,13 +28,11 @@ export const rebaseRouter = router({
 			return rebaseBranch(repoPath, input.ontoBranch);
 		}),
 
-	abort: publicProcedure
-		.input(z.object({ projectId: z.string() }))
-		.mutation(async ({ input }) => {
-			const repoPath = await getRepoPath(input.projectId);
-			await abortRebase(repoPath);
-			return { success: true };
-		}),
+	abort: publicProcedure.input(z.object({ projectId: z.string() })).mutation(async ({ input }) => {
+		const repoPath = await getRepoPath(input.projectId);
+		await abortRebase(repoPath);
+		return { success: true };
+	}),
 
 	continue: publicProcedure
 		.input(z.object({ projectId: z.string() }))

@@ -4,10 +4,7 @@ import { trpc } from "../trpc/client";
 export function BranchChip({ projectId }: { projectId: string }) {
 	const openPalette = useBranchStore((s) => s.openPalette);
 
-	const statusQuery = trpc.branches.getStatus.useQuery(
-		{ projectId },
-		{ refetchInterval: 10_000 },
-	);
+	const statusQuery = trpc.branches.getStatus.useQuery({ projectId }, { refetchInterval: 10_000 });
 
 	const status = statusQuery.data;
 	const isConflict = status?.state === "merging" || status?.state === "rebasing";
@@ -27,6 +24,7 @@ export function BranchChip({ projectId }: { projectId: string }) {
 		>
 			{isConflict ? (
 				<svg
+					aria-hidden="true"
 					width="12"
 					height="12"
 					viewBox="0 0 24 24"
@@ -40,6 +38,7 @@ export function BranchChip({ projectId }: { projectId: string }) {
 				</svg>
 			) : (
 				<svg
+					aria-hidden="true"
 					width="12"
 					height="12"
 					viewBox="0 0 24 24"
@@ -83,6 +82,7 @@ export function BranchChip({ projectId }: { projectId: string }) {
 			)}
 
 			<svg
+				aria-hidden="true"
 				width="8"
 				height="8"
 				viewBox="0 0 24 24"
