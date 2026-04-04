@@ -209,14 +209,6 @@ export async function listBranches(repoPath: string): Promise<string[]> {
 	return [...branches].sort();
 }
 
-export function sortBranchesWithDefault(branches: string[], defaultBranch: string): string[] {
-	const sorted = branches.filter((b) => b !== defaultBranch).sort();
-	if (branches.includes(defaultBranch)) {
-		sorted.unshift(defaultBranch);
-	}
-	return sorted;
-}
-
 export async function hasUncommittedChanges(repoPath: string): Promise<boolean> {
 	const git = simpleGit(repoPath);
 	const status = await git.raw(["status", "--porcelain"]);
@@ -260,11 +252,6 @@ export async function commitChanges(repoPath: string, message: string): Promise<
 	const git = simpleGit(repoPath);
 	const result = await git.commit(message);
 	return { hash: result.commit };
-}
-
-export async function pushBranch(repoPath: string): Promise<void> {
-	const git = simpleGit(repoPath);
-	await git.push();
 }
 
 export interface CommitInfo {
