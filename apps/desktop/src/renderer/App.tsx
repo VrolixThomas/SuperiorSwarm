@@ -359,12 +359,13 @@ function AuthenticatedApp() {
 	} | null>(null);
 
 	const { openPalette, closePalette, isPaletteOpen, setMergeState } = useBranchStore();
+	const isMerging = useBranchStore((s) => s.mergeState !== null);
 
 	// Derive active projectId from the active workspace
 	const activeWorkspaceId = useTabStore((s) => s.activeWorkspaceId);
 	const activeWorkspaceQuery = trpc.workspaces.getById.useQuery(
 		{ id: activeWorkspaceId ?? "" },
-		{ enabled: !!activeWorkspaceId }
+		{ enabled: !!activeWorkspaceId, staleTime: 30_000 }
 	);
 	const activeProjectId = activeWorkspaceQuery.data?.projectId ?? null;
 
@@ -613,7 +614,7 @@ function AuthenticatedApp() {
 					onClose={() => setActionMenu(null)}
 					onMerge={handleMerge}
 					onRebase={handleRebase}
-					isMerging={useBranchStore.getState().mergeState !== null}
+					isMerging={isMerging}
 				/>
 			)}
 		</>
