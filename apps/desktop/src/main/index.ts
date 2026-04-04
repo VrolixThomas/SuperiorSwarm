@@ -72,25 +72,7 @@ app.whenReady().then(async () => {
 
 	setupTerminalIPC(daemonClient);
 
-	// Register agent hooks in the registry (must complete before listener starts
-	// so the registry is populated when requests arrive)
-	await setupAgentHooks();
-
-	// Agent notification listener
-	alertListener = createAlertListener(AGENT_NOTIFY_PORT);
-	try {
-		await alertListener.start();
-	} catch (err) {
-		console.error("[agent-notify] failed to start listener:", err);
-	}
-	alertListener.onEvent((event) => {
-		for (const win of BrowserWindow.getAllWindows()) {
-			if (!win.isDestroyed()) {
-				win.webContents.send("agent:alert", event);
-			}
-		}
-	});
-
+	// Initialize database early — tRPC handlers depend on it
 	try {
 		initializeDatabase();
 	} catch (err) {
@@ -102,47 +84,11 @@ app.whenReady().then(async () => {
 		app.quit();
 		return;
 	}
-	cleanupStaleReviews();
-	startPolling();
-	startPRPolling();
-	startCommentPoller();
 
-	onNewPRDetected((pr) => {
-		for (const win of BrowserWindow.getAllWindows()) {
-			win.webContents.send("new-pr-review-request", pr);
-		}
-	});
-
-	onPRClosedDetected(async (pr) => {
-		const wsId = findReviewWorkspaceByPR(pr.provider, pr.identifier);
-		if (wsId) {
-			await cleanupReviewWorkspace(wsId);
-		}
-		for (const win of BrowserWindow.getAllWindows()) {
-			win.webContents.send("pr-closed", pr);
-		}
-	});
-
-	// Clear ephemeral terminal IDs (reset across sessions)
-	{
-		const db = getDb();
-		db.update(schema.workspaces).set({ terminalId: null, updatedAt: new Date() }).run();
-	}
-	const dbPath = join(app.getPath("userData"), "superiorswarm.db");
-	const daemonScriptPath = join(app.getAppPath(), "out", "main", "daemon.js");
-	try {
-		await daemonClient.connect(dbPath, daemonScriptPath);
-	} catch (err) {
-		console.error("[main] Failed to connect to terminal daemon, will retry:", err);
-		daemonClient.startReconnecting();
-	}
+	// Set up tRPC IPC so the renderer can make queries once it loads
 	setupTRPCIPC(appRouter);
 
-	// Initialize auto-updater (non-blocking — errors logged, not thrown)
-	initializeUpdater().catch((err) => {
-		console.error("[main] Failed to initialize updater:", err);
-	});
-
+	// Register IPC handlers needed by the renderer
 	ipcMain.on("terminal-sessions:save-sync", (event, data: SessionSaveData) => {
 		try {
 			saveTerminalSessions(data);
@@ -189,6 +135,7 @@ app.whenReady().then(async () => {
 		}
 	);
 
+	// Show the window NOW — branded splash screen in index.html is visible immediately
 	createWindow();
 
 	if (mainWindow) {
@@ -199,6 +146,68 @@ app.whenReady().then(async () => {
 		if (BrowserWindow.getAllWindows().length === 0) {
 			createWindow();
 		}
+	});
+
+	// --- Everything below runs AFTER the window is visible ---
+
+	// Register agent hooks (must complete before listener starts)
+	await setupAgentHooks();
+
+	// Agent notification listener
+	alertListener = createAlertListener(AGENT_NOTIFY_PORT);
+	try {
+		await alertListener.start();
+	} catch (err) {
+		console.error("[agent-notify] failed to start listener:", err);
+	}
+	alertListener.onEvent((event) => {
+		for (const win of BrowserWindow.getAllWindows()) {
+			if (!win.isDestroyed()) {
+				win.webContents.send("agent:alert", event);
+			}
+		}
+	});
+
+	// Background tasks — none of these block the UI
+	cleanupStaleReviews();
+	startPolling();
+	startPRPolling();
+	startCommentPoller();
+
+	onNewPRDetected((pr) => {
+		for (const win of BrowserWindow.getAllWindows()) {
+			win.webContents.send("new-pr-review-request", pr);
+		}
+	});
+
+	onPRClosedDetected(async (pr) => {
+		const wsId = findReviewWorkspaceByPR(pr.provider, pr.identifier);
+		if (wsId) {
+			await cleanupReviewWorkspace(wsId);
+		}
+		for (const win of BrowserWindow.getAllWindows()) {
+			win.webContents.send("pr-closed", pr);
+		}
+	});
+
+	// Clear ephemeral terminal IDs (reset across sessions)
+	{
+		const db = getDb();
+		db.update(schema.workspaces).set({ terminalId: null, updatedAt: new Date() }).run();
+	}
+
+	const dbPath = join(app.getPath("userData"), "superiorswarm.db");
+	const daemonScriptPath = join(app.getAppPath(), "out", "main", "daemon.js");
+	try {
+		await daemonClient.connect(dbPath, daemonScriptPath);
+	} catch (err) {
+		console.error("[main] Failed to connect to terminal daemon, will retry:", err);
+		daemonClient.startReconnecting();
+	}
+
+	// Initialize auto-updater (non-blocking — errors logged, not thrown)
+	initializeUpdater().catch((err) => {
+		console.error("[main] Failed to initialize updater:", err);
 	});
 });
 

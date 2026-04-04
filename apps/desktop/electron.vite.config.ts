@@ -3,6 +3,10 @@ import { join, resolve } from "node:path";
 import react from "@vitejs/plugin-react";
 import { defineConfig, externalizeDepsPlugin } from "electron-vite";
 
+// Electron inherits this from parent shells (e.g. VS Code / Claude Code terminals).
+// When set, Electron runs as plain Node.js and `require("electron")` fails.
+delete process.env.ELECTRON_RUN_AS_NODE;
+
 // Load .env file into process.env for the define block below
 const envPath = resolve(__dirname, ".env");
 if (existsSync(envPath)) {
