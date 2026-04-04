@@ -39,6 +39,7 @@ jobs:
           GITHUB_CLIENT_SECRET: ${{ secrets.GH_CLIENT_SECRET }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          NODE_OPTIONS: "--max-old-space-size=8192"
         run: bun run build
 
       - name: Build and sign Electron app
