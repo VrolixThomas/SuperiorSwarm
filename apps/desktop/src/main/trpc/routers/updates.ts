@@ -1,3 +1,4 @@
+import { app } from "electron";
 import { z } from "zod";
 import { fetchReleaseNotes, getUpdaterState, markVersionSeen } from "../../updater";
 import { publicProcedure, router } from "../index";
@@ -30,6 +31,9 @@ export const updatesRouter = router({
 		}),
 
 	checkForUpdates: publicProcedure.mutation(async () => {
+		if (!app.isPackaged) {
+			return { updateAvailable: false, version: null, error: "Updates unavailable in dev mode" };
+		}
 		try {
 			const { autoUpdater } = await import("electron-updater");
 			const result = await autoUpdater.checkForUpdates();
@@ -37,14 +41,16 @@ export const updatesRouter = router({
 			return {
 				updateAvailable: state.updateAvailable,
 				version: result?.updateInfo.version ?? null,
+				error: null,
 			};
 		} catch (err) {
 			console.error("[updater] Check for updates failed:", err);
-			return { updateAvailable: false, version: null };
+			return { updateAvailable: false, version: null, error: "Check failed" };
 		}
 	}),
 
 	installUpdate: publicProcedure.mutation(async () => {
+		if (!app.isPackaged) return;
 		try {
 			const { autoUpdater } = await import("electron-updater");
 			autoUpdater.quitAndInstall();

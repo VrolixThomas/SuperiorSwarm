@@ -56,7 +56,7 @@ export function UpdateToast() {
 	// State 1: Major/Minor update
 	if (toastState === "new-version") {
 		return (
-			<div className="fixed bottom-4 right-4 z-[9999] w-[300px] rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-surface)] p-[14px_18px] shadow-[var(--shadow-lg)]">
+			<div className="fixed bottom-4 right-4 z-50 w-[300px] rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-surface)] p-[14px_18px] shadow-[var(--shadow-lg)]">
 				<div className="mb-2 flex items-center gap-2">
 					<div className="size-[7px] shrink-0 rounded-full bg-[var(--accent)]" />
 					<span className="text-[13px] font-semibold text-[var(--text)]">
@@ -67,15 +67,13 @@ export function UpdateToast() {
 					<p className="mb-2.5 text-[11px] leading-[1.5] text-[var(--text-secondary)]">{summary}</p>
 				)}
 				<div className="flex items-center">
-					{summary && (
-						<button
-							type="button"
-							onClick={handleSeeWhatsNew}
-							className="text-[11px] font-medium text-[var(--accent)] transition-colors hover:text-[var(--accent-hover)]"
-						>
-							See what's new →
-						</button>
-					)}
+					<button
+						type="button"
+						onClick={handleSeeWhatsNew}
+						className="text-[11px] font-medium text-[var(--accent)] transition-colors hover:text-[var(--accent-hover)]"
+					>
+						See what's new →
+					</button>
 					<button
 						type="button"
 						onClick={handleDismiss}
@@ -91,7 +89,7 @@ export function UpdateToast() {
 	// State 2: Patch update
 	if (toastState === "patch") {
 		return (
-			<div className="fixed bottom-4 right-4 z-[9999] w-[260px] rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-surface)] px-[14px] py-[10px] shadow-[var(--shadow-md)]">
+			<div className="fixed bottom-4 right-4 z-50 w-[260px] rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-surface)] px-[14px] py-[10px] shadow-[var(--shadow-md)]">
 				<div className="flex items-center justify-between">
 					<div className="flex items-center gap-1.5">
 						<div className="size-[5px] shrink-0 rounded-full bg-[var(--text-tertiary)]" />
@@ -112,7 +110,7 @@ export function UpdateToast() {
 	// State 3: Downloading
 	if (toastState === "downloading") {
 		return (
-			<div className="fixed bottom-4 right-4 z-[9999] w-[300px] rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-surface)] p-[14px_18px] shadow-[var(--shadow-lg)]">
+			<div className="fixed bottom-4 right-4 z-50 w-[300px] rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-surface)] p-[14px_18px] shadow-[var(--shadow-lg)]">
 				<div className="mb-2 flex items-center gap-2">
 					<span className="text-[13px] font-semibold text-[var(--text)]">
 						Downloading v{version}...
@@ -132,7 +130,7 @@ export function UpdateToast() {
 	// State 4: Update ready
 	if (toastState === "ready") {
 		return (
-			<div className="fixed bottom-4 right-4 z-[9999] w-[300px] rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-surface)] p-[14px_18px] shadow-[var(--shadow-lg)]">
+			<div className="fixed bottom-4 right-4 z-50 w-[300px] rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-surface)] p-[14px_18px] shadow-[var(--shadow-lg)]">
 				<div className="mb-2 flex items-center gap-2">
 					<div className="size-[7px] shrink-0 rounded-full bg-[#30d158]" />
 					<span className="text-[13px] font-semibold text-[var(--text)]">Update ready</span>

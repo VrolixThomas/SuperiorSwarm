@@ -335,9 +335,12 @@ function AuthenticatedApp() {
 	usePaneShortcuts();
 	useAgentAlertListener();
 
-	// Query update status on mount and trigger toast if needed
+	// Query update status on mount and poll when an update is being downloaded
+	const updateStore = useUpdateStore();
+	const isDownloading = updateStore.toastState === "downloading";
 	const updateStatus = trpc.updates.getStatus.useQuery(undefined, {
-		staleTime: Number.POSITIVE_INFINITY,
+		staleTime: isDownloading ? 5_000 : Number.POSITIVE_INFINITY,
+		refetchInterval: isDownloading ? 5_000 : false,
 		refetchOnMount: false,
 		refetchOnWindowFocus: false,
 		refetchOnReconnect: false,
@@ -345,22 +348,24 @@ function AuthenticatedApp() {
 
 	const hasCheckedUpdate = useRef(false);
 	useEffect(() => {
-		if (hasCheckedUpdate.current || !updateStatus.data) return;
-		hasCheckedUpdate.current = true;
+		const data = updateStatus.data;
+		if (!data) return;
 
-		const { pendingNotification, updateVersion, downloadProgress, updateDownloaded } =
-			updateStatus.data;
-
-		if (pendingNotification) {
-			const { type, version, summary } = pendingNotification;
-			const toastType = type === "patch" ? "patch" : "new-version";
-			useUpdateStore.getState().showToast(toastType as "new-version" | "patch", version, summary);
+		// One-time: process pending notification from startup
+		if (!hasCheckedUpdate.current) {
+			hasCheckedUpdate.current = true;
+			if (data.pendingNotification) {
+				const { type, version, summary } = data.pendingNotification;
+				const toastType = type === "patch" ? "patch" : "new-version";
+				useUpdateStore.getState().showToast(toastType, version, summary);
+			}
 		}
 
-		if (updateDownloaded && updateVersion) {
-			useUpdateStore.getState().setUpdateReady(updateVersion);
-		} else if (downloadProgress != null && updateVersion) {
-			useUpdateStore.getState().setDownloadProgress(downloadProgress);
+		// Sync download/ready state from main process
+		if (data.updateDownloaded && data.updateVersion) {
+			useUpdateStore.getState().setUpdateReady(data.updateVersion);
+		} else if (data.updateAvailable && data.downloadProgress != null && data.updateVersion) {
+			useUpdateStore.getState().setDownloadProgress(data.downloadProgress);
 		}
 	}, [updateStatus.data]);
 
