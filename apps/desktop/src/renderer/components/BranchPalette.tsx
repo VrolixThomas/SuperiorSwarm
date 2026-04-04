@@ -62,30 +62,19 @@ export function BranchPalette({ projectId, onCheckout, onOpenActionMenu }: Props
 	const pullMutation = trpc.remote.pull.useMutation();
 
 	const allBranches: BranchInfo[] = useMemo(() => {
-		const names = branchesQuery.data ?? [];
-		const currentBranch = statusQuery.data?.branch ?? "";
+		const branches = branchesQuery.data ?? [];
 		const wsData = workspacesQuery.data ?? [];
 
-		// Build a set of branch names that have workspaces
+		// Enrich with workspace info
 		const branchesWithWorkspace = new Set(
 			wsData.filter((ws) => ws.worktreePath).map((ws) => ws.name),
 		);
 
-		// listBranches returns cleaned names (remotes/origin/ prefix stripped).
-		// All branches are effectively "local" names — remote-only branches are
-		// those not checked out locally. For now, show all as local since the
-		// backend already deduplicates local and remote.
-		return names.map((name, i) => ({
-			name,
-			isLocal: true,
-			isRemote: false,
-			tracking: null,
-			lastCommit: null,
-			hasWorkspace: branchesWithWorkspace.has(name),
-			isDefault: i === 0, // First branch is default (sorted by sortBranchesWithDefault)
-			isCurrent: name === currentBranch,
+		return branches.map((b) => ({
+			...b,
+			hasWorkspace: branchesWithWorkspace.has(b.name),
 		}));
-	}, [branchesQuery.data, statusQuery.data, workspacesQuery.data]);
+	}, [branchesQuery.data, workspacesQuery.data]);
 
 	// The current branch (pinned at top)
 	const currentBranch = useMemo(() => allBranches.find((b) => b.isCurrent) ?? null, [allBranches]);
@@ -100,10 +89,12 @@ export function BranchPalette({ projectId, onCheckout, onOpenActionMenu }: Props
 		});
 	}, [allBranches, searchQuery]);
 
+	// Branches that exist locally (may also exist on remote)
 	const localBranches = useMemo(() => filtered.filter((b) => b.isLocal), [filtered]);
-	const remoteBranches = useMemo(
+	// Branches that ONLY exist on remote (not checked out locally)
+	const remoteOnlyBranches = useMemo(
 		() => filtered.filter((b) => b.isRemote && !b.isLocal),
-		[filtered]
+		[filtered],
 	);
 
 	// Flat list of selectable branches for keyboard navigation (current + local + remote if expanded)
@@ -111,9 +102,9 @@ export function BranchPalette({ projectId, onCheckout, onOpenActionMenu }: Props
 		const list: BranchInfo[] = [];
 		if (currentBranch) list.push(currentBranch);
 		list.push(...localBranches);
-		if (!remoteCollapsed) list.push(...remoteBranches);
+		if (!remoteCollapsed) list.push(...remoteOnlyBranches);
 		return list;
-	}, [currentBranch, localBranches, remoteBranches, remoteCollapsed]);
+	}, [currentBranch, localBranches, remoteOnlyBranches, remoteCollapsed]);
 
 	// Reset selected index when search/branches change
 	// biome-ignore lint/correctness/useExhaustiveDependencies: searchQuery triggers reset but isn't read inside effect
@@ -413,7 +404,7 @@ export function BranchPalette({ projectId, onCheckout, onOpenActionMenu }: Props
 							)}
 
 							{/* Remote branches — collapsible */}
-							{remoteBranches.length > 0 && (
+							{remoteOnlyBranches.length > 0 && (
 								<div>
 									<button
 										type="button"
@@ -432,10 +423,10 @@ export function BranchPalette({ projectId, onCheckout, onOpenActionMenu }: Props
 										>
 											<path d="m6 9 6 6 6-6" />
 										</svg>
-										Remote ({remoteBranches.length})
+										Remote ({remoteOnlyBranches.length})
 									</button>
 									{!remoteCollapsed &&
-										remoteBranches.map((branch, i) => {
+										remoteOnlyBranches.map((branch, i) => {
 											const navIndex = (currentBranch ? 1 : 0) + localBranches.length + i;
 											return (
 												<BranchRow
@@ -466,7 +457,7 @@ export function BranchPalette({ projectId, onCheckout, onOpenActionMenu }: Props
 							)}
 
 							{/* Empty state */}
-							{!currentBranch && localBranches.length === 0 && remoteBranches.length === 0 && (
+							{!currentBranch && localBranches.length === 0 && remoteOnlyBranches.length === 0 && (
 								<div className="px-3 py-6 text-center text-[12px] text-[var(--text-tertiary)]">
 									{searchQuery ? "No branches match your search" : "No branches found"}
 								</div>

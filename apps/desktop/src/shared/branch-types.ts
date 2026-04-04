@@ -12,6 +12,8 @@ export interface BranchInfo {
 	hasWorkspace: boolean;
 	isDefault: boolean;
 	isCurrent: boolean;
+	ahead: number;
+	behind: number;
 }
 
 export interface BranchStatus {
