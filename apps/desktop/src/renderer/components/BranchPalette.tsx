@@ -180,7 +180,6 @@ export function BranchPalette({ projectId, onOpenActionMenu }: Props) {
 		navigableBranches,
 		closePalette,
 		setSelectedIndex,
-		onSelect,
 		onOpenActionMenu,
 		currentBranch,
 	]);
