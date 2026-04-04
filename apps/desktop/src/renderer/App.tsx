@@ -360,17 +360,24 @@ function AuthenticatedApp() {
 		position: { x: number; y: number };
 	} | null>(null);
 
-	const selectedProjectId = useProjectStore((s) => s.selectedProjectId);
 	const { openPalette, closePalette, isPaletteOpen, setMergeState } = useBranchStore();
 
+	// Derive active projectId from the active workspace
+	const activeWorkspaceId = useTabStore((s) => s.activeWorkspaceId);
+	const activeWorkspaceQuery = trpc.workspaces.getById.useQuery(
+		{ id: activeWorkspaceId ?? "" },
+		{ enabled: !!activeWorkspaceId },
+	);
+	const activeProjectId = activeWorkspaceQuery.data?.projectId ?? null;
+
 	const workspacesQuery = trpc.workspaces.listByProject.useQuery(
-		{ projectId: selectedProjectId ?? "" },
-		{ enabled: !!selectedProjectId }
+		{ projectId: activeProjectId ?? "" },
+		{ enabled: !!activeProjectId },
 	);
 
 	const handleCheckout = useCallback(
 		(branch: string) => {
-			if (!selectedProjectId) return;
+			if (!activeProjectId) return;
 
 			// If the branch already has a workspace with a worktree, navigate to it
 			const wsData = workspacesQuery.data ?? [];
@@ -380,15 +387,15 @@ function AuthenticatedApp() {
 				return;
 			}
 
-			checkoutMutation.mutate({ projectId: selectedProjectId, branch });
+			checkoutMutation.mutate({ projectId: activeProjectId, branch });
 		},
-		[selectedProjectId, workspacesQuery.data, checkoutMutation]
+		[activeProjectId, workspacesQuery.data, checkoutMutation]
 	);
 
 	function handleMerge(branch: string) {
-		if (!selectedProjectId) return;
+		if (!activeProjectId) return;
 		mergeStartMutation.mutate(
-			{ projectId: selectedProjectId, branch },
+			{ projectId: activeProjectId, branch },
 			{
 				onSuccess: (result) => {
 					if (result.status === "conflict" && result.files) {
@@ -410,9 +417,9 @@ function AuthenticatedApp() {
 	}
 
 	function handleRebase(ontoBranch: string) {
-		if (!selectedProjectId) return;
+		if (!activeProjectId) return;
 		rebaseStartMutation.mutate(
-			{ projectId: selectedProjectId, ontoBranch },
+			{ projectId: activeProjectId, ontoBranch },
 			{
 				onSuccess: (result) => {
 					if (result.status === "conflict" && result.files) {
@@ -442,14 +449,14 @@ function AuthenticatedApp() {
 				e.preventDefault();
 				if (isPaletteOpen) {
 					closePalette();
-				} else if (selectedProjectId) {
+				} else if (activeProjectId) {
 					openPalette();
 				}
 			}
 		}
 		document.addEventListener("keydown", handleKeyDown);
 		return () => document.removeEventListener("keydown", handleKeyDown);
-	}, [isPaletteOpen, openPalette, closePalette, selectedProjectId]);
+	}, [isPaletteOpen, openPalette, closePalette, activeProjectId]);
 
 	// Query update status on mount and poll when an update is being downloaded
 	const updateStore = useUpdateStore();
@@ -592,18 +599,18 @@ function AuthenticatedApp() {
 			<DaemonStatus />
 			<UpdateToast />
 			<WhatsNewModal />
-			{selectedProjectId && (
+			{activeProjectId && (
 				<BranchPalette
-					projectId={selectedProjectId}
+					projectId={activeProjectId}
 					onCheckout={handleCheckout}
 					onOpenActionMenu={(branch, currentBranch, position) => {
 						setActionMenu({ branch, currentBranch, position });
 					}}
 				/>
 			)}
-			{selectedProjectId && actionMenu && (
+			{activeProjectId && actionMenu && (
 				<BranchActionMenu
-					projectId={selectedProjectId}
+					projectId={activeProjectId}
 					branch={actionMenu.branch}
 					currentBranch={actionMenu.currentBranch}
 					position={actionMenu.position}
