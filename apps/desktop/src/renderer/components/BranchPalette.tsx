@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { BranchInfo } from "../../shared/branch-types";
 import { useBranchStore } from "../stores/branch-store";
+import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import { BranchRow } from "./BranchRow";
 
@@ -38,9 +39,10 @@ export function BranchPalette({ projectId, onCheckout, onOpenActionMenu }: Props
 		{ enabled: isPaletteOpen, staleTime: 10_000 }
 	);
 
+	const cwd = useTabStore((s) => s.activeWorkspaceCwd);
 	const statusQuery = trpc.branches.getStatus.useQuery(
-		{ projectId },
-		{ enabled: isPaletteOpen, staleTime: 10_000 }
+		{ projectId, cwd: cwd || undefined },
+		{ enabled: isPaletteOpen, staleTime: 10_000 },
 	);
 
 	const workspacesQuery = trpc.workspaces.listByProject.useQuery(
