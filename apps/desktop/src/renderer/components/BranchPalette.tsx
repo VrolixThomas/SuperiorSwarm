@@ -7,16 +7,30 @@ import { BranchRow } from "./BranchRow";
 interface Props {
 	projectId: string;
 	onCheckout: (branch: string) => void;
-	onOpenActionMenu: (branch: string, currentBranch: string, position: { x: number; y: number }) => void;
+	onOpenActionMenu: (
+		branch: string,
+		currentBranch: string,
+		position: { x: number; y: number }
+	) => void;
 }
 
 export function BranchPalette({ projectId, onCheckout, onOpenActionMenu }: Props) {
-	const { isPaletteOpen, searchQuery, selectedIndex, closePalette, setSearchQuery, setSelectedIndex } =
-		useBranchStore();
+	const {
+		isPaletteOpen,
+		searchQuery,
+		selectedIndex,
+		closePalette,
+		setSearchQuery,
+		setSelectedIndex,
+	} = useBranchStore();
 
 	const inputRef = useRef<HTMLInputElement>(null);
 	const listRef = useRef<HTMLDivElement>(null);
 	const [remoteCollapsed, setRemoteCollapsed] = useState(true);
+	const [creatingBranch, setCreatingBranch] = useState(false);
+	const [newBranchName, setNewBranchName] = useState("");
+
+	const utils = trpc.useUtils();
 
 	const branchesQuery = trpc.branches.list.useQuery(
 		{ projectId },
@@ -28,13 +42,48 @@ export function BranchPalette({ projectId, onCheckout, onOpenActionMenu }: Props
 		{ enabled: isPaletteOpen, staleTime: 10_000 }
 	);
 
-	const allBranches = branchesQuery.data ?? [];
+	const workspacesQuery = trpc.workspaces.listByProject.useQuery(
+		{ projectId },
+		{ enabled: isPaletteOpen },
+	);
+
+	const createMutation = trpc.branches.create.useMutation({
+		onSuccess: () => {
+			utils.branches.list.invalidate();
+			setCreatingBranch(false);
+			setNewBranchName("");
+		},
+	});
+	const fetchMutation = trpc.remote.fetch.useMutation({
+		onSuccess: () => utils.branches.list.invalidate(),
+	});
+	const pushMutation = trpc.remote.push.useMutation();
+	const pullMutation = trpc.remote.pull.useMutation();
+
+	const allBranches: BranchInfo[] = useMemo(() => {
+		const names = branchesQuery.data ?? [];
+		const currentBranch = statusQuery.data?.branch ?? "";
+		const wsData = workspacesQuery.data ?? [];
+
+		// Build a set of branch names that have workspaces
+		const branchesWithWorkspace = new Set(
+			wsData.filter((ws) => ws.worktreePath).map((ws) => ws.name),
+		);
+
+		return names.map((name) => ({
+			name,
+			isLocal: !name.startsWith("remotes/"),
+			isRemote: name.startsWith("remotes/"),
+			tracking: null,
+			lastCommit: null,
+			hasWorkspace: branchesWithWorkspace.has(name),
+			isDefault: names.indexOf(name) === 0,
+			isCurrent: name === currentBranch,
+		}));
+	}, [branchesQuery.data, statusQuery.data, workspacesQuery.data]);
 
 	// The current branch (pinned at top)
-	const currentBranch = useMemo(
-		() => allBranches.find((b) => b.isCurrent) ?? null,
-		[allBranches]
-	);
+	const currentBranch = useMemo(() => allBranches.find((b) => b.isCurrent) ?? null, [allBranches]);
 
 	// Filter branches by search query, excluding the current branch from the main list
 	const filtered = useMemo(() => {
@@ -47,7 +96,10 @@ export function BranchPalette({ projectId, onCheckout, onOpenActionMenu }: Props
 	}, [allBranches, searchQuery]);
 
 	const localBranches = useMemo(() => filtered.filter((b) => b.isLocal), [filtered]);
-	const remoteBranches = useMemo(() => filtered.filter((b) => b.isRemote && !b.isLocal), [filtered]);
+	const remoteBranches = useMemo(
+		() => filtered.filter((b) => b.isRemote && !b.isLocal),
+		[filtered]
+	);
 
 	// Flat list of selectable branches for keyboard navigation (current + local + remote if expanded)
 	const navigableBranches = useMemo(() => {
@@ -155,7 +207,14 @@ export function BranchPalette({ projectId, onCheckout, onOpenActionMenu }: Props
 							onClick={() => setSearchQuery("")}
 							className="shrink-0 text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
 						>
-							<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+							<svg
+								width="12"
+								height="12"
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								strokeWidth="2"
+							>
 								<path d="M18 6 6 18M6 6l12 12" />
 							</svg>
 						</button>
@@ -181,12 +240,22 @@ export function BranchPalette({ projectId, onCheckout, onOpenActionMenu }: Props
 											<BranchRow
 												branch={currentBranch}
 												isSelected={selectedIndex === 0}
-												onSelect={() => {/* already current */}}
+												onSelect={() => {
+													/* already current */
+												}}
 												onContextMenu={(e) => {
 													e.preventDefault();
-													onOpenActionMenu(currentBranch.name, currentBranch.name, { x: e.clientX, y: e.clientY });
+													onOpenActionMenu(currentBranch.name, currentBranch.name, {
+														x: e.clientX,
+														y: e.clientY,
+													});
 												}}
-												onActionClick={(e) => onOpenActionMenu(currentBranch.name, currentBranch.name, { x: e.clientX, y: e.clientY })}
+												onActionClick={(e) =>
+													onOpenActionMenu(currentBranch.name, currentBranch.name, {
+														x: e.clientX,
+														y: e.clientY,
+													})
+												}
 											/>
 										</div>
 										{/* Ahead/behind badges */}
@@ -194,7 +263,14 @@ export function BranchPalette({ projectId, onCheckout, onOpenActionMenu }: Props
 											<div className="flex shrink-0 items-center gap-1 pr-2 text-[11px]">
 												{status.ahead > 0 && (
 													<span className="flex items-center gap-0.5 text-[var(--text-secondary)]">
-														<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+														<svg
+															width="10"
+															height="10"
+															viewBox="0 0 24 24"
+															fill="none"
+															stroke="currentColor"
+															strokeWidth="2"
+														>
 															<path d="M12 19V5M5 12l7-7 7 7" />
 														</svg>
 														{status.ahead}
@@ -202,7 +278,14 @@ export function BranchPalette({ projectId, onCheckout, onOpenActionMenu }: Props
 												)}
 												{status.behind > 0 && (
 													<span className="flex items-center gap-0.5 text-[var(--text-secondary)]">
-														<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+														<svg
+															width="10"
+															height="10"
+															viewBox="0 0 24 24"
+															fill="none"
+															stroke="currentColor"
+															strokeWidth="2"
+														>
 															<path d="M12 5v14M5 12l7 7 7-7" />
 														</svg>
 														{status.behind}
@@ -233,9 +316,17 @@ export function BranchPalette({ projectId, onCheckout, onOpenActionMenu }: Props
 												}}
 												onContextMenu={(e) => {
 													e.preventDefault();
-													onOpenActionMenu(branch.name, currentBranch?.name ?? "", { x: e.clientX, y: e.clientY });
+													onOpenActionMenu(branch.name, currentBranch?.name ?? "", {
+														x: e.clientX,
+														y: e.clientY,
+													});
 												}}
-												onActionClick={(e) => onOpenActionMenu(branch.name, currentBranch?.name ?? "", { x: e.clientX, y: e.clientY })}
+												onActionClick={(e) =>
+													onOpenActionMenu(branch.name, currentBranch?.name ?? "", {
+														x: e.clientX,
+														y: e.clientY,
+													})
+												}
 											/>
 										);
 									})}
@@ -265,8 +356,7 @@ export function BranchPalette({ projectId, onCheckout, onOpenActionMenu }: Props
 									</button>
 									{!remoteCollapsed &&
 										remoteBranches.map((branch, i) => {
-											const navIndex =
-												(currentBranch ? 1 : 0) + localBranches.length + i;
+											const navIndex = (currentBranch ? 1 : 0) + localBranches.length + i;
 											return (
 												<BranchRow
 													key={branch.name}
@@ -278,9 +368,17 @@ export function BranchPalette({ projectId, onCheckout, onOpenActionMenu }: Props
 													}}
 													onContextMenu={(e) => {
 														e.preventDefault();
-														onOpenActionMenu(branch.name, currentBranch?.name ?? "", { x: e.clientX, y: e.clientY });
+														onOpenActionMenu(branch.name, currentBranch?.name ?? "", {
+															x: e.clientX,
+															y: e.clientY,
+														});
 													}}
-													onActionClick={(e) => onOpenActionMenu(branch.name, currentBranch?.name ?? "", { x: e.clientX, y: e.clientY })}
+													onActionClick={(e) =>
+														onOpenActionMenu(branch.name, currentBranch?.name ?? "", {
+															x: e.clientX,
+															y: e.clientY,
+														})
+													}
 												/>
 											);
 										})}
@@ -300,15 +398,21 @@ export function BranchPalette({ projectId, onCheckout, onOpenActionMenu }: Props
 				{/* Footer hint */}
 				<div className="border-t border-[var(--border)] px-3 py-2 flex items-center gap-3 text-[11px] text-[var(--text-quaternary)]">
 					<span className="flex items-center gap-1">
-						<kbd className="rounded bg-[rgba(255,255,255,0.06)] px-1 py-0.5 font-mono text-[10px]">↑↓</kbd>
+						<kbd className="rounded bg-[rgba(255,255,255,0.06)] px-1 py-0.5 font-mono text-[10px]">
+							↑↓
+						</kbd>
 						navigate
 					</span>
 					<span className="flex items-center gap-1">
-						<kbd className="rounded bg-[rgba(255,255,255,0.06)] px-1 py-0.5 font-mono text-[10px]">↵</kbd>
+						<kbd className="rounded bg-[rgba(255,255,255,0.06)] px-1 py-0.5 font-mono text-[10px]">
+							↵
+						</kbd>
 						checkout
 					</span>
 					<span className="flex items-center gap-1">
-						<kbd className="rounded bg-[rgba(255,255,255,0.06)] px-1 py-0.5 font-mono text-[10px]">esc</kbd>
+						<kbd className="rounded bg-[rgba(255,255,255,0.06)] px-1 py-0.5 font-mono text-[10px]">
+							esc
+						</kbd>
 						close
 					</span>
 				</div>
