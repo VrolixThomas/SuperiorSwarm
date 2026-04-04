@@ -41,8 +41,9 @@ lerna-debug.log*
 apps/desktop/out/
 apps/desktop/dist/
 
-# Claude Code
-.claude/
+# Claude Code (ignore internals, keep skills)
+.claude/*
+!.claude/skills/
 
 # Superpowers
 .superpowers/
