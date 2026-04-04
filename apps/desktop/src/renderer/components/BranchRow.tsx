@@ -5,7 +5,7 @@ interface Props {
 	isSelected: boolean;
 	onSelect: () => void;
 	onContextMenu: (e: React.MouseEvent) => void;
-	onActionClick: () => void;
+	onActionClick: (e: React.MouseEvent) => void;
 }
 
 export function BranchRow({ branch, isSelected, onSelect, onContextMenu, onActionClick }: Props) {
@@ -74,7 +74,7 @@ export function BranchRow({ branch, isSelected, onSelect, onContextMenu, onActio
 				type="button"
 				onClick={(e) => {
 					e.stopPropagation();
-					onActionClick();
+					onActionClick(e);
 				}}
 				className="ml-auto shrink-0 rounded-[var(--radius-sm)] p-0.5 opacity-0 transition-opacity duration-[var(--transition-fast)] group-hover:opacity-60 hover:!opacity-100"
 			>

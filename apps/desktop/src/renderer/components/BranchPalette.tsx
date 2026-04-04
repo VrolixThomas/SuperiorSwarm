@@ -7,7 +7,7 @@ import { BranchRow } from "./BranchRow";
 interface Props {
 	projectId: string;
 	onCheckout: (branch: string) => void;
-	onOpenActionMenu: (branch: string) => void;
+	onOpenActionMenu: (branch: string, currentBranch: string, position: { x: number; y: number }) => void;
 }
 
 export function BranchPalette({ projectId, onCheckout, onOpenActionMenu }: Props) {
@@ -184,9 +184,9 @@ export function BranchPalette({ projectId, onCheckout, onOpenActionMenu }: Props
 												onSelect={() => {/* already current */}}
 												onContextMenu={(e) => {
 													e.preventDefault();
-													onOpenActionMenu(currentBranch.name);
+													onOpenActionMenu(currentBranch.name, currentBranch.name, { x: e.clientX, y: e.clientY });
 												}}
-												onActionClick={() => onOpenActionMenu(currentBranch.name)}
+												onActionClick={(e) => onOpenActionMenu(currentBranch.name, currentBranch.name, { x: e.clientX, y: e.clientY })}
 											/>
 										</div>
 										{/* Ahead/behind badges */}
@@ -233,9 +233,9 @@ export function BranchPalette({ projectId, onCheckout, onOpenActionMenu }: Props
 												}}
 												onContextMenu={(e) => {
 													e.preventDefault();
-													onOpenActionMenu(branch.name);
+													onOpenActionMenu(branch.name, currentBranch?.name ?? "", { x: e.clientX, y: e.clientY });
 												}}
-												onActionClick={() => onOpenActionMenu(branch.name)}
+												onActionClick={(e) => onOpenActionMenu(branch.name, currentBranch?.name ?? "", { x: e.clientX, y: e.clientY })}
 											/>
 										);
 									})}
@@ -278,9 +278,9 @@ export function BranchPalette({ projectId, onCheckout, onOpenActionMenu }: Props
 													}}
 													onContextMenu={(e) => {
 														e.preventDefault();
-														onOpenActionMenu(branch.name);
+														onOpenActionMenu(branch.name, currentBranch?.name ?? "", { x: e.clientX, y: e.clientY });
 													}}
-													onActionClick={() => onOpenActionMenu(branch.name)}
+													onActionClick={(e) => onOpenActionMenu(branch.name, currentBranch?.name ?? "", { x: e.clientX, y: e.clientY })}
 												/>
 											);
 										})}
