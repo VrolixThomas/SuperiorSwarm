@@ -10,6 +10,7 @@ import {
 	listWorktrees,
 	parseRemoteInfo,
 	removeWorktree,
+	sortBranchesWithDefault,
 	validateGitUrl,
 } from "../src/main/git/operations";
 
@@ -178,5 +179,37 @@ describe("listBranches", () => {
 	test("does not include HEAD pointer entries", async () => {
 		const branches = await listBranches(repoPath);
 		expect(branches.some((b) => b.includes("HEAD"))).toBe(false);
+	});
+});
+
+describe("sortBranchesWithDefault", () => {
+	test("pins default branch first", () => {
+		const branches = ["alpha", "beta", "main", "zeta"];
+		expect(sortBranchesWithDefault(branches, "main")).toEqual([
+			"main",
+			"alpha",
+			"beta",
+			"zeta",
+		]);
+	});
+
+	test("does not duplicate default branch", () => {
+		const branches = ["main", "alpha", "beta"];
+		const result = sortBranchesWithDefault(branches, "main");
+		expect(result).toEqual(["main", "alpha", "beta"]);
+		expect(result.filter((b) => b === "main")).toHaveLength(1);
+	});
+
+	test("handles missing default branch gracefully", () => {
+		const branches = ["alpha", "beta", "zeta"];
+		expect(sortBranchesWithDefault(branches, "main")).toEqual([
+			"alpha",
+			"beta",
+			"zeta",
+		]);
+	});
+
+	test("works with empty list", () => {
+		expect(sortBranchesWithDefault([], "main")).toEqual([]);
 	});
 });
