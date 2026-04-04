@@ -7,6 +7,7 @@ import {
 	type MergeHunk,
 	computeSideDiffs,
 	computeThreeWayMerge,
+	resetHunkCounter,
 	resolveHunk,
 	toggleHunkAccepted,
 } from "../lib/three-way-merge";
@@ -146,14 +147,16 @@ export function ThreeWayDiffEditor({
 	const resultDecoRef = useRef<monaco.editor.IEditorDecorationsCollection | null>(null);
 
 	// View zone tracking
-	const zoneIdsRef = useRef<string[]>([]);
-	const rootsRef = useRef<ReturnType<typeof createRoot>[]>([]);
+	const zoneMapRef = useRef<
+		Map<string, { zoneId: string; root: ReturnType<typeof createRoot>; domNode: HTMLDivElement }>
+	>(new Map());
 
 	const language = detectLanguage(filePath);
 
 	// ── Compute three-way merge when content changes ────────────────────────
 
 	useEffect(() => {
+		resetHunkCounter();
 		const result = computeThreeWayMerge(content.base, content.ours, content.theirs);
 		setHunks(result.hunks);
 		setMergedContent(result.mergedContent);
@@ -392,78 +395,112 @@ export function ThreeWayDiffEditor({
 		const editor = resultEditorRef.current;
 		if (!editor) return;
 
-		// Clean up previous zones
-		editor.changeViewZones((acc) => {
-			for (const id of zoneIdsRef.current) acc.removeZone(id);
-		});
-		const staleRoots = rootsRef.current;
-		queueMicrotask(() => {
-			for (const root of staleRoots) root.unmount();
-		});
-		zoneIdsRef.current = [];
-		rootsRef.current = [];
+		const zoneMap = zoneMapRef.current;
 
-		// Collect hunks that need view zones: pending conflicts + auto-merged changes with a source
 		const zonableHunks = hunks.filter(
-			(h) => (h.type === "conflict" && h.status === "pending") || (h.type === "ok" && h.source)
+			(h) =>
+				(h.type === "conflict" && h.status === "pending") ||
+				(h.type === "ok" && h.source),
 		);
-		if (zonableHunks.length === 0) return;
+		const desiredIds = new Set(zonableHunks.map((h) => h.id));
 
-		const newZoneIds: string[] = [];
-		const newRoots: ReturnType<typeof createRoot>[] = [];
+		// Remove zones for hunks that are no longer zonable (e.g. resolved conflicts)
+		const toRemove = [...zoneMap.keys()].filter((id) => !desiredIds.has(id));
+		if (toRemove.length > 0) {
+			editor.changeViewZones((acc) => {
+				for (const id of toRemove) {
+					const entry = zoneMap.get(id);
+					if (entry) {
+						acc.removeZone(entry.zoneId);
+						queueMicrotask(() => entry.root.unmount());
+						zoneMap.delete(id);
+					}
+				}
+			});
+		}
 
-		editor.changeViewZones((acc) => {
-			for (const hunk of zonableHunks) {
-				const domNode = document.createElement("div");
-				domNode.style.pointerEvents = "auto";
-				domNode.style.zIndex = "10";
-				domNode.addEventListener("mousedown", (e) => e.stopPropagation());
-
+		// Add or update zones for current zonable hunks
+		const toAdd: typeof zonableHunks = [];
+		for (const hunk of zonableHunks) {
+			const existing = zoneMap.get(hunk.id);
+			if (existing) {
+				// Re-render in place — React handles the diff
 				const isConflict = hunk.type === "conflict";
-
-				const zoneId = acc.addZone({
-					afterLineNumber: hunk.startLine - 1,
-					heightInLines: isConflict ? 2 : 1,
-					domNode,
-				});
-				newZoneIds.push(zoneId);
-
-				const root = createRoot(domNode);
-				newRoots.push(root);
-
 				if (isConflict) {
-					root.render(
+					existing.root.render(
 						<HunkAcceptBar
 							hunkId={hunk.id}
 							theirsCount={hunk.theirsLines.length}
 							oursCount={hunk.oursLines.length}
 							onAccept={handleAccept}
-						/>
+						/>,
 					);
 				} else {
-					root.render(
+					existing.root.render(
 						<AutoMergedBar
 							hunkId={hunk.id}
 							source={hunk.source ?? "both sides"}
 							accepted={hunk.accepted}
 							lineCount={hunk.resultLines.length}
 							onToggle={handleToggle}
-						/>
+						/>,
 					);
 				}
+			} else {
+				toAdd.push(hunk);
 			}
-		});
+		}
 
-		zoneIdsRef.current = newZoneIds;
-		rootsRef.current = newRoots;
+		if (toAdd.length > 0) {
+			editor.changeViewZones((acc) => {
+				for (const hunk of toAdd) {
+					const domNode = document.createElement("div");
+					domNode.style.pointerEvents = "auto";
+					domNode.style.zIndex = "10";
+					domNode.addEventListener("mousedown", (e) => e.stopPropagation());
+
+					const isConflict = hunk.type === "conflict";
+					const zoneId = acc.addZone({
+						afterLineNumber: hunk.startLine - 1,
+						heightInLines: isConflict ? 2 : 1,
+						domNode,
+					});
+
+					const root = createRoot(domNode);
+					zoneMap.set(hunk.id, { zoneId, root, domNode });
+
+					if (isConflict) {
+						root.render(
+							<HunkAcceptBar
+								hunkId={hunk.id}
+								theirsCount={hunk.theirsLines.length}
+								oursCount={hunk.oursLines.length}
+								onAccept={handleAccept}
+							/>,
+						);
+					} else {
+						root.render(
+							<AutoMergedBar
+								hunkId={hunk.id}
+								source={hunk.source ?? "both sides"}
+								accepted={hunk.accepted}
+								lineCount={hunk.resultLines.length}
+								onToggle={handleToggle}
+							/>,
+						);
+					}
+				}
+			});
+		}
 
 		return () => {
 			editor.changeViewZones((acc) => {
-				for (const id of newZoneIds) acc.removeZone(id);
+				for (const entry of zoneMap.values()) {
+					acc.removeZone(entry.zoneId);
+					queueMicrotask(() => entry.root.unmount());
+				}
 			});
-			queueMicrotask(() => {
-				for (const root of newRoots) root.unmount();
-			});
+			zoneMap.clear();
 		};
 	}, [hunks, handleAccept, handleToggle]);
 
