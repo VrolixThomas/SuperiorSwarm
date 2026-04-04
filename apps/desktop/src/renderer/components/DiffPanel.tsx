@@ -186,19 +186,9 @@ function DiffPanelContent({ diffCtx, onClose }: { diffCtx: DiffContext; onClose?
 									/>
 								)}
 
-								{/* Committed stack */}
-								<div className="mt-3">
-									<CommittedStack
-										repoPath={diffCtx.repoPath}
-										baseBranch={effectiveBaseBranch}
-										diffCtx={diffCtx}
-										workspaceId={activeWorkspaceId}
-									/>
-								</div>
-
 								{/* Branch changes — full diff vs base */}
 								{currentBranch && (
-									<div className="mt-1 mb-4">
+									<div className="mt-3">
 										<BranchChanges
 											repoPath={diffCtx.repoPath}
 											baseBranch={effectiveBaseBranch}
@@ -208,6 +198,16 @@ function DiffPanelContent({ diffCtx, onClose }: { diffCtx: DiffContext; onClose?
 										/>
 									</div>
 								)}
+
+								{/* Committed stack */}
+								<div className="mt-1 mb-4">
+									<CommittedStack
+										repoPath={diffCtx.repoPath}
+										baseBranch={effectiveBaseBranch}
+										diffCtx={diffCtx}
+										workspaceId={activeWorkspaceId}
+									/>
+								</div>
 							</>
 						)}
 					</div>
