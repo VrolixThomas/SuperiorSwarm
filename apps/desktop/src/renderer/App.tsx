@@ -396,10 +396,12 @@ function AuthenticatedApp() {
 
 	function handleMerge(branch: string) {
 		if (!activeProjectId) return;
+		const cwd = useTabStore.getState().activeWorkspaceCwd || undefined;
 		mergeStartMutation.mutate(
-			{ projectId: activeProjectId, branch },
+			{ projectId: activeProjectId, branch, cwd },
 			{
 				onSuccess: (result) => {
+					utils.branches.getStatus.invalidate();
 					if (result.status === "conflict" && result.files) {
 						const workspaceId = useTabStore.getState().activeWorkspaceId ?? "";
 						const currentBranch = actionMenu?.currentBranch ?? "";
@@ -413,17 +415,20 @@ function AuthenticatedApp() {
 						});
 						useTabStore.getState().openMergeConflict(workspaceId, "merge", branch, currentBranch);
 					}
+					// If status is "ok", merge succeeded cleanly — status invalidation updates the chip
 				},
-			}
+			},
 		);
 	}
 
 	function handleRebase(ontoBranch: string) {
 		if (!activeProjectId) return;
+		const cwd = useTabStore.getState().activeWorkspaceCwd || undefined;
 		rebaseStartMutation.mutate(
-			{ projectId: activeProjectId, ontoBranch },
+			{ projectId: activeProjectId, ontoBranch, cwd },
 			{
 				onSuccess: (result) => {
+					utils.branches.getStatus.invalidate();
 					if (result.status === "conflict" && result.files) {
 						const workspaceId = useTabStore.getState().activeWorkspaceId ?? "";
 						const currentBranch = actionMenu?.currentBranch ?? "";
@@ -440,7 +445,7 @@ function AuthenticatedApp() {
 							.openMergeConflict(workspaceId, "rebase", ontoBranch, currentBranch);
 					}
 				},
-			}
+			},
 		);
 	}
 

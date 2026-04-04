@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useBranchStore } from "../stores/branch-store";
+import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import { ConflictFileSidebar } from "./ConflictFileSidebar";
 import { ThreeWayDiffEditor } from "./ThreeWayDiffEditor";
@@ -12,6 +13,7 @@ interface Props {
 }
 
 export function MergeConflictPane({ projectId, mergeType, sourceBranch, targetBranch }: Props) {
+	const cwd = useTabStore((s) => s.activeWorkspaceCwd) || undefined;
 	const mergeState = useBranchStore((s) => s.mergeState);
 	const setActiveConflictFile = useBranchStore((s) => s.setActiveConflictFile);
 	const markFileResolved = useBranchStore((s) => s.markFileResolved);
@@ -28,8 +30,8 @@ export function MergeConflictPane({ projectId, mergeType, sourceBranch, targetBr
 	const activeFile = mergeState?.activeFilePath ?? null;
 
 	const conflictQuery = trpc.merge.getFileConflict.useQuery(
-		{ projectId, filePath: activeFile ?? "" },
-		{ enabled: !!activeFile }
+		{ projectId, filePath: activeFile ?? "", cwd },
+		{ enabled: !!activeFile },
 	);
 
 	const resolveMutation = trpc.merge.resolveFile.useMutation({
@@ -76,23 +78,23 @@ export function MergeConflictPane({ projectId, mergeType, sourceBranch, targetBr
 
 	function handleAbort() {
 		if (mergeType === "merge") {
-			abortMerge.mutate({ projectId });
+			abortMerge.mutate({ projectId, cwd });
 		} else {
-			abortRebase.mutate({ projectId });
+			abortRebase.mutate({ projectId, cwd });
 		}
 	}
 
 	function handleApply() {
 		if (mergeType === "merge") {
-			applyAndCommit.mutate({ projectId, message: commitMessage });
+			applyAndCommit.mutate({ projectId, message: commitMessage, cwd });
 		} else {
-			rebaseContinue.mutate({ projectId });
+			rebaseContinue.mutate({ projectId, cwd });
 		}
 	}
 
 	function handleResolve(resolvedContent: string) {
 		if (!activeFile) return;
-		resolveMutation.mutate({ projectId, filePath: activeFile, content: resolvedContent });
+		resolveMutation.mutate({ projectId, filePath: activeFile, content: resolvedContent, cwd });
 	}
 
 	return (
