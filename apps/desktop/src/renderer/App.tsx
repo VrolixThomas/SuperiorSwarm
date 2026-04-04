@@ -345,18 +345,6 @@ function AuthenticatedApp() {
 
 	// Branch palette mutations and action menu state
 	const utils = trpc.useUtils();
-	const checkoutMutation = trpc.branches.checkout.useMutation({
-		onSuccess: () => {
-			utils.branches.getStatus.invalidate();
-			utils.branches.list.invalidate();
-			// Refresh diff panel — it uses these to show current branch and file changes
-			utils.diff.getWorkingTreeStatus.invalidate();
-			utils.diff.getWorkingTreeDiff.invalidate();
-			utils.diff.getBranchDiff.invalidate();
-			utils.diff.getCommitsAhead.invalidate();
-		},
-		onError: (err) => console.error("[App] checkout failed:", err.message),
-	});
 	const mergeStartMutation = trpc.merge.start.useMutation({
 		onError: (err) => console.error("[App] merge.start failed:", err.message),
 	});
@@ -395,34 +383,24 @@ function AuthenticatedApp() {
 	const projectQuery = trpc.projects.list.useQuery();
 	const activeProject = projectQuery.data?.find((p) => p.id === activeProjectId);
 
-	const handleCheckout = useCallback(
+	// Navigate to a branch's workspace if one exists. In the worktree model,
+	// each workspace IS a branch — we don't do git checkout within worktrees.
+	const handleBranchSelect = useCallback(
 		(branch: string) => {
 			if (!activeProjectId) return;
 
-			// If the branch already has a workspace, navigate to it instead of git checkout.
-			// This is critical in worktree setups — git refuses to checkout a branch
-			// that's already checked out in another worktree.
 			const wsData = workspacesQuery.data ?? [];
 			const existing = wsData.find((ws) => ws.name === branch);
 			if (existing) {
-				// For worktree workspaces, use the worktree path.
-				// For the main "branch" workspace (worktreePath is null), use project repoPath.
 				const targetCwd = existing.worktreePath ?? activeProject?.repoPath ?? "";
 				if (targetCwd) {
 					useTabStore.getState().setActiveWorkspace(existing.id, targetCwd);
-					return;
 				}
 			}
-
-			// No existing workspace for this branch — do a git checkout in the current worktree
-			const cwd = useTabStore.getState().activeWorkspaceCwd;
-			checkoutMutation.mutate({
-				projectId: activeProjectId,
-				branch,
-				cwd: cwd || undefined,
-			});
+			// If no workspace exists for this branch, do nothing — user should
+			// create a worktree for it via the "+" button or "New Branch" action.
 		},
-		[activeProjectId, workspacesQuery.data, activeProject, checkoutMutation],
+		[activeProjectId, workspacesQuery.data, activeProject],
 	);
 
 	function handleMerge(branch: string) {
@@ -645,7 +623,7 @@ function AuthenticatedApp() {
 			{activeProjectId && (
 				<BranchPalette
 					projectId={activeProjectId}
-					onCheckout={handleCheckout}
+					onSelect={handleBranchSelect}
 					onOpenActionMenu={(branch, currentBranch, position) => {
 						setActionMenu({ branch, currentBranch, position });
 					}}
@@ -658,12 +636,14 @@ function AuthenticatedApp() {
 					currentBranch={actionMenu.currentBranch}
 					position={actionMenu.position}
 					onClose={() => setActionMenu(null)}
-					onCheckout={handleCheckout}
 					onMerge={handleMerge}
 					onRebase={handleRebase}
-					onNewBranch={() => {
+					onNewWorkspace={() => {
 						setActionMenu(null);
-						openPalette();
+						closePalette();
+						if (activeProjectId) {
+							useProjectStore.getState().openCreateWorktreeModal(activeProjectId);
+						}
 					}}
 					isMerging={useBranchStore.getState().mergeState !== null}
 				/>
