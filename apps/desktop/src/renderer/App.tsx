@@ -349,6 +349,11 @@ function AuthenticatedApp() {
 		onSuccess: () => {
 			utils.branches.getStatus.invalidate();
 			utils.branches.list.invalidate();
+			// Refresh diff panel — it uses these to show current branch and file changes
+			utils.diff.getWorkingTreeStatus.invalidate();
+			utils.diff.getWorkingTreeDiff.invalidate();
+			utils.diff.getBranchDiff.invalidate();
+			utils.diff.getCommitsAhead.invalidate();
 		},
 		onError: (err) => console.error("[App] checkout failed:", err.message),
 	});
