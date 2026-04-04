@@ -9,7 +9,6 @@ interface Props {
 	onClose: () => void;
 	onMerge: (branch: string) => void;
 	onRebase: (ontoBranch: string) => void;
-	onNewWorkspace?: (baseBranch: string) => void;
 	isMerging?: boolean;
 }
 
@@ -21,7 +20,6 @@ export function BranchActionMenu({
 	onClose,
 	onMerge,
 	onRebase,
-	onNewWorkspace,
 	isMerging,
 }: Props) {
 	const menuRef = useRef<HTMLDivElement>(null);
@@ -108,13 +106,6 @@ export function BranchActionMenu({
 		document.addEventListener("keydown", handleKeyDown);
 		return () => document.removeEventListener("keydown", handleKeyDown);
 	}, [onClose, renaming, branch]);
-
-	function handleNewWorkspace() {
-		if (onNewWorkspace) {
-			onNewWorkspace(branch);
-		}
-		onClose();
-	}
 
 	function handleMerge() {
 		onMerge(branch);
@@ -214,11 +205,6 @@ export function BranchActionMenu({
 				<span className="font-mono">{branch}</span>
 			</div>
 			{separator}
-
-			{/* New Workspace from */}
-			<button type="button" role="menuitem" className={itemClass} onClick={handleNewWorkspace}>
-				New Workspace from &lsquo;{branch}&rsquo;…
-			</button>
 
 			{/* Merge — hidden for current branch */}
 			{!isCurrentBranch && (

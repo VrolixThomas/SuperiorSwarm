@@ -7,7 +7,6 @@ import { BranchRow } from "./BranchRow";
 
 interface Props {
 	projectId: string;
-	onSelect: (branch: string) => void;
 	onOpenActionMenu: (
 		branch: string,
 		currentBranch: string,
@@ -15,7 +14,7 @@ interface Props {
 	) => void;
 }
 
-export function BranchPalette({ projectId, onSelect, onOpenActionMenu }: Props) {
+export function BranchPalette({ projectId, onOpenActionMenu }: Props) {
 	const {
 		isPaletteOpen,
 		searchQuery,
@@ -157,16 +156,7 @@ export function BranchPalette({ projectId, onSelect, onOpenActionMenu }: Props) 
 				setSelectedIndex(Math.max(selectedIndex - 1, 0));
 				return;
 			}
-			if (e.key === "Enter") {
-				e.preventDefault();
-				const branch = navigableBranches[selectedIndex];
-				if (branch && !branch.isCurrent) {
-					onSelect(branch.name);
-					closePalette();
-				}
-				return;
-			}
-			if (e.key === "ArrowRight" || e.key === "Tab") {
+			if (e.key === "Enter" || e.key === "ArrowRight" || e.key === "Tab") {
 				e.preventDefault();
 				const branch = navigableBranches[selectedIndex];
 				if (branch) {
@@ -277,8 +267,11 @@ export function BranchPalette({ projectId, onSelect, onOpenActionMenu }: Props) 
 											<BranchRow
 												branch={currentBranch}
 												isSelected={selectedIndex === 0}
-												onSelect={() => {
-													/* already current */
+												onSelect={(e) => {
+													onOpenActionMenu(currentBranch.name, currentBranch.name, {
+														x: e.clientX,
+														y: e.clientY,
+													});
 												}}
 												onContextMenu={(e) => {
 													e.preventDefault();
@@ -407,9 +400,11 @@ export function BranchPalette({ projectId, onSelect, onOpenActionMenu }: Props) 
 												key={branch.name}
 												branch={branch}
 												isSelected={selectedIndex === navIndex}
-												onSelect={() => {
-													onSelect(branch.name);
-													closePalette();
+												onSelect={(e) => {
+													onOpenActionMenu(branch.name, currentBranch?.name ?? "", {
+														x: e.clientX,
+														y: e.clientY,
+													});
 												}}
 												onContextMenu={(e) => {
 													e.preventDefault();
@@ -423,7 +418,7 @@ export function BranchPalette({ projectId, onSelect, onOpenActionMenu }: Props) 
 														x: e.clientX,
 														y: e.clientY,
 													})
-												}
+}
 											/>
 										);
 									})}
@@ -460,9 +455,11 @@ export function BranchPalette({ projectId, onSelect, onOpenActionMenu }: Props) 
 													key={branch.name}
 													branch={branch}
 													isSelected={selectedIndex === navIndex}
-													onSelect={() => {
-														onSelect(branch.name);
-														closePalette();
+													onSelect={(e) => {
+														onOpenActionMenu(branch.name, currentBranch?.name ?? "", {
+															x: e.clientX,
+															y: e.clientY,
+														});
 													}}
 													onContextMenu={(e) => {
 														e.preventDefault();
@@ -504,12 +501,6 @@ export function BranchPalette({ projectId, onSelect, onOpenActionMenu }: Props) 
 					<span className="flex items-center gap-1">
 						<kbd className="rounded bg-[rgba(255,255,255,0.06)] px-1 py-0.5 font-mono text-[10px]">
 							↵
-						</kbd>
-						select
-					</span>
-					<span className="flex items-center gap-1">
-						<kbd className="rounded bg-[rgba(255,255,255,0.06)] px-1 py-0.5 font-mono text-[10px]">
-							→
 						</kbd>
 						actions
 					</span>
