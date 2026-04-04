@@ -201,6 +201,14 @@ export async function listBranches(repoPath: string): Promise<string[]> {
 	return [...branches].sort();
 }
 
+export function sortBranchesWithDefault(branches: string[], defaultBranch: string): string[] {
+	const sorted = branches.filter((b) => b !== defaultBranch).sort();
+	if (branches.includes(defaultBranch)) {
+		sorted.unshift(defaultBranch);
+	}
+	return sorted;
+}
+
 export async function hasUncommittedChanges(repoPath: string): Promise<boolean> {
 	const git = simpleGit(repoPath);
 	const status = await git.raw(["status", "--porcelain"]);
