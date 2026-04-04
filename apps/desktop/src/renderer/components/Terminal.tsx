@@ -10,6 +10,7 @@ import { Terminal as XTerm } from "@xterm/xterm";
 import { useEffect, useRef } from "react";
 import { CmdBuffer } from "../../shared/lib/cmd-buffer";
 import { useTabStore } from "../stores/tab-store";
+import { interceptPaste } from "./terminal-paste";
 
 function buildTerminalTheme(): ITheme {
 	const s = getComputedStyle(document.documentElement);
@@ -115,6 +116,7 @@ export function Terminal({
 		const api = window.electron;
 		let cleanupData: (() => void) | undefined;
 		let cleanupExit: (() => void) | undefined;
+		let cleanupPaste: (() => void) | undefined;
 
 		if (api) {
 			api.terminal
@@ -201,6 +203,7 @@ export function Terminal({
 
 			term.onResize(({ cols, rows }) => api.terminal.resize(id, cols, rows));
 			api.terminal.resize(id, term.cols, term.rows);
+			cleanupPaste = interceptPaste(term, (data) => api.terminal.write(id, data));
 		}
 
 		// Resize handling
@@ -212,6 +215,7 @@ export function Terminal({
 		return () => {
 			cleanupData?.();
 			cleanupExit?.();
+			cleanupPaste?.();
 			window.removeEventListener("resize", onResize);
 			observer.disconnect();
 			themeObserver.disconnect();
