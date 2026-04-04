@@ -83,10 +83,9 @@ export function BranchRow({ branch, isSelected, onSelect, onContextMenu, onActio
 				</span>
 			)}
 			{branch.hasWorkspace && (
-				<div
-					className="h-[6px] w-[6px] shrink-0 rounded-full bg-[var(--accent)]"
-					title="Has workspace"
-				/>
+				<span className="shrink-0 rounded-[4px] bg-[rgba(10,132,255,0.12)] px-1.5 text-[10px] text-[var(--accent)]">
+					workspace
+				</span>
 			)}
 			{/* Ahead/behind badges */}
 			{branch.ahead > 0 && (
