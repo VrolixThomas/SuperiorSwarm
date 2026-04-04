@@ -19,9 +19,15 @@ export function AboutSection() {
 	const openWhatsNew = useUpdateStore((s) => s.openWhatsNew);
 
 	const currentVersion = statusQuery.data?.currentVersion ?? "—";
-	const updateAvailable = statusQuery.data?.updateAvailable ?? false;
-	const updateVersion = statusQuery.data?.updateVersion;
 	const updateDownloaded = statusQuery.data?.updateDownloaded ?? false;
+
+	// Prefer the direct mutation result over async event-driven state
+	const checkResult = checkForUpdates.data;
+	const updateAvailable =
+		checkResult?.updateAvailable ?? statusQuery.data?.updateAvailable ?? false;
+	const updateVersion =
+		checkResult?.version ?? statusQuery.data?.updateVersion;
+	const checkError = checkResult?.error ?? null;
 
 	const handleViewReleaseNotes = () => {
 		setShowNotes(true);
@@ -101,6 +107,8 @@ export function AboutSection() {
 							)}
 						</div>
 					</div>
+				) : checkError ? (
+					<div className="text-[11px] text-[#ff453a]">Update check failed: {checkError}</div>
 				) : (
 					<div className="text-[11px] text-[var(--text-tertiary)]">You're up to date</div>
 				)}
