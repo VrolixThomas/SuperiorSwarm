@@ -29,6 +29,22 @@ function worktreeBasePath(repoPath: string): string {
 }
 
 export const workspacesRouter = router({
+	getById: publicProcedure.input(z.object({ id: z.string() })).query(({ input }) => {
+		const db = getDb();
+		return (
+			db
+				.select({
+					id: workspaces.id,
+					projectId: workspaces.projectId,
+					type: workspaces.type,
+					name: workspaces.name,
+				})
+				.from(workspaces)
+				.where(eq(workspaces.id, input.id))
+				.get() ?? null
+		);
+	}),
+
 	listByProject: publicProcedure.input(z.object({ projectId: z.string() })).query(({ input }) => {
 		const db = getDb();
 		return db

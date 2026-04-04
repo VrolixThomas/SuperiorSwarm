@@ -51,13 +51,15 @@ export interface TicketComment {
 
 export function formatRelativeTime(dateStr: string | undefined): string {
 	if (!dateStr) return "";
-	const diff = Date.now() - new Date(dateStr).getTime();
-	const hours = Math.floor(diff / 3_600_000);
-	if (hours < 1) return "just now";
-	if (hours < 24) return `${hours}h ago`;
-	const days = Math.floor(hours / 24);
-	if (days < 30) return `${days}d ago`;
-	return new Date(dateStr).toLocaleDateString();
+	const diffMs = Date.now() - new Date(dateStr).getTime();
+	const diffMin = Math.floor(diffMs / 60_000);
+	if (diffMin < 1) return "just now";
+	if (diffMin < 60) return `${diffMin}m ago`;
+	const diffHr = Math.floor(diffMin / 60);
+	if (diffHr < 24) return `${diffHr}h ago`;
+	const diffDay = Math.floor(diffHr / 24);
+	if (diffDay < 30) return `${diffDay}d ago`;
+	return `${Math.floor(diffDay / 30)}mo ago`;
 }
 
 export function columnStateType(category: string): string {
