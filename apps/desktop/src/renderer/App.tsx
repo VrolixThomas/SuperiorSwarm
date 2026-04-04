@@ -61,6 +61,10 @@ function deserializeLayout(
 				if ((saved as { kind: string }).kind === "ai-review-summary") {
 					return null;
 				}
+				// Merge-conflict tabs are transient — the merge state doesn't survive restart
+				if ((saved as { kind: string }).kind === "merge-conflict") {
+					return null;
+				}
 				// File tabs: use directly from serialized data
 				return saved;
 			})
