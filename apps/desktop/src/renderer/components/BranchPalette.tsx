@@ -68,17 +68,21 @@ export function BranchPalette({ projectId, onCheckout, onOpenActionMenu }: Props
 
 		// Build a set of branch names that have workspaces
 		const branchesWithWorkspace = new Set(
-			wsData.filter((ws) => ws.worktreePath).map((ws) => ws.name)
+			wsData.filter((ws) => ws.worktreePath).map((ws) => ws.name),
 		);
 
-		return names.map((name) => ({
+		// listBranches returns cleaned names (remotes/origin/ prefix stripped).
+		// All branches are effectively "local" names — remote-only branches are
+		// those not checked out locally. For now, show all as local since the
+		// backend already deduplicates local and remote.
+		return names.map((name, i) => ({
 			name,
-			isLocal: !name.startsWith("remotes/"),
-			isRemote: name.startsWith("remotes/"),
+			isLocal: true,
+			isRemote: false,
 			tracking: null,
 			lastCommit: null,
 			hasWorkspace: branchesWithWorkspace.has(name),
-			isDefault: names.indexOf(name) === 0,
+			isDefault: i === 0, // First branch is default (sorted by sortBranchesWithDefault)
 			isCurrent: name === currentBranch,
 		}));
 	}, [branchesQuery.data, statusQuery.data, workspacesQuery.data]);
