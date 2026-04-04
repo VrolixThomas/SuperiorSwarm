@@ -391,23 +391,38 @@ function AuthenticatedApp() {
 		{ enabled: !!activeProjectId }
 	);
 
+	// Query the project to get repoPath (needed for navigating to main workspace)
+	const projectQuery = trpc.projects.list.useQuery();
+	const activeProject = projectQuery.data?.find((p) => p.id === activeProjectId);
+
 	const handleCheckout = useCallback(
 		(branch: string) => {
 			if (!activeProjectId) return;
 
-			// If the branch already has a workspace with a worktree, navigate to it
+			// If the branch already has a workspace, navigate to it instead of git checkout.
+			// This is critical in worktree setups — git refuses to checkout a branch
+			// that's already checked out in another worktree.
 			const wsData = workspacesQuery.data ?? [];
-			const existing = wsData.find((ws) => ws.name === branch && ws.worktreePath);
+			const existing = wsData.find((ws) => ws.name === branch);
 			if (existing) {
-				useTabStore.getState().setActiveWorkspace(existing.id, existing.worktreePath ?? "");
-				return;
+				// For worktree workspaces, use the worktree path.
+				// For the main "branch" workspace (worktreePath is null), use project repoPath.
+				const targetCwd = existing.worktreePath ?? activeProject?.repoPath ?? "";
+				if (targetCwd) {
+					useTabStore.getState().setActiveWorkspace(existing.id, targetCwd);
+					return;
+				}
 			}
 
-			// Use the active workspace's CWD so checkout works in worktrees
+			// No existing workspace for this branch — do a git checkout in the current worktree
 			const cwd = useTabStore.getState().activeWorkspaceCwd;
-			checkoutMutation.mutate({ projectId: activeProjectId, branch, cwd: cwd || undefined });
+			checkoutMutation.mutate({
+				projectId: activeProjectId,
+				branch,
+				cwd: cwd || undefined,
+			});
 		},
-		[activeProjectId, workspacesQuery.data, checkoutMutation]
+		[activeProjectId, workspacesQuery.data, activeProject, checkoutMutation],
 	);
 
 	function handleMerge(branch: string) {
