@@ -34,12 +34,12 @@ export function BranchPalette({ projectId, onCheckout, onOpenActionMenu }: Props
 
 	const utils = trpc.useUtils();
 
-	const branchesQuery = trpc.branches.list.useQuery(
-		{ projectId },
-		{ enabled: isPaletteOpen, staleTime: 10_000 }
-	);
-
 	const cwd = useTabStore((s) => s.activeWorkspaceCwd);
+
+	const branchesQuery = trpc.branches.list.useQuery(
+		{ projectId, cwd: cwd || undefined },
+		{ enabled: isPaletteOpen, staleTime: 10_000 },
+	);
 	const statusQuery = trpc.branches.getStatus.useQuery(
 		{ projectId, cwd: cwd || undefined },
 		{ enabled: isPaletteOpen, staleTime: 10_000 },
@@ -326,6 +326,7 @@ export function BranchPalette({ projectId, onCheckout, onOpenActionMenu }: Props
 														projectId,
 														name: newBranchName,
 														baseBranch: currentBranch?.name ?? "main",
+														cwd: cwd || undefined,
 													});
 												}
 												if (e.key === "Escape") setCreatingBranch(false);
@@ -344,21 +345,21 @@ export function BranchPalette({ projectId, onCheckout, onOpenActionMenu }: Props
 											</button>
 											<button
 												type="button"
-												onClick={() => fetchMutation.mutate({ projectId })}
+												onClick={() => fetchMutation.mutate({ projectId, cwd: cwd || undefined })}
 												className="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[rgba(255,255,255,0.04)] px-2.5 py-1 text-[12px] text-[var(--text-secondary)] transition-all duration-[var(--transition-fast)] hover:bg-[var(--bg-overlay)]"
 											>
 												Fetch All
 											</button>
 											<button
 												type="button"
-												onClick={() => pushMutation.mutate({ projectId })}
+												onClick={() => pushMutation.mutate({ projectId, cwd: cwd || undefined })}
 												className="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[rgba(255,255,255,0.04)] px-2.5 py-1 text-[12px] text-[var(--text-secondary)] transition-all duration-[var(--transition-fast)] hover:bg-[var(--bg-overlay)]"
 											>
 												Push
 											</button>
 											<button
 												type="button"
-												onClick={() => pullMutation.mutate({ projectId })}
+												onClick={() => pullMutation.mutate({ projectId, cwd: cwd || undefined })}
 												className="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[rgba(255,255,255,0.04)] px-2.5 py-1 text-[12px] text-[var(--text-secondary)] transition-all duration-[var(--transition-fast)] hover:bg-[var(--bg-overlay)]"
 											>
 												Pull

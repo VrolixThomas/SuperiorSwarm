@@ -1,36 +1,29 @@
-import { eq } from "drizzle-orm";
 import { z } from "zod";
-import { getDb } from "../../db";
-import { projects } from "../../db/schema";
 import { fetchAll, pull, push } from "../../git/remote-ops";
 import { publicProcedure, router } from "../index";
-
-async function getRepoPath(projectId: string): Promise<string> {
-	const db = getDb();
-	const project = await db.query.projects.findFirst({
-		where: eq(projects.id, projectId),
-	});
-	if (!project) throw new Error("Project not found");
-	return project.repoPath;
-}
+import { resolvePath } from "./shared";
 
 export const remoteRouter = router({
 	push: publicProcedure
-		.input(z.object({ projectId: z.string(), branch: z.string().optional() }))
+		.input(z.object({ projectId: z.string(), branch: z.string().optional(), cwd: z.string().optional() }))
 		.mutation(async ({ input }) => {
-			const repoPath = await getRepoPath(input.projectId);
-			await push(repoPath, input.branch);
+			const path = await resolvePath(input.projectId, input.cwd);
+			await push(path, input.branch);
 			return { success: true };
 		}),
 
-	pull: publicProcedure.input(z.object({ projectId: z.string() })).mutation(async ({ input }) => {
-		const repoPath = await getRepoPath(input.projectId);
-		return pull(repoPath);
-	}),
+	pull: publicProcedure
+		.input(z.object({ projectId: z.string(), cwd: z.string().optional() }))
+		.mutation(async ({ input }) => {
+			const path = await resolvePath(input.projectId, input.cwd);
+			return pull(path);
+		}),
 
-	fetch: publicProcedure.input(z.object({ projectId: z.string() })).mutation(async ({ input }) => {
-		const repoPath = await getRepoPath(input.projectId);
-		await fetchAll(repoPath);
-		return { success: true };
-	}),
+	fetch: publicProcedure
+		.input(z.object({ projectId: z.string(), cwd: z.string().optional() }))
+		.mutation(async ({ input }) => {
+			const path = await resolvePath(input.projectId, input.cwd);
+			await fetchAll(path);
+			return { success: true };
+		}),
 });
