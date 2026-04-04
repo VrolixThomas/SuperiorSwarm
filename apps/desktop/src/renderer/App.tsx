@@ -1,7 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Group, Panel, Separator, useDefaultLayout, usePanelRef } from "react-resizable-panels";
 import type { LayoutNode, SerializedLayoutNode } from "../shared/pane-types";
 import { AddRepositoryModal } from "./components/AddRepositoryModal";
+import { BranchActionMenu } from "./components/BranchActionMenu";
+import { BranchPalette } from "./components/BranchPalette";
 import { CreateWorktreeModal } from "./components/CreateWorktreeModal";
 import { DaemonStatus } from "./components/DaemonStatus";
 import { DiffPanel } from "./components/DiffPanel";
@@ -18,6 +20,7 @@ import {
 	setupGoToDefinitionHandler,
 	setupServerRestartListener,
 } from "./lsp/monaco-lsp-bridge";
+import { useBranchStore } from "./stores/branch-store";
 import { useEditorSettingsStore } from "./stores/editor-settings";
 import { usePaneStore } from "./stores/pane-store";
 import { useProjectStore } from "./stores/projects";
@@ -59,6 +62,10 @@ function deserializeLayout(
 				}
 				// Filter out stale ai-review-summary tabs from previous versions
 				if ((saved as { kind: string }).kind === "ai-review-summary") {
+					return null;
+				}
+				// Merge-conflict tabs are transient — the merge state doesn't survive restart
+				if ((saved as { kind: string }).kind === "merge-conflict") {
 					return null;
 				}
 				// File tabs: use directly from serialized data
@@ -336,6 +343,119 @@ function AuthenticatedApp() {
 	usePaneShortcuts();
 	useAgentAlertListener();
 
+	// Branch palette mutations and action menu state
+	const utils = trpc.useUtils();
+	const mergeStartMutation = trpc.merge.start.useMutation({
+		onError: (err) => console.error("[App] merge.start failed:", err.message),
+	});
+	const rebaseStartMutation = trpc.rebase.start.useMutation({
+		onError: (err) => console.error("[App] rebase.start failed:", err.message),
+	});
+
+	const [actionMenu, setActionMenu] = useState<{
+		branch: string;
+		currentBranch: string;
+		position: { x: number; y: number };
+	} | null>(null);
+
+	const { openPalette, closePalette, isPaletteOpen, setMergeState } = useBranchStore();
+	const isMerging = useBranchStore((s) => s.mergeState !== null);
+
+	// Derive active projectId from the active workspace
+	const activeWorkspaceId = useTabStore((s) => s.activeWorkspaceId);
+	const activeWorkspaceQuery = trpc.workspaces.getById.useQuery(
+		{ id: activeWorkspaceId ?? "" },
+		{ enabled: !!activeWorkspaceId, staleTime: 30_000 }
+	);
+	const activeProjectId = activeWorkspaceQuery.data?.projectId ?? null;
+
+	const workspacesQuery = trpc.workspaces.listByProject.useQuery(
+		{ projectId: activeProjectId ?? "" },
+		{ enabled: !!activeProjectId }
+	);
+
+	const activeCwd = useTabStore((s) => s.activeWorkspaceCwd);
+	const branchStatusQuery = trpc.branches.getStatus.useQuery(
+		{ projectId: activeProjectId ?? "", cwd: activeCwd || undefined },
+		{ enabled: !!activeProjectId }
+	);
+
+	function handleMerge(branch: string) {
+		if (!activeProjectId) return;
+		if (useBranchStore.getState().mergeState !== null) return;
+		closePalette();
+		setActionMenu(null);
+		const cwd = useTabStore.getState().activeWorkspaceCwd || undefined;
+		const currentBranch = branchStatusQuery.data?.branch ?? "";
+		mergeStartMutation.mutate(
+			{ projectId: activeProjectId, branch, cwd },
+			{
+				onSuccess: (result) => {
+					utils.branches.getStatus.invalidate();
+					if (result.status === "conflict" && result.files) {
+						const workspaceId = useTabStore.getState().activeWorkspaceId ?? "";
+						setMergeState({
+							type: "merge",
+							sourceBranch: branch,
+							targetBranch: currentBranch,
+							conflicts: result.files.map((path) => ({ path, status: "conflicting" as const })),
+							activeFilePath: result.files[0] ?? null,
+							rebaseProgress: null,
+						});
+						useTabStore.getState().openMergeConflict(workspaceId, "merge", branch, currentBranch);
+					}
+				},
+			}
+		);
+	}
+
+	function handleRebase(ontoBranch: string) {
+		if (!activeProjectId) return;
+		if (useBranchStore.getState().mergeState !== null) return;
+		closePalette();
+		setActionMenu(null);
+		const cwd = useTabStore.getState().activeWorkspaceCwd || undefined;
+		const currentBranch = branchStatusQuery.data?.branch ?? "";
+		rebaseStartMutation.mutate(
+			{ projectId: activeProjectId, ontoBranch, cwd },
+			{
+				onSuccess: (result) => {
+					utils.branches.getStatus.invalidate();
+					if (result.status === "conflict" && result.files) {
+						const workspaceId = useTabStore.getState().activeWorkspaceId ?? "";
+						setMergeState({
+							type: "rebase",
+							sourceBranch: ontoBranch,
+							targetBranch: currentBranch,
+							conflicts: result.files.map((path) => ({ path, status: "conflicting" as const })),
+							activeFilePath: result.files[0] ?? null,
+							rebaseProgress: result.progress ?? null,
+						});
+						useTabStore
+							.getState()
+							.openMergeConflict(workspaceId, "rebase", ontoBranch, currentBranch);
+					}
+				},
+			}
+		);
+	}
+
+	// Cmd+Shift+B — toggle branch palette
+	useEffect(() => {
+		function handleKeyDown(e: KeyboardEvent) {
+			if (e.key === "b" && e.metaKey && e.shiftKey) {
+				e.preventDefault();
+				if (isPaletteOpen) {
+					closePalette();
+				} else if (activeProjectId) {
+					openPalette();
+				}
+			}
+		}
+		document.addEventListener("keydown", handleKeyDown);
+		return () => document.removeEventListener("keydown", handleKeyDown);
+	}, [isPaletteOpen, openPalette, closePalette, activeProjectId]);
+
 	// Query update status on mount and poll when an update is being downloaded
 	const updateStore = useUpdateStore();
 	const isDownloading = updateStore.toastState === "downloading";
@@ -477,6 +597,26 @@ function AuthenticatedApp() {
 			<DaemonStatus />
 			<UpdateToast />
 			<WhatsNewModal />
+			{activeProjectId && (
+				<BranchPalette
+					projectId={activeProjectId}
+					onOpenActionMenu={(branch, currentBranch, position) => {
+						setActionMenu({ branch, currentBranch, position });
+					}}
+				/>
+			)}
+			{activeProjectId && actionMenu && (
+				<BranchActionMenu
+					projectId={activeProjectId}
+					branch={actionMenu.branch}
+					currentBranch={actionMenu.currentBranch}
+					position={actionMenu.position}
+					onClose={() => setActionMenu(null)}
+					onMerge={handleMerge}
+					onRebase={handleRebase}
+					isMerging={isMerging}
+				/>
+			)}
 		</>
 	);
 }

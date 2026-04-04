@@ -100,6 +100,10 @@ function DiffPanelContent({ diffCtx, onClose }: { diffCtx: DiffContext; onClose?
 		{ staleTime: 60_000 }
 	);
 
+	// Resolve projectId from repoPath so we can pass it down to BranchChip
+	const projectsQuery = trpc.projects.list.useQuery(undefined, { staleTime: 60_000 });
+	const projectId = projectsQuery.data?.find((p) => p.repoPath === diffCtx.repoPath)?.id ?? null;
+
 	const effectiveBaseBranch = storedBaseBranch ?? defaultBranchQuery.data?.branch ?? "main";
 
 	// Working tree status (staged/unstaged split)
@@ -146,6 +150,7 @@ function DiffPanelContent({ diffCtx, onClose }: { diffCtx: DiffContext; onClose?
 							repoPath={diffCtx.repoPath}
 							currentBranch={currentBranch}
 							baseBranch={effectiveBaseBranch}
+							projectId={projectId}
 							onBaseBranchChange={(branch) => {
 								if (activeWorkspaceId) {
 									setBaseBranch(activeWorkspaceId, branch);
