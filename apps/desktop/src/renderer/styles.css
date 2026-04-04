@@ -204,6 +204,55 @@ body,
 	line-height: 16px;
 }
 
+/* ── Merge conflict: side panel decorations ──────────────────────────────── */
+
+.merge-side-added {
+	background: rgba(48, 209, 88, 0.08);
+}
+
+.merge-side-modified {
+	background: rgba(255, 159, 10, 0.08);
+}
+
+.merge-gutter-theirs {
+	width: 3px !important;
+	margin-left: 2px;
+	background: #0a84ff;
+	border-radius: 1px;
+}
+
+.merge-gutter-ours {
+	width: 3px !important;
+	margin-left: 2px;
+	background: #bf5af2;
+	border-radius: 1px;
+}
+
+/* ── Merge conflict: result panel decorations ────────────────────────────── */
+
+.merge-conflict-pending {
+	background: rgba(255, 159, 10, 0.1);
+}
+
+.merge-conflict-resolved {
+	background: rgba(48, 209, 88, 0.06);
+}
+
+.merge-conflict-gutter-pending {
+	width: 3px !important;
+	margin-left: 2px;
+	background: #ff9f0a;
+	border-radius: 1px;
+}
+
+.merge-conflict-gutter-resolved {
+	width: 3px !important;
+	margin-left: 2px;
+	background: #30d158;
+	border-radius: 1px;
+	opacity: 0.5;
+}
+
 /* ── Panel resize handles ─────────────────────────────────────────────────── */
 
 .panel-resize-handle {
