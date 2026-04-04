@@ -27,6 +27,7 @@ import { setDaemonClient } from "./terminal/daemon-instance";
 import { setupTerminalIPC } from "./terminal/ipc";
 import { setupTRPCIPC } from "./trpc/ipc-link";
 import { appRouter } from "./trpc/routers";
+import { initializeUpdater } from "./updater";
 
 let mainWindow: BrowserWindow | null = null;
 let daemonClient: DaemonClient;
@@ -136,6 +137,11 @@ app.whenReady().then(async () => {
 		daemonClient.startReconnecting();
 	}
 	setupTRPCIPC(appRouter);
+
+	// Initialize auto-updater (non-blocking — errors logged, not thrown)
+	initializeUpdater().catch((err) => {
+		console.error("[main] Failed to initialize updater:", err);
+	});
 
 	ipcMain.on("terminal-sessions:save-sync", (event, data: SessionSaveData) => {
 		try {

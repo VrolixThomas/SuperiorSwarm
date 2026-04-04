@@ -3,6 +3,7 @@ import { useEditorSettingsStore } from "../stores/editor-settings";
 import { useProjectStore } from "../stores/projects";
 import { trpc } from "../trpc/client";
 import { ReviewPromptEditor } from "./ReviewPromptEditor";
+import { AboutSection } from "./AboutSection";
 
 function IntegrationRow({
 	name,
@@ -494,6 +495,8 @@ export function SettingsView() {
 						/>
 					</div>
 				</div>
+
+				<AboutSection />
 			</div>
 		</div>
 	);

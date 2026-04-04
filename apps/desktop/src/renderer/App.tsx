@@ -22,6 +22,9 @@ import { useProjectStore } from "./stores/projects";
 import type { TabItem } from "./stores/tab-store";
 import { resetFileTabCounter, useTabStore } from "./stores/tab-store";
 import { trpc } from "./trpc/client";
+import { UpdateToast } from "./components/UpdateToast";
+import { WhatsNewModal } from "./components/WhatsNewModal";
+import { useUpdateStore } from "./stores/update-store";
 
 const SAVE_INTERVAL_MS = 30_000;
 
@@ -332,6 +335,40 @@ function AuthenticatedApp() {
 	usePaneShortcuts();
 	useAgentAlertListener();
 
+	// Query update status on mount and poll when an update is being downloaded
+	const updateStore = useUpdateStore();
+	const isDownloading = updateStore.toastState === "downloading";
+	const updateStatus = trpc.updates.getStatus.useQuery(undefined, {
+		staleTime: isDownloading ? 5_000 : Number.POSITIVE_INFINITY,
+		refetchInterval: isDownloading ? 5_000 : false,
+		refetchOnMount: false,
+		refetchOnWindowFocus: false,
+		refetchOnReconnect: false,
+	});
+
+	const hasCheckedUpdate = useRef(false);
+	useEffect(() => {
+		const data = updateStatus.data;
+		if (!data) return;
+
+		// One-time: process pending notification from startup
+		if (!hasCheckedUpdate.current) {
+			hasCheckedUpdate.current = true;
+			if (data.pendingNotification) {
+				const { type, version, summary } = data.pendingNotification;
+				const toastType = type === "patch" ? "patch" : "new-version";
+				useUpdateStore.getState().showToast(toastType, version, summary);
+			}
+		}
+
+		// Sync download/ready state from main process
+		if (data.updateDownloaded && data.updateVersion) {
+			useUpdateStore.getState().setUpdateReady(data.updateVersion);
+		} else if (data.updateAvailable && data.downloadProgress != null && data.updateVersion) {
+			useUpdateStore.getState().setDownloadProgress(data.downloadProgress);
+		}
+	}, [updateStatus.data]);
+
 	const sidebarPanelRef = usePanelRef();
 	const diffPanelRef = usePanelRef();
 	const setSidebarCollapsed = useProjectStore((s) => s.setSidebarCollapsed);
@@ -437,6 +474,8 @@ function AuthenticatedApp() {
 			<CreateWorktreeModal />
 			<SharedFilesPanel />
 			<DaemonStatus />
+			<UpdateToast />
+			<WhatsNewModal />
 		</>
 	);
 }
