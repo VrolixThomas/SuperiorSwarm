@@ -41,6 +41,8 @@ export default async function DownloadsPage() {
 					<>
 						<a
 							href={release.dmgUrl}
+							download
+							rel="noopener noreferrer"
 							className="inline-flex items-center gap-2.5 rounded-full bg-accent px-8 py-3.5 text-[15px] font-semibold text-bg-base transition-shadow hover:shadow-[0_0_24px_rgba(196,149,108,0.3)]"
 						>
 							<svg
