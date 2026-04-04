@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.2.1 (2026-04-04)
+
+### What's New
+
+Auto-update error messages are now visible in the About section instead of being silently swallowed. This helps diagnose update issues.
+
+### Changes
+
+- fix: surface auto-updater errors in UI and use direct version comparison
+
 ## v0.2.0 (2026-04-04)
 
 ### What's New
