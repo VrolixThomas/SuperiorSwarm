@@ -1,7 +1,4 @@
-import { eq } from "drizzle-orm";
 import { z } from "zod";
-import { getDb } from "../../db";
-import { projects } from "../../db/schema";
 import {
 	abortMerge,
 	getConflictContent,
@@ -11,16 +8,7 @@ import {
 } from "../../git/merge-ops";
 import { commitChanges } from "../../git/operations";
 import { publicProcedure, router } from "../index";
-
-async function resolvePath(projectId: string, cwd?: string): Promise<string> {
-	if (cwd) return cwd;
-	const db = getDb();
-	const project = await db.query.projects.findFirst({
-		where: eq(projects.id, projectId),
-	});
-	if (!project) throw new Error("Project not found");
-	return project.repoPath;
-}
+import { resolvePath } from "./shared";
 
 export const mergeRouter = router({
 	start: publicProcedure

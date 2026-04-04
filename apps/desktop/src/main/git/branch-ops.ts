@@ -81,18 +81,22 @@ export async function getBranchStatus(repoPath: string): Promise<BranchStatus> {
 export async function listBranchesDetailed(
 	repoPath: string,
 	defaultBranch: string,
+	cwd?: string,
 ): Promise<BranchInfo[]> {
 	const git = simpleGit(repoPath);
-
-	// Fetch to ensure we have latest remote refs
-	try {
-		await git.fetch("origin");
-	} catch {
-		// No remote or unreachable
-	}
-
 	const result = await git.branch(["-a", "-vv"]);
-	const current = result.current;
+
+	// Determine current branch from the CWD context (worktree), not the main repo
+	let current = result.current;
+	if (cwd && cwd !== repoPath) {
+		try {
+			const cwdGit = simpleGit(cwd);
+			const cwdStatus = await cwdGit.status();
+			current = cwdStatus.current ?? "HEAD";
+		} catch {
+			// Fall back to main repo's current
+		}
+	}
 
 	// Track which branches exist locally and remotely
 	const localSet = new Set<string>();
