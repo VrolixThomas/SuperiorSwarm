@@ -84,12 +84,12 @@
 		"vite": "^6.0.7"
 	},
 	"build": {
-		"appId": "com.branchflux.app",
-		"productName": "BranchFlux",
+		"appId": "com.superiorswarm.app",
+		"productName": "SuperiorSwarm",
 		"publish": {
 			"provider": "github",
 			"owner": "VrolixThomas",
-			"repo": "BranchFlux"
+			"repo": "SuperiorSwarm"
 		}
 	}
 }
