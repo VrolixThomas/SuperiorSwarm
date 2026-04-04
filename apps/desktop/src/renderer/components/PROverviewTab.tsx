@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { detectLanguage } from "../../shared/diff-types";
+import { formatRelativeTime } from "../../shared/tickets";
 import type {
 	AIDraftThread,
 	GitHubPRDetails,
@@ -10,21 +11,6 @@ import type {
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import { MarkdownRenderer } from "./MarkdownRenderer";
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function relativeTime(dateStr: string): string {
-	const now = Date.now();
-	const then = new Date(dateStr).getTime();
-	const diffMs = now - then;
-	const mins = Math.floor(diffMs / 60_000);
-	if (mins < 1) return "just now";
-	if (mins < 60) return `${mins}m ago`;
-	const hours = Math.floor(mins / 60);
-	if (hours < 24) return `${hours}h ago`;
-	const days = Math.floor(hours / 24);
-	return `${days}d ago`;
-}
 
 // ── PRHeader ──────────────────────────────────────────────────────────────────
 
@@ -219,7 +205,7 @@ function AICommentCard({
 				</button>
 				<div className="flex-1" />
 				<span className="text-[10px] text-[var(--text-quaternary)]">
-					{relativeTime(thread.createdAt)}
+					{formatRelativeTime(thread.createdAt)}
 				</span>
 			</div>
 			<div className="px-3 py-2 text-[11px] text-[var(--text-secondary)] whitespace-pre-wrap">
@@ -315,7 +301,7 @@ function GitHubThreadCard({
 				>
 					<div className="mb-0.5 flex items-center gap-1.5 text-[10px]">
 						<span className="font-medium text-[var(--text-secondary)]">{c.author}</span>
-						<span className="text-[var(--text-quaternary)]">{relativeTime(c.createdAt)}</span>
+						<span className="text-[var(--text-quaternary)]">{formatRelativeTime(c.createdAt)}</span>
 					</div>
 					<p className="text-[11px] text-[var(--text-tertiary)] whitespace-pre-wrap">{c.body}</p>
 				</div>

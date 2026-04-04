@@ -12,6 +12,7 @@ import {
 	saveWorkingTreeFile,
 } from "../../git/file-ops";
 import { listAllEntries, listDirectory } from "../../git/file-tree";
+import { push } from "../../git/remote-ops";
 import {
 	commitChanges,
 	detectDefaultBranch,
@@ -21,7 +22,6 @@ import {
 	getUntrackedFiles,
 	listBranches,
 	parseUnifiedDiff,
-	pushBranch,
 	stageFiles,
 	unstageFiles,
 } from "../../git/operations";
@@ -117,7 +117,7 @@ export const diffRouter = router({
 		}),
 
 	push: publicProcedure.input(z.object({ repoPath: z.string() })).mutation(async ({ input }) => {
-		await pushBranch(input.repoPath);
+		await push(input.repoPath);
 	}),
 
 	getFileContent: publicProcedure

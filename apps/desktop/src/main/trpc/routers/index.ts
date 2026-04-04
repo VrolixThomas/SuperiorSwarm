@@ -7,8 +7,11 @@ import { commentSolverRouter } from "./comment-solver";
 import { diffRouter } from "./diff";
 import { githubRouter } from "./github";
 import { linearRouter } from "./linear";
+import { mergeRouter } from "./merge";
 import { prPollerRouter } from "./pr-poller";
 import { projectsRouter } from "./projects";
+import { rebaseRouter } from "./rebase";
+import { remoteRouter } from "./remote";
 import { sharedFilesRouter } from "./shared-files";
 import { terminalSessionsRouter } from "./terminal-sessions";
 import { ticketsRouter } from "./tickets";
@@ -22,6 +25,9 @@ export const appRouter = router({
 	projects: projectsRouter,
 	workspaces: workspacesRouter,
 	branches: branchesRouter,
+	merge: mergeRouter,
+	rebase: rebaseRouter,
+	remote: remoteRouter,
 	terminalSessions: terminalSessionsRouter,
 	atlassian: atlassianRouter,
 	diff: diffRouter,

@@ -99,7 +99,7 @@ export function PaneContainer({
 			onDragOver={handleDragOver}
 		>
 			<PaneTabBar pane={pane} workspaceId={workspaceId} paneIndex={paneIndex} />
-			<PaneContent pane={pane} savedScrollback={savedScrollback} />
+			<PaneContent pane={pane} workspaceId={workspaceId} savedScrollback={savedScrollback} />
 
 			{isDragOver && <DropZoneOverlay paneId={pane.id} onDrop={handleDrop} />}
 
