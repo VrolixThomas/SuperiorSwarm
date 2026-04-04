@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Group, Panel, Separator, useDefaultLayout, usePanelRef } from "react-resizable-panels";
 import type { LayoutNode, SerializedLayoutNode } from "../shared/pane-types";
 import { AddRepositoryModal } from "./components/AddRepositoryModal";
+import { BranchActionMenu } from "./components/BranchActionMenu";
 import { BranchPalette } from "./components/BranchPalette";
 import { CreateWorktreeModal } from "./components/CreateWorktreeModal";
 import { DaemonStatus } from "./components/DaemonStatus";
@@ -342,9 +343,80 @@ function AuthenticatedApp() {
 	usePaneShortcuts();
 	useAgentAlertListener();
 
-	// Cmd+Shift+B — toggle branch palette
+	// Branch palette mutations and action menu state
+	const utils = trpc.useUtils();
+	const checkoutMutation = trpc.branches.checkout.useMutation({
+		onSuccess: () => {
+			utils.branches.getStatus.invalidate();
+			utils.branches.list.invalidate();
+		},
+	});
+	const mergeStartMutation = trpc.merge.start.useMutation();
+	const rebaseStartMutation = trpc.rebase.start.useMutation();
+
+	const [actionMenu, setActionMenu] = useState<{
+		branch: string;
+		currentBranch: string;
+		position: { x: number; y: number };
+	} | null>(null);
+
 	const selectedProjectId = useProjectStore((s) => s.selectedProjectId);
-	const { openPalette, closePalette, isPaletteOpen } = useBranchStore();
+	const { openPalette, closePalette, isPaletteOpen, setMergeState } = useBranchStore();
+
+	function handleCheckout(branch: string) {
+		if (!selectedProjectId) return;
+		checkoutMutation.mutate({ projectId: selectedProjectId, branch });
+	}
+
+	function handleMerge(branch: string) {
+		if (!selectedProjectId) return;
+		mergeStartMutation.mutate(
+			{ projectId: selectedProjectId, branch },
+			{
+				onSuccess: (result) => {
+					if (result.status === "conflict" && result.files) {
+						const workspaceId = useTabStore.getState().activeWorkspaceId ?? "";
+						const currentBranch = actionMenu?.currentBranch ?? "";
+						setMergeState({
+							type: "merge",
+							sourceBranch: branch,
+							targetBranch: currentBranch,
+							conflicts: result.files.map((path) => ({ path, status: "conflicting" as const })),
+							activeFilePath: result.files[0] ?? null,
+							rebaseProgress: null,
+						});
+						useTabStore.getState().openMergeConflict(workspaceId, "merge", branch, currentBranch);
+					}
+				},
+			},
+		);
+	}
+
+	function handleRebase(ontoBranch: string) {
+		if (!selectedProjectId) return;
+		rebaseStartMutation.mutate(
+			{ projectId: selectedProjectId, ontoBranch },
+			{
+				onSuccess: (result) => {
+					if (result.status === "conflict" && result.files) {
+						const workspaceId = useTabStore.getState().activeWorkspaceId ?? "";
+						const currentBranch = actionMenu?.currentBranch ?? "";
+						setMergeState({
+							type: "rebase",
+							sourceBranch: ontoBranch,
+							targetBranch: currentBranch,
+							conflicts: result.files.map((path) => ({ path, status: "conflicting" as const })),
+							activeFilePath: result.files[0] ?? null,
+							rebaseProgress: result.progress ?? null,
+						});
+						useTabStore.getState().openMergeConflict(workspaceId, "rebase", ontoBranch, currentBranch);
+					}
+				},
+			},
+		);
+	}
+
+	// Cmd+Shift+B — toggle branch palette
 	useEffect(() => {
 		function handleKeyDown(e: KeyboardEvent) {
 			if (e.key === "b" && e.metaKey && e.shiftKey) {
@@ -504,8 +576,23 @@ function AuthenticatedApp() {
 			{selectedProjectId && (
 				<BranchPalette
 					projectId={selectedProjectId}
-					onCheckout={() => {/* TODO: wire in Task 12 */}}
-					onOpenActionMenu={() => {/* TODO: wire in Task 12 */}}
+					onCheckout={handleCheckout}
+					onOpenActionMenu={(branch, currentBranch, position) => {
+						setActionMenu({ branch, currentBranch, position });
+					}}
+				/>
+			)}
+			{selectedProjectId && actionMenu && (
+				<BranchActionMenu
+					projectId={selectedProjectId}
+					branch={actionMenu.branch}
+					currentBranch={actionMenu.currentBranch}
+					position={actionMenu.position}
+					onClose={() => setActionMenu(null)}
+					onCheckout={handleCheckout}
+					onMerge={handleMerge}
+					onRebase={handleRebase}
+					onCompare={() => setActionMenu(null)}
 				/>
 			)}
 		</>
