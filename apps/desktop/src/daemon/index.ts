@@ -8,7 +8,7 @@ const SOCKET_PATH =
 	process.env["SUPERIORSWARM_SOCKET_PATH"] ?? join(SUPERIORSWARM_DIR, "daemon.sock");
 const PID_PATH = process.env["SUPERIORSWARM_PID_PATH"] ?? join(SUPERIORSWARM_DIR, "daemon.pid");
 const DB_PATH = process.env["SUPERIORSWARM_DB_PATH"] ?? "";
-const IS_DEV = !!process.env["ELECTRON_RENDERER_URL"];
+const IS_DEV = process.env["SUPERIORSWARM_DEV_MODE"] === "1";
 const FLUSH_INTERVAL_MS = 30_000;
 
 if (!DB_PATH) {

@@ -42,7 +42,8 @@ export class DaemonClient {
 	constructor(
 		private socketPath: string,
 		private pidPath: string,
-		private logPath: string
+		private logPath: string,
+		public devMode = false
 	) {}
 
 	get isConnected(): boolean {
@@ -426,6 +427,7 @@ export class DaemonClient {
 				SUPERIORSWARM_SOCKET_PATH: this.socketPath,
 				SUPERIORSWARM_PID_PATH: this.pidPath,
 				SUPERIORSWARM_LOG_PATH: this.logPath,
+				SUPERIORSWARM_DEV_MODE: this.devMode ? "1" : "",
 			},
 		});
 		child.unref();
