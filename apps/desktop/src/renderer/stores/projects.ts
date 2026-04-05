@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-export type SettingsCategory = "general" | "integrations" | "ai-review" | "about";
+export type SettingsCategory = "general" | "integrations" | "ai-review" | "shortcuts" | "about";
 
 interface ProjectStore {
 	selectedProjectId: string | null;

@@ -665,15 +665,20 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 	},
 
 	openExplorer: () => {
-		const { rightPanel } = get();
+		const { rightPanel, activeWorkspaceCwd } = get();
 		if (rightPanel.open && rightPanel.mode === "explorer") {
 			set({ rightPanel: PANEL_CLOSED });
 		} else {
+			const diffCtx = rightPanel.open
+				? rightPanel.diffCtx
+				: activeWorkspaceCwd
+					? { type: "working-tree" as const, repoPath: activeWorkspaceCwd }
+					: null;
 			set({
 				rightPanel: {
 					open: true,
 					mode: "explorer",
-					diffCtx: rightPanel.open ? rightPanel.diffCtx : null,
+					diffCtx,
 				},
 			});
 		}
