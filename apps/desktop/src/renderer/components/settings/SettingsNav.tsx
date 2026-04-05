@@ -1,6 +1,6 @@
 import { useProjectStore, type SettingsCategory } from "../../stores/projects";
 
-const NAV_ITEMS: { id: SettingsCategory; label: string; icon: React.ReactNode }[] = [
+const NAV_ITEMS: { id: SettingsCategory; label: string; icon: React.ReactNode; section?: string }[] = [
 	{
 		id: "general",
 		label: "General",
@@ -57,6 +57,27 @@ const NAV_ITEMS: { id: SettingsCategory; label: string; icon: React.ReactNode }[
 			</svg>
 		),
 	},
+	{
+		id: "about",
+		label: "About",
+		section: "About",
+		icon: (
+			<svg
+				width="14"
+				height="14"
+				viewBox="0 0 24 24"
+				fill="none"
+				stroke="currentColor"
+				strokeWidth="1.5"
+				strokeLinecap="round"
+				strokeLinejoin="round"
+			>
+				<circle cx="12" cy="12" r="10" />
+				<line x1="12" y1="16" x2="12" y2="12" />
+				<line x1="12" y1="8" x2="12.01" y2="8" />
+			</svg>
+		),
+	},
 ];
 
 export function SettingsNav() {
@@ -90,59 +111,35 @@ export function SettingsNav() {
 				</button>
 			</div>
 
-			{/* Main nav */}
+			{/* Nav items */}
 			<div className="flex-1 px-3">
 				<div className="pb-2 text-[10px] font-semibold uppercase tracking-[0.05em] text-[var(--text-quaternary)]">
 					Settings
 				</div>
 				<div className="flex flex-col gap-0.5">
 					{NAV_ITEMS.map((item) => (
-						<button
-							key={item.id}
-							type="button"
-							onClick={() => setSettingsCategory(item.id)}
-							className={`flex items-center gap-2 rounded-[6px] px-3 py-[7px] text-[13px] transition-colors ${
-								settingsCategory === item.id
-									? "bg-[rgba(10,132,255,0.12)] text-[var(--accent)]"
-									: "text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text)]"
-							}`}
-						>
-							{item.icon}
-							{item.label}
-						</button>
+						<div key={item.id}>
+							{item.section && (
+								<div className="mt-6 border-t border-[var(--border-subtle)] pt-4">
+									<div className="pb-2 text-[10px] font-semibold uppercase tracking-[0.05em] text-[var(--text-quaternary)]">
+										{item.section}
+									</div>
+								</div>
+							)}
+							<button
+								type="button"
+								onClick={() => setSettingsCategory(item.id)}
+								className={`flex w-full items-center gap-2 rounded-[6px] px-3 py-[7px] text-[13px] transition-colors ${
+									settingsCategory === item.id
+										? "bg-[rgba(10,132,255,0.12)] text-[var(--accent)]"
+										: "text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text)]"
+								}`}
+							>
+								{item.icon}
+								{item.label}
+							</button>
+						</div>
 					))}
-				</div>
-
-				{/* About section */}
-				<div className="mt-6 border-t border-[var(--border-subtle)] pt-4">
-					<div className="pb-2 text-[10px] font-semibold uppercase tracking-[0.05em] text-[var(--text-quaternary)]">
-						About
-					</div>
-					<button
-						type="button"
-						onClick={() => setSettingsCategory("about")}
-						className={`flex w-full items-center gap-2 rounded-[6px] px-3 py-[7px] text-[13px] transition-colors ${
-							settingsCategory === "about"
-								? "bg-[rgba(10,132,255,0.12)] text-[var(--accent)]"
-								: "text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text)]"
-						}`}
-					>
-						<svg
-							width="14"
-							height="14"
-							viewBox="0 0 24 24"
-							fill="none"
-							stroke="currentColor"
-							strokeWidth="1.5"
-							strokeLinecap="round"
-							strokeLinejoin="round"
-						>
-							<circle cx="12" cy="12" r="10" />
-							<line x1="12" y1="16" x2="12" y2="12" />
-							<line x1="12" y1="8" x2="12.01" y2="8" />
-						</svg>
-						About
-					</button>
 				</div>
 			</div>
 		</div>
