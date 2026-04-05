@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.3.0 (2026-04-05)
+
+### What's New
+
+SuperiorSwarm now features a command palette with keyboard shortcuts for quick navigation and actions. A new quick actions bar lets you run common tasks like build, test, and lint with a single click, with optional agent-assisted setup. The settings page has been redesigned as a full-page layout with integrations and AI review configuration. Several fixes improve workspace removal, push button visibility after commits, and terminal session cleanup.
+
+### Changes
+
+- **SUP-7**: Add quick action buttons for common tasks like run, build, and test (#49)
+- feat: add command palette and keyboard shortcuts system (#50)
+- Fix push not visible after commit (#48)
+- Fix removing workspace (#47)
+- Fix settings page (#46)
+
 ## v0.2.3 (2026-04-05)
 
 ### What's New
