@@ -33,9 +33,9 @@ function IntegrationRow({
 					/>
 					<span className="truncate text-[11px] text-[var(--text-tertiary)]">
 						{connected
-							? (email && displayName
-									? `${displayName} · ${email}`
-									: (displayName ?? email ?? "Connected"))
+							? email && displayName
+								? `${displayName} · ${email}`
+								: (displayName ?? email ?? "Connected")
 							: "Not connected"}
 					</span>
 				</div>
@@ -119,7 +119,7 @@ export function IntegrationsSettings() {
 		<div>
 			<PageHeading title="Integrations" subtitle="Connect your development tools" />
 
-			<div className="overflow-hidden rounded-[10px] border border-[var(--border)] bg-[var(--bg-surface)]">
+			<div className="overflow-hidden rounded-[10px] border border-[var(--border)] bg-[var(--bg-surface)] divide-y divide-[var(--border-subtle)]">
 				<IntegrationRow
 					name="Jira"
 					icon={
@@ -128,13 +128,14 @@ export function IntegrationsSettings() {
 						</svg>
 					}
 					connected={atlassianStatus?.jira.connected ?? false}
-					displayName={atlassianStatus?.jira.connected ? atlassianStatus.jira.displayName : undefined}
+					displayName={
+						atlassianStatus?.jira.connected ? atlassianStatus.jira.displayName : undefined
+					}
 					email={atlassianStatus?.jira.connected ? atlassianStatus.jira.email : undefined}
 					isPending={atlassianConnect.isPending || atlassianDisconnect.isPending}
 					onConnect={() => atlassianConnect.mutate({ service: "jira" })}
 					onDisconnect={() => atlassianDisconnect.mutate({ service: "jira" })}
 				/>
-				<div className="mx-4 border-t border-[var(--border-subtle)]" />
 				<IntegrationRow
 					name="Bitbucket"
 					icon={
@@ -143,13 +144,14 @@ export function IntegrationsSettings() {
 						</svg>
 					}
 					connected={atlassianStatus?.bitbucket.connected ?? false}
-					displayName={atlassianStatus?.bitbucket.connected ? atlassianStatus.bitbucket.displayName : undefined}
+					displayName={
+						atlassianStatus?.bitbucket.connected ? atlassianStatus.bitbucket.displayName : undefined
+					}
 					email={atlassianStatus?.bitbucket.connected ? atlassianStatus.bitbucket.email : undefined}
 					isPending={atlassianConnect.isPending || atlassianDisconnect.isPending}
 					onConnect={() => atlassianConnect.mutate({ service: "bitbucket" })}
 					onDisconnect={() => atlassianDisconnect.mutate({ service: "bitbucket" })}
 				/>
-				<div className="mx-4 border-t border-[var(--border-subtle)]" />
 				<IntegrationRow
 					name="Linear"
 					icon={
@@ -164,7 +166,6 @@ export function IntegrationsSettings() {
 					onConnect={() => linearConnect.mutate()}
 					onDisconnect={() => linearDisconnect.mutate()}
 				/>
-				<div className="mx-4 border-t border-[var(--border-subtle)]" />
 				<IntegrationRow
 					name="GitHub"
 					icon={
