@@ -1,9 +1,7 @@
-import { useState } from "react";
 import type { SidebarSegment } from "../../shared/types";
 import { useProjectStore } from "../stores/projects";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
-import { DaemonInspector } from "./DaemonInspector";
 import { ProjectList } from "./ProjectList";
 import { PullRequestsTab } from "./PullRequestsTab";
 import { SidebarRail } from "./SidebarRail";
@@ -19,7 +17,6 @@ export function Sidebar({ collapsed, onExpand }: SidebarProps) {
 	const { openAddModal, openSettings } = useProjectStore();
 	const segment = useTabStore((s) => s.sidebarSegment);
 	const setSidebarSegment = useTabStore((s) => s.setSidebarSegment);
-	const [showDaemonInspector, setShowDaemonInspector] = useState(false);
 
 	// Check if any AI reviews need attention (ready or failed)
 	const reviewDraftsQuery = trpc.aiReview.getReviewDrafts.useQuery(undefined, {
@@ -127,8 +124,8 @@ export function Sidebar({ collapsed, onExpand }: SidebarProps) {
 				{segment === "prs" && <PullRequestsTab />}
 			</div>
 
-			{/* Footer — Settings + Daemon Inspector */}
-			<div className="flex items-center gap-1 border-t border-[var(--border-subtle)] p-2">
+			{/* Footer — Settings */}
+			<div className="flex items-center border-t border-[var(--border-subtle)] p-2">
 				<Tooltip label="Settings" actionId="general.settings">
 					<button
 						type="button"
@@ -153,29 +150,7 @@ export function Sidebar({ collapsed, onExpand }: SidebarProps) {
 						<span className="truncate">Settings</span>
 					</button>
 				</Tooltip>
-				<button
-					type="button"
-					onClick={() => setShowDaemonInspector(true)}
-					title="Daemon Inspector"
-					className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-[6px] text-[var(--text-quaternary)] transition-all duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-secondary)]"
-				>
-					<svg
-						aria-hidden="true"
-						width="14"
-						height="14"
-						viewBox="0 0 24 24"
-						fill="none"
-						stroke="currentColor"
-						strokeWidth="1.5"
-						strokeLinecap="round"
-						strokeLinejoin="round"
-					>
-						<polyline points="4 17 10 11 4 5" />
-						<line x1="12" y1="19" x2="20" y2="19" />
-					</svg>
-				</button>
 			</div>
-			{showDaemonInspector && <DaemonInspector onClose={() => setShowDaemonInspector(false)} />}
 		</div>
 	);
 }
