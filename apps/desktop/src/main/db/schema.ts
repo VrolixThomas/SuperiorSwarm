@@ -9,6 +9,7 @@ export const projects = sqliteTable("projects", {
 	color: text("color"),
 	githubOwner: text("github_owner"),
 	githubRepo: text("github_repo"),
+	remoteHost: text("remote_host"),
 	status: text("status", { enum: ["cloning", "initializing", "ready", "error"] })
 		.notNull()
 		.default("ready"),
