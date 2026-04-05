@@ -36,7 +36,7 @@ const socketServer = new SocketServer(ptyManager, scrollbackStore, SOCKET_PATH);
 const flushInterval = setInterval(() => socketServer.flush(), FLUSH_INTERVAL_MS);
 
 const IDLE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
-const DEV_ORPHAN_GRACE_MS = 60_000; // 60 seconds before disposing orphaned PTYs in dev mode
+const DEV_ORPHAN_GRACE_MS = 20 * 60 * 1000; // 20 minutes before disposing orphaned PTYs in dev mode
 let idleTimer: ReturnType<typeof setTimeout> | null = null;
 let devOrphanTimer: ReturnType<typeof setTimeout> | null = null;
 
