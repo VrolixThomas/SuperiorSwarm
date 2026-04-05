@@ -70,7 +70,7 @@ function createWindow() {
 app.whenReady().then(async () => {
 	const instanceId = daemonInstanceId(__dirname);
 	const paths = daemonPaths(instanceId);
-	daemonClient = new DaemonClient(paths.socketPath, paths.pidPath, paths.logPath);
+	daemonClient = new DaemonClient(paths.socketPath, paths.pidPath, paths.logPath, !app.isPackaged);
 	setDaemonClient(daemonClient);
 
 	setupTerminalIPC(daemonClient);
