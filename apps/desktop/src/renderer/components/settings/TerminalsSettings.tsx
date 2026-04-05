@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { DaemonInspectorData } from "../../../shared/types";
+import { usePaneStore } from "../../stores/pane-store";
 import { useTabStore } from "../../stores/tab-store";
 import { trpc } from "../../trpc/client";
 import { PageHeading, SectionLabel } from "./SectionHeading";
-import { Stat } from "./shared";
+import { Stat, shortPath } from "./shared";
 
 type SortMode = "by-workspace" | "by-status";
 
@@ -14,11 +15,6 @@ interface SessionRow {
 	workspaceName: string | null;
 	workspaceType: string | null;
 	status: "active" | "orphaned" | "ghost" | "db-only";
-}
-
-function shortPath(p: string): string {
-	const parts = p.split("/");
-	return parts.length > 2 ? parts.slice(-2).join("/") : p;
 }
 
 function statusBadge(status: SessionRow["status"]) {
@@ -51,11 +47,12 @@ export function TerminalsSettings() {
 		staleTime: 0,
 		refetchOnMount: true,
 	});
-	const dbRefetchRef = useRef(dbQuery.refetch);
-	dbRefetchRef.current = dbQuery.refetch;
 
 	const allTabs = useTabStore((s) => s.getAllTabs)();
-	const rendererTabIds = new Set(allTabs.filter((t) => t.kind === "terminal").map((t) => t.id));
+	const rendererTabIds = useMemo(
+		() => new Set(allTabs.filter((t) => t.kind === "terminal").map((t) => t.id)),
+		[allTabs]
+	);
 
 	const refresh = useCallback(async () => {
 		setLoading(true);
@@ -66,8 +63,8 @@ export function TerminalsSettings() {
 			setDaemon(null);
 		}
 		setLoading(false);
-		dbRefetchRef.current();
-	}, []);
+		dbQuery.refetch();
+	}, [dbQuery.refetch]);
 
 	useEffect(() => {
 		refresh();
@@ -81,6 +78,15 @@ export function TerminalsSettings() {
 			} catch {
 				// best effort
 			}
+			// Remove the terminal tab from the UI if it exists
+			const tab = allTabs.find((t) => t.kind === "terminal" && t.id === id);
+			if (tab) {
+				const paneStore = usePaneStore.getState();
+				const pane = paneStore.findPaneForTab(tab.workspaceId, id);
+				if (pane) {
+					paneStore.removeTabFromPane(tab.workspaceId, pane.id, id);
+				}
+			}
 			setDisposing((s) => {
 				const next = new Set(s);
 				next.delete(id);
@@ -88,7 +94,7 @@ export function TerminalsSettings() {
 			});
 			refresh();
 		},
-		[refresh],
+		[refresh, allTabs]
 	);
 
 	const handleKillAllOrphaned = useCallback(async () => {
@@ -108,11 +114,7 @@ export function TerminalsSettings() {
 	// Build unified session list
 	const daemonSessionMap = new Map(daemon?.daemonSessions.map((s) => [s.id, s]) ?? []);
 	const dbSessionMap = new Map(dbQuery.data?.sessions.map((s) => [s.id, s]) ?? []);
-	const allIds = new Set([
-		...daemonSessionMap.keys(),
-		...dbSessionMap.keys(),
-		...rendererTabIds,
-	]);
+	const allIds = new Set([...daemonSessionMap.keys(), ...dbSessionMap.keys(), ...rendererTabIds]);
 
 	const callbackSet = new Set(daemon?.callbackIds ?? []);
 
@@ -225,9 +227,7 @@ export function TerminalsSettings() {
 									)}
 									{statusBadge(row.status)}
 									{row.pid && (
-										<span className="text-[10px] text-[var(--text-quaternary)]">
-											PID {row.pid}
-										</span>
+										<span className="text-[10px] text-[var(--text-quaternary)]">PID {row.pid}</span>
 									)}
 								</div>
 								<div
