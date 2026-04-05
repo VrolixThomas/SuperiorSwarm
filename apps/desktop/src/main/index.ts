@@ -27,6 +27,7 @@ import { serverManager } from "./lsp/server-manager";
 import { DaemonClient } from "./terminal/daemon-client";
 import { setDaemonClient } from "./terminal/daemon-instance";
 import { setupTerminalIPC } from "./terminal/ipc";
+import { cleanupStaleDaemons } from "./terminal/stale-daemon-cleanup";
 import { setupTRPCIPC } from "./trpc/ipc-link";
 import { appRouter } from "./trpc/routers";
 import { initializeUpdater } from "./updater";
@@ -187,6 +188,9 @@ app.whenReady().then(async () => {
 			}
 		}
 	});
+
+	// Clean up zombie daemons from previous dev sessions
+	cleanupStaleDaemons(daemonInstanceId(__dirname));
 
 	// Background tasks — none of these block the UI
 	cleanupStaleReviews();
