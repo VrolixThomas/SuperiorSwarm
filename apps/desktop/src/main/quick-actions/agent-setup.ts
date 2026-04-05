@@ -45,32 +45,26 @@ function getSettings(): schema.AiReviewSettings {
 		.get()!;
 }
 
-function buildSetupPrompt(projectId: string, repoPath: string): string {
-	return `You are helping set up quick action buttons for a Git repository in SuperiorSwarm.
+export function buildDefaultPrompt(repoPath: string): string {
+	return `Explore this repository and set up quick action buttons for common workflows.
 
-Repository: ${repoPath}
-Project ID: ${projectId}
+Look at package.json, Makefile, Cargo.toml, pyproject.toml, scripts/, etc. to understand the project.
 
-Quick action buttons appear in the top bar and let developers run common commands (build, test, lint, etc.) with a single click or keyboard shortcut.
+Use the MCP tools:
+- list_quick_actions — see what's already configured
+- add_quick_action — add new buttons (label, command, scope)
+- remove_quick_action — remove existing ones
 
-Your job:
-1. Explore the repository to understand what kind of project this is (look at package.json, Makefile, scripts/, etc.)
-2. Call \`list_quick_actions\` to see what quick actions are already configured
-3. Suggest and add relevant quick actions using \`add_quick_action\` for common workflows such as:
-   - Build / compile
-   - Test / run tests
-   - Lint / format
-   - Start dev server
-   - Any other project-specific commands you find
-4. Use \`scope: "repo"\` for project-specific commands, \`scope: "global"\` only for universally applicable ones
-5. Keep labels short (1-2 words), e.g. "Build", "Test", "Lint", "Dev"
+Suggest actions for: build, test, lint, dev server, type-check, or anything project-specific.
+Keep labels short (1-2 words). Use scope "repo" for project-specific commands.
 
-Use the MCP tools to add the quick actions. Do not ask for confirmation — just explore and add the most useful ones.`;
+Repository: ${repoPath}`;
 }
 
 export async function launchSetupAgent(
 	projectId: string,
-	repoPath: string
+	repoPath: string,
+	customPrompt?: string
 ): Promise<AgentSetupLaunchInfo> {
 	const sessionId = randomUUID();
 	const dbPath = join(app.getPath("userData"), "superiorswarm.db");
@@ -88,9 +82,10 @@ export async function launchSetupAgent(
 	// Use the standalone MCP server (same path resolution as cli-presets.ts)
 	const standaloneServerPath = resolve(dirname(__dirname), "..", "mcp-standalone", "server.mjs");
 
-	// Write the prompt file
+	// Write the prompt file — use custom prompt if provided, otherwise default
 	const promptFilePath = join(sessionDir, "setup-prompt.txt");
-	writeFileSync(promptFilePath, buildSetupPrompt(projectId, repoPath), "utf-8");
+	const promptText = customPrompt || buildDefaultPrompt(repoPath);
+	writeFileSync(promptFilePath, promptText, "utf-8");
 
 	// Write MCP config with quick-action-specific env vars.
 	// We write .mcp.json directly since setupMcp would inject solve-mode env vars,

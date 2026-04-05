@@ -16,20 +16,40 @@ interface QuickActionPopoverProps {
 	};
 }
 
+const DEFAULT_AGENT_PROMPT = (repoPath: string) =>
+	`Explore this repository and set up quick action buttons for common workflows.
+
+Look at package.json, Makefile, Cargo.toml, pyproject.toml, scripts/, etc. to understand the project.
+
+Use the MCP tools:
+- list_quick_actions — see what's already configured
+- add_quick_action — add new buttons (label, command, scope)
+- remove_quick_action — remove existing ones
+
+Suggest actions for: build, test, lint, dev server, type-check, or anything project-specific.
+Keep labels short (1-2 words). Use scope "repo" for project-specific commands.
+
+Repository: ${repoPath}`;
+
+type Mode = "manual" | "agent";
+
 export function QuickActionPopover({
 	projectId,
 	repoPath,
 	onClose,
 	editAction,
 }: QuickActionPopoverProps) {
+	const [mode, setMode] = useState<Mode>(editAction ? "manual" : "manual");
 	const [label, setLabel] = useState(editAction?.label ?? "");
 	const [command, setCommand] = useState(editAction?.command ?? "");
 	const [cwd, setCwd] = useState(editAction?.cwd ?? "");
 	const [shortcut, setShortcut] = useState(editAction?.shortcut ?? "");
 	const [scope, setScope] = useState<"global" | "repo">(
-		editAction ? (editAction.projectId === null ? "global" : "repo") : "repo"
+		editAction ? (editAction.projectId === null ? "global" : "repo") : "repo",
 	);
+	const [agentPrompt, setAgentPrompt] = useState(DEFAULT_AGENT_PROMPT(repoPath));
 	const labelRef = useRef<HTMLInputElement>(null);
+	const promptRef = useRef<HTMLTextAreaElement>(null);
 
 	const activeWorkspaceId = useTabStore((s) => s.activeWorkspaceId);
 	const addTerminalTab = useTabStore((s) => s.addTerminalTab);
@@ -50,8 +70,12 @@ export function QuickActionPopover({
 	const launchAgent = trpc.quickActions.launchSetupAgent.useMutation();
 
 	useEffect(() => {
-		labelRef.current?.focus();
-	}, []);
+		if (mode === "manual") {
+			labelRef.current?.focus();
+		} else {
+			promptRef.current?.focus();
+		}
+	}, [mode]);
 
 	const handleShortcutCapture = useCallback((e: React.KeyboardEvent) => {
 		e.preventDefault();
@@ -89,162 +113,245 @@ export function QuickActionPopover({
 		}
 	}
 
+	function handleLaunchAgent() {
+		if (!activeWorkspaceId) return;
+		launchAgent.mutate(
+			{ projectId, repoPath, prompt: agentPrompt.trim() || undefined },
+			{
+				onSuccess: ({ launchScript }) => {
+					const tabId = addTerminalTab(activeWorkspaceId, repoPath, "Setup Quick Actions");
+					setTimeout(() => {
+						window.electron.terminal.write(tabId, `bash '${launchScript}'\n`);
+					}, 300);
+					onClose();
+				},
+			},
+		);
+	}
+
 	return (
 		<div className="fixed inset-0 z-50" onClick={onClose}>
 			<div
-				className="absolute right-4 top-12 w-[280px] rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] p-3 shadow-xl"
+				className="absolute right-4 top-12 w-[320px] rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] shadow-xl"
 				onClick={(e) => e.stopPropagation()}
 			>
-				<div className="mb-3 text-[13px] font-medium text-[var(--text)]">
-					{editAction ? "Edit Quick Action" : "New Quick Action"}
-				</div>
-
-				<div className="flex flex-col gap-2">
-					{/* Label */}
-					<div>
-						<div className="mb-1 text-[10px] uppercase text-[var(--text-quaternary)]">Label</div>
-						<input
-							ref={labelRef}
-							type="text"
-							value={label}
-							onChange={(e) => setLabel(e.target.value)}
-							placeholder="Build"
-							className="w-full rounded border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1 text-[12px] text-[var(--text)] placeholder:text-[var(--text-quaternary)] focus:border-[var(--accent)] focus:outline-none"
-						/>
-					</div>
-
-					{/* Command */}
-					<div>
-						<div className="mb-1 text-[10px] uppercase text-[var(--text-quaternary)]">Command</div>
-						<input
-							type="text"
-							value={command}
-							onChange={(e) => setCommand(e.target.value)}
-							placeholder="bun run build"
-							className="w-full rounded border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1 font-mono text-[12px] text-[var(--text)] placeholder:text-[var(--text-quaternary)] focus:border-[var(--accent)] focus:outline-none"
-						/>
-					</div>
-
-					{/* Working Directory */}
-					<div>
-						<div className="mb-1 text-[10px] uppercase text-[var(--text-quaternary)]">
-							Directory <span className="normal-case text-[var(--text-quaternary)]">(optional)</span>
-						</div>
-						<input
-							type="text"
-							value={cwd}
-							onChange={(e) => setCwd(e.target.value)}
-							placeholder={repoPath}
-							className="w-full rounded border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1 font-mono text-[12px] text-[var(--text)] placeholder:text-[var(--text-quaternary)] focus:border-[var(--accent)] focus:outline-none"
-						/>
-					</div>
-
-					{/* Shortcut */}
-					<div>
-						<div className="mb-1 text-[10px] uppercase text-[var(--text-quaternary)]">
-							Shortcut <span className="normal-case text-[var(--text-quaternary)]">(optional)</span>
-						</div>
-						<input
-							type="text"
-							value={shortcut}
-							onKeyDown={handleShortcutCapture}
-							readOnly
-							placeholder="Press a key combination..."
-							className="w-full cursor-pointer rounded border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1 text-[12px] text-[var(--text)] placeholder:text-[var(--text-quaternary)] focus:border-[var(--accent)] focus:outline-none"
-						/>
-						{shortcut && (
+				{/* Header with mode tabs */}
+				<div className="flex items-center border-b border-[var(--border-subtle)] px-1 pt-1">
+					{!editAction && (
+						<>
 							<button
 								type="button"
-								onClick={() => setShortcut("")}
-								className="mt-1 text-[10px] text-[var(--text-quaternary)] hover:text-[var(--text-secondary)]"
-							>
-								Clear shortcut
-							</button>
-						)}
-					</div>
-
-					{/* Scope Toggle */}
-					<div>
-						<div className="mb-1 text-[10px] uppercase text-[var(--text-quaternary)]">Scope</div>
-						<div className="flex gap-1">
-							<button
-								type="button"
-								onClick={() => setScope("repo")}
-								className={`rounded px-2.5 py-1 text-[11px] transition-colors ${
-									scope === "repo"
-										? "bg-[var(--accent)] text-white"
-										: "bg-[var(--bg-base)] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
+								onClick={() => setMode("manual")}
+								className={`relative px-3 py-2 text-[11px] font-medium transition-colors ${
+									mode === "manual"
+										? "text-[var(--text)]"
+										: "text-[var(--text-quaternary)] hover:text-[var(--text-tertiary)]"
 								}`}
 							>
-								This repo
+								Manual
+								{mode === "manual" && (
+									<span className="absolute bottom-0 left-3 right-3 h-[2px] rounded-full bg-[var(--accent)]" />
+								)}
 							</button>
 							<button
 								type="button"
-								onClick={() => setScope("global")}
-								className={`rounded px-2.5 py-1 text-[11px] transition-colors ${
-									scope === "global"
-										? "bg-[var(--accent)] text-white"
-										: "bg-[var(--bg-base)] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
+								onClick={() => setMode("agent")}
+								className={`relative px-3 py-2 text-[11px] font-medium transition-colors ${
+									mode === "agent"
+										? "text-[var(--text)]"
+										: "text-[var(--text-quaternary)] hover:text-[var(--text-tertiary)]"
 								}`}
 							>
-								Global
+								Agent
+								{mode === "agent" && (
+									<span className="absolute bottom-0 left-3 right-3 h-[2px] rounded-full bg-[var(--accent)]" />
+								)}
 							</button>
+						</>
+					)}
+					{editAction && (
+						<div className="px-3 py-2 text-[13px] font-medium text-[var(--text)]">
+							Edit Quick Action
 						</div>
-					</div>
+					)}
 				</div>
 
-				{/* Ask agent */}
-				{!editAction && (
-					<div className="mt-2 border-t border-[var(--border-subtle)] pt-2">
-						<p className="mb-1.5 px-0.5 text-[10px] text-[var(--text-quaternary)]">
-							Opens a CLI agent that explores your repo and suggests commands
-						</p>
-						<button
-							type="button"
-							onClick={() => {
-								if (!activeWorkspaceId) return;
-								launchAgent.mutate(
-									{ projectId, repoPath },
-									{
-										onSuccess: ({ launchScript }) => {
-											const tabId = addTerminalTab(
-												activeWorkspaceId,
-												repoPath,
-												"Setup Quick Actions",
-											);
-											setTimeout(() => {
-												window.electron.terminal.write(tabId, `bash '${launchScript}'\n`);
-											}, 300);
-											onClose();
-										},
-									},
-								);
-							}}
-							disabled={launchAgent.isPending || !activeWorkspaceId}
-							className="w-full rounded bg-[var(--bg-base)] px-2 py-1.5 text-left text-[11px] text-[var(--text-secondary)] hover:bg-[rgba(255,255,255,0.06)] disabled:opacity-40"
-						>
-							{launchAgent.isPending ? "Launching agent..." : "Auto-detect with agent"}
-						</button>
-					</div>
-				)}
+				<div className="p-3">
+					{/* Manual mode */}
+					{mode === "manual" && (
+						<>
+							<div className="flex flex-col gap-2">
+								{/* Label */}
+								<div>
+									<div className="mb-1 text-[10px] uppercase text-[var(--text-quaternary)]">
+										Label
+									</div>
+									<input
+										ref={labelRef}
+										type="text"
+										value={label}
+										onChange={(e) => setLabel(e.target.value)}
+										placeholder="Build"
+										className="w-full rounded border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1 text-[12px] text-[var(--text)] placeholder:text-[var(--text-quaternary)] focus:border-[var(--accent)] focus:outline-none"
+									/>
+								</div>
 
-				{/* Actions */}
-				<div className="mt-3 flex items-center justify-end gap-2">
-					<button
-						type="button"
-						onClick={onClose}
-						className="rounded px-3 py-1 text-[11px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
-					>
-						Cancel
-					</button>
-					<button
-						type="button"
-						onClick={handleSave}
-						disabled={!label.trim() || !command.trim()}
-						className="rounded bg-[var(--accent)] px-3 py-1 text-[11px] text-white disabled:opacity-40"
-					>
-						{editAction ? "Save" : "Add"}
-					</button>
+								{/* Command */}
+								<div>
+									<div className="mb-1 text-[10px] uppercase text-[var(--text-quaternary)]">
+										Command
+									</div>
+									<input
+										type="text"
+										value={command}
+										onChange={(e) => setCommand(e.target.value)}
+										placeholder="bun run build"
+										className="w-full rounded border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1 font-mono text-[12px] text-[var(--text)] placeholder:text-[var(--text-quaternary)] focus:border-[var(--accent)] focus:outline-none"
+									/>
+								</div>
+
+								{/* Working Directory */}
+								<div>
+									<div className="mb-1 text-[10px] uppercase text-[var(--text-quaternary)]">
+										Directory{" "}
+										<span className="normal-case text-[var(--text-quaternary)]">(optional)</span>
+									</div>
+									<input
+										type="text"
+										value={cwd}
+										onChange={(e) => setCwd(e.target.value)}
+										placeholder={repoPath}
+										className="w-full rounded border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1 font-mono text-[12px] text-[var(--text)] placeholder:text-[var(--text-quaternary)] focus:border-[var(--accent)] focus:outline-none"
+									/>
+								</div>
+
+								{/* Shortcut */}
+								<div>
+									<div className="mb-1 text-[10px] uppercase text-[var(--text-quaternary)]">
+										Shortcut{" "}
+										<span className="normal-case text-[var(--text-quaternary)]">(optional)</span>
+									</div>
+									<input
+										type="text"
+										value={shortcut}
+										onKeyDown={handleShortcutCapture}
+										readOnly
+										placeholder="Press a key combination..."
+										className="w-full cursor-pointer rounded border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1 text-[12px] text-[var(--text)] placeholder:text-[var(--text-quaternary)] focus:border-[var(--accent)] focus:outline-none"
+									/>
+									{shortcut && (
+										<button
+											type="button"
+											onClick={() => setShortcut("")}
+											className="mt-1 text-[10px] text-[var(--text-quaternary)] hover:text-[var(--text-secondary)]"
+										>
+											Clear shortcut
+										</button>
+									)}
+								</div>
+
+								{/* Scope Toggle */}
+								<div>
+									<div className="mb-1 text-[10px] uppercase text-[var(--text-quaternary)]">
+										Scope
+									</div>
+									<div className="flex gap-1">
+										<button
+											type="button"
+											onClick={() => setScope("repo")}
+											className={`rounded px-2.5 py-1 text-[11px] transition-colors ${
+												scope === "repo"
+													? "bg-[var(--accent)] text-white"
+													: "bg-[var(--bg-base)] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
+											}`}
+										>
+											This repo
+										</button>
+										<button
+											type="button"
+											onClick={() => setScope("global")}
+											className={`rounded px-2.5 py-1 text-[11px] transition-colors ${
+												scope === "global"
+													? "bg-[var(--accent)] text-white"
+													: "bg-[var(--bg-base)] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
+											}`}
+										>
+											Global
+										</button>
+									</div>
+								</div>
+							</div>
+
+							{/* Manual actions */}
+							<div className="mt-3 flex items-center justify-end gap-2">
+								<button
+									type="button"
+									onClick={onClose}
+									className="rounded px-3 py-1 text-[11px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
+								>
+									Cancel
+								</button>
+								<button
+									type="button"
+									onClick={handleSave}
+									disabled={!label.trim() || !command.trim()}
+									className="rounded bg-[var(--accent)] px-3 py-1 text-[11px] text-white disabled:opacity-40"
+								>
+									{editAction ? "Save" : "Add"}
+								</button>
+							</div>
+						</>
+					)}
+
+					{/* Agent mode */}
+					{mode === "agent" && (
+						<>
+							<p className="mb-2 text-[11px] leading-relaxed text-[var(--text-tertiary)]">
+								A CLI agent will explore your repo and add quick actions using the
+								instructions below. You can edit them before launching.
+							</p>
+
+							{/* Editable prompt */}
+							<div>
+								<div className="mb-1 text-[10px] uppercase text-[var(--text-quaternary)]">
+									Agent instructions
+								</div>
+								<textarea
+									ref={promptRef}
+									value={agentPrompt}
+									onChange={(e) => setAgentPrompt(e.target.value)}
+									rows={10}
+									className="w-full resize-y rounded border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1.5 font-mono text-[11px] leading-relaxed text-[var(--text-secondary)] placeholder:text-[var(--text-quaternary)] focus:border-[var(--accent)] focus:outline-none"
+								/>
+								<button
+									type="button"
+									onClick={() => setAgentPrompt(DEFAULT_AGENT_PROMPT(repoPath))}
+									className="mt-1 text-[10px] text-[var(--text-quaternary)] hover:text-[var(--text-secondary)]"
+								>
+									Reset to default
+								</button>
+							</div>
+
+							{/* Agent actions */}
+							<div className="mt-3 flex items-center justify-end gap-2">
+								<button
+									type="button"
+									onClick={onClose}
+									className="rounded px-3 py-1 text-[11px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
+								>
+									Cancel
+								</button>
+								<button
+									type="button"
+									onClick={handleLaunchAgent}
+									disabled={launchAgent.isPending || !activeWorkspaceId || !agentPrompt.trim()}
+									className="rounded bg-[var(--accent)] px-3 py-1 text-[11px] text-white disabled:opacity-40"
+								>
+									{launchAgent.isPending ? "Launching..." : "Launch agent"}
+								</button>
+							</div>
+						</>
+					)}
 				</div>
 			</div>
 		</div>
