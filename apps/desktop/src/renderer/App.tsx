@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Group, Panel, Separator, useDefaultLayout, usePanelRef } from "react-resizable-panels";
 import type { LayoutNode, SerializedLayoutNode } from "../shared/pane-types";
+import { registerCoreActions } from "./actions/core-actions";
 import { AddRepositoryModal } from "./components/AddRepositoryModal";
 import { BranchActionMenu } from "./components/BranchActionMenu";
 import { BranchPalette } from "./components/BranchPalette";
+import { CommandPalette } from "./components/CommandPalette";
 import { CreateWorktreeModal } from "./components/CreateWorktreeModal";
 import { DaemonStatus } from "./components/DaemonStatus";
 import { DiffPanel } from "./components/DiffPanel";
@@ -15,7 +17,7 @@ import { SettingsPage } from "./components/settings/SettingsPage";
 import { UpdateToast } from "./components/UpdateToast";
 import { WhatsNewModal } from "./components/WhatsNewModal";
 import { useAgentAlertListener } from "./hooks/useAgentAlertListener";
-import { usePaneShortcuts } from "./hooks/usePaneShortcuts";
+import { useShortcutListener } from "./hooks/useShortcutListener";
 import {
 	setupDiagnosticsListener,
 	setupGoToDefinitionHandler,
@@ -341,8 +343,13 @@ function AuthenticatedApp() {
 		};
 	}, []);
 
-	usePaneShortcuts();
+	useShortcutListener();
 	useAgentAlertListener();
+
+	// Register core keyboard actions once on mount
+	useEffect(() => {
+		registerCoreActions();
+	}, []);
 
 	// Branch palette mutations and action menu state
 	const utils = trpc.useUtils();
@@ -352,6 +359,21 @@ function AuthenticatedApp() {
 	const rebaseStartMutation = trpc.rebase.start.useMutation({
 		onError: (err) => console.error("[App] rebase.start failed:", err.message),
 	});
+	const pushMutation = trpc.remote.push.useMutation({
+		onSuccess: () => utils.branches.getStatus.invalidate(),
+	});
+	const pullMutation = trpc.remote.pull.useMutation({
+		onSuccess: () => {
+			utils.branches.getStatus.invalidate();
+			utils.branches.list.invalidate();
+			utils.diff.getWorkingTreeStatus.invalidate();
+			utils.diff.getWorkingTreeDiff.invalidate();
+		},
+	});
+	const fetchMutation = trpc.remote.fetch.useMutation({
+		onSuccess: () => utils.branches.list.invalidate(),
+	});
+	const checkUpdatesMutation = trpc.updates.checkForUpdates.useMutation();
 
 	const [actionMenu, setActionMenu] = useState<{
 		branch: string;
@@ -359,7 +381,7 @@ function AuthenticatedApp() {
 		position: { x: number; y: number };
 	} | null>(null);
 
-	const { openPalette, closePalette, isPaletteOpen, setMergeState } = useBranchStore();
+	const { closePalette, setMergeState } = useBranchStore();
 	const isMerging = useBranchStore((s) => s.mergeState !== null);
 
 	// Derive active projectId from the active workspace
@@ -441,22 +463,6 @@ function AuthenticatedApp() {
 		);
 	}
 
-	// Cmd+Shift+B — toggle branch palette
-	useEffect(() => {
-		function handleKeyDown(e: KeyboardEvent) {
-			if (e.key === "b" && e.metaKey && e.shiftKey) {
-				e.preventDefault();
-				if (isPaletteOpen) {
-					closePalette();
-				} else if (activeProjectId) {
-					openPalette();
-				}
-			}
-		}
-		document.addEventListener("keydown", handleKeyDown);
-		return () => document.removeEventListener("keydown", handleKeyDown);
-	}, [isPaletteOpen, openPalette, closePalette, activeProjectId]);
-
 	// Query update status on mount and poll when an update is being downloaded
 	const updateStore = useUpdateStore();
 	const isDownloading = updateStore.toastState === "downloading";
@@ -519,6 +525,63 @@ function AuthenticatedApp() {
 			diffPanelRef.current.collapse();
 		}
 	}, [rightPanelOpen, diffPanelRef, sidebarSegment]);
+
+	// Handle toggle-sidebar action from keyboard shortcut
+	useEffect(() => {
+		function handleToggleSidebar() {
+			const panel = sidebarPanelRef.current;
+			if (!panel) return;
+			if (panel.isCollapsed()) panel.expand();
+			else panel.collapse();
+		}
+		window.addEventListener("app:toggle-sidebar", handleToggleSidebar);
+		return () => window.removeEventListener("app:toggle-sidebar", handleToggleSidebar);
+	}, [sidebarPanelRef]);
+
+	// Handle create-worktree action from command palette
+	useEffect(() => {
+		function handleCreateWorktree() {
+			if (activeProjectId) {
+				useProjectStore.getState().openCreateWorktreeModal(activeProjectId);
+			}
+		}
+		window.addEventListener("app:create-worktree", handleCreateWorktree);
+		return () => window.removeEventListener("app:create-worktree", handleCreateWorktree);
+	}, [activeProjectId]);
+
+	useEffect(() => {
+		function handlePush() {
+			if (!activeProjectId) return;
+			const cwd = useTabStore.getState().activeWorkspaceCwd || undefined;
+			pushMutation.mutate({ projectId: activeProjectId, cwd });
+		}
+		function handlePull() {
+			if (!activeProjectId) return;
+			const cwd = useTabStore.getState().activeWorkspaceCwd || undefined;
+			pullMutation.mutate({ projectId: activeProjectId, cwd });
+		}
+		function handleFetch() {
+			if (!activeProjectId) return;
+			const cwd = useTabStore.getState().activeWorkspaceCwd || undefined;
+			fetchMutation.mutate({ projectId: activeProjectId, cwd });
+		}
+		window.addEventListener("app:push-shortcut", handlePush);
+		window.addEventListener("app:pull-shortcut", handlePull);
+		window.addEventListener("app:fetch-shortcut", handleFetch);
+		return () => {
+			window.removeEventListener("app:push-shortcut", handlePush);
+			window.removeEventListener("app:pull-shortcut", handlePull);
+			window.removeEventListener("app:fetch-shortcut", handleFetch);
+		};
+	}, [activeProjectId, pushMutation, pullMutation, fetchMutation]);
+
+	useEffect(() => {
+		function handleCheckUpdates() {
+			checkUpdatesMutation.mutate();
+		}
+		window.addEventListener("app:check-updates", handleCheckUpdates);
+		return () => window.removeEventListener("app:check-updates", handleCheckUpdates);
+	}, [checkUpdatesMutation]);
 
 	if (sidebarView === "settings") {
 		return <SettingsPage />;
@@ -603,6 +666,7 @@ function AuthenticatedApp() {
 			<DaemonStatus />
 			<UpdateToast />
 			<WhatsNewModal />
+			<CommandPalette />
 			{activeProjectId && (
 				<BranchPalette
 					projectId={activeProjectId}
