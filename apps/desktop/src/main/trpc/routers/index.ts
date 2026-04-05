@@ -10,6 +10,7 @@ import { linearRouter } from "./linear";
 import { mergeRouter } from "./merge";
 import { prPollerRouter } from "./pr-poller";
 import { projectsRouter } from "./projects";
+import { quickActionsRouter } from "./quick-actions";
 import { rebaseRouter } from "./rebase";
 import { remoteRouter } from "./remote";
 import { sharedFilesRouter } from "./shared-files";
@@ -23,6 +24,7 @@ export const appRouter = router({
 	aiReview: aiReviewRouter,
 	commentSolver: commentSolverRouter,
 	projects: projectsRouter,
+	quickActions: quickActionsRouter,
 	workspaces: workspacesRouter,
 	branches: branchesRouter,
 	merge: mergeRouter,
