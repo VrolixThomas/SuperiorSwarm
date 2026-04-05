@@ -59,7 +59,8 @@ export function QuickActionBar({
 		[],
 	);
 
-	const handleDragEnd = useCallback(() => {
+	const handleDragEnd = useCallback((e: React.DragEvent) => {
+		(e.target as HTMLElement).style.opacity = "";
 		setDragId(null);
 		setDropTarget(null);
 		dragCounterRef.current = 0;
