@@ -162,6 +162,7 @@ async function fetchJiraUser(
 ): Promise<{
 	accountId: string;
 	displayName: string;
+	email: string | null;
 }> {
 	const res = await fetch(`https://api.atlassian.com/ex/jira/${cloudId}/rest/api/3/myself`, {
 		headers: {
@@ -172,13 +173,22 @@ async function fetchJiraUser(
 	if (!res.ok) {
 		throw new Error(`Failed to fetch Jira user: ${res.status}`);
 	}
-	const user = (await res.json()) as { accountId: string; displayName: string };
-	return { accountId: user.accountId, displayName: user.displayName };
+	const user = (await res.json()) as {
+		accountId: string;
+		displayName: string;
+		emailAddress?: string;
+	};
+	return {
+		accountId: user.accountId,
+		displayName: user.displayName,
+		email: user.emailAddress ?? null,
+	};
 }
 
 async function fetchBitbucketUser(accessToken: string): Promise<{
 	accountId: string;
 	displayName: string;
+	email: string | null;
 }> {
 	const res = await fetch("https://api.bitbucket.org/2.0/user", {
 		headers: {
@@ -189,8 +199,31 @@ async function fetchBitbucketUser(accessToken: string): Promise<{
 	if (!res.ok) {
 		throw new Error(`Failed to fetch Bitbucket user: ${res.status}`);
 	}
-	const user = (await res.json()) as { account_id: string; display_name: string };
-	return { accountId: user.account_id, displayName: user.display_name };
+	const user = (await res.json()) as {
+		account_id: string;
+		display_name: string;
+	};
+
+	// Fetch primary email from the dedicated emails endpoint
+	let email: string | null = null;
+	try {
+		const emailRes = await fetch("https://api.bitbucket.org/2.0/user/emails", {
+			headers: {
+				Authorization: `Bearer ${accessToken}`,
+				Accept: "application/json",
+			},
+		});
+		if (emailRes.ok) {
+			const data = (await emailRes.json()) as {
+				values: Array<{ email: string; is_primary: boolean }>;
+			};
+			email = data.values.find((e) => e.is_primary)?.email ?? data.values[0]?.email ?? null;
+		}
+	} catch {
+		// Email is optional — don't fail the flow
+	}
+
+	return { accountId: user.account_id, displayName: user.display_name, email };
 }
 
 export async function connectJira(): Promise<void> {
@@ -218,6 +251,7 @@ export async function connectJira(): Promise<void> {
 			siteUrl,
 			accountId: user.accountId,
 			displayName: user.displayName,
+			email: user.email,
 		});
 		console.log("[oauth] Jira connected successfully");
 	} finally {
@@ -247,6 +281,7 @@ export async function connectBitbucket(): Promise<void> {
 			expiresIn: tokens.expires_in,
 			accountId: user.accountId,
 			displayName: user.displayName,
+			email: user.email,
 		});
 		console.log("[oauth] Bitbucket connected successfully");
 	} finally {
