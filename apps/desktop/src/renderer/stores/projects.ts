@@ -1,5 +1,7 @@
 import { create } from "zustand";
 
+export type SettingsCategory = "general" | "integrations" | "ai-review" | "about";
+
 interface ProjectStore {
 	selectedProjectId: string | null;
 	expandedProjectIds: Set<string>;
@@ -16,8 +18,8 @@ interface ProjectStore {
 	openSharedFilesPanel: (projectId: string) => void;
 	closeSharedFilesPanel: () => void;
 	sidebarView: "main" | "settings";
-	settingsCategory: "general" | "integrations" | "ai-review" | "about";
-	setSettingsCategory: (category: "general" | "integrations" | "ai-review" | "about") => void;
+	settingsCategory: SettingsCategory;
+	setSettingsCategory: (category: SettingsCategory) => void;
 	openSettings: () => void;
 	closeSettings: () => void;
 	sidebarCollapsed: boolean;
