@@ -16,10 +16,12 @@ export type ActionCategory =
 	| "View"
 	| "Branch"
 	| "Terminal"
-	| "General";
+	| "General"
+	| "Quick Actions";
 
 export const CATEGORY_ORDER: ActionCategory[] = [
 	"General",
+	"Quick Actions",
 	"Git",
 	"Navigation",
 	"Branch",
