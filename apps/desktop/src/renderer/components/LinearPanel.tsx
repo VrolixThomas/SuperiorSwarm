@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useProjectStore } from "../stores/projects";
 import { trpc } from "../trpc/client";
 import { LinearIssueList } from "./LinearIssueList";
 import { SectionHeader } from "./SectionHeader";
@@ -12,7 +13,22 @@ export function LinearPanel() {
 
 	const [isOpen, setIsOpen] = useState(true);
 
-	if (!status?.connected) return null;
+	if (!status?.connected) {
+		return (
+			<div className="mt-2 border-t border-[var(--border-subtle)] px-3 py-2">
+				<span className="text-[12px] text-[var(--text-quaternary)]">
+					Connect Linear to see issues.{" "}
+				</span>
+				<button
+					type="button"
+					onClick={() => useProjectStore.getState().openSettingsToIntegrations("prs")}
+					className="text-[12px] text-[var(--accent)] hover:underline"
+				>
+					Connect in Settings
+				</button>
+			</div>
+		);
+	}
 
 	return (
 		<div className="mt-2 border-t border-[var(--border-subtle)] pt-2">
