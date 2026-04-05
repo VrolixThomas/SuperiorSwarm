@@ -3,22 +3,14 @@ import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import { BranchChip } from "./BranchChip";
 import { QuickActionBar } from "./QuickActionBar";
-import { QuickActionContextMenu } from "./QuickActionContextMenu";
+import { QuickActionContextMenu, type ContextMenuAction } from "./QuickActionContextMenu";
 import { QuickActionPopover } from "./QuickActionPopover";
 import { LayoutRenderer } from "./panes/LayoutRenderer";
 import { TicketsCanvas } from "./tickets/TicketsCanvas";
 import { usePaneStore } from "../stores/pane-store";
 
 interface ContextMenuState {
-	action: {
-		id: string;
-		label: string;
-		command: string;
-		cwd: string | null;
-		shortcut: string | null;
-		projectId: string | null;
-		sortOrder: number;
-	};
+	action: ContextMenuAction;
 	x: number;
 	y: number;
 }
