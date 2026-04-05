@@ -7,6 +7,7 @@ import { GeneralSettings } from "./GeneralSettings";
 import { IntegrationsSettings } from "./IntegrationsSettings";
 import { SettingsNav } from "./SettingsNav";
 import { TerminalsSettings } from "./TerminalsSettings";
+import { WorktreesSettings } from "./WorktreesSettings";
 
 function SettingsContent() {
 	const category = useProjectStore((s) => s.settingsCategory);
@@ -22,6 +23,8 @@ function SettingsContent() {
 			return <KeyboardShortcutsSettings />;
 		case "terminals":
 			return <TerminalsSettings />;
+		case "worktrees":
+			return <WorktreesSettings />;
 		case "about":
 			return <AboutSettings />;
 		default: {
