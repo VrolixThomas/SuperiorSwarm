@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 
@@ -16,6 +17,10 @@ export function QuickActionBar({
 }: QuickActionBarProps) {
 	const actionsQuery = trpc.quickActions.list.useQuery({ projectId });
 	const addTerminalTab = useTabStore((s) => s.addTerminalTab);
+
+	useEffect(() => {
+		window.electron.quickActions.syncShortcuts(projectId);
+	}, [projectId, actionsQuery.data]);
 
 	function handleRun(command: string, label: string, cwd: string | null) {
 		const resolvedCwd = cwd
