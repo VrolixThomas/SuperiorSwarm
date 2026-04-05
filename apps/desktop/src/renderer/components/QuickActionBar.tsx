@@ -42,7 +42,7 @@ export function QuickActionBar({
 			<button
 				type="button"
 				onClick={onAddClick}
-				className="rounded-[var(--radius-sm)] px-2 py-1 text-[12px] text-[var(--text-quaternary)] transition-colors duration-[var(--transition-fast)] hover:text-[var(--text-secondary)]"
+				className="shrink-0 rounded-[var(--radius-sm)] px-2 py-1 text-[12px] text-[var(--text-quaternary)] transition-colors duration-[var(--transition-fast)] hover:text-[var(--text-secondary)]"
 			>
 				+
 			</button>
@@ -51,29 +51,31 @@ export function QuickActionBar({
 
 	return (
 		<>
-			<span className="text-[var(--text-quaternary)]">|</span>
-			{actions.map((action) => (
-				<button
-					key={action.id}
-					type="button"
-					onClick={() => handleRun(action.command, action.label, action.cwd)}
-					onContextMenu={(e) => {
-						e.preventDefault();
-						window.dispatchEvent(
-							new CustomEvent("quick-action-context", {
-								detail: { action, x: e.clientX, y: e.clientY },
-							})
-						);
-					}}
-					className="rounded-[var(--radius-sm)] px-1.5 py-0.5 text-[12px] text-[var(--text-tertiary)] transition-colors duration-[var(--transition-fast)] hover:text-[var(--text)]"
-				>
-					{action.label}
-				</button>
-			))}
+			<span className="shrink-0 text-[var(--text-quaternary)]">|</span>
+			<div className="flex min-w-0 items-center gap-1 overflow-x-auto [&::-webkit-scrollbar]:hidden">
+				{actions.map((action) => (
+					<button
+						key={action.id}
+						type="button"
+						onClick={() => handleRun(action.command, action.label, action.cwd)}
+						onContextMenu={(e) => {
+							e.preventDefault();
+							window.dispatchEvent(
+								new CustomEvent("quick-action-context", {
+									detail: { action, x: e.clientX, y: e.clientY, allActions: actions },
+								})
+							);
+						}}
+						className="shrink-0 whitespace-nowrap rounded-[var(--radius-sm)] px-1.5 py-0.5 text-[12px] text-[var(--text-tertiary)] transition-colors duration-[var(--transition-fast)] hover:text-[var(--text)]"
+					>
+						{action.label}
+					</button>
+				))}
+			</div>
 			<button
 				type="button"
 				onClick={onAddClick}
-				className="rounded-[var(--radius-sm)] px-1.5 py-0.5 text-[12px] text-[var(--text-quaternary)] transition-colors duration-[var(--transition-fast)] hover:text-[var(--text-secondary)]"
+				className="shrink-0 rounded-[var(--radius-sm)] px-1.5 py-0.5 text-[12px] text-[var(--text-quaternary)] transition-colors duration-[var(--transition-fast)] hover:text-[var(--text-secondary)]"
 			>
 				+
 			</button>
