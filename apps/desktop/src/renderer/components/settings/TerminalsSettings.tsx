@@ -79,9 +79,10 @@ export function TerminalsSettings() {
 				// best effort
 			}
 			// Remove the terminal tab from the UI if it exists
-			const tab = allTabs.find((t) => t.kind === "terminal" && t.id === id);
+			const paneStore = usePaneStore.getState();
+			const tabs = useTabStore.getState().getAllTabs();
+			const tab = tabs.find((t) => t.kind === "terminal" && t.id === id);
 			if (tab) {
-				const paneStore = usePaneStore.getState();
 				const pane = paneStore.findPaneForTab(tab.workspaceId, id);
 				if (pane) {
 					paneStore.removeTabFromPane(tab.workspaceId, pane.id, id);
@@ -94,7 +95,7 @@ export function TerminalsSettings() {
 			});
 			refresh();
 		},
-		[refresh, allTabs]
+		[refresh]
 	);
 
 	const handleKillAllOrphaned = useCallback(async () => {
