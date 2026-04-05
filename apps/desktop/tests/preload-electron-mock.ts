@@ -48,11 +48,16 @@ mock.module("better-sqlite3", () => {
 
 		prepare(sql: string) {
 			const stmt = this._db.query(sql);
-			return {
+			const wrapper = {
 				run: (...params: unknown[]) => stmt.run(...params),
 				get: (...params: unknown[]) => stmt.get(...params),
 				all: (...params: unknown[]) => stmt.all(...params),
+				raw: () => ({
+					get: (...params: unknown[]) => stmt.values(...params)[0] ?? null,
+					all: (...params: unknown[]) => stmt.values(...params),
+				}),
 			};
+			return wrapper;
 		}
 
 		transaction<T>(fn: () => T): () => T {
