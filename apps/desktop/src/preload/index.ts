@@ -4,7 +4,6 @@ import type {
 	DaemonAPI,
 	DialogAPI,
 	LspAPI,
-	QuickActionsAPI,
 	SessionAPI,
 	SessionSaveData,
 	ShellAPI,
@@ -99,16 +98,6 @@ const daemonAPI: DaemonAPI = {
 	listSessions: () => ipcRenderer.invoke("daemon:listSessions"),
 };
 
-const quickActionsAPI: QuickActionsAPI = {
-	syncShortcuts: (projectId: string | null) =>
-		ipcRenderer.invoke("quick-actions:sync-shortcuts", projectId),
-	onTrigger: (callback) => {
-		// biome-ignore lint/suspicious/noExplicitAny: IPC bridge receives untyped data from main process
-		const handler = (_event: Electron.IpcRendererEvent, data: any) => callback(data);
-		ipcRenderer.on("quick-action:trigger", handler);
-		return () => ipcRenderer.removeListener("quick-action:trigger", handler);
-	},
-};
 
 const agentAlertAPI: AgentAlertAPI = {
 	onAlert: (callback) => {
@@ -132,5 +121,4 @@ contextBridge.exposeInMainWorld("electron", {
 	lsp: lspAPI,
 	daemon: daemonAPI,
 	agentAlert: agentAlertAPI,
-	quickActions: quickActionsAPI,
 });
