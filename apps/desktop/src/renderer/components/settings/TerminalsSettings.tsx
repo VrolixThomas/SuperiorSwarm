@@ -42,6 +42,7 @@ export function TerminalsSettings() {
 	const [daemon, setDaemon] = useState<DaemonInspectorData | null>(null);
 	const [loading, setLoading] = useState(true);
 	const [disposing, setDisposing] = useState<Set<string>>(new Set());
+	const [error, setError] = useState<string | null>(null);
 
 	const dbQuery = trpc.terminalSessions.listAll.useQuery(undefined, {
 		staleTime: 0,
@@ -73,10 +74,11 @@ export function TerminalsSettings() {
 	const handleDispose = useCallback(
 		async (id: string) => {
 			setDisposing((s) => new Set(s).add(id));
+			setError(null);
 			try {
 				await window.electron.terminal.dispose(id);
-			} catch {
-				// best effort
+			} catch (err) {
+				setError(`Failed to kill session: ${err instanceof Error ? err.message : "unknown error"}`);
 			}
 			// Remove the terminal tab from the UI if it exists
 			const paneStore = usePaneStore.getState();
@@ -100,13 +102,18 @@ export function TerminalsSettings() {
 
 	const handleKillAllOrphaned = useCallback(async () => {
 		if (!daemon) return;
+		setError(null);
 		const callbackSet = new Set(daemon.callbackIds);
 		const orphanIds = daemon.daemonSessions
 			.filter((s) => !rendererTabIds.has(s.id) && !callbackSet.has(s.id))
 			.map((s) => s.id);
-		await Promise.all(
-			orphanIds.map((id) => window.electron.terminal.dispose(id).catch(() => {}))
+		const results = await Promise.allSettled(
+			orphanIds.map((id) => window.electron.terminal.dispose(id))
 		);
+		const failures = results.filter((r) => r.status === "rejected").length;
+		if (failures > 0) {
+			setError(`Failed to kill ${failures} of ${orphanIds.length} orphaned sessions`);
+		}
 		refresh();
 	}, [daemon, rendererTabIds, refresh]);
 
@@ -170,6 +177,19 @@ export function TerminalsSettings() {
 				<Stat label="Orphaned" value={orphanCount} color="#ffd60a" />
 				<Stat label="DB rows" value={dbQuery.data?.sessions.length ?? "?"} />
 			</div>
+
+			{error && (
+				<div className="mb-4 flex items-center justify-between rounded-[8px] border border-[rgba(255,69,58,0.3)] bg-[rgba(255,69,58,0.08)] px-3 py-2 text-[11px] text-[#ff453a]">
+					<span>{error}</span>
+					<button
+						type="button"
+						onClick={() => setError(null)}
+						className="ml-2 text-[var(--text-quaternary)] hover:text-[var(--text-secondary)]"
+					>
+						Dismiss
+					</button>
+				</div>
+			)}
 
 			{/* Controls */}
 			<div className="mb-4 flex items-center justify-between">
