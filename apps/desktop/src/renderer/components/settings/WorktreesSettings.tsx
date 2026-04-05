@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { trpc } from "../../trpc/client";
 import { PageHeading, SectionLabel } from "./SectionHeading";
-import { Stat } from "./shared";
+import { Stat, shortPath } from "./shared";
 
 type WorktreeEntry = {
 	path: string;
@@ -16,24 +16,27 @@ type WorktreeEntry = {
 	existsOnDisk: boolean;
 };
 
-function shortPath(p: string): string {
-	const parts = p.split("/");
-	return parts.length > 2 ? parts.slice(-2).join("/") : p;
-}
-
 export function WorktreesSettings() {
 	const worktreeQuery = trpc.terminalSessions.listWorktrees.useQuery(undefined, {
 		staleTime: 0,
 		refetchOnMount: true,
 	});
+	const [confirmPath, setConfirmPath] = useState<string | null>(null);
+	const [error, setError] = useState<string | null>(null);
 	const removeMutation = trpc.terminalSessions.removeWorktree.useMutation({
-		onSuccess: () => worktreeQuery.refetch(),
-		onError: (err) => console.error("[removeWorktree]", err.message),
+		onSuccess: () => {
+			setError(null);
+			worktreeQuery.refetch();
+		},
+		onError: (err) => setError(`Failed to remove worktree: ${err.message}`),
 	});
 	const pruneMutation = trpc.terminalSessions.pruneWorktrees.useMutation({
-		onSuccess: () => worktreeQuery.refetch(),
+		onSuccess: () => {
+			setError(null);
+			worktreeQuery.refetch();
+		},
+		onError: (err) => setError(`Failed to prune worktrees: ${err.message}`),
 	});
-	const [confirmPath, setConfirmPath] = useState<string | null>(null);
 
 	const worktrees = worktreeQuery.data ?? [];
 	const ghostCount = worktrees.filter((w) => !w.existsOnDisk).length;
@@ -56,12 +59,21 @@ export function WorktreesSettings() {
 				<Stat label="Total" value={worktrees.length} />
 				<Stat label="On disk" value={worktrees.filter((w) => w.existsOnDisk).length} />
 				<Stat label="In DB" value={worktrees.filter((w) => w.inDb).length} />
-				<Stat
-					label="Ghosts"
-					value={ghostCount}
-					color={ghostCount > 0 ? "#ff453a" : undefined}
-				/>
+				<Stat label="Ghosts" value={ghostCount} color={ghostCount > 0 ? "#ff453a" : undefined} />
 			</div>
+
+			{error && (
+				<div className="mb-4 flex items-center justify-between rounded-[8px] border border-[rgba(255,69,58,0.3)] bg-[rgba(255,69,58,0.08)] px-3 py-2 text-[11px] text-[#ff453a]">
+					<span>{error}</span>
+					<button
+						type="button"
+						onClick={() => setError(null)}
+						className="ml-2 text-[var(--text-quaternary)] hover:text-[var(--text-secondary)]"
+					>
+						Dismiss
+					</button>
+				</div>
+			)}
 
 			{/* Controls */}
 			<div className="mb-4 flex items-center justify-between">
@@ -144,8 +156,7 @@ export function WorktreesSettings() {
 												</div>
 												<div className="mt-1 flex items-center gap-3 text-[10px] text-[var(--text-tertiary)]">
 													<span>
-														branch:{" "}
-														<span className="text-[var(--accent)]">{wt.branch}</span>
+														branch: <span className="text-[var(--accent)]">{wt.branch}</span>
 													</span>
 													{wt.workspaceName && <span>workspace: {wt.workspaceName}</span>}
 													<span className="text-[var(--text-quaternary)]">
