@@ -47,6 +47,7 @@ export function saveAuth(data: {
 	siteUrl?: string;
 	accountId: string;
 	displayName?: string;
+	email?: string | null;
 }) {
 	const db = getDb();
 	const expiresAt = new Date(Date.now() + data.expiresIn * 1000);
@@ -63,6 +64,7 @@ export function saveAuth(data: {
 			siteUrl: data.siteUrl ?? null,
 			accountId: data.accountId,
 			displayName: data.displayName ?? null,
+			email: data.email ?? null,
 		})
 		.onConflictDoUpdate({
 			target: atlassianAuth.service,
@@ -74,6 +76,7 @@ export function saveAuth(data: {
 				siteUrl: data.siteUrl ?? null,
 				accountId: data.accountId,
 				displayName: data.displayName ?? null,
+				email: data.email ?? null,
 			},
 		})
 		.run();
@@ -150,6 +153,7 @@ async function doRefresh(service: Service): Promise<string | null> {
 			siteUrl: auth.siteUrl ?? undefined,
 			accountId: auth.accountId,
 			displayName: auth.displayName ?? undefined,
+			email: auth.email ?? undefined,
 		});
 
 		return result.access_token;

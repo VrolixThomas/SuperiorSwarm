@@ -19,7 +19,12 @@ export const linearRouter = router({
 	getStatus: publicProcedure.query(() => {
 		const auth = getAuth();
 		return auth
-			? { connected: true as const, displayName: auth.displayName, accountId: auth.accountId }
+			? {
+					connected: true as const,
+					displayName: auth.displayName,
+					accountId: auth.accountId,
+					email: auth.email,
+				}
 			: { connected: false as const };
 	}),
 
