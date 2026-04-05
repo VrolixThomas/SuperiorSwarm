@@ -43,7 +43,7 @@ export class DaemonClient {
 		private socketPath: string,
 		private pidPath: string,
 		private logPath: string,
-		public devMode = false
+		private readonly devMode = false
 	) {}
 
 	get isConnected(): boolean {
