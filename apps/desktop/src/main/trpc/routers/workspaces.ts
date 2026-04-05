@@ -434,11 +434,7 @@ export const workspacesRouter = router({
 				throw new Error("Project not found");
 			}
 
-			if (pathExists) {
-				await removeWorktree(project.repoPath, worktree.path);
-			}
-
-			// Dispose daemon terminals before cascade deletes the workspace
+			// Dispose daemon terminals FIRST so shell processes release the worktree cwd
 			const wsSessions = db
 				.select({ id: terminalSessions.id })
 				.from(terminalSessions)
@@ -450,6 +446,10 @@ export const workspacesRouter = router({
 			}
 			if (wsSessions.length > 0) {
 				db.delete(terminalSessions).where(eq(terminalSessions.workspaceId, input.id)).run();
+			}
+
+			if (pathExists) {
+				await removeWorktree(project.repoPath, worktree.path);
 			}
 
 			db.delete(worktrees).where(eq(worktrees.id, worktree.id)).run();
