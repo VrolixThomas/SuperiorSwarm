@@ -190,37 +190,30 @@ async function fetchBitbucketUser(accessToken: string): Promise<{
 	displayName: string;
 	email: string | null;
 }> {
-	const res = await fetch("https://api.bitbucket.org/2.0/user", {
-		headers: {
-			Authorization: `Bearer ${accessToken}`,
-			Accept: "application/json",
-		},
-	});
-	if (!res.ok) {
-		throw new Error(`Failed to fetch Bitbucket user: ${res.status}`);
+	const headers = {
+		Authorization: `Bearer ${accessToken}`,
+		Accept: "application/json",
+	};
+
+	const [userRes, emailRes] = await Promise.all([
+		fetch("https://api.bitbucket.org/2.0/user", { headers }),
+		fetch("https://api.bitbucket.org/2.0/user/emails", { headers }).catch(() => null),
+	]);
+
+	if (!userRes.ok) {
+		throw new Error(`Failed to fetch Bitbucket user: ${userRes.status}`);
 	}
-	const user = (await res.json()) as {
+	const user = (await userRes.json()) as {
 		account_id: string;
 		display_name: string;
 	};
 
-	// Fetch primary email from the dedicated emails endpoint
 	let email: string | null = null;
-	try {
-		const emailRes = await fetch("https://api.bitbucket.org/2.0/user/emails", {
-			headers: {
-				Authorization: `Bearer ${accessToken}`,
-				Accept: "application/json",
-			},
-		});
-		if (emailRes.ok) {
-			const data = (await emailRes.json()) as {
-				values: Array<{ email: string; is_primary: boolean }>;
-			};
-			email = data.values.find((e) => e.is_primary)?.email ?? data.values[0]?.email ?? null;
-		}
-	} catch {
-		// Email is optional — don't fail the flow
+	if (emailRes?.ok) {
+		const data = (await emailRes.json()) as {
+			values: Array<{ email: string; is_primary: boolean }>;
+		};
+		email = data.values.find((e) => e.is_primary)?.email ?? data.values[0]?.email ?? null;
 	}
 
 	return { accountId: user.account_id, displayName: user.display_name, email };

@@ -1,6 +1,6 @@
 import { useEditorSettingsStore } from "../../stores/editor-settings";
 import { PageHeading, SectionLabel } from "./SectionHeading";
-import { Toggle } from "./Toggle";
+import { ToggleRow } from "./ToggleRow";
 
 export function GeneralSettings() {
 	const vimEnabled = useEditorSettingsStore((s) => s.vimEnabled);
@@ -12,15 +12,12 @@ export function GeneralSettings() {
 
 			<SectionLabel>Editor</SectionLabel>
 			<div className="overflow-hidden rounded-[10px] border border-[var(--border)] bg-[var(--bg-surface)]">
-				<div className="flex items-center justify-between px-4 py-3.5">
-					<div className="flex flex-col gap-0.5">
-						<span className="text-[13px] font-medium text-[var(--text)]">Vim Mode</span>
-						<span className="text-[12px] text-[var(--text-tertiary)]">
-							Vim keybindings in code editors
-						</span>
-					</div>
-					<Toggle checked={vimEnabled} onChange={() => setVimEnabled(!vimEnabled)} />
-				</div>
+				<ToggleRow
+					label="Vim Mode"
+					description="Vim keybindings in code editors"
+					checked={vimEnabled}
+					onChange={() => setVimEnabled(!vimEnabled)}
+				/>
 			</div>
 		</div>
 	);

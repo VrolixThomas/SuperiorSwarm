@@ -1,6 +1,11 @@
-import { useProjectStore, type SettingsCategory } from "../../stores/projects";
+import { type SettingsCategory, useProjectStore } from "../../stores/projects";
 
-const NAV_ITEMS: { id: SettingsCategory; label: string; icon: React.ReactNode; section?: string }[] = [
+const NAV_ITEMS: {
+	id: SettingsCategory;
+	label: string;
+	icon: React.ReactNode;
+	section?: string;
+}[] = [
 	{
 		id: "general",
 		label: "General",

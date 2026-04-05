@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { trpc } from "../../trpc/client";
 import { ReviewPromptEditor } from "../ReviewPromptEditor";
 import { PageHeading, SectionLabel } from "./SectionHeading";
-import { Toggle } from "./Toggle";
+import { ToggleRow } from "./ToggleRow";
 
 export function AIReviewSettings() {
 	const utils = trpc.useUtils();
@@ -30,12 +30,15 @@ export function AIReviewSettings() {
 			updateAiSettings.mutate({ solvePrompt: localSolvePrompt || null });
 		}, 500);
 		return () => clearTimeout(timer);
-	}, [localSolvePrompt]);
+	}, [localSolvePrompt, aiSettings?.solvePrompt, updateAiSettings]);
 
 	if (showPromptEditor) {
 		return (
 			<div>
-				<PageHeading title="Review Guidelines" subtitle="Customize the instructions sent to the AI reviewer" />
+				<PageHeading
+					title="Review Guidelines"
+					subtitle="Customize the instructions sent to the AI reviewer"
+				/>
 				<div className="overflow-hidden rounded-[10px] border border-[var(--border)] bg-[var(--bg-surface)]">
 					<div className="p-4">
 						<ReviewPromptEditor onBack={() => setShowPromptEditor(false)} />
@@ -49,10 +52,8 @@ export function AIReviewSettings() {
 		<div>
 			<PageHeading title="AI Review" subtitle="Configure automated code review behavior" />
 
-			{/* Configuration card */}
-			<div className="mb-6 overflow-hidden rounded-[10px] border border-[var(--border)] bg-[var(--bg-surface)]">
-				{/* Review Tool */}
-				<div className="flex items-center justify-between px-4 py-3.5 border-b border-[var(--border-subtle)]">
+			<div className="mb-6 overflow-hidden rounded-[10px] border border-[var(--border)] bg-[var(--bg-surface)] divide-y divide-[var(--border-subtle)]">
+				<div className="flex items-center justify-between px-4 py-3.5">
 					<div className="flex flex-col gap-0.5">
 						<span className="text-[13px] font-medium text-[var(--text)]">Review Tool</span>
 						<span className="text-[12px] text-[var(--text-tertiary)]">
@@ -75,8 +76,7 @@ export function AIReviewSettings() {
 					</select>
 				</div>
 
-				{/* Max Concurrent Reviews */}
-				<div className="flex items-center justify-between px-4 py-3.5 border-b border-[var(--border-subtle)]">
+				<div className="flex items-center justify-between px-4 py-3.5">
 					<div className="flex flex-col gap-0.5">
 						<span className="text-[13px] font-medium text-[var(--text)]">
 							Max Concurrent Reviews
@@ -102,7 +102,6 @@ export function AIReviewSettings() {
 					</select>
 				</div>
 
-				{/* Review Guidelines */}
 				<div className="flex items-center justify-between px-4 py-3.5">
 					<div className="flex flex-col gap-0.5">
 						<span className="text-[13px] font-medium text-[var(--text)]">Review Guidelines</span>
@@ -120,9 +119,8 @@ export function AIReviewSettings() {
 				</div>
 			</div>
 
-			{/* Automation card */}
 			<SectionLabel>Automation</SectionLabel>
-			<div className="mb-6 overflow-hidden rounded-[10px] border border-[var(--border)] bg-[var(--bg-surface)]">
+			<div className="mb-6 overflow-hidden rounded-[10px] border border-[var(--border)] bg-[var(--bg-surface)] divide-y divide-[var(--border-subtle)]">
 				<ToggleRow
 					label="Automatic Review"
 					description="Automatically review PRs when you're added as reviewer"
@@ -131,7 +129,6 @@ export function AIReviewSettings() {
 						updateAiSettings.mutate({ autoReviewEnabled: !aiSettings?.autoReviewEnabled })
 					}
 				/>
-				<div className="mx-4 border-t border-[var(--border-subtle)]" />
 				<ToggleRow
 					label="Auto-accept tool calls"
 					description="Skip permission prompts during AI review"
@@ -142,7 +139,6 @@ export function AIReviewSettings() {
 						})
 					}
 				/>
-				<div className="mx-4 border-t border-[var(--border-subtle)]" />
 				<ToggleRow
 					label="Auto-approve resolutions"
 					description="AI resolution decisions skip manual approval"
@@ -153,7 +149,6 @@ export function AIReviewSettings() {
 						})
 					}
 				/>
-				<div className="mx-4 border-t border-[var(--border-subtle)]" />
 				<ToggleRow
 					label="Auto-publish resolutions"
 					description="Approved resolutions publish to platform automatically"
@@ -164,7 +159,6 @@ export function AIReviewSettings() {
 						})
 					}
 				/>
-				<div className="mx-4 border-t border-[var(--border-subtle)]" />
 				<ToggleRow
 					label="Auto-solve PR comments"
 					description="Automatically fix review comments when detected"
@@ -175,7 +169,6 @@ export function AIReviewSettings() {
 				/>
 			</div>
 
-			{/* Custom Instructions card */}
 			<SectionLabel>Custom Instructions</SectionLabel>
 			<div className="overflow-hidden rounded-[10px] border border-[var(--border)] bg-[var(--bg-surface)]">
 				<div className="flex flex-col gap-2 px-4 py-3.5">
@@ -196,28 +189,6 @@ export function AIReviewSettings() {
 					/>
 				</div>
 			</div>
-		</div>
-	);
-}
-
-function ToggleRow({
-	label,
-	description,
-	checked,
-	onChange,
-}: {
-	label: string;
-	description: string;
-	checked: boolean;
-	onChange: () => void;
-}) {
-	return (
-		<div className="flex items-center justify-between px-4 py-3.5">
-			<div className="flex flex-col gap-0.5">
-				<span className="text-[13px] font-medium text-[var(--text)]">{label}</span>
-				<span className="text-[12px] text-[var(--text-tertiary)]">{description}</span>
-			</div>
-			<Toggle checked={checked} onChange={onChange} />
 		</div>
 	);
 }

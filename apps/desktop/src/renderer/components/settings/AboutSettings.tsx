@@ -13,7 +13,7 @@ export function AboutSettings() {
 	const [showNotes, setShowNotes] = useState(false);
 	const releaseNotesQuery = trpc.updates.getReleaseNotes.useQuery(
 		{ version: statusQuery.data?.currentVersion },
-		{ enabled: showNotes && !!statusQuery.data?.currentVersion },
+		{ enabled: showNotes && !!statusQuery.data?.currentVersion }
 	);
 	const installUpdate = trpc.updates.installUpdate.useMutation();
 
@@ -50,9 +50,7 @@ export function AboutSettings() {
 			{/* Version info card */}
 			<div
 				className={`overflow-hidden rounded-[10px] border bg-[var(--bg-surface)] p-4 ${
-					updateAvailable
-						? "border-[rgba(10,132,255,0.2)]"
-						: "border-[var(--border)]"
+					updateAvailable ? "border-[rgba(10,132,255,0.2)]" : "border-[var(--border)]"
 				}`}
 			>
 				<div className="mb-3 flex items-center justify-between">
