@@ -164,6 +164,7 @@ export function ProjectItem({
 							<WorkspaceItem
 								key={ws.id}
 								workspace={ws}
+								projectId={project.id}
 								projectName={project.name}
 								projectRepoPath={project.repoPath}
 								isInActiveProject={isActiveProject}
