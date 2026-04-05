@@ -4,8 +4,8 @@ import type { GitHubPR } from "../../main/github/github";
 import type { AgentAlert } from "../../shared/agent-events";
 import type { GitHubPREnriched, GitHubReviewer, PRContext } from "../../shared/github-types";
 import { useAgentAlertStore } from "../stores/agent-alert-store";
-import { useProjectStore } from "../stores/projects";
 import { useTabStore } from "../stores/tab-store";
+import { ConnectBanner } from "./ConnectBanner";
 import { trpc } from "../trpc/client";
 import { CreateWorktreeFromPRModal } from "./CreateWorktreeFromPRModal";
 import { SwarmIndicator } from "./WorkspaceItem";
@@ -793,16 +793,7 @@ export function PullRequestsTab() {
 
 		return (
 			<div className="px-3 py-2">
-				<span className="text-[12px] text-[var(--text-quaternary)]">
-					Connect {serviceName} to see pull requests.{" "}
-				</span>
-				<button
-					type="button"
-					onClick={() => useProjectStore.getState().openSettingsToIntegrations("prs")}
-					className="text-[12px] text-[var(--accent)] hover:underline"
-				>
-					Connect in Settings
-				</button>
+				<ConnectBanner message={`Connect ${serviceName} to see pull requests.`} returnTo="prs" />
 			</div>
 		);
 	}
