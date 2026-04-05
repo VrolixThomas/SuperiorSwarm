@@ -3,6 +3,7 @@ import { nanoid } from "nanoid";
 import { z } from "zod";
 import { getDb } from "../../db";
 import { quickActions } from "../../db/schema";
+import { launchSetupAgent } from "../../quick-actions/agent-setup";
 import { publicProcedure, router } from "../index";
 
 export const quickActionsRouter = router({
@@ -117,5 +118,11 @@ export const quickActionsRouter = router({
 						.run();
 				}
 			});
+		}),
+
+	launchSetupAgent: publicProcedure
+		.input(z.object({ projectId: z.string(), repoPath: z.string() }))
+		.mutation(({ input }) => {
+			return launchSetupAgent(input.projectId, input.repoPath);
 		}),
 });
