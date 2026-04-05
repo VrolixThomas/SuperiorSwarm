@@ -27,7 +27,12 @@ export function getAuth() {
 	return { ...row, accessToken: decrypt(row.accessToken) };
 }
 
-export function saveAuth(data: { accessToken: string; accountId: string; displayName?: string }) {
+export function saveAuth(data: {
+	accessToken: string;
+	accountId: string;
+	displayName?: string;
+	email?: string | null;
+}) {
 	const db = getDb();
 	const encAccessToken = encrypt(data.accessToken);
 	db.insert(githubAuth)
@@ -36,6 +41,7 @@ export function saveAuth(data: { accessToken: string; accountId: string; display
 			accessToken: encAccessToken,
 			accountId: data.accountId,
 			displayName: data.displayName ?? null,
+			email: data.email ?? null,
 		})
 		.onConflictDoUpdate({
 			target: githubAuth.id,
@@ -43,6 +49,7 @@ export function saveAuth(data: { accessToken: string; accountId: string; display
 				accessToken: encAccessToken,
 				accountId: data.accountId,
 				displayName: data.displayName ?? null,
+				email: data.email ?? null,
 			},
 		})
 		.run();

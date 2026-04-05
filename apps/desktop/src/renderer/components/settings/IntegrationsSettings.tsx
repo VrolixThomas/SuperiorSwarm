@@ -6,6 +6,7 @@ function IntegrationRow({
 	icon,
 	connected,
 	displayName,
+	email,
 	isPending,
 	onConnect,
 	onDisconnect,
@@ -14,6 +15,7 @@ function IntegrationRow({
 	icon: React.ReactNode;
 	connected: boolean;
 	displayName?: string;
+	email?: string | null;
 	isPending: boolean;
 	onConnect: () => void;
 	onDisconnect: () => void;
@@ -29,8 +31,12 @@ function IntegrationRow({
 					<div
 						className={`size-1.5 shrink-0 rounded-full ${connected ? "bg-[#32d74b]" : "bg-[var(--text-quaternary)]"}`}
 					/>
-					<span className="text-[11px] text-[var(--text-tertiary)]">
-						{connected ? (displayName ?? "Connected") : "Not connected"}
+					<span className="truncate text-[11px] text-[var(--text-tertiary)]">
+						{connected
+							? (email && displayName
+									? `${displayName} · ${email}`
+									: (displayName ?? email ?? "Connected"))
+							: "Not connected"}
 					</span>
 				</div>
 			</div>
@@ -123,6 +129,7 @@ export function IntegrationsSettings() {
 					}
 					connected={atlassianStatus?.jira.connected ?? false}
 					displayName={atlassianStatus?.jira.connected ? atlassianStatus.jira.displayName : undefined}
+					email={atlassianStatus?.jira.connected ? atlassianStatus.jira.email : undefined}
 					isPending={atlassianConnect.isPending || atlassianDisconnect.isPending}
 					onConnect={() => atlassianConnect.mutate({ service: "jira" })}
 					onDisconnect={() => atlassianDisconnect.mutate({ service: "jira" })}
@@ -137,6 +144,7 @@ export function IntegrationsSettings() {
 					}
 					connected={atlassianStatus?.bitbucket.connected ?? false}
 					displayName={atlassianStatus?.bitbucket.connected ? atlassianStatus.bitbucket.displayName : undefined}
+					email={atlassianStatus?.bitbucket.connected ? atlassianStatus.bitbucket.email : undefined}
 					isPending={atlassianConnect.isPending || atlassianDisconnect.isPending}
 					onConnect={() => atlassianConnect.mutate({ service: "bitbucket" })}
 					onDisconnect={() => atlassianDisconnect.mutate({ service: "bitbucket" })}
@@ -151,6 +159,7 @@ export function IntegrationsSettings() {
 					}
 					connected={linearStatus?.connected ?? false}
 					displayName={linearStatus?.connected ? linearStatus.displayName : undefined}
+					email={linearStatus?.connected ? linearStatus.email : undefined}
 					isPending={linearConnect.isPending || linearDisconnect.isPending}
 					onConnect={() => linearConnect.mutate()}
 					onDisconnect={() => linearDisconnect.mutate()}
@@ -165,6 +174,7 @@ export function IntegrationsSettings() {
 					}
 					connected={githubStatus?.connected ?? false}
 					displayName={githubStatus?.connected ? githubStatus.displayName : undefined}
+					email={githubStatus?.connected ? githubStatus.email : undefined}
 					isPending={githubConnect.isPending || githubDisconnect.isPending}
 					onConnect={() => githubConnect.mutate()}
 					onDisconnect={() => githubDisconnect.mutate()}

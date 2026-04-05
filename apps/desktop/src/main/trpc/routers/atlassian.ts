@@ -21,13 +21,19 @@ export const atlassianRouter = router({
 		const bitbucket = getAuth("bitbucket");
 		return {
 			jira: jira
-				? { connected: true as const, displayName: jira.displayName, accountId: jira.accountId }
+				? {
+						connected: true as const,
+						displayName: jira.displayName,
+						accountId: jira.accountId,
+						email: jira.email,
+					}
 				: { connected: false as const },
 			bitbucket: bitbucket
 				? {
 						connected: true as const,
 						displayName: bitbucket.displayName,
 						accountId: bitbucket.accountId,
+						email: bitbucket.email,
 					}
 				: { connected: false as const },
 		};
