@@ -195,13 +195,12 @@ export class DaemonClient {
 
 	/** Kill a PTY in the daemon. Used when the user explicitly closes a tab. */
 	dispose(id: string): void {
-		if (this.isQuitting) return;
 		this.callbacks.delete(id);
 		this.liveSessions.delete(id);
 		try {
 			this.send({ type: "dispose", id });
 		} catch {
-			// Best effort — the PTY will be cleaned up by idle timeout if unreachable
+			// Best effort — daemon may already be gone
 		}
 	}
 
