@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import { BranchChip } from "./BranchChip";
-import { QuickActionBar, resolveQuickActionCwd } from "./QuickActionBar";
+import { QuickActionBar } from "./QuickActionBar";
 import { QuickActionContextMenu, type ContextMenuAction } from "./QuickActionContextMenu";
 import { QuickActionPopover } from "./QuickActionPopover";
 import { LayoutRenderer } from "./panes/LayoutRenderer";
@@ -41,20 +41,6 @@ export function MainContentArea({ savedScrollback }: { savedScrollback: Record<s
 		return () => window.removeEventListener("quick-action-context", handleQuickActionContext);
 	}, []);
 
-	useEffect(() => {
-		const cleanup = window.electron.quickActions.onTrigger(({ command, label, cwd }) => {
-			const state = useTabStore.getState();
-			const workspaceId = state.activeWorkspaceId;
-			const repoPath = state.activeWorkspaceCwd;
-			if (!workspaceId) return;
-			const resolvedCwd = resolveQuickActionCwd(cwd, repoPath);
-			const tabId = state.addTerminalTab(workspaceId, resolvedCwd, label);
-			setTimeout(() => {
-				window.electron.terminal.write(tabId, `${command}\n`);
-			}, 300);
-		});
-		return cleanup;
-	}, []);
 
 	function handlePopoverClose() {
 		setShowQuickActionPopover(false);
