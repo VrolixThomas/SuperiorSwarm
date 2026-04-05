@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 
 interface QuickActionPopoverProps {
@@ -30,6 +31,9 @@ export function QuickActionPopover({
 	);
 	const labelRef = useRef<HTMLInputElement>(null);
 
+	const activeWorkspaceId = useTabStore((s) => s.activeWorkspaceId);
+	const addTerminalTab = useTabStore((s) => s.addTerminalTab);
+
 	const utils = trpc.useUtils();
 	const createMutation = trpc.quickActions.create.useMutation({
 		onSuccess: () => {
@@ -43,6 +47,7 @@ export function QuickActionPopover({
 			onClose();
 		},
 	});
+	const launchAgent = trpc.quickActions.launchSetupAgent.useMutation();
 
 	useEffect(() => {
 		labelRef.current?.focus();
@@ -187,6 +192,38 @@ export function QuickActionPopover({
 						</div>
 					</div>
 				</div>
+
+				{/* Ask agent */}
+				{!editAction && (
+					<div className="mt-2 border-t border-[var(--border-subtle)] pt-2">
+						<button
+							type="button"
+							onClick={() => {
+								if (!activeWorkspaceId) return;
+								launchAgent.mutate(
+									{ projectId, repoPath },
+									{
+										onSuccess: ({ launchScript }) => {
+											const tabId = addTerminalTab(
+												activeWorkspaceId,
+												repoPath,
+												"Setup Quick Actions",
+											);
+											setTimeout(() => {
+												window.electron.terminal.write(tabId, `bash '${launchScript}'\n`);
+											}, 300);
+											onClose();
+										},
+									},
+								);
+							}}
+							disabled={launchAgent.isPending || !activeWorkspaceId}
+							className="w-full rounded bg-[var(--bg-base)] px-2 py-1.5 text-left text-[11px] text-[var(--text-secondary)] hover:bg-[rgba(255,255,255,0.06)] disabled:opacity-40"
+						>
+							{launchAgent.isPending ? "Launching agent..." : "Ask agent to set up commands..."}
+						</button>
+					</div>
+				)}
 
 				{/* Actions */}
 				<div className="mt-3 flex items-center justify-end gap-2">
