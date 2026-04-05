@@ -236,6 +236,7 @@ app.on("before-quit", () => {
 	stopCommentPoller();
 	daemonClient.setQuitting();
 	daemonClient.detachAll();
+	daemonClient.disconnect();
 	serverManager.disposeAll();
 });
 
@@ -256,6 +257,7 @@ for (const signal of ["SIGTERM", "SIGHUP", "SIGINT"] as const) {
 		alertListener?.stop();
 		daemonClient.setQuitting();
 		daemonClient.detachAll();
+		daemonClient.disconnect();
 		serverManager.disposeAll();
 		app.exit(0);
 	});
