@@ -3,6 +3,7 @@ import type {
 	DaemonAPI,
 	DialogAPI,
 	LspAPI,
+	QuickActionsAPI,
 	SessionAPI,
 	ShellAPI,
 	TerminalAPI,
@@ -18,6 +19,7 @@ export interface ElectronAPI {
 	lsp: LspAPI;
 	daemon: DaemonAPI;
 	agentAlert: AgentAlertAPI;
+	quickActions: QuickActionsAPI;
 }
 
 declare global {
