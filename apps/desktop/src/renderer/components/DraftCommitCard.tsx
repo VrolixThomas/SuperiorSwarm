@@ -43,6 +43,8 @@ export function DraftCommitCard({
 	onStage,
 	onUnstage,
 	onInvalidate,
+	unpushedCommits,
+	hasTrackingBranch,
 }: {
 	diffCtx: DiffContext & { type: "working-tree" };
 	stagedFiles: DiffFile[];
@@ -50,6 +52,8 @@ export function DraftCommitCard({
 	onStage: (paths: string[]) => void;
 	onUnstage: (paths: string[]) => void;
 	onInvalidate: () => void;
+	unpushedCommits: number;
+	hasTrackingBranch: boolean;
 }) {
 	const [commitMsg, setCommitMsg] = useState("");
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -63,7 +67,9 @@ export function DraftCommitCard({
 			onInvalidate();
 		},
 	});
-	const pushMutation = trpc.diff.push.useMutation();
+	const pushMutation = trpc.diff.push.useMutation({
+		onSuccess: () => onInvalidate(),
+	});
 
 	const allFiles = useMemo(() => [...stagedFiles, ...unstagedFiles], [stagedFiles, unstagedFiles]);
 	const stagedPaths = useMemo(() => new Set(stagedFiles.map((f) => f.path)), [stagedFiles]);
@@ -75,6 +81,25 @@ export function DraftCommitCard({
 		return (
 			<div className="mx-1.5 mt-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-2.5">
 				<span className="text-[12px] text-[var(--text-quaternary)]">No working changes</span>
+				{(unpushedCommits > 0 || !hasTrackingBranch) && (
+					<>
+						<div className="mt-1.5 flex items-center gap-2">
+							<button
+								type="button"
+								disabled={pushMutation.isPending}
+								onClick={() => pushMutation.mutate({ repoPath: diffCtx.repoPath })}
+								className="flex-1 rounded-[var(--radius-sm)] border border-[var(--border)] px-2 py-1 text-[11px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-overlay)] disabled:opacity-40"
+							>
+								{pushMutation.isPending
+									? "Pushing..."
+									: unpushedCommits > 0
+										? `Push ↑ ${unpushedCommits} commit${unpushedCommits !== 1 ? "s" : ""}`
+										: "Push ↑"}
+							</button>
+						</div>
+						<PushFeedback mutation={pushMutation} />
+					</>
+				)}
 			</div>
 		);
 	}
@@ -272,14 +297,24 @@ export function DraftCommitCard({
 				{commitMutation.isError && (
 					<p className="mt-1 text-[11px] text-[var(--term-red)]">{commitMutation.error.message}</p>
 				)}
-				{pushMutation.isError && (
-					<p className="mt-1 text-[11px] text-[var(--term-red)]">{pushMutation.error.message}</p>
-				)}
-				{pushMutation.isSuccess && (
-					<p className="mt-1 text-[11px] text-[var(--term-green)]">Pushed successfully</p>
-				)}
+				<PushFeedback mutation={pushMutation} />
 			</div>
 		</div>
+	);
+}
+
+// ─── Push feedback sub-component ────────────────────────────────────────────
+
+function PushFeedback({ mutation }: { mutation: ReturnType<typeof trpc.diff.push.useMutation> }) {
+	return (
+		<>
+			{mutation.isError && (
+				<p className="mt-1 text-[11px] text-[var(--term-red)]">{mutation.error.message}</p>
+			)}
+			{mutation.isSuccess && (
+				<p className="mt-1 text-[11px] text-[var(--term-green)]">Pushed successfully</p>
+			)}
+		</>
 	);
 }
 
