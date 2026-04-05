@@ -1,4 +1,4 @@
-import { eq, isNull, or } from "drizzle-orm";
+import { eq, isNull, max, or } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { z } from "zod";
 import { getDb } from "../../db";
@@ -6,26 +6,28 @@ import { quickActions } from "../../db/schema";
 import { launchSetupAgent } from "../../quick-actions/agent-setup";
 import { publicProcedure, router } from "../index";
 
+export function listQuickActions(projectId: string | null) {
+	const db = getDb();
+	if (projectId) {
+		return db
+			.select()
+			.from(quickActions)
+			.where(or(eq(quickActions.projectId, projectId), isNull(quickActions.projectId)))
+			.orderBy(quickActions.sortOrder)
+			.all();
+	}
+	return db
+		.select()
+		.from(quickActions)
+		.where(isNull(quickActions.projectId))
+		.orderBy(quickActions.sortOrder)
+		.all();
+}
+
 export const quickActionsRouter = router({
 	list: publicProcedure
 		.input(z.object({ projectId: z.string().nullable() }))
-		.query(({ input }) => {
-			const db = getDb();
-			if (input.projectId) {
-				return db
-					.select()
-					.from(quickActions)
-					.where(or(eq(quickActions.projectId, input.projectId), isNull(quickActions.projectId)))
-					.orderBy(quickActions.sortOrder)
-					.all();
-			}
-			return db
-				.select()
-				.from(quickActions)
-				.where(isNull(quickActions.projectId))
-				.orderBy(quickActions.sortOrder)
-				.all();
-		}),
+		.query(({ input }) => listQuickActions(input.projectId)),
 
 	create: publicProcedure
 		.input(
@@ -40,22 +42,18 @@ export const quickActionsRouter = router({
 		)
 		.mutation(({ input }) => {
 			const db = getDb();
-			const maxOrder =
+			const sortOrder =
 				input.sortOrder ??
 				(() => {
-					const rows = input.projectId
-						? db
-								.select()
-								.from(quickActions)
-								.where(
-									or(
-										eq(quickActions.projectId, input.projectId),
-										isNull(quickActions.projectId),
-									),
-								)
-								.all()
-						: db.select().from(quickActions).where(isNull(quickActions.projectId)).all();
-					return rows.length;
+					const condition = input.projectId
+						? or(eq(quickActions.projectId, input.projectId), isNull(quickActions.projectId))
+						: isNull(quickActions.projectId);
+					const row = db
+						.select({ maxOrder: max(quickActions.sortOrder) })
+						.from(quickActions)
+						.where(condition)
+						.get();
+					return (row?.maxOrder ?? -1) + 1;
 				})();
 
 			const id = nanoid();
@@ -67,7 +65,7 @@ export const quickActionsRouter = router({
 					command: input.command,
 					cwd: input.cwd ?? null,
 					shortcut: input.shortcut ?? null,
-					sortOrder: maxOrder,
+					sortOrder,
 					createdAt: new Date(),
 					updatedAt: new Date(),
 				})

@@ -2,6 +2,11 @@ import { useEffect } from "react";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 
+export function resolveQuickActionCwd(cwd: string | null, repoPath: string): string {
+	if (!cwd) return repoPath;
+	return cwd.startsWith("/") ? cwd : `${repoPath}/${cwd}`;
+}
+
 interface QuickActionBarProps {
 	projectId: string;
 	repoPath: string;
@@ -23,9 +28,7 @@ export function QuickActionBar({
 	}, [projectId, actionsQuery.data]);
 
 	function handleRun(command: string, label: string, cwd: string | null) {
-		const resolvedCwd = cwd
-			? (cwd.startsWith("/") ? cwd : `${repoPath}/${cwd}`)
-			: repoPath;
+		const resolvedCwd = resolveQuickActionCwd(cwd, repoPath);
 		const tabId = addTerminalTab(workspaceId, resolvedCwd, label);
 		setTimeout(() => {
 			window.electron.terminal.write(tabId, `${command}\n`);

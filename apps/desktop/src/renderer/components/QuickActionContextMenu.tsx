@@ -1,4 +1,5 @@
-import { useEffect } from "react";
+import { useRef } from "react";
+import { useClickOutside } from "../hooks/useClickOutside";
 import { trpc } from "../trpc/client";
 
 export interface ContextMenuAction {
@@ -26,26 +27,17 @@ export function QuickActionContextMenu({
 	onClose,
 	onEdit,
 }: QuickActionContextMenuProps) {
+	const menuRef = useRef<HTMLDivElement>(null);
 	const utils = trpc.useUtils();
 	const deleteMutation = trpc.quickActions.delete.useMutation({
 		onSuccess: () => utils.quickActions.list.invalidate(),
 	});
 
-	useEffect(() => {
-		function handleClickOutside() {
-			onClose();
-		}
-		const id = requestAnimationFrame(() => {
-			document.addEventListener("click", handleClickOutside);
-		});
-		return () => {
-			cancelAnimationFrame(id);
-			document.removeEventListener("click", handleClickOutside);
-		};
-	}, [onClose]);
+	useClickOutside(menuRef, onClose);
 
 	return (
 		<div
+			ref={menuRef}
 			className="fixed z-[60] min-w-[140px] rounded-md border border-[var(--border)] bg-[var(--bg-elevated)] py-1 shadow-xl"
 			style={{ left: x, top: y }}
 		>

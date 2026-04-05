@@ -13,9 +13,9 @@ import {
 	onPRClosedDetected,
 	startPolling as startPRPolling,
 } from "./ai-review/pr-poller";
-import { eq, isNull, or } from "drizzle-orm";
 import { getDb, initializeDatabase } from "./db";
 import * as schema from "./db/schema";
+import { listQuickActions } from "./trpc/routers/quick-actions";
 import {
 	type SessionSaveData,
 	savePaneLayouts,
@@ -138,22 +138,7 @@ app.whenReady().then(async () => {
 	);
 
 	ipcMain.handle("quick-actions:sync-shortcuts", async (_event, projectId: string | null) => {
-		const db = getDb();
-		const actions = projectId
-			? db
-					.select()
-					.from(schema.quickActions)
-					.where(
-						or(eq(schema.quickActions.projectId, projectId), isNull(schema.quickActions.projectId))
-					)
-					.orderBy(schema.quickActions.sortOrder)
-					.all()
-			: db
-					.select()
-					.from(schema.quickActions)
-					.where(isNull(schema.quickActions.projectId))
-					.orderBy(schema.quickActions.sortOrder)
-					.all();
+		const actions = listQuickActions(projectId);
 
 		syncShortcuts(
 			actions,

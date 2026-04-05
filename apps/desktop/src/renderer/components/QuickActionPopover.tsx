@@ -16,20 +16,7 @@ interface QuickActionPopoverProps {
 	};
 }
 
-const DEFAULT_AGENT_PROMPT = (repoPath: string) =>
-	`Explore this repository and set up quick action buttons for common workflows.
-
-Look at package.json, Makefile, Cargo.toml, pyproject.toml, scripts/, etc. to understand the project.
-
-Use the MCP tools:
-- list_quick_actions — see what's already configured
-- add_quick_action — add new buttons (label, command, scope)
-- remove_quick_action — remove existing ones
-
-Suggest actions for: build, test, lint, dev server, type-check, or anything project-specific.
-Keep labels short (1-2 words). Use scope "repo" for project-specific commands.
-
-Repository: ${repoPath}`;
+import { buildDefaultPrompt } from "../../shared/quick-action-prompt";
 
 type Mode = "manual" | "agent";
 
@@ -39,7 +26,7 @@ export function QuickActionPopover({
 	onClose,
 	editAction,
 }: QuickActionPopoverProps) {
-	const [mode, setMode] = useState<Mode>(editAction ? "manual" : "manual");
+	const [mode, setMode] = useState<Mode>("manual");
 	const [label, setLabel] = useState(editAction?.label ?? "");
 	const [command, setCommand] = useState(editAction?.command ?? "");
 	const [cwd, setCwd] = useState(editAction?.cwd ?? "");
@@ -47,7 +34,7 @@ export function QuickActionPopover({
 	const [scope, setScope] = useState<"global" | "repo">(
 		editAction ? (editAction.projectId === null ? "global" : "repo") : "repo",
 	);
-	const [agentPrompt, setAgentPrompt] = useState(DEFAULT_AGENT_PROMPT(repoPath));
+	const [agentPrompt, setAgentPrompt] = useState(buildDefaultPrompt(repoPath));
 	const labelRef = useRef<HTMLInputElement>(null);
 	const promptRef = useRef<HTMLTextAreaElement>(null);
 
@@ -325,7 +312,7 @@ export function QuickActionPopover({
 								/>
 								<button
 									type="button"
-									onClick={() => setAgentPrompt(DEFAULT_AGENT_PROMPT(repoPath))}
+									onClick={() => setAgentPrompt(buildDefaultPrompt(repoPath))}
 									className="mt-1 text-[10px] text-[var(--text-quaternary)] hover:text-[var(--text-secondary)]"
 								>
 									Reset to default
