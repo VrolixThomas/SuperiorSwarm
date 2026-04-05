@@ -95,7 +95,7 @@ export const aiReviewRouter = router({
 		.mutation(async ({ input }) => {
 			if (!input.repoPath) {
 				throw new Error(
-					"Cannot start review: this PR's repository is not tracked in BranchFlux. " +
+					"Cannot start review: this PR's repository is not tracked in SuperiorSwarm. " +
 						"Add the repository as a project first."
 				);
 			}

@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type {
+	AgentAlertAPI,
 	DaemonAPI,
 	DialogAPI,
 	LspAPI,
@@ -27,7 +28,8 @@ const dataDispatcher = createDispatcher<[string]>("terminal:data");
 const exitDispatcher = createDispatcher<[number]>("terminal:exit");
 
 const terminalAPI: TerminalAPI = {
-	create: (id: string, cwd?: string) => ipcRenderer.invoke("terminal:create", id, cwd),
+	create: (id: string, cwd?: string, workspaceId?: string) =>
+		ipcRenderer.invoke("terminal:create", id, cwd, workspaceId),
 	write: (id: string, data: string) => ipcRenderer.invoke("terminal:write", id, data),
 	resize: (id: string, cols: number, rows: number) =>
 		ipcRenderer.invoke("terminal:resize", id, cols, rows),
@@ -96,6 +98,19 @@ const daemonAPI: DaemonAPI = {
 	listSessions: () => ipcRenderer.invoke("daemon:listSessions"),
 };
 
+const agentAlertAPI: AgentAlertAPI = {
+	onAlert: (callback) => {
+		// biome-ignore lint/suspicious/noExplicitAny: IPC bridge receives untyped data from main process
+		const handler = (_event: Electron.IpcRendererEvent, event: any) => {
+			callback(event);
+		};
+		ipcRenderer.on("agent:alert", handler);
+		return () => {
+			ipcRenderer.removeListener("agent:alert", handler);
+		};
+	},
+};
+
 contextBridge.exposeInMainWorld("electron", {
 	terminal: terminalAPI,
 	trpc: trpcAPI,
@@ -104,4 +119,5 @@ contextBridge.exposeInMainWorld("electron", {
 	shell: shellAPI,
 	lsp: lspAPI,
 	daemon: daemonAPI,
+	agentAlert: agentAlertAPI,
 });

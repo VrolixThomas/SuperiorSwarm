@@ -78,7 +78,7 @@ export function CreateBranchFromIssueModal({ issue, onClose }: Props) {
 	useEffect(() => {
 		if (branchesQuery.data && branchesQuery.data.length > 0 && !baseBranch) {
 			const first = branchesQuery.data[0];
-			if (first) setBaseBranch(first);
+			if (first) setBaseBranch(first.name);
 		}
 	}, [branchesQuery.data, baseBranch]);
 
@@ -235,8 +235,8 @@ export function CreateBranchFromIssueModal({ issue, onClose }: Props) {
 							{!selectedProjectId && <option value="">Select a repository first</option>}
 							{selectedProjectId && branchesQuery.isPending && <option value="">Loading…</option>}
 							{branchesQuery.data?.map((b) => (
-								<option key={b} value={b}>
-									{b}
+								<option key={b.name} value={b.name}>
+									{b.name}
 								</option>
 							))}
 						</select>

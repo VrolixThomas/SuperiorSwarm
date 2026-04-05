@@ -1,0 +1,39 @@
+appId: com.superiorswarm.app
+productName: SuperiorSwarm
+
+publish:
+  provider: github
+  owner: VrolixThomas
+  repo: SuperiorSwarm
+
+directories:
+  buildResources: resources
+  output: dist
+
+files:
+  - out/**/*
+
+asar: true
+asarUnpack:
+  - "node_modules/better-sqlite3/**/*"
+  - "node_modules/node-pty/**/*"
+  - "node_modules/bindings/**/*"
+  - "node_modules/file-uri-to-path/**/*"
+  - "out/main/db/migrations/**/*"
+
+npmRebuild: true
+
+mac:
+  category: public.app-category.developer-tools
+  icon: resources/icon.icns
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  notarize: true
+  entitlements: resources/build/entitlements.mac.plist
+  entitlementsInherit: resources/build/entitlements.mac.inherit.plist
+  target:
+    - dmg
+    - zip
+
+dmg:
+  artifactName: ${name}-${version}-mac.${ext}

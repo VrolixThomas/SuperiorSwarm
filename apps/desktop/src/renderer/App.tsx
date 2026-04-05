@@ -1,25 +1,33 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Group, Panel, Separator, useDefaultLayout, usePanelRef } from "react-resizable-panels";
 import type { LayoutNode, SerializedLayoutNode } from "../shared/pane-types";
 import { AddRepositoryModal } from "./components/AddRepositoryModal";
+import { BranchActionMenu } from "./components/BranchActionMenu";
+import { BranchPalette } from "./components/BranchPalette";
 import { CreateWorktreeModal } from "./components/CreateWorktreeModal";
 import { DaemonStatus } from "./components/DaemonStatus";
 import { DiffPanel } from "./components/DiffPanel";
+import { LoginScreen } from "./components/LoginScreen";
 import { MainContentArea } from "./components/MainContentArea";
 import { SharedFilesPanel } from "./components/SharedFilesPanel";
 import { Sidebar } from "./components/Sidebar";
 import { SettingsPage } from "./components/settings/SettingsPage";
+import { UpdateToast } from "./components/UpdateToast";
+import { WhatsNewModal } from "./components/WhatsNewModal";
+import { useAgentAlertListener } from "./hooks/useAgentAlertListener";
 import { usePaneShortcuts } from "./hooks/usePaneShortcuts";
 import {
 	setupDiagnosticsListener,
 	setupGoToDefinitionHandler,
 	setupServerRestartListener,
 } from "./lsp/monaco-lsp-bridge";
+import { useBranchStore } from "./stores/branch-store";
 import { useEditorSettingsStore } from "./stores/editor-settings";
 import { usePaneStore } from "./stores/pane-store";
 import { useProjectStore } from "./stores/projects";
 import type { TabItem } from "./stores/tab-store";
 import { resetFileTabCounter, useTabStore } from "./stores/tab-store";
+import { useUpdateStore } from "./stores/update-store";
 import { trpc } from "./trpc/client";
 
 const SAVE_INTERVAL_MS = 30_000;
@@ -55,6 +63,10 @@ function deserializeLayout(
 				}
 				// Filter out stale ai-review-summary tabs from previous versions
 				if ((saved as { kind: string }).kind === "ai-review-summary") {
+					return null;
+				}
+				// Merge-conflict tabs are transient — the merge state doesn't survive restart
+				if ((saved as { kind: string }).kind === "merge-conflict") {
 					return null;
 				}
 				// File tabs: use directly from serialized data
@@ -135,6 +147,10 @@ function collectSnapshot() {
 	if (Object.keys(workspaceMetadata).length > 0) {
 		state["workspaceMetadata"] = JSON.stringify(workspaceMetadata);
 	}
+	const { activeTicketProject } = store;
+	if (activeTicketProject) {
+		state["activeTicketProject"] = JSON.stringify(activeTicketProject);
+	}
 
 	const { vimEnabled } = useEditorSettingsStore.getState();
 	if (vimEnabled) state["vimMode"] = "true";
@@ -148,7 +164,39 @@ function collectSnapshot() {
 	return { sessions, state, paneLayouts };
 }
 
+function dismissSplash() {
+	const splash = document.getElementById("splash");
+	if (splash) {
+		splash.classList.add("hidden");
+		setTimeout(() => splash.remove(), 300);
+	}
+}
+
 export function App() {
+	const sessionQuery = trpc.auth.getSession.useQuery(undefined, {
+		retry: false,
+		staleTime: 5 * 60 * 1000,
+	});
+
+	useEffect(() => {
+		if (!sessionQuery.isLoading) {
+			dismissSplash();
+		}
+	}, [sessionQuery.isLoading]);
+
+	if (sessionQuery.isLoading) {
+		// Splash screen in index.html handles the visual — render nothing here
+		return null;
+	}
+
+	if (!sessionQuery.data) {
+		return <LoginScreen />;
+	}
+
+	return <AuthenticatedApp />;
+}
+
+function AuthenticatedApp() {
 	const [savedScrollback, setSavedScrollback] = useState<Record<string, string>>({});
 
 	const saveMutation = trpc.terminalSessions.save.useMutation();
@@ -294,6 +342,154 @@ export function App() {
 	}, []);
 
 	usePaneShortcuts();
+	useAgentAlertListener();
+
+	// Branch palette mutations and action menu state
+	const utils = trpc.useUtils();
+	const mergeStartMutation = trpc.merge.start.useMutation({
+		onError: (err) => console.error("[App] merge.start failed:", err.message),
+	});
+	const rebaseStartMutation = trpc.rebase.start.useMutation({
+		onError: (err) => console.error("[App] rebase.start failed:", err.message),
+	});
+
+	const [actionMenu, setActionMenu] = useState<{
+		branch: string;
+		currentBranch: string;
+		position: { x: number; y: number };
+	} | null>(null);
+
+	const { openPalette, closePalette, isPaletteOpen, setMergeState } = useBranchStore();
+	const isMerging = useBranchStore((s) => s.mergeState !== null);
+
+	// Derive active projectId from the active workspace
+	const activeWorkspaceId = useTabStore((s) => s.activeWorkspaceId);
+	const activeWorkspaceQuery = trpc.workspaces.getById.useQuery(
+		{ id: activeWorkspaceId ?? "" },
+		{ enabled: !!activeWorkspaceId, staleTime: 30_000 }
+	);
+	const activeProjectId = activeWorkspaceQuery.data?.projectId ?? null;
+
+	const workspacesQuery = trpc.workspaces.listByProject.useQuery(
+		{ projectId: activeProjectId ?? "" },
+		{ enabled: !!activeProjectId }
+	);
+
+	const activeCwd = useTabStore((s) => s.activeWorkspaceCwd);
+	const branchStatusQuery = trpc.branches.getStatus.useQuery(
+		{ projectId: activeProjectId ?? "", cwd: activeCwd || undefined },
+		{ enabled: !!activeProjectId }
+	);
+
+	function handleMerge(branch: string) {
+		if (!activeProjectId) return;
+		if (useBranchStore.getState().mergeState !== null) return;
+		closePalette();
+		setActionMenu(null);
+		const cwd = useTabStore.getState().activeWorkspaceCwd || undefined;
+		const currentBranch = branchStatusQuery.data?.branch ?? "";
+		mergeStartMutation.mutate(
+			{ projectId: activeProjectId, branch, cwd },
+			{
+				onSuccess: (result) => {
+					utils.branches.getStatus.invalidate();
+					if (result.status === "conflict" && result.files) {
+						const workspaceId = useTabStore.getState().activeWorkspaceId ?? "";
+						setMergeState({
+							type: "merge",
+							sourceBranch: branch,
+							targetBranch: currentBranch,
+							conflicts: result.files.map((path) => ({ path, status: "conflicting" as const })),
+							activeFilePath: result.files[0] ?? null,
+							rebaseProgress: null,
+						});
+						useTabStore.getState().openMergeConflict(workspaceId, "merge", branch, currentBranch);
+					}
+				},
+			}
+		);
+	}
+
+	function handleRebase(ontoBranch: string) {
+		if (!activeProjectId) return;
+		if (useBranchStore.getState().mergeState !== null) return;
+		closePalette();
+		setActionMenu(null);
+		const cwd = useTabStore.getState().activeWorkspaceCwd || undefined;
+		const currentBranch = branchStatusQuery.data?.branch ?? "";
+		rebaseStartMutation.mutate(
+			{ projectId: activeProjectId, ontoBranch, cwd },
+			{
+				onSuccess: (result) => {
+					utils.branches.getStatus.invalidate();
+					if (result.status === "conflict" && result.files) {
+						const workspaceId = useTabStore.getState().activeWorkspaceId ?? "";
+						setMergeState({
+							type: "rebase",
+							sourceBranch: ontoBranch,
+							targetBranch: currentBranch,
+							conflicts: result.files.map((path) => ({ path, status: "conflicting" as const })),
+							activeFilePath: result.files[0] ?? null,
+							rebaseProgress: result.progress ?? null,
+						});
+						useTabStore
+							.getState()
+							.openMergeConflict(workspaceId, "rebase", ontoBranch, currentBranch);
+					}
+				},
+			}
+		);
+	}
+
+	// Cmd+Shift+B — toggle branch palette
+	useEffect(() => {
+		function handleKeyDown(e: KeyboardEvent) {
+			if (e.key === "b" && e.metaKey && e.shiftKey) {
+				e.preventDefault();
+				if (isPaletteOpen) {
+					closePalette();
+				} else if (activeProjectId) {
+					openPalette();
+				}
+			}
+		}
+		document.addEventListener("keydown", handleKeyDown);
+		return () => document.removeEventListener("keydown", handleKeyDown);
+	}, [isPaletteOpen, openPalette, closePalette, activeProjectId]);
+
+	// Query update status on mount and poll when an update is being downloaded
+	const updateStore = useUpdateStore();
+	const isDownloading = updateStore.toastState === "downloading";
+	const updateStatus = trpc.updates.getStatus.useQuery(undefined, {
+		staleTime: isDownloading ? 5_000 : Number.POSITIVE_INFINITY,
+		refetchInterval: isDownloading ? 5_000 : false,
+		refetchOnMount: false,
+		refetchOnWindowFocus: false,
+		refetchOnReconnect: false,
+	});
+
+	const hasCheckedUpdate = useRef(false);
+	useEffect(() => {
+		const data = updateStatus.data;
+		if (!data) return;
+
+		// One-time: process pending notification from startup
+		if (!hasCheckedUpdate.current) {
+			hasCheckedUpdate.current = true;
+			if (data.pendingNotification) {
+				const { type, version, summary } = data.pendingNotification;
+				const toastType = type === "patch" ? "patch" : "new-version";
+				useUpdateStore.getState().showToast(toastType, version, summary);
+			}
+		}
+
+		// Sync download/ready state from main process
+		if (data.updateDownloaded && data.updateVersion) {
+			useUpdateStore.getState().setUpdateReady(data.updateVersion);
+		} else if (data.updateAvailable && data.downloadProgress != null && data.updateVersion) {
+			useUpdateStore.getState().setDownloadProgress(data.downloadProgress);
+		}
+	}, [updateStatus.data]);
 
 	const sidebarPanelRef = usePanelRef();
 	const diffPanelRef = usePanelRef();
@@ -301,6 +497,7 @@ export function App() {
 	const sidebarCollapsed = useProjectStore((s) => s.sidebarCollapsed);
 	const sidebarView = useProjectStore((s) => s.sidebarView);
 	const rightPanelOpen = useTabStore((s) => s.rightPanel.open);
+	const sidebarSegment = useTabStore((s) => s.sidebarSegment);
 	const closeDiffPanel = useTabStore((s) => s.closeDiffPanel);
 	const openRightPanel = useTabStore((s) => s.openRightPanel);
 	const { defaultLayout, onLayoutChanged } = useDefaultLayout({
@@ -308,15 +505,20 @@ export function App() {
 		storage: localStorage,
 	});
 
-	// Sync panel collapse/expand with store state
+	// Sync panel collapse/expand with store state.
+	// Always collapse when on tickets segment — the diff panel is not relevant.
 	useEffect(() => {
 		if (!diffPanelRef.current) return;
+		if (sidebarSegment === "tickets") {
+			if (!diffPanelRef.current.isCollapsed()) diffPanelRef.current.collapse();
+			return;
+		}
 		if (rightPanelOpen && diffPanelRef.current.isCollapsed()) {
 			diffPanelRef.current.expand();
 		} else if (!rightPanelOpen && !diffPanelRef.current.isCollapsed()) {
 			diffPanelRef.current.collapse();
 		}
-	}, [rightPanelOpen, diffPanelRef]);
+	}, [rightPanelOpen, diffPanelRef, sidebarSegment]);
 
 	if (sidebarView === "settings") {
 		return <SettingsPage />;
@@ -361,7 +563,7 @@ export function App() {
 					id="diff"
 					panelRef={diffPanelRef}
 					defaultSize="19.4%"
-					minSize="10%"
+					minSize={200}
 					maxSize="40%"
 					collapsible
 					collapsedSize="0%"
@@ -373,7 +575,7 @@ export function App() {
 					<DiffPanel onClose={closeDiffPanel} />
 				</Panel>
 			</Group>
-			{!rightPanelOpen && (
+			{!rightPanelOpen && sidebarSegment !== "tickets" && (
 				<button
 					type="button"
 					onClick={openRightPanel}
@@ -399,6 +601,28 @@ export function App() {
 			<CreateWorktreeModal />
 			<SharedFilesPanel />
 			<DaemonStatus />
+			<UpdateToast />
+			<WhatsNewModal />
+			{activeProjectId && (
+				<BranchPalette
+					projectId={activeProjectId}
+					onOpenActionMenu={(branch, currentBranch, position) => {
+						setActionMenu({ branch, currentBranch, position });
+					}}
+				/>
+			)}
+			{activeProjectId && actionMenu && (
+				<BranchActionMenu
+					projectId={activeProjectId}
+					branch={actionMenu.branch}
+					currentBranch={actionMenu.currentBranch}
+					position={actionMenu.position}
+					onClose={() => setActionMenu(null)}
+					onMerge={handleMerge}
+					onRebase={handleRebase}
+					isMerging={isMerging}
+				/>
+			)}
 		</>
 	);
 }

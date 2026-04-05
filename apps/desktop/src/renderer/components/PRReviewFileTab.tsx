@@ -53,7 +53,7 @@ function ThreadWidget({
 					<div className="flex items-center gap-1.5">
 						{!isUserPending && <span className="ai-badge">AI</span>}
 						<span className="text-[10px] font-medium text-[var(--text-tertiary)]">
-							{isUserPending ? "You" : "BranchFlux AI"}
+							{isUserPending ? "You" : "SuperiorSwarm AI"}
 						</span>
 						{isUserPending && (
 							<span className="rounded-[3px] border border-[var(--border-active)] bg-[var(--bg-overlay)] px-1.5 py-px text-[9px] font-semibold uppercase tracking-wide text-[var(--text-tertiary)]">

@@ -140,6 +140,33 @@ export function IssueContextMenu({
 				</svg>
 			</button>
 
+			{/* Copy ticket ID */}
+			<button
+				type="button"
+				role="menuitem"
+				onClick={() => {
+					navigator.clipboard.writeText(issue.identifier);
+					onClose();
+				}}
+				className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-[var(--text-secondary)] transition-colors duration-[80ms] hover:bg-[var(--bg-overlay)]"
+			>
+				<svg
+					width="12"
+					height="12"
+					viewBox="0 0 16 16"
+					fill="none"
+					stroke="currentColor"
+					strokeWidth="1.5"
+					strokeLinecap="round"
+					strokeLinejoin="round"
+					aria-hidden="true"
+				>
+					<rect x="5" y="5" width="8" height="8" rx="1.5" />
+					<path d="M3 11V3h8" />
+				</svg>
+				Copy ticket ID
+			</button>
+
 			{/* Create branch */}
 			<button
 				type="button"

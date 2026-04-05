@@ -10,21 +10,28 @@ import { DraftCommitCard } from "./DraftCommitCard";
 import { PRControlRail } from "./PRControlRail";
 import { RepoFileTree } from "./RepoFileTree";
 import { SmartHeaderBar } from "./SmartHeaderBar";
+import { Tooltip } from "./Tooltip";
+import { changesIcon, commentsIcon, filesIcon, sparkleIcon } from "./panel-icons";
 
 type DiffPanelTab = "changes" | "files" | "comments" | "ai-fixes";
+
+const panelTabIcons: Record<DiffPanelTab, React.ReactNode> = {
+	changes: changesIcon,
+	files: filesIcon,
+	comments: commentsIcon,
+	"ai-fixes": sparkleIcon,
+};
 
 function PanelHeader({
 	activeTab,
 	onSetTab,
-	stats,
 	onClose,
 }: {
 	activeTab: DiffPanelTab;
 	onSetTab: (tab: DiffPanelTab) => void;
-	stats?: { added: number; removed: number; changed: number };
 	onClose?: () => void;
 }) {
-	const tabs: { key: DiffPanelTab; label: string; badge?: number }[] = [
+	const tabs: { key: DiffPanelTab; label: string }[] = [
 		{ key: "changes", label: "Changes" },
 		{ key: "files", label: "Files" },
 		{ key: "comments", label: "Comments" },
@@ -35,34 +42,23 @@ function PanelHeader({
 		<div className="flex shrink-0 items-center gap-2 border-b border-[var(--border)] px-3 py-2">
 			<div className="flex rounded-[var(--radius-sm)] bg-[var(--bg-base)] p-0.5">
 				{tabs.map((t) => (
-					<button
-						key={t.key}
-						type="button"
-						onClick={() => onSetTab(t.key)}
-						className={[
-							"flex items-center gap-1 whitespace-nowrap rounded-[4px] px-3 py-0.5 text-[11px] font-medium transition-all duration-[120ms]",
-							activeTab === t.key
-								? "bg-[var(--bg-elevated)] text-[var(--text-secondary)] shadow-[var(--shadow-sm)]"
-								: "text-[var(--text-quaternary)] hover:text-[var(--text-tertiary)]",
-						].join(" ")}
-					>
-						{t.label}
-						{t.badge != null && (
-							<span className="rounded-full bg-[var(--bg-overlay)] px-1 text-[9px] text-[var(--text-tertiary)]">
-								{t.badge}
-							</span>
-						)}
-					</button>
+					<Tooltip key={t.key} label={t.label}>
+						<button
+							type="button"
+							onClick={() => onSetTab(t.key)}
+							className={[
+								"flex items-center gap-1 rounded-[4px] px-2 py-1 transition-all duration-[120ms]",
+								activeTab === t.key
+									? "bg-[var(--bg-elevated)] text-[var(--text-secondary)] shadow-[var(--shadow-sm)]"
+									: "text-[var(--text-quaternary)] hover:text-[var(--text-tertiary)]",
+							].join(" ")}
+						>
+							{panelTabIcons[t.key]}
+						</button>
+					</Tooltip>
 				))}
 			</div>
 			<div className="flex-1" />
-			{stats && (
-				<div className="flex items-center rounded-full bg-[var(--bg-base)] px-2 py-0.5 text-[11px]">
-					<span className="text-[var(--term-green)]">+{stats.added + stats.changed}</span>
-					<span className="mx-1 text-[var(--text-quaternary)]">/</span>
-					<span className="text-[var(--term-red)]">-{stats.removed}</span>
-				</div>
-			)}
 			{onClose && (
 				<button
 					type="button"
@@ -104,42 +100,16 @@ function DiffPanelContent({ diffCtx, onClose }: { diffCtx: DiffContext; onClose?
 		{ staleTime: 60_000 }
 	);
 
+	// Resolve projectId from repoPath so we can pass it down to BranchChip
+	const projectsQuery = trpc.projects.list.useQuery(undefined, { staleTime: 60_000 });
+	const projectId = projectsQuery.data?.find((p) => p.repoPath === diffCtx.repoPath)?.id ?? null;
+
 	const effectiveBaseBranch = storedBaseBranch ?? defaultBranchQuery.data?.branch ?? "main";
 
 	// Working tree status (staged/unstaged split)
 	const statusQuery = trpc.diff.getWorkingTreeStatus.useQuery(
 		{ repoPath: diffCtx.repoPath },
 		{ enabled: diffCtx.type === "working-tree", staleTime: 30_000 }
-	);
-
-	// Working tree diff (for stats)
-	const workingTreeQuery = trpc.diff.getWorkingTreeDiff.useQuery(
-		{ repoPath: diffCtx.repoPath },
-		{ enabled: diffCtx.type === "working-tree", staleTime: 30_000 }
-	);
-
-	// Branch diff (for non-working-tree contexts)
-	const branchDiffQuery = trpc.diff.getBranchDiff.useQuery(
-		diffCtx.type === "branch"
-			? {
-					repoPath: diffCtx.repoPath,
-					baseBranch: diffCtx.baseBranch,
-					headBranch: diffCtx.headBranch,
-				}
-			: { repoPath: "", baseBranch: "", headBranch: "" },
-		{ enabled: diffCtx.type === "branch", staleTime: 30_000 }
-	);
-
-	const prDiffQuery = trpc.diff.getPRDiff.useQuery(
-		diffCtx.type === "pr"
-			? {
-					repoPath: diffCtx.repoPath,
-					prId: diffCtx.prId,
-					workspaceSlug: diffCtx.workspaceSlug,
-					repoSlug: diffCtx.repoSlug,
-				}
-			: { repoPath: "", prId: 0, workspaceSlug: "", repoSlug: "" },
-		{ enabled: diffCtx.type === "pr", staleTime: 60_000 }
 	);
 
 	const invalidateAll = () => {
@@ -157,24 +127,12 @@ function DiffPanelContent({ diffCtx, onClose }: { diffCtx: DiffContext; onClose?
 		onSuccess: invalidateAll,
 	});
 
-	const stats =
-		diffCtx.type === "working-tree"
-			? workingTreeQuery.data?.stats
-			: diffCtx.type === "branch"
-				? branchDiffQuery.data?.stats
-				: prDiffQuery.data?.stats;
-
 	const currentBranch = statusQuery.data?.branch ?? "";
 	const hasStatusData = diffCtx.type === "working-tree" && statusQuery.data != null;
 
 	return (
 		<div className="flex h-full flex-col overflow-hidden">
-			<PanelHeader
-				activeTab={activeTab}
-				onSetTab={setActiveTab}
-				stats={activeTab === "changes" ? (stats ?? undefined) : undefined}
-				onClose={onClose}
-			/>
+			<PanelHeader activeTab={activeTab} onSetTab={setActiveTab} onClose={onClose} />
 
 			{activeTab === "comments" && activeWorkspaceId ? (
 				<CommentsOverviewTab workspaceId={activeWorkspaceId} />
@@ -192,6 +150,7 @@ function DiffPanelContent({ diffCtx, onClose }: { diffCtx: DiffContext; onClose?
 							repoPath={diffCtx.repoPath}
 							currentBranch={currentBranch}
 							baseBranch={effectiveBaseBranch}
+							projectId={projectId}
 							onBaseBranchChange={(branch) => {
 								if (activeWorkspaceId) {
 									setBaseBranch(activeWorkspaceId, branch);
@@ -227,19 +186,9 @@ function DiffPanelContent({ diffCtx, onClose }: { diffCtx: DiffContext; onClose?
 									/>
 								)}
 
-								{/* Committed stack */}
-								<div className="mt-3">
-									<CommittedStack
-										repoPath={diffCtx.repoPath}
-										baseBranch={effectiveBaseBranch}
-										diffCtx={diffCtx}
-										workspaceId={activeWorkspaceId}
-									/>
-								</div>
-
 								{/* Branch changes — full diff vs base */}
 								{currentBranch && (
-									<div className="mt-1 mb-4">
+									<div className="mt-3">
 										<BranchChanges
 											repoPath={diffCtx.repoPath}
 											baseBranch={effectiveBaseBranch}
@@ -249,6 +198,16 @@ function DiffPanelContent({ diffCtx, onClose }: { diffCtx: DiffContext; onClose?
 										/>
 									</div>
 								)}
+
+								{/* Committed stack */}
+								<div className="mt-1 mb-4">
+									<CommittedStack
+										repoPath={diffCtx.repoPath}
+										baseBranch={effectiveBaseBranch}
+										diffCtx={diffCtx}
+										workspaceId={activeWorkspaceId}
+									/>
+								</div>
 							</>
 						)}
 					</div>

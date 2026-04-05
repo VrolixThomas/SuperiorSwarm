@@ -37,7 +37,7 @@ function writeTempMcpConfig(
 	const configPath = join(dir, filename);
 	const config = {
 		mcpServers: {
-			branchflux: {
+			superiorswarm: {
 				command: "node",
 				args: [mcpServerPath],
 				...(env ? { env } : {}),
@@ -71,7 +71,7 @@ export const CLI_PRESETS: Record<string, CliPreset> = {
 		command: "claude",
 		permissionFlag: "--dangerously-skip-permissions",
 		buildArgs: ({ promptFilePath }) => [
-			`"Review this PR. Read ${promptFilePath} for detailed instructions and use the BranchFlux MCP tools."`,
+			`"Review this PR. Read ${promptFilePath} for detailed instructions and use the SuperiorSwarm MCP tools."`,
 		],
 		setupMcp: (opts) => {
 			// Claude Code reads MCP config from .mcp.json in the project root
@@ -85,7 +85,7 @@ export const CLI_PRESETS: Record<string, CliPreset> = {
 			const configPath = join(opts.worktreePath, ".mcp.json");
 			const config = {
 				mcpServers: {
-					branchflux: {
+					superiorswarm: {
 						command: "node",
 						args: [standaloneServerPath],
 						env: buildMcpEnv(opts),
@@ -119,7 +119,7 @@ export const CLI_PRESETS: Record<string, CliPreset> = {
 			const configPath = join(dir, "settings.json");
 			const config = {
 				mcpServers: {
-					branchflux: {
+					superiorswarm: {
 						command: "node",
 						args: [standaloneServerPath],
 						env: buildMcpEnv(opts),
@@ -173,7 +173,7 @@ export const CLI_PRESETS: Record<string, CliPreset> = {
 			const configPath = join(opts.worktreePath, "opencode.json");
 			const config = {
 				mcp: {
-					branchflux: {
+					superiorswarm: {
 						type: "local",
 						command: ["node", standaloneServerPath],
 						environment: buildMcpEnv(opts),
@@ -212,7 +212,7 @@ export function resolveCliPath(command: string): string {
 /** Build the locked MCP tool instructions block */
 function buildMcpInstructions(targetBranch: string): string {
 	return `
-You MUST use the BranchFlux MCP tools to complete your review:
+You MUST use the SuperiorSwarm MCP tools to complete your review:
 
 1. Call \`get_pr_metadata\` to understand the PR context
 2. Explore the codebase and review the changes (use git diff origin/${targetBranch}...HEAD to see the changes)
@@ -301,7 +301,7 @@ ${commentLines}`;
 /** Build the locked MCP tool instructions block for follow-up reviews */
 function buildFollowUpMcpInstructions(targetBranch: string): string {
 	return `
-You MUST use the BranchFlux MCP tools to complete your follow-up review:
+You MUST use the SuperiorSwarm MCP tools to complete your follow-up review:
 
 1. Call \`get_pr_metadata\` to understand the PR context
 2. Call \`get_previous_comments\` to get the full details of previous review comments

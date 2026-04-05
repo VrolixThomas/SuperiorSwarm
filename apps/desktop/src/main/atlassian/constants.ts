@@ -7,8 +7,7 @@ export const JIRA_CLIENT_SECRET = process.env.JIRA_CLIENT_SECRET ?? "";
 export const BITBUCKET_CLIENT_ID = process.env.BITBUCKET_CLIENT_ID ?? "";
 export const BITBUCKET_CLIENT_SECRET = process.env.BITBUCKET_CLIENT_SECRET ?? "";
 
-export const OAUTH_CALLBACK_PORT = 27391;
-export const OAUTH_CALLBACK_URL = `http://localhost:${OAUTH_CALLBACK_PORT}/callback`;
+export { OAUTH_CALLBACK_PORT, OAUTH_CALLBACK_URL } from "../oauth-constants";
 
 export const JIRA_AUTH_URL = "https://auth.atlassian.com/authorize";
 export const JIRA_TOKEN_URL = "https://auth.atlassian.com/oauth/token";

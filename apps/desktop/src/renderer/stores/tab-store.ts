@@ -54,6 +54,15 @@ export type TabItem =
 			title: string;
 			language: string;
 			repoPath: string;
+	  }
+	| {
+			kind: "merge-conflict";
+			id: string;
+			workspaceId: string;
+			title: string;
+			mergeType: "merge" | "rebase";
+			sourceBranch: string;
+			targetBranch: string;
 	  };
 export type PanelMode = "diff" | "explorer" | "pr-review";
 
@@ -93,6 +102,14 @@ interface TabStore {
 	_paneVersion: number;
 	sidebarSegment: SidebarSegment;
 	activeWorkspaceBySegment: Record<SidebarSegment, { id: string; cwd: string } | null>;
+
+	// Ticket canvas state
+	activeTicketProject: { id: string; provider: "jira" | "linear" } | "all" | null;
+	selectedTicketId: string | null;
+	ticketDetailOpen: boolean;
+	setActiveTicketProject: (project: { id: string; provider: "jira" | "linear" } | "all") => void;
+	setSelectedTicket: (ticketId: string | null) => void;
+	closeTicketDetail: () => void;
 
 	// Derived — reads from pane-store for backwards compat
 	getAllTabs: () => TabItem[];
@@ -138,6 +155,13 @@ interface TabStore {
 		commitHash: string,
 		repoPath: string,
 		language: string
+	) => string;
+
+	openMergeConflict: (
+		workspaceId: string,
+		mergeType: "merge" | "rebase",
+		sourceBranch: string,
+		targetBranch: string
 	) => string;
 
 	// Diff convenience
@@ -315,6 +339,21 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 	_paneVersion: 0,
 	sidebarSegment: "repos" as SidebarSegment,
 	activeWorkspaceBySegment: { repos: null, tickets: null, prs: null },
+
+	activeTicketProject: "all",
+	selectedTicketId: null,
+	ticketDetailOpen: false,
+
+	setActiveTicketProject: (project) =>
+		set({ activeTicketProject: project, selectedTicketId: null, ticketDetailOpen: false }),
+
+	setSelectedTicket: (ticketId) =>
+		set({
+			selectedTicketId: ticketId,
+			ticketDetailOpen: ticketId !== null,
+		}),
+
+	closeTicketDetail: () => set({ selectedTicketId: null, ticketDetailOpen: false }),
 
 	// ── Derived properties ──────────────────────────────────────────────
 
@@ -581,6 +620,25 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 		return id;
 	},
 
+	openMergeConflict: (workspaceId, mergeType, sourceBranch, targetBranch) => {
+		const id = nextFileTabId();
+		const label =
+			mergeType === "merge"
+				? `Merge: ${sourceBranch} → ${targetBranch}`
+				: `Rebase: ${targetBranch} onto ${sourceBranch}`;
+		const tab: TabItem = {
+			kind: "merge-conflict",
+			id,
+			workspaceId,
+			title: label,
+			mergeType,
+			sourceBranch,
+			targetBranch,
+		};
+		get().addTab(tab);
+		return id;
+	},
+
 	toggleDiffPanel: (diffCtx) => {
 		const { rightPanel } = get();
 		if (
@@ -600,9 +658,10 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 	},
 
 	openRightPanel: () => {
-		const { rightPanel, activeWorkspaceCwd } = get();
+		const { rightPanel, activeWorkspaceCwd, activeWorkspaceId, workspaceMetadata } = get();
 		if (rightPanel.open) return;
-		set({ rightPanel: defaultPanelForCwd(activeWorkspaceCwd) });
+		const meta = activeWorkspaceId ? workspaceMetadata[activeWorkspaceId] : undefined;
+		set({ rightPanel: panelForWorkspace(activeWorkspaceCwd, meta) });
 	},
 
 	openExplorer: () => {
@@ -795,6 +854,15 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 			activeWorkspaceBySegment[segment] = { id: activeWs, cwd: activeCwd };
 			if (!extraState?.["sidebarSegment"]) {
 				sidebarSegment = segment;
+			}
+		}
+
+		if (extraState?.["activeTicketProject"]) {
+			try {
+				const parsed = JSON.parse(extraState["activeTicketProject"]);
+				set({ activeTicketProject: parsed });
+			} catch {
+				// ignore invalid JSON
 			}
 		}
 

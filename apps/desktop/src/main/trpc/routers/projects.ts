@@ -50,7 +50,7 @@ function assertSafePath(baseDir: string, childName: string): string {
 	return resolvedTarget;
 }
 
-const DEFAULT_PROJECTS_DIR = join(homedir(), "BranchFlux", "projects");
+const DEFAULT_PROJECTS_DIR = join(homedir(), "SuperiorSwarm", "projects");
 
 // In-memory clone progress tracking
 const cloneProgressMap = new Map<string, { stage: string; progress: number }>();
@@ -269,6 +269,7 @@ export const projectsRouter = router({
 				id: z.string(),
 				name: z.string().optional(),
 				color: z.string().optional(),
+				defaultBranch: z.string().optional(),
 			})
 		)
 		.mutation(({ input }) => {
@@ -278,6 +279,7 @@ export const projectsRouter = router({
 			};
 			if (input.name !== undefined) updates["name"] = input.name;
 			if (input.color !== undefined) updates["color"] = input.color;
+			if (input.defaultBranch !== undefined) updates["defaultBranch"] = input.defaultBranch;
 
 			db.update(projects).set(updates).where(eq(projects.id, input.id)).run();
 
