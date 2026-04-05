@@ -18,7 +18,9 @@ export function QuickActionBar({
 	const addTerminalTab = useTabStore((s) => s.addTerminalTab);
 
 	function handleRun(command: string, label: string, cwd: string | null) {
-		const resolvedCwd = cwd ? `${repoPath}/${cwd}` : repoPath;
+		const resolvedCwd = cwd
+			? (cwd.startsWith("/") ? cwd : `${repoPath}/${cwd}`)
+			: repoPath;
 		const tabId = addTerminalTab(workspaceId, resolvedCwd, label);
 		setTimeout(() => {
 			window.electron.terminal.write(tabId, `${command}\n`);

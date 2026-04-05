@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { trpc } from "../trpc/client";
 
-interface ContextMenuAction {
+export interface ContextMenuAction {
 	id: string;
 	label: string;
 	command: string;
@@ -35,8 +35,13 @@ export function QuickActionContextMenu({
 		function handleClickOutside() {
 			onClose();
 		}
-		document.addEventListener("click", handleClickOutside);
-		return () => document.removeEventListener("click", handleClickOutside);
+		const id = requestAnimationFrame(() => {
+			document.addEventListener("click", handleClickOutside);
+		});
+		return () => {
+			cancelAnimationFrame(id);
+			document.removeEventListener("click", handleClickOutside);
+		};
 	}, [onClose]);
 
 	return (
