@@ -15,6 +15,7 @@ interface WorkspaceData {
 
 interface WorkspaceItemProps {
 	workspace: WorkspaceData;
+	projectId: string;
 	projectName: string;
 	projectRepoPath: string;
 	isInActiveProject: boolean;
@@ -217,6 +218,7 @@ function WorkspaceContextMenu({
 
 export function WorkspaceItem({
 	workspace,
+	projectId,
 	projectName,
 	projectRepoPath,
 	isInActiveProject,
