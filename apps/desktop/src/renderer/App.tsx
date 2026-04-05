@@ -11,6 +11,7 @@ import { LoginScreen } from "./components/LoginScreen";
 import { MainContentArea } from "./components/MainContentArea";
 import { SharedFilesPanel } from "./components/SharedFilesPanel";
 import { Sidebar } from "./components/Sidebar";
+import { SettingsPage } from "./components/settings/SettingsPage";
 import { UpdateToast } from "./components/UpdateToast";
 import { WhatsNewModal } from "./components/WhatsNewModal";
 import { useAgentAlertListener } from "./hooks/useAgentAlertListener";
@@ -494,6 +495,7 @@ function AuthenticatedApp() {
 	const diffPanelRef = usePanelRef();
 	const setSidebarCollapsed = useProjectStore((s) => s.setSidebarCollapsed);
 	const sidebarCollapsed = useProjectStore((s) => s.sidebarCollapsed);
+	const sidebarView = useProjectStore((s) => s.sidebarView);
 	const rightPanelOpen = useTabStore((s) => s.rightPanel.open);
 	const sidebarSegment = useTabStore((s) => s.sidebarSegment);
 	const closeDiffPanel = useTabStore((s) => s.closeDiffPanel);
@@ -517,6 +519,10 @@ function AuthenticatedApp() {
 			diffPanelRef.current.collapse();
 		}
 	}, [rightPanelOpen, diffPanelRef, sidebarSegment]);
+
+	if (sidebarView === "settings") {
+		return <SettingsPage />;
+	}
 
 	return (
 		<>
