@@ -1,5 +1,8 @@
+import { eq } from "drizzle-orm";
 import { BrowserWindow, ipcMain } from "electron";
 import { AGENT_NOTIFY_PORT } from "../../shared/agent-events";
+import { getDb } from "../db";
+import { terminalSessions } from "../db/schema";
 import type { DaemonClient } from "./daemon-client";
 
 function assertNonEmptyString(value: unknown, name: string): asserts value is string {
@@ -79,6 +82,13 @@ export function setupTerminalIPC(daemonClient: DaemonClient): void {
 	ipcMain.handle("terminal:dispose", (_event, id: unknown) => {
 		assertNonEmptyString(id, "id");
 		daemonClient.dispose(id);
+		// Also remove the DB session record so it doesn't reappear as stale
+		try {
+			const db = getDb();
+			db.delete(terminalSessions).where(eq(terminalSessions.id, id)).run();
+		} catch {
+			// DB may not be initialized yet during early startup
+		}
 	});
 
 	ipcMain.handle("daemon:status", () => {
