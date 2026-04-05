@@ -2,9 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { JiraIssue } from "../../main/atlassian/jira";
 import type { LinearIssue } from "../../main/linear/linear";
 import type { TicketIssue } from "../../shared/tickets";
-import { useProjectStore } from "../stores/projects";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
+import { ConnectBanner } from "./ConnectBanner";
 import { CreateBranchFromIssueModal } from "./CreateBranchFromIssueModal";
 import { IssueContextMenu } from "./IssueContextMenu";
 import { StateIcon } from "./StateIcon";
@@ -221,16 +221,7 @@ export function TicketsTab() {
 	if (!hasJira && !hasLinear) {
 		return (
 			<div className="px-3 py-2">
-				<span className="text-[12px] text-[var(--text-quaternary)]">
-					Connect Jira or Linear to see your tickets.{" "}
-				</span>
-				<button
-					type="button"
-					onClick={() => useProjectStore.getState().openSettingsToIntegrations("tickets")}
-					className="text-[12px] text-[var(--accent)] hover:underline"
-				>
-					Connect in Settings
-				</button>
+				<ConnectBanner message="Connect Jira or Linear to see your tickets." returnTo="tickets" />
 			</div>
 		);
 	}
