@@ -18,6 +18,8 @@ interface QuickActionContextMenuProps {
 	y: number;
 	onClose: () => void;
 	onEdit: (action: ContextMenuAction) => void;
+	/** All actions in current display order, for reordering */
+	allActions: ContextMenuAction[];
 }
 
 export function QuickActionContextMenu({
@@ -26,14 +28,33 @@ export function QuickActionContextMenu({
 	y,
 	onClose,
 	onEdit,
+	allActions,
 }: QuickActionContextMenuProps) {
 	const menuRef = useRef<HTMLDivElement>(null);
 	const utils = trpc.useUtils();
 	const deleteMutation = trpc.quickActions.delete.useMutation({
 		onSuccess: () => utils.quickActions.list.invalidate(),
 	});
+	const reorderMutation = trpc.quickActions.reorder.useMutation({
+		onSuccess: () => utils.quickActions.list.invalidate(),
+	});
 
 	useClickOutside(menuRef, onClose);
+
+	const currentIndex = allActions.findIndex((a) => a.id === action.id);
+	const canMoveLeft = currentIndex > 0;
+	const canMoveRight = currentIndex < allActions.length - 1;
+
+	function handleMove(direction: "left" | "right") {
+		const ids = allActions.map((a) => a.id);
+		const idx = ids.indexOf(action.id);
+		if (idx === -1) return;
+		const swapIdx = direction === "left" ? idx - 1 : idx + 1;
+		if (swapIdx < 0 || swapIdx >= ids.length) return;
+		[ids[idx], ids[swapIdx]] = [ids[swapIdx]!, ids[idx]!];
+		reorderMutation.mutate({ orderedIds: ids });
+		onClose();
+	}
 
 	return (
 		<div
@@ -51,6 +72,25 @@ export function QuickActionContextMenu({
 			>
 				Edit
 			</button>
+			{canMoveLeft && (
+				<button
+					type="button"
+					onClick={() => handleMove("left")}
+					className="w-full px-3 py-1.5 text-left text-[12px] text-[var(--text)] hover:bg-[rgba(255,255,255,0.06)]"
+				>
+					Move left
+				</button>
+			)}
+			{canMoveRight && (
+				<button
+					type="button"
+					onClick={() => handleMove("right")}
+					className="w-full px-3 py-1.5 text-left text-[12px] text-[var(--text)] hover:bg-[rgba(255,255,255,0.06)]"
+				>
+					Move right
+				</button>
+			)}
+			<div className="my-1 border-t border-[var(--border-subtle)]" />
 			<button
 				type="button"
 				onClick={() => {
