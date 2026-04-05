@@ -121,8 +121,8 @@ export const quickActionsRouter = router({
 		}),
 
 	launchSetupAgent: publicProcedure
-		.input(z.object({ projectId: z.string(), repoPath: z.string() }))
+		.input(z.object({ projectId: z.string(), repoPath: z.string(), prompt: z.string().optional() }))
 		.mutation(({ input }) => {
-			return launchSetupAgent(input.projectId, input.repoPath);
+			return launchSetupAgent(input.projectId, input.repoPath, input.prompt);
 		}),
 });
