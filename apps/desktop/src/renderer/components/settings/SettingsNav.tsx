@@ -1,6 +1,4 @@
-import { useProjectStore } from "../../stores/projects";
-
-type SettingsCategory = "general" | "integrations" | "ai-review" | "about";
+import { useProjectStore, type SettingsCategory } from "../../stores/projects";
 
 const NAV_ITEMS: { id: SettingsCategory; label: string; icon: React.ReactNode }[] = [
 	{
