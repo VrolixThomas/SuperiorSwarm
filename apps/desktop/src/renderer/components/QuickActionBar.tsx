@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 
@@ -21,7 +21,15 @@ export function QuickActionBar({
 	onAddClick,
 }: QuickActionBarProps) {
 	const actionsQuery = trpc.quickActions.list.useQuery({ projectId });
+	const reorderMutation = trpc.quickActions.reorder.useMutation({
+		onSuccess: () => utils.quickActions.list.invalidate(),
+	});
+	const utils = trpc.useUtils();
 	const addTerminalTab = useTabStore((s) => s.addTerminalTab);
+
+	const [dragId, setDragId] = useState<string | null>(null);
+	const [dropTarget, setDropTarget] = useState<string | null>(null);
+	const dragCounterRef = useRef(0);
 
 	useEffect(() => {
 		window.electron.quickActions.syncShortcuts(projectId);
@@ -36,6 +44,70 @@ export function QuickActionBar({
 	}
 
 	const actions = actionsQuery.data ?? [];
+
+	const handleDragStart = useCallback(
+		(e: React.DragEvent, id: string) => {
+			setDragId(id);
+			e.dataTransfer.effectAllowed = "move";
+			e.dataTransfer.setData("text/plain", id);
+			// Slight delay so the dragged element renders before going ghost
+			requestAnimationFrame(() => {
+				const el = e.target as HTMLElement;
+				el.style.opacity = "0.3";
+			});
+		},
+		[],
+	);
+
+	const handleDragEnd = useCallback(() => {
+		setDragId(null);
+		setDropTarget(null);
+		dragCounterRef.current = 0;
+	}, []);
+
+	const handleDragOver = useCallback((e: React.DragEvent) => {
+		e.preventDefault();
+		e.dataTransfer.dropEffect = "move";
+	}, []);
+
+	const handleDragEnter = useCallback((id: string) => {
+		dragCounterRef.current++;
+		setDropTarget(id);
+	}, []);
+
+	const handleDragLeave = useCallback(() => {
+		dragCounterRef.current--;
+		if (dragCounterRef.current <= 0) {
+			setDropTarget(null);
+			dragCounterRef.current = 0;
+		}
+	}, []);
+
+	const handleDrop = useCallback(
+		(e: React.DragEvent, targetId: string) => {
+			e.preventDefault();
+			const sourceId = e.dataTransfer.getData("text/plain");
+			if (!sourceId || sourceId === targetId) {
+				setDragId(null);
+				setDropTarget(null);
+				return;
+			}
+
+			// Reorder: move source to target's position
+			const ids = actions.map((a) => a.id);
+			const sourceIdx = ids.indexOf(sourceId);
+			const targetIdx = ids.indexOf(targetId);
+			if (sourceIdx === -1 || targetIdx === -1) return;
+
+			ids.splice(sourceIdx, 1);
+			ids.splice(targetIdx, 0, sourceId);
+
+			reorderMutation.mutate({ orderedIds: ids });
+			setDragId(null);
+			setDropTarget(null);
+		},
+		[actions, reorderMutation],
+	);
 
 	if (actions.length === 0) {
 		return (
@@ -52,25 +124,46 @@ export function QuickActionBar({
 	return (
 		<>
 			<span className="shrink-0 text-[var(--text-quaternary)]">|</span>
-			<div className="flex min-w-0 items-center gap-1 overflow-x-auto [&::-webkit-scrollbar]:hidden">
-				{actions.map((action) => (
-					<button
-						key={action.id}
-						type="button"
-						onClick={() => handleRun(action.command, action.label, action.cwd)}
-						onContextMenu={(e) => {
-							e.preventDefault();
-							window.dispatchEvent(
-								new CustomEvent("quick-action-context", {
-									detail: { action, x: e.clientX, y: e.clientY, allActions: actions },
-								})
-							);
-						}}
-						className="shrink-0 whitespace-nowrap rounded-[var(--radius-sm)] px-1.5 py-0.5 text-[12px] text-[var(--text-tertiary)] transition-colors duration-[var(--transition-fast)] hover:text-[var(--text)]"
-					>
-						{action.label}
-					</button>
-				))}
+			<div className="flex min-w-0 items-center overflow-x-auto [&::-webkit-scrollbar]:hidden">
+				{actions.map((action) => {
+					const isDragging = dragId === action.id;
+					const isDropTarget = dropTarget === action.id && dragId !== action.id;
+
+					return (
+						<button
+							key={action.id}
+							type="button"
+							draggable
+							onClick={() => handleRun(action.command, action.label, action.cwd)}
+							onContextMenu={(e) => {
+								e.preventDefault();
+								window.dispatchEvent(
+									new CustomEvent("quick-action-context", {
+										detail: { action, x: e.clientX, y: e.clientY, allActions: actions },
+									})
+								);
+							}}
+							onDragStart={(e) => handleDragStart(e, action.id)}
+							onDragEnd={handleDragEnd}
+							onDragOver={handleDragOver}
+							onDragEnter={() => handleDragEnter(action.id)}
+							onDragLeave={handleDragLeave}
+							onDrop={(e) => handleDrop(e, action.id)}
+							className={[
+								"shrink-0 whitespace-nowrap rounded-[var(--radius-sm)] px-1.5 py-0.5 text-[12px] transition-all duration-100",
+								isDragging
+									? "opacity-30"
+									: "opacity-100",
+								isDropTarget
+									? "bg-[rgba(10,132,255,0.15)] text-[var(--accent)]"
+									: "text-[var(--text-tertiary)] hover:text-[var(--text)]",
+								"cursor-grab active:cursor-grabbing",
+							].join(" ")}
+						>
+							{action.label}
+						</button>
+					);
+				})}
 			</div>
 			<button
 				type="button"

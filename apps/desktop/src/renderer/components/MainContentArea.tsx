@@ -13,7 +13,6 @@ interface ContextMenuState {
 	action: ContextMenuAction;
 	x: number;
 	y: number;
-	allActions: ContextMenuAction[];
 }
 
 export function MainContentArea({ savedScrollback }: { savedScrollback: Record<string, string> }) {
@@ -104,7 +103,6 @@ export function MainContentArea({ savedScrollback }: { savedScrollback: Record<s
 					action={contextMenu.action}
 					x={contextMenu.x}
 					y={contextMenu.y}
-					allActions={contextMenu.allActions}
 					onClose={() => setContextMenu(null)}
 					onEdit={(action) => {
 						setEditAction(action);
