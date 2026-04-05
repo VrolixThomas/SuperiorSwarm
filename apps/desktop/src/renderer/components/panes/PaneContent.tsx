@@ -1,18 +1,28 @@
 import type { Pane } from "../../../shared/pane-types";
+import { trpc } from "../../trpc/client";
 import { CommentFixFileTab } from "../CommentFixFileTab";
 import { DiffFileTab } from "../DiffFileTab";
 import { FileEditor } from "../FileEditor";
+import { MergeConflictPane } from "../MergeConflictPane";
 import { PROverviewTab } from "../PROverviewTab";
 import { PRReviewFileTab } from "../PRReviewFileTab";
 import { Terminal } from "../Terminal";
 
 export function PaneContent({
 	pane,
+	workspaceId,
 	savedScrollback,
 }: {
 	pane: Pane;
+	workspaceId: string;
 	savedScrollback: Record<string, string>;
 }) {
+	const workspaceQuery = trpc.workspaces.getById.useQuery(
+		{ id: workspaceId },
+		{ staleTime: 60_000 }
+	);
+	const projectId = workspaceQuery.data?.projectId ?? null;
+
 	const activeTab = pane.tabs.find((t) => t.id === pane.activeTabId) ?? null;
 	const terminalTabs = pane.tabs.filter((t) => t.kind === "terminal");
 
@@ -33,6 +43,7 @@ export function PaneContent({
 					<Terminal
 						id={tab.id}
 						cwd={tab.kind === "terminal" ? tab.cwd : undefined}
+						workspaceId={tab.workspaceId}
 						initialContent={savedScrollback[tab.id]}
 					/>
 				</div>
@@ -87,6 +98,17 @@ export function PaneContent({
 						filePath={activeTab.filePath}
 						commitHash={activeTab.commitHash}
 						language={activeTab.language}
+					/>
+				</div>
+			)}
+			{activeTab?.kind === "merge-conflict" && projectId && (
+				<div className="absolute inset-0">
+					<MergeConflictPane
+						key={activeTab.id}
+						projectId={projectId}
+						mergeType={activeTab.mergeType}
+						sourceBranch={activeTab.sourceBranch}
+						targetBranch={activeTab.targetBranch}
 					/>
 				</div>
 			)}

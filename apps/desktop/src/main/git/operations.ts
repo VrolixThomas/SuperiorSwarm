@@ -1,4 +1,5 @@
 import { existsSync, mkdirSync } from "node:fs";
+import { resolve } from "node:path";
 import simpleGit, { type SimpleGitProgressEvent } from "simple-git";
 
 export function validateGitUrl(url: string): boolean {
@@ -86,6 +87,13 @@ export async function getGitRoot(path: string): Promise<string | null> {
 	} catch {
 		return null;
 	}
+}
+
+/** Resolve the actual .git directory, works for both normal repos and worktrees. */
+export async function resolveGitDir(repoPath: string): Promise<string> {
+	const git = simpleGit(repoPath);
+	const raw = await git.revparse(["--git-dir"]);
+	return resolve(repoPath, raw.trim());
 }
 
 export async function isGitRepo(path: string): Promise<boolean> {
@@ -186,8 +194,19 @@ export async function listWorktrees(repoPath: string): Promise<WorktreeInfo[]> {
 
 export async function listBranches(repoPath: string): Promise<string[]> {
 	const git = simpleGit(repoPath);
-	const result = await git.branchLocal();
-	return result.all;
+	try {
+		await git.fetch("origin");
+	} catch {
+		// No remote configured or unreachable — fall back to local branches only
+	}
+	const result = await git.branch(["-a"]);
+	const branches = new Set<string>();
+	for (const name of result.all) {
+		if (name.includes("/HEAD")) continue;
+		const clean = name.replace(/^remotes\/origin\//, "");
+		branches.add(clean);
+	}
+	return [...branches].sort();
 }
 
 export async function hasUncommittedChanges(repoPath: string): Promise<boolean> {
@@ -233,11 +252,6 @@ export async function commitChanges(repoPath: string, message: string): Promise<
 	const git = simpleGit(repoPath);
 	const result = await git.commit(message);
 	return { hash: result.commit };
-}
-
-export async function pushBranch(repoPath: string): Promise<void> {
-	const git = simpleGit(repoPath);
-	await git.push();
 }
 
 export interface CommitInfo {

@@ -10,6 +10,7 @@ import { Terminal as XTerm } from "@xterm/xterm";
 import { useEffect, useRef } from "react";
 import { CmdBuffer } from "../../shared/lib/cmd-buffer";
 import { useTabStore } from "../stores/tab-store";
+import { interceptPaste } from "./terminal-paste";
 
 function buildTerminalTheme(): ITheme {
 	const s = getComputedStyle(document.documentElement);
@@ -42,13 +43,16 @@ function buildTerminalTheme(): ITheme {
 export function Terminal({
 	id,
 	cwd,
+	workspaceId,
 	initialContent,
-}: { id: string; cwd?: string; initialContent?: string }) {
+}: { id: string; cwd?: string; workspaceId?: string; initialContent?: string }) {
 	const ref = useRef<HTMLDivElement>(null);
 	const cwdRef = useRef(cwd);
 	const initialContentRef = useRef(initialContent);
+	const workspaceIdRef = useRef(workspaceId);
 	cwdRef.current = cwd;
 	initialContentRef.current = initialContent;
+	workspaceIdRef.current = workspaceId;
 
 	useEffect(() => {
 		if (!ref.current) return;
@@ -112,10 +116,11 @@ export function Terminal({
 		const api = window.electron;
 		let cleanupData: (() => void) | undefined;
 		let cleanupExit: (() => void) | undefined;
+		let cleanupPaste: (() => void) | undefined;
 
 		if (api) {
 			api.terminal
-				.create(id, cwdRef.current || undefined)
+				.create(id, cwdRef.current || undefined, workspaceIdRef.current)
 				.then(({ wasAttached }) => {
 					// Only replay saved scrollback for fresh sessions.
 					// Attached sessions (live background PTYs) send their current buffer
@@ -132,10 +137,12 @@ export function Terminal({
 					);
 				});
 
-			// Shift+Enter: send \n (LF) instead of \r (CR) for multiline editing
-			// in raw-mode applications (Claude Code, fish, zsh, etc.)
+			// Shift+Enter: send CSI u sequence for multiline editing
+			// in raw-mode applications (Claude Code, fish, zsh, etc.).
+			// We suppress both keydown and keyup to prevent xterm from
+			// also emitting \r through its onData path.
+			let shiftEnterPending = false;
 			term.attachCustomKeyEventHandler((event: KeyboardEvent) => {
-				if (event.type !== "keydown") return true;
 				if (
 					event.key === "Enter" &&
 					event.shiftKey &&
@@ -143,7 +150,10 @@ export function Terminal({
 					!event.altKey &&
 					!event.metaKey
 				) {
-					api.terminal.write(id, "\n");
+					if (event.type === "keydown") {
+						shiftEnterPending = true;
+						api.terminal.write(id, "\x1b[13;2u");
+					}
 					return false;
 				}
 				return true;
@@ -176,6 +186,12 @@ export function Terminal({
 			const cmd = new CmdBuffer();
 
 			term.onData((data) => {
+				// Suppress the \r that xterm may still emit after our
+				// Shift+Enter handler already sent the CSI u sequence.
+				if (shiftEnterPending) {
+					shiftEnterPending = false;
+					if (data === "\r") return;
+				}
 				api.terminal.write(id, data);
 				if (term.buffer.active.type === "alternate") return;
 
@@ -187,6 +203,7 @@ export function Terminal({
 
 			term.onResize(({ cols, rows }) => api.terminal.resize(id, cols, rows));
 			api.terminal.resize(id, term.cols, term.rows);
+			cleanupPaste = interceptPaste(term, (data) => api.terminal.write(id, data));
 		}
 
 		// Resize handling
@@ -198,6 +215,7 @@ export function Terminal({
 		return () => {
 			cleanupData?.();
 			cleanupExit?.();
+			cleanupPaste?.();
 			window.removeEventListener("resize", onResize);
 			observer.disconnect();
 			themeObserver.disconnect();

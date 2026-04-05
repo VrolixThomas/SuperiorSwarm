@@ -1,5 +1,7 @@
+import type { AgentEvent } from "./agent-events";
+
 export interface TerminalAPI {
-	create: (id: string, cwd?: string) => Promise<{ wasAttached: boolean }>;
+	create: (id: string, cwd?: string, workspaceId?: string) => Promise<{ wasAttached: boolean }>;
 	write: (id: string, data: string) => Promise<void>;
 	resize: (id: string, cols: number, rows: number) => Promise<void>;
 	detach: (id: string) => Promise<void>;
@@ -51,6 +53,10 @@ export interface DaemonAPI {
 	getStatus: () => Promise<boolean>;
 	onStatus: (callback: (connected: boolean) => void) => () => void;
 	listSessions: () => Promise<DaemonInspectorData>;
+}
+
+export interface AgentAlertAPI {
+	onAlert: (callback: (event: AgentEvent) => void) => () => void;
 }
 
 export interface LspAPI {

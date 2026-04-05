@@ -23,6 +23,12 @@
 	--accent: #0a84ff;
 	--accent-hover: #409cff;
 
+	/* Semantic colors */
+	--color-danger: #ff453a;
+	--color-success: #30d158;
+	--color-warning: #ff9f0a;
+	--color-purple: #bf5af2;
+
 	/* Terminal — ANSI palette */
 	--term-selection: rgba(255, 255, 255, 0.15);
 	--term-black: #1a1a1a;
@@ -202,6 +208,80 @@ body,
 	font-size: 10px;
 	font-weight: 600;
 	line-height: 16px;
+}
+
+/* ── Merge conflict: side panel decorations ──────────────────────────────── */
+
+.merge-side-added {
+	background: rgba(48, 209, 88, 0.08);
+}
+
+.merge-side-modified {
+	background: rgba(255, 159, 10, 0.08);
+}
+
+.merge-gutter-theirs {
+	width: 3px !important;
+	margin-left: 2px;
+	background: var(--accent);
+	border-radius: 1px;
+}
+
+.merge-gutter-ours {
+	width: 3px !important;
+	margin-left: 2px;
+	background: var(--color-purple);
+	border-radius: 1px;
+}
+
+/* ── Merge conflict: result panel decorations ────────────────────────────── */
+
+.merge-conflict-pending {
+	background: rgba(255, 69, 58, 0.12);
+}
+
+.merge-conflict-resolved {
+	background: rgba(48, 209, 88, 0.06);
+}
+
+.merge-conflict-gutter-pending {
+	width: 4px !important;
+	margin-left: 1px;
+	background: var(--color-danger);
+	border-radius: 1px;
+}
+
+.merge-conflict-gutter-resolved {
+	width: 3px !important;
+	margin-left: 2px;
+	background: var(--color-success);
+	border-radius: 1px;
+	opacity: 0.5;
+}
+
+/* Auto-merged changes in result (non-conflicting) */
+.merge-auto-theirs {
+	background: rgba(10, 132, 255, 0.06);
+}
+
+.merge-auto-ours {
+	background: rgba(191, 90, 242, 0.06);
+}
+
+.merge-auto-gutter-theirs {
+	width: 3px !important;
+	margin-left: 2px;
+	background: var(--accent);
+	border-radius: 1px;
+	opacity: 0.4;
+}
+
+.merge-auto-gutter-ours {
+	width: 3px !important;
+	margin-left: 2px;
+	background: var(--color-purple);
+	border-radius: 1px;
+	opacity: 0.4;
 }
 
 /* ── Panel resize handles ─────────────────────────────────────────────────── */

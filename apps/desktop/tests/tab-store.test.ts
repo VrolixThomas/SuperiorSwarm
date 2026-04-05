@@ -62,6 +62,9 @@ function resetStore() {
 		diffMode: "split",
 		rightPanel: PANEL_CLOSED,
 		workspaceMetadata: {},
+		activeTicketProject: "all",
+		selectedTicketId: null,
+		ticketDetailOpen: false,
 	});
 }
 
@@ -446,5 +449,53 @@ describe("hydrate", () => {
 		expect(tabs).toHaveLength(2);
 		expect(getActiveTabId()).toBe("terminal-1");
 		expect(useTabStore.getState().activeWorkspaceId).toBe("ws-1");
+	});
+});
+
+// ── ticket canvas state ───────────────────────────────────────────────────────
+
+describe("ticket canvas state", () => {
+	beforeEach(resetStore);
+
+	test("initial state has activeTicketProject 'all'", () => {
+		const state = useTabStore.getState();
+		expect(state.activeTicketProject).toBe("all");
+		expect(state.selectedTicketId).toBe(null);
+		expect(state.ticketDetailOpen).toBe(false);
+	});
+
+	test("setActiveTicketProject changes project and resets detail", () => {
+		const store = useTabStore.getState();
+		store.setSelectedTicket("issue-1");
+		expect(useTabStore.getState().ticketDetailOpen).toBe(true);
+
+		store.setActiveTicketProject({ id: "PI", provider: "jira" });
+		const state = useTabStore.getState();
+		expect(state.activeTicketProject).toEqual({ id: "PI", provider: "jira" });
+		expect(state.selectedTicketId).toBe(null);
+		expect(state.ticketDetailOpen).toBe(false);
+	});
+
+	test("setSelectedTicket opens detail panel", () => {
+		useTabStore.getState().setSelectedTicket("issue-abc");
+		const state = useTabStore.getState();
+		expect(state.selectedTicketId).toBe("issue-abc");
+		expect(state.ticketDetailOpen).toBe(true);
+	});
+
+	test("setSelectedTicket(null) closes detail panel", () => {
+		useTabStore.getState().setSelectedTicket("issue-abc");
+		useTabStore.getState().setSelectedTicket(null);
+		const state = useTabStore.getState();
+		expect(state.selectedTicketId).toBe(null);
+		expect(state.ticketDetailOpen).toBe(false);
+	});
+
+	test("closeTicketDetail clears selection", () => {
+		useTabStore.getState().setSelectedTicket("issue-abc");
+		useTabStore.getState().closeTicketDetail();
+		const state = useTabStore.getState();
+		expect(state.selectedTicketId).toBe(null);
+		expect(state.ticketDetailOpen).toBe(false);
 	});
 });

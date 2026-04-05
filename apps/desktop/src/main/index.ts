@@ -1,6 +1,9 @@
 import { join } from "node:path";
 import { BrowserWindow, app, dialog, ipcMain, shell } from "electron";
+import { AGENT_NOTIFY_PORT } from "../shared/agent-events";
 import { daemonInstanceId, daemonPaths } from "../shared/daemon-protocol";
+import { type AgentAlertListener, createAlertListener } from "./agent-hooks/listener";
+import { setupAgentHooks } from "./agent-hooks/setup";
 import { cleanupReviewWorkspace, findReviewWorkspaceByPR } from "./ai-review/cleanup";
 import { startCommentPoller, stopCommentPoller } from "./ai-review/comment-poller";
 import { startPolling } from "./ai-review/commit-poller";
@@ -24,9 +27,11 @@ import { setDaemonClient } from "./terminal/daemon-instance";
 import { setupTerminalIPC } from "./terminal/ipc";
 import { setupTRPCIPC } from "./trpc/ipc-link";
 import { appRouter } from "./trpc/routers";
+import { initializeUpdater } from "./updater";
 
 let mainWindow: BrowserWindow | null = null;
 let daemonClient: DaemonClient;
+let alertListener: AgentAlertListener | null = null;
 
 function createWindow() {
 	mainWindow = new BrowserWindow({
@@ -66,52 +71,24 @@ app.whenReady().then(async () => {
 	setDaemonClient(daemonClient);
 
 	setupTerminalIPC(daemonClient);
+
+	// Initialize database early — tRPC handlers depend on it
 	try {
 		initializeDatabase();
 	} catch (err) {
 		console.error("[db] Failed to initialize database:", err);
 		dialog.showErrorBox(
 			"Database Error",
-			`BranchFlux failed to initialize its database and cannot start.\n\n${String(err)}`
+			`SuperiorSwarm failed to initialize its database and cannot start.\n\n${String(err)}`
 		);
 		app.quit();
 		return;
 	}
-	cleanupStaleReviews();
-	startPolling();
-	startPRPolling();
-	startCommentPoller();
 
-	onNewPRDetected((pr) => {
-		for (const win of BrowserWindow.getAllWindows()) {
-			win.webContents.send("new-pr-review-request", pr);
-		}
-	});
-
-	onPRClosedDetected(async (pr) => {
-		const wsId = findReviewWorkspaceByPR(pr.provider, pr.identifier);
-		if (wsId) {
-			await cleanupReviewWorkspace(wsId);
-		}
-		for (const win of BrowserWindow.getAllWindows()) {
-			win.webContents.send("pr-closed", pr);
-		}
-	});
-
-	// Clear ephemeral terminal IDs (reset across sessions)
-	{
-		const db = getDb();
-		db.update(schema.workspaces).set({ terminalId: null, updatedAt: new Date() }).run();
-	}
-	const dbPath = join(app.getPath("userData"), "branchflux.db");
-	const daemonScriptPath = join(__dirname, "daemon.js");
-	try {
-		await daemonClient.connect(dbPath, daemonScriptPath);
-	} catch (err) {
-		console.error("[main] Failed to connect to terminal daemon:", err);
-	}
+	// Set up tRPC IPC so the renderer can make queries once it loads
 	setupTRPCIPC(appRouter);
 
+	// Register IPC handlers needed by the renderer
 	ipcMain.on("terminal-sessions:save-sync", (event, data: SessionSaveData) => {
 		try {
 			saveTerminalSessions(data);
@@ -158,6 +135,7 @@ app.whenReady().then(async () => {
 		}
 	);
 
+	// Show the window NOW — branded splash screen in index.html is visible immediately
 	createWindow();
 
 	if (mainWindow) {
@@ -169,9 +147,72 @@ app.whenReady().then(async () => {
 			createWindow();
 		}
 	});
+
+	// --- Everything below runs AFTER the window is visible ---
+
+	// Register agent hooks (must complete before listener starts)
+	await setupAgentHooks();
+
+	// Agent notification listener
+	alertListener = createAlertListener(AGENT_NOTIFY_PORT);
+	try {
+		await alertListener.start();
+	} catch (err) {
+		console.error("[agent-notify] failed to start listener:", err);
+	}
+	alertListener.onEvent((event) => {
+		for (const win of BrowserWindow.getAllWindows()) {
+			if (!win.isDestroyed()) {
+				win.webContents.send("agent:alert", event);
+			}
+		}
+	});
+
+	// Background tasks — none of these block the UI
+	cleanupStaleReviews();
+	startPolling();
+	startPRPolling();
+	startCommentPoller();
+
+	onNewPRDetected((pr) => {
+		for (const win of BrowserWindow.getAllWindows()) {
+			win.webContents.send("new-pr-review-request", pr);
+		}
+	});
+
+	onPRClosedDetected(async (pr) => {
+		const wsId = findReviewWorkspaceByPR(pr.provider, pr.identifier);
+		if (wsId) {
+			await cleanupReviewWorkspace(wsId);
+		}
+		for (const win of BrowserWindow.getAllWindows()) {
+			win.webContents.send("pr-closed", pr);
+		}
+	});
+
+	// Clear ephemeral terminal IDs (reset across sessions)
+	{
+		const db = getDb();
+		db.update(schema.workspaces).set({ terminalId: null, updatedAt: new Date() }).run();
+	}
+
+	const dbPath = join(app.getPath("userData"), "superiorswarm.db");
+	const daemonScriptPath = join(app.getAppPath(), "out", "main", "daemon.js");
+	try {
+		await daemonClient.connect(dbPath, daemonScriptPath);
+	} catch (err) {
+		console.error("[main] Failed to connect to terminal daemon, will retry:", err);
+		daemonClient.startReconnecting();
+	}
+
+	// Initialize auto-updater (non-blocking — errors logged, not thrown)
+	initializeUpdater().catch((err) => {
+		console.error("[main] Failed to initialize updater:", err);
+	});
 });
 
 app.on("before-quit", () => {
+	alertListener?.stop();
 	stopCommentPoller();
 	daemonClient.setQuitting();
 	daemonClient.detachAll();
@@ -192,6 +233,7 @@ app.on("window-all-closed", () => {
 // Catching the signals lets us dispose PTY processes before the environment tears down.
 for (const signal of ["SIGTERM", "SIGHUP", "SIGINT"] as const) {
 	process.on(signal, () => {
+		alertListener?.stop();
 		daemonClient.setQuitting();
 		daemonClient.detachAll();
 		serverManager.disposeAll();

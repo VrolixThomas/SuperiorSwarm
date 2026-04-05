@@ -3,7 +3,13 @@ import { z } from "zod";
 import { getDb } from "../../db";
 import { sessionState } from "../../db/schema";
 import { deleteAuth, getAuth } from "../../linear/auth";
-import { getAssignedIssues, getTeamStates, getTeams, updateIssueState } from "../../linear/linear";
+import {
+	getAssignedIssuesWithDone,
+	getIssueDetail,
+	getTeamStates,
+	getTeams,
+	updateIssueState,
+} from "../../linear/linear";
 import { connectLinear } from "../../linear/oauth-flow";
 import { publicProcedure, router } from "../index";
 
@@ -61,8 +67,15 @@ export const linearRouter = router({
 	getAssignedIssues: publicProcedure.query(async () => {
 		const db = getDb();
 		const row = db.select().from(sessionState).where(eq(sessionState.key, SELECTED_TEAM_KEY)).get();
-		return getAssignedIssues(row?.value ?? undefined);
+		const { getDoneCutoffDays } = await import("../../tickets/cache");
+		return getAssignedIssuesWithDone(row?.value ?? undefined, getDoneCutoffDays());
 	}),
+
+	getIssueDetail: publicProcedure
+		.input(z.object({ issueId: z.string() }))
+		.query(async ({ input }) => {
+			return getIssueDetail(input.issueId);
+		}),
 
 	getTeamStates: publicProcedure
 		.input(z.object({ teamId: z.string() }))

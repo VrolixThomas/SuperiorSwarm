@@ -39,7 +39,7 @@ describe("assertPathInsideRepo", () => {
 });
 
 describe("symlinkSharedFiles", () => {
-	const testDir = join(realpathSync(tmpdir()), `branchflux-shared-${Date.now()}`);
+	const testDir = join(realpathSync(tmpdir()), `superiorswarm-shared-${Date.now()}`);
 	const repoPath = join(testDir, "main-repo");
 	const worktreePath = join(testDir, "main-repo-worktrees", "feature-test");
 

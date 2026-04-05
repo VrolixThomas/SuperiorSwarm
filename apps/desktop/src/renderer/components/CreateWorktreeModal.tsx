@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useProjectStore } from "../stores/projects";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
@@ -12,6 +12,9 @@ export function CreateWorktreeModal() {
 	const [baseBranch, setBaseBranch] = useState("");
 	const [selectedBranch, setSelectedBranch] = useState("");
 	const [branchSearch, setBranchSearch] = useState("");
+	const [baseBranchSearch, setBaseBranchSearch] = useState("");
+	const [baseBranchDropdownOpen, setBaseBranchDropdownOpen] = useState(false);
+	const baseBranchInitialized = useRef(false);
 	const utils = trpc.useUtils();
 
 	const projectId = createWorktreeProjectId ?? "";
@@ -61,15 +64,21 @@ export function CreateWorktreeModal() {
 
 	const checkoutMutation = trpc.workspaces.checkoutExisting.useMutation({ onSuccess });
 
-	// Set default base branch when branches load
+	const updateProjectMutation = trpc.projects.update.useMutation({
+		onSuccess: () => {
+			utils.projects.getById.invalidate({ id: projectId });
+			utils.branches.list.invalidate({ projectId });
+		},
+	});
+
+	// Set default base branch from project's defaultBranch (once on load)
 	useEffect(() => {
-		if (branchesQuery.data && branchesQuery.data.length > 0 && baseBranch === "") {
-			const first = branchesQuery.data[0];
-			if (first) {
-				setBaseBranch(first);
-			}
+		if (projectQuery.data && !baseBranchInitialized.current) {
+			baseBranchInitialized.current = true;
+			setBaseBranch(projectQuery.data.defaultBranch);
+			setBaseBranchSearch(projectQuery.data.defaultBranch);
 		}
-	}, [branchesQuery.data, baseBranch]);
+	}, [projectQuery.data]);
 
 	// Reset form state when modal opens/closes
 	useEffect(() => {
@@ -79,6 +88,9 @@ export function CreateWorktreeModal() {
 			setBaseBranch("");
 			setSelectedBranch("");
 			setBranchSearch("");
+			setBaseBranchSearch("");
+			setBaseBranchDropdownOpen(false);
+			baseBranchInitialized.current = false;
 			createMutation.reset();
 			checkoutMutation.reset();
 		}
@@ -100,19 +112,24 @@ export function CreateWorktreeModal() {
 
 	if (!isCreateWorktreeModalOpen) return null;
 
+	// Extract branch names from the detailed branch info
+	const branchNames = (branchesQuery.data ?? []).map((b) => b.name);
+
 	// Branches that already have worktrees
 	const existingWorktreeBranches = new Set(
 		(workspacesQuery.data ?? []).map((ws) => ws.name).filter(Boolean)
 	);
 
 	// Available branches for checkout (remote branches minus those already checked out)
-	const availableBranches = (branchesQuery.data ?? []).filter(
-		(branch) => !existingWorktreeBranches.has(branch)
-	);
+	const availableBranches = branchNames.filter((branch) => !existingWorktreeBranches.has(branch));
 
 	const filteredBranches = branchSearch
 		? availableBranches.filter((b) => b.toLowerCase().includes(branchSearch.toLowerCase()))
 		: availableBranches;
+
+	const filteredBaseBranches = baseBranchSearch
+		? branchNames.filter((b) => b.toLowerCase().includes(baseBranchSearch.toLowerCase()))
+		: branchNames;
 
 	const handleSubmit = (e: React.FormEvent) => {
 		e.preventDefault();
@@ -223,20 +240,88 @@ export function CreateWorktreeModal() {
 								>
 									Base Branch
 								</label>
-								<select
-									id="worktree-base"
-									value={baseBranch}
-									onChange={(e) => setBaseBranch(e.target.value)}
-									disabled={branchesQuery.isPending}
-									className="w-full appearance-none rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-2 text-[13px] text-[var(--text)] focus:border-[var(--accent)] focus:outline-none disabled:opacity-50"
-								>
-									{branchesQuery.isPending && <option value="">Loading branches...</option>}
-									{branchesQuery.data?.map((branch) => (
-										<option key={branch} value={branch}>
-											{branch}
-										</option>
-									))}
-								</select>
+								<div className="relative">
+									<input
+										id="worktree-base"
+										type="text"
+										value={baseBranchSearch}
+										onChange={(e) => {
+											setBaseBranchSearch(e.target.value);
+											setBaseBranch("");
+											setBaseBranchDropdownOpen(true);
+										}}
+										onFocus={() => {
+											setBaseBranchSearch("");
+											setBaseBranchDropdownOpen(true);
+										}}
+										placeholder="Search branches..."
+										className="w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-2 text-[13px] text-[var(--text)] placeholder:text-[var(--text-quaternary)] focus:border-[var(--accent)] focus:outline-none"
+									/>
+									{baseBranchDropdownOpen && (
+										<>
+											<div
+												className="fixed inset-0 z-10"
+												onClick={() => {
+													setBaseBranchDropdownOpen(false);
+													setBaseBranchSearch(baseBranch);
+												}}
+												onKeyDown={() => {}}
+												role="presentation"
+											/>
+											<div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-[180px] overflow-y-auto rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-elevated)]">
+												{branchesQuery.isPending && (
+													<p className="px-3 py-2 text-[12px] text-[var(--text-tertiary)]">
+														Loading branches...
+													</p>
+												)}
+												{!branchesQuery.isPending && filteredBaseBranches.length === 0 && (
+													<p className="px-3 py-2 text-[12px] text-[var(--text-tertiary)]">
+														No branches found
+													</p>
+												)}
+												{filteredBaseBranches.map((branch) => (
+													<button
+														key={branch}
+														type="button"
+														onClick={() => {
+															setBaseBranch(branch);
+															setBaseBranchSearch(branch);
+															setBaseBranchDropdownOpen(false);
+														}}
+														className="flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] transition-all duration-[120ms] hover:bg-[var(--bg-overlay)]"
+														style={{
+															color: baseBranch === branch ? "var(--accent)" : "var(--text)",
+															background:
+																baseBranch === branch ? "var(--bg-overlay)" : "transparent",
+														}}
+													>
+														{branch}
+														{branch === projectQuery.data?.defaultBranch && (
+															<span className="rounded-full bg-[var(--bg-overlay)] px-1.5 py-0.5 text-[11px] text-[var(--text-quaternary)]">
+																default
+															</span>
+														)}
+													</button>
+												))}
+											</div>
+										</>
+									)}
+								</div>
+								{baseBranch && baseBranch !== projectQuery.data?.defaultBranch && (
+									<button
+										type="button"
+										disabled={updateProjectMutation.isPending}
+										onClick={() => {
+											updateProjectMutation.mutate({
+												id: projectId,
+												defaultBranch: baseBranch,
+											});
+										}}
+										className="self-start text-[12px] text-[var(--accent)] transition-opacity duration-[120ms] hover:opacity-80 disabled:opacity-50"
+									>
+										{updateProjectMutation.isPending ? "Saving..." : "Set as default"}
+									</button>
+								)}
 							</div>
 						</>
 					)}
