@@ -1,4 +1,5 @@
 import { trpc } from "../../trpc/client";
+import { PageHeading } from "./SectionHeading";
 
 function IntegrationRow({
 	name,
@@ -108,10 +109,7 @@ export function IntegrationsSettings() {
 
 	return (
 		<div>
-			<h1 className="text-[20px] font-semibold text-[var(--text)]">Integrations</h1>
-			<p className="mb-8 mt-1 text-[13px] text-[var(--text-tertiary)]">
-				Connect your development tools
-			</p>
+			<PageHeading title="Integrations" subtitle="Connect your development tools" />
 
 			<div className="overflow-hidden rounded-[10px] border border-[var(--border)] bg-[var(--bg-surface)]">
 				<IntegrationRow

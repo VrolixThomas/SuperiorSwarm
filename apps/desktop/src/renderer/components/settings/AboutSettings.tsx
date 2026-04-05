@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useUpdateStore } from "../../stores/update-store";
 import { trpc } from "../../trpc/client";
+import { PageHeading } from "./SectionHeading";
 
 export function AboutSettings() {
 	const statusQuery = trpc.updates.getStatus.useQuery(undefined, {
@@ -44,8 +45,7 @@ export function AboutSettings() {
 
 	return (
 		<div>
-			<h1 className="text-[20px] font-semibold text-[var(--text)]">About</h1>
-			<p className="mb-8 mt-1 text-[13px] text-[var(--text-tertiary)]">SuperiorSwarm</p>
+			<PageHeading title="About" subtitle="SuperiorSwarm" />
 
 			{/* Version info card */}
 			<div
