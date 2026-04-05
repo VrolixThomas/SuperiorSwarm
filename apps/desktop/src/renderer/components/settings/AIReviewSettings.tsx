@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { trpc } from "../../trpc/client";
 import { ReviewPromptEditor } from "../ReviewPromptEditor";
 import { Toggle } from "./Toggle";
@@ -13,6 +13,23 @@ export function AIReviewSettings() {
 	const updateAiSettings = trpc.aiReview.updateSettings.useMutation({
 		onSuccess: () => utils.aiReview.getSettings.invalidate(),
 	});
+
+	const [localSolvePrompt, setLocalSolvePrompt] = useState(aiSettings?.solvePrompt ?? "");
+	const lastServerValue = useRef(aiSettings?.solvePrompt ?? "");
+	if (aiSettings?.solvePrompt !== undefined && aiSettings.solvePrompt !== lastServerValue.current) {
+		lastServerValue.current = aiSettings.solvePrompt;
+		setLocalSolvePrompt(aiSettings.solvePrompt ?? "");
+	}
+
+	useEffect(() => {
+		const serverValue = aiSettings?.solvePrompt ?? "";
+		if (localSolvePrompt === serverValue) return;
+
+		const timer = setTimeout(() => {
+			updateAiSettings.mutate({ solvePrompt: localSolvePrompt || null });
+		}, 500);
+		return () => clearTimeout(timer);
+	}, [localSolvePrompt]);
 
 	if (showPromptEditor) {
 		return (
@@ -180,8 +197,8 @@ export function AIReviewSettings() {
 						</span>
 					</div>
 					<textarea
-						value={aiSettings?.solvePrompt ?? ""}
-						onChange={(e) => updateAiSettings.mutate({ solvePrompt: e.target.value || null })}
+						value={localSolvePrompt}
+						onChange={(e) => setLocalSolvePrompt(e.target.value)}
 						rows={4}
 						placeholder="Leave blank to use default instructions..."
 						className="w-full resize-none rounded-[6px] border border-[var(--border)] bg-[var(--bg-base)] px-2.5 py-2 font-mono text-[11px] text-[var(--text)] placeholder-[var(--text-quaternary)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
