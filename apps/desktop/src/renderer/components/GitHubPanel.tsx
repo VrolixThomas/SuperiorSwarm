@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { useProjectStore } from "../stores/projects";
 import { trpc } from "../trpc/client";
+import { ConnectBanner } from "./ConnectBanner";
 import { GitHubPRList } from "./GitHubPRList";
 import { SectionHeader } from "./SectionHeader";
 
@@ -16,16 +16,7 @@ export function GitHubPanel() {
 	if (!status?.connected) {
 		return (
 			<div className="mt-2 border-t border-[var(--border-subtle)] px-3 py-2">
-				<span className="text-[12px] text-[var(--text-quaternary)]">
-					Connect GitHub to see pull requests.{" "}
-				</span>
-				<button
-					type="button"
-					onClick={() => useProjectStore.getState().openSettingsToIntegrations("prs")}
-					className="text-[12px] text-[var(--accent)] hover:underline"
-				>
-					Connect in Settings
-				</button>
+				<ConnectBanner message="Connect GitHub to see pull requests." returnTo="prs" />
 			</div>
 		);
 	}

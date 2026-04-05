@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { useProjectStore } from "../stores/projects";
 import { trpc } from "../trpc/client";
+import { ConnectBanner } from "./ConnectBanner";
 import { JiraIssueList } from "./JiraIssueList";
 import { PullRequestList } from "./PullRequestList";
 import { SectionHeader } from "./SectionHeader";
@@ -19,16 +19,10 @@ export function AtlassianPanel() {
 	if (!hasBitbucket && !hasJira) {
 		return (
 			<div className="mt-2 border-t border-[var(--border-subtle)] px-3 py-2">
-				<span className="text-[12px] text-[var(--text-quaternary)]">
-					Connect Jira or Bitbucket to see issues and pull requests.{" "}
-				</span>
-				<button
-					type="button"
-					onClick={() => useProjectStore.getState().openSettingsToIntegrations("prs")}
-					className="text-[12px] text-[var(--accent)] hover:underline"
-				>
-					Connect in Settings
-				</button>
+				<ConnectBanner
+					message="Connect Jira or Bitbucket to see issues and pull requests."
+					returnTo="prs"
+				/>
 			</div>
 		);
 	}
