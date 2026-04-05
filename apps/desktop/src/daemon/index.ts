@@ -8,6 +8,7 @@ const SOCKET_PATH =
 	process.env["SUPERIORSWARM_SOCKET_PATH"] ?? join(SUPERIORSWARM_DIR, "daemon.sock");
 const PID_PATH = process.env["SUPERIORSWARM_PID_PATH"] ?? join(SUPERIORSWARM_DIR, "daemon.pid");
 const DB_PATH = process.env["SUPERIORSWARM_DB_PATH"] ?? "";
+const IS_DEV = !!process.env["ELECTRON_RENDERER_URL"];
 const FLUSH_INTERVAL_MS = 30_000;
 
 if (!DB_PATH) {
@@ -35,7 +36,9 @@ const socketServer = new SocketServer(ptyManager, scrollbackStore, SOCKET_PATH);
 const flushInterval = setInterval(() => socketServer.flush(), FLUSH_INTERVAL_MS);
 
 const IDLE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+const DEV_ORPHAN_GRACE_MS = 60_000; // 60 seconds before disposing orphaned PTYs in dev mode
 let idleTimer: ReturnType<typeof setTimeout> | null = null;
+let devOrphanTimer: ReturnType<typeof setTimeout> | null = null;
 
 function checkIdle(): void {
 	if (socketServer.clientCount === 0 && ptyManager.terminalCount === 0) {
@@ -49,6 +52,28 @@ function checkIdle(): void {
 		clearTimeout(idleTimer);
 		idleTimer = null;
 	}
+
+	// Dev mode: dispose orphaned PTYs when no clients are connected.
+	// In production, PTYs persist indefinitely for re-attachment.
+	if (IS_DEV && socketServer.clientCount === 0 && ptyManager.terminalCount > 0) {
+		if (!devOrphanTimer) {
+			console.log(
+				`[daemon] dev mode: no clients, disposing PTYs in ${DEV_ORPHAN_GRACE_MS / 1000}s`
+			);
+			devOrphanTimer = setTimeout(() => {
+				devOrphanTimer = null;
+				if (socketServer.clientCount > 0) return; // client reconnected
+				console.log(
+					`[daemon] dev mode: disposing ${ptyManager.terminalCount} orphaned PTY(s)`
+				);
+				socketServer.flush();
+				ptyManager.disposeAll();
+			}, DEV_ORPHAN_GRACE_MS);
+		}
+	} else if (devOrphanTimer) {
+		clearTimeout(devOrphanTimer);
+		devOrphanTimer = null;
+	}
 }
 
 const idleCheckInterval = setInterval(checkIdle, 30_000);
@@ -56,6 +81,7 @@ const idleCheckInterval = setInterval(checkIdle, 30_000);
 function shutdown(): void {
 	clearInterval(idleCheckInterval);
 	if (idleTimer) clearTimeout(idleTimer);
+	if (devOrphanTimer) clearTimeout(devOrphanTimer);
 	clearInterval(flushInterval);
 	socketServer.flush();
 	socketServer.close();
@@ -80,4 +106,6 @@ process.on("uncaughtException", (err) => {
 });
 
 socketServer.listen();
-console.log(`[daemon] started, pid=${process.pid}, socket=${SOCKET_PATH}`);
+console.log(
+	`[daemon] started, pid=${process.pid}, socket=${SOCKET_PATH}${IS_DEV ? " (dev mode)" : ""}`
+);
