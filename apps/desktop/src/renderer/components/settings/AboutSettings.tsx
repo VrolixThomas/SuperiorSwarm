@@ -131,7 +131,8 @@ export function AboutSettings() {
 			{/* Footer info */}
 			<div className="mt-6 border-t border-[var(--border)] pt-4">
 				<div className="text-[10px] leading-[1.6] text-[var(--text-quaternary)]">
-					SuperiorSwarm v{currentVersion} · {navigator.platform}
+					SuperiorSwarm v{currentVersion} ·{" "}
+					{navigator.userAgentData?.platform ?? navigator.platform}
 					<br />© {new Date().getFullYear()} SuperiorSwarm
 				</div>
 			</div>
