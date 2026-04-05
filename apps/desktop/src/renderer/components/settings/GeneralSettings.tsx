@@ -1,4 +1,5 @@
 import { useEditorSettingsStore } from "../../stores/editor-settings";
+import { PageHeading, SectionLabel } from "./SectionHeading";
 import { Toggle } from "./Toggle";
 
 export function GeneralSettings() {
@@ -7,14 +8,9 @@ export function GeneralSettings() {
 
 	return (
 		<div>
-			<h1 className="text-[20px] font-semibold text-[var(--text)]">General</h1>
-			<p className="mb-8 mt-1 text-[13px] text-[var(--text-tertiary)]">
-				App preferences and editor configuration
-			</p>
+			<PageHeading title="General" subtitle="App preferences and editor configuration" />
 
-			<div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.05em] text-[var(--text-quaternary)]">
-				Editor
-			</div>
+			<SectionLabel>Editor</SectionLabel>
 			<div className="overflow-hidden rounded-[10px] border border-[var(--border)] bg-[var(--bg-surface)]">
 				<div className="flex items-center justify-between px-4 py-3.5">
 					<div className="flex flex-col gap-0.5">

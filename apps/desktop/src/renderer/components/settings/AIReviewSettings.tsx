@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { trpc } from "../../trpc/client";
 import { ReviewPromptEditor } from "../ReviewPromptEditor";
+import { PageHeading, SectionLabel } from "./SectionHeading";
 import { Toggle } from "./Toggle";
 
 export function AIReviewSettings() {
@@ -34,10 +35,7 @@ export function AIReviewSettings() {
 	if (showPromptEditor) {
 		return (
 			<div>
-				<h1 className="text-[20px] font-semibold text-[var(--text)]">Review Guidelines</h1>
-				<p className="mb-8 mt-1 text-[13px] text-[var(--text-tertiary)]">
-					Customize the instructions sent to the AI reviewer
-				</p>
+				<PageHeading title="Review Guidelines" subtitle="Customize the instructions sent to the AI reviewer" />
 				<div className="overflow-hidden rounded-[10px] border border-[var(--border)] bg-[var(--bg-surface)]">
 					<div className="p-4">
 						<ReviewPromptEditor onBack={() => setShowPromptEditor(false)} />
@@ -49,10 +47,7 @@ export function AIReviewSettings() {
 
 	return (
 		<div>
-			<h1 className="text-[20px] font-semibold text-[var(--text)]">AI Review</h1>
-			<p className="mb-8 mt-1 text-[13px] text-[var(--text-tertiary)]">
-				Configure automated code review behavior
-			</p>
+			<PageHeading title="AI Review" subtitle="Configure automated code review behavior" />
 
 			{/* Configuration card */}
 			<div className="mb-6 overflow-hidden rounded-[10px] border border-[var(--border)] bg-[var(--bg-surface)]">
@@ -126,9 +121,7 @@ export function AIReviewSettings() {
 			</div>
 
 			{/* Automation card */}
-			<div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.05em] text-[var(--text-quaternary)]">
-				Automation
-			</div>
+			<SectionLabel>Automation</SectionLabel>
 			<div className="mb-6 overflow-hidden rounded-[10px] border border-[var(--border)] bg-[var(--bg-surface)]">
 				<ToggleRow
 					label="Automatic Review"
@@ -183,9 +176,7 @@ export function AIReviewSettings() {
 			</div>
 
 			{/* Custom Instructions card */}
-			<div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.05em] text-[var(--text-quaternary)]">
-				Custom Instructions
-			</div>
+			<SectionLabel>Custom Instructions</SectionLabel>
 			<div className="overflow-hidden rounded-[10px] border border-[var(--border)] bg-[var(--bg-surface)]">
 				<div className="flex flex-col gap-2 px-4 py-3.5">
 					<div className="flex flex-col gap-0.5">
