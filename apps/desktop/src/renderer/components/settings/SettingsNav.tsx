@@ -63,6 +63,31 @@ const NAV_ITEMS: {
 		),
 	},
 	{
+		id: "shortcuts",
+		label: "Shortcuts",
+		icon: (
+			<svg
+				width="14"
+				height="14"
+				viewBox="0 0 24 24"
+				fill="none"
+				stroke="currentColor"
+				strokeWidth="1.5"
+				strokeLinecap="round"
+				strokeLinejoin="round"
+			>
+				<rect x="2" y="4" width="20" height="16" rx="2" ry="2" />
+				<path d="M6 8h.01" />
+				<path d="M10 8h.01" />
+				<path d="M14 8h.01" />
+				<path d="M18 8h.01" />
+				<path d="M6 12h.01" />
+				<path d="M18 12h.01" />
+				<path d="M8 16h8" />
+			</svg>
+		),
+	},
+	{
 		id: "about",
 		label: "About",
 		section: "About",
