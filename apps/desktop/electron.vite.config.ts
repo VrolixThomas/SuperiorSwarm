@@ -3,6 +3,10 @@ import { join, resolve } from "node:path";
 import react from "@vitejs/plugin-react";
 import { defineConfig, externalizeDepsPlugin } from "electron-vite";
 
+// Electron inherits this from parent shells (e.g. VS Code / Claude Code terminals).
+// When set, Electron runs as plain Node.js and `require("electron")` fails.
+delete process.env.ELECTRON_RUN_AS_NODE;
+
 // Load .env file into process.env for the define block below
 const envPath = resolve(__dirname, ".env");
 if (existsSync(envPath)) {
@@ -48,7 +52,7 @@ function copyMigrationsPlugin() {
 
 export default defineConfig({
 	main: {
-		plugins: [externalizeDepsPlugin(), copyMigrationsPlugin()],
+		plugins: [externalizeDepsPlugin({ exclude: ["electron-updater"] }), copyMigrationsPlugin()],
 		define: {
 			"process.env.JIRA_CLIENT_ID": JSON.stringify(process.env.JIRA_CLIENT_ID ?? ""),
 			"process.env.JIRA_CLIENT_SECRET": JSON.stringify(process.env.JIRA_CLIENT_SECRET ?? ""),
@@ -60,6 +64,8 @@ export default defineConfig({
 			"process.env.LINEAR_CLIENT_SECRET": JSON.stringify(process.env.LINEAR_CLIENT_SECRET ?? ""),
 			"process.env.GITHUB_CLIENT_ID": JSON.stringify(process.env.GITHUB_CLIENT_ID ?? ""),
 			"process.env.GITHUB_CLIENT_SECRET": JSON.stringify(process.env.GITHUB_CLIENT_SECRET ?? ""),
+			"process.env.SUPABASE_URL": JSON.stringify(process.env.SUPABASE_URL ?? ""),
+			"process.env.SUPABASE_ANON_KEY": JSON.stringify(process.env.SUPABASE_ANON_KEY ?? ""),
 		},
 		build: {
 			rollupOptions: {

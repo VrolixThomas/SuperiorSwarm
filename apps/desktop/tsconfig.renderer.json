@@ -1,5 +1,5 @@
 {
-	"extends": "@branchflux/typescript-config/react.json",
+	"extends": "@superiorswarm/typescript-config/react.json",
 	"compilerOptions": {
 		"outDir": "dist/renderer",
 		"baseUrl": ".",

@@ -1,21 +1,22 @@
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { BRANCHFLUX_DIR } from "../shared/daemon-protocol";
+import { SUPERIORSWARM_DIR } from "../shared/daemon-protocol";
 import { PtyManager } from "./pty-manager";
 import { ScrollbackStore } from "./scrollback-store";
 import { SocketServer } from "./socket-server";
-const SOCKET_PATH = process.env["BRANCHFLUX_SOCKET_PATH"] ?? join(BRANCHFLUX_DIR, "daemon.sock");
-const PID_PATH = process.env["BRANCHFLUX_PID_PATH"] ?? join(BRANCHFLUX_DIR, "daemon.pid");
-const DB_PATH = process.env["BRANCHFLUX_DB_PATH"] ?? "";
+const SOCKET_PATH =
+	process.env["SUPERIORSWARM_SOCKET_PATH"] ?? join(SUPERIORSWARM_DIR, "daemon.sock");
+const PID_PATH = process.env["SUPERIORSWARM_PID_PATH"] ?? join(SUPERIORSWARM_DIR, "daemon.pid");
+const DB_PATH = process.env["SUPERIORSWARM_DB_PATH"] ?? "";
 const FLUSH_INTERVAL_MS = 30_000;
 
 if (!DB_PATH) {
-	console.error("[daemon] BRANCHFLUX_DB_PATH not set, exiting");
+	console.error("[daemon] SUPERIORSWARM_DB_PATH not set, exiting");
 	process.exit(1);
 }
 
-if (!existsSync(BRANCHFLUX_DIR)) {
-	mkdirSync(BRANCHFLUX_DIR, { recursive: true });
+if (!existsSync(SUPERIORSWARM_DIR)) {
+	mkdirSync(SUPERIORSWARM_DIR, { recursive: true });
 }
 
 // Remove stale socket from previous run

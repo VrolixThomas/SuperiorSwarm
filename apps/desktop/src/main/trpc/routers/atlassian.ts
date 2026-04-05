@@ -6,7 +6,12 @@ import {
 	replyToPRComment,
 	resolvePRComment,
 } from "../../atlassian/bitbucket";
-import { getIssueTransitions, getMyIssues, updateIssueStatus } from "../../atlassian/jira";
+import {
+	getIssueDetail,
+	getIssueTransitions,
+	getMyIssuesWithDone,
+	updateIssueStatus,
+} from "../../atlassian/jira";
 import { connectAll, connectBitbucket, connectJira } from "../../atlassian/oauth-flow";
 import { publicProcedure, router } from "../index";
 
@@ -70,8 +75,15 @@ export const atlassianRouter = router({
 	}),
 
 	getMyIssues: publicProcedure.query(async () => {
-		return getMyIssues();
+		const { getDoneCutoffDays } = await import("../../tickets/cache");
+		return getMyIssuesWithDone(getDoneCutoffDays());
 	}),
+
+	getIssueDetail: publicProcedure
+		.input(z.object({ issueKey: z.string() }))
+		.query(async ({ input }) => {
+			return getIssueDetail(input.issueKey);
+		}),
 
 	getIssueTransitions: publicProcedure
 		.input(z.object({ issueKey: z.string() }))

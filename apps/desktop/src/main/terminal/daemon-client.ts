@@ -11,9 +11,9 @@ import {
 } from "node:fs";
 import { type Socket, connect } from "node:net";
 import {
-	BRANCHFLUX_DIR,
 	type ClientMessage,
 	type DaemonMessage,
+	SUPERIORSWARM_DIR,
 } from "../../shared/daemon-protocol";
 const CONNECT_TIMEOUT_MS = 5_000;
 const CONNECT_POLL_MS = 100;
@@ -142,12 +142,13 @@ export class DaemonClient {
 		id: string,
 		cwd: string | undefined,
 		onData: (data: string) => void,
-		onExit: (code: number) => void
+		onExit: (code: number) => void,
+		env?: Record<string, string>
 	): Promise<void> {
 		this.callbacks.set(id, { onData, onExit, cwd });
 		this.liveSessions.add(id);
 		try {
-			this.send({ type: "create", id, cwd });
+			this.send({ type: "create", id, cwd, env });
 		} catch (err) {
 			// Roll back local state if we couldn't reach the daemon
 			this.callbacks.delete(id);
@@ -202,6 +203,11 @@ export class DaemonClient {
 		} catch {
 			// Best effort — the PTY will be cleaned up by idle timeout if unreachable
 		}
+	}
+
+	/** Kick off the reconnection loop (e.g. after initial connect failure). */
+	startReconnecting(): void {
+		this.attemptReconnect();
 	}
 
 	private attemptReconnect(): void {
@@ -369,8 +375,8 @@ export class DaemonClient {
 	}
 
 	private async spawnDaemon(dbPath: string, daemonScriptPath: string): Promise<void> {
-		if (!existsSync(BRANCHFLUX_DIR)) {
-			mkdirSync(BRANCHFLUX_DIR, { recursive: true });
+		if (!existsSync(SUPERIORSWARM_DIR)) {
+			mkdirSync(SUPERIORSWARM_DIR, { recursive: true });
 		}
 
 		// Check for stale PID — if the process still exists, wait for it to bind
@@ -388,6 +394,13 @@ export class DaemonClient {
 						} catch {}
 					}
 				}
+			} catch {}
+		}
+
+		// Remove stale socket so waitForSocket blocks until the new daemon creates one
+		if (existsSync(this.socketPath)) {
+			try {
+				rmSync(this.socketPath);
 			} catch {}
 		}
 
@@ -410,10 +423,10 @@ export class DaemonClient {
 			env: {
 				...process.env,
 				ELECTRON_RUN_AS_NODE: "1",
-				BRANCHFLUX_DB_PATH: dbPath,
-				BRANCHFLUX_SOCKET_PATH: this.socketPath,
-				BRANCHFLUX_PID_PATH: this.pidPath,
-				BRANCHFLUX_LOG_PATH: this.logPath,
+				SUPERIORSWARM_DB_PATH: dbPath,
+				SUPERIORSWARM_SOCKET_PATH: this.socketPath,
+				SUPERIORSWARM_PID_PATH: this.pidPath,
+				SUPERIORSWARM_LOG_PATH: this.logPath,
 			},
 		});
 		child.unref();

@@ -267,7 +267,7 @@ async function startReview(params: {
 		const { execSync } = await import("node:child_process");
 		const commitSha = execSync("git rev-parse HEAD", { cwd: worktreePath }).toString().trim();
 
-		const dbPath = join(app.getPath("userData"), "branchflux.db");
+		const dbPath = join(app.getPath("userData"), "superiorswarm.db");
 
 		db.update(schema.reviewDrafts)
 			.set({ commitSha, updatedAt: new Date() })
@@ -562,7 +562,7 @@ async function startFollowUpReview(params: {
 		const preset = CLI_PRESETS[settings.cliPreset];
 		if (!preset) throw new Error(`Unknown CLI preset: ${settings.cliPreset}`);
 
-		const dbPath = join(app.getPath("userData"), "branchflux.db");
+		const dbPath = join(app.getPath("userData"), "superiorswarm.db");
 		const mcpServerPath = resolve(__dirname, "mcp-server.js");
 		const reviewDir = join(app.getPath("userData"), "reviews", draftId);
 		mkdirSync(reviewDir, { recursive: true });

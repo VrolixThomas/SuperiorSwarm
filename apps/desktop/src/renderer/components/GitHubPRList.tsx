@@ -308,7 +308,7 @@ export function GitHubPRList() {
 		});
 
 		if (projects.length === 0) {
-			setLinkError(`Repository ${pr.repoOwner}/${pr.repoName} is not tracked in BranchFlux.`);
+			setLinkError(`Repository ${pr.repoOwner}/${pr.repoName} is not tracked in SuperiorSwarm.`);
 			return;
 		}
 		setLinkError(null);

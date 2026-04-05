@@ -1,4 +1,5 @@
 import { BrowserWindow, ipcMain } from "electron";
+import { AGENT_NOTIFY_PORT } from "../../shared/agent-events";
 import type { DaemonClient } from "./daemon-client";
 
 function assertNonEmptyString(value: unknown, name: string): asserts value is string {
@@ -8,36 +9,48 @@ function assertNonEmptyString(value: unknown, name: string): asserts value is st
 }
 
 export function setupTerminalIPC(daemonClient: DaemonClient): void {
-	ipcMain.handle("terminal:create", async (event, id: unknown, cwd: unknown) => {
-		assertNonEmptyString(id, "id");
-		const cwdStr = typeof cwd === "string" && cwd.length > 0 ? cwd : undefined;
+	ipcMain.handle(
+		"terminal:create",
+		async (event, id: unknown, cwd: unknown, workspaceId: unknown) => {
+			assertNonEmptyString(id, "id");
+			const cwdStr = typeof cwd === "string" && cwd.length > 0 ? cwd : undefined;
+			const wsId = typeof workspaceId === "string" ? workspaceId : undefined;
 
-		const window = BrowserWindow.fromWebContents(event.sender);
-		if (!window) return { wasAttached: false };
+			const window = BrowserWindow.fromWebContents(event.sender);
+			if (!window) return { wasAttached: false };
 
-		const onData = (data: string) => {
-			if (!window.isDestroyed()) {
-				window.webContents.send("terminal:data", id, data);
-			}
-		};
-		const onExit = (exitCode: number) => {
-			if (!window.isDestroyed()) {
-				window.webContents.send("terminal:exit", id, exitCode);
-			}
-		};
+			const onData = (data: string) => {
+				if (!window.isDestroyed()) {
+					window.webContents.send("terminal:data", id, data);
+				}
+			};
+			const onExit = (exitCode: number) => {
+				if (!window.isDestroyed()) {
+					window.webContents.send("terminal:exit", id, exitCode);
+				}
+			};
 
-		try {
-			if (daemonClient.hasLiveSession(id)) {
-				await daemonClient.attach(id, onData, onExit, cwdStr);
-				return { wasAttached: true };
+			const env: Record<string, string> = {
+				AGENT_NOTIFY_PORT: String(AGENT_NOTIFY_PORT),
+				AGENT_NOTIFY_SESSION_ID: id,
+			};
+			if (wsId) {
+				env["AGENT_NOTIFY_WORKSPACE_ID"] = wsId;
 			}
-			await daemonClient.create(id, cwdStr, onData, onExit);
-			return { wasAttached: false };
-		} catch (error) {
-			console.error(`Failed to create/attach terminal ${id}:`, error);
-			throw error;
+
+			try {
+				if (daemonClient.hasLiveSession(id)) {
+					await daemonClient.attach(id, onData, onExit, cwdStr);
+					return { wasAttached: true };
+				}
+				await daemonClient.create(id, cwdStr, onData, onExit, env);
+				return { wasAttached: false };
+			} catch (error) {
+				console.error(`Failed to create/attach terminal ${id}:`, error);
+				throw error;
+			}
 		}
-	});
+	);
 
 	ipcMain.handle("terminal:write", (_event, id: unknown, data: unknown) => {
 		assertNonEmptyString(id, "id");
