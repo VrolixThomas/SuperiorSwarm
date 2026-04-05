@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { DiffContext, DiffFile } from "../../shared/diff-types";
 import { detectLanguage } from "../../shared/diff-types";
 import { useTabStore } from "../stores/tab-store";
@@ -75,6 +75,39 @@ export function DraftCommitCard({
 	const stagedPaths = useMemo(() => new Set(stagedFiles.map((f) => f.path)), [stagedFiles]);
 	const groups = useMemo(() => groupByDirectory(allFiles), [allFiles]);
 	const canCommit = stagedFiles.length > 0 && commitMsg.trim().length > 0;
+
+	const commitMsgRef = useRef(commitMsg);
+	commitMsgRef.current = commitMsg;
+
+	useEffect(() => {
+		function handleCommitShortcut() {
+			const msg = commitMsgRef.current.trim();
+			if (stagedFiles.length > 0 && msg.length > 0) {
+				commitMutation.mutate({ repoPath: diffCtx.repoPath, message: msg });
+			}
+		}
+		window.addEventListener("app:commit-shortcut", handleCommitShortcut);
+		return () => window.removeEventListener("app:commit-shortcut", handleCommitShortcut);
+	}, [stagedFiles.length, diffCtx.repoPath, commitMutation]);
+
+	useEffect(() => {
+		function handleStageAll() {
+			if (unstagedFiles.length > 0) {
+				onStage(unstagedFiles.map((f) => f.path));
+			}
+		}
+		function handleUnstageAll() {
+			if (stagedFiles.length > 0) {
+				onUnstage(stagedFiles.map((f) => f.path));
+			}
+		}
+		window.addEventListener("app:stage-all-shortcut", handleStageAll);
+		window.addEventListener("app:unstage-all-shortcut", handleUnstageAll);
+		return () => {
+			window.removeEventListener("app:stage-all-shortcut", handleStageAll);
+			window.removeEventListener("app:unstage-all-shortcut", handleUnstageAll);
+		};
+	}, [stagedFiles, unstagedFiles, onStage, onUnstage]);
 
 	// No working changes — collapsed state
 	if (allFiles.length === 0) {
