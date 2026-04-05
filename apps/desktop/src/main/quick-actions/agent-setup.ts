@@ -6,7 +6,6 @@ import { getDb } from "../db";
 import * as schema from "../db/schema";
 import {
 	CLI_PRESETS,
-	type LaunchOptions,
 	isCliInstalled,
 	resolveCliPath,
 } from "../ai-review/cli-presets";
@@ -93,20 +92,6 @@ export async function launchSetupAgent(
 	const promptFilePath = join(sessionDir, "setup-prompt.txt");
 	writeFileSync(promptFilePath, buildSetupPrompt(projectId, repoPath), "utf-8");
 
-	// Build LaunchOptions — reuse the existing interface, mapping quick-action fields
-	// to the review-specific fields the preset expects
-	const launchOpts: LaunchOptions = {
-		mcpServerPath: standaloneServerPath,
-		worktreePath: repoPath,
-		reviewDir: sessionDir,
-		promptFilePath,
-		dbPath,
-		reviewDraftId: "", // not a review session — MCP server uses QUICK_ACTION_SETUP mode
-		prMetadata: JSON.stringify({}),
-		// Pass session context via solveSessionId field (repurposed for quick-action setup)
-		solveSessionId: sessionId,
-	};
-
 	// Write MCP config with quick-action-specific env vars.
 	// We write .mcp.json directly since setupMcp would inject solve-mode env vars,
 	// but we need QUICK_ACTION_SETUP + PROJECT_ID instead.
@@ -127,14 +112,17 @@ export async function launchSetupAgent(
 	};
 	writeFileSync(mcpConfigPath, JSON.stringify(mcpConfig, null, 2), "utf-8");
 
-	// Build the CLI invocation using the preset's args builder
-	const args = preset.buildArgs(launchOpts);
+	// Build the CLI invocation — we craft our own prompt arg instead of using
+	// preset.buildArgs() which generates review-specific text ("Review this PR...")
 	const resolvedCommand = resolveCliPath(preset.command);
 	const parts = [resolvedCommand];
 	if (settings.skipPermissions && preset.permissionFlag) {
 		parts.push(preset.permissionFlag);
 	}
-	parts.push(...args);
+	// Each CLI takes the prompt differently, but they all accept it as the last arg
+	// in a quoted string. We point it at the setup-prompt.txt file.
+	const promptArg = `"Help set up quick action buttons for this project. Read ${promptFilePath} for detailed instructions and use the SuperiorSwarm MCP tools."`;
+	parts.push(promptArg);
 	const cliCommand = parts.join(" ");
 
 	// Write the launch script
