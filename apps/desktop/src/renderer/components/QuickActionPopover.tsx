@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useActionStore } from "../stores/action-store";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
+import { parseAccelerator } from "../utils/parse-accelerator";
 
 interface QuickActionPopoverProps {
 	projectId: string;
@@ -41,6 +43,26 @@ export function QuickActionPopover({
 	const activeWorkspaceId = useTabStore((s) => s.activeWorkspaceId);
 	const addTerminalTab = useTabStore((s) => s.addTerminalTab);
 
+	// Check for shortcut conflicts with existing actions
+	const conflictingAction = (() => {
+		const parsed = parseAccelerator(shortcut);
+		if (!parsed) return null;
+		const actions = useActionStore.getState().getAvailable();
+		for (const action of actions) {
+			if (!action.shortcut) continue;
+			if (editAction && action.id === `quick.${editAction.id}`) continue;
+			if (
+				action.shortcut.key === parsed.key &&
+				!!action.shortcut.meta === !!parsed.meta &&
+				!!action.shortcut.shift === !!parsed.shift &&
+				!!action.shortcut.alt === !!parsed.alt
+			) {
+				return action;
+			}
+		}
+		return null;
+	})();
+
 	const utils = trpc.useUtils();
 	const createMutation = trpc.quickActions.create.useMutation({
 		onSuccess: () => {
@@ -79,6 +101,7 @@ export function QuickActionPopover({
 
 	function handleSave() {
 		if (!label.trim() || !command.trim()) return;
+		if (conflictingAction) return;
 		const scopedProjectId = scope === "global" ? null : projectId;
 		if (editAction) {
 			updateMutation.mutate({
@@ -234,6 +257,11 @@ export function QuickActionPopover({
 										>
 											Clear shortcut
 										</button>
+									)}
+									{conflictingAction && (
+										<div className="mt-1 text-[11px] text-[#ff6b6b]">
+											Conflicts with "{conflictingAction.label}"
+										</div>
 									)}
 								</div>
 
