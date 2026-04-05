@@ -18,6 +18,10 @@ function SettingsContent() {
 			return <AIReviewSettings />;
 		case "about":
 			return <AboutSettings />;
+		default: {
+			const _exhaustive: never = category;
+			return _exhaustive;
+		}
 	}
 }
 
