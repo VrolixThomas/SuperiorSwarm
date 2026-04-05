@@ -88,10 +88,15 @@ export const quickActionsRouter = router({
 		)
 		.mutation(({ input }) => {
 			const db = getDb();
-			const { id, ...fields } = input;
+			const updates: Record<string, unknown> = { updatedAt: new Date() };
+			if (input.label !== undefined) updates["label"] = input.label;
+			if (input.command !== undefined) updates["command"] = input.command;
+			if (input.cwd !== undefined) updates["cwd"] = input.cwd;
+			if (input.shortcut !== undefined) updates["shortcut"] = input.shortcut;
+			if (input.projectId !== undefined) updates["projectId"] = input.projectId;
 			db.update(quickActions)
-				.set({ ...fields, updatedAt: new Date() })
-				.where(eq(quickActions.id, id))
+				.set(updates)
+				.where(eq(quickActions.id, input.id))
 				.run();
 		}),
 
@@ -104,11 +109,13 @@ export const quickActionsRouter = router({
 		.input(z.object({ orderedIds: z.array(z.string()) }))
 		.mutation(({ input }) => {
 			const db = getDb();
-			for (let i = 0; i < input.orderedIds.length; i++) {
-				db.update(quickActions)
-					.set({ sortOrder: i, updatedAt: new Date() })
-					.where(eq(quickActions.id, input.orderedIds[i]!))
-					.run();
-			}
+			db.transaction(() => {
+				for (let i = 0; i < input.orderedIds.length; i++) {
+					db.update(quickActions)
+						.set({ sortOrder: i, updatedAt: new Date() })
+						.where(eq(quickActions.id, input.orderedIds[i]!))
+						.run();
+				}
+			});
 		}),
 });
