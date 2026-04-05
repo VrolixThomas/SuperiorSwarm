@@ -196,6 +196,9 @@ export function QuickActionPopover({
 				{/* Ask agent */}
 				{!editAction && (
 					<div className="mt-2 border-t border-[var(--border-subtle)] pt-2">
+						<p className="mb-1.5 px-0.5 text-[10px] text-[var(--text-quaternary)]">
+							Opens a CLI agent that explores your repo and suggests commands
+						</p>
 						<button
 							type="button"
 							onClick={() => {
@@ -220,7 +223,7 @@ export function QuickActionPopover({
 							disabled={launchAgent.isPending || !activeWorkspaceId}
 							className="w-full rounded bg-[var(--bg-base)] px-2 py-1.5 text-left text-[11px] text-[var(--text-secondary)] hover:bg-[rgba(255,255,255,0.06)] disabled:opacity-40"
 						>
-							{launchAgent.isPending ? "Launching agent..." : "Ask agent to set up commands..."}
+							{launchAgent.isPending ? "Launching agent..." : "Auto-detect with agent"}
 						</button>
 					</div>
 				)}
