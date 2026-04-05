@@ -9,7 +9,7 @@ export const authRouter = router({
 	}),
 
 	signIn: publicProcedure
-		.input(z.object({ provider: z.enum(["github", "google"]) }))
+		.input(z.object({ provider: z.enum(["github", "google", "apple"]) }))
 		.mutation(async ({ input }) => {
 			return signIn(input.provider);
 		}),
