@@ -6,6 +6,7 @@ import { KeyboardShortcutsSettings } from "./KeyboardShortcutsSettings";
 import { GeneralSettings } from "./GeneralSettings";
 import { IntegrationsSettings } from "./IntegrationsSettings";
 import { SettingsNav } from "./SettingsNav";
+import { TerminalsSettings } from "./TerminalsSettings";
 
 function SettingsContent() {
 	const category = useProjectStore((s) => s.settingsCategory);
@@ -19,6 +20,8 @@ function SettingsContent() {
 			return <AIReviewSettings />;
 		case "shortcuts":
 			return <KeyboardShortcutsSettings />;
+		case "terminals":
+			return <TerminalsSettings />;
 		case "about":
 			return <AboutSettings />;
 		default: {
