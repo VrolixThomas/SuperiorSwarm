@@ -255,6 +255,21 @@ export const ticketCache = sqliteTable("ticket_cache", {
 
 export type TicketCacheRow = typeof ticketCache.$inferSelect;
 
+export const quickActions = sqliteTable("quick_actions", {
+	id: text("id").primaryKey(),
+	projectId: text("project_id").references(() => projects.id, { onDelete: "cascade" }),
+	label: text("label").notNull(),
+	command: text("command").notNull(),
+	cwd: text("cwd"),
+	shortcut: text("shortcut"),
+	sortOrder: integer("sort_order").notNull().default(0),
+	createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+	updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+});
+
+export type QuickAction = typeof quickActions.$inferSelect;
+export type NewQuickAction = typeof quickActions.$inferInsert;
+
 export {
 	aiReviewSettings,
 	type AiReviewSettings,
