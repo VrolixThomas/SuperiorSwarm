@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useActionStore } from "../stores/action-store";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
+import { parseAccelerator } from "../utils/parse-accelerator";
 
 export function resolveQuickActionCwd(cwd: string | null, repoPath: string): string {
 	if (!cwd) return repoPath;
@@ -31,19 +33,45 @@ export function QuickActionBar({
 	const [dropTarget, setDropTarget] = useState<string | null>(null);
 	const dragCounterRef = useRef(0);
 
-	useEffect(() => {
-		window.electron.quickActions.syncShortcuts(projectId);
-	}, [projectId, actionsQuery.data]);
-
-	function handleRun(command: string, label: string, cwd: string | null) {
-		const resolvedCwd = resolveQuickActionCwd(cwd, repoPath);
-		const tabId = addTerminalTab(workspaceId, resolvedCwd, label);
-		setTimeout(() => {
-			window.electron.terminal.write(tabId, `${command}\n`);
-		}, 300);
-	}
+	const handleRun = useCallback(
+		(command: string, label: string, cwd: string | null) => {
+			const resolvedCwd = resolveQuickActionCwd(cwd, repoPath);
+			const tabId = addTerminalTab(workspaceId, resolvedCwd, label);
+			setTimeout(() => {
+				window.electron.terminal.write(tabId, `${command}\n`);
+			}, 300);
+		},
+		[repoPath, workspaceId, addTerminalTab],
+	);
 
 	const actions = actionsQuery.data ?? [];
+
+	// Register quick actions in the unified action store
+	useEffect(() => {
+		const store = useActionStore.getState();
+		const registeredIds: string[] = [];
+
+		for (const action of actions) {
+			const actionId = `quick.${action.id}`;
+			registeredIds.push(actionId);
+
+			store.register({
+				id: actionId,
+				label: action.label,
+				category: "Quick Actions",
+				shortcut: parseAccelerator(action.shortcut) ?? undefined,
+				execute: () => handleRun(action.command, action.label, action.cwd),
+				keywords: ["run", "quick action", action.command],
+			});
+		}
+
+		return () => {
+			const store = useActionStore.getState();
+			for (const id of registeredIds) {
+				store.unregister(id);
+			}
+		};
+	}, [actions, handleRun]);
 
 	const handleDragStart = useCallback(
 		(e: React.DragEvent, id: string) => {
