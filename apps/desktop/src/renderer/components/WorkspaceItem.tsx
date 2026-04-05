@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AgentAlert } from "../../shared/agent-events";
 import { useAgentAlertStore } from "../stores/agent-alert-store";
+import { usePaneStore } from "../stores/pane-store";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 
@@ -15,6 +16,7 @@ interface WorkspaceData {
 
 interface WorkspaceItemProps {
 	workspace: WorkspaceData;
+	projectId: string;
 	projectName: string;
 	projectRepoPath: string;
 	isInActiveProject: boolean;
@@ -217,6 +219,7 @@ function WorkspaceContextMenu({
 
 export function WorkspaceItem({
 	workspace,
+	projectId,
 	projectName,
 	projectRepoPath,
 	isInActiveProject,
@@ -232,11 +235,28 @@ export function WorkspaceItem({
 	attachTerminalRef.current = attachTerminal.mutate;
 
 	const deleteWorkspace = trpc.workspaces.delete.useMutation({
-		onSuccess: () => {
-			utils.workspaces.listByProject.invalidate();
+		onMutate: async ({ id }) => {
+			await utils.workspaces.listByProject.cancel({ projectId });
+			const previous = utils.workspaces.listByProject.getData({ projectId });
+			utils.workspaces.listByProject.setData({ projectId }, (old) =>
+				old?.filter((ws) => ws.id !== id)
+			);
+			return { previous };
 		},
-		onError: (err) => {
-			window.alert(`Failed to delete worktree: ${err.message}`);
+		onError: (_err, _vars, context) => {
+			if (context?.previous) {
+				utils.workspaces.listByProject.setData({ projectId }, context.previous);
+			}
+			window.alert(`Failed to delete worktree: ${_err.message}`);
+		},
+		onSuccess: () => {
+			// Clean up Zustand state after server confirms deletion
+			const paneStore = usePaneStore.getState();
+			paneStore.clearLayout(workspace.id);
+			useTabStore.getState().cleanupWorkspace(workspace.id);
+		},
+		onSettled: () => {
+			utils.workspaces.listByProject.invalidate({ projectId });
 		},
 	});
 	const deleteWorkspaceRef = useRef(deleteWorkspace.mutate);
@@ -286,22 +306,19 @@ export function WorkspaceItem({
 		projectRepoPath,
 	]);
 
-	const handleDelete = useCallback(() => {
+	const handleDelete = useCallback(async () => {
 		const confirmed = window.confirm(
 			`Delete worktree "${workspace.name}"? This will remove the worktree directory.`
 		);
 		if (confirmed) {
-			const store = useTabStore.getState();
-			const wsTabs = store.getTabsByWorkspace(workspace.id);
-			for (const tab of wsTabs) {
-				if (tab.kind === "terminal") {
-					window.electron.terminal.dispose(tab.id);
-				}
-				store.removeTab(tab.id);
-			}
-			if (store.activeWorkspaceId === workspace.id) {
-				store.setActiveWorkspace("", "");
-			}
+			// Await terminal disposal so daemon processes release the worktree cwd
+			const wsTabs = useTabStore.getState().getTabsByWorkspace(workspace.id);
+			await Promise.all(
+				wsTabs
+					.filter((tab) => tab.kind === "terminal")
+					.map((tab) => window.electron.terminal.dispose(tab.id))
+			);
+
 			deleteWorkspaceRef.current({ id: workspace.id, force: true });
 		}
 		setContextMenu(null);

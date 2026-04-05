@@ -104,6 +104,7 @@ export const atlassianAuth = sqliteTable("atlassian_auth", {
 	siteUrl: text("site_url"),
 	accountId: text("account_id").notNull(),
 	displayName: text("display_name"),
+	email: text("email"),
 });
 
 export type AtlassianAuth = typeof atlassianAuth.$inferSelect;
@@ -159,6 +160,7 @@ export const linearAuth = sqliteTable("linear_auth", {
 	expiresAt: integer("expires_at", { mode: "timestamp" }).notNull(),
 	accountId: text("account_id").notNull(),
 	displayName: text("display_name"),
+	email: text("email"),
 });
 
 export type LinearAuth = typeof linearAuth.$inferSelect;
@@ -192,6 +194,7 @@ export const githubAuth = sqliteTable("github_auth", {
 	accessToken: text("access_token").notNull(),
 	accountId: text("account_id").notNull(),
 	displayName: text("display_name"),
+	email: text("email"),
 });
 
 export type GithubAuth = typeof githubAuth.$inferSelect;
