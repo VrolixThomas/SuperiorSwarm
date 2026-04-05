@@ -3,12 +3,14 @@ import { join } from "node:path";
 import { SUPERIORSWARM_DIR } from "../../shared/daemon-protocol";
 
 /**
- * Kill stale daemon processes from previous sessions.
+ * Clean up stale daemon files from previous sessions.
  * Scans ~/.superiorswarm/daemon-*.pid files. For each:
- * - If the process is dead: clean up PID/socket/log files
- * - If the process is alive but NOT our own instance: kill it and clean up
+ * - If the process is dead: remove PID/socket/log files
+ * - If the process is alive: leave it alone (could be the production app
+ *   or another dev instance still in use)
  *
- * Skips our own daemon (matching ownInstanceId) so we don't kill ourselves.
+ * Skips our own daemon (matching ownInstanceId).
+ * Never kills live processes — use Settings > Terminals to manage those.
  */
 export function cleanupStaleDaemons(ownInstanceId: string): void {
 	if (!existsSync(SUPERIORSWARM_DIR)) return;
@@ -27,7 +29,7 @@ export function cleanupStaleDaemons(ownInstanceId: string): void {
 		if (!match) continue;
 		const instanceId = match[1];
 
-		// Never kill our own daemon
+		// Skip our own daemon
 		if (instanceId === ownInstanceId) continue;
 
 		const pidPath = join(SUPERIORSWARM_DIR, pidFile);
@@ -46,7 +48,8 @@ export function cleanupStaleDaemons(ownInstanceId: string): void {
 			continue;
 		}
 
-		// Check if process is alive
+		// Only clean up files for dead processes — never kill live ones,
+		// as they may belong to the production app or another active session
 		let alive = false;
 		try {
 			process.kill(pid, 0);
@@ -58,18 +61,6 @@ export function cleanupStaleDaemons(ownInstanceId: string): void {
 		if (!alive) {
 			console.log(`[stale-cleanup] removing dead daemon ${instanceId} (pid ${pid})`);
 			cleanup(pidPath, socketPath, logPath);
-		} else {
-			console.log(`[stale-cleanup] killing stale daemon ${instanceId} (pid ${pid})`);
-			try {
-				process.kill(pid, "SIGTERM");
-			} catch {
-				try {
-					process.kill(pid, "SIGKILL");
-				} catch {
-					// Can't kill it — leave it
-				}
-			}
-			setTimeout(() => cleanup(pidPath, socketPath, logPath), 2_000);
 		}
 	}
 }
