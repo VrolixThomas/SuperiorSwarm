@@ -13,7 +13,7 @@ import {
 	onPRClosedDetected,
 	startPolling as startPRPolling,
 } from "./ai-review/pr-poller";
-import { getDb, initializeDatabase } from "./db";
+import { backfillRemoteHosts, getDb, initializeDatabase } from "./db";
 import * as schema from "./db/schema";
 import { listQuickActions } from "./trpc/routers/quick-actions";
 import {
@@ -77,6 +77,7 @@ app.whenReady().then(async () => {
 	// Initialize database early — tRPC handlers depend on it
 	try {
 		initializeDatabase();
+		backfillRemoteHosts();
 	} catch (err) {
 		console.error("[db] Failed to initialize database:", err);
 		dialog.showErrorBox(
