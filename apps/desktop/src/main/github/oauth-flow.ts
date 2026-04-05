@@ -108,7 +108,7 @@ async function exchangeCode(code: string): Promise<{ access_token: string }> {
 
 async function fetchViewer(
 	accessToken: string
-): Promise<{ id: number; login: string; name: string | null }> {
+): Promise<{ id: number; login: string; name: string | null; email: string | null }> {
 	const res = await fetch(`${GITHUB_API_BASE}/user`, {
 		headers: {
 			Authorization: `Bearer ${accessToken}`,
@@ -142,6 +142,7 @@ export async function connectGitHub(): Promise<void> {
 			accessToken: access_token,
 			accountId: String(viewer.id),
 			displayName: viewer.name ?? viewer.login,
+			email: viewer.email,
 		});
 		console.log("[github-oauth] GitHub connected successfully");
 	} finally {

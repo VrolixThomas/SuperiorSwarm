@@ -104,19 +104,23 @@ async function exchangeCode(code: string): Promise<{
 	return res.json();
 }
 
-async function fetchViewer(accessToken: string): Promise<{ id: string; name: string }> {
+async function fetchViewer(
+	accessToken: string
+): Promise<{ id: string; name: string; email: string | null }> {
 	const res = await fetch(LINEAR_API_URL, {
 		method: "POST",
 		headers: {
 			Authorization: `Bearer ${accessToken}`,
 			"Content-Type": "application/json",
 		},
-		body: JSON.stringify({ query: "{ viewer { id name } }" }),
+		body: JSON.stringify({ query: "{ viewer { id name email } }" }),
 	});
 	if (!res.ok) {
 		throw new Error(`Failed to fetch Linear viewer: ${res.status}`);
 	}
-	const data = (await res.json()) as { data: { viewer: { id: string; name: string } } };
+	const data = (await res.json()) as {
+		data: { viewer: { id: string; name: string; email: string | null } };
+	};
 	return data.data.viewer;
 }
 
@@ -143,6 +147,7 @@ export async function connectLinear(): Promise<void> {
 			expiresIn: tokens.expires_in,
 			accountId: viewer.id,
 			displayName: viewer.name,
+			email: viewer.email,
 		});
 		console.log("[linear-oauth] Linear connected successfully");
 	} finally {

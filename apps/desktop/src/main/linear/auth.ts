@@ -42,6 +42,7 @@ export function saveAuth(data: {
 	expiresIn: number;
 	accountId: string;
 	displayName?: string;
+	email?: string | null;
 }) {
 	const db = getDb();
 	const expiresAt = new Date(Date.now() + data.expiresIn * 1000);
@@ -56,6 +57,7 @@ export function saveAuth(data: {
 			expiresAt,
 			accountId: data.accountId,
 			displayName: data.displayName ?? null,
+			email: data.email ?? null,
 		})
 		.onConflictDoUpdate({
 			target: linearAuth.id,
@@ -65,6 +67,7 @@ export function saveAuth(data: {
 				expiresAt,
 				accountId: data.accountId,
 				displayName: data.displayName ?? null,
+				email: data.email ?? null,
 			},
 		})
 		.run();
@@ -122,6 +125,7 @@ export async function getValidToken(): Promise<string | null> {
 				expiresIn: result.expires_in,
 				accountId: auth.accountId,
 				displayName: auth.displayName ?? undefined,
+				email: auth.email ?? undefined,
 			});
 			return result.access_token;
 		})

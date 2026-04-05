@@ -112,11 +112,17 @@ function DiffPanelContent({ diffCtx, onClose }: { diffCtx: DiffContext; onClose?
 		{ enabled: diffCtx.type === "working-tree", staleTime: 30_000 }
 	);
 
+	const branchStatusQuery = trpc.branches.getStatus.useQuery(
+		{ projectId: projectId ?? "", cwd: activeWorkspaceCwd || undefined },
+		{ enabled: !!projectId, refetchInterval: 10_000 }
+	);
+
 	const invalidateAll = () => {
 		utils.diff.getWorkingTreeDiff.invalidate({ repoPath: diffCtx.repoPath });
 		utils.diff.getWorkingTreeStatus.invalidate({ repoPath: diffCtx.repoPath });
 		utils.diff.getCommitsAhead.invalidate({ repoPath: diffCtx.repoPath });
 		utils.diff.getBranchDiff.invalidate();
+		utils.branches.getStatus.invalidate();
 	};
 
 	const stageMutation = trpc.diff.stageFiles.useMutation({
@@ -183,6 +189,8 @@ function DiffPanelContent({ diffCtx, onClose }: { diffCtx: DiffContext; onClose?
 											unstageMutation.mutate({ repoPath: diffCtx.repoPath, paths })
 										}
 										onInvalidate={invalidateAll}
+										unpushedCommits={branchStatusQuery.data?.ahead ?? 0}
+									hasTrackingBranch={branchStatusQuery.data?.tracking != null}
 									/>
 								)}
 

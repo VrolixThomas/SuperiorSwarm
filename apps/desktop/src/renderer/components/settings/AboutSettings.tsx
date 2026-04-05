@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { useUpdateStore } from "../stores/update-store";
-import { trpc } from "../trpc/client";
+import { useUpdateStore } from "../../stores/update-store";
+import { trpc } from "../../trpc/client";
+import { PageHeading } from "./SectionHeading";
 
-export function AboutSection() {
+export function AboutSettings() {
 	const statusQuery = trpc.updates.getStatus.useQuery(undefined, {
 		staleTime: 30_000,
 	});
@@ -21,12 +22,10 @@ export function AboutSection() {
 	const currentVersion = statusQuery.data?.currentVersion ?? "—";
 	const updateDownloaded = statusQuery.data?.updateDownloaded ?? false;
 
-	// Prefer the direct mutation result over async event-driven state
 	const checkResult = checkForUpdates.data;
 	const updateAvailable =
 		checkResult?.updateAvailable ?? statusQuery.data?.updateAvailable ?? false;
-	const updateVersion =
-		checkResult?.version ?? statusQuery.data?.updateVersion;
+	const updateVersion = checkResult?.version ?? statusQuery.data?.updateVersion;
 	const checkError = checkResult?.error ?? null;
 
 	const handleViewReleaseNotes = () => {
@@ -45,22 +44,16 @@ export function AboutSection() {
 	};
 
 	return (
-		<div className="mt-4 border-t border-[var(--border)] pt-4">
-			<div className="px-3 pb-2">
-				<span className="text-[11px] font-medium uppercase tracking-[0.05em] text-[var(--text-quaternary)]">
-					About
-				</span>
-			</div>
+		<div>
+			<PageHeading title="About" subtitle="SuperiorSwarm" />
 
 			{/* Version info card */}
 			<div
-				className={`mx-2 rounded-[var(--radius-md)] p-3.5 ${
-					updateAvailable
-						? "border border-[rgba(10,132,255,0.2)] bg-[var(--bg-elevated)]"
-						: "bg-[var(--bg-elevated)]"
+				className={`overflow-hidden rounded-[10px] border bg-[var(--bg-surface)] p-4 ${
+					updateAvailable ? "border-[rgba(10,132,255,0.2)]" : "border-[var(--border)]"
 				}`}
 			>
-				<div className="mb-2.5 flex items-center justify-between">
+				<div className="mb-3 flex items-center justify-between">
 					<div>
 						<div className="text-[10px] uppercase tracking-[0.05em] text-[var(--text-tertiary)]">
 							Current Version
@@ -115,7 +108,7 @@ export function AboutSection() {
 			</div>
 
 			{/* Actions */}
-			<div className="mt-2 flex gap-2 px-2">
+			<div className="mt-4 flex gap-2">
 				<button
 					type="button"
 					onClick={handleCheckForUpdates}
@@ -134,9 +127,10 @@ export function AboutSection() {
 			</div>
 
 			{/* Footer info */}
-			<div className="mt-4 border-t border-[var(--border)] px-3 pt-3">
+			<div className="mt-6 border-t border-[var(--border)] pt-4">
 				<div className="text-[10px] leading-[1.6] text-[var(--text-quaternary)]">
-					SuperiorSwarm v{currentVersion} · {navigator.platform}
+					SuperiorSwarm v{currentVersion} ·{" "}
+					{navigator.userAgentData?.platform ?? navigator.platform}
 					<br />© {new Date().getFullYear()} SuperiorSwarm
 				</div>
 			</div>

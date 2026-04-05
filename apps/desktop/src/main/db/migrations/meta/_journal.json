@@ -131,8 +131,15 @@
     {
       "idx": 18,
       "version": "6",
+      "when": 1775397950961,
+      "tag": "0018_safe_punisher",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
       "when": 1775384961599,
-      "tag": "0018_broad_sinister_six",
+      "tag": "0019_broad_sinister_six",
       "breakpoints": true
     }
   ]

@@ -435,7 +435,7 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 			activeWorkspaceBySegment: updatedBySegment,
 		});
 		if (state.activeWorkspaceId === workspaceId) {
-			set({ activeWorkspaceId: null, activeWorkspaceCwd: "" });
+			set({ activeWorkspaceId: null, activeWorkspaceCwd: "", rightPanel: PANEL_CLOSED });
 		}
 	},
 
