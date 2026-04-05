@@ -80,4 +80,11 @@ export interface LspAPI {
 	) => () => void;
 }
 
+export interface QuickActionsAPI {
+	syncShortcuts: (projectId: string | null) => Promise<void>;
+	onTrigger: (
+		callback: (data: { command: string; label: string; cwd: string | null }) => void
+	) => () => void;
+}
+
 export type SidebarSegment = "repos" | "tickets" | "prs";
