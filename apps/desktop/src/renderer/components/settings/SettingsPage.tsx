@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useProjectStore } from "../../stores/projects";
 import { AIReviewSettings } from "./AIReviewSettings";
 import { AboutSettings } from "./AboutSettings";
+import { KeyboardShortcutsSettings } from "./KeyboardShortcutsSettings";
 import { GeneralSettings } from "./GeneralSettings";
 import { IntegrationsSettings } from "./IntegrationsSettings";
 import { SettingsNav } from "./SettingsNav";
@@ -16,6 +17,8 @@ function SettingsContent() {
 			return <IntegrationsSettings />;
 		case "ai-review":
 			return <AIReviewSettings />;
+		case "shortcuts":
+			return <KeyboardShortcutsSettings />;
 		case "about":
 			return <AboutSettings />;
 		default: {
