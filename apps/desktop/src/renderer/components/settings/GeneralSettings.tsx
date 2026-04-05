@@ -1,4 +1,5 @@
 import { useEditorSettingsStore } from "../../stores/editor-settings";
+import { Toggle } from "./Toggle";
 
 export function GeneralSettings() {
 	const vimEnabled = useEditorSettingsStore((s) => s.vimEnabled);
@@ -22,19 +23,7 @@ export function GeneralSettings() {
 							Vim keybindings in code editors
 						</span>
 					</div>
-					<button
-						type="button"
-						onClick={() => setVimEnabled(!vimEnabled)}
-						className={`relative h-[22px] w-[40px] shrink-0 cursor-pointer rounded-full border-none transition-colors ${
-							vimEnabled ? "bg-[var(--accent)]" : "bg-[var(--bg-elevated)]"
-						}`}
-					>
-						<div
-							className={`absolute top-[2px] size-[18px] rounded-full bg-white transition-transform ${
-								vimEnabled ? "translate-x-[20px]" : "translate-x-[2px]"
-							}`}
-						/>
-					</button>
+					<Toggle checked={vimEnabled} onChange={() => setVimEnabled(!vimEnabled)} />
 				</div>
 			</div>
 		</div>
