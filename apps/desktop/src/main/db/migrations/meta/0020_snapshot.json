@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "4203c303-f00d-4908-acb9-8186f1004771",
-  "prevId": "8f180f45-20ed-488e-bc66-33d11d6902c3",
+  "id": "b66936e4-6d10-4e21-9c59-f1b22bd97631",
+  "prevId": "4203c303-f00d-4908-acb9-8186f1004771",
   "tables": {
     "ai_review_settings": {
       "name": "ai_review_settings",
@@ -1062,6 +1062,13 @@
         },
         "github_repo": {
           "name": "github_repo",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "remote_host": {
+          "name": "remote_host",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
