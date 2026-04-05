@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import type { TicketProject } from "../../../shared/tickets";
+import { useProjectStore } from "../../stores/projects";
 import { useTabStore } from "../../stores/tab-store";
 import { trpc } from "../../trpc/client";
 
@@ -77,8 +78,17 @@ export function TicketsSidebar() {
 
 	if (!hasJira && !hasLinear) {
 		return (
-			<div className="px-3 py-2 text-[12px] text-[var(--text-quaternary)]">
-				No ticket services connected
+			<div className="px-3 py-2">
+				<span className="text-[12px] text-[var(--text-quaternary)]">
+					Connect Jira or Linear to see your tickets.{" "}
+				</span>
+				<button
+					type="button"
+					onClick={() => useProjectStore.getState().openSettingsToIntegrations("tickets")}
+					className="text-[12px] text-[var(--accent)] hover:underline"
+				>
+					Connect in Settings
+				</button>
 			</div>
 		);
 	}
