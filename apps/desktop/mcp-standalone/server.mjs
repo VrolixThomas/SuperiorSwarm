@@ -14,13 +14,16 @@ const PR_METADATA = JSON.parse(process.env.PR_METADATA || "{}");
 const DB_PATH = process.env.DB_PATH;
 const SOLVE_SESSION_ID = process.env.SOLVE_SESSION_ID;
 const WORKTREE_PATH = process.env.WORKTREE_PATH;
+const QUICK_ACTION_SETUP = process.env.QUICK_ACTION_SETUP;
+const PROJECT_ID = process.env.PROJECT_ID;
 const isSolverMode = !!SOLVE_SESSION_ID;
+const isQuickActionMode = QUICK_ACTION_SETUP === "1";
 
-if (!isSolverMode && (!REVIEW_DRAFT_ID || !DB_PATH)) {
+if (!isQuickActionMode && !isSolverMode && (!REVIEW_DRAFT_ID || !DB_PATH)) {
 	console.error("Missing required env vars: REVIEW_DRAFT_ID or SOLVE_SESSION_ID, and DB_PATH");
 	process.exit(1);
 }
-if (isSolverMode && !DB_PATH) {
+if ((isSolverMode || isQuickActionMode) && !DB_PATH) {
 	console.error("Missing required env var: DB_PATH");
 	process.exit(1);
 }
@@ -36,7 +39,7 @@ const server = new McpServer({
 	version: "1.0.0",
 });
 
-if (!isSolverMode) {
+if (!isSolverMode && !isQuickActionMode) {
 	// Tool: get_pr_metadata
 	server.tool("get_pr_metadata", "Get metadata about the PR being reviewed", {}, async () => {
 		return {
@@ -535,6 +538,105 @@ if (isSolverMode) {
 
 			return {
 				content: [{ type: "text", text: JSON.stringify({ status: "ready" }) }],
+			};
+		}
+	);
+}
+
+if (isQuickActionMode) {
+	// Tool: add_quick_action
+	server.tool(
+		"add_quick_action",
+		"Add a quick action button to the top bar. Provide a short label, the shell command to run, and optionally a subdirectory and scope.",
+		{
+			label: z.string().describe("Short button label (e.g. 'Build', 'Test')"),
+			command: z.string().describe("Shell command to execute"),
+			cwd: z.string().optional().describe("Relative subdirectory to run in (optional)"),
+			shortcut: z
+				.string()
+				.optional()
+				.describe("Keyboard shortcut in Electron accelerator format (optional)"),
+			scope: z
+				.enum(["global", "repo"])
+				.optional()
+				.describe("Whether this action applies globally or only to this repo"),
+		},
+		async ({ label, command, cwd, shortcut, scope }) => {
+			const id = randomUUID();
+			const now = Math.floor(Date.now() / 1000);
+			const projectId = scope === "global" ? null : (PROJECT_ID ?? null);
+
+			const countResult = db
+				.prepare(
+					"SELECT COUNT(*) as count FROM quick_actions WHERE project_id = ? OR project_id IS NULL"
+				)
+				.get(projectId);
+			const sortOrder = countResult?.count ?? 0;
+
+			db.prepare(
+				`INSERT INTO quick_actions (id, project_id, label, command, cwd, shortcut, sort_order, created_at, updated_at)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+			).run(id, projectId, label, command, cwd ?? null, shortcut ?? null, sortOrder, now, now);
+
+			return {
+				content: [{ type: "text", text: JSON.stringify({ id, status: "created" }) }],
+			};
+		}
+	);
+
+	// Tool: list_quick_actions
+	server.tool(
+		"list_quick_actions",
+		"List all currently configured quick action buttons",
+		{},
+		async () => {
+			const actions = db
+				.prepare(
+					`SELECT id, project_id, label, command, cwd, shortcut, sort_order
+					 FROM quick_actions
+					 WHERE project_id = ? OR project_id IS NULL
+					 ORDER BY sort_order ASC`
+				)
+				.all(PROJECT_ID ?? null);
+
+			if (actions.length === 0) {
+				return {
+					content: [{ type: "text", text: "No quick actions configured." }],
+				};
+			}
+
+			const lines = actions.map((a) => {
+				const scope = a.project_id ? "repo" : "global";
+				const parts = [`[${a.id}] ${a.label} — ${a.command} (${scope})`];
+				if (a.cwd) parts.push(`  cwd: ${a.cwd}`);
+				if (a.shortcut) parts.push(`  shortcut: ${a.shortcut}`);
+				return parts.join("\n");
+			});
+
+			return {
+				content: [{ type: "text", text: lines.join("\n\n") }],
+			};
+		}
+	);
+
+	// Tool: remove_quick_action
+	server.tool(
+		"remove_quick_action",
+		"Remove a quick action by its ID",
+		{
+			id: z.string().describe("The ID of the quick action to remove"),
+		},
+		async ({ id }) => {
+			const result = db.prepare("DELETE FROM quick_actions WHERE id = ?").run(id);
+
+			if (result.changes === 0) {
+				return {
+					content: [{ type: "text", text: JSON.stringify({ error: "Quick action not found" }) }],
+				};
+			}
+
+			return {
+				content: [{ type: "text", text: JSON.stringify({ status: "removed", id }) }],
 			};
 		}
 	);
