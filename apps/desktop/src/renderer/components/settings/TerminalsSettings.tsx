@@ -103,11 +103,9 @@ export function TerminalsSettings() {
 		const orphanIds = daemon.daemonSessions
 			.filter((s) => !rendererTabIds.has(s.id) && !callbackSet.has(s.id))
 			.map((s) => s.id);
-		for (const id of orphanIds) {
-			try {
-				await window.electron.terminal.dispose(id);
-			} catch {}
-		}
+		await Promise.all(
+			orphanIds.map((id) => window.electron.terminal.dispose(id).catch(() => {}))
+		);
 		refresh();
 	}, [daemon, rendererTabIds, refresh]);
 
