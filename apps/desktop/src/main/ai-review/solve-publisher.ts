@@ -1,9 +1,8 @@
 import { execSync } from "node:child_process";
 import { and, eq } from "drizzle-orm";
-import { replyToPRComment } from "../atlassian/bitbucket";
 import { getDb } from "../db";
 import * as schema from "../db/schema";
-import { addReviewThreadReply, resolveThread } from "../github/github";
+import { getGitProvider } from "../providers/git-provider";
 import { validateSolveTransition } from "./comment-solver-orchestrator";
 import { parsePrIdentifier } from "./pr-identifier";
 import { resolveSessionWorktree } from "./solve-session-resolver";
@@ -54,16 +53,17 @@ export async function publishSolve(sessionId: string): Promise<PublishSolveResul
 		.all();
 
 	const { owner, repo, number: prNumber } = parsePrIdentifier(session.prIdentifier);
+	const git = getGitProvider(session.prProvider);
 
 	const replyResults = await Promise.allSettled(
 		approvedReplies.map(async ({ reply, comment }) => {
-			if (session.prProvider === "github") {
-				if (!comment.threadId) throw new Error(`No threadId for comment ${comment.id}`);
-				await addReviewThreadReply({ threadId: comment.threadId, body: reply.body });
-			} else if (session.prProvider === "bitbucket") {
-				const parentCommentId = Number.parseInt(comment.platformCommentId, 10);
-				await replyToPRComment(owner, repo, prNumber, parentCommentId, reply.body);
-			}
+			await git.replyToComment({
+				owner,
+				repo,
+				prNumber,
+				commentId: comment.threadId ?? comment.platformCommentId,
+				body: reply.body,
+			});
 			db.update(schema.commentReplies)
 				.set({ status: "posted" })
 				.where(eq(schema.commentReplies.id, reply.id))
@@ -80,27 +80,32 @@ export async function publishSolve(sessionId: string): Promise<PublishSolveResul
 		}
 	}
 
-	// Resolve threads for fixed comments (GitHub only)
-	if (session.prProvider === "github") {
-		const fixedComments = db
-			.select()
-			.from(schema.prComments)
-			.where(
-				and(eq(schema.prComments.solveSessionId, sessionId), eq(schema.prComments.status, "fixed"))
-			)
-			.all()
-			.filter((c) => c.threadId != null);
+	// Resolve threads for fixed comments (now works for both providers)
+	const fixedComments = db
+		.select()
+		.from(schema.prComments)
+		.where(
+			and(eq(schema.prComments.solveSessionId, sessionId), eq(schema.prComments.status, "fixed"))
+		)
+		.all();
 
-		const resolveResults = await Promise.allSettled(
-			fixedComments.map((comment) => resolveThread(comment.threadId ?? ""))
-		);
+	const resolveResults = await Promise.allSettled(
+		fixedComments.map((comment) =>
+			git.resolveComment({
+				owner,
+				repo,
+				prNumber,
+				commentId: comment.threadId ?? comment.platformCommentId,
+			})
+		)
+	);
 
-		for (const result of resolveResults) {
-			if (result.status === "fulfilled") {
-				threadsResolved++;
-			} else {
-				errors.push(`Failed to resolve thread: ${result.reason}`);
-			}
+	for (const result of resolveResults) {
+		if (result.status === "fulfilled") {
+			threadsResolved++;
+		} else {
+			console.error("[solve-publisher] Failed to resolve thread:", result.reason);
+			errors.push(`Failed to resolve thread: ${result.reason}`);
 		}
 	}
 
