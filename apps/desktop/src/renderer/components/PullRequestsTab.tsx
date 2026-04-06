@@ -727,14 +727,46 @@ export function PullRequestsTab() {
 	const handlePRClick = useCallback(
 		(pr: MergedPR, e: React.MouseEvent) => {
 			const ghPR = pr.githubPR;
-			const isReviewer = ghPR?.role === "reviewer";
+			const bbPR = pr.bitbucketPR;
 
-			if (pr.provider === "bitbucket" && pr.bitbucketPR) {
-				window.electron.shell.openExternal(pr.url);
+			// ── Bitbucket reviewer PRs → open review workspace ──
+			if (pr.provider === "bitbucket" && bbPR) {
+				const project = projectsList?.find(
+					(p) => p.githubOwner === bbPR.workspace && p.githubRepo === bbPR.repoSlug
+				);
+				if (!project) {
+					// No tracked project — fall back to browser
+					window.electron.shell.openExternal(pr.url);
+					return;
+				}
+
+				const prIdentifier = `${bbPR.workspace}/${bbPR.repoSlug}#${bbPR.id}`;
+				const prCtx: PRContext = {
+					provider: "bitbucket",
+					owner: bbPR.workspace,
+					repo: bbPR.repoSlug,
+					number: bbPR.id,
+					title: bbPR.title,
+					sourceBranch: bbPR.source?.branch?.name ?? "",
+					targetBranch: bbPR.destination?.branch?.name ?? project.defaultBranch ?? "main",
+					repoPath: project.repoPath,
+				};
+
+				openPRWorkspace(project.id, "bitbucket", prIdentifier, project.repoPath, prCtx);
+
+				// Mark the current head commit as seen to clear "New commits" indicator
+				const enriched = enrichmentMap.get(prIdentifier);
+				if (enriched?.headCommitOid) {
+					markCommitSeen.mutate({
+						prIdentifier,
+						commitSha: enriched.headCommitOid,
+					});
+				}
 				return;
 			}
 
 			if (!ghPR) return;
+			const isReviewer = ghPR?.role === "reviewer";
 
 			// For reviewer PRs, open the persistent review workspace
 			if (isReviewer) {
