@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { CachedPR } from "../../shared/review-types";
 import { getDb } from "../db";
 import type { ReviewDraft } from "../db/schema";
@@ -60,7 +60,9 @@ const defaultDeps: AutoTriggerDeps = {
 		const match = db
 			.select({ id: schema.projects.id })
 			.from(schema.projects)
-			.where(eq(schema.projects.remoteOwner, repoOwner))
+			.where(
+				and(eq(schema.projects.remoteOwner, repoOwner), eq(schema.projects.remoteRepo, repoName))
+			)
 			.get();
 
 		if (match?.id) return match.id;
@@ -68,15 +70,9 @@ const defaultDeps: AutoTriggerDeps = {
 		const allProjects = db.select().from(schema.projects).all();
 		const repoNameLower = repoName.toLowerCase();
 		const ownerLower = repoOwner.toLowerCase();
-		const fallback = allProjects.find((project) => {
-			if (
-				project.remoteOwner?.toLowerCase() === ownerLower &&
-				project.remoteRepo?.toLowerCase() === repoNameLower
-			) {
-				return true;
-			}
-			return project.repoPath.toLowerCase().includes(`${ownerLower}/${repoNameLower}`);
-		});
+		const fallback = allProjects.find((project) =>
+			project.repoPath.toLowerCase().includes(`${ownerLower}/${repoNameLower}`)
+		);
 
 		return fallback?.id ?? "";
 	},
