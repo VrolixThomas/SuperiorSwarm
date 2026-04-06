@@ -46,6 +46,7 @@ export class GitHubAdapter implements GitProvider {
 			role: pr.role ?? "author",
 			repoOwner: pr.repoOwner ?? "",
 			repoName: pr.repoName ?? "",
+			headCommitSha: "",
 		}));
 	}
 

@@ -26,9 +26,14 @@ const basePr: CachedPR = {
 	repoName: "widgets",
 	projectId: "project-1",
 	role: "reviewer",
+	headCommitSha: "abc123",
 };
 
 describe("auto-trigger decision", () => {
+	test("CachedPR includes headCommitSha", () => {
+		expect(basePr.headCommitSha).toBe("abc123");
+	});
+
 	test("exposes review workspace helper", () => {
 		expect(ensureReviewWorkspace).toBeTypeOf("function");
 	});

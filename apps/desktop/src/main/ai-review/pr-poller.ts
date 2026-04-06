@@ -77,6 +77,7 @@ function toCachedPR(pr: NormalizedPR, provider: string): CachedPR {
 		repoName: pr.repoName,
 		projectId: getProjectIdByRepo(pr.repoOwner, pr.repoName),
 		role: pr.role,
+		headCommitSha: pr.headCommitSha,
 	};
 }
 

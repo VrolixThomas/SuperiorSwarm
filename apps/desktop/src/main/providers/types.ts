@@ -13,6 +13,7 @@ export interface NormalizedPR {
 	role: "author" | "reviewer";
 	repoOwner: string;
 	repoName: string;
+	headCommitSha: string;
 }
 
 export interface PRState {
