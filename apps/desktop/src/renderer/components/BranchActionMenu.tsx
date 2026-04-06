@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { trpc } from "../trpc/client";
 import { useClickOutside } from "../hooks/useClickOutside";
 import { useEscapeKey } from "../hooks/useEscapeKey";
+import { trpc } from "../trpc/client";
 
 interface Props {
 	projectId: string;

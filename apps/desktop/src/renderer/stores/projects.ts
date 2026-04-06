@@ -11,6 +11,7 @@ interface ProjectStore {
 	sharedFilesProjectId: string | null;
 	selectProject: (id: string | null) => void;
 	toggleProjectExpanded: (id: string) => void;
+	hydrateExpandedProjects: (ids: string[]) => void;
 	openAddModal: () => void;
 	closeAddModal: () => void;
 	openCreateWorktreeModal: (projectId: string) => void;
@@ -51,6 +52,8 @@ export const useProjectStore = create<ProjectStore>((set) => ({
 			}
 			return { expandedProjectIds: next };
 		}),
+
+	hydrateExpandedProjects: (ids) => set({ expandedProjectIds: new Set(ids) }),
 
 	openAddModal: () => set({ isAddModalOpen: true }),
 	closeAddModal: () => set({ isAddModalOpen: false }),

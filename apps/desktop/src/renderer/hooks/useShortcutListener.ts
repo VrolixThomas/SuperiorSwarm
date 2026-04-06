@@ -1,12 +1,21 @@
 import { useEffect } from "react";
 import { type Shortcut, useActionStore } from "../stores/action-store";
+import { shortcutsMatch } from "../utils/parse-accelerator";
 
 export function matchesShortcut(e: KeyboardEvent, shortcut: Shortcut): boolean {
-	const meta = e.metaKey || e.ctrlKey;
-	if (!!shortcut.meta !== meta) return false;
-	if (!!shortcut.shift !== e.shiftKey) return false;
-	if (!!shortcut.alt !== e.altKey) return false;
-	return e.key === shortcut.key || e.code === shortcut.key;
+	const eventShortcut: Shortcut = {
+		key: e.key,
+		meta: e.metaKey || e.ctrlKey,
+		shift: e.shiftKey,
+		alt: e.altKey,
+	};
+	if (shortcutsMatch(eventShortcut, shortcut)) return true;
+	// Fall back to e.code for physical key matching (e.g. "Backslash")
+	if (e.code !== e.key) {
+		eventShortcut.key = e.code;
+		return shortcutsMatch(eventShortcut, shortcut);
+	}
+	return false;
 }
 
 export function useShortcutListener() {

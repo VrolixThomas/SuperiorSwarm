@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useActionStore } from "../stores/action-store";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
+import { parseAccelerator } from "../utils/parse-accelerator";
+
+const EMPTY_ACTIONS: never[] = [];
 
 export function resolveQuickActionCwd(cwd: string | null, repoPath: string): string {
 	if (!cwd) return repoPath;
@@ -35,15 +39,38 @@ export function QuickActionBar({
 		window.electron.quickActions.syncShortcuts(projectId);
 	}, [projectId, actionsQuery.data]);
 
-	function handleRun(command: string, label: string, cwd: string | null) {
-		const resolvedCwd = resolveQuickActionCwd(cwd, repoPath);
-		const tabId = addTerminalTab(workspaceId, resolvedCwd, label);
-		setTimeout(() => {
-			window.electron.terminal.write(tabId, `${command}\n`);
-		}, 300);
-	}
+	const handleRun = useCallback(
+		(command: string, label: string, cwd: string | null) => {
+			const resolvedCwd = resolveQuickActionCwd(cwd, repoPath);
+			const tabId = addTerminalTab(workspaceId, resolvedCwd, label);
+			setTimeout(() => {
+				window.electron.terminal.write(tabId, `${command}\n`);
+			}, 300);
+		},
+		[repoPath, workspaceId, addTerminalTab]
+	);
 
-	const actions = actionsQuery.data ?? [];
+	const actions = actionsQuery.data ?? EMPTY_ACTIONS;
+
+	useEffect(() => {
+		const store = useActionStore.getState();
+		const registeredIds = actions.map((a) => `quick.${a.id}`);
+
+		store.registerMany(
+			actions.map((action) => ({
+				id: `quick.${action.id}`,
+				label: action.label,
+				category: "Quick Actions" as const,
+				shortcut: parseAccelerator(action.shortcut) ?? undefined,
+				execute: () => handleRun(action.command, action.label, action.cwd),
+				keywords: ["run", "quick action", action.command],
+			}))
+		);
+
+		return () => {
+			useActionStore.getState().unregisterMany(registeredIds);
+		};
+	}, [actions, handleRun]);
 
 	const handleDragStart = useCallback((e: React.DragEvent, id: string) => {
 		setDragId(id);
