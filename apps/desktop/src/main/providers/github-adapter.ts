@@ -7,10 +7,12 @@ import {
 	getPRComments,
 	getPRFiles,
 	getPRState,
+	getPRDetails as getGitHubPRDetails,
 	resolveThread,
 	submitReview,
 	unresolveThread,
 } from "../github/github";
+import type { GitHubPRDetails } from "../../shared/github-types";
 import type {
 	CreateCommentParams,
 	GitProvider,
@@ -116,5 +118,9 @@ export class GitHubAdapter implements GitProvider {
 		prNumber: number
 	): Promise<NormalizedReviewThread[]> {
 		return getGitHubReviewThreads(owner, repo, prNumber);
+	}
+
+	async getPRDetails(owner: string, repo: string, prNumber: number): Promise<GitHubPRDetails> {
+		return getGitHubPRDetails(owner, repo, prNumber);
 	}
 }
