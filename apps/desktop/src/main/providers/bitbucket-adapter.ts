@@ -1,3 +1,4 @@
+import type { GitHubPREnriched, GitHubReviewer } from "../../shared/github-types";
 import { atlassianFetch, getAuth } from "../atlassian/auth";
 import {
 	type BitbucketComment,
@@ -65,6 +66,58 @@ export function mapBitbucketComment(comment: BitbucketComment): NormalizedCommen
 		lineNumber: comment.lineNumber,
 		createdAt: comment.createdAt,
 	};
+}
+
+// ── Enrichment types ──────────────────────────────────────────────────────────
+
+export interface BitbucketParticipant {
+	user?: { display_name?: string } | null;
+	role: string;
+	state?: string | null;
+}
+
+export interface BitbucketStatus {
+	state: string;
+}
+
+// ── Enrichment mapping helpers (exported for testing) ─────────────────────────
+
+export function mapParticipantToReviewer(p: BitbucketParticipant): GitHubReviewer {
+	let decision: GitHubReviewer["decision"];
+	switch (p.state) {
+		case "approved":
+			decision = "APPROVED";
+			break;
+		case "changes_requested":
+			decision = "CHANGES_REQUESTED";
+			break;
+		default:
+			decision = "PENDING";
+	}
+	return {
+		login: p.user?.display_name ?? "Unknown",
+		avatarUrl: "",
+		decision,
+	};
+}
+
+export function aggregateCIState(
+	statuses: BitbucketStatus[]
+): "SUCCESS" | "FAILURE" | "PENDING" | "NEUTRAL" | null {
+	if (statuses.length === 0) return null;
+	if (statuses.some((s) => s.state === "FAILED" || s.state === "STOPPED")) return "FAILURE";
+	if (statuses.some((s) => s.state === "INPROGRESS")) return "PENDING";
+	if (statuses.every((s) => s.state === "SUCCESSFUL")) return "SUCCESS";
+	return null;
+}
+
+export function deriveReviewDecision(
+	reviewers: GitHubReviewer[]
+): "APPROVED" | "CHANGES_REQUESTED" | "REVIEW_REQUIRED" | null {
+	if (reviewers.length === 0) return "REVIEW_REQUIRED";
+	if (reviewers.some((r) => r.decision === "CHANGES_REQUESTED")) return "CHANGES_REQUESTED";
+	if (reviewers.some((r) => r.decision === "APPROVED")) return "APPROVED";
+	return "REVIEW_REQUIRED";
 }
 
 // ── BitbucketAdapter ──────────────────────────────────────────────────────────
@@ -192,10 +245,13 @@ export class BitbucketAdapter implements GitProvider {
 				files.push({
 					path: f.new?.path ?? f.old?.path ?? "",
 					status:
-						f.status === "added" ? ("added" as const)
-						: f.status === "removed" ? ("removed" as const)
-						: f.status === "renamed" ? ("renamed" as const)
-						: ("modified" as const),
+						f.status === "added"
+							? ("added" as const)
+							: f.status === "removed"
+								? ("removed" as const)
+								: f.status === "renamed"
+									? ("renamed" as const)
+									: ("modified" as const),
 					previousPath: f.status === "renamed" ? f.old?.path : undefined,
 				});
 			}
