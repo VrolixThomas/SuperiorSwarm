@@ -45,6 +45,8 @@ function normalizePR(pr: GitHubPRInput) {
 		sourceBranch: pr.branchName ?? "",
 		targetBranch: "",
 		role: pr.role ?? "author",
+		repoOwner: pr.repoOwner ?? "",
+		repoName: pr.repoName ?? "",
 	};
 }
 
@@ -81,6 +83,7 @@ describe("normalizePR", () => {
 			branchName: "feat/dark-mode",
 			state: "open",
 			repoOwner: "org",
+			repoName: "repo",
 			role: "author",
 		};
 
@@ -93,6 +96,8 @@ describe("normalizePR", () => {
 			sourceBranch: "feat/dark-mode",
 			targetBranch: "",
 			role: "author",
+			repoOwner: "org",
+			repoName: "repo",
 		});
 	});
 
@@ -139,6 +144,22 @@ describe("normalizePR", () => {
 
 	test("targetBranch is always empty string (not in search result)", () => {
 		expect(normalizePR({ number: 1 }).targetBranch).toBe("");
+	});
+
+	test("includes repoOwner from pr.repoOwner", () => {
+		expect(normalizePR({ number: 1, repoOwner: "acme-org" }).repoOwner).toBe("acme-org");
+	});
+
+	test("falls back to empty string when repoOwner is null", () => {
+		expect(normalizePR({ number: 1, repoOwner: null }).repoOwner).toBe("");
+	});
+
+	test("includes repoName from pr.repoName", () => {
+		expect(normalizePR({ number: 1, repoName: "my-repo" }).repoName).toBe("my-repo");
+	});
+
+	test("falls back to empty string when repoName is null", () => {
+		expect(normalizePR({ number: 1, repoName: null }).repoName).toBe("");
 	});
 });
 

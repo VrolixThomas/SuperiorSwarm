@@ -5,7 +5,6 @@ import {
 	getGitHubReviewThreads,
 	getMyPRs,
 	getPRComments,
-	getPRDetails,
 	getPRFiles,
 	getPRState,
 	resolveThread,
@@ -17,9 +16,12 @@ import type {
 	GitProvider,
 	NormalizedComment,
 	NormalizedPR,
+	NormalizedPRFile,
+	NormalizedReviewThread,
 	PRState,
 	ReplyParams,
 	ResolveParams,
+	SubmitReviewParams,
 } from "./types";
 
 export class GitHubAdapter implements GitProvider {
@@ -40,6 +42,8 @@ export class GitHubAdapter implements GitProvider {
 			sourceBranch: pr.branchName ?? "",
 			targetBranch: "",
 			role: pr.role ?? "author",
+			repoOwner: pr.repoOwner ?? "",
+			repoName: pr.repoName ?? "",
 		}));
 	}
 
@@ -63,17 +67,18 @@ export class GitHubAdapter implements GitProvider {
 		}));
 	}
 
-	async createInlineComment(params: CreateCommentParams): Promise<{ id: string }> {
+	async createInlineComment(params: CreateCommentParams): Promise<{ id: string; nodeId?: string }> {
 		const result = await createReviewThread({
 			owner: params.owner,
 			repo: params.repo,
 			prNumber: params.prNumber,
 			body: params.body,
-			commitId: "",
+			commitId: params.commitId ?? "",
 			path: params.filePath ?? "",
 			line: params.line,
+			side: params.side,
 		});
-		return { id: String(result.id) };
+		return { id: String(result.id), nodeId: result.nodeId };
 	}
 
 	async replyToComment(params: ReplyParams): Promise<{ id: string }> {
@@ -92,27 +97,24 @@ export class GitHubAdapter implements GitProvider {
 		await unresolveThread(params.commentId);
 	}
 
-	// ── GitHub-specific extras (not on the GitProvider interface) ────────────
-
-	getPRDetails(owner: string, repo: string, prNumber: number) {
-		return getPRDetails(owner, repo, prNumber);
+	async submitReview(params: SubmitReviewParams): Promise<void> {
+		await submitReview(params);
 	}
 
-	submitReview(params: {
-		owner: string;
-		repo: string;
-		prNumber: number;
-		verdict: "APPROVE" | "REQUEST_CHANGES" | "COMMENT";
-		body: string;
-	}) {
-		return submitReview(params);
+	async getPRFiles(owner: string, repo: string, prNumber: number): Promise<NormalizedPRFile[]> {
+		const files = await getPRFiles(owner, repo, prNumber);
+		return files.map((f) => ({
+			path: f.path,
+			status: f.status,
+			previousPath: f.previousPath,
+		}));
 	}
 
-	getPRFiles(owner: string, repo: string, prNumber: number) {
-		return getPRFiles(owner, repo, prNumber);
-	}
-
-	getReviewThreads(owner: string, repo: string, prNumber: number) {
+	async getReviewThreads(
+		owner: string,
+		repo: string,
+		prNumber: number,
+	): Promise<NormalizedReviewThread[]> {
 		return getGitHubReviewThreads(owner, repo, prNumber);
 	}
 }
