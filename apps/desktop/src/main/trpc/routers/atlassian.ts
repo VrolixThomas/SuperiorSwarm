@@ -13,6 +13,8 @@ import {
 	updateIssueStatus,
 } from "../../atlassian/jira";
 import { connectAll, connectBitbucket, connectJira } from "../../atlassian/oauth-flow";
+import type { BitbucketAdapter } from "../../providers/bitbucket-adapter";
+import { getGitProvider } from "../../providers/git-provider";
 import { publicProcedure, router } from "../index";
 
 export const atlassianRouter = router({
@@ -141,5 +143,24 @@ export const atlassianRouter = router({
 				input.commentId,
 				input.resolved
 			);
+		}),
+
+	getPRListEnrichment: publicProcedure
+		.input(
+			z.object({
+				prs: z.array(
+					z.object({
+						workspace: z.string(),
+						repoSlug: z.string(),
+						prId: z.number(),
+					})
+				),
+			})
+		)
+		.query(async ({ input }) => {
+			const provider = getGitProvider("bitbucket");
+			if (!provider.isConnected()) return [];
+			const adapter = provider as BitbucketAdapter;
+			return adapter.getPRListEnrichment(input.prs);
 		}),
 });
