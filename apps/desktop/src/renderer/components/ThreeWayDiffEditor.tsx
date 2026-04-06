@@ -406,9 +406,7 @@ export function ThreeWayDiffEditor({
 		const zoneMap = zoneMapRef.current;
 
 		const zonableHunks = hunks.filter(
-			(h) =>
-				(h.type === "conflict" && h.status === "pending") ||
-				(h.type === "ok" && h.source),
+			(h) => (h.type === "conflict" && h.status === "pending") || (h.type === "ok" && h.source)
 		);
 		const desiredIds = new Set(zonableHunks.map((h) => h.id));
 
@@ -441,7 +439,7 @@ export function ThreeWayDiffEditor({
 							theirsCount={hunk.theirsLines.length}
 							oursCount={hunk.oursLines.length}
 							onAccept={handleAccept}
-						/>,
+						/>
 					);
 				} else {
 					existing.root.render(
@@ -451,7 +449,7 @@ export function ThreeWayDiffEditor({
 							accepted={hunk.accepted}
 							lineCount={hunk.resultLines.length}
 							onToggle={handleToggle}
-						/>,
+						/>
 					);
 				}
 			} else {
@@ -493,7 +491,7 @@ export function ThreeWayDiffEditor({
 								theirsCount={hunk.theirsLines.length}
 								oursCount={hunk.oursLines.length}
 								onAccept={handleAccept}
-							/>,
+							/>
 						);
 					} else {
 						root.render(
@@ -503,7 +501,7 @@ export function ThreeWayDiffEditor({
 								accepted={hunk.accepted}
 								lineCount={hunk.resultLines.length}
 								onToggle={handleToggle}
-							/>,
+							/>
 						);
 					}
 				}
@@ -559,7 +557,10 @@ export function ThreeWayDiffEditor({
 			<div className="flex h-9 shrink-0 items-stretch border-b border-[var(--border)]">
 				{/* Theirs header */}
 				<div className="flex flex-1 items-center gap-2 border-r border-[var(--border)] bg-[var(--bg-surface)] px-3">
-					<span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: "var(--accent)" }} />
+					<span
+						className="h-2 w-2 shrink-0 rounded-full"
+						style={{ backgroundColor: "var(--accent)" }}
+					/>
 					<span className="min-w-0 flex-1 truncate text-[12px] font-medium text-[var(--text-secondary)]">
 						Theirs ({sourceBranch})
 					</span>
@@ -576,7 +577,9 @@ export function ThreeWayDiffEditor({
 				<div className="flex flex-1 items-center gap-2 border-r border-[var(--border)] bg-[var(--bg-surface)] px-3">
 					<span
 						className="h-2 w-2 shrink-0 rounded-full"
-						style={{ backgroundColor: allResolved ? "var(--color-success)" : "var(--color-warning)" }}
+						style={{
+							backgroundColor: allResolved ? "var(--color-success)" : "var(--color-warning)",
+						}}
 					/>
 					<span className="min-w-0 flex-1 truncate text-[12px] font-medium text-[var(--text-secondary)]">
 						Result
@@ -597,7 +600,10 @@ export function ThreeWayDiffEditor({
 
 				{/* Yours header */}
 				<div className="flex flex-1 items-center gap-2 bg-[var(--bg-surface)] px-3">
-					<span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: "var(--color-purple)" }} />
+					<span
+						className="h-2 w-2 shrink-0 rounded-full"
+						style={{ backgroundColor: "var(--color-purple)" }}
+					/>
 					<span className="min-w-0 flex-1 truncate text-[12px] font-medium text-[var(--text-secondary)]">
 						Yours ({targetBranch})
 					</span>

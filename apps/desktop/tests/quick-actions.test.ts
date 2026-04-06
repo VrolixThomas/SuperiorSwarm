@@ -16,13 +16,13 @@ describe("quickActions schema", () => {
 	});
 });
 
+import { join } from "node:path";
 import Database from "better-sqlite3";
+import { eq, isNull, or } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
-import { join } from "node:path";
 import { nanoid } from "nanoid";
-import { eq, or, isNull } from "drizzle-orm";
-import { quickActions, projects } from "../src/main/db/schema";
+import { projects, quickActions } from "../src/main/db/schema";
 
 function createTestDb() {
 	const sqlite = new Database(":memory:");
