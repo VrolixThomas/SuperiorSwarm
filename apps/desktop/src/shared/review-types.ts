@@ -17,4 +17,5 @@ export interface CachedPR {
 	repoOwner: string;
 	repoName: string;
 	projectId: string;
+	role: "author" | "reviewer";
 }

@@ -76,6 +76,7 @@ function toCachedPR(pr: NormalizedPR, provider: string): CachedPR {
 		repoOwner: pr.repoOwner,
 		repoName: pr.repoName,
 		projectId: getProjectIdByRepo(pr.repoOwner, pr.repoName),
+		role: "reviewer",
 	};
 }
 
