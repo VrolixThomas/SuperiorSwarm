@@ -151,9 +151,25 @@ export class BitbucketAdapter implements GitProvider {
 		}
 	}
 
-	async submitReview(_params: SubmitReviewParams): Promise<void> {
-		// Bitbucket doesn't have a formal review submission API like GitHub.
-		// Comments are posted inline; no-op here.
+	async submitReview(params: SubmitReviewParams): Promise<void> {
+		const base = `${BITBUCKET_API_BASE}/repositories/${params.owner}/${params.repo}/pullrequests/${params.prNumber}`;
+
+		if (params.verdict === "APPROVE") {
+			const res = await atlassianFetch("bitbucket", `${base}/approve`, { method: "POST" });
+			// 409 = already approved, not an error
+			if (!res.ok && res.status !== 409) {
+				throw new Error(`Bitbucket approve failed: ${res.status}`);
+			}
+		} else if (params.verdict === "REQUEST_CHANGES") {
+			const res = await atlassianFetch("bitbucket", `${base}/request-changes`, {
+				method: "POST",
+			});
+			// 409 = already requested changes; silently no-ops if user is author
+			if (!res.ok && res.status !== 409) {
+				throw new Error(`Bitbucket request-changes failed: ${res.status}`);
+			}
+		}
+		// "COMMENT" verdict has no Bitbucket equivalent — comments are posted inline
 	}
 
 	async getPRFiles(owner: string, repo: string, prNumber: number): Promise<NormalizedPRFile[]> {
