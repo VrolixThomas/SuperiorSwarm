@@ -35,10 +35,6 @@ export function QuickActionBar({
 	const [dropTarget, setDropTarget] = useState<string | null>(null);
 	const dragCounterRef = useRef(0);
 
-	useEffect(() => {
-		window.electron.quickActions.syncShortcuts(projectId);
-	}, [projectId, actionsQuery.data]);
-
 	const handleRun = useCallback(
 		(command: string, label: string, cwd: string | null) => {
 			const resolvedCwd = resolveQuickActionCwd(cwd, repoPath);
