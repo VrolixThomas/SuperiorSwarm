@@ -4,6 +4,8 @@ import { isAbsolute, join, resolve } from "node:path";
 import { and, eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { z } from "zod";
+import { BitbucketAdapter } from "../../providers/bitbucket-adapter";
+import { GitHubAdapter } from "../../providers/github-adapter";
 import { getDb } from "../../db";
 import { projects, workspaces } from "../../db/schema";
 import {
@@ -70,6 +72,21 @@ export const projectsRouter = router({
 				.from(projects)
 				.where(and(eq(projects.remoteOwner, input.owner), eq(projects.remoteRepo, input.repo)))
 				.all();
+		}),
+
+	getPRDetails: publicProcedure
+		.input(
+			z.object({
+				provider: z.enum(["github", "bitbucket"]),
+				owner: z.string(),
+				repo: z.string(),
+				number: z.number(),
+			})
+		)
+		.query(async ({ input }) => {
+			const adapter =
+				input.provider === "github" ? new GitHubAdapter() : new BitbucketAdapter();
+			return adapter.getPRDetails(input.owner, input.repo, input.number);
 		}),
 
 	getById: publicProcedure.input(z.object({ id: z.string() })).query(({ input }) => {
