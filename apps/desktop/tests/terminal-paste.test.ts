@@ -33,7 +33,7 @@ describe("hasImageOrFilePayload", () => {
 
 function fakeClipboardEvent(
 	text: string,
-	types: string[],
+	types: string[]
 ): {
 	event: ClipboardEvent;
 	preventDefault: ReturnType<typeof mock>;
@@ -80,10 +80,10 @@ describe("interceptPaste", () => {
 		const writeToPty = mock(() => {});
 		interceptPaste(term as any, writeToPty);
 
-		const { event, preventDefault, stopImmediatePropagation } = fakeClipboardEvent(
-			"",
-			["Files", "image/png"],
-		);
+		const { event, preventDefault, stopImmediatePropagation } = fakeClipboardEvent("", [
+			"Files",
+			"image/png",
+		]);
 		getListener()!(event);
 
 		expect(writeToPty).toHaveBeenCalledWith("\x16");
@@ -97,10 +97,9 @@ describe("interceptPaste", () => {
 		const writeToPty = mock(() => {});
 		interceptPaste(term as any, writeToPty);
 
-		const { event, preventDefault, stopImmediatePropagation } = fakeClipboardEvent(
-			"hello world",
-			["text/plain"],
-		);
+		const { event, preventDefault, stopImmediatePropagation } = fakeClipboardEvent("hello world", [
+			"text/plain",
+		]);
 		getListener()!(event);
 
 		expect(term.paste).toHaveBeenCalledWith("hello world");

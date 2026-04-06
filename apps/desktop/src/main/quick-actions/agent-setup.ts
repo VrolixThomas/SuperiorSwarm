@@ -1,16 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import { eq } from "drizzle-orm";
 import { app } from "electron";
+import { buildDefaultPrompt } from "../../shared/quick-action-prompt";
+import { CLI_PRESETS, isCliInstalled, resolveCliPath } from "../ai-review/cli-presets";
 import { getDb } from "../db";
 import * as schema from "../db/schema";
-import {
-	CLI_PRESETS,
-	isCliInstalled,
-	resolveCliPath,
-} from "../ai-review/cli-presets";
-import { eq } from "drizzle-orm";
-import { buildDefaultPrompt } from "../../shared/quick-action-prompt";
 
 export interface AgentSetupLaunchInfo {
 	sessionId: string;
@@ -107,12 +103,7 @@ export async function launchSetupAgent(
 
 	// Write the launch script
 	const launchScript = join(sessionDir, "start-setup.sh");
-	const scriptContent = [
-		"#!/bin/bash",
-		`cd '${repoPath}'`,
-		"",
-		cliCommand,
-	].join("\n");
+	const scriptContent = ["#!/bin/bash", `cd '${repoPath}'`, "", cliCommand].join("\n");
 	writeFileSync(launchScript, scriptContent, "utf-8");
 	chmodSync(launchScript, 0o755);
 
