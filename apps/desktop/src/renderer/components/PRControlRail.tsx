@@ -31,11 +31,13 @@ function PRTabHeader({
 	onSetTab,
 	commentCount,
 	onClose,
+	reviewButton,
 }: {
 	tab: PRTab;
 	onSetTab: (t: PRTab) => void;
 	commentCount: number;
 	onClose?: () => void;
+	reviewButton?: React.ReactNode;
 }) {
 	const tabs: { key: PRTab; label: string; badge?: number }[] = [
 		{ key: "changes", label: "Changes" },
@@ -69,6 +71,7 @@ function PRTabHeader({
 				))}
 			</div>
 			<div className="flex-1" />
+			{reviewButton}
 			{onClose && (
 				<button
 					type="button"
@@ -464,62 +467,17 @@ function CommentsTab({
 	aiThreads,
 	summaryMarkdown,
 	onShowSummary,
-	reviewChainId,
 }: {
 	details: GitHubPRDetails;
 	prCtx: PRContext;
 	aiThreads: AIDraftThread[];
 	summaryMarkdown: string | null;
 	onShowSummary: () => void;
-	reviewChainId: string | null;
 }) {
 	const [sortMode, setSortMode] = useState<SortMode>("by-file");
 	const utils = trpc.useUtils();
 	const openPRReviewFile = useTabStore((s) => s.openPRReviewFile);
 	const activeWorkspaceId = useTabStore((s) => s.activeWorkspaceId);
-	const attachTerminal = trpc.workspaces.attachTerminal.useMutation();
-	const triggerFollowUp = trpc.aiReview.triggerFollowUp.useMutation({
-		onSuccess: (launchInfo) => {
-			utils.aiReview.getReviewDrafts.invalidate();
-			utils.aiReview.getReviewDraft.invalidate();
-
-			if (!launchInfo.reviewWorkspaceId || !launchInfo.worktreePath) return;
-
-			const tabStore = useTabStore.getState();
-			const alreadyActive = tabStore.activeWorkspaceId === launchInfo.reviewWorkspaceId;
-
-			if (!alreadyActive) {
-				// Only switch workspace if we're not already there
-				tabStore.setWorkspaceMetadata(launchInfo.reviewWorkspaceId, {
-					type: "review",
-					prProvider: prCtx.provider,
-					prIdentifier: `${prCtx.owner}/${prCtx.repo}#${prCtx.number}`,
-					prTitle: prCtx.title,
-					sourceBranch: prCtx.sourceBranch,
-					targetBranch: prCtx.targetBranch,
-				});
-				tabStore.setActiveWorkspace(launchInfo.reviewWorkspaceId, launchInfo.worktreePath);
-			}
-
-			// Create a fresh terminal tab for the re-review
-			const tabId = tabStore.addTerminalTab(
-				launchInfo.reviewWorkspaceId,
-				launchInfo.worktreePath,
-				"AI Re-review"
-			);
-			attachTerminal.mutate({
-				workspaceId: launchInfo.reviewWorkspaceId,
-				terminalId: tabId,
-			});
-
-			setTimeout(() => {
-				window.electron.terminal.write(tabId, `bash '${launchInfo.launchScript}'\r`);
-			}, 1000);
-		},
-		onError: (err) => {
-			console.error("[ai-review] Follow-up review failed:", err);
-		},
-	});
 
 	const invalidateDrafts = () => {
 		utils.aiReview.getReviewDrafts.invalidate();
@@ -610,44 +568,6 @@ function CommentsTab({
 		<div className="flex flex-1 flex-col overflow-hidden">
 			{/* Toolbar */}
 			<div className="flex shrink-0 items-center gap-2 border-b border-[var(--border-subtle)] px-3 py-1.5">
-				{reviewChainId && (
-					<Tooltip
-						label={
-							triggerFollowUp.isPending
-								? "Starting..."
-								: triggerFollowUp.isError
-									? "Re-review failed"
-									: "Re-review"
-						}
-					>
-						<button
-							type="button"
-							onClick={() => triggerFollowUp.mutate({ reviewChainId })}
-							disabled={triggerFollowUp.isPending}
-							className={[
-								"flex h-6 w-6 items-center justify-center rounded-[var(--radius-sm)] transition-colors",
-								triggerFollowUp.isError
-									? "text-[#f85149]"
-									: "text-[var(--text-quaternary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-tertiary)]",
-							].join(" ")}
-						>
-							<svg
-								width="13"
-								height="13"
-								viewBox="0 0 16 16"
-								fill="none"
-								stroke="currentColor"
-								strokeWidth="1.5"
-								strokeLinecap="round"
-								strokeLinejoin="round"
-								aria-hidden="true"
-							>
-								<path d="M2 8a6 6 0 0 1 10.3-4.2M14 8a6 6 0 0 1-10.3 4.2" />
-								<path d="M14 2v4h-4M2 14v-4h4" />
-							</svg>
-						</button>
-					</Tooltip>
-				)}
 				{summaryMarkdown && (
 					<Tooltip label="Summary">
 						<button
@@ -810,6 +730,119 @@ export function PRControlRail({ prCtx }: { prCtx: PRContext }) {
 	const draftRoundNumber = aiDraftQuery.data?.roundNumber ?? 1;
 	const draftReviewChainId = aiDraftQuery.data?.reviewChainId ?? matchingDraft?.id ?? null;
 
+	// ── Unified review button mutations ───────────────────────────────────
+	const attachTerminal = trpc.workspaces.attachTerminal.useMutation();
+	const triggerReview = trpc.aiReview.triggerReview.useMutation({
+		onSuccess: (launchInfo) => {
+			utils.aiReview.getReviewDrafts.invalidate();
+			utils.aiReview.getReviewDraft.invalidate();
+			if (!launchInfo.reviewWorkspaceId || !launchInfo.worktreePath) return;
+			const tabStore = useTabStore.getState();
+			const tabId = tabStore.addTerminalTab(
+				launchInfo.reviewWorkspaceId,
+				launchInfo.worktreePath,
+				"AI Review"
+			);
+			attachTerminal.mutate({
+				workspaceId: launchInfo.reviewWorkspaceId,
+				terminalId: tabId,
+			});
+			setTimeout(() => {
+				window.electron.terminal.write(tabId, `bash '${launchInfo.launchScript}'\n`);
+			}, 500);
+		},
+	});
+
+	const cancelReview = trpc.aiReview.cancelReview.useMutation({
+		onSuccess: () => {
+			utils.aiReview.getReviewDrafts.invalidate();
+			utils.aiReview.getReviewDraft.invalidate();
+		},
+	});
+
+	const triggerFollowUp = trpc.aiReview.triggerFollowUp.useMutation({
+		onSuccess: (launchInfo) => {
+			utils.aiReview.getReviewDrafts.invalidate();
+			utils.aiReview.getReviewDraft.invalidate();
+			if (!launchInfo.reviewWorkspaceId || !launchInfo.worktreePath) return;
+			const tabStore = useTabStore.getState();
+			const tabId = tabStore.addTerminalTab(
+				launchInfo.reviewWorkspaceId,
+				launchInfo.worktreePath,
+				"AI Re-review"
+			);
+			attachTerminal.mutate({
+				workspaceId: launchInfo.reviewWorkspaceId,
+				terminalId: tabId,
+			});
+			setTimeout(() => {
+				window.electron.terminal.write(tabId, `bash '${launchInfo.launchScript}'\r`);
+			}, 1000);
+		},
+	});
+
+	// ── Unified button state ──────────────────────────────────────────────
+	const draftStatus = matchingDraft?.status ?? null;
+	const isReviewActive = draftStatus === "queued" || draftStatus === "in_progress";
+	const hasExistingReview = !!matchingDraft;
+
+	const reviewButtonLabel = !hasExistingReview
+		? "Start Review"
+		: isReviewActive
+			? "Restart Review"
+			: "Re-review";
+
+	const reviewButtonPending =
+		triggerReview.isPending || cancelReview.isPending || triggerFollowUp.isPending;
+
+	const projectsQuery = trpc.projects.getByRepo.useQuery(
+		{ owner: prCtx.owner, repo: prCtx.repo },
+		{ staleTime: 60_000 }
+	);
+
+	const handleUnifiedReview = async () => {
+		if (isReviewActive && matchingDraft) {
+			await cancelReview.mutateAsync({ draftId: matchingDraft.id });
+			// After cancel, always start a fresh review
+			const project = projectsQuery.data?.[0];
+			if (!project) {
+				console.error("[ai-review] Cannot restart: project not found for", prIdentifier);
+				return;
+			}
+			triggerReview.mutate({
+				provider: prCtx.provider,
+				identifier: prIdentifier,
+				title: prCtx.title,
+				author: "",
+				sourceBranch: prCtx.sourceBranch,
+				targetBranch: prCtx.targetBranch,
+				repoPath: project.repoPath,
+				projectId: project.id,
+			});
+			return;
+		}
+
+		if (hasExistingReview && draftReviewChainId) {
+			triggerFollowUp.mutate({ reviewChainId: draftReviewChainId });
+		} else {
+			const project = projectsQuery.data?.[0];
+			if (!project) {
+				console.error("[ai-review] Cannot start review: project not found for", prIdentifier);
+				return;
+			}
+			triggerReview.mutate({
+				provider: prCtx.provider,
+				identifier: prIdentifier,
+				title: prCtx.title,
+				author: "",
+				sourceBranch: prCtx.sourceBranch,
+				targetBranch: prCtx.targetBranch,
+				repoPath: project.repoPath,
+				projectId: project.id,
+			});
+		}
+	};
+
 	const mapComment = (
 		c: NonNullable<typeof aiDraftQuery.data>["comments"][number]
 	): AIDraftThread => ({
@@ -885,6 +918,39 @@ export function PRControlRail({ prCtx }: { prCtx: PRContext }) {
 				onSetTab={setTab}
 				commentCount={totalComments}
 				onClose={closeDiffPanel}
+				reviewButton={
+					<Tooltip label={reviewButtonLabel}>
+						<button
+							type="button"
+							onClick={handleUnifiedReview}
+							disabled={reviewButtonPending}
+							className={[
+								"flex h-6 items-center gap-1.5 rounded-[var(--radius-sm)] px-2 transition-colors",
+								reviewButtonPending
+									? "text-[var(--text-quaternary)]"
+									: "text-[var(--text-tertiary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-secondary)]",
+							].join(" ")}
+						>
+							<svg
+								width="13"
+								height="13"
+								viewBox="0 0 16 16"
+								fill="none"
+								stroke="currentColor"
+								strokeWidth="1.5"
+								strokeLinecap="round"
+								strokeLinejoin="round"
+								aria-hidden="true"
+							>
+								<path d="M2 8a6 6 0 0 1 10.3-4.2M14 8a6 6 0 0 1-10.3 4.2" />
+								<path d="M14 2v4h-4M2 14v-4h4" />
+							</svg>
+							<span className="text-[10px] font-medium">
+								{reviewButtonPending ? "Starting..." : reviewButtonLabel}
+							</span>
+						</button>
+					</Tooltip>
+				}
 			/>
 
 			{/* Tab content */}
@@ -913,7 +979,6 @@ export function PRControlRail({ prCtx }: { prCtx: PRContext }) {
 					aiThreads={[...aiThreads, ...userPendingThreads]}
 					summaryMarkdown={aiDraftQuery.data?.summaryMarkdown ?? null}
 					onShowSummary={() => activeWorkspaceId && openPROverview(activeWorkspaceId, prCtx)}
-					reviewChainId={draftReviewChainId}
 				/>
 			)}
 			{tab === "files" && prCtx.repoPath && activeWorkspaceId && (
