@@ -21,7 +21,7 @@ const basePr: CachedPR = {
 	repoOwner: "acme",
 	repoName: "widgets",
 	projectId: "project-1",
-	role: "reviewer",
+	role: "reviewer" as CachedPR["role"],
 };
 
 describe("auto-trigger decision", () => {

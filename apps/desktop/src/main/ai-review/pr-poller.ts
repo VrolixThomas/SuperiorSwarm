@@ -75,6 +75,7 @@ function toCachedPR(pr: NormalizedPR, provider: string): CachedPR {
 		updatedAt: new Date().toISOString(),
 		repoOwner: pr.repoOwner,
 		repoName: pr.repoName,
+		role: pr.role,
 		projectId: getProjectIdByRepo(pr.repoOwner, pr.repoName),
 	};
 }
