@@ -47,7 +47,7 @@ describe("auto-trigger decision", () => {
 		const shouldTrigger = shouldAutoTriggerReview({
 			pr: basePr,
 			autoReviewEnabled: false,
-			existingDrafts: new Set(),
+			existingDrafts: new Map(),
 			alreadyTriggered: new Set(),
 		});
 		expect(shouldTrigger).toBe(false);
@@ -57,7 +57,7 @@ describe("auto-trigger decision", () => {
 		const shouldTrigger = shouldAutoTriggerReview({
 			pr: { ...basePr, state: "closed" },
 			autoReviewEnabled: true,
-			existingDrafts: new Set(),
+			existingDrafts: new Map(),
 			alreadyTriggered: new Set(),
 		});
 		expect(shouldTrigger).toBe(false);
@@ -67,7 +67,7 @@ describe("auto-trigger decision", () => {
 		const shouldTrigger = shouldAutoTriggerReview({
 			pr: { ...basePr, role: "author" },
 			autoReviewEnabled: true,
-			existingDrafts: new Set(),
+			existingDrafts: new Map(),
 			alreadyTriggered: new Set(),
 		});
 		expect(shouldTrigger).toBe(false);
@@ -77,17 +77,17 @@ describe("auto-trigger decision", () => {
 		const shouldTrigger = shouldAutoTriggerReview({
 			pr: { ...basePr, projectId: "" },
 			autoReviewEnabled: true,
-			existingDrafts: new Set(),
+			existingDrafts: new Map(),
 			alreadyTriggered: new Set(),
 		});
 		expect(shouldTrigger).toBe(false);
 	});
 
-	test("does not trigger when a draft already exists", () => {
+	test("does not trigger when draft is queued", () => {
 		const shouldTrigger = shouldAutoTriggerReview({
 			pr: basePr,
 			autoReviewEnabled: true,
-			existingDrafts: new Set([basePr.identifier]),
+			existingDrafts: new Map([[basePr.identifier, "queued"]]),
 			alreadyTriggered: new Set(),
 		});
 		expect(shouldTrigger).toBe(false);
@@ -97,7 +97,7 @@ describe("auto-trigger decision", () => {
 		const shouldTrigger = shouldAutoTriggerReview({
 			pr: basePr,
 			autoReviewEnabled: true,
-			existingDrafts: new Set(),
+			existingDrafts: new Map(),
 			alreadyTriggered: new Set([basePr.identifier]),
 		});
 		expect(shouldTrigger).toBe(false);
@@ -107,10 +107,50 @@ describe("auto-trigger decision", () => {
 		const shouldTrigger = shouldAutoTriggerReview({
 			pr: basePr,
 			autoReviewEnabled: true,
-			existingDrafts: new Set(),
+			existingDrafts: new Map(),
 			alreadyTriggered: new Set(),
 		});
 		expect(shouldTrigger).toBe(true);
+	});
+
+	test("triggers when existing draft is submitted", () => {
+		const shouldTrigger = shouldAutoTriggerReview({
+			pr: basePr,
+			autoReviewEnabled: true,
+			existingDrafts: new Map([[basePr.identifier, "submitted"]]),
+			alreadyTriggered: new Set(),
+		});
+		expect(shouldTrigger).toBe(true);
+	});
+
+	test("triggers when existing draft is failed", () => {
+		const shouldTrigger = shouldAutoTriggerReview({
+			pr: basePr,
+			autoReviewEnabled: true,
+			existingDrafts: new Map([[basePr.identifier, "failed"]]),
+			alreadyTriggered: new Set(),
+		});
+		expect(shouldTrigger).toBe(true);
+	});
+
+	test("triggers when existing draft is dismissed", () => {
+		const shouldTrigger = shouldAutoTriggerReview({
+			pr: basePr,
+			autoReviewEnabled: true,
+			existingDrafts: new Map([[basePr.identifier, "dismissed"]]),
+			alreadyTriggered: new Set(),
+		});
+		expect(shouldTrigger).toBe(true);
+	});
+
+	test("does not trigger when draft is in_progress", () => {
+		const shouldTrigger = shouldAutoTriggerReview({
+			pr: basePr,
+			autoReviewEnabled: true,
+			existingDrafts: new Map([[basePr.identifier, "in_progress"]]),
+			alreadyTriggered: new Set(),
+		});
+		expect(shouldTrigger).toBe(false);
 	});
 
 	test("maybeAutoTriggerReview skips when disabled", async () => {
