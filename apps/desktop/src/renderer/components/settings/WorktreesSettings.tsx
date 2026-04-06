@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { trpc } from "../../trpc/client";
 import { PageHeading, SectionLabel } from "./SectionHeading";
-import { Stat, shortPath } from "./shared";
+import { ErrorBanner, Stat, shortPath } from "./shared";
 
 type WorktreeEntry = {
 	path: string;
@@ -62,18 +62,7 @@ export function WorktreesSettings() {
 				<Stat label="Ghosts" value={ghostCount} color={ghostCount > 0 ? "#ff453a" : undefined} />
 			</div>
 
-			{error && (
-				<div className="mb-4 flex items-center justify-between rounded-[8px] border border-[rgba(255,69,58,0.3)] bg-[rgba(255,69,58,0.08)] px-3 py-2 text-[11px] text-[#ff453a]">
-					<span>{error}</span>
-					<button
-						type="button"
-						onClick={() => setError(null)}
-						className="ml-2 text-[var(--text-quaternary)] hover:text-[var(--text-secondary)]"
-					>
-						Dismiss
-					</button>
-				</div>
-			)}
+			{error && <ErrorBanner message={error} onDismiss={() => setError(null)} />}
 
 			{/* Controls */}
 			<div className="mb-4 flex items-center justify-between">
@@ -166,43 +155,41 @@ export function WorktreesSettings() {
 													</span>
 												</div>
 											</div>
-											{!wt.isMain && wt.existsOnDisk && (
-												<>
-													{confirmPath === wt.path ? (
-														<div className="ml-3 flex items-center gap-1">
-															<button
-																type="button"
-																onClick={() => {
-																	removeMutation.mutate({
-																		path: wt.path,
-																		repoPath: wt.repoPath,
-																	});
-																	setConfirmPath(null);
-																}}
-																className="rounded-[6px] px-2 py-0.5 text-[10px] text-[#ff453a] transition-colors hover:bg-[rgba(255,69,58,0.1)]"
-															>
-																Confirm
-															</button>
-															<button
-																type="button"
-																onClick={() => setConfirmPath(null)}
-																className="rounded-[6px] px-2 py-0.5 text-[10px] text-[var(--text-quaternary)] transition-colors hover:bg-[var(--bg-elevated)]"
-															>
-																Cancel
-															</button>
-														</div>
-													) : (
+											{!wt.isMain &&
+												wt.existsOnDisk &&
+												(confirmPath === wt.path ? (
+													<div className="ml-3 flex items-center gap-1">
 														<button
 															type="button"
-															onClick={() => setConfirmPath(wt.path)}
-															disabled={removeMutation.isPending}
-															className="ml-3 shrink-0 rounded-[6px] px-2.5 py-1 text-[11px] text-[var(--text-quaternary)] transition-colors hover:bg-[rgba(255,69,58,0.1)] hover:text-[#ff453a] disabled:opacity-50"
+															onClick={() => {
+																removeMutation.mutate({
+																	path: wt.path,
+																	repoPath: wt.repoPath,
+																});
+																setConfirmPath(null);
+															}}
+															className="rounded-[6px] px-2 py-0.5 text-[10px] text-[#ff453a] transition-colors hover:bg-[rgba(255,69,58,0.1)]"
 														>
-															Remove
+															Confirm
 														</button>
-													)}
-												</>
-											)}
+														<button
+															type="button"
+															onClick={() => setConfirmPath(null)}
+															className="rounded-[6px] px-2 py-0.5 text-[10px] text-[var(--text-quaternary)] transition-colors hover:bg-[var(--bg-elevated)]"
+														>
+															Cancel
+														</button>
+													</div>
+												) : (
+													<button
+														type="button"
+														onClick={() => setConfirmPath(wt.path)}
+														disabled={removeMutation.isPending}
+														className="ml-3 shrink-0 rounded-[6px] px-2.5 py-1 text-[11px] text-[var(--text-quaternary)] transition-colors hover:bg-[rgba(255,69,58,0.1)] hover:text-[#ff453a] disabled:opacity-50"
+													>
+														Remove
+													</button>
+												))}
 										</div>
 									);
 								})}

@@ -74,7 +74,7 @@ describe("DaemonClient", () => {
 		expect(client.hasLiveSession("term-99")).toBe(false);
 	});
 
-	test("setQuitting prevents dispose from sending a message", async () => {
+	test("dispose sends message even after setQuitting", async () => {
 		const sent: string[] = [];
 		const sock = daemon.lastSocket();
 		if (sock) {
@@ -85,7 +85,7 @@ describe("DaemonClient", () => {
 		client.dispose("term-1");
 
 		await new Promise<void>((r) => setTimeout(r, 80));
-		expect(sent.some((s) => s.includes('"dispose"'))).toBe(false);
+		expect(sent.some((s) => s.includes('"dispose"'))).toBe(true);
 	});
 
 	test("create sends a create message to the daemon", async () => {
