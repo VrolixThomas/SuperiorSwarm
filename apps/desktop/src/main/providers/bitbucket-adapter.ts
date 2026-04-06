@@ -1,10 +1,12 @@
-import type { GitHubPREnriched, GitHubReviewer } from "../../shared/github-types";
+import type { GitHubPRDetails, GitHubPREnriched, GitHubReviewer } from "../../shared/github-types";
 import { atlassianFetch, getAuth } from "../atlassian/auth";
 import {
 	type BitbucketComment,
 	type BitbucketPullRequest,
 	createPRComment,
 	getBitbucketPRComments,
+	getBitbucketPRDetails,
+	getBitbucketPRStatuses,
 	getMyPullRequests,
 	getPRState,
 	getReviewRequests,
@@ -267,6 +269,96 @@ export class BitbucketAdapter implements GitProvider {
 	}
 
 	// ── Bitbucket-specific extras ─────────────────────────────────────────────
+
+	async getPRDetails(
+		owner: string,
+		repo: string,
+		prNumber: number
+	): Promise<GitHubPRDetails> {
+		const [prData, statuses, comments, files, prState] = await Promise.all([
+			getBitbucketPRDetails(owner, repo, prNumber),
+			getBitbucketPRStatuses(owner, repo, prNumber),
+			getBitbucketPRComments(owner, repo, prNumber),
+			this.getPRFiles(owner, repo, prNumber),
+			this.getPRState(owner, repo, prNumber),
+		]);
+
+		const reviewerParticipants = prData.participants.filter(
+			(p) => p.role === "REVIEWER"
+		);
+		const reviewers = reviewerParticipants.map(mapParticipantToReviewer);
+		const ciState = aggregateCIState(statuses);
+		const reviewDecision = deriveReviewDecision(reviewers);
+
+		// Map comments with file paths to review threads
+		const reviewThreads = comments
+			.filter((c) => c.filePath)
+			.map((c) => ({
+				id: String(c.id),
+				isResolved: false,
+				path: c.filePath!,
+				line: c.lineNumber,
+				diffSide: "RIGHT" as const,
+				comments: [
+					{
+						id: String(c.id),
+						author: c.author,
+						body: c.body,
+						authorAvatarUrl: "",
+						createdAt: c.createdAt,
+					},
+				],
+			}));
+
+		// Map comments without file paths to conversation comments
+		const conversationComments = comments
+			.filter((c) => !c.filePath)
+			.map((c) => ({
+				id: String(c.id),
+				body: c.body,
+				author: c.author,
+				authorAvatarUrl: "",
+				createdAt: c.createdAt,
+			}));
+
+		const bbState = normalizeBBState(prData.state);
+
+		return {
+			title: prData.title,
+			body: prData.description,
+			state:
+				bbState === "merged"
+					? "MERGED"
+					: bbState === "closed" || bbState === "declined"
+						? "CLOSED"
+						: "OPEN",
+			isDraft: false,
+			author: prData.author,
+			authorAvatarUrl: prData.authorAvatarUrl,
+			reviewDecision,
+			ciState,
+			checks: [],
+			reviewers,
+			reviewThreads,
+			conversationComments,
+			files: files.map((f) => ({
+				path: f.path,
+				additions: 0,
+				deletions: 0,
+				changeType:
+					f.status === "added"
+						? ("ADDED" as const)
+						: f.status === "removed"
+							? ("DELETED" as const)
+							: f.status === "renamed"
+								? ("RENAMED" as const)
+								: ("MODIFIED" as const),
+			})),
+			sourceBranch: prData.sourceBranch,
+			targetBranch: prData.targetBranch,
+			headCommitOid: prState.headSha,
+		};
+	}
 
 	async getPRListEnrichment(
 		prs: Array<{ workspace: string; repoSlug: string; prId: number }>
