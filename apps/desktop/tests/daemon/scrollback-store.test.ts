@@ -7,7 +7,7 @@ function makeTestDb(): Database.Database {
 	db.pragma("journal_mode = WAL");
 	db.exec(`
 		CREATE TABLE projects (id TEXT PRIMARY KEY, name TEXT NOT NULL, repo_path TEXT NOT NULL,
-			default_branch TEXT NOT NULL DEFAULT 'main', color TEXT, github_owner TEXT, github_repo TEXT,
+			default_branch TEXT NOT NULL DEFAULT 'main', color TEXT, remote_owner TEXT, remote_repo TEXT,
 			status TEXT NOT NULL DEFAULT 'ready', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
 		CREATE TABLE workspaces (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, type TEXT NOT NULL,
 			name TEXT NOT NULL, worktree_id TEXT, terminal_id TEXT, created_at INTEGER NOT NULL,
