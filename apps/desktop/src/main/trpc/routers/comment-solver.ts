@@ -1,12 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { and, eq, inArray, not } from "drizzle-orm";
 import { z } from "zod";
-import {
-	queueSolve,
-	revertGroup as revertGroupOrchestrator,
-} from "../../ai-review/comment-solver-orchestrator";
+import { revertGroup as revertGroupOrchestrator } from "../../ai-review/comment-solver-orchestrator";
+import { createAndQueueSolve } from "../../ai-review/create-and-queue-solve";
 import { parsePrIdentifier } from "../../ai-review/pr-identifier";
-import { getCachedPRs } from "../../ai-review/pr-poller";
 import { publishSolve } from "../../ai-review/solve-publisher";
 import { resolveSessionWorktree } from "../../ai-review/solve-session-resolver";
 import { getBitbucketPRComments } from "../../atlassian/bitbucket";
@@ -142,6 +139,15 @@ export const commentSolverRouter = router({
 				.all();
 		}),
 
+	getPendingCommentEvents: publicProcedure.query(() => {
+		const db = getDb();
+		return db
+			.select()
+			.from(schema.commentEvents)
+			.where(eq(schema.commentEvents.status, "pending"))
+			.all();
+	}),
+
 	/**
 	 * Get a single solve session assembled with groups, comments, and replies.
 	 */
@@ -257,203 +263,29 @@ export const commentSolverRouter = router({
 		.mutation(async ({ input }): Promise<SolveLaunchInfo> => {
 			const db = getDb();
 
-			// 1. Fetch workspace
-			let workspace = db
+			// Dismiss any pending comment event for this workspace
+			const workspace = db
 				.select()
 				.from(schema.workspaces)
 				.where(eq(schema.workspaces.id, input.workspaceId))
 				.get();
 
-			if (!workspace) throw new Error(`Workspace ${input.workspaceId} not found`);
-
-			// Auto-detect PR if not linked yet
-			if (!workspace.prProvider || !workspace.prIdentifier) {
-				if (!workspace.worktreeId) throw new Error("Workspace has no worktree linked");
-				const wt = db
-					.select()
-					.from(schema.worktrees)
-					.where(eq(schema.worktrees.id, workspace.worktreeId))
-					.get();
-				if (!wt) throw new Error("Worktree not found");
-
-				const cached = getCachedPRs(workspace.projectId);
-				const match = cached.find((pr) => pr.sourceBranch === wt.branch && pr.state === "open");
-				if (!match) {
-					throw new Error(
-						`No open PR found for branch "${wt.branch}". Make sure a pull request exists and the PR poller has run.`
-					);
-				}
-
-				// Link the workspace to its PR
-				db.update(schema.workspaces)
-					.set({
-						prProvider: match.provider,
-						prIdentifier: match.identifier,
-						updatedAt: new Date(),
-					})
-					.where(eq(schema.workspaces.id, workspace.id))
-					.run();
-
-				workspace = {
-					...workspace,
-					prProvider: match.provider,
-					prIdentifier: match.identifier,
-				};
-			}
-
-			// 2. Fetch worktree
-			if (!workspace.worktreeId) throw new Error("Workspace has no worktree linked");
-			const worktree = db
-				.select()
-				.from(schema.worktrees)
-				.where(eq(schema.worktrees.id, workspace.worktreeId))
-				.get();
-
-			if (!worktree) throw new Error("Worktree not found for workspace");
-
-			// 3. Parse prIdentifier: "owner/repo#123"
-			const { owner, repo, number: prNumber } = parsePrIdentifier(workspace.prIdentifier);
-
-			// 4. Fetch comments from platform
-			type RawComment = {
-				id: number | string;
-				body: string;
-				author: string;
-				filePath: string | null;
-				lineNumber: number | null;
-				threadId?: string | null;
-				side?: string | null;
-			};
-
-			let rawComments: RawComment[];
-
-			if (workspace.prProvider === "github") {
-				const ghComments = await getPRComments(owner, repo, prNumber);
-				rawComments = ghComments.map((c) => ({
-					id: c.id,
-					body: c.body,
-					author: c.author,
-					filePath: c.path ?? null,
-					lineNumber: c.line ?? null,
-					threadId: null,
-					side: null,
-				}));
-			} else if (workspace.prProvider === "bitbucket") {
-				const bbComments = await getBitbucketPRComments(owner, repo, prNumber);
-				rawComments = bbComments.map((c) => ({
-					id: c.id,
-					body: c.body,
-					author: c.author,
-					filePath: c.filePath,
-					lineNumber: c.lineNumber,
-					threadId: null,
-					side: null,
-				}));
-			} else {
-				throw new Error(`Unsupported PR provider: ${workspace.prProvider}`);
-			}
-
-			// 5. Clean up stuck sessions (queued/in_progress/failed) — they never completed
-			const stuckSessions = db
-				.select({ id: schema.commentSolveSessions.id })
-				.from(schema.commentSolveSessions)
-				.where(
-					and(
-						eq(schema.commentSolveSessions.prIdentifier, workspace.prIdentifier),
-						inArray(schema.commentSolveSessions.status, ["queued", "in_progress", "failed"])
+			if (workspace?.prIdentifier) {
+				db.update(schema.commentEvents)
+					.set({ status: "dismissed" })
+					.where(
+						and(
+							eq(schema.commentEvents.prIdentifier, workspace.prIdentifier),
+							eq(schema.commentEvents.status, "pending")
+						)
 					)
-				)
-				.all();
-
-			for (const stuck of stuckSessions) {
-				db.delete(schema.commentSolveSessions)
-					.where(eq(schema.commentSolveSessions.id, stuck.id))
 					.run();
 			}
 
-			// 6. Filter out comments already known in successfully completed sessions
-			const completedSessions = db
-				.select({ id: schema.commentSolveSessions.id })
-				.from(schema.commentSolveSessions)
-				.where(
-					and(
-						eq(schema.commentSolveSessions.prIdentifier, workspace.prIdentifier),
-						inArray(schema.commentSolveSessions.status, ["ready", "submitted"])
-					)
-				)
-				.all();
-
-			const completedSessionIds = completedSessions.map((s) => s.id);
-
-			let knownPlatformIds = new Set<string>();
-			if (completedSessionIds.length > 0) {
-				const knownComments = db
-					.select({ platformCommentId: schema.prComments.platformCommentId })
-					.from(schema.prComments)
-					.where(inArray(schema.prComments.solveSessionId, completedSessionIds))
-					.all();
-				knownPlatformIds = new Set(knownComments.map((c) => c.platformCommentId));
-			}
-
-			const newComments = rawComments.filter((c) => !knownPlatformIds.has(String(c.id)));
-
-			const commentsToInsert = newComments.filter(
-				(c) => !input.excludeCommentIds?.includes(String(c.id))
-			);
-
-			if (commentsToInsert.length === 0) {
-				throw new Error("No new unresolved comments to solve");
-			}
-
-			// 6. Create solve session record and insert comments atomically
-			const sessionId = randomUUID();
-			const now = new Date();
-
-			db.transaction((tx) => {
-				tx.insert(schema.commentSolveSessions)
-					.values({
-						id: sessionId,
-						prProvider: workspace.prProvider,
-						prIdentifier: workspace.prIdentifier,
-						prTitle: workspace.name,
-						sourceBranch: worktree.branch,
-						targetBranch: worktree.baseBranch,
-						status: "queued",
-						workspaceId: workspace.id,
-						createdAt: now,
-						updatedAt: now,
-					})
-					.run();
-
-				// 7. Insert new comments into prComments
-				for (const comment of commentsToInsert) {
-					tx.insert(schema.prComments)
-						.values({
-							id: randomUUID(),
-							solveSessionId: sessionId,
-							platformCommentId: String(comment.id),
-							author: comment.author,
-							body: comment.body,
-							filePath: comment.filePath ?? "",
-							lineNumber: comment.lineNumber ?? null,
-							side: comment.side ?? null,
-							threadId: comment.threadId ?? null,
-							status: "open",
-						})
-						.run();
-				}
+			return createAndQueueSolve({
+				workspaceId: input.workspaceId,
+				excludeCommentIds: input.excludeCommentIds,
 			});
-
-			// 8. Queue the solve job and return launch info
-			try {
-				return await queueSolve(sessionId);
-			} catch (err) {
-				// If queueSolve fails, clean up the session so it doesn't get stuck
-				db.delete(schema.commentSolveSessions)
-					.where(eq(schema.commentSolveSessions.id, sessionId))
-					.run();
-				throw err;
-			}
 		}),
 
 	/**

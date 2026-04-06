@@ -74,3 +74,18 @@ export const commentReplies = sqliteTable("comment_replies", {
 
 export type CommentReply = typeof commentReplies.$inferSelect;
 export type NewCommentReply = typeof commentReplies.$inferInsert;
+
+export const commentEvents = sqliteTable("comment_events", {
+	id: text("id").primaryKey(),
+	prProvider: text("pr_provider").notNull(),
+	prIdentifier: text("pr_identifier").notNull(),
+	workspaceId: text("workspace_id")
+		.notNull()
+		.references(() => workspaces.id, { onDelete: "cascade" }),
+	commentCount: integer("comment_count").notNull(),
+	status: text("status").notNull().default("pending"),
+	createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+});
+
+export type CommentEvent = typeof commentEvents.$inferSelect;
+export type NewCommentEvent = typeof commentEvents.$inferInsert;

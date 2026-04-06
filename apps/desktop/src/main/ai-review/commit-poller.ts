@@ -1,8 +1,7 @@
 import { and, eq } from "drizzle-orm";
-import { getPRState as getBitbucketPRState } from "../atlassian/bitbucket";
 import { getDb } from "../db";
 import * as schema from "../db/schema";
-import { getPRState as getGitHubPRState } from "../github/github";
+import { getGitProvider } from "../providers/git-provider";
 import { cleanupReviewWorkspace, findReviewWorkspaceByPR } from "./cleanup";
 import { getSettings, queueFollowUpReview } from "./orchestrator";
 import { parsePrIdentifier } from "./pr-identifier";
@@ -76,18 +75,8 @@ async function pollAllChains(): Promise<void> {
 async function pollChain(chain: WatchedChain): Promise<void> {
 	const { owner, repo, number: prNumber } = parsePrIdentifier(chain.prIdentifier);
 
-	let headSha: string;
-	let prState: string;
-
-	if (chain.prProvider === "github") {
-		const result = await getGitHubPRState(owner, repo, prNumber);
-		headSha = result.headSha;
-		prState = result.merged ? "merged" : result.state;
-	} else {
-		const result = await getBitbucketPRState(owner, repo, prNumber);
-		headSha = result.headSha;
-		prState = result.state.toLowerCase();
-	}
+	const git = getGitProvider(chain.prProvider);
+	const { headSha, state: prState } = await git.getPRState(owner, repo, prNumber);
 
 	if (prState === "merged" || prState === "closed") {
 		console.log(`[commit-poller] PR ${chain.prIdentifier} is ${prState}, cleaning up`);
