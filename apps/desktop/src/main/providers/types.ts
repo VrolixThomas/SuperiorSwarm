@@ -80,7 +80,7 @@ export interface ResolveParams {
 // ── Provider interfaces ─────────────────────────────────────────────────────
 
 export interface GitProvider {
-	readonly name: "github" | "bitbucket";
+	readonly name: string;
 
 	isConnected(): boolean;
 
@@ -95,7 +95,7 @@ export interface GitProvider {
 }
 
 export interface IssueTracker {
-	readonly name: "jira" | "linear";
+	readonly name: string;
 
 	isConnected(): boolean;
 
