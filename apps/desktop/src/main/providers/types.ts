@@ -9,6 +9,8 @@ export interface NormalizedPR {
 	sourceBranch: string;
 	targetBranch: string;
 	role: "author" | "reviewer";
+	repoOwner: string;
+	repoName: string;
 }
 
 export interface PRState {
@@ -58,8 +60,10 @@ export interface CreateCommentParams {
 	repo: string;
 	prNumber: number;
 	body: string;
+	commitId?: string;
 	filePath?: string;
 	line?: number;
+	side?: "LEFT" | "RIGHT";
 }
 
 export interface ReplyParams {
@@ -77,6 +81,25 @@ export interface ResolveParams {
 	commentId: string;
 }
 
+export interface NormalizedPRFile {
+	path: string;
+	status: "added" | "modified" | "removed" | "renamed";
+	previousPath?: string;
+}
+
+export interface NormalizedReviewThread {
+	nodeId: string;
+	isResolved: boolean;
+}
+
+export interface SubmitReviewParams {
+	owner: string;
+	repo: string;
+	prNumber: number;
+	verdict: "APPROVE" | "REQUEST_CHANGES" | "COMMENT";
+	body: string;
+}
+
 // ── Provider interfaces ─────────────────────────────────────────────────────
 
 export interface GitProvider {
@@ -88,10 +111,18 @@ export interface GitProvider {
 	getPRState(owner: string, repo: string, prNumber: number): Promise<PRState>;
 
 	getPRComments(owner: string, repo: string, prNumber: number): Promise<NormalizedComment[]>;
-	createInlineComment(params: CreateCommentParams): Promise<{ id: string }>;
+	createInlineComment(params: CreateCommentParams): Promise<{ id: string; nodeId?: string }>;
 	replyToComment(params: ReplyParams): Promise<{ id: string }>;
 	resolveComment(params: ResolveParams): Promise<void>;
 	unresolveComment(params: ResolveParams): Promise<void>;
+
+	submitReview(params: SubmitReviewParams): Promise<void>;
+	getPRFiles(owner: string, repo: string, prNumber: number): Promise<NormalizedPRFile[]>;
+	getReviewThreads(
+		owner: string,
+		repo: string,
+		prNumber: number,
+	): Promise<NormalizedReviewThread[]>;
 }
 
 export interface IssueTracker {
