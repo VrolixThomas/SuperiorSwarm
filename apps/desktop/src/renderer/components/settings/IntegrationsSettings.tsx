@@ -1,3 +1,5 @@
+import { useProjectStore } from "../../stores/projects";
+import { useTabStore } from "../../stores/tab-store";
 import { trpc } from "../../trpc/client";
 import { PageHeading } from "./SectionHeading";
 
@@ -66,12 +68,23 @@ function IntegrationRow({
 export function IntegrationsSettings() {
 	const utils = trpc.useUtils();
 
+	const autoReturn = () => {
+		const { settingsReturnTo, closeSettings } = useProjectStore.getState();
+		if (settingsReturnTo) {
+			closeSettings();
+			useTabStore.getState().setSidebarSegment(settingsReturnTo);
+		}
+	};
+
 	// Atlassian (Jira + Bitbucket)
 	const { data: atlassianStatus } = trpc.atlassian.getStatus.useQuery(undefined, {
 		staleTime: 30_000,
 	});
 	const atlassianConnect = trpc.atlassian.connect.useMutation({
-		onSuccess: () => utils.atlassian.getStatus.invalidate(),
+		onSuccess: () => {
+			utils.atlassian.getStatus.invalidate();
+			autoReturn();
+		},
 	});
 	const atlassianDisconnect = trpc.atlassian.disconnect.useMutation({
 		onSuccess: () => {
@@ -88,7 +101,10 @@ export function IntegrationsSettings() {
 		staleTime: 30_000,
 	});
 	const linearConnect = trpc.linear.connect.useMutation({
-		onSuccess: () => utils.linear.getStatus.invalidate(),
+		onSuccess: () => {
+			utils.linear.getStatus.invalidate();
+			autoReturn();
+		},
 	});
 	const linearDisconnect = trpc.linear.disconnect.useMutation({
 		onSuccess: () => {
@@ -105,7 +121,10 @@ export function IntegrationsSettings() {
 		staleTime: 30_000,
 	});
 	const githubConnect = trpc.github.connect.useMutation({
-		onSuccess: () => utils.github.getStatus.invalidate(),
+		onSuccess: () => {
+			utils.github.getStatus.invalidate();
+			autoReturn();
+		},
 	});
 	const githubDisconnect = trpc.github.disconnect.useMutation({
 		onSuccess: () => {

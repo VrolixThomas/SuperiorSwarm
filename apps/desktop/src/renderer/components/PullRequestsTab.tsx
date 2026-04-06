@@ -6,6 +6,7 @@ import type { GitHubPREnriched, GitHubReviewer, PRContext } from "../../shared/g
 import { useAgentAlertStore } from "../stores/agent-alert-store";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
+import { ConnectBanner } from "./ConnectBanner";
 import { CreateWorktreeFromPRModal } from "./CreateWorktreeFromPRModal";
 import { SwarmIndicator } from "./WorkspaceItem";
 import { type LinkedWorkspace, WorkspacePopover } from "./WorkspacePopover";
@@ -778,9 +779,21 @@ export function PullRequestsTab() {
 	const isLoading = (hasBitbucket && !bbReviewPRs) || (hasGitHub && !ghPRs);
 
 	if (!hasBitbucket && !hasGitHub) {
+		const remoteHosts =
+			projectsList?.map((p) => p.remoteHost).filter((h): h is string => h != null) ?? [];
+		const needsGitHub = remoteHosts.some((h) => h.includes("github"));
+		const needsBitbucket = remoteHosts.some((h) => h.includes("bitbucket"));
+
+		const serviceName =
+			needsGitHub && !needsBitbucket
+				? "GitHub"
+				: needsBitbucket && !needsGitHub
+					? "Bitbucket"
+					: "a PR service";
+
 		return (
-			<div className="px-3 py-2 text-[12px] text-[var(--text-quaternary)]">
-				No PR services connected
+			<div className="px-3 py-2">
+				<ConnectBanner message={`Connect ${serviceName} to see pull requests.`} returnTo="prs" />
 			</div>
 		);
 	}

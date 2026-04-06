@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import type { TicketProject } from "../../../shared/tickets";
 import { useTabStore } from "../../stores/tab-store";
 import { trpc } from "../../trpc/client";
+import { ConnectBanner } from "../ConnectBanner";
 
 export function TicketsSidebar() {
 	const activeTicketProject = useTabStore((s) => s.activeTicketProject);
@@ -77,8 +78,8 @@ export function TicketsSidebar() {
 
 	if (!hasJira && !hasLinear) {
 		return (
-			<div className="px-3 py-2 text-[12px] text-[var(--text-quaternary)]">
-				No ticket services connected
+			<div className="px-3 py-2">
+				<ConnectBanner message="Connect Jira or Linear to see your tickets." returnTo="tickets" />
 			</div>
 		);
 	}

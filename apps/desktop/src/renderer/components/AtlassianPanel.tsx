@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { trpc } from "../trpc/client";
+import { ConnectBanner } from "./ConnectBanner";
 import { JiraIssueList } from "./JiraIssueList";
 import { PullRequestList } from "./PullRequestList";
 import { SectionHeader } from "./SectionHeader";
@@ -15,7 +16,16 @@ export function AtlassianPanel() {
 	const hasBitbucket = status?.bitbucket.connected;
 	const hasJira = status?.jira.connected;
 
-	if (!hasBitbucket && !hasJira) return null;
+	if (!hasBitbucket && !hasJira) {
+		return (
+			<div className="mt-2 border-t border-[var(--border-subtle)] px-3 py-2">
+				<ConnectBanner
+					message="Connect Jira or Bitbucket to see issues and pull requests."
+					returnTo="prs"
+				/>
+			</div>
+		);
+	}
 
 	return (
 		<>

@@ -1,9 +1,11 @@
 import { existsSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import Database from "better-sqlite3";
+import { eq, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { app } from "electron";
+import { parseRemoteUrl } from "../git/operations";
 import * as schema from "./schema";
 
 let _db: ReturnType<typeof drizzle<typeof schema>> | null = null;
@@ -34,6 +36,25 @@ export function initializeDatabase(): void {
 	const db = getDb();
 	const migrationsFolder = join(__dirname, "db/migrations");
 	migrate(db, { migrationsFolder });
+}
+
+export async function backfillRemoteHosts(): Promise<void> {
+	const db = getDb();
+	const needsBackfill = db
+		.select({ id: schema.projects.id, repoPath: schema.projects.repoPath })
+		.from(schema.projects)
+		.where(isNull(schema.projects.remoteHost))
+		.all();
+
+	for (const project of needsBackfill) {
+		const remote = await parseRemoteUrl(project.repoPath);
+		if (remote?.host) {
+			db.update(schema.projects)
+				.set({ remoteHost: remote.host })
+				.where(eq(schema.projects.id, project.id))
+				.run();
+		}
+	}
 }
 
 export { schema };
