@@ -1,10 +1,17 @@
 import { useEffect, useState } from "react";
-import type { GitHubPR } from "../../main/github/github";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 
+export interface LinkablePR {
+	repoOwner: string;
+	repoName: string;
+	number: number;
+	title: string;
+	branchName: string;
+}
+
 interface Props {
-	pr: GitHubPR | null;
+	pr: LinkablePR | null;
 	onClose: () => void;
 }
 
@@ -12,7 +19,7 @@ export function CreateWorktreeFromPRModal({ pr, onClose }: Props) {
 	const [selectedProjectId, setSelectedProjectId] = useState("");
 	const utils = trpc.useUtils();
 
-	const projectsQuery = trpc.github.getProjectsByRepo.useQuery(
+	const projectsQuery = trpc.projects.getByRepo.useQuery(
 		{ owner: pr?.repoOwner ?? "", repo: pr?.repoName ?? "" },
 		{ enabled: !!pr, staleTime: 60_000 }
 	);
