@@ -32,6 +32,23 @@ import { appRouter } from "./trpc/routers";
 import { listQuickActions } from "./trpc/routers/quick-actions";
 import { initializeUpdater } from "./updater";
 
+import { BitbucketAdapter } from "./providers/bitbucket-adapter";
+import { registerGitProvider } from "./providers/git-provider";
+import { GitHubAdapter } from "./providers/github-adapter";
+import { registerIssueTracker } from "./providers/issue-tracker";
+import { JiraAdapter } from "./providers/jira-adapter";
+import { LinearAdapter } from "./providers/linear-adapter";
+
+// ── Global error handlers ─────────────────────────────────────────────────────
+
+process.on("unhandledRejection", (reason) => {
+	console.error("[main] Unhandled promise rejection:", reason);
+});
+
+process.on("uncaughtException", (err) => {
+	console.error("[main] Uncaught exception:", err);
+});
+
 let mainWindow: BrowserWindow | null = null;
 let daemonClient: DaemonClient;
 let alertListener: AgentAlertListener | null = null;
@@ -175,6 +192,12 @@ app.whenReady().then(async () => {
 	// Clean up zombie daemons from previous dev sessions
 	cleanupStaleDaemons(daemonInstanceId(__dirname));
 
+	// ── Register provider adapters ────────────────────────────────────────────
+	registerGitProvider(new GitHubAdapter());
+	registerGitProvider(new BitbucketAdapter());
+	registerIssueTracker(new JiraAdapter());
+	registerIssueTracker(new LinearAdapter());
+
 	// Background tasks — none of these block the UI
 	cleanupStaleReviews();
 	startPolling();
@@ -183,17 +206,25 @@ app.whenReady().then(async () => {
 
 	onNewPRDetected((pr) => {
 		for (const win of BrowserWindow.getAllWindows()) {
-			win.webContents.send("new-pr-review-request", pr);
+			if (!win.isDestroyed()) {
+				win.webContents.send("new-pr-review-request", pr);
+			}
 		}
 	});
 
 	onPRClosedDetected(async (pr) => {
-		const wsId = findReviewWorkspaceByPR(pr.provider, pr.identifier);
-		if (wsId) {
-			await cleanupReviewWorkspace(wsId);
-		}
-		for (const win of BrowserWindow.getAllWindows()) {
-			win.webContents.send("pr-closed", pr);
+		try {
+			const wsId = findReviewWorkspaceByPR(pr.provider, pr.identifier);
+			if (wsId) {
+				await cleanupReviewWorkspace(wsId);
+			}
+			for (const win of BrowserWindow.getAllWindows()) {
+				if (!win.isDestroyed()) {
+					win.webContents.send("pr-closed", pr);
+				}
+			}
+		} catch (err) {
+			console.error("[main] Error handling PR closed event:", err);
 		}
 	});
 
