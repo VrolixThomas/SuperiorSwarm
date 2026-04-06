@@ -203,6 +203,58 @@ function RichPRItem({
 	);
 }
 
+// ── Context Menu ──────────────────────────────────────────────────────────────
+
+function PRContextMenu({
+	position,
+	url,
+	workspaceId,
+	onCleanup,
+	onClose,
+}: {
+	position: { x: number; y: number };
+	url: string;
+	workspaceId?: string;
+	onCleanup: () => void;
+	onClose: () => void;
+}) {
+	useEffect(() => {
+		const handler = () => onClose();
+		window.addEventListener("click", handler);
+		return () => window.removeEventListener("click", handler);
+	}, [onClose]);
+
+	return (
+		<div
+			className="fixed z-50 min-w-[160px] rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-surface)] py-1 shadow-[var(--shadow-md)]"
+			style={{ left: position.x, top: position.y }}
+		>
+			<button
+				type="button"
+				className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]"
+				onClick={() => {
+					window.electron.shell.openExternal(url);
+					onClose();
+				}}
+			>
+				Open in browser
+			</button>
+			{workspaceId && (
+				<button
+					type="button"
+					className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-red-400 hover:bg-[var(--bg-elevated)]"
+					onClick={() => {
+						onCleanup();
+						onClose();
+					}}
+				>
+					Remove worktree
+				</button>
+			)}
+		</div>
+	);
+}
+
 // ── Main Tab ─────────────────────────────────────────────────────────────────
 
 export function PullRequestsTab() {
@@ -213,6 +265,12 @@ export function PullRequestsTab() {
 		position: { x: number; y: number };
 		pr: MergedPR;
 		workspaces: LinkedWorkspace[];
+	} | null>(null);
+	const [contextMenu, setContextMenu] = useState<{
+		position: { x: number; y: number };
+		url: string;
+		workspaceId?: string;
+		identifier: string;
 	} | null>(null);
 
 	const attachTerminal = trpc.workspaces.attachTerminal.useMutation();
@@ -964,19 +1022,15 @@ export function PullRequestsTab() {
 												(bitbucketPRsForEnrichment.length > 0 && bbEnrichmentQuery.isLoading));
 										const knownWorkspaceId = workspaceIdMapRef.current.get(identifier);
 										const agentAlert = knownWorkspaceId ? agentAlerts[knownWorkspaceId] : undefined;
-										const handleContextMenu = knownWorkspaceId
-											? (e: React.MouseEvent) => {
-													e.preventDefault();
-													if (
-														window.confirm(
-															"Remove the review worktree? This will delete local files."
-														)
-													) {
-														cleanupReviewMutation.mutate({ workspaceId: knownWorkspaceId });
-														workspaceIdMapRef.current.delete(identifier);
-													}
-												}
-											: undefined;
+										const handleContextMenu = (e: React.MouseEvent) => {
+											e.preventDefault();
+											setContextMenu({
+												position: { x: e.clientX, y: e.clientY },
+												url: pr.url,
+												workspaceId: knownWorkspaceId,
+												identifier,
+											});
+										};
 
 										return (
 											<RichPRItem
@@ -1027,6 +1081,21 @@ export function PullRequestsTab() {
 							});
 						}
 					}}
+				/>
+			)}
+
+			{contextMenu && (
+				<PRContextMenu
+					position={contextMenu.position}
+					url={contextMenu.url}
+					workspaceId={contextMenu.workspaceId}
+					onCleanup={() => {
+						if (contextMenu.workspaceId) {
+							cleanupReviewMutation.mutate({ workspaceId: contextMenu.workspaceId });
+							workspaceIdMapRef.current.delete(contextMenu.identifier);
+						}
+					}}
+					onClose={() => setContextMenu(null)}
 				/>
 			)}
 
