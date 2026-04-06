@@ -162,6 +162,13 @@
       "when": 1775505349875,
       "tag": "0022_slimy_roland_deschain",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "6",
+      "when": 1775517847138,
+      "tag": "0023_amazing_songbird",
+      "breakpoints": true
     }
   ]
 }
