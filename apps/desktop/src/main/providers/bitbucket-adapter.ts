@@ -157,23 +157,36 @@ export class BitbucketAdapter implements GitProvider {
 	}
 
 	async getPRFiles(owner: string, repo: string, prNumber: number): Promise<NormalizedPRFile[]> {
-		const res = await atlassianFetch(
-			"bitbucket",
-			`${BITBUCKET_API_BASE}/repositories/${owner}/${repo}/pullrequests/${prNumber}/diffstat`
-		);
-		if (!res.ok) return [];
-		const data = (await res.json()) as {
-			values: Array<{ new?: { path: string }; old?: { path: string }; status: string }>;
-		};
-		return data.values.map((f) => ({
-			path: f.new?.path ?? f.old?.path ?? "",
-			status:
-				f.status === "added" ? ("added" as const)
-				: f.status === "removed" ? ("removed" as const)
-				: f.status === "renamed" ? ("renamed" as const)
-				: ("modified" as const),
-			previousPath: f.status === "renamed" ? f.old?.path : undefined,
-		}));
+		const files: NormalizedPRFile[] = [];
+		let url: string | null =
+			`${BITBUCKET_API_BASE}/repositories/${owner}/${repo}/pullrequests/${prNumber}/diffstat?pagelen=500`;
+
+		while (url) {
+			const res = await atlassianFetch("bitbucket", url);
+			if (!res.ok) return files;
+			const data = (await res.json()) as {
+				values?: Array<{
+					new?: { path: string };
+					old?: { path: string };
+					status: string;
+				}>;
+				next?: string;
+			};
+			for (const f of data.values ?? []) {
+				files.push({
+					path: f.new?.path ?? f.old?.path ?? "",
+					status:
+						f.status === "added" ? ("added" as const)
+						: f.status === "removed" ? ("removed" as const)
+						: f.status === "renamed" ? ("renamed" as const)
+						: ("modified" as const),
+					previousPath: f.status === "renamed" ? f.old?.path : undefined,
+				});
+			}
+			url = data.next ?? null;
+		}
+
+		return files;
 	}
 
 	async getReviewThreads(): Promise<NormalizedReviewThread[]> {
