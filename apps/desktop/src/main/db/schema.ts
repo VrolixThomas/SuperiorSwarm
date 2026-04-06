@@ -299,4 +299,7 @@ export {
 	commentReplies,
 	type CommentReply,
 	type NewCommentReply,
+	commentEvents,
+	type CommentEvent,
+	type NewCommentEvent,
 } from "./schema-comment-solver";
