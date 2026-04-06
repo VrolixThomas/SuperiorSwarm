@@ -532,10 +532,7 @@ async function startFollowUpReview(params: {
 			: null;
 
 		// Pre-fetch platform resolution status for GitHub
-		if (
-			previousComments.length > 0 &&
-			previousComments.some((c) => c.platformCommentId)
-		) {
+		if (previousComments.length > 0 && previousComments.some((c) => c.platformCommentId)) {
 			try {
 				const { owner, repo, number: prNumber } = parsePrIdentifier(draft.prIdentifier);
 				const git = getGitProvider(draft.prProvider);

@@ -75,13 +75,8 @@ async function pollAllChains(): Promise<void> {
 async function pollChain(chain: WatchedChain): Promise<void> {
 	const { owner, repo, number: prNumber } = parsePrIdentifier(chain.prIdentifier);
 
-	let headSha: string;
-	let prState: string;
-
 	const git = getGitProvider(chain.prProvider);
-	const result = await git.getPRState(owner, repo, prNumber);
-	headSha = result.headSha;
-	prState = result.state;
+	const { headSha, state: prState } = await git.getPRState(owner, repo, prNumber);
 
 	if (prState === "merged" || prState === "closed") {
 		console.log(`[commit-poller] PR ${chain.prIdentifier} is ${prState}, cleaning up`);
