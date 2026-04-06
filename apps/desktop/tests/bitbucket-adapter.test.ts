@@ -61,6 +61,8 @@ describe("mapBitbucketPR", () => {
 			sourceBranch: "feature/x",
 			targetBranch: "main",
 			role: "author",
+			repoOwner: "my-workspace",
+			repoName: "my-repo",
 		});
 	});
 
@@ -138,6 +140,23 @@ describe("mapBitbucketPR", () => {
 
 		const result = mapBitbucketPR(pr, "author");
 		expect(result.sourceBranch).toBe("");
+	});
+
+	test("maps repoOwner from workspace and repoName from repoSlug", () => {
+		const pr: BitbucketPullRequest = {
+			id: 1,
+			title: "Test",
+			state: "OPEN",
+			author: "alice",
+			repoSlug: "my-repo",
+			workspace: "my-workspace",
+			webUrl: "https://bitbucket.org/my-workspace/my-repo/pull-requests/1",
+			createdOn: "2026-01-01T00:00:00Z",
+			updatedOn: "2026-01-02T00:00:00Z",
+		};
+		const result = mapBitbucketPR(pr, "author");
+		expect(result.repoOwner).toBe("my-workspace");
+		expect(result.repoName).toBe("my-repo");
 	});
 
 	test("falls back to empty string when destination is null", () => {

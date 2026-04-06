@@ -15,9 +15,12 @@ import type {
 	GitProvider,
 	NormalizedComment,
 	NormalizedPR,
+	NormalizedPRFile,
+	NormalizedReviewThread,
 	PRState,
 	ReplyParams,
 	ResolveParams,
+	SubmitReviewParams,
 } from "./types";
 
 // ── Pure mapping helpers (exported for testing) ───────────────────────────────
@@ -48,6 +51,8 @@ export function mapBitbucketPR(
 		sourceBranch: pr.source?.branch?.name ?? "",
 		targetBranch: pr.destination?.branch?.name ?? "",
 		role,
+		repoOwner: pr.workspace,
+		repoName: pr.repoSlug,
 	};
 }
 
@@ -101,7 +106,7 @@ export class BitbucketAdapter implements GitProvider {
 		return comments.map(mapBitbucketComment);
 	}
 
-	async createInlineComment(params: CreateCommentParams): Promise<{ id: string }> {
+	async createInlineComment(params: CreateCommentParams): Promise<{ id: string; nodeId?: string }> {
 		const { id } = await createPRComment(
 			params.owner,
 			params.repo,
@@ -144,5 +149,35 @@ export class BitbucketAdapter implements GitProvider {
 		if (!res.ok && res.status !== 409) {
 			throw new Error(`Bitbucket unresolve comment failed: ${res.status}`);
 		}
+	}
+
+	async submitReview(_params: SubmitReviewParams): Promise<void> {
+		// Bitbucket doesn't have a formal review submission API like GitHub.
+		// Comments are posted inline; no-op here.
+	}
+
+	async getPRFiles(owner: string, repo: string, prNumber: number): Promise<NormalizedPRFile[]> {
+		const res = await atlassianFetch(
+			"bitbucket",
+			`${BITBUCKET_API_BASE}/repositories/${owner}/${repo}/pullrequests/${prNumber}/diffstat`
+		);
+		if (!res.ok) return [];
+		const data = (await res.json()) as {
+			values: Array<{ new?: { path: string }; old?: { path: string }; status: string }>;
+		};
+		return data.values.map((f) => ({
+			path: f.new?.path ?? f.old?.path ?? "",
+			status:
+				f.status === "added" ? ("added" as const)
+				: f.status === "removed" ? ("removed" as const)
+				: f.status === "renamed" ? ("renamed" as const)
+				: ("modified" as const),
+			previousPath: f.status === "renamed" ? f.old?.path : undefined,
+		}));
+	}
+
+	async getReviewThreads(): Promise<NormalizedReviewThread[]> {
+		// Bitbucket comments don't have thread resolution state via API.
+		return [];
 	}
 }
