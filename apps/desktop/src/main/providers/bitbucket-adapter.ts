@@ -265,4 +265,73 @@ export class BitbucketAdapter implements GitProvider {
 		// Bitbucket comments don't have thread resolution state via API.
 		return [];
 	}
+
+	// ── Bitbucket-specific extras ─────────────────────────────────────────────
+
+	async getPRListEnrichment(
+		prs: Array<{ workspace: string; repoSlug: string; prId: number }>
+	): Promise<GitHubPREnriched[]> {
+		const results: GitHubPREnriched[] = [];
+
+		const settled = await Promise.allSettled(
+			prs.map(async ({ workspace, repoSlug, prId }) => {
+				const [prRes, statusRes] = await Promise.all([
+					atlassianFetch(
+						"bitbucket",
+						`${BITBUCKET_API_BASE}/repositories/${workspace}/${repoSlug}/pullrequests/${prId}`
+					),
+					atlassianFetch(
+						"bitbucket",
+						`${BITBUCKET_API_BASE}/repositories/${workspace}/${repoSlug}/pullrequests/${prId}/statuses?pagelen=100`
+					),
+				]);
+
+				const prData = prRes.ok
+					? ((await prRes.json()) as {
+							author?: { display_name?: string } | null;
+							participants?: BitbucketParticipant[];
+							updated_on?: string;
+						})
+					: null;
+
+				const statusData = statusRes.ok
+					? ((await statusRes.json()) as {
+							values?: BitbucketStatus[];
+						})
+					: null;
+
+				const reviewerParticipants = (prData?.participants ?? []).filter(
+					(p) => p.role === "REVIEWER"
+				);
+				const reviewers = reviewerParticipants.map(mapParticipantToReviewer);
+				const ciState = aggregateCIState(statusData?.values ?? []);
+				const reviewDecision = deriveReviewDecision(reviewers);
+
+				return {
+					owner: workspace,
+					repo: repoSlug,
+					number: prId,
+					author: prData?.author?.display_name ?? "Unknown",
+					authorAvatarUrl: "",
+					reviewers,
+					ciState,
+					reviewDecision,
+					unresolvedThreadCount: 0,
+					files: { additions: 0, deletions: 0, count: 0 },
+					headCommitOid: "",
+					mergeable: "UNKNOWN" as const,
+					isDraft: false,
+					updatedAt: prData?.updated_on ?? "",
+				} satisfies GitHubPREnriched;
+			})
+		);
+
+		for (const result of settled) {
+			if (result.status === "fulfilled") {
+				results.push(result.value);
+			}
+		}
+
+		return results;
+	}
 }
