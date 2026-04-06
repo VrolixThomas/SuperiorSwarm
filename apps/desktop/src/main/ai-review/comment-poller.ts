@@ -1,10 +1,7 @@
 import { and, eq, inArray, isNull } from "drizzle-orm";
-import { getAuth as getBitbucketAuth } from "../atlassian/auth";
-import { getBitbucketPRComments } from "../atlassian/bitbucket";
 import { getDb } from "../db";
 import * as schema from "../db/schema";
-import { getValidToken } from "../github/auth";
-import { getPRComments } from "../github/github";
+import { getGitProvider } from "../providers/git-provider";
 import { parsePrIdentifier } from "./pr-identifier";
 import { getCachedPRs } from "./pr-poller";
 
@@ -34,16 +31,11 @@ interface PlatformComment {
 	platformId: string;
 }
 
-async function fetchGitHubComments(identifier: string): Promise<PlatformComment[]> {
+async function fetchComments(prProvider: string, identifier: string): Promise<PlatformComment[]> {
 	const { owner, repo, number } = parsePrIdentifier(identifier);
-	const comments = await getPRComments(owner, repo, number);
-	return comments.map((c) => ({ platformId: String(c.id) }));
-}
-
-async function fetchBitbucketComments(identifier: string): Promise<PlatformComment[]> {
-	const { owner, repo, number } = parsePrIdentifier(identifier);
-	const comments = await getBitbucketPRComments(owner, repo, number);
-	return comments.map((c) => ({ platformId: String(c.id) }));
+	const git = getGitProvider(prProvider);
+	const comments = await git.getPRComments(owner, repo, number);
+	return comments.map((c) => ({ platformId: c.id }));
 }
 
 // ── Known comment IDs from DB ────────────────────────────────────────────────
@@ -78,20 +70,15 @@ async function pollWorkspace(workspace: schema.Workspace): Promise<void> {
 
 	let platformComments: PlatformComment[];
 	try {
-		if (prProvider === "github") {
-			if (!getValidToken()) return;
-			platformComments = await fetchGitHubComments(prIdentifier);
-		} else {
-			if (!getBitbucketAuth("bitbucket")) return;
-			platformComments = await fetchBitbucketComments(prIdentifier);
-		}
+		const git = getGitProvider(prProvider);
+		if (!git.isConnected()) return;
+		platformComments = await fetchComments(prProvider, prIdentifier);
 	} catch (err) {
 		console.error(`[comment-poller] Failed to fetch comments for ${prIdentifier}:`, err);
 		return;
 	}
 
 	const knownIds = getKnownPlatformCommentIds(prIdentifier);
-
 	const newCommentIds = platformComments.map((c) => c.platformId).filter((id) => !knownIds.has(id));
 
 	if (newCommentIds.length === 0) return;
