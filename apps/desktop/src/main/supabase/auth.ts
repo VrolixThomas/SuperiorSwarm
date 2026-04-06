@@ -4,7 +4,7 @@ import { OAUTH_CALLBACK_PORT } from "../oauth-constants";
 import { acquireOAuthLock, releaseOAuthLock } from "../oauth-lock";
 import { supabase } from "./client";
 
-type OAuthProvider = "github" | "google";
+type OAuthProvider = "github" | "google" | "apple";
 
 function startCallbackServer(): Promise<{
 	server: ReturnType<typeof createServer>;

@@ -120,7 +120,6 @@ export function BranchPalette({ projectId, onOpenActionMenu }: Props) {
 		}
 	}, [isPaletteOpen]);
 
-
 	// Scroll selected row into view
 	// biome-ignore lint/correctness/useExhaustiveDependencies: selectedIndex triggers scroll but isn't read inside effect
 	useEffect(() => {

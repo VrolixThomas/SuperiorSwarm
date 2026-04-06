@@ -34,13 +34,8 @@ export function KeyboardShortcutsSettings() {
 					<SectionLabel>{category}</SectionLabel>
 					<div className="divide-y divide-[var(--border-subtle)] overflow-hidden rounded-[10px] border border-[var(--border)] bg-[var(--bg-surface)]">
 						{categoryActions.map((action) => (
-							<div
-								key={action.id}
-								className="flex items-center justify-between px-4 py-3"
-							>
-								<span className="text-[13px] text-[var(--text-secondary)]">
-									{action.label}
-								</span>
+							<div key={action.id} className="flex items-center justify-between px-4 py-3">
+								<span className="text-[13px] text-[var(--text-secondary)]">{action.label}</span>
 								{action.shortcut && <ShortcutBadge shortcut={action.shortcut} />}
 							</div>
 						))}
