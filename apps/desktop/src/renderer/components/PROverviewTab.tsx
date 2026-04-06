@@ -118,7 +118,13 @@ function PRHeader({ details, prCtx }: { details: GitHubPRDetails; prCtx: PRConte
 							className="flex items-center gap-1.5 text-[11px] text-[var(--text-secondary)]"
 						>
 							<div className="relative">
-								<img src={r.avatarUrl} alt={r.login} className="h-5 w-5 rounded-full" />
+								{r.avatarUrl ? (
+									<img src={r.avatarUrl} alt={r.login} className="h-5 w-5 rounded-full" />
+								) : (
+									<div className="flex h-5 w-5 items-center justify-center rounded-full bg-[var(--bg-elevated)] text-[9px] font-medium text-[var(--text-tertiary)]">
+										{r.login.charAt(0).toUpperCase()}
+									</div>
+								)}
 								{r.decision && (
 									<span
 										className={`absolute -bottom-0.5 -right-0.5 text-[8px] font-bold ${reviewerDecisionColor[r.decision] ?? ""}`}

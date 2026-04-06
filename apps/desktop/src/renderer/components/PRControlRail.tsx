@@ -536,7 +536,8 @@ function CommentsTab({
 
 	const addComment = trpc.github.addReviewComment.useMutation({
 		onSuccess: () =>
-			utils.github.getPRDetails.invalidate({
+			utils.projects.getPRDetails.invalidate({
+				provider: prCtx.provider,
 				owner: prCtx.owner,
 				repo: prCtx.repo,
 				number: prCtx.number,
@@ -545,7 +546,8 @@ function CommentsTab({
 
 	const resolveThread = trpc.github.resolveThread.useMutation({
 		onSuccess: () =>
-			utils.github.getPRDetails.invalidate({
+			utils.projects.getPRDetails.invalidate({
+				provider: prCtx.provider,
 				owner: prCtx.owner,
 				repo: prCtx.repo,
 				number: prCtx.number,
@@ -756,8 +758,8 @@ export function PRControlRail({ prCtx }: { prCtx: PRContext }) {
 	const closeDiffPanel = useTabStore((s) => s.closeDiffPanel);
 
 	// ── PR details ────────────────────────────────────────────────────────
-	const { data: details, isLoading } = trpc.github.getPRDetails.useQuery(
-		{ owner: prCtx.owner, repo: prCtx.repo, number: prCtx.number },
+	const { data: details, isLoading } = trpc.projects.getPRDetails.useQuery(
+		{ provider: prCtx.provider, owner: prCtx.owner, repo: prCtx.repo, number: prCtx.number },
 		{ staleTime: 30_000 }
 	);
 
