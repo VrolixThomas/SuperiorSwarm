@@ -87,11 +87,7 @@ export interface GitProvider {
 	getMyPRs(): Promise<NormalizedPR[]>;
 	getPRState(owner: string, repo: string, prNumber: number): Promise<PRState>;
 
-	getPRComments(
-		owner: string,
-		repo: string,
-		prNumber: number,
-	): Promise<NormalizedComment[]>;
+	getPRComments(owner: string, repo: string, prNumber: number): Promise<NormalizedComment[]>;
 	createInlineComment(params: CreateCommentParams): Promise<{ id: string }>;
 	replyToComment(params: ReplyParams): Promise<{ id: string }>;
 	resolveComment(params: ResolveParams): Promise<void>;
