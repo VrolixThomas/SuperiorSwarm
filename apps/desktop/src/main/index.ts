@@ -22,11 +22,14 @@ import {
 } from "./db/session-persistence";
 import { setupLspIPC } from "./lsp/ipc-handler";
 import { serverManager } from "./lsp/server-manager";
+import { syncShortcuts } from "./quick-actions/shortcuts";
 import { DaemonClient } from "./terminal/daemon-client";
 import { setDaemonClient } from "./terminal/daemon-instance";
 import { setupTerminalIPC } from "./terminal/ipc";
+import { cleanupStaleDaemons } from "./terminal/stale-daemon-cleanup";
 import { setupTRPCIPC } from "./trpc/ipc-link";
 import { appRouter } from "./trpc/routers";
+import { listQuickActions } from "./trpc/routers/quick-actions";
 import { initializeUpdater } from "./updater";
 
 let mainWindow: BrowserWindow | null = null;
@@ -67,7 +70,7 @@ function createWindow() {
 app.whenReady().then(async () => {
 	const instanceId = daemonInstanceId(__dirname);
 	const paths = daemonPaths(instanceId);
-	daemonClient = new DaemonClient(paths.socketPath, paths.pidPath, paths.logPath);
+	daemonClient = new DaemonClient(paths.socketPath, paths.pidPath, paths.logPath, !app.isPackaged);
 	setDaemonClient(daemonClient);
 
 	setupTerminalIPC(daemonClient);
@@ -168,6 +171,9 @@ app.whenReady().then(async () => {
 		}
 	});
 
+	// Clean up zombie daemons from previous dev sessions
+	cleanupStaleDaemons(daemonInstanceId(__dirname));
+
 	// Background tasks — none of these block the UI
 	cleanupStaleReviews();
 	startPolling();
@@ -216,6 +222,7 @@ app.on("before-quit", () => {
 	stopCommentPoller();
 	daemonClient.setQuitting();
 	daemonClient.detachAll();
+	daemonClient.disconnect();
 	serverManager.disposeAll();
 });
 
@@ -236,6 +243,7 @@ for (const signal of ["SIGTERM", "SIGHUP", "SIGINT"] as const) {
 		alertListener?.stop();
 		daemonClient.setQuitting();
 		daemonClient.detachAll();
+		daemonClient.disconnect();
 		serverManager.disposeAll();
 		app.exit(0);
 	});

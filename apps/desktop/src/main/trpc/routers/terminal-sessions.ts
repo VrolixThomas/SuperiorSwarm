@@ -276,6 +276,18 @@ export const terminalSessionsRouter = router({
 				// repo might not exist
 			}
 		}
+		// Delete DB worktree rows whose paths no longer exist on disk
+		const { existsSync } = await import("node:fs");
+		const dbWorktrees = db.select().from(schema.worktrees).all();
+		for (const wt of dbWorktrees) {
+			try {
+				if (!existsSync(wt.path)) {
+					db.delete(schema.worktrees).where(eq(schema.worktrees.id, wt.id)).run();
+				}
+			} catch {
+				// best effort
+			}
+		}
 		return { ok: true };
 	}),
 

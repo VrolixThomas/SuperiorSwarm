@@ -42,7 +42,8 @@ export class DaemonClient {
 	constructor(
 		private socketPath: string,
 		private pidPath: string,
-		private logPath: string
+		private logPath: string,
+		private readonly devMode = false
 	) {}
 
 	get isConnected(): boolean {
@@ -195,13 +196,12 @@ export class DaemonClient {
 
 	/** Kill a PTY in the daemon. Used when the user explicitly closes a tab. */
 	dispose(id: string): void {
-		if (this.isQuitting) return;
 		this.callbacks.delete(id);
 		this.liveSessions.delete(id);
 		try {
 			this.send({ type: "dispose", id });
 		} catch {
-			// Best effort — the PTY will be cleaned up by idle timeout if unreachable
+			// Best effort — daemon may already be gone
 		}
 	}
 
@@ -427,6 +427,7 @@ export class DaemonClient {
 				SUPERIORSWARM_SOCKET_PATH: this.socketPath,
 				SUPERIORSWARM_PID_PATH: this.pidPath,
 				SUPERIORSWARM_LOG_PATH: this.logPath,
+				SUPERIORSWARM_DEV_MODE: this.devMode ? "1" : "",
 			},
 		});
 		child.unref();
