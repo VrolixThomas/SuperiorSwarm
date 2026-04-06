@@ -133,4 +133,3 @@ export function BranchRow({ branch, isSelected, onSelect, onContextMenu, onActio
 		</div>
 	);
 }
-

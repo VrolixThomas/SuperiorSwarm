@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react";
+import { usePaneStore } from "../stores/pane-store";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import { BranchChip } from "./BranchChip";
 import { QuickActionBar } from "./QuickActionBar";
-import { QuickActionContextMenu, type ContextMenuAction } from "./QuickActionContextMenu";
+import { type ContextMenuAction, QuickActionContextMenu } from "./QuickActionContextMenu";
 import { QuickActionPopover } from "./QuickActionPopover";
 import { LayoutRenderer } from "./panes/LayoutRenderer";
 import { TicketsCanvas } from "./tickets/TicketsCanvas";
-import { usePaneStore } from "../stores/pane-store";
 
 interface ContextMenuState {
 	action: ContextMenuAction;
@@ -40,7 +40,6 @@ export function MainContentArea({ savedScrollback }: { savedScrollback: Record<s
 		window.addEventListener("quick-action-context", handleQuickActionContext);
 		return () => window.removeEventListener("quick-action-context", handleQuickActionContext);
 	}, []);
-
 
 	function handlePopoverClose() {
 		setShowQuickActionPopover(false);

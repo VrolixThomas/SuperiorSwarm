@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useActionStore } from "../stores/action-store";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
-import { parseAccelerator } from "../utils/parse-accelerator";
+import { parseAccelerator, shortcutsMatch } from "../utils/parse-accelerator";
 
 interface QuickActionPopoverProps {
 	projectId: string;
@@ -34,7 +34,7 @@ export function QuickActionPopover({
 	const [cwd, setCwd] = useState(editAction?.cwd ?? "");
 	const [shortcut, setShortcut] = useState(editAction?.shortcut ?? "");
 	const [scope, setScope] = useState<"global" | "repo">(
-		editAction ? (editAction.projectId === null ? "global" : "repo") : "repo",
+		editAction ? (editAction.projectId === null ? "global" : "repo") : "repo"
 	);
 	const [agentPrompt, setAgentPrompt] = useState(buildDefaultPrompt(repoPath));
 	const labelRef = useRef<HTMLInputElement>(null);
@@ -43,25 +43,17 @@ export function QuickActionPopover({
 	const activeWorkspaceId = useTabStore((s) => s.activeWorkspaceId);
 	const addTerminalTab = useTabStore((s) => s.addTerminalTab);
 
-	// Check for shortcut conflicts with existing actions
-	const conflictingAction = (() => {
+	const conflictingAction = useMemo(() => {
 		const parsed = parseAccelerator(shortcut);
 		if (!parsed) return null;
 		const actions = useActionStore.getState().getAvailable();
 		for (const action of actions) {
 			if (!action.shortcut) continue;
 			if (editAction && action.id === `quick.${editAction.id}`) continue;
-			if (
-				action.shortcut.key === parsed.key &&
-				!!action.shortcut.meta === !!parsed.meta &&
-				!!action.shortcut.shift === !!parsed.shift &&
-				!!action.shortcut.alt === !!parsed.alt
-			) {
-				return action;
-			}
+			if (shortcutsMatch(action.shortcut, parsed)) return action;
 		}
 		return null;
-	})();
+	}, [shortcut, editAction]);
 
 	const utils = trpc.useUtils();
 	const createMutation = trpc.quickActions.create.useMutation({
@@ -135,7 +127,7 @@ export function QuickActionPopover({
 					}, 300);
 					onClose();
 				},
-			},
+			}
 		);
 	}
 
@@ -322,8 +314,8 @@ export function QuickActionPopover({
 					{mode === "agent" && (
 						<>
 							<p className="mb-2 text-[11px] leading-relaxed text-[var(--text-tertiary)]">
-								A CLI agent will explore your repo and add quick actions using the
-								instructions below. You can edit them before launching.
+								A CLI agent will explore your repo and add quick actions using the instructions
+								below. You can edit them before launching.
 							</p>
 
 							{/* Editable prompt */}

@@ -4,6 +4,8 @@ import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import { parseAccelerator } from "../utils/parse-accelerator";
 
+const EMPTY_ACTIONS: never[] = [];
+
 export function resolveQuickActionCwd(cwd: string | null, repoPath: string): string {
 	if (!cwd) return repoPath;
 	return cwd.startsWith("/") ? cwd : `${repoPath}/${cwd}`;
@@ -41,51 +43,41 @@ export function QuickActionBar({
 				window.electron.terminal.write(tabId, `${command}\n`);
 			}, 300);
 		},
-		[repoPath, workspaceId, addTerminalTab],
+		[repoPath, workspaceId, addTerminalTab]
 	);
 
-	const actions = actionsQuery.data ?? [];
+	const actions = actionsQuery.data ?? EMPTY_ACTIONS;
 
-	// Register quick actions in the unified action store
 	useEffect(() => {
 		const store = useActionStore.getState();
-		const registeredIds: string[] = [];
+		const registeredIds = actions.map((a) => `quick.${a.id}`);
 
-		for (const action of actions) {
-			const actionId = `quick.${action.id}`;
-			registeredIds.push(actionId);
-
-			store.register({
-				id: actionId,
+		store.registerMany(
+			actions.map((action) => ({
+				id: `quick.${action.id}`,
 				label: action.label,
-				category: "Quick Actions",
+				category: "Quick Actions" as const,
 				shortcut: parseAccelerator(action.shortcut) ?? undefined,
 				execute: () => handleRun(action.command, action.label, action.cwd),
 				keywords: ["run", "quick action", action.command],
-			});
-		}
+			}))
+		);
 
 		return () => {
-			const store = useActionStore.getState();
-			for (const id of registeredIds) {
-				store.unregister(id);
-			}
+			useActionStore.getState().unregisterMany(registeredIds);
 		};
 	}, [actions, handleRun]);
 
-	const handleDragStart = useCallback(
-		(e: React.DragEvent, id: string) => {
-			setDragId(id);
-			e.dataTransfer.effectAllowed = "move";
-			e.dataTransfer.setData("text/plain", id);
-			// Slight delay so the dragged element renders before going ghost
-			requestAnimationFrame(() => {
-				const el = e.target as HTMLElement;
-				el.style.opacity = "0.3";
-			});
-		},
-		[],
-	);
+	const handleDragStart = useCallback((e: React.DragEvent, id: string) => {
+		setDragId(id);
+		e.dataTransfer.effectAllowed = "move";
+		e.dataTransfer.setData("text/plain", id);
+		// Slight delay so the dragged element renders before going ghost
+		requestAnimationFrame(() => {
+			const el = e.target as HTMLElement;
+			el.style.opacity = "0.3";
+		});
+	}, []);
 
 	const handleDragEnd = useCallback((e: React.DragEvent) => {
 		(e.target as HTMLElement).style.opacity = "";
@@ -135,7 +127,7 @@ export function QuickActionBar({
 			setDragId(null);
 			setDropTarget(null);
 		},
-		[actions, reorderMutation],
+		[actions, reorderMutation]
 	);
 
 	if (actions.length === 0) {
@@ -180,9 +172,7 @@ export function QuickActionBar({
 							onDrop={(e) => handleDrop(e, action.id)}
 							className={[
 								"shrink-0 whitespace-nowrap rounded-[var(--radius-sm)] px-1.5 py-0.5 text-[12px] transition-all duration-100",
-								isDragging
-									? "opacity-30"
-									: "opacity-100",
+								isDragging ? "opacity-30" : "opacity-100",
 								isDropTarget
 									? "bg-[rgba(10,132,255,0.15)] text-[var(--accent)]"
 									: "text-[var(--text-tertiary)] hover:text-[var(--text)]",

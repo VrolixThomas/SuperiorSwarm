@@ -45,7 +45,9 @@ export interface Action {
 interface ActionStore {
 	actions: Map<string, Action>;
 	register: (action: Action) => void;
+	registerMany: (actions: Action[]) => void;
 	unregister: (id: string) => void;
+	unregisterMany: (ids: string[]) => void;
 	execute: (id: string) => void;
 	getAvailable: () => Action[];
 	getShortcutForId: (id: string) => Shortcut | undefined;
@@ -65,9 +67,25 @@ export const useActionStore = create<ActionStore>()((set, get) => ({
 		set({ actions: next });
 	},
 
+	registerMany: (actions) => {
+		const next = new Map(get().actions);
+		for (const action of actions) {
+			next.set(action.id, action);
+		}
+		set({ actions: next });
+	},
+
 	unregister: (id) => {
 		const next = new Map(get().actions);
 		next.delete(id);
+		set({ actions: next });
+	},
+
+	unregisterMany: (ids) => {
+		const next = new Map(get().actions);
+		for (const id of ids) {
+			next.delete(id);
+		}
 		set({ actions: next });
 	},
 

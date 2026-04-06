@@ -98,7 +98,6 @@ const daemonAPI: DaemonAPI = {
 	listSessions: () => ipcRenderer.invoke("daemon:listSessions"),
 };
 
-
 const agentAlertAPI: AgentAlertAPI = {
 	onAlert: (callback) => {
 		// biome-ignore lint/suspicious/noExplicitAny: IPC bridge receives untyped data from main process

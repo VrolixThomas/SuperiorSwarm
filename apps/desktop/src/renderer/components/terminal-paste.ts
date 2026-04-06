@@ -22,10 +22,7 @@ export function hasImageOrFilePayload(clipboardData: DataTransfer): boolean {
  *
  * Returns a cleanup function that removes the listener.
  */
-export function interceptPaste(
-	term: Terminal,
-	writeToPty: (data: string) => void,
-): () => void {
+export function interceptPaste(term: Terminal, writeToPty: (data: string) => void): () => void {
 	const textarea = term.textarea;
 	if (!textarea) return () => {};
 

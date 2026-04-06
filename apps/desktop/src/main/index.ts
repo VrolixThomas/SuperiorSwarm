@@ -135,7 +135,6 @@ app.whenReady().then(async () => {
 		}
 	);
 
-
 	// Show the window NOW — branded splash screen in index.html is visible immediately
 	createWindow();
 
