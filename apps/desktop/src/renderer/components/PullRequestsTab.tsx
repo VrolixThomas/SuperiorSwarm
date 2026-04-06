@@ -481,13 +481,18 @@ export function PullRequestsTab() {
 	useEffect(() => {
 		if (!settings.data?.autoReviewEnabled || !reviewDrafts.data) return;
 
-		const existingIdentifiers = new Set(reviewDrafts.data.map((d) => d.prIdentifier));
+		// Only block auto-trigger for PRs with active reviews (queued/in_progress)
+		const activeIdentifiers = new Set(
+			reviewDrafts.data
+				.filter((d) => d.status === "queued" || d.status === "in_progress")
+				.map((d) => d.prIdentifier)
+		);
 
 		// Auto-trigger for GitHub reviewer PRs
 		for (const pr of ghPRs ?? []) {
 			if (pr.role !== "reviewer") continue;
 			const identifier = `${pr.repoOwner}/${pr.repoName}#${pr.number}`;
-			if (existingIdentifiers.has(identifier) || triggeredRef.current.has(identifier)) continue;
+			if (activeIdentifiers.has(identifier) || triggeredRef.current.has(identifier)) continue;
 			const project = projectsList?.find(
 				(p) => p.remoteOwner === pr.repoOwner && p.remoteRepo === pr.repoName
 			);
@@ -520,7 +525,7 @@ export function PullRequestsTab() {
 		// Auto-trigger for Bitbucket review PRs
 		for (const pr of bbReviewPRs ?? []) {
 			const identifier = `${pr.workspace}/${pr.repoSlug}#${pr.id}`;
-			if (existingIdentifiers.has(identifier) || triggeredRef.current.has(identifier)) continue;
+			if (activeIdentifiers.has(identifier) || triggeredRef.current.has(identifier)) continue;
 			const project = projectsList?.find(
 				(p) => p.remoteOwner === pr.workspace && p.remoteRepo === pr.repoSlug
 			);
