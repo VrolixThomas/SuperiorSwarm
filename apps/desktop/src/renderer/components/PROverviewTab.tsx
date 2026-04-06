@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { detectLanguage } from "../../shared/diff-types";
-import { formatRelativeTime } from "../../shared/tickets";
 import type {
 	AIDraftThread,
 	GitHubPRDetails,
@@ -8,6 +7,7 @@ import type {
 	PRContext,
 	UnifiedThread,
 } from "../../shared/github-types";
+import { formatRelativeTime } from "../../shared/tickets";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import { MarkdownRenderer } from "./MarkdownRenderer";

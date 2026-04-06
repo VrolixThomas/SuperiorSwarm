@@ -190,7 +190,7 @@ function DiffPanelContent({ diffCtx, onClose }: { diffCtx: DiffContext; onClose?
 										}
 										onInvalidate={invalidateAll}
 										unpushedCommits={branchStatusQuery.data?.ahead ?? 0}
-									hasTrackingBranch={branchStatusQuery.data?.tracking != null}
+										hasTrackingBranch={branchStatusQuery.data?.tracking != null}
 									/>
 								)}
 
