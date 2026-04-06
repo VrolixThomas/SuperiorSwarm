@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import type { SidebarSegment } from "../../shared/types";
 
 export type SettingsCategory = "general" | "integrations" | "ai-review" | "shortcuts" | "about";
 
@@ -23,8 +24,8 @@ interface ProjectStore {
 	setSettingsCategory: (category: SettingsCategory) => void;
 	openSettings: () => void;
 	closeSettings: () => void;
-	settingsReturnTo: string | null;
-	openSettingsToIntegrations: (returnTo?: string) => void;
+	settingsReturnTo: SidebarSegment | null;
+	openSettingsToIntegrations: (returnTo?: SidebarSegment) => void;
 	sidebarCollapsed: boolean;
 	setSidebarCollapsed: (collapsed: boolean) => void;
 }

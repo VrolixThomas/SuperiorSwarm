@@ -1,3 +1,4 @@
+import type { SidebarSegment } from "../../shared/types";
 import { useProjectStore } from "../stores/projects";
 
 export function ConnectBanner({
@@ -5,7 +6,7 @@ export function ConnectBanner({
 	returnTo,
 }: {
 	message: string;
-	returnTo: string;
+	returnTo: SidebarSegment;
 }) {
 	return (
 		<>

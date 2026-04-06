@@ -1,5 +1,6 @@
-import { trpc } from "../../trpc/client";
 import { useProjectStore } from "../../stores/projects";
+import { useTabStore } from "../../stores/tab-store";
+import { trpc } from "../../trpc/client";
 import { PageHeading } from "./SectionHeading";
 
 function IntegrationRow({
@@ -71,6 +72,7 @@ export function IntegrationsSettings() {
 		const { settingsReturnTo, closeSettings } = useProjectStore.getState();
 		if (settingsReturnTo) {
 			closeSettings();
+			useTabStore.getState().setSidebarSegment(settingsReturnTo);
 		}
 	};
 

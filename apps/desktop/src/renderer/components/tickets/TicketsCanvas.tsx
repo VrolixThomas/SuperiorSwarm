@@ -3,9 +3,9 @@ import { Group, Panel, Separator, useDefaultLayout, usePanelRef } from "react-re
 import type { MergedTicketIssue, TicketViewMode } from "../../../shared/tickets";
 import { useTicketDragDrop } from "../../hooks/useTicketDragDrop";
 import { useTicketsData } from "../../hooks/useTicketsData";
-import { useProjectStore } from "../../stores/projects";
 import { useTabStore } from "../../stores/tab-store";
 import { trpc } from "../../trpc/client";
+import { ConnectBanner } from "../ConnectBanner";
 import { CreateBranchFromIssueModal } from "../CreateBranchFromIssueModal";
 import { IssueContextMenu } from "../IssueContextMenu";
 import type { LinkedWorkspace } from "../WorkspacePopover";
@@ -201,17 +201,8 @@ export function TicketsCanvas() {
 	if (isEmpty) {
 		return (
 			<main className="flex h-full min-w-0 items-center justify-center overflow-hidden">
-				<div className="text-center">
-					<div className="text-[13px] text-[var(--text-quaternary)]">
-						Connect Jira or Linear to see your tickets.
-					</div>
-					<button
-						type="button"
-						onClick={() => useProjectStore.getState().openSettingsToIntegrations("tickets")}
-						className="mt-1 text-[12px] text-[var(--accent)] hover:underline"
-					>
-						Connect in Settings
-					</button>
+				<div className="text-center text-[13px]">
+					<ConnectBanner message="Connect Jira or Linear to see your tickets." returnTo="tickets" />
 				</div>
 			</main>
 		);
