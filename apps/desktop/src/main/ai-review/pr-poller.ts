@@ -1,10 +1,8 @@
 import type { CachedPR } from "../../shared/review-types";
-import { getAuth as getBitbucketAuth } from "../atlassian/auth";
-import { getMyPullRequests, getReviewRequests } from "../atlassian/bitbucket";
 import { getDb } from "../db";
 import { projects } from "../db/schema";
-import { getValidToken } from "../github/auth";
-import { getMyPRs } from "../github/github";
+import { getConnectedGitProviders } from "../providers/git-provider";
+import type { NormalizedPR } from "../providers/types";
 
 const POLL_INTERVAL_MS = 60_000;
 
@@ -37,76 +35,36 @@ export function getCachedPRs(projectId?: string): CachedPR[] {
 
 // ── Project lookup helpers ─────────────────────────────────────────────────────
 
-function getProjectIdForGitHub(owner: string, repo: string): string {
+function getProjectIdByRepo(owner: string, repoName: string): string {
 	const db = getDb();
 	const allProjects = db.select().from(projects).all();
-	const match = allProjects.find(
-		(p) =>
-			p.githubOwner?.toLowerCase() === owner.toLowerCase() &&
-			p.githubRepo?.toLowerCase() === repo.toLowerCase()
-	);
-	return match?.id ?? "";
-}
-
-function getProjectIdForBitbucket(workspace: string, repoSlug: string): string {
-	const db = getDb();
-	const allProjects = db.select().from(projects).all();
-	// Bitbucket repos are matched by parsing the remote URL of each project.
-	// We do a best-effort match on repo path containing the workspace/repoSlug pattern.
 	const match = allProjects.find((p) => {
+		// Match GitHub owner/repo
+		if (
+			p.githubOwner?.toLowerCase() === owner.toLowerCase() &&
+			p.githubRepo?.toLowerCase() === repoName.toLowerCase()
+		) {
+			return true;
+		}
+		// Match Bitbucket workspace/slug via repo path
 		const path = p.repoPath.toLowerCase();
-		return path.includes(`${workspace.toLowerCase()}/${repoSlug.toLowerCase()}`);
+		return path.includes(`${owner.toLowerCase()}/${repoName.toLowerCase()}`);
 	});
 	return match?.id ?? "";
 }
 
 // ── Mapping helpers ────────────────────────────────────────────────────────────
 
-function mapGitHubPR(pr: Awaited<ReturnType<typeof getMyPRs>>[number]): CachedPR {
-	const identifier = `${pr.repoOwner}/${pr.repoName}#${pr.number}`;
-	// GitHubPR.state is "open" | "closed" — closed PRs may be merged; we can only tell
-	// "closed" from the search API (merged PRs are excluded from open search).
-	const state: CachedPR["state"] = pr.state === "open" ? "open" : "closed";
-
+function toCachedPR(pr: NormalizedPR, provider: string): CachedPR {
+	const identifier = `${pr.repoOwner}/${pr.repoName}#${pr.id}`;
 	return {
-		provider: "github",
-		identifier,
-		number: pr.number,
-		title: pr.title,
-		state,
-		sourceBranch: pr.branchName,
-		targetBranch: "",
-		author: { login: "", avatarUrl: "" },
-		reviewers: [],
-		ciStatus: null,
-		commentCount: pr.commentCount,
-		changedFiles: 0,
-		additions: 0,
-		deletions: 0,
-		updatedAt: new Date().toISOString(),
-		repoOwner: pr.repoOwner,
-		repoName: pr.repoName,
-		projectId: getProjectIdForGitHub(pr.repoOwner, pr.repoName),
-	};
-}
-
-function mapBitbucketPR(pr: Awaited<ReturnType<typeof getMyPullRequests>>[number]): CachedPR {
-	const identifier = `${pr.workspace}/${pr.repoSlug}#${pr.id}`;
-	// Bitbucket states: OPEN, MERGED, DECLINED, SUPERSEDED
-	const rawState = pr.state.toUpperCase();
-	let state: CachedPR["state"] = "open";
-	if (rawState === "MERGED") state = "merged";
-	else if (rawState === "DECLINED" || rawState === "SUPERSEDED") state = "declined";
-	else if (rawState !== "OPEN") state = "closed";
-
-	return {
-		provider: "bitbucket",
+		provider: provider as CachedPR["provider"],
 		identifier,
 		number: pr.id,
 		title: pr.title,
-		state,
-		sourceBranch: pr.source?.branch?.name ?? "",
-		targetBranch: pr.destination?.branch?.name ?? "",
+		state: pr.state === "declined" ? "declined" : pr.state,
+		sourceBranch: pr.sourceBranch,
+		targetBranch: pr.targetBranch,
 		author: { login: pr.author, avatarUrl: "" },
 		reviewers: [],
 		ciStatus: null,
@@ -114,10 +72,10 @@ function mapBitbucketPR(pr: Awaited<ReturnType<typeof getMyPullRequests>>[number
 		changedFiles: 0,
 		additions: 0,
 		deletions: 0,
-		updatedAt: pr.updatedOn,
-		repoOwner: pr.workspace,
-		repoName: pr.repoSlug,
-		projectId: getProjectIdForBitbucket(pr.workspace, pr.repoSlug),
+		updatedAt: new Date().toISOString(),
+		repoOwner: pr.repoOwner,
+		repoName: pr.repoName,
+		projectId: getProjectIdByRepo(pr.repoOwner, pr.repoName),
 	};
 }
 
@@ -126,40 +84,18 @@ function mapBitbucketPR(pr: Awaited<ReturnType<typeof getMyPullRequests>>[number
 async function fetchAllPRs(): Promise<CachedPR[]> {
 	const results: CachedPR[] = [];
 
-	// GitHub
-	if (getValidToken()) {
+	for (const provider of getConnectedGitProviders()) {
 		try {
-			const prs = await getMyPRs();
+			const prs = await provider.getMyPRs();
+			const seen = new Set<number>();
 			for (const pr of prs) {
-				results.push(mapGitHubPR(pr));
-			}
-		} catch (err) {
-			console.error("[pr-poller] GitHub fetch failed:", err);
-		}
-	}
-
-	// Bitbucket
-	if (getBitbucketAuth("bitbucket")) {
-		try {
-			const [authored, reviewing] = await Promise.all([getMyPullRequests(), getReviewRequests()]);
-
-			const seen = new Set<string>();
-			for (const pr of authored) {
-				const mapped = mapBitbucketPR(pr);
-				if (!seen.has(mapped.identifier)) {
-					seen.add(mapped.identifier);
-					results.push(mapped);
-				}
-			}
-			for (const pr of reviewing) {
-				const mapped = mapBitbucketPR(pr);
-				if (!seen.has(mapped.identifier)) {
-					seen.add(mapped.identifier);
-					results.push(mapped);
+				if (!seen.has(pr.id)) {
+					seen.add(pr.id);
+					results.push(toCachedPR(pr, provider.name));
 				}
 			}
 		} catch (err) {
-			console.error("[pr-poller] Bitbucket fetch failed:", err);
+			console.error(`[pr-poller] ${provider.name} fetch failed:`, err);
 		}
 	}
 
