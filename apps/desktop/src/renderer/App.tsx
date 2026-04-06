@@ -13,9 +13,9 @@ import { LoginScreen } from "./components/LoginScreen";
 import { MainContentArea } from "./components/MainContentArea";
 import { SharedFilesPanel } from "./components/SharedFilesPanel";
 import { Sidebar } from "./components/Sidebar";
-import { SettingsPage } from "./components/settings/SettingsPage";
 import { UpdateToast } from "./components/UpdateToast";
 import { WhatsNewModal } from "./components/WhatsNewModal";
+import { SettingsPage } from "./components/settings/SettingsPage";
 import { useAgentAlertListener } from "./hooks/useAgentAlertListener";
 import { useShortcutListener } from "./hooks/useShortcutListener";
 import {
@@ -154,6 +154,11 @@ function collectSnapshot() {
 		state["activeTicketProject"] = JSON.stringify(activeTicketProject);
 	}
 
+	const { expandedProjectIds } = useProjectStore.getState();
+	if (expandedProjectIds.size > 0) {
+		state["expandedProjectIds"] = JSON.stringify([...expandedProjectIds]);
+	}
+
 	const { vimEnabled } = useEditorSettingsStore.getState();
 	if (vimEnabled) state["vimMode"] = "true";
 
@@ -223,6 +228,16 @@ function AuthenticatedApp() {
 
 		// Hydrate editor settings (independent of sessions/layouts)
 		useEditorSettingsStore.getState().hydrateVimMode(state["vimMode"]);
+
+		// Hydrate expanded project IDs (independent of sessions/layouts)
+		if (state["expandedProjectIds"]) {
+			try {
+				const ids = JSON.parse(state["expandedProjectIds"]) as string[];
+				useProjectStore.getState().hydrateExpandedProjects(ids);
+			} catch {
+				// Ignore malformed data
+			}
+		}
 
 		if (!hasSessions && !hasLayouts) return;
 

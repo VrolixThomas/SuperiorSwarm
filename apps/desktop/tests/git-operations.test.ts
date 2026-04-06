@@ -180,4 +180,3 @@ describe("listBranches", () => {
 		expect(branches.some((b) => b.includes("HEAD"))).toBe(false);
 	});
 });
-

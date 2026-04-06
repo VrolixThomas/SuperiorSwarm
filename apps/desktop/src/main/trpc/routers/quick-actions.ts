@@ -38,7 +38,7 @@ export const quickActionsRouter = router({
 				cwd: z.string().nullable().optional(),
 				shortcut: z.string().nullable().optional(),
 				sortOrder: z.number().int().optional(),
-			}),
+			})
 		)
 		.mutation(({ input }) => {
 			const db = getDb();
@@ -83,7 +83,7 @@ export const quickActionsRouter = router({
 				cwd: z.string().nullable().optional(),
 				shortcut: z.string().nullable().optional(),
 				projectId: z.string().nullable().optional(),
-			}),
+			})
 		)
 		.mutation(({ input }) => {
 			const db = getDb();
@@ -93,10 +93,7 @@ export const quickActionsRouter = router({
 			if (input.cwd !== undefined) updates["cwd"] = input.cwd;
 			if (input.shortcut !== undefined) updates["shortcut"] = input.shortcut;
 			if (input.projectId !== undefined) updates["projectId"] = input.projectId;
-			db.update(quickActions)
-				.set(updates)
-				.where(eq(quickActions.id, input.id))
-				.run();
+			db.update(quickActions).set(updates).where(eq(quickActions.id, input.id)).run();
 		}),
 
 	delete: publicProcedure.input(z.object({ id: z.string() })).mutation(({ input }) => {

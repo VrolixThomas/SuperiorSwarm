@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { BrowserWindow, app, dialog, globalShortcut, ipcMain, shell } from "electron";
+import { BrowserWindow, app, dialog, ipcMain, shell } from "electron";
 import { AGENT_NOTIFY_PORT } from "../shared/agent-events";
 import { daemonInstanceId, daemonPaths } from "../shared/daemon-protocol";
 import { type AgentAlertListener, createAlertListener } from "./agent-hooks/listener";
@@ -15,14 +15,12 @@ import {
 } from "./ai-review/pr-poller";
 import { backfillRemoteHosts, getDb, initializeDatabase } from "./db";
 import * as schema from "./db/schema";
-import { listQuickActions } from "./trpc/routers/quick-actions";
 import {
 	type SessionSaveData,
 	savePaneLayouts,
 	saveTerminalSessions,
 } from "./db/session-persistence";
 import { setupLspIPC } from "./lsp/ipc-handler";
-import { syncShortcuts } from "./quick-actions/shortcuts";
 import { serverManager } from "./lsp/server-manager";
 import { DaemonClient } from "./terminal/daemon-client";
 import { setDaemonClient } from "./terminal/daemon-instance";
@@ -137,24 +135,6 @@ app.whenReady().then(async () => {
 			return result.filePaths[0] ?? null;
 		}
 	);
-
-	ipcMain.handle("quick-actions:sync-shortcuts", async (_event, projectId: string | null) => {
-		const actions = listQuickActions(projectId);
-
-		syncShortcuts(
-			actions,
-			(action) => {
-				const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
-				win?.webContents.send("quick-action:trigger", {
-					command: action.command,
-					label: action.label,
-					cwd: action.cwd,
-				});
-			},
-			globalShortcut.register.bind(globalShortcut),
-			globalShortcut.unregister.bind(globalShortcut)
-		);
-	});
 
 	// Show the window NOW — branded splash screen in index.html is visible immediately
 	createWindow();
