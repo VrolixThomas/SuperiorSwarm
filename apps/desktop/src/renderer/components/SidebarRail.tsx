@@ -7,7 +7,7 @@ import { useProjectStore } from "../stores/projects";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import { CreateBranchFromIssueModal } from "./CreateBranchFromIssueModal";
-import { type LinkablePR, CreateWorktreeFromPRModal } from "./CreateWorktreeFromPRModal";
+import { CreateWorktreeFromPRModal, type LinkablePR } from "./CreateWorktreeFromPRModal";
 import { ProjectItem } from "./ProjectItem";
 import { PullRequestsTab } from "./PullRequestsTab";
 import { RailFlyout } from "./RailFlyout";
