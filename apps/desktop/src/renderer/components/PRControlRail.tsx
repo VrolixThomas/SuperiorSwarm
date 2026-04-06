@@ -1009,7 +1009,8 @@ export function PRControlRail({ prCtx }: { prCtx: PRContext }) {
 					onClose={() => setShowSubmitModal(false)}
 					onSubmitted={() => {
 						setShowSubmitModal(false);
-						utils.github.getPRDetails.invalidate({
+						utils.projects.getPRDetails.invalidate({
+							provider: prCtx.provider,
 							owner: prCtx.owner,
 							repo: prCtx.repo,
 							number: prCtx.number,
