@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.4.0 (2026-04-06)
+
+### What's New
+
+SuperiorSwarm now supports Sign in with Apple for quick authentication. A new indicator clearly shows when you're not logged in, making it easier to know when authentication is needed. The command palette has been enhanced with Linear-style commands for faster navigation. Several fixes improve repo overview panel behavior, the PR review flow for new users, and app window dragging.
+
+### Changes
+
+- Fix app dragging (#56)
+- Not logged in indication (#55)
+- Investigate new user with existing PR flow (#54)
+- Linear style commands (#53)
+- Fix repo overview closing (#52)
+- Sign in with Apple (#51)
+
 ## v0.3.0 (2026-04-05)
 
 ### What's New
