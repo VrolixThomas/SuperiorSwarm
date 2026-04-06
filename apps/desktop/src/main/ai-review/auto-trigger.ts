@@ -28,7 +28,7 @@ export function shouldAutoTriggerReview(args: {
 }
 
 type AutoTriggerDeps = {
-	getSettings: () => { autoReviewEnabled: number | boolean };
+	getSettings: () => { autoReviewEnabled: number | boolean; autoReReviewOnCommit?: number | boolean };
 	getReviewDrafts: () => ReviewDraft[];
 	getProjectIdByRepo: (repoOwner: string, repoName: string) => string;
 	ensureReviewWorkspace: (opts: {
@@ -147,6 +147,50 @@ export async function maybeAutoTriggerReview(args: {
 		prAuthor: pr.author.login,
 		sourceBranch: pr.sourceBranch,
 		targetBranch: pr.targetBranch,
+		workspaceId,
+		worktreePath,
+	});
+}
+
+export async function maybeAutoReReview(args: {
+	pr: CachedPR;
+	deps?: Partial<AutoTriggerDeps>;
+}): Promise<ReviewLaunchInfo | null> {
+	const deps = { ...defaultDeps, ...args.deps };
+	const settings = deps.getSettings();
+
+	if (!settings.autoReReviewOnCommit) return null;
+	if (args.pr.state !== "open") return null;
+	if (args.pr.role !== "reviewer") return null;
+
+	const projectId = deps.getProjectIdByRepo(args.pr.repoOwner, args.pr.repoName);
+	if (!projectId) return null;
+
+	// Check that there's no active review running
+	const drafts = deps.getReviewDrafts();
+	const activeDraft = drafts.find(
+		(d) =>
+			d.prIdentifier === args.pr.identifier &&
+			(d.status === "queued" || d.status === "in_progress")
+	);
+	if (activeDraft) return null;
+
+	const { workspaceId, worktreePath } = await deps.ensureReviewWorkspace({
+		projectId,
+		prProvider: args.pr.provider,
+		prIdentifier: args.pr.identifier,
+		prTitle: args.pr.title,
+		sourceBranch: args.pr.sourceBranch,
+		targetBranch: args.pr.targetBranch,
+	});
+
+	return deps.queueReview({
+		prProvider: args.pr.provider,
+		prIdentifier: args.pr.identifier,
+		prTitle: args.pr.title,
+		prAuthor: args.pr.author.login,
+		sourceBranch: args.pr.sourceBranch,
+		targetBranch: args.pr.targetBranch,
 		workspaceId,
 		worktreePath,
 	});
