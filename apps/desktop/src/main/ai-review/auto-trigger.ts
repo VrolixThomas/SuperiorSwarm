@@ -10,7 +10,7 @@ import { ensureReviewWorkspace } from "./review-workspace";
 export function shouldAutoTriggerReview(args: {
 	pr: CachedPR;
 	autoReviewEnabled: boolean;
-	existingDrafts: Set<string>;
+	existingDrafts: Map<string, string>;
 	alreadyTriggered: Set<string>;
 }): boolean {
 	const { pr, autoReviewEnabled, existingDrafts, alreadyTriggered } = args;
@@ -19,8 +19,10 @@ export function shouldAutoTriggerReview(args: {
 	if (pr.state !== "open") return false;
 	if (pr.role !== "reviewer") return false;
 	if (!pr.projectId) return false;
-	if (existingDrafts.has(pr.identifier)) return false;
 	if (alreadyTriggered.has(pr.identifier)) return false;
+	// Only block if there's an active draft (queued or in_progress)
+	const draftStatus = existingDrafts.get(pr.identifier);
+	if (draftStatus === "queued" || draftStatus === "in_progress") return false;
 
 	return true;
 }
@@ -87,13 +89,31 @@ const defaultDeps: AutoTriggerDeps = {
 	alreadyTriggered: alreadyTriggeredThisSession,
 };
 
+function isMoreActive(a: string, b: string): boolean {
+	const priority: Record<string, number> = {
+		in_progress: 0,
+		queued: 1,
+		ready: 2,
+		failed: 3,
+		submitted: 4,
+		dismissed: 5,
+	};
+	return (priority[a] ?? 6) < (priority[b] ?? 6);
+}
+
 export async function maybeAutoTriggerReview(args: {
 	pr: CachedPR;
 	deps?: Partial<AutoTriggerDeps>;
 }): Promise<ReviewLaunchInfo | null> {
 	const deps = { ...defaultDeps, ...args.deps };
 	const settings = deps.getSettings();
-	const existingDrafts = new Set(deps.getReviewDrafts().map((draft) => draft.prIdentifier));
+	const draftsByIdentifier = new Map<string, string>();
+	for (const draft of deps.getReviewDrafts()) {
+		const existing = draftsByIdentifier.get(draft.prIdentifier);
+		if (!existing || isMoreActive(draft.status, existing)) {
+			draftsByIdentifier.set(draft.prIdentifier, draft.status);
+		}
+	}
 	const autoReviewEnabled = Boolean(settings.autoReviewEnabled);
 	const projectId = deps.getProjectIdByRepo(args.pr.repoOwner, args.pr.repoName);
 	const pr = { ...args.pr, projectId };
@@ -102,7 +122,7 @@ export async function maybeAutoTriggerReview(args: {
 		!shouldAutoTriggerReview({
 			pr,
 			autoReviewEnabled,
-			existingDrafts,
+			existingDrafts: draftsByIdentifier,
 			alreadyTriggered: deps.alreadyTriggered,
 		})
 	) {
