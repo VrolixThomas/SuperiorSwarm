@@ -4,6 +4,7 @@ import type { LinearIssue } from "../../main/linear/linear";
 import type { TicketIssue } from "../../shared/tickets";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
+import { ConnectBanner } from "./ConnectBanner";
 import { CreateBranchFromIssueModal } from "./CreateBranchFromIssueModal";
 import { IssueContextMenu } from "./IssueContextMenu";
 import { StateIcon } from "./StateIcon";
@@ -219,8 +220,8 @@ export function TicketsTab() {
 
 	if (!hasJira && !hasLinear) {
 		return (
-			<div className="px-3 py-2 text-[12px] text-[var(--text-quaternary)]">
-				No ticket services connected
+			<div className="px-3 py-2">
+				<ConnectBanner message="Connect Jira or Linear to see your tickets." returnTo="tickets" />
 			</div>
 		);
 	}

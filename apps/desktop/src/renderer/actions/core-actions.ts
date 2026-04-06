@@ -288,8 +288,7 @@ export function registerCoreActions() {
 			shortcut: { key: "t", meta: true },
 			when: hasWorkspace,
 			execute: () => {
-				const { activeWorkspaceId, activeWorkspaceCwd, addTerminalTab } =
-					useTabStore.getState();
+				const { activeWorkspaceId, activeWorkspaceCwd, addTerminalTab } = useTabStore.getState();
 				if (activeWorkspaceId) addTerminalTab(activeWorkspaceId, activeWorkspaceCwd);
 			},
 			keywords: ["terminal", "shell", "tab"],

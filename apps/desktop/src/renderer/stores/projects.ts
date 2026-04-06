@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import type { SidebarSegment } from "../../shared/types";
 
 export type SettingsCategory =
 	| "general"
@@ -30,6 +31,8 @@ interface ProjectStore {
 	setSettingsCategory: (category: SettingsCategory) => void;
 	openSettings: () => void;
 	closeSettings: () => void;
+	settingsReturnTo: SidebarSegment | null;
+	openSettingsToIntegrations: (returnTo?: SidebarSegment) => void;
 	sidebarCollapsed: boolean;
 	setSidebarCollapsed: (collapsed: boolean) => void;
 }
@@ -73,6 +76,13 @@ export const useProjectStore = create<ProjectStore>((set) => ({
 	openSharedFilesPanel: (projectId) => set({ sharedFilesProjectId: projectId }),
 	closeSharedFilesPanel: () => set({ sharedFilesProjectId: null }),
 
+	settingsReturnTo: null,
 	openSettings: () => set({ sidebarView: "settings", settingsCategory: "general" }),
-	closeSettings: () => set({ sidebarView: "main" }),
+	closeSettings: () => set({ sidebarView: "main", settingsReturnTo: null }),
+	openSettingsToIntegrations: (returnTo) =>
+		set({
+			sidebarView: "settings",
+			settingsCategory: "integrations",
+			settingsReturnTo: returnTo ?? null,
+		}),
 }));
