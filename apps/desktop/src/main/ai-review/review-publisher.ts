@@ -207,9 +207,19 @@ export async function publishReview(draftId: string): Promise<PublishResult> {
 			});
 
 			if (comment.resolution === "resolved-by-code") {
-				await git.resolveComment({ owner, repo, prNumber, commentId: originalComment.platformCommentId });
+				await git.resolveComment({
+					owner,
+					repo,
+					prNumber,
+					commentId: originalComment.platformCommentId,
+				});
 			} else if (comment.resolution === "incorrectly-resolved") {
-				await git.unresolveComment({ owner, repo, prNumber, commentId: originalComment.platformCommentId });
+				await git.unresolveComment({
+					owner,
+					repo,
+					prNumber,
+					commentId: originalComment.platformCommentId,
+				});
 			}
 
 			postedCount++;
