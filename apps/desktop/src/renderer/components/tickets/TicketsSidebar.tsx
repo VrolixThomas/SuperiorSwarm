@@ -1,8 +1,8 @@
 import { useMemo } from "react";
 import type { TicketProject } from "../../../shared/tickets";
-import { ConnectBanner } from "../ConnectBanner";
 import { useTabStore } from "../../stores/tab-store";
 import { trpc } from "../../trpc/client";
+import { ConnectBanner } from "../ConnectBanner";
 
 export function TicketsSidebar() {
 	const activeTicketProject = useTabStore((s) => s.activeTicketProject);

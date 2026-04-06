@@ -75,7 +75,7 @@ app.whenReady().then(async () => {
 	// Initialize database early — tRPC handlers depend on it
 	try {
 		initializeDatabase();
-		backfillRemoteHosts();
+		await backfillRemoteHosts();
 	} catch (err) {
 		console.error("[db] Failed to initialize database:", err);
 		dialog.showErrorBox(

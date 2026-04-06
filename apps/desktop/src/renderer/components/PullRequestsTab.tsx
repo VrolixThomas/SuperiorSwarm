@@ -5,8 +5,8 @@ import type { AgentAlert } from "../../shared/agent-events";
 import type { GitHubPREnriched, GitHubReviewer, PRContext } from "../../shared/github-types";
 import { useAgentAlertStore } from "../stores/agent-alert-store";
 import { useTabStore } from "../stores/tab-store";
-import { ConnectBanner } from "./ConnectBanner";
 import { trpc } from "../trpc/client";
+import { ConnectBanner } from "./ConnectBanner";
 import { CreateWorktreeFromPRModal } from "./CreateWorktreeFromPRModal";
 import { SwarmIndicator } from "./WorkspaceItem";
 import { type LinkedWorkspace, WorkspacePopover } from "./WorkspacePopover";
@@ -779,17 +779,17 @@ export function PullRequestsTab() {
 	const isLoading = (hasBitbucket && !bbReviewPRs) || (hasGitHub && !ghPRs);
 
 	if (!hasBitbucket && !hasGitHub) {
-		const remoteHosts = projectsList
-			?.map((p) => p.remoteHost)
-			.filter((h): h is string => h != null) ?? [];
+		const remoteHosts =
+			projectsList?.map((p) => p.remoteHost).filter((h): h is string => h != null) ?? [];
 		const needsGitHub = remoteHosts.some((h) => h.includes("github"));
 		const needsBitbucket = remoteHosts.some((h) => h.includes("bitbucket"));
 
-		const serviceName = needsGitHub && !needsBitbucket
-			? "GitHub"
-			: needsBitbucket && !needsGitHub
-				? "Bitbucket"
-				: "a PR service";
+		const serviceName =
+			needsGitHub && !needsBitbucket
+				? "GitHub"
+				: needsBitbucket && !needsGitHub
+					? "Bitbucket"
+					: "a PR service";
 
 		return (
 			<div className="px-3 py-2">
