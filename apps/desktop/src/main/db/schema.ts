@@ -7,8 +7,8 @@ export const projects = sqliteTable("projects", {
 	repoPath: text("repo_path").notNull().unique(),
 	defaultBranch: text("default_branch").notNull().default("main"),
 	color: text("color"),
-	githubOwner: text("github_owner"),
-	githubRepo: text("github_repo"),
+	remoteOwner: text("remote_owner"),
+	remoteRepo: text("remote_repo"),
 	remoteHost: text("remote_host"),
 	status: text("status", { enum: ["cloning", "initializing", "ready", "error"] })
 		.notNull()
