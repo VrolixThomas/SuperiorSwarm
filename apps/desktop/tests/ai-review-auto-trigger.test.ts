@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { shouldAutoTriggerReview } from "../src/main/ai-review/auto-trigger";
+import { ensureReviewWorkspace } from "../src/main/ai-review/review-workspace";
 import type { CachedPR } from "../src/shared/review-types";
 
 const basePr: CachedPR = {
@@ -25,6 +26,10 @@ const basePr: CachedPR = {
 };
 
 describe("auto-trigger decision", () => {
+	test("exposes review workspace helper", () => {
+		expect(ensureReviewWorkspace).toBeTypeOf("function");
+	});
+
 	test("supports reviewer role", () => {
 		const reviewerRole: CachedPR["role"] = "reviewer";
 		expect(reviewerRole).toBe("reviewer");
