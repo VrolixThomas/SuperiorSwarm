@@ -809,10 +809,7 @@ export function SidebarRail({ onExpand }: SidebarRailProps) {
 	return (
 		<div ref={railRef} className="flex h-full w-full flex-col items-center bg-[var(--bg-surface)]">
 			{/* Traffic light clearance */}
-			<div
-				className="w-full shrink-0"
-				style={{ height: 52, WebkitAppRegion: "drag" } as React.CSSProperties}
-			/>
+			<div className="app-drag h-[52px] w-full shrink-0" />
 
 			{/* Project groups + Tickets + PRs */}
 			<div className="flex flex-1 flex-col items-center gap-2 overflow-y-auto px-1 py-1">

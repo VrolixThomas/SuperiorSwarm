@@ -156,10 +156,7 @@ export function SettingsNav() {
 	return (
 		<div className="flex h-full w-[220px] shrink-0 flex-col border-r border-[var(--border)] bg-[var(--bg-surface)]">
 			{/* Traffic light clearance */}
-			<div
-				className="shrink-0"
-				style={{ height: 52, WebkitAppRegion: "drag" } as React.CSSProperties}
-			/>
+			<div className="app-drag h-[52px] shrink-0" />
 
 			{/* Back button */}
 			<div className="px-3 pb-4">

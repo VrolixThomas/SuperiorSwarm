@@ -64,7 +64,7 @@ export function MainContentArea({ savedScrollback }: { savedScrollback: Record<s
 		<main className="flex h-full min-w-0 flex-col overflow-hidden">
 			{/* Branch indicator bar */}
 			{projectId && (
-				<div className="flex shrink-0 items-center gap-2 border-b border-[var(--border-subtle)] px-3 py-1">
+				<div className="app-drag flex shrink-0 items-center gap-2 border-b border-[var(--border-subtle)] px-3 py-1">
 					<BranchChip projectId={projectId} />
 					<QuickActionBar
 						projectId={projectId}

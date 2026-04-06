@@ -61,12 +61,11 @@ function TabPill({
 			}}
 			onMouseEnter={showClose}
 			onMouseLeave={hideClose}
-			className={`group relative flex h-[36px] max-w-[220px] shrink-0 cursor-pointer select-none items-center gap-2 rounded-[7px] pl-3 pr-2 text-[13px] transition-all duration-[120ms] ${
+			className={`app-no-drag group relative flex h-[36px] max-w-[220px] shrink-0 cursor-pointer select-none items-center gap-2 rounded-[7px] pl-3 pr-2 text-[13px] transition-all duration-[120ms] ${
 				isActive
 					? "bg-[var(--tab-active-bg)] text-[var(--text)] shadow-[0_1px_3px_rgba(0,0,0,0.4),inset_0_0.5px_0_rgba(255,255,255,0.04)]"
 					: "bg-[var(--tab-inactive-bg)] text-[var(--text-tertiary)] hover:bg-[rgba(255,255,255,0.04)] hover:text-[var(--text-secondary)]"
 			}`}
-			style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
 		>
 			{isActive && (
 				<span
@@ -117,10 +116,7 @@ export function TabBar() {
 	const detachMutation = trpc.workspaces.detachTerminal.useMutation();
 
 	return (
-		<div
-			className="flex h-[52px] shrink-0 items-end border-b border-[var(--tab-border)] bg-[var(--bg-tab-bar)]"
-			style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
-		>
+		<div className="app-drag flex h-[52px] shrink-0 items-end border-b border-[var(--tab-border)] bg-[var(--bg-tab-bar)]">
 			<div
 				role="tablist"
 				className={`scrollbar-hide flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto pb-[7px] transition-[padding] duration-[120ms] ${sidebarCollapsed ? "pl-3 pr-1" : "px-1"}`}
@@ -166,8 +162,7 @@ export function TabBar() {
 						if (!activeWorkspaceId) return;
 						addTerminalTab(activeWorkspaceId, activeWorkspaceCwd);
 					}}
-					className="flex h-[30px] w-[30px] items-center justify-center rounded-[6px] border-none bg-transparent text-[var(--text-quaternary)] transition-all duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-tertiary)] disabled:cursor-default disabled:opacity-30"
-					style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+					className="app-no-drag flex h-[30px] w-[30px] items-center justify-center rounded-[6px] border-none bg-transparent text-[var(--text-quaternary)] transition-all duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-tertiary)] disabled:cursor-default disabled:opacity-30"
 				>
 					<svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none">
 						<path
