@@ -63,6 +63,7 @@ describe("mapBitbucketPR", () => {
 			role: "author",
 			repoOwner: "my-workspace",
 			repoName: "my-repo",
+			headCommitSha: "",
 		});
 	});
 
