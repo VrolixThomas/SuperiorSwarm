@@ -41,8 +41,8 @@ function getProjectIdByRepo(owner: string, repoName: string): string {
 	const match = allProjects.find((p) => {
 		// Match GitHub owner/repo
 		if (
-			p.githubOwner?.toLowerCase() === owner.toLowerCase() &&
-			p.githubRepo?.toLowerCase() === repoName.toLowerCase()
+			p.remoteOwner?.toLowerCase() === owner.toLowerCase() &&
+			p.remoteRepo?.toLowerCase() === repoName.toLowerCase()
 		) {
 			return true;
 		}

@@ -64,7 +64,7 @@ export const githubRouter = router({
 			return db
 				.select()
 				.from(projects)
-				.where(and(eq(projects.githubOwner, input.owner), eq(projects.githubRepo, input.repo)))
+				.where(and(eq(projects.remoteOwner, input.owner), eq(projects.remoteRepo, input.repo)))
 				.all();
 		}),
 
