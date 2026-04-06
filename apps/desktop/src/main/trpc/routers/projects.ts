@@ -99,6 +99,7 @@ export const projectsRouter = router({
 				color: randomColor(),
 				githubOwner: null as string | null,
 				githubRepo: null as string | null,
+				remoteHost: null as string | null,
 				status: "cloning" as const,
 				createdAt: now,
 				updatedAt: now,
@@ -122,6 +123,7 @@ export const projectsRouter = router({
 							defaultBranch,
 							githubOwner: github?.owner ?? null,
 							githubRepo: github?.repo ?? null,
+							remoteHost: github?.host ?? null,
 							updatedAt: new Date(),
 						})
 						.where(eq(projects.id, id))
@@ -190,6 +192,7 @@ export const projectsRouter = router({
 			color: randomColor(),
 			githubOwner: github?.owner ?? null,
 			githubRepo: github?.repo ?? null,
+			remoteHost: github?.host ?? null,
 			status: "ready" as const,
 			createdAt: now,
 			updatedAt: now,
@@ -241,6 +244,7 @@ export const projectsRouter = router({
 				color: randomColor(),
 				githubOwner: null as string | null,
 				githubRepo: null as string | null,
+				remoteHost: null as string | null,
 				status: "ready" as const,
 				createdAt: now,
 				updatedAt: now,

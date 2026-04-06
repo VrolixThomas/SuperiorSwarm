@@ -5,6 +5,7 @@ import { useTicketDragDrop } from "../../hooks/useTicketDragDrop";
 import { useTicketsData } from "../../hooks/useTicketsData";
 import { useTabStore } from "../../stores/tab-store";
 import { trpc } from "../../trpc/client";
+import { ConnectBanner } from "../ConnectBanner";
 import { CreateBranchFromIssueModal } from "../CreateBranchFromIssueModal";
 import { IssueContextMenu } from "../IssueContextMenu";
 import type { LinkedWorkspace } from "../WorkspacePopover";
@@ -200,8 +201,8 @@ export function TicketsCanvas() {
 	if (isEmpty) {
 		return (
 			<main className="flex h-full min-w-0 items-center justify-center overflow-hidden">
-				<div className="text-[13px] text-[var(--text-quaternary)]">
-					No ticket services connected
+				<div className="text-center text-[13px]">
+					<ConnectBanner message="Connect Jira or Linear to see your tickets." returnTo="tickets" />
 				</div>
 			</main>
 		);
