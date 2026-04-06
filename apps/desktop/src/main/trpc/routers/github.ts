@@ -57,17 +57,6 @@ export const githubRouter = router({
 			return getPRComments(input.owner, input.repo, input.number);
 		}),
 
-	getProjectsByRepo: publicProcedure
-		.input(z.object({ owner: z.string(), repo: z.string() }))
-		.query(({ input }) => {
-			const db = getDb();
-			return db
-				.select()
-				.from(projects)
-				.where(and(eq(projects.remoteOwner, input.owner), eq(projects.remoteRepo, input.repo)))
-				.all();
-		}),
-
 	linkPR: publicProcedure
 		.input(
 			z.object({

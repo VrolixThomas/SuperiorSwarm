@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { z } from "zod";
 import { getDb } from "../../db";
@@ -60,6 +60,17 @@ export const projectsRouter = router({
 		const db = getDb();
 		return db.select().from(projects).all();
 	}),
+
+	getByRepo: publicProcedure
+		.input(z.object({ owner: z.string(), repo: z.string() }))
+		.query(({ input }) => {
+			const db = getDb();
+			return db
+				.select()
+				.from(projects)
+				.where(and(eq(projects.remoteOwner, input.owner), eq(projects.remoteRepo, input.repo)))
+				.all();
+		}),
 
 	getById: publicProcedure.input(z.object({ id: z.string() })).query(({ input }) => {
 		const db = getDb();
