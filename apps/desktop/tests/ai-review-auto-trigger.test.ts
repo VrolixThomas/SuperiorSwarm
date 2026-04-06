@@ -25,6 +25,11 @@ const basePr: CachedPR = {
 };
 
 describe("auto-trigger decision", () => {
+	test("supports reviewer role", () => {
+		const reviewerRole: CachedPR["role"] = "reviewer";
+		expect(reviewerRole).toBe("reviewer");
+	});
+
 	test("does not trigger when auto review disabled", () => {
 		const shouldTrigger = shouldAutoTriggerReview({
 			pr: basePr,
