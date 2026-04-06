@@ -358,10 +358,27 @@ export function PullRequestsTab() {
 		return prs;
 	}, [ghPRs]);
 
+	const bitbucketPRsForEnrichment = useMemo(() => {
+		const prs: Array<{ workspace: string; repoSlug: string; prId: number }> = [];
+		for (const pr of bbReviewPRs ?? []) {
+			prs.push({ workspace: pr.workspace, repoSlug: pr.repoSlug, prId: pr.id });
+		}
+		return prs;
+	}, [bbReviewPRs]);
+
 	const enrichmentQuery = trpc.github.getPRListEnrichment.useQuery(
 		{ prs: reviewerPRsForEnrichment },
 		{
 			enabled: reviewerPRsForEnrichment.length > 0,
+			staleTime: 30_000,
+			refetchInterval: 60_000,
+		}
+	);
+
+	const bbEnrichmentQuery = trpc.atlassian.getPRListEnrichment.useQuery(
+		{ prs: bitbucketPRsForEnrichment },
+		{
+			enabled: bitbucketPRsForEnrichment.length > 0,
 			staleTime: 30_000,
 			refetchInterval: 60_000,
 		}
@@ -372,8 +389,11 @@ export function PullRequestsTab() {
 		for (const pr of enrichmentQuery.data ?? []) {
 			map.set(`${pr.owner}/${pr.repo}#${pr.number}`, pr);
 		}
+		for (const pr of bbEnrichmentQuery.data ?? []) {
+			map.set(`${pr.owner}/${pr.repo}#${pr.number}`, pr);
+		}
 		return map;
-	}, [enrichmentQuery.data]);
+	}, [enrichmentQuery.data, bbEnrichmentQuery.data]);
 
 	// ── getOrCreateReview mutation ────────────────────────────────────────────
 
@@ -861,16 +881,19 @@ export function PullRequestsTab() {
 								<div className="flex flex-col gap-0.5 px-1">
 									{group.items.map((pr) => {
 										const identifier = getPrIdentifier(pr);
-										const isReviewer = pr.githubPR?.role === "reviewer";
+										const isReviewer =
+											pr.githubPR?.role === "reviewer" || pr.provider === "bitbucket";
 										const enrichmentKey = pr.githubPR
 											? `${pr.githubPR.repoOwner}/${pr.githubPR.repoName}#${pr.githubPR.number}`
-											: undefined;
+											: pr.bitbucketPR
+												? `${pr.bitbucketPR.workspace}/${pr.bitbucketPR.repoSlug}#${pr.bitbucketPR.id}`
+												: undefined;
 										const enriched =
 											isReviewer && enrichmentKey ? enrichmentMap.get(enrichmentKey) : undefined;
 										const enrichmentLoading =
 											isReviewer &&
-											reviewerPRsForEnrichment.length > 0 &&
-											enrichmentQuery.isLoading;
+											((reviewerPRsForEnrichment.length > 0 && enrichmentQuery.isLoading) ||
+												(bitbucketPRsForEnrichment.length > 0 && bbEnrichmentQuery.isLoading));
 										const knownWorkspaceId = workspaceIdMapRef.current.get(identifier);
 										const agentAlert = knownWorkspaceId ? agentAlerts[knownWorkspaceId] : undefined;
 										const handleContextMenu = knownWorkspaceId
