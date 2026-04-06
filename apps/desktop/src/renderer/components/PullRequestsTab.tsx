@@ -456,19 +456,33 @@ export function PullRequestsTab() {
 		for (const pr of bbReviewPRs ?? []) {
 			const identifier = `${pr.workspace}/${pr.repoSlug}#${pr.id}`;
 			if (existingIdentifiers.has(identifier) || triggeredRef.current.has(identifier)) continue;
-			// Bitbucket PRs need a tracked project to proceed
-			// TODO: resolve bitbucket project mapping
+			const project = projectsList?.find(
+				(p) => p.githubOwner === pr.workspace && p.githubRepo === pr.repoSlug
+			);
+			if (!project) continue;
 			triggeredRef.current.add(identifier);
-			triggerReview.mutate({
-				provider: "bitbucket",
-				identifier,
-				title: pr.title,
-				author: pr.author,
-				sourceBranch: pr.source?.branch?.name ?? "",
-				targetBranch: pr.destination?.branch?.name ?? "main",
-				repoPath: "",
-				projectId: "",
-			});
+			triggerReviewWithCtx(
+				{
+					provider: "bitbucket",
+					identifier,
+					title: pr.title,
+					author: pr.author,
+					sourceBranch: pr.source?.branch?.name ?? "",
+					targetBranch: pr.destination?.branch?.name ?? project.defaultBranch ?? "main",
+					repoPath: project.repoPath,
+					projectId: project.id,
+				},
+				{
+					provider: "bitbucket",
+					owner: pr.workspace,
+					repo: pr.repoSlug,
+					number: pr.id,
+					title: pr.title,
+					sourceBranch: pr.source?.branch?.name ?? "",
+					targetBranch: pr.destination?.branch?.name ?? project.defaultBranch ?? "main",
+					repoPath: project.repoPath,
+				}
+			);
 		}
 	}, [ghPRs, bbReviewPRs, reviewDrafts.data, settings.data, projectsList, triggerReviewWithCtx]);
 
