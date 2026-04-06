@@ -1,6 +1,5 @@
-import { existsSync, readdirSync, readFileSync, rmSync } from "node:fs";
-import { join } from "node:path";
-import { SUPERIORSWARM_DIR } from "../../shared/daemon-protocol";
+import { existsSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { SUPERIORSWARM_DIR, daemonPaths } from "../../shared/daemon-protocol";
 
 /**
  * Clean up stale daemon files from previous sessions.
@@ -22,19 +21,17 @@ export function cleanupStaleDaemons(ownInstanceId: string): void {
 		return;
 	}
 
-	const pidFiles = files.filter((f) => /^daemon-[a-f0-9]+\.pid$/.test(f));
+	const pidPattern = /^daemon-([a-f0-9]+)\.pid$/;
 
-	for (const pidFile of pidFiles) {
-		const match = pidFile.match(/^daemon-([a-f0-9]+)\.pid$/);
+	for (const file of files) {
+		const match = pidPattern.exec(file);
 		if (!match) continue;
-		const instanceId = match[1];
+		const instanceId = match[1] ?? "";
 
 		// Skip our own daemon
-		if (instanceId === ownInstanceId) continue;
+		if (!instanceId || instanceId === ownInstanceId) continue;
 
-		const pidPath = join(SUPERIORSWARM_DIR, pidFile);
-		const socketPath = join(SUPERIORSWARM_DIR, `daemon-${instanceId}.sock`);
-		const logPath = join(SUPERIORSWARM_DIR, `daemon-${instanceId}.log`);
+		const { pidPath, socketPath, logPath } = daemonPaths(instanceId);
 
 		let pid: number;
 		try {
@@ -68,7 +65,7 @@ export function cleanupStaleDaemons(ownInstanceId: string): void {
 function cleanup(...paths: string[]): void {
 	for (const p of paths) {
 		try {
-			if (existsSync(p)) rmSync(p);
+			rmSync(p);
 		} catch {}
 	}
 }
