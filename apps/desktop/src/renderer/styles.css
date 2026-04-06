@@ -81,6 +81,14 @@
 	}
 }
 
+/* Window drag regions for frameless title bar */
+.app-drag {
+	-webkit-app-region: drag;
+}
+.app-no-drag {
+	-webkit-app-region: no-drag;
+}
+
 html,
 body,
 #root {

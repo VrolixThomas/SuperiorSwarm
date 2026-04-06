@@ -52,15 +52,7 @@ export function Sidebar({ collapsed, onExpand }: SidebarProps) {
 	return (
 		<div className="flex h-full w-full flex-col overflow-hidden bg-[var(--bg-surface)]">
 			{/* Traffic light clearance */}
-			<div
-				className="shrink-0"
-				style={
-					{
-						height: 52,
-						WebkitAppRegion: "drag",
-					} as React.CSSProperties
-				}
-			/>
+			<div className="app-drag h-[52px] shrink-0" />
 
 			{/* Segmented control — always at top */}
 			<div className="flex gap-1 px-2 py-1.5 border-b border-[var(--border-subtle)]">

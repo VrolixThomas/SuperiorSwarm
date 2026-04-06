@@ -45,19 +45,16 @@ export function QuickActionBar({
 
 	const actions = actionsQuery.data ?? [];
 
-	const handleDragStart = useCallback(
-		(e: React.DragEvent, id: string) => {
-			setDragId(id);
-			e.dataTransfer.effectAllowed = "move";
-			e.dataTransfer.setData("text/plain", id);
-			// Slight delay so the dragged element renders before going ghost
-			requestAnimationFrame(() => {
-				const el = e.target as HTMLElement;
-				el.style.opacity = "0.3";
-			});
-		},
-		[],
-	);
+	const handleDragStart = useCallback((e: React.DragEvent, id: string) => {
+		setDragId(id);
+		e.dataTransfer.effectAllowed = "move";
+		e.dataTransfer.setData("text/plain", id);
+		// Slight delay so the dragged element renders before going ghost
+		requestAnimationFrame(() => {
+			const el = e.target as HTMLElement;
+			el.style.opacity = "0.3";
+		});
+	}, []);
 
 	const handleDragEnd = useCallback((e: React.DragEvent) => {
 		(e.target as HTMLElement).style.opacity = "";
@@ -107,7 +104,7 @@ export function QuickActionBar({
 			setDragId(null);
 			setDropTarget(null);
 		},
-		[actions, reorderMutation],
+		[actions, reorderMutation]
 	);
 
 	if (actions.length === 0) {
@@ -115,7 +112,7 @@ export function QuickActionBar({
 			<button
 				type="button"
 				onClick={onAddClick}
-				className="shrink-0 rounded-[var(--radius-sm)] px-2 py-1 text-[12px] text-[var(--text-quaternary)] transition-colors duration-[var(--transition-fast)] hover:text-[var(--text-secondary)]"
+				className="app-no-drag shrink-0 rounded-[var(--radius-sm)] px-2 py-1 text-[12px] text-[var(--text-quaternary)] transition-colors duration-[var(--transition-fast)] hover:text-[var(--text-secondary)]"
 			>
 				+
 			</button>
@@ -125,7 +122,7 @@ export function QuickActionBar({
 	return (
 		<>
 			<span className="shrink-0 text-[var(--text-quaternary)]">|</span>
-			<div className="flex min-w-0 items-center overflow-x-auto [&::-webkit-scrollbar]:hidden">
+			<div className="app-no-drag flex min-w-0 items-center overflow-x-auto [&::-webkit-scrollbar]:hidden">
 				{actions.map((action) => {
 					const isDragging = dragId === action.id;
 					const isDropTarget = dropTarget === action.id && dragId !== action.id;
@@ -152,9 +149,7 @@ export function QuickActionBar({
 							onDrop={(e) => handleDrop(e, action.id)}
 							className={[
 								"shrink-0 whitespace-nowrap rounded-[var(--radius-sm)] px-1.5 py-0.5 text-[12px] transition-all duration-100",
-								isDragging
-									? "opacity-30"
-									: "opacity-100",
+								isDragging ? "opacity-30" : "opacity-100",
 								isDropTarget
 									? "bg-[rgba(10,132,255,0.15)] text-[var(--accent)]"
 									: "text-[var(--text-tertiary)] hover:text-[var(--text)]",
@@ -169,7 +164,7 @@ export function QuickActionBar({
 			<button
 				type="button"
 				onClick={onAddClick}
-				className="shrink-0 rounded-[var(--radius-sm)] px-1.5 py-0.5 text-[12px] text-[var(--text-quaternary)] transition-colors duration-[var(--transition-fast)] hover:text-[var(--text-secondary)]"
+				className="app-no-drag shrink-0 rounded-[var(--radius-sm)] px-1.5 py-0.5 text-[12px] text-[var(--text-quaternary)] transition-colors duration-[var(--transition-fast)] hover:text-[var(--text-secondary)]"
 			>
 				+
 			</button>
