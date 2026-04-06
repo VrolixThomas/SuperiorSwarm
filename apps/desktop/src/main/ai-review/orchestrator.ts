@@ -5,7 +5,7 @@ import { and, eq, inArray, not } from "drizzle-orm";
 import { app } from "electron";
 import { getDb } from "../db";
 import * as schema from "../db/schema";
-import { getGitHubReviewThreads } from "../github/github";
+import { getGitProvider } from "../providers/git-provider";
 import {
 	CLI_PRESETS,
 	type LaunchOptions,
@@ -534,12 +534,12 @@ async function startFollowUpReview(params: {
 		// Pre-fetch platform resolution status for GitHub
 		if (
 			previousComments.length > 0 &&
-			previousComments.some((c) => c.platformCommentId) &&
-			draft.prProvider === "github"
+			previousComments.some((c) => c.platformCommentId)
 		) {
 			try {
 				const { owner, repo, number: prNumber } = parsePrIdentifier(draft.prIdentifier);
-				const threads = await getGitHubReviewThreads(owner, repo, prNumber);
+				const git = getGitProvider(draft.prProvider);
+				const threads = await git.getReviewThreads(owner, repo, prNumber);
 				for (const comment of previousComments) {
 					if (!comment.platformCommentId) continue;
 					const thread = threads.find((t) => t.nodeId === comment.platformCommentId);
