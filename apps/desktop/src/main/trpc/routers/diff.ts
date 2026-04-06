@@ -12,7 +12,6 @@ import {
 	saveWorkingTreeFile,
 } from "../../git/file-ops";
 import { listAllEntries, listDirectory } from "../../git/file-tree";
-import { push } from "../../git/remote-ops";
 import {
 	commitChanges,
 	detectDefaultBranch,
@@ -25,6 +24,7 @@ import {
 	stageFiles,
 	unstageFiles,
 } from "../../git/operations";
+import { push } from "../../git/remote-ops";
 import { publicProcedure, router } from "../index";
 
 function computeStats(files: ReturnType<typeof parseUnifiedDiff>) {
