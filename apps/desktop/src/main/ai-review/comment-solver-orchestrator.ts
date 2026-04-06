@@ -1,4 +1,4 @@
-import { execFileSync, execSync } from "node:child_process";
+import { execSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -42,14 +42,6 @@ export async function queueSolve(sessionId: string): Promise<SolveLaunchInfo> {
 	const db = getDb();
 
 	const { session, workspace, worktreePath } = resolveSessionWorktree(sessionId);
-
-	// Validate worktree is clean
-	const gitStatus = execFileSync("git", ["status", "--porcelain"], { cwd: worktreePath })
-		.toString()
-		.trim();
-	if (gitStatus) {
-		throw new Error("Worktree has uncommitted changes. Commit or stash them before solving.");
-	}
 
 	// Validate no other active sessions for this workspace (excluding self)
 	const activeForWorkspace = db

@@ -121,7 +121,7 @@ export interface GitProvider {
 	getReviewThreads(
 		owner: string,
 		repo: string,
-		prNumber: number,
+		prNumber: number
 	): Promise<NormalizedReviewThread[]>;
 }
 

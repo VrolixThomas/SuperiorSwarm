@@ -1,12 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { and, eq, inArray } from "drizzle-orm";
+import type { SolveLaunchInfo } from "../../shared/solve-types";
 import { getDb } from "../db";
 import * as schema from "../db/schema";
 import { getGitProvider } from "../providers/git-provider";
 import { queueSolve } from "./comment-solver-orchestrator";
 import { parsePrIdentifier } from "./pr-identifier";
 import { getCachedPRs } from "./pr-poller";
-import type { SolveLaunchInfo } from "../../shared/solve-types";
 
 export async function createAndQueueSolve(params: {
 	workspaceId: string;

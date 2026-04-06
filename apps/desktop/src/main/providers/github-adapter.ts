@@ -113,7 +113,7 @@ export class GitHubAdapter implements GitProvider {
 	async getReviewThreads(
 		owner: string,
 		repo: string,
-		prNumber: number,
+		prNumber: number
 	): Promise<NormalizedReviewThread[]> {
 		return getGitHubReviewThreads(owner, repo, prNumber);
 	}
