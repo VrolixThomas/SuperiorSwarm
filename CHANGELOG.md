@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.4.1 (2026-04-06)
+
+### What's New
+
+SuperiorSwarm's integration layer has been rebuilt around a unified provider interface, making it easier to support additional Git hosting and issue tracking platforms. Bitbucket now supports PR enrichment data in the sidebar, review verdicts (approve/request changes), and paginated diffs. A new comment events system enables automatic solving triggered by PR comments.
+
+### Changes
+
+- Refactor/provider interfaces (#57)
+
 ## v0.4.0 (2026-04-06)
 
 ### What's New
