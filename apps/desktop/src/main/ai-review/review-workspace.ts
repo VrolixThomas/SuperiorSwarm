@@ -11,7 +11,7 @@ export async function ensureReviewWorkspace(opts: {
 	sourceBranch: string;
 	targetBranch: string;
 }): Promise<{ workspaceId: string; worktreePath: string }> {
-	const { dirname, join } = await import("node:path");
+	const { basename, dirname, join } = await import("node:path");
 	const { nanoid } = await import("nanoid");
 	const db = getDb();
 
@@ -32,7 +32,10 @@ export async function ensureReviewWorkspace(opts: {
 	if (!workspace) {
 		const id = nanoid();
 		const now = new Date();
-		const name = `PR #${opts.prIdentifier.split("#")[1]}: ${opts.prTitle}`;
+		const prParts = opts.prIdentifier.split("#");
+		const prNumber = prParts.length > 1 ? prParts[1] : opts.prIdentifier;
+		const safePrNumber = prNumber || opts.prIdentifier || "unknown";
+		const name = `PR #${safePrNumber}: ${opts.prTitle}`;
 		db.insert(schema.workspaces)
 			.values({
 				id,
@@ -58,7 +61,7 @@ export async function ensureReviewWorkspace(opts: {
 
 	function worktreeBasePath(repoPath: string): string {
 		const parent = dirname(repoPath);
-		const name = repoPath.split("/").pop() ?? "repo";
+		const name = basename(repoPath) || "repo";
 		return join(parent, `${name}-worktrees`);
 	}
 
