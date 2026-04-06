@@ -76,7 +76,7 @@ function TabPill({
 			}}
 			onMouseEnter={showClose}
 			onMouseLeave={hideClose}
-			className={`group relative flex h-[28px] max-w-[180px] shrink-0 cursor-pointer select-none items-center gap-1.5 rounded-[6px] pl-2.5 pr-1.5 text-[12px] transition-all duration-[120ms] ${
+			className={`app-no-drag group relative flex h-[28px] max-w-[180px] shrink-0 cursor-pointer select-none items-center gap-1.5 rounded-[6px] pl-2.5 pr-1.5 text-[12px] transition-all duration-[120ms] ${
 				isActive
 					? "bg-[var(--tab-active-bg)] text-[var(--text)] shadow-[0_1px_3px_rgba(0,0,0,0.4),inset_0_0.5px_0_rgba(255,255,255,0.04)]"
 					: "bg-[var(--tab-inactive-bg)] text-[var(--text-tertiary)] hover:bg-[rgba(255,255,255,0.04)] hover:text-[var(--text-secondary)]"
@@ -162,7 +162,7 @@ export function PaneTabBar({
 
 	return (
 		<div
-			className="flex h-[36px] shrink-0 items-center border-b border-[var(--tab-border)] bg-[var(--bg-tab-bar)]"
+			className="app-drag flex h-[36px] shrink-0 items-center border-b border-[var(--tab-border)] bg-[var(--bg-tab-bar)]"
 			onContextMenu={handleBarContextMenu}
 		>
 			{/* Pane index indicator */}
@@ -209,7 +209,7 @@ export function PaneTabBar({
 			</div>
 
 			{/* New terminal button */}
-			<div className="shrink-0 pr-1">
+			<div className="app-no-drag shrink-0 pr-1">
 				<button
 					type="button"
 					aria-label="New terminal tab"

@@ -135,7 +135,7 @@ export function QuickActionBar({
 			<button
 				type="button"
 				onClick={onAddClick}
-				className="shrink-0 rounded-[var(--radius-sm)] px-2 py-1 text-[12px] text-[var(--text-quaternary)] transition-colors duration-[var(--transition-fast)] hover:text-[var(--text-secondary)]"
+				className="app-no-drag shrink-0 rounded-[var(--radius-sm)] px-2 py-1 text-[12px] text-[var(--text-quaternary)] transition-colors duration-[var(--transition-fast)] hover:text-[var(--text-secondary)]"
 			>
 				+
 			</button>
@@ -145,7 +145,7 @@ export function QuickActionBar({
 	return (
 		<>
 			<span className="shrink-0 text-[var(--text-quaternary)]">|</span>
-			<div className="flex min-w-0 items-center overflow-x-auto [&::-webkit-scrollbar]:hidden">
+			<div className="app-no-drag flex min-w-0 items-center overflow-x-auto [&::-webkit-scrollbar]:hidden">
 				{actions.map((action) => {
 					const isDragging = dragId === action.id;
 					const isDropTarget = dropTarget === action.id && dragId !== action.id;
@@ -187,7 +187,7 @@ export function QuickActionBar({
 			<button
 				type="button"
 				onClick={onAddClick}
-				className="shrink-0 rounded-[var(--radius-sm)] px-1.5 py-0.5 text-[12px] text-[var(--text-quaternary)] transition-colors duration-[var(--transition-fast)] hover:text-[var(--text-secondary)]"
+				className="app-no-drag shrink-0 rounded-[var(--radius-sm)] px-1.5 py-0.5 text-[12px] text-[var(--text-quaternary)] transition-colors duration-[var(--transition-fast)] hover:text-[var(--text-secondary)]"
 			>
 				+
 			</button>

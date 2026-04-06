@@ -32,7 +32,7 @@ export function BranchChip({ projectId }: { projectId: string }) {
 			type="button"
 			onClick={handleClick}
 			className={[
-				"flex items-center gap-1.5 rounded-[var(--radius-sm)] px-2 py-1 text-[12px] transition-all duration-[var(--transition-fast)]",
+				"app-no-drag flex items-center gap-1.5 rounded-[var(--radius-sm)] px-2 py-1 text-[12px] transition-all duration-[var(--transition-fast)]",
 				isConflict
 					? status?.state === "merging"
 						? "border border-[rgba(255,69,58,0.3)] bg-[rgba(255,69,58,0.05)]"
