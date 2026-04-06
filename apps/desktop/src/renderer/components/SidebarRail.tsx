@@ -7,7 +7,7 @@ import { useProjectStore } from "../stores/projects";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import { CreateBranchFromIssueModal } from "./CreateBranchFromIssueModal";
-import { CreateWorktreeFromPRModal } from "./CreateWorktreeFromPRModal";
+import { type LinkablePR, CreateWorktreeFromPRModal } from "./CreateWorktreeFromPRModal";
 import { ProjectItem } from "./ProjectItem";
 import { PullRequestsTab } from "./PullRequestsTab";
 import { RailFlyout } from "./RailFlyout";
@@ -559,7 +559,7 @@ function RailPRsSection({ flyout, openFlyout, scheduleDismiss, onExpand }: RailS
 		}
 	}, []);
 
-	const [openModalPR, setOpenModalPR] = useState<GitHubPR | null>(null);
+	const [openModalPR, setOpenModalPR] = useState<LinkablePR | null>(null);
 	const [prPopover, setPrPopover] = useState<{
 		position: { x: number; y: number };
 		githubPR: GitHubPR;
@@ -699,7 +699,16 @@ function RailPRsSection({ flyout, openFlyout, scheduleDismiss, onExpand }: RailS
 											window.electron.shell.openExternal(pr.url);
 										} else if (pr.githubPR) {
 											if (!linked || linked.length === 0) {
-												setOpenModalPR(pr.githubPR);
+												const ghPR = pr.githubPR;
+												if (ghPR) {
+													setOpenModalPR({
+														repoOwner: ghPR.repoOwner,
+														repoName: ghPR.repoName,
+														number: ghPR.number,
+														title: ghPR.title,
+														branchName: ghPR.branchName,
+													});
+												}
 											} else if (linked.length === 1 && linked[0]) {
 												navigateToWorkspace(linked[0], pr.githubPR);
 											} else {
@@ -759,8 +768,15 @@ function RailPRsSection({ flyout, openFlyout, scheduleDismiss, onExpand }: RailS
 					onClose={() => setPrPopover(null)}
 					onCreateBranch={() => {
 						setPrPopover(null);
-						if (prPopover.githubPR) {
-							setOpenModalPR(prPopover.githubPR);
+						const ghPR = prPopover.githubPR;
+						if (ghPR) {
+							setOpenModalPR({
+								repoOwner: ghPR.repoOwner,
+								repoName: ghPR.repoName,
+								number: ghPR.number,
+								title: ghPR.title,
+								branchName: ghPR.branchName,
+							});
 						}
 					}}
 				/>

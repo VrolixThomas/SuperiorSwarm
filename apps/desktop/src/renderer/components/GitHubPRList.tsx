@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { GitHubPR } from "../../main/github/github";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
-import { CreateWorktreeFromPRModal } from "./CreateWorktreeFromPRModal";
+import { type LinkablePR, CreateWorktreeFromPRModal } from "./CreateWorktreeFromPRModal";
 import { type LinkedWorkspace, WorkspacePopover } from "./WorkspacePopover";
 
 // ── Review decision badge ────────────────────────────────────────────────────
@@ -236,7 +236,7 @@ function GroupLabel({ label }: { label: string }) {
 
 export function GitHubPRList() {
 	const utils = trpc.useUtils();
-	const [openModalPR, setOpenModalPR] = useState<GitHubPR | null>(null);
+	const [openModalPR, setOpenModalPR] = useState<LinkablePR | null>(null);
 	const [linkError, setLinkError] = useState<string | null>(null);
 	const [popover, setPopover] = useState<{
 		position: { x: number; y: number };
@@ -302,7 +302,7 @@ export function GitHubPRList() {
 	}, []);
 
 	const handleLink = async (pr: GitHubPR) => {
-		const projects = await utils.github.getProjectsByRepo.fetch({
+		const projects = await utils.projects.getByRepo.fetch({
 			owner: pr.repoOwner,
 			repo: pr.repoName,
 		});
@@ -312,8 +312,13 @@ export function GitHubPRList() {
 			return;
 		}
 		setLinkError(null);
-
-		setOpenModalPR(pr);
+		setOpenModalPR({
+			repoOwner: pr.repoOwner,
+			repoName: pr.repoName,
+			number: pr.number,
+			title: pr.title,
+			branchName: pr.branchName,
+		});
 	};
 
 	if (isLoading && !prs) {
