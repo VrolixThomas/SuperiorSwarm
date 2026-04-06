@@ -28,6 +28,7 @@ export const aiReviewRouter = router({
 			z.object({
 				cliPreset: z.enum(["claude", "gemini", "codex", "opencode"]).optional(),
 				autoReviewEnabled: z.boolean().optional(),
+				autoReReviewOnCommit: z.boolean().optional(),
 				skipPermissions: z.boolean().optional(),
 				customPrompt: z.string().nullable().optional(),
 				maxConcurrentReviews: z.number().min(1).max(10).optional(),
@@ -45,6 +46,8 @@ export const aiReviewRouter = router({
 			if (input.cliPreset !== undefined) updates.cliPreset = input.cliPreset;
 			if (input.autoReviewEnabled !== undefined)
 				updates.autoReviewEnabled = input.autoReviewEnabled ? 1 : 0;
+			if (input.autoReReviewOnCommit !== undefined)
+				updates.autoReReviewOnCommit = input.autoReReviewOnCommit ? 1 : 0;
 			if (input.skipPermissions !== undefined)
 				updates.skipPermissions = input.skipPermissions ? 1 : 0;
 			if (input.customPrompt !== undefined) {
