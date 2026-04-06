@@ -28,7 +28,10 @@ export function shouldAutoTriggerReview(args: {
 }
 
 type AutoTriggerDeps = {
-	getSettings: () => { autoReviewEnabled: number | boolean; autoReReviewOnCommit?: number | boolean };
+	getSettings: () => {
+		autoReviewEnabled: number | boolean;
+		autoReReviewOnCommit?: number | boolean;
+	};
 	getReviewDrafts: () => ReviewDraft[];
 	getProjectIdByRepo: (repoOwner: string, repoName: string) => string;
 	ensureReviewWorkspace: (opts: {
@@ -170,8 +173,7 @@ export async function maybeAutoReReview(args: {
 	const drafts = deps.getReviewDrafts();
 	const activeDraft = drafts.find(
 		(d) =>
-			d.prIdentifier === args.pr.identifier &&
-			(d.status === "queued" || d.status === "in_progress")
+			d.prIdentifier === args.pr.identifier && (d.status === "queued" || d.status === "in_progress")
 	);
 	if (activeDraft) return null;
 

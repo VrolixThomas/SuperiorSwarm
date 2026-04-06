@@ -4,8 +4,6 @@ import { isAbsolute, join, resolve } from "node:path";
 import { and, eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { z } from "zod";
-import { BitbucketAdapter } from "../../providers/bitbucket-adapter";
-import { GitHubAdapter } from "../../providers/github-adapter";
 import { getDb } from "../../db";
 import { projects, workspaces } from "../../db/schema";
 import {
@@ -17,6 +15,8 @@ import {
 	parseRemoteUrl,
 	validateGitUrl,
 } from "../../git/operations";
+import { BitbucketAdapter } from "../../providers/bitbucket-adapter";
+import { GitHubAdapter } from "../../providers/github-adapter";
 import { publicProcedure, router } from "../index";
 
 const PROJECT_COLORS = [
@@ -84,8 +84,7 @@ export const projectsRouter = router({
 			})
 		)
 		.query(async ({ input }) => {
-			const adapter =
-				input.provider === "github" ? new GitHubAdapter() : new BitbucketAdapter();
+			const adapter = input.provider === "github" ? new GitHubAdapter() : new BitbucketAdapter();
 			return adapter.getPRDetails(input.owner, input.repo, input.number);
 		}),
 

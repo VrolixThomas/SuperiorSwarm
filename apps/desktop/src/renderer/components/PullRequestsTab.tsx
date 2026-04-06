@@ -7,7 +7,7 @@ import { useAgentAlertStore } from "../stores/agent-alert-store";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import { ConnectBanner } from "./ConnectBanner";
-import { type LinkablePR, CreateWorktreeFromPRModal } from "./CreateWorktreeFromPRModal";
+import { CreateWorktreeFromPRModal, type LinkablePR } from "./CreateWorktreeFromPRModal";
 import { SwarmIndicator } from "./WorkspaceItem";
 import { type LinkedWorkspace, WorkspacePopover } from "./WorkspacePopover";
 
@@ -115,14 +115,12 @@ function RichPRItem({
 	const targetBranch = enriched ? undefined : pr.bitbucketPR?.destination?.branch?.name;
 	const project = pr.githubPR
 		? projectsList?.find(
-				(p) =>
-					p.remoteOwner === pr.githubPR!.repoOwner && p.remoteRepo === pr.githubPR!.repoName
+				(p) => p.remoteOwner === pr.githubPR!.repoOwner && p.remoteRepo === pr.githubPR!.repoName
 			)
 		: pr.bitbucketPR
 			? projectsList?.find(
 					(p) =>
-						p.remoteOwner === pr.bitbucketPR!.workspace &&
-						p.remoteRepo === pr.bitbucketPR!.repoSlug
+						p.remoteOwner === pr.bitbucketPR!.workspace && p.remoteRepo === pr.bitbucketPR!.repoSlug
 				)
 			: undefined;
 	const resolvedTarget = targetBranch ?? project?.defaultBranch ?? "main";
@@ -797,9 +795,7 @@ export function PullRequestsTab() {
 				repo: pr.repoName,
 			});
 			if (projects.length === 0) {
-				setLinkError(
-					`Repository ${pr.repoOwner}/${pr.repoName} is not tracked in SuperiorSwarm.`
-				);
+				setLinkError(`Repository ${pr.repoOwner}/${pr.repoName} is not tracked in SuperiorSwarm.`);
 				return;
 			}
 			setLinkError(null);

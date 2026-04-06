@@ -1,18 +1,18 @@
+import type { GitHubPRDetails } from "../../shared/github-types";
 import { getValidToken } from "../github/auth";
 import {
 	addReviewThreadReply,
 	createReviewThread,
+	getPRDetails as getGitHubPRDetails,
 	getGitHubReviewThreads,
 	getMyPRs,
 	getPRComments,
 	getPRFiles,
 	getPRState,
-	getPRDetails as getGitHubPRDetails,
 	resolveThread,
 	submitReview,
 	unresolveThread,
 } from "../github/github";
-import type { GitHubPRDetails } from "../../shared/github-types";
 import type {
 	CreateCommentParams,
 	GitProvider,

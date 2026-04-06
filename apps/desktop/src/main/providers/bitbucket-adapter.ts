@@ -271,11 +271,7 @@ export class BitbucketAdapter implements GitProvider {
 
 	// ── Bitbucket-specific extras ─────────────────────────────────────────────
 
-	async getPRDetails(
-		owner: string,
-		repo: string,
-		prNumber: number
-	): Promise<GitHubPRDetails> {
+	async getPRDetails(owner: string, repo: string, prNumber: number): Promise<GitHubPRDetails> {
 		const [prData, statuses, comments, files, prState] = await Promise.all([
 			getBitbucketPRDetails(owner, repo, prNumber),
 			getBitbucketPRStatuses(owner, repo, prNumber),
@@ -284,9 +280,7 @@ export class BitbucketAdapter implements GitProvider {
 			this.getPRState(owner, repo, prNumber),
 		]);
 
-		const reviewerParticipants = prData.participants.filter(
-			(p) => p.role === "REVIEWER"
-		);
+		const reviewerParticipants = prData.participants.filter((p) => p.role === "REVIEWER");
 		const reviewers = reviewerParticipants.map(mapParticipantToReviewer);
 		const ciState = aggregateCIState(statuses);
 		const reviewDecision = deriveReviewDecision(reviewers);

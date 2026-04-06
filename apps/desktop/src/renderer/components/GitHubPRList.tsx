@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { GitHubPR } from "../../main/github/github";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
-import { type LinkablePR, CreateWorktreeFromPRModal } from "./CreateWorktreeFromPRModal";
+import { CreateWorktreeFromPRModal, type LinkablePR } from "./CreateWorktreeFromPRModal";
 import { type LinkedWorkspace, WorkspacePopover } from "./WorkspacePopover";
 
 // ── Review decision badge ────────────────────────────────────────────────────
