@@ -4,7 +4,7 @@ import { usePaneStore } from "../../stores/pane-store";
 import { useTabStore } from "../../stores/tab-store";
 import { trpc } from "../../trpc/client";
 import { PageHeading, SectionLabel } from "./SectionHeading";
-import { Stat, shortPath } from "./shared";
+import { ErrorBanner, Stat, shortPath } from "./shared";
 
 type SortMode = "by-workspace" | "by-status";
 
@@ -178,18 +178,7 @@ export function TerminalsSettings() {
 				<Stat label="DB rows" value={dbQuery.data?.sessions.length ?? "?"} />
 			</div>
 
-			{error && (
-				<div className="mb-4 flex items-center justify-between rounded-[8px] border border-[rgba(255,69,58,0.3)] bg-[rgba(255,69,58,0.08)] px-3 py-2 text-[11px] text-[#ff453a]">
-					<span>{error}</span>
-					<button
-						type="button"
-						onClick={() => setError(null)}
-						className="ml-2 text-[var(--text-quaternary)] hover:text-[var(--text-secondary)]"
-					>
-						Dismiss
-					</button>
-				</div>
-			)}
+			{error && <ErrorBanner message={error} onDismiss={() => setError(null)} />}
 
 			{/* Controls */}
 			<div className="mb-4 flex items-center justify-between">

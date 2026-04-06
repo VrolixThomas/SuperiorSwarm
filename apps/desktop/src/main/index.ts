@@ -15,21 +15,21 @@ import {
 } from "./ai-review/pr-poller";
 import { getDb, initializeDatabase } from "./db";
 import * as schema from "./db/schema";
-import { listQuickActions } from "./trpc/routers/quick-actions";
 import {
 	type SessionSaveData,
 	savePaneLayouts,
 	saveTerminalSessions,
 } from "./db/session-persistence";
 import { setupLspIPC } from "./lsp/ipc-handler";
-import { syncShortcuts } from "./quick-actions/shortcuts";
 import { serverManager } from "./lsp/server-manager";
+import { syncShortcuts } from "./quick-actions/shortcuts";
 import { DaemonClient } from "./terminal/daemon-client";
 import { setDaemonClient } from "./terminal/daemon-instance";
 import { setupTerminalIPC } from "./terminal/ipc";
 import { cleanupStaleDaemons } from "./terminal/stale-daemon-cleanup";
 import { setupTRPCIPC } from "./trpc/ipc-link";
 import { appRouter } from "./trpc/routers";
+import { listQuickActions } from "./trpc/routers/quick-actions";
 import { initializeUpdater } from "./updater";
 
 let mainWindow: BrowserWindow | null = null;

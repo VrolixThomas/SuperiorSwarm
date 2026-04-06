@@ -63,9 +63,7 @@ function checkIdle(): void {
 			devOrphanTimer = setTimeout(() => {
 				devOrphanTimer = null;
 				if (socketServer.clientCount > 0) return; // client reconnected
-				console.log(
-					`[daemon] dev mode: disposing ${ptyManager.terminalCount} orphaned PTY(s)`
-				);
+				console.log(`[daemon] dev mode: disposing ${ptyManager.terminalCount} orphaned PTY(s)`);
 				socketServer.flush();
 				ptyManager.disposeAll();
 			}, DEV_ORPHAN_GRACE_MS);
