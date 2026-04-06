@@ -67,14 +67,20 @@ const defaultDeps: AutoTriggerDeps = {
 
 		if (match?.id) return match.id;
 
-		const allProjects = db.select().from(schema.projects).all();
+		const allProjects = db.select().from(schema.projects).orderBy(schema.projects.id).all();
 		const repoNameLower = repoName.toLowerCase();
 		const ownerLower = repoOwner.toLowerCase();
-		const fallback = allProjects.find((project) =>
-			project.repoPath.toLowerCase().includes(`${ownerLower}/${repoNameLower}`)
+		const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+		const needlePattern = new RegExp(
+			`(^|/)${escapeRegExp(ownerLower)}/${escapeRegExp(repoNameLower)}(/|$)`
+		);
+		const fallbackMatches = allProjects.filter((project) =>
+			needlePattern.test(project.repoPath.toLowerCase())
 		);
 
-		return fallback?.id ?? "";
+		if (fallbackMatches.length !== 1) return "";
+
+		return fallbackMatches[0]?.id ?? "";
 	},
 	ensureReviewWorkspace,
 	queueReview,
