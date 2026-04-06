@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { shouldAutoTriggerReview } from "../src/main/ai-review/auto-trigger";
+import {
+	maybeAutoTriggerReview,
+	shouldAutoTriggerReview,
+} from "../src/main/ai-review/auto-trigger";
 import { ensureReviewWorkspace } from "../src/main/ai-review/review-workspace";
 import type { CachedPR } from "../src/shared/review-types";
 
@@ -103,5 +106,125 @@ describe("auto-trigger decision", () => {
 			alreadyTriggered: new Set(),
 		});
 		expect(shouldTrigger).toBe(true);
+	});
+
+	test("maybeAutoTriggerReview skips when disabled", async () => {
+		const calls: string[] = [];
+		const result = await maybeAutoTriggerReview({
+			pr: basePr,
+			deps: {
+				getSettings: () => ({ autoReviewEnabled: 0 }),
+				getReviewDrafts: () => [],
+				getProjectIdByRepo: () => basePr.projectId,
+				ensureReviewWorkspace: async () => {
+					calls.push("ensure");
+					return { workspaceId: "ws-1", worktreePath: "/tmp/ws" };
+				},
+				queueReview: async () => {
+					calls.push("queue");
+					return {
+						draftId: "draft-1",
+						reviewWorkspaceId: "ws-1",
+						worktreePath: "/tmp/ws",
+						launchScript: "/tmp/ws/start.sh",
+					};
+				},
+				alreadyTriggered: new Set(),
+			},
+		});
+
+		expect(result).toBe(null);
+		expect(calls).toEqual([]);
+	});
+
+	test("maybeAutoTriggerReview queues reviewer PRs", async () => {
+		const ensureCalls: Array<{
+			projectId: string;
+			prProvider: string;
+			prIdentifier: string;
+			prTitle: string;
+			sourceBranch: string;
+			targetBranch: string;
+		}> = [];
+		const queueCalls: Array<{
+			prProvider: string;
+			prIdentifier: string;
+			prTitle: string;
+			prAuthor: string;
+			sourceBranch: string;
+			targetBranch: string;
+			workspaceId: string;
+			worktreePath: string;
+		}> = [];
+		const alreadyTriggered = new Set<string>();
+
+		const result = await maybeAutoTriggerReview({
+			pr: basePr,
+			deps: {
+				getSettings: () => ({ autoReviewEnabled: 1 }),
+				getReviewDrafts: () => [],
+				getProjectIdByRepo: () => basePr.projectId,
+				ensureReviewWorkspace: async (opts: {
+					projectId: string;
+					prProvider: string;
+					prIdentifier: string;
+					prTitle: string;
+					sourceBranch: string;
+					targetBranch: string;
+				}) => {
+					ensureCalls.push(opts);
+					return { workspaceId: "ws-1", worktreePath: "/tmp/ws" };
+				},
+				queueReview: async (opts: {
+					prProvider: string;
+					prIdentifier: string;
+					prTitle: string;
+					prAuthor: string;
+					sourceBranch: string;
+					targetBranch: string;
+					workspaceId: string;
+					worktreePath: string;
+				}) => {
+					queueCalls.push(opts);
+					return {
+						draftId: "draft-1",
+						reviewWorkspaceId: "ws-1",
+						worktreePath: "/tmp/ws",
+						launchScript: "/tmp/ws/start.sh",
+					};
+				},
+				alreadyTriggered,
+			},
+		});
+
+		expect(result).toEqual({
+			draftId: "draft-1",
+			reviewWorkspaceId: "ws-1",
+			worktreePath: "/tmp/ws",
+			launchScript: "/tmp/ws/start.sh",
+		});
+		expect(ensureCalls).toEqual([
+			{
+				projectId: basePr.projectId,
+				prProvider: basePr.provider,
+				prIdentifier: basePr.identifier,
+				prTitle: basePr.title,
+				sourceBranch: basePr.sourceBranch,
+				targetBranch: basePr.targetBranch,
+			},
+		]);
+		expect(queueCalls).toEqual([
+			{
+				prProvider: basePr.provider,
+				prIdentifier: basePr.identifier,
+				prTitle: basePr.title,
+				prAuthor: basePr.author.login,
+				sourceBranch: basePr.sourceBranch,
+				targetBranch: basePr.targetBranch,
+				workspaceId: "ws-1",
+				worktreePath: "/tmp/ws",
+			},
+		]);
+		expect(alreadyTriggered.has(basePr.identifier)).toBe(true);
 	});
 });
