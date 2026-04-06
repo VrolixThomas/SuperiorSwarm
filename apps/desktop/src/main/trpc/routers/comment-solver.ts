@@ -139,6 +139,15 @@ export const commentSolverRouter = router({
 				.all();
 		}),
 
+	getPendingCommentEvents: publicProcedure.query(() => {
+		const db = getDb();
+		return db
+			.select()
+			.from(schema.commentEvents)
+			.where(eq(schema.commentEvents.status, "pending"))
+			.all();
+	}),
+
 	/**
 	 * Get a single solve session assembled with groups, comments, and replies.
 	 */
