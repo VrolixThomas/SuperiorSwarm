@@ -530,13 +530,15 @@ export function PullRequestsTab() {
 			const key = `${pr.workspace}/${pr.repoSlug}#${pr.id}`;
 			if (seenBb.has(key)) continue;
 			seenBb.add(key);
+			// Skip merged or declined PRs (stale cache)
+			if (pr.state === "MERGED" || pr.state === "DECLINED") continue;
 			merged.push({
 				provider: "bitbucket",
 				id: `bb-${pr.workspace}-${pr.repoSlug}-${pr.id}`,
 				number: pr.id,
 				title: pr.title,
 				url: pr.webUrl,
-				state: pr.state === "MERGED" ? "merged" : pr.state === "DECLINED" ? "closed" : "open",
+				state: "open",
 				isDraft: false,
 				repoKey: `${pr.workspace}/${pr.repoSlug}`,
 				repoDisplay: `${pr.workspace}/${pr.repoSlug}`,
@@ -547,13 +549,15 @@ export function PullRequestsTab() {
 		// GitHub PRs — only PRs where the user is a reviewer, not authored PRs
 		for (const pr of ghPRs ?? []) {
 			if (pr.role !== "reviewer") continue;
+			// Skip closed PRs (stale cache)
+			if (pr.state === "closed") continue;
 			merged.push({
 				provider: "github",
 				id: `gh-${pr.repoOwner}-${pr.repoName}-${pr.number}`,
 				number: pr.number,
 				title: pr.title,
 				url: pr.url,
-				state: pr.state === "closed" ? "closed" : "open",
+				state: "open",
 				isDraft: pr.isDraft,
 				repoKey: `${pr.repoOwner}/${pr.repoName}`,
 				repoDisplay: `${pr.repoOwner}/${pr.repoName}`,
