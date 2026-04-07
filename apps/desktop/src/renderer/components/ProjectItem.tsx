@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Project } from "../../main/db/schema";
 import { useProjectStore } from "../stores/projects";
 import { trpc } from "../trpc/client";
@@ -27,21 +27,46 @@ export function ProjectItem({
 		{ enabled: isCloning, refetchInterval: 1000 }
 	);
 
-	// Poll project status to detect when clone completes
+	// Poll project status to detect when clone completes.
+	// IMPORTANT: do NOT put `invalidate()` in a `select` callback — TanStack Query v5
+	// re-runs `select` on every render when the function reference changes (which it
+	// does for inline arrows), creating an infinite invalidate→refetch→render loop.
+	// (See queryObserver.cjs:253-267 — the memoization check requires
+	// `options.select === _selectFn`, which fails for inline arrows.)
+	// Instead, observe the polled status in a `useEffect` and invalidate once per
+	// cloning episode.
 	const utils = trpc.useUtils();
-	trpc.projects.getById.useQuery(
+	const projectStatusQuery = trpc.projects.getById.useQuery(
 		{ id: project.id },
 		{
 			enabled: isCloning,
 			refetchInterval: 2000,
-			select: (data) => {
-				if (data && data.status !== "cloning") {
-					utils.projects.list.invalidate();
-				}
-				return data;
-			},
 		}
 	);
+
+	// Fire `projects.list.invalidate()` exactly once per cloning episode, the
+	// first time the polled status reads as non-cloning. The ref resets whenever
+	// `isCloning` flips back to false (i.e. the parent has picked up the new
+	// status), so a future re-clone of the same project still works.
+	//
+	// We deliberately do NOT require observing a `cloning → ready` transition:
+	// the cache for `getById({id})` may already be warm with `status="ready"`
+	// from `CreateWorktreeModal` or `SharedFilesPanel`, in which case the very
+	// first read after this `ProjectItem` enters cloning mode will already be
+	// non-cloning. We still want to fire once in that case so the parent's
+	// `projects.list` refetches and the sidebar transitions out of "Cloning…".
+	const hasInvalidatedRef = useRef(false);
+	useEffect(() => {
+		if (!isCloning) {
+			hasInvalidatedRef.current = false;
+			return;
+		}
+		const status = projectStatusQuery.data?.status;
+		if (status && status !== "cloning" && !hasInvalidatedRef.current) {
+			hasInvalidatedRef.current = true;
+			utils.projects.list.invalidate();
+		}
+	}, [isCloning, projectStatusQuery.data?.status, utils]);
 
 	// Fetch workspaces when expanded and project is ready
 	const { data: workspacesList } = trpc.workspaces.listByProject.useQuery(

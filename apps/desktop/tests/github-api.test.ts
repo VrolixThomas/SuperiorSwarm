@@ -1,6 +1,6 @@
 import "./preload-electron-mock";
 import { describe, expect, test } from "bun:test";
-import { mapCommentNode, mapPRNode } from "../src/main/github/github";
+import { mapCommentNode, mapPRNode, paginateGitHubSearch } from "../src/main/github/github";
 
 describe("mapPRNode", () => {
 	test("maps an authored PR node to GitHubPR", () => {
@@ -107,5 +107,49 @@ describe("mapCommentNode", () => {
 			path: "src/auth.ts",
 			line: 47,
 		});
+	});
+});
+
+describe("paginateGitHubSearch", () => {
+	test("returns items from a single page", async () => {
+		const result = await paginateGitHubSearch<string>(async (page) => {
+			expect(page).toBe(1);
+			return { items: ["a", "b"], hasNext: false };
+		});
+		expect(result).toEqual(["a", "b"]);
+	});
+
+	test("walks pages until hasNext becomes false", async () => {
+		const pages: Record<number, { items: string[]; hasNext: boolean }> = {
+			1: { items: ["a", "b"], hasNext: true },
+			2: { items: ["c", "d"], hasNext: true },
+			3: { items: ["e"], hasNext: false },
+		};
+		const visited: number[] = [];
+		const result = await paginateGitHubSearch<string>(async (page) => {
+			visited.push(page);
+			return pages[page] ?? { items: [], hasNext: false };
+		});
+		expect(result).toEqual(["a", "b", "c", "d", "e"]);
+		expect(visited).toEqual([1, 2, 3]);
+	});
+
+	test("throws if any page throws (strict failure)", async () => {
+		await expect(
+			paginateGitHubSearch<string>(async (page) => {
+				if (page === 2) throw new Error("page 2 failed");
+				return { items: ["a"], hasNext: true };
+			})
+		).rejects.toThrow("page 2 failed");
+	});
+
+	test("hard-stops at page 10 even if hasNext is still true", async () => {
+		const visited: number[] = [];
+		const result = await paginateGitHubSearch<string>(async (page) => {
+			visited.push(page);
+			return { items: [`p${page}`], hasNext: true };
+		});
+		expect(visited).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+		expect(result).toHaveLength(10);
 	});
 });

@@ -267,32 +267,160 @@ export interface CommitInfo {
 export async function getCommitsAhead(repoPath: string, baseBranch: string): Promise<CommitInfo[]> {
 	const git = simpleGit(repoPath);
 
-	// Get commits between base and HEAD
-	const log = await git.log({
-		from: baseBranch,
-		to: "HEAD",
-		format: { hash: "%H", shortHash: "%h", message: "%s", time: "%ar" },
-	});
+	// Single `git log --raw --numstat` call replaces the previous N-per-commit
+	// `git diff` fan-out. Hunks are omitted intentionally — see parseCommitsAhead
+	// below for the rationale.
+	const raw = await git.raw([
+		"log",
+		`${baseBranch}..HEAD`,
+		"--raw",
+		"--numstat",
+		"-M",
+		"--no-color",
+		"--format=__C__|%H|%h|%ar|%s",
+	]);
 
+	return parseCommitsAhead(raw);
+}
+
+/**
+ * Parse the combined `git log --raw --numstat --format=__C__|...` output into
+ * `CommitInfo[]`. Pure function — exported so the parsing logic is unit-tested
+ * independently of `simple-git`.
+ *
+ * Output shape produced by `git log <base>..HEAD --raw --numstat -M
+ * --no-color --format=__C__|%H|%h|%ar|%s`:
+ *
+ *   __C__|<hash>|<shortHash>|<relTime>|<subject>
+ *   <blank>
+ *   :<srcMode> <dstMode> <srcSha> <dstSha> <STATUS>\t<path>          (raw)
+ *   :<srcMode> <dstMode> <srcSha> <dstSha> R<score>\t<old>\t<new>    (rename)
+ *   <adds>\t<dels>\t<path>                                          (numstat)
+ *   -\t-\t<path>                                                    (binary)
+ *
+ * The raw block lists files first (one line per file), then the numstat block
+ * lists the same files (one line per file). We build the file array from the
+ * raw block (which is the only place rename old→new survives), index the
+ * numstat additions/deletions by path, then merge.
+ *
+ * Status letters mapped to the renderer's `STATUS_DOT_COLORS` palette
+ * (see `apps/desktop/src/renderer/components/CommittedStack.tsx:7`):
+ *   A → "added", D → "deleted", M → "modified", R → "renamed",
+ *   C/T/anything else → "modified" (the renderer doesn't have a colour for
+ *   copies or type-changes; collapsing to "modified" preserves the dot).
+ *
+ * Hunks are intentionally `[]` — `CommitCard` and `PRCommitCard` never read
+ * them, and including them was the cause of the 2026-04-07 PR-rail freeze
+ * (see docs/superpowers/plans/2026-04-07-commits-ahead-payload-fix.md).
+ */
+export function parseCommitsAhead(raw: string): CommitInfo[] {
 	const commits: CommitInfo[] = [];
-	for (const entry of log.all) {
-		// Get diff for each commit
-		const rawDiff = await git.diff([`${entry.hash}~1..${entry.hash}`, "--unified=0", "--no-color"]);
-		const files = parseUnifiedDiff(rawDiff);
-		const additions = files.reduce((sum, f) => sum + f.additions, 0);
-		const deletions = files.reduce((sum, f) => sum + f.deletions, 0);
+	let current: CommitInfo | null = null;
+	let numstatByPath: Map<string, { additions: number; deletions: number }> | null = null;
 
-		commits.push({
-			hash: entry.hash,
-			shortHash: entry.shortHash,
-			message: entry.message,
-			time: entry.time,
-			additions,
-			deletions,
-			files,
-		});
+	const finalize = () => {
+		if (!current || !numstatByPath) return;
+		for (const file of current.files) {
+			const stat = numstatByPath.get(file.path);
+			if (!stat) continue;
+			file.additions = stat.additions;
+			file.deletions = stat.deletions;
+			current.additions += stat.additions;
+			current.deletions += stat.deletions;
+		}
+	};
+
+	for (const line of raw.split("\n")) {
+		if (line.startsWith("__C__|")) {
+			finalize();
+			const parts = line.slice("__C__|".length).split("|");
+			const [hash = "", shortHash = "", time = "", ...messageParts] = parts;
+			current = {
+				hash,
+				shortHash,
+				message: messageParts.join("|"),
+				time,
+				additions: 0,
+				deletions: 0,
+				files: [],
+			};
+			numstatByPath = new Map();
+			commits.push(current);
+			continue;
+		}
+		if (!current || !numstatByPath) continue;
+		if (!line.trim()) continue;
+
+		if (line.startsWith(":")) {
+			// Raw line: ":<modes...> <STATUS>\t<path>" or rename:
+			// "...R<score>\t<old>\t<new>". The status token is the last
+			// whitespace-separated field of the header (everything before
+			// the first tab) — its first character is the status letter
+			// (R/C may carry a similarity score, e.g. "R100").
+			const tabSplit = line.split("\t");
+			const header = tabSplit[0] ?? "";
+			const headerTokens = header.split(/\s+/);
+			const statusToken = headerTokens[headerTokens.length - 1] ?? "";
+			const statusChar = statusToken.charAt(0);
+			const file: DiffFile = {
+				path: "",
+				status: "modified",
+				additions: 0,
+				deletions: 0,
+				hunks: [],
+			};
+			if (statusChar === "A") {
+				file.status = "added";
+				file.path = tabSplit[1] ?? "";
+			} else if (statusChar === "D") {
+				file.status = "deleted";
+				file.path = tabSplit[1] ?? "";
+			} else if (statusChar === "M") {
+				file.status = "modified";
+				file.path = tabSplit[1] ?? "";
+			} else if (statusChar === "R") {
+				file.status = "renamed";
+				file.oldPath = tabSplit[1];
+				file.path = tabSplit[2] ?? "";
+			} else if (statusChar === "C") {
+				file.status = "modified";
+				file.path = tabSplit[2] ?? "";
+			} else {
+				file.status = "modified";
+				file.path = tabSplit[1] ?? "";
+			}
+
+			if (file.path) current.files.push(file);
+			continue;
+		}
+
+		// Numstat line: "<adds>\t<dels>\t<path>" — binary uses "-\t-\t<path>",
+		// renames may use "0\t0\t<old> => <new>" or compact `{old => new}`.
+		const tabs = line.split("\t");
+		if (tabs.length < 3) continue;
+		const addStr = tabs[0] ?? "";
+		const delStr = tabs[1] ?? "";
+		const rawPath = tabs.slice(2).join("\t");
+		const additions = addStr === "-" ? 0 : Number.parseInt(addStr, 10) || 0;
+		const deletions = delStr === "-" ? 0 : Number.parseInt(delStr, 10) || 0;
+
+		// Normalise rename paths so they line up with the raw block's path.
+		// `--raw -M` puts the new path in the raw entry, so we want the same
+		// here. Compact `{old => new}` collapses to `new`; bare `old => new`
+		// also collapses to `new`.
+		const renameMatch = rawPath.match(/^(.*)\{(.*) => (.*)\}(.*)$/);
+		let path = rawPath;
+		if (renameMatch) {
+			const [, prefix = "", , newPart = "", suffix = ""] = renameMatch;
+			path = `${prefix}${newPart}${suffix}`.replace(/\/\//g, "/");
+		} else if (rawPath.includes(" => ")) {
+			path = rawPath.split(" => ")[1] ?? rawPath;
+		}
+
+		numstatByPath.set(path, { additions, deletions });
 	}
 
+	finalize();
 	return commits;
 }
 

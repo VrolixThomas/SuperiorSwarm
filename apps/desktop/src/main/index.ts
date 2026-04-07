@@ -217,8 +217,6 @@ app.whenReady().then(async () => {
 	startCommentPoller();
 
 	onNewPRDetected((pr) => {
-		broadcastToWindows("new-pr-review-request", pr);
-
 		void maybeAutoTriggerReview({ pr }).catch((err) => {
 			log.error("[ai-review] Auto-trigger failed:", err);
 		});
@@ -236,7 +234,6 @@ app.whenReady().then(async () => {
 			if (wsId) {
 				await cleanupReviewWorkspace(wsId);
 			}
-			broadcastToWindows("pr-closed", pr);
 		} catch (err) {
 			log.error("[main] Error handling PR closed event:", err);
 		}
