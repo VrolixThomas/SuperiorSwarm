@@ -130,6 +130,16 @@ export function AIReviewSettings() {
 					}
 				/>
 				<ToggleRow
+					label="Auto Re-review on New Commits"
+					description="Automatically re-review when new commits are pushed to a PR"
+					checked={aiSettings?.autoReReviewOnCommit ?? false}
+					onChange={() =>
+						updateAiSettings.mutate({
+							autoReReviewOnCommit: !aiSettings?.autoReReviewOnCommit,
+						})
+					}
+				/>
+				<ToggleRow
 					label="Auto-accept tool calls"
 					description="Skip permission prompts during AI review"
 					checked={aiSettings?.skipPermissions ?? true}

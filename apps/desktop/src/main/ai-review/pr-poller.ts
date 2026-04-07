@@ -1,3 +1,4 @@
+import { and, eq } from "drizzle-orm";
 import type { CachedPR } from "../../shared/review-types";
 import { getDb } from "../db";
 import { projects } from "../db/schema";
@@ -12,6 +13,7 @@ const prCache = new Map<string, CachedPR>();
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 let onNewPRHandler: ((pr: CachedPR) => void) | null = null;
 let onPRClosedHandler: ((pr: CachedPR) => void) | null = null;
+let onPRCommitChangedHandler: ((pr: CachedPR, previousSha: string) => void) | null = null;
 
 // ── Public event registration ──────────────────────────────────────────────────
 
@@ -21,6 +23,10 @@ export function onNewPRDetected(handler: (pr: CachedPR) => void): void {
 
 export function onPRClosedDetected(handler: (pr: CachedPR) => void): void {
 	onPRClosedHandler = handler;
+}
+
+export function onPRCommitChanged(handler: (pr: CachedPR, previousSha: string) => void): void {
+	onPRCommitChangedHandler = handler;
 }
 
 // ── Cache access ───────────────────────────────────────────────────────────────
@@ -37,19 +43,19 @@ export function getCachedPRs(projectId?: string): CachedPR[] {
 
 function getProjectIdByRepo(owner: string, repoName: string): string {
 	const db = getDb();
+
+	// Fast indexed lookup first
+	const exact = db
+		.select({ id: projects.id })
+		.from(projects)
+		.where(and(eq(projects.remoteOwner, owner), eq(projects.remoteRepo, repoName)))
+		.get();
+	if (exact?.id) return exact.id;
+
+	// Fallback: path-based matching
 	const allProjects = db.select().from(projects).all();
-	const match = allProjects.find((p) => {
-		// Match GitHub owner/repo
-		if (
-			p.githubOwner?.toLowerCase() === owner.toLowerCase() &&
-			p.githubRepo?.toLowerCase() === repoName.toLowerCase()
-		) {
-			return true;
-		}
-		// Match Bitbucket workspace/slug via repo path
-		const path = p.repoPath.toLowerCase();
-		return path.includes(`${owner.toLowerCase()}/${repoName.toLowerCase()}`);
-	});
+	const needle = `${owner.toLowerCase()}/${repoName.toLowerCase()}`;
+	const match = allProjects.find((p) => p.repoPath.toLowerCase().includes(needle));
 	return match?.id ?? "";
 }
 
@@ -76,6 +82,8 @@ function toCachedPR(pr: NormalizedPR, provider: string): CachedPR {
 		repoOwner: pr.repoOwner,
 		repoName: pr.repoName,
 		projectId: getProjectIdByRepo(pr.repoOwner, pr.repoName),
+		role: pr.role,
+		headCommitSha: pr.headCommitSha,
 	};
 }
 
@@ -98,6 +106,21 @@ async function fetchAllPRs(): Promise<CachedPR[]> {
 			console.error(`[pr-poller] ${provider.name} fetch failed:`, err);
 		}
 	}
+
+	// Enrich with head commit SHA (needed for commit change detection)
+	const openPRs = results.filter((pr) => pr.state === "open");
+	await Promise.allSettled(
+		openPRs.map(async (cachedPr) => {
+			const provider = getConnectedGitProviders().find((p) => p.name === cachedPr.provider);
+			if (!provider) return;
+			const prState = await provider.getPRState(
+				cachedPr.repoOwner,
+				cachedPr.repoName,
+				cachedPr.number
+			);
+			cachedPr.headCommitSha = prState.headSha;
+		})
+	);
 
 	return results;
 }
@@ -132,6 +155,23 @@ async function doPoll(): Promise<void> {
 				console.log(`[pr-poller] PR closed/merged: ${pr.identifier} (${pr.state})`);
 				onPRClosedHandler?.(pr);
 			}
+		}
+	}
+
+	// Detect head commit changes on open PRs
+	for (const pr of fetched) {
+		if (pr.state !== "open") continue;
+		const cached = prCache.get(pr.identifier);
+		if (
+			cached &&
+			cached.headCommitSha &&
+			pr.headCommitSha &&
+			cached.headCommitSha !== pr.headCommitSha
+		) {
+			console.log(
+				`[pr-poller] New commits on ${pr.identifier}: ${cached.headCommitSha} → ${pr.headCommitSha}`
+			);
+			onPRCommitChangedHandler?.(pr, cached.headCommitSha);
 		}
 	}
 

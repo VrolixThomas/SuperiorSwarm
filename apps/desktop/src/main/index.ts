@@ -4,6 +4,7 @@ import { AGENT_NOTIFY_PORT } from "../shared/agent-events";
 import { daemonInstanceId, daemonPaths } from "../shared/daemon-protocol";
 import { type AgentAlertListener, createAlertListener } from "./agent-hooks/listener";
 import { setupAgentHooks } from "./agent-hooks/setup";
+import { maybeAutoReReview, maybeAutoTriggerReview } from "./ai-review/auto-trigger";
 import { cleanupReviewWorkspace, findReviewWorkspaceByPR } from "./ai-review/cleanup";
 import { startCommentPoller, stopCommentPoller } from "./ai-review/comment-poller";
 import { startPolling } from "./ai-review/commit-poller";
@@ -11,6 +12,7 @@ import { cleanupStaleReviews } from "./ai-review/orchestrator";
 import {
 	onNewPRDetected,
 	onPRClosedDetected,
+	onPRCommitChanged,
 	startPolling as startPRPolling,
 } from "./ai-review/pr-poller";
 import { backfillRemoteHosts, getDb, initializeDatabase } from "./db";
@@ -210,6 +212,18 @@ app.whenReady().then(async () => {
 				win.webContents.send("new-pr-review-request", pr);
 			}
 		}
+
+		void maybeAutoTriggerReview({
+			pr,
+		}).catch((err) => {
+			console.error("[ai-review] Auto-trigger failed:", err);
+		});
+	});
+
+	onPRCommitChanged((pr, _previousSha) => {
+		void maybeAutoReReview({ pr }).catch((err) =>
+			console.error("[auto-review] Re-review on commit change failed:", err)
+		);
 	});
 
 	onPRClosedDetected(async (pr) => {

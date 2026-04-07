@@ -7,7 +7,7 @@ import { useAgentAlertStore } from "../stores/agent-alert-store";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import { ConnectBanner } from "./ConnectBanner";
-import { CreateWorktreeFromPRModal } from "./CreateWorktreeFromPRModal";
+import { CreateWorktreeFromPRModal, type LinkablePR } from "./CreateWorktreeFromPRModal";
 import { SwarmIndicator } from "./WorkspaceItem";
 import { type LinkedWorkspace, WorkspacePopover } from "./WorkspacePopover";
 
@@ -102,8 +102,8 @@ function RichPRItem({
 	projectsList:
 		| Array<{
 				id: string;
-				githubOwner: string | null;
-				githubRepo: string | null;
+				remoteOwner: string | null;
+				remoteRepo: string | null;
 				repoPath: string;
 				defaultBranch: string;
 		  }>
@@ -115,9 +115,14 @@ function RichPRItem({
 	const targetBranch = enriched ? undefined : pr.bitbucketPR?.destination?.branch?.name;
 	const project = pr.githubPR
 		? projectsList?.find(
-				(p) => p.githubOwner === pr.githubPR!.repoOwner && p.githubRepo === pr.githubPR!.repoName
+				(p) => p.remoteOwner === pr.githubPR!.repoOwner && p.remoteRepo === pr.githubPR!.repoName
 			)
-		: undefined;
+		: pr.bitbucketPR
+			? projectsList?.find(
+					(p) =>
+						p.remoteOwner === pr.bitbucketPR!.workspace && p.remoteRepo === pr.bitbucketPR!.repoSlug
+				)
+			: undefined;
 	const resolvedTarget = targetBranch ?? project?.defaultBranch ?? "main";
 	const healthColor = getHealthColor(pr, enriched);
 
@@ -196,16 +201,74 @@ function RichPRItem({
 	);
 }
 
+// ── Context Menu ──────────────────────────────────────────────────────────────
+
+function PRContextMenu({
+	position,
+	url,
+	workspaceId,
+	onCleanup,
+	onClose,
+}: {
+	position: { x: number; y: number };
+	url: string;
+	workspaceId?: string;
+	onCleanup: () => void;
+	onClose: () => void;
+}) {
+	useEffect(() => {
+		const handler = () => onClose();
+		window.addEventListener("click", handler);
+		return () => window.removeEventListener("click", handler);
+	}, [onClose]);
+
+	return (
+		<div
+			className="fixed z-50 min-w-[160px] rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-surface)] py-1 shadow-[var(--shadow-md)]"
+			style={{ left: position.x, top: position.y }}
+		>
+			<button
+				type="button"
+				className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]"
+				onClick={() => {
+					window.electron.shell.openExternal(url);
+					onClose();
+				}}
+			>
+				Open in browser
+			</button>
+			{workspaceId && (
+				<button
+					type="button"
+					className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-red-400 hover:bg-[var(--bg-elevated)]"
+					onClick={() => {
+						onCleanup();
+						onClose();
+					}}
+				>
+					Remove worktree
+				</button>
+			)}
+		</div>
+	);
+}
+
 // ── Main Tab ─────────────────────────────────────────────────────────────────
 
 export function PullRequestsTab() {
 	const utils = trpc.useUtils();
-	const [openModalPR, setOpenModalPR] = useState<GitHubPR | null>(null);
+	const [openModalPR, setOpenModalPR] = useState<LinkablePR | null>(null);
 	const [linkError, setLinkError] = useState<string | null>(null);
 	const [popover, setPopover] = useState<{
 		position: { x: number; y: number };
 		pr: MergedPR;
 		workspaces: LinkedWorkspace[];
+	} | null>(null);
+	const [contextMenu, setContextMenu] = useState<{
+		position: { x: number; y: number };
+		url: string;
+		workspaceId?: string;
+		identifier: string;
 	} | null>(null);
 
 	const attachTerminal = trpc.workspaces.attachTerminal.useMutation();
@@ -416,15 +479,20 @@ export function PullRequestsTab() {
 	useEffect(() => {
 		if (!settings.data?.autoReviewEnabled || !reviewDrafts.data) return;
 
-		const existingIdentifiers = new Set(reviewDrafts.data.map((d) => d.prIdentifier));
+		// Only block auto-trigger for PRs with active reviews (queued/in_progress)
+		const activeIdentifiers = new Set(
+			reviewDrafts.data
+				.filter((d) => d.status === "queued" || d.status === "in_progress")
+				.map((d) => d.prIdentifier)
+		);
 
 		// Auto-trigger for GitHub reviewer PRs
 		for (const pr of ghPRs ?? []) {
 			if (pr.role !== "reviewer") continue;
 			const identifier = `${pr.repoOwner}/${pr.repoName}#${pr.number}`;
-			if (existingIdentifiers.has(identifier) || triggeredRef.current.has(identifier)) continue;
+			if (activeIdentifiers.has(identifier) || triggeredRef.current.has(identifier)) continue;
 			const project = projectsList?.find(
-				(p) => p.githubOwner === pr.repoOwner && p.githubRepo === pr.repoName
+				(p) => p.remoteOwner === pr.repoOwner && p.remoteRepo === pr.repoName
 			);
 			if (!project) continue;
 			triggeredRef.current.add(identifier);
@@ -455,20 +523,34 @@ export function PullRequestsTab() {
 		// Auto-trigger for Bitbucket review PRs
 		for (const pr of bbReviewPRs ?? []) {
 			const identifier = `${pr.workspace}/${pr.repoSlug}#${pr.id}`;
-			if (existingIdentifiers.has(identifier) || triggeredRef.current.has(identifier)) continue;
-			// Bitbucket PRs need a tracked project to proceed
-			// TODO: resolve bitbucket project mapping
+			if (activeIdentifiers.has(identifier) || triggeredRef.current.has(identifier)) continue;
+			const project = projectsList?.find(
+				(p) => p.remoteOwner === pr.workspace && p.remoteRepo === pr.repoSlug
+			);
+			if (!project) continue;
 			triggeredRef.current.add(identifier);
-			triggerReview.mutate({
-				provider: "bitbucket",
-				identifier,
-				title: pr.title,
-				author: pr.author,
-				sourceBranch: pr.source?.branch?.name ?? "",
-				targetBranch: pr.destination?.branch?.name ?? "main",
-				repoPath: "",
-				projectId: "",
-			});
+			triggerReviewWithCtx(
+				{
+					provider: "bitbucket",
+					identifier,
+					title: pr.title,
+					author: pr.author,
+					sourceBranch: pr.source?.branch?.name ?? "",
+					targetBranch: pr.destination?.branch?.name ?? project.defaultBranch ?? "main",
+					repoPath: project.repoPath,
+					projectId: project.id,
+				},
+				{
+					provider: "bitbucket",
+					owner: pr.workspace,
+					repo: pr.repoSlug,
+					number: pr.id,
+					title: pr.title,
+					sourceBranch: pr.source?.branch?.name ?? "",
+					targetBranch: pr.destination?.branch?.name ?? project.defaultBranch ?? "main",
+					repoPath: project.repoPath,
+				}
+			);
 		}
 	}, [ghPRs, bbReviewPRs, reviewDrafts.data, settings.data, projectsList, triggerReviewWithCtx]);
 
@@ -530,13 +612,15 @@ export function PullRequestsTab() {
 			const key = `${pr.workspace}/${pr.repoSlug}#${pr.id}`;
 			if (seenBb.has(key)) continue;
 			seenBb.add(key);
+			// Skip merged or declined PRs (stale cache)
+			if (pr.state === "MERGED" || pr.state === "DECLINED") continue;
 			merged.push({
 				provider: "bitbucket",
 				id: `bb-${pr.workspace}-${pr.repoSlug}-${pr.id}`,
 				number: pr.id,
 				title: pr.title,
 				url: pr.webUrl,
-				state: pr.state === "MERGED" ? "merged" : pr.state === "DECLINED" ? "closed" : "open",
+				state: "open",
 				isDraft: false,
 				repoKey: `${pr.workspace}/${pr.repoSlug}`,
 				repoDisplay: `${pr.workspace}/${pr.repoSlug}`,
@@ -547,13 +631,15 @@ export function PullRequestsTab() {
 		// GitHub PRs — only PRs where the user is a reviewer, not authored PRs
 		for (const pr of ghPRs ?? []) {
 			if (pr.role !== "reviewer") continue;
+			// Skip closed PRs (stale cache)
+			if (pr.state === "closed") continue;
 			merged.push({
 				provider: "github",
 				id: `gh-${pr.repoOwner}-${pr.repoName}-${pr.number}`,
 				number: pr.number,
 				title: pr.title,
 				url: pr.url,
-				state: pr.state === "closed" ? "closed" : "open",
+				state: "open",
 				isDraft: pr.isDraft,
 				repoKey: `${pr.repoOwner}/${pr.repoName}`,
 				repoDisplay: `${pr.repoOwner}/${pr.repoName}`,
@@ -702,9 +788,9 @@ export function PullRequestsTab() {
 		[getOrCreateReviewMutation]
 	);
 
-	const handleGitHubLink = useCallback(
-		async (pr: GitHubPR) => {
-			const projects = await utils.github.getProjectsByRepo.fetch({
+	const handleUnlinkedPR = useCallback(
+		async (pr: LinkablePR) => {
+			const projects = await utils.projects.getByRepo.fetch({
 				owner: pr.repoOwner,
 				repo: pr.repoName,
 			});
@@ -723,22 +809,61 @@ export function PullRequestsTab() {
 	const handlePRClick = useCallback(
 		(pr: MergedPR, e: React.MouseEvent) => {
 			const ghPR = pr.githubPR;
-			const isReviewer = ghPR?.role === "reviewer";
+			const bbPR = pr.bitbucketPR;
 
-			if (pr.provider === "bitbucket" && pr.bitbucketPR) {
-				window.electron.shell.openExternal(pr.url);
+			// ── Bitbucket reviewer PRs → open review workspace ──
+			if (pr.provider === "bitbucket" && bbPR) {
+				const project = projectsList?.find(
+					(p) => p.remoteOwner === bbPR.workspace && p.remoteRepo === bbPR.repoSlug
+				);
+				if (!project) {
+					handleUnlinkedPR({
+						repoOwner: bbPR.workspace,
+						repoName: bbPR.repoSlug,
+						number: bbPR.id,
+						title: bbPR.title,
+						branchName: bbPR.source?.branch?.name ?? "",
+					});
+					return;
+				}
+
+				const prIdentifier = `${bbPR.workspace}/${bbPR.repoSlug}#${bbPR.id}`;
+				const prCtx: PRContext = {
+					provider: "bitbucket",
+					owner: bbPR.workspace,
+					repo: bbPR.repoSlug,
+					number: bbPR.id,
+					title: bbPR.title,
+					sourceBranch: bbPR.source?.branch?.name ?? "",
+					targetBranch: bbPR.destination?.branch?.name ?? project.defaultBranch ?? "main",
+					repoPath: project.repoPath,
+				};
+
+				openPRWorkspace(project.id, "bitbucket", prIdentifier, project.repoPath, prCtx);
+
+				const enriched = enrichmentMap.get(prIdentifier);
+				if (enriched?.headCommitOid) {
+					markCommitSeen.mutate({ prIdentifier, commitSha: enriched.headCommitOid });
+				}
 				return;
 			}
 
 			if (!ghPR) return;
+			const isReviewer = ghPR.role === "reviewer";
 
 			// For reviewer PRs, open the persistent review workspace
 			if (isReviewer) {
 				const project = projectsList?.find(
-					(p) => p.githubOwner === ghPR.repoOwner && p.githubRepo === ghPR.repoName
+					(p) => p.remoteOwner === ghPR.repoOwner && p.remoteRepo === ghPR.repoName
 				);
 				if (!project) {
-					handleGitHubLink(ghPR);
+					handleUnlinkedPR({
+						repoOwner: ghPR.repoOwner,
+						repoName: ghPR.repoName,
+						number: ghPR.number,
+						title: ghPR.title,
+						branchName: ghPR.branchName,
+					});
 					return;
 				}
 
@@ -756,13 +881,9 @@ export function PullRequestsTab() {
 
 				openPRWorkspace(project.id, "github", prIdentifier, project.repoPath, prCtx);
 
-				// Mark the current head commit as seen to clear "New commits" indicator
 				const enriched = enrichmentMap.get(prIdentifier);
 				if (enriched?.headCommitOid) {
-					markCommitSeen.mutate({
-						prIdentifier,
-						commitSha: enriched.headCommitOid,
-					});
+					markCommitSeen.mutate({ prIdentifier, commitSha: enriched.headCommitOid });
 				}
 				return;
 			}
@@ -771,7 +892,13 @@ export function PullRequestsTab() {
 			const linkKey = `${ghPR.repoOwner}/${ghPR.repoName}#${ghPR.number}`;
 			const linked = linkedMap.get(linkKey);
 			if (!linked || linked.length === 0) {
-				handleGitHubLink(ghPR);
+				handleUnlinkedPR({
+					repoOwner: ghPR.repoOwner,
+					repoName: ghPR.repoName,
+					number: ghPR.number,
+					title: ghPR.title,
+					branchName: ghPR.branchName,
+				});
 			} else if (linked.length === 1 && linked[0]) {
 				navigateToWorkspace(linked[0], pr);
 			} else {
@@ -788,7 +915,7 @@ export function PullRequestsTab() {
 			linkedMap,
 			openPRWorkspace,
 			navigateToWorkspace,
-			handleGitHubLink,
+			handleUnlinkedPR,
 			enrichmentMap,
 			markCommitSeen,
 		]
@@ -896,19 +1023,15 @@ export function PullRequestsTab() {
 												(bitbucketPRsForEnrichment.length > 0 && bbEnrichmentQuery.isLoading));
 										const knownWorkspaceId = workspaceIdMapRef.current.get(identifier);
 										const agentAlert = knownWorkspaceId ? agentAlerts[knownWorkspaceId] : undefined;
-										const handleContextMenu = knownWorkspaceId
-											? (e: React.MouseEvent) => {
-													e.preventDefault();
-													if (
-														window.confirm(
-															"Remove the review worktree? This will delete local files."
-														)
-													) {
-														cleanupReviewMutation.mutate({ workspaceId: knownWorkspaceId });
-														workspaceIdMapRef.current.delete(identifier);
-													}
-												}
-											: undefined;
+										const handleContextMenu = (e: React.MouseEvent) => {
+											e.preventDefault();
+											setContextMenu({
+												position: { x: e.clientX, y: e.clientY },
+												url: pr.url,
+												workspaceId: knownWorkspaceId,
+												identifier,
+											});
+										};
 
 										return (
 											<RichPRItem
@@ -939,10 +1062,41 @@ export function PullRequestsTab() {
 					onClose={() => setPopover(null)}
 					onCreateBranch={() => {
 						setPopover(null);
-						if (popover.pr.githubPR) {
-							handleGitHubLink(popover.pr.githubPR);
+						const ghPR = popover.pr.githubPR;
+						const bbPR = popover.pr.bitbucketPR;
+						if (ghPR) {
+							handleUnlinkedPR({
+								repoOwner: ghPR.repoOwner,
+								repoName: ghPR.repoName,
+								number: ghPR.number,
+								title: ghPR.title,
+								branchName: ghPR.branchName,
+							});
+						} else if (bbPR) {
+							handleUnlinkedPR({
+								repoOwner: bbPR.workspace,
+								repoName: bbPR.repoSlug,
+								number: bbPR.id,
+								title: bbPR.title,
+								branchName: bbPR.source?.branch?.name ?? "",
+							});
 						}
 					}}
+				/>
+			)}
+
+			{contextMenu && (
+				<PRContextMenu
+					position={contextMenu.position}
+					url={contextMenu.url}
+					workspaceId={contextMenu.workspaceId}
+					onCleanup={() => {
+						if (contextMenu.workspaceId) {
+							cleanupReviewMutation.mutate({ workspaceId: contextMenu.workspaceId });
+							workspaceIdMapRef.current.delete(contextMenu.identifier);
+						}
+					}}
+					onClose={() => setContextMenu(null)}
 				/>
 			)}
 

@@ -1,0 +1,1 @@
+ALTER TABLE `ai_review_settings` ADD `auto_re_review_on_commit` integer DEFAULT 0 NOT NULL;

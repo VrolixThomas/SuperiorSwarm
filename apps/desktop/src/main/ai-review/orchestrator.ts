@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { chmodSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { and, eq, inArray, not } from "drizzle-orm";
 import { app } from "electron";
 import { getDb } from "../db";
@@ -14,6 +14,7 @@ import {
 	isCliInstalled,
 	resolveCliPath,
 } from "./cli-presets";
+import { getMcpServerPath } from "./mcp-path";
 import { parsePrIdentifier } from "./pr-identifier";
 
 export interface ReviewLaunchInfo {
@@ -288,7 +289,7 @@ async function startReview(params: {
 			throw new Error(`CLI tool '${preset.command}' is not installed`);
 		}
 
-		const mcpServerPath = resolve(__dirname, "mcp-server.js");
+		const mcpServerPath = getMcpServerPath();
 
 		const prMetadata = {
 			title: draft.prTitle,
@@ -560,7 +561,7 @@ async function startFollowUpReview(params: {
 		if (!preset) throw new Error(`Unknown CLI preset: ${settings.cliPreset}`);
 
 		const dbPath = join(app.getPath("userData"), "superiorswarm.db");
-		const mcpServerPath = resolve(__dirname, "mcp-server.js");
+		const mcpServerPath = getMcpServerPath();
 		const reviewDir = join(app.getPath("userData"), "reviews", draftId);
 		mkdirSync(reviewDir, { recursive: true });
 

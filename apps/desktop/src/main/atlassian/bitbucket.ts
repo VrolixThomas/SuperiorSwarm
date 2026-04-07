@@ -262,3 +262,65 @@ export async function getBitbucketPRComments(
 
 	return comments;
 }
+
+export async function getBitbucketPRDetails(
+	workspace: string,
+	repoSlug: string,
+	prId: number
+): Promise<{
+	title: string;
+	description: string;
+	state: string;
+	author: string;
+	authorAvatarUrl: string;
+	sourceBranch: string;
+	targetBranch: string;
+	participants: Array<{
+		user?: { display_name?: string } | null;
+		role: string;
+		state?: string | null;
+	}>;
+}> {
+	const res = await atlassianFetch(
+		"bitbucket",
+		`${BITBUCKET_API_BASE}/repositories/${workspace}/${repoSlug}/pullrequests/${prId}`
+	);
+	if (!res.ok) throw new Error(`Bitbucket PR fetch failed: ${res.status}`);
+	const data = (await res.json()) as {
+		title?: string;
+		description?: string;
+		state?: string;
+		author?: { display_name?: string; links?: { avatar?: { href?: string } } } | null;
+		source?: { branch?: { name?: string } };
+		destination?: { branch?: { name?: string } };
+		participants?: Array<{
+			user?: { display_name?: string } | null;
+			role: string;
+			state?: string | null;
+		}>;
+	};
+	return {
+		title: data.title ?? "",
+		description: data.description ?? "",
+		state: data.state ?? "OPEN",
+		author: data.author?.display_name ?? "Unknown",
+		authorAvatarUrl: data.author?.links?.avatar?.href ?? "",
+		sourceBranch: data.source?.branch?.name ?? "",
+		targetBranch: data.destination?.branch?.name ?? "",
+		participants: data.participants ?? [],
+	};
+}
+
+export async function getBitbucketPRStatuses(
+	workspace: string,
+	repoSlug: string,
+	prId: number
+): Promise<Array<{ state: string }>> {
+	const res = await atlassianFetch(
+		"bitbucket",
+		`${BITBUCKET_API_BASE}/repositories/${workspace}/${repoSlug}/pullrequests/${prId}/statuses?pagelen=100`
+	);
+	if (!res.ok) return [];
+	const data = (await res.json()) as { values?: Array<{ state: string }> };
+	return data.values ?? [];
+}

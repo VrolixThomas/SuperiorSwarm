@@ -12,6 +12,7 @@ directories:
 
 files:
   - out/**/*
+  - mcp-standalone/**/*
 
 asar: true
 asarUnpack:
@@ -20,6 +21,7 @@ asarUnpack:
   - "node_modules/bindings/**/*"
   - "node_modules/file-uri-to-path/**/*"
   - "out/main/db/migrations/**/*"
+  - "mcp-standalone/**/*"
 
 npmRebuild: true
 

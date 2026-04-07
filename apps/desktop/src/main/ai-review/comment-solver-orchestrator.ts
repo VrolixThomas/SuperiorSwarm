@@ -1,13 +1,14 @@
 import { execSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { and, count, eq, gt, inArray, not } from "drizzle-orm";
 import { app } from "electron";
 import type { SolveLaunchInfo, SolveSessionStatus } from "../../shared/solve-types";
 import { getDb } from "../db";
 import * as schema from "../db/schema";
 import { CLI_PRESETS, type LaunchOptions, isCliInstalled, resolveCliPath } from "./cli-presets";
+import { getMcpServerPath } from "./mcp-path";
 import { getSettings } from "./orchestrator";
 import { buildSolvePrompt } from "./solve-prompt";
 import { resolveSessionWorktree } from "./solve-session-resolver";
@@ -93,7 +94,7 @@ export async function queueSolve(sessionId: string): Promise<SolveLaunchInfo> {
 			.run();
 
 		const dbPath = join(app.getPath("userData"), "superiorswarm.db");
-		const mcpServerPath = resolve(__dirname, "mcp-server.js");
+		const mcpServerPath = getMcpServerPath();
 
 		// Build solve prompt
 		const solvePromptText = buildSolvePrompt({

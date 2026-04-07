@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { z } from "zod";
 import { getDb } from "../../db";
@@ -15,6 +15,8 @@ import {
 	parseRemoteUrl,
 	validateGitUrl,
 } from "../../git/operations";
+import { BitbucketAdapter } from "../../providers/bitbucket-adapter";
+import { GitHubAdapter } from "../../providers/github-adapter";
 import { publicProcedure, router } from "../index";
 
 const PROJECT_COLORS = [
@@ -61,6 +63,31 @@ export const projectsRouter = router({
 		return db.select().from(projects).all();
 	}),
 
+	getByRepo: publicProcedure
+		.input(z.object({ owner: z.string(), repo: z.string() }))
+		.query(({ input }) => {
+			const db = getDb();
+			return db
+				.select()
+				.from(projects)
+				.where(and(eq(projects.remoteOwner, input.owner), eq(projects.remoteRepo, input.repo)))
+				.all();
+		}),
+
+	getPRDetails: publicProcedure
+		.input(
+			z.object({
+				provider: z.enum(["github", "bitbucket"]),
+				owner: z.string(),
+				repo: z.string(),
+				number: z.number(),
+			})
+		)
+		.query(async ({ input }) => {
+			const adapter = input.provider === "github" ? new GitHubAdapter() : new BitbucketAdapter();
+			return adapter.getPRDetails(input.owner, input.repo, input.number);
+		}),
+
 	getById: publicProcedure.input(z.object({ id: z.string() })).query(({ input }) => {
 		const db = getDb();
 		const result = db.select().from(projects).where(eq(projects.id, input.id)).get();
@@ -97,8 +124,8 @@ export const projectsRouter = router({
 				repoPath: targetPath,
 				defaultBranch: "main",
 				color: randomColor(),
-				githubOwner: null as string | null,
-				githubRepo: null as string | null,
+				remoteOwner: null as string | null,
+				remoteRepo: null as string | null,
 				remoteHost: null as string | null,
 				status: "cloning" as const,
 				createdAt: now,
@@ -121,8 +148,8 @@ export const projectsRouter = router({
 						.set({
 							status: "ready",
 							defaultBranch,
-							githubOwner: github?.owner ?? null,
-							githubRepo: github?.repo ?? null,
+							remoteOwner: github?.owner ?? null,
+							remoteRepo: github?.repo ?? null,
 							remoteHost: github?.host ?? null,
 							updatedAt: new Date(),
 						})
@@ -190,8 +217,8 @@ export const projectsRouter = router({
 			repoPath: gitRoot,
 			defaultBranch,
 			color: randomColor(),
-			githubOwner: github?.owner ?? null,
-			githubRepo: github?.repo ?? null,
+			remoteOwner: github?.owner ?? null,
+			remoteRepo: github?.repo ?? null,
 			remoteHost: github?.host ?? null,
 			status: "ready" as const,
 			createdAt: now,
@@ -242,8 +269,8 @@ export const projectsRouter = router({
 				repoPath: targetPath,
 				defaultBranch: "main",
 				color: randomColor(),
-				githubOwner: null as string | null,
-				githubRepo: null as string | null,
+				remoteOwner: null as string | null,
+				remoteRepo: null as string | null,
 				remoteHost: null as string | null,
 				status: "ready" as const,
 				createdAt: now,

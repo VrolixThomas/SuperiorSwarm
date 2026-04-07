@@ -1,3 +1,5 @@
+import type { GitHubPRDetails } from "../../shared/github-types";
+
 // ── Normalized types ────────────────────────────────────────────────────────
 
 export interface NormalizedPR {
@@ -11,6 +13,7 @@ export interface NormalizedPR {
 	role: "author" | "reviewer";
 	repoOwner: string;
 	repoName: string;
+	headCommitSha: string;
 }
 
 export interface PRState {
@@ -123,6 +126,7 @@ export interface GitProvider {
 		repo: string,
 		prNumber: number
 	): Promise<NormalizedReviewThread[]>;
+	getPRDetails(owner: string, repo: string, prNumber: number): Promise<GitHubPRDetails>;
 }
 
 export interface IssueTracker {

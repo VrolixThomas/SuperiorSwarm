@@ -9,7 +9,7 @@
 	"license": "MIT",
 	"private": true,
 	"scripts": {
-		"postinstall": "[ ! -d node_modules/node-pty ] || find node_modules/node-pty -name spawn-helper -exec chmod +x {} + && electron-rebuild -f -w better-sqlite3",
+		"postinstall": "cd mcp-standalone && npm install --no-audit --no-fund && cd .. && [ ! -d node_modules/node-pty ] || find node_modules/node-pty -name spawn-helper -exec chmod +x {} + && electron-rebuild -f -w better-sqlite3",
 		"dev": "electron-vite dev",
 		"build": "electron-vite build",
 		"dist": "electron-vite build && electron-builder --mac",
