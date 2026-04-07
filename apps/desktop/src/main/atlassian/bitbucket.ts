@@ -55,6 +55,30 @@ function mapPR(pr: BitbucketApiPR, workspace: string, repoSlug: string): Bitbuck
 	};
 }
 
+/**
+ * Walk a Bitbucket paginated listing endpoint until the `next` link is gone.
+ *
+ * The fetcher callback is the only impure part — pass it the URL of a page
+ * and it returns the parsed body. The helper drives the loop, accumulates
+ * `values`, and propagates errors up: if any page throws, the whole call
+ * throws (Option X strict failure from the spec). The caller's per-provider
+ * try/catch in `pr-poller.fetchAllPRs` then preserves all cached entries for
+ * Bitbucket via the diffTrackedPrs partial-failure logic.
+ */
+export async function paginateBitbucket<T>(
+	initialUrl: string,
+	fetchPage: (url: string) => Promise<{ values: T[]; next?: string }>
+): Promise<T[]> {
+	const all: T[] = [];
+	let url: string | null = initialUrl;
+	while (url) {
+		const page = await fetchPage(url);
+		for (const v of page.values) all.push(v);
+		url = page.next ?? null;
+	}
+	return all;
+}
+
 async function getBitbucketRepos(): Promise<Array<{ workspace: string; repoSlug: string }>> {
 	const db = getDb();
 	const allProjects = db.select().from(projects).all();
@@ -80,17 +104,16 @@ export async function getMyPullRequests(): Promise<BitbucketPullRequest[]> {
 	const allPRs: BitbucketPullRequest[] = [];
 
 	for (const { workspace, repoSlug } of repos) {
-		try {
-			const url = `${BITBUCKET_API_BASE}/repositories/${workspace}/${repoSlug}/pullrequests?state=OPEN&pagelen=50&q=author.account_id%3D%22${auth.accountId}%22`;
+		const initialUrl = `${BITBUCKET_API_BASE}/repositories/${workspace}/${repoSlug}/pullrequests?state=OPEN&pagelen=100&q=author.account_id%3D%22${auth.accountId}%22`;
+		const apiPrs = await paginateBitbucket<BitbucketApiPR>(initialUrl, async (url) => {
 			const res = await atlassianFetch("bitbucket", url);
-			if (!res.ok) continue;
-
-			const data = (await res.json()) as { values: BitbucketApiPR[] };
-			for (const pr of data.values) {
-				allPRs.push(mapPR(pr, workspace, repoSlug));
+			if (!res.ok) {
+				throw new Error(`Bitbucket pullrequests fetch failed: ${res.status} ${res.statusText}`);
 			}
-		} catch (err) {
-			console.error(`Failed to fetch PRs for ${workspace}/${repoSlug}:`, err);
+			return (await res.json()) as { values: BitbucketApiPR[]; next?: string };
+		});
+		for (const pr of apiPrs) {
+			allPRs.push(mapPR(pr, workspace, repoSlug));
 		}
 	}
 
@@ -107,17 +130,16 @@ export async function getReviewRequests(): Promise<BitbucketPullRequest[]> {
 	const allPRs: BitbucketPullRequest[] = [];
 
 	for (const { workspace, repoSlug } of repos) {
-		try {
-			const url = `${BITBUCKET_API_BASE}/repositories/${workspace}/${repoSlug}/pullrequests?state=OPEN&pagelen=50&q=reviewers.account_id%3D%22${auth.accountId}%22`;
+		const initialUrl = `${BITBUCKET_API_BASE}/repositories/${workspace}/${repoSlug}/pullrequests?state=OPEN&pagelen=100&q=reviewers.account_id%3D%22${auth.accountId}%22`;
+		const apiPrs = await paginateBitbucket<BitbucketApiPR>(initialUrl, async (url) => {
 			const res = await atlassianFetch("bitbucket", url);
-			if (!res.ok) continue;
-
-			const data = (await res.json()) as { values: BitbucketApiPR[] };
-			for (const pr of data.values) {
-				allPRs.push(mapPR(pr, workspace, repoSlug));
+			if (!res.ok) {
+				throw new Error(`Bitbucket review requests fetch failed: ${res.status} ${res.statusText}`);
 			}
-		} catch (err) {
-			console.error(`Failed to fetch review PRs for ${workspace}/${repoSlug}:`, err);
+			return (await res.json()) as { values: BitbucketApiPR[]; next?: string };
+		});
+		for (const pr of apiPrs) {
+			allPRs.push(mapPR(pr, workspace, repoSlug));
 		}
 	}
 

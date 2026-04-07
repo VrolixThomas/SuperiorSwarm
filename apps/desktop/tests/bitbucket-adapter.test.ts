@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { BitbucketComment, BitbucketPullRequest } from "../src/main/atlassian/bitbucket";
+import { paginateBitbucket } from "../src/main/atlassian/bitbucket";
 import {
 	dedupBitbucketPRs,
 	mapBitbucketComment,
@@ -335,5 +336,52 @@ describe("mapBitbucketPR head commit SHA plumbing", () => {
 		};
 
 		expect(mapBitbucketPR(pr, "author").headCommitSha).toBe("");
+	});
+});
+
+describe("paginateBitbucket", () => {
+	test("returns the values from a single page", async () => {
+		const pages = new Map<string, { values: string[]; next?: string }>([
+			["page-1", { values: ["a", "b", "c"] }],
+		]);
+		const result = await paginateBitbucket<string>("page-1", async (url) => {
+			const page = pages.get(url);
+			if (!page) throw new Error(`unexpected url: ${url}`);
+			return page;
+		});
+		expect(result).toEqual(["a", "b", "c"]);
+	});
+
+	test("walks the `next` chain across multiple pages", async () => {
+		const pages = new Map<string, { values: string[]; next?: string }>([
+			["page-1", { values: ["a", "b"], next: "page-2" }],
+			["page-2", { values: ["c", "d"], next: "page-3" }],
+			["page-3", { values: ["e"] }],
+		]);
+		const fetched: string[] = [];
+		const result = await paginateBitbucket<string>("page-1", async (url) => {
+			fetched.push(url);
+			return pages.get(url) ?? { values: [] };
+		});
+		expect(result).toEqual(["a", "b", "c", "d", "e"]);
+		expect(fetched).toEqual(["page-1", "page-2", "page-3"]);
+	});
+
+	test("throws if any page in the chain throws (strict failure)", async () => {
+		const pages = new Map<string, { values: string[]; next?: string }>([
+			["page-1", { values: ["a"], next: "page-2" }],
+		]);
+		await expect(
+			paginateBitbucket<string>("page-1", async (url) => {
+				const page = pages.get(url);
+				if (!page) throw new Error(`fetch failed: ${url}`);
+				return page;
+			})
+		).rejects.toThrow("fetch failed: page-2");
+	});
+
+	test("returns empty array when first page has no values", async () => {
+		const result = await paginateBitbucket<string>("page-1", async () => ({ values: [] }));
+		expect(result).toEqual([]);
 	});
 });
