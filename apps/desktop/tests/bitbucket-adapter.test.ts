@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { BitbucketComment, BitbucketPullRequest } from "../src/main/atlassian/bitbucket";
 import {
+	dedupBitbucketPRs,
 	mapBitbucketComment,
 	mapBitbucketPR,
 	normalizeBBState,
@@ -234,5 +235,55 @@ describe("mapBitbucketComment", () => {
 		const result = mapBitbucketComment(comment);
 		expect(typeof result.id).toBe("string");
 		expect(result.id).toBe("999");
+	});
+});
+
+describe("dedupBitbucketPRs", () => {
+	function pr(workspace: string, repoSlug: string, id: number): BitbucketPullRequest {
+		return {
+			id,
+			title: `pr ${id}`,
+			state: "OPEN",
+			author: "alice",
+			repoSlug,
+			workspace,
+			webUrl: "",
+			createdOn: "",
+			updatedOn: "",
+			source: { branch: { name: "src" } },
+			destination: { branch: { name: "main" } },
+		};
+	}
+
+	test("does not collapse PR #1 from two different repos in the same workspace", () => {
+		const result = dedupBitbucketPRs([pr("ws", "repoA", 1), pr("ws", "repoB", 1)], []);
+		expect(result.map((r) => `${r.repoOwner}/${r.repoName}#${r.id}`)).toEqual([
+			"ws/repoA#1",
+			"ws/repoB#1",
+		]);
+		expect(result.every((r) => r.role === "author")).toBe(true);
+	});
+
+	test("collapses true duplicates within the authored list", () => {
+		const result = dedupBitbucketPRs([pr("ws", "repoA", 1), pr("ws", "repoA", 1)], []);
+		expect(result).toHaveLength(1);
+	});
+
+	test("merges reviewer entries that don't overlap with authored", () => {
+		const result = dedupBitbucketPRs([pr("ws", "repoA", 1)], [pr("ws", "repoB", 2)]);
+		expect(result.map((r) => r.role)).toEqual(["author", "reviewer"]);
+		expect(result).toHaveLength(2);
+	});
+
+	test("when a PR is in both authored and reviewing, the authored entry wins", () => {
+		const result = dedupBitbucketPRs([pr("ws", "repoA", 1)], [pr("ws", "repoA", 1)]);
+		expect(result).toHaveLength(1);
+		expect(result[0]?.role).toBe("author");
+	});
+
+	test("does NOT collapse PR #1 in repoA-author with PR #1 in repoB-reviewer", () => {
+		const result = dedupBitbucketPRs([pr("ws", "repoA", 1)], [pr("ws", "repoB", 1)]);
+		expect(result).toHaveLength(2);
+		expect(result.map((r) => r.role)).toEqual(["author", "reviewer"]);
 	});
 });
