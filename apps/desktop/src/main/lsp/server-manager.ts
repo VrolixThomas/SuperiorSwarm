@@ -202,6 +202,10 @@ export class ServerManager {
 			instance.initialized = true;
 
 			connection.onNotification("textDocument/publishDiagnostics", (params) => {
+				// Skip the ipc-safety walker on this path: params arrive from
+				// vscode-jsonrpc's JSON parser, so they're plain data by construction.
+				// Instrumenting publishDiagnostics would also fill the 5 MB log
+				// budget within hours of typing — it fires per keystroke.
 				this.mainWindow?.webContents.send(
 					"lsp:notification-from-server",
 					config.id,

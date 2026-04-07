@@ -75,3 +75,18 @@ mock.module("better-sqlite3", () => {
 	// Default export compatible with `new Database(path)` usage.
 	return { default: Database };
 });
+
+mock.module("electron-log/main.js", () => ({
+	default: {
+		initialize: () => {},
+		transports: {
+			file: { level: "info", maxSize: 0, format: "" },
+			console: { level: false },
+		},
+		errorHandler: { startCatching: () => {} },
+		info: () => {},
+		warn: () => {},
+		error: () => {},
+		debug: () => {},
+	},
+}));
