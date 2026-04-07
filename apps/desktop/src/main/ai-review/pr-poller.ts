@@ -187,6 +187,46 @@ async function doPoll(): Promise<void> {
 	}
 }
 
+// ── Pure cache-diff helper (exported for testing) ─────────────────────────────
+
+/**
+ * Compute the new PRs and stale-cache deletions for a poll cycle.
+ *
+ * IMPORTANT: only deletes a cached entry if its OWNING provider was in the
+ * `successfulProviders` set. If a provider's fetch failed (or returned nothing
+ * for any other reason), all of that provider's cached entries are preserved
+ * — otherwise the next successful poll would re-emit them as "new" and flood
+ * the IPC channel. (This is the bug behind the 200+/burst flooding observed
+ * in 2026-04-07 logs; see docs/superpowers/plans/2026-04-07-app-freeze-fix.md.)
+ */
+export function diffPRCache(
+	cache: Map<string, CachedPR>,
+	fetched: CachedPR[],
+	successfulProviders: Set<string>
+): { newPRs: CachedPR[]; toDelete: string[] } {
+	const fetchedByIdentifier = new Map<string, CachedPR>();
+	for (const pr of fetched) {
+		fetchedByIdentifier.set(pr.identifier, pr);
+	}
+
+	const newPRs: CachedPR[] = [];
+	for (const pr of fetched) {
+		if (!cache.has(pr.identifier)) {
+			newPRs.push(pr);
+		}
+	}
+
+	const toDelete: string[] = [];
+	for (const [identifier, cached] of cache) {
+		if (!successfulProviders.has(cached.provider)) continue;
+		if (!fetchedByIdentifier.has(identifier)) {
+			toDelete.push(identifier);
+		}
+	}
+
+	return { newPRs, toDelete };
+}
+
 // ── Public control API ─────────────────────────────────────────────────────────
 
 export function startPolling(): void {
