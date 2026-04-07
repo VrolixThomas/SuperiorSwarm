@@ -1,4 +1,4 @@
-import { integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 import { reviewDrafts } from "./schema-ai-review";
 
 export const projects = sqliteTable("projects", {
@@ -303,3 +303,59 @@ export {
 	type CommentEvent,
 	type NewCommentEvent,
 } from "./schema-comment-solver";
+
+// ── tracked_prs ──────────────────────────────────────────────────────────────
+//
+// Persistent record of every PR the poller has ever observed. Replaces the
+// in-memory `prCache: Map` in `pr-poller.ts`. Composite PK on
+// (provider, identifier) closes a latent collision: today's identifier alone
+// would conflict if the same `owner/repo#number` slug appeared on both
+// providers. See docs/superpowers/specs/2026-04-07-persistent-pr-tracking-design.md.
+
+export const trackedPrs = sqliteTable(
+	"tracked_prs",
+	{
+		// ── Identity ────────────────────────────────────────────────────
+		provider: text("provider").notNull(),
+		identifier: text("identifier").notNull(),
+		repoOwner: text("repo_owner").notNull(),
+		repoName: text("repo_name").notNull(),
+		number: integer("number").notNull(),
+
+		// ── Local linkage (nullable: PR may exist for a repo we don't track) ──
+		projectId: text("project_id").references(() => projects.id, {
+			onDelete: "set null",
+		}),
+
+		// ── Last observed PR state ──────────────────────────────────────
+		title: text("title").notNull(),
+		state: text("state").notNull(),
+		sourceBranch: text("source_branch").notNull().default(""),
+		targetBranch: text("target_branch").notNull().default(""),
+		role: text("role").notNull(),
+		headCommitSha: text("head_commit_sha"),
+		authorLogin: text("author_login").notNull().default("Unknown"),
+		authorAvatarUrl: text("author_avatar_url"),
+
+		// ── Discovery & freshness ───────────────────────────────────────
+		firstSeenAt: integer("first_seen_at", { mode: "timestamp_ms" }).notNull(),
+		lastSeenAt: integer("last_seen_at", { mode: "timestamp_ms" }).notNull(),
+		stateChangedAt: integer("state_changed_at", { mode: "timestamp_ms" }),
+		updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+
+		// ── Auto-review ledger (B-split semantics) ──────────────────────
+		autoReviewFirstTriggeredAt: integer("auto_review_first_triggered_at", {
+			mode: "timestamp_ms",
+		}),
+		autoReviewLastTriggeredSha: text("auto_review_last_triggered_sha"),
+	},
+	(table) => [
+		primaryKey({ columns: [table.provider, table.identifier] }),
+		index("idx_tracked_prs_project_state").on(table.projectId, table.state),
+		index("idx_tracked_prs_provider").on(table.provider),
+		index("idx_tracked_prs_last_seen").on(table.lastSeenAt),
+	]
+);
+
+export type TrackedPr = typeof trackedPrs.$inferSelect;
+export type NewTrackedPr = typeof trackedPrs.$inferInsert;
