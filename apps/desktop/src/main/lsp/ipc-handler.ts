@@ -1,10 +1,11 @@
 import { type BrowserWindow, ipcMain } from "electron";
+import { isCloneable } from "../ipc-safety";
+import { log } from "../logger";
 import { serverManager } from "./server-manager";
 
 export function setupLspIPC(mainWindow: BrowserWindow): void {
 	serverManager.setMainWindow(mainWindow);
 
-	// Handle LSP requests (request-response pattern)
 	ipcMain.handle(
 		"lsp:request",
 		async (
@@ -16,6 +17,8 @@ export function setupLspIPC(mainWindow: BrowserWindow): void {
 				params,
 			}: { languageId: string; repoPath: string; method: string; params: unknown }
 		) => {
+			const label = `lsp:${method}`;
+
 			const config = serverManager.findConfig(languageId);
 			if (!config) return { error: `No language server for ${languageId}` };
 
@@ -29,6 +32,10 @@ export function setupLspIPC(mainWindow: BrowserWindow): void {
 						setTimeout(() => reject(new Error("LSP request timeout")), 10000)
 					),
 				]);
+				if (!isCloneable(result, label)) {
+					return { error: `LSP response for ${method} cannot be serialized` };
+				}
+				log.info(`[ipc] sending ${label}`);
 				return { result };
 			} catch (err) {
 				return { error: err instanceof Error ? err.message : "Unknown error" };
@@ -36,7 +43,6 @@ export function setupLspIPC(mainWindow: BrowserWindow): void {
 		}
 	);
 
-	// Handle LSP notifications (fire-and-forget)
 	ipcMain.on(
 		"lsp:notification",
 		(
