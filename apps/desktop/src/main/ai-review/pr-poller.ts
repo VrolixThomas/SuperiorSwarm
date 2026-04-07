@@ -257,6 +257,73 @@ export function diffPRCache(
 	return { newPRs, toDelete };
 }
 
+// ── Pure tracked-prs diff helper (exported for testing) ──────────────────────
+
+export interface DiffTrackedPrsArgs {
+	existingRows: TrackedPr[];
+	fetched: CachedPR[];
+	successfulProviders: Set<string>;
+}
+
+export interface DiffTrackedPrsResult {
+	newPRs: CachedPR[];
+	closedPRs: CachedPR[];
+	commitChangedPRs: { pr: CachedPR; previousSha: string }[];
+}
+
+/**
+ * Compute new / closed / commit-changed lists for a poll cycle, given the
+ * existing `tracked_prs` rows and the freshly fetched PRs. Pure function.
+ *
+ * Only fetched PRs whose provider is in `successfulProviders` participate in
+ * the diff — this matches the per-provider partial-failure semantics from the
+ * `diffPRCache` fix and prevents the new-PR flood when one provider's listing
+ * call transiently fails.
+ *
+ * `newPRs`            — fetched PRs whose (provider, identifier) is not in existingRows
+ * `closedPRs`         — fetched PRs whose row exists with state="open" but the fetch
+ *                       returned a non-open state (state-flip detection)
+ * `commitChangedPRs`  — fetched PRs whose row's headCommitSha differs from the
+ *                       fetched headCommitSha (both must be non-null/non-empty)
+ *
+ * Rows whose provider succeeded but did NOT appear in the fetched set are
+ * intentionally left untouched — see the spec for the "PR disappears from
+ * listing" handling.
+ */
+export function diffTrackedPrs(args: DiffTrackedPrsArgs): DiffTrackedPrsResult {
+	const { existingRows, fetched, successfulProviders } = args;
+
+	const rowByKey = new Map<string, TrackedPr>();
+	for (const row of existingRows) {
+		rowByKey.set(`${row.provider}:${row.identifier}`, row);
+	}
+
+	const newPRs: CachedPR[] = [];
+	const closedPRs: CachedPR[] = [];
+	const commitChangedPRs: { pr: CachedPR; previousSha: string }[] = [];
+
+	for (const pr of fetched) {
+		if (!successfulProviders.has(pr.provider)) continue;
+		const key = `${pr.provider}:${pr.identifier}`;
+		const row = rowByKey.get(key);
+
+		if (!row) {
+			newPRs.push(pr);
+			continue;
+		}
+
+		if (row.state === "open" && pr.state !== "open") {
+			closedPRs.push(pr);
+		}
+
+		if (row.headCommitSha && pr.headCommitSha && row.headCommitSha !== pr.headCommitSha) {
+			commitChangedPRs.push({ pr, previousSha: row.headCommitSha });
+		}
+	}
+
+	return { newPRs, closedPRs, commitChangedPRs };
+}
+
 // ── Public control API ─────────────────────────────────────────────────────────
 
 export function startPolling(): void {
