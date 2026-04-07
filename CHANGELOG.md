@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.4.2 (2026-04-07)
+
+### What's New
+
+Fixed an issue where PR review branches were not handled correctly, and resolved Bitbucket display names showing incorrectly in comments.
+
+### Changes
+
+- Pr review branches fix (#59)
+- fix bitbucket display name (#58)
+
 ## v0.4.1 (2026-04-06)
 
 ### What's New
