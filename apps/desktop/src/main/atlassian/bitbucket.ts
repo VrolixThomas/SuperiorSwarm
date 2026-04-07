@@ -104,7 +104,11 @@ export async function getMyPullRequests(): Promise<BitbucketPullRequest[]> {
 	const allPRs: BitbucketPullRequest[] = [];
 
 	for (const { workspace, repoSlug } of repos) {
-		const initialUrl = `${BITBUCKET_API_BASE}/repositories/${workspace}/${repoSlug}/pullrequests?state=OPEN&pagelen=100&q=author.account_id%3D%22${auth.accountId}%22`;
+		// NOTE: Bitbucket Cloud's `/pullrequests` listing endpoint caps `pagelen`
+		// at 50. Bumping this above 50 returns 400 Bad Request. Other Bitbucket
+		// endpoints (comments, statuses, diffstat) accept higher values, but
+		// this one does not — leave it at 50.
+		const initialUrl = `${BITBUCKET_API_BASE}/repositories/${workspace}/${repoSlug}/pullrequests?state=OPEN&pagelen=50&q=author.account_id%3D%22${auth.accountId}%22`;
 		const apiPrs = await paginateBitbucket<BitbucketApiPR>(initialUrl, async (url) => {
 			const res = await atlassianFetch("bitbucket", url);
 			if (!res.ok) {
@@ -130,7 +134,8 @@ export async function getReviewRequests(): Promise<BitbucketPullRequest[]> {
 	const allPRs: BitbucketPullRequest[] = [];
 
 	for (const { workspace, repoSlug } of repos) {
-		const initialUrl = `${BITBUCKET_API_BASE}/repositories/${workspace}/${repoSlug}/pullrequests?state=OPEN&pagelen=100&q=reviewers.account_id%3D%22${auth.accountId}%22`;
+		// See note in getMyPullRequests above: this endpoint caps pagelen at 50.
+		const initialUrl = `${BITBUCKET_API_BASE}/repositories/${workspace}/${repoSlug}/pullrequests?state=OPEN&pagelen=50&q=reviewers.account_id%3D%22${auth.accountId}%22`;
 		const apiPrs = await paginateBitbucket<BitbucketApiPR>(initialUrl, async (url) => {
 			const res = await atlassianFetch("bitbucket", url);
 			if (!res.ok) {
