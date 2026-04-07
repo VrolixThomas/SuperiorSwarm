@@ -93,21 +93,27 @@ async function fetchAllPRs(): Promise<{
 	const results: CachedPR[] = [];
 	const successfulProviders = new Set<string>();
 
-	for (const provider of getConnectedGitProviders()) {
-		try {
-			const prs = await provider.getMyPRs();
-			successfulProviders.add(provider.name);
-			const seen = new Set<number>();
-			for (const pr of prs) {
-				if (!seen.has(pr.id)) {
-					seen.add(pr.id);
-					results.push(toCachedPR(pr, provider.name));
+	// Providers are independent — run their list fetches concurrently so the
+	// poll wall-clock is bounded by max(t_github, t_bitbucket) instead of the
+	// sum. Each iteration has its own try/catch so a failure in one provider
+	// does not cancel the others (matches the previous serial semantics).
+	await Promise.all(
+		getConnectedGitProviders().map(async (provider) => {
+			try {
+				const prs = await provider.getMyPRs();
+				successfulProviders.add(provider.name);
+				const seen = new Set<number>();
+				for (const pr of prs) {
+					if (!seen.has(pr.id)) {
+						seen.add(pr.id);
+						results.push(toCachedPR(pr, provider.name));
+					}
 				}
+			} catch (err) {
+				console.error(`[pr-poller] ${provider.name} fetch failed:`, err);
 			}
-		} catch (err) {
-			console.error(`[pr-poller] ${provider.name} fetch failed:`, err);
-		}
-	}
+		})
+	);
 
 	// Enrich head commit SHA only for PRs whose listing fetch did NOT supply
 	// it. Bitbucket now copies `source.commit.hash` straight from the listing
