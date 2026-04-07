@@ -257,12 +257,8 @@ export async function paginateGitHubSearch<T>(
 		const { items, hasNext } = await fetchPage(page);
 		for (const item of items) all.push(item);
 		if (!hasNext) return all;
-		if (page === HARD_CAP_PAGES) {
-			console.warn(
-				"[github] paginateGitHubSearch hit 1000-result cap (10 pages × 100); see SUP-19"
-			);
-		}
 	}
+	console.warn("[github] paginateGitHubSearch hit 1000-result cap (10 pages × 100); see SUP-19");
 	return all;
 }
 
