@@ -7,7 +7,7 @@ import { app } from "electron";
 import type { SolveLaunchInfo, SolveSessionStatus } from "../../shared/solve-types";
 import { getDb } from "../db";
 import * as schema from "../db/schema";
-import { CLI_PRESETS, type LaunchOptions, isCliInstalled, resolveCliPath } from "./cli-presets";
+import { CLI_PRESETS, type LaunchOptions, isCliInstalled } from "./cli-presets";
 import { getMcpServerPath } from "./mcp-path";
 import { getSettings } from "./orchestrator";
 import { buildSolvePrompt } from "./solve-prompt";
@@ -136,10 +136,10 @@ export async function queueSolve(sessionId: string): Promise<SolveLaunchInfo> {
 		// Setup MCP config (triggers solver env vars via solveSessionId)
 		preset.setupMcp?.(launchOpts);
 
-		// Build CLI command
+		// Build CLI command. See orchestrator.ts:startReview for the rationale
+		// behind using the bare command name instead of an absolute path.
 		const args = preset.buildArgs(launchOpts);
-		const resolvedCommand = resolveCliPath(preset.command);
-		const parts = [resolvedCommand];
+		const parts = [preset.command];
 		if (settings.skipPermissions && preset.permissionFlag) {
 			parts.push(preset.permissionFlag);
 		}

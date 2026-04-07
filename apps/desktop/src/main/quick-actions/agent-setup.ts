@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { eq } from "drizzle-orm";
 import { app } from "electron";
 import { buildDefaultPrompt } from "../../shared/quick-action-prompt";
-import { CLI_PRESETS, isCliInstalled, resolveCliPath } from "../ai-review/cli-presets";
+import { CLI_PRESETS, isCliInstalled } from "../ai-review/cli-presets";
 import { getMcpServerPath } from "../ai-review/mcp-path";
 import { getDb } from "../db";
 import * as schema from "../db/schema";
@@ -90,9 +90,9 @@ export async function launchSetupAgent(
 	writeFileSync(mcpConfigPath, JSON.stringify(mcpConfig, null, 2), "utf-8");
 
 	// Build the CLI invocation — we craft our own prompt arg instead of using
-	// preset.buildArgs() which generates review-specific text ("Review this PR...")
-	const resolvedCommand = resolveCliPath(preset.command);
-	const parts = [resolvedCommand];
+	// preset.buildArgs() which generates review-specific text ("Review this PR...").
+	// Use the bare command name; the login-shell PTY resolves it from the user's PATH.
+	const parts = [preset.command];
 	if (settings.skipPermissions && preset.permissionFlag) {
 		parts.push(preset.permissionFlag);
 	}

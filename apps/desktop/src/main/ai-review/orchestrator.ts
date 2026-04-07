@@ -12,7 +12,6 @@ import {
 	buildFollowUpPrompt,
 	buildReviewPrompt,
 	isCliInstalled,
-	resolveCliPath,
 } from "./cli-presets";
 import { getMcpServerPath } from "./mcp-path";
 import { parsePrIdentifier } from "./pr-identifier";
@@ -340,10 +339,11 @@ async function startReview(params: {
 		});
 		startPollingIfNeeded();
 
-		// Build the CLI command args — resolve absolute path to avoid PATH timing issues
+		// Build the CLI command args. Use the bare command name so the script is
+		// portable and so the PTY's login shell (started with `-l` in pty-manager.ts)
+		// can resolve it via the user's full shell PATH.
 		const args = preset.buildArgs(launchOpts);
-		const resolvedCommand = resolveCliPath(preset.command);
-		const parts = [resolvedCommand];
+		const parts = [preset.command];
 		if (settings.skipPermissions && preset.permissionFlag) {
 			parts.push(preset.permissionFlag);
 		}
@@ -622,8 +622,7 @@ async function startFollowUpReview(params: {
 		startPollingIfNeeded();
 
 		const args = preset.buildArgs(launchOpts);
-		const resolvedCommand = resolveCliPath(preset.command);
-		const parts = [resolvedCommand];
+		const parts = [preset.command];
 		if (settings.skipPermissions && preset.permissionFlag) {
 			parts.push(preset.permissionFlag);
 		}
