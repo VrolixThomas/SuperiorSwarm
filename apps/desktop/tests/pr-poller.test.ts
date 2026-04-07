@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { diffPRCache } from "../src/main/ai-review/pr-poller";
+import { diffPRCache, rowToCachedPR } from "../src/main/ai-review/pr-poller";
+import type { TrackedPr } from "../src/main/db/schema";
 import type { CachedPR } from "../src/shared/review-types";
 
 describe("PR poller cache", () => {
@@ -98,5 +99,77 @@ describe("diffPRCache", () => {
 		const result = diffPRCache(cache, fetched, new Set());
 		expect(result.newPRs).toEqual([]);
 		expect(result.toDelete).toEqual([]);
+	});
+});
+
+describe("rowToCachedPR", () => {
+	const baseRow: TrackedPr = {
+		provider: "github",
+		identifier: "acme/widgets#42",
+		repoOwner: "acme",
+		repoName: "widgets",
+		number: 42,
+		projectId: "project-1",
+		title: "Add widgets",
+		state: "open",
+		sourceBranch: "feature/widgets",
+		targetBranch: "main",
+		role: "reviewer",
+		headCommitSha: "abc123",
+		authorLogin: "alice",
+		authorAvatarUrl: null,
+		firstSeenAt: new Date(1_700_000_000_000),
+		lastSeenAt: new Date(1_700_000_000_000),
+		stateChangedAt: null,
+		updatedAt: new Date(1_700_000_000_000),
+		autoReviewFirstTriggeredAt: null,
+		autoReviewLastTriggeredSha: null,
+	};
+
+	test("maps every column the renderer reads", () => {
+		const pr = rowToCachedPR(baseRow);
+		expect(pr.provider).toBe("github");
+		expect(pr.identifier).toBe("acme/widgets#42");
+		expect(pr.number).toBe(42);
+		expect(pr.title).toBe("Add widgets");
+		expect(pr.state).toBe("open");
+		expect(pr.sourceBranch).toBe("feature/widgets");
+		expect(pr.targetBranch).toBe("main");
+		expect(pr.role).toBe("reviewer");
+		expect(pr.headCommitSha).toBe("abc123");
+		expect(pr.repoOwner).toBe("acme");
+		expect(pr.repoName).toBe("widgets");
+		expect(pr.projectId).toBe("project-1");
+		expect(pr.author).toEqual({ login: "alice", avatarUrl: "" });
+	});
+
+	test("fills placeholder fields the in-memory toCachedPR also hardcoded", () => {
+		const pr = rowToCachedPR(baseRow);
+		expect(pr.reviewers).toEqual([]);
+		expect(pr.ciStatus).toBeNull();
+		expect(pr.commentCount).toBe(0);
+		expect(pr.changedFiles).toBe(0);
+		expect(pr.additions).toBe(0);
+		expect(pr.deletions).toBe(0);
+	});
+
+	test("treats null projectId as empty string", () => {
+		const pr = rowToCachedPR({ ...baseRow, projectId: null });
+		expect(pr.projectId).toBe("");
+	});
+
+	test("treats null head_commit_sha as empty string", () => {
+		const pr = rowToCachedPR({ ...baseRow, headCommitSha: null });
+		expect(pr.headCommitSha).toBe("");
+	});
+
+	test("treats null authorAvatarUrl as empty string", () => {
+		const pr = rowToCachedPR({ ...baseRow, authorAvatarUrl: null });
+		expect(pr.author.avatarUrl).toBe("");
+	});
+
+	test("declined state is preserved (Bitbucket)", () => {
+		const pr = rowToCachedPR({ ...baseRow, state: "declined" });
+		expect(pr.state).toBe("declined");
 	});
 });
