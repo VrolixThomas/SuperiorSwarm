@@ -1,10 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { join } from "node:path";
 import { eq } from "drizzle-orm";
 import { app } from "electron";
 import { buildDefaultPrompt } from "../../shared/quick-action-prompt";
 import { CLI_PRESETS, isCliInstalled, resolveCliPath } from "../ai-review/cli-presets";
+import { getMcpServerPath } from "../ai-review/mcp-path";
 import { getDb } from "../db";
 import * as schema from "../db/schema";
 
@@ -61,7 +62,7 @@ export async function launchSetupAgent(
 	}
 
 	// Use the standalone MCP server (same path resolution as cli-presets.ts)
-	const standaloneServerPath = resolve(dirname(__dirname), "..", "mcp-standalone", "server.mjs");
+	const standaloneServerPath = getMcpServerPath();
 
 	// Write the prompt file — use custom prompt if provided, otherwise default
 	const promptFilePath = join(sessionDir, "setup-prompt.txt");
