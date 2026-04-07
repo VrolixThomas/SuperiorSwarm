@@ -1,4 +1,8 @@
+import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
 import { and, eq } from "drizzle-orm";
+import { nanoid } from "nanoid";
 import { getDb } from "../db";
 import * as schema from "../db/schema";
 import { checkoutBranchWorktree } from "../git/operations";
@@ -11,8 +15,6 @@ export async function ensureReviewWorkspace(opts: {
 	sourceBranch: string;
 	targetBranch: string;
 }): Promise<{ workspaceId: string; worktreePath: string }> {
-	const { basename, dirname, join } = await import("node:path");
-	const { nanoid } = await import("nanoid");
 	const db = getDb();
 
 	// 1. Check for existing review workspace
@@ -70,17 +72,15 @@ export async function ensureReviewWorkspace(opts: {
 		const sanitizedId = opts.prIdentifier.replace(/[^a-zA-Z0-9-]/g, "-");
 		const wtPath = join(worktreeBasePath(project.repoPath), `pr-review-${sanitizedId}`);
 
-		const { existsSync } = await import("node:fs");
 		if (!existsSync(wtPath)) {
 			// Worktree doesn't exist on disk — create it
 			await checkoutBranchWorktree(project.repoPath, wtPath, opts.sourceBranch);
 		} else {
 			// Worktree already exists on disk (e.g., previous cleanup deleted DB records
 			// but failed to remove the directory). Reuse it — just fetch latest.
-			const { execSync } = await import("node:child_process");
 			try {
-				execSync("git fetch origin", { cwd: wtPath, stdio: "pipe" });
-				execSync(`git reset --hard origin/${opts.sourceBranch}`, {
+				execFileSync("git", ["fetch", "origin"], { cwd: wtPath, stdio: "pipe" });
+				execFileSync("git", ["reset", "--hard", `origin/${opts.sourceBranch}`], {
 					cwd: wtPath,
 					stdio: "pipe",
 				});
@@ -121,10 +121,9 @@ export async function ensureReviewWorkspace(opts: {
 
 	if (!worktree?.path) throw new Error("Worktree record not found");
 
-	const { execSync } = await import("node:child_process");
 	try {
-		execSync("git fetch origin", { cwd: worktree.path, stdio: "pipe" });
-		execSync(`git reset --hard origin/${opts.sourceBranch}`, {
+		execFileSync("git", ["fetch", "origin"], { cwd: worktree.path, stdio: "pipe" });
+		execFileSync("git", ["reset", "--hard", `origin/${opts.sourceBranch}`], {
 			cwd: worktree.path,
 			stdio: "pipe",
 		});

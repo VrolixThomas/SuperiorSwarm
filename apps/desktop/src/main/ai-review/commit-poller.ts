@@ -125,7 +125,7 @@ async function pollChain(chain: WatchedChain): Promise<void> {
 			}
 
 			// Fetch latest changes in worktree
-			const { execSync } = await import("node:child_process");
+			const { execFileSync } = await import("node:child_process");
 			const latestDraft = db
 				.select()
 				.from(schema.reviewDrafts)
@@ -134,8 +134,8 @@ async function pollChain(chain: WatchedChain): Promise<void> {
 				.sort((a, b) => b.roundNumber - a.roundNumber)[0];
 			if (latestDraft) {
 				try {
-					execSync("git fetch origin", { cwd: worktree.path, stdio: "pipe" });
-					execSync(`git reset --hard origin/${latestDraft.sourceBranch}`, {
+					execFileSync("git", ["fetch", "origin"], { cwd: worktree.path, stdio: "pipe" });
+					execFileSync("git", ["reset", "--hard", `origin/${latestDraft.sourceBranch}`], {
 						cwd: worktree.path,
 						stdio: "pipe",
 					});

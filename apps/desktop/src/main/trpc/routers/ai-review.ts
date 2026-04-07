@@ -188,10 +188,10 @@ export const aiReviewRouter = router({
 			if (!worktree?.path) throw new Error("Worktree not found for review workspace");
 
 			// Fetch latest changes
-			const { execSync } = await import("node:child_process");
+			const { execFileSync } = await import("node:child_process");
 			try {
-				execSync("git fetch origin", { cwd: worktree.path, stdio: "pipe" });
-				execSync(`git reset --hard origin/${latestDraft.sourceBranch}`, {
+				execFileSync("git", ["fetch", "origin"], { cwd: worktree.path, stdio: "pipe" });
+				execFileSync("git", ["reset", "--hard", `origin/${latestDraft.sourceBranch}`], {
 					cwd: worktree.path,
 					stdio: "pipe",
 				});

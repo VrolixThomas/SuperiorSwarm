@@ -1,3 +1,4 @@
+import { and, eq } from "drizzle-orm";
 import type { CachedPR } from "../../shared/review-types";
 import { getDb } from "../db";
 import { projects } from "../db/schema";
@@ -42,19 +43,19 @@ export function getCachedPRs(projectId?: string): CachedPR[] {
 
 function getProjectIdByRepo(owner: string, repoName: string): string {
 	const db = getDb();
+
+	// Fast indexed lookup first
+	const exact = db
+		.select({ id: projects.id })
+		.from(projects)
+		.where(and(eq(projects.remoteOwner, owner), eq(projects.remoteRepo, repoName)))
+		.get();
+	if (exact?.id) return exact.id;
+
+	// Fallback: path-based matching
 	const allProjects = db.select().from(projects).all();
-	const match = allProjects.find((p) => {
-		// Match GitHub owner/repo
-		if (
-			p.remoteOwner?.toLowerCase() === owner.toLowerCase() &&
-			p.remoteRepo?.toLowerCase() === repoName.toLowerCase()
-		) {
-			return true;
-		}
-		// Match Bitbucket workspace/slug via repo path
-		const path = p.repoPath.toLowerCase();
-		return path.includes(`${owner.toLowerCase()}/${repoName.toLowerCase()}`);
-	});
+	const needle = `${owner.toLowerCase()}/${repoName.toLowerCase()}`;
+	const match = allProjects.find((p) => p.repoPath.toLowerCase().includes(needle));
 	return match?.id ?? "";
 }
 
@@ -107,21 +108,19 @@ async function fetchAllPRs(): Promise<CachedPR[]> {
 	}
 
 	// Enrich with head commit SHA (needed for commit change detection)
-	for (const cachedPr of results) {
-		if (cachedPr.state !== "open") continue;
-		try {
+	const openPRs = results.filter((pr) => pr.state === "open");
+	await Promise.allSettled(
+		openPRs.map(async (cachedPr) => {
 			const provider = getConnectedGitProviders().find((p) => p.name === cachedPr.provider);
-			if (!provider) continue;
+			if (!provider) return;
 			const prState = await provider.getPRState(
 				cachedPr.repoOwner,
 				cachedPr.repoName,
 				cachedPr.number
 			);
 			cachedPr.headCommitSha = prState.headSha;
-		} catch (err) {
-			console.error(`[pr-poller] Failed to get head SHA for ${cachedPr.identifier}:`, err);
-		}
-	}
+		})
+	);
 
 	return results;
 }

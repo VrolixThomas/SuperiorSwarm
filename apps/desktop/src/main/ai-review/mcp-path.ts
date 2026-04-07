@@ -23,7 +23,11 @@ export function getMcpServerPath(): string {
 	const devPath = join(appPath, "mcp-standalone", "server.mjs");
 	if (existsSync(devPath)) return devPath;
 
-	throw new Error(
-		`MCP server not found. Checked:\n  ${join(appPath, "mcp-standalone", "server.mjs")}`
-	);
+	const checkedPaths = [join(appPath, "mcp-standalone", "server.mjs")];
+	if (appPath.endsWith("app.asar")) {
+		checkedPaths.unshift(
+			join(appPath.replace("app.asar", "app.asar.unpacked"), "mcp-standalone", "server.mjs")
+		);
+	}
+	throw new Error(`MCP server not found. Checked:\n  ${checkedPaths.join("\n  ")}`);
 }

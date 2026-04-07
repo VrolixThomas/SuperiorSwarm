@@ -776,8 +776,8 @@ export function PRControlRail({ prCtx }: { prCtx: PRContext }) {
 				terminalId: tabId,
 			});
 			setTimeout(() => {
-				window.electron.terminal.write(tabId, `bash '${launchInfo.launchScript}'\r`);
-			}, 1000);
+				window.electron.terminal.write(tabId, `bash '${launchInfo.launchScript}'\n`);
+			}, 500);
 		},
 	});
 
