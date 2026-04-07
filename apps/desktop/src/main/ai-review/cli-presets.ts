@@ -1,9 +1,34 @@
-import { execSync } from "node:child_process";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { DEFAULT_REVIEW_GUIDELINES } from "../../shared/review-prompt";
 
 export { DEFAULT_REVIEW_GUIDELINES };
+
+/**
+ * Directories to search for CLI tools when the Electron main process PATH
+ * is missing entries (common on macOS when the app is launched from Finder).
+ *
+ * We intentionally do NOT call `which <cmd>` because `which` only sees
+ * `process.env.PATH`, which on a Finder-launched app is just the macOS
+ * launchd default (`/usr/bin:/bin:/usr/sbin:/sbin`) — none of the usual
+ * npm / Homebrew / Bun install directories.
+ */
+function defaultSearchDirs(): string[] {
+	const home = homedir();
+	const envPath = (process.env.PATH ?? "").split(":").filter(Boolean);
+	return [
+		join(home, ".local/bin"),
+		join(home, ".claude/local"),
+		join(home, ".npm-global/bin"),
+		join(home, ".bun/bin"),
+		"/opt/homebrew/bin",
+		"/usr/local/bin",
+		"/usr/bin",
+		"/bin",
+		...envPath,
+	];
+}
 
 export interface CliPreset {
 	name: string;
@@ -172,23 +197,31 @@ export const CLI_PRESETS: Record<string, CliPreset> = {
 	},
 };
 
-/** Check if a CLI tool is installed and available on PATH */
-export function isCliInstalled(command: string): boolean {
-	try {
-		execSync(`which ${command}`, { stdio: "ignore" });
-		return true;
-	} catch {
-		return false;
-	}
+/** Check if a CLI tool is installed in any of the known search directories. */
+export function isCliInstalled(command: string, searchDirs?: string[]): boolean {
+	return resolveCliPath(command, searchDirs) !== null;
 }
 
-/** Resolve the absolute path to a CLI tool, or return the command name as fallback */
-export function resolveCliPath(command: string): string {
-	try {
-		return execSync(`which ${command}`, { encoding: "utf-8" }).trim();
-	} catch {
-		return command;
+/**
+ * Resolve the absolute path to a CLI tool by searching common install
+ * directories plus `process.env.PATH`. Returns `null` if not found.
+ *
+ * An entry counts as a match only if it is a regular file with at least one
+ * execute bit set (owner / group / other). Directories and non-executable
+ * files are ignored.
+ */
+export function resolveCliPath(command: string, searchDirs?: string[]): string | null {
+	const dirs = searchDirs ?? defaultSearchDirs();
+	for (const dir of dirs) {
+		const candidate = join(dir, command);
+		try {
+			const st = statSync(candidate);
+			if (st.isFile() && (st.mode & 0o111) !== 0) return candidate;
+		} catch {
+			// ENOENT / permission → not a match, keep looking
+		}
 	}
+	return null;
 }
 
 /** Build the locked MCP tool instructions block */
