@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.4.3 (2026-04-07)
+
+### What's New
+
+SuperiorSwarm now writes diagnostic logs to standard system locations and detects unsafe internal data before it can crash the app, so background failures degrade gracefully instead of taking the window down. If a crash does still occur, new breadcrumbs in the log make it much easier to identify what was happening at the moment of failure.
+
+### Changes
+
+- feat(main): instrument IPC paths with electron-log + clone-safety walker (#60)
+
 ## v0.4.2 (2026-04-07)
 
 ### What's New
