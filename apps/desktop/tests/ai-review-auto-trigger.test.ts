@@ -48,7 +48,7 @@ describe("auto-trigger decision", () => {
 			pr: basePr,
 			autoReviewEnabled: false,
 			existingDrafts: new Map(),
-			alreadyTriggered: new Set(),
+			alreadyTriggeredAt: null,
 		});
 		expect(shouldTrigger).toBe(false);
 	});
@@ -58,7 +58,7 @@ describe("auto-trigger decision", () => {
 			pr: { ...basePr, state: "closed" },
 			autoReviewEnabled: true,
 			existingDrafts: new Map(),
-			alreadyTriggered: new Set(),
+			alreadyTriggeredAt: null,
 		});
 		expect(shouldTrigger).toBe(false);
 	});
@@ -68,7 +68,7 @@ describe("auto-trigger decision", () => {
 			pr: { ...basePr, role: "author" },
 			autoReviewEnabled: true,
 			existingDrafts: new Map(),
-			alreadyTriggered: new Set(),
+			alreadyTriggeredAt: null,
 		});
 		expect(shouldTrigger).toBe(false);
 	});
@@ -78,7 +78,7 @@ describe("auto-trigger decision", () => {
 			pr: { ...basePr, projectId: "" },
 			autoReviewEnabled: true,
 			existingDrafts: new Map(),
-			alreadyTriggered: new Set(),
+			alreadyTriggeredAt: null,
 		});
 		expect(shouldTrigger).toBe(false);
 	});
@@ -88,7 +88,7 @@ describe("auto-trigger decision", () => {
 			pr: basePr,
 			autoReviewEnabled: true,
 			existingDrafts: new Map([[basePr.identifier, "queued"]]),
-			alreadyTriggered: new Set(),
+			alreadyTriggeredAt: null,
 		});
 		expect(shouldTrigger).toBe(false);
 	});
@@ -98,7 +98,7 @@ describe("auto-trigger decision", () => {
 			pr: basePr,
 			autoReviewEnabled: true,
 			existingDrafts: new Map(),
-			alreadyTriggered: new Set([basePr.identifier]),
+			alreadyTriggeredAt: new Date(),
 		});
 		expect(shouldTrigger).toBe(false);
 	});
@@ -108,7 +108,7 @@ describe("auto-trigger decision", () => {
 			pr: basePr,
 			autoReviewEnabled: true,
 			existingDrafts: new Map(),
-			alreadyTriggered: new Set(),
+			alreadyTriggeredAt: null,
 		});
 		expect(shouldTrigger).toBe(true);
 	});
@@ -118,7 +118,7 @@ describe("auto-trigger decision", () => {
 			pr: basePr,
 			autoReviewEnabled: true,
 			existingDrafts: new Map([[basePr.identifier, "submitted"]]),
-			alreadyTriggered: new Set(),
+			alreadyTriggeredAt: null,
 		});
 		expect(shouldTrigger).toBe(true);
 	});
@@ -128,7 +128,7 @@ describe("auto-trigger decision", () => {
 			pr: basePr,
 			autoReviewEnabled: true,
 			existingDrafts: new Map([[basePr.identifier, "failed"]]),
-			alreadyTriggered: new Set(),
+			alreadyTriggeredAt: null,
 		});
 		expect(shouldTrigger).toBe(true);
 	});
@@ -138,7 +138,7 @@ describe("auto-trigger decision", () => {
 			pr: basePr,
 			autoReviewEnabled: true,
 			existingDrafts: new Map([[basePr.identifier, "dismissed"]]),
-			alreadyTriggered: new Set(),
+			alreadyTriggeredAt: null,
 		});
 		expect(shouldTrigger).toBe(true);
 	});
@@ -148,7 +148,7 @@ describe("auto-trigger decision", () => {
 			pr: basePr,
 			autoReviewEnabled: true,
 			existingDrafts: new Map([[basePr.identifier, "in_progress"]]),
-			alreadyTriggered: new Set(),
+			alreadyTriggeredAt: null,
 		});
 		expect(shouldTrigger).toBe(false);
 	});
@@ -174,7 +174,9 @@ describe("auto-trigger decision", () => {
 						launchScript: "/tmp/ws/start.sh",
 					};
 				},
-				alreadyTriggered: new Set(),
+				getAutoReviewLedger: () => ({ firstTriggeredAt: null, lastTriggeredSha: null }),
+				markFirstTriggered: () => {},
+				markReReviewedAtSha: () => {},
 			},
 		});
 
@@ -201,7 +203,7 @@ describe("auto-trigger decision", () => {
 			workspaceId: string;
 			worktreePath: string;
 		}> = [];
-		const alreadyTriggered = new Set<string>();
+		const stubs = makeLedgerStubs();
 
 		const result = await maybeAutoTriggerReview({
 			pr: basePr,
@@ -238,7 +240,9 @@ describe("auto-trigger decision", () => {
 						launchScript: "/tmp/ws/start.sh",
 					};
 				},
-				alreadyTriggered,
+				getAutoReviewLedger: stubs.getAutoReviewLedger,
+				markFirstTriggered: stubs.markFirstTriggered,
+				markReReviewedAtSha: stubs.markReReviewedAtSha,
 			},
 		});
 
@@ -270,6 +274,45 @@ describe("auto-trigger decision", () => {
 				worktreePath: "/tmp/ws",
 			},
 		]);
-		expect(alreadyTriggered.has(basePr.identifier)).toBe(true);
+		expect(stubs.getFirstTriggeredAt()).not.toBeNull();
+	});
+});
+
+function makeLedgerStubs() {
+	let firstTriggeredAt: Date | null = null;
+	let lastTriggeredSha: string | null = null;
+	return {
+		getAutoReviewLedger: () => ({ firstTriggeredAt, lastTriggeredSha }),
+		markFirstTriggered: () => {
+			firstTriggeredAt = new Date();
+		},
+		markReReviewedAtSha: (_p: string, _i: string, sha: string) => {
+			lastTriggeredSha = sha;
+		},
+		// Test-only readers
+		getFirstTriggeredAt: () => firstTriggeredAt,
+		getLastTriggeredSha: () => lastTriggeredSha,
+	};
+}
+
+describe("auto-trigger ledger", () => {
+	test("does not trigger when ledger says firstTriggeredAt is non-null", () => {
+		const shouldTrigger = shouldAutoTriggerReview({
+			pr: basePr,
+			autoReviewEnabled: true,
+			existingDrafts: new Map(),
+			alreadyTriggeredAt: new Date(),
+		});
+		expect(shouldTrigger).toBe(false);
+	});
+
+	test("triggers when ledger firstTriggeredAt is null", () => {
+		const shouldTrigger = shouldAutoTriggerReview({
+			pr: basePr,
+			autoReviewEnabled: true,
+			existingDrafts: new Map(),
+			alreadyTriggeredAt: null,
+		});
+		expect(shouldTrigger).toBe(true);
 	});
 });
