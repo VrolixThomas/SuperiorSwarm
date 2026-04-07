@@ -652,15 +652,24 @@ export function PullRequestsTab() {
 		// Group by repo
 		const groups = new Map<
 			string,
-			{ name: string; provider: "github" | "bitbucket"; items: MergedPR[] }
+			{
+				name: string;
+				owner: string;
+				repo: string;
+				provider: "github" | "bitbucket";
+				items: MergedPR[];
+			}
 		>();
 		for (const pr of merged) {
 			const existing = groups.get(pr.repoKey);
 			if (existing) {
 				existing.items.push(pr);
 			} else {
+				const [owner = "", repo = ""] = pr.repoKey.split("/");
 				groups.set(pr.repoKey, {
 					name: pr.repoDisplay,
+					owner,
+					repo,
 					provider: pr.provider,
 					items: [pr],
 				});
