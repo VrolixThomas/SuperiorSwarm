@@ -1,6 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import type { CachedPR } from "../../shared/review-types";
 import { getDb } from "../db";
+import type { TrackedPr } from "../db/schema";
 import { projects } from "../db/schema";
 import { getConnectedGitProviders } from "../providers/git-provider";
 import type { NormalizedPR } from "../providers/types";
@@ -180,6 +181,40 @@ async function doPoll(): Promise<void> {
 	for (const pr of fetched) {
 		prCache.set(pr.identifier, pr);
 	}
+}
+
+// ── Pure DB-row → CachedPR mapper (exported for testing) ──────────────────────
+
+/**
+ * Convert a `tracked_prs` row into the `CachedPR` shape the renderer and the
+ * workspaces / comment-poller / create-and-queue-solve consumers already
+ * expect. The placeholder fields (`reviewers`, `commentCount`, etc.) are
+ * hardcoded to match the in-memory `toCachedPR` they're replacing — those
+ * fields were never populated by the poller in the first place.
+ */
+export function rowToCachedPR(row: TrackedPr): CachedPR {
+	return {
+		provider: row.provider as CachedPR["provider"],
+		identifier: row.identifier,
+		number: row.number,
+		title: row.title,
+		state: row.state as CachedPR["state"],
+		sourceBranch: row.sourceBranch,
+		targetBranch: row.targetBranch,
+		author: { login: row.authorLogin, avatarUrl: row.authorAvatarUrl ?? "" },
+		reviewers: [],
+		ciStatus: null,
+		commentCount: 0,
+		changedFiles: 0,
+		additions: 0,
+		deletions: 0,
+		updatedAt: row.updatedAt.toISOString(),
+		repoOwner: row.repoOwner,
+		repoName: row.repoName,
+		projectId: row.projectId ?? "",
+		role: row.role as CachedPR["role"],
+		headCommitSha: row.headCommitSha ?? "",
+	};
 }
 
 // ── Pure cache-diff helper (exported for testing) ─────────────────────────────
