@@ -145,8 +145,16 @@ async function doPoll(): Promise<void> {
 
 	const db = getDb();
 
-	// Collect events to fire after the transaction commits, so handlers see a
-	// consistent table and we never fire on a rolled-back state.
+	// Collect events to fire AFTER the transaction commits, so handlers see a
+	// consistent table and we never fire on a rolled-back state. Important
+	// invariant: better-sqlite3's `db.transaction(callback)` does NOT retry the
+	// callback on errors — a thrown exception propagates out of `db.transaction`
+	// and unwinds `doPoll` entirely, skipping the firing loops below. The
+	// `*ToEmit` arrays may therefore be partially populated when a rollback
+	// occurs, but their contents are simply discarded with the stack frame.
+	// If you ever wrap the transaction in a try/catch that recovers, you MUST
+	// also clear these arrays before continuing or you will fire events for
+	// rolled-back rows.
 	const newPRsToEmit: CachedPR[] = [];
 	const closedPRsToEmit: CachedPR[] = [];
 	const commitChangedToEmit: { pr: CachedPR; previousSha: string }[] = [];
@@ -190,16 +198,15 @@ async function doPoll(): Promise<void> {
 
 		const now = new Date();
 
-		// Apply bootstrap-silent inserts.
+		// Apply bootstrap-silent inserts. Use onConflictDoNothing (not Update) so
+		// that if a row somehow already exists for this (provider, identifier) —
+		// e.g. from a concurrent process or a partially-applied prior poll — we
+		// leave it alone rather than silently overwriting it without firing events.
+		// The next poll cycle (when this provider is no longer in bootstrap mode)
+		// will catch any genuine state changes via the normal diff path.
 		for (const pr of fetched) {
 			if (!bootstrapSilentProviders.has(pr.provider)) continue;
-			tx.insert(trackedPrs)
-				.values(buildInsertRow(pr, now))
-				.onConflictDoUpdate({
-					target: [trackedPrs.provider, trackedPrs.identifier],
-					set: buildUpdateSet(pr, now),
-				})
-				.run();
+			tx.insert(trackedPrs).values(buildInsertRow(pr, now)).onConflictDoNothing().run();
 		}
 
 		// Track newPRs to emit AFTER commit.
@@ -276,6 +283,14 @@ function buildInsertRow(pr: CachedPR, now: Date): typeof trackedPrs.$inferInsert
 	};
 }
 
+/**
+ * Drizzle conflict-resolution payload for an UPSERT against `tracked_prs`.
+ *
+ * IMPORTANT: this set deliberately OMITS `firstSeenAt` so that updating an
+ * existing row preserves its original first-seen timestamp. The asymmetry
+ * with `buildInsertRow` (which DOES set `firstSeenAt`) is load-bearing — do
+ * NOT add `firstSeenAt` here without changing the semantics intentionally.
+ */
 function buildUpdateSet(pr: CachedPR, now: Date): Partial<typeof trackedPrs.$inferInsert> {
 	return {
 		title: pr.title,
