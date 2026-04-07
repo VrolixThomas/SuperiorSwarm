@@ -267,33 +267,31 @@ export interface CommitInfo {
 export async function getCommitsAhead(repoPath: string, baseBranch: string): Promise<CommitInfo[]> {
 	const git = simpleGit(repoPath);
 
-	// Get commits between base and HEAD
-	const log = await git.log({
-		from: baseBranch,
-		to: "HEAD",
-		format: { hash: "%H", shortHash: "%h", message: "%s", time: "%ar" },
-	});
+	// Single `git log` invocation that emits both file status (from --raw) and
+	// per-file additions/deletions (from --numstat). The previous implementation
+	// ran `git diff` ONCE PER COMMIT (1 600+ sequential shell-outs on
+	// long-lived branches like provider-service `feature/PI-2668-batch-5`) and
+	// parsed full unified diffs (with hunks) just to throw the hunks away — the
+	// renderer's CommitCard / PRCommitCard only ever read path/status/additions/
+	// deletions (see CommittedStack.tsx:19-114, PRControlRail.tsx:368-460). The
+	// combination froze the renderer for >20 s on ~414k-line diffs because the
+	// IPC payload had to be walked, serialised, and decoded.
+	//
+	// One call + no hunks shrinks the IPC payload from hundreds of MB to ~1.7 MB
+	// (measured against provider-service feature/PI-2668-batch-5: 1 655 commits,
+	// 8 830 file entries) and removes the serial shell-out fan-out. See
+	// docs/superpowers/plans/2026-04-07-commits-ahead-payload-fix.md.
+	const raw = await git.raw([
+		"log",
+		`${baseBranch}..HEAD`,
+		"--raw",
+		"--numstat",
+		"-M",
+		"--no-color",
+		"--format=__C__|%H|%h|%ar|%s",
+	]);
 
-	const commits: CommitInfo[] = [];
-	for (const entry of log.all) {
-		// Get diff for each commit
-		const rawDiff = await git.diff([`${entry.hash}~1..${entry.hash}`, "--unified=0", "--no-color"]);
-		const files = parseUnifiedDiff(rawDiff);
-		const additions = files.reduce((sum, f) => sum + f.additions, 0);
-		const deletions = files.reduce((sum, f) => sum + f.deletions, 0);
-
-		commits.push({
-			hash: entry.hash,
-			shortHash: entry.shortHash,
-			message: entry.message,
-			time: entry.time,
-			additions,
-			deletions,
-			files,
-		});
-	}
-
-	return commits;
+	return parseCommitsAhead(raw);
 }
 
 /**
