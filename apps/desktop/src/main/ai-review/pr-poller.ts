@@ -89,12 +89,17 @@ function toCachedPR(pr: NormalizedPR, provider: string): CachedPR {
 
 // ── Core poll logic ────────────────────────────────────────────────────────────
 
-async function fetchAllPRs(): Promise<CachedPR[]> {
+async function fetchAllPRs(): Promise<{
+	results: CachedPR[];
+	successfulProviders: Set<string>;
+}> {
 	const results: CachedPR[] = [];
+	const successfulProviders = new Set<string>();
 
 	for (const provider of getConnectedGitProviders()) {
 		try {
 			const prs = await provider.getMyPRs();
+			successfulProviders.add(provider.name);
 			const seen = new Set<number>();
 			for (const pr of prs) {
 				if (!seen.has(pr.id)) {
@@ -122,29 +127,27 @@ async function fetchAllPRs(): Promise<CachedPR[]> {
 		})
 	);
 
-	return results;
+	return { results, successfulProviders };
 }
 
 async function doPoll(): Promise<void> {
 	let fetched: CachedPR[];
+	let successfulProviders: Set<string>;
 	try {
-		fetched = await fetchAllPRs();
+		const result = await fetchAllPRs();
+		fetched = result.results;
+		successfulProviders = result.successfulProviders;
 	} catch (err) {
 		console.error("[pr-poller] Poll failed:", err);
 		return;
 	}
 
-	const fetchedByIdentifier = new Map<string, CachedPR>();
-	for (const pr of fetched) {
-		fetchedByIdentifier.set(pr.identifier, pr);
-	}
+	const { newPRs, toDelete } = diffPRCache(prCache, fetched, successfulProviders);
 
-	// Detect new PRs (not in cache)
-	for (const pr of fetched) {
-		if (!prCache.has(pr.identifier)) {
-			console.log(`[pr-poller] New PR detected: ${pr.identifier}`);
-			onNewPRHandler?.(pr);
-		}
+	// Fire new-PR events
+	for (const pr of newPRs) {
+		console.log(`[pr-poller] New PR detected: ${pr.identifier}`);
+		onNewPRHandler?.(pr);
 	}
 
 	// Detect closed/merged PRs (state changed to non-open)
@@ -162,12 +165,7 @@ async function doPoll(): Promise<void> {
 	for (const pr of fetched) {
 		if (pr.state !== "open") continue;
 		const cached = prCache.get(pr.identifier);
-		if (
-			cached &&
-			cached.headCommitSha &&
-			pr.headCommitSha &&
-			cached.headCommitSha !== pr.headCommitSha
-		) {
+		if (cached?.headCommitSha && pr.headCommitSha && cached.headCommitSha !== pr.headCommitSha) {
 			console.log(
 				`[pr-poller] New commits on ${pr.identifier}: ${cached.headCommitSha} → ${pr.headCommitSha}`
 			);
@@ -175,12 +173,9 @@ async function doPoll(): Promise<void> {
 		}
 	}
 
-	// Update cache with latest data
-	// Remove entries that are no longer fetched (PR disappeared entirely)
-	for (const identifier of prCache.keys()) {
-		if (!fetchedByIdentifier.has(identifier)) {
-			prCache.delete(identifier);
-		}
+	// Apply diff: prune stale entries, then upsert fetched.
+	for (const identifier of toDelete) {
+		prCache.delete(identifier);
 	}
 	for (const pr of fetched) {
 		prCache.set(pr.identifier, pr);
