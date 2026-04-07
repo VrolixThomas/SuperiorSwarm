@@ -104,11 +104,20 @@ export async function getMyPullRequests(): Promise<BitbucketPullRequest[]> {
 	const allPRs: BitbucketPullRequest[] = [];
 
 	for (const { workspace, repoSlug } of repos) {
-		// NOTE: Bitbucket Cloud's `/pullrequests` listing endpoint caps `pagelen`
-		// at 50. Bumping this above 50 returns 400 Bad Request. Other Bitbucket
-		// endpoints (comments, statuses, diffstat) accept higher values, but
-		// this one does not — leave it at 50.
-		const initialUrl = `${BITBUCKET_API_BASE}/repositories/${workspace}/${repoSlug}/pullrequests?state=OPEN&pagelen=50&q=author.account_id%3D%22${auth.accountId}%22`;
+		// NOTES:
+		// 1. Bitbucket Cloud's `/pullrequests` listing endpoint caps `pagelen`
+		//    at 50. Bumping this above 50 returns 400 Bad Request. Other
+		//    Bitbucket endpoints (comments, statuses, diffstat) accept higher
+		//    values, but this one does not — leave it at 50.
+		// 2. State filter MUST be inside the `q=` BBQL expression, not a
+		//    standalone `state=` parameter. When both are present, Bitbucket
+		//    silently ignores the standalone `state=` and applies only `q=`,
+		//    which means a query like `q=author.account_id="..."` returns
+		//    PRs in EVERY state — including 1000s of merged/declined ones.
+		//    See https://jira.atlassian.com/browse/BCLOUD-21305 for the
+		//    quirk; the fix is to AND `state="OPEN"` into the q expression.
+		const q = `state%3D%22OPEN%22%20AND%20author.account_id%3D%22${auth.accountId}%22`;
+		const initialUrl = `${BITBUCKET_API_BASE}/repositories/${workspace}/${repoSlug}/pullrequests?pagelen=50&q=${q}`;
 		const apiPrs = await paginateBitbucket<BitbucketApiPR>(initialUrl, async (url) => {
 			const res = await atlassianFetch("bitbucket", url);
 			if (!res.ok) {
@@ -134,8 +143,10 @@ export async function getReviewRequests(): Promise<BitbucketPullRequest[]> {
 	const allPRs: BitbucketPullRequest[] = [];
 
 	for (const { workspace, repoSlug } of repos) {
-		// See note in getMyPullRequests above: this endpoint caps pagelen at 50.
-		const initialUrl = `${BITBUCKET_API_BASE}/repositories/${workspace}/${repoSlug}/pullrequests?state=OPEN&pagelen=50&q=reviewers.account_id%3D%22${auth.accountId}%22`;
+		// See notes in getMyPullRequests above: pagelen capped at 50, AND state
+		// must be baked into the `q=` expression or Bitbucket returns every state.
+		const q = `state%3D%22OPEN%22%20AND%20reviewers.account_id%3D%22${auth.accountId}%22`;
+		const initialUrl = `${BITBUCKET_API_BASE}/repositories/${workspace}/${repoSlug}/pullrequests?pagelen=50&q=${q}`;
 		const apiPrs = await paginateBitbucket<BitbucketApiPR>(initialUrl, async (url) => {
 			const res = await atlassianFetch("bitbucket", url);
 			if (!res.ok) {
