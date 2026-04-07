@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { eq } from "drizzle-orm";
 import { BrowserWindow, app, dialog, ipcMain, shell } from "electron";
 import { AGENT_NOTIFY_PORT } from "../shared/agent-events";
 import { daemonInstanceId, daemonPaths } from "../shared/daemon-protocol";
@@ -22,6 +23,8 @@ import {
 	savePaneLayouts,
 	saveTerminalSessions,
 } from "./db/session-persistence";
+import { isCloneable, setDebugMode } from "./ipc-safety";
+import { log, setupCrashHandlers } from "./logger";
 import { setupLspIPC } from "./lsp/ipc-handler";
 import { serverManager } from "./lsp/server-manager";
 import { syncShortcuts } from "./quick-actions/shortcuts";
@@ -41,19 +44,19 @@ import { registerIssueTracker } from "./providers/issue-tracker";
 import { JiraAdapter } from "./providers/jira-adapter";
 import { LinearAdapter } from "./providers/linear-adapter";
 
-// ── Global error handlers ─────────────────────────────────────────────────────
-
-process.on("unhandledRejection", (reason) => {
-	console.error("[main] Unhandled promise rejection:", reason);
-});
-
-process.on("uncaughtException", (err) => {
-	console.error("[main] Uncaught exception:", err);
-});
-
 let mainWindow: BrowserWindow | null = null;
 let daemonClient: DaemonClient;
 let alertListener: AgentAlertListener | null = null;
+
+function broadcastToWindows(channel: string, payload: unknown): void {
+	if (!isCloneable(payload, channel)) return;
+	log.info(`[ipc] sending ${channel}`);
+	for (const win of BrowserWindow.getAllWindows()) {
+		if (!win.isDestroyed()) {
+			win.webContents.send(channel, payload);
+		}
+	}
+}
 
 function createWindow() {
 	mainWindow = new BrowserWindow({
@@ -87,6 +90,8 @@ function createWindow() {
 }
 
 app.whenReady().then(async () => {
+	setupCrashHandlers();
+	log.info("App started", { version: app.getVersion() });
 	const instanceId = daemonInstanceId(__dirname);
 	const paths = daemonPaths(instanceId);
 	daemonClient = new DaemonClient(paths.socketPath, paths.pidPath, paths.logPath, !app.isPackaged);
@@ -99,7 +104,7 @@ app.whenReady().then(async () => {
 		initializeDatabase();
 		await backfillRemoteHosts();
 	} catch (err) {
-		console.error("[db] Failed to initialize database:", err);
+		log.error("[db] Failed to initialize database:", err);
 		dialog.showErrorBox(
 			"Database Error",
 			`SuperiorSwarm failed to initialize its database and cannot start.\n\n${String(err)}`
@@ -107,6 +112,15 @@ app.whenReady().then(async () => {
 		app.quit();
 		return;
 	}
+
+	const debugRow = getDb()
+		.select()
+		.from(schema.sessionState)
+		.where(eq(schema.sessionState.key, "debug_mode"))
+		.get();
+	const debugEnabled = debugRow?.value === "1";
+	setDebugMode(debugEnabled);
+	log.info(`[debug-mode] ${debugEnabled ? "ENABLED" : "disabled"}`);
 
 	// Set up tRPC IPC so the renderer can make queries once it loads
 	setupTRPCIPC(appRouter);
@@ -120,7 +134,7 @@ app.whenReady().then(async () => {
 			}
 			event.returnValue = { ok: true };
 		} catch (err) {
-			console.error("Failed to save terminal sessions on quit:", err);
+			log.error("Failed to save terminal sessions on quit:", err);
 			event.returnValue = { ok: false };
 		}
 	});
@@ -181,14 +195,10 @@ app.whenReady().then(async () => {
 	try {
 		await alertListener.start();
 	} catch (err) {
-		console.error("[agent-notify] failed to start listener:", err);
+		log.error("[agent-notify] failed to start listener:", err);
 	}
 	alertListener.onEvent((event) => {
-		for (const win of BrowserWindow.getAllWindows()) {
-			if (!win.isDestroyed()) {
-				win.webContents.send("agent:alert", event);
-			}
-		}
+		broadcastToWindows("agent:alert", event);
 	});
 
 	// Clean up zombie daemons from previous dev sessions
@@ -207,22 +217,16 @@ app.whenReady().then(async () => {
 	startCommentPoller();
 
 	onNewPRDetected((pr) => {
-		for (const win of BrowserWindow.getAllWindows()) {
-			if (!win.isDestroyed()) {
-				win.webContents.send("new-pr-review-request", pr);
-			}
-		}
+		broadcastToWindows("new-pr-review-request", pr);
 
-		void maybeAutoTriggerReview({
-			pr,
-		}).catch((err) => {
-			console.error("[ai-review] Auto-trigger failed:", err);
+		void maybeAutoTriggerReview({ pr }).catch((err) => {
+			log.error("[ai-review] Auto-trigger failed:", err);
 		});
 	});
 
 	onPRCommitChanged((pr, _previousSha) => {
 		void maybeAutoReReview({ pr }).catch((err) =>
-			console.error("[auto-review] Re-review on commit change failed:", err)
+			log.error("[auto-review] Re-review on commit change failed:", err)
 		);
 	});
 
@@ -232,13 +236,9 @@ app.whenReady().then(async () => {
 			if (wsId) {
 				await cleanupReviewWorkspace(wsId);
 			}
-			for (const win of BrowserWindow.getAllWindows()) {
-				if (!win.isDestroyed()) {
-					win.webContents.send("pr-closed", pr);
-				}
-			}
+			broadcastToWindows("pr-closed", pr);
 		} catch (err) {
-			console.error("[main] Error handling PR closed event:", err);
+			log.error("[main] Error handling PR closed event:", err);
 		}
 	});
 
@@ -253,13 +253,12 @@ app.whenReady().then(async () => {
 	try {
 		await daemonClient.connect(dbPath, daemonScriptPath);
 	} catch (err) {
-		console.error("[main] Failed to connect to terminal daemon, will retry:", err);
+		log.error("[main] Failed to connect to terminal daemon, will retry:", err);
 		daemonClient.startReconnecting();
 	}
 
-	// Initialize auto-updater (non-blocking — errors logged, not thrown)
 	initializeUpdater().catch((err) => {
-		console.error("[main] Failed to initialize updater:", err);
+		log.error("[main] Failed to initialize updater:", err);
 	});
 });
 

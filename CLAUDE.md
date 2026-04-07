@@ -80,3 +80,38 @@ Electron Vite (`electron.vite.config.ts`) builds all three processes. Main and p
 ## Design System
 
 Dark theme with CSS custom properties defined in `src/renderer/styles.css`. Background levels: `--bg-base` through `--bg-overlay`. Text levels: `--text` through `--text-quaternary`. Accent: `--accent` (#0a84ff). Terminal uses custom ANSI color palette via xterm.js.
+
+## Logging
+
+Production logs are written to platform-standard locations via `electron-log`:
+
+- **macOS:** `~/Library/Logs/SuperiorSwarm/main.log`
+- **Linux:** `~/.config/SuperiorSwarm/logs/main.log`
+- **Windows:** `%APPDATA%\SuperiorSwarm\logs\main.log`
+
+Files rotate at 5 MB (one archive kept as `main.old.log`).
+
+To tail logs while the app is running:
+
+```bash
+tail -f ~/Library/Logs/SuperiorSwarm/main.log
+```
+
+Every IPC send emits a one-line breadcrumb (`[ipc] sending <label>`). If a send carries a non-cloneable payload (function, class instance, depth > 50), the iterative walker in `src/main/ipc-safety.ts` detects it before V8 sees it and logs a structured report (`[ipc-safety] non-cloneable value for <label>`). The IPC handler then returns an error response so the renderer gets a graceful failure instead of a process crash.
+
+If V8 still manages to crash (some unsupported type the walker doesn't check for), the most recent breadcrumb in the log identifies the procedure that was being sent at the moment of the crash.
+
+### Debug mode
+
+A `debug_mode` flag in the `session_state` table forces `isCloneable` to return `true` even when it finds issues — so the IPC send proceeds, V8 crashes the app, and you get an immediate signal (rather than the silent "log + degrade" behavior end users get). The structured `[ipc-safety]` report is still written first, so the post-crash log contains both the breadcrumb timeline and the exact field path / type of the offending value.
+
+To enable on your own machine:
+
+```bash
+sqlite3 ~/Library/Application\ Support/SuperiorSwarm/superiorswarm.db \
+  "INSERT OR REPLACE INTO session_state (key, value) VALUES ('debug_mode', '1');"
+```
+
+Restart the app. The startup log line `[debug-mode] ENABLED` confirms it. To turn it off, set the value to `'0'` (or `DELETE` the row) and restart.
+
+Default is off — never ship with the flag set.
