@@ -16,6 +16,8 @@ export interface BitbucketPullRequest {
 	updatedOn: string;
 	source?: { branch?: { name: string } };
 	destination?: { branch?: { name: string } };
+	/** Head commit SHA from `source.commit.hash` in the listing response. */
+	headCommitSha: string;
 }
 
 interface BitbucketApiPR {
@@ -23,7 +25,11 @@ interface BitbucketApiPR {
 	title: string;
 	state: string;
 	author: { display_name: string };
-	source: { repository: { full_name: string }; branch?: { name?: string } };
+	source: {
+		repository: { full_name: string };
+		branch?: { name?: string };
+		commit?: { hash?: string };
+	};
 	destination?: { branch?: { name?: string } };
 	links: { html: { href: string } };
 	created_on: string;
@@ -45,6 +51,7 @@ function mapPR(pr: BitbucketApiPR, workspace: string, repoSlug: string): Bitbuck
 		destination: pr.destination?.branch
 			? { branch: { name: pr.destination.branch.name ?? "" } }
 			: undefined,
+		headCommitSha: pr.source.commit?.hash ?? "",
 	};
 }
 
