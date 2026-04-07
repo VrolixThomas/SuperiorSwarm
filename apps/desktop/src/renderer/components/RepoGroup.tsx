@@ -1,11 +1,11 @@
-import type { ReactNode } from "react";
+import type { MouseEvent, ReactNode } from "react";
 
 interface RepoGroupProps {
 	name: string;
 	isActive: boolean;
 	isExpanded: boolean;
 	onToggle?: () => void;
-	onContextMenu?: (e: React.MouseEvent) => void;
+	onContextMenu?: (e: MouseEvent) => void;
 	subTitle?: ReactNode;
 	rightContent?: ReactNode;
 	children?: ReactNode;
