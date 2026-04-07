@@ -30,6 +30,15 @@ export function shouldAutoTriggerReview(args: {
 	return true;
 }
 
+export type AutoReviewLedger = {
+	get: (
+		provider: string,
+		identifier: string
+	) => { firstTriggeredAt: Date | null; lastTriggeredSha: string | null };
+	markFirstTriggered: (provider: string, identifier: string) => void;
+	markReReviewedAtSha: (provider: string, identifier: string, sha: string) => void;
+};
+
 type AutoTriggerDeps = {
 	getSettings: () => {
 		autoReviewEnabled: number | boolean;
@@ -55,12 +64,7 @@ type AutoTriggerDeps = {
 		workspaceId: string;
 		worktreePath: string;
 	}) => Promise<ReviewLaunchInfo>;
-	getAutoReviewLedger: (
-		provider: string,
-		identifier: string
-	) => { firstTriggeredAt: Date | null; lastTriggeredSha: string | null };
-	markFirstTriggered: (provider: string, identifier: string) => void;
-	markReReviewedAtSha: (provider: string, identifier: string, sha: string) => void;
+	ledger: AutoReviewLedger;
 };
 
 const defaultDeps: AutoTriggerDeps = {
@@ -95,42 +99,65 @@ const defaultDeps: AutoTriggerDeps = {
 	},
 	ensureReviewWorkspace,
 	queueReview,
-	getAutoReviewLedger: (provider, identifier) => {
-		const db = getDb();
-		const row = db
-			.select({
-				firstTriggeredAt: schema.trackedPrs.autoReviewFirstTriggeredAt,
-				lastTriggeredSha: schema.trackedPrs.autoReviewLastTriggeredSha,
-			})
-			.from(schema.trackedPrs)
-			.where(
-				and(eq(schema.trackedPrs.provider, provider), eq(schema.trackedPrs.identifier, identifier))
-			)
-			.get();
-		return {
-			firstTriggeredAt: row?.firstTriggeredAt ?? null,
-			lastTriggeredSha: row?.lastTriggeredSha ?? null,
-		};
-	},
-	markFirstTriggered: (provider, identifier) => {
-		const db = getDb();
-		const now = new Date();
-		db.update(schema.trackedPrs)
-			.set({ autoReviewFirstTriggeredAt: now, updatedAt: now })
-			.where(
-				and(eq(schema.trackedPrs.provider, provider), eq(schema.trackedPrs.identifier, identifier))
-			)
-			.run();
-	},
-	markReReviewedAtSha: (provider, identifier, sha) => {
-		const db = getDb();
-		const now = new Date();
-		db.update(schema.trackedPrs)
-			.set({ autoReviewLastTriggeredSha: sha, updatedAt: now })
-			.where(
-				and(eq(schema.trackedPrs.provider, provider), eq(schema.trackedPrs.identifier, identifier))
-			)
-			.run();
+	ledger: {
+		get: (provider, identifier) => {
+			const db = getDb();
+			const row = db
+				.select({
+					firstTriggeredAt: schema.trackedPrs.autoReviewFirstTriggeredAt,
+					lastTriggeredSha: schema.trackedPrs.autoReviewLastTriggeredSha,
+				})
+				.from(schema.trackedPrs)
+				.where(
+					and(
+						eq(schema.trackedPrs.provider, provider),
+						eq(schema.trackedPrs.identifier, identifier)
+					)
+				)
+				.get();
+			return {
+				firstTriggeredAt: row?.firstTriggeredAt ?? null,
+				lastTriggeredSha: row?.lastTriggeredSha ?? null,
+			};
+		},
+		markFirstTriggered: (provider, identifier) => {
+			const db = getDb();
+			const now = new Date();
+			const { changes } = db
+				.update(schema.trackedPrs)
+				.set({ autoReviewFirstTriggeredAt: now, updatedAt: now })
+				.where(
+					and(
+						eq(schema.trackedPrs.provider, provider),
+						eq(schema.trackedPrs.identifier, identifier)
+					)
+				)
+				.run();
+			if (changes === 0) {
+				console.warn(
+					`[auto-trigger] markFirstTriggered affected 0 rows for ${provider}:${identifier} — row not in tracked_prs`
+				);
+			}
+		},
+		markReReviewedAtSha: (provider, identifier, sha) => {
+			const db = getDb();
+			const now = new Date();
+			const { changes } = db
+				.update(schema.trackedPrs)
+				.set({ autoReviewLastTriggeredSha: sha, updatedAt: now })
+				.where(
+					and(
+						eq(schema.trackedPrs.provider, provider),
+						eq(schema.trackedPrs.identifier, identifier)
+					)
+				)
+				.run();
+			if (changes === 0) {
+				console.warn(
+					`[auto-trigger] markReReviewedAtSha affected 0 rows for ${provider}:${identifier} — row not in tracked_prs`
+				);
+			}
+		},
 	},
 };
 
@@ -163,13 +190,13 @@ export async function maybeAutoTriggerReview(args: {
 	const projectId = deps.getProjectIdByRepo(args.pr.repoOwner, args.pr.repoName);
 	const pr = { ...args.pr, projectId };
 
-	const ledger = deps.getAutoReviewLedger(pr.provider, pr.identifier);
+	const ledgerEntry = deps.ledger.get(pr.provider, pr.identifier);
 	if (
 		!shouldAutoTriggerReview({
 			pr,
 			autoReviewEnabled,
 			existingDrafts: draftsByIdentifier,
-			alreadyTriggeredAt: ledger.firstTriggeredAt,
+			alreadyTriggeredAt: ledgerEntry.firstTriggeredAt,
 		})
 	) {
 		return null;
@@ -198,7 +225,7 @@ export async function maybeAutoTriggerReview(args: {
 	// Mark ledger AFTER successful queue, not before. If queueReview fails the
 	// ledger stays NULL and the next poll cycle retries — preferable to a stuck
 	// "already triggered but never actually started" state.
-	deps.markFirstTriggered(pr.provider, pr.identifier);
+	deps.ledger.markFirstTriggered(pr.provider, pr.identifier);
 
 	return launchInfo;
 }
@@ -226,9 +253,12 @@ export async function maybeAutoReReview(args: {
 	if (activeDraft) return null;
 
 	// Persistent ledger: if we already re-reviewed this PR at the current head
-	// SHA in any session, don't re-fire.
-	const ledger = deps.getAutoReviewLedger(args.pr.provider, args.pr.identifier);
-	if (ledger.lastTriggeredSha && ledger.lastTriggeredSha === args.pr.headCommitSha) {
+	// SHA in any session, don't re-fire. Invariant: this path is only ever
+	// entered when `diffTrackedPrs` detected a sha change, which requires both
+	// old and new shas to be non-empty — so `args.pr.headCommitSha` is always
+	// truthy here. The `markReReviewedAtSha` guard below is belt-and-braces.
+	const ledgerEntry = deps.ledger.get(args.pr.provider, args.pr.identifier);
+	if (ledgerEntry.lastTriggeredSha && ledgerEntry.lastTriggeredSha === args.pr.headCommitSha) {
 		return null;
 	}
 
@@ -254,7 +284,7 @@ export async function maybeAutoReReview(args: {
 
 	// Mark ledger AFTER success.
 	if (args.pr.headCommitSha) {
-		deps.markReReviewedAtSha(args.pr.provider, args.pr.identifier, args.pr.headCommitSha);
+		deps.ledger.markReReviewedAtSha(args.pr.provider, args.pr.identifier, args.pr.headCommitSha);
 	}
 
 	return launchInfo;

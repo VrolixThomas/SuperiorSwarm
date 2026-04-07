@@ -174,9 +174,11 @@ describe("auto-trigger decision", () => {
 						launchScript: "/tmp/ws/start.sh",
 					};
 				},
-				getAutoReviewLedger: () => ({ firstTriggeredAt: null, lastTriggeredSha: null }),
-				markFirstTriggered: () => {},
-				markReReviewedAtSha: () => {},
+				ledger: {
+					get: () => ({ firstTriggeredAt: null, lastTriggeredSha: null }),
+					markFirstTriggered: () => {},
+					markReReviewedAtSha: () => {},
+				},
 			},
 		});
 
@@ -240,9 +242,7 @@ describe("auto-trigger decision", () => {
 						launchScript: "/tmp/ws/start.sh",
 					};
 				},
-				getAutoReviewLedger: stubs.getAutoReviewLedger,
-				markFirstTriggered: stubs.markFirstTriggered,
-				markReReviewedAtSha: stubs.markReReviewedAtSha,
+				ledger: stubs.ledger,
 			},
 		});
 
@@ -282,12 +282,14 @@ function makeLedgerStubs() {
 	let firstTriggeredAt: Date | null = null;
 	let lastTriggeredSha: string | null = null;
 	return {
-		getAutoReviewLedger: () => ({ firstTriggeredAt, lastTriggeredSha }),
-		markFirstTriggered: () => {
-			firstTriggeredAt = new Date();
-		},
-		markReReviewedAtSha: (_p: string, _i: string, sha: string) => {
-			lastTriggeredSha = sha;
+		ledger: {
+			get: () => ({ firstTriggeredAt, lastTriggeredSha }),
+			markFirstTriggered: () => {
+				firstTriggeredAt = new Date();
+			},
+			markReReviewedAtSha: (_p: string, _i: string, sha: string) => {
+				lastTriggeredSha = sha;
+			},
 		},
 		// Test-only readers
 		getFirstTriggeredAt: () => firstTriggeredAt,
