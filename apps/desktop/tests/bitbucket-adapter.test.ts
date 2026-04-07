@@ -49,6 +49,7 @@ describe("mapBitbucketPR", () => {
 			updatedOn: "2026-01-02T00:00:00Z",
 			source: { branch: { name: "feature/x" } },
 			destination: { branch: { name: "main" } },
+			headCommitSha: "",
 		};
 
 		const result = mapBitbucketPR(pr, "author");
@@ -81,6 +82,7 @@ describe("mapBitbucketPR", () => {
 			updatedOn: "2026-02-02T00:00:00Z",
 			source: { branch: { name: "bugfix/issue-123" } },
 			destination: { branch: { name: "develop" } },
+			headCommitSha: "",
 		};
 
 		const result = mapBitbucketPR(pr, "reviewer");
@@ -102,6 +104,7 @@ describe("mapBitbucketPR", () => {
 			updatedOn: "2026-01-15T00:00:00Z",
 			source: { branch: { name: "feature/done" } },
 			destination: { branch: { name: "main" } },
+			headCommitSha: "",
 		};
 
 		expect(mapBitbucketPR(pr, "author").state).toBe("merged");
@@ -120,6 +123,7 @@ describe("mapBitbucketPR", () => {
 			updatedOn: "2026-01-06T00:00:00Z",
 			source: { branch: { name: "bad-idea" } },
 			destination: { branch: { name: "main" } },
+			headCommitSha: "",
 		};
 
 		expect(mapBitbucketPR(pr, "author").state).toBe("declined");
@@ -138,6 +142,7 @@ describe("mapBitbucketPR", () => {
 			updatedOn: "2026-01-01T00:00:00Z",
 			source: undefined,
 			destination: { branch: { name: "main" } },
+			headCommitSha: "",
 		};
 
 		const result = mapBitbucketPR(pr, "author");
@@ -155,6 +160,7 @@ describe("mapBitbucketPR", () => {
 			webUrl: "https://bitbucket.org/my-workspace/my-repo/pull-requests/1",
 			createdOn: "2026-01-01T00:00:00Z",
 			updatedOn: "2026-01-02T00:00:00Z",
+			headCommitSha: "",
 		};
 		const result = mapBitbucketPR(pr, "author");
 		expect(result.repoOwner).toBe("my-workspace");
@@ -174,6 +180,7 @@ describe("mapBitbucketPR", () => {
 			updatedOn: "2026-01-01T00:00:00Z",
 			source: { branch: { name: "feature/y" } },
 			destination: undefined,
+			headCommitSha: "",
 		};
 
 		const result = mapBitbucketPR(pr, "author");
@@ -252,6 +259,7 @@ describe("dedupBitbucketPRs", () => {
 			updatedOn: "",
 			source: { branch: { name: "src" } },
 			destination: { branch: { name: "main" } },
+			headCommitSha: "",
 		};
 	}
 
@@ -285,5 +293,47 @@ describe("dedupBitbucketPRs", () => {
 		const result = dedupBitbucketPRs([pr("ws", "repoA", 1)], [pr("ws", "repoB", 1)]);
 		expect(result).toHaveLength(2);
 		expect(result.map((r) => r.role)).toEqual(["author", "reviewer"]);
+	});
+});
+
+describe("mapBitbucketPR head commit SHA plumbing", () => {
+	test("forwards source.commit.hash from BitbucketPullRequest to NormalizedPR.headCommitSha", () => {
+		const pr: BitbucketPullRequest = {
+			id: 7,
+			title: "feat: thing",
+			state: "OPEN",
+			author: "alice",
+			repoSlug: "repoA",
+			workspace: "ws",
+			webUrl: "https://example.test",
+			createdOn: "2026-01-01",
+			updatedOn: "2026-01-02",
+			source: { branch: { name: "feature/thing" } },
+			destination: { branch: { name: "main" } },
+			headCommitSha: "deadbeef",
+		};
+
+		const result = mapBitbucketPR(pr, "author");
+
+		expect(result.headCommitSha).toBe("deadbeef");
+	});
+
+	test("falls back to empty string when headCommitSha is empty", () => {
+		const pr: BitbucketPullRequest = {
+			id: 8,
+			title: "feat: thing",
+			state: "OPEN",
+			author: "alice",
+			repoSlug: "repoA",
+			workspace: "ws",
+			webUrl: "",
+			createdOn: "",
+			updatedOn: "",
+			source: { branch: { name: "src" } },
+			destination: { branch: { name: "main" } },
+			headCommitSha: "",
+		};
+
+		expect(mapBitbucketPR(pr, "author").headCommitSha).toBe("");
 	});
 });

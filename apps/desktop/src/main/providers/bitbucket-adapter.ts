@@ -56,7 +56,7 @@ export function mapBitbucketPR(
 		role,
 		repoOwner: pr.workspace,
 		repoName: pr.repoSlug,
-		headCommitSha: "",
+		headCommitSha: pr.headCommitSha,
 	};
 }
 
