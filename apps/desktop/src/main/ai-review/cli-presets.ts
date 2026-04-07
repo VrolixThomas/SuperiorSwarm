@@ -1,6 +1,6 @@
 import { execSync } from "node:child_process";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { join } from "node:path";
 import { DEFAULT_REVIEW_GUIDELINES } from "../../shared/review-prompt";
 
 export { DEFAULT_REVIEW_GUIDELINES };
@@ -76,18 +76,12 @@ export const CLI_PRESETS: Record<string, CliPreset> = {
 		setupMcp: (opts) => {
 			// Claude Code reads MCP config from .mcp.json in the project root
 			// Use standalone server with system Node (Electron's Node has incompatible native modules)
-			const standaloneServerPath = resolve(
-				dirname(__dirname),
-				"..",
-				"mcp-standalone",
-				"server.mjs"
-			);
 			const configPath = join(opts.worktreePath, ".mcp.json");
 			const config = {
 				mcpServers: {
 					superiorswarm: {
 						command: "node",
-						args: [standaloneServerPath],
+						args: [opts.mcpServerPath],
 						env: buildMcpEnv(opts),
 					},
 				},
@@ -108,12 +102,6 @@ export const CLI_PRESETS: Record<string, CliPreset> = {
 		buildArgs: ({ promptFilePath }) => ["-p", `"$(cat '${promptFilePath}')"`],
 		setupMcp: (opts) => {
 			// Gemini CLI reads MCP config from .gemini/settings.json in the project root
-			const standaloneServerPath = resolve(
-				dirname(__dirname),
-				"..",
-				"mcp-standalone",
-				"server.mjs"
-			);
 			const dir = join(opts.worktreePath, ".gemini");
 			mkdirSync(dir, { recursive: true });
 			const configPath = join(dir, "settings.json");
@@ -121,7 +109,7 @@ export const CLI_PRESETS: Record<string, CliPreset> = {
 				mcpServers: {
 					superiorswarm: {
 						command: "node",
-						args: [standaloneServerPath],
+						args: [opts.mcpServerPath],
 						env: buildMcpEnv(opts),
 					},
 				},
@@ -164,18 +152,12 @@ export const CLI_PRESETS: Record<string, CliPreset> = {
 		buildArgs: ({ promptFilePath }) => ["--prompt", `"$(cat '${promptFilePath}')"`],
 		setupMcp: (opts) => {
 			// OpenCode reads MCP config from opencode.json in the project root
-			const standaloneServerPath = resolve(
-				dirname(__dirname),
-				"..",
-				"mcp-standalone",
-				"server.mjs"
-			);
 			const configPath = join(opts.worktreePath, "opencode.json");
 			const config = {
 				mcp: {
 					superiorswarm: {
 						type: "local",
-						command: ["node", standaloneServerPath],
+						command: ["node", opts.mcpServerPath],
 						environment: buildMcpEnv(opts),
 					},
 				},
