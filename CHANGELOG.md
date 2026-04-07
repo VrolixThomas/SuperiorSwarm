@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.4.4 (2026-04-08)
+
+### What's New
+
+SuperiorSwarm no longer freezes on startup for users with many pull requests, and the project sidebar no longer enters a reload loop while a clone is in progress. Pull request tracking now persists across restarts, so reopening the app will no longer flood you with duplicate "new PR" notifications for PRs you've already seen. Pagination against Bitbucket and GitHub is more reliable, and listing commits ahead of a branch is significantly faster on repositories with large diffs.
+
+### Changes
+
+- Bug app freeze (#61)
+
 ## v0.4.3 (2026-04-07)
 
 ### What's New
