@@ -56,7 +56,7 @@ export function mapBitbucketPR(
 		role,
 		repoOwner: pr.workspace,
 		repoName: pr.repoSlug,
-		headCommitSha: "",
+		headCommitSha: pr.headCommitSha,
 	};
 }
 
@@ -123,6 +123,43 @@ export function deriveReviewDecision(
 	return "REVIEW_REQUIRED";
 }
 
+/**
+ * Dedup Bitbucket PRs by composite `workspace/repoSlug#id`.
+ *
+ * The previous implementation used `Set<number>` keyed on numeric `id` only,
+ * which collapsed PR #1 from repoA with PR #1 from repoB. Whichever entry won
+ * could flip between calls (depending on Bitbucket API result ordering with
+ * `pagelen=50` and no pagination), causing the pr-poller flood we observed in
+ * 2026-04-07 logs (see docs/superpowers/plans/2026-04-07-app-freeze-fix.md).
+ *
+ * Authored PRs are emitted before reviewing PRs; if a PR appears in both, the
+ * authored role wins (matching the previous behaviour).
+ */
+export function dedupBitbucketPRs(
+	authored: BitbucketPullRequest[],
+	reviewing: BitbucketPullRequest[]
+): NormalizedPR[] {
+	const key = (pr: BitbucketPullRequest) => `${pr.workspace}/${pr.repoSlug}#${pr.id}`;
+	const seen = new Set<string>();
+	const results: NormalizedPR[] = [];
+
+	for (const pr of authored) {
+		const k = key(pr);
+		if (seen.has(k)) continue;
+		seen.add(k);
+		results.push(mapBitbucketPR(pr, "author"));
+	}
+
+	for (const pr of reviewing) {
+		const k = key(pr);
+		if (seen.has(k)) continue;
+		seen.add(k);
+		results.push(mapBitbucketPR(pr, "reviewer"));
+	}
+
+	return results;
+}
+
 // ── BitbucketAdapter ──────────────────────────────────────────────────────────
 
 export class BitbucketAdapter implements GitProvider {
@@ -134,22 +171,7 @@ export class BitbucketAdapter implements GitProvider {
 
 	async getMyPRs(): Promise<NormalizedPR[]> {
 		const [authored, reviewing] = await Promise.all([getMyPullRequests(), getReviewRequests()]);
-
-		const seen = new Set<number>();
-		const results: NormalizedPR[] = [];
-
-		for (const pr of authored) {
-			seen.add(pr.id);
-			results.push(mapBitbucketPR(pr, "author"));
-		}
-
-		for (const pr of reviewing) {
-			if (!seen.has(pr.id)) {
-				results.push(mapBitbucketPR(pr, "reviewer"));
-			}
-		}
-
-		return results;
+		return dedupBitbucketPRs(authored, reviewing);
 	}
 
 	async getPRState(owner: string, repo: string, prNumber: number): Promise<PRState> {

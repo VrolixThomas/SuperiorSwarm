@@ -237,25 +237,44 @@ export function mapPRDetails(raw: RawGQLPR): import("../../shared/github-types")
 
 // ── API helpers ───────────────────────────────────────────────────────────────
 
-async function searchPRs(query: string): Promise<RawSearchIssueNode[]> {
-	const allItems: RawSearchIssueNode[] = [];
-	let page = 1;
+/**
+ * Walk a GitHub Search API result set page-by-page until either the
+ * fetcher reports no next page or we hit the 10-page hard cap (1 000-result
+ * limit imposed by GitHub for the search API — see SUP-19 for the longer
+ * follow-up).
+ *
+ * The fetcher callback is the only impure part — given a 1-indexed page
+ * number it returns the items and a `hasNext` flag derived from the
+ * response's `Link` header. Strict failure: if any page throws, the whole
+ * call throws.
+ */
+export async function paginateGitHubSearch<T>(
+	fetchPage: (page: number) => Promise<{ items: T[]; hasNext: boolean }>
+): Promise<T[]> {
+	const HARD_CAP_PAGES = 10;
+	const all: T[] = [];
+	for (let page = 1; page <= HARD_CAP_PAGES; page++) {
+		const { items, hasNext } = await fetchPage(page);
+		for (const item of items) all.push(item);
+		if (!hasNext) return all;
+	}
+	console.warn("[github] paginateGitHubSearch hit 1000-result cap (10 pages × 100); see SUP-19");
+	return all;
+}
 
-	while (true) {
+async function searchPRs(query: string): Promise<RawSearchIssueNode[]> {
+	return paginateGitHubSearch<RawSearchIssueNode>(async (page) => {
 		const res = await githubFetch(
 			`/search/issues?q=${encodeURIComponent(query)}&per_page=100&page=${page}`
 		);
-		if (!res.ok) throw new Error(`GitHub search failed: ${res.status} ${await res.text()}`);
-		const data = (await res.json()) as {
-			items: RawSearchIssueNode[];
-			total_count: number;
-		};
-		allItems.push(...data.items);
-		if (allItems.length >= data.total_count || data.items.length < 100) break;
-		page++;
-	}
-
-	return allItems;
+		if (!res.ok) {
+			throw new Error(`GitHub search failed: ${res.status} ${res.statusText}`);
+		}
+		const data = (await res.json()) as { items: RawSearchIssueNode[] };
+		const linkHeader = res.headers.get("Link") ?? "";
+		const hasNext = /rel="next"/.test(linkHeader);
+		return { items: data.items, hasNext };
+	});
 }
 
 // ── Public API functions ──────────────────────────────────────────────────────
