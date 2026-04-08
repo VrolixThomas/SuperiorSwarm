@@ -13,6 +13,7 @@ export function UpdateToast() {
 	const openWhatsNew = useUpdateStore((s) => s.openWhatsNew);
 
 	const markSeen = trpc.updates.markVersionSeen.useMutation();
+	const dismissUpdate = trpc.updates.dismissUpdate.useMutation();
 	const releaseNotes = trpc.updates.getReleaseNotes.useQuery(
 		{ version: version ?? undefined },
 		{ enabled: toastState === "new-version" && !!version }
@@ -51,6 +52,13 @@ export function UpdateToast() {
 
 	const handleRestart = () => {
 		installUpdate.mutate();
+	};
+
+	const handleLater = () => {
+		if (version) {
+			dismissUpdate.mutate({ version });
+			dismissToast();
+		}
 	};
 
 	// State 1: Major/Minor update
@@ -148,7 +156,7 @@ export function UpdateToast() {
 					</button>
 					<button
 						type="button"
-						onClick={dismissToast}
+						onClick={handleLater}
 						className="ml-auto text-[11px] text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-secondary)]"
 					>
 						Later

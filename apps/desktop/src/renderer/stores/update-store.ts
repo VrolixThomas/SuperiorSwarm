@@ -10,6 +10,7 @@ interface UpdateStore {
 	modalVersion: string | null;
 	modalReleaseNotes: string | null;
 	downloadProgress: number | null;
+	dismissedUpdateVersion: string | null;
 
 	showToast: (state: ToastState, version: string, summary: string | null) => void;
 	dismissToast: () => void;
@@ -17,6 +18,7 @@ interface UpdateStore {
 	closeWhatsNew: () => void;
 	setDownloadProgress: (progress: number) => void;
 	setUpdateReady: (version: string) => void;
+	setDismissedUpdateVersion: (version: string | null) => void;
 }
 
 export const useUpdateStore = create<UpdateStore>()((set) => ({
@@ -27,6 +29,7 @@ export const useUpdateStore = create<UpdateStore>()((set) => ({
 	modalVersion: null,
 	modalReleaseNotes: null,
 	downloadProgress: null,
+	dismissedUpdateVersion: null,
 
 	showToast: (toastState, version, summary) =>
 		set({ toastState, toastVersion: version, toastSummary: summary }),
@@ -43,4 +46,6 @@ export const useUpdateStore = create<UpdateStore>()((set) => ({
 
 	setUpdateReady: (version) =>
 		set({ toastState: "ready", toastVersion: version, downloadProgress: null }),
+
+	setDismissedUpdateVersion: (version) => set({ dismissedUpdateVersion: version }),
 }));

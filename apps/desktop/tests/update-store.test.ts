@@ -54,4 +54,9 @@ describe("update-store", () => {
 		expect(state.toastVersion).toBe("2.0.0");
 		expect(state.downloadProgress).toBeNull();
 	});
+
+	test("setDismissedUpdateVersion stores version", () => {
+		useUpdateStore.getState().setDismissedUpdateVersion("3.0.0");
+		expect(useUpdateStore.getState().dismissedUpdateVersion).toBe("3.0.0");
+	});
 });
