@@ -52,25 +52,23 @@ export interface LaunchOptions {
 	solveSessionId?: string; // When set, MCP uses solve mode instead of review mode
 }
 
-function writeTempMcpConfig(
-	dir: string,
-	filename: string,
-	mcpServerPath: string,
-	env?: Record<string, string>
-): string {
-	mkdirSync(dir, { recursive: true });
-	const configPath = join(dir, filename);
-	const config = {
-		mcpServers: {
-			superiorswarm: {
-				command: "node",
-				args: [mcpServerPath],
-				...(env ? { env } : {}),
-			},
-		},
+/**
+ * Returns the command + extra env needed to run the MCP standalone server
+ * via Electron's own embedded Node (`ELECTRON_RUN_AS_NODE=1`).
+ *
+ * We do not shell out to the user's system `node` because (a) many users do
+ * not have Node installed at all, and (b) even when they do, its ABI may
+ * not match the prebuilt `better-sqlite3` binary we ship in
+ * `mcp-standalone/node_modules`. The packaging pipeline rebuilds that
+ * binary against Electron's ABI (see `scripts/rebuild-mcp-native.mjs`), so
+ * running it through Electron's own Node is guaranteed to work for every
+ * user of every release.
+ */
+function mcpRuntimeCommand(): { command: string; extraEnv: Record<string, string> } {
+	return {
+		command: process.execPath,
+		extraEnv: { ELECTRON_RUN_AS_NODE: "1" },
 	};
-	writeFileSync(configPath, JSON.stringify(config, null, 2), "utf-8");
-	return configPath;
 }
 
 function buildMcpEnv(opts: LaunchOptions): Record<string, string> {
@@ -99,15 +97,17 @@ export const CLI_PRESETS: Record<string, CliPreset> = {
 			`"Review this PR. Read ${promptFilePath} for detailed instructions and use the SuperiorSwarm MCP tools."`,
 		],
 		setupMcp: (opts) => {
-			// Claude Code reads MCP config from .mcp.json in the project root
-			// Use standalone server with system Node (Electron's Node has incompatible native modules)
+			// Claude Code reads MCP config from .mcp.json in the project root.
+			// We launch the standalone server through Electron's own Node so we
+			// don't depend on the user's system Node version.
+			const { command, extraEnv } = mcpRuntimeCommand();
 			const configPath = join(opts.worktreePath, ".mcp.json");
 			const config = {
 				mcpServers: {
 					superiorswarm: {
-						command: "node",
+						command,
 						args: [opts.mcpServerPath],
-						env: buildMcpEnv(opts),
+						env: { ...buildMcpEnv(opts), ...extraEnv },
 					},
 				},
 			};
@@ -126,16 +126,17 @@ export const CLI_PRESETS: Record<string, CliPreset> = {
 		permissionFlag: "--yolo",
 		buildArgs: ({ promptFilePath }) => ["-p", `"$(cat '${promptFilePath}')"`],
 		setupMcp: (opts) => {
-			// Gemini CLI reads MCP config from .gemini/settings.json in the project root
+			// Gemini CLI reads MCP config from .gemini/settings.json in the project root.
+			const { command, extraEnv } = mcpRuntimeCommand();
 			const dir = join(opts.worktreePath, ".gemini");
 			mkdirSync(dir, { recursive: true });
 			const configPath = join(dir, "settings.json");
 			const config = {
 				mcpServers: {
 					superiorswarm: {
-						command: "node",
+						command,
 						args: [opts.mcpServerPath],
-						env: buildMcpEnv(opts),
+						env: { ...buildMcpEnv(opts), ...extraEnv },
 					},
 				},
 			};
@@ -155,13 +156,20 @@ export const CLI_PRESETS: Record<string, CliPreset> = {
 		permissionFlag: "--full-auto",
 		buildArgs: ({ promptFilePath }) => [`"$(cat '${promptFilePath}')"`],
 		setupMcp: (opts) => {
+			const { command, extraEnv } = mcpRuntimeCommand();
 			const dir = join(opts.worktreePath, ".codex");
-			const configPath = writeTempMcpConfig(
-				dir,
-				"config.json",
-				opts.mcpServerPath,
-				buildMcpEnv(opts)
-			);
+			mkdirSync(dir, { recursive: true });
+			const configPath = join(dir, "config.json");
+			const config = {
+				mcpServers: {
+					superiorswarm: {
+						command,
+						args: [opts.mcpServerPath],
+						env: { ...buildMcpEnv(opts), ...extraEnv },
+					},
+				},
+			};
+			writeFileSync(configPath, JSON.stringify(config, null, 2), "utf-8");
 			return () => {
 				try {
 					rmSync(configPath);
@@ -176,14 +184,15 @@ export const CLI_PRESETS: Record<string, CliPreset> = {
 		command: "opencode",
 		buildArgs: ({ promptFilePath }) => ["--prompt", `"$(cat '${promptFilePath}')"`],
 		setupMcp: (opts) => {
-			// OpenCode reads MCP config from opencode.json in the project root
+			// OpenCode reads MCP config from opencode.json in the project root.
+			const { command, extraEnv } = mcpRuntimeCommand();
 			const configPath = join(opts.worktreePath, "opencode.json");
 			const config = {
 				mcp: {
 					superiorswarm: {
 						type: "local",
-						command: ["node", opts.mcpServerPath],
-						environment: buildMcpEnv(opts),
+						command: [command, opts.mcpServerPath],
+						environment: { ...buildMcpEnv(opts), ...extraEnv },
 					},
 				},
 			};

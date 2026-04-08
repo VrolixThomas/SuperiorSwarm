@@ -70,15 +70,16 @@ export async function launchSetupAgent(
 	writeFileSync(promptFilePath, promptText, "utf-8");
 
 	// Write MCP config with quick-action-specific env vars.
-	// We write .mcp.json directly since setupMcp would inject solve-mode env vars,
-	// but we need QUICK_ACTION_SETUP + PROJECT_ID instead.
+	// Launch via Electron's embedded Node (ELECTRON_RUN_AS_NODE=1) — see
+	// mcpRuntimeCommand() in cli-presets.ts for the rationale.
 	const mcpConfigPath = join(repoPath, ".mcp.json");
 	const mcpConfig = {
 		mcpServers: {
 			superiorswarm: {
-				command: "node",
+				command: process.execPath,
 				args: [standaloneServerPath],
 				env: {
+					ELECTRON_RUN_AS_NODE: "1",
 					QUICK_ACTION_SETUP: "1",
 					PROJECT_ID: projectId,
 					DB_PATH: dbPath,
