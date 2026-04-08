@@ -5,6 +5,7 @@ import { eq } from "drizzle-orm";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { getDb } from "../src/main/db";
 import { sessionState } from "../src/main/db/schema";
+import * as updater from "../src/main/updater";
 import {
 	extractReleaseSummary,
 	getDismissedUpdateVersion,
@@ -73,5 +74,14 @@ describe("dismissed update version", () => {
 	test("clears dismissed update version", () => {
 		setDismissedUpdateVersion(null);
 		expect(getDismissedUpdateVersion()).toBeNull();
+	});
+
+	test("dismissUpdateVersion updates updater state and storage", async () => {
+		expect(typeof updater.dismissUpdateVersion).toBe("function");
+		if (typeof updater.dismissUpdateVersion !== "function") return;
+
+		updater.dismissUpdateVersion("2.2.0");
+		expect(getDismissedUpdateVersion()).toBe("2.2.0");
+		expect(updater.getUpdaterState().dismissedUpdateVersion).toBe("2.2.0");
 	});
 });

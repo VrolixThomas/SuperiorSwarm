@@ -1,7 +1,12 @@
 import { app } from "electron";
 import { autoUpdater } from "electron-updater";
 import { z } from "zod";
-import { fetchReleaseNotes, getUpdaterState, markVersionSeen } from "../../updater";
+import {
+	dismissUpdateVersion,
+	fetchReleaseNotes,
+	getUpdaterState,
+	markVersionSeen,
+} from "../../updater";
 import { publicProcedure, router } from "../index";
 
 export const updatesRouter = router({
@@ -15,6 +20,7 @@ export const updatesRouter = router({
 			downloadProgress: state.downloadProgress,
 			updateDownloaded: state.updateDownloaded,
 			pendingNotification: state.pendingNotification,
+			dismissedUpdateVersion: state.dismissedUpdateVersion,
 		};
 	}),
 
@@ -74,4 +80,8 @@ export const updatesRouter = router({
 		.mutation(({ input }) => {
 			markVersionSeen(input.version);
 		}),
+
+	dismissUpdate: publicProcedure.input(z.object({ version: z.string() })).mutation(({ input }) => {
+		dismissUpdateVersion(input.version);
+	}),
 });
