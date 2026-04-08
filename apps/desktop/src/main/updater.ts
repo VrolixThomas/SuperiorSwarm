@@ -6,7 +6,7 @@ import { getDb } from "./db";
 import { sessionState } from "./db/schema";
 import { GITHUB_API_BASE } from "./github/constants";
 
-const UPDATE_CHECK_INTERVAL_MS = 60 * 60 * 1000;
+const UPDATE_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000;
 let updateCheckTimer: ReturnType<typeof setInterval> | null = null;
 
 // --- Pure utility functions (exported for testing) ---
