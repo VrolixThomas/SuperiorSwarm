@@ -88,6 +88,7 @@ interface UpdaterState {
 	updateVersion: string | null;
 	downloadProgress: number | null;
 	updateDownloaded: boolean;
+	dismissedUpdateVersion: string | null;
 }
 
 const state: UpdaterState = {
@@ -98,6 +99,7 @@ const state: UpdaterState = {
 	updateVersion: null,
 	downloadProgress: null,
 	updateDownloaded: false,
+	dismissedUpdateVersion: null,
 };
 
 export function getUpdaterState(): Readonly<UpdaterState> {
@@ -153,6 +155,11 @@ export function markVersionSeen(version: string): void {
 	clearPendingNotification();
 }
 
+export function dismissUpdateVersion(version: string): void {
+	setDismissedUpdateVersion(version);
+	state.dismissedUpdateVersion = version;
+}
+
 export { getDismissedUpdateVersion, setDismissedUpdateVersion };
 
 // --- Initialization ---
@@ -160,6 +167,7 @@ export { getDismissedUpdateVersion, setDismissedUpdateVersion };
 export async function initializeUpdater(): Promise<void> {
 	state.currentVersion = app.getVersion();
 	state.lastSeenVersion = getLastSeenVersion();
+	state.dismissedUpdateVersion = getDismissedUpdateVersion();
 
 	// First launch — just record the version, no notification
 	if (!state.lastSeenVersion) {
