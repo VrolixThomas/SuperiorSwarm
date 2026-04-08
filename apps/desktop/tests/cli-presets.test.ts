@@ -4,7 +4,12 @@ import { spawn } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CLI_PRESETS, type LaunchOptions, isCliInstalled, resolveCliPath } from "../src/main/ai-review/cli-presets";
+import {
+	CLI_PRESETS,
+	type LaunchOptions,
+	isCliInstalled,
+	resolveCliPath,
+} from "../src/main/ai-review/cli-presets";
 
 describe("resolveCliPath", () => {
 	let testDir: string;
@@ -207,9 +212,14 @@ describe("MCP standalone server boot (smoke test)", () => {
 				stderr += chunk.toString();
 			});
 
-			// Give it a beat to initialize (connect transport, load native module).
-			// If it was going to crash on dlopen, it would have done so by now.
-			await new Promise((resolve) => setTimeout(resolve, 800));
+			// Wait for the server to initialize OR crash — whichever comes first.
+			// The event-driven race resolves immediately on crash so we don't wait
+			// the full 2s on a broken binary. The 2s ceiling gives slow CI machines
+			// enough time for Electron to start and hit the native-module load.
+			await Promise.race([
+				new Promise<void>((resolve) => setTimeout(resolve, 2_000)),
+				new Promise<void>((resolve) => child.once("exit", resolve)),
+			]);
 
 			const crashedWithAbiError = stderr.includes("NODE_MODULE_VERSION");
 			const crashedAtAll = child.exitCode !== null;
@@ -225,5 +235,6 @@ describe("MCP standalone server boot (smoke test)", () => {
 			expect(crashedWithAbiError).toBe(false);
 			expect(crashedAtAll).toBe(false);
 		},
+		10_000
 	);
 });
