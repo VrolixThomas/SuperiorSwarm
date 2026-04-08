@@ -6,6 +6,9 @@ import { getDb } from "./db";
 import { sessionState } from "./db/schema";
 import { GITHUB_API_BASE } from "./github/constants";
 
+const UPDATE_CHECK_INTERVAL_MS = 60 * 60 * 1000;
+let updateCheckTimer: ReturnType<typeof setInterval> | null = null;
+
 // --- Pure utility functions (exported for testing) ---
 
 export type VersionDiffType = "major" | "minor" | "patch";
@@ -228,4 +231,11 @@ export async function initializeUpdater(): Promise<void> {
 	autoUpdater.checkForUpdates().catch((err) => {
 		console.error("[updater] Failed to check for updates:", err);
 	});
+
+	if (updateCheckTimer) clearInterval(updateCheckTimer);
+	updateCheckTimer = setInterval(() => {
+		autoUpdater.checkForUpdates().catch((err) => {
+			console.error("[updater] Failed to check for updates:", err);
+		});
+	}, UPDATE_CHECK_INTERVAL_MS);
 }
