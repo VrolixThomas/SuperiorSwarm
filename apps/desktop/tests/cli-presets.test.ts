@@ -1,6 +1,7 @@
 import "./preload-electron-mock";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { chmodSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { spawn } from "node:child_process";
+import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CLI_PRESETS, type LaunchOptions, isCliInstalled, resolveCliPath } from "../src/main/ai-review/cli-presets";
@@ -179,4 +180,50 @@ describe("CLI presets setupMcp — Electron runtime", () => {
 			cleanup?.();
 		}
 	});
+});
+
+describe("MCP standalone server boot (smoke test)", () => {
+	const serverPath = join(__dirname, "..", "mcp-standalone", "server.mjs");
+	const electronBin = join(__dirname, "..", "node_modules", ".bin", "electron");
+
+	test.skipIf(!existsSync(serverPath) || !existsSync(electronBin))(
+		"loads better-sqlite3 under ELECTRON_RUN_AS_NODE without ABI mismatch",
+		async () => {
+			const dbPath = join(tmpdir(), `mcp-smoke-${process.pid}-${Date.now()}.db`);
+
+			const child = spawn(electronBin, [serverPath], {
+				env: {
+					...process.env,
+					ELECTRON_RUN_AS_NODE: "1",
+					REVIEW_DRAFT_ID: "smoke-test",
+					PR_METADATA: "{}",
+					DB_PATH: dbPath,
+				},
+				stdio: ["pipe", "pipe", "pipe"],
+			});
+
+			let stderr = "";
+			child.stderr.on("data", (chunk) => {
+				stderr += chunk.toString();
+			});
+
+			// Give it a beat to initialize (connect transport, load native module).
+			// If it was going to crash on dlopen, it would have done so by now.
+			await new Promise((resolve) => setTimeout(resolve, 800));
+
+			const crashedWithAbiError = stderr.includes("NODE_MODULE_VERSION");
+			const crashedAtAll = child.exitCode !== null;
+
+			child.kill("SIGTERM");
+
+			try {
+				rmSync(dbPath, { force: true });
+				rmSync(`${dbPath}-wal`, { force: true });
+				rmSync(`${dbPath}-shm`, { force: true });
+			} catch {}
+
+			expect(crashedWithAbiError).toBe(false);
+			expect(crashedAtAll).toBe(false);
+		},
+	);
 });
