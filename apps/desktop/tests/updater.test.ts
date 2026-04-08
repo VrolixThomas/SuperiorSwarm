@@ -1,6 +1,16 @@
 import "./preload-electron-mock";
-import { describe, expect, test } from "bun:test";
-import { extractReleaseSummary, getVersionDiffType } from "../src/main/updater";
+import { beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import { join } from "node:path";
+import { eq } from "drizzle-orm";
+import { migrate } from "drizzle-orm/better-sqlite3/migrator";
+import { getDb } from "../src/main/db";
+import { sessionState } from "../src/main/db/schema";
+import {
+	extractReleaseSummary,
+	getDismissedUpdateVersion,
+	getVersionDiffType,
+	setDismissedUpdateVersion,
+} from "../src/main/updater";
 
 describe("getVersionDiffType", () => {
 	test("returns 'major' for major version bump", () => {
@@ -41,5 +51,27 @@ describe("extractReleaseSummary", () => {
 		const result = extractReleaseSummary(long);
 		expect(result!.length).toBeLessThanOrEqual(120);
 		expect(result!.endsWith("...")).toBe(true);
+	});
+});
+
+describe("dismissed update version", () => {
+	beforeAll(() => {
+		const db = getDb();
+		migrate(db, { migrationsFolder: join(import.meta.dir, "../src/main/db/migrations") });
+	});
+
+	beforeEach(() => {
+		const db = getDb();
+		db.delete(sessionState).where(eq(sessionState.key, "dismissedUpdateVersion")).run();
+	});
+
+	test("stores and retrieves dismissed update version", () => {
+		setDismissedUpdateVersion("2.1.0");
+		expect(getDismissedUpdateVersion()).toBe("2.1.0");
+	});
+
+	test("clears dismissed update version", () => {
+		setDismissedUpdateVersion(null);
+		expect(getDismissedUpdateVersion()).toBeNull();
 	});
 });

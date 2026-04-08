@@ -125,10 +125,35 @@ function setLastSeenVersion(version: string): void {
 		.run();
 }
 
+function getDismissedUpdateVersion(): string | null {
+	const db = getDb();
+	const row = db
+		.select()
+		.from(sessionState)
+		.where(eq(sessionState.key, "dismissedUpdateVersion"))
+		.get();
+	const value = row?.value ?? "";
+	return value ? value : null;
+}
+
+function setDismissedUpdateVersion(version: string | null): void {
+	const db = getDb();
+	const value = version ?? "";
+	db.insert(sessionState)
+		.values({ key: "dismissedUpdateVersion", value })
+		.onConflictDoUpdate({
+			target: sessionState.key,
+			set: { value },
+		})
+		.run();
+}
+
 export function markVersionSeen(version: string): void {
 	setLastSeenVersion(version);
 	clearPendingNotification();
 }
+
+export { getDismissedUpdateVersion, setDismissedUpdateVersion };
 
 // --- Initialization ---
 
