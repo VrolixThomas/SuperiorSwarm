@@ -23,14 +23,25 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const desktopDir = join(__dirname, "..");
 const mcpDir = join(desktopDir, "mcp-standalone");
 
-const pkg = JSON.parse(await readFile(join(desktopDir, "package.json"), "utf-8"));
-const electronSpec = pkg.devDependencies?.electron;
-if (!electronSpec) {
-	console.error("[rebuild-mcp-native] electron is not a devDependency in apps/desktop/package.json");
+// Read the actual installed version (not the semver spec) so the ABI lookup
+// is exact. node_modules/electron/package.json is written by npm/bun during
+// install and always contains a bare version string like "40.8.5".
+let electronVersion;
+try {
+	const electronPkg = JSON.parse(
+		await readFile(join(desktopDir, "node_modules", "electron", "package.json"), "utf-8")
+	);
+	electronVersion = electronPkg.version;
+} catch {
+	console.error(
+		"[rebuild-mcp-native] could not read node_modules/electron/package.json — run bun install first"
+	);
 	process.exit(1);
 }
-
-const electronVersion = electronSpec.replace(/^[\^~]/, "");
+if (!electronVersion) {
+	console.error("[rebuild-mcp-native] electron package.json has no version field");
+	process.exit(1);
+}
 
 console.log(
 	`[rebuild-mcp-native] rebuilding better-sqlite3 in ${mcpDir} against electron@${electronVersion}`
