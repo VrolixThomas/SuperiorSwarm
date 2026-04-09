@@ -8,13 +8,12 @@ interface UpdateStore {
 	toastSummary: string | null;
 	showWhatsNewModal: boolean;
 	modalVersion: string | null;
-	modalReleaseNotes: string | null;
 	downloadProgress: number | null;
 	dismissedUpdateVersion: string | null;
 
 	showToast: (state: ToastState, version: string, summary: string | null) => void;
 	dismissToast: () => void;
-	openWhatsNew: (version: string, releaseNotes: string | null) => void;
+	openWhatsNew: (version: string) => void;
 	closeWhatsNew: () => void;
 	setDownloadProgress: (progress: number) => void;
 	setDismissedUpdateVersion: (version: string | null) => void;
@@ -29,7 +28,6 @@ export const useUpdateStore = create<UpdateStore>()((set, get) => ({
 	toastSummary: null,
 	showWhatsNewModal: false,
 	modalVersion: null,
-	modalReleaseNotes: null,
 	downloadProgress: null,
 	dismissedUpdateVersion: null,
 
@@ -38,11 +36,11 @@ export const useUpdateStore = create<UpdateStore>()((set, get) => ({
 
 	dismissToast: () => set({ toastState: "hidden", toastVersion: null, toastSummary: null }),
 
-	openWhatsNew: (version, releaseNotes) =>
-		set({ showWhatsNewModal: true, modalVersion: version, modalReleaseNotes: releaseNotes }),
+	openWhatsNew: (version) =>
+		set({ showWhatsNewModal: true, modalVersion: version }),
 
 	closeWhatsNew: () =>
-		set({ showWhatsNewModal: false, modalVersion: null, modalReleaseNotes: null }),
+		set({ showWhatsNewModal: false, modalVersion: null }),
 
 	setDownloadProgress: (progress) => set({ toastState: "downloading", downloadProgress: progress }),
 

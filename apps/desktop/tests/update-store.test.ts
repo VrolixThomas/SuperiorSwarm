@@ -26,16 +26,16 @@ describe("update-store", () => {
 		expect(useUpdateStore.getState().toastState).toBe("hidden");
 	});
 
-	test("openWhatsNew opens modal and sets notes", () => {
-		useUpdateStore.getState().openWhatsNew("1.2.0", "# Changes\n- Feature A");
+	test("openWhatsNew opens modal with version only (no release notes in store)", () => {
+		useUpdateStore.getState().openWhatsNew("1.2.0");
 		const state = useUpdateStore.getState();
 		expect(state.showWhatsNewModal).toBe(true);
 		expect(state.modalVersion).toBe("1.2.0");
-		expect(state.modalReleaseNotes).toBe("# Changes\n- Feature A");
+		expect("modalReleaseNotes" in state).toBe(false);
 	});
 
 	test("closeWhatsNew closes modal", () => {
-		useUpdateStore.getState().openWhatsNew("1.2.0", "notes");
+		useUpdateStore.getState().openWhatsNew("1.2.0");
 		useUpdateStore.getState().closeWhatsNew();
 		expect(useUpdateStore.getState().showWhatsNewModal).toBe(false);
 	});
