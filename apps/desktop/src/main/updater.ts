@@ -137,20 +137,22 @@ function getDismissedUpdateVersion(): string | null {
 		.from(sessionState)
 		.where(eq(sessionState.key, "dismissedUpdateVersion"))
 		.get();
-	const value = row?.value ?? "";
-	return value ? value : null;
+	return row?.value ?? null;
 }
 
 function setDismissedUpdateVersion(version: string | null): void {
 	const db = getDb();
-	const value = version ?? "";
-	db.insert(sessionState)
-		.values({ key: "dismissedUpdateVersion", value })
-		.onConflictDoUpdate({
-			target: sessionState.key,
-			set: { value },
-		})
-		.run();
+	if (version === null) {
+		db.delete(sessionState).where(eq(sessionState.key, "dismissedUpdateVersion")).run();
+	} else {
+		db.insert(sessionState)
+			.values({ key: "dismissedUpdateVersion", value: version })
+			.onConflictDoUpdate({
+				target: sessionState.key,
+				set: { value: version },
+			})
+			.run();
+	}
 }
 
 export function markVersionSeen(version: string): void {
@@ -163,7 +165,12 @@ export function dismissUpdateVersion(version: string): void {
 	state.dismissedUpdateVersion = version;
 }
 
-export { getDismissedUpdateVersion, setDismissedUpdateVersion };
+export function teardownUpdater(): void {
+	if (updateCheckTimer) {
+		clearInterval(updateCheckTimer);
+		updateCheckTimer = null;
+	}
+}
 
 // --- Initialization ---
 
@@ -171,6 +178,12 @@ export async function initializeUpdater(): Promise<void> {
 	state.currentVersion = app.getVersion();
 	state.lastSeenVersion = getLastSeenVersion();
 	state.dismissedUpdateVersion = getDismissedUpdateVersion();
+
+	// If the dismissed version is now the running version, the update was installed — clear the flag
+	if (state.dismissedUpdateVersion === state.currentVersion) {
+		setDismissedUpdateVersion(null);
+		state.dismissedUpdateVersion = null;
+	}
 
 	// First launch — just record the version, no notification
 	if (!state.lastSeenVersion) {

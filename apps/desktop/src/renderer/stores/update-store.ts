@@ -17,7 +17,6 @@ interface UpdateStore {
 	openWhatsNew: (version: string, releaseNotes: string | null) => void;
 	closeWhatsNew: () => void;
 	setDownloadProgress: (progress: number) => void;
-	setUpdateReady: (version: string) => void;
 	setDismissedUpdateVersion: (version: string | null) => void;
 	dismissUpdateOptimistic: (version: string) => string | null;
 	restoreDismissedUpdateVersion: (version: string | null) => void;
@@ -46,9 +45,6 @@ export const useUpdateStore = create<UpdateStore>()((set, get) => ({
 		set({ showWhatsNewModal: false, modalVersion: null, modalReleaseNotes: null }),
 
 	setDownloadProgress: (progress) => set({ toastState: "downloading", downloadProgress: progress }),
-
-	setUpdateReady: (version) =>
-		set({ toastState: "ready", toastVersion: version, downloadProgress: null }),
 
 	setDismissedUpdateVersion: (version) => set({ dismissedUpdateVersion: version }),
 

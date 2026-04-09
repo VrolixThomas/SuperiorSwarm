@@ -5,13 +5,7 @@ import { eq } from "drizzle-orm";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { getDb } from "../src/main/db";
 import { sessionState } from "../src/main/db/schema";
-import * as updater from "../src/main/updater";
-import {
-	extractReleaseSummary,
-	getDismissedUpdateVersion,
-	getVersionDiffType,
-	setDismissedUpdateVersion,
-} from "../src/main/updater";
+import { dismissUpdateVersion, extractReleaseSummary, getUpdaterState, getVersionDiffType } from "../src/main/updater";
 
 describe("getVersionDiffType", () => {
 	test("returns 'major' for major version bump", () => {
@@ -66,22 +60,26 @@ describe("dismissed update version", () => {
 		db.delete(sessionState).where(eq(sessionState.key, "dismissedUpdateVersion")).run();
 	});
 
-	test("stores and retrieves dismissed update version", () => {
-		setDismissedUpdateVersion("2.1.0");
-		expect(getDismissedUpdateVersion()).toBe("2.1.0");
+	test("dismissUpdateVersion persists to storage and updates in-memory state", () => {
+		dismissUpdateVersion("2.1.0");
+		const row = getDb()
+			.select()
+			.from(sessionState)
+			.where(eq(sessionState.key, "dismissedUpdateVersion"))
+			.get();
+		expect(row?.value).toBe("2.1.0");
+		expect(getUpdaterState().dismissedUpdateVersion).toBe("2.1.0");
 	});
 
-	test("clears dismissed update version", () => {
-		setDismissedUpdateVersion(null);
-		expect(getDismissedUpdateVersion()).toBeNull();
-	});
-
-	test("dismissUpdateVersion updates updater state and storage", async () => {
-		expect(typeof updater.dismissUpdateVersion).toBe("function");
-		if (typeof updater.dismissUpdateVersion !== "function") return;
-
-		updater.dismissUpdateVersion("2.2.0");
-		expect(getDismissedUpdateVersion()).toBe("2.2.0");
-		expect(updater.getUpdaterState().dismissedUpdateVersion).toBe("2.2.0");
+	test("dismissUpdateVersion clears prior version when overwritten", () => {
+		dismissUpdateVersion("2.0.0");
+		dismissUpdateVersion("2.1.0");
+		expect(getUpdaterState().dismissedUpdateVersion).toBe("2.1.0");
+		const row = getDb()
+			.select()
+			.from(sessionState)
+			.where(eq(sessionState.key, "dismissedUpdateVersion"))
+			.get();
+		expect(row?.value).toBe("2.1.0");
 	});
 });
