@@ -11,6 +11,8 @@ import type {
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import { DiffEditor } from "./DiffEditor";
+import { MarkdownPreviewButton } from "./MarkdownPreviewButton";
+import { MarkdownRenderer } from "./MarkdownRenderer";
 
 // ── Comment thread widget rendered inside a Monaco view zone ──────────────────
 
@@ -539,10 +541,17 @@ interface PRReviewFileTabProps {
 export function PRReviewFileTab({ prCtx, filePath, language }: PRReviewFileTabProps) {
 	const diffMode = useTabStore((s) => s.diffMode);
 	const setDiffMode = useTabStore((s) => s.setDiffMode);
+	const markdownPreviewMode = useTabStore((s) => s.markdownPreviewMode);
 	const [editorInstance, setEditorInstance] = useState<monaco.editor.IStandaloneDiffEditor | null>(
 		null
 	);
 	const utils = trpc.useUtils();
+
+	useEffect(() => {
+		if (markdownPreviewMode === "rendered") {
+			setEditorInstance(null);
+		}
+	}, [markdownPreviewMode]);
 
 	const [pendingLine, setPendingLine] = useState<number | null>(null);
 
@@ -845,10 +854,17 @@ export function PRReviewFileTab({ prCtx, filePath, language }: PRReviewFileTabPr
 				<button
 					type="button"
 					onClick={() => setDiffMode(diffMode === "split" ? "inline" : "split")}
-					className="rounded px-2 py-0.5 text-[11px] text-[var(--text-tertiary)] transition-colors hover:bg-[var(--bg-elevated)]"
+					disabled={markdownPreviewMode === "rendered"}
+					className={[
+						"rounded px-2 py-0.5 text-[11px] transition-colors",
+						markdownPreviewMode === "rendered"
+							? "text-[var(--text-quaternary)] opacity-40 cursor-not-allowed"
+							: "text-[var(--text-tertiary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text)]",
+					].join(" ")}
 				>
 					{diffMode === "split" ? "Inline" : "Split"}
 				</button>
+				<MarkdownPreviewButton language={language} />
 			</div>
 
 			{/* Diff editor */}
@@ -856,6 +872,27 @@ export function PRReviewFileTab({ prCtx, filePath, language }: PRReviewFileTabPr
 				{isLoading ? (
 					<div className="flex h-full items-center justify-center text-[13px] text-[var(--text-quaternary)]">
 						Loading…
+					</div>
+				) : markdownPreviewMode === "rendered" ? (
+					<div className="h-full overflow-y-auto p-4">
+						<MarkdownRenderer content={modifiedQuery.data?.content ?? ""} />
+					</div>
+				) : markdownPreviewMode === "split" ? (
+					<div className="flex h-full overflow-hidden">
+						<div className="flex-1 overflow-hidden">
+							<DiffEditor
+								original={originalQuery.data?.content ?? ""}
+								modified={modifiedQuery.data?.content ?? ""}
+								language={language}
+								renderSideBySide={diffMode === "split"}
+								onEditorReady={(editor) => {
+									setEditorInstance(editor);
+								}}
+							/>
+						</div>
+						<div className="flex-1 overflow-y-auto border-l border-[var(--border)] p-4">
+							<MarkdownRenderer content={modifiedQuery.data?.content ?? ""} />
+						</div>
 					</div>
 				) : (
 					<DiffEditor
