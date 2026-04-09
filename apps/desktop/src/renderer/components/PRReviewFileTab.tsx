@@ -90,9 +90,7 @@ function ThreadWidget({
 
 				{/* Comment body */}
 				<div className="px-3 py-2">
-					<p className="text-[var(--text-tertiary)] whitespace-pre-wrap">
-						{aiThread.userEdit ?? aiThread.body}
-					</p>
+					<MarkdownRenderer content={aiThread.userEdit ?? aiThread.body} />
 				</div>
 
 				{/* Accept / Decline buttons for AI suggestions */}
@@ -153,7 +151,7 @@ function ThreadWidget({
 							{new Date(c.createdAt).toLocaleDateString()}
 						</span>
 					</div>
-					<p className="text-[var(--text-tertiary)] whitespace-pre-wrap">{c.body}</p>
+					<MarkdownRenderer content={c.body} />
 				</div>
 			))}
 
