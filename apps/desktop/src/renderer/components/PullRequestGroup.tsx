@@ -6,7 +6,6 @@ import { RepoGroup } from "./RepoGroup";
 import { resolveDisplayName } from "./pr-panel-helpers";
 
 interface PullRequestGroupProps {
-	repoKey: string;
 	owner: string;
 	repo: string;
 	prs: MergedPR[];
@@ -55,33 +54,29 @@ export function PullRequestGroup({
 				<span className="text-[11px] tabular-nums text-[var(--text-quaternary)]">{prs.length}</span>
 			}
 		>
-			<div className="flex flex-col">
-				{prs.map((pr) => {
-					const identifier = getPrIdentifier(pr);
-					const isReviewer = pr.githubPR?.role === "reviewer" || pr.provider === "bitbucket";
-					const enriched = enrichmentMap.get(identifier);
-					const knownWorkspaceId = workspaceIdMap.get(identifier);
-					const agentAlert = knownWorkspaceId ? agentAlerts[knownWorkspaceId] : undefined;
-					const isActive = activePRIdentifier === identifier;
+			{prs.map((pr) => {
+				const identifier = getPrIdentifier(pr);
+				const isReviewer = pr.githubPR?.role === "reviewer" || pr.provider === "bitbucket";
+				const enriched = enrichmentMap.get(identifier);
+				const knownWorkspaceId = workspaceIdMap.get(identifier);
+				const agentAlert = knownWorkspaceId ? agentAlerts[knownWorkspaceId] : undefined;
+				const isActive = activePRIdentifier === identifier;
 
-					return (
-						<RichPRItem
-							key={pr.id}
-							pr={pr}
-							enriched={enriched}
-							enrichmentLoading={enrichmentLoading}
-							isReviewer={isReviewer}
-							isActive={isActive}
-							isInActiveGroup={isGroupActive}
-							identifier={identifier}
-							agentAlert={agentAlert}
-							projectsList={projectsList}
-							onClick={(e) => onPRClick(pr, e)}
-							onContextMenu={(e) => onPRContextMenu(pr, e)}
-						/>
-					);
-				})}
-			</div>
+				return (
+					<RichPRItem
+						key={pr.id}
+						pr={pr}
+						enriched={enriched}
+						enrichmentLoading={enrichmentLoading}
+						isReviewer={isReviewer}
+						isActive={isActive}
+						agentAlert={agentAlert}
+						projectsList={projectsList}
+						onClick={(e) => onPRClick(pr, e)}
+						onContextMenu={(e) => onPRContextMenu(pr, e)}
+					/>
+				);
+			})}
 		</RepoGroup>
 	);
 }

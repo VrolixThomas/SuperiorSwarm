@@ -533,18 +533,18 @@ export const workspacesRouter = router({
 
 				const { existsSync } = await import("node:fs");
 				if (!existsSync(wtPath)) {
-					// Worktree doesn't exist on disk — create it
+					// Worktree doesn't exist on disk — create it (blocking: we need the path)
 					await checkoutBranchWorktree(project.repoPath, wtPath, input.sourceBranch);
 				} else {
-					// Worktree already exists on disk — reuse it, just fetch latest
+					// Worktree already exists on disk — fetch in background so the UI switch is instant
 					const { default: simpleGit } = await import("simple-git");
-					try {
-						const git = simpleGit(wtPath);
-						await git.fetch("origin");
-						await git.reset(["--hard", `origin/${input.sourceBranch}`]);
-					} catch (err) {
-						console.error("[workspaces] Failed to update existing worktree, continuing:", err);
-					}
+					const git = simpleGit(wtPath);
+					git
+						.fetch("origin")
+						.then(() => git.reset(["--hard", `origin/${input.sourceBranch}`]))
+						.catch((err) => {
+							console.error("[workspaces] Failed to update existing worktree, continuing:", err);
+						});
 				}
 
 				const now = new Date();
@@ -568,7 +568,7 @@ export const workspacesRouter = router({
 
 				workspace = db.select().from(workspaces).where(eq(workspaces.id, workspace.id)).get()!;
 			} else {
-				// Worktree exists — update to latest
+				// Worktree exists — fetch in background so the UI switch is instant
 				const worktree = db
 					.select()
 					.from(worktrees)
@@ -577,8 +577,12 @@ export const workspacesRouter = router({
 				if (worktree?.path) {
 					const { default: simpleGit } = await import("simple-git");
 					const git = simpleGit(worktree.path);
-					await git.fetch("origin");
-					await git.reset(["--hard", `origin/${input.sourceBranch}`]);
+					git
+						.fetch("origin")
+						.then(() => git.reset(["--hard", `origin/${input.sourceBranch}`]))
+						.catch((err) => {
+							console.error("[workspaces] Failed to update existing worktree:", err);
+						});
 				}
 			}
 

@@ -134,6 +134,8 @@ export function PullRequestsTab() {
 	const pendingReviewCtxRef = useRef<PRContext | null>(null);
 	// Local map of prIdentifier → workspaceId, populated when workspaces are created
 	const workspaceIdMapRef = useRef<Map<string, string>>(new Map());
+	// Tracks which prIdentifier is currently being opened to prevent duplicate calls
+	const openingPRRef = useRef<string | null>(null);
 
 	const triggerReview = trpc.aiReview.triggerReview.useMutation({
 		onSuccess: (launchInfo) => {
@@ -578,40 +580,49 @@ export function PullRequestsTab() {
 			repoPath: string,
 			prCtx: PRContext
 		) => {
-			// getOrCreateReview creates workspace + worktree atomically
-			const ws = await getOrCreateReviewMutation.mutateAsync({
-				projectId,
-				prProvider,
-				prIdentifier,
-				prTitle: prCtx.title,
-				sourceBranch: prCtx.sourceBranch,
-				targetBranch: prCtx.targetBranch,
-			});
+			if (openingPRRef.current === prIdentifier) return;
+			openingPRRef.current = prIdentifier;
 
-			// Track workspace ID for dismiss/cleanup lookups
-			workspaceIdMapRef.current.set(prIdentifier, ws.id);
+			try {
+				// getOrCreateReview creates workspace + worktree atomically.
+				// For existing worktrees the git fetch runs in the background on the
+				// main process side, so this resolves quickly.
+				const ws = await getOrCreateReviewMutation.mutateAsync({
+					projectId,
+					prProvider,
+					prIdentifier,
+					prTitle: prCtx.title,
+					sourceBranch: prCtx.sourceBranch,
+					targetBranch: prCtx.targetBranch,
+				});
 
-			const cwd = ws.worktreePath ?? repoPath;
-			// Update prCtx.repoPath to the worktree path so git queries
-			// (getCommitsAhead, getBranchDiff) run in the correct directory
-			const resolvedPrCtx = { ...prCtx, repoPath: cwd };
-			const tabStore = useTabStore.getState();
-			tabStore.setWorkspaceMetadata(ws.id, {
-				type: "review",
-				prProvider: resolvedPrCtx.provider,
-				prIdentifier: `${resolvedPrCtx.owner}/${resolvedPrCtx.repo}#${resolvedPrCtx.number}`,
-				prTitle: resolvedPrCtx.title,
-				sourceBranch: resolvedPrCtx.sourceBranch,
-				targetBranch: resolvedPrCtx.targetBranch,
-			});
-			tabStore.setActiveWorkspace(ws.id, cwd, {
-				rightPanel: { open: true, mode: "pr-review", diffCtx: null, prCtx: resolvedPrCtx },
-			});
+				// Track workspace ID for dismiss/cleanup lookups
+				workspaceIdMapRef.current.set(prIdentifier, ws.id);
 
-			// Create initial PR overview tab if no tabs exist for this workspace
-			const existingTabs = tabStore.getTabsByWorkspace(ws.id);
-			if (existingTabs.length === 0) {
-				tabStore.openPROverview(ws.id, resolvedPrCtx);
+				const cwd = ws.worktreePath ?? repoPath;
+				// Update prCtx.repoPath to the worktree path so git queries
+				// (getCommitsAhead, getBranchDiff) run in the correct directory
+				const resolvedPrCtx = { ...prCtx, repoPath: cwd };
+				const tabStore = useTabStore.getState();
+				tabStore.setWorkspaceMetadata(ws.id, {
+					type: "review",
+					prProvider: resolvedPrCtx.provider,
+					prIdentifier: `${resolvedPrCtx.owner}/${resolvedPrCtx.repo}#${resolvedPrCtx.number}`,
+					prTitle: resolvedPrCtx.title,
+					sourceBranch: resolvedPrCtx.sourceBranch,
+					targetBranch: resolvedPrCtx.targetBranch,
+				});
+				tabStore.setActiveWorkspace(ws.id, cwd, {
+					rightPanel: { open: true, mode: "pr-review", diffCtx: null, prCtx: resolvedPrCtx },
+				});
+
+				// Create initial PR overview tab if no tabs exist for this workspace
+				const existingTabs = tabStore.getTabsByWorkspace(ws.id);
+				if (existingTabs.length === 0) {
+					tabStore.openPROverview(ws.id, resolvedPrCtx);
+				}
+			} finally {
+				openingPRRef.current = null;
 			}
 		},
 		[getOrCreateReviewMutation]
@@ -805,7 +816,6 @@ export function PullRequestsTab() {
 				{[...grouped.entries()].map(([repoKey, group]) => (
 					<PullRequestGroup
 						key={repoKey}
-						repoKey={repoKey}
 						owner={group.owner}
 						repo={group.repo}
 						prs={group.items}
