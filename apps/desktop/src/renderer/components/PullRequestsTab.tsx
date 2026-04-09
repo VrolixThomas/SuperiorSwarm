@@ -859,6 +859,8 @@ export function PullRequestsTab() {
 												enriched={enriched}
 												enrichmentLoading={enrichmentLoading}
 												isReviewer={isReviewer}
+												isActive={false}
+												isInActiveGroup={false}
 												identifier={identifier}
 												agentAlert={agentAlert}
 												projectsList={projectsList}

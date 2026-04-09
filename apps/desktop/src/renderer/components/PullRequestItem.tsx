@@ -80,6 +80,8 @@ export function RichPRItem({
 	enriched,
 	enrichmentLoading,
 	isReviewer,
+	isActive,
+	isInActiveGroup,
 	agentAlert,
 	projectsList,
 	onClick,
@@ -89,6 +91,8 @@ export function RichPRItem({
 	enriched: GitHubPREnriched | undefined;
 	enrichmentLoading: boolean;
 	isReviewer: boolean;
+	isActive: boolean;
+	isInActiveGroup: boolean;
 	identifier: string;
 	agentAlert: AgentAlert | undefined;
 	projectsList:
@@ -123,11 +127,24 @@ export function RichPRItem({
 			type="button"
 			onClick={onClick}
 			onContextMenu={onContextMenu}
-			className={`group flex w-full flex-col gap-0.5 rounded-[6px] px-2.5 py-1.5 text-left text-[12px] transition-all duration-[120ms] hover:bg-[var(--bg-elevated)] ${
-				isReviewer
-					? "cursor-pointer text-[var(--text-secondary)]"
-					: "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
-			}`}
+			className={[
+				"group flex w-full flex-col gap-0.5 border-none pr-3 py-[7px] text-left text-[12px] cursor-pointer",
+				"transition-all duration-[120ms]",
+				isActive
+					? "rounded-r-[6px] rounded-l-none bg-[#17171e] hover:bg-[#1c1c24]"
+					: "rounded-[6px] bg-transparent hover:bg-[var(--bg-elevated)]",
+				isActive && isInActiveGroup ? "pl-[20px]" : "pl-[22px]",
+				isActive
+					? "text-[var(--text)]"
+					: isReviewer
+						? "text-[var(--text-secondary)]"
+						: "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]",
+			].join(" ")}
+			style={
+				isActive && isInActiveGroup
+					? { borderLeft: "2px solid rgba(10, 132, 255, 0.5)", marginLeft: -2 }
+					: undefined
+			}
 			title={`${pr.repoDisplay}#${pr.number}: ${pr.title}`}
 		>
 			{/* Row 1: Title + SwarmIndicator + health dot + PR number */}
