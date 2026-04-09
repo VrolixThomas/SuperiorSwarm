@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { eq } from "drizzle-orm";
 import { app } from "electron";
 import { buildDefaultPrompt } from "../../shared/quick-action-prompt";
-import { CLI_PRESETS, mcpRuntimeCommand } from "../ai-review/cli-presets";
+import { CLI_PRESETS } from "../ai-review/cli-presets";
 import { getMcpServerPath } from "../ai-review/mcp-path";
 import { getDb } from "../db";
 import * as schema from "../db/schema";
@@ -67,15 +67,14 @@ export async function launchSetupAgent(
 	writeFileSync(promptFilePath, promptText, "utf-8");
 
 	// Write MCP config with quick-action-specific env vars.
-	const { command, extraEnv } = mcpRuntimeCommand();
 	const mcpConfigPath = join(repoPath, ".mcp.json");
 	const mcpConfig = {
 		mcpServers: {
 			superiorswarm: {
-				command,
+				command: process.execPath,
 				args: [standaloneServerPath],
 				env: {
-					...extraEnv,
+					ELECTRON_RUN_AS_NODE: "1",
 					QUICK_ACTION_SETUP: "1",
 					PROJECT_ID: projectId,
 					DB_PATH: dbPath,
