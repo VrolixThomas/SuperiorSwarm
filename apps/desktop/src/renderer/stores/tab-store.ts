@@ -186,6 +186,8 @@ interface TabStore {
 	) => string;
 	clearInitialPosition: (tabId: string) => void;
 	setDiffMode: (mode: "split" | "inline") => void;
+	markdownPreviewMode: "off" | "split" | "rendered" | "rich-diff";
+	setMarkdownPreviewMode: (mode: "off" | "split" | "rendered" | "rich-diff") => void;
 
 	// Base branch per workspace
 	setBaseBranch: (workspaceId: string, branch: string) => void;
@@ -333,6 +335,7 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 	activeWorkspaceId: null,
 	activeWorkspaceCwd: "",
 	diffMode: "split",
+	markdownPreviewMode: "off",
 	rightPanel: defaultPanelForCwd(""),
 	baseBranchByWorkspace: {},
 	workspaceMetadata: {},
@@ -803,6 +806,8 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 	},
 
 	setDiffMode: (mode) => set({ diffMode: mode }),
+
+	setMarkdownPreviewMode: (mode) => set({ markdownPreviewMode: mode }),
 
 	setBaseBranch: (workspaceId, branch) =>
 		set((s) => ({

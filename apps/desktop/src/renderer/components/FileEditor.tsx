@@ -12,6 +12,8 @@ import {
 import { useEditorSettingsStore } from "../stores/editor-settings";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
+import { MarkdownPreviewButton } from "./MarkdownPreviewButton";
+import { MarkdownRenderer } from "./MarkdownRenderer";
 
 interface FileEditorProps {
 	tabId: string;
@@ -31,6 +33,7 @@ export function FileEditor({
 	const containerRef = useRef<HTMLDivElement>(null);
 	const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
 	const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 	// Capture initialPosition on mount only; subsequent re-renders (e.g. after store clear) do not update it
 	const initialPositionRef = useRef(initialPosition);
 	const clearInitialPosition = useTabStore((s) => s.clearInitialPosition);
@@ -39,6 +42,10 @@ export function FileEditor({
 	const vimModeRef = useRef<ReturnType<typeof initVimMode> | null>(null);
 	const [editorReady, setEditorReady] = useState(false);
 	const vimEnabled = useEditorSettingsStore((s) => s.vimEnabled);
+	const markdownPreviewMode = useTabStore((s) => s.markdownPreviewMode);
+	const [previewContent, setPreviewContent] = useState("");
+	const markdownPaneRef = useRef<HTMLDivElement>(null);
+	const isSyncingScrollRef = useRef(false);
 	const saveMutation = trpc.diff.saveFileContent.useMutation({
 		onSuccess: () => {
 			utils.diff.getWorkingTreeDiff.invalidate({ repoPath });
@@ -100,6 +107,7 @@ export function FileEditor({
 		if (existingModel) existingModel.dispose();
 		const model = monaco.editor.createModel(data.content, language, fileUri);
 		editor.setModel(model);
+		setPreviewContent(data.content);
 
 		// Use the ref (captured at mount) so re-renders after store clear do not re-navigate
 		const position = initialPositionRef.current;
@@ -127,6 +135,10 @@ export function FileEditor({
 			saveTimerRef.current = setTimeout(() => {
 				saveMutation.mutate({ repoPath, filePath, content: model.getValue() });
 			}, 500);
+			if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
+			previewTimerRef.current = setTimeout(() => {
+				setPreviewContent(model.getValue());
+			}, 300);
 
 			if (lspEnabled) {
 				version++;
@@ -137,6 +149,7 @@ export function FileEditor({
 		return () => {
 			sub.dispose();
 			if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+			if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
 			if (lspEnabled) {
 				sendDidClose(repoPath, language, uri);
 			}
@@ -159,6 +172,30 @@ export function FileEditor({
 		};
 	}, [vimEnabled, editorReady]);
 
+	// Sync scroll between Monaco and the markdown preview pane in split mode
+	useEffect(() => {
+		if (markdownPreviewMode !== "split") return;
+		const editor = editorRef.current;
+		if (!editor) return;
+
+		const scrollSub = editor.onDidScrollChange((e) => {
+			if (isSyncingScrollRef.current) return;
+			const pane = markdownPaneRef.current;
+			if (!pane) return;
+			const editorScrollable = editor.getScrollHeight() - editor.getLayoutInfo().height;
+			const paneScrollable = pane.scrollHeight - pane.clientHeight;
+			if (editorScrollable <= 0 || paneScrollable <= 0) return;
+			const pct = e.scrollTop / editorScrollable;
+			isSyncingScrollRef.current = true;
+			pane.scrollTop = pct * paneScrollable;
+			requestAnimationFrame(() => {
+				isSyncingScrollRef.current = false;
+			});
+		});
+
+		return () => scrollSub.dispose();
+	}, [editorReady, markdownPreviewMode]);
+
 	return (
 		<>
 			{isLoading && (
@@ -170,13 +207,56 @@ export function FileEditor({
 				className="flex h-full w-full flex-col"
 				style={isLoading ? { display: "none" } : undefined}
 			>
-				<div ref={containerRef} className="min-h-0 flex-1" />
-				{vimEnabled && (
-					<div
-						ref={vimStatusRef}
-						className="flex h-5 shrink-0 items-center border-t border-[var(--border)] bg-[var(--bg-elevated)] px-2 font-mono text-[11px] text-[var(--text-secondary)]"
-					/>
+				{language === "markdown" && (
+					<div className="flex h-8 shrink-0 items-center justify-end gap-2 border-b border-[var(--border)] bg-[var(--bg-surface)] px-3">
+						<MarkdownPreviewButton language={language} />
+					</div>
 				)}
+				<div className="flex min-h-0 flex-1 overflow-hidden">
+					{/* Monaco container — always mounted to preserve editor lifecycle.
+					    Hidden via display:none in "rendered" mode; automaticLayout
+					    handles the resize when it becomes visible again. */}
+					<div
+						className="flex min-h-0 flex-1 flex-col overflow-hidden"
+						style={
+							language === "markdown" && markdownPreviewMode === "rendered"
+								? { display: "none" }
+								: undefined
+						}
+					>
+						<div ref={containerRef} className="min-h-0 flex-1" />
+						{vimEnabled && (
+							<div
+								ref={vimStatusRef}
+								className="flex h-5 shrink-0 items-center border-t border-[var(--border)] bg-[var(--bg-elevated)] px-2 font-mono text-[11px] text-[var(--text-secondary)]"
+							/>
+						)}
+					</div>
+					{language === "markdown" &&
+						(markdownPreviewMode === "split" || markdownPreviewMode === "rendered") && (
+							<div
+								ref={markdownPaneRef}
+								className="flex-1 overflow-y-auto border-l border-[var(--border)] p-4"
+								onScroll={() => {
+									if (isSyncingScrollRef.current) return;
+									const editor = editorRef.current;
+									const pane = markdownPaneRef.current;
+									if (!editor || !pane) return;
+									const paneScrollable = pane.scrollHeight - pane.clientHeight;
+									const editorScrollable = editor.getScrollHeight() - editor.getLayoutInfo().height;
+									if (paneScrollable <= 0 || editorScrollable <= 0) return;
+									const pct = pane.scrollTop / paneScrollable;
+									isSyncingScrollRef.current = true;
+									editor.setScrollTop(pct * editorScrollable);
+									requestAnimationFrame(() => {
+										isSyncingScrollRef.current = false;
+									});
+								}}
+							>
+								<MarkdownRenderer content={previewContent} />
+							</div>
+						)}
+				</div>
 			</div>
 		</>
 	);

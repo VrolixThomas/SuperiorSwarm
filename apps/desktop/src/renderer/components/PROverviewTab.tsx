@@ -214,8 +214,8 @@ function AICommentCard({
 					{formatRelativeTime(thread.createdAt)}
 				</span>
 			</div>
-			<div className="px-3 py-2 text-[11px] text-[var(--text-secondary)] whitespace-pre-wrap">
-				{thread.userEdit ?? thread.body}
+			<div className="px-3 py-2">
+				<MarkdownRenderer content={thread.userEdit ?? thread.body} />
 			</div>
 			{(thread.status === "pending" || thread.status === "edited") && (
 				<div className="flex gap-1.5 border-t border-[var(--border-subtle)] px-3 py-1.5">
@@ -309,7 +309,7 @@ function GitHubThreadCard({
 						<span className="font-medium text-[var(--text-secondary)]">{c.author}</span>
 						<span className="text-[var(--text-quaternary)]">{formatRelativeTime(c.createdAt)}</span>
 					</div>
-					<p className="text-[11px] text-[var(--text-tertiary)] whitespace-pre-wrap">{c.body}</p>
+					<MarkdownRenderer content={c.body} />
 				</div>
 			))}
 

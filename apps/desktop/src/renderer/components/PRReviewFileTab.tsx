@@ -11,6 +11,9 @@ import type {
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import { DiffEditor } from "./DiffEditor";
+import { MarkdownPreviewButton } from "./MarkdownPreviewButton";
+import { MarkdownRenderedDiff } from "./MarkdownRenderedDiff";
+import { MarkdownRenderer } from "./MarkdownRenderer";
 
 // ── Comment thread widget rendered inside a Monaco view zone ──────────────────
 
@@ -88,9 +91,7 @@ function ThreadWidget({
 
 				{/* Comment body */}
 				<div className="px-3 py-2">
-					<p className="text-[var(--text-tertiary)] whitespace-pre-wrap">
-						{aiThread.userEdit ?? aiThread.body}
-					</p>
+					<MarkdownRenderer content={aiThread.userEdit ?? aiThread.body} />
 				</div>
 
 				{/* Accept / Decline buttons for AI suggestions */}
@@ -151,7 +152,7 @@ function ThreadWidget({
 							{new Date(c.createdAt).toLocaleDateString()}
 						</span>
 					</div>
-					<p className="text-[var(--text-tertiary)] whitespace-pre-wrap">{c.body}</p>
+					<MarkdownRenderer content={c.body} />
 				</div>
 			))}
 
@@ -539,10 +540,41 @@ interface PRReviewFileTabProps {
 export function PRReviewFileTab({ prCtx, filePath, language }: PRReviewFileTabProps) {
 	const diffMode = useTabStore((s) => s.diffMode);
 	const setDiffMode = useTabStore((s) => s.setDiffMode);
+	const markdownPreviewMode = useTabStore((s) => s.markdownPreviewMode);
 	const [editorInstance, setEditorInstance] = useState<monaco.editor.IStandaloneDiffEditor | null>(
 		null
 	);
 	const utils = trpc.useUtils();
+	const markdownPaneRef = useRef<HTMLDivElement>(null);
+	const isSyncingScrollRef = useRef(false);
+
+	const hideEditor = markdownPreviewMode === "rendered" || markdownPreviewMode === "rich-diff";
+
+	useEffect(() => {
+		if (hideEditor) {
+			setEditorInstance(null);
+			return;
+		}
+		if (!editorInstance || markdownPreviewMode !== "split") return;
+		const modEditor = editorInstance.getModifiedEditor();
+
+		const scrollSub = modEditor.onDidScrollChange((e) => {
+			if (isSyncingScrollRef.current) return;
+			const pane = markdownPaneRef.current;
+			if (!pane) return;
+			const editorScrollable = modEditor.getScrollHeight() - modEditor.getLayoutInfo().height;
+			const paneScrollable = pane.scrollHeight - pane.clientHeight;
+			if (editorScrollable <= 0 || paneScrollable <= 0) return;
+			const pct = e.scrollTop / editorScrollable;
+			isSyncingScrollRef.current = true;
+			pane.scrollTop = pct * paneScrollable;
+			requestAnimationFrame(() => {
+				isSyncingScrollRef.current = false;
+			});
+		});
+
+		return () => scrollSub.dispose();
+	}, [editorInstance, hideEditor, markdownPreviewMode]);
 
 	const [pendingLine, setPendingLine] = useState<number | null>(null);
 
@@ -845,10 +877,17 @@ export function PRReviewFileTab({ prCtx, filePath, language }: PRReviewFileTabPr
 				<button
 					type="button"
 					onClick={() => setDiffMode(diffMode === "split" ? "inline" : "split")}
-					className="rounded px-2 py-0.5 text-[11px] text-[var(--text-tertiary)] transition-colors hover:bg-[var(--bg-elevated)]"
+					disabled={hideEditor}
+					className={[
+						"rounded px-2 py-0.5 text-[11px] transition-colors",
+						hideEditor
+							? "text-[var(--text-quaternary)] opacity-40 cursor-not-allowed"
+							: "text-[var(--text-tertiary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text)]",
+					].join(" ")}
 				>
 					{diffMode === "split" ? "Inline" : "Split"}
 				</button>
+				<MarkdownPreviewButton language={language} showRichDiff />
 			</div>
 
 			{/* Diff editor */}
@@ -856,6 +895,53 @@ export function PRReviewFileTab({ prCtx, filePath, language }: PRReviewFileTabPr
 				{isLoading ? (
 					<div className="flex h-full items-center justify-center text-[13px] text-[var(--text-quaternary)]">
 						Loading…
+					</div>
+				) : markdownPreviewMode === "rich-diff" ? (
+					<div className="h-full overflow-y-auto p-4">
+						<MarkdownRenderedDiff
+							original={originalQuery.data?.content ?? ""}
+							modified={modifiedQuery.data?.content ?? ""}
+						/>
+					</div>
+				) : markdownPreviewMode === "rendered" ? (
+					<div className="h-full overflow-y-auto p-4">
+						<MarkdownRenderer content={modifiedQuery.data?.content ?? ""} />
+					</div>
+				) : markdownPreviewMode === "split" ? (
+					<div className="flex h-full overflow-hidden">
+						<div className="flex-1 overflow-hidden">
+							<DiffEditor
+								original={originalQuery.data?.content ?? ""}
+								modified={modifiedQuery.data?.content ?? ""}
+								language={language}
+								renderSideBySide={diffMode === "split"}
+								onEditorReady={(editor) => {
+									setEditorInstance(editor);
+								}}
+							/>
+						</div>
+						<div
+							ref={markdownPaneRef}
+							className="flex-1 overflow-y-auto border-l border-[var(--border)] p-4"
+							onScroll={() => {
+								if (isSyncingScrollRef.current) return;
+								const modEditor = editorInstance?.getModifiedEditor();
+								const pane = markdownPaneRef.current;
+								if (!modEditor || !pane) return;
+								const paneScrollable = pane.scrollHeight - pane.clientHeight;
+								const editorScrollable =
+									modEditor.getScrollHeight() - modEditor.getLayoutInfo().height;
+								if (paneScrollable <= 0 || editorScrollable <= 0) return;
+								const pct = pane.scrollTop / paneScrollable;
+								isSyncingScrollRef.current = true;
+								modEditor.setScrollTop(pct * editorScrollable);
+								requestAnimationFrame(() => {
+									isSyncingScrollRef.current = false;
+								});
+							}}
+						>
+							<MarkdownRenderer content={modifiedQuery.data?.content ?? ""} />
+						</div>
 					</div>
 				) : (
 					<DiffEditor
