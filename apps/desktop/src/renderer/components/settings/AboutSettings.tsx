@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { useUpdateStore } from "../../stores/update-store";
 import { trpc } from "../../trpc/client";
 import { PageHeading } from "./SectionHeading";
@@ -10,11 +9,6 @@ export function AboutSettings() {
 	const checkForUpdates = trpc.updates.checkForUpdates.useMutation({
 		onSuccess: () => statusQuery.refetch(),
 	});
-	const [showNotes, setShowNotes] = useState(false);
-	const releaseNotesQuery = trpc.updates.getReleaseNotes.useQuery(
-		{ version: statusQuery.data?.currentVersion },
-		{ enabled: showNotes && !!statusQuery.data?.currentVersion }
-	);
 	const installUpdate = trpc.updates.installUpdate.useMutation();
 
 	const openWhatsNew = useUpdateStore((s) => s.openWhatsNew);
@@ -29,8 +23,7 @@ export function AboutSettings() {
 	const checkError = checkResult?.error ?? null;
 
 	const handleViewReleaseNotes = () => {
-		setShowNotes(true);
-		openWhatsNew(currentVersion, releaseNotesQuery.data?.body ?? null);
+		openWhatsNew(currentVersion);
 	};
 
 	const handleCheckForUpdates = () => {
