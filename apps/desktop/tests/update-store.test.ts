@@ -91,4 +91,15 @@ describe("update-store", () => {
 		expect(snapshot.toastState).toBe("hidden");
 		expect(useUpdateStore.getState().toastState).toBe("ready");
 	});
+
+	test("dismissed ready toast hides and reappears for newer version", () => {
+		const store = useUpdateStore.getState();
+		store.setDismissedUpdateVersion(null);
+		store.setUpdateReady("1.0.0");
+		expect(useUpdateStore.getState().toastState).toBe("ready");
+		store.dismissUpdateOptimistic("1.0.0");
+		expect(useUpdateStore.getState().toastState).toBe("hidden");
+		store.setUpdateReady("2.0.0");
+		expect(useUpdateStore.getState().toastState).toBe("ready");
+	});
 });
