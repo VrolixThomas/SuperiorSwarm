@@ -28,10 +28,10 @@ To run a single test file: `bun test tests/cmd-buffer.test.ts`
 
 ## Architecture
 
-- **Four processes:** main (`src/main/`) / daemon (`src/daemon/`) / renderer (`src/renderer/`) / preload (`src/preload/`)
+- **Processes:** main (`src/main/`) / daemon (`src/daemon/`) / renderer (`src/renderer/`) + preload script (`src/preload/`)
 - **Cross-process types** → `src/shared/` (define new types here, not inline in process code)
 - **tRPC router** → `src/main/trpc/` (over Electron IPC via `ipcLink`, not HTTP)
-- **Terminal PTY daemon** → `src/daemon/` (Unix socket; spawned with `SUPERIORSWARM_SOCKET_PATH`, `_DB_PATH`, `_DEV_MODE`)
+- **Terminal PTY daemon** → `src/daemon/` (Unix socket; spawned with `SUPERIORSWARM_SOCKET_PATH`, `SUPERIORSWARM_DB_PATH`, `SUPERIORSWARM_DEV_MODE`)
 - **Build-time env injection** → `electron.vite.config.ts` `define` block (OAuth + Supabase credentials are NOT in runtime `process.env`)
 - **MCP server** → `mcp-standalone/` (native modules rebuilt against Electron ABI; launched via `ELECTRON_RUN_AS_NODE=1`)
 - **DB schema + migrations** → `src/main/db/` (auto-applied on startup via `initializeDatabase()`)
