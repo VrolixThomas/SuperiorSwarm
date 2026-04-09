@@ -38,7 +38,7 @@ export interface LaunchOptions {
  * running it through Electron's own Node is guaranteed to work for every
  * user of every release.
  */
-export function mcpRuntimeCommand(): { command: string; extraEnv: Record<string, string> } {
+function mcpRuntimeCommand(): { command: string; extraEnv: Record<string, string> } {
 	return {
 		command: process.execPath,
 		extraEnv: { ELECTRON_RUN_AS_NODE: "1" },
