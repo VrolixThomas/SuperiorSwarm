@@ -98,8 +98,10 @@ describe("update-store", () => {
 		store.setUpdateReady("1.0.0");
 		store.setDismissedUpdateVersion(null);
 		expect(store.toastState).toBe("ready");
+		// dismiss version A
 		store.dismissUpdateOptimistic("1.0.0");
 		expect(store.toastState).toBe("hidden");
+		// new version B should re-show ready toast
 		store.setUpdateReady("2.0.0");
 		expect(store.toastState).toBe("ready");
 	});
