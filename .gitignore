@@ -44,8 +44,6 @@ apps/desktop/dist/
 # Claude Code (ignore internals, keep skills)
 .claude/*
 !.claude/skills/
-!.claude/specs/
-!.claude/settings.json
 
 # Superpowers
 .superpowers/
