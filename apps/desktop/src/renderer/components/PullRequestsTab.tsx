@@ -8,8 +8,10 @@ import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import { ConnectBanner } from "./ConnectBanner";
 import { CreateWorktreeFromPRModal, type LinkablePR } from "./CreateWorktreeFromPRModal";
-import { type MergedPR, RichPRItem } from "./PullRequestItem";
+import { PullRequestGroup } from "./PullRequestGroup";
+import type { MergedPR } from "./PullRequestItem";
 import { type LinkedWorkspace, WorkspacePopover } from "./WorkspacePopover";
+import { findActivePRIdentifier } from "./pr-panel-helpers";
 
 // ── Context Menu ──────────────────────────────────────────────────────────────
 
@@ -365,9 +367,10 @@ export function PullRequestsTab() {
 	}, [ghPRs, bbReviewPRs, reviewDrafts.data, settings.data, projectsList, triggerReviewWithCtx]);
 
 	const store = useTabStore();
+	const activeWorkspaceId = useTabStore((s) => s.activeWorkspaceId);
 	const agentAlerts = useAgentAlertStore((s) => s.alerts);
 
-	function getPrIdentifier(pr: MergedPR): string {
+	const getPrIdentifier = useCallback((pr: MergedPR): string => {
 		if (pr.provider === "github" && pr.githubPR) {
 			return `${pr.githubPR.repoOwner}/${pr.githubPR.repoName}#${pr.githubPR.number}`;
 		}
@@ -375,7 +378,7 @@ export function PullRequestsTab() {
 			return `${pr.bitbucketPR.workspace}/${pr.bitbucketPR.repoSlug}#${pr.bitbucketPR.id}`;
 		}
 		return pr.id;
-	}
+	}, []);
 
 	const collapsedGroups = useMemo(() => new Set(collapsedGroupsList ?? []), [collapsedGroupsList]);
 
@@ -488,6 +491,11 @@ export function PullRequestsTab() {
 
 		return groups;
 	}, [bbReviewPRs, ghPRs]);
+
+	const activePRIdentifier = useMemo(
+		() => findActivePRIdentifier(workspaceIdMapRef.current, activeWorkspaceId),
+		[activeWorkspaceId]
+	);
 
 	// ── PR state tracking effect (auto-cleanup on merge/close) ────────────────
 
@@ -791,89 +799,40 @@ export function PullRequestsTab() {
 				</div>
 			)}
 
-			<div className="flex flex-col">
-				{[...grouped.entries()].map(([repoKey, group]) => {
-					const isCollapsed = collapsedGroups.has(repoKey);
-					return (
-						<div key={repoKey}>
-							<button
-								type="button"
-								onClick={() => toggleGroup(repoKey)}
-								className="flex w-full items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium uppercase tracking-[0.05em] text-[var(--text-quaternary)] transition-colors hover:text-[var(--text-tertiary)]"
-							>
-								<svg
-									aria-hidden="true"
-									width="8"
-									height="8"
-									viewBox="0 0 10 10"
-									fill="none"
-									className={`shrink-0 transition-transform duration-150 ${!isCollapsed ? "rotate-90" : ""}`}
-								>
-									<path
-										d="M3 1.5L7 5L3 8.5"
-										stroke="currentColor"
-										strokeWidth="2"
-										strokeLinecap="round"
-										strokeLinejoin="round"
-									/>
-								</svg>
-								<span className="truncate">{group.name}</span>
-								<span className="ml-auto text-[10px] tabular-nums opacity-60">
-									{group.items.length}
-								</span>
-							</button>
-
-							{!isCollapsed && (
-								<div className="flex flex-col gap-0.5 px-1">
-									{group.items.map((pr) => {
-										const identifier = getPrIdentifier(pr);
-										const isReviewer =
-											pr.githubPR?.role === "reviewer" || pr.provider === "bitbucket";
-										const enrichmentKey = pr.githubPR
-											? `${pr.githubPR.repoOwner}/${pr.githubPR.repoName}#${pr.githubPR.number}`
-											: pr.bitbucketPR
-												? `${pr.bitbucketPR.workspace}/${pr.bitbucketPR.repoSlug}#${pr.bitbucketPR.id}`
-												: undefined;
-										const enriched =
-											isReviewer && enrichmentKey ? enrichmentMap.get(enrichmentKey) : undefined;
-										const enrichmentLoading =
-											isReviewer &&
-											((reviewerPRsForEnrichment.length > 0 && enrichmentQuery.isLoading) ||
-												(bitbucketPRsForEnrichment.length > 0 && bbEnrichmentQuery.isLoading));
-										const knownWorkspaceId = workspaceIdMapRef.current.get(identifier);
-										const agentAlert = knownWorkspaceId ? agentAlerts[knownWorkspaceId] : undefined;
-										const handleContextMenu = (e: React.MouseEvent) => {
-											e.preventDefault();
-											setContextMenu({
-												position: { x: e.clientX, y: e.clientY },
-												url: pr.url,
-												workspaceId: knownWorkspaceId,
-												identifier,
-											});
-										};
-
-										return (
-											<RichPRItem
-												key={pr.id}
-												pr={pr}
-												enriched={enriched}
-												enrichmentLoading={enrichmentLoading}
-												isReviewer={isReviewer}
-												isActive={false}
-												isInActiveGroup={false}
-												identifier={identifier}
-												agentAlert={agentAlert}
-												projectsList={projectsList}
-												onClick={(e) => handlePRClick(pr, e)}
-												onContextMenu={handleContextMenu}
-											/>
-										);
-									})}
-								</div>
-							)}
-						</div>
-					);
-				})}
+			<div className="flex flex-col gap-2 px-2 pt-2">
+				{[...grouped.entries()].map(([repoKey, group]) => (
+					<PullRequestGroup
+						key={repoKey}
+						repoKey={repoKey}
+						owner={group.owner}
+						repo={group.repo}
+						prs={group.items}
+						isCollapsed={collapsedGroups.has(repoKey)}
+						onToggleCollapse={() => toggleGroup(repoKey)}
+						activePRIdentifier={activePRIdentifier}
+						getPrIdentifier={getPrIdentifier}
+						enrichmentMap={enrichmentMap}
+						enrichmentLoading={
+							(reviewerPRsForEnrichment.length > 0 && enrichmentQuery.isLoading) ||
+							(bitbucketPRsForEnrichment.length > 0 && bbEnrichmentQuery.isLoading)
+						}
+						agentAlerts={agentAlerts as Record<string, AgentAlert | undefined>}
+						workspaceIdMap={workspaceIdMapRef.current}
+						projectsList={projectsList}
+						onPRClick={handlePRClick}
+						onPRContextMenu={(pr, e) => {
+							e.preventDefault();
+							const identifier = getPrIdentifier(pr);
+							const knownWorkspaceId = workspaceIdMapRef.current.get(identifier);
+							setContextMenu({
+								position: { x: e.clientX, y: e.clientY },
+								url: pr.url,
+								workspaceId: knownWorkspaceId,
+								identifier,
+							});
+						}}
+					/>
+				))}
 			</div>
 
 			{popover && (
