@@ -60,6 +60,7 @@ function resetStore() {
 		activeWorkspaceId: null,
 		activeWorkspaceCwd: "",
 		diffMode: "split",
+		markdownPreviewMode: "off",
 		rightPanel: PANEL_CLOSED,
 		workspaceMetadata: {},
 		activeTicketProject: "all",
@@ -497,5 +498,31 @@ describe("ticket canvas state", () => {
 		const state = useTabStore.getState();
 		expect(state.selectedTicketId).toBe(null);
 		expect(state.ticketDetailOpen).toBe(false);
+	});
+});
+
+// ── markdownPreviewMode ──────────────────────────────────────────────────────
+
+describe("markdownPreviewMode", () => {
+	beforeEach(resetStore);
+
+	test("defaults to 'off'", () => {
+		expect(useTabStore.getState().markdownPreviewMode).toBe("off");
+	});
+
+	test("setMarkdownPreviewMode sets 'split'", () => {
+		useTabStore.getState().setMarkdownPreviewMode("split");
+		expect(useTabStore.getState().markdownPreviewMode).toBe("split");
+	});
+
+	test("setMarkdownPreviewMode sets 'rendered'", () => {
+		useTabStore.getState().setMarkdownPreviewMode("rendered");
+		expect(useTabStore.getState().markdownPreviewMode).toBe("rendered");
+	});
+
+	test("setMarkdownPreviewMode resets to 'off'", () => {
+		useTabStore.getState().setMarkdownPreviewMode("rendered");
+		useTabStore.getState().setMarkdownPreviewMode("off");
+		expect(useTabStore.getState().markdownPreviewMode).toBe("off");
 	});
 });
