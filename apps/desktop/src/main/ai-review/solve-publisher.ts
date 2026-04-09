@@ -31,7 +31,7 @@ export async function publishSolve(sessionId: string): Promise<PublishSolveResul
 	const { session, worktree } = resolved;
 
 	try {
-		execSync("git push", { cwd: worktree.path, stdio: "pipe" });
+		execSync("git push --set-upstream origin HEAD", { cwd: worktree.path, stdio: "pipe" });
 		pushed = true;
 	} catch (err) {
 		errors.push(`Git push failed: ${err}`);
