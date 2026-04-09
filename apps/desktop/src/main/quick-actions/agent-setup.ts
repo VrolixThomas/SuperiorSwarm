@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { eq } from "drizzle-orm";
 import { app } from "electron";
 import { buildDefaultPrompt } from "../../shared/quick-action-prompt";
-import { CLI_PRESETS, isCliInstalled, resolveCliPath } from "../ai-review/cli-presets";
+import { CLI_PRESETS, mcpRuntimeCommand } from "../ai-review/cli-presets";
 import { getMcpServerPath } from "../ai-review/mcp-path";
 import { getDb } from "../db";
 import * as schema from "../db/schema";
@@ -57,9 +57,6 @@ export async function launchSetupAgent(
 	const settings = getSettings();
 	const preset = CLI_PRESETS[settings.cliPreset];
 	if (!preset) throw new Error(`Unknown CLI preset: ${settings.cliPreset}`);
-	if (!isCliInstalled(preset.command)) {
-		throw new Error(`CLI tool '${preset.command}' is not installed`);
-	}
 
 	// Use the standalone MCP server (same path resolution as cli-presets.ts)
 	const standaloneServerPath = getMcpServerPath();
@@ -70,15 +67,15 @@ export async function launchSetupAgent(
 	writeFileSync(promptFilePath, promptText, "utf-8");
 
 	// Write MCP config with quick-action-specific env vars.
-	// We write .mcp.json directly since setupMcp would inject solve-mode env vars,
-	// but we need QUICK_ACTION_SETUP + PROJECT_ID instead.
+	const { command, extraEnv } = mcpRuntimeCommand();
 	const mcpConfigPath = join(repoPath, ".mcp.json");
 	const mcpConfig = {
 		mcpServers: {
 			superiorswarm: {
-				command: "node",
+				command,
 				args: [standaloneServerPath],
 				env: {
+					...extraEnv,
 					QUICK_ACTION_SETUP: "1",
 					PROJECT_ID: projectId,
 					DB_PATH: dbPath,
@@ -90,9 +87,9 @@ export async function launchSetupAgent(
 	writeFileSync(mcpConfigPath, JSON.stringify(mcpConfig, null, 2), "utf-8");
 
 	// Build the CLI invocation — we craft our own prompt arg instead of using
-	// preset.buildArgs() which generates review-specific text ("Review this PR...")
-	const resolvedCommand = resolveCliPath(preset.command);
-	const parts = [resolvedCommand];
+	// preset.buildArgs() which generates review-specific text ("Review this PR...").
+	// Use the bare command name; the login-shell PTY resolves it from the user's PATH.
+	const parts = [preset.command];
 	if (settings.skipPermissions && preset.permissionFlag) {
 		parts.push(preset.permissionFlag);
 	}
