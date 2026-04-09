@@ -25,11 +25,14 @@ export function WhatsNewModal() {
 	useEffect(() => {
 		if (!show) return;
 		const handleKeyDown = (e: KeyboardEvent) => {
-			if (e.key === "Escape") closeWhatsNew();
+			if (e.key === "Escape") {
+				if (version) markSeenRef.current({ version });
+				closeWhatsNew();
+			}
 		};
 		document.addEventListener("keydown", handleKeyDown);
 		return () => document.removeEventListener("keydown", handleKeyDown);
-	}, [show, closeWhatsNew]);
+	}, [show, version, closeWhatsNew]);
 
 	if (!show || !version) return null;
 

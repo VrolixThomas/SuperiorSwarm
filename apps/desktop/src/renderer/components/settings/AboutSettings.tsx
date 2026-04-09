@@ -23,7 +23,9 @@ export function AboutSettings() {
 	const checkError = checkResult?.error ?? null;
 
 	const handleViewReleaseNotes = () => {
-		openWhatsNew(currentVersion);
+		if (statusQuery.data?.currentVersion) {
+			openWhatsNew(statusQuery.data.currentVersion);
+		}
 	};
 
 	const handleCheckForUpdates = () => {
