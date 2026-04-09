@@ -2,9 +2,9 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Project Overview
+## Tech Stack
 
-SuperiorSwarm is an Electron desktop app for Git workflow management with Jira and Bitbucket (Atlassian) integration. It provides a terminal multiplexer for managing workspaces, branches, and worktrees within Git repositories.
+Electron + React 19 + TypeScript. Bun (runtime + package manager). Turbo (monorepo). tRPC over Electron IPC (not HTTP). SQLite + Drizzle ORM. Biome (lint/format). xterm.js + node-pty (terminal).
 
 ## Commands
 
@@ -28,35 +28,13 @@ To run a single test file: `bun test tests/cmd-buffer.test.ts`
 
 ## Architecture
 
-### Monorepo Structure
-
-Bun workspaces with Turbo orchestration. Primary app lives in `apps/desktop/`, shared TypeScript configs in `tooling/typescript/`.
-
-### Electron Process Separation
-
-Three isolated TypeScript contexts, each with its own tsconfig:
-
-- **Main process** (`src/main/`) — Node.js context: DB, Git ops, tRPC server, Atlassian OAuth, terminal PTY spawning via node-pty
-- **Renderer** (`src/renderer/`) — React 19 browser context: UI components, stores, tRPC client. Path alias `@/` maps to `src/renderer/`
-- **Preload** (`src/preload/`) — IPC bridge exposing `window.electron` API with namespaces: `terminal`, `trpc`, `dialog`, `session`, `shell`
-
-### Data Flow: tRPC over Electron IPC
-
-The renderer communicates with main via tRPC transported over Electron IPC (not HTTP). The custom `ipcLink` in both processes handles serialization with superjson. The router lives in `src/main/trpc/routers/` and is composed in `src/main/trpc/index.ts`.
-
-### State Management
-
-- **Zustand** stores (`src/renderer/stores/`) — client-side UI state (terminal tabs, project selection)
-- **TanStack Query** — server state caching for tRPC queries (Atlassian data, project lists)
-- **SQLite + Drizzle ORM** (`src/main/db/`) — persistent storage. Schema in `schema.ts`, migrations in `migrations/`. WAL mode, foreign keys enforced. Migrations auto-apply on startup via `initializeDatabase()`
-
-### Atlassian Integration
-
-OAuth 2.0 flow using a localhost callback server on port 27391. Tokens encrypted with Electron `safeStorage` (OS keychain). Code organized in `src/main/atlassian/`: `auth.ts` (token CRUD + refresh), `oauth-flow.ts` (authorization flow), `jira.ts` and `bitbucket.ts` (API wrappers). OAuth client credentials injected at build time from `.env` via `electron.vite.config.ts` define blocks.
-
-### Build System
-
-Electron Vite (`electron.vite.config.ts`) builds all three processes. Main and preload use Rollup with `externalizeDepsPlugin()`. A custom `copyMigrationsPlugin()` copies Drizzle migration files to the output directory. Renderer uses Vite with React and Tailwind CSS v4.
+- **Four processes:** main (`src/main/`) / daemon (`src/daemon/`) / renderer (`src/renderer/`) / preload (`src/preload/`)
+- **Cross-process types** → `src/shared/` (define new types here, not inline in process code)
+- **tRPC router** → `src/main/trpc/` (over Electron IPC via `ipcLink`, not HTTP)
+- **Terminal PTY daemon** → `src/daemon/` (Unix socket; spawned with `SUPERIORSWARM_SOCKET_PATH`, `_DB_PATH`, `_DEV_MODE`)
+- **Build-time env injection** → `electron.vite.config.ts` `define` block (OAuth + Supabase credentials are NOT in runtime `process.env`)
+- **MCP server** → `mcp-standalone/` (native modules rebuilt against Electron ABI; launched via `ELECTRON_RUN_AS_NODE=1`)
+- **DB schema + migrations** → `src/main/db/` (auto-applied on startup via `initializeDatabase()`)
 
 ## Code Style
 
@@ -68,50 +46,15 @@ Electron Vite (`electron.vite.config.ts`) builds all three processes. Main and p
 
 ## Never Do This
 
-- **Never add `Co-Authored-By` trailers to commit messages.** No Claude attribution, no AI co-author lines. Commits are authored solely by the developer.
-- **Never commit `.env` files or OAuth secrets.** Only `.env.example` (with placeholder values) belongs in the repo.
-- **Never run `git push --force` to `main`.** Force-pushing to shared branches destroys history.
-- **Never bypass pre-commit hooks** with `--no-verify`. Fix the underlying issue instead.
-- **Never install ESLint or Prettier.** This project uses Biome exclusively for linting and formatting.
-- **Never use `npm` or `yarn`.** This project uses Bun. Running other package managers will create conflicting lock files.
-- **Never expose IPC channels directly.** All renderer-to-main communication goes through the preload bridge and tRPC. Do not add raw `ipcRenderer.send`/`ipcRenderer.on` calls in renderer code.
-- **Never store tokens or secrets in plain text.** All credentials must be encrypted via Electron `safeStorage`.
+- **Never add `Co-Authored-By` trailers to commit messages.**
+- **Never commit `.env` files or OAuth secrets.** Only `.env.example` belongs in the repo.
+- **Never run `git push --force` to `main`.**
+- **Never bypass pre-commit hooks** with `--no-verify`.
+- **Never install ESLint or Prettier.** Use Biome exclusively.
+- **Never use `npm` or `yarn`.** Use Bun.
+- **Never expose IPC channels directly.** All renderer↔main communication goes through preload + tRPC.
+- **Never store tokens or secrets in plain text.** Encrypt via Electron `safeStorage`.
 
-## Design System
+## Maintenance
 
-Dark theme with CSS custom properties defined in `src/renderer/styles.css`. Background levels: `--bg-base` through `--bg-overlay`. Text levels: `--text` through `--text-quaternary`. Accent: `--accent` (#0a84ff). Terminal uses custom ANSI color palette via xterm.js.
-
-## Logging
-
-Production logs are written to platform-standard locations via `electron-log`:
-
-- **macOS:** `~/Library/Logs/SuperiorSwarm/main.log`
-- **Linux:** `~/.config/SuperiorSwarm/logs/main.log`
-- **Windows:** `%APPDATA%\SuperiorSwarm\logs\main.log`
-
-Files rotate at 5 MB (one archive kept as `main.old.log`).
-
-To tail logs while the app is running:
-
-```bash
-tail -f ~/Library/Logs/SuperiorSwarm/main.log
-```
-
-Every IPC send emits a one-line breadcrumb (`[ipc] sending <label>`). If a send carries a non-cloneable payload (function, class instance, depth > 50), the iterative walker in `src/main/ipc-safety.ts` detects it before V8 sees it and logs a structured report (`[ipc-safety] non-cloneable value for <label>`). The IPC handler then returns an error response so the renderer gets a graceful failure instead of a process crash.
-
-If V8 still manages to crash (some unsupported type the walker doesn't check for), the most recent breadcrumb in the log identifies the procedure that was being sent at the moment of the crash.
-
-### Debug mode
-
-A `debug_mode` flag in the `session_state` table forces `isCloneable` to return `true` even when it finds issues — so the IPC send proceeds, V8 crashes the app, and you get an immediate signal (rather than the silent "log + degrade" behavior end users get). The structured `[ipc-safety]` report is still written first, so the post-crash log contains both the breadcrumb timeline and the exact field path / type of the offending value.
-
-To enable on your own machine:
-
-```bash
-sqlite3 ~/Library/Application\ Support/SuperiorSwarm/superiorswarm.db \
-  "INSERT OR REPLACE INTO session_state (key, value) VALUES ('debug_mode', '1');"
-```
-
-Restart the app. The startup log line `[debug-mode] ENABLED` confirms it. To turn it off, set the value to `'0'` (or `DELETE` the row) and restart.
-
-Default is off — never ship with the flag set.
+When you discover something non-obvious that required reading 2+ files to piece together, or the user corrects a wrong assumption — add a brief index entry above and commit: `git add CLAUDE.md && git commit -m 'docs: update CLAUDE.md'`. Only add at 95%+ confidence the fact is non-obvious, correct, and durable. Remove stale entries. Never explain — route to source.
