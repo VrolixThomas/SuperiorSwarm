@@ -3,6 +3,7 @@ import { detectLanguage } from "../../shared/diff-types";
 import type { SolveCommentInfo, SolveGroupInfo, SolveSessionInfo } from "../../shared/solve-types";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
+import { MarkdownRenderer } from "./MarkdownRenderer";
 import { SolvingBanner } from "./SolvingBanner";
 
 // ── Props ─────────────────────────────────────────────────────────────────────
@@ -284,9 +285,7 @@ function CommitGroupCard({
 									)}
 								</div>
 								{/* Comment body — full text, no truncation */}
-								<p className="whitespace-pre-wrap text-[11px] leading-[1.5] text-[var(--text-tertiary)]">
-									{comment.body}
-								</p>
+								<MarkdownRenderer content={comment.body} />
 								{/* Draft reply — editable */}
 								{comment.reply && editingReply !== comment.reply.id && (
 									<div className="mt-2 rounded-[4px] border border-[rgba(255,255,255,0.06)] bg-[rgba(255,255,255,0.04)] px-2.5 py-1.5">
@@ -314,9 +313,7 @@ function CommitGroupCard({
 												</button>
 											</div>
 										</div>
-										<p className="mt-0.5 whitespace-pre-wrap text-[11px] text-[var(--text-tertiary)]">
-											{comment.reply.body}
-										</p>
+										<MarkdownRenderer content={comment.reply.body} />
 									</div>
 								)}
 								{/* Editing reply */}

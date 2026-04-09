@@ -6,6 +6,7 @@ import type {
 	PRContext,
 	UnifiedThread,
 } from "../../shared/github-types";
+import { MarkdownRenderer } from "./MarkdownRenderer";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -93,8 +94,8 @@ export function CommentThreadCard({
 						</span>
 					)}
 				</div>
-				<div className="px-3 py-2 text-[11px] text-[var(--text-secondary)] whitespace-pre-wrap">
-					{ai.userEdit ?? ai.body}
+				<div className="px-3 py-2">
+					<MarkdownRenderer content={ai.userEdit ?? ai.body} />
 				</div>
 				{ai.status === "pending" && onAccept && onDecline && (
 					<div className="flex gap-1.5 border-t border-[var(--border-subtle)] px-3 py-1.5">
@@ -170,7 +171,7 @@ export function CommentThreadCard({
 							{new Date(c.createdAt).toLocaleDateString()}
 						</span>
 					</div>
-					<p className="text-[11px] text-[var(--text-tertiary)] whitespace-pre-wrap">{c.body}</p>
+					<MarkdownRenderer content={c.body} />
 				</div>
 			))}
 
