@@ -50,35 +50,18 @@ export const useUpdateStore = create<UpdateStore>()((set, get) => ({
 	setUpdateReady: (version) =>
 		set({ toastState: "ready", toastVersion: version, downloadProgress: null }),
 
-	setDismissedUpdateVersion: (version) =>
-		set((state) => {
-			state.dismissedUpdateVersion = version;
-			return state;
-		}, true),
+	setDismissedUpdateVersion: (version) => set({ dismissedUpdateVersion: version }),
 
 	dismissUpdateOptimistic: (version) => {
 		const previous = get().dismissedUpdateVersion;
-		set((state) => {
-			state.dismissedUpdateVersion = version;
-			state.toastState = "hidden";
-			return state;
-		}, true);
+		set({ dismissedUpdateVersion: version, toastState: "hidden" });
 		return previous;
 	},
 
-	restoreDismissedUpdateVersion: (version) =>
-		set((state) => {
-			state.dismissedUpdateVersion = version;
-			return state;
-		}, true),
+	restoreDismissedUpdateVersion: (version) => set({ dismissedUpdateVersion: version }),
 
 	setUpdateReadyIfNotDismissed: (version) => {
 		if (get().dismissedUpdateVersion === version) return;
-		set((state) => {
-			state.toastState = "ready";
-			state.toastVersion = version;
-			state.downloadProgress = null;
-			return state;
-		}, true);
+		set({ toastState: "ready", toastVersion: version, downloadProgress: null });
 	},
 }));
