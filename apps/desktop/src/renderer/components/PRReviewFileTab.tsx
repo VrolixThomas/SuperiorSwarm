@@ -544,12 +544,36 @@ export function PRReviewFileTab({ prCtx, filePath, language }: PRReviewFileTabPr
 		null
 	);
 	const utils = trpc.useUtils();
+	const markdownPaneRef = useRef<HTMLDivElement>(null);
+	const isSyncingScrollRef = useRef(false);
 
 	useEffect(() => {
 		if (markdownPreviewMode === "rendered") {
 			setEditorInstance(null);
 		}
 	}, [markdownPreviewMode]);
+
+	useEffect(() => {
+		if (!editorInstance || markdownPreviewMode !== "split") return;
+		const modEditor = editorInstance.getModifiedEditor();
+
+		const scrollSub = modEditor.onDidScrollChange((e) => {
+			if (isSyncingScrollRef.current) return;
+			const pane = markdownPaneRef.current;
+			if (!pane) return;
+			const editorScrollable = modEditor.getScrollHeight() - modEditor.getLayoutInfo().height;
+			const paneScrollable = pane.scrollHeight - pane.clientHeight;
+			if (editorScrollable <= 0 || paneScrollable <= 0) return;
+			const pct = e.scrollTop / editorScrollable;
+			isSyncingScrollRef.current = true;
+			pane.scrollTop = pct * paneScrollable;
+			requestAnimationFrame(() => {
+				isSyncingScrollRef.current = false;
+			});
+		});
+
+		return () => scrollSub.dispose();
+	}, [editorInstance, markdownPreviewMode]);
 
 	const [pendingLine, setPendingLine] = useState<number | null>(null);
 
@@ -888,7 +912,26 @@ export function PRReviewFileTab({ prCtx, filePath, language }: PRReviewFileTabPr
 								}}
 							/>
 						</div>
-						<div className="flex-1 overflow-y-auto border-l border-[var(--border)] p-4">
+						<div
+							ref={markdownPaneRef}
+							className="flex-1 overflow-y-auto border-l border-[var(--border)] p-4"
+							onScroll={() => {
+								if (isSyncingScrollRef.current) return;
+								const modEditor = editorInstance?.getModifiedEditor();
+								const pane = markdownPaneRef.current;
+								if (!modEditor || !pane) return;
+								const paneScrollable = pane.scrollHeight - pane.clientHeight;
+								const editorScrollable =
+									modEditor.getScrollHeight() - modEditor.getLayoutInfo().height;
+								if (paneScrollable <= 0 || editorScrollable <= 0) return;
+								const pct = pane.scrollTop / paneScrollable;
+								isSyncingScrollRef.current = true;
+								modEditor.setScrollTop(pct * editorScrollable);
+								requestAnimationFrame(() => {
+									isSyncingScrollRef.current = false;
+								});
+							}}
+						>
 							<MarkdownRenderer content={modifiedQuery.data?.content ?? ""} />
 						</div>
 					</div>

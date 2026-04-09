@@ -4,38 +4,41 @@ interface MarkdownPreviewButtonProps {
 	language: string;
 }
 
-type PreviewMode = "off" | "split" | "rendered";
-
-const NEXT_MODE: Record<PreviewMode, PreviewMode> = {
-	off: "split",
-	split: "rendered",
-	rendered: "off",
-};
-
 export function MarkdownPreviewButton({ language }: MarkdownPreviewButtonProps) {
 	const markdownPreviewMode = useTabStore((s) => s.markdownPreviewMode);
 	const setMarkdownPreviewMode = useTabStore((s) => s.setMarkdownPreviewMode);
 
 	if (language !== "markdown") return null;
 
+	const inactiveStyle =
+		"text-[var(--text-tertiary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text)]";
+
 	return (
-		<button
-			type="button"
-			onClick={() => setMarkdownPreviewMode(NEXT_MODE[markdownPreviewMode])}
-			className={[
-				"rounded px-2 py-0.5 text-[11px] transition-colors",
-				markdownPreviewMode === "off"
-					? "text-[var(--text-tertiary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text)]"
-					: markdownPreviewMode === "split"
+		<>
+			<button
+				type="button"
+				onClick={() => setMarkdownPreviewMode(markdownPreviewMode === "split" ? "off" : "split")}
+				className={[
+					"rounded px-2 py-0.5 text-[11px] transition-colors",
+					markdownPreviewMode === "split"
 						? "border border-[var(--accent)] text-[var(--accent)]"
-						: "bg-[var(--accent)] text-white",
-			].join(" ")}
-		>
-			{markdownPreviewMode === "off"
-				? "Preview"
-				: markdownPreviewMode === "split"
-					? "Split"
-					: "Rendered"}
-		</button>
+						: inactiveStyle,
+				].join(" ")}
+			>
+				Split
+			</button>
+			<button
+				type="button"
+				onClick={() =>
+					setMarkdownPreviewMode(markdownPreviewMode === "rendered" ? "off" : "rendered")
+				}
+				className={[
+					"rounded px-2 py-0.5 text-[11px] transition-colors",
+					markdownPreviewMode === "rendered" ? "bg-[var(--accent)] text-white" : inactiveStyle,
+				].join(" ")}
+			>
+				Rendered
+			</button>
+		</>
 	);
 }

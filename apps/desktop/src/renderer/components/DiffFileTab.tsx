@@ -1,3 +1,4 @@
+import type * as monaco from "monaco-editor";
 import { useEffect, useRef } from "react";
 import type { DiffContext } from "../../shared/diff-types";
 import { useTabStore } from "../stores/tab-store";
@@ -28,6 +29,9 @@ export function DiffFileTab({ diffCtx, filePath, language }: DiffFileTabProps) {
 	const setDiffMode = useTabStore((s) => s.setDiffMode);
 	const markdownPreviewMode = useTabStore((s) => s.markdownPreviewMode);
 	const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const markdownPaneRef = useRef<HTMLDivElement>(null);
+	const isSyncingScrollRef = useRef(false);
+	const splitEditorRef = useRef<monaco.editor.IStandaloneDiffEditor | null>(null);
 
 	useEffect(() => {
 		return () => {
@@ -109,9 +113,47 @@ export function DiffFileTab({ diffCtx, filePath, language }: DiffFileTabProps) {
 								language={language}
 								renderSideBySide={diffMode === "split"}
 								onModifiedChange={isEditable ? handleModifiedChange : undefined}
+								onEditorReady={(editor) => {
+									splitEditorRef.current = editor;
+									const modEditor = editor.getModifiedEditor();
+									modEditor.onDidScrollChange((e) => {
+										if (isSyncingScrollRef.current) return;
+										const pane = markdownPaneRef.current;
+										if (!pane) return;
+										const editorScrollable =
+											modEditor.getScrollHeight() - modEditor.getLayoutInfo().height;
+										const paneScrollable = pane.scrollHeight - pane.clientHeight;
+										if (editorScrollable <= 0 || paneScrollable <= 0) return;
+										const pct = e.scrollTop / editorScrollable;
+										isSyncingScrollRef.current = true;
+										pane.scrollTop = pct * paneScrollable;
+										requestAnimationFrame(() => {
+											isSyncingScrollRef.current = false;
+										});
+									});
+								}}
 							/>
 						</div>
-						<div className="flex-1 overflow-y-auto border-l border-[var(--border)] p-4">
+						<div
+							ref={markdownPaneRef}
+							className="flex-1 overflow-y-auto border-l border-[var(--border)] p-4"
+							onScroll={() => {
+								if (isSyncingScrollRef.current) return;
+								const modEditor = splitEditorRef.current?.getModifiedEditor();
+								const pane = markdownPaneRef.current;
+								if (!modEditor || !pane) return;
+								const paneScrollable = pane.scrollHeight - pane.clientHeight;
+								const editorScrollable =
+									modEditor.getScrollHeight() - modEditor.getLayoutInfo().height;
+								if (paneScrollable <= 0 || editorScrollable <= 0) return;
+								const pct = pane.scrollTop / paneScrollable;
+								isSyncingScrollRef.current = true;
+								modEditor.setScrollTop(pct * editorScrollable);
+								requestAnimationFrame(() => {
+									isSyncingScrollRef.current = false;
+								});
+							}}
+						>
 							<MarkdownRenderer content={modifiedQuery.data?.content ?? ""} />
 						</div>
 					</div>

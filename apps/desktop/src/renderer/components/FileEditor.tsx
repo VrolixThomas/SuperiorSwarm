@@ -43,6 +43,8 @@ export function FileEditor({
 	const vimEnabled = useEditorSettingsStore((s) => s.vimEnabled);
 	const markdownPreviewMode = useTabStore((s) => s.markdownPreviewMode);
 	const [previewContent, setPreviewContent] = useState("");
+	const markdownPaneRef = useRef<HTMLDivElement>(null);
+	const isSyncingScrollRef = useRef(false);
 	const saveMutation = trpc.diff.saveFileContent.useMutation({
 		onSuccess: () => {
 			utils.diff.getWorkingTreeDiff.invalidate({ repoPath });
@@ -165,6 +167,30 @@ export function FileEditor({
 		};
 	}, [vimEnabled, editorReady]);
 
+	// Sync scroll between Monaco and the markdown preview pane in split mode
+	useEffect(() => {
+		if (markdownPreviewMode !== "split") return;
+		const editor = editorRef.current;
+		if (!editor) return;
+
+		const scrollSub = editor.onDidScrollChange((e) => {
+			if (isSyncingScrollRef.current) return;
+			const pane = markdownPaneRef.current;
+			if (!pane) return;
+			const editorScrollable = editor.getScrollHeight() - editor.getLayoutInfo().height;
+			const paneScrollable = pane.scrollHeight - pane.clientHeight;
+			if (editorScrollable <= 0 || paneScrollable <= 0) return;
+			const pct = e.scrollTop / editorScrollable;
+			isSyncingScrollRef.current = true;
+			pane.scrollTop = pct * paneScrollable;
+			requestAnimationFrame(() => {
+				isSyncingScrollRef.current = false;
+			});
+		});
+
+		return () => scrollSub.dispose();
+	}, [editorReady, markdownPreviewMode]);
+
 	return (
 		<>
 			{isLoading && (
@@ -202,7 +228,25 @@ export function FileEditor({
 						)}
 					</div>
 					{language === "markdown" && markdownPreviewMode !== "off" && (
-						<div className="flex-1 overflow-y-auto border-l border-[var(--border)] p-4">
+						<div
+							ref={markdownPaneRef}
+							className="flex-1 overflow-y-auto border-l border-[var(--border)] p-4"
+							onScroll={() => {
+								if (isSyncingScrollRef.current) return;
+								const editor = editorRef.current;
+								const pane = markdownPaneRef.current;
+								if (!editor || !pane) return;
+								const paneScrollable = pane.scrollHeight - pane.clientHeight;
+								const editorScrollable = editor.getScrollHeight() - editor.getLayoutInfo().height;
+								if (paneScrollable <= 0 || editorScrollable <= 0) return;
+								const pct = pane.scrollTop / paneScrollable;
+								isSyncingScrollRef.current = true;
+								editor.setScrollTop(pct * editorScrollable);
+								requestAnimationFrame(() => {
+									isSyncingScrollRef.current = false;
+								});
+							}}
+						>
 							<MarkdownRenderer content={previewContent} />
 						</div>
 					)}
