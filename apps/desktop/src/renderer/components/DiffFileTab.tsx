@@ -33,10 +33,12 @@ export function DiffFileTab({ diffCtx, filePath, language }: DiffFileTabProps) {
 	const markdownPaneRef = useRef<HTMLDivElement>(null);
 	const isSyncingScrollRef = useRef(false);
 	const splitEditorRef = useRef<monaco.editor.IStandaloneDiffEditor | null>(null);
+	const scrollSubRef = useRef<monaco.IDisposable | null>(null);
 
 	useEffect(() => {
 		return () => {
 			if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+			scrollSubRef.current?.dispose();
 		};
 	}, []);
 
@@ -69,6 +71,7 @@ export function DiffFileTab({ diffCtx, filePath, language }: DiffFileTabProps) {
 
 	const isEditable = diffCtx.type === "working-tree" || diffCtx.type === "branch";
 	const isLoading = originalQuery.isLoading || modifiedQuery.isLoading;
+	const hideEditor = markdownPreviewMode === "rendered" || markdownPreviewMode === "rich-diff";
 
 	return (
 		<div className="flex h-full flex-col overflow-hidden">
@@ -80,10 +83,10 @@ export function DiffFileTab({ diffCtx, filePath, language }: DiffFileTabProps) {
 				<button
 					type="button"
 					onClick={() => setDiffMode(diffMode === "split" ? "inline" : "split")}
-					disabled={markdownPreviewMode === "rendered" || markdownPreviewMode === "rich-diff"}
+					disabled={hideEditor}
 					className={[
 						"rounded px-2 py-0.5 text-[11px] transition-colors",
-						markdownPreviewMode === "rendered" || markdownPreviewMode === "rich-diff"
+						hideEditor
 							? "text-[var(--text-quaternary)] opacity-40 cursor-not-allowed"
 							: "text-[var(--text-tertiary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text)]",
 					].join(" ")}
@@ -123,8 +126,9 @@ export function DiffFileTab({ diffCtx, filePath, language }: DiffFileTabProps) {
 								onModifiedChange={isEditable ? handleModifiedChange : undefined}
 								onEditorReady={(editor) => {
 									splitEditorRef.current = editor;
+									scrollSubRef.current?.dispose();
 									const modEditor = editor.getModifiedEditor();
-									modEditor.onDidScrollChange((e) => {
+									scrollSubRef.current = modEditor.onDidScrollChange((e) => {
 										if (isSyncingScrollRef.current) return;
 										const pane = markdownPaneRef.current;
 										if (!pane) return;

@@ -1,4 +1,5 @@
 import { diffLines } from "diff";
+import { useMemo } from "react";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 
 interface MarkdownRenderedDiffProps {
@@ -7,7 +8,10 @@ interface MarkdownRenderedDiffProps {
 }
 
 export function MarkdownRenderedDiff({ original, modified }: MarkdownRenderedDiffProps) {
-	const chunks = diffLines(original, modified, { ignoreNewlineAtEof: true });
+	const chunks = useMemo(
+		() => diffLines(original, modified, { ignoreNewlineAtEof: true }),
+		[original, modified]
+	);
 
 	return (
 		<div className="flex flex-col">

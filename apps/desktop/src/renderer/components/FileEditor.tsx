@@ -33,6 +33,7 @@ export function FileEditor({
 	const containerRef = useRef<HTMLDivElement>(null);
 	const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
 	const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 	// Capture initialPosition on mount only; subsequent re-renders (e.g. after store clear) do not update it
 	const initialPositionRef = useRef(initialPosition);
 	const clearInitialPosition = useTabStore((s) => s.clearInitialPosition);
@@ -134,7 +135,10 @@ export function FileEditor({
 			saveTimerRef.current = setTimeout(() => {
 				saveMutation.mutate({ repoPath, filePath, content: model.getValue() });
 			}, 500);
-			setPreviewContent(model.getValue());
+			if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
+			previewTimerRef.current = setTimeout(() => {
+				setPreviewContent(model.getValue());
+			}, 300);
 
 			if (lspEnabled) {
 				version++;
@@ -145,6 +149,7 @@ export function FileEditor({
 		return () => {
 			sub.dispose();
 			if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+			if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
 			if (lspEnabled) {
 				sendDidClose(repoPath, language, uri);
 			}

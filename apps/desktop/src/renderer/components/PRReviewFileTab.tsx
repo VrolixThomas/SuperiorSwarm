@@ -548,13 +548,13 @@ export function PRReviewFileTab({ prCtx, filePath, language }: PRReviewFileTabPr
 	const markdownPaneRef = useRef<HTMLDivElement>(null);
 	const isSyncingScrollRef = useRef(false);
 
-	useEffect(() => {
-		if (markdownPreviewMode === "rendered" || markdownPreviewMode === "rich-diff") {
-			setEditorInstance(null);
-		}
-	}, [markdownPreviewMode]);
+	const hideEditor = markdownPreviewMode === "rendered" || markdownPreviewMode === "rich-diff";
 
 	useEffect(() => {
+		if (hideEditor) {
+			setEditorInstance(null);
+			return;
+		}
 		if (!editorInstance || markdownPreviewMode !== "split") return;
 		const modEditor = editorInstance.getModifiedEditor();
 
@@ -574,7 +574,7 @@ export function PRReviewFileTab({ prCtx, filePath, language }: PRReviewFileTabPr
 		});
 
 		return () => scrollSub.dispose();
-	}, [editorInstance, markdownPreviewMode]);
+	}, [editorInstance, hideEditor, markdownPreviewMode]);
 
 	const [pendingLine, setPendingLine] = useState<number | null>(null);
 
@@ -877,10 +877,10 @@ export function PRReviewFileTab({ prCtx, filePath, language }: PRReviewFileTabPr
 				<button
 					type="button"
 					onClick={() => setDiffMode(diffMode === "split" ? "inline" : "split")}
-					disabled={markdownPreviewMode === "rendered" || markdownPreviewMode === "rich-diff"}
+					disabled={hideEditor}
 					className={[
 						"rounded px-2 py-0.5 text-[11px] transition-colors",
-						markdownPreviewMode === "rendered" || markdownPreviewMode === "rich-diff"
+						hideEditor
 							? "text-[var(--text-quaternary)] opacity-40 cursor-not-allowed"
 							: "text-[var(--text-tertiary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text)]",
 					].join(" ")}
