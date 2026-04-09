@@ -18,7 +18,7 @@ interface PullRequestGroupProps {
 	// Forwarded into each RichPRItem
 	enrichmentMap: Map<string, GitHubPREnriched>;
 	enrichmentLoading: boolean;
-	agentAlerts: Record<string, AgentAlert | undefined>;
+	agentAlerts: Record<string, AgentAlert>;
 	workspaceIdMap: Map<string, string>;
 	projectsList: Project[] | undefined;
 	onPRClick: (pr: MergedPR, e: React.MouseEvent) => void;
