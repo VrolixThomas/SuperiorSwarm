@@ -31,7 +31,11 @@ export function MarkdownPreviewButton({ language }: MarkdownPreviewButtonProps) 
 						: "bg-[var(--accent)] text-white",
 			].join(" ")}
 		>
-			{markdownPreviewMode === "off" ? "Preview" : markdownPreviewMode === "split" ? "Split" : "Rendered"}
+			{markdownPreviewMode === "off"
+				? "Preview"
+				: markdownPreviewMode === "split"
+					? "Split"
+					: "Rendered"}
 		</button>
 	);
 }

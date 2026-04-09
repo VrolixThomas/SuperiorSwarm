@@ -2,8 +2,6 @@ import * as monaco from "monaco-editor";
 import { initVimMode } from "monaco-vim";
 import { useEffect, useRef, useState } from "react";
 import { EDITOR_THEME, ensureThemeRegistered } from "../lib/monacoTheme";
-import { MarkdownPreviewButton } from "./MarkdownPreviewButton";
-import { MarkdownRenderer } from "./MarkdownRenderer";
 import {
 	registerLspProviders,
 	sendDidChange,
@@ -14,6 +12,8 @@ import {
 import { useEditorSettingsStore } from "../stores/editor-settings";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
+import { MarkdownPreviewButton } from "./MarkdownPreviewButton";
+import { MarkdownRenderer } from "./MarkdownRenderer";
 
 interface FileEditorProps {
 	tabId: string;
