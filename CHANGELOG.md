@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.4.6 (2026-04-10)
+
+### What's New
+
+SuperiorSwarm's pull request panel has been redesigned for a cleaner, more focused experience. The What's New modal no longer shows empty release notes on first launch. Markdown file rendering, git push upstream tracking, and auto-update reliability have all been improved.
+
+### Changes
+
+- **SUP-13**: Fix WhatsNew modal showing empty release notes on first launch (#70)
+- Always set --set-upstream (#69)
+- Fix md file rendering (#68)
+- Feat/claude md lean index (#67)
+- Auto update fix (#66)
+- Redesign PR panel (#65)
+
 ## v0.4.5 (2026-04-09)
 
 ### What's New
