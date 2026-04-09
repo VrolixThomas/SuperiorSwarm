@@ -94,12 +94,13 @@ describe("update-store", () => {
 
 	test("dismissed ready toast hides and reappears for newer version", () => {
 		const store = useUpdateStore.getState();
-		store.setDismissedUpdateVersion(null);
+		// simulate ready toast for version A
 		store.setUpdateReady("1.0.0");
-		expect(useUpdateStore.getState().toastState).toBe("ready");
+		store.setDismissedUpdateVersion(null);
+		expect(store.toastState).toBe("ready");
 		store.dismissUpdateOptimistic("1.0.0");
-		expect(useUpdateStore.getState().toastState).toBe("hidden");
+		expect(store.toastState).toBe("hidden");
 		store.setUpdateReady("2.0.0");
-		expect(useUpdateStore.getState().toastState).toBe("ready");
+		expect(store.toastState).toBe("ready");
 	});
 });
