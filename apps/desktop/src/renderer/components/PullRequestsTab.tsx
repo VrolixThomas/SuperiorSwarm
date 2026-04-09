@@ -366,7 +366,6 @@ export function PullRequestsTab() {
 		}
 	}, [ghPRs, bbReviewPRs, reviewDrafts.data, settings.data, projectsList, triggerReviewWithCtx]);
 
-	const store = useTabStore();
 	const activeWorkspaceId = useTabStore((s) => s.activeWorkspaceId);
 	const agentAlerts = useAgentAlertStore((s) => s.alerts);
 
@@ -492,6 +491,9 @@ export function PullRequestsTab() {
 		return groups;
 	}, [bbReviewPRs, ghPRs]);
 
+	// workspaceIdMapRef.current is intentionally excluded — refs are not reactive.
+	// The memo recomputes whenever the active workspace changes, which is the
+	// only time the result can differ in practice.
 	const activePRIdentifier = useMemo(
 		() => findActivePRIdentifier(workspaceIdMapRef.current, activeWorkspaceId),
 		[activeWorkspaceId]
@@ -816,7 +818,7 @@ export function PullRequestsTab() {
 							(reviewerPRsForEnrichment.length > 0 && enrichmentQuery.isLoading) ||
 							(bitbucketPRsForEnrichment.length > 0 && bbEnrichmentQuery.isLoading)
 						}
-						agentAlerts={agentAlerts as Record<string, AgentAlert | undefined>}
+						agentAlerts={agentAlerts}
 						workspaceIdMap={workspaceIdMapRef.current}
 						projectsList={projectsList}
 						onPRClick={handlePRClick}
