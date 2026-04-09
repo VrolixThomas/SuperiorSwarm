@@ -11,7 +11,6 @@ import {
 	type LaunchOptions,
 	buildFollowUpPrompt,
 	buildReviewPrompt,
-	isCliInstalled,
 } from "./cli-presets";
 import { getMcpServerPath } from "./mcp-path";
 import { parsePrIdentifier } from "./pr-identifier";
@@ -284,9 +283,6 @@ async function startReview(params: {
 		const settings = getSettings();
 		const preset = CLI_PRESETS[settings.cliPreset];
 		if (!preset) throw new Error(`Unknown CLI preset: ${settings.cliPreset}`);
-		if (!isCliInstalled(preset.command)) {
-			throw new Error(`CLI tool '${preset.command}' is not installed`);
-		}
 
 		const mcpServerPath = getMcpServerPath();
 

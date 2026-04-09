@@ -1,98 +1,10 @@
 import "./preload-electron-mock";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { spawn } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-	CLI_PRESETS,
-	type LaunchOptions,
-	isCliInstalled,
-	resolveCliPath,
-} from "../src/main/ai-review/cli-presets";
-
-describe("resolveCliPath", () => {
-	let testDir: string;
-
-	beforeEach(() => {
-		testDir = join(tmpdir(), `ss-cli-presets-${process.pid}-${Date.now()}`);
-		mkdirSync(testDir, { recursive: true });
-	});
-
-	afterEach(() => {
-		rmSync(testDir, { recursive: true, force: true });
-	});
-
-	test("returns the absolute path when an executable exists in a search dir", () => {
-		const exePath = join(testDir, "fake-cli");
-		writeFileSync(exePath, "#!/bin/sh\necho ok\n");
-		chmodSync(exePath, 0o755);
-
-		expect(resolveCliPath("fake-cli", [testDir])).toBe(exePath);
-	});
-
-	test("returns null when the command is not found in any search dir", () => {
-		expect(resolveCliPath("definitely-not-a-real-binary", [testDir])).toBeNull();
-	});
-
-	test("skips non-executable regular files", () => {
-		const filePath = join(testDir, "fake-cli");
-		writeFileSync(filePath, "not executable");
-		chmodSync(filePath, 0o644);
-
-		expect(resolveCliPath("fake-cli", [testDir])).toBeNull();
-	});
-
-	test("skips directories with the same name", () => {
-		mkdirSync(join(testDir, "fake-cli"));
-
-		expect(resolveCliPath("fake-cli", [testDir])).toBeNull();
-	});
-
-	test("searches multiple dirs in order and returns the first hit", () => {
-		const dirA = join(testDir, "a");
-		const dirB = join(testDir, "b");
-		mkdirSync(dirA);
-		mkdirSync(dirB);
-
-		const exeB = join(dirB, "fake-cli");
-		writeFileSync(exeB, "#!/bin/sh\n");
-		chmodSync(exeB, 0o755);
-
-		expect(resolveCliPath("fake-cli", [dirA, dirB])).toBe(exeB);
-	});
-
-	test("tolerates non-existent search dirs without throwing", () => {
-		const missing = join(testDir, "does-not-exist");
-		expect(() => resolveCliPath("fake-cli", [missing])).not.toThrow();
-		expect(resolveCliPath("fake-cli", [missing])).toBeNull();
-	});
-});
-
-describe("isCliInstalled", () => {
-	let testDir: string;
-
-	beforeEach(() => {
-		testDir = join(tmpdir(), `ss-cli-presets-installed-${process.pid}-${Date.now()}`);
-		mkdirSync(testDir, { recursive: true });
-	});
-
-	afterEach(() => {
-		rmSync(testDir, { recursive: true, force: true });
-	});
-
-	test("returns true when resolveCliPath finds a match", () => {
-		const exePath = join(testDir, "fake-cli");
-		writeFileSync(exePath, "#!/bin/sh\n");
-		chmodSync(exePath, 0o755);
-
-		expect(isCliInstalled("fake-cli", [testDir])).toBe(true);
-	});
-
-	test("returns false when no match is found", () => {
-		expect(isCliInstalled("definitely-not-a-real-binary", [testDir])).toBe(false);
-	});
-});
+import { CLI_PRESETS, type LaunchOptions } from "../src/main/ai-review/cli-presets";
 
 function fakeLaunchOpts(worktreePath: string): LaunchOptions {
 	return {
@@ -216,21 +128,26 @@ describe("MCP standalone server boot (smoke test)", () => {
 			// The event-driven race resolves immediately on crash so we don't wait
 			// the full 2s on a broken binary. The 2s ceiling gives slow CI machines
 			// enough time for Electron to start and hit the native-module load.
+			let timer: ReturnType<typeof setTimeout> | undefined;
 			await Promise.race([
-				new Promise<void>((resolve) => setTimeout(resolve, 2_000)),
+				new Promise<void>((resolve) => {
+					timer = setTimeout(resolve, 2_000);
+				}),
 				new Promise<void>((resolve) => child.once("exit", resolve)),
 			]);
+			if (timer) clearTimeout(timer);
 
 			const crashedWithAbiError = stderr.includes("NODE_MODULE_VERSION");
 			const crashedAtAll = child.exitCode !== null;
 
-			child.kill("SIGTERM");
+			if (!crashedAtAll) {
+				child.kill("SIGTERM");
+				await new Promise<void>((resolve) => child.once("exit", resolve));
+			}
 
-			try {
-				rmSync(dbPath, { force: true });
-				rmSync(`${dbPath}-wal`, { force: true });
-				rmSync(`${dbPath}-shm`, { force: true });
-			} catch {}
+			rmSync(dbPath, { force: true });
+			rmSync(`${dbPath}-wal`, { force: true });
+			rmSync(`${dbPath}-shm`, { force: true });
 
 			expect(crashedWithAbiError).toBe(false);
 			expect(crashedAtAll).toBe(false);

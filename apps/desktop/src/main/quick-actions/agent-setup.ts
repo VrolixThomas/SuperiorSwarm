@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { eq } from "drizzle-orm";
 import { app } from "electron";
 import { buildDefaultPrompt } from "../../shared/quick-action-prompt";
-import { CLI_PRESETS, isCliInstalled } from "../ai-review/cli-presets";
+import { CLI_PRESETS, mcpRuntimeCommand } from "../ai-review/cli-presets";
 import { getMcpServerPath } from "../ai-review/mcp-path";
 import { getDb } from "../db";
 import * as schema from "../db/schema";
@@ -57,9 +57,6 @@ export async function launchSetupAgent(
 	const settings = getSettings();
 	const preset = CLI_PRESETS[settings.cliPreset];
 	if (!preset) throw new Error(`Unknown CLI preset: ${settings.cliPreset}`);
-	if (!isCliInstalled(preset.command)) {
-		throw new Error(`CLI tool '${preset.command}' is not installed`);
-	}
 
 	// Use the standalone MCP server (same path resolution as cli-presets.ts)
 	const standaloneServerPath = getMcpServerPath();
@@ -70,16 +67,15 @@ export async function launchSetupAgent(
 	writeFileSync(promptFilePath, promptText, "utf-8");
 
 	// Write MCP config with quick-action-specific env vars.
-	// Launch via Electron's embedded Node (ELECTRON_RUN_AS_NODE=1) — see
-	// mcpRuntimeCommand() in cli-presets.ts for the rationale.
+	const { command, extraEnv } = mcpRuntimeCommand();
 	const mcpConfigPath = join(repoPath, ".mcp.json");
 	const mcpConfig = {
 		mcpServers: {
 			superiorswarm: {
-				command: process.execPath,
+				command,
 				args: [standaloneServerPath],
 				env: {
-					ELECTRON_RUN_AS_NODE: "1",
+					...extraEnv,
 					QUICK_ACTION_SETUP: "1",
 					PROJECT_ID: projectId,
 					DB_PATH: dbPath,
