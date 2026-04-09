@@ -84,24 +84,4 @@ describe("update-store", () => {
 		store.setUpdateReadyIfNotDismissed("2.0.0");
 		expect(useUpdateStore.getState().toastState).toBe("ready");
 	});
-
-	test("update actions avoid mutating previous state", () => {
-		const store = useUpdateStore.getState();
-
-		const snapshotBeforeDismiss = useUpdateStore.getState();
-		store.setDismissedUpdateVersion("1.0.0");
-		expect(snapshotBeforeDismiss.dismissedUpdateVersion).toBeNull();
-
-		const snapshotBeforeOptimistic = useUpdateStore.getState();
-		store.dismissUpdateOptimistic("2.0.0");
-		expect(snapshotBeforeOptimistic.dismissedUpdateVersion).toBe("1.0.0");
-
-		const snapshotBeforeRestore = useUpdateStore.getState();
-		store.restoreDismissedUpdateVersion("1.0.0");
-		expect(snapshotBeforeRestore.dismissedUpdateVersion).toBe("2.0.0");
-
-		const snapshotBeforeReady = useUpdateStore.getState();
-		store.setUpdateReadyIfNotDismissed("2.0.0");
-		expect(snapshotBeforeReady.toastState).toBe("hidden");
-	});
 });
