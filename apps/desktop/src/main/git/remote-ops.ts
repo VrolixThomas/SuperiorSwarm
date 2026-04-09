@@ -3,11 +3,8 @@ import type { MergeResult } from "../../shared/branch-types";
 
 export async function push(repoPath: string, branch?: string): Promise<void> {
 	const git = simpleGit(repoPath);
-	if (branch) {
-		await git.push("origin", branch);
-	} else {
-		await git.push();
-	}
+	const targetBranch = branch ?? (await git.status()).current ?? "";
+	await git.push("origin", targetBranch, ["--set-upstream"]);
 }
 
 export async function pull(repoPath: string): Promise<MergeResult> {
