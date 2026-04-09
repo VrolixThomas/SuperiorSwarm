@@ -149,21 +149,28 @@ Edit `apps/desktop/package.json` — change the `"version"` field to the new ver
 git add apps/desktop/package.json CHANGELOG.md
 git commit -m "release: v{version}"
 git tag v{version}
-git push origin main --follow-tags
+git push origin main
+git push origin v{version}
 ```
+
+**Important:** Push the tag separately — `--follow-tags` only pushes annotated tags, and `git tag` creates lightweight tags.
 
 If push fails, abort and tell the user to resolve manually. Do not delete the tag or reset.
 
 ### 10. Update GitHub Release
 
-Wait for the GitHub Actions workflow to create the draft release (check with polling):
+Wait for the GitHub Actions workflow to create the draft release. This typically takes **10–15 minutes**. Run the poll in the background so the user isn't blocked:
 
 ```bash
-# Poll until release exists (max 5 minutes)
-for i in {1..30}; do
-  if gh release view v{version} --json isDraft 2>/dev/null; then
+# Poll until release exists (max 20 minutes), run in background
+for i in {1..120}; do
+  result=$(gh release view v{version} --json isDraft 2>/dev/null)
+  if [ -n "$result" ]; then
+    echo "Release found! Updating body..."
+    gh release edit v{version} --notes-file .release-notes.md && rm .release-notes.md && echo "Done — release notes updated."
     break
   fi
+  echo "Attempt $i: not ready yet, waiting 10s..."
   sleep 10
 done
 ```
@@ -203,4 +210,4 @@ Release v{version} complete!
 - **Linear API errors** → warn per-ticket, continue
 - **Git push fails** → abort, do not clean up partial state
 - **Version tag already exists** → abort with message
-- **GitHub Release not created after 5 min** → warn, output manual URL, continue
+- **GitHub Release not created after 20 min** → warn, output manual URL, continue
