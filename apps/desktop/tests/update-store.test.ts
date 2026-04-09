@@ -47,11 +47,61 @@ describe("update-store", () => {
 		expect(state.downloadProgress).toBe(65);
 	});
 
-	test("setUpdateReady transitions to ready state", () => {
-		useUpdateStore.getState().setUpdateReady("2.0.0");
+	test("setUpdateReadyIfNotDismissed transitions to ready state when not dismissed", () => {
+		useUpdateStore.getState().setUpdateReadyIfNotDismissed("2.0.0");
 		const state = useUpdateStore.getState();
 		expect(state.toastState).toBe("ready");
 		expect(state.toastVersion).toBe("2.0.0");
 		expect(state.downloadProgress).toBeNull();
+	});
+
+	test("setDismissedUpdateVersion stores version", () => {
+		useUpdateStore.getState().setDismissedUpdateVersion("3.0.0");
+		expect(useUpdateStore.getState().dismissedUpdateVersion).toBe("3.0.0");
+	});
+
+	test("dismissUpdateOptimistic stores previous dismissed version", () => {
+		const store = useUpdateStore.getState();
+		store.setDismissedUpdateVersion("1.0.0");
+		const snapshot = useUpdateStore.getState();
+		const prev = store.dismissUpdateOptimistic("2.0.0");
+		expect(prev).toBe("1.0.0");
+		expect(snapshot.dismissedUpdateVersion).toBe("1.0.0");
+		expect(useUpdateStore.getState().dismissedUpdateVersion).toBe("2.0.0");
+	});
+
+	test("restoreDismissedUpdateVersion reverts version", () => {
+		const store = useUpdateStore.getState();
+		store.setDismissedUpdateVersion("1.0.0");
+		const snapshot = useUpdateStore.getState();
+		const prev = store.dismissUpdateOptimistic("2.0.0");
+		store.restoreDismissedUpdateVersion(prev);
+		expect(snapshot.dismissedUpdateVersion).toBe("1.0.0");
+		expect(useUpdateStore.getState().dismissedUpdateVersion).toBe("1.0.0");
+	});
+
+	test("setUpdateReadyIfNotDismissed gates ready toast", () => {
+		const store = useUpdateStore.getState();
+		store.setDismissedUpdateVersion("1.0.0");
+		const snapshot = useUpdateStore.getState();
+		store.setUpdateReadyIfNotDismissed("1.0.0");
+		expect(snapshot.toastState).toBe("hidden");
+		expect(useUpdateStore.getState().toastState).toBe("hidden");
+		store.setUpdateReadyIfNotDismissed("2.0.0");
+		expect(snapshot.toastState).toBe("hidden");
+		expect(useUpdateStore.getState().toastState).toBe("ready");
+	});
+
+	test("dismissed ready toast hides and reappears for newer version", () => {
+		const store = useUpdateStore.getState();
+		// simulate ready toast for version A
+		store.setUpdateReadyIfNotDismissed("1.0.0");
+		expect(useUpdateStore.getState().toastState).toBe("ready");
+		// dismiss version A
+		store.dismissUpdateOptimistic("1.0.0");
+		expect(useUpdateStore.getState().toastState).toBe("hidden");
+		// new version B should re-show ready toast
+		store.setUpdateReadyIfNotDismissed("2.0.0");
+		expect(useUpdateStore.getState().toastState).toBe("ready");
 	});
 });

@@ -6,6 +6,9 @@ import { getDb } from "./db";
 import { sessionState } from "./db/schema";
 import { GITHUB_API_BASE } from "./github/constants";
 
+const UPDATE_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000;
+let updateCheckTimer: ReturnType<typeof setInterval> | null = null;
+
 // --- Pure utility functions (exported for testing) ---
 
 export type VersionDiffType = "major" | "minor" | "patch";
@@ -88,6 +91,7 @@ interface UpdaterState {
 	updateVersion: string | null;
 	downloadProgress: number | null;
 	updateDownloaded: boolean;
+	dismissedUpdateVersion: string | null;
 }
 
 const state: UpdaterState = {
@@ -98,6 +102,7 @@ const state: UpdaterState = {
 	updateVersion: null,
 	downloadProgress: null,
 	updateDownloaded: false,
+	dismissedUpdateVersion: null,
 };
 
 export function getUpdaterState(): Readonly<UpdaterState> {
@@ -125,9 +130,46 @@ function setLastSeenVersion(version: string): void {
 		.run();
 }
 
+function getDismissedUpdateVersion(): string | null {
+	const db = getDb();
+	const row = db
+		.select()
+		.from(sessionState)
+		.where(eq(sessionState.key, "dismissedUpdateVersion"))
+		.get();
+	return row?.value ?? null;
+}
+
+function setDismissedUpdateVersion(version: string | null): void {
+	const db = getDb();
+	if (version === null) {
+		db.delete(sessionState).where(eq(sessionState.key, "dismissedUpdateVersion")).run();
+	} else {
+		db.insert(sessionState)
+			.values({ key: "dismissedUpdateVersion", value: version })
+			.onConflictDoUpdate({
+				target: sessionState.key,
+				set: { value: version },
+			})
+			.run();
+	}
+}
+
 export function markVersionSeen(version: string): void {
 	setLastSeenVersion(version);
 	clearPendingNotification();
+}
+
+export function dismissUpdateVersion(version: string): void {
+	setDismissedUpdateVersion(version);
+	state.dismissedUpdateVersion = version;
+}
+
+export function teardownUpdater(): void {
+	if (updateCheckTimer) {
+		clearInterval(updateCheckTimer);
+		updateCheckTimer = null;
+	}
 }
 
 // --- Initialization ---
@@ -135,6 +177,13 @@ export function markVersionSeen(version: string): void {
 export async function initializeUpdater(): Promise<void> {
 	state.currentVersion = app.getVersion();
 	state.lastSeenVersion = getLastSeenVersion();
+	state.dismissedUpdateVersion = getDismissedUpdateVersion();
+
+	// If the dismissed version is now the running version, the update was installed — clear the flag
+	if (state.dismissedUpdateVersion === state.currentVersion) {
+		setDismissedUpdateVersion(null);
+		state.dismissedUpdateVersion = null;
+	}
 
 	// First launch — just record the version, no notification
 	if (!state.lastSeenVersion) {
@@ -195,4 +244,11 @@ export async function initializeUpdater(): Promise<void> {
 	autoUpdater.checkForUpdates().catch((err) => {
 		console.error("[updater] Failed to check for updates:", err);
 	});
+
+	if (updateCheckTimer) clearInterval(updateCheckTimer);
+	updateCheckTimer = setInterval(() => {
+		autoUpdater.checkForUpdates().catch((err) => {
+			console.error("[updater] Failed to check for updates:", err);
+		});
+	}, UPDATE_CHECK_INTERVAL_MS);
 }

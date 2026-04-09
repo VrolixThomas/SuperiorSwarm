@@ -35,7 +35,7 @@ import { cleanupStaleDaemons } from "./terminal/stale-daemon-cleanup";
 import { setupTRPCIPC } from "./trpc/ipc-link";
 import { appRouter } from "./trpc/routers";
 import { listQuickActions } from "./trpc/routers/quick-actions";
-import { initializeUpdater } from "./updater";
+import { initializeUpdater, teardownUpdater } from "./updater";
 
 import { BitbucketAdapter } from "./providers/bitbucket-adapter";
 import { registerGitProvider } from "./providers/git-provider";
@@ -262,6 +262,7 @@ app.whenReady().then(async () => {
 app.on("before-quit", () => {
 	alertListener?.stop();
 	stopCommentPoller();
+	teardownUpdater();
 	daemonClient.setQuitting();
 	daemonClient.detachAll();
 	daemonClient.disconnect();
@@ -283,6 +284,7 @@ app.on("window-all-closed", () => {
 for (const signal of ["SIGTERM", "SIGHUP", "SIGINT"] as const) {
 	process.on(signal, () => {
 		alertListener?.stop();
+		teardownUpdater();
 		daemonClient.setQuitting();
 		daemonClient.detachAll();
 		daemonClient.disconnect();
