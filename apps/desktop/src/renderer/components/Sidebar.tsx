@@ -1,6 +1,7 @@
 import type { SidebarSegment } from "../../shared/types";
 import { useProjectStore } from "../stores/projects";
 import { useTabStore } from "../stores/tab-store";
+import { useUpdateStore } from "../stores/update-store";
 import { trpc } from "../trpc/client";
 import { ProjectList } from "./ProjectList";
 import { PullRequestsTab } from "./PullRequestsTab";
@@ -16,6 +17,7 @@ interface SidebarProps {
 export function Sidebar({ collapsed, onExpand }: SidebarProps) {
 	const { openAddModal, openSettings } = useProjectStore();
 	const segment = useTabStore((s) => s.sidebarSegment);
+	const hasDismissedUpdate = useUpdateStore((s) => s.dismissedUpdateVersion !== null);
 	const setSidebarSegment = useTabStore((s) => s.setSidebarSegment);
 
 	// Check if any AI reviews need attention (ready or failed)
@@ -118,11 +120,11 @@ export function Sidebar({ collapsed, onExpand }: SidebarProps) {
 
 			{/* Footer — Settings */}
 			<div className="flex items-center border-t border-[var(--border-subtle)] p-2">
-				<Tooltip label="Settings" actionId="general.settings">
+				<Tooltip label={hasDismissedUpdate ? "Settings — update ready" : "Settings"} actionId="general.settings">
 					<button
 						type="button"
 						onClick={openSettings}
-						className="flex flex-1 items-center gap-2 rounded-[6px] px-3 py-1.5 text-[13px] text-[var(--text-tertiary)] transition-all duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-secondary)]"
+						className="relative flex flex-1 items-center gap-2 rounded-[6px] px-3 py-1.5 text-[13px] text-[var(--text-tertiary)] transition-all duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-secondary)]"
 					>
 						<svg
 							aria-hidden="true"
@@ -140,6 +142,9 @@ export function Sidebar({ collapsed, onExpand }: SidebarProps) {
 							<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
 						</svg>
 						<span className="truncate">Settings</span>
+						{hasDismissedUpdate && (
+							<span className="ml-auto size-[6px] shrink-0 rounded-full bg-[#30d158] shadow-[0_0_0_2px_var(--bg-base)]" />
+						)}
 					</button>
 				</Tooltip>
 			</div>

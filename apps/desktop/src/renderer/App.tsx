@@ -494,6 +494,9 @@ function AuthenticatedApp() {
 		const data = updateStatus.data;
 		if (!data) return;
 
+		const dismissedVersion = data.dismissedUpdateVersion ?? null;
+		useUpdateStore.getState().setDismissedUpdateVersion(dismissedVersion);
+
 		// One-time: process pending notification from startup
 		if (!hasCheckedUpdate.current) {
 			hasCheckedUpdate.current = true;
@@ -505,8 +508,8 @@ function AuthenticatedApp() {
 		}
 
 		// Sync download/ready state from main process
-		if (data.updateDownloaded && data.updateVersion) {
-			useUpdateStore.getState().setUpdateReady(data.updateVersion);
+		if (data.updateDownloaded && data.updateVersion && data.updateVersion !== dismissedVersion) {
+			useUpdateStore.getState().setUpdateReadyIfNotDismissed(data.updateVersion);
 		} else if (data.updateAvailable && data.downloadProgress != null && data.updateVersion) {
 			useUpdateStore.getState().setDownloadProgress(data.downloadProgress);
 		}
