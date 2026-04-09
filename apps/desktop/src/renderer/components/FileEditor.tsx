@@ -2,6 +2,8 @@ import * as monaco from "monaco-editor";
 import { initVimMode } from "monaco-vim";
 import { useEffect, useRef, useState } from "react";
 import { EDITOR_THEME, ensureThemeRegistered } from "../lib/monacoTheme";
+import { MarkdownPreviewButton } from "./MarkdownPreviewButton";
+import { MarkdownRenderer } from "./MarkdownRenderer";
 import {
 	registerLspProviders,
 	sendDidChange,
@@ -39,6 +41,8 @@ export function FileEditor({
 	const vimModeRef = useRef<ReturnType<typeof initVimMode> | null>(null);
 	const [editorReady, setEditorReady] = useState(false);
 	const vimEnabled = useEditorSettingsStore((s) => s.vimEnabled);
+	const markdownPreviewMode = useTabStore((s) => s.markdownPreviewMode);
+	const [previewContent, setPreviewContent] = useState("");
 	const saveMutation = trpc.diff.saveFileContent.useMutation({
 		onSuccess: () => {
 			utils.diff.getWorkingTreeDiff.invalidate({ repoPath });
@@ -100,6 +104,7 @@ export function FileEditor({
 		if (existingModel) existingModel.dispose();
 		const model = monaco.editor.createModel(data.content, language, fileUri);
 		editor.setModel(model);
+		setPreviewContent(data.content);
 
 		// Use the ref (captured at mount) so re-renders after store clear do not re-navigate
 		const position = initialPositionRef.current;
@@ -127,6 +132,7 @@ export function FileEditor({
 			saveTimerRef.current = setTimeout(() => {
 				saveMutation.mutate({ repoPath, filePath, content: model.getValue() });
 			}, 500);
+			setPreviewContent(model.getValue());
 
 			if (lspEnabled) {
 				version++;
@@ -170,13 +176,37 @@ export function FileEditor({
 				className="flex h-full w-full flex-col"
 				style={isLoading ? { display: "none" } : undefined}
 			>
-				<div ref={containerRef} className="min-h-0 flex-1" />
-				{vimEnabled && (
-					<div
-						ref={vimStatusRef}
-						className="flex h-5 shrink-0 items-center border-t border-[var(--border)] bg-[var(--bg-elevated)] px-2 font-mono text-[11px] text-[var(--text-secondary)]"
-					/>
+				{language === "markdown" && (
+					<div className="flex h-8 shrink-0 items-center justify-end gap-2 border-b border-[var(--border)] bg-[var(--bg-surface)] px-3">
+						<MarkdownPreviewButton language={language} />
+					</div>
 				)}
+				<div className="flex min-h-0 flex-1 overflow-hidden">
+					{/* Monaco container — always mounted to preserve editor lifecycle.
+					    Hidden via display:none in "rendered" mode; automaticLayout
+					    handles the resize when it becomes visible again. */}
+					<div
+						className="flex min-h-0 flex-1 flex-col overflow-hidden"
+						style={
+							language === "markdown" && markdownPreviewMode === "rendered"
+								? { display: "none" }
+								: undefined
+						}
+					>
+						<div ref={containerRef} className="min-h-0 flex-1" />
+						{vimEnabled && (
+							<div
+								ref={vimStatusRef}
+								className="flex h-5 shrink-0 items-center border-t border-[var(--border)] bg-[var(--bg-elevated)] px-2 font-mono text-[11px] text-[var(--text-secondary)]"
+							/>
+						)}
+					</div>
+					{language === "markdown" && markdownPreviewMode !== "off" && (
+						<div className="flex-1 overflow-y-auto border-l border-[var(--border)] p-4">
+							<MarkdownRenderer content={previewContent} />
+						</div>
+					)}
+				</div>
 			</div>
 		</>
 	);
