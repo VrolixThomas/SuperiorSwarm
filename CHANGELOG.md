@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.4.5 (2026-04-09)
+
+### What's New
+
+This release fixes a build issue that prevented MCP agent integration from working. SuperiorSwarm's AI agent features should now launch reliably after a clean build or update.
+
+### Changes
+
+- Mcp not working (#62)
+- fix: inline Electron runtime config in agent-setup (#64)
+
 ## v0.4.4 (2026-04-08)
 
 ### What's New
