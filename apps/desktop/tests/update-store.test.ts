@@ -59,4 +59,29 @@ describe("update-store", () => {
 		useUpdateStore.getState().setDismissedUpdateVersion("3.0.0");
 		expect(useUpdateStore.getState().dismissedUpdateVersion).toBe("3.0.0");
 	});
+
+	test("dismissUpdateOptimistic stores previous dismissed version", () => {
+		const store = useUpdateStore.getState();
+		store.setDismissedUpdateVersion("1.0.0");
+		const prev = store.dismissUpdateOptimistic("2.0.0");
+		expect(prev).toBe("1.0.0");
+		expect(store.dismissedUpdateVersion).toBe("2.0.0");
+	});
+
+	test("restoreDismissedUpdateVersion reverts version", () => {
+		const store = useUpdateStore.getState();
+		store.setDismissedUpdateVersion("1.0.0");
+		const prev = store.dismissUpdateOptimistic("2.0.0");
+		store.restoreDismissedUpdateVersion(prev);
+		expect(store.dismissedUpdateVersion).toBe("1.0.0");
+	});
+
+	test("setUpdateReadyIfNotDismissed gates ready toast", () => {
+		const store = useUpdateStore.getState();
+		store.setDismissedUpdateVersion("1.0.0");
+		store.setUpdateReadyIfNotDismissed("1.0.0");
+		expect(store.toastState).toBe("hidden");
+		store.setUpdateReadyIfNotDismissed("2.0.0");
+		expect(store.toastState).toBe("ready");
+	});
 });

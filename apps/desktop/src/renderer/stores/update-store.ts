@@ -19,9 +19,12 @@ interface UpdateStore {
 	setDownloadProgress: (progress: number) => void;
 	setUpdateReady: (version: string) => void;
 	setDismissedUpdateVersion: (version: string | null) => void;
+	dismissUpdateOptimistic: (version: string) => string | null;
+	restoreDismissedUpdateVersion: (version: string | null) => void;
+	setUpdateReadyIfNotDismissed: (version: string) => void;
 }
 
-export const useUpdateStore = create<UpdateStore>()((set) => ({
+export const useUpdateStore = create<UpdateStore>()((set, get) => ({
 	toastState: "hidden",
 	toastVersion: null,
 	toastSummary: null,
@@ -47,5 +50,35 @@ export const useUpdateStore = create<UpdateStore>()((set) => ({
 	setUpdateReady: (version) =>
 		set({ toastState: "ready", toastVersion: version, downloadProgress: null }),
 
-	setDismissedUpdateVersion: (version) => set({ dismissedUpdateVersion: version }),
+	setDismissedUpdateVersion: (version) =>
+		set((state) => {
+			state.dismissedUpdateVersion = version;
+			return state;
+		}, true),
+
+	dismissUpdateOptimistic: (version) => {
+		const previous = get().dismissedUpdateVersion;
+		set((state) => {
+			state.dismissedUpdateVersion = version;
+			state.toastState = "hidden";
+			return state;
+		}, true);
+		return previous;
+	},
+
+	restoreDismissedUpdateVersion: (version) =>
+		set((state) => {
+			state.dismissedUpdateVersion = version;
+			return state;
+		}, true),
+
+	setUpdateReadyIfNotDismissed: (version) => {
+		if (get().dismissedUpdateVersion === version) return;
+		set((state) => {
+			state.toastState = "ready";
+			state.toastVersion = version;
+			state.downloadProgress = null;
+			return state;
+		}, true);
+	},
 }));
