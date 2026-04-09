@@ -5,6 +5,7 @@ import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import { DiffEditor } from "./DiffEditor";
 import { MarkdownPreviewButton } from "./MarkdownPreviewButton";
+import { MarkdownRenderedDiff } from "./MarkdownRenderedDiff";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 
 interface DiffFileTabProps {
@@ -79,17 +80,17 @@ export function DiffFileTab({ diffCtx, filePath, language }: DiffFileTabProps) {
 				<button
 					type="button"
 					onClick={() => setDiffMode(diffMode === "split" ? "inline" : "split")}
-					disabled={markdownPreviewMode === "rendered"}
+					disabled={markdownPreviewMode === "rendered" || markdownPreviewMode === "rich-diff"}
 					className={[
 						"rounded px-2 py-0.5 text-[11px] transition-colors",
-						markdownPreviewMode === "rendered"
+						markdownPreviewMode === "rendered" || markdownPreviewMode === "rich-diff"
 							? "text-[var(--text-quaternary)] opacity-40 cursor-not-allowed"
 							: "text-[var(--text-tertiary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text)]",
 					].join(" ")}
 				>
 					{diffMode === "split" ? "Inline" : "Split"}
 				</button>
-				<MarkdownPreviewButton language={language} />
+				<MarkdownPreviewButton language={language} showRichDiff />
 				{saveMutation.isPending && (
 					<span className="text-[11px] text-[var(--text-quaternary)]">Saving…</span>
 				)}
@@ -99,6 +100,13 @@ export function DiffFileTab({ diffCtx, filePath, language }: DiffFileTabProps) {
 				{isLoading ? (
 					<div className="flex h-full items-center justify-center text-[13px] text-[var(--text-quaternary)]">
 						Loading…
+					</div>
+				) : markdownPreviewMode === "rich-diff" ? (
+					<div className="h-full overflow-y-auto p-4">
+						<MarkdownRenderedDiff
+							original={originalQuery.data?.content ?? ""}
+							modified={modifiedQuery.data?.content ?? ""}
+						/>
 					</div>
 				) : markdownPreviewMode === "rendered" ? (
 					<div className="h-full overflow-y-auto p-4">

@@ -2,9 +2,11 @@ import { useTabStore } from "../stores/tab-store";
 
 interface MarkdownPreviewButtonProps {
 	language: string;
+	/** Show the "Diff" button — only relevant in diff contexts (DiffFileTab, PRReviewFileTab) */
+	showRichDiff?: boolean;
 }
 
-export function MarkdownPreviewButton({ language }: MarkdownPreviewButtonProps) {
+export function MarkdownPreviewButton({ language, showRichDiff }: MarkdownPreviewButtonProps) {
 	const markdownPreviewMode = useTabStore((s) => s.markdownPreviewMode);
 	const setMarkdownPreviewMode = useTabStore((s) => s.setMarkdownPreviewMode);
 
@@ -39,6 +41,20 @@ export function MarkdownPreviewButton({ language }: MarkdownPreviewButtonProps) 
 			>
 				Rendered
 			</button>
+			{showRichDiff && (
+				<button
+					type="button"
+					onClick={() =>
+						setMarkdownPreviewMode(markdownPreviewMode === "rich-diff" ? "off" : "rich-diff")
+					}
+					className={[
+						"rounded px-2 py-0.5 text-[11px] transition-colors",
+						markdownPreviewMode === "rich-diff" ? "bg-[#30d158] text-[#1e1e2e]" : inactiveStyle,
+					].join(" ")}
+				>
+					Diff
+				</button>
+			)}
 		</>
 	);
 }

@@ -227,29 +227,30 @@ export function FileEditor({
 							/>
 						)}
 					</div>
-					{language === "markdown" && markdownPreviewMode !== "off" && (
-						<div
-							ref={markdownPaneRef}
-							className="flex-1 overflow-y-auto border-l border-[var(--border)] p-4"
-							onScroll={() => {
-								if (isSyncingScrollRef.current) return;
-								const editor = editorRef.current;
-								const pane = markdownPaneRef.current;
-								if (!editor || !pane) return;
-								const paneScrollable = pane.scrollHeight - pane.clientHeight;
-								const editorScrollable = editor.getScrollHeight() - editor.getLayoutInfo().height;
-								if (paneScrollable <= 0 || editorScrollable <= 0) return;
-								const pct = pane.scrollTop / paneScrollable;
-								isSyncingScrollRef.current = true;
-								editor.setScrollTop(pct * editorScrollable);
-								requestAnimationFrame(() => {
-									isSyncingScrollRef.current = false;
-								});
-							}}
-						>
-							<MarkdownRenderer content={previewContent} />
-						</div>
-					)}
+					{language === "markdown" &&
+						(markdownPreviewMode === "split" || markdownPreviewMode === "rendered") && (
+							<div
+								ref={markdownPaneRef}
+								className="flex-1 overflow-y-auto border-l border-[var(--border)] p-4"
+								onScroll={() => {
+									if (isSyncingScrollRef.current) return;
+									const editor = editorRef.current;
+									const pane = markdownPaneRef.current;
+									if (!editor || !pane) return;
+									const paneScrollable = pane.scrollHeight - pane.clientHeight;
+									const editorScrollable = editor.getScrollHeight() - editor.getLayoutInfo().height;
+									if (paneScrollable <= 0 || editorScrollable <= 0) return;
+									const pct = pane.scrollTop / paneScrollable;
+									isSyncingScrollRef.current = true;
+									editor.setScrollTop(pct * editorScrollable);
+									requestAnimationFrame(() => {
+										isSyncingScrollRef.current = false;
+									});
+								}}
+							>
+								<MarkdownRenderer content={previewContent} />
+							</div>
+						)}
 				</div>
 			</div>
 		</>
