@@ -12,8 +12,14 @@ export function UpdateToast() {
 	const dismissToast = useUpdateStore((s) => s.dismissToast);
 	const openWhatsNew = useUpdateStore((s) => s.openWhatsNew);
 
+	const utils = trpc.useUtils();
 	const markSeen = trpc.updates.markVersionSeen.useMutation();
 	const dismissUpdate = trpc.updates.dismissUpdate.useMutation({
+		onMutate: async ({ version }) => {
+			await utils.updates.getStatus.cancel();
+			const previous = useUpdateStore.getState().dismissUpdateOptimistic(version);
+			return { previous };
+		},
 		onError: (_err, variables, context) => {
 			useUpdateStore.getState().restoreDismissedUpdateVersion(context?.previous ?? null);
 			if (variables?.version) {
@@ -63,8 +69,7 @@ export function UpdateToast() {
 
 	const handleLater = () => {
 		if (version) {
-			const previous = useUpdateStore.getState().dismissUpdateOptimistic(version);
-			dismissUpdate.mutate({ version }, { onMutate: () => ({ previous }) });
+			dismissUpdate.mutate({ version });
 		}
 	};
 
