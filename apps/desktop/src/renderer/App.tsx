@@ -509,7 +509,7 @@ function AuthenticatedApp() {
 
 		// Sync download/ready state from main process
 		if (data.updateDownloaded && data.updateVersion && data.updateVersion !== dismissedVersion) {
-			useUpdateStore.getState().setUpdateReady(data.updateVersion);
+			useUpdateStore.getState().setUpdateReadyIfNotDismissed(data.updateVersion);
 		} else if (data.updateAvailable && data.downloadProgress != null && data.updateVersion) {
 			useUpdateStore.getState().setDownloadProgress(data.downloadProgress);
 		}
