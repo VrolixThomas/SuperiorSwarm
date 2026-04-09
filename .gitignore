@@ -45,6 +45,7 @@ apps/desktop/dist/
 .claude/*
 !.claude/skills/
 !.claude/specs/
+!.claude/settings.json
 
 # Superpowers
 .superpowers/

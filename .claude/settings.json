@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "git -C \"$(git rev-parse --show-toplevel)\" diff --name-only -- CLAUDE.md | grep -q . && git -C \"$(git rev-parse --show-toplevel)\" add CLAUDE.md && git -C \"$(git rev-parse --show-toplevel)\" commit -m 'docs: update CLAUDE.md'"
+          }
+        ]
+      }
+    ]
+  }
+}
