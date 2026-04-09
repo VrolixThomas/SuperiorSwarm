@@ -27,10 +27,6 @@ export function UpdateToast() {
 			}
 		},
 	});
-	const releaseNotes = trpc.updates.getReleaseNotes.useQuery(
-		{ version: version ?? undefined },
-		{ enabled: toastState === "new-version" && !!version }
-	);
 	const installUpdate = trpc.updates.installUpdate.useMutation();
 
 	const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -58,7 +54,7 @@ export function UpdateToast() {
 
 	const handleSeeWhatsNew = () => {
 		if (version) {
-			openWhatsNew(version, releaseNotes.data?.body ?? null);
+			openWhatsNew(version);
 			dismissToast();
 		}
 	};

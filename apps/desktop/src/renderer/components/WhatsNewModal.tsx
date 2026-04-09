@@ -6,10 +6,14 @@ import { MarkdownRenderer } from "./MarkdownRenderer";
 export function WhatsNewModal() {
 	const show = useUpdateStore((s) => s.showWhatsNewModal);
 	const version = useUpdateStore((s) => s.modalVersion);
-	const releaseNotes = useUpdateStore((s) => s.modalReleaseNotes);
 	const closeWhatsNew = useUpdateStore((s) => s.closeWhatsNew);
 
 	const markSeen = trpc.updates.markVersionSeen.useMutation();
+
+	const releaseNotesQuery = trpc.updates.getReleaseNotes.useQuery(
+		{ version: version ?? undefined },
+		{ enabled: show && !!version }
+	);
 	const markSeenRef = useRef(markSeen.mutate);
 	markSeenRef.current = markSeen.mutate;
 
@@ -65,8 +69,12 @@ export function WhatsNewModal() {
 
 				{/* Scrollable content */}
 				<div className="flex-1 overflow-y-auto px-5 py-4">
-					{releaseNotes ? (
-						<MarkdownRenderer content={releaseNotes} />
+					{releaseNotesQuery.isLoading ? (
+						<p className="text-center text-[13px] text-[var(--text-tertiary)]">
+							Loading release notes...
+						</p>
+					) : releaseNotesQuery.data?.body ? (
+						<MarkdownRenderer content={releaseNotesQuery.data.body} />
 					) : (
 						<p className="text-center text-[13px] text-[var(--text-tertiary)]">
 							No release notes available for this version.
