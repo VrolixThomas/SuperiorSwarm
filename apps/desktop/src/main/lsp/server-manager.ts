@@ -76,6 +76,30 @@ export class ServerManager {
 		}
 	}
 
+	private isWindowsPlatform(): boolean {
+		return process.platform === "win32";
+	}
+
+	private getWindowsPathExts(command: string): string[] {
+		const hasExplicitExtension = command.includes(".");
+		if (hasExplicitExtension) {
+			return [""];
+		}
+
+		const pathExt = process.env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD";
+		const extensions = pathExt
+			.split(";")
+			.map((ext) => ext.trim())
+			.filter(Boolean)
+			.map((ext) => (ext.startsWith(".") ? ext : `.${ext}`));
+
+		if (extensions.length === 0) {
+			return [""];
+		}
+
+		return ["", ...extensions];
+	}
+
 	private isServerExecutableAvailable(command: string, repoPath: string): boolean {
 		const trimmedCommand = command.trim();
 		if (!trimmedCommand) {
@@ -91,14 +115,37 @@ export class ServerManager {
 			const resolvedPath = isAbsolute(trimmedCommand)
 				? trimmedCommand
 				: join(repoPath, trimmedCommand);
-			return this.canExecute(resolvedPath);
+			if (this.canExecute(resolvedPath)) {
+				return true;
+			}
+
+			if (!this.isWindowsPlatform()) {
+				return false;
+			}
+
+			for (const extension of this.getWindowsPathExts(trimmedCommand)) {
+				if (!extension) {
+					continue;
+				}
+
+				if (this.canExecute(`${resolvedPath}${extension}`)) {
+					return true;
+				}
+			}
+
+			return false;
 		}
 
 		const pathEntries = (process.env.PATH ?? "").split(delimiter).filter(Boolean);
+		const commandSuffixes = this.isWindowsPlatform()
+			? this.getWindowsPathExts(trimmedCommand)
+			: [""];
 		for (const entry of pathEntries) {
-			const candidate = join(entry, trimmedCommand);
-			if (this.canExecute(candidate)) {
-				return true;
+			for (const suffix of commandSuffixes) {
+				const candidate = join(entry, `${trimmedCommand}${suffix}`);
+				if (this.canExecute(candidate)) {
+					return true;
+				}
 			}
 		}
 

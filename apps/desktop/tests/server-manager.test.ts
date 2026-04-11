@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { EventEmitter } from "node:events";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
@@ -18,6 +18,8 @@ type MockConfig = {
 const unavailableCommands = new Set<string>();
 const spawnCalls: string[] = [];
 const createdRepos: string[] = [];
+const originalPath = process.env.PATH;
+const originalPathExt = process.env.PATHEXT;
 
 function buildConfig(id: string, command: string): MockConfig {
 	return {
@@ -88,6 +90,9 @@ describe("ServerManager repo-aware resolution", () => {
 	});
 
 	afterEach(() => {
+		process.env.PATH = originalPath;
+		process.env.PATHEXT = originalPathExt;
+
 		for (const repoPath of createdRepos.splice(0)) {
 			rmSync(repoPath, { recursive: true, force: true });
 		}
@@ -129,6 +134,46 @@ describe("ServerManager repo-aware resolution", () => {
 		const repoPath = createRepoWithConfig("support", [
 			buildConfig("rust", "definitely-not-installed-lsp-binary"),
 		]);
+
+		const support = manager.getSupport(repoPath, "rust", "main.rust");
+		expect(support).toMatchObject({ supported: false, reason: "missing-binary" });
+	});
+
+	test("getSupport resolves bare commands with PATHEXT on Windows", () => {
+		const manager = new ServerManager() as ServerManager & { isWindowsPlatform: () => boolean };
+		manager.isWindowsPlatform = () => true;
+
+		const repoPath = createRepoWithConfig("support-win", [
+			buildConfig("rust", "win-rust-analyzer"),
+		]);
+		const binPath = mkdtempSync(join(tmpdir(), "ss-server-manager-bin-"));
+		const windowsCommand = join(binPath, "win-rust-analyzer.CMD");
+		writeFileSync(windowsCommand, "@echo off\n");
+		chmodSync(windowsCommand, 0o755);
+		createdRepos.push(binPath);
+
+		process.env.PATH = binPath;
+		process.env.PATHEXT = ".COM;.EXE;.BAT;.CMD";
+
+		const support = manager.getSupport(repoPath, "rust", "main.rust");
+		expect(support).toMatchObject({ supported: true, reason: "language" });
+	});
+
+	test("getSupport reports missing-binary when PATHEXT does not include command extension", () => {
+		const manager = new ServerManager() as ServerManager & { isWindowsPlatform: () => boolean };
+		manager.isWindowsPlatform = () => true;
+
+		const repoPath = createRepoWithConfig("support-win-missing", [
+			buildConfig("rust", "win-rust-analyzer"),
+		]);
+		const binPath = mkdtempSync(join(tmpdir(), "ss-server-manager-bin-missing-"));
+		const windowsCommand = join(binPath, "win-rust-analyzer.CMD");
+		writeFileSync(windowsCommand, "@echo off\n");
+		chmodSync(windowsCommand, 0o755);
+		createdRepos.push(binPath);
+
+		process.env.PATH = binPath;
+		process.env.PATHEXT = ".EXE";
 
 		const support = manager.getSupport(repoPath, "rust", "main.rust");
 		expect(support).toMatchObject({ supported: false, reason: "missing-binary" });
