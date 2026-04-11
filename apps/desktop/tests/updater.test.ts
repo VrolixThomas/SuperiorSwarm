@@ -5,7 +5,12 @@ import { eq } from "drizzle-orm";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { getDb } from "../src/main/db";
 import { sessionState } from "../src/main/db/schema";
-import { dismissUpdateVersion, extractReleaseSummary, getUpdaterState, getVersionDiffType } from "../src/main/updater";
+import {
+	dismissUpdateVersion,
+	extractReleaseSummary,
+	getUpdaterState,
+	getVersionDiffType,
+} from "../src/main/updater";
 
 describe("getVersionDiffType", () => {
 	test("returns 'major' for major version bump", () => {

@@ -36,11 +36,9 @@ export const useUpdateStore = create<UpdateStore>()((set, get) => ({
 
 	dismissToast: () => set({ toastState: "hidden", toastVersion: null, toastSummary: null }),
 
-	openWhatsNew: (version) =>
-		set({ showWhatsNewModal: true, modalVersion: version }),
+	openWhatsNew: (version) => set({ showWhatsNewModal: true, modalVersion: version }),
 
-	closeWhatsNew: () =>
-		set({ showWhatsNewModal: false, modalVersion: null }),
+	closeWhatsNew: () => set({ showWhatsNewModal: false, modalVersion: null }),
 
 	setDownloadProgress: (progress) => set({ toastState: "downloading", downloadProgress: progress }),
 

@@ -1,3 +1,4 @@
+import { lstatSync } from "node:fs";
 import { resolve } from "node:path";
 
 /**
@@ -9,5 +10,17 @@ export function assertPathInsideRepo(repoPath: string, relativePath: string): vo
 	const resolved = resolve(root, relativePath);
 	if (!resolved.startsWith(`${root}/`) && resolved !== root) {
 		throw new Error("Path must be inside the repository");
+	}
+}
+
+/**
+ * Returns "file" or "directory" for the given absolute path, or null if the path does not exist.
+ * Uses lstatSync so symlinks are classified by their own type, not their target's.
+ */
+export function detectPathType(fullPath: string): "file" | "directory" | null {
+	try {
+		return lstatSync(fullPath).isDirectory() ? "directory" : "file";
+	} catch {
+		return null;
 	}
 }
