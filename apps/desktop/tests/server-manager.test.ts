@@ -1,5 +1,8 @@
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { EventEmitter } from "node:events";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { PassThrough } from "node:stream";
 
 type MockConfig = {
@@ -12,11 +15,9 @@ type MockConfig = {
 	disabled: boolean;
 };
 
-const defaultConfigs: MockConfig[] = [];
-const userConfigs: MockConfig[] = [];
-const repoConfigs = new Map<string, MockConfig[]>();
 const unavailableCommands = new Set<string>();
 const spawnCalls: string[] = [];
+const createdRepos: string[] = [];
 
 function buildConfig(id: string, command: string): MockConfig {
 	return {
@@ -70,62 +71,32 @@ mock.module("vscode-languageserver-protocol/node.js", () => ({
 	})),
 }));
 
-mock.module("../src/main/lsp/registry", () => ({
-	DEFAULT_SERVER_CONFIGS: defaultConfigs,
-	loadUserConfig: () => userConfigs,
-	loadRepoConfig: (repoPath: string) => repoConfigs.get(repoPath) ?? [],
-	buildRegistry: ({
-		defaults,
-		user,
-		repo,
-	}: { defaults: MockConfig[]; user: MockConfig[]; repo: MockConfig[] }) => {
-		const byId = new Map<string, MockConfig>();
-		for (const config of defaults) {
-			byId.set(config.id, config);
-		}
-		for (const config of user) {
-			byId.set(config.id, config);
-		}
-		for (const config of repo) {
-			byId.set(config.id, config);
-		}
-		return { byId };
-	},
-	resolveSupport: (
-		registry: { byId: Map<string, MockConfig> },
-		{ languageId }: { languageId: string; filePath: string }
-	) => {
-		const config = registry.byId.get(languageId);
-		if (!config || config.disabled) {
-			return { supported: false as const };
-		}
-
-		return {
-			supported: true as const,
-			reason: "language" as const,
-			config,
-		};
-	},
-}));
-
 const { ServerManager } = await import("../src/main/lsp/server-manager");
+
+function createRepoWithConfig(name: string, configs: MockConfig[]): string {
+	const repoPath = mkdtempSync(join(tmpdir(), `ss-server-manager-${name}-`));
+	mkdirSync(join(repoPath, ".superiorswarm"), { recursive: true });
+	writeFileSync(join(repoPath, ".superiorswarm", "lsp.json"), JSON.stringify({ servers: configs }));
+	createdRepos.push(repoPath);
+	return repoPath;
+}
 
 describe("ServerManager repo-aware resolution", () => {
 	beforeEach(() => {
-		repoConfigs.clear();
 		unavailableCommands.clear();
 		spawnCalls.length = 0;
-		defaultConfigs.length = 0;
-		userConfigs.length = 0;
+	});
+
+	afterEach(() => {
+		for (const repoPath of createdRepos.splice(0)) {
+			rmSync(repoPath, { recursive: true, force: true });
+		}
 	});
 
 	test("findConfig resolves overrides per repo path", () => {
 		const manager = new ServerManager();
-		const repoA = "/tmp/ss-repo-a";
-		const repoB = "/tmp/ss-repo-b";
-
-		repoConfigs.set(repoA, [buildConfig("python", "repo-a-pyright")]);
-		repoConfigs.set(repoB, [buildConfig("python", "repo-b-pyright")]);
+		const repoA = createRepoWithConfig("a", [buildConfig("python", "repo-a-pyright")]);
+		const repoB = createRepoWithConfig("b", [buildConfig("python", "repo-b-pyright")]);
 
 		const configA = manager.findConfig("python", repoA, "file.py");
 		const configB = manager.findConfig("python", repoB, "file.py");
@@ -136,17 +107,17 @@ describe("ServerManager repo-aware resolution", () => {
 
 	test("spawn failures are scoped per repo and config", async () => {
 		const manager = new ServerManager();
-		const repoA = "/tmp/ss-repo-fail";
-		const repoB = "/tmp/ss-repo-ok";
+		const repoA = createRepoWithConfig("fail", [buildConfig("python", "missing-pyright")]);
+		const repoB = createRepoWithConfig("ok", [buildConfig("python", "working-pyright")]);
 
-		repoConfigs.set(repoA, [buildConfig("python", "missing-pyright")]);
-		repoConfigs.set(repoB, [buildConfig("python", "working-pyright")]);
 		unavailableCommands.add("missing-pyright");
 
 		const failedConnection = await manager.getOrCreate("python", repoA);
+		const failedConnectionAgain = await manager.getOrCreate("python", repoA);
 		const healthyConnection = await manager.getOrCreate("python", repoB);
 
 		expect(failedConnection).toBeNull();
+		expect(failedConnectionAgain).toBeNull();
 		expect(healthyConnection).not.toBeNull();
 		expect(spawnCalls).toEqual(["missing-pyright", "working-pyright"]);
 
