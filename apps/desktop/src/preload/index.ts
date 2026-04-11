@@ -58,6 +58,8 @@ const shellAPI: ShellAPI = {
 };
 
 const lspAPI: LspAPI = {
+	getSupport: (opts) => ipcRenderer.invoke("lsp:getSupport", opts),
+	getHealth: (opts) => ipcRenderer.invoke("lsp:getHealth", opts),
 	sendRequest: (opts) => ipcRenderer.invoke("lsp:request", opts),
 	sendNotification: (opts) => ipcRenderer.send("lsp:notification", opts),
 	onNotification: (callback) => {

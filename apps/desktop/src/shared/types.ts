@@ -59,7 +59,34 @@ export interface AgentAlertAPI {
 	onAlert: (callback: (event: AgentEvent) => void) => () => void;
 }
 
+export type LspSupportReason = "language" | "extension" | "unconfigured" | "missing-binary";
+
+export type LspSupportResponse =
+	| {
+			supported: true;
+			serverId: string;
+			reason: "language" | "extension";
+	  }
+	| {
+			supported: false;
+			reason: "unconfigured" | "missing-binary";
+			error?: string;
+	  };
+
+export interface LspHealthEntry {
+	id: string;
+	command: string;
+	available: boolean;
+	lastError?: string;
+}
+
 export interface LspAPI {
+	getSupport: (opts: {
+		repoPath: string;
+		languageId: string;
+		filePath: string;
+	}) => Promise<LspSupportResponse>;
+	getHealth: (opts: { repoPath: string }) => Promise<{ entries: LspHealthEntry[] }>;
 	sendRequest: (opts: {
 		languageId: string;
 		repoPath: string;

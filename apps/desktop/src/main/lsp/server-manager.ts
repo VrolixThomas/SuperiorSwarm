@@ -6,6 +6,7 @@ import {
 	type MessageConnection,
 	createMessageConnection,
 } from "vscode-languageserver-protocol/node.js";
+import type { LspHealthEntry } from "../../shared/types";
 import {
 	DEFAULT_SERVER_CONFIGS,
 	buildRegistry,
@@ -21,6 +22,18 @@ export interface ServerConfig {
 	languages: string[];
 	fileExtensions: string[];
 }
+
+export type LspSupportResult =
+	| {
+			supported: true;
+			reason: "language" | "extension";
+			config: ServerConfig;
+	  }
+	| {
+			supported: false;
+			reason: "unconfigured" | "missing-binary";
+			config?: ServerConfig;
+	  };
 
 interface ServerInstance {
 	config: ServerConfig;
@@ -118,6 +131,56 @@ export class ServerManager {
 			filePath,
 		});
 		return support.supported ? this.toServerConfig(support.config) : undefined;
+	}
+
+	getSupport(repoPath: string, languageId: string, filePath: string): LspSupportResult {
+		const registry = this.getRegistry(repoPath);
+		const support = resolveSupport(registry, {
+			languageId,
+			filePath,
+		});
+
+		if (!support.supported) {
+			return {
+				supported: false,
+				reason: support.reason,
+			};
+		}
+
+		const config = this.toServerConfig(support.config);
+		const unavailableKey = this.unavailableServerKey(config.id, repoPath);
+		if (this.unavailableServers.has(unavailableKey)) {
+			return {
+				supported: false,
+				reason: "missing-binary",
+				config,
+			};
+		}
+
+		return {
+			supported: true,
+			reason: support.reason,
+			config,
+		};
+	}
+
+	getHealth(repoPath: string): LspHealthEntry[] {
+		const registry = this.getRegistry(repoPath);
+		const entries: LspHealthEntry[] = [];
+
+		for (const config of registry.byId.values()) {
+			if (config.disabled) {
+				continue;
+			}
+
+			entries.push({
+				id: config.id,
+				command: config.command,
+				available: !this.unavailableServers.has(this.unavailableServerKey(config.id, repoPath)),
+			});
+		}
+
+		return entries;
 	}
 
 	async getOrCreate(configId: string, repoPath: string): Promise<MessageConnection | null> {

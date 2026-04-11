@@ -1,10 +1,39 @@
 import { type BrowserWindow, ipcMain } from "electron";
+import type { LspSupportResponse } from "../../shared/types";
 import { isCloneable } from "../ipc-safety";
 import { log } from "../logger";
 import { serverManager } from "./server-manager";
 
 export function setupLspIPC(mainWindow: BrowserWindow): void {
 	serverManager.setMainWindow(mainWindow);
+
+	ipcMain.handle(
+		"lsp:getSupport",
+		async (
+			_event,
+			{ repoPath, languageId, filePath }: { repoPath: string; languageId: string; filePath: string }
+		): Promise<LspSupportResponse> => {
+			const support = serverManager.getSupport(repoPath, languageId, filePath);
+			if (!support.supported) {
+				return {
+					supported: false,
+					reason: support.reason,
+				};
+			}
+
+			return {
+				supported: true,
+				serverId: support.config.id,
+				reason: support.reason,
+			};
+		}
+	);
+
+	ipcMain.handle("lsp:getHealth", async (_event, { repoPath }: { repoPath: string }) => {
+		return {
+			entries: serverManager.getHealth(repoPath),
+		};
+	});
 
 	ipcMain.handle(
 		"lsp:request",
