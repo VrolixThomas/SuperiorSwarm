@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, readdirSync } from "node:fs";
 import { join, relative } from "node:path";
 import { eq } from "drizzle-orm";
 import ignore from "ignore";
@@ -53,8 +53,11 @@ export const sharedFilesRouter = router({
 
 			const fullPath = join(project.repoPath, input.relativePath);
 			if (!existsSync(fullPath)) {
-				throw new Error(`File not found: ${input.relativePath}`);
+				throw new Error(`Path not found: ${input.relativePath}`);
 			}
+
+			const stat = lstatSync(fullPath);
+			const type = stat.isDirectory() ? "directory" : "file";
 
 			const id = nanoid();
 			db.insert(sharedFiles)
@@ -62,11 +65,12 @@ export const sharedFilesRouter = router({
 					id,
 					projectId: input.projectId,
 					relativePath: input.relativePath,
+					type,
 					createdAt: new Date(),
 				})
 				.run();
 
-			return { id, relativePath: input.relativePath };
+			return { id, relativePath: input.relativePath, type };
 		}),
 
 	remove: publicProcedure.input(z.object({ id: z.string() })).mutation(({ input }) => {
@@ -82,7 +86,7 @@ export const sharedFilesRouter = router({
 
 			if (!project) throw new Error("Project not found");
 
-			const added: Array<{ id: string; relativePath: string }> = [];
+			const added: Array<{ id: string; relativePath: string; type: "file" | "directory" }> = [];
 			const skipped: string[] = [];
 
 			for (const relativePath of input.relativePaths) {
@@ -98,16 +102,20 @@ export const sharedFilesRouter = router({
 					continue;
 				}
 
+				const stat = lstatSync(fullPath);
+				const type = stat.isDirectory() ? "directory" : "file";
+
 				const id = nanoid();
 				db.insert(sharedFiles)
 					.values({
 						id,
 						projectId: input.projectId,
 						relativePath,
+						type,
 						createdAt: new Date(),
 					})
 					.run();
-				added.push({ id, relativePath });
+				added.push({ id, relativePath, type });
 			}
 
 			return { added, skipped };
@@ -173,7 +181,7 @@ export const sharedFilesRouter = router({
 				const results = await symlinkSharedFiles(
 					project.repoPath,
 					wt.path,
-					entries.map((e) => ({ relativePath: e.relativePath }))
+					entries.map((e) => ({ relativePath: e.relativePath, type: e.type as "file" | "directory" }))
 				);
 				allResults.push({ worktreePath: wt.path, results });
 			}

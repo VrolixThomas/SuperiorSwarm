@@ -1,0 +1,1 @@
+ALTER TABLE `shared_files` ADD `type` text DEFAULT 'file' NOT NULL;
