@@ -41,6 +41,7 @@ export function FileEditor({
 	const vimStatusRef = useRef<HTMLDivElement>(null);
 	const vimModeRef = useRef<ReturnType<typeof initVimMode> | null>(null);
 	const [editorReady, setEditorReady] = useState(false);
+	const [lspMessage, setLspMessage] = useState<string | null>(null);
 	const vimEnabled = useEditorSettingsStore((s) => s.vimEnabled);
 	const markdownPreviewMode = useTabStore((s) => s.markdownPreviewMode);
 	const [previewContent, setPreviewContent] = useState("");
@@ -125,17 +126,28 @@ export function FileEditor({
 
 		void (async () => {
 			try {
+				setLspMessage(null);
 				const support = await window.electron.lsp.getSupport({
 					repoPath,
 					languageId: language,
 					filePath,
 				});
-				if (disposed || !support.supported) return;
+				if (disposed) return;
+				if (!support.supported) {
+					if (support.reason === "missing-binary") {
+						setLspMessage(
+							`Language server executable not found for ${language}. Editing still works without LSP features.`
+						);
+					}
+					return;
+				}
 				lspEnabled = true;
 				setModelRepoPath(uri, repoPath);
 				registerLspProviders(language);
 				sendDidOpen(repoPath, language, uri, model.getValue(), version);
 			} catch {
+				if (disposed) return;
+				setLspMessage(null);
 				// Keep editor behavior stable when support checks fail.
 			}
 		})();
@@ -218,6 +230,11 @@ export function FileEditor({
 				className="flex h-full w-full flex-col"
 				style={isLoading ? { display: "none" } : undefined}
 			>
+				{lspMessage && (
+					<div className="border-b border-[rgba(255,159,10,0.35)] bg-[rgba(255,159,10,0.12)] px-3 py-2 text-[12px] text-[var(--color-warning)]">
+						{lspMessage}
+					</div>
+				)}
 				{language === "markdown" && (
 					<div className="flex h-8 shrink-0 items-center justify-end gap-2 border-b border-[var(--border)] bg-[var(--bg-surface)] px-3">
 						<MarkdownPreviewButton language={language} />

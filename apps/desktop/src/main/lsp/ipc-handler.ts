@@ -15,9 +15,10 @@ export function setupLspIPC(mainWindow: BrowserWindow): void {
 		): Promise<LspSupportResponse> => {
 			const support = serverManager.getSupport(repoPath, languageId, filePath);
 			if (!support.supported) {
+				const reason = support.reason;
 				return {
 					supported: false,
-					reason: support.reason,
+					reason,
 				};
 			}
 

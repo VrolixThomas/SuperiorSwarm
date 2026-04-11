@@ -1,4 +1,6 @@
 import { type ChildProcess, spawn } from "node:child_process";
+import { constants, accessSync } from "node:fs";
+import { delimiter, isAbsolute, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { BrowserWindow } from "electron";
 import {
@@ -63,6 +65,44 @@ export class ServerManager {
 
 	private unavailableServerKey(configId: string, repoPath: string): string {
 		return this.serverKey(configId, repoPath);
+	}
+
+	private canExecute(path: string): boolean {
+		try {
+			accessSync(path, constants.X_OK);
+			return true;
+		} catch {
+			return false;
+		}
+	}
+
+	private isServerExecutableAvailable(command: string, repoPath: string): boolean {
+		const trimmedCommand = command.trim();
+		if (!trimmedCommand) {
+			return false;
+		}
+
+		if (
+			isAbsolute(trimmedCommand) ||
+			trimmedCommand.startsWith(".") ||
+			trimmedCommand.includes("/") ||
+			trimmedCommand.includes("\\")
+		) {
+			const resolvedPath = isAbsolute(trimmedCommand)
+				? trimmedCommand
+				: join(repoPath, trimmedCommand);
+			return this.canExecute(resolvedPath);
+		}
+
+		const pathEntries = (process.env.PATH ?? "").split(delimiter).filter(Boolean);
+		for (const entry of pathEntries) {
+			const candidate = join(entry, trimmedCommand);
+			if (this.canExecute(candidate)) {
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	private getRegistry(repoPath?: string) {
@@ -149,13 +189,18 @@ export class ServerManager {
 
 		const config = this.toServerConfig(support.config);
 		const unavailableKey = this.unavailableServerKey(config.id, repoPath);
-		if (this.unavailableServers.has(unavailableKey)) {
+		const executableAvailable = this.isServerExecutableAvailable(config.command, repoPath);
+
+		if (!executableAvailable) {
+			this.unavailableServers.add(unavailableKey);
 			return {
 				supported: false,
 				reason: "missing-binary",
 				config,
 			};
 		}
+
+		this.unavailableServers.delete(unavailableKey);
 
 		return {
 			supported: true,

@@ -123,4 +123,14 @@ describe("ServerManager repo-aware resolution", () => {
 
 		await manager.disposeAll();
 	});
+
+	test("getSupport reports missing-binary when executable is unavailable", () => {
+		const manager = new ServerManager();
+		const repoPath = createRepoWithConfig("support", [
+			buildConfig("rust", "definitely-not-installed-lsp-binary"),
+		]);
+
+		const support = manager.getSupport(repoPath, "rust", "main.rust");
+		expect(support).toMatchObject({ supported: false, reason: "missing-binary" });
+	});
 });

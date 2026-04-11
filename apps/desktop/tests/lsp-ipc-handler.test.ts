@@ -106,6 +106,33 @@ describe("lsp IPC handlers", () => {
 		expect(result).toEqual({ supported: true, serverId: "go", reason: "language" });
 	});
 
+	test("lsp:getSupport returns missing-binary reason when executable is unavailable", async () => {
+		mockServerManager.getSupport.mockImplementation(
+			() =>
+				({
+					supported: false,
+					reason: "missing-binary",
+					config: {
+						id: "rust",
+						command: "rust-analyzer",
+						args: [],
+						languages: ["rust"],
+						fileExtensions: [".rs"],
+					},
+				}) as const
+		);
+
+		setupLspIPC({ webContents: { send: () => {} } } as never);
+		const handler = invokeHandlers.get("lsp:getSupport");
+		expect(handler).toBeDefined();
+
+		const result = await handler?.(
+			{},
+			{ repoPath: "/tmp/repo", languageId: "rust", filePath: "main.rs" }
+		);
+		expect(result).toEqual({ supported: false, reason: "missing-binary" });
+	});
+
 	test("lsp:getHealth returns health entries for repo", async () => {
 		mockServerManager.getHealth.mockImplementation(() => [
 			{ id: "go", command: "gopls", available: true },
