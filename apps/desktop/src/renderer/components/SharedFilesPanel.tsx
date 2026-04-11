@@ -26,7 +26,6 @@ function CandidateNode({
 	entry,
 	depth,
 	onAdd,
-	onAddDir,
 	isAdding,
 	expandedPaths,
 	toggleExpanded,
@@ -35,7 +34,6 @@ function CandidateNode({
 	entry: CandidateEntry;
 	depth: number;
 	onAdd: (path: string) => void;
-	onAddDir: (path: string) => void;
 	isAdding: boolean;
 	expandedPaths: Set<string>;
 	toggleExpanded: (path: string) => void;
@@ -105,7 +103,7 @@ function CandidateNode({
 				{/* Add-folder button */}
 				<button
 					type="button"
-					onClick={() => onAddDir(entry.relativePath)}
+					onClick={() => onAdd(entry.relativePath)}
 					disabled={isAdding}
 					className="group/add shrink-0 h-[18px] w-[18px] rounded-[4px] flex items-center justify-center border border-[rgba(255,255,255,0.22)] hover:border-[var(--accent)] hover:bg-[rgba(10,132,255,0.12)] transition-all duration-100 disabled:opacity-40"
 					aria-label={`Add ${entry.name} folder to shared files`}
@@ -166,7 +164,6 @@ function CandidateNode({
 						entry={child}
 						depth={depth + 1}
 						onAdd={onAdd}
-						onAddDir={onAddDir}
 						isAdding={isAdding}
 						expandedPaths={expandedPaths}
 						toggleExpanded={toggleExpanded}
@@ -214,8 +211,14 @@ export function SharedFilesPanel() {
 	});
 
 	const addBatchMutation = trpc.sharedFiles.addBatch.useMutation({
-		onSuccess: () => {
-			setPickerError(null);
+		onSuccess: (data) => {
+			if (data.skipped.length > 0) {
+				setPickerError(
+					`${data.skipped.length} path(s) could not be added (outside repository or not found).`
+				);
+			} else {
+				setPickerError(null);
+			}
 			utils.sharedFiles.list.invalidate();
 			utils.sharedFiles.discoverCandidates.invalidate();
 		},
@@ -266,28 +269,37 @@ export function SharedFilesPanel() {
 	}
 
 	function handleQuickAdd(relativePath: string) {
-		if (!projectId || addMutation.isPending) return;
+		if (!projectId || addMutation.isPending || addBatchMutation.isPending) return;
 		addMutation.mutate({ projectId, relativePath });
 	}
 
-	function handleQuickAddDir(relativePath: string) {
-		if (!projectId || addMutation.isPending || addBatchMutation.isPending) return;
-		addBatchMutation.mutate({ projectId, relativePaths: [relativePath] });
+	function resolveRelativePaths(
+		absolutePaths: string[],
+		repoPath: string,
+		errorMsg: string
+	): string[] | null {
+		const prefix = repoPath.endsWith("/") ? repoPath : `${repoPath}/`;
+		const result: string[] = [];
+		for (const absolutePath of absolutePaths) {
+			if (!absolutePath.startsWith(prefix)) {
+				setPickerError(errorMsg);
+				return null;
+			}
+			result.push(absolutePath.slice(prefix.length));
+		}
+		return result;
 	}
 
 	async function handleFilePicker() {
-		if (!projectId || addMutation.isPending) return;
+		if (!projectId || addMutation.isPending || addBatchMutation.isPending) return;
 		const repoPath = projectQuery.data?.repoPath;
 		if (!repoPath) return;
 		setPickerError(null);
 		const absolutePath = await window.electron.dialog.openFile({ defaultPath: repoPath });
 		if (!absolutePath) return;
-		const prefix = repoPath.endsWith("/") ? repoPath : `${repoPath}/`;
-		if (!absolutePath.startsWith(prefix)) {
-			setPickerError("File must be inside the repository.");
-			return;
-		}
-		const relativePath = absolutePath.slice(prefix.length);
+		const [relativePath] =
+			resolveRelativePaths([absolutePath], repoPath, "File must be inside the repository.") ?? [];
+		if (!relativePath) return;
 		addMutation.mutate({ projectId, relativePath });
 	}
 
@@ -298,15 +310,12 @@ export function SharedFilesPanel() {
 		setPickerError(null);
 		const paths = await window.electron.dialog.openDirectory();
 		if (!paths || paths.length === 0) return;
-		const prefix = repoPath.endsWith("/") ? repoPath : `${repoPath}/`;
-		const relativePaths: string[] = [];
-		for (const absolutePath of paths) {
-			if (!absolutePath.startsWith(prefix)) {
-				setPickerError("All folders must be inside the repository.");
-				return;
-			}
-			relativePaths.push(absolutePath.slice(prefix.length));
-		}
+		const relativePaths = resolveRelativePaths(
+			paths,
+			repoPath,
+			"Folder must be inside the repository."
+		);
+		if (!relativePaths) return;
 		addBatchMutation.mutate({ projectId, relativePaths });
 	}
 
@@ -384,6 +393,7 @@ export function SharedFilesPanel() {
 							<p className="text-[12.5px] text-[#ff453a]">
 								{pickerError ??
 									addMutation.error?.message ??
+									addBatchMutation.error?.message ??
 									removeMutation.error?.message ??
 									syncMutation.error?.message}
 							</p>
@@ -437,7 +447,8 @@ export function SharedFilesPanel() {
 											</svg>
 										)}
 										<span className="flex-1 truncate text-[13px] font-[var(--font-mono)] leading-none text-[rgba(255,255,255,0.7)]">
-											{file.relativePath}{file.type === "directory" ? "/" : ""}
+											{file.relativePath}
+											{file.type === "directory" ? "/" : ""}
 										</span>
 										<button
 											type="button"
@@ -493,7 +504,6 @@ export function SharedFilesPanel() {
 										entry={entry}
 										depth={0}
 										onAdd={handleQuickAdd}
-										onAddDir={handleQuickAddDir}
 										isAdding={addMutation.isPending || addBatchMutation.isPending}
 										expandedPaths={expandedPaths}
 										toggleExpanded={toggleExpanded}

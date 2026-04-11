@@ -150,9 +150,7 @@ describe("symlinkSharedFiles — directories", () => {
 		mkdirSync(join(repoPath, "nested", "output"), { recursive: true });
 		writeFileSync(join(repoPath, "nested", "output", "data.json"), "{}");
 
-		const entries: SharedFileEntry[] = [
-			{ relativePath: "nested/output", type: "directory" },
-		];
+		const entries: SharedFileEntry[] = [{ relativePath: "nested/output", type: "directory" }];
 		const results = await symlinkSharedFiles(repoPath, worktreePath, entries);
 
 		expect(results).toHaveLength(1);

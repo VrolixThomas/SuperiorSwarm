@@ -120,7 +120,10 @@ export function Sidebar({ collapsed, onExpand }: SidebarProps) {
 
 			{/* Footer — Settings */}
 			<div className="flex items-center border-t border-[var(--border-subtle)] p-2">
-				<Tooltip label={hasDismissedUpdate ? "Settings — update ready" : "Settings"} actionId="general.settings">
+				<Tooltip
+					label={hasDismissedUpdate ? "Settings — update ready" : "Settings"}
+					actionId="general.settings"
+				>
 					<button
 						type="button"
 						onClick={openSettings}
