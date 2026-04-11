@@ -19,7 +19,7 @@ export function setupLspIPC(mainWindow: BrowserWindow): void {
 		) => {
 			const label = `lsp:${method}`;
 
-			const config = serverManager.findConfig(languageId);
+			const config = serverManager.findConfig(languageId, repoPath);
 			if (!config) return { error: `No language server for ${languageId}` };
 
 			const connection = await serverManager.getOrCreate(config.id, repoPath);
@@ -54,7 +54,7 @@ export function setupLspIPC(mainWindow: BrowserWindow): void {
 				params,
 			}: { languageId: string; repoPath: string; method: string; params: unknown }
 		) => {
-			const config = serverManager.findConfig(languageId);
+			const config = serverManager.findConfig(languageId, repoPath);
 			if (!config) return;
 
 			const connection = serverManager.getConnection(config.id, repoPath);

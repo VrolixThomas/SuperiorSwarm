@@ -48,6 +48,10 @@ export class ServerManager {
 		return `${configId}:${repoPath}`;
 	}
 
+	private unavailableServerKey(configId: string, repoPath: string): string {
+		return this.serverKey(configId, repoPath);
+	}
+
 	private getRegistry(repoPath?: string) {
 		const normalizedRepoPath = repoPath?.trim();
 		return buildRegistry({
@@ -100,12 +104,7 @@ export class ServerManager {
 		return this.toServerConfig(support.config);
 	}
 
-	findConfig(languageId: string, repoPath?: string, filePath?: string): ServerConfig | undefined {
-		if (!repoPath) {
-			const support = resolveSupport(this.getRegistry(), { languageId, filePath: filePath ?? "" });
-			return support.supported ? this.toServerConfig(support.config) : undefined;
-		}
-
+	findConfig(languageId: string, repoPath: string, filePath?: string): ServerConfig | undefined {
 		return this.getResolvedConfig(repoPath, languageId, filePath) ?? undefined;
 	}
 
@@ -135,9 +134,10 @@ export class ServerManager {
 		if (!config) return null;
 
 		const key = this.serverKey(configId, repoPath);
+		const unavailableKey = this.unavailableServerKey(configId, repoPath);
 
 		// Check if this server has permanently failed (command not found)
-		if (this.unavailableServers.has(configId)) return null;
+		if (this.unavailableServers.has(unavailableKey)) return null;
 
 		let childProcess: ChildProcess;
 		try {
@@ -147,7 +147,7 @@ export class ServerManager {
 			});
 		} catch {
 			console.error(`[LSP] Failed to spawn ${config.command}. Is it installed?`);
-			this.unavailableServers.add(configId);
+			this.unavailableServers.add(unavailableKey);
 			return null;
 		}
 
@@ -166,7 +166,7 @@ export class ServerManager {
 			const onError = (err: Error) => {
 				cleanup();
 				console.error(`[LSP] Failed to spawn ${config.command}: ${err.message}`);
-				this.unavailableServers.add(configId);
+				this.unavailableServers.add(unavailableKey);
 				resolve(false);
 			};
 			const cleanup = () => {
