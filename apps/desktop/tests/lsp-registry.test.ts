@@ -4,10 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
 	DEFAULT_SERVER_CONFIGS,
+	type LanguageServerConfig,
 	buildRegistry,
 	loadRepoConfig,
 	resolveSupport,
-	type LanguageServerConfig,
 } from "../src/main/lsp/registry";
 
 describe("buildRegistry", () => {
@@ -99,6 +99,21 @@ describe("buildRegistry", () => {
 });
 
 describe("resolveSupport", () => {
+	test("returns configured server id for go", () => {
+		const registry = buildRegistry({
+			defaults: DEFAULT_SERVER_CONFIGS,
+			user: [],
+			repo: [],
+			env: {},
+		});
+
+		const support = resolveSupport(registry, { languageId: "go", filePath: "main.go" });
+		expect(support.supported).toBe(true);
+		if (support.supported) {
+			expect(support.config.id).toBe("go");
+		}
+	});
+
 	test("resolves by languageId first, then extension", () => {
 		const registry = buildRegistry({
 			defaults: [],

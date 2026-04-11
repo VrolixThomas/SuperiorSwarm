@@ -6,6 +6,13 @@ import {
 	type MessageConnection,
 	createMessageConnection,
 } from "vscode-languageserver-protocol/node.js";
+import {
+	DEFAULT_SERVER_CONFIGS,
+	buildRegistry,
+	loadRepoConfig,
+	loadUserConfig,
+	resolveSupport,
+} from "./registry";
 
 export interface ServerConfig {
 	id: string;
@@ -14,23 +21,6 @@ export interface ServerConfig {
 	languages: string[];
 	fileExtensions: string[];
 }
-
-export const SERVER_CONFIGS: ServerConfig[] = [
-	{
-		id: "typescript",
-		command: "typescript-language-server",
-		args: ["--stdio"],
-		languages: ["typescript", "javascript", "typescriptreact", "javascriptreact"],
-		fileExtensions: [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"],
-	},
-	{
-		id: "python",
-		command: "pyright-langserver",
-		args: ["--stdio"],
-		languages: ["python"],
-		fileExtensions: [".py"],
-	},
-];
 
 interface ServerInstance {
 	config: ServerConfig;
@@ -58,13 +48,77 @@ export class ServerManager {
 		return `${configId}:${repoPath}`;
 	}
 
-	findConfig(languageId: string): ServerConfig | undefined {
-		return SERVER_CONFIGS.find((c) => c.languages.includes(languageId));
+	private getRegistry(repoPath?: string) {
+		const normalizedRepoPath = repoPath?.trim();
+		return buildRegistry({
+			defaults: DEFAULT_SERVER_CONFIGS,
+			user: loadUserConfig(),
+			repo: normalizedRepoPath ? loadRepoConfig(normalizedRepoPath) : [],
+			env: {
+				...process.env,
+				workspaceFolder: normalizedRepoPath,
+			},
+		});
 	}
 
-	findConfigByExtension(filePath: string): ServerConfig | undefined {
-		const ext = `.${filePath.split(".").pop()?.toLowerCase() ?? ""}`;
-		return SERVER_CONFIGS.find((c) => c.fileExtensions.includes(ext));
+	private toServerConfig(config: {
+		id: string;
+		command: string;
+		args: string[];
+		languages: string[];
+		fileExtensions: string[];
+	}): ServerConfig {
+		return {
+			id: config.id,
+			command: config.command,
+			args: config.args,
+			languages: config.languages,
+			fileExtensions: config.fileExtensions,
+		};
+	}
+
+	private findConfigById(configId: string, repoPath: string): ServerConfig | undefined {
+		const config = this.getRegistry(repoPath).byId.get(configId);
+		if (!config || config.disabled) {
+			return undefined;
+		}
+
+		return this.toServerConfig(config);
+	}
+
+	getResolvedConfig(repoPath: string, languageId: string, filePath?: string): ServerConfig | null {
+		const registry = this.getRegistry(repoPath);
+		const support = resolveSupport(registry, {
+			languageId,
+			filePath: filePath ?? "",
+		});
+
+		if (!support.supported) {
+			return null;
+		}
+
+		return this.toServerConfig(support.config);
+	}
+
+	findConfig(languageId: string, repoPath?: string, filePath?: string): ServerConfig | undefined {
+		if (!repoPath) {
+			const support = resolveSupport(this.getRegistry(), { languageId, filePath: filePath ?? "" });
+			return support.supported ? this.toServerConfig(support.config) : undefined;
+		}
+
+		return this.getResolvedConfig(repoPath, languageId, filePath) ?? undefined;
+	}
+
+	findConfigByExtension(filePath: string, repoPath?: string): ServerConfig | undefined {
+		if (!repoPath) {
+			return undefined;
+		}
+
+		const support = resolveSupport(this.getRegistry(repoPath), {
+			languageId: "",
+			filePath,
+		});
+		return support.supported ? this.toServerConfig(support.config) : undefined;
 	}
 
 	async getOrCreate(configId: string, repoPath: string): Promise<MessageConnection | null> {
@@ -77,7 +131,7 @@ export class ServerManager {
 	}
 
 	private async startServer(configId: string, repoPath: string): Promise<MessageConnection | null> {
-		const config = SERVER_CONFIGS.find((c) => c.id === configId);
+		const config = this.findConfigById(configId, repoPath);
 		if (!config) return null;
 
 		const key = this.serverKey(configId, repoPath);
