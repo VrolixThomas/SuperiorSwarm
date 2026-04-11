@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test } from "bun:test";
+import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { getAllPanes, usePaneStore } from "../src/renderer/stores/pane-store";
 import {
 	PANEL_CLOSED,
@@ -7,6 +7,23 @@ import {
 	useTabStore,
 } from "../src/renderer/stores/tab-store";
 import type { DiffContext } from "../src/shared/diff-types";
+
+mock.module("monaco-editor", () => ({
+	languages: {
+		registerCompletionItemProvider: () => ({ dispose: () => {} }),
+		registerHoverProvider: () => ({ dispose: () => {} }),
+		registerDefinitionProvider: () => ({ dispose: () => {} }),
+		registerReferenceProvider: () => ({ dispose: () => {} }),
+	},
+	editor: {
+		registerEditorOpener: () => ({ dispose: () => {} }),
+		getModel: () => null,
+		setModelMarkers: () => {},
+	},
+	Uri: {
+		parse: (value: string) => value,
+	},
+}));
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -582,5 +599,58 @@ describe("openDiffFile with commit contexts", () => {
 		openDiffFile("ws-1", commit, "src/main.ts", "typescript");
 
 		expect(getTabsForWorkspace("ws-1")).toHaveLength(2);
+	});
+});
+
+describe("FileEditor LSP support check", () => {
+	test("returns false when support API reports unsupported", async () => {
+		const { isLspSupportedForFile } = await import("../src/renderer/lsp/monaco-lsp-bridge");
+		(globalThis as { window?: unknown }).window = {
+			electron: {
+				lsp: {
+					getSupport: async () => ({ supported: false, reason: "unconfigured" as const }),
+				},
+			},
+		};
+
+		const supported = await isLspSupportedForFile({
+			repoPath: "/tmp/repo",
+			languageId: "elixir",
+			filePath: "lib/a.ex",
+		});
+
+		expect(supported).toBe(false);
+	});
+
+	test("queries support API before enabling LSP", async () => {
+		const { isLspSupportedForFile } = await import("../src/renderer/lsp/monaco-lsp-bridge");
+
+		const getSupport = mock(
+			async (opts: {
+				repoPath: string;
+				languageId: string;
+				filePath: string;
+			}) => ({ supported: opts.languageId === "go", reason: "language" as const, serverId: "go" })
+		);
+		(globalThis as { window?: unknown }).window = {
+			electron: {
+				lsp: {
+					getSupport,
+				},
+			},
+		};
+
+		const supported = await isLspSupportedForFile({
+			repoPath: "/tmp/repo",
+			languageId: "go",
+			filePath: "main.go",
+		});
+
+		expect(getSupport).toHaveBeenCalledWith({
+			repoPath: "/tmp/repo",
+			languageId: "go",
+			filePath: "main.go",
+		});
+		expect(supported).toBe(true);
 	});
 });

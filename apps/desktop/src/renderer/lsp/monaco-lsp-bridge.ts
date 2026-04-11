@@ -4,6 +4,19 @@ import { useTabStore } from "../stores/tab-store";
 
 const disposables = new Map<string, monaco.IDisposable[]>();
 
+export async function isLspSupportedForFile(opts: {
+	repoPath: string;
+	languageId: string;
+	filePath: string;
+}): Promise<boolean> {
+	try {
+		const support = await window.electron.lsp.getSupport(opts);
+		return support.supported;
+	} catch {
+		return false;
+	}
+}
+
 export function registerLspProviders(languageId: string): void {
 	// Avoid double-registering
 	if (disposables.has(languageId)) return;

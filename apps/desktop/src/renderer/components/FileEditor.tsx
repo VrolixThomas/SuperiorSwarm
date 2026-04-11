@@ -119,16 +119,26 @@ export function FileEditor({
 
 		// LSP integration
 		const uri = model.uri.toString();
-		const supportedLspLanguages = ["typescript", "javascript", "python"];
-		const lspEnabled = supportedLspLanguages.includes(language);
-
-		if (lspEnabled) {
-			setModelRepoPath(uri, repoPath);
-			registerLspProviders(language);
-			sendDidOpen(repoPath, language, uri, data.content);
-		}
-
+		let lspEnabled = false;
+		let disposed = false;
 		let version = 1;
+
+		void (async () => {
+			try {
+				const support = await window.electron.lsp.getSupport({
+					repoPath,
+					languageId: language,
+					filePath,
+				});
+				if (disposed || !support.supported) return;
+				lspEnabled = true;
+				setModelRepoPath(uri, repoPath);
+				registerLspProviders(language);
+				sendDidOpen(repoPath, language, uri, model.getValue(), version);
+			} catch {
+				// Keep editor behavior stable when support checks fail.
+			}
+		})();
 
 		const sub = model.onDidChangeContent(() => {
 			if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
@@ -147,6 +157,7 @@ export function FileEditor({
 		});
 
 		return () => {
+			disposed = true;
 			sub.dispose();
 			if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
 			if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
