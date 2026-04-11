@@ -178,4 +178,22 @@ describe("ServerManager repo-aware resolution", () => {
 		const support = manager.getSupport(repoPath, "rust", "main.rust");
 		expect(support).toMatchObject({ supported: false, reason: "missing-binary" });
 	});
+
+	test("getSupport resolves dotted relative paths with PATHEXT on Windows", () => {
+		const manager = new ServerManager() as ServerManager & { isWindowsPlatform: () => boolean };
+		manager.isWindowsPlatform = () => true;
+
+		const repoPath = createRepoWithConfig("support-win-dotted-path", [
+			buildConfig("rust", "./.lsp-bin/win-rust-analyzer"),
+		]);
+		mkdirSync(join(repoPath, ".lsp-bin"), { recursive: true });
+		const windowsCommand = join(repoPath, ".lsp-bin", "win-rust-analyzer.CMD");
+		writeFileSync(windowsCommand, "@echo off\n");
+		chmodSync(windowsCommand, 0o755);
+
+		process.env.PATHEXT = ".COM;.EXE;.BAT;.CMD";
+
+		const support = manager.getSupport(repoPath, "rust", "main.rust");
+		expect(support).toMatchObject({ supported: true, reason: "language" });
+	});
 });

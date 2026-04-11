@@ -1,6 +1,6 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { constants, accessSync } from "node:fs";
-import { delimiter, isAbsolute, join } from "node:path";
+import { basename, delimiter, extname, isAbsolute, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { BrowserWindow } from "electron";
 import {
@@ -81,7 +81,7 @@ export class ServerManager {
 	}
 
 	private getWindowsPathExts(command: string): string[] {
-		const hasExplicitExtension = command.includes(".");
+		const hasExplicitExtension = extname(basename(command)).length > 0;
 		if (hasExplicitExtension) {
 			return [""];
 		}
