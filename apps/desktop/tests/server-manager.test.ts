@@ -11,6 +11,7 @@ type MockConfig = {
 	args: string[];
 	languages: string[];
 	fileExtensions: string[];
+	installHint?: string;
 	rootMarkers: string[];
 	disabled: boolean;
 };
@@ -18,16 +19,17 @@ type MockConfig = {
 const unavailableCommands = new Set<string>();
 const spawnCalls: string[] = [];
 const createdRepos: string[] = [];
-const originalPath = process.env.PATH;
-const originalPathExt = process.env.PATHEXT;
+const originalPath = process.env["PATH"];
+const originalPathExt = process.env["PATHEXT"];
 
-function buildConfig(id: string, command: string): MockConfig {
+function buildConfig(id: string, command: string, installHint?: string): MockConfig {
 	return {
 		id,
 		command,
 		args: ["--stdio"],
 		languages: [id],
 		fileExtensions: [`.${id}`],
+		installHint,
 		rootMarkers: [".git"],
 		disabled: false,
 	};
@@ -90,8 +92,8 @@ describe("ServerManager repo-aware resolution", () => {
 	});
 
 	afterEach(() => {
-		process.env.PATH = originalPath;
-		process.env.PATHEXT = originalPathExt;
+		process.env["PATH"] = originalPath;
+		process.env["PATHEXT"] = originalPathExt;
 
 		for (const repoPath of createdRepos.splice(0)) {
 			rmSync(repoPath, { recursive: true, force: true });
@@ -151,11 +153,61 @@ describe("ServerManager repo-aware resolution", () => {
 			command: "definitely-not-installed-lsp-binary",
 			available: false,
 			lastError: "Executable not found: definitely-not-installed-lsp-binary",
+			activeSessions: 0,
+			activeSessionDocuments: [],
+			installHint:
+				"Install 'definitely-not-installed-lsp-binary' and ensure it is available on PATH.",
 		});
 	});
 
+	test("getHealth includes active sessions and custom install hint", async () => {
+		const manager = new ServerManager();
+		const repoPath = createRepoWithConfig("health-active", [
+			buildConfig("python", process.execPath, "Install pyright with `bun add -g pyright`"),
+		]);
+
+		const connection = await manager.getOrCreate("python", repoPath);
+		expect(connection).not.toBeNull();
+		manager.trackDocument("python", repoPath, "file:///tmp/repo/src/main.py");
+
+		const health = manager.getHealth(repoPath);
+		expect(health).toContainEqual({
+			id: "python",
+			command: process.execPath,
+			available: true,
+			activeSessions: 1,
+			activeSessionDocuments: ["file:///tmp/repo/src/main.py"],
+			installHint: "Install pyright with `bun add -g pyright`",
+		});
+
+		await manager.disposeAll();
+	});
+
+	test("getHealth includes last startup error from failed spawn", async () => {
+		const manager = new ServerManager();
+		const repoPath = createRepoWithConfig("health-startup-error", [
+			buildConfig("python", "missing-startup-lsp"),
+		]);
+
+		unavailableCommands.add("missing-startup-lsp");
+		await manager.getOrCreate("python", repoPath);
+
+		const health = manager.getHealth(repoPath);
+		expect(health).toContainEqual(
+			expect.objectContaining({
+				id: "python",
+				command: "missing-startup-lsp",
+				available: false,
+				lastStartupError: "spawn missing-startup-lsp ENOENT",
+			})
+		);
+	});
+
 	test("getSupport resolves bare commands with PATHEXT on Windows", () => {
-		const manager = new ServerManager() as ServerManager & { isWindowsPlatform: () => boolean };
+		const manager = new ServerManager() as unknown as {
+			isWindowsPlatform: () => boolean;
+			getSupport: InstanceType<typeof ServerManager>["getSupport"];
+		};
 		manager.isWindowsPlatform = () => true;
 
 		const repoPath = createRepoWithConfig("support-win", [
@@ -167,15 +219,18 @@ describe("ServerManager repo-aware resolution", () => {
 		chmodSync(windowsCommand, 0o755);
 		createdRepos.push(binPath);
 
-		process.env.PATH = binPath;
-		process.env.PATHEXT = ".COM;.EXE;.BAT;.CMD";
+		process.env["PATH"] = binPath;
+		process.env["PATHEXT"] = ".COM;.EXE;.BAT;.CMD";
 
 		const support = manager.getSupport(repoPath, "rust", "main.rust");
 		expect(support).toMatchObject({ supported: true, reason: "language" });
 	});
 
 	test("getSupport reports missing-binary when PATHEXT does not include command extension", () => {
-		const manager = new ServerManager() as ServerManager & { isWindowsPlatform: () => boolean };
+		const manager = new ServerManager() as unknown as {
+			isWindowsPlatform: () => boolean;
+			getSupport: InstanceType<typeof ServerManager>["getSupport"];
+		};
 		manager.isWindowsPlatform = () => true;
 
 		const repoPath = createRepoWithConfig("support-win-missing", [
@@ -187,15 +242,18 @@ describe("ServerManager repo-aware resolution", () => {
 		chmodSync(windowsCommand, 0o755);
 		createdRepos.push(binPath);
 
-		process.env.PATH = binPath;
-		process.env.PATHEXT = ".EXE";
+		process.env["PATH"] = binPath;
+		process.env["PATHEXT"] = ".EXE";
 
 		const support = manager.getSupport(repoPath, "rust", "main.rust");
 		expect(support).toMatchObject({ supported: false, reason: "missing-binary" });
 	});
 
 	test("getSupport resolves dotted relative paths with PATHEXT on Windows", () => {
-		const manager = new ServerManager() as ServerManager & { isWindowsPlatform: () => boolean };
+		const manager = new ServerManager() as unknown as {
+			isWindowsPlatform: () => boolean;
+			getSupport: InstanceType<typeof ServerManager>["getSupport"];
+		};
 		manager.isWindowsPlatform = () => true;
 
 		const repoPath = createRepoWithConfig("support-win-dotted-path", [
@@ -206,7 +264,7 @@ describe("ServerManager repo-aware resolution", () => {
 		writeFileSync(windowsCommand, "@echo off\n");
 		chmodSync(windowsCommand, 0o755);
 
-		process.env.PATHEXT = ".COM;.EXE;.BAT;.CMD";
+		process.env["PATHEXT"] = ".COM;.EXE;.BAT;.CMD";
 
 		const support = manager.getSupport(repoPath, "rust", "main.rust");
 		expect(support).toMatchObject({ supported: true, reason: "language" });

@@ -9,6 +9,7 @@ const serverSchema = z.object({
 	args: z.array(z.string()).default([]),
 	languages: z.array(z.string().min(1)).default([]),
 	fileExtensions: z.array(z.string().min(1)).default([]),
+	installHint: z.string().min(1).optional(),
 	rootMarkers: z.array(z.string().min(1)).default([".git"]),
 	initializationOptions: z.record(z.string(), z.unknown()).optional(),
 	disabled: z.boolean().default(false),
@@ -226,11 +227,25 @@ function loadConfigFile(path: string): LanguageServerConfig[] {
 	}
 
 	const servers: LanguageServerConfig[] = [];
-	for (const server of parsed.data.servers) {
+	for (const [serverIndex, server] of parsed.data.servers.entries()) {
 		const serverResult = serverSchema.safeParse(server);
 		if (serverResult.success) {
 			servers.push(serverResult.data);
+			continue;
 		}
+
+		const issues = serverResult.error.issues
+			.map((issue) => {
+				const issuePath = issue.path.join(".");
+				if (issuePath.length > 0) {
+					return `${issuePath}: ${issue.message}`;
+				}
+				return issue.message;
+			})
+			.join("; ");
+		console.warn(
+			`[LSP] Ignoring invalid LSP server entry in ${path} at index ${serverIndex}: ${issues}`
+		);
 	}
 
 	return servers;
@@ -253,7 +268,7 @@ function getFileExtension(filePath: string): string | null {
 }
 
 function interpolate(value: string, env: Record<string, string | undefined>): string {
-	const withWorkspace = value.replaceAll("${workspaceFolder}", env.workspaceFolder ?? "");
+	const withWorkspace = value.replaceAll("${workspaceFolder}", env["workspaceFolder"] ?? "");
 	return withWorkspace.replace(/\$\{env:([A-Za-z_][A-Za-z0-9_]*)\}/g, (_match, key: string) => {
 		return env[key] ?? "";
 	});

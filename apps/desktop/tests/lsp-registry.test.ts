@@ -157,6 +157,54 @@ describe("resolveSupport", () => {
 });
 
 describe("loadRepoConfig", () => {
+	test("logs warning and skips invalid entries", () => {
+		const testDir = join(tmpdir(), `ss-lsp-registry-${Date.now()}-warn`);
+		const configDir = join(testDir, ".superiorswarm");
+		mkdirSync(configDir, { recursive: true });
+		writeFileSync(
+			join(configDir, "lsp.json"),
+			JSON.stringify({
+				servers: [
+					{
+						id: "ruby",
+						command: "solargraph",
+						args: ["stdio"],
+						languages: ["ruby"],
+						fileExtensions: [".rb"],
+						rootMarkers: ["Gemfile", ".git"],
+						disabled: false,
+					},
+					{ id: "invalid-entry-missing-command" },
+				],
+			})
+		);
+
+		const warnCalls: string[] = [];
+		const originalWarn = console.warn;
+		console.warn = (...args: unknown[]) => {
+			warnCalls.push(String(args[0] ?? ""));
+		};
+
+		try {
+			expect(loadRepoConfig(testDir)).toEqual([
+				{
+					id: "ruby",
+					command: "solargraph",
+					args: ["stdio"],
+					languages: ["ruby"],
+					fileExtensions: [".rb"],
+					rootMarkers: ["Gemfile", ".git"],
+					disabled: false,
+				},
+			]);
+			expect(warnCalls).toHaveLength(1);
+			expect(warnCalls[0]).toContain("Ignoring invalid LSP server entry");
+		} finally {
+			console.warn = originalWarn;
+			rmSync(testDir, { recursive: true, force: true });
+		}
+	});
+
 	test("returns empty array when config is invalid JSON", () => {
 		const testDir = join(tmpdir(), `ss-lsp-registry-${Date.now()}-invalid`);
 		const configDir = join(testDir, ".superiorswarm");

@@ -135,8 +135,25 @@ describe("lsp IPC handlers", () => {
 
 	test("lsp:getHealth returns health entries for repo", async () => {
 		mockServerManager.getHealth.mockImplementation(() => [
-			{ id: "go", command: "gopls", available: true },
-			{ id: "rust", command: "rust-analyzer", available: false },
+			{
+				id: "go",
+				command: "gopls",
+				available: true,
+				lastStartupError: undefined,
+				activeSessions: 1,
+				activeSessionDocuments: ["file:///tmp/repo/main.go"],
+				installHint: "Install gopls",
+			},
+			{
+				id: "rust",
+				command: "rust-analyzer",
+				available: false,
+				lastError: "Executable not found: rust-analyzer",
+				lastStartupError: "spawn rust-analyzer ENOENT",
+				activeSessions: 0,
+				activeSessionDocuments: [],
+				installHint: "Install rust-analyzer",
+			},
 		]);
 
 		setupLspIPC({ webContents: { send: () => {} } } as never);
@@ -146,8 +163,25 @@ describe("lsp IPC handlers", () => {
 		const result = await handler?.({}, { repoPath: "/tmp/repo" });
 		expect(result).toEqual({
 			entries: [
-				{ id: "go", command: "gopls", available: true },
-				{ id: "rust", command: "rust-analyzer", available: false },
+				{
+					id: "go",
+					command: "gopls",
+					available: true,
+					lastStartupError: undefined,
+					activeSessions: 1,
+					activeSessionDocuments: ["file:///tmp/repo/main.go"],
+					installHint: "Install gopls",
+				},
+				{
+					id: "rust",
+					command: "rust-analyzer",
+					available: false,
+					lastError: "Executable not found: rust-analyzer",
+					lastStartupError: "spawn rust-analyzer ENOENT",
+					activeSessions: 0,
+					activeSessionDocuments: [],
+					installHint: "Install rust-analyzer",
+				},
 			],
 		});
 	});

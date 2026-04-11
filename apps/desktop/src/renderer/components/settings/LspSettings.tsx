@@ -1,11 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useProjectStore } from "../../stores/projects";
 import { trpc } from "../../trpc/client";
 import { PageHeading, SectionLabel } from "./SectionHeading";
 
 export function LspSettings() {
 	const selectedProjectId = useProjectStore((s) => s.selectedProjectId);
-	const [refreshKey, setRefreshKey] = useState(0);
 
 	const projectQuery = trpc.projects.getById.useQuery(
 		{ id: selectedProjectId ?? "" },
@@ -15,12 +14,20 @@ export function LspSettings() {
 	const repoPath = projectQuery.data?.repoPath;
 
 	const [entries, setEntries] = useState<
-		Array<{ id: string; command: string; available: boolean }>
+		Array<{
+			id: string;
+			command: string;
+			available: boolean;
+			lastStartupError?: string;
+			activeSessions?: number;
+			activeSessionDocuments?: string[];
+			installHint?: string;
+		}>
 	>([]);
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
-	useEffect(() => {
+	const loadHealth = useCallback(() => {
 		if (!repoPath) {
 			setEntries([]);
 			setLoading(false);
@@ -56,7 +63,11 @@ export function LspSettings() {
 		return () => {
 			canceled = true;
 		};
-	}, [repoPath, refreshKey]);
+	}, [repoPath]);
+
+	useEffect(() => {
+		return loadHealth();
+	}, [loadHealth]);
 
 	const sortedEntries = useMemo(
 		() => [...entries].sort((a, b) => a.id.localeCompare(b.id)),
@@ -77,7 +88,9 @@ export function LspSettings() {
 				</div>
 				<button
 					type="button"
-					onClick={() => setRefreshKey((k) => k + 1)}
+					onClick={() => {
+						loadHealth();
+					}}
 					disabled={!repoPath || loading}
 					className="rounded-[6px] border border-[var(--border)] bg-[var(--bg-elevated)] px-2.5 py-1 text-[11px] text-[var(--text-tertiary)] transition-colors hover:bg-[var(--bg-overlay)] hover:text-[var(--text-secondary)] disabled:opacity-50"
 				>
@@ -104,25 +117,39 @@ export function LspSettings() {
 					sortedEntries.map((entry, index) => (
 						<div
 							key={entry.id}
-							className={`flex items-center justify-between px-4 py-3 ${
-								index > 0 ? "border-t border-[var(--border-subtle)]" : ""
-							}`}
+							className={`px-4 py-3 ${index > 0 ? "border-t border-[var(--border-subtle)]" : ""}`}
 						>
-							<div className="min-w-0 flex-1">
-								<div className="text-[13px] font-medium text-[var(--text)]">{entry.id}</div>
-								<div className="truncate font-mono text-[10px] text-[var(--text-quaternary)]">
-									{entry.command}
+							<div className="flex items-start justify-between gap-3">
+								<div className="min-w-0 flex-1">
+									<div className="text-[13px] font-medium text-[var(--text)]">{entry.id}</div>
+									<div className="truncate font-mono text-[10px] text-[var(--text-quaternary)]">
+										{entry.command}
+									</div>
 								</div>
+								<span
+									className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${
+										entry.available
+											? "bg-[rgba(48,209,88,0.15)] text-[#30d158]"
+											: "bg-[rgba(255,214,10,0.15)] text-[#ffd60a]"
+									}`}
+								>
+									{entry.available ? "Installed" : "Missing"}
+								</span>
 							</div>
-							<span
-								className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
-									entry.available
-										? "bg-[rgba(48,209,88,0.15)] text-[#30d158]"
-										: "bg-[rgba(255,214,10,0.15)] text-[#ffd60a]"
-								}`}
-							>
-								{entry.available ? "Installed" : "Missing"}
-							</span>
+							<div className="mt-2 space-y-1 text-[11px] text-[var(--text-tertiary)]">
+								<div>
+									Active sessions: {entry.activeSessions ?? 0}
+									{entry.activeSessionDocuments && entry.activeSessionDocuments.length > 0
+										? ` (${entry.activeSessionDocuments.length} open documents)`
+										: ""}
+								</div>
+								{entry.lastStartupError ? (
+									<div className="text-[#ff9f0a]">Last startup error: {entry.lastStartupError}</div>
+								) : (
+									<div className="text-[var(--text-quaternary)]">Last startup error: none</div>
+								)}
+								{entry.installHint ? <div>Install hint: {entry.installHint}</div> : null}
+							</div>
 						</div>
 					))
 				)}

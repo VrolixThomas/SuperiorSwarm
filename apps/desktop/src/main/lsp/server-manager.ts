@@ -23,6 +23,7 @@ export interface ServerConfig {
 	args: string[];
 	languages: string[];
 	fileExtensions: string[];
+	installHint?: string;
 }
 
 export type LspSupportResult =
@@ -53,6 +54,7 @@ export class ServerManager {
 	private restartTimers = new Set<ReturnType<typeof setTimeout>>();
 	private unavailableServers = new Set<string>();
 	private serverLastErrors = new Map<string, string>();
+	private serverLastStartupErrors = new Map<string, string>();
 	private static MAX_RESTARTS = 3;
 	private mainWindow: BrowserWindow | null = null;
 
@@ -87,7 +89,7 @@ export class ServerManager {
 			return [""];
 		}
 
-		const pathExt = process.env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD";
+		const pathExt = process.env["PATHEXT"] ?? ".COM;.EXE;.BAT;.CMD";
 		const extensions = pathExt
 			.split(";")
 			.map((ext) => ext.trim())
@@ -137,7 +139,7 @@ export class ServerManager {
 			return false;
 		}
 
-		const pathEntries = (process.env.PATH ?? "").split(delimiter).filter(Boolean);
+		const pathEntries = (process.env["PATH"] ?? "").split(delimiter).filter(Boolean);
 		const commandSuffixes = this.isWindowsPlatform()
 			? this.getWindowsPathExts(trimmedCommand)
 			: [""];
@@ -172,6 +174,7 @@ export class ServerManager {
 		args: string[];
 		languages: string[];
 		fileExtensions: string[];
+		installHint?: string;
 	}): ServerConfig {
 		return {
 			id: config.id,
@@ -179,6 +182,7 @@ export class ServerManager {
 			args: config.args,
 			languages: config.languages,
 			fileExtensions: config.fileExtensions,
+			installHint: config.installHint,
 		};
 	}
 
@@ -280,11 +284,21 @@ export class ServerManager {
 				this.serverLastErrors.delete(unavailableKey);
 			}
 
+			const activeInstance = this.servers.get(this.serverKey(config.id, repoPath));
+			const activeSessionDocuments = activeInstance ? [...activeInstance.openDocuments] : [];
+			const installHint = config.installHint?.trim()
+				? config.installHint
+				: `Install '${config.command}' and ensure it is available on PATH.`;
+
 			entries.push({
 				id: config.id,
 				command: config.command,
 				available: executableAvailable,
 				lastError: this.serverLastErrors.get(unavailableKey),
+				lastStartupError: this.serverLastStartupErrors.get(unavailableKey),
+				activeSessions: activeInstance ? 1 : 0,
+				activeSessionDocuments,
+				installHint,
 			});
 		}
 
@@ -320,6 +334,7 @@ export class ServerManager {
 			console.error(`[LSP] Failed to spawn ${config.command}. Is it installed?`);
 			this.unavailableServers.add(unavailableKey);
 			this.serverLastErrors.set(unavailableKey, `Failed to spawn ${config.command}`);
+			this.serverLastStartupErrors.set(unavailableKey, `Failed to spawn ${config.command}`);
 			return null;
 		}
 
@@ -340,6 +355,7 @@ export class ServerManager {
 				console.error(`[LSP] Failed to spawn ${config.command}: ${err.message}`);
 				this.unavailableServers.add(unavailableKey);
 				this.serverLastErrors.set(unavailableKey, err.message);
+				this.serverLastStartupErrors.set(unavailableKey, err.message);
 				resolve(false);
 			};
 			const cleanup = () => {
@@ -447,6 +463,8 @@ export class ServerManager {
 			return connection;
 		} catch (err) {
 			console.error(`[LSP] Failed to initialize ${config.command}:`, err);
+			const message = err instanceof Error ? err.message : String(err);
+			this.serverLastStartupErrors.set(unavailableKey, message);
 			// Mark as shutting down to prevent crash recovery for init failures
 			instance.shuttingDown = true;
 			connection.dispose();

@@ -78,6 +78,10 @@ export interface LspHealthEntry {
 	command: string;
 	available: boolean;
 	lastError?: string;
+	lastStartupError?: string;
+	activeSessions?: number;
+	activeSessionDocuments?: string[];
+	installHint?: string;
 }
 
 export interface LspAPI {
