@@ -15,7 +15,7 @@ const serverSchema = z.object({
 });
 
 const configFileSchema = z.object({
-	servers: z.array(serverSchema).default([]),
+	servers: z.array(z.unknown()).default([]),
 });
 
 export type LanguageServerConfig = z.infer<typeof serverSchema>;
@@ -225,7 +225,15 @@ function loadConfigFile(path: string): LanguageServerConfig[] {
 		return [];
 	}
 
-	return parsed.data.servers;
+	const servers: LanguageServerConfig[] = [];
+	for (const server of parsed.data.servers) {
+		const serverResult = serverSchema.safeParse(server);
+		if (serverResult.success) {
+			servers.push(serverResult.data);
+		}
+	}
+
+	return servers;
 }
 
 function normalizeExtension(extension: string): string | null {

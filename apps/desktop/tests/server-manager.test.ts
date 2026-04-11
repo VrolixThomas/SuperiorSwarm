@@ -139,6 +139,21 @@ describe("ServerManager repo-aware resolution", () => {
 		expect(support).toMatchObject({ supported: false, reason: "missing-binary" });
 	});
 
+	test("getHealth marks missing executables unavailable before spawn attempt", () => {
+		const manager = new ServerManager();
+		const repoPath = createRepoWithConfig("health-missing", [
+			buildConfig("rust", "definitely-not-installed-lsp-binary"),
+		]);
+
+		const health = manager.getHealth(repoPath);
+		expect(health).toContainEqual({
+			id: "rust",
+			command: "definitely-not-installed-lsp-binary",
+			available: false,
+			lastError: "Executable not found: definitely-not-installed-lsp-binary",
+		});
+	});
+
 	test("getSupport resolves bare commands with PATHEXT on Windows", () => {
 		const manager = new ServerManager() as ServerManager & { isWindowsPlatform: () => boolean };
 		manager.isWindowsPlatform = () => true;

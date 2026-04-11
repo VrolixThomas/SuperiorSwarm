@@ -169,4 +169,112 @@ describe("lsp IPC handlers", () => {
 
 		expect(result).toEqual({ error: "No language server for elixir" });
 	});
+
+	test("lsp:request resolves config by file extension when languageId is unknown", async () => {
+		const sendRequest = mock(async () => ({ ok: true }));
+		mockServerManager.findConfig.mockImplementation(
+			(languageId: string, _repoPath: string, filePath?: string) => {
+				if (languageId === "unknown" && filePath === "/tmp/repo/lib/example.ex") {
+					return {
+						id: "elixir",
+						command: "elixir-ls",
+						args: [],
+						languages: ["elixir"],
+						fileExtensions: [".ex"],
+					};
+				}
+
+				return undefined;
+			}
+		);
+		mockServerManager.getOrCreate.mockImplementation(async () => ({ sendRequest }));
+
+		setupLspIPC({ webContents: { send: () => {} } } as never);
+		const handler = invokeHandlers.get("lsp:request");
+		expect(handler).toBeDefined();
+
+		const result = await handler?.(
+			{},
+			{
+				languageId: "unknown",
+				repoPath: "/tmp/repo",
+				method: "textDocument/hover",
+				params: {
+					textDocument: { uri: "file:///tmp/repo/lib/example.ex" },
+					position: { line: 0, character: 0 },
+				},
+			}
+		);
+
+		expect(mockServerManager.findConfig).toHaveBeenCalledWith(
+			"unknown",
+			"/tmp/repo",
+			"/tmp/repo/lib/example.ex"
+		);
+		expect(sendRequest).toHaveBeenCalledWith("textDocument/hover", {
+			textDocument: { uri: "file:///tmp/repo/lib/example.ex" },
+			position: { line: 0, character: 0 },
+		});
+		expect(result).toEqual({ result: { ok: true } });
+	});
+
+	test("lsp:notification resolves config by file extension when languageId is unknown", () => {
+		const sendNotification = mock(() => {});
+		mockServerManager.findConfig.mockImplementation(
+			(languageId: string, _repoPath: string, filePath?: string) => {
+				if (languageId === "unknown" && filePath === "/tmp/repo/lib/example.ex") {
+					return {
+						id: "elixir",
+						command: "elixir-ls",
+						args: [],
+						languages: ["elixir"],
+						fileExtensions: [".ex"],
+					};
+				}
+
+				return undefined;
+			}
+		);
+		mockServerManager.getConnection.mockImplementation(() => ({ sendNotification }));
+
+		setupLspIPC({ webContents: { send: () => {} } } as never);
+		const handler = eventHandlers.get("lsp:notification");
+		expect(handler).toBeDefined();
+
+		handler?.(
+			{},
+			{
+				languageId: "unknown",
+				repoPath: "/tmp/repo",
+				method: "textDocument/didOpen",
+				params: {
+					textDocument: {
+						uri: "file:///tmp/repo/lib/example.ex",
+						languageId: "unknown",
+						version: 1,
+						text: "hello",
+					},
+				},
+			}
+		);
+
+		expect(mockServerManager.findConfig).toHaveBeenCalledWith(
+			"unknown",
+			"/tmp/repo",
+			"/tmp/repo/lib/example.ex"
+		);
+		expect(sendNotification).toHaveBeenCalledWith("textDocument/didOpen", {
+			textDocument: {
+				uri: "file:///tmp/repo/lib/example.ex",
+				languageId: "unknown",
+				version: 1,
+				text: "hello",
+			},
+		});
+		expect(mockServerManager.trackDocument).toHaveBeenCalledWith(
+			"elixir",
+			"/tmp/repo",
+			"file:///tmp/repo/lib/example.ex"
+		);
+	});
 });

@@ -52,6 +52,7 @@ export class ServerManager {
 	private restartCounts = new Map<string, number>();
 	private restartTimers = new Set<ReturnType<typeof setTimeout>>();
 	private unavailableServers = new Set<string>();
+	private serverLastErrors = new Map<string, string>();
 	private static MAX_RESTARTS = 3;
 	private mainWindow: BrowserWindow | null = null;
 
@@ -240,6 +241,7 @@ export class ServerManager {
 
 		if (!executableAvailable) {
 			this.unavailableServers.add(unavailableKey);
+			this.serverLastErrors.set(unavailableKey, `Executable not found: ${config.command}`);
 			return {
 				supported: false,
 				reason: "missing-binary",
@@ -248,6 +250,7 @@ export class ServerManager {
 		}
 
 		this.unavailableServers.delete(unavailableKey);
+		this.serverLastErrors.delete(unavailableKey);
 
 		return {
 			supported: true,
@@ -265,10 +268,23 @@ export class ServerManager {
 				continue;
 			}
 
+			const unavailableKey = this.unavailableServerKey(config.id, repoPath);
+			const executableAvailable = this.isServerExecutableAvailable(config.command, repoPath);
+			if (!executableAvailable) {
+				this.unavailableServers.add(unavailableKey);
+				if (!this.serverLastErrors.has(unavailableKey)) {
+					this.serverLastErrors.set(unavailableKey, `Executable not found: ${config.command}`);
+				}
+			} else {
+				this.unavailableServers.delete(unavailableKey);
+				this.serverLastErrors.delete(unavailableKey);
+			}
+
 			entries.push({
 				id: config.id,
 				command: config.command,
-				available: !this.unavailableServers.has(this.unavailableServerKey(config.id, repoPath)),
+				available: executableAvailable,
+				lastError: this.serverLastErrors.get(unavailableKey),
 			});
 		}
 
@@ -303,6 +319,7 @@ export class ServerManager {
 		} catch {
 			console.error(`[LSP] Failed to spawn ${config.command}. Is it installed?`);
 			this.unavailableServers.add(unavailableKey);
+			this.serverLastErrors.set(unavailableKey, `Failed to spawn ${config.command}`);
 			return null;
 		}
 
@@ -322,6 +339,7 @@ export class ServerManager {
 				cleanup();
 				console.error(`[LSP] Failed to spawn ${config.command}: ${err.message}`);
 				this.unavailableServers.add(unavailableKey);
+				this.serverLastErrors.set(unavailableKey, err.message);
 				resolve(false);
 			};
 			const cleanup = () => {
@@ -333,6 +351,9 @@ export class ServerManager {
 		});
 
 		if (!spawnResult) return null;
+
+		this.unavailableServers.delete(unavailableKey);
+		this.serverLastErrors.delete(unavailableKey);
 
 		const connection = createMessageConnection(childProcess.stdout, childProcess.stdin);
 

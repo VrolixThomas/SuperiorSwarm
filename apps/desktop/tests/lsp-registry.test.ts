@@ -182,4 +182,43 @@ describe("loadRepoConfig", () => {
 			rmSync(testDir, { recursive: true, force: true });
 		}
 	});
+
+	test("keeps valid server entries when some entries are invalid", () => {
+		const testDir = join(tmpdir(), `ss-lsp-registry-${Date.now()}-mixed`);
+		const configDir = join(testDir, ".superiorswarm");
+		mkdirSync(configDir, { recursive: true });
+		writeFileSync(
+			join(configDir, "lsp.json"),
+			JSON.stringify({
+				servers: [
+					{
+						id: "ruby",
+						command: "solargraph",
+						args: ["stdio"],
+						languages: ["ruby"],
+						fileExtensions: [".rb"],
+						rootMarkers: ["Gemfile", ".git"],
+						disabled: false,
+					},
+					{ id: "invalid-entry-missing-command" },
+				],
+			})
+		);
+
+		try {
+			expect(loadRepoConfig(testDir)).toEqual([
+				{
+					id: "ruby",
+					command: "solargraph",
+					args: ["stdio"],
+					languages: ["ruby"],
+					fileExtensions: [".rb"],
+					rootMarkers: ["Gemfile", ".git"],
+					disabled: false,
+				},
+			]);
+		} finally {
+			rmSync(testDir, { recursive: true, force: true });
+		}
+	});
 });
