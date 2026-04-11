@@ -26,6 +26,7 @@ function CandidateNode({
 	entry,
 	depth,
 	onAdd,
+	onAddDir,
 	isAdding,
 	expandedPaths,
 	toggleExpanded,
@@ -34,6 +35,7 @@ function CandidateNode({
 	entry: CandidateEntry;
 	depth: number;
 	onAdd: (path: string) => void;
+	onAddDir: (path: string) => void;
 	isAdding: boolean;
 	expandedPaths: Set<string>;
 	toggleExpanded: (path: string) => void;
@@ -91,43 +93,72 @@ function CandidateNode({
 
 	return (
 		<>
-			<button
-				type="button"
-				className="flex w-full items-center gap-3 border-b border-[rgba(255,255,255,0.05)] last:border-b-0 group/dir hover:bg-[rgba(255,255,255,0.03)] transition-colors duration-75 cursor-pointer"
+			<div
+				className="flex w-full items-center gap-3 border-b border-[rgba(255,255,255,0.05)] last:border-b-0 group/dir hover:bg-[rgba(255,255,255,0.03)] transition-colors duration-75"
 				style={{
 					paddingTop: "11px",
 					paddingBottom: "11px",
 					paddingLeft: `${22 + depth * 22}px`,
 					paddingRight: "20px",
 				}}
-				onClick={() => toggleExpanded(entry.relativePath)}
 			>
-				{/* Chevron in same-width container as checkbox for column alignment */}
-				<div className="shrink-0 w-[18px] flex items-center justify-center">
+				{/* Add-folder button */}
+				<button
+					type="button"
+					onClick={() => onAddDir(entry.relativePath)}
+					disabled={isAdding}
+					className="group/add shrink-0 h-[18px] w-[18px] rounded-[4px] flex items-center justify-center border border-[rgba(255,255,255,0.22)] hover:border-[var(--accent)] hover:bg-[rgba(10,132,255,0.12)] transition-all duration-100 disabled:opacity-40"
+					aria-label={`Add ${entry.name} folder to shared files`}
+				>
 					<svg
+						width="10"
+						height="8"
+						viewBox="0 0 10 8"
+						fill="none"
 						aria-hidden="true"
-						width="9"
-						height="9"
-						viewBox="0 0 9 9"
-						className={`text-[rgba(255,255,255,0.3)] group-hover/dir:text-[var(--accent)] transition-all duration-150 ${isExpanded ? "rotate-90" : ""}`}
+						className="opacity-0 group-hover/add:opacity-60 transition-opacity duration-100"
 					>
 						<path
-							d="M2.5 1.5l4 3-4 3"
-							fill="none"
-							stroke="currentColor"
+							d="M1 4l3 3 5-6"
+							stroke="var(--accent)"
 							strokeWidth="1.5"
 							strokeLinecap="round"
 							strokeLinejoin="round"
 						/>
 					</svg>
-				</div>
-				<span className="flex-1 truncate text-[13px] font-[var(--font-mono)] text-[rgba(255,255,255,0.82)] group-hover/dir:text-white transition-colors duration-75 leading-none">
-					{entry.name}/
-				</span>
-				<span className="shrink-0 rounded-[4px] bg-[rgba(10,132,255,0.1)] border border-[rgba(10,132,255,0.18)] px-[6px] py-[3px] text-[10.5px] tabular-nums text-[rgba(10,132,255,0.85)] font-semibold leading-none">
-					{fileCount}
-				</span>
-			</button>
+				</button>
+				{/* Expand toggle */}
+				<button
+					type="button"
+					className="flex flex-1 items-center gap-3 min-w-0 cursor-pointer"
+					onClick={() => toggleExpanded(entry.relativePath)}
+				>
+					<div className="shrink-0 w-[18px] flex items-center justify-center">
+						<svg
+							aria-hidden="true"
+							width="9"
+							height="9"
+							viewBox="0 0 9 9"
+							className={`text-[rgba(255,255,255,0.3)] group-hover/dir:text-[var(--accent)] transition-all duration-150 ${isExpanded ? "rotate-90" : ""}`}
+						>
+							<path
+								d="M2.5 1.5l4 3-4 3"
+								fill="none"
+								stroke="currentColor"
+								strokeWidth="1.5"
+								strokeLinecap="round"
+								strokeLinejoin="round"
+							/>
+						</svg>
+					</div>
+					<span className="flex-1 truncate text-[13px] font-[var(--font-mono)] text-[rgba(255,255,255,0.82)] group-hover/dir:text-white transition-colors duration-75 leading-none">
+						{entry.name}/
+					</span>
+					<span className="shrink-0 rounded-[4px] bg-[rgba(10,132,255,0.1)] border border-[rgba(10,132,255,0.18)] px-[6px] py-[3px] text-[10.5px] tabular-nums text-[rgba(10,132,255,0.85)] font-semibold leading-none">
+						{fileCount}
+					</span>
+				</button>
+			</div>
 			{isExpanded &&
 				entry.children?.map((child) => (
 					<CandidateNode
@@ -135,6 +166,7 @@ function CandidateNode({
 						entry={child}
 						depth={depth + 1}
 						onAdd={onAdd}
+						onAddDir={onAddDir}
 						isAdding={isAdding}
 						expandedPaths={expandedPaths}
 						toggleExpanded={toggleExpanded}
@@ -171,6 +203,17 @@ export function SharedFilesPanel() {
 	);
 
 	const addMutation = trpc.sharedFiles.add.useMutation({
+		onSuccess: () => {
+			setPickerError(null);
+			utils.sharedFiles.list.invalidate();
+			utils.sharedFiles.discoverCandidates.invalidate();
+		},
+		onError: (err) => {
+			setPickerError(err.message);
+		},
+	});
+
+	const addBatchMutation = trpc.sharedFiles.addBatch.useMutation({
 		onSuccess: () => {
 			setPickerError(null);
 			utils.sharedFiles.list.invalidate();
@@ -227,6 +270,11 @@ export function SharedFilesPanel() {
 		addMutation.mutate({ projectId, relativePath });
 	}
 
+	function handleQuickAddDir(relativePath: string) {
+		if (!projectId || addMutation.isPending || addBatchMutation.isPending) return;
+		addBatchMutation.mutate({ projectId, relativePaths: [relativePath] });
+	}
+
 	async function handleFilePicker() {
 		if (!projectId || addMutation.isPending) return;
 		const repoPath = projectQuery.data?.repoPath;
@@ -241,6 +289,25 @@ export function SharedFilesPanel() {
 		}
 		const relativePath = absolutePath.slice(prefix.length);
 		addMutation.mutate({ projectId, relativePath });
+	}
+
+	async function handleFolderPicker() {
+		if (!projectId || addMutation.isPending || addBatchMutation.isPending) return;
+		const repoPath = projectQuery.data?.repoPath;
+		if (!repoPath) return;
+		setPickerError(null);
+		const paths = await window.electron.dialog.openDirectory();
+		if (!paths || paths.length === 0) return;
+		const prefix = repoPath.endsWith("/") ? repoPath : `${repoPath}/`;
+		const relativePaths: string[] = [];
+		for (const absolutePath of paths) {
+			if (!absolutePath.startsWith(prefix)) {
+				setPickerError("All folders must be inside the repository.");
+				return;
+			}
+			relativePaths.push(absolutePath.slice(prefix.length));
+		}
+		addBatchMutation.mutate({ projectId, relativePaths });
 	}
 
 	function handleSync() {
@@ -309,6 +376,7 @@ export function SharedFilesPanel() {
 				<div className="flex-1 overflow-y-auto">
 					{/* Error display */}
 					{(addMutation.isError ||
+						addBatchMutation.isError ||
 						removeMutation.isError ||
 						syncMutation.isError ||
 						pickerError) && (
@@ -339,21 +407,37 @@ export function SharedFilesPanel() {
 										key={file.id}
 										className="flex items-center gap-3 px-6 py-[11px] group/active hover:bg-[rgba(255,255,255,0.03)] transition-colors duration-75 border-b border-[rgba(255,255,255,0.05)] last:border-b-0"
 									>
-										<svg
-											aria-hidden="true"
-											width="12"
-											height="14"
-											viewBox="0 0 12 14"
-											fill="none"
-											className="shrink-0 text-[rgba(255,255,255,0.2)]"
-										>
-											<path
-												d="M1.5 1h7l3 3v8.5a.5.5 0 01-.5.5h-9a.5.5 0 01-.5-.5v-11A.5.5 0 011.5 1z"
-												fill="currentColor"
-											/>
-										</svg>
+										{file.type === "directory" ? (
+											<svg
+												aria-hidden="true"
+												width="14"
+												height="12"
+												viewBox="0 0 14 12"
+												fill="none"
+												className="shrink-0 text-[rgba(255,255,255,0.2)]"
+											>
+												<path
+													d="M1 4A1.5 1.5 0 012.5 2.5h3.086a1.5 1.5 0 011.06.44l.915.914A1.5 1.5 0 008.62 4.5H12.5A1.5 1.5 0 0114 6v4.5A1.5 1.5 0 0112.5 12h-11A1.5 1.5 0 011 10.5V4z"
+													fill="currentColor"
+												/>
+											</svg>
+										) : (
+											<svg
+												aria-hidden="true"
+												width="12"
+												height="14"
+												viewBox="0 0 12 14"
+												fill="none"
+												className="shrink-0 text-[rgba(255,255,255,0.2)]"
+											>
+												<path
+													d="M1.5 1h7l3 3v8.5a.5.5 0 01-.5.5h-9a.5.5 0 01-.5-.5v-11A.5.5 0 011.5 1z"
+													fill="currentColor"
+												/>
+											</svg>
+										)}
 										<span className="flex-1 truncate text-[13px] font-[var(--font-mono)] leading-none text-[rgba(255,255,255,0.7)]">
-											{file.relativePath}
+											{file.relativePath}{file.type === "directory" ? "/" : ""}
 										</span>
 										<button
 											type="button"
@@ -409,7 +493,8 @@ export function SharedFilesPanel() {
 										entry={entry}
 										depth={0}
 										onAdd={handleQuickAdd}
-										isAdding={addMutation.isPending}
+										onAddDir={handleQuickAddDir}
+										isAdding={addMutation.isPending || addBatchMutation.isPending}
 										expandedPaths={expandedPaths}
 										toggleExpanded={toggleExpanded}
 										searchQuery={searchQuery}
@@ -435,46 +520,74 @@ export function SharedFilesPanel() {
 						</div>
 					)}
 
-					{/* File picker — replaces manual text input */}
+					{/* File / Folder picker */}
 					<div className="pt-5 pb-5 px-6 mt-3 border-t border-[rgba(255,255,255,0.06)]">
 						<div className="flex items-center gap-2 pb-4">
 							<span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[rgba(255,255,255,0.3)]">
-								Add File
+								Add
 							</span>
 						</div>
-						<button
-							type="button"
-							onClick={handleFilePicker}
-							disabled={addMutation.isPending || !projectQuery.data}
-							className="w-full flex items-center gap-4 rounded-[10px] px-5 py-4 border border-dashed border-[rgba(255,255,255,0.12)] text-[rgba(255,255,255,0.35)] hover:border-[rgba(255,255,255,0.25)] hover:bg-[rgba(255,255,255,0.03)] hover:text-[rgba(255,255,255,0.65)] transition-all duration-150 disabled:opacity-30 group/picker"
-						>
-							<svg
-								aria-hidden="true"
-								width="18"
-								height="18"
-								viewBox="0 0 18 18"
-								fill="none"
-								className="shrink-0 group-hover/picker:text-[var(--accent)] transition-colors duration-150"
+						<div className="flex flex-col gap-2">
+							<button
+								type="button"
+								onClick={handleFilePicker}
+								disabled={addMutation.isPending || addBatchMutation.isPending || !projectQuery.data}
+								className="w-full flex items-center gap-4 rounded-[10px] px-5 py-4 border border-dashed border-[rgba(255,255,255,0.12)] text-[rgba(255,255,255,0.35)] hover:border-[rgba(255,255,255,0.25)] hover:bg-[rgba(255,255,255,0.03)] hover:text-[rgba(255,255,255,0.65)] transition-all duration-150 disabled:opacity-30 group/picker"
 							>
-								<path
-									d="M2 3.5A1.5 1.5 0 013.5 2h4.086a1.5 1.5 0 011.06.44l1.415 1.414A1.5 1.5 0 0011.12 4.5H14.5A1.5 1.5 0 0116 6v8.5A1.5 1.5 0 0114.5 16h-11A1.5 1.5 0 012 14.5V3.5z"
-									stroke="currentColor"
-									strokeWidth="1.25"
-									strokeLinecap="round"
-									strokeLinejoin="round"
-								/>
-								<path
-									d="M9 8v5M6.5 10.5L9 8l2.5 2.5"
-									stroke="currentColor"
-									strokeWidth="1.25"
-									strokeLinecap="round"
-									strokeLinejoin="round"
-								/>
-							</svg>
-							<span className="text-[13px] font-medium">
-								{addMutation.isPending ? "Adding…" : "Choose a file from the repository…"}
-							</span>
-						</button>
+								<svg
+									aria-hidden="true"
+									width="18"
+									height="18"
+									viewBox="0 0 18 18"
+									fill="none"
+									className="shrink-0 group-hover/picker:text-[var(--accent)] transition-colors duration-150"
+								>
+									<path
+										d="M1.5 1h7l3 3v8.5a.5.5 0 01-.5.5h-9a.5.5 0 01-.5-.5v-11A.5.5 0 011.5 1z"
+										stroke="currentColor"
+										strokeWidth="1.25"
+										strokeLinecap="round"
+										strokeLinejoin="round"
+									/>
+									<path
+										d="M9 8v5M6.5 10.5L9 8l2.5 2.5"
+										stroke="currentColor"
+										strokeWidth="1.25"
+										strokeLinecap="round"
+										strokeLinejoin="round"
+									/>
+								</svg>
+								<span className="text-[13px] font-medium">
+									{addMutation.isPending ? "Adding…" : "Choose a file…"}
+								</span>
+							</button>
+							<button
+								type="button"
+								onClick={handleFolderPicker}
+								disabled={addMutation.isPending || addBatchMutation.isPending || !projectQuery.data}
+								className="w-full flex items-center gap-4 rounded-[10px] px-5 py-4 border border-dashed border-[rgba(255,255,255,0.12)] text-[rgba(255,255,255,0.35)] hover:border-[rgba(255,255,255,0.25)] hover:bg-[rgba(255,255,255,0.03)] hover:text-[rgba(255,255,255,0.65)] transition-all duration-150 disabled:opacity-30 group/picker"
+							>
+								<svg
+									aria-hidden="true"
+									width="18"
+									height="18"
+									viewBox="0 0 18 18"
+									fill="none"
+									className="shrink-0 group-hover/picker:text-[var(--accent)] transition-colors duration-150"
+								>
+									<path
+										d="M1 5A1.5 1.5 0 012.5 3.5h4.086a1.5 1.5 0 011.06.44l.915.914A1.5 1.5 0 009.62 5.5H15.5A1.5 1.5 0 0117 7v7.5A1.5 1.5 0 0115.5 16h-13A1.5 1.5 0 011 14.5V5z"
+										stroke="currentColor"
+										strokeWidth="1.25"
+										strokeLinecap="round"
+										strokeLinejoin="round"
+									/>
+								</svg>
+								<span className="text-[13px] font-medium">
+									{addBatchMutation.isPending ? "Adding…" : "Choose a folder…"}
+								</span>
+							</button>
+						</div>
 					</div>
 				</div>
 
