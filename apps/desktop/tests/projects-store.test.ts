@@ -18,6 +18,11 @@ describe("useProjectStore — settings", () => {
 		expect(useProjectStore.getState().settingsCategory).toBe("integrations");
 	});
 
+	test("accepts lsp category", () => {
+		useProjectStore.getState().setSettingsCategory("lsp");
+		expect(useProjectStore.getState().settingsCategory).toBe("lsp");
+	});
+
 	test("openSettings resets category to general", () => {
 		useProjectStore.getState().setSettingsCategory("ai-review");
 		useProjectStore.getState().openSettings();

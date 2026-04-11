@@ -9,6 +9,7 @@ export type SettingsCategory =
 	| "shortcuts"
 	| "terminals"
 	| "worktrees"
+	| "lsp"
 	| "about";
 
 interface ProjectStore {
