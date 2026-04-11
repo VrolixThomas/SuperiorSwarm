@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.4.7 (2026-04-12)
+
+### What's New
+
+SuperiorSwarm now supports adding entire directories to the Shared Files panel. You can pick a folder using the new folder picker, and the app will automatically detect whether an entry is a file or directory. Shared folders are tracked alongside individual files, making it easier to share entire project directories with your agents.
+
+### Changes
+
+- feat: shared files directory support (#72)
+- Feat/shared files directory support (#71)
+
 ## v0.4.6 (2026-04-10)
 
 ### What's New
