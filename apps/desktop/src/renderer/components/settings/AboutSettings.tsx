@@ -6,6 +6,9 @@ export function AboutSettings() {
 	const statusQuery = trpc.updates.getStatus.useQuery(undefined, {
 		staleTime: 30_000,
 	});
+	const systemQuery = trpc.system.getAgentNotifyPort.useQuery(undefined, {
+		staleTime: 30_000,
+	});
 	const checkForUpdates = trpc.updates.checkForUpdates.useMutation({
 		onSuccess: () => statusQuery.refetch(),
 	});
@@ -126,6 +129,8 @@ export function AboutSettings() {
 				<div className="text-[10px] leading-[1.6] text-[var(--text-quaternary)]">
 					SuperiorSwarm v{currentVersion} ·{" "}
 					{navigator.userAgentData?.platform ?? navigator.platform}
+					<br />
+					Agent notify port: {systemQuery.data?.port ?? "—"}
 					<br />© {new Date().getFullYear()} SuperiorSwarm
 				</div>
 			</div>

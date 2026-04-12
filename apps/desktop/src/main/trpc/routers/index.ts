@@ -16,6 +16,7 @@ import { remoteRouter } from "./remote";
 import { sharedFilesRouter } from "./shared-files";
 import { terminalSessionsRouter } from "./terminal-sessions";
 import { ticketsRouter } from "./tickets";
+import { systemRouter } from "./system";
 import { updatesRouter } from "./updates";
 import { workspacesRouter } from "./workspaces";
 
@@ -39,6 +40,7 @@ export const appRouter = router({
 	tickets: ticketsRouter,
 	prPoller: prPollerRouter,
 	updates: updatesRouter,
+	system: systemRouter,
 });
 
 export type AppRouter = typeof appRouter;
