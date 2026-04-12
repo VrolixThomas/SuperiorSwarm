@@ -604,7 +604,6 @@ function StatusStrip({
 function ReviewBottomBar({
 	statusMessage,
 	isSolving,
-	pendingCount,
 	showVerdictConfirmation,
 	isSubmitting,
 	onDismiss,
@@ -614,7 +613,6 @@ function ReviewBottomBar({
 }: {
 	statusMessage: string;
 	isSolving: boolean;
-	pendingCount: number;
 	showVerdictConfirmation: boolean;
 	isSubmitting: boolean;
 	onDismiss: () => void;
@@ -647,13 +645,7 @@ function ReviewBottomBar({
 					<button
 						type="button"
 						onClick={onShowVerdict}
-						disabled={pendingCount > 0}
-						className={[
-							"px-4 py-[6px] rounded-[6px] text-[12px] font-semibold border-none",
-							pendingCount === 0
-								? "cursor-pointer bg-[var(--success)] text-white"
-								: "cursor-not-allowed bg-[var(--bg-active)] text-[var(--text-tertiary)]",
-						].join(" ")}
+						className="px-4 py-[6px] rounded-[6px] text-[12px] font-semibold border-none cursor-pointer bg-[var(--success)] text-white"
 					>
 						Submit Review
 					</button>
@@ -1003,7 +995,6 @@ export function PROverviewTab({ prCtx }: { prCtx: PRContext }) {
 				<ReviewBottomBar
 					statusMessage={statusMessage}
 					isSolving={isSolving}
-					pendingCount={pendingCount}
 					showVerdictConfirmation={showVerdictConfirmation}
 					isSubmitting={submitReview.isPending}
 					onDismiss={() => dismissPending.mutate({ draftId })}
