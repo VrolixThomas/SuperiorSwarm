@@ -109,9 +109,8 @@ export const aiReviewRouter = router({
 					roundNumber: draft.roundNumber,
 					status: draft.status,
 					commentCount: comments.length,
-					approvedCount: comments.filter(
-						(c) => c.status === "approved" || c.status === "submitted"
-					).length,
+					approvedCount: comments.filter((c) => c.status === "approved" || c.status === "submitted")
+						.length,
 					rejectedCount: comments.filter((c) => c.status === "rejected").length,
 					createdAt: draft.createdAt.toISOString(),
 				};

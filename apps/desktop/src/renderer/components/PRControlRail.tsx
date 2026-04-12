@@ -575,9 +575,7 @@ function CommentsTab({
 								<span className="flex-1 truncate [font-family:var(--font-mono)] text-[11px] text-[var(--text-secondary)]">
 									{path}
 								</span>
-								<span className="shrink-0 text-[10px] text-[var(--text-quaternary)]">
-									{count}
-								</span>
+								<span className="shrink-0 text-[10px] text-[var(--text-quaternary)]">{count}</span>
 							</button>
 						))
 					)}
@@ -1043,7 +1041,11 @@ export function PRControlRail({ prCtx }: { prCtx: PRContext }) {
 					aiThreads={[...aiThreads, ...userPendingThreads]}
 					summaryMarkdown={aiDraftQuery.data?.summaryMarkdown ?? null}
 					onShowSummary={() => activeWorkspaceId && openPROverview(activeWorkspaceId, prCtx)}
-					hasActiveDraft={!!matchingDraft && matchingDraft.status !== "dismissed" && matchingDraft.status !== "submitted"}
+					hasActiveDraft={
+						!!matchingDraft &&
+						matchingDraft.status !== "dismissed" &&
+						matchingDraft.status !== "submitted"
+					}
 				/>
 			)}
 			{tab === "files" && prCtx.repoPath && activeWorkspaceId && (

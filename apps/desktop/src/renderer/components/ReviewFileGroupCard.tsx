@@ -30,8 +30,7 @@ export function ReviewFileGroupCard({
 	onOpenInDiff,
 }: ReviewFileGroupCardProps) {
 	const nonRejected = comments.filter((c) => c.status !== "rejected");
-	const allApproved =
-		nonRejected.length > 0 && nonRejected.every((c) => c.status === "approved");
+	const allApproved = nonRejected.length > 0 && nonRejected.every((c) => c.status === "approved");
 	const [expanded, setExpanded] = useState(allApproved ? false : defaultExpanded);
 
 	const approvedCount = nonRejected.filter((c) => c.status === "approved").length;
@@ -241,15 +240,11 @@ function CommentRow({
 						)}
 
 						{isApproved && (
-							<span className="text-[10.5px] font-medium text-[var(--success)]">
-								✓ Approved
-							</span>
+							<span className="text-[10.5px] font-medium text-[var(--success)]">✓ Approved</span>
 						)}
 
 						{isEdited && !editing && (
-							<span className="text-[10.5px] font-medium text-[var(--accent)]">
-								Edited
-							</span>
+							<span className="text-[10.5px] font-medium text-[var(--accent)]">Edited</span>
 						)}
 
 						{!isApproved && !isEdited && !editing && (
