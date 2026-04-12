@@ -64,7 +64,7 @@ When you discover something non-obvious that required reading 2+ files to piece 
 This project has a graphify knowledge graph at graphify-out/. The god nodes and community summary are **pre-loaded into context at session start** via a SessionStart hook.
 
 Rules:
-- **NEVER use Glob, Grep, or Read to survey codebase structure.** Use the knowledge graph instead.
+- **NEVER use Glob or Grep to find files.** Use the knowledge graph to identify which files to read, then Read them directly.
 - Start all codebase exploration from `graphify-out/GRAPH_REPORT.md` — it is already in your context.
-- For node detail, navigate `graphify-out/obsidian/<NodeName>.md` directly.
+- For node detail (including file path), navigate `graphify-out/obsidian/<NodeName>.md` — then Read the source file.
 - After modifying code files in this session, run `python3 -c "from graphify.watch import _rebuild_code; from pathlib import Path; _rebuild_code(Path('.'))"` to keep the graph current
