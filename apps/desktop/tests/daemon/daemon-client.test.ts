@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, rmSync } from "node:fs";
+import { existsSync, rmSync, writeFileSync } from "node:fs";
 import { type Server, type Socket, createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DaemonClient } from "../../src/main/terminal/daemon-client";
+import { DaemonOwnershipMismatchError } from "../../src/main/terminal/daemon-ownership";
 
 const TEST_SOCKET = join(tmpdir(), `superiorswarm-client-test-${process.pid}.sock`);
 const TEST_PID = join(tmpdir(), `superiorswarm-client-test-${process.pid}.pid`);
@@ -26,8 +27,11 @@ function startMockDaemon(
 			let buf = "";
 			socket.on("data", (chunk) => {
 				buf += chunk.toString();
-				let nl: number;
-				while ((nl = buf.indexOf("\n")) !== -1) {
+				for (;;) {
+					const nl = buf.indexOf("\n");
+					if (nl === -1) {
+						break;
+					}
 					const line = buf.slice(0, nl).trim();
 					buf = buf.slice(nl + 1);
 					if (!line) continue;
@@ -244,6 +248,19 @@ describe("DaemonClient", () => {
 		expect(client.isConnected).toBe(false);
 	});
 
+	test("disconnect does not schedule reconnect attempts", async () => {
+		client.disconnect();
+
+		await new Promise<void>((r) => setTimeout(r, 50));
+
+		const internals = client as unknown as {
+			reconnecting: boolean;
+			reconnectTimer: ReturnType<typeof setTimeout> | null;
+		};
+		expect(internals.reconnecting).toBe(false);
+		expect(internals.reconnectTimer).toBeNull();
+	});
+
 	test("connects successfully when stale socket file exists", async () => {
 		// Disconnect the client from beforeEach and stop the mock daemon
 		client.disconnect();
@@ -301,4 +318,268 @@ describe("DaemonClient", () => {
 		if (existsSync(noPid)) rmSync(noPid);
 		if (existsSync(noLog)) rmSync(noLog);
 	}, 10_000);
+
+	test("queues outbound messages during backpressure and flushes on drain", async () => {
+		const received: Array<Record<string, unknown>> = [];
+		const daemonSocket = daemon.lastSocket();
+		expect(daemonSocket).not.toBeNull();
+		if (!daemonSocket) return;
+
+		let daemonBuffer = "";
+		daemonSocket.on("data", (chunk) => {
+			daemonBuffer += chunk.toString("utf-8");
+			for (;;) {
+				const newline = daemonBuffer.indexOf("\n");
+				if (newline === -1) break;
+				const line = daemonBuffer.slice(0, newline).trim();
+				daemonBuffer = daemonBuffer.slice(newline + 1);
+				if (!line) continue;
+				try {
+					received.push(JSON.parse(line) as Record<string, unknown>);
+				} catch {}
+			}
+		});
+
+		const internalSocket = (client as unknown as { socket: Socket | null }).socket;
+		expect(internalSocket).not.toBeNull();
+		if (!internalSocket) return;
+
+		const originalWrite = internalSocket.write.bind(internalSocket);
+		let forcedBackpressure = false;
+		(internalSocket as unknown as { write: Socket["write"] }).write = ((
+			data: Parameters<Socket["write"]>[0],
+			encoding?: Parameters<Socket["write"]>[1],
+			cb?: Parameters<Socket["write"]>[2]
+		) => {
+			const result = originalWrite(data, encoding, cb);
+			if (!forcedBackpressure) {
+				forcedBackpressure = true;
+				return false;
+			}
+			return result;
+		}) as Socket["write"];
+
+		try {
+			client.write("term-1", "alpha");
+			client.resize("term-1", 100, 40);
+
+			await new Promise<void>((r) => setTimeout(r, 100));
+			const typesBeforeDrain = received.map((m) => m["type"]);
+			expect(typesBeforeDrain).toContain("write");
+			expect(typesBeforeDrain).not.toContain("resize");
+
+			internalSocket.emit("drain");
+			await new Promise<void>((r) => setTimeout(r, 100));
+
+			const typesAfterDrain = received.map((m) => m["type"]);
+			expect(typesAfterDrain).toContain("resize");
+		} finally {
+			(internalSocket as unknown as { write: Socket["write"] }).write = originalWrite;
+		}
+	});
+
+	test("disconnect during backpressure clears drain state so reconnect writes are sent", async () => {
+		const nonce = `${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+		const isolatedSocket = join(tmpdir(), `ss-drain-reset-${nonce}.sock`);
+		const isolatedPid = join(tmpdir(), `ss-drain-reset-${nonce}.pid`);
+		const isolatedLog = join(tmpdir(), `ss-drain-reset-${nonce}.log`);
+		if (existsSync(isolatedSocket)) rmSync(isolatedSocket);
+		if (existsSync(isolatedPid)) rmSync(isolatedPid);
+		if (existsSync(isolatedLog)) rmSync(isolatedLog);
+		const received: Array<Record<string, unknown>> = [];
+		const trackedDaemon = await startMockDaemon(
+			(msg) => {
+				received.push(msg as Record<string, unknown>);
+			},
+			undefined,
+			isolatedSocket
+		);
+		const trackedClient = new DaemonClient(isolatedSocket, isolatedPid, isolatedLog);
+		await trackedClient.connect();
+
+		const internalSocket = (trackedClient as unknown as { socket: Socket | null }).socket;
+		expect(internalSocket).not.toBeNull();
+		if (!internalSocket) return;
+
+		const originalWrite = internalSocket.write.bind(internalSocket);
+		let forcedBackpressure = false;
+		(internalSocket as unknown as { write: Socket["write"] }).write = ((
+			data: Parameters<Socket["write"]>[0],
+			encoding?: Parameters<Socket["write"]>[1],
+			cb?: Parameters<Socket["write"]>[2]
+		) => {
+			const result = originalWrite(data, encoding, cb);
+			if (!forcedBackpressure) {
+				forcedBackpressure = true;
+				return false;
+			}
+			return result;
+		}) as Socket["write"];
+
+		try {
+			trackedClient.write("term-1", "before-disconnect");
+			await new Promise<void>((r) => setTimeout(r, 80));
+
+			trackedClient.disconnect();
+			await new Promise<void>((r) => setTimeout(r, 80));
+			await trackedClient.connect();
+
+			trackedClient.write("term-1", "after-reconnect");
+			await new Promise<void>((r) => setTimeout(r, 120));
+
+			const reconnectWrites = received.filter((msg) => {
+				return msg["type"] === "write" && msg["data"] === "after-reconnect";
+			});
+			expect(reconnectWrites.length).toBe(1);
+		} finally {
+			(internalSocket as unknown as { write: Socket["write"] }).write = originalWrite;
+			trackedClient.disconnect();
+			trackedDaemon.server.close();
+			if (existsSync(isolatedSocket)) rmSync(isolatedSocket);
+			if (existsSync(isolatedPid)) rmSync(isolatedPid);
+			if (existsSync(isolatedLog)) rmSync(isolatedLog);
+		}
+	}, 10_000);
+
+	test("preserves control-plane messages when queued bytes limit is exceeded", async () => {
+		const received: Array<Record<string, unknown>> = [];
+		const daemonSocket = daemon.lastSocket();
+		expect(daemonSocket).not.toBeNull();
+		if (!daemonSocket) return;
+
+		let daemonBuffer = "";
+		daemonSocket.on("data", (chunk) => {
+			daemonBuffer += chunk.toString("utf-8");
+			for (;;) {
+				const newline = daemonBuffer.indexOf("\n");
+				if (newline === -1) break;
+				const line = daemonBuffer.slice(0, newline).trim();
+				daemonBuffer = daemonBuffer.slice(newline + 1);
+				if (!line) continue;
+				try {
+					received.push(JSON.parse(line) as Record<string, unknown>);
+				} catch {}
+			}
+		});
+
+		const internalSocket = (client as unknown as { socket: Socket | null }).socket;
+		expect(internalSocket).not.toBeNull();
+		if (!internalSocket) return;
+
+		const originalWarn = console.warn;
+		const warnings: string[] = [];
+		console.warn = (...args: unknown[]) => {
+			warnings.push(args.map((a) => String(a)).join(" "));
+		};
+
+		const originalWrite = internalSocket.write.bind(internalSocket);
+		let forcedBackpressure = false;
+		(internalSocket as unknown as { write: Socket["write"] }).write = ((
+			data: Parameters<Socket["write"]>[0],
+			encoding?: Parameters<Socket["write"]>[1],
+			cb?: Parameters<Socket["write"]>[2]
+		) => {
+			const result = originalWrite(data, encoding, cb);
+			if (!forcedBackpressure) {
+				forcedBackpressure = true;
+				return false;
+			}
+			return result;
+		}) as Socket["write"];
+
+		try {
+			client.write("term-1", "first");
+			for (let i = 0; i < 120; i++) {
+				client.write("term-1", "x".repeat(6_000));
+			}
+			client.dispose("term-1");
+
+			internalSocket.emit("drain");
+			await new Promise<void>((r) => setTimeout(r, 120));
+
+			const writes = received.filter((m) => m["type"] === "write");
+			const disposes = received.filter((m) => m["type"] === "dispose");
+			expect(writes.length).toBeLessThan(121);
+			expect(disposes.length).toBe(1);
+			expect(warnings.some((w) => w.includes("queue") && w.includes("drop"))).toBe(true);
+		} finally {
+			(internalSocket as unknown as { write: Socket["write"] }).write = originalWrite;
+			console.warn = originalWarn;
+		}
+	});
+
+	test("refuses to hijack daemon owned by another app dir hash", async () => {
+		const noSocket = join(tmpdir(), `superiorswarm-owner-test-${process.pid}.sock`);
+		const noPid = join(tmpdir(), `superiorswarm-owner-test-${process.pid}.pid`);
+		const noLog = join(tmpdir(), `superiorswarm-owner-test-${process.pid}.log`);
+		const ownerPath = join(tmpdir(), `superiorswarm-owner-test-${process.pid}.owner`);
+
+		if (existsSync(noSocket)) rmSync(noSocket);
+		if (existsSync(noPid)) rmSync(noPid);
+		if (existsSync(noLog)) rmSync(noLog);
+		if (existsSync(ownerPath)) rmSync(ownerPath);
+
+		const foreignHash = "ffffffffffff";
+		writeFileSync(
+			ownerPath,
+			JSON.stringify({
+				pid: process.pid,
+				startedAtMs: Date.now(),
+				appDirHash: foreignHash,
+			})
+		);
+
+		const guardedClient = new DaemonClient(
+			noSocket,
+			noPid,
+			noLog,
+			false,
+			ownerPath,
+			"000000000000"
+		);
+
+		await expect(guardedClient.connect("/tmp/test.db", "/tmp/daemon.js")).rejects.toThrow(
+			DaemonOwnershipMismatchError
+		);
+
+		guardedClient.disconnect();
+		if (existsSync(noSocket)) rmSync(noSocket);
+		if (existsSync(noPid)) rmSync(noPid);
+		if (existsSync(noLog)) rmSync(noLog);
+		if (existsSync(ownerPath)) rmSync(ownerPath);
+	});
+
+	test("allows foreign owner record when startedAtMs is obviously invalid", () => {
+		const ownerPath = join(tmpdir(), `superiorswarm-owner-invalid-${process.pid}.owner`);
+		const noSocket = join(tmpdir(), `superiorswarm-owner-invalid-${process.pid}.sock`);
+		const noPid = join(tmpdir(), `superiorswarm-owner-invalid-${process.pid}.pid`);
+		const noLog = join(tmpdir(), `superiorswarm-owner-invalid-${process.pid}.log`);
+
+		if (existsSync(ownerPath)) rmSync(ownerPath);
+		if (existsSync(noSocket)) rmSync(noSocket);
+		if (existsSync(noPid)) rmSync(noPid);
+		if (existsSync(noLog)) rmSync(noLog);
+
+		writeFileSync(
+			ownerPath,
+			JSON.stringify({
+				pid: process.pid,
+				startedAtMs: Date.now() + 120_000,
+				appDirHash: "foreignhash",
+			})
+		);
+
+		const guardedClient = new DaemonClient(noSocket, noPid, noLog, false, ownerPath, "localhash");
+
+		expect(() =>
+			(
+				guardedClient as unknown as { assertOwnershipCompatible: () => void }
+			).assertOwnershipCompatible()
+		).not.toThrow();
+
+		if (existsSync(ownerPath)) rmSync(ownerPath);
+		if (existsSync(noSocket)) rmSync(noSocket);
+		if (existsSync(noPid)) rmSync(noPid);
+		if (existsSync(noLog)) rmSync(noLog);
+	});
 });
