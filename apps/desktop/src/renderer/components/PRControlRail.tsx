@@ -6,7 +6,6 @@ import type {
 	PRContext,
 	UnifiedThread,
 } from "../../shared/github-types";
-import { getAllPanes, usePaneStore } from "../stores/pane-store";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import { CommentThreadCard, threadAuthor, threadDate } from "./CommentThreadCard";
@@ -16,6 +15,7 @@ import { SmartHeaderBar } from "./SmartHeaderBar";
 import { SubmitReviewModal } from "./SubmitReviewModal";
 import { Tooltip } from "./Tooltip";
 import { changesIcon, commentsIcon, filesIcon, sparkleIcon } from "./panel-icons";
+import { splitPROverviewRight } from "./pr-panel-helpers";
 
 type PRTab = "changes" | "comments" | "files";
 
@@ -781,26 +781,6 @@ export function PRControlRail({ prCtx }: { prCtx: PRContext }) {
 
 	// ── Unified review button mutations ───────────────────────────────────
 
-	/** After adding a terminal tab, split pane so terminal stays left and PR overview moves right. */
-	const splitTerminalAndOverview = (workspaceId: string, ctx: PRContext) => {
-		const paneStore = usePaneStore.getState();
-		const layout = paneStore.layouts[workspaceId];
-		if (!layout) return;
-		for (const pane of getAllPanes(layout)) {
-			const overviewTab = pane.tabs.find(
-				(t) =>
-					t.kind === "pr-overview" &&
-					t.prCtx.owner === ctx.owner &&
-					t.prCtx.repo === ctx.repo &&
-					t.prCtx.number === ctx.number
-			);
-			if (overviewTab) {
-				paneStore.splitPane(workspaceId, pane.id, "horizontal", overviewTab);
-				return;
-			}
-		}
-	};
-
 	const attachTerminal = trpc.workspaces.attachTerminal.useMutation();
 	const triggerReview = trpc.aiReview.triggerReview.useMutation({
 		onSuccess: (launchInfo) => {
@@ -813,8 +793,7 @@ export function PRControlRail({ prCtx }: { prCtx: PRContext }) {
 				launchInfo.worktreePath,
 				"AI Review"
 			);
-			// Split: terminal stays left, PR overview moves right
-			splitTerminalAndOverview(launchInfo.reviewWorkspaceId, prCtx);
+			splitPROverviewRight(launchInfo.reviewWorkspaceId, prCtx);
 			attachTerminal.mutate({
 				workspaceId: launchInfo.reviewWorkspaceId,
 				terminalId: tabId,
@@ -843,8 +822,7 @@ export function PRControlRail({ prCtx }: { prCtx: PRContext }) {
 				launchInfo.worktreePath,
 				"AI Re-review"
 			);
-			// Split: terminal stays left, PR overview moves right
-			splitTerminalAndOverview(launchInfo.reviewWorkspaceId, prCtx);
+			splitPROverviewRight(launchInfo.reviewWorkspaceId, prCtx);
 			attachTerminal.mutate({
 				workspaceId: launchInfo.reviewWorkspaceId,
 				terminalId: tabId,
@@ -1026,9 +1004,7 @@ export function PRControlRail({ prCtx }: { prCtx: PRContext }) {
 					</Tooltip>
 				}
 				onOpenOverview={
-					activeWorkspaceId
-						? () => openPROverview(activeWorkspaceId, prCtx)
-						: undefined
+					activeWorkspaceId ? () => openPROverview(activeWorkspaceId, prCtx) : undefined
 				}
 			/>
 

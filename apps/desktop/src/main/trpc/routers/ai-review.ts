@@ -97,13 +97,26 @@ export const aiReviewRouter = router({
 				.all()
 				.sort((a, b) => a.roundNumber - b.roundNumber);
 
-			return drafts.map((draft) => {
-				const comments = db
-					.select()
-					.from(schema.draftComments)
-					.where(eq(schema.draftComments.reviewDraftId, draft.id))
-					.all();
+			if (drafts.length === 0) return [];
 
+			// Batch-fetch all comments for this chain in one query
+			const draftIds = drafts.map((d) => d.id);
+			const allComments = db
+				.select()
+				.from(schema.draftComments)
+				.where(inArray(schema.draftComments.reviewDraftId, draftIds))
+				.all();
+
+			// Group by draft ID
+			const commentsByDraft = new Map<string, typeof allComments>();
+			for (const c of allComments) {
+				const list = commentsByDraft.get(c.reviewDraftId) ?? [];
+				list.push(c);
+				commentsByDraft.set(c.reviewDraftId, list);
+			}
+
+			return drafts.map((draft) => {
+				const comments = commentsByDraft.get(draft.id) ?? [];
 				return {
 					id: draft.id,
 					roundNumber: draft.roundNumber,
