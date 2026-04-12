@@ -30,12 +30,14 @@ export const reviewDrafts = sqliteTable("review_drafts", {
 	prAuthor: text("pr_author").notNull(),
 	sourceBranch: text("source_branch").notNull(),
 	targetBranch: text("target_branch").notNull(),
-	status: text("status").notNull().default("queued"), // queued | in_progress | ready | submitted | failed
+	status: text("status").notNull().default("queued"), // queued | in_progress | ready | submitted | failed | cancelled
 	commitSha: text("commit_sha"),
 	summaryMarkdown: text("summary_markdown"),
 	reviewChainId: text("review_chain_id"),
 	roundNumber: integer("round_number").notNull().default(1),
 	previousDraftId: text("previous_draft_id"),
+	pid: integer("pid"),
+	lastActivityAt: integer("last_activity_at", { mode: "timestamp" }),
 	createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
 	updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
 });

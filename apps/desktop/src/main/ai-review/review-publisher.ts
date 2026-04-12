@@ -60,7 +60,10 @@ function resolveCommentPath(
 }
 
 /** Publish approved draft comments to GitHub or Bitbucket */
-export async function publishReview(draftId: string): Promise<PublishResult> {
+export async function publishReview(
+	draftId: string,
+	verdict: "COMMENT" | "APPROVE" | "REQUEST_CHANGES" = "COMMENT"
+): Promise<PublishResult> {
 	const db = getDb();
 	const draft = db
 		.select()
@@ -163,7 +166,7 @@ export async function publishReview(draftId: string): Promise<PublishResult> {
 				owner,
 				repo,
 				prNumber,
-				verdict: "COMMENT",
+				verdict,
 				body: draft.summaryMarkdown,
 			});
 		} catch (err) {

@@ -94,6 +94,32 @@ export interface GitHubPRDetails {
 	headCommitOid: string;
 }
 
+/** A single item within a file group card — either an AI draft comment or a GitHub thread */
+export type FileGroupItem =
+	| {
+			kind: "ai-draft";
+			id: string;
+			lineNumber: number | null;
+			body: string;
+			status:
+				| "pending"
+				| "approved"
+				| "rejected"
+				| "edited"
+				| "submitted"
+				| "user-pending"
+				| "error";
+			userEdit: string | null;
+			roundDelta: "new" | "resolved" | "still_open" | "regressed" | null;
+	  }
+	| {
+			kind: "github-thread";
+			id: string;
+			lineNumber: number | null;
+			isResolved: boolean;
+			comments: Array<{ id: string; body: string; author: string; createdAt: string }>;
+	  };
+
 /** Subset of GitHubPRDetails used for sidebar list enrichment */
 export interface GitHubPREnriched {
 	owner: string;

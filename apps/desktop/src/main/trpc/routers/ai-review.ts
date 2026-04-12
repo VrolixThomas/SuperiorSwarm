@@ -1,15 +1,15 @@
 import { randomUUID } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { cleanupReviewWorkspace } from "../../ai-review/cleanup";
 import { startPolling } from "../../ai-review/commit-poller";
 import {
+	cancelReview,
 	getReviewDraft,
 	getReviewDrafts,
 	getSettings,
 	queueFollowUpReview,
 	queueReview,
-	validateTransition,
 } from "../../ai-review/orchestrator";
 import { publishReview } from "../../ai-review/review-publisher";
 import { ensureReviewWorkspace } from "../../ai-review/review-workspace";
@@ -85,6 +85,50 @@ export const aiReviewRouter = router({
 	getReviewDraft: publicProcedure.input(z.object({ draftId: z.string() })).query(({ input }) => {
 		return getReviewDraft(input.draftId);
 	}),
+
+	getReviewChainHistory: publicProcedure
+		.input(z.object({ reviewChainId: z.string() }))
+		.query(({ input }) => {
+			const db = getDb();
+			const drafts = db
+				.select()
+				.from(schema.reviewDrafts)
+				.where(eq(schema.reviewDrafts.reviewChainId, input.reviewChainId))
+				.all()
+				.sort((a, b) => a.roundNumber - b.roundNumber);
+
+			if (drafts.length === 0) return [];
+
+			// Batch-fetch all comments for this chain in one query
+			const draftIds = drafts.map((d) => d.id);
+			const allComments = db
+				.select()
+				.from(schema.draftComments)
+				.where(inArray(schema.draftComments.reviewDraftId, draftIds))
+				.all();
+
+			// Group by draft ID
+			const commentsByDraft = new Map<string, typeof allComments>();
+			for (const c of allComments) {
+				const list = commentsByDraft.get(c.reviewDraftId) ?? [];
+				list.push(c);
+				commentsByDraft.set(c.reviewDraftId, list);
+			}
+
+			return drafts.map((draft) => {
+				const comments = commentsByDraft.get(draft.id) ?? [];
+				return {
+					id: draft.id,
+					roundNumber: draft.roundNumber,
+					status: draft.status,
+					commentCount: comments.length,
+					approvedCount: comments.filter((c) => c.status === "approved" || c.status === "submitted")
+						.length,
+					rejectedCount: comments.filter((c) => c.status === "rejected").length,
+					createdAt: draft.createdAt.toISOString(),
+				};
+			});
+		}),
 
 	triggerReview: publicProcedure
 		.input(
@@ -230,6 +274,22 @@ export const aiReviewRouter = router({
 			return { success: true };
 		}),
 
+	batchUpdateDraftComments: publicProcedure
+		.input(
+			z.object({
+				commentIds: z.array(z.string()),
+				status: z.enum(["approved", "rejected"]),
+			})
+		)
+		.mutation(({ input }) => {
+			const db = getDb();
+			db.update(schema.draftComments)
+				.set({ status: input.status })
+				.where(inArray(schema.draftComments.id, input.commentIds))
+				.run();
+			return { success: true, count: input.commentIds.length };
+		}),
+
 	deleteDraftComment: publicProcedure
 		.input(z.object({ commentId: z.string() }))
 		.mutation(({ input }) => {
@@ -303,27 +363,29 @@ export const aiReviewRouter = router({
 		}),
 
 	submitReview: publicProcedure
-		.input(z.object({ draftId: z.string() }))
+		.input(
+			z.object({
+				draftId: z.string(),
+				verdict: z.enum(["COMMENT", "APPROVE", "REQUEST_CHANGES"]).default("COMMENT"),
+				body: z.string().optional(),
+			})
+		)
 		.mutation(async ({ input }) => {
-			const result = await publishReview(input.draftId);
+			// If user provided a body, update the draft's summary before publishing
+			if (input.body?.trim()) {
+				const db = getDb();
+				db.update(schema.reviewDrafts)
+					.set({ summaryMarkdown: input.body.trim(), updatedAt: new Date() })
+					.where(eq(schema.reviewDrafts.id, input.draftId))
+					.run();
+			}
+			const result = await publishReview(input.draftId, input.verdict);
 			startPolling();
 			return result;
 		}),
 
 	cancelReview: publicProcedure.input(z.object({ draftId: z.string() })).mutation(({ input }) => {
-		const db = getDb();
-		const draft = db
-			.select({ status: schema.reviewDrafts.status })
-			.from(schema.reviewDrafts)
-			.where(eq(schema.reviewDrafts.id, input.draftId))
-			.get();
-		if (draft) {
-			validateTransition(draft.status, "failed");
-		}
-		db.update(schema.reviewDrafts)
-			.set({ status: "failed", updatedAt: new Date() })
-			.where(eq(schema.reviewDrafts.id, input.draftId))
-			.run();
+		cancelReview(input.draftId);
 		return { success: true };
 	}),
 
@@ -331,6 +393,23 @@ export const aiReviewRouter = router({
 		.input(z.object({ workspaceId: z.string() }))
 		.mutation(async ({ input }) => {
 			await cleanupReviewWorkspace(input.workspaceId);
+			return { success: true };
+		}),
+
+	/** Reject all pending (unreviewed) comments on a draft, keeping approved/edited/submitted ones + summary */
+	dismissPendingComments: publicProcedure
+		.input(z.object({ draftId: z.string() }))
+		.mutation(({ input }) => {
+			const db = getDb();
+			db.update(schema.draftComments)
+				.set({ status: "rejected" })
+				.where(
+					and(
+						eq(schema.draftComments.reviewDraftId, input.draftId),
+						eq(schema.draftComments.status, "pending")
+					)
+				)
+				.run();
 			return { success: true };
 		}),
 

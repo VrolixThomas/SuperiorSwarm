@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { chmodSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { and, eq, inArray, not } from "drizzle-orm";
 import { app } from "electron";
@@ -33,11 +33,12 @@ const activeReviews = new Map<string, ActiveReview>();
 // ─── State machine ────────────────────────────────────────────────────────────
 
 const VALID_TRANSITIONS: Record<string, string[]> = {
-	queued: ["in_progress", "failed", "dismissed"],
-	in_progress: ["ready", "failed", "dismissed"],
+	queued: ["in_progress", "failed", "dismissed", "cancelled"],
+	in_progress: ["ready", "failed", "dismissed", "cancelled"],
 	ready: ["submitted", "failed", "dismissed"],
 	submitted: ["dismissed"],
 	failed: ["queued", "dismissed"],
+	cancelled: ["dismissed"],
 };
 
 export function validateTransition(currentStatus: string, newStatus: string): void {
@@ -63,6 +64,83 @@ function cleanupReview(draftId: string): void {
 	try {
 		rmSync(reviewDir, { recursive: true, force: true });
 	} catch {}
+}
+
+/** Cancel a running review — kill process, keep partial comments, transition to cancelled */
+export function cancelReview(draftId: string): void {
+	const db = getDb();
+	const draft = db
+		.select()
+		.from(schema.reviewDrafts)
+		.where(eq(schema.reviewDrafts.id, draftId))
+		.get();
+
+	if (!draft) throw new Error(`Review draft ${draftId} not found`);
+
+	validateTransition(draft.status, "cancelled");
+
+	// Kill the agent process if PID is available
+	if (draft.pid !== null) {
+		try {
+			process.kill(draft.pid, "SIGTERM");
+		} catch (err: unknown) {
+			if (
+				err instanceof Error &&
+				"code" in err &&
+				(err as NodeJS.ErrnoException).code !== "ESRCH"
+			) {
+				console.error(`[ai-review] Failed to kill process ${draft.pid}:`, err);
+			}
+		}
+	}
+
+	db.update(schema.reviewDrafts)
+		.set({ status: "cancelled", updatedAt: new Date() })
+		.where(eq(schema.reviewDrafts.id, draftId))
+		.run();
+
+	cleanupReview(draftId);
+}
+
+/**
+ * Compute resolution deltas for current-round comments against previous-round comments.
+ * Returns a Map from current-comment index to its delta annotation.
+ */
+export function computeResolutionDeltas(
+	currentComments: Array<{ filePath: string; lineNumber: number | null }>,
+	previousComments: Array<{
+		filePath: string;
+		lineNumber: number | null;
+		resolution?: string | null;
+	}>
+): Map<number, "new" | "resolved" | "still_open" | "regressed"> {
+	const deltas = new Map<number, "new" | "resolved" | "still_open" | "regressed">();
+
+	// Build a lookup of previous comments by file:line key
+	const previousByKey = new Map<string, { resolution?: string | null }>();
+	for (const prev of previousComments) {
+		const key = `${prev.filePath}:${prev.lineNumber ?? "file"}`;
+		previousByKey.set(key, { resolution: prev.resolution });
+	}
+
+	for (let i = 0; i < currentComments.length; i++) {
+		const curr = currentComments[i]!;
+		const key = `${curr.filePath}:${curr.lineNumber ?? "file"}`;
+		const prev = previousByKey.get(key);
+
+		if (!prev) {
+			deltas.set(i, "new");
+		} else if (
+			prev.resolution === "resolved-on-platform" ||
+			prev.resolution === "resolved-by-code"
+		) {
+			deltas.set(i, "regressed");
+		} else {
+			deltas.set(i, "still_open");
+		}
+	}
+
+	return deltas;
 }
 
 let pollInterval: ReturnType<typeof setInterval> | null = null;
@@ -232,6 +310,129 @@ export async function queueReview(params: {
 	});
 }
 
+/** Shared launch logic for both initial and follow-up reviews */
+async function buildAndLaunchReview(params: {
+	draftId: string;
+	workspaceId: string;
+	worktreePath: string;
+	promptContent: string;
+	/** Show TUI hints for pasting the prompt (first round only) */
+	showTuiHints?: boolean;
+}): Promise<ReviewLaunchInfo> {
+	const { draftId, workspaceId, worktreePath, promptContent } = params;
+	const db = getDb();
+
+	const draft = db
+		.select()
+		.from(schema.reviewDrafts)
+		.where(eq(schema.reviewDrafts.id, draftId))
+		.get();
+	if (!draft) throw new Error(`Review draft ${draftId} not found`);
+
+	const settings = getSettings();
+	const preset = CLI_PRESETS[settings.cliPreset];
+	if (!preset) throw new Error(`Unknown CLI preset: ${settings.cliPreset}`);
+
+	const dbPath = join(app.getPath("userData"), "superiorswarm.db");
+	const mcpServerPath = getMcpServerPath();
+	const reviewDir = join(app.getPath("userData"), "reviews", draftId);
+	mkdirSync(reviewDir, { recursive: true });
+
+	const promptFilePath = join(reviewDir, "review-prompt.txt");
+	writeFileSync(promptFilePath, promptContent, "utf-8");
+
+	const prMetadata = {
+		title: draft.prTitle,
+		description: "",
+		author: draft.prAuthor,
+		sourceBranch: draft.sourceBranch,
+		targetBranch: draft.targetBranch,
+		reviewers: [],
+		provider: draft.prProvider,
+		prUrl: "",
+	};
+
+	const launchOpts: LaunchOptions = {
+		mcpServerPath,
+		worktreePath,
+		reviewDir,
+		promptFilePath,
+		dbPath,
+		reviewDraftId: draftId,
+		prMetadata: JSON.stringify(prMetadata),
+	};
+
+	// Setup MCP config — for Claude this writes .mcp.json with env vars,
+	// for others it writes their specific config files
+	const cleanupMcp = preset.setupMcp?.(launchOpts) ?? null;
+	activeReviews.set(draftId, {
+		draftId,
+		reviewWorkspaceId: workspaceId,
+		cleanup: cleanupMcp,
+	});
+	startPollingIfNeeded();
+
+	// Build the CLI command args. Use the bare command name so the script is
+	// portable and so the PTY's login shell (started with `-l` in pty-manager.ts)
+	// can resolve it via the user's full shell PATH.
+	const args = preset.buildArgs(launchOpts);
+	const parts = [preset.command];
+	if (settings.skipPermissions && preset.permissionFlag) {
+		parts.push(preset.permissionFlag);
+	}
+	parts.push(...args);
+	const cliCommand = parts.join(" ");
+
+	// Write a launch script that sets env vars (if not handled by MCP config) and runs the CLI
+	const launchScript = join(reviewDir, "start-review.sh");
+	const envLines = preset.setupMcp
+		? []
+		: [
+				`export REVIEW_DRAFT_ID='${draftId}'`,
+				`export PR_METADATA='${launchOpts.prMetadata.replace(/'/g, "'\\''")}'`,
+				`export DB_PATH='${dbPath}'`,
+			];
+	// For TUI-mode CLIs (no prompt arg), show the prompt file path
+	const hintLines =
+		params.showTuiHints && args.length === 0
+			? [
+					`echo "Review prompt: ${launchOpts.promptFilePath}"`,
+					`echo "Paste the contents into the chat, or run: cat '${launchOpts.promptFilePath}'"`,
+					"echo",
+				]
+			: [];
+	const pidFilePath = join(reviewDir, "reviewer.pid");
+	const scriptContent = [
+		"#!/bin/bash",
+		`echo $$ > '${pidFilePath}'`,
+		`cd '${worktreePath}'`,
+		...envLines,
+		"",
+		...hintLines,
+		cliCommand,
+	].join("\n");
+	writeFileSync(launchScript, scriptContent, "utf-8");
+	chmodSync(launchScript, 0o755);
+
+	// TODO: PID capture via setTimeout is racy — the shell may not have written
+	// the file yet, or the PID could be reused if the process exits quickly.
+	setTimeout(() => {
+		try {
+			const pidContent = readFileSync(pidFilePath, "utf-8").trim();
+			const pid = Number.parseInt(pidContent, 10);
+			if (!Number.isNaN(pid)) {
+				getDb()
+					.update(schema.reviewDrafts)
+					.set({ pid, updatedAt: new Date() })
+					.where(eq(schema.reviewDrafts.id, draftId))
+					.run();
+			}
+		} catch {}
+	}, 2000);
+
+	return { draftId, reviewWorkspaceId: workspaceId, worktreePath, launchScript };
+}
+
 /**
  * Prepare a review — build CLI command and launch script.
  * Worktree creation is handled by the workspace router before this is called.
@@ -262,11 +463,8 @@ async function startReview(params: {
 		.run();
 
 	try {
-		// Capture commit SHA
 		const { execSync } = await import("node:child_process");
 		const commitSha = execSync("git rev-parse HEAD", { cwd: worktreePath }).toString().trim();
-
-		const dbPath = join(app.getPath("userData"), "superiorswarm.db");
 
 		db.update(schema.reviewDrafts)
 			.set({ commitSha, updatedAt: new Date() })
@@ -279,115 +477,30 @@ async function startReview(params: {
 			.where(eq(schema.workspaces.id, workspaceId))
 			.run();
 
-		// Build MCP server path and launch options
 		const settings = getSettings();
-		const preset = CLI_PRESETS[settings.cliPreset];
-		if (!preset) throw new Error(`Unknown CLI preset: ${settings.cliPreset}`);
-
-		const mcpServerPath = getMcpServerPath();
-
-		const prMetadata = {
+		const promptContent = buildReviewPrompt({
 			title: draft.prTitle,
-			description: "",
 			author: draft.prAuthor,
 			sourceBranch: draft.sourceBranch,
 			targetBranch: draft.targetBranch,
-			reviewers: [],
 			provider: draft.prProvider,
-			prUrl: "",
-		};
-
-		// Write prompt and launch script to app data review directory
-		const reviewDir = join(app.getPath("userData"), "reviews", draft.id);
-		mkdirSync(reviewDir, { recursive: true });
-
-		const promptFilePath = join(reviewDir, "review-prompt.txt");
-		writeFileSync(
-			promptFilePath,
-			buildReviewPrompt({
-				title: draft.prTitle,
-				author: draft.prAuthor,
-				sourceBranch: draft.sourceBranch,
-				targetBranch: draft.targetBranch,
-				provider: draft.prProvider,
-				customPrompt: settings.customPrompt,
-			}),
-			"utf-8"
-		);
-
-		const launchOpts: LaunchOptions = {
-			mcpServerPath,
-			worktreePath,
-			reviewDir,
-			promptFilePath,
-			dbPath,
-			reviewDraftId: draft.id,
-			prMetadata: JSON.stringify(prMetadata),
-		};
-
-		// Setup MCP config — for Claude this writes .mcp.json with env vars,
-		// for others it writes their specific config files
-		const cleanupMcp = preset.setupMcp?.(launchOpts) ?? null;
-		activeReviews.set(draft.id, {
-			draftId: draft.id,
-			reviewWorkspaceId: workspaceId,
-			cleanup: cleanupMcp,
+			customPrompt: settings.customPrompt,
 		});
-		startPollingIfNeeded();
 
-		// Build the CLI command args. Use the bare command name so the script is
-		// portable and so the PTY's login shell (started with `-l` in pty-manager.ts)
-		// can resolve it via the user's full shell PATH.
-		const args = preset.buildArgs(launchOpts);
-		const parts = [preset.command];
-		if (settings.skipPermissions && preset.permissionFlag) {
-			parts.push(preset.permissionFlag);
-		}
-		parts.push(...args);
-		const cliCommand = parts.join(" ");
-
-		// Write a launch script that sets env vars (if not handled by MCP config) and runs the CLI
-		const launchScript = join(reviewDir, "start-review.sh");
-		const envLines = preset.setupMcp
-			? []
-			: [
-					`export REVIEW_DRAFT_ID='${draft.id}'`,
-					`export PR_METADATA='${launchOpts.prMetadata.replace(/'/g, "'\\''")}'`,
-					`export DB_PATH='${dbPath}'`,
-				];
-		// For TUI-mode CLIs (no prompt arg), show the prompt file path
-		const hintLines =
-			args.length === 0
-				? [
-						`echo "Review prompt: ${launchOpts.promptFilePath}"`,
-						`echo "Paste the contents into the chat, or run: cat '${launchOpts.promptFilePath}'"`,
-						"echo",
-					]
-				: [];
-		const scriptContent = [
-			"#!/bin/bash",
-			`cd '${worktreePath}'`,
-			...envLines,
-			"",
-			...hintLines,
-			cliCommand,
-		].join("\n");
-		writeFileSync(launchScript, scriptContent, "utf-8");
-		chmodSync(launchScript, 0o755);
-
-		return {
-			draftId: draft.id,
-			reviewWorkspaceId: workspaceId,
+		return buildAndLaunchReview({
+			draftId,
+			workspaceId,
 			worktreePath,
-			launchScript,
-		};
+			promptContent,
+			showTuiHints: true,
+		});
 	} catch (err) {
-		console.error(`[ai-review] startReview failed for ${draft.id}:`, err);
+		console.error(`[ai-review] startReview failed for ${draftId}:`, err);
 		db.update(schema.reviewDrafts)
 			.set({ status: "failed", updatedAt: new Date() })
-			.where(eq(schema.reviewDrafts.id, draft.id))
+			.where(eq(schema.reviewDrafts.id, draftId))
 			.run();
-		activeReviews.delete(draft.id);
+		activeReviews.delete(draftId);
 		throw err;
 	}
 }
@@ -502,7 +615,6 @@ async function startFollowUpReview(params: {
 		.run();
 
 	try {
-		// Worktree already updated by workspace router — just capture commit SHA
 		const { execSync } = await import("node:child_process");
 		const commitSha = execSync("git rev-parse HEAD", { cwd: worktreePath }).toString().trim();
 
@@ -542,7 +654,6 @@ async function startFollowUpReview(params: {
 							.set({ resolution: "resolved-on-platform" })
 							.where(eq(schema.draftComments.id, comment.id))
 							.run();
-						// Update in-memory copy too
 						comment.resolution = "resolved-on-platform";
 					}
 				}
@@ -551,100 +662,29 @@ async function startFollowUpReview(params: {
 			}
 		}
 
-		// Build follow-up prompt
 		const settings = getSettings();
-		const preset = CLI_PRESETS[settings.cliPreset];
-		if (!preset) throw new Error(`Unknown CLI preset: ${settings.cliPreset}`);
-
-		const dbPath = join(app.getPath("userData"), "superiorswarm.db");
-		const mcpServerPath = getMcpServerPath();
-		const reviewDir = join(app.getPath("userData"), "reviews", draftId);
-		mkdirSync(reviewDir, { recursive: true });
-
-		const promptFilePath = join(reviewDir, "review-prompt.txt");
-		writeFileSync(
-			promptFilePath,
-			buildFollowUpPrompt({
-				title: draft.prTitle,
-				author: draft.prAuthor,
-				sourceBranch: draft.sourceBranch,
-				targetBranch: draft.targetBranch,
-				provider: draft.prProvider,
-				customPrompt: settings.customPrompt,
-				roundNumber: draft.roundNumber,
-				previousCommitSha: previousDraft?.commitSha ?? "unknown",
-				currentCommitSha: commitSha,
-				previousComments: previousComments.map((c) => ({
-					id: c.id,
-					filePath: c.filePath,
-					lineNumber: c.lineNumber,
-					body: c.body,
-					platformStatus: (c.resolution === "resolved-on-platform"
-						? "resolved-on-platform"
-						: "open") as "open" | "resolved-on-platform",
-				})),
-			}),
-			"utf-8"
-		);
-
-		const prMetadata = {
+		const promptContent = buildFollowUpPrompt({
 			title: draft.prTitle,
-			description: "",
 			author: draft.prAuthor,
 			sourceBranch: draft.sourceBranch,
 			targetBranch: draft.targetBranch,
-			reviewers: [],
 			provider: draft.prProvider,
-			prUrl: "",
-		};
-
-		const launchOpts: LaunchOptions = {
-			mcpServerPath,
-			worktreePath,
-			reviewDir,
-			promptFilePath,
-			dbPath,
-			reviewDraftId: draftId,
-			prMetadata: JSON.stringify(prMetadata),
-		};
-
-		const cleanupMcp = preset.setupMcp?.(launchOpts) ?? null;
-
-		activeReviews.set(draftId, {
-			draftId,
-			reviewWorkspaceId: workspaceId,
-			cleanup: cleanupMcp,
+			customPrompt: settings.customPrompt,
+			roundNumber: draft.roundNumber,
+			previousCommitSha: previousDraft?.commitSha ?? "unknown",
+			currentCommitSha: commitSha,
+			previousComments: previousComments.map((c) => ({
+				id: c.id,
+				filePath: c.filePath,
+				lineNumber: c.lineNumber,
+				body: c.body,
+				platformStatus: (c.resolution === "resolved-on-platform"
+					? "resolved-on-platform"
+					: "open") as "open" | "resolved-on-platform",
+			})),
 		});
-		startPollingIfNeeded();
 
-		const args = preset.buildArgs(launchOpts);
-		const parts = [preset.command];
-		if (settings.skipPermissions && preset.permissionFlag) {
-			parts.push(preset.permissionFlag);
-		}
-		parts.push(...args);
-		const cliCommand = parts.join(" ");
-
-		const launchScript = join(reviewDir, "start-review.sh");
-		const envLines = preset.setupMcp
-			? []
-			: [
-					`export REVIEW_DRAFT_ID='${draftId}'`,
-					`export PR_METADATA='${launchOpts.prMetadata.replace(/'/g, "'\\''")}'`,
-					`export DB_PATH='${dbPath}'`,
-				];
-		const scriptContent = ["#!/bin/bash", `cd '${worktreePath}'`, ...envLines, "", cliCommand].join(
-			"\n"
-		);
-		writeFileSync(launchScript, scriptContent, "utf-8");
-		chmodSync(launchScript, 0o755);
-
-		return {
-			draftId,
-			reviewWorkspaceId: workspaceId,
-			worktreePath,
-			launchScript,
-		};
+		return buildAndLaunchReview({ draftId, workspaceId, worktreePath, promptContent });
 	} catch (err) {
 		console.error(`[ai-review] startFollowUpReview failed for ${draftId}:`, err);
 		db.update(schema.reviewDrafts)

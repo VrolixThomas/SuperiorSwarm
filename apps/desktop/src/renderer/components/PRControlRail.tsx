@@ -15,6 +15,7 @@ import { SmartHeaderBar } from "./SmartHeaderBar";
 import { SubmitReviewModal } from "./SubmitReviewModal";
 import { Tooltip } from "./Tooltip";
 import { changesIcon, commentsIcon, filesIcon, sparkleIcon } from "./panel-icons";
+import { splitPROverviewRight } from "./pr-panel-helpers";
 
 type PRTab = "changes" | "comments" | "files";
 
@@ -32,12 +33,14 @@ function PRTabHeader({
 	commentCount,
 	onClose,
 	reviewButton,
+	onOpenOverview,
 }: {
 	tab: PRTab;
 	onSetTab: (t: PRTab) => void;
 	commentCount: number;
 	onClose?: () => void;
 	reviewButton?: React.ReactNode;
+	onOpenOverview?: () => void;
 }) {
 	const tabs: { key: PRTab; label: string; badge?: number }[] = [
 		{ key: "changes", label: "Changes" },
@@ -71,6 +74,30 @@ function PRTabHeader({
 				))}
 			</div>
 			<div className="flex-1" />
+			{onOpenOverview && (
+				<Tooltip label="Open PR Overview">
+					<button
+						type="button"
+						onClick={onOpenOverview}
+						className="flex h-6 w-6 items-center justify-center rounded-[var(--radius-sm)] text-[var(--text-quaternary)] transition-colors duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-tertiary)]"
+					>
+						<svg
+							width="13"
+							height="13"
+							viewBox="0 0 16 16"
+							fill="none"
+							stroke="currentColor"
+							strokeWidth="1.5"
+							strokeLinecap="round"
+							strokeLinejoin="round"
+							aria-hidden="true"
+						>
+							<rect x="2" y="2" width="12" height="12" rx="2" />
+							<path d="M6 2v12" />
+						</svg>
+					</button>
+				</Tooltip>
+			)}
 			{reviewButton}
 			{onClose && (
 				<button
@@ -467,12 +494,14 @@ function CommentsTab({
 	aiThreads,
 	summaryMarkdown,
 	onShowSummary,
+	hasActiveDraft,
 }: {
 	details: GitHubPRDetails;
 	prCtx: PRContext;
 	aiThreads: AIDraftThread[];
 	summaryMarkdown: string | null;
 	onShowSummary: () => void;
+	hasActiveDraft: boolean;
 }) {
 	const [sortMode, setSortMode] = useState<SortMode>("by-file");
 	const utils = trpc.useUtils();
@@ -590,6 +619,26 @@ function CommentsTab({
 					<option value="latest-first">Latest first</option>
 				</select>
 			</div>
+
+			{/* Review-in-progress banner */}
+			{hasActiveDraft && (
+				<button
+					type="button"
+					onClick={() => {
+						const tabStore = useTabStore.getState();
+						const tabs = tabStore.getVisibleTabs();
+						const reviewTab = tabs.find((t) => t.kind === "pr-overview");
+						if (reviewTab) tabStore.setActiveTab(reviewTab.id);
+					}}
+					className="flex shrink-0 items-center gap-2 border-b border-[var(--border-subtle)] px-3 py-1.5 text-left transition-colors hover:bg-[var(--bg-elevated)]"
+				>
+					<span className="size-1.5 rounded-full bg-[var(--accent)] animate-pulse" />
+					<span className="flex-1 text-[10px] text-[var(--text-tertiary)]">
+						AI review in progress
+					</span>
+					<span className="text-[10px] text-[var(--accent)]">Open Review Tab</span>
+				</button>
+			)}
 
 			{/* Thread list */}
 			<div className="flex-1 overflow-y-auto py-1">
@@ -731,6 +780,7 @@ export function PRControlRail({ prCtx }: { prCtx: PRContext }) {
 	const draftReviewChainId = aiDraftQuery.data?.reviewChainId ?? matchingDraft?.id ?? null;
 
 	// ── Unified review button mutations ───────────────────────────────────
+
 	const attachTerminal = trpc.workspaces.attachTerminal.useMutation();
 	const triggerReview = trpc.aiReview.triggerReview.useMutation({
 		onSuccess: (launchInfo) => {
@@ -743,6 +793,7 @@ export function PRControlRail({ prCtx }: { prCtx: PRContext }) {
 				launchInfo.worktreePath,
 				"AI Review"
 			);
+			splitPROverviewRight(launchInfo.reviewWorkspaceId, prCtx);
 			attachTerminal.mutate({
 				workspaceId: launchInfo.reviewWorkspaceId,
 				terminalId: tabId,
@@ -771,6 +822,7 @@ export function PRControlRail({ prCtx }: { prCtx: PRContext }) {
 				launchInfo.worktreePath,
 				"AI Re-review"
 			);
+			splitPROverviewRight(launchInfo.reviewWorkspaceId, prCtx);
 			attachTerminal.mutate({
 				workspaceId: launchInfo.reviewWorkspaceId,
 				terminalId: tabId,
@@ -951,6 +1003,9 @@ export function PRControlRail({ prCtx }: { prCtx: PRContext }) {
 						</button>
 					</Tooltip>
 				}
+				onOpenOverview={
+					activeWorkspaceId ? () => openPROverview(activeWorkspaceId, prCtx) : undefined
+				}
 			/>
 
 			{/* Tab content */}
@@ -979,6 +1034,12 @@ export function PRControlRail({ prCtx }: { prCtx: PRContext }) {
 					aiThreads={[...aiThreads, ...userPendingThreads]}
 					summaryMarkdown={aiDraftQuery.data?.summaryMarkdown ?? null}
 					onShowSummary={() => activeWorkspaceId && openPROverview(activeWorkspaceId, prCtx)}
+					hasActiveDraft={
+						!!matchingDraft &&
+						matchingDraft.status !== "dismissed" &&
+						matchingDraft.status !== "submitted" &&
+						matchingDraft.status !== "failed"
+					}
 				/>
 			)}
 			{tab === "files" && prCtx.repoPath && activeWorkspaceId && (

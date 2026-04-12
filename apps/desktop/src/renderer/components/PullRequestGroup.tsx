@@ -20,6 +20,7 @@ interface PullRequestGroupProps {
 	agentAlerts: Record<string, AgentAlert>;
 	workspaceIdMap: Map<string, string>;
 	projectsList: Project[] | undefined;
+	reviewDraftMap: Map<string, { status: string; commentCount: number; roundNumber: number }>;
 	onPRClick: (pr: MergedPR, e: React.MouseEvent) => void;
 	onPRContextMenu: (pr: MergedPR, e: React.MouseEvent) => void;
 }
@@ -37,6 +38,7 @@ export function PullRequestGroup({
 	agentAlerts,
 	workspaceIdMap,
 	projectsList,
+	reviewDraftMap,
 	onPRClick,
 	onPRContextMenu,
 }: PullRequestGroupProps) {
@@ -72,6 +74,7 @@ export function PullRequestGroup({
 						isActive={isActive}
 						agentAlert={agentAlert}
 						projectsList={projectsList}
+						reviewStatus={reviewDraftMap.get(identifier) ?? null}
 						onClick={(e) => onPRClick(pr, e)}
 						onContextMenu={(e) => onPRContextMenu(pr, e)}
 					/>

@@ -11,7 +11,7 @@ import { CreateWorktreeFromPRModal, type LinkablePR } from "./CreateWorktreeFrom
 import { PullRequestGroup } from "./PullRequestGroup";
 import type { MergedPR } from "./PullRequestItem";
 import { type LinkedWorkspace, WorkspacePopover } from "./WorkspacePopover";
-import { findActivePRIdentifier } from "./pr-panel-helpers";
+import { findActivePRIdentifier, splitPROverviewRight } from "./pr-panel-helpers";
 
 // ── Context Menu ──────────────────────────────────────────────────────────────
 
@@ -122,6 +122,33 @@ export function PullRequestsTab() {
 		refetchInterval: 5_000,
 	});
 
+	const reviewDraftMap = useMemo(() => {
+		const map = new Map<string, { status: string; commentCount: number; roundNumber: number }>();
+		if (!reviewDrafts.data) return map;
+		for (const d of reviewDrafts.data) {
+			// Skip dismissed drafts
+			if (d.status === "dismissed") continue;
+			const existing = map.get(d.prIdentifier);
+			// Keep the most actionable: prefer active states over terminal states
+			const priority: Record<string, number> = {
+				in_progress: 0,
+				queued: 1,
+				ready: 2,
+				submitted: 3,
+				cancelled: 4,
+				failed: 5,
+			};
+			if (!existing || (priority[d.status] ?? 6) < (priority[existing.status] ?? 6)) {
+				map.set(d.prIdentifier, {
+					status: d.status,
+					commentCount: 0,
+					roundNumber: d.roundNumber ?? 1,
+				});
+			}
+		}
+		return map;
+	}, [reviewDrafts.data]);
+
 	// ── PR poller cache (backend-driven list) ─────────────────────────────────
 	// Fetched here to warm the TanStack Query cache; the Sidebar badge reads it separately.
 	trpc.prPoller.getCachedPRs.useQuery(undefined, {
@@ -172,12 +199,14 @@ export function PullRequestsTab() {
 				tabStore.openPROverview(launchInfo.reviewWorkspaceId, prCtx);
 			}
 
-			// Create terminal and run the launch script
 			const tabId = tabStore.addTerminalTab(
 				launchInfo.reviewWorkspaceId,
 				launchInfo.worktreePath,
 				"AI Review"
 			);
+			if (prCtx) {
+				splitPROverviewRight(launchInfo.reviewWorkspaceId, prCtx);
+			}
 			attachTerminalRef.current({
 				workspaceId: launchInfo.reviewWorkspaceId,
 				terminalId: tabId,
@@ -831,6 +860,7 @@ export function PullRequestsTab() {
 						agentAlerts={agentAlerts}
 						workspaceIdMap={workspaceIdMapRef.current}
 						projectsList={projectsList}
+						reviewDraftMap={reviewDraftMap}
 						onPRClick={handlePRClick}
 						onPRContextMenu={(pr, e) => {
 							e.preventDefault();
