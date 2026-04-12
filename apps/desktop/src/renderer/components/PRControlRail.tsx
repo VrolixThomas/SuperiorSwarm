@@ -541,64 +541,6 @@ function CommentsTab({
 		);
 	}, [allThreads, sortMode]);
 
-	if (hasActiveDraft) {
-		// Compact jump-list: show file paths with comment counts
-		const commentsByFile = new Map<string, number>();
-		for (const t of allThreads) {
-			commentsByFile.set(t.path, (commentsByFile.get(t.path) ?? 0) + 1);
-		}
-
-		return (
-			<div className="flex flex-1 flex-col overflow-hidden">
-				<div className="flex shrink-0 items-center gap-2 border-b border-[var(--border-subtle)] px-3 py-1.5">
-					<span className="text-[10px] font-medium text-[var(--text-quaternary)]">
-						Review comments by file
-					</span>
-				</div>
-				<div className="flex-1 overflow-y-auto py-1">
-					{commentsByFile.size === 0 ? (
-						<div className="flex flex-1 items-center justify-center py-8">
-							<span className="text-[12px] text-[var(--text-quaternary)]">No comments yet</span>
-						</div>
-					) : (
-						Array.from(commentsByFile.entries()).map(([path, count]) => (
-							<button
-								key={path}
-								type="button"
-								onClick={() => {
-									if (activeWorkspaceId) {
-										openPRReviewFile(activeWorkspaceId, prCtx, path, detectLanguage(path));
-									}
-								}}
-								className="flex w-full items-center gap-2 px-3 py-[6px] text-left transition-colors hover:bg-[var(--bg-elevated)]"
-							>
-								<span className="flex-1 truncate [font-family:var(--font-mono)] text-[11px] text-[var(--text-secondary)]">
-									{path}
-								</span>
-								<span className="shrink-0 text-[10px] text-[var(--text-quaternary)]">{count}</span>
-							</button>
-						))
-					)}
-				</div>
-				<button
-					type="button"
-					onClick={() => {
-						// Focus the review-workspace tab
-						const tabStore = useTabStore.getState();
-						const tabs = tabStore.getVisibleTabs();
-						const reviewTab = tabs.find((t) => t.kind === "review-workspace");
-						if (reviewTab) {
-							tabStore.setActiveTab(reviewTab.id);
-						}
-					}}
-					className="flex shrink-0 items-center justify-center gap-1 border-t border-[var(--border-subtle)] px-3 py-2 text-[11px] text-[var(--accent)] transition-colors hover:bg-[var(--bg-elevated)]"
-				>
-					Open in Review Tab
-				</button>
-			</div>
-		);
-	}
-
 	if (allThreads.length === 0 && !summaryMarkdown) {
 		return (
 			<div className="flex flex-1 items-center justify-center">
@@ -650,6 +592,26 @@ function CommentsTab({
 					<option value="latest-first">Latest first</option>
 				</select>
 			</div>
+
+			{/* Review-in-progress banner */}
+			{hasActiveDraft && (
+				<button
+					type="button"
+					onClick={() => {
+						const tabStore = useTabStore.getState();
+						const tabs = tabStore.getVisibleTabs();
+						const reviewTab = tabs.find((t) => t.kind === "pr-overview");
+						if (reviewTab) tabStore.setActiveTab(reviewTab.id);
+					}}
+					className="flex shrink-0 items-center gap-2 border-b border-[var(--border-subtle)] px-3 py-1.5 text-left transition-colors hover:bg-[var(--bg-elevated)]"
+				>
+					<span className="size-1.5 rounded-full bg-[var(--accent)] animate-pulse" />
+					<span className="flex-1 text-[10px] text-[var(--text-tertiary)]">
+						AI review in progress
+					</span>
+					<span className="text-[10px] text-[var(--accent)]">Open Review Tab</span>
+				</button>
+			)}
 
 			{/* Thread list */}
 			<div className="flex-1 overflow-y-auto py-1">
@@ -803,7 +765,6 @@ export function PRControlRail({ prCtx }: { prCtx: PRContext }) {
 				launchInfo.worktreePath,
 				"AI Review"
 			);
-			tabStore.addReviewWorkspaceTab(launchInfo.reviewWorkspaceId, launchInfo.draftId);
 			attachTerminal.mutate({
 				workspaceId: launchInfo.reviewWorkspaceId,
 				terminalId: tabId,
@@ -832,7 +793,6 @@ export function PRControlRail({ prCtx }: { prCtx: PRContext }) {
 				launchInfo.worktreePath,
 				"AI Re-review"
 			);
-			tabStore.addReviewWorkspaceTab(launchInfo.reviewWorkspaceId, launchInfo.draftId);
 			attachTerminal.mutate({
 				workspaceId: launchInfo.reviewWorkspaceId,
 				terminalId: tabId,

@@ -1,15 +1,12 @@
-/** Parse a PR identifier like "owner/repo#123" into parts */
+import { parsePrIdentifier as parseNullable } from "../../shared/pr-identifier";
+
+/** Parse a PR identifier like "owner/repo#123" into parts. Throws on invalid input. */
 export function parsePrIdentifier(identifier: string): {
 	owner: string;
 	repo: string;
 	number: number;
 } {
-	const match = identifier.match(/^(.+?)\/(.+?)#(\d+)$/);
-	if (!match) throw new Error(`Invalid PR identifier: ${identifier}`);
-	const [, owner, repo, num] = match;
-	return {
-		owner: owner ?? "",
-		repo: repo ?? "",
-		number: Number.parseInt(num ?? "", 10),
-	};
+	const result = parseNullable(identifier);
+	if (!result) throw new Error(`Invalid PR identifier: ${identifier}`);
+	return result;
 }

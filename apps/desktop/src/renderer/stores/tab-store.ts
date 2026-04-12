@@ -79,13 +79,7 @@ export type TabItem =
 			sourceBranch: string;
 			targetBranch: string;
 	  }
-	| {
-			kind: "review-workspace";
-			id: string;
-			workspaceId: string;
-			draftId: string;
-			title: string;
-	  };
+;
 export type PanelMode = "diff" | "explorer" | "pr-review";
 
 export type RightPanelState =
@@ -167,9 +161,6 @@ interface TabStore {
 		options?: { split?: boolean }
 	) => string;
 	getSolveReviewTab: (workspaceId: string) => TabItem | undefined;
-
-	// Review workspace
-	addReviewWorkspaceTab: (workspaceId: string, draftId: string) => string;
 
 	// PR review
 	openPRReviewPanel: (workspaceId: string, prCtx: PRContext) => void;
@@ -584,32 +575,6 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 		return tabs.find((t) => t.kind === "solve-review");
 	},
 
-	addReviewWorkspaceTab: (workspaceId, draftId) => {
-		// Check if a tab with matching draftId already exists
-		const existing = findTabInWorkspace(
-			workspaceId,
-			(t) => t.kind === "review-workspace" && t.draftId === draftId
-		);
-		if (existing) {
-			ps().setActiveTabInPane(workspaceId, existing.pane.id, existing.tab.id);
-			ps().setFocusedPane(existing.pane.id);
-			return existing.tab.id;
-		}
-		const id = `review-workspace-${draftId}`;
-		const tab: TabItem = {
-			kind: "review-workspace",
-			id,
-			workspaceId,
-			draftId,
-			title: "AI Review",
-		};
-		ps().ensureLayout(workspaceId);
-		const focused = resolveFocusedPane(workspaceId);
-		if (focused) {
-			ps().addTabToPane(workspaceId, focused.id, tab);
-		}
-		return id;
-	},
 
 	openPRReviewPanel: (workspaceId, prCtx) => {
 		set({ rightPanel: { open: true, mode: "pr-review", diffCtx: null, prCtx } });
