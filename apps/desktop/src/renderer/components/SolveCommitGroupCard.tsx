@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { detectLanguage } from "../../shared/diff-types";
 import type {
 	ChangedFile,
 	SolveCommentInfo,
@@ -36,6 +37,7 @@ export function SolveCommitGroupCard({ group, sessionId, workspaceId, defaultExp
 
 	const isSolving = group.status === "pending";
 	const isReverted = group.status === "reverted";
+	const draftReplyCount = group.comments.filter((c) => c.reply?.status === "draft").length;
 
 	// Group comments by file
 	const commentsByFile = new Map<string, SolveCommentInfo[]>();
@@ -48,8 +50,14 @@ export function SolveCommitGroupCard({ group, sessionId, workspaceId, defaultExp
 	const handleFileClick = (filePath: string) => {
 		if (!group.commitHash) return;
 		if (!activeWorkspaceCwd) return;
-		const ext = filePath.split(".").pop() ?? "";
-		openCommentFixFile(workspaceId, group.id, filePath, group.commitHash, activeWorkspaceCwd, ext);
+		openCommentFixFile(
+			workspaceId,
+			group.id,
+			filePath,
+			group.commitHash,
+			activeWorkspaceCwd,
+			detectLanguage(filePath)
+		);
 	};
 
 	return (
@@ -90,6 +98,11 @@ export function SolveCommitGroupCard({ group, sessionId, workspaceId, defaultExp
 						{group.label}
 					</span>
 					<RatioBadge group={group} />
+					{draftReplyCount > 0 && !expanded && (
+						<span className="shrink-0 py-[1px] px-[7px] rounded-full text-[10px] font-medium bg-[var(--warning-subtle)] text-[var(--warning)]">
+							✉ {draftReplyCount} draft
+						</span>
+					)}
 				</div>
 				<div className="flex items-center gap-[6px] shrink-0 ml-[12px]">
 					<GroupAction
