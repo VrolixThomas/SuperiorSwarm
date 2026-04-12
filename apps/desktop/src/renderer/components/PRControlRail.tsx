@@ -743,6 +743,7 @@ export function PRControlRail({ prCtx }: { prCtx: PRContext }) {
 				launchInfo.worktreePath,
 				"AI Review"
 			);
+			tabStore.addReviewWorkspaceTab(launchInfo.reviewWorkspaceId, launchInfo.draftId);
 			attachTerminal.mutate({
 				workspaceId: launchInfo.reviewWorkspaceId,
 				terminalId: tabId,
@@ -771,6 +772,7 @@ export function PRControlRail({ prCtx }: { prCtx: PRContext }) {
 				launchInfo.worktreePath,
 				"AI Re-review"
 			);
+			tabStore.addReviewWorkspaceTab(launchInfo.reviewWorkspaceId, launchInfo.draftId);
 			attachTerminal.mutate({
 				workspaceId: launchInfo.reviewWorkspaceId,
 				terminalId: tabId,

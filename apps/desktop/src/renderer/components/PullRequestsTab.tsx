@@ -178,6 +178,7 @@ export function PullRequestsTab() {
 				launchInfo.worktreePath,
 				"AI Review"
 			);
+			tabStore.addReviewWorkspaceTab(launchInfo.reviewWorkspaceId, launchInfo.draftId);
 			attachTerminalRef.current({
 				workspaceId: launchInfo.reviewWorkspaceId,
 				terminalId: tabId,
