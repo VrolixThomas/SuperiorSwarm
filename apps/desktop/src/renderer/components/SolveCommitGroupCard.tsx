@@ -226,16 +226,33 @@ function GroupAction({
 		);
 	}
 	if (group.status === "fixed") {
+		// Draft replies must be reviewed before pushing — require explicit approval first
+		if (hasDraftReplies) {
+			return (
+				<button
+					type="button"
+					onClick={(e) => {
+						e.stopPropagation();
+						onApprove();
+					}}
+					className="py-[4px] px-[12px] rounded-[6px] text-[11.5px] font-medium bg-[var(--success-subtle)] text-[var(--success)] border-none cursor-pointer"
+				>
+					Approve
+				</button>
+			);
+		}
+		// No drafts — can push directly
 		return (
 			<button
 				type="button"
 				onClick={(e) => {
 					e.stopPropagation();
-					onApprove();
+					onPush();
 				}}
-				className="py-[4px] px-[12px] rounded-[6px] text-[11.5px] font-medium bg-[var(--success-subtle)] text-[var(--success)] border-none cursor-pointer"
+				disabled={isPushing}
+				className={`py-[4px] px-[12px] rounded-[6px] text-[11.5px] font-semibold border-none ${isPushing ? "cursor-not-allowed bg-[var(--bg-active)] text-[var(--text-tertiary)]" : "cursor-pointer bg-[var(--success)] text-[#0a0c0a]"}`}
 			>
-				Approve
+				{isPushing ? "Pushing…" : "Push & post"}
 			</button>
 		);
 	}
