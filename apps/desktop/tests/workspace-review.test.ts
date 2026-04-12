@@ -36,8 +36,23 @@ describe("validateTransition", () => {
 	});
 
 	test("allows dismissed from any state", () => {
-		for (const status of ["queued", "in_progress", "ready", "submitted", "failed"]) {
+		for (const status of ["queued", "in_progress", "ready", "submitted", "failed", "cancelled"]) {
 			expect(() => validateTransition(status, "dismissed")).not.toThrow();
 		}
+	});
+
+	test("allows cancelled from queued and in_progress", () => {
+		expect(() => validateTransition("queued", "cancelled")).not.toThrow();
+		expect(() => validateTransition("in_progress", "cancelled")).not.toThrow();
+	});
+
+	test("allows dismissed from cancelled", () => {
+		expect(() => validateTransition("cancelled", "dismissed")).not.toThrow();
+	});
+
+	test("rejects cancelled from terminal states", () => {
+		expect(() => validateTransition("ready", "cancelled")).toThrow();
+		expect(() => validateTransition("submitted", "cancelled")).toThrow();
+		expect(() => validateTransition("cancelled", "in_progress")).toThrow();
 	});
 });

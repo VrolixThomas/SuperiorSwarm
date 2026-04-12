@@ -26,9 +26,7 @@ describe("computeResolutionDeltas", () => {
 
 	test("marks comment at previously resolved location as REGRESSED", () => {
 		const current = [{ filePath: "src/a.ts", lineNumber: 10 }];
-		const previous = [
-			{ filePath: "src/a.ts", lineNumber: 10, resolution: "resolved-on-platform" },
-		];
+		const previous = [{ filePath: "src/a.ts", lineNumber: 10, resolution: "resolved-on-platform" }];
 		const deltas = computeResolutionDeltas(current, previous);
 		expect(deltas.get(0)).toBe("regressed");
 	});

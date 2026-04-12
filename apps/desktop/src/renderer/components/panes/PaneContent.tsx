@@ -124,10 +124,7 @@ export function PaneContent({
 			)}
 			{activeTab?.kind === "review-workspace" && (
 				<div className="absolute inset-0">
-					<ReviewWorkspaceTab
-						workspaceId={activeTab.workspaceId}
-						draftId={activeTab.draftId}
-					/>
+					<ReviewWorkspaceTab workspaceId={activeTab.workspaceId} draftId={activeTab.draftId} />
 				</div>
 			)}
 		</div>

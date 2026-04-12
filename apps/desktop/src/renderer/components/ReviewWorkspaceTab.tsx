@@ -117,9 +117,7 @@ export function ReviewWorkspaceTab({ workspaceId, draftId }: Props) {
 		existing.push(comment);
 		commentsByFile.set(comment.filePath, existing);
 	}
-	const sortedFiles = Array.from(commentsByFile.entries()).sort(([a], [b]) =>
-		a.localeCompare(b)
-	);
+	const sortedFiles = Array.from(commentsByFile.entries()).sort(([a], [b]) => a.localeCompare(b));
 
 	// Find first file with pending comments for defaultExpanded
 	const firstPendingFile = sortedFiles.find(([, fileComments]) =>
@@ -226,12 +224,8 @@ export function ReviewWorkspaceTab({ workspaceId, draftId }: Props) {
 							roundDelta: mapResolution(c.resolution),
 						}))}
 						defaultExpanded={filePath === firstPendingFile}
-						onApprove={(commentId) =>
-							updateComment.mutate({ commentId, status: "approved" })
-						}
-						onReject={(commentId) =>
-							updateComment.mutate({ commentId, status: "rejected" })
-						}
+						onApprove={(commentId) => updateComment.mutate({ commentId, status: "approved" })}
+						onReject={(commentId) => updateComment.mutate({ commentId, status: "rejected" })}
 						onEdit={(commentId, newBody) =>
 							updateComment.mutate({
 								commentId,
@@ -239,9 +233,7 @@ export function ReviewWorkspaceTab({ workspaceId, draftId }: Props) {
 								userEdit: newBody,
 							})
 						}
-						onApproveAll={(commentIds) =>
-							batchUpdate.mutate({ commentIds, status: "approved" })
-						}
+						onApproveAll={(commentIds) => batchUpdate.mutate({ commentIds, status: "approved" })}
 						onOpenInDiff={handleOpenInDiff}
 					/>
 				))}
@@ -268,10 +260,7 @@ export function ReviewWorkspaceTab({ workspaceId, draftId }: Props) {
 						{historyExpanded && (
 							<div className="bg-[var(--bg-elevated)] rounded-[6px] p-[10px_14px]">
 								{chainHistory.map((entry) => (
-									<div
-										key={entry.id}
-										className="text-[11px] text-[var(--text-secondary)] py-[3px]"
-									>
+									<div key={entry.id} className="text-[11px] text-[var(--text-secondary)] py-[3px]">
 										Round {entry.roundNumber} ·{" "}
 										{new Date(entry.createdAt).toLocaleDateString("en-US", {
 											month: "short",
@@ -298,9 +287,7 @@ export function ReviewWorkspaceTab({ workspaceId, draftId }: Props) {
 				onDismiss={() => dismissMutation.mutate({ workspaceId })}
 				onShowVerdict={() => setShowVerdictConfirmation(true)}
 				onCancelVerdict={() => setShowVerdictConfirmation(false)}
-				onSubmitVerdict={(verdict, body) =>
-					submitReview.mutate({ draftId, verdict, body })
-				}
+				onSubmitVerdict={(verdict, body) => submitReview.mutate({ draftId, verdict, body })}
 			/>
 		</div>
 	);
