@@ -22,12 +22,6 @@ export function AboutSettings() {
 	const updateVersion = checkResult?.version ?? statusQuery.data?.updateVersion;
 	const checkError = checkResult?.error ?? null;
 
-	const handleViewReleaseNotes = () => {
-		if (statusQuery.data?.currentVersion) {
-			openWhatsNew(statusQuery.data.currentVersion);
-		}
-	};
-
 	const handleCheckForUpdates = () => {
 		checkForUpdates.mutate();
 	};
@@ -79,7 +73,9 @@ export function AboutSettings() {
 						<div className="flex gap-2">
 							<button
 								type="button"
-								onClick={handleViewReleaseNotes}
+								onClick={() => {
+									if (updateVersion) openWhatsNew(updateVersion);
+								}}
 								className="rounded-[5px] border border-[rgba(10,132,255,0.3)] px-2.5 py-1 text-[11px] text-[var(--accent)] transition-colors hover:bg-[rgba(10,132,255,0.1)]"
 							>
 								What's new
@@ -114,7 +110,11 @@ export function AboutSettings() {
 				</button>
 				<button
 					type="button"
-					onClick={handleViewReleaseNotes}
+					onClick={() => {
+						if (statusQuery.data?.currentVersion) {
+							openWhatsNew(statusQuery.data.currentVersion);
+						}
+					}}
 					className="rounded-[var(--radius-sm)] bg-[var(--bg-elevated)] px-3 py-1.5 text-[11px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-overlay)]"
 				>
 					View release notes
