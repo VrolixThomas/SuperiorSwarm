@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { SUPERIORSWARM_DIR } from "../shared/daemon-protocol";
+import { removeOwnerFile, writeOwnerFile } from "./owner-file";
 import { PtyManager } from "./pty-manager";
 import { ScrollbackStore } from "./scrollback-store";
 import { SocketServer } from "./socket-server";
@@ -8,6 +9,8 @@ const SOCKET_PATH =
 	process.env["SUPERIORSWARM_SOCKET_PATH"] ?? join(SUPERIORSWARM_DIR, "daemon.sock");
 const PID_PATH = process.env["SUPERIORSWARM_PID_PATH"] ?? join(SUPERIORSWARM_DIR, "daemon.pid");
 const DB_PATH = process.env["SUPERIORSWARM_DB_PATH"] ?? "";
+const OWNER_PATH = process.env["SUPERIORSWARM_OWNER_PATH"];
+const APP_DIR_HASH = process.env["SUPERIORSWARM_APP_DIR_HASH"];
 const IS_DEV = process.env["SUPERIORSWARM_DEV_MODE"] === "1";
 const FLUSH_INTERVAL_MS = 30_000;
 
@@ -28,6 +31,7 @@ if (existsSync(SOCKET_PATH)) {
 }
 
 writeFileSync(PID_PATH, String(process.pid));
+writeOwnerFile(OWNER_PATH, APP_DIR_HASH, process.pid, Date.now());
 
 const ptyManager = new PtyManager();
 const scrollbackStore = new ScrollbackStore(DB_PATH);
@@ -91,6 +95,7 @@ function shutdown(): void {
 	try {
 		rmSync(PID_PATH);
 	} catch {}
+	removeOwnerFile(OWNER_PATH);
 	process.exit(0);
 }
 
