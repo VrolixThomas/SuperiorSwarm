@@ -514,10 +514,10 @@ export const commentSolverRouter = router({
 				.where(eq(schema.commentGroups.id, input.groupId))
 				.get();
 			if (!group) throw new TRPCError({ code: "NOT_FOUND", message: "Group not found" });
-			if (group.status !== "approved" && group.status !== "fixed") {
+			if (group.status !== "approved") {
 				throw new TRPCError({
 					code: "PRECONDITION_FAILED",
-					message: "Group must be fixed or approved before pushing",
+					message: "Group must be approved before pushing",
 				});
 			}
 
@@ -546,14 +546,6 @@ export const commentSolverRouter = router({
 						message: `Sign off ${draftReplies.length} draft reply/replies before pushing`,
 					});
 				}
-			}
-
-			// Auto-approve if still in fixed state (user chose to push directly)
-			if (group.status === "fixed") {
-				db.update(schema.commentGroups)
-					.set({ status: "approved" })
-					.where(eq(schema.commentGroups.id, input.groupId))
-					.run();
 			}
 
 			return publishGroup(input.groupId);
