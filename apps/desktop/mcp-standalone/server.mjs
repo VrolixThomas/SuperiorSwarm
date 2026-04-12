@@ -476,17 +476,11 @@ if (isSolverMode) {
 	// Tool: finish_fix_group
 	server.tool(
 		"finish_fix_group",
-		"Commit the changes for a fix group and mark it as complete. Pass no_changes: true when the group contains comments that need no code changes (praise, acknowledgements, already-addressed items).",
+		"Commit the changes for a fix group and mark it as complete. Use this after making code changes. For groups that need no code changes (praise, acknowledgements), use acknowledge_group instead.",
 		{
 			group_id: z.string().describe("The ID of the comment group that has been fixed"),
-			no_changes: z
-				.boolean()
-				.optional()
-				.describe(
-					"Set to true when no code changes are needed (e.g. acknowledgement comments, praise, or already-addressed items). Skips the git commit entirely."
-				),
 		},
-		async ({ group_id, no_changes }) => {
+		async ({ group_id }) => {
 			try {
 				heartbeatSession(SOLVE_SESSION_ID);
 				const group = db
@@ -497,27 +491,6 @@ if (isSolverMode) {
 					return {
 						content: [{ type: "text", text: JSON.stringify({ error: "Group not found" }) }],
 						isError: true,
-					};
-				}
-
-				if (no_changes) {
-					// No code changes needed — mark fixed with no commit hash
-					db.prepare(
-						`UPDATE comment_groups SET status = 'fixed', commit_hash = NULL, changed_files = '[]' WHERE id = ? AND solve_session_id = ?`
-					).run(group_id, SOLVE_SESSION_ID);
-
-					return {
-						content: [
-							{
-								type: "text",
-								text: JSON.stringify({
-									status: "fixed",
-									group_id,
-									no_changes: true,
-									message: "Group marked fixed with no code changes",
-								}),
-							},
-						],
 					};
 				}
 
@@ -608,6 +581,52 @@ if (isSolverMode) {
 								group_id,
 								commit: shortHash,
 								message: `fix: ${group.label}`,
+							}),
+						},
+					],
+				};
+			} catch (err) {
+				return {
+					content: [{ type: "text", text: JSON.stringify({ error: String(err) }) }],
+					isError: true,
+				};
+			}
+		}
+	);
+
+	// Tool: acknowledge_group
+	server.tool(
+		"acknowledge_group",
+		"Mark a group as complete without creating a commit. Use this when all comments in the group are praise, acknowledgements, or items that need no code changes.",
+		{
+			group_id: z.string().describe("The ID of the comment group to acknowledge"),
+		},
+		async ({ group_id }) => {
+			try {
+				heartbeatSession(SOLVE_SESSION_ID);
+				const group = db
+					.prepare("SELECT label FROM comment_groups WHERE id = ? AND solve_session_id = ?")
+					.get(group_id, SOLVE_SESSION_ID);
+
+				if (!group) {
+					return {
+						content: [{ type: "text", text: JSON.stringify({ error: "Group not found" }) }],
+						isError: true,
+					};
+				}
+
+				db.prepare(
+					`UPDATE comment_groups SET status = 'fixed', commit_hash = NULL, changed_files = '[]' WHERE id = ? AND solve_session_id = ?`
+				).run(group_id, SOLVE_SESSION_ID);
+
+				return {
+					content: [
+						{
+							type: "text",
+							text: JSON.stringify({
+								status: "fixed",
+								group_id,
+								message: "Group acknowledged — no code changes",
 							}),
 						},
 					],

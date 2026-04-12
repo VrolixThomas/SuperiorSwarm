@@ -79,8 +79,7 @@ Instructions:
         explaining your interpretation and asking for clarification
    e. Call finish_fix_group(groupId) — this is the ONLY way to commit your changes
       - If the group contains ONLY praise, acknowledgements, or comments that need no code
-        changes: call finish_fix_group(groupId, no_changes: true) — this skips the git
-        commit entirely. Do NOT create an empty commit for these groups.
+        changes: call acknowledge_group(groupId) instead. Do NOT create an empty commit.
 4. Call finish_solving when all groups are done
 
 CRITICAL — DO NOT use git directly:
