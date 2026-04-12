@@ -15,6 +15,8 @@ export const commentSolveSessions = sqliteTable("comment_solve_sessions", {
 		.references(() => workspaces.id, { onDelete: "cascade" }),
 	createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
 	updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+	pid: integer("pid"),
+	lastActivityAt: integer("last_activity_at", { mode: "timestamp" }),
 });
 
 export type CommentSolveSession = typeof commentSolveSessions.$inferSelect;
@@ -29,6 +31,7 @@ export const commentGroups = sqliteTable("comment_groups", {
 	status: text("status").notNull().default("pending"),
 	commitHash: text("commit_hash"),
 	order: integer("order").notNull(),
+	changedFiles: text("changed_files"), // JSON array of ChangedFile
 });
 
 export type CommentGroup = typeof commentGroups.$inferSelect;
@@ -51,6 +54,7 @@ export const prComments = sqliteTable(
 		threadId: text("thread_id"),
 		status: text("status").notNull().default("open"),
 		commitSha: text("commit_sha"),
+		followUpText: text("follow_up_text"),
 	},
 	(table) => [
 		uniqueIndex("pr_comments_session_platform_unique").on(
@@ -89,3 +93,41 @@ export const commentEvents = sqliteTable("comment_events", {
 
 export type CommentEvent = typeof commentEvents.$inferSelect;
 export type NewCommentEvent = typeof commentEvents.$inferInsert;
+
+export const prCommentCache = sqliteTable(
+	"pr_comment_cache",
+	{
+		id: text("id").primaryKey(),
+		workspaceId: text("workspace_id")
+			.notNull()
+			.references(() => workspaces.id, { onDelete: "cascade" }),
+		platformCommentId: text("platform_comment_id").notNull(),
+		author: text("author").notNull(),
+		body: text("body").notNull(),
+		filePath: text("file_path"),
+		lineNumber: integer("line_number"),
+		/** ISO 8601 string from the platform API (not a local timestamp) */
+		createdAt: text("created_at").notNull(),
+		fetchedAt: integer("fetched_at", { mode: "timestamp" }).notNull(),
+	},
+	(table) => ({
+		workspacePlatformUnique: uniqueIndex("pr_comment_cache_workspace_platform_unique").on(
+			table.workspaceId,
+			table.platformCommentId
+		),
+	})
+);
+
+export type PrCommentCache = typeof prCommentCache.$inferSelect;
+export type NewPrCommentCache = typeof prCommentCache.$inferInsert;
+
+export const prCommentCacheMeta = sqliteTable("pr_comment_cache_meta", {
+	workspaceId: text("workspace_id")
+		.primaryKey()
+		.references(() => workspaces.id, { onDelete: "cascade" }),
+	cacheKey: text("cache_key"),
+	fetchedAt: integer("fetched_at", { mode: "timestamp" }).notNull(),
+});
+
+export type PrCommentCacheMeta = typeof prCommentCacheMeta.$inferSelect;
+export type NewPrCommentCacheMeta = typeof prCommentCacheMeta.$inferInsert;

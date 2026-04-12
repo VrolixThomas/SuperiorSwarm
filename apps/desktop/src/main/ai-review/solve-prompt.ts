@@ -1,6 +1,46 @@
 export const DEFAULT_SOLVE_GUIDELINES =
 	"Fix the review comments by making the requested code changes. Focus on understanding the reviewer's intent and making precise, minimal changes.";
 
+export interface SolveFollowUpOptions {
+	prTitle: string;
+	sourceBranch: string;
+	targetBranch: string;
+	sessionId: string;
+	groupLabel: string;
+	commitHash: string;
+	commentAuthor: string;
+	commentFilePath: string;
+	commentLineNumber: number | null;
+	commentBody: string;
+	commentStatus: string;
+	followUpText: string;
+}
+
+export function buildSolveFollowUpPrompt(opts: SolveFollowUpOptions): string {
+	const location = opts.commentLineNumber
+		? `${opts.commentFilePath}:${opts.commentLineNumber}`
+		: opts.commentFilePath;
+
+	return `You are following up on a previous comment solve session.
+
+PR: ${opts.prTitle}
+Session ID: ${opts.sessionId}
+Source: ${opts.sourceBranch} → Target: ${opts.targetBranch}
+
+The user wants changes to group "${opts.groupLabel}" (commit ${opts.commitHash}).
+
+Original comment by @${opts.commentAuthor} on ${location}:
+"${opts.commentBody}"
+
+The AI solver marked this as: ${opts.commentStatus}
+
+User's follow-up instructions:
+"${opts.followUpText}"
+
+Use the SuperiorSwarm MCP tools. The session ID is already set in your environment.
+Read the current code, make the requested changes, and call finish_fix_group when done.`;
+}
+
 export interface SolvePromptOptions {
 	prTitle: string;
 	sourceBranch: string;
@@ -37,9 +77,17 @@ Instructions:
       - If you can fix it: call mark_comment_fixed(commentId)
       - If unclear: make a best-effort fix AND call mark_comment_unclear(commentId, replyBody)
         explaining your interpretation and asking for clarification
-   e. Call finish_fix_group(groupId) to commit your changes
+   e. Call finish_fix_group(groupId) — this is the ONLY way to commit your changes
+      - If the group contains ONLY praise, acknowledgements, or comments that need no code
+        changes: call acknowledge_group(groupId) instead. Do NOT create an empty commit.
 4. Call finish_solving when all groups are done
 
-IMPORTANT: Do NOT call git add or git commit yourself. The finish_fix_group tool handles committing.
+CRITICAL — DO NOT use git directly:
+- NEVER run git add, git commit, or any git command to stage or commit changes
+- finish_fix_group is the ONLY tool that commits — it stages your changes, creates the commit,
+  and records the result in the tracking system
+- If you commit manually with git, the tracking system will not know about your commit and the
+  group will remain stuck as "pending" — the user will never see your work
+- This applies to every group, every time — always call finish_fix_group, never git commit
 `;
 }

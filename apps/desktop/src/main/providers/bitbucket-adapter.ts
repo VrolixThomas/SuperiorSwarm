@@ -184,6 +184,39 @@ export class BitbucketAdapter implements GitProvider {
 		return comments.map(mapBitbucketComment);
 	}
 
+	async getPRCommentsIfChanged(
+		owner: string,
+		repo: string,
+		prNumber: number,
+		cacheKey?: string
+	): Promise<
+		{ changed: true; comments: NormalizedComment[]; cacheKey: string } | { changed: false }
+	> {
+		// Fetch PR metadata to check updated_on (lightweight — single object, no pagination)
+		const res = await atlassianFetch(
+			"bitbucket",
+			`${BITBUCKET_API_BASE}/repositories/${owner}/${repo}/pullrequests/${prNumber}?fields=updated_on`
+		);
+		if (!res.ok) throw new Error(`Bitbucket PR metadata fetch failed: ${res.status}`);
+
+		const data = (await res.json()) as { updated_on?: string };
+		const updatedOn = data.updated_on;
+
+		if (!updatedOn) {
+			// Cannot determine freshness — fetch unconditionally
+			const comments = await this.getPRComments(owner, repo, prNumber);
+			return { changed: true, comments, cacheKey: "" };
+		}
+
+		if (cacheKey && updatedOn === cacheKey) {
+			return { changed: false };
+		}
+
+		// Something changed — fetch full comment set
+		const comments = await this.getPRComments(owner, repo, prNumber);
+		return { changed: true, comments, cacheKey: updatedOn };
+	}
+
 	async createInlineComment(params: CreateCommentParams): Promise<{ id: string; nodeId?: string }> {
 		const { id } = await createPRComment(
 			params.owner,

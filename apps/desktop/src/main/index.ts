@@ -8,6 +8,7 @@ import { setupAgentHooks } from "./agent-hooks/setup";
 import { maybeAutoReReview, maybeAutoTriggerReview } from "./ai-review/auto-trigger";
 import { cleanupReviewWorkspace, findReviewWorkspaceByPR } from "./ai-review/cleanup";
 import { startCommentPoller, stopCommentPoller } from "./ai-review/comment-poller";
+import { recoverStuckSessions } from "./ai-review/comment-solver-orchestrator";
 import { startPolling } from "./ai-review/commit-poller";
 import { cleanupStaleReviews } from "./ai-review/orchestrator";
 import {
@@ -103,6 +104,7 @@ app.whenReady().then(async () => {
 	try {
 		initializeDatabase();
 		await backfillRemoteHosts();
+		recoverStuckSessions();
 	} catch (err) {
 		log.error("[db] Failed to initialize database:", err);
 		dialog.showErrorBox(

@@ -13,6 +13,7 @@ export const aiReviewSettings = sqliteTable("ai_review_settings", {
 	autoApproveResolutions: integer("auto_approve_resolutions").notNull().default(0),
 	autoPublishResolutions: integer("auto_publish_resolutions").notNull().default(0),
 	autoSolveEnabled: integer("auto_solve_enabled").notNull().default(0),
+	solveAutoResolveThreads: integer("solve_auto_resolve_threads").notNull().default(0),
 	solvePrompt: text("solve_prompt"),
 	updatedAt: integer("updated_at", { mode: "timestamp" }),
 });

@@ -1,8 +1,8 @@
 {
 	"version": "6",
 	"dialect": "sqlite",
-	"id": "ee3eb5df-73a8-481d-8007-5192a9a6d457",
-	"prevId": "6856783e-cee8-4cec-b739-02204272d979",
+	"id": "7c24abda-0146-459e-a740-a63bd96552e6",
+	"prevId": "a941aaef-3724-4313-bf92-bea9e99cd517",
 	"tables": {
 		"ai_review_settings": {
 			"name": "ai_review_settings",
@@ -943,130 +943,6 @@
 			"uniqueConstraints": {},
 			"checkConstraints": {}
 		},
-		"pr_comment_cache": {
-			"name": "pr_comment_cache",
-			"columns": {
-				"id": {
-					"name": "id",
-					"type": "text",
-					"primaryKey": true,
-					"notNull": true,
-					"autoincrement": false
-				},
-				"workspace_id": {
-					"name": "workspace_id",
-					"type": "text",
-					"primaryKey": false,
-					"notNull": true,
-					"autoincrement": false
-				},
-				"platform_comment_id": {
-					"name": "platform_comment_id",
-					"type": "text",
-					"primaryKey": false,
-					"notNull": true,
-					"autoincrement": false
-				},
-				"author": {
-					"name": "author",
-					"type": "text",
-					"primaryKey": false,
-					"notNull": true,
-					"autoincrement": false
-				},
-				"body": {
-					"name": "body",
-					"type": "text",
-					"primaryKey": false,
-					"notNull": true,
-					"autoincrement": false
-				},
-				"file_path": {
-					"name": "file_path",
-					"type": "text",
-					"primaryKey": false,
-					"notNull": false,
-					"autoincrement": false
-				},
-				"line_number": {
-					"name": "line_number",
-					"type": "integer",
-					"primaryKey": false,
-					"notNull": false,
-					"autoincrement": false
-				},
-				"created_at": {
-					"name": "created_at",
-					"type": "text",
-					"primaryKey": false,
-					"notNull": true,
-					"autoincrement": false
-				},
-				"fetched_at": {
-					"name": "fetched_at",
-					"type": "integer",
-					"primaryKey": false,
-					"notNull": true,
-					"autoincrement": false
-				}
-			},
-			"indexes": {},
-			"foreignKeys": {
-				"pr_comment_cache_workspace_id_workspaces_id_fk": {
-					"name": "pr_comment_cache_workspace_id_workspaces_id_fk",
-					"tableFrom": "pr_comment_cache",
-					"tableTo": "workspaces",
-					"columnsFrom": ["workspace_id"],
-					"columnsTo": ["id"],
-					"onDelete": "cascade",
-					"onUpdate": "no action"
-				}
-			},
-			"compositePrimaryKeys": {},
-			"uniqueConstraints": {},
-			"checkConstraints": {}
-		},
-		"pr_comment_cache_meta": {
-			"name": "pr_comment_cache_meta",
-			"columns": {
-				"workspace_id": {
-					"name": "workspace_id",
-					"type": "text",
-					"primaryKey": true,
-					"notNull": true,
-					"autoincrement": false
-				},
-				"cache_key": {
-					"name": "cache_key",
-					"type": "text",
-					"primaryKey": false,
-					"notNull": false,
-					"autoincrement": false
-				},
-				"fetched_at": {
-					"name": "fetched_at",
-					"type": "integer",
-					"primaryKey": false,
-					"notNull": true,
-					"autoincrement": false
-				}
-			},
-			"indexes": {},
-			"foreignKeys": {
-				"pr_comment_cache_meta_workspace_id_workspaces_id_fk": {
-					"name": "pr_comment_cache_meta_workspace_id_workspaces_id_fk",
-					"tableFrom": "pr_comment_cache_meta",
-					"tableTo": "workspaces",
-					"columnsFrom": ["workspace_id"],
-					"columnsTo": ["id"],
-					"onDelete": "cascade",
-					"onUpdate": "no action"
-				}
-			},
-			"compositePrimaryKeys": {},
-			"uniqueConstraints": {},
-			"checkConstraints": {}
-		},
 		"pr_comments": {
 			"name": "pr_comments",
 			"columns": {
@@ -1530,6 +1406,14 @@
 					"primaryKey": false,
 					"notNull": true,
 					"autoincrement": false
+				},
+				"type": {
+					"name": "type",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false,
+					"default": "'file'"
 				},
 				"created_at": {
 					"name": "created_at",
@@ -2097,6 +1981,130 @@
 					"tableFrom": "worktrees",
 					"tableTo": "projects",
 					"columnsFrom": ["project_id"],
+					"columnsTo": ["id"],
+					"onDelete": "cascade",
+					"onUpdate": "no action"
+				}
+			},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {},
+			"checkConstraints": {}
+		},
+		"pr_comment_cache": {
+			"name": "pr_comment_cache",
+			"columns": {
+				"id": {
+					"name": "id",
+					"type": "text",
+					"primaryKey": true,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"workspace_id": {
+					"name": "workspace_id",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"platform_comment_id": {
+					"name": "platform_comment_id",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"author": {
+					"name": "author",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"body": {
+					"name": "body",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"file_path": {
+					"name": "file_path",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				},
+				"line_number": {
+					"name": "line_number",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				},
+				"created_at": {
+					"name": "created_at",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"fetched_at": {
+					"name": "fetched_at",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				}
+			},
+			"indexes": {},
+			"foreignKeys": {
+				"pr_comment_cache_workspace_id_workspaces_id_fk": {
+					"name": "pr_comment_cache_workspace_id_workspaces_id_fk",
+					"tableFrom": "pr_comment_cache",
+					"tableTo": "workspaces",
+					"columnsFrom": ["workspace_id"],
+					"columnsTo": ["id"],
+					"onDelete": "cascade",
+					"onUpdate": "no action"
+				}
+			},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {},
+			"checkConstraints": {}
+		},
+		"pr_comment_cache_meta": {
+			"name": "pr_comment_cache_meta",
+			"columns": {
+				"workspace_id": {
+					"name": "workspace_id",
+					"type": "text",
+					"primaryKey": true,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"cache_key": {
+					"name": "cache_key",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				},
+				"fetched_at": {
+					"name": "fetched_at",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				}
+			},
+			"indexes": {},
+			"foreignKeys": {
+				"pr_comment_cache_meta_workspace_id_workspaces_id_fk": {
+					"name": "pr_comment_cache_meta_workspace_id_workspaces_id_fk",
+					"tableFrom": "pr_comment_cache_meta",
+					"tableTo": "workspaces",
+					"columnsFrom": ["workspace_id"],
 					"columnsTo": ["id"],
 					"onDelete": "cascade",
 					"onUpdate": "no action"

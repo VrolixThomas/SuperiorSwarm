@@ -1,8 +1,8 @@
 {
 	"version": "6",
 	"dialect": "sqlite",
-	"id": "ee3eb5df-73a8-481d-8007-5192a9a6d457",
-	"prevId": "6856783e-cee8-4cec-b739-02204272d979",
+	"id": "5ac4f0a4-339c-488d-b244-2474bbca348b",
+	"prevId": "469d339a-f2a7-431f-b4e6-edd22b134c9f",
 	"tables": {
 		"ai_review_settings": {
 			"name": "ai_review_settings",
@@ -300,6 +300,13 @@
 					"type": "integer",
 					"primaryKey": false,
 					"notNull": true,
+					"autoincrement": false
+				},
+				"changed_files": {
+					"name": "changed_files",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false,
 					"autoincrement": false
 				}
 			},
@@ -1010,7 +1017,13 @@
 					"autoincrement": false
 				}
 			},
-			"indexes": {},
+			"indexes": {
+				"pr_comment_cache_workspace_platform_unique": {
+					"name": "pr_comment_cache_workspace_platform_unique",
+					"columns": ["workspace_id", "platform_comment_id"],
+					"isUnique": true
+				}
+			},
 			"foreignKeys": {
 				"pr_comment_cache_workspace_id_workspaces_id_fk": {
 					"name": "pr_comment_cache_workspace_id_workspaces_id_fk",
@@ -1150,6 +1163,13 @@
 				},
 				"commit_sha": {
 					"name": "commit_sha",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				},
+				"follow_up_text": {
+					"name": "follow_up_text",
 					"type": "text",
 					"primaryKey": false,
 					"notNull": false,
@@ -1530,6 +1550,14 @@
 					"primaryKey": false,
 					"notNull": true,
 					"autoincrement": false
+				},
+				"type": {
+					"name": "type",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false,
+					"default": "'file'"
 				},
 				"created_at": {
 					"name": "created_at",

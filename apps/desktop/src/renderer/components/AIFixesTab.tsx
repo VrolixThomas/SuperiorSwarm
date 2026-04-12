@@ -1,9 +1,8 @@
-import { useMemo, useState } from "react";
-import { detectLanguage } from "../../shared/diff-types";
-import type { SolveCommentInfo, SolveGroupInfo, SolveSessionInfo } from "../../shared/solve-types";
+import { useMemo } from "react";
+import type { SolveSessionInfo } from "../../shared/solve-types";
+import { formatRelativeTime } from "../../shared/tickets";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
-import { MarkdownRenderer } from "./MarkdownRenderer";
 import { SolvingBanner } from "./SolvingBanner";
 
 // ── Props ─────────────────────────────────────────────────────────────────────
@@ -12,21 +11,7 @@ interface AIFixesTabProps {
 	workspaceId: string;
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function uniqueFilePaths(comments: SolveCommentInfo[]): string[] {
-	const seen = new Set<string>();
-	const result: string[] = [];
-	for (const c of comments) {
-		if (!seen.has(c.filePath)) {
-			seen.add(c.filePath);
-			result.push(c.filePath);
-		}
-	}
-	return result;
-}
-
-// ── Progress Bar ──────────────────────────────────────────────────────────────
+// ── Progress Summary ─────────────────────────────────────────────────────────
 
 function ProgressSummary({
 	resolved,
@@ -61,515 +46,176 @@ function ProgressSummary({
 	);
 }
 
-// ── CommitGroupCard ───────────────────────────────────────────────────────────
-
-function CommitGroupCard({
-	group,
-	sessionId,
-	workspaceId,
-	defaultExpanded,
-}: {
-	group: SolveGroupInfo;
-	sessionId: string;
-	workspaceId: string;
-	defaultExpanded: boolean;
-}) {
-	const [expanded, setExpanded] = useState(defaultExpanded);
-	const [activeFile, setActiveFile] = useState<string | null>(null);
-	const [editingReply, setEditingReply] = useState<string | null>(null);
-	const [editReplyText, setEditReplyText] = useState("");
-	const [addingReplyTo, setAddingReplyTo] = useState<string | null>(null);
-	const [newReplyText, setNewReplyText] = useState("");
-	const repoPath = useTabStore((s) => s.activeWorkspaceCwd);
-	const utils = trpc.useUtils();
-
-	const approveGroup = trpc.commentSolver.approveGroup.useMutation({
-		onSuccess: () => {
-			utils.commentSolver.getSolveSession.invalidate({ sessionId });
-		},
-	});
-
-	const updateReply = trpc.commentSolver.updateReply.useMutation({
-		onSuccess: () => {
-			utils.commentSolver.getSolveSession.invalidate({ sessionId });
-			setEditingReply(null);
-		},
-	});
-
-	const deleteReply = trpc.commentSolver.deleteReply.useMutation({
-		onSuccess: () => {
-			utils.commentSolver.getSolveSession.invalidate({ sessionId });
-		},
-	});
-
-	const addReply = trpc.commentSolver.addReply.useMutation({
-		onSuccess: () => {
-			utils.commentSolver.getSolveSession.invalidate({ sessionId });
-		},
-	});
-
-	const handleFollowUp = () => {
-		// Find existing AI Solver terminal tab for this workspace
-		const tabStore = useTabStore.getState();
-		const tabs = tabStore.getTabsByWorkspace(workspaceId);
-		const solverTab = tabs.find((t) => t.kind === "terminal" && t.title === "AI Solver");
-
-		if (solverTab) {
-			// Switch to the existing terminal
-			tabStore.setActiveTab(solverTab.id);
-		} else {
-			// Create new terminal and resume the conversation
-			const cwd = repoPath;
-			const tabId = tabStore.addTerminalTab(workspaceId, cwd, "AI Solver");
-			window.electron.terminal.create(tabId, cwd).then(() => {
-				// Use --continue to resume the last Claude conversation in this directory
-				window.electron.terminal.write(tabId, "claude --continue\n");
-			});
-		}
-	};
-
-	const shortHash = group.commitHash ? group.commitHash.slice(0, 7) : null;
-	const filePaths = uniqueFilePaths(group.comments);
-	const totalComments = group.comments.length;
-	const fixedComments = group.comments.filter(
-		(c) => c.status === "fixed" || c.status === "wont_fix"
-	).length;
-	const allFixed = fixedComments === totalComments && totalComments > 0;
-	const canApprove = group.status === "fixed";
-
-	// Badge color: green when all resolved, accent when partial, gray when pending
-	const badgeBg = allFixed
-		? "rgba(52,199,89,0.15)"
-		: fixedComments > 0
-			? "rgba(10,132,255,0.15)"
-			: "var(--bg-overlay)";
-	const badgeText = allFixed ? "#34c759" : fixedComments > 0 ? "#0a84ff" : "var(--text-tertiary)";
-
-	const handleFileClick = (filePath: string) => {
-		if (!group.commitHash) return;
-		setActiveFile(filePath);
-		useTabStore
-			.getState()
-			.openCommentFixFile(
-				workspaceId,
-				group.id,
-				filePath,
-				group.commitHash,
-				repoPath,
-				detectLanguage(filePath)
-			);
-	};
-
-	return (
-		<div className="overflow-hidden rounded-[6px] border border-[var(--border-subtle)] bg-[var(--bg-surface)]">
-			{/* Header — two rows: label row + actions row */}
-			<button
-				type="button"
-				onClick={() => setExpanded((prev) => !prev)}
-				className="w-full px-3 py-1.5 text-left transition-colors hover:bg-[var(--bg-elevated)]"
-			>
-				{/* Row 1: chevron + label + badge */}
-				<div className="flex items-start gap-1.5">
-					<span className="mt-0.5 shrink-0 text-[10px] text-[var(--text-quaternary)]">
-						{expanded ? "\u25BE" : "\u25B8"}
-					</span>
-					<span className="min-w-0 flex-1 text-[12px] font-semibold leading-snug text-[var(--text-secondary)]">
-						{group.label}
-					</span>
-					<span
-						className="mt-0.5 shrink-0 rounded-[3px] px-1.5 py-px text-[9px] font-semibold"
-						style={{ backgroundColor: badgeBg, color: badgeText }}
-					>
-						{fixedComments} / {totalComments}
-					</span>
-				</div>
-				{/* Row 2: actions */}
-				<div className="mt-1 flex items-center gap-2 pl-4">
-					{canApprove && (
-						<span
-							role="button"
-							tabIndex={0}
-							onClick={(e) => {
-								e.stopPropagation();
-								approveGroup.mutate({ groupId: group.id });
-							}}
-							onKeyDown={(e) => {
-								if (e.key === "Enter") {
-									e.stopPropagation();
-									approveGroup.mutate({ groupId: group.id });
-								}
-							}}
-							className="rounded-[4px] bg-[rgba(48,209,88,0.15)] px-2 py-0.5 text-[10px] font-medium text-[#30d158] hover:opacity-80"
-						>
-							{approveGroup.isPending ? "..." : "Approve"}
-						</span>
-					)}
-					{group.status === "approved" && (
-						<span className="rounded-[3px] bg-[rgba(10,132,255,0.15)] px-1.5 py-px text-[9px] font-semibold uppercase tracking-wide text-[#0a84ff]">
-							Approved
-						</span>
-					)}
-					<span
-						role="button"
-						tabIndex={0}
-						onClick={(e) => {
-							e.stopPropagation();
-							handleFollowUp();
-						}}
-						onKeyDown={(e) => {
-							if (e.key === "Enter") {
-								e.stopPropagation();
-								handleFollowUp();
-							}
-						}}
-						className="rounded-[4px] px-2 py-0.5 text-[10px] text-[var(--text-quaternary)] hover:text-[var(--text-secondary)] transition-colors"
-					>
-						Follow up
-					</span>
-				</div>
-			</button>
-
-			{/* Sub-header: commit hash + file names */}
-			<div className="border-t border-[var(--border-subtle)] px-3 py-1.5">
-				<div className="flex flex-wrap items-center gap-1 text-[10px] text-[var(--text-quaternary)]">
-					{shortHash && (
-						<>
-							<span style={{ fontFamily: "var(--font-mono)" }}>{shortHash}</span>
-							<span>&middot;</span>
-						</>
-					)}
-					{filePaths.map((fp, i) => {
-						const filename = fp.split("/").pop() ?? fp;
-						return (
-							<span key={fp} className="flex items-center gap-1">
-								{i > 0 && <span>,</span>}
-								<button
-									type="button"
-									onClick={() => handleFileClick(fp)}
-									className={[
-										"hover:underline",
-										activeFile === fp ? "text-[var(--accent)]" : "text-[var(--text-quaternary)]",
-									].join(" ")}
-									style={{ fontFamily: "var(--font-mono)" }}
-									title={fp}
-								>
-									{filename}
-								</button>
-							</span>
-						);
-					})}
-				</div>
-			</div>
-
-			{/* Expanded content: comments */}
-			{expanded && (
-				<div className="flex flex-col gap-0 divide-y divide-[var(--border-subtle)] border-t border-[var(--border-subtle)]">
-					{group.comments.map((comment) => {
-						const commentFilename = comment.filePath ? comment.filePath.split("/").pop() : null;
-						return (
-							<div key={comment.id} className="px-3 py-2">
-								{/* Comment author + file:line */}
-								<div className="mb-0.5 flex items-center gap-1.5 text-[10px]">
-									<span className="font-bold text-[var(--text-secondary)]">{comment.author}</span>
-									{commentFilename && (
-										<button
-											type="button"
-											onClick={() => handleFileClick(comment.filePath)}
-											className="text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:underline"
-											style={{ fontFamily: "var(--font-mono)" }}
-											title={comment.filePath}
-										>
-											{commentFilename}
-											{comment.lineNumber != null && `:${comment.lineNumber}`}
-										</button>
-									)}
-								</div>
-								{/* Comment body — full text, no truncation */}
-								<MarkdownRenderer content={comment.body} />
-								{/* Draft reply — editable */}
-								{comment.reply && editingReply !== comment.reply.id && (
-									<div className="mt-2 rounded-[4px] border border-[rgba(255,255,255,0.06)] bg-[rgba(255,255,255,0.04)] px-2.5 py-1.5">
-										<div className="flex items-center justify-between">
-											<span className="text-[10px] font-medium text-[var(--text-quaternary)]">
-												Draft reply:
-											</span>
-											<div className="flex gap-1">
-												<button
-													type="button"
-													onClick={() => {
-														setEditingReply(comment.reply!.id);
-														setEditReplyText(comment.reply!.body);
-													}}
-													className="text-[9px] text-[var(--text-quaternary)] hover:text-[var(--text-secondary)]"
-												>
-													Edit
-												</button>
-												<button
-													type="button"
-													onClick={() => deleteReply.mutate({ replyId: comment.reply!.id })}
-													className="text-[9px] text-[#ff453a] hover:opacity-80"
-												>
-													Delete
-												</button>
-											</div>
-										</div>
-										<MarkdownRenderer content={comment.reply.body} />
-									</div>
-								)}
-								{/* Editing reply */}
-								{comment.reply && editingReply === comment.reply.id && (
-									<div className="mt-2 rounded-[4px] border border-[var(--accent)] bg-[rgba(255,255,255,0.04)] px-2.5 py-1.5">
-										<span className="text-[10px] font-medium text-[var(--text-quaternary)]">
-											Edit reply:
-										</span>
-										<textarea
-											value={editReplyText}
-											onChange={(e) => setEditReplyText(e.target.value)}
-											className="mt-1 w-full resize-none rounded-[4px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 py-1.5 text-[11px] text-[var(--text)] focus:border-[var(--accent)] focus:outline-none"
-											rows={3}
-										/>
-										<div className="mt-1 flex justify-end gap-1.5">
-											<button
-												type="button"
-												onClick={() => setEditingReply(null)}
-												className="rounded-[4px] px-2 py-0.5 text-[10px] text-[var(--text-tertiary)] hover:bg-[var(--bg-overlay)]"
-											>
-												Cancel
-											</button>
-											<button
-												type="button"
-												onClick={() =>
-													updateReply.mutate({ replyId: comment.reply!.id, body: editReplyText })
-												}
-												disabled={!editReplyText.trim() || updateReply.isPending}
-												className="rounded-[4px] bg-[var(--accent)] px-2 py-0.5 text-[10px] text-white hover:opacity-80 disabled:opacity-40"
-											>
-												Save
-											</button>
-										</div>
-									</div>
-								)}
-								{/* Inline reply input (when no reply exists) — single click to start typing */}
-								{!comment.reply && (
-									<div className="mt-1.5">
-										<textarea
-											placeholder="Reply..."
-											value={addingReplyTo === comment.id ? newReplyText : ""}
-											rows={
-												addingReplyTo === comment.id && newReplyText
-													? Math.min(Math.max(newReplyText.split("\n").length, 2), 6)
-													: 1
-											}
-											onFocus={() => {
-												if (addingReplyTo !== comment.id) {
-													setAddingReplyTo(comment.id);
-													setNewReplyText("");
-												}
-											}}
-											onChange={(e) => {
-												setAddingReplyTo(comment.id);
-												setNewReplyText(e.target.value);
-											}}
-											onKeyDown={(e) => {
-												if (e.key === "Enter" && !e.shiftKey && newReplyText.trim()) {
-													e.preventDefault();
-													addReply.mutate({
-														commentId: comment.id,
-														body: newReplyText.trim(),
-													});
-													setAddingReplyTo(null);
-													setNewReplyText("");
-												}
-												if (e.key === "Escape") {
-													setAddingReplyTo(null);
-													setNewReplyText("");
-													(e.target as HTMLTextAreaElement).blur();
-												}
-											}}
-											className={[
-												"w-full resize-none rounded-[4px] text-[11px] text-[var(--text)] placeholder:text-[var(--text-quaternary)] transition-all focus:outline-none",
-												addingReplyTo === comment.id
-													? "border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 py-1.5"
-													: "border border-transparent bg-transparent px-0 py-0.5",
-											].join(" ")}
-										/>
-										{addingReplyTo === comment.id && newReplyText && (
-											<div className="mt-0.5 text-[9px] text-[var(--text-quaternary)]">
-												Enter to save · Shift+Enter for new line · Esc to cancel
-											</div>
-										)}
-									</div>
-								)}
-							</div>
-						);
-					})}
-				</div>
-			)}
-		</div>
-	);
-}
-
-// ── Active State ──────────────────────────────────────────────────────────────
+// ── Compact Active State ─────────────────────────────────────────────────────
 
 function ActiveState({
 	session,
 	workspaceId,
+	newCommentCount,
 }: {
 	session: SolveSessionInfo;
 	workspaceId: string;
+	newCommentCount: number;
 }) {
-	const meta = useTabStore((s) => s.workspaceMetadata[workspaceId]);
-	const dismissSolve = trpc.commentSolver.dismissSolve.useMutation();
-	const pushAndPost = trpc.commentSolver.pushAndPost.useMutation();
-	const utils = trpc.useUtils();
-	const [pushError, setPushError] = useState<string | null>(null);
-
-	const prTitle = meta?.prTitle ?? session.prTitle ?? "Pull Request";
-	const prNumber =
-		meta?.prIdentifier?.match(/#(\d+)$/)?.[1] ?? session.prIdentifier.match(/#(\d+)$/)?.[1] ?? null;
-	const sourceBranch = meta?.sourceBranch ?? session.sourceBranch ?? null;
-
-	// Comment-level stats
 	const allComments = session.groups.flatMap((g) => g.comments);
-	const totalComments = allComments.length;
 	const resolved = allComments.filter(
 		(c) => c.status === "fixed" || c.status === "wont_fix"
 	).length;
-	const unclearComments = allComments.filter((c) => c.status === "unclear").length;
-	const pendingComments = totalComments - resolved - unclearComments;
+	const unclear = allComments.filter((c) => c.status === "unclear").length;
+	const pending = allComments.length - resolved - unclear;
 
-	// Reply counts
-	const allReplies = allComments.filter((c) => c.reply != null);
-	const approvedReplies = allReplies.filter((c) => c.reply?.status === "approved").length;
-	const draftReplies = allReplies.filter((c) => c.reply?.status === "draft").length;
-
-	// Non-reverted groups
-	const nonRevertedGroups = session.groups.filter((g) => g.status !== "reverted");
-	const allGroupsApproved =
-		nonRevertedGroups.length > 0 && nonRevertedGroups.every((g) => g.status === "approved");
-	const hasDraftReplies = allComments.some((c) => c.reply && c.reply.status === "draft");
-	const canPush = allGroupsApproved && !hasDraftReplies;
-
-	const handlePush = () => {
-		setPushError(null);
-		pushAndPost.mutate(
-			{ sessionId: session.id },
-			{
-				onSuccess: () => {
-					utils.commentSolver.getSolveSessions.invalidate({ workspaceId });
-					utils.commentSolver.getSolveSession.invalidate({ sessionId: session.id });
-				},
-				onError: (err) => {
-					setPushError(err.message);
-				},
-			}
-		);
-	};
-
-	const handleDismiss = () => {
-		dismissSolve.mutate(
-			{ sessionId: session.id },
-			{
-				onSuccess: () => {
-					utils.commentSolver.getSolveSessions.invalidate({ workspaceId });
-				},
-			}
-		);
-	};
+	const nonReverted = session.groups.filter((g) => g.status !== "reverted");
+	const approved = nonReverted.filter((g) => g.status === "approved").length;
+	const submitted = nonReverted.filter((g) => g.status === "submitted").length;
+	const total = nonReverted.length;
 
 	return (
-		<div className="flex flex-1 min-h-0 flex-col overflow-hidden bg-[var(--bg-base)]">
-			{/* PR Header */}
-			<div className="shrink-0 border-b border-[var(--border)] px-4 py-3">
-				{/* Top row: label + branch */}
-				<div className="flex items-center justify-between">
-					<span className="text-[10px] uppercase tracking-[0.5px] text-[var(--text-quaternary)]">
-						{prNumber ? `Pull Request #${prNumber}` : "Pull Request"}
+		<div className="flex flex-col bg-[var(--bg-base)]">
+			{/* Compact summary */}
+			<div className="px-4 py-3 border-b border-[var(--border)]">
+				<div className="text-[13px] font-semibold text-[var(--text)] mb-2 leading-snug">
+					{session.prTitle}
+				</div>
+				<ProgressSummary resolved={resolved} pending={pending} unclear={unclear} />
+				<div className="mt-2 flex items-center gap-2 text-[10px] text-[var(--text-quaternary)]">
+					<span>
+						{submitted > 0 && `${submitted} pushed · `}
+						{approved} / {total} groups approved
 					</span>
-					{sourceBranch && (
-						<span
-							className="text-[10px] text-[var(--text-quaternary)]"
-							style={{ fontFamily: "var(--font-mono)" }}
+				</div>
+			</div>
+
+			{/* Group names — read-only quick overview */}
+			<div className="px-4 py-2">
+				{session.groups.map((group) => {
+					const statusIcon =
+						group.status === "submitted"
+							? "✓"
+							: group.status === "approved"
+								? "●"
+								: group.status === "reverted"
+									? "✗"
+									: "○";
+					const statusColor =
+						group.status === "submitted"
+							? "var(--success)"
+							: group.status === "approved"
+								? "var(--accent)"
+								: group.status === "reverted"
+									? "var(--text-quaternary)"
+									: "var(--text-tertiary)";
+					return (
+						<div key={group.id} className="flex items-center gap-2 py-[6px] text-[11.5px]">
+							<span style={{ color: statusColor }} className="text-[10px] w-3 text-center">
+								{statusIcon}
+							</span>
+							<span
+								className={`flex-1 truncate ${group.status === "reverted" ? "line-through text-[var(--text-quaternary)]" : "text-[var(--text-secondary)]"}`}
+							>
+								{group.label}
+							</span>
+							<span className="text-[10px] text-[var(--text-quaternary)]">
+								{
+									group.comments.filter((c) => c.status === "fixed" || c.status === "wont_fix")
+										.length
+								}
+								/{group.comments.length}
+							</span>
+						</div>
+					);
+				})}
+			</div>
+
+			{newCommentCount > 0 && (
+				<div className="mx-4 mb-2 px-3 py-[10px] rounded-[6px] bg-[rgba(255,159,10,0.08)] border border-[rgba(255,159,10,0.2)]">
+					<div className="text-[11px] text-[#ff9f0a] font-medium mb-1">
+						{newCommentCount} new comment{newCommentCount !== 1 ? "s" : ""} since last solve
+					</div>
+					<div className="text-[10px] text-[var(--text-tertiary)]">
+						Open Comments tab to review and solve
+					</div>
+				</div>
+			)}
+
+			{/* Open full review CTA */}
+			<div className="shrink-0 border-t border-[var(--border)] px-4 py-3">
+				<button
+					type="button"
+					onClick={() => useTabStore.getState().addSolveReviewTab(workspaceId, session.id)}
+					className="w-full rounded-[8px] bg-[var(--accent)] px-4 py-2 text-[13px] font-medium text-white transition-opacity hover:opacity-90"
+				>
+					Open Solve Review
+				</button>
+			</div>
+		</div>
+	);
+}
+
+// ── Session History ───────────────────────────────────────────────────────────
+
+function SessionHistory({
+	sessions,
+	workspaceId,
+}: {
+	sessions: Array<{ id: string; status: string; createdAt: string | Date }>;
+	workspaceId: string;
+}) {
+	if (sessions.length === 0) return null;
+
+	return (
+		<div className="border-t border-[var(--border)]">
+			<div className="px-4 py-2">
+				<div className="text-[10px] uppercase tracking-[0.5px] text-[var(--text-quaternary)] mb-1">
+					Solve History
+				</div>
+				{sessions.map((session, i) => {
+					const sessionNumber = sessions.length - i;
+					const isDismissed = session.status === "dismissed";
+					const statusColor =
+						session.status === "submitted" ? "#34c759"
+						: session.status === "ready" ? "#0a84ff"
+						: session.status === "failed" ? "#ff453a"
+						: session.status === "in_progress" || session.status === "queued" ? "#0a84ff"
+						: "#8e8e93";
+					const statusBg =
+						session.status === "submitted" ? "rgba(52,199,89,0.12)"
+						: session.status === "ready" ? "rgba(10,132,255,0.12)"
+						: session.status === "failed" ? "rgba(255,69,58,0.12)"
+						: session.status === "in_progress" || session.status === "queued" ? "rgba(10,132,255,0.12)"
+						: "rgba(142,142,147,0.12)";
+					const statusLabel =
+						session.status === "submitted" ? "Submitted"
+						: session.status === "ready" ? "Ready"
+						: session.status === "failed" ? "Failed"
+						: session.status === "in_progress" ? "In Progress"
+						: session.status === "queued" ? "Queued"
+						: session.status === "cancelled" ? "Cancelled"
+						: "Dismissed";
+
+					return (
+						<button
+							type="button"
+							key={session.id}
+							onClick={() => useTabStore.getState().addSolveReviewTab(workspaceId, session.id)}
+							className={`w-full text-left px-2 py-[8px] rounded-[4px] hover:bg-[var(--bg-elevated)] transition-colors ${isDismissed ? "opacity-50" : ""}`}
 						>
-							{sourceBranch}
-						</span>
-					)}
-				</div>
-				{/* PR title */}
-				<h1 className="mt-1 text-[14px] font-semibold text-[var(--text)]">{prTitle}</h1>
-				{/* Subtle status summary */}
-				<div className="mt-1.5">
-					<ProgressSummary
-						resolved={resolved}
-						pending={pendingComments}
-						unclear={unclearComments}
-					/>
-				</div>
-			</div>
-
-			{/* Commit Groups section */}
-			<div className="flex-1 overflow-y-auto px-3 py-2">
-				<div className="mb-2 text-[10px] uppercase tracking-[0.5px] text-[var(--text-quaternary)]">
-					{session.groups.length} Commit Group{session.groups.length !== 1 ? "s" : ""}
-				</div>
-
-				{session.groups.length === 0 ? (
-					<div className="flex h-32 items-center justify-center">
-						<span className="text-[12px] text-[var(--text-quaternary)]">No commit groups</span>
-					</div>
-				) : (
-					<div className="flex flex-col gap-2.5">
-						{session.groups.map((group, i) => (
-							<CommitGroupCard
-								key={group.id}
-								group={group}
-								sessionId={session.id}
-								workspaceId={workspaceId}
-								defaultExpanded={i === 0}
-							/>
-						))}
-					</div>
-				)}
-			</div>
-
-			{/* Bottom bar */}
-			<div className="shrink-0 border-t border-[var(--border)] bg-[var(--bg-elevated)]">
-				{/* Error feedback */}
-				{pushError && (
-					<div className="border-b border-[var(--border-subtle)] bg-[rgba(255,69,58,0.1)] px-4 py-1.5 text-[10px] text-[#ff453a]">
-						{pushError}
-					</div>
-				)}
-
-				{/* Summary */}
-				<div className="px-4 pt-2 text-[10px] text-[var(--text-tertiary)]">
-					{allReplies.length > 0 && (
-						<span>
-							{approvedReplies} draft replies ready
-							{draftReplies > 0 && ` \u00B7 ${draftReplies} needs your input`}
-						</span>
-					)}
-				</div>
-
-				{/* Buttons */}
-				<div className="flex items-center gap-2 px-4 py-2.5">
-					<button
-						type="button"
-						onClick={handlePush}
-						disabled={!canPush || pushAndPost.isPending}
-						className="flex-1 rounded-[6px] bg-[#34c759] px-4 py-1.5 text-[11px] font-semibold text-black transition-colors hover:bg-[#2db84e] disabled:opacity-40"
-					>
-						{pushAndPost.isPending ? "Pushing..." : "Push changes & post replies"}
-					</button>
-					<button
-						type="button"
-						onClick={handleDismiss}
-						disabled={dismissSolve.isPending}
-						className="rounded-[6px] border border-[var(--border)] bg-transparent px-4 py-1.5 text-[11px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-overlay)] disabled:opacity-50"
-					>
-						{dismissSolve.isPending ? "Reverting..." : "Revert all"}
-					</button>
-				</div>
+							<div className="flex justify-between items-center mb-[2px]">
+								<span className="text-[11px] font-medium text-[var(--text-secondary)]">
+									Session #{sessionNumber}
+								</span>
+								<span
+									style={{ background: statusBg, color: statusColor }}
+									className="text-[9px] font-medium px-[7px] py-[1px] rounded-full"
+								>
+									{statusLabel}
+								</span>
+							</div>
+							<div className="text-[10px] text-[var(--text-quaternary)]">
+								{formatRelativeTime(new Date(session.createdAt).toISOString())}
+							</div>
+						</button>
+					);
+				})}
 			</div>
 		</div>
 	);
@@ -578,23 +224,29 @@ function ActiveState({
 // ── Main Component ────────────────────────────────────────────────────────────
 
 export function AIFixesTab({ workspaceId }: AIFixesTabProps) {
-	// Get all non-dismissed sessions for this workspace
+	const utils = trpc.useUtils();
+
 	const sessionsQuery = trpc.commentSolver.getSolveSessions.useQuery(
 		{ workspaceId },
 		{ staleTime: 5_000 }
 	);
 
-	// Find the latest non-dismissed session
-	const latestSession = useMemo(() => {
+	const statusesQuery = trpc.commentSolver.getCommentSolveStatuses.useQuery(
+		{ workspaceId },
+		{ staleTime: 10_000 }
+	);
+	const newCommentCount = Object.values(statusesQuery.data ?? {}).filter((s) => s === "new").length;
+
+	const sortedSessions = useMemo(() => {
 		const sessions = sessionsQuery.data ?? [];
-		if (sessions.length === 0) return null;
-		const sorted = [...sessions].sort(
+		if (sessions.length === 0) return [];
+		return [...sessions].sort(
 			(a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
 		);
-		return sorted[0] ?? null;
 	}, [sessionsQuery.data]);
 
-	// Fetch full session data if we have one
+	const latestSession = sortedSessions[0] ?? null;
+
 	const sessionQuery = trpc.commentSolver.getSolveSession.useQuery(
 		{ sessionId: latestSession?.id ?? "" },
 		{
@@ -607,20 +259,86 @@ export function AIFixesTab({ workspaceId }: AIFixesTabProps) {
 		}
 	);
 
+	const resetSession = trpc.commentSolver.resetFailedSession.useMutation({
+		onSuccess: () => {
+			utils.commentSolver.getSolveSession.invalidate();
+			utils.commentSolver.getSolveSessions.invalidate({ workspaceId });
+		},
+	});
+	const keepSession = trpc.commentSolver.keepFailedSession.useMutation({
+		onSuccess: () => {
+			utils.commentSolver.getSolveSession.invalidate();
+			utils.commentSolver.getSolveSessions.invalidate({ workspaceId });
+		},
+	});
+
 	const fullSession = sessionQuery.data ?? null;
 	const isSolving = latestSession?.status === "queued" || latestSession?.status === "in_progress";
 
-	// Active state: session is "ready" with full data
-	if (fullSession && fullSession.status === "ready") {
+	if (fullSession && (fullSession.status === "ready" || fullSession.status === "submitted")) {
 		return (
 			<div className="flex flex-1 min-h-0 flex-col bg-[var(--bg-base)]">
 				{isSolving && <SolvingBanner />}
-				<ActiveState session={fullSession} workspaceId={workspaceId} />
+				<div className="flex-1 min-h-0 overflow-y-auto">
+					<ActiveState session={fullSession} workspaceId={workspaceId} newCommentCount={newCommentCount} />
+					{sortedSessions.length > 1 && (
+						<SessionHistory sessions={sortedSessions.slice(1)} workspaceId={workspaceId} />
+					)}
+				</div>
 			</div>
 		);
 	}
 
-	// Empty state (with optional solving banner)
+	if (fullSession && fullSession.status === "failed") {
+		return (
+			<div className="flex flex-1 min-h-0 flex-col bg-[var(--bg-base)]">
+				<div className="flex flex-1 flex-col items-center justify-center px-4">
+					<div className="flex w-full max-w-sm flex-col gap-4 rounded-[10px] border border-[var(--border-destructive,#ff3b30)] bg-[var(--bg-surface)] p-4">
+						<div className="flex flex-col gap-1">
+							<span className="text-[13px] font-medium text-[var(--text)]">
+								The solver stopped unexpectedly
+							</span>
+							{fullSession.lastActivityAt && (
+								<span className="text-[12px] text-[var(--text-tertiary)]">
+									Last activity:{" "}
+									{formatRelativeTime(new Date(fullSession.lastActivityAt).toISOString())}
+								</span>
+							)}
+						</div>
+
+						<div className="flex gap-2">
+							<button
+								type="button"
+								onClick={() => resetSession.mutate({ sessionId: fullSession.id })}
+								disabled={resetSession.isPending || keepSession.isPending}
+								className="flex-1 rounded-[6px] border border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-2 text-[12px] font-medium text-[var(--text)] transition-colors hover:bg-[var(--bg-surface-hover)] disabled:opacity-50"
+							>
+								{resetSession.isPending ? "Reverting…" : "Reset & try again"}
+							</button>
+							<button
+								type="button"
+								onClick={() => keepSession.mutate({ sessionId: fullSession.id })}
+								disabled={resetSession.isPending || keepSession.isPending}
+								className="flex-1 rounded-[6px] bg-[var(--accent)] px-3 py-2 text-[12px] font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+							>
+								{keepSession.isPending ? "Saving…" : "Keep partial changes"}
+							</button>
+						</div>
+
+						{(resetSession.error ?? keepSession.error) && (
+							<span className="text-[12px] text-[var(--text-destructive)]">
+								{(resetSession.error ?? keepSession.error)?.message}
+							</span>
+						)}
+					</div>
+				</div>
+				{sortedSessions.length > 1 && (
+					<SessionHistory sessions={sortedSessions.slice(1)} workspaceId={workspaceId} />
+				)}
+			</div>
+		);
+	}
+
 	return (
 		<div className="flex flex-1 min-h-0 flex-col bg-[var(--bg-base)]">
 			{isSolving && <SolvingBanner />}
@@ -630,6 +348,9 @@ export function AIFixesTab({ workspaceId }: AIFixesTabProps) {
 					Use the Comments tab to trigger AI solving
 				</span>
 			</div>
+			{sortedSessions.length > 0 && (
+				<SessionHistory sessions={sortedSessions} workspaceId={workspaceId} />
+			)}
 		</div>
 	);
 }
