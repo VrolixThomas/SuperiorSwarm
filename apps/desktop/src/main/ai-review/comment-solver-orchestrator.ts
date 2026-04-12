@@ -387,12 +387,14 @@ export function cancelSolve(sessionId: string): void {
 	validateSolveTransition(session.status, "cancelled");
 
 	// Kill the agent process if PID is available
-	if (session.pid) {
+	if (session.pid !== null) {
 		try {
 			process.kill(session.pid, "SIGTERM");
 		} catch (err: unknown) {
-			// ESRCH = process already dead, that's fine
-			if ((err as NodeJS.ErrnoException).code !== "ESRCH") {
+			const code = (err as NodeJS.ErrnoException).code;
+			if (code === "EPERM") {
+				console.warn(`[comment-solver] EPERM killing PID ${session.pid} for session ${sessionId} — proceeding with cancel`);
+			} else if (code !== "ESRCH") {
 				throw err;
 			}
 		}
