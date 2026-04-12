@@ -155,6 +155,29 @@ function assertNoDraftReplies(commentIds: string[]): void {
 	}
 }
 
+/** Revert all fixed/approved groups in reverse order. Swallows individual revert errors. */
+async function revertGroupsInReverse(sessionId: string, worktreePath: string): Promise<void> {
+	const db = getDb();
+	const groups = db
+		.select()
+		.from(schema.commentGroups)
+		.where(eq(schema.commentGroups.solveSessionId, sessionId))
+		.orderBy(schema.commentGroups.order)
+		.all();
+
+	const groupsToRevert = groups
+		.filter((g) => (g.status === "fixed" || g.status === "approved") && g.commitHash)
+		.reverse();
+
+	for (const group of groupsToRevert) {
+		try {
+			await revertGroupOrchestrator(group.id, worktreePath);
+		} catch (err) {
+			console.error(`[comment-solver] Failed to revert group ${group.id}:`, err);
+		}
+	}
+}
+
 // ─── Router ───────────────────────────────────────────────────────────────────
 
 export const commentSolverRouter = router({
@@ -615,28 +638,8 @@ export const commentSolverRouter = router({
 				// Worktree may have been deleted — still allow dismiss
 			}
 
-			// Fetch groups that have commits to revert, ordered in reverse
 			if (worktreePath) {
-				const groups = db
-					.select()
-					.from(schema.commentGroups)
-					.where(eq(schema.commentGroups.solveSessionId, input.sessionId))
-					.orderBy(schema.commentGroups.order)
-					.all();
-
-				// Revert in reverse order (highest order first)
-				const groupsToRevert = groups
-					.filter((g) => (g.status === "fixed" || g.status === "approved") && g.commitHash)
-					.reverse();
-
-				for (const group of groupsToRevert) {
-					try {
-						await revertGroupOrchestrator(group.id, worktreePath);
-					} catch (err) {
-						console.error(`[comment-solver] Failed to revert group ${group.id}:`, err);
-						// Continue reverting remaining groups
-					}
-				}
+				await revertGroupsInReverse(input.sessionId, worktreePath);
 			}
 
 			// Update session status to dismissed
@@ -821,28 +824,8 @@ export const commentSolverRouter = router({
 				// Worktree may have been deleted — still allow dismiss
 			}
 
-			// Revert all non-reverted groups in reverse order
 			if (worktreePath) {
-				const groups = db
-					.select()
-					.from(schema.commentGroups)
-					.where(eq(schema.commentGroups.solveSessionId, input.sessionId))
-					.orderBy(schema.commentGroups.order)
-					.all();
-
-				// Revert in reverse order (highest order first)
-				const groupsToRevert = groups
-					.filter((g) => (g.status === "fixed" || g.status === "approved") && g.commitHash)
-					.reverse();
-
-				for (const group of groupsToRevert) {
-					try {
-						await revertGroupOrchestrator(group.id, worktreePath);
-					} catch (err) {
-						console.error(`[comment-solver] Failed to revert group ${group.id}:`, err);
-						// Continue reverting remaining groups
-					}
-				}
+				await revertGroupsInReverse(input.sessionId, worktreePath);
 			}
 
 			db.update(schema.commentSolveSessions)
