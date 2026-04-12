@@ -4,6 +4,7 @@ import { getDb } from "../db";
 import * as schema from "../db/schema";
 import { getGitProvider } from "../providers/git-provider";
 import { validateSolveTransition } from "./comment-solver-orchestrator";
+import { getSettings } from "./orchestrator";
 import { parsePrIdentifier } from "./pr-identifier";
 import { resolveSessionWorktree } from "./solve-session-resolver";
 
@@ -67,25 +68,31 @@ async function postRepliesAndResolveThreads(
 		else errors.push(`Failed to post reply: ${r.reason}`);
 	}
 
-	const fixedComments = db
-		.select()
-		.from(schema.prComments)
-		.where(and(inArray(schema.prComments.id, commentIds), eq(schema.prComments.status, "fixed")))
-		.all();
+	// Only resolve threads if the setting is enabled (off by default)
+	const settings = getSettings();
+	if (settings.solveAutoResolveThreads) {
+		const fixedComments = db
+			.select()
+			.from(schema.prComments)
+			.where(
+				and(inArray(schema.prComments.id, commentIds), eq(schema.prComments.status, "fixed"))
+			)
+			.all();
 
-	const resolveResults = await Promise.allSettled(
-		fixedComments.map((comment) =>
-			git.resolveComment({
-				owner,
-				repo,
-				prNumber,
-				commentId: comment.threadId ?? comment.platformCommentId,
-			})
-		)
-	);
-	for (const r of resolveResults) {
-		if (r.status === "fulfilled") threadsResolved++;
-		else errors.push(`Failed to resolve thread: ${r.reason}`);
+		const resolveResults = await Promise.allSettled(
+			fixedComments.map((comment) =>
+				git.resolveComment({
+					owner,
+					repo,
+					prNumber,
+					commentId: comment.threadId ?? comment.platformCommentId,
+				})
+			)
+		);
+		for (const r of resolveResults) {
+			if (r.status === "fulfilled") threadsResolved++;
+			else errors.push(`Failed to resolve thread: ${r.reason}`);
+		}
 	}
 
 	return { repliesPosted, threadsResolved, errors };

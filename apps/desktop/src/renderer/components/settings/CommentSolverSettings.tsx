@@ -53,6 +53,16 @@ export function CommentSolverSettings() {
 					checked={settings?.autoSolveEnabled ?? false}
 					onChange={() => update.mutate({ autoSolveEnabled: !settings?.autoSolveEnabled })}
 				/>
+				<ToggleRow
+					label="Auto-resolve threads on submit"
+					description="Automatically mark comment threads as resolved on the platform when their fixes are pushed"
+					checked={settings?.solveAutoResolveThreads ?? false}
+					onChange={() =>
+						update.mutate({
+							solveAutoResolveThreads: !settings?.solveAutoResolveThreads,
+						})
+					}
+				/>
 				<div className="flex items-center justify-between px-4 py-3.5">
 					<div className="flex flex-col gap-0.5">
 						<span className="text-[13px] font-medium text-[var(--text)]">
