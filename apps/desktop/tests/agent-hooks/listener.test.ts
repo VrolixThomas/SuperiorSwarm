@@ -79,4 +79,44 @@ describe("AgentAlertListener", () => {
 		expect(events[0]).toEqual({ alert: "needs-input", workspaceId: "w2" });
 		unsub();
 	});
+
+	test("getPort returns the bound port", () => {
+		expect(listener.getPort()).toBe(PORT);
+	});
+});
+
+describe("EADDRINUSE fallback", () => {
+	let blocker: AgentAlertListener;
+	let fallback: AgentAlertListener;
+	const BLOCKED_PORT = 27398;
+
+	beforeAll(async () => {
+		blocker = createAlertListener(BLOCKED_PORT);
+		await blocker.start();
+		// Create a second listener on the same port — should fallback to OS port
+		fallback = createAlertListener(BLOCKED_PORT);
+		await fallback.start();
+	});
+
+	afterAll(() => {
+		fallback.stop();
+		blocker.stop();
+	});
+
+	test("fallback listener binds to a different port", () => {
+		const fallbackPort = fallback.getPort();
+		expect(fallbackPort).not.toBeNull();
+		expect(fallbackPort).not.toBe(BLOCKED_PORT);
+	});
+
+	test("fallback listener still serves requests", async () => {
+		const fallbackPort = fallback.getPort()!;
+		agentRegistry.set("test-agent", mockAgent);
+		const url = `http://127.0.0.1:${fallbackPort}/event?rawEvent=Stop&sessionId=s1&workspaceId=w1&agent=test-agent`;
+		const res = await fetch(url);
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as { ok: boolean; alert: string };
+		expect(body.ok).toBe(true);
+		expect(body.alert).toBe("task-complete");
+	});
 });
