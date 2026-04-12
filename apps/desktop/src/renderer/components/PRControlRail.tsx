@@ -6,6 +6,7 @@ import type {
 	PRContext,
 	UnifiedThread,
 } from "../../shared/github-types";
+import { getAllPanes, usePaneStore } from "../stores/pane-store";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import { CommentThreadCard, threadAuthor, threadDate } from "./CommentThreadCard";
@@ -32,12 +33,14 @@ function PRTabHeader({
 	commentCount,
 	onClose,
 	reviewButton,
+	onOpenOverview,
 }: {
 	tab: PRTab;
 	onSetTab: (t: PRTab) => void;
 	commentCount: number;
 	onClose?: () => void;
 	reviewButton?: React.ReactNode;
+	onOpenOverview?: () => void;
 }) {
 	const tabs: { key: PRTab; label: string; badge?: number }[] = [
 		{ key: "changes", label: "Changes" },
@@ -71,6 +74,30 @@ function PRTabHeader({
 				))}
 			</div>
 			<div className="flex-1" />
+			{onOpenOverview && (
+				<Tooltip label="Open PR Overview">
+					<button
+						type="button"
+						onClick={onOpenOverview}
+						className="flex h-6 w-6 items-center justify-center rounded-[var(--radius-sm)] text-[var(--text-quaternary)] transition-colors duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-tertiary)]"
+					>
+						<svg
+							width="13"
+							height="13"
+							viewBox="0 0 16 16"
+							fill="none"
+							stroke="currentColor"
+							strokeWidth="1.5"
+							strokeLinecap="round"
+							strokeLinejoin="round"
+							aria-hidden="true"
+						>
+							<rect x="2" y="2" width="12" height="12" rx="2" />
+							<path d="M6 2v12" />
+						</svg>
+					</button>
+				</Tooltip>
+			)}
 			{reviewButton}
 			{onClose && (
 				<button
@@ -753,6 +780,27 @@ export function PRControlRail({ prCtx }: { prCtx: PRContext }) {
 	const draftReviewChainId = aiDraftQuery.data?.reviewChainId ?? matchingDraft?.id ?? null;
 
 	// ── Unified review button mutations ───────────────────────────────────
+
+	/** After adding a terminal tab, split pane so terminal stays left and PR overview moves right. */
+	const splitTerminalAndOverview = (workspaceId: string, ctx: PRContext) => {
+		const paneStore = usePaneStore.getState();
+		const layout = paneStore.layouts[workspaceId];
+		if (!layout) return;
+		for (const pane of getAllPanes(layout)) {
+			const overviewTab = pane.tabs.find(
+				(t) =>
+					t.kind === "pr-overview" &&
+					t.prCtx.owner === ctx.owner &&
+					t.prCtx.repo === ctx.repo &&
+					t.prCtx.number === ctx.number
+			);
+			if (overviewTab) {
+				paneStore.splitPane(workspaceId, pane.id, "horizontal", overviewTab);
+				return;
+			}
+		}
+	};
+
 	const attachTerminal = trpc.workspaces.attachTerminal.useMutation();
 	const triggerReview = trpc.aiReview.triggerReview.useMutation({
 		onSuccess: (launchInfo) => {
@@ -765,6 +813,8 @@ export function PRControlRail({ prCtx }: { prCtx: PRContext }) {
 				launchInfo.worktreePath,
 				"AI Review"
 			);
+			// Split: terminal stays left, PR overview moves right
+			splitTerminalAndOverview(launchInfo.reviewWorkspaceId, prCtx);
 			attachTerminal.mutate({
 				workspaceId: launchInfo.reviewWorkspaceId,
 				terminalId: tabId,
@@ -793,6 +843,8 @@ export function PRControlRail({ prCtx }: { prCtx: PRContext }) {
 				launchInfo.worktreePath,
 				"AI Re-review"
 			);
+			// Split: terminal stays left, PR overview moves right
+			splitTerminalAndOverview(launchInfo.reviewWorkspaceId, prCtx);
 			attachTerminal.mutate({
 				workspaceId: launchInfo.reviewWorkspaceId,
 				terminalId: tabId,
@@ -972,6 +1024,11 @@ export function PRControlRail({ prCtx }: { prCtx: PRContext }) {
 							</span>
 						</button>
 					</Tooltip>
+				}
+				onOpenOverview={
+					activeWorkspaceId
+						? () => openPROverview(activeWorkspaceId, prCtx)
+						: undefined
 				}
 			/>
 
