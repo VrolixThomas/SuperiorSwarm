@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { trpc } from "../trpc/client";
 import { useTabStore } from "../stores/tab-store";
 import { SolveCommitGroupCard } from "./SolveCommitGroupCard";
-import type { SolveGroupInfo, SolveSessionInfo } from "../../shared/solve-types";
+import type { SolveSessionInfo } from "../../shared/solve-types";
 
 interface Props {
 	workspaceId: string;
