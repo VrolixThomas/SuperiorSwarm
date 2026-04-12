@@ -102,6 +102,47 @@ export function cancelReview(draftId: string): void {
 	cleanupReview(draftId);
 }
 
+/**
+ * Compute resolution deltas for current-round comments against previous-round comments.
+ * Returns a Map from current-comment index to its delta annotation.
+ */
+export function computeResolutionDeltas(
+	currentComments: Array<{ filePath: string; lineNumber: number | null }>,
+	previousComments: Array<{
+		filePath: string;
+		lineNumber: number | null;
+		resolution?: string | null;
+	}>
+): Map<number, "new" | "resolved" | "still_open" | "regressed"> {
+	const deltas = new Map<number, "new" | "resolved" | "still_open" | "regressed">();
+
+	// Build a lookup of previous comments by file:line key
+	const previousByKey = new Map<string, { resolution?: string | null }>();
+	for (const prev of previousComments) {
+		const key = `${prev.filePath}:${prev.lineNumber ?? "file"}`;
+		previousByKey.set(key, { resolution: prev.resolution });
+	}
+
+	for (let i = 0; i < currentComments.length; i++) {
+		const curr = currentComments[i]!;
+		const key = `${curr.filePath}:${curr.lineNumber ?? "file"}`;
+		const prev = previousByKey.get(key);
+
+		if (!prev) {
+			deltas.set(i, "new");
+		} else if (
+			prev.resolution === "resolved-on-platform" ||
+			prev.resolution === "resolved-by-code"
+		) {
+			deltas.set(i, "regressed");
+		} else {
+			deltas.set(i, "still_open");
+		}
+	}
+
+	return deltas;
+}
+
 let pollInterval: ReturnType<typeof setInterval> | null = null;
 
 function startPollingIfNeeded(): void {
