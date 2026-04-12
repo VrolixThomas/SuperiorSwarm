@@ -163,9 +163,8 @@ function collectSnapshot() {
 		state["expandedProjectIds"] = JSON.stringify([...expandedProjectIds]);
 	}
 
-	const { vimEnabled } = useEditorSettingsStore.getState();
+	const { vimEnabled, notificationSoundsEnabled } = useEditorSettingsStore.getState();
 	if (vimEnabled) state["vimMode"] = "true";
-	const { notificationSoundsEnabled } = useEditorSettingsStore.getState();
 	state["notificationSounds"] = notificationSoundsEnabled ? "true" : "false";
 
 	const paneLayouts: Record<string, string> = {};
