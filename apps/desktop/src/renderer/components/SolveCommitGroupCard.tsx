@@ -35,6 +35,10 @@ export function SolveCommitGroupCard({ group, sessionId, workspaceId, defaultExp
 		onSuccess: () => utils.commentSolver.invalidate(),
 	});
 
+	const pushMutation = trpc.commentSolver.pushGroup.useMutation({
+		onSuccess: () => utils.commentSolver.invalidate(),
+	});
+
 	const isSolving = group.status === "pending";
 	const isReverted = group.status === "reverted";
 	const draftReplyCount = group.comments.filter((c) => c.reply?.status === "draft").length;
@@ -108,6 +112,8 @@ export function SolveCommitGroupCard({ group, sessionId, workspaceId, defaultExp
 					<GroupAction
 						group={group}
 						onApprove={() => approveMutation.mutate({ groupId: group.id })}
+						onPush={() => pushMutation.mutate({ groupId: group.id })}
+						isPushing={pushMutation.isPending}
 					/>
 				</div>
 			</div>
@@ -169,10 +175,16 @@ function RatioBadge({ group }: { group: SolveGroupInfo }) {
 function GroupAction({
 	group,
 	onApprove,
+	onPush,
+	isPushing,
 }: {
 	group: SolveGroupInfo;
 	onApprove: () => void;
+	onPush: () => void;
+	isPushing: boolean;
 }) {
+	const hasDraftReplies = group.comments.some((c) => c.reply?.status === "draft");
+
 	if (group.status === "pending") {
 		return (
 			<span className="flex items-center gap-[6px] text-[11.5px] text-[var(--accent)] font-medium">
@@ -184,16 +196,39 @@ function GroupAction({
 			</span>
 		);
 	}
-	if (group.status === "approved") {
+	if (group.status === "submitted") {
 		return (
-			<span className="py-[3px] px-[9px] rounded-[6px] text-[11px] font-medium bg-[var(--accent-subtle)] text-[var(--accent)]">
-				✓ Approved
+			<span className="py-[3px] px-[9px] rounded-[6px] text-[11px] font-medium bg-[var(--success-subtle)] text-[var(--success)]">
+				✓ Pushed
 			</span>
+		);
+	}
+	if (group.status === "approved") {
+		if (hasDraftReplies) {
+			return (
+				<span className="py-[3px] px-[9px] rounded-[6px] text-[11px] font-medium bg-[var(--accent-subtle)] text-[var(--accent)]">
+					✓ Approved
+				</span>
+			);
+		}
+		return (
+			<button
+				type="button"
+				onClick={(e) => {
+					e.stopPropagation();
+					onPush();
+				}}
+				disabled={isPushing}
+				className={`py-[4px] px-[12px] rounded-[6px] text-[11.5px] font-semibold border-none ${isPushing ? "cursor-not-allowed bg-[var(--bg-active)] text-[var(--text-tertiary)]" : "cursor-pointer bg-[var(--success)] text-[#0a0c0a]"}`}
+			>
+				{isPushing ? "Pushing…" : "Push & post"}
+			</button>
 		);
 	}
 	if (group.status === "fixed") {
 		return (
 			<button
+				type="button"
 				onClick={(e) => {
 					e.stopPropagation();
 					onApprove();

@@ -16,7 +16,7 @@ import { createAndQueueSolve } from "../../ai-review/create-and-queue-solve";
 import { getMcpServerPath } from "../../ai-review/mcp-path";
 import { getSettings } from "../../ai-review/orchestrator";
 import { buildSolveFollowUpPrompt } from "../../ai-review/solve-prompt";
-import { publishSolve } from "../../ai-review/solve-publisher";
+import { publishGroup, publishSolve } from "../../ai-review/solve-publisher";
 import { resolveSessionWorktree } from "../../ai-review/solve-session-resolver";
 import { getDb } from "../../db";
 import * as schema from "../../db/schema";
@@ -500,49 +500,99 @@ export const commentSolverRouter = router({
 	 * Push commits and post approved replies to the platform.
 	 * Validates all groups are approved and all replies are resolved first.
 	 */
-	pushAndPost: publicProcedure
-		.input(z.object({ sessionId: z.string() }))
+	/**
+	 * Push a single approved group's commits and post its replies.
+	 */
+	pushGroup: publicProcedure
+		.input(z.object({ groupId: z.string() }))
 		.mutation(async ({ input }) => {
 			const db = getDb();
 
-			// Validate all non-reverted groups are "approved"
-			const groups = db
+			const group = db
 				.select()
 				.from(schema.commentGroups)
-				.where(eq(schema.commentGroups.solveSessionId, input.sessionId))
-				.all();
-
-			const unapprovedGroups = groups.filter(
-				(g) => g.status !== "approved" && g.status !== "reverted"
-			);
-			if (unapprovedGroups.length > 0) {
-				throw new Error(`Cannot publish: ${unapprovedGroups.length} group(s) not yet approved`);
+				.where(eq(schema.commentGroups.id, input.groupId))
+				.get();
+			if (!group) throw new TRPCError({ code: "NOT_FOUND", message: "Group not found" });
+			if (group.status !== "approved") {
+				throw new TRPCError({
+					code: "PRECONDITION_FAILED",
+					message: "Group must be approved before pushing",
+				});
 			}
 
-			// Validate no draft replies remain
-			const sessionComments = db
+			// Validate no draft replies in this group
+			const groupCommentIds = db
 				.select({ id: schema.prComments.id })
 				.from(schema.prComments)
-				.where(eq(schema.prComments.solveSessionId, input.sessionId))
-				.all();
+				.where(eq(schema.prComments.groupId, input.groupId))
+				.all()
+				.map((c) => c.id);
 
-			const commentIds = sessionComments.map((c) => c.id);
-
-			if (commentIds.length > 0) {
+			if (groupCommentIds.length > 0) {
 				const draftReplies = db
 					.select()
 					.from(schema.commentReplies)
 					.where(
 						and(
-							inArray(schema.commentReplies.prCommentId, commentIds),
+							inArray(schema.commentReplies.prCommentId, groupCommentIds),
 							eq(schema.commentReplies.status, "draft")
 						)
 					)
 					.all();
+				if (draftReplies.length > 0) {
+					throw new TRPCError({
+						code: "PRECONDITION_FAILED",
+						message: `Sign off ${draftReplies.length} draft reply/replies before pushing`,
+					});
+				}
+			}
 
+			return publishGroup(input.groupId);
+		}),
+
+	pushAndPost: publicProcedure
+		.input(z.object({ sessionId: z.string() }))
+		.mutation(async ({ input }) => {
+			const db = getDb();
+
+			// Require at least one approved group
+			const approvedGroups = db
+				.select()
+				.from(schema.commentGroups)
+				.where(
+					and(
+						eq(schema.commentGroups.solveSessionId, input.sessionId),
+						eq(schema.commentGroups.status, "approved")
+					)
+				)
+				.all();
+			if (approvedGroups.length === 0) {
+				throw new Error("No approved groups to push");
+			}
+
+			// Validate no draft replies in approved groups
+			const approvedCommentIds = db
+				.select({ id: schema.prComments.id })
+				.from(schema.prComments)
+				.where(inArray(schema.prComments.groupId, approvedGroups.map((g) => g.id)))
+				.all()
+				.map((c) => c.id);
+
+			if (approvedCommentIds.length > 0) {
+				const draftReplies = db
+					.select()
+					.from(schema.commentReplies)
+					.where(
+						and(
+							inArray(schema.commentReplies.prCommentId, approvedCommentIds),
+							eq(schema.commentReplies.status, "draft")
+						)
+					)
+					.all();
 				if (draftReplies.length > 0) {
 					throw new Error(
-						`Cannot publish: ${draftReplies.length} reply draft(s) still pending approval`
+						`Cannot publish: ${draftReplies.length} draft reply/replies still pending approval`
 					);
 				}
 			}
