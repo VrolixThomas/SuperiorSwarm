@@ -63,7 +63,9 @@ function PRHeader({
 export function CommentsOverviewTab({ workspaceId }: CommentsOverviewTabProps) {
 	const [skippedIds, setSkippedIds] = useState<Set<string>>(new Set());
 	const [sortMode, setSortMode] = useState<SortMode>("by-file");
-	const [statusFilter, setStatusFilter] = useState<"all" | "addressed" | "new" | "unaddressed">("all");
+	const [statusFilter, setStatusFilter] = useState<"all" | "addressed" | "new" | "unaddressed">(
+		"all"
+	);
 
 	const commentsQuery = trpc.commentSolver.getWorkspaceComments.useQuery(
 		{ workspaceId },
@@ -234,11 +236,7 @@ export function CommentsOverviewTab({ workspaceId }: CommentsOverviewTabProps) {
 					}, 1000);
 
 					// Open solve review in a split pane beside the terminal
-					tabStore.addSolveReviewTab(
-						launchInfo.workspaceId,
-						launchInfo.sessionId,
-						{ split: true }
-					);
+					tabStore.addSolveReviewTab(launchInfo.workspaceId, launchInfo.sessionId, { split: true });
 				},
 			}
 		);
@@ -437,30 +435,44 @@ export function CommentsOverviewTab({ workspaceId }: CommentsOverviewTabProps) {
 				<div className="flex shrink-0 items-center gap-[6px] border-b border-[var(--border-subtle)] px-3 py-1.5">
 					{(["all", "addressed", "new", "unaddressed"] as const).map((filter) => {
 						const count =
-							filter === "all" ? threads.length
-							: filter === "addressed" ? addressedCount
-							: filter === "new" ? newCount
-							: unaddressedCount;
+							filter === "all"
+								? threads.length
+								: filter === "addressed"
+									? addressedCount
+									: filter === "new"
+										? newCount
+										: unaddressedCount;
 						const isActive = statusFilter === filter;
 						const label =
-							filter === "all" ? "All"
-							: filter === "addressed" ? "Addressed"
-							: filter === "new" ? "New"
-							: "Unaddressed";
+							filter === "all"
+								? "All"
+								: filter === "addressed"
+									? "Addressed"
+									: filter === "new"
+										? "New"
+										: "Unaddressed";
 						const activeColor =
-							filter === "addressed" ? "rgba(52,199,89,0.15)"
-							: filter === "new" ? "rgba(255,159,10,0.15)"
-							: "var(--bg-elevated)";
+							filter === "addressed"
+								? "rgba(52,199,89,0.15)"
+								: filter === "new"
+									? "rgba(255,159,10,0.15)"
+									: "var(--bg-elevated)";
 						const activeText =
-							filter === "addressed" ? "#34c759"
-							: filter === "new" ? "#ff9f0a"
-							: "var(--text-secondary)";
+							filter === "addressed"
+								? "#34c759"
+								: filter === "new"
+									? "#ff9f0a"
+									: "var(--text-secondary)";
 						return (
 							<button
 								key={filter}
 								type="button"
 								onClick={() => setStatusFilter(filter)}
-								style={isActive ? { background: activeColor, color: activeText, borderColor: activeText } : {}}
+								style={
+									isActive
+										? { background: activeColor, color: activeText, borderColor: activeText }
+										: {}
+								}
 								className={`rounded-full px-[10px] py-[2px] text-[10px] font-medium border transition-colors ${
 									isActive
 										? "border-current"
