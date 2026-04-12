@@ -154,7 +154,11 @@ interface TabStore {
 	addTerminalTab: (workspaceId: string, cwd: string, title?: string) => string;
 
 	// Solve review
-	addSolveReviewTab: (workspaceId: string, solveSessionId: string) => string;
+	addSolveReviewTab: (
+		workspaceId: string,
+		solveSessionId: string,
+		options?: { split?: boolean }
+	) => string;
 	getSolveReviewTab: (workspaceId: string) => TabItem | undefined;
 
 	// PR review
@@ -536,7 +540,7 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 		return id;
 	},
 
-	addSolveReviewTab: (workspaceId, solveSessionId) => {
+	addSolveReviewTab: (workspaceId, solveSessionId, options) => {
 		const existing = get().getSolveReviewTab(workspaceId);
 		if (
 			existing &&
@@ -556,7 +560,10 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 		};
 		ps().ensureLayout(workspaceId);
 		const focused = resolveFocusedPane(workspaceId);
-		if (focused) {
+		if (focused && options?.split) {
+			// Open in a new pane beside the current one
+			ps().splitPane(workspaceId, focused.id, "horizontal", tab);
+		} else if (focused) {
 			ps().addTabToPane(workspaceId, focused.id, tab);
 		}
 		return id;

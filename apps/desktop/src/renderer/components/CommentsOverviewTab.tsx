@@ -233,7 +233,12 @@ export function CommentsOverviewTab({ workspaceId }: CommentsOverviewTabProps) {
 						window.electron.terminal.write(tabId, `bash '${launchInfo.launchScript}'\r`);
 					}, 1000);
 
-					tabStore.addSolveReviewTab(launchInfo.workspaceId, launchInfo.sessionId);
+					// Open solve review in a split pane beside the terminal
+					tabStore.addSolveReviewTab(
+						launchInfo.workspaceId,
+						launchInfo.sessionId,
+						{ split: true }
+					);
 				},
 			}
 		);
