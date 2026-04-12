@@ -5,7 +5,7 @@ import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import { CommentThreadCard, threadAuthor, threadDate } from "./CommentThreadCard";
 import type { SortMode } from "./CommentThreadCard";
-import { SolvingBanner } from "./SolvingBanner";
+
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -197,6 +197,8 @@ export function CommentsOverviewTab({ workspaceId }: CommentsOverviewTabProps) {
 					setTimeout(() => {
 						window.electron.terminal.write(tabId, `bash '${launchInfo.launchScript}'\r`);
 					}, 1000);
+
+					tabStore.addSolveReviewTab(launchInfo.workspaceId, launchInfo.sessionId);
 				},
 			}
 		);
@@ -358,8 +360,6 @@ export function CommentsOverviewTab({ workspaceId }: CommentsOverviewTabProps) {
 				sourceBranch={sourceBranch}
 				commentCount={threads.length}
 			/>
-
-			{isSessionInProgress && <SolvingBanner />}
 
 			{/* Sort control */}
 			<div className="flex shrink-0 items-center justify-between border-b border-[var(--border-subtle)] px-3 py-1.5">

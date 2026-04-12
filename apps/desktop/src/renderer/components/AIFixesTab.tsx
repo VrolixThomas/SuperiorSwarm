@@ -604,6 +604,17 @@ function ActiveState({
 				</div>
 			</div>
 
+			{/* Open Solve Review tab link */}
+			<div className="shrink-0 border-b border-[var(--border-subtle)] px-4 py-1.5">
+				<button
+					type="button"
+					onClick={() => useTabStore.getState().addSolveReviewTab(workspaceId, session.id)}
+					className="text-[11px] text-[var(--accent)] hover:opacity-80 transition-opacity"
+				>
+					&#8599; Open Solve Review tab
+				</button>
+			</div>
+
 			{/* Commit Groups section */}
 			<div className="flex-1 overflow-y-auto px-3 py-2">
 				<div className="mb-2 text-[10px] uppercase tracking-[0.5px] text-[var(--text-quaternary)]">
