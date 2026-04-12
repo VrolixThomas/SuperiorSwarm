@@ -12,6 +12,7 @@ import { resolveSessionWorktree } from "../../ai-review/solve-session-resolver";
 import { getDb } from "../../db";
 import * as schema from "../../db/schema";
 import type {
+	ChangedFile,
 	SolveCommentStatus,
 	SolveGroupStatus,
 	SolveLaunchInfo,
@@ -80,7 +81,7 @@ function assembleSolveSession(sessionId: string): SolveSessionInfo | null {
 			status: group.status as SolveGroupStatus,
 			commitHash: group.commitHash ?? null,
 			order: group.order,
-			changedFiles: group.changedFiles ? JSON.parse(group.changedFiles) : [],
+			changedFiles: group.changedFiles ? (JSON.parse(group.changedFiles) as ChangedFile[]) : [],
 			comments: comments.map((comment) => {
 				const reply = repliesByCommentId.get(comment.id);
 				return {
