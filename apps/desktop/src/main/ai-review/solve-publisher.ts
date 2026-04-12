@@ -14,6 +14,85 @@ export interface PublishSolveResult {
 	errors: string[];
 }
 
+interface ReplyAndResolveResult {
+	repliesPosted: number;
+	threadsResolved: number;
+	errors: string[];
+}
+
+/** Post approved replies and resolve fixed threads for the given comment IDs. */
+async function postRepliesAndResolveThreads(
+	commentIds: string[],
+	session: { prIdentifier: string; prProvider: string }
+): Promise<ReplyAndResolveResult> {
+	const db = getDb();
+	const errors: string[] = [];
+	let repliesPosted = 0;
+	let threadsResolved = 0;
+
+	if (commentIds.length === 0) return { repliesPosted, threadsResolved, errors };
+
+	const { owner, repo, number: prNumber } = parsePrIdentifier(session.prIdentifier);
+	const git = getGitProvider(session.prProvider);
+
+	const approvedReplies = db
+		.select({ reply: schema.commentReplies, comment: schema.prComments })
+		.from(schema.commentReplies)
+		.innerJoin(schema.prComments, eq(schema.commentReplies.prCommentId, schema.prComments.id))
+		.where(
+			and(
+				inArray(schema.commentReplies.prCommentId, commentIds),
+				eq(schema.commentReplies.status, "approved")
+			)
+		)
+		.all();
+
+	const replyResults = await Promise.allSettled(
+		approvedReplies.map(async ({ reply, comment }) => {
+			await git.replyToComment({
+				owner,
+				repo,
+				prNumber,
+				commentId: comment.threadId ?? comment.platformCommentId,
+				body: reply.body,
+			});
+			db.update(schema.commentReplies)
+				.set({ status: "posted" })
+				.where(eq(schema.commentReplies.id, reply.id))
+				.run();
+		})
+	);
+	for (const r of replyResults) {
+		if (r.status === "fulfilled") repliesPosted++;
+		else errors.push(`Failed to post reply: ${r.reason}`);
+	}
+
+	const fixedComments = db
+		.select()
+		.from(schema.prComments)
+		.where(
+			and(inArray(schema.prComments.id, commentIds), eq(schema.prComments.status, "fixed"))
+		)
+		.all();
+
+	const resolveResults = await Promise.allSettled(
+		fixedComments.map((comment) =>
+			git.resolveComment({
+				owner,
+				repo,
+				prNumber,
+				commentId: comment.threadId ?? comment.platformCommentId,
+			})
+		)
+	);
+	for (const r of resolveResults) {
+		if (r.status === "fulfilled") threadsResolved++;
+		else errors.push(`Failed to resolve thread: ${r.reason}`);
+	}
+
+	return { repliesPosted, threadsResolved, errors };
+}
+
 /** Push commits and post approved replies for a single group. */
 export async function publishGroup(groupId: string): Promise<PublishSolveResult> {
 	const db = getDb();
@@ -44,10 +123,6 @@ export async function publishGroup(groupId: string): Promise<PublishSolveResult>
 		errors.push(`Git push failed: ${err}`);
 	}
 
-	const { owner, repo, number: prNumber } = parsePrIdentifier(session.prIdentifier);
-	const git = getGitProvider(session.prProvider);
-
-	// Post approved replies for this group's comments only
 	const groupCommentIds = db
 		.select({ id: schema.prComments.id })
 		.from(schema.prComments)
@@ -55,66 +130,10 @@ export async function publishGroup(groupId: string): Promise<PublishSolveResult>
 		.all()
 		.map((c) => c.id);
 
-	if (groupCommentIds.length > 0) {
-		const approvedReplies = db
-			.select({ reply: schema.commentReplies, comment: schema.prComments })
-			.from(schema.commentReplies)
-			.innerJoin(schema.prComments, eq(schema.commentReplies.prCommentId, schema.prComments.id))
-			.where(
-				and(
-					inArray(schema.commentReplies.prCommentId, groupCommentIds),
-					eq(schema.commentReplies.status, "approved")
-				)
-			)
-			.all();
-
-		const replyResults = await Promise.allSettled(
-			approvedReplies.map(async ({ reply, comment }) => {
-				await git.replyToComment({
-					owner,
-					repo,
-					prNumber,
-					commentId: comment.threadId ?? comment.platformCommentId,
-					body: reply.body,
-				});
-				db.update(schema.commentReplies)
-					.set({ status: "posted" })
-					.where(eq(schema.commentReplies.id, reply.id))
-					.run();
-			})
-		);
-		for (const r of replyResults) {
-			if (r.status === "fulfilled") repliesPosted++;
-			else errors.push(`Failed to post reply: ${r.reason}`);
-		}
-
-		// Resolve threads for fixed comments in this group
-		const fixedComments = db
-			.select()
-			.from(schema.prComments)
-			.where(
-				and(
-					inArray(schema.prComments.id, groupCommentIds),
-					eq(schema.prComments.status, "fixed")
-				)
-			)
-			.all();
-
-		const resolveResults = await Promise.allSettled(
-			fixedComments.map((comment) =>
-				git.resolveComment({
-					owner,
-					repo,
-					prNumber,
-					commentId: comment.threadId ?? comment.platformCommentId,
-				})
-			)
-		);
-		for (const r of resolveResults) {
-			if (r.status === "fulfilled") threadsResolved++;
-			else errors.push(`Failed to resolve thread: ${r.reason}`);
-		}
-	}
+	const result = await postRepliesAndResolveThreads(groupCommentIds, session);
+	repliesPosted = result.repliesPosted;
+	threadsResolved = result.threadsResolved;
+	errors.push(...result.errors);
 
 	// Mark group submitted
 	db.update(schema.commentGroups)
@@ -178,66 +197,17 @@ export async function publishSolve(sessionId: string): Promise<PublishSolveResul
 	const approvedGroupIds = approvedGroups.map((g) => g.id);
 
 	if (approvedGroupIds.length > 0) {
-		const approvedReplies = db
-			.select({ reply: schema.commentReplies, comment: schema.prComments })
-			.from(schema.commentReplies)
-			.innerJoin(schema.prComments, eq(schema.commentReplies.prCommentId, schema.prComments.id))
-			.where(
-				and(
-					inArray(schema.prComments.groupId, approvedGroupIds),
-					eq(schema.commentReplies.status, "approved")
-				)
-			)
-			.all();
-
-		const { owner, repo, number: prNumber } = parsePrIdentifier(session.prIdentifier);
-		const git = getGitProvider(session.prProvider);
-
-		const replyResults = await Promise.allSettled(
-			approvedReplies.map(async ({ reply, comment }) => {
-				await git.replyToComment({
-					owner,
-					repo,
-					prNumber,
-					commentId: comment.threadId ?? comment.platformCommentId,
-					body: reply.body,
-				});
-				db.update(schema.commentReplies)
-					.set({ status: "posted" })
-					.where(eq(schema.commentReplies.id, reply.id))
-					.run();
-			})
-		);
-		for (const r of replyResults) {
-			if (r.status === "fulfilled") repliesPosted++;
-			else errors.push(`Failed to post reply: ${r.reason}`);
-		}
-
-		const fixedComments = db
-			.select()
+		const approvedCommentIds = db
+			.select({ id: schema.prComments.id })
 			.from(schema.prComments)
-			.where(
-				and(
-					inArray(schema.prComments.groupId, approvedGroupIds),
-					eq(schema.prComments.status, "fixed")
-				)
-			)
-			.all();
+			.where(inArray(schema.prComments.groupId, approvedGroupIds))
+			.all()
+			.map((c) => c.id);
 
-		const resolveResults = await Promise.allSettled(
-			fixedComments.map((comment) =>
-				git.resolveComment({
-					owner,
-					repo,
-					prNumber,
-					commentId: comment.threadId ?? comment.platformCommentId,
-				})
-			)
-		);
-		for (const r of resolveResults) {
-			if (r.status === "fulfilled") threadsResolved++;
-			else errors.push(`Failed to resolve thread: ${r.reason}`);
-		}
+		const result = await postRepliesAndResolveThreads(approvedCommentIds, session);
+		repliesPosted = result.repliesPosted;
+		threadsResolved = result.threadsResolved;
+		errors.push(...result.errors);
 
 		// Mark all approved groups as submitted
 		db.update(schema.commentGroups)
