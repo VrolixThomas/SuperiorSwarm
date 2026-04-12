@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { joinCacheKey, splitCacheKey } from "../src/main/providers/github-adapter";
+import { joinCacheKey, splitCacheKey } from "../src/main/providers/github-cache-key";
 
 // Pure mapping helpers mirroring the adapter's normalization logic — tested
 // in isolation so no Electron / DB imports are needed.
