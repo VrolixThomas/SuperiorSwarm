@@ -185,7 +185,7 @@ export function AIFixesTab({ workspaceId }: AIFixesTabProps) {
 	const fullSession = sessionQuery.data ?? null;
 	const isSolving = latestSession?.status === "queued" || latestSession?.status === "in_progress";
 
-	if (fullSession && fullSession.status === "ready") {
+	if (fullSession && (fullSession.status === "ready" || fullSession.status === "submitted")) {
 		return (
 			<div className="flex flex-1 min-h-0 flex-col bg-[var(--bg-base)]">
 				{isSolving && <SolvingBanner />}
