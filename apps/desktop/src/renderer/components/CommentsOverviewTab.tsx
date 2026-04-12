@@ -72,6 +72,12 @@ export function CommentsOverviewTab({ workspaceId }: CommentsOverviewTabProps) {
 		{ workspaceId },
 		{ staleTime: 5_000 }
 	);
+	const statusesQuery = trpc.commentSolver.getCommentSolveStatuses.useQuery(
+		{ workspaceId },
+		{ staleTime: 10_000, enabled: !!workspaceId }
+	);
+	const solveStatuses = statusesQuery.data ?? {};
+	const hasAnySolveSession = Object.keys(solveStatuses).length > 0;
 	const triggerSolve = trpc.commentSolver.triggerSolve.useMutation();
 	const attachTerminal = trpc.workspaces.attachTerminal.useMutation();
 	const utils = trpc.useUtils();
@@ -83,6 +89,20 @@ export function CommentsOverviewTab({ workspaceId }: CommentsOverviewTabProps) {
 	useEffect(() => {
 		refreshComments.mutate({ workspaceId });
 	}, [workspaceId]);
+
+	// Pre-skip addressed comments so re-solve targets only outstanding ones
+	// biome-ignore lint/correctness/useExhaustiveDependencies: only run when statuses load
+	useEffect(() => {
+		if (!hasAnySolveSession) return;
+		const addressedIds = new Set(
+			Object.entries(solveStatuses)
+				.filter(([, status]) => status === "addressed")
+				.map(([id]) => id)
+		);
+		if (addressedIds.size > 0) {
+			setSkippedIds(addressedIds);
+		}
+	}, [hasAnySolveSession]);
 
 	const meta = useTabStore((s) => s.workspaceMetadata[workspaceId]);
 	const comments = commentsQuery.data ?? [];
@@ -257,6 +277,18 @@ export function CommentsOverviewTab({ workspaceId }: CommentsOverviewTabProps) {
 
 	const renderThread = (t: UnifiedThread) => {
 		const isSkipped = skippedIds.has(t.id);
+		const solveStatus = solveStatuses[t.id];
+		const badge =
+			solveStatus === "addressed" ? (
+				<span className="rounded-full px-[7px] py-[1px] text-[9px] font-semibold bg-[rgba(52,199,89,0.12)] text-[#34c759]">
+					AI Addressed
+				</span>
+			) : solveStatus === "new" ? (
+				<span className="rounded-full px-[7px] py-[1px] text-[9px] font-semibold bg-[rgba(255,159,10,0.12)] text-[#ff9f0a]">
+					New
+				</span>
+			) : null;
+
 		return (
 			<div key={t.id} className={isSkipped ? "opacity-40" : ""}>
 				<CommentThreadCard
@@ -266,13 +298,16 @@ export function CommentsOverviewTab({ workspaceId }: CommentsOverviewTabProps) {
 					onReply={handleReply}
 					onResolve={handleResolve}
 					extraAction={
-						<button
-							type="button"
-							onClick={() => toggleSkip(t.id)}
-							className="text-[9px] text-[var(--text-quaternary)] hover:text-[var(--text-tertiary)] transition-colors"
-						>
-							{isSkipped ? "Include" : "Skip"}
-						</button>
+						<>
+							{badge}
+							<button
+								type="button"
+								onClick={() => toggleSkip(t.id)}
+								className="text-[9px] text-[var(--text-quaternary)] hover:text-[var(--text-tertiary)] transition-colors"
+							>
+								{isSkipped ? "Include" : "Skip"}
+							</button>
+						</>
 					}
 				/>
 			</div>
