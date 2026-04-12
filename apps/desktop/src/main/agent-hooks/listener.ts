@@ -62,7 +62,7 @@ export function createAlertListener(port: number): AgentAlertListener {
 			try {
 				handler(event);
 			} catch (err) {
-				console.error("[agent-listener] handler error:", err);
+				console.error("[agent-notify] handler error:", err);
 			}
 		}
 
@@ -76,8 +76,7 @@ export function createAlertListener(port: number): AgentAlertListener {
 				server = httpServer;
 
 				const bind = (targetPort: number) => {
-					httpServer.removeAllListeners("error");
-					httpServer.once("error", (err: NodeJS.ErrnoException) => {
+					const onBindError = (err: NodeJS.ErrnoException) => {
 						if (err.code === "EADDRINUSE" && targetPort !== 0) {
 							console.warn(
 								`[agent-notify] port ${targetPort} in use, falling back to OS-assigned port`,
@@ -86,11 +85,12 @@ export function createAlertListener(port: number): AgentAlertListener {
 						} else {
 							reject(err);
 						}
-					});
+					};
+					httpServer.once("error", onBindError);
 					httpServer.listen(targetPort, "127.0.0.1", () => {
-						httpServer.removeAllListeners("error");
+						httpServer.removeListener("error", onBindError);
 						httpServer.on("error", (err) => {
-							console.error("[agent-listener] server error:", err);
+							console.error("[agent-notify] server error:", err);
 						});
 						const addr = httpServer.address();
 						const boundPort = typeof addr === "object" && addr ? addr.port : targetPort;
