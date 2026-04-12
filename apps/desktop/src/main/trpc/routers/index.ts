@@ -1,5 +1,6 @@
 import { router } from "../index";
 import { aiReviewRouter } from "./ai-review";
+import { lspRouter } from "./lsp";
 import { atlassianRouter } from "./atlassian";
 import { authRouter } from "./auth";
 import { branchesRouter } from "./branches";
@@ -43,6 +44,7 @@ export const appRouter = router({
 	updates: updatesRouter,
 	system: systemRouter,
 	telemetry: telemetryRouter,
+	lsp: lspRouter,
 });
 
 export type AppRouter = typeof appRouter;
