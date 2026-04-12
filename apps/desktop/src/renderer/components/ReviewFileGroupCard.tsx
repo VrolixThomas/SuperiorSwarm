@@ -1,35 +1,34 @@
 import { useState } from "react";
+import type { FileGroupItem } from "../../shared/github-types";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 
 interface ReviewFileGroupCardProps {
 	filePath: string;
-	comments: Array<{
-		id: string;
-		lineNumber: number | null;
-		body: string;
-		status: string;
-		userEdit: string | null;
-		roundDelta: "new" | "resolved" | "still_open" | "regressed" | null;
-	}>;
+	items: FileGroupItem[];
 	defaultExpanded: boolean;
 	onApprove: (commentId: string) => void;
 	onReject: (commentId: string) => void;
 	onEdit: (commentId: string, newBody: string) => void;
 	onApproveAll: (commentIds: string[]) => void;
 	onOpenInDiff: (filePath: string) => void;
+	onReplyToThread?: (threadId: string, body: string) => void;
+	onResolveThread?: (threadId: string) => void;
 }
 
 export function ReviewFileGroupCard({
 	filePath,
-	comments,
+	items,
 	defaultExpanded,
 	onApprove,
 	onReject,
 	onEdit,
 	onApproveAll,
 	onOpenInDiff,
+	onReplyToThread,
+	onResolveThread,
 }: ReviewFileGroupCardProps) {
-	const nonRejected = comments.filter((c) => c.status !== "rejected");
+	const aiDrafts = items.filter((i) => i.kind === "ai-draft");
+	const nonRejected = aiDrafts.filter((c) => c.status !== "rejected");
 	const allApproved = nonRejected.length > 0 && nonRejected.every((c) => c.status === "approved");
 	const [expanded, setExpanded] = useState(allApproved ? false : defaultExpanded);
 
@@ -37,6 +36,9 @@ export function ReviewFileGroupCard({
 	const pendingIds = nonRejected
 		.filter((c) => c.status !== "approved" && c.status !== "edited")
 		.map((c) => c.id);
+	const totalItemCount = items.filter((i) =>
+		i.kind === "ai-draft" ? i.status !== "rejected" : true,
+	).length;
 
 	return (
 		<div
@@ -69,7 +71,7 @@ export function ReviewFileGroupCard({
 						{filePath}
 					</span>
 					<span className="shrink-0 py-[1px] px-[7px] rounded-full font-mono text-[10px] font-medium bg-[var(--bg-active)] text-[var(--text-tertiary)]">
-						{nonRejected.length}
+						{totalItemCount}
 					</span>
 					{approvedCount > 0 && (
 						<span className="shrink-0 py-[1px] px-[7px] rounded-full text-[10px] font-medium bg-[var(--success-subtle)] text-[var(--success)]">
@@ -96,16 +98,27 @@ export function ReviewFileGroupCard({
 			{/* Body */}
 			{expanded && (
 				<div className="border-t border-[var(--border-subtle)] px-[12px] pt-[10px] pb-[12px]">
-					{nonRejected.map((comment) => (
-						<CommentRow
-							key={comment.id}
-							comment={comment}
-							onApprove={onApprove}
-							onReject={onReject}
-							onEdit={onEdit}
-							onOpenInDiff={() => onOpenInDiff(filePath)}
-						/>
-					))}
+					{items
+						.filter((item) => (item.kind === "ai-draft" ? item.status !== "rejected" : true))
+						.map((item) =>
+							item.kind === "ai-draft" ? (
+								<CommentRow
+									key={item.id}
+									comment={item}
+									onApprove={onApprove}
+									onReject={onReject}
+									onEdit={onEdit}
+									onOpenInDiff={() => onOpenInDiff(filePath)}
+								/>
+							) : (
+								<GitHubThreadRow
+									key={item.id}
+									item={item}
+									onReply={onReplyToThread}
+									onResolve={onResolveThread}
+								/>
+							),
+						)}
 				</div>
 			)}
 		</div>
@@ -283,6 +296,128 @@ function CommentRow({
 							</div>
 						)}
 					</div>
+				</div>
+			</div>
+		</div>
+	);
+}
+
+function GitHubThreadRow({
+	item,
+	onReply,
+	onResolve,
+}: {
+	item: Extract<FileGroupItem, { kind: "github-thread" }>;
+	onReply?: (threadId: string, body: string) => void;
+	onResolve?: (threadId: string) => void;
+}) {
+	const [replyOpen, setReplyOpen] = useState(false);
+	const [replyBody, setReplyBody] = useState("");
+
+	return (
+		<div
+			className={[
+				"py-[8px] border-b border-[var(--border-subtle)] last:border-b-0",
+				item.isResolved ? "opacity-50" : "",
+			]
+				.filter(Boolean)
+				.join(" ")}
+		>
+			<div className="flex items-start gap-[8px]">
+				{/* Line number */}
+				<div className="shrink-0 w-[40px]">
+					{item.lineNumber != null && (
+						<span className="[font-family:var(--font-mono)] text-[10.5px] text-[var(--text-tertiary)]">
+							L{item.lineNumber}
+						</span>
+					)}
+				</div>
+
+				{/* Thread body */}
+				<div className="flex-1 min-w-0">
+					{item.comments.map((c) => (
+						<div key={c.id} className="mb-[6px] last:mb-0">
+							<div className="flex items-center gap-[4px] mb-[2px]">
+								<span className="text-[10.5px] font-medium text-[var(--text-secondary)]">
+									{c.author}
+								</span>
+							</div>
+							<div className="text-[12px] text-[var(--text-secondary)] leading-[1.55]">
+								<MarkdownRenderer content={c.body} />
+							</div>
+						</div>
+					))}
+
+					{/* Actions */}
+					<div className="flex items-center gap-[4px] mt-[5px]">
+						{item.isResolved ? (
+							<span className="text-[10.5px] font-medium text-[var(--success)]">Resolved</span>
+						) : (
+							<>
+								{onResolve && (
+									<button
+										type="button"
+										onClick={() => onResolve(item.id)}
+										className="py-[2px] px-[8px] rounded-[5px] text-[10.5px] font-medium text-[var(--text-tertiary)] bg-transparent border border-[var(--border-default)] cursor-pointer"
+									>
+										Resolve
+									</button>
+								)}
+								{onReply && !replyOpen && (
+									<button
+										type="button"
+										onClick={() => setReplyOpen(true)}
+										className="py-[2px] px-[8px] rounded-[5px] text-[10.5px] font-medium text-[var(--text-tertiary)] bg-transparent border border-[var(--border-default)] cursor-pointer"
+									>
+										Reply
+									</button>
+								)}
+							</>
+						)}
+					</div>
+
+					{/* Reply input */}
+					{replyOpen && (
+						<div className="mt-[6px]">
+							<textarea
+								value={replyBody}
+								onChange={(e) => setReplyBody(e.target.value)}
+								placeholder="Write a reply..."
+								className="w-full min-h-[50px] p-[8px] rounded-[6px] border border-[var(--border-default)] bg-[var(--bg-base)] text-[var(--text-primary)] text-[12px] font-[var(--font-family)] resize-y"
+							/>
+							<div className="flex gap-[6px] mt-[4px] justify-end">
+								<button
+									type="button"
+									onClick={() => {
+										setReplyOpen(false);
+										setReplyBody("");
+									}}
+									className="py-[3px] px-[10px] rounded-[6px] text-[11px] bg-transparent text-[var(--text-tertiary)] border border-[var(--border-default)] cursor-pointer"
+								>
+									Cancel
+								</button>
+								<button
+									type="button"
+									onClick={() => {
+										if (replyBody.trim() && onReply) {
+											onReply(item.id, replyBody.trim());
+											setReplyBody("");
+											setReplyOpen(false);
+										}
+									}}
+									disabled={!replyBody.trim()}
+									className={[
+										"py-[3px] px-[10px] rounded-[6px] text-[11px] font-medium bg-[var(--accent-subtle)] text-[var(--accent)] border-none",
+										replyBody.trim()
+											? "cursor-pointer opacity-100"
+											: "cursor-not-allowed opacity-50",
+									].join(" ")}
+								>
+									Reply
+								</button>
+							</div>
+						</div>
+					)}
 				</div>
 			</div>
 		</div>
