@@ -165,6 +165,8 @@ function collectSnapshot() {
 
 	const { vimEnabled } = useEditorSettingsStore.getState();
 	if (vimEnabled) state["vimMode"] = "true";
+	const { notificationSoundsEnabled } = useEditorSettingsStore.getState();
+	state["notificationSounds"] = notificationSoundsEnabled ? "true" : "false";
 
 	const paneLayouts: Record<string, string> = {};
 	const layouts = usePaneStore.getState().layouts;
@@ -232,6 +234,7 @@ function AuthenticatedApp() {
 
 		// Hydrate editor settings (independent of sessions/layouts)
 		useEditorSettingsStore.getState().hydrateVimMode(state["vimMode"]);
+		useEditorSettingsStore.getState().hydrateNotificationSounds(state["notificationSounds"]);
 
 		// Hydrate expanded project IDs (independent of sessions/layouts)
 		if (state["expandedProjectIds"]) {
