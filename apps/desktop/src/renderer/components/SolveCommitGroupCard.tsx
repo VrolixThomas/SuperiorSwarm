@@ -7,6 +7,7 @@ import type {
 	SolveGroupInfo,
 	SolveReplyInfo,
 } from "../../shared/solve-types";
+import { MarkdownRenderer } from "./MarkdownRenderer";
 
 // Inject blink animation once
 if (typeof document !== "undefined" && !document.querySelector("[data-solve-animations]")) {
@@ -53,64 +54,44 @@ export function SolveCommitGroupCard({ group, sessionId, workspaceId, defaultExp
 
 	return (
 		<div
-			style={{
-				background: "var(--bg-surface)",
-				border: `1px solid ${isSolving ? "rgba(76,154,255,0.12)" : "var(--border-subtle)"}`,
-				borderRadius: 7,
-				marginBottom: 5,
-				overflow: "hidden",
-				opacity: isReverted ? 0.5 : 1,
-			}}
+			className={[
+				"bg-[var(--bg-surface)] rounded-[7px] mb-[5px] overflow-hidden",
+				isSolving
+					? "border border-[rgba(76,154,255,0.12)]"
+					: "border border-[var(--border-subtle)]",
+				isReverted ? "opacity-50" : "",
+			]
+				.filter(Boolean)
+				.join(" ")}
 		>
 			{/* Header */}
 			<div
 				onClick={() => !isSolving && setExpanded(!expanded)}
-				style={{
-					display: "flex",
-					alignItems: "center",
-					justifyContent: "space-between",
-					padding: "10px 12px",
-					cursor: isSolving ? "default" : "pointer",
-					userSelect: "none",
-				}}
+				className={[
+					"flex items-center justify-between px-[12px] py-[10px] select-none",
+					isSolving ? "cursor-default" : "cursor-pointer",
+				].join(" ")}
 			>
-				<div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0, flex: 1 }}>
+				<div className="flex items-center gap-[7px] min-w-0 flex-1">
 					<span
-						style={{
-							fontSize: 10,
-							color: "var(--text-tertiary)",
-							width: 14,
-							textAlign: "center",
-							transform: expanded ? "rotate(90deg)" : "none",
-							transition: "transform 0.15s",
-						}}
+						className="text-[10px] text-[var(--text-tertiary)] w-[14px] text-center transition-transform duration-[150ms]"
+						style={{ transform: expanded ? "rotate(90deg)" : "none" }}
 					>
 						›
 					</span>
 					<span
-						style={{
-							fontSize: 13,
-							fontWeight: 500,
-							letterSpacing: "-0.015em",
-							whiteSpace: "nowrap",
-							overflow: "hidden",
-							textOverflow: "ellipsis",
-							textDecoration: isReverted ? "line-through" : "none",
-						}}
+						className={[
+							"text-[13px] font-medium tracking-[-0.015em] whitespace-nowrap overflow-hidden text-ellipsis",
+							isReverted ? "line-through" : "",
+						]
+							.filter(Boolean)
+							.join(" ")}
 					>
 						{group.label}
 					</span>
 					<RatioBadge group={group} />
 				</div>
-				<div
-					style={{
-						display: "flex",
-						alignItems: "center",
-						gap: 6,
-						flexShrink: 0,
-						marginLeft: 12,
-					}}
-				>
+				<div className="flex items-center gap-[6px] shrink-0 ml-[12px]">
 					<GroupAction
 						group={group}
 						onApprove={() => approveMutation.mutate({ groupId: group.id })}
@@ -120,19 +101,16 @@ export function SolveCommitGroupCard({ group, sessionId, workspaceId, defaultExp
 
 			{/* Body */}
 			{expanded && !isSolving && !isReverted && (
-				<div style={{ borderTop: "1px solid var(--border-subtle)", padding: "12px 12px 14px" }}>
-					<div
-						style={{
-							fontFamily: "var(--font-mono)",
-							fontSize: 10.5,
-							color: "var(--text-tertiary)",
-							marginBottom: 12,
-						}}
-					>
+				<div className="border-t border-[var(--border-subtle)] px-[12px] pt-[12px] pb-[14px]">
+					<div className="font-mono text-[10.5px] text-[var(--text-tertiary)] mb-[12px]">
 						{group.commitHash?.slice(0, 7)}
 					</div>
 					<ChangedFilesSection files={group.changedFiles} onFileClick={handleFileClick} />
-					<CommentsAddressedSection commentsByFile={commentsByFile} sessionId={sessionId} />
+					<CommentsAddressedSection
+						commentsByFile={commentsByFile}
+						sessionId={sessionId}
+						workspaceId={workspaceId}
+					/>
 				</div>
 			)}
 		</div>
@@ -167,16 +145,8 @@ function RatioBadge({ group }: { group: SolveGroupInfo }) {
 
 	return (
 		<span
-			style={{
-				flexShrink: 0,
-				padding: "1px 7px",
-				borderRadius: 100,
-				fontFamily: "var(--font-mono)",
-				fontSize: 10,
-				fontWeight: 500,
-				background: bg,
-				color,
-			}}
+			className="shrink-0 py-[1px] px-[7px] rounded-full font-mono text-[10px] font-medium"
+			style={{ background: bg, color }}
 		>
 			{fixed}/{total}
 		</span>
@@ -192,24 +162,10 @@ function GroupAction({
 }) {
 	if (group.status === "pending") {
 		return (
-			<span
-				style={{
-					display: "flex",
-					alignItems: "center",
-					gap: 6,
-					fontSize: 11.5,
-					color: "var(--accent)",
-					fontWeight: 500,
-				}}
-			>
+			<span className="flex items-center gap-[6px] text-[11.5px] text-[var(--accent)] font-medium">
 				<span
-					style={{
-						width: 6,
-						height: 6,
-						borderRadius: "50%",
-						background: "var(--accent)",
-						animation: "blink 1.6s ease-in-out infinite",
-					}}
+					className="w-[6px] h-[6px] rounded-full bg-[var(--accent)]"
+					style={{ animation: "blink 1.6s ease-in-out infinite" }}
 				/>
 				Solving
 			</span>
@@ -217,16 +173,7 @@ function GroupAction({
 	}
 	if (group.status === "approved") {
 		return (
-			<span
-				style={{
-					padding: "3px 9px",
-					borderRadius: 6,
-					fontSize: 11,
-					fontWeight: 500,
-					background: "var(--accent-subtle)",
-					color: "var(--accent)",
-				}}
-			>
+			<span className="py-[3px] px-[9px] rounded-[6px] text-[11px] font-medium bg-[var(--accent-subtle)] text-[var(--accent)]">
 				✓ Approved
 			</span>
 		);
@@ -238,16 +185,7 @@ function GroupAction({
 					e.stopPropagation();
 					onApprove();
 				}}
-				style={{
-					padding: "4px 12px",
-					borderRadius: 6,
-					fontSize: 11.5,
-					fontWeight: 500,
-					background: "var(--success-subtle)",
-					color: "var(--success)",
-					border: "none",
-					cursor: "pointer",
-				}}
+				className="py-[4px] px-[12px] rounded-[6px] text-[11.5px] font-medium bg-[var(--success-subtle)] text-[var(--success)] border-none cursor-pointer"
 			>
 				Approve
 			</button>
@@ -265,69 +203,28 @@ function ChangedFilesSection({
 }) {
 	if (files.length === 0) return null;
 	return (
-		<div style={{ marginBottom: 14 }}>
-			<div
-				style={{
-					fontSize: 10,
-					fontWeight: 600,
-					textTransform: "uppercase",
-					letterSpacing: "0.05em",
-					color: "var(--text-tertiary)",
-					marginBottom: 5,
-				}}
-			>
+		<div className="mb-[14px]">
+			<div className="text-[10px] font-semibold uppercase tracking-[0.05em] text-[var(--text-tertiary)] mb-[5px]">
 				Changed files
 			</div>
-			<div
-				style={{
-					display: "flex",
-					flexDirection: "column",
-					gap: 1,
-					borderRadius: 5,
-					overflow: "hidden",
-				}}
-			>
+			<div className="flex flex-col gap-[1px] rounded-[5px] overflow-hidden">
 				{files.map((file) => (
 					<div
 						key={file.path}
 						onClick={() => onFileClick(file.path)}
-						style={{
-							display: "flex",
-							alignItems: "center",
-							gap: 8,
-							padding: "6px 9px",
-							background: "var(--bg-elevated)",
-							cursor: "pointer",
-						}}
+						className="flex items-center gap-[8px] py-[6px] px-[9px] bg-[var(--bg-elevated)] cursor-pointer"
 					>
-						<span style={{ color: "var(--text-tertiary)", fontSize: 11 }}>⬡</span>
-						<span
-							style={{
-								fontFamily: "var(--font-mono)",
-								fontSize: 11.5,
-								color: "var(--accent)",
-								flex: 1,
-								overflow: "hidden",
-								textOverflow: "ellipsis",
-								whiteSpace: "nowrap",
-							}}
-						>
+						<span className="text-[var(--text-tertiary)] text-[11px]">⬡</span>
+						<span className="font-mono text-[11.5px] text-[var(--accent)] flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
 							{file.path}
 						</span>
-						<span
-							style={{
-								fontFamily: "var(--font-mono)",
-								fontSize: 10,
-								color: "var(--text-tertiary)",
-								flexShrink: 0,
-							}}
-						>
+						<span className="font-mono text-[10px] text-[var(--text-tertiary)] shrink-0">
 							{file.additions > 0 && (
-								<span style={{ color: "var(--success)", opacity: 0.7 }}>+{file.additions}</span>
+								<span className="text-[var(--success)] opacity-70">+{file.additions}</span>
 							)}
 							{file.additions > 0 && file.deletions > 0 && " "}
 							{file.deletions > 0 && (
-								<span style={{ color: "var(--danger)", opacity: 0.7 }}>−{file.deletions}</span>
+								<span className="text-[var(--danger)] opacity-70">−{file.deletions}</span>
 							)}
 						</span>
 					</div>
@@ -340,43 +237,31 @@ function ChangedFilesSection({
 function CommentsAddressedSection({
 	commentsByFile,
 	sessionId,
+	workspaceId,
 }: {
 	commentsByFile: Map<string, SolveCommentInfo[]>;
 	sessionId: string;
+	workspaceId: string;
 }) {
 	if (commentsByFile.size === 0) return null;
 	return (
 		<div>
-			<div
-				style={{
-					fontSize: 10,
-					fontWeight: 600,
-					textTransform: "uppercase",
-					letterSpacing: "0.05em",
-					color: "var(--text-tertiary)",
-					marginBottom: 6,
-				}}
-			>
+			<div className="text-[10px] font-semibold uppercase tracking-[0.05em] text-[var(--text-tertiary)] mb-[6px]">
 				Comments addressed
 			</div>
 			{Array.from(commentsByFile.entries()).map(([filePath, comments]) => (
-				<div key={filePath} style={{ marginBottom: 10 }}>
-					<div
-						style={{
-							fontFamily: "var(--font-mono)",
-							fontSize: 10.5,
-							color: "var(--text-tertiary)",
-							padding: "4px 0",
-							display: "flex",
-							alignItems: "center",
-							gap: 5,
-						}}
-					>
-						<span style={{ fontSize: 9 }}>⬡</span>
+				<div key={filePath} className="mb-[10px]">
+					<div className="font-mono text-[10.5px] text-[var(--text-tertiary)] py-[4px] flex items-center gap-[5px]">
+						<span className="text-[9px]">⬡</span>
 						{filePath.split("/").pop()}
 					</div>
 					{comments.map((comment) => (
-						<CommentItem key={comment.id} comment={comment} sessionId={sessionId} />
+						<CommentItem
+							key={comment.id}
+							comment={comment}
+							sessionId={sessionId}
+							workspaceId={workspaceId}
+						/>
 					))}
 				</div>
 			))}
@@ -386,22 +271,56 @@ function CommentsAddressedSection({
 
 function CommentItem({
 	comment,
-	sessionId: _sessionId,
+	sessionId,
+	workspaceId,
 }: {
 	comment: SolveCommentInfo;
 	sessionId: string;
+	workspaceId: string;
 }) {
 	const [showFollowUp, setShowFollowUp] = useState(false);
 	const [followUpText, setFollowUpText] = useState("");
 	const utils = trpc.useUtils();
 
 	const followUpMutation = trpc.commentSolver.requestFollowUp.useMutation({
-		onSuccess: () => {
+		onSuccess: (result) => {
 			setShowFollowUp(false);
 			setFollowUpText("");
 			utils.commentSolver.invalidate();
+
+			// Launch the agent with the follow-up prompt
+			if (result.promptPath && result.worktreePath) {
+				const tabStore = useTabStore.getState();
+				const tabs = tabStore.getTabsByWorkspace(workspaceId);
+				const solverTab = tabs.find(
+					(t) => t.kind === "terminal" && t.title === "AI Solver",
+				);
+
+				if (solverTab) {
+					tabStore.setActiveTab(solverTab.id);
+					window.electron.terminal.write(
+						solverTab.id,
+						`bash '${result.launchScript}'\r`,
+					);
+				} else {
+					const tabId = tabStore.addTerminalTab(
+						workspaceId,
+						result.worktreePath,
+						"AI Solver",
+					);
+					window.electron.terminal.create(tabId, result.worktreePath).then(() => {
+						window.electron.terminal.write(
+							tabId,
+							`bash '${result.launchScript}'\r`,
+						);
+					});
+				}
+			}
 		},
 	});
+
+	// sessionId available for future use (e.g. invalidation scoping)
+	void sessionId;
 
 	const statusColor =
 		comment.status === "fixed" || comment.status === "wont_fix"
@@ -424,95 +343,49 @@ function CommentItem({
 						: "Pending";
 
 	return (
-		<div
-			style={{
-				padding: "7px 0 7px 14px",
-				borderLeft: "1px solid var(--border-default)",
-				marginLeft: 4,
-			}}
-		>
-			<div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
-				<div
-					style={{
-						width: 16,
-						height: 16,
-						borderRadius: "50%",
-						background: "var(--bg-active)",
-						display: "flex",
-						alignItems: "center",
-						justifyContent: "center",
-						fontSize: 8,
-						fontWeight: 600,
-						color: "var(--text-secondary)",
-					}}
-				>
+		<div className="py-[7px] pl-[14px] border-l border-[var(--border-default)] ml-[4px]">
+			<div className="flex items-center gap-[6px] mb-[3px]">
+				<div className="w-[16px] h-[16px] rounded-full bg-[var(--bg-active)] flex items-center justify-center text-[8px] font-semibold text-[var(--text-secondary)]">
 					{comment.author.charAt(0).toUpperCase()}
 				</div>
-				<span style={{ fontSize: 12, fontWeight: 500 }}>{comment.author}</span>
+				<span className="text-[12px] font-medium">{comment.author}</span>
 				{comment.lineNumber && (
-					<span
-						style={{ fontFamily: "var(--font-mono)", fontSize: 10.5, color: "var(--text-tertiary)" }}
-					>
+					<span className="font-mono text-[10.5px] text-[var(--text-tertiary)]">
 						line {comment.lineNumber}
 					</span>
 				)}
 			</div>
-			<div style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.55 }}>
-				{comment.body}
+			<div className="text-[12px] text-[var(--text-secondary)] leading-[1.55]">
+				<MarkdownRenderer content={comment.body} />
 			</div>
-			<div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 5 }}>
-				<span style={{ fontSize: 10.5, fontWeight: 500, color: statusColor }}>{statusLabel}</span>
+			<div className="flex items-center gap-[8px] mt-[5px]">
+				<span className="text-[10.5px] font-medium" style={{ color: statusColor }}>
+					{statusLabel}
+				</span>
 				{(comment.status === "fixed" || comment.status === "unclear") && (
 					<button
 						onClick={() => setShowFollowUp(!showFollowUp)}
-						style={{
-							fontSize: 10.5,
-							color: "var(--text-tertiary)",
-							background: "none",
-							border: "none",
-							cursor: "pointer",
-							textDecoration: "underline",
-							textUnderlineOffset: 2,
-						}}
+						className="text-[10.5px] text-[var(--text-tertiary)] bg-transparent border-none cursor-pointer underline underline-offset-2"
 					>
 						Follow up
 					</button>
 				)}
 			</div>
 			{showFollowUp && (
-				<div style={{ marginTop: 8 }}>
+				<div className="mt-[8px]">
 					<textarea
 						value={followUpText}
 						onChange={(e) => setFollowUpText(e.target.value)}
 						placeholder="What should be changed?"
-						style={{
-							width: "100%",
-							minHeight: 60,
-							padding: 8,
-							borderRadius: 6,
-							border: "1px solid var(--border-default)",
-							background: "var(--bg-base)",
-							color: "var(--text-primary)",
-							fontSize: 12,
-							fontFamily: "var(--font-family)",
-							resize: "vertical",
-						}}
+						className="w-full min-h-[60px] p-[8px] rounded-[6px] border border-[var(--border-default)] bg-[var(--bg-base)] text-[var(--text-primary)] text-[12px] font-[var(--font-family)] resize-y"
 					/>
-					<div style={{ display: "flex", gap: 6, marginTop: 6, justifyContent: "flex-end" }}>
+					<div className="flex gap-[6px] mt-[6px] justify-end">
 						<button
 							onClick={() => {
 								setShowFollowUp(false);
 								setFollowUpText("");
 							}}
-							style={{
-								padding: "3px 10px",
-								borderRadius: 6,
-								fontSize: 11,
-								background: "transparent",
-								color: "var(--text-tertiary)",
-								border: "1px solid var(--border-default)",
-								cursor: "pointer",
-							}}
+							className="py-[3px] px-[10px] rounded-[6px] text-[11px] bg-transparent text-[var(--text-tertiary)] border border-[var(--border-default)] cursor-pointer"
 						>
 							Cancel
 						</button>
@@ -521,17 +394,10 @@ function CommentItem({
 								followUpMutation.mutate({ commentId: comment.id, followUpText })
 							}
 							disabled={!followUpText.trim()}
-							style={{
-								padding: "3px 10px",
-								borderRadius: 6,
-								fontSize: 11,
-								fontWeight: 500,
-								background: "var(--accent-subtle)",
-								color: "var(--accent)",
-								border: "none",
-								cursor: followUpText.trim() ? "pointer" : "not-allowed",
-								opacity: followUpText.trim() ? 1 : 0.5,
-							}}
+							className={[
+								"py-[3px] px-[10px] rounded-[6px] text-[11px] font-medium bg-[var(--accent-subtle)] text-[var(--accent)] border-none",
+								followUpText.trim() ? "cursor-pointer opacity-100" : "cursor-not-allowed opacity-50",
+							].join(" ")}
 						>
 							Request changes
 						</button>
@@ -539,16 +405,7 @@ function CommentItem({
 				</div>
 			)}
 			{comment.followUpText && (
-				<div
-					style={{
-						marginTop: 6,
-						padding: "6px 10px",
-						background: "var(--accent-subtle)",
-						borderRadius: 6,
-						fontSize: 11.5,
-						color: "var(--accent)",
-					}}
-				>
+				<div className="mt-[6px] py-[6px] px-[10px] bg-[var(--accent-subtle)] rounded-[6px] text-[11.5px] text-[var(--accent)]">
 					Follow-up: {comment.followUpText}
 				</div>
 			)}
@@ -568,71 +425,24 @@ function DraftReplySignoff({ reply }: { reply: SolveReplyInfo }) {
 	});
 
 	return (
-		<div
-			style={{
-				marginTop: 8,
-				padding: "9px 12px",
-				background: "var(--bg-base)",
-				border: "1px solid var(--border-default)",
-				borderRadius: 6,
-			}}
-		>
-			<div
-				style={{
-					fontSize: 9.5,
-					fontWeight: 600,
-					textTransform: "uppercase",
-					letterSpacing: "0.05em",
-					color: "var(--warning)",
-					marginBottom: 4,
-					opacity: 0.75,
-				}}
-			>
+		<div className="mt-[8px] py-[9px] px-[12px] bg-[var(--bg-base)] border border-[var(--border-default)] rounded-[6px]">
+			<div className="text-[9.5px] font-semibold uppercase tracking-[0.05em] text-[var(--warning)] mb-[4px] opacity-75">
 				Draft reply
 			</div>
-			<div style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.5 }}>
+			<div className="text-[12px] text-[var(--text-secondary)] leading-[1.5]">
 				{reply.body}
 			</div>
-			<div
-				style={{
-					display: "flex",
-					alignItems: "center",
-					gap: 6,
-					marginTop: 8,
-					paddingTop: 8,
-					borderTop: "1px solid var(--border-subtle)",
-				}}
-			>
-				<span style={{ fontSize: 11, color: "var(--text-tertiary)", flex: 1 }}>
-					Post this reply?
-				</span>
+			<div className="flex items-center gap-[6px] mt-[8px] pt-[8px] border-t border-[var(--border-subtle)]">
+				<span className="text-[11px] text-[var(--text-tertiary)] flex-1">Post this reply?</span>
 				<button
 					onClick={() => deleteMutation.mutate({ replyId: reply.id })}
-					style={{
-						padding: "3px 10px",
-						borderRadius: 6,
-						fontSize: 11,
-						fontWeight: 500,
-						background: "transparent",
-						color: "var(--text-tertiary)",
-						border: "1px solid var(--border-default)",
-						cursor: "pointer",
-					}}
+					className="py-[3px] px-[10px] rounded-[6px] text-[11px] font-medium bg-transparent text-[var(--text-tertiary)] border border-[var(--border-default)] cursor-pointer"
 				>
 					Discard
 				</button>
 				<button
 					onClick={() => approveMutation.mutate({ replyId: reply.id })}
-					style={{
-						padding: "3px 10px",
-						borderRadius: 6,
-						fontSize: 11,
-						fontWeight: 500,
-						background: "var(--success-subtle)",
-						color: "var(--success)",
-						border: "none",
-						cursor: "pointer",
-					}}
+					className="py-[3px] px-[10px] rounded-[6px] text-[11px] font-medium bg-[var(--success-subtle)] text-[var(--success)] border-none cursor-pointer"
 				>
 					Approve &amp; post
 				</button>
