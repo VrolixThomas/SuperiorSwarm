@@ -506,7 +506,16 @@ if (isSolverMode) {
 					}
 				}
 
-				execFileSync("git", ["commit", "-m", `fix: ${group.label}`], { cwd });
+				try {
+					execFileSync("git", ["commit", "-m", `fix: ${group.label}`], { cwd });
+				} catch (commitErr) {
+					// Agent may have already committed manually — if there's genuinely nothing
+					// to commit, fall through and use the current HEAD as the commit hash.
+					const msg = String(commitErr);
+					const nothingToCommit =
+						msg.includes("nothing to commit") || msg.includes("nothing added to commit");
+					if (!nothingToCommit) throw commitErr;
+				}
 
 				const hashOutput = execFileSync("git", ["rev-parse", "HEAD"], { cwd });
 				const hash = hashOutput.toString().trim();
