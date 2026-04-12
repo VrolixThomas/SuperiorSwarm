@@ -1,5 +1,9 @@
 import { randomUUID } from "node:crypto";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { TRPCError } from "@trpc/server";
 import { and, eq, inArray, not } from "drizzle-orm";
+import { app } from "electron";
 import { z } from "zod";
 import { pollWorkspace } from "../../ai-review/comment-poller";
 import {
@@ -7,9 +11,13 @@ import {
 	isSessionDead,
 	revertGroup as revertGroupOrchestrator,
 } from "../../ai-review/comment-solver-orchestrator";
+import { CLI_PRESETS, type LaunchOptions } from "../../ai-review/cli-presets";
 import { createAndQueueSolve } from "../../ai-review/create-and-queue-solve";
+import { getMcpServerPath } from "../../ai-review/mcp-path";
+import { getSettings } from "../../ai-review/orchestrator";
 import { publishSolve } from "../../ai-review/solve-publisher";
 import { resolveSessionWorktree } from "../../ai-review/solve-session-resolver";
+import { buildSolveFollowUpPrompt } from "../../ai-review/solve-prompt";
 import { getDb } from "../../db";
 import * as schema from "../../db/schema";
 import type {
@@ -609,6 +617,137 @@ export const commentSolverRouter = router({
 		.mutation(({ input }) => {
 			cancelSolve(input.sessionId);
 			return { success: true as const };
+		}),
+
+	/**
+	 * Request follow-up changes on a specific comment after the AI solver has completed.
+	 * Stores the follow-up text, reverts group approval if needed, and launches a new agent.
+	 */
+	requestFollowUp: publicProcedure
+		.input(
+			z.object({
+				commentId: z.string(),
+				followUpText: z.string().min(1),
+			}),
+		)
+		.mutation(({ input }) => {
+			const db = getDb();
+
+			// Store follow-up text and set status to changes_requested
+			db.update(schema.prComments)
+				.set({
+					followUpText: input.followUpText,
+					status: "changes_requested",
+				})
+				.where(eq(schema.prComments.id, input.commentId))
+				.run();
+
+			const comment = db
+				.select()
+				.from(schema.prComments)
+				.where(eq(schema.prComments.id, input.commentId))
+				.get();
+
+			if (!comment) throw new TRPCError({ code: "NOT_FOUND", message: "Comment not found" });
+
+			// If the comment's group was approved, revoke it back to fixed
+			if (comment.groupId) {
+				const group = db
+					.select()
+					.from(schema.commentGroups)
+					.where(eq(schema.commentGroups.id, comment.groupId))
+					.get();
+
+				if (group?.status === "approved") {
+					db.update(schema.commentGroups)
+						.set({ status: "fixed" })
+						.where(eq(schema.commentGroups.id, group.id))
+						.run();
+				}
+			}
+
+			// Get session and group for prompt building
+			const session = comment.solveSessionId
+				? db
+						.select()
+						.from(schema.commentSolveSessions)
+						.where(eq(schema.commentSolveSessions.id, comment.solveSessionId))
+						.get()
+				: null;
+
+			const group = comment.groupId
+				? db
+						.select()
+						.from(schema.commentGroups)
+						.where(eq(schema.commentGroups.id, comment.groupId))
+						.get()
+				: null;
+
+			if (!session || !group) {
+				throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Session or group not found" });
+			}
+
+			const prompt = buildSolveFollowUpPrompt({
+				prTitle: session.prTitle,
+				sourceBranch: session.sourceBranch,
+				targetBranch: session.targetBranch,
+				sessionId: session.id,
+				groupLabel: group.label,
+				commitHash: group.commitHash ?? "unknown",
+				commentAuthor: comment.author,
+				commentFilePath: comment.filePath,
+				commentLineNumber: comment.lineNumber,
+				commentBody: comment.body,
+				commentStatus: comment.status,
+				followUpText: input.followUpText,
+			});
+
+			// Write prompt to disk
+			const solveDir = join(app.getPath("userData"), "solves", session.id);
+			mkdirSync(solveDir, { recursive: true });
+			const promptPath = join(solveDir, `follow-up-${Date.now()}.txt`);
+			writeFileSync(promptPath, prompt, "utf-8");
+
+			// Resolve worktree for this session
+			const { worktreePath } = resolveSessionWorktree(session.id);
+
+			// Build launch script using active CLI preset
+			const settings = getSettings();
+			const preset = CLI_PRESETS[settings.cliPreset ?? "claude"];
+			const launchScript = join(solveDir, `follow-up-launch-${Date.now()}.sh`);
+			const dbPath = join(app.getPath("userData"), "superiorswarm.db");
+			const prMetadata = JSON.stringify({
+				title: session.prTitle,
+				sourceBranch: session.sourceBranch,
+				targetBranch: session.targetBranch,
+				provider: session.prProvider,
+			});
+			const launchOpts: LaunchOptions = {
+				mcpServerPath: getMcpServerPath(),
+				worktreePath,
+				reviewDir: solveDir,
+				promptFilePath: promptPath,
+				dbPath,
+				reviewDraftId: session.id,
+				prMetadata,
+				solveSessionId: session.id,
+			};
+
+			preset.setupMcp?.(launchOpts);
+
+			const launchArgs = preset.buildArgs(launchOpts);
+			writeFileSync(
+				launchScript,
+				`#!/bin/bash\ncd '${worktreePath}'\n${preset.command} ${launchArgs.join(" ")}\n`,
+				{ mode: 0o755 },
+			);
+
+			return {
+				success: true as const,
+				promptPath,
+				worktreePath,
+				launchScript,
+			};
 		}),
 
 	/**
