@@ -506,6 +506,8 @@ function CommentsFeed({
 
 // ── Helpers & sub-components for review mode ─────────────────────────────────
 
+const EMPTY_COMMENTS: never[] = [];
+
 function mapResolution(
 	resolution: string | null
 ): "new" | "resolved" | "still_open" | "regressed" | null {
@@ -705,7 +707,10 @@ export function PROverviewTab({ prCtx }: { prCtx: PRContext }) {
 	const [historyExpanded, setHistoryExpanded] = useState(false);
 
 	const hasActiveDraft =
-		!!matchingDraft && matchingDraft.status !== "dismissed" && matchingDraft.status !== "submitted";
+		!!matchingDraft &&
+		matchingDraft.status !== "dismissed" &&
+		matchingDraft.status !== "submitted" &&
+		matchingDraft.status !== "failed";
 
 	const { data: chainHistory } = trpc.aiReview.getReviewChainHistory.useQuery(
 		{ reviewChainId: aiDraftQuery.data?.reviewChainId ?? "" },
@@ -772,7 +777,7 @@ export function PROverviewTab({ prCtx }: { prCtx: PRContext }) {
 	const summaryMarkdown = aiDraftQuery.data?.summaryMarkdown ?? null;
 
 	// ── Review-mode computed values ───────────────────────────────────────
-	const draftComments = aiDraftQuery.data?.comments ?? [];
+	const draftComments = aiDraftQuery.data?.comments ?? EMPTY_COMMENTS;
 	const isSolving =
 		hasActiveDraft && (matchingDraft.status === "queued" || matchingDraft.status === "in_progress");
 	const isCancelled = hasActiveDraft && matchingDraft.status === "cancelled";
