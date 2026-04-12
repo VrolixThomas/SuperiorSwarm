@@ -51,9 +51,11 @@ function ProgressSummary({
 function ActiveState({
 	session,
 	workspaceId,
+	newCommentCount,
 }: {
 	session: SolveSessionInfo;
 	workspaceId: string;
+	newCommentCount: number;
 }) {
 	const allComments = session.groups.flatMap((g) => g.comments);
 	const resolved = allComments.filter(
@@ -124,6 +126,17 @@ function ActiveState({
 				})}
 			</div>
 
+			{newCommentCount > 0 && (
+				<div className="mx-4 mb-2 px-3 py-[10px] rounded-[6px] bg-[rgba(255,159,10,0.08)] border border-[rgba(255,159,10,0.2)]">
+					<div className="text-[11px] text-[#ff9f0a] font-medium mb-1">
+						{newCommentCount} new comment{newCommentCount !== 1 ? "s" : ""} since last solve
+					</div>
+					<div className="text-[10px] text-[var(--text-tertiary)]">
+						Open Comments tab to review and solve
+					</div>
+				</div>
+			)}
+
 			{/* Open full review CTA */}
 			<div className="shrink-0 border-t border-[var(--border)] px-4 py-3">
 				<button
@@ -147,6 +160,12 @@ export function AIFixesTab({ workspaceId }: AIFixesTabProps) {
 		{ workspaceId },
 		{ staleTime: 5_000 }
 	);
+
+	const statusesQuery = trpc.commentSolver.getCommentSolveStatuses.useQuery(
+		{ workspaceId },
+		{ staleTime: 10_000 }
+	);
+	const newCommentCount = Object.values(statusesQuery.data ?? {}).filter((s) => s === "new").length;
 
 	const latestSession = useMemo(() => {
 		const sessions = sessionsQuery.data ?? [];
@@ -189,7 +208,7 @@ export function AIFixesTab({ workspaceId }: AIFixesTabProps) {
 		return (
 			<div className="flex flex-1 min-h-0 flex-col bg-[var(--bg-base)]">
 				{isSolving && <SolvingBanner />}
-				<ActiveState session={fullSession} workspaceId={workspaceId} />
+				<ActiveState session={fullSession} workspaceId={workspaceId} newCommentCount={newCommentCount} />
 			</div>
 		);
 	}
