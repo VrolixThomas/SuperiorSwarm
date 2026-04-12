@@ -39,6 +39,10 @@ export function SolveCommitGroupCard({ group, sessionId, workspaceId, defaultExp
 		onSuccess: () => utils.commentSolver.invalidate(),
 	});
 
+	const revokeMutation = trpc.commentSolver.revokeGroup.useMutation({
+		onSuccess: () => utils.commentSolver.invalidate(),
+	});
+
 	const isSolving = group.status === "pending";
 	const isReverted = group.status === "reverted";
 	const draftReplyCount = group.comments.filter((c) => c.reply?.status === "draft").length;
@@ -112,6 +116,7 @@ export function SolveCommitGroupCard({ group, sessionId, workspaceId, defaultExp
 					<GroupAction
 						group={group}
 						onApprove={() => approveMutation.mutate({ groupId: group.id })}
+						onRevoke={() => revokeMutation.mutate({ groupId: group.id })}
 						onPush={() => pushMutation.mutate({ groupId: group.id })}
 						isPushing={pushMutation.isPending}
 					/>
@@ -175,11 +180,13 @@ function RatioBadge({ group }: { group: SolveGroupInfo }) {
 function GroupAction({
 	group,
 	onApprove,
+	onRevoke,
 	onPush,
 	isPushing,
 }: {
 	group: SolveGroupInfo;
 	onApprove: () => void;
+	onRevoke: () => void;
 	onPush: () => void;
 	isPushing: boolean;
 }) {
@@ -204,25 +211,36 @@ function GroupAction({
 		);
 	}
 	if (group.status === "approved") {
-		if (hasDraftReplies) {
-			return (
-				<span className="py-[3px] px-[9px] rounded-[6px] text-[11px] font-medium bg-[var(--accent-subtle)] text-[var(--accent)]">
-					✓ Approved
-				</span>
-			);
-		}
 		return (
-			<button
-				type="button"
-				onClick={(e) => {
-					e.stopPropagation();
-					onPush();
-				}}
-				disabled={isPushing}
-				className={`py-[4px] px-[12px] rounded-[6px] text-[11.5px] font-semibold border-none ${isPushing ? "cursor-not-allowed bg-[var(--bg-active)] text-[var(--text-tertiary)]" : "cursor-pointer bg-[var(--success)] text-white"}`}
-			>
-				{isPushing ? "Pushing…" : "Push & post"}
-			</button>
+			<div className="flex items-center gap-[6px]">
+				<button
+					type="button"
+					onClick={(e) => {
+						e.stopPropagation();
+						onRevoke();
+					}}
+					className="py-[3px] px-[9px] rounded-[6px] text-[11px] font-medium text-[var(--text-tertiary)] bg-transparent border border-[var(--border-default)] cursor-pointer"
+				>
+					Revoke
+				</button>
+				{hasDraftReplies ? (
+					<span className="py-[3px] px-[9px] rounded-[6px] text-[11px] font-medium bg-[var(--accent-subtle)] text-[var(--accent)]">
+						✓ Approved
+					</span>
+				) : (
+					<button
+						type="button"
+						onClick={(e) => {
+							e.stopPropagation();
+							onPush();
+						}}
+						disabled={isPushing}
+						className={`py-[4px] px-[12px] rounded-[6px] text-[11.5px] font-semibold border-none ${isPushing ? "cursor-not-allowed bg-[var(--bg-active)] text-[var(--text-tertiary)]" : "cursor-pointer bg-[var(--success)] text-white"}`}
+					>
+						{isPushing ? "Pushing…" : "Push & post"}
+					</button>
+				)}
+			</div>
 		);
 	}
 	if (group.status === "fixed") {
@@ -323,6 +341,13 @@ function CommentItem({
 	const [followUpText, setFollowUpText] = useState("");
 	const utils = trpc.useUtils();
 
+	const [editingReply, setEditingReply] = useState(false);
+	const [editReplyText, setEditReplyText] = useState("");
+
+	const updateReplyMutation = trpc.commentSolver.updateReply.useMutation({
+		onSuccess: () => utils.commentSolver.invalidate(),
+	});
+
 	const followUpMutation = trpc.commentSolver.requestFollowUp.useMutation({
 		onSuccess: (result) => {
 			setShowFollowUp(false);
@@ -397,6 +422,7 @@ function CommentItem({
 				</span>
 				{(comment.status === "fixed" || comment.status === "unclear") && (
 					<button
+						type="button"
 						onClick={() => setShowFollowUp(!showFollowUp)}
 						className="text-[10.5px] text-[var(--text-tertiary)] bg-transparent border-none cursor-pointer underline underline-offset-2"
 					>
@@ -419,6 +445,7 @@ function CommentItem({
 					/>
 					<div className="flex gap-[6px] mt-[6px] justify-end">
 						<button
+							type="button"
 							onClick={() => {
 								setShowFollowUp(false);
 								setFollowUpText("");
@@ -428,6 +455,7 @@ function CommentItem({
 							Cancel
 						</button>
 						<button
+							type="button"
 							onClick={() => followUpMutation.mutate({ commentId: comment.id, followUpText })}
 							disabled={!followUpText.trim()}
 							className={[
@@ -448,12 +476,62 @@ function CommentItem({
 				</div>
 			)}
 			{/* Draft reply sign-off */}
-			{comment.reply?.status === "draft" && <DraftReplySignoff reply={comment.reply} />}
+			{comment.reply?.status === "draft" && !editingReply && (
+				<DraftReplySignoff
+					reply={comment.reply}
+					onEdit={() => {
+						setEditingReply(true);
+						setEditReplyText(comment.reply?.body ?? "");
+					}}
+				/>
+			)}
+			{editingReply && comment.reply && (
+				<div className="mt-[8px] py-[9px] px-[12px] bg-[var(--bg-base)] border border-[var(--accent)] rounded-[6px]">
+					<div className="text-[9.5px] font-semibold uppercase tracking-[0.05em] text-[var(--text-tertiary)] mb-[4px]">
+						Edit reply
+					</div>
+					<textarea
+						value={editReplyText}
+						onChange={(e) => setEditReplyText(e.target.value)}
+						className="w-full min-h-[60px] p-[8px] rounded-[6px] border border-[var(--border-default)] bg-[var(--bg-base)] text-[var(--text-primary)] text-[12px] resize-y"
+					/>
+					<div className="flex gap-[6px] mt-[6px] justify-end">
+						<button
+							type="button"
+							onClick={() => setEditingReply(false)}
+							className="py-[3px] px-[10px] rounded-[6px] text-[11px] bg-transparent text-[var(--text-tertiary)] border border-[var(--border-default)] cursor-pointer"
+						>
+							Cancel
+						</button>
+						<button
+							type="button"
+							onClick={() => {
+								if (comment.reply) {
+									updateReplyMutation.mutate({
+										replyId: comment.reply.id,
+										body: editReplyText,
+									});
+								}
+								setEditingReply(false);
+							}}
+							disabled={!editReplyText.trim()}
+							className={[
+								"py-[3px] px-[10px] rounded-[6px] text-[11px] font-medium bg-[var(--accent-subtle)] text-[var(--accent)] border-none",
+								editReplyText.trim()
+									? "cursor-pointer opacity-100"
+									: "cursor-not-allowed opacity-50",
+							].join(" ")}
+						>
+							Save
+						</button>
+					</div>
+				</div>
+			)}
 		</div>
 	);
 }
 
-function DraftReplySignoff({ reply }: { reply: SolveReplyInfo }) {
+function DraftReplySignoff({ reply, onEdit }: { reply: SolveReplyInfo; onEdit: () => void }) {
 	const utils = trpc.useUtils();
 	const approveMutation = trpc.commentSolver.approveReply.useMutation({
 		onSuccess: () => utils.commentSolver.invalidate(),
@@ -471,12 +549,21 @@ function DraftReplySignoff({ reply }: { reply: SolveReplyInfo }) {
 			<div className="flex items-center gap-[6px] mt-[8px] pt-[8px] border-t border-[var(--border-subtle)]">
 				<span className="text-[11px] text-[var(--text-tertiary)] flex-1">Post this reply?</span>
 				<button
+					type="button"
+					onClick={onEdit}
+					className="py-[3px] px-[10px] rounded-[6px] text-[11px] font-medium bg-transparent text-[var(--text-tertiary)] border border-[var(--border-default)] cursor-pointer"
+				>
+					Edit
+				</button>
+				<button
+					type="button"
 					onClick={() => deleteMutation.mutate({ replyId: reply.id })}
 					className="py-[3px] px-[10px] rounded-[6px] text-[11px] font-medium bg-transparent text-[var(--text-tertiary)] border border-[var(--border-default)] cursor-pointer"
 				>
 					Discard
 				</button>
 				<button
+					type="button"
 					onClick={() => approveMutation.mutate({ replyId: reply.id })}
 					className="py-[3px] px-[10px] rounded-[6px] text-[11px] font-medium bg-[var(--success-subtle)] text-[var(--success)] border-none cursor-pointer"
 				>
