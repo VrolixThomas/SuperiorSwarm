@@ -3,6 +3,8 @@ import type { ClientMessage, DaemonMessage } from "../shared/daemon-protocol";
 import type { PtyManager } from "./pty-manager";
 import type { ScrollbackStore } from "./scrollback-store";
 
+const MAX_INBOUND_FRAME_BYTES = 64_000;
+
 export class SocketServer {
 	private server: Server;
 	private clients = new Map<string, Socket>();
@@ -44,18 +46,32 @@ export class SocketServer {
 		this.send(socket, { type: "ready" });
 
 		let lineBuffer = "";
+		let droppingOversizedFrame = false;
 		socket.on("data", (chunk) => {
-			lineBuffer += chunk.toString("utf-8");
-			if (lineBuffer.length > 64_000) {
-				console.warn("[socket-server] line buffer overflow, resetting");
-				lineBuffer = "";
-				return;
+			let inbound = chunk.toString("utf-8");
+
+			if (droppingOversizedFrame) {
+				const newlineInDrop = inbound.indexOf("\n");
+				if (newlineInDrop === -1) {
+					return;
+				}
+				droppingOversizedFrame = false;
+				inbound = inbound.slice(newlineInDrop + 1);
 			}
+
+			lineBuffer += inbound;
 			for (;;) {
 				const newline = lineBuffer.indexOf("\n");
 				if (newline === -1) break;
-				const line = lineBuffer.slice(0, newline).trim();
+				const rawLine = lineBuffer.slice(0, newline);
 				lineBuffer = lineBuffer.slice(newline + 1);
+				if (rawLine.length > MAX_INBOUND_FRAME_BYTES) {
+					console.warn(
+						`[socket-server] oversized inbound frame (>${MAX_INBOUND_FRAME_BYTES}B), dropping line`
+					);
+					continue;
+				}
+				const line = rawLine.trim();
 				if (!line) continue;
 				try {
 					const msg = JSON.parse(line) as ClientMessage;
@@ -63,6 +79,14 @@ export class SocketServer {
 				} catch {
 					console.warn("[socket-server] failed to parse message from client");
 				}
+			}
+
+			if (lineBuffer.length > MAX_INBOUND_FRAME_BYTES) {
+				console.warn(
+					`[socket-server] oversized inbound frame (>${MAX_INBOUND_FRAME_BYTES}B), discarding until newline`
+				);
+				lineBuffer = "";
+				droppingOversizedFrame = true;
 			}
 		});
 

@@ -28,6 +28,7 @@ import { log, setupCrashHandlers } from "./logger";
 import { setupLspIPC } from "./lsp/ipc-handler";
 import { serverManager } from "./lsp/server-manager";
 import { syncShortcuts } from "./quick-actions/shortcuts";
+import { registerSingleInstance } from "./single-instance";
 import { DaemonClient } from "./terminal/daemon-client";
 import { setDaemonClient } from "./terminal/daemon-instance";
 import { setupTerminalIPC } from "./terminal/ipc";
@@ -47,6 +48,10 @@ import { LinearAdapter } from "./providers/linear-adapter";
 let mainWindow: BrowserWindow | null = null;
 let daemonClient: DaemonClient;
 let alertListener: AgentAlertListener | null = null;
+
+if (!registerSingleInstance(app, () => mainWindow)) {
+	process.exit(0);
+}
 
 function broadcastToWindows(channel: string, payload: unknown): void {
 	if (!isCloneable(payload, channel)) return;
@@ -94,7 +99,14 @@ app.whenReady().then(async () => {
 	log.info("App started", { version: app.getVersion() });
 	const instanceId = daemonInstanceId(__dirname);
 	const paths = daemonPaths(instanceId);
-	daemonClient = new DaemonClient(paths.socketPath, paths.pidPath, paths.logPath, !app.isPackaged);
+	daemonClient = new DaemonClient(
+		paths.socketPath,
+		paths.pidPath,
+		paths.logPath,
+		!app.isPackaged,
+		paths.ownerPath,
+		instanceId
+	);
 	setDaemonClient(daemonClient);
 
 	setupTerminalIPC(daemonClient);
@@ -250,8 +262,15 @@ app.whenReady().then(async () => {
 	try {
 		await daemonClient.connect(dbPath, daemonScriptPath);
 	} catch (err) {
-		log.error("[main] Failed to connect to terminal daemon, will retry:", err);
-		daemonClient.startReconnecting();
+		const { isDaemonOwnershipMismatchError } = await import(
+			"./terminal/daemon-ownership"
+		);
+		if (isDaemonOwnershipMismatchError(err)) {
+			log.error("[main] Daemon owned by another app instance, not retrying:", err);
+		} else {
+			log.error("[main] Failed to connect to terminal daemon, will retry:", err);
+			daemonClient.startReconnecting();
+		}
 	}
 
 	initializeUpdater().catch((err) => {

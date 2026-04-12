@@ -11,6 +11,7 @@ export function daemonInstanceId(appDir: string): string {
 export interface DaemonPaths {
 	socketPath: string;
 	pidPath: string;
+	ownerPath: string;
 	logPath: string;
 }
 
@@ -18,6 +19,7 @@ export function daemonPaths(instanceId: string): DaemonPaths {
 	return {
 		socketPath: join(SUPERIORSWARM_DIR, `daemon-${instanceId}.sock`),
 		pidPath: join(SUPERIORSWARM_DIR, `daemon-${instanceId}.pid`),
+		ownerPath: join(SUPERIORSWARM_DIR, `daemon-${instanceId}.owner`),
 		logPath: join(SUPERIORSWARM_DIR, `daemon-${instanceId}.log`),
 	};
 }

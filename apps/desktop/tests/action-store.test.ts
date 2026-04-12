@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, test } from "bun:test";
+import { shouldSkipShortcutHandling } from "../src/renderer/hooks/useShortcutListener";
 import { useActionStore } from "../src/renderer/stores/action-store";
 
 function resetStore() {
@@ -188,5 +189,48 @@ describe("palette state", () => {
 
 		useActionStore.getState().closePalette();
 		expect(useActionStore.getState().isPaletteOpen).toBe(false);
+	});
+});
+
+describe("terminal shortcut guard", () => {
+	test("skips plain printable keys when terminal is focused", () => {
+		const terminalTarget = {
+			tagName: "TEXTAREA",
+			closest: (selector: string) => (selector === ".xterm" ? {} : null),
+		} as HTMLElement;
+		const event = {
+			key: "a",
+			metaKey: false,
+			ctrlKey: false,
+			altKey: false,
+		} as KeyboardEvent;
+
+		expect(shouldSkipShortcutHandling(event, terminalTarget)).toBe(true);
+	});
+
+	test("does not skip modified shortcuts in terminal focus", () => {
+		const terminalTarget = {
+			tagName: "TEXTAREA",
+			closest: (selector: string) => (selector === ".xterm" ? {} : null),
+		} as HTMLElement;
+
+		expect(
+			shouldSkipShortcutHandling(
+				{ key: "k", metaKey: true, ctrlKey: false, altKey: false } as KeyboardEvent,
+				terminalTarget
+			)
+		).toBe(false);
+		expect(
+			shouldSkipShortcutHandling(
+				{ key: "k", metaKey: false, ctrlKey: true, altKey: false } as KeyboardEvent,
+				terminalTarget
+			)
+		).toBe(false);
+		expect(
+			shouldSkipShortcutHandling(
+				{ key: "k", metaKey: false, ctrlKey: false, altKey: true } as KeyboardEvent,
+				terminalTarget
+			)
+		).toBe(false);
 	});
 });
