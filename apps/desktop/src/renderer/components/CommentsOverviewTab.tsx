@@ -91,8 +91,10 @@ export function CommentsOverviewTab({ workspaceId }: CommentsOverviewTabProps) {
 		refreshComments.mutate({ workspaceId });
 	}, [workspaceId]);
 
-	// Pre-skip addressed comments so re-solve targets only outstanding ones
-	// biome-ignore lint/correctness/useExhaustiveDependencies: only run when statuses load
+	// Pre-skip addressed comments so re-solve targets only outstanding ones.
+	// Keyed on the stringified status map so it re-runs when statuses actually change.
+	const solveStatusesKey = JSON.stringify(solveStatuses);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: intentionally keyed on serialized statuses
 	useEffect(() => {
 		if (!hasAnySolveSession) return;
 		const addressedIds = new Set(
@@ -100,10 +102,8 @@ export function CommentsOverviewTab({ workspaceId }: CommentsOverviewTabProps) {
 				.filter(([, status]) => status === "addressed")
 				.map(([id]) => id)
 		);
-		if (addressedIds.size > 0) {
-			setSkippedIds(addressedIds);
-		}
-	}, [hasAnySolveSession]);
+		setSkippedIds(addressedIds);
+	}, [solveStatusesKey, hasAnySolveSession]);
 
 	const meta = useTabStore((s) => s.workspaceMetadata[workspaceId]);
 	const comments = commentsQuery.data ?? [];
