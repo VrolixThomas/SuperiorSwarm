@@ -259,7 +259,6 @@ function CommentsAddressedSection({
 						<CommentItem
 							key={comment.id}
 							comment={comment}
-							sessionId={sessionId}
 							workspaceId={workspaceId}
 						/>
 					))}
@@ -271,11 +270,9 @@ function CommentsAddressedSection({
 
 function CommentItem({
 	comment,
-	sessionId,
 	workspaceId,
 }: {
 	comment: SolveCommentInfo;
-	sessionId: string;
 	workspaceId: string;
 }) {
 	const [showFollowUp, setShowFollowUp] = useState(false);
@@ -298,29 +295,27 @@ function CommentItem({
 
 				if (solverTab) {
 					tabStore.setActiveTab(solverTab.id);
-					window.electron.terminal.write(
-						solverTab.id,
-						`bash '${result.launchScript}'\r`,
-					);
+					window.electron.terminal
+						.write(solverTab.id, `bash '${result.launchScript}'\r`)
+						.catch((err: unknown) =>
+							console.error("[solve] failed to write follow-up command:", err),
+						);
 				} else {
 					const tabId = tabStore.addTerminalTab(
 						workspaceId,
 						result.worktreePath,
 						"AI Solver",
 					);
-					window.electron.terminal.create(tabId, result.worktreePath).then(() => {
-						window.electron.terminal.write(
-							tabId,
-							`bash '${result.launchScript}'\r`,
+					window.electron.terminal
+						.create(tabId, result.worktreePath)
+						.then(() => window.electron.terminal.write(tabId, `bash '${result.launchScript}'\r`))
+						.catch((err: unknown) =>
+							console.error("[solve] failed to launch follow-up agent:", err),
 						);
-					});
 				}
 			}
 		},
 	});
-
-	// sessionId available for future use (e.g. invalidation scoping)
-	void sessionId;
 
 	const statusColor =
 		comment.status === "fixed" || comment.status === "wont_fix"
