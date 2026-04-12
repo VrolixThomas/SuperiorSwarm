@@ -118,6 +118,7 @@ export function SolveReviewTab({ workspaceId, solveSessionId }: Props) {
 			<BottomBar
 				canPush={canPushAll}
 				isSolving={isSolving}
+				isSubmitted={session.status === "submitted"}
 				draftGroups={draftGroups}
 				approvedGroups={approvedGroups}
 				totalGroups={totalGroups}
@@ -270,6 +271,7 @@ function ProgressStrip({
 function BottomBar({
 	canPush,
 	isSolving,
+	isSubmitted,
 	draftGroups,
 	approvedGroups,
 	totalGroups,
@@ -280,6 +282,7 @@ function BottomBar({
 }: {
 	canPush: boolean;
 	isSolving: boolean;
+	isSubmitted: boolean;
 	draftGroups: string[];
 	approvedGroups: number;
 	totalGroups: number;
@@ -317,13 +320,15 @@ function BottomBar({
 				</div>
 			)}
 			<div className="px-7 py-3 flex items-center justify-end gap-[6px]">
-				<button
-					type="button"
-					onClick={onDismiss}
-					className="px-[14px] py-[6px] rounded-[6px] text-[12px] font-medium text-[var(--text-secondary)] bg-transparent border border-[var(--border-default)] cursor-pointer"
-				>
-					Dismiss
-				</button>
+				{!isSubmitted && (
+					<button
+						type="button"
+						onClick={onDismiss}
+						className="px-[14px] py-[6px] rounded-[6px] text-[12px] font-medium text-[var(--text-secondary)] bg-transparent border border-[var(--border-default)] cursor-pointer"
+					>
+						Dismiss
+					</button>
+				)}
 				{approvedGroups > 0 && (
 					<button
 						type="button"
