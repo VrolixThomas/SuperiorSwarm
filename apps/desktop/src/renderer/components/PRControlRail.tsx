@@ -467,12 +467,14 @@ function CommentsTab({
 	aiThreads,
 	summaryMarkdown,
 	onShowSummary,
+	hasActiveDraft,
 }: {
 	details: GitHubPRDetails;
 	prCtx: PRContext;
 	aiThreads: AIDraftThread[];
 	summaryMarkdown: string | null;
 	onShowSummary: () => void;
+	hasActiveDraft: boolean;
 }) {
 	const [sortMode, setSortMode] = useState<SortMode>("by-file");
 	const utils = trpc.useUtils();
@@ -538,6 +540,66 @@ function CommentsTab({
 			(a, b) => new Date(threadDate(b)).getTime() - new Date(threadDate(a)).getTime()
 		);
 	}, [allThreads, sortMode]);
+
+	if (hasActiveDraft) {
+		// Compact jump-list: show file paths with comment counts
+		const commentsByFile = new Map<string, number>();
+		for (const t of allThreads) {
+			commentsByFile.set(t.path, (commentsByFile.get(t.path) ?? 0) + 1);
+		}
+
+		return (
+			<div className="flex flex-1 flex-col overflow-hidden">
+				<div className="flex shrink-0 items-center gap-2 border-b border-[var(--border-subtle)] px-3 py-1.5">
+					<span className="text-[10px] font-medium text-[var(--text-quaternary)]">
+						Review comments by file
+					</span>
+				</div>
+				<div className="flex-1 overflow-y-auto py-1">
+					{commentsByFile.size === 0 ? (
+						<div className="flex flex-1 items-center justify-center py-8">
+							<span className="text-[12px] text-[var(--text-quaternary)]">No comments yet</span>
+						</div>
+					) : (
+						Array.from(commentsByFile.entries()).map(([path, count]) => (
+							<button
+								key={path}
+								type="button"
+								onClick={() => {
+									if (activeWorkspaceId) {
+										openPRReviewFile(activeWorkspaceId, prCtx, path, detectLanguage(path));
+									}
+								}}
+								className="flex w-full items-center gap-2 px-3 py-[6px] text-left transition-colors hover:bg-[var(--bg-elevated)]"
+							>
+								<span className="flex-1 truncate [font-family:var(--font-mono)] text-[11px] text-[var(--text-secondary)]">
+									{path}
+								</span>
+								<span className="shrink-0 text-[10px] text-[var(--text-quaternary)]">
+									{count}
+								</span>
+							</button>
+						))
+					)}
+				</div>
+				<button
+					type="button"
+					onClick={() => {
+						// Focus the review-workspace tab
+						const tabStore = useTabStore.getState();
+						const tabs = tabStore.getVisibleTabs();
+						const reviewTab = tabs.find((t) => t.kind === "review-workspace");
+						if (reviewTab) {
+							tabStore.setActiveTab(reviewTab.id);
+						}
+					}}
+					className="flex shrink-0 items-center justify-center gap-1 border-t border-[var(--border-subtle)] px-3 py-2 text-[11px] text-[var(--accent)] transition-colors hover:bg-[var(--bg-elevated)]"
+				>
+					Open in Review Tab
+				</button>
+			</div>
+		);
+	}
 
 	if (allThreads.length === 0 && !summaryMarkdown) {
 		return (
@@ -981,6 +1043,7 @@ export function PRControlRail({ prCtx }: { prCtx: PRContext }) {
 					aiThreads={[...aiThreads, ...userPendingThreads]}
 					summaryMarkdown={aiDraftQuery.data?.summaryMarkdown ?? null}
 					onShowSummary={() => activeWorkspaceId && openPROverview(activeWorkspaceId, prCtx)}
+					hasActiveDraft={!!matchingDraft && matchingDraft.status !== "dismissed" && matchingDraft.status !== "submitted"}
 				/>
 			)}
 			{tab === "files" && prCtx.repoPath && activeWorkspaceId && (
