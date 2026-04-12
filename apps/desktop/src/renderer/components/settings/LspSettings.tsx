@@ -1,159 +1,223 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useProjectStore } from "../../stores/projects";
+import { useCallback, useMemo, useState } from "react";
+import { useTabStore } from "../../stores/tab-store";
 import { trpc } from "../../trpc/client";
-import { PageHeading, SectionLabel } from "./SectionHeading";
+import { PageHeading } from "./SectionHeading";
+import { LspAdditionalServers } from "./lsp/LspAdditionalServers";
+import { LspAddServerFlow } from "./lsp/LspAddServerFlow";
+import { LspBuiltInServers } from "./lsp/LspBuiltInServers";
+import { LspWorkspaceContext } from "./lsp/LspWorkspaceContext";
+
+interface ServerConfig {
+	id: string;
+	command: string;
+	args: string[];
+	languages: string[];
+	fileExtensions: string[];
+	rootMarkers: string[];
+	initializationOptions?: Record<string, unknown>;
+	disabled: boolean;
+}
 
 export function LspSettings() {
-	const selectedProjectId = useProjectStore((s) => s.selectedProjectId);
+	const activeWorkspaceId = useTabStore((s) => s.activeWorkspaceId);
 
-	const projectQuery = trpc.projects.getById.useQuery(
-		{ id: selectedProjectId ?? "" },
-		{ enabled: selectedProjectId != null }
+	const workspaceQuery = trpc.workspaces.getById.useQuery(
+		{ id: activeWorkspaceId ?? "" },
+		{ enabled: activeWorkspaceId != null }
 	);
 
-	const repoPath = projectQuery.data?.repoPath;
+	const projectQuery = trpc.projects.getById.useQuery(
+		{ id: workspaceQuery.data?.projectId ?? "" },
+		{ enabled: !!workspaceQuery.data?.projectId }
+	);
 
-	const [entries, setEntries] = useState<
-		Array<{
-			id: string;
-			command: string;
-			available: boolean;
-			lastStartupError?: string;
-			activeSessions?: number;
-			activeSessionDocuments?: string[];
-			installHint?: string;
-		}>
-	>([]);
-	const [loading, setLoading] = useState(false);
-	const [error, setError] = useState<string | null>(null);
+	const repoPath = projectQuery.data?.repoPath ?? null;
 
-	const loadHealth = useCallback(() => {
-		if (!repoPath) {
-			setEntries([]);
-			setLoading(false);
-			setError(null);
-			return;
+	// Queries
+	const healthQuery = trpc.lsp.getHealth.useQuery(
+		{ repoPath: repoPath ?? undefined },
+		{ enabled: true }
+	);
+	const presetsQuery = trpc.lsp.getPresets.useQuery();
+	const userConfigQuery = trpc.lsp.getUserConfig.useQuery();
+	const repoConfigQuery = trpc.lsp.getRepoConfig.useQuery(
+		{ repoPath: repoPath ?? "" },
+		{ enabled: !!repoPath }
+	);
+
+	// Mutations
+	const utils = trpc.useUtils();
+	const saveUserConfig = trpc.lsp.saveUserConfig.useMutation({
+		onSuccess: () => {
+			utils.lsp.getUserConfig.invalidate();
+			utils.lsp.getHealth.invalidate();
+		},
+	});
+	const saveRepoConfig = trpc.lsp.saveRepoConfig.useMutation({
+		onSuccess: () => {
+			utils.lsp.getRepoConfig.invalidate();
+			utils.lsp.getHealth.invalidate();
+		},
+	});
+	const setServerEnabled = trpc.lsp.setServerEnabled.useMutation({
+		onSuccess: () => {
+			utils.lsp.getUserConfig.invalidate();
+			utils.lsp.getRepoConfig.invalidate();
+			utils.lsp.getHealth.invalidate();
+		},
+	});
+
+	// UI state
+	const [showAddFlow, setShowAddFlow] = useState(false);
+	const [editTarget, setEditTarget] = useState<{
+		config: ServerConfig;
+		scope: "user" | "repo";
+	} | null>(null);
+	const [toggling, setToggling] = useState<string | null>(null);
+	const [removing, setRemoving] = useState<string | null>(null);
+
+	// Derived: disabled built-in IDs from user config
+	const disabledIds = useMemo(() => {
+		const ids = new Set<string>();
+		for (const server of userConfigQuery.data?.servers ?? []) {
+			if (server.disabled) ids.add(server.id);
 		}
+		for (const server of repoConfigQuery.data?.servers ?? []) {
+			if (server.disabled) ids.add(server.id);
+		}
+		return ids;
+	}, [userConfigQuery.data, repoConfigQuery.data]);
 
-		let canceled = false;
-		setLoading(true);
-		setError(null);
+	// Derived: additional (non-built-in) servers
+	const builtInIds = useMemo(
+		() => new Set(["typescript", "python", "go", "rust", "java", "cpp", "php", "ruby"]),
+		[]
+	);
 
-		window.electron.lsp
-			.getHealth({ repoPath })
-			.then((result) => {
-				if (canceled) {
-					return;
+	const additionalServers = useMemo(() => {
+		const result: Array<{ config: ServerConfig; scope: "user" | "repo" }> = [];
+		for (const server of userConfigQuery.data?.servers ?? []) {
+			if (!builtInIds.has(server.id) && !server.disabled) {
+				result.push({ config: server as ServerConfig, scope: "user" });
+			}
+		}
+		for (const server of repoConfigQuery.data?.servers ?? []) {
+			if (!builtInIds.has(server.id) && !server.disabled) {
+				result.push({ config: server as ServerConfig, scope: "repo" });
+			}
+		}
+		return result;
+	}, [userConfigQuery.data, repoConfigQuery.data, builtInIds]);
+
+	const existingAdditionalIds = useMemo(
+		() => new Set(additionalServers.map((s) => s.config.id)),
+		[additionalServers]
+	);
+
+	// Handlers
+	const handleToggle = useCallback(
+		async (id: string, currentlyDisabled: boolean) => {
+			setToggling(id);
+			try {
+				await setServerEnabled.mutateAsync({
+					id,
+					scope: "user",
+					enabled: currentlyDisabled, // re-enable if currently disabled
+				});
+			} finally {
+				setToggling(null);
+			}
+		},
+		[setServerEnabled]
+	);
+
+	const handleRemove = useCallback(
+		async (id: string, scope: "user" | "repo") => {
+			setRemoving(id);
+			try {
+				const config =
+					scope === "user" ? userConfigQuery.data?.servers : repoConfigQuery.data?.servers;
+				const filtered = (config ?? []).filter((s) => s.id !== id);
+				if (scope === "user") {
+					await saveUserConfig.mutateAsync({ servers: filtered });
+				} else if (repoPath) {
+					await saveRepoConfig.mutateAsync({ repoPath, servers: filtered });
 				}
-				setEntries(result.entries);
-			})
-			.catch((err: unknown) => {
-				if (canceled) {
-					return;
-				}
-				setEntries([]);
-				setError(err instanceof Error ? err.message : "Failed to load LSP health.");
-			})
-			.finally(() => {
-				if (!canceled) {
-					setLoading(false);
-				}
-			});
+			} finally {
+				setRemoving(null);
+			}
+		},
+		[userConfigQuery.data, repoConfigQuery.data, saveUserConfig, saveRepoConfig, repoPath]
+	);
 
-		return () => {
-			canceled = true;
-		};
-	}, [repoPath]);
+	const handleSaveNew = useCallback(
+		async (config: ServerConfig, scope: "user" | "repo") => {
+			const existing =
+				scope === "user"
+					? (userConfigQuery.data?.servers ?? [])
+					: (repoConfigQuery.data?.servers ?? []);
 
-	useEffect(() => {
-		return loadHealth();
-	}, [loadHealth]);
+			// Upsert: replace if same ID exists, otherwise append
+			const index = existing.findIndex((s) => s.id === config.id);
+			const updated = [...existing];
+			if (index >= 0) {
+				updated[index] = config;
+			} else {
+				updated.push(config);
+			}
 
-	const sortedEntries = useMemo(
-		() => [...entries].sort((a, b) => a.id.localeCompare(b.id)),
-		[entries]
+			if (scope === "user") {
+				await saveUserConfig.mutateAsync({ servers: updated });
+			} else if (repoPath) {
+				await saveRepoConfig.mutateAsync({ repoPath, servers: updated });
+			}
+
+			setShowAddFlow(false);
+			setEditTarget(null);
+		},
+		[userConfigQuery.data, repoConfigQuery.data, saveUserConfig, saveRepoConfig, repoPath]
 	);
 
 	return (
 		<div>
 			<PageHeading
 				title="Language Servers"
-				subtitle="Status and diagnostics for language servers in the active repository"
+				subtitle="Configure language servers for code intelligence — completions, hover, go-to-definition, and diagnostics"
 			/>
 
-			<SectionLabel>Health</SectionLabel>
-			<div className="mb-3 flex items-center justify-between">
-				<div className="text-[12px] text-[var(--text-tertiary)]">
-					{repoPath ? repoPath : "Select a repository to view LSP health."}
-				</div>
-				<button
-					type="button"
-					onClick={() => {
-						loadHealth();
-					}}
-					disabled={!repoPath || loading}
-					className="rounded-[6px] border border-[var(--border)] bg-[var(--bg-elevated)] px-2.5 py-1 text-[11px] text-[var(--text-tertiary)] transition-colors hover:bg-[var(--bg-overlay)] hover:text-[var(--text-secondary)] disabled:opacity-50"
-				>
-					{loading ? "Loading..." : "Refresh"}
-				</button>
-			</div>
+			<LspBuiltInServers
+				healthEntries={healthQuery.data?.entries ?? []}
+				disabledIds={disabledIds}
+				onToggle={handleToggle}
+				toggling={toggling}
+			/>
 
-			<div className="overflow-hidden rounded-[10px] border border-[var(--border)] bg-[var(--bg-surface)]">
-				{!repoPath ? (
-					<div className="px-4 py-8 text-center text-[12px] text-[var(--text-quaternary)]">
-						No active repository selected
-					</div>
-				) : error ? (
-					<div className="px-4 py-8 text-center text-[12px] text-[#ff453a]">{error}</div>
-				) : loading ? (
-					<div className="px-4 py-8 text-center text-[12px] text-[var(--text-quaternary)]">
-						Loading language server health...
-					</div>
-				) : sortedEntries.length === 0 ? (
-					<div className="px-4 py-8 text-center text-[12px] text-[var(--text-quaternary)]">
-						No language servers configured
-					</div>
-				) : (
-					sortedEntries.map((entry, index) => (
-						<div
-							key={entry.id}
-							className={`px-4 py-3 ${index > 0 ? "border-t border-[var(--border-subtle)]" : ""}`}
-						>
-							<div className="flex items-start justify-between gap-3">
-								<div className="min-w-0 flex-1">
-									<div className="text-[13px] font-medium text-[var(--text)]">{entry.id}</div>
-									<div className="truncate font-mono text-[10px] text-[var(--text-quaternary)]">
-										{entry.command}
-									</div>
-								</div>
-								<span
-									className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${
-										entry.available
-											? "bg-[rgba(48,209,88,0.15)] text-[#30d158]"
-											: "bg-[rgba(255,214,10,0.15)] text-[#ffd60a]"
-									}`}
-								>
-									{entry.available ? "Installed" : "Missing"}
-								</span>
-							</div>
-							<div className="mt-2 space-y-1 text-[11px] text-[var(--text-tertiary)]">
-								<div>
-									Active sessions: {entry.activeSessions ?? 0}
-									{entry.activeSessionDocuments && entry.activeSessionDocuments.length > 0
-										? ` (${entry.activeSessionDocuments.length} open documents)`
-										: ""}
-								</div>
-								{entry.lastStartupError ? (
-									<div className="text-[#ff9f0a]">Last startup error: {entry.lastStartupError}</div>
-								) : (
-									<div className="text-[var(--text-quaternary)]">Last startup error: none</div>
-								)}
-								{entry.installHint ? <div>Install hint: {entry.installHint}</div> : null}
-							</div>
-						</div>
-					))
-				)}
-			</div>
+			{showAddFlow || editTarget ? (
+				<div className="mb-6 rounded-[10px] border border-[var(--border)] bg-[var(--bg-surface)] p-4">
+					<LspAddServerFlow
+						presets={presetsQuery.data ?? []}
+						existingIds={existingAdditionalIds}
+						repoPath={repoPath}
+						onSave={handleSaveNew}
+						onCancel={() => {
+							setShowAddFlow(false);
+							setEditTarget(null);
+						}}
+						editTarget={editTarget}
+					/>
+				</div>
+			) : (
+				<LspAdditionalServers
+					servers={additionalServers}
+					healthEntries={healthQuery.data?.entries ?? []}
+					onEdit={(config, scope) => setEditTarget({ config, scope })}
+					onRemove={handleRemove}
+					onAdd={() => setShowAddFlow(true)}
+					removing={removing}
+				/>
+			)}
+
+			<LspWorkspaceContext repoPath={repoPath} />
 		</div>
 	);
 }
