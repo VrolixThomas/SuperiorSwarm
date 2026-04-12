@@ -131,6 +131,30 @@ function assembleSolveSession(sessionId: string): SolveSessionInfo | null {
 	};
 }
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/** Throws if any draft replies exist for the given comment IDs. */
+function assertNoDraftReplies(commentIds: string[]): void {
+	if (commentIds.length === 0) return;
+	const db = getDb();
+	const draftReplies = db
+		.select()
+		.from(schema.commentReplies)
+		.where(
+			and(
+				inArray(schema.commentReplies.prCommentId, commentIds),
+				eq(schema.commentReplies.status, "draft")
+			)
+		)
+		.all();
+	if (draftReplies.length > 0) {
+		throw new TRPCError({
+			code: "PRECONDITION_FAILED",
+			message: `Sign off ${draftReplies.length} draft reply/replies before pushing`,
+		});
+	}
+}
+
 // ─── Router ───────────────────────────────────────────────────────────────────
 
 export const commentSolverRouter = router({
@@ -529,24 +553,7 @@ export const commentSolverRouter = router({
 				.all()
 				.map((c) => c.id);
 
-			if (groupCommentIds.length > 0) {
-				const draftReplies = db
-					.select()
-					.from(schema.commentReplies)
-					.where(
-						and(
-							inArray(schema.commentReplies.prCommentId, groupCommentIds),
-							eq(schema.commentReplies.status, "draft")
-						)
-					)
-					.all();
-				if (draftReplies.length > 0) {
-					throw new TRPCError({
-						code: "PRECONDITION_FAILED",
-						message: `Sign off ${draftReplies.length} draft reply/replies before pushing`,
-					});
-				}
-			}
+			assertNoDraftReplies(groupCommentIds);
 
 			return publishGroup(input.groupId);
 		}),
@@ -579,23 +586,7 @@ export const commentSolverRouter = router({
 				.all()
 				.map((c) => c.id);
 
-			if (approvedCommentIds.length > 0) {
-				const draftReplies = db
-					.select()
-					.from(schema.commentReplies)
-					.where(
-						and(
-							inArray(schema.commentReplies.prCommentId, approvedCommentIds),
-							eq(schema.commentReplies.status, "draft")
-						)
-					)
-					.all();
-				if (draftReplies.length > 0) {
-					throw new Error(
-						`Cannot publish: ${draftReplies.length} draft reply/replies still pending approval`
-					);
-				}
-			}
+			assertNoDraftReplies(approvedCommentIds);
 
 			return publishSolve(input.sessionId);
 		}),
