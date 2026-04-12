@@ -75,6 +75,10 @@ function deserializeLayout(
 				if ((saved as { kind: string }).kind === "solve-review") {
 					return null;
 				}
+				// Review-workspace tabs are transient — review drafts don't survive restart
+				if ((saved as { kind: string }).kind === "review-workspace") {
+					return null;
+				}
 				// File tabs: use directly from serialized data
 				return saved;
 			})
