@@ -1,4 +1,4 @@
-import { execFileSync, execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -516,8 +516,9 @@ if (isSolverMode) {
 					`UPDATE comment_groups SET status = 'fixed', commit_hash = ? WHERE id = ? AND solve_session_id = ?`
 				).run(hash, group_id, SOLVE_SESSION_ID);
 
-				const diffTree = execSync(
-					`git diff-tree --no-commit-id -r --numstat ${hash}`,
+				const diffTree = execFileSync(
+					"git",
+					["diff-tree", "--no-commit-id", "-r", "--numstat", hash],
 					{ cwd },
 				).toString().trim();
 
@@ -531,8 +532,9 @@ if (isSolverMode) {
 					};
 				}) : [];
 
-				const nameStatus = execSync(
-					`git diff-tree --no-commit-id -r --name-status ${hash}`,
+				const nameStatus = execFileSync(
+					"git",
+					["diff-tree", "--no-commit-id", "-r", "--name-status", hash],
 					{ cwd },
 				).toString().trim();
 
