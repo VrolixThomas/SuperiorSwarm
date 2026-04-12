@@ -31,6 +31,7 @@ export const commentGroups = sqliteTable("comment_groups", {
 	status: text("status").notNull().default("pending"),
 	commitHash: text("commit_hash"),
 	order: integer("order").notNull(),
+	changedFiles: text("changed_files"), // JSON array of ChangedFile
 });
 
 export type CommentGroup = typeof commentGroups.$inferSelect;
@@ -53,6 +54,7 @@ export const prComments = sqliteTable(
 		threadId: text("thread_id"),
 		status: text("status").notNull().default("open"),
 		commitSha: text("commit_sha"),
+		followUpText: text("follow_up_text"),
 	},
 	(table) => [
 		uniqueIndex("pr_comments_session_platform_unique").on(

@@ -80,6 +80,7 @@ function assembleSolveSession(sessionId: string): SolveSessionInfo | null {
 			status: group.status as SolveGroupStatus,
 			commitHash: group.commitHash ?? null,
 			order: group.order,
+			changedFiles: group.changedFiles ? JSON.parse(group.changedFiles) : [],
 			comments: comments.map((comment) => {
 				const reply = repliesByCommentId.get(comment.id);
 				return {
@@ -94,6 +95,7 @@ function assembleSolveSession(sessionId: string): SolveSessionInfo | null {
 					status: comment.status as SolveCommentStatus,
 					commitSha: comment.commitSha ?? null,
 					groupId: comment.groupId ?? null,
+					followUpText: comment.followUpText ?? null,
 					reply: reply
 						? { id: reply.id, body: reply.body, status: reply.status as SolveReplyStatus }
 						: null,
