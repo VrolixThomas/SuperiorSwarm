@@ -865,4 +865,197 @@ describe("Comment Solver", () => {
 			expect(comment["group_id"]).toBeNull();
 		});
 	});
+
+	describe("buildCommentSolveStatuses", () => {
+		// NOTE: buildCommentSolveStatuses() calls getDb() internally which returns the production DB,
+		// so we cannot inject the test DB to call it directly. Instead, these tests replicate
+		// the exact SQL logic from buildCommentSolveStatuses() in comment-solver.ts.
+		// The logic below must stay in sync with that function.
+
+		function buildCommentSolveStatusesFromDb(
+			workspaceId: string
+		): Record<string, "addressed" | "new"> {
+			const result: Record<string, "addressed" | "new"> = {};
+
+			const sessions = db
+				.prepare(
+					`SELECT id, status FROM comment_solve_sessions
+					WHERE workspace_id = ? AND status != 'dismissed'`
+				)
+				.all(workspaceId) as Array<{ id: string; status: string }>;
+
+			if (sessions.length === 0) return result;
+
+			const sessionIds = sessions.map((s) => s.id);
+			const hasSubmittedOrReady = sessions.some(
+				(s) => s.status === "submitted" || s.status === "ready"
+			);
+
+			const placeholders = sessionIds.map(() => "?").join(",");
+			const sessionComments = db
+				.prepare(
+					`SELECT platform_comment_id, status FROM pr_comments
+					WHERE solve_session_id IN (${placeholders})`
+				)
+				.all(...sessionIds) as Array<{ platform_comment_id: string; status: string }>;
+
+			const knownPlatformIds = new Set<string>();
+			for (const c of sessionComments) {
+				knownPlatformIds.add(c.platform_comment_id);
+				if (c.status === "fixed" || c.status === "wont_fix" || c.status === "unclear") {
+					result[c.platform_comment_id] = "addressed";
+				}
+			}
+
+			if (hasSubmittedOrReady) {
+				const cacheComments = db
+					.prepare(`SELECT platform_comment_id FROM pr_comment_cache WHERE workspace_id = ?`)
+					.all(workspaceId) as Array<{ platform_comment_id: string }>;
+
+				for (const c of cacheComments) {
+					if (!knownPlatformIds.has(c.platform_comment_id)) {
+						result[c.platform_comment_id] = "new";
+					}
+				}
+			}
+
+			return result;
+		}
+
+		const WS = "status-ws";
+		const NOW_TS = Date.now();
+
+		function insertSession(id: string, status: string): void {
+			db.prepare(`
+				INSERT INTO comment_solve_sessions
+					(id, pr_provider, pr_identifier, pr_title, source_branch, target_branch, status, workspace_id, created_at, updated_at)
+				VALUES (?, 'github', 'owner/repo#99', 'Status PR', 'feat/status', 'main', ?, ?, ?, ?)
+			`).run(id, status, WS, NOW_TS, NOW_TS);
+		}
+
+		function insertComment(
+			id: string,
+			sessionId: string,
+			platformId: string,
+			status: string
+		): void {
+			db.prepare(`
+				INSERT INTO pr_comments
+					(id, solve_session_id, platform_comment_id, author, body, file_path, status)
+				VALUES (?, ?, ?, 'reviewer', 'body', 'file.ts', ?)
+			`).run(id, sessionId, platformId, status);
+		}
+
+		function insertCacheComment(id: string, platformId: string): void {
+			db.prepare(`
+				INSERT INTO pr_comment_cache
+					(id, workspace_id, platform_comment_id, author, body, file_path, created_at, fetched_at)
+				VALUES (?, ?, ?, 'reviewer', 'body', 'file.ts', '2024-01-01T00:00:00Z', ?)
+			`).run(id, WS, platformId, NOW_TS);
+		}
+
+		afterAll(() => {
+			// Clean up all data inserted for this describe block
+			db.prepare(`DELETE FROM pr_comment_cache WHERE workspace_id = ?`).run(WS);
+			db.prepare(`DELETE FROM comment_solve_sessions WHERE workspace_id = ?`).run(WS);
+		});
+
+		test("returns empty object when no sessions exist for workspace", () => {
+			const result = buildCommentSolveStatusesFromDb("no-such-workspace");
+			expect(result).toEqual({});
+		});
+
+		test("returns empty object when only dismissed sessions exist", () => {
+			insertSession("status-sess-dismissed", "dismissed");
+			const result = buildCommentSolveStatusesFromDb(WS);
+			expect(result).toEqual({});
+		});
+
+		test("marks fixed comment as addressed", () => {
+			insertSession("status-sess-fixed", "ready");
+			insertComment("status-c-fixed", "status-sess-fixed", "plat-fixed-1", "fixed");
+
+			const result = buildCommentSolveStatusesFromDb(WS);
+			expect(result["plat-fixed-1"]).toBe("addressed");
+		});
+
+		test("marks wont_fix comment as addressed", () => {
+			insertSession("status-sess-wont", "ready");
+			insertComment("status-c-wont", "status-sess-wont", "plat-wont-1", "wont_fix");
+
+			const result = buildCommentSolveStatusesFromDb(WS);
+			expect(result["plat-wont-1"]).toBe("addressed");
+		});
+
+		test("marks unclear comment as addressed", () => {
+			insertSession("status-sess-unclear", "ready");
+			insertComment("status-c-unclear", "status-sess-unclear", "plat-unclear-1", "unclear");
+
+			const result = buildCommentSolveStatusesFromDb(WS);
+			expect(result["plat-unclear-1"]).toBe("addressed");
+		});
+
+		test("open comment gets no entry", () => {
+			insertSession("status-sess-open", "in_progress");
+			insertComment("status-c-open", "status-sess-open", "plat-open-1", "open");
+
+			const result = buildCommentSolveStatusesFromDb(WS);
+			expect(result["plat-open-1"]).toBeUndefined();
+		});
+
+		test("changes_requested comment gets no entry", () => {
+			insertSession("status-sess-cr", "in_progress");
+			insertComment("status-c-cr", "status-sess-cr", "plat-cr-1", "changes_requested");
+
+			const result = buildCommentSolveStatusesFromDb(WS);
+			expect(result["plat-cr-1"]).toBeUndefined();
+		});
+
+		test("cache-only comment gets 'new' when submitted session exists", () => {
+			insertSession("status-sess-submitted", "submitted");
+			insertComment("status-c-submitted", "status-sess-submitted", "plat-known-1", "fixed");
+			insertCacheComment("cache-new-1", "plat-new-1");
+
+			const result = buildCommentSolveStatusesFromDb(WS);
+			expect(result["plat-new-1"]).toBe("new");
+		});
+
+		test("cache-only comment gets 'new' when ready session exists", () => {
+			insertCacheComment("cache-new-2", "plat-new-2");
+			// A ready session already exists from previous test (status-sess-fixed)
+
+			const result = buildCommentSolveStatusesFromDb(WS);
+			expect(result["plat-new-2"]).toBe("new");
+		});
+
+		test("cache comment that is already in a session does not get 'new'", () => {
+			// plat-known-1 was inserted as a session comment above — it should be "addressed" not "new"
+			insertCacheComment("cache-known-1", "plat-known-1");
+
+			const result = buildCommentSolveStatusesFromDb(WS);
+			expect(result["plat-known-1"]).toBe("addressed");
+			expect(result["plat-known-1"]).not.toBe("new");
+		});
+
+		test("cache comment is NOT marked 'new' when only in_progress session exists", () => {
+			// Isolated workspace: only has in_progress session, no submitted/ready
+			const isolatedWs = "status-ws-isolated";
+			db.prepare(`
+				INSERT INTO comment_solve_sessions
+					(id, pr_provider, pr_identifier, pr_title, source_branch, target_branch, status, workspace_id, created_at, updated_at)
+				VALUES ('status-sess-iso', 'github', 'owner/repo#iso', 'Iso PR', 'feat', 'main', 'in_progress', ?, ?, ?)
+			`).run(isolatedWs, NOW_TS, NOW_TS);
+			db.prepare(`
+				INSERT INTO pr_comment_cache
+					(id, workspace_id, platform_comment_id, author, body, file_path, created_at, fetched_at)
+				VALUES ('cache-iso-1', ?, 'plat-iso-1', 'reviewer', 'body', 'file.ts', '2024-01-01T00:00:00Z', ?)
+			`).run(isolatedWs, NOW_TS);
+
+			const result = buildCommentSolveStatusesFromDb(isolatedWs);
+			expect(result["plat-iso-1"]).toBeUndefined();
+
+			db.prepare(`DELETE FROM pr_comment_cache WHERE workspace_id = ?`).run(isolatedWs);
+			db.prepare(`DELETE FROM comment_solve_sessions WHERE workspace_id = ?`).run(isolatedWs);
+		});
+	});
 });

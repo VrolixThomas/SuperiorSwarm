@@ -178,6 +178,64 @@ async function revertGroupsInReverse(sessionId: string, worktreePath: string): P
 	}
 }
 
+export function buildCommentSolveStatuses(
+	workspaceId: string
+): Record<string, "addressed" | "new"> {
+	const db = getDb();
+	const result: Record<string, "addressed" | "new"> = {};
+
+	const sessions = db
+		.select({ id: schema.commentSolveSessions.id, status: schema.commentSolveSessions.status })
+		.from(schema.commentSolveSessions)
+		.where(
+			and(
+				eq(schema.commentSolveSessions.workspaceId, workspaceId),
+				not(eq(schema.commentSolveSessions.status, "dismissed"))
+			)
+		)
+		.all();
+
+	if (sessions.length === 0) return result;
+
+	const sessionIds = sessions.map((s) => s.id);
+	const hasSubmittedOrReady = sessions.some(
+		(s) => s.status === "submitted" || s.status === "ready"
+	);
+
+	const sessionComments = db
+		.select({
+			platformCommentId: schema.prComments.platformCommentId,
+			status: schema.prComments.status,
+		})
+		.from(schema.prComments)
+		.where(inArray(schema.prComments.solveSessionId, sessionIds))
+		.all();
+
+	const knownPlatformIds = new Set<string>();
+	for (const c of sessionComments) {
+		knownPlatformIds.add(c.platformCommentId);
+		if (c.status === "fixed" || c.status === "wont_fix" || c.status === "unclear") {
+			result[c.platformCommentId] = "addressed";
+		}
+	}
+
+	if (hasSubmittedOrReady) {
+		const cacheComments = db
+			.select({ platformCommentId: schema.prCommentCache.platformCommentId })
+			.from(schema.prCommentCache)
+			.where(eq(schema.prCommentCache.workspaceId, workspaceId))
+			.all();
+
+		for (const c of cacheComments) {
+			if (!knownPlatformIds.has(c.platformCommentId)) {
+				result[c.platformCommentId] = "new";
+			}
+		}
+	}
+
+	return result;
+}
+
 // ─── Router ───────────────────────────────────────────────────────────────────
 
 export const commentSolverRouter = router({
@@ -310,6 +368,16 @@ export const commentSolverRouter = router({
 					lineNumber: c.lineNumber,
 					createdAt: c.createdAt,
 				}));
+		}),
+
+	/**
+	 * Get comment solve status awareness for a workspace.
+	 * Returns a Record<platformCommentId, "addressed" | "new"> based on active sessions.
+	 */
+	getCommentSolveStatuses: publicProcedure
+		.input(z.object({ workspaceId: z.string() }))
+		.query(({ input }) => {
+			return buildCommentSolveStatuses(input.workspaceId);
 		}),
 
 	/**
