@@ -715,9 +715,22 @@ export const commentSolverRouter = router({
 				await revertGroupsInReverse(input.sessionId, worktreePath);
 			}
 
-			// Update session status to dismissed
+			// Check if any groups were already pushed — if so, keep session visible
+			const hasSubmittedGroups = db
+				.select({ id: schema.commentGroups.id })
+				.from(schema.commentGroups)
+				.where(
+					and(
+						eq(schema.commentGroups.solveSessionId, input.sessionId),
+						eq(schema.commentGroups.status, "submitted")
+					)
+				)
+				.get();
+
+			// Only fully dismiss if nothing was pushed; otherwise stay "submitted"
+			const newStatus = hasSubmittedGroups ? "submitted" : "dismissed";
 			db.update(schema.commentSolveSessions)
-				.set({ status: "dismissed", updatedAt: new Date() })
+				.set({ status: newStatus, updatedAt: new Date() })
 				.where(eq(schema.commentSolveSessions.id, input.sessionId))
 				.run();
 

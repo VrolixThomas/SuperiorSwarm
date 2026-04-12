@@ -326,7 +326,7 @@ function BottomBar({
 						onClick={onDismiss}
 						className="px-[14px] py-[6px] rounded-[6px] text-[12px] font-medium text-[var(--text-secondary)] bg-transparent border border-[var(--border-default)] cursor-pointer"
 					>
-						Dismiss
+						{submittedGroups > 0 ? "Revert remaining" : "Dismiss"}
 					</button>
 				)}
 				{approvedGroups > 0 && (
