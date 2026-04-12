@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
+import type { LanguageServerConfig } from "../../../shared/lsp-types";
 import { useTabStore } from "../../stores/tab-store";
 import { trpc } from "../../trpc/client";
 import { PageHeading } from "./SectionHeading";
@@ -6,17 +7,6 @@ import { LspAdditionalServers } from "./lsp/LspAdditionalServers";
 import { LspAddServerFlow } from "./lsp/LspAddServerFlow";
 import { LspBuiltInServers } from "./lsp/LspBuiltInServers";
 import { LspWorkspaceContext } from "./lsp/LspWorkspaceContext";
-
-interface ServerConfig {
-	id: string;
-	command: string;
-	args: string[];
-	languages: string[];
-	fileExtensions: string[];
-	rootMarkers: string[];
-	initializationOptions?: Record<string, unknown>;
-	disabled: boolean;
-}
 
 export function LspSettings() {
 	const activeWorkspaceId = useTabStore((s) => s.activeWorkspaceId);
@@ -70,7 +60,7 @@ export function LspSettings() {
 	// UI state
 	const [showAddFlow, setShowAddFlow] = useState(false);
 	const [editTarget, setEditTarget] = useState<{
-		config: ServerConfig;
+		config: LanguageServerConfig;
 		scope: "user" | "repo";
 	} | null>(null);
 	const [toggling, setToggling] = useState<string | null>(null);
@@ -95,15 +85,15 @@ export function LspSettings() {
 	);
 
 	const additionalServers = useMemo(() => {
-		const result: Array<{ config: ServerConfig; scope: "user" | "repo" }> = [];
+		const result: Array<{ config: LanguageServerConfig; scope: "user" | "repo" }> = [];
 		for (const server of userConfigQuery.data?.servers ?? []) {
 			if (!builtInIds.has(server.id) && !server.disabled) {
-				result.push({ config: server as ServerConfig, scope: "user" });
+				result.push({ config: server as LanguageServerConfig, scope: "user" });
 			}
 		}
 		for (const server of repoConfigQuery.data?.servers ?? []) {
 			if (!builtInIds.has(server.id) && !server.disabled) {
-				result.push({ config: server as ServerConfig, scope: "repo" });
+				result.push({ config: server as LanguageServerConfig, scope: "repo" });
 			}
 		}
 		return result;
@@ -151,7 +141,7 @@ export function LspSettings() {
 	);
 
 	const handleSaveNew = useCallback(
-		async (config: ServerConfig, scope: "user" | "repo") => {
+		async (config: LanguageServerConfig, scope: "user" | "repo") => {
 			const existing =
 				scope === "user"
 					? (userConfigQuery.data?.servers ?? [])

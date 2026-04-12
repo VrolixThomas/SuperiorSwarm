@@ -1,18 +1,10 @@
 import { useMemo, useState } from "react";
-
-interface PresetItem {
-	id: string;
-	displayName: string;
-	description: string;
-	config: {
-		fileExtensions: string[];
-	};
-}
+import type { LspPreset } from "../../../../shared/lsp-types";
 
 interface LspPresetPickerProps {
-	presets: PresetItem[];
+	presets: LspPreset[];
 	existingIds: Set<string>;
-	onSelect: (preset: PresetItem) => void;
+	onSelect: (preset: LspPreset) => void;
 	onCustom: () => void;
 	onCancel: () => void;
 }

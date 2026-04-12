@@ -1,37 +1,20 @@
 import { useState } from "react";
+import type { LanguageServerConfig, LspPreset } from "../../../../shared/lsp-types";
 import { LspPresetPicker } from "./LspPresetPicker";
 import { LspServerForm, type ServerFormData } from "./LspServerForm";
-
-interface ServerConfig {
-	id: string;
-	command: string;
-	args: string[];
-	languages: string[];
-	fileExtensions: string[];
-	rootMarkers: string[];
-	initializationOptions?: Record<string, unknown>;
-	disabled: boolean;
-}
-
-interface PresetItem {
-	id: string;
-	displayName: string;
-	description: string;
-	config: ServerConfig;
-}
 
 type FlowStep = "pick" | "form";
 
 interface LspAddServerFlowProps {
-	presets: PresetItem[];
+	presets: LspPreset[];
 	existingIds: Set<string>;
 	repoPath: string | null;
-	onSave: (config: ServerConfig, scope: "user" | "repo") => Promise<void>;
+	onSave: (config: LanguageServerConfig, scope: "user" | "repo") => Promise<void>;
 	onCancel: () => void;
-	editTarget?: { config: ServerConfig; scope: "user" | "repo" } | null;
+	editTarget?: { config: LanguageServerConfig; scope: "user" | "repo" } | null;
 }
 
-function configToFormData(config: ServerConfig): ServerFormData {
+function configToFormData(config: LanguageServerConfig): ServerFormData {
 	return {
 		id: config.id,
 		command: config.command,
@@ -45,7 +28,7 @@ function configToFormData(config: ServerConfig): ServerFormData {
 	};
 }
 
-function formDataToConfig(data: ServerFormData): ServerConfig {
+function formDataToConfig(data: ServerFormData): LanguageServerConfig {
 	let initOpts: Record<string, unknown> | undefined;
 	try {
 		const parsed = JSON.parse(data.initializationOptions);
@@ -107,7 +90,7 @@ export function LspAddServerFlow({
 	const [saving, setSaving] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
-	const handlePresetSelect = (preset: PresetItem) => {
+	const handlePresetSelect = (preset: LspPreset) => {
 		setFormData(configToFormData(preset.config));
 		setStep("form");
 	};

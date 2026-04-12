@@ -1,27 +1,17 @@
 import type { LspHealthEntry } from "../../../../shared/types";
+import type { LanguageServerConfig } from "../../../../shared/lsp-types";
 import { SectionLabel } from "../SectionHeading";
 import { LspServerRow } from "./LspServerRow";
 
-interface ServerConfig {
-	id: string;
-	command: string;
-	args: string[];
-	languages: string[];
-	fileExtensions: string[];
-	rootMarkers: string[];
-	initializationOptions?: Record<string, unknown>;
-	disabled: boolean;
-}
-
 interface ConfigWithScope {
-	config: ServerConfig;
+	config: LanguageServerConfig;
 	scope: "user" | "repo";
 }
 
 interface LspAdditionalServersProps {
 	servers: ConfigWithScope[];
 	healthEntries: LspHealthEntry[];
-	onEdit: (config: ServerConfig, scope: "user" | "repo") => void;
+	onEdit: (config: LanguageServerConfig, scope: "user" | "repo") => void;
 	onRemove: (id: string, scope: "user" | "repo") => void;
 	onAdd: () => void;
 	removing: string | null;
