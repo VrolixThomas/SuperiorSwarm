@@ -78,8 +78,7 @@ export type TabItem =
 			mergeType: "merge" | "rebase";
 			sourceBranch: string;
 			targetBranch: string;
-	  }
-;
+	  };
 export type PanelMode = "diff" | "explorer" | "pr-review";
 
 export type RightPanelState =
@@ -574,7 +573,6 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 		const tabs = get().getTabsByWorkspace(workspaceId);
 		return tabs.find((t) => t.kind === "solve-review");
 	},
-
 
 	openPRReviewPanel: (workspaceId, prCtx) => {
 		set({ rightPanel: { open: true, mode: "pr-review", diffCtx: null, prCtx } });
