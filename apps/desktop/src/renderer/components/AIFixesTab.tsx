@@ -70,7 +70,7 @@ function ActiveState({
 	const total = nonReverted.length;
 
 	return (
-		<div className="flex flex-1 min-h-0 flex-col overflow-hidden bg-[var(--bg-base)]">
+		<div className="flex flex-col bg-[var(--bg-base)]">
 			{/* Compact summary */}
 			<div className="px-4 py-3 border-b border-[var(--border)]">
 				<div className="text-[13px] font-semibold text-[var(--text)] mb-2 leading-snug">
@@ -86,7 +86,7 @@ function ActiveState({
 			</div>
 
 			{/* Group names — read-only quick overview */}
-			<div className="flex-1 overflow-y-auto px-4 py-2">
+			<div className="px-4 py-2">
 				{session.groups.map((group) => {
 					const statusIcon =
 						group.status === "submitted"
@@ -151,6 +151,76 @@ function ActiveState({
 	);
 }
 
+// ── Session History ───────────────────────────────────────────────────────────
+
+function SessionHistory({
+	sessions,
+	workspaceId,
+}: {
+	sessions: Array<{ id: string; status: string; createdAt: string | Date }>;
+	workspaceId: string;
+}) {
+	if (sessions.length === 0) return null;
+
+	return (
+		<div className="border-t border-[var(--border)]">
+			<div className="px-4 py-2">
+				<div className="text-[10px] uppercase tracking-[0.5px] text-[var(--text-quaternary)] mb-1">
+					Solve History
+				</div>
+				{sessions.map((session, i) => {
+					const sessionNumber = sessions.length - i;
+					const isDismissed = session.status === "dismissed";
+					const statusColor =
+						session.status === "submitted" ? "#34c759"
+						: session.status === "ready" ? "#0a84ff"
+						: session.status === "failed" ? "#ff453a"
+						: session.status === "in_progress" || session.status === "queued" ? "#0a84ff"
+						: "#8e8e93";
+					const statusBg =
+						session.status === "submitted" ? "rgba(52,199,89,0.12)"
+						: session.status === "ready" ? "rgba(10,132,255,0.12)"
+						: session.status === "failed" ? "rgba(255,69,58,0.12)"
+						: session.status === "in_progress" || session.status === "queued" ? "rgba(10,132,255,0.12)"
+						: "rgba(142,142,147,0.12)";
+					const statusLabel =
+						session.status === "submitted" ? "Submitted"
+						: session.status === "ready" ? "Ready"
+						: session.status === "failed" ? "Failed"
+						: session.status === "in_progress" ? "In Progress"
+						: session.status === "queued" ? "Queued"
+						: session.status === "cancelled" ? "Cancelled"
+						: "Dismissed";
+
+					return (
+						<button
+							type="button"
+							key={session.id}
+							onClick={() => useTabStore.getState().addSolveReviewTab(workspaceId, session.id)}
+							className={`w-full text-left px-2 py-[8px] rounded-[4px] hover:bg-[var(--bg-elevated)] transition-colors ${isDismissed ? "opacity-50" : ""}`}
+						>
+							<div className="flex justify-between items-center mb-[2px]">
+								<span className="text-[11px] font-medium text-[var(--text-secondary)]">
+									Session #{sessionNumber}
+								</span>
+								<span
+									style={{ background: statusBg, color: statusColor }}
+									className="text-[9px] font-medium px-[7px] py-[1px] rounded-full"
+								>
+									{statusLabel}
+								</span>
+							</div>
+							<div className="text-[10px] text-[var(--text-quaternary)]">
+								{formatRelativeTime(new Date(session.createdAt).toISOString())}
+							</div>
+						</button>
+					);
+				})}
+			</div>
+		</div>
+	);
+}
+
 // ── Main Component ────────────────────────────────────────────────────────────
 
 export function AIFixesTab({ workspaceId }: AIFixesTabProps) {
@@ -167,14 +237,15 @@ export function AIFixesTab({ workspaceId }: AIFixesTabProps) {
 	);
 	const newCommentCount = Object.values(statusesQuery.data ?? {}).filter((s) => s === "new").length;
 
-	const latestSession = useMemo(() => {
+	const sortedSessions = useMemo(() => {
 		const sessions = sessionsQuery.data ?? [];
-		if (sessions.length === 0) return null;
-		const sorted = [...sessions].sort(
+		if (sessions.length === 0) return [];
+		return [...sessions].sort(
 			(a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
 		);
-		return sorted[0] ?? null;
 	}, [sessionsQuery.data]);
+
+	const latestSession = sortedSessions[0] ?? null;
 
 	const sessionQuery = trpc.commentSolver.getSolveSession.useQuery(
 		{ sessionId: latestSession?.id ?? "" },
@@ -208,7 +279,12 @@ export function AIFixesTab({ workspaceId }: AIFixesTabProps) {
 		return (
 			<div className="flex flex-1 min-h-0 flex-col bg-[var(--bg-base)]">
 				{isSolving && <SolvingBanner />}
-				<ActiveState session={fullSession} workspaceId={workspaceId} newCommentCount={newCommentCount} />
+				<div className="flex-1 min-h-0 overflow-y-auto">
+					<ActiveState session={fullSession} workspaceId={workspaceId} newCommentCount={newCommentCount} />
+					{sortedSessions.length > 1 && (
+						<SessionHistory sessions={sortedSessions.slice(1)} workspaceId={workspaceId} />
+					)}
+				</div>
 			</div>
 		);
 	}
@@ -256,6 +332,9 @@ export function AIFixesTab({ workspaceId }: AIFixesTabProps) {
 						)}
 					</div>
 				</div>
+				{sortedSessions.length > 1 && (
+					<SessionHistory sessions={sortedSessions.slice(1)} workspaceId={workspaceId} />
+				)}
 			</div>
 		);
 	}
@@ -269,6 +348,9 @@ export function AIFixesTab({ workspaceId }: AIFixesTabProps) {
 					Use the Comments tab to trigger AI solving
 				</span>
 			</div>
+			{sortedSessions.length > 0 && (
+				<SessionHistory sessions={sortedSessions} workspaceId={workspaceId} />
+			)}
 		</div>
 	);
 }
