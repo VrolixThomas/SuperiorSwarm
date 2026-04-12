@@ -13,6 +13,7 @@ import {
 	submitReview,
 	unresolveThread,
 } from "../github/github";
+import { joinCacheKey, splitCacheKey } from "./github-cache-key";
 import type {
 	CreateCommentParams,
 	GitProvider,
@@ -25,7 +26,6 @@ import type {
 	ResolveParams,
 	SubmitReviewParams,
 } from "./types";
-import { joinCacheKey, splitCacheKey } from "./github-cache-key";
 
 export { joinCacheKey, splitCacheKey };
 

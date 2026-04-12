@@ -252,8 +252,8 @@ function ProgressStrip({
 					)}
 					<span className="[font-family:var(--font-mono)] text-[11px] text-[var(--text-tertiary)]">
 						{submittedGroups > 0
-						? `${submittedGroups} pushed · ${approvedGroups} approved / ${totalGroups}`
-						: `${approvedGroups} / ${totalGroups} approved`}
+							? `${submittedGroups} pushed · ${approvedGroups} approved / ${totalGroups}`
+							: `${approvedGroups} / ${totalGroups} approved`}
 					</span>
 				</div>
 			</div>
@@ -289,7 +289,8 @@ function BottomBar({
 	onPush: () => void;
 }) {
 	const unhandledCount = totalGroups - approvedGroups - submittedGroups;
-	const showCallout = !canPush && !isSolving && !isPushing && approvedGroups === 0 && unhandledCount === 0;
+	const showCallout =
+		!canPush && !isSolving && !isPushing && approvedGroups === 0 && unhandledCount === 0;
 
 	// Label: "Push N approved" when some are already pushed, otherwise "Push & post replies"
 	const pushLabel = isPushing

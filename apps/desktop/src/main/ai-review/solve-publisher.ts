@@ -70,9 +70,7 @@ async function postRepliesAndResolveThreads(
 	const fixedComments = db
 		.select()
 		.from(schema.prComments)
-		.where(
-			and(inArray(schema.prComments.id, commentIds), eq(schema.prComments.status, "fixed"))
-		)
+		.where(and(inArray(schema.prComments.id, commentIds), eq(schema.prComments.status, "fixed")))
 		.all();
 
 	const resolveResults = await Promise.allSettled(
@@ -190,7 +188,10 @@ export async function publishSolve(sessionId: string): Promise<PublishSolveResul
 		.select()
 		.from(schema.commentGroups)
 		.where(
-			and(eq(schema.commentGroups.solveSessionId, sessionId), eq(schema.commentGroups.status, "approved"))
+			and(
+				eq(schema.commentGroups.solveSessionId, sessionId),
+				eq(schema.commentGroups.status, "approved")
+			)
 		)
 		.all();
 
