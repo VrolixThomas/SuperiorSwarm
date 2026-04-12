@@ -112,6 +112,8 @@ export function SolveReviewTab({ workspaceId, solveSessionId }: Props) {
 				hasDraftReplies={hasDraftReplies}
 				approvedGroups={approvedGroups}
 				totalGroups={totalGroups}
+				unclearCount={unclearCount}
+				isPushing={pushMutation.isPending}
 				onDismiss={() => dismissMutation.mutate({ sessionId: solveSessionId })}
 				onPush={() => pushMutation.mutate({ sessionId: solveSessionId })}
 			/>
@@ -249,6 +251,8 @@ function BottomBar({
 	hasDraftReplies,
 	approvedGroups,
 	totalGroups,
+	unclearCount,
+	isPushing,
 	onDismiss,
 	onPush,
 }: {
@@ -256,6 +260,8 @@ function BottomBar({
 	hasDraftReplies: boolean;
 	approvedGroups: number;
 	totalGroups: number;
+	unclearCount: number;
+	isPushing: boolean;
 	onDismiss: () => void;
 	onPush: () => void;
 }) {
@@ -265,6 +271,7 @@ function BottomBar({
 		const remaining = totalGroups - approvedGroups;
 		messages.push(`${remaining} group${remaining > 1 ? "s" : ""} not yet approved`);
 	}
+	if (unclearCount > 0) messages.push(`${unclearCount} unclear comment${unclearCount > 1 ? "s" : ""} need attention`);
 
 	return (
 		<div className="px-7 py-3 border-t border-[var(--border-subtle)] flex items-center justify-between">
@@ -284,11 +291,11 @@ function BottomBar({
 					Dismiss
 				</button>
 				<button
-					onClick={canPush ? onPush : undefined}
-					disabled={!canPush}
-					className={`px-4 py-[6px] rounded-[6px] text-[12px] font-semibold border-none ${canPush ? "cursor-pointer bg-[var(--success)] text-[#0a0c0a] opacity-100" : "cursor-not-allowed bg-[var(--bg-active)] text-[var(--text-tertiary)] opacity-50"}`}
+					onClick={canPush && !isPushing ? onPush : undefined}
+					disabled={!canPush || isPushing}
+					className={`px-4 py-[6px] rounded-[6px] text-[12px] font-semibold border-none ${canPush && !isPushing ? "cursor-pointer bg-[var(--success)] text-[#0a0c0a] opacity-100" : "cursor-not-allowed bg-[var(--bg-active)] text-[var(--text-tertiary)] opacity-50"}`}
 				>
-					Push &amp; post replies
+					{isPushing ? "Pushing…" : "Push & post replies"}
 				</button>
 			</div>
 		</div>
