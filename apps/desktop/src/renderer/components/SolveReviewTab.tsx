@@ -59,18 +59,20 @@ export function SolveReviewTab({ workspaceId, solveSessionId }: Props) {
 	const unclearCount = allComments.filter((c) => c.status === "unclear").length;
 
 	const approvedGroups = groups.filter((g) => g.status === "approved").length;
+	const submittedGroups = groups.filter((g) => g.status === "submitted").length;
 	const totalGroups = groups.filter((g) => g.status !== "reverted").length;
-	const allApproved = approvedGroups === totalGroups && totalGroups > 0;
 
+	// Draft reply info scoped to approved (not-yet-pushed) groups only
 	const draftGroups = groups
-		.filter((g) => g.comments.some((c) => c.reply?.status === "draft"))
+		.filter((g) => g.status === "approved" && g.comments.some((c) => c.reply?.status === "draft"))
 		.map((g) => g.label);
-	const hasDraftReplies = draftGroups.length > 0;
+	const hasDraftRepliesInApproved = draftGroups.length > 0;
 	const totalDraftReplies = groups.reduce(
 		(n, g) => n + g.comments.filter((c) => c.reply?.status === "draft").length,
 		0
 	);
-	const canPush = allApproved && !hasDraftReplies && isReady;
+	// Push all: enabled when at least one approved group exists with no draft replies
+	const canPushAll = approvedGroups > 0 && !hasDraftRepliesInApproved && isReady;
 
 	return (
 		<div className="flex flex-col h-full overflow-hidden">
@@ -85,6 +87,7 @@ export function SolveReviewTab({ workspaceId, solveSessionId }: Props) {
 					pendingCount={pendingCount}
 					unclearCount={unclearCount}
 					approvedGroups={approvedGroups}
+					submittedGroups={submittedGroups}
 					totalGroups={totalGroups}
 					totalDraftReplies={totalDraftReplies}
 				/>
@@ -113,11 +116,12 @@ export function SolveReviewTab({ workspaceId, solveSessionId }: Props) {
 				)}
 			</div>
 			<BottomBar
-				canPush={canPush}
+				canPush={canPushAll}
 				isSolving={isSolving}
 				draftGroups={draftGroups}
 				approvedGroups={approvedGroups}
 				totalGroups={totalGroups}
+				submittedGroups={submittedGroups}
 				isPushing={pushMutation.isPending}
 				onDismiss={() => dismissMutation.mutate({ sessionId: solveSessionId })}
 				onPush={() => pushMutation.mutate({ sessionId: solveSessionId })}
@@ -193,6 +197,7 @@ function ProgressStrip({
 	pendingCount,
 	unclearCount,
 	approvedGroups,
+	submittedGroups,
 	totalGroups,
 	totalDraftReplies,
 }: {
@@ -200,10 +205,11 @@ function ProgressStrip({
 	pendingCount: number;
 	unclearCount: number;
 	approvedGroups: number;
+	submittedGroups: number;
 	totalGroups: number;
 	totalDraftReplies: number;
 }) {
-	const pct = totalGroups > 0 ? (approvedGroups / totalGroups) * 100 : 0;
+	const pct = totalGroups > 0 ? ((approvedGroups + submittedGroups) / totalGroups) * 100 : 0;
 	return (
 		<div className="mb-[22px]">
 			{/* Row 1: comment-level review stats */}
@@ -245,7 +251,9 @@ function ProgressStrip({
 						</span>
 					)}
 					<span className="[font-family:var(--font-mono)] text-[11px] text-[var(--text-tertiary)]">
-						{approvedGroups} / {totalGroups} groups
+						{submittedGroups > 0
+						? `${submittedGroups} pushed · ${approvedGroups} approved / ${totalGroups}`
+						: `${approvedGroups} / ${totalGroups} approved`}
 					</span>
 				</div>
 			</div>
@@ -265,6 +273,7 @@ function BottomBar({
 	draftGroups,
 	approvedGroups,
 	totalGroups,
+	submittedGroups,
 	isPushing,
 	onDismiss,
 	onPush,
@@ -274,12 +283,20 @@ function BottomBar({
 	draftGroups: string[];
 	approvedGroups: number;
 	totalGroups: number;
+	submittedGroups: number;
 	isPushing: boolean;
 	onDismiss: () => void;
 	onPush: () => void;
 }) {
-	const unapprovedCount = totalGroups - approvedGroups;
-	const showCallout = !canPush && !isSolving && !isPushing;
+	const unhandledCount = totalGroups - approvedGroups - submittedGroups;
+	const showCallout = !canPush && !isSolving && !isPushing && approvedGroups === 0 && unhandledCount === 0;
+
+	// Label: "Push N approved" when some are already pushed, otherwise "Push & post replies"
+	const pushLabel = isPushing
+		? "Pushing…"
+		: submittedGroups > 0
+			? `Push ${approvedGroups} approved`
+			: "Push & post replies";
 
 	return (
 		<div className="border-t border-[var(--border-subtle)]">
@@ -296,28 +313,26 @@ function BottomBar({
 							))}
 						</div>
 					)}
-					{unapprovedCount > 0 && (
-						<div className="text-[12px] font-medium text-[var(--warning)]">
-							↑ Approve {unapprovedCount} remaining commit group
-							{unapprovedCount > 1 ? "s" : ""}
-						</div>
-					)}
 				</div>
 			)}
 			<div className="px-7 py-3 flex items-center justify-end gap-[6px]">
 				<button
+					type="button"
 					onClick={onDismiss}
 					className="px-[14px] py-[6px] rounded-[6px] text-[12px] font-medium text-[var(--text-secondary)] bg-transparent border border-[var(--border-default)] cursor-pointer"
 				>
 					Dismiss
 				</button>
-				<button
-					onClick={canPush && !isPushing ? onPush : undefined}
-					disabled={!canPush || isPushing}
-					className={`px-4 py-[6px] rounded-[6px] text-[12px] font-semibold border-none ${canPush && !isPushing ? "cursor-pointer bg-[var(--success)] text-[#0a0c0a] opacity-100" : "cursor-not-allowed bg-[var(--bg-active)] text-[var(--text-tertiary)] opacity-50"}`}
-				>
-					{isPushing ? "Pushing…" : "Push & post replies"}
-				</button>
+				{approvedGroups > 0 && (
+					<button
+						type="button"
+						onClick={canPush && !isPushing ? onPush : undefined}
+						disabled={!canPush || isPushing}
+						className={`px-4 py-[6px] rounded-[6px] text-[12px] font-semibold border-none ${canPush && !isPushing ? "cursor-pointer bg-[var(--success)] text-[#0a0c0a] opacity-100" : "cursor-not-allowed bg-[var(--bg-active)] text-[var(--text-tertiary)] opacity-50"}`}
+					>
+						{pushLabel}
+					</button>
+				)}
 			</div>
 		</div>
 	);

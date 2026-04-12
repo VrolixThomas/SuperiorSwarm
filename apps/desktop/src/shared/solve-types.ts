@@ -7,7 +7,7 @@ export type SolveSessionStatus =
 	| "dismissed"
 	| "cancelled";
 
-export type SolveGroupStatus = "pending" | "fixed" | "approved" | "reverted";
+export type SolveGroupStatus = "pending" | "fixed" | "approved" | "submitted" | "reverted";
 
 export type SolveCommentStatus = "open" | "fixed" | "unclear" | "wont_fix" | "changes_requested";
 
