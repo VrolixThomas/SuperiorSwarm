@@ -101,7 +101,7 @@ export type FileGroupItem =
 			id: string;
 			lineNumber: number | null;
 			body: string;
-			status: string;
+			status: "pending" | "approved" | "rejected" | "edited" | "submitted" | "user-pending" | "error";
 			userEdit: string | null;
 			roundDelta: "new" | "resolved" | "still_open" | "regressed" | null;
 	  }

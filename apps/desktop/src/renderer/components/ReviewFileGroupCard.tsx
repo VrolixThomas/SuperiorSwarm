@@ -36,9 +36,10 @@ export function ReviewFileGroupCard({
 	const pendingIds = nonRejected
 		.filter((c) => c.status !== "approved" && c.status !== "edited")
 		.map((c) => c.id);
-	const totalItemCount = items.filter((i) =>
-		i.kind === "ai-draft" ? i.status !== "rejected" : true,
-	).length;
+	const visibleItems = items.filter((item) =>
+		item.kind === "ai-draft" ? item.status !== "rejected" : true,
+	);
+	const totalItemCount = visibleItems.length;
 
 	return (
 		<div
@@ -98,9 +99,7 @@ export function ReviewFileGroupCard({
 			{/* Body */}
 			{expanded && (
 				<div className="border-t border-[var(--border-subtle)] px-[12px] pt-[10px] pb-[12px]">
-					{items
-						.filter((item) => (item.kind === "ai-draft" ? item.status !== "rejected" : true))
-						.map((item) =>
+					{visibleItems.map((item) =>
 							item.kind === "ai-draft" ? (
 								<CommentRow
 									key={item.id}
