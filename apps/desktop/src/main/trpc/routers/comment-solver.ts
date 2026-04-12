@@ -709,7 +709,12 @@ export const commentSolverRouter = router({
 			writeFileSync(promptPath, prompt, "utf-8");
 
 			// Resolve worktree for this session
-			const { worktreePath } = resolveSessionWorktree(session.id);
+			let worktreePath: string;
+			try {
+				({ worktreePath } = resolveSessionWorktree(session.id));
+			} catch (err) {
+				throw new TRPCError({ code: "PRECONDITION_FAILED", message: `Worktree not found: ${String(err)}` });
+			}
 
 			// Build launch script using active CLI preset
 			const settings = getSettings();
