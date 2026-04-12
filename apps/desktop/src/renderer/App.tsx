@@ -606,7 +606,13 @@ function AuthenticatedApp() {
 	}, [checkUpdatesMutation]);
 
 	if (sidebarView === "settings") {
-		return <SettingsPage />;
+		return (
+			<>
+				<SettingsPage />
+				<UpdateToast />
+				<WhatsNewModal />
+			</>
+		);
 	}
 
 	return (
