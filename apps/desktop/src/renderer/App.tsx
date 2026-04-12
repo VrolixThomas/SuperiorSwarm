@@ -71,6 +71,10 @@ function deserializeLayout(
 				if ((saved as { kind: string }).kind === "merge-conflict") {
 					return null;
 				}
+				// Solve-review tabs are transient — solve sessions don't survive restart
+				if ((saved as { kind: string }).kind === "solve-review") {
+					return null;
+				}
 				// File tabs: use directly from serialized data
 				return saved;
 			})

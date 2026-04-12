@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { joinCacheKey, splitCacheKey } from "../src/main/providers/github-cache-key";
 
 // Pure mapping helpers mirroring the adapter's normalization logic — tested
 // in isolation so no Electron / DB imports are needed.
@@ -254,5 +255,27 @@ describe("normalizePRState", () => {
 
 	test("falls back to closed when state is undefined and not merged", () => {
 		expect(normalizePRState({}).state).toBe("closed");
+	});
+});
+
+describe("GitHubAdapter.getPRCommentsIfChanged", () => {
+	test("splitCacheKey round-trips with joinCacheKey", () => {
+		const issueEtag = '"etag-issue"';
+		const reviewEtag = '"etag-review"';
+		const joined = joinCacheKey(issueEtag, reviewEtag);
+		const [i, r] = splitCacheKey(joined);
+		expect(i).toBe(issueEtag);
+		expect(r).toBe(reviewEtag);
+	});
+
+	test("joinCacheKey combines with pipe separator", () => {
+		const joined = joinCacheKey('"a"', '"b"');
+		expect(joined).toBe('"a"|"b"');
+	});
+
+	test("splitCacheKey handles missing separator gracefully", () => {
+		const [i, r] = splitCacheKey('"only"');
+		expect(i).toBe('"only"');
+		expect(r).toBe('"only"');
 	});
 });

@@ -6,6 +6,7 @@ import { FileEditor } from "../FileEditor";
 import { MergeConflictPane } from "../MergeConflictPane";
 import { PROverviewTab } from "../PROverviewTab";
 import { PRReviewFileTab } from "../PRReviewFileTab";
+import { SolveReviewTab } from "../SolveReviewTab";
 import { Terminal } from "../Terminal";
 
 export function PaneContent({
@@ -109,6 +110,14 @@ export function PaneContent({
 						mergeType={activeTab.mergeType}
 						sourceBranch={activeTab.sourceBranch}
 						targetBranch={activeTab.targetBranch}
+					/>
+				</div>
+			)}
+			{activeTab?.kind === "solve-review" && (
+				<div className="absolute inset-0">
+					<SolveReviewTab
+						workspaceId={activeTab.workspaceId}
+						solveSessionId={activeTab.solveSessionId}
 					/>
 				</div>
 			)}

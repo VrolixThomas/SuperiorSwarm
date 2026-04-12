@@ -6,7 +6,7 @@ import { nanoid } from "nanoid";
 import { z } from "zod";
 import { getDb } from "../../db";
 import { projects, sharedFiles, worktrees } from "../../db/schema";
-import { assertPathInsideRepo } from "../../path-utils";
+import { assertPathInsideRepo, detectPathType } from "../../path-utils";
 import { symlinkSharedFiles } from "../../shared-files";
 import { buildSmartCandidateTree } from "../build-candidate-tree";
 import { publicProcedure, router } from "../index";
@@ -52,8 +52,9 @@ export const sharedFilesRouter = router({
 			assertPathInsideRepo(project.repoPath, input.relativePath);
 
 			const fullPath = join(project.repoPath, input.relativePath);
-			if (!existsSync(fullPath)) {
-				throw new Error(`File not found: ${input.relativePath}`);
+			const type = detectPathType(fullPath);
+			if (!type) {
+				throw new Error(`Path not found: ${input.relativePath}`);
 			}
 
 			const id = nanoid();
@@ -62,11 +63,12 @@ export const sharedFilesRouter = router({
 					id,
 					projectId: input.projectId,
 					relativePath: input.relativePath,
+					type,
 					createdAt: new Date(),
 				})
 				.run();
 
-			return { id, relativePath: input.relativePath };
+			return { id, relativePath: input.relativePath, type };
 		}),
 
 	remove: publicProcedure.input(z.object({ id: z.string() })).mutation(({ input }) => {
@@ -82,8 +84,9 @@ export const sharedFilesRouter = router({
 
 			if (!project) throw new Error("Project not found");
 
-			const added: Array<{ id: string; relativePath: string }> = [];
+			const added: Array<{ id: string; relativePath: string; type: "file" | "directory" }> = [];
 			const skipped: string[] = [];
+			const toInsert: (typeof sharedFiles.$inferInsert)[] = [];
 
 			for (const relativePath of input.relativePaths) {
 				try {
@@ -93,21 +96,25 @@ export const sharedFilesRouter = router({
 					continue;
 				}
 				const fullPath = join(project.repoPath, relativePath);
-				if (!existsSync(fullPath)) {
+				const type = detectPathType(fullPath);
+				if (!type) {
 					skipped.push(relativePath);
 					continue;
 				}
 
 				const id = nanoid();
-				db.insert(sharedFiles)
-					.values({
-						id,
-						projectId: input.projectId,
-						relativePath,
-						createdAt: new Date(),
-					})
-					.run();
-				added.push({ id, relativePath });
+				toInsert.push({
+					id,
+					projectId: input.projectId,
+					relativePath,
+					type,
+					createdAt: new Date(),
+				});
+				added.push({ id, relativePath, type });
+			}
+
+			if (toInsert.length > 0) {
+				db.insert(sharedFiles).values(toInsert).run();
 			}
 
 			return { added, skipped };
@@ -164,19 +171,13 @@ export const sharedFilesRouter = router({
 				? db.select().from(worktrees).where(eq(worktrees.id, input.worktreeId)).all()
 				: db.select().from(worktrees).where(eq(worktrees.projectId, input.projectId)).all();
 
-			const allResults: Array<{
-				worktreePath: string;
-				results: Awaited<ReturnType<typeof symlinkSharedFiles>>;
-			}> = [];
-
-			for (const wt of worktreeQuery) {
-				const results = await symlinkSharedFiles(
-					project.repoPath,
-					wt.path,
-					entries.map((e) => ({ relativePath: e.relativePath }))
-				);
-				allResults.push({ worktreePath: wt.path, results });
-			}
+			const mappedEntries = entries.map((e) => ({ relativePath: e.relativePath, type: e.type }));
+			const allResults = await Promise.all(
+				worktreeQuery.map(async (wt) => ({
+					worktreePath: wt.path,
+					results: await symlinkSharedFiles(project.repoPath, wt.path, mappedEntries),
+				}))
+			);
 
 			return { synced: worktreeQuery.length, results: allResults };
 		}),

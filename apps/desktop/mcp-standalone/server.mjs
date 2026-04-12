@@ -277,6 +277,14 @@ if (!isSolverMode && !isQuickActionMode) {
 	);
 }
 
+function heartbeatSession(sessionId) {
+	if (!sessionId) return;
+	db.prepare("UPDATE comment_solve_sessions SET last_activity_at = ? WHERE id = ?").run(
+		Math.floor(Date.now() / 1000),
+		sessionId
+	);
+}
+
 if (isSolverMode) {
 	// Tool: get_pr_comments
 	server.tool(
@@ -284,6 +292,7 @@ if (isSolverMode) {
 		"Get all open PR comments for the current solve session",
 		{},
 		async () => {
+			heartbeatSession(SOLVE_SESSION_ID);
 			const comments = db
 				.prepare(
 					`SELECT id, platform_comment_id, author, body, file_path, line_number, side, thread_id, commit_sha
@@ -323,6 +332,7 @@ if (isSolverMode) {
 			),
 		},
 		async ({ groups }) => {
+			heartbeatSession(SOLVE_SESSION_ID);
 			const insertGroup = db.prepare(
 				`INSERT INTO comment_groups (id, solve_session_id, label, status, "order")
 				 VALUES (?, ?, ?, 'pending', ?)`
@@ -361,6 +371,7 @@ if (isSolverMode) {
 			group_id: z.string().describe("The ID of the comment group to fix"),
 		},
 		async ({ group_id }) => {
+			heartbeatSession(SOLVE_SESSION_ID);
 			const group = db
 				.prepare("SELECT label FROM comment_groups WHERE id = ? AND solve_session_id = ?")
 				.get(group_id, SOLVE_SESSION_ID);
@@ -408,6 +419,7 @@ if (isSolverMode) {
 			comment_id: z.string().describe("The ID of the comment to mark as fixed"),
 		},
 		async ({ comment_id }) => {
+			heartbeatSession(SOLVE_SESSION_ID);
 			const result = db
 				.prepare(`UPDATE pr_comments SET status = 'fixed' WHERE id = ? AND solve_session_id = ?`)
 				.run(comment_id, SOLVE_SESSION_ID);
@@ -433,6 +445,7 @@ if (isSolverMode) {
 			reply_body: z.string().describe("The reply body to send to the comment author"),
 		},
 		async ({ comment_id, reply_body }) => {
+			heartbeatSession(SOLVE_SESSION_ID);
 			const transaction = db.transaction((commentId, replyBody) => {
 				db.prepare(
 					`UPDATE pr_comments SET status = 'unclear' WHERE id = ? AND solve_session_id = ?`
@@ -463,12 +476,13 @@ if (isSolverMode) {
 	// Tool: finish_fix_group
 	server.tool(
 		"finish_fix_group",
-		"Commit the changes for a fix group and mark it as complete",
+		"Commit the changes for a fix group and mark it as complete. Use this after making code changes. For groups that need no code changes (praise, acknowledgements), use acknowledge_group instead.",
 		{
 			group_id: z.string().describe("The ID of the comment group that has been fixed"),
 		},
 		async ({ group_id }) => {
 			try {
+				heartbeatSession(SOLVE_SESSION_ID);
 				const group = db
 					.prepare("SELECT label FROM comment_groups WHERE id = ? AND solve_session_id = ?")
 					.get(group_id, SOLVE_SESSION_ID);
@@ -492,7 +506,16 @@ if (isSolverMode) {
 					}
 				}
 
-				execFileSync("git", ["commit", "-m", `fix: ${group.label}`], { cwd });
+				try {
+					execFileSync("git", ["commit", "-m", `fix: ${group.label}`], { cwd });
+				} catch (commitErr) {
+					// Agent may have already committed manually — if there's genuinely nothing
+					// to commit, fall through and use the current HEAD as the commit hash.
+					const msg = String(commitErr);
+					const nothingToCommit =
+						msg.includes("nothing to commit") || msg.includes("nothing added to commit");
+					if (!nothingToCommit) throw commitErr;
+				}
 
 				const hashOutput = execFileSync("git", ["rev-parse", "HEAD"], { cwd });
 				const hash = hashOutput.toString().trim();
@@ -501,6 +524,53 @@ if (isSolverMode) {
 				db.prepare(
 					`UPDATE comment_groups SET status = 'fixed', commit_hash = ? WHERE id = ? AND solve_session_id = ?`
 				).run(hash, group_id, SOLVE_SESSION_ID);
+
+				const diffTree = execFileSync(
+					"git",
+					["diff-tree", "--no-commit-id", "-r", "--numstat", hash],
+					{ cwd }
+				)
+					.toString()
+					.trim();
+
+				const changedFiles = diffTree
+					? diffTree
+							.split("\n")
+							.filter(Boolean)
+							.map((line) => {
+								const [add, del, path] = line.split("\t");
+								return {
+									path,
+									changeType: "M",
+									additions: add === "-" ? 0 : Number.parseInt(add, 10),
+									deletions: del === "-" ? 0 : Number.parseInt(del, 10),
+								};
+							})
+					: [];
+
+				const nameStatus = execFileSync(
+					"git",
+					["diff-tree", "--no-commit-id", "-r", "--name-status", hash],
+					{ cwd }
+				)
+					.toString()
+					.trim();
+
+				const typeMap = {};
+				for (const line of nameStatus.split("\n").filter(Boolean)) {
+					const [type, ...pathParts] = line.split("\t");
+					const filePath = pathParts[pathParts.length - 1];
+					typeMap[filePath] = type.charAt(0);
+				}
+
+				for (const file of changedFiles) {
+					file.changeType = typeMap[file.path] || "M";
+				}
+
+				db.prepare("UPDATE comment_groups SET changed_files = ? WHERE id = ?").run(
+					JSON.stringify(changedFiles),
+					group_id
+				);
 
 				return {
 					content: [
@@ -524,12 +594,59 @@ if (isSolverMode) {
 		}
 	);
 
+	// Tool: acknowledge_group
+	server.tool(
+		"acknowledge_group",
+		"Mark a group as complete without creating a commit. Use this when all comments in the group are praise, acknowledgements, or items that need no code changes.",
+		{
+			group_id: z.string().describe("The ID of the comment group to acknowledge"),
+		},
+		async ({ group_id }) => {
+			try {
+				heartbeatSession(SOLVE_SESSION_ID);
+				const group = db
+					.prepare("SELECT label FROM comment_groups WHERE id = ? AND solve_session_id = ?")
+					.get(group_id, SOLVE_SESSION_ID);
+
+				if (!group) {
+					return {
+						content: [{ type: "text", text: JSON.stringify({ error: "Group not found" }) }],
+						isError: true,
+					};
+				}
+
+				db.prepare(
+					`UPDATE comment_groups SET status = 'fixed', commit_hash = NULL, changed_files = '[]' WHERE id = ? AND solve_session_id = ?`
+				).run(group_id, SOLVE_SESSION_ID);
+
+				return {
+					content: [
+						{
+							type: "text",
+							text: JSON.stringify({
+								status: "fixed",
+								group_id,
+								message: "Group acknowledged — no code changes",
+							}),
+						},
+					],
+				};
+			} catch (err) {
+				return {
+					content: [{ type: "text", text: JSON.stringify({ error: String(err) }) }],
+					isError: true,
+				};
+			}
+		}
+	);
+
 	// Tool: finish_solving
 	server.tool(
 		"finish_solving",
 		"Signal that all comments have been processed and the solve session is complete",
 		{},
 		async () => {
+			heartbeatSession(SOLVE_SESSION_ID);
 			const now = Math.floor(Date.now() / 1000);
 
 			db.prepare(

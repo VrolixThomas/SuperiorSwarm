@@ -50,22 +50,74 @@ function getActiveSolveCount(): number {
 
 // ── Poll a single workspace ──────────────────────────────────────────────────
 
-async function pollWorkspace(workspace: schema.Workspace): Promise<void> {
+export async function pollWorkspace(workspace: schema.Workspace): Promise<void> {
 	const { id: workspaceId, prProvider, prIdentifier } = workspace;
 	if (!prProvider || !prIdentifier) return;
 
-	let commentIds: string[];
+	const git = getGitProvider(prProvider);
+	if (!git.isConnected()) return;
+
+	const { owner, repo, number } = parsePrIdentifier(prIdentifier);
+	const db = getDb();
+
+	// Load cached cacheKey (ETag or updated_on) for this workspace
+	const meta = db
+		.select()
+		.from(schema.prCommentCacheMeta)
+		.where(eq(schema.prCommentCacheMeta.workspaceId, workspaceId))
+		.get();
+
+	let result: Awaited<ReturnType<typeof git.getPRCommentsIfChanged>>;
 	try {
-		const git = getGitProvider(prProvider);
-		if (!git.isConnected()) return;
-		const { owner, repo, number } = parsePrIdentifier(prIdentifier);
-		const comments = await git.getPRComments(owner, repo, number);
-		commentIds = comments.map((c) => c.id);
+		result = await git.getPRCommentsIfChanged(owner, repo, number, meta?.cacheKey ?? undefined);
 	} catch (err) {
 		console.error(`[comment-poller] Failed to fetch comments for ${prIdentifier}:`, err);
 		return;
 	}
 
+	if (!result.changed) return; // Nothing new — skip all DB writes
+
+	const now = new Date();
+	const { comments, cacheKey } = result;
+
+	// Replace cache for this workspace atomically
+	try {
+		db.transaction((tx) => {
+			tx.delete(schema.prCommentCache)
+				.where(eq(schema.prCommentCache.workspaceId, workspaceId))
+				.run();
+
+			for (const c of comments) {
+				tx.insert(schema.prCommentCache)
+					.values({
+						id: randomUUID(),
+						workspaceId,
+						platformCommentId: c.id,
+						author: c.author,
+						body: c.body,
+						filePath: c.filePath ?? null,
+						lineNumber: c.lineNumber ?? null,
+						createdAt: c.createdAt,
+						fetchedAt: now,
+					})
+					.run();
+			}
+
+			tx.insert(schema.prCommentCacheMeta)
+				.values({ workspaceId, cacheKey, fetchedAt: now })
+				.onConflictDoUpdate({
+					target: schema.prCommentCacheMeta.workspaceId,
+					set: { cacheKey, fetchedAt: now },
+				})
+				.run();
+		});
+	} catch (err) {
+		console.error(`[comment-poller] Failed to update comment cache for ${prIdentifier}:`, err);
+		return;
+	}
+
+	// Detect new comments vs what's in solved sessions
+	const commentIds = comments.map((c) => c.id);
 	const knownIds = getKnownPlatformCommentIds(prIdentifier);
 	const newCommentIds = commentIds.filter((id) => !knownIds.has(id));
 
@@ -75,8 +127,7 @@ async function pollWorkspace(workspace: schema.Workspace): Promise<void> {
 		`[comment-poller] ${newCommentIds.length} new comment(s) on ${prIdentifier} (workspace ${workspaceId})`
 	);
 
-	// Upsert comment event
-	const db = getDb();
+	// Upsert comment event (existing logic — unchanged)
 	const existing = db
 		.select()
 		.from(schema.commentEvents)
@@ -90,7 +141,7 @@ async function pollWorkspace(workspace: schema.Workspace): Promise<void> {
 
 	if (existing) {
 		db.update(schema.commentEvents)
-			.set({ commentCount: newCommentIds.length, createdAt: new Date() })
+			.set({ commentCount: newCommentIds.length, createdAt: now })
 			.where(eq(schema.commentEvents.id, existing.id))
 			.run();
 	} else {
@@ -102,12 +153,12 @@ async function pollWorkspace(workspace: schema.Workspace): Promise<void> {
 				workspaceId,
 				commentCount: newCommentIds.length,
 				status: "pending",
-				createdAt: new Date(),
+				createdAt: now,
 			})
 			.run();
 	}
 
-	// Auto-solve if enabled
+	// Auto-solve if enabled (existing logic — unchanged)
 	const settings = getSettings();
 	if (!settings.autoSolveEnabled) return;
 
@@ -119,7 +170,6 @@ async function pollWorkspace(workspace: schema.Workspace): Promise<void> {
 		return;
 	}
 
-	// Mark event as auto_solving to prevent double-trigger
 	const eventToSolve = db
 		.select()
 		.from(schema.commentEvents)
@@ -147,7 +197,6 @@ async function pollWorkspace(workspace: schema.Workspace): Promise<void> {
 		console.log(`[comment-poller] Auto-solve triggered for ${prIdentifier}`);
 	} catch (err) {
 		console.error(`[comment-poller] Auto-solve failed for ${prIdentifier}:`, err);
-		// Revert to pending so user can trigger manually
 		db.update(schema.commentEvents)
 			.set({ status: "pending" })
 			.where(eq(schema.commentEvents.id, eventToSolve.id))

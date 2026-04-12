@@ -35,6 +35,7 @@ export const aiReviewRouter = router({
 				autoApproveResolutions: z.boolean().optional(),
 				autoPublishResolutions: z.boolean().optional(),
 				autoSolveEnabled: z.boolean().optional(),
+				solveAutoResolveThreads: z.boolean().optional(),
 				solvePrompt: z.string().nullable().optional(),
 			})
 		)
@@ -62,6 +63,8 @@ export const aiReviewRouter = router({
 				updates.autoPublishResolutions = input.autoPublishResolutions ? 1 : 0;
 			if (input.autoSolveEnabled !== undefined)
 				updates.autoSolveEnabled = input.autoSolveEnabled ? 1 : 0;
+			if (input.solveAutoResolveThreads !== undefined)
+				updates.solveAutoResolveThreads = input.solveAutoResolveThreads ? 1 : 0;
 			if (input.solvePrompt !== undefined) {
 				const trimmed = input.solvePrompt?.trim();
 				updates.solvePrompt = trimmed || null;

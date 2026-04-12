@@ -4,13 +4,21 @@ export type SolveSessionStatus =
 	| "ready"
 	| "submitted"
 	| "failed"
-	| "dismissed";
+	| "dismissed"
+	| "cancelled";
 
-export type SolveGroupStatus = "pending" | "fixed" | "approved" | "reverted";
+export type SolveGroupStatus = "pending" | "fixed" | "approved" | "submitted" | "reverted";
 
-export type SolveCommentStatus = "open" | "fixed" | "unclear" | "wont_fix";
+export type SolveCommentStatus = "open" | "fixed" | "unclear" | "wont_fix" | "changes_requested";
 
 export type SolveReplyStatus = "draft" | "approved" | "posted";
+
+export interface ChangedFile {
+	path: string;
+	changeType: "A" | "M" | "D" | "R";
+	additions: number;
+	deletions: number;
+}
 
 export interface SolveSessionInfo {
 	id: string;
@@ -24,6 +32,7 @@ export interface SolveSessionInfo {
 	workspaceId: string;
 	createdAt: Date;
 	updatedAt: Date;
+	lastActivityAt: Date | null;
 	groups: SolveGroupInfo[];
 }
 
@@ -33,6 +42,7 @@ export interface SolveGroupInfo {
 	status: SolveGroupStatus;
 	commitHash: string | null;
 	order: number;
+	changedFiles: ChangedFile[];
 	comments: SolveCommentInfo[];
 }
 
@@ -48,6 +58,7 @@ export interface SolveCommentInfo {
 	status: SolveCommentStatus;
 	commitSha: string | null;
 	groupId: string | null;
+	followUpText: string | null;
 	reply: SolveReplyInfo | null;
 }
 
