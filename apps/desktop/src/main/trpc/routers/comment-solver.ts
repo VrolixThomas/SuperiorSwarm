@@ -742,9 +742,10 @@ export const commentSolverRouter = router({
 			preset.setupMcp?.(launchOpts);
 
 			const launchArgs = preset.buildArgs(launchOpts);
+			const escapedWorktreePath = worktreePath.replace(/'/g, "'\\''");
 			writeFileSync(
 				launchScript,
-				`#!/bin/bash\ncd '${worktreePath}'\n${preset.command} ${launchArgs.join(" ")}\n`,
+				`#!/bin/bash\ncd '${escapedWorktreePath}'\n${preset.command} ${launchArgs.join(" ")}\n`,
 				{ mode: 0o755 }
 			);
 

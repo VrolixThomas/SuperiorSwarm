@@ -94,11 +94,10 @@ export function SolveReviewTab({ workspaceId, solveSessionId }: Props) {
 				))}
 				{isCancelled && (
 					<div className="mt-3 text-center">
+						{/* TODO: implement re-solve */}
 						<button
-							onClick={() => {
-								/* re-solve handled in Task 9 */
-							}}
-							className="px-4 py-[6px] rounded-[6px] text-[12px] font-medium bg-[var(--accent-subtle)] text-[var(--accent)] border-none cursor-pointer"
+							disabled
+							className="px-4 py-[6px] rounded-[6px] text-[12px] font-medium bg-[var(--accent-subtle)] text-[var(--accent)] border-none opacity-40 cursor-not-allowed"
 						>
 							Re-solve remaining comments
 						</button>
