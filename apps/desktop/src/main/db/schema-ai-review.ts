@@ -36,6 +36,8 @@ export const reviewDrafts = sqliteTable("review_drafts", {
 	reviewChainId: text("review_chain_id"),
 	roundNumber: integer("round_number").notNull().default(1),
 	previousDraftId: text("previous_draft_id"),
+	pid: integer("pid"),
+	lastActivityAt: integer("last_activity_at", { mode: "timestamp" }),
 	createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
 	updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
 });
