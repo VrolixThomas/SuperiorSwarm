@@ -13,7 +13,7 @@ export function ReviewVerdictConfirmation({
 	onCancel,
 	isSubmitting,
 }: ReviewVerdictConfirmationProps) {
-	const [selected, setSelected] = useState<Verdict | null>(null);
+	const [selected, setSelected] = useState<Verdict>("COMMENT");
 	const [body, setBody] = useState("");
 
 	return (
@@ -76,11 +76,11 @@ export function ReviewVerdictConfirmation({
 				</button>
 				<button
 					type="button"
-					onClick={() => selected && onSubmit(selected, body)}
-					disabled={!selected || isSubmitting}
+					onClick={() => onSubmit(selected, body)}
+					disabled={isSubmitting}
 					className={[
 						"px-[14px] py-[5px] rounded-[6px] text-[11px] font-semibold border-none",
-						selected && !isSubmitting
+						!isSubmitting
 							? "cursor-pointer bg-[var(--accent)] text-white"
 							: "cursor-not-allowed bg-[var(--bg-active)] text-[var(--text-tertiary)]",
 					].join(" ")}

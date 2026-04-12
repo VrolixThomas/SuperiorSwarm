@@ -1,8 +1,9 @@
 /**
- * Pure helpers used by PullRequestsTab and PullRequestGroup.
- * Extracted as standalone functions so they can be unit-tested with bun:test
- * without needing a React rendering harness.
+ * Helpers used by PullRequestsTab, PullRequestGroup, and PRControlRail.
  */
+
+import type { PRContext } from "../../shared/github-types";
+import { getAllPanes, usePaneStore } from "../stores/pane-store";
 
 interface ProjectLike {
 	name: string;
@@ -44,4 +45,24 @@ export function findActivePRIdentifier(
 		if (wsId === activeWorkspaceId) return identifier;
 	}
 	return null;
+}
+
+/** Find the PR overview tab for the given PR and split it into its own pane (right). */
+export function splitPROverviewRight(workspaceId: string, ctx: PRContext): void {
+	const paneStore = usePaneStore.getState();
+	const layout = paneStore.layouts[workspaceId];
+	if (!layout) return;
+	for (const pane of getAllPanes(layout)) {
+		const overviewTab = pane.tabs.find(
+			(t) =>
+				t.kind === "pr-overview" &&
+				t.prCtx.owner === ctx.owner &&
+				t.prCtx.repo === ctx.repo &&
+				t.prCtx.number === ctx.number
+		);
+		if (overviewTab) {
+			paneStore.splitPane(workspaceId, pane.id, "horizontal", overviewTab);
+			return;
+		}
+	}
 }
