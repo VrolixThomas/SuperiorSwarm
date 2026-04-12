@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { detectLanguage } from "../../shared/diff-types";
 import type {
 	AIDraftThread,
+	FileGroupItem,
 	GitHubPRDetails,
 	GitHubReviewThread,
 	PRContext,
@@ -11,6 +12,8 @@ import { formatRelativeTime } from "../../shared/tickets";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import { MarkdownRenderer } from "./MarkdownRenderer";
+import { ReviewFileGroupCard } from "./ReviewFileGroupCard";
+import { ReviewVerdictConfirmation } from "./ReviewVerdictConfirmation";
 
 // ── PRHeader ──────────────────────────────────────────────────────────────────
 
@@ -501,6 +504,163 @@ function CommentsFeed({
 	);
 }
 
+// ── Helpers & sub-components for review mode ─────────────────────────────────
+
+function mapResolution(
+	resolution: string | null
+): "new" | "resolved" | "still_open" | "regressed" | null {
+	switch (resolution) {
+		case "new":
+			return "new";
+		case "resolved-by-code":
+			return "resolved";
+		case "still-open":
+			return "still_open";
+		case "incorrectly-resolved":
+			return "regressed";
+		default:
+			return null;
+	}
+}
+
+function StatusStrip({
+	approvedCount,
+	rejectedCount,
+	pendingCount,
+	approvalPct,
+	roundNumber,
+	aiSuggestion,
+	isSolving,
+	onCancel,
+}: {
+	approvedCount: number;
+	rejectedCount: number;
+	pendingCount: number;
+	approvalPct: number;
+	roundNumber: number;
+	aiSuggestion: string;
+	isSolving: boolean;
+	onCancel: () => void;
+}) {
+	return (
+		<div className="mx-6 mt-4 mb-1">
+			<div className="flex items-center gap-[5px] mb-[8px]">
+				{isSolving && (
+					<span className="inline-flex items-center gap-1 px-2 py-[2px] rounded-full text-[11px] font-medium bg-[var(--accent-subtle)] text-[var(--accent)]">
+						<span className="w-1 h-1 rounded-full bg-current animate-pulse" />
+						Reviewing…
+					</span>
+				)}
+				{approvedCount > 0 && (
+					<span className="inline-flex items-center gap-1 px-2 py-[2px] rounded-full text-[11px] font-medium bg-[var(--success-subtle)] text-[var(--success)]">
+						<span className="w-1 h-1 rounded-full bg-current" />
+						{approvedCount} approved
+					</span>
+				)}
+				{rejectedCount > 0 && (
+					<span className="inline-flex items-center gap-1 px-2 py-[2px] rounded-full text-[11px] font-medium bg-[var(--danger-subtle)] text-[var(--danger)]">
+						<span className="w-1 h-1 rounded-full bg-current" />
+						{rejectedCount} rejected
+					</span>
+				)}
+				{pendingCount > 0 && (
+					<span className="inline-flex items-center gap-1 px-2 py-[2px] rounded-full text-[11px] font-medium bg-[var(--bg-elevated)] text-[var(--text-tertiary)]">
+						<span className="w-1 h-1 rounded-full bg-current" />
+						{pendingCount} pending
+					</span>
+				)}
+				{isSolving && (
+					<button
+						type="button"
+						onClick={onCancel}
+						className="ml-auto px-[10px] py-[3px] rounded-[6px] text-[11px] font-medium text-[var(--danger)] bg-[var(--danger-subtle)] border-none cursor-pointer"
+					>
+						Cancel
+					</button>
+				)}
+			</div>
+			<div className="flex justify-between items-center mb-[5px]">
+				<span className="text-[10px] font-semibold uppercase tracking-[0.07em] text-[var(--text-tertiary)]">
+					Round {roundNumber}
+				</span>
+				{!isSolving && (
+					<span className="text-[10.5px] text-[var(--text-tertiary)]">
+						AI suggests: {aiSuggestion}
+					</span>
+				)}
+			</div>
+			<div className="h-[2px] bg-[var(--bg-elevated)] rounded-[1px] overflow-hidden">
+				<div
+					className="h-full bg-[var(--success)] rounded-[1px]"
+					style={{ width: `${approvalPct}%`, transition: "width 0.5s ease" }}
+				/>
+			</div>
+		</div>
+	);
+}
+
+function ReviewBottomBar({
+	statusMessage,
+	isSolving,
+	pendingCount,
+	showVerdictConfirmation,
+	isSubmitting,
+	onDismiss,
+	onShowVerdict,
+	onCancelVerdict,
+	onSubmitVerdict,
+}: {
+	statusMessage: string;
+	isSolving: boolean;
+	pendingCount: number;
+	showVerdictConfirmation: boolean;
+	isSubmitting: boolean;
+	onDismiss: () => void;
+	onShowVerdict: () => void;
+	onCancelVerdict: () => void;
+	onSubmitVerdict: (verdict: "COMMENT" | "APPROVE" | "REQUEST_CHANGES", body: string) => void;
+}) {
+	if (showVerdictConfirmation) {
+		return (
+			<ReviewVerdictConfirmation
+				onSubmit={onSubmitVerdict}
+				onCancel={onCancelVerdict}
+				isSubmitting={isSubmitting}
+			/>
+		);
+	}
+
+	return (
+		<div className="border-t border-[var(--border-subtle)] px-6 py-3 flex items-center justify-between">
+			<span className="text-[11px] text-[var(--text-tertiary)]">{statusMessage}</span>
+			<div className="flex items-center gap-[6px]">
+				<button
+					type="button"
+					onClick={onDismiss}
+					className="px-[14px] py-[6px] rounded-[6px] text-[12px] font-medium text-[var(--text-secondary)] bg-transparent border border-[var(--border-default)] cursor-pointer"
+				>
+					Dismiss
+				</button>
+				{!isSolving && (
+					<button
+						type="button"
+						onClick={onShowVerdict}
+						disabled={pendingCount > 0}
+						className={[
+							"px-4 py-[6px] rounded-[6px] text-[12px] font-semibold border-none",
+							pendingCount === 0
+								? "cursor-pointer bg-[var(--success)] text-white"
+								: "cursor-not-allowed bg-[var(--bg-active)] text-[var(--text-tertiary)]",
+						].join(" ")}
+					>
+						Submit Review
+					</button>
+				)}
+			</div>
+		</div>
+	);
+}
+
 // ── Root: PROverviewTab ───────────────────────────────────────────────────────
 
 export function PROverviewTab({ prCtx }: { prCtx: PRContext }) {
@@ -536,6 +696,59 @@ export function PROverviewTab({ prCtx }: { prCtx: PRContext }) {
 		{ enabled: !!matchingDraft?.id }
 	);
 
+	// ── Review-mode hooks ─────────────────────────────────────────────────
+	const utils = trpc.useUtils();
+	const openPRReviewFile = useTabStore((s) => s.openPRReviewFile);
+	const activeWorkspaceId = useTabStore((s) => s.activeWorkspaceId);
+
+	const [showVerdictConfirmation, setShowVerdictConfirmation] = useState(false);
+	const [historyExpanded, setHistoryExpanded] = useState(false);
+
+	const hasActiveDraft =
+		!!matchingDraft && matchingDraft.status !== "dismissed" && matchingDraft.status !== "submitted";
+
+	const { data: chainHistory } = trpc.aiReview.getReviewChainHistory.useQuery(
+		{ reviewChainId: aiDraftQuery.data?.reviewChainId ?? "" },
+		{ enabled: hasActiveDraft && !!aiDraftQuery.data?.reviewChainId }
+	);
+
+	const cancelMutation = trpc.aiReview.cancelReview.useMutation({
+		onSuccess: () => utils.aiReview.invalidate(),
+	});
+	const updateComment = trpc.aiReview.updateDraftComment.useMutation({
+		onSuccess: () => utils.aiReview.invalidate(),
+	});
+	const batchUpdate = trpc.aiReview.batchUpdateDraftComments.useMutation({
+		onSuccess: () => utils.aiReview.invalidate(),
+	});
+	const submitReview = trpc.aiReview.submitReview.useMutation({
+		onSuccess: () => {
+			utils.aiReview.invalidate();
+			setShowVerdictConfirmation(false);
+		},
+	});
+	const dismissPending = trpc.aiReview.dismissPendingComments.useMutation({
+		onSuccess: () => utils.aiReview.invalidate(),
+	});
+	const addReplyComment = trpc.github.addReviewComment.useMutation({
+		onSuccess: () =>
+			utils.projects.getPRDetails.invalidate({
+				provider: prCtx.provider,
+				owner: prCtx.owner,
+				repo: prCtx.repo,
+				number: prCtx.number,
+			}),
+	});
+	const resolveThread = trpc.github.resolveThread.useMutation({
+		onSuccess: () =>
+			utils.projects.getPRDetails.invalidate({
+				provider: prCtx.provider,
+				owner: prCtx.owner,
+				repo: prCtx.repo,
+				number: prCtx.number,
+			}),
+	});
+
 	const mapComment = (
 		c: NonNullable<typeof aiDraftQuery.data>["comments"][number]
 	): AIDraftThread => ({
@@ -558,6 +771,91 @@ export function PROverviewTab({ prCtx }: { prCtx: PRContext }) {
 
 	const summaryMarkdown = aiDraftQuery.data?.summaryMarkdown ?? null;
 
+	// ── Review-mode computed values ───────────────────────────────────────
+	const draftComments = aiDraftQuery.data?.comments ?? [];
+	const isSolving =
+		hasActiveDraft && (matchingDraft.status === "queued" || matchingDraft.status === "in_progress");
+	const isCancelled = hasActiveDraft && matchingDraft.status === "cancelled";
+	const draftId = matchingDraft?.id ?? "";
+
+	// Comment counts (AI draft only)
+	let approvedCount = 0;
+	let rejectedCount = 0;
+	let pendingCount = 0;
+	if (hasActiveDraft) {
+		for (const c of draftComments) {
+			if (c.status === "approved") approvedCount++;
+			else if (c.status === "rejected") rejectedCount++;
+			else if (c.status !== "submitted") pendingCount++;
+		}
+	}
+	const totalNonRejected = draftComments.length - rejectedCount;
+	const approvalPct = totalNonRejected > 0 ? (approvedCount / totalNonRejected) * 100 : 0;
+
+	const aiSuggestion =
+		rejectedCount > 0
+			? "Request Changes"
+			: pendingCount === 0 && approvedCount > 0
+				? "Approve"
+				: "Comment";
+
+	// ── Grouped-by-file items merging AI + GitHub threads ─────────────────
+	const groupedByFile = useMemo(() => {
+		if (!hasActiveDraft || !details) return null;
+
+		const map = new Map<string, FileGroupItem[]>();
+
+		// AI draft comments
+		for (const c of draftComments) {
+			const items = map.get(c.filePath) ?? [];
+			items.push({
+				kind: "ai-draft",
+				id: c.id,
+				lineNumber: c.lineNumber,
+				body: c.body,
+				status: c.status as Extract<FileGroupItem, { kind: "ai-draft" }>["status"],
+				userEdit: c.userEdit ?? null,
+				roundDelta: mapResolution(c.resolution ?? null),
+			});
+			map.set(c.filePath, items);
+		}
+
+		// GitHub threads
+		for (const t of details.reviewThreads) {
+			const items = map.get(t.path) ?? [];
+			items.push({
+				kind: "github-thread",
+				id: t.id,
+				lineNumber: t.line,
+				isResolved: t.isResolved,
+				comments: t.comments.map((c) => ({
+					id: c.id,
+					body: c.body,
+					author: c.author,
+					createdAt: c.createdAt,
+				})),
+			});
+			map.set(t.path, items);
+		}
+
+		// Sort items within each file by line number
+		for (const [, items] of map) {
+			items.sort((a, b) => (a.lineNumber ?? 0) - (b.lineNumber ?? 0));
+		}
+
+		return Array.from(map.entries()).sort(([a], [b]) => a.localeCompare(b));
+	}, [hasActiveDraft, draftComments, details]);
+
+	const firstPendingFile = groupedByFile?.find(([, items]) =>
+		items.some(
+			(i) =>
+				i.kind === "ai-draft" &&
+				i.status !== "approved" &&
+				i.status !== "rejected" &&
+				i.status !== "submitted"
+		)
+	)?.[0];
+
 	// ── Loading state ─────────────────────────────────────────────────────
 	if (isLoading || !details) {
 		return (
@@ -578,18 +876,135 @@ export function PROverviewTab({ prCtx }: { prCtx: PRContext }) {
 		);
 	}
 
+	const statusMessage = isSolving
+		? "Reviewing..."
+		: isCancelled
+			? "Cancelled"
+			: pendingCount > 0
+				? `${pendingCount} comments pending review`
+				: "All comments reviewed";
+
 	return (
-		<div className="h-full overflow-y-auto bg-[var(--bg-base)]">
-			<div className="mx-auto max-w-[800px] pb-10">
-				{/* PRHeader */}
-				<PRHeader details={details} prCtx={prCtx} />
+		<div className="flex flex-col h-full overflow-hidden">
+			<div className="flex-1 overflow-y-auto bg-[var(--bg-base)]">
+				<div className="mx-auto max-w-[800px] pb-10">
+					{/* PR Header — always shown */}
+					<PRHeader details={details} prCtx={prCtx} />
 
-				{/* AI Summary Card */}
-				{summaryMarkdown && <AISummaryCard summaryMarkdown={summaryMarkdown} />}
+					{/* Status Strip — review mode only */}
+					{hasActiveDraft && (
+						<StatusStrip
+							approvedCount={approvedCount}
+							rejectedCount={rejectedCount}
+							pendingCount={pendingCount}
+							approvalPct={approvalPct}
+							roundNumber={aiDraftQuery.data?.roundNumber ?? 1}
+							aiSuggestion={aiSuggestion}
+							isSolving={isSolving}
+							onCancel={() => cancelMutation.mutate({ draftId })}
+						/>
+					)}
 
-				{/* Unified Comments Feed */}
-				<CommentsFeed details={details} prCtx={prCtx} aiThreads={aiThreads} />
+					{/* AI Summary — always shown when available */}
+					{summaryMarkdown && <AISummaryCard summaryMarkdown={summaryMarkdown} />}
+
+					{/* Review mode: grouped-by-file cards */}
+					{hasActiveDraft && groupedByFile && (
+						<div className="mx-6 mt-5">
+							<div className="text-[10.5px] font-semibold uppercase tracking-[0.07em] text-[var(--text-tertiary)] mb-2">
+								{groupedByFile.length} Files
+							</div>
+							{groupedByFile.map(([filePath, fileItems]) => (
+								<ReviewFileGroupCard
+									key={filePath}
+									filePath={filePath}
+									items={fileItems}
+									defaultExpanded={filePath === firstPendingFile}
+									onApprove={(commentId) => updateComment.mutate({ commentId, status: "approved" })}
+									onReject={(commentId) => updateComment.mutate({ commentId, status: "rejected" })}
+									onEdit={(commentId, newBody) =>
+										updateComment.mutate({
+											commentId,
+											status: "edited",
+											userEdit: newBody,
+										})
+									}
+									onApproveAll={(commentIds) =>
+										batchUpdate.mutate({ commentIds, status: "approved" })
+									}
+									onOpenInDiff={(path) => {
+										if (!activeWorkspaceId) return;
+										openPRReviewFile(activeWorkspaceId, prCtx, path, detectLanguage(path));
+									}}
+									onReplyToThread={(threadId, body) => addReplyComment.mutate({ threadId, body })}
+									onResolveThread={(threadId) => resolveThread.mutate({ threadId })}
+								/>
+							))}
+						</div>
+					)}
+
+					{/* Read-only mode: flat comments feed */}
+					{!hasActiveDraft && (
+						<CommentsFeed details={details} prCtx={prCtx} aiThreads={aiThreads} />
+					)}
+
+					{/* Chain History — review mode only */}
+					{hasActiveDraft && chainHistory && chainHistory.length > 1 && (
+						<div className="mx-6 mt-5">
+							<button
+								type="button"
+								onClick={() => setHistoryExpanded(!historyExpanded)}
+								className="flex items-center gap-[6px] cursor-pointer select-none mb-[6px] bg-transparent border-none p-0"
+							>
+								<span
+									className="text-[10px] text-[var(--text-tertiary)] w-[14px] text-center transition-transform duration-[150ms]"
+									style={{
+										transform: historyExpanded ? "rotate(90deg)" : "none",
+									}}
+								>
+									&rsaquo;
+								</span>
+								<span className="text-[10.5px] font-semibold uppercase tracking-[0.07em] text-[var(--text-tertiary)]">
+									Review History &middot; {chainHistory.length} rounds
+								</span>
+							</button>
+							{historyExpanded && (
+								<div className="bg-[var(--bg-elevated)] rounded-[6px] p-[10px_14px]">
+									{chainHistory.map((entry) => (
+										<div
+											key={entry.id}
+											className="text-[11px] text-[var(--text-secondary)] py-[3px]"
+										>
+											Round {entry.roundNumber} &middot;{" "}
+											{new Date(entry.createdAt).toLocaleDateString("en-US", {
+												month: "short",
+												day: "numeric",
+											})}{" "}
+											&middot; {entry.commentCount} comments &middot;{" "}
+											<span className="capitalize">{entry.status}</span>
+										</div>
+									))}
+								</div>
+							)}
+						</div>
+					)}
+				</div>
 			</div>
+
+			{/* Bottom Bar — review mode only */}
+			{hasActiveDraft && (
+				<ReviewBottomBar
+					statusMessage={statusMessage}
+					isSolving={isSolving}
+					pendingCount={pendingCount}
+					showVerdictConfirmation={showVerdictConfirmation}
+					isSubmitting={submitReview.isPending}
+					onDismiss={() => dismissPending.mutate({ draftId })}
+					onShowVerdict={() => setShowVerdictConfirmation(true)}
+					onCancelVerdict={() => setShowVerdictConfirmation(false)}
+					onSubmitVerdict={(verdict, body) => submitReview.mutate({ draftId, verdict, body })}
+				/>
+			)}
 		</div>
 	);
 }
