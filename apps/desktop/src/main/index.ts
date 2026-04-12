@@ -4,6 +4,7 @@ import { BrowserWindow, app, dialog, ipcMain, shell } from "electron";
 import { AGENT_NOTIFY_PORT } from "../shared/agent-events";
 import { daemonInstanceId, daemonPaths } from "../shared/daemon-protocol";
 import { type AgentAlertListener, createAlertListener } from "./agent-hooks/listener";
+import { setAgentNotifyPort } from "./agent-hooks/port";
 import { setupAgentHooks } from "./agent-hooks/setup";
 import { maybeAutoReReview, maybeAutoTriggerReview } from "./ai-review/auto-trigger";
 import { cleanupReviewWorkspace, findReviewWorkspaceByPR } from "./ai-review/cleanup";
@@ -208,6 +209,10 @@ app.whenReady().then(async () => {
 	alertListener = createAlertListener(AGENT_NOTIFY_PORT);
 	try {
 		await alertListener.start();
+		const port = alertListener.getPort();
+		if (port) {
+			setAgentNotifyPort(port);
+		}
 	} catch (err) {
 		log.error("[agent-notify] failed to start listener:", err);
 	}
