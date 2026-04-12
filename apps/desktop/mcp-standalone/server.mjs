@@ -277,6 +277,14 @@ if (!isSolverMode && !isQuickActionMode) {
 	);
 }
 
+function heartbeatSession(sessionId) {
+	if (!sessionId) return;
+	db.prepare("UPDATE comment_solve_sessions SET last_activity_at = ? WHERE id = ?").run(
+		Math.floor(Date.now() / 1000),
+		sessionId
+	);
+}
+
 if (isSolverMode) {
 	// Tool: get_pr_comments
 	server.tool(
@@ -284,6 +292,7 @@ if (isSolverMode) {
 		"Get all open PR comments for the current solve session",
 		{},
 		async () => {
+			heartbeatSession(SOLVE_SESSION_ID);
 			const comments = db
 				.prepare(
 					`SELECT id, platform_comment_id, author, body, file_path, line_number, side, thread_id, commit_sha
@@ -323,6 +332,7 @@ if (isSolverMode) {
 			),
 		},
 		async ({ groups }) => {
+			heartbeatSession(SOLVE_SESSION_ID);
 			const insertGroup = db.prepare(
 				`INSERT INTO comment_groups (id, solve_session_id, label, status, "order")
 				 VALUES (?, ?, ?, 'pending', ?)`
@@ -361,6 +371,7 @@ if (isSolverMode) {
 			group_id: z.string().describe("The ID of the comment group to fix"),
 		},
 		async ({ group_id }) => {
+			heartbeatSession(SOLVE_SESSION_ID);
 			const group = db
 				.prepare("SELECT label FROM comment_groups WHERE id = ? AND solve_session_id = ?")
 				.get(group_id, SOLVE_SESSION_ID);
@@ -408,6 +419,7 @@ if (isSolverMode) {
 			comment_id: z.string().describe("The ID of the comment to mark as fixed"),
 		},
 		async ({ comment_id }) => {
+			heartbeatSession(SOLVE_SESSION_ID);
 			const result = db
 				.prepare(`UPDATE pr_comments SET status = 'fixed' WHERE id = ? AND solve_session_id = ?`)
 				.run(comment_id, SOLVE_SESSION_ID);
@@ -433,6 +445,7 @@ if (isSolverMode) {
 			reply_body: z.string().describe("The reply body to send to the comment author"),
 		},
 		async ({ comment_id, reply_body }) => {
+			heartbeatSession(SOLVE_SESSION_ID);
 			const transaction = db.transaction((commentId, replyBody) => {
 				db.prepare(
 					`UPDATE pr_comments SET status = 'unclear' WHERE id = ? AND solve_session_id = ?`
@@ -469,6 +482,7 @@ if (isSolverMode) {
 		},
 		async ({ group_id }) => {
 			try {
+				heartbeatSession(SOLVE_SESSION_ID);
 				const group = db
 					.prepare("SELECT label FROM comment_groups WHERE id = ? AND solve_session_id = ?")
 					.get(group_id, SOLVE_SESSION_ID);
@@ -530,6 +544,7 @@ if (isSolverMode) {
 		"Signal that all comments have been processed and the solve session is complete",
 		{},
 		async () => {
+			heartbeatSession(SOLVE_SESSION_ID);
 			const now = Math.floor(Date.now() / 1000);
 
 			db.prepare(

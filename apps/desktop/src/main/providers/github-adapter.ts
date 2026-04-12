@@ -1,5 +1,5 @@
 import type { GitHubPRDetails } from "../../shared/github-types";
-import { getValidToken } from "../github/auth";
+import { getValidToken, githubFetch } from "../github/auth";
 import {
 	addReviewThreadReply,
 	createReviewThread,
@@ -25,6 +25,20 @@ import type {
 	ResolveParams,
 	SubmitReviewParams,
 } from "./types";
+
+// ── Cache-key helpers (exported for testing) ──────────────────────────────────
+
+/** Combine two ETags into one opaque cache key. */
+export function joinCacheKey(issueEtag: string, reviewEtag: string): string {
+	return `${issueEtag}|${reviewEtag}`;
+}
+
+/** Split a combined cache key back into [issueEtag, reviewEtag]. */
+export function splitCacheKey(cacheKey: string): [string, string] {
+	const idx = cacheKey.indexOf("|");
+	if (idx === -1) return [cacheKey, cacheKey];
+	return [cacheKey.slice(0, idx), cacheKey.slice(idx + 1)];
+}
 
 export class GitHubAdapter implements GitProvider {
 	readonly name = "github" as const;
@@ -68,6 +82,77 @@ export class GitHubAdapter implements GitProvider {
 			lineNumber: c.line ?? null,
 			createdAt: c.createdAt ?? "",
 		}));
+	}
+
+	async getPRCommentsIfChanged(
+		owner: string,
+		repo: string,
+		prNumber: number,
+		cacheKey?: string
+	): Promise<
+		{ changed: true; comments: NormalizedComment[]; cacheKey: string } | { changed: false }
+	> {
+		const [issueEtag, reviewEtag] = cacheKey ? splitCacheKey(cacheKey) : [undefined, undefined];
+
+		const [issueRes, reviewRes] = await Promise.all([
+			githubFetch(`/repos/${owner}/${repo}/issues/${prNumber}/comments?per_page=100`, {
+				headers: issueEtag ? { "If-None-Match": issueEtag } : {},
+			}),
+			githubFetch(`/repos/${owner}/${repo}/pulls/${prNumber}/comments?per_page=100`, {
+				headers: reviewEtag ? { "If-None-Match": reviewEtag } : {},
+			}),
+		]);
+
+		if (issueRes.status === 304 && reviewRes.status === 304) {
+			return { changed: false };
+		}
+
+		if (!issueRes.ok && issueRes.status !== 304) {
+			throw new Error(`GitHub issue comments failed: ${issueRes.status}`);
+		}
+		if (!reviewRes.ok && reviewRes.status !== 304) {
+			throw new Error(`GitHub review comments failed: ${reviewRes.status}`);
+		}
+
+		interface RawCommentNode {
+			id: number;
+			body: string;
+			user: { login: string };
+			created_at: string;
+			path?: string;
+			line?: number;
+		}
+
+		// One or both returned 200 — we need the full list from both endpoints.
+		// Re-fetch any endpoint that returned 304 unconditionally so we have complete data.
+		const [issueFull, reviewFull] = await Promise.all([
+			issueRes.status === 304
+				? githubFetch(`/repos/${owner}/${repo}/issues/${prNumber}/comments?per_page=100`)
+				: Promise.resolve(issueRes),
+			reviewRes.status === 304
+				? githubFetch(`/repos/${owner}/${repo}/pulls/${prNumber}/comments?per_page=100`)
+				: Promise.resolve(reviewRes),
+		]);
+
+		const [issueComments, reviewComments] = await Promise.all([
+			issueFull.json() as Promise<RawCommentNode[]>,
+			reviewFull.json() as Promise<RawCommentNode[]>,
+		]);
+
+		const newIssueEtag = issueFull.headers.get("etag") ?? issueEtag ?? "";
+		const newReviewEtag = reviewFull.headers.get("etag") ?? reviewEtag ?? "";
+		const newCacheKey = joinCacheKey(newIssueEtag, newReviewEtag);
+
+		const all: NormalizedComment[] = [...issueComments, ...reviewComments].map((c) => ({
+			id: String(c.id),
+			body: c.body ?? "",
+			author: c.user?.login ?? "Unknown",
+			filePath: c.path ?? null,
+			lineNumber: c.line ?? null,
+			createdAt: c.created_at ?? "",
+		}));
+
+		return { changed: true, comments: all, cacheKey: newCacheKey };
 	}
 
 	async createInlineComment(params: CreateCommentParams): Promise<{ id: string; nodeId?: string }> {

@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { detectLanguage } from "../../shared/diff-types";
 import type { SolveCommentInfo, SolveGroupInfo, SolveSessionInfo } from "../../shared/solve-types";
+import { formatRelativeTime } from "../../shared/tickets";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import { MarkdownRenderer } from "./MarkdownRenderer";
@@ -105,8 +106,26 @@ function CommitGroupCard({
 	const addReply = trpc.commentSolver.addReply.useMutation({
 		onSuccess: () => {
 			utils.commentSolver.getSolveSession.invalidate({ sessionId });
+			setAddingReplyTo(null);
+			setNewReplyText("");
 		},
 	});
+
+	const approveReply = trpc.commentSolver.approveReply.useMutation({
+		onSuccess: () => {
+			utils.commentSolver.getSolveSession.invalidate({ sessionId });
+		},
+	});
+
+	const revokeGroup = trpc.commentSolver.revokeGroup.useMutation({
+		onSuccess: () => {
+			utils.commentSolver.getSolveSession.invalidate({ sessionId });
+		},
+	});
+
+	// Holds reply bodies for in-flight discards so Undo can restore them.
+	// Keyed by comment ID. Cleared when user navigates away (component unmounts).
+	const [discardedBodies, setDiscardedBodies] = useState<Map<string, string>>(new Map());
 
 	const handleFollowUp = () => {
 		// Find existing AI Solver terminal tab for this workspace
@@ -129,13 +148,17 @@ function CommitGroupCard({
 	};
 
 	const shortHash = group.commitHash ? group.commitHash.slice(0, 7) : null;
-	const filePaths = uniqueFilePaths(group.comments);
+	const filePaths = uniqueFilePaths(group.comments).filter(Boolean);
 	const totalComments = group.comments.length;
 	const fixedComments = group.comments.filter(
 		(c) => c.status === "fixed" || c.status === "wont_fix"
 	).length;
 	const allFixed = fixedComments === totalComments && totalComments > 0;
-	const canApprove = group.status === "fixed";
+	const hasUnclearDraftReplies = group.comments.some(
+		(c) => c.status === "unclear" && (c.reply === null || c.reply.status === "draft")
+	);
+	const canApprove = group.status === "fixed" && !hasUnclearDraftReplies;
+	const canRevoke = group.status === "approved";
 
 	// Badge color: green when all resolved, accent when partial, gray when pending
 	const badgeBg = allFixed
@@ -204,9 +227,31 @@ function CommitGroupCard({
 							{approveGroup.isPending ? "..." : "Approve"}
 						</span>
 					)}
-					{group.status === "approved" && (
-						<span className="rounded-[3px] bg-[rgba(10,132,255,0.15)] px-1.5 py-px text-[9px] font-semibold uppercase tracking-wide text-[#0a84ff]">
-							Approved
+					{group.status === "fixed" && !canApprove && (
+						<span
+							className="rounded-[4px] bg-[rgba(255,255,255,0.05)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-quaternary)] cursor-not-allowed"
+							title="Resolve unclear replies first"
+						>
+							Approve
+						</span>
+					)}
+					{canRevoke && (
+						<span
+							role="button"
+							tabIndex={0}
+							onClick={(e) => {
+								e.stopPropagation();
+								revokeGroup.mutate({ groupId: group.id });
+							}}
+							onKeyDown={(e) => {
+								if (e.key === "Enter") {
+									e.stopPropagation();
+									revokeGroup.mutate({ groupId: group.id });
+								}
+							}}
+							className="rounded-[4px] border border-[var(--border)] px-2 py-0.5 text-[10px] text-[var(--text-quaternary)] hover:text-[var(--text-secondary)] transition-colors"
+						>
+							{revokeGroup.isPending ? "..." : "Revoke"}
 						</span>
 					)}
 					<span
@@ -233,11 +278,9 @@ function CommitGroupCard({
 			<div className="border-t border-[var(--border-subtle)] px-3 py-1.5">
 				<div className="flex flex-wrap items-center gap-1 text-[10px] text-[var(--text-quaternary)]">
 					{shortHash && (
-						<>
-							<span style={{ fontFamily: "var(--font-mono)" }}>{shortHash}</span>
-							<span>&middot;</span>
-						</>
+						<span style={{ fontFamily: "var(--font-mono)" }}>{shortHash}</span>
 					)}
+					{shortHash && filePaths.length > 0 && <span>&middot;</span>}
 					{filePaths.map((fp, i) => {
 						const filename = fp.split("/").pop() ?? fp;
 						return (
@@ -288,10 +331,17 @@ function CommitGroupCard({
 								<MarkdownRenderer content={comment.body} />
 								{/* Draft reply — editable */}
 								{comment.reply && editingReply !== comment.reply.id && (
-									<div className="mt-2 rounded-[4px] border border-[rgba(255,255,255,0.06)] bg-[rgba(255,255,255,0.04)] px-2.5 py-1.5">
+									<div
+										className={[
+											"mt-2 rounded-[4px] border px-2.5 py-1.5 transition-colors",
+											comment.reply.status === "approved"
+												? "border-[rgba(48,209,88,0.2)] bg-[rgba(48,209,88,0.05)]"
+												: "border-[rgba(255,255,255,0.06)] bg-[rgba(255,255,255,0.04)]",
+										].join(" ")}
+									>
 										<div className="flex items-center justify-between">
 											<span className="text-[10px] font-medium text-[var(--text-quaternary)]">
-												Draft reply:
+												{comment.reply.status === "approved" ? "✓ Reply approved" : "Draft reply:"}
 											</span>
 											<div className="flex gap-1">
 												<button
@@ -314,6 +364,64 @@ function CommitGroupCard({
 											</div>
 										</div>
 										<MarkdownRenderer content={comment.reply.body} />
+
+										{/* Sign-off strip — only for unclear comments with draft replies */}
+										{comment.status === "unclear" && comment.reply.status === "draft" && (
+											<div className="mt-2 flex items-center gap-2 border-t border-[rgba(255,255,255,0.05)] pt-2">
+												<span className="flex-1 text-[10px] text-[var(--text-quaternary)]">
+													Post this reply?
+												</span>
+												<button
+													type="button"
+													disabled={deleteReply.isPending}
+													onClick={() => {
+														const body = comment.reply!.body;
+														const commentId = comment.id;
+														setDiscardedBodies((prev) => {
+															const next = new Map(prev);
+															next.set(commentId, body);
+															return next;
+														});
+														deleteReply.mutate({ replyId: comment.reply!.id });
+													}}
+													className="rounded-[4px] border border-[rgba(255,255,255,0.1)] px-2 py-0.5 text-[10px] text-[var(--text-quaternary)] hover:text-[var(--text-secondary)] disabled:opacity-40"
+												>
+													Discard
+												</button>
+												<button
+													type="button"
+													disabled={approveReply.isPending}
+													onClick={() => approveReply.mutate({ replyId: comment.reply!.id })}
+													className="rounded-[4px] border border-[rgba(48,209,88,0.2)] bg-[rgba(48,209,88,0.12)] px-2 py-0.5 text-[10px] font-medium text-[#30d158] hover:bg-[rgba(48,209,88,0.2)] disabled:opacity-40"
+												>
+													{approveReply.isPending ? "..." : "✓ Approve"}
+												</button>
+											</div>
+										)}
+									</div>
+								)}
+
+								{/* Discarded reply — show undo affordance */}
+								{!comment.reply && discardedBodies.has(comment.id) && (
+									<div className="mt-2 flex items-center justify-between rounded-[4px] border border-[rgba(255,255,255,0.04)] px-2.5 py-1.5">
+										<span className="text-[10px] italic text-[var(--text-quaternary)]">
+											Reply discarded — nothing will be posted
+										</span>
+										<button
+											type="button"
+											onClick={() => {
+												const body = discardedBodies.get(comment.id)!;
+												setDiscardedBodies((prev) => {
+													const next = new Map(prev);
+													next.delete(comment.id);
+													return next;
+												});
+												addReply.mutate({ commentId: comment.id, body, draft: true });
+											}}
+											className="text-[9px] text-[var(--text-quaternary)] hover:text-[var(--text-secondary)]"
+										>
+											Undo
+										</button>
 									</div>
 								)}
 								{/* Editing reply */}
@@ -350,7 +458,7 @@ function CommitGroupCard({
 									</div>
 								)}
 								{/* Inline reply input (when no reply exists) — single click to start typing */}
-								{!comment.reply && (
+								{!comment.reply && !discardedBodies.has(comment.id) && (
 									<div className="mt-1.5">
 										<textarea
 											placeholder="Reply..."
@@ -377,8 +485,6 @@ function CommitGroupCard({
 														commentId: comment.id,
 														body: newReplyText.trim(),
 													});
-													setAddingReplyTo(null);
-													setNewReplyText("");
 												}
 												if (e.key === "Escape") {
 													setAddingReplyTo(null);
@@ -420,9 +526,15 @@ function ActiveState({
 }) {
 	const meta = useTabStore((s) => s.workspaceMetadata[workspaceId]);
 	const dismissSolve = trpc.commentSolver.dismissSolve.useMutation();
-	const pushAndPost = trpc.commentSolver.pushAndPost.useMutation();
 	const utils = trpc.useUtils();
 	const [pushError, setPushError] = useState<string | null>(null);
+	const pushAndPost = trpc.commentSolver.pushAndPost.useMutation({
+		onSuccess: () => {
+			utils.commentSolver.getSolveSession.invalidate({ sessionId: session.id });
+			utils.commentSolver.getSolveSessions.invalidate({ workspaceId });
+		},
+		onError: (err) => setPushError(err.message),
+	});
 
 	const prTitle = meta?.prTitle ?? session.prTitle ?? "Pull Request";
 	const prNumber =
@@ -438,33 +550,18 @@ function ActiveState({
 	const unclearComments = allComments.filter((c) => c.status === "unclear").length;
 	const pendingComments = totalComments - resolved - unclearComments;
 
-	// Reply counts
-	const allReplies = allComments.filter((c) => c.reply != null);
-	const approvedReplies = allReplies.filter((c) => c.reply?.status === "approved").length;
-	const draftReplies = allReplies.filter((c) => c.reply?.status === "draft").length;
-
-	// Non-reverted groups
 	const nonRevertedGroups = session.groups.filter((g) => g.status !== "reverted");
-	const allGroupsApproved =
-		nonRevertedGroups.length > 0 && nonRevertedGroups.every((g) => g.status === "approved");
-	const hasDraftReplies = allComments.some((c) => c.reply && c.reply.status === "draft");
-	const canPush = allGroupsApproved && !hasDraftReplies;
+	const approvedGroupCount = nonRevertedGroups.filter((g) => g.status === "approved").length;
+	const totalGroupCount = nonRevertedGroups.length;
+	const allGroupsApproved = approvedGroupCount === totalGroupCount && totalGroupCount > 0;
 
-	const handlePush = () => {
-		setPushError(null);
-		pushAndPost.mutate(
-			{ sessionId: session.id },
-			{
-				onSuccess: () => {
-					utils.commentSolver.getSolveSessions.invalidate({ workspaceId });
-					utils.commentSolver.getSolveSession.invalidate({ sessionId: session.id });
-				},
-				onError: (err) => {
-					setPushError(err.message);
-				},
-			}
-		);
-	};
+	const unclearDraftCount = allComments.filter(
+		(c) => c.status === "unclear" && c.reply?.status === "draft"
+	).length;
+
+	const approvedReplyCount = allComments.filter((c) => c.reply?.status === "approved").length;
+
+	const unapprovedGroupCount = totalGroupCount - approvedGroupCount;
 
 	const handleDismiss = () => {
 		dismissSolve.mutate(
@@ -541,25 +638,73 @@ function ActiveState({
 					</div>
 				)}
 
-				{/* Summary */}
-				<div className="px-4 pt-2 text-[10px] text-[var(--text-tertiary)]">
-					{allReplies.length > 0 && (
-						<span>
-							{approvedReplies} draft replies ready
-							{draftReplies > 0 && ` \u00B7 ${draftReplies} needs your input`}
+				{/* Progress bar */}
+				{totalGroupCount > 0 && (
+					<div className="flex items-center gap-2 px-4 pt-2.5">
+						<div className="h-[3px] flex-1 overflow-hidden rounded-full bg-[var(--bg-overlay)]">
+							<div
+								className="h-full rounded-full transition-all duration-300"
+								style={{
+									width: `${(approvedGroupCount / totalGroupCount) * 100}%`,
+									background: allGroupsApproved ? "#34c759" : "#0a84ff",
+								}}
+							/>
+						</div>
+						<span className="shrink-0 text-[10px] text-[var(--text-quaternary)]">
+							{approvedGroupCount} of {totalGroupCount} approved
 						</span>
+					</div>
+				)}
+
+				{/* Status line */}
+				<div className="flex flex-wrap items-center gap-1.5 px-4 py-1.5 text-[10px]">
+					{allGroupsApproved ? (
+						<>
+							<span className="font-medium text-[#34c759]">✓ All groups approved</span>
+							{approvedReplyCount > 0 && (
+								<>
+									<span className="text-[var(--text-quaternary)]">·</span>
+									<span className="text-[var(--text-tertiary)]">
+										{approvedReplyCount} {approvedReplyCount === 1 ? "reply" : "replies"} will be
+										posted
+									</span>
+								</>
+							)}
+						</>
+					) : (
+						<>
+							{unclearDraftCount > 0 && (
+								<span className="rounded-[3px] bg-[rgba(255,159,10,0.12)] px-1.5 py-px font-medium text-[#ff9f0a]">
+									⚠ {unclearDraftCount} unclear {unclearDraftCount === 1 ? "reply" : "replies"} need
+									sign-off
+								</span>
+							)}
+							{unapprovedGroupCount > 0 && (
+								<>
+									{unclearDraftCount > 0 && (
+										<span className="text-[var(--text-quaternary)]">·</span>
+									)}
+									<span className="text-[var(--text-tertiary)]">
+										{unapprovedGroupCount} {unapprovedGroupCount === 1 ? "group" : "groups"} not yet
+										approved
+									</span>
+								</>
+							)}
+						</>
 					)}
 				</div>
 
-				{/* Buttons */}
-				<div className="flex items-center gap-2 px-4 py-2.5">
+				{/* Action buttons */}
+				<div className="flex items-center gap-2 px-4 pb-2.5">
 					<button
 						type="button"
-						onClick={handlePush}
-						disabled={!canPush || pushAndPost.isPending}
-						className="flex-1 rounded-[6px] bg-[#34c759] px-4 py-1.5 text-[11px] font-semibold text-black transition-colors hover:bg-[#2db84e] disabled:opacity-40"
+						disabled={!allGroupsApproved || pushAndPost.isPending}
+						onClick={() => pushAndPost.mutate({ sessionId: session.id })}
+						className="w-full rounded-[8px] bg-[var(--accent)] px-4 py-2 text-[13px] font-medium text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
 					>
-						{pushAndPost.isPending ? "Pushing..." : "Push changes & post replies"}
+						{pushAndPost.isPending
+							? "Pushing…"
+							: `Push changes & post replies${allGroupsApproved && approvedGroupCount > 0 ? ` (${approvedGroupCount}/${totalGroupCount})` : ""}`}
 					</button>
 					<button
 						type="button"
@@ -578,6 +723,8 @@ function ActiveState({
 // ── Main Component ────────────────────────────────────────────────────────────
 
 export function AIFixesTab({ workspaceId }: AIFixesTabProps) {
+	const utils = trpc.useUtils();
+
 	// Get all non-dismissed sessions for this workspace
 	const sessionsQuery = trpc.commentSolver.getSolveSessions.useQuery(
 		{ workspaceId },
@@ -607,6 +754,19 @@ export function AIFixesTab({ workspaceId }: AIFixesTabProps) {
 		}
 	);
 
+	const resetSession = trpc.commentSolver.resetFailedSession.useMutation({
+		onSuccess: () => {
+			utils.commentSolver.getSolveSession.invalidate();
+			utils.commentSolver.getSolveSessions.invalidate({ workspaceId });
+		},
+	});
+	const keepSession = trpc.commentSolver.keepFailedSession.useMutation({
+		onSuccess: () => {
+			utils.commentSolver.getSolveSession.invalidate();
+			utils.commentSolver.getSolveSessions.invalidate({ workspaceId });
+		},
+	});
+
 	const fullSession = sessionQuery.data ?? null;
 	const isSolving = latestSession?.status === "queued" || latestSession?.status === "in_progress";
 
@@ -616,6 +776,54 @@ export function AIFixesTab({ workspaceId }: AIFixesTabProps) {
 			<div className="flex flex-1 min-h-0 flex-col bg-[var(--bg-base)]">
 				{isSolving && <SolvingBanner />}
 				<ActiveState session={fullSession} workspaceId={workspaceId} />
+			</div>
+		);
+	}
+
+	// Failed state: session stopped unexpectedly
+	if (fullSession && fullSession.status === "failed") {
+		return (
+			<div className="flex flex-1 min-h-0 flex-col bg-[var(--bg-base)]">
+				<div className="flex flex-1 flex-col items-center justify-center px-4">
+					<div className="flex w-full max-w-sm flex-col gap-4 rounded-[10px] border border-[var(--border-destructive,#ff3b30)] bg-[var(--bg-surface)] p-4">
+						<div className="flex flex-col gap-1">
+							<span className="text-[13px] font-medium text-[var(--text)]">
+								The solver stopped unexpectedly
+							</span>
+							{fullSession.lastActivityAt && (
+								<span className="text-[12px] text-[var(--text-tertiary)]">
+									Last activity:{" "}
+									{formatRelativeTime(new Date(fullSession.lastActivityAt).toISOString())}
+								</span>
+							)}
+						</div>
+
+						<div className="flex gap-2">
+							<button
+								type="button"
+								onClick={() => resetSession.mutate({ sessionId: fullSession.id })}
+								disabled={resetSession.isPending || keepSession.isPending}
+								className="flex-1 rounded-[6px] border border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-2 text-[12px] font-medium text-[var(--text)] transition-colors hover:bg-[var(--bg-surface-hover)] disabled:opacity-50"
+							>
+								{resetSession.isPending ? "Reverting…" : "Reset & try again"}
+							</button>
+							<button
+								type="button"
+								onClick={() => keepSession.mutate({ sessionId: fullSession.id })}
+								disabled={resetSession.isPending || keepSession.isPending}
+								className="flex-1 rounded-[6px] bg-[var(--accent)] px-3 py-2 text-[12px] font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+							>
+								{keepSession.isPending ? "Saving…" : "Keep partial changes"}
+							</button>
+						</div>
+
+						{(resetSession.error ?? keepSession.error) && (
+							<span className="text-[12px] text-[var(--text-destructive)]">
+								{(resetSession.error ?? keepSession.error)?.message}
+							</span>
+						)}
+					</div>
+				</div>
 			</div>
 		);
 	}

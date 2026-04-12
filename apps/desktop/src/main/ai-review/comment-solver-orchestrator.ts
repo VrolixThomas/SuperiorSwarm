@@ -1,6 +1,6 @@
 import { execSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { and, count, eq, gt, inArray, not } from "drizzle-orm";
 import { app } from "electron";
@@ -153,11 +153,35 @@ export async function queueSolve(sessionId: string): Promise<SolveLaunchInfo> {
 					`export DB_PATH='${dbPath}'`,
 					`export WORKTREE_PATH='${worktreePath}'`,
 				];
-		const scriptContent = ["#!/bin/bash", `cd '${worktreePath}'`, ...envLines, "", cliCommand].join(
-			"\n"
-		);
+		const pidFilePath = join(solveDir, "solver.pid");
+		const scriptContent = [
+			"#!/bin/bash",
+			`echo $$ > '${pidFilePath}'`,
+			`cd '${worktreePath}'`,
+			...envLines,
+			"",
+			cliCommand,
+		].join("\n");
 		writeFileSync(launchScript, scriptContent, "utf-8");
 		chmodSync(launchScript, 0o755);
+
+		// Read PID file and store on session after the script has had time to write it
+		setTimeout(() => {
+			try {
+				const pidContent = readFileSync(pidFilePath, "utf-8").trim();
+				const pid = Number.parseInt(pidContent, 10);
+				if (!Number.isNaN(pid)) {
+					getDb()
+						.update(schema.commentSolveSessions)
+						.set({ pid, updatedAt: new Date() })
+						.where(eq(schema.commentSolveSessions.id, sessionId))
+						.run();
+					console.log(`[comment-solver] Stored PID ${pid} for session ${sessionId}`);
+				}
+			} catch {
+				// PID file not yet written or session already gone — ignore
+			}
+		}, 2000);
 
 		return {
 			sessionId,
@@ -172,6 +196,55 @@ export async function queueSolve(sessionId: string): Promise<SolveLaunchInfo> {
 			.where(eq(schema.commentSolveSessions.id, sessionId))
 			.run();
 		throw err;
+	}
+}
+
+/**
+ * On app startup, sweep for sessions stuck in queued/in_progress.
+ * - If pid is set: attempt process.kill(pid, 0) to check if process is alive. If dead, mark failed.
+ * - If pid is null: fall back to lastActivityAt staleness (10 min threshold).
+ */
+export function recoverStuckSessions(): void {
+	const db = getDb();
+	const now = new Date();
+	const TEN_MIN_MS = 10 * 60 * 1000;
+	const cutoff = new Date(now.getTime() - TEN_MIN_MS);
+
+	const stuck = db
+		.select()
+		.from(schema.commentSolveSessions)
+		.where(inArray(schema.commentSolveSessions.status, ["queued", "in_progress"]))
+		.all();
+
+	for (const session of stuck) {
+		let shouldFail = false;
+
+		if (session.pid !== null) {
+			try {
+				process.kill(session.pid, 0); // signal 0 = check existence only
+				// Process exists — don't fail it
+			} catch (killErr) {
+				// Only ESRCH means "no such process" — EPERM means process exists but we can't signal it
+				if ((killErr as NodeJS.ErrnoException).code === "ESRCH") {
+					shouldFail = true;
+				}
+				// EPERM or other errors: assume the process is still alive
+			}
+		} else {
+			// No PID — fall back to activity timestamp, or createdAt if no activity yet
+			const anchor = session.lastActivityAt ?? session.createdAt;
+			if (anchor !== null && anchor < cutoff) {
+				shouldFail = true;
+			}
+		}
+
+		if (shouldFail) {
+			console.log(`[comment-solver] Recovering stuck session ${session.id} → failed`);
+			db.update(schema.commentSolveSessions)
+				.set({ status: "failed", updatedAt: now })
+				.where(eq(schema.commentSolveSessions.id, session.id))
+				.run();
+		}
 	}
 }
 

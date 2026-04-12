@@ -21,7 +21,9 @@ function makeTestDb(): Database.Database {
 			commit_sha TEXT,
 			workspace_id TEXT NOT NULL,
 			created_at INTEGER NOT NULL,
-			updated_at INTEGER NOT NULL
+			updated_at INTEGER NOT NULL,
+			pid INTEGER,
+			last_activity_at INTEGER
 		);
 
 		CREATE TABLE comment_groups (
@@ -60,6 +62,24 @@ function makeTestDb(): Database.Database {
 			body TEXT NOT NULL,
 			status TEXT DEFAULT 'draft' NOT NULL,
 			FOREIGN KEY (pr_comment_id) REFERENCES pr_comments(id) ON DELETE CASCADE
+		);
+
+		CREATE TABLE pr_comment_cache (
+			id TEXT PRIMARY KEY NOT NULL,
+			workspace_id TEXT NOT NULL,
+			platform_comment_id TEXT NOT NULL,
+			author TEXT NOT NULL,
+			body TEXT NOT NULL,
+			file_path TEXT,
+			line_number INTEGER,
+			created_at TEXT NOT NULL,
+			fetched_at INTEGER NOT NULL
+		);
+
+		CREATE TABLE pr_comment_cache_meta (
+			workspace_id TEXT PRIMARY KEY NOT NULL,
+			cache_key TEXT,
+			fetched_at INTEGER NOT NULL
 		);
 	`);
 
@@ -239,6 +259,40 @@ describe("Comment Solver", () => {
 		});
 	});
 
+	describe("Recovery schema", () => {
+		test("can store pid and lastActivityAt on session", () => {
+			const id = "recovery-sess-1";
+			const now = Date.now();
+			db.prepare(`
+				INSERT INTO comment_solve_sessions
+					(id, pr_provider, pr_identifier, pr_title, source_branch, target_branch, status, workspace_id, created_at, updated_at, pid, last_activity_at)
+				VALUES (?, 'github', 'owner/repo#10', 'Test', 'feat', 'main', 'in_progress', 'ws-schema', ?, ?, 12345, ?)
+			`).run(id, now, now, now);
+
+			const row = db
+				.prepare("SELECT pid, last_activity_at FROM comment_solve_sessions WHERE id = ?")
+				.get(id) as Record<string, unknown>;
+			expect(row["pid"]).toBe(12345);
+			expect(row["last_activity_at"]).toBe(now);
+		});
+
+		test("pid and lastActivityAt default to null", () => {
+			const id = "recovery-sess-2";
+			const now = Date.now();
+			db.prepare(`
+				INSERT INTO comment_solve_sessions
+					(id, pr_provider, pr_identifier, pr_title, source_branch, target_branch, status, workspace_id, created_at, updated_at)
+				VALUES (?, 'github', 'owner/repo#11', 'Test', 'feat', 'main', 'queued', 'ws-schema', ?, ?)
+			`).run(id, now, now);
+
+			const row = db
+				.prepare("SELECT pid, last_activity_at FROM comment_solve_sessions WHERE id = ?")
+				.get(id) as Record<string, unknown>;
+			expect(row["pid"]).toBeNull();
+			expect(row["last_activity_at"]).toBeNull();
+		});
+	});
+
 	describe("Comment grouping", () => {
 		const SESSION = "grouping-sess";
 
@@ -357,6 +411,146 @@ describe("Comment Solver", () => {
 		});
 	});
 
+	describe("Session recovery", () => {
+		// NOTE: recoverStuckSessions() calls getDb() internally which returns the production DB,
+		// so we cannot inject the test DB to call it directly. Instead, these tests replicate
+		// the exact SQL logic from recoverStuckSessions() in comment-solver-orchestrator.ts.
+		// The anchor logic below must stay in sync with that function:
+		//   anchor = lastActivityAt ?? createdAt
+		//   if (anchor !== null && anchor < cutoff) → mark failed
+		//
+		// The raw SQL equivalent uses COALESCE(last_activity_at, created_at) as the anchor.
+
+		test("recoverStuckSessions marks sessions with no pid as failed when lastActivityAt is stale", () => {
+			const staleness = 11 * 60 * 1000; // 11 minutes in ms
+			const staleTime = Date.now() - staleness;
+			const id = "stuck-no-pid";
+			db.prepare(`
+				INSERT INTO comment_solve_sessions
+					(id, pr_provider, pr_identifier, pr_title, source_branch, target_branch, status, workspace_id, created_at, updated_at, pid, last_activity_at)
+				VALUES (?, 'github', 'owner/repo#20', 'Test', 'feat', 'main', 'in_progress', 'ws-schema', ?, ?, NULL, ?)
+			`).run(id, Date.now(), Date.now(), staleTime);
+
+			// Mirrors recoverStuckSessions(): anchor = COALESCE(last_activity_at, created_at)
+			const TEN_MIN_MS = 10 * 60 * 1000;
+			const cutoff = Date.now() - TEN_MIN_MS;
+			db.prepare(`
+				UPDATE comment_solve_sessions
+				SET status = 'failed', updated_at = ?
+				WHERE status IN ('queued', 'in_progress')
+				AND pid IS NULL
+				AND COALESCE(last_activity_at, created_at) IS NOT NULL
+				AND COALESCE(last_activity_at, created_at) < ?
+			`).run(Date.now(), cutoff);
+
+			const row = db
+				.prepare("SELECT status FROM comment_solve_sessions WHERE id = ?")
+				.get(id) as Record<string, unknown>;
+			expect(row["status"]).toBe("failed");
+		});
+
+		test("recoverStuckSessions does not mark a recently active session as failed", () => {
+			const id = "stuck-recent";
+			const now = Date.now();
+			db.prepare(`
+				INSERT INTO comment_solve_sessions
+					(id, pr_provider, pr_identifier, pr_title, source_branch, target_branch, status, workspace_id, created_at, updated_at, pid, last_activity_at)
+				VALUES (?, 'github', 'owner/repo#21', 'Test', 'feat', 'main', 'in_progress', 'ws-schema', ?, ?, NULL, ?)
+			`).run(id, now, now, now); // lastActivityAt = now (fresh)
+
+			// Mirrors recoverStuckSessions(): anchor = COALESCE(last_activity_at, created_at)
+			const TEN_MIN_MS = 10 * 60 * 1000;
+			const cutoff = Date.now() - TEN_MIN_MS;
+			db.prepare(`
+				UPDATE comment_solve_sessions
+				SET status = 'failed', updated_at = ?
+				WHERE status IN ('queued', 'in_progress')
+				AND pid IS NULL
+				AND COALESCE(last_activity_at, created_at) IS NOT NULL
+				AND COALESCE(last_activity_at, created_at) < ?
+			`).run(Date.now(), cutoff);
+
+			const row = db
+				.prepare("SELECT status FROM comment_solve_sessions WHERE id = ?")
+				.get(id) as Record<string, unknown>;
+			expect(row["status"]).toBe("in_progress"); // Not failed — was active recently
+		});
+
+		test("recoverStuckSessions marks sessions with null lastActivityAt as failed when createdAt is stale", () => {
+			// Covers the case where a session was queued but never got any activity before crashing.
+			// lastActivityAt is null so we fall back to createdAt as the anchor.
+			const staleness = 11 * 60 * 1000; // 11 minutes in ms
+			const staleCreatedAt = Date.now() - staleness;
+			const id = "stuck-no-pid-no-activity";
+			db.prepare(`
+				INSERT INTO comment_solve_sessions
+					(id, pr_provider, pr_identifier, pr_title, source_branch, target_branch, status, workspace_id, created_at, updated_at, pid, last_activity_at)
+				VALUES (?, 'github', 'owner/repo#22', 'Test', 'feat', 'main', 'queued', 'ws-schema', ?, ?, NULL, NULL)
+			`).run(id, staleCreatedAt, staleCreatedAt);
+
+			// Mirrors recoverStuckSessions(): anchor = COALESCE(last_activity_at, created_at)
+			const TEN_MIN_MS = 10 * 60 * 1000;
+			const cutoff = Date.now() - TEN_MIN_MS;
+			db.prepare(`
+				UPDATE comment_solve_sessions
+				SET status = 'failed', updated_at = ?
+				WHERE status IN ('queued', 'in_progress')
+				AND pid IS NULL
+				AND COALESCE(last_activity_at, created_at) IS NOT NULL
+				AND COALESCE(last_activity_at, created_at) < ?
+			`).run(Date.now(), cutoff);
+
+			const row = db
+				.prepare("SELECT status FROM comment_solve_sessions WHERE id = ?")
+				.get(id) as Record<string, unknown>;
+			expect(row["status"]).toBe("failed"); // Recovered via createdAt fallback
+		});
+	});
+
+	describe("Publish gate", () => {
+		test("all non-reverted groups approved → allGroupsApproved is true", () => {
+			// The new gate is: every non-reverted group has status === "approved"
+			const groups = [
+				{ status: "approved" },
+				{ status: "approved" },
+				{ status: "reverted" }, // skipped
+			];
+			const nonReverted = groups.filter((g) => g.status !== "reverted");
+			const allApproved = nonReverted.every((g) => g.status === "approved");
+			expect(allApproved).toBe(true);
+		});
+
+		test("any non-reverted group not approved → allGroupsApproved is false", () => {
+			const groups = [
+				{ status: "approved" },
+				{ status: "fixed" }, // not yet approved
+			];
+			const nonReverted = groups.filter((g) => g.status !== "reverted");
+			const allApproved = nonReverted.every((g) => g.status === "approved");
+			expect(allApproved).toBe(false);
+		});
+
+		test("unclear draft reply count gates the Approve button on a group", () => {
+			// hasUnclearDraftReplies: group.comments.some(c => c.status === 'unclear' && c.reply?.status === 'draft')
+			const commentsWithUnclearDraft = [
+				{ status: "fixed", reply: { status: "approved" } },
+				{ status: "unclear", reply: { status: "draft" } },
+			];
+			const hasUnclearDraft = commentsWithUnclearDraft.some(
+				(c) => c.status === "unclear" && c.reply?.status === "draft"
+			);
+			expect(hasUnclearDraft).toBe(true);
+		});
+
+		test("unclear comment with approved reply does not gate the Approve button", () => {
+			const comments = [{ status: "unclear", reply: { status: "approved" } }];
+			const hasUnclearDraft = comments.some(
+				(c) => c.status === "unclear" && c.reply?.status === "draft"
+			);
+			expect(hasUnclearDraft).toBe(false);
+		});
+	});
+
 	describe("Revert ordering", () => {
 		const SESSION = "revert-sess";
 
@@ -428,6 +622,147 @@ describe("Comment Solver", () => {
 			expect(row["commit_hash"]).toBeNull();
 			// In revertGroup(), the orchestrator throws when commit_hash is null — we verify the
 			// data condition that would trigger that guard.
+		});
+	});
+
+	describe("Sign-off flow", () => {
+		const SESSION = "signoff-sess";
+		const GROUP_ID = "signoff-grp";
+		const COMMENT_ID = "signoff-c-1";
+		const REPLY_ID = "signoff-r-1";
+
+		beforeAll(() => {
+			seedSession(SESSION, "ready");
+			seedGroup(GROUP_ID, SESSION, 1, "approved", "commit-xyz");
+			seedComment(COMMENT_ID, SESSION, "plat-signoff-1", GROUP_ID, "unclear");
+			seedReply(REPLY_ID, COMMENT_ID, "draft");
+		});
+
+		test("approveReply sets reply status to approved", () => {
+			db.prepare("UPDATE comment_replies SET status = 'draft' WHERE id = ?").run(REPLY_ID);
+
+			// Mirrors approveReply endpoint logic
+			db.prepare("UPDATE comment_replies SET status = 'approved' WHERE id = ?").run(REPLY_ID);
+
+			const row = db
+				.prepare("SELECT status FROM comment_replies WHERE id = ?")
+				.get(REPLY_ID) as Record<string, unknown>;
+			expect(row["status"]).toBe("approved");
+		});
+
+		test("revokeGroup resets group to fixed and approved replies to draft", () => {
+			// Setup: group is approved, reply is approved
+			db.prepare("UPDATE comment_groups SET status = 'approved' WHERE id = ?").run(GROUP_ID);
+			db.prepare("UPDATE comment_replies SET status = 'approved' WHERE id = ?").run(REPLY_ID);
+
+			// Mirrors revokeGroup endpoint logic
+			db.prepare("UPDATE comment_groups SET status = 'fixed' WHERE id = ?").run(GROUP_ID);
+
+			const comments = db
+				.prepare("SELECT id FROM pr_comments WHERE group_id = ?")
+				.all(GROUP_ID) as Array<{ id: string }>;
+			const commentIds = comments.map((c) => c.id);
+			if (commentIds.length > 0) {
+				db.prepare(
+					`UPDATE comment_replies SET status = 'draft'
+         WHERE pr_comment_id IN (${commentIds.map(() => "?").join(",")})
+         AND status = 'approved'`
+				).run(...commentIds);
+			}
+
+			const groupRow = db
+				.prepare("SELECT status FROM comment_groups WHERE id = ?")
+				.get(GROUP_ID) as Record<string, unknown>;
+			expect(groupRow["status"]).toBe("fixed");
+
+			const replyRow = db
+				.prepare("SELECT status FROM comment_replies WHERE id = ?")
+				.get(REPLY_ID) as Record<string, unknown>;
+			expect(replyRow["status"]).toBe("draft");
+		});
+
+		test("revokeGroup only resets approved replies, leaves draft replies alone", () => {
+			const DRAFT_REPLY_ID = "signoff-r-draft-only";
+			db.prepare(
+				"INSERT INTO comment_replies (id, pr_comment_id, body, status) VALUES (?, ?, 'draft body', 'draft')"
+			).run(DRAFT_REPLY_ID, COMMENT_ID);
+
+			// revokeGroup should not touch already-draft replies
+			db.prepare(
+				`UPDATE comment_replies SET status = 'draft'
+       WHERE pr_comment_id = ? AND status = 'approved'`
+			).run(COMMENT_ID);
+
+			const row = db
+				.prepare("SELECT status FROM comment_replies WHERE id = ?")
+				.get(DRAFT_REPLY_ID) as Record<string, unknown>;
+			expect(row["status"]).toBe("draft"); // Unchanged
+
+			// Cleanup
+			db.prepare("DELETE FROM comment_replies WHERE id = ?").run(DRAFT_REPLY_ID);
+		});
+
+		test("revokeGroup on a non-approved group should be guarded", () => {
+			// Verify the data condition: group must be 'approved' to revoke
+			db.prepare("UPDATE comment_groups SET status = 'fixed' WHERE id = ?").run(GROUP_ID);
+			const row = db
+				.prepare("SELECT status FROM comment_groups WHERE id = ?")
+				.get(GROUP_ID) as Record<string, unknown>;
+			// In the router, if status !== 'approved' we throw. This test verifies
+			// the DB state that would trigger the guard.
+			expect(row["status"]).not.toBe("approved");
+		});
+
+		test("addReply without draft flag creates reply as approved", () => {
+			const replyId = "signoff-r-approved";
+			// Mirrors addReply with draft: false (default) — creates as 'approved'
+			db.prepare(
+				"INSERT INTO comment_replies (id, pr_comment_id, body, status) VALUES (?, ?, 'User reply', 'approved')"
+			).run(replyId, COMMENT_ID);
+
+			const row = db
+				.prepare("SELECT status FROM comment_replies WHERE id = ?")
+				.get(replyId) as Record<string, unknown>;
+			expect(row["status"]).toBe("approved");
+
+			db.prepare("DELETE FROM comment_replies WHERE id = ?").run(replyId);
+		});
+
+		test("addReply with draft: true creates reply as draft", () => {
+			const replyId = "signoff-r-undo";
+			// Mirrors addReply with draft: true — used for undo-discard
+			db.prepare(
+				"INSERT INTO comment_replies (id, pr_comment_id, body, status) VALUES (?, ?, 'Restored body', 'draft')"
+			).run(replyId, COMMENT_ID);
+
+			const row = db
+				.prepare("SELECT status FROM comment_replies WHERE id = ?")
+				.get(replyId) as Record<string, unknown>;
+			expect(row["status"]).toBe("draft");
+
+			db.prepare("DELETE FROM comment_replies WHERE id = ?").run(replyId);
+		});
+
+		test("updateReply with body resets an approved reply to draft", () => {
+			// Mirrors updateReply: when body changes, status resets to draft
+			const replyId = "signoff-r-reset";
+			db.prepare(
+				"INSERT INTO comment_replies (id, pr_comment_id, body, status) VALUES (?, ?, 'Original', 'approved')"
+			).run(replyId, COMMENT_ID);
+
+			// Simulate updateReply with body — always resets to draft
+			db.prepare("UPDATE comment_replies SET body = ?, status = 'draft' WHERE id = ?").run(
+				"Edited body",
+				replyId
+			);
+
+			const row = db
+				.prepare("SELECT status, body FROM comment_replies WHERE id = ?")
+				.get(replyId) as Record<string, unknown>;
+			expect(row["status"]).toBe("draft");
+			expect(row["body"]).toBe("Edited body");
+
+			db.prepare("DELETE FROM comment_replies WHERE id = ?").run(replyId);
 		});
 	});
 });

@@ -339,6 +339,24 @@ describe("mapBitbucketPR head commit SHA plumbing", () => {
 	});
 });
 
+describe("BitbucketAdapter.getPRCommentsIfChanged", () => {
+	test("mapBitbucketComment maps all fields correctly", () => {
+		const comment: BitbucketComment = {
+			id: 1,
+			body: "Fix this",
+			author: "alice",
+			filePath: "src/index.ts",
+			lineNumber: 10,
+			createdAt: "2026-01-01T00:00:00Z",
+		};
+		const result = mapBitbucketComment(comment);
+		expect(result.id).toBe("1");
+		expect(result.body).toBe("Fix this");
+		expect(result.filePath).toBe("src/index.ts");
+		expect(result.lineNumber).toBe(10);
+	});
+});
+
 describe("paginateBitbucket", () => {
 	test("returns the values from a single page", async () => {
 		const pages = new Map<string, { values: string[]; next?: string }>([

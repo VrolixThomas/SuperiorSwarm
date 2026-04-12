@@ -3,9 +3,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import type { SolveLaunchInfo } from "../../shared/solve-types";
 import { getDb } from "../db";
 import * as schema from "../db/schema";
-import { getGitProvider } from "../providers/git-provider";
 import { queueSolve } from "./comment-solver-orchestrator";
-import { parsePrIdentifier } from "./pr-identifier";
 import { getCachedPRs } from "./pr-poller";
 
 export async function createAndQueueSolve(params: {
@@ -67,13 +65,19 @@ export async function createAndQueueSolve(params: {
 
 	if (!worktree) throw new Error("Worktree not found for workspace");
 
-	// 3. Fetch comments from platform via provider
-	const { owner, repo, number: prNumber } = parsePrIdentifier(workspace.prIdentifier);
-	const git = getGitProvider(workspace.prProvider);
-	const normalizedComments = await git.getPRComments(owner, repo, prNumber);
+	// 3. Read comments from local cache (populated by poller / refreshWorkspaceComments)
+	const cachedComments = db
+		.select()
+		.from(schema.prCommentCache)
+		.where(eq(schema.prCommentCache.workspaceId, workspace.id))
+		.all();
 
-	const rawComments = normalizedComments.map((c) => ({
-		id: c.id,
+	if (cachedComments.length === 0) {
+		throw new Error("No cached comments found. Open the Comments tab first to load them.");
+	}
+
+	const rawComments = cachedComments.map((c) => ({
+		id: c.platformCommentId,
 		body: c.body,
 		author: c.author,
 		filePath: c.filePath,

@@ -24,6 +24,7 @@ export interface SolveSessionInfo {
 	workspaceId: string;
 	createdAt: Date;
 	updatedAt: Date;
+	lastActivityAt: Date | null;
 	groups: SolveGroupInfo[];
 }
 

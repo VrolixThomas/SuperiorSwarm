@@ -1,15 +1,16 @@
 import { randomUUID } from "node:crypto";
 import { and, eq, inArray, not } from "drizzle-orm";
 import { z } from "zod";
-import { revertGroup as revertGroupOrchestrator } from "../../ai-review/comment-solver-orchestrator";
+import { pollWorkspace } from "../../ai-review/comment-poller";
+import {
+	isSessionDead,
+	revertGroup as revertGroupOrchestrator,
+} from "../../ai-review/comment-solver-orchestrator";
 import { createAndQueueSolve } from "../../ai-review/create-and-queue-solve";
-import { parsePrIdentifier } from "../../ai-review/pr-identifier";
 import { publishSolve } from "../../ai-review/solve-publisher";
 import { resolveSessionWorktree } from "../../ai-review/solve-session-resolver";
-import { getBitbucketPRComments } from "../../atlassian/bitbucket";
 import { getDb } from "../../db";
 import * as schema from "../../db/schema";
-import { getPRComments } from "../../github/github";
 import type {
 	SolveCommentStatus,
 	SolveGroupStatus,
@@ -113,6 +114,7 @@ function assembleSolveSession(sessionId: string): SolveSessionInfo | null {
 		workspaceId: session.workspaceId,
 		createdAt: session.createdAt,
 		updatedAt: session.updatedAt,
+		lastActivityAt: session.lastActivityAt ?? null,
 		groups: groupInfos,
 	};
 }
@@ -154,6 +156,28 @@ export const commentSolverRouter = router({
 	getSolveSession: publicProcedure.input(z.object({ sessionId: z.string() })).query(({ input }) => {
 		const info = assembleSolveSession(input.sessionId);
 		if (!info) throw new Error(`Solve session ${input.sessionId} not found`);
+
+		// Liveness check for active sessions
+		if (info.status === "queued" || info.status === "in_progress") {
+			const db = getDb();
+			const session = db
+				.select()
+				.from(schema.commentSolveSessions)
+				.where(eq(schema.commentSolveSessions.id, input.sessionId))
+				.get();
+
+			if (session) {
+				const now = new Date();
+				if (isSessionDead(session, now)) {
+					db.update(schema.commentSolveSessions)
+						.set({ status: "failed", updatedAt: now })
+						.where(eq(schema.commentSolveSessions.id, input.sessionId))
+						.run();
+					return assembleSolveSession(input.sessionId)!;
+				}
+			}
+		}
+
 		return info;
 	}),
 
@@ -196,12 +220,12 @@ export const commentSolverRouter = router({
 		}),
 
 	/**
-	 * Fetch live PR comments for a workspace's linked PR.
+	 * Fetch PR comments for a workspace's linked PR from the local cache.
 	 * Returns raw platform comments without any session context.
 	 */
 	getWorkspaceComments: publicProcedure
 		.input(z.object({ workspaceId: z.string() }))
-		.query(async ({ input }) => {
+		.query(({ input }) => {
 			const db = getDb();
 
 			const workspace = db
@@ -214,44 +238,41 @@ export const commentSolverRouter = router({
 				return [];
 			}
 
-			const { owner, repo, number: prNumber } = parsePrIdentifier(workspace.prIdentifier);
+			return db
+				.select()
+				.from(schema.prCommentCache)
+				.where(eq(schema.prCommentCache.workspaceId, input.workspaceId))
+				.all()
+				.map((c) => ({
+					platformId: c.platformCommentId,
+					author: c.author,
+					body: c.body,
+					filePath: c.filePath,
+					lineNumber: c.lineNumber,
+					createdAt: c.createdAt,
+				}));
+		}),
 
-			type WorkspaceComment = {
-				platformId: string;
-				author: string;
-				body: string;
-				filePath: string | null;
-				lineNumber: number | null;
-				createdAt: string;
-			};
+	/**
+	 * Trigger an immediate poll for a single workspace, updating the comment cache.
+	 * Called by the renderer when the Comments tab is opened.
+	 */
+	refreshWorkspaceComments: publicProcedure
+		.input(z.object({ workspaceId: z.string() }))
+		.mutation(async ({ input }) => {
+			const db = getDb();
 
-			if (workspace.prProvider === "github") {
-				const ghComments = await getPRComments(owner, repo, prNumber);
-				return ghComments.map(
-					(c): WorkspaceComment => ({
-						platformId: String(c.id),
-						author: c.author,
-						body: c.body,
-						filePath: c.path ?? null,
-						lineNumber: c.line ?? null,
-						createdAt: c.createdAt,
-					})
-				);
-			} else if (workspace.prProvider === "bitbucket") {
-				const bbComments = await getBitbucketPRComments(owner, repo, prNumber);
-				return bbComments.map(
-					(c): WorkspaceComment => ({
-						platformId: String(c.id),
-						author: c.author,
-						body: c.body,
-						filePath: c.filePath,
-						lineNumber: c.lineNumber,
-						createdAt: c.createdAt,
-					})
-				);
-			}
+			const workspace = db
+				.select()
+				.from(schema.workspaces)
+				.where(eq(schema.workspaces.id, input.workspaceId))
+				.get();
 
-			return [];
+			if (!workspace) return { success: false };
+			if (!workspace.prProvider || !workspace.prIdentifier) return { success: false };
+
+			await pollWorkspace(workspace);
+			return { success: true };
 		}),
 
 	/**
@@ -313,6 +334,75 @@ export const commentSolverRouter = router({
 	}),
 
 	/**
+	 * Approve a draft reply on an unclear comment.
+	 * Sets reply status from "draft" → "approved".
+	 */
+	approveReply: publicProcedure.input(z.object({ replyId: z.string() })).mutation(({ input }) => {
+		const db = getDb();
+
+		const reply = db
+			.select()
+			.from(schema.commentReplies)
+			.where(eq(schema.commentReplies.id, input.replyId))
+			.get();
+
+		if (!reply) throw new Error(`Reply ${input.replyId} not found`);
+
+		db.update(schema.commentReplies)
+			.set({ status: "approved" })
+			.where(eq(schema.commentReplies.id, input.replyId))
+			.run();
+
+		return { success: true };
+	}),
+
+	/**
+	 * Revoke a previously approved group.
+	 * Resets group status "approved" → "fixed" and returns all approved replies
+	 * in the group back to "draft" so the sign-off strip re-appears.
+	 */
+	revokeGroup: publicProcedure.input(z.object({ groupId: z.string() })).mutation(({ input }) => {
+		const db = getDb();
+
+		const group = db
+			.select()
+			.from(schema.commentGroups)
+			.where(eq(schema.commentGroups.id, input.groupId))
+			.get();
+
+		if (!group) throw new Error(`Comment group ${input.groupId} not found`);
+		if (group.status !== "approved") {
+			throw new Error(`Cannot revoke group with status "${group.status}" — expected "approved"`);
+		}
+
+		db.update(schema.commentGroups)
+			.set({ status: "fixed" })
+			.where(eq(schema.commentGroups.id, input.groupId))
+			.run();
+
+		const comments = db
+			.select({ id: schema.prComments.id })
+			.from(schema.prComments)
+			.where(eq(schema.prComments.groupId, input.groupId))
+			.all();
+
+		const commentIds = comments.map((c) => c.id);
+		if (commentIds.length > 0) {
+			db.update(schema.commentReplies)
+				.set({ status: "draft" })
+				.where(
+					and(
+						inArray(schema.commentReplies.prCommentId, commentIds),
+						eq(schema.commentReplies.status, "approved")
+					)
+				)
+				.run();
+		}
+
+		return { success: true };
+	}),
+
+	/**
 	 * Revert a fix group by running git revert on its commit.
 	 */
 	revertGroup: publicProcedure
@@ -332,21 +422,25 @@ export const commentSolverRouter = router({
 		}),
 
 	/**
-	 * Update a comment reply's body and/or status.
+	 * Update a comment reply's body.
+	 * Always resets status to "draft" — the user must re-approve via the
+	 * sign-off strip after editing. Use approveReply for status transitions.
 	 */
 	updateReply: publicProcedure
 		.input(
 			z.object({
 				replyId: z.string(),
 				body: z.string().optional(),
-				status: z.enum(["approved"]).optional(),
 			})
 		)
 		.mutation(({ input }) => {
 			const db = getDb();
 			const updates: Record<string, unknown> = {};
-			if (input.body !== undefined) updates.body = input.body;
-			if (input.status !== undefined) updates.status = input.status;
+
+			if (input.body !== undefined) {
+				updates.body = input.body;
+				updates.status = "draft"; // Always reset when body changes
+			}
 
 			if (Object.keys(updates).length === 0) {
 				return { success: true };
@@ -370,10 +464,12 @@ export const commentSolverRouter = router({
 	}),
 
 	/**
-	 * Add a new draft reply to a comment.
+	 * Add a new reply to a comment.
+	 * By default creates as "approved" (user explicitly wrote it = implicit sign-off).
+	 * Pass draft: true to create as "draft" — used when undoing a discard.
 	 */
 	addReply: publicProcedure
-		.input(z.object({ commentId: z.string(), body: z.string() }))
+		.input(z.object({ commentId: z.string(), body: z.string(), draft: z.boolean().default(false) }))
 		.mutation(({ input }) => {
 			const db = getDb();
 			const id = randomUUID();
@@ -382,7 +478,7 @@ export const commentSolverRouter = router({
 					id,
 					prCommentId: input.commentId,
 					body: input.body,
-					status: "draft",
+					status: input.draft ? "draft" : "approved",
 				})
 				.run();
 			return { id, success: true };
@@ -493,6 +589,85 @@ export const commentSolverRouter = router({
 			// Update session status to dismissed
 			db.update(schema.commentSolveSessions)
 				.set({ status: "dismissed", updatedAt: new Date() })
+				.where(eq(schema.commentSolveSessions.id, input.sessionId))
+				.run();
+
+			return { success: true };
+		}),
+
+	/**
+	 * Reset a failed session: revert all commits and mark dismissed.
+	 */
+	resetFailedSession: publicProcedure
+		.input(z.object({ sessionId: z.string() }))
+		.mutation(async ({ input }) => {
+			const db = getDb();
+			const session = db
+				.select()
+				.from(schema.commentSolveSessions)
+				.where(eq(schema.commentSolveSessions.id, input.sessionId))
+				.get();
+
+			if (!session) throw new Error(`Session ${input.sessionId} not found`);
+			if (session.status !== "failed") throw new Error("Session is not in failed state");
+
+			let worktreePath: string | null = null;
+			try {
+				worktreePath = resolveSessionWorktree(input.sessionId).worktreePath;
+			} catch {
+				// Worktree may have been deleted — still allow dismiss
+			}
+
+			// Revert all non-reverted groups in reverse order
+			if (worktreePath) {
+				const groups = db
+					.select()
+					.from(schema.commentGroups)
+					.where(eq(schema.commentGroups.solveSessionId, input.sessionId))
+					.orderBy(schema.commentGroups.order)
+					.all();
+
+				// Revert in reverse order (highest order first)
+				const groupsToRevert = groups
+					.filter((g) => (g.status === "fixed" || g.status === "approved") && g.commitHash)
+					.reverse();
+
+				for (const group of groupsToRevert) {
+					try {
+						await revertGroupOrchestrator(group.id, worktreePath);
+					} catch (err) {
+						console.error(`[comment-solver] Failed to revert group ${group.id}:`, err);
+						// Continue reverting remaining groups
+					}
+				}
+			}
+
+			db.update(schema.commentSolveSessions)
+				.set({ status: "dismissed", updatedAt: new Date() })
+				.where(eq(schema.commentSolveSessions.id, input.sessionId))
+				.run();
+
+			return { success: true };
+		}),
+
+	/**
+	 * Keep partial changes from a failed session: transition directly to ready.
+	 */
+	keepFailedSession: publicProcedure
+		.input(z.object({ sessionId: z.string() }))
+		.mutation(({ input }) => {
+			const db = getDb();
+			const session = db
+				.select()
+				.from(schema.commentSolveSessions)
+				.where(eq(schema.commentSolveSessions.id, input.sessionId))
+				.get();
+
+			if (!session) throw new Error(`Session ${input.sessionId} not found`);
+			if (session.status !== "failed") throw new Error("Session is not in failed state");
+
+			db.update(schema.commentSolveSessions)
+				.set({ status: "ready", updatedAt: new Date() })
 				.where(eq(schema.commentSolveSessions.id, input.sessionId))
 				.run();
 

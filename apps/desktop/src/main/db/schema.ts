@@ -312,6 +312,12 @@ export {
 	commentEvents,
 	type CommentEvent,
 	type NewCommentEvent,
+	prCommentCache,
+	type PrCommentCache,
+	type NewPrCommentCache,
+	prCommentCacheMeta,
+	type PrCommentCacheMeta,
+	type NewPrCommentCacheMeta,
 } from "./schema-comment-solver";
 
 // ── tracked_prs ──────────────────────────────────────────────────────────────

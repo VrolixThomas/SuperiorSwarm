@@ -114,6 +114,19 @@ export interface GitProvider {
 	getPRState(owner: string, repo: string, prNumber: number): Promise<PRState>;
 
 	getPRComments(owner: string, repo: string, prNumber: number): Promise<NormalizedComment[]>;
+	/**
+	 * Fetch PR comments only if they have changed since the last fetch.
+	 * Pass the `cacheKey` returned by a previous call to skip the fetch if nothing changed.
+	 * For GitHub this is an ETag; for Bitbucket it is the PR's `updated_on` ISO timestamp.
+	 */
+	getPRCommentsIfChanged(
+		owner: string,
+		repo: string,
+		prNumber: number,
+		cacheKey?: string
+	): Promise<
+		{ changed: true; comments: NormalizedComment[]; cacheKey: string } | { changed: false }
+	>;
 	createInlineComment(params: CreateCommentParams): Promise<{ id: string; nodeId?: string }>;
 	replyToComment(params: ReplyParams): Promise<{ id: string }>;
 	resolveComment(params: ResolveParams): Promise<void>;

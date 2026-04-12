@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { detectLanguage } from "../../shared/diff-types";
 import type { PRContext, UnifiedThread } from "../../shared/github-types";
 import { useTabStore } from "../stores/tab-store";
@@ -76,6 +76,14 @@ export function CommentsOverviewTab({ workspaceId }: CommentsOverviewTabProps) {
 	const triggerSolve = trpc.commentSolver.triggerSolve.useMutation();
 	const attachTerminal = trpc.workspaces.attachTerminal.useMutation();
 	const utils = trpc.useUtils();
+	const refreshComments = trpc.commentSolver.refreshWorkspaceComments.useMutation({
+		onSuccess: () => utils.commentSolver.getWorkspaceComments.invalidate({ workspaceId }),
+	});
+
+	// biome-ignore lint/correctness/useExhaustiveDependencies: refreshComments.mutate is stable
+	useEffect(() => {
+		refreshComments.mutate({ workspaceId });
+	}, [workspaceId]);
 
 	const meta = useTabStore((s) => s.workspaceMetadata[workspaceId]);
 	const comments = commentsQuery.data ?? [];
