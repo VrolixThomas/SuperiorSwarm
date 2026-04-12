@@ -1,12 +1,12 @@
 import { useState } from "react";
-import { trpc } from "../trpc/client";
-import { useTabStore } from "../stores/tab-store";
 import type {
 	ChangedFile,
 	SolveCommentInfo,
 	SolveGroupInfo,
 	SolveReplyInfo,
 } from "../../shared/solve-types";
+import { useTabStore } from "../stores/tab-store";
+import { trpc } from "../trpc/client";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 
 // Inject blink animation once
@@ -121,7 +121,7 @@ export function SolveCommitGroupCard({ group, sessionId, workspaceId, defaultExp
 
 function RatioBadge({ group }: { group: SolveGroupInfo }) {
 	const fixed = group.comments.filter(
-		(c) => c.status === "fixed" || c.status === "wont_fix",
+		(c) => c.status === "fixed" || c.status === "wont_fix"
 	).length;
 	const total = group.comments.length;
 	const hasUnclear = group.comments.some((c) => c.status === "unclear");
@@ -256,11 +256,7 @@ function CommentsAddressedSection({
 						{filePath.split("/").pop()}
 					</div>
 					{comments.map((comment) => (
-						<CommentItem
-							key={comment.id}
-							comment={comment}
-							workspaceId={workspaceId}
-						/>
+						<CommentItem key={comment.id} comment={comment} workspaceId={workspaceId} />
 					))}
 				</div>
 			))}
@@ -289,28 +285,22 @@ function CommentItem({
 			if (result.promptPath && result.worktreePath) {
 				const tabStore = useTabStore.getState();
 				const tabs = tabStore.getTabsByWorkspace(workspaceId);
-				const solverTab = tabs.find(
-					(t) => t.kind === "terminal" && t.title === "AI Solver",
-				);
+				const solverTab = tabs.find((t) => t.kind === "terminal" && t.title === "AI Solver");
 
 				if (solverTab) {
 					tabStore.setActiveTab(solverTab.id);
 					window.electron.terminal
 						.write(solverTab.id, `bash '${result.launchScript}'\r`)
 						.catch((err: unknown) =>
-							console.error("[solve] failed to write follow-up command:", err),
+							console.error("[solve] failed to write follow-up command:", err)
 						);
 				} else {
-					const tabId = tabStore.addTerminalTab(
-						workspaceId,
-						result.worktreePath,
-						"AI Solver",
-					);
+					const tabId = tabStore.addTerminalTab(workspaceId, result.worktreePath, "AI Solver");
 					window.electron.terminal
 						.create(tabId, result.worktreePath)
 						.then(() => window.electron.terminal.write(tabId, `bash '${result.launchScript}'\r`))
 						.catch((err: unknown) =>
-							console.error("[solve] failed to launch follow-up agent:", err),
+							console.error("[solve] failed to launch follow-up agent:", err)
 						);
 				}
 			}
@@ -385,13 +375,13 @@ function CommentItem({
 							Cancel
 						</button>
 						<button
-							onClick={() =>
-								followUpMutation.mutate({ commentId: comment.id, followUpText })
-							}
+							onClick={() => followUpMutation.mutate({ commentId: comment.id, followUpText })}
 							disabled={!followUpText.trim()}
 							className={[
 								"py-[3px] px-[10px] rounded-[6px] text-[11px] font-medium bg-[var(--accent-subtle)] text-[var(--accent)] border-none",
-								followUpText.trim() ? "cursor-pointer opacity-100" : "cursor-not-allowed opacity-50",
+								followUpText.trim()
+									? "cursor-pointer opacity-100"
+									: "cursor-not-allowed opacity-50",
 							].join(" ")}
 						>
 							Request changes
@@ -424,9 +414,7 @@ function DraftReplySignoff({ reply }: { reply: SolveReplyInfo }) {
 			<div className="text-[9.5px] font-semibold uppercase tracking-[0.05em] text-[var(--warning)] mb-[4px] opacity-75">
 				Draft reply
 			</div>
-			<div className="text-[12px] text-[var(--text-secondary)] leading-[1.5]">
-				{reply.body}
-			</div>
+			<div className="text-[12px] text-[var(--text-secondary)] leading-[1.5]">{reply.body}</div>
 			<div className="flex items-center gap-[6px] mt-[8px] pt-[8px] border-t border-[var(--border-subtle)]">
 				<span className="text-[11px] text-[var(--text-tertiary)] flex-1">Post this reply?</span>
 				<button

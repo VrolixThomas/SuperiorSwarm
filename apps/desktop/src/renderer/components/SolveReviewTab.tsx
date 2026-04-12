@@ -1,8 +1,8 @@
 import { useEffect, useRef } from "react";
-import { trpc } from "../trpc/client";
-import { useTabStore } from "../stores/tab-store";
-import { SolveCommitGroupCard } from "./SolveCommitGroupCard";
 import type { SolveSessionInfo, SolveSessionStatus } from "../../shared/solve-types";
+import { useTabStore } from "../stores/tab-store";
+import { trpc } from "../trpc/client";
+import { SolveCommitGroupCard } from "./SolveCommitGroupCard";
 
 interface Props {
 	workspaceId: string;
@@ -19,7 +19,7 @@ export function SolveReviewTab({ workspaceId, solveSessionId }: Props) {
 				const status = query.state.data?.status;
 				return status === "queued" || status === "in_progress" ? 3000 : false;
 			},
-		},
+		}
 	);
 
 	const cancelMutation = trpc.commentSolver.cancelSolve.useMutation({
@@ -53,7 +53,7 @@ export function SolveReviewTab({ workspaceId, solveSessionId }: Props) {
 	const groups = session.groups ?? [];
 	const allComments = groups.flatMap((g) => g.comments);
 	const resolvedCount = allComments.filter(
-		(c) => c.status === "fixed" || c.status === "wont_fix",
+		(c) => c.status === "fixed" || c.status === "wont_fix"
 	).length;
 	const pendingCount = allComments.filter((c) => c.status === "open").length;
 	const unclearCount = allComments.filter((c) => c.status === "unclear").length;
@@ -62,9 +62,7 @@ export function SolveReviewTab({ workspaceId, solveSessionId }: Props) {
 	const totalGroups = groups.filter((g) => g.status !== "reverted").length;
 	const allApproved = approvedGroups === totalGroups && totalGroups > 0;
 
-	const hasDraftReplies = groups.some((g) =>
-		g.comments.some((c) => c.reply?.status === "draft"),
-	);
+	const hasDraftReplies = groups.some((g) => g.comments.some((c) => c.reply?.status === "draft"));
 	const canPush = allApproved && !hasDraftReplies && isReady;
 
 	return (
@@ -136,14 +134,10 @@ function PRHeader({
 		<div className="mb-5">
 			<div className="flex justify-between items-center mb-[6px]">
 				<div className="flex items-center gap-2">
-					<span
-						className="[font-family:var(--font-mono)] text-[11.5px] text-[var(--text-tertiary)]"
-					>
+					<span className="[font-family:var(--font-mono)] text-[11.5px] text-[var(--text-tertiary)]">
 						{session.prIdentifier}
 					</span>
-					<span
-						className="[font-family:var(--font-mono)] inline-flex items-center gap-[5px] px-2 py-[2px] bg-[var(--bg-elevated)] rounded-[4px] text-[10.5px] text-[var(--text-secondary)]"
-					>
+					<span className="[font-family:var(--font-mono)] inline-flex items-center gap-[5px] px-2 py-[2px] bg-[var(--bg-elevated)] rounded-[4px] text-[10.5px] text-[var(--text-secondary)]">
 						{session.sourceBranch}
 						<span className="text-[var(--text-tertiary)] text-[9px]">→</span>
 						{session.targetBranch}
@@ -230,9 +224,7 @@ function ProgressStrip({
 						/>
 					)}
 				</div>
-				<span
-					className="[font-family:var(--font-mono)] text-[11px] text-[var(--text-tertiary)]"
-				>
+				<span className="[font-family:var(--font-mono)] text-[11px] text-[var(--text-tertiary)]">
 					{approvedGroups} / {totalGroups} approved
 				</span>
 			</div>
@@ -271,7 +263,8 @@ function BottomBar({
 		const remaining = totalGroups - approvedGroups;
 		messages.push(`${remaining} group${remaining > 1 ? "s" : ""} not yet approved`);
 	}
-	if (unclearCount > 0) messages.push(`${unclearCount} unclear comment${unclearCount > 1 ? "s" : ""} need attention`);
+	if (unclearCount > 0)
+		messages.push(`${unclearCount} unclear comment${unclearCount > 1 ? "s" : ""} need attention`);
 
 	return (
 		<div className="px-7 py-3 border-t border-[var(--border-subtle)] flex items-center justify-between">

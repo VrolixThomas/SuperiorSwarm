@@ -277,9 +277,7 @@ function CommitGroupCard({
 			{/* Sub-header: commit hash + file names */}
 			<div className="border-t border-[var(--border-subtle)] px-3 py-1.5">
 				<div className="flex flex-wrap items-center gap-1 text-[10px] text-[var(--text-quaternary)]">
-					{shortHash && (
-						<span style={{ fontFamily: "var(--font-mono)" }}>{shortHash}</span>
-					)}
+					{shortHash && <span style={{ fontFamily: "var(--font-mono)" }}>{shortHash}</span>}
 					{shortHash && filePaths.length > 0 && <span>&middot;</span>}
 					{filePaths.map((fp, i) => {
 						const filename = fp.split("/").pop() ?? fp;

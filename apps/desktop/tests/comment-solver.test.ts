@@ -1,6 +1,9 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import Database from "better-sqlite3";
-import { cancelSolve, validateSolveTransition } from "../src/main/ai-review/comment-solver-orchestrator";
+import {
+	cancelSolve,
+	validateSolveTransition,
+} from "../src/main/ai-review/comment-solver-orchestrator";
 
 // ─── In-memory database setup ─────────────────────────────────────────────────
 
@@ -844,16 +847,14 @@ describe("Comment Solver", () => {
 			expect(session["status"]).toBe("cancelled");
 
 			// Verify: fixed group still exists
-			const fixedGroup = db
-				.prepare("SELECT * FROM comment_groups WHERE id = 'cg-fixed'")
-				.get() as Record<string, unknown> | undefined;
+			const fixedGroup = db.prepare("SELECT * FROM comment_groups WHERE id = 'cg-fixed'").get() as
+				| Record<string, unknown>
+				| undefined;
 			expect(fixedGroup).toBeDefined();
 			expect(fixedGroup?.["status"]).toBe("fixed");
 
 			// Verify: pending group was deleted
-			const deletedGroup = db
-				.prepare("SELECT * FROM comment_groups WHERE id = 'cg-pending'")
-				.get();
+			const deletedGroup = db.prepare("SELECT * FROM comment_groups WHERE id = 'cg-pending'").get();
 			expect(deletedGroup).toBeNull();
 
 			// Verify: comment was reset to open with no group

@@ -538,7 +538,11 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 
 	addSolveReviewTab: (workspaceId, solveSessionId) => {
 		const existing = get().getSolveReviewTab(workspaceId);
-		if (existing && existing.kind === "solve-review" && existing.solveSessionId === solveSessionId) {
+		if (
+			existing &&
+			existing.kind === "solve-review" &&
+			existing.solveSessionId === solveSessionId
+		) {
 			get().setActiveTab(existing.id);
 			return existing.id;
 		}
