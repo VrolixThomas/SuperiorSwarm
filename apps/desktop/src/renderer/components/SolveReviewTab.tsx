@@ -328,7 +328,7 @@ function BottomBar({
 						type="button"
 						onClick={canPush && !isPushing ? onPush : undefined}
 						disabled={!canPush || isPushing}
-						className={`px-4 py-[6px] rounded-[6px] text-[12px] font-semibold border-none ${canPush && !isPushing ? "cursor-pointer bg-[var(--success)] text-[#0a0c0a] opacity-100" : "cursor-not-allowed bg-[var(--bg-active)] text-[var(--text-tertiary)] opacity-50"}`}
+						className={`px-4 py-[6px] rounded-[6px] text-[12px] font-semibold border-none ${canPush && !isPushing ? "cursor-pointer bg-[var(--success)] text-white opacity-100" : "cursor-not-allowed bg-[var(--bg-active)] text-[var(--text-tertiary)] opacity-50"}`}
 					>
 						{pushLabel}
 					</button>
