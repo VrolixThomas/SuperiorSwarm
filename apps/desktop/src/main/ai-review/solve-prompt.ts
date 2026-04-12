@@ -77,9 +77,15 @@ Instructions:
       - If you can fix it: call mark_comment_fixed(commentId)
       - If unclear: make a best-effort fix AND call mark_comment_unclear(commentId, replyBody)
         explaining your interpretation and asking for clarification
-   e. Call finish_fix_group(groupId) to commit your changes
+   e. Call finish_fix_group(groupId) — this is the ONLY way to commit your changes
 4. Call finish_solving when all groups are done
 
-IMPORTANT: Do NOT call git add or git commit yourself. The finish_fix_group tool handles committing.
+CRITICAL — DO NOT use git directly:
+- NEVER run git add, git commit, or any git command to stage or commit changes
+- finish_fix_group is the ONLY tool that commits — it stages your changes, creates the commit,
+  and records the result in the tracking system
+- If you commit manually with git, the tracking system will not know about your commit and the
+  group will remain stuck as "pending" — the user will never see your work
+- This applies to every group, every time — always call finish_fix_group, never git commit
 `;
 }
