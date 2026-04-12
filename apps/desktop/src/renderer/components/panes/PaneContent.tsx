@@ -112,6 +112,7 @@ export function PaneContent({
 					/>
 				</div>
 			)}
+			{activeTab?.kind === "solve-review" && null}
 		</div>
 	);
 }
