@@ -62,7 +62,14 @@ export function SolveReviewTab({ workspaceId, solveSessionId }: Props) {
 	const totalGroups = groups.filter((g) => g.status !== "reverted").length;
 	const allApproved = approvedGroups === totalGroups && totalGroups > 0;
 
-	const hasDraftReplies = groups.some((g) => g.comments.some((c) => c.reply?.status === "draft"));
+	const draftGroups = groups
+		.filter((g) => g.comments.some((c) => c.reply?.status === "draft"))
+		.map((g) => g.label);
+	const hasDraftReplies = draftGroups.length > 0;
+	const totalDraftReplies = groups.reduce(
+		(n, g) => n + g.comments.filter((c) => c.reply?.status === "draft").length,
+		0
+	);
 	const canPush = allApproved && !hasDraftReplies && isReady;
 
 	return (
@@ -79,6 +86,7 @@ export function SolveReviewTab({ workspaceId, solveSessionId }: Props) {
 					unclearCount={unclearCount}
 					approvedGroups={approvedGroups}
 					totalGroups={totalGroups}
+					totalDraftReplies={totalDraftReplies}
 				/>
 				<div className="text-[10.5px] font-semibold uppercase tracking-[0.07em] text-[var(--text-tertiary)] mb-2">
 					{groups.length} Commit Groups
@@ -106,10 +114,10 @@ export function SolveReviewTab({ workspaceId, solveSessionId }: Props) {
 			</div>
 			<BottomBar
 				canPush={canPush}
-				hasDraftReplies={hasDraftReplies}
+				isSolving={isSolving}
+				draftGroups={draftGroups}
 				approvedGroups={approvedGroups}
 				totalGroups={totalGroups}
-				unclearCount={unclearCount}
 				isPushing={pushMutation.isPending}
 				onDismiss={() => dismissMutation.mutate({ sessionId: solveSessionId })}
 				onPush={() => pushMutation.mutate({ sessionId: solveSessionId })}
@@ -186,46 +194,60 @@ function ProgressStrip({
 	unclearCount,
 	approvedGroups,
 	totalGroups,
+	totalDraftReplies,
 }: {
 	resolvedCount: number;
 	pendingCount: number;
 	unclearCount: number;
 	approvedGroups: number;
 	totalGroups: number;
+	totalDraftReplies: number;
 }) {
 	const pct = totalGroups > 0 ? (approvedGroups / totalGroups) * 100 : 0;
 	return (
 		<div className="mb-[22px]">
-			<div className="flex justify-between items-center mb-[6px]">
-				<div className="flex gap-[5px]">
-					{resolvedCount > 0 && (
-						<StatusPill
-							color="var(--success)"
-							bg="var(--success-subtle)"
-							count={resolvedCount}
-							label="resolved"
-						/>
-					)}
-					{pendingCount > 0 && (
-						<StatusPill
-							color="var(--text-tertiary)"
-							bg="var(--bg-elevated)"
-							count={pendingCount}
-							label="pending"
-						/>
-					)}
-					{unclearCount > 0 && (
-						<StatusPill
-							color="var(--warning)"
-							bg="var(--warning-subtle)"
-							count={unclearCount}
-							label="unclear"
-						/>
-					)}
-				</div>
-				<span className="[font-family:var(--font-mono)] text-[11px] text-[var(--text-tertiary)]">
-					{approvedGroups} / {totalGroups} approved
+			{/* Row 1: comment-level review stats */}
+			<div className="flex gap-[5px] mb-[10px]">
+				{resolvedCount > 0 && (
+					<StatusPill
+						color="var(--success)"
+						bg="var(--success-subtle)"
+						count={resolvedCount}
+						label="resolved"
+					/>
+				)}
+				{pendingCount > 0 && (
+					<StatusPill
+						color="var(--text-tertiary)"
+						bg="var(--bg-elevated)"
+						count={pendingCount}
+						label="pending"
+					/>
+				)}
+				{unclearCount > 0 && (
+					<StatusPill
+						color="var(--warning)"
+						bg="var(--warning-subtle)"
+						count={unclearCount}
+						label="unclear"
+					/>
+				)}
+			</div>
+			{/* Row 2: group approval — gates push */}
+			<div className="flex justify-between items-center mb-[5px]">
+				<span className="text-[10px] font-semibold uppercase tracking-[0.07em] text-[var(--text-tertiary)]">
+					Approval
 				</span>
+				<div className="flex items-center gap-[8px]">
+					{totalDraftReplies > 0 && (
+						<span className="text-[10.5px] text-[var(--warning)] font-medium">
+							✉ {totalDraftReplies} draft {totalDraftReplies === 1 ? "reply" : "replies"}
+						</span>
+					)}
+					<span className="[font-family:var(--font-mono)] text-[11px] text-[var(--text-tertiary)]">
+						{approvedGroups} / {totalGroups} groups
+					</span>
+				</div>
 			</div>
 			<div className="h-[2px] bg-[var(--bg-elevated)] rounded-[1px] overflow-hidden">
 				<div
@@ -239,43 +261,50 @@ function ProgressStrip({
 
 function BottomBar({
 	canPush,
-	hasDraftReplies,
+	isSolving,
+	draftGroups,
 	approvedGroups,
 	totalGroups,
-	unclearCount,
 	isPushing,
 	onDismiss,
 	onPush,
 }: {
 	canPush: boolean;
-	hasDraftReplies: boolean;
+	isSolving: boolean;
+	draftGroups: string[];
 	approvedGroups: number;
 	totalGroups: number;
-	unclearCount: number;
 	isPushing: boolean;
 	onDismiss: () => void;
 	onPush: () => void;
 }) {
-	const messages: string[] = [];
-	if (hasDraftReplies) messages.push("draft replies need sign-off");
-	if (approvedGroups < totalGroups) {
-		const remaining = totalGroups - approvedGroups;
-		messages.push(`${remaining} group${remaining > 1 ? "s" : ""} not yet approved`);
-	}
-	if (unclearCount > 0)
-		messages.push(`${unclearCount} unclear comment${unclearCount > 1 ? "s" : ""} need attention`);
+	const unapprovedCount = totalGroups - approvedGroups;
+	const showCallout = !canPush && !isSolving && !isPushing;
 
 	return (
-		<div className="px-7 py-3 border-t border-[var(--border-subtle)] flex items-center justify-between">
-			<div className="text-[11.5px] text-[var(--text-tertiary)] flex items-center gap-[5px]">
-				{messages.length > 0 && (
-					<>
-						<span className="text-[var(--warning)]">⚠</span>
-						{messages.join(" · ")}
-					</>
-				)}
-			</div>
-			<div className="flex gap-[6px]">
+		<div className="border-t border-[var(--border-subtle)]">
+			{showCallout && (
+				<div className="px-7 py-[10px] bg-[var(--warning-subtle)] flex flex-col gap-[4px]">
+					{draftGroups.length > 0 && (
+						<div className="text-[12px] font-medium text-[var(--warning)]">
+							✉ Sign off draft replies in:{" "}
+							{draftGroups.map((label, i) => (
+								<span key={label}>
+									{i > 0 && ", "}
+									<span className="font-semibold">"{label}"</span>
+								</span>
+							))}
+						</div>
+					)}
+					{unapprovedCount > 0 && (
+						<div className="text-[12px] font-medium text-[var(--warning)]">
+							↑ Approve {unapprovedCount} remaining commit group
+							{unapprovedCount > 1 ? "s" : ""}
+						</div>
+					)}
+				</div>
+			)}
+			<div className="px-7 py-3 flex items-center justify-end gap-[6px]">
 				<button
 					onClick={onDismiss}
 					className="px-[14px] py-[6px] rounded-[6px] text-[12px] font-medium text-[var(--text-secondary)] bg-transparent border border-[var(--border-default)] cursor-pointer"

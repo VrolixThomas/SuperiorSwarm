@@ -98,7 +98,7 @@ export function SolveCommitGroupCard({ group, sessionId, workspaceId, defaultExp
 						{group.label}
 					</span>
 					<RatioBadge group={group} />
-					{draftReplyCount > 0 && !expanded && (
+					{draftReplyCount > 0 && (
 						<span className="shrink-0 py-[1px] px-[7px] rounded-full text-[10px] font-medium bg-[var(--warning-subtle)] text-[var(--warning)]">
 							✉ {draftReplyCount} draft
 						</span>
@@ -369,6 +369,11 @@ function CommentItem({
 					</button>
 				)}
 			</div>
+			{comment.status === "unclear" && (
+				<div className="text-[10.5px] text-[var(--text-tertiary)] mt-[3px] leading-[1.4]">
+					AI couldn't address this — use Follow up above or accept as-is.
+				</div>
+			)}
 			{showFollowUp && (
 				<div className="mt-[8px]">
 					<textarea
