@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { trpc } from "../trpc/client";
 import { useTabStore } from "../stores/tab-store";
 import { SolveCommitGroupCard } from "./SolveCommitGroupCard";
-import type { SolveSessionInfo } from "../../shared/solve-types";
+import type { SolveSessionInfo, SolveSessionStatus } from "../../shared/solve-types";
 
 interface Props {
 	workspaceId: string;
@@ -34,7 +34,7 @@ export function SolveReviewTab({ workspaceId, solveSessionId }: Props) {
 		onSuccess: () => utils.commentSolver.invalidate(),
 	});
 
-	const prevStatusRef = useRef(session?.status);
+	const prevStatusRef = useRef<SolveSessionStatus | undefined>(undefined);
 	useEffect(() => {
 		if (prevStatusRef.current === "in_progress" && session?.status === "ready") {
 			useTabStore.getState().setActiveTab(`solve-review-${solveSessionId}`);
@@ -43,7 +43,7 @@ export function SolveReviewTab({ workspaceId, solveSessionId }: Props) {
 	}, [session?.status, solveSessionId]);
 
 	if (isLoading || !session) {
-		return <div style={{ padding: 24, color: "var(--text-secondary)" }}>Loading…</div>;
+		return <div className="p-6 text-[var(--text-secondary)]">Loading…</div>;
 	}
 
 	const isSolving = session.status === "queued" || session.status === "in_progress";
@@ -68,8 +68,8 @@ export function SolveReviewTab({ workspaceId, solveSessionId }: Props) {
 	const canPush = allApproved && !hasDraftReplies && isReady;
 
 	return (
-		<div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
-			<div style={{ flex: 1, overflowY: "auto", padding: "22px 28px 18px" }}>
+		<div className="flex flex-col h-full overflow-hidden">
+			<div className="flex-1 overflow-y-auto px-7 pt-[22px] pb-[18px]">
 				<PRHeader
 					session={session}
 					isSolving={isSolving}
@@ -82,17 +82,7 @@ export function SolveReviewTab({ workspaceId, solveSessionId }: Props) {
 					approvedGroups={approvedGroups}
 					totalGroups={totalGroups}
 				/>
-				<div
-					style={{
-						fontFamily: "'Outfit', var(--font-family)",
-						fontSize: 10.5,
-						fontWeight: 600,
-						textTransform: "uppercase",
-						letterSpacing: "0.07em",
-						color: "var(--text-tertiary)",
-						marginBottom: 8,
-					}}
-				>
+				<div className="text-[10.5px] font-semibold uppercase tracking-[0.07em] text-[var(--text-tertiary)] mb-2">
 					{groups.length} Commit Groups
 				</div>
 				{groups.map((group, i) => (
@@ -105,21 +95,12 @@ export function SolveReviewTab({ workspaceId, solveSessionId }: Props) {
 					/>
 				))}
 				{isCancelled && (
-					<div style={{ marginTop: 12, textAlign: "center" }}>
+					<div className="mt-3 text-center">
 						<button
 							onClick={() => {
 								/* re-solve handled in Task 9 */
 							}}
-							style={{
-								padding: "6px 16px",
-								borderRadius: 6,
-								fontSize: 12,
-								fontWeight: 500,
-								background: "var(--accent-subtle)",
-								color: "var(--accent)",
-								border: "none",
-								cursor: "pointer",
-							}}
+							className="px-4 py-[6px] rounded-[6px] text-[12px] font-medium bg-[var(--accent-subtle)] text-[var(--accent)] border-none cursor-pointer"
 						>
 							Re-solve remaining comments
 						</button>
@@ -127,12 +108,10 @@ export function SolveReviewTab({ workspaceId, solveSessionId }: Props) {
 				)}
 			</div>
 			<BottomBar
-				session={session}
 				canPush={canPush}
 				hasDraftReplies={hasDraftReplies}
 				approvedGroups={approvedGroups}
 				totalGroups={totalGroups}
-				unclearCount={unclearCount}
 				onDismiss={() => dismissMutation.mutate({ sessionId: solveSessionId })}
 				onPush={() => pushMutation.mutate({ sessionId: solveSessionId })}
 			/>
@@ -152,60 +131,34 @@ function PRHeader({
 	onCancel: () => void;
 }) {
 	return (
-		<div style={{ marginBottom: 20 }}>
-			<div
-				style={{
-					display: "flex",
-					justifyContent: "space-between",
-					alignItems: "center",
-					marginBottom: 6,
-				}}
-			>
-				<div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+		<div className="mb-5">
+			<div className="flex justify-between items-center mb-[6px]">
+				<div className="flex items-center gap-2">
 					<span
-						style={{ fontFamily: "var(--font-mono)", fontSize: 11.5, color: "var(--text-tertiary)" }}
+						style={{ fontFamily: "var(--font-mono)" }}
+						className="text-[11.5px] text-[var(--text-tertiary)]"
 					>
 						{session.prIdentifier}
 					</span>
 					<span
-						style={{
-							display: "inline-flex",
-							alignItems: "center",
-							gap: 5,
-							padding: "2px 8px",
-							background: "var(--bg-elevated)",
-							borderRadius: 4,
-							fontFamily: "var(--font-mono)",
-							fontSize: 10.5,
-							color: "var(--text-secondary)",
-						}}
+						style={{ fontFamily: "var(--font-mono)" }}
+						className="inline-flex items-center gap-[5px] px-2 py-[2px] bg-[var(--bg-elevated)] rounded-[4px] text-[10.5px] text-[var(--text-secondary)]"
 					>
 						{session.sourceBranch}
-						<span style={{ color: "var(--text-tertiary)", fontSize: 9 }}>→</span>
+						<span className="text-[var(--text-tertiary)] text-[9px]">→</span>
 						{session.targetBranch}
 					</span>
 				</div>
 				{isSolving && (
 					<button
 						onClick={onCancel}
-						style={{
-							padding: "4px 10px",
-							borderRadius: 6,
-							fontSize: 11.5,
-							fontWeight: 500,
-							color: "var(--danger)",
-							background: "var(--danger-subtle)",
-							border: "none",
-							cursor: "pointer",
-						}}
+						className="px-[10px] py-[4px] rounded-[6px] text-[11.5px] font-medium text-[var(--danger)] bg-[var(--danger-subtle)] border-none cursor-pointer"
 					>
 						Cancel solve
 					</button>
 				)}
 			</div>
-			<div
-				style={{ fontSize: 17, fontWeight: 600, letterSpacing: "-0.03em", lineHeight: 1.35 }}
-			>
+			<div className="text-[17px] font-semibold tracking-[-0.03em] leading-[1.35]">
 				{session.prTitle}
 			</div>
 		</div>
@@ -225,21 +178,10 @@ function StatusPill({
 }) {
 	return (
 		<span
-			style={{
-				display: "inline-flex",
-				alignItems: "center",
-				gap: 4,
-				padding: "2px 8px",
-				borderRadius: 100,
-				fontSize: 11,
-				fontWeight: 500,
-				background: bg,
-				color,
-			}}
+			style={{ background: bg, color }}
+			className="inline-flex items-center gap-1 px-2 py-[2px] rounded-full text-[11px] font-medium"
 		>
-			<span
-				style={{ width: 4, height: 4, borderRadius: "50%", background: "currentColor" }}
-			/>
+			<span className="w-1 h-1 rounded-full bg-current" />
 			{count} {label}
 		</span>
 	);
@@ -260,16 +202,9 @@ function ProgressStrip({
 }) {
 	const pct = totalGroups > 0 ? (approvedGroups / totalGroups) * 100 : 0;
 	return (
-		<div style={{ marginBottom: 22 }}>
-			<div
-				style={{
-					display: "flex",
-					justifyContent: "space-between",
-					alignItems: "center",
-					marginBottom: 6,
-				}}
-			>
-				<div style={{ display: "flex", gap: 5 }}>
+		<div className="mb-[22px]">
+			<div className="flex justify-between items-center mb-[6px]">
+				<div className="flex gap-[5px]">
 					{resolvedCount > 0 && (
 						<StatusPill
 							color="var(--success)"
@@ -296,22 +231,16 @@ function ProgressStrip({
 					)}
 				</div>
 				<span
-					style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-tertiary)" }}
+					style={{ fontFamily: "var(--font-mono)" }}
+					className="text-[11px] text-[var(--text-tertiary)]"
 				>
 					{approvedGroups} / {totalGroups} approved
 				</span>
 			</div>
-			<div
-				style={{ height: 2, background: "var(--bg-elevated)", borderRadius: 1, overflow: "hidden" }}
-			>
+			<div className="h-[2px] bg-[var(--bg-elevated)] rounded-[1px] overflow-hidden">
 				<div
-					style={{
-						height: "100%",
-						width: `${pct}%`,
-						background: "var(--success)",
-						borderRadius: 1,
-						transition: "width 0.5s ease",
-					}}
+					className="h-full bg-[var(--success)] rounded-[1px]"
+					style={{ width: `${pct}%`, transition: "width 0.5s ease" }}
 				/>
 			</div>
 		</div>
@@ -319,21 +248,17 @@ function ProgressStrip({
 }
 
 function BottomBar({
-	session: _session,
 	canPush,
 	hasDraftReplies,
 	approvedGroups,
 	totalGroups,
-	unclearCount: _unclearCount,
 	onDismiss,
 	onPush,
 }: {
-	session: SolveSessionInfo;
 	canPush: boolean;
 	hasDraftReplies: boolean;
 	approvedGroups: number;
 	totalGroups: number;
-	unclearCount: number;
 	onDismiss: () => void;
 	onPush: () => void;
 }) {
@@ -345,61 +270,26 @@ function BottomBar({
 	}
 
 	return (
-		<div
-			style={{
-				padding: "12px 28px",
-				borderTop: "1px solid var(--border-subtle)",
-				display: "flex",
-				alignItems: "center",
-				justifyContent: "space-between",
-			}}
-		>
-			<div
-				style={{
-					fontSize: 11.5,
-					color: "var(--text-tertiary)",
-					display: "flex",
-					alignItems: "center",
-					gap: 5,
-				}}
-			>
+		<div className="px-7 py-3 border-t border-[var(--border-subtle)] flex items-center justify-between">
+			<div className="text-[11.5px] text-[var(--text-tertiary)] flex items-center gap-[5px]">
 				{messages.length > 0 && (
 					<>
-						<span style={{ color: "var(--warning)" }}>⚠</span>
+						<span className="text-[var(--warning)]">⚠</span>
 						{messages.join(" · ")}
 					</>
 				)}
 			</div>
-			<div style={{ display: "flex", gap: 6 }}>
+			<div className="flex gap-[6px]">
 				<button
 					onClick={onDismiss}
-					style={{
-						padding: "6px 14px",
-						borderRadius: 6,
-						fontSize: 12,
-						fontWeight: 500,
-						color: "var(--text-secondary)",
-						background: "transparent",
-						border: "1px solid var(--border-default)",
-						cursor: "pointer",
-					}}
+					className="px-[14px] py-[6px] rounded-[6px] text-[12px] font-medium text-[var(--text-secondary)] bg-transparent border border-[var(--border-default)] cursor-pointer"
 				>
 					Dismiss
 				</button>
 				<button
 					onClick={canPush ? onPush : undefined}
 					disabled={!canPush}
-					style={{
-						padding: "6px 16px",
-						borderRadius: 6,
-						fontSize: 12,
-						fontWeight: 600,
-						border: "none",
-						cursor: canPush ? "pointer" : "not-allowed",
-						background: canPush ? "var(--success)" : "var(--bg-active)",
-						color: canPush ? "#0a0c0a" : "var(--text-tertiary)",
-						opacity: canPush ? 1 : 0.5,
-					}}
+					className={`px-4 py-[6px] rounded-[6px] text-[12px] font-semibold border-none ${canPush ? "cursor-pointer bg-[var(--success)] text-[#0a0c0a] opacity-100" : "cursor-not-allowed bg-[var(--bg-active)] text-[var(--text-tertiary)] opacity-50"}`}
 				>
 					Push &amp; post replies
 				</button>
