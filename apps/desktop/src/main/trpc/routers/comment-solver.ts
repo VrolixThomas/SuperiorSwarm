@@ -5,19 +5,19 @@ import { TRPCError } from "@trpc/server";
 import { and, eq, inArray, not } from "drizzle-orm";
 import { app } from "electron";
 import { z } from "zod";
+import { CLI_PRESETS, type LaunchOptions } from "../../ai-review/cli-presets";
 import { pollWorkspace } from "../../ai-review/comment-poller";
 import {
 	cancelSolve,
 	isSessionDead,
 	revertGroup as revertGroupOrchestrator,
 } from "../../ai-review/comment-solver-orchestrator";
-import { CLI_PRESETS, type LaunchOptions } from "../../ai-review/cli-presets";
 import { createAndQueueSolve } from "../../ai-review/create-and-queue-solve";
 import { getMcpServerPath } from "../../ai-review/mcp-path";
 import { getSettings } from "../../ai-review/orchestrator";
+import { buildSolveFollowUpPrompt } from "../../ai-review/solve-prompt";
 import { publishSolve } from "../../ai-review/solve-publisher";
 import { resolveSessionWorktree } from "../../ai-review/solve-session-resolver";
-import { buildSolveFollowUpPrompt } from "../../ai-review/solve-prompt";
 import { getDb } from "../../db";
 import * as schema from "../../db/schema";
 import type {
@@ -612,12 +612,10 @@ export const commentSolverRouter = router({
 	 * Kills the agent process, deletes pending groups, and marks the session cancelled.
 	 * Fixed groups are preserved so partial work survives.
 	 */
-	cancelSolve: publicProcedure
-		.input(z.object({ sessionId: z.string() }))
-		.mutation(({ input }) => {
-			cancelSolve(input.sessionId);
-			return { success: true as const };
-		}),
+	cancelSolve: publicProcedure.input(z.object({ sessionId: z.string() })).mutation(({ input }) => {
+		cancelSolve(input.sessionId);
+		return { success: true as const };
+	}),
 
 	/**
 	 * Request follow-up changes on a specific comment after the AI solver has completed.
@@ -628,7 +626,7 @@ export const commentSolverRouter = router({
 			z.object({
 				commentId: z.string(),
 				followUpText: z.string().min(1),
-			}),
+			})
 		)
 		.mutation(({ input }) => {
 			const db = getDb();
@@ -713,7 +711,10 @@ export const commentSolverRouter = router({
 			try {
 				({ worktreePath } = resolveSessionWorktree(session.id));
 			} catch (err) {
-				throw new TRPCError({ code: "PRECONDITION_FAILED", message: `Worktree not found: ${String(err)}` });
+				throw new TRPCError({
+					code: "PRECONDITION_FAILED",
+					message: `Worktree not found: ${String(err)}`,
+				});
 			}
 
 			// Build launch script using active CLI preset
@@ -744,7 +745,7 @@ export const commentSolverRouter = router({
 			writeFileSync(
 				launchScript,
 				`#!/bin/bash\ncd '${worktreePath}'\n${preset.command} ${launchArgs.join(" ")}\n`,
-				{ mode: 0o755 },
+				{ mode: 0o755 }
 			);
 
 			return {

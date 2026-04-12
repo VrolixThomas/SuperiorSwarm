@@ -393,7 +393,9 @@ export function cancelSolve(sessionId: string): void {
 		} catch (err: unknown) {
 			const code = (err as NodeJS.ErrnoException).code;
 			if (code === "EPERM") {
-				console.warn(`[comment-solver] EPERM killing PID ${session.pid} for session ${sessionId} — proceeding with cancel`);
+				console.warn(
+					`[comment-solver] EPERM killing PID ${session.pid} for session ${sessionId} — proceeding with cancel`
+				);
 			} else if (code !== "ESRCH") {
 				throw err;
 			}
@@ -408,7 +410,7 @@ export function cancelSolve(sessionId: string): void {
 			.where(
 				and(
 					eq(schema.commentGroups.solveSessionId, sessionId),
-					eq(schema.commentGroups.status, "pending"),
+					eq(schema.commentGroups.status, "pending")
 				)
 			)
 			.all();
@@ -421,9 +423,7 @@ export function cancelSolve(sessionId: string): void {
 				.run();
 
 			// Delete the pending group
-			tx.delete(schema.commentGroups)
-				.where(eq(schema.commentGroups.id, group.id))
-				.run();
+			tx.delete(schema.commentGroups).where(eq(schema.commentGroups.id, group.id)).run();
 		}
 
 		// Mark session cancelled

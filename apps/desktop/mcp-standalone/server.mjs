@@ -519,24 +519,33 @@ if (isSolverMode) {
 				const diffTree = execFileSync(
 					"git",
 					["diff-tree", "--no-commit-id", "-r", "--numstat", hash],
-					{ cwd },
-				).toString().trim();
+					{ cwd }
+				)
+					.toString()
+					.trim();
 
-				const changedFiles = diffTree ? diffTree.split("\n").filter(Boolean).map((line) => {
-					const [add, del, path] = line.split("\t");
-					return {
-						path,
-						changeType: "M",
-						additions: add === "-" ? 0 : parseInt(add, 10),
-						deletions: del === "-" ? 0 : parseInt(del, 10),
-					};
-				}) : [];
+				const changedFiles = diffTree
+					? diffTree
+							.split("\n")
+							.filter(Boolean)
+							.map((line) => {
+								const [add, del, path] = line.split("\t");
+								return {
+									path,
+									changeType: "M",
+									additions: add === "-" ? 0 : Number.parseInt(add, 10),
+									deletions: del === "-" ? 0 : Number.parseInt(del, 10),
+								};
+							})
+					: [];
 
 				const nameStatus = execFileSync(
 					"git",
 					["diff-tree", "--no-commit-id", "-r", "--name-status", hash],
-					{ cwd },
-				).toString().trim();
+					{ cwd }
+				)
+					.toString()
+					.trim();
 
 				const typeMap = {};
 				for (const line of nameStatus.split("\n").filter(Boolean)) {
@@ -549,9 +558,10 @@ if (isSolverMode) {
 					file.changeType = typeMap[file.path] || "M";
 				}
 
-				db.prepare(
-					"UPDATE comment_groups SET changed_files = ? WHERE id = ?"
-				).run(JSON.stringify(changedFiles), group_id);
+				db.prepare("UPDATE comment_groups SET changed_files = ? WHERE id = ?").run(
+					JSON.stringify(changedFiles),
+					group_id
+				);
 
 				return {
 					content: [

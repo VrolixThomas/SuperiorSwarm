@@ -6,7 +6,6 @@ import { trpc } from "../trpc/client";
 import { CommentThreadCard, threadAuthor, threadDate } from "./CommentThreadCard";
 import type { SortMode } from "./CommentThreadCard";
 
-
 // ── Props ─────────────────────────────────────────────────────────────────────
 
 interface CommentsOverviewTabProps {
