@@ -25,8 +25,9 @@ import type {
 	ResolveParams,
 	SubmitReviewParams,
 } from "./types";
+import { joinCacheKey, splitCacheKey } from "./github-cache-key";
 
-export { joinCacheKey, splitCacheKey } from "./github-cache-key";
+export { joinCacheKey, splitCacheKey };
 
 export class GitHubAdapter implements GitProvider {
 	readonly name = "github" as const;
