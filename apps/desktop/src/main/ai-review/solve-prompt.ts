@@ -78,6 +78,9 @@ Instructions:
       - If unclear: make a best-effort fix AND call mark_comment_unclear(commentId, replyBody)
         explaining your interpretation and asking for clarification
    e. Call finish_fix_group(groupId) — this is the ONLY way to commit your changes
+      - If the group contains ONLY praise, acknowledgements, or comments that need no code
+        changes: call finish_fix_group(groupId, no_changes: true) — this skips the git
+        commit entirely. Do NOT create an empty commit for these groups.
 4. Call finish_solving when all groups are done
 
 CRITICAL — DO NOT use git directly:
