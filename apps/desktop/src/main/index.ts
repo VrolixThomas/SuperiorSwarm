@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { BrowserWindow, app, dialog, ipcMain, shell } from "electron";
 import { AGENT_NOTIFY_PORT } from "../shared/agent-events";
 import { daemonInstanceId, daemonPaths } from "../shared/daemon-protocol";
-import { type AgentAlertListener, createAlertListener } from "./agent-hooks/listener";
+import { type AgentAlertListener, createAlertListener, reclaimPort } from "./agent-hooks/listener";
 import { setAgentNotifyPort } from "./agent-hooks/port";
 import { setupAgentHooks } from "./agent-hooks/setup";
 import { maybeAutoReReview, maybeAutoTriggerReview } from "./ai-review/auto-trigger";
@@ -205,7 +205,8 @@ app.whenReady().then(async () => {
 	// Register agent hooks (must complete before listener starts)
 	await setupAgentHooks();
 
-	// Agent notification listener
+	// Agent notification listener — reclaim port from stale instances first
+	await reclaimPort(AGENT_NOTIFY_PORT);
 	alertListener = createAlertListener(AGENT_NOTIFY_PORT);
 	try {
 		await alertListener.start();

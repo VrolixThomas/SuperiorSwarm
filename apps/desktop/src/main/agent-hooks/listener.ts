@@ -18,6 +18,21 @@ export function createAlertListener(port: number): AgentAlertListener {
 	const httpServer = createServer((req, res) => {
 		const url = new URL(req.url ?? "/", "http://127.0.0.1");
 
+		if (url.pathname === "/health") {
+			res.writeHead(200, { "Content-Type": "application/json" });
+			res.end(JSON.stringify({ ok: true, app: "superiorswarm" }));
+			return;
+		}
+
+		if (url.pathname === "/shutdown") {
+			res.writeHead(200, { "Content-Type": "application/json" });
+			res.end(JSON.stringify({ ok: true }));
+			// Close the server after responding
+			server?.close();
+			server = null;
+			return;
+		}
+
 		if (url.pathname !== "/event") {
 			res.writeHead(404, { "Content-Type": "application/json" });
 			res.end(JSON.stringify({ ok: false, error: "not found" }));
@@ -118,4 +133,34 @@ export function createAlertListener(port: number): AgentAlertListener {
 			return typeof addr === "object" && addr ? addr.port : null;
 		},
 	};
+}
+
+/**
+ * Try to reclaim the preferred port from a stale SuperiorSwarm listener.
+ * Probes /health to verify it's ours, then sends /shutdown.
+ * Returns true if the port was reclaimed or was already free.
+ */
+export async function reclaimPort(port: number): Promise<boolean> {
+	const base = `http://127.0.0.1:${port}`;
+	try {
+		const healthRes = await fetch(`${base}/health`, {
+			signal: AbortSignal.timeout(1000),
+		});
+		if (!healthRes.ok) return true; // Not our listener, let bind() handle it
+		const body = (await healthRes.json()) as { app?: string };
+		if (body.app !== "superiorswarm") return true; // Not ours
+
+		// It's a stale SuperiorSwarm listener — shut it down
+		console.log(`[agent-notify] shutting down stale listener on port ${port}`);
+		await fetch(`${base}/shutdown`, {
+			signal: AbortSignal.timeout(1000),
+		}).catch(() => {});
+
+		// Wait briefly for the port to be released
+		await new Promise((resolve) => setTimeout(resolve, 200));
+		return true;
+	} catch {
+		// Connection refused or timeout — port is free or held by non-HTTP process
+		return true;
+	}
 }

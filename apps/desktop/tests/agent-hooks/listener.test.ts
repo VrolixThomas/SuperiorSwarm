@@ -83,6 +83,58 @@ describe("AgentAlertListener", () => {
 	test("getPort returns the bound port", () => {
 		expect(listener.getPort()).toBe(PORT);
 	});
+
+	test("returns 200 with app identifier on /health", async () => {
+		const url = `http://127.0.0.1:${PORT}/health`;
+		const res = await fetch(url);
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as { ok: boolean; app: string };
+		expect(body.ok).toBe(true);
+		expect(body.app).toBe("superiorswarm");
+	});
+
+	test("/shutdown stops the listener", async () => {
+		// Create a dedicated listener for this test
+		const shutdownListener = createAlertListener(0);
+		await shutdownListener.start();
+		const shutdownPort = shutdownListener.getPort()!;
+
+		const res = await fetch(`http://127.0.0.1:${shutdownPort}/shutdown`);
+		expect(res.status).toBe(200);
+
+		// Port should be null after shutdown
+		expect(shutdownListener.getPort()).toBeNull();
+	});
+});
+
+describe("reclaimPort", () => {
+	test("reclaims port from a stale SuperiorSwarm listener", async () => {
+		const { reclaimPort } = await import("../../src/main/agent-hooks/listener");
+		const RECLAIM_PORT = 27397;
+
+		// Start a listener on the port (simulates stale instance)
+		const stale = createAlertListener(RECLAIM_PORT);
+		await stale.start();
+		expect(stale.getPort()).toBe(RECLAIM_PORT);
+
+		// Reclaim should shut it down
+		const result = await reclaimPort(RECLAIM_PORT);
+		expect(result).toBe(true);
+		expect(stale.getPort()).toBeNull();
+
+		// Should be able to bind to the port now
+		const fresh = createAlertListener(RECLAIM_PORT);
+		await fresh.start();
+		expect(fresh.getPort()).toBe(RECLAIM_PORT);
+		fresh.stop();
+	});
+
+	test("returns true when port is free (connection refused)", async () => {
+		const { reclaimPort } = await import("../../src/main/agent-hooks/listener");
+		// Use a port that's definitely not in use
+		const result = await reclaimPort(27396);
+		expect(result).toBe(true);
+	});
 });
 
 describe("EADDRINUSE fallback", () => {
