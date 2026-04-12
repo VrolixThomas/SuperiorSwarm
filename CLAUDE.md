@@ -61,9 +61,10 @@ When you discover something non-obvious that required reading 2+ files to piece 
 
 ## graphify
 
-This project has a graphify knowledge graph at graphify-out/.
+This project has a graphify knowledge graph at graphify-out/. The god nodes and community summary are **pre-loaded into context at session start** via a SessionStart hook.
 
 Rules:
-- Before answering architecture or codebase questions, read graphify-out/GRAPH_REPORT.md for god nodes and community structure
-- If graphify-out/wiki/index.md exists, navigate it instead of reading raw files
+- **NEVER use Glob, Grep, or Read to survey codebase structure.** Use the knowledge graph instead.
+- Start all codebase exploration from `graphify-out/GRAPH_REPORT.md` — it is already in your context.
+- For node detail, navigate `graphify-out/obsidian/<NodeName>.md` directly.
 - After modifying code files in this session, run `python3 -c "from graphify.watch import _rebuild_code; from pathlib import Path; _rebuild_code(Path('.'))"` to keep the graph current
