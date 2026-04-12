@@ -55,3 +55,6 @@ graphify-out/
 Thumbs.db
 
 docs/
+
+# Graphify output
+graphify-out

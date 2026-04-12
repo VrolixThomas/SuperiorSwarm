@@ -2,6 +2,34 @@ import { useEffect } from "react";
 import { type Shortcut, useActionStore } from "../stores/action-store";
 import { shortcutsMatch } from "../utils/parse-accelerator";
 
+function isTextInputElement(target: HTMLElement): boolean {
+	return target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT";
+}
+
+function isTerminalElement(target: HTMLElement): boolean {
+	if (target.closest(".xterm")) return true;
+	return target.classList.contains("xterm-helper-textarea");
+}
+
+function isPlainPrintableKey(e: KeyboardEvent): boolean {
+	return e.key.length === 1 && !e.metaKey && !e.ctrlKey && !e.altKey;
+}
+
+export function shouldSkipShortcutHandling(e: KeyboardEvent, target: HTMLElement | null): boolean {
+	if (!target) return false;
+
+	if (isTerminalElement(target)) {
+		if (isPlainPrintableKey(e)) return true;
+		if (e.metaKey || e.ctrlKey || e.altKey) return false;
+	}
+
+	if (isTextInputElement(target) && !e.metaKey && !e.ctrlKey) {
+		return true;
+	}
+
+	return false;
+}
+
 export function matchesShortcut(e: KeyboardEvent, shortcut: Shortcut): boolean {
 	const eventShortcut: Shortcut = {
 		key: e.key,
@@ -22,14 +50,7 @@ export function useShortcutListener() {
 	useEffect(() => {
 		function handleKeyDown(e: KeyboardEvent) {
 			const target = e.target as HTMLElement | null;
-			if (
-				target &&
-				(target.tagName === "INPUT" ||
-					target.tagName === "TEXTAREA" ||
-					target.tagName === "SELECT") &&
-				!e.metaKey &&
-				!e.ctrlKey
-			) {
+			if (shouldSkipShortcutHandling(e, target)) {
 				return;
 			}
 

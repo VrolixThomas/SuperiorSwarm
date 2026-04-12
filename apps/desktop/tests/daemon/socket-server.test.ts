@@ -79,7 +79,7 @@ function collectMessages(socket: Socket, timeoutMs = 300): Promise<DaemonMessage
 }
 
 function sendMsg(socket: Socket, msg: object): void {
-	socket.write(JSON.stringify(msg) + "\n");
+	socket.write(`${JSON.stringify(msg)}\n`);
 }
 
 describe("SocketServer", () => {
@@ -141,5 +141,53 @@ describe("SocketServer", () => {
 		await collectMessages(socket);
 		socket.destroy();
 		expect(mockPty.disposed).toContain("term-1");
+	});
+
+	test("drops oversized inbound line, warns, and continues parsing subsequent frames", async () => {
+		const warnings: string[] = [];
+		const originalWarn = console.warn;
+		console.warn = (...args: unknown[]) => {
+			warnings.push(args.map((a) => String(a)).join(" "));
+		};
+
+		const socket = connect(TEST_SOCKET);
+		await collectMessages(socket);
+
+		try {
+			socket.write(`${"x".repeat(70_000)}\n`);
+			sendMsg(socket, { type: "list" });
+
+			const msgs = await collectMessages(socket, 600);
+			const sessions = msgs.find((m) => m.type === "sessions");
+			expect(sessions?.type).toBe("sessions");
+			expect(warnings.some((w) => w.includes("oversized inbound frame"))).toBe(true);
+		} finally {
+			console.warn = originalWarn;
+			socket.destroy();
+		}
+	});
+
+	test("parses complete frames before bounding oversized partial frame", async () => {
+		const warnings: string[] = [];
+		const originalWarn = console.warn;
+		console.warn = (...args: unknown[]) => {
+			warnings.push(args.map((a) => String(a)).join(" "));
+		};
+
+		const socket = connect(TEST_SOCKET);
+		await collectMessages(socket);
+
+		try {
+			socket.write(`${JSON.stringify({ type: "list" })}\n${"x".repeat(70_000)}`);
+			socket.write(`\n${JSON.stringify({ type: "list" })}\n`);
+
+			const msgs = await collectMessages(socket, 700);
+			const sessionMsgs = msgs.filter((m) => m.type === "sessions");
+			expect(sessionMsgs.length).toBe(2);
+			expect(warnings.some((w) => w.includes("oversized inbound frame"))).toBe(true);
+		} finally {
+			console.warn = originalWarn;
+			socket.destroy();
+		}
 	});
 });

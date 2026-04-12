@@ -15,8 +15,24 @@ import {
 	type DaemonMessage,
 	SUPERIORSWARM_DIR,
 } from "../../shared/daemon-protocol";
+import {
+	DaemonOwnershipMismatchError,
+	isDaemonOwnershipMismatchError,
+	isOwnerRecordCurrent,
+	isPidAlive,
+	parseOwnerRecord,
+} from "./daemon-ownership";
 const CONNECT_TIMEOUT_MS = 5_000;
 const CONNECT_POLL_MS = 100;
+const MAX_OUTBOUND_QUEUE_BYTES = 512_000;
+
+interface OutboundQueueEntry {
+	encoded: string;
+	bytes: number;
+	droppable: boolean;
+	type: ClientMessage["type"];
+	id?: string;
+}
 
 interface TerminalCallbacks {
 	onData: (data: string) => void;
@@ -38,12 +54,18 @@ export class DaemonClient {
 	private dbPath: string | undefined;
 	private daemonScriptPath: string | undefined;
 	private onConnectionStatusChange: ((connected: boolean) => void) | null = null;
+	private outboundQueue: OutboundQueueEntry[] = [];
+	private outboundQueuedBytes = 0;
+	private waitingForDrain = false;
+	private intentionalDisconnect = false;
 
 	constructor(
 		private socketPath: string,
 		private pidPath: string,
 		private logPath: string,
-		private readonly devMode = false
+		private readonly devMode = false,
+		private readonly ownerPath?: string,
+		private readonly appDirHash?: string
 	) {}
 
 	get isConnected(): boolean {
@@ -55,8 +77,10 @@ export class DaemonClient {
 	}
 
 	async connect(dbPath?: string, daemonScriptPath?: string): Promise<void> {
+		this.intentionalDisconnect = false;
 		this.dbPath = dbPath;
 		this.daemonScriptPath = daemonScriptPath;
+		this.assertOwnershipCompatible();
 
 		try {
 			await this.tryConnect();
@@ -99,13 +123,16 @@ export class DaemonClient {
 	}
 
 	disconnect(): void {
+		this.intentionalDisconnect = true;
 		if (this.reconnectTimer) {
 			clearTimeout(this.reconnectTimer);
 			this.reconnectTimer = null;
 		}
 		this.reconnecting = false;
+		this.waitingForDrain = false;
 		this.socket?.destroy();
 		this.socket = null;
+		this.resetOutboundQueue();
 	}
 
 	hasLiveSession(id: string): boolean {
@@ -239,6 +266,11 @@ export class DaemonClient {
 				this.reconnectAttempts = 0;
 				console.log("[daemon-client] reconnected to daemon");
 			} catch (err) {
+				if (isDaemonOwnershipMismatchError(err)) {
+					console.error("[daemon-client] daemon owned by another instance, stopping reconnect");
+					this.reconnecting = false;
+					return;
+				}
 				console.error("[daemon-client] reconnection failed:", err);
 				this.reconnecting = false;
 				this.attemptReconnect();
@@ -250,8 +282,15 @@ export class DaemonClient {
 		if (!this.socket || this.socket.destroyed) {
 			throw new Error("Daemon not connected");
 		}
-		const ok = this.socket.write(`${JSON.stringify(msg)}\n`);
+		if (this.waitingForDrain || this.outboundQueue.length > 0) {
+			this.enqueueOutbound(msg);
+			return;
+		}
+
+		const encoded = `${JSON.stringify(msg)}\n`;
+		const ok = this.socket.write(encoded);
 		if (!ok) {
+			this.waitingForDrain = true;
 			console.warn("[daemon-client] socket backpressure detected");
 		}
 	}
@@ -288,8 +327,20 @@ export class DaemonClient {
 			}
 		});
 
+		this.socket.on("drain", () => {
+			this.flushOutboundQueue();
+		});
+
 		this.socket.on("close", () => {
+			if (this.intentionalDisconnect) {
+				this.intentionalDisconnect = false;
+				this.waitingForDrain = false;
+				this.resetOutboundQueue();
+				return;
+			}
 			console.warn("[daemon-client] connection to daemon lost");
+			this.waitingForDrain = false;
+			this.resetOutboundQueue();
 			this.onConnectionStatusChange?.(false);
 			this.attemptReconnect();
 		});
@@ -384,15 +435,13 @@ export class DaemonClient {
 			try {
 				const pid = Number(readFileSync(this.pidPath, "utf-8").trim());
 				if (pid) {
-					try {
-						process.kill(pid, 0); // throws if process doesn't exist
+					if (isPidAlive(pid)) {
 						return; // process exists, let waitForSocket handle the rest
-					} catch {
-						// process is gone, clean up stale file
-						try {
-							rmSync(this.pidPath);
-						} catch {}
 					}
+					// process is gone, clean up stale file
+					try {
+						rmSync(this.pidPath);
+					} catch {}
 				}
 			} catch {}
 		}
@@ -426,6 +475,8 @@ export class DaemonClient {
 				SUPERIORSWARM_DB_PATH: dbPath,
 				SUPERIORSWARM_SOCKET_PATH: this.socketPath,
 				SUPERIORSWARM_PID_PATH: this.pidPath,
+				SUPERIORSWARM_OWNER_PATH: this.ownerPath,
+				SUPERIORSWARM_APP_DIR_HASH: this.appDirHash,
 				SUPERIORSWARM_LOG_PATH: this.logPath,
 				SUPERIORSWARM_DEV_MODE: this.devMode ? "1" : "",
 			},
@@ -441,5 +492,127 @@ export class DaemonClient {
 			await new Promise<void>((r) => setTimeout(r, CONNECT_POLL_MS));
 		}
 		throw new Error(`Daemon socket did not appear within ${CONNECT_TIMEOUT_MS}ms`);
+	}
+
+	private assertOwnershipCompatible(): void {
+		if (!this.ownerPath || !this.appDirHash || !existsSync(this.ownerPath)) {
+			return;
+		}
+
+		try {
+			const ownerRaw = readFileSync(this.ownerPath, "utf-8");
+			const ownerRecord = parseOwnerRecord(ownerRaw);
+			if (!ownerRecord) {
+				return;
+			}
+
+			if (ownerRecord.appDirHash === this.appDirHash) {
+				return;
+			}
+
+			if (!isOwnerRecordCurrent(ownerRecord)) {
+				return;
+			}
+
+			if (isPidAlive(ownerRecord.pid)) {
+				throw new DaemonOwnershipMismatchError(ownerRecord, this.appDirHash);
+			}
+		} catch (err) {
+			if (isDaemonOwnershipMismatchError(err)) {
+				throw err;
+			}
+		}
+	}
+
+	private enqueueOutbound(msg: ClientMessage): void {
+		const encoded = `${JSON.stringify(msg)}\n`;
+		const messageBytes = Buffer.byteLength(encoded, "utf-8");
+		const droppable = msg.type === "write" || msg.type === "resize";
+
+		if (msg.type === "resize") {
+			for (let i = 0; i < this.outboundQueue.length; i++) {
+				const queued = this.outboundQueue[i];
+				if (queued?.type === "resize" && queued.id === msg.id) {
+					this.outboundQueuedBytes -= queued.bytes;
+					this.outboundQueue.splice(i, 1);
+					break;
+				}
+			}
+		}
+
+		if (messageBytes > MAX_OUTBOUND_QUEUE_BYTES) {
+			console.warn(
+				`[daemon-client] outbound message ${messageBytes}B exceeds queue limit ${MAX_OUTBOUND_QUEUE_BYTES}B; dropping message`
+			);
+			return;
+		}
+
+		if (!droppable) {
+			this.evictDroppableForControl(messageBytes);
+		}
+
+		if (this.outboundQueuedBytes + messageBytes > MAX_OUTBOUND_QUEUE_BYTES) {
+			console.warn(
+				`[daemon-client] outbound queue full (${this.outboundQueuedBytes}/${MAX_OUTBOUND_QUEUE_BYTES}B); dropping message`
+			);
+			return;
+		}
+
+		this.outboundQueue.push({
+			encoded,
+			bytes: messageBytes,
+			droppable,
+			type: msg.type,
+			id: "id" in msg ? msg.id : undefined,
+		});
+		this.outboundQueuedBytes += messageBytes;
+	}
+
+	private evictDroppableForControl(controlBytes: number): void {
+		while (this.outboundQueuedBytes + controlBytes > MAX_OUTBOUND_QUEUE_BYTES) {
+			const dropIndex = this.outboundQueue.findIndex((entry) => entry.droppable);
+			if (dropIndex === -1) {
+				break;
+			}
+			const dropped = this.outboundQueue.splice(dropIndex, 1)[0];
+			if (dropped) {
+				this.outboundQueuedBytes -= dropped.bytes;
+				console.warn(
+					`[daemon-client] outbound queue full (${this.outboundQueuedBytes}/${MAX_OUTBOUND_QUEUE_BYTES}B); dropping ${dropped.type} to prioritize control message`
+				);
+			}
+		}
+	}
+
+	private flushOutboundQueue(): void {
+		if (!this.socket || this.socket.destroyed) {
+			this.waitingForDrain = false;
+			this.resetOutboundQueue();
+			return;
+		}
+
+		this.waitingForDrain = false;
+		while (this.outboundQueue.length > 0) {
+			const queued = this.outboundQueue[0];
+			if (queued === undefined) {
+				break;
+			}
+			this.outboundQueue.shift();
+			this.outboundQueuedBytes -= queued.bytes;
+			const ok = this.socket.write(queued.encoded);
+			if (!ok) {
+				this.waitingForDrain = true;
+				console.warn("[daemon-client] socket backpressure detected while draining queue");
+				break;
+			}
+		}
+		if (this.outboundQueue.length === 0) {
+			this.outboundQueuedBytes = 0;
+		}
+	}
+
+	private resetOutboundQueue(): void {
+		this.outboundQueue = [];
+		this.outboundQueuedBytes = 0;
 	}
 }

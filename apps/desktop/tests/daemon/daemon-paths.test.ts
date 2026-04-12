@@ -23,6 +23,7 @@ describe("daemonPaths", () => {
 		const paths = daemonPaths("abc123def456");
 		expect(paths.socketPath).toContain("daemon-abc123def456.sock");
 		expect(paths.pidPath).toContain("daemon-abc123def456.pid");
+		expect(paths.ownerPath).toContain("daemon-abc123def456.owner");
 		expect(paths.logPath).toContain("daemon-abc123def456.log");
 	});
 });

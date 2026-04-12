@@ -40,6 +40,14 @@ function buildTerminalTheme(): ITheme {
 	};
 }
 
+export function formatTerminalExitMessage(code: number): string {
+	if (code === -1) {
+		return "\r\n\x1b[31m[Terminal session lost]\x1b[0m\r\n\x1b[90mConnection to the terminal daemon was interrupted and this session cannot be resumed.\r\nOpen a new terminal tab to continue.\x1b[0m\r\n";
+	}
+
+	return `\r\n\x1b[90m[Process exited with code ${code}]\x1b[0m\r\n`;
+}
+
 export function Terminal({
 	id,
 	cwd,
@@ -164,7 +172,7 @@ export function Terminal({
 			});
 
 			cleanupExit = api.terminal.onExit(id, (code) => {
-				term.write(`\r\n\x1b[90m[Process exited with code ${code}]\x1b[0m\r\n`);
+				term.write(formatTerminalExitMessage(code));
 			});
 
 			const MAX_TITLE = 48;
