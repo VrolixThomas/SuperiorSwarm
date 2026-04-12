@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { chmodSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { and, eq, inArray, not } from "drizzle-orm";
 import { app } from "electron";
@@ -33,11 +33,12 @@ const activeReviews = new Map<string, ActiveReview>();
 // ─── State machine ────────────────────────────────────────────────────────────
 
 const VALID_TRANSITIONS: Record<string, string[]> = {
-	queued: ["in_progress", "failed", "dismissed"],
-	in_progress: ["ready", "failed", "dismissed"],
+	queued: ["in_progress", "failed", "dismissed", "cancelled"],
+	in_progress: ["ready", "failed", "dismissed", "cancelled"],
 	ready: ["submitted", "failed", "dismissed"],
 	submitted: ["dismissed"],
 	failed: ["queued", "dismissed"],
+	cancelled: ["dismissed"],
 };
 
 export function validateTransition(currentStatus: string, newStatus: string): void {
@@ -63,6 +64,42 @@ function cleanupReview(draftId: string): void {
 	try {
 		rmSync(reviewDir, { recursive: true, force: true });
 	} catch {}
+}
+
+/** Cancel a running review — kill process, keep partial comments, transition to cancelled */
+export function cancelReview(draftId: string): void {
+	const db = getDb();
+	const draft = db
+		.select()
+		.from(schema.reviewDrafts)
+		.where(eq(schema.reviewDrafts.id, draftId))
+		.get();
+
+	if (!draft) throw new Error(`Review draft ${draftId} not found`);
+
+	validateTransition(draft.status, "cancelled");
+
+	// Kill the agent process if PID is available
+	if (draft.pid !== null) {
+		try {
+			process.kill(draft.pid, "SIGTERM");
+		} catch (err: unknown) {
+			if (
+				err instanceof Error &&
+				"code" in err &&
+				(err as NodeJS.ErrnoException).code !== "ESRCH"
+			) {
+				console.error(`[ai-review] Failed to kill process ${draft.pid}:`, err);
+			}
+		}
+	}
+
+	db.update(schema.reviewDrafts)
+		.set({ status: "cancelled", updatedAt: new Date() })
+		.where(eq(schema.reviewDrafts.id, draftId))
+		.run();
+
+	cleanupReview(draftId);
 }
 
 let pollInterval: ReturnType<typeof setInterval> | null = null;
@@ -364,8 +401,10 @@ async function startReview(params: {
 						"echo",
 					]
 				: [];
+		const pidFilePath = join(reviewDir, "reviewer.pid");
 		const scriptContent = [
 			"#!/bin/bash",
+			`echo $$ > '${pidFilePath}'`,
 			`cd '${worktreePath}'`,
 			...envLines,
 			"",
@@ -374,6 +413,21 @@ async function startReview(params: {
 		].join("\n");
 		writeFileSync(launchScript, scriptContent, "utf-8");
 		chmodSync(launchScript, 0o755);
+
+		// Read PID file after script has had time to write it
+		setTimeout(() => {
+			try {
+				const pidContent = readFileSync(pidFilePath, "utf-8").trim();
+				const pid = Number.parseInt(pidContent, 10);
+				if (!Number.isNaN(pid)) {
+					getDb()
+						.update(schema.reviewDrafts)
+						.set({ pid, updatedAt: new Date() })
+						.where(eq(schema.reviewDrafts.id, draft.id))
+						.run();
+				}
+			} catch {}
+		}, 2000);
 
 		return {
 			draftId: draft.id,
@@ -633,11 +687,32 @@ async function startFollowUpReview(params: {
 					`export PR_METADATA='${launchOpts.prMetadata.replace(/'/g, "'\\''")}'`,
 					`export DB_PATH='${dbPath}'`,
 				];
-		const scriptContent = ["#!/bin/bash", `cd '${worktreePath}'`, ...envLines, "", cliCommand].join(
-			"\n"
-		);
+		const pidFilePath = join(reviewDir, "reviewer.pid");
+		const scriptContent = [
+			"#!/bin/bash",
+			`echo $$ > '${pidFilePath}'`,
+			`cd '${worktreePath}'`,
+			...envLines,
+			"",
+			cliCommand,
+		].join("\n");
 		writeFileSync(launchScript, scriptContent, "utf-8");
 		chmodSync(launchScript, 0o755);
+
+		// Read PID file after script has had time to write it
+		setTimeout(() => {
+			try {
+				const pidContent = readFileSync(pidFilePath, "utf-8").trim();
+				const pid = Number.parseInt(pidContent, 10);
+				if (!Number.isNaN(pid)) {
+					getDb()
+						.update(schema.reviewDrafts)
+						.set({ pid, updatedAt: new Date() })
+						.where(eq(schema.reviewDrafts.id, draftId))
+						.run();
+				}
+			} catch {}
+		}, 2000);
 
 		return {
 			draftId,
