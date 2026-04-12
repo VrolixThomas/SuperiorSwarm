@@ -605,110 +605,112 @@ function AuthenticatedApp() {
 		return () => window.removeEventListener("app:check-updates", handleCheckUpdates);
 	}, [checkUpdatesMutation]);
 
-	if (sidebarView === "settings") {
-		return <SettingsPage />;
-	}
-
 	return (
 		<>
-			<Group
-				orientation="horizontal"
-				defaultLayout={defaultLayout}
-				onLayoutChanged={onLayoutChanged}
-				className="h-screen overflow-hidden bg-[var(--bg-base)]"
-			>
-				<Panel
-					id="sidebar"
-					panelRef={sidebarPanelRef}
-					defaultSize="15.3%"
-					minSize="12.5%"
-					maxSize="27.8%"
-					collapsible
-					collapsedSize="3.9%"
-					onResize={() => {
-						const isCollapsed = sidebarPanelRef.current?.isCollapsed() ?? false;
-						setSidebarCollapsed(isCollapsed);
-					}}
-					className="overflow-hidden bg-[var(--bg-surface)]"
-				>
-					<Sidebar
-						collapsed={sidebarCollapsed}
-						onExpand={() => sidebarPanelRef.current?.expand()}
-					/>
-				</Panel>
-
-				<Separator className="panel-resize-handle" />
-
-				<Panel id="main" minSize="30%">
-					<MainContentArea savedScrollback={savedScrollback} />
-				</Panel>
-
-				<Separator className="panel-resize-handle" />
-				<Panel
-					id="diff"
-					panelRef={diffPanelRef}
-					defaultSize="19.4%"
-					minSize={200}
-					maxSize="40%"
-					collapsible
-					collapsedSize="0%"
-					onResize={() => {
-						const collapsed = diffPanelRef.current?.isCollapsed() ?? false;
-						if (collapsed && rightPanelOpen) closeDiffPanel();
-					}}
-				>
-					<DiffPanel onClose={closeDiffPanel} />
-				</Panel>
-			</Group>
-			{!rightPanelOpen && sidebarSegment !== "tickets" && (
-				<button
-					type="button"
-					onClick={openRightPanel}
-					className="fixed top-1/2 right-0 z-10 -translate-y-1/2 rounded-l-md border border-r-0 border-[var(--border)] bg-[var(--bg-surface)] px-1 py-5 text-[var(--text-quaternary)] transition-colors duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-tertiary)]"
-					title="Open panel"
-				>
-					<svg
-						width="8"
-						height="14"
-						viewBox="0 0 8 14"
-						fill="none"
-						stroke="currentColor"
-						strokeWidth="1.5"
-						strokeLinecap="round"
-						strokeLinejoin="round"
-						aria-hidden="true"
+			{sidebarView === "settings" ? (
+				<SettingsPage />
+			) : (
+				<>
+					<Group
+						orientation="horizontal"
+						defaultLayout={defaultLayout}
+						onLayoutChanged={onLayoutChanged}
+						className="h-screen overflow-hidden bg-[var(--bg-base)]"
 					>
-						<path d="M7 1L1 7l6 6" />
-					</svg>
-				</button>
+						<Panel
+							id="sidebar"
+							panelRef={sidebarPanelRef}
+							defaultSize="15.3%"
+							minSize="12.5%"
+							maxSize="27.8%"
+							collapsible
+							collapsedSize="3.9%"
+							onResize={() => {
+								const isCollapsed = sidebarPanelRef.current?.isCollapsed() ?? false;
+								setSidebarCollapsed(isCollapsed);
+							}}
+							className="overflow-hidden bg-[var(--bg-surface)]"
+						>
+							<Sidebar
+								collapsed={sidebarCollapsed}
+								onExpand={() => sidebarPanelRef.current?.expand()}
+							/>
+						</Panel>
+
+						<Separator className="panel-resize-handle" />
+
+						<Panel id="main" minSize="30%">
+							<MainContentArea savedScrollback={savedScrollback} />
+						</Panel>
+
+						<Separator className="panel-resize-handle" />
+						<Panel
+							id="diff"
+							panelRef={diffPanelRef}
+							defaultSize="19.4%"
+							minSize={200}
+							maxSize="40%"
+							collapsible
+							collapsedSize="0%"
+							onResize={() => {
+								const collapsed = diffPanelRef.current?.isCollapsed() ?? false;
+								if (collapsed && rightPanelOpen) closeDiffPanel();
+							}}
+						>
+							<DiffPanel onClose={closeDiffPanel} />
+						</Panel>
+					</Group>
+					{!rightPanelOpen && sidebarSegment !== "tickets" && (
+						<button
+							type="button"
+							onClick={openRightPanel}
+							className="fixed top-1/2 right-0 z-10 -translate-y-1/2 rounded-l-md border border-r-0 border-[var(--border)] bg-[var(--bg-surface)] px-1 py-5 text-[var(--text-quaternary)] transition-colors duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-tertiary)]"
+							title="Open panel"
+						>
+							<svg
+								width="8"
+								height="14"
+								viewBox="0 0 8 14"
+								fill="none"
+								stroke="currentColor"
+								strokeWidth="1.5"
+								strokeLinecap="round"
+								strokeLinejoin="round"
+								aria-hidden="true"
+							>
+								<path d="M7 1L1 7l6 6" />
+							</svg>
+						</button>
+					)}
+					<AddRepositoryModal />
+					<CreateWorktreeModal />
+					<SharedFilesPanel />
+					<DaemonStatus />
+					<CommandPalette />
+					{activeProjectId && (
+						<BranchPalette
+							projectId={activeProjectId}
+							onOpenActionMenu={(branch, currentBranch, position) => {
+								setActionMenu({ branch, currentBranch, position });
+							}}
+						/>
+					)}
+					{activeProjectId && actionMenu && (
+						<BranchActionMenu
+							projectId={activeProjectId}
+							branch={actionMenu.branch}
+							currentBranch={actionMenu.currentBranch}
+							position={actionMenu.position}
+							onClose={() => setActionMenu(null)}
+							onMerge={handleMerge}
+							onRebase={handleRebase}
+							isMerging={isMerging}
+						/>
+					)}
+				</>
 			)}
-			<AddRepositoryModal />
-			<CreateWorktreeModal />
-			<SharedFilesPanel />
-			<DaemonStatus />
 			<UpdateToast />
 			<WhatsNewModal />
-			<CommandPalette />
-			{activeProjectId && (
-				<BranchPalette
-					projectId={activeProjectId}
-					onOpenActionMenu={(branch, currentBranch, position) => {
-						setActionMenu({ branch, currentBranch, position });
-					}}
-				/>
-			)}
-			{activeProjectId && actionMenu && (
-				<BranchActionMenu
-					projectId={activeProjectId}
-					branch={actionMenu.branch}
-					currentBranch={actionMenu.currentBranch}
-					position={actionMenu.position}
-					onClose={() => setActionMenu(null)}
-					onMerge={handleMerge}
-					onRebase={handleRebase}
-					isMerging={isMerging}
-				/>
-			)}
 		</>
 	);
 }

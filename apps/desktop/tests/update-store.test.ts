@@ -40,6 +40,16 @@ describe("update-store", () => {
 		expect(useUpdateStore.getState().showWhatsNewModal).toBe(false);
 	});
 
+	test("openWhatsNew stores the exact version passed (not a different one)", () => {
+		useUpdateStore.getState().openWhatsNew("99.0.0");
+		expect(useUpdateStore.getState().modalVersion).toBe("99.0.0");
+		// Simulates bug scenario: if AboutSettings passed currentVersion (1.0.0) instead of
+		// updateVersion (99.0.0), the modal would show the wrong changelog.
+		useUpdateStore.getState().closeWhatsNew();
+		useUpdateStore.getState().openWhatsNew("1.0.0");
+		expect(useUpdateStore.getState().modalVersion).toBe("1.0.0");
+	});
+
 	test("setDownloadProgress updates state", () => {
 		useUpdateStore.getState().setDownloadProgress(65);
 		const state = useUpdateStore.getState();
