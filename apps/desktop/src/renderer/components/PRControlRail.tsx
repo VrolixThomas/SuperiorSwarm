@@ -1004,7 +1004,8 @@ export function PRControlRail({ prCtx }: { prCtx: PRContext }) {
 					hasActiveDraft={
 						!!matchingDraft &&
 						matchingDraft.status !== "dismissed" &&
-						matchingDraft.status !== "submitted"
+						matchingDraft.status !== "submitted" &&
+						matchingDraft.status !== "failed"
 					}
 				/>
 			)}
