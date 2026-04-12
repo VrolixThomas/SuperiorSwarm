@@ -767,6 +767,8 @@ export function PROverviewTab({ prCtx }: { prCtx: PRContext }) {
 		status: c.status as AIDraftThread["status"],
 		userEdit: c.userEdit ?? null,
 		createdAt: typeof c.createdAt === "string" ? c.createdAt : new Date(c.createdAt).toISOString(),
+		resolution: c.resolution ?? null,
+		roundNumber: c.roundNumber ?? undefined,
 	});
 
 	// Show AI suggestions (pending/edited) and user-pending drafts
