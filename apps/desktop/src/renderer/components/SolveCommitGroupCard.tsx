@@ -122,7 +122,7 @@ export function SolveCommitGroupCard({ group, sessionId, workspaceId, defaultExp
 			{expanded && !isSolving && !isReverted && (
 				<div className="border-t border-[var(--border-subtle)] px-[12px] pt-[12px] pb-[14px]">
 					<div className="font-mono text-[10.5px] text-[var(--text-tertiary)] mb-[12px]">
-						{group.commitHash?.slice(0, 7)}
+						{group.commitHash ? group.commitHash.slice(0, 7) : "no code changes"}
 					</div>
 					<ChangedFilesSection files={group.changedFiles} onFileClick={handleFileClick} />
 					<CommentsAddressedSection

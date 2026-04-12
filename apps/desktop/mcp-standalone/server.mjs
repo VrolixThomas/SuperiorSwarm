@@ -476,11 +476,17 @@ if (isSolverMode) {
 	// Tool: finish_fix_group
 	server.tool(
 		"finish_fix_group",
-		"Commit the changes for a fix group and mark it as complete",
+		"Commit the changes for a fix group and mark it as complete. Pass no_changes: true when the group contains comments that need no code changes (praise, acknowledgements, already-addressed items).",
 		{
 			group_id: z.string().describe("The ID of the comment group that has been fixed"),
+			no_changes: z
+				.boolean()
+				.optional()
+				.describe(
+					"Set to true when no code changes are needed (e.g. acknowledgement comments, praise, or already-addressed items). Skips the git commit entirely."
+				),
 		},
-		async ({ group_id }) => {
+		async ({ group_id, no_changes }) => {
 			try {
 				heartbeatSession(SOLVE_SESSION_ID);
 				const group = db
@@ -491,6 +497,27 @@ if (isSolverMode) {
 					return {
 						content: [{ type: "text", text: JSON.stringify({ error: "Group not found" }) }],
 						isError: true,
+					};
+				}
+
+				if (no_changes) {
+					// No code changes needed — mark fixed with no commit hash
+					db.prepare(
+						`UPDATE comment_groups SET status = 'fixed', commit_hash = NULL, changed_files = '[]' WHERE id = ? AND solve_session_id = ?`
+					).run(group_id, SOLVE_SESSION_ID);
+
+					return {
+						content: [
+							{
+								type: "text",
+								text: JSON.stringify({
+									status: "fixed",
+									group_id,
+									no_changes: true,
+									message: "Group marked fixed with no code changes",
+								}),
+							},
+						],
 					};
 				}
 
