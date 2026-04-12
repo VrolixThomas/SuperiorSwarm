@@ -172,25 +172,39 @@ function SessionHistory({
 					const sessionNumber = sessions.length - i;
 					const isDismissed = session.status === "dismissed";
 					const statusColor =
-						session.status === "submitted" ? "#34c759"
-						: session.status === "ready" ? "#0a84ff"
-						: session.status === "failed" ? "#ff453a"
-						: session.status === "in_progress" || session.status === "queued" ? "#0a84ff"
-						: "#8e8e93";
+						session.status === "submitted"
+							? "#34c759"
+							: session.status === "ready"
+								? "#0a84ff"
+								: session.status === "failed"
+									? "#ff453a"
+									: session.status === "in_progress" || session.status === "queued"
+										? "#0a84ff"
+										: "#8e8e93";
 					const statusBg =
-						session.status === "submitted" ? "rgba(52,199,89,0.12)"
-						: session.status === "ready" ? "rgba(10,132,255,0.12)"
-						: session.status === "failed" ? "rgba(255,69,58,0.12)"
-						: session.status === "in_progress" || session.status === "queued" ? "rgba(10,132,255,0.12)"
-						: "rgba(142,142,147,0.12)";
+						session.status === "submitted"
+							? "rgba(52,199,89,0.12)"
+							: session.status === "ready"
+								? "rgba(10,132,255,0.12)"
+								: session.status === "failed"
+									? "rgba(255,69,58,0.12)"
+									: session.status === "in_progress" || session.status === "queued"
+										? "rgba(10,132,255,0.12)"
+										: "rgba(142,142,147,0.12)";
 					const statusLabel =
-						session.status === "submitted" ? "Submitted"
-						: session.status === "ready" ? "Ready"
-						: session.status === "failed" ? "Failed"
-						: session.status === "in_progress" ? "In Progress"
-						: session.status === "queued" ? "Queued"
-						: session.status === "cancelled" ? "Cancelled"
-						: "Dismissed";
+						session.status === "submitted"
+							? "Submitted"
+							: session.status === "ready"
+								? "Ready"
+								: session.status === "failed"
+									? "Failed"
+									: session.status === "in_progress"
+										? "In Progress"
+										: session.status === "queued"
+											? "Queued"
+											: session.status === "cancelled"
+												? "Cancelled"
+												: "Dismissed";
 
 					return (
 						<button
@@ -280,7 +294,11 @@ export function AIFixesTab({ workspaceId }: AIFixesTabProps) {
 			<div className="flex flex-1 min-h-0 flex-col bg-[var(--bg-base)]">
 				{isSolving && <SolvingBanner />}
 				<div className="flex-1 min-h-0 overflow-y-auto">
-					<ActiveState session={fullSession} workspaceId={workspaceId} newCommentCount={newCommentCount} />
+					<ActiveState
+						session={fullSession}
+						workspaceId={workspaceId}
+						newCommentCount={newCommentCount}
+					/>
 					{sortedSessions.length > 1 && (
 						<SessionHistory sessions={sortedSessions.slice(1)} workspaceId={workspaceId} />
 					)}
