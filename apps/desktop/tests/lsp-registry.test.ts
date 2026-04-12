@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -8,6 +8,7 @@ import {
 	buildRegistry,
 	loadRepoConfig,
 	resolveSupport,
+	saveConfigFile,
 } from "../src/main/lsp/registry";
 
 describe("buildRegistry", () => {
@@ -265,6 +266,81 @@ describe("loadRepoConfig", () => {
 					disabled: false,
 				},
 			]);
+		} finally {
+			rmSync(testDir, { recursive: true, force: true });
+		}
+	});
+});
+
+describe("saveConfigFile", () => {
+	test("creates directory and file when they don't exist", () => {
+		const testDir = join(tmpdir(), `ss-lsp-save-${Date.now()}-create`);
+		const configPath = join(testDir, ".superiorswarm", "lsp.json");
+
+		try {
+			const servers = [
+				{
+					id: "csharp",
+					command: "OmniSharp",
+					args: ["-lsp"],
+					languages: ["csharp"],
+					fileExtensions: [".cs"],
+					rootMarkers: [".git"],
+					disabled: false,
+				},
+			];
+
+			saveConfigFile(configPath, servers);
+
+			expect(existsSync(configPath)).toBe(true);
+			const written = JSON.parse(readFileSync(configPath, "utf8"));
+			expect(written.servers).toHaveLength(1);
+			expect(written.servers[0].id).toBe("csharp");
+		} finally {
+			rmSync(testDir, { recursive: true, force: true });
+		}
+	});
+
+	test("overwrites existing config file", () => {
+		const testDir = join(tmpdir(), `ss-lsp-save-${Date.now()}-overwrite`);
+		const configDir = join(testDir, ".superiorswarm");
+		mkdirSync(configDir, { recursive: true });
+		const configPath = join(configDir, "lsp.json");
+		writeFileSync(configPath, JSON.stringify({ servers: [{ id: "old", command: "old-ls", args: [], languages: ["old"], fileExtensions: [".old"], rootMarkers: [".git"], disabled: false }] }));
+
+		try {
+			const servers = [
+				{
+					id: "new",
+					command: "new-ls",
+					args: [],
+					languages: ["new"],
+					fileExtensions: [".new"],
+					rootMarkers: [".git"],
+					disabled: false,
+				},
+			];
+
+			saveConfigFile(configPath, servers);
+
+			const written = JSON.parse(readFileSync(configPath, "utf8"));
+			expect(written.servers).toHaveLength(1);
+			expect(written.servers[0].id).toBe("new");
+		} finally {
+			rmSync(testDir, { recursive: true, force: true });
+		}
+	});
+
+	test("validates servers before writing and rejects invalid entries", () => {
+		const testDir = join(tmpdir(), `ss-lsp-save-${Date.now()}-invalid`);
+		const configPath = join(testDir, ".superiorswarm", "lsp.json");
+
+		try {
+			expect(() => {
+				saveConfigFile(configPath, [{ id: "", command: "" } as any]);
+			}).toThrow();
+
+			expect(existsSync(configPath)).toBe(false);
 		} finally {
 			rmSync(testDir, { recursive: true, force: true });
 		}

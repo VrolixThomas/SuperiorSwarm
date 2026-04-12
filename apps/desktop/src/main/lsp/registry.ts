@@ -1,6 +1,6 @@
-import { existsSync, readFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { z } from "zod";
 
 const serverSchema = z.object({
@@ -210,10 +210,6 @@ export function loadRepoConfig(repoPath: string): LanguageServerConfig[] {
 }
 
 function loadConfigFile(path: string): LanguageServerConfig[] {
-	if (!existsSync(path)) {
-		return [];
-	}
-
 	let raw: unknown;
 	try {
 		raw = JSON.parse(readFileSync(path, "utf8"));
@@ -249,6 +245,19 @@ function loadConfigFile(path: string): LanguageServerConfig[] {
 	}
 
 	return servers;
+}
+
+export function saveConfigFile(path: string, servers: LanguageServerConfig[]): void {
+	for (const server of servers) {
+		const result = serverSchema.safeParse(server);
+		if (!result.success) {
+			const issues = result.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
+			throw new Error(`Invalid server config "${server.id}": ${issues}`);
+		}
+	}
+
+	mkdirSync(dirname(path), { recursive: true });
+	writeFileSync(path, JSON.stringify({ servers }, null, "\t"), "utf8");
 }
 
 function normalizeExtension(extension: string): string | null {
