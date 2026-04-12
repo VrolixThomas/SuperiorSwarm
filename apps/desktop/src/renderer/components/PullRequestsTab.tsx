@@ -4,6 +4,7 @@ import type { GitHubPR } from "../../main/github/github";
 import type { AgentAlert } from "../../shared/agent-events";
 import type { GitHubPREnriched, PRContext } from "../../shared/github-types";
 import { useAgentAlertStore } from "../stores/agent-alert-store";
+import { getAllPanes, usePaneStore } from "../stores/pane-store";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import { ConnectBanner } from "./ConnectBanner";
@@ -199,12 +200,36 @@ export function PullRequestsTab() {
 				tabStore.openPROverview(launchInfo.reviewWorkspaceId, prCtx);
 			}
 
-			// Create terminal and run the launch script
+			// Create terminal and split: terminal left, PR overview right
 			const tabId = tabStore.addTerminalTab(
 				launchInfo.reviewWorkspaceId,
 				launchInfo.worktreePath,
 				"AI Review"
 			);
+			if (prCtx) {
+				const paneStore = usePaneStore.getState();
+				const layout = paneStore.layouts[launchInfo.reviewWorkspaceId];
+				if (layout) {
+					for (const pane of getAllPanes(layout)) {
+						const overviewTab = pane.tabs.find(
+							(t) =>
+								t.kind === "pr-overview" &&
+								t.prCtx.owner === prCtx.owner &&
+								t.prCtx.repo === prCtx.repo &&
+								t.prCtx.number === prCtx.number
+						);
+						if (overviewTab) {
+							paneStore.splitPane(
+								launchInfo.reviewWorkspaceId,
+								pane.id,
+								"horizontal",
+								overviewTab
+							);
+							break;
+						}
+					}
+				}
+			}
 			attachTerminalRef.current({
 				workspaceId: launchInfo.reviewWorkspaceId,
 				terminalId: tabId,
