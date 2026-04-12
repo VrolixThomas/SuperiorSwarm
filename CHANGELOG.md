@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.4.8 (2026-04-13)
+
+### What's New
+
+This release delivers a major redesign of the PR comment solver in SuperiorSwarm. You can now review and push fixes per commit group, see solve status badges on individual comments, browse session history, cancel in-progress solves with partial recovery, and open the terminal side-by-side with the solve review. The update checker has been fixed to always show the latest "What's New" content, and terminal daemon stability has been improved.
+
+### Changes
+
+- **SUP-25**: Sup 25/update checker whats new shows stale content and p (#75)
+- Terminal stability hardening (#74)
+- Pr comment solver redesign v2 (#73)
+
 ## v0.4.7 (2026-04-12)
 
 ### What's New
