@@ -48,6 +48,9 @@ apps/desktop/dist/
 # Superpowers
 .superpowers/
 
+# graphify knowledge graph (generated — rebuild with /graphify .)
+graphify-out/
+
 # OS
 Thumbs.db
 

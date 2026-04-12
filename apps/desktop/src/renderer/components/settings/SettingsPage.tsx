@@ -1,7 +1,8 @@
 import { useEffect } from "react";
 import { useProjectStore } from "../../stores/projects";
-import { AIReviewSettings } from "./AIReviewSettings";
+import { AIReviewerSettings } from "./AIReviewerSettings";
 import { AboutSettings } from "./AboutSettings";
+import { CommentSolverSettings } from "./CommentSolverSettings";
 import { GeneralSettings } from "./GeneralSettings";
 import { IntegrationsSettings } from "./IntegrationsSettings";
 import { KeyboardShortcutsSettings } from "./KeyboardShortcutsSettings";
@@ -17,8 +18,10 @@ function SettingsContent() {
 			return <GeneralSettings />;
 		case "integrations":
 			return <IntegrationsSettings />;
-		case "ai-review":
-			return <AIReviewSettings />;
+		case "ai-reviewer":
+			return <AIReviewerSettings />;
+		case "comment-solver":
+			return <CommentSolverSettings />;
 		case "shortcuts":
 			return <KeyboardShortcutsSettings />;
 		case "terminals":

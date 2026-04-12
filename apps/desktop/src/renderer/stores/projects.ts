@@ -4,7 +4,8 @@ import type { SidebarSegment } from "../../shared/types";
 export type SettingsCategory =
 	| "general"
 	| "integrations"
-	| "ai-review"
+	| "ai-reviewer"
+	| "comment-solver"
 	| "shortcuts"
 	| "terminals"
 	| "worktrees"

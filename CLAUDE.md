@@ -58,3 +58,13 @@ To run a single test file: `bun test tests/cmd-buffer.test.ts`
 ## Maintenance
 
 When you discover something non-obvious that required reading 2+ files to piece together, or the user corrects a wrong assumption — add a brief index entry above and commit: `git add CLAUDE.md && git commit -m 'docs: update CLAUDE.md'`. Only add at 95%+ confidence the fact is non-obvious, correct, and durable. Remove stale entries. Never explain — route to source.
+
+## graphify
+
+This project has a graphify knowledge graph at graphify-out/. The god nodes and community summary are **pre-loaded into context at session start** via a SessionStart hook.
+
+Rules:
+- **NEVER use Glob or Grep to find files.** Use the knowledge graph to identify which files to read, then Read them directly.
+- Start all codebase exploration from `graphify-out/GRAPH_REPORT.md` — it is already in your context.
+- For node detail (including file path), navigate `graphify-out/obsidian/<NodeName>.md` — then Read the source file.
+- After modifying code files in this session, run `python3 -c "from graphify.watch import _rebuild_code; from pathlib import Path; _rebuild_code(Path('.'))"` to keep the graph current

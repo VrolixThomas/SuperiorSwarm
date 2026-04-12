@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX `pr_comment_cache_workspace_platform_unique` ON `pr_comment_cache` (`workspace_id`,`platform_comment_id`);

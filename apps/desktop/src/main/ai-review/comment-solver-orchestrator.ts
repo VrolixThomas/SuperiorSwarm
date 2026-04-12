@@ -1,6 +1,6 @@
 import { execSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { and, count, eq, gt, inArray, not } from "drizzle-orm";
 import { app } from "electron";
@@ -13,14 +13,20 @@ import { getSettings } from "./orchestrator";
 import { buildSolvePrompt } from "./solve-prompt";
 import { resolveSessionWorktree } from "./solve-session-resolver";
 
+// ─── Constants ─────────────────────────────────────────────────────────────────
+
+/** Threshold for declaring a session stale — used by recovery and liveness checks. */
+const STALE_SESSION_MS = 10 * 60 * 1000;
+
 // ─── State machine ────────────────────────────────────────────────────────────
 
 const VALID_SOLVE_TRANSITIONS: Record<SolveSessionStatus, SolveSessionStatus[]> = {
-	queued: ["in_progress", "failed", "dismissed"],
-	in_progress: ["ready", "failed", "dismissed"],
+	queued: ["in_progress", "failed", "dismissed", "cancelled"],
+	in_progress: ["ready", "failed", "dismissed", "cancelled"],
 	ready: ["submitted", "failed", "dismissed"],
 	submitted: ["dismissed"],
 	failed: ["dismissed"],
+	cancelled: ["dismissed"],
 	dismissed: [],
 };
 
@@ -153,11 +159,35 @@ export async function queueSolve(sessionId: string): Promise<SolveLaunchInfo> {
 					`export DB_PATH='${dbPath}'`,
 					`export WORKTREE_PATH='${worktreePath}'`,
 				];
-		const scriptContent = ["#!/bin/bash", `cd '${worktreePath}'`, ...envLines, "", cliCommand].join(
-			"\n"
-		);
+		const pidFilePath = join(solveDir, "solver.pid");
+		const scriptContent = [
+			"#!/bin/bash",
+			`echo $$ > '${pidFilePath}'`,
+			`cd '${worktreePath}'`,
+			...envLines,
+			"",
+			cliCommand,
+		].join("\n");
 		writeFileSync(launchScript, scriptContent, "utf-8");
 		chmodSync(launchScript, 0o755);
+
+		// Read PID file and store on session after the script has had time to write it
+		setTimeout(() => {
+			try {
+				const pidContent = readFileSync(pidFilePath, "utf-8").trim();
+				const pid = Number.parseInt(pidContent, 10);
+				if (!Number.isNaN(pid)) {
+					getDb()
+						.update(schema.commentSolveSessions)
+						.set({ pid, updatedAt: new Date() })
+						.where(eq(schema.commentSolveSessions.id, sessionId))
+						.run();
+					console.log(`[comment-solver] Stored PID ${pid} for session ${sessionId}`);
+				}
+			} catch {
+				// PID file not yet written or session already gone — ignore
+			}
+		}, 2000);
 
 		return {
 			sessionId,
@@ -172,6 +202,54 @@ export async function queueSolve(sessionId: string): Promise<SolveLaunchInfo> {
 			.where(eq(schema.commentSolveSessions.id, sessionId))
 			.run();
 		throw err;
+	}
+}
+
+/**
+ * On app startup, sweep for sessions stuck in queued/in_progress.
+ * - If pid is set: attempt process.kill(pid, 0) to check if process is alive. If dead, mark failed.
+ * - If pid is null: fall back to lastActivityAt staleness (10 min threshold).
+ */
+export function recoverStuckSessions(): void {
+	const db = getDb();
+	const now = new Date();
+	const cutoff = new Date(now.getTime() - STALE_SESSION_MS);
+
+	const stuck = db
+		.select()
+		.from(schema.commentSolveSessions)
+		.where(inArray(schema.commentSolveSessions.status, ["queued", "in_progress"]))
+		.all();
+
+	for (const session of stuck) {
+		let shouldFail = false;
+
+		if (session.pid !== null) {
+			try {
+				process.kill(session.pid, 0); // signal 0 = check existence only
+				// Process exists — don't fail it
+			} catch (killErr) {
+				// Only ESRCH means "no such process" — EPERM means process exists but we can't signal it
+				if ((killErr as NodeJS.ErrnoException).code === "ESRCH") {
+					shouldFail = true;
+				}
+				// EPERM or other errors: assume the process is still alive
+			}
+		} else {
+			// No PID — fall back to activity timestamp, or createdAt if no activity yet
+			const anchor = session.lastActivityAt ?? session.createdAt;
+			if (anchor !== null && anchor < cutoff) {
+				shouldFail = true;
+			}
+		}
+
+		if (shouldFail) {
+			console.log(`[comment-solver] Recovering stuck session ${session.id} → failed`);
+			db.update(schema.commentSolveSessions)
+				.set({ status: "failed", updatedAt: now })
+				.where(eq(schema.commentSolveSessions.id, session.id))
+				.run();
+		}
 	}
 }
 
@@ -266,4 +344,95 @@ export async function revertGroup(groupId: string, worktreePath: string): Promis
 				.run();
 		}
 	}
+}
+
+/**
+ * Check whether a solve session's agent process is dead.
+ * Used by getSolveSession to lazily mark sessions failed on poll.
+ */
+export function isSessionDead(
+	session: { pid: number | null; lastActivityAt: Date | null; createdAt: Date },
+	now: Date
+): boolean {
+	const cutoff = new Date(now.getTime() - STALE_SESSION_MS);
+
+	if (session.pid !== null) {
+		try {
+			process.kill(session.pid, 0);
+			return false; // Process exists
+		} catch (killErr) {
+			return (killErr as NodeJS.ErrnoException).code === "ESRCH";
+		}
+	}
+
+	// No PID — fall back to activity timestamp
+	const anchor = session.lastActivityAt ?? session.createdAt;
+	return anchor !== null && anchor < cutoff;
+}
+
+/**
+ * Cancel an in-progress or queued solve session.
+ * Kills the agent process (if PID is known), deletes pending groups and resets
+ * their comments back to "open", then marks the session "cancelled".
+ * Fixed groups are preserved so partial work survives.
+ */
+export function cancelSolve(sessionId: string): void {
+	const db = getDb();
+
+	const session = db
+		.select()
+		.from(schema.commentSolveSessions)
+		.where(eq(schema.commentSolveSessions.id, sessionId))
+		.get();
+
+	if (!session) throw new Error(`Session ${sessionId} not found`);
+
+	validateSolveTransition(session.status, "cancelled");
+
+	// Kill the agent process if PID is available
+	if (session.pid !== null) {
+		try {
+			process.kill(session.pid, "SIGTERM");
+		} catch (err: unknown) {
+			const code = (err as NodeJS.ErrnoException).code;
+			if (code === "EPERM") {
+				console.warn(
+					`[comment-solver] EPERM killing PID ${session.pid} for session ${sessionId} — proceeding with cancel`
+				);
+			} else if (code !== "ESRCH") {
+				throw err;
+			}
+		}
+	}
+
+	db.transaction((tx) => {
+		// Find pending groups to delete
+		const pendingGroups = tx
+			.select()
+			.from(schema.commentGroups)
+			.where(
+				and(
+					eq(schema.commentGroups.solveSessionId, sessionId),
+					eq(schema.commentGroups.status, "pending")
+				)
+			)
+			.all();
+
+		for (const group of pendingGroups) {
+			// Reset comments that belonged to this pending group
+			tx.update(schema.prComments)
+				.set({ groupId: null, status: "open" })
+				.where(eq(schema.prComments.groupId, group.id))
+				.run();
+
+			// Delete the pending group
+			tx.delete(schema.commentGroups).where(eq(schema.commentGroups.id, group.id)).run();
+		}
+
+		// Mark session cancelled
+		tx.update(schema.commentSolveSessions)
+			.set({ status: "cancelled", updatedAt: new Date() })
+			.where(eq(schema.commentSolveSessions.id, sessionId))
+			.run();
+	});
 }

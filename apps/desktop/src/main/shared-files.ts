@@ -4,6 +4,7 @@ import { assertPathInsideRepo } from "./path-utils";
 
 export interface SharedFileEntry {
 	relativePath: string;
+	type: "file" | "directory";
 }
 
 export interface SymlinkResult {

@@ -1,0 +1,1 @@
+ALTER TABLE `ai_review_settings` ADD `solve_auto_resolve_threads` integer DEFAULT 0 NOT NULL;

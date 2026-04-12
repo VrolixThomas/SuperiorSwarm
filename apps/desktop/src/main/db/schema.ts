@@ -151,6 +151,9 @@ export const sharedFiles = sqliteTable(
 			.notNull()
 			.references(() => projects.id, { onDelete: "cascade" }),
 		relativePath: text("relative_path").notNull(),
+		type: text("type", { enum: ["file", "directory"] })
+			.notNull()
+			.default("file"),
 		createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
 	},
 	(table) => [
@@ -309,6 +312,12 @@ export {
 	commentEvents,
 	type CommentEvent,
 	type NewCommentEvent,
+	prCommentCache,
+	type PrCommentCache,
+	type NewPrCommentCache,
+	prCommentCacheMeta,
+	type PrCommentCacheMeta,
+	type NewPrCommentCacheMeta,
 } from "./schema-comment-solver";
 
 // ── tracked_prs ──────────────────────────────────────────────────────────────

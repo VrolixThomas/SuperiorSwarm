@@ -8,7 +8,22 @@ import { createDefaultPane, getAllPanes, usePaneStore } from "./pane-store";
 // ─── Tab types ───────────────────────────────────────────────────────────────
 
 export type TabItem =
-	| { kind: "terminal"; id: string; workspaceId: string; title: string; cwd: string }
+	| {
+			kind: "terminal";
+			id: string;
+			workspaceId: string;
+			title: string;
+			cwd: string;
+			solveSessionId?: string;
+			presetName?: string;
+	  }
+	| {
+			kind: "solve-review";
+			id: string;
+			workspaceId: string;
+			solveSessionId: string;
+			title: "Solve Review";
+	  }
 	| {
 			kind: "diff-file";
 			id: string;
@@ -137,6 +152,14 @@ interface TabStore {
 
 	// Terminal convenience
 	addTerminalTab: (workspaceId: string, cwd: string, title?: string) => string;
+
+	// Solve review
+	addSolveReviewTab: (
+		workspaceId: string,
+		solveSessionId: string,
+		options?: { split?: boolean }
+	) => string;
+	getSolveReviewTab: (workspaceId: string) => TabItem | undefined;
 
 	// PR review
 	openPRReviewPanel: (workspaceId: string, prCtx: PRContext) => void;
@@ -515,6 +538,40 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 			ps().addTabToPane(workspaceId, focused.id, tab);
 		}
 		return id;
+	},
+
+	addSolveReviewTab: (workspaceId, solveSessionId, options) => {
+		const existing = get().getSolveReviewTab(workspaceId);
+		if (
+			existing &&
+			existing.kind === "solve-review" &&
+			existing.solveSessionId === solveSessionId
+		) {
+			get().setActiveTab(existing.id);
+			return existing.id;
+		}
+		const id = `solve-review-${solveSessionId}`;
+		const tab: TabItem = {
+			kind: "solve-review",
+			id,
+			workspaceId,
+			solveSessionId,
+			title: "Solve Review",
+		};
+		ps().ensureLayout(workspaceId);
+		const focused = resolveFocusedPane(workspaceId);
+		if (focused && options?.split) {
+			// Open in a new pane beside the current one
+			ps().splitPane(workspaceId, focused.id, "horizontal", tab);
+		} else if (focused) {
+			ps().addTabToPane(workspaceId, focused.id, tab);
+		}
+		return id;
+	},
+
+	getSolveReviewTab: (workspaceId) => {
+		const tabs = get().getTabsByWorkspace(workspaceId);
+		return tabs.find((t) => t.kind === "solve-review");
 	},
 
 	openPRReviewPanel: (workspaceId, prCtx) => {
