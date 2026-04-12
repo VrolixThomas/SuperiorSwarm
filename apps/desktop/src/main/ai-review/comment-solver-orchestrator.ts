@@ -13,6 +13,11 @@ import { getSettings } from "./orchestrator";
 import { buildSolvePrompt } from "./solve-prompt";
 import { resolveSessionWorktree } from "./solve-session-resolver";
 
+// ─── Constants ─────────────────────────────────────────────────────────────────
+
+/** Threshold for declaring a session stale — used by recovery and liveness checks. */
+const STALE_SESSION_MS = 10 * 60 * 1000;
+
 // ─── State machine ────────────────────────────────────────────────────────────
 
 const VALID_SOLVE_TRANSITIONS: Record<SolveSessionStatus, SolveSessionStatus[]> = {
@@ -208,8 +213,7 @@ export async function queueSolve(sessionId: string): Promise<SolveLaunchInfo> {
 export function recoverStuckSessions(): void {
 	const db = getDb();
 	const now = new Date();
-	const TEN_MIN_MS = 10 * 60 * 1000;
-	const cutoff = new Date(now.getTime() - TEN_MIN_MS);
+	const cutoff = new Date(now.getTime() - STALE_SESSION_MS);
 
 	const stuck = db
 		.select()
@@ -350,8 +354,7 @@ export function isSessionDead(
 	session: { pid: number | null; lastActivityAt: Date | null; createdAt: Date },
 	now: Date
 ): boolean {
-	const TEN_MIN_MS = 10 * 60 * 1000;
-	const cutoff = new Date(now.getTime() - TEN_MIN_MS);
+	const cutoff = new Date(now.getTime() - STALE_SESSION_MS);
 
 	if (session.pid !== null) {
 		try {
