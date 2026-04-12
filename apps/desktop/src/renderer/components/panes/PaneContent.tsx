@@ -6,7 +6,6 @@ import { FileEditor } from "../FileEditor";
 import { MergeConflictPane } from "../MergeConflictPane";
 import { PROverviewTab } from "../PROverviewTab";
 import { PRReviewFileTab } from "../PRReviewFileTab";
-import { ReviewWorkspaceTab } from "../ReviewWorkspaceTab";
 import { SolveReviewTab } from "../SolveReviewTab";
 import { Terminal } from "../Terminal";
 
@@ -120,11 +119,6 @@ export function PaneContent({
 						workspaceId={activeTab.workspaceId}
 						solveSessionId={activeTab.solveSessionId}
 					/>
-				</div>
-			)}
-			{activeTab?.kind === "review-workspace" && (
-				<div className="absolute inset-0">
-					<ReviewWorkspaceTab workspaceId={activeTab.workspaceId} draftId={activeTab.draftId} />
 				</div>
 			)}
 		</div>

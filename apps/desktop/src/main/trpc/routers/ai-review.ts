@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { cleanupReviewWorkspace } from "../../ai-review/cleanup";
 import { startPolling } from "../../ai-review/commit-poller";
@@ -270,12 +270,10 @@ export const aiReviewRouter = router({
 		)
 		.mutation(({ input }) => {
 			const db = getDb();
-			for (const id of input.commentIds) {
-				db.update(schema.draftComments)
-					.set({ status: input.status })
-					.where(eq(schema.draftComments.id, id))
-					.run();
-			}
+			db.update(schema.draftComments)
+				.set({ status: input.status })
+				.where(inArray(schema.draftComments.id, input.commentIds))
+				.run();
 			return { success: true, count: input.commentIds.length };
 		}),
 
@@ -382,6 +380,23 @@ export const aiReviewRouter = router({
 		.input(z.object({ workspaceId: z.string() }))
 		.mutation(async ({ input }) => {
 			await cleanupReviewWorkspace(input.workspaceId);
+			return { success: true };
+		}),
+
+	/** Reject all pending (unreviewed) comments on a draft, keeping approved/edited/submitted ones + summary */
+	dismissPendingComments: publicProcedure
+		.input(z.object({ draftId: z.string() }))
+		.mutation(({ input }) => {
+			const db = getDb();
+			db.update(schema.draftComments)
+				.set({ status: "rejected" })
+				.where(
+					and(
+						eq(schema.draftComments.reviewDraftId, input.draftId),
+						eq(schema.draftComments.status, "pending")
+					)
+				)
+				.run();
 			return { success: true };
 		}),
 

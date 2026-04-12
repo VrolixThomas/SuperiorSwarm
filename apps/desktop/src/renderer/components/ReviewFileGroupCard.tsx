@@ -37,7 +37,7 @@ export function ReviewFileGroupCard({
 		.filter((c) => c.status !== "approved" && c.status !== "edited")
 		.map((c) => c.id);
 	const visibleItems = items.filter((item) =>
-		item.kind === "ai-draft" ? item.status !== "rejected" : true,
+		item.kind === "ai-draft" ? item.status !== "rejected" : true
 	);
 	const totalItemCount = visibleItems.length;
 
@@ -100,24 +100,24 @@ export function ReviewFileGroupCard({
 			{expanded && (
 				<div className="border-t border-[var(--border-subtle)] px-[12px] pt-[10px] pb-[12px]">
 					{visibleItems.map((item) =>
-							item.kind === "ai-draft" ? (
-								<CommentRow
-									key={item.id}
-									comment={item}
-									onApprove={onApprove}
-									onReject={onReject}
-									onEdit={onEdit}
-									onOpenInDiff={() => onOpenInDiff(filePath)}
-								/>
-							) : (
-								<GitHubThreadRow
-									key={item.id}
-									item={item}
-									onReply={onReplyToThread}
-									onResolve={onResolveThread}
-								/>
-							),
-						)}
+						item.kind === "ai-draft" ? (
+							<CommentRow
+								key={item.id}
+								comment={item}
+								onApprove={onApprove}
+								onReject={onReject}
+								onEdit={onEdit}
+								onOpenInDiff={() => onOpenInDiff(filePath)}
+							/>
+						) : (
+							<GitHubThreadRow
+								key={item.id}
+								item={item}
+								onReply={onReplyToThread}
+								onResolve={onResolveThread}
+							/>
+						)
+					)}
 				</div>
 			)}
 		</div>

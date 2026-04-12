@@ -30,7 +30,7 @@ export const reviewDrafts = sqliteTable("review_drafts", {
 	prAuthor: text("pr_author").notNull(),
 	sourceBranch: text("source_branch").notNull(),
 	targetBranch: text("target_branch").notNull(),
-	status: text("status").notNull().default("queued"), // queued | in_progress | ready | submitted | failed
+	status: text("status").notNull().default("queued"), // queued | in_progress | ready | submitted | failed | cancelled
 	commitSha: text("commit_sha"),
 	summaryMarkdown: text("summary_markdown"),
 	reviewChainId: text("review_chain_id"),
