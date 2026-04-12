@@ -605,7 +605,12 @@ export const commentSolverRouter = router({
 			const approvedCommentIds = db
 				.select({ id: schema.prComments.id })
 				.from(schema.prComments)
-				.where(inArray(schema.prComments.groupId, approvedGroups.map((g) => g.id)))
+				.where(
+					inArray(
+						schema.prComments.groupId,
+						approvedGroups.map((g) => g.id)
+					)
+				)
 				.all()
 				.map((c) => c.id);
 
