@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -515,6 +515,41 @@ if (isSolverMode) {
 				db.prepare(
 					`UPDATE comment_groups SET status = 'fixed', commit_hash = ? WHERE id = ? AND solve_session_id = ?`
 				).run(hash, group_id, SOLVE_SESSION_ID);
+
+				const diffTree = execSync(
+					`git diff-tree --no-commit-id -r --numstat ${hash}`,
+					{ cwd },
+				).toString().trim();
+
+				const changedFiles = diffTree ? diffTree.split("\n").filter(Boolean).map((line) => {
+					const [add, del, path] = line.split("\t");
+					return {
+						path,
+						changeType: "M",
+						additions: add === "-" ? 0 : parseInt(add, 10),
+						deletions: del === "-" ? 0 : parseInt(del, 10),
+					};
+				}) : [];
+
+				const nameStatus = execSync(
+					`git diff-tree --no-commit-id -r --name-status ${hash}`,
+					{ cwd },
+				).toString().trim();
+
+				const typeMap = {};
+				for (const line of nameStatus.split("\n").filter(Boolean)) {
+					const [type, ...pathParts] = line.split("\t");
+					const filePath = pathParts[pathParts.length - 1];
+					typeMap[filePath] = type.charAt(0);
+				}
+
+				for (const file of changedFiles) {
+					file.changeType = typeMap[file.path] || "M";
+				}
+
+				db.prepare(
+					"UPDATE comment_groups SET changed_files = ? WHERE id = ?"
+				).run(JSON.stringify(changedFiles), group_id);
 
 				return {
 					content: [
