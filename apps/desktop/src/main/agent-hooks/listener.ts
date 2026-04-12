@@ -79,7 +79,7 @@ export function createAlertListener(port: number): AgentAlertListener {
 					const onBindError = (err: NodeJS.ErrnoException) => {
 						if (err.code === "EADDRINUSE" && targetPort !== 0) {
 							console.warn(
-								`[agent-notify] port ${targetPort} in use, falling back to OS-assigned port`,
+								`[agent-notify] port ${targetPort} in use, falling back to OS-assigned port`
 							);
 							bind(0);
 						} else {

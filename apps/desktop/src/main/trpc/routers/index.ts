@@ -14,9 +14,9 @@ import { quickActionsRouter } from "./quick-actions";
 import { rebaseRouter } from "./rebase";
 import { remoteRouter } from "./remote";
 import { sharedFilesRouter } from "./shared-files";
+import { systemRouter } from "./system";
 import { terminalSessionsRouter } from "./terminal-sessions";
 import { ticketsRouter } from "./tickets";
-import { systemRouter } from "./system";
 import { updatesRouter } from "./updates";
 import { workspacesRouter } from "./workspaces";
 

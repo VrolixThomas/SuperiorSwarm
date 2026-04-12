@@ -15,6 +15,5 @@ export const useEditorSettingsStore = create<EditorSettingsStore>((set) => ({
 	hydrateVimMode: (value) => set({ vimEnabled: value === "true" }),
 	notificationSoundsEnabled: true,
 	setNotificationSoundsEnabled: (enabled) => set({ notificationSoundsEnabled: enabled }),
-	hydrateNotificationSounds: (value) =>
-		set({ notificationSoundsEnabled: value !== "false" }),
+	hydrateNotificationSounds: (value) => set({ notificationSoundsEnabled: value !== "false" }),
 }));

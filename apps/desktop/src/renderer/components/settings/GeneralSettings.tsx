@@ -5,9 +5,7 @@ import { ToggleRow } from "./ToggleRow";
 export function GeneralSettings() {
 	const vimEnabled = useEditorSettingsStore((s) => s.vimEnabled);
 	const setVimEnabled = useEditorSettingsStore((s) => s.setVimEnabled);
-	const notificationSoundsEnabled = useEditorSettingsStore(
-		(s) => s.notificationSoundsEnabled
-	);
+	const notificationSoundsEnabled = useEditorSettingsStore((s) => s.notificationSoundsEnabled);
 	const setNotificationSoundsEnabled = useEditorSettingsStore(
 		(s) => s.setNotificationSoundsEnabled
 	);

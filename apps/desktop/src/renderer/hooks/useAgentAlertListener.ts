@@ -23,10 +23,7 @@ export function useAgentAlertListener(): void {
 
 			useAgentAlertStore.getState().setAlert(workspaceId, alert);
 
-			if (
-				SOUND_ALERTS.has(alert) &&
-				useEditorSettingsStore.getState().notificationSoundsEnabled
-			) {
+			if (SOUND_ALERTS.has(alert) && useEditorSettingsStore.getState().notificationSoundsEnabled) {
 				if (!audioRef.current) {
 					audioRef.current = new Audio("/sounds/notify.wav");
 				}
