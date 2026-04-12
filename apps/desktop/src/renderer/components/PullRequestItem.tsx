@@ -83,6 +83,7 @@ export function RichPRItem({
 	isActive,
 	agentAlert,
 	projectsList,
+	reviewStatus,
 	onClick,
 	onContextMenu,
 }: {
@@ -101,6 +102,11 @@ export function RichPRItem({
 				defaultBranch: string;
 		  }>
 		| undefined;
+	reviewStatus?: {
+		status: string;
+		commentCount: number;
+		roundNumber: number;
+	} | null;
 	onClick: (e: React.MouseEvent) => void;
 	onContextMenu?: (e: React.MouseEvent) => void;
 }) {
@@ -163,6 +169,32 @@ export function RichPRItem({
 					#{pr.number}
 				</span>
 			</div>
+
+			{/* Row 1.5: AI Review status badge */}
+			{reviewStatus && (
+				<div className="flex items-center gap-1 mt-px">
+					{(reviewStatus.status === "queued" || reviewStatus.status === "in_progress") && (
+						<span className="inline-flex items-center gap-1 text-[10px] text-[var(--accent)]">
+							<span className="size-1.5 rounded-full bg-[var(--accent)] animate-pulse" />
+							Reviewing…
+						</span>
+					)}
+					{reviewStatus.status === "ready" && (
+						<span className="text-[10px] text-[var(--warning)]">Review ready</span>
+					)}
+					{reviewStatus.status === "submitted" && (
+						<span className="text-[10px] text-[var(--success)]">
+							Submitted{reviewStatus.roundNumber > 1 ? ` (Round ${reviewStatus.roundNumber})` : ""}
+						</span>
+					)}
+					{reviewStatus.status === "cancelled" && (
+						<span className="text-[10px] text-[var(--text-quaternary)]">Cancelled</span>
+					)}
+					{reviewStatus.status === "failed" && (
+						<span className="text-[10px] text-[var(--danger)]">Failed</span>
+					)}
+				</div>
+			)}
 
 			{/* Row 2: Branch info */}
 			<div className="flex items-center gap-1 text-[10px] text-[var(--text-quaternary)]">
