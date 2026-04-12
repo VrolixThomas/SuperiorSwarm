@@ -135,14 +135,12 @@ function PRHeader({
 			<div className="flex justify-between items-center mb-[6px]">
 				<div className="flex items-center gap-2">
 					<span
-						style={{ fontFamily: "var(--font-mono)" }}
-						className="text-[11.5px] text-[var(--text-tertiary)]"
+						className="[font-family:var(--font-mono)] text-[11.5px] text-[var(--text-tertiary)]"
 					>
 						{session.prIdentifier}
 					</span>
 					<span
-						style={{ fontFamily: "var(--font-mono)" }}
-						className="inline-flex items-center gap-[5px] px-2 py-[2px] bg-[var(--bg-elevated)] rounded-[4px] text-[10.5px] text-[var(--text-secondary)]"
+						className="[font-family:var(--font-mono)] inline-flex items-center gap-[5px] px-2 py-[2px] bg-[var(--bg-elevated)] rounded-[4px] text-[10.5px] text-[var(--text-secondary)]"
 					>
 						{session.sourceBranch}
 						<span className="text-[var(--text-tertiary)] text-[9px]">→</span>
@@ -231,8 +229,7 @@ function ProgressStrip({
 					)}
 				</div>
 				<span
-					style={{ fontFamily: "var(--font-mono)" }}
-					className="text-[11px] text-[var(--text-tertiary)]"
+					className="[font-family:var(--font-mono)] text-[11px] text-[var(--text-tertiary)]"
 				>
 					{approvedGroups} / {totalGroups} approved
 				</span>
