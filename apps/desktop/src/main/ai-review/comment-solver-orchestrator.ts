@@ -16,11 +16,12 @@ import { resolveSessionWorktree } from "./solve-session-resolver";
 // ─── State machine ────────────────────────────────────────────────────────────
 
 const VALID_SOLVE_TRANSITIONS: Record<SolveSessionStatus, SolveSessionStatus[]> = {
-	queued: ["in_progress", "failed", "dismissed"],
-	in_progress: ["ready", "failed", "dismissed"],
+	queued: ["in_progress", "failed", "dismissed", "cancelled"],
+	in_progress: ["ready", "failed", "dismissed", "cancelled"],
 	ready: ["submitted", "failed", "dismissed"],
 	submitted: ["dismissed"],
 	failed: ["dismissed"],
+	cancelled: ["dismissed"],
 	dismissed: [],
 };
 
@@ -339,4 +340,94 @@ export async function revertGroup(groupId: string, worktreePath: string): Promis
 				.run();
 		}
 	}
+}
+
+/**
+ * Check whether a solve session's agent process is dead.
+ * Used by getSolveSession to lazily mark sessions failed on poll.
+ */
+export function isSessionDead(
+	session: { pid: number | null; lastActivityAt: Date | null; createdAt: Date },
+	now: Date
+): boolean {
+	const TEN_MIN_MS = 10 * 60 * 1000;
+	const cutoff = new Date(now.getTime() - TEN_MIN_MS);
+
+	if (session.pid !== null) {
+		try {
+			process.kill(session.pid, 0);
+			return false; // Process exists
+		} catch (killErr) {
+			return (killErr as NodeJS.ErrnoException).code === "ESRCH";
+		}
+	}
+
+	// No PID — fall back to activity timestamp
+	const anchor = session.lastActivityAt ?? session.createdAt;
+	return anchor !== null && anchor < cutoff;
+}
+
+/**
+ * Cancel an in-progress or queued solve session.
+ * Kills the agent process (if PID is known), deletes pending groups and resets
+ * their comments back to "open", then marks the session "cancelled".
+ * Fixed groups are preserved so partial work survives.
+ */
+export function cancelSolve(sessionId: string): void {
+	const db = getDb();
+
+	const session = db
+		.select()
+		.from(schema.commentSolveSessions)
+		.where(eq(schema.commentSolveSessions.id, sessionId))
+		.get();
+
+	if (!session) throw new Error(`Session ${sessionId} not found`);
+
+	validateSolveTransition(session.status, "cancelled");
+
+	// Kill the agent process if PID is available
+	if (session.pid) {
+		try {
+			process.kill(session.pid, "SIGTERM");
+		} catch (err: unknown) {
+			// ESRCH = process already dead, that's fine
+			if ((err as NodeJS.ErrnoException).code !== "ESRCH") {
+				throw err;
+			}
+		}
+	}
+
+	db.transaction((tx) => {
+		// Find pending groups to delete
+		const pendingGroups = tx
+			.select()
+			.from(schema.commentGroups)
+			.where(
+				and(
+					eq(schema.commentGroups.solveSessionId, sessionId),
+					eq(schema.commentGroups.status, "pending"),
+				)
+			)
+			.all();
+
+		for (const group of pendingGroups) {
+			// Reset comments that belonged to this pending group
+			tx.update(schema.prComments)
+				.set({ groupId: null, status: "open" })
+				.where(eq(schema.prComments.groupId, group.id))
+				.run();
+
+			// Delete the pending group
+			tx.delete(schema.commentGroups)
+				.where(eq(schema.commentGroups.id, group.id))
+				.run();
+		}
+
+		// Mark session cancelled
+		tx.update(schema.commentSolveSessions)
+			.set({ status: "cancelled", updatedAt: new Date() })
+			.where(eq(schema.commentSolveSessions.id, sessionId))
+			.run();
+	});
 }

@@ -3,6 +3,7 @@ import { and, eq, inArray, not } from "drizzle-orm";
 import { z } from "zod";
 import { pollWorkspace } from "../../ai-review/comment-poller";
 import {
+	cancelSolve,
 	isSessionDead,
 	revertGroup as revertGroupOrchestrator,
 } from "../../ai-review/comment-solver-orchestrator";
@@ -596,6 +597,18 @@ export const commentSolverRouter = router({
 				.run();
 
 			return { success: true };
+		}),
+
+	/**
+	 * Cancel an in-progress or queued session.
+	 * Kills the agent process, deletes pending groups, and marks the session cancelled.
+	 * Fixed groups are preserved so partial work survives.
+	 */
+	cancelSolve: publicProcedure
+		.input(z.object({ sessionId: z.string() }))
+		.mutation(({ input }) => {
+			cancelSolve(input.sessionId);
+			return { success: true as const };
 		}),
 
 	/**

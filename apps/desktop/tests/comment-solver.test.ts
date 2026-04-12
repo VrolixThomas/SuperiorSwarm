@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import Database from "better-sqlite3";
-import { validateSolveTransition } from "../src/main/ai-review/comment-solver-orchestrator";
+import { cancelSolve, validateSolveTransition } from "../src/main/ai-review/comment-solver-orchestrator";
 
 // ─── In-memory database setup ─────────────────────────────────────────────────
 
@@ -152,14 +152,17 @@ describe("Comment Solver", () => {
 			expect(() => validateSolveTransition("queued", "in_progress")).not.toThrow();
 			expect(() => validateSolveTransition("queued", "failed")).not.toThrow();
 			expect(() => validateSolveTransition("queued", "dismissed")).not.toThrow();
+			expect(() => validateSolveTransition("queued", "cancelled")).not.toThrow();
 			expect(() => validateSolveTransition("in_progress", "ready")).not.toThrow();
 			expect(() => validateSolveTransition("in_progress", "failed")).not.toThrow();
 			expect(() => validateSolveTransition("in_progress", "dismissed")).not.toThrow();
+			expect(() => validateSolveTransition("in_progress", "cancelled")).not.toThrow();
 			expect(() => validateSolveTransition("ready", "submitted")).not.toThrow();
 			expect(() => validateSolveTransition("ready", "failed")).not.toThrow();
 			expect(() => validateSolveTransition("ready", "dismissed")).not.toThrow();
 			expect(() => validateSolveTransition("submitted", "dismissed")).not.toThrow();
 			expect(() => validateSolveTransition("failed", "dismissed")).not.toThrow();
+			expect(() => validateSolveTransition("cancelled", "dismissed")).not.toThrow();
 		});
 
 		test("rejects invalid transitions", () => {
@@ -763,6 +766,102 @@ describe("Comment Solver", () => {
 			expect(row["body"]).toBe("Edited body");
 
 			db.prepare("DELETE FROM comment_replies WHERE id = ?").run(replyId);
+		});
+	});
+
+	describe("cancelSolve", () => {
+		// NOTE: cancelSolve() calls getDb() internally which returns the production DB,
+		// so we cannot inject the test DB to call it directly. Instead, these tests replicate
+		// the exact SQL logic from cancelSolve() in comment-solver-orchestrator.ts.
+		// The logic below must stay in sync with that function:
+		//   - pending groups are deleted and their comments reset to status "open" / groupId null
+		//   - session status is set to "cancelled"
+		//   - fixed groups are preserved
+
+		test("cancelSolve state machine: queued and in_progress can transition to cancelled", () => {
+			expect(() => validateSolveTransition("queued", "cancelled")).not.toThrow();
+			expect(() => validateSolveTransition("in_progress", "cancelled")).not.toThrow();
+		});
+
+		test("cancelSolve state machine: cancelled can transition to dismissed", () => {
+			expect(() => validateSolveTransition("cancelled", "dismissed")).not.toThrow();
+		});
+
+		test("cancelSolve state machine: ready cannot transition to cancelled", () => {
+			expect(() => validateSolveTransition("ready", "cancelled")).toThrow(
+				"Invalid solve session status transition"
+			);
+		});
+
+		test("cancelSolve SQL: deletes pending groups, resets comments, preserves fixed groups", () => {
+			// Mirrors cancelSolve() transaction logic from comment-solver-orchestrator.ts
+			const sessionId = "cancel-sess-1";
+			db.prepare(`
+				INSERT INTO comment_solve_sessions
+					(id, pr_provider, pr_identifier, pr_title, source_branch, target_branch, status, workspace_id, created_at, updated_at)
+				VALUES (?, 'github', 'owner/repo#10', 'Cancel PR', 'feat/cancel', 'main', 'in_progress', 'ws-cancel', ?, ?)
+			`).run(sessionId, NOW, NOW);
+
+			// Insert a fixed group (should be preserved)
+			db.prepare(`
+				INSERT INTO comment_groups (id, solve_session_id, label, status, commit_hash, "order")
+				VALUES ('cg-fixed', ?, 'Fixed group', 'fixed', 'abc123', 1)
+			`).run(sessionId);
+
+			// Insert a pending group (should be deleted)
+			db.prepare(`
+				INSERT INTO comment_groups (id, solve_session_id, label, status, commit_hash, "order")
+				VALUES ('cg-pending', ?, 'Pending group', 'pending', NULL, 2)
+			`).run(sessionId);
+
+			// Insert a comment linked to the pending group
+			db.prepare(`
+				INSERT INTO pr_comments
+					(id, solve_session_id, group_id, platform_comment_id, author, body, file_path, status)
+				VALUES ('cc-pending-1', ?, 'cg-pending', 'plat-cancel-1', 'reviewer', 'Fix this', 'src/foo.ts', 'fixed')
+			`).run(sessionId);
+
+			// Simulate cancelSolve transaction: find pending groups, reset comments, delete groups, update session
+			const pendingGroups = db
+				.prepare(`SELECT id FROM comment_groups WHERE solve_session_id = ? AND status = 'pending'`)
+				.all(sessionId) as Array<{ id: string }>;
+
+			for (const group of pendingGroups) {
+				db.prepare(
+					`UPDATE pr_comments SET group_id = NULL, status = 'open' WHERE group_id = ?`
+				).run(group.id);
+				db.prepare(`DELETE FROM comment_groups WHERE id = ?`).run(group.id);
+			}
+
+			db.prepare(
+				`UPDATE comment_solve_sessions SET status = 'cancelled', updated_at = ? WHERE id = ?`
+			).run(NOW, sessionId);
+
+			// Verify: session is cancelled
+			const session = db
+				.prepare("SELECT status FROM comment_solve_sessions WHERE id = ?")
+				.get(sessionId) as Record<string, unknown>;
+			expect(session["status"]).toBe("cancelled");
+
+			// Verify: fixed group still exists
+			const fixedGroup = db
+				.prepare("SELECT * FROM comment_groups WHERE id = 'cg-fixed'")
+				.get() as Record<string, unknown> | undefined;
+			expect(fixedGroup).toBeDefined();
+			expect(fixedGroup?.["status"]).toBe("fixed");
+
+			// Verify: pending group was deleted
+			const deletedGroup = db
+				.prepare("SELECT * FROM comment_groups WHERE id = 'cg-pending'")
+				.get();
+			expect(deletedGroup).toBeNull();
+
+			// Verify: comment was reset to open with no group
+			const comment = db
+				.prepare("SELECT status, group_id FROM pr_comments WHERE id = 'cc-pending-1'")
+				.get() as Record<string, unknown>;
+			expect(comment["status"]).toBe("open");
+			expect(comment["group_id"]).toBeNull();
 		});
 	});
 });
