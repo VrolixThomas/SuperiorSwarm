@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.4.10 (2026-04-13)
+
+### What's New
+
+Download links are now available on the homepage. Bug fixes for merge and rebase operations, and improved listener isolation for development environments.
+
+### Changes
+
+- Website homepage download (#81)
+- fix: prevent dev instances from killing prod agent-notify listener (#80)
+- Rebase and merge not working (#79)
+
 ## v0.4.9 (2026-04-13)
 
 ### What's New
