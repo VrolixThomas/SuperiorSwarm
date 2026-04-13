@@ -17,7 +17,8 @@ export type ActionCategory =
 	| "Branch"
 	| "Terminal"
 	| "General"
-	| "Quick Actions";
+	| "Quick Actions"
+	| "Conflict Resolution";
 
 export const CATEGORY_ORDER: ActionCategory[] = [
 	"General",
@@ -26,6 +27,7 @@ export const CATEGORY_ORDER: ActionCategory[] = [
 	"Navigation",
 	"Branch",
 	"View",
+	"Conflict Resolution",
 	"Pane",
 	"Terminal",
 ];

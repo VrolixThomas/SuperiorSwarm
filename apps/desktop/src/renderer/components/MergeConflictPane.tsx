@@ -1,7 +1,8 @@
 import { keepPreviousData } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useBranchStore } from "../stores/branch-store";
 import { shouldSkipShortcutHandling } from "../hooks/useShortcutListener";
+import { useActionStore } from "../stores/action-store";
+import { useBranchStore } from "../stores/branch-store";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import { ConflictFileSidebar } from "./ConflictFileSidebar";
@@ -120,6 +121,106 @@ export function MergeConflictPane({ projectId, mergeType, sourceBranch, targetBr
 	rebaseContinueRef.current = rebaseContinue;
 
 	const files = mergeState?.conflicts ?? [];
+
+	// Register conflict resolution shortcuts in the command palette for discoverability.
+	// Uses displayShortcut (not shortcut) so useShortcutListener doesn't intercept events.
+	useEffect(() => {
+		const store = useActionStore.getState();
+		const noop = () => {};
+		const cat = "Conflict Resolution" as const;
+
+		store.registerMany([
+			// Sidebar zone
+			{
+				id: "conflict.navigate",
+				label: "Navigate Files",
+				category: cat,
+				displayShortcut: { key: "j" },
+				execute: noop,
+			},
+			{
+				id: "conflict.open",
+				label: "Open File in Editor",
+				category: cat,
+				displayShortcut: { key: "Enter" },
+				execute: noop,
+			},
+			{
+				id: "conflict.nextConflict",
+				label: "Next Conflicting File",
+				category: cat,
+				displayShortcut: { key: "n" },
+				execute: noop,
+			},
+			{
+				id: "conflict.prevConflict",
+				label: "Previous Conflicting File",
+				category: cat,
+				displayShortcut: { key: "p" },
+				execute: noop,
+			},
+			// Nav zone
+			{
+				id: "conflict.acceptTheirs",
+				label: "Accept Theirs",
+				category: cat,
+				displayShortcut: { key: "t" },
+				execute: noop,
+			},
+			{
+				id: "conflict.acceptOurs",
+				label: "Accept Ours",
+				category: cat,
+				displayShortcut: { key: "b" },
+				execute: noop,
+			},
+			{
+				id: "conflict.acceptBoth",
+				label: "Accept Both",
+				category: cat,
+				displayShortcut: { key: "+" },
+				execute: noop,
+			},
+			{
+				id: "conflict.edit",
+				label: "Edit Mode",
+				category: cat,
+				displayShortcut: { key: "e" },
+				execute: noop,
+			},
+			{
+				id: "conflict.undo",
+				label: "Undo Resolution",
+				category: cat,
+				displayShortcut: { key: "z", meta: true },
+				execute: noop,
+			},
+			// Shared
+			{
+				id: "conflict.back",
+				label: "Back / Exit Zone",
+				category: cat,
+				displayShortcut: { key: "Escape" },
+				execute: noop,
+			},
+		]);
+
+		return () => {
+			store.unregisterMany([
+				"conflict.navigate",
+				"conflict.open",
+				"conflict.nextConflict",
+				"conflict.prevConflict",
+				"conflict.acceptTheirs",
+				"conflict.acceptOurs",
+				"conflict.acceptBoth",
+				"conflict.edit",
+				"conflict.undo",
+				"conflict.back",
+			]);
+		};
+	}, []);
+
 	const allResolved = files.length > 0 && files.every((f) => f.status === "resolved");
 	const conflictCount = files.filter((f) => f.status === "conflicting").length;
 
