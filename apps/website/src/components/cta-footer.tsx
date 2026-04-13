@@ -71,15 +71,13 @@ export function CtaFooter() {
 				<div
 					className="mx-auto h-px max-w-2xl"
 					style={{
-						background:
-							"linear-gradient(90deg, transparent, rgba(196,149,108,0.4), transparent)",
+						background: "linear-gradient(90deg, transparent, rgba(196,149,108,0.4), transparent)",
 					}}
 				/>
 				<div
 					className="mx-auto h-px max-w-2xl blur-[20px]"
 					style={{
-						background:
-							"linear-gradient(90deg, transparent, rgba(196,149,108,0.3), transparent)",
+						background: "linear-gradient(90deg, transparent, rgba(196,149,108,0.3), transparent)",
 					}}
 				/>
 			</div>

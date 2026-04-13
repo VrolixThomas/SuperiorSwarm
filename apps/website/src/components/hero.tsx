@@ -38,10 +38,7 @@ export function Hero() {
 				>
 					Manage your swarm.
 					<br />
-					<span
-						className="text-accent"
-						style={{ textShadow: "0 0 40px rgba(196,149,108,0.3)" }}
-					>
+					<span className="text-accent" style={{ textShadow: "0 0 40px rgba(196,149,108,0.3)" }}>
 						Superiorly.
 					</span>
 				</motion.h1>
@@ -52,8 +49,8 @@ export function Hero() {
 					transition={{ duration: 0.3, delay: 0.25 }}
 					className="mx-auto mt-5 max-w-[480px] text-base text-text-secondary md:text-[17px] md:leading-relaxed"
 				>
-					The desktop command center for AI coding agents. Run agents, review PRs
-					automatically, and manage every branch — all from one window.
+					The desktop command center for AI coding agents. Run agents, review PRs automatically, and
+					manage every branch — all from one window.
 				</motion.p>
 
 				{/* CTA area */}

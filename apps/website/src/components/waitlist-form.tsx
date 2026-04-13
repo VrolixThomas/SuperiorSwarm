@@ -24,9 +24,7 @@ export function WaitlistForm({ platform }: { platform: "windows" | "linux" }) {
 
 		setState("loading");
 
-		const { error } = await supabase
-			.from("waitlist")
-			.insert({ email: email.trim(), platform });
+		const { error } = await supabase.from("waitlist").insert({ email: email.trim(), platform });
 
 		if (error) {
 			if (error.code === "23505") {

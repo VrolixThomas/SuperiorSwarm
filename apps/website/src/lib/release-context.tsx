@@ -1,7 +1,7 @@
 "use client";
 
 import type { GitHubRelease } from "@/lib/github";
-import { createContext, use, type ReactNode } from "react";
+import { type ReactNode, createContext, use } from "react";
 
 const ReleaseContext = createContext<GitHubRelease | null>(null);
 
