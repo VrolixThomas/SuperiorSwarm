@@ -1,10 +1,7 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import type { AgentAlert, AgentHookConfig } from "../../../shared/agent-events";
-
-/** Substring used to identify our hook entries by command path. */
-const HOOK_FINGERPRINT = ".agent-notify/hooks/";
+import { mergeAgentSettings } from "./shared";
 
 const EVENT_MAP: Record<string, AgentAlert> = {
 	UserPromptSubmit: "active",
@@ -19,54 +16,8 @@ const HOOK_EVENTS = Object.keys(EVENT_MAP);
 // Events that apply to all tools (need matcher: "*")
 const TOOL_EVENTS = new Set(["PostToolUse", "PostToolUseFailure", "PermissionRequest"]);
 
-type HookEntry = {
-	matcher?: string;
-	hooks: Array<{ type: string; command: string }>;
-};
-
-/** Check if a hook entry is one of ours by inspecting the command path. */
-function isAgentNotifyEntry(entry: HookEntry): boolean {
-	return entry.hooks?.some((h) => h.command?.includes(HOOK_FINGERPRINT)) ?? false;
-}
-
 export function mergeClaudeHooks(settingsPath: string, hookCommand: string): void {
-	const dir = dirname(settingsPath);
-	if (!existsSync(dir)) {
-		mkdirSync(dir, { recursive: true });
-	}
-
-	let settings: Record<string, unknown> = {};
-	if (existsSync(settingsPath)) {
-		try {
-			settings = JSON.parse(readFileSync(settingsPath, "utf-8"));
-		} catch {
-			settings = {};
-		}
-	}
-
-	const hooks = (settings["hooks"] ?? {}) as Record<string, unknown[]>;
-
-	for (const event of HOOK_EVENTS) {
-		const existing = Array.isArray(hooks[event]) ? hooks[event] : [];
-
-		// Remove any previous agent-notify entries (identified by command path)
-		const filtered = (existing as HookEntry[]).filter((entry) => !isAgentNotifyEntry(entry));
-
-		const hookEntry: HookEntry = TOOL_EVENTS.has(event)
-			? {
-					matcher: "*",
-					hooks: [{ type: "command", command: hookCommand }],
-				}
-			: {
-					hooks: [{ type: "command", command: hookCommand }],
-				};
-
-		filtered.push(hookEntry);
-		hooks[event] = filtered;
-	}
-
-	settings["hooks"] = hooks;
-	writeFileSync(settingsPath, `${JSON.stringify(settings, null, "\t")}\n`);
+	mergeAgentSettings(settingsPath, hookCommand, HOOK_EVENTS, TOOL_EVENTS);
 }
 
 export const claudeConfig: AgentHookConfig = {
