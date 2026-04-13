@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.4.11 (2026-04-14)
+
+### What's New
+
+Notification sounds now play correctly in production builds. A path resolution issue caused sounds to silently fail when the app was packaged — this is now fixed.
+
+### Changes
+
+- fix: use relative path for notification sound in production (#82)
+
 ## v0.4.10 (2026-04-13)
 
 ### What's New
