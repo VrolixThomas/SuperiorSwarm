@@ -2,6 +2,8 @@
 import { type Server, createServer } from "node:http";
 import { type AgentEvent, agentRegistry } from "../../shared/agent-events";
 
+const APP_IDENTIFIER = "superiorswarm";
+
 type EventHandler = (event: AgentEvent) => void;
 
 export interface AgentAlertListener {
@@ -20,14 +22,18 @@ export function createAlertListener(port: number): AgentAlertListener {
 
 		if (url.pathname === "/health") {
 			res.writeHead(200, { "Content-Type": "application/json" });
-			res.end(JSON.stringify({ ok: true, app: "superiorswarm" }));
+			res.end(JSON.stringify({ ok: true, app: APP_IDENTIFIER }));
 			return;
 		}
 
 		if (url.pathname === "/shutdown") {
+			if (req.method !== "POST") {
+				res.writeHead(405, { "Content-Type": "application/json" });
+				res.end(JSON.stringify({ ok: false, error: "method not allowed" }));
+				return;
+			}
 			res.writeHead(200, { "Content-Type": "application/json" });
 			res.end(JSON.stringify({ ok: true }));
-			// Close the server after responding
 			server?.close();
 			server = null;
 			return;
@@ -50,7 +56,6 @@ export function createAlertListener(port: number): AgentAlertListener {
 			return;
 		}
 
-		// Look up the agent's mapper
 		const config = agentRegistry.get(agent);
 		if (!config) {
 			res.writeHead(204);
@@ -137,30 +142,29 @@ export function createAlertListener(port: number): AgentAlertListener {
 
 /**
  * Try to reclaim the preferred port from a stale SuperiorSwarm listener.
- * Probes /health to verify it's ours, then sends /shutdown.
- * Returns true if the port was reclaimed or was already free.
+ * Probes /health to verify it's ours, then sends POST /shutdown.
+ * Best-effort: if the port is free or held by a non-SuperiorSwarm process,
+ * this is a no-op and bind() will handle EADDRINUSE via fallback.
  */
-export async function reclaimPort(port: number): Promise<boolean> {
+export async function reclaimPort(port: number): Promise<void> {
 	const base = `http://127.0.0.1:${port}`;
 	try {
 		const healthRes = await fetch(`${base}/health`, {
 			signal: AbortSignal.timeout(1000),
 		});
-		if (!healthRes.ok) return true; // Not our listener, let bind() handle it
+		if (!healthRes.ok) return;
 		const body = (await healthRes.json()) as { app?: string };
-		if (body.app !== "superiorswarm") return true; // Not ours
+		if (body.app !== APP_IDENTIFIER) return;
 
-		// It's a stale SuperiorSwarm listener — shut it down
 		console.log(`[agent-notify] shutting down stale listener on port ${port}`);
 		await fetch(`${base}/shutdown`, {
+			method: "POST",
 			signal: AbortSignal.timeout(1000),
 		}).catch(() => {});
 
-		// Wait briefly for the port to be released
+		// Brief delay for the OS to release the port
 		await new Promise((resolve) => setTimeout(resolve, 200));
-		return true;
 	} catch {
 		// Connection refused or timeout — port is free or held by non-HTTP process
-		return true;
 	}
 }

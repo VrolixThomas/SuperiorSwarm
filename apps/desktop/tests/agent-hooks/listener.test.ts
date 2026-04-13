@@ -7,7 +7,6 @@ import type { AgentHookConfig } from "../../src/shared/agent-events";
 // Register a mock agent for testing
 const mockAgent: AgentHookConfig = {
 	name: "test-agent",
-	settingsPath: "",
 	hookEvents: ["Stop", "PermissionRequest", "PostToolUse"],
 	mapEvent: (raw) => {
 		if (raw === "Stop") return "task-complete";
@@ -93,16 +92,21 @@ describe("AgentAlertListener", () => {
 		expect(body.app).toBe("superiorswarm");
 	});
 
-	test("/shutdown stops the listener", async () => {
-		// Create a dedicated listener for this test
+	test("/shutdown requires POST method", async () => {
 		const shutdownListener = createAlertListener(0);
 		await shutdownListener.start();
 		const shutdownPort = shutdownListener.getPort()!;
 
-		const res = await fetch(`http://127.0.0.1:${shutdownPort}/shutdown`);
-		expect(res.status).toBe(200);
+		// GET should be rejected
+		const getRes = await fetch(`http://127.0.0.1:${shutdownPort}/shutdown`);
+		expect(getRes.status).toBe(405);
+		expect(shutdownListener.getPort()).not.toBeNull();
 
-		// Port should be null after shutdown
+		// POST should succeed
+		const postRes = await fetch(`http://127.0.0.1:${shutdownPort}/shutdown`, {
+			method: "POST",
+		});
+		expect(postRes.status).toBe(200);
 		expect(shutdownListener.getPort()).toBeNull();
 	});
 });
@@ -118,8 +122,7 @@ describe("reclaimPort", () => {
 		expect(stale.getPort()).toBe(RECLAIM_PORT);
 
 		// Reclaim should shut it down
-		const result = await reclaimPort(RECLAIM_PORT);
-		expect(result).toBe(true);
+		await reclaimPort(RECLAIM_PORT);
 		expect(stale.getPort()).toBeNull();
 
 		// Should be able to bind to the port now
@@ -129,11 +132,10 @@ describe("reclaimPort", () => {
 		fresh.stop();
 	});
 
-	test("returns true when port is free (connection refused)", async () => {
+	test("completes without error when port is free (connection refused)", async () => {
 		const { reclaimPort } = await import("../../src/main/agent-hooks/listener");
-		// Use a port that's definitely not in use
-		const result = await reclaimPort(27396);
-		expect(result).toBe(true);
+		// Use a port that's definitely not in use — should be a no-op
+		await reclaimPort(27396);
 	});
 });
 

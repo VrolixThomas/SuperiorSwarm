@@ -3,6 +3,11 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { AgentAlert, AgentHookConfig } from "../../../shared/agent-events";
 
+const PLUGIN_DIRS = [
+	join(homedir(), ".config", "opencode", "plugins"),
+	join(homedir(), "", "hooks", "opencode", "plugin"),
+];
+
 // The plugin normalizes OpenCode events to these names before calling on-event.sh
 const EVENT_MAP: Record<string, AgentAlert> = {
 	Start: "active",
@@ -81,6 +86,20 @@ function buildPluginSource(port: number): string {
 	return lines.join("\n");
 }
 
+/**
+ * Rewrite the generated OpenCode plugin files with an updated port.
+ * Called after the listener binds so the plugin targets the actual port
+ * (which may differ from the constant if EADDRINUSE forced a fallback).
+ */
+export function updateOpenCodePluginPort(port: number): void {
+	const pluginSource = buildPluginSource(port);
+	for (const dir of PLUGIN_DIRS) {
+		if (existsSync(dir)) {
+			writeFileSync(join(dir, "agent-notify.js"), pluginSource, { mode: 0o644 });
+		}
+	}
+}
+
 export const opencodeConfig: AgentHookConfig = {
 	name: "opencode",
 	hookEvents: Object.keys(EVENT_MAP),
@@ -91,17 +110,8 @@ export const opencodeConfig: AgentHookConfig = {
 		const { AGENT_NOTIFY_PORT } = await import("../../../shared/agent-events");
 		const pluginSource = buildPluginSource(AGENT_NOTIFY_PORT);
 
-		// Install to all locations OpenCode might look for plugins:
-		// 1. Global: ~/.config/opencode/plugins/ (when run directly)
-		// 2. Externally managed: ~//hooks/opencode/plugin/ (when run via wrapper)
-		const dirs = [
-			join(homedir(), ".config", "opencode", "plugins"),
-			join(homedir(), "", "hooks", "opencode", "plugin"),
-		];
-		for (const dir of dirs) {
-			if (!existsSync(dir)) {
-				mkdirSync(dir, { recursive: true });
-			}
+		for (const dir of PLUGIN_DIRS) {
+			mkdirSync(dir, { recursive: true });
 			writeFileSync(join(dir, "agent-notify.js"), pluginSource, { mode: 0o644 });
 		}
 	},

@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { BrowserWindow, app, dialog, ipcMain, shell } from "electron";
 import { AGENT_NOTIFY_PORT } from "../shared/agent-events";
 import { daemonInstanceId, daemonPaths } from "../shared/daemon-protocol";
+import { updateOpenCodePluginPort } from "./agent-hooks/agents/opencode";
 import { type AgentAlertListener, createAlertListener, reclaimPort } from "./agent-hooks/listener";
 import { setAgentNotifyPort } from "./agent-hooks/port";
 import { setupAgentHooks } from "./agent-hooks/setup";
@@ -213,13 +214,19 @@ app.whenReady().then(async () => {
 		const port = alertListener.getPort();
 		if (port) {
 			setAgentNotifyPort(port);
+			// Update the OpenCode plugin with the actual bound port
+			// (may differ from AGENT_NOTIFY_PORT if fallback was used)
+			if (port !== AGENT_NOTIFY_PORT) {
+				updateOpenCodePluginPort(port);
+			}
 		}
+		alertListener.onEvent((event) => {
+			broadcastToWindows("agent:alert", event);
+		});
 	} catch (err) {
 		log.error("[agent-notify] failed to start listener:", err);
+		alertListener = null;
 	}
-	alertListener.onEvent((event) => {
-		broadcastToWindows("agent:alert", event);
-	});
 
 	// Clean up zombie daemons from previous dev sessions
 	cleanupStaleDaemons(daemonInstanceId(__dirname));
@@ -270,9 +277,7 @@ app.whenReady().then(async () => {
 	try {
 		await daemonClient.connect(dbPath, daemonScriptPath);
 	} catch (err) {
-		const { isDaemonOwnershipMismatchError } = await import(
-			"./terminal/daemon-ownership"
-		);
+		const { isDaemonOwnershipMismatchError } = await import("./terminal/daemon-ownership");
 		if (isDaemonOwnershipMismatchError(err)) {
 			log.error("[main] Daemon owned by another app instance, not retrying:", err);
 		} else {
@@ -288,6 +293,7 @@ app.whenReady().then(async () => {
 
 app.on("before-quit", () => {
 	alertListener?.stop();
+	setAgentNotifyPort(null);
 	stopCommentPoller();
 	teardownUpdater();
 	daemonClient.setQuitting();
@@ -311,6 +317,7 @@ app.on("window-all-closed", () => {
 for (const signal of ["SIGTERM", "SIGHUP", "SIGINT"] as const) {
 	process.on(signal, () => {
 		alertListener?.stop();
+		setAgentNotifyPort(null);
 		teardownUpdater();
 		daemonClient.setQuitting();
 		daemonClient.detachAll();
