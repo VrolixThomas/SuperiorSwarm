@@ -1,10 +1,13 @@
 "use client";
 
+import { DownloadButton } from "@/components/download-button";
+import { WaitlistForm } from "@/components/waitlist-form";
 import { SITE } from "@/lib/constants";
+import { useRelease } from "@/lib/release-context";
+import { useDetectedPlatform } from "@/lib/use-detected-platform";
 import { useReducedMotion } from "motion/react";
 import { useMemo } from "react";
 import { Section } from "./section";
-import { WaitlistForm } from "./waitlist-form";
 
 function generateFooterParticles() {
 	return Array.from({ length: 10 }, (_, i) => ({
@@ -21,6 +24,9 @@ function generateFooterParticles() {
 export function CtaFooter() {
 	const reduced = useReducedMotion();
 	const footerParticles = useMemo(() => generateFooterParticles(), []);
+	const platform = useDetectedPlatform();
+	const release = useRelease();
+	const showDownload = platform === "mac" || platform === "mobile";
 
 	return (
 		<Section id="waitlist" label="Join Waitlist" className="text-center">
@@ -53,7 +59,11 @@ export function CtaFooter() {
 			</h2>
 
 			<div className="relative mt-8 flex flex-col items-center">
-				<WaitlistForm />
+				{showDownload ? (
+					<DownloadButton release={release} />
+				) : (
+					<WaitlistForm platform={platform as "windows" | "linux"} />
+				)}
 			</div>
 
 			{/* Gradient horizon line */}
@@ -61,13 +71,15 @@ export function CtaFooter() {
 				<div
 					className="mx-auto h-px max-w-2xl"
 					style={{
-						background: "linear-gradient(90deg, transparent, rgba(196,149,108,0.4), transparent)",
+						background:
+							"linear-gradient(90deg, transparent, rgba(196,149,108,0.4), transparent)",
 					}}
 				/>
 				<div
 					className="mx-auto h-px max-w-2xl blur-[20px]"
 					style={{
-						background: "linear-gradient(90deg, transparent, rgba(196,149,108,0.3), transparent)",
+						background:
+							"linear-gradient(90deg, transparent, rgba(196,149,108,0.3), transparent)",
 					}}
 				/>
 			</div>
