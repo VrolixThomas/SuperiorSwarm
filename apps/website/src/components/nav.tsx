@@ -1,10 +1,15 @@
 "use client";
 
 import { SITE } from "@/lib/constants";
+import { useRelease } from "@/lib/release-context";
+import { useDetectedPlatform } from "@/lib/use-detected-platform";
 import { useEffect, useState } from "react";
 
 export function Nav() {
 	const [scrolled, setScrolled] = useState(false);
+	const platform = useDetectedPlatform();
+	const release = useRelease();
+	const showDownload = platform === "mac" || platform === "mobile";
 
 	useEffect(() => {
 		const onScroll = () => {
@@ -41,7 +46,9 @@ export function Nav() {
 					<circle cx="512" cy="512" r="70" fill="white" opacity="0.92" />
 					<circle cx="512" cy="512" r="42" fill="white" />
 				</svg>
-				<span className="text-sm font-semibold text-text-primary tracking-wide">{SITE.name}</span>
+				<span className="text-sm font-semibold text-text-primary tracking-wide">
+					{SITE.name}
+				</span>
 			</a>
 			<div className="flex items-center gap-6">
 				<a
@@ -52,12 +59,24 @@ export function Nav() {
 				>
 					GitHub
 				</a>
-				<a
-					href="#waitlist"
-					className="shrink-0 whitespace-nowrap rounded-full bg-accent px-3 py-1.5 text-[11px] font-medium text-bg-base transition-shadow hover:shadow-[0_0_16px_rgba(196,149,108,0.25)] md:px-4 md:text-xs"
-				>
-					Join Waitlist
-				</a>
+				{showDownload ? (
+					<a
+						href={release?.dmgUrl ?? SITE.download}
+						{...(release?.dmgUrl
+							? {}
+							: { target: "_blank", rel: "noopener noreferrer" })}
+						className="shrink-0 whitespace-nowrap rounded-full bg-accent px-3 py-1.5 text-[11px] font-medium text-bg-base transition-shadow hover:shadow-[0_0_16px_rgba(196,149,108,0.25)] md:px-4 md:text-xs"
+					>
+						Download
+					</a>
+				) : (
+					<a
+						href="#waitlist"
+						className="shrink-0 whitespace-nowrap rounded-full bg-accent px-3 py-1.5 text-[11px] font-medium text-bg-base transition-shadow hover:shadow-[0_0_16px_rgba(196,149,108,0.25)] md:px-4 md:text-xs"
+					>
+						Join Waitlist
+					</a>
+				)}
 			</div>
 		</nav>
 	);
