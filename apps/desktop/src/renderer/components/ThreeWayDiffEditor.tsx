@@ -12,6 +12,7 @@ import {
 	resolveHunk,
 	toggleHunkAccepted,
 } from "../lib/three-way-merge";
+import { shouldSkipShortcutHandling } from "../hooks/useShortcutListener";
 import type { ConflictZone } from "./ConflictHintBar";
 
 // ── Inline accept bar rendered inside a Monaco view zone ────────────────────
@@ -310,10 +311,8 @@ export function ThreeWayDiffEditor({
 		if (zone !== "nav") return;
 
 		function handleKeyDown(e: KeyboardEvent) {
-			// Don't intercept when user is typing in an input elsewhere
 			const target = e.target as HTMLElement;
-			if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)
-				return;
+			if (shouldSkipShortcutHandling(e, target) || target.isContentEditable) return;
 
 			const currentHunks = hunksRef.current;
 			const conflictHunks = currentHunks.filter((h) => h.type === "conflict");

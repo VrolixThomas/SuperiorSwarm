@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { ConflictFile } from "../../shared/branch-types";
+import { shouldSkipShortcutHandling } from "../hooks/useShortcutListener";
 import type { ConflictZone } from "./ConflictHintBar";
 
 interface Props {
@@ -69,8 +70,7 @@ export function ConflictFileSidebar({
 
 		function handleKeyDown(e: KeyboardEvent) {
 			const target = e.target as HTMLElement;
-			if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)
-				return;
+			if (shouldSkipShortcutHandling(e, target) || target.isContentEditable) return;
 
 			const currentFiles = filesRef.current;
 			const conflictingFiles = currentFiles.filter((f) => f.status === "conflicting");

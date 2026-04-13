@@ -1,6 +1,7 @@
 import { keepPreviousData } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useBranchStore } from "../stores/branch-store";
+import { shouldSkipShortcutHandling } from "../hooks/useShortcutListener";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import { ConflictFileSidebar } from "./ConflictFileSidebar";
@@ -149,8 +150,7 @@ export function MergeConflictPane({ projectId, mergeType, sourceBranch, targetBr
 	useEffect(() => {
 		function handleKeyDown(e: KeyboardEvent) {
 			const target = e.target as HTMLElement;
-			if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)
-				return;
+			if (shouldSkipShortcutHandling(e, target) || target.isContentEditable) return;
 
 			if (e.key === "Escape" && zone === "nav") {
 				setZone("sidebar");
