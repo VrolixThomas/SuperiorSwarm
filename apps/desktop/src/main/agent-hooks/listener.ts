@@ -1,6 +1,7 @@
 // src/main/agent-hooks/listener.ts
 import { type Server, createServer } from "node:http";
 import { type AgentEvent, agentRegistry } from "../../shared/agent-events";
+import { log } from "../logger";
 
 const APP_IDENTIFIER = "superiorswarm";
 
@@ -82,7 +83,7 @@ export function createAlertListener(port: number): AgentAlertListener {
 			try {
 				handler(event);
 			} catch (err) {
-				console.error("[agent-notify] handler error:", err);
+				log.error("[agent-notify] handler error:", err);
 			}
 		}
 
@@ -98,7 +99,7 @@ export function createAlertListener(port: number): AgentAlertListener {
 				const bind = (targetPort: number) => {
 					const onBindError = (err: NodeJS.ErrnoException) => {
 						if (err.code === "EADDRINUSE" && targetPort !== 0) {
-							console.warn(
+							log.warn(
 								`[agent-notify] port ${targetPort} in use, falling back to OS-assigned port`
 							);
 							bind(0);
@@ -110,11 +111,11 @@ export function createAlertListener(port: number): AgentAlertListener {
 					httpServer.listen(targetPort, "127.0.0.1", () => {
 						httpServer.removeListener("error", onBindError);
 						httpServer.on("error", (err) => {
-							console.error("[agent-notify] server error:", err);
+							log.error("[agent-notify] server error:", err);
 						});
 						const addr = httpServer.address();
 						const boundPort = typeof addr === "object" && addr ? addr.port : targetPort;
-						console.log(`[agent-notify] listening on port ${boundPort}`);
+						log.info(`[agent-notify] listening on port ${boundPort}`);
 						resolve();
 					});
 				};
@@ -156,7 +157,7 @@ export async function reclaimPort(port: number): Promise<void> {
 		const body = (await healthRes.json()) as { app?: string };
 		if (body.app !== APP_IDENTIFIER) return;
 
-		console.log(`[agent-notify] shutting down stale listener on port ${port}`);
+		log.info(`[agent-notify] shutting down stale listener on port ${port}`);
 		await fetch(`${base}/shutdown`, {
 			method: "POST",
 			signal: AbortSignal.timeout(1000),

@@ -206,9 +206,14 @@ app.whenReady().then(async () => {
 	// Register agent hooks (must complete before listener starts)
 	await setupAgentHooks();
 
-	// Agent notification listener — reclaim port from stale instances first
-	await reclaimPort(AGENT_NOTIFY_PORT);
-	alertListener = createAlertListener(AGENT_NOTIFY_PORT);
+	// Agent notification listener
+	// Dev mode uses OS-assigned port to avoid stealing the prod listener's port.
+	// Prod mode reclaims the well-known port from stale instances before binding.
+	const listenerPort = import.meta.env.DEV ? 0 : AGENT_NOTIFY_PORT;
+	if (!import.meta.env.DEV) {
+		await reclaimPort(AGENT_NOTIFY_PORT);
+	}
+	alertListener = createAlertListener(listenerPort);
 	try {
 		await alertListener.start();
 		const port = alertListener.getPort();

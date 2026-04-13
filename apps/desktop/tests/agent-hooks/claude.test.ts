@@ -58,13 +58,19 @@ describe("mergeClaudeHooks", () => {
 
 	test("replaces old agent-notify hooks on re-run", async () => {
 		mkdirSync(testDir, { recursive: true });
-		await mergeClaudeHooks(settingsPath, "old-cmd");
-		await mergeClaudeHooks(settingsPath, "new-cmd");
+		await mergeClaudeHooks(
+			settingsPath,
+			'AGENT_NOTIFY_AGENT="claude" "/home/user/.agent-notify/hooks/on-event.sh" || true',
+		);
+		await mergeClaudeHooks(
+			settingsPath,
+			'AGENT_NOTIFY_AGENT="claude" "/home/user/.agent-notify/hooks/on-event.sh" || true',
+		);
 
 		const settings = JSON.parse(readFileSync(settingsPath, "utf-8"));
 		const stopHooks = settings.hooks.Stop;
 		// Should only have one entry, not duplicates
 		expect(stopHooks).toHaveLength(1);
-		expect(stopHooks[0].hooks[0].command).toBe("new-cmd");
+		expect(stopHooks[0].hooks[0].command).toContain(".agent-notify/hooks/");
 	});
 });

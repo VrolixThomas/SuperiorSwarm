@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { type AgentHookConfig, agentRegistry } from "../../shared/agent-events";
+import { log } from "../logger";
 import { claudeConfig } from "./agents/claude";
 import { codexConfig } from "./agents/codex";
 import { geminiConfig } from "./agents/gemini";
@@ -106,12 +107,12 @@ export async function setupAgentHooks(): Promise<void> {
 				}
 				const hookCommand = buildHookCommand(scriptPath, agent.name);
 				await agent.setup(hookCommand);
-				console.log(`[agent-hooks] registered hooks for ${agent.name}`);
+				log.info(`[agent-hooks] registered hooks for ${agent.name}`);
 			} catch (err) {
-				console.warn(`[agent-hooks] failed to setup ${agent.name}:`, err);
+				log.warn(`[agent-hooks] failed to setup ${agent.name}:`, err);
 			}
 		}
 	} catch (err) {
-		console.error("[agent-hooks] failed to install hook script:", err);
+		log.error("[agent-hooks] failed to install hook script:", err);
 	}
 }
