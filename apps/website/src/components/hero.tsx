@@ -2,7 +2,7 @@
 
 import { DownloadButton } from "@/components/download-button";
 import { useRelease } from "@/lib/release-context";
-import { useDetectedPlatform } from "@/lib/use-detected-platform";
+import { shouldShowDownload, useDetectedPlatform } from "@/lib/use-detected-platform";
 import { motion, useReducedMotion } from "motion/react";
 import { AnimatedLogo } from "./animated-logo";
 import { GitHubStarLink } from "./github-stars";
@@ -12,7 +12,7 @@ export function Hero() {
 	const reduced = useReducedMotion();
 	const platform = useDetectedPlatform();
 	const release = useRelease();
-	const showDownload = platform === "mac" || platform === "mobile";
+	const showDownload = shouldShowDownload(platform);
 
 	return (
 		<section aria-label="Hero" className="relative overflow-hidden pt-28 pb-8 md:pt-36">
@@ -63,7 +63,7 @@ export function Hero() {
 					{showDownload ? (
 						<DownloadButton release={release} />
 					) : (
-						<WaitlistForm platform={platform as "windows" | "linux"} />
+						<WaitlistForm platform={platform === "windows" ? "windows" : "linux"} />
 					)}
 					<GitHubStarLink />
 				</motion.div>

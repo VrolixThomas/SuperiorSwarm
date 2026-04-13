@@ -2,14 +2,14 @@
 
 import { SITE } from "@/lib/constants";
 import { useRelease } from "@/lib/release-context";
-import { useDetectedPlatform } from "@/lib/use-detected-platform";
+import { shouldShowDownload, useDetectedPlatform } from "@/lib/use-detected-platform";
 import { useEffect, useState } from "react";
 
 export function Nav() {
 	const [scrolled, setScrolled] = useState(false);
 	const platform = useDetectedPlatform();
 	const release = useRelease();
-	const showDownload = platform === "mac" || platform === "mobile";
+	const showDownload = shouldShowDownload(platform);
 
 	useEffect(() => {
 		const onScroll = () => {

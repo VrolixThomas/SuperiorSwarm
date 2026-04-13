@@ -20,6 +20,11 @@ function detectPlatform(): DetectedPlatform {
 	return "mac";
 }
 
+/** True when the visitor should see the download CTA (mac users + mobile). */
+export function shouldShowDownload(platform: DetectedPlatform): boolean {
+	return platform === "mac" || platform === "mobile";
+}
+
 export function useDetectedPlatform(): DetectedPlatform {
 	// SSR default: "mac" to avoid flash — download is the primary CTA
 	const [platform, setPlatform] = useState<DetectedPlatform>("mac");

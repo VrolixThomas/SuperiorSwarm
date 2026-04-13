@@ -4,7 +4,7 @@ import { DownloadButton } from "@/components/download-button";
 import { WaitlistForm } from "@/components/waitlist-form";
 import { SITE } from "@/lib/constants";
 import { useRelease } from "@/lib/release-context";
-import { useDetectedPlatform } from "@/lib/use-detected-platform";
+import { shouldShowDownload, useDetectedPlatform } from "@/lib/use-detected-platform";
 import { useReducedMotion } from "motion/react";
 import { useMemo } from "react";
 import { Section } from "./section";
@@ -26,7 +26,7 @@ export function CtaFooter() {
 	const footerParticles = useMemo(() => generateFooterParticles(), []);
 	const platform = useDetectedPlatform();
 	const release = useRelease();
-	const showDownload = platform === "mac" || platform === "mobile";
+	const showDownload = shouldShowDownload(platform);
 
 	return (
 		<Section id="waitlist" label="Join Waitlist" className="text-center">
@@ -62,7 +62,7 @@ export function CtaFooter() {
 				{showDownload ? (
 					<DownloadButton release={release} />
 				) : (
-					<WaitlistForm platform={platform as "windows" | "linux"} />
+					<WaitlistForm platform={platform === "windows" ? "windows" : "linux"} />
 				)}
 			</div>
 
