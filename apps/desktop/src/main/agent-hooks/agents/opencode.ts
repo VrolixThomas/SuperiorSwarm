@@ -1,12 +1,9 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import type { AgentAlert, AgentHookConfig } from "../../../shared/agent-events";
+import { AGENT_NOTIFY_PORT, type AgentAlert, type AgentHookConfig } from "../../../shared/agent-events";
 
-const PLUGIN_DIRS = [
-	join(homedir(), ".config", "opencode", "plugins"),
-	join(homedir(), "", "hooks", "opencode", "plugin"),
-];
+const PLUGIN_DIRS = [join(homedir(), ".config", "opencode", "plugins")];
 
 // The plugin normalizes OpenCode events to these names before calling on-event.sh
 const EVENT_MAP: Record<string, AgentAlert> = {
@@ -107,7 +104,6 @@ export const opencodeConfig: AgentHookConfig = {
 		return EVENT_MAP[rawEvent] ?? null;
 	},
 	async setup(_hookCommand: string): Promise<void> {
-		const { AGENT_NOTIFY_PORT } = await import("../../../shared/agent-events");
 		const pluginSource = buildPluginSource(AGENT_NOTIFY_PORT);
 
 		for (const dir of PLUGIN_DIRS) {
