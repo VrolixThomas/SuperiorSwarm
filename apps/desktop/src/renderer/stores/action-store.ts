@@ -35,6 +35,9 @@ export interface Action {
 	label: string;
 	category: ActionCategory;
 	shortcut?: Shortcut;
+	/** Shown in palette/settings as a shortcut badge but NOT matched by useShortcutListener.
+	 *  Use for shortcuts handled by component-level keydown listeners. */
+	displayShortcut?: Shortcut;
 	when?: () => boolean;
 	execute: () => void;
 	keywords?: string[];

@@ -213,7 +213,9 @@ function PaletteRow({
 			}`}
 		>
 			<span className="truncate">{action.label}</span>
-			{action.shortcut && <ShortcutBadge shortcut={action.shortcut} />}
+			{(action.shortcut ?? action.displayShortcut) && (
+				<ShortcutBadge shortcut={(action.shortcut ?? action.displayShortcut)!} />
+			)}
 		</div>
 	);
 }

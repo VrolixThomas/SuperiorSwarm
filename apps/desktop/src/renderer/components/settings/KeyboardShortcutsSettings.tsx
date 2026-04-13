@@ -7,7 +7,7 @@ export function KeyboardShortcutsSettings() {
 	const actions = useActionStore((s) => s.actions);
 
 	const grouped = useMemo(() => {
-		const withShortcuts = Array.from(actions.values()).filter((a) => a.shortcut);
+		const withShortcuts = Array.from(actions.values()).filter((a) => a.shortcut ?? a.displayShortcut);
 		const groups = new Map<ActionCategory, typeof withShortcuts>();
 		for (const action of withShortcuts) {
 			const list = groups.get(action.category) ?? [];
@@ -36,7 +36,9 @@ export function KeyboardShortcutsSettings() {
 						{categoryActions.map((action) => (
 							<div key={action.id} className="flex items-center justify-between px-4 py-3">
 								<span className="text-[13px] text-[var(--text-secondary)]">{action.label}</span>
-								{action.shortcut && <ShortcutBadge shortcut={action.shortcut} />}
+								{(action.shortcut ?? action.displayShortcut) && (
+									<ShortcutBadge shortcut={(action.shortcut ?? action.displayShortcut)!} />
+								)}
 							</div>
 						))}
 					</div>
