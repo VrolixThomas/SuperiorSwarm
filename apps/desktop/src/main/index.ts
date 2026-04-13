@@ -52,7 +52,7 @@ let mainWindow: BrowserWindow | null = null;
 let daemonClient: DaemonClient;
 let alertListener: AgentAlertListener | null = null;
 
-if (!registerSingleInstance(app, () => mainWindow)) {
+if (!import.meta.env.DEV && !registerSingleInstance(app, () => mainWindow)) {
 	process.exit(0);
 }
 
