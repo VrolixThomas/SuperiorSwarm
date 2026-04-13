@@ -1,5 +1,8 @@
 "use client";
 
+import { DownloadButton } from "@/components/download-button";
+import { useRelease } from "@/lib/release-context";
+import { shouldShowDownload, useDetectedPlatform } from "@/lib/use-detected-platform";
 import { motion, useReducedMotion } from "motion/react";
 import { AnimatedLogo } from "./animated-logo";
 import { GitHubStarLink } from "./github-stars";
@@ -7,6 +10,10 @@ import { WaitlistForm } from "./waitlist-form";
 
 export function Hero() {
 	const reduced = useReducedMotion();
+	const platform = useDetectedPlatform();
+	const release = useRelease();
+	const showDownload = shouldShowDownload(platform);
+
 	return (
 		<section aria-label="Hero" className="relative overflow-hidden pt-28 pb-8 md:pt-36">
 			{/* Enhanced brand glow behind logo */}
@@ -46,14 +53,18 @@ export function Hero() {
 					manage every branch — all from one window.
 				</motion.p>
 
-				{/* Waitlist */}
+				{/* CTA area */}
 				<motion.div
 					initial={reduced ? false : { opacity: 0 }}
 					animate={{ opacity: 1 }}
 					transition={{ duration: 0.3, delay: 0.35 }}
 					className="mt-7 flex flex-col items-center gap-4"
 				>
-					<WaitlistForm />
+					{showDownload ? (
+						<DownloadButton release={release} />
+					) : (
+						<WaitlistForm platform={platform === "windows" ? "windows" : "linux"} />
+					)}
 					<GitHubStarLink />
 				</motion.div>
 			</div>
