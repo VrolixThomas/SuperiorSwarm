@@ -5,10 +5,12 @@ import { useState } from "react";
 
 type FormState = "idle" | "loading" | "success" | "error" | "duplicate";
 
-export function WaitlistForm() {
+export function WaitlistForm({ platform }: { platform: "windows" | "linux" }) {
 	const [email, setEmail] = useState("");
 	const [honeypot, setHoneypot] = useState("");
 	const [state, setState] = useState<FormState>("idle");
+
+	const platformLabel = platform === "windows" ? "Windows" : "Linux";
 
 	async function handleSubmit(e: React.FormEvent) {
 		e.preventDefault();
@@ -22,7 +24,9 @@ export function WaitlistForm() {
 
 		setState("loading");
 
-		const { error } = await supabase.from("waitlist").insert({ email: email.trim() });
+		const { error } = await supabase
+			.from("waitlist")
+			.insert({ email: email.trim(), platform });
 
 		if (error) {
 			if (error.code === "23505") {
@@ -42,7 +46,7 @@ export function WaitlistForm() {
 			<div className="flex flex-col items-center gap-2">
 				<p className="text-[15px] font-medium text-accent">You're on the list.</p>
 				<p className="text-[13px] text-text-secondary">
-					We'll let you know when SuperiorSwarm is ready.
+					We'll let you know when the {platformLabel} build is ready.
 				</p>
 			</div>
 		);
@@ -96,7 +100,9 @@ export function WaitlistForm() {
 			{state === "error" && (
 				<p className="text-[13px] text-red">Something went wrong. Try again.</p>
 			)}
-			<p className="text-[11px] text-text-faint">Free & open source · macOS</p>
+			<p className="text-[11px] text-text-faint">
+				Signing up for {platformLabel} · macOS available now
+			</p>
 		</form>
 	);
 }
