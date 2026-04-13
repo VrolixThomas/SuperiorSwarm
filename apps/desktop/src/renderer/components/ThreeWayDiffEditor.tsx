@@ -1,6 +1,7 @@
 import * as monaco from "monaco-editor";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+import type { ConflictType } from "../../shared/branch-types";
 import { detectLanguage } from "../../shared/diff-types";
 import { EDITOR_THEME, ensureThemeRegistered } from "../lib/monacoTheme";
 import {
@@ -11,6 +12,8 @@ import {
 	resolveHunk,
 	toggleHunkAccepted,
 } from "../lib/three-way-merge";
+import { shouldSkipShortcutHandling } from "../hooks/useShortcutListener";
+import type { ConflictZone } from "./ConflictHintBar";
 
 // ── Inline accept bar rendered inside a Monaco view zone ────────────────────
 
@@ -48,6 +51,7 @@ function HunkAcceptBar({
 			<button
 				type="button"
 				onClick={() => onAccept(hunkId, "theirs")}
+				title="Accept Theirs (t)"
 				className="rounded px-2 py-0.5 text-[11px] font-medium transition-colors hover:brightness-110"
 				style={{ color: "var(--accent)", background: "rgba(10, 132, 255, 0.15)" }}
 			>
@@ -56,6 +60,7 @@ function HunkAcceptBar({
 			<button
 				type="button"
 				onClick={() => onAccept(hunkId, "ours")}
+				title="Accept Yours (b)"
 				className="rounded px-2 py-0.5 text-[11px] font-medium transition-colors hover:brightness-110"
 				style={{ color: "var(--color-purple)", background: "rgba(191, 90, 242, 0.15)" }}
 			>
@@ -64,6 +69,7 @@ function HunkAcceptBar({
 			<button
 				type="button"
 				onClick={() => onAccept(hunkId, "both")}
+				title="Accept Both (+)"
 				className="rounded px-2 py-0.5 text-[11px] text-[var(--text-tertiary)] transition-colors hover:bg-[var(--bg-elevated)]"
 			>
 				Both
@@ -108,14 +114,85 @@ function AutoMergedBar({
 	);
 }
 
+// ── Conflict-type banner ─────────────────────────────────────────────────────
+
+const CONFLICT_MESSAGES: Partial<Record<ConflictType, (src: string, tgt: string) => string>> = {
+	"delete/add": (src) => `This file was added in ${src} and is absent in your branch.`,
+	"add/delete": (_src, tgt) =>
+		`This file was added in your branch (${tgt}) and is absent in theirs.`,
+	"delete/modify": (_src, tgt) =>
+		`You deleted this file (${tgt}), but it was modified in their branch. Accept theirs to keep their version, or accept yours to delete it.`,
+	"modify/delete": (src) =>
+		`You modified this file, but it was deleted in ${src}. Accept yours to keep your changes, or accept theirs to delete it.`,
+	unknown: () => "The conflict type for this file could not be determined. Use Quick Accept below.",
+};
+
+function ConflictTypeBanner({
+	conflictType,
+	sourceBranch,
+	targetBranch,
+	onResolveTheirs,
+	onResolveOurs,
+}: {
+	conflictType: ConflictType;
+	sourceBranch: string;
+	targetBranch: string;
+	onResolveTheirs: () => void;
+	onResolveOurs: () => void;
+}) {
+	const message = CONFLICT_MESSAGES[conflictType]?.(sourceBranch, targetBranch);
+	if (!message) return null;
+
+	return (
+		<div className="flex shrink-0 items-center gap-3 border-b border-[var(--border)] bg-[rgba(255,159,10,0.06)] px-4 py-2">
+			<svg
+				width="13"
+				height="13"
+				viewBox="0 0 24 24"
+				fill="none"
+				stroke="var(--color-warning)"
+				strokeWidth="2"
+				className="shrink-0"
+			>
+				<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
+				<path d="M12 9v4" />
+				<path d="M12 17h.01" />
+			</svg>
+			<span className="flex-1 text-[12px] text-[var(--color-warning)]">{message}</span>
+			{conflictType === "delete/add" && (
+				<button
+					type="button"
+					onClick={onResolveTheirs}
+					className="shrink-0 rounded px-2 py-0.5 text-[11px] font-medium transition-colors hover:brightness-110"
+					style={{ color: "var(--accent)", background: "rgba(10, 132, 255, 0.15)" }}
+				>
+					← Accept Theirs
+				</button>
+			)}
+			{conflictType === "add/delete" && (
+				<button
+					type="button"
+					onClick={onResolveOurs}
+					className="shrink-0 rounded px-2 py-0.5 text-[11px] font-medium transition-colors hover:brightness-110"
+					style={{ color: "var(--color-purple)", background: "rgba(191, 90, 242, 0.15)" }}
+				>
+					Accept Yours →
+				</button>
+			)}
+		</div>
+	);
+}
+
 // ── Props ───────────────────────────────────────────────────────────────────
 
 interface Props {
 	filePath: string;
-	content: { base: string; ours: string; theirs: string };
+	content: { base: string; ours: string; theirs: string; conflictType: ConflictType };
 	sourceBranch: string;
 	targetBranch: string;
 	onResolve: (resolvedContent: string) => void;
+	zone: ConflictZone;
+	onZoneChange: (zone: ConflictZone) => void;
 }
 
 // ── Main component ──────────────────────────────────────────────────────────
@@ -126,9 +203,19 @@ export function ThreeWayDiffEditor({
 	sourceBranch,
 	targetBranch,
 	onResolve,
+	zone,
+	onZoneChange,
 }: Props) {
 	const [hunks, setHunks] = useState<MergeHunk[]>([]);
 	const [mergedContent, setMergedContent] = useState("");
+	const [focusedHunkIndex, setFocusedHunkIndex] = useState(0);
+
+	// Refs for values accessed inside document keydown handlers (avoids stale closures)
+	const hunksRef = useRef<MergeHunk[]>([]);
+	const focusedHunkIndexRef = useRef(0);
+	const previousHunksRef = useRef<MergeHunk[] | null>(null);
+	const onResolveRef = useRef(onResolve);
+	const onZoneChangeRef = useRef(onZoneChange);
 
 	const theirsRef = useRef<HTMLDivElement>(null);
 	const resultRef = useRef<HTMLDivElement>(null);
@@ -137,6 +224,7 @@ export function ThreeWayDiffEditor({
 	const theirsEditorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
 	const resultEditorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
 	const oursEditorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
+	const editModeKeyRef = useRef<monaco.editor.IContextKey<boolean> | null>(null);
 
 	// Scroll sync guard
 	const scrollSyncRef = useRef(false);
@@ -168,7 +256,122 @@ export function ThreeWayDiffEditor({
 		const result = computeThreeWayMerge(content.base, content.ours, content.theirs);
 		setHunks(result.hunks);
 		setMergedContent(result.mergedContent);
+		// Clear undo history so switching files doesn't let ⌘Z reach previous file's edits
+		previousHunksRef.current = null;
 	}, [content]);
+
+	useEffect(() => {
+		hunksRef.current = hunks;
+	}, [hunks]);
+	useEffect(() => {
+		focusedHunkIndexRef.current = focusedHunkIndex;
+	}, [focusedHunkIndex]);
+	useEffect(() => {
+		onResolveRef.current = onResolve;
+	}, [onResolve]);
+	useEffect(() => {
+		onZoneChangeRef.current = onZoneChange;
+	}, [onZoneChange]);
+
+	// Keep Monaco editModeActive context key in sync with zone prop
+	useEffect(() => {
+		editModeKeyRef.current?.set(zone === "edit");
+		// When leaving edit mode, blur Monaco so document keydown handlers (nav/sidebar
+		// shortcuts) aren't silently swallowed by Monaco's contenteditable textarea.
+		if (zone !== "edit") {
+			const active = document.activeElement as HTMLElement | null;
+			if (
+				active &&
+				(resultRef.current?.contains(active) ||
+					theirsRef.current?.contains(active) ||
+					oursRef.current?.contains(active))
+			) {
+				active.blur();
+			}
+		}
+	}, [zone]);
+
+	// Reset focused hunk when file content changes
+	// biome-ignore lint/correctness/useExhaustiveDependencies: content change is the reset signal; setFocusedHunkIndex is a stable setter
+	useEffect(() => {
+		setFocusedHunkIndex(0);
+	}, [content]);
+
+	// Sync Monaco model language when filePath changes (no remount to handle this)
+	useEffect(() => {
+		for (const editorRef of [theirsEditorRef, resultEditorRef, oursEditorRef]) {
+			const model = editorRef.current?.getModel();
+			if (model) monaco.editor.setModelLanguage(model, language);
+		}
+	}, [language]);
+
+	// ── Nav mode keyboard shortcuts ─────────────────────────────────────────
+
+	useEffect(() => {
+		if (zone !== "nav") return;
+
+		function handleKeyDown(e: KeyboardEvent) {
+			const target = e.target as HTMLElement;
+			if (shouldSkipShortcutHandling(e, target) || target.isContentEditable) return;
+
+			const currentHunks = hunksRef.current;
+			const conflictHunks = currentHunks.filter((h) => h.type === "conflict");
+			const index = focusedHunkIndexRef.current;
+			const hunk = conflictHunks[index];
+
+			if (e.key === "t" || e.key === "b" || e.key === "+") {
+				if (!hunk || hunk.status !== "pending") return;
+				e.preventDefault();
+				const resolution = e.key === "t" ? "theirs" : e.key === "b" ? "ours" : "both";
+				previousHunksRef.current = currentHunks;
+				const { hunks: newHunks, mergedContent: newContent } = resolveHunk(
+					currentHunks,
+					hunk.id,
+					resolution
+				);
+				setHunks(newHunks);
+				setMergedContent(newContent);
+				// Advance to next pending hunk
+				const newConflictHunks = newHunks.filter((h) => h.type === "conflict");
+				const nextPending = newConflictHunks.findIndex(
+					(h, i) => i > index && h.status === "pending"
+				);
+				if (nextPending >= 0) setFocusedHunkIndex(nextPending);
+			} else if (e.key === "ArrowUp") {
+				e.preventDefault();
+				setFocusedHunkIndex((i) => Math.max(0, i - 1));
+			} else if (e.key === "ArrowDown") {
+				e.preventDefault();
+				setFocusedHunkIndex((i) => Math.min(Math.max(0, conflictHunks.length - 1), i + 1));
+			} else if (e.key === "e") {
+				e.preventDefault();
+				onZoneChangeRef.current("edit");
+				resultEditorRef.current?.focus();
+			} else if ((e.metaKey || e.ctrlKey) && e.key === "z") {
+				e.preventDefault();
+				const prev = previousHunksRef.current;
+				if (!prev) return;
+				previousHunksRef.current = null;
+				const lines = prev.flatMap((h) => h.resultLines);
+				const restored = lines.length > 0 ? `${lines.join("\n")}\n` : "";
+				setHunks(prev);
+				setMergedContent(restored);
+			}
+		}
+
+		document.addEventListener("keydown", handleKeyDown);
+		return () => document.removeEventListener("keydown", handleKeyDown);
+	}, [zone]);
+
+	// ── Scroll to focused hunk ──────────────────────────────────────────────
+
+	useEffect(() => {
+		const conflictHunks = hunks.filter((h) => h.type === "conflict");
+		const hunk = conflictHunks[focusedHunkIndex];
+		if (hunk) {
+			resultEditorRef.current?.revealLineInCenter(hunk.startLine);
+		}
+	}, [focusedHunkIndex, hunks]);
 
 	// ── Create the three editors once on mount ──────────────────────────────
 
@@ -216,6 +419,7 @@ export function ThreeWayDiffEditor({
 		theirsEditorRef.current = theirsEditor;
 		resultEditorRef.current = resultEditor;
 		oursEditorRef.current = oursEditor;
+		editModeKeyRef.current = resultEditor.createContextKey<boolean>("editModeActive", false);
 
 		// Synchronized scrolling between all three panels
 		function syncScrollFrom(
@@ -236,10 +440,32 @@ export function ThreeWayDiffEditor({
 		const sub2 = syncScrollFrom(resultEditor, [theirsEditor, oursEditor]);
 		const sub3 = syncScrollFrom(oursEditor, [theirsEditor, resultEditor]);
 
+		// Edit Mode: clicking in the Result panel enters edit mode
+		const focusSub = resultEditor.onDidFocusEditorText(() => {
+			onZoneChangeRef.current("edit");
+		});
+
+		// ⌘↵ in Edit Mode = mark resolved with current content
+		resultEditor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
+			const model = resultEditor.getModel();
+			if (model) onResolveRef.current(model.getValue());
+		});
+
+		// Esc in Edit Mode = exit back to nav mode (when condition prevents intercepting Monaco's built-in Esc handlers)
+		resultEditor.addCommand(
+			monaco.KeyCode.Escape,
+			() => {
+				onZoneChangeRef.current("nav");
+				resultEditor.blur();
+			},
+			"editModeActive"
+		);
+
 		return () => {
 			sub1.dispose();
 			sub2.dispose();
 			sub3.dispose();
+			focusSub.dispose();
 			theirsDecoRef.current?.clear();
 			oursDecoRef.current?.clear();
 			resultDecoRef.current?.clear();
@@ -525,6 +751,18 @@ export function ThreeWayDiffEditor({
 	const allResolved = totalConflicts === 0 || resolvedCount === totalConflicts;
 	const autoMergedCount = hunks.filter((h) => h.type === "ok" && h.source).length;
 
+	// Auto-fire: when all hunks resolved in nav mode, stage the file automatically
+	// biome-ignore lint/correctness/useExhaustiveDependencies: onResolveRef is a stable ref — no need to list it
+	useEffect(() => {
+		if (!allResolved || totalConflicts === 0 || zone !== "nav") return;
+		const timer = setTimeout(() => {
+			const editor = resultEditorRef.current;
+			const model = editor?.getModel();
+			if (model) onResolveRef.current(model.getValue());
+		}, 150);
+		return () => clearTimeout(timer);
+	}, [allResolved, totalConflicts, zone]);
+
 	// ── Quick accept-all helpers ────────────────────────────────────────────
 
 	function acceptAll(resolution: "theirs" | "ours" | "both") {
@@ -567,6 +805,7 @@ export function ThreeWayDiffEditor({
 					<button
 						type="button"
 						onClick={() => acceptAll("theirs")}
+						title="Accept All Theirs (⌥A)"
 						className="shrink-0 rounded px-2 py-0.5 text-[11px] text-[var(--text-tertiary)] transition-colors hover:bg-[var(--bg-elevated)] hover:text-[var(--text)]"
 					>
 						Accept All
@@ -574,13 +813,27 @@ export function ThreeWayDiffEditor({
 				</div>
 
 				{/* Result header */}
-				<div className="flex flex-1 items-center gap-2 border-r border-[var(--border)] bg-[var(--bg-surface)] px-3">
-					<span
-						className="h-2 w-2 shrink-0 rounded-full"
-						style={{
-							backgroundColor: allResolved ? "var(--color-success)" : "var(--color-warning)",
-						}}
-					/>
+				<div
+					className="flex flex-1 items-center gap-2 border-r px-3 transition-colors duration-150"
+					style={{
+						borderColor: "var(--border)",
+						borderTop: zone === "edit" ? "2px solid rgba(255,215,0,0.4)" : "2px solid transparent",
+						background: zone === "edit" ? "rgba(255,215,0,0.04)" : "var(--bg-surface)",
+					}}
+				>
+					{zone === "edit" ? (
+						<span className="flex shrink-0 items-center gap-1 text-[10px] font-semibold text-[rgba(255,215,0,0.8)]">
+							<span className="h-1.5 w-1.5 rounded-full bg-[rgba(255,215,0,0.8)]" />
+							EDITING
+						</span>
+					) : (
+						<span
+							className="h-2 w-2 shrink-0 rounded-full"
+							style={{
+								backgroundColor: allResolved ? "var(--color-success)" : "var(--color-warning)",
+							}}
+						/>
+					)}
 					<span className="min-w-0 flex-1 truncate text-[12px] font-medium text-[var(--text-secondary)]">
 						Result
 					</span>
@@ -588,13 +841,11 @@ export function ThreeWayDiffEditor({
 						type="button"
 						onClick={handleMarkResolved}
 						disabled={totalConflicts > 0 && !allResolved}
+						title={zone === "edit" ? "Mark Resolved (⌘↵)" : "Mark Resolved"}
 						className="shrink-0 rounded px-2 py-0.5 text-[11px] font-medium transition-colors disabled:opacity-40"
-						style={{
-							color: "var(--color-success)",
-							background: "rgba(48, 209, 88, 0.12)",
-						}}
+						style={{ color: "var(--color-success)", background: "rgba(48,209,88,0.12)" }}
 					>
-						Mark Resolved
+						{zone === "edit" ? "Mark Resolved ⌘↵" : "Mark Resolved"}
 					</button>
 				</div>
 
@@ -610,12 +861,22 @@ export function ThreeWayDiffEditor({
 					<button
 						type="button"
 						onClick={() => acceptAll("ours")}
+						title="Accept All Yours (⌥A)"
 						className="shrink-0 rounded px-2 py-0.5 text-[11px] text-[var(--text-tertiary)] transition-colors hover:bg-[var(--bg-elevated)] hover:text-[var(--text)]"
 					>
 						Accept All
 					</button>
 				</div>
 			</div>
+
+			{/* Special conflict type explanation */}
+			<ConflictTypeBanner
+				conflictType={content.conflictType}
+				sourceBranch={sourceBranch}
+				targetBranch={targetBranch}
+				onResolveTheirs={() => onResolve(content.theirs)}
+				onResolveOurs={() => onResolve(content.ours)}
+			/>
 
 			{/* Three editor panels */}
 			<div className="flex min-h-0 flex-1">
@@ -648,6 +909,7 @@ export function ThreeWayDiffEditor({
 				<button
 					type="button"
 					onClick={() => acceptAll("theirs")}
+					title="Accept All Theirs"
 					className="shrink-0 rounded px-2 py-0.5 text-[11px] transition-colors hover:bg-[var(--bg-elevated)]"
 					style={{ color: "var(--accent)" }}
 				>
@@ -656,6 +918,7 @@ export function ThreeWayDiffEditor({
 				<button
 					type="button"
 					onClick={() => acceptAll("ours")}
+					title="Accept All Yours"
 					className="shrink-0 rounded px-2 py-0.5 text-[11px] transition-colors hover:bg-[var(--bg-elevated)]"
 					style={{ color: "var(--color-purple)" }}
 				>
@@ -664,6 +927,7 @@ export function ThreeWayDiffEditor({
 				<button
 					type="button"
 					onClick={() => acceptAll("both")}
+					title="Accept All Both"
 					className="shrink-0 rounded px-2 py-0.5 text-[11px] text-[var(--text-tertiary)] transition-colors hover:bg-[var(--bg-elevated)] hover:text-[var(--text)]"
 				>
 					Both

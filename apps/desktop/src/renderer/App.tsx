@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Group, Panel, Separator, useDefaultLayout, usePanelRef } from "react-resizable-panels";
+import type { MergeResult, RebaseResult } from "../shared/branch-types";
 import type { LayoutNode, SerializedLayoutNode } from "../shared/pane-types";
 import { registerCoreActions } from "./actions/core-actions";
 import { AddRepositoryModal } from "./components/AddRepositoryModal";
@@ -374,22 +375,37 @@ function AuthenticatedApp() {
 
 	// Branch palette mutations and action menu state
 	const utils = trpc.useUtils();
-	const mergeStartMutation = trpc.merge.start.useMutation({
-		onError: (err) => console.error("[App] merge.start failed:", err.message),
-	});
-	const rebaseStartMutation = trpc.rebase.start.useMutation({
-		onError: (err) => console.error("[App] rebase.start failed:", err.message),
-	});
+	const invalidateGitState = useCallback(() => {
+		utils.branches.getStatus.invalidate();
+		utils.branches.list.invalidate();
+		utils.diff.getWorkingTreeStatus.invalidate();
+		utils.diff.getWorkingTreeDiff.invalidate();
+	}, [utils]);
+
+	const [notification, setNotification] = useState<{
+		message: string;
+		type: "success" | "error";
+	} | null>(null);
+	const notifTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+	useEffect(
+		() => () => {
+			if (notifTimerRef.current) clearTimeout(notifTimerRef.current);
+		},
+		[]
+	);
+	const showNotification = useCallback((message: string, type: "success" | "error") => {
+		if (notifTimerRef.current) clearTimeout(notifTimerRef.current);
+		setNotification({ message, type });
+		notifTimerRef.current = setTimeout(() => setNotification(null), 3000);
+	}, []);
+
+	const mergeStartMutation = trpc.merge.start.useMutation();
+	const rebaseStartMutation = trpc.rebase.start.useMutation();
 	const pushMutation = trpc.remote.push.useMutation({
 		onSuccess: () => utils.branches.getStatus.invalidate(),
 	});
 	const pullMutation = trpc.remote.pull.useMutation({
-		onSuccess: () => {
-			utils.branches.getStatus.invalidate();
-			utils.branches.list.invalidate();
-			utils.diff.getWorkingTreeStatus.invalidate();
-			utils.diff.getWorkingTreeDiff.invalidate();
-		},
+		onSuccess: invalidateGitState,
 	});
 	const fetchMutation = trpc.remote.fetch.useMutation({
 		onSuccess: () => utils.branches.list.invalidate(),
@@ -400,6 +416,8 @@ function AuthenticatedApp() {
 		branch: string;
 		currentBranch: string;
 		position: { x: number; y: number };
+		mergeRef: string;
+		isRemote: boolean;
 	} | null>(null);
 
 	const { closePalette, setMergeState } = useBranchStore();
@@ -424,7 +442,38 @@ function AuthenticatedApp() {
 		{ enabled: !!activeProjectId }
 	);
 
-	function handleMerge(branch: string) {
+	const handleMergeOrRebaseSuccess = useCallback(
+		(
+			result: MergeResult | RebaseResult,
+			type: "merge" | "rebase",
+			sourceBranch: string,
+			currentBranch: string
+		) => {
+			if (result.status === "conflict" && result.files) {
+				// Only refresh branch status — diff queries shouldn't fetch conflict-marker content
+				utils.branches.getStatus.invalidate();
+				const workspaceId = useTabStore.getState().activeWorkspaceId ?? "";
+				setMergeState({
+					type,
+					sourceBranch,
+					targetBranch: currentBranch,
+					conflicts: result.files.map((path) => ({ path, status: "conflicting" as const })),
+					activeFilePath: result.files[0] ?? null,
+					rebaseProgress: (result as RebaseResult).progress ?? null,
+				});
+				useTabStore.getState().openMergeConflict(workspaceId, type, sourceBranch, currentBranch);
+			} else {
+				invalidateGitState();
+				showNotification(
+					type === "merge" ? "Merged successfully" : "Rebased successfully",
+					"success"
+				);
+			}
+		},
+		[utils, invalidateGitState, setMergeState, showNotification]
+	);
+
+	function handleMerge(mergeRef: string) {
 		if (!activeProjectId) return;
 		if (useBranchStore.getState().mergeState !== null) return;
 		closePalette();
@@ -432,28 +481,18 @@ function AuthenticatedApp() {
 		const cwd = useTabStore.getState().activeWorkspaceCwd || undefined;
 		const currentBranch = branchStatusQuery.data?.branch ?? "";
 		mergeStartMutation.mutate(
-			{ projectId: activeProjectId, branch, cwd },
+			{ projectId: activeProjectId, branch: mergeRef, cwd },
 			{
-				onSuccess: (result) => {
-					utils.branches.getStatus.invalidate();
-					if (result.status === "conflict" && result.files) {
-						const workspaceId = useTabStore.getState().activeWorkspaceId ?? "";
-						setMergeState({
-							type: "merge",
-							sourceBranch: branch,
-							targetBranch: currentBranch,
-							conflicts: result.files.map((path) => ({ path, status: "conflicting" as const })),
-							activeFilePath: result.files[0] ?? null,
-							rebaseProgress: null,
-						});
-						useTabStore.getState().openMergeConflict(workspaceId, "merge", branch, currentBranch);
-					}
+				onSuccess: (result) => handleMergeOrRebaseSuccess(result, "merge", mergeRef, currentBranch),
+				onError: (err) => {
+					console.error("[App] merge.start failed:", err.message);
+					showNotification(`Merge failed: ${err.message}`, "error");
 				},
 			}
 		);
 	}
 
-	function handleRebase(ontoBranch: string) {
+	function handleRebase(mergeRef: string) {
 		if (!activeProjectId) return;
 		if (useBranchStore.getState().mergeState !== null) return;
 		closePalette();
@@ -461,24 +500,13 @@ function AuthenticatedApp() {
 		const cwd = useTabStore.getState().activeWorkspaceCwd || undefined;
 		const currentBranch = branchStatusQuery.data?.branch ?? "";
 		rebaseStartMutation.mutate(
-			{ projectId: activeProjectId, ontoBranch, cwd },
+			{ projectId: activeProjectId, ontoBranch: mergeRef, cwd },
 			{
-				onSuccess: (result) => {
-					utils.branches.getStatus.invalidate();
-					if (result.status === "conflict" && result.files) {
-						const workspaceId = useTabStore.getState().activeWorkspaceId ?? "";
-						setMergeState({
-							type: "rebase",
-							sourceBranch: ontoBranch,
-							targetBranch: currentBranch,
-							conflicts: result.files.map((path) => ({ path, status: "conflicting" as const })),
-							activeFilePath: result.files[0] ?? null,
-							rebaseProgress: result.progress ?? null,
-						});
-						useTabStore
-							.getState()
-							.openMergeConflict(workspaceId, "rebase", ontoBranch, currentBranch);
-					}
+				onSuccess: (result) =>
+					handleMergeOrRebaseSuccess(result, "rebase", mergeRef, currentBranch),
+				onError: (err) => {
+					console.error("[App] rebase.start failed:", err.message);
+					showNotification(`Rebase failed: ${err.message}`, "error");
 				},
 			}
 		);
@@ -692,8 +720,8 @@ function AuthenticatedApp() {
 					{activeProjectId && (
 						<BranchPalette
 							projectId={activeProjectId}
-							onOpenActionMenu={(branch, currentBranch, position) => {
-								setActionMenu({ branch, currentBranch, position });
+							onOpenActionMenu={(branch, currentBranch, position, mergeRef, isRemote) => {
+								setActionMenu({ branch, currentBranch, position, mergeRef, isRemote });
 							}}
 						/>
 					)}
@@ -703,6 +731,8 @@ function AuthenticatedApp() {
 							branch={actionMenu.branch}
 							currentBranch={actionMenu.currentBranch}
 							position={actionMenu.position}
+							mergeRef={actionMenu.mergeRef}
+							isRemote={actionMenu.isRemote}
 							onClose={() => setActionMenu(null)}
 							onMerge={handleMerge}
 							onRebase={handleRebase}
@@ -713,6 +743,18 @@ function AuthenticatedApp() {
 			)}
 			<UpdateToast />
 			<WhatsNewModal />
+			{notification && (
+				<div
+					className={[
+						"fixed bottom-4 left-1/2 -translate-x-1/2 z-[70] rounded-[var(--radius-md)] border px-4 py-2 text-[13px] shadow-[var(--shadow-md)] pointer-events-none",
+						notification.type === "success"
+							? "border-[rgba(48,209,88,0.3)] bg-[var(--bg-elevated)] text-[var(--color-success)]"
+							: "border-[rgba(255,69,58,0.3)] bg-[var(--bg-elevated)] text-[var(--color-danger)]",
+					].join(" ")}
+				>
+					{notification.message}
+				</div>
+			)}
 		</>
 	);
 }

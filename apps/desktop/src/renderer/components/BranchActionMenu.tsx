@@ -8,9 +8,11 @@ interface Props {
 	branch: string;
 	currentBranch: string;
 	position: { x: number; y: number };
+	mergeRef: string;
+	isRemote?: boolean;
 	onClose: () => void;
-	onMerge: (branch: string) => void;
-	onRebase: (ontoBranch: string) => void;
+	onMerge: (mergeRef: string) => void;
+	onRebase: (mergeRef: string) => void;
 	isMerging?: boolean;
 }
 
@@ -19,6 +21,8 @@ export function BranchActionMenu({
 	branch,
 	currentBranch,
 	position,
+	mergeRef,
+	isRemote,
 	onClose,
 	onMerge,
 	onRebase,
@@ -98,12 +102,12 @@ export function BranchActionMenu({
 	useEscapeKey(handleEscape);
 
 	function handleMerge() {
-		onMerge(branch);
+		onMerge(mergeRef);
 		onClose();
 	}
 
 	function handleRebase() {
-		onRebase(branch);
+		onRebase(mergeRef);
 		onClose();
 	}
 
@@ -219,59 +223,66 @@ export function BranchActionMenu({
 				</>
 			)}
 
-			{separator}
+			{/* Push / Rename / Delete — local branches only */}
+			{!isRemote && (
+				<>
+					{separator}
 
-			{/* Push */}
-			<button
-				type="button"
-				role="menuitem"
-				className={itemClass}
-				onClick={handlePush}
-				disabled={pushMutation.isPending}
-			>
-				{pushMutation.isPending ? "Pushing…" : "Push"}
-			</button>
+					<button
+						type="button"
+						role="menuitem"
+						className={itemClass}
+						onClick={handlePush}
+						disabled={pushMutation.isPending}
+					>
+						{pushMutation.isPending ? "Pushing…" : "Push"}
+					</button>
 
-			{/* Rename */}
-			<button type="button" role="menuitem" className={itemClass} onClick={() => setRenaming(true)}>
-				Rename…
-			</button>
+					<button
+						type="button"
+						role="menuitem"
+						className={itemClass}
+						onClick={() => setRenaming(true)}
+					>
+						Rename…
+					</button>
 
-			{separator}
+					{separator}
 
-			{/* Delete with inline confirmation */}
-			{deleteConfirm ? (
-				<div className="px-3 py-1.5">
-					<div className="mb-1.5 text-[12px] text-[var(--text-secondary)]">
-						Delete &lsquo;{branch}&rsquo;?
-					</div>
-					<div className="flex gap-1.5">
+					{deleteConfirm ? (
+						<div className="px-3 py-1.5">
+							<div className="mb-1.5 text-[12px] text-[var(--text-secondary)]">
+								Delete &lsquo;{branch}&rsquo;?
+							</div>
+							<div className="flex gap-1.5">
+								<button
+									type="button"
+									onClick={handleDeleteClick}
+									disabled={deleteMutation.isPending}
+									className="flex-1 rounded-[var(--radius-sm)] bg-[var(--color-danger)] px-2 py-0.5 text-[12px] text-white transition-opacity hover:opacity-80 disabled:opacity-40"
+								>
+									{deleteMutation.isPending ? "Deleting…" : "Delete"}
+								</button>
+								<button
+									type="button"
+									onClick={() => setDeleteConfirm(false)}
+									className="flex-1 rounded-[var(--radius-sm)] border border-[var(--border)] px-2 py-0.5 text-[12px] text-[var(--text-secondary)] transition-all hover:bg-[var(--bg-overlay)]"
+								>
+									Cancel
+								</button>
+							</div>
+						</div>
+					) : (
 						<button
 							type="button"
+							role="menuitem"
+							className={`${dangerClass} text-[var(--color-danger)]`}
 							onClick={handleDeleteClick}
-							disabled={deleteMutation.isPending}
-							className="flex-1 rounded-[var(--radius-sm)] bg-[var(--color-danger)] px-2 py-0.5 text-[12px] text-white transition-opacity hover:opacity-80 disabled:opacity-40"
 						>
-							{deleteMutation.isPending ? "Deleting…" : "Delete"}
+							Delete
 						</button>
-						<button
-							type="button"
-							onClick={() => setDeleteConfirm(false)}
-							className="flex-1 rounded-[var(--radius-sm)] border border-[var(--border)] px-2 py-0.5 text-[12px] text-[var(--text-secondary)] transition-all hover:bg-[var(--bg-overlay)]"
-						>
-							Cancel
-						</button>
-					</div>
-				</div>
-			) : (
-				<button
-					type="button"
-					role="menuitem"
-					className={`${dangerClass} text-[var(--color-danger)]`}
-					onClick={handleDeleteClick}
-				>
-					Delete
-				</button>
+					)}
+				</>
 			)}
 		</div>
 	);
