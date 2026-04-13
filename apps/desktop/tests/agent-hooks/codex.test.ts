@@ -49,11 +49,13 @@ describe("mergeCodexHooks", () => {
 
 	test("replaces old hooks on re-run", () => {
 		mkdirSync(testDir, { recursive: true });
-		mergeCodexHooks(settingsPath, "old-cmd");
-		mergeCodexHooks(settingsPath, "new-cmd");
+		const cmd =
+			'AGENT_NOTIFY_AGENT="codex" "/home/user/.agent-notify/hooks/on-event.sh" || true';
+		mergeCodexHooks(settingsPath, cmd);
+		mergeCodexHooks(settingsPath, cmd);
 
 		const settings = JSON.parse(readFileSync(settingsPath, "utf-8"));
 		expect(settings.hooks.Stop).toHaveLength(1);
-		expect(settings.hooks.Stop[0].hooks[0].command).toBe("new-cmd");
+		expect(settings.hooks.Stop[0].hooks[0].command).toBe(cmd);
 	});
 });

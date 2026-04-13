@@ -3,7 +3,8 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import type { AgentAlert, AgentHookConfig } from "../../../shared/agent-events";
 
-const MARKER = "agent-notify";
+/** Substring used to identify our hook entries by command path. */
+const HOOK_FINGERPRINT = ".agent-notify/hooks/";
 
 const EVENT_MAP: Record<string, AgentAlert> = {
 	UserPromptSubmit: "active",
@@ -20,9 +21,13 @@ const TOOL_EVENTS = new Set(["PostToolUse", "PostToolUseFailure", "PermissionReq
 
 type HookEntry = {
 	matcher?: string;
-	_marker?: string;
 	hooks: Array<{ type: string; command: string }>;
 };
+
+/** Check if a hook entry is one of ours by inspecting the command path. */
+function isAgentNotifyEntry(entry: HookEntry): boolean {
+	return entry.hooks?.some((h) => h.command?.includes(HOOK_FINGERPRINT)) ?? false;
+}
 
 export function mergeClaudeHooks(settingsPath: string, hookCommand: string): void {
 	const dir = dirname(settingsPath);
@@ -44,17 +49,15 @@ export function mergeClaudeHooks(settingsPath: string, hookCommand: string): voi
 	for (const event of HOOK_EVENTS) {
 		const existing = Array.isArray(hooks[event]) ? hooks[event] : [];
 
-		// Remove any previous agent-notify entries (identified by _marker field)
-		const filtered = (existing as HookEntry[]).filter((entry) => entry._marker !== MARKER);
+		// Remove any previous agent-notify entries (identified by command path)
+		const filtered = (existing as HookEntry[]).filter((entry) => !isAgentNotifyEntry(entry));
 
 		const hookEntry: HookEntry = TOOL_EVENTS.has(event)
 			? {
 					matcher: "*",
-					_marker: MARKER,
 					hooks: [{ type: "command", command: hookCommand }],
 				}
 			: {
-					_marker: MARKER,
 					hooks: [{ type: "command", command: hookCommand }],
 				};
 

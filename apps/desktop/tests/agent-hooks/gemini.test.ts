@@ -53,11 +53,13 @@ describe("mergeGeminiHooks", () => {
 
 	test("replaces old hooks on re-run", () => {
 		mkdirSync(testDir, { recursive: true });
-		mergeGeminiHooks(settingsPath, "old-cmd");
-		mergeGeminiHooks(settingsPath, "new-cmd");
+		const cmd =
+			'AGENT_NOTIFY_AGENT="gemini" "/home/user/.agent-notify/hooks/on-event.sh" || true';
+		mergeGeminiHooks(settingsPath, cmd);
+		mergeGeminiHooks(settingsPath, cmd);
 
 		const settings = JSON.parse(readFileSync(settingsPath, "utf-8"));
 		expect(settings.hooks.AfterAgent).toHaveLength(1);
-		expect(settings.hooks.AfterAgent[0].hooks[0].command).toBe("new-cmd");
+		expect(settings.hooks.AfterAgent[0].hooks[0].command).toBe(cmd);
 	});
 });

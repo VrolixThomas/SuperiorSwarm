@@ -3,7 +3,8 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import type { AgentAlert, AgentHookConfig } from "../../../shared/agent-events";
 
-const MARKER = "agent-notify";
+/** Substring used to identify our hook entries by command path. */
+const HOOK_FINGERPRINT = ".agent-notify/hooks/";
 
 const EVENT_MAP: Record<string, AgentAlert> = {
 	SessionStart: "active",
@@ -13,9 +14,12 @@ const EVENT_MAP: Record<string, AgentAlert> = {
 const HOOK_EVENTS = Object.keys(EVENT_MAP);
 
 type HookEntry = {
-	_marker?: string;
 	hooks: Array<{ type: string; command: string }>;
 };
+
+function isAgentNotifyEntry(entry: HookEntry): boolean {
+	return entry.hooks?.some((h) => h.command?.includes(HOOK_FINGERPRINT)) ?? false;
+}
 
 export function mergeCodexHooks(settingsPath: string, hookCommand: string): void {
 	const dir = dirname(settingsPath);
@@ -36,10 +40,9 @@ export function mergeCodexHooks(settingsPath: string, hookCommand: string): void
 
 	for (const event of HOOK_EVENTS) {
 		const existing = Array.isArray(hooks[event]) ? hooks[event] : [];
-		const filtered = (existing as HookEntry[]).filter((entry) => entry._marker !== MARKER);
+		const filtered = (existing as HookEntry[]).filter((entry) => !isAgentNotifyEntry(entry));
 
 		const hookEntry: HookEntry = {
-			_marker: MARKER,
 			hooks: [{ type: "command", command: hookCommand }],
 		};
 

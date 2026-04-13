@@ -1,7 +1,11 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { AGENT_NOTIFY_PORT, type AgentAlert, type AgentHookConfig } from "../../../shared/agent-events";
+import {
+	AGENT_NOTIFY_PORT,
+	type AgentAlert,
+	type AgentHookConfig,
+} from "../../../shared/agent-events";
 
 const PLUGIN_DIRS = [join(homedir(), ".config", "opencode", "plugins")];
 
