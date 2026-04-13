@@ -1,8 +1,10 @@
-import { useState } from "react";
+import { keepPreviousData } from "@tanstack/react-query";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useBranchStore } from "../stores/branch-store";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import { ConflictFileSidebar } from "./ConflictFileSidebar";
+import { ConflictHintBar, type ConflictZone } from "./ConflictHintBar";
 import { ThreeWayDiffEditor } from "./ThreeWayDiffEditor";
 
 interface Props {
@@ -18,6 +20,7 @@ export function MergeConflictPane({ projectId, mergeType, sourceBranch, targetBr
 	const setActiveConflictFile = useBranchStore((s) => s.setActiveConflictFile);
 	const markFileResolved = useBranchStore((s) => s.markFileResolved);
 	const clearMergeState = useBranchStore((s) => s.clearMergeState);
+	const setMergeState = useBranchStore((s) => s.setMergeState);
 
 	// Close the merge-conflict tab from the pane system
 	function closeMergeTab() {
@@ -34,6 +37,7 @@ export function MergeConflictPane({ projectId, mergeType, sourceBranch, targetBr
 			? `Merge branch '${sourceBranch}'`
 			: `Rebase ${targetBranch} onto ${sourceBranch}`
 	);
+	const [zone, setZone] = useState<ConflictZone>("sidebar");
 
 	const utils = trpc.useUtils();
 
@@ -41,13 +45,24 @@ export function MergeConflictPane({ projectId, mergeType, sourceBranch, targetBr
 
 	const conflictQuery = trpc.merge.getFileConflict.useQuery(
 		{ projectId, filePath: activeFile ?? "", cwd },
-		{ enabled: !!activeFile }
+		{ enabled: !!activeFile, placeholderData: keepPreviousData }
 	);
 
 	const resolveMutation = trpc.merge.resolveFile.useMutation({
 		onSuccess: (_data, variables) => {
 			markFileResolved(variables.filePath);
 			utils.merge.getConflicts.invalidate({ projectId });
+			// Auto-advance: markFileResolved has already updated the store synchronously above
+			const updatedConflicts = useBranchStore.getState().mergeState?.conflicts ?? [];
+			const next = updatedConflicts.find((f) => f.status === "conflicting");
+			if (next) {
+				setActiveConflictFile(next.path);
+				setZone("nav");
+			} else {
+				// All resolved: clear editor and show the all-resolved empty state
+				setActiveConflictFile(null);
+				setZone("sidebar");
+			}
 		},
 	});
 
@@ -77,12 +92,31 @@ export function MergeConflictPane({ projectId, mergeType, sourceBranch, targetBr
 	});
 
 	const rebaseContinue = trpc.rebase.continue.useMutation({
-		onSuccess: () => {
-			clearMergeState();
-			utils.branches.getStatus.invalidate();
-			closeMergeTab();
+		onSuccess: (result) => {
+			if (result.status === "conflict" && result.files) {
+				// More commits to rebase — update conflicts and stay in the pane
+				utils.branches.getStatus.invalidate();
+				setMergeState({
+					type: "rebase",
+					sourceBranch,
+					targetBranch,
+					conflicts: result.files.map((path) => ({ path, status: "conflicting" as const })),
+					activeFilePath: result.files[0] ?? null,
+					rebaseProgress: result.progress ?? null,
+				});
+				setZone("sidebar");
+			} else {
+				clearMergeState();
+				utils.branches.getStatus.invalidate();
+				closeMergeTab();
+			}
 		},
 	});
+
+	const applyAndCommitRef = useRef(applyAndCommit);
+	applyAndCommitRef.current = applyAndCommit;
+	const rebaseContinueRef = useRef(rebaseContinue);
+	rebaseContinueRef.current = rebaseContinue;
 
 	const files = mergeState?.conflicts ?? [];
 	const allResolved = files.length > 0 && files.every((f) => f.status === "resolved");
@@ -99,18 +133,37 @@ export function MergeConflictPane({ projectId, mergeType, sourceBranch, targetBr
 		}
 	}
 
-	function handleApply() {
+	const handleApply = useCallback(() => {
 		if (mergeType === "merge") {
-			applyAndCommit.mutate({ projectId, message: commitMessage, cwd });
+			applyAndCommitRef.current.mutate({ projectId, message: commitMessage, cwd });
 		} else {
-			rebaseContinue.mutate({ projectId, cwd });
+			rebaseContinueRef.current.mutate({ projectId, cwd });
 		}
-	}
+	}, [mergeType, projectId, commitMessage, cwd]);
 
 	function handleResolve(resolvedContent: string) {
 		if (!activeFile) return;
 		resolveMutation.mutate({ projectId, filePath: activeFile, content: resolvedContent, cwd });
 	}
+
+	useEffect(() => {
+		function handleKeyDown(e: KeyboardEvent) {
+			const target = e.target as HTMLElement;
+			if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)
+				return;
+
+			if (e.key === "Escape" && zone === "nav") {
+				setZone("sidebar");
+				return;
+			}
+			if (e.key === "Enter" && zone === "sidebar" && allResolved && !isApplying) {
+				e.preventDefault();
+				handleApply();
+			}
+		}
+		document.addEventListener("keydown", handleKeyDown);
+		return () => document.removeEventListener("keydown", handleKeyDown);
+	}, [zone, allResolved, isApplying, handleApply]);
 
 	return (
 		<div className="flex h-full flex-col overflow-hidden">
@@ -185,25 +238,91 @@ export function MergeConflictPane({ projectId, mergeType, sourceBranch, targetBr
 					type="button"
 					onClick={handleApply}
 					disabled={!allResolved || isApplying || (mergeType === "merge" && !commitMessage.trim())}
-					className="rounded-[var(--radius-sm)] border border-[rgba(48,209,88,0.3)] bg-[rgba(48,209,88,0.08)] px-3 py-1 text-[12px] font-medium text-[var(--color-success)] transition-all duration-[var(--transition-fast)] hover:bg-[rgba(48,209,88,0.15)] disabled:cursor-not-allowed disabled:opacity-40"
+					className={[
+						"rounded-[var(--radius-sm)] border px-3 py-1 text-[12px] font-medium transition-all duration-[var(--transition-fast)] disabled:cursor-not-allowed disabled:opacity-40",
+						allResolved
+							? "border-[rgba(48,209,88,0.4)] bg-[rgba(48,209,88,0.2)] text-[var(--color-success)] shadow-[0_0_10px_rgba(48,209,88,0.15)]"
+							: "border-[rgba(48,209,88,0.15)] bg-[rgba(48,209,88,0.04)] text-[rgba(48,209,88,0.4)]",
+					].join(" ")}
 				>
-					{isApplying ? "Applying…" : mergeType === "merge" ? "Apply & Commit" : "Continue Rebase"}
+					{isApplying
+						? "Applying…"
+						: mergeType === "merge"
+							? `Apply & Commit${allResolved ? " ↵" : ""}`
+							: `Continue Rebase${allResolved ? " ↵" : ""}`}
 				</button>
 			</div>
+
+			{/* Rebase progress bar — only shown for rebase when progress data is available */}
+			{mergeType === "rebase" && mergeState?.rebaseProgress && (
+				<div className="flex shrink-0 items-center gap-3 border-b border-[var(--border)] bg-[rgba(255,159,10,0.04)] px-4 py-1.5">
+					<span className="text-[9px] uppercase tracking-wider text-[var(--text-quaternary)]">
+						Rebase progress
+					</span>
+					<div
+						className="flex-1 overflow-hidden rounded-full"
+						style={{ height: 3, background: "rgba(255,255,255,0.06)" }}
+					>
+						<div
+							className="h-full rounded-full transition-all duration-300"
+							style={{
+								width: `${(mergeState.rebaseProgress.current / mergeState.rebaseProgress.total) * 100}%`,
+								background: "rgba(255,159,10,0.7)",
+							}}
+						/>
+					</div>
+					<span className="shrink-0 text-[10px] font-medium text-[var(--color-warning)]">
+						commit {mergeState.rebaseProgress.current} / {mergeState.rebaseProgress.total}
+					</span>
+				</div>
+			)}
 
 			{/* Body: sidebar + editor area */}
 			<div className="flex min-h-0 flex-1 overflow-hidden">
 				<ConflictFileSidebar
 					files={files}
 					activeFile={activeFile}
-					onSelectFile={setActiveConflictFile}
+					onSelectFile={(path) => {
+						setActiveConflictFile(path);
+						setZone("nav");
+					}}
+					zone={zone}
+					onFocusEditor={() => setZone("nav")}
 				/>
 
 				{/* Editor area */}
 				<div className="flex min-h-0 flex-1 flex-col overflow-hidden">
 					{!activeFile && (
-						<div className="flex h-full items-center justify-center text-[13px] text-[var(--text-quaternary)]">
-							Select a conflicting file to resolve it
+						<div className="flex h-full flex-col items-center justify-center gap-3 text-[var(--text-quaternary)]">
+							{allResolved ? (
+								<>
+									<svg
+										width="28"
+										height="28"
+										viewBox="0 0 24 24"
+										fill="none"
+										stroke="var(--color-success)"
+										strokeWidth="1.5"
+										aria-hidden="true"
+									>
+										<circle cx="12" cy="12" r="10" />
+										<path d="m9 12 2 2 4-4" />
+									</svg>
+									<span className="text-[14px] font-medium text-[var(--color-success)]">
+										All conflicts resolved
+									</span>
+									<span className="text-[12px]">
+										Press{" "}
+										<code className="rounded bg-[rgba(255,255,255,0.06)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--text-secondary)]">
+											↵
+										</code>{" "}
+										or click the button to{" "}
+										{mergeType === "merge" ? "apply & commit" : "continue rebase"}
+									</span>
+								</>
+							) : (
+								<span className="text-[13px]">Select a conflicting file to resolve it</span>
+							)}
 						</div>
 					)}
 					{activeFile && conflictQuery.isLoading && (
@@ -218,16 +337,18 @@ export function MergeConflictPane({ projectId, mergeType, sourceBranch, targetBr
 					)}
 					{activeFile && conflictQuery.data && (
 						<ThreeWayDiffEditor
-							key={activeFile}
 							filePath={activeFile}
 							content={conflictQuery.data}
 							sourceBranch={sourceBranch}
 							targetBranch={targetBranch}
 							onResolve={handleResolve}
+							zone={zone}
+							onZoneChange={setZone}
 						/>
 					)}
 				</div>
 			</div>
+			<ConflictHintBar zone={zone} allResolved={allResolved} mergeType={mergeType} />
 		</div>
 	);
 }

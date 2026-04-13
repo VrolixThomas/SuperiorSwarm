@@ -10,8 +10,16 @@ interface Props {
 	onOpenActionMenu: (
 		branch: string,
 		currentBranch: string,
-		position: { x: number; y: number }
+		position: { x: number; y: number },
+		mergeRef: string,
+		isRemote: boolean
 	) => void;
+}
+
+function branchMeta(branch: BranchInfo, isRemote: boolean) {
+	const displayName = isRemote ? `origin/${branch.name}` : branch.name;
+	const mergeRef = isRemote ? `origin/${branch.name}` : (branch.tracking ?? branch.name);
+	return { displayName, mergeRef };
 }
 
 export function BranchPalette({ projectId, onOpenActionMenu }: Props) {
@@ -91,10 +99,10 @@ export function BranchPalette({ projectId, onOpenActionMenu }: Props) {
 
 	// Branches that exist locally (may also exist on remote)
 	const localBranches = useMemo(() => filtered.filter((b) => b.isLocal), [filtered]);
-	// Branches that ONLY exist on remote (not checked out locally)
-	const remoteOnlyBranches = useMemo(
-		() => filtered.filter((b) => b.isRemote && !b.isLocal),
-		[filtered]
+	// All remote tracking refs (origin/*), excluding the current branch's own remote counterpart
+	const allRemoteBranches = useMemo(
+		() => filtered.filter((b) => b.isRemote && b.name !== currentBranch?.name),
+		[filtered, currentBranch]
 	);
 
 	// Flat list of selectable branches for keyboard navigation (current + local + remote if expanded)
@@ -102,9 +110,9 @@ export function BranchPalette({ projectId, onOpenActionMenu }: Props) {
 		const list: BranchInfo[] = [];
 		if (currentBranch) list.push(currentBranch);
 		list.push(...localBranches);
-		if (!remoteCollapsed) list.push(...remoteOnlyBranches);
+		if (!remoteCollapsed) list.push(...allRemoteBranches);
 		return list;
-	}, [currentBranch, localBranches, remoteOnlyBranches, remoteCollapsed]);
+	}, [currentBranch, localBranches, allRemoteBranches, remoteCollapsed]);
 
 	// Reset selected index when search/branches change
 	// biome-ignore lint/correctness/useExhaustiveDependencies: searchQuery triggers reset but isn't read inside effect
@@ -155,10 +163,19 @@ export function BranchPalette({ projectId, onOpenActionMenu }: Props) {
 					const selectedEl = listRef.current?.querySelector('[aria-selected="true"]');
 					if (selectedEl) {
 						const rect = selectedEl.getBoundingClientRect();
-						onOpenActionMenu(branch.name, currentBranch?.name ?? "", {
-							x: rect.right,
-							y: rect.top,
-						});
+						const localCount = (currentBranch ? 1 : 0) + localBranches.length;
+						const isBranchRemote = selectedIndex >= localCount;
+						const { displayName, mergeRef } = branchMeta(branch, isBranchRemote);
+						onOpenActionMenu(
+							displayName,
+							currentBranch?.name ?? "",
+							{
+								x: rect.right,
+								y: rect.top,
+							},
+							mergeRef,
+							isBranchRemote
+						);
 					}
 				}
 			}
@@ -174,23 +191,25 @@ export function BranchPalette({ projectId, onOpenActionMenu }: Props) {
 		setSelectedIndex,
 		onOpenActionMenu,
 		currentBranch,
+		localBranches.length,
 	]);
 
 	if (!isPaletteOpen) return null;
 
 	const status = statusQuery.data;
 
-	function branchCallbacks(branchName: string) {
+	function branchCallbacks(branch: BranchInfo, isRemote = false) {
 		const cur = currentBranch?.name ?? "";
+		const { displayName, mergeRef } = branchMeta(branch, isRemote);
 		return {
 			onSelect: (e: React.MouseEvent) =>
-				onOpenActionMenu(branchName, cur, { x: e.clientX, y: e.clientY }),
+				onOpenActionMenu(displayName, cur, { x: e.clientX, y: e.clientY }, mergeRef, isRemote),
 			onContextMenu: (e: React.MouseEvent) => {
 				e.preventDefault();
-				onOpenActionMenu(branchName, cur, { x: e.clientX, y: e.clientY });
+				onOpenActionMenu(displayName, cur, { x: e.clientX, y: e.clientY }, mergeRef, isRemote);
 			},
 			onActionClick: (e: React.MouseEvent) =>
-				onOpenActionMenu(branchName, cur, { x: e.clientX, y: e.clientY }),
+				onOpenActionMenu(displayName, cur, { x: e.clientX, y: e.clientY }, mergeRef, isRemote),
 		};
 	}
 
@@ -271,7 +290,7 @@ export function BranchPalette({ projectId, onOpenActionMenu }: Props) {
 											<BranchRow
 												branch={currentBranch}
 												isSelected={selectedIndex === 0}
-												{...branchCallbacks(currentBranch.name)}
+												{...branchCallbacks(currentBranch)}
 											/>
 										</div>
 										{/* Ahead/behind badges */}
@@ -350,7 +369,7 @@ export function BranchPalette({ projectId, onOpenActionMenu }: Props) {
 							{localBranches.length > 0 && (
 								<div className="mb-1">
 									<div className="mb-0.5 px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-[var(--text-quaternary)]">
-										Local
+										Local Branches
 									</div>
 									{localBranches.map((branch, i) => {
 										const navIndex = (currentBranch ? 1 : 0) + i;
@@ -359,15 +378,15 @@ export function BranchPalette({ projectId, onOpenActionMenu }: Props) {
 												key={branch.name}
 												branch={branch}
 												isSelected={selectedIndex === navIndex}
-												{...branchCallbacks(branch.name)}
+												{...branchCallbacks(branch)}
 											/>
 										);
 									})}
 								</div>
 							)}
 
-							{/* Remote branches — collapsible */}
-							{remoteOnlyBranches.length > 0 && (
+							{/* Remote branches — collapsible, shows all origin/* refs */}
+							{allRemoteBranches.length > 0 && (
 								<div>
 									<button
 										type="button"
@@ -386,17 +405,17 @@ export function BranchPalette({ projectId, onOpenActionMenu }: Props) {
 										>
 											<path d="m6 9 6 6 6-6" />
 										</svg>
-										Remote ({remoteOnlyBranches.length})
+										Remote Branches ({allRemoteBranches.length})
 									</button>
 									{!remoteCollapsed &&
-										remoteOnlyBranches.map((branch, i) => {
+										allRemoteBranches.map((branch, i) => {
 											const navIndex = (currentBranch ? 1 : 0) + localBranches.length + i;
 											return (
 												<BranchRow
-													key={branch.name}
-													branch={branch}
+													key={`remote:${branch.name}`}
+													branch={{ ...branch, name: `origin/${branch.name}`, ahead: 0, behind: 0 }}
 													isSelected={selectedIndex === navIndex}
-													{...branchCallbacks(branch.name)}
+													{...branchCallbacks(branch, true)}
 												/>
 											);
 										})}
@@ -404,7 +423,7 @@ export function BranchPalette({ projectId, onOpenActionMenu }: Props) {
 							)}
 
 							{/* Empty state */}
-							{!currentBranch && localBranches.length === 0 && remoteOnlyBranches.length === 0 && (
+							{!currentBranch && localBranches.length === 0 && allRemoteBranches.length === 0 && (
 								<div className="px-3 py-6 text-center text-[12px] text-[var(--text-tertiary)]">
 									{searchQuery ? "No branches match your search" : "No branches found"}
 								</div>

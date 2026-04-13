@@ -5,6 +5,7 @@ import simpleGit from "simple-git";
 import type {
 	ConflictContent,
 	ConflictFile,
+	ConflictType,
 	MergeResult,
 	RebaseResult,
 } from "../../shared/branch-types";
@@ -91,24 +92,11 @@ export async function getConflictingFiles(repoPath: string): Promise<ConflictFil
 	const git = simpleGit(repoPath);
 	const status = await git.status();
 
-	const conflicted = new Set(status.conflicted);
-	const staged = new Set(status.staged);
-
-	const allFiles = new Set([...status.conflicted, ...status.staged]);
-	const files: ConflictFile[] = [];
-
-	for (const path of allFiles) {
-		if (conflicted.has(path)) {
-			files.push({ path, status: "conflicting" });
-		} else if (staged.has(path)) {
-			files.push({ path, status: "resolved" });
-		}
-	}
-
-	return files.sort((a, b) => {
-		if (a.status !== b.status) return a.status === "conflicting" ? -1 : 1;
-		return a.path.localeCompare(b.path);
-	});
+	// Auto-staged files that git cleanly resolved are NOT included — they don't
+	// need manual resolution and previously caused the conflict count to balloon.
+	return status.conflicted
+		.map((path): ConflictFile => ({ path, status: "conflicting" }))
+		.sort((a, b) => a.path.localeCompare(b.path));
 }
 
 export async function getConflictContent(
@@ -117,13 +105,35 @@ export async function getConflictContent(
 ): Promise<ConflictContent> {
 	const git = simpleGit(repoPath);
 
+	// Determine which index stages actually exist for this path so we can
+	// classify the conflict type and avoid silently swallowing missing-stage errors.
+	const unmergedRaw = await git.raw(["ls-files", "--unmerged", "--", filePath]).catch(() => "");
+	const presentStages = new Set<number>();
+	for (const line of unmergedRaw.split("\n")) {
+		const m = line.match(/^\d+ \w+ (\d)\t/);
+		if (m) presentStages.add(Number(m[1]));
+	}
+
+	const has1 = presentStages.has(1);
+	const has2 = presentStages.has(2);
+	const has3 = presentStages.has(3);
+
+	let conflictType: ConflictType;
+	if (has1 && has2 && has3) conflictType = "modify/modify";
+	else if (!has1 && has2 && has3) conflictType = "add/add";
+	else if (has1 && has2 && !has3) conflictType = "modify/delete";
+	else if (has1 && !has2 && has3) conflictType = "delete/modify";
+	else if (!has1 && has2 && !has3) conflictType = "add/delete";
+	else if (!has1 && !has2 && has3) conflictType = "delete/add";
+	else conflictType = "unknown";
+
 	const [base, ours, theirs] = await Promise.all([
-		git.show([`:1:${filePath}`]).catch(() => ""),
-		git.show([`:2:${filePath}`]).catch(() => ""),
-		git.show([`:3:${filePath}`]).catch(() => ""),
+		has1 ? git.show([`:1:${filePath}`]).catch(() => "") : Promise.resolve(""),
+		has2 ? git.show([`:2:${filePath}`]).catch(() => "") : Promise.resolve(""),
+		has3 ? git.show([`:3:${filePath}`]).catch(() => "") : Promise.resolve(""),
 	]);
 
-	return { base, ours, theirs };
+	return { base, ours, theirs, conflictType };
 }
 
 export async function markFileResolved(

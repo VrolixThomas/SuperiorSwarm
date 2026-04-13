@@ -24,7 +24,7 @@ interface BranchStore {
 	openActionMenu: (branch: string) => void;
 	closeActionMenu: () => void;
 	setMergeState: (state: MergeState | null) => void;
-	setActiveConflictFile: (path: string) => void;
+	setActiveConflictFile: (path: string | null) => void;
 	markFileResolved: (path: string) => void;
 	clearMergeState: () => void;
 }
