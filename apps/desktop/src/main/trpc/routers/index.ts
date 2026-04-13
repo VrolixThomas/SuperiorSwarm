@@ -14,6 +14,7 @@ import { quickActionsRouter } from "./quick-actions";
 import { rebaseRouter } from "./rebase";
 import { remoteRouter } from "./remote";
 import { sharedFilesRouter } from "./shared-files";
+import { systemRouter } from "./system";
 import { terminalSessionsRouter } from "./terminal-sessions";
 import { ticketsRouter } from "./tickets";
 import { updatesRouter } from "./updates";
@@ -39,6 +40,7 @@ export const appRouter = router({
 	tickets: ticketsRouter,
 	prPoller: prPollerRouter,
 	updates: updatesRouter,
+	system: systemRouter,
 });
 
 export type AppRouter = typeof appRouter;

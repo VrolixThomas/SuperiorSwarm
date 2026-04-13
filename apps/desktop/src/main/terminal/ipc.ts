@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { BrowserWindow, ipcMain } from "electron";
-import { AGENT_NOTIFY_PORT } from "../../shared/agent-events";
+import { getAgentNotifyPort } from "../agent-hooks/port";
 import { getDb } from "../db";
 import { terminalSessions } from "../db/schema";
 import type { DaemonClient } from "./daemon-client";
@@ -33,10 +33,13 @@ export function setupTerminalIPC(daemonClient: DaemonClient): void {
 				}
 			};
 
+			const notifyPort = getAgentNotifyPort();
 			const env: Record<string, string> = {
-				AGENT_NOTIFY_PORT: String(AGENT_NOTIFY_PORT),
 				AGENT_NOTIFY_SESSION_ID: id,
 			};
+			if (notifyPort) {
+				env["AGENT_NOTIFY_PORT"] = String(notifyPort);
+			}
 			if (wsId) {
 				env["AGENT_NOTIFY_WORKSPACE_ID"] = wsId;
 			}

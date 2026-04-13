@@ -2,12 +2,15 @@
 import { type Server, createServer } from "node:http";
 import { type AgentEvent, agentRegistry } from "../../shared/agent-events";
 
+const APP_IDENTIFIER = "superiorswarm";
+
 type EventHandler = (event: AgentEvent) => void;
 
 export interface AgentAlertListener {
 	start: () => Promise<void>;
 	stop: () => void;
 	onEvent: (handler: EventHandler) => () => void;
+	getPort: () => number | null;
 }
 
 export function createAlertListener(port: number): AgentAlertListener {
@@ -15,7 +18,26 @@ export function createAlertListener(port: number): AgentAlertListener {
 	let server: Server | null = null;
 
 	const httpServer = createServer((req, res) => {
-		const url = new URL(req.url ?? "/", `http://127.0.0.1:${port}`);
+		const url = new URL(req.url ?? "/", "http://127.0.0.1");
+
+		if (url.pathname === "/health") {
+			res.writeHead(200, { "Content-Type": "application/json" });
+			res.end(JSON.stringify({ ok: true, app: APP_IDENTIFIER }));
+			return;
+		}
+
+		if (url.pathname === "/shutdown") {
+			if (req.method !== "POST") {
+				res.writeHead(405, { "Content-Type": "application/json" });
+				res.end(JSON.stringify({ ok: false, error: "method not allowed" }));
+				return;
+			}
+			res.writeHead(200, { "Content-Type": "application/json" });
+			res.end(JSON.stringify({ ok: true }));
+			server?.close();
+			server = null;
+			return;
+		}
 
 		if (url.pathname !== "/event") {
 			res.writeHead(404, { "Content-Type": "application/json" });
@@ -34,7 +56,6 @@ export function createAlertListener(port: number): AgentAlertListener {
 			return;
 		}
 
-		// Look up the agent's mapper
 		const config = agentRegistry.get(agent);
 		if (!config) {
 			res.writeHead(204);
@@ -61,7 +82,7 @@ export function createAlertListener(port: number): AgentAlertListener {
 			try {
 				handler(event);
 			} catch (err) {
-				console.error("[agent-listener] handler error:", err);
+				console.error("[agent-notify] handler error:", err);
 			}
 		}
 
@@ -73,14 +94,32 @@ export function createAlertListener(port: number): AgentAlertListener {
 		start() {
 			return new Promise<void>((resolve, reject) => {
 				server = httpServer;
-				httpServer.once("error", reject);
-				httpServer.listen(port, "127.0.0.1", () => {
-					httpServer.removeListener("error", reject);
-					httpServer.on("error", (err) => {
-						console.error("[agent-listener] server error:", err);
+
+				const bind = (targetPort: number) => {
+					const onBindError = (err: NodeJS.ErrnoException) => {
+						if (err.code === "EADDRINUSE" && targetPort !== 0) {
+							console.warn(
+								`[agent-notify] port ${targetPort} in use, falling back to OS-assigned port`
+							);
+							bind(0);
+						} else {
+							reject(err);
+						}
+					};
+					httpServer.once("error", onBindError);
+					httpServer.listen(targetPort, "127.0.0.1", () => {
+						httpServer.removeListener("error", onBindError);
+						httpServer.on("error", (err) => {
+							console.error("[agent-notify] server error:", err);
+						});
+						const addr = httpServer.address();
+						const boundPort = typeof addr === "object" && addr ? addr.port : targetPort;
+						console.log(`[agent-notify] listening on port ${boundPort}`);
+						resolve();
 					});
-					resolve();
-				});
+				};
+
+				bind(port);
 			});
 		},
 		stop() {
@@ -93,5 +132,39 @@ export function createAlertListener(port: number): AgentAlertListener {
 				handlers.delete(handler);
 			};
 		},
+		getPort() {
+			if (!server) return null;
+			const addr = server.address();
+			return typeof addr === "object" && addr ? addr.port : null;
+		},
 	};
+}
+
+/**
+ * Try to reclaim the preferred port from a stale SuperiorSwarm listener.
+ * Probes /health to verify it's ours, then sends POST /shutdown.
+ * Best-effort: if the port is free or held by a non-SuperiorSwarm process,
+ * this is a no-op and bind() will handle EADDRINUSE via fallback.
+ */
+export async function reclaimPort(port: number): Promise<void> {
+	const base = `http://127.0.0.1:${port}`;
+	try {
+		const healthRes = await fetch(`${base}/health`, {
+			signal: AbortSignal.timeout(1000),
+		});
+		if (!healthRes.ok) return;
+		const body = (await healthRes.json()) as { app?: string };
+		if (body.app !== APP_IDENTIFIER) return;
+
+		console.log(`[agent-notify] shutting down stale listener on port ${port}`);
+		await fetch(`${base}/shutdown`, {
+			method: "POST",
+			signal: AbortSignal.timeout(1000),
+		}).catch(() => {});
+
+		// Brief delay for the OS to release the port
+		await new Promise((resolve) => setTimeout(resolve, 200));
+	} catch {
+		// Connection refused or timeout — port is free or held by non-HTTP process
+	}
 }
