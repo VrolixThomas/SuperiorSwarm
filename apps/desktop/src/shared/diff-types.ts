@@ -72,8 +72,12 @@ export function refsForDiffContext(ctx: DiffContext): {
 		// the file as fully added — acceptable.
 		return { originalRef: `${ctx.commitHash}~1`, modifiedRef: ctx.commitHash };
 	}
-	// working-tree: HEAD (committed) vs current file on disk (empty ref = working tree)
-	return { originalRef: "HEAD", modifiedRef: "" };
+	if (ctx.type === "working-tree") {
+		// HEAD (committed) vs current file on disk (empty ref = working tree).
+		return { originalRef: "HEAD", modifiedRef: "" };
+	}
+	const _exhaustive: never = ctx;
+	throw new Error(`Unhandled DiffContext type: ${(_exhaustive as { type: string }).type}`);
 }
 
 export function detectLanguage(filePath: string): string {
