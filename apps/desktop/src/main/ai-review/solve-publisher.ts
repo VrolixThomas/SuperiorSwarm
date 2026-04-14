@@ -160,6 +160,7 @@ export async function publishGroup(groupId: string): Promise<PublishSolveResult>
 			.set({ status: "submitted", updatedAt: new Date() })
 			.where(eq(schema.commentSolveSessions.id, group.solveSessionId))
 			.run();
+		incrementCounter(db, "lifetimeCommentsSolved");
 	}
 
 	return { pushed, repliesPosted, threadsResolved, errors };
