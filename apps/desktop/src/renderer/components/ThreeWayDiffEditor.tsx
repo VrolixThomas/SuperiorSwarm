@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import type { ConflictType } from "../../shared/branch-types";
 import { detectLanguage } from "../../shared/diff-types";
+import { shouldSkipShortcutHandling } from "../hooks/useShortcutListener";
 import { EDITOR_THEME, ensureThemeRegistered } from "../lib/monacoTheme";
 import {
 	type MergeHunk,
@@ -12,7 +13,6 @@ import {
 	resolveHunk,
 	toggleHunkAccepted,
 } from "../lib/three-way-merge";
-import { shouldSkipShortcutHandling } from "../hooks/useShortcutListener";
 import type { ConflictZone } from "./ConflictHintBar";
 
 // ── Inline accept bar rendered inside a Monaco view zone ────────────────────
