@@ -1,6 +1,6 @@
 import type * as monaco from "monaco-editor";
 import { useEffect, useRef } from "react";
-import type { DiffContext } from "../../shared/diff-types";
+import { type DiffContext, refsForDiffContext } from "../../shared/diff-types";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import { DiffEditor } from "./DiffEditor";
@@ -14,16 +14,6 @@ interface DiffFileTabProps {
 	language: string;
 }
 
-function refsForContext(ctx: DiffContext): { originalRef: string; modifiedRef: string } {
-	if (ctx.type === "branch") {
-		return { originalRef: ctx.baseBranch, modifiedRef: ctx.headBranch };
-	}
-	if (ctx.type === "pr") {
-		return { originalRef: ctx.targetBranch, modifiedRef: ctx.sourceBranch };
-	}
-	// working-tree: HEAD (committed) vs current file on disk (empty ref = working tree)
-	return { originalRef: "HEAD", modifiedRef: "" };
-}
 
 export function DiffFileTab({ diffCtx, filePath, language }: DiffFileTabProps) {
 	const diffMode = useTabStore((s) => s.diffMode);
@@ -50,7 +40,7 @@ export function DiffFileTab({ diffCtx, filePath, language }: DiffFileTabProps) {
 		},
 	});
 
-	const { originalRef, modifiedRef } = refsForContext(diffCtx);
+	const { originalRef, modifiedRef } = refsForDiffContext(diffCtx);
 
 	const originalQuery = trpc.diff.getFileContent.useQuery(
 		{ repoPath: diffCtx.repoPath, ref: originalRef, filePath },
@@ -69,6 +59,7 @@ export function DiffFileTab({ diffCtx, filePath, language }: DiffFileTabProps) {
 		}, 500);
 	}
 
+	// Commit-scoped diffs are historical — never editable. PR diffs also stay read-only.
 	const isEditable = diffCtx.type === "working-tree" || diffCtx.type === "branch";
 	const isLoading = originalQuery.isLoading || modifiedQuery.isLoading;
 	const hideEditor = markdownPreviewMode === "rendered" || markdownPreviewMode === "rich-diff";
