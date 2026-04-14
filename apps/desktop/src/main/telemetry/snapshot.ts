@@ -15,8 +15,7 @@ export interface SnapshotEnv {
 	locale: string | null;
 }
 
-// biome-ignore lint/suspicious/noExplicitAny: Drizzle's generic constraints make a typed helper
-// impractical here; the call sites below all pass real schema tables.
+// biome-ignore lint/suspicious/noExplicitAny: Drizzle's generic constraints make a typed helper impractical here; the call sites below all pass real schema tables.
 function countRows(db: Db, table: any): number {
 	const result = db.select({ c: sql<number>`count(*)` }).from(table).all();
 	return Number(result[0]?.c ?? 0);
