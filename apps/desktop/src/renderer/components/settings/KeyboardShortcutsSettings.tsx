@@ -7,7 +7,9 @@ export function KeyboardShortcutsSettings() {
 	const actions = useActionStore((s) => s.actions);
 
 	const grouped = useMemo(() => {
-		const withShortcuts = Array.from(actions.values()).filter((a) => a.shortcut ?? a.displayShortcut);
+		const withShortcuts = Array.from(actions.values()).filter(
+			(a) => a.shortcut ?? a.displayShortcut
+		);
 		const groups = new Map<ActionCategory, typeof withShortcuts>();
 		for (const action of withShortcuts) {
 			const list = groups.get(action.category) ?? [];

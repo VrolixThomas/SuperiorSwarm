@@ -60,11 +60,11 @@ describe("mergeClaudeHooks", () => {
 		mkdirSync(testDir, { recursive: true });
 		await mergeClaudeHooks(
 			settingsPath,
-			'AGENT_NOTIFY_AGENT="claude" "/home/user/.agent-notify/hooks/on-event.sh" || true',
+			'AGENT_NOTIFY_AGENT="claude" "/home/user/.agent-notify/hooks/on-event.sh" || true'
 		);
 		await mergeClaudeHooks(
 			settingsPath,
-			'AGENT_NOTIFY_AGENT="claude" "/home/user/.agent-notify/hooks/on-event.sh" || true',
+			'AGENT_NOTIFY_AGENT="claude" "/home/user/.agent-notify/hooks/on-event.sh" || true'
 		);
 
 		const settings = JSON.parse(readFileSync(settingsPath, "utf-8"));

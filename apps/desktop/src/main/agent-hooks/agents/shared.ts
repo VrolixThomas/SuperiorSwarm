@@ -22,7 +22,7 @@ export function mergeAgentSettings(
 	settingsPath: string,
 	hookCommand: string,
 	hookEvents: string[],
-	toolEvents?: Set<string>,
+	toolEvents?: Set<string>
 ): void {
 	const dir = dirname(settingsPath);
 	if (!existsSync(dir)) {
@@ -42,9 +42,7 @@ export function mergeAgentSettings(
 
 	for (const event of hookEvents) {
 		const existing = Array.isArray(hooks[event]) ? hooks[event] : [];
-		const filtered = (existing as HookEntry[]).filter(
-			(entry) => !isAgentNotifyEntry(entry),
-		);
+		const filtered = (existing as HookEntry[]).filter((entry) => !isAgentNotifyEntry(entry));
 
 		const hookEntry: HookEntry = toolEvents?.has(event)
 			? {

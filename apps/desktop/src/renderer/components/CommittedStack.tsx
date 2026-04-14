@@ -92,7 +92,7 @@ function CommitCard({
 										workspaceId,
 										{ type: "commit", repoPath: diffCtx.repoPath, commitHash: commit.hash },
 										file.path,
-										detectLanguage(file.path),
+										detectLanguage(file.path)
 									)
 								}
 								className="flex w-full items-center gap-1.5 rounded px-2 py-0.5 text-left text-[12px] text-[var(--text-secondary)] transition-colors duration-[120ms] hover:bg-[var(--bg-elevated)]"
