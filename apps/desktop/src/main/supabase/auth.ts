@@ -94,6 +94,16 @@ export async function signIn(
 			return { success: false, error: exchangeError.message };
 		}
 
+		try {
+			const { markFirstSignedIn } = await import("../telemetry/state");
+			const { syncIfDue } = await import("../telemetry/sync");
+			const { getDb } = await import("../db");
+			markFirstSignedIn(getDb());
+			void syncIfDue().catch(() => {});
+		} catch {
+			// Telemetry must never break auth
+		}
+
 		return { success: true };
 	} catch (err) {
 		return { success: false, error: err instanceof Error ? err.message : "Unknown error" };
