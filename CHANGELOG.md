@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.4.12 (2026-04-14)
+
+### What's New
+
+Fixed an issue where commits weren't displaying their associated files in the commit details view.
+
+### Changes
+
+- Commits not showing files (#83)
+
 ## v0.4.11 (2026-04-14)
 
 ### What's New
