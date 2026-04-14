@@ -57,7 +57,7 @@ export function BranchChanges({
 
 	const branchDiffQuery = trpc.diff.getBranchDiff.useQuery(
 		{ repoPath, baseBranch, headBranch: currentBranch },
-		{ staleTime: 30_000 }
+		{ refetchInterval: 2_000 }
 	);
 
 	const files = branchDiffQuery.data?.files ?? [];

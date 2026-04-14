@@ -133,7 +133,7 @@ export function CommittedStack({
 }) {
 	const commitsQuery = trpc.diff.getCommitsAhead.useQuery(
 		{ repoPath, baseBranch },
-		{ staleTime: 30_000 }
+		{ refetchInterval: 2_000 }
 	);
 
 	const commits = commitsQuery.data ?? [];
