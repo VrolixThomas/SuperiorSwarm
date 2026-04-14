@@ -218,6 +218,13 @@
 			"when": 1776017528688,
 			"tag": "0030_outstanding_legion",
 			"breakpoints": true
+		},
+		{
+			"idx": 31,
+			"version": "6",
+			"when": 1776100000000,
+			"tag": "0031_default_quick_action",
+			"breakpoints": true
 		}
 	]
 }
