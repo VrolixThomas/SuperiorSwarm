@@ -20,6 +20,7 @@ import {
 	startPolling as startPRPolling,
 } from "./ai-review/pr-poller";
 import { backfillRemoteHosts, getDb, initializeDatabase } from "./db";
+import { ensureTelemetryState } from "./telemetry/state";
 import * as schema from "./db/schema";
 import {
 	type SessionSaveData,
@@ -118,6 +119,7 @@ app.whenReady().then(async () => {
 	try {
 		initializeDatabase();
 		await backfillRemoteHosts();
+		ensureTelemetryState(getDb());
 		recoverStuckSessions();
 	} catch (err) {
 		log.error("[db] Failed to initialize database:", err);
