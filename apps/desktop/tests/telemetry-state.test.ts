@@ -1,9 +1,9 @@
 import "./preload-electron-mock";
 import { describe, expect, test } from "bun:test";
+import { join } from "node:path";
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
-import { join } from "node:path";
 import * as schema from "../src/main/db/schema";
 import { ensureTelemetryState, getTelemetryState } from "../src/main/telemetry/state";
 

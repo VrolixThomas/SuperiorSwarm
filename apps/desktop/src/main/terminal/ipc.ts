@@ -2,8 +2,8 @@ import { eq } from "drizzle-orm";
 import { BrowserWindow, ipcMain } from "electron";
 import { getAgentNotifyPort } from "../agent-hooks/port";
 import { getDb } from "../db";
-import { incrementCounter } from "../telemetry/state";
 import { terminalSessions } from "../db/schema";
+import { incrementCounter } from "../telemetry/state";
 import type { DaemonClient } from "./daemon-client";
 
 function assertNonEmptyString(value: unknown, name: string): asserts value is string {

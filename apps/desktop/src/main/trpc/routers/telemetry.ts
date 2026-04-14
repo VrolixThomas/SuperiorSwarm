@@ -25,10 +25,8 @@ export const telemetryRouter = router({
 			return { ok: true };
 		}),
 
-	setOptOut: publicProcedure
-		.input(z.object({ optOut: z.boolean() }))
-		.mutation(({ input }) => {
-			setOptOut(getDb(), input.optOut);
-			return { ok: true };
-		}),
+	setOptOut: publicProcedure.input(z.object({ optOut: z.boolean() })).mutation(({ input }) => {
+		setOptOut(getDb(), input.optOut);
+		return { ok: true };
+	}),
 });

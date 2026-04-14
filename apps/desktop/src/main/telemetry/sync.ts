@@ -1,5 +1,5 @@
-import log from "electron-log/main";
 import { app } from "electron";
+import log from "electron-log/main";
 import { getDb } from "../db";
 import { supabase } from "../supabase/client";
 import { buildSnapshot } from "./snapshot";
@@ -7,9 +7,9 @@ import { getTelemetryState, markSynced } from "./state";
 
 const SYNC_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
-export async function syncIfDue(options: { force?: boolean } = {}): Promise<
-	{ ok: true } | { ok: false; reason: string }
-> {
+export async function syncIfDue(
+	options: { force?: boolean } = {}
+): Promise<{ ok: true } | { ok: false; reason: string }> {
 	const db = getDb();
 	const state = getTelemetryState(db);
 	if (!state) return { ok: false, reason: "no-state" };
@@ -27,7 +27,8 @@ export async function syncIfDue(options: { force?: boolean } = {}): Promise<
 
 	const snapshot = buildSnapshot(db, {
 		userId: user.id,
-		authProvider: ((user.app_metadata as Record<string, unknown>)["provider"] as string | undefined) ?? null,
+		authProvider:
+			((user.app_metadata as Record<string, unknown>)["provider"] as string | undefined) ?? null,
 		appVersion: app.getVersion(),
 		osPlatform: process.platform,
 		osArch: process.arch,

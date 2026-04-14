@@ -25,11 +25,7 @@ export function ensureTelemetryState(db: Db): void {
 
 export function getTelemetryState(db: Db): schema.TelemetryState | null {
 	return (
-		db
-			.select()
-			.from(schema.telemetryState)
-			.where(eq(schema.telemetryState.id, 1))
-			.get() ?? null
+		db.select().from(schema.telemetryState).where(eq(schema.telemetryState.id, 1)).get() ?? null
 	);
 }
 
@@ -50,10 +46,7 @@ export function setConsent(db: Db, optOut: boolean): void {
 }
 
 export function setOptOut(db: Db, optOut: boolean): void {
-	db.update(schema.telemetryState)
-		.set({ optOut })
-		.where(eq(schema.telemetryState.id, 1))
-		.run();
+	db.update(schema.telemetryState).set({ optOut }).where(eq(schema.telemetryState.id, 1)).run();
 }
 
 export function markSynced(db: Db): void {
@@ -63,10 +56,7 @@ export function markSynced(db: Db): void {
 		.run();
 }
 
-type CounterKey =
-	| "lifetimeSessionsStarted"
-	| "lifetimeReviewsStarted"
-	| "lifetimeCommentsSolved";
+type CounterKey = "lifetimeSessionsStarted" | "lifetimeReviewsStarted" | "lifetimeCommentsSolved";
 
 export function incrementCounter(db: Db, key: CounterKey): void {
 	try {

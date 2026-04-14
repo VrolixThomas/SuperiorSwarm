@@ -5,8 +5,8 @@ import { and, eq, inArray, not } from "drizzle-orm";
 import { app } from "electron";
 import { getDb } from "../db";
 import * as schema from "../db/schema";
-import { incrementCounter } from "../telemetry/state";
 import { getGitProvider } from "../providers/git-provider";
+import { incrementCounter } from "../telemetry/state";
 import {
 	CLI_PRESETS,
 	type LaunchOptions,
