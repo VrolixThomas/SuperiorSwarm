@@ -7,6 +7,7 @@ import { AddRepositoryModal } from "./components/AddRepositoryModal";
 import { BranchActionMenu } from "./components/BranchActionMenu";
 import { BranchPalette } from "./components/BranchPalette";
 import { CommandPalette } from "./components/CommandPalette";
+import { ConsentScreen } from "./components/ConsentScreen";
 import { CreateWorktreeModal } from "./components/CreateWorktreeModal";
 import { DaemonStatus } from "./components/DaemonStatus";
 import { DiffPanel } from "./components/DiffPanel";
@@ -190,6 +191,10 @@ export function App() {
 		retry: false,
 		staleTime: 5 * 60 * 1000,
 	});
+	const telemetryQuery = trpc.telemetry.getState.useQuery(undefined, {
+		retry: false,
+		enabled: !!sessionQuery.data,
+	});
 
 	useEffect(() => {
 		if (!sessionQuery.isLoading) {
@@ -204,6 +209,14 @@ export function App() {
 
 	if (!sessionQuery.data) {
 		return <LoginScreen />;
+	}
+
+	if (telemetryQuery.isLoading) {
+		return null;
+	}
+
+	if (telemetryQuery.data && !telemetryQuery.data.consentAcknowledged) {
+		return <ConsentScreen onDone={() => telemetryQuery.refetch()} />;
 	}
 
 	return <AuthenticatedApp />;
