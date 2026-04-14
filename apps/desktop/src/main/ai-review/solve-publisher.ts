@@ -2,6 +2,7 @@ import { execSync } from "node:child_process";
 import { and, eq, inArray } from "drizzle-orm";
 import { getDb } from "../db";
 import * as schema from "../db/schema";
+import { incrementCounter } from "../telemetry/state";
 import { getGitProvider } from "../providers/git-provider";
 import { validateSolveTransition } from "./comment-solver-orchestrator";
 import { getSettings } from "./orchestrator";
@@ -237,6 +238,7 @@ export async function publishSolve(sessionId: string): Promise<PublishSolveResul
 			.set({ status: "submitted", updatedAt: new Date() })
 			.where(eq(schema.commentSolveSessions.id, sessionId))
 			.run();
+		incrementCounter(db, "lifetimeCommentsSolved");
 	}
 
 	return { pushed, repliesPosted, threadsResolved, errors };
