@@ -113,6 +113,18 @@ describe("diffContextsEqual", () => {
 	test("pr contexts with different prId are not equal", () => {
 		expect(diffContextsEqual(prCtxA, prCtxB)).toBe(false);
 	});
+
+	test("commit: true when same commitHash and repoPath", () => {
+		const a: DiffContext = { type: "commit", repoPath: "/repo", commitHash: "aaaaaaa" };
+		const b: DiffContext = { type: "commit", repoPath: "/repo", commitHash: "aaaaaaa" };
+		expect(diffContextsEqual(a, b)).toBe(true);
+	});
+
+	test("commit: false when commitHash differs", () => {
+		const a: DiffContext = { type: "commit", repoPath: "/repo", commitHash: "aaaaaaa" };
+		const b: DiffContext = { type: "commit", repoPath: "/repo", commitHash: "bbbbbbb" };
+		expect(diffContextsEqual(a, b)).toBe(false);
+	});
 });
 
 // ── toggleDiffPanel ──────────────────────────────────────────────────────────

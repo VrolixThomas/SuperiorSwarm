@@ -307,6 +307,8 @@ export function diffContextsEqual(a: DiffContext, b: DiffContext): boolean {
 			);
 		case "pr":
 			return a.prId === (b as typeof a).prId;
+		case "commit":
+			return a.commitHash === (b as typeof a).commitHash;
 	}
 }
 
