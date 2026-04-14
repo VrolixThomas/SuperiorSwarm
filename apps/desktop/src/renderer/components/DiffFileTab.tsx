@@ -14,7 +14,6 @@ interface DiffFileTabProps {
 	language: string;
 }
 
-
 export function DiffFileTab({ diffCtx, filePath, language }: DiffFileTabProps) {
 	const diffMode = useTabStore((s) => s.diffMode);
 	const setDiffMode = useTabStore((s) => s.setDiffMode);
