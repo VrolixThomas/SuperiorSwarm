@@ -25,14 +25,3 @@ export interface UsageSnapshot {
 	lifetime_reviews_started: number;
 	lifetime_comments_solved: number;
 }
-
-export interface TelemetryStateView {
-	firstLaunchAt: string;
-	firstSignedInAt: string | null;
-	lastSyncedAt: string | null;
-	consentAcknowledgedAt: string | null;
-	optOut: boolean;
-	lifetimeSessionsStarted: number;
-	lifetimeReviewsStarted: number;
-	lifetimeCommentsSolved: number;
-}
