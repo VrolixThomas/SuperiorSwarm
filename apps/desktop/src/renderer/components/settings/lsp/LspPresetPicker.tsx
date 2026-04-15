@@ -63,9 +63,7 @@ export function LspPresetPicker({
 										{preset.displayName}
 									</span>
 									{alreadyAdded && (
-										<span className="text-[9px] text-[var(--text-quaternary)]">
-											Already added
-										</span>
+										<span className="text-[9px] text-[var(--text-quaternary)]">Already added</span>
 									)}
 								</div>
 								<div className="text-[10px] text-[var(--text-quaternary)]">

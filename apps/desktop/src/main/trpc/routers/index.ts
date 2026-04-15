@@ -1,6 +1,5 @@
 import { router } from "../index";
 import { aiReviewRouter } from "./ai-review";
-import { lspRouter } from "./lsp";
 import { atlassianRouter } from "./atlassian";
 import { authRouter } from "./auth";
 import { branchesRouter } from "./branches";
@@ -8,6 +7,7 @@ import { commentSolverRouter } from "./comment-solver";
 import { diffRouter } from "./diff";
 import { githubRouter } from "./github";
 import { linearRouter } from "./linear";
+import { lspRouter } from "./lsp";
 import { mergeRouter } from "./merge";
 import { prPollerRouter } from "./pr-poller";
 import { projectsRouter } from "./projects";

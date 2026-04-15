@@ -8,8 +8,7 @@ export function LspWorkspaceContext({ repoPath }: LspWorkspaceContextProps) {
 			<div className="text-[10px] text-[var(--text-quaternary)]">
 				{repoPath ? (
 					<>
-						Active workspace:{" "}
-						<span className="text-[var(--text-tertiary)]">{repoPath}</span>
+						Active workspace: <span className="text-[var(--text-tertiary)]">{repoPath}</span>
 						{" · "}
 						Health checks run against this repo's PATH
 					</>
