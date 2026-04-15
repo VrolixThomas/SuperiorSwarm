@@ -97,6 +97,27 @@ async function postRepliesAndResolveThreads(
 	return { repliesPosted, threadsResolved, errors };
 }
 
+/** Mark session `submitted` if all non-reverted groups are submitted. */
+function maybeFinishSession(sessionId: string, prevStatus: string): void {
+	const db = getDb();
+	const allGroups = db
+		.select()
+		.from(schema.commentGroups)
+		.where(eq(schema.commentGroups.solveSessionId, sessionId))
+		.all();
+	const allSubmitted = allGroups
+		.filter((g) => g.status !== "reverted")
+		.every((g) => g.status === "submitted");
+	if (!allSubmitted) return;
+
+	validateSolveTransition(prevStatus, "submitted");
+	db.update(schema.commentSolveSessions)
+		.set({ status: "submitted", updatedAt: new Date() })
+		.where(eq(schema.commentSolveSessions.id, sessionId))
+		.run();
+	incrementCounter(db, "lifetimeCommentsSolved");
+}
+
 /** Push commits and post approved replies for a single group. */
 export async function publishGroup(groupId: string): Promise<PublishSolveResult> {
 	const db = getDb();
@@ -139,29 +160,12 @@ export async function publishGroup(groupId: string): Promise<PublishSolveResult>
 	threadsResolved = result.threadsResolved;
 	errors.push(...result.errors);
 
-	// Mark group submitted
 	db.update(schema.commentGroups)
 		.set({ status: "submitted" })
 		.where(eq(schema.commentGroups.id, groupId))
 		.run();
 
-	// If all non-reverted groups are now submitted, mark the session submitted too
-	const allGroups = db
-		.select()
-		.from(schema.commentGroups)
-		.where(eq(schema.commentGroups.solveSessionId, group.solveSessionId))
-		.all();
-	const allSubmitted = allGroups
-		.filter((g) => g.status !== "reverted")
-		.every((g) => g.id === groupId || g.status === "submitted");
-	if (allSubmitted) {
-		validateSolveTransition(session.status, "submitted");
-		db.update(schema.commentSolveSessions)
-			.set({ status: "submitted", updatedAt: new Date() })
-			.where(eq(schema.commentSolveSessions.id, group.solveSessionId))
-			.run();
-		incrementCounter(db, "lifetimeCommentsSolved");
-	}
+	maybeFinishSession(group.solveSessionId, session.status);
 
 	return { pushed, repliesPosted, threadsResolved, errors };
 }
@@ -217,30 +221,13 @@ export async function publishSolve(sessionId: string): Promise<PublishSolveResul
 		threadsResolved = result.threadsResolved;
 		errors.push(...result.errors);
 
-		// Mark all approved groups as submitted
 		db.update(schema.commentGroups)
 			.set({ status: "submitted" })
 			.where(inArray(schema.commentGroups.id, approvedGroupIds))
 			.run();
 	}
 
-	// If all non-reverted groups are now submitted, mark session submitted
-	const allGroups = db
-		.select()
-		.from(schema.commentGroups)
-		.where(eq(schema.commentGroups.solveSessionId, sessionId))
-		.all();
-	const allSubmitted = allGroups
-		.filter((g) => g.status !== "reverted")
-		.every((g) => g.status === "submitted" || approvedGroupIds.includes(g.id));
-	if (allSubmitted) {
-		validateSolveTransition(session.status, "submitted");
-		db.update(schema.commentSolveSessions)
-			.set({ status: "submitted", updatedAt: new Date() })
-			.where(eq(schema.commentSolveSessions.id, sessionId))
-			.run();
-		incrementCounter(db, "lifetimeCommentsSolved");
-	}
+	maybeFinishSession(sessionId, session.status);
 
 	return { pushed, repliesPosted, threadsResolved, errors };
 }

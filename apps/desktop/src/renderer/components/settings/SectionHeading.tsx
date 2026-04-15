@@ -9,7 +9,7 @@ export function PageHeading({ title, subtitle }: { title: string; subtitle: stri
 
 export function SectionLabel({ children }: { children: React.ReactNode }) {
 	return (
-		<div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.05em] text-[var(--text-quaternary)]">
+		<div className="mt-6 mb-2 text-[10px] font-semibold uppercase tracking-[0.05em] text-[var(--text-quaternary)] first-of-type:mt-0">
 			{children}
 		</div>
 	);

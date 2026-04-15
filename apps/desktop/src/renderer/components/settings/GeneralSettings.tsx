@@ -1,4 +1,5 @@
 import { trpc } from "@/trpc/client";
+import { PRIVACY_URL } from "../../../shared/telemetry";
 import { useEditorSettingsStore } from "../../stores/editor-settings";
 import { PageHeading, SectionLabel } from "./SectionHeading";
 import { ToggleRow } from "./ToggleRow";
@@ -13,10 +14,10 @@ export function GeneralSettings() {
 
 	const telemetryState = trpc.telemetry.getState.useQuery();
 	const utils = trpc.useUtils();
-	const setOptOut = trpc.telemetry.setOptOut.useMutation({
+	const setAnalyticsEnabled = trpc.telemetry.setAnalyticsEnabled.useMutation({
 		onSuccess: () => utils.telemetry.getState.invalidate(),
 	});
-	const analyticsOn = !(telemetryState.data?.optOut ?? false);
+	const analyticsOn = telemetryState.data?.analyticsEnabled ?? true;
 
 	return (
 		<div>
@@ -46,21 +47,19 @@ export function GeneralSettings() {
 			<div className="overflow-hidden rounded-[10px] border border-[var(--border)] bg-[var(--bg-surface)]">
 				<ToggleRow
 					label="Send usage analytics"
-					description="Send a daily non-PII snapshot (version, counts, integration flags). No code, prompts, or personal info."
+					description="Daily snapshot of version, counts, and integration flags."
 					checked={analyticsOn}
-					onChange={() => setOptOut.mutate({ optOut: analyticsOn })}
+					onChange={() => setAnalyticsEnabled.mutate({ enabled: !analyticsOn })}
 				/>
-			</div>
-			<p className="mt-2 text-[12px] text-[var(--text-tertiary)]">
 				<a
-					href="https://github.com/VrolixThomas/SuperiorSwarm/blob/main/PRIVACY.md"
+					href={PRIVACY_URL}
 					target="_blank"
 					rel="noreferrer"
-					className="underline"
+					className="block border-t border-[var(--border)] px-4 py-2.5 text-[12px] text-[var(--text-tertiary)] hover:text-[var(--text)] hover:underline"
 				>
-					Read the privacy notice
+					Read the privacy notice →
 				</a>
-			</p>
+			</div>
 		</div>
 	);
 }

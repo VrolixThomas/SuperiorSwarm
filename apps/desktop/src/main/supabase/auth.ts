@@ -1,7 +1,11 @@
 import { type IncomingMessage, type ServerResponse, createServer } from "node:http";
 import { shell } from "electron";
+import log from "electron-log/main.js";
+import { getDb } from "../db";
 import { OAUTH_CALLBACK_PORT } from "../oauth-constants";
 import { acquireOAuthLock, releaseOAuthLock } from "../oauth-lock";
+import { markFirstSignedIn } from "../telemetry/state";
+import { syncIfDue } from "../telemetry/sync";
 import { supabase } from "./client";
 
 type OAuthProvider = "github" | "google" | "apple";
@@ -95,13 +99,10 @@ export async function signIn(
 		}
 
 		try {
-			const { markFirstSignedIn } = await import("../telemetry/state");
-			const { syncIfDue } = await import("../telemetry/sync");
-			const { getDb } = await import("../db");
 			markFirstSignedIn(getDb());
-			void syncIfDue().catch(() => {});
-		} catch {
-			// Telemetry must never break auth
+			void syncIfDue().catch((err) => log.debug("[telemetry] signIn sync failed:", err));
+		} catch (err) {
+			log.debug("[telemetry] signIn hook failed:", err);
 		}
 
 		return { success: true };

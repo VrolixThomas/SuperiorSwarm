@@ -1,5 +1,5 @@
 import { app } from "electron";
-import log from "electron-log/main";
+import log from "electron-log/main.js";
 import { getDb } from "../db";
 import { supabase } from "../supabase/client";
 import { buildSnapshot } from "./snapshot";
@@ -7,16 +7,17 @@ import { getTelemetryState, markSynced } from "./state";
 
 const SYNC_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
-export async function syncIfDue(
-	options: { force?: boolean } = {}
-): Promise<{ ok: true } | { ok: false; reason: string }> {
+type SyncSkipReason = "no-state" | "opt-out" | "not-due" | "no-session" | "upsert-error";
+
+type SyncResult = { ok: true } | { ok: false; reason: SyncSkipReason; detail?: string };
+
+export async function syncIfDue(force = false): Promise<SyncResult> {
 	const db = getDb();
 	const state = getTelemetryState(db);
 	if (!state) return { ok: false, reason: "no-state" };
 	if (state.optOut) return { ok: false, reason: "opt-out" };
-	if (!state.consentAcknowledgedAt) return { ok: false, reason: "no-consent" };
 
-	if (!options.force && state.lastSyncedAt) {
+	if (!force && state.lastSyncedAt) {
 		const age = Date.now() - state.lastSyncedAt.getTime();
 		if (age < SYNC_INTERVAL_MS) return { ok: false, reason: "not-due" };
 	}
@@ -27,21 +28,18 @@ export async function syncIfDue(
 
 	const snapshot = buildSnapshot(db, {
 		userId: user.id,
-		authProvider:
-			((user.app_metadata as Record<string, unknown>)["provider"] as string | undefined) ?? null,
+		authProvider: user.app_metadata.provider ?? null,
 		appVersion: app.getVersion(),
 		osPlatform: process.platform,
 		osArch: process.arch,
 		locale: app.getLocale() || null,
 	});
 
-	const { error } = await supabase
-		.from("usage_snapshots")
-		.upsert(snapshot, { onConflict: "user_id" });
+	const { error } = await supabase.from("usage_snapshots").upsert(snapshot);
 
 	if (error) {
 		log.debug("[telemetry] sync failed:", error.message);
-		return { ok: false, reason: `upsert-error: ${error.message}` };
+		return { ok: false, reason: "upsert-error", detail: error.message };
 	}
 
 	markSynced(db);

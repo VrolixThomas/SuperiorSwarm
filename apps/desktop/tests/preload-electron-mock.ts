@@ -29,8 +29,17 @@ mock.module("better-sqlite3", () => {
 	class Database {
 		private _db: BunDatabase;
 
-		constructor(path: string, _opts?: unknown) {
-			this._db = new BunDatabase(path);
+		constructor(source: string | Buffer | Uint8Array, _opts?: unknown) {
+			if (typeof source === "string") {
+				this._db = new BunDatabase(source);
+			} else {
+				const bytes = source instanceof Uint8Array ? source : new Uint8Array(source);
+				this._db = BunDatabase.deserialize(bytes);
+			}
+		}
+
+		serialize(): Buffer {
+			return Buffer.from(this._db.serialize());
 		}
 
 		get open(): boolean {

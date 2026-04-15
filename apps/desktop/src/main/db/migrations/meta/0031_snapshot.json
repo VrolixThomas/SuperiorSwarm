@@ -1642,13 +1642,6 @@
 					"notNull": false,
 					"autoincrement": false
 				},
-				"consent_acknowledged_at": {
-					"name": "consent_acknowledged_at",
-					"type": "integer",
-					"primaryKey": false,
-					"notNull": false,
-					"autoincrement": false
-				},
 				"opt_out": {
 					"name": "opt_out",
 					"type": "integer",

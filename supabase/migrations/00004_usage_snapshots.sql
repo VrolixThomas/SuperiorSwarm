@@ -13,20 +13,11 @@ create table public.usage_snapshots (
 	last_synced_at timestamptz not null default now(),
 	auth_provider text,
 
-	-- entity counts
-	project_count integer not null default 0,
-	workspace_count integer not null default 0,
-	worktree_count integer not null default 0,
-	terminal_session_count integer not null default 0,
-	tracked_pr_count integer not null default 0,
-	review_draft_count integer not null default 0,
-	quick_action_count integer not null default 0,
-	extension_path_count integer not null default 0,
-
 	-- integration adoption
 	github_connected boolean not null default false,
 	linear_connected boolean not null default false,
-	atlassian_connected boolean not null default false,
+	jira_connected boolean not null default false,
+	bitbucket_connected boolean not null default false,
 
 	-- feature adoption
 	ever_used_ai_review boolean not null default false,

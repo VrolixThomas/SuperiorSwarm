@@ -1,3 +1,5 @@
+export const PRIVACY_URL = "https://github.com/VrolixThomas/SuperiorSwarm/blob/main/PRIVACY.md";
+
 export interface UsageSnapshot {
 	user_id: string;
 	app_version: string;
@@ -8,17 +10,10 @@ export interface UsageSnapshot {
 	first_signed_in_at: string | null; // ISO string
 	last_synced_at: string; // ISO string
 	auth_provider: string | null;
-	project_count: number;
-	workspace_count: number;
-	worktree_count: number;
-	terminal_session_count: number;
-	tracked_pr_count: number;
-	review_draft_count: number;
-	quick_action_count: number;
-	extension_path_count: number;
 	github_connected: boolean;
 	linear_connected: boolean;
-	atlassian_connected: boolean;
+	jira_connected: boolean;
+	bitbucket_connected: boolean;
 	ever_used_ai_review: boolean;
 	ever_used_comment_solver: boolean;
 	lifetime_sessions_started: number;

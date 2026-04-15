@@ -1,16 +1,17 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import type { drizzle } from "drizzle-orm/better-sqlite3";
+import log from "electron-log/main.js";
 import * as schema from "../db/schema";
 
 type Db = ReturnType<typeof drizzle<typeof schema>>;
 
+const singleton = eq(schema.telemetryState.id, 1);
+
+function updateSingleton(db: Db, set: Partial<schema.NewTelemetryState>): void {
+	db.update(schema.telemetryState).set(set).where(singleton).run();
+}
+
 export function ensureTelemetryState(db: Db): void {
-	const existing = db
-		.select()
-		.from(schema.telemetryState)
-		.where(eq(schema.telemetryState.id, 1))
-		.get();
-	if (existing) return;
 	db.insert(schema.telemetryState)
 		.values({
 			id: 1,
@@ -20,53 +21,35 @@ export function ensureTelemetryState(db: Db): void {
 			lifetimeReviewsStarted: 0,
 			lifetimeCommentsSolved: 0,
 		})
+		.onConflictDoNothing()
 		.run();
 }
 
 export function getTelemetryState(db: Db): schema.TelemetryState | null {
-	return (
-		db.select().from(schema.telemetryState).where(eq(schema.telemetryState.id, 1)).get() ?? null
-	);
+	return db.select().from(schema.telemetryState).where(singleton).get() ?? null;
 }
 
 export function markFirstSignedIn(db: Db): void {
 	const row = getTelemetryState(db);
 	if (!row || row.firstSignedInAt) return;
-	db.update(schema.telemetryState)
-		.set({ firstSignedInAt: new Date() })
-		.where(eq(schema.telemetryState.id, 1))
-		.run();
+	updateSingleton(db, { firstSignedInAt: new Date() });
 }
 
-export function setConsent(db: Db, optOut: boolean): void {
-	db.update(schema.telemetryState)
-		.set({ consentAcknowledgedAt: new Date(), optOut })
-		.where(eq(schema.telemetryState.id, 1))
-		.run();
-}
-
-export function setOptOut(db: Db, optOut: boolean): void {
-	db.update(schema.telemetryState).set({ optOut }).where(eq(schema.telemetryState.id, 1)).run();
+export function setAnalyticsEnabled(db: Db, enabled: boolean): void {
+	updateSingleton(db, { optOut: !enabled });
 }
 
 export function markSynced(db: Db): void {
-	db.update(schema.telemetryState)
-		.set({ lastSyncedAt: new Date() })
-		.where(eq(schema.telemetryState.id, 1))
-		.run();
+	updateSingleton(db, { lastSyncedAt: new Date() });
 }
 
 type CounterKey = "lifetimeSessionsStarted" | "lifetimeReviewsStarted" | "lifetimeCommentsSolved";
 
 export function incrementCounter(db: Db, key: CounterKey): void {
 	try {
-		const row = getTelemetryState(db);
-		if (!row) return;
-		db.update(schema.telemetryState)
-			.set({ [key]: row[key] + 1 })
-			.where(eq(schema.telemetryState.id, 1))
-			.run();
-	} catch {
-		// Counters are fire-and-forget — never let telemetry break a user action
+		const column = schema.telemetryState[key];
+		updateSingleton(db, { [key]: sql`${column} + 1` });
+	} catch (err) {
+		log.debug("[telemetry] incrementCounter failed:", err);
 	}
 }

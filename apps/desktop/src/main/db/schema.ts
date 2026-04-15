@@ -381,7 +381,6 @@ export const telemetryState = sqliteTable("telemetry_state", {
 	firstLaunchAt: integer("first_launch_at", { mode: "timestamp" }).notNull(),
 	firstSignedInAt: integer("first_signed_in_at", { mode: "timestamp" }),
 	lastSyncedAt: integer("last_synced_at", { mode: "timestamp" }),
-	consentAcknowledgedAt: integer("consent_acknowledged_at", { mode: "timestamp" }),
 	optOut: integer("opt_out", { mode: "boolean" }).notNull().default(false),
 	lifetimeSessionsStarted: integer("lifetime_sessions_started").notNull().default(0),
 	lifetimeReviewsStarted: integer("lifetime_reviews_started").notNull().default(0),
