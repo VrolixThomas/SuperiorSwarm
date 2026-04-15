@@ -17,6 +17,7 @@ type MockConfig = {
 };
 
 const unavailableCommands = new Set<string>();
+const initFailCommands = new Set<string>();
 const spawnCalls: string[] = [];
 const createdRepos: string[] = [];
 const originalPath = process.env["PATH"];
@@ -69,7 +70,13 @@ mock.module("node:child_process", () => ({
 mock.module("vscode-languageserver-protocol/node.js", () => ({
 	createMessageConnection: mock(() => ({
 		listen: () => {},
-		sendRequest: async () => ({}),
+		sendRequest: async (method: string) => {
+			const lastCommand = spawnCalls[spawnCalls.length - 1];
+			if (method === "initialize" && lastCommand && initFailCommands.has(lastCommand)) {
+				throw new Error(`Init failed for ${lastCommand}`);
+			}
+			return {};
+		},
 		sendNotification: () => {},
 		onNotification: () => {},
 		dispose: () => {},
@@ -91,6 +98,7 @@ function createRepoWithConfig(name: string, configs: MockConfig[]): string {
 describe("ServerManager repo-aware resolution", () => {
 	beforeEach(() => {
 		unavailableCommands.clear();
+		initFailCommands.clear();
 		spawnCalls.length = 0;
 		_resetShellPathCacheForTests();
 	});
@@ -251,6 +259,28 @@ describe("ServerManager repo-aware resolution", () => {
 
 		const support = manager.getSupport(repoPath, "rust", "main.rust");
 		expect(support).toMatchObject({ supported: false, reason: "missing-binary" });
+	});
+
+	test("init failures do not consume crash budget", async () => {
+		const manager = new ServerManager();
+		const repoPath = createRepoWithConfig("counter", [buildConfig("flaky", "flaky-lsp")]);
+
+		// Cause initialize() to throw — this exercises the init-failure path
+		initFailCommands.add("flaky-lsp");
+
+		// Two init failures (handshake fails after spawn)
+		await manager.getOrCreate("flaky", repoPath);
+		await manager.getOrCreate("flaky", repoPath);
+
+		// @ts-expect-error private access for test
+		const crashCount =
+			(manager["crashCounts"] as Map<string, number>).get(`flaky:${repoPath}`) ?? 0;
+		expect(crashCount).toBe(0);
+
+		// @ts-expect-error private access for test
+		const initFailCount =
+			(manager["initFailures"] as Map<string, number>).get(`flaky:${repoPath}`) ?? 0;
+		expect(initFailCount).toBeGreaterThanOrEqual(1);
 	});
 
 	test("getSupport resolves dotted relative paths with PATHEXT on Windows", () => {

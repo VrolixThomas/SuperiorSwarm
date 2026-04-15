@@ -168,7 +168,8 @@ function buildServerEnv(): NodeJS.ProcessEnv {
 
 export class ServerManager {
 	private servers = new Map<string, ServerInstance>();
-	private restartCounts = new Map<string, number>();
+	private initFailures = new Map<string, number>();
+	private crashCounts = new Map<string, number>();
 	private restartTimers = new Set<ReturnType<typeof setTimeout>>();
 	private unavailableServers = new Set<string>();
 	private serverLastErrors = new Map<string, string>();
@@ -451,7 +452,7 @@ export class ServerManager {
 
 		if (this.unavailableServers.has(key)) return null;
 
-		const initFailures = this.restartCounts.get(key) ?? 0;
+		const initFailures = this.initFailures.get(key) ?? 0;
 		if (initFailures >= ServerManager.MAX_RESTARTS) return null;
 
 		let childProcess: ChildProcess;
@@ -586,6 +587,7 @@ export class ServerManager {
 			await connection.sendRequest("initialize", initParams);
 			connection.sendNotification("initialized", {});
 			instance.initialized = true;
+			this.initFailures.delete(key);
 
 			connection.onNotification("textDocument/publishDiagnostics", (params) => {
 				// Skip the ipc-safety walker on this path: params arrive from
@@ -606,8 +608,8 @@ export class ServerManager {
 			const message = err instanceof Error ? err.message : String(err);
 			this.serverLastStartupErrors.set(key, message);
 			// Track init failures to prevent crash loops from repeated getOrCreate calls
-			const count = (this.restartCounts.get(key) ?? 0) + 1;
-			this.restartCounts.set(key, count);
+			const count = (this.initFailures.get(key) ?? 0) + 1;
+			this.initFailures.set(key, count);
 			if (count >= ServerManager.MAX_RESTARTS) {
 				console.error(
 					`[LSP] ${configId} failed to initialize ${count} times for ${repoPath}, giving up`
@@ -624,8 +626,8 @@ export class ServerManager {
 
 	private handleCrash(configId: string, repoPath: string, openDocuments: Set<string>): void {
 		const key = this.serverKey(configId, repoPath);
-		const count = (this.restartCounts.get(key) ?? 0) + 1;
-		this.restartCounts.set(key, count);
+		const count = (this.crashCounts.get(key) ?? 0) + 1;
+		this.crashCounts.set(key, count);
 
 		if (count > ServerManager.MAX_RESTARTS) {
 			console.error(`[LSP] ${configId} crashed ${count} times for ${repoPath}, giving up`);
@@ -679,6 +681,7 @@ export class ServerManager {
 		}
 		instance.connection.dispose();
 		this.servers.delete(key);
+		this.crashCounts.delete(key);
 	}
 
 	async disposeAll(): Promise<void> {
