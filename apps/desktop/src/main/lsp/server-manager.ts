@@ -222,25 +222,38 @@ export class ServerManager {
 		return ["", ...extensions];
 	}
 
-	private isServerExecutableAvailable(command: string, repoPath: string): boolean {
-		const trimmedCommand = command.trim();
-		if (!trimmedCommand) {
-			return false;
-		}
+	private isServerExecutableAvailable(config: ServerConfig, repoPath: string): boolean {
+		const command = config.command.trim();
+		if (!command) return false;
 
-		const cacheKey = `${trimmedCommand}\u0000${repoPath}`;
+		const cacheKey = `${command}\u0000${repoPath}`;
 		const cached = this.executableCache.get(cacheKey);
 		const now = Date.now();
 		if (cached && cached.expiresAt > now) {
+			this.syncAvailabilityState(config, repoPath, cached.available);
 			return cached.available;
 		}
 
-		const available = this.resolveExecutableAvailability(trimmedCommand, repoPath);
+		const available = this.resolveExecutableAvailability(command, repoPath);
 		this.executableCache.set(cacheKey, {
 			available,
 			expiresAt: now + ServerManager.EXECUTABLE_CACHE_TTL_MS,
 		});
+		this.syncAvailabilityState(config, repoPath, available);
 		return available;
+	}
+
+	private syncAvailabilityState(config: ServerConfig, repoPath: string, available: boolean): void {
+		const key = this.serverKey(config.id, repoPath);
+		if (available) {
+			this.unavailableServers.delete(key);
+			this.serverLastErrors.delete(key);
+		} else {
+			this.unavailableServers.add(key);
+			if (!this.serverLastErrors.has(key)) {
+				this.serverLastErrors.set(key, `Executable not found: ${config.command}`);
+			}
+		}
 	}
 
 	private resolveExecutableAvailability(trimmedCommand: string, repoPath: string): boolean {
@@ -363,34 +376,14 @@ export class ServerManager {
 
 	getSupport(repoPath: string, languageId: string, filePath: string): LspSupportResult {
 		const registry = this.getRegistry(repoPath);
-		const support = resolveSupport(registry, {
-			languageId,
-			filePath,
-		});
+		const support = resolveSupport(registry, { languageId, filePath });
 
 		if (support.supported) {
 			const config = this.toServerConfig(support.config);
-			const unavailableKey = this.serverKey(config.id, repoPath);
-			const executableAvailable = this.isServerExecutableAvailable(config.command, repoPath);
-
-			if (!executableAvailable) {
-				this.unavailableServers.add(unavailableKey);
-				this.serverLastErrors.set(unavailableKey, `Executable not found: ${config.command}`);
-				return {
-					supported: false,
-					reason: "missing-binary",
-					config,
-				};
+			if (!this.isServerExecutableAvailable(config, repoPath)) {
+				return { supported: false, reason: "missing-binary", config };
 			}
-
-			this.unavailableServers.delete(unavailableKey);
-			this.serverLastErrors.delete(unavailableKey);
-
-			return {
-				supported: true,
-				reason: support.reason,
-				config,
-			};
+			return { supported: true, reason: support.reason, config };
 		}
 
 		// Shadow check: would an untrusted repo config have matched?
@@ -402,16 +395,12 @@ export class ServerManager {
 				repo: loadRepoConfig(normalized),
 				env: { ...process.env, workspaceFolder: normalized },
 			});
-			const shadow = resolveSupport(shadowRegistry, { languageId, filePath });
-			if (shadow.supported) {
+			if (resolveSupport(shadowRegistry, { languageId, filePath }).supported) {
 				return { supported: false, reason: "untrusted-repo" };
 			}
 		}
 
-		return {
-			supported: false,
-			reason: support.reason,
-		};
+		return { supported: false, reason: support.reason };
 	}
 
 	getHealth(repoPath: string): LspHealthEntry[] {
@@ -419,24 +408,12 @@ export class ServerManager {
 		const entries: LspHealthEntry[] = [];
 
 		for (const config of registry.byId.values()) {
-			if (config.disabled) {
-				continue;
-			}
+			if (config.disabled) continue;
 
-			const unavailableKey = this.serverKey(config.id, repoPath);
-			const executableAvailable = this.isServerExecutableAvailable(config.command, repoPath);
-			if (!executableAvailable) {
-				this.unavailableServers.add(unavailableKey);
-				if (!this.serverLastErrors.has(unavailableKey)) {
-					this.serverLastErrors.set(unavailableKey, `Executable not found: ${config.command}`);
-				}
-			} else {
-				this.unavailableServers.delete(unavailableKey);
-				this.serverLastErrors.delete(unavailableKey);
-			}
-
-			const activeInstance = this.servers.get(this.serverKey(config.id, repoPath));
-			const activeSessionDocuments = activeInstance ? [...activeInstance.openDocuments] : [];
+			const serverConfig = this.toServerConfig(config);
+			const available = this.isServerExecutableAvailable(serverConfig, repoPath);
+			const key = this.serverKey(config.id, repoPath);
+			const activeInstance = this.servers.get(key);
 			const installHint = config.installHint?.trim()
 				? config.installHint
 				: `Install '${config.command}' and ensure it is available on PATH.`;
@@ -444,11 +421,11 @@ export class ServerManager {
 			entries.push({
 				id: config.id,
 				command: config.command,
-				available: executableAvailable,
-				lastError: this.serverLastErrors.get(unavailableKey),
-				lastStartupError: this.serverLastStartupErrors.get(unavailableKey),
+				available,
+				lastError: this.serverLastErrors.get(key),
+				lastStartupError: this.serverLastStartupErrors.get(key),
 				activeSessions: activeInstance ? 1 : 0,
-				activeSessionDocuments,
+				activeSessionDocuments: activeInstance ? [...activeInstance.openDocuments] : [],
 				installHint,
 			});
 		}

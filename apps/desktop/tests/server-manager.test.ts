@@ -288,6 +288,26 @@ describe("ServerManager repo-aware resolution", () => {
 		expect(initFailCount).toBeGreaterThanOrEqual(1);
 	});
 
+	test("getSupport observes consistent availability state across repeated calls", () => {
+		const manager = new ServerManager();
+		const repoPath = createRepoWithConfig("ghost", [buildConfig("ghost", "ghost-cmd")]);
+
+		const r1 = manager.getSupport(repoPath, "ghost", join(repoPath, "a.ghost"));
+		// @ts-expect-error private access
+		const snap1 = new Map(manager["serverLastErrors"] as Map<string, string>);
+
+		const r2 = manager.getSupport(repoPath, "ghost", join(repoPath, "a.ghost"));
+		// @ts-expect-error private access
+		const snap2 = new Map(manager["serverLastErrors"] as Map<string, string>);
+
+		expect(r1.supported).toBe(false);
+		expect(r2.supported).toBe(false);
+		if (!r1.supported) expect(r1.reason).toBe("missing-binary");
+
+		// The two calls must observe the same bookkeeping state
+		expect([...snap2.entries()].sort()).toEqual([...snap1.entries()].sort());
+	});
+
 	test("getSupport resolves dotted relative paths with PATHEXT on Windows", () => {
 		const manager = new ServerManager() as unknown as {
 			isWindowsPlatform: () => boolean;
