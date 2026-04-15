@@ -1,10 +1,11 @@
 import { useCallback, useMemo, useState } from "react";
+import { BUILT_IN_SERVER_IDS } from "../../../shared/lsp-builtin-ids";
 import type { LanguageServerConfig } from "../../../shared/lsp-types";
 import { useTabStore } from "../../stores/tab-store";
 import { trpc } from "../../trpc/client";
 import { PageHeading } from "./SectionHeading";
-import { LspAdditionalServers } from "./lsp/LspAdditionalServers";
 import { LspAddServerFlow } from "./lsp/LspAddServerFlow";
+import { LspAdditionalServers } from "./lsp/LspAdditionalServers";
 import { LspBuiltInServers } from "./lsp/LspBuiltInServers";
 import { LspWorkspaceContext } from "./lsp/LspWorkspaceContext";
 
@@ -79,10 +80,7 @@ export function LspSettings() {
 	}, [userConfigQuery.data, repoConfigQuery.data]);
 
 	// Derived: additional (non-built-in) servers
-	const builtInIds = useMemo(
-		() => new Set(["typescript", "python", "go", "rust", "java", "cpp", "php", "ruby"]),
-		[]
-	);
+	const builtInIds = useMemo(() => new Set(BUILT_IN_SERVER_IDS), []);
 
 	const additionalServers = useMemo(() => {
 		const result: Array<{ config: LanguageServerConfig; scope: "user" | "repo" }> = [];

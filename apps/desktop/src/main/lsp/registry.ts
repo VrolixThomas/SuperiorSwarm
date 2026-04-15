@@ -38,6 +38,8 @@ export type SupportResolution =
 			reason: "unconfigured";
 	  };
 
+// Invariant: BUILT_IN_SERVER_IDS in ../../shared/lsp-builtin-ids.ts must match these ids.
+// Test enforces it — see tests/lsp-builtin-ids.test.ts.
 export const DEFAULT_SERVER_CONFIGS: LanguageServerConfig[] = [
 	{
 		id: "typescript",
