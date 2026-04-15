@@ -2,24 +2,15 @@ import { mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSyn
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { z } from "zod";
+import { type LanguageServerConfig, languageServerConfigSchema } from "../../shared/lsp-schema";
 
-const serverSchema = z.object({
-	id: z.string().min(1),
-	command: z.string().min(1),
-	args: z.array(z.string()).default([]),
-	languages: z.array(z.string().min(1)).default([]),
-	fileExtensions: z.array(z.string().min(1)).default([]),
-	installHint: z.string().min(1).optional(),
-	rootMarkers: z.array(z.string().min(1)).default([".git"]),
-	initializationOptions: z.record(z.string(), z.unknown()).optional(),
-	disabled: z.boolean().default(false),
-});
+const serverSchema = languageServerConfigSchema;
 
 const configFileSchema = z.object({
 	servers: z.array(z.unknown()).default([]),
 });
 
-export type LanguageServerConfig = z.infer<typeof serverSchema>;
+export type { LanguageServerConfig };
 
 export interface LanguageRegistry {
 	byId: Map<string, LanguageServerConfig>;

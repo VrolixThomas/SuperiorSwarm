@@ -1,24 +1,20 @@
-import type { LanguageServerConfig } from "./registry";
+import type { LspPreset } from "../../shared/lsp-schema";
 
-export interface LspPreset {
-	id: string;
-	displayName: string;
-	description: string;
-	config: LanguageServerConfig;
-}
+export type { LspPreset };
 
 export const LSP_PRESETS: LspPreset[] = [
 	{
 		id: "csharp",
 		displayName: "C#",
-		description: "OmniSharp language server",
+		description: "csharp-ls language server",
 		config: {
 			id: "csharp",
-			command: "OmniSharp",
-			args: ["-lsp"],
+			command: "csharp-ls",
+			args: [],
 			languages: ["csharp"],
 			fileExtensions: [".cs", ".csx"],
 			rootMarkers: [".sln", ".csproj", ".git"],
+			installHint: "dotnet tool install -g csharp-ls",
 			disabled: false,
 		},
 	},
@@ -33,6 +29,7 @@ export const LSP_PRESETS: LspPreset[] = [
 			languages: ["kotlin"],
 			fileExtensions: [".kt", ".kts"],
 			rootMarkers: ["build.gradle", "build.gradle.kts", ".git"],
+			installHint: "brew install kotlin-language-server",
 			disabled: false,
 		},
 	},
@@ -47,6 +44,7 @@ export const LSP_PRESETS: LspPreset[] = [
 			languages: ["swift"],
 			fileExtensions: [".swift"],
 			rootMarkers: ["Package.swift", ".git"],
+			installHint: "Included with Xcode — install Xcode or Xcode Command Line Tools",
 			disabled: false,
 		},
 	},
@@ -61,6 +59,7 @@ export const LSP_PRESETS: LspPreset[] = [
 			languages: ["lua"],
 			fileExtensions: [".lua"],
 			rootMarkers: [".luarc.json", ".git"],
+			installHint: "brew install lua-language-server",
 			disabled: false,
 		},
 	},
@@ -75,6 +74,7 @@ export const LSP_PRESETS: LspPreset[] = [
 			languages: ["zig"],
 			fileExtensions: [".zig"],
 			rootMarkers: ["build.zig", ".git"],
+			installHint: "brew install zls",
 			disabled: false,
 		},
 	},
@@ -89,6 +89,7 @@ export const LSP_PRESETS: LspPreset[] = [
 			languages: ["elixir"],
 			fileExtensions: [".ex", ".exs"],
 			rootMarkers: ["mix.exs", ".git"],
+			installHint: "brew install elixir-ls",
 			disabled: false,
 		},
 	},
@@ -103,6 +104,7 @@ export const LSP_PRESETS: LspPreset[] = [
 			languages: ["haskell"],
 			fileExtensions: [".hs"],
 			rootMarkers: ["stack.yaml", "cabal.project", ".git"],
+			installHint: "ghcup install hls",
 			disabled: false,
 		},
 	},
@@ -117,6 +119,7 @@ export const LSP_PRESETS: LspPreset[] = [
 			languages: ["dart"],
 			fileExtensions: [".dart"],
 			rootMarkers: ["pubspec.yaml", ".git"],
+			installHint: "brew install dart (or install Flutter SDK)",
 			disabled: false,
 		},
 	},
@@ -131,6 +134,7 @@ export const LSP_PRESETS: LspPreset[] = [
 			languages: ["scala"],
 			fileExtensions: [".scala", ".sc"],
 			rootMarkers: ["build.sbt", "build.sc", ".git"],
+			installHint: "brew install metals",
 			disabled: false,
 		},
 	},
@@ -145,6 +149,7 @@ export const LSP_PRESETS: LspPreset[] = [
 			languages: ["ocaml"],
 			fileExtensions: [".ml", ".mli"],
 			rootMarkers: ["dune-project", ".git"],
+			installHint: "opam install ocaml-lsp-server",
 			disabled: false,
 		},
 	},
@@ -159,6 +164,7 @@ export const LSP_PRESETS: LspPreset[] = [
 			languages: ["terraform"],
 			fileExtensions: [".tf", ".tfvars"],
 			rootMarkers: [".terraform", ".git"],
+			installHint: "brew install hashicorp/tap/terraform-ls",
 			disabled: false,
 		},
 	},
@@ -173,6 +179,7 @@ export const LSP_PRESETS: LspPreset[] = [
 			languages: ["yaml"],
 			fileExtensions: [".yaml", ".yml"],
 			rootMarkers: [".git"],
+			installHint: "npm install -g yaml-language-server",
 			disabled: false,
 		},
 	},
@@ -187,6 +194,7 @@ export const LSP_PRESETS: LspPreset[] = [
 			languages: ["shellscript"],
 			fileExtensions: [".sh", ".bash"],
 			rootMarkers: [".git"],
+			installHint: "npm install -g bash-language-server",
 			disabled: false,
 		},
 	},
@@ -201,6 +209,7 @@ export const LSP_PRESETS: LspPreset[] = [
 			languages: ["dockerfile"],
 			fileExtensions: [".dockerfile"],
 			rootMarkers: ["Dockerfile", ".git"],
+			installHint: "npm install -g dockerfile-language-server-nodejs",
 			disabled: false,
 		},
 	},
@@ -215,6 +224,7 @@ export const LSP_PRESETS: LspPreset[] = [
 			languages: ["r"],
 			fileExtensions: [".r", ".R"],
 			rootMarkers: [".Rproj", ".git"],
+			installHint: "R -e 'install.packages(\"languageserver\")'",
 			disabled: false,
 		},
 	},

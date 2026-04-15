@@ -1,6 +1,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
+import { languageServerConfigSchema } from "../../../shared/lsp-schema";
 import { LSP_PRESETS } from "../../lsp/presets";
 import {
 	DEFAULT_SERVER_CONFIGS,
@@ -11,18 +12,6 @@ import {
 import { serverManager } from "../../lsp/server-manager";
 import { getRepoTrust, setRepoTrust } from "../../lsp/trust";
 import { publicProcedure, router } from "../index";
-
-const serverInputSchema = z.object({
-	id: z.string().min(1),
-	command: z.string().min(1),
-	args: z.array(z.string()).default([]),
-	languages: z.array(z.string().min(1)).default([]),
-	fileExtensions: z.array(z.string().min(1)).default([]),
-	installHint: z.string().min(1).optional(),
-	rootMarkers: z.array(z.string().min(1)).default([".git"]),
-	initializationOptions: z.record(z.string(), z.unknown()).optional(),
-	disabled: z.boolean().default(false),
-});
 
 function getUserConfigPath(): string {
 	return join(homedir(), ".config", "superiorswarm", "lsp.json");
@@ -53,14 +42,14 @@ export const lspRouter = router({
 	}),
 
 	saveUserConfig: publicProcedure
-		.input(z.object({ servers: z.array(serverInputSchema) }))
+		.input(z.object({ servers: z.array(languageServerConfigSchema) }))
 		.mutation(({ input }) => {
 			saveConfigFile(getUserConfigPath(), input.servers);
 			return { ok: true };
 		}),
 
 	saveRepoConfig: publicProcedure
-		.input(z.object({ repoPath: z.string(), servers: z.array(serverInputSchema) }))
+		.input(z.object({ repoPath: z.string(), servers: z.array(languageServerConfigSchema) }))
 		.mutation(({ input }) => {
 			saveConfigFile(getRepoConfigPath(input.repoPath), input.servers);
 			return { ok: true };

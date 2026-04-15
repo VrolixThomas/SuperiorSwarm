@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import type { LspPreset } from "../../../../shared/lsp-types";
+import type { LspPreset } from "../../../../shared/lsp-schema";
 
 interface LspPresetPickerProps {
 	presets: LspPreset[];

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { LanguageServerConfig, LspPreset } from "../../../../shared/lsp-types";
+import type { LanguageServerConfig, LspPreset } from "../../../../shared/lsp-schema";
 import { LspPresetPicker } from "./LspPresetPicker";
 import { LspServerForm, type ServerFormData } from "./LspServerForm";
 

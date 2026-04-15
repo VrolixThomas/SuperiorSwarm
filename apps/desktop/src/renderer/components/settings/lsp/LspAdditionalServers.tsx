@@ -1,5 +1,5 @@
+import type { LanguageServerConfig } from "../../../../shared/lsp-schema";
 import type { LspHealthEntry } from "../../../../shared/types";
-import type { LanguageServerConfig } from "../../../../shared/lsp-types";
 import { SectionLabel } from "../SectionHeading";
 import { LspServerRow } from "./LspServerRow";
 
@@ -58,6 +58,8 @@ export function LspAdditionalServers({
 									name={config.id}
 									command={`${config.command} ${config.args.join(" ")}`.trim()}
 									available={health?.available ?? false}
+									installHint={health?.installHint}
+									startupError={health?.lastStartupError}
 									rightSlot={
 										<div className="flex items-center gap-2">
 											<span

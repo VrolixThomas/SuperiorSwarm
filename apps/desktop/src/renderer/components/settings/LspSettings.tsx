@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import { BUILT_IN_SERVER_IDS } from "../../../shared/lsp-builtin-ids";
-import type { LanguageServerConfig } from "../../../shared/lsp-types";
+import type { LanguageServerConfig } from "../../../shared/lsp-schema";
 import { useTabStore } from "../../stores/tab-store";
 import { trpc } from "../../trpc/client";
 import { PageHeading } from "./SectionHeading";
