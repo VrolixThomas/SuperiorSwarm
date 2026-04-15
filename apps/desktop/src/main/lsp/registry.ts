@@ -268,14 +268,14 @@ export function saveConfigFile(path: string, servers: LanguageServerConfig[]): v
 
 	mkdirSync(dirname(path), { recursive: true });
 	const tmp = `${path}.tmp-${process.pid}-${Date.now()}`;
-	writeFileSync(tmp, JSON.stringify({ servers }, null, "\t"), "utf8");
 	try {
+		writeFileSync(tmp, JSON.stringify({ servers }, null, "\t"), "utf8");
 		renameSync(tmp, path);
 	} catch (err) {
 		try {
 			unlinkSync(tmp);
 		} catch {
-			// best effort — tmp already gone
+			// best effort — tmp never created or already gone
 		}
 		throw err;
 	}
