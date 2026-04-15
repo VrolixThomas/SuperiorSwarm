@@ -48,7 +48,7 @@ Proposed entry shape:
 
 ```json
 {
-  "id": "rust-analyzer",
+  "id": "rust",
   "languages": ["rust"],
   "fileExtensions": [".rs"],
   "command": "rust-analyzer",
