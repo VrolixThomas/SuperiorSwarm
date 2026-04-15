@@ -1,21 +1,17 @@
 import * as monaco from "monaco-editor";
 import { detectLanguage } from "../../shared/diff-types";
 import { useTabStore } from "../stores/tab-store";
+import {
+	clearAllModelRepoPaths,
+	clearModelRepoPath,
+	findRepoPathFromUri,
+	getModelRepoPath,
+	setModelRepoPath,
+} from "./model-repo-map";
+
+export { clearModelRepoPath, setModelRepoPath };
 
 const disposables = new Map<string, monaco.IDisposable[]>();
-
-export async function isLspSupportedForFile(opts: {
-	repoPath: string;
-	languageId: string;
-	filePath: string;
-}): Promise<boolean> {
-	try {
-		const support = await window.electron.lsp.getSupport(opts);
-		return support.supported;
-	} catch {
-		return false;
-	}
-}
 
 export function registerLspProviders(languageId: string): void {
 	// Avoid double-registering
@@ -29,7 +25,7 @@ export function registerLspProviders(languageId: string): void {
 			triggerCharacters: [".", "/", "<"],
 			provideCompletionItems: async (model, position, context, _token) => {
 				const uri = model.uri.toString();
-				const repoPath = extractRepoPath(uri);
+				const repoPath = getModelRepoPath(uri);
 				if (!repoPath) return { suggestions: [] };
 
 				const result = await window.electron.lsp.sendRequest({
@@ -82,7 +78,7 @@ export function registerLspProviders(languageId: string): void {
 		monaco.languages.registerHoverProvider(languageId, {
 			provideHover: async (model, position, _token) => {
 				const uri = model.uri.toString();
-				const repoPath = extractRepoPath(uri);
+				const repoPath = getModelRepoPath(uri);
 				if (!repoPath) return null;
 
 				const result = await window.electron.lsp.sendRequest({
@@ -124,7 +120,7 @@ export function registerLspProviders(languageId: string): void {
 		monaco.languages.registerDefinitionProvider(languageId, {
 			provideDefinition: async (model, position, _token) => {
 				const uri = model.uri.toString();
-				const repoPath = extractRepoPath(uri);
+				const repoPath = getModelRepoPath(uri);
 				if (!repoPath) return null;
 
 				const result = await window.electron.lsp.sendRequest({
@@ -151,7 +147,7 @@ export function registerLspProviders(languageId: string): void {
 		monaco.languages.registerReferenceProvider(languageId, {
 			provideReferences: async (model, position, context, _token) => {
 				const uri = model.uri.toString();
-				const repoPath = extractRepoPath(uri);
+				const repoPath = getModelRepoPath(uri);
 				if (!repoPath) return null;
 
 				const result = await window.electron.lsp.sendRequest({
@@ -204,18 +200,6 @@ function convertRange(range: any): monaco.IRange {
 		endLineNumber: range.end.line + 1,
 		endColumn: range.end.character + 1,
 	};
-}
-
-// Repo path is stored as a custom property on the model URI.
-// We use a map to track which model URIs belong to which repo.
-const modelRepoMap = new Map<string, string>();
-
-export function setModelRepoPath(modelUri: string, repoPath: string): void {
-	modelRepoMap.set(modelUri, repoPath);
-}
-
-function extractRepoPath(modelUri: string): string | null {
-	return modelRepoMap.get(modelUri) ?? null;
 }
 
 // Document synchronization
@@ -274,7 +258,7 @@ export function setupGoToDefinitionHandler(): () => void {
 			const uri = resource.toString();
 			if (!uri.startsWith("file://")) return false;
 
-			const repoPath = extractRepoPath(uri) ?? findRepoPathFromUri(uri);
+			const repoPath = getModelRepoPath(uri) ?? findRepoPathFromUri(uri);
 			if (!repoPath) return false;
 
 			const filePath = uri.replace(`file://${repoPath}/`, "");
@@ -303,16 +287,6 @@ export function setupGoToDefinitionHandler(): () => void {
 		},
 	});
 	return () => disposable.dispose();
-}
-
-function findRepoPathFromUri(uri: string): string | null {
-	// Try to find a matching repoPath from our model map
-	for (const [, repoPath] of modelRepoMap) {
-		if (uri.startsWith(`file://${repoPath}`)) {
-			return repoPath;
-		}
-	}
-	return null;
 }
 
 export function disposeProviders(languageId: string): void {
@@ -394,7 +368,7 @@ export function disposeAllProviders(): void {
 		for (const d of toDispose) d.dispose();
 	}
 	disposables.clear();
-	modelRepoMap.clear();
+	clearAllModelRepoPaths();
 	if (diagnosticsCleanup) {
 		diagnosticsCleanup();
 		diagnosticsCleanup = null;

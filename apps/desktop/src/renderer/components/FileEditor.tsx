@@ -3,6 +3,7 @@ import { initVimMode } from "monaco-vim";
 import { useEffect, useRef, useState } from "react";
 import { EDITOR_THEME, ensureThemeRegistered } from "../lib/monacoTheme";
 import {
+	clearModelRepoPath,
 	registerLspProviders,
 	sendDidChange,
 	sendDidClose,
@@ -146,8 +147,6 @@ export function FileEditor({
 				registerLspProviders(language);
 				sendDidOpen(repoPath, language, uri, model.getValue(), version);
 			} catch {
-				if (disposed) return;
-				setLspMessage(null);
 				// Keep editor behavior stable when support checks fail.
 			}
 		})();
@@ -176,6 +175,7 @@ export function FileEditor({
 			if (lspEnabled) {
 				sendDidClose(repoPath, language, uri);
 			}
+			clearModelRepoPath(uri);
 			model.dispose();
 		};
 	}, [data, language, repoPath, filePath]);
