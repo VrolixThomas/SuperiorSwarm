@@ -53,6 +53,8 @@ export function FileEditor({
 		language,
 		filePath
 	);
+	// Ref keeps callback identity stable; the file-loading effect must not re-run
+	// when useFileEditorLsp returns a new onContentChanged (it churns on each model swap).
 	const onLspContentChangedRef = useRef(onLspContentChanged);
 	useEffect(() => {
 		onLspContentChangedRef.current = onLspContentChanged;

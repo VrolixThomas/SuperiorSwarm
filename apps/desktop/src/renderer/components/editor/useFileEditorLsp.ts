@@ -30,6 +30,7 @@ export function useFileEditorLsp(
 	useEffect(() => {
 		if (!model) {
 			stateRef.current = { enabled: false, uri: "" };
+			setMessage(null);
 			return;
 		}
 		const uri = model.uri.toString();
