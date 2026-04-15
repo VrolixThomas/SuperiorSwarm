@@ -304,6 +304,13 @@ describe("ServerManager repo-aware resolution", () => {
 		expect(r2.supported).toBe(false);
 		if (!r1.supported) expect(r1.reason).toBe("missing-binary");
 
+		// snap1 must have at least one entry — if serverLastErrors is never populated this catches it
+		expect(snap1.size).toBeGreaterThanOrEqual(1);
+		// Locate the ghost-server key and confirm the generic probe message landed.
+		// Key format is `${configId}:${repoPath}` — "ghost:<repoPath>" in this test.
+		const ghostKey = `ghost:${repoPath}`;
+		expect(snap1.get(ghostKey)).toMatch(/Executable not found/i);
+
 		// The two calls must observe the same bookkeeping state
 		expect([...snap2.entries()].sort()).toEqual([...snap1.entries()].sort());
 	});
