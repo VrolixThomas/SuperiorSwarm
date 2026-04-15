@@ -1,4 +1,13 @@
 import * as monaco from "monaco-editor";
+import type {
+	CompletionItem,
+	Hover,
+	Location,
+	LocationLink,
+	Range as LspRange,
+	MarkupContent,
+	PublishDiagnosticsParams,
+} from "vscode-languageserver-protocol";
 import { detectLanguage } from "../../shared/diff-types";
 import { useTabStore } from "../stores/tab-store";
 import {
@@ -47,26 +56,28 @@ export function registerLspProviders(languageId: string): void {
 
 				if (result.error || !result.result) return { suggestions: [] };
 
-				const items = Array.isArray(result.result)
-					? result.result
-					: ((result.result as { items?: unknown[] }).items ?? []);
+				const items: CompletionItem[] = Array.isArray(result.result)
+					? (result.result as CompletionItem[])
+					: ((result.result as { items?: CompletionItem[] }).items ?? []);
 
 				return {
-					// biome-ignore lint/suspicious/noExplicitAny: LSP completion item shape comes from untyped IPC
-					suggestions: items.map((item: any) => ({
+					suggestions: items.map((item) => ({
 						label: item.label,
 						kind: item.kind ?? monaco.languages.CompletionItemKind.Text,
-						insertText: item.insertText ?? item.label,
+						insertText:
+							item.insertText ?? (typeof item.label === "string" ? item.label : item.label.label),
 						insertTextRules:
 							item.insertTextFormat === 2
 								? monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet
 								: undefined,
 						detail: item.detail,
-						documentation: item.documentation,
+						documentation:
+							typeof item.documentation === "string"
+								? item.documentation
+								: item.documentation?.value,
 						sortText: item.sortText,
 						filterText: item.filterText,
-						// biome-ignore lint/suspicious/noExplicitAny: Monaco range type mismatch; inferred from word context
-						range: undefined as any, // Monaco will infer from word
+						range: undefined as unknown as monaco.IRange,
 					})),
 				};
 			},
@@ -95,20 +106,21 @@ export function registerLspProviders(languageId: string): void {
 				});
 
 				if (result.error || !result.result) return null;
-				// biome-ignore lint/suspicious/noExplicitAny: LSP hover response shape from untyped IPC
-				const hover = result.result as { contents: any; range?: any };
 
-				const contents = Array.isArray(hover.contents)
-					? // biome-ignore lint/suspicious/noExplicitAny: LSP MarkedString union from untyped IPC
-						hover.contents.map((c: any) =>
-							typeof c === "string" ? { value: c } : { value: c.value ?? "" }
-						)
-					: [
-							typeof hover.contents === "string"
-								? { value: hover.contents }
-								: // biome-ignore lint/suspicious/noExplicitAny: LSP MarkedString union from untyped IPC
-									{ value: (hover.contents as any).value ?? "" },
-						];
+				const hover = result.result as Hover;
+				const raw = hover.contents;
+
+				const toEntry = (
+					c: string | { value: string; language?: string } | MarkupContent
+				): { value: string } => {
+					if (typeof c === "string") return { value: c };
+					if ("value" in c) return { value: c.value };
+					return { value: "" };
+				};
+
+				const contents = Array.isArray(raw)
+					? raw.map((c) => toEntry(c as string | { value: string; language?: string }))
+					: [toEntry(raw)];
 
 				return { contents };
 			},
@@ -177,23 +189,21 @@ export function registerLspProviders(languageId: string): void {
 
 function convertLocations(result: unknown): monaco.languages.Location[] | null {
 	if (!result) return null;
-	const locations = Array.isArray(result) ? result : [result];
-	// biome-ignore lint/suspicious/noExplicitAny: LSP Location/LocationLink shape from untyped IPC
-	return locations.map((loc: any) => ({
-		uri: monaco.Uri.parse(loc.uri ?? loc.targetUri),
-		range: convertRange(loc.range ?? loc.targetRange),
-	}));
+	const locations = (Array.isArray(result) ? result : [result]) as (Location | LocationLink)[];
+	return locations.map((loc) => {
+		const uri = "uri" in loc ? loc.uri : loc.targetUri;
+		const range = "range" in loc ? loc.range : loc.targetRange;
+		return {
+			uri: monaco.Uri.parse(uri),
+			range: convertRange(range),
+		};
+	});
 }
 
-// biome-ignore lint/suspicious/noExplicitAny: LSP Range shape from untyped IPC
-function convertRange(range: any): monaco.IRange {
-	if (!range)
-		return {
-			startLineNumber: 1,
-			startColumn: 1,
-			endLineNumber: 1,
-			endColumn: 1,
-		};
+function convertRange(range: LspRange | undefined): monaco.IRange {
+	if (!range) {
+		return { startLineNumber: 1, startColumn: 1, endLineNumber: 1, endColumn: 1 };
+	}
 	return {
 		startLineNumber: range.start.line + 1,
 		startColumn: range.start.character + 1,
@@ -304,19 +314,7 @@ export function setupDiagnosticsListener(): void {
 
 	diagnosticsCleanup = window.electron.lsp.onNotification((_serverId, method, params) => {
 		if (method !== "textDocument/publishDiagnostics") return;
-		const { uri, diagnostics } = params as {
-			uri: string;
-			diagnostics: Array<{
-				range: {
-					start: { line: number; character: number };
-					end: { line: number; character: number };
-				};
-				message: string;
-				severity?: number;
-				source?: string;
-				code?: number | string;
-			}>;
-		};
+		const { uri, diagnostics } = params as PublishDiagnosticsParams;
 
 		const modelUri = monaco.Uri.parse(uri);
 		const model = monaco.editor.getModel(modelUri);
@@ -330,7 +328,10 @@ export function setupDiagnosticsListener(): void {
 			message: d.message,
 			severity: convertSeverity(d.severity),
 			source: d.source,
-			code: d.code?.toString(),
+			code:
+				typeof d.code === "object" && d.code !== null
+					? d.code.value?.toString()
+					: d.code?.toString(),
 		}));
 
 		monaco.editor.setModelMarkers(model, "lsp", markers);
