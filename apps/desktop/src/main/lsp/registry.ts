@@ -297,8 +297,16 @@ const ALLOWED_ENV_KEYS = new Set([
 	"DOTNET_ROOT",
 	"JAVA_HOME",
 	"GOPATH",
+	"GOROOT",
 	"CARGO_HOME",
 	"RUSTUP_HOME",
+	"NVM_DIR",
+	"NODE_PATH",
+	"VIRTUAL_ENV",
+	"CONDA_PREFIX",
+	"PYENV_ROOT",
+	"XDG_CONFIG_HOME",
+	"XDG_DATA_HOME",
 ]);
 
 function interpolate(value: string, env: Record<string, string | undefined>): string {

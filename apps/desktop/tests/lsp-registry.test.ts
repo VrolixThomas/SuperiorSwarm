@@ -123,6 +123,28 @@ describe("buildRegistry", () => {
 		expect(goConfig?.command).toBe("${env:ANTHROPIC_API_KEY}");
 		expect(goConfig?.args).toEqual(["${env:SECRET_TOKEN}"]);
 	});
+
+	test("expands commonly-needed toolchain env keys", () => {
+		process.env["VIRTUAL_ENV"] = "/tmp/venv";
+		const registry = buildRegistry({
+			defaults: [],
+			user: [
+				{
+					id: "py",
+					command: "${env:VIRTUAL_ENV}/bin/pyright-langserver",
+					args: [],
+					languages: ["python"],
+					fileExtensions: [".py"],
+					rootMarkers: [".git"],
+					disabled: false,
+				},
+			],
+			repo: [],
+			env: process.env,
+		});
+		expect(registry.byId.get("py")?.command).toBe("/tmp/venv/bin/pyright-langserver");
+		process.env["VIRTUAL_ENV"] = undefined;
+	});
 });
 
 describe("resolveSupport", () => {
