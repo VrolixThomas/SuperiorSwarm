@@ -53,8 +53,7 @@ describe("mergeGeminiHooks", () => {
 
 	test("replaces old hooks on re-run", () => {
 		mkdirSync(testDir, { recursive: true });
-		const cmd =
-			'AGENT_NOTIFY_AGENT="gemini" "/home/user/.agent-notify/hooks/on-event.sh" || true';
+		const cmd = 'AGENT_NOTIFY_AGENT="gemini" "/home/user/.agent-notify/hooks/on-event.sh" || true';
 		mergeGeminiHooks(settingsPath, cmd);
 		mergeGeminiHooks(settingsPath, cmd);
 

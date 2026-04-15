@@ -109,12 +109,16 @@ function DiffPanelContent({ diffCtx, onClose }: { diffCtx: DiffContext; onClose?
 	// Working tree status (staged/unstaged split)
 	const statusQuery = trpc.diff.getWorkingTreeStatus.useQuery(
 		{ repoPath: diffCtx.repoPath },
-		{ enabled: diffCtx.type === "working-tree", staleTime: 30_000 }
+		{
+			enabled: diffCtx.type === "working-tree",
+			refetchInterval: 2_000,
+			refetchOnWindowFocus: true,
+		}
 	);
 
 	const branchStatusQuery = trpc.branches.getStatus.useQuery(
 		{ projectId: projectId ?? "", cwd: activeWorkspaceCwd || undefined },
-		{ enabled: !!projectId, refetchInterval: 10_000 }
+		{ enabled: !!projectId, refetchInterval: 2_000 }
 	);
 
 	const invalidateAll = () => {

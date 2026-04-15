@@ -248,7 +248,11 @@ export function resetFileTabCounter(max: number): void {
 // ─── Dedup key helpers ───────────────────────────────────────────────────────
 
 function diffFileKey(diffCtx: DiffContext, filePath: string): string {
-	return `diff-file:${diffCtx.repoPath}:${filePath}`;
+	// Include context type + hash so the same file from different commits,
+	// or a commit vs the working tree, open in separate tabs rather than
+	// deduping to one.
+	const scope = diffCtx.type === "commit" ? `commit:${diffCtx.commitHash}` : diffCtx.type;
+	return `diff-file:${diffCtx.repoPath}:${scope}:${filePath}`;
 }
 
 function fileKey(repoPath: string, filePath: string): string {
@@ -303,6 +307,8 @@ export function diffContextsEqual(a: DiffContext, b: DiffContext): boolean {
 			);
 		case "pr":
 			return a.prId === (b as typeof a).prId;
+		case "commit":
+			return a.commitHash === (b as typeof a).commitHash;
 	}
 }
 

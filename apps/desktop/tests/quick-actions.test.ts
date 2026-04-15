@@ -83,8 +83,11 @@ describe("quickActions CRUD", () => {
 			.where(or(eq(quickActions.projectId, projectId), isNull(quickActions.projectId)))
 			.all();
 
-		expect(result).toHaveLength(2);
-		expect(result.map((r) => r.label).sort()).toEqual(["Global Build", "Test"]);
+		const userLabels = result
+			.filter((r) => r.id !== "default-claude-skip-perms")
+			.map((r) => r.label)
+			.sort();
+		expect(userLabels).toEqual(["Global Build", "Test"]);
 	});
 
 	test("delete cascades when project is deleted", () => {
@@ -104,8 +107,12 @@ describe("quickActions CRUD", () => {
 			.run();
 
 		db.delete(projects).where(eq(projects.id, projectId)).run();
-		const result = db.select().from(quickActions).all();
-		expect(result).toHaveLength(0);
+		const remaining = db
+			.select()
+			.from(quickActions)
+			.all()
+			.filter((r) => r.id !== "default-claude-skip-perms");
+		expect(remaining).toHaveLength(0);
 	});
 
 	test("global actions survive project deletion", () => {
@@ -125,9 +132,10 @@ describe("quickActions CRUD", () => {
 			.run();
 
 		db.delete(projects).where(eq(projects.id, projectId)).run();
-		const result = db.select().from(quickActions).all();
-		expect(result).toHaveLength(1);
-		expect(result[0]!.label).toBe("Global");
+		const all = db.select().from(quickActions).all();
+		const userActions = all.filter((r) => r.id !== "default-claude-skip-perms");
+		expect(userActions).toHaveLength(1);
+		expect(userActions[0]!.label).toBe("Global");
 	});
 
 	test("reorder updates sortOrder values", () => {
@@ -165,5 +173,20 @@ describe("quickActions CRUD", () => {
 			.all();
 
 		expect(result.map((r) => r.label)).toEqual(["Action 2", "Action 1", "Action 0"]);
+	});
+
+	test("fresh db is seeded with the default global claude quick action", () => {
+		const db = createTestDb();
+		const result = db.select().from(quickActions).all();
+		expect(result).toHaveLength(1);
+		expect(result[0]).toMatchObject({
+			id: "default-claude-skip-perms",
+			projectId: null,
+			label: "claude",
+			command: "claude --dangerously-skip-permissions",
+			cwd: null,
+			shortcut: null,
+			sortOrder: 0,
+		});
 	});
 });

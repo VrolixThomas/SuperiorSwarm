@@ -49,8 +49,7 @@ describe("mergeCodexHooks", () => {
 
 	test("replaces old hooks on re-run", () => {
 		mkdirSync(testDir, { recursive: true });
-		const cmd =
-			'AGENT_NOTIFY_AGENT="codex" "/home/user/.agent-notify/hooks/on-event.sh" || true';
+		const cmd = 'AGENT_NOTIFY_AGENT="codex" "/home/user/.agent-notify/hooks/on-event.sh" || true';
 		mergeCodexHooks(settingsPath, cmd);
 		mergeCodexHooks(settingsPath, cmd);
 

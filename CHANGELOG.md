@@ -1,5 +1,26 @@
 # Changelog
 
+## v0.4.13 (2026-04-15)
+
+### What's New
+
+SuperiorSwarm now includes a default shortcut for quick actions, giving you immediate access to common tasks. Commit updates are also faster and more responsive than before.
+
+### Changes
+
+- faster updating commits (#85)
+- Add default shortcut (#84)
+
+## v0.4.12 (2026-04-14)
+
+### What's New
+
+Fixed an issue where commits weren't displaying their associated files in the commit details view.
+
+### Changes
+
+- Commits not showing files (#83)
+
 ## v0.4.11 (2026-04-14)
 
 ### What's New

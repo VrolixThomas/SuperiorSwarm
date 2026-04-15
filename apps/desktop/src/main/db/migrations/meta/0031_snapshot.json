@@ -1,7 +1,7 @@
 {
 	"version": "6",
 	"dialect": "sqlite",
-	"id": "1070c840-31a6-4205-99b9-4cfc22bf8cda",
+	"id": "896ce4f7-236a-4092-a2a5-7ae53ef809f9",
 	"prevId": "73d850c4-03ff-4fd8-b4dd-e9e79f807ceb",
 	"tables": {
 		"ai_review_settings": {
@@ -1607,76 +1607,6 @@
 					"onUpdate": "no action"
 				}
 			},
-			"compositePrimaryKeys": {},
-			"uniqueConstraints": {},
-			"checkConstraints": {}
-		},
-		"telemetry_state": {
-			"name": "telemetry_state",
-			"columns": {
-				"id": {
-					"name": "id",
-					"type": "integer",
-					"primaryKey": true,
-					"notNull": true,
-					"autoincrement": false
-				},
-				"first_launch_at": {
-					"name": "first_launch_at",
-					"type": "integer",
-					"primaryKey": false,
-					"notNull": true,
-					"autoincrement": false
-				},
-				"first_signed_in_at": {
-					"name": "first_signed_in_at",
-					"type": "integer",
-					"primaryKey": false,
-					"notNull": false,
-					"autoincrement": false
-				},
-				"last_synced_at": {
-					"name": "last_synced_at",
-					"type": "integer",
-					"primaryKey": false,
-					"notNull": false,
-					"autoincrement": false
-				},
-				"opt_out": {
-					"name": "opt_out",
-					"type": "integer",
-					"primaryKey": false,
-					"notNull": true,
-					"autoincrement": false,
-					"default": false
-				},
-				"lifetime_sessions_started": {
-					"name": "lifetime_sessions_started",
-					"type": "integer",
-					"primaryKey": false,
-					"notNull": true,
-					"autoincrement": false,
-					"default": 0
-				},
-				"lifetime_reviews_started": {
-					"name": "lifetime_reviews_started",
-					"type": "integer",
-					"primaryKey": false,
-					"notNull": true,
-					"autoincrement": false,
-					"default": 0
-				},
-				"lifetime_comments_solved": {
-					"name": "lifetime_comments_solved",
-					"type": "integer",
-					"primaryKey": false,
-					"notNull": true,
-					"autoincrement": false,
-					"default": 0
-				}
-			},
-			"indexes": {},
-			"foreignKeys": {},
 			"compositePrimaryKeys": {},
 			"uniqueConstraints": {},
 			"checkConstraints": {}

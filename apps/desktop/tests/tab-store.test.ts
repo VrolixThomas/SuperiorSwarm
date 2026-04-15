@@ -113,6 +113,18 @@ describe("diffContextsEqual", () => {
 	test("pr contexts with different prId are not equal", () => {
 		expect(diffContextsEqual(prCtxA, prCtxB)).toBe(false);
 	});
+
+	test("commit: true when same commitHash and repoPath", () => {
+		const a: DiffContext = { type: "commit", repoPath: "/repo", commitHash: "aaaaaaa" };
+		const b: DiffContext = { type: "commit", repoPath: "/repo", commitHash: "aaaaaaa" };
+		expect(diffContextsEqual(a, b)).toBe(true);
+	});
+
+	test("commit: false when commitHash differs", () => {
+		const a: DiffContext = { type: "commit", repoPath: "/repo", commitHash: "aaaaaaa" };
+		const b: DiffContext = { type: "commit", repoPath: "/repo", commitHash: "bbbbbbb" };
+		expect(diffContextsEqual(a, b)).toBe(false);
+	});
 });
 
 // ── toggleDiffPanel ──────────────────────────────────────────────────────────
@@ -524,5 +536,51 @@ describe("markdownPreviewMode", () => {
 		useTabStore.getState().setMarkdownPreviewMode("rendered");
 		useTabStore.getState().setMarkdownPreviewMode("off");
 		expect(useTabStore.getState().markdownPreviewMode).toBe("off");
+	});
+});
+
+describe("openDiffFile with commit contexts", () => {
+	beforeEach(resetStore);
+
+	test("same file from two different commits opens two tabs", () => {
+		const { openDiffFile, setActiveWorkspace } = useTabStore.getState();
+		setActiveWorkspace("ws-1", "/repo");
+
+		const ctxA: DiffContext = { type: "commit", repoPath: "/repo", commitHash: "aaaaaaa" };
+		const ctxB: DiffContext = { type: "commit", repoPath: "/repo", commitHash: "bbbbbbb" };
+
+		openDiffFile("ws-1", ctxA, "src/main.ts", "typescript");
+		openDiffFile("ws-1", ctxB, "src/main.ts", "typescript");
+
+		expect(getTabsForWorkspace("ws-1")).toHaveLength(2);
+	});
+
+	test("same file, same commit dedups to a single tab", () => {
+		const { openDiffFile, setActiveWorkspace } = useTabStore.getState();
+		setActiveWorkspace("ws-1", "/repo");
+
+		const ctx: DiffContext = { type: "commit", repoPath: "/repo", commitHash: "aaaaaaa" };
+
+		openDiffFile("ws-1", ctx, "src/main.ts", "typescript");
+		openDiffFile("ws-1", ctx, "src/main.ts", "typescript");
+
+		expect(getTabsForWorkspace("ws-1")).toHaveLength(1);
+	});
+
+	test("commit tab is distinct from working-tree tab for same file", () => {
+		const { openDiffFile, setActiveWorkspace } = useTabStore.getState();
+		setActiveWorkspace("ws-1", "/repo");
+
+		const wt: DiffContext = { type: "working-tree", repoPath: "/repo" };
+		const commit: DiffContext = {
+			type: "commit",
+			repoPath: "/repo",
+			commitHash: "aaaaaaa",
+		};
+
+		openDiffFile("ws-1", wt, "src/main.ts", "typescript");
+		openDiffFile("ws-1", commit, "src/main.ts", "typescript");
+
+		expect(getTabsForWorkspace("ws-1")).toHaveLength(2);
 	});
 });
