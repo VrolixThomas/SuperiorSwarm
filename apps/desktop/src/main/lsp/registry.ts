@@ -48,6 +48,7 @@ export const DEFAULT_SERVER_CONFIGS: LanguageServerConfig[] = [
 		languages: ["typescript", "javascript", "typescriptreact", "javascriptreact"],
 		fileExtensions: [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"],
 		rootMarkers: ["package.json", "tsconfig.json", ".git"],
+		installHint: "npm install -g typescript-language-server typescript",
 		disabled: false,
 	},
 	{
@@ -57,6 +58,7 @@ export const DEFAULT_SERVER_CONFIGS: LanguageServerConfig[] = [
 		languages: ["python"],
 		fileExtensions: [".py"],
 		rootMarkers: ["pyproject.toml", "setup.py", ".git"],
+		installHint: "npm install -g pyright",
 		disabled: false,
 	},
 	{
@@ -66,6 +68,7 @@ export const DEFAULT_SERVER_CONFIGS: LanguageServerConfig[] = [
 		languages: ["go"],
 		fileExtensions: [".go"],
 		rootMarkers: ["go.mod", ".git"],
+		installHint: "go install golang.org/x/tools/gopls@latest",
 		disabled: false,
 	},
 	{
@@ -75,6 +78,7 @@ export const DEFAULT_SERVER_CONFIGS: LanguageServerConfig[] = [
 		languages: ["rust"],
 		fileExtensions: [".rs"],
 		rootMarkers: ["Cargo.toml", ".git"],
+		installHint: "rustup component add rust-analyzer",
 		disabled: false,
 	},
 	{
@@ -84,6 +88,7 @@ export const DEFAULT_SERVER_CONFIGS: LanguageServerConfig[] = [
 		languages: ["java"],
 		fileExtensions: [".java"],
 		rootMarkers: ["pom.xml", "build.gradle", ".git"],
+		installHint: "brew install jdtls",
 		disabled: false,
 	},
 	{
@@ -93,6 +98,7 @@ export const DEFAULT_SERVER_CONFIGS: LanguageServerConfig[] = [
 		languages: ["cpp", "c"],
 		fileExtensions: [".cc", ".cpp", ".c", ".h", ".hpp"],
 		rootMarkers: ["compile_commands.json", ".git"],
+		installHint: "brew install llvm (macOS) or apt install clangd (Linux)",
 		disabled: false,
 	},
 	{
@@ -102,6 +108,7 @@ export const DEFAULT_SERVER_CONFIGS: LanguageServerConfig[] = [
 		languages: ["php"],
 		fileExtensions: [".php"],
 		rootMarkers: ["composer.json", ".git"],
+		installHint: "npm install -g intelephense",
 		disabled: false,
 	},
 	{
@@ -111,6 +118,7 @@ export const DEFAULT_SERVER_CONFIGS: LanguageServerConfig[] = [
 		languages: ["ruby"],
 		fileExtensions: [".rb"],
 		rootMarkers: ["Gemfile", ".git"],
+		installHint: "gem install solargraph",
 		disabled: false,
 	},
 ];
@@ -278,9 +286,25 @@ function getFileExtension(filePath: string): string | null {
 	return filePath.slice(lastDot).toLowerCase();
 }
 
+const ALLOWED_ENV_KEYS = new Set([
+	"HOME",
+	"USER",
+	"PATH",
+	"SHELL",
+	"DOTNET_ROOT",
+	"JAVA_HOME",
+	"GOPATH",
+	"CARGO_HOME",
+	"RUSTUP_HOME",
+]);
+
 function interpolate(value: string, env: Record<string, string | undefined>): string {
 	const withWorkspace = value.replaceAll("${workspaceFolder}", env["workspaceFolder"] ?? "");
-	return withWorkspace.replace(/\$\{env:([A-Za-z_][A-Za-z0-9_]*)\}/g, (_match, key: string) => {
+	return withWorkspace.replace(/\$\{env:([A-Za-z_][A-Za-z0-9_]*)\}/g, (match, key: string) => {
+		if (!ALLOWED_ENV_KEYS.has(key)) {
+			console.warn(`[LSP] Refusing to expand disallowed env var: ${key}`);
+			return match;
+		}
 		return env[key] ?? "";
 	});
 }

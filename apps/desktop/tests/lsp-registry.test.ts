@@ -72,13 +72,13 @@ describe("buildRegistry", () => {
 		expect(support.supported).toBe(false);
 	});
 
-	test("interpolates workspaceFolder and env vars", () => {
+	test("interpolates workspaceFolder and allowed env vars", () => {
 		const registry = buildRegistry({
 			defaults: [],
 			user: [
 				{
 					id: "go",
-					command: "${env:BIN_DIR}/gopls",
+					command: "${env:HOME}/bin/gopls",
 					args: ["-logfile", "${workspaceFolder}/.logs/gopls.log"],
 					languages: ["go"],
 					fileExtensions: [".go"],
@@ -89,13 +89,39 @@ describe("buildRegistry", () => {
 			repo: [],
 			env: {
 				workspaceFolder: "/repo/worktree",
-				BIN_DIR: "/opt/bin",
+				HOME: "/Users/tester",
 			},
 		});
 
 		const goConfig = registry.byId.get("go");
-		expect(goConfig?.command).toBe("/opt/bin/gopls");
+		expect(goConfig?.command).toBe("/Users/tester/bin/gopls");
 		expect(goConfig?.args).toEqual(["-logfile", "/repo/worktree/.logs/gopls.log"]);
+	});
+
+	test("refuses to expand disallowed env vars", () => {
+		const registry = buildRegistry({
+			defaults: [],
+			user: [
+				{
+					id: "go",
+					command: "${env:ANTHROPIC_API_KEY}",
+					args: ["${env:SECRET_TOKEN}"],
+					languages: ["go"],
+					fileExtensions: [".go"],
+					rootMarkers: [".git"],
+					disabled: false,
+				},
+			],
+			repo: [],
+			env: {
+				ANTHROPIC_API_KEY: "sk-secret",
+				SECRET_TOKEN: "leak-me",
+			},
+		});
+
+		const goConfig = registry.byId.get("go");
+		expect(goConfig?.command).toBe("${env:ANTHROPIC_API_KEY}");
+		expect(goConfig?.args).toEqual(["${env:SECRET_TOKEN}"]);
 	});
 });
 
@@ -306,7 +332,22 @@ describe("saveConfigFile", () => {
 		const configDir = join(testDir, ".superiorswarm");
 		mkdirSync(configDir, { recursive: true });
 		const configPath = join(configDir, "lsp.json");
-		writeFileSync(configPath, JSON.stringify({ servers: [{ id: "old", command: "old-ls", args: [], languages: ["old"], fileExtensions: [".old"], rootMarkers: [".git"], disabled: false }] }));
+		writeFileSync(
+			configPath,
+			JSON.stringify({
+				servers: [
+					{
+						id: "old",
+						command: "old-ls",
+						args: [],
+						languages: ["old"],
+						fileExtensions: [".old"],
+						rootMarkers: [".git"],
+						disabled: false,
+					},
+				],
+			})
+		);
 
 		try {
 			const servers = [
