@@ -203,6 +203,59 @@ describe("resolveSupport", () => {
 			expect(byExtension.reason).toBe("extension");
 		}
 	});
+
+	test("matches by exact basename when file has no extension", () => {
+		const registry = buildRegistry({
+			defaults: [
+				{
+					id: "dockerfile",
+					command: "docker-langserver",
+					args: ["--stdio"],
+					languages: ["dockerfile"],
+					fileExtensions: [],
+					fileNames: ["Dockerfile"],
+					rootMarkers: [".git"],
+					disabled: false,
+				},
+			],
+			user: [],
+			repo: [],
+			env: process.env,
+		});
+
+		const result = resolveSupport(registry, {
+			languageId: "plaintext",
+			filePath: "/repo/Dockerfile",
+		});
+		expect(result.supported).toBe(true);
+		if (result.supported) expect(result.config.id).toBe("dockerfile");
+	});
+
+	test("basename match is case-sensitive (Dockerfile != dockerfile)", () => {
+		const registry = buildRegistry({
+			defaults: [
+				{
+					id: "dockerfile",
+					command: "docker-langserver",
+					args: ["--stdio"],
+					languages: ["dockerfile"],
+					fileExtensions: [],
+					fileNames: ["Dockerfile"],
+					rootMarkers: [".git"],
+					disabled: false,
+				},
+			],
+			user: [],
+			repo: [],
+			env: process.env,
+		});
+
+		const result = resolveSupport(registry, {
+			languageId: "plaintext",
+			filePath: "/repo/dockerfile",
+		});
+		expect(result.supported).toBe(false);
+	});
 });
 
 describe("loadRepoConfig", () => {
@@ -242,6 +295,7 @@ describe("loadRepoConfig", () => {
 					args: ["stdio"],
 					languages: ["ruby"],
 					fileExtensions: [".rb"],
+					fileNames: [],
 					rootMarkers: ["Gemfile", ".git"],
 					disabled: false,
 				},
@@ -310,6 +364,7 @@ describe("loadRepoConfig", () => {
 					args: ["stdio"],
 					languages: ["ruby"],
 					fileExtensions: [".rb"],
+					fileNames: [],
 					rootMarkers: ["Gemfile", ".git"],
 					disabled: false,
 				},

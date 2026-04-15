@@ -207,7 +207,8 @@ export const LSP_PRESETS: LspPreset[] = [
 			command: "docker-langserver",
 			args: ["--stdio"],
 			languages: ["dockerfile"],
-			fileExtensions: [".dockerfile"],
+			fileExtensions: [],
+			fileNames: ["Dockerfile"],
 			rootMarkers: ["Dockerfile", ".git"],
 			installHint: "npm install -g dockerfile-language-server-nodejs",
 			disabled: false,
@@ -220,7 +221,7 @@ export const LSP_PRESETS: LspPreset[] = [
 		config: {
 			id: "r",
 			command: "R",
-			args: ["--slave", "-e", "languageserver::run()"],
+			args: ["--no-echo", "--no-save", "-e", "languageserver::run()"],
 			languages: ["r"],
 			fileExtensions: [".r", ".R"],
 			rootMarkers: [".Rproj", ".git"],

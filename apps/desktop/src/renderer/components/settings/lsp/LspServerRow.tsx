@@ -2,11 +2,21 @@ interface LspServerRowProps {
 	name: string;
 	command: string;
 	available: boolean;
+	installHint?: string;
+	startupError?: string;
 	dimmed?: boolean;
 	rightSlot: React.ReactNode;
 }
 
-export function LspServerRow({ name, command, available, dimmed, rightSlot }: LspServerRowProps) {
+export function LspServerRow({
+	name,
+	command,
+	available,
+	installHint,
+	startupError,
+	dimmed,
+	rightSlot,
+}: LspServerRowProps) {
 	return (
 		<div
 			className="flex items-start justify-between gap-3 px-4 py-3"
@@ -28,6 +38,16 @@ export function LspServerRow({ name, command, available, dimmed, rightSlot }: Ls
 				<div className="truncate font-mono text-[10px] text-[var(--text-quaternary)]">
 					{command}
 				</div>
+				{!available && installHint && (
+					<div className="mt-1 font-mono text-[10px] text-[var(--text-tertiary)]">
+						{installHint}
+					</div>
+				)}
+				{startupError && (
+					<div className="mt-1 max-h-[60px] overflow-y-auto whitespace-pre-wrap font-mono text-[10px] text-[#ff453a]">
+						{startupError}
+					</div>
+				)}
 			</div>
 			<div className="shrink-0">{rightSlot}</div>
 		</div>

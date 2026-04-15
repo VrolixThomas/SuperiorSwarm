@@ -16,6 +16,7 @@ export interface LanguageRegistry {
 	byId: Map<string, LanguageServerConfig>;
 	byLanguageId: Map<string, LanguageServerConfig[]>;
 	byExtension: Map<string, LanguageServerConfig[]>;
+	byFileName: Map<string, LanguageServerConfig[]>;
 }
 
 export type SupportResolution =
@@ -140,6 +141,7 @@ export function buildRegistry(input: {
 
 	const byLanguageId = new Map<string, LanguageServerConfig[]>();
 	const byExtension = new Map<string, LanguageServerConfig[]>();
+	const byFileName = new Map<string, LanguageServerConfig[]>();
 
 	for (const config of merged.values()) {
 		if (config.disabled) {
@@ -161,12 +163,21 @@ export function buildRegistry(input: {
 			existing.push(config);
 			byExtension.set(normalized, existing);
 		}
+
+		for (const name of config.fileNames) {
+			const normalized = name.trim();
+			if (!normalized) continue;
+			const existing = byFileName.get(normalized) ?? [];
+			existing.push(config);
+			byFileName.set(normalized, existing);
+		}
 	}
 
 	return {
 		byId: merged,
 		byLanguageId,
 		byExtension,
+		byFileName,
 	};
 }
 
@@ -190,6 +201,18 @@ export function resolveSupport(
 			return {
 				supported: true,
 				config: byExtension,
+				reason: "extension",
+			};
+		}
+	}
+
+	const basename = input.filePath.split(/[\\/]/).pop();
+	if (basename) {
+		const byName = registry.byFileName.get(basename)?.[0];
+		if (byName) {
+			return {
+				supported: true,
+				config: byName,
 				reason: "extension",
 			};
 		}

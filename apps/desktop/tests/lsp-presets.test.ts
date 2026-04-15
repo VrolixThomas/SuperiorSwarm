@@ -15,7 +15,9 @@ describe("LSP_PRESETS", () => {
 			expect(preset.description).toBeTruthy();
 			expect(preset.config.command).toBeTruthy();
 			expect(preset.config.languages.length).toBeGreaterThan(0);
-			expect(preset.config.fileExtensions.length).toBeGreaterThan(0);
+			expect(
+				preset.config.fileExtensions.length + (preset.config.fileNames?.length ?? 0)
+			).toBeGreaterThan(0);
 		}
 	});
 
@@ -34,7 +36,7 @@ describe("LSP_PRESETS", () => {
 	test("includes C# preset", () => {
 		const csharp = LSP_PRESETS.find((p) => p.id === "csharp");
 		expect(csharp).toBeDefined();
-		expect(csharp!.config.command).toBe("OmniSharp");
+		expect(csharp!.config.command).toBe("csharp-ls");
 		expect(csharp!.config.fileExtensions).toContain(".cs");
 	});
 });
