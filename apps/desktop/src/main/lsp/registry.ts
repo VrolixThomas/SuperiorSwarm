@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { z } from "zod";
@@ -267,7 +267,18 @@ export function saveConfigFile(path: string, servers: LanguageServerConfig[]): v
 	}
 
 	mkdirSync(dirname(path), { recursive: true });
-	writeFileSync(path, JSON.stringify({ servers }, null, "\t"), "utf8");
+	const tmp = `${path}.tmp-${process.pid}-${Date.now()}`;
+	writeFileSync(tmp, JSON.stringify({ servers }, null, "\t"), "utf8");
+	try {
+		renameSync(tmp, path);
+	} catch (err) {
+		try {
+			unlinkSync(tmp);
+		} catch {
+			// best effort — tmp already gone
+		}
+		throw err;
+	}
 	fsCache.delete(path);
 }
 

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import {
 	DEFAULT_SERVER_CONFIGS,
 	type LanguageServerConfig,
@@ -382,6 +382,60 @@ describe("saveConfigFile", () => {
 			}).toThrow();
 
 			expect(existsSync(configPath)).toBe(false);
+		} finally {
+			rmSync(testDir, { recursive: true, force: true });
+		}
+	});
+
+	test("saveConfigFile does not leave partial .tmp- files on success", () => {
+		const testDir = join(tmpdir(), `ss-lsp-save-${Date.now()}-notmp`);
+		const path = join(testDir, ".superiorswarm", "lsp.json");
+		mkdirSync(dirname(path), { recursive: true });
+
+		const cfg: LanguageServerConfig = {
+			id: "x",
+			command: "x",
+			args: [],
+			languages: [],
+			fileExtensions: [],
+			rootMarkers: [".git"],
+			disabled: false,
+		};
+
+		try {
+			saveConfigFile(path, [cfg]);
+
+			const dirEntries = readdirSync(dirname(path));
+			const leftovers = dirEntries.filter((e) => e.includes(".tmp-"));
+			expect(leftovers).toEqual([]);
+			expect(existsSync(path)).toBe(true);
+		} finally {
+			rmSync(testDir, { recursive: true, force: true });
+		}
+	});
+
+	test("saveConfigFile writes a full file (no mid-write truncation visible)", () => {
+		const testDir = join(tmpdir(), `ss-lsp-save-${Date.now()}-fullfile`);
+		const path = join(testDir, ".superiorswarm", "lsp.json");
+		mkdirSync(dirname(path), { recursive: true });
+
+		const cfg: LanguageServerConfig = {
+			id: "x",
+			command: "x",
+			args: [],
+			languages: [],
+			fileExtensions: [],
+			rootMarkers: [".git"],
+			disabled: false,
+		};
+
+		try {
+			saveConfigFile(path, [cfg]);
+			const content = readFileSync(path, "utf8");
+			// Must be parseable JSON — no truncated output
+			expect(() => JSON.parse(content)).not.toThrow();
+			const parsed = JSON.parse(content) as { servers: unknown[] };
+			expect(parsed.servers).toHaveLength(1);
 		} finally {
 			rmSync(testDir, { recursive: true, force: true });
 		}
