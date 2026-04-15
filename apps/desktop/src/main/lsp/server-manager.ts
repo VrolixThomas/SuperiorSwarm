@@ -1,6 +1,7 @@
-import { type ChildProcess, spawn } from "node:child_process";
-import { constants, accessSync } from "node:fs";
-import { basename, delimiter, extname, isAbsolute, join } from "node:path";
+import { type ChildProcess, execSync, spawn } from "node:child_process";
+import { constants, accessSync, existsSync, realpathSync } from "node:fs";
+import { homedir } from "node:os";
+import { basename, delimiter, dirname, extname, isAbsolute, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { BrowserWindow } from "electron";
 import {
@@ -48,6 +49,123 @@ interface ServerInstance {
 	openDocuments: Set<string>;
 }
 
+/**
+ * On macOS/Linux, Electron launched from Finder inherits a minimal PATH
+ * that doesn't include user-installed tools (npm globals, brew, dotnet, etc.).
+ * Resolve the user's login-shell PATH once and cache it.
+ */
+let cachedShellPath: string | null = null;
+
+export function _resetShellPathCacheForTests(): void {
+	cachedShellPath = null;
+	cachedDotnetRoot = undefined;
+}
+
+function resolveShellPath(): string {
+	if (cachedShellPath !== null) return cachedShellPath;
+
+	if (process.platform === "win32") {
+		cachedShellPath = process.env["PATH"] ?? "";
+		return cachedShellPath;
+	}
+
+	const shell = resolveLoginShell();
+	try {
+		const raw = execSync(`${shell} -ilc 'printf "%s" "$PATH"'`, {
+			encoding: "utf-8",
+			timeout: 5000,
+			stdio: ["ignore", "pipe", "ignore"],
+		}).trim();
+		if (raw) {
+			cachedShellPath = raw;
+			return cachedShellPath;
+		}
+	} catch {
+		// Fall through to process.env
+	}
+
+	cachedShellPath = process.env["PATH"] ?? "";
+	return cachedShellPath;
+}
+
+function resolveLoginShell(): string {
+	const candidates = [process.env["SHELL"], "/bin/zsh", "/bin/bash", "/bin/sh"];
+	for (const sh of candidates) {
+		if (sh && existsSync(sh)) return sh;
+	}
+	return "/bin/sh";
+}
+
+function expandTildes(pathStr: string): string {
+	const home = homedir();
+	return pathStr
+		.split(delimiter)
+		.map((p) => (p.startsWith("~/") ? join(home, p.slice(2)) : p))
+		.join(delimiter);
+}
+
+/**
+ * Resolve DOTNET_ROOT from the `dotnet` binary on PATH.
+ * Homebrew installs place the SDK under a `libexec` sibling of the bin dir;
+ * standard installs keep `shared/` next to the binary.  Without DOTNET_ROOT,
+ * .NET global tools (e.g. csharp-ls) may find an older system-level runtime
+ * that lacks the SDK version they need.
+ */
+let cachedDotnetRoot: string | null | undefined;
+
+function resolveDotnetRoot(): string | undefined {
+	if (cachedDotnetRoot !== undefined) return cachedDotnetRoot ?? undefined;
+
+	if (process.env["DOTNET_ROOT"]) {
+		cachedDotnetRoot = process.env["DOTNET_ROOT"];
+		return cachedDotnetRoot;
+	}
+
+	const home = homedir();
+	const pathEntries = resolveShellPath()
+		.split(delimiter)
+		.filter(Boolean)
+		.map((p) => (p.startsWith("~/") ? join(home, p.slice(2)) : p));
+
+	for (const entry of pathEntries) {
+		const candidate = join(entry, "dotnet");
+		if (!existsSync(candidate)) continue;
+
+		try {
+			const real = realpathSync(candidate);
+			const binDir = dirname(real);
+			const installDir = dirname(binDir);
+
+			// Homebrew pattern: .../libexec/shared exists alongside bin/
+			const libexec = join(installDir, "libexec");
+			if (existsSync(join(libexec, "shared"))) {
+				cachedDotnetRoot = libexec;
+				return cachedDotnetRoot;
+			}
+
+			// Standard pattern: dotnet binary sits next to shared/
+			if (existsSync(join(binDir, "shared"))) {
+				cachedDotnetRoot = binDir;
+				return cachedDotnetRoot;
+			}
+		} catch {
+			continue;
+		}
+	}
+
+	cachedDotnetRoot = null;
+	return undefined;
+}
+
+function buildServerEnv(): NodeJS.ProcessEnv {
+	const env: NodeJS.ProcessEnv = { ...process.env, PATH: expandTildes(resolveShellPath()) };
+	if (!env["DOTNET_ROOT"]) {
+		const dotnetRoot = resolveDotnetRoot();
+		if (dotnetRoot) env["DOTNET_ROOT"] = dotnetRoot;
+	}
+	return env;
+}
+
 export class ServerManager {
 	private servers = new Map<string, ServerInstance>();
 	private restartCounts = new Map<string, number>();
@@ -55,7 +173,9 @@ export class ServerManager {
 	private unavailableServers = new Set<string>();
 	private serverLastErrors = new Map<string, string>();
 	private serverLastStartupErrors = new Map<string, string>();
+	private executableCache = new Map<string, { available: boolean; expiresAt: number }>();
 	private static MAX_RESTARTS = 3;
+	private static EXECUTABLE_CACHE_TTL_MS = 10_000;
 	private mainWindow: BrowserWindow | null = null;
 
 	setMainWindow(window: BrowserWindow): void {
@@ -64,10 +184,6 @@ export class ServerManager {
 
 	private serverKey(configId: string, repoPath: string): string {
 		return `${configId}:${repoPath}`;
-	}
-
-	private unavailableServerKey(configId: string, repoPath: string): string {
-		return this.serverKey(configId, repoPath);
 	}
 
 	private canExecute(path: string): boolean {
@@ -109,6 +225,22 @@ export class ServerManager {
 			return false;
 		}
 
+		const cacheKey = `${trimmedCommand}\u0000${repoPath}`;
+		const cached = this.executableCache.get(cacheKey);
+		const now = Date.now();
+		if (cached && cached.expiresAt > now) {
+			return cached.available;
+		}
+
+		const available = this.resolveExecutableAvailability(trimmedCommand, repoPath);
+		this.executableCache.set(cacheKey, {
+			available,
+			expiresAt: now + ServerManager.EXECUTABLE_CACHE_TTL_MS,
+		});
+		return available;
+	}
+
+	private resolveExecutableAvailability(trimmedCommand: string, repoPath: string): boolean {
 		if (
 			isAbsolute(trimmedCommand) ||
 			trimmedCommand.startsWith(".") ||
@@ -139,7 +271,11 @@ export class ServerManager {
 			return false;
 		}
 
-		const pathEntries = (process.env["PATH"] ?? "").split(delimiter).filter(Boolean);
+		const home = homedir();
+		const pathEntries = resolveShellPath()
+			.split(delimiter)
+			.filter(Boolean)
+			.map((p) => (p.startsWith("~/") ? join(home, p.slice(2)) : p));
 		const commandSuffixes = this.isWindowsPlatform()
 			? this.getWindowsPathExts(trimmedCommand)
 			: [""];
@@ -176,14 +312,7 @@ export class ServerManager {
 		fileExtensions: string[];
 		installHint?: string;
 	}): ServerConfig {
-		return {
-			id: config.id,
-			command: config.command,
-			args: config.args,
-			languages: config.languages,
-			fileExtensions: config.fileExtensions,
-			installHint: config.installHint,
-		};
+		return { ...config };
 	}
 
 	private findConfigById(configId: string, repoPath: string): ServerConfig | undefined {
@@ -240,7 +369,7 @@ export class ServerManager {
 		}
 
 		const config = this.toServerConfig(support.config);
-		const unavailableKey = this.unavailableServerKey(config.id, repoPath);
+		const unavailableKey = this.serverKey(config.id, repoPath);
 		const executableAvailable = this.isServerExecutableAvailable(config.command, repoPath);
 
 		if (!executableAvailable) {
@@ -272,7 +401,7 @@ export class ServerManager {
 				continue;
 			}
 
-			const unavailableKey = this.unavailableServerKey(config.id, repoPath);
+			const unavailableKey = this.serverKey(config.id, repoPath);
 			const executableAvailable = this.isServerExecutableAvailable(config.command, repoPath);
 			if (!executableAvailable) {
 				this.unavailableServers.add(unavailableKey);
@@ -319,22 +448,24 @@ export class ServerManager {
 		if (!config) return null;
 
 		const key = this.serverKey(configId, repoPath);
-		const unavailableKey = this.unavailableServerKey(configId, repoPath);
 
-		// Check if this server has permanently failed (command not found)
-		if (this.unavailableServers.has(unavailableKey)) return null;
+		if (this.unavailableServers.has(key)) return null;
+
+		const initFailures = this.restartCounts.get(key) ?? 0;
+		if (initFailures >= ServerManager.MAX_RESTARTS) return null;
 
 		let childProcess: ChildProcess;
 		try {
 			childProcess = spawn(config.command, config.args, {
 				cwd: repoPath,
 				stdio: ["pipe", "pipe", "pipe"],
+				env: buildServerEnv(),
 			});
 		} catch {
 			console.error(`[LSP] Failed to spawn ${config.command}. Is it installed?`);
-			this.unavailableServers.add(unavailableKey);
-			this.serverLastErrors.set(unavailableKey, `Failed to spawn ${config.command}`);
-			this.serverLastStartupErrors.set(unavailableKey, `Failed to spawn ${config.command}`);
+			this.unavailableServers.add(key);
+			this.serverLastErrors.set(key, `Failed to spawn ${config.command}`);
+			this.serverLastStartupErrors.set(key, `Failed to spawn ${config.command}`);
 			return null;
 		}
 
@@ -353,9 +484,9 @@ export class ServerManager {
 			const onError = (err: Error) => {
 				cleanup();
 				console.error(`[LSP] Failed to spawn ${config.command}: ${err.message}`);
-				this.unavailableServers.add(unavailableKey);
-				this.serverLastErrors.set(unavailableKey, err.message);
-				this.serverLastStartupErrors.set(unavailableKey, err.message);
+				this.unavailableServers.add(key);
+				this.serverLastErrors.set(key, err.message);
+				this.serverLastStartupErrors.set(key, err.message);
 				resolve(false);
 			};
 			const cleanup = () => {
@@ -368,8 +499,8 @@ export class ServerManager {
 
 		if (!spawnResult) return null;
 
-		this.unavailableServers.delete(unavailableKey);
-		this.serverLastErrors.delete(unavailableKey);
+		this.unavailableServers.delete(key);
+		this.serverLastErrors.delete(key);
 
 		const connection = createMessageConnection(childProcess.stdout, childProcess.stdin);
 
@@ -390,8 +521,21 @@ export class ServerManager {
 			// The exit handler below takes care of cleanup and crash recovery.
 		});
 
+		let stderrBuffer = "";
+		childProcess.stderr?.on("data", (data: Buffer) => {
+			const text = data.toString();
+			console.error(`[LSP ${config.id}] ${text}`);
+			stderrBuffer += text;
+			if (stderrBuffer.length > 1024) {
+				stderrBuffer = stderrBuffer.slice(-1024);
+			}
+		});
+
 		childProcess.on("exit", (code) => {
 			console.warn(`[LSP] ${config.command} exited with code ${code}`);
+			if (code !== 0 && stderrBuffer.trim()) {
+				this.serverLastStartupErrors.set(key, stderrBuffer.trim());
+			}
 			const shuttingDown = instance.shuttingDown;
 			const crashedDocs = shuttingDown ? new Set<string>() : new Set(instance.openDocuments);
 			this.servers.delete(key);
@@ -399,10 +543,6 @@ export class ServerManager {
 			if (!shuttingDown) {
 				this.handleCrash(configId, repoPath, crashedDocs);
 			}
-		});
-
-		childProcess.stderr?.on("data", (data: Buffer) => {
-			console.error(`[LSP ${config.id}] ${data.toString()}`);
 		});
 
 		connection.listen();
@@ -464,7 +604,15 @@ export class ServerManager {
 		} catch (err) {
 			console.error(`[LSP] Failed to initialize ${config.command}:`, err);
 			const message = err instanceof Error ? err.message : String(err);
-			this.serverLastStartupErrors.set(unavailableKey, message);
+			this.serverLastStartupErrors.set(key, message);
+			// Track init failures to prevent crash loops from repeated getOrCreate calls
+			const count = (this.restartCounts.get(key) ?? 0) + 1;
+			this.restartCounts.set(key, count);
+			if (count >= ServerManager.MAX_RESTARTS) {
+				console.error(
+					`[LSP] ${configId} failed to initialize ${count} times for ${repoPath}, giving up`
+				);
+			}
 			// Mark as shutting down to prevent crash recovery for init failures
 			instance.shuttingDown = true;
 			connection.dispose();

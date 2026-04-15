@@ -63,6 +63,7 @@ mock.module("node:child_process", () => ({
 
 		return proc;
 	}),
+	execSync: mock(() => ""),
 }));
 
 mock.module("vscode-languageserver-protocol/node.js", () => ({
@@ -75,7 +76,9 @@ mock.module("vscode-languageserver-protocol/node.js", () => ({
 	})),
 }));
 
-const { ServerManager } = await import("../src/main/lsp/server-manager");
+const { ServerManager, _resetShellPathCacheForTests } = await import(
+	"../src/main/lsp/server-manager"
+);
 
 function createRepoWithConfig(name: string, configs: MockConfig[]): string {
 	const repoPath = mkdtempSync(join(tmpdir(), `ss-server-manager-${name}-`));
@@ -89,6 +92,7 @@ describe("ServerManager repo-aware resolution", () => {
 	beforeEach(() => {
 		unavailableCommands.clear();
 		spawnCalls.length = 0;
+		_resetShellPathCacheForTests();
 	});
 
 	afterEach(() => {
