@@ -334,6 +334,34 @@ describe("loadRepoConfig", () => {
 		}
 	});
 
+	test("rejects config whose initializationOptions exceed 64KB", () => {
+		const testDir = join(tmpdir(), `ss-lsp-registry-${Date.now()}-huge`);
+		const configDir = join(testDir, ".superiorswarm");
+		mkdirSync(configDir, { recursive: true });
+
+		const huge: Record<string, string> = {};
+		for (let i = 0; i < 20_000; i++) huge[`k${i}`] = "x";
+		writeFileSync(
+			join(configDir, "lsp.json"),
+			JSON.stringify({
+				servers: [
+					{
+						id: "x",
+						command: "x",
+						initializationOptions: huge,
+					},
+				],
+			})
+		);
+
+		try {
+			const loaded = loadRepoConfig(testDir);
+			expect(loaded).toEqual([]);
+		} finally {
+			rmSync(testDir, { recursive: true, force: true });
+		}
+	});
+
 	test("keeps valid server entries when some entries are invalid", () => {
 		const testDir = join(tmpdir(), `ss-lsp-registry-${Date.now()}-mixed`);
 		const configDir = join(testDir, ".superiorswarm");
