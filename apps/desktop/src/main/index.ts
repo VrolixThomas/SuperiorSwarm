@@ -32,6 +32,7 @@ import { setupLspIPC } from "./lsp/ipc-handler";
 import { serverManager } from "./lsp/server-manager";
 import { syncShortcuts } from "./quick-actions/shortcuts";
 import { registerSingleInstance } from "./single-instance";
+import { ensureTelemetryState } from "./telemetry/state";
 import { DaemonClient } from "./terminal/daemon-client";
 import { setDaemonClient } from "./terminal/daemon-instance";
 import { setupTerminalIPC } from "./terminal/ipc";
@@ -118,6 +119,7 @@ app.whenReady().then(async () => {
 	try {
 		initializeDatabase();
 		await backfillRemoteHosts();
+		ensureTelemetryState(getDb());
 		recoverStuckSessions();
 	} catch (err) {
 		log.error("[db] Failed to initialize database:", err);
@@ -140,6 +142,15 @@ app.whenReady().then(async () => {
 
 	// Set up tRPC IPC so the renderer can make queries once it loads
 	setupTRPCIPC(appRouter);
+
+	void (async () => {
+		try {
+			const { syncIfDue } = await import("./telemetry/sync");
+			await syncIfDue();
+		} catch (err) {
+			log.debug("[telemetry] launch sync skipped:", err);
+		}
+	})();
 
 	// Register IPC handlers needed by the renderer
 	ipcMain.on("terminal-sessions:save-sync", (event, data: SessionSaveData) => {

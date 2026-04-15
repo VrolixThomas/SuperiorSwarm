@@ -6,6 +6,7 @@ import { app } from "electron";
 import { getDb } from "../db";
 import * as schema from "../db/schema";
 import { getGitProvider } from "../providers/git-provider";
+import { incrementCounter } from "../telemetry/state";
 import {
 	CLI_PRESETS,
 	type LaunchOptions,
@@ -302,6 +303,8 @@ export async function queueReview(params: {
 			updatedAt: now,
 		})
 		.run();
+
+	incrementCounter(db, "lifetimeReviewsStarted");
 
 	return startReview({
 		draftId: id,

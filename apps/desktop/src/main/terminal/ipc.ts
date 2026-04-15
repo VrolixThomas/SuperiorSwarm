@@ -3,6 +3,7 @@ import { BrowserWindow, ipcMain } from "electron";
 import { getAgentNotifyPort } from "../agent-hooks/port";
 import { getDb } from "../db";
 import { terminalSessions } from "../db/schema";
+import { incrementCounter } from "../telemetry/state";
 import type { DaemonClient } from "./daemon-client";
 
 function assertNonEmptyString(value: unknown, name: string): asserts value is string {
@@ -50,6 +51,7 @@ export function setupTerminalIPC(daemonClient: DaemonClient): void {
 					return { wasAttached: true };
 				}
 				await daemonClient.create(id, cwdStr, onData, onExit, env);
+				incrementCounter(getDb(), "lifetimeSessionsStarted");
 				return { wasAttached: false };
 			} catch (error) {
 				console.error(`Failed to create/attach terminal ${id}:`, error);

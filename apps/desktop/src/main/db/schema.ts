@@ -375,3 +375,27 @@ export const trackedPrs = sqliteTable(
 
 export type TrackedPr = typeof trackedPrs.$inferSelect;
 export type NewTrackedPr = typeof trackedPrs.$inferInsert;
+
+export const telemetryState = sqliteTable("telemetry_state", {
+	id: integer("id").primaryKey(), // always 1 — singleton row
+	firstLaunchAt: integer("first_launch_at", { mode: "timestamp" }).notNull(),
+	firstSignedInAt: integer("first_signed_in_at", { mode: "timestamp" }),
+	lastSyncedAt: integer("last_synced_at", { mode: "timestamp" }),
+	optOut: integer("opt_out", { mode: "boolean" }).notNull().default(false),
+	lifetimeSessionsStarted: integer("lifetime_sessions_started").notNull().default(0),
+	lifetimeReviewsStarted: integer("lifetime_reviews_started").notNull().default(0),
+	lifetimeCommentsSolved: integer("lifetime_comments_solved").notNull().default(0),
+	everConnectedGithub: integer("ever_connected_github", { mode: "boolean" })
+		.notNull()
+		.default(false),
+	everConnectedLinear: integer("ever_connected_linear", { mode: "boolean" })
+		.notNull()
+		.default(false),
+	everConnectedJira: integer("ever_connected_jira", { mode: "boolean" }).notNull().default(false),
+	everConnectedBitbucket: integer("ever_connected_bitbucket", { mode: "boolean" })
+		.notNull()
+		.default(false),
+});
+
+export type TelemetryState = typeof telemetryState.$inferSelect;
+export type NewTelemetryState = typeof telemetryState.$inferInsert;

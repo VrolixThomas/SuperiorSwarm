@@ -1,5 +1,6 @@
 import { trpc } from "@/trpc/client";
 import type { ReactNode } from "react";
+import { PRIVACY_URL } from "../../shared/telemetry";
 
 type OAuthProvider = "github" | "google" | "apple";
 
@@ -142,6 +143,25 @@ export function LoginScreen() {
 					{signIn.data.error}
 				</p>
 			)}
+
+			<p
+				style={{
+					fontSize: "12px",
+					color: "var(--text-quaternary)",
+					marginTop: "16px",
+				}}
+			>
+				By continuing you agree to our{" "}
+				<a
+					href={PRIVACY_URL}
+					target="_blank"
+					rel="noreferrer"
+					style={{ color: "var(--text-tertiary)", textDecoration: "underline" }}
+				>
+					privacy notice
+				</a>
+				.
+			</p>
 		</div>
 	);
 }

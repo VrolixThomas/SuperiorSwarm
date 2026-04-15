@@ -15,6 +15,7 @@ import { rebaseRouter } from "./rebase";
 import { remoteRouter } from "./remote";
 import { sharedFilesRouter } from "./shared-files";
 import { systemRouter } from "./system";
+import { telemetryRouter } from "./telemetry";
 import { terminalSessionsRouter } from "./terminal-sessions";
 import { ticketsRouter } from "./tickets";
 import { updatesRouter } from "./updates";
@@ -41,6 +42,7 @@ export const appRouter = router({
 	prPoller: prPollerRouter,
 	updates: updatesRouter,
 	system: systemRouter,
+	telemetry: telemetryRouter,
 });
 
 export type AppRouter = typeof appRouter;

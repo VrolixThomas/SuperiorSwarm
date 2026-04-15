@@ -1,93 +1,11 @@
+import "./preload-electron-mock";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import Database from "better-sqlite3";
+import type Database from "better-sqlite3";
 import {
 	cancelSolve,
 	validateSolveTransition,
 } from "../src/main/ai-review/comment-solver-orchestrator";
-
-// ─── In-memory database setup ─────────────────────────────────────────────────
-
-function makeTestDb(): Database.Database {
-	const db = new Database(":memory:");
-	db.pragma("journal_mode = WAL");
-	db.pragma("foreign_keys = ON");
-
-	db.exec(`
-		CREATE TABLE comment_solve_sessions (
-			id TEXT PRIMARY KEY NOT NULL,
-			pr_provider TEXT NOT NULL,
-			pr_identifier TEXT NOT NULL,
-			pr_title TEXT NOT NULL,
-			source_branch TEXT NOT NULL,
-			target_branch TEXT NOT NULL,
-			status TEXT DEFAULT 'queued' NOT NULL,
-			commit_sha TEXT,
-			workspace_id TEXT NOT NULL,
-			created_at INTEGER NOT NULL,
-			updated_at INTEGER NOT NULL,
-			pid INTEGER,
-			last_activity_at INTEGER
-		);
-
-		CREATE TABLE comment_groups (
-			id TEXT PRIMARY KEY NOT NULL,
-			solve_session_id TEXT NOT NULL,
-			label TEXT NOT NULL,
-			status TEXT DEFAULT 'pending' NOT NULL,
-			commit_hash TEXT,
-			"order" INTEGER NOT NULL,
-			FOREIGN KEY (solve_session_id) REFERENCES comment_solve_sessions(id) ON DELETE CASCADE
-		);
-
-		CREATE TABLE pr_comments (
-			id TEXT PRIMARY KEY NOT NULL,
-			solve_session_id TEXT NOT NULL,
-			group_id TEXT,
-			platform_comment_id TEXT NOT NULL,
-			author TEXT NOT NULL,
-			body TEXT NOT NULL,
-			file_path TEXT NOT NULL,
-			line_number INTEGER,
-			side TEXT,
-			thread_id TEXT,
-			status TEXT DEFAULT 'open' NOT NULL,
-			commit_sha TEXT,
-			FOREIGN KEY (solve_session_id) REFERENCES comment_solve_sessions(id) ON DELETE CASCADE,
-			FOREIGN KEY (group_id) REFERENCES comment_groups(id) ON DELETE SET NULL
-		);
-
-		CREATE UNIQUE INDEX pr_comments_session_platform_unique
-			ON pr_comments (solve_session_id, platform_comment_id);
-
-		CREATE TABLE comment_replies (
-			id TEXT PRIMARY KEY NOT NULL,
-			pr_comment_id TEXT NOT NULL,
-			body TEXT NOT NULL,
-			status TEXT DEFAULT 'draft' NOT NULL,
-			FOREIGN KEY (pr_comment_id) REFERENCES pr_comments(id) ON DELETE CASCADE
-		);
-
-		CREATE TABLE pr_comment_cache (
-			id TEXT PRIMARY KEY NOT NULL,
-			workspace_id TEXT NOT NULL,
-			platform_comment_id TEXT NOT NULL,
-			author TEXT NOT NULL,
-			body TEXT NOT NULL,
-			file_path TEXT,
-			line_number INTEGER,
-			created_at TEXT NOT NULL,
-			fetched_at INTEGER NOT NULL
-		);
-
-		CREATE TABLE pr_comment_cache_meta (
-			workspace_id TEXT PRIMARY KEY NOT NULL,
-			cache_key TEXT,
-			fetched_at INTEGER NOT NULL
-		);
-	`);
-
-	return db;
-}
+import { makeRawTestDb } from "./test-db";
 
 // ─── Seed helpers ─────────────────────────────────────────────────────────────
 
@@ -142,7 +60,31 @@ function seedReply(id: string, commentId: string, status = "draft"): void {
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 beforeAll(() => {
-	db = makeTestDb();
+	db = makeRawTestDb();
+	// Seed FK dependencies used across tests (workspaces.id is referenced by
+	// comment_solve_sessions and pr_comment_cache).
+	db.prepare(`INSERT INTO projects (id, name, repo_path, default_branch, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`).run(
+		"proj-1",
+		"test",
+		"/tmp/test",
+		"main",
+		"ready",
+		NOW,
+		NOW
+	);
+	const workspaceIds = [
+		WORKSPACE_ID,
+		"ws-schema",
+		"ws-cascade",
+		"ws-cancel",
+		"status-ws",
+		"status-ws-isolated",
+	];
+	for (const ws of workspaceIds) {
+		db.prepare(
+			`INSERT INTO workspaces (id, project_id, type, name, created_at, updated_at) VALUES (?, 'proj-1', 'branch', ?, ?, ?)`
+		).run(ws, ws, NOW, NOW);
+	}
 });
 
 afterAll(() => {
