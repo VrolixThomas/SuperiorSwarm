@@ -13,7 +13,6 @@ import type { LspHealthEntry } from "../../shared/types";
 import {
 	DEFAULT_SERVER_CONFIGS,
 	buildRegistry,
-	loadRepoConfig,
 	loadRepoConfigCached,
 	loadUserConfigCached,
 	resolveSupport,
@@ -382,7 +381,7 @@ export class ServerManager {
 			const shadowRegistry = buildRegistry({
 				defaults: [],
 				user: [],
-				repo: loadRepoConfig(normalized),
+				repo: loadRepoConfigCached(normalized),
 				env: { ...process.env, workspaceFolder: normalized },
 			});
 			if (resolveSupport(shadowRegistry, { languageId, filePath }).supported) {

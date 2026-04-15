@@ -47,12 +47,12 @@ export function FileEditor({
 			utils.diff.getWorkingTreeStatus.invalidate({ repoPath });
 		},
 	});
-	const { message: lspMessage, onContentChanged: onLspContentChanged } = useFileEditorLsp(
-		currentModel,
-		repoPath,
-		language,
-		filePath
-	);
+	const {
+		message: lspMessage,
+		canTrust,
+		trustRepo,
+		onContentChanged: onLspContentChanged,
+	} = useFileEditorLsp(currentModel, repoPath, language, filePath);
 	// Ref keeps callback identity stable; the file-loading effect must not re-run
 	// when useFileEditorLsp returns a new onContentChanged (it churns on each model swap).
 	const onLspContentChangedRef = useRef(onLspContentChanged);
@@ -200,8 +200,17 @@ export function FileEditor({
 				style={isLoading ? { display: "none" } : undefined}
 			>
 				{lspMessage && (
-					<div className="border-b border-[rgba(255,159,10,0.35)] bg-[rgba(255,159,10,0.12)] px-3 py-2 text-[12px] text-[var(--color-warning)]">
-						{lspMessage}
+					<div className="flex items-center justify-between gap-2 border-b border-[rgba(255,159,10,0.35)] bg-[rgba(255,159,10,0.12)] px-3 py-2 text-[12px] text-[var(--color-warning)]">
+						<span>{lspMessage}</span>
+						{canTrust && (
+							<button
+								type="button"
+								onClick={() => void trustRepo()}
+								className="shrink-0 rounded-[4px] border border-[var(--color-warning)] px-2 py-0.5 text-[11px] font-medium hover:bg-[rgba(255,159,10,0.2)]"
+							>
+								Trust this repo
+							</button>
+						)}
 					</div>
 				)}
 				{language === "markdown" && (
