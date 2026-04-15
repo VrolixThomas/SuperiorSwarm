@@ -27,6 +27,7 @@ export interface ServerConfig {
 	languages: string[];
 	fileExtensions: string[];
 	installHint?: string;
+	initializationOptions?: Record<string, unknown>;
 }
 
 export type LspSupportResult =
@@ -331,6 +332,7 @@ export class ServerManager {
 		languages: string[];
 		fileExtensions: string[];
 		installHint?: string;
+		initializationOptions?: Record<string, unknown>;
 	}): ServerConfig {
 		return { ...config };
 	}
@@ -568,6 +570,7 @@ export class ServerManager {
 				workspaceFolders: [
 					{ uri: instance.rootUri, name: repoPath.split("/").pop() ?? "workspace" },
 				],
+				initializationOptions: config.initializationOptions,
 			};
 
 			await connection.sendRequest("initialize", initParams);

@@ -14,12 +14,14 @@ type MockConfig = {
 	installHint?: string;
 	rootMarkers: string[];
 	disabled: boolean;
+	initializationOptions?: Record<string, unknown>;
 };
 
 const unavailableCommands = new Set<string>();
 const initFailCommands = new Set<string>();
 const spawnCalls: string[] = [];
 const createdRepos: string[] = [];
+let capturedInitParams: unknown = null;
 const originalPath = process.env["PATH"];
 const originalPathExt = process.env["PATHEXT"];
 
@@ -75,10 +77,13 @@ mock.module("../src/main/lsp/trust", () => ({
 mock.module("vscode-languageserver-protocol/node.js", () => ({
 	createMessageConnection: mock(() => ({
 		listen: () => {},
-		sendRequest: async (method: string) => {
+		sendRequest: async (method: string, params: unknown) => {
 			const lastCommand = spawnCalls[spawnCalls.length - 1];
 			if (method === "initialize" && lastCommand && initFailCommands.has(lastCommand)) {
 				throw new Error(`Init failed for ${lastCommand}`);
+			}
+			if (method === "initialize") {
+				capturedInitParams = params;
 			}
 			return {};
 		},
@@ -105,6 +110,7 @@ describe("ServerManager repo-aware resolution", () => {
 		unavailableCommands.clear();
 		initFailCommands.clear();
 		spawnCalls.length = 0;
+		capturedInitParams = null;
 		_resetShellPathCacheForTests();
 	});
 
@@ -334,5 +340,31 @@ describe("ServerManager repo-aware resolution", () => {
 
 		const support = manager.getSupport(repoPath, "rust", "main.rust");
 		expect(support).toMatchObject({ supported: true, reason: "language" });
+	});
+
+	test("forwards initializationOptions to the initialize request", async () => {
+		const manager = new ServerManager();
+		const configWithOpts: MockConfig = {
+			id: "withopts",
+			command: process.execPath,
+			args: [],
+			languages: ["withopts"],
+			fileExtensions: [".withopts"],
+			rootMarkers: [".git"],
+			disabled: false,
+			initializationOptions: { foo: "bar", nested: { x: 1 } },
+		};
+		const repoPath = createRepoWithConfig("initopts", [configWithOpts]);
+
+		capturedInitParams = null;
+		await manager.getOrCreate("withopts", repoPath);
+
+		expect(capturedInitParams).not.toBeNull();
+		const params = capturedInitParams as {
+			initializationOptions?: { foo: string; nested: { x: number } };
+		};
+		expect(params.initializationOptions).toEqual({ foo: "bar", nested: { x: 1 } });
+
+		await manager.disposeAll();
 	});
 });
