@@ -2,19 +2,12 @@ import * as monaco from "monaco-editor";
 import { initVimMode } from "monaco-vim";
 import { useEffect, useRef, useState } from "react";
 import { EDITOR_THEME, ensureThemeRegistered } from "../lib/monacoTheme";
-import {
-	clearModelRepoPath,
-	registerLspProviders,
-	sendDidChange,
-	sendDidClose,
-	sendDidOpen,
-	setModelRepoPath,
-} from "../lsp/monaco-lsp-bridge";
 import { useEditorSettingsStore } from "../stores/editor-settings";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import { MarkdownPreviewButton } from "./MarkdownPreviewButton";
 import { MarkdownRenderer } from "./MarkdownRenderer";
+import { useFileEditorLsp } from "./editor/useFileEditorLsp";
 
 interface FileEditorProps {
 	tabId: string;
@@ -42,7 +35,7 @@ export function FileEditor({
 	const vimStatusRef = useRef<HTMLDivElement>(null);
 	const vimModeRef = useRef<ReturnType<typeof initVimMode> | null>(null);
 	const [editorReady, setEditorReady] = useState(false);
-	const [lspMessage, setLspMessage] = useState<string | null>(null);
+	const [currentModel, setCurrentModel] = useState<monaco.editor.ITextModel | null>(null);
 	const vimEnabled = useEditorSettingsStore((s) => s.vimEnabled);
 	const markdownPreviewMode = useTabStore((s) => s.markdownPreviewMode);
 	const [previewContent, setPreviewContent] = useState("");
@@ -54,6 +47,16 @@ export function FileEditor({
 			utils.diff.getWorkingTreeStatus.invalidate({ repoPath });
 		},
 	});
+	const { message: lspMessage, onContentChanged: onLspContentChanged } = useFileEditorLsp(
+		currentModel,
+		repoPath,
+		language,
+		filePath
+	);
+	const onLspContentChangedRef = useRef(onLspContentChanged);
+	useEffect(() => {
+		onLspContentChangedRef.current = onLspContentChanged;
+	}, [onLspContentChanged]);
 
 	// Clear initialPosition from store immediately so re-mounts (tab switch away/back) do not re-navigate.
 	// tabId and clearInitialPosition are intentionally excluded: this runs on mount only, and tabId
@@ -109,6 +112,7 @@ export function FileEditor({
 		if (existingModel) existingModel.dispose();
 		const model = monaco.editor.createModel(data.content, language, fileUri);
 		editor.setModel(model);
+		setCurrentModel(model);
 		setPreviewContent(data.content);
 
 		// Use the ref (captured at mount) so re-renders after store clear do not re-navigate
@@ -119,42 +123,7 @@ export function FileEditor({
 			initialPositionRef.current = undefined; // consume once
 		}
 
-		// LSP integration
-		const uri = model.uri.toString();
-		let lspEnabled = false;
-		let disposed = false;
 		let version = 1;
-
-		void (async () => {
-			try {
-				setLspMessage(null);
-				const support = await window.electron.lsp.getSupport({
-					repoPath,
-					languageId: language,
-					filePath,
-				});
-				if (disposed) return;
-				if (!support.supported) {
-					if (support.reason === "missing-binary") {
-						setLspMessage(
-							`Language server executable not found for ${language}. Editing still works without LSP features.`
-						);
-					} else if (support.reason === "untrusted-repo") {
-						setLspMessage(
-							"This repository ships its own LSP config in .superiorswarm/lsp.json, but the repo is not trusted. Open Settings → Language Servers to review and trust it."
-						);
-					}
-					return;
-				}
-				lspEnabled = true;
-				setModelRepoPath(uri, repoPath);
-				registerLspProviders(language);
-				sendDidOpen(repoPath, language, uri, model.getValue(), version);
-			} catch {
-				// Keep editor behavior stable when support checks fail.
-			}
-		})();
-
 		const sub = model.onDidChangeContent(() => {
 			if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
 			saveTimerRef.current = setTimeout(() => {
@@ -165,21 +134,15 @@ export function FileEditor({
 				setPreviewContent(model.getValue());
 			}, 300);
 
-			if (lspEnabled) {
-				version++;
-				sendDidChange(repoPath, language, uri, model.getValue(), version);
-			}
+			version++;
+			onLspContentChangedRef.current(version);
 		});
 
 		return () => {
-			disposed = true;
 			sub.dispose();
 			if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
 			if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
-			if (lspEnabled) {
-				sendDidClose(repoPath, language, uri);
-			}
-			clearModelRepoPath(uri);
+			setCurrentModel(null);
 			model.dispose();
 		};
 	}, [data, language, repoPath, filePath]);
