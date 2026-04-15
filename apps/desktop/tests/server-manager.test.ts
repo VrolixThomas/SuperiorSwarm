@@ -67,6 +67,11 @@ mock.module("node:child_process", () => ({
 	execSync: mock(() => ""),
 }));
 
+mock.module("../src/main/lsp/trust", () => ({
+	getRepoTrust: () => ({ trusted: true, decided: true }),
+	setRepoTrust: () => {},
+}));
+
 mock.module("vscode-languageserver-protocol/node.js", () => ({
 	createMessageConnection: mock(() => ({
 		listen: () => {},

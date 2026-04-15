@@ -232,6 +232,13 @@
       "when": 1776281413163,
       "tag": "0032_slippery_silhouette",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "6",
+      "when": 1776289333616,
+      "tag": "0033_slim_bulldozer",
+      "breakpoints": true
     }
   ]
 }

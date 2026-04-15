@@ -59,8 +59,6 @@ export interface AgentAlertAPI {
 	onAlert: (callback: (event: AgentEvent) => void) => () => void;
 }
 
-export type LspSupportReason = "language" | "extension" | "unconfigured" | "missing-binary";
-
 export type LspSupportResponse =
 	| {
 			supported: true;
@@ -69,8 +67,7 @@ export type LspSupportResponse =
 	  }
 	| {
 			supported: false;
-			reason: "unconfigured" | "missing-binary";
-			error?: string;
+			reason: "unconfigured" | "missing-binary" | "untrusted-repo";
 	  };
 
 export interface LspHealthEntry {

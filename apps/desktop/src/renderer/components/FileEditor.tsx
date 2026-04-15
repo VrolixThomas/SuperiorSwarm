@@ -139,6 +139,10 @@ export function FileEditor({
 						setLspMessage(
 							`Language server executable not found for ${language}. Editing still works without LSP features.`
 						);
+					} else if (support.reason === "untrusted-repo") {
+						setLspMessage(
+							"This repository ships its own LSP config in .superiorswarm/lsp.json, but the repo is not trusted. Open Settings → Language Servers to review and trust it."
+						);
 					}
 					return;
 				}

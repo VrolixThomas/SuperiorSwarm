@@ -17,6 +17,7 @@ import {
 	loadUserConfig,
 	resolveSupport,
 } from "./registry";
+import { getRepoTrust } from "./trust";
 
 export interface ServerConfig {
 	id: string;
@@ -35,7 +36,7 @@ export type LspSupportResult =
 	  }
 	| {
 			supported: false;
-			reason: "unconfigured" | "missing-binary";
+			reason: "unconfigured" | "missing-binary" | "untrusted-repo";
 			config?: ServerConfig;
 	  };
 
@@ -294,10 +295,14 @@ export class ServerManager {
 
 	private getRegistry(repoPath?: string) {
 		const normalizedRepoPath = repoPath?.trim();
+		const repoConfig =
+			normalizedRepoPath && getRepoTrust(normalizedRepoPath).trusted
+				? loadRepoConfig(normalizedRepoPath)
+				: [];
 		return buildRegistry({
 			defaults: DEFAULT_SERVER_CONFIGS,
 			user: loadUserConfig(),
-			repo: normalizedRepoPath ? loadRepoConfig(normalizedRepoPath) : [],
+			repo: repoConfig,
 			env: {
 				...process.env,
 				workspaceFolder: normalizedRepoPath,
@@ -362,34 +367,49 @@ export class ServerManager {
 			filePath,
 		});
 
-		if (!support.supported) {
+		if (support.supported) {
+			const config = this.toServerConfig(support.config);
+			const unavailableKey = this.serverKey(config.id, repoPath);
+			const executableAvailable = this.isServerExecutableAvailable(config.command, repoPath);
+
+			if (!executableAvailable) {
+				this.unavailableServers.add(unavailableKey);
+				this.serverLastErrors.set(unavailableKey, `Executable not found: ${config.command}`);
+				return {
+					supported: false,
+					reason: "missing-binary",
+					config,
+				};
+			}
+
+			this.unavailableServers.delete(unavailableKey);
+			this.serverLastErrors.delete(unavailableKey);
+
 			return {
-				supported: false,
+				supported: true,
 				reason: support.reason,
-			};
-		}
-
-		const config = this.toServerConfig(support.config);
-		const unavailableKey = this.serverKey(config.id, repoPath);
-		const executableAvailable = this.isServerExecutableAvailable(config.command, repoPath);
-
-		if (!executableAvailable) {
-			this.unavailableServers.add(unavailableKey);
-			this.serverLastErrors.set(unavailableKey, `Executable not found: ${config.command}`);
-			return {
-				supported: false,
-				reason: "missing-binary",
 				config,
 			};
 		}
 
-		this.unavailableServers.delete(unavailableKey);
-		this.serverLastErrors.delete(unavailableKey);
+		// Shadow check: would an untrusted repo config have matched?
+		const normalized = repoPath.trim();
+		if (normalized && !getRepoTrust(normalized).trusted) {
+			const shadowRegistry = buildRegistry({
+				defaults: [],
+				user: [],
+				repo: loadRepoConfig(normalized),
+				env: { ...process.env, workspaceFolder: normalized },
+			});
+			const shadow = resolveSupport(shadowRegistry, { languageId, filePath });
+			if (shadow.supported) {
+				return { supported: false, reason: "untrusted-repo" };
+			}
+		}
 
 		return {
-			supported: true,
+			supported: false,
 			reason: support.reason,
-			config,
 		};
 	}
 

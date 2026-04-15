@@ -9,6 +9,7 @@ import {
 	saveConfigFile,
 } from "../../lsp/registry";
 import { serverManager } from "../../lsp/server-manager";
+import { getRepoTrust, setRepoTrust } from "../../lsp/trust";
 import { publicProcedure, router } from "../index";
 
 const serverInputSchema = z.object({
@@ -107,6 +108,17 @@ export const lspRouter = router({
 
 			existing.push({ ...baseConfig, id: input.id, disabled: !input.enabled });
 			saveConfigFile(configPath, existing);
+			return { ok: true };
+		}),
+
+	getRepoTrust: publicProcedure
+		.input(z.object({ repoPath: z.string().min(1) }))
+		.query(({ input }) => getRepoTrust(input.repoPath)),
+
+	setRepoTrust: publicProcedure
+		.input(z.object({ repoPath: z.string().min(1), trusted: z.boolean() }))
+		.mutation(({ input }) => {
+			setRepoTrust(input.repoPath, input.trusted);
 			return { ok: true };
 		}),
 });
