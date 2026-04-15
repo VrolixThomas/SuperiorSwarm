@@ -47,11 +47,9 @@ export const lspRouter = router({
 		return { servers: loadUserConfig() };
 	}),
 
-	getRepoConfig: publicProcedure
-		.input(z.object({ repoPath: z.string() }))
-		.query(({ input }) => {
-			return { servers: loadRepoConfig(input.repoPath) };
-		}),
+	getRepoConfig: publicProcedure.input(z.object({ repoPath: z.string() })).query(({ input }) => {
+		return { servers: loadRepoConfig(input.repoPath) };
+	}),
 
 	saveUserConfig: publicProcedure
 		.input(z.object({ servers: z.array(serverInputSchema) }))
@@ -82,33 +80,32 @@ export const lspRouter = router({
 			}
 
 			const configPath =
-				input.scope === "user"
-					? getUserConfigPath()
-					: getRepoConfigPath(input.repoPath ?? "");
+				input.scope === "user" ? getUserConfigPath() : getRepoConfigPath(input.repoPath ?? "");
 
 			const existing =
 				input.scope === "user" ? loadUserConfig() : loadRepoConfig(input.repoPath ?? "");
 
 			const index = existing.findIndex((s) => s.id === input.id);
 			if (index >= 0) {
-				existing[index] = { ...existing[index], disabled: !input.enabled };
-			} else {
-				// Look up defaults or presets for the full config
-				const defaultConfig = DEFAULT_SERVER_CONFIGS.find((c) => c.id === input.id);
-				const presetConfig = LSP_PRESETS.find((p) => p.id === input.id)?.config;
-				const baseConfig = defaultConfig ?? presetConfig;
-
-				existing.push({
-					id: input.id,
-					command: baseConfig?.command ?? input.id,
-					args: baseConfig?.args ?? [],
-					languages: baseConfig?.languages ?? [],
-					fileExtensions: baseConfig?.fileExtensions ?? [],
-					rootMarkers: baseConfig?.rootMarkers ?? [".git"],
-					disabled: !input.enabled,
-				});
+				const current = existing[index];
+				if (current) {
+					existing[index] = { ...current, disabled: !input.enabled };
+				}
+				saveConfigFile(configPath, existing);
+				return { ok: true };
 			}
 
+			const baseConfig =
+				DEFAULT_SERVER_CONFIGS.find((c) => c.id === input.id) ??
+				LSP_PRESETS.find((p) => p.id === input.id)?.config;
+
+			if (!baseConfig) {
+				throw new Error(
+					`Unknown server id "${input.id}". Add the server via saveUserConfig/saveRepoConfig first.`
+				);
+			}
+
+			existing.push({ ...baseConfig, id: input.id, disabled: !input.enabled });
 			saveConfigFile(configPath, existing);
 			return { ok: true };
 		}),

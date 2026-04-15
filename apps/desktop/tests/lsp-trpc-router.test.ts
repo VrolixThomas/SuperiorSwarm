@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -16,10 +16,21 @@ const { t } = await import("../src/main/trpc/index");
 
 const caller = t.createCallerFactory(lspRouter)({});
 
+let tmpHome: string;
+let originalHome: string | undefined;
+
 describe("lsp tRPC router", () => {
 	beforeEach(() => {
 		mockServerManager.getHealth.mockReset();
 		mockServerManager.getHealth.mockImplementation(() => []);
+		tmpHome = mkdtempSync(join(tmpdir(), "ss-lsp-router-"));
+		originalHome = process.env["HOME"];
+		process.env["HOME"] = tmpHome;
+	});
+
+	afterEach(() => {
+		process.env["HOME"] = originalHome;
+		rmSync(tmpHome, { recursive: true, force: true });
 	});
 
 	describe("getHealth", () => {
@@ -181,6 +192,38 @@ describe("lsp tRPC router", () => {
 				expect(python).toBeDefined();
 				expect(python.disabled).toBe(true);
 				expect(python.command).toBe("pyright-langserver"); // from DEFAULT_SERVER_CONFIGS
+			} finally {
+				rmSync(testDir, { recursive: true, force: true });
+			}
+		});
+
+		test("rejects unknown id not in defaults or presets", async () => {
+			const testDir = join(tmpdir(), `ss-lsp-trpc-unknown-${Date.now()}`);
+			try {
+				await expect(
+					caller.setServerEnabled({
+						id: "totally-unknown-server-xyz",
+						scope: "repo",
+						enabled: true,
+						repoPath: testDir,
+					})
+				).rejects.toThrow(/unknown server id/i);
+			} finally {
+				rmSync(testDir, { recursive: true, force: true });
+			}
+		});
+
+		test("accepts known built-in id", async () => {
+			// go is in DEFAULT_SERVER_CONFIGS; this should not throw
+			const testDir = join(tmpdir(), `ss-lsp-trpc-builtin-${Date.now()}`);
+			try {
+				const result = await caller.setServerEnabled({
+					id: "go",
+					scope: "repo",
+					enabled: false,
+					repoPath: testDir,
+				});
+				expect(result.ok).toBe(true);
 			} finally {
 				rmSync(testDir, { recursive: true, force: true });
 			}
