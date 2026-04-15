@@ -14,7 +14,8 @@ import {
 	DEFAULT_SERVER_CONFIGS,
 	buildRegistry,
 	loadRepoConfig,
-	loadUserConfig,
+	loadRepoConfigCached,
+	loadUserConfigCached,
 	resolveSupport,
 } from "./registry";
 import { getRepoTrust } from "./trust";
@@ -297,11 +298,11 @@ export class ServerManager {
 		const normalizedRepoPath = repoPath?.trim();
 		const repoConfig =
 			normalizedRepoPath && getRepoTrust(normalizedRepoPath).trusted
-				? loadRepoConfig(normalizedRepoPath)
+				? loadRepoConfigCached(normalizedRepoPath)
 				: [];
 		return buildRegistry({
 			defaults: DEFAULT_SERVER_CONFIGS,
-			user: loadUserConfig(),
+			user: loadUserConfigCached(),
 			repo: repoConfig,
 			env: {
 				...process.env,

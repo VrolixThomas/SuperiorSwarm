@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { z } from "zod";
@@ -268,6 +268,7 @@ export function saveConfigFile(path: string, servers: LanguageServerConfig[]): v
 
 	mkdirSync(dirname(path), { recursive: true });
 	writeFileSync(path, JSON.stringify({ servers }, null, "\t"), "utf8");
+	fsCache.delete(path);
 }
 
 function normalizeExtension(extension: string): string | null {
@@ -307,4 +308,47 @@ function interpolate(value: string, env: Record<string, string | undefined>): st
 		}
 		return env[key] ?? "";
 	});
+}
+
+// ---------------------------------------------------------------------------
+// FS-level cache keyed on absolute config path + mtime
+// ---------------------------------------------------------------------------
+
+interface CacheEntry {
+	mtimeMs: number;
+	servers: LanguageServerConfig[];
+}
+
+const fsCache = new Map<string, CacheEntry>();
+
+export function _clearRegistryFsCache(): void {
+	fsCache.clear();
+}
+
+function loadConfigFileCached(path: string): LanguageServerConfig[] {
+	let mtimeMs: number;
+	try {
+		mtimeMs = statSync(path).mtimeMs;
+	} catch {
+		const cached = fsCache.get(path);
+		if (cached && cached.mtimeMs === -1) return cached.servers;
+		const empty: LanguageServerConfig[] = [];
+		fsCache.set(path, { mtimeMs: -1, servers: empty });
+		return empty;
+	}
+
+	const cached = fsCache.get(path);
+	if (cached && cached.mtimeMs === mtimeMs) return cached.servers;
+
+	const servers = loadConfigFile(path);
+	fsCache.set(path, { mtimeMs, servers });
+	return servers;
+}
+
+export function loadUserConfigCached(): LanguageServerConfig[] {
+	return loadConfigFileCached(join(homedir(), ".config", "superiorswarm", "lsp.json"));
+}
+
+export function loadRepoConfigCached(repoPath: string): LanguageServerConfig[] {
+	return loadConfigFileCached(join(repoPath, ".superiorswarm", "lsp.json"));
 }
