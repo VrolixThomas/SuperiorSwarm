@@ -362,18 +362,6 @@ export class ServerManager {
 		return this.getResolvedConfig(repoPath, languageId, filePath) ?? undefined;
 	}
 
-	findConfigByExtension(filePath: string, repoPath?: string): ServerConfig | undefined {
-		if (!repoPath) {
-			return undefined;
-		}
-
-		const support = resolveSupport(this.getRegistry(repoPath), {
-			languageId: "",
-			filePath,
-		});
-		return support.supported ? this.toServerConfig(support.config) : undefined;
-	}
-
 	getSupport(repoPath: string, languageId: string, filePath: string): LspSupportResult {
 		const registry = this.getRegistry(repoPath);
 		const support = resolveSupport(registry, { languageId, filePath });
