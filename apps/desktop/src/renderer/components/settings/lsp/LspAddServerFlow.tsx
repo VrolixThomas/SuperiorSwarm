@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { LanguageServerConfig, LspPreset } from "../../../../shared/lsp-schema";
+import { parseArgs, stringifyArgs } from "../../../lsp/arg-parse";
 import { LspPresetPicker } from "./LspPresetPicker";
 import { LspServerForm, type ServerFormData } from "./LspServerForm";
 
@@ -18,7 +19,7 @@ function configToFormData(config: LanguageServerConfig): ServerFormData {
 	return {
 		id: config.id,
 		command: config.command,
-		args: config.args.join(" "),
+		args: stringifyArgs(config.args),
 		fileExtensions: config.fileExtensions.join(", "),
 		languages: config.languages.join(", "),
 		rootMarkers: config.rootMarkers.join(", "),
@@ -42,10 +43,7 @@ function formDataToConfig(data: ServerFormData): LanguageServerConfig {
 	return {
 		id: data.id,
 		command: data.command.trim(),
-		args: data.args
-			.split(/\s+/)
-			.map((s) => s.trim())
-			.filter(Boolean),
+		args: parseArgs(data.args),
 		languages: data.languages
 			.split(",")
 			.map((s) => s.trim())
