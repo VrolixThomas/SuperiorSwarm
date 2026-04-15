@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { safeStorage } from "electron";
 import { getDb } from "../db";
 import { linearAuth } from "../db/schema";
+import { markProviderConnected } from "../telemetry/state";
 import {
 	LINEAR_API_URL,
 	LINEAR_CLIENT_ID,
@@ -71,6 +72,7 @@ export function saveAuth(data: {
 			},
 		})
 		.run();
+	markProviderConnected(db, "linear");
 }
 
 export function deleteAuth() {

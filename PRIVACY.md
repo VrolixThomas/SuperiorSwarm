@@ -12,7 +12,7 @@ Once per day (and once immediately after you first sign in), the app sends a sin
 
 - **Environment:** app version, OS platform (darwin / win32 / linux), CPU arch, locale.
 - **Lifecycle:** when you first launched the app, when you first signed in, when this snapshot was sent.
-- **Integrations:** booleans indicating whether GitHub, Linear, Jira, or Bitbucket is connected (never any tokens or account identifiers).
+- **Integrations:** booleans indicating whether you have ever connected GitHub, Linear, Jira, or Bitbucket (never any tokens or account identifiers).
 - **Feature usage:** booleans for whether you've ever used AI review and comment solver.
 - **Cumulative counters:** total number of terminal sessions started, reviews started, and comments solved over the lifetime of the install.
 - **Auth provider:** which OAuth provider you signed in with (github / apple).

@@ -10,10 +10,10 @@ export interface UsageSnapshot {
 	first_signed_in_at: string | null; // ISO string
 	last_synced_at: string; // ISO string
 	auth_provider: string | null;
-	github_connected: boolean;
-	linear_connected: boolean;
-	jira_connected: boolean;
-	bitbucket_connected: boolean;
+	ever_connected_github: boolean;
+	ever_connected_linear: boolean;
+	ever_connected_jira: boolean;
+	ever_connected_bitbucket: boolean;
 	ever_used_ai_review: boolean;
 	ever_used_comment_solver: boolean;
 	lifetime_sessions_started: number;

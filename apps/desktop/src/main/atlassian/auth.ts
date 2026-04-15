@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { safeStorage } from "electron";
 import { getDb } from "../db";
 import { atlassianAuth } from "../db/schema";
+import { markProviderConnected } from "../telemetry/state";
 import {
 	BITBUCKET_CLIENT_ID,
 	BITBUCKET_CLIENT_SECRET,
@@ -80,6 +81,7 @@ export function saveAuth(data: {
 			},
 		})
 		.run();
+	markProviderConnected(db, data.service);
 }
 
 export function deleteAuth(service: Service) {

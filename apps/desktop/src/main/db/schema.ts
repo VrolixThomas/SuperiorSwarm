@@ -385,6 +385,16 @@ export const telemetryState = sqliteTable("telemetry_state", {
 	lifetimeSessionsStarted: integer("lifetime_sessions_started").notNull().default(0),
 	lifetimeReviewsStarted: integer("lifetime_reviews_started").notNull().default(0),
 	lifetimeCommentsSolved: integer("lifetime_comments_solved").notNull().default(0),
+	everConnectedGithub: integer("ever_connected_github", { mode: "boolean" })
+		.notNull()
+		.default(false),
+	everConnectedLinear: integer("ever_connected_linear", { mode: "boolean" })
+		.notNull()
+		.default(false),
+	everConnectedJira: integer("ever_connected_jira", { mode: "boolean" }).notNull().default(false),
+	everConnectedBitbucket: integer("ever_connected_bitbucket", { mode: "boolean" })
+		.notNull()
+		.default(false),
 });
 
 export type TelemetryState = typeof telemetryState.$inferSelect;

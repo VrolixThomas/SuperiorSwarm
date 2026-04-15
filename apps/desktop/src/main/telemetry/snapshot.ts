@@ -1,6 +1,4 @@
-import { sql } from "drizzle-orm";
 import type { drizzle } from "drizzle-orm/better-sqlite3";
-import type { AnySQLiteTable } from "drizzle-orm/sqlite-core";
 import type { UsageSnapshot } from "../../shared/telemetry";
 import * as schema from "../db/schema";
 import { getTelemetryState } from "./state";
@@ -16,19 +14,10 @@ export interface SnapshotEnv {
 	locale: string | null;
 }
 
-function hasAnyRow(db: Db, table: AnySQLiteTable): boolean {
-	return db.select({ one: sql`1` }).from(table).limit(1).get() !== undefined;
-}
-
 export function buildSnapshot(db: Db, env: SnapshotEnv): UsageSnapshot {
 	const state = getTelemetryState(db);
 	const lifetimeReviews = state?.lifetimeReviewsStarted ?? 0;
 	const lifetimeSolves = state?.lifetimeCommentsSolved ?? 0;
-
-	const atlassianServices = db
-		.select({ service: schema.atlassianAuth.service })
-		.from(schema.atlassianAuth)
-		.all();
 
 	return {
 		user_id: env.userId,
@@ -41,10 +30,10 @@ export function buildSnapshot(db: Db, env: SnapshotEnv): UsageSnapshot {
 		last_synced_at: new Date().toISOString(),
 		auth_provider: env.authProvider,
 
-		github_connected: hasAnyRow(db, schema.githubAuth),
-		linear_connected: hasAnyRow(db, schema.linearAuth),
-		jira_connected: atlassianServices.some((s) => s.service === "jira"),
-		bitbucket_connected: atlassianServices.some((s) => s.service === "bitbucket"),
+		ever_connected_github: state?.everConnectedGithub ?? false,
+		ever_connected_linear: state?.everConnectedLinear ?? false,
+		ever_connected_jira: state?.everConnectedJira ?? false,
+		ever_connected_bitbucket: state?.everConnectedBitbucket ?? false,
 
 		ever_used_ai_review: lifetimeReviews > 0,
 		ever_used_comment_solver: lifetimeSolves > 0,

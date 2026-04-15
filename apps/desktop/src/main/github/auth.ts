@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { safeStorage } from "electron";
 import { getDb } from "../db";
 import { githubAuth } from "../db/schema";
+import { markProviderConnected } from "../telemetry/state";
 import { GITHUB_API_BASE } from "./constants";
 
 const GITHUB_AUTH_ID = "github";
@@ -53,6 +54,7 @@ export function saveAuth(data: {
 			},
 		})
 		.run();
+	markProviderConnected(db, "github");
 }
 
 export function deleteAuth() {

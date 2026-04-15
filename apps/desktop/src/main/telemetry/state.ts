@@ -53,3 +53,20 @@ export function incrementCounter(db: Db, key: CounterKey): void {
 		log.debug("[telemetry] incrementCounter failed:", err);
 	}
 }
+
+export type ConnectableProvider = "github" | "linear" | "jira" | "bitbucket";
+
+const PROVIDER_COLUMN: Record<ConnectableProvider, keyof schema.NewTelemetryState> = {
+	github: "everConnectedGithub",
+	linear: "everConnectedLinear",
+	jira: "everConnectedJira",
+	bitbucket: "everConnectedBitbucket",
+};
+
+export function markProviderConnected(db: Db, provider: ConnectableProvider): void {
+	try {
+		updateSingleton(db, { [PROVIDER_COLUMN[provider]]: true });
+	} catch (err) {
+		log.debug("[telemetry] markProviderConnected failed:", err);
+	}
+}

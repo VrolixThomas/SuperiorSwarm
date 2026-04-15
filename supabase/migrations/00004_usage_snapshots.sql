@@ -13,11 +13,11 @@ create table public.usage_snapshots (
 	last_synced_at timestamptz not null default now(),
 	auth_provider text,
 
-	-- integration adoption
-	github_connected boolean not null default false,
-	linear_connected boolean not null default false,
-	jira_connected boolean not null default false,
-	bitbucket_connected boolean not null default false,
+	-- integration adoption (sticky: set on first successful OAuth, never reset)
+	ever_connected_github boolean not null default false,
+	ever_connected_linear boolean not null default false,
+	ever_connected_jira boolean not null default false,
+	ever_connected_bitbucket boolean not null default false,
 
 	-- feature adoption
 	ever_used_ai_review boolean not null default false,
