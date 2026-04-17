@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import { languageServerConfigSchema } from "../../../shared/lsp-schema";
 import { launchInstallAgent } from "../../lsp/agent-install";
-import { detectSuggestions } from "../../lsp/detect";
+import { _clearDetectCache, detectSuggestions } from "../../lsp/detect";
 import {
 	dismissLanguage,
 	getDismissedLanguages,
@@ -75,6 +75,7 @@ export const lspRouter = router({
 		.mutation(async ({ input }) => {
 			const prior = loadUserConfigCached();
 			saveConfigFile(getUserConfigPath(), input.servers);
+			_clearDetectCache();
 			const changed = serverManager.diffChangedIds(prior, input.servers);
 			await Promise.all([...changed].map((id) => serverManager.evictServer(id)));
 			return { ok: true };
@@ -85,6 +86,7 @@ export const lspRouter = router({
 		.mutation(async ({ input }) => {
 			const prior = loadRepoConfigCached(input.repoPath);
 			saveConfigFile(getRepoConfigPath(input.repoPath), input.servers);
+			_clearDetectCache();
 			const changed = serverManager.diffChangedIds(prior, input.servers);
 			await Promise.all([...changed].map((id) => serverManager.evictServer(id, input.repoPath)));
 			return { ok: true };

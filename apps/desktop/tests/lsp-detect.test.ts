@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { detectSuggestions } from "../src/main/lsp/detect";
+import { _clearDetectCache, detectSuggestions } from "../src/main/lsp/detect";
 
 let repo: string;
 
@@ -108,5 +108,44 @@ describe("detectSuggestions", () => {
 	test("returns empty list for an empty repo", () => {
 		const result = detectSuggestions(repo, { alreadyConfigured: new Set() });
 		expect(result).toEqual([]);
+	});
+
+	test("returns cached result within TTL (same reference)", () => {
+		_clearDetectCache();
+		touch("src/a.py");
+		const configured = new Set<string>();
+		const first = detectSuggestions(repo, { alreadyConfigured: configured });
+
+		// add new file — cache must NOT reflect it
+		touch("src/b.py");
+		const second = detectSuggestions(repo, { alreadyConfigured: configured });
+
+		expect(second).toBe(first);
+		_clearDetectCache();
+	});
+
+	test("rewalks after _clearDetectCache", () => {
+		_clearDetectCache();
+		touch("src/a.py");
+		const first = detectSuggestions(repo, { alreadyConfigured: new Set() });
+		touch("src/b.py");
+		_clearDetectCache();
+		const second = detectSuggestions(repo, { alreadyConfigured: new Set() });
+
+		expect(second).not.toBe(first);
+		const py = second.find((s) => s.id === "python");
+		expect(py).toBeDefined();
+		expect(py?.fileCount).toBe(2);
+		_clearDetectCache();
+	});
+
+	test("misses cache when alreadyConfigured signature changes", () => {
+		_clearDetectCache();
+		touch("src/a.py");
+		const first = detectSuggestions(repo, { alreadyConfigured: new Set() });
+		const second = detectSuggestions(repo, { alreadyConfigured: new Set(["python"]) });
+
+		expect(second).not.toBe(first);
+		_clearDetectCache();
 	});
 });

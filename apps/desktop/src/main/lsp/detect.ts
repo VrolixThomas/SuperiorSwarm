@@ -39,6 +39,24 @@ const IGNORED_DIRS = new Set([
 	".mypy_cache",
 ]);
 
+const DETECT_CACHE_TTL_MS = 30_000;
+
+interface DetectCacheEntry {
+	expiresAt: number;
+	signature: string;
+	result: LspDetectSuggestion[];
+}
+
+const detectCache = new Map<string, DetectCacheEntry>();
+
+export function _clearDetectCache(): void {
+	detectCache.clear();
+}
+
+function signatureFor(alreadyConfigured: Set<string>): string {
+	return [...alreadyConfigured].sort().join("\u0000");
+}
+
 interface CandidateIndex {
 	id: string;
 	displayName: string;
@@ -70,6 +88,13 @@ function buildIndex(skip: Set<string>): CandidateIndex[] {
 }
 
 export function detectSuggestions(repoPath: string, opts: DetectOptions): LspDetectSuggestion[] {
+	const signature = signatureFor(opts.alreadyConfigured);
+	const now = Date.now();
+	const cached = detectCache.get(repoPath);
+	if (cached && cached.signature === signature && cached.expiresAt > now) {
+		return cached.result;
+	}
+
 	const maxFiles = opts.maxFiles ?? DEFAULT_MAX_FILES;
 	const maxDepth = opts.maxDepth ?? DEFAULT_MAX_DEPTH;
 	const index = buildIndex(opts.alreadyConfigured);
@@ -146,5 +171,11 @@ export function detectSuggestions(repoPath: string, opts: DetectOptions): LspDet
 		});
 	}
 	result.sort((a, b) => b.fileCount - a.fileCount);
+
+	detectCache.set(repoPath, {
+		expiresAt: now + DETECT_CACHE_TTL_MS,
+		signature,
+		result,
+	});
 	return result;
 }
