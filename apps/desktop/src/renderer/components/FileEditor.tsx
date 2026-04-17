@@ -59,6 +59,9 @@ export function FileEditor({
 	const dismissLanguageMut = trpc.lsp.dismissLanguage.useMutation({
 		onSuccess: () => utilsForLsp.lsp.getDismissedLanguages.invalidate(),
 	});
+	const dismissedQuery = trpc.lsp.getDismissedLanguages.useQuery();
+	const isLanguageDismissed =
+		lspReason === "missing-binary" && (dismissedQuery.data ?? []).includes(language);
 	const openLspSettings = () => {
 		const { openSettings, setSettingsCategory } = useProjectStore.getState();
 		openSettings();
@@ -210,7 +213,7 @@ export function FileEditor({
 				className="flex h-full w-full flex-col"
 				style={isLoading ? { display: "none" } : undefined}
 			>
-				{lspMessage && (
+				{lspMessage && !isLanguageDismissed && (
 					<div className="flex items-center justify-between gap-2 border-b border-[rgba(255,159,10,0.35)] bg-[rgba(255,159,10,0.12)] px-3 py-2 text-[12px] text-[var(--color-warning)]">
 						<span>{lspMessage}</span>
 						<div className="flex shrink-0 items-center gap-1.5">

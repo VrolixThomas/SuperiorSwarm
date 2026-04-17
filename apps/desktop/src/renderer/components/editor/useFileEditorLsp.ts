@@ -31,15 +31,8 @@ export function useFileEditorLsp(
 	const [canTrust, setCanTrust] = useState(false);
 	const [refreshKey, setRefreshKey] = useState(0);
 	const setRepoTrust = trpc.lsp.setRepoTrust.useMutation();
-	const dismissedQuery = trpc.lsp.getDismissedLanguages.useQuery();
 	const utils = trpc.useUtils();
-	const stateRef = useRef({
-		enabled: false,
-		uri: "",
-	});
-
-	const dismissed = dismissedQuery.data ?? [];
-	const isDismissed = dismissed.includes(language);
+	const stateRef = useRef({ enabled: false, uri: "" });
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: refreshKey is an intentional trigger to re-run the support check after trusting the repo
 	useEffect(() => {
@@ -67,7 +60,6 @@ export function useFileEditorLsp(
 				if (disposed) return;
 				if (!support.supported) {
 					if (support.reason === "missing-binary") {
-						if (isDismissed) return;
 						setMessage(
 							`Language server missing for ${language}. Editing still works without LSP features.`
 						);
@@ -96,7 +88,7 @@ export function useFileEditorLsp(
 			}
 			clearModelRepoPath(uri);
 		};
-	}, [model, repoPath, language, filePath, refreshKey, isDismissed]);
+	}, [model, repoPath, language, filePath, refreshKey]);
 
 	const trustRepo = useCallback(async () => {
 		const normalized = repoPath?.trim();
