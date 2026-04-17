@@ -882,6 +882,10 @@ function configsEffectivelyEqual(a: LanguageServerConfig, b: LanguageServerConfi
 	if (a.command !== b.command) return false;
 	if (a.disabled !== b.disabled) return false;
 	if (!arraysEqual(a.args, b.args)) return false;
+	if (!arraysEqual(a.languages, b.languages)) return false;
+	if (!arraysEqual(a.fileExtensions, b.fileExtensions)) return false;
+	if (!arraysEqual(a.fileNames, b.fileNames)) return false;
+	if (!arraysEqual(a.rootMarkers, b.rootMarkers)) return false;
 	if (
 		JSON.stringify(a.initializationOptions ?? null) !==
 		JSON.stringify(b.initializationOptions ?? null)

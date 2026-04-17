@@ -515,6 +515,82 @@ describe("ServerManager repo-aware resolution", () => {
 		expect([...changed]).toEqual([]);
 	});
 
+	test("diffChangedIds flags change when fileExtensions differ", () => {
+		const manager = new ServerManager();
+		const base = {
+			id: "ext-change",
+			command: "foo",
+			args: [],
+			languages: ["ts"],
+			fileExtensions: [".ts"],
+			fileNames: [],
+			rootMarkers: [".git"],
+			disabled: false,
+		};
+		const changed = manager.diffChangedIds(
+			[base],
+			[{ ...base, fileExtensions: [...base.fileExtensions, ".tsx"] }]
+		);
+		expect([...changed]).toEqual([base.id]);
+	});
+
+	test("diffChangedIds flags change when rootMarkers differ", () => {
+		const manager = new ServerManager();
+		const base = {
+			id: "root-change",
+			command: "foo",
+			args: [],
+			languages: ["ts"],
+			fileExtensions: [".ts"],
+			fileNames: [],
+			rootMarkers: [".git"],
+			disabled: false,
+		};
+		const changed = manager.diffChangedIds(
+			[base],
+			[{ ...base, rootMarkers: [...base.rootMarkers, "package.json"] }]
+		);
+		expect([...changed]).toEqual([base.id]);
+	});
+
+	test("diffChangedIds flags change when fileNames differ", () => {
+		const manager = new ServerManager();
+		const base = {
+			id: "filenames-change",
+			command: "foo",
+			args: [],
+			languages: ["docker"],
+			fileExtensions: [],
+			fileNames: ["Dockerfile"],
+			rootMarkers: [".git"],
+			disabled: false,
+		};
+		const changed = manager.diffChangedIds(
+			[base],
+			[{ ...base, fileNames: [...base.fileNames, "Dockerfile.dev"] }]
+		);
+		expect([...changed]).toEqual([base.id]);
+	});
+
+	test("diffChangedIds flags change when languages differ", () => {
+		const manager = new ServerManager();
+		const base = {
+			id: "lang-change",
+			command: "foo",
+			args: [],
+			languages: ["ts"],
+			fileExtensions: [".ts"],
+			fileNames: [],
+			rootMarkers: [".git"],
+			disabled: false,
+		};
+		const changed = manager.diffChangedIds(
+			[base],
+			[{ ...base, languages: [...base.languages, "tsx"] }]
+		);
+		expect([...changed]).toEqual([base.id]);
+	});
+
 	test("testServer returns capabilities on successful initialize", async () => {
 		const manager = new ServerManager();
 		const repoPath = createRepoWithConfig("test-ok", [buildConfig("testok", process.execPath)]);
