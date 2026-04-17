@@ -3,6 +3,7 @@ import { initVimMode } from "monaco-vim";
 import { useEffect, useRef, useState } from "react";
 import { EDITOR_THEME, ensureThemeRegistered } from "../lib/monacoTheme";
 import { useEditorSettingsStore } from "../stores/editor-settings";
+import { useProjectStore } from "../stores/projects";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import { MarkdownPreviewButton } from "./MarkdownPreviewButton";
@@ -49,10 +50,20 @@ export function FileEditor({
 	});
 	const {
 		message: lspMessage,
+		reason: lspReason,
 		canTrust,
 		trustRepo,
 		onContentChanged: onLspContentChanged,
 	} = useFileEditorLsp(currentModel, repoPath, language, filePath);
+	const utilsForLsp = trpc.useUtils();
+	const dismissLanguageMut = trpc.lsp.dismissLanguage.useMutation({
+		onSuccess: () => utilsForLsp.lsp.getDismissedLanguages.invalidate(),
+	});
+	const openLspSettings = () => {
+		const { openSettings, setSettingsCategory } = useProjectStore.getState();
+		openSettings();
+		setSettingsCategory("lsp");
+	};
 	// Ref keeps callback identity stable; the file-loading effect must not re-run
 	// when useFileEditorLsp returns a new onContentChanged (it churns on each model swap).
 	const onLspContentChangedRef = useRef(onLspContentChanged);
@@ -202,15 +213,35 @@ export function FileEditor({
 				{lspMessage && (
 					<div className="flex items-center justify-between gap-2 border-b border-[rgba(255,159,10,0.35)] bg-[rgba(255,159,10,0.12)] px-3 py-2 text-[12px] text-[var(--color-warning)]">
 						<span>{lspMessage}</span>
-						{canTrust && (
-							<button
-								type="button"
-								onClick={() => void trustRepo()}
-								className="shrink-0 rounded-[4px] border border-[var(--color-warning)] px-2 py-0.5 text-[11px] font-medium hover:bg-[rgba(255,159,10,0.2)]"
-							>
-								Trust this repo
-							</button>
-						)}
+						<div className="flex shrink-0 items-center gap-1.5">
+							{canTrust && (
+								<button
+									type="button"
+									onClick={() => void trustRepo()}
+									className="rounded-[4px] border border-[var(--color-warning)] px-2 py-0.5 text-[11px] font-medium hover:bg-[rgba(255,159,10,0.2)]"
+								>
+									Trust this repo
+								</button>
+							)}
+							{lspReason === "missing-binary" && (
+								<>
+									<button
+										type="button"
+										onClick={openLspSettings}
+										className="rounded-[4px] border border-[var(--color-warning)] px-2 py-0.5 text-[11px] font-medium hover:bg-[rgba(255,159,10,0.2)]"
+									>
+										Go to settings
+									</button>
+									<button
+										type="button"
+										onClick={() => dismissLanguageMut.mutate({ language })}
+										className="rounded-[4px] px-2 py-0.5 text-[11px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
+									>
+										Don't show
+									</button>
+								</>
+							)}
+						</div>
 					</div>
 				)}
 				{language === "markdown" && (

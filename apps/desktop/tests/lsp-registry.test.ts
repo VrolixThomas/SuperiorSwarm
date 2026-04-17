@@ -168,7 +168,7 @@ describe("resolveSupport", () => {
 			defaults: [],
 			user: [
 				{
-					id: "a",
+					id: "aa",
 					command: "a-ls",
 					args: [],
 					languages: ["foo"],
@@ -177,7 +177,7 @@ describe("resolveSupport", () => {
 					disabled: false,
 				},
 				{
-					id: "b",
+					id: "bb",
 					command: "b-ls",
 					args: [],
 					languages: ["bar"],
@@ -193,7 +193,7 @@ describe("resolveSupport", () => {
 		const byLanguage = resolveSupport(registry, { languageId: "foo", filePath: "x.foo" });
 		expect(byLanguage.supported).toBe(true);
 		if (byLanguage.supported) {
-			expect(byLanguage.config.id).toBe("a");
+			expect(byLanguage.config.id).toBe("aa");
 			expect(byLanguage.reason).toBe("language");
 		}
 
@@ -346,7 +346,7 @@ describe("loadRepoConfig", () => {
 			JSON.stringify({
 				servers: [
 					{
-						id: "x",
+						id: "xx",
 						command: "x",
 						initializationOptions: huge,
 					},
@@ -498,7 +498,7 @@ describe("saveConfigFile", () => {
 		mkdirSync(dirname(path), { recursive: true });
 
 		const cfg: LanguageServerConfig = {
-			id: "x",
+			id: "xx",
 			command: "x",
 			args: [],
 			languages: [],
@@ -525,7 +525,7 @@ describe("saveConfigFile", () => {
 		mkdirSync(dirname(path), { recursive: true });
 
 		const cfg: LanguageServerConfig = {
-			id: "x",
+			id: "xx",
 			command: "x",
 			args: [],
 			languages: [],

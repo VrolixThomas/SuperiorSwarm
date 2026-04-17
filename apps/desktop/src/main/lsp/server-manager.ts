@@ -9,6 +9,7 @@ import {
 	type MessageConnection,
 	createMessageConnection,
 } from "vscode-languageserver-protocol/node.js";
+import type { LanguageServerConfig } from "../../shared/lsp-schema";
 import type { LspHealthEntry } from "../../shared/types";
 import {
 	DEFAULT_SERVER_CONFIGS,
@@ -19,30 +20,20 @@ import {
 } from "./registry";
 import { getRepoTrust } from "./trust";
 
-export interface ServerConfig {
-	id: string;
-	command: string;
-	args: string[];
-	languages: string[];
-	fileExtensions: string[];
-	installHint?: string;
-	initializationOptions?: Record<string, unknown>;
-}
-
 export type LspSupportResult =
 	| {
 			supported: true;
 			reason: "language" | "extension";
-			config: ServerConfig;
+			config: LanguageServerConfig;
 	  }
 	| {
 			supported: false;
 			reason: "unconfigured" | "missing-binary" | "untrusted-repo";
-			config?: ServerConfig;
+			config?: LanguageServerConfig;
 	  };
 
 interface ServerInstance {
-	config: ServerConfig;
+	config: LanguageServerConfig;
 	connection: MessageConnection;
 	process: ChildProcess;
 	rootUri: string;
@@ -222,7 +213,7 @@ export class ServerManager {
 		return ["", ...extensions];
 	}
 
-	private isServerExecutableAvailable(config: ServerConfig, repoPath: string): boolean {
+	private isServerExecutableAvailable(config: LanguageServerConfig, repoPath: string): boolean {
 		const command = config.command.trim();
 		if (!command) return false;
 
@@ -243,7 +234,7 @@ export class ServerManager {
 		return available;
 	}
 
-	private syncAvailabilityState(config: ServerConfig, repoPath: string, available: boolean): void {
+	private syncAvailabilityState(config: LanguageServerConfig, repoPath: string, available: boolean): void {
 		const key = this.serverKey(config.id, repoPath);
 		if (available) {
 			this.unavailableServers.delete(key);
@@ -324,28 +315,20 @@ export class ServerManager {
 		});
 	}
 
-	private toServerConfig(config: {
-		id: string;
-		command: string;
-		args: string[];
-		languages: string[];
-		fileExtensions: string[];
-		installHint?: string;
-		initializationOptions?: Record<string, unknown>;
-	}): ServerConfig {
-		return { ...config };
-	}
-
-	private findConfigById(configId: string, repoPath: string): ServerConfig | undefined {
+	private findConfigById(configId: string, repoPath: string): LanguageServerConfig | undefined {
 		const config = this.getRegistry(repoPath).byId.get(configId);
 		if (!config || config.disabled) {
 			return undefined;
 		}
 
-		return this.toServerConfig(config);
+		return config;
 	}
 
-	getResolvedConfig(repoPath: string, languageId: string, filePath?: string): ServerConfig | null {
+	getResolvedConfig(
+		repoPath: string,
+		languageId: string,
+		filePath?: string
+	): LanguageServerConfig | null {
 		const registry = this.getRegistry(repoPath);
 		const support = resolveSupport(registry, {
 			languageId,
@@ -356,10 +339,14 @@ export class ServerManager {
 			return null;
 		}
 
-		return this.toServerConfig(support.config);
+		return support.config;
 	}
 
-	findConfig(languageId: string, repoPath: string, filePath?: string): ServerConfig | undefined {
+	findConfig(
+		languageId: string,
+		repoPath: string,
+		filePath?: string
+	): LanguageServerConfig | undefined {
 		return this.getResolvedConfig(repoPath, languageId, filePath) ?? undefined;
 	}
 
@@ -368,11 +355,10 @@ export class ServerManager {
 		const support = resolveSupport(registry, { languageId, filePath });
 
 		if (support.supported) {
-			const config = this.toServerConfig(support.config);
-			if (!this.isServerExecutableAvailable(config, repoPath)) {
-				return { supported: false, reason: "missing-binary", config };
+			if (!this.isServerExecutableAvailable(support.config, repoPath)) {
+				return { supported: false, reason: "missing-binary", config: support.config };
 			}
-			return { supported: true, reason: support.reason, config };
+			return { supported: true, reason: support.reason, config: support.config };
 		}
 
 		// Shadow check: would an untrusted repo config have matched?
@@ -396,16 +382,14 @@ export class ServerManager {
 		const registry = this.getRegistry(repoPath);
 		const entries: LspHealthEntry[] = [];
 
+		const searchedPath = resolveShellPath();
+
 		for (const config of registry.byId.values()) {
 			if (config.disabled) continue;
 
-			const serverConfig = this.toServerConfig(config);
-			const available = this.isServerExecutableAvailable(serverConfig, repoPath);
+			const available = this.isServerExecutableAvailable(config, repoPath);
 			const key = this.serverKey(config.id, repoPath);
 			const activeInstance = this.servers.get(key);
-			const installHint = config.installHint?.trim()
-				? config.installHint
-				: `Install '${config.command}' and ensure it is available on PATH.`;
 
 			entries.push({
 				id: config.id,
@@ -415,7 +399,7 @@ export class ServerManager {
 				lastStartupError: this.serverLastStartupErrors.get(key),
 				activeSessions: activeInstance ? 1 : 0,
 				activeSessionDocuments: activeInstance ? [...activeInstance.openDocuments] : [],
-				installHint,
+				searchedPath: available ? undefined : searchedPath,
 			});
 		}
 
@@ -672,6 +656,150 @@ export class ServerManager {
 		this.crashCounts.delete(key);
 	}
 
+	async testServer(
+		configId: string,
+		repoPath: string
+	): Promise<
+		{ ok: true; capabilities: unknown; serverInfo: unknown } | { ok: false; error: string }
+	> {
+		const config = this.findConfigById(configId, repoPath);
+		if (!config) {
+			return { ok: false, error: `No config for "${configId}"` };
+		}
+
+		if (!this.isServerExecutableAvailable(config, repoPath)) {
+			return { ok: false, error: `Binary "${config.command}" not found on PATH` };
+		}
+
+		let childProcess: ChildProcess;
+		try {
+			childProcess = spawn(config.command, config.args, {
+				cwd: repoPath,
+				stdio: ["pipe", "pipe", "pipe"],
+				env: buildServerEnv(),
+			});
+		} catch (err) {
+			return { ok: false, error: err instanceof Error ? err.message : String(err) };
+		}
+
+		if (!childProcess.stdin || !childProcess.stdout) {
+			try {
+				childProcess.kill();
+			} catch {}
+			return { ok: false, error: "No stdio streams" };
+		}
+
+		const spawnResult = await new Promise<true | string>((resolve) => {
+			const onSpawn = () => {
+				cleanup();
+				resolve(true);
+			};
+			const onError = (err: Error) => {
+				cleanup();
+				resolve(err.message);
+			};
+			const cleanup = () => {
+				childProcess.removeListener("spawn", onSpawn);
+				childProcess.removeListener("error", onError);
+			};
+			childProcess.on("spawn", onSpawn);
+			childProcess.on("error", onError);
+		});
+
+		if (spawnResult !== true) {
+			return { ok: false, error: spawnResult };
+		}
+
+		const connection = createMessageConnection(childProcess.stdout, childProcess.stdin);
+		connection.listen();
+
+		const initParams: InitializeParams = {
+			processId: process.pid,
+			capabilities: {},
+			rootUri: pathToFileURL(repoPath).toString(),
+			workspaceFolders: [
+				{ uri: pathToFileURL(repoPath).toString(), name: repoPath.split("/").pop() ?? "test" },
+			],
+			initializationOptions: config.initializationOptions,
+		};
+
+		let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+		try {
+			const initRaw = (await Promise.race([
+				connection.sendRequest("initialize", initParams),
+				new Promise((_, reject) => {
+					timeoutHandle = setTimeout(
+						() => reject(new Error("initialize timed out after 10s")),
+						10_000
+					);
+				}),
+			])) as { capabilities?: unknown; serverInfo?: unknown };
+
+			connection.sendNotification("initialized", {});
+
+			try {
+				await connection.sendRequest("shutdown");
+				connection.sendNotification("exit");
+			} catch {}
+
+			connection.dispose();
+			try {
+				childProcess.kill();
+			} catch {}
+
+			return {
+				ok: true,
+				capabilities: initRaw?.capabilities ?? {},
+				serverInfo: initRaw?.serverInfo ?? null,
+			};
+		} catch (err) {
+			connection.dispose();
+			try {
+				childProcess.kill();
+			} catch {}
+			return { ok: false, error: err instanceof Error ? err.message : String(err) };
+		} finally {
+			if (timeoutHandle) clearTimeout(timeoutHandle);
+		}
+	}
+
+	clearAvailabilityCache(configId?: string, repoPath?: string): void {
+		if (!configId && !repoPath) {
+			this.executableCache.clear();
+			this.unavailableServers.clear();
+			this.serverLastErrors.clear();
+			return;
+		}
+
+		// executableCache keys are `${command}\u0000${repoPath}` (see isServerExecutableAvailable).
+		const repoSuffix = repoPath ? `\u0000${repoPath}` : null;
+		const resolvedCommand = configId
+			? (this.getRegistry(repoPath ?? "").byId.get(configId)?.command ?? null)
+			: null;
+		const commandPrefix = resolvedCommand ? `${resolvedCommand}\u0000` : null;
+		if (!configId || commandPrefix) {
+			for (const key of this.executableCache.keys()) {
+				if (repoSuffix && !key.endsWith(repoSuffix)) continue;
+				if (commandPrefix && !key.startsWith(commandPrefix)) continue;
+				this.executableCache.delete(key);
+			}
+		}
+
+		const idPrefix = configId ? `${configId}:` : null;
+		const pathSuffix = repoPath ? `:${repoPath}` : null;
+		const serverKeyMatches = (serverKey: string): boolean => {
+			if (idPrefix && !serverKey.startsWith(idPrefix)) return false;
+			if (pathSuffix && !serverKey.endsWith(pathSuffix)) return false;
+			return true;
+		};
+		for (const key of this.unavailableServers) {
+			if (serverKeyMatches(key)) this.unavailableServers.delete(key);
+		}
+		for (const key of this.serverLastErrors.keys()) {
+			if (serverKeyMatches(key)) this.serverLastErrors.delete(key);
+		}
+	}
+
 	async disposeAll(): Promise<void> {
 		for (const timer of this.restartTimers) {
 			clearTimeout(timer);
@@ -681,11 +809,100 @@ export class ServerManager {
 		await Promise.all(keys.map((key) => this.shutdownServer(key)));
 	}
 
+	async evictServer(configId: string, repoPath?: string): Promise<void> {
+		const matchingKeys: string[] = [];
+		const suffix = repoPath ? `:${repoPath}` : null;
+		for (const key of this.servers.keys()) {
+			if (!key.startsWith(`${configId}:`)) continue;
+			if (suffix && !key.endsWith(suffix)) continue;
+			matchingKeys.push(key);
+		}
+
+		const idPrefixLen = `${configId}:`.length;
+		const notifications: Array<{ repo: string; uris: string[] }> = [];
+		for (const key of matchingKeys) {
+			const instance = this.servers.get(key);
+			if (instance && instance.openDocuments.size > 0) {
+				notifications.push({
+					repo: key.substring(idPrefixLen),
+					uris: [...instance.openDocuments],
+				});
+			}
+		}
+
+		await Promise.all(matchingKeys.map((key) => this.shutdownServer(key)));
+
+		// Also purge bookkeeping for the same key shape when no live instance
+		// existed (e.g. a prior failure left entries behind).
+		const idPrefix = `${configId}:`;
+		const matchesKey = (key: string) =>
+			key.startsWith(idPrefix) && (!suffix || key.endsWith(suffix));
+		for (const key of this.unavailableServers) {
+			if (matchesKey(key)) this.unavailableServers.delete(key);
+		}
+		for (const map of [
+			this.serverLastErrors,
+			this.serverLastStartupErrors,
+			this.initFailures,
+			this.crashCounts,
+		]) {
+			for (const key of map.keys()) {
+				if (matchesKey(key)) map.delete(key);
+			}
+		}
+
+		for (const { repo, uris } of notifications) {
+			this.mainWindow?.webContents.send("lsp:server-restarted", configId, repo, uris);
+		}
+	}
+
+	diffChangedIds(oldList: LanguageServerConfig[], newList: LanguageServerConfig[]): Set<string> {
+		const changed = new Set<string>();
+		const oldById = new Map(oldList.map((c) => [c.id, c]));
+		const newById = new Map(newList.map((c) => [c.id, c]));
+
+		for (const [id, oldCfg] of oldById) {
+			const newCfg = newById.get(id);
+			if (!newCfg) {
+				changed.add(id);
+				continue;
+			}
+			if (!configsEffectivelyEqual(oldCfg, newCfg)) {
+				changed.add(id);
+			}
+		}
+		for (const id of newById.keys()) {
+			if (!oldById.has(id)) changed.add(id);
+		}
+		return changed;
+	}
+
 	getConnection(configId: string, repoPath: string): MessageConnection | null {
 		const key = this.serverKey(configId, repoPath);
 		const instance = this.servers.get(key);
 		return instance?.initialized ? instance.connection : null;
 	}
+}
+
+function configsEffectivelyEqual(a: LanguageServerConfig, b: LanguageServerConfig): boolean {
+	if (a.command !== b.command) return false;
+	if (a.disabled !== b.disabled) return false;
+	if (!arraysEqual(a.args, b.args)) return false;
+	if (
+		JSON.stringify(a.initializationOptions ?? null) !==
+		JSON.stringify(b.initializationOptions ?? null)
+	) {
+		return false;
+	}
+	return true;
+}
+
+function arraysEqual(a: string[], b: string[]): boolean {
+	if (a.length !== b.length) return false;
+	for (let i = 0; i < a.length; i++) {
+		if (a[i] !== b[i]) return false;
+	}
+	return true;
 }
 
 export const serverManager = new ServerManager();

@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import type { LanguageServerConfig } from "../../../../shared/lsp-schema";
 import type { LspHealthEntry } from "../../../../shared/types";
 import { SectionLabel } from "../SectionHeading";
@@ -15,6 +16,17 @@ interface LspAdditionalServersProps {
 	onRemove: (id: string, scope: "user" | "repo") => void;
 	onAdd: () => void;
 	removing: string | null;
+	onRecheck?: (id: string) => void;
+	onAskAgent?: (id: string) => void;
+	onTest?: (
+		id: string
+	) => Promise<
+		{ ok: true; capabilities: unknown; serverInfo: unknown } | { ok: false; error: string }
+	>;
+	rechecking?: string | null;
+	askingAgent?: string | null;
+	conflicts?: Map<string, { overlappingWith: string[] }>;
+	onMove?: (id: string, scope: "user" | "repo", direction: "up" | "down") => void;
 }
 
 export function LspAdditionalServers({
@@ -24,8 +36,25 @@ export function LspAdditionalServers({
 	onRemove,
 	onAdd,
 	removing,
+	onRecheck,
+	onAskAgent,
+	onTest,
+	rechecking,
+	askingAgent,
+	conflicts,
+	onMove,
 }: LspAdditionalServersProps) {
-	const healthMap = new Map(healthEntries.map((e) => [e.id, e]));
+	const healthMap = useMemo(() => new Map(healthEntries.map((e) => [e.id, e])), [healthEntries]);
+
+	const scopeLayout = useMemo(() => {
+		const scopedCounts = { user: 0, repo: 0 };
+		const scopedIndices = new Map<string, number>();
+		for (const { config, scope } of servers) {
+			scopedIndices.set(`${scope}:${config.id}`, scopedCounts[scope]);
+			scopedCounts[scope]++;
+		}
+		return { scopedCounts, scopedIndices };
+	}, [servers]);
 
 	return (
 		<div className="mb-6">
@@ -48,6 +77,11 @@ export function LspAdditionalServers({
 					servers.map(({ config, scope }, index) => {
 						const health = healthMap.get(config.id);
 						const isRemoving = removing === config.id;
+						const conflict = conflicts?.get(config.id);
+						const scopedIndex = scopeLayout.scopedIndices.get(`${scope}:${config.id}`) ?? -1;
+						const scopedCount = scopeLayout.scopedCounts[scope];
+						const canMoveUp = onMove != null && scopedIndex > 0;
+						const canMoveDown = onMove != null && scopedIndex < scopedCount - 1;
 
 						return (
 							<div
@@ -58,8 +92,14 @@ export function LspAdditionalServers({
 									name={config.id}
 									command={`${config.command} ${config.args.join(" ")}`.trim()}
 									available={health?.available ?? false}
-									installHint={health?.installHint}
 									startupError={health?.lastStartupError}
+									healthEntry={health}
+									onRecheck={onRecheck ? () => onRecheck(config.id) : undefined}
+									onAskAgent={onAskAgent ? () => onAskAgent(config.id) : undefined}
+									onTest={onTest ? () => onTest(config.id) : undefined}
+									rechecking={rechecking === config.id}
+									askingAgent={askingAgent === config.id}
+									overlappingWith={conflict?.overlappingWith}
 									rightSlot={
 										<div className="flex items-center gap-2">
 											<span
@@ -71,6 +111,28 @@ export function LspAdditionalServers({
 											>
 												{scope === "user" ? "Global" : "This Repo"}
 											</span>
+											{onMove && (
+												<div className="flex flex-col">
+													<button
+														type="button"
+														disabled={!canMoveUp}
+														onClick={() => onMove(config.id, scope, "up")}
+														className="rounded px-1 text-[8px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] disabled:opacity-30"
+														title="Move up (higher precedence)"
+													>
+														▲
+													</button>
+													<button
+														type="button"
+														disabled={!canMoveDown}
+														onClick={() => onMove(config.id, scope, "down")}
+														className="rounded px-1 text-[8px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] disabled:opacity-30"
+														title="Move down (lower precedence)"
+													>
+														▼
+													</button>
+												</div>
+											)}
 											<button
 												type="button"
 												onClick={() => onEdit(config, scope)}

@@ -1,69 +1,43 @@
 import { useState } from "react";
-import type { LanguageServerConfig, LspPreset } from "../../../../shared/lsp-schema";
-import { parseArgs, stringifyArgs } from "../../../lsp/arg-parse";
+import type {
+	LanguageServerConfig,
+	LspDetectSuggestion,
+	LspPreset,
+} from "../../../../shared/lsp-schema";
+import { ConfigFieldErrors } from "./lsp-errors";
 import { LspPresetPicker } from "./LspPresetPicker";
 import { LspServerForm, type ServerFormData } from "./LspServerForm";
+import { configToFormData, formDataToConfig } from "./config-form-bridge";
 
 type FlowStep = "pick" | "form";
 
 interface LspAddServerFlowProps {
 	presets: LspPreset[];
 	existingIds: Set<string>;
+	builtInIds: Set<string>;
+	suggestions?: LspDetectSuggestion[];
 	repoPath: string | null;
 	onSave: (config: LanguageServerConfig, scope: "user" | "repo") => Promise<void>;
 	onCancel: () => void;
 	editTarget?: { config: LanguageServerConfig; scope: "user" | "repo" } | null;
 }
 
-function configToFormData(config: LanguageServerConfig): ServerFormData {
-	return {
-		id: config.id,
-		command: config.command,
-		args: stringifyArgs(config.args),
-		fileExtensions: config.fileExtensions.join(", "),
-		languages: config.languages.join(", "),
-		rootMarkers: config.rootMarkers.join(", "),
-		initializationOptions: config.initializationOptions
-			? JSON.stringify(config.initializationOptions, null, 2)
-			: "{}",
-	};
-}
-
-function formDataToConfig(data: ServerFormData): LanguageServerConfig {
-	let initOpts: Record<string, unknown> | undefined;
-	try {
-		const parsed = JSON.parse(data.initializationOptions);
-		if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-			initOpts = parsed;
-		}
-	} catch {
-		// Ignore invalid JSON — leave as undefined
-	}
-
-	return {
-		id: data.id,
-		command: data.command.trim(),
-		args: parseArgs(data.args),
-		languages: data.languages
-			.split(",")
-			.map((s) => s.trim())
-			.filter(Boolean),
-		fileExtensions: data.fileExtensions
-			.split(",")
-			.map((s) => s.trim())
-			.filter(Boolean),
-		rootMarkers: data.rootMarkers
-			.split(",")
-			.map((s) => s.trim())
-			.filter(Boolean),
-		initializationOptions: initOpts,
-		disabled: false,
-	};
-}
+const EMPTY_FORM_DATA: ServerFormData = {
+	id: "",
+	command: "",
+	args: "",
+	fileExtensions: "",
+	fileNames: "",
+	languages: "",
+	rootMarkers: ".git",
+	initializationOptions: "",
+};
 
 export function LspAddServerFlow({
 	presets,
 	existingIds,
+	builtInIds,
+	suggestions,
 	repoPath,
 	onSave,
 	onCancel,
@@ -71,48 +45,54 @@ export function LspAddServerFlow({
 }: LspAddServerFlowProps) {
 	const isEdit = !!editTarget;
 	const [step, setStep] = useState<FlowStep>(isEdit ? "form" : "pick");
+	const [originalConfig, setOriginalConfig] = useState<LanguageServerConfig | null>(
+		editTarget?.config ?? null
+	);
 	const [formData, setFormData] = useState<ServerFormData>(
-		isEdit
-			? configToFormData(editTarget.config)
-			: {
-					id: "",
-					command: "",
-					args: "",
-					fileExtensions: "",
-					languages: "",
-					rootMarkers: ".git",
-					initializationOptions: "{}",
-				}
+		isEdit ? configToFormData(editTarget.config) : EMPTY_FORM_DATA
 	);
 	const [scope, setScope] = useState<"user" | "repo">(editTarget?.scope ?? "user");
 	const [saving, setSaving] = useState(false);
 	const [error, setError] = useState<string | null>(null);
+	const [fieldErrors, setFieldErrors] = useState<Record<string, string> | null>(null);
 
 	const handlePresetSelect = (preset: LspPreset) => {
+		setOriginalConfig(preset.config);
 		setFormData(configToFormData(preset.config));
 		setStep("form");
 	};
 
+	const handleQuickAdd = async (preset: LspPreset) => {
+		setSaving(true);
+		setError(null);
+		try {
+			await onSave(preset.config, scope);
+		} catch (err) {
+			setError(err instanceof Error ? err.message : "Failed to save");
+		} finally {
+			setSaving(false);
+		}
+	};
+
 	const handleCustom = () => {
-		setFormData({
-			id: "",
-			command: "",
-			args: "",
-			fileExtensions: "",
-			languages: "",
-			rootMarkers: ".git",
-			initializationOptions: "{}",
-		});
+		setOriginalConfig(null);
+		setFormData(EMPTY_FORM_DATA);
 		setStep("form");
 	};
 
 	const handleSave = async (data: ServerFormData) => {
 		setSaving(true);
 		setError(null);
+		setFieldErrors(null);
 		try {
-			await onSave(formDataToConfig(data), scope);
+			await onSave(formDataToConfig(data, originalConfig), scope);
 		} catch (err) {
-			setError(err instanceof Error ? err.message : "Failed to save");
+			if (err instanceof ConfigFieldErrors) {
+				setFieldErrors(err.fieldErrors);
+				setError(null);
+			} else {
+				setError(err instanceof Error ? err.message : "Failed to save");
+			}
 		} finally {
 			setSaving(false);
 		}
@@ -123,7 +103,9 @@ export function LspAddServerFlow({
 			<LspPresetPicker
 				presets={presets}
 				existingIds={existingIds}
+				suggestions={suggestions}
 				onSelect={handlePresetSelect}
+				onQuickAdd={handleQuickAdd}
 				onCustom={handleCustom}
 				onCancel={onCancel}
 			/>
@@ -135,11 +117,14 @@ export function LspAddServerFlow({
 			initial={formData}
 			scope={scope}
 			repoPath={repoPath}
+			existingIds={existingIds}
+			builtInIds={builtInIds}
 			onScopeChange={setScope}
 			onSave={handleSave}
 			onCancel={onCancel}
 			saving={saving}
 			error={error}
+			fieldErrors={fieldErrors}
 			isEdit={isEdit}
 		/>
 	);

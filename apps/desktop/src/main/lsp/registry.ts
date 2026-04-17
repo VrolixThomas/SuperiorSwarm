@@ -2,7 +2,13 @@ import { mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSyn
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { z } from "zod";
-import { type LanguageServerConfig, languageServerConfigSchema } from "../../shared/lsp-schema";
+import {
+	type LanguageServerConfig,
+	defineServerConfig,
+	languageServerConfigSchema,
+	normalizeExtension,
+} from "../../shared/lsp-schema";
+import { zodIssuesToString } from "../../shared/lsp-zod-errors";
 
 const serverSchema = languageServerConfigSchema;
 
@@ -33,86 +39,66 @@ export type SupportResolution =
 // Invariant: BUILT_IN_SERVER_IDS in ../../shared/lsp-builtin-ids.ts must match these ids.
 // Test enforces it — see tests/lsp-builtin-ids.test.ts.
 export const DEFAULT_SERVER_CONFIGS: LanguageServerConfig[] = [
-	{
+	defineServerConfig({
 		id: "typescript",
 		command: "typescript-language-server",
 		args: ["--stdio"],
 		languages: ["typescript", "javascript", "typescriptreact", "javascriptreact"],
 		fileExtensions: [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"],
 		rootMarkers: ["package.json", "tsconfig.json", ".git"],
-		installHint: "npm install -g typescript-language-server typescript",
-		disabled: false,
-	},
-	{
+	}),
+	defineServerConfig({
 		id: "python",
 		command: "pyright-langserver",
 		args: ["--stdio"],
 		languages: ["python"],
 		fileExtensions: [".py"],
 		rootMarkers: ["pyproject.toml", "setup.py", ".git"],
-		installHint: "npm install -g pyright",
-		disabled: false,
-	},
-	{
+	}),
+	defineServerConfig({
 		id: "go",
 		command: "gopls",
-		args: [],
 		languages: ["go"],
 		fileExtensions: [".go"],
 		rootMarkers: ["go.mod", ".git"],
-		installHint: "go install golang.org/x/tools/gopls@latest",
-		disabled: false,
-	},
-	{
+	}),
+	defineServerConfig({
 		id: "rust",
 		command: "rust-analyzer",
-		args: [],
 		languages: ["rust"],
 		fileExtensions: [".rs"],
 		rootMarkers: ["Cargo.toml", ".git"],
-		installHint: "rustup component add rust-analyzer",
-		disabled: false,
-	},
-	{
+	}),
+	defineServerConfig({
 		id: "java",
 		command: "jdtls",
-		args: [],
 		languages: ["java"],
 		fileExtensions: [".java"],
 		rootMarkers: ["pom.xml", "build.gradle", ".git"],
-		installHint: "brew install jdtls",
-		disabled: false,
-	},
-	{
+	}),
+	defineServerConfig({
 		id: "cpp",
 		command: "clangd",
-		args: [],
 		languages: ["cpp", "c"],
 		fileExtensions: [".cc", ".cpp", ".c", ".h", ".hpp"],
 		rootMarkers: ["compile_commands.json", ".git"],
-		installHint: "brew install llvm (macOS) or apt install clangd (Linux)",
-		disabled: false,
-	},
-	{
+	}),
+	defineServerConfig({
 		id: "php",
 		command: "intelephense",
 		args: ["--stdio"],
 		languages: ["php"],
 		fileExtensions: [".php"],
 		rootMarkers: ["composer.json", ".git"],
-		installHint: "npm install -g intelephense",
-		disabled: false,
-	},
-	{
+	}),
+	defineServerConfig({
 		id: "ruby",
 		command: "solargraph",
 		args: ["stdio"],
 		languages: ["ruby"],
 		fileExtensions: [".rb"],
 		rootMarkers: ["Gemfile", ".git"],
-		installHint: "gem install solargraph",
-		disabled: false,
-	},
+	}),
 ];
 
 export function buildRegistry(input: {
@@ -254,17 +240,8 @@ function loadConfigFile(path: string): LanguageServerConfig[] {
 			continue;
 		}
 
-		const issues = serverResult.error.issues
-			.map((issue) => {
-				const issuePath = issue.path.join(".");
-				if (issuePath.length > 0) {
-					return `${issuePath}: ${issue.message}`;
-				}
-				return issue.message;
-			})
-			.join("; ");
 		console.warn(
-			`[LSP] Ignoring invalid LSP server entry in ${path} at index ${serverIndex}: ${issues}`
+			`[LSP] Ignoring invalid LSP server entry in ${path} at index ${serverIndex}: ${zodIssuesToString(serverResult.error.issues)}`
 		);
 	}
 
@@ -272,11 +249,18 @@ function loadConfigFile(path: string): LanguageServerConfig[] {
 }
 
 export function saveConfigFile(path: string, servers: LanguageServerConfig[]): void {
-	for (const server of servers) {
+	for (const [index, server] of servers.entries()) {
 		const result = serverSchema.safeParse(server);
 		if (!result.success) {
-			const issues = result.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
-			throw new Error(`Invalid server config "${server.id}": ${issues}`);
+			// Prepend the server index so the renderer can thread issues back to
+			// the offending entry (the tRPC error formatter forwards this as
+			// `data.zodIssues` verbatim).
+			const rescoped = result.error.issues.map((issue) => ({
+				...issue,
+				path: [index, ...issue.path],
+			}));
+			const err = new z.ZodError(rescoped);
+			throw err;
 		}
 	}
 
@@ -294,14 +278,6 @@ export function saveConfigFile(path: string, servers: LanguageServerConfig[]): v
 		throw err;
 	}
 	fsCache.delete(path);
-}
-
-function normalizeExtension(extension: string): string | null {
-	const trimmed = extension.trim().toLowerCase();
-	if (!trimmed) {
-		return null;
-	}
-	return trimmed.startsWith(".") ? trimmed : `.${trimmed}`;
 }
 
 function getFileExtension(filePath: string): string | null {

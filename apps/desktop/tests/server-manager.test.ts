@@ -11,7 +11,6 @@ type MockConfig = {
 	args: string[];
 	languages: string[];
 	fileExtensions: string[];
-	installHint?: string;
 	rootMarkers: string[];
 	disabled: boolean;
 	initializationOptions?: Record<string, unknown>;
@@ -25,14 +24,13 @@ let capturedInitParams: unknown = null;
 const originalPath = process.env["PATH"];
 const originalPathExt = process.env["PATHEXT"];
 
-function buildConfig(id: string, command: string, installHint?: string): MockConfig {
+function buildConfig(id: string, command: string): MockConfig {
 	return {
 		id,
 		command,
 		args: ["--stdio"],
 		languages: [id],
 		fileExtensions: [`.${id}`],
-		installHint,
 		rootMarkers: [".git"],
 		disabled: false,
 	};
@@ -74,6 +72,7 @@ mock.module("../src/main/lsp/trust", () => ({
 	setRepoTrust: () => {},
 }));
 
+let initializeResponse: unknown = {};
 mock.module("vscode-languageserver-protocol/node.js", () => ({
 	createMessageConnection: mock(() => ({
 		listen: () => {},
@@ -84,6 +83,7 @@ mock.module("vscode-languageserver-protocol/node.js", () => ({
 			}
 			if (method === "initialize") {
 				capturedInitParams = params;
+				return initializeResponse;
 			}
 			return {};
 		},
@@ -171,22 +171,22 @@ describe("ServerManager repo-aware resolution", () => {
 		]);
 
 		const health = manager.getHealth(repoPath);
-		expect(health).toContainEqual({
-			id: "rust",
-			command: "definitely-not-installed-lsp-binary",
-			available: false,
-			lastError: "Executable not found: definitely-not-installed-lsp-binary",
-			activeSessions: 0,
-			activeSessionDocuments: [],
-			installHint:
-				"Install 'definitely-not-installed-lsp-binary' and ensure it is available on PATH.",
-		});
+		expect(health).toContainEqual(
+			expect.objectContaining({
+				id: "rust",
+				command: "definitely-not-installed-lsp-binary",
+				available: false,
+				lastError: "Executable not found: definitely-not-installed-lsp-binary",
+				activeSessions: 0,
+				activeSessionDocuments: [],
+			})
+		);
 	});
 
-	test("getHealth includes active sessions and custom install hint", async () => {
+	test("getHealth includes active sessions", async () => {
 		const manager = new ServerManager();
 		const repoPath = createRepoWithConfig("health-active", [
-			buildConfig("python", process.execPath, "Install pyright with `bun add -g pyright`"),
+			buildConfig("python", process.execPath),
 		]);
 
 		const connection = await manager.getOrCreate("python", repoPath);
@@ -194,14 +194,15 @@ describe("ServerManager repo-aware resolution", () => {
 		manager.trackDocument("python", repoPath, "file:///tmp/repo/src/main.py");
 
 		const health = manager.getHealth(repoPath);
-		expect(health).toContainEqual({
-			id: "python",
-			command: process.execPath,
-			available: true,
-			activeSessions: 1,
-			activeSessionDocuments: ["file:///tmp/repo/src/main.py"],
-			installHint: "Install pyright with `bun add -g pyright`",
-		});
+		expect(health).toContainEqual(
+			expect.objectContaining({
+				id: "python",
+				command: process.execPath,
+				available: true,
+				activeSessions: 1,
+				activeSessionDocuments: ["file:///tmp/repo/src/main.py"],
+			})
+		);
 
 		await manager.disposeAll();
 	});
@@ -366,5 +367,283 @@ describe("ServerManager repo-aware resolution", () => {
 		expect(params.initializationOptions).toEqual({ foo: "bar", nested: { x: 1 } });
 
 		await manager.disposeAll();
+	});
+
+	test("evictServer disposes running connection and clears failure state", async () => {
+		const manager = new ServerManager();
+		const repoPath = createRepoWithConfig("evict", [buildConfig("evictme", process.execPath)]);
+
+		const firstConnection = await manager.getOrCreate("evictme", repoPath);
+		expect(firstConnection).not.toBeNull();
+
+		// Populate failure state to assert it's cleared on evict
+		// @ts-expect-error private access for test
+		(manager["serverLastStartupErrors"] as Map<string, string>).set(
+			`evictme:${repoPath}`,
+			"prior error"
+		);
+		// @ts-expect-error private access for test
+		(manager["initFailures"] as Map<string, number>).set(`evictme:${repoPath}`, 2);
+		// @ts-expect-error private access for test
+		(manager["unavailableServers"] as Set<string>).add(`evictme:${repoPath}`);
+
+		await manager.evictServer("evictme", repoPath);
+
+		// @ts-expect-error private access
+		expect((manager["servers"] as Map<string, unknown>).has(`evictme:${repoPath}`)).toBe(false);
+		// @ts-expect-error private access
+		expect(
+			(manager["serverLastStartupErrors"] as Map<string, string>).has(`evictme:${repoPath}`)
+		).toBe(false);
+		// @ts-expect-error private access
+		expect((manager["initFailures"] as Map<string, number>).has(`evictme:${repoPath}`)).toBe(false);
+		// @ts-expect-error private access
+		expect((manager["unavailableServers"] as Set<string>).has(`evictme:${repoPath}`)).toBe(false);
+
+		const secondConnection = await manager.getOrCreate("evictme", repoPath);
+		expect(secondConnection).not.toBeNull();
+
+		// Two spawns happened: one for first connection, one after evict
+		expect(spawnCalls.filter((c) => c === process.execPath)).toHaveLength(2);
+
+		await manager.disposeAll();
+	});
+
+	test("evictServer with no repoPath evicts matching id across all repos", async () => {
+		const manager = new ServerManager();
+		const repoA = createRepoWithConfig("multi-a", [buildConfig("shared", process.execPath)]);
+		const repoB = createRepoWithConfig("multi-b", [buildConfig("shared", process.execPath)]);
+
+		await manager.getOrCreate("shared", repoA);
+		await manager.getOrCreate("shared", repoB);
+
+		// @ts-expect-error private access
+		expect((manager["servers"] as Map<string, unknown>).has(`shared:${repoA}`)).toBe(true);
+		// @ts-expect-error private access
+		expect((manager["servers"] as Map<string, unknown>).has(`shared:${repoB}`)).toBe(true);
+
+		await manager.evictServer("shared");
+
+		// @ts-expect-error private access
+		expect((manager["servers"] as Map<string, unknown>).has(`shared:${repoA}`)).toBe(false);
+		// @ts-expect-error private access
+		expect((manager["servers"] as Map<string, unknown>).has(`shared:${repoB}`)).toBe(false);
+
+		await manager.disposeAll();
+	});
+
+	test("diffChangedIds detects command changes, init-option changes, and removals", () => {
+		const manager = new ServerManager();
+		const changed = manager.diffChangedIds(
+			[
+				{
+					id: "one",
+					command: "foo",
+					args: [],
+					languages: ["x"],
+					fileExtensions: [".x"],
+					fileNames: [],
+					rootMarkers: [".git"],
+					disabled: false,
+				},
+				{
+					id: "two",
+					command: "bar",
+					args: [],
+					languages: ["y"],
+					fileExtensions: [".y"],
+					fileNames: [],
+					rootMarkers: [".git"],
+					disabled: false,
+					initializationOptions: { a: 1 },
+				},
+				{
+					id: "three",
+					command: "baz",
+					args: [],
+					languages: ["z"],
+					fileExtensions: [".z"],
+					fileNames: [],
+					rootMarkers: [".git"],
+					disabled: false,
+				},
+			],
+			[
+				// one: command changed
+				{
+					id: "one",
+					command: "foo-v2",
+					args: [],
+					languages: ["x"],
+					fileExtensions: [".x"],
+					fileNames: [],
+					rootMarkers: [".git"],
+					disabled: false,
+				},
+				// two: init options changed
+				{
+					id: "two",
+					command: "bar",
+					args: [],
+					languages: ["y"],
+					fileExtensions: [".y"],
+					fileNames: [],
+					rootMarkers: [".git"],
+					disabled: false,
+					initializationOptions: { a: 2 },
+				},
+				// three: removed
+			]
+		);
+
+		expect([...changed].sort()).toEqual(["one", "three", "two"]);
+	});
+
+	test("diffChangedIds ignores unchanged servers", () => {
+		const manager = new ServerManager();
+		const cfg = {
+			id: "stable",
+			command: "foo",
+			args: ["--stdio"],
+			languages: ["x"],
+			fileExtensions: [".x"],
+			fileNames: [],
+			rootMarkers: [".git"],
+			disabled: false,
+		};
+		const changed = manager.diffChangedIds([cfg], [{ ...cfg }]);
+		expect([...changed]).toEqual([]);
+	});
+
+	test("testServer returns capabilities on successful initialize", async () => {
+		const manager = new ServerManager();
+		const repoPath = createRepoWithConfig("test-ok", [buildConfig("testok", process.execPath)]);
+
+		initializeResponse = {
+			capabilities: { textDocumentSync: 1, completionProvider: {} },
+			serverInfo: { name: "test-ls", version: "1.0.0" },
+		};
+
+		const result = await manager.testServer("testok", repoPath);
+		expect(result.ok).toBe(true);
+		if (result.ok) {
+			expect(result.capabilities).toEqual({ textDocumentSync: 1, completionProvider: {} });
+			expect(result.serverInfo).toEqual({ name: "test-ls", version: "1.0.0" });
+		}
+
+		// Does not leave the server registered — dry-run is ephemeral
+		// @ts-expect-error private access
+		expect((manager["servers"] as Map<string, unknown>).has(`testok:${repoPath}`)).toBe(false);
+		initializeResponse = {};
+	});
+
+	test("testServer returns ok=false when initialize throws", async () => {
+		const manager = new ServerManager();
+		const repoPath = createRepoWithConfig("test-fail", [buildConfig("testfail", "flaky-lsp")]);
+
+		initFailCommands.add("flaky-lsp");
+
+		const result = await manager.testServer("testfail", repoPath);
+		expect(result.ok).toBe(false);
+		if (!result.ok) {
+			expect(result.error).toBeTruthy();
+		}
+	});
+
+	test("testServer returns ok=false when binary is missing", async () => {
+		const manager = new ServerManager();
+		const repoPath = createRepoWithConfig("test-missing", [
+			buildConfig("testmissing", "definitely-not-installed"),
+		]);
+
+		const result = await manager.testServer("testmissing", repoPath);
+		expect(result.ok).toBe(false);
+	});
+
+	test("testServer returns ok=false for unknown config id", async () => {
+		const manager = new ServerManager();
+		const repoPath = createRepoWithConfig("test-unknown", []);
+
+		const result = await manager.testServer("no-such-config", repoPath);
+		expect(result.ok).toBe(false);
+	});
+
+	test("clearAvailabilityCache forces re-probe after PATH changes", () => {
+		const manager = new ServerManager();
+		const binDir = mkdtempSync(join(tmpdir(), "ss-recheck-"));
+		createdRepos.push(binDir);
+
+		process.env["PATH"] = binDir;
+		_resetShellPathCacheForTests();
+
+		const repoPath = createRepoWithConfig("recheck", [buildConfig("probeme", "my-probe-cmd")]);
+
+		// First probe: binary missing
+		let health = manager.getHealth(repoPath);
+		expect(health.find((h) => h.id === "probeme")?.available).toBe(false);
+
+		// Add the binary after initial probe
+		const binPath = join(binDir, "my-probe-cmd");
+		writeFileSync(binPath, "#!/bin/sh\necho\n");
+		chmodSync(binPath, 0o755);
+
+		// Still cached — reports stale
+		health = manager.getHealth(repoPath);
+		expect(health.find((h) => h.id === "probeme")?.available).toBe(false);
+
+		manager.clearAvailabilityCache("probeme", repoPath);
+
+		// After cache cleared: detects the new binary
+		health = manager.getHealth(repoPath);
+		expect(health.find((h) => h.id === "probeme")?.available).toBe(true);
+	});
+
+	test("getHealth reports available=true for absolute custom binary path on unix", () => {
+		const manager = new ServerManager();
+		const binDir = mkdtempSync(join(tmpdir(), "ss-custom-bin-"));
+		const binPath = join(binDir, "my-custom-ls");
+		writeFileSync(binPath, "#!/bin/sh\necho\n");
+		chmodSync(binPath, 0o755);
+		createdRepos.push(binDir);
+
+		const repoPath = createRepoWithConfig("custom-bin", [
+			{ ...buildConfig("custom", binPath), command: binPath },
+		]);
+
+		const health = manager.getHealth(repoPath);
+		const entry = health.find((h) => h.id === "custom");
+		expect(entry?.available).toBe(true);
+	});
+
+	test("getHealth reports the PATH that was searched", () => {
+		const manager = new ServerManager();
+		const repoPath = createRepoWithConfig("health-path", [
+			buildConfig("pathvis", "definitely-missing-ls"),
+		]);
+
+		const health = manager.getHealth(repoPath);
+		const entry = health.find((h) => h.id === "pathvis");
+		expect(entry?.searchedPath).toBeTruthy();
+		expect(typeof entry?.searchedPath).toBe("string");
+	});
+
+	test("diffChangedIds flags new additions", () => {
+		const manager = new ServerManager();
+		const changed = manager.diffChangedIds(
+			[],
+			[
+				{
+					id: "brand-new",
+					command: "foo",
+					args: [],
+					languages: [],
+					fileExtensions: [".foo"],
+					fileNames: [],
+					rootMarkers: [".git"],
+					disabled: false,
+				},
+			]
+		);
+		expect([...changed]).toEqual(["brand-new"]);
 	});
 });

@@ -17,7 +17,7 @@ describe("loadRepoConfigCached", () => {
 		mkdirSync(cfgDir);
 		writeFileSync(
 			join(cfgDir, "lsp.json"),
-			JSON.stringify({ servers: [{ id: "x", command: "x" }] })
+			JSON.stringify({ servers: [{ id: "xx", command: "x" }] })
 		);
 
 		const first = loadRepoConfigCached(tmpRepo);
@@ -29,20 +29,20 @@ describe("loadRepoConfigCached", () => {
 		const cfgDir = join(tmpRepo, ".superiorswarm");
 		mkdirSync(cfgDir);
 		const path = join(cfgDir, "lsp.json");
-		writeFileSync(path, JSON.stringify({ servers: [{ id: "a", command: "a" }] }));
+		writeFileSync(path, JSON.stringify({ servers: [{ id: "aa", command: "a" }] }));
 
 		const first = loadRepoConfigCached(tmpRepo);
 		expect(first).toHaveLength(1);
-		expect(first[0]?.id).toBe("a");
+		expect(first[0]?.id).toBe("aa");
 
-		writeFileSync(path, JSON.stringify({ servers: [{ id: "b", command: "b" }] }));
+		writeFileSync(path, JSON.stringify({ servers: [{ id: "bb", command: "b" }] }));
 		// Force distinct mtime (some filesystems have 1s granularity)
 		const future = new Date(Date.now() + 5_000);
 		utimesSync(path, future, future);
 
 		const second = loadRepoConfigCached(tmpRepo);
 		expect(second).not.toBe(first);
-		expect(second[0]?.id).toBe("b");
+		expect(second[0]?.id).toBe("bb");
 	});
 
 	test("missing file returns stable empty array", () => {
@@ -56,11 +56,11 @@ describe("loadRepoConfigCached", () => {
 		const { saveConfigFile } = await import("../src/main/lsp/registry");
 		const path = join(tmpRepo, ".superiorswarm", "lsp.json");
 		mkdirSync(join(tmpRepo, ".superiorswarm"));
-		writeFileSync(path, JSON.stringify({ servers: [{ id: "x", command: "x" }] }));
+		writeFileSync(path, JSON.stringify({ servers: [{ id: "xx", command: "x" }] }));
 		const first = loadRepoConfigCached(tmpRepo);
 		saveConfigFile(path, [
 			{
-				id: "y",
+				id: "yy",
 				command: "y",
 				args: [],
 				languages: [],
@@ -71,6 +71,6 @@ describe("loadRepoConfigCached", () => {
 		]);
 		const second = loadRepoConfigCached(tmpRepo);
 		expect(second).not.toBe(first);
-		expect(second[0]?.id).toBe("y");
+		expect(second[0]?.id).toBe("yy");
 	});
 });

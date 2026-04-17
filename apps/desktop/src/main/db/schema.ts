@@ -407,3 +407,10 @@ export const lspTrustedRepos = sqliteTable("lsp_trusted_repos", {
 });
 
 export type LspTrustedRepo = typeof lspTrustedRepos.$inferSelect;
+
+export const lspDismissedLanguages = sqliteTable("lsp_dismissed_languages", {
+	language: text("language").primaryKey(),
+	dismissedAt: integer("dismissed_at", { mode: "timestamp" }).notNull(),
+});
+
+export type LspDismissedLanguage = typeof lspDismissedLanguages.$inferSelect;

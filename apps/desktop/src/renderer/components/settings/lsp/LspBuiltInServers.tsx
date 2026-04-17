@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { BUILT_IN_SERVER_DISPLAY, BUILT_IN_SERVER_IDS } from "../../../../shared/lsp-builtin-ids";
 import type { LspHealthEntry } from "../../../../shared/types";
 import { SectionLabel } from "../SectionHeading";
@@ -8,6 +9,15 @@ interface LspBuiltInServersProps {
 	disabledIds: Set<string>;
 	onToggle: (id: string, enabled: boolean) => void;
 	toggling: string | null;
+	onRecheck?: (id: string) => void;
+	onAskAgent?: (id: string) => void;
+	onTest?: (
+		id: string
+	) => Promise<
+		{ ok: true; capabilities: unknown; serverInfo: unknown } | { ok: false; error: string }
+	>;
+	rechecking?: string | null;
+	askingAgent?: string | null;
 }
 
 export function LspBuiltInServers({
@@ -15,8 +25,13 @@ export function LspBuiltInServers({
 	disabledIds,
 	onToggle,
 	toggling,
+	onRecheck,
+	onAskAgent,
+	onTest,
+	rechecking,
+	askingAgent,
 }: LspBuiltInServersProps) {
-	const healthMap = new Map(healthEntries.map((e) => [e.id, e]));
+	const healthMap = useMemo(() => new Map(healthEntries.map((e) => [e.id, e])), [healthEntries]);
 
 	return (
 		<div className="mb-6">
@@ -34,9 +49,14 @@ export function LspBuiltInServers({
 								name={displayName}
 								command={health?.command ?? id}
 								available={health?.available ?? false}
-								installHint={health?.installHint}
 								startupError={health?.lastStartupError}
 								dimmed={isDisabled}
+								healthEntry={health}
+								onRecheck={onRecheck ? () => onRecheck(id) : undefined}
+								onAskAgent={onAskAgent ? () => onAskAgent(id) : undefined}
+								onTest={onTest ? () => onTest(id) : undefined}
+								rechecking={rechecking === id}
+								askingAgent={askingAgent === id}
 								rightSlot={
 									<button
 										type="button"

@@ -78,7 +78,8 @@ export interface LspHealthEntry {
 	lastStartupError?: string;
 	activeSessions?: number;
 	activeSessionDocuments?: string[];
-	installHint?: string;
+	/** Colon-joined PATH entries the probe searched. Informational. */
+	searchedPath?: string;
 }
 
 export interface LspAPI {

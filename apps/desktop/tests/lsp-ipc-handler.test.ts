@@ -142,7 +142,6 @@ describe("lsp IPC handlers", () => {
 				lastStartupError: undefined,
 				activeSessions: 1,
 				activeSessionDocuments: ["file:///tmp/repo/main.go"],
-				installHint: "Install gopls",
 			},
 			{
 				id: "rust",
@@ -152,7 +151,6 @@ describe("lsp IPC handlers", () => {
 				lastStartupError: "spawn rust-analyzer ENOENT",
 				activeSessions: 0,
 				activeSessionDocuments: [],
-				installHint: "Install rust-analyzer",
 			},
 		]);
 
@@ -170,7 +168,6 @@ describe("lsp IPC handlers", () => {
 					lastStartupError: undefined,
 					activeSessions: 1,
 					activeSessionDocuments: ["file:///tmp/repo/main.go"],
-					installHint: "Install gopls",
 				},
 				{
 					id: "rust",
@@ -180,7 +177,6 @@ describe("lsp IPC handlers", () => {
 					lastStartupError: "spawn rust-analyzer ENOENT",
 					activeSessions: 0,
 					activeSessionDocuments: [],
-					installHint: "Install rust-analyzer",
 				},
 			],
 		});

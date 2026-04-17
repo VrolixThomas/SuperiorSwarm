@@ -1,15 +1,25 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import "./preload-electron-mock";
+import { afterEach, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { migrate } from "drizzle-orm/better-sqlite3/migrator";
+import { getDb } from "../src/main/db";
 
 const mockServerManager = {
 	getHealth: mock(() => []),
+	evictServer: mock(async (_id: string, _repoPath?: string) => {}),
+	diffChangedIds: mock((_old: unknown[], _next: unknown[]) => new Set<string>()),
 };
 
 mock.module("../src/main/lsp/server-manager", () => ({
 	serverManager: mockServerManager,
 }));
+
+beforeAll(() => {
+	const db = getDb();
+	migrate(db, { migrationsFolder: join(import.meta.dir, "../src/main/db/migrations") });
+});
 
 const { lspRouter } = await import("../src/main/trpc/routers/lsp");
 const { t } = await import("../src/main/trpc/index");
@@ -23,6 +33,10 @@ describe("lsp tRPC router", () => {
 	beforeEach(() => {
 		mockServerManager.getHealth.mockReset();
 		mockServerManager.getHealth.mockImplementation(() => []);
+		mockServerManager.evictServer.mockReset();
+		mockServerManager.evictServer.mockImplementation(async () => {});
+		mockServerManager.diffChangedIds.mockReset();
+		mockServerManager.diffChangedIds.mockImplementation(() => new Set<string>());
 		tmpHome = mkdtempSync(join(tmpdir(), "ss-lsp-router-"));
 		originalHome = process.env["HOME"];
 		process.env["HOME"] = tmpHome;
@@ -136,6 +150,79 @@ describe("lsp tRPC router", () => {
 		});
 	});
 
+	describe("saveUserConfig id validation", () => {
+		test("rejects empty id", async () => {
+			await expect(
+				caller.saveUserConfig({
+					servers: [
+						{
+							id: "",
+							command: "some-ls",
+							args: [],
+							languages: ["foo"],
+							fileExtensions: [".foo"],
+							rootMarkers: [".git"],
+							disabled: false,
+						},
+					],
+				})
+			).rejects.toThrow();
+		});
+
+		test("rejects id with spaces", async () => {
+			await expect(
+				caller.saveUserConfig({
+					servers: [
+						{
+							id: "my server",
+							command: "some-ls",
+							args: [],
+							languages: ["foo"],
+							fileExtensions: [".foo"],
+							rootMarkers: [".git"],
+							disabled: false,
+						},
+					],
+				})
+			).rejects.toThrow();
+		});
+
+		test("rejects uppercase id", async () => {
+			await expect(
+				caller.saveUserConfig({
+					servers: [
+						{
+							id: "MyServer",
+							command: "some-ls",
+							args: [],
+							languages: ["foo"],
+							fileExtensions: [".foo"],
+							rootMarkers: [".git"],
+							disabled: false,
+						},
+					],
+				})
+			).rejects.toThrow();
+		});
+
+		test("accepts valid kebab-case id", async () => {
+			const result = await caller.saveUserConfig({
+				servers: [
+					{
+						id: "my-lang",
+						command: "some-ls",
+						args: [],
+						languages: ["foo"],
+						fileExtensions: [".foo"],
+						rootMarkers: [".git"],
+						disabled: false,
+					},
+				],
+			});
+			expect(result.ok).toBe(true);
+		});
+	});
+
 	describe("setServerEnabled", () => {
 		test("disables a server in repo config", async () => {
 			const testDir = join(tmpdir(), `ss-lsp-trpc-toggle-${Date.now()}`);
@@ -224,6 +311,144 @@ describe("lsp tRPC router", () => {
 					repoPath: testDir,
 				});
 				expect(result.ok).toBe(true);
+			} finally {
+				rmSync(testDir, { recursive: true, force: true });
+			}
+		});
+	});
+
+	describe("live eviction on save", () => {
+		test("saveRepoConfig evicts changed ids scoped to the repo", async () => {
+			const testDir = join(tmpdir(), `ss-lsp-trpc-evict-repo-${Date.now()}`);
+			const configDir = join(testDir, ".superiorswarm");
+			mkdirSync(configDir, { recursive: true });
+			const initial = [
+				{
+					id: "lua",
+					command: "lua-ls",
+					args: [],
+					languages: ["lua"],
+					fileExtensions: [".lua"],
+					fileNames: [],
+					rootMarkers: [".git"],
+					disabled: false,
+				},
+			];
+			writeFileSync(join(configDir, "lsp.json"), JSON.stringify({ servers: initial }));
+
+			mockServerManager.diffChangedIds.mockImplementation(() => new Set(["lua"]));
+
+			try {
+				await caller.saveRepoConfig({
+					repoPath: testDir,
+					servers: [
+						{
+							...initial[0],
+							command: "lua-ls-v2",
+						},
+					],
+				});
+
+				expect(mockServerManager.evictServer).toHaveBeenCalledWith("lua", testDir);
+			} finally {
+				rmSync(testDir, { recursive: true, force: true });
+			}
+		});
+
+		test("saveUserConfig evicts changed ids across all repos (no repoPath)", async () => {
+			mockServerManager.diffChangedIds.mockImplementation(() => new Set(["typescript"]));
+
+			await caller.saveUserConfig({
+				servers: [
+					{
+						id: "typescript",
+						command: "typescript-language-server-v2",
+						args: ["--stdio"],
+						languages: ["typescript"],
+						fileExtensions: [".ts"],
+						fileNames: [],
+						rootMarkers: [".git"],
+						disabled: false,
+					},
+				],
+			});
+
+			expect(mockServerManager.evictServer).toHaveBeenCalledWith("typescript");
+		});
+
+		test("setServerEnabled evicts the toggled server", async () => {
+			const testDir = join(tmpdir(), `ss-lsp-trpc-evict-toggle-${Date.now()}`);
+
+			try {
+				await caller.setServerEnabled({
+					id: "ruby",
+					scope: "repo",
+					enabled: false,
+					repoPath: testDir,
+				});
+
+				expect(mockServerManager.evictServer).toHaveBeenCalledWith("ruby", testDir);
+			} finally {
+				rmSync(testDir, { recursive: true, force: true });
+			}
+		});
+
+		test("requestInstall returns a launch script file that exists", async () => {
+			const testDir = join(tmpdir(), `ss-lsp-trpc-install-${Date.now()}`);
+
+			try {
+				const result = await caller.requestInstall({
+					configId: "csharp",
+					repoPath: testDir,
+				});
+
+				expect(result.launchScript).toBeTruthy();
+				expect(existsSync(result.launchScript)).toBe(true);
+			} finally {
+				rmSync(testDir, { recursive: true, force: true });
+			}
+		});
+
+		test("requestInstall prompt mentions the server's display name and candidate binaries", async () => {
+			const testDir = join(tmpdir(), `ss-lsp-trpc-install-prompt-${Date.now()}`);
+
+			try {
+				const result = await caller.requestInstall({
+					configId: "csharp",
+					repoPath: testDir,
+				});
+
+				const prompt = readFileSync(result.promptFilePath, "utf-8");
+				// C# is the display name for csharp in LSP_PRESETS
+				expect(prompt).toMatch(/C#|csharp/i);
+				// csharp-ls is the configured command for the csharp preset
+				expect(prompt).toContain("csharp-ls");
+			} finally {
+				rmSync(testDir, { recursive: true, force: true });
+			}
+		});
+
+		test("requestInstall rejects unknown configId", async () => {
+			await expect(
+				caller.requestInstall({
+					configId: "totally-unknown-xyz",
+					repoPath: "/tmp/whatever",
+				})
+			).rejects.toThrow();
+		});
+
+		test("saveRepoConfig does not evict when nothing changed", async () => {
+			const testDir = join(tmpdir(), `ss-lsp-trpc-noop-${Date.now()}`);
+
+			mockServerManager.diffChangedIds.mockImplementation(() => new Set<string>());
+
+			try {
+				await caller.saveRepoConfig({
+					repoPath: testDir,
+					servers: [],
+				});
+
+				expect(mockServerManager.evictServer).not.toHaveBeenCalled();
 			} finally {
 				rmSync(testDir, { recursive: true, force: true });
 			}

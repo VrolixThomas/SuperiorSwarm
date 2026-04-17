@@ -10,13 +10,13 @@ import {
 } from "../../lsp/monaco-lsp-bridge";
 import { trpc } from "../../trpc/client";
 
+export type LspBannerReason = "missing-binary" | "untrusted-repo";
+
 export interface UseFileEditorLspResult {
 	message: string | null;
-	/** Truthy only when the current message is about untrusted repo trust. */
+	reason: LspBannerReason | null;
 	canTrust: boolean;
-	/** Call from UI to trust the current repo. No-op if not applicable. */
 	trustRepo: () => Promise<void>;
-	/** Call from onDidChangeContent with the new document version. */
 	onContentChanged: (version: number) => void;
 }
 
@@ -27,20 +27,26 @@ export function useFileEditorLsp(
 	filePath: string
 ): UseFileEditorLspResult {
 	const [message, setMessage] = useState<string | null>(null);
+	const [reason, setReason] = useState<LspBannerReason | null>(null);
 	const [canTrust, setCanTrust] = useState(false);
 	const [refreshKey, setRefreshKey] = useState(0);
 	const setRepoTrust = trpc.lsp.setRepoTrust.useMutation();
+	const dismissedQuery = trpc.lsp.getDismissedLanguages.useQuery();
 	const utils = trpc.useUtils();
 	const stateRef = useRef({
 		enabled: false,
 		uri: "",
 	});
 
+	const dismissed = dismissedQuery.data ?? [];
+	const isDismissed = dismissed.includes(language);
+
 	// biome-ignore lint/correctness/useExhaustiveDependencies: refreshKey is an intentional trigger to re-run the support check after trusting the repo
 	useEffect(() => {
 		if (!model) {
 			stateRef.current = { enabled: false, uri: "" };
 			setMessage(null);
+			setReason(null);
 			setCanTrust(false);
 			return;
 		}
@@ -51,6 +57,7 @@ export function useFileEditorLsp(
 		void (async () => {
 			try {
 				setMessage(null);
+				setReason(null);
 				setCanTrust(false);
 				const support = await window.electron.lsp.getSupport({
 					repoPath,
@@ -60,14 +67,17 @@ export function useFileEditorLsp(
 				if (disposed) return;
 				if (!support.supported) {
 					if (support.reason === "missing-binary") {
+						if (isDismissed) return;
 						setMessage(
-							`Language server executable not found for ${language}. Editing still works without LSP features.`
+							`Language server missing for ${language}. Editing still works without LSP features.`
 						);
+						setReason("missing-binary");
 						setCanTrust(false);
 					} else if (support.reason === "untrusted-repo") {
 						setMessage(
 							"This repository ships its own LSP config in .superiorswarm/lsp.json. Trust it to enable those servers."
 						);
+						setReason("untrusted-repo");
 						setCanTrust(true);
 					}
 					return;
@@ -76,9 +86,7 @@ export function useFileEditorLsp(
 				setModelRepoPath(uri, repoPath);
 				registerLspProviders(language);
 				sendDidOpen(repoPath, language, uri, model.getValue(), 1);
-			} catch {
-				// Fall back to non-LSP editing.
-			}
+			} catch {}
 		})();
 
 		return () => {
@@ -88,7 +96,7 @@ export function useFileEditorLsp(
 			}
 			clearModelRepoPath(uri);
 		};
-	}, [model, repoPath, language, filePath, refreshKey]);
+	}, [model, repoPath, language, filePath, refreshKey, isDismissed]);
 
 	const trustRepo = useCallback(async () => {
 		const normalized = repoPath?.trim();
@@ -106,5 +114,5 @@ export function useFileEditorLsp(
 		[model, repoPath, language]
 	);
 
-	return { message, canTrust, trustRepo, onContentChanged };
+	return { message, reason, canTrust, trustRepo, onContentChanged };
 }

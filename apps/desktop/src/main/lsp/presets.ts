@@ -1,4 +1,4 @@
-import type { LspPreset } from "../../shared/lsp-schema";
+import { type LspPreset, defineServerConfig } from "../../shared/lsp-schema";
 
 export type { LspPreset };
 
@@ -7,226 +7,185 @@ export const LSP_PRESETS: LspPreset[] = [
 		id: "csharp",
 		displayName: "C#",
 		description: "csharp-ls language server",
-		config: {
+		config: defineServerConfig({
 			id: "csharp",
 			command: "csharp-ls",
-			args: [],
 			languages: ["csharp"],
 			fileExtensions: [".cs", ".csx"],
 			rootMarkers: [".sln", ".csproj", ".git"],
-			installHint: "dotnet tool install -g csharp-ls",
-			disabled: false,
-		},
+		}),
 	},
 	{
 		id: "kotlin",
 		displayName: "Kotlin",
 		description: "Kotlin language server",
-		config: {
+		config: defineServerConfig({
 			id: "kotlin",
 			command: "kotlin-language-server",
-			args: [],
 			languages: ["kotlin"],
 			fileExtensions: [".kt", ".kts"],
 			rootMarkers: ["build.gradle", "build.gradle.kts", ".git"],
-			installHint: "brew install kotlin-language-server",
-			disabled: false,
-		},
+		}),
 	},
 	{
 		id: "swift",
 		displayName: "Swift",
 		description: "SourceKit-LSP",
-		config: {
+		config: defineServerConfig({
 			id: "swift",
 			command: "sourcekit-lsp",
-			args: [],
 			languages: ["swift"],
 			fileExtensions: [".swift"],
 			rootMarkers: ["Package.swift", ".git"],
-			installHint: "Included with Xcode — install Xcode or Xcode Command Line Tools",
-			disabled: false,
-		},
+		}),
 	},
 	{
 		id: "lua",
 		displayName: "Lua",
 		description: "lua-language-server",
-		config: {
+		config: defineServerConfig({
 			id: "lua",
 			command: "lua-language-server",
-			args: [],
 			languages: ["lua"],
 			fileExtensions: [".lua"],
 			rootMarkers: [".luarc.json", ".git"],
-			installHint: "brew install lua-language-server",
-			disabled: false,
-		},
+		}),
 	},
 	{
 		id: "zig",
 		displayName: "Zig",
 		description: "ZLS — Zig Language Server",
-		config: {
+		config: defineServerConfig({
 			id: "zig",
 			command: "zls",
-			args: [],
 			languages: ["zig"],
 			fileExtensions: [".zig"],
 			rootMarkers: ["build.zig", ".git"],
-			installHint: "brew install zls",
-			disabled: false,
-		},
+		}),
 	},
 	{
 		id: "elixir",
 		displayName: "Elixir",
 		description: "ElixirLS language server",
-		config: {
+		config: defineServerConfig({
 			id: "elixir",
 			command: "elixir-ls",
-			args: [],
 			languages: ["elixir"],
 			fileExtensions: [".ex", ".exs"],
 			rootMarkers: ["mix.exs", ".git"],
-			installHint: "brew install elixir-ls",
-			disabled: false,
-		},
+		}),
 	},
 	{
 		id: "haskell",
 		displayName: "Haskell",
 		description: "Haskell Language Server",
-		config: {
+		config: defineServerConfig({
 			id: "haskell",
 			command: "haskell-language-server-wrapper",
 			args: ["--lsp"],
 			languages: ["haskell"],
 			fileExtensions: [".hs"],
 			rootMarkers: ["stack.yaml", "cabal.project", ".git"],
-			installHint: "ghcup install hls",
-			disabled: false,
-		},
+		}),
 	},
 	{
 		id: "dart",
 		displayName: "Dart",
 		description: "Dart analysis server",
-		config: {
+		config: defineServerConfig({
 			id: "dart",
 			command: "dart",
 			args: ["language-server", "--protocol=lsp"],
 			languages: ["dart"],
 			fileExtensions: [".dart"],
 			rootMarkers: ["pubspec.yaml", ".git"],
-			installHint: "brew install dart (or install Flutter SDK)",
-			disabled: false,
-		},
+		}),
 	},
 	{
 		id: "scala",
 		displayName: "Scala",
 		description: "Metals — Scala language server",
-		config: {
+		config: defineServerConfig({
 			id: "scala",
 			command: "metals",
-			args: [],
 			languages: ["scala"],
 			fileExtensions: [".scala", ".sc"],
 			rootMarkers: ["build.sbt", "build.sc", ".git"],
-			installHint: "brew install metals",
-			disabled: false,
-		},
+		}),
 	},
 	{
 		id: "ocaml",
 		displayName: "OCaml",
 		description: "ocamllsp language server",
-		config: {
+		config: defineServerConfig({
 			id: "ocaml",
 			command: "ocamllsp",
-			args: [],
 			languages: ["ocaml"],
 			fileExtensions: [".ml", ".mli"],
 			rootMarkers: ["dune-project", ".git"],
-			installHint: "opam install ocaml-lsp-server",
-			disabled: false,
-		},
+		}),
 	},
 	{
 		id: "terraform",
 		displayName: "Terraform",
 		description: "terraform-ls",
-		config: {
+		config: defineServerConfig({
 			id: "terraform",
 			command: "terraform-ls",
 			args: ["serve"],
 			languages: ["terraform"],
 			fileExtensions: [".tf", ".tfvars"],
 			rootMarkers: [".terraform", ".git"],
-			installHint: "brew install hashicorp/tap/terraform-ls",
-			disabled: false,
-		},
+		}),
 	},
 	{
 		id: "yaml",
 		displayName: "YAML",
 		description: "yaml-language-server",
-		config: {
+		config: defineServerConfig({
 			id: "yaml",
 			command: "yaml-language-server",
 			args: ["--stdio"],
 			languages: ["yaml"],
 			fileExtensions: [".yaml", ".yml"],
-			rootMarkers: [".git"],
-			installHint: "npm install -g yaml-language-server",
-			disabled: false,
-		},
+		}),
 	},
 	{
 		id: "bash",
 		displayName: "Bash / Shell",
 		description: "bash-language-server",
-		config: {
+		config: defineServerConfig({
 			id: "bash",
 			command: "bash-language-server",
 			args: ["start"],
 			languages: ["shellscript"],
 			fileExtensions: [".sh", ".bash"],
-			rootMarkers: [".git"],
-			installHint: "npm install -g bash-language-server",
-			disabled: false,
-		},
+		}),
 	},
 	{
 		id: "dockerfile",
 		displayName: "Dockerfile",
 		description: "docker-langserver",
-		config: {
+		config: defineServerConfig({
 			id: "dockerfile",
 			command: "docker-langserver",
 			args: ["--stdio"],
 			languages: ["dockerfile"],
-			fileExtensions: [],
 			fileNames: ["Dockerfile"],
 			rootMarkers: ["Dockerfile", ".git"],
-			installHint: "npm install -g dockerfile-language-server-nodejs",
-			disabled: false,
-		},
+		}),
 	},
 	{
 		id: "r",
 		displayName: "R",
 		description: "languageserver for R",
-		config: {
+		config: defineServerConfig({
 			id: "r",
 			command: "R",
 			args: ["--no-echo", "--no-save", "-e", "languageserver::run()"],
 			languages: ["r"],
 			fileExtensions: [".r", ".R"],
 			rootMarkers: [".Rproj", ".git"],
-			installHint: "R -e 'install.packages(\"languageserver\")'",
-			disabled: false,
-		},
+		}),
 	},
 ];
