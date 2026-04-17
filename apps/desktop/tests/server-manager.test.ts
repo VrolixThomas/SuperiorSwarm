@@ -646,4 +646,21 @@ describe("ServerManager repo-aware resolution", () => {
 		);
 		expect([...changed]).toEqual(["brand-new"]);
 	});
+
+	test("clearAvailabilityCache(configId) purges entries regardless of repoPath scope", () => {
+		const manager = new ServerManager();
+		const cache = (
+			manager as unknown as {
+				executableCache: Map<string, { available: boolean; expiresAt: number }>;
+			}
+		).executableCache;
+		const now = Date.now();
+		cache.set("somelang\u0000/tmp/repoA", { available: true, expiresAt: now + 10000 });
+		cache.set("somelang\u0000/tmp/repoB", { available: true, expiresAt: now + 10000 });
+		expect(cache.size).toBe(2);
+
+		manager.clearAvailabilityCache("somelang");
+
+		expect(cache.size).toBe(0);
+	});
 });

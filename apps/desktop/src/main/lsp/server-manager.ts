@@ -217,7 +217,7 @@ export class ServerManager {
 		const command = config.command.trim();
 		if (!command) return false;
 
-		const cacheKey = `${command}\u0000${repoPath}`;
+		const cacheKey = `${config.id}\u0000${repoPath}`;
 		const cached = this.executableCache.get(cacheKey);
 		const now = Date.now();
 		if (cached && cached.expiresAt > now) {
@@ -771,25 +771,19 @@ export class ServerManager {
 			return;
 		}
 
-		// executableCache keys are `${command}\u0000${repoPath}` (see isServerExecutableAvailable).
+		const idPrefix = configId ? `${configId}\u0000` : null;
 		const repoSuffix = repoPath ? `\u0000${repoPath}` : null;
-		const resolvedCommand = configId
-			? (this.getRegistry(repoPath ?? "").byId.get(configId)?.command ?? null)
-			: null;
-		const commandPrefix = resolvedCommand ? `${resolvedCommand}\u0000` : null;
-		if (!configId || commandPrefix) {
-			for (const key of this.executableCache.keys()) {
-				if (repoSuffix && !key.endsWith(repoSuffix)) continue;
-				if (commandPrefix && !key.startsWith(commandPrefix)) continue;
-				this.executableCache.delete(key);
-			}
+		for (const key of this.executableCache.keys()) {
+			if (idPrefix && !key.startsWith(idPrefix)) continue;
+			if (repoSuffix && !key.endsWith(repoSuffix)) continue;
+			this.executableCache.delete(key);
 		}
 
-		const idPrefix = configId ? `${configId}:` : null;
-		const pathSuffix = repoPath ? `:${repoPath}` : null;
+		const serverIdPrefix = configId ? `${configId}:` : null;
+		const serverPathSuffix = repoPath ? `:${repoPath}` : null;
 		const serverKeyMatches = (serverKey: string): boolean => {
-			if (idPrefix && !serverKey.startsWith(idPrefix)) return false;
-			if (pathSuffix && !serverKey.endsWith(pathSuffix)) return false;
+			if (serverIdPrefix && !serverKey.startsWith(serverIdPrefix)) return false;
+			if (serverPathSuffix && !serverKey.endsWith(serverPathSuffix)) return false;
 			return true;
 		};
 		for (const key of this.unavailableServers) {
