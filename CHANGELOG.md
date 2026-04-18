@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.5.0 (2026-04-18)
+
+### What's New
+
+SuperiorSwarm v0.5.0 expands language server support beyond the built-in servers — you can now configure additional language servers from the Settings page, with presets for popular languages, repo-level trust controls, and improved PATH resolution for toolchains. This release also introduces opt-in usage telemetry: an anonymous snapshot of aggregate activity metrics sent on sign-in to help improve the app. A first-run prompt lets you opt in or out, and the toggle is always available in Preferences.
+
+### Changes
+
+- **SUP-23**: Add multi-language LSP support with settings UI, dynamic server registry, and repo trust (#87)
+- **SUP-31**: Add usage telemetry snapshots to Supabase (#86)
+
 ## v0.4.13 (2026-04-15)
 
 ### What's New
