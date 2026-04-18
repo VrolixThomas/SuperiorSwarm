@@ -11,6 +11,7 @@ import {
 } from "vscode-languageserver-protocol/node.js";
 import type { LanguageServerConfig } from "../../shared/lsp-schema";
 import type { LspHealthEntry } from "../../shared/types";
+import { LruMap } from "./lru-map";
 import {
 	DEFAULT_SERVER_CONFIGS,
 	buildRegistry,
@@ -184,7 +185,10 @@ export class ServerManager {
 	private unavailableServers = new Set<string>();
 	private serverLastErrors = new Map<string, string>();
 	private serverLastStartupErrors = new Map<string, string>();
-	private executableCache = new Map<string, { available: boolean; expiresAt: number }>();
+	private static EXECUTABLE_CACHE_MAX_SIZE = 256;
+	private executableCache = new LruMap<string, { available: boolean; expiresAt: number }>(
+		ServerManager.EXECUTABLE_CACHE_MAX_SIZE
+	);
 	private registryMemo = new Map<
 		string,
 		{

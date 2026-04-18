@@ -9,6 +9,7 @@ import {
 	normalizeExtension,
 } from "../../shared/lsp-schema";
 import { zodIssuesToString } from "../../shared/lsp-zod-errors";
+import { LruMap } from "./lru-map";
 
 const serverSchema = languageServerConfigSchema;
 
@@ -328,7 +329,8 @@ interface CacheEntry {
 	servers: LanguageServerConfig[];
 }
 
-const fsCache = new Map<string, CacheEntry>();
+const FS_CACHE_MAX_SIZE = 128;
+const fsCache = new LruMap<string, CacheEntry>(FS_CACHE_MAX_SIZE);
 
 export function _clearRegistryFsCache(): void {
 	fsCache.clear();
