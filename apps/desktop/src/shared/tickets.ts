@@ -25,7 +25,26 @@ export interface MergedTicketIssue extends TicketIssue {
 	projectKey?: string;
 	updatedAt?: string;
 	statusCategory?: string;
+	assigneeId?: string | null;
+	assigneeName?: string | null;
+	assigneeAvatar?: string | null;
 }
+
+export interface TicketTeam {
+	id: string;
+	provider: TicketProvider;
+	name: string;
+}
+
+export interface TicketTeamMember {
+	id: string;
+	provider: TicketProvider;
+	name: string;
+	email?: string;
+	avatarUrl?: string;
+}
+
+export type AssigneeFilterValue = "all" | "me" | { userIds: string[]; includeUnassigned: boolean };
 
 export type TicketViewMode = "board" | "list" | "table";
 
@@ -132,4 +151,42 @@ export function columnToLinearStateType(
 		default:
 			return "unstarted";
 	}
+}
+
+const ASSIGNEE_PALETTE = [
+	"#E06C75",
+	"#E5C07B",
+	"#61AFEF",
+	"#C678DD",
+	"#56B6C2",
+	"#98C379",
+	"#D19A66",
+	"#BE5046",
+	"#7EC8E3",
+	"#C8A2C8",
+];
+
+export function assigneeColorFromId(id: string | null | undefined): string {
+	if (!id) return "#6e6e73";
+	let hash = 0;
+	for (let i = 0; i < id.length; i++) {
+		hash = (hash * 31 + id.charCodeAt(i)) | 0;
+	}
+	return ASSIGNEE_PALETTE[Math.abs(hash) % ASSIGNEE_PALETTE.length]!;
+}
+
+export function serializeAssigneeFilter(value: AssigneeFilterValue): string {
+	return typeof value === "object" ? JSON.stringify(value) : value;
+}
+
+export function deserializeAssigneeFilter(raw: string | null): AssigneeFilterValue {
+	if (!raw || raw === "me") return "me";
+	if (raw === "all") return "all";
+	try {
+		const parsed = JSON.parse(raw);
+		if (parsed && Array.isArray(parsed.userIds) && typeof parsed.includeUnassigned === "boolean") {
+			return parsed;
+		}
+	} catch {}
+	return "me";
 }
