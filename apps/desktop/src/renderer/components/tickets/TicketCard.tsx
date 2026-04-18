@@ -1,8 +1,11 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { memo } from "react";
 import type { MergedTicketIssue } from "../../../shared/tickets";
+import { useAssigneePickerStore } from "../../stores/assignee-picker-store";
 import { StateIcon } from "../StateIcon";
 import type { LinkedWorkspace } from "../WorkspacePopover";
+import { AssigneeAvatar } from "./AssigneeAvatar";
 
 interface TicketCardProps {
 	issue: MergedTicketIssue;
@@ -14,7 +17,7 @@ interface TicketCardProps {
 	onContextMenu: (e: React.MouseEvent) => void;
 }
 
-export function TicketCard({
+function TicketCardImpl({
 	issue,
 	isSelected,
 	linked,
@@ -23,6 +26,7 @@ export function TicketCard({
 	onClick,
 	onContextMenu,
 }: TicketCardProps) {
+	const openPicker = useAssigneePickerStore((s) => s.openFor);
 	const sortableId = `${issue.provider}:${issue.id}`;
 	const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
 		id: sortableId,
@@ -72,15 +76,26 @@ export function TicketCard({
 					{issue.identifier}
 				</span>
 				{isLinked && (
-					<span className="ml-auto rounded-[3px] bg-[rgba(10,132,255,0.1)] px-1.5 py-px text-[8px] text-[var(--accent)]">
+					<span className="rounded-[3px] bg-[rgba(10,132,255,0.1)] px-1.5 py-px text-[8px] text-[var(--accent)]">
 						linked
 					</span>
 				)}
 				{showProvider && !isLinked && (
-					<span className="ml-auto text-[8px] text-[var(--text-quaternary)] opacity-60">
+					<span className="text-[8px] text-[var(--text-quaternary)] opacity-60">
 						{issue.provider === "jira" ? "Jira" : "Linear"}
 					</span>
 				)}
+				<span className="ml-auto">
+					<AssigneeAvatar
+						assigneeId={issue.assigneeId}
+						assigneeName={issue.assigneeName}
+						size={16}
+						onClick={(e) => {
+							e.stopPropagation();
+							openPicker(issue, { x: e.clientX, y: e.clientY });
+						}}
+					/>
+				</span>
 			</div>
 			<span className="line-clamp-2 text-[11px] leading-[1.35] text-[var(--text)]">
 				{issue.title}
@@ -88,3 +103,5 @@ export function TicketCard({
 		</button>
 	);
 }
+
+export const TicketCard = memo(TicketCardImpl);

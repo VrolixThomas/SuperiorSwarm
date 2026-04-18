@@ -3,12 +3,14 @@ import { Group, Panel, Separator, useDefaultLayout, usePanelRef } from "react-re
 import type { MergedTicketIssue, TicketViewMode } from "../../../shared/tickets";
 import { useTicketDragDrop } from "../../hooks/useTicketDragDrop";
 import { useTicketsData } from "../../hooks/useTicketsData";
+import { useAssigneePickerStore } from "../../stores/assignee-picker-store";
 import { useTabStore } from "../../stores/tab-store";
 import { trpc } from "../../trpc/client";
 import { ConnectBanner } from "../ConnectBanner";
 import { CreateBranchFromIssueModal } from "../CreateBranchFromIssueModal";
 import { IssueContextMenu } from "../IssueContextMenu";
 import type { LinkedWorkspace } from "../WorkspacePopover";
+import { AssigneePicker } from "./AssigneePicker";
 import { TicketDetailPanel } from "./TicketDetailPanel";
 import { TicketsBoardView } from "./TicketsBoardView";
 import { TicketsListView } from "./TicketsListView";
@@ -30,13 +32,9 @@ export function TicketsCanvas() {
 		isEmpty,
 		activeTicketProject,
 		lastFetched,
+		teamMembers,
+		projectId,
 	} = useTicketsData();
-
-	// ── View mode (persisted per project) ────────────────────────────────────
-	const projectId = useMemo(() => {
-		if (activeTicketProject === "all" || activeTicketProject === null) return "all";
-		return `${activeTicketProject.provider}:${activeTicketProject.id}`;
-	}, [activeTicketProject]);
 
 	const { data: savedViewMode } = trpc.tickets.getViewMode.useQuery(
 		{ projectId },
@@ -92,6 +90,28 @@ export function TicketsCanvas() {
 	const attachTerminal = trpc.workspaces.attachTerminal.useMutation();
 	const attachTerminalRef = useRef(attachTerminal.mutate);
 	attachTerminalRef.current = attachTerminal.mutate;
+
+	const pickerOpen = useAssigneePickerStore((s) => s.open);
+	const closePicker = useAssigneePickerStore((s) => s.close);
+
+	const reassignMutation = trpc.tickets.reassignTicket.useMutation({
+		onSuccess: () => {
+			utils.tickets.getCachedTickets.invalidate();
+		},
+	});
+
+	const handleReassign = useCallback(
+		(userId: string | null) => {
+			if (!pickerOpen) return;
+			reassignMutation.mutate({
+				provider: pickerOpen.ticket.provider,
+				ticketId: pickerOpen.ticket.id,
+				assigneeId: userId,
+			});
+			closePicker();
+		},
+		[pickerOpen, closePicker, reassignMutation]
+	);
 
 	const navigateToWorkspace = useCallback((ws: LinkedWorkspace) => {
 		const store = useTabStore.getState();
@@ -336,6 +356,16 @@ export function TicketsCanvas() {
 			)}
 
 			<CreateBranchFromIssueModal issue={openModalIssue} onClose={() => setOpenModalIssue(null)} />
+
+			{pickerOpen && (
+				<AssigneePicker
+					members={teamMembers.filter((m) => m.provider === pickerOpen.ticket.provider)}
+					currentAssigneeId={pickerOpen.ticket.assigneeId ?? null}
+					position={pickerOpen.position}
+					onSelect={handleReassign}
+					onClose={closePicker}
+				/>
+			)}
 		</main>
 	);
 }

@@ -1,10 +1,12 @@
 import { useCallback, useEffect } from "react";
 import type { MergedTicketIssue } from "../../../shared/tickets";
 import { formatRelativeTime } from "../../../shared/tickets";
+import { useAssigneePickerStore } from "../../stores/assignee-picker-store";
 import { useTabStore } from "../../stores/tab-store";
 import { trpc } from "../../trpc/client";
 import { StateIcon } from "../StateIcon";
 import type { LinkedWorkspace } from "../WorkspacePopover";
+import { AssigneeAvatar } from "./AssigneeAvatar";
 
 interface TicketDetailPanelProps {
 	issue: MergedTicketIssue;
@@ -19,6 +21,7 @@ export function TicketDetailPanel({
 	onCreateBranch,
 	onNavigateToWorkspace,
 }: TicketDetailPanelProps) {
+	const openPicker = useAssigneePickerStore((s) => s.openFor);
 	const closeTicketDetail = useTabStore((s) => s.closeTicketDetail);
 	const utils = trpc.useUtils();
 
@@ -174,6 +177,26 @@ export function TicketDetailPanel({
 								</option>
 							))}
 						</select>
+					</div>
+
+					<div>
+						<div className="mb-1.5 text-[9px] font-semibold uppercase tracking-[0.3px] text-[var(--text-quaternary)]">
+							Assignee
+						</div>
+						<button
+							type="button"
+							onClick={(e) => openPicker(issue, { x: e.clientX, y: e.clientY })}
+							className="flex w-full items-center gap-2 rounded-[5px] border border-[rgba(255,255,255,0.04)] bg-[var(--bg-elevated)] px-2 py-1.5 text-left transition-colors hover:border-[rgba(255,255,255,0.08)]"
+						>
+							<AssigneeAvatar
+								assigneeId={issue.assigneeId}
+								assigneeName={issue.assigneeName}
+								size={18}
+							/>
+							<span className="truncate text-[11px] text-[var(--text-secondary)]">
+								{issue.assigneeName ?? "Unassigned"}
+							</span>
+						</button>
 					</div>
 
 					<div>

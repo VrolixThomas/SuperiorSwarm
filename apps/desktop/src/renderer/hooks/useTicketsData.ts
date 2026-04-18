@@ -63,13 +63,11 @@ export function useTicketsData() {
 		}));
 	}, [teamMembersRaw]);
 
-	const currentLinearUserId = linearStatus?.connected === true
-		? (linearStatus.accountId ?? null)
-		: null;
+	const currentLinearUserId =
+		linearStatus?.connected === true ? (linearStatus.accountId ?? null) : null;
 
-	const currentJiraUserId = atlassianStatus?.jira.connected === true
-		? (atlassianStatus.jira.accountId ?? null)
-		: null;
+	const currentJiraUserId =
+		atlassianStatus?.jira.connected === true ? (atlassianStatus.jira.accountId ?? null) : null;
 
 	// ── Cache-first loading ──────────────────────────────────────────────────
 	const { data: cached, isLoading: cacheLoading } = trpc.tickets.getCachedTickets.useQuery(

@@ -1,13 +1,15 @@
 import { DndContext, DragOverlay, useDroppable } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { useState } from "react";
+import { memo, useState } from "react";
 import type { MergedTicketIssue } from "../../../shared/tickets";
 import { columnStateType } from "../../../shared/tickets";
 import type { useTicketDragDrop } from "../../hooks/useTicketDragDrop";
 import type { StatusColumn } from "../../hooks/useTicketsData";
+import { useAssigneePickerStore } from "../../stores/assignee-picker-store";
 import { StateIcon } from "../StateIcon";
 import type { LinkedWorkspace } from "../WorkspacePopover";
+import { AssigneeAvatar } from "./AssigneeAvatar";
 
 interface TicketsListViewProps {
 	columns: StatusColumn[];
@@ -19,15 +21,7 @@ interface TicketsListViewProps {
 	dnd: ReturnType<typeof useTicketDragDrop>;
 }
 
-function SortableListRow({
-	issue,
-	isSelected,
-	isLinked,
-	showProvider,
-	isDragOverlay,
-	onClick,
-	onContextMenu,
-}: {
+interface SortableListRowProps {
 	issue: MergedTicketIssue;
 	isSelected: boolean;
 	isLinked: boolean;
@@ -35,7 +29,18 @@ function SortableListRow({
 	isDragOverlay?: boolean;
 	onClick: () => void;
 	onContextMenu: (e: React.MouseEvent) => void;
-}) {
+}
+
+function SortableListRowImpl({
+	issue,
+	isSelected,
+	isLinked,
+	showProvider,
+	isDragOverlay,
+	onClick,
+	onContextMenu,
+}: SortableListRowProps) {
+	const openPicker = useAssigneePickerStore((s) => s.openFor);
 	const sortableId = `${issue.provider}:${issue.id}`;
 	const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
 		id: sortableId,
@@ -89,9 +94,20 @@ function SortableListRow({
 					{issue.provider === "jira" ? "Jira" : "Linear"}
 				</span>
 			)}
+			<AssigneeAvatar
+				assigneeId={issue.assigneeId}
+				assigneeName={issue.assigneeName}
+				size={14}
+				onClick={(e) => {
+					e.stopPropagation();
+					openPicker(issue, { x: e.clientX, y: e.clientY });
+				}}
+			/>
 		</button>
 	);
 }
+
+const SortableListRow = memo(SortableListRowImpl);
 
 function DroppableGroup({
 	col,
