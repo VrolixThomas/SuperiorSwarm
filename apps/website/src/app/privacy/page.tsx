@@ -78,16 +78,70 @@ export default function PrivacyPage() {
 				</P>
 			</Section>
 
-			<Section heading="Questions">
+			<Section heading="Your rights (GDPR)">
 				<P>
-					Open an issue at{" "}
+					If you are in the European Economic Area, you have the following rights regarding your
+					personal data:
+				</P>
+				<UL>
+					<li>
+						<strong className="text-text-primary">Access:</strong> Request a copy of the personal
+						data we hold about you.
+					</li>
+					<li>
+						<strong className="text-text-primary">Rectification:</strong> Ask us to correct
+						inaccurate data.
+					</li>
+					<li>
+						<strong className="text-text-primary">Erasure:</strong> Ask us to delete your account
+						and associated data.
+					</li>
+					<li>
+						<strong className="text-text-primary">Restriction:</strong> Ask us to restrict
+						processing of your data in certain circumstances.
+					</li>
+					<li>
+						<strong className="text-text-primary">Portability:</strong> Request your data in a
+						machine-readable format.
+					</li>
+					<li>
+						<strong className="text-text-primary">Objection:</strong> Object to processing based on
+						legitimate interest (this applies to usage telemetry).
+					</li>
+				</UL>
+				<P>
+					To exercise any of these rights, open an issue on{" "}
 					<a
 						href="https://github.com/VrolixThomas/SuperiorSwarm"
 						target="_blank"
 						rel="noopener noreferrer"
 						className="text-accent underline underline-offset-2 hover:text-text-primary"
 					>
-						github.com/VrolixThomas/SuperiorSwarm
+						GitHub
+					</a>
+					. We will respond within 30 days. You also have the right to lodge a complaint with the{" "}
+					<a
+						href="https://www.dataprotectionauthority.be"
+						target="_blank"
+						rel="noopener noreferrer"
+						className="text-accent underline underline-offset-2 hover:text-text-primary"
+					>
+						Belgian Data Protection Authority
+					</a>
+					.
+				</P>
+			</Section>
+
+			<Section heading="Questions">
+				<P>
+					Open an issue on{" "}
+					<a
+						href="https://github.com/VrolixThomas/SuperiorSwarm"
+						target="_blank"
+						rel="noopener noreferrer"
+						className="text-accent underline underline-offset-2 hover:text-text-primary"
+					>
+						GitHub
 					</a>
 					.
 				</P>
