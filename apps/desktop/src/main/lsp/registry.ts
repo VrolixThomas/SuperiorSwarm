@@ -329,7 +329,7 @@ interface CacheEntry {
 	servers: LanguageServerConfig[];
 }
 
-const FS_CACHE_MAX_SIZE = 128;
+const FS_CACHE_MAX_SIZE = 1024;
 const fsCache = new LruMap<string, CacheEntry>(FS_CACHE_MAX_SIZE);
 
 export function _clearRegistryFsCache(): void {

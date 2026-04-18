@@ -74,3 +74,19 @@ describe("loadRepoConfigCached", () => {
 		expect(second[0]?.id).toBe("yy");
 	});
 });
+
+test("loadConfigFileCached returns identical array reference when mtime is unchanged", () => {
+	_clearRegistryFsCache();
+	const dir = mkdtempSync(join(tmpdir(), "ss-fs-cache-identity-"));
+	try {
+		const cfgDir = join(dir, ".superiorswarm");
+		mkdirSync(cfgDir);
+		writeFileSync(join(cfgDir, "lsp.json"), JSON.stringify({ servers: [] }));
+		const first = loadRepoConfigCached(dir);
+		const second = loadRepoConfigCached(dir);
+		expect(second).toBe(first);
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+		_clearRegistryFsCache();
+	}
+});
