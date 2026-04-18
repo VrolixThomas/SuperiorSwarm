@@ -96,6 +96,7 @@ mock.module("vscode-languageserver-protocol/node.js", () => ({
 const { ServerManager, _resetShellPathCacheForTests } = await import(
 	"../src/main/lsp/server-manager"
 );
+const { _clearRegistryFsCache } = await import("../src/main/lsp/registry");
 
 function createRepoWithConfig(name: string, configs: MockConfig[]): string {
 	const repoPath = mkdtempSync(join(tmpdir(), `ss-server-manager-${name}-`));
@@ -721,6 +722,15 @@ describe("ServerManager repo-aware resolution", () => {
 			]
 		);
 		expect([...changed]).toEqual(["brand-new"]);
+	});
+
+	test("getRegistry returns identical object when cache entries unchanged", () => {
+		_clearRegistryFsCache();
+		const manager = new ServerManager();
+		const repo = "/tmp/ss-registry-memo-test";
+		const first = (manager as unknown as { getRegistry(p: string): unknown }).getRegistry(repo);
+		const second = (manager as unknown as { getRegistry(p: string): unknown }).getRegistry(repo);
+		expect(second).toBe(first);
 	});
 
 	test("clearAvailabilityCache(configId) purges entries regardless of repoPath scope", () => {

@@ -20,6 +20,8 @@ import {
 } from "./registry";
 import { getRepoTrust } from "./trust";
 
+const EMPTY_CONFIG_LIST: LanguageServerConfig[] = [];
+
 export type LspSupportResult =
 	| {
 			supported: true;
@@ -168,6 +170,15 @@ export class ServerManager {
 	private serverLastErrors = new Map<string, string>();
 	private serverLastStartupErrors = new Map<string, string>();
 	private executableCache = new Map<string, { available: boolean; expiresAt: number }>();
+	private registryMemo = new Map<
+		string,
+		{
+			userRef: LanguageServerConfig[];
+			repoRef: LanguageServerConfig[];
+			trusted: boolean;
+			registry: ReturnType<typeof buildRegistry>;
+		}
+	>();
 	private static MAX_RESTARTS = 3;
 	private static EXECUTABLE_CACHE_TTL_MS = 10_000;
 	private mainWindow: BrowserWindow | null = null;
@@ -300,19 +311,32 @@ export class ServerManager {
 
 	private getRegistry(repoPath?: string) {
 		const normalizedRepoPath = repoPath?.trim();
-		const repoConfig =
-			normalizedRepoPath && getRepoTrust(normalizedRepoPath).trusted
-				? loadRepoConfigCached(normalizedRepoPath)
-				: [];
-		return buildRegistry({
+		const trusted = !!normalizedRepoPath && getRepoTrust(normalizedRepoPath).trusted;
+		const userRef = loadUserConfigCached();
+		const repoRef = trusted ? loadRepoConfigCached(normalizedRepoPath) : EMPTY_CONFIG_LIST;
+
+		const memoKey = normalizedRepoPath ?? "";
+		const cached = this.registryMemo.get(memoKey);
+		if (
+			cached &&
+			cached.userRef === userRef &&
+			cached.repoRef === repoRef &&
+			cached.trusted === trusted
+		) {
+			return cached.registry;
+		}
+
+		const registry = buildRegistry({
 			defaults: DEFAULT_SERVER_CONFIGS,
-			user: loadUserConfigCached(),
-			repo: repoConfig,
+			user: userRef,
+			repo: repoRef,
 			env: {
 				...process.env,
 				workspaceFolder: normalizedRepoPath,
 			},
 		});
+		this.registryMemo.set(memoKey, { userRef, repoRef, trusted, registry });
+		return registry;
 	}
 
 	private findConfigById(configId: string, repoPath: string): LanguageServerConfig | undefined {
@@ -764,6 +788,7 @@ export class ServerManager {
 	}
 
 	clearAvailabilityCache(configId?: string, repoPath?: string): void {
+		this.registryMemo.clear();
 		if (!configId && !repoPath) {
 			this.executableCache.clear();
 			this.unavailableServers.clear();
@@ -804,6 +829,7 @@ export class ServerManager {
 	}
 
 	async evictServer(configId: string, repoPath?: string): Promise<void> {
+		this.registryMemo.clear();
 		const matchingKeys: string[] = [];
 		const suffix = repoPath ? `:${repoPath}` : null;
 		for (const key of this.servers.keys()) {
