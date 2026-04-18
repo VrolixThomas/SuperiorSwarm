@@ -14,6 +14,7 @@ import { PageHeading } from "./SectionHeading";
 import { LspAddServerFlow } from "./lsp/LspAddServerFlow";
 import { LspAdditionalServers } from "./lsp/LspAdditionalServers";
 import { LspBuiltInServers } from "./lsp/LspBuiltInServers";
+import { LspInstallConfirmDialog } from "./lsp/LspInstallConfirmDialog";
 import { LspWorkspaceContext } from "./lsp/LspWorkspaceContext";
 import { detectConflicts } from "./lsp/conflicts";
 import { ConfigFieldErrors } from "./lsp/lsp-errors";
@@ -109,10 +110,18 @@ export function LspSettings() {
 	} | null>(null);
 	const [toggling, setToggling] = useState<string | null>(null);
 	const [removing, setRemoving] = useState<string | null>(null);
+	const [installConfirm, setInstallConfirm] = useState<{
+		configId: string;
+		displayName: string;
+		candidateBinaries: string[];
+		prompt: string;
+	} | null>(null);
+	const [installConfirmError, setInstallConfirmError] = useState<string | null>(null);
+	const [previewingInstallId, setPreviewingInstallId] = useState<string | null>(null);
 	const rechecking = recheckServer.isPending ? (recheckServer.variables?.id ?? null) : null;
 	const askingAgent = requestInstall.isPending
 		? (requestInstall.variables?.configId ?? null)
-		: null;
+		: previewingInstallId;
 
 	// Re-check availability on window focus — users commonly install a
 	// binary in a terminal then come back to the app expecting it to light up.
@@ -239,14 +248,45 @@ export function LspSettings() {
 	const handleAskAgent = useCallback(
 		async (id: string) => {
 			if (!repoPath) return;
+			setPreviewingInstallId(id);
+			setInstallConfirmError(null);
+			try {
+				const preview = await utils.lsp.previewInstall.fetch({ configId: id, repoPath });
+				setInstallConfirm({
+					configId: id,
+					displayName: preview.displayName,
+					candidateBinaries: preview.candidateBinaries,
+					prompt: preview.prompt,
+				});
+			} catch (err) {
+				console.error("[lsp] preview install prompt failed:", err);
+			} finally {
+				setPreviewingInstallId(null);
+			}
+		},
+		[repoPath, utils.lsp.previewInstall]
+	);
+
+	const handleConfirmInstall = useCallback(
+		async (finalPrompt: string) => {
+			if (!repoPath || !installConfirm) return;
+			setInstallConfirmError(null);
 			try {
 				const install = await requestInstall.mutateAsync({
-					configId: id,
+					configId: installConfirm.configId,
 					repoPath,
+					customPrompt: finalPrompt,
 				});
 				const store = useTabStore.getState();
-				if (!store.activeWorkspaceId) return;
-				const tabId = store.addTerminalTab(store.activeWorkspaceId, repoPath, `Install ${id}`);
+				if (!store.activeWorkspaceId) {
+					setInstallConfirmError("Open a workspace before running the install agent.");
+					return;
+				}
+				const tabId = store.addTerminalTab(
+					store.activeWorkspaceId,
+					repoPath,
+					`Install ${installConfirm.configId}`
+				);
 				store.setActiveTab(tabId);
 				await window.electron.terminal.create(tabId, repoPath, store.activeWorkspaceId);
 				const q = (s: string) => `'${s.replace(/'/g, "'\\''")}'`;
@@ -254,12 +294,16 @@ export function LspSettings() {
 					tabId,
 					`bash ${q(install.launchScript)} ${q(install.repoPath)} ${q(install.promptFilePath)}\r`
 				);
+				setInstallConfirm(null);
 				useProjectStore.getState().closeSettings();
 			} catch (err) {
 				console.error("[lsp] ask-agent install failed:", err);
+				setInstallConfirmError(
+					err instanceof Error ? err.message : "Failed to launch install agent"
+				);
 			}
 		},
-		[repoPath, requestInstall]
+		[repoPath, installConfirm, requestInstall]
 	);
 
 	const handleRecheck = useCallback(
@@ -358,6 +402,22 @@ export function LspSettings() {
 			)}
 
 			<LspWorkspaceContext repoPath={repoPath} />
+
+			{installConfirm && (
+				<LspInstallConfirmDialog
+					configId={installConfirm.configId}
+					displayName={installConfirm.displayName}
+					candidateBinaries={installConfirm.candidateBinaries}
+					initialPrompt={installConfirm.prompt}
+					loading={requestInstall.isPending}
+					error={installConfirmError}
+					onConfirm={handleConfirmInstall}
+					onCancel={() => {
+						setInstallConfirm(null);
+						setInstallConfirmError(null);
+					}}
+				/>
+			)}
 		</div>
 	);
 }

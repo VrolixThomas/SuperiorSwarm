@@ -12,12 +12,20 @@ export interface LaunchInstallAgentOptions {
 	configId: string;
 	displayName: string;
 	candidateBinaries: string[];
+	customPrompt?: string;
 }
 
 export interface LaunchInstallAgentResult {
 	launchScript: string;
 	promptFilePath: string;
 	repoPath: string;
+}
+
+export interface BuildInstallPromptOptions {
+	repoPath: string;
+	configId: string;
+	displayName: string;
+	candidateBinaries: string[];
 }
 
 function getCliPreset(): schema.AiReviewSettings {
@@ -45,7 +53,7 @@ function getCliPreset(): schema.AiReviewSettings {
 	return inserted;
 }
 
-function buildPrompt(opts: LaunchInstallAgentOptions): string {
+export function buildInstallPrompt(opts: BuildInstallPromptOptions): string {
 	const binariesLine = opts.candidateBinaries.join(", ");
 	return `The user opened a ${opts.displayName} file in SuperiorSwarm and wants a language server for "${opts.configId}", but no binary was found on PATH.
 
@@ -77,7 +85,8 @@ export async function launchInstallAgent(
 	if (!preset) throw new Error(`Unknown CLI preset: ${settings.cliPreset}`);
 
 	const promptFilePath = join(sessionDir, "install-prompt.txt");
-	writeFileSync(promptFilePath, buildPrompt(opts), "utf-8");
+	const promptText = opts.customPrompt ?? buildInstallPrompt(opts);
+	writeFileSync(promptFilePath, promptText, "utf-8");
 
 	const parts = [preset.command];
 	if (settings.skipPermissions && preset.permissionFlag) {
@@ -87,12 +96,7 @@ export async function launchInstallAgent(
 	const cliCommand = parts.join(" ");
 
 	const launchScript = join(sessionDir, "start-install.sh");
-	const scriptContent = [
-		"#!/bin/bash",
-		'cd -- "$1" || exit 1',
-		"",
-		cliCommand,
-	].join("\n");
+	const scriptContent = ["#!/bin/bash", 'cd -- "$1" || exit 1', "", cliCommand].join("\n");
 	writeFileSync(launchScript, scriptContent, "utf-8");
 	chmodSync(launchScript, 0o755);
 

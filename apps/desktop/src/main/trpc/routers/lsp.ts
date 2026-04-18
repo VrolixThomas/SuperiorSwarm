@@ -2,7 +2,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
 import { languageServerConfigSchema } from "../../../shared/lsp-schema";
-import { launchInstallAgent } from "../../lsp/agent-install";
+import { buildInstallPrompt, launchInstallAgent } from "../../lsp/agent-install";
 import { _clearDetectCache, detectSuggestions } from "../../lsp/detect";
 import {
 	dismissLanguage,
@@ -26,6 +26,27 @@ function getUserConfigPath(): string {
 
 function getRepoConfigPath(repoPath: string): string {
 	return join(repoPath, ".superiorswarm", "lsp.json");
+}
+
+function resolveInstallContext(
+	configId: string,
+	repoPath: string
+): { displayName: string; candidateBinaries: string[] } {
+	const userConfigs = loadUserConfigCached();
+	const repoConfigs = loadRepoConfigCached(repoPath);
+	const preset = LSP_PRESETS.find((p) => p.id === configId);
+	const config =
+		repoConfigs.find((c) => c.id === configId) ??
+		userConfigs.find((c) => c.id === configId) ??
+		DEFAULT_SERVER_CONFIGS.find((c) => c.id === configId) ??
+		preset?.config;
+	if (!config) {
+		throw new Error(`Unknown server id "${configId}"`);
+	}
+	return {
+		displayName: preset?.displayName ?? configId,
+		candidateBinaries: [config.command],
+	};
 }
 
 export const lspRouter = router({
@@ -146,26 +167,39 @@ export const lspRouter = router({
 			return { ok: true };
 		}),
 
-	requestInstall: publicProcedure
+	previewInstall: publicProcedure
 		.input(z.object({ configId: z.string().min(1), repoPath: z.string().min(1) }))
+		.query(({ input }) => {
+			const ctx = resolveInstallContext(input.configId, input.repoPath);
+			const prompt = buildInstallPrompt({
+				repoPath: input.repoPath,
+				configId: input.configId,
+				displayName: ctx.displayName,
+				candidateBinaries: ctx.candidateBinaries,
+			});
+			return {
+				prompt,
+				displayName: ctx.displayName,
+				candidateBinaries: ctx.candidateBinaries,
+			};
+		}),
+
+	requestInstall: publicProcedure
+		.input(
+			z.object({
+				configId: z.string().min(1),
+				repoPath: z.string().min(1),
+				customPrompt: z.string().optional(),
+			})
+		)
 		.mutation(async ({ input }) => {
-			const userConfigs = loadUserConfigCached();
-			const repoConfigs = loadRepoConfigCached(input.repoPath);
-			const preset = LSP_PRESETS.find((p) => p.id === input.configId);
-			const config =
-				repoConfigs.find((c) => c.id === input.configId) ??
-				userConfigs.find((c) => c.id === input.configId) ??
-				DEFAULT_SERVER_CONFIGS.find((c) => c.id === input.configId) ??
-				preset?.config;
-			if (!config) {
-				throw new Error(`Unknown server id "${input.configId}"`);
-			}
-			const displayName = preset?.displayName ?? input.configId;
+			const ctx = resolveInstallContext(input.configId, input.repoPath);
 			return launchInstallAgent({
 				repoPath: input.repoPath,
 				configId: input.configId,
-				displayName,
-				candidateBinaries: [config.command],
+				displayName: ctx.displayName,
+				candidateBinaries: ctx.candidateBinaries,
+				customPrompt: input.customPrompt,
 			});
 		}),
 

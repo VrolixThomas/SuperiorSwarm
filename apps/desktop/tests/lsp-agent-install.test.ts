@@ -115,6 +115,22 @@ describe("launchInstallAgent", () => {
 		expect(existsSync(join(repoPath, ".mcp.json"))).toBe(false);
 	});
 
+	test("writes customPrompt verbatim when provided, skipping the default template", async () => {
+		await setCliPreset("claude");
+		const { launchInstallAgent } = await import("../src/main/lsp/agent-install");
+
+		const custom = "EDITED PROMPT — only do exactly this.\nStep 1.\nStep 2.";
+		const { promptFilePath } = await launchInstallAgent({
+			repoPath,
+			configId: "rust",
+			displayName: "Rust",
+			candidateBinaries: ["rust-analyzer"],
+			customPrompt: custom,
+		});
+
+		expect(readFileSync(promptFilePath, "utf-8")).toBe(custom);
+	});
+
 	test("prompt asks the agent to present options and wait for user choice", async () => {
 		await setCliPreset("claude");
 		const { launchInstallAgent } = await import("../src/main/lsp/agent-install");
