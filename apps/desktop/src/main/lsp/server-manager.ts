@@ -339,6 +339,10 @@ export class ServerManager {
 		return registry;
 	}
 
+	_resetRegistryMemoForTests(): void {
+		this.registryMemo.clear();
+	}
+
 	private findConfigById(configId: string, repoPath: string): LanguageServerConfig | undefined {
 		const config = this.getRegistry(repoPath).byId.get(configId);
 		if (!config || config.disabled) {
