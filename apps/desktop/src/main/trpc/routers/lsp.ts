@@ -121,6 +121,7 @@ export const lspRouter = router({
 					existing[index] = { ...current, disabled: !input.enabled };
 				}
 				saveConfigFile(configPath, existing);
+				_clearDetectCache();
 			} else {
 				const baseConfig =
 					DEFAULT_SERVER_CONFIGS.find((c) => c.id === input.id) ??
@@ -134,6 +135,7 @@ export const lspRouter = router({
 
 				existing.push({ ...baseConfig, id: input.id, disabled: !input.enabled });
 				saveConfigFile(configPath, existing);
+				_clearDetectCache();
 			}
 
 			if (input.scope === "repo" && input.repoPath) {
