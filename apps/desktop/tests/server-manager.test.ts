@@ -93,7 +93,7 @@ mock.module("vscode-languageserver-protocol/node.js", () => ({
 	})),
 }));
 
-const { ServerManager, _resetShellPathCacheForTests } = await import(
+const { ServerManager, _resetShellPathCacheForTests, warmShellPathCache } = await import(
 	"../src/main/lsp/server-manager"
 );
 const { _clearRegistryFsCache } = await import("../src/main/lsp/registry");
@@ -748,5 +748,14 @@ describe("ServerManager repo-aware resolution", () => {
 		manager.clearAvailabilityCache("somelang");
 
 		expect(cache.size).toBe(0);
+	});
+
+	test("warmShellPathCache schedules cache fill and is idempotent", async () => {
+		_resetShellPathCacheForTests();
+		warmShellPathCache();
+		await new Promise((r) => setImmediate(r));
+		// Idempotent — calling twice does not throw.
+		warmShellPathCache();
+		await new Promise((r) => setImmediate(r));
 	});
 });

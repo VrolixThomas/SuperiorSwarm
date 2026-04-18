@@ -29,7 +29,7 @@ import {
 import { isCloneable, setDebugMode } from "./ipc-safety";
 import { log, setupCrashHandlers } from "./logger";
 import { setupLspIPC } from "./lsp/ipc-handler";
-import { serverManager } from "./lsp/server-manager";
+import { serverManager, warmShellPathCache } from "./lsp/server-manager";
 import { syncShortcuts } from "./quick-actions/shortcuts";
 import { registerSingleInstance } from "./single-instance";
 import { ensureTelemetryState } from "./telemetry/state";
@@ -139,6 +139,10 @@ app.whenReady().then(async () => {
 	const debugEnabled = debugRow?.value === "1";
 	setDebugMode(debugEnabled);
 	log.info(`[debug-mode] ${debugEnabled ? "ENABLED" : "disabled"}`);
+
+	// Warm the login-shell PATH cache so the first LSP IPC doesn't block on
+	// `<shell> -ilc` execSync. Fire-and-forget — populates a module-level cache.
+	warmShellPathCache();
 
 	// Set up tRPC IPC so the renderer can make queries once it loads
 	setupTRPCIPC(appRouter);

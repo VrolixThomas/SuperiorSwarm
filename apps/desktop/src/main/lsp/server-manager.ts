@@ -56,6 +56,21 @@ export function _resetShellPathCacheForTests(): void {
 	cachedDotnetRoot = undefined;
 }
 
+/**
+ * Fire-and-forget warm-up of the login-shell PATH cache. Called from main
+ * startup so the first `getHealth` / `getSupport` IPC doesn't pay the
+ * `<shell> -ilc` execSync cost on the IPC thread.
+ */
+export function warmShellPathCache(): void {
+	setImmediate(() => {
+		try {
+			resolveShellPath();
+		} catch {
+			// Fallback to process.env["PATH"] is already inside resolveShellPath.
+		}
+	});
+}
+
 function resolveShellPath(): string {
 	if (cachedShellPath !== null) return cachedShellPath;
 
