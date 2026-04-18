@@ -1,7 +1,7 @@
 import { and, eq, notInArray } from "drizzle-orm";
 import type { JiraIssue } from "../atlassian/jira";
 import { getDb } from "../db";
-import { sessionState, ticketCache } from "../db/schema";
+import { sessionState, teamMembers, ticketCache } from "../db/schema";
 import type { LinearIssue } from "../linear/linear";
 
 const LAST_FETCHED_KEY = "tickets_last_fetched";
@@ -19,6 +19,102 @@ export function getCachedLinearIssues(): LinearIssue[] {
 	const db = getDb();
 	const rows = db.select().from(ticketCache).where(eq(ticketCache.provider, "linear")).all();
 	return rows.map((r) => JSON.parse(r.data) as LinearIssue);
+}
+
+// ── Team members cache ──────────────────────────────────────────────────────
+
+export interface CachedTeamMember {
+	id: string;
+	provider: "linear" | "jira";
+	userId: string;
+	name: string;
+	email: string | null;
+	avatarUrl: string | null;
+	teamId: string;
+}
+
+export function getCachedTeamMembers(filter?: {
+	provider?: "linear" | "jira";
+	teamId?: string;
+}): CachedTeamMember[] {
+	const db = getDb();
+	const conds = [];
+	if (filter?.provider) conds.push(eq(teamMembers.provider, filter.provider));
+	if (filter?.teamId) conds.push(eq(teamMembers.teamId, filter.teamId));
+	if (conds.length === 0) return db.select().from(teamMembers).all();
+	if (conds.length === 1) return db.select().from(teamMembers).where(conds[0]).all();
+	return db
+		.select()
+		.from(teamMembers)
+		.where(and(...conds))
+		.all();
+}
+
+export function upsertTeamMembers(
+	provider: "linear" | "jira",
+	teamId: string,
+	members: Array<{ userId: string; name: string; email: string | null; avatarUrl: string | null }>
+): void {
+	const db = getDb();
+
+	const existing = db
+		.select()
+		.from(teamMembers)
+		.where(and(eq(teamMembers.provider, provider), eq(teamMembers.teamId, teamId)))
+		.all();
+
+	const existingById = new Map(existing.map((r) => [r.id, r]));
+	const incomingIds = new Set(members.map((m) => `${provider}:${teamId}:${m.userId}`));
+
+	const toUpsert = members.filter((m) => {
+		const row = existingById.get(`${provider}:${teamId}:${m.userId}`);
+		if (!row) return true;
+		return row.name !== m.name || row.email !== m.email || row.avatarUrl !== m.avatarUrl;
+	});
+	const toDelete = existing.filter((r) => !incomingIds.has(r.id)).map((r) => r.id);
+
+	if (toUpsert.length === 0 && toDelete.length === 0) return;
+
+	const now = new Date();
+	db.transaction((tx) => {
+		for (const member of toUpsert) {
+			const id = `${provider}:${teamId}:${member.userId}`;
+			tx.insert(teamMembers)
+				.values({
+					id,
+					provider,
+					userId: member.userId,
+					name: member.name,
+					email: member.email,
+					avatarUrl: member.avatarUrl,
+					teamId,
+					updatedAt: now,
+				})
+				.onConflictDoUpdate({
+					target: teamMembers.id,
+					set: {
+						name: member.name,
+						email: member.email,
+						avatarUrl: member.avatarUrl,
+						teamId,
+						updatedAt: now,
+					},
+				})
+				.run();
+		}
+
+		if (toDelete.length > 0) {
+			tx.delete(teamMembers)
+				.where(
+					and(
+						eq(teamMembers.provider, provider),
+						eq(teamMembers.teamId, teamId),
+						notInArray(teamMembers.id, [...incomingIds])
+					)
+				)
+				.run();
+		}
+	});
 }
 
 // ── Cache write ──────────────────────────────────────────────────────────────
@@ -82,6 +178,28 @@ export function upsertLinearIssues(issues: LinearIssue[]): void {
 	);
 }
 
+export function pruneOrphanTeamMembers(provider: "linear" | "jira", keepTeamIds: string[]): void {
+	const db = getDb();
+	if (keepTeamIds.length === 0) {
+		db.delete(teamMembers).where(eq(teamMembers.provider, provider)).run();
+		return;
+	}
+	db.delete(teamMembers)
+		.where(and(eq(teamMembers.provider, provider), notInArray(teamMembers.teamId, keepTeamIds)))
+		.run();
+}
+
+export function pruneOrphanTicketCache(provider: "linear" | "jira", keepGroupIds: string[]): void {
+	const db = getDb();
+	if (keepGroupIds.length === 0) {
+		db.delete(ticketCache).where(eq(ticketCache.provider, provider)).run();
+		return;
+	}
+	db.delete(ticketCache)
+		.where(and(eq(ticketCache.provider, provider), notInArray(ticketCache.groupId, keepGroupIds)))
+		.run();
+}
+
 // ── Last-fetched timestamp ───────────────────────────────────────────────────
 
 export function getLastFetched(): string | null {
@@ -120,4 +238,65 @@ export function setDoneCutoffDays(days: number): void {
 			set: { value: String(days) },
 		})
 		.run();
+}
+
+// ── Assignee filter persistence ─────────────────────────────────────────────
+
+const ASSIGNEE_FILTER_PREFIX = "tickets_assignee_filter_";
+
+export function getAssigneeFilter(projectId: string): string | null {
+	const db = getDb();
+	const key = `${ASSIGNEE_FILTER_PREFIX}${projectId}`;
+	const row = db.select().from(sessionState).where(eq(sessionState.key, key)).get();
+	return row?.value ?? null;
+}
+
+export function setAssigneeFilter(projectId: string, value: string): void {
+	const db = getDb();
+	const key = `${ASSIGNEE_FILTER_PREFIX}${projectId}`;
+	db.insert(sessionState)
+		.values({ key, value })
+		.onConflictDoUpdate({ target: sessionState.key, set: { value } })
+		.run();
+}
+
+// ── Visible teams persistence ───────────────────────────────────────────────
+
+const VISIBLE_TEAMS_KEY = "tickets_visible_teams";
+
+function getVisibleTeams(): string | null {
+	const db = getDb();
+	const row = db.select().from(sessionState).where(eq(sessionState.key, VISIBLE_TEAMS_KEY)).get();
+	return row?.value ?? null;
+}
+
+function setVisibleTeams(value: string): void {
+	const db = getDb();
+	db.insert(sessionState)
+		.values({ key: VISIBLE_TEAMS_KEY, value })
+		.onConflictDoUpdate({ target: sessionState.key, set: { value } })
+		.run();
+}
+
+export function getVisibleTeamsTyped(): Array<{ provider: "linear" | "jira"; id: string }> | null {
+	const raw = getVisibleTeams();
+	if (raw === null || raw === "") return null;
+	try {
+		const parsed = JSON.parse(raw);
+		if (!Array.isArray(parsed)) return null;
+		return parsed.filter(
+			(v): v is { provider: "linear" | "jira"; id: string } =>
+				typeof v?.provider === "string" &&
+				(v.provider === "linear" || v.provider === "jira") &&
+				typeof v?.id === "string"
+		);
+	} catch {
+		return null;
+	}
+}
+
+export function setVisibleTeamsTyped(
+	value: Array<{ provider: "linear" | "jira"; id: string }> | null
+): void {
+	setVisibleTeams(value === null ? "" : JSON.stringify(value));
 }
