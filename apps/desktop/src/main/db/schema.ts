@@ -399,3 +399,18 @@ export const telemetryState = sqliteTable("telemetry_state", {
 
 export type TelemetryState = typeof telemetryState.$inferSelect;
 export type NewTelemetryState = typeof telemetryState.$inferInsert;
+
+export const lspTrustedRepos = sqliteTable("lsp_trusted_repos", {
+	repoPath: text("repo_path").primaryKey(),
+	trusted: integer("trusted", { mode: "boolean" }).notNull().default(false),
+	decidedAt: integer("decided_at", { mode: "timestamp" }).notNull(),
+});
+
+export type LspTrustedRepo = typeof lspTrustedRepos.$inferSelect;
+
+export const lspDismissedLanguages = sqliteTable("lsp_dismissed_languages", {
+	language: text("language").primaryKey(),
+	dismissedAt: integer("dismissed_at", { mode: "timestamp" }).notNull(),
+});
+
+export type LspDismissedLanguage = typeof lspDismissedLanguages.$inferSelect;

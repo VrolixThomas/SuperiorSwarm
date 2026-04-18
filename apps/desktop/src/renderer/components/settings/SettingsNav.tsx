@@ -146,6 +146,25 @@ const NAV_ITEMS: {
 		),
 	},
 	{
+		id: "lsp",
+		label: "Language Servers",
+		icon: (
+			<svg
+				width="14"
+				height="14"
+				viewBox="0 0 24 24"
+				fill="none"
+				stroke="currentColor"
+				strokeWidth="1.5"
+				strokeLinecap="round"
+				strokeLinejoin="round"
+			>
+				<path d="M14 6l6 6-6 6" />
+				<path d="M10 6l-6 6 6 6" />
+			</svg>
+		),
+	},
+	{
 		id: "about",
 		label: "About",
 		section: "About",

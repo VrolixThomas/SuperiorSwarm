@@ -15,6 +15,22 @@ import htmlWorker from "monaco-editor/esm/vs/language/html/html.worker?worker";
 import jsonWorker from "monaco-editor/esm/vs/language/json/json.worker?worker";
 import tsWorker from "monaco-editor/esm/vs/language/typescript/ts.worker?worker";
 
+// Eager-load monarch grammars. Monaco lazy-loads these via dynamic import by
+// default, which is unreliable in the Electron renderer — the chunk resolves
+// silently to nothing and the file renders as plaintext.
+import "monaco-editor/esm/vs/basic-languages/csharp/csharp.js";
+import "monaco-editor/esm/vs/basic-languages/cpp/cpp.js";
+import "monaco-editor/esm/vs/basic-languages/rust/rust.js";
+import "monaco-editor/esm/vs/basic-languages/kotlin/kotlin.js";
+import "monaco-editor/esm/vs/basic-languages/php/php.js";
+import "monaco-editor/esm/vs/basic-languages/scala/scala.js";
+import "monaco-editor/esm/vs/basic-languages/swift/swift.js";
+import "monaco-editor/esm/vs/basic-languages/ruby/ruby.js";
+import "monaco-editor/esm/vs/basic-languages/lua/lua.js";
+import "monaco-editor/esm/vs/basic-languages/r/r.js";
+import "monaco-editor/esm/vs/basic-languages/dart/dart.js";
+import "monaco-editor/esm/vs/basic-languages/elixir/elixir.js";
+
 self.MonacoEnvironment = {
 	getWorker(_workerId: string, label: string) {
 		if (label === "typescript" || label === "javascript") return new tsWorker();

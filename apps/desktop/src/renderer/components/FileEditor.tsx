@@ -2,18 +2,13 @@ import * as monaco from "monaco-editor";
 import { initVimMode } from "monaco-vim";
 import { useEffect, useRef, useState } from "react";
 import { EDITOR_THEME, ensureThemeRegistered } from "../lib/monacoTheme";
-import {
-	registerLspProviders,
-	sendDidChange,
-	sendDidClose,
-	sendDidOpen,
-	setModelRepoPath,
-} from "../lsp/monaco-lsp-bridge";
 import { useEditorSettingsStore } from "../stores/editor-settings";
+import { useProjectStore } from "../stores/projects";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import { MarkdownPreviewButton } from "./MarkdownPreviewButton";
 import { MarkdownRenderer } from "./MarkdownRenderer";
+import { useFileEditorLsp } from "./editor/useFileEditorLsp";
 
 interface FileEditorProps {
 	tabId: string;
@@ -41,6 +36,7 @@ export function FileEditor({
 	const vimStatusRef = useRef<HTMLDivElement>(null);
 	const vimModeRef = useRef<ReturnType<typeof initVimMode> | null>(null);
 	const [editorReady, setEditorReady] = useState(false);
+	const [currentModel, setCurrentModel] = useState<monaco.editor.ITextModel | null>(null);
 	const vimEnabled = useEditorSettingsStore((s) => s.vimEnabled);
 	const markdownPreviewMode = useTabStore((s) => s.markdownPreviewMode);
 	const [previewContent, setPreviewContent] = useState("");
@@ -52,6 +48,31 @@ export function FileEditor({
 			utils.diff.getWorkingTreeStatus.invalidate({ repoPath });
 		},
 	});
+	const {
+		message: lspMessage,
+		reason: lspReason,
+		canTrust,
+		trustRepo,
+		onContentChanged: onLspContentChanged,
+	} = useFileEditorLsp(currentModel, repoPath, language, filePath);
+	const utilsForLsp = trpc.useUtils();
+	const dismissLanguageMut = trpc.lsp.dismissLanguage.useMutation({
+		onSuccess: () => utilsForLsp.lsp.getDismissedLanguages.invalidate(),
+	});
+	const dismissedQuery = trpc.lsp.getDismissedLanguages.useQuery();
+	const isLanguageDismissed =
+		lspReason === "missing-binary" && (dismissedQuery.data ?? []).includes(language);
+	const openLspSettings = () => {
+		const { openSettings, setSettingsCategory } = useProjectStore.getState();
+		openSettings();
+		setSettingsCategory("lsp");
+	};
+	// Ref keeps callback identity stable; the file-loading effect must not re-run
+	// when useFileEditorLsp returns a new onContentChanged (it churns on each model swap).
+	const onLspContentChangedRef = useRef(onLspContentChanged);
+	useEffect(() => {
+		onLspContentChangedRef.current = onLspContentChanged;
+	}, [onLspContentChanged]);
 
 	// Clear initialPosition from store immediately so re-mounts (tab switch away/back) do not re-navigate.
 	// tabId and clearInitialPosition are intentionally excluded: this runs on mount only, and tabId
@@ -107,6 +128,7 @@ export function FileEditor({
 		if (existingModel) existingModel.dispose();
 		const model = monaco.editor.createModel(data.content, language, fileUri);
 		editor.setModel(model);
+		setCurrentModel(model);
 		setPreviewContent(data.content);
 
 		// Use the ref (captured at mount) so re-renders after store clear do not re-navigate
@@ -117,19 +139,7 @@ export function FileEditor({
 			initialPositionRef.current = undefined; // consume once
 		}
 
-		// LSP integration
-		const uri = model.uri.toString();
-		const supportedLspLanguages = ["typescript", "javascript", "python"];
-		const lspEnabled = supportedLspLanguages.includes(language);
-
-		if (lspEnabled) {
-			setModelRepoPath(uri, repoPath);
-			registerLspProviders(language);
-			sendDidOpen(repoPath, language, uri, data.content);
-		}
-
 		let version = 1;
-
 		const sub = model.onDidChangeContent(() => {
 			if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
 			saveTimerRef.current = setTimeout(() => {
@@ -140,19 +150,15 @@ export function FileEditor({
 				setPreviewContent(model.getValue());
 			}, 300);
 
-			if (lspEnabled) {
-				version++;
-				sendDidChange(repoPath, language, uri, model.getValue(), version);
-			}
+			version++;
+			onLspContentChangedRef.current(version);
 		});
 
 		return () => {
 			sub.dispose();
 			if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
 			if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
-			if (lspEnabled) {
-				sendDidClose(repoPath, language, uri);
-			}
+			setCurrentModel(null);
 			model.dispose();
 		};
 	}, [data, language, repoPath, filePath]);
@@ -207,6 +213,40 @@ export function FileEditor({
 				className="flex h-full w-full flex-col"
 				style={isLoading ? { display: "none" } : undefined}
 			>
+				{lspMessage && !isLanguageDismissed && (
+					<div className="flex items-center justify-between gap-2 border-b border-[rgba(255,159,10,0.35)] bg-[rgba(255,159,10,0.12)] px-3 py-2 text-[12px] text-[var(--color-warning)]">
+						<span>{lspMessage}</span>
+						<div className="flex shrink-0 items-center gap-1.5">
+							{canTrust && (
+								<button
+									type="button"
+									onClick={() => void trustRepo()}
+									className="rounded-[4px] border border-[var(--color-warning)] px-2 py-0.5 text-[11px] font-medium hover:bg-[rgba(255,159,10,0.2)]"
+								>
+									Trust this repo
+								</button>
+							)}
+							{lspReason === "missing-binary" && (
+								<>
+									<button
+										type="button"
+										onClick={openLspSettings}
+										className="rounded-[4px] border border-[var(--color-warning)] px-2 py-0.5 text-[11px] font-medium hover:bg-[rgba(255,159,10,0.2)]"
+									>
+										Go to settings
+									</button>
+									<button
+										type="button"
+										onClick={() => dismissLanguageMut.mutate({ language })}
+										className="rounded-[4px] px-2 py-0.5 text-[11px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
+									>
+										Don't show
+									</button>
+								</>
+							)}
+						</div>
+					</div>
+				)}
 				{language === "markdown" && (
 					<div className="flex h-8 shrink-0 items-center justify-end gap-2 border-b border-[var(--border)] bg-[var(--bg-surface)] px-3">
 						<MarkdownPreviewButton language={language} />

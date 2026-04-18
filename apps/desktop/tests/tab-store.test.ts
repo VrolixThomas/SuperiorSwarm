@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test } from "bun:test";
+import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { getAllPanes, usePaneStore } from "../src/renderer/stores/pane-store";
 import {
 	PANEL_CLOSED,
@@ -7,6 +7,23 @@ import {
 	useTabStore,
 } from "../src/renderer/stores/tab-store";
 import type { DiffContext } from "../src/shared/diff-types";
+
+mock.module("monaco-editor", () => ({
+	languages: {
+		registerCompletionItemProvider: () => ({ dispose: () => {} }),
+		registerHoverProvider: () => ({ dispose: () => {} }),
+		registerDefinitionProvider: () => ({ dispose: () => {} }),
+		registerReferenceProvider: () => ({ dispose: () => {} }),
+	},
+	editor: {
+		registerEditorOpener: () => ({ dispose: () => {} }),
+		getModel: () => null,
+		setModelMarkers: () => {},
+	},
+	Uri: {
+		parse: (value: string) => value,
+	},
+}));
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 

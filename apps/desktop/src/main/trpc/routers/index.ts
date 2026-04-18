@@ -7,6 +7,7 @@ import { commentSolverRouter } from "./comment-solver";
 import { diffRouter } from "./diff";
 import { githubRouter } from "./github";
 import { linearRouter } from "./linear";
+import { lspRouter } from "./lsp";
 import { mergeRouter } from "./merge";
 import { prPollerRouter } from "./pr-poller";
 import { projectsRouter } from "./projects";
@@ -43,6 +44,7 @@ export const appRouter = router({
 	updates: updatesRouter,
 	system: systemRouter,
 	telemetry: telemetryRouter,
+	lsp: lspRouter,
 });
 
 export type AppRouter = typeof appRouter;

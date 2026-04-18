@@ -1,10 +1,66 @@
 import { type BrowserWindow, ipcMain } from "electron";
+import type { LspSupportResponse } from "../../shared/types";
 import { isCloneable } from "../ipc-safety";
 import { log } from "../logger";
 import { serverManager } from "./server-manager";
 
+function getFilePathFromParams(params: unknown): string | undefined {
+	if (!params || typeof params !== "object") {
+		return undefined;
+	}
+
+	const textDocument = (params as { textDocument?: { uri?: unknown } }).textDocument;
+	if (!textDocument || typeof textDocument !== "object") {
+		return undefined;
+	}
+
+	const uri = textDocument.uri;
+	if (typeof uri !== "string") {
+		return undefined;
+	}
+
+	if (!uri.startsWith("file://")) {
+		return undefined;
+	}
+
+	try {
+		return decodeURIComponent(new URL(uri).pathname);
+	} catch {
+		return undefined;
+	}
+}
+
 export function setupLspIPC(mainWindow: BrowserWindow): void {
 	serverManager.setMainWindow(mainWindow);
+
+	ipcMain.handle(
+		"lsp:getSupport",
+		async (
+			_event,
+			{ repoPath, languageId, filePath }: { repoPath: string; languageId: string; filePath: string }
+		): Promise<LspSupportResponse> => {
+			const support = serverManager.getSupport(repoPath, languageId, filePath);
+			if (!support.supported) {
+				const reason = support.reason;
+				return {
+					supported: false,
+					reason,
+				};
+			}
+
+			return {
+				supported: true,
+				serverId: support.config.id,
+				reason: support.reason,
+			};
+		}
+	);
+
+	ipcMain.handle("lsp:getHealth", async (_event, { repoPath }: { repoPath: string }) => {
+		return {
+			entries: serverManager.getHealth(repoPath),
+		};
+	});
 
 	ipcMain.handle(
 		"lsp:request",
@@ -19,7 +75,8 @@ export function setupLspIPC(mainWindow: BrowserWindow): void {
 		) => {
 			const label = `lsp:${method}`;
 
-			const config = serverManager.findConfig(languageId);
+			const filePath = getFilePathFromParams(params);
+			const config = serverManager.findConfig(languageId, repoPath, filePath);
 			if (!config) return { error: `No language server for ${languageId}` };
 
 			const connection = await serverManager.getOrCreate(config.id, repoPath);
@@ -54,7 +111,8 @@ export function setupLspIPC(mainWindow: BrowserWindow): void {
 				params,
 			}: { languageId: string; repoPath: string; method: string; params: unknown }
 		) => {
-			const config = serverManager.findConfig(languageId);
+			const filePath = getFilePathFromParams(params);
+			const config = serverManager.findConfig(languageId, repoPath, filePath);
 			if (!config) return;
 
 			const connection = serverManager.getConnection(config.id, repoPath);

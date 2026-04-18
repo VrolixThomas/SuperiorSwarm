@@ -6,6 +6,7 @@ import { CommentSolverSettings } from "./CommentSolverSettings";
 import { GeneralSettings } from "./GeneralSettings";
 import { IntegrationsSettings } from "./IntegrationsSettings";
 import { KeyboardShortcutsSettings } from "./KeyboardShortcutsSettings";
+import { LspSettings } from "./LspSettings";
 import { SettingsNav } from "./SettingsNav";
 import { TerminalsSettings } from "./TerminalsSettings";
 import { WorktreesSettings } from "./WorktreesSettings";
@@ -28,6 +29,8 @@ function SettingsContent() {
 			return <TerminalsSettings />;
 		case "worktrees":
 			return <WorktreesSettings />;
+		case "lsp":
+			return <LspSettings />;
 		case "about":
 			return <AboutSettings />;
 		default: {
