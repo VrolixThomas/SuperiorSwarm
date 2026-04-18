@@ -13,6 +13,9 @@ export interface JiraIssue {
 	webUrl: string;
 	createdAt: string;
 	updatedAt: string;
+	assigneeId: string | null;
+	assigneeName: string | null;
+	assigneeAvatar: string | null;
 }
 
 interface JiraApiIssue {
@@ -25,6 +28,11 @@ interface JiraApiIssue {
 		project: { key: string };
 		created: string;
 		updated: string;
+		assignee: {
+			accountId: string;
+			displayName: string;
+			avatarUrls?: Record<string, string>;
+		} | null;
 	};
 }
 
@@ -41,7 +49,7 @@ function mapStatusToColor(categoryKey: string): string {
 	}
 }
 
-function mapApiIssue(issue: JiraApiIssue, baseUrl: string): JiraIssue {
+export function mapApiIssue(issue: JiraApiIssue, baseUrl: string): JiraIssue {
 	return {
 		key: issue.key,
 		summary: issue.fields.summary,
@@ -54,16 +62,19 @@ function mapApiIssue(issue: JiraApiIssue, baseUrl: string): JiraIssue {
 		webUrl: `${baseUrl}/browse/${issue.key}`,
 		createdAt: issue.fields.created,
 		updatedAt: issue.fields.updated,
+		assigneeId: issue.fields.assignee?.accountId ?? null,
+		assigneeName: issue.fields.assignee?.displayName ?? null,
+		assigneeAvatar: issue.fields.assignee?.avatarUrls?.["24x24"] ?? null,
 	};
 }
 
-export async function getMyIssues(): Promise<JiraIssue[]> {
+export async function getMyIssues(maxResults = 50): Promise<JiraIssue[]> {
 	const auth = getAuth("jira");
 	if (!auth || !auth.cloudId) return [];
 
 	const jql = "assignee = currentUser() AND resolution IS EMPTY ORDER BY updated DESC";
-	const fields = "summary,status,priority,issuetype,project,created,updated";
-	const url = `https://api.atlassian.com/ex/jira/${auth.cloudId}/rest/api/3/search/jql?jql=${encodeURIComponent(jql)}&fields=${fields}&maxResults=50`;
+	const fields = "summary,status,priority,issuetype,project,created,updated,assignee";
+	const url = `https://api.atlassian.com/ex/jira/${auth.cloudId}/rest/api/3/search/jql?jql=${encodeURIComponent(jql)}&fields=${fields}&maxResults=${maxResults}`;
 
 	const res = await atlassianFetch("jira", url);
 	if (!res.ok) {
@@ -82,7 +93,7 @@ export async function getMyIssuesWithDone(cutoffDays: number): Promise<JiraIssue
 	const auth = getAuth("jira");
 	if (!auth || !auth.cloudId) return unresolved;
 
-	const fields = "summary,status,priority,issuetype,project,created,updated";
+	const fields = "summary,status,priority,issuetype,project,created,updated,assignee";
 	const baseUrl = auth.siteUrl ?? `https://api.atlassian.com/ex/jira/${auth.cloudId}`;
 
 	async function fetchDoneByJql(jql: string): Promise<JiraIssue[]> {
@@ -122,6 +133,113 @@ export async function getMyIssuesWithDone(cutoffDays: number): Promise<JiraIssue
 	}
 
 	return unresolved;
+}
+
+export async function getProjectIssues(projectKeys: string[]): Promise<JiraIssue[]> {
+	const auth = getAuth("jira");
+	if (!auth || !auth.cloudId) return [];
+
+	const allIssues: JiraIssue[] = [];
+	const fields = "summary,status,priority,issuetype,project,created,updated,assignee";
+	const baseUrl = auth.siteUrl ?? `https://api.atlassian.com/ex/jira/${auth.cloudId}`;
+
+	for (const projectKey of projectKeys) {
+		const jql = `project = "${projectKey}" AND resolution IS EMPTY ORDER BY updated DESC`;
+		let startAt = 0;
+		let hasMore = true;
+
+		while (hasMore) {
+			const url = `https://api.atlassian.com/ex/jira/${auth.cloudId}/rest/api/3/search/jql?jql=${encodeURIComponent(jql)}&fields=${fields}&maxResults=50&startAt=${startAt}`;
+			const res = await atlassianFetch("jira", url);
+			if (!res.ok) {
+				throw new Error(`Jira search failed: ${res.status} ${await res.text()}`);
+			}
+
+			const data = (await res.json()) as {
+				issues: JiraApiIssue[];
+				total: number;
+				startAt: number;
+				maxResults: number;
+			};
+			allIssues.push(...data.issues.map((issue) => mapApiIssue(issue, baseUrl)));
+
+			startAt += data.maxResults;
+			hasMore = startAt < data.total;
+		}
+	}
+
+	return allIssues;
+}
+
+export async function getProjectIssuesWithDone(
+	projectKeys: string[],
+	cutoffDays: number
+): Promise<JiraIssue[]> {
+	const unresolved = await getProjectIssues(projectKeys);
+
+	const auth = getAuth("jira");
+	if (!auth || !auth.cloudId) return unresolved;
+
+	const fields = "summary,status,priority,issuetype,project,created,updated,assignee";
+	const baseUrl = auth.siteUrl ?? `https://api.atlassian.com/ex/jira/${auth.cloudId}`;
+
+	async function fetchDoneByJql(jql: string): Promise<JiraIssue[]> {
+		const url = `https://api.atlassian.com/ex/jira/${auth?.cloudId}/rest/api/3/search/jql?jql=${encodeURIComponent(jql)}&fields=${fields}&maxResults=50`;
+		const res = await atlassianFetch("jira", url);
+		if (!res.ok) return [];
+		const data = (await res.json()) as { issues: JiraApiIssue[] };
+		return data.issues.map((issue) => mapApiIssue(issue, baseUrl));
+	}
+
+	const projectFilter = projectKeys.map((k) => `"${k}"`).join(", ");
+	let doneIssues: JiraIssue[] = [];
+
+	try {
+		doneIssues = await fetchDoneByJql(
+			`project IN (${projectFilter}) AND resolution IS NOT EMPTY AND sprint in openSprints() ORDER BY updated DESC`
+		);
+	} catch {
+		// Sprint query failed
+	}
+
+	if (doneIssues.length === 0) {
+		try {
+			doneIssues = await fetchDoneByJql(
+				`project IN (${projectFilter}) AND resolution IS NOT EMPTY AND updated >= -${cutoffDays}d ORDER BY updated DESC`
+			);
+		} catch {
+			// Time query failed
+		}
+	}
+
+	const seen = new Set(unresolved.map((i) => i.key));
+	for (const issue of doneIssues) {
+		if (!seen.has(issue.key)) {
+			unresolved.push(issue);
+			seen.add(issue.key);
+		}
+	}
+
+	return unresolved;
+}
+
+export async function updateIssueAssignee(
+	issueKey: string,
+	accountId: string | null
+): Promise<void> {
+	const auth = getAuth("jira");
+	if (!auth || !auth.cloudId) return;
+
+	const url = `https://api.atlassian.com/ex/jira/${auth.cloudId}/rest/api/3/issue/${encodeURIComponent(issueKey)}/assignee`;
+	const res = await atlassianFetch("jira", url, {
+		method: "PUT",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ accountId }),
+	});
+
+	if (!res.ok) {
+		throw new Error(`Jira assignee update failed: ${res.status} ${await res.text()}`);
+	}
 }
 
 export async function getIssueTransitions(issueKey: string): Promise<TicketStatus[]> {
