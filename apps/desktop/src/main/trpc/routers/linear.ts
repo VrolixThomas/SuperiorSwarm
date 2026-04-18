@@ -4,10 +4,12 @@ import { getDb } from "../../db";
 import { sessionState } from "../../db/schema";
 import { deleteAuth, getAuth } from "../../linear/auth";
 import {
-	getAssignedIssuesWithDone,
 	getIssueDetail,
+	getTeamIssuesWithDone,
+	getTeamMembers,
 	getTeamStates,
 	getTeams,
+	updateIssueAssignee,
 	updateIssueState,
 } from "../../linear/linear";
 import { connectLinear } from "../../linear/oauth-flow";
@@ -69,12 +71,32 @@ export const linearRouter = router({
 			}
 		}),
 
+	getTeamIssues: publicProcedure.query(async () => {
+		const db = getDb();
+		const row = db.select().from(sessionState).where(eq(sessionState.key, SELECTED_TEAM_KEY)).get();
+		const { getDoneCutoffDays } = await import("../../tickets/cache");
+		return getTeamIssuesWithDone(row?.value ?? undefined, getDoneCutoffDays());
+	}),
+
+	// Keep for backward compat during transition
 	getAssignedIssues: publicProcedure.query(async () => {
 		const db = getDb();
 		const row = db.select().from(sessionState).where(eq(sessionState.key, SELECTED_TEAM_KEY)).get();
 		const { getDoneCutoffDays } = await import("../../tickets/cache");
-		return getAssignedIssuesWithDone(row?.value ?? undefined, getDoneCutoffDays());
+		return getTeamIssuesWithDone(row?.value ?? undefined, getDoneCutoffDays());
 	}),
+
+	getTeamMembers: publicProcedure
+		.input(z.object({ teamId: z.string() }))
+		.query(async ({ input }) => {
+			return getTeamMembers(input.teamId);
+		}),
+
+	updateIssueAssignee: publicProcedure
+		.input(z.object({ issueId: z.string(), assigneeId: z.string().nullable() }))
+		.mutation(async ({ input }) => {
+			return updateIssueAssignee(input.issueId, input.assigneeId);
+		}),
 
 	getIssueDetail: publicProcedure
 		.input(z.object({ issueId: z.string() }))
