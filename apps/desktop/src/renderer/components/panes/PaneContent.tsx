@@ -67,6 +67,7 @@ export function PaneContent({
 					<FileEditor
 						key={`${activeTab.repoPath}:${activeTab.filePath}`}
 						tabId={activeTab.id}
+						paneId={pane.id}
 						repoPath={activeTab.repoPath}
 						filePath={activeTab.filePath}
 						language={activeTab.language}

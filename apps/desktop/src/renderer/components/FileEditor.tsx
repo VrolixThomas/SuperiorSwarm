@@ -13,6 +13,9 @@ import { useFileEditorLsp } from "./editor/useFileEditorLsp";
 
 interface FileEditorProps {
 	tabId: string;
+	/** Pane the editor lives in. Required so we can scope the review-edit Escape handler
+	 *  to the single FileEditor that IS the review edit-split; other editors leave Esc alone. */
+	paneId?: string;
 	repoPath: string;
 	filePath: string;
 	language: string;
@@ -21,6 +24,7 @@ interface FileEditorProps {
 
 export function FileEditor({
 	tabId,
+	paneId,
 	repoPath,
 	filePath,
 	language,
@@ -109,14 +113,15 @@ export function FileEditor({
 		setEditorReady(true);
 
 		const escDisposable = editor.onKeyDown((e) => {
-			if (e.keyCode === monaco.KeyCode.Escape) {
-				const paneId = useReviewSessionStore.getState().activeSession?.editSplitPaneId;
-				if (paneId) {
-					e.preventDefault();
-					e.stopPropagation();
-					window.dispatchEvent(new CustomEvent("review:close-edit"));
-				}
-			}
+			if (e.keyCode !== monaco.KeyCode.Escape) return;
+			// Only fire close-edit when THIS editor is the review edit-split.
+			// Avoids stealing Escape from unrelated file tabs that happen to be open
+			// while a review session has an edit-split elsewhere.
+			const editSplitPaneId = useReviewSessionStore.getState().activeSession?.editSplitPaneId;
+			if (!editSplitPaneId || editSplitPaneId !== paneId) return;
+			e.preventDefault();
+			e.stopPropagation();
+			window.dispatchEvent(new CustomEvent("review:close-edit"));
 		});
 
 		return () => {
