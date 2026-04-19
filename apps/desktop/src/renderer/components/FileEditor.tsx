@@ -51,6 +51,14 @@ export function FileEditor({
 		onSuccess: () => {
 			utils.diff.getWorkingTreeDiff.invalidate({ repoPath });
 			utils.diff.getWorkingTreeStatus.invalidate({ repoPath });
+			// Clear overlay so the review diff reads server truth
+			const rs = useReviewSessionStore.getState();
+			if (rs.activeSession) rs.clearOptimisticContent(filePath);
+		},
+		onError: () => {
+			// Save failed — revert the review diff to server truth
+			const rs = useReviewSessionStore.getState();
+			if (rs.activeSession) rs.clearOptimisticContent(filePath);
 		},
 	});
 	const {
@@ -162,7 +170,12 @@ export function FileEditor({
 		const sub = model.onDidChangeContent(() => {
 			if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
 			saveTimerRef.current = setTimeout(() => {
-				saveMutation.mutate({ repoPath, filePath, content: model.getValue() });
+				const content = model.getValue();
+				// Push optimistic overlay before mutating so ReviewTab's DiffEditor
+				// reflects the edit immediately (before the server refetch settles).
+				const rs = useReviewSessionStore.getState();
+				if (rs.activeSession) rs.pushOptimisticContent(filePath, content);
+				saveMutation.mutate({ repoPath, filePath, content });
 			}, 500);
 			if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
 			previewTimerRef.current = setTimeout(() => {
