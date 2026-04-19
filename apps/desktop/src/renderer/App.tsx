@@ -128,7 +128,7 @@ function extractMaxIds(node: LayoutNode): {
 
 function collectSnapshot() {
 	const store = useTabStore.getState();
-	const { activeWorkspaceId, activeWorkspaceCwd, baseBranchByWorkspace } = store;
+	const { activeWorkspaceId, activeWorkspaceCwd, baseBranchByWorkspace, diffMode } = store;
 	const tabs = store.getAllTabs();
 	const activeTabId = store.getActiveTabId();
 
@@ -146,6 +146,7 @@ function collectSnapshot() {
 	if (activeTabId) state["activeTabId"] = activeTabId;
 	if (activeWorkspaceId) state["activeWorkspaceId"] = activeWorkspaceId;
 	if (activeWorkspaceCwd) state["activeWorkspaceCwd"] = activeWorkspaceCwd;
+	state["diffMode"] = diffMode;
 	if (Object.keys(baseBranchByWorkspace).length > 0) {
 		state["baseBranchByWorkspace"] = JSON.stringify(baseBranchByWorkspace);
 	}

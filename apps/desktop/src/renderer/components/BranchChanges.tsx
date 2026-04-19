@@ -200,12 +200,13 @@ function DirectoryGroup({
 							key={file.path}
 							type="button"
 							onClick={() => onFileClick(file)}
+							aria-current={isSelected ? "true" : undefined}
 							className={[
-								"flex w-full items-center gap-1.5 rounded px-2 py-0.5 text-left text-[12px] transition-colors duration-[120ms]",
+								"flex w-full items-center gap-1.5 rounded px-2 py-0.5 text-left text-[12px] transition-colors duration-[120ms] border-l-2",
 								group.dir !== "." ? "pl-7" : "",
 								isSelected
-									? "bg-[var(--bg-selected)] text-[var(--text-primary)]"
-									: "text-[var(--text-secondary)] hover:bg-[var(--bg-overlay)]",
+									? "border-[var(--accent)] bg-[var(--bg-selected)] font-medium text-[var(--text-primary)]"
+									: "border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-overlay)]",
 								isOutOfScope ? "opacity-40" : "",
 							].join(" ")}
 						>

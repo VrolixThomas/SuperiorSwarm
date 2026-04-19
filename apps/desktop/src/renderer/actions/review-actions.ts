@@ -44,7 +44,11 @@ export function registerReviewActions(): void {
 			category: "Navigation",
 			shortcut: { key: "j" },
 			when: activeReviewTabFocused,
-			execute: () => useReviewSessionStore.getState().nextFile(scopedFilesFromStore()),
+			execute: () => {
+				// Auto-mark current file viewed before advancing. Handler is idempotent.
+				window.dispatchEvent(new CustomEvent("review:mark-viewed"));
+				useReviewSessionStore.getState().nextFile(scopedFilesFromStore());
+			},
 		},
 		{
 			id: "review.prevFile",
@@ -52,7 +56,10 @@ export function registerReviewActions(): void {
 			category: "Navigation",
 			shortcut: { key: "k" },
 			when: activeReviewTabFocused,
-			execute: () => useReviewSessionStore.getState().prevFile(scopedFilesFromStore()),
+			execute: () => {
+				window.dispatchEvent(new CustomEvent("review:mark-viewed"));
+				useReviewSessionStore.getState().prevFile(scopedFilesFromStore());
+			},
 		},
 		{
 			id: "review.scopeAll",

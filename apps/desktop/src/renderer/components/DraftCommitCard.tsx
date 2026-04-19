@@ -246,6 +246,7 @@ export function DraftCommitCard({
 										key={file.path}
 										role="button"
 										tabIndex={0}
+										aria-current={isSelected ? "true" : undefined}
 										onClick={() => handleFileClick(file)}
 										onKeyDown={(e) => {
 											if (e.key === "Enter" || e.key === " ") {
@@ -254,12 +255,12 @@ export function DraftCommitCard({
 											}
 										}}
 										className={[
-											"group flex w-full cursor-pointer items-center gap-1.5 rounded px-2 py-0.5 text-left text-[12px] transition-all duration-[120ms]",
+											"group flex w-full cursor-pointer items-center gap-1.5 rounded border-l-2 px-2 py-0.5 text-left text-[12px] transition-all duration-[120ms]",
 											group.dir !== "." ? "pl-6" : "",
 											isDimmed ? "opacity-40" : "",
 											isSelected
-												? "bg-[var(--bg-selected)] text-[var(--text-primary)]"
-												: "text-[var(--text-secondary)] hover:bg-[var(--bg-overlay)]",
+												? "border-[var(--accent)] bg-[var(--bg-selected)] font-medium text-[var(--text-primary)]"
+												: "border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-overlay)]",
 										].join(" ")}
 									>
 										{/* biome-ignore lint/a11y/useSemanticElements: nested in clickable div */}

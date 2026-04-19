@@ -1042,6 +1042,12 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 			}
 		}
 
+		// Restore persisted diffMode preference
+		const storedDiffMode = extraState?.["diffMode"];
+		if (storedDiffMode === "split" || storedDiffMode === "inline") {
+			set({ diffMode: storedDiffMode });
+		}
+
 		// Restore sidebar segment (validate against known values)
 		const validSegments = new Set<string>(["repos", "tickets", "prs"]);
 		let sidebarSegment: SidebarSegment = validSegments.has(extraState?.["sidebarSegment"] ?? "")
