@@ -140,15 +140,18 @@ export function FileEditor({
 		};
 	}, []);
 
-	// Load content into editor when query data arrives or language changes.
-	// Note: only one FileEditor mounts per URI at a time (enforced by MainContentArea key prop).
+	// Load content into editor once per FileEditor lifetime.
+	// Only one FileEditor mounts per URI at a time (enforced by key prop in PaneContent).
+	// IMPORTANT: subsequent `data` refetches (e.g., after a save-triggered invalidation) must
+	// NOT dispose/recreate the model — that would kill the live cursor + focus while the user
+	// is typing. The in-memory model IS the source of truth once loaded; save syncs to disk.
+	const hasLoadedRef = useRef(false);
 	// biome-ignore lint/correctness/useExhaustiveDependencies: saveMutation.mutate identity is stable; initialPositionRef is a ref (intentionally excluded)
 	useEffect(() => {
 		const editor = editorRef.current;
 		if (!editor || !data) return;
-
-		const prev = editor.getModel();
-		if (prev) prev.dispose();
+		if (hasLoadedRef.current) return;
+		hasLoadedRef.current = true;
 
 		const fileUri = monaco.Uri.file(`${repoPath}/${filePath}`);
 		const existingModel = monaco.editor.getModel(fileUri);
@@ -192,6 +195,7 @@ export function FileEditor({
 			if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
 			setCurrentModel(null);
 			model.dispose();
+			hasLoadedRef.current = false;
 		};
 	}, [data, language, repoPath, filePath]);
 
