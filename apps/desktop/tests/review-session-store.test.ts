@@ -59,3 +59,103 @@ describe("review-session-store lifecycle", () => {
 		expect(useReviewSessionStore.getState().activeSession).toBeNull();
 	});
 });
+
+import type { ScopedDiffFile } from "../src/shared/review-types";
+
+function makeFiles(paths: Array<[string, "working" | "branch"]>): ScopedDiffFile[] {
+	return paths.map(([path, scope]) => ({
+		path,
+		status: "modified" as const,
+		additions: 0,
+		deletions: 0,
+		hunks: [],
+		scope,
+	}));
+}
+
+describe("review-session-store navigation", () => {
+	beforeEach(reset);
+
+	test("nextFile moves to next in list", () => {
+		const files = makeFiles([
+			["a.ts", "working"],
+			["b.ts", "working"],
+			["c.ts", "branch"],
+		]);
+		const s = useReviewSessionStore.getState();
+		s.startSession({ workspaceId: "ws1", filePath: "a.ts" });
+		s.nextFile(files);
+		expect(useReviewSessionStore.getState().activeSession!.selectedFilePath).toBe("b.ts");
+	});
+
+	test("nextFile stops at the last file (no wrap)", () => {
+		const files = makeFiles([
+			["a.ts", "working"],
+			["b.ts", "branch"],
+		]);
+		const s = useReviewSessionStore.getState();
+		s.startSession({ workspaceId: "ws1", filePath: "b.ts" });
+		s.nextFile(files);
+		expect(useReviewSessionStore.getState().activeSession!.selectedFilePath).toBe("b.ts");
+	});
+
+	test("prevFile stops at the first file (no wrap)", () => {
+		const files = makeFiles([
+			["a.ts", "working"],
+			["b.ts", "branch"],
+		]);
+		const s = useReviewSessionStore.getState();
+		s.startSession({ workspaceId: "ws1", filePath: "a.ts" });
+		s.prevFile(files);
+		expect(useReviewSessionStore.getState().activeSession!.selectedFilePath).toBe("a.ts");
+	});
+
+	test("nextFile no-op on empty list", () => {
+		const s = useReviewSessionStore.getState();
+		s.startSession({ workspaceId: "ws1", filePath: "x.ts" });
+		s.nextFile([]);
+		expect(useReviewSessionStore.getState().activeSession!.selectedFilePath).toBe("x.ts");
+	});
+
+	test("nextFile from null selection picks first", () => {
+		const files = makeFiles([["a.ts", "working"]]);
+		const s = useReviewSessionStore.getState();
+		s.startSession({ workspaceId: "ws1" });
+		s.nextFile(files);
+		expect(useReviewSessionStore.getState().activeSession!.selectedFilePath).toBe("a.ts");
+	});
+});
+
+describe("review-session-store scope", () => {
+	beforeEach(reset);
+
+	test("setScope updates scope", () => {
+		const s = useReviewSessionStore.getState();
+		s.startSession({ workspaceId: "ws1" });
+		s.setScope("branch");
+		expect(useReviewSessionStore.getState().activeSession!.scope).toBe("branch");
+	});
+
+	test("setScope with scopedFiles reselects if current out-of-scope", () => {
+		const scoped = makeFiles([["c.ts", "branch"]]);
+		const s = useReviewSessionStore.getState();
+		s.startSession({ workspaceId: "ws1", filePath: "a.ts" });
+		s.setScope("branch", scoped);
+		expect(useReviewSessionStore.getState().activeSession!.selectedFilePath).toBe("c.ts");
+	});
+
+	test("setScope preserves selection if still in scope", () => {
+		const scoped = makeFiles([["a.ts", "branch"]]);
+		const s = useReviewSessionStore.getState();
+		s.startSession({ workspaceId: "ws1", filePath: "a.ts" });
+		s.setScope("branch", scoped);
+		expect(useReviewSessionStore.getState().activeSession!.selectedFilePath).toBe("a.ts");
+	});
+
+	test("setScope clears selection if scope is empty", () => {
+		const s = useReviewSessionStore.getState();
+		s.startSession({ workspaceId: "ws1", filePath: "a.ts" });
+		s.setScope("branch", []);
+		expect(useReviewSessionStore.getState().activeSession!.selectedFilePath).toBeNull();
+	});
+});
