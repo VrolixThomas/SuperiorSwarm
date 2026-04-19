@@ -14,6 +14,7 @@ import { projectsRouter } from "./projects";
 import { quickActionsRouter } from "./quick-actions";
 import { rebaseRouter } from "./rebase";
 import { remoteRouter } from "./remote";
+import { reviewRouter } from "./review";
 import { sharedFilesRouter } from "./shared-files";
 import { systemRouter } from "./system";
 import { telemetryRouter } from "./telemetry";
@@ -33,6 +34,7 @@ export const appRouter = router({
 	merge: mergeRouter,
 	rebase: rebaseRouter,
 	remote: remoteRouter,
+	review: reviewRouter,
 	terminalSessions: terminalSessionsRouter,
 	atlassian: atlassianRouter,
 	diff: diffRouter,
