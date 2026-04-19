@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
-import type { DiffContext, DiffFile } from "../../shared/diff-types";
-import { detectLanguage } from "../../shared/diff-types";
+import type { DiffFile } from "../../shared/diff-types";
+import { useReviewSessionStore } from "../stores/review-session-store";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 
@@ -43,17 +43,17 @@ export function BranchChanges({
 	repoPath,
 	baseBranch,
 	currentBranch,
-	diffCtx,
 	workspaceId,
 }: {
 	repoPath: string;
 	baseBranch: string;
 	currentBranch: string;
-	diffCtx: DiffContext;
 	workspaceId: string;
 }) {
 	const [collapsed, setCollapsed] = useState(false);
-	const openDiffFile = useTabStore((s) => s.openDiffFile);
+	const openReviewTab = useTabStore((s) => s.openReviewTab);
+	const selectedFilePath = useReviewSessionStore((s) => s.activeSession?.selectedFilePath ?? null);
+	const scope = useReviewSessionStore((s) => s.activeSession?.scope ?? "all");
 
 	const branchDiffQuery = trpc.diff.getBranchDiff.useQuery(
 		{ repoPath, baseBranch, headBranch: currentBranch },
@@ -121,20 +121,16 @@ export function BranchChanges({
 							<DirectoryGroup
 								key={group.dir}
 								group={group}
-								diffCtx={diffCtx}
-								workspaceId={workspaceId}
+								selectedFilePath={selectedFilePath}
+								scope={scope}
 								onFileClick={(file) =>
-									openDiffFile(
+									openReviewTab({
 										workspaceId,
-										{
-											type: "branch",
-											repoPath,
-											baseBranch,
-											headBranch: currentBranch,
-										},
-										file.path,
-										detectLanguage(file.path)
-									)
+										repoPath,
+										baseBranch,
+										scope: "branch",
+										filePath: file.path,
+									})
 								}
 							/>
 						))}
@@ -149,14 +145,14 @@ export function BranchChanges({
 
 function DirectoryGroup({
 	group,
-	diffCtx,
-	workspaceId,
 	onFileClick,
+	selectedFilePath,
+	scope,
 }: {
 	group: FileGroup;
-	diffCtx: DiffContext;
-	workspaceId: string;
 	onFileClick: (file: DiffFile) => void;
+	selectedFilePath: string | null;
+	scope: "all" | "working" | "branch";
 }) {
 	const [expanded, setExpanded] = useState(true);
 
@@ -196,15 +192,22 @@ function DirectoryGroup({
 			{expanded &&
 				group.files.map((file) => {
 					const fileName = file.path.split("/").pop() ?? file.path;
+					const isSelected = file.path === selectedFilePath;
+					const isOutOfScope = scope !== "all" && scope !== "branch";
 
 					return (
 						<button
 							key={file.path}
 							type="button"
 							onClick={() => onFileClick(file)}
+							aria-current={isSelected ? "true" : undefined}
 							className={[
-								"flex w-full items-center gap-1.5 rounded px-2 py-0.5 text-left text-[12px] text-[var(--text-secondary)] transition-colors duration-[120ms] hover:bg-[var(--bg-overlay)]",
+								"flex w-full items-center gap-1.5 rounded px-2 py-0.5 text-left text-[12px] transition-colors duration-[120ms] border-l-2",
 								group.dir !== "." ? "pl-7" : "",
+								isSelected
+									? "border-[var(--accent)] bg-[var(--bg-selected)] font-medium text-[var(--text-primary)]"
+									: "border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-overlay)]",
+								isOutOfScope ? "opacity-40" : "",
 							].join(" ")}
 						>
 							<span

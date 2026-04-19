@@ -74,7 +74,9 @@ export default function PrivacyPage() {
 
 			<Section heading="How to opt out">
 				<P>
-					Toggle it off anytime under <strong className="text-text-primary">Preferences → Usage analytics</strong>. When off, no further snapshots are sent.
+					Toggle it off anytime under{" "}
+					<strong className="text-text-primary">Preferences → Usage analytics</strong>. When off, no
+					further snapshots are sent.
 				</P>
 			</Section>
 

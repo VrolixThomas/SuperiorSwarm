@@ -63,15 +63,9 @@ beforeAll(() => {
 	db = makeRawTestDb();
 	// Seed FK dependencies used across tests (workspaces.id is referenced by
 	// comment_solve_sessions and pr_comment_cache).
-	db.prepare(`INSERT INTO projects (id, name, repo_path, default_branch, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`).run(
-		"proj-1",
-		"test",
-		"/tmp/test",
-		"main",
-		"ready",
-		NOW,
-		NOW
-	);
+	db.prepare(
+		`INSERT INTO projects (id, name, repo_path, default_branch, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`
+	).run("proj-1", "test", "/tmp/test", "main", "ready", NOW, NOW);
 	const workspaceIds = [
 		WORKSPACE_ID,
 		"ws-schema",

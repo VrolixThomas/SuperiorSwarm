@@ -1,9 +1,11 @@
 import { create } from "zustand";
-import type { DiffContext } from "../../shared/diff-types";
+import { detectLanguage, type DiffContext } from "../../shared/diff-types";
 import type { PRContext } from "../../shared/github-types";
 import type { Pane } from "../../shared/pane-types";
+import type { ReviewScope } from "../../shared/review-types";
 import type { SidebarSegment } from "../../shared/types";
 import { createDefaultPane, getAllPanes, usePaneStore } from "./pane-store";
+import { useReviewSessionStore } from "./review-session-store";
 
 // ─── Tab types ───────────────────────────────────────────────────────────────
 
@@ -78,6 +80,14 @@ export type TabItem =
 			mergeType: "merge" | "rebase";
 			sourceBranch: string;
 			targetBranch: string;
+	  }
+	| {
+			kind: "review";
+			id: string;
+			workspaceId: string;
+			repoPath: string;
+			baseBranch: string;
+			title: "Review";
 	  };
 export type PanelMode = "diff" | "explorer" | "pr-review";
 
@@ -199,6 +209,20 @@ interface TabStore {
 		filePath: string,
 		language: string
 	) => string;
+	openReviewTab: (args: {
+		workspaceId: string;
+		repoPath: string;
+		baseBranch: string;
+		scope?: ReviewScope;
+		filePath?: string;
+	}) => void;
+	closeReviewTab: (workspaceId: string) => void;
+	openEditFileSplitForReview: (args: {
+		workspaceId: string;
+		repoPath: string;
+		filePath: string;
+	}) => void;
+	closeEditFileSplitForReview: (workspaceId: string) => void;
 	closeDiff: (workspaceId: string, repoPath: string) => void;
 	openFile: (
 		workspaceId: string,
@@ -796,6 +820,125 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 		return id;
 	},
 
+	openReviewTab: ({ workspaceId, repoPath, baseBranch, scope, filePath }) => {
+		// Find an existing review tab for this workspace in any pane
+		const found = findTabInWorkspace(
+			workspaceId,
+			(t) => t.kind === "review" && t.workspaceId === workspaceId
+		);
+		if (found) {
+			ps().setActiveTabInPane(workspaceId, found.pane.id, found.tab.id);
+			ps().setFocusedPane(found.pane.id);
+			useReviewSessionStore.getState().startSession({ workspaceId, scope, filePath });
+			return;
+		}
+
+		// Create a new review tab in the focused pane
+		const focused = resolveFocusedPane(workspaceId);
+		if (!focused) return;
+
+		const tab: TabItem = {
+			kind: "review",
+			id: `review-${nextFileTabId()}`,
+			workspaceId,
+			repoPath,
+			baseBranch,
+			title: "Review",
+		};
+		ps().addTabToPane(workspaceId, focused.id, tab);
+		useReviewSessionStore.getState().startSession({ workspaceId, scope, filePath });
+	},
+
+	closeReviewTab: (workspaceId) => {
+		const found = findTabInWorkspace(
+			workspaceId,
+			(t) => t.kind === "review" && t.workspaceId === workspaceId
+		);
+		if (found) {
+			ps().removeTabFromPane(workspaceId, found.pane.id, found.tab.id);
+		}
+		useReviewSessionStore.getState().endSession();
+	},
+
+	openEditFileSplitForReview: ({ workspaceId, repoPath, filePath }) => {
+		const paneStore = usePaneStore.getState();
+		const rs = useReviewSessionStore.getState();
+		const session = rs.activeSession;
+		if (!session) return;
+
+		const layout = paneStore.getLayout(workspaceId);
+		if (!layout) return;
+
+		// Find the pane that has this workspace's review tab as its active tab
+		const allPanes = getAllPanes(layout);
+		const reviewPane = allPanes.find((p) => {
+			const active = p.tabs.find((t) => t.id === p.activeTabId);
+			return active?.kind === "review" && active.workspaceId === workspaceId;
+		});
+		if (!reviewPane) return;
+
+		const language = detectLanguage(filePath);
+		const fileTab: TabItem = {
+			kind: "file",
+			id: `file-${nextFileTabId()}`,
+			workspaceId,
+			repoPath,
+			filePath,
+			title: filePath.split("/").pop() ?? filePath,
+			language,
+		};
+
+		// Reuse existing edit split if alive
+		if (session.editSplitPaneId) {
+			const existing = allPanes.find((p) => p.id === session.editSplitPaneId);
+			if (existing) {
+				const active = existing.tabs.find((t) => t.id === existing.activeTabId);
+				if (active?.kind === "file" && active.filePath === filePath) {
+					// Same file — just refocus
+					paneStore.setFocusedPane(existing.id);
+					return;
+				}
+				// Different file — add new tab first, then remove old ones to avoid auto-close
+				paneStore.addTabToPane(workspaceId, existing.id, fileTab);
+				for (const t of existing.tabs) {
+					if (t.id !== fileTab.id) {
+						paneStore.removeTabFromPane(workspaceId, existing.id, t.id);
+					}
+				}
+				paneStore.setFocusedPane(existing.id);
+				return;
+			}
+			// Stale — clear and fall through to create
+			rs.setEditSplitPaneId(null);
+		}
+
+		// Create new horizontal split to the right of reviewPane
+		const newPaneId = paneStore.splitPane(workspaceId, reviewPane.id, "horizontal", fileTab);
+		if (newPaneId) rs.setEditSplitPaneId(newPaneId);
+	},
+
+	closeEditFileSplitForReview: (workspaceId) => {
+		const paneStore = usePaneStore.getState();
+		const rs = useReviewSessionStore.getState();
+		const paneId = rs.activeSession?.editSplitPaneId;
+		if (!paneId) return;
+		const layout = paneStore.getLayout(workspaceId);
+		if (!layout) {
+			rs.setEditSplitPaneId(null);
+			return;
+		}
+		const pane = getAllPanes(layout).find((p) => p.id === paneId);
+		if (!pane) {
+			rs.setEditSplitPaneId(null);
+			return;
+		}
+		// Close all tabs in the pane (last tab close removes the pane per existing behavior)
+		for (const t of [...pane.tabs]) {
+			paneStore.removeTabFromPane(workspaceId, pane.id, t.id);
+		}
+		rs.setEditSplitPaneId(null);
+	},
+
 	closeDiff: (workspaceId, repoPath) => {
 		const { rightPanel } = get();
 		const closePanel = rightPanel.open && rightPanel.diffCtx?.repoPath === repoPath;
@@ -897,6 +1040,12 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 			} catch {
 				// ignore malformed data
 			}
+		}
+
+		// Restore persisted diffMode preference
+		const storedDiffMode = extraState?.["diffMode"];
+		if (storedDiffMode === "split" || storedDiffMode === "inline") {
+			set({ diffMode: storedDiffMode });
 		}
 
 		// Restore sidebar segment (validate against known values)

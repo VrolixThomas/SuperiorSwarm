@@ -9,6 +9,7 @@ interface DiffEditorProps {
 	modified: string;
 	language: string;
 	renderSideBySide: boolean;
+	readOnly?: boolean;
 	onModifiedChange?: (content: string) => void;
 	onEditorReady?: (editor: monaco.editor.IStandaloneDiffEditor) => void;
 }
@@ -18,6 +19,7 @@ export function DiffEditor({
 	modified,
 	language,
 	renderSideBySide,
+	readOnly,
 	onModifiedChange,
 	onEditorReady,
 }: DiffEditorProps) {
@@ -44,7 +46,7 @@ export function DiffEditor({
 		if (!containerRef.current) return;
 		ensureThemeRegistered();
 		const editor = monaco.editor.createDiffEditor(containerRef.current, {
-			readOnly: false,
+			readOnly: readOnly ?? false,
 			renderSideBySide,
 			theme: EDITOR_THEME,
 			fontSize: 13,
@@ -97,6 +99,11 @@ export function DiffEditor({
 	useEffect(() => {
 		editorRef.current?.updateOptions({ renderSideBySide });
 	}, [renderSideBySide]);
+
+	// Update readOnly without recreating the editor
+	useEffect(() => {
+		editorRef.current?.updateOptions({ readOnly: readOnly ?? false });
+	}, [readOnly]);
 
 	// Attach or detach vim mode on the modified (right) editor
 	// biome-ignore lint/correctness/useExhaustiveDependencies: editorReady is an intentional trigger to re-run after editor creation

@@ -18,11 +18,20 @@ function TabIcon({ kind }: { kind: TabItem["kind"] }) {
 			<span className="shrink-0 h-[6px] w-[6px] rounded-full bg-[var(--term-yellow)] opacity-70" />
 		);
 	}
+	if (kind === "review") {
+		return (
+			<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+				<path d="M2 2h12v2H2V2zm0 5h12v2H2V7zm0 5h8v2H2v-2z" />
+			</svg>
+		);
+	}
 	return null;
 }
 
 function accentColor(kind: TabItem["kind"]): string {
-	return kind === "diff-file" ? "bg-[var(--term-yellow)]" : "bg-[var(--accent)]";
+	if (kind === "diff-file") return "bg-[var(--term-yellow)]";
+	if (kind === "review") return "bg-[var(--accent)]";
+	return "bg-[var(--accent)]";
 }
 
 function TabPill({

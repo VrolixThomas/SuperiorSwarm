@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { EDITOR_THEME, ensureThemeRegistered } from "../lib/monacoTheme";
 import { useEditorSettingsStore } from "../stores/editor-settings";
 import { useProjectStore } from "../stores/projects";
+import { useReviewSessionStore } from "../stores/review-session-store";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import { MarkdownPreviewButton } from "./MarkdownPreviewButton";
@@ -12,6 +13,9 @@ import { useFileEditorLsp } from "./editor/useFileEditorLsp";
 
 interface FileEditorProps {
 	tabId: string;
+	/** Pane the editor lives in. Required so we can scope the review-edit Escape handler
+	 *  to the single FileEditor that IS the review edit-split; other editors leave Esc alone. */
+	paneId?: string;
 	repoPath: string;
 	filePath: string;
 	language: string;
@@ -20,6 +24,7 @@ interface FileEditorProps {
 
 export function FileEditor({
 	tabId,
+	paneId,
 	repoPath,
 	filePath,
 	language,
@@ -46,6 +51,14 @@ export function FileEditor({
 		onSuccess: () => {
 			utils.diff.getWorkingTreeDiff.invalidate({ repoPath });
 			utils.diff.getWorkingTreeStatus.invalidate({ repoPath });
+			// Clear overlay so the review diff reads server truth
+			const rs = useReviewSessionStore.getState();
+			if (rs.activeSession) rs.clearOptimisticContent(filePath);
+		},
+		onError: () => {
+			// Save failed — revert the review diff to server truth
+			const rs = useReviewSessionStore.getState();
+			if (rs.activeSession) rs.clearOptimisticContent(filePath);
 		},
 	});
 	const {
@@ -106,30 +119,50 @@ export function FileEditor({
 		});
 		editorRef.current = editor;
 		setEditorReady(true);
+
+		const escDisposable = editor.onKeyDown((e) => {
+			if (e.keyCode !== monaco.KeyCode.Escape) return;
+			// Only fire close-edit when THIS editor is the review edit-split.
+			// Avoids stealing Escape from unrelated file tabs that happen to be open
+			// while a review session has an edit-split elsewhere.
+			const editSplitPaneId = useReviewSessionStore.getState().activeSession?.editSplitPaneId;
+			if (!editSplitPaneId || editSplitPaneId !== paneId) return;
+			e.preventDefault();
+			e.stopPropagation();
+			window.dispatchEvent(new CustomEvent("review:close-edit"));
+		});
+
 		return () => {
+			escDisposable.dispose();
 			setEditorReady(false);
 			editor.dispose();
 			editorRef.current = null;
 		};
 	}, []);
 
-	// Load content into editor when query data arrives or language changes.
-	// Note: only one FileEditor mounts per URI at a time (enforced by MainContentArea key prop).
+	// Snapshot content once on first data arrival. Subsequent query refetches
+	// (triggered by save invalidations, polling, etc.) DO NOT update this snapshot —
+	// the live in-memory Monaco model is the source of truth while editing; disk is
+	// synced via save. This prevents the model from being disposed/recreated mid-typing,
+	// which would kill cursor and focus.
+	const [initialContent, setInitialContent] = useState<string | null>(null);
+	useEffect(() => {
+		if (initialContent !== null) return;
+		if (data) setInitialContent(data.content);
+	}, [data, initialContent]);
+
 	// biome-ignore lint/correctness/useExhaustiveDependencies: saveMutation.mutate identity is stable; initialPositionRef is a ref (intentionally excluded)
 	useEffect(() => {
 		const editor = editorRef.current;
-		if (!editor || !data) return;
-
-		const prev = editor.getModel();
-		if (prev) prev.dispose();
+		if (!editor || initialContent === null) return;
 
 		const fileUri = monaco.Uri.file(`${repoPath}/${filePath}`);
 		const existingModel = monaco.editor.getModel(fileUri);
 		if (existingModel) existingModel.dispose();
-		const model = monaco.editor.createModel(data.content, language, fileUri);
+		const model = monaco.editor.createModel(initialContent, language, fileUri);
 		editor.setModel(model);
 		setCurrentModel(model);
-		setPreviewContent(data.content);
+		setPreviewContent(initialContent);
 
 		// Use the ref (captured at mount) so re-renders after store clear do not re-navigate
 		const position = initialPositionRef.current;
@@ -143,7 +176,12 @@ export function FileEditor({
 		const sub = model.onDidChangeContent(() => {
 			if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
 			saveTimerRef.current = setTimeout(() => {
-				saveMutation.mutate({ repoPath, filePath, content: model.getValue() });
+				const content = model.getValue();
+				// Push optimistic overlay before mutating so ReviewTab's DiffEditor
+				// reflects the edit immediately (before the server refetch settles).
+				const rs = useReviewSessionStore.getState();
+				if (rs.activeSession) rs.pushOptimisticContent(filePath, content);
+				saveMutation.mutate({ repoPath, filePath, content });
 			}, 500);
 			if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
 			previewTimerRef.current = setTimeout(() => {
@@ -161,7 +199,7 @@ export function FileEditor({
 			setCurrentModel(null);
 			model.dispose();
 		};
-	}, [data, language, repoPath, filePath]);
+	}, [initialContent, language, repoPath, filePath]);
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: editorReady is an intentional trigger to re-run after editor creation
 	useEffect(() => {

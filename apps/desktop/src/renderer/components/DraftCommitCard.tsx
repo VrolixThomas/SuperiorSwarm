@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { DiffContext, DiffFile } from "../../shared/diff-types";
-import { detectLanguage } from "../../shared/diff-types";
+import { useReviewSessionStore } from "../stores/review-session-store";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 
@@ -45,6 +45,7 @@ export function DraftCommitCard({
 	onInvalidate,
 	unpushedCommits,
 	hasTrackingBranch,
+	baseBranch,
 }: {
 	diffCtx: DiffContext & { type: "working-tree" };
 	stagedFiles: DiffFile[];
@@ -54,11 +55,13 @@ export function DraftCommitCard({
 	onInvalidate: () => void;
 	unpushedCommits: number;
 	hasTrackingBranch: boolean;
+	baseBranch: string;
 }) {
 	const [commitMsg, setCommitMsg] = useState("");
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
-	const openDiffFile = useTabStore((s) => s.openDiffFile);
 	const activeWorkspaceId = useTabStore((s) => s.activeWorkspaceId);
+	const selectedFilePath = useReviewSessionStore((s) => s.activeSession?.selectedFilePath ?? null);
+	const scope = useReviewSessionStore((s) => s.activeSession?.scope ?? "all");
 
 	const commitMutation = trpc.diff.commit.useMutation({
 		onSuccess: () => {
@@ -166,7 +169,13 @@ export function DraftCommitCard({
 
 	function handleFileClick(file: DiffFile) {
 		if (!activeWorkspaceId) return;
-		openDiffFile(activeWorkspaceId, diffCtx, file.path, detectLanguage(file.path));
+		useTabStore.getState().openReviewTab({
+			workspaceId: activeWorkspaceId,
+			repoPath: diffCtx.repoPath,
+			baseBranch,
+			scope: "working",
+			filePath: file.path,
+		});
 	}
 
 	const allStaged = allFiles.length > 0 && allFiles.every((f) => stagedPaths.has(f.path));
@@ -229,11 +238,15 @@ export function DraftCommitCard({
 								const fileName = file.path.split("/").pop() ?? file.path;
 								const isStaged = stagedPaths.has(file.path);
 
+								const isSelected = file.path === selectedFilePath;
+								const isDimmed = scope !== "all" && scope !== "working";
+
 								return (
 									<div
 										key={file.path}
 										role="button"
 										tabIndex={0}
+										aria-current={isSelected ? "true" : undefined}
 										onClick={() => handleFileClick(file)}
 										onKeyDown={(e) => {
 											if (e.key === "Enter" || e.key === " ") {
@@ -242,9 +255,12 @@ export function DraftCommitCard({
 											}
 										}}
 										className={[
-											"group flex w-full cursor-pointer items-center gap-1.5 rounded px-2 py-0.5 text-left text-[12px] transition-all duration-[120ms]",
+											"group flex w-full cursor-pointer items-center gap-1.5 rounded border-l-2 px-2 py-0.5 text-left text-[12px] transition-all duration-[120ms]",
 											group.dir !== "." ? "pl-6" : "",
-											"text-[var(--text-secondary)] hover:bg-[var(--bg-overlay)]",
+											isDimmed ? "opacity-40" : "",
+											isSelected
+												? "border-[var(--accent)] bg-[var(--bg-selected)] font-medium text-[var(--text-primary)]"
+												: "border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-overlay)]",
 										].join(" ")}
 									>
 										{/* biome-ignore lint/a11y/useSemanticElements: nested in clickable div */}

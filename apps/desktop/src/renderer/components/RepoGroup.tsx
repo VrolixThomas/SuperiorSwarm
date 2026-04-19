@@ -81,9 +81,7 @@ export function RepoGroup({
 					</svg>
 				</button>
 
-				{rightContent && (
-					<div className="flex shrink-0 items-center pr-2">{rightContent}</div>
-				)}
+				{rightContent && <div className="flex shrink-0 items-center pr-2">{rightContent}</div>}
 			</div>
 
 			{isExpanded && children}

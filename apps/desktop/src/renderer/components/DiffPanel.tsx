@@ -195,6 +195,7 @@ function DiffPanelContent({ diffCtx, onClose }: { diffCtx: DiffContext; onClose?
 										onInvalidate={invalidateAll}
 										unpushedCommits={branchStatusQuery.data?.ahead ?? 0}
 										hasTrackingBranch={branchStatusQuery.data?.tracking != null}
+										baseBranch={effectiveBaseBranch}
 									/>
 								)}
 
@@ -205,7 +206,6 @@ function DiffPanelContent({ diffCtx, onClose }: { diffCtx: DiffContext; onClose?
 											repoPath={diffCtx.repoPath}
 											baseBranch={effectiveBaseBranch}
 											currentBranch={currentBranch}
-											diffCtx={diffCtx}
 											workspaceId={activeWorkspaceId}
 										/>
 									</div>

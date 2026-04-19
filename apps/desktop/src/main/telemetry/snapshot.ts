@@ -1,6 +1,6 @@
 import type { drizzle } from "drizzle-orm/better-sqlite3";
 import type { UsageSnapshot } from "../../shared/telemetry";
-import * as schema from "../db/schema";
+import type * as schema from "../db/schema";
 import { getTelemetryState } from "./state";
 
 type Db = ReturnType<typeof drizzle<typeof schema>>;

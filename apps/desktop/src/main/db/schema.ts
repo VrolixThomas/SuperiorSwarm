@@ -414,3 +414,20 @@ export const lspDismissedLanguages = sqliteTable("lsp_dismissed_languages", {
 });
 
 export type LspDismissedLanguage = typeof lspDismissedLanguages.$inferSelect;
+
+export const reviewViewed = sqliteTable(
+	"review_viewed",
+	{
+		workspaceId: text("workspace_id").notNull(),
+		filePath: text("file_path").notNull(),
+		contentHash: text("content_hash").notNull(),
+		viewedAt: integer("viewed_at", { mode: "timestamp" }).notNull(),
+	},
+	(table) => [
+		primaryKey({ columns: [table.workspaceId, table.filePath] }),
+		index("idx_review_viewed_workspace").on(table.workspaceId),
+	]
+);
+
+export type ReviewViewed = typeof reviewViewed.$inferSelect;
+export type NewReviewViewed = typeof reviewViewed.$inferInsert;

@@ -8,6 +8,7 @@ import { PROverviewTab } from "../PROverviewTab";
 import { PRReviewFileTab } from "../PRReviewFileTab";
 import { SolveReviewTab } from "../SolveReviewTab";
 import { Terminal } from "../Terminal";
+import { ReviewTab } from "../review/ReviewTab";
 
 export function PaneContent({
 	pane,
@@ -66,6 +67,7 @@ export function PaneContent({
 					<FileEditor
 						key={`${activeTab.repoPath}:${activeTab.filePath}`}
 						tabId={activeTab.id}
+						paneId={pane.id}
 						repoPath={activeTab.repoPath}
 						filePath={activeTab.filePath}
 						language={activeTab.language}
@@ -118,6 +120,15 @@ export function PaneContent({
 					<SolveReviewTab
 						workspaceId={activeTab.workspaceId}
 						solveSessionId={activeTab.solveSessionId}
+					/>
+				</div>
+			)}
+			{activeTab?.kind === "review" && (
+				<div className="absolute inset-0">
+					<ReviewTab
+						workspaceId={activeTab.workspaceId}
+						repoPath={activeTab.repoPath}
+						baseBranch={activeTab.baseBranch}
 					/>
 				</div>
 			)}

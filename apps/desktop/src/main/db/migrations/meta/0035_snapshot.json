@@ -1,8 +1,8 @@
 {
 	"version": "6",
 	"dialect": "sqlite",
-	"id": "737c020f-9134-4948-a9ef-ef7c1bae35dc",
-	"prevId": "685c5400-e7e9-4e63-8da4-06f8393812f1",
+	"id": "82f0a087-ef38-4ed9-9e20-96d47d6837d6",
+	"prevId": "737c020f-9134-4948-a9ef-ef7c1bae35dc",
 	"tables": {
 		"ai_review_settings": {
 			"name": "ai_review_settings",
@@ -927,6 +927,62 @@
 			"uniqueConstraints": {},
 			"checkConstraints": {}
 		},
+		"lsp_dismissed_languages": {
+			"name": "lsp_dismissed_languages",
+			"columns": {
+				"language": {
+					"name": "language",
+					"type": "text",
+					"primaryKey": true,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"dismissed_at": {
+					"name": "dismissed_at",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				}
+			},
+			"indexes": {},
+			"foreignKeys": {},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {},
+			"checkConstraints": {}
+		},
+		"lsp_trusted_repos": {
+			"name": "lsp_trusted_repos",
+			"columns": {
+				"repo_path": {
+					"name": "repo_path",
+					"type": "text",
+					"primaryKey": true,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"trusted": {
+					"name": "trusted",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false,
+					"default": false
+				},
+				"decided_at": {
+					"name": "decided_at",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				}
+			},
+			"indexes": {},
+			"foreignKeys": {},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {},
+			"checkConstraints": {}
+		},
 		"pane_layouts": {
 			"name": "pane_layouts",
 			"columns": {
@@ -1522,6 +1578,55 @@
 			"indexes": {},
 			"foreignKeys": {},
 			"compositePrimaryKeys": {},
+			"uniqueConstraints": {},
+			"checkConstraints": {}
+		},
+		"review_viewed": {
+			"name": "review_viewed",
+			"columns": {
+				"workspace_id": {
+					"name": "workspace_id",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"file_path": {
+					"name": "file_path",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"content_hash": {
+					"name": "content_hash",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"viewed_at": {
+					"name": "viewed_at",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				}
+			},
+			"indexes": {
+				"idx_review_viewed_workspace": {
+					"name": "idx_review_viewed_workspace",
+					"columns": ["workspace_id"],
+					"isUnique": false
+				}
+			},
+			"foreignKeys": {},
+			"compositePrimaryKeys": {
+				"review_viewed_workspace_id_file_path_pk": {
+					"columns": ["workspace_id", "file_path"],
+					"name": "review_viewed_workspace_id_file_path_pk"
+				}
+			},
 			"uniqueConstraints": {},
 			"checkConstraints": {}
 		},
@@ -2254,62 +2359,6 @@
 					"onUpdate": "no action"
 				}
 			},
-			"compositePrimaryKeys": {},
-			"uniqueConstraints": {},
-			"checkConstraints": {}
-		},
-		"lsp_trusted_repos": {
-			"name": "lsp_trusted_repos",
-			"columns": {
-				"repo_path": {
-					"name": "repo_path",
-					"type": "text",
-					"primaryKey": true,
-					"notNull": true,
-					"autoincrement": false
-				},
-				"trusted": {
-					"name": "trusted",
-					"type": "integer",
-					"primaryKey": false,
-					"notNull": true,
-					"autoincrement": false,
-					"default": false
-				},
-				"decided_at": {
-					"name": "decided_at",
-					"type": "integer",
-					"primaryKey": false,
-					"notNull": true,
-					"autoincrement": false
-				}
-			},
-			"indexes": {},
-			"foreignKeys": {},
-			"compositePrimaryKeys": {},
-			"uniqueConstraints": {},
-			"checkConstraints": {}
-		},
-		"lsp_dismissed_languages": {
-			"name": "lsp_dismissed_languages",
-			"columns": {
-				"language": {
-					"name": "language",
-					"type": "text",
-					"primaryKey": true,
-					"notNull": true,
-					"autoincrement": false
-				},
-				"dismissed_at": {
-					"name": "dismissed_at",
-					"type": "integer",
-					"primaryKey": false,
-					"notNull": true,
-					"autoincrement": false
-				}
-			},
-			"indexes": {},
-			"foreignKeys": {},
 			"compositePrimaryKeys": {},
 			"uniqueConstraints": {},
 			"checkConstraints": {}
