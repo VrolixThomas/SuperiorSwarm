@@ -1,5 +1,4 @@
 import { useEffect, useMemo } from "react";
-import type { DiffFile } from "../../../shared/diff-types";
 import { detectLanguage } from "../../../shared/diff-types";
 import type { ScopedDiffFile } from "../../../shared/review-types";
 import { useReviewSessionStore } from "../../stores/review-session-store";
@@ -65,16 +64,19 @@ export function ReviewTab({
 		[scopedFiles, session?.selectedFilePath],
 	);
 
-	// Auto-select first file if none selected or selection fell out of scope
+	// Auto-select first file if none selected or selection fell out of scope.
+	// Loop-safety invariant: selectFile mutates selectedFilePath; the effect re-runs,
+	// but the `first !== session.selectedFilePath` guard then short-circuits.
+	// We key on session?.selectedFilePath (not the whole session) to narrow re-runs.
+	const selectedFilePath = session?.selectedFilePath ?? null;
 	useEffect(() => {
 		if (!session) return;
-		if (session.selectedFilePath && scopedFiles.some((f) => f.path === session.selectedFilePath))
-			return;
+		if (selectedFilePath && scopedFiles.some((f) => f.path === selectedFilePath)) return;
 		const first = scopedFiles[0]?.path ?? null;
-		if (first !== session.selectedFilePath) {
+		if (first !== selectedFilePath) {
 			useReviewSessionStore.getState().selectFile(first);
 		}
-	}, [session, scopedFiles]);
+	}, [session, selectedFilePath, scopedFiles]);
 
 	// File content (original ref depends on scope)
 	const originalRef = selectedFile?.scope === "branch" ? baseBranch : "HEAD";
@@ -129,6 +131,3 @@ export function ReviewTab({
 		</div>
 	);
 }
-
-// Keep DiffFile type import referenced to avoid dead import
-export type _UnusedDiffFile = DiffFile;
