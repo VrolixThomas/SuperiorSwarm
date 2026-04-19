@@ -140,26 +140,29 @@ export function FileEditor({
 		};
 	}, []);
 
-	// Load content into editor once per FileEditor lifetime.
-	// Only one FileEditor mounts per URI at a time (enforced by key prop in PaneContent).
-	// IMPORTANT: subsequent `data` refetches (e.g., after a save-triggered invalidation) must
-	// NOT dispose/recreate the model — that would kill the live cursor + focus while the user
-	// is typing. The in-memory model IS the source of truth once loaded; save syncs to disk.
-	const hasLoadedRef = useRef(false);
+	// Snapshot content once on first data arrival. Subsequent query refetches
+	// (triggered by save invalidations, polling, etc.) DO NOT update this snapshot —
+	// the live in-memory Monaco model is the source of truth while editing; disk is
+	// synced via save. This prevents the model from being disposed/recreated mid-typing,
+	// which would kill cursor and focus.
+	const [initialContent, setInitialContent] = useState<string | null>(null);
+	useEffect(() => {
+		if (initialContent !== null) return;
+		if (data) setInitialContent(data.content);
+	}, [data, initialContent]);
+
 	// biome-ignore lint/correctness/useExhaustiveDependencies: saveMutation.mutate identity is stable; initialPositionRef is a ref (intentionally excluded)
 	useEffect(() => {
 		const editor = editorRef.current;
-		if (!editor || !data) return;
-		if (hasLoadedRef.current) return;
-		hasLoadedRef.current = true;
+		if (!editor || initialContent === null) return;
 
 		const fileUri = monaco.Uri.file(`${repoPath}/${filePath}`);
 		const existingModel = monaco.editor.getModel(fileUri);
 		if (existingModel) existingModel.dispose();
-		const model = monaco.editor.createModel(data.content, language, fileUri);
+		const model = monaco.editor.createModel(initialContent, language, fileUri);
 		editor.setModel(model);
 		setCurrentModel(model);
-		setPreviewContent(data.content);
+		setPreviewContent(initialContent);
 
 		// Use the ref (captured at mount) so re-renders after store clear do not re-navigate
 		const position = initialPositionRef.current;
@@ -195,9 +198,8 @@ export function FileEditor({
 			if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
 			setCurrentModel(null);
 			model.dispose();
-			hasLoadedRef.current = false;
 		};
-	}, [data, language, repoPath, filePath]);
+	}, [initialContent, language, repoPath, filePath]);
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: editorReady is an intentional trigger to re-run after editor creation
 	useEffect(() => {
