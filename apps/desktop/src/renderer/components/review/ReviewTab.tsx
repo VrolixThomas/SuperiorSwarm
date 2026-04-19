@@ -64,6 +64,10 @@ export function ReviewTab({
 		[scopedFiles, session?.selectedFilePath],
 	);
 
+	useEffect(() => {
+		useReviewSessionStore.getState().setFileSnapshot(allFiles, scopedFiles);
+	}, [allFiles, scopedFiles]);
+
 	// Auto-select first file if none selected or selection fell out of scope.
 	// Loop-safety invariant: selectFile mutates selectedFilePath; the effect re-runs,
 	// but the `first !== session.selectedFilePath` guard then short-circuits.

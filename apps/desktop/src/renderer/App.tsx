@@ -3,6 +3,7 @@ import { Group, Panel, Separator, useDefaultLayout, usePanelRef } from "react-re
 import type { MergeResult, RebaseResult } from "../shared/branch-types";
 import type { LayoutNode, SerializedLayoutNode } from "../shared/pane-types";
 import { registerCoreActions } from "./actions/core-actions";
+import { registerReviewActions } from "./actions/review-actions";
 import { AddRepositoryModal } from "./components/AddRepositoryModal";
 import { BranchActionMenu } from "./components/BranchActionMenu";
 import { BranchPalette } from "./components/BranchPalette";
@@ -371,6 +372,7 @@ function AuthenticatedApp() {
 	// Register core keyboard actions once on mount
 	useEffect(() => {
 		registerCoreActions();
+		registerReviewActions();
 	}, []);
 
 	// Branch palette mutations and action menu state

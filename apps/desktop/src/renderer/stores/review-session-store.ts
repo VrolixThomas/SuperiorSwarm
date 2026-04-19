@@ -29,10 +29,17 @@ export interface ReviewSessionStore {
 	pushOptimisticContent: (path: string, content: string) => void;
 	clearOptimisticContent: (path: string) => void;
 	getOptimisticContent: (path: string) => string | undefined;
+
+	lastAllFiles: ScopedDiffFile[];
+	lastScopedFiles: ScopedDiffFile[];
+	setFileSnapshot: (all: ScopedDiffFile[], scoped: ScopedDiffFile[]) => void;
 }
 
 export const useReviewSessionStore = create<ReviewSessionStore>()((set, get) => ({
 	activeSession: null,
+	lastAllFiles: [],
+	lastScopedFiles: [],
+	setFileSnapshot: (all, scoped) => set({ lastAllFiles: all, lastScopedFiles: scoped }),
 
 	startSession: ({ workspaceId, scope, filePath }) => {
 		const current = get().activeSession;
