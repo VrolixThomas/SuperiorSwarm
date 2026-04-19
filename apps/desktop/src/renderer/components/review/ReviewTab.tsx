@@ -8,7 +8,6 @@ import { DiffEditor } from "../DiffEditor";
 import { ReviewFilterTabs } from "./ReviewFilterTabs";
 import { ReviewHintBar } from "./ReviewHintBar";
 import { ReviewProgressBar } from "./ReviewProgressBar";
-
 // Sort like the sidebar's groupByDirectory: primary by top-level dir (`.` for root files),
 // secondary by full path. Ensures j/k traversal matches what the user sees in the sidebar.
 function topLevelDir(path: string): string {
