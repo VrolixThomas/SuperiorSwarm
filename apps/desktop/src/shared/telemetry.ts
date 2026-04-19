@@ -1,4 +1,5 @@
 export const PRIVACY_URL = "https://github.com/VrolixThomas/SuperiorSwarm/blob/main/PRIVACY.md";
+export const TERMS_URL = "https://superiorswarm.dev/terms";
 
 export interface UsageSnapshot {
 	user_id: string;
