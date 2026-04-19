@@ -205,7 +205,6 @@ function DiffPanelContent({ diffCtx, onClose }: { diffCtx: DiffContext; onClose?
 											repoPath={diffCtx.repoPath}
 											baseBranch={effectiveBaseBranch}
 											currentBranch={currentBranch}
-											diffCtx={diffCtx}
 											workspaceId={activeWorkspaceId}
 										/>
 									</div>
