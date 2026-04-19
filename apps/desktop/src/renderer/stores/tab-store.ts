@@ -2,8 +2,10 @@ import { create } from "zustand";
 import type { DiffContext } from "../../shared/diff-types";
 import type { PRContext } from "../../shared/github-types";
 import type { Pane } from "../../shared/pane-types";
+import type { ReviewScope } from "../../shared/review-types";
 import type { SidebarSegment } from "../../shared/types";
 import { createDefaultPane, getAllPanes, usePaneStore } from "./pane-store";
+import { useReviewSessionStore } from "./review-session-store";
 
 // ─── Tab types ───────────────────────────────────────────────────────────────
 
@@ -78,6 +80,14 @@ export type TabItem =
 			mergeType: "merge" | "rebase";
 			sourceBranch: string;
 			targetBranch: string;
+	  }
+	| {
+			kind: "review";
+			id: string;
+			workspaceId: string;
+			repoPath: string;
+			baseBranch: string;
+			title: "Review";
 	  };
 export type PanelMode = "diff" | "explorer" | "pr-review";
 
@@ -199,6 +209,14 @@ interface TabStore {
 		filePath: string,
 		language: string
 	) => string;
+	openReviewTab: (args: {
+		workspaceId: string;
+		repoPath: string;
+		baseBranch: string;
+		scope?: ReviewScope;
+		filePath?: string;
+	}) => void;
+	closeReviewTab: (workspaceId: string) => void;
 	closeDiff: (workspaceId: string, repoPath: string) => void;
 	openFile: (
 		workspaceId: string,
@@ -794,6 +812,46 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 			ps().addTabToPane(workspaceId, focused.id, tab);
 		}
 		return id;
+	},
+
+	openReviewTab: ({ workspaceId, repoPath, baseBranch, scope, filePath }) => {
+		// Find an existing review tab for this workspace in any pane
+		const found = findTabInWorkspace(
+			workspaceId,
+			(t) => t.kind === "review" && t.workspaceId === workspaceId
+		);
+		if (found) {
+			ps().setActiveTabInPane(workspaceId, found.pane.id, found.tab.id);
+			ps().setFocusedPane(found.pane.id);
+			useReviewSessionStore.getState().startSession({ workspaceId, scope, filePath });
+			return;
+		}
+
+		// Create a new review tab in the focused pane
+		const focused = resolveFocusedPane(workspaceId);
+		if (!focused) return;
+
+		const tab: TabItem = {
+			kind: "review",
+			id: `review-${nextFileTabId()}`,
+			workspaceId,
+			repoPath,
+			baseBranch,
+			title: "Review",
+		};
+		ps().addTabToPane(workspaceId, focused.id, tab);
+		useReviewSessionStore.getState().startSession({ workspaceId, scope, filePath });
+	},
+
+	closeReviewTab: (workspaceId) => {
+		const found = findTabInWorkspace(
+			workspaceId,
+			(t) => t.kind === "review" && t.workspaceId === workspaceId
+		);
+		if (found) {
+			ps().removeTabFromPane(workspaceId, found.pane.id, found.tab.id);
+		}
+		useReviewSessionStore.getState().endSession();
 	},
 
 	closeDiff: (workspaceId, repoPath) => {
