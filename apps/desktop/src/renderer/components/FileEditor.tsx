@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { EDITOR_THEME, ensureThemeRegistered } from "../lib/monacoTheme";
 import { useEditorSettingsStore } from "../stores/editor-settings";
 import { useProjectStore } from "../stores/projects";
+import { useReviewSessionStore } from "../stores/review-session-store";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import { MarkdownPreviewButton } from "./MarkdownPreviewButton";
@@ -106,7 +107,20 @@ export function FileEditor({
 		});
 		editorRef.current = editor;
 		setEditorReady(true);
+
+		const escDisposable = editor.onKeyDown((e) => {
+			if (e.keyCode === monaco.KeyCode.Escape) {
+				const paneId = useReviewSessionStore.getState().activeSession?.editSplitPaneId;
+				if (paneId) {
+					e.preventDefault();
+					e.stopPropagation();
+					window.dispatchEvent(new CustomEvent("review:close-edit"));
+				}
+			}
+		});
+
 		return () => {
+			escDisposable.dispose();
 			setEditorReady(false);
 			editor.dispose();
 			editorRef.current = null;

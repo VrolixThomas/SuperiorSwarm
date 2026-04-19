@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { DiffContext } from "../../shared/diff-types";
+import { detectLanguage, type DiffContext } from "../../shared/diff-types";
 import type { PRContext } from "../../shared/github-types";
 import type { Pane } from "../../shared/pane-types";
 import type { ReviewScope } from "../../shared/review-types";
@@ -217,6 +217,12 @@ interface TabStore {
 		filePath?: string;
 	}) => void;
 	closeReviewTab: (workspaceId: string) => void;
+	openEditFileSplitForReview: (args: {
+		workspaceId: string;
+		repoPath: string;
+		filePath: string;
+	}) => void;
+	closeEditFileSplitForReview: (workspaceId: string) => void;
 	closeDiff: (workspaceId: string, repoPath: string) => void;
 	openFile: (
 		workspaceId: string,
@@ -852,6 +858,85 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 			ps().removeTabFromPane(workspaceId, found.pane.id, found.tab.id);
 		}
 		useReviewSessionStore.getState().endSession();
+	},
+
+	openEditFileSplitForReview: ({ workspaceId, repoPath, filePath }) => {
+		const paneStore = usePaneStore.getState();
+		const rs = useReviewSessionStore.getState();
+		const session = rs.activeSession;
+		if (!session) return;
+
+		const layout = paneStore.getLayout(workspaceId);
+		if (!layout) return;
+
+		// Find the pane that has this workspace's review tab as its active tab
+		const allPanes = getAllPanes(layout);
+		const reviewPane = allPanes.find((p) => {
+			const active = p.tabs.find((t) => t.id === p.activeTabId);
+			return active?.kind === "review" && active.workspaceId === workspaceId;
+		});
+		if (!reviewPane) return;
+
+		const language = detectLanguage(filePath);
+		const fileTab: TabItem = {
+			kind: "file",
+			id: `file-${nextFileTabId()}`,
+			workspaceId,
+			repoPath,
+			filePath,
+			title: filePath.split("/").pop() ?? filePath,
+			language,
+		};
+
+		// Reuse existing edit split if alive
+		if (session.editSplitPaneId) {
+			const existing = allPanes.find((p) => p.id === session.editSplitPaneId);
+			if (existing) {
+				const active = existing.tabs.find((t) => t.id === existing.activeTabId);
+				if (active?.kind === "file" && active.filePath === filePath) {
+					// Same file — just refocus
+					paneStore.setFocusedPane(existing.id);
+					return;
+				}
+				// Different file — add new tab first, then remove old ones to avoid auto-close
+				paneStore.addTabToPane(workspaceId, existing.id, fileTab);
+				for (const t of existing.tabs) {
+					if (t.id !== fileTab.id) {
+						paneStore.removeTabFromPane(workspaceId, existing.id, t.id);
+					}
+				}
+				paneStore.setFocusedPane(existing.id);
+				return;
+			}
+			// Stale — clear and fall through to create
+			rs.setEditSplitPaneId(null);
+		}
+
+		// Create new horizontal split to the right of reviewPane
+		const newPaneId = paneStore.splitPane(workspaceId, reviewPane.id, "horizontal", fileTab);
+		if (newPaneId) rs.setEditSplitPaneId(newPaneId);
+	},
+
+	closeEditFileSplitForReview: (workspaceId) => {
+		const paneStore = usePaneStore.getState();
+		const rs = useReviewSessionStore.getState();
+		const paneId = rs.activeSession?.editSplitPaneId;
+		if (!paneId) return;
+		const layout = paneStore.getLayout(workspaceId);
+		if (!layout) {
+			rs.setEditSplitPaneId(null);
+			return;
+		}
+		const pane = getAllPanes(layout).find((p) => p.id === paneId);
+		if (!pane) {
+			rs.setEditSplitPaneId(null);
+			return;
+		}
+		// Close all tabs in the pane (last tab close removes the pane per existing behavior)
+		for (const t of [...pane.tabs]) {
+			paneStore.removeTabFromPane(workspaceId, pane.id, t.id);
+		}
+		rs.setEditSplitPaneId(null);
 	},
 
 	closeDiff: (workspaceId, repoPath) => {

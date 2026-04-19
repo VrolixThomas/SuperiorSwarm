@@ -2,6 +2,7 @@ import { useEffect, useMemo } from "react";
 import { detectLanguage } from "../../../shared/diff-types";
 import type { ScopedDiffFile } from "../../../shared/review-types";
 import { useReviewSessionStore } from "../../stores/review-session-store";
+import { useTabStore } from "../../stores/tab-store";
 import { trpc } from "../../trpc/client";
 import { DiffEditor } from "../DiffEditor";
 import { ReviewProgressBar } from "./ReviewProgressBar";
@@ -97,6 +98,52 @@ export function ReviewTab({
 		selectedFile ? s.activeSession?.editOverlay.get(selectedFile.path) : undefined,
 	);
 	const modifiedContent = overlay ?? modifiedQ.data?.content ?? "";
+
+	const utils = trpc.useUtils();
+	const setViewedMut = trpc.review.setViewed.useMutation({
+		onSuccess: () => utils.review.getViewed.invalidate({ workspaceId }),
+	});
+	const unsetViewedMut = trpc.review.unsetViewed.useMutation({
+		onSuccess: () => utils.review.getViewed.invalidate({ workspaceId }),
+	});
+
+	useEffect(() => {
+		async function handleToggleViewed() {
+			if (!selectedFile) return;
+			const path = selectedFile.path;
+			const modified = modifiedQ.data?.content ?? "";
+			const { sha256Hex } = await import("../../lib/content-hash");
+			const hash = await sha256Hex(modified);
+			const stored = viewedMap.get(path);
+			if (stored === hash) {
+				unsetViewedMut.mutate({ workspaceId, filePath: path });
+			} else {
+				setViewedMut.mutate({ workspaceId, filePath: path, contentHash: hash });
+			}
+		}
+
+		function handleOpenEdit() {
+			if (!selectedFile) return;
+			useTabStore.getState().openEditFileSplitForReview({
+				workspaceId,
+				repoPath,
+				filePath: selectedFile.path,
+			});
+		}
+
+		function handleCloseEdit() {
+			useTabStore.getState().closeEditFileSplitForReview(workspaceId);
+		}
+
+		window.addEventListener("review:toggle-viewed", handleToggleViewed);
+		window.addEventListener("review:open-edit", handleOpenEdit);
+		window.addEventListener("review:close-edit", handleCloseEdit);
+		return () => {
+			window.removeEventListener("review:toggle-viewed", handleToggleViewed);
+			window.removeEventListener("review:open-edit", handleOpenEdit);
+			window.removeEventListener("review:close-edit", handleCloseEdit);
+		};
+	}, [selectedFile, modifiedQ.data, viewedMap, workspaceId, repoPath, setViewedMut, unsetViewedMut]);
 
 	if (allFiles.length === 0) {
 		return (
