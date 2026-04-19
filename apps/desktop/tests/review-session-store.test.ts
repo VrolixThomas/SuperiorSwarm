@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, test } from "bun:test";
+import type { ScopedDiffFile } from "../src/shared/review-types";
 import { useReviewSessionStore } from "../src/renderer/stores/review-session-store";
 
 function reset() {
@@ -59,8 +60,6 @@ describe("review-session-store lifecycle", () => {
 		expect(useReviewSessionStore.getState().activeSession).toBeNull();
 	});
 });
-
-import type { ScopedDiffFile } from "../src/shared/review-types";
 
 function makeFiles(paths: Array<[string, "working" | "branch"]>): ScopedDiffFile[] {
 	return paths.map(([path, scope]) => ({
@@ -134,6 +133,13 @@ describe("review-session-store scope", () => {
 		s.startSession({ workspaceId: "ws1" });
 		s.setScope("branch");
 		expect(useReviewSessionStore.getState().activeSession!.scope).toBe("branch");
+	});
+
+	test("setScope without scopedFiles leaves selection untouched", () => {
+		const s = useReviewSessionStore.getState();
+		s.startSession({ workspaceId: "ws1", filePath: "a.ts" });
+		s.setScope("branch");
+		expect(useReviewSessionStore.getState().activeSession!.selectedFilePath).toBe("a.ts");
 	});
 
 	test("setScope with scopedFiles reselects if current out-of-scope", () => {
