@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.5.1 (2026-04-20)
+
+### What's New
+
+SuperiorSwarm v0.5.1 introduces a redesigned Review tab for stepping through changes with keyboard shortcuts (j/k to move, e to edit, v to toggle viewed), filter tabs, sidebar ordering, and a split/unified diff toggle. Files can be edited inline with Monaco and are auto-marked as viewed when you advance. The website also gains a privacy policy, terms of service, and a GDPR data subject rights page, with refined home page copy.
+
+### Changes
+
+- **SUP-17**: Add legal compliance — privacy policy, ToS, and GDPR readiness (#88)
+- **SUP-33**: Improve review process (v2) (#89)
+- fix(website): remove em dashes from home page copy (#90)
+
 ## v0.5.0 (2026-04-18)
 
 ### What's New
