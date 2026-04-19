@@ -36,14 +36,14 @@ export const useReviewSessionStore = create<ReviewSessionStore>()((set, get) => 
 
 	startSession: ({ workspaceId, scope, filePath }) => {
 		const current = get().activeSession;
-		const preserveOverlay = current?.workspaceId === workspaceId;
+		const preserveOverlay = current !== null && current.workspaceId === workspaceId;
 		set({
 			activeSession: {
 				workspaceId,
 				scope: scope ?? current?.scope ?? "all",
 				selectedFilePath: filePath ?? current?.selectedFilePath ?? null,
-				editSplitPaneId: preserveOverlay ? current!.editSplitPaneId : null,
-				editOverlay: preserveOverlay ? current!.editOverlay : new Map(),
+				editSplitPaneId: preserveOverlay ? current.editSplitPaneId : null,
+				editOverlay: preserveOverlay ? current.editOverlay : new Map(),
 			},
 		});
 	},
