@@ -137,6 +137,8 @@ cd apps/desktop && bun run db:generate --name add_review_viewed_table
 
 Expected: new file `apps/desktop/src/main/db/migrations/NNNN_add_review_viewed_table.sql` created. Contents should include `CREATE TABLE review_viewed` and the index.
 
+**Implementer note:** before running, verify `bun run db:generate` is a `drizzle-kit generate` wrapper (which accepts `--name`). Check `apps/desktop/package.json` scripts. If the script swallows args, run `drizzle-kit generate --name add_review_viewed_table` directly instead.
+
 - [ ] **Step 3: Type-check**
 
 ```bash
@@ -582,7 +584,7 @@ export interface ReviewSessionStore {
 	}) => void;
 	endSession: () => void;
 
-	selectFile: (path: string) => void;
+	selectFile: (path: string | null) => void;
 	nextFile: (scopedFiles: ScopedDiffFile[]) => void;
 	prevFile: (scopedFiles: ScopedDiffFile[]) => void;
 
@@ -844,9 +846,14 @@ In `tab-store.ts`, inside the `TabItem` union (after `merge-conflict` variant, a
 			workspaceId: string;
 			repoPath: string;
 			baseBranch: string;
-			currentBranch: string;
 			title: "Review";
 	  };
+
+/*
+Note: we do NOT store currentBranch in the tab. ReviewTab resolves it at render-time
+via trpc.diff.getWorkingTreeStatus — that's the live truth if the branch changes while
+the tab is open.
+*/
 ```
 
 - [ ] **Step 2: Add `openReviewTab` action**
@@ -858,7 +865,6 @@ Locate the existing `openDiffFile` action in `tab-store.ts` (search for `openDif
 		workspaceId: string;
 		repoPath: string;
 		baseBranch: string;
-		currentBranch: string;
 		scope?: ReviewScope;
 		filePath?: string;
 	}) => void;
@@ -875,7 +881,7 @@ import { useReviewSessionStore } from "./review-session-store";
 Implement both actions (place them immediately after `openDiffFile`):
 
 ```ts
-	openReviewTab: ({ workspaceId, repoPath, baseBranch, currentBranch, scope, filePath }) => {
+	openReviewTab: ({ workspaceId, repoPath, baseBranch, scope, filePath }) => {
 		const ps = usePaneStore.getState();
 		const focused = ps.getFocusedPane(workspaceId) ?? ps.getLayout(workspaceId);
 		// Find existing review tab in any pane for this workspace
@@ -897,7 +903,6 @@ Implement both actions (place them immediately after `openDiffFile`):
 			workspaceId,
 			repoPath,
 			baseBranch,
-			currentBranch,
 			title: "Review",
 		};
 		if (focused && "id" in focused) {
@@ -1018,14 +1023,20 @@ export function ReviewTab({
 	workspaceId,
 	repoPath,
 	baseBranch,
-	currentBranch,
 }: {
 	workspaceId: string;
 	repoPath: string;
 	baseBranch: string;
-	currentBranch: string;
 }) {
 	const session = useReviewSessionStore((s) => s.activeSession);
+
+	// Resolve current branch live so the tab reflects branch switches without
+	// needing to store it on the tab item.
+	const statusQuery = trpc.diff.getWorkingTreeStatus.useQuery(
+		{ repoPath },
+		{ refetchInterval: 5_000 },
+	);
+	const currentBranch = statusQuery.data?.branch ?? "";
 
 	// ── Data: working + branch diffs ─────────────────────────────────────────
 	const workingQuery = trpc.diff.getWorkingTreeDiff.useQuery(
@@ -1034,7 +1045,7 @@ export function ReviewTab({
 	);
 	const branchQuery = trpc.diff.getBranchDiff.useQuery(
 		{ repoPath, baseBranch, headBranch: currentBranch },
-		{ refetchInterval: 2_000 },
+		{ refetchInterval: 2_000, enabled: !!currentBranch },
 	);
 
 	// ── Merged scoped list ───────────────────────────────────────────────────
@@ -1079,14 +1090,7 @@ export function ReviewTab({
 			return;
 		const first = scopedFiles[0]?.path ?? null;
 		if (first !== session.selectedFilePath) {
-			useReviewSessionStore.getState().selectFile(first ?? "");
-			if (first === null) {
-				useReviewSessionStore.setState((st) =>
-					st.activeSession
-						? { activeSession: { ...st.activeSession, selectedFilePath: null } }
-						: st,
-				);
-			}
+			useReviewSessionStore.getState().selectFile(first);
 		}
 	}, [session, scopedFiles]);
 
@@ -1195,7 +1199,6 @@ Open `PaneContent.tsx`, locate the conditional blocks dispatching each tab kind 
 			workspaceId={activeTab.workspaceId}
 			repoPath={activeTab.repoPath}
 			baseBranch={activeTab.baseBranch}
-			currentBranch={activeTab.currentBranch}
 		/>
 	</div>
 )}
@@ -1287,14 +1290,7 @@ export function registerReviewActions(): void {
 				const repoPath = ts.activeWorkspaceCwd;
 				if (!wsId || !repoPath) return;
 				const baseBranch = ts.baseBranchByWorkspace[wsId] ?? "main";
-				// currentBranch — leave to the tab to resolve from its own query; pass ""
-				// to signal "use current"; openReviewTab implementation will look it up.
-				ts.openReviewTab({
-					workspaceId: wsId,
-					repoPath,
-					baseBranch,
-					currentBranch: "",
-				});
+				ts.openReviewTab({ workspaceId: wsId, repoPath, baseBranch });
 			},
 			keywords: ["changes", "diff", "walk"],
 		},
@@ -1476,12 +1472,17 @@ git commit -m "feat(review): register review actions on boot"
 
 ---
 
-## Task 14: ReviewTab — listen for toggle-viewed + open-edit events
+## Task 14: ReviewTab event listeners + edit-split orchestration (combined)
+
+This task combines the ReviewTab event listeners (previously Task 14) and the tab-store edit-split orchestration methods (previously Task 15). They are one logical commit — the ReviewTab handlers call the tab-store methods, so they must land together or type-check fails.
 
 **Files:**
 - Modify: `apps/desktop/src/renderer/components/review/ReviewTab.tsx`
+- Modify: `apps/desktop/src/renderer/stores/tab-store.ts`
 
 The keybind actions dispatch `CustomEvent`s; ReviewTab listens and handles them, because it has the tRPC hooks and knows the current file.
+
+### Part A — add ReviewTab event listeners
 
 - [ ] **Step 1: Add listeners**
 
@@ -1540,26 +1541,9 @@ In `ReviewTab.tsx`, add after the state hooks:
 	}, [selectedFile, modifiedQ.data, viewedMap, workspaceId, repoPath, setViewedMut, unsetViewedMut]);
 ```
 
-- [ ] **Step 2: Type-check (will fail — methods don't exist yet)**
+### Part B — add edit-split orchestration to tab-store
 
-```bash
-bun run type-check
-```
-
-Expected: FAIL with "openEditFileSplitForReview does not exist". We wire those in the next task.
-
-- [ ] **Step 3: Commit (compile-broken intermediate is OK — next task fixes it)**
-
-Actually — skip commit. Go straight to Task 15, which adds the two tab-store methods. Then commit both together.
-
----
-
-## Task 15: Edit-split orchestration in tab-store
-
-**Files:**
-- Modify: `apps/desktop/src/renderer/stores/tab-store.ts`
-
-- [ ] **Step 1: Add methods to TabStore interface**
+- [ ] **Step 2: Add methods to TabStore interface**
 
 ```ts
 	openEditFileSplitForReview: (args: {
@@ -1570,7 +1554,7 @@ Actually — skip commit. Go straight to Task 15, which adds the two tab-store m
 	closeEditFileSplitForReview: (workspaceId: string) => void;
 ```
 
-- [ ] **Step 2: Implement**
+- [ ] **Step 3: Implement**
 
 Append to tab-store implementation, after `closeReviewTab`:
 
@@ -1661,15 +1645,15 @@ Add `detectLanguage` import near the top of tab-store.ts (if not already importe
 import { detectLanguage } from "../../shared/diff-types";
 ```
 
-- [ ] **Step 3: Type-check**
+- [ ] **Step 4: Type-check**
 
 ```bash
 bun run type-check
 ```
 
-Expected: PASS. Both Task 14 and 15 now compile together.
+Expected: PASS. ReviewTab listeners + tab-store methods compile together.
 
-- [ ] **Step 4: Run existing tests**
+- [ ] **Step 5: Run existing tests**
 
 ```bash
 cd apps/desktop && bun test
@@ -1677,12 +1661,18 @@ cd apps/desktop && bun test
 
 Expected: all previously-passing tests still PASS.
 
-- [ ] **Step 5: Commit (both tasks)**
+- [ ] **Step 6: Commit**
 
 ```bash
 git add apps/desktop/src/renderer/stores/tab-store.ts apps/desktop/src/renderer/components/review/ReviewTab.tsx
 git commit -m "feat(review): wire toggle-viewed + open/close edit-split in ReviewTab"
 ```
+
+---
+
+## Task 15: (merged into Task 14 above)
+
+Task 14 now covers both ReviewTab event listeners and tab-store edit-split orchestration as one atomic commit. Skip this task number.
 
 ---
 
@@ -1911,9 +1901,11 @@ git commit -m "feat(review): route working-changes clicks to review tab + highli
 ## Task 19: Let Esc pass through Monaco for close-edit
 
 **Files:**
-- Modify: `apps/desktop/src/renderer/hooks/useShortcutListener.ts`
+- Modify: `apps/desktop/src/renderer/hooks/useShortcutListener.ts` (verify — no change expected)
 
 Monaco's input is a `<textarea>`, so `isTextInputElement` returns true and `shouldSkipShortcutHandling` skips plain-printable keys. Escape is not printable (length ≠ 1), so it already passes. Verify:
+
+**Implementer note:** bun's test runner does not expose `document` by default. Check `bunfig.toml` for `[test] preload = "..."` or a happy-dom setup. If `document.createElement` is unavailable, either (a) add happy-dom setup (match what any existing DOM-touching test does — grep for `document.createElement` in `apps/desktop/tests/`), or (b) rewrite the test to pass a plain object shaped like HTMLElement (`{ tagName: "TEXTAREA", classList: { contains: () => false }, closest: () => null }`) — the `shouldSkipShortcutHandling` signature accepts `HTMLElement | null`.
 
 - [ ] **Step 1: Add test**
 
