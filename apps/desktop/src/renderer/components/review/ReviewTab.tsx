@@ -9,7 +9,17 @@ import { ReviewFilterTabs } from "./ReviewFilterTabs";
 import { ReviewHintBar } from "./ReviewHintBar";
 import { ReviewProgressBar } from "./ReviewProgressBar";
 
-const BY_PATH = (a: ScopedDiffFile, b: ScopedDiffFile) => a.path.localeCompare(b.path);
+// Sort like the sidebar's groupByDirectory: primary by top-level dir (`.` for root files),
+// secondary by full path. Ensures j/k traversal matches what the user sees in the sidebar.
+function topLevelDir(path: string): string {
+	const parts = path.split("/");
+	return parts.length > 1 ? (parts[0] ?? ".") : ".";
+}
+const BY_SIDEBAR_ORDER = (a: ScopedDiffFile, b: ScopedDiffFile) => {
+	const groupCmp = topLevelDir(a.path).localeCompare(topLevelDir(b.path));
+	if (groupCmp !== 0) return groupCmp;
+	return a.path.localeCompare(b.path);
+};
 
 export function ReviewTab({
 	workspaceId,
@@ -43,10 +53,10 @@ export function ReviewTab({
 	const allFiles: ScopedDiffFile[] = useMemo(() => {
 		const w = (workingQuery.data?.files ?? [])
 			.map((f): ScopedDiffFile => ({ ...f, scope: "working" }))
-			.sort(BY_PATH);
+			.sort(BY_SIDEBAR_ORDER);
 		const b = (branchQuery.data?.files ?? [])
 			.map((f): ScopedDiffFile => ({ ...f, scope: "branch" }))
-			.sort(BY_PATH);
+			.sort(BY_SIDEBAR_ORDER);
 		return [...w, ...b];
 	}, [workingQuery.data, branchQuery.data]);
 
