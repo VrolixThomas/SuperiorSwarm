@@ -62,9 +62,7 @@ export default function TermsPage() {
 						Ensuring you have the right to use any repository, codebase, or third-party service you
 						connect to the App.
 					</li>
-					<li>
-						Maintaining the confidentiality of your authentication credentials and API keys.
-					</li>
+					<li>Maintaining the confidentiality of your authentication credentials and API keys.</li>
 					<li>
 						Compliance with the terms of service of any third-party service you access through the
 						App (GitHub, Linear, Jira, Bitbucket, Anthropic, etc.).
@@ -97,7 +95,9 @@ export default function TermsPage() {
 					<li>
 						AI-generated code, reviews, or suggestions will be correct, complete, or safe to deploy.
 					</li>
-					<li>The App will be available at any particular time or that defects will be corrected.</li>
+					<li>
+						The App will be available at any particular time or that defects will be corrected.
+					</li>
 				</UL>
 				<Caps>Use of the App and reliance on any AI output is entirely at your own risk.</Caps>
 			</Section>
@@ -107,7 +107,8 @@ export default function TermsPage() {
 					To the maximum extent permitted by applicable law, in no event will we be liable for any
 					indirect, incidental, special, consequential, or punitive damages, or any loss of profits,
 					revenue, data, business, or goodwill, arising out of or in connection with your use of or
-					inability to use the App — even if we have been advised of the possibility of such damages.
+					inability to use the App — even if we have been advised of the possibility of such
+					damages.
 				</Caps>
 				<Caps>
 					Our total aggregate liability to you for any claims arising under these Terms will not
@@ -161,8 +162,8 @@ export default function TermsPage() {
 
 			<Section heading="11. Termination">
 				<P>
-					We may suspend or terminate your access to the App at any time if you breach these Terms or
-					if we discontinue the App. You may stop using the App at any time. On termination, the
+					We may suspend or terminate your access to the App at any time if you breach these Terms
+					or if we discontinue the App. You may stop using the App at any time. On termination, the
 					license in Section 3 ends. Sections 6, 7, 8, and 10 survive termination.
 				</P>
 			</Section>
@@ -180,8 +181,8 @@ export default function TermsPage() {
 				<P>
 					These Terms are governed by the laws of Belgium, without regard to its conflict-of-law
 					provisions. Any dispute arising out of these Terms or your use of the App will be subject
-					to the exclusive jurisdiction of the courts of Brussels, Belgium, unless mandatory consumer
-					protection law in your jurisdiction requires otherwise.
+					to the exclusive jurisdiction of the courts of Brussels, Belgium, unless mandatory
+					consumer protection law in your jurisdiction requires otherwise.
 				</P>
 			</Section>
 

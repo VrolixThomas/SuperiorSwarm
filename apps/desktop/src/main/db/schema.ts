@@ -426,7 +426,7 @@ export const reviewViewed = sqliteTable(
 	(table) => [
 		primaryKey({ columns: [table.workspaceId, table.filePath] }),
 		index("idx_review_viewed_workspace").on(table.workspaceId),
-	],
+	]
 );
 
 export type ReviewViewed = typeof reviewViewed.$inferSelect;

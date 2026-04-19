@@ -1,9 +1,5 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import {
-	invalidateHashCache,
-	sha256Hex,
-	sha256HexCached,
-} from "../src/renderer/lib/content-hash";
+import { invalidateHashCache, sha256Hex, sha256HexCached } from "../src/renderer/lib/content-hash";
 
 describe("sha256Hex", () => {
 	test("hashes ascii content", async () => {

@@ -1,7 +1,11 @@
 import { Nav } from "@/components/nav";
 import type { ReactNode } from "react";
 
-export function LegalPage({ title, updated, children }: { title: string; updated: string; children: ReactNode }) {
+export function LegalPage({
+	title,
+	updated,
+	children,
+}: { title: string; updated: string; children: ReactNode }) {
 	return (
 		<>
 			<Nav />

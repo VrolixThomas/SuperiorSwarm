@@ -159,8 +159,8 @@ export function LoginScreen() {
 					style={{ color: "var(--text-tertiary)", textDecoration: "underline" }}
 				>
 					terms
-				</a>
-				{" "}and{" "}
+				</a>{" "}
+				and{" "}
 				<a
 					href={PRIVACY_URL}
 					target="_blank"

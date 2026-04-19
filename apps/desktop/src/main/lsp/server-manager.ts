@@ -264,7 +264,11 @@ export class ServerManager {
 		return available;
 	}
 
-	private syncAvailabilityState(config: LanguageServerConfig, repoPath: string, available: boolean): void {
+	private syncAvailabilityState(
+		config: LanguageServerConfig,
+		repoPath: string,
+		available: boolean
+	): void {
 		const key = this.serverKey(config.id, repoPath);
 		if (available) {
 			this.unavailableServers.delete(key);

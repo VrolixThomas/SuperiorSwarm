@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, test } from "bun:test";
+import { getViewed, setViewed, unsetViewed } from "../src/main/review/viewed-ops";
 import { createReviewTestDb } from "./helpers/review-test-db";
-import { setViewed, getViewed, unsetViewed } from "../src/main/review/viewed-ops";
 
 describe("review viewed-ops", () => {
 	let db: ReturnType<typeof createReviewTestDb>;

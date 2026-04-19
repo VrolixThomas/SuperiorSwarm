@@ -4,10 +4,10 @@ import type {
 	LspDetectSuggestion,
 	LspPreset,
 } from "../../../../shared/lsp-schema";
-import { ConfigFieldErrors } from "./lsp-errors";
 import { LspPresetPicker } from "./LspPresetPicker";
 import { LspServerForm, type ServerFormData } from "./LspServerForm";
 import { configToFormData, formDataToConfig } from "./config-form-bridge";
+import { ConfigFieldErrors } from "./lsp-errors";
 
 type FlowStep = "pick" | "form";
 

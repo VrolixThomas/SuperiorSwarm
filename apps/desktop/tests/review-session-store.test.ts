@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import type { ScopedDiffFile } from "../src/shared/review-types";
 import { useReviewSessionStore } from "../src/renderer/stores/review-session-store";
+import type { ScopedDiffFile } from "../src/shared/review-types";
 
 function reset() {
 	useReviewSessionStore.setState({ activeSession: null });

@@ -26,21 +26,21 @@ export function setViewed(db: BunSQLiteDatabase<any>, input: SetViewedInput): vo
 
 export function unsetViewed(
 	db: BunSQLiteDatabase<any>,
-	input: { workspaceId: string; filePath: string },
+	input: { workspaceId: string; filePath: string }
 ): void {
 	db.delete(reviewViewed)
 		.where(
 			and(
 				eq(reviewViewed.workspaceId, input.workspaceId),
-				eq(reviewViewed.filePath, input.filePath),
-			),
+				eq(reviewViewed.filePath, input.filePath)
+			)
 		)
 		.run();
 }
 
 export function getViewed(
 	db: BunSQLiteDatabase<any>,
-	workspaceId: string,
+	workspaceId: string
 ): Array<{ filePath: string; contentHash: string; viewedAt: Date }> {
 	return db
 		.select({
