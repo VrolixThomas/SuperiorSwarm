@@ -50,7 +50,7 @@ export function Hero() {
 					className="mx-auto mt-5 max-w-[480px] text-base text-text-secondary md:text-[17px] md:leading-relaxed"
 				>
 					The desktop command center for AI coding agents. Run agents, review PRs automatically, and
-					manage every branch — all from one window.
+					manage every branch, all from one window.
 				</motion.p>
 
 				{/* CTA area */}

@@ -237,7 +237,7 @@ function IntegrationVisual() {
 const FEATURES = [
 	{
 		headline: "Your PRs, reviewed before you ask.",
-		copy: "AI reviews every pull request automatically — finds issues, suggests fixes, and resolves review comments. You push code, it handles the rest.",
+		copy: "AI reviews every pull request automatically. Finds issues, suggests fixes, and resolves review comments. You push code, it handles the rest.",
 		visual: <PrIntelligenceVisual />,
 		align: "left" as const,
 	},
@@ -249,7 +249,7 @@ const FEATURES = [
 	},
 	{
 		headline: "Jira. Linear. GitHub. Bitbucket.\nOne sidebar.",
-		copy: "Stop tab-switching between your issue tracker, git host, and code. Everything lives in one unified sidebar — tickets, branches, and PRs together.",
+		copy: "Stop tab-switching between your issue tracker, git host, and code. Everything lives in one unified sidebar with tickets, branches, and PRs together.",
 		visual: <IntegrationVisual />,
 		align: "left" as const,
 	},
