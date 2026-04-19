@@ -25,8 +25,8 @@ Build a new **Review tab** — a workspace tab (alongside terminal and file tabs
 ## 4. User-facing behavior
 
 ### Opening the Review tab
-- **Shortcut** `Cmd+Shift+R` (Mac) / `Ctrl+Shift+R` (Win/Linux) — opens or focuses Review tab for the active workspace.
-- **Sidebar click** — clicking any file in working-changes or branch-changes sections opens/focuses Review tab with that file selected. Scope is set to the section clicked (click in working-changes → scope `"working"`; click in branch-changes → scope `"branch"`).
+- **Shortcut** `Cmd+Shift+R` (Mac) / `Ctrl+Shift+R` (Win/Linux) — opens or focuses Review tab for the active workspace. If the tab is created fresh (not already open), scope defaults to `"all"` and `selectedFilePath` is set to the first file in the merged working+branch list (or `null` if both are empty).
+- **Sidebar click** — clicking any file in working-changes or branch-changes sections opens/focuses Review tab with that file selected. Scope is set to the section clicked (click in working-changes → scope `"working"`; click in branch-changes → scope `"branch"`). If a Review tab is already open, it is reused and its scope is updated to the clicked section.
 - No dedicated button is added.
 
 ### Keybinds (active only when Review tab is the focused tab and no input/Monaco has focus)
@@ -182,7 +182,8 @@ interface ReviewSessionStore {
 ### `e` edit split
 1. Action fires.
 2. `openEditSplit(selectedFile)`:
-   - If `editSplitPaneId` is set and pane still alive → **reuse**: replace the split pane's active tab with a new `file` tab for `selectedFile` (preserves cursor by reusing Monaco model path when possible; if different file, new model — that's fine because user changed file).
+   - If `editSplitPaneId` is set and pane still alive AND the pane's active tab is already for `selectedFile.path` → no-op on pane/tab state; just shift keyboard focus to the edit pane.
+   - Else if `editSplitPaneId` is set and pane alive but for a different file → **reuse pane**: swap in a new `file` tab for `selectedFile` (new Monaco model, since it's a different file; pane container is preserved so no layout flicker).
    - Else → call `paneStore.splitPane(reviewPaneId, "horizontal", fileTab)`, store returned pane id in `editSplitPaneId`.
 3. Editor mounts, takes focus.
 
