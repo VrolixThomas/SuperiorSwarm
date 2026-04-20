@@ -17,7 +17,6 @@ import { connectAll, connectBitbucket, connectJira } from "../../atlassian/oauth
 import type { BitbucketAdapter } from "../../providers/bitbucket-adapter";
 import { getGitProvider } from "../../providers/git-provider";
 import { publicProcedure, router } from "../index";
-
 export const atlassianRouter = router({
 	getStatus: publicProcedure.query(() => {
 		const jira = getAuth("jira");
