@@ -78,7 +78,11 @@ export function Terminal({
 		const fit = new FitAddon();
 		term.loadAddon(fit);
 		term.loadAddon(new SearchAddon());
-		term.loadAddon(new WebLinksAddon());
+		term.loadAddon(
+			new WebLinksAddon((_event, uri) => {
+				window.electron.shell.openExternal(uri);
+			})
+		);
 		term.loadAddon(new ClipboardAddon());
 
 		const unicode11 = new Unicode11Addon();

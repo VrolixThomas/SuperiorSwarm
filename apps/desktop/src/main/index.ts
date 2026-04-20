@@ -53,6 +53,10 @@ let mainWindow: BrowserWindow | null = null;
 let daemonClient: DaemonClient;
 let alertListener: AgentAlertListener | null = null;
 
+function isHttpUrl(url: string): boolean {
+	return url.startsWith("http://") || url.startsWith("https://");
+}
+
 if (!import.meta.env.DEV && !registerSingleInstance(app, () => mainWindow)) {
 	process.exit(0);
 }
@@ -89,6 +93,24 @@ function createWindow() {
 
 	mainWindow.on("closed", () => {
 		mainWindow = null;
+	});
+
+	mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+		if (isHttpUrl(url)) {
+			void shell.openExternal(url);
+		}
+		return { action: "deny" };
+	});
+
+	mainWindow.webContents.on("will-navigate", (event, url) => {
+		const devURL = process.env["ELECTRON_RENDERER_URL"];
+		const isDevURL = Boolean(devURL) && url.startsWith(devURL ?? "");
+		if (!isDevURL && !url.startsWith("file://")) {
+			event.preventDefault();
+			if (isHttpUrl(url)) {
+				void shell.openExternal(url);
+			}
+		}
 	});
 
 	if (process.env["ELECTRON_RENDERER_URL"]) {
@@ -171,7 +193,7 @@ app.whenReady().then(async () => {
 	});
 
 	ipcMain.handle("shell:openExternal", async (_event, url: string) => {
-		if (typeof url === "string" && (url.startsWith("https://") || url.startsWith("http://"))) {
+		if (typeof url === "string" && isHttpUrl(url)) {
 			await shell.openExternal(url);
 		}
 	});
