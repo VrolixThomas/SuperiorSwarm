@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { TicketViewMode } from "../../../shared/tickets";
+import { AssigneeFilter } from "./AssigneeFilter";
 
 interface TicketsToolbarProps {
 	projectName: string;
@@ -50,6 +51,7 @@ export function TicketsToolbar({
 			{staleness && (
 				<span className="text-[10px] text-[var(--text-quaternary)] opacity-60">· {staleness}</span>
 			)}
+			<AssigneeFilter />
 			<div className="flex-1" />
 			<div className="flex gap-0.5 rounded-[6px] bg-[var(--bg-elevated)] p-[2px]">
 				{VIEW_MODES.map(({ mode, label }) => (

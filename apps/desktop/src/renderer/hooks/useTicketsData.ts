@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useRef } from "react";
-import type { MergedTicketIssue, NormalizedStatusCategory } from "../../shared/tickets";
-import { normalizeStatusCategory } from "../../shared/tickets";
+import type {
+	AssigneeFilterValue,
+	MergedTicketIssue,
+	NormalizedStatusCategory,
+} from "../../shared/tickets";
+import { deserializeAssigneeFilter, normalizeStatusCategory } from "../../shared/tickets";
 import type { LinkedWorkspace } from "../components/WorkspacePopover";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
@@ -38,25 +42,41 @@ export function useTicketsData() {
 	const hasJira = atlassianStatus?.jira.connected;
 	const hasLinear = linearStatus?.connected;
 
+	// ── Team members ────────────────────────────────────────────────────────
+	const teamMembersScope = useMemo(() => {
+		if (activeTicketProject === "all" || activeTicketProject === null) return undefined;
+		return { provider: activeTicketProject.provider, teamId: activeTicketProject.id };
+	}, [activeTicketProject]);
+
+	const { data: teamMembersRaw } = trpc.tickets.getTeamMembers.useQuery(teamMembersScope, {
+		staleTime: 60_000,
+	});
+
+	const teamMembers = useMemo(() => {
+		if (!teamMembersRaw) return [];
+		return teamMembersRaw.map((m) => ({
+			id: m.userId,
+			provider: m.provider,
+			name: m.name,
+			email: m.email ?? undefined,
+			avatarUrl: m.avatarUrl ?? undefined,
+		}));
+	}, [teamMembersRaw]);
+
+	const currentLinearUserId =
+		linearStatus?.connected === true ? (linearStatus.accountId ?? null) : null;
+
+	const currentJiraUserId =
+		atlassianStatus?.jira.connected === true ? (atlassianStatus.jira.accountId ?? null) : null;
+
 	// ── Cache-first loading ──────────────────────────────────────────────────
 	const { data: cached, isLoading: cacheLoading } = trpc.tickets.getCachedTickets.useQuery(
 		undefined,
 		{ staleTime: 5_000 }
 	);
 
-	// Also keep the direct API queries for backward compat with sidebar
-	const { data: jiraIssues } = trpc.atlassian.getMyIssues.useQuery(undefined, {
-		enabled: hasJira,
-		staleTime: 30_000,
-	});
-	const { data: linearIssues } = trpc.linear.getAssignedIssues.useQuery(undefined, {
-		enabled: hasLinear,
-		staleTime: 30_000,
-	});
-
-	// Prefer API data when available, fall back to cache
-	const effectiveJiraIssues = jiraIssues ?? cached?.jiraIssues;
-	const effectiveLinearIssues = linearIssues ?? cached?.linearIssues;
+	const effectiveJiraIssues = cached?.jiraIssues;
+	const effectiveLinearIssues = cached?.linearIssues;
 
 	// ── Background refresh ───────────────────────────────────────────────────
 	const refreshMutation = trpc.tickets.refreshTickets.useMutation({
@@ -65,19 +85,33 @@ export function useTicketsData() {
 			utils.tickets.getLastFetched.invalidate();
 		},
 	});
-	const refreshRef = useRef(refreshMutation.mutate);
-	refreshRef.current = refreshMutation.mutate;
+	const refreshRef = useRef(refreshMutation.mutateAsync);
+	refreshRef.current = refreshMutation.mutateAsync;
 
 	useEffect(() => {
-		// Trigger initial refresh
-		refreshRef.current();
+		let cancelled = false;
+		let timer: ReturnType<typeof setTimeout> | null = null;
+		let consecutiveFailures = 0;
 
-		// Set up interval
-		const interval = setInterval(() => {
-			refreshRef.current();
-		}, REFRESH_INTERVAL_MS);
+		async function tick() {
+			if (cancelled) return;
+			try {
+				const result = await refreshRef.current();
+				consecutiveFailures = result?.ok ? 0 : consecutiveFailures + 1;
+			} catch {
+				consecutiveFailures += 1;
+			}
+			if (cancelled) return;
+			const delay = Math.min(REFRESH_INTERVAL_MS * 2 ** consecutiveFailures, 5 * 60_000);
+			timer = setTimeout(tick, delay);
+		}
 
-		return () => clearInterval(interval);
+		tick();
+
+		return () => {
+			cancelled = true;
+			if (timer) clearTimeout(timer);
+		};
 	}, []);
 
 	// ── Last fetched timestamp ───────────────────────────────────────────────
@@ -85,6 +119,21 @@ export function useTicketsData() {
 		staleTime: 10_000,
 		refetchInterval: 10_000,
 	});
+
+	// ── Assignee filter ──────────────────────────────────────────────────────
+	const projectId = useMemo(() => {
+		if (activeTicketProject === "all" || activeTicketProject === null) return "all";
+		return `${activeTicketProject.provider}:${activeTicketProject.id}`;
+	}, [activeTicketProject]);
+
+	const { data: savedFilter } = trpc.tickets.getAssigneeFilter.useQuery(
+		{ projectId },
+		{ staleTime: Number.POSITIVE_INFINITY }
+	);
+
+	const assigneeFilter: AssigneeFilterValue = useMemo(() => {
+		return deserializeAssigneeFilter(savedFilter ?? null);
+	}, [savedFilter]);
 
 	// ── Linked workspaces ────────────────────────────────────────────────────
 	const { data: linkedTickets } = trpc.tickets.getLinkedTickets.useQuery(undefined, {
@@ -133,6 +182,9 @@ export function useTicketsData() {
 					projectKey: issue.projectKey,
 					updatedAt: issue.updatedAt,
 					statusCategory: issue.statusCategory,
+					assigneeId: issue.assigneeId ?? null,
+					assigneeName: issue.assigneeName ?? null,
+					assigneeAvatar: issue.assigneeAvatar ?? null,
 				});
 			}
 		}
@@ -153,6 +205,9 @@ export function useTicketsData() {
 					groupId: issue.teamId,
 					stateType: issue.stateType,
 					teamName: issue.teamName,
+					assigneeId: issue.assigneeId ?? null,
+					assigneeName: issue.assigneeName ?? null,
+					assigneeAvatar: issue.assigneeAvatar ?? null,
 				});
 			}
 		}
@@ -161,12 +216,33 @@ export function useTicketsData() {
 	}, [effectiveJiraIssues, effectiveLinearIssues]);
 
 	const filteredIssues = useMemo(() => {
-		if (activeTicketProject === "all" || activeTicketProject === null) return allIssues;
-		return allIssues.filter(
-			(issue) =>
-				issue.provider === activeTicketProject.provider && issue.groupId === activeTicketProject.id
-		);
-	}, [allIssues, activeTicketProject]);
+		let issues = allIssues;
+
+		// Project filter
+		if (activeTicketProject !== "all" && activeTicketProject !== null) {
+			issues = issues.filter(
+				(issue) =>
+					issue.provider === activeTicketProject.provider &&
+					issue.groupId === activeTicketProject.id
+			);
+		}
+
+		// Assignee filter
+		if (assigneeFilter === "me") {
+			issues = issues.filter((issue) => {
+				const uid = issue.provider === "linear" ? currentLinearUserId : currentJiraUserId;
+				return uid !== null && issue.assigneeId === uid;
+			});
+		} else if (assigneeFilter !== "all" && typeof assigneeFilter === "object") {
+			issues = issues.filter((issue) => {
+				if (issue.assigneeId === null || issue.assigneeId === undefined)
+					return assigneeFilter.includeUnassigned;
+				return assigneeFilter.userIds.includes(issue.assigneeId);
+			});
+		}
+
+		return issues;
+	}, [allIssues, activeTicketProject, assigneeFilter, currentLinearUserId, currentJiraUserId]);
 
 	const columns = useMemo(() => {
 		const byCategory = new Map<NormalizedStatusCategory, MergedTicketIssue[]>();
@@ -190,10 +266,16 @@ export function useTicketsData() {
 	return {
 		columns,
 		filteredIssues,
+		allIssues,
 		linkedMap,
 		isLoading,
 		isEmpty,
 		activeTicketProject,
 		lastFetched: lastFetched ?? cached?.lastFetched ?? null,
+		teamMembers,
+		assigneeFilter,
+		currentLinearUserId,
+		currentJiraUserId,
+		projectId,
 	};
 }

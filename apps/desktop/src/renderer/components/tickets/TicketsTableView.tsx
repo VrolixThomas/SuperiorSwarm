@@ -1,11 +1,20 @@
-import { useMemo, useState } from "react";
+import { memo, useMemo, useState } from "react";
 import type { MergedTicketIssue, NormalizedStatusCategory } from "../../../shared/tickets";
 import { formatRelativeTime, normalizeStatusCategory } from "../../../shared/tickets";
+import { useAssigneePickerStore } from "../../stores/assignee-picker-store";
 import { StateIcon } from "../StateIcon";
 import type { LinkedWorkspace } from "../WorkspacePopover";
+import { AssigneeAvatar } from "./AssigneeAvatar";
 import { StatusPicker } from "./StatusPicker";
 
-type SortField = "identifier" | "title" | "status" | "project" | "provider" | "updatedAt";
+type SortField =
+	| "identifier"
+	| "title"
+	| "status"
+	| "assignee"
+	| "project"
+	| "provider"
+	| "updatedAt";
 type SortDirection = "asc" | "desc";
 
 interface TicketsTableViewProps {
@@ -23,6 +32,75 @@ const STATUS_RANK: Record<NormalizedStatusCategory, number> = {
 	backlog: 2,
 	done: 3,
 };
+
+interface TableRowProps {
+	issue: MergedTicketIssue;
+	isSelected: boolean;
+	isLinked: boolean;
+	onTicketClick: (issue: MergedTicketIssue) => void;
+	onTicketContextMenu: (e: React.MouseEvent, issue: MergedTicketIssue) => void;
+	onStatusChange: (issue: MergedTicketIssue, transitionOrStateId: string) => void;
+}
+
+function TableRowImpl({
+	issue,
+	isSelected,
+	onTicketClick,
+	onTicketContextMenu,
+	onStatusChange,
+	isLinked,
+}: TableRowProps) {
+	const openPicker = useAssigneePickerStore((s) => s.openFor);
+
+	return (
+		<button
+			type="button"
+			onClick={() => onTicketClick(issue)}
+			onContextMenu={(e) => onTicketContextMenu(e, issue)}
+			className={`flex items-center gap-2.5 border-b border-[rgba(255,255,255,0.02)] px-4 py-1.5 text-left transition-colors duration-[80ms] ${
+				isSelected ? "bg-[rgba(10,132,255,0.08)]" : "hover:bg-[rgba(255,255,255,0.02)]"
+			}`}
+		>
+			<StateIcon type={issue.stateType || "default"} color={issue.status.color} size={8} />
+			<span
+				className={`w-[62px] shrink-0 text-[11px] font-medium ${
+					isLinked ? "text-[var(--accent)]" : "text-[var(--text-quaternary)]"
+				}`}
+			>
+				{issue.identifier}
+			</span>
+			<span className="min-w-0 flex-1 truncate text-[11px] text-[var(--text-secondary)]">
+				{issue.title}
+			</span>
+			<StatusPicker issue={issue} onStatusChange={onStatusChange} />
+			<span className="flex w-[80px] shrink-0 items-center gap-1.5">
+				<AssigneeAvatar
+					assigneeId={issue.assigneeId}
+					assigneeName={issue.assigneeName}
+					size={14}
+					onClick={(e) => {
+						e.stopPropagation();
+						openPicker(issue, { x: e.clientX, y: e.clientY });
+					}}
+				/>
+				<span className="truncate text-[10px] text-[var(--text-tertiary)]">
+					{issue.assigneeName ?? "\u2014"}
+				</span>
+			</span>
+			<span className="w-[50px] shrink-0 text-[10px] text-[var(--text-tertiary)]">
+				{issue.teamName || issue.projectKey || issue.groupId}
+			</span>
+			<span className="w-[44px] shrink-0 text-[10px] text-[var(--text-quaternary)]">
+				{issue.provider === "jira" ? "Jira" : "Linear"}
+			</span>
+			<span className="w-[60px] shrink-0 text-[10px] text-[var(--text-quaternary)]">
+				{formatRelativeTime(issue.updatedAt)}
+			</span>
+		</button>
+	);
+}
+
+const TableRow = memo(TableRowImpl);
 
 export function TicketsTableView({
 	issues,
@@ -58,6 +136,8 @@ export function TicketsTableView({
 					const catB = normalizeStatusCategory(b.provider, b.statusCategory, b.stateType);
 					return dir * (STATUS_RANK[catA] - STATUS_RANK[catB]);
 				}
+				case "assignee":
+					return dir * (a.assigneeName ?? "").localeCompare(b.assigneeName ?? "");
 				case "project":
 					return dir * a.groupId.localeCompare(b.groupId);
 				case "provider":
@@ -103,6 +183,13 @@ export function TicketsTableView({
 				</button>
 				<button
 					type="button"
+					className={`w-[80px] text-left ${headerClass}`}
+					onClick={() => toggleSort("assignee")}
+				>
+					Assignee{arrow("assignee")}
+				</button>
+				<button
+					type="button"
 					className={`w-[50px] text-left ${headerClass}`}
 					onClick={() => toggleSort("project")}
 				>
@@ -128,37 +215,15 @@ export function TicketsTableView({
 				const isLinked = linked && linked.length > 0;
 				const isSelected = selectedTicketId === issue.id;
 				return (
-					<button
+					<TableRow
 						key={`${issue.provider}:${issue.id}`}
-						type="button"
-						onClick={() => onTicketClick(issue)}
-						onContextMenu={(e) => onTicketContextMenu(e, issue)}
-						className={`flex items-center gap-2.5 border-b border-[rgba(255,255,255,0.02)] px-4 py-1.5 text-left transition-colors duration-[80ms] ${
-							isSelected ? "bg-[rgba(10,132,255,0.08)]" : "hover:bg-[rgba(255,255,255,0.02)]"
-						}`}
-					>
-						<StateIcon type={issue.stateType || "default"} color={issue.status.color} size={8} />
-						<span
-							className={`w-[62px] shrink-0 text-[11px] font-medium ${
-								isLinked ? "text-[var(--accent)]" : "text-[var(--text-quaternary)]"
-							}`}
-						>
-							{issue.identifier}
-						</span>
-						<span className="min-w-0 flex-1 truncate text-[11px] text-[var(--text-secondary)]">
-							{issue.title}
-						</span>
-						<StatusPicker issue={issue} onStatusChange={onStatusChange} />
-						<span className="w-[50px] shrink-0 text-[10px] text-[var(--text-tertiary)]">
-							{issue.teamName || issue.projectKey || issue.groupId}
-						</span>
-						<span className="w-[44px] shrink-0 text-[10px] text-[var(--text-quaternary)]">
-							{issue.provider === "jira" ? "Jira" : "Linear"}
-						</span>
-						<span className="w-[60px] shrink-0 text-[10px] text-[var(--text-quaternary)]">
-							{formatRelativeTime(issue.updatedAt)}
-						</span>
-					</button>
+						issue={issue}
+						isSelected={isSelected}
+						isLinked={isLinked}
+						onTicketClick={onTicketClick}
+						onTicketContextMenu={onTicketContextMenu}
+						onStatusChange={onStatusChange}
+					/>
 				);
 			})}
 		</div>

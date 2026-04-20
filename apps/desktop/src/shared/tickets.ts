@@ -25,7 +25,26 @@ export interface MergedTicketIssue extends TicketIssue {
 	projectKey?: string;
 	updatedAt?: string;
 	statusCategory?: string;
+	assigneeId?: string | null;
+	assigneeName?: string | null;
+	assigneeAvatar?: string | null;
 }
+
+export interface TicketTeam {
+	id: string;
+	provider: TicketProvider;
+	name: string;
+}
+
+export interface TicketTeamMember {
+	id: string;
+	provider: TicketProvider;
+	name: string;
+	email?: string;
+	avatarUrl?: string;
+}
+
+export type AssigneeFilterValue = "all" | "me" | { userIds: string[]; includeUnassigned: boolean };
 
 export type TicketViewMode = "board" | "list" | "table";
 
@@ -132,4 +151,77 @@ export function columnToLinearStateType(
 		default:
 			return "unstarted";
 	}
+}
+
+const ASSIGNEE_PALETTE = [
+	"#E06C75",
+	"#E5C07B",
+	"#61AFEF",
+	"#C678DD",
+	"#56B6C2",
+	"#98C379",
+	"#D19A66",
+	"#BE5046",
+	"#7EC8E3",
+	"#C8A2C8",
+];
+
+export function assigneeColorFromId(id: string | null | undefined): string {
+	if (!id) return "#6e6e73";
+	let hash = 0;
+	for (let i = 0; i < id.length; i++) {
+		hash = (hash * 31 + id.charCodeAt(i)) | 0;
+	}
+	return ASSIGNEE_PALETTE[Math.abs(hash) % ASSIGNEE_PALETTE.length]!;
+}
+
+export function serializeAssigneeFilter(value: AssigneeFilterValue): string {
+	return typeof value === "object" ? JSON.stringify(value) : value;
+}
+
+export const UNASSIGNED_FILTER_KEY = "__unassigned__";
+
+/**
+ * Given the current filter value and the key the user toggled (a userId or
+ * UNASSIGNED_FILTER_KEY), compute the next filter state. Pure — extracted from
+ * AssigneeFilter so the 8-branch state machine is directly testable.
+ */
+export function computeNextAssigneeFilter(
+	current: AssigneeFilterValue,
+	key: string,
+	meIds: string[]
+): AssigneeFilterValue {
+	if (key === UNASSIGNED_FILTER_KEY) {
+		if (current === "all") return { userIds: [], includeUnassigned: true };
+		if (current === "me") return { userIds: meIds, includeUnassigned: true };
+		const next = { ...current, includeUnassigned: !current.includeUnassigned };
+		if (next.userIds.length === 0 && !next.includeUnassigned) return "all";
+		return next;
+	}
+
+	if (current === "all") {
+		return { userIds: [key], includeUnassigned: false };
+	}
+	if (current === "me") {
+		if (meIds.includes(key)) return "all";
+		return { userIds: [key], includeUnassigned: false };
+	}
+
+	const nextIds = current.userIds.includes(key)
+		? current.userIds.filter((id) => id !== key)
+		: [...current.userIds, key];
+	if (nextIds.length === 0 && !current.includeUnassigned) return "all";
+	return { userIds: nextIds, includeUnassigned: current.includeUnassigned };
+}
+
+export function deserializeAssigneeFilter(raw: string | null): AssigneeFilterValue {
+	if (!raw || raw === "me") return "me";
+	if (raw === "all") return "all";
+	try {
+		const parsed = JSON.parse(raw);
+		if (parsed && Array.isArray(parsed.userIds) && typeof parsed.includeUnassigned === "boolean") {
+			return parsed;
+		}
+	} catch {}
+	return "me";
 }

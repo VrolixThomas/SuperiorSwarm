@@ -20,8 +20,8 @@ const mockGetIssueDetail = mock(async () => ({
 }));
 
 mock.module("../src/main/linear/linear", () => ({
-	getAssignedIssues: mockGetAssignedIssues,
-	getAssignedIssuesWithDone: mockGetAssignedIssuesWithDone,
+	getTeamIssues: mockGetAssignedIssues,
+	getTeamIssuesWithDone: mockGetAssignedIssuesWithDone,
 	getTeamStates: mockGetTeamStates,
 	updateIssueState: mockUpdateIssueState,
 	getIssueDetail: mockGetIssueDetail,

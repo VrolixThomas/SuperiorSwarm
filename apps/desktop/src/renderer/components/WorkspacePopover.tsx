@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef } from "react";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
+import { Popover } from "./ui/Popover";
 
 export interface LinkedWorkspace {
 	workspaceId: string;
@@ -16,48 +17,9 @@ interface Props {
 }
 
 export function WorkspacePopover({ position, workspaces, onClose, onCreateBranch }: Props) {
-	const menuRef = useRef<HTMLDivElement>(null);
-	const [adjusted, setAdjusted] = useState(position);
 	const attachTerminal = trpc.workspaces.attachTerminal.useMutation();
 	const attachTerminalRef = useRef(attachTerminal.mutate);
 	attachTerminalRef.current = attachTerminal.mutate;
-
-	useEffect(() => {
-		if (!menuRef.current) return;
-		const rect = menuRef.current.getBoundingClientRect();
-		let { x, y } = position;
-
-		if (x + rect.width > window.innerWidth) {
-			x = window.innerWidth - rect.width - 8;
-		}
-		if (y + rect.height > window.innerHeight) {
-			y = window.innerHeight - rect.height - 8;
-		}
-
-		if (x !== position.x || y !== position.y) {
-			setAdjusted({ x, y });
-		}
-	}, [position]);
-
-	useEffect(() => {
-		function handleClickOutside(e: MouseEvent) {
-			if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-				onClose();
-			}
-		}
-		document.addEventListener("mousedown", handleClickOutside);
-		return () => document.removeEventListener("mousedown", handleClickOutside);
-	}, [onClose]);
-
-	useEffect(() => {
-		function handleKeyDown(e: KeyboardEvent) {
-			if (e.key === "Escape") {
-				onClose();
-			}
-		}
-		document.addEventListener("keydown", handleKeyDown);
-		return () => document.removeEventListener("keydown", handleKeyDown);
-	}, [onClose]);
 
 	const navigateToWorkspace = useCallback(
 		(ws: LinkedWorkspace) => {
@@ -78,11 +40,11 @@ export function WorkspacePopover({ position, workspaces, onClose, onCreateBranch
 	);
 
 	return (
-		<div
-			ref={menuRef}
+		<Popover
+			position={position}
+			onClose={onClose}
 			role="menu"
-			className="fixed z-50 min-w-[180px] max-w-[260px] rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-elevated)] py-1 shadow-[var(--shadow-md)]"
-			style={{ left: adjusted.x, top: adjusted.y }}
+			className="min-w-[180px] max-w-[260px] bg-[var(--bg-elevated)] py-1"
 		>
 			{/* Workspace list */}
 			{workspaces.map((ws) => (
@@ -141,6 +103,6 @@ export function WorkspacePopover({ position, workspaces, onClose, onCreateBranch
 				</svg>
 				<span>Add workspace</span>
 			</button>
-		</div>
+		</Popover>
 	);
 }

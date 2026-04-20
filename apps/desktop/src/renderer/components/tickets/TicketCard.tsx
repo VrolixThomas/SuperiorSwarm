@@ -1,8 +1,11 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { memo } from "react";
 import type { MergedTicketIssue } from "../../../shared/tickets";
+import { useAssigneePickerStore } from "../../stores/assignee-picker-store";
 import { StateIcon } from "../StateIcon";
 import type { LinkedWorkspace } from "../WorkspacePopover";
+import { AssigneeAvatar } from "./AssigneeAvatar";
 
 interface TicketCardProps {
 	issue: MergedTicketIssue;
@@ -14,7 +17,7 @@ interface TicketCardProps {
 	onContextMenu: (e: React.MouseEvent) => void;
 }
 
-export function TicketCard({
+function TicketCardImpl({
 	issue,
 	isSelected,
 	linked,
@@ -23,6 +26,7 @@ export function TicketCard({
 	onClick,
 	onContextMenu,
 }: TicketCardProps) {
+	const openPicker = useAssigneePickerStore((s) => s.openFor);
 	const sortableId = `${issue.provider}:${issue.id}`;
 	const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
 		id: sortableId,
@@ -72,15 +76,26 @@ export function TicketCard({
 					{issue.identifier}
 				</span>
 				{isLinked && (
-					<span className="ml-auto rounded-[3px] bg-[rgba(10,132,255,0.1)] px-1.5 py-px text-[8px] text-[var(--accent)]">
+					<span className="rounded-[3px] bg-[rgba(10,132,255,0.1)] px-1.5 py-px text-[8px] text-[var(--accent)]">
 						linked
 					</span>
 				)}
 				{showProvider && !isLinked && (
-					<span className="ml-auto text-[8px] text-[var(--text-quaternary)] opacity-60">
+					<span className="text-[8px] text-[var(--text-quaternary)] opacity-60">
 						{issue.provider === "jira" ? "Jira" : "Linear"}
 					</span>
 				)}
+				<span className="ml-auto">
+					<AssigneeAvatar
+						assigneeId={issue.assigneeId}
+						assigneeName={issue.assigneeName}
+						size={16}
+						onClick={(e) => {
+							e.stopPropagation();
+							openPicker(issue, { x: e.clientX, y: e.clientY });
+						}}
+					/>
+				</span>
 			</div>
 			<span className="line-clamp-2 text-[11px] leading-[1.35] text-[var(--text)]">
 				{issue.title}
@@ -88,3 +103,34 @@ export function TicketCard({
 		</button>
 	);
 }
+
+// Every 5s poll rebuilds the allIssues array → all `issue` object refs are new even when
+// nothing meaningful changed. Default shallow compare can't see through that; compare only
+// the fields we actually render.
+function areTicketCardPropsEqual(prev: TicketCardProps, next: TicketCardProps): boolean {
+	if (prev.isSelected !== next.isSelected) return false;
+	if (prev.showProvider !== next.showProvider) return false;
+	if (prev.isDragOverlay !== next.isDragOverlay) return false;
+	if (prev.onClick !== next.onClick) return false;
+	if (prev.onContextMenu !== next.onContextMenu) return false;
+
+	const prevLinkedLen = prev.linked?.length ?? 0;
+	const nextLinkedLen = next.linked?.length ?? 0;
+	if (prevLinkedLen !== nextLinkedLen) return false;
+
+	const a = prev.issue;
+	const b = next.issue;
+	return (
+		a.id === b.id &&
+		a.provider === b.provider &&
+		a.identifier === b.identifier &&
+		a.title === b.title &&
+		a.status.color === b.status.color &&
+		a.stateType === b.stateType &&
+		a.assigneeId === b.assigneeId &&
+		a.assigneeName === b.assigneeName &&
+		a.updatedAt === b.updatedAt
+	);
+}
+
+export const TicketCard = memo(TicketCardImpl, areTicketCardPropsEqual);

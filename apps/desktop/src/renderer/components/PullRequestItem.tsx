@@ -2,17 +2,10 @@ import type { BitbucketPullRequest } from "../../main/atlassian/bitbucket";
 import type { GitHubPR } from "../../main/github/github";
 import type { AgentAlert } from "../../shared/agent-events";
 import type { GitHubPREnriched, GitHubReviewer } from "../../shared/github-types";
+import { initials } from "../lib/format";
 import { SwarmIndicator } from "./WorkspaceItem";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-
-export function initials(name: string): string {
-	return name
-		.split(/[\s-_]+/)
-		.slice(0, 2)
-		.map((w) => w[0]?.toUpperCase() ?? "")
-		.join("");
-}
 
 export function getHealthColor(pr: MergedPR, enriched?: GitHubPREnriched): string {
 	if (enriched?.mergeable === "CONFLICTING") return "#f85149";

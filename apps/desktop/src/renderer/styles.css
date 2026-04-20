@@ -438,3 +438,16 @@ body,
 	padding-left: 12px;
 	color: var(--text-tertiary);
 }
+
+/* ── Assignee filter dropdown ──────────────────────────────────────────────── */
+
+@keyframes assigneeFilterIn {
+	from {
+		opacity: 0;
+		transform: translateY(-4px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}

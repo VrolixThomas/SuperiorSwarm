@@ -35,6 +35,16 @@ export interface LinearIssue {
 	stateType: WorkflowStateType;
 	teamId: string;
 	teamName: string;
+	assigneeId: string | null;
+	assigneeName: string | null;
+	assigneeAvatar: string | null;
+}
+
+export interface LinearTeamMember {
+	id: string;
+	name: string;
+	email: string | null;
+	avatarUrl: string | null;
 }
 
 // ── Raw GraphQL node types ────────────────────────────────────────────────────
@@ -60,6 +70,7 @@ interface RawIssueNode {
 	url: string;
 	state: { id: string; name: string; color: string; type: WorkflowStateType };
 	team: { id: string; name: string };
+	assignee: { id: string; name: string; avatarUrl: string | null } | null;
 }
 
 // ── Pure mapping functions (exported for testing) ─────────────────────────────
@@ -90,6 +101,9 @@ export function mapIssueNode(node: RawIssueNode): LinearIssue {
 		stateType: node.state.type,
 		teamId: node.team.id,
 		teamName: node.team.name,
+		assigneeId: node.assignee?.id ?? null,
+		assigneeName: node.assignee?.name ?? null,
+		assigneeAvatar: node.assignee?.avatarUrl ?? null,
 	};
 }
 
@@ -116,10 +130,11 @@ export async function getTeams(): Promise<LinearTeam[]> {
 	return data.teams.nodes.map(mapTeamNode);
 }
 
-export async function getAssignedIssues(teamId?: string): Promise<LinearIssue[]> {
+export async function getTeamIssues(teamId?: string): Promise<LinearIssue[]> {
 	const issueFields = `id identifier title url
 		state { id name color type }
-		team { id name }`;
+		team { id name }
+		assignee { id name avatarUrl }`;
 
 	const allNodes: RawIssueNode[] = [];
 	let cursor: string | null = null;
@@ -132,12 +147,12 @@ export async function getAssignedIssues(teamId?: string): Promise<LinearIssue[]>
 				pageInfo: { hasNextPage: boolean; endCursor: string | null };
 			};
 		}>(
-			`query AssignedIssues($cursor: String${teamId ? ", $teamId: String" : ""}) {
+			`query TeamIssues($cursor: String${teamId ? ", $teamId: String" : ""}) {
 				issues(
 					first: 50
 					after: $cursor
 					filter: {
-						assignee: { isMe: { eq: true } }
+						state: { type: { nin: ["completed", "cancelled"] } }
 						${teamId ? "team: { id: { eq: $teamId } }" : ""}
 					}
 					orderBy: updatedAt
@@ -157,13 +172,14 @@ export async function getAssignedIssues(teamId?: string): Promise<LinearIssue[]>
 	return allNodes.map(mapIssueNode);
 }
 
-export async function getAssignedIssuesWithDone(
+export async function getTeamIssuesWithDone(
 	teamId?: string,
 	cutoffDays = 14
 ): Promise<LinearIssue[]> {
 	const issueFields = `id identifier title url
 		state { id name color type }
-		team { id name }`;
+		team { id name }
+		assignee { id name avatarUrl }`;
 
 	// 1. Fetch non-done issues (exclude completed/cancelled)
 	const activeNodes: RawIssueNode[] = [];
@@ -177,12 +193,11 @@ export async function getAssignedIssuesWithDone(
 				pageInfo: { hasNextPage: boolean; endCursor: string | null };
 			};
 		}>(
-			`query ActiveIssues($cursor: String${teamId ? ", $teamId: String" : ""}) {
+			`query ActiveTeamIssues($cursor: String${teamId ? ", $teamId: String" : ""}) {
 				issues(
 					first: 50
 					after: $cursor
 					filter: {
-						assignee: { isMe: { eq: true } }
 						state: { type: { nin: ["completed", "cancelled"] } }
 						${teamId ? "team: { id: { eq: $teamId } }" : ""}
 					}
@@ -210,11 +225,10 @@ export async function getAssignedIssuesWithDone(
 				pageInfo: { hasNextPage: boolean; endCursor: string | null };
 			};
 		}>(
-			`query DoneCycleIssues${teamId ? "($teamId: String)" : ""} {
+			`query DoneCycleTeamIssues${teamId ? "($teamId: String)" : ""} {
 				issues(
 					first: 50
 					filter: {
-						assignee: { isMe: { eq: true } }
 						state: { type: { in: ["completed", "cancelled"] } }
 						cycle: { isActive: { eq: true } }
 						${teamId ? "team: { id: { eq: $teamId } }" : ""}
@@ -245,11 +259,10 @@ export async function getAssignedIssuesWithDone(
 					pageInfo: { hasNextPage: boolean; endCursor: string | null };
 				};
 			}>(
-				`query DoneTimeIssues($cutoffDate: DateTime${teamId ? ", $teamId: String" : ""}) {
+				`query DoneTimeTeamIssues($cutoffDate: DateTime${teamId ? ", $teamId: String" : ""}) {
 					issues(
 						first: 50
 						filter: {
-							assignee: { isMe: { eq: true } }
 							state: { type: { in: ["completed", "cancelled"] } }
 							completedAt: { gte: $cutoffDate }
 							${teamId ? "team: { id: { eq: $teamId } }" : ""}
@@ -278,6 +291,69 @@ export async function getAssignedIssuesWithDone(
 	}
 
 	return activeNodes.map(mapIssueNode);
+}
+
+export async function getTeamMembers(teamId: string): Promise<LinearTeamMember[]> {
+	const all: LinearTeamMember[] = [];
+	let after: string | null = null;
+
+	while (true) {
+		const data = await gql<{
+			team: {
+				members: {
+					nodes: Array<{
+						id: string;
+						name: string;
+						email: string;
+						avatarUrl: string | null;
+					}>;
+					pageInfo: { hasNextPage: boolean; endCursor: string | null };
+				};
+			};
+		}>(
+			`query TeamMembers($teamId: String!, $after: String) {
+				team(id: $teamId) {
+					members(first: 50, after: $after) {
+						nodes { id name email avatarUrl }
+						pageInfo { hasNextPage endCursor }
+					}
+				}
+			}`,
+			{ teamId, after }
+		);
+
+		for (const m of data.team.members.nodes) {
+			all.push({
+				id: m.id,
+				name: m.name,
+				email: m.email ?? null,
+				avatarUrl: m.avatarUrl ?? null,
+			});
+		}
+
+		if (!data.team.members.pageInfo.hasNextPage) break;
+		if (!data.team.members.pageInfo.endCursor) break;
+		after = data.team.members.pageInfo.endCursor;
+	}
+
+	return all;
+}
+
+export async function updateIssueAssignee(
+	issueId: string,
+	assigneeId: string | null
+): Promise<void> {
+	const data = await gql<{ issueUpdate: { success: boolean } }>(
+		`mutation UpdateIssueAssignee($issueId: String!, $assigneeId: String) {
+			issueUpdate(id: $issueId, input: { assigneeId: $assigneeId }) {
+				success
+			}
+		}`,
+		{ issueId, assigneeId }
+	);
+	if (!data.issueUpdate.success) {
+		throw new Error("Linear issue assignee update failed");
+	}
 }
 
 export async function getTeamStates(teamId: string): Promise<LinearWorkflowState[]> {
@@ -362,3 +438,4 @@ export async function getIssueDetail(issueId: string): Promise<LinearIssueDetail
 		})),
 	};
 }
+

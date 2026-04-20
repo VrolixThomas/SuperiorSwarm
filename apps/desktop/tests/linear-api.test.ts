@@ -38,9 +38,10 @@ describe("mapIssueNode", () => {
 				id: "state-1",
 				name: "In Progress",
 				color: "#f59e0b",
-				type: "started",
+				type: "started" as const,
 			},
 			team: { id: "team-1", name: "Engineering" },
+			assignee: null,
 		};
 		const result = mapIssueNode(node);
 		expect(result).toEqual({
@@ -54,6 +55,9 @@ describe("mapIssueNode", () => {
 			stateType: "started",
 			teamId: "team-1",
 			teamName: "Engineering",
+			assigneeId: null,
+			assigneeName: null,
+			assigneeAvatar: null,
 		});
 	});
 
@@ -63,8 +67,9 @@ describe("mapIssueNode", () => {
 			identifier: "ENG-99",
 			title: "Some issue",
 			url: "https://linear.app/team/issue/ENG-99",
-			state: { id: "state-2", name: "Todo", color: "#6b7280", type: "unstarted" },
+			state: { id: "state-2", name: "Todo", color: "#6b7280", type: "unstarted" as const },
 			team: { id: "team-1", name: "Engineering" },
+			assignee: null,
 		};
 		const result = mapIssueNode(node);
 		expect(result.identifier).toBe("ENG-99");

@@ -10,13 +10,13 @@ import {
 	getIssueDetail,
 	getIssueTransitions,
 	getMyIssuesWithDone,
+	updateIssueAssignee,
 	updateIssueStatus,
 } from "../../atlassian/jira";
 import { connectAll, connectBitbucket, connectJira } from "../../atlassian/oauth-flow";
 import type { BitbucketAdapter } from "../../providers/bitbucket-adapter";
 import { getGitProvider } from "../../providers/git-provider";
 import { publicProcedure, router } from "../index";
-
 export const atlassianRouter = router({
 	getStatus: publicProcedure.query(() => {
 		const jira = getAuth("jira");
@@ -103,6 +103,12 @@ export const atlassianRouter = router({
 		.input(z.object({ issueKey: z.string(), transitionId: z.string() }))
 		.mutation(async ({ input }) => {
 			return updateIssueStatus(input.issueKey, input.transitionId);
+		}),
+
+	updateIssueAssignee: publicProcedure
+		.input(z.object({ issueKey: z.string(), accountId: z.string().nullable() }))
+		.mutation(async ({ input }) => {
+			return updateIssueAssignee(input.issueKey, input.accountId);
 		}),
 
 	replyToPRComment: publicProcedure
