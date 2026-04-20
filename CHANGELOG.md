@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.5.2 (2026-04-20)
+
+### What's New
+
+SuperiorSwarm v0.5.2 revamps the tickets page with assignee support — view assignee avatars, reassign tickets with a picker, filter by assignee, and control which teams are visible. External links now open in your default browser instead of a cramped Electron popup. Includes a fix for shared files that prevents a rare self-symlink loop.
+
+### Changes
+
+- **SUP-34**: Open external links in OS browser instead of Electron popup (#91)
+- **SUP-24**: Tickets page v3 — assignee avatars, picker, filter, team visibility (#92)
+- fix(shared-files): guard against self-symlink when source equals target (#93)
+
 ## v0.5.1 (2026-04-20)
 
 ### What's New
