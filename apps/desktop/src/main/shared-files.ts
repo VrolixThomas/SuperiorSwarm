@@ -9,7 +9,7 @@ export interface SharedFileEntry {
 
 export interface SymlinkResult {
 	relativePath: string;
-	status: "created" | "source_missing" | "target_exists" | "error";
+	status: "created" | "source_missing" | "target_exists" | "source_equals_target" | "error";
 	error?: string;
 }
 
@@ -34,6 +34,15 @@ export async function symlinkSharedFiles(
 
 		const source = join(repoPath, entry.relativePath);
 		const target = join(worktreePath, entry.relativePath);
+
+		// Guard against self-symlinks: if source and target resolve to the same path
+		// (e.g. main repo accidentally stored as its own worktree), creating a symlink
+		// would produce a loop that can be committed and later cherry-picked, breaking
+		// the entry on other branches.
+		if (source === target) {
+			results.push({ relativePath: entry.relativePath, status: "source_equals_target" });
+			continue;
+		}
 
 		if (!existsSync(source)) {
 			results.push({ relativePath: entry.relativePath, status: "source_missing" });

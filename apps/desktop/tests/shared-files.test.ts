@@ -95,6 +95,18 @@ describe("symlinkSharedFiles", () => {
 		expect(results[0]?.status).toBe("created");
 		expect(existsSync(join(worktreePath, "apps", "desktop", ".env"))).toBe(true);
 	});
+
+	test("skips when repoPath equals worktreePath (self-symlink guard)", async () => {
+		writeFileSync(join(repoPath, "shared.txt"), "x");
+		const entries: SharedFileEntry[] = [{ relativePath: "shared.txt", type: "file" }];
+
+		const results = await symlinkSharedFiles(repoPath, repoPath, entries);
+
+		expect(results).toHaveLength(1);
+		expect(results[0]?.status).toBe("source_equals_target");
+		// original file must remain intact — no symlink created
+		expect(existsSync(join(repoPath, "shared.txt"))).toBe(true);
+	});
 });
 
 describe("symlinkSharedFiles — directories", () => {
