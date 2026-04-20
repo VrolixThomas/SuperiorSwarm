@@ -23,6 +23,10 @@ export function TicketsSidebar() {
 		staleTime: 5_000,
 	});
 
+	const { data: knownTeams } = trpc.tickets.getAllTeams.useQuery(undefined, {
+		staleTime: 30_000,
+	});
+
 	const { jiraProjects, linearProjects, totalCount, allTeams } = useMemo(() => {
 		const jiraMap = new Map<string, number>();
 		if (cached?.jiraIssues) {
@@ -57,18 +61,29 @@ export function TicketsSidebar() {
 			count,
 		}));
 
-		const teams: TicketTeam[] = [
-			...jp.map((p) => ({ id: p.id, provider: "jira" as const, name: p.name })),
-			...lp.map((p) => ({ id: p.id, provider: "linear" as const, name: p.name })),
-		];
+		// Merge: start with the full provider team list (so zero-issue teams appear in the
+		// visibility picker), then fold in anything derived from cached issues that isn't
+		// already listed — covers the first-sync window when known-teams is still empty.
+		const teamMap = new Map<string, TicketTeam>();
+		for (const t of knownTeams ?? []) {
+			teamMap.set(`${t.provider}:${t.id}`, t);
+		}
+		for (const p of jp) {
+			const k = `jira:${p.id}`;
+			if (!teamMap.has(k)) teamMap.set(k, { id: p.id, provider: "jira", name: p.name });
+		}
+		for (const p of lp) {
+			const k = `linear:${p.id}`;
+			if (!teamMap.has(k)) teamMap.set(k, { id: p.id, provider: "linear", name: p.name });
+		}
 
 		return {
 			jiraProjects: jp,
 			linearProjects: lp,
 			totalCount: (cached?.jiraIssues?.length ?? 0) + (cached?.linearIssues?.length ?? 0),
-			allTeams: teams,
+			allTeams: [...teamMap.values()],
 		};
-	}, [cached]);
+	}, [cached, knownTeams]);
 
 	const isActive = (project: { id: string; provider: "jira" | "linear" } | "all") => {
 		if (project === "all") return activeTicketProject === "all";

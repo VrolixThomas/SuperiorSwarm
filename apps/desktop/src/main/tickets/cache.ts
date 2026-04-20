@@ -300,3 +300,54 @@ export function setVisibleTeamsTyped(
 ): void {
 	setVisibleTeams(value === null ? "" : JSON.stringify(value));
 }
+
+// ── Known teams persistence ─────────────────────────────────────────────────
+// Full list of teams/projects the user belongs to — fetched from providers during sync.
+// Needed so TeamVisibilitySettings can show teams with zero issues (issue-derived lists
+// would silently exclude them, and toggling one off would drop it from visibility forever).
+
+const KNOWN_TEAMS_KEY = "tickets_known_teams";
+
+export interface KnownTeam {
+	provider: "linear" | "jira";
+	id: string;
+	name: string;
+}
+
+export function getKnownTeams(): KnownTeam[] {
+	const db = getDb();
+	const row = db.select().from(sessionState).where(eq(sessionState.key, KNOWN_TEAMS_KEY)).get();
+	if (!row?.value) return [];
+	try {
+		const parsed = JSON.parse(row.value);
+		if (!Array.isArray(parsed)) return [];
+		return parsed.filter(
+			(v): v is KnownTeam =>
+				(v?.provider === "linear" || v?.provider === "jira") &&
+				typeof v?.id === "string" &&
+				typeof v?.name === "string"
+		);
+	} catch {
+		return [];
+	}
+}
+
+export function mergeKnownTeams(provider: "linear" | "jira", incoming: KnownTeam[]): void {
+	if (incoming.length === 0) return;
+	const db = getDb();
+	const existing = getKnownTeams();
+	const kept = existing.filter((t) => t.provider !== provider);
+	const incomingSeen = new Set<string>();
+	const deduped: KnownTeam[] = [];
+	for (const t of incoming) {
+		if (t.provider !== provider) continue;
+		if (incomingSeen.has(t.id)) continue;
+		incomingSeen.add(t.id);
+		deduped.push(t);
+	}
+	const merged = [...kept, ...deduped];
+	db.insert(sessionState)
+		.values({ key: KNOWN_TEAMS_KEY, value: JSON.stringify(merged) })
+		.onConflictDoUpdate({ target: sessionState.key, set: { value: JSON.stringify(merged) } })
+		.run();
+}

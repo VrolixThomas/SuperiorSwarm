@@ -269,16 +269,22 @@ export const ticketCache = sqliteTable("ticket_cache", {
 
 export type TicketCacheRow = typeof ticketCache.$inferSelect;
 
-export const teamMembers = sqliteTable("team_members", {
-	id: text("id").primaryKey(), // "provider:teamId:userId"
-	provider: text("provider", { enum: ["linear", "jira"] }).notNull(),
-	userId: text("user_id").notNull(),
-	name: text("name").notNull(),
-	email: text("email"),
-	avatarUrl: text("avatar_url"),
-	teamId: text("team_id").notNull(), // Linear teamId or Jira projectKey
-	updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
-});
+export const teamMembers = sqliteTable(
+	"team_members",
+	{
+		id: text("id").primaryKey(), // "provider:teamId:userId"
+		provider: text("provider", { enum: ["linear", "jira"] }).notNull(),
+		userId: text("user_id").notNull(),
+		name: text("name").notNull(),
+		email: text("email"),
+		avatarUrl: text("avatar_url"),
+		teamId: text("team_id").notNull(), // Linear teamId or Jira projectKey
+		updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+	},
+	(table) => ({
+		providerTeamIdx: index("team_members_provider_team_idx").on(table.provider, table.teamId),
+	})
+);
 
 export type TeamMember = typeof teamMembers.$inferSelect;
 export type NewTeamMember = typeof teamMembers.$inferInsert;

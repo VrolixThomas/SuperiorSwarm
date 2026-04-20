@@ -439,7 +439,3 @@ export async function getIssueDetail(issueId: string): Promise<LinearIssueDetail
 	};
 }
 
-/** @deprecated Use getTeamIssues — kept for transition */
-export const getAssignedIssues = getTeamIssues;
-/** @deprecated Use getTeamIssuesWithDone — kept for transition */
-export const getAssignedIssuesWithDone = getTeamIssuesWithDone;

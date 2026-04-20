@@ -1,8 +1,8 @@
 import { getAuth } from "../linear/auth";
 import {
-	getAssignedIssues,
-	getAssignedIssuesWithDone,
 	getIssueDetail,
+	getTeamIssues,
+	getTeamIssuesWithDone,
 	getTeamStates,
 	updateIssueState,
 } from "../linear/linear";
@@ -48,8 +48,8 @@ export class LinearAdapter implements IssueTracker {
 
 		const teamId = options?.teamId;
 		const issues = options?.includeDone
-			? await getAssignedIssuesWithDone(teamId)
-			: await getAssignedIssues(teamId);
+			? await getTeamIssuesWithDone(teamId)
+			: await getTeamIssues(teamId);
 
 		return issues.map(mapToNormalizedIssue);
 	}

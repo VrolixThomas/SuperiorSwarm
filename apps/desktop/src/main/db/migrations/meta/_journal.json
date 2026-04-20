@@ -260,6 +260,13 @@
       "when": 1776708698869,
       "tag": "0036_team_members",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "6",
+      "when": 1776710732357,
+      "tag": "0037_add_team_members_index",
+      "breakpoints": true
     }
   ]
 }

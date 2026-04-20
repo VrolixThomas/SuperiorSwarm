@@ -1,13 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AssigneeFilterValue } from "../../../shared/tickets";
-import { serializeAssigneeFilter } from "../../../shared/tickets";
+import {
+	UNASSIGNED_FILTER_KEY,
+	computeNextAssigneeFilter,
+	serializeAssigneeFilter,
+} from "../../../shared/tickets";
 import { useClickOutside } from "../../hooks/useClickOutside";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
 import { useTicketsData } from "../../hooks/useTicketsData";
 import { trpc } from "../../trpc/client";
 import { AssigneeAvatar } from "./AssigneeAvatar";
 
-const UNASSIGNED_KEY = "__unassigned__";
+const UNASSIGNED_KEY = UNASSIGNED_FILTER_KEY;
 
 export function AssigneeFilter() {
 	const {
@@ -22,6 +26,8 @@ export function AssigneeFilter() {
 	const flushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const pendingRef = useRef<AssigneeFilterValue | null>(null);
 
+	// No onSuccess invalidate: the optimistic setData below already writes the server's
+	// eventual value; refetching mid-typing would clobber pending user input.
 	const flush = useCallback(() => {
 		if (flushTimer.current) {
 			clearTimeout(flushTimer.current);
@@ -30,11 +36,8 @@ export function AssigneeFilter() {
 		if (pendingRef.current === null) return;
 		const next = pendingRef.current;
 		pendingRef.current = null;
-		setFilter.mutate(
-			{ projectId, value: serializeAssigneeFilter(next) },
-			{ onSuccess: () => utils.tickets.getAssigneeFilter.invalidate() }
-		);
-	}, [projectId, setFilter, utils]);
+		setFilter.mutate({ projectId, value: serializeAssigneeFilter(next) });
+	}, [projectId, setFilter]);
 
 	const onChange = useCallback(
 		(next: AssigneeFilterValue) => {
@@ -91,43 +94,7 @@ export function AssigneeFilter() {
 
 	const onToggle = useCallback(
 		(key: string) => {
-			if (key === UNASSIGNED_KEY) {
-				if (value === "all") {
-					onChange({ userIds: [], includeUnassigned: true });
-				} else if (value === "me") {
-					onChange({ userIds: meIds, includeUnassigned: true });
-				} else {
-					const next = { ...value, includeUnassigned: !value.includeUnassigned };
-					if (next.userIds.length === 0 && !next.includeUnassigned) {
-						onChange("all");
-					} else {
-						onChange(next);
-					}
-				}
-				return;
-			}
-
-			if (value === "all") {
-				// Select only this user
-				onChange({ userIds: [key], includeUnassigned: false });
-			} else if (value === "me") {
-				if (meIds.includes(key)) {
-					// Clicking self in "me" mode → go to "all"
-					onChange("all");
-				} else {
-					// Clicking another user in "me" mode → show only them
-					onChange({ userIds: [key], includeUnassigned: false });
-				}
-			} else {
-				const next = value.userIds.includes(key)
-					? value.userIds.filter((id) => id !== key)
-					: [...value.userIds, key];
-				if (next.length === 0 && !value.includeUnassigned) {
-					onChange("all");
-				} else {
-					onChange({ userIds: next, includeUnassigned: value.includeUnassigned });
-				}
-			}
+			onChange(computeNextAssigneeFilter(value, key, meIds));
 		},
 		[value, onChange, meIds]
 	);
@@ -219,8 +186,6 @@ export function AssigneeFilter() {
 					className="absolute left-0 top-full z-50 mt-1 w-[210px] overflow-hidden rounded-[8px] border border-[var(--border)] bg-[var(--bg-overlay)] shadow-xl"
 					style={{ animation: "assigneeFilterIn 0.1s ease-out" }}
 				>
-					<style>{`@keyframes assigneeFilterIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }`}</style>
-
 					{/* Preset buttons section */}
 					<div className="p-1">
 						<button

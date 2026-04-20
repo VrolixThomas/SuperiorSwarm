@@ -69,11 +69,23 @@ mock.module("better-sqlite3", () => {
 			return wrapper;
 		}
 
-		transaction<T>(fn: () => T): () => T {
-			return () => {
-				const tx = this._db.transaction(fn);
+		transaction<TArgs extends unknown[], TResult>(fn: (...args: TArgs) => TResult) {
+			// Drizzle passes its own `tx` object to the behavior variant — forward it.
+			const run = (...args: TArgs): TResult => {
+				const tx = this._db.transaction(() => fn(...args));
 				return tx();
 			};
+			const wrapped = run as typeof run & {
+				default: typeof run;
+				deferred: typeof run;
+				immediate: typeof run;
+				exclusive: typeof run;
+			};
+			wrapped.default = run;
+			wrapped.deferred = run;
+			wrapped.immediate = run;
+			wrapped.exclusive = run;
+			return wrapped;
 		}
 
 		close(): void {

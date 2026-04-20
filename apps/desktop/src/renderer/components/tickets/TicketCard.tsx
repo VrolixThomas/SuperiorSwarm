@@ -104,4 +104,33 @@ function TicketCardImpl({
 	);
 }
 
-export const TicketCard = memo(TicketCardImpl);
+// Every 5s poll rebuilds the allIssues array → all `issue` object refs are new even when
+// nothing meaningful changed. Default shallow compare can't see through that; compare only
+// the fields we actually render.
+function areTicketCardPropsEqual(prev: TicketCardProps, next: TicketCardProps): boolean {
+	if (prev.isSelected !== next.isSelected) return false;
+	if (prev.showProvider !== next.showProvider) return false;
+	if (prev.isDragOverlay !== next.isDragOverlay) return false;
+	if (prev.onClick !== next.onClick) return false;
+	if (prev.onContextMenu !== next.onContextMenu) return false;
+
+	const prevLinkedLen = prev.linked?.length ?? 0;
+	const nextLinkedLen = next.linked?.length ?? 0;
+	if (prevLinkedLen !== nextLinkedLen) return false;
+
+	const a = prev.issue;
+	const b = next.issue;
+	return (
+		a.id === b.id &&
+		a.provider === b.provider &&
+		a.identifier === b.identifier &&
+		a.title === b.title &&
+		a.status.color === b.status.color &&
+		a.stateType === b.stateType &&
+		a.assigneeId === b.assigneeId &&
+		a.assigneeName === b.assigneeName &&
+		a.updatedAt === b.updatedAt
+	);
+}
+
+export const TicketCard = memo(TicketCardImpl, areTicketCardPropsEqual);

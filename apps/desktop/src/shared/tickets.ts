@@ -179,6 +179,41 @@ export function serializeAssigneeFilter(value: AssigneeFilterValue): string {
 	return typeof value === "object" ? JSON.stringify(value) : value;
 }
 
+export const UNASSIGNED_FILTER_KEY = "__unassigned__";
+
+/**
+ * Given the current filter value and the key the user toggled (a userId or
+ * UNASSIGNED_FILTER_KEY), compute the next filter state. Pure — extracted from
+ * AssigneeFilter so the 8-branch state machine is directly testable.
+ */
+export function computeNextAssigneeFilter(
+	current: AssigneeFilterValue,
+	key: string,
+	meIds: string[]
+): AssigneeFilterValue {
+	if (key === UNASSIGNED_FILTER_KEY) {
+		if (current === "all") return { userIds: [], includeUnassigned: true };
+		if (current === "me") return { userIds: meIds, includeUnassigned: true };
+		const next = { ...current, includeUnassigned: !current.includeUnassigned };
+		if (next.userIds.length === 0 && !next.includeUnassigned) return "all";
+		return next;
+	}
+
+	if (current === "all") {
+		return { userIds: [key], includeUnassigned: false };
+	}
+	if (current === "me") {
+		if (meIds.includes(key)) return "all";
+		return { userIds: [key], includeUnassigned: false };
+	}
+
+	const nextIds = current.userIds.includes(key)
+		? current.userIds.filter((id) => id !== key)
+		: [...current.userIds, key];
+	if (nextIds.length === 0 && !current.includeUnassigned) return "all";
+	return { userIds: nextIds, includeUnassigned: current.includeUnassigned };
+}
+
 export function deserializeAssigneeFilter(raw: string | null): AssigneeFilterValue {
 	if (!raw || raw === "me") return "me";
 	if (raw === "all") return "all";

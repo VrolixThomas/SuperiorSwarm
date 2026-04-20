@@ -12,8 +12,10 @@ import {
 	getCachedLinearIssues,
 	getCachedTeamMembers,
 	getDoneCutoffDays,
+	getKnownTeams,
 	getLastFetched,
 	getVisibleTeamsTyped,
+	mergeKnownTeams,
 	pruneOrphanTeamMembers,
 	pruneOrphanTicketCache,
 	setAssigneeFilter,
@@ -36,7 +38,6 @@ async function syncJira(
 	cutoff: number
 ): Promise<{ count: number; ok: boolean }> {
 	let count = 0;
-	let ok = true;
 	let projectKeys: string[] = [];
 	try {
 		if (visible) {
@@ -61,18 +62,30 @@ async function syncJira(
 			for (const projectKey of projectKeys) {
 				upsertTeamMembers("jira", projectKey, assigneesByProject.get(projectKey) ?? []);
 			}
+
+			// Only prune on successful sync — a transient API failure must not delete cached rows.
+			pruneOrphanTeamMembers("jira", projectKeys);
+			pruneOrphanTicketCache("jira", projectKeys);
 		}
+
+		// Refresh the known-teams list so the visibility picker includes projects with zero issues.
+		// Failure here is non-fatal — we fall back to whatever was previously cached.
+		try {
+			const { getProjects } = await import("../../atlassian/jira");
+			const projects = await getProjects();
+			mergeKnownTeams(
+				"jira",
+				projects.map((p) => ({ provider: "jira" as const, id: p.key, name: p.name }))
+			);
+		} catch {
+			// ignore
+		}
+
+		return { count, ok: true };
 	} catch {
-		// API failure — cache stays stale
-		ok = false;
+		// API failure — cache stays stale, do not prune
+		return { count, ok: false };
 	}
-
-	if (projectKeys.length > 0) {
-		pruneOrphanTeamMembers("jira", projectKeys);
-		pruneOrphanTicketCache("jira", projectKeys);
-	}
-
-	return { count, ok };
 }
 
 async function syncLinear(
@@ -83,6 +96,7 @@ async function syncLinear(
 	let ok = true;
 	let teamIds: string[] = [];
 	let syncedIssues: import("../../linear/linear").LinearIssue[] = [];
+	let issuesOk = false;
 	try {
 		const linearTeamIds = visible
 			? visible.filter((v) => v.provider === "linear").map((v) => v.id)
@@ -105,6 +119,7 @@ async function syncLinear(
 				teamIds = [...new Set(syncedIssues.map((i) => i.teamId))];
 			}
 		}
+		issuesOk = true;
 	} catch {
 		// API failure — cache stays stale
 		ok = false;
@@ -112,7 +127,13 @@ async function syncLinear(
 
 	try {
 		const { getTeams, getTeamMembers } = await import("../../linear/linear");
-		const targets = teamIds.length > 0 ? teamIds : (await getTeams()).map((t) => t.id);
+		const allTeams = await getTeams();
+		// Refresh the known-teams list so the visibility picker shows teams with zero issues too.
+		mergeKnownTeams(
+			"linear",
+			allTeams.map((t) => ({ provider: "linear" as const, id: t.id, name: t.name }))
+		);
+		const targets = teamIds.length > 0 ? teamIds : allTeams.map((t) => t.id);
 		const issueAssigneesByTeam = new Map(
 			extractLinearAssignees(syncedIssues).map(({ teamId, members }) => [teamId, members])
 		);
@@ -140,7 +161,8 @@ async function syncLinear(
 		ok = false;
 	}
 
-	if (teamIds.length > 0) {
+	// Only prune on successful issues fetch — a transient API failure must not delete cached rows.
+	if (issuesOk && teamIds.length > 0) {
 		pruneOrphanTeamMembers("linear", teamIds);
 		pruneOrphanTicketCache("linear", teamIds);
 	}
@@ -309,6 +331,10 @@ export const ticketsRouter = router({
 
 	getVisibleTeams: publicProcedure.query(() => getVisibleTeamsTyped()),
 
+	// Full team/project list from providers — used by TeamVisibilitySettings so teams with
+	// zero issues remain togglable. Falls back to the persisted cache between syncs.
+	getAllTeams: publicProcedure.query(() => getKnownTeams()),
+
 	setVisibleTeams: publicProcedure
 		.input(
 			z.object({
@@ -328,10 +354,16 @@ export const ticketsRouter = router({
 			})
 		)
 		.mutation(async ({ input }) => {
+			// Defense-in-depth: only reassign tickets the user has already loaded locally.
+			// Prevents a compromised renderer from reassigning arbitrary tickets via our OAuth tokens.
 			if (input.provider === "linear") {
+				const exists = getCachedLinearIssues().some((i) => i.id === input.ticketId);
+				if (!exists) throw new Error("Ticket not found in local cache");
 				const { updateIssueAssignee } = await import("../../linear/linear");
 				await updateIssueAssignee(input.ticketId, input.assigneeId);
 			} else {
+				const exists = getCachedJiraIssues().some((i) => i.key === input.ticketId);
+				if (!exists) throw new Error("Ticket not found in local cache");
 				const { updateIssueAssignee } = await import("../../atlassian/jira");
 				await updateIssueAssignee(input.ticketId, input.assigneeId);
 			}
