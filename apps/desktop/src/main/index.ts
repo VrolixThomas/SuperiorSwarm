@@ -53,6 +53,10 @@ let mainWindow: BrowserWindow | null = null;
 let daemonClient: DaemonClient;
 let alertListener: AgentAlertListener | null = null;
 
+function isHttpUrl(url: string): boolean {
+	return url.startsWith("http://") || url.startsWith("https://");
+}
+
 if (!import.meta.env.DEV && !registerSingleInstance(app, () => mainWindow)) {
 	process.exit(0);
 }
@@ -91,11 +95,8 @@ function createWindow() {
 		mainWindow = null;
 	});
 
-	// Route any renderer-initiated new-window / external navigation through the
-	// OS default browser instead of a child Electron BrowserWindow.
 	mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-		log.info(`[shell] window-open url=${url}`);
-		if (url.startsWith("http://") || url.startsWith("https://")) {
+		if (isHttpUrl(url)) {
 			void shell.openExternal(url);
 		}
 		return { action: "deny" };
@@ -103,11 +104,10 @@ function createWindow() {
 
 	mainWindow.webContents.on("will-navigate", (event, url) => {
 		const devURL = process.env["ELECTRON_RENDERER_URL"];
-		const isDevURL = devURL && url.startsWith(devURL);
-		log.info(`[shell] will-navigate url=${url} isDev=${isDevURL}`);
+		const isDevURL = Boolean(devURL) && url.startsWith(devURL ?? "");
 		if (!isDevURL && !url.startsWith("file://")) {
 			event.preventDefault();
-			if (url.startsWith("http://") || url.startsWith("https://")) {
+			if (isHttpUrl(url)) {
 				void shell.openExternal(url);
 			}
 		}
@@ -193,8 +193,7 @@ app.whenReady().then(async () => {
 	});
 
 	ipcMain.handle("shell:openExternal", async (_event, url: string) => {
-		log.info(`[shell] ipc openExternal url=${url}`);
-		if (typeof url === "string" && (url.startsWith("https://") || url.startsWith("http://"))) {
+		if (typeof url === "string" && isHttpUrl(url)) {
 			await shell.openExternal(url);
 		}
 	});
