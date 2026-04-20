@@ -10,7 +10,24 @@ interface MarkdownRendererProps {
 export function MarkdownRenderer({ content, className }: MarkdownRendererProps) {
 	return (
 		<div className={`markdown-body ${className ?? ""}`} style={{ lineHeight: 1.7, fontSize: 13 }}>
-			<ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+			<ReactMarkdown
+				remarkPlugins={[remarkGfm]}
+				rehypePlugins={[rehypeHighlight]}
+				components={{
+					a: ({ href, children, ...props }) => (
+						<a
+							{...props}
+							href={href}
+							onClick={(e) => {
+								e.preventDefault();
+								if (href) window.electron.shell.openExternal(href);
+							}}
+						>
+							{children}
+						</a>
+					),
+				}}
+			>
 				{content}
 			</ReactMarkdown>
 		</div>

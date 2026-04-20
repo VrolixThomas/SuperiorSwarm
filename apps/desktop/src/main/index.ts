@@ -91,6 +91,28 @@ function createWindow() {
 		mainWindow = null;
 	});
 
+	// Route any renderer-initiated new-window / external navigation through the
+	// OS default browser instead of a child Electron BrowserWindow.
+	mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+		log.info(`[shell] window-open url=${url}`);
+		if (url.startsWith("http://") || url.startsWith("https://")) {
+			void shell.openExternal(url);
+		}
+		return { action: "deny" };
+	});
+
+	mainWindow.webContents.on("will-navigate", (event, url) => {
+		const devURL = process.env["ELECTRON_RENDERER_URL"];
+		const isDevURL = devURL && url.startsWith(devURL);
+		log.info(`[shell] will-navigate url=${url} isDev=${isDevURL}`);
+		if (!isDevURL && !url.startsWith("file://")) {
+			event.preventDefault();
+			if (url.startsWith("http://") || url.startsWith("https://")) {
+				void shell.openExternal(url);
+			}
+		}
+	});
+
 	if (process.env["ELECTRON_RENDERER_URL"]) {
 		mainWindow.loadURL(process.env["ELECTRON_RENDERER_URL"]);
 	} else {
@@ -171,6 +193,7 @@ app.whenReady().then(async () => {
 	});
 
 	ipcMain.handle("shell:openExternal", async (_event, url: string) => {
+		log.info(`[shell] ipc openExternal url=${url}`);
 		if (typeof url === "string" && (url.startsWith("https://") || url.startsWith("http://"))) {
 			await shell.openExternal(url);
 		}
