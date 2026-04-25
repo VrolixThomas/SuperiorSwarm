@@ -8,12 +8,15 @@ import type {
 	PRContext,
 	UnifiedThread,
 } from "../../shared/github-types";
+import { prReviewSessionKey, usePRReviewSessionStore } from "../stores/pr-review-session-store";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import { DiffEditor } from "./DiffEditor";
 import { MarkdownPreviewButton } from "./MarkdownPreviewButton";
 import { MarkdownRenderedDiff } from "./MarkdownRenderedDiff";
 import { MarkdownRenderer } from "./MarkdownRenderer";
+import { ActiveThreadBar } from "./review/ActiveThreadBar";
+import { type Hint, ReviewHintBar } from "./review/ReviewHintBar";
 
 // ── Comment thread widget rendered inside a Monaco view zone ──────────────────
 
@@ -533,6 +536,18 @@ function useGutterPlusButton(
 
 // ── Main component ────────────────────────────────────────────────────────────
 
+const PR_REVIEW_HINTS: Hint[] = [
+	{ keys: ["J", "K"], label: "File" },
+	{ keys: ["N"], label: "Thread" },
+	{ keys: ["V"], label: "Viewed" },
+	{ keys: ["C"], label: "New" },
+	{ keys: ["R"], label: "Reply" },
+	{ keys: ["A", "D", "E"], label: "AI" },
+	{ keys: ["S"], label: "Overview" },
+	{ keys: ["⌘", "↵"], label: "Submit" },
+	{ keys: ["?"], label: "Help" },
+];
+
 interface PRReviewFileTabProps {
 	prCtx: PRContext;
 	filePath: string;
@@ -543,6 +558,16 @@ export function PRReviewFileTab({ prCtx, filePath, language }: PRReviewFileTabPr
 	const diffMode = useTabStore((s) => s.diffMode);
 	const setDiffMode = useTabStore((s) => s.setDiffMode);
 	const markdownPreviewMode = useTabStore((s) => s.markdownPreviewMode);
+	const activeWorkspaceId = useTabStore((s) => s.activeWorkspaceId);
+	const sessionKey = prReviewSessionKey(
+		activeWorkspaceId ?? "",
+		`${prCtx.owner}/${prCtx.repo}#${prCtx.number}`
+	);
+	const activeThreadId = usePRReviewSessionStore(
+		(s) => s.sessions.get(sessionKey)?.activeThreadId ?? null
+	);
+	const setScroll = usePRReviewSessionStore((s) => s.setScroll);
+	const getScroll = usePRReviewSessionStore((s) => s.getScroll);
 	const [editorInstance, setEditorInstance] = useState<monaco.editor.IStandaloneDiffEditor | null>(
 		null
 	);
@@ -716,6 +741,11 @@ export function PRReviewFileTab({ prCtx, filePath, language }: PRReviewFileTabPr
 		return [...githubFileThreads, ...draftFileThreads];
 	}, [draftComments, reviewThreads, filePath]);
 
+	const activeThreadOnThisFile = useMemo(
+		() => fileThreads.find((t) => t.id === activeThreadId) ?? null,
+		[fileThreads, activeThreadId]
+	);
+
 	// Thread navigation
 	const unresolvedLines = fileThreads
 		.filter((t) => {
@@ -822,10 +852,156 @@ export function PRReviewFileTab({ prCtx, filePath, language }: PRReviewFileTabPr
 	useThreadDecorations(editorInstance, fileThreads);
 	useGutterPlusButton(editorInstance, (line) => setPendingLine(line), validDiffLines);
 
+	useEffect(() => {
+		const editor = editorInstance?.getModifiedEditor();
+
+		const onToggleViewed = () => {
+			markViewed.mutate({
+				owner: prCtx.owner,
+				repo: prCtx.repo,
+				number: prCtx.number,
+				filePath,
+				viewed: !isViewed,
+			});
+		};
+		const onNewComment = () => {
+			const line = editor?.getPosition()?.lineNumber;
+			if (!line) return;
+			if (validDiffLines && !validDiffLines.has(line)) return;
+			setPendingLine(line);
+		};
+		const onReply = () => {
+			if (!activeThreadOnThisFile) return;
+			window.dispatchEvent(
+				new CustomEvent("pr-review:focus-reply", {
+					detail: { threadId: activeThreadOnThisFile.id },
+				})
+			);
+		};
+		const onResolve = () => {
+			if (!activeThreadOnThisFile || activeThreadOnThisFile.isAIDraft) return;
+			handleResolve(activeThreadOnThisFile.id);
+		};
+		const onAIAccept = () => {
+			if (!activeThreadOnThisFile?.isAIDraft) return;
+			handleAcceptDraft((activeThreadOnThisFile as AIDraftThread).draftCommentId);
+		};
+		const onAIDecline = () => {
+			if (!activeThreadOnThisFile?.isAIDraft) return;
+			handleDeclineDraft((activeThreadOnThisFile as AIDraftThread).draftCommentId);
+		};
+		const onAIEdit = () => {
+			if (!activeThreadOnThisFile?.isAIDraft) return;
+			window.dispatchEvent(
+				new CustomEvent("pr-review:edit-thread", {
+					detail: { draftCommentId: (activeThreadOnThisFile as AIDraftThread).draftCommentId },
+				})
+			);
+		};
+		const onEscape = () => {
+			if (pendingLine !== null) setPendingLine(null);
+		};
+
+		window.addEventListener("pr-review:toggle-viewed", onToggleViewed);
+		window.addEventListener("pr-review:new-comment", onNewComment);
+		window.addEventListener("pr-review:reply", onReply);
+		window.addEventListener("pr-review:resolve", onResolve);
+		window.addEventListener("pr-review:ai-accept", onAIAccept);
+		window.addEventListener("pr-review:ai-decline", onAIDecline);
+		window.addEventListener("pr-review:ai-edit", onAIEdit);
+		window.addEventListener("pr-review:escape", onEscape);
+
+		return () => {
+			window.removeEventListener("pr-review:toggle-viewed", onToggleViewed);
+			window.removeEventListener("pr-review:new-comment", onNewComment);
+			window.removeEventListener("pr-review:reply", onReply);
+			window.removeEventListener("pr-review:resolve", onResolve);
+			window.removeEventListener("pr-review:ai-accept", onAIAccept);
+			window.removeEventListener("pr-review:ai-decline", onAIDecline);
+			window.removeEventListener("pr-review:ai-edit", onAIEdit);
+			window.removeEventListener("pr-review:escape", onEscape);
+		};
+	}, [
+		editorInstance,
+		filePath,
+		isViewed,
+		validDiffLines,
+		pendingLine,
+		activeThreadOnThisFile,
+		markViewed,
+		handleResolve,
+		handleAcceptDraft,
+		handleDeclineDraft,
+		prCtx.owner,
+		prCtx.repo,
+		prCtx.number,
+	]);
+
+	useEffect(() => {
+		const editor = editorInstance?.getModifiedEditor();
+		if (!editor) return;
+		const top = getScroll(sessionKey, filePath);
+		if (top != null) editor.setScrollTop(top);
+		const sub = editor.onDidScrollChange(() => {
+			setScroll(sessionKey, filePath, editor.getScrollTop());
+		});
+		return () => sub.dispose();
+	}, [editorInstance, filePath, sessionKey, getScroll, setScroll]);
+
+	useEffect(() => {
+		const editor = editorInstance?.getModifiedEditor();
+		if (!editor || !activeThreadOnThisFile?.line) return;
+		const line = activeThreadOnThisFile.line;
+		const ranges = editor.getVisibleRanges();
+		const isVisible = ranges.some((r) => line >= r.startLineNumber && line <= r.endLineNumber);
+		if (!isVisible) {
+			editor.revealLineInCenter(line);
+		}
+	}, [editorInstance, activeThreadOnThisFile]);
+
 	const isLoading = originalQuery.isLoading || modifiedQuery.isLoading;
 
 	return (
 		<div className="flex h-full flex-col overflow-hidden">
+			{activeThreadOnThisFile && (
+				<ActiveThreadBar
+					thread={activeThreadOnThisFile}
+					onAccept={() => {
+						if (activeThreadOnThisFile.isAIDraft)
+							handleAcceptDraft((activeThreadOnThisFile as AIDraftThread).draftCommentId);
+					}}
+					onDecline={() => {
+						if (activeThreadOnThisFile.isAIDraft)
+							handleDeclineDraft((activeThreadOnThisFile as AIDraftThread).draftCommentId);
+					}}
+					onEdit={() =>
+						window.dispatchEvent(
+							new CustomEvent("pr-review:edit-thread", {
+								detail: {
+									draftCommentId: activeThreadOnThisFile.isAIDraft
+										? (activeThreadOnThisFile as AIDraftThread).draftCommentId
+										: null,
+								},
+							})
+						)
+					}
+					onReply={() =>
+						window.dispatchEvent(
+							new CustomEvent("pr-review:focus-reply", {
+								detail: { threadId: activeThreadOnThisFile.id },
+							})
+						)
+					}
+					onResolve={() => {
+						if (!activeThreadOnThisFile.isAIDraft) handleResolve(activeThreadOnThisFile.id);
+					}}
+					onCenter={() => {
+						const editor = editorInstance?.getModifiedEditor();
+						if (editor && activeThreadOnThisFile.line)
+							editor.revealLineInCenter(activeThreadOnThisFile.line);
+					}}
+				/>
+			)}
 			{/* Toolbar */}
 			<div className="flex h-8 shrink-0 items-center gap-2 border-b border-[var(--border)] bg-[var(--bg-surface)] px-3">
 				<span className="flex-1 truncate font-mono text-[11px] text-[var(--text-quaternary)]">
@@ -957,6 +1133,7 @@ export function PRReviewFileTab({ prCtx, filePath, language }: PRReviewFileTabPr
 					/>
 				)}
 			</div>
+			<ReviewHintBar hints={PR_REVIEW_HINTS} />
 		</div>
 	);
 }
