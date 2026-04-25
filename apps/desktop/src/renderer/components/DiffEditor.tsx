@@ -58,6 +58,7 @@ export function DiffEditor({
 			wordWrap: "off",
 			automaticLayout: true,
 			glyphMargin: true,
+			stickyScroll: { enabled: false },
 		});
 		editorRef.current = editor;
 		setEditorReady(true);
