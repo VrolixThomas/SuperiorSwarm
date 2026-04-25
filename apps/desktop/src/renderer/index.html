@@ -4,6 +4,19 @@
 		<meta charset="UTF-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 		<title>SuperiorSwarm</title>
+		<script>
+			(function () {
+				try {
+					var v = localStorage.getItem("theme-paint-cache");
+					if (v === "light" || v === "dark") {
+						document.documentElement.dataset.theme = v;
+						return;
+					}
+				} catch (e) {}
+				document.documentElement.dataset.theme =
+					matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+			})();
+		</script>
 		<style>
 			body { margin: 0; background: #0a0a0a; }
 			#splash {
