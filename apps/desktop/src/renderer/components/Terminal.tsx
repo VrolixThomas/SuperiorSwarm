@@ -133,7 +133,10 @@ export function Terminal({
 			attributeFilter: ["data-theme"],
 		});
 
-		requestAnimationFrame(() => fit.fit());
+		requestAnimationFrame(() => {
+			fit.fit();
+			term.focus();
+		});
 
 		// Wire up PTY if running inside Electron
 		const api = window.electron;
