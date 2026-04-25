@@ -128,7 +128,7 @@ export function WorktreesSettings() {
 														</span>
 													)}
 													{wt.workspaceType === "review" && (
-														<span className="rounded-full bg-[rgba(191,90,242,0.15)] px-2 py-0.5 text-[9px] font-medium text-[#bf5af2]">
+														<span className="rounded-full bg-[var(--purple-subtle)] px-2 py-0.5 text-[9px] font-medium text-[var(--color-purple)]">
 															Review
 														</span>
 													)}
@@ -138,7 +138,7 @@ export function WorktreesSettings() {
 														</span>
 													)}
 													{isOrphaned && (
-														<span className="rounded-full bg-[rgba(255,214,10,0.15)] px-2 py-0.5 text-[9px] font-medium text-[#ffd60a]">
+														<span className="rounded-full bg-[var(--warning-subtle)] px-2 py-0.5 text-[9px] font-medium text-[var(--color-warning)]">
 															No workspace
 														</span>
 													)}

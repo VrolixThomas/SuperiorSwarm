@@ -20,9 +20,9 @@ interface SessionRow {
 function statusBadge(status: SessionRow["status"]) {
 	const styles: Record<string, string> = {
 		active: "bg-[var(--success-subtle)] text-[var(--color-success)]",
-		orphaned: "bg-[rgba(255,214,10,0.15)] text-[#ffd60a]",
+		orphaned: "bg-[var(--warning-subtle)] text-[var(--color-warning)]",
 		ghost: "bg-[var(--danger-subtle)] text-[var(--color-danger)]",
-		"db-only": "bg-[rgba(191,90,242,0.15)] text-[#bf5af2]",
+		"db-only": "bg-[var(--purple-subtle)] text-[var(--color-purple)]",
 	};
 	const labels: Record<string, string> = {
 		active: "Active",
@@ -172,9 +172,9 @@ export function TerminalsSettings() {
 				<Stat
 					label="Active"
 					value={rows.filter((r) => r.status === "active").length}
-					color="#30d158"
+					color="var(--color-success)"
 				/>
-				<Stat label="Orphaned" value={orphanCount} color="#ffd60a" />
+				<Stat label="Orphaned" value={orphanCount} color="var(--color-warning)" />
 				<Stat label="DB rows" value={dbQuery.data?.sessions.length ?? "?"} />
 			</div>
 

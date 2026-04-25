@@ -170,7 +170,7 @@ export function LspServerForm({
 						placeholder="e.g. my-lang"
 					/>
 					{idWarning && !idError && (
-						<div className="mb-3 rounded-[6px] bg-[rgba(255,214,10,0.08)] px-3 py-2 text-[11px] text-[#ffd60a]">
+						<div className="mb-3 rounded-[6px] bg-[var(--warning-subtle)] px-3 py-2 text-[11px] text-[var(--color-warning)]">
 							<div className="mb-1">{idWarning}</div>
 							<label className="flex items-center gap-2 text-[10px] text-[var(--text-secondary)]">
 								<input
@@ -264,7 +264,7 @@ export function LspServerForm({
 
 			{/* Warnings */}
 			{(hasNoMatchers || commandHasSpaces) && (
-				<div className="mb-3 space-y-1 rounded-[6px] bg-[rgba(255,214,10,0.08)] px-3 py-2 text-[11px] text-[#ffd60a]">
+				<div className="mb-3 space-y-1 rounded-[6px] bg-[var(--warning-subtle)] px-3 py-2 text-[11px] text-[var(--color-warning)]">
 					{hasNoMatchers && (
 						<div>
 							No file extensions, file names, or language IDs set — this server won't match any

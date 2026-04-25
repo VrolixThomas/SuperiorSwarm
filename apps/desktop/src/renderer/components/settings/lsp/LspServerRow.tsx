@@ -69,7 +69,7 @@ export function LspServerRow({
 						className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${
 							available
 								? "bg-[var(--success-subtle)] text-[var(--color-success)]"
-								: "bg-[rgba(255,214,10,0.15)] text-[#ffd60a]"
+								: "bg-[var(--warning-subtle)] text-[var(--color-warning)]"
 						}`}
 					>
 						{available ? "Installed" : "Missing"}
@@ -80,7 +80,7 @@ export function LspServerRow({
 				</div>
 				{overlappingWith && overlappingWith.length > 0 && (
 					<div
-						className="mt-1 text-[10px] text-[#ffd60a]"
+						className="mt-1 text-[10px] text-[var(--color-warning)]"
 						title="Earlier-listed server wins. Reorder to change precedence."
 					>
 						Overlaps with: {overlappingWith.join(", ")}
