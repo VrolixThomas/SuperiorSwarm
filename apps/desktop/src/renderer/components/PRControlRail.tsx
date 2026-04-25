@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { detectLanguage } from "../../shared/diff-types";
 import type {
 	AIDraftThread,
@@ -6,6 +6,7 @@ import type {
 	PRContext,
 	UnifiedThread,
 } from "../../shared/github-types";
+import { prReviewSessionKey, usePRReviewSessionStore } from "../stores/pr-review-session-store";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import { CommentThreadCard, threadAuthor, threadDate } from "./CommentThreadCard";
@@ -16,6 +17,7 @@ import { SubmitReviewModal } from "./SubmitReviewModal";
 import { Tooltip } from "./Tooltip";
 import { changesIcon, commentsIcon, filesIcon, sparkleIcon } from "./panel-icons";
 import { splitPROverviewRight } from "./pr-panel-helpers";
+import { PRReviewKeyboardListener } from "./review/PRReviewKeyboardListener";
 
 type PRTab = "changes" | "comments" | "files";
 
@@ -151,7 +153,6 @@ function ChangesTab({
 	commentCountByFile: Map<string, number>;
 	activeFilePath: string | null;
 }) {
-	const openPRReviewFile = useTabStore((s) => s.openPRReviewFile);
 	const activeWorkspaceId = useTabStore((s) => s.activeWorkspaceId);
 	const [collapsed, setCollapsed] = useState(false);
 	const [baseBranch, setBaseBranch] = useState(prCtx.targetBranch);
@@ -188,6 +189,19 @@ function ChangesTab({
 
 	const totalAdditions = useMemo(() => files.reduce((s, f) => s + f.additions, 0), [files]);
 	const totalDeletions = useMemo(() => files.reduce((s, f) => s + f.deletions, 0), [files]);
+
+	const sessionKey = prReviewSessionKey(
+		activeWorkspaceId ?? "",
+		`${prCtx.owner}/${prCtx.repo}#${prCtx.number}`
+	);
+	const setFileOrder = usePRReviewSessionStore((s) => s.setFileOrder);
+	const selectFile = usePRReviewSessionStore((s) => s.selectFile);
+	useEffect(() => {
+		setFileOrder(
+			sessionKey,
+			files.map((f) => f.path)
+		);
+	}, [files, sessionKey, setFileOrder]);
 
 	// Commits query — use origin/<baseBranch> because worktrees may not have
 	// a local tracking branch for the target (e.g. no local "main", only "origin/main")
@@ -313,12 +327,15 @@ function ChangesTab({
 												type="button"
 												onClick={() => {
 													if (!activeWorkspaceId) return;
-													openPRReviewFile(
-														activeWorkspaceId,
-														prCtx,
-														file.path,
-														detectLanguage(file.path)
-													);
+													selectFile(sessionKey, file.path);
+													useTabStore
+														.getState()
+														.swapPRReviewFile(
+															activeWorkspaceId,
+															prCtx,
+															file.path,
+															detectLanguage(file.path)
+														);
 												}}
 												className={[
 													"min-w-0 flex-1 truncate text-left font-mono text-[11px] transition-colors hover:text-[var(--text-secondary)]",
@@ -505,7 +522,6 @@ function CommentsTab({
 }) {
 	const [sortMode, setSortMode] = useState<SortMode>("by-file");
 	const utils = trpc.useUtils();
-	const openPRReviewFile = useTabStore((s) => s.openPRReviewFile);
 	const activeWorkspaceId = useTabStore((s) => s.activeWorkspaceId);
 
 	const invalidateDrafts = () => {
@@ -549,6 +565,27 @@ function CommentsTab({
 		return [...ghThreads, ...aiThreads];
 	}, [details.reviewThreads, aiThreads]);
 
+	const setThreadOrder = usePRReviewSessionStore((s) => s.setThreadOrder);
+	const selectThread = usePRReviewSessionStore((s) => s.selectThread);
+	const selectFile = usePRReviewSessionStore((s) => s.selectFile);
+	const sessionKey = prReviewSessionKey(
+		activeWorkspaceId ?? "",
+		`${prCtx.owner}/${prCtx.repo}#${prCtx.number}`
+	);
+	useEffect(() => {
+		const sorted = [...allThreads]
+			.filter((t) => {
+				if (t.isAIDraft) return (t as AIDraftThread).status === "pending";
+				return !(t as Exclude<UnifiedThread, { isAIDraft: true }>).isResolved;
+			})
+			.sort((a, b) => {
+				const fa = a.path.localeCompare(b.path);
+				return fa !== 0 ? fa : (a.line ?? 0) - (b.line ?? 0);
+			})
+			.map((t) => t.id);
+		setThreadOrder(sessionKey, sorted);
+	}, [allThreads, sessionKey, setThreadOrder]);
+
 	const grouped = useMemo(() => {
 		if (sortMode === "latest-first") return null;
 		const map = new Map<string, UnifiedThread[]>();
@@ -588,7 +625,11 @@ function CommentsTab({
 			onResolve={(threadId) => resolveThread.mutate({ threadId })}
 			onNavigate={(path) => {
 				if (!activeWorkspaceId) return;
-				openPRReviewFile(activeWorkspaceId, prCtx, path, detectLanguage(path));
+				selectFile(sessionKey, path);
+				selectThread(sessionKey, t.id);
+				useTabStore
+					.getState()
+					.swapPRReviewFile(activeWorkspaceId, prCtx, path, detectLanguage(path));
 			}}
 		/>
 	);
@@ -940,14 +981,28 @@ export function PRControlRail({ prCtx }: { prCtx: PRContext }) {
 	// ── Active file detection ─────────────────────────────────────────────
 	const activeWorkspaceId = useTabStore((s) => s.activeWorkspaceId);
 	const openPROverview = useTabStore((s) => s.openPROverview);
-	const activeFilePath = useTabStore((s) => {
-		const wsId = s.activeWorkspaceId;
-		if (!wsId) return null;
-		const tabs = s.getVisibleTabs();
-		const activeId = s.getActiveTabId();
-		const t = tabs.find((x) => x.id === activeId);
-		return t?.kind === "pr-review-file" ? t.filePath : null;
-	});
+	const sessionKey = prReviewSessionKey(
+		activeWorkspaceId ?? "",
+		`${prCtx.owner}/${prCtx.repo}#${prCtx.number}`
+	);
+	const activeFilePath = usePRReviewSessionStore(
+		(s) => s.sessions.get(sessionKey)?.activeFilePath ?? null
+	);
+
+	useEffect(() => {
+		if (!activeFilePath || !activeWorkspaceId) return;
+		useTabStore
+			.getState()
+			.swapPRReviewFile(activeWorkspaceId, prCtx, activeFilePath, detectLanguage(activeFilePath));
+		// Use prCtx primitives in deps to avoid re-runs on parent re-renders that pass new prCtx ref.
+		// biome-ignore lint/correctness/useExhaustiveDependencies: deps on primitives to avoid re-runs from new prCtx ref
+	}, [activeFilePath, activeWorkspaceId, prCtx.owner, prCtx.repo, prCtx.number]);
+
+	useEffect(() => {
+		const onOpenSubmit = () => setShowSubmitModal(true);
+		window.addEventListener("pr-review:submit", onOpenSubmit);
+		return () => window.removeEventListener("pr-review:submit", onOpenSubmit);
+	}, []);
 
 	// ── Loading state ─────────────────────────────────────────────────────
 	if (isLoading || !details) {
@@ -965,6 +1020,9 @@ export function PRControlRail({ prCtx }: { prCtx: PRContext }) {
 
 	return (
 		<div className="flex h-full flex-col overflow-hidden">
+			{activeWorkspaceId && (
+				<PRReviewKeyboardListener prCtx={prCtx} workspaceId={activeWorkspaceId} />
+			)}
 			<PRTabHeader
 				tab={tab}
 				onSetTab={setTab}
