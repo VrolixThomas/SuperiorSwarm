@@ -336,23 +336,25 @@ export function WorkspaceItem({
 					}
 				}}
 				className={[
-					"flex w-full items-center gap-2 border-none pr-3 py-[7px] cursor-pointer",
-					"transition-all duration-[120ms] text-left",
+					"relative flex w-full items-center gap-2 border-none pl-[22px] pr-3 py-[7px] cursor-pointer",
+					"transition-all duration-[120ms] text-left rounded-[6px]",
 					isActive
-						? "rounded-r-[6px] rounded-l-none bg-[var(--bg-elevated)]"
-						: "rounded-[6px] bg-transparent",
-					isActive && isInActiveProject
-						? "pl-[20px] -ml-[2px] border-l-2 border-[var(--accent)]"
-						: "pl-[22px]",
-					isActive ? "hover:bg-[var(--bg-overlay)]" : "hover:bg-[var(--bg-elevated)]",
+						? "bg-[var(--accent-subtle)] hover:bg-[var(--accent-subtle)]"
+						: "bg-transparent hover:bg-[var(--bg-elevated)]",
 				].join(" ")}
 			>
+				{isActive && isInActiveProject && (
+					<span
+						aria-hidden="true"
+						className="absolute left-0 top-1 bottom-1 w-[3px] rounded-r-[2px] bg-[var(--accent)]"
+					/>
+				)}
 				<div className="flex-1 min-w-0">
 					<span
 						className={[
 							"truncate text-[13px] block",
 							isActive
-								? "text-[var(--text)]"
+								? "font-medium text-[var(--text)]"
 								: isInActiveProject
 									? "text-[var(--text-secondary)]"
 									: "text-[var(--text-tertiary)]",
@@ -383,7 +385,7 @@ export function WorkspaceItem({
 									strokeLinejoin="round"
 								/>
 							</svg>
-							<span className="text-[10px] text-[#3e3e46]">comments resolved</span>
+							<span className="text-[10px] text-[var(--text-quaternary)]">comments resolved</span>
 						</span>
 					)}
 				</div>

@@ -26,7 +26,7 @@
 	/* Accent */
 	--accent: #0a84ff;
 	--accent-hover: #409cff;
-	--accent-subtle: rgba(10, 132, 255, 0.12);
+	--accent-subtle: rgba(10, 132, 255, 0.16);
 	--accent-foreground: #ffffff;
 
 	/* Semantic colors (both naming styles aliased) */
@@ -111,7 +111,7 @@ html[data-theme="light"] {
 	/* Accent */
 	--accent: #0066cc;
 	--accent-hover: #004fa3;
-	--accent-subtle: rgba(0, 102, 204, 0.1);
+	--accent-subtle: rgba(0, 102, 204, 0.14);
 
 	/* Semantic */
 	--color-danger: #d70015;
@@ -130,6 +130,11 @@ html[data-theme="light"] {
 	--bg-tab-bar: #ededea;
 	--tab-active-bg: #ffffff;
 	--tab-border: rgba(0, 0, 0, 0.1);
+
+	/* Shadows — softened for light surfaces (dark tokens use 30–50% black) */
+	--shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);
+	--shadow-md: 0 2px 8px rgba(0, 0, 0, 0.08);
+	--shadow-lg: 0 4px 24px rgba(0, 0, 0, 0.12);
 }
 
 @layer base {
