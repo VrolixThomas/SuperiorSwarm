@@ -56,7 +56,12 @@ monaco.languages.typescript.javascriptDefaults.setDiagnosticsOptions({
 
 // Fire-and-forget hydration — first-paint script handles immediate paint;
 // hydrate updates the store + reapplies the canonical pref from DB.
-useThemeStore.getState().hydrate();
+useThemeStore
+	.getState()
+	.hydrate()
+	.catch((err) => {
+		console.error("theme hydrate failed", err);
+	});
 
 function Root() {
 	const [queryClient] = useState(() => new QueryClient());
