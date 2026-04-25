@@ -36,7 +36,7 @@ export const useThemeStore = create<ThemeState>((set) => ({
 }));
 
 // OS theme follow when pref === "system"
-watchSystemTheme((dark) => {
+const unsubSystem = watchSystemTheme((dark) => {
 	const { pref } = useThemeStore.getState();
 	if (pref !== "system") return;
 	const resolved: ResolvedTheme = dark ? "dark" : "light";
@@ -45,8 +45,18 @@ watchSystemTheme((dark) => {
 });
 
 // Sync across windows via main-process broadcast
-window.electron?.settings?.onThemeChanged((value) => {
+const unsubBroadcast = window.electron?.settings?.onThemeChanged((value) => {
+	if (useThemeStore.getState().pref === value) return;
 	const resolved = resolveTheme(value, systemPrefersDark());
 	applyTheme(resolved);
 	useThemeStore.setState({ pref: value, resolved });
 });
+
+// Vite HMR cleanup: dispose listeners when this module is re-evaluated
+const hot = (import.meta as ImportMeta & { hot?: { dispose: (cb: () => void) => void } }).hot;
+if (hot) {
+	hot.dispose(() => {
+		unsubSystem();
+		unsubBroadcast?.();
+	});
+}
