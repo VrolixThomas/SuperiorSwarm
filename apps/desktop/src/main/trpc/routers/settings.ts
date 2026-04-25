@@ -1,12 +1,12 @@
 import { eq } from "drizzle-orm";
 import { BrowserWindow } from "electron";
 import { z } from "zod";
+import type { ThemePref } from "../../../shared/types";
 import { getDb } from "../../db";
 import { appSettings } from "../../db/schema";
 import { publicProcedure, router } from "../index";
 
 const themeSchema = z.enum(["system", "light", "dark"]);
-export type ThemePref = z.infer<typeof themeSchema>;
 
 const THEME_KEY = "theme";
 const DEFAULT_THEME: ThemePref = "system";
@@ -28,7 +28,9 @@ function writeTheme(value: ThemePref): void {
 
 function broadcastTheme(value: ThemePref): void {
 	for (const win of BrowserWindow.getAllWindows()) {
-		win.webContents.send("settings:theme-changed", value);
+		if (!win.isDestroyed()) {
+			win.webContents.send("settings:theme-changed", value);
+		}
 	}
 }
 

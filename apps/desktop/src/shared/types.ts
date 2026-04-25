@@ -59,8 +59,10 @@ export interface AgentAlertAPI {
 	onAlert: (callback: (event: AgentEvent) => void) => () => void;
 }
 
+export type ThemePref = "system" | "light" | "dark";
+
 export interface SettingsAPI {
-	onThemeChanged: (callback: (value: "system" | "light" | "dark") => void) => () => void;
+	onThemeChanged: (callback: (value: ThemePref) => void) => () => void;
 }
 
 export type LspSupportResponse =
