@@ -1,12 +1,17 @@
 import { create } from "zustand";
 
+export interface PRReviewThreadRef {
+	id: string;
+	path: string;
+}
+
 export interface PRReviewSession {
 	activeFilePath: string | null;
 	activeThreadId: string | null;
 	scrollByFile: Map<string, number>;
 	overviewScrollTop: number;
 	fileOrder: string[];
-	threadOrder: string[];
+	threadOrder: PRReviewThreadRef[];
 }
 
 export interface PRReviewSessionStore {
@@ -20,7 +25,7 @@ export interface PRReviewSessionStore {
 	getScroll: (key: string, path: string) => number | undefined;
 	setOverviewScroll: (key: string, top: number) => void;
 	setFileOrder: (key: string, files: string[]) => void;
-	setThreadOrder: (key: string, ids: string[]) => void;
+	setThreadOrder: (key: string, refs: PRReviewThreadRef[]) => void;
 }
 
 export function prReviewSessionKey(workspaceId: string, prIdentifier: string): string {
@@ -80,13 +85,20 @@ export const usePRReviewSessionStore = create<PRReviewSessionStore>()((set, get)
 		set((state) => ({
 			sessions: withSession(state, key, (s) => {
 				if (s.threadOrder.length === 0) return s;
-				if (s.activeThreadId === null) {
-					return { ...s, activeThreadId: s.threadOrder[0] ?? null };
-				}
-				const idx = s.threadOrder.indexOf(s.activeThreadId);
-				if (idx === -1) return { ...s, activeThreadId: s.threadOrder[0] ?? null };
-				const nextIdx = Math.min(s.threadOrder.length - 1, Math.max(0, idx + delta));
-				return { ...s, activeThreadId: s.threadOrder[nextIdx] ?? null };
+				const findIdx = (id: string | null) =>
+					id == null ? -1 : s.threadOrder.findIndex((r) => r.id === id);
+				const curIdx = findIdx(s.activeThreadId);
+				const nextIdx =
+					curIdx === -1
+						? 0
+						: Math.min(s.threadOrder.length - 1, Math.max(0, curIdx + delta));
+				const nextRef = s.threadOrder[nextIdx];
+				if (!nextRef) return s;
+				return {
+					...s,
+					activeThreadId: nextRef.id,
+					activeFilePath: nextRef.path,
+				};
 			}),
 		})),
 
@@ -120,11 +132,12 @@ export const usePRReviewSessionStore = create<PRReviewSessionStore>()((set, get)
 			}),
 		})),
 
-	setThreadOrder: (key, ids) =>
+	setThreadOrder: (key, refs) =>
 		set((state) => ({
 			sessions: withSession(state, key, (s) => {
-				const next = [...ids];
-				const stillThere = s.activeThreadId != null && next.includes(s.activeThreadId);
+				const next = [...refs];
+				const stillThere =
+					s.activeThreadId != null && next.some((r) => r.id === s.activeThreadId);
 				return {
 					...s,
 					threadOrder: next,

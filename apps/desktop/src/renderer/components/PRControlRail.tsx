@@ -582,7 +582,7 @@ function CommentsTab({
 				const fa = a.path.localeCompare(b.path);
 				return fa !== 0 ? fa : (a.line ?? 0) - (b.line ?? 0);
 			})
-			.map((t) => t.id);
+			.map((t) => ({ id: t.id, path: t.path }));
 		setThreadOrder(sessionKey, sorted);
 	}, [allThreads, sessionKey, setThreadOrder]);
 
