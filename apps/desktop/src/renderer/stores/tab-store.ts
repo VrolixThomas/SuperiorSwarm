@@ -179,6 +179,12 @@ interface TabStore {
 		filePath: string,
 		language: string
 	) => string;
+	swapPRReviewFile: (
+		workspaceId: string,
+		prCtx: PRContext,
+		filePath: string,
+		language: string
+	) => string;
 	openPROverview: (workspaceId: string, prCtx: PRContext) => string;
 
 	openCommentFixFile: (
@@ -642,6 +648,25 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 			ps().addTabToPane(workspaceId, focused.id, tab);
 		}
 		return id;
+	},
+
+	swapPRReviewFile: (workspaceId, prCtx, filePath, language) => {
+		const found = findTabInWorkspace(
+			workspaceId,
+			(t) => t.kind === "pr-review-file" && t.workspaceId === workspaceId
+		);
+		if (!found) {
+			return get().openPRReviewFile(workspaceId, prCtx, filePath, language);
+		}
+		const newTitle = filePath.split("/").pop() ?? filePath;
+		ps().updateTabInPanes(found.tab.id, (t) =>
+			t.kind === "pr-review-file"
+				? { ...t, prCtx, filePath, language, title: newTitle }
+				: t
+		);
+		ps().setActiveTabInPane(workspaceId, found.pane.id, found.tab.id);
+		ps().setFocusedPane(found.pane.id);
+		return found.tab.id;
 	},
 
 	openPROverview: (workspaceId, prCtx) => {
