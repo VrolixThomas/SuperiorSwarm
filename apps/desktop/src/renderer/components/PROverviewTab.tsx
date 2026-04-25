@@ -9,6 +9,10 @@ import type {
 	UnifiedThread,
 } from "../../shared/github-types";
 import { formatRelativeTime } from "../../shared/tickets";
+import {
+	prReviewSessionKey,
+	usePRReviewSessionStore,
+} from "../stores/pr-review-session-store";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import { MarkdownRenderer } from "./MarkdownRenderer";
@@ -695,6 +699,35 @@ export function PROverviewTab({ prCtx }: { prCtx: PRContext }) {
 	const openPRReviewFile = useTabStore((s) => s.openPRReviewFile);
 	const activeWorkspaceId = useTabStore((s) => s.activeWorkspaceId);
 
+	const sessionKey = prReviewSessionKey(
+		activeWorkspaceId ?? "",
+		`${prCtx.owner}/${prCtx.repo}#${prCtx.number}`
+	);
+	const setOverviewScroll = usePRReviewSessionStore((s) => s.setOverviewScroll);
+	const scrollRef = useRef<HTMLDivElement | null>(null);
+
+	useEffect(() => {
+		const el = scrollRef.current;
+		if (!el) return;
+		const top =
+			usePRReviewSessionStore.getState().sessions.get(sessionKey)?.overviewScrollTop ?? 0;
+		if (top > 0) el.scrollTop = top;
+
+		let raf = 0;
+		const onScroll = () => {
+			cancelAnimationFrame(raf);
+			raf = requestAnimationFrame(() => {
+				setOverviewScroll(sessionKey, el.scrollTop);
+			});
+		};
+		el.addEventListener("scroll", onScroll, { passive: true });
+		return () => {
+			cancelAnimationFrame(raf);
+			el.removeEventListener("scroll", onScroll);
+			setOverviewScroll(sessionKey, el.scrollTop);
+		};
+	}, [sessionKey, setOverviewScroll, isLoading]);
+
 	const [showVerdictConfirmation, setShowVerdictConfirmation] = useState(false);
 	const [historyExpanded, setHistoryExpanded] = useState(false);
 
@@ -885,7 +918,7 @@ export function PROverviewTab({ prCtx }: { prCtx: PRContext }) {
 
 	return (
 		<div className="flex flex-col h-full overflow-hidden">
-			<div className="flex-1 overflow-y-auto bg-[var(--bg-base)]">
+			<div ref={scrollRef} className="flex-1 overflow-y-auto bg-[var(--bg-base)]">
 				<div className="mx-auto max-w-[800px] pb-10">
 					{/* PR Header — always shown */}
 					<PRHeader details={details} prCtx={prCtx} />
