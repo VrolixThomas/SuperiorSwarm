@@ -341,23 +341,21 @@ export function WorkspaceItem({
 					isActive
 						? "rounded-r-[6px] rounded-l-none bg-[var(--bg-elevated)]"
 						: "rounded-[6px] bg-transparent",
-					isActive && isInActiveProject ? "pl-[20px]" : "pl-[22px]",
+					isActive && isInActiveProject
+						? "pl-[20px] -ml-[2px] border-l-2 border-[var(--accent)]"
+						: "pl-[22px]",
 					isActive ? "hover:bg-[var(--bg-overlay)]" : "hover:bg-[var(--bg-elevated)]",
 				].join(" ")}
-				style={
-					isActive && isInActiveProject
-						? {
-								borderLeft: "2px solid rgba(10, 132, 255, 0.5)",
-								marginLeft: -2,
-							}
-						: undefined
-				}
 			>
 				<div className="flex-1 min-w-0">
 					<span
 						className={[
 							"truncate text-[13px] block",
-							isActive ? "text-[#d4d4dc]" : isInActiveProject ? "text-[#707078]" : "text-[#505058]",
+							isActive
+								? "text-[var(--text)]"
+								: isInActiveProject
+									? "text-[var(--text-secondary)]"
+									: "text-[var(--text-tertiary)]",
 						].join(" ")}
 					>
 						{workspace.name}
