@@ -423,7 +423,8 @@ function useInlineCommentZones(
 
 function useThreadDecorations(
 	editor: monaco.editor.IStandaloneDiffEditor | null,
-	threads: UnifiedThread[]
+	threads: UnifiedThread[],
+	activeThreadId: string | null
 ) {
 	const decorationRef = useRef<monaco.editor.IEditorDecorationsCollection | null>(null);
 
@@ -436,13 +437,16 @@ function useThreadDecorations(
 		const decorations: monaco.editor.IModelDeltaDecoration[] = threads
 			.filter((t) => t.line != null)
 			.map((t) => {
+				const isActive = t.id === activeThreadId;
 				if (t.isAIDraft) {
 					return {
 						range: new monaco.Range(t.line!, 1, t.line!, 1),
 						options: {
 							isWholeLine: true,
-							linesDecorationsClassName: "pr-thread-ai-draft-gutter",
-							className: "pr-thread-ai-draft-line",
+							linesDecorationsClassName: isActive
+								? "pr-thread-active-gutter"
+								: "pr-thread-ai-draft-gutter",
+							className: isActive ? "pr-thread-active-line" : "pr-thread-ai-draft-line",
 						},
 					};
 				}
@@ -453,15 +457,21 @@ function useThreadDecorations(
 						isWholeLine: true,
 						linesDecorationsClassName: gh.isResolved
 							? "pr-thread-resolved-gutter"
-							: "pr-thread-unresolved-gutter",
-						className: gh.isResolved ? undefined : "pr-thread-unresolved-line",
+							: isActive
+								? "pr-thread-active-gutter"
+								: "pr-thread-unresolved-gutter",
+						className: gh.isResolved
+							? undefined
+							: isActive
+								? "pr-thread-active-line"
+								: "pr-thread-unresolved-line",
 					},
 				};
 			});
 
 		decorationRef.current = modEditor.createDecorationsCollection(decorations);
 		return () => decorationRef.current?.clear();
-	}, [editor, threads]);
+	}, [editor, threads, activeThreadId]);
 }
 
 // ── Gutter plus button for new threads ────────────────────────────────────────
@@ -849,7 +859,7 @@ export function PRReviewFileTab({ prCtx, filePath, language }: PRReviewFileTabPr
 		handleDeclineDraft,
 		handleDeleteDraft
 	);
-	useThreadDecorations(editorInstance, fileThreads);
+	useThreadDecorations(editorInstance, fileThreads, activeThreadId);
 	useGutterPlusButton(editorInstance, (line) => setPendingLine(line), validDiffLines);
 
 	useEffect(() => {
