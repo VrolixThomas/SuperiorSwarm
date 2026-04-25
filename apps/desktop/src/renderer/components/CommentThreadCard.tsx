@@ -74,12 +74,12 @@ export function CommentThreadCard({
 						</span>
 					)}
 					{ai.resolution === "resolved-by-code" && (
-						<span className="flex items-center gap-1 text-[11px] text-[#32d74b]">
+						<span className="flex items-center gap-1 text-[11px] text-[var(--color-success)]">
 							<span>&#10003;</span> Resolved
 						</span>
 					)}
 					{ai.resolution === "incorrectly-resolved" && (
-						<span className="flex items-center gap-1 text-[11px] text-[#ff9f0a]">
+						<span className="flex items-center gap-1 text-[11px] text-[var(--color-warning)]">
 							<span>&#9888;</span> Flagged
 						</span>
 					)}
@@ -89,7 +89,7 @@ export function CommentThreadCard({
 						</span>
 					)}
 					{ai.status === "error" && (
-						<span className="rounded-[3px] border border-[rgba(255,69,58,0.3)] bg-[rgba(255,69,58,0.12)] px-1.5 py-px text-[9px] font-semibold uppercase tracking-wide text-[#ff453a]">
+						<span className="rounded-[3px] border border-[color-mix(in_srgb,var(--color-danger)_30%,transparent)] bg-[var(--danger-subtle)] px-1.5 py-px text-[9px] font-semibold uppercase tracking-wide text-[var(--color-danger)]">
 							Failed
 						</span>
 					)}
@@ -102,7 +102,7 @@ export function CommentThreadCard({
 						<button
 							type="button"
 							onClick={() => onAccept(ai.draftCommentId)}
-							className="rounded-[4px] px-2 py-0.5 text-[10px] font-medium bg-[rgba(48,209,88,0.15)] text-[#30d158] hover:opacity-80"
+							className="rounded-[4px] px-2 py-0.5 text-[10px] font-medium bg-[var(--success-subtle)] text-[var(--color-success)] hover:opacity-80"
 						>
 							Accept
 						</button>
@@ -120,7 +120,7 @@ export function CommentThreadCard({
 						<button
 							type="button"
 							onClick={() => onDelete(ai.draftCommentId)}
-							className="rounded-[4px] px-2 py-0.5 text-[10px] font-medium bg-[rgba(255,69,58,0.15)] text-[#ff453a] hover:opacity-80"
+							className="rounded-[4px] px-2 py-0.5 text-[10px] font-medium bg-[var(--danger-subtle)] text-[var(--color-danger)] hover:opacity-80"
 						>
 							Remove
 						</button>
@@ -145,7 +145,7 @@ export function CommentThreadCard({
 				</button>
 				<div className="flex-1" />
 				{gh.isResolved ? (
-					<span className="text-[10px] text-green-400">Resolved</span>
+					<span className="text-[10px] text-[var(--color-success)]">Resolved</span>
 				) : (
 					onResolve && (
 						<button

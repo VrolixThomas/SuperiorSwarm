@@ -64,7 +64,7 @@ function ThreadWidget({
 							</span>
 						)}
 						{isError && (
-							<span className="rounded-[3px] border border-[rgba(255,69,58,0.3)] bg-[rgba(255,69,58,0.12)] px-1.5 py-px text-[9px] font-semibold uppercase tracking-wide text-[#ff453a]">
+							<span className="rounded-[3px] border border-[rgba(255,69,58,0.3)] bg-[var(--danger-subtle)] px-1.5 py-px text-[9px] font-semibold uppercase tracking-wide text-[var(--color-danger)]">
 								Failed
 							</span>
 						)}
@@ -100,7 +100,7 @@ function ThreadWidget({
 						<button
 							type="button"
 							onClick={() => onAcceptDraft?.(aiThread.draftCommentId)}
-							className="rounded-[4px] px-2 py-0.5 text-[10px] font-medium bg-[rgba(48,209,88,0.15)] text-[#30d158] hover:opacity-80"
+							className="rounded-[4px] px-2 py-0.5 text-[10px] font-medium bg-[var(--success-subtle)] text-[var(--color-success)] hover:opacity-80"
 						>
 							Accept
 						</button>
@@ -130,7 +130,9 @@ function ThreadWidget({
 					{ghThread.path}:{ghThread.line ?? "?"}
 				</span>
 				<div className="flex items-center gap-2">
-					{ghThread.isResolved && <span className="text-[10px] text-green-400">Resolved</span>}
+					{ghThread.isResolved && (
+						<span className="text-[10px] text-[var(--color-success)]">Resolved</span>
+					)}
 					{!ghThread.isResolved && (
 						<button
 							type="button"
@@ -187,7 +189,7 @@ function ThreadWidget({
 											setReplyOpen(false);
 										}
 									}}
-									className="rounded-[4px] bg-[var(--accent)] px-2 py-0.5 text-[10px] font-medium text-white hover:opacity-80"
+									className="rounded-[4px] bg-[var(--accent)] px-2 py-0.5 text-[10px] font-medium text-[var(--accent-foreground)] hover:opacity-80"
 								>
 									Reply
 								</button>
@@ -232,7 +234,7 @@ function NewThreadWidget({
 			onMouseDown={(e) => e.stopPropagation()}
 			className="mx-2 my-1 rounded-[6px] border border-[var(--accent)] bg-[var(--bg-surface)] text-[11px] shadow-lg overflow-hidden"
 		>
-			<div className="bg-[var(--accent)] px-3 py-1 text-white font-medium text-[10px]">
+			<div className="bg-[var(--accent)] px-3 py-1 text-[var(--accent-foreground)] font-medium text-[10px]">
 				New Comment on Line {line}
 			</div>
 			<div className="flex flex-col gap-1.5 p-2">
@@ -250,7 +252,7 @@ function NewThreadWidget({
 						onClick={() => {
 							if (body.trim()) onSave(body.trim());
 						}}
-						className="rounded-[4px] bg-[var(--accent)] px-2 py-0.5 text-[10px] font-medium text-white hover:opacity-80"
+						className="rounded-[4px] bg-[var(--accent)] px-2 py-0.5 text-[10px] font-medium text-[var(--accent-foreground)] hover:opacity-80"
 					>
 						Add Comment
 					</button>
@@ -841,7 +843,7 @@ export function PRReviewFileTab({ prCtx, filePath, language }: PRReviewFileTabPr
 						>
 							←
 						</button>
-						<span className="text-[10px] text-yellow-400">
+						<span className="text-[10px] text-[var(--color-warning)]">
 							{unresolvedLines.length} comment{unresolvedLines.length !== 1 ? "s" : ""}
 						</span>
 						<button

@@ -645,7 +645,11 @@ function RailPRsSection({ flyout, openFlyout, scheduleDismiss, onExpand }: RailS
 
 	if (!hasBitbucket && !hasGitHub) return null;
 
-	const stateColors = { open: "bg-green-500", merged: "bg-purple-500", closed: "bg-red-500" };
+	const stateColors = {
+		open: "bg-[var(--color-success)]",
+		merged: "bg-[var(--color-purple)]",
+		closed: "bg-[var(--color-danger)]",
+	};
 	const isFlyoutActive = flyout?.kind === "prs";
 	const visiblePRs = prs.slice(0, MAX_PILLS);
 	const hoveredData = prs.find((p) => p.id === hoveredId);

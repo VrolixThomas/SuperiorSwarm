@@ -299,11 +299,11 @@ export function CommentsOverviewTab({ workspaceId }: CommentsOverviewTabProps) {
 		const solveStatus = solveStatuses[t.id];
 		const badge =
 			solveStatus === "addressed" ? (
-				<span className="rounded-full px-[7px] py-[1px] text-[9px] font-semibold bg-[rgba(52,199,89,0.12)] text-[#34c759]">
+				<span className="rounded-full px-[7px] py-[1px] text-[9px] font-semibold bg-[color-mix(in_srgb,var(--color-success)_12%,transparent)] text-[var(--color-success)]">
 					AI Addressed
 				</span>
 			) : solveStatus === "new" ? (
-				<span className="rounded-full px-[7px] py-[1px] text-[9px] font-semibold bg-[rgba(255,159,10,0.12)] text-[#ff9f0a]">
+				<span className="rounded-full px-[7px] py-[1px] text-[9px] font-semibold bg-[var(--warning-subtle)] text-[var(--color-warning)]">
 					New
 				</span>
 			) : null;
@@ -345,7 +345,7 @@ export function CommentsOverviewTab({ workspaceId }: CommentsOverviewTabProps) {
 					commentCount={0}
 				/>
 				<div className="flex flex-1 flex-col items-center justify-center gap-3">
-					<div className="max-w-[280px] text-center text-[11px] text-[#ff453a]">
+					<div className="max-w-[280px] text-center text-[11px] text-[var(--color-danger)]">
 						{commentsQuery.error.message}
 					</div>
 					<button
@@ -453,15 +453,15 @@ export function CommentsOverviewTab({ workspaceId }: CommentsOverviewTabProps) {
 										: "Unaddressed";
 						const activeColor =
 							filter === "addressed"
-								? "rgba(52,199,89,0.15)"
+								? "var(--success-subtle)"
 								: filter === "new"
-									? "rgba(255,159,10,0.15)"
+									? "var(--warning-subtle)"
 									: "var(--bg-elevated)";
 						const activeText =
 							filter === "addressed"
-								? "#34c759"
+								? "var(--color-success)"
 								: filter === "new"
-									? "#ff9f0a"
+									? "var(--color-warning)"
 									: "var(--text-secondary)";
 						return (
 							<button
@@ -504,13 +504,15 @@ export function CommentsOverviewTab({ workspaceId }: CommentsOverviewTabProps) {
 			{/* Solve button */}
 			<div className="shrink-0 border-t border-[var(--border)] bg-[var(--bg-elevated)] px-4 py-2.5">
 				{triggerSolve.isError && (
-					<div className="mb-2 text-[10px] text-[#ff453a]">{triggerSolve.error.message}</div>
+					<div className="mb-2 text-[10px] text-[var(--color-danger)]">
+						{triggerSolve.error.message}
+					</div>
 				)}
 				<button
 					type="button"
 					onClick={handleSolve}
 					disabled={triggerSolve.isPending || includedCount === 0 || isSessionInProgress}
-					className="w-full rounded-[6px] bg-[var(--accent)] px-4 py-1.5 text-[12px] font-medium text-white transition-colors hover:bg-[var(--accent-hover)] disabled:opacity-40"
+					className="w-full rounded-[6px] bg-[var(--accent)] px-4 py-1.5 text-[12px] font-medium text-[var(--accent-foreground)] transition-colors hover:bg-[var(--accent-hover)] disabled:opacity-40"
 				>
 					{triggerSolve.isPending
 						? "Starting..."

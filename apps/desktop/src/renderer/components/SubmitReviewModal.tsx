@@ -132,7 +132,7 @@ export function SubmitReviewModal({
 	return (
 		<div
 			ref={overlayRef}
-			className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+			className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--scrim)]"
 			onClick={(e) => {
 				if (e.target === e.currentTarget) onClose();
 			}}
@@ -172,7 +172,7 @@ export function SubmitReviewModal({
 				{/* Result feedback */}
 				{result && (
 					<div
-						className={`px-5 py-2 text-[10px] ${result.failed > 0 ? "bg-red-900/20 text-red-400" : "bg-green-900/20 text-green-400"}`}
+						className={`px-5 py-2 text-[10px] ${result.failed > 0 ? "bg-[var(--danger-subtle)] text-[var(--color-danger)]" : "bg-[var(--success-subtle)] text-[var(--color-success)]"}`}
 					>
 						<div>
 							{result.posted} comment{result.posted !== 1 ? "s" : ""} posted.
@@ -213,7 +213,7 @@ export function SubmitReviewModal({
 						type="button"
 						disabled={isSubmitting}
 						onClick={() => handleSubmit("APPROVE")}
-						className="flex-1 rounded-md border border-[rgba(48,209,88,0.15)] bg-[rgba(48,209,88,0.12)] py-2 text-[11px] font-semibold text-[#30d158] transition-colors hover:bg-[rgba(48,209,88,0.2)] disabled:opacity-50"
+						className="flex-1 rounded-md border border-[var(--success-subtle)] bg-[var(--success-subtle)] py-2 text-[11px] font-semibold text-[var(--color-success)] transition-colors hover:bg-[color-mix(in_srgb,var(--color-success)_22%,transparent)] disabled:opacity-50"
 					>
 						Approve
 					</button>
@@ -221,7 +221,7 @@ export function SubmitReviewModal({
 						type="button"
 						disabled={isSubmitting}
 						onClick={() => handleSubmit("REQUEST_CHANGES")}
-						className="flex-1 rounded-md border border-[rgba(255,69,58,0.12)] bg-[rgba(255,69,58,0.1)] py-2 text-[11px] font-medium text-[#ff453a] transition-colors hover:bg-[rgba(255,69,58,0.15)] disabled:opacity-50"
+						className="flex-1 rounded-md border border-[color-mix(in_srgb,var(--color-danger)_15%,transparent)] bg-[color-mix(in_srgb,var(--color-danger)_10%,transparent)] py-2 text-[11px] font-medium text-[var(--color-danger)] transition-colors hover:bg-[var(--danger-subtle)] disabled:opacity-50"
 					>
 						Request Changes
 					</button>

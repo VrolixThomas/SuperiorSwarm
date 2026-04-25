@@ -2,34 +2,50 @@
 @import "@xterm/xterm/css/xterm.css";
 
 :root {
-	/* Backgrounds — 4 elevation levels */
+	/* Dark theme — also serves as first-paint fallback */
+
+	/* Backgrounds — 4 elevation levels + active */
 	--bg-base: #0a0a0a;
-	--bg-surface: #141414;
-	--bg-elevated: #1c1c1e;
+	--bg-surface: #161618;
+	--bg-elevated: #1f1f22;
 	--bg-overlay: #2c2c2e;
+	--bg-active: #3a3a3d;
 
 	/* Borders & dividers */
-	--border: rgba(255, 255, 255, 0.06);
-	--border-subtle: rgba(255, 255, 255, 0.04);
-	--border-active: rgba(255, 255, 255, 0.1);
+	--border: rgba(255, 255, 255, 0.1);
+	--border-subtle: rgba(255, 255, 255, 0.06);
+	--border-active: rgba(255, 255, 255, 0.16);
+	--border-default: var(--border);
 
-	/* Text — 4 levels */
+	/* Text — 4 levels (AA-verified) */
 	--text: #f5f5f7;
-	--text-secondary: #a1a1a6;
-	--text-tertiary: #6e6e73;
-	--text-quaternary: #48484a;
+	--text-secondary: #b5b5ba;
+	--text-tertiary: #8e8e93;
+	--text-quaternary: #6e6e73;
 
 	/* Accent */
 	--accent: #0a84ff;
 	--accent-hover: #409cff;
+	--accent-subtle: rgba(10, 132, 255, 0.16);
+	--accent-foreground: #ffffff;
 
-	/* Semantic colors */
+	/* Semantic colors (both naming styles aliased) */
 	--color-danger: #ff453a;
 	--color-success: #30d158;
 	--color-warning: #ff9f0a;
 	--color-purple: #bf5af2;
+	--danger: var(--color-danger);
+	--success: var(--color-success);
+	--warning: var(--color-warning);
+	--danger-subtle: rgba(255, 69, 58, 0.15);
+	--success-subtle: rgba(48, 209, 88, 0.15);
+	--warning-subtle: rgba(255, 159, 10, 0.15);
+	--purple-subtle: rgba(191, 90, 242, 0.15);
 
-	/* Terminal — ANSI palette */
+	/* Modal scrim */
+	--scrim: rgba(0, 0, 0, 0.5);
+
+	/* Terminal — ANSI palette (vibrant on both themes) */
 	--term-selection: rgba(255, 255, 255, 0.15);
 	--term-black: #1a1a1a;
 	--term-red: #ff6b6b;
@@ -64,13 +80,61 @@
 
 	/* Tab bar */
 	--bg-tab-bar: #111113;
-	--tab-active-bg: #1c1c1e;
+	--tab-active-bg: #1f1f22;
 	--tab-inactive-bg: transparent;
-	--tab-border: rgba(255, 255, 255, 0.08);
+	--tab-border: rgba(255, 255, 255, 0.1);
 
 	/* Typography */
 	--font-ui: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
 	--font-mono: "SF Mono", "JetBrains Mono", "Fira Code", monospace;
+}
+
+html[data-theme="light"] {
+	/* Backgrounds */
+	--bg-base: #fafaf7;
+	--bg-surface: #f2f2ef;
+	--bg-elevated: #ffffff;
+	--bg-overlay: #e8e8e3;
+	--bg-active: #c8c8c2;
+
+	/* Borders */
+	--border: rgba(0, 0, 0, 0.1);
+	--border-subtle: rgba(0, 0, 0, 0.06);
+	--border-active: rgba(0, 0, 0, 0.18);
+
+	/* Text */
+	--text: #1d1d1f;
+	--text-secondary: #3a3a3c;
+	--text-tertiary: #6e6e73;
+	--text-quaternary: #76767a;
+
+	/* Accent */
+	--accent: #0066cc;
+	--accent-hover: #004fa3;
+	--accent-subtle: rgba(0, 102, 204, 0.14);
+
+	/* Semantic */
+	--color-danger: #d70015;
+	--color-success: #1f883d;
+	--color-warning: #bf6900;
+	--color-purple: #8944ab;
+	--danger-subtle: rgba(215, 0, 21, 0.18);
+	--success-subtle: rgba(31, 136, 61, 0.18);
+	--warning-subtle: rgba(191, 105, 0, 0.18);
+	--purple-subtle: rgba(137, 68, 171, 0.18);
+
+	/* Scrim */
+	--scrim: rgba(0, 0, 0, 0.35);
+
+	/* Tab bar */
+	--bg-tab-bar: #ededea;
+	--tab-active-bg: #ffffff;
+	--tab-border: rgba(0, 0, 0, 0.1);
+
+	/* Shadows — softened for light surfaces (dark tokens use 30–50% black) */
+	--shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);
+	--shadow-md: 0 2px 8px rgba(0, 0, 0, 0.08);
+	--shadow-lg: 0 4px 24px rgba(0, 0, 0, 0.12);
 }
 
 @layer base {
@@ -115,6 +179,13 @@ body,
 	padding: 4px 0 0 12px;
 }
 
+/* xterm.css ships .xterm-viewport { background: #000 } unconditionally.
+   The canvas paints with theme.background; uncovered viewport pixels would otherwise
+   leak as solid black bands in light mode. Track --bg-base so theme toggle is automatic. */
+.xterm-container .xterm .xterm-viewport {
+	background-color: var(--bg-base);
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar {
 	width: 6px;
@@ -149,7 +220,7 @@ body,
 	width: 6px !important;
 	margin-left: 4px;
 	border-radius: 50%;
-	background: #fbbf24; /* amber-400 */
+	background: var(--warning);
 }
 
 /* Gutter dot for resolved review threads */
@@ -157,13 +228,13 @@ body,
 	width: 6px !important;
 	margin-left: 4px;
 	border-radius: 50%;
-	background: #4ade80; /* green-400 */
+	background: var(--success);
 	opacity: 0.5;
 }
 
 /* Subtle line highlight for unresolved threads */
 .pr-thread-unresolved-line {
-	background: rgba(251, 191, 36, 0.06);
+	background: rgba(255, 159, 10, 0.06);
 }
 
 /* Plus icon in gutter on hover for adding new comments */
@@ -185,7 +256,7 @@ body,
 	line-height: 1;
 	color: var(--accent);
 	border-radius: 3px;
-	background: rgba(10, 132, 255, 0.12);
+	background: var(--accent-subtle);
 }
 
 .pr-gutter-plus-icon:hover {
@@ -197,7 +268,7 @@ body,
 	width: 6px !important;
 	margin-left: 4px;
 	border-radius: 50%;
-	background: #a78bfa; /* violet-400 */
+	background: var(--color-purple);
 }
 
 .pr-thread-ai-draft-line {
@@ -212,7 +283,7 @@ body,
 	padding: 1px 6px;
 	border-radius: 4px;
 	background: rgba(167, 139, 250, 0.15);
-	color: #a78bfa;
+	color: var(--color-purple);
 	font-size: 10px;
 	font-weight: 600;
 	line-height: 16px;
@@ -245,7 +316,7 @@ body,
 /* ── Merge conflict: result panel decorations ────────────────────────────── */
 
 .merge-conflict-pending {
-	background: rgba(255, 69, 58, 0.12);
+	background: var(--danger-subtle);
 }
 
 .merge-conflict-resolved {
@@ -364,7 +435,7 @@ body,
 /* ── Drop zone overlays (tab drag-to-edge splitting) ─────────────────────── */
 
 .drop-zone-highlight {
-	background: rgba(10, 132, 255, 0.15);
+	background: var(--accent-subtle);
 	border: 1px dashed var(--accent);
 	border-radius: 4px;
 	pointer-events: auto;

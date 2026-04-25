@@ -5,7 +5,7 @@ export function shortPath(p: string): string {
 
 export function ErrorBanner({ message, onDismiss }: { message: string; onDismiss: () => void }) {
 	return (
-		<div className="mb-4 flex items-center justify-between rounded-[8px] border border-[rgba(255,69,58,0.3)] bg-[rgba(255,69,58,0.08)] px-3 py-2 text-[11px] text-[#ff453a]">
+		<div className="mb-4 flex items-center justify-between rounded-[8px] border border-[rgba(255,69,58,0.3)] bg-[rgba(255,69,58,0.08)] px-3 py-2 text-[11px] text-[var(--color-danger)]">
 			<span>{message}</span>
 			<button
 				type="button"

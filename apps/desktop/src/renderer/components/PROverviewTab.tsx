@@ -19,9 +19,9 @@ import { ReviewVerdictConfirmation } from "./ReviewVerdictConfirmation";
 
 function PRHeader({ details, prCtx }: { details: GitHubPRDetails; prCtx: PRContext }) {
 	const stateColor: Record<string, string> = {
-		OPEN: "bg-green-900/40 text-[#30d158]",
-		CLOSED: "bg-red-900/40 text-[#ff453a]",
-		MERGED: "bg-purple-900/40 text-[#a78bfa]",
+		OPEN: "bg-[var(--success-subtle)] text-[var(--color-success)]",
+		CLOSED: "bg-[var(--danger-subtle)] text-[var(--color-danger)]",
+		MERGED: "bg-[var(--purple-subtle)] text-[var(--color-purple)]",
 	};
 
 	const decisionLabel: Record<string, string> = {
@@ -31,9 +31,9 @@ function PRHeader({ details, prCtx }: { details: GitHubPRDetails; prCtx: PRConte
 	};
 
 	const decisionColor: Record<string, string> = {
-		APPROVED: "bg-green-900/40 text-[#30d158]",
-		CHANGES_REQUESTED: "bg-red-900/40 text-[#ff453a]",
-		REVIEW_REQUIRED: "bg-yellow-900/40 text-[#fbbf24]",
+		APPROVED: "bg-[var(--success-subtle)] text-[var(--color-success)]",
+		CHANGES_REQUESTED: "bg-[var(--danger-subtle)] text-[var(--color-danger)]",
+		REVIEW_REQUIRED: "bg-[var(--warning-subtle)] text-[var(--color-warning)]",
 	};
 
 	const reviewerDecisionIcon: Record<string, string> = {
@@ -44,8 +44,8 @@ function PRHeader({ details, prCtx }: { details: GitHubPRDetails; prCtx: PRConte
 	};
 
 	const reviewerDecisionColor: Record<string, string> = {
-		APPROVED: "text-[#30d158]",
-		CHANGES_REQUESTED: "text-[#ff453a]",
+		APPROVED: "text-[var(--color-success)]",
+		CHANGES_REQUESTED: "text-[var(--color-danger)]",
 		COMMENTED: "text-[var(--text-quaternary)]",
 		PENDING: "text-[var(--text-quaternary)]",
 	};
@@ -97,10 +97,10 @@ function PRHeader({ details, prCtx }: { details: GitHubPRDetails; prCtx: PRConte
 					<span
 						className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-medium ${
 							details.ciState === "SUCCESS"
-								? "bg-green-900/40 text-[#30d158]"
+								? "bg-[var(--success-subtle)] text-[var(--color-success)]"
 								: details.ciState === "FAILURE"
-									? "bg-red-900/40 text-[#ff453a]"
-									: "bg-yellow-900/40 text-[#fbbf24]"
+									? "bg-[var(--danger-subtle)] text-[var(--color-danger)]"
+									: "bg-[var(--warning-subtle)] text-[var(--color-warning)]"
 						}`}
 					>
 						{details.ciState === "SUCCESS"
@@ -225,7 +225,7 @@ function AICommentCard({
 					<button
 						type="button"
 						onClick={() => onAccept(thread.draftCommentId)}
-						className="rounded-[4px] px-2.5 py-0.5 text-[10px] font-medium bg-[rgba(48,209,88,0.15)] text-[#30d158] hover:opacity-80"
+						className="rounded-[4px] px-2.5 py-0.5 text-[10px] font-medium bg-[var(--success-subtle)] text-[var(--color-success)] hover:opacity-80"
 					>
 						Accept
 					</button>
@@ -290,7 +290,7 @@ function GitHubThreadCard({
 				</button>
 				<div className="flex-1" />
 				{thread.isResolved ? (
-					<span className="text-[10px] text-[#30d158]">Resolved</span>
+					<span className="text-[10px] text-[var(--color-success)]">Resolved</span>
 				) : (
 					<button
 						type="button"
@@ -347,7 +347,7 @@ function GitHubThreadCard({
 											setReplyOpen(false);
 										}
 									}}
-									className="rounded-[4px] bg-[var(--accent)] px-2 py-0.5 text-[10px] font-medium text-white hover:opacity-80"
+									className="rounded-[4px] bg-[var(--accent)] px-2 py-0.5 text-[10px] font-medium text-[var(--accent-foreground)] hover:opacity-80"
 								>
 									Reply
 								</button>
@@ -645,7 +645,7 @@ function ReviewBottomBar({
 					<button
 						type="button"
 						onClick={onShowVerdict}
-						className="px-4 py-[6px] rounded-[6px] text-[12px] font-semibold border-none cursor-pointer bg-[var(--success)] text-white"
+						className="px-4 py-[6px] rounded-[6px] text-[12px] font-semibold border-none cursor-pointer bg-[var(--success)] text-[var(--accent-foreground)]"
 					>
 						Submit Review
 					</button>

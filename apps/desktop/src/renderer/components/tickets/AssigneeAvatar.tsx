@@ -25,7 +25,7 @@ export function AssigneeAvatar({
 				type="button"
 				onClick={onClick}
 				title="Unassigned"
-				className="flex shrink-0 items-center justify-center rounded-full transition-colors hover:bg-[rgba(255,255,255,0.08)]"
+				className="flex shrink-0 items-center justify-center rounded-full transition-colors hover:bg-[var(--bg-overlay)]"
 				style={{
 					width: size,
 					height: size,
@@ -44,7 +44,7 @@ export function AssigneeAvatar({
 			type="button"
 			onClick={onClick}
 			title={assigneeName ?? "Assigned"}
-			className="flex shrink-0 items-center justify-center rounded-full font-semibold text-white transition-opacity hover:opacity-80"
+			className="flex shrink-0 items-center justify-center rounded-full font-semibold text-[var(--accent-foreground)] transition-opacity hover:opacity-80"
 			style={{
 				width: size,
 				height: size,

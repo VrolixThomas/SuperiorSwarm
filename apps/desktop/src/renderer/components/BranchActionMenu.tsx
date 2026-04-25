@@ -168,7 +168,7 @@ export function BranchActionMenu({
 						type="button"
 						onClick={handleRenameSubmit}
 						disabled={renameMutation.isPending}
-						className="flex-1 rounded-[var(--radius-sm)] bg-[var(--accent)] px-2 py-1 text-[12px] text-white transition-opacity hover:opacity-80 disabled:opacity-40"
+						className="flex-1 rounded-[var(--radius-sm)] bg-[var(--accent)] px-2 py-1 text-[12px] text-[var(--accent-foreground)] transition-opacity hover:opacity-80 disabled:opacity-40"
 					>
 						{renameMutation.isPending ? "Renaming…" : "Rename"}
 					</button>
@@ -259,7 +259,7 @@ export function BranchActionMenu({
 									type="button"
 									onClick={handleDeleteClick}
 									disabled={deleteMutation.isPending}
-									className="flex-1 rounded-[var(--radius-sm)] bg-[var(--color-danger)] px-2 py-0.5 text-[12px] text-white transition-opacity hover:opacity-80 disabled:opacity-40"
+									className="flex-1 rounded-[var(--radius-sm)] bg-[var(--color-danger)] px-2 py-0.5 text-[12px] text-[var(--accent-foreground)] transition-opacity hover:opacity-80 disabled:opacity-40"
 								>
 									{deleteMutation.isPending ? "Deleting…" : "Delete"}
 								</button>

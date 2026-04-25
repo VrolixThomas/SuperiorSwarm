@@ -40,7 +40,7 @@ export function ReviewVerdictConfirmation({
 					className={[
 						"flex-1 py-[5px] px-[10px] rounded-[6px] text-[11px] font-medium cursor-pointer",
 						selected === "APPROVE"
-							? "bg-[rgba(48,209,88,0.18)] text-[var(--success)] border border-[rgba(48,209,88,0.25)]"
+							? "bg-[var(--success-subtle)] text-[var(--success)] border border-[rgba(48,209,88,0.25)]"
 							: "bg-[var(--success-subtle)] text-[var(--success)] border border-[rgba(48,209,88,0.25)]",
 					].join(" ")}
 				>
@@ -52,7 +52,7 @@ export function ReviewVerdictConfirmation({
 					className={[
 						"flex-1 py-[5px] px-[10px] rounded-[6px] text-[11px] font-medium cursor-pointer",
 						selected === "REQUEST_CHANGES"
-							? "bg-[rgba(255,69,58,0.18)] text-[var(--danger)] border border-[rgba(255,69,58,0.25)]"
+							? "bg-[var(--danger-subtle)] text-[var(--danger)] border border-[rgba(255,69,58,0.25)]"
 							: "bg-[var(--danger-subtle)] text-[var(--danger)] border border-[rgba(255,69,58,0.25)]",
 					].join(" ")}
 				>
@@ -81,7 +81,7 @@ export function ReviewVerdictConfirmation({
 					className={[
 						"px-[14px] py-[5px] rounded-[6px] text-[11px] font-semibold border-none",
 						!isSubmitting
-							? "cursor-pointer bg-[var(--accent)] text-white"
+							? "cursor-pointer bg-[var(--accent)] text-[var(--accent-foreground)]"
 							: "cursor-not-allowed bg-[var(--bg-active)] text-[var(--text-tertiary)]",
 					].join(" ")}
 				>

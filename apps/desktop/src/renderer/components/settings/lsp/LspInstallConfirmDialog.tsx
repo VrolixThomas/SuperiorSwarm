@@ -39,7 +39,7 @@ export function LspInstallConfirmDialog({
 
 	return (
 		<div
-			className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+			className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--scrim)] backdrop-blur-sm"
 			onClick={(e) => {
 				if (e.target === e.currentTarget) onCancel();
 			}}
@@ -109,7 +109,7 @@ export function LspInstallConfirmDialog({
 						type="button"
 						onClick={() => onConfirm(prompt)}
 						disabled={disabled}
-						className="rounded-[var(--radius-sm)] bg-[var(--accent)] px-4 py-[6px] text-[12px] font-medium text-white hover:opacity-90 disabled:opacity-40"
+						className="rounded-[var(--radius-sm)] bg-[var(--accent)] px-4 py-[6px] text-[12px] font-medium text-[var(--accent-foreground)] hover:opacity-90 disabled:opacity-40"
 					>
 						{loading ? "Starting…" : "Run in terminal"}
 					</button>

@@ -334,7 +334,7 @@ export function DraftCommitCard({
 								message: commitMsg.trim(),
 							})
 						}
-						className="flex-1 rounded-[var(--radius-sm)] bg-[var(--accent)] px-2 py-1 text-[11px] font-medium text-white transition-opacity disabled:opacity-40"
+						className="flex-1 rounded-[var(--radius-sm)] bg-[var(--accent)] px-2 py-1 text-[11px] font-medium text-[var(--accent-foreground)] transition-opacity disabled:opacity-40"
 					>
 						{commitMutation.isPending
 							? "Committing..."

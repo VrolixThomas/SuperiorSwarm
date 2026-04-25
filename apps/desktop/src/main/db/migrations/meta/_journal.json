@@ -267,6 +267,13 @@
       "when": 1776710732357,
       "tag": "0037_add_team_members_index",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "6",
+      "when": 1777112556113,
+      "tag": "0038_add_app_settings_table",
+      "breakpoints": true
     }
   ]
 }

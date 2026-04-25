@@ -336,26 +336,28 @@ export function WorkspaceItem({
 					}
 				}}
 				className={[
-					"flex w-full items-center gap-2 border-none pr-3 py-[7px] cursor-pointer",
-					"transition-all duration-[120ms] text-left",
-					isActive ? "rounded-r-[6px] rounded-l-none bg-[#17171e]" : "rounded-[6px] bg-transparent",
-					isActive && isInActiveProject ? "pl-[20px]" : "pl-[22px]",
-					isActive ? "hover:bg-[#1c1c24]" : "hover:bg-[var(--bg-elevated)]",
+					"relative flex w-full items-center gap-2 border-none pl-[22px] pr-3 py-[7px] cursor-pointer",
+					"transition-all duration-[120ms] text-left rounded-[6px]",
+					isActive
+						? "bg-[var(--accent-subtle)] hover:bg-[var(--accent-subtle)]"
+						: "bg-transparent hover:bg-[var(--bg-elevated)]",
 				].join(" ")}
-				style={
-					isActive && isInActiveProject
-						? {
-								borderLeft: "2px solid rgba(10, 132, 255, 0.5)",
-								marginLeft: -2,
-							}
-						: undefined
-				}
 			>
+				{isActive && isInActiveProject && (
+					<span
+						aria-hidden="true"
+						className="absolute left-0 top-1 bottom-1 w-[3px] rounded-r-[2px] bg-[var(--accent)]"
+					/>
+				)}
 				<div className="flex-1 min-w-0">
 					<span
 						className={[
 							"truncate text-[13px] block",
-							isActive ? "text-[#d4d4dc]" : isInActiveProject ? "text-[#707078]" : "text-[#505058]",
+							isActive
+								? "font-medium text-[var(--text)]"
+								: isInActiveProject
+									? "text-[var(--text-secondary)]"
+									: "text-[var(--text-tertiary)]",
 						].join(" ")}
 					>
 						{workspace.name}
@@ -383,7 +385,7 @@ export function WorkspaceItem({
 									strokeLinejoin="round"
 								/>
 							</svg>
-							<span className="text-[10px] text-[#3e3e46]">comments resolved</span>
+							<span className="text-[10px] text-[var(--text-quaternary)]">comments resolved</span>
 						</span>
 					)}
 				</div>

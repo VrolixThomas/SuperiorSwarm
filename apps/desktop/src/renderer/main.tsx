@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import "./styles.css";
+import { useThemeStore } from "./stores/theme-store";
 import { trpc } from "./trpc/client";
 import { ipcLink } from "./trpc/ipc-link";
 
@@ -52,6 +53,15 @@ monaco.languages.typescript.javascriptDefaults.setDiagnosticsOptions({
 	noSemanticValidation: true,
 	noSyntaxValidation: true,
 });
+
+// Fire-and-forget hydration — first-paint script handles immediate paint;
+// hydrate updates the store + reapplies the canonical pref from DB.
+useThemeStore
+	.getState()
+	.hydrate()
+	.catch((err) => {
+		console.error("theme hydrate failed", err);
+	});
 
 function Root() {
 	const [queryClient] = useState(() => new QueryClient());

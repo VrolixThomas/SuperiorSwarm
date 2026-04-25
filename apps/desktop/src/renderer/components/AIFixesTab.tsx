@@ -128,7 +128,7 @@ function ActiveState({
 
 			{newCommentCount > 0 && (
 				<div className="mx-4 mb-2 px-3 py-[10px] rounded-[6px] bg-[rgba(255,159,10,0.08)] border border-[rgba(255,159,10,0.2)]">
-					<div className="text-[11px] text-[#ff9f0a] font-medium mb-1">
+					<div className="text-[11px] text-[var(--color-warning)] font-medium mb-1">
 						{newCommentCount} new comment{newCommentCount !== 1 ? "s" : ""} since last solve
 					</div>
 					<div className="text-[10px] text-[var(--text-tertiary)]">
@@ -142,7 +142,7 @@ function ActiveState({
 				<button
 					type="button"
 					onClick={() => useTabStore.getState().addSolveReviewTab(workspaceId, session.id)}
-					className="w-full rounded-[8px] bg-[var(--accent)] px-4 py-2 text-[13px] font-medium text-white transition-opacity hover:opacity-90"
+					className="w-full rounded-[8px] bg-[var(--accent)] px-4 py-2 text-[13px] font-medium text-[var(--accent-foreground)] transition-opacity hover:opacity-90"
 				>
 					Open Solve Review
 				</button>
@@ -337,7 +337,7 @@ export function AIFixesTab({ workspaceId }: AIFixesTabProps) {
 								type="button"
 								onClick={() => keepSession.mutate({ sessionId: fullSession.id })}
 								disabled={resetSession.isPending || keepSession.isPending}
-								className="flex-1 rounded-[6px] bg-[var(--accent)] px-3 py-2 text-[12px] font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+								className="flex-1 rounded-[6px] bg-[var(--accent)] px-3 py-2 text-[12px] font-medium text-[var(--accent-foreground)] transition-opacity hover:opacity-90 disabled:opacity-50"
 							>
 								{keepSession.isPending ? "Saving…" : "Keep partial changes"}
 							</button>

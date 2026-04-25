@@ -52,7 +52,7 @@ function PRContextMenu({
 			{workspaceId && (
 				<button
 					type="button"
-					className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-red-400 hover:bg-[var(--bg-elevated)]"
+					className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-[var(--color-danger)] hover:bg-[var(--bg-elevated)]"
 					onClick={() => {
 						onCleanup();
 						onClose();
@@ -831,12 +831,12 @@ export function PullRequestsTab() {
 	return (
 		<>
 			{linkError && (
-				<div className="mx-3 my-1 rounded-[var(--radius-sm)] bg-[var(--bg-elevated)] px-3 py-2 text-[11px] text-red-400">
+				<div className="mx-3 my-1 rounded-[var(--radius-sm)] bg-[var(--bg-elevated)] px-3 py-2 text-[11px] text-[var(--color-danger)]">
 					{linkError}
 				</div>
 			)}
 			{reviewError && (
-				<div className="mx-3 my-1 rounded-[var(--radius-sm)] bg-[var(--bg-elevated)] px-3 py-2 text-[11px] text-red-400">
+				<div className="mx-3 my-1 rounded-[var(--radius-sm)] bg-[var(--bg-elevated)] px-3 py-2 text-[11px] text-[var(--color-danger)]">
 					{reviewError}
 				</div>
 			)}

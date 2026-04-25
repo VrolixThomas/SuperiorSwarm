@@ -4,7 +4,7 @@ import { createRoot } from "react-dom/client";
 import type { ConflictType } from "../../shared/branch-types";
 import { detectLanguage } from "../../shared/diff-types";
 import { shouldSkipShortcutHandling } from "../hooks/useShortcutListener";
-import { EDITOR_THEME, ensureThemeRegistered } from "../lib/monacoTheme";
+import { ensureThemeRegistered } from "../lib/monacoTheme";
 import {
 	type MergeHunk,
 	computeSideDiffs,
@@ -379,10 +379,10 @@ export function ThreeWayDiffEditor({
 	useEffect(() => {
 		if (!theirsRef.current || !resultRef.current || !oursRef.current) return;
 
-		ensureThemeRegistered();
+		const theme = ensureThemeRegistered();
 
 		const commonOptions: monaco.editor.IStandaloneEditorConstructionOptions = {
-			theme: EDITOR_THEME,
+			theme,
 			fontSize: 13,
 			fontFamily: "'SF Mono', 'JetBrains Mono', 'Fira Code', monospace",
 			minimap: { enabled: false },

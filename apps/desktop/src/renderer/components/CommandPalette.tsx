@@ -103,7 +103,7 @@ export function CommandPalette() {
 			role="presentation"
 		>
 			{/* Backdrop */}
-			<div className="fixed inset-0 bg-black/40" aria-hidden="true" />
+			<div className="fixed inset-0 bg-[var(--scrim)]" aria-hidden="true" />
 
 			{/* Palette */}
 			<div className="relative z-10 flex w-[500px] max-h-[60vh] flex-col overflow-hidden rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-overlay)] shadow-[var(--shadow-lg)] backdrop-blur-md">

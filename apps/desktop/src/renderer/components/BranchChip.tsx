@@ -37,7 +37,7 @@ export function BranchChip({ projectId }: { projectId: string }) {
 					? status?.state === "merging"
 						? "border border-[rgba(255,69,58,0.3)] bg-[rgba(255,69,58,0.05)]"
 						: "border border-[rgba(255,159,10,0.3)] bg-[rgba(255,159,10,0.05)]"
-					: "border border-[var(--border)] bg-[rgba(255,255,255,0.04)] hover:bg-[rgba(255,255,255,0.08)]",
+					: "border border-[var(--border)] bg-[var(--bg-overlay)] hover:bg-[var(--bg-active)]",
 			].join(" ")}
 		>
 			{isConflict ? (

@@ -6,6 +6,7 @@ import type {
 	LspAPI,
 	SessionAPI,
 	SessionSaveData,
+	SettingsAPI,
 	ShellAPI,
 	TerminalAPI,
 	TrpcAPI,
@@ -113,6 +114,18 @@ const agentAlertAPI: AgentAlertAPI = {
 	},
 };
 
+const settingsAPI: SettingsAPI = {
+	onThemeChanged: (callback) => {
+		const handler = (_event: Electron.IpcRendererEvent, value: "system" | "light" | "dark") => {
+			callback(value);
+		};
+		ipcRenderer.on("settings:theme-changed", handler);
+		return () => {
+			ipcRenderer.removeListener("settings:theme-changed", handler);
+		};
+	},
+};
+
 contextBridge.exposeInMainWorld("electron", {
 	terminal: terminalAPI,
 	trpc: trpcAPI,
@@ -122,4 +135,5 @@ contextBridge.exposeInMainWorld("electron", {
 	lsp: lspAPI,
 	daemon: daemonAPI,
 	agentAlert: agentAlertAPI,
+	settings: settingsAPI,
 });

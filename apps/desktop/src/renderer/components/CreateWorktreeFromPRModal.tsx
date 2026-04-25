@@ -67,7 +67,7 @@ export function CreateWorktreeFromPRModal({ pr, onClose }: Props) {
 
 	return (
 		<div
-			className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+			className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--scrim)] backdrop-blur-sm"
 			onClick={(e) => {
 				if (e.target === e.currentTarget) onClose();
 			}}
@@ -138,13 +138,15 @@ export function CreateWorktreeFromPRModal({ pr, onClose }: Props) {
 					<button
 						type="submit"
 						disabled={!selectedProjectId || linkFromPRMutation.isPending}
-						className="w-full rounded-[var(--radius-md)] bg-[var(--accent)] px-4 py-2 text-[13px] font-medium text-white transition-all duration-[120ms] hover:bg-[var(--accent-hover)] disabled:opacity-50"
+						className="w-full rounded-[var(--radius-md)] bg-[var(--accent)] px-4 py-2 text-[13px] font-medium text-[var(--accent-foreground)] transition-all duration-[120ms] hover:bg-[var(--accent-hover)] disabled:opacity-50"
 					>
 						{linkFromPRMutation.isPending ? "Linking..." : "Link PR"}
 					</button>
 
 					{linkFromPRMutation.isError && (
-						<p className="text-[12px] text-red-400">{linkFromPRMutation.error.message}</p>
+						<p className="text-[12px] text-[var(--color-danger)]">
+							{linkFromPRMutation.error.message}
+						</p>
 					)}
 				</form>
 			</div>

@@ -50,7 +50,7 @@ export class ErrorBoundary extends Component<Props, State> {
 					<button
 						type="button"
 						onClick={() => window.location.reload()}
-						className="cursor-pointer border-none px-5 py-2 text-sm font-medium text-white"
+						className="cursor-pointer border-none px-5 py-2 text-sm font-medium text-[var(--accent-foreground)]"
 						style={{
 							background: "var(--accent)",
 							borderRadius: "var(--radius-md)",

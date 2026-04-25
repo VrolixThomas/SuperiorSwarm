@@ -180,7 +180,7 @@ function SuggestionRow({
 			<button
 				type="button"
 				onClick={() => onAdd(preset)}
-				className="shrink-0 rounded-[4px] bg-[#0a84ff] px-2 py-0.5 text-[10px] text-white hover:opacity-90"
+				className="shrink-0 rounded-[4px] bg-[var(--accent)] px-2 py-0.5 text-[10px] text-[var(--accent-foreground)] hover:opacity-90"
 			>
 				Add
 			</button>
