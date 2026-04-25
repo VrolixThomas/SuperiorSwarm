@@ -451,3 +451,11 @@ export const reviewViewed = sqliteTable(
 
 export type ReviewViewed = typeof reviewViewed.$inferSelect;
 export type NewReviewViewed = typeof reviewViewed.$inferInsert;
+
+export const appSettings = sqliteTable("app_settings", {
+	key: text("key").primaryKey(),
+	value: text("value").notNull(),
+});
+
+export type AppSetting = typeof appSettings.$inferSelect;
+export type NewAppSetting = typeof appSettings.$inferInsert;
