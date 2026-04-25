@@ -17,6 +17,7 @@ import { SharedFilesPanel } from "./components/SharedFilesPanel";
 import { Sidebar } from "./components/Sidebar";
 import { UpdateToast } from "./components/UpdateToast";
 import { WhatsNewModal } from "./components/WhatsNewModal";
+import { PRReviewKeyboardListener } from "./components/review/PRReviewKeyboardListener";
 import { SettingsPage } from "./components/settings/SettingsPage";
 import { useAgentAlertListener } from "./hooks/useAgentAlertListener";
 import { useShortcutListener } from "./hooks/useShortcutListener";
@@ -720,6 +721,7 @@ function AuthenticatedApp() {
 					<SharedFilesPanel />
 					<DaemonStatus />
 					<CommandPalette />
+					<PRReviewKeyboardListener />
 					{activeProjectId && (
 						<BranchPalette
 							projectId={activeProjectId}

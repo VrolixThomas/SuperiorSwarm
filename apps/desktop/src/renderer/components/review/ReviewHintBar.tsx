@@ -1,9 +1,9 @@
-interface Hint {
+export interface Hint {
 	keys: string[];
 	label: string;
 }
 
-const HINTS: Hint[] = [
+const DEFAULT_HINTS: Hint[] = [
 	{ keys: ["J"], label: "Next" },
 	{ keys: ["K"], label: "Prev" },
 	{ keys: ["E"], label: "Edit" },
@@ -12,10 +12,10 @@ const HINTS: Hint[] = [
 	{ keys: ["Esc"], label: "Close" },
 ];
 
-export function ReviewHintBar() {
+export function ReviewHintBar({ hints = DEFAULT_HINTS }: { hints?: Hint[] } = {}) {
 	return (
 		<div className="flex items-center gap-4 border-t border-[var(--border)] px-3 py-1 text-[10px] text-[var(--text-quaternary)]">
-			{HINTS.map((h) => (
+			{hints.map((h) => (
 				<div key={h.label} className="flex items-center gap-1">
 					{h.keys.map((k) => (
 						<kbd

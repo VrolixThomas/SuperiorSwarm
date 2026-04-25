@@ -275,6 +275,16 @@ body,
 	background: rgba(167, 139, 250, 0.06);
 }
 
+/* Active thread decoration (overrides resolved/unresolved/AI states) */
+.pr-thread-active-gutter {
+	width: 3px !important;
+	background: var(--accent);
+}
+
+.pr-thread-active-line {
+	background: var(--accent-subtle);
+}
+
 /* AI badge pill */
 .ai-badge {
 	display: inline-flex;

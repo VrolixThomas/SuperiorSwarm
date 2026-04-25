@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { detectLanguage } from "../../shared/diff-types";
 import type {
 	AIDraftThread,
@@ -6,6 +6,10 @@ import type {
 	PRContext,
 	UnifiedThread,
 } from "../../shared/github-types";
+import { formatPrIdentifier } from "../../shared/pr-identifier";
+import { basename } from "../lib/format";
+import { navigateToReviewFile } from "../lib/pr-review-nav";
+import { prReviewSessionKey, usePRReviewSessionStore } from "../stores/pr-review-session-store";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import { CommentThreadCard, threadAuthor, threadDate } from "./CommentThreadCard";
@@ -151,7 +155,6 @@ function ChangesTab({
 	commentCountByFile: Map<string, number>;
 	activeFilePath: string | null;
 }) {
-	const openPRReviewFile = useTabStore((s) => s.openPRReviewFile);
 	const activeWorkspaceId = useTabStore((s) => s.activeWorkspaceId);
 	const [collapsed, setCollapsed] = useState(false);
 	const [baseBranch, setBaseBranch] = useState(prCtx.targetBranch);
@@ -165,29 +168,46 @@ function ChangesTab({
 	);
 
 	// Use PR files for default base, dynamic diff for custom base
-	const files = isCustomBase
-		? (branchDiffQuery.data?.files ?? []).map((f) => ({
-				path: f.path,
-				additions: f.additions,
-				deletions: f.deletions,
-				changeType:
-					f.status === "added"
-						? "ADDED"
-						: f.status === "deleted"
-							? "DELETED"
-							: f.status === "renamed"
-								? "RENAMED"
-								: "MODIFIED",
-			}))
-		: details.files.map((f) => ({
-				path: f.path,
-				additions: f.additions,
-				deletions: f.deletions,
-				changeType: f.changeType,
-			}));
+	const files = useMemo(
+		() =>
+			isCustomBase
+				? (branchDiffQuery.data?.files ?? []).map((f) => ({
+						path: f.path,
+						additions: f.additions,
+						deletions: f.deletions,
+						changeType:
+							f.status === "added"
+								? "ADDED"
+								: f.status === "deleted"
+									? "DELETED"
+									: f.status === "renamed"
+										? "RENAMED"
+										: "MODIFIED",
+					}))
+				: details.files.map((f) => ({
+						path: f.path,
+						additions: f.additions,
+						deletions: f.deletions,
+						changeType: f.changeType,
+					})),
+		[isCustomBase, branchDiffQuery.data, details.files]
+	);
 
 	const totalAdditions = useMemo(() => files.reduce((s, f) => s + f.additions, 0), [files]);
 	const totalDeletions = useMemo(() => files.reduce((s, f) => s + f.deletions, 0), [files]);
+
+	// biome-ignore lint/correctness/useExhaustiveDependencies: prCtx primitives only — avoid recompute on new prCtx ref
+	const sessionKey = useMemo(
+		() => prReviewSessionKey(activeWorkspaceId ?? "", formatPrIdentifier(prCtx)),
+		[activeWorkspaceId, prCtx.owner, prCtx.repo, prCtx.number]
+	);
+	const setFileOrder = usePRReviewSessionStore((s) => s.setFileOrder);
+	useEffect(() => {
+		setFileOrder(
+			sessionKey,
+			files.map((f) => f.path)
+		);
+	}, [files, sessionKey, setFileOrder]);
 
 	// Commits query — use origin/<baseBranch> because worktrees may not have
 	// a local tracking branch for the target (e.g. no local "main", only "origin/main")
@@ -271,7 +291,7 @@ function ChangesTab({
 									</div>
 								)}
 								{files.map((file) => {
-									const filename = file.path.split("/").pop() ?? file.path;
+									const filename = basename(file.path);
 									const isViewed = viewedFiles.has(file.path);
 									const commentCount = commentCountByFile.get(file.path) ?? 0;
 									const isActive = file.path === activeFilePath;
@@ -313,12 +333,7 @@ function ChangesTab({
 												type="button"
 												onClick={() => {
 													if (!activeWorkspaceId) return;
-													openPRReviewFile(
-														activeWorkspaceId,
-														prCtx,
-														file.path,
-														detectLanguage(file.path)
-													);
+													navigateToReviewFile(activeWorkspaceId, prCtx, file.path);
 												}}
 												className={[
 													"min-w-0 flex-1 truncate text-left font-mono text-[11px] transition-colors hover:text-[var(--text-secondary)]",
@@ -408,7 +423,6 @@ function PRCommitCard({
 	prCtx: PRContext;
 }) {
 	const [expanded, setExpanded] = useState(false);
-	const openPRReviewFile = useTabStore((s) => s.openPRReviewFile);
 	const activeWorkspaceId = useTabStore((s) => s.activeWorkspaceId);
 
 	return (
@@ -454,14 +468,14 @@ function PRCommitCard({
 			{expanded && (
 				<div className="border-t border-[var(--border-subtle)] px-1 py-1">
 					{commit.files.map((file) => {
-						const fileName = file.path.split("/").pop() ?? file.path;
+						const fileName = basename(file.path);
 						return (
 							<button
 								key={file.path}
 								type="button"
 								onClick={() => {
 									if (!activeWorkspaceId) return;
-									openPRReviewFile(activeWorkspaceId, prCtx, file.path, detectLanguage(file.path));
+									navigateToReviewFile(activeWorkspaceId, prCtx, file.path);
 								}}
 								className="flex w-full items-center gap-1.5 rounded px-2 py-0.5 text-left text-[12px] text-[var(--text-secondary)] transition-colors duration-[120ms] hover:bg-[var(--bg-elevated)]"
 							>
@@ -505,7 +519,6 @@ function CommentsTab({
 }) {
 	const [sortMode, setSortMode] = useState<SortMode>("by-file");
 	const utils = trpc.useUtils();
-	const openPRReviewFile = useTabStore((s) => s.openPRReviewFile);
 	const activeWorkspaceId = useTabStore((s) => s.activeWorkspaceId);
 
 	const invalidateDrafts = () => {
@@ -549,6 +562,30 @@ function CommentsTab({
 		return [...ghThreads, ...aiThreads];
 	}, [details.reviewThreads, aiThreads]);
 
+	const setThreadOrder = usePRReviewSessionStore((s) => s.setThreadOrder);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: prCtx primitives only — avoid recompute on new prCtx ref
+	const sessionKey = useMemo(
+		() => prReviewSessionKey(activeWorkspaceId ?? "", formatPrIdentifier(prCtx)),
+		[activeWorkspaceId, prCtx.owner, prCtx.repo, prCtx.number]
+	);
+	const threadOrderRefs = useMemo(
+		() =>
+			[...allThreads]
+				.filter((t) => {
+					if (t.isAIDraft) return (t as AIDraftThread).status === "pending";
+					return !(t as Exclude<UnifiedThread, { isAIDraft: true }>).isResolved;
+				})
+				.sort((a, b) => {
+					const fa = a.path.localeCompare(b.path);
+					return fa !== 0 ? fa : (a.line ?? 0) - (b.line ?? 0);
+				})
+				.map((t) => ({ id: t.id, path: t.path })),
+		[allThreads]
+	);
+	useEffect(() => {
+		setThreadOrder(sessionKey, threadOrderRefs);
+	}, [threadOrderRefs, sessionKey, setThreadOrder]);
+
 	const grouped = useMemo(() => {
 		if (sortMode === "latest-first") return null;
 		const map = new Map<string, UnifiedThread[]>();
@@ -588,7 +625,7 @@ function CommentsTab({
 			onResolve={(threadId) => resolveThread.mutate({ threadId })}
 			onNavigate={(path) => {
 				if (!activeWorkspaceId) return;
-				openPRReviewFile(activeWorkspaceId, prCtx, path, detectLanguage(path));
+				navigateToReviewFile(activeWorkspaceId, prCtx, path, t.id);
 			}}
 		/>
 	);
@@ -749,7 +786,7 @@ export function PRControlRail({ prCtx }: { prCtx: PRContext }) {
 	});
 
 	// ── AI review draft ───────────────────────────────────────────────────
-	const prIdentifier = `${prCtx.owner}/${prCtx.repo}#${prCtx.number}`;
+	const prIdentifier = formatPrIdentifier(prCtx);
 	const reviewDraftsQuery = trpc.aiReview.getReviewDrafts.useQuery(undefined, {
 		staleTime: 5_000,
 	});
@@ -940,14 +977,22 @@ export function PRControlRail({ prCtx }: { prCtx: PRContext }) {
 	// ── Active file detection ─────────────────────────────────────────────
 	const activeWorkspaceId = useTabStore((s) => s.activeWorkspaceId);
 	const openPROverview = useTabStore((s) => s.openPROverview);
-	const activeFilePath = useTabStore((s) => {
-		const wsId = s.activeWorkspaceId;
-		if (!wsId) return null;
-		const tabs = s.getVisibleTabs();
-		const activeId = s.getActiveTabId();
-		const t = tabs.find((x) => x.id === activeId);
-		return t?.kind === "pr-review-file" ? t.filePath : null;
-	});
+	// biome-ignore lint/correctness/useExhaustiveDependencies: prCtx primitives only — avoid recompute on new prCtx ref
+	const sessionKey = useMemo(
+		() => prReviewSessionKey(activeWorkspaceId ?? "", formatPrIdentifier(prCtx)),
+		[activeWorkspaceId, prCtx.owner, prCtx.repo, prCtx.number]
+	);
+	const activeFilePath = usePRReviewSessionStore(
+		(s) => s.sessions.get(sessionKey)?.activeFilePath ?? null
+	);
+
+	// biome-ignore lint/correctness/useExhaustiveDependencies: prCtx primitives only — avoid re-runs on new prCtx ref
+	useEffect(() => {
+		if (!activeFilePath || !activeWorkspaceId) return;
+		useTabStore
+			.getState()
+			.swapPRReviewFile(activeWorkspaceId, prCtx, activeFilePath, detectLanguage(activeFilePath));
+	}, [activeFilePath, activeWorkspaceId, prCtx.owner, prCtx.repo, prCtx.number]);
 
 	// ── Loading state ─────────────────────────────────────────────────────
 	if (isLoading || !details) {

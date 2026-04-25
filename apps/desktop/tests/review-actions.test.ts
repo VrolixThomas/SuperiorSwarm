@@ -3,7 +3,7 @@ import { shouldSkipShortcutHandling } from "../src/renderer/hooks/useShortcutLis
 
 function evt(
 	key: string,
-	extras: Partial<Pick<KeyboardEvent, "metaKey" | "ctrlKey" | "altKey">> = {},
+	extras: Partial<Pick<KeyboardEvent, "metaKey" | "ctrlKey" | "altKey">> = {}
 ): KeyboardEvent {
 	return {
 		key,
@@ -43,26 +43,26 @@ describe("shouldSkipShortcutHandling", () => {
 	});
 
 	test("Cmd+j in a textarea is NOT skipped (modifier shortcuts pass through)", () => {
-		expect(
-			shouldSkipShortcutHandling(evt("j", { metaKey: true }), fakeElement("TEXTAREA")),
-		).toBe(false);
+		expect(shouldSkipShortcutHandling(evt("j", { metaKey: true }), fakeElement("TEXTAREA"))).toBe(
+			false
+		);
 	});
 
 	test("Ctrl+j in a textarea is NOT skipped (modifier shortcuts pass through)", () => {
-		expect(
-			shouldSkipShortcutHandling(evt("j", { ctrlKey: true }), fakeElement("TEXTAREA")),
-		).toBe(false);
+		expect(shouldSkipShortcutHandling(evt("j", { ctrlKey: true }), fakeElement("TEXTAREA"))).toBe(
+			false
+		);
 	});
 
 	test("Alt+j in a textarea IS skipped (altKey alone does not bypass skip)", () => {
-		expect(
-			shouldSkipShortcutHandling(evt("j", { altKey: true }), fakeElement("TEXTAREA")),
-		).toBe(true);
+		expect(shouldSkipShortcutHandling(evt("j", { altKey: true }), fakeElement("TEXTAREA"))).toBe(
+			true
+		);
 	});
 
 	test("Escape with Cmd in a textarea is NOT skipped", () => {
 		expect(
-			shouldSkipShortcutHandling(evt("Escape", { metaKey: true }), fakeElement("TEXTAREA")),
+			shouldSkipShortcutHandling(evt("Escape", { metaKey: true }), fakeElement("TEXTAREA"))
 		).toBe(false);
 	});
 

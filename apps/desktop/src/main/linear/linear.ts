@@ -438,4 +438,3 @@ export async function getIssueDetail(issueId: string): Promise<LinearIssueDetail
 		})),
 	};
 }
-

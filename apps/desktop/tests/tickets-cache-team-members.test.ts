@@ -75,7 +75,9 @@ describe("upsertTeamMembers", () => {
 			{ userId: "u3", name: "Carol" },
 		]);
 
-		upsertTeamMembers("linear", "team-1", [{ userId: "u1", name: "Alice", email: null, avatarUrl: null }]);
+		upsertTeamMembers("linear", "team-1", [
+			{ userId: "u1", name: "Alice", email: null, avatarUrl: null },
+		]);
 
 		const rows = getCachedTeamMembers({ provider: "linear", teamId: "team-1" });
 		expect(rows.map((r) => r.userId)).toEqual(["u1"]);
@@ -102,9 +104,7 @@ describe("upsertTeamMembers", () => {
 	});
 
 	test("no-op when incoming matches existing exactly", () => {
-		seed("linear", "team-1", [
-			{ userId: "u1", name: "Alice", email: "a@x", avatarUrl: "a.png" },
-		]);
+		seed("linear", "team-1", [{ userId: "u1", name: "Alice", email: "a@x", avatarUrl: "a.png" }]);
 		const before = getCachedTeamMembers({ provider: "linear", teamId: "team-1" })[0];
 
 		upsertTeamMembers("linear", "team-1", [
