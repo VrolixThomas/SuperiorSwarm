@@ -128,7 +128,7 @@ function ActiveState({
 
 			{newCommentCount > 0 && (
 				<div className="mx-4 mb-2 px-3 py-[10px] rounded-[6px] bg-[rgba(255,159,10,0.08)] border border-[rgba(255,159,10,0.2)]">
-					<div className="text-[11px] text-[#ff9f0a] font-medium mb-1">
+					<div className="text-[11px] text-[var(--color-warning)] font-medium mb-1">
 						{newCommentCount} new comment{newCommentCount !== 1 ? "s" : ""} since last solve
 					</div>
 					<div className="text-[10px] text-[var(--text-tertiary)]">

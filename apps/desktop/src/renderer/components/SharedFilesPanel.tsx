@@ -56,7 +56,7 @@ function CandidateNode({
 					type="button"
 					onClick={() => onAdd(entry.relativePath)}
 					disabled={isAdding}
-					className="group/add shrink-0 h-[18px] w-[18px] rounded-[4px] flex items-center justify-center border border-[var(--border-active)] hover:border-[var(--accent)] hover:bg-[rgba(10,132,255,0.12)] transition-all duration-100 disabled:opacity-40"
+					className="group/add shrink-0 h-[18px] w-[18px] rounded-[4px] flex items-center justify-center border border-[var(--border-active)] hover:border-[var(--accent)] hover:bg-[var(--accent-subtle)] transition-all duration-100 disabled:opacity-40"
 					aria-label={`Add ${entry.name} to shared files`}
 				>
 					<svg
@@ -105,7 +105,7 @@ function CandidateNode({
 					type="button"
 					onClick={() => onAdd(entry.relativePath)}
 					disabled={isAdding}
-					className="group/add shrink-0 h-[18px] w-[18px] rounded-[4px] flex items-center justify-center border border-[var(--border-active)] hover:border-[var(--accent)] hover:bg-[rgba(10,132,255,0.12)] transition-all duration-100 disabled:opacity-40"
+					className="group/add shrink-0 h-[18px] w-[18px] rounded-[4px] flex items-center justify-center border border-[var(--border-active)] hover:border-[var(--accent)] hover:bg-[var(--accent-subtle)] transition-all duration-100 disabled:opacity-40"
 					aria-label={`Add ${entry.name} folder to shared files`}
 				>
 					<svg
@@ -152,7 +152,7 @@ function CandidateNode({
 					<span className="flex-1 truncate text-[13px] font-[var(--font-mono)] text-[rgba(255,255,255,0.82)] group-hover/dir:text-white transition-colors duration-75 leading-none">
 						{entry.name}/
 					</span>
-					<span className="shrink-0 rounded-[4px] bg-[rgba(10,132,255,0.1)] border border-[rgba(10,132,255,0.18)] px-[6px] py-[3px] text-[10.5px] tabular-nums text-[rgba(10,132,255,0.85)] font-semibold leading-none">
+					<span className="shrink-0 rounded-[4px] bg-[var(--accent-subtle)] border border-[var(--accent-subtle)] px-[6px] py-[3px] text-[10.5px] tabular-nums text-[rgba(10,132,255,0.85)] font-semibold leading-none">
 						{fileCount}
 					</span>
 				</button>
@@ -390,7 +390,7 @@ export function SharedFilesPanel() {
 						syncMutation.isError ||
 						pickerError) && (
 						<div className="mx-5 mt-5 rounded-[10px] bg-[rgba(255,69,58,0.08)] border border-[rgba(255,69,58,0.22)] px-4 py-3">
-							<p className="text-[12.5px] text-[#ff453a]">
+							<p className="text-[12.5px] text-[var(--color-danger)]">
 								{pickerError ??
 									addMutation.error?.message ??
 									addBatchMutation.error?.message ??
@@ -454,7 +454,7 @@ export function SharedFilesPanel() {
 											type="button"
 											onClick={() => removeMutation.mutate({ id: file.id })}
 											disabled={removeMutation.isPending || addMutation.isPending}
-											className="shrink-0 h-6 w-6 rounded-[5px] flex items-center justify-center opacity-0 group-hover/active:opacity-100 transition-all duration-100 text-[rgba(255,255,255,0.25)] hover:text-[#ff453a] hover:bg-[rgba(255,69,58,0.12)] disabled:pointer-events-none"
+											className="shrink-0 h-6 w-6 rounded-[5px] flex items-center justify-center opacity-0 group-hover/active:opacity-100 transition-all duration-100 text-[rgba(255,255,255,0.25)] hover:text-[var(--color-danger)] hover:bg-[var(--danger-subtle)] disabled:pointer-events-none"
 											title="Remove from shared files"
 										>
 											<svg aria-hidden="true" width="9" height="9" viewBox="0 0 9 9" fill="none">

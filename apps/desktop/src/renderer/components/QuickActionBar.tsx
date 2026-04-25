@@ -174,7 +174,7 @@ export function QuickActionBar({
 								"shrink-0 whitespace-nowrap rounded-[var(--radius-sm)] px-1.5 py-0.5 text-[12px] transition-all duration-100",
 								isDragging ? "opacity-30" : "opacity-100",
 								isDropTarget
-									? "bg-[rgba(10,132,255,0.15)] text-[var(--accent)]"
+									? "bg-[var(--accent-subtle)] text-[var(--accent)]"
 									: "text-[var(--text-tertiary)] hover:text-[var(--text)]",
 								"cursor-grab active:cursor-grabbing",
 							].join(" ")}

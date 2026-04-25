@@ -81,7 +81,7 @@ export function WorktreesSettings() {
 							type="button"
 							onClick={() => pruneMutation.mutate()}
 							disabled={pruneMutation.isPending}
-							className="rounded-[6px] border border-[rgba(255,69,58,0.3)] bg-[rgba(255,69,58,0.08)] px-2.5 py-1 text-[11px] text-[#ff453a] transition-colors hover:bg-[rgba(255,69,58,0.15)]"
+							className="rounded-[6px] border border-[rgba(255,69,58,0.3)] bg-[rgba(255,69,58,0.08)] px-2.5 py-1 text-[11px] text-[var(--color-danger)] transition-colors hover:bg-[var(--danger-subtle)]"
 						>
 							{pruneMutation.isPending
 								? "Pruning..."
@@ -123,7 +123,7 @@ export function WorktreesSettings() {
 														{shortPath(wt.path)}
 													</span>
 													{wt.isMain && (
-														<span className="rounded-full bg-[rgba(10,132,255,0.15)] px-2 py-0.5 text-[9px] font-medium text-[var(--accent)]">
+														<span className="rounded-full bg-[var(--accent-subtle)] px-2 py-0.5 text-[9px] font-medium text-[var(--accent)]">
 															Main
 														</span>
 													)}
@@ -133,7 +133,7 @@ export function WorktreesSettings() {
 														</span>
 													)}
 													{isStale && (
-														<span className="rounded-full bg-[rgba(255,69,58,0.15)] px-2 py-0.5 text-[9px] font-medium text-[#ff453a]">
+														<span className="rounded-full bg-[var(--danger-subtle)] px-2 py-0.5 text-[9px] font-medium text-[var(--color-danger)]">
 															Missing from disk
 														</span>
 													)}
@@ -168,7 +168,7 @@ export function WorktreesSettings() {
 																});
 																setConfirmPath(null);
 															}}
-															className="rounded-[6px] px-2 py-0.5 text-[10px] text-[#ff453a] transition-colors hover:bg-[rgba(255,69,58,0.1)]"
+															className="rounded-[6px] px-2 py-0.5 text-[10px] text-[var(--color-danger)] transition-colors hover:bg-[rgba(255,69,58,0.1)]"
 														>
 															Confirm
 														</button>
@@ -185,7 +185,7 @@ export function WorktreesSettings() {
 														type="button"
 														onClick={() => setConfirmPath(wt.path)}
 														disabled={removeMutation.isPending}
-														className="ml-3 shrink-0 rounded-[6px] px-2.5 py-1 text-[11px] text-[var(--text-quaternary)] transition-colors hover:bg-[rgba(255,69,58,0.1)] hover:text-[#ff453a] disabled:opacity-50"
+														className="ml-3 shrink-0 rounded-[6px] px-2.5 py-1 text-[11px] text-[var(--text-quaternary)] transition-colors hover:bg-[rgba(255,69,58,0.1)] hover:text-[var(--color-danger)] disabled:opacity-50"
 													>
 														Remove
 													</button>

@@ -83,7 +83,7 @@ export function BranchRow({ branch, isSelected, onSelect, onContextMenu, onActio
 				</span>
 			)}
 			{branch.hasWorkspace && (
-				<span className="shrink-0 rounded-[4px] bg-[rgba(10,132,255,0.12)] px-1.5 text-[10px] text-[var(--accent)]">
+				<span className="shrink-0 rounded-[4px] bg-[var(--accent-subtle)] px-1.5 text-[10px] text-[var(--accent)]">
 					workspace
 				</span>
 			)}

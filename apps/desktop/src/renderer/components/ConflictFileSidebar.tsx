@@ -136,7 +136,7 @@ export function ConflictFileSidebar({
 									className={[
 										"flex w-full items-center gap-1.5 rounded-[var(--radius-sm)] px-2 py-1 text-left text-[12px] transition-all duration-[var(--transition-fast)]",
 										activeFile === file.path
-											? "border border-[rgba(10,132,255,0.15)] bg-[rgba(10,132,255,0.1)] text-[var(--text)]"
+											? "border border-[var(--accent-subtle)] bg-[var(--accent-subtle)] text-[var(--text)]"
 											: isKeyboardFocused
 												? "border border-[var(--border-active)] bg-[var(--bg-overlay)] text-[var(--text)]"
 												: "text-[var(--text-secondary)] hover:bg-[var(--bg-overlay)]",
@@ -181,9 +181,9 @@ export function ConflictFileSidebar({
 									}}
 									className={[
 										"flex w-full items-center gap-1.5 rounded-[var(--radius-sm)] px-2 py-1 text-left text-[12px] opacity-60 transition-all duration-[var(--transition-fast)]",
-										isFlashing && activeFile !== file.path ? "bg-[rgba(48,209,88,0.12)]" : "",
+										isFlashing && activeFile !== file.path ? "bg-[var(--success-subtle)]" : "",
 										activeFile === file.path
-											? "bg-[rgba(10,132,255,0.1)] text-[var(--text)]"
+											? "bg-[var(--accent-subtle)] text-[var(--text)]"
 											: isKeyboardFocused
 												? "border border-[var(--border)] bg-[var(--bg-overlay)] text-[var(--text-secondary)]"
 												: "text-[var(--text-tertiary)] hover:bg-[var(--bg-overlay)]",

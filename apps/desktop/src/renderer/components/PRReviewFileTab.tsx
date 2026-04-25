@@ -64,7 +64,7 @@ function ThreadWidget({
 							</span>
 						)}
 						{isError && (
-							<span className="rounded-[3px] border border-[rgba(255,69,58,0.3)] bg-[rgba(255,69,58,0.12)] px-1.5 py-px text-[9px] font-semibold uppercase tracking-wide text-[#ff453a]">
+							<span className="rounded-[3px] border border-[rgba(255,69,58,0.3)] bg-[var(--danger-subtle)] px-1.5 py-px text-[9px] font-semibold uppercase tracking-wide text-[var(--color-danger)]">
 								Failed
 							</span>
 						)}
@@ -100,7 +100,7 @@ function ThreadWidget({
 						<button
 							type="button"
 							onClick={() => onAcceptDraft?.(aiThread.draftCommentId)}
-							className="rounded-[4px] px-2 py-0.5 text-[10px] font-medium bg-[rgba(48,209,88,0.15)] text-[#30d158] hover:opacity-80"
+							className="rounded-[4px] px-2 py-0.5 text-[10px] font-medium bg-[var(--success-subtle)] text-[var(--color-success)] hover:opacity-80"
 						>
 							Accept
 						</button>

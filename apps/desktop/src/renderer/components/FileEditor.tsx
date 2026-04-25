@@ -252,7 +252,7 @@ export function FileEditor({
 				style={isLoading ? { display: "none" } : undefined}
 			>
 				{lspMessage && !isLanguageDismissed && (
-					<div className="flex items-center justify-between gap-2 border-b border-[rgba(255,159,10,0.35)] bg-[rgba(255,159,10,0.12)] px-3 py-2 text-[12px] text-[var(--color-warning)]">
+					<div className="flex items-center justify-between gap-2 border-b border-[rgba(255,159,10,0.35)] bg-[var(--warning-subtle)] px-3 py-2 text-[12px] text-[var(--color-warning)]">
 						<span>{lspMessage}</span>
 						<div className="flex shrink-0 items-center gap-1.5">
 							{canTrust && (

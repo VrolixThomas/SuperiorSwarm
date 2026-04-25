@@ -235,7 +235,7 @@ export function SettingsNav() {
 								onClick={() => setSettingsCategory(item.id)}
 								className={`flex w-full items-center gap-2 rounded-[6px] px-3 py-[7px] text-[13px] transition-colors ${
 									settingsCategory === item.id
-										? "bg-[rgba(10,132,255,0.12)] text-[var(--accent)]"
+										? "bg-[var(--accent-subtle)] text-[var(--accent)]"
 										: "text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text)]"
 								}`}
 							>

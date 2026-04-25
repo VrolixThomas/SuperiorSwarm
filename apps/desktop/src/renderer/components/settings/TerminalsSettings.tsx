@@ -19,9 +19,9 @@ interface SessionRow {
 
 function statusBadge(status: SessionRow["status"]) {
 	const styles: Record<string, string> = {
-		active: "bg-[rgba(48,209,88,0.15)] text-[#30d158]",
+		active: "bg-[var(--success-subtle)] text-[var(--color-success)]",
 		orphaned: "bg-[rgba(255,214,10,0.15)] text-[#ffd60a]",
-		ghost: "bg-[rgba(255,69,58,0.15)] text-[#ff453a]",
+		ghost: "bg-[var(--danger-subtle)] text-[var(--color-danger)]",
 		"db-only": "bg-[rgba(191,90,242,0.15)] text-[#bf5af2]",
 	};
 	const labels: Record<string, string> = {
@@ -204,7 +204,7 @@ export function TerminalsSettings() {
 						<button
 							type="button"
 							onClick={handleKillAllOrphaned}
-							className="rounded-[6px] border border-[rgba(255,69,58,0.3)] bg-[rgba(255,69,58,0.08)] px-2.5 py-1 text-[11px] text-[#ff453a] transition-colors hover:bg-[rgba(255,69,58,0.15)]"
+							className="rounded-[6px] border border-[rgba(255,69,58,0.3)] bg-[rgba(255,69,58,0.08)] px-2.5 py-1 text-[11px] text-[var(--color-danger)] transition-colors hover:bg-[var(--danger-subtle)]"
 						>
 							Kill {orphanCount} orphaned
 						</button>
@@ -249,7 +249,7 @@ export function TerminalsSettings() {
 								type="button"
 								onClick={() => handleDispose(row.id)}
 								disabled={disposing.has(row.id)}
-								className="ml-3 shrink-0 rounded-[6px] px-2.5 py-1 text-[11px] text-[var(--text-quaternary)] transition-colors hover:bg-[rgba(255,69,58,0.1)] hover:text-[#ff453a] disabled:opacity-50"
+								className="ml-3 shrink-0 rounded-[6px] px-2.5 py-1 text-[11px] text-[var(--text-quaternary)] transition-colors hover:bg-[rgba(255,69,58,0.1)] hover:text-[var(--color-danger)] disabled:opacity-50"
 							>
 								{disposing.has(row.id) ? "Killing..." : "Kill"}
 							</button>

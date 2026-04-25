@@ -275,8 +275,8 @@ export function MergeConflictPane({ projectId, mergeType, sourceBranch, targetBr
 					className={[
 						"rounded px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider",
 						mergeType === "merge"
-							? "bg-[rgba(255,69,58,0.12)] text-[var(--color-danger)]"
-							: "bg-[rgba(255,159,10,0.12)] text-[var(--color-warning)]",
+							? "bg-[var(--danger-subtle)] text-[var(--color-danger)]"
+							: "bg-[var(--warning-subtle)] text-[var(--color-warning)]",
 					].join(" ")}
 				>
 					{mergeType}
@@ -302,11 +302,11 @@ export function MergeConflictPane({ projectId, mergeType, sourceBranch, targetBr
 
 				{/* Conflict count badge */}
 				{conflictCount > 0 ? (
-					<span className="rounded bg-[rgba(255,159,10,0.12)] px-2 py-0.5 text-[11px] text-[var(--color-warning)]">
+					<span className="rounded bg-[var(--warning-subtle)] px-2 py-0.5 text-[11px] text-[var(--color-warning)]">
 						{conflictCount} conflict{conflictCount !== 1 ? "s" : ""} remaining
 					</span>
 				) : files.length > 0 ? (
-					<span className="rounded bg-[rgba(48,209,88,0.12)] px-2 py-0.5 text-[11px] text-[var(--color-success)]">
+					<span className="rounded bg-[var(--success-subtle)] px-2 py-0.5 text-[11px] text-[var(--color-success)]">
 						All resolved
 					</span>
 				) : null}
@@ -329,7 +329,7 @@ export function MergeConflictPane({ projectId, mergeType, sourceBranch, targetBr
 					type="button"
 					onClick={handleAbort}
 					disabled={isAborting}
-					className="rounded-[var(--radius-sm)] border border-[rgba(255,69,58,0.3)] bg-[rgba(255,69,58,0.08)] px-3 py-1 text-[12px] font-medium text-[var(--color-danger)] transition-all duration-[var(--transition-fast)] hover:bg-[rgba(255,69,58,0.15)] disabled:cursor-not-allowed disabled:opacity-50"
+					className="rounded-[var(--radius-sm)] border border-[rgba(255,69,58,0.3)] bg-[rgba(255,69,58,0.08)] px-3 py-1 text-[12px] font-medium text-[var(--color-danger)] transition-all duration-[var(--transition-fast)] hover:bg-[var(--danger-subtle)] disabled:cursor-not-allowed disabled:opacity-50"
 				>
 					{isAborting ? "Aborting…" : "Abort"}
 				</button>

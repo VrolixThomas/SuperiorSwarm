@@ -63,7 +63,7 @@ export function AboutSettings() {
 								{updateVersion}
 							</div>
 						) : (
-							<div className="mt-0.5 text-[14px] font-semibold text-[#30d158]">
+							<div className="mt-0.5 text-[14px] font-semibold text-[var(--color-success)]">
 								{currentVersion} ✓
 							</div>
 						)}
@@ -79,7 +79,7 @@ export function AboutSettings() {
 								onClick={() => {
 									if (updateVersion) openWhatsNew(updateVersion);
 								}}
-								className="rounded-[5px] border border-[rgba(10,132,255,0.3)] px-2.5 py-1 text-[11px] text-[var(--accent)] transition-colors hover:bg-[rgba(10,132,255,0.1)]"
+								className="rounded-[5px] border border-[rgba(10,132,255,0.3)] px-2.5 py-1 text-[11px] text-[var(--accent)] transition-colors hover:bg-[var(--accent-subtle)]"
 							>
 								What's new
 							</button>
@@ -95,7 +95,9 @@ export function AboutSettings() {
 						</div>
 					</div>
 				) : checkError ? (
-					<div className="text-[11px] text-[#ff453a]">Update check failed: {checkError}</div>
+					<div className="text-[11px] text-[var(--color-danger)]">
+						Update check failed: {checkError}
+					</div>
 				) : (
 					<div className="text-[11px] text-[var(--text-tertiary)]">You're up to date</div>
 				)}

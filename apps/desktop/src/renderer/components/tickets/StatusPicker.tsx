@@ -55,7 +55,7 @@ export function StatusPicker({ issue, onStatusChange }: StatusPickerProps) {
 				}}
 				className={`rounded-[4px] px-1.5 py-0.5 text-[9px] transition-colors duration-[80ms] ${
 					open
-						? "bg-[rgba(10,132,255,0.12)] text-[var(--text-secondary)] ring-1 ring-[rgba(10,132,255,0.3)]"
+						? "bg-[var(--accent-subtle)] text-[var(--text-secondary)] ring-1 ring-[rgba(10,132,255,0.3)]"
 						: "bg-[var(--bg-overlay)] text-[var(--text-tertiary)] hover:bg-[var(--bg-active)]"
 				}`}
 			>

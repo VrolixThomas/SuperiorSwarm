@@ -68,7 +68,7 @@ export function LspServerRow({
 					<span
 						className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${
 							available
-								? "bg-[rgba(48,209,88,0.15)] text-[#30d158]"
+								? "bg-[var(--success-subtle)] text-[var(--color-success)]"
 								: "bg-[rgba(255,214,10,0.15)] text-[#ffd60a]"
 						}`}
 					>
@@ -96,12 +96,12 @@ export function LspServerRow({
 					/>
 				)}
 				{startupError && (
-					<div className="mt-1 max-h-[60px] overflow-y-auto whitespace-pre-wrap font-mono text-[10px] text-[#ff453a]">
+					<div className="mt-1 max-h-[60px] overflow-y-auto whitespace-pre-wrap font-mono text-[10px] text-[var(--color-danger)]">
 						{startupError}
 					</div>
 				)}
 				{testState.status === "ok" && (
-					<div className="mt-1 text-[10px] text-[#30d158]">
+					<div className="mt-1 text-[10px] text-[var(--color-success)]">
 						Test passed — {testState.capabilityCount} capabilities
 						{typeof testState.serverInfo === "object" &&
 						testState.serverInfo !== null &&
@@ -111,7 +111,7 @@ export function LspServerRow({
 					</div>
 				)}
 				{testState.status === "error" && (
-					<div className="mt-1 font-mono text-[10px] text-[#ff453a]">
+					<div className="mt-1 font-mono text-[10px] text-[var(--color-danger)]">
 						Test failed: {testState.message}
 					</div>
 				)}

@@ -132,7 +132,7 @@ export function LspServerForm({
 						title={!repoPath ? "Open a project to save repo-specific config" : undefined}
 					>
 						<div
-							className={`text-[12px] font-medium ${scope === "repo" ? "text-[#ff9f0a]" : "text-[var(--text-tertiary)]"}`}
+							className={`text-[12px] font-medium ${scope === "repo" ? "text-[var(--color-warning)]" : "text-[var(--text-tertiary)]"}`}
 						>
 							This Repo
 						</div>
@@ -256,7 +256,7 @@ export function LspServerForm({
 							}`}
 						/>
 						{initOptsError && (
-							<div className="mt-1 text-[10px] text-[#ff453a]">{initOptsError}</div>
+							<div className="mt-1 text-[10px] text-[var(--color-danger)]">{initOptsError}</div>
 						)}
 					</div>
 				</div>
@@ -282,7 +282,7 @@ export function LspServerForm({
 
 			{/* Error */}
 			{error && (
-				<div className="mb-3 rounded-[6px] bg-[rgba(255,69,58,0.1)] px-3 py-2 text-[11px] text-[#ff453a]">
+				<div className="mb-3 rounded-[6px] bg-[rgba(255,69,58,0.1)] px-3 py-2 text-[11px] text-[var(--color-danger)]">
 					{error}
 				</div>
 			)}
@@ -300,7 +300,7 @@ export function LspServerForm({
 					type="button"
 					disabled={saveDisabled}
 					onClick={() => onSave(form)}
-					className="rounded-[6px] bg-[#0a84ff] px-4 py-1.5 text-[12px] text-white disabled:opacity-50"
+					className="rounded-[6px] bg-[var(--accent)] px-4 py-1.5 text-[12px] text-white disabled:opacity-50"
 				>
 					{saving ? "Saving..." : isEdit ? "Save Changes" : "Add Server"}
 				</button>
@@ -343,7 +343,7 @@ function CommandField({
 					error ? "border-[#ff453a]" : "border-[var(--border)]"
 				}`}
 			/>
-			{error && <div className="mt-1 text-[10px] text-[#ff453a]">{error}</div>}
+			{error && <div className="mt-1 text-[10px] text-[var(--color-danger)]">{error}</div>}
 			<div className="mt-1 text-[10px] text-[var(--text-quaternary)]">
 				Bare name is looked up on PATH. Absolute path skips PATH lookup — useful for nix / asdf /
 				mise / manual installs.
@@ -381,7 +381,7 @@ function FormField({
 					error ? "border-[#ff453a]" : "border-[var(--border)]"
 				} ${mono ? "font-mono" : ""}`}
 			/>
-			{error && <div className="mt-1 text-[10px] text-[#ff453a]">{error}</div>}
+			{error && <div className="mt-1 text-[10px] text-[var(--color-danger)]">{error}</div>}
 		</div>
 	);
 }

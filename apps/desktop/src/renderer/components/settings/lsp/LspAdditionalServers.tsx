@@ -106,7 +106,7 @@ export function LspAdditionalServers({
 												className={`rounded-full px-2 py-0.5 text-[9px] font-medium ${
 													scope === "user"
 														? "bg-[rgba(100,100,255,0.15)] text-[#8888ff]"
-														: "bg-[rgba(255,159,10,0.15)] text-[#ff9f0a]"
+														: "bg-[var(--warning-subtle)] text-[var(--color-warning)]"
 												}`}
 											>
 												{scope === "user" ? "Global" : "This Repo"}
@@ -144,7 +144,7 @@ export function LspAdditionalServers({
 												type="button"
 												disabled={isRemoving}
 												onClick={() => onRemove(config.id, scope)}
-												className="rounded border border-[rgba(255,69,58,0.3)] px-2 py-0.5 text-[10px] text-[#ff453a] hover:bg-[rgba(255,69,58,0.1)] disabled:opacity-50"
+												className="rounded border border-[rgba(255,69,58,0.3)] px-2 py-0.5 text-[10px] text-[var(--color-danger)] hover:bg-[rgba(255,69,58,0.1)] disabled:opacity-50"
 											>
 												Remove
 											</button>
