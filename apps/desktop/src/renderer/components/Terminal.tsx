@@ -92,9 +92,10 @@ export function Terminal({
 		term.open(ref.current);
 
 		// WebGL: load after open(), fall back on any failure
+		let webgl: WebglAddon | null = null;
 		try {
-			const webgl = new WebglAddon();
-			webgl.onContextLoss(() => webgl.dispose());
+			webgl = new WebglAddon();
+			webgl.onContextLoss(() => webgl?.dispose());
 			term.loadAddon(webgl);
 		} catch {
 			console.warn("WebGL2 not available, using default renderer");
@@ -108,6 +109,18 @@ export function Terminal({
 		const applyTheme = () => {
 			rafId = 0;
 			term.options.theme = buildTerminalTheme();
+			// WebGL renderer caches GPU textures keyed to the old theme; re-init forces fresh paint.
+			if (webgl) {
+				try {
+					webgl.dispose();
+					webgl = new WebglAddon();
+					webgl.onContextLoss(() => webgl?.dispose());
+					term.loadAddon(webgl);
+				} catch {
+					// If re-init fails, fall through — DOM renderer takes over.
+					webgl = null;
+				}
+			}
 			term.refresh(0, term.rows - 1);
 		};
 		const scheduleTheme = () => {
@@ -235,6 +248,7 @@ export function Terminal({
 			mql.removeEventListener("change", scheduleTheme);
 			if (rafId) cancelAnimationFrame(rafId);
 			api?.terminal.detach(id);
+			webgl?.dispose();
 			term.dispose();
 		};
 	}, [id]);

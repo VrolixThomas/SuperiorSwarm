@@ -95,7 +95,7 @@ html[data-theme="light"] {
 	--bg-surface: #f2f2ef;
 	--bg-elevated: #ffffff;
 	--bg-overlay: #e8e8e3;
-	--bg-active: #dcdcd6;
+	--bg-active: #c8c8c2;
 
 	/* Borders */
 	--border: rgba(0, 0, 0, 0.1);
