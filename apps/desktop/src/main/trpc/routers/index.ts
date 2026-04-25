@@ -15,6 +15,7 @@ import { quickActionsRouter } from "./quick-actions";
 import { rebaseRouter } from "./rebase";
 import { remoteRouter } from "./remote";
 import { reviewRouter } from "./review";
+import { settingsRouter } from "./settings";
 import { sharedFilesRouter } from "./shared-files";
 import { systemRouter } from "./system";
 import { telemetryRouter } from "./telemetry";
@@ -47,6 +48,7 @@ export const appRouter = router({
 	system: systemRouter,
 	telemetry: telemetryRouter,
 	lsp: lspRouter,
+	settings: settingsRouter,
 });
 
 export type AppRouter = typeof appRouter;

@@ -59,6 +59,10 @@ export interface AgentAlertAPI {
 	onAlert: (callback: (event: AgentEvent) => void) => () => void;
 }
 
+export interface SettingsAPI {
+	onThemeChanged: (callback: (value: "system" | "light" | "dark") => void) => () => void;
+}
+
 export type LspSupportResponse =
 	| {
 			supported: true;
