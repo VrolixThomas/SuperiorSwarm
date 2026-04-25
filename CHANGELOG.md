@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.6.0 (2026-04-25)
+
+### What's New
+
+SuperiorSwarm v0.6.0 introduces full light and dark theme support. Switch themes from the new Appearance section in Settings or via the command palette. The Monaco editor now follows your chosen theme, all contrast ratios meet accessibility standards across both modes, and the theme persists across restarts. This release also fixes review display order and markdown file handling.
+
+### Changes
+
+- fix review (#94)
+- Fix contrast (#95)
+
 ## v0.5.2 (2026-04-20)
 
 ### What's New
