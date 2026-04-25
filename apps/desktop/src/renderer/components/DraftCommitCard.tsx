@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { DiffContext, DiffFile } from "../../shared/diff-types";
+import { buildWorkingFileList } from "../lib/working-files";
 import { useReviewSessionStore } from "../stores/review-session-store";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
@@ -74,7 +75,12 @@ export function DraftCommitCard({
 		onSuccess: () => onInvalidate(),
 	});
 
-	const allFiles = useMemo(() => [...stagedFiles, ...unstagedFiles], [stagedFiles, unstagedFiles]);
+	// Canonical working list (deduped: staged wins when a file is also modified
+	// after staging). Same source ReviewTab consumes — keeps j/k parity.
+	const allFiles = useMemo(
+		() => buildWorkingFileList({ stagedFiles, unstagedFiles }),
+		[stagedFiles, unstagedFiles]
+	);
 	const stagedPaths = useMemo(() => new Set(stagedFiles.map((f) => f.path)), [stagedFiles]);
 	const groups = useMemo(() => groupByDirectory(allFiles), [allFiles]);
 	const canCommit = stagedFiles.length > 0 && commitMsg.trim().length > 0;
