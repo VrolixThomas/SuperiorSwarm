@@ -55,7 +55,7 @@ function SortableListRowImpl({
 
 	let rowClass: string;
 	if (isDragOverlay) {
-		rowClass = "bg-[#1a1a1c] shadow-lg ring-1 ring-[rgba(10,132,255,0.3)]";
+		rowClass = "bg-[var(--bg-elevated)] shadow-lg ring-1 ring-[rgba(10,132,255,0.3)]";
 	} else if (isSelected) {
 		rowClass = "bg-[rgba(10,132,255,0.08)]";
 	} else {

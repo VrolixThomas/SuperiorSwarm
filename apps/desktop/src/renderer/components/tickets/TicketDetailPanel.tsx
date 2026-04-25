@@ -91,7 +91,7 @@ export function TicketDetailPanel({
 	const projectLabel = issue.teamName || issue.projectKey || issue.groupId;
 
 	return (
-		<div className="flex h-full flex-col bg-[#111]">
+		<div className="flex h-full flex-col bg-[var(--bg-surface)]">
 			<div className="flex shrink-0 items-center gap-2.5 border-b border-[var(--border)] px-5 py-2.5">
 				<StateIcon type={issue.stateType || "default"} color={issue.status.color} size={10} />
 				<span className="text-[13px] font-semibold text-[var(--text)]">{issue.identifier}</span>

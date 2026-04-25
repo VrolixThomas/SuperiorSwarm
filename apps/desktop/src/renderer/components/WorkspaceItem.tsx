@@ -338,9 +338,11 @@ export function WorkspaceItem({
 				className={[
 					"flex w-full items-center gap-2 border-none pr-3 py-[7px] cursor-pointer",
 					"transition-all duration-[120ms] text-left",
-					isActive ? "rounded-r-[6px] rounded-l-none bg-[#17171e]" : "rounded-[6px] bg-transparent",
+					isActive
+						? "rounded-r-[6px] rounded-l-none bg-[var(--bg-elevated)]"
+						: "rounded-[6px] bg-transparent",
 					isActive && isInActiveProject ? "pl-[20px]" : "pl-[22px]",
-					isActive ? "hover:bg-[#1c1c24]" : "hover:bg-[var(--bg-elevated)]",
+					isActive ? "hover:bg-[var(--bg-overlay)]" : "hover:bg-[var(--bg-elevated)]",
 				].join(" ")}
 				style={
 					isActive && isInActiveProject

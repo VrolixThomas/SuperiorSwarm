@@ -43,15 +43,17 @@ function TicketCardImpl({
 
 	let borderClass: string;
 	if (isSelected) {
-		borderClass = "border-[rgba(10,132,255,0.3)] bg-[#1a1a1c]";
+		borderClass = "border-[rgba(10,132,255,0.3)] bg-[var(--bg-elevated)]";
 	} else if (isLinked) {
-		borderClass = "border-[rgba(10,132,255,0.12)] bg-[#111] hover:bg-[#161618]";
+		borderClass =
+			"border-[rgba(10,132,255,0.12)] bg-[var(--bg-surface)] hover:bg-[var(--bg-elevated)]";
 	} else {
-		borderClass = "border-[rgba(255,255,255,0.03)] bg-[#111] hover:bg-[#161618]";
+		borderClass =
+			"border-[rgba(255,255,255,0.03)] bg-[var(--bg-surface)] hover:bg-[var(--bg-elevated)]";
 	}
 
 	if (isDragOverlay) {
-		borderClass = "border-[rgba(10,132,255,0.3)] bg-[#1a1a1c] shadow-lg";
+		borderClass = "border-[rgba(10,132,255,0.3)] bg-[var(--bg-elevated)] shadow-lg";
 	}
 
 	return (

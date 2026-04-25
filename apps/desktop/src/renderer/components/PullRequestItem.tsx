@@ -127,7 +127,7 @@ export function RichPRItem({
 				"group flex w-full flex-col gap-0.5 border-none pr-3 py-[7px] text-left text-[12px] cursor-pointer",
 				"transition-all duration-[120ms]",
 				isActive
-					? "rounded-r-[6px] rounded-l-none bg-[#17171e] hover:bg-[#1c1c24]"
+					? "rounded-r-[6px] rounded-l-none bg-[var(--bg-elevated)] hover:bg-[var(--bg-overlay)]"
 					: "rounded-[6px] bg-transparent hover:bg-[var(--bg-elevated)]",
 				isActive ? "pl-[20px]" : "pl-[22px]",
 				isActive

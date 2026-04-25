@@ -339,7 +339,7 @@ export function SharedFilesPanel() {
 			role="presentation"
 		>
 			<div
-				className="w-[580px] max-h-[86vh] flex flex-col rounded-[16px] bg-[#111114] border border-[rgba(255,255,255,0.1)]"
+				className="w-[580px] max-h-[86vh] flex flex-col rounded-[16px] bg-[var(--bg-surface)] border border-[rgba(255,255,255,0.1)]"
 				style={{
 					boxShadow: "0 40px 100px rgba(0,0,0,0.75), inset 0 0 0 0.5px rgba(255,255,255,0.04)",
 				}}
