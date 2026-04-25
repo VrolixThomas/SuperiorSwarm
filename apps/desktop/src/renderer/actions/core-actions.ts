@@ -4,6 +4,7 @@ import { useBranchStore } from "../stores/branch-store";
 import { findParentSplit, findSplitById, getAllPanes, usePaneStore } from "../stores/pane-store";
 import { useProjectStore } from "../stores/projects";
 import { useTabStore } from "../stores/tab-store";
+import { useThemeStore } from "../stores/theme-store";
 
 // ─── Directional focus helper (moved from usePaneShortcuts.ts) ──────────────
 
@@ -278,6 +279,33 @@ export function registerCoreActions() {
 				tabState.setDiffMode(tabState.diffMode === "split" ? "inline" : "split");
 			},
 			keywords: ["side by side", "unified"],
+		},
+		{
+			id: "theme.light",
+			label: "Theme: Switch to Light",
+			category: "View",
+			keywords: ["theme", "light", "appearance"],
+			execute: () => {
+				void useThemeStore.getState().setPref("light");
+			},
+		},
+		{
+			id: "theme.dark",
+			label: "Theme: Switch to Dark",
+			category: "View",
+			keywords: ["theme", "dark", "appearance"],
+			execute: () => {
+				void useThemeStore.getState().setPref("dark");
+			},
+		},
+		{
+			id: "theme.system",
+			label: "Theme: Use System",
+			category: "View",
+			keywords: ["theme", "system", "appearance", "auto"],
+			execute: () => {
+				void useThemeStore.getState().setPref("system");
+			},
 		},
 
 		// ── Terminal ─────────────────────────────────────────────────────────
