@@ -179,6 +179,13 @@ body,
 	padding: 4px 0 0 12px;
 }
 
+/* xterm.css ships .xterm-viewport { background: #000 } unconditionally.
+   The canvas paints with theme.background; uncovered viewport pixels would otherwise
+   leak as solid black bands in light mode. Track --bg-base so theme toggle is automatic. */
+.xterm-container .xterm .xterm-viewport {
+	background-color: var(--bg-base);
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar {
 	width: 6px;
