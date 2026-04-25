@@ -172,7 +172,7 @@ export function SubmitReviewModal({
 				{/* Result feedback */}
 				{result && (
 					<div
-						className={`px-5 py-2 text-[10px] ${result.failed > 0 ? "bg-red-900/20 text-red-400" : "bg-green-900/20 text-green-400"}`}
+						className={`px-5 py-2 text-[10px] ${result.failed > 0 ? "bg-[var(--danger-subtle)] text-[var(--color-danger)]" : "bg-[var(--success-subtle)] text-[var(--color-success)]"}`}
 					>
 						<div>
 							{result.posted} comment{result.posted !== 1 ? "s" : ""} posted.

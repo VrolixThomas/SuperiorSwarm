@@ -705,7 +705,7 @@ function SubmitReviewButton({
 			<button
 				type="button"
 				onClick={onClick}
-				className="flex w-full items-center justify-center gap-2 rounded-[var(--radius-sm)] bg-green-900/40 px-3 py-1.5 text-[11px] font-medium text-green-400 transition-colors hover:bg-green-900/60"
+				className="flex w-full items-center justify-center gap-2 rounded-[var(--radius-sm)] bg-[var(--success-subtle)] px-3 py-1.5 text-[11px] font-medium text-[var(--color-success)] transition-colors hover:bg-[var(--success)] hover:text-[var(--accent-foreground)]"
 			>
 				Submit Review
 				{pendingUserCount > 0 && (

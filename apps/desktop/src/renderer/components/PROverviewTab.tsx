@@ -19,9 +19,9 @@ import { ReviewVerdictConfirmation } from "./ReviewVerdictConfirmation";
 
 function PRHeader({ details, prCtx }: { details: GitHubPRDetails; prCtx: PRContext }) {
 	const stateColor: Record<string, string> = {
-		OPEN: "bg-green-900/40 text-[var(--color-success)]",
-		CLOSED: "bg-red-900/40 text-[var(--color-danger)]",
-		MERGED: "bg-purple-900/40 text-[var(--color-purple)]",
+		OPEN: "bg-[var(--success-subtle)] text-[var(--color-success)]",
+		CLOSED: "bg-[var(--danger-subtle)] text-[var(--color-danger)]",
+		MERGED: "bg-[var(--purple-subtle)] text-[var(--color-purple)]",
 	};
 
 	const decisionLabel: Record<string, string> = {
@@ -31,9 +31,9 @@ function PRHeader({ details, prCtx }: { details: GitHubPRDetails; prCtx: PRConte
 	};
 
 	const decisionColor: Record<string, string> = {
-		APPROVED: "bg-green-900/40 text-[var(--color-success)]",
-		CHANGES_REQUESTED: "bg-red-900/40 text-[var(--color-danger)]",
-		REVIEW_REQUIRED: "bg-yellow-900/40 text-[var(--color-warning)]",
+		APPROVED: "bg-[var(--success-subtle)] text-[var(--color-success)]",
+		CHANGES_REQUESTED: "bg-[var(--danger-subtle)] text-[var(--color-danger)]",
+		REVIEW_REQUIRED: "bg-[var(--warning-subtle)] text-[var(--color-warning)]",
 	};
 
 	const reviewerDecisionIcon: Record<string, string> = {
@@ -97,10 +97,10 @@ function PRHeader({ details, prCtx }: { details: GitHubPRDetails; prCtx: PRConte
 					<span
 						className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-medium ${
 							details.ciState === "SUCCESS"
-								? "bg-green-900/40 text-[var(--color-success)]"
+								? "bg-[var(--success-subtle)] text-[var(--color-success)]"
 								: details.ciState === "FAILURE"
-									? "bg-red-900/40 text-[var(--color-danger)]"
-									: "bg-yellow-900/40 text-[var(--color-warning)]"
+									? "bg-[var(--danger-subtle)] text-[var(--color-danger)]"
+									: "bg-[var(--warning-subtle)] text-[var(--color-warning)]"
 						}`}
 					>
 						{details.ciState === "SUCCESS"

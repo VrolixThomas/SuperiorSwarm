@@ -40,6 +40,7 @@
 	--danger-subtle: rgba(255, 69, 58, 0.15);
 	--success-subtle: rgba(48, 209, 88, 0.15);
 	--warning-subtle: rgba(255, 159, 10, 0.15);
+	--purple-subtle: rgba(191, 90, 242, 0.15);
 
 	/* Modal scrim */
 	--scrim: rgba(0, 0, 0, 0.5);
@@ -117,9 +118,10 @@ html[data-theme="light"] {
 	--color-success: #1f883d;
 	--color-warning: #bf6900;
 	--color-purple: #8944ab;
-	--danger-subtle: rgba(215, 0, 21, 0.1);
-	--success-subtle: rgba(31, 136, 61, 0.1);
-	--warning-subtle: rgba(191, 105, 0, 0.1);
+	--danger-subtle: rgba(215, 0, 21, 0.18);
+	--success-subtle: rgba(31, 136, 61, 0.18);
+	--warning-subtle: rgba(191, 105, 0, 0.18);
+	--purple-subtle: rgba(137, 68, 171, 0.18);
 
 	/* Scrim */
 	--scrim: rgba(0, 0, 0, 0.35);
