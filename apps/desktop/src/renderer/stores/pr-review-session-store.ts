@@ -76,9 +76,19 @@ export const usePRReviewSessionStore = create<PRReviewSessionStore>()((set, get)
 			sessions: withSession(state, key, (s) => ({ ...s, activeThreadId: id })),
 		})),
 
-	advanceThread: (_key, _delta) => {
-		// implemented in Task 3
-	},
+	advanceThread: (key, delta) =>
+		set((state) => ({
+			sessions: withSession(state, key, (s) => {
+				if (s.threadOrder.length === 0) return s;
+				if (s.activeThreadId === null) {
+					return { ...s, activeThreadId: s.threadOrder[0] ?? null };
+				}
+				const idx = s.threadOrder.indexOf(s.activeThreadId);
+				if (idx === -1) return { ...s, activeThreadId: s.threadOrder[0] ?? null };
+				const nextIdx = Math.min(s.threadOrder.length - 1, Math.max(0, idx + delta));
+				return { ...s, activeThreadId: s.threadOrder[nextIdx] ?? null };
+			}),
+		})),
 
 	setScroll: (key, path, top) =>
 		set((state) => ({
@@ -112,6 +122,14 @@ export const usePRReviewSessionStore = create<PRReviewSessionStore>()((set, get)
 
 	setThreadOrder: (key, ids) =>
 		set((state) => ({
-			sessions: withSession(state, key, (s) => ({ ...s, threadOrder: [...ids] })),
+			sessions: withSession(state, key, (s) => {
+				const next = [...ids];
+				const stillThere = s.activeThreadId != null && next.includes(s.activeThreadId);
+				return {
+					...s,
+					threadOrder: next,
+					activeThreadId: stillThere ? s.activeThreadId : null,
+				};
+			}),
 		})),
 }));
