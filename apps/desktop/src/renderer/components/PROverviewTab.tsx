@@ -9,10 +9,7 @@ import type {
 	UnifiedThread,
 } from "../../shared/github-types";
 import { formatRelativeTime } from "../../shared/tickets";
-import {
-	prReviewSessionKey,
-	usePRReviewSessionStore,
-} from "../stores/pr-review-session-store";
+import { prReviewSessionKey, usePRReviewSessionStore } from "../stores/pr-review-session-store";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import { MarkdownRenderer } from "./MarkdownRenderer";
@@ -194,14 +191,23 @@ function AICommentCard({
 	onAccept: (id: string) => void;
 	onDismiss: (id: string) => void;
 }) {
-	const openPRReviewFile = useTabStore((s) => s.openPRReviewFile);
 	const activeWorkspaceId = useTabStore((s) => s.activeWorkspaceId);
+	const selectFile = usePRReviewSessionStore((s) => s.selectFile);
+	const selectThread = usePRReviewSessionStore((s) => s.selectThread);
+	const sessionKey = prReviewSessionKey(
+		activeWorkspaceId ?? "",
+		`${prCtx.owner}/${prCtx.repo}#${prCtx.number}`
+	);
 
 	const filename = thread.path.split("/").pop() ?? thread.path;
 
 	const handleNavigate = () => {
 		if (!activeWorkspaceId) return;
-		openPRReviewFile(activeWorkspaceId, prCtx, thread.path, detectLanguage(thread.path));
+		selectFile(sessionKey, thread.path);
+		selectThread(sessionKey, thread.id);
+		useTabStore
+			.getState()
+			.swapPRReviewFile(activeWorkspaceId, prCtx, thread.path, detectLanguage(thread.path));
 	};
 
 	return (
@@ -259,8 +265,13 @@ function GitHubThreadCard({
 	onReply: (threadId: string, body: string) => void;
 	onResolve: (threadId: string) => void;
 }) {
-	const openPRReviewFile = useTabStore((s) => s.openPRReviewFile);
 	const activeWorkspaceId = useTabStore((s) => s.activeWorkspaceId);
+	const selectFile = usePRReviewSessionStore((s) => s.selectFile);
+	const selectThread = usePRReviewSessionStore((s) => s.selectThread);
+	const sessionKey = prReviewSessionKey(
+		activeWorkspaceId ?? "",
+		`${prCtx.owner}/${prCtx.repo}#${prCtx.number}`
+	);
 	const [replyOpen, setReplyOpen] = useState(false);
 	const [replyBody, setReplyBody] = useState("");
 	const replyRef = useRef<HTMLTextAreaElement>(null);
@@ -273,7 +284,11 @@ function GitHubThreadCard({
 
 	const handleNavigate = () => {
 		if (!activeWorkspaceId) return;
-		openPRReviewFile(activeWorkspaceId, prCtx, thread.path, detectLanguage(thread.path));
+		selectFile(sessionKey, thread.path);
+		selectThread(sessionKey, thread.id);
+		useTabStore
+			.getState()
+			.swapPRReviewFile(activeWorkspaceId, prCtx, thread.path, detectLanguage(thread.path));
 	};
 
 	return (
@@ -696,8 +711,8 @@ export function PROverviewTab({ prCtx }: { prCtx: PRContext }) {
 
 	// ── Review-mode hooks ─────────────────────────────────────────────────
 	const utils = trpc.useUtils();
-	const openPRReviewFile = useTabStore((s) => s.openPRReviewFile);
 	const activeWorkspaceId = useTabStore((s) => s.activeWorkspaceId);
+	const selectFile = usePRReviewSessionStore((s) => s.selectFile);
 
 	const sessionKey = prReviewSessionKey(
 		activeWorkspaceId ?? "",
@@ -709,8 +724,7 @@ export function PROverviewTab({ prCtx }: { prCtx: PRContext }) {
 	useEffect(() => {
 		const el = scrollRef.current;
 		if (!el) return;
-		const top =
-			usePRReviewSessionStore.getState().sessions.get(sessionKey)?.overviewScrollTop ?? 0;
+		const top = usePRReviewSessionStore.getState().sessions.get(sessionKey)?.overviewScrollTop ?? 0;
 		if (top > 0) el.scrollTop = top;
 
 		let raf = 0;
@@ -966,7 +980,10 @@ export function PROverviewTab({ prCtx }: { prCtx: PRContext }) {
 									}
 									onOpenInDiff={(path) => {
 										if (!activeWorkspaceId) return;
-										openPRReviewFile(activeWorkspaceId, prCtx, path, detectLanguage(path));
+										selectFile(sessionKey, path);
+										useTabStore
+											.getState()
+											.swapPRReviewFile(activeWorkspaceId, prCtx, path, detectLanguage(path));
 									}}
 									onReplyToThread={(threadId, body) => addReplyComment.mutate({ threadId, body })}
 									onResolveThread={(threadId) => resolveThread.mutate({ threadId })}
