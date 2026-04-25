@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.6.1 (2026-04-25)
+
+### What's New
+
+SuperiorSwarm v0.6.1 makes PR review fully keyboard-driven. Step through review threads across files without leaving the keyboard, the active thread is highlighted, and the PR overview tab now reuses a single tab instead of opening duplicates. Terminal sessions also focus the cursor on mount so you can type immediately.
+
+### Changes
+
+- feat(pr-review): keyboard-driven PR review with single-tab swap (#97)
+- fix(terminal): focus xterm on mount so cursor is ready (#96)
+
 ## v0.6.0 (2026-04-25)
 
 ### What's New
