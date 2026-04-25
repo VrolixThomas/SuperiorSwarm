@@ -57,9 +57,19 @@ export const usePRReviewSessionStore = create<PRReviewSessionStore>()((set, get)
 			sessions: withSession(state, key, (s) => ({ ...s, activeFilePath: path })),
 		})),
 
-	advanceFile: (_key, _delta) => {
-		// implemented in Task 2
-	},
+	advanceFile: (key, delta) =>
+		set((state) => ({
+			sessions: withSession(state, key, (s) => {
+				if (s.fileOrder.length === 0) return s;
+				if (s.activeFilePath === null) {
+					return { ...s, activeFilePath: s.fileOrder[0] ?? null };
+				}
+				const idx = s.fileOrder.indexOf(s.activeFilePath);
+				if (idx === -1) return { ...s, activeFilePath: s.fileOrder[0] ?? null };
+				const nextIdx = Math.min(s.fileOrder.length - 1, Math.max(0, idx + delta));
+				return { ...s, activeFilePath: s.fileOrder[nextIdx] ?? null };
+			}),
+		})),
 
 	selectThread: (key, id) =>
 		set((state) => ({
@@ -88,7 +98,16 @@ export const usePRReviewSessionStore = create<PRReviewSessionStore>()((set, get)
 
 	setFileOrder: (key, files) =>
 		set((state) => ({
-			sessions: withSession(state, key, (s) => ({ ...s, fileOrder: [...files] })),
+			sessions: withSession(state, key, (s) => {
+				const next = [...files];
+				const wasActive = s.activeFilePath != null;
+				const stillThere = wasActive && next.includes(s.activeFilePath!);
+				return {
+					...s,
+					fileOrder: next,
+					activeFilePath: wasActive && !stillThere ? (next[0] ?? null) : s.activeFilePath,
+				};
+			}),
 		})),
 
 	setThreadOrder: (key, ids) =>

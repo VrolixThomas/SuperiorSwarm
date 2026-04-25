@@ -37,3 +37,51 @@ describe("pr-review-session-store lifecycle", () => {
 		expect(usePRReviewSessionStore.getState().sessions.get(key)!.activeFilePath).toBeNull();
 	});
 });
+
+describe("pr-review-session-store file navigation", () => {
+	beforeEach(reset);
+
+	test("advanceFile no-ops when fileOrder is empty", () => {
+		usePRReviewSessionStore.getState().advanceFile(key, 1);
+		const s = usePRReviewSessionStore.getState().sessions.get(key);
+		expect(s?.activeFilePath ?? null).toBeNull();
+	});
+
+	test("advanceFile selects first file when activeFilePath is null", () => {
+		usePRReviewSessionStore.getState().setFileOrder(key, ["a.ts", "b.ts", "c.ts"]);
+		usePRReviewSessionStore.getState().advanceFile(key, 1);
+		expect(usePRReviewSessionStore.getState().sessions.get(key)!.activeFilePath).toBe("a.ts");
+	});
+
+	test("advanceFile +1 moves to the next file", () => {
+		const store = usePRReviewSessionStore.getState();
+		store.setFileOrder(key, ["a.ts", "b.ts", "c.ts"]);
+		store.selectFile(key, "a.ts");
+		store.advanceFile(key, 1);
+		expect(usePRReviewSessionStore.getState().sessions.get(key)!.activeFilePath).toBe("b.ts");
+	});
+
+	test("advanceFile +1 stops at last file (no wrap)", () => {
+		const store = usePRReviewSessionStore.getState();
+		store.setFileOrder(key, ["a.ts", "b.ts"]);
+		store.selectFile(key, "b.ts");
+		store.advanceFile(key, 1);
+		expect(usePRReviewSessionStore.getState().sessions.get(key)!.activeFilePath).toBe("b.ts");
+	});
+
+	test("advanceFile -1 stops at first file", () => {
+		const store = usePRReviewSessionStore.getState();
+		store.setFileOrder(key, ["a.ts", "b.ts"]);
+		store.selectFile(key, "a.ts");
+		store.advanceFile(key, -1);
+		expect(usePRReviewSessionStore.getState().sessions.get(key)!.activeFilePath).toBe("a.ts");
+	});
+
+	test("setFileOrder clamps activeFilePath if it disappears", () => {
+		const store = usePRReviewSessionStore.getState();
+		store.setFileOrder(key, ["a.ts", "b.ts"]);
+		store.selectFile(key, "b.ts");
+		store.setFileOrder(key, ["a.ts", "c.ts"]);
+		expect(usePRReviewSessionStore.getState().sessions.get(key)!.activeFilePath).toBe("a.ts");
+	});
+});
