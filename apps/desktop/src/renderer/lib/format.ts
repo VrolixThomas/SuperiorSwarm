@@ -1,3 +1,7 @@
+export function basename(path: string): string {
+	return path.split("/").pop() ?? path;
+}
+
 export function initials(name: string): string {
 	const tokens = name.split(/[\s\-_]+/).filter(Boolean);
 	if (tokens.length === 0) return "";

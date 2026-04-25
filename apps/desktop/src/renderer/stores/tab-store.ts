@@ -1,10 +1,13 @@
 import { create } from "zustand";
-import { detectLanguage, type DiffContext } from "../../shared/diff-types";
+import { type DiffContext, detectLanguage } from "../../shared/diff-types";
 import type { PRContext } from "../../shared/github-types";
 import type { Pane } from "../../shared/pane-types";
+import { formatPrIdentifier } from "../../shared/pr-identifier";
 import type { ReviewScope } from "../../shared/review-types";
 import type { SidebarSegment } from "../../shared/types";
+import { basename } from "../lib/format";
 import { createDefaultPane, getAllPanes, usePaneStore } from "./pane-store";
+import { prReviewSessionKey, usePRReviewSessionStore } from "./pr-review-session-store";
 import { useReviewSessionStore } from "./review-session-store";
 
 // ─── Tab types ───────────────────────────────────────────────────────────────
@@ -458,8 +461,24 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 		const wsId = get().activeWorkspaceId;
 		if (!wsId) return;
 		const found = ps().findPaneForTab(wsId, id);
-		if (found) {
-			ps().removeTabFromPane(wsId, found.id, id);
+		if (!found) return;
+		const removed = found.tabs.find((t) => t.id === id);
+		ps().removeTabFromPane(wsId, found.id, id);
+		// Drop the per-PR review session when the last anchor tab for that PR closes.
+		if (removed && (removed.kind === "pr-overview" || removed.kind === "pr-review-file")) {
+			const stillThere = findTabInWorkspace(
+				wsId,
+				(t) =>
+					(t.kind === "pr-overview" || t.kind === "pr-review-file") &&
+					t.prCtx.owner === removed.prCtx.owner &&
+					t.prCtx.repo === removed.prCtx.repo &&
+					t.prCtx.number === removed.prCtx.number
+			);
+			if (!stillThere) {
+				usePRReviewSessionStore
+					.getState()
+					.dropSession(prReviewSessionKey(wsId, formatPrIdentifier(removed.prCtx)));
+			}
 		}
 	},
 
@@ -499,6 +518,7 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 		if (state.activeWorkspaceId === workspaceId) {
 			set({ activeWorkspaceId: null, activeWorkspaceCwd: "", rightPanel: PANEL_CLOSED });
 		}
+		usePRReviewSessionStore.getState().dropSessionsForWorkspace(workspaceId);
 	},
 
 	setSidebarSegment: (segment) => {
@@ -632,7 +652,7 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 			return found.tab.id;
 		}
 		const id = nextFileTabId();
-		const title = filePath.split("/").pop() ?? filePath;
+		const title = basename(filePath);
 		const tab: TabItem = {
 			kind: "pr-review-file",
 			id,
@@ -651,22 +671,28 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 	},
 
 	swapPRReviewFile: (workspaceId, prCtx, filePath, language) => {
-		const found = findTabInWorkspace(
-			workspaceId,
-			(t) => t.kind === "pr-review-file" && t.workspaceId === workspaceId
-		);
+		const found = findTabInWorkspace(workspaceId, (t) => t.kind === "pr-review-file");
 		if (!found) {
 			return get().openPRReviewFile(workspaceId, prCtx, filePath, language);
 		}
-		const newTitle = filePath.split("/").pop() ?? filePath;
-		ps().updateTabInPanes(found.tab.id, (t) =>
-			t.kind === "pr-review-file"
-				? { ...t, prCtx, filePath, language, title: newTitle }
-				: t
-		);
-		ps().setActiveTabInPane(workspaceId, found.pane.id, found.tab.id);
+		const tab = found.tab;
+		// Skip the mutate when nothing changed — caller-side dedupe.
+		const sameContent =
+			tab.kind === "pr-review-file" &&
+			tab.filePath === filePath &&
+			tab.prCtx.owner === prCtx.owner &&
+			tab.prCtx.repo === prCtx.repo &&
+			tab.prCtx.number === prCtx.number;
+		if (!sameContent) {
+			ps().updateTabInPanes(tab.id, (t) =>
+				t.kind === "pr-review-file"
+					? { ...t, prCtx, filePath, language, title: basename(filePath) }
+					: t
+			);
+		}
+		ps().setActiveTabInPane(workspaceId, found.pane.id, tab.id);
 		ps().setFocusedPane(found.pane.id);
-		return found.tab.id;
+		return tab.id;
 	},
 
 	openPROverview: (workspaceId, prCtx) => {
@@ -714,7 +740,7 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 			return found.tab.id;
 		}
 		const id = nextFileTabId();
-		const filename = filePath.split("/").pop() ?? filePath;
+		const filename = basename(filePath);
 		const title = `${filename} (fix)`;
 		const tab: TabItem = {
 			kind: "comment-fix-file",
@@ -827,7 +853,7 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 		}
 
 		const id = nextFileTabId();
-		const title = filePath.split("/").pop() ?? filePath;
+		const title = basename(filePath);
 		const tab: TabItem = {
 			kind: "diff-file",
 			id,
@@ -909,7 +935,7 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 			workspaceId,
 			repoPath,
 			filePath,
-			title: filePath.split("/").pop() ?? filePath,
+			title: basename(filePath),
 			language,
 		};
 
@@ -1011,7 +1037,7 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 		}
 
 		const id = nextFileTabId();
-		const title = filePath.split("/").pop() ?? filePath;
+		const title = basename(filePath);
 		const tab: TabItem = {
 			kind: "file",
 			id,

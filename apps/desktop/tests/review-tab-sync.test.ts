@@ -22,7 +22,7 @@ describe("sidebar sync via store", () => {
 		s.startSession({ workspaceId: "ws1", filePath: "a.ts" });
 		s.setFileSnapshot(
 			[mk("a.ts", "working"), mk("b.ts", "branch")],
-			[mk("a.ts", "working"), mk("b.ts", "branch")],
+			[mk("a.ts", "working"), mk("b.ts", "branch")]
 		);
 		s.setScope("working", [mk("a.ts", "working")]);
 		expect(useReviewSessionStore.getState().activeSession!.scope).toBe("working");

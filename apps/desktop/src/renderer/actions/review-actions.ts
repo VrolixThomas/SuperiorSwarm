@@ -77,9 +77,10 @@ export function registerReviewActions(): void {
 			when: activeReviewTabFocused,
 			execute: () => {
 				const all = useReviewSessionStore.getState().lastAllFiles;
-				useReviewSessionStore
-					.getState()
-					.setScope("working", all.filter((f) => f.scope === "working"));
+				useReviewSessionStore.getState().setScope(
+					"working",
+					all.filter((f) => f.scope === "working")
+				);
 			},
 		},
 		{
@@ -90,9 +91,10 @@ export function registerReviewActions(): void {
 			when: activeReviewTabFocused,
 			execute: () => {
 				const all = useReviewSessionStore.getState().lastAllFiles;
-				useReviewSessionStore
-					.getState()
-					.setScope("branch", all.filter((f) => f.scope === "branch"));
+				useReviewSessionStore.getState().setScope(
+					"branch",
+					all.filter((f) => f.scope === "branch")
+				);
 			},
 		},
 		{
@@ -120,8 +122,7 @@ export function registerReviewActions(): void {
 			label: "Close Edit Split (Review)",
 			category: "Navigation",
 			shortcut: { key: "Escape" },
-			when: () =>
-				useReviewSessionStore.getState().activeSession?.editSplitPaneId != null,
+			when: () => useReviewSessionStore.getState().activeSession?.editSplitPaneId != null,
 			execute: () => {
 				window.dispatchEvent(new CustomEvent("review:close-edit"));
 			},

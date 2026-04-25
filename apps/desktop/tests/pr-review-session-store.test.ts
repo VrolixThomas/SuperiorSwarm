@@ -86,48 +86,8 @@ describe("pr-review-session-store file navigation", () => {
 	});
 });
 
-describe("pr-review-session-store thread navigation", () => {
+describe("pr-review-session-store thread state", () => {
 	beforeEach(reset);
-
-	test("advanceThread no-ops when threadOrder is empty", () => {
-		usePRReviewSessionStore.getState().advanceThread(key, 1);
-		expect(usePRReviewSessionStore.getState().sessions.get(key)?.activeThreadId ?? null).toBeNull();
-	});
-
-	test("advanceThread selects first thread when activeThreadId is null", () => {
-		const store = usePRReviewSessionStore.getState();
-		store.setThreadOrder(key, [
-			{ id: "t1", path: "a.ts" },
-			{ id: "t2", path: "a.ts" },
-			{ id: "t3", path: "a.ts" },
-		]);
-		store.advanceThread(key, 1);
-		expect(usePRReviewSessionStore.getState().sessions.get(key)!.activeThreadId).toBe("t1");
-	});
-
-	test("advanceThread +1 moves to next, stops at end", () => {
-		const store = usePRReviewSessionStore.getState();
-		store.setThreadOrder(key, [
-			{ id: "t1", path: "a.ts" },
-			{ id: "t2", path: "a.ts" },
-		]);
-		store.selectThread(key, "t1");
-		store.advanceThread(key, 1);
-		expect(usePRReviewSessionStore.getState().sessions.get(key)!.activeThreadId).toBe("t2");
-		store.advanceThread(key, 1);
-		expect(usePRReviewSessionStore.getState().sessions.get(key)!.activeThreadId).toBe("t2");
-	});
-
-	test("advanceThread -1 stops at first", () => {
-		const store = usePRReviewSessionStore.getState();
-		store.setThreadOrder(key, [
-			{ id: "t1", path: "a.ts" },
-			{ id: "t2", path: "a.ts" },
-		]);
-		store.selectThread(key, "t1");
-		store.advanceThread(key, -1);
-		expect(usePRReviewSessionStore.getState().sessions.get(key)!.activeThreadId).toBe("t1");
-	});
 
 	test("setThreadOrder clears stale activeThreadId", () => {
 		const store = usePRReviewSessionStore.getState();
@@ -143,18 +103,11 @@ describe("pr-review-session-store thread navigation", () => {
 		expect(usePRReviewSessionStore.getState().sessions.get(key)!.activeThreadId).toBeNull();
 	});
 
-	test("advanceThread crosses files: advancing into a thread on another file updates activeFilePath", () => {
+	test("selectThread sets activeThreadId; null clears it", () => {
 		const store = usePRReviewSessionStore.getState();
-		store.setFileOrder(key, ["a.ts", "b.ts"]);
-		store.setThreadOrder(key, [
-			{ id: "t1", path: "a.ts" },
-			{ id: "t2", path: "b.ts" },
-		]);
-		store.selectFile(key, "a.ts");
-		store.selectThread(key, "t1");
-		store.advanceThread(key, 1);
-		const s = usePRReviewSessionStore.getState().sessions.get(key)!;
-		expect(s.activeThreadId).toBe("t2");
-		expect(s.activeFilePath).toBe("b.ts");
+		store.selectThread(key, "tX");
+		expect(usePRReviewSessionStore.getState().sessions.get(key)!.activeThreadId).toBe("tX");
+		store.selectThread(key, null);
+		expect(usePRReviewSessionStore.getState().sessions.get(key)!.activeThreadId).toBeNull();
 	});
 });

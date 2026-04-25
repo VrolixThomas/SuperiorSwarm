@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import type { PRContext } from "../src/shared/github-types";
 import { usePaneStore } from "../src/renderer/stores/pane-store";
 import { useTabStore } from "../src/renderer/stores/tab-store";
+import type { PRContext } from "../src/shared/github-types";
 
 const prCtx: PRContext = {
 	provider: "github",

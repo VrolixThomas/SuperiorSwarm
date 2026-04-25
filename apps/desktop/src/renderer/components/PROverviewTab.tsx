@@ -8,13 +8,19 @@ import type {
 	PRContext,
 	UnifiedThread,
 } from "../../shared/github-types";
+import { formatPrIdentifier } from "../../shared/pr-identifier";
 import { formatRelativeTime } from "../../shared/tickets";
+import { basename } from "../lib/format";
+import { navigateToReviewFile } from "../lib/pr-review-nav";
 import { prReviewSessionKey, usePRReviewSessionStore } from "../stores/pr-review-session-store";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 import { ReviewFileGroupCard } from "./ReviewFileGroupCard";
 import { ReviewVerdictConfirmation } from "./ReviewVerdictConfirmation";
+import { type Hint, ReviewHintBar } from "./review/ReviewHintBar";
+
+const PR_OVERVIEW_HINTS: Hint[] = [{ keys: ["J", "K"], label: "File" }];
 
 // ── PRHeader ──────────────────────────────────────────────────────────────────
 
@@ -192,22 +198,12 @@ function AICommentCard({
 	onDismiss: (id: string) => void;
 }) {
 	const activeWorkspaceId = useTabStore((s) => s.activeWorkspaceId);
-	const selectFile = usePRReviewSessionStore((s) => s.selectFile);
-	const selectThread = usePRReviewSessionStore((s) => s.selectThread);
-	const sessionKey = prReviewSessionKey(
-		activeWorkspaceId ?? "",
-		`${prCtx.owner}/${prCtx.repo}#${prCtx.number}`
-	);
 
-	const filename = thread.path.split("/").pop() ?? thread.path;
+	const filename = basename(thread.path);
 
 	const handleNavigate = () => {
 		if (!activeWorkspaceId) return;
-		selectFile(sessionKey, thread.path);
-		selectThread(sessionKey, thread.id);
-		useTabStore
-			.getState()
-			.swapPRReviewFile(activeWorkspaceId, prCtx, thread.path, detectLanguage(thread.path));
+		navigateToReviewFile(activeWorkspaceId, prCtx, thread.path, thread.id);
 	};
 
 	return (
@@ -266,12 +262,6 @@ function GitHubThreadCard({
 	onResolve: (threadId: string) => void;
 }) {
 	const activeWorkspaceId = useTabStore((s) => s.activeWorkspaceId);
-	const selectFile = usePRReviewSessionStore((s) => s.selectFile);
-	const selectThread = usePRReviewSessionStore((s) => s.selectThread);
-	const sessionKey = prReviewSessionKey(
-		activeWorkspaceId ?? "",
-		`${prCtx.owner}/${prCtx.repo}#${prCtx.number}`
-	);
 	const [replyOpen, setReplyOpen] = useState(false);
 	const [replyBody, setReplyBody] = useState("");
 	const replyRef = useRef<HTMLTextAreaElement>(null);
@@ -280,15 +270,22 @@ function GitHubThreadCard({
 		if (replyOpen) replyRef.current?.focus();
 	}, [replyOpen]);
 
-	const filename = thread.path.split("/").pop() ?? thread.path;
+	const filename = basename(thread.path);
 
 	const handleNavigate = () => {
 		if (!activeWorkspaceId) return;
-		selectFile(sessionKey, thread.path);
-		selectThread(sessionKey, thread.id);
-		useTabStore
-			.getState()
-			.swapPRReviewFile(activeWorkspaceId, prCtx, thread.path, detectLanguage(thread.path));
+		navigateToReviewFile(activeWorkspaceId, prCtx, thread.path, thread.id);
+	};
+
+	const submitReply = () => {
+		if (!replyBody.trim()) return;
+		onReply(thread.id, replyBody.trim());
+		setReplyBody("");
+		setReplyOpen(false);
+	};
+	const cancelReply = () => {
+		setReplyBody("");
+		setReplyOpen(false);
 	};
 
 	return (
@@ -352,6 +349,15 @@ function GitHubThreadCard({
 								ref={replyRef}
 								value={replyBody}
 								onChange={(e) => setReplyBody(e.target.value)}
+								onKeyDown={(e) => {
+									if (e.key === "Escape") {
+										e.preventDefault();
+										cancelReply();
+									} else if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+										e.preventDefault();
+										submitReply();
+									}
+								}}
 								rows={2}
 								placeholder="Write a reply..."
 								className="w-full resize-none rounded-[4px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 py-1 text-[11px] text-[var(--text-secondary)] placeholder-[var(--text-quaternary)] outline-none focus:border-[var(--accent)]"
@@ -359,23 +365,15 @@ function GitHubThreadCard({
 							<div className="flex gap-1.5">
 								<button
 									type="button"
-									onClick={() => {
-										if (replyBody.trim()) {
-											onReply(thread.id, replyBody.trim());
-											setReplyBody("");
-											setReplyOpen(false);
-										}
-									}}
-									className="rounded-[4px] bg-[var(--accent)] px-2 py-0.5 text-[10px] font-medium text-[var(--accent-foreground)] hover:opacity-80"
+									onClick={submitReply}
+									disabled={!replyBody.trim()}
+									className="rounded-[4px] bg-[var(--accent)] px-2 py-0.5 text-[10px] font-medium text-[var(--accent-foreground)] hover:opacity-80 disabled:opacity-40"
 								>
 									Reply
 								</button>
 								<button
 									type="button"
-									onClick={() => {
-										setReplyOpen(false);
-										setReplyBody("");
-									}}
+									onClick={cancelReply}
 									className="text-[10px] text-[var(--text-quaternary)] hover:text-[var(--text-tertiary)]"
 								>
 									Cancel
@@ -683,7 +681,7 @@ export function PROverviewTab({ prCtx }: { prCtx: PRContext }) {
 	);
 
 	// ── AI review draft queries ───────────────────────────────────────────
-	const prIdentifier = `${prCtx.owner}/${prCtx.repo}#${prCtx.number}`;
+	const prIdentifier = formatPrIdentifier(prCtx);
 	const reviewDraftsQuery = trpc.aiReview.getReviewDrafts.useQuery(undefined, {
 		staleTime: 5_000,
 	});
@@ -712,16 +710,39 @@ export function PROverviewTab({ prCtx }: { prCtx: PRContext }) {
 	// ── Review-mode hooks ─────────────────────────────────────────────────
 	const utils = trpc.useUtils();
 	const activeWorkspaceId = useTabStore((s) => s.activeWorkspaceId);
-	const selectFile = usePRReviewSessionStore((s) => s.selectFile);
 
-	const sessionKey = prReviewSessionKey(
-		activeWorkspaceId ?? "",
-		`${prCtx.owner}/${prCtx.repo}#${prCtx.number}`
+	// biome-ignore lint/correctness/useExhaustiveDependencies: prCtx primitives only — avoid recompute on new prCtx ref
+	const sessionKey = useMemo(
+		() => prReviewSessionKey(activeWorkspaceId ?? "", formatPrIdentifier(prCtx)),
+		[activeWorkspaceId, prCtx.owner, prCtx.repo, prCtx.number]
 	);
 	const setOverviewScroll = usePRReviewSessionStore((s) => s.setOverviewScroll);
+	const setFileOrder = usePRReviewSessionStore((s) => s.setFileOrder);
+	const activeFilePath = usePRReviewSessionStore(
+		(s) => s.sessions.get(sessionKey)?.activeFilePath ?? null
+	);
 	const scrollRef = useRef<HTMLDivElement | null>(null);
 
 	useEffect(() => {
+		if (!details?.files) return;
+		setFileOrder(
+			sessionKey,
+			details.files.map((f) => f.path)
+		);
+	}, [details?.files, sessionKey, setFileOrder]);
+
+	// biome-ignore lint/correctness/useExhaustiveDependencies: prCtx primitives only — avoid re-runs on new prCtx ref
+	useEffect(() => {
+		if (!activeFilePath || !activeWorkspaceId) return;
+		useTabStore
+			.getState()
+			.swapPRReviewFile(activeWorkspaceId, prCtx, activeFilePath, detectLanguage(activeFilePath));
+	}, [activeFilePath, activeWorkspaceId, prCtx.owner, prCtx.repo, prCtx.number]);
+
+	// isLoading triggers re-attach so scroll restore lands after the body mounts.
+	// biome-ignore lint/correctness/useExhaustiveDependencies: isLoading is the mount signal, not a captured value
+	useEffect(() => {
+		if (isLoading) return;
 		const el = scrollRef.current;
 		if (!el) return;
 		const top = usePRReviewSessionStore.getState().sessions.get(sessionKey)?.overviewScrollTop ?? 0;
@@ -980,10 +1001,7 @@ export function PROverviewTab({ prCtx }: { prCtx: PRContext }) {
 									}
 									onOpenInDiff={(path) => {
 										if (!activeWorkspaceId) return;
-										selectFile(sessionKey, path);
-										useTabStore
-											.getState()
-											.swapPRReviewFile(activeWorkspaceId, prCtx, path, detectLanguage(path));
+										navigateToReviewFile(activeWorkspaceId, prCtx, path);
 									}}
 									onReplyToThread={(threadId, body) => addReplyComment.mutate({ threadId, body })}
 									onResolveThread={(threadId) => resolveThread.mutate({ threadId })}
@@ -1053,6 +1071,7 @@ export function PROverviewTab({ prCtx }: { prCtx: PRContext }) {
 					onSubmitVerdict={(verdict, body) => submitReview.mutate({ draftId, verdict, body })}
 				/>
 			)}
+			<ReviewHintBar hints={PR_OVERVIEW_HINTS} />
 		</div>
 	);
 }
