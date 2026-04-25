@@ -145,7 +145,7 @@ export function CommentThreadCard({
 				</button>
 				<div className="flex-1" />
 				{gh.isResolved ? (
-					<span className="text-[10px] text-green-400">Resolved</span>
+					<span className="text-[10px] text-[var(--color-success)]">Resolved</span>
 				) : (
 					onResolve && (
 						<button

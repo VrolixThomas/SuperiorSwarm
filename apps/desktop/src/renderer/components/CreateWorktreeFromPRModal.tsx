@@ -144,7 +144,9 @@ export function CreateWorktreeFromPRModal({ pr, onClose }: Props) {
 					</button>
 
 					{linkFromPRMutation.isError && (
-						<p className="text-[12px] text-red-400">{linkFromPRMutation.error.message}</p>
+						<p className="text-[12px] text-[var(--color-danger)]">
+							{linkFromPRMutation.error.message}
+						</p>
 					)}
 				</form>
 			</div>

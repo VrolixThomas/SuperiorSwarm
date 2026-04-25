@@ -130,7 +130,9 @@ function ThreadWidget({
 					{ghThread.path}:{ghThread.line ?? "?"}
 				</span>
 				<div className="flex items-center gap-2">
-					{ghThread.isResolved && <span className="text-[10px] text-green-400">Resolved</span>}
+					{ghThread.isResolved && (
+						<span className="text-[10px] text-[var(--color-success)]">Resolved</span>
+					)}
 					{!ghThread.isResolved && (
 						<button
 							type="button"
@@ -841,7 +843,7 @@ export function PRReviewFileTab({ prCtx, filePath, language }: PRReviewFileTabPr
 						>
 							←
 						</button>
-						<span className="text-[10px] text-yellow-400">
+						<span className="text-[10px] text-[var(--color-warning)]">
 							{unresolvedLines.length} comment{unresolvedLines.length !== 1 ? "s" : ""}
 						</span>
 						<button

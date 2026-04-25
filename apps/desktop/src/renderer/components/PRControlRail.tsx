@@ -333,7 +333,7 @@ function ChangesTab({
 
 											{/* Comment badge */}
 											{commentCount > 0 && (
-												<span className="shrink-0 rounded-full bg-[var(--bg-overlay)] px-1.5 text-[10px] font-medium text-yellow-400">
+												<span className="shrink-0 rounded-full bg-[var(--bg-overlay)] px-1.5 text-[10px] font-medium text-[var(--color-warning)]">
 													{commentCount}
 												</span>
 											)}
@@ -709,7 +709,7 @@ function SubmitReviewButton({
 			>
 				Submit Review
 				{pendingUserCount > 0 && (
-					<span className="rounded-full bg-green-400/20 px-1.5 text-[10px]">
+					<span className="rounded-full bg-[var(--success-subtle)] px-1.5 text-[10px]">
 						{pendingUserCount}
 					</span>
 				)}

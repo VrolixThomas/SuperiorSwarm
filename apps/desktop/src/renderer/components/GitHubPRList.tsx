@@ -10,9 +10,9 @@ import { type LinkedWorkspace, WorkspacePopover } from "./WorkspacePopover";
 function ReviewBadge({ decision }: { decision: GitHubPR["reviewDecision"] }) {
 	if (!decision) return null;
 	const config = {
-		approved: { label: "Approved", color: "text-green-400" },
-		changes_requested: { label: "Changes", color: "text-red-400" },
-		review_required: { label: "Review", color: "text-yellow-400" },
+		approved: { label: "Approved", color: "text-[var(--color-success)]" },
+		changes_requested: { label: "Changes", color: "text-[var(--color-danger)]" },
+		review_required: { label: "Review", color: "text-[var(--color-warning)]" },
 	} as const;
 	const { label, color } = config[decision];
 	return <span className={`shrink-0 text-[10px] font-medium ${color}`}>{label}</span>;
@@ -339,7 +339,7 @@ export function GitHubPRList() {
 	return (
 		<>
 			{linkError && (
-				<div className="mx-3 my-1 rounded-[var(--radius-sm)] bg-[var(--bg-elevated)] px-3 py-2 text-[11px] text-red-400">
+				<div className="mx-3 my-1 rounded-[var(--radius-sm)] bg-[var(--bg-elevated)] px-3 py-2 text-[11px] text-[var(--color-danger)]">
 					{linkError}
 				</div>
 			)}
