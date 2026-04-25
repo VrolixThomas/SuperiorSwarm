@@ -76,7 +76,7 @@ function CandidateNode({
 						/>
 					</svg>
 				</button>
-				<span className="flex-1 truncate text-[13px] font-[var(--font-mono)] text-[rgba(255,255,255,0.65)] group-hover/row:text-[rgba(255,255,255,0.88)] transition-colors duration-75 leading-none">
+				<span className="flex-1 truncate text-[13px] font-[var(--font-mono)] text-[var(--text)] group-hover/row:text-[var(--text)] transition-colors duration-75 leading-none">
 					{entry.name}
 				</span>
 			</div>
@@ -137,7 +137,7 @@ function CandidateNode({
 							width="9"
 							height="9"
 							viewBox="0 0 9 9"
-							className={`text-[rgba(255,255,255,0.3)] group-hover/dir:text-[var(--accent)] transition-all duration-150 ${isExpanded ? "rotate-90" : ""}`}
+							className={`text-[var(--text-tertiary)] group-hover/dir:text-[var(--accent)] transition-all duration-150 ${isExpanded ? "rotate-90" : ""}`}
 						>
 							<path
 								d="M2.5 1.5l4 3-4 3"
@@ -149,7 +149,7 @@ function CandidateNode({
 							/>
 						</svg>
 					</div>
-					<span className="flex-1 truncate text-[13px] font-[var(--font-mono)] text-[rgba(255,255,255,0.82)] group-hover/dir:text-[var(--text)] transition-colors duration-75 leading-none">
+					<span className="flex-1 truncate text-[13px] font-[var(--font-mono)] text-[var(--text)] group-hover/dir:text-[var(--text)] transition-colors duration-75 leading-none">
 						{entry.name}/
 					</span>
 					<span className="shrink-0 rounded-[4px] bg-[var(--accent-subtle)] border border-[var(--accent-subtle)] px-[6px] py-[3px] text-[10.5px] tabular-nums text-[rgba(10,132,255,0.85)] font-semibold leading-none">
@@ -353,14 +353,14 @@ export function SharedFilesPanel() {
 						>
 							Shared Files
 						</h2>
-						<p className="text-[12px] text-[rgba(255,255,255,0.38)] mt-[8px] leading-none font-[var(--font-mono)] truncate">
+						<p className="text-[12px] text-[var(--text-tertiary)] mt-[8px] leading-none font-[var(--font-mono)] truncate">
 							{projectName}
 						</p>
 					</div>
 					<button
 						type="button"
 						onClick={closePanel}
-						className="shrink-0 h-8 w-8 rounded-full flex items-center justify-center text-[rgba(255,255,255,0.28)] hover:text-[rgba(255,255,255,0.75)] hover:bg-[var(--bg-overlay)] transition-all duration-100"
+						className="shrink-0 h-8 w-8 rounded-full flex items-center justify-center text-[var(--text-quaternary)] hover:text-[var(--text-secondary)] hover:bg-[var(--bg-overlay)] transition-all duration-100"
 					>
 						<svg aria-hidden="true" width="12" height="12" viewBox="0 0 12 12" fill="none">
 							<path
@@ -375,7 +375,7 @@ export function SharedFilesPanel() {
 
 				{/* Description */}
 				<div className="px-6 pb-5 border-b border-[var(--border-subtle)] shrink-0">
-					<p className="text-[12.5px] leading-[1.6] text-[rgba(255,255,255,0.35)]">
+					<p className="text-[12.5px] leading-[1.6] text-[var(--text-tertiary)]">
 						Symlinked from the main repo into every worktree. Changes anywhere are reflected
 						everywhere.
 					</p>
@@ -404,10 +404,10 @@ export function SharedFilesPanel() {
 					{activeFiles.length > 0 && (
 						<div className="pt-5">
 							<div className="flex items-center gap-2 px-6 pb-3">
-								<span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[rgba(255,255,255,0.3)]">
+								<span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--text-tertiary)]">
 									Active
 								</span>
-								<span className="text-[10px] font-semibold tabular-nums rounded-[4px] px-[6px] py-[2px] leading-none text-[rgba(255,255,255,0.25)] bg-[rgba(255,255,255,0.07)]">
+								<span className="text-[10px] font-semibold tabular-nums rounded-[4px] px-[6px] py-[2px] leading-none text-[var(--text-quaternary)] bg-[rgba(255,255,255,0.07)]">
 									{activeFiles.length}
 								</span>
 							</div>
@@ -424,7 +424,7 @@ export function SharedFilesPanel() {
 												height="12"
 												viewBox="0 0 14 12"
 												fill="none"
-												className="shrink-0 text-[rgba(255,255,255,0.2)]"
+												className="shrink-0 text-[var(--text-quaternary)]"
 											>
 												<path
 													d="M1 4A1.5 1.5 0 012.5 2.5h3.086a1.5 1.5 0 011.06.44l.915.914A1.5 1.5 0 008.62 4.5H12.5A1.5 1.5 0 0114 6v4.5A1.5 1.5 0 0112.5 12h-11A1.5 1.5 0 011 10.5V4z"
@@ -438,7 +438,7 @@ export function SharedFilesPanel() {
 												height="14"
 												viewBox="0 0 12 14"
 												fill="none"
-												className="shrink-0 text-[rgba(255,255,255,0.2)]"
+												className="shrink-0 text-[var(--text-quaternary)]"
 											>
 												<path
 													d="M1.5 1h7l3 3v8.5a.5.5 0 01-.5.5h-9a.5.5 0 01-.5-.5v-11A.5.5 0 011.5 1z"
@@ -446,7 +446,7 @@ export function SharedFilesPanel() {
 												/>
 											</svg>
 										)}
-										<span className="flex-1 truncate text-[13px] font-[var(--font-mono)] leading-none text-[rgba(255,255,255,0.7)]">
+										<span className="flex-1 truncate text-[13px] font-[var(--font-mono)] leading-none text-[var(--text-secondary)]">
 											{file.relativePath}
 											{file.type === "directory" ? "/" : ""}
 										</span>
@@ -454,7 +454,7 @@ export function SharedFilesPanel() {
 											type="button"
 											onClick={() => removeMutation.mutate({ id: file.id })}
 											disabled={removeMutation.isPending || addMutation.isPending}
-											className="shrink-0 h-6 w-6 rounded-[5px] flex items-center justify-center opacity-0 group-hover/active:opacity-100 transition-all duration-100 text-[rgba(255,255,255,0.25)] hover:text-[var(--color-danger)] hover:bg-[var(--danger-subtle)] disabled:pointer-events-none"
+											className="shrink-0 h-6 w-6 rounded-[5px] flex items-center justify-center opacity-0 group-hover/active:opacity-100 transition-all duration-100 text-[var(--text-quaternary)] hover:text-[var(--color-danger)] hover:bg-[var(--danger-subtle)] disabled:pointer-events-none"
 											title="Remove from shared files"
 										>
 											<svg aria-hidden="true" width="9" height="9" viewBox="0 0 9 9" fill="none">
@@ -479,11 +479,11 @@ export function SharedFilesPanel() {
 						>
 							<div className="flex items-center justify-between px-6 pb-3">
 								<div className="flex items-center gap-2">
-									<span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[rgba(255,255,255,0.3)]">
+									<span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--text-tertiary)]">
 										Discovered
 									</span>
 									{totalDiscoveredFiles > 0 && (
-										<span className="text-[10px] font-semibold tabular-nums rounded-[4px] px-[6px] py-[2px] leading-none text-[rgba(255,255,255,0.25)] bg-[rgba(255,255,255,0.07)]">
+										<span className="text-[10px] font-semibold tabular-nums rounded-[4px] px-[6px] py-[2px] leading-none text-[var(--text-quaternary)] bg-[rgba(255,255,255,0.07)]">
 											{totalDiscoveredFiles}
 										</span>
 									)}
@@ -494,7 +494,7 @@ export function SharedFilesPanel() {
 									value={searchQuery}
 									onChange={(e) => setSearchQuery(e.target.value)}
 									placeholder="Filter…"
-									className="h-[26px] w-32 rounded-[6px] border border-[var(--border)] bg-[var(--bg-overlay)] px-3 text-[12px] font-[var(--font-mono)] text-[rgba(255,255,255,0.72)] placeholder:text-[rgba(255,255,255,0.2)] focus:border-[var(--accent)] focus:outline-none transition-colors duration-100"
+									className="h-[26px] w-32 rounded-[6px] border border-[var(--border)] bg-[var(--bg-overlay)] px-3 text-[12px] font-[var(--font-mono)] text-[var(--text)] placeholder:text-[var(--text-quaternary)] focus:border-[var(--accent)] focus:outline-none transition-colors duration-100"
 								/>
 							</div>
 							<div className="border-t border-[var(--border-subtle)] max-h-56 overflow-y-auto">
@@ -520,11 +520,11 @@ export function SharedFilesPanel() {
 							className={`pt-5 pb-4 px-6${activeFiles.length > 0 ? " mt-3 border-t border-[var(--border-subtle)]" : ""}`}
 						>
 							<div className="flex items-center gap-2 pb-3">
-								<span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[rgba(255,255,255,0.3)]">
+								<span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--text-tertiary)]">
 									Discovered
 								</span>
 							</div>
-							<p className="text-[13px] text-[rgba(255,255,255,0.22)]">
+							<p className="text-[13px] text-[var(--text-quaternary)]">
 								No additional gitignored files found.
 							</p>
 						</div>
@@ -533,7 +533,7 @@ export function SharedFilesPanel() {
 					{/* File / Folder picker */}
 					<div className="pt-5 pb-5 px-6 mt-3 border-t border-[var(--border-subtle)]">
 						<div className="flex items-center gap-2 pb-4">
-							<span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[rgba(255,255,255,0.3)]">
+							<span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--text-tertiary)]">
 								Add
 							</span>
 						</div>
@@ -542,7 +542,7 @@ export function SharedFilesPanel() {
 								type="button"
 								onClick={handleFilePicker}
 								disabled={addMutation.isPending || addBatchMutation.isPending || !projectQuery.data}
-								className="w-full flex items-center gap-4 rounded-[10px] px-5 py-4 border border-dashed border-[var(--border)] text-[rgba(255,255,255,0.35)] hover:border-[var(--border-active)] hover:bg-[rgba(255,255,255,0.03)] hover:text-[rgba(255,255,255,0.65)] transition-all duration-150 disabled:opacity-30 group/picker"
+								className="w-full flex items-center gap-4 rounded-[10px] px-5 py-4 border border-dashed border-[var(--border)] text-[var(--text-tertiary)] hover:border-[var(--border-active)] hover:bg-[rgba(255,255,255,0.03)] hover:text-[var(--text)] transition-all duration-150 disabled:opacity-30 group/picker"
 							>
 								<svg
 									aria-hidden="true"
@@ -575,7 +575,7 @@ export function SharedFilesPanel() {
 								type="button"
 								onClick={handleFolderPicker}
 								disabled={addMutation.isPending || addBatchMutation.isPending || !projectQuery.data}
-								className="w-full flex items-center gap-4 rounded-[10px] px-5 py-4 border border-dashed border-[var(--border)] text-[rgba(255,255,255,0.35)] hover:border-[var(--border-active)] hover:bg-[rgba(255,255,255,0.03)] hover:text-[rgba(255,255,255,0.65)] transition-all duration-150 disabled:opacity-30 group/picker"
+								className="w-full flex items-center gap-4 rounded-[10px] px-5 py-4 border border-dashed border-[var(--border)] text-[var(--text-tertiary)] hover:border-[var(--border-active)] hover:bg-[rgba(255,255,255,0.03)] hover:text-[var(--text)] transition-all duration-150 disabled:opacity-30 group/picker"
 							>
 								<svg
 									aria-hidden="true"
@@ -603,7 +603,7 @@ export function SharedFilesPanel() {
 
 				{/* Footer */}
 				<div className="flex items-center justify-between border-t border-[var(--border-subtle)] px-6 py-4 shrink-0">
-					<p className="text-[12px] text-[rgba(255,255,255,0.25)]">
+					<p className="text-[12px] text-[var(--text-quaternary)]">
 						{syncMutation.isSuccess
 							? (() => {
 									const created = syncMutation.data.results
@@ -621,7 +621,7 @@ export function SharedFilesPanel() {
 						type="button"
 						onClick={handleSync}
 						disabled={syncMutation.isPending || activeFiles.length === 0}
-						className="rounded-[8px] border border-[var(--border)] bg-[rgba(255,255,255,0.05)] px-4 py-2 text-[12px] font-medium text-[rgba(255,255,255,0.5)] hover:bg-[rgba(255,255,255,0.09)] hover:text-[rgba(255,255,255,0.75)] transition-all duration-100 disabled:opacity-30"
+						className="rounded-[8px] border border-[var(--border)] bg-[rgba(255,255,255,0.05)] px-4 py-2 text-[12px] font-medium text-[var(--text-secondary)] hover:bg-[rgba(255,255,255,0.09)] hover:text-[var(--text)] transition-all duration-100 disabled:opacity-30"
 					>
 						{syncMutation.isPending ? "Syncing…" : "Sync All Worktrees"}
 					</button>
