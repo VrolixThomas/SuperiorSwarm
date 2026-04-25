@@ -111,3 +111,29 @@ mock.module("electron-log/main.js", () => ({
 		debug: () => {},
 	},
 }));
+
+// Minimal KeyboardEvent shim for Bun's Node runtime (no DOM).
+if (typeof globalThis.KeyboardEvent === "undefined") {
+	// @ts-expect-error - minimal shim; only the properties mapKey() reads are needed
+	globalThis.KeyboardEvent = class KeyboardEvent {
+		type: string;
+		key: string;
+		metaKey: boolean;
+		ctrlKey: boolean;
+		altKey: boolean;
+		shiftKey: boolean;
+		bubbles: boolean;
+		cancelable: boolean;
+
+		constructor(type: string, init: KeyboardEventInit = {}) {
+			this.type = type;
+			this.key = init.key ?? "";
+			this.metaKey = init.metaKey ?? false;
+			this.ctrlKey = init.ctrlKey ?? false;
+			this.altKey = init.altKey ?? false;
+			this.shiftKey = init.shiftKey ?? false;
+			this.bubbles = init.bubbles ?? false;
+			this.cancelable = init.cancelable ?? false;
+		}
+	};
+}
