@@ -114,7 +114,7 @@ export function ConflictFileSidebar({
 
 	return (
 		<div
-			className="flex w-[220px] shrink-0 flex-col border-r border-[var(--border)] bg-[rgba(0,0,0,0.2)] transition-opacity duration-150"
+			className="flex w-[220px] shrink-0 flex-col border-r border-[var(--border)] bg-[var(--bg-surface)] transition-opacity duration-150"
 			style={{ opacity: isDimmed ? 0.5 : 1 }}
 		>
 			<div className="flex-1 overflow-y-auto p-2">
@@ -138,8 +138,8 @@ export function ConflictFileSidebar({
 										activeFile === file.path
 											? "border border-[rgba(10,132,255,0.15)] bg-[rgba(10,132,255,0.1)] text-[var(--text)]"
 											: isKeyboardFocused
-												? "border border-[rgba(255,255,255,0.15)] bg-[rgba(255,255,255,0.06)] text-[var(--text)]"
-												: "text-[var(--text-secondary)] hover:bg-[rgba(255,255,255,0.04)]",
+												? "border border-[var(--border-active)] bg-[var(--bg-overlay)] text-[var(--text)]"
+												: "text-[var(--text-secondary)] hover:bg-[var(--bg-overlay)]",
 									].join(" ")}
 								>
 									<svg
@@ -185,8 +185,8 @@ export function ConflictFileSidebar({
 										activeFile === file.path
 											? "bg-[rgba(10,132,255,0.1)] text-[var(--text)]"
 											: isKeyboardFocused
-												? "border border-[rgba(255,255,255,0.1)] bg-[rgba(255,255,255,0.04)] text-[var(--text-secondary)]"
-												: "text-[var(--text-tertiary)] hover:bg-[rgba(255,255,255,0.04)]",
+												? "border border-[var(--border)] bg-[var(--bg-overlay)] text-[var(--text-secondary)]"
+												: "text-[var(--text-tertiary)] hover:bg-[var(--bg-overlay)]",
 									].join(" ")}
 								>
 									<svg

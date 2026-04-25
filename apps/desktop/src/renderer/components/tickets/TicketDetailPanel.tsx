@@ -95,7 +95,7 @@ export function TicketDetailPanel({
 			<div className="flex shrink-0 items-center gap-2.5 border-b border-[var(--border)] px-5 py-2.5">
 				<StateIcon type={issue.stateType || "default"} color={issue.status.color} size={10} />
 				<span className="text-[13px] font-semibold text-[var(--text)]">{issue.identifier}</span>
-				<span className="rounded-full bg-[rgba(255,255,255,0.06)] px-2 py-0.5 text-[10px] text-[var(--text-tertiary)]">
+				<span className="rounded-full bg-[var(--bg-overlay)] px-2 py-0.5 text-[10px] text-[var(--text-tertiary)]">
 					{issue.status.name}
 				</span>
 				<span className="text-[10px] text-[var(--text-quaternary)]">
@@ -130,7 +130,7 @@ export function TicketDetailPanel({
 					)}
 					{detail?.comments && detail.comments.length > 0 && (
 						<>
-							<div className="my-4 h-px bg-[rgba(255,255,255,0.04)]" />
+							<div className="my-4 h-px bg-[var(--border-subtle)]" />
 							<div className="mb-3 text-[10px] font-semibold uppercase tracking-[0.3px] text-[var(--text-tertiary)]">
 								Activity
 							</div>
@@ -158,7 +158,7 @@ export function TicketDetailPanel({
 					)}
 				</div>
 
-				<div className="flex w-[200px] shrink-0 flex-col gap-4 border-l border-[rgba(255,255,255,0.04)] p-4">
+				<div className="flex w-[200px] shrink-0 flex-col gap-4 border-l border-[var(--border-subtle)] p-4">
 					<div>
 						<div className="mb-1.5 text-[9px] font-semibold uppercase tracking-[0.3px] text-[var(--text-quaternary)]">
 							Status
@@ -168,7 +168,7 @@ export function TicketDetailPanel({
 							onChange={(e) => {
 								if (e.target.value) handleStatusChange(e.target.value);
 							}}
-							className="w-full rounded-[5px] border border-[rgba(255,255,255,0.04)] bg-[var(--bg-elevated)] px-2 py-1.5 text-[11px] text-[var(--text-secondary)]"
+							className="w-full rounded-[5px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 py-1.5 text-[11px] text-[var(--text-secondary)]"
 						>
 							<option value="">{issue.status.name}</option>
 							{states?.map((s) => (
@@ -186,7 +186,7 @@ export function TicketDetailPanel({
 						<button
 							type="button"
 							onClick={(e) => openPicker(issue, { x: e.clientX, y: e.clientY })}
-							className="flex w-full items-center gap-2 rounded-[5px] border border-[rgba(255,255,255,0.04)] bg-[var(--bg-elevated)] px-2 py-1.5 text-left transition-colors hover:border-[rgba(255,255,255,0.08)]"
+							className="flex w-full items-center gap-2 rounded-[5px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 py-1.5 text-left transition-colors hover:border-[var(--border)]"
 						>
 							<AssigneeAvatar
 								assigneeId={issue.assigneeId}

@@ -28,7 +28,7 @@ function MenuItem({
 			className={`flex w-full items-center gap-2 rounded-[4px] border-none bg-transparent px-2 py-[5px] text-left text-[12px] transition-colors duration-[80ms] ${
 				variant === "danger"
 					? "text-[var(--term-red)] hover:bg-[rgba(255,107,107,0.1)]"
-					: "text-[var(--text-secondary)] hover:bg-[rgba(255,255,255,0.08)] hover:text-[var(--text)]"
+					: "text-[var(--text-secondary)] hover:bg-[var(--bg-overlay)] hover:text-[var(--text)]"
 			}`}
 		>
 			<span className="flex h-[16px] w-[16px] shrink-0 items-center justify-center text-[var(--text-quaternary)]">

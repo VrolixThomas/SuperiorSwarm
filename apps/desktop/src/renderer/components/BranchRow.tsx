@@ -26,7 +26,7 @@ export function BranchRow({ branch, isSelected, onSelect, onContextMenu, onActio
 			onContextMenu={onContextMenu}
 			className={[
 				"group flex items-center gap-2 rounded-[var(--radius-sm)] px-2 py-1.5 text-[13px] transition-all duration-[var(--transition-fast)] cursor-pointer",
-				isSelected ? "bg-[rgba(255,255,255,0.06)]" : "hover:bg-[rgba(255,255,255,0.04)]",
+				isSelected ? "bg-[var(--bg-active)]" : "hover:bg-[var(--bg-overlay)]",
 			].join(" ")}
 		>
 			{branch.isDefault ? (
@@ -61,14 +61,14 @@ export function BranchRow({ branch, isSelected, onSelect, onContextMenu, onActio
 			)}
 			<span className="min-w-0 truncate text-[var(--text)]">{branch.name}</span>
 			{branch.isDefault && (
-				<span className="shrink-0 rounded-[4px] bg-[rgba(255,255,255,0.04)] px-1.5 text-[10px] text-[var(--text-quaternary)]">
+				<span className="shrink-0 rounded-[4px] bg-[var(--bg-overlay)] px-1.5 text-[10px] text-[var(--text-quaternary)]">
 					default
 				</span>
 			)}
 			{/* Local/remote indicator */}
 			{branch.isLocal && !branch.isRemote && (
 				<span
-					className="shrink-0 rounded-[4px] bg-[rgba(255,255,255,0.04)] px-1.5 text-[10px] text-[var(--text-quaternary)]"
+					className="shrink-0 rounded-[4px] bg-[var(--bg-overlay)] px-1.5 text-[10px] text-[var(--text-quaternary)]"
 					title="Local only — not on remote"
 				>
 					local
@@ -76,7 +76,7 @@ export function BranchRow({ branch, isSelected, onSelect, onContextMenu, onActio
 			)}
 			{!branch.isLocal && branch.isRemote && (
 				<span
-					className="shrink-0 rounded-[4px] bg-[rgba(255,255,255,0.04)] px-1.5 text-[10px] text-[var(--text-quaternary)]"
+					className="shrink-0 rounded-[4px] bg-[var(--bg-overlay)] px-1.5 text-[10px] text-[var(--text-quaternary)]"
 					title="Remote only — not checked out locally"
 				>
 					remote

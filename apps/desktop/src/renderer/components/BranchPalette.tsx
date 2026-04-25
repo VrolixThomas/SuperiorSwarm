@@ -341,7 +341,7 @@ export function BranchPalette({ projectId, onOpenActionMenu }: Props) {
 										type="button"
 										onClick={() => fetchMutation.mutate({ projectId, cwd: cwd || undefined })}
 										disabled={fetchMutation.isPending}
-										className="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[rgba(255,255,255,0.04)] px-2.5 py-1 text-[12px] text-[var(--text-secondary)] transition-all duration-[var(--transition-fast)] hover:bg-[var(--bg-overlay)] disabled:opacity-40"
+										className="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-overlay)] px-2.5 py-1 text-[12px] text-[var(--text-secondary)] transition-all duration-[var(--transition-fast)] hover:bg-[var(--bg-overlay)] disabled:opacity-40"
 									>
 										{fetchMutation.isPending ? "Fetching…" : "Fetch All"}
 									</button>
@@ -349,7 +349,7 @@ export function BranchPalette({ projectId, onOpenActionMenu }: Props) {
 										type="button"
 										onClick={() => pushMutation.mutate({ projectId, cwd: cwd || undefined })}
 										disabled={pushMutation.isPending}
-										className="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[rgba(255,255,255,0.04)] px-2.5 py-1 text-[12px] text-[var(--text-secondary)] transition-all duration-[var(--transition-fast)] hover:bg-[var(--bg-overlay)] disabled:opacity-40"
+										className="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-overlay)] px-2.5 py-1 text-[12px] text-[var(--text-secondary)] transition-all duration-[var(--transition-fast)] hover:bg-[var(--bg-overlay)] disabled:opacity-40"
 									>
 										{pushMutation.isPending ? "Pushing…" : "Push"}
 									</button>
@@ -357,7 +357,7 @@ export function BranchPalette({ projectId, onOpenActionMenu }: Props) {
 										type="button"
 										onClick={() => pullMutation.mutate({ projectId, cwd: cwd || undefined })}
 										disabled={pullMutation.isPending}
-										className="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[rgba(255,255,255,0.04)] px-2.5 py-1 text-[12px] text-[var(--text-secondary)] transition-all duration-[var(--transition-fast)] hover:bg-[var(--bg-overlay)] disabled:opacity-40"
+										className="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-overlay)] px-2.5 py-1 text-[12px] text-[var(--text-secondary)] transition-all duration-[var(--transition-fast)] hover:bg-[var(--bg-overlay)] disabled:opacity-40"
 									>
 										{pullMutation.isPending ? "Pulling…" : "Pull"}
 									</button>
@@ -435,19 +435,19 @@ export function BranchPalette({ projectId, onOpenActionMenu }: Props) {
 				{/* Footer hint */}
 				<div className="border-t border-[var(--border)] px-3 py-2 flex items-center gap-3 text-[11px] text-[var(--text-quaternary)]">
 					<span className="flex items-center gap-1">
-						<kbd className="rounded bg-[rgba(255,255,255,0.06)] px-1 py-0.5 font-mono text-[10px]">
+						<kbd className="rounded bg-[var(--bg-overlay)] px-1 py-0.5 font-mono text-[10px]">
 							↑↓
 						</kbd>
 						navigate
 					</span>
 					<span className="flex items-center gap-1">
-						<kbd className="rounded bg-[rgba(255,255,255,0.06)] px-1 py-0.5 font-mono text-[10px]">
+						<kbd className="rounded bg-[var(--bg-overlay)] px-1 py-0.5 font-mono text-[10px]">
 							↵
 						</kbd>
 						actions
 					</span>
 					<span className="flex items-center gap-1">
-						<kbd className="rounded bg-[rgba(255,255,255,0.06)] px-1 py-0.5 font-mono text-[10px]">
+						<kbd className="rounded bg-[var(--bg-overlay)] px-1 py-0.5 font-mono text-[10px]">
 							esc
 						</kbd>
 						close

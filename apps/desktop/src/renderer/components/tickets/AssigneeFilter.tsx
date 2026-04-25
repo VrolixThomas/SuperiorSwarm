@@ -128,7 +128,7 @@ export function AssigneeFilter() {
 			<button
 				type="button"
 				onClick={() => setOpen(!open)}
-				className="flex items-center gap-1.5 rounded-[5px] border border-[rgba(255,255,255,0.06)] bg-[var(--bg-elevated)] px-2 py-1 text-[10px] text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-secondary)]"
+				className="flex items-center gap-1.5 rounded-[5px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 py-1 text-[10px] text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-secondary)]"
 			>
 				{isObjectMode && selectedMembers.length > 0 ? (
 					<span className="flex items-center">

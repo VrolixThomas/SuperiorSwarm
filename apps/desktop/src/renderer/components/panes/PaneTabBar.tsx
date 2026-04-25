@@ -88,7 +88,7 @@ function TabPill({
 			className={`app-no-drag group relative flex h-[28px] max-w-[180px] shrink-0 cursor-pointer select-none items-center gap-1.5 rounded-[6px] pl-2.5 pr-1.5 text-[12px] transition-all duration-[120ms] ${
 				isActive
 					? "bg-[var(--tab-active-bg)] text-[var(--text)] shadow-[0_1px_3px_rgba(0,0,0,0.4),inset_0_0.5px_0_rgba(255,255,255,0.04)]"
-					: "bg-[var(--tab-inactive-bg)] text-[var(--text-tertiary)] hover:bg-[rgba(255,255,255,0.04)] hover:text-[var(--text-secondary)]"
+					: "bg-[var(--tab-inactive-bg)] text-[var(--text-tertiary)] hover:bg-[var(--bg-overlay)] hover:text-[var(--text-secondary)]"
 			}`}
 		>
 			{isActive && (

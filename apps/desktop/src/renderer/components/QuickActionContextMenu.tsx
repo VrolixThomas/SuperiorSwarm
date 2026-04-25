@@ -47,7 +47,7 @@ export function QuickActionContextMenu({
 					onEdit(action);
 					onClose();
 				}}
-				className="w-full px-3 py-1.5 text-left text-[12px] text-[var(--text)] hover:bg-[rgba(255,255,255,0.06)]"
+				className="w-full px-3 py-1.5 text-left text-[12px] text-[var(--text)] hover:bg-[var(--bg-overlay)]"
 			>
 				Edit
 			</button>
@@ -58,7 +58,7 @@ export function QuickActionContextMenu({
 					deleteMutation.mutate({ id: action.id });
 					onClose();
 				}}
-				className="w-full px-3 py-1.5 text-left text-[12px] text-[var(--color-danger)] hover:bg-[rgba(255,255,255,0.06)]"
+				className="w-full px-3 py-1.5 text-left text-[12px] text-[var(--color-danger)] hover:bg-[var(--bg-overlay)]"
 			>
 				Delete
 			</button>

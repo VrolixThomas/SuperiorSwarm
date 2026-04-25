@@ -320,7 +320,7 @@ export function MergeConflictPane({ projectId, mergeType, sourceBranch, targetBr
 						value={commitMessage}
 						onChange={(e) => setCommitMessage(e.target.value)}
 						placeholder="Commit message…"
-						className="w-[280px] rounded-[var(--radius-sm)] border border-[var(--border)] bg-[rgba(255,255,255,0.04)] px-2.5 py-1 text-[12px] text-[var(--text)] placeholder:text-[var(--text-quaternary)] focus:border-[var(--accent)] focus:outline-none"
+						className="w-[280px] rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-overlay)] px-2.5 py-1 text-[12px] text-[var(--text)] placeholder:text-[var(--text-quaternary)] focus:border-[var(--accent)] focus:outline-none"
 					/>
 				)}
 
@@ -414,7 +414,7 @@ export function MergeConflictPane({ projectId, mergeType, sourceBranch, targetBr
 									</span>
 									<span className="text-[12px]">
 										Press{" "}
-										<code className="rounded bg-[rgba(255,255,255,0.06)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--text-secondary)]">
+										<code className="rounded bg-[var(--bg-overlay)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--text-secondary)]">
 											↵
 										</code>{" "}
 										or click the button to{" "}
