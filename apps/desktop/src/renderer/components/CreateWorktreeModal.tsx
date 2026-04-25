@@ -159,7 +159,7 @@ export function CreateWorktreeModal() {
 
 	return (
 		<div
-			className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+			className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--scrim)] backdrop-blur-sm"
 			onClick={(e) => {
 				if (e.target === e.currentTarget) closeCreateWorktreeModal();
 			}}
@@ -380,7 +380,7 @@ export function CreateWorktreeModal() {
 					<button
 						type="submit"
 						disabled={isSubmitDisabled}
-						className="w-full rounded-[var(--radius-md)] bg-[var(--accent)] px-4 py-2 text-[13px] font-medium text-white transition-all duration-[120ms] hover:bg-[var(--accent-hover)] disabled:opacity-50"
+						className="w-full rounded-[var(--radius-md)] bg-[var(--accent)] px-4 py-2 text-[13px] font-medium text-[var(--accent-foreground)] transition-all duration-[120ms] hover:bg-[var(--accent-hover)] disabled:opacity-50"
 					>
 						{isPending
 							? mode === "new"

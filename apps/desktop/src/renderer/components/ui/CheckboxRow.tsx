@@ -22,7 +22,7 @@ export function CheckboxRow({ checked, onClick, label, icon, meta }: CheckboxRow
 				aria-hidden="true"
 				className={`flex h-3.5 w-3.5 items-center justify-center rounded-[3px] border text-[8px] ${
 					checked
-						? "border-[var(--accent)] bg-[var(--accent)] text-white"
+						? "border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-foreground)]"
 						: "border-[var(--border-active)]"
 				}`}
 			>

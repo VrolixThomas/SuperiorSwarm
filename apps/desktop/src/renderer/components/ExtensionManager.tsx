@@ -26,7 +26,7 @@ export function ExtensionManager({ onClose }: ExtensionManagerProps) {
 
 	return (
 		<div
-			className="absolute inset-0 z-50 flex items-end justify-center bg-black/50"
+			className="absolute inset-0 z-50 flex items-end justify-center bg-[var(--scrim)]"
 			onClick={onClose}
 		>
 			<div
@@ -64,7 +64,7 @@ export function ExtensionManager({ onClose }: ExtensionManagerProps) {
 									onClick={() => toggleMutation.mutate({ id: ext.id, enabled: !ext.enabled })}
 									className={`shrink-0 h-4 w-4 rounded border text-[10px] ${
 										ext.enabled
-											? "border-[var(--accent)] bg-[var(--accent)] text-white"
+											? "border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-foreground)]"
 											: "border-[var(--border)] text-transparent"
 									}`}
 								>
@@ -90,7 +90,7 @@ export function ExtensionManager({ onClose }: ExtensionManagerProps) {
 						type="button"
 						onClick={handleAdd}
 						disabled={addMutation.isPending}
-						className="rounded-[6px] bg-[var(--accent)] px-3 py-1 text-[12px] font-medium text-white hover:opacity-90 disabled:opacity-50"
+						className="rounded-[6px] bg-[var(--accent)] px-3 py-1 text-[12px] font-medium text-[var(--accent-foreground)] hover:opacity-90 disabled:opacity-50"
 					>
 						Add .vsix
 					</button>

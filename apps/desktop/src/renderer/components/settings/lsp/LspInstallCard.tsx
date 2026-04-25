@@ -62,7 +62,7 @@ function ActionButton({
 }) {
 	const base = "rounded-[4px] border px-2 py-0.5 text-[10px] disabled:opacity-40 transition-colors";
 	const variant = primary
-		? "border-[var(--accent)] bg-[var(--accent)] text-white hover:opacity-90"
+		? "border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-foreground)] hover:opacity-90"
 		: "border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]";
 	return (
 		<button type="button" onClick={onClick} disabled={disabled} className={`${base} ${variant}`}>

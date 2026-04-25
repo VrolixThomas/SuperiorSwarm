@@ -268,7 +268,7 @@ export function QuickActionPopover({
 											onClick={() => setScope("repo")}
 											className={`rounded px-2.5 py-1 text-[11px] transition-colors ${
 												scope === "repo"
-													? "bg-[var(--accent)] text-white"
+													? "bg-[var(--accent)] text-[var(--accent-foreground)]"
 													: "bg-[var(--bg-base)] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
 											}`}
 										>
@@ -279,7 +279,7 @@ export function QuickActionPopover({
 											onClick={() => setScope("global")}
 											className={`rounded px-2.5 py-1 text-[11px] transition-colors ${
 												scope === "global"
-													? "bg-[var(--accent)] text-white"
+													? "bg-[var(--accent)] text-[var(--accent-foreground)]"
 													: "bg-[var(--bg-base)] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
 											}`}
 										>
@@ -302,7 +302,7 @@ export function QuickActionPopover({
 									type="button"
 									onClick={handleSave}
 									disabled={!label.trim() || !command.trim()}
-									className="rounded bg-[var(--accent)] px-3 py-1 text-[11px] text-white disabled:opacity-40"
+									className="rounded bg-[var(--accent)] px-3 py-1 text-[11px] text-[var(--accent-foreground)] disabled:opacity-40"
 								>
 									{editAction ? "Save" : "Add"}
 								</button>
@@ -352,7 +352,7 @@ export function QuickActionPopover({
 									type="button"
 									onClick={handleLaunchAgent}
 									disabled={launchAgent.isPending || !activeWorkspaceId || !agentPrompt.trim()}
-									className="rounded bg-[var(--accent)] px-3 py-1 text-[11px] text-white disabled:opacity-40"
+									className="rounded bg-[var(--accent)] px-3 py-1 text-[11px] text-[var(--accent-foreground)] disabled:opacity-40"
 								>
 									{launchAgent.isPending ? "Launching..." : "Launch agent"}
 								</button>

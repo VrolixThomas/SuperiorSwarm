@@ -56,7 +56,7 @@ function IntegrationRow({
 					type="button"
 					onClick={onConnect}
 					disabled={isPending}
-					className="shrink-0 rounded-[5px] bg-[var(--accent)] px-2.5 py-1 text-[11px] font-medium text-white transition-colors hover:bg-[var(--accent-hover)] disabled:opacity-50"
+					className="shrink-0 rounded-[5px] bg-[var(--accent)] px-2.5 py-1 text-[11px] font-medium text-[var(--accent-foreground)] transition-colors hover:bg-[var(--accent-hover)] disabled:opacity-50"
 				>
 					{isPending ? "..." : "Connect"}
 				</button>

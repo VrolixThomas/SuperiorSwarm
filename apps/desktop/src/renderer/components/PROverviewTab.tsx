@@ -347,7 +347,7 @@ function GitHubThreadCard({
 											setReplyOpen(false);
 										}
 									}}
-									className="rounded-[4px] bg-[var(--accent)] px-2 py-0.5 text-[10px] font-medium text-white hover:opacity-80"
+									className="rounded-[4px] bg-[var(--accent)] px-2 py-0.5 text-[10px] font-medium text-[var(--accent-foreground)] hover:opacity-80"
 								>
 									Reply
 								</button>
@@ -645,7 +645,7 @@ function ReviewBottomBar({
 					<button
 						type="button"
 						onClick={onShowVerdict}
-						className="px-4 py-[6px] rounded-[6px] text-[12px] font-semibold border-none cursor-pointer bg-[var(--success)] text-white"
+						className="px-4 py-[6px] rounded-[6px] text-[12px] font-semibold border-none cursor-pointer bg-[var(--success)] text-[var(--accent-foreground)]"
 					>
 						Submit Review
 					</button>

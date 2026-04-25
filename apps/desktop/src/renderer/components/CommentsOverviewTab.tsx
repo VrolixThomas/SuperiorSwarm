@@ -512,7 +512,7 @@ export function CommentsOverviewTab({ workspaceId }: CommentsOverviewTabProps) {
 					type="button"
 					onClick={handleSolve}
 					disabled={triggerSolve.isPending || includedCount === 0 || isSessionInProgress}
-					className="w-full rounded-[6px] bg-[var(--accent)] px-4 py-1.5 text-[12px] font-medium text-white transition-colors hover:bg-[var(--accent-hover)] disabled:opacity-40"
+					className="w-full rounded-[6px] bg-[var(--accent)] px-4 py-1.5 text-[12px] font-medium text-[var(--accent-foreground)] transition-colors hover:bg-[var(--accent-hover)] disabled:opacity-40"
 				>
 					{triggerSolve.isPending
 						? "Starting..."

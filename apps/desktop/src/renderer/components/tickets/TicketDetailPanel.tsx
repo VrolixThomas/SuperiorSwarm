@@ -234,7 +234,7 @@ export function TicketDetailPanel({
 						<button
 							type="button"
 							onClick={onCreateBranch}
-							className="w-full rounded-[6px] bg-[var(--accent)] px-3 py-1.5 text-center text-[11px] font-medium text-white transition-colors hover:bg-[var(--accent-hover)]"
+							className="w-full rounded-[6px] bg-[var(--accent)] px-3 py-1.5 text-center text-[11px] font-medium text-[var(--accent-foreground)] transition-colors hover:bg-[var(--accent-hover)]"
 						>
 							Create Worktree
 						</button>

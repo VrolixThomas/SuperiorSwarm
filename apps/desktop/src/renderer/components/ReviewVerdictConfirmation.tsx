@@ -81,7 +81,7 @@ export function ReviewVerdictConfirmation({
 					className={[
 						"px-[14px] py-[5px] rounded-[6px] text-[11px] font-semibold border-none",
 						!isSubmitting
-							? "cursor-pointer bg-[var(--accent)] text-white"
+							? "cursor-pointer bg-[var(--accent)] text-[var(--accent-foreground)]"
 							: "cursor-not-allowed bg-[var(--bg-active)] text-[var(--text-tertiary)]",
 					].join(" ")}
 				>

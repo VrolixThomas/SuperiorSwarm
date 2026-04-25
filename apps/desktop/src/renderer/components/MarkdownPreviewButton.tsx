@@ -36,7 +36,9 @@ export function MarkdownPreviewButton({ language, showRichDiff }: MarkdownPrevie
 				}
 				className={[
 					"rounded px-2 py-0.5 text-[11px] transition-colors",
-					markdownPreviewMode === "rendered" ? "bg-[var(--accent)] text-white" : inactiveStyle,
+					markdownPreviewMode === "rendered"
+						? "bg-[var(--accent)] text-[var(--accent-foreground)]"
+						: inactiveStyle,
 				].join(" ")}
 			>
 				Rendered

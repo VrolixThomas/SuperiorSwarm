@@ -235,7 +235,7 @@ function GroupAction({
 							onPush();
 						}}
 						disabled={isPushing}
-						className={`py-[4px] px-[12px] rounded-[6px] text-[11.5px] font-semibold border-none ${isPushing ? "cursor-not-allowed bg-[var(--bg-active)] text-[var(--text-tertiary)]" : "cursor-pointer bg-[var(--success)] text-white"}`}
+						className={`py-[4px] px-[12px] rounded-[6px] text-[11.5px] font-semibold border-none ${isPushing ? "cursor-not-allowed bg-[var(--bg-active)] text-[var(--text-tertiary)]" : "cursor-pointer bg-[var(--success)] text-[var(--accent-foreground)]"}`}
 					>
 						{isPushing ? "Pushing…" : "Push & post"}
 					</button>

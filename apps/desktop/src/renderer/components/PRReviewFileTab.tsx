@@ -187,7 +187,7 @@ function ThreadWidget({
 											setReplyOpen(false);
 										}
 									}}
-									className="rounded-[4px] bg-[var(--accent)] px-2 py-0.5 text-[10px] font-medium text-white hover:opacity-80"
+									className="rounded-[4px] bg-[var(--accent)] px-2 py-0.5 text-[10px] font-medium text-[var(--accent-foreground)] hover:opacity-80"
 								>
 									Reply
 								</button>
@@ -232,7 +232,7 @@ function NewThreadWidget({
 			onMouseDown={(e) => e.stopPropagation()}
 			className="mx-2 my-1 rounded-[6px] border border-[var(--accent)] bg-[var(--bg-surface)] text-[11px] shadow-lg overflow-hidden"
 		>
-			<div className="bg-[var(--accent)] px-3 py-1 text-white font-medium text-[10px]">
+			<div className="bg-[var(--accent)] px-3 py-1 text-[var(--accent-foreground)] font-medium text-[10px]">
 				New Comment on Line {line}
 			</div>
 			<div className="flex flex-col gap-1.5 p-2">
@@ -250,7 +250,7 @@ function NewThreadWidget({
 						onClick={() => {
 							if (body.trim()) onSave(body.trim());
 						}}
-						className="rounded-[4px] bg-[var(--accent)] px-2 py-0.5 text-[10px] font-medium text-white hover:opacity-80"
+						className="rounded-[4px] bg-[var(--accent)] px-2 py-0.5 text-[10px] font-medium text-[var(--accent-foreground)] hover:opacity-80"
 					>
 						Add Comment
 					</button>

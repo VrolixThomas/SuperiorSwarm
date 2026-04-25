@@ -87,7 +87,7 @@ export function AboutSettings() {
 								<button
 									type="button"
 									onClick={handleUpdateNow}
-									className="rounded-[5px] bg-[var(--accent)] px-2.5 py-1 text-[11px] font-medium text-white transition-colors hover:bg-[var(--accent-hover)]"
+									className="rounded-[5px] bg-[var(--accent)] px-2.5 py-1 text-[11px] font-medium text-[var(--accent-foreground)] transition-colors hover:bg-[var(--accent-hover)]"
 								>
 									Update now
 								</button>

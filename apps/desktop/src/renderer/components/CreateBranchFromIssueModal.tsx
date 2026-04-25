@@ -130,7 +130,7 @@ export function CreateBranchFromIssueModal({ issue, onClose }: Props) {
 
 	return (
 		<div
-			className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-[2px]"
+			className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--scrim)] backdrop-blur-[2px]"
 			onClick={(e) => {
 				if (e.target === e.currentTarget) onClose();
 			}}
@@ -246,7 +246,7 @@ export function CreateBranchFromIssueModal({ issue, onClose }: Props) {
 					<button
 						type="submit"
 						disabled={!canSubmit}
-						className="mt-0.5 w-full rounded-[var(--radius-md)] bg-[var(--accent)] px-4 py-2 text-[13px] font-medium text-white transition-all duration-[120ms] hover:bg-[var(--accent-hover)] disabled:opacity-40"
+						className="mt-0.5 w-full rounded-[var(--radius-md)] bg-[var(--accent)] px-4 py-2 text-[13px] font-medium text-[var(--accent-foreground)] transition-all duration-[120ms] hover:bg-[var(--accent-hover)] disabled:opacity-40"
 					>
 						{createMutation.isPending ? "Creating…" : "Create Branch"}
 					</button>

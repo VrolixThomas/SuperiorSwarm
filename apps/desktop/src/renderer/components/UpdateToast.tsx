@@ -158,7 +158,7 @@ export function UpdateToast() {
 					<button
 						type="button"
 						onClick={handleRestart}
-						className="rounded-[var(--radius-sm)] bg-[var(--accent)] px-3 py-[5px] text-[11px] font-medium text-white transition-colors hover:bg-[var(--accent-hover)]"
+						className="rounded-[var(--radius-sm)] bg-[var(--accent)] px-3 py-[5px] text-[11px] font-medium text-[var(--accent-foreground)] transition-colors hover:bg-[var(--accent-hover)]"
 					>
 						Restart now
 					</button>

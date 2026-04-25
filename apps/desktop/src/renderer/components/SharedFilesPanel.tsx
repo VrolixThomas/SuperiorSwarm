@@ -149,7 +149,7 @@ function CandidateNode({
 							/>
 						</svg>
 					</div>
-					<span className="flex-1 truncate text-[13px] font-[var(--font-mono)] text-[rgba(255,255,255,0.82)] group-hover/dir:text-white transition-colors duration-75 leading-none">
+					<span className="flex-1 truncate text-[13px] font-[var(--font-mono)] text-[rgba(255,255,255,0.82)] group-hover/dir:text-[var(--text)] transition-colors duration-75 leading-none">
 						{entry.name}/
 					</span>
 					<span className="shrink-0 rounded-[4px] bg-[var(--accent-subtle)] border border-[var(--accent-subtle)] px-[6px] py-[3px] text-[10.5px] tabular-nums text-[rgba(10,132,255,0.85)] font-semibold leading-none">
@@ -348,7 +348,7 @@ export function SharedFilesPanel() {
 				<div className="flex items-start justify-between px-6 pt-6 pb-5 shrink-0">
 					<div className="min-w-0 pr-4">
 						<h2
-							className="text-[16px] font-semibold text-white leading-none"
+							className="text-[16px] font-semibold text-[var(--text)] leading-none"
 							style={{ letterSpacing: "-0.014em" }}
 						>
 							Shared Files

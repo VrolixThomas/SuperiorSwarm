@@ -38,7 +38,7 @@ export function WhatsNewModal() {
 
 	return (
 		<div
-			className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+			className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--scrim)] backdrop-blur-sm"
 			onClick={(e) => {
 				if (e.target === e.currentTarget) handleClose();
 			}}
@@ -90,7 +90,7 @@ export function WhatsNewModal() {
 					<button
 						type="button"
 						onClick={handleClose}
-						className="rounded-[var(--radius-sm)] bg-[var(--accent)] px-4 py-[6px] text-[12px] font-medium text-white transition-colors hover:bg-[var(--accent-hover)]"
+						className="rounded-[var(--radius-sm)] bg-[var(--accent)] px-4 py-[6px] text-[12px] font-medium text-[var(--accent-foreground)] transition-colors hover:bg-[var(--accent-hover)]"
 					>
 						Got it
 					</button>

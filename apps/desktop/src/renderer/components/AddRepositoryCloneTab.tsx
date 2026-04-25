@@ -69,7 +69,7 @@ export function AddRepositoryCloneTab() {
 			<button
 				type="submit"
 				disabled={!url.trim() || cloneMutation.isPending}
-				className="w-full rounded-[var(--radius-md)] bg-[var(--accent)] px-4 py-2 text-[13px] font-medium text-white transition-all duration-[120ms] hover:bg-[var(--accent-hover)] disabled:opacity-50"
+				className="w-full rounded-[var(--radius-md)] bg-[var(--accent)] px-4 py-2 text-[13px] font-medium text-[var(--accent-foreground)] transition-all duration-[120ms] hover:bg-[var(--accent-hover)] disabled:opacity-50"
 			>
 				{cloneMutation.isPending ? "Cloning..." : "Clone Repository"}
 			</button>

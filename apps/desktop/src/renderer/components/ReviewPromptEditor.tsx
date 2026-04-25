@@ -74,7 +74,7 @@ export function ReviewPromptEditor({ onBack }: { onBack: () => void }) {
 					type="button"
 					onClick={handleSave}
 					disabled={!dirty || updateSettings.isPending}
-					className="rounded-[5px] bg-[var(--accent)] px-2.5 py-1 text-[11px] font-medium text-white transition-colors hover:bg-[var(--accent-hover)] disabled:opacity-40"
+					className="rounded-[5px] bg-[var(--accent)] px-2.5 py-1 text-[11px] font-medium text-[var(--accent-foreground)] transition-colors hover:bg-[var(--accent-hover)] disabled:opacity-40"
 				>
 					{updateSettings.isPending ? "Saving..." : "Save"}
 				</button>

@@ -33,7 +33,7 @@ export function AddRepositoryModal() {
 
 	return (
 		<div
-			className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+			className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--scrim)] backdrop-blur-sm"
 			onClick={(e) => {
 				if (e.target === e.currentTarget) closeAddModal();
 			}}

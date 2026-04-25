@@ -300,7 +300,7 @@ export function LspServerForm({
 					type="button"
 					disabled={saveDisabled}
 					onClick={() => onSave(form)}
-					className="rounded-[6px] bg-[var(--accent)] px-4 py-1.5 text-[12px] text-white disabled:opacity-50"
+					className="rounded-[6px] bg-[var(--accent)] px-4 py-1.5 text-[12px] text-[var(--accent-foreground)] disabled:opacity-50"
 				>
 					{saving ? "Saving..." : isEdit ? "Save Changes" : "Add Server"}
 				</button>
