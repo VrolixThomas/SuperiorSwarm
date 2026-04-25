@@ -1,7 +1,7 @@
 import * as monaco from "monaco-editor";
 import { initVimMode } from "monaco-vim";
 import { useEffect, useRef, useState } from "react";
-import { EDITOR_THEME, ensureThemeRegistered } from "../lib/monacoTheme";
+import { ensureThemeRegistered } from "../lib/monacoTheme";
 import { useEditorSettingsStore } from "../stores/editor-settings";
 
 interface DiffEditorProps {
@@ -44,11 +44,11 @@ export function DiffEditor({
 	// biome-ignore lint/correctness/useExhaustiveDependencies: editor created once on mount, renderSideBySide updated separately
 	useEffect(() => {
 		if (!containerRef.current) return;
-		ensureThemeRegistered();
+		const theme = ensureThemeRegistered();
 		const editor = monaco.editor.createDiffEditor(containerRef.current, {
 			readOnly: readOnly ?? false,
 			renderSideBySide,
-			theme: EDITOR_THEME,
+			theme,
 			fontSize: 13,
 			fontFamily: "'SF Mono', 'JetBrains Mono', 'Fira Code', monospace",
 			minimap: { enabled: false },

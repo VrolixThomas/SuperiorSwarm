@@ -213,7 +213,7 @@ export function SubmitReviewModal({
 						type="button"
 						disabled={isSubmitting}
 						onClick={() => handleSubmit("APPROVE")}
-						className="flex-1 rounded-md border border-[rgba(48,209,88,0.15)] bg-[var(--success-subtle)] py-2 text-[11px] font-semibold text-[var(--color-success)] transition-colors hover:bg-[rgba(48,209,88,0.2)] disabled:opacity-50"
+						className="flex-1 rounded-md border border-[var(--success-subtle)] bg-[var(--success-subtle)] py-2 text-[11px] font-semibold text-[var(--color-success)] transition-colors hover:bg-[color-mix(in_srgb,var(--color-success)_22%,transparent)] disabled:opacity-50"
 					>
 						Approve
 					</button>
@@ -221,7 +221,7 @@ export function SubmitReviewModal({
 						type="button"
 						disabled={isSubmitting}
 						onClick={() => handleSubmit("REQUEST_CHANGES")}
-						className="flex-1 rounded-md border border-[rgba(255,69,58,0.12)] bg-[rgba(255,69,58,0.1)] py-2 text-[11px] font-medium text-[var(--color-danger)] transition-colors hover:bg-[var(--danger-subtle)] disabled:opacity-50"
+						className="flex-1 rounded-md border border-[color-mix(in_srgb,var(--color-danger)_15%,transparent)] bg-[color-mix(in_srgb,var(--color-danger)_10%,transparent)] py-2 text-[11px] font-medium text-[var(--color-danger)] transition-colors hover:bg-[var(--danger-subtle)] disabled:opacity-50"
 					>
 						Request Changes
 					</button>

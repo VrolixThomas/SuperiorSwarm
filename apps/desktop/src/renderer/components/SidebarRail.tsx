@@ -646,9 +646,9 @@ function RailPRsSection({ flyout, openFlyout, scheduleDismiss, onExpand }: RailS
 	if (!hasBitbucket && !hasGitHub) return null;
 
 	const stateColors = {
-		open: "bg-[var(--success-subtle)]",
-		merged: "bg-[var(--purple-subtle)]",
-		closed: "bg-[var(--danger-subtle)]",
+		open: "bg-[var(--color-success)]",
+		merged: "bg-[var(--color-purple)]",
+		closed: "bg-[var(--color-danger)]",
 	};
 	const isFlyoutActive = flyout?.kind === "prs";
 	const visiblePRs = prs.slice(0, MAX_PILLS);

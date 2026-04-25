@@ -130,11 +130,8 @@ export function Terminal({
 		const themeObserver = new MutationObserver(scheduleTheme);
 		themeObserver.observe(document.documentElement, {
 			attributes: true,
-			attributeFilter: ["class", "style", "data-theme"],
+			attributeFilter: ["data-theme"],
 		});
-
-		const mql = matchMedia("(prefers-color-scheme: dark)");
-		mql.addEventListener("change", scheduleTheme);
 
 		requestAnimationFrame(() => fit.fit());
 
@@ -245,7 +242,6 @@ export function Terminal({
 			window.removeEventListener("resize", onResize);
 			observer.disconnect();
 			themeObserver.disconnect();
-			mql.removeEventListener("change", scheduleTheme);
 			if (rafId) cancelAnimationFrame(rafId);
 			api?.terminal.detach(id);
 			webgl?.dispose();

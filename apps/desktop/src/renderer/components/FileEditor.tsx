@@ -1,7 +1,7 @@
 import * as monaco from "monaco-editor";
 import { initVimMode } from "monaco-vim";
 import { useEffect, useRef, useState } from "react";
-import { EDITOR_THEME, ensureThemeRegistered } from "../lib/monacoTheme";
+import { ensureThemeRegistered } from "../lib/monacoTheme";
 import { useEditorSettingsStore } from "../stores/editor-settings";
 import { useProjectStore } from "../stores/projects";
 import { useReviewSessionStore } from "../stores/review-session-store";
@@ -105,9 +105,9 @@ export function FileEditor({
 	// Create editor once on mount
 	useEffect(() => {
 		if (!containerRef.current) return;
-		ensureThemeRegistered();
+		const theme = ensureThemeRegistered();
 		const editor = monaco.editor.create(containerRef.current, {
-			theme: EDITOR_THEME,
+			theme,
 			fontSize: 13,
 			fontFamily: "'SF Mono', 'JetBrains Mono', 'Fira Code', monospace",
 			minimap: { enabled: false },

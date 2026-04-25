@@ -124,20 +124,22 @@ export function RichPRItem({
 			onClick={onClick}
 			onContextMenu={onContextMenu}
 			className={[
-				"group flex w-full flex-col gap-0.5 border-none pr-3 py-[7px] text-left text-[12px] cursor-pointer",
+				"group relative flex w-full flex-col gap-0.5 border-none pl-[22px] pr-3 py-[7px] text-left text-[12px] cursor-pointer rounded-[6px]",
 				"transition-all duration-[120ms]",
 				isActive
-					? "rounded-r-[6px] rounded-l-none bg-[var(--bg-elevated)] hover:bg-[var(--bg-overlay)] -ml-[2px] border-l-2 border-[var(--accent)]"
-					: "rounded-[6px] bg-transparent hover:bg-[var(--bg-elevated)]",
-				isActive ? "pl-[20px]" : "pl-[22px]",
-				isActive
-					? "text-[var(--text)]"
+					? "bg-[var(--bg-elevated)] hover:bg-[var(--bg-overlay)] text-[var(--text)]"
 					: isReviewer
-						? "text-[var(--text-secondary)]"
-						: "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]",
+						? "bg-transparent hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)]"
+						: "bg-transparent hover:bg-[var(--bg-elevated)] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]",
 			].join(" ")}
 			title={`${pr.repoDisplay}#${pr.number}: ${pr.title}`}
 		>
+			{isActive && (
+				<span
+					aria-hidden="true"
+					className="absolute left-0 top-1 bottom-1 w-[3px] rounded-r-[2px] bg-[var(--accent)]"
+				/>
+			)}
 			{/* Row 1: Title + SwarmIndicator + health dot + PR number */}
 			<div className="flex items-center gap-1">
 				<span className="min-w-0 flex-1 truncate text-[12px] leading-tight">{pr.title}</span>

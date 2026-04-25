@@ -16,30 +16,35 @@ interface ThemeState {
 	hydrate: () => Promise<void>;
 }
 
-export const useThemeStore = create<ThemeState>((set) => ({
+export const useThemeStore = create<ThemeState>((set, get) => ({
 	pref: "system",
 	resolved: systemPrefersDark() ? "dark" : "light",
 
 	setPref: async (p) => {
-		await trpcVanilla.settings.setTheme.mutate(p);
+		if (get().pref === p) return;
 		const resolved = resolveTheme(p, systemPrefersDark());
+		// Optimistic: apply + set first so the inbound broadcast echo from main is a no-op.
 		applyTheme(resolved);
 		set({ pref: p, resolved });
+		await trpcVanilla.settings.setTheme.mutate(p);
 	},
 
 	hydrate: async () => {
 		const pref = await trpcVanilla.settings.getTheme.query();
 		const resolved = resolveTheme(pref, systemPrefersDark());
-		applyTheme(resolved);
+		if (document.documentElement.dataset.theme !== resolved) {
+			applyTheme(resolved);
+		}
 		set({ pref, resolved });
 	},
 }));
 
 // OS theme follow when pref === "system"
 const unsubSystem = watchSystemTheme((dark) => {
-	const { pref } = useThemeStore.getState();
-	if (pref !== "system") return;
+	const state = useThemeStore.getState();
+	if (state.pref !== "system") return;
 	const resolved: ResolvedTheme = dark ? "dark" : "light";
+	if (state.resolved === resolved) return;
 	applyTheme(resolved);
 	useThemeStore.setState({ resolved });
 });

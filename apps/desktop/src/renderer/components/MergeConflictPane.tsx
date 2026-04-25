@@ -329,7 +329,7 @@ export function MergeConflictPane({ projectId, mergeType, sourceBranch, targetBr
 					type="button"
 					onClick={handleAbort}
 					disabled={isAborting}
-					className="rounded-[var(--radius-sm)] border border-[rgba(255,69,58,0.3)] bg-[rgba(255,69,58,0.08)] px-3 py-1 text-[12px] font-medium text-[var(--color-danger)] transition-all duration-[var(--transition-fast)] hover:bg-[var(--danger-subtle)] disabled:cursor-not-allowed disabled:opacity-50"
+					className="rounded-[var(--radius-sm)] border border-[color-mix(in_srgb,var(--color-danger)_30%,transparent)] bg-[color-mix(in_srgb,var(--color-danger)_8%,transparent)] px-3 py-1 text-[12px] font-medium text-[var(--color-danger)] transition-all duration-[var(--transition-fast)] hover:bg-[var(--danger-subtle)] disabled:cursor-not-allowed disabled:opacity-50"
 				>
 					{isAborting ? "Aborting…" : "Abort"}
 				</button>
@@ -342,8 +342,8 @@ export function MergeConflictPane({ projectId, mergeType, sourceBranch, targetBr
 					className={[
 						"rounded-[var(--radius-sm)] border px-3 py-1 text-[12px] font-medium transition-all duration-[var(--transition-fast)] disabled:cursor-not-allowed disabled:opacity-40",
 						allResolved
-							? "border-[rgba(48,209,88,0.4)] bg-[rgba(48,209,88,0.2)] text-[var(--color-success)] shadow-[0_0_10px_rgba(48,209,88,0.15)]"
-							: "border-[rgba(48,209,88,0.15)] bg-[rgba(48,209,88,0.04)] text-[rgba(48,209,88,0.4)]",
+							? "border-[color-mix(in_srgb,var(--color-success)_40%,transparent)] bg-[color-mix(in_srgb,var(--color-success)_20%,transparent)] text-[var(--color-success)] shadow-[0_0_10px_color-mix(in_srgb,var(--color-success)_15%,transparent)]"
+							: "border-[var(--success-subtle)] bg-[color-mix(in_srgb,var(--color-success)_4%,transparent)] text-[color-mix(in_srgb,var(--color-success)_40%,transparent)]",
 					].join(" ")}
 				>
 					{isApplying
@@ -356,19 +356,19 @@ export function MergeConflictPane({ projectId, mergeType, sourceBranch, targetBr
 
 			{/* Rebase progress bar — only shown for rebase when progress data is available */}
 			{mergeType === "rebase" && mergeState?.rebaseProgress && (
-				<div className="flex shrink-0 items-center gap-3 border-b border-[var(--border)] bg-[rgba(255,159,10,0.04)] px-4 py-1.5">
+				<div className="flex shrink-0 items-center gap-3 border-b border-[var(--border)] bg-[color-mix(in_srgb,var(--color-warning)_4%,transparent)] px-4 py-1.5">
 					<span className="text-[9px] uppercase tracking-wider text-[var(--text-quaternary)]">
 						Rebase progress
 					</span>
 					<div
 						className="flex-1 overflow-hidden rounded-full"
-						style={{ height: 3, background: "rgba(255,255,255,0.06)" }}
+						style={{ height: 3, background: "var(--border-subtle)" }}
 					>
 						<div
 							className="h-full rounded-full transition-all duration-300"
 							style={{
 								width: `${(mergeState.rebaseProgress.current / mergeState.rebaseProgress.total) * 100}%`,
-								background: "rgba(255,159,10,0.7)",
+								background: "color-mix(in srgb, var(--color-warning) 70%, transparent)",
 							}}
 						/>
 					</div>

@@ -89,7 +89,7 @@ export function CommentThreadCard({
 						</span>
 					)}
 					{ai.status === "error" && (
-						<span className="rounded-[3px] border border-[rgba(255,69,58,0.3)] bg-[var(--danger-subtle)] px-1.5 py-px text-[9px] font-semibold uppercase tracking-wide text-[var(--color-danger)]">
+						<span className="rounded-[3px] border border-[color-mix(in_srgb,var(--color-danger)_30%,transparent)] bg-[var(--danger-subtle)] px-1.5 py-px text-[9px] font-semibold uppercase tracking-wide text-[var(--color-danger)]">
 							Failed
 						</span>
 					)}

@@ -299,7 +299,7 @@ export function CommentsOverviewTab({ workspaceId }: CommentsOverviewTabProps) {
 		const solveStatus = solveStatuses[t.id];
 		const badge =
 			solveStatus === "addressed" ? (
-				<span className="rounded-full px-[7px] py-[1px] text-[9px] font-semibold bg-[rgba(52,199,89,0.12)] text-[var(--color-success)]">
+				<span className="rounded-full px-[7px] py-[1px] text-[9px] font-semibold bg-[color-mix(in_srgb,var(--color-success)_12%,transparent)] text-[var(--color-success)]">
 					AI Addressed
 				</span>
 			) : solveStatus === "new" ? (
@@ -453,15 +453,15 @@ export function CommentsOverviewTab({ workspaceId }: CommentsOverviewTabProps) {
 										: "Unaddressed";
 						const activeColor =
 							filter === "addressed"
-								? "rgba(52,199,89,0.15)"
+								? "var(--success-subtle)"
 								: filter === "new"
-									? "rgba(255,159,10,0.15)"
+									? "var(--warning-subtle)"
 									: "var(--bg-elevated)";
 						const activeText =
 							filter === "addressed"
-								? "#34c759"
+								? "var(--color-success)"
 								: filter === "new"
-									? "#ff9f0a"
+									? "var(--color-warning)"
 									: "var(--text-secondary)";
 						return (
 							<button

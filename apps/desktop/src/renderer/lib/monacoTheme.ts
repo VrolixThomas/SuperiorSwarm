@@ -5,8 +5,14 @@ export const EDITOR_THEME_LIGHT = "superiorswarm-light";
 
 let registered = false;
 
-export function ensureThemeRegistered(): void {
-	if (registered) return;
+function currentEditorTheme(): string {
+	return document.documentElement.dataset.theme === "light"
+		? EDITOR_THEME_LIGHT
+		: EDITOR_THEME_DARK;
+}
+
+export function ensureThemeRegistered(): string {
+	if (registered) return currentEditorTheme();
 
 	monaco.editor.defineTheme(EDITOR_THEME_DARK, {
 		base: "vs-dark",
@@ -35,26 +41,19 @@ export function ensureThemeRegistered(): void {
 	});
 
 	registered = true;
-	syncMonacoTheme();
-	startThemeWatcher();
-}
-
-function syncMonacoTheme(): void {
-	const t =
-		document.documentElement.dataset.theme === "light" ? EDITOR_THEME_LIGHT : EDITOR_THEME_DARK;
+	const t = currentEditorTheme();
 	monaco.editor.setTheme(t);
+	startThemeWatcher();
+	return t;
 }
 
 let watcherStarted = false;
 function startThemeWatcher(): void {
 	if (watcherStarted) return;
 	watcherStarted = true;
-	const obs = new MutationObserver(syncMonacoTheme);
+	const obs = new MutationObserver(() => monaco.editor.setTheme(currentEditorTheme()));
 	obs.observe(document.documentElement, {
 		attributes: true,
 		attributeFilter: ["data-theme"],
 	});
 }
-
-// Backwards-compat re-export for existing imports of EDITOR_THEME
-export const EDITOR_THEME = EDITOR_THEME_DARK;
