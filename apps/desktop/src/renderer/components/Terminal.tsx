@@ -108,6 +108,7 @@ export function Terminal({
 		const applyTheme = () => {
 			rafId = 0;
 			term.options.theme = buildTerminalTheme();
+			term.refresh(0, term.rows - 1);
 		};
 		const scheduleTheme = () => {
 			if (!rafId) rafId = requestAnimationFrame(applyTheme);
