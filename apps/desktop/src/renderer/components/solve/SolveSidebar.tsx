@@ -121,6 +121,7 @@ export function SolveSidebar({ session }: Props) {
 	const activeCardRef = useRef<HTMLDivElement | null>(null);
 
 	useEffect(() => {
+		if (!activeCommentId) return;
 		activeCardRef.current?.scrollIntoView({ block: "nearest" });
 	}, [activeCommentId]);
 

@@ -83,7 +83,9 @@ export function useSolveCommentZones(
 					for (const e of entries) acc.removeZone(e.zoneId);
 				});
 				const roots = entries.map((e) => e.root);
-				queueMicrotask(() => roots.forEach((r) => r.unmount()));
+				queueMicrotask(() => {
+					for (const r of roots) r.unmount();
+				});
 				zonesRef.current.clear();
 			}
 			return;
