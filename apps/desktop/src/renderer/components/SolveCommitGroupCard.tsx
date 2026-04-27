@@ -1,16 +1,11 @@
 import { useState } from "react";
 import { detectLanguage } from "../../shared/diff-types";
-import type {
-	ChangedFile,
-	SolveCommentInfo,
-	SolveGroupInfo,
-	SolveReplyInfo,
-} from "../../shared/solve-types";
+import type { ChangedFile, SolveCommentInfo, SolveGroupInfo } from "../../shared/solve-types";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
-import { MarkdownRenderer } from "./MarkdownRenderer";
 import { GroupAction } from "./solve/GroupAction";
 import { RatioBadge } from "./solve/RatioBadge";
+import { SolveCommentWidget } from "./solve/SolveCommentWidget";
 
 // Inject blink animation once
 if (typeof document !== "undefined" && !document.querySelector("[data-solve-animations]")) {
@@ -134,7 +129,6 @@ export function SolveCommitGroupCard({ group, sessionId, workspaceId, defaultExp
 					<ChangedFilesSection files={group.changedFiles} onFileClick={handleFileClick} />
 					<CommentsAddressedSection
 						commentsByFile={commentsByFile}
-						sessionId={sessionId}
 						workspaceId={workspaceId}
 					/>
 				</div>
@@ -187,11 +181,9 @@ function ChangedFilesSection({
 
 function CommentsAddressedSection({
 	commentsByFile,
-	sessionId,
 	workspaceId,
 }: {
 	commentsByFile: Map<string, SolveCommentInfo[]>;
-	sessionId: string;
 	workspaceId: string;
 }) {
 	if (commentsByFile.size === 0) return null;
@@ -207,254 +199,10 @@ function CommentsAddressedSection({
 						{filePath.split("/").pop()}
 					</div>
 					{comments.map((comment) => (
-						<CommentItem key={comment.id} comment={comment} workspaceId={workspaceId} />
+						<SolveCommentWidget key={comment.id} comment={comment} workspaceId={workspaceId} />
 					))}
 				</div>
 			))}
-		</div>
-	);
-}
-
-function CommentItem({
-	comment,
-	workspaceId,
-}: {
-	comment: SolveCommentInfo;
-	workspaceId: string;
-}) {
-	const [showFollowUp, setShowFollowUp] = useState(false);
-	const [followUpText, setFollowUpText] = useState("");
-	const utils = trpc.useUtils();
-
-	const [editingReply, setEditingReply] = useState(false);
-	const [editReplyText, setEditReplyText] = useState("");
-
-	const updateReplyMutation = trpc.commentSolver.updateReply.useMutation({
-		onSuccess: () => utils.commentSolver.invalidate(),
-	});
-
-	const followUpMutation = trpc.commentSolver.requestFollowUp.useMutation({
-		onSuccess: (result) => {
-			setShowFollowUp(false);
-			setFollowUpText("");
-			utils.commentSolver.invalidate();
-
-			// Launch the agent with the follow-up prompt
-			if (result.promptPath && result.worktreePath) {
-				const tabStore = useTabStore.getState();
-				const tabs = tabStore.getTabsByWorkspace(workspaceId);
-				const solverTab = tabs.find((t) => t.kind === "terminal" && t.title === "AI Solver");
-
-				if (solverTab) {
-					tabStore.setActiveTab(solverTab.id);
-					window.electron.terminal
-						.write(solverTab.id, `bash '${result.launchScript}'\r`)
-						.catch((err: unknown) =>
-							console.error("[solve] failed to write follow-up command:", err)
-						);
-				} else {
-					const tabId = tabStore.addTerminalTab(workspaceId, result.worktreePath, "AI Solver");
-					window.electron.terminal
-						.create(tabId, result.worktreePath)
-						.then(() => window.electron.terminal.write(tabId, `bash '${result.launchScript}'\r`))
-						.catch((err: unknown) =>
-							console.error("[solve] failed to launch follow-up agent:", err)
-						);
-				}
-			}
-		},
-	});
-
-	const statusColor =
-		comment.status === "fixed" || comment.status === "wont_fix"
-			? "var(--success)"
-			: comment.status === "unclear"
-				? "var(--warning)"
-				: comment.status === "changes_requested"
-					? "var(--accent)"
-					: "var(--text-tertiary)";
-
-	const statusLabel =
-		comment.status === "fixed"
-			? "✓ Fixed"
-			: comment.status === "unclear"
-				? "? Unclear"
-				: comment.status === "changes_requested"
-					? "↻ Changes requested"
-					: comment.status === "wont_fix"
-						? "— Won't fix"
-						: "Pending";
-
-	return (
-		<div className="py-[7px] pl-[14px] border-l border-[var(--border-default)] ml-[4px]">
-			<div className="flex items-center gap-[6px] mb-[3px]">
-				<div className="w-[16px] h-[16px] rounded-full bg-[var(--bg-active)] flex items-center justify-center text-[8px] font-semibold text-[var(--text-secondary)]">
-					{comment.author.charAt(0).toUpperCase()}
-				</div>
-				<span className="text-[12px] font-medium">{comment.author}</span>
-				{comment.lineNumber && (
-					<span className="font-mono text-[10.5px] text-[var(--text-tertiary)]">
-						line {comment.lineNumber}
-					</span>
-				)}
-			</div>
-			<div className="text-[12px] text-[var(--text-secondary)] leading-[1.55]">
-				<MarkdownRenderer content={comment.body} />
-			</div>
-			<div className="flex items-center gap-[8px] mt-[5px]">
-				<span className="text-[10.5px] font-medium" style={{ color: statusColor }}>
-					{statusLabel}
-				</span>
-				{(comment.status === "fixed" || comment.status === "unclear") && (
-					<button
-						type="button"
-						onClick={() => setShowFollowUp(!showFollowUp)}
-						className="text-[10.5px] text-[var(--text-tertiary)] bg-transparent border-none cursor-pointer underline underline-offset-2"
-					>
-						Follow up
-					</button>
-				)}
-			</div>
-			{comment.status === "unclear" && (
-				<div className="text-[10.5px] text-[var(--text-tertiary)] mt-[3px] leading-[1.4]">
-					AI couldn't address this — use Follow up above or accept as-is.
-				</div>
-			)}
-			{showFollowUp && (
-				<div className="mt-[8px]">
-					<textarea
-						value={followUpText}
-						onChange={(e) => setFollowUpText(e.target.value)}
-						placeholder="What should be changed?"
-						className="w-full min-h-[60px] p-[8px] rounded-[6px] border border-[var(--border-default)] bg-[var(--bg-base)] text-[var(--text-primary)] text-[12px] font-[var(--font-family)] resize-y"
-					/>
-					<div className="flex gap-[6px] mt-[6px] justify-end">
-						<button
-							type="button"
-							onClick={() => {
-								setShowFollowUp(false);
-								setFollowUpText("");
-							}}
-							className="py-[3px] px-[10px] rounded-[6px] text-[11px] bg-transparent text-[var(--text-tertiary)] border border-[var(--border-default)] cursor-pointer"
-						>
-							Cancel
-						</button>
-						<button
-							type="button"
-							onClick={() => followUpMutation.mutate({ commentId: comment.id, followUpText })}
-							disabled={!followUpText.trim()}
-							className={[
-								"py-[3px] px-[10px] rounded-[6px] text-[11px] font-medium bg-[var(--accent-subtle)] text-[var(--accent)] border-none",
-								followUpText.trim()
-									? "cursor-pointer opacity-100"
-									: "cursor-not-allowed opacity-50",
-							].join(" ")}
-						>
-							Request changes
-						</button>
-					</div>
-				</div>
-			)}
-			{comment.followUpText && (
-				<div className="mt-[6px] py-[6px] px-[10px] bg-[var(--accent-subtle)] rounded-[6px] text-[11.5px] text-[var(--accent)]">
-					Follow-up: {comment.followUpText}
-				</div>
-			)}
-			{/* Draft reply sign-off */}
-			{comment.reply?.status === "draft" && !editingReply && (
-				<DraftReplySignoff
-					reply={comment.reply}
-					onEdit={() => {
-						setEditingReply(true);
-						setEditReplyText(comment.reply?.body ?? "");
-					}}
-				/>
-			)}
-			{editingReply && comment.reply && (
-				<div className="mt-[8px] py-[9px] px-[12px] bg-[var(--bg-base)] border border-[var(--accent)] rounded-[6px]">
-					<div className="text-[9.5px] font-semibold uppercase tracking-[0.05em] text-[var(--text-tertiary)] mb-[4px]">
-						Edit reply
-					</div>
-					<textarea
-						value={editReplyText}
-						onChange={(e) => setEditReplyText(e.target.value)}
-						className="w-full min-h-[60px] p-[8px] rounded-[6px] border border-[var(--border-default)] bg-[var(--bg-base)] text-[var(--text-primary)] text-[12px] resize-y"
-					/>
-					<div className="flex gap-[6px] mt-[6px] justify-end">
-						<button
-							type="button"
-							onClick={() => setEditingReply(false)}
-							className="py-[3px] px-[10px] rounded-[6px] text-[11px] bg-transparent text-[var(--text-tertiary)] border border-[var(--border-default)] cursor-pointer"
-						>
-							Cancel
-						</button>
-						<button
-							type="button"
-							onClick={() => {
-								if (comment.reply) {
-									updateReplyMutation.mutate({
-										replyId: comment.reply.id,
-										body: editReplyText,
-									});
-								}
-								setEditingReply(false);
-							}}
-							disabled={!editReplyText.trim()}
-							className={[
-								"py-[3px] px-[10px] rounded-[6px] text-[11px] font-medium bg-[var(--accent-subtle)] text-[var(--accent)] border-none",
-								editReplyText.trim()
-									? "cursor-pointer opacity-100"
-									: "cursor-not-allowed opacity-50",
-							].join(" ")}
-						>
-							Save
-						</button>
-					</div>
-				</div>
-			)}
-		</div>
-	);
-}
-
-function DraftReplySignoff({ reply, onEdit }: { reply: SolveReplyInfo; onEdit: () => void }) {
-	const utils = trpc.useUtils();
-	const approveMutation = trpc.commentSolver.approveReply.useMutation({
-		onSuccess: () => utils.commentSolver.invalidate(),
-	});
-	const deleteMutation = trpc.commentSolver.deleteReply.useMutation({
-		onSuccess: () => utils.commentSolver.invalidate(),
-	});
-
-	return (
-		<div className="mt-[8px] py-[9px] px-[12px] bg-[var(--bg-base)] border border-[var(--border-default)] rounded-[6px]">
-			<div className="text-[9.5px] font-semibold uppercase tracking-[0.05em] text-[var(--warning)] mb-[4px] opacity-75">
-				Draft reply
-			</div>
-			<div className="text-[12px] text-[var(--text-secondary)] leading-[1.5]">{reply.body}</div>
-			<div className="flex items-center gap-[6px] mt-[8px] pt-[8px] border-t border-[var(--border-subtle)]">
-				<span className="text-[11px] text-[var(--text-tertiary)] flex-1">Post this reply?</span>
-				<button
-					type="button"
-					onClick={onEdit}
-					className="py-[3px] px-[10px] rounded-[6px] text-[11px] font-medium bg-transparent text-[var(--text-tertiary)] border border-[var(--border-default)] cursor-pointer"
-				>
-					Edit
-				</button>
-				<button
-					type="button"
-					onClick={() => deleteMutation.mutate({ replyId: reply.id })}
-					className="py-[3px] px-[10px] rounded-[6px] text-[11px] font-medium bg-transparent text-[var(--text-tertiary)] border border-[var(--border-default)] cursor-pointer"
-				>
-					Discard
-				</button>
-				<button
-					type="button"
-					onClick={() => approveMutation.mutate({ replyId: reply.id })}
-					className="py-[3px] px-[10px] rounded-[6px] text-[11px] font-medium bg-[var(--success-subtle)] text-[var(--success)] border-none cursor-pointer"
-				>
-					Approve &amp; post
-				</button>
-			</div>
 		</div>
 	);
 }
