@@ -1,14 +1,11 @@
-import { useEffect, useMemo } from "react";
-import type {
-	SolveCommentStatus,
-	SolveGroupInfo,
-	SolveSessionInfo,
-} from "../../../shared/solve-types";
+import { useEffect, useMemo, useRef } from "react";
+import type { SolveGroupInfo, SolveSessionInfo } from "../../../shared/solve-types";
 import { basename } from "../../lib/format";
 import { solveSessionKey, useSolveSessionStore } from "../../stores/solve-session-store";
 import { trpc } from "../../trpc/client";
 import { GroupAction } from "./GroupAction";
 import { RatioBadge } from "./RatioBadge";
+import { SolveCommentCard } from "./SolveCommentCard";
 
 interface Props {
 	session: SolveSessionInfo;
@@ -54,28 +51,6 @@ export function buildSidebarRows(groups: SolveGroupInfo[]): Map<string, FileRow[
 		byGroup.set(g.id, rows);
 	}
 	return byGroup;
-}
-
-function commentStatusColor(status: SolveCommentStatus): string {
-	return status === "fixed" || status === "wont_fix"
-		? "var(--success)"
-		: status === "unclear"
-			? "var(--warning)"
-			: status === "changes_requested"
-				? "var(--accent)"
-				: "var(--text-tertiary)";
-}
-
-function commentStatusLabel(status: SolveCommentStatus): string {
-	return status === "fixed"
-		? "✓ Fixed"
-		: status === "unclear"
-			? "? Unclear"
-			: status === "changes_requested"
-				? "↻ Changes requested"
-				: status === "wont_fix"
-					? "— Won't fix"
-					: "Pending";
 }
 
 export function SolveSidebar({ session }: Props) {
@@ -142,6 +117,12 @@ export function SolveSidebar({ session }: Props) {
 		setExpandedGroups,
 		selectFile,
 	]);
+
+	const activeCardRef = useRef<HTMLDivElement | null>(null);
+
+	useEffect(() => {
+		activeCardRef.current?.scrollIntoView({ block: "nearest" });
+	}, [activeCommentId]);
 
 	return (
 		<div className="flex h-full flex-col overflow-y-auto border-r border-[var(--border-subtle)] bg-[var(--bg-base)]">
@@ -259,60 +240,21 @@ export function SolveSidebar({ session }: Props) {
 										</div>
 										{group.comments.map((comment) => {
 											const isActive = activeCommentId === comment.id;
-											const bodyPreview = comment.body.replace(/\s+/g, " ").trim();
-											const statusColor = commentStatusColor(comment.status);
-											const statusLabel = commentStatusLabel(comment.status);
-											const fileRef =
-												comment.lineNumber != null
-													? `${basename(comment.filePath)}:${comment.lineNumber}`
-													: `${basename(comment.filePath)} · file-level`;
-											const fileRefTitle =
-												comment.lineNumber != null
-													? `${comment.filePath}:${comment.lineNumber}`
-													: `${comment.filePath} (file-level)`;
 											return (
 												<div
 													key={comment.id}
-													onClick={() => {
-														selectFile(sessionKey, comment.filePath);
-														selectComment(sessionKey, comment.id);
-													}}
-													className={[
-														"flex flex-col gap-[3px] py-[7px] pl-[26px] pr-[10px] cursor-pointer border-l-2",
-														isActive
-															? "bg-[var(--bg-active)] border-[var(--accent)]"
-															: "border-transparent hover:bg-[var(--bg-elevated)]",
-													].join(" ")}
+													ref={isActive ? activeCardRef : undefined}
 												>
-													<div className="flex items-center gap-[6px] min-w-0">
-														<div className="w-[16px] h-[16px] shrink-0 rounded-full bg-[var(--bg-active)] flex items-center justify-center text-[8px] font-semibold text-[var(--text-secondary)]">
-															{comment.author.charAt(0).toUpperCase()}
-														</div>
-														<span className="shrink-0 text-[11.5px] font-medium text-[var(--text-secondary)]">
-															{comment.author}
-														</span>
-														<span
-															title={fileRefTitle}
-															className="font-mono text-[10px] text-[var(--text-tertiary)] overflow-hidden text-ellipsis whitespace-nowrap min-w-0 flex-1"
-														>
-															{fileRef}
-														</span>
-														<span
-															className="shrink-0 rounded-full text-[9.5px] font-medium px-[6px] py-px"
-															style={{
-																color: statusColor,
-																background: `color-mix(in srgb, ${statusColor} 15%, transparent)`,
-															}}
-														>
-															{statusLabel}
-														</span>
-													</div>
-													<span
-														title={comment.body}
-														className="text-[11.5px] leading-[1.45] text-[var(--text-secondary)] line-clamp-2"
-													>
-														{bodyPreview}
-													</span>
+													<SolveCommentCard
+														comment={comment}
+														workspaceId={session.workspaceId}
+														variant="sidebar"
+														isActive={isActive}
+														onSelect={() => {
+															selectFile(sessionKey, comment.filePath);
+															selectComment(sessionKey, comment.id);
+														}}
+													/>
 												</div>
 											);
 										})}
