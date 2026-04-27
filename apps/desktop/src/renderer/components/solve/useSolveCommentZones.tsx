@@ -164,6 +164,7 @@ export function useSolveCommentZones(
 	useEffect(() => {
 		if (!editor || enabled) return;
 		const modEditor = editor.getModifiedEditor();
+		const previousGlyphMargin = modEditor.getOption(monaco.editor.EditorOption.glyphMargin);
 		modEditor.updateOptions({ glyphMargin: true });
 
 		const lineToCommentId = new Map<number, string>();
@@ -188,6 +189,7 @@ export function useSolveCommentZones(
 		});
 
 		return () => {
+			modEditor.updateOptions({ glyphMargin: previousGlyphMargin });
 			decorations.clear();
 			sub.dispose();
 		};
