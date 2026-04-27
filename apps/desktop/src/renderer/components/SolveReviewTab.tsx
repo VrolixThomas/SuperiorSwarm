@@ -98,11 +98,17 @@ export function SolveReviewTab({ workspaceId, solveSessionId }: Props) {
 					<SolveSidebar session={session} />
 				</div>
 				<div className="flex-1 min-w-0">
-					<SolveDiffPane
-						session={session}
-						repoPath={activeWorkspaceCwd ?? ""}
-						workspaceId={workspaceId}
-					/>
+					{activeWorkspaceCwd ? (
+						<SolveDiffPane
+							session={session}
+							repoPath={activeWorkspaceCwd}
+							workspaceId={workspaceId}
+						/>
+					) : (
+						<div className="flex h-full items-center justify-center text-[12px] text-[var(--text-tertiary)]">
+							Loading workspace…
+						</div>
+					)}
 				</div>
 			</div>
 			{isCancelled && (
