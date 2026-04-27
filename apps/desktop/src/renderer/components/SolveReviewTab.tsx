@@ -2,7 +2,8 @@ import { useEffect, useRef } from "react";
 import type { SolveSessionInfo, SolveSessionStatus } from "../../shared/solve-types";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
-import { SolveCommitGroupCard } from "./SolveCommitGroupCard";
+import { SolveDiffPane } from "./solve/SolveDiffPane";
+import { SolveSidebar } from "./solve/SolveSidebar";
 
 interface Props {
 	workspaceId: string;
@@ -34,6 +35,8 @@ export function SolveReviewTab({ workspaceId, solveSessionId }: Props) {
 		onSuccess: () => utils.commentSolver.invalidate(),
 	});
 
+	const activeWorkspaceCwd = useTabStore((s) => s.activeWorkspaceCwd);
+
 	const prevStatusRef = useRef<SolveSessionStatus | undefined>(undefined);
 	useEffect(() => {
 		if (prevStatusRef.current === "in_progress" && session?.status === "ready") {
@@ -62,7 +65,6 @@ export function SolveReviewTab({ workspaceId, solveSessionId }: Props) {
 	const submittedGroups = groups.filter((g) => g.status === "submitted").length;
 	const totalGroups = groups.filter((g) => g.status !== "reverted").length;
 
-	// Draft reply info scoped to approved (not-yet-pushed) groups only
 	const draftGroups = groups
 		.filter((g) => g.status === "approved" && g.comments.some((c) => c.reply?.status === "draft"))
 		.map((g) => g.label);
@@ -71,12 +73,11 @@ export function SolveReviewTab({ workspaceId, solveSessionId }: Props) {
 		(n, g) => n + g.comments.filter((c) => c.reply?.status === "draft").length,
 		0
 	);
-	// Push all: enabled when at least one approved group exists with no draft replies
 	const canPushAll = approvedGroups > 0 && !hasDraftRepliesInApproved && isReady;
 
 	return (
 		<div className="flex flex-col h-full overflow-hidden">
-			<div className="flex-1 overflow-y-auto px-7 pt-[22px] pb-[18px]">
+			<div className="px-7 pt-[22px] pb-[18px] border-b border-[var(--border-subtle)]">
 				<PRHeader
 					session={session}
 					isSolving={isSolving}
@@ -91,30 +92,29 @@ export function SolveReviewTab({ workspaceId, solveSessionId }: Props) {
 					totalGroups={totalGroups}
 					totalDraftReplies={totalDraftReplies}
 				/>
-				<div className="text-[10.5px] font-semibold uppercase tracking-[0.07em] text-[var(--text-tertiary)] mb-2">
-					{groups.length} Commit Groups
-				</div>
-				{groups.map((group, i) => (
-					<SolveCommitGroupCard
-						key={group.id}
-						group={group}
-						sessionId={solveSessionId}
-						workspaceId={workspaceId}
-						defaultExpanded={i === 0}
-					/>
-				))}
-				{isCancelled && (
-					<div className="mt-3 text-center">
-						{/* TODO: implement re-solve */}
-						<button
-							disabled
-							className="px-4 py-[6px] rounded-[6px] text-[12px] font-medium bg-[var(--accent-subtle)] text-[var(--accent)] border-none opacity-40 cursor-not-allowed"
-						>
-							Re-solve remaining comments
-						</button>
-					</div>
-				)}
 			</div>
+			<div className="flex flex-1 min-h-0 overflow-hidden">
+				<div className="w-[280px] shrink-0">
+					<SolveSidebar session={session} />
+				</div>
+				<div className="flex-1 min-w-0">
+					<SolveDiffPane
+						session={session}
+						repoPath={activeWorkspaceCwd ?? ""}
+						workspaceId={workspaceId}
+					/>
+				</div>
+			</div>
+			{isCancelled && (
+				<div className="px-7 py-3 text-center border-t border-[var(--border-subtle)]">
+					<button
+						disabled
+						className="px-4 py-[6px] rounded-[6px] text-[12px] font-medium bg-[var(--accent-subtle)] text-[var(--accent)] border-none opacity-40 cursor-not-allowed"
+					>
+						Re-solve remaining comments
+					</button>
+				</div>
+			)}
 			<BottomBar
 				canPush={canPushAll}
 				isSolving={isSolving}
