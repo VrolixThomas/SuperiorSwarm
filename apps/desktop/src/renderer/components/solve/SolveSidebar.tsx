@@ -219,8 +219,10 @@ export function SolveSidebar({ session }: Props) {
 											title={row.path}
 											onClick={() => selectFile(sessionKey, row.path)}
 											className={[
-												"flex items-center gap-[8px] py-[5px] pl-[26px] pr-[10px] cursor-pointer",
-												selected ? "bg-[var(--bg-active)]" : "hover:bg-[var(--bg-elevated)]",
+												"flex items-center gap-[8px] py-[5px] pl-[26px] pr-[10px] cursor-pointer border-l-2",
+												selected
+													? "bg-[var(--bg-active)] border-[var(--accent)]"
+													: "border-transparent hover:bg-[var(--bg-elevated)]",
 											].join(" ")}
 										>
 											<span className="text-[var(--text-tertiary)] text-[11px]">⬡</span>
@@ -260,6 +262,14 @@ export function SolveSidebar({ session }: Props) {
 											const bodyPreview = comment.body.replace(/\s+/g, " ").trim();
 											const statusColor = commentStatusColor(comment.status);
 											const statusLabel = commentStatusLabel(comment.status);
+											const fileRef =
+												comment.lineNumber != null
+													? `${basename(comment.filePath)}:${comment.lineNumber}`
+													: `${basename(comment.filePath)} · file-level`;
+											const fileRefTitle =
+												comment.lineNumber != null
+													? `${comment.filePath}:${comment.lineNumber}`
+													: `${comment.filePath} (file-level)`;
 											return (
 												<div
 													key={comment.id}
@@ -268,31 +278,40 @@ export function SolveSidebar({ session }: Props) {
 														selectComment(sessionKey, comment.id);
 													}}
 													className={[
-														"flex items-center gap-[6px] py-[4px] pl-[26px] pr-[10px] cursor-pointer",
-														isActive ? "bg-[var(--bg-active)]" : "hover:bg-[var(--bg-elevated)]",
+														"flex flex-col gap-[3px] py-[7px] pl-[26px] pr-[10px] cursor-pointer border-l-2",
+														isActive
+															? "bg-[var(--bg-active)] border-[var(--accent)]"
+															: "border-transparent hover:bg-[var(--bg-elevated)]",
 													].join(" ")}
 												>
-													<div className="w-[16px] h-[16px] shrink-0 rounded-full bg-[var(--bg-active)] flex items-center justify-center text-[8px] font-semibold text-[var(--text-secondary)]">
-														{comment.author.charAt(0).toUpperCase()}
+													<div className="flex items-center gap-[6px] min-w-0">
+														<div className="w-[16px] h-[16px] shrink-0 rounded-full bg-[var(--bg-active)] flex items-center justify-center text-[8px] font-semibold text-[var(--text-secondary)]">
+															{comment.author.charAt(0).toUpperCase()}
+														</div>
+														<span className="shrink-0 text-[11.5px] font-medium text-[var(--text-secondary)]">
+															{comment.author}
+														</span>
+														<span
+															title={fileRefTitle}
+															className="font-mono text-[10px] text-[var(--text-tertiary)] overflow-hidden text-ellipsis whitespace-nowrap min-w-0 flex-1"
+														>
+															{fileRef}
+														</span>
+														<span
+															className="shrink-0 rounded-full text-[9.5px] font-medium px-[6px] py-px"
+															style={{
+																color: statusColor,
+																background: `color-mix(in srgb, ${statusColor} 15%, transparent)`,
+															}}
+														>
+															{statusLabel}
+														</span>
 													</div>
-													<span className="text-[12px] font-medium shrink-0">{comment.author}</span>
 													<span
 														title={comment.body}
-														className="flex-1 text-[11px] text-[var(--text-secondary)] overflow-hidden text-ellipsis whitespace-nowrap min-w-0"
+														className="text-[11.5px] leading-[1.45] text-[var(--text-secondary)] line-clamp-2"
 													>
-														{comment.lineNumber == null && (
-															<span className="text-[var(--text-tertiary)]">↳ file-level · </span>
-														)}
 														{bodyPreview}
-													</span>
-													<span
-														className="shrink-0 rounded-full text-[9.5px] font-medium px-[6px] py-px"
-														style={{
-															color: statusColor,
-															background: `color-mix(in srgb, ${statusColor} 15%, transparent)`,
-														}}
-													>
-														{statusLabel}
 													</span>
 												</div>
 											);
