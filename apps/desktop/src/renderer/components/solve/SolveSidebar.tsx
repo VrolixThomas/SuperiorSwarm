@@ -17,7 +17,7 @@ interface FileRow {
 	isUnchanged: boolean; // commented-on but not in changedFiles
 }
 
-function buildSidebarRows(groups: SolveGroupInfo[]): Map<string, FileRow[]> {
+export function buildSidebarRows(groups: SolveGroupInfo[]): Map<string, FileRow[]> {
 	const byGroup = new Map<string, FileRow[]>();
 	for (const g of groups) {
 		const rows: FileRow[] = [];
