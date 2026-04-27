@@ -141,14 +141,16 @@ export function SolveDiffPane({ session, repoPath, workspaceId }: Props) {
 					{activeFilePath}
 				</span>
 				<span className="font-mono text-[11px] text-[var(--text-quaternary)]">{shortHash}</span>
-				<button
-					type="button"
-					onClick={() => toggleCommentsVisible(sessionKey)}
-					className="rounded px-2 py-0.5 text-[11px] text-[var(--text-tertiary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text)]"
-					title={commentsVisible ? "Hide inline comments" : "Show inline comments"}
-				>
-					💬 Comments: {commentsVisible ? "On" : "Off"}
-				</button>
+				{commitHash && (
+					<button
+						type="button"
+						onClick={() => toggleCommentsVisible(sessionKey)}
+						className="rounded px-2 py-0.5 text-[11px] text-[var(--text-tertiary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text)]"
+						title={commentsVisible ? "Hide inline comments" : "Show inline comments"}
+					>
+						💬 Comments: {commentsVisible ? "On" : "Off"}
+					</button>
+				)}
 				<button
 					type="button"
 					onClick={() => setDiffMode(diffMode === "split" ? "inline" : "split")}

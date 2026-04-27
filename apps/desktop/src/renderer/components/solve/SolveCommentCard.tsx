@@ -91,11 +91,7 @@ export function SolveCommentCard({ comment, workspaceId, variant, isActive, onSe
 	const lineRef = comment.lineNumber != null ? `line ${comment.lineNumber}` : "file-level";
 
 	return (
-		<div
-			className={wrapperClass}
-			onClick={variant === "sidebar" ? onSelect : undefined}
-			data-active={isActive ? "true" : undefined}
-		>
+		<div className={wrapperClass} onClick={variant === "sidebar" ? onSelect : undefined}>
 			<div className="flex items-center gap-[6px] px-3 py-2">
 				<div className="w-[16px] h-[16px] rounded-full bg-[var(--bg-active)] flex items-center justify-center text-[8px] font-semibold text-[var(--text-secondary)]">
 					{comment.author.charAt(0).toUpperCase()}
