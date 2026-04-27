@@ -12,9 +12,15 @@ interface ZoneEntry {
 	signature: string;
 }
 
-function commentSignature(c: SolveCommentInfo): string {
+interface Options {
+	enabled?: boolean;
+	activeCommentId?: string | null;
+	onGlyphClick?: (commentId: string) => void;
+}
+
+function commentSignature(c: SolveCommentInfo, isActive: boolean): string {
 	const replyKey = c.reply ? `${c.reply.id}:${c.reply.status}:${c.reply.body}` : "-";
-	return `${c.id}|${c.status}|${c.body}|${c.followUpText ?? ""}|${replyKey}`;
+	return `${c.id}|${c.status}|${c.body}|${c.followUpText ?? ""}|${replyKey}|${isActive ? "A" : "_"}`;
 }
 
 function estimateBodyHeight(text: string): number {
@@ -43,15 +49,20 @@ function makeZoneNode(): HTMLElement {
 }
 
 /**
- * Diff-based view-zone manager for solve comments. Keys zones by line number,
- * diffs by signature so background refetches don't unmount widgets that have
- * in-flight textarea state.
+ * Diff-based view-zone manager for solve comments. When `enabled` is false the
+ * zones are torn down and a small glyph-margin marker is rendered at every
+ * comment's line on the modified-side editor; clicking a marker invokes
+ * `onGlyphClick` with the comment id.
  */
 export function useSolveCommentZones(
 	editor: monaco.editor.IStandaloneDiffEditor | null,
 	comments: SolveCommentInfo[],
-	workspaceId: string
+	workspaceId: string,
+	options: Options = {}
 ) {
+	const enabled = options.enabled ?? true;
+	const activeCommentId = options.activeCommentId ?? null;
+	const onGlyphClick = options.onGlyphClick;
 	const zonesRef = useRef<Map<number, ZoneEntry>>(new Map());
 	const lastEditorRef = useRef<monaco.editor.IStandaloneDiffEditor | null>(null);
 
@@ -64,11 +75,25 @@ export function useSolveCommentZones(
 		lastEditorRef.current = editor;
 
 		const modEditor = editor.getModifiedEditor();
+
+		if (!enabled) {
+			const entries = [...zonesRef.current.values()];
+			if (entries.length > 0) {
+				modEditor.changeViewZones((acc) => {
+					for (const e of entries) acc.removeZone(e.zoneId);
+				});
+				const roots = entries.map((e) => e.root);
+				queueMicrotask(() => roots.forEach((r) => r.unmount()));
+				zonesRef.current.clear();
+			}
+			return;
+		}
+
 		const lineHeight = modEditor.getOption(monaco.editor.EditorOption.lineHeight);
 
 		const byLine = new Map<number, SolveCommentInfo[]>();
 		for (const c of comments) {
-			const line = c.lineNumber ?? 1; // file-level comments anchor to line 1
+			const line = c.lineNumber ?? 1;
 			const arr = byLine.get(line) ?? [];
 			arr.push(c);
 			byLine.set(line, arr);
@@ -78,7 +103,12 @@ export function useSolveCommentZones(
 			entry.root.render(
 				<div className="flex flex-col gap-0.5">
 					{lineComments.map((c) => (
-						<SolveCommentWidget key={c.id} comment={c} workspaceId={workspaceId} />
+						<SolveCommentWidget
+							key={c.id}
+							comment={c}
+							workspaceId={workspaceId}
+							isActive={c.id === activeCommentId}
+						/>
 					))}
 				</div>
 			);
@@ -95,7 +125,7 @@ export function useSolveCommentZones(
 			}
 
 			for (const [line, lineComments] of byLine) {
-				const sig = lineComments.map(commentSignature).join("");
+				const sig = lineComments.map((c) => commentSignature(c, c.id === activeCommentId)).join("");
 				const heightInLines = Math.ceil(estimateZonePx(lineComments) / lineHeight);
 				const existing = zonesRef.current.get(line);
 
@@ -129,7 +159,39 @@ export function useSolveCommentZones(
 				}
 			}
 		});
-	}, [editor, comments, workspaceId]);
+	}, [editor, comments, workspaceId, enabled, activeCommentId]);
+
+	useEffect(() => {
+		if (!editor || enabled) return;
+		const modEditor = editor.getModifiedEditor();
+		modEditor.updateOptions({ glyphMargin: true });
+
+		const lineToCommentId = new Map<number, string>();
+		for (const c of comments) {
+			if (c.lineNumber == null) continue;
+			if (!lineToCommentId.has(c.lineNumber)) lineToCommentId.set(c.lineNumber, c.id);
+		}
+
+		const decorations = modEditor.createDecorationsCollection(
+			[...lineToCommentId.keys()].map((line) => ({
+				range: new monaco.Range(line, 1, line, 1),
+				options: { glyphMarginClassName: "solve-comment-glyph" },
+			}))
+		);
+
+		const sub = modEditor.onMouseDown((e) => {
+			if (e.target.type !== monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN) return;
+			const line = e.target.position?.lineNumber;
+			if (line == null) return;
+			const id = lineToCommentId.get(line);
+			if (id && onGlyphClick) onGlyphClick(id);
+		});
+
+		return () => {
+			decorations.clear();
+			sub.dispose();
+		};
+	}, [editor, comments, enabled, onGlyphClick]);
 
 	useEffect(() => {
 		return () => {

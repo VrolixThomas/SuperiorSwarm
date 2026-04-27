@@ -532,3 +532,15 @@ body,
 		transform: translateY(0);
 	}
 }
+
+/* ── Solve: comment glyph marker (shown when zones are hidden) ───────────── */
+
+.solve-comment-glyph::before {
+	content: "💬";
+	display: inline-block;
+	width: 100%;
+	font-size: 11px;
+	line-height: 1;
+	text-align: center;
+	cursor: pointer;
+}
