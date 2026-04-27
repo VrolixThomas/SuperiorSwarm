@@ -143,7 +143,14 @@ export function SolveReviewTab({ workspaceId, solveSessionId }: Props) {
 		return () => {
 			for (const unsub of subs) unsub();
 		};
-	}, [session, workspaceId, solveSessionId, approveGroupMutation, revokeGroupMutation, pushGroupMutation]);
+	}, [
+		session,
+		workspaceId,
+		solveSessionId,
+		approveGroupMutation,
+		revokeGroupMutation,
+		pushGroupMutation,
+	]);
 
 	if (isLoading || !session) {
 		return <div className="p-6 text-[var(--text-secondary)]">Loading…</div>;
@@ -194,7 +201,7 @@ export function SolveReviewTab({ workspaceId, solveSessionId }: Props) {
 				/>
 			</div>
 			<div className="flex flex-1 min-h-0 overflow-hidden">
-				<div className="w-[280px] shrink-0">
+				<div className="w-[320px] shrink-0">
 					<SolveSidebar session={session} />
 				</div>
 				<div className="flex-1 min-w-0">

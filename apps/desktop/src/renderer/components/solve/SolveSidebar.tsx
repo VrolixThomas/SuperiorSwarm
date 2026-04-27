@@ -1,5 +1,10 @@
 import { useEffect, useMemo } from "react";
-import type { SolveGroupInfo, SolveSessionInfo } from "../../../shared/solve-types";
+import type {
+	SolveCommentStatus,
+	SolveGroupInfo,
+	SolveSessionInfo,
+} from "../../../shared/solve-types";
+import { basename } from "../../lib/format";
 import { solveSessionKey, useSolveSessionStore } from "../../stores/solve-session-store";
 import { trpc } from "../../trpc/client";
 import { GroupAction } from "./GroupAction";
@@ -51,6 +56,28 @@ export function buildSidebarRows(groups: SolveGroupInfo[]): Map<string, FileRow[
 	return byGroup;
 }
 
+function commentStatusColor(status: SolveCommentStatus): string {
+	return status === "fixed" || status === "wont_fix"
+		? "var(--success)"
+		: status === "unclear"
+			? "var(--warning)"
+			: status === "changes_requested"
+				? "var(--accent)"
+				: "var(--text-tertiary)";
+}
+
+function commentStatusLabel(status: SolveCommentStatus): string {
+	return status === "fixed"
+		? "✓ Fixed"
+		: status === "unclear"
+			? "? Unclear"
+			: status === "changes_requested"
+				? "↻ Changes requested"
+				: status === "wont_fix"
+					? "— Won't fix"
+					: "Pending";
+}
+
 export function SolveSidebar({ session }: Props) {
 	const utils = trpc.useUtils();
 	const sessionKey = solveSessionKey(session.workspaceId, session.id);
@@ -61,7 +88,11 @@ export function SolveSidebar({ session }: Props) {
 	const activeFilePath = useSolveSessionStore(
 		(s) => s.sessions.get(sessionKey)?.activeFilePath ?? null
 	);
+	const activeCommentId = useSolveSessionStore(
+		(s) => s.sessions.get(sessionKey)?.activeCommentId ?? null
+	);
 	const selectFile = useSolveSessionStore((s) => s.selectFile);
+	const selectComment = useSolveSessionStore((s) => s.selectComment);
 	const toggleGroupExpanded = useSolveSessionStore((s) => s.toggleGroupExpanded);
 	const setFileOrder = useSolveSessionStore((s) => s.setFileOrder);
 	const setExpandedGroups = useSolveSessionStore((s) => s.setExpandedGroups);
@@ -142,6 +173,7 @@ export function SolveSidebar({ session }: Props) {
 									›
 								</span>
 								<span
+									title={group.label}
 									className={[
 										"text-[13px] font-medium tracking-[-0.015em] whitespace-nowrap overflow-hidden text-ellipsis",
 										isReverted ? "line-through" : "",
@@ -170,8 +202,12 @@ export function SolveSidebar({ session }: Props) {
 						</div>
 						{!isReverted && isExpanded && !isSolving && (
 							<div className="pb-[6px]">
+								{/* FILES subsection */}
+								<div className="px-[12px] pb-[4px] pt-[2px] text-[10px] font-semibold uppercase tracking-[0.07em] text-[var(--text-tertiary)]">
+									Files
+								</div>
 								{rows.length === 0 && (
-									<div className="px-[12px] pb-[6px] font-mono text-[10.5px] text-[var(--text-tertiary)]">
+									<div className="pl-[26px] pr-[10px] pb-[6px] font-mono text-[10.5px] text-[var(--text-tertiary)]">
 										no code changes
 									</div>
 								)}
@@ -180,6 +216,7 @@ export function SolveSidebar({ session }: Props) {
 									return (
 										<div
 											key={row.path}
+											title={row.path}
 											onClick={() => selectFile(sessionKey, row.path)}
 											className={[
 												"flex items-center gap-[8px] py-[5px] pl-[26px] pr-[10px] cursor-pointer",
@@ -188,7 +225,7 @@ export function SolveSidebar({ session }: Props) {
 										>
 											<span className="text-[var(--text-tertiary)] text-[11px]">⬡</span>
 											<span className="font-mono text-[11.5px] text-[var(--accent)] flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
-												{row.path}
+												{basename(row.path)}
 											</span>
 											{row.isUnchanged ? (
 												<span className="font-mono text-[10px] text-[var(--text-tertiary)] shrink-0">
@@ -212,6 +249,56 @@ export function SolveSidebar({ session }: Props) {
 										</div>
 									);
 								})}
+								{/* COMMENTS subsection */}
+								{group.comments.length > 0 && (
+									<>
+										<div className="px-[12px] pb-[4px] pt-[6px] text-[10px] font-semibold uppercase tracking-[0.07em] text-[var(--text-tertiary)]">
+											Comments
+										</div>
+										{group.comments.map((comment) => {
+											const isActive = activeCommentId === comment.id;
+											const bodyPreview = comment.body.replace(/\s+/g, " ").trim();
+											const statusColor = commentStatusColor(comment.status);
+											const statusLabel = commentStatusLabel(comment.status);
+											return (
+												<div
+													key={comment.id}
+													onClick={() => {
+														selectFile(sessionKey, comment.filePath);
+														selectComment(sessionKey, comment.id);
+													}}
+													className={[
+														"flex items-center gap-[6px] py-[4px] pl-[26px] pr-[10px] cursor-pointer",
+														isActive ? "bg-[var(--bg-active)]" : "hover:bg-[var(--bg-elevated)]",
+													].join(" ")}
+												>
+													<div className="w-[16px] h-[16px] shrink-0 rounded-full bg-[var(--bg-active)] flex items-center justify-center text-[8px] font-semibold text-[var(--text-secondary)]">
+														{comment.author.charAt(0).toUpperCase()}
+													</div>
+													<span className="text-[12px] font-medium shrink-0">{comment.author}</span>
+													<span
+														title={comment.body}
+														className="flex-1 text-[11px] text-[var(--text-secondary)] overflow-hidden text-ellipsis whitespace-nowrap min-w-0"
+													>
+														{comment.lineNumber == null && (
+															<span className="text-[var(--text-tertiary)]">↳ file-level · </span>
+														)}
+														{bodyPreview}
+													</span>
+													<span
+														className="shrink-0 rounded-full text-[9.5px] font-medium px-[6px] py-px"
+														style={{
+															color: statusColor,
+															background: `color-mix(in srgb, ${statusColor} 15%, transparent)`,
+														}}
+													>
+														{statusLabel}
+													</span>
+												</div>
+											);
+										})}
+									</>
+								)}
 							</div>
 						)}
 					</div>

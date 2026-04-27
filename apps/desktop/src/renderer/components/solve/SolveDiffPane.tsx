@@ -33,6 +33,9 @@ export function SolveDiffPane({ session, repoPath, workspaceId }: Props) {
 	const activeFilePath = useSolveSessionStore(
 		(s) => s.sessions.get(sessionKey)?.activeFilePath ?? null
 	);
+	const activeCommentId = useSolveSessionStore(
+		(s) => s.sessions.get(sessionKey)?.activeCommentId ?? null
+	);
 	const setScroll = useSolveSessionStore((s) => s.setScroll);
 	const getScroll = useSolveSessionStore((s) => s.getScroll);
 	const [editorInstance, setEditorInstance] = useState<monaco.editor.IStandaloneDiffEditor | null>(
@@ -94,6 +97,15 @@ export function SolveDiffPane({ session, repoPath, workspaceId }: Props) {
 			sub.dispose();
 		};
 	}, [editorInstance, sessionKey, activeFilePath, getScroll, setScroll]);
+
+	// Jump to line when active comment changes.
+	useEffect(() => {
+		const ed = editorInstance?.getModifiedEditor();
+		if (!ed || !activeCommentId) return;
+		const c = fileComments.find((fc) => fc.id === activeCommentId);
+		if (!c?.lineNumber) return;
+		ed.revealLineInCenter(c.lineNumber);
+	}, [editorInstance, activeCommentId, fileComments]);
 
 	if (!activeFilePath || !selectedGroup) {
 		return (
