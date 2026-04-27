@@ -1,5 +1,9 @@
 import { create } from "zustand";
 
+export function solveSessionKey(workspaceId: string, solveSessionId: string): string {
+	return `${workspaceId}::${solveSessionId}`;
+}
+
 export interface SolveSession {
 	activeFilePath: string | null;
 	activeCommentId: string | null;
@@ -20,6 +24,7 @@ export interface SolveSessionStore {
 	toggleGroupExpanded: (key: string, groupId: string) => void;
 	setExpandedGroups: (key: string, groupIds: Set<string>) => void;
 	dropSession: (key: string) => void;
+	dropSessionsForWorkspace: (workspaceId: string) => void;
 }
 
 function emptySession(): SolveSession {
@@ -169,5 +174,18 @@ export const useSolveSessionStore = create<SolveSessionStore>()((set, get) => ({
 			const map = new Map(state.sessions);
 			map.delete(key);
 			return { sessions: map };
+		}),
+
+	dropSessionsForWorkspace: (workspaceId) =>
+		set((state) => {
+			const prefix = `${workspaceId}::`;
+			let map: Map<string, SolveSession> | null = null;
+			for (const k of state.sessions.keys()) {
+				if (k.startsWith(prefix)) {
+					if (!map) map = new Map(state.sessions);
+					map.delete(k);
+				}
+			}
+			return map ? { sessions: map } : state;
 		}),
 }));

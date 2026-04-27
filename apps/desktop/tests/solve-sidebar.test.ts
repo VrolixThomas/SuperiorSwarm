@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "bun:test";
 import { buildSidebarRows } from "../src/renderer/components/solve/SolveSidebar";
+import { solveSessionKey, useSolveSessionStore } from "../src/renderer/stores/solve-session-store";
 import type { SolveGroupInfo } from "../src/shared/solve-types";
-import { useSolveSessionStore } from "../src/renderer/stores/solve-session-store";
 
 function makeGroup(overrides: Partial<SolveGroupInfo> = {}): SolveGroupInfo {
 	return {
@@ -110,7 +110,7 @@ describe("buildSidebarRows", () => {
 });
 
 describe("SolveSidebar auto-select store invariants", () => {
-	const SESSION_ID = "s1";
+	const SESSION_ID = solveSessionKey("w1", "s1");
 
 	beforeEach(() => {
 		useSolveSessionStore.setState({ sessions: new Map() });

@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it } from "bun:test";
-import { useSolveSessionStore } from "../src/renderer/stores/solve-session-store";
+import { solveSessionKey, useSolveSessionStore } from "../src/renderer/stores/solve-session-store";
+
+const KEY = solveSessionKey("w1", "s1");
 
 describe("solve-session-store", () => {
 	beforeEach(() => {
@@ -8,97 +10,111 @@ describe("solve-session-store", () => {
 
 	it("selectFile sets activeFilePath", () => {
 		const { selectFile } = useSolveSessionStore.getState();
-		selectFile("s1", "src/foo.ts");
-		expect(useSolveSessionStore.getState().sessions.get("s1")?.activeFilePath).toBe("src/foo.ts");
+		selectFile(KEY, "src/foo.ts");
+		expect(useSolveSessionStore.getState().sessions.get(KEY)?.activeFilePath).toBe("src/foo.ts");
 	});
 
 	it("selectFile to same path is a no-op (same Map reference)", () => {
 		const { selectFile } = useSolveSessionStore.getState();
-		selectFile("s1", "src/foo.ts");
+		selectFile(KEY, "src/foo.ts");
 		const before = useSolveSessionStore.getState().sessions;
-		selectFile("s1", "src/foo.ts");
+		selectFile(KEY, "src/foo.ts");
 		expect(useSolveSessionStore.getState().sessions).toBe(before);
 	});
 
 	it("setFileOrder drops scroll entries for files no longer present", () => {
 		const { setFileOrder, setScroll } = useSolveSessionStore.getState();
-		setFileOrder("s1", ["a.ts", "b.ts", "c.ts"]);
-		setScroll("s1", "a.ts", 100);
-		setScroll("s1", "b.ts", 200);
-		setFileOrder("s1", ["a.ts", "c.ts"]);
-		const s = useSolveSessionStore.getState().sessions.get("s1");
+		setFileOrder(KEY, ["a.ts", "b.ts", "c.ts"]);
+		setScroll(KEY, "a.ts", 100);
+		setScroll(KEY, "b.ts", 200);
+		setFileOrder(KEY, ["a.ts", "c.ts"]);
+		const s = useSolveSessionStore.getState().sessions.get(KEY);
 		expect(s?.scrollByFile.get("a.ts")).toBe(100);
 		expect(s?.scrollByFile.has("b.ts")).toBe(false);
 	});
 
 	it("setFileOrder reselects to first file when active is removed", () => {
 		const { setFileOrder, selectFile } = useSolveSessionStore.getState();
-		setFileOrder("s1", ["a.ts", "b.ts"]);
-		selectFile("s1", "b.ts");
-		setFileOrder("s1", ["a.ts", "c.ts"]);
-		expect(useSolveSessionStore.getState().sessions.get("s1")?.activeFilePath).toBe("a.ts");
+		setFileOrder(KEY, ["a.ts", "b.ts"]);
+		selectFile(KEY, "b.ts");
+		setFileOrder(KEY, ["a.ts", "c.ts"]);
+		expect(useSolveSessionStore.getState().sessions.get(KEY)?.activeFilePath).toBe("a.ts");
 	});
 
 	it("setFileOrder keeps active file when still present", () => {
 		const { setFileOrder, selectFile } = useSolveSessionStore.getState();
-		setFileOrder("s1", ["a.ts", "b.ts"]);
-		selectFile("s1", "b.ts");
-		setFileOrder("s1", ["a.ts", "b.ts", "c.ts"]);
-		expect(useSolveSessionStore.getState().sessions.get("s1")?.activeFilePath).toBe("b.ts");
+		setFileOrder(KEY, ["a.ts", "b.ts"]);
+		selectFile(KEY, "b.ts");
+		setFileOrder(KEY, ["a.ts", "b.ts", "c.ts"]);
+		expect(useSolveSessionStore.getState().sessions.get(KEY)?.activeFilePath).toBe("b.ts");
 	});
 
 	it("advanceFile moves through fileOrder and clamps at ends", () => {
 		const { setFileOrder, selectFile, advanceFile } = useSolveSessionStore.getState();
-		setFileOrder("s1", ["a.ts", "b.ts", "c.ts"]);
-		selectFile("s1", "a.ts");
-		advanceFile("s1", 1);
-		expect(useSolveSessionStore.getState().sessions.get("s1")?.activeFilePath).toBe("b.ts");
-		advanceFile("s1", 1);
-		advanceFile("s1", 1); // clamped
-		expect(useSolveSessionStore.getState().sessions.get("s1")?.activeFilePath).toBe("c.ts");
-		advanceFile("s1", -1);
-		expect(useSolveSessionStore.getState().sessions.get("s1")?.activeFilePath).toBe("b.ts");
+		setFileOrder(KEY, ["a.ts", "b.ts", "c.ts"]);
+		selectFile(KEY, "a.ts");
+		advanceFile(KEY, 1);
+		expect(useSolveSessionStore.getState().sessions.get(KEY)?.activeFilePath).toBe("b.ts");
+		advanceFile(KEY, 1);
+		advanceFile(KEY, 1); // clamped
+		expect(useSolveSessionStore.getState().sessions.get(KEY)?.activeFilePath).toBe("c.ts");
+		advanceFile(KEY, -1);
+		expect(useSolveSessionStore.getState().sessions.get(KEY)?.activeFilePath).toBe("b.ts");
 	});
 
 	it("toggleGroupExpanded flips a group's expanded state", () => {
 		const { toggleGroupExpanded } = useSolveSessionStore.getState();
-		toggleGroupExpanded("s1", "g1");
-		expect(useSolveSessionStore.getState().sessions.get("s1")?.expandedGroupIds.has("g1")).toBe(
+		toggleGroupExpanded(KEY, "g1");
+		expect(useSolveSessionStore.getState().sessions.get(KEY)?.expandedGroupIds.has("g1")).toBe(
 			true
 		);
-		toggleGroupExpanded("s1", "g1");
-		expect(useSolveSessionStore.getState().sessions.get("s1")?.expandedGroupIds.has("g1")).toBe(
+		toggleGroupExpanded(KEY, "g1");
+		expect(useSolveSessionStore.getState().sessions.get(KEY)?.expandedGroupIds.has("g1")).toBe(
 			false
 		);
 	});
 
 	it("setExpandedGroups replaces the whole set", () => {
 		const { setExpandedGroups } = useSolveSessionStore.getState();
-		setExpandedGroups("s1", new Set(["g1", "g2"]));
-		expect(useSolveSessionStore.getState().sessions.get("s1")?.expandedGroupIds.has("g1")).toBe(
+		setExpandedGroups(KEY, new Set(["g1", "g2"]));
+		expect(useSolveSessionStore.getState().sessions.get(KEY)?.expandedGroupIds.has("g1")).toBe(
 			true
 		);
-		expect(useSolveSessionStore.getState().sessions.get("s1")?.expandedGroupIds.has("g2")).toBe(
+		expect(useSolveSessionStore.getState().sessions.get(KEY)?.expandedGroupIds.has("g2")).toBe(
 			true
 		);
-		setExpandedGroups("s1", new Set(["g3"]));
-		expect(useSolveSessionStore.getState().sessions.get("s1")?.expandedGroupIds.has("g1")).toBe(
+		setExpandedGroups(KEY, new Set(["g3"]));
+		expect(useSolveSessionStore.getState().sessions.get(KEY)?.expandedGroupIds.has("g1")).toBe(
 			false
 		);
-		expect(useSolveSessionStore.getState().sessions.get("s1")?.expandedGroupIds.has("g3")).toBe(
+		expect(useSolveSessionStore.getState().sessions.get(KEY)?.expandedGroupIds.has("g3")).toBe(
 			true
 		);
 	});
 
 	it("dropSession removes a session", () => {
 		const { selectFile, dropSession } = useSolveSessionStore.getState();
-		selectFile("s1", "a.ts");
-		dropSession("s1");
-		expect(useSolveSessionStore.getState().sessions.has("s1")).toBe(false);
+		selectFile(KEY, "a.ts");
+		dropSession(KEY);
+		expect(useSolveSessionStore.getState().sessions.has(KEY)).toBe(false);
+	});
+
+	it("dropSessionsForWorkspace removes all sessions for a workspace", () => {
+		const { selectFile, dropSessionsForWorkspace } = useSolveSessionStore.getState();
+		const key1 = solveSessionKey("w1", "s1");
+		const key2 = solveSessionKey("w1", "s2");
+		const key3 = solveSessionKey("w2", "s3");
+		selectFile(key1, "a.ts");
+		selectFile(key2, "b.ts");
+		selectFile(key3, "c.ts");
+		dropSessionsForWorkspace("w1");
+		expect(useSolveSessionStore.getState().sessions.has(key1)).toBe(false);
+		expect(useSolveSessionStore.getState().sessions.has(key2)).toBe(false);
+		expect(useSolveSessionStore.getState().sessions.has(key3)).toBe(true);
 	});
 
 	it("getScroll returns undefined for unknown path", () => {
 		const { getScroll } = useSolveSessionStore.getState();
-		expect(getScroll("s1", "missing.ts")).toBeUndefined();
+		expect(getScroll(KEY, "missing.ts")).toBeUndefined();
 	});
 });

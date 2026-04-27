@@ -42,11 +42,9 @@ export function useSolveKeyboard(enabled: boolean) {
 					emitSolveReviewEvent("select-group", { delta: -1 });
 					break;
 				case "n":
-					e.preventDefault();
 					emitSolveReviewEvent("next-comment", { delta: 1 });
 					break;
 				case "N":
-					e.preventDefault();
 					emitSolveReviewEvent("next-comment", { delta: -1 });
 					break;
 				case "a":
@@ -62,11 +60,9 @@ export function useSolveKeyboard(enabled: boolean) {
 					emitSolveReviewEvent("push-current-group");
 					break;
 				case "Enter":
-					e.preventDefault();
 					emitSolveReviewEvent("open-follow-up");
 					break;
 				case "Escape":
-					e.preventDefault();
 					emitSolveReviewEvent("clear-active");
 					break;
 				case "[":

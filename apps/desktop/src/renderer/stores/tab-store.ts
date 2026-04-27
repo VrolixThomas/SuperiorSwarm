@@ -9,6 +9,7 @@ import { basename } from "../lib/format";
 import { createDefaultPane, getAllPanes, usePaneStore } from "./pane-store";
 import { prReviewSessionKey, usePRReviewSessionStore } from "./pr-review-session-store";
 import { useReviewSessionStore } from "./review-session-store";
+import { solveSessionKey, useSolveSessionStore } from "./solve-session-store";
 
 // ─── Tab types ───────────────────────────────────────────────────────────────
 
@@ -444,6 +445,12 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 		if (!found) return;
 		const removed = found.tabs.find((t) => t.id === id);
 		ps().removeTabFromPane(wsId, found.id, id);
+		// Drop the solve session when its tab closes.
+		if (removed && removed.kind === "solve-review") {
+			useSolveSessionStore
+				.getState()
+				.dropSession(solveSessionKey(removed.workspaceId, removed.solveSessionId));
+		}
 		// Drop the per-PR review session when the last anchor tab for that PR closes.
 		if (removed && (removed.kind === "pr-overview" || removed.kind === "pr-review-file")) {
 			const stillThere = findTabInWorkspace(
@@ -499,6 +506,7 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 			set({ activeWorkspaceId: null, activeWorkspaceCwd: "", rightPanel: PANEL_CLOSED });
 		}
 		usePRReviewSessionStore.getState().dropSessionsForWorkspace(workspaceId);
+		useSolveSessionStore.getState().dropSessionsForWorkspace(workspaceId);
 	},
 
 	setSidebarSegment: (segment) => {

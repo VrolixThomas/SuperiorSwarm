@@ -2,7 +2,7 @@ import type * as monaco from "monaco-editor";
 import { useEffect, useMemo, useState } from "react";
 import { detectLanguage } from "../../../shared/diff-types";
 import type { SolveGroupInfo, SolveSessionInfo } from "../../../shared/solve-types";
-import { useSolveSessionStore } from "../../stores/solve-session-store";
+import { solveSessionKey, useSolveSessionStore } from "../../stores/solve-session-store";
 import { useTabStore } from "../../stores/tab-store";
 import { trpc } from "../../trpc/client";
 import { DiffEditor } from "../DiffEditor";
@@ -26,12 +26,12 @@ interface Props {
 }
 
 export function SolveDiffPane({ session, repoPath, workspaceId }: Props) {
-	const sessionId = session.id;
+	const sessionKey = solveSessionKey(session.workspaceId, session.id);
 	const diffMode = useTabStore((s) => s.diffMode);
 	const setDiffMode = useTabStore((s) => s.setDiffMode);
 
 	const activeFilePath = useSolveSessionStore(
-		(s) => s.sessions.get(sessionId)?.activeFilePath ?? null
+		(s) => s.sessions.get(sessionKey)?.activeFilePath ?? null
 	);
 	const setScroll = useSolveSessionStore((s) => s.setScroll);
 	const getScroll = useSolveSessionStore((s) => s.getScroll);
@@ -80,20 +80,20 @@ export function SolveDiffPane({ session, repoPath, workspaceId }: Props) {
 	useEffect(() => {
 		const ed = editorInstance?.getModifiedEditor();
 		if (!ed || !activeFilePath) return;
-		const top = getScroll(sessionId, activeFilePath);
+		const top = getScroll(sessionKey, activeFilePath);
 		if (top != null) ed.setScrollTop(top);
 		let raf = 0;
 		const sub = ed.onDidScrollChange(() => {
 			cancelAnimationFrame(raf);
 			raf = requestAnimationFrame(() => {
-				setScroll(sessionId, activeFilePath, ed.getScrollTop());
+				setScroll(sessionKey, activeFilePath, ed.getScrollTop());
 			});
 		});
 		return () => {
 			cancelAnimationFrame(raf);
 			sub.dispose();
 		};
-	}, [editorInstance, sessionId, activeFilePath, getScroll, setScroll]);
+	}, [editorInstance, sessionKey, activeFilePath, getScroll, setScroll]);
 
 	if (!activeFilePath || !selectedGroup) {
 		return (

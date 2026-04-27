@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import type { SolveSessionInfo, SolveSessionStatus } from "../../shared/solve-types";
 import { subscribeSolveReviewEvent } from "../lib/solve-review-events";
-import { useSolveSessionStore } from "../stores/solve-session-store";
+import { solveSessionKey, useSolveSessionStore } from "../stores/solve-session-store";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import { SolveDiffPane } from "./solve/SolveDiffPane";
@@ -61,13 +61,14 @@ export function SolveReviewTab({ workspaceId, solveSessionId }: Props) {
 	useSolveKeyboard(!!session);
 
 	useEffect(() => {
+		const key = solveSessionKey(workspaceId, solveSessionId);
 		const subs = [
 			subscribeSolveReviewEvent("select-file", ({ delta }) => {
-				useSolveSessionStore.getState().advanceFile(solveSessionId, delta);
+				useSolveSessionStore.getState().advanceFile(key, delta);
 			}),
 			subscribeSolveReviewEvent("select-group", ({ delta }) => {
 				const store = useSolveSessionStore.getState();
-				const ses = store.sessions.get(solveSessionId);
+				const ses = store.sessions.get(key);
 				if (!session) return;
 				const groups = session.groups.filter((g) => g.status !== "reverted");
 				if (groups.length === 0) return;
@@ -83,14 +84,14 @@ export function SolveReviewTab({ workspaceId, solveSessionId }: Props) {
 				if (!nextGroup) return;
 				const expanded = new Set(ses?.expandedGroupIds ?? []);
 				expanded.add(nextGroup.id);
-				store.setExpandedGroups(solveSessionId, expanded);
+				store.setExpandedGroups(key, expanded);
 				const firstFile =
 					nextGroup.changedFiles[0]?.path ?? nextGroup.comments[0]?.filePath ?? null;
-				if (firstFile) store.selectFile(solveSessionId, firstFile);
+				if (firstFile) store.selectFile(key, firstFile);
 			}),
 			subscribeSolveReviewEvent("toggle-group", () => {
 				const store = useSolveSessionStore.getState();
-				const ses = store.sessions.get(solveSessionId);
+				const ses = store.sessions.get(key);
 				if (!session) return;
 				const groups = session.groups.filter((g) => g.status !== "reverted");
 				const currentPath = ses?.activeFilePath;
@@ -99,10 +100,10 @@ export function SolveReviewTab({ workspaceId, solveSessionId }: Props) {
 						g.changedFiles.some((f) => f.path === currentPath) ||
 						g.comments.some((c) => c.filePath === currentPath)
 				);
-				if (current) store.toggleGroupExpanded(solveSessionId, current.id);
+				if (current) store.toggleGroupExpanded(key, current.id);
 			}),
 			subscribeSolveReviewEvent("approve-current-group", () => {
-				const ses = useSolveSessionStore.getState().sessions.get(solveSessionId);
+				const ses = useSolveSessionStore.getState().sessions.get(key);
 				if (!session || !ses?.activeFilePath) return;
 				const group = session.groups.find(
 					(g) =>
@@ -114,7 +115,7 @@ export function SolveReviewTab({ workspaceId, solveSessionId }: Props) {
 				}
 			}),
 			subscribeSolveReviewEvent("revoke-current-group", () => {
-				const ses = useSolveSessionStore.getState().sessions.get(solveSessionId);
+				const ses = useSolveSessionStore.getState().sessions.get(key);
 				if (!session || !ses?.activeFilePath) return;
 				const group = session.groups.find(
 					(g) =>
@@ -126,7 +127,7 @@ export function SolveReviewTab({ workspaceId, solveSessionId }: Props) {
 				}
 			}),
 			subscribeSolveReviewEvent("push-current-group", () => {
-				const ses = useSolveSessionStore.getState().sessions.get(solveSessionId);
+				const ses = useSolveSessionStore.getState().sessions.get(key);
 				if (!session || !ses?.activeFilePath) return;
 				const group = session.groups.find(
 					(g) =>
@@ -142,7 +143,7 @@ export function SolveReviewTab({ workspaceId, solveSessionId }: Props) {
 		return () => {
 			for (const unsub of subs) unsub();
 		};
-	}, [session, solveSessionId, approveGroupMutation, revokeGroupMutation, pushGroupMutation]);
+	}, [session, workspaceId, solveSessionId, approveGroupMutation, revokeGroupMutation, pushGroupMutation]);
 
 	if (isLoading || !session) {
 		return <div className="p-6 text-[var(--text-secondary)]">Loading…</div>;

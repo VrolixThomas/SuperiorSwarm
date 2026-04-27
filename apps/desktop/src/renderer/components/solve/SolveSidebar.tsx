@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from "react";
 import type { SolveGroupInfo, SolveSessionInfo } from "../../../shared/solve-types";
-import { useSolveSessionStore } from "../../stores/solve-session-store";
+import { solveSessionKey, useSolveSessionStore } from "../../stores/solve-session-store";
 import { trpc } from "../../trpc/client";
 import { GroupAction } from "./GroupAction";
 import { RatioBadge } from "./RatioBadge";
@@ -53,13 +53,13 @@ export function buildSidebarRows(groups: SolveGroupInfo[]): Map<string, FileRow[
 
 export function SolveSidebar({ session }: Props) {
 	const utils = trpc.useUtils();
-	const sessionId = session.id;
+	const sessionKey = solveSessionKey(session.workspaceId, session.id);
 
 	const expanded = useSolveSessionStore(
-		(s) => s.sessions.get(sessionId)?.expandedGroupIds ?? new Set<string>()
+		(s) => s.sessions.get(sessionKey)?.expandedGroupIds ?? new Set<string>()
 	);
 	const activeFilePath = useSolveSessionStore(
-		(s) => s.sessions.get(sessionId)?.activeFilePath ?? null
+		(s) => s.sessions.get(sessionKey)?.activeFilePath ?? null
 	);
 	const selectFile = useSolveSessionStore((s) => s.selectFile);
 	const toggleGroupExpanded = useSolveSessionStore((s) => s.toggleGroupExpanded);
@@ -76,40 +76,37 @@ export function SolveSidebar({ session }: Props) {
 		onSuccess: () => utils.commentSolver.invalidate(),
 	});
 
-	const visibleGroups = useMemo(
-		() => session.groups.filter((g) => g.status !== "reverted"),
-		[session.groups]
-	);
+	const rowsByGroup = useMemo(() => buildSidebarRows(session.groups), [session.groups]);
 
-	const rowsByGroup = useMemo(() => buildSidebarRows(visibleGroups), [visibleGroups]);
-
-	// Flatten all file paths in order for j/k navigation.
+	// Flatten all file paths in order for j/k navigation — skip reverted groups.
 	const flatFileOrder = useMemo(() => {
 		const out: string[] = [];
-		for (const g of visibleGroups) {
+		for (const g of session.groups.filter((g) => g.status !== "reverted")) {
 			const rows = rowsByGroup.get(g.id) ?? [];
 			for (const r of rows) out.push(r.path);
 		}
 		return out;
-	}, [visibleGroups, rowsByGroup]);
+	}, [session.groups, rowsByGroup]);
 
 	useEffect(() => {
-		setFileOrder(sessionId, flatFileOrder);
-	}, [sessionId, flatFileOrder, setFileOrder]);
+		setFileOrder(sessionKey, flatFileOrder);
+	}, [sessionKey, flatFileOrder, setFileOrder]);
 
-	// First-load: expand the first non-empty group, auto-select its first file.
+	// First-load: expand the first non-empty non-reverted group, auto-select its first file.
 	useEffect(() => {
 		if (expanded.size > 0 || activeFilePath !== null) return;
-		const first = visibleGroups.find((g) => (rowsByGroup.get(g.id) ?? []).length > 0);
+		const first = session.groups
+			.filter((g) => g.status !== "reverted")
+			.find((g) => (rowsByGroup.get(g.id) ?? []).length > 0);
 		if (!first) return;
-		setExpandedGroups(sessionId, new Set([first.id]));
+		setExpandedGroups(sessionKey, new Set([first.id]));
 		const firstRow = rowsByGroup.get(first.id)?.[0];
-		if (firstRow) selectFile(sessionId, firstRow.path);
+		if (firstRow) selectFile(sessionKey, firstRow.path);
 	}, [
-		sessionId,
+		sessionKey,
 		expanded.size,
 		activeFilePath,
-		visibleGroups,
+		session.groups,
 		rowsByGroup,
 		setExpandedGroups,
 		selectFile,
@@ -117,48 +114,61 @@ export function SolveSidebar({ session }: Props) {
 
 	return (
 		<div className="flex h-full flex-col overflow-y-auto border-r border-[var(--border-subtle)] bg-[var(--bg-base)]">
-			{visibleGroups.map((group) => {
+			{session.groups.map((group) => {
 				const rows = rowsByGroup.get(group.id) ?? [];
 				const isExpanded = expanded.has(group.id);
 				const isSolving = group.status === "pending";
+				const isReverted = group.status === "reverted";
 				const draftReplyCount = group.comments.filter((c) => c.reply?.status === "draft").length;
 				return (
 					<div key={group.id} className="border-b border-[var(--border-subtle)]">
 						<div
-							onClick={() => !isSolving && toggleGroupExpanded(sessionId, group.id)}
+							onClick={
+								isReverted || isSolving
+									? undefined
+									: () => toggleGroupExpanded(sessionKey, group.id)
+							}
 							className={[
 								"flex items-center justify-between px-[12px] py-[10px] select-none",
-								isSolving ? "cursor-default" : "cursor-pointer",
+								isReverted || isSolving ? "cursor-default" : "cursor-pointer",
+								isReverted ? "opacity-50" : "",
 							].join(" ")}
 						>
 							<div className="flex items-center gap-[7px] min-w-0 flex-1">
 								<span
 									className="text-[10px] text-[var(--text-tertiary)] w-[14px] text-center transition-transform duration-[150ms]"
-									style={{ transform: isExpanded ? "rotate(90deg)" : "none" }}
+									style={{ transform: isExpanded && !isReverted ? "rotate(90deg)" : "none" }}
 								>
 									›
 								</span>
-								<span className="text-[13px] font-medium tracking-[-0.015em] whitespace-nowrap overflow-hidden text-ellipsis">
+								<span
+									className={[
+										"text-[13px] font-medium tracking-[-0.015em] whitespace-nowrap overflow-hidden text-ellipsis",
+										isReverted ? "line-through" : "",
+									].join(" ")}
+								>
 									{group.label}
 								</span>
-								<RatioBadge group={group} />
-								{draftReplyCount > 0 && (
+								{!isReverted && <RatioBadge group={group} />}
+								{!isReverted && draftReplyCount > 0 && (
 									<span className="shrink-0 py-[1px] px-[7px] rounded-full text-[10px] font-medium bg-[var(--warning-subtle)] text-[var(--warning)]">
 										✉ {draftReplyCount} draft
 									</span>
 								)}
 							</div>
-							<div className="flex items-center gap-[6px] shrink-0 ml-[12px]">
-								<GroupAction
-									group={group}
-									onApprove={() => approveMutation.mutate({ groupId: group.id })}
-									onRevoke={() => revokeMutation.mutate({ groupId: group.id })}
-									onPush={() => pushMutation.mutate({ groupId: group.id })}
-									isPushing={pushMutation.isPending}
-								/>
-							</div>
+							{!isReverted && (
+								<div className="flex items-center gap-[6px] shrink-0 ml-[12px]">
+									<GroupAction
+										group={group}
+										onApprove={() => approveMutation.mutate({ groupId: group.id })}
+										onRevoke={() => revokeMutation.mutate({ groupId: group.id })}
+										onPush={() => pushMutation.mutate({ groupId: group.id })}
+										isPushing={pushMutation.isPending}
+									/>
+								</div>
+							)}
 						</div>
-						{isExpanded && !isSolving && (
+						{!isReverted && isExpanded && !isSolving && (
 							<div className="pb-[6px]">
 								{rows.length === 0 && (
 									<div className="px-[12px] pb-[6px] font-mono text-[10.5px] text-[var(--text-tertiary)]">
@@ -170,7 +180,7 @@ export function SolveSidebar({ session }: Props) {
 									return (
 										<div
 											key={row.path}
-											onClick={() => selectFile(sessionId, row.path)}
+											onClick={() => selectFile(sessionKey, row.path)}
 											className={[
 												"flex items-center gap-[8px] py-[5px] pl-[26px] pr-[10px] cursor-pointer",
 												selected ? "bg-[var(--bg-active)]" : "hover:bg-[var(--bg-elevated)]",
@@ -207,11 +217,6 @@ export function SolveSidebar({ session }: Props) {
 					</div>
 				);
 			})}
-			{session.groups.some((g) => g.status === "reverted") && (
-				<div className="px-[12px] py-[10px] text-[10.5px] text-[var(--text-tertiary)] opacity-60">
-					{session.groups.filter((g) => g.status === "reverted").length} reverted group(s) hidden
-				</div>
-			)}
 		</div>
 	);
 }
