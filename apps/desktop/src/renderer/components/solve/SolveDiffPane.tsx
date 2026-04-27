@@ -6,8 +6,18 @@ import { useSolveSessionStore } from "../../stores/solve-session-store";
 import { useTabStore } from "../../stores/tab-store";
 import { trpc } from "../../trpc/client";
 import { DiffEditor } from "../DiffEditor";
+import { type Hint, ReviewHintBar } from "../review/ReviewHintBar";
 import { SolveCommentWidget } from "./SolveCommentWidget";
 import { useSolveCommentZones } from "./useSolveCommentZones";
+
+const SOLVE_HINTS: Hint[] = [
+	{ keys: ["J", "K"], label: "File" },
+	{ keys: ["⇧J", "⇧K"], label: "Group" },
+	{ keys: ["A"], label: "Approve" },
+	{ keys: ["P"], label: "Push" },
+	{ keys: ["⏎"], label: "Follow-up" },
+	{ keys: ["Esc"], label: "Clear" },
+];
 
 interface Props {
 	session: SolveSessionInfo;
@@ -138,6 +148,7 @@ export function SolveDiffPane({ session, repoPath, workspaceId }: Props) {
 					/>
 				)}
 			</div>
+			<ReviewHintBar hints={SOLVE_HINTS} />
 		</div>
 	);
 }
