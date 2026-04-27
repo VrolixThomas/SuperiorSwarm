@@ -1,9 +1,12 @@
 import { useEffect, useRef } from "react";
 import type { SolveSessionInfo, SolveSessionStatus } from "../../shared/solve-types";
+import { subscribeSolveReviewEvent } from "../lib/solve-review-events";
+import { useSolveSessionStore } from "../stores/solve-session-store";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import { SolveDiffPane } from "./solve/SolveDiffPane";
 import { SolveSidebar } from "./solve/SolveSidebar";
+import { useSolveKeyboard } from "./solve/useSolveKeyboard";
 
 interface Props {
 	workspaceId: string;
@@ -35,6 +38,16 @@ export function SolveReviewTab({ workspaceId, solveSessionId }: Props) {
 		onSuccess: () => utils.commentSolver.invalidate(),
 	});
 
+	const approveGroupMutation = trpc.commentSolver.approveGroup.useMutation({
+		onSuccess: () => utils.commentSolver.invalidate(),
+	});
+	const revokeGroupMutation = trpc.commentSolver.revokeGroup.useMutation({
+		onSuccess: () => utils.commentSolver.invalidate(),
+	});
+	const pushGroupMutation = trpc.commentSolver.pushGroup.useMutation({
+		onSuccess: () => utils.commentSolver.invalidate(),
+	});
+
 	const activeWorkspaceCwd = useTabStore((s) => s.activeWorkspaceCwd);
 
 	const prevStatusRef = useRef<SolveSessionStatus | undefined>(undefined);
@@ -44,6 +57,92 @@ export function SolveReviewTab({ workspaceId, solveSessionId }: Props) {
 		}
 		prevStatusRef.current = session?.status;
 	}, [session?.status, solveSessionId]);
+
+	useSolveKeyboard(!!session);
+
+	useEffect(() => {
+		const subs = [
+			subscribeSolveReviewEvent("select-file", ({ delta }) => {
+				useSolveSessionStore.getState().advanceFile(solveSessionId, delta);
+			}),
+			subscribeSolveReviewEvent("select-group", ({ delta }) => {
+				const store = useSolveSessionStore.getState();
+				const ses = store.sessions.get(solveSessionId);
+				if (!session) return;
+				const groups = session.groups.filter((g) => g.status !== "reverted");
+				if (groups.length === 0) return;
+				const currentPath = ses?.activeFilePath;
+				const currentIdx = groups.findIndex(
+					(g) =>
+						g.changedFiles.some((f) => f.path === currentPath) ||
+						g.comments.some((c) => c.filePath === currentPath)
+				);
+				const safeCurrent = currentIdx === -1 ? 0 : currentIdx;
+				const nextIdx = Math.min(groups.length - 1, Math.max(0, safeCurrent + delta));
+				const nextGroup = groups[nextIdx];
+				if (!nextGroup) return;
+				const expanded = new Set(ses?.expandedGroupIds ?? []);
+				expanded.add(nextGroup.id);
+				store.setExpandedGroups(solveSessionId, expanded);
+				const firstFile =
+					nextGroup.changedFiles[0]?.path ?? nextGroup.comments[0]?.filePath ?? null;
+				if (firstFile) store.selectFile(solveSessionId, firstFile);
+			}),
+			subscribeSolveReviewEvent("toggle-group", () => {
+				const store = useSolveSessionStore.getState();
+				const ses = store.sessions.get(solveSessionId);
+				if (!session) return;
+				const groups = session.groups.filter((g) => g.status !== "reverted");
+				const currentPath = ses?.activeFilePath;
+				const current = groups.find(
+					(g) =>
+						g.changedFiles.some((f) => f.path === currentPath) ||
+						g.comments.some((c) => c.filePath === currentPath)
+				);
+				if (current) store.toggleGroupExpanded(solveSessionId, current.id);
+			}),
+			subscribeSolveReviewEvent("approve-current-group", () => {
+				const ses = useSolveSessionStore.getState().sessions.get(solveSessionId);
+				if (!session || !ses?.activeFilePath) return;
+				const group = session.groups.find(
+					(g) =>
+						g.changedFiles.some((f) => f.path === ses.activeFilePath) ||
+						g.comments.some((c) => c.filePath === ses.activeFilePath)
+				);
+				if (group && group.status === "fixed") {
+					approveGroupMutation.mutate({ groupId: group.id });
+				}
+			}),
+			subscribeSolveReviewEvent("revoke-current-group", () => {
+				const ses = useSolveSessionStore.getState().sessions.get(solveSessionId);
+				if (!session || !ses?.activeFilePath) return;
+				const group = session.groups.find(
+					(g) =>
+						g.changedFiles.some((f) => f.path === ses.activeFilePath) ||
+						g.comments.some((c) => c.filePath === ses.activeFilePath)
+				);
+				if (group && group.status === "approved") {
+					revokeGroupMutation.mutate({ groupId: group.id });
+				}
+			}),
+			subscribeSolveReviewEvent("push-current-group", () => {
+				const ses = useSolveSessionStore.getState().sessions.get(solveSessionId);
+				if (!session || !ses?.activeFilePath) return;
+				const group = session.groups.find(
+					(g) =>
+						g.changedFiles.some((f) => f.path === ses.activeFilePath) ||
+						g.comments.some((c) => c.filePath === ses.activeFilePath)
+				);
+				if (group && group.status === "approved") {
+					const hasDrafts = group.comments.some((c) => c.reply?.status === "draft");
+					if (!hasDrafts) pushGroupMutation.mutate({ groupId: group.id });
+				}
+			}),
+		];
+		return () => {
+			for (const unsub of subs) unsub();
+		};
+	}, [session, solveSessionId, approveGroupMutation, revokeGroupMutation, pushGroupMutation]);
 
 	if (isLoading || !session) {
 		return <div className="p-6 text-[var(--text-secondary)]">Loading…</div>;
