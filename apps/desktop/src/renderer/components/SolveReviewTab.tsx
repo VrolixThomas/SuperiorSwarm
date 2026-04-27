@@ -201,7 +201,7 @@ export function SolveReviewTab({ workspaceId, solveSessionId }: Props) {
 				/>
 			</div>
 			<div className="flex flex-1 min-h-0 overflow-hidden">
-				<div className="w-[320px] shrink-0">
+				<div className="w-[400px] shrink-0">
 					<SolveSidebar session={session} />
 				</div>
 				<div className="flex-1 min-w-0">
