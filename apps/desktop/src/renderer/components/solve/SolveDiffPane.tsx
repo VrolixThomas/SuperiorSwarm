@@ -1,5 +1,5 @@
 import type * as monaco from "monaco-editor";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { detectLanguage } from "../../../shared/diff-types";
 import type { SolveGroupInfo, SolveSessionInfo } from "../../../shared/solve-types";
 import { solveSessionKey, useSolveSessionStore } from "../../stores/solve-session-store";
@@ -36,8 +36,14 @@ export function SolveDiffPane({ session, repoPath, workspaceId }: Props) {
 	const activeCommentId = useSolveSessionStore(
 		(s) => s.sessions.get(sessionKey)?.activeCommentId ?? null
 	);
+	const commentsVisible = useSolveSessionStore(
+		(s) => s.sessions.get(sessionKey)?.commentsVisible ?? true
+	);
 	const setScroll = useSolveSessionStore((s) => s.setScroll);
 	const getScroll = useSolveSessionStore((s) => s.getScroll);
+	const setCommentsVisible = useSolveSessionStore((s) => s.setCommentsVisible);
+	const toggleCommentsVisible = useSolveSessionStore((s) => s.toggleCommentsVisible);
+	const selectComment = useSolveSessionStore((s) => s.selectComment);
 	const [editorInstance, setEditorInstance] = useState<monaco.editor.IStandaloneDiffEditor | null>(
 		null
 	);
@@ -77,9 +83,20 @@ export function SolveDiffPane({ session, repoPath, workspaceId }: Props) {
 		return selectedGroup.comments.filter((c) => c.filePath === activeFilePath);
 	}, [selectedGroup, activeFilePath]);
 
-	useSolveCommentZones(editorInstance, fileComments, workspaceId);
+	const onGlyphClick = useCallback(
+		(commentId: string) => {
+			setCommentsVisible(sessionKey, true);
+			selectComment(sessionKey, commentId);
+		},
+		[sessionKey, setCommentsVisible, selectComment]
+	);
 
-	// Per-file scroll persistence.
+	useSolveCommentZones(editorInstance, fileComments, workspaceId, {
+		enabled: commentsVisible,
+		activeCommentId,
+		onGlyphClick,
+	});
+
 	useEffect(() => {
 		const ed = editorInstance?.getModifiedEditor();
 		if (!ed || !activeFilePath) return;
@@ -98,7 +115,6 @@ export function SolveDiffPane({ session, repoPath, workspaceId }: Props) {
 		};
 	}, [editorInstance, sessionKey, activeFilePath, getScroll, setScroll]);
 
-	// Jump to line when active comment changes.
 	useEffect(() => {
 		const ed = editorInstance?.getModifiedEditor();
 		if (!ed || !activeCommentId) return;
@@ -127,6 +143,14 @@ export function SolveDiffPane({ session, repoPath, workspaceId }: Props) {
 				<span className="font-mono text-[11px] text-[var(--text-quaternary)]">{shortHash}</span>
 				<button
 					type="button"
+					onClick={() => toggleCommentsVisible(sessionKey)}
+					className="rounded px-2 py-0.5 text-[11px] text-[var(--text-tertiary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text)]"
+					title={commentsVisible ? "Hide inline comments" : "Show inline comments"}
+				>
+					💬 Comments: {commentsVisible ? "On" : "Off"}
+				</button>
+				<button
+					type="button"
 					onClick={() => setDiffMode(diffMode === "split" ? "inline" : "split")}
 					className="rounded px-2 py-0.5 text-[11px] text-[var(--text-tertiary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text)]"
 				>
@@ -141,7 +165,12 @@ export function SolveDiffPane({ session, repoPath, workspaceId }: Props) {
 						</div>
 						<div className="flex flex-col gap-1">
 							{fileComments.map((c) => (
-								<SolveCommentWidget key={c.id} comment={c} workspaceId={workspaceId} />
+								<SolveCommentWidget
+									key={c.id}
+									comment={c}
+									workspaceId={workspaceId}
+									isActive={c.id === activeCommentId}
+								/>
 							))}
 						</div>
 					</div>
