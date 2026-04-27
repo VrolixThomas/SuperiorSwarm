@@ -10,6 +10,7 @@ export interface SolveSession {
 	scrollByFile: Map<string, number>;
 	expandedGroupIds: Set<string>;
 	fileOrder: string[];
+	commentsVisible: boolean;
 }
 
 export interface SolveSessionStore {
@@ -23,6 +24,8 @@ export interface SolveSessionStore {
 	setFileOrder: (key: string, files: string[]) => void;
 	toggleGroupExpanded: (key: string, groupId: string) => void;
 	setExpandedGroups: (key: string, groupIds: Set<string>) => void;
+	setCommentsVisible: (key: string, visible: boolean) => void;
+	toggleCommentsVisible: (key: string) => void;
 	dropSession: (key: string) => void;
 	dropSessionsForWorkspace: (workspaceId: string) => void;
 }
@@ -34,6 +37,7 @@ function emptySession(): SolveSession {
 		scrollByFile: new Map(),
 		expandedGroupIds: new Set(),
 		fileOrder: [],
+		commentsVisible: true,
 	};
 }
 
@@ -165,6 +169,20 @@ export const useSolveSessionStore = create<SolveSessionStore>()((set, get) => ({
 				}
 				return { ...s, expandedGroupIds: new Set(groupIds) };
 			});
+			return next === state.sessions ? state : { sessions: next };
+		}),
+
+	setCommentsVisible: (key, visible) =>
+		set((state) => {
+			const next = withSession(state, key, (s) =>
+				s.commentsVisible === visible ? s : { ...s, commentsVisible: visible }
+			);
+			return next === state.sessions ? state : { sessions: next };
+		}),
+
+	toggleCommentsVisible: (key) =>
+		set((state) => {
+			const next = withSession(state, key, (s) => ({ ...s, commentsVisible: !s.commentsVisible }));
 			return next === state.sessions ? state : { sessions: next };
 		}),
 

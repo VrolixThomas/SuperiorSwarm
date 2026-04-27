@@ -117,4 +117,41 @@ describe("solve-session-store", () => {
 		const { getScroll } = useSolveSessionStore.getState();
 		expect(getScroll(KEY, "missing.ts")).toBeUndefined();
 	});
+
+	it("commentsVisible defaults to true on a fresh session", () => {
+		const { selectFile } = useSolveSessionStore.getState();
+		selectFile(KEY, "a.ts");
+		expect(useSolveSessionStore.getState().sessions.get(KEY)?.commentsVisible).toBe(true);
+	});
+
+	it("setCommentsVisible flips the flag", () => {
+		const { setCommentsVisible } = useSolveSessionStore.getState();
+		setCommentsVisible(KEY, false);
+		expect(useSolveSessionStore.getState().sessions.get(KEY)?.commentsVisible).toBe(false);
+		setCommentsVisible(KEY, true);
+		expect(useSolveSessionStore.getState().sessions.get(KEY)?.commentsVisible).toBe(true);
+	});
+
+	it("setCommentsVisible to same value is a no-op (same Map reference)", () => {
+		const { setCommentsVisible } = useSolveSessionStore.getState();
+		setCommentsVisible(KEY, false);
+		const before = useSolveSessionStore.getState().sessions;
+		setCommentsVisible(KEY, false);
+		expect(useSolveSessionStore.getState().sessions).toBe(before);
+	});
+
+	it("toggleCommentsVisible flips between true and false", () => {
+		const { toggleCommentsVisible } = useSolveSessionStore.getState();
+		toggleCommentsVisible(KEY);
+		expect(useSolveSessionStore.getState().sessions.get(KEY)?.commentsVisible).toBe(false);
+		toggleCommentsVisible(KEY);
+		expect(useSolveSessionStore.getState().sessions.get(KEY)?.commentsVisible).toBe(true);
+	});
+
+	it("dropSession clears commentsVisible state", () => {
+		const { setCommentsVisible, dropSession } = useSolveSessionStore.getState();
+		setCommentsVisible(KEY, false);
+		dropSession(KEY);
+		expect(useSolveSessionStore.getState().sessions.has(KEY)).toBe(false);
+	});
 });
