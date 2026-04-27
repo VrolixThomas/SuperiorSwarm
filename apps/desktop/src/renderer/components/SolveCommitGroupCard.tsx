@@ -1,7 +1,5 @@
 import { useState } from "react";
-import { detectLanguage } from "../../shared/diff-types";
 import type { ChangedFile, SolveCommentInfo, SolveGroupInfo } from "../../shared/solve-types";
-import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import { GroupAction } from "./solve/GroupAction";
 import { RatioBadge } from "./solve/RatioBadge";
@@ -25,9 +23,6 @@ interface Props {
 export function SolveCommitGroupCard({ group, sessionId, workspaceId, defaultExpanded }: Props) {
 	const [expanded, setExpanded] = useState(defaultExpanded);
 	const utils = trpc.useUtils();
-	const activeWorkspaceCwd = useTabStore((s) => s.activeWorkspaceCwd);
-	const openCommentFixFile = useTabStore((s) => s.openCommentFixFile);
-
 	const approveMutation = trpc.commentSolver.approveGroup.useMutation({
 		onSuccess: () => utils.commentSolver.invalidate(),
 	});
@@ -51,19 +46,6 @@ export function SolveCommitGroupCard({ group, sessionId, workspaceId, defaultExp
 		existing.push(comment);
 		commentsByFile.set(comment.filePath, existing);
 	}
-
-	const handleFileClick = (filePath: string) => {
-		if (!group.commitHash) return;
-		if (!activeWorkspaceCwd) return;
-		openCommentFixFile(
-			workspaceId,
-			group.id,
-			filePath,
-			group.commitHash,
-			activeWorkspaceCwd,
-			detectLanguage(filePath)
-		);
-	};
 
 	return (
 		<div
@@ -126,11 +108,8 @@ export function SolveCommitGroupCard({ group, sessionId, workspaceId, defaultExp
 					<div className="font-mono text-[10.5px] text-[var(--text-tertiary)] mb-[12px]">
 						{group.commitHash ? group.commitHash.slice(0, 7) : "no code changes"}
 					</div>
-					<ChangedFilesSection files={group.changedFiles} onFileClick={handleFileClick} />
-					<CommentsAddressedSection
-						commentsByFile={commentsByFile}
-						workspaceId={workspaceId}
-					/>
+					<ChangedFilesSection files={group.changedFiles} onFileClick={() => {}} />
+					<CommentsAddressedSection commentsByFile={commentsByFile} workspaceId={workspaceId} />
 				</div>
 			)}
 		</div>

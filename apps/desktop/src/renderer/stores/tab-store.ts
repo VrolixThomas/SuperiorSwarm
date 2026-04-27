@@ -65,17 +65,6 @@ export type TabItem =
 			prCtx: PRContext;
 	  }
 	| {
-			kind: "comment-fix-file";
-			id: string;
-			workspaceId: string;
-			groupId: string;
-			filePath: string;
-			commitHash: string;
-			title: string;
-			language: string;
-			repoPath: string;
-	  }
-	| {
 			kind: "merge-conflict";
 			id: string;
 			workspaceId: string;
@@ -189,15 +178,6 @@ interface TabStore {
 		language: string
 	) => string;
 	openPROverview: (workspaceId: string, prCtx: PRContext) => string;
-
-	openCommentFixFile: (
-		workspaceId: string,
-		groupId: string,
-		filePath: string,
-		commitHash: string,
-		repoPath: string,
-		language: string
-	) => string;
 
 	openMergeConflict: (
 		workspaceId: string,
@@ -716,42 +696,6 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 			workspaceId,
 			title: `PR: ${prCtx.title}`,
 			prCtx,
-		};
-		ps().ensureLayout(workspaceId);
-		const focused = resolveFocusedPane(workspaceId);
-		if (focused) {
-			ps().addTabToPane(workspaceId, focused.id, tab);
-		}
-		return id;
-	},
-
-	openCommentFixFile: (workspaceId, groupId, filePath, commitHash, repoPath, language) => {
-		const key = `comment-fix:${groupId}:${filePath}`;
-		const found = findTabInWorkspace(
-			workspaceId,
-			(t) =>
-				t.kind === "comment-fix-file" &&
-				t.workspaceId === workspaceId &&
-				`comment-fix:${t.groupId}:${t.filePath}` === key
-		);
-		if (found) {
-			ps().setActiveTabInPane(workspaceId, found.pane.id, found.tab.id);
-			ps().setFocusedPane(found.pane.id);
-			return found.tab.id;
-		}
-		const id = nextFileTabId();
-		const filename = basename(filePath);
-		const title = `${filename} (fix)`;
-		const tab: TabItem = {
-			kind: "comment-fix-file",
-			id,
-			workspaceId,
-			groupId,
-			filePath,
-			commitHash,
-			title,
-			language,
-			repoPath,
 		};
 		ps().ensureLayout(workspaceId);
 		const focused = resolveFocusedPane(workspaceId);
