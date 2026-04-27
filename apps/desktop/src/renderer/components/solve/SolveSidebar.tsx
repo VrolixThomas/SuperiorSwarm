@@ -243,7 +243,9 @@ export function SolveSidebar({ session }: Props) {
 											return (
 												<div
 													key={comment.id}
-													ref={isActive ? activeCardRef : undefined}
+													ref={(node) => {
+														if (isActive && node) activeCardRef.current = node;
+													}}
 												>
 													<SolveCommentCard
 														comment={comment}
