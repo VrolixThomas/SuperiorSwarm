@@ -3,7 +3,6 @@ import { join } from "node:path";
 import type { CliPresetName } from "../../shared/cli-preset";
 import {
 	type ReviewPromptContext,
-	assembleReviewFollowUpPrompt,
 	assembleReviewPrompt,
 	buildReviewHistoryBlock,
 	effectiveBody,
@@ -210,7 +209,7 @@ export function buildFollowUpPrompt(
 		})
 		.join("\n");
 
-	return assembleReviewFollowUpPrompt({
+	return assembleReviewPrompt({
 		ctx,
 		body: effectiveBody(customPrompt, DEFAULT_REVIEW_PROMPT),
 		reviewHistory: buildReviewHistoryBlock({

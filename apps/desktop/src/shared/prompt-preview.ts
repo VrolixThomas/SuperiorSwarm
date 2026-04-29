@@ -87,20 +87,11 @@ ${fields.commentLines}
 </review_history>`;
 }
 
-/** Compose the full review prompt the agent receives. */
+/** Compose the full review prompt the agent receives (initial or follow-up). */
 export function assembleReviewPrompt(opts: {
 	ctx: ReviewPromptContext;
 	body: string;
-	mcpInstructions: string;
-}): string {
-	return envelope("review_task", [reviewContextBlock(opts.ctx), opts.body, opts.mcpInstructions]);
-}
-
-/** Compose the full follow-up review prompt the agent receives. */
-export function assembleReviewFollowUpPrompt(opts: {
-	ctx: ReviewPromptContext;
-	body: string;
-	reviewHistory: string;
+	reviewHistory?: string;
 	mcpInstructions: string;
 }): string {
 	return envelope("review_task", [
@@ -151,7 +142,7 @@ Current HEAD is {{currentCommitSha}}.
 Previous comments and their current state:
 {{previousCommentList}}
 </review_history>`;
-	return assembleReviewFollowUpPrompt({
+	return assembleReviewPrompt({
 		ctx: REVIEW_PLACEHOLDERS,
 		body: effectiveBody(body, DEFAULT_REVIEW_PROMPT),
 		reviewHistory,
