@@ -233,7 +233,7 @@ You are helping the PR author fix review comments. Reviewers have left feedback 
 /** Render the full solve-follow-up prompt with placeholders. */
 export function renderSolveFollowUpFullPrompt(body: string): string {
 	const contextBlock = buildSolveFollowUpContextBlock({
-		prTitle: "{{prTitle}}",
+		prTitle: "{{title}}",
 		sessionId: "{{sessionId}}",
 		sourceBranch: "{{sourceBranch}}",
 		targetBranch: "{{targetBranch}}",
