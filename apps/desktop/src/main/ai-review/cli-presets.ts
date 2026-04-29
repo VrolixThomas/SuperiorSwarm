@@ -165,13 +165,11 @@ export const CLI_PRESETS: Record<string, CliPreset> = {
 	},
 };
 
-interface ReviewMetadata extends ReviewPromptContext {
-	customPrompt?: string | null;
-}
-
-/** Build the review prompt from PR metadata */
-export function buildReviewPrompt(metadata: ReviewMetadata): string {
-	const { customPrompt, ...ctx } = metadata;
+/** Build the review prompt from PR metadata. */
+export function buildReviewPrompt(
+	ctx: ReviewPromptContext,
+	customPrompt: string | null | undefined
+): string {
 	return assembleReviewPrompt({
 		ctx,
 		body: effectiveBody(customPrompt, DEFAULT_REVIEW_PROMPT),
@@ -187,25 +185,20 @@ export interface PreviousCommentContext {
 	platformStatus: "open" | "resolved-on-platform";
 }
 
-/** Build the follow-up review prompt for subsequent review rounds */
-export function buildFollowUpPrompt(
-	metadata: ReviewMetadata & {
-		roundNumber: number;
-		previousCommitSha: string;
-		currentCommitSha: string;
-		previousComments: PreviousCommentContext[];
-	}
-): string {
-	const {
-		customPrompt,
-		previousComments,
-		roundNumber,
-		previousCommitSha,
-		currentCommitSha,
-		...ctx
-	} = metadata;
+export interface FollowUpRoundContext {
+	roundNumber: number;
+	previousCommitSha: string;
+	currentCommitSha: string;
+	previousComments: PreviousCommentContext[];
+}
 
-	const commentLines = previousComments
+/** Build the follow-up review prompt for subsequent review rounds. */
+export function buildFollowUpPrompt(
+	ctx: ReviewPromptContext,
+	customPrompt: string | null | undefined,
+	round: FollowUpRoundContext
+): string {
+	const commentLines = round.previousComments
 		.map((c, i) => {
 			const location = c.lineNumber ? `${c.filePath}:${c.lineNumber}` : c.filePath;
 			const status =
@@ -221,9 +214,9 @@ export function buildFollowUpPrompt(
 		ctx,
 		body: effectiveBody(customPrompt, DEFAULT_REVIEW_PROMPT),
 		reviewHistory: buildReviewHistoryBlock({
-			roundNumber,
-			previousCommitSha: previousCommitSha.slice(0, 8),
-			currentCommitSha: currentCommitSha.slice(0, 8),
+			roundNumber: round.roundNumber,
+			previousCommitSha: round.previousCommitSha.slice(0, 8),
+			currentCommitSha: round.currentCommitSha.slice(0, 8),
 			commentLines,
 		}),
 		mcpInstructions: buildFollowUpMcpInstructions(ctx.targetBranch),
