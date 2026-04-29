@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
+import { CLI_PRESET_NAMES } from "../../../shared/cli-preset";
 import { cleanupReviewWorkspace } from "../../ai-review/cleanup";
 import { startPolling } from "../../ai-review/commit-poller";
 import {
@@ -26,7 +27,7 @@ export const aiReviewRouter = router({
 	updateSettings: publicProcedure
 		.input(
 			z.object({
-				cliPreset: z.enum(["claude", "gemini", "codex", "opencode"]).optional(),
+				cliPreset: z.enum(CLI_PRESET_NAMES as readonly [string, ...string[]]).optional(),
 				autoReviewEnabled: z.boolean().optional(),
 				autoReReviewOnCommit: z.boolean().optional(),
 				skipPermissions: z.boolean().optional(),
