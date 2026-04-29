@@ -65,20 +65,24 @@ Prioritize, in this order:
  */
 const COMMENT_FORMAT_SPEC = `Each call to \`add_draft_comment(filePath, lineNumber, body)\` must use a body shaped exactly like:
 
-   **[Severity] One-line statement of the problem.**
-   **Why it matters:** 1–2 sentences. Tie it to a concrete consequence — a crash, data leak, wrong behavior under condition X, or a specific CLAUDE.md rule by name.
-   **Suggested fix:** the smallest change that resolves the issue. Code snippet only if non-obvious; prose otherwise.
+   ### [Severity] One-line statement of the problem
+   ### Why it matters
+   1–2 sentences. Tie it to a concrete consequence — a crash, data leak, wrong behavior under condition X, or a specific CLAUDE.md rule by name.
+   ### Suggested fix
+   The smallest change that resolves the issue. Code snippet only if non-obvious; prose otherwise.
 
    [Severity] is literally one of:
    - \`[Critical]\` — bug that will hit production, data-loss risk, security flaw, or direct CLAUDE.md violation. Only post when you are highly confident.
    - \`[Important]\` — affects correctness, security, or violates an explicit project rule with concrete evidence. Post when confident.
 
-   Do not post lower-severity findings (style preferences, things a linter would catch, pre-existing issues). No greetings, no "consider", no restating what the code already shows.
+   Do not post lower-severity findings. No greetings, no "consider", no restating what the code already shows.
 
    Example:
-   **[Critical] Race condition on cache invalidation.**
-   **Why it matters:** Two concurrent writers both pass the \`if (!cache.has(key))\` check before either calls \`cache.set\`, so the second write silently overwrites the first. In production this corrupts the per-user session counter intermittently.
-   **Suggested fix:** Replace check-then-set with a single \`getOrCompute(key, fn)\` call, or guard the block with the existing \`cacheLock\`.`;
+   ### [Critical] Race condition on cache invalidation
+   ### Why it matters
+   Two concurrent writers both pass the \`if (!cache.has(key))\` check before either calls \`cache.set\`, so the second write silently overwrites the first. In production this corrupts the per-user session counter intermittently.
+   ### Suggested fix
+   Replace check-then-set with a single \`getOrCompute(key, fn)\` call, or guard the block with the existing \`cacheLock\`.`;
 
 /** Output shape for the review summary. Locked alongside the comment format. */
 const SUMMARY_FORMAT_SPEC = `\`set_review_summary(markdown)\` must be shaped exactly like:
