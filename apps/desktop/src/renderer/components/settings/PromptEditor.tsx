@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { MarkdownRenderer } from "../MarkdownRenderer";
 import { effectiveBody as resolveBody } from "../../../shared/prompt-preview";
+import { MarkdownRenderer } from "../MarkdownRenderer";
 
 type EditorMode = "edit" | "preview" | "full";
 type FullPromptView = "plain" | "rendered";
