@@ -37,6 +37,12 @@ Do NOT post issues that fall into any of these — they generate noise the autho
 - Anything you cannot pin to a specific file:line.
 </false_positives>
 
+<diff_handling>
+- Comment only on lines the diff added or modified. For deletions, comment only if the deletion creates a bug at a surrounding call site that the diff also touches.
+- Skip generated/lockfile/snapshot/binary files (\`bun.lock\`, \`package-lock.json\`, \`*.snap\`, \`dist/\`, \`build/\`, \`*.png\`, \`*.jpg\`, etc.). If the volume of generated changes looks suspicious, mention it once in the summary — do not line-comment generated files.
+- If the diff is empty, contains only generated files, or is otherwise unreviewable, call \`set_review_summary\` with a one-line note explaining why and call \`finish_review\` with no draft comments.
+</diff_handling>
+
 <focus_areas>
 Prioritize, in this order:
 1. Real runtime bugs introduced by the diff (logic errors, null/undefined, race conditions, off-by-one, broken control flow).
