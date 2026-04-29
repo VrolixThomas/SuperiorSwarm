@@ -90,16 +90,13 @@ const SUMMARY_FORMAT_SPEC = `\`set_review_summary(markdown)\` must be shaped exa
    ### Strengths
    - (1–3 specific items with file:line citations. Skip the section if nothing genuine stands out — do not manufacture praise.)
 
-   ### Issues
-   - Critical: N
-   - Important: M
-   (Posted as inline comments.)
-
    ### Risk
    **Low | Medium | High** — one sentence justifying the rating, focused on blast radius if a bug slipped through.
 
    ### Verdict
-   **Ready to merge | Ready with fixes | Needs work** — one sentence why.`;
+   **Ready to merge | Ready with fixes | Needs work** — one sentence why.
+
+   The app renders inline comment counts from your \`add_draft_comment\` calls automatically — do NOT include counts in this summary.`;
 
 /** Locked MCP flow appended after the user-editable body. The app needs these tool calls to display the review. */
 export function buildReviewMcpInstructions(targetBranch: string): string {
