@@ -1,4 +1,4 @@
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { CliPresetName } from "../../shared/cli-preset";
 import {
@@ -64,6 +64,9 @@ function mcpRuntimeCommand(): { command: string; extraEnv: Record<string, string
  * any subdir we created for it). Each CLI has its own JSON shape, so callers
  * pass a builder that turns the resolved (command, args, env) into the
  * provider's expected config object.
+ *
+ * If `loc.dir` already exists when we run, we treat it as user-owned and
+ * leave it in place at cleanup — only the file we wrote is removed.
  */
 function writeMcpConfig(
 	opts: LaunchOptions,
@@ -72,13 +75,14 @@ function writeMcpConfig(
 ): CleanupFn {
 	const { command, extraEnv } = mcpRuntimeCommand();
 	const env = { ...buildMcpEnv(opts), ...extraEnv };
+	const weCreatedDir = loc.dir != null && !existsSync(loc.dir);
 	if (loc.dir) mkdirSync(loc.dir, { recursive: true });
 	const config = build(command, [opts.mcpServerPath], env);
 	writeFileSync(loc.file, JSON.stringify(config, null, 2), "utf-8");
 	return () => {
 		try {
-			rmSync(loc.file);
-			if (loc.dir) rmSync(loc.dir, { recursive: true });
+			rmSync(loc.file, { force: true });
+			if (loc.dir && weCreatedDir) rmSync(loc.dir, { recursive: true, force: true });
 		} catch {}
 	};
 }
