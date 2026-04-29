@@ -6,6 +6,7 @@ import {
 	assembleReviewPrompt,
 	buildReviewHistoryBlock,
 	effectiveBody,
+	formatPreviousCommentLines,
 } from "../../shared/prompt-preview";
 import {
 	DEFAULT_REVIEW_PROMPT,
@@ -176,13 +177,7 @@ export function buildReviewPrompt(
 	});
 }
 
-export interface PreviousCommentContext {
-	id: string;
-	filePath: string;
-	lineNumber: number | null;
-	body: string;
-	platformStatus: "open" | "resolved-on-platform";
-}
+export type { PreviousCommentContext } from "../../shared/prompt-preview";
 
 export interface FollowUpRoundContext {
 	roundNumber: number;
@@ -197,17 +192,7 @@ export function buildFollowUpPrompt(
 	customPrompt: string | null | undefined,
 	round: FollowUpRoundContext
 ): string {
-	const commentLines = round.previousComments
-		.map((c, i) => {
-			const location = c.lineNumber ? `${c.filePath}:${c.lineNumber}` : c.filePath;
-			const status =
-				c.platformStatus === "resolved-on-platform"
-					? "resolved by author on platform"
-					: "still on PR";
-			const preview = c.body.length > 100 ? `${c.body.slice(0, 100)}...` : c.body;
-			return `${i + 1}. [${location}] "${preview}" -- STATUS: ${status} (id: ${c.id})`;
-		})
-		.join("\n");
+	const commentLines = formatPreviousCommentLines(round.previousComments);
 
 	return assembleReviewPrompt({
 		ctx,

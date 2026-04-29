@@ -31,6 +31,35 @@ export interface SolvePromptContext {
 	commentCount: number;
 }
 
+export interface PreviousCommentContext {
+	id: string;
+	filePath: string;
+	lineNumber: number | null;
+	body: string;
+	platformStatus: "open" | "resolved-on-platform";
+}
+
+const PREVIEW_TRUNCATE = 100;
+
+/**
+ * Format the list of prior review comments into the `commentLines` block used
+ * by the review history. Each line: `N. [path:line] "preview..." -- STATUS: ... (id: ...)`.
+ */
+export function formatPreviousCommentLines(comments: PreviousCommentContext[]): string {
+	return comments
+		.map((c, i) => {
+			const location = c.lineNumber ? `${c.filePath}:${c.lineNumber}` : c.filePath;
+			const status =
+				c.platformStatus === "resolved-on-platform"
+					? "resolved by author on platform"
+					: "still on PR";
+			const preview =
+				c.body.length > PREVIEW_TRUNCATE ? `${c.body.slice(0, PREVIEW_TRUNCATE)}...` : c.body;
+			return `${i + 1}. [${location}] "${preview}" -- STATUS: ${status} (id: ${c.id})`;
+		})
+		.join("\n");
+}
+
 export interface ReviewHistoryFields {
 	roundNumber: number;
 	previousCommitSha: string;
