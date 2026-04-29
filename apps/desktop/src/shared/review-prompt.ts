@@ -124,7 +124,8 @@ You MUST drive this follow-up review through the SuperiorSwarm MCP tools. The ap
 4. For each previous comment, apply the same severity bar as a fresh review:
    - Resolved by new code: call \`resolve_comment(commentId, reasoning)\`.
    - Author resolved on platform but the fix is insufficient: call \`flag_comment(commentId, reasoning)\` explaining why.
-   - Still unresolved and the original concern still applies: do nothing — it stays open.
+   - Original concern still applies AND still meets the Critical/Important bar: do nothing — it stays open.
+   - Original concern still applies but no longer meets the Critical/Important bar (e.g. surrounding code changed and made it lower-impact): call \`resolve_comment(commentId, reasoning)\` with reasoning "no longer meets severity bar — <one-line why>".
 5. For NEW issues introduced or surfaced by the new commits, call \`add_draft_comment\`. ${COMMENT_FORMAT_SPEC}
 6. Call \`set_review_summary\`, focused on this round's findings. ${SUMMARY_FORMAT_SPEC}
 7. Call \`finish_review\` to signal you are done.
