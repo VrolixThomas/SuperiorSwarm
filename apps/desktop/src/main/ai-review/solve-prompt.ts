@@ -1,6 +1,7 @@
 import {
 	assembleSolveFollowUpPrompt,
 	assembleSolvePrompt,
+	buildSolveFollowUpContextBlock,
 	effectiveBody,
 } from "../../shared/prompt-preview";
 import {
@@ -32,23 +33,19 @@ export function buildSolveFollowUpPrompt(opts: SolveFollowUpOptions): string {
 		? `${opts.commentFilePath}:${opts.commentLineNumber}`
 		: opts.commentFilePath;
 
-	const contextBlock = `<pr_context>
-PR: ${opts.prTitle}
-Session ID: ${opts.sessionId}
-Source: ${opts.sourceBranch} → Target: ${opts.targetBranch}
-
-You are following up on a previous comment-solve session.
-
-Group: "${opts.groupLabel}" (commit ${opts.commitHash})
-
-Original comment by @${opts.commentAuthor} at ${location}:
-"${opts.commentBody}"
-
-The AI solver previously marked this comment as: ${opts.commentStatus}
-
-The user's follow-up instruction:
-"${opts.followUpText}"
-</pr_context>`;
+	const contextBlock = buildSolveFollowUpContextBlock({
+		prTitle: opts.prTitle,
+		sessionId: opts.sessionId,
+		sourceBranch: opts.sourceBranch,
+		targetBranch: opts.targetBranch,
+		groupLabel: opts.groupLabel,
+		commitHash: opts.commitHash,
+		commentAuthor: opts.commentAuthor,
+		commentLocation: location,
+		commentBody: opts.commentBody,
+		commentStatus: opts.commentStatus,
+		followUpText: opts.followUpText,
+	});
 
 	return assembleSolveFollowUpPrompt({
 		contextBlock,

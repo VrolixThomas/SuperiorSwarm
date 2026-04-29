@@ -105,6 +105,41 @@ You are helping the PR author fix review comments. Reviewers have left feedback 
 </pr_context>`;
 }
 
+export interface SolveFollowUpFields {
+	prTitle: string;
+	sessionId: string;
+	sourceBranch: string;
+	targetBranch: string;
+	groupLabel: string;
+	commitHash: string;
+	commentAuthor: string;
+	commentLocation: string;
+	commentBody: string;
+	commentStatus: string;
+	followUpText: string;
+}
+
+/** Render the solve-follow-up `<pr_context>` block. Used at runtime and in placeholders. */
+export function buildSolveFollowUpContextBlock(fields: SolveFollowUpFields): string {
+	return `<pr_context>
+PR: ${fields.prTitle}
+Session ID: ${fields.sessionId}
+Source: ${fields.sourceBranch} → Target: ${fields.targetBranch}
+
+You are following up on a previous comment-solve session.
+
+Group: "${fields.groupLabel}" (commit ${fields.commitHash})
+
+Original comment by @${fields.commentAuthor} at ${fields.commentLocation}:
+"${fields.commentBody}"
+
+The AI solver previously marked this comment as: ${fields.commentStatus}
+
+The user's follow-up instruction:
+"${fields.followUpText}"
+</pr_context>`;
+}
+
 /** Render the `<review_history>` block. Used at runtime (with real SHAs) and in placeholders. */
 export function buildReviewHistoryBlock(fields: ReviewHistoryFields): string {
 	return `<review_history>
@@ -197,23 +232,19 @@ You are helping the PR author fix review comments. Reviewers have left feedback 
 
 /** Render the full solve-follow-up prompt with placeholders. */
 export function renderSolveFollowUpFullPrompt(body: string): string {
-	const contextBlock = `<pr_context>
-PR: {{prTitle}}
-Session ID: {{sessionId}}
-Source: {{sourceBranch}} → Target: {{targetBranch}}
-
-You are following up on a previous comment-solve session.
-
-Group: "{{groupLabel}}" (commit {{commitHash}})
-
-Original comment by @{{commentAuthor}} at {{commentLocation}}:
-"{{commentBody}}"
-
-The AI solver previously marked this comment as: {{commentStatus}}
-
-The user's follow-up instruction:
-"{{followUpText}}"
-</pr_context>`;
+	const contextBlock = buildSolveFollowUpContextBlock({
+		prTitle: "{{prTitle}}",
+		sessionId: "{{sessionId}}",
+		sourceBranch: "{{sourceBranch}}",
+		targetBranch: "{{targetBranch}}",
+		groupLabel: "{{groupLabel}}",
+		commitHash: "{{commitHash}}",
+		commentAuthor: "{{commentAuthor}}",
+		commentLocation: "{{commentLocation}}",
+		commentBody: "{{commentBody}}",
+		commentStatus: "{{commentStatus}}",
+		followUpText: "{{followUpText}}",
+	});
 
 	return assembleSolveFollowUpPrompt({
 		contextBlock,

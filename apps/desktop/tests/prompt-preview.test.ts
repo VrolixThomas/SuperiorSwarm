@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
 	type PreviousCommentContext,
+	buildSolveFollowUpContextBlock,
 	formatPreviousCommentLines,
 } from "../src/shared/prompt-preview";
 
@@ -33,5 +34,33 @@ describe("formatPreviousCommentLines", () => {
 
 	test("returns empty string for empty input", () => {
 		expect(formatPreviousCommentLines([])).toBe("");
+	});
+});
+
+describe("buildSolveFollowUpContextBlock", () => {
+	test("renders all fields in the expected layout", () => {
+		const block = buildSolveFollowUpContextBlock({
+			prTitle: "Add foo",
+			sessionId: "sess-1",
+			sourceBranch: "feat/foo",
+			targetBranch: "main",
+			groupLabel: "rename helper",
+			commitHash: "abc1234",
+			commentAuthor: "alice",
+			commentLocation: "src/foo.ts:42",
+			commentBody: "rename to bar",
+			commentStatus: "fixed",
+			followUpText: "actually call it baz",
+		});
+		expect(block).toContain("PR: Add foo");
+		expect(block).toContain("Session ID: sess-1");
+		expect(block).toContain("Source: feat/foo → Target: main");
+		expect(block).toContain(`Group: "rename helper" (commit abc1234)`);
+		expect(block).toContain(`Original comment by @alice at src/foo.ts:42:`);
+		expect(block).toContain(`"rename to bar"`);
+		expect(block).toContain("marked this comment as: fixed");
+		expect(block).toContain(`"actually call it baz"`);
+		expect(block.startsWith("<pr_context>")).toBe(true);
+		expect(block.endsWith("</pr_context>")).toBe(true);
 	});
 });
