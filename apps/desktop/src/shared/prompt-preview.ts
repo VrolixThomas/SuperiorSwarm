@@ -28,11 +28,11 @@ export interface SolvePromptContext {
 	prTitle: string;
 	sourceBranch: string;
 	targetBranch: string;
-	commentCount: number | string;
+	commentCount: number;
 }
 
 export interface ReviewHistoryFields {
-	roundNumber: number | string;
+	roundNumber: number;
 	previousCommitSha: string;
 	currentCommitSha: string;
 	commentLines: string;
@@ -44,13 +44,6 @@ const REVIEW_PLACEHOLDERS: ReviewPromptContext = {
 	sourceBranch: "{{sourceBranch}}",
 	targetBranch: "{{targetBranch}}",
 	provider: "{{provider}}",
-};
-
-const SOLVE_PLACEHOLDERS: SolvePromptContext = {
-	prTitle: "{{title}}",
-	sourceBranch: "{{sourceBranch}}",
-	targetBranch: "{{targetBranch}}",
-	commentCount: "{{commentCount}}",
 };
 
 /** Returns the user's customized body when set, otherwise the default. */
@@ -151,26 +144,35 @@ export function renderReviewFullPrompt(body: string): string {
 
 /** Render the full follow-up review prompt with placeholders. */
 export function renderReviewFollowUpFullPrompt(body: string): string {
+	const reviewHistory = `<review_history>
+This is review round {{roundNumber}}. Previous review was on commit {{previousCommitSha}}.
+Current HEAD is {{currentCommitSha}}.
+
+Previous comments and their current state:
+{{previousCommentList}}
+</review_history>`;
 	return assembleReviewFollowUpPrompt({
 		ctx: REVIEW_PLACEHOLDERS,
 		body: effectiveBody(body, DEFAULT_REVIEW_PROMPT),
-		reviewHistory: buildReviewHistoryBlock({
-			roundNumber: "{{roundNumber}}",
-			previousCommitSha: "{{previousCommitSha}}",
-			currentCommitSha: "{{currentCommitSha}}",
-			commentLines: "{{previousCommentList}}",
-		}),
+		reviewHistory,
 		mcpInstructions: buildFollowUpMcpInstructions(REVIEW_PLACEHOLDERS.targetBranch),
 	});
 }
 
 /** Render the full solve prompt with placeholders for the UI Full Prompt tab. */
 export function renderSolveFullPrompt(body: string): string {
-	return assembleSolvePrompt({
-		ctx: SOLVE_PLACEHOLDERS,
-		body: effectiveBody(body, DEFAULT_SOLVE_PROMPT),
-		mcpInstructions: SOLVE_MCP_INSTRUCTIONS,
-	});
+	const contextBlock = `<pr_context>
+Title: {{title}}
+Branch: {{sourceBranch}} → {{targetBranch}}
+Unresolved comments: {{commentCount}}
+
+You are helping the PR author fix review comments. Reviewers have left feedback that needs to be addressed through code changes.
+</pr_context>`;
+	return envelope("solve_task", [
+		contextBlock,
+		effectiveBody(body, DEFAULT_SOLVE_PROMPT),
+		SOLVE_MCP_INSTRUCTIONS,
+	]);
 }
 
 /** Render the full solve-follow-up prompt with placeholders. */
