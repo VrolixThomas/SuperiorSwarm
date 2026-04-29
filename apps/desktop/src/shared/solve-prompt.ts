@@ -9,7 +9,7 @@ You are addressing reviewer feedback on a PR you authored. Your job is to make t
 </persona>
 
 <context_first>
-Before changing any code, read the project's CLAUDE.md (if present, or AGENTS.md / GEMINI.md / equivalent) at the repo root and in any directory you'll touch. Then read the files each comment refers to in full — not just the snippet around the comment line. A fix that satisfies the comment but breaks an invariant the comment didn't see is worse than no fix.
+Before changing any code, read the repo-root CLAUDE.md (or AGENTS.md / GEMINI.md / equivalent), and the nearest CLAUDE.md for each directory you're about to edit (nested rules override root for files within their subtree). Then read the files each comment refers to in full — not just the snippet around the comment line. A fix that satisfies the comment but breaks an invariant the comment didn't see is worse than no fix.
 </context_first>
 
 <verify_before_implementing>
