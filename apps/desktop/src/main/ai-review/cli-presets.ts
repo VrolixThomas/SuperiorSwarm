@@ -1,8 +1,21 @@
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { DEFAULT_REVIEW_GUIDELINES } from "../../shared/review-prompt";
+import type { CliPresetName } from "../../shared/cli-preset";
+import {
+	type ReviewPromptContext,
+	assembleReviewFollowUpPrompt,
+	assembleReviewPrompt,
+	buildReviewHistoryBlock,
+	effectiveBody,
+} from "../../shared/prompt-preview";
+import {
+	DEFAULT_REVIEW_PROMPT,
+	buildFollowUpMcpInstructions,
+	buildReviewMcpInstructions,
+} from "../../shared/review-prompt";
 
-export { DEFAULT_REVIEW_GUIDELINES };
+export { DEFAULT_REVIEW_PROMPT };
+export type { CliPresetName };
 
 export interface CliPreset {
 	name: string;
@@ -14,6 +27,7 @@ export interface CliPreset {
 }
 
 type CleanupFn = () => void;
+type McpConfigBuilder = (command: string, args: string[], env: Record<string, string>) => unknown;
 
 export interface LaunchOptions {
 	mcpServerPath: string;
@@ -45,6 +59,30 @@ function mcpRuntimeCommand(): { command: string; extraEnv: Record<string, string
 	};
 }
 
+/**
+ * Write a per-CLI MCP config file and return a cleanup that removes it (and
+ * any subdir we created for it). Each CLI has its own JSON shape, so callers
+ * pass a builder that turns the resolved (command, args, env) into the
+ * provider's expected config object.
+ */
+function writeMcpConfig(
+	opts: LaunchOptions,
+	loc: { dir?: string; file: string },
+	build: McpConfigBuilder
+): CleanupFn {
+	const { command, extraEnv } = mcpRuntimeCommand();
+	const env = { ...buildMcpEnv(opts), ...extraEnv };
+	if (loc.dir) mkdirSync(loc.dir, { recursive: true });
+	const config = build(command, [opts.mcpServerPath], env);
+	writeFileSync(loc.file, JSON.stringify(config, null, 2), "utf-8");
+	return () => {
+		try {
+			rmSync(loc.file);
+			if (loc.dir) rmSync(loc.dir, { recursive: true });
+		} catch {}
+	};
+}
+
 function buildMcpEnv(opts: LaunchOptions): Record<string, string> {
 	if (opts.solveSessionId) {
 		return {
@@ -61,6 +99,11 @@ function buildMcpEnv(opts: LaunchOptions): Record<string, string> {
 	};
 }
 
+/** Shape used by Claude/Gemini/Codex — three CLIs all consume the same JSON. */
+const STANDARD_MCP_BUILD: McpConfigBuilder = (command, args, env) => ({
+	mcpServers: { superiorswarm: { command, args, env } },
+});
+
 export const CLI_PRESETS: Record<string, CliPreset> = {
 	claude: {
 		name: "claude",
@@ -70,28 +113,11 @@ export const CLI_PRESETS: Record<string, CliPreset> = {
 		buildArgs: ({ promptFilePath }) => [
 			`"Review this PR. Read ${promptFilePath} for detailed instructions and use the SuperiorSwarm MCP tools."`,
 		],
-		setupMcp: (opts) => {
-			// Claude Code reads MCP config from .mcp.json in the project root.
-			// We launch the standalone server through Electron's own Node so we
-			// don't depend on the user's system Node version.
-			const { command, extraEnv } = mcpRuntimeCommand();
-			const configPath = join(opts.worktreePath, ".mcp.json");
-			const config = {
-				mcpServers: {
-					superiorswarm: {
-						command,
-						args: [opts.mcpServerPath],
-						env: { ...buildMcpEnv(opts), ...extraEnv },
-					},
-				},
-			};
-			writeFileSync(configPath, JSON.stringify(config, null, 2), "utf-8");
-			return () => {
-				try {
-					rmSync(configPath);
-				} catch {}
-			};
-		},
+		// Claude Code reads MCP config from .mcp.json in the project root.
+		// We launch the standalone server through Electron's own Node so we
+		// don't depend on the user's system Node version.
+		setupMcp: (opts) =>
+			writeMcpConfig(opts, { file: join(opts.worktreePath, ".mcp.json") }, STANDARD_MCP_BUILD),
 	},
 	gemini: {
 		name: "gemini",
@@ -99,28 +125,10 @@ export const CLI_PRESETS: Record<string, CliPreset> = {
 		command: "gemini",
 		permissionFlag: "--yolo",
 		buildArgs: ({ promptFilePath }) => ["-p", `"$(cat '${promptFilePath}')"`],
+		// Gemini CLI reads MCP config from .gemini/settings.json in the project root.
 		setupMcp: (opts) => {
-			// Gemini CLI reads MCP config from .gemini/settings.json in the project root.
-			const { command, extraEnv } = mcpRuntimeCommand();
 			const dir = join(opts.worktreePath, ".gemini");
-			mkdirSync(dir, { recursive: true });
-			const configPath = join(dir, "settings.json");
-			const config = {
-				mcpServers: {
-					superiorswarm: {
-						command,
-						args: [opts.mcpServerPath],
-						env: { ...buildMcpEnv(opts), ...extraEnv },
-					},
-				},
-			};
-			writeFileSync(configPath, JSON.stringify(config, null, 2), "utf-8");
-			return () => {
-				try {
-					rmSync(configPath);
-					rmSync(dir, { recursive: true });
-				} catch {}
-			};
+			return writeMcpConfig(opts, { dir, file: join(dir, "settings.json") }, STANDARD_MCP_BUILD);
 		},
 	},
 	codex: {
@@ -130,26 +138,8 @@ export const CLI_PRESETS: Record<string, CliPreset> = {
 		permissionFlag: "--full-auto",
 		buildArgs: ({ promptFilePath }) => [`"$(cat '${promptFilePath}')"`],
 		setupMcp: (opts) => {
-			const { command, extraEnv } = mcpRuntimeCommand();
 			const dir = join(opts.worktreePath, ".codex");
-			mkdirSync(dir, { recursive: true });
-			const configPath = join(dir, "config.json");
-			const config = {
-				mcpServers: {
-					superiorswarm: {
-						command,
-						args: [opts.mcpServerPath],
-						env: { ...buildMcpEnv(opts), ...extraEnv },
-					},
-				},
-			};
-			writeFileSync(configPath, JSON.stringify(config, null, 2), "utf-8");
-			return () => {
-				try {
-					rmSync(configPath);
-					rmSync(dir, { recursive: true });
-				} catch {}
-			};
+			return writeMcpConfig(opts, { dir, file: join(dir, "config.json") }, STANDARD_MCP_BUILD);
 		},
 	},
 	opencode: {
@@ -157,65 +147,36 @@ export const CLI_PRESETS: Record<string, CliPreset> = {
 		label: "OpenCode",
 		command: "opencode",
 		buildArgs: ({ promptFilePath }) => ["--prompt", `"$(cat '${promptFilePath}')"`],
-		setupMcp: (opts) => {
-			// OpenCode reads MCP config from opencode.json in the project root.
-			const { command, extraEnv } = mcpRuntimeCommand();
-			const configPath = join(opts.worktreePath, "opencode.json");
-			const config = {
-				mcp: {
-					superiorswarm: {
-						type: "local",
-						command: [command, opts.mcpServerPath],
-						environment: { ...buildMcpEnv(opts), ...extraEnv },
+		// OpenCode reads MCP config from opencode.json in the project root.
+		setupMcp: (opts) =>
+			writeMcpConfig(
+				opts,
+				{ file: join(opts.worktreePath, "opencode.json") },
+				(command, args, environment) => ({
+					mcp: {
+						superiorswarm: {
+							type: "local",
+							command: [command, ...args],
+							environment,
+						},
 					},
-				},
-			};
-			writeFileSync(configPath, JSON.stringify(config, null, 2), "utf-8");
-			return () => {
-				try {
-					rmSync(configPath);
-				} catch {}
-			};
-		},
+				})
+			),
 	},
 };
 
-/** Build the locked MCP tool instructions block */
-function buildMcpInstructions(targetBranch: string): string {
-	return `
-You MUST use the SuperiorSwarm MCP tools to complete your review:
-
-1. Call \`get_pr_metadata\` to understand the PR context
-2. Explore the codebase and review the changes (use git diff origin/${targetBranch}...HEAD to see the changes)
-3. For each issue or suggestion, call \`add_draft_comment\` with the file path, line number, and your comment
-4. When done reviewing all files, call \`set_review_summary\` with a markdown summary including:
-   - Overview of changes
-   - Key changes per file
-   - Risk assessment (Low/Medium/High)
-   - Recommendations
-5. Call \`finish_review\` to signal you are done
-
-IMPORTANT: You MUST call finish_review when done. Do NOT skip any MCP tool steps.`;
+interface ReviewMetadata extends ReviewPromptContext {
+	customPrompt?: string | null;
 }
 
 /** Build the review prompt from PR metadata */
-export function buildReviewPrompt(metadata: {
-	title: string;
-	author: string;
-	sourceBranch: string;
-	targetBranch: string;
-	provider: string;
-	customPrompt?: string | null;
-}): string {
-	const prContext = `You are reviewing Pull Request: ${metadata.title}
-Author: ${metadata.author}
-Source: ${metadata.sourceBranch} → Target: ${metadata.targetBranch}
-Provider: ${metadata.provider}`;
-
-	const guidelines = metadata.customPrompt?.trim() || DEFAULT_REVIEW_GUIDELINES;
-	const mcpInstructions = buildMcpInstructions(metadata.targetBranch);
-
-	return `${prContext}\n\n${guidelines}\n${mcpInstructions}`;
+export function buildReviewPrompt(metadata: ReviewMetadata): string {
+	const { customPrompt, ...ctx } = metadata;
+	return assembleReviewPrompt({
+		ctx,
+		body: effectiveBody(customPrompt, DEFAULT_REVIEW_PROMPT),
+		mcpInstructions: buildReviewMcpInstructions(ctx.targetBranch),
+	});
 }
 
 export interface PreviousCommentContext {
@@ -227,24 +188,24 @@ export interface PreviousCommentContext {
 }
 
 /** Build the follow-up review prompt for subsequent review rounds */
-export function buildFollowUpPrompt(metadata: {
-	title: string;
-	author: string;
-	sourceBranch: string;
-	targetBranch: string;
-	provider: string;
-	customPrompt?: string | null;
-	roundNumber: number;
-	previousCommitSha: string;
-	currentCommitSha: string;
-	previousComments: PreviousCommentContext[];
-}): string {
-	const prContext = `You are reviewing Pull Request: ${metadata.title}
-Author: ${metadata.author}
-Source: ${metadata.sourceBranch} → Target: ${metadata.targetBranch}
-Provider: ${metadata.provider}`;
+export function buildFollowUpPrompt(
+	metadata: ReviewMetadata & {
+		roundNumber: number;
+		previousCommitSha: string;
+		currentCommitSha: string;
+		previousComments: PreviousCommentContext[];
+	}
+): string {
+	const {
+		customPrompt,
+		previousComments,
+		roundNumber,
+		previousCommitSha,
+		currentCommitSha,
+		...ctx
+	} = metadata;
 
-	const commentLines = metadata.previousComments
+	const commentLines = previousComments
 		.map((c, i) => {
 			const location = c.lineNumber ? `${c.filePath}:${c.lineNumber}` : c.filePath;
 			const status =
@@ -256,35 +217,15 @@ Provider: ${metadata.provider}`;
 		})
 		.join("\n");
 
-	const reviewHistory = `This is review round ${metadata.roundNumber}. Previous review was on commit ${metadata.previousCommitSha.slice(0, 8)}.
-Current HEAD is ${metadata.currentCommitSha.slice(0, 8)}.
-
-Previous comments and their current state:
-${commentLines}`;
-
-	const guidelines = metadata.customPrompt?.trim() || DEFAULT_REVIEW_GUIDELINES;
-
-	const mcpInstructions = buildFollowUpMcpInstructions(metadata.targetBranch);
-
-	return `${prContext}\n\n=== REVIEW HISTORY ===\n${reviewHistory}\n\n${guidelines}\n${mcpInstructions}`;
-}
-
-/** Build the locked MCP tool instructions block for follow-up reviews */
-function buildFollowUpMcpInstructions(targetBranch: string): string {
-	return `
-You MUST use the SuperiorSwarm MCP tools to complete your follow-up review:
-
-1. Call \`get_pr_metadata\` to understand the PR context
-2. Call \`get_previous_comments\` to get the full details of previous review comments
-3. Explore the codebase and review the changes (use git diff origin/${targetBranch}...HEAD)
-4. For each previous comment, assess whether the new code addresses it:
-   - If resolved by new code: call \`resolve_comment\` with the previous comment ID and your reasoning
-   - If the author resolved it on the platform but the fix looks wrong: call \`flag_comment\` with the previous comment ID and why the fix is insufficient
-   - If still unresolved: do nothing (it stays open)
-5. Review new changes for any NEW issues — call \`add_draft_comment\` as before
-6. Call \`set_review_summary\` with an updated summary covering this round's findings
-7. Call \`finish_review\` to signal you are done
-
-IMPORTANT: You MUST call finish_review when done. Do NOT skip any MCP tool steps.
-IMPORTANT: Do NOT modify any files. This is a read-only code review.`;
+	return assembleReviewFollowUpPrompt({
+		ctx,
+		body: effectiveBody(customPrompt, DEFAULT_REVIEW_PROMPT),
+		reviewHistory: buildReviewHistoryBlock({
+			roundNumber,
+			previousCommitSha: previousCommitSha.slice(0, 8),
+			currentCommitSha: currentCommitSha.slice(0, 8),
+			commentLines,
+		}),
+		mcpInstructions: buildFollowUpMcpInstructions(ctx.targetBranch),
+	});
 }

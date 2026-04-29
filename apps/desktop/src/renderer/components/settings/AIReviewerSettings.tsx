@@ -1,12 +1,22 @@
-import { useState } from "react";
+import { useCallback } from "react";
+import type { CliPresetName } from "../../../shared/cli-preset";
+import {
+	renderReviewFollowUpFullPrompt,
+	renderReviewFullPrompt,
+} from "../../../shared/prompt-preview";
+import { DEFAULT_REVIEW_PROMPT } from "../../../shared/review-prompt";
 import { trpc } from "../../trpc/client";
-import { ReviewPromptEditor } from "../ReviewPromptEditor";
-import { PageHeading } from "./SectionHeading";
+import { type FullPromptVariant, PromptEditor } from "./PromptEditor";
+import { PageHeading, SectionLabel } from "./SectionHeading";
 import { ToggleRow } from "./ToggleRow";
+
+const REVIEW_PROMPT_VARIANTS: FullPromptVariant[] = [
+	{ key: "initial", label: "Initial Review", render: renderReviewFullPrompt },
+	{ key: "followup", label: "Follow-up Review", render: renderReviewFollowUpFullPrompt },
+];
 
 export function AIReviewerSettings() {
 	const utils = trpc.useUtils();
-	const [showPromptEditor, setShowPromptEditor] = useState(false);
 
 	const { data: aiSettings } = trpc.aiReview.getSettings.useQuery(undefined, {
 		staleTime: 30_000,
@@ -15,21 +25,12 @@ export function AIReviewerSettings() {
 		onSuccess: () => utils.aiReview.getSettings.invalidate(),
 	});
 
-	if (showPromptEditor) {
-		return (
-			<div>
-				<PageHeading
-					title="Review Guidelines"
-					subtitle="Customize the instructions sent to the AI reviewer"
-				/>
-				<div className="overflow-hidden rounded-[10px] border border-[var(--border)] bg-[var(--bg-surface)]">
-					<div className="p-4">
-						<ReviewPromptEditor onBack={() => setShowPromptEditor(false)} />
-					</div>
-				</div>
-			</div>
-		);
-	}
+	const handlePromptChange = useCallback(
+		(next: string | null) => {
+			updateAiSettings.mutate({ customPrompt: next });
+		},
+		[updateAiSettings]
+	);
 
 	return (
 		<div>
@@ -47,7 +48,7 @@ export function AIReviewerSettings() {
 						value={aiSettings?.cliPreset ?? "claude"}
 						onChange={(e) =>
 							updateAiSettings.mutate({
-								cliPreset: e.target.value as "claude" | "gemini" | "codex" | "opencode",
+								cliPreset: e.target.value as CliPresetName,
 							})
 						}
 						className="rounded-[6px] border border-[var(--border)] bg-[var(--bg-elevated)] px-2.5 py-1 text-[12px] text-[var(--text)]"
@@ -111,23 +112,17 @@ export function AIReviewerSettings() {
 						})
 					}
 				/>
-
-				<div className="flex items-center justify-between px-4 py-3.5">
-					<div className="flex flex-col gap-0.5">
-						<span className="text-[13px] font-medium text-[var(--text)]">Review Guidelines</span>
-						<span className="text-[12px] text-[var(--text-tertiary)]">
-							{aiSettings?.customPrompt ? "Custom instructions" : "Default instructions"}
-						</span>
-					</div>
-					<button
-						type="button"
-						onClick={() => setShowPromptEditor(true)}
-						className="rounded-[5px] border border-[var(--border)] px-2.5 py-1 text-[11px] font-medium text-[var(--text-tertiary)] transition-colors hover:bg-[var(--bg-elevated)] hover:text-[var(--text-secondary)]"
-					>
-						Edit
-					</button>
-				</div>
 			</div>
+
+			<SectionLabel>Review Instructions</SectionLabel>
+			<PromptEditor
+				value={aiSettings?.customPrompt}
+				onChange={handlePromptChange}
+				defaultPrompt={DEFAULT_REVIEW_PROMPT}
+				fullPromptVariants={REVIEW_PROMPT_VARIANTS}
+				title="Instructions"
+				subtitle="Sent to the AI at the start of every review. Edit to change persona, focus areas, or output format. The MCP tool block is always appended so the app can record findings."
+			/>
 		</div>
 	);
 }
