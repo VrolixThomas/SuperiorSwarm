@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { MarkdownRenderer } from "../MarkdownRenderer";
+import { effectiveBody as resolveBody } from "../../../shared/prompt-preview";
 
 type EditorMode = "edit" | "preview" | "full";
 type FullPromptView = "plain" | "rendered";
@@ -95,7 +96,7 @@ export function PromptEditor({
 		fullPromptVariants.find((v) => v.key === variantKey) ?? fullPromptVariants[0];
 
 	const effectiveBody = useMemo(
-		() => (mode === "edit" ? "" : localValue.trim() || defaultPrompt),
+		() => (mode === "edit" ? "" : resolveBody(localValue, defaultPrompt)),
 		[mode, localValue, defaultPrompt]
 	);
 
