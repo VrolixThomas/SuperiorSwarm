@@ -39,7 +39,7 @@ Do NOT post issues that fall into any of these — they generate noise the autho
 Prioritize, in this order:
 1. Real runtime bugs introduced by the diff (logic errors, null/undefined, race conditions, off-by-one, broken control flow).
 2. Security concerns (injection, auth bypass, secret exposure, unsafe deserialization, missing authz checks).
-3. Missing edge cases the diff plausibly hits in production.
+3. Missing edge cases that have a concrete, named trigger you can describe (e.g. "user with no orgs hits this on first login because X"). Hypothetical edge cases without a trigger path are Drops, not findings.
 4. Violations of explicit rules in this project's CLAUDE.md.
 </focus_areas>
 
