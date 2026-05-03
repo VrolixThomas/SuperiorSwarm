@@ -286,7 +286,7 @@ export async function getBitbucketPRComments(
 			values: Array<{
 				id: number;
 				content: { raw: string };
-				author?: { display_name?: string } | null;
+				user?: { display_name?: string; nickname?: string } | null;
 				created_on: string;
 				inline?: { path?: string; to?: number };
 			}>;
@@ -296,7 +296,7 @@ export async function getBitbucketPRComments(
 			comments.push({
 				id: c.id,
 				body: c.content.raw,
-				author: c.author?.display_name ?? "Unknown",
+				author: c.user?.display_name ?? c.user?.nickname ?? "Unknown",
 				filePath: c.inline?.path ?? null,
 				lineNumber: c.inline?.to ?? null,
 				createdAt: c.created_on,
