@@ -97,6 +97,7 @@ export async function pollWorkspace(workspace: schema.Workspace): Promise<void> 
 						body: c.body,
 						filePath: c.filePath ?? null,
 						lineNumber: c.lineNumber ?? null,
+						side: c.side ?? null,
 						createdAt: c.createdAt,
 						fetchedAt: now,
 					})
