@@ -83,7 +83,7 @@ export async function createAndQueueSolve(params: {
 		filePath: c.filePath,
 		lineNumber: c.lineNumber,
 		threadId: null as string | null,
-		side: null as string | null,
+		side: c.side,
 	}));
 
 	// 4. Clean up stuck sessions
