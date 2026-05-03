@@ -544,3 +544,15 @@ body,
 	text-align: center;
 	cursor: pointer;
 }
+
+/* ── Solve: active-comment line highlight (anchor sidebar↔code) ─────────── */
+
+.solve-comment-active-line {
+	background: var(--accent-subtle);
+}
+
+.solve-comment-active-line-gutter {
+	background: var(--accent);
+	width: 2px !important;
+	margin-left: 2px;
+}

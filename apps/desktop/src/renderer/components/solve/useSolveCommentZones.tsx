@@ -4,6 +4,8 @@ import { createRoot } from "react-dom/client";
 import type { SolveCommentInfo } from "../../../shared/solve-types";
 import { SolveCommentWidget } from "./SolveCommentWidget";
 
+type Side = "LEFT" | "RIGHT";
+
 interface ZoneEntry {
 	zoneId: string;
 	domNode: HTMLElement;
@@ -16,6 +18,10 @@ interface Options {
 	enabled?: boolean;
 	activeCommentId?: string | null;
 	onGlyphClick?: (commentId: string) => void;
+}
+
+function commentSide(c: SolveCommentInfo): Side {
+	return c.side?.toUpperCase() === "LEFT" ? "LEFT" : "RIGHT";
 }
 
 function commentSignature(c: SolveCommentInfo, isActive: boolean): string {
@@ -49,10 +55,12 @@ function makeZoneNode(): HTMLElement {
 }
 
 /**
- * Diff-based view-zone manager for solve comments. When `enabled` is false the
- * zones are torn down and a small glyph-margin marker is rendered at every
- * comment's line on the modified-side editor; clicking a marker invokes
- * `onGlyphClick` with the comment id.
+ * Diff-based view-zone manager for solve comments. Comments with side==="LEFT"
+ * are anchored to the original (left) pane; everything else goes to the
+ * modified (right) pane. When `enabled` is false the inline cards are torn down
+ * and a 💬 glyph is rendered in the gutter on the correct side. The active
+ * comment's line is always highlighted with a full-line decoration regardless
+ * of `enabled`.
  */
 export function useSolveCommentZones(
 	editor: monaco.editor.IStandaloneDiffEditor | null,
@@ -63,153 +71,219 @@ export function useSolveCommentZones(
 	const enabled = options.enabled ?? true;
 	const activeCommentId = options.activeCommentId ?? null;
 	const onGlyphClick = options.onGlyphClick;
-	const zonesRef = useRef<Map<number, ZoneEntry>>(new Map());
+	const zonesRef = useRef<{ LEFT: Map<number, ZoneEntry>; RIGHT: Map<number, ZoneEntry> }>({
+		LEFT: new Map(),
+		RIGHT: new Map(),
+	});
 	const lastEditorRef = useRef<monaco.editor.IStandaloneDiffEditor | null>(null);
 
 	useEffect(() => {
 		if (!editor) return;
 
 		if (lastEditorRef.current && lastEditorRef.current !== editor) {
-			zonesRef.current.clear();
+			zonesRef.current.LEFT.clear();
+			zonesRef.current.RIGHT.clear();
 		}
 		lastEditorRef.current = editor;
 
-		const modEditor = editor.getModifiedEditor();
+		const editors: Record<Side, monaco.editor.ICodeEditor> = {
+			LEFT: editor.getOriginalEditor(),
+			RIGHT: editor.getModifiedEditor(),
+		};
 
 		if (!enabled) {
-			const entries = [...zonesRef.current.values()];
-			if (entries.length > 0) {
-				modEditor.changeViewZones((acc) => {
+			for (const side of ["LEFT", "RIGHT"] as Side[]) {
+				const map = zonesRef.current[side];
+				const entries = [...map.values()];
+				if (entries.length === 0) continue;
+				editors[side].changeViewZones((acc) => {
 					for (const e of entries) acc.removeZone(e.zoneId);
 				});
 				const roots = entries.map((e) => e.root);
 				queueMicrotask(() => {
 					for (const r of roots) r.unmount();
 				});
-				zonesRef.current.clear();
+				map.clear();
 			}
 			return;
 		}
 
-		const lineHeight = modEditor.getOption(monaco.editor.EditorOption.lineHeight);
+		for (const side of ["LEFT", "RIGHT"] as Side[]) {
+			const codeEditor = editors[side];
+			const map = zonesRef.current[side];
+			const lineHeight = codeEditor.getOption(monaco.editor.EditorOption.lineHeight);
 
-		const byLine = new Map<number, SolveCommentInfo[]>();
-		for (const c of comments) {
-			const line = c.lineNumber ?? 1;
-			const arr = byLine.get(line) ?? [];
-			arr.push(c);
-			byLine.set(line, arr);
+			const byLine = new Map<number, SolveCommentInfo[]>();
+			for (const c of comments) {
+				if (commentSide(c) !== side) continue;
+				const line = c.lineNumber ?? 1;
+				const arr = byLine.get(line) ?? [];
+				arr.push(c);
+				byLine.set(line, arr);
+			}
+
+			const renderLine = (lineComments: SolveCommentInfo[], entry: ZoneEntry) => {
+				entry.root.render(
+					<div className="flex flex-col gap-0.5">
+						{lineComments.map((c) => (
+							<SolveCommentWidget
+								key={c.id}
+								comment={c}
+								workspaceId={workspaceId}
+								isActive={c.id === activeCommentId}
+							/>
+						))}
+					</div>
+				);
+			};
+
+			codeEditor.changeViewZones((acc) => {
+				for (const [line, entry] of map) {
+					if (!byLine.has(line)) {
+						acc.removeZone(entry.zoneId);
+						const root = entry.root;
+						queueMicrotask(() => root.unmount());
+						map.delete(line);
+					}
+				}
+
+				for (const [line, lineComments] of byLine) {
+					const sig = lineComments
+						.map((c) => commentSignature(c, c.id === activeCommentId))
+						.join("");
+					const heightInLines = Math.ceil(estimateZonePx(lineComments) / lineHeight);
+					const existing = map.get(line);
+
+					if (!existing) {
+						const domNode = makeZoneNode();
+						const zoneId = acc.addZone({ afterLineNumber: line, heightInLines, domNode });
+						const root = createRoot(domNode);
+						const entry: ZoneEntry = { zoneId, domNode, root, heightInLines, signature: sig };
+						map.set(line, entry);
+						renderLine(lineComments, entry);
+						continue;
+					}
+
+					if (existing.signature === sig && existing.heightInLines === heightInLines) {
+						continue;
+					}
+
+					if (existing.signature !== sig) {
+						renderLine(lineComments, existing);
+						existing.signature = sig;
+					}
+
+					if (existing.heightInLines !== heightInLines) {
+						acc.removeZone(existing.zoneId);
+						existing.zoneId = acc.addZone({
+							afterLineNumber: line,
+							heightInLines,
+							domNode: existing.domNode,
+						});
+						existing.heightInLines = heightInLines;
+					}
+				}
+			});
 		}
-
-		const renderLine = (lineComments: SolveCommentInfo[], entry: ZoneEntry) => {
-			entry.root.render(
-				<div className="flex flex-col gap-0.5">
-					{lineComments.map((c) => (
-						<SolveCommentWidget
-							key={c.id}
-							comment={c}
-							workspaceId={workspaceId}
-							isActive={c.id === activeCommentId}
-						/>
-					))}
-				</div>
-			);
-		};
-
-		modEditor.changeViewZones((acc) => {
-			for (const [line, entry] of zonesRef.current) {
-				if (!byLine.has(line)) {
-					acc.removeZone(entry.zoneId);
-					const root = entry.root;
-					queueMicrotask(() => root.unmount());
-					zonesRef.current.delete(line);
-				}
-			}
-
-			for (const [line, lineComments] of byLine) {
-				const sig = lineComments.map((c) => commentSignature(c, c.id === activeCommentId)).join("");
-				const heightInLines = Math.ceil(estimateZonePx(lineComments) / lineHeight);
-				const existing = zonesRef.current.get(line);
-
-				if (!existing) {
-					const domNode = makeZoneNode();
-					const zoneId = acc.addZone({ afterLineNumber: line, heightInLines, domNode });
-					const root = createRoot(domNode);
-					const entry: ZoneEntry = { zoneId, domNode, root, heightInLines, signature: sig };
-					zonesRef.current.set(line, entry);
-					renderLine(lineComments, entry);
-					continue;
-				}
-
-				if (existing.signature === sig && existing.heightInLines === heightInLines) {
-					continue;
-				}
-
-				if (existing.signature !== sig) {
-					renderLine(lineComments, existing);
-					existing.signature = sig;
-				}
-
-				if (existing.heightInLines !== heightInLines) {
-					acc.removeZone(existing.zoneId);
-					existing.zoneId = acc.addZone({
-						afterLineNumber: line,
-						heightInLines,
-						domNode: existing.domNode,
-					});
-					existing.heightInLines = heightInLines;
-				}
-			}
-		});
 	}, [editor, comments, workspaceId, enabled, activeCommentId]);
 
 	useEffect(() => {
 		if (!editor || enabled) return;
-		const modEditor = editor.getModifiedEditor();
-		const previousGlyphMargin = modEditor.getOption(monaco.editor.EditorOption.glyphMargin);
-		modEditor.updateOptions({ glyphMargin: true });
+		const editors: Record<Side, monaco.editor.ICodeEditor> = {
+			LEFT: editor.getOriginalEditor(),
+			RIGHT: editor.getModifiedEditor(),
+		};
 
-		const lineToCommentId = new Map<number, string>();
+		const previousGlyphMargin: Record<Side, boolean> = {
+			LEFT: editors.LEFT.getOption(monaco.editor.EditorOption.glyphMargin),
+			RIGHT: editors.RIGHT.getOption(monaco.editor.EditorOption.glyphMargin),
+		};
+		editors.LEFT.updateOptions({ glyphMargin: true });
+		editors.RIGHT.updateOptions({ glyphMargin: true });
+
+		const lineToCommentId: Record<Side, Map<number, string>> = {
+			LEFT: new Map(),
+			RIGHT: new Map(),
+		};
 		for (const c of comments) {
 			if (c.lineNumber == null) continue;
-			if (!lineToCommentId.has(c.lineNumber)) lineToCommentId.set(c.lineNumber, c.id);
+			const side = commentSide(c);
+			if (!lineToCommentId[side].has(c.lineNumber)) {
+				lineToCommentId[side].set(c.lineNumber, c.id);
+			}
 		}
 
-		const decorations = modEditor.createDecorationsCollection(
-			[...lineToCommentId.keys()].map((line) => ({
-				range: new monaco.Range(line, 1, line, 1),
-				options: { glyphMarginClassName: "solve-comment-glyph" },
-			}))
-		);
-
-		const sub = modEditor.onMouseDown((e) => {
-			if (e.target.type !== monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN) return;
-			const line = e.target.position?.lineNumber;
-			if (line == null) return;
-			const id = lineToCommentId.get(line);
-			if (id && onGlyphClick) onGlyphClick(id);
-		});
+		const subs: monaco.IDisposable[] = [];
+		const collections: monaco.editor.IEditorDecorationsCollection[] = [];
+		for (const side of ["LEFT", "RIGHT"] as Side[]) {
+			const codeEditor = editors[side];
+			const map = lineToCommentId[side];
+			const decorations = codeEditor.createDecorationsCollection(
+				[...map.keys()].map((line) => ({
+					range: new monaco.Range(line, 1, line, 1),
+					options: { glyphMarginClassName: "solve-comment-glyph" },
+				}))
+			);
+			collections.push(decorations);
+			const sub = codeEditor.onMouseDown((e) => {
+				if (e.target.type !== monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN) return;
+				const line = e.target.position?.lineNumber;
+				if (line == null) return;
+				const id = map.get(line);
+				if (id && onGlyphClick) onGlyphClick(id);
+			});
+			subs.push(sub);
+		}
 
 		return () => {
-			modEditor.updateOptions({ glyphMargin: previousGlyphMargin });
-			decorations.clear();
-			sub.dispose();
+			editors.LEFT.updateOptions({ glyphMargin: previousGlyphMargin.LEFT });
+			editors.RIGHT.updateOptions({ glyphMargin: previousGlyphMargin.RIGHT });
+			for (const c of collections) c.clear();
+			for (const s of subs) s.dispose();
 		};
 	}, [editor, comments, enabled, onGlyphClick]);
+
+	useEffect(() => {
+		if (!editor) return;
+		const active = activeCommentId
+			? comments.find((c) => c.id === activeCommentId && c.lineNumber != null)
+			: null;
+		if (!active || active.lineNumber == null) return;
+		const side = commentSide(active);
+		const codeEditor = side === "LEFT" ? editor.getOriginalEditor() : editor.getModifiedEditor();
+		const decorations = codeEditor.createDecorationsCollection([
+			{
+				range: new monaco.Range(active.lineNumber, 1, active.lineNumber, 1),
+				options: {
+					isWholeLine: true,
+					className: "solve-comment-active-line",
+					linesDecorationsClassName: "solve-comment-active-line-gutter",
+				},
+			},
+		]);
+		return () => {
+			decorations.clear();
+		};
+	}, [editor, comments, activeCommentId]);
 
 	useEffect(() => {
 		return () => {
 			const ed = lastEditorRef.current;
 			if (!ed) return;
-			const modEditor = ed.getModifiedEditor();
-			const entries = [...zonesRef.current.values()];
-			modEditor.changeViewZones((acc) => {
-				for (const e of entries) acc.removeZone(e.zoneId);
-			});
-			queueMicrotask(() => {
-				for (const e of entries) e.root.unmount();
-			});
-			zonesRef.current.clear();
+			const sides: Side[] = ["LEFT", "RIGHT"];
+			for (const side of sides) {
+				const codeEditor = side === "LEFT" ? ed.getOriginalEditor() : ed.getModifiedEditor();
+				const map = zonesRef.current[side];
+				const entries = [...map.values()];
+				if (entries.length === 0) continue;
+				codeEditor.changeViewZones((acc) => {
+					for (const e of entries) acc.removeZone(e.zoneId);
+				});
+				queueMicrotask(() => {
+					for (const e of entries) e.root.unmount();
+				});
+				map.clear();
+			}
 			lastEditorRef.current = null;
 		};
 	}, []);

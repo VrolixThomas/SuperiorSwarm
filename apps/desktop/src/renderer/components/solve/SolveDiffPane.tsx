@@ -116,10 +116,13 @@ export function SolveDiffPane({ session, repoPath, workspaceId }: Props) {
 	}, [editorInstance, sessionKey, activeFilePath, getScroll, setScroll]);
 
 	useEffect(() => {
-		const ed = editorInstance?.getModifiedEditor();
-		if (!ed || !activeCommentId) return;
+		if (!editorInstance || !activeCommentId) return;
 		const c = fileComments.find((fc) => fc.id === activeCommentId);
 		if (!c?.lineNumber) return;
+		const ed =
+			c.side?.toUpperCase() === "LEFT"
+				? editorInstance.getOriginalEditor()
+				: editorInstance.getModifiedEditor();
 		ed.revealLineInCenter(c.lineNumber);
 	}, [editorInstance, activeCommentId, fileComments]);
 
