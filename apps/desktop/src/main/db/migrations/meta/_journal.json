@@ -274,6 +274,13 @@
       "when": 1777112556113,
       "tag": "0038_add_app_settings_table",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "6",
+      "when": 1777819479401,
+      "tag": "0039_add_side_to_pr_comment_cache",
+      "breakpoints": true
     }
   ]
 }

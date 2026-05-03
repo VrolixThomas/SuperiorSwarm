@@ -1,0 +1,1 @@
+ALTER TABLE `pr_comment_cache` ADD `side` text;
