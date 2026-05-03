@@ -50,11 +50,46 @@ describe("comment-poller side propagation", () => {
 			"INSERT INTO pr_comment_cache (id, workspace_id, platform_comment_id, author, body, file_path, line_number, side, created_at, fetched_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
 		);
 
-		insert.run("r1", "w1", "c1", "alice", "hi", "src/foo.ts", 10, "LEFT", "2026-01-01T00:00:00Z", now.getTime());
-		insert.run("r2", "w1", "c2", "bob", "yo", "src/foo.ts", 12, "RIGHT", "2026-01-01T00:00:00Z", now.getTime());
-		insert.run("r3", "w1", "c3", "carol", "ok", null, null, null, "2026-01-01T00:00:00Z", now.getTime());
+		insert.run(
+			"r1",
+			"w1",
+			"c1",
+			"alice",
+			"hi",
+			"src/foo.ts",
+			10,
+			"LEFT",
+			"2026-01-01T00:00:00Z",
+			now.getTime()
+		);
+		insert.run(
+			"r2",
+			"w1",
+			"c2",
+			"bob",
+			"yo",
+			"src/foo.ts",
+			12,
+			"RIGHT",
+			"2026-01-01T00:00:00Z",
+			now.getTime()
+		);
+		insert.run(
+			"r3",
+			"w1",
+			"c3",
+			"carol",
+			"ok",
+			null,
+			null,
+			null,
+			"2026-01-01T00:00:00Z",
+			now.getTime()
+		);
 
-		const rows = db.prepare("SELECT platform_comment_id, side FROM pr_comment_cache ORDER BY id").all() as Array<{ platform_comment_id: string; side: string | null }>;
+		const rows = db
+			.prepare("SELECT platform_comment_id, side FROM pr_comment_cache ORDER BY id")
+			.all() as Array<{ platform_comment_id: string; side: string | null }>;
 
 		expect(rows).toEqual([
 			{ platform_comment_id: "c1", side: "LEFT" },
