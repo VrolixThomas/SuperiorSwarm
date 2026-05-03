@@ -1,5 +1,6 @@
 import type * as monaco from "monaco-editor";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { detectLanguage } from "../../../shared/diff-types";
 import type { SolveGroupInfo, SolveSessionInfo } from "../../../shared/solve-types";
 import { solveSessionKey, useSolveSessionStore } from "../../stores/solve-session-store";
@@ -91,7 +92,7 @@ export function SolveDiffPane({ session, repoPath, workspaceId }: Props) {
 		[sessionKey, setCommentsVisible, selectComment]
 	);
 
-	useSolveCommentZones(editorInstance, fileComments, workspaceId, {
+	const { portalEntries } = useSolveCommentZones(editorInstance, fileComments, {
 		enabled: commentsVisible,
 		activeCommentId,
 		onGlyphClick,
@@ -227,6 +228,22 @@ export function SolveDiffPane({ session, repoPath, workspaceId }: Props) {
 				)}
 			</div>
 			<ReviewHintBar hints={SOLVE_HINTS} />
+			{portalEntries.map((entry) =>
+				createPortal(
+					<div className="flex flex-col gap-0.5">
+						{entry.comments.map((c) => (
+							<SolveCommentWidget
+								key={c.id}
+								comment={c}
+								workspaceId={workspaceId}
+								isActive={c.id === activeCommentId}
+							/>
+						))}
+					</div>,
+					entry.domNode,
+					entry.key
+				)
+			)}
 		</div>
 	);
 }

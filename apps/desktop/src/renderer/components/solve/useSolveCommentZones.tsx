@@ -1,17 +1,23 @@
 import * as monaco from "monaco-editor";
 import { useEffect, useRef, useState } from "react";
-import { createRoot } from "react-dom/client";
 import type { SolveCommentInfo } from "../../../shared/solve-types";
-import { SolveCommentWidget } from "./SolveCommentWidget";
 
 type Side = "LEFT" | "RIGHT";
 
 interface ZoneEntry {
 	zoneId: string;
 	domNode: HTMLElement;
-	root: ReturnType<typeof createRoot>;
 	heightInLines: number;
 	signature: string;
+	side: Side;
+	line: number;
+	comments: SolveCommentInfo[];
+}
+
+export interface PortalEntry {
+	key: string;
+	domNode: HTMLElement;
+	comments: SolveCommentInfo[];
 }
 
 interface Options {
@@ -69,6 +75,19 @@ function makeZoneNode(): HTMLElement {
 	return domNode;
 }
 
+function flattenEntries(zones: {
+	LEFT: Map<number, ZoneEntry>;
+	RIGHT: Map<number, ZoneEntry>;
+}): PortalEntry[] {
+	const out: PortalEntry[] = [];
+	for (const side of ["LEFT", "RIGHT"] as Side[]) {
+		for (const [line, entry] of zones[side]) {
+			out.push({ key: `${side}:${line}`, domNode: entry.domNode, comments: entry.comments });
+		}
+	}
+	return out;
+}
+
 /**
  * Diff-based view-zone manager for solve comments. Comments with side==="LEFT"
  * are anchored to the original (left) pane; everything else goes to the
@@ -76,13 +95,16 @@ function makeZoneNode(): HTMLElement {
  * and a 💬 glyph is rendered in the gutter on the correct side. The active
  * comment's line is always highlighted with a full-line decoration regardless
  * of `enabled`.
+ *
+ * Returns `portalEntries`: an array of {key, domNode, comments} the caller
+ * must render via `createPortal` so the cards live inside the parent React
+ * tree (and thus inherit tRPC/QueryClient providers).
  */
 export function useSolveCommentZones(
 	editor: monaco.editor.IStandaloneDiffEditor | null,
 	comments: SolveCommentInfo[],
-	workspaceId: string,
 	options: Options = {}
-) {
+): { portalEntries: PortalEntry[] } {
 	const enabled = options.enabled ?? true;
 	const activeCommentId = options.activeCommentId ?? null;
 	const onGlyphClick = options.onGlyphClick;
@@ -96,6 +118,7 @@ export function useSolveCommentZones(
 		RIGHT: monaco.editor.ITextModel | null;
 	}>({ LEFT: null, RIGHT: null });
 	const [modelTick, setModelTick] = useState(0);
+	const [portalEntries, setPortalEntries] = useState<PortalEntry[]>([]);
 
 	useEffect(() => {
 		if (!editor) return;
@@ -113,7 +136,10 @@ export function useSolveCommentZones(
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: modelTick re-runs effect when diff models swap or content loads
 	useEffect(() => {
-		if (!editor) return;
+		if (!editor) {
+			setPortalEntries([]);
+			return;
+		}
 
 		if (lastEditorRef.current && lastEditorRef.current !== editor) {
 			zonesRef.current.LEFT.clear();
@@ -136,12 +162,9 @@ export function useSolveCommentZones(
 				editors[side].changeViewZones((acc) => {
 					for (const e of entries) acc.removeZone(e.zoneId);
 				});
-				const roots = entries.map((e) => e.root);
-				queueMicrotask(() => {
-					for (const r of roots) r.unmount();
-				});
 				map.clear();
 			}
+			setPortalEntries([]);
 			return;
 		}
 
@@ -154,12 +177,6 @@ export function useSolveCommentZones(
 		};
 		for (const side of ["LEFT", "RIGHT"] as Side[]) {
 			if (lastModelRef.current[side] !== currentModels[side]) {
-				const stale = [...zonesRef.current[side].values()];
-				if (stale.length > 0) {
-					queueMicrotask(() => {
-						for (const e of stale) e.root.unmount();
-					});
-				}
 				zonesRef.current[side].clear();
 				lastModelRef.current[side] = currentModels[side];
 			}
@@ -179,27 +196,10 @@ export function useSolveCommentZones(
 				byLine.set(line, arr);
 			}
 
-			const renderLine = (lineComments: SolveCommentInfo[], entry: ZoneEntry) => {
-				entry.root.render(
-					<div className="flex flex-col gap-0.5">
-						{lineComments.map((c) => (
-							<SolveCommentWidget
-								key={c.id}
-								comment={c}
-								workspaceId={workspaceId}
-								isActive={c.id === activeCommentId}
-							/>
-						))}
-					</div>
-				);
-			};
-
 			codeEditor.changeViewZones((acc) => {
 				for (const [line, entry] of map) {
 					if (!byLine.has(line)) {
 						acc.removeZone(entry.zoneId);
-						const root = entry.root;
-						queueMicrotask(() => root.unmount());
 						map.delete(line);
 					}
 				}
@@ -214,10 +214,15 @@ export function useSolveCommentZones(
 					if (!existing) {
 						const domNode = makeZoneNode();
 						const zoneId = acc.addZone({ afterLineNumber: line, heightInLines, domNode });
-						const root = createRoot(domNode);
-						const entry: ZoneEntry = { zoneId, domNode, root, heightInLines, signature: sig };
-						map.set(line, entry);
-						renderLine(lineComments, entry);
+						map.set(line, {
+							zoneId,
+							domNode,
+							heightInLines,
+							signature: sig,
+							side,
+							line,
+							comments: lineComments,
+						});
 						continue;
 					}
 
@@ -225,10 +230,8 @@ export function useSolveCommentZones(
 						continue;
 					}
 
-					if (existing.signature !== sig) {
-						renderLine(lineComments, existing);
-						existing.signature = sig;
-					}
+					existing.signature = sig;
+					existing.comments = lineComments;
 
 					if (existing.heightInLines !== heightInLines) {
 						acc.removeZone(existing.zoneId);
@@ -242,7 +245,9 @@ export function useSolveCommentZones(
 				}
 			});
 		}
-	}, [editor, comments, workspaceId, enabled, activeCommentId, modelTick]);
+
+		setPortalEntries(flattenEntries(zonesRef.current));
+	}, [editor, comments, enabled, activeCommentId, modelTick]);
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: modelTick re-runs effect when diff models swap or content loads
 	useEffect(() => {
@@ -343,12 +348,11 @@ export function useSolveCommentZones(
 				codeEditor.changeViewZones((acc) => {
 					for (const e of entries) acc.removeZone(e.zoneId);
 				});
-				queueMicrotask(() => {
-					for (const e of entries) e.root.unmount();
-				});
 				map.clear();
 			}
 			lastEditorRef.current = null;
 		};
 	}, []);
+
+	return { portalEntries };
 }
