@@ -130,8 +130,10 @@ export function SolveDiffPane({ session, repoPath, workspaceId }: Props) {
 		if (!editorInstance || !activeCommentId) return;
 		const c = fileComments.find((fc) => fc.id === activeCommentId);
 		if (!c?.lineNumber) return;
+		const originalModel = editorInstance.getOriginalEditor().getModel();
+		const modifiedModel = editorInstance.getModifiedEditor().getModel();
 		const ed =
-			c.side?.toUpperCase() === "LEFT"
+			resolveSide(c, modifiedModel, originalModel) === "LEFT"
 				? editorInstance.getOriginalEditor()
 				: editorInstance.getModifiedEditor();
 		ed.revealLineInCenter(c.lineNumber);

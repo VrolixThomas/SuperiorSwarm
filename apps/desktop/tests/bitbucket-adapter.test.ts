@@ -208,6 +208,7 @@ describe("mapBitbucketComment", () => {
 			author: "alice",
 			filePath: "src/index.ts",
 			lineNumber: 42,
+			side: null,
 			createdAt: "2026-03-01T10:00:00Z",
 		});
 	});
