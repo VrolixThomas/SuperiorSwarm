@@ -627,7 +627,7 @@ git commit -m "feat(solve): add resolveSide helper with line-existence fallback"
 **Files:**
 - Modify: `apps/desktop/src/renderer/components/solve/useSolveCommentZones.tsx`
 
-- [ ] **Step 1: Replace `commentSide(c)` call sites with `resolveSide(c, origModel, modModel)`**
+- [ ] **Step 1: Replace `commentSide(c)` call sites with `resolveSide(c, modifiedModel, originalModel)`**
 
 The hook has three places that call `commentSide`:
 
@@ -646,8 +646,10 @@ const modifiedModel = editor.getModifiedEditor().getModel();
 
 Then replace:
 
-- `commentSide(c)` → `resolveSide(c, originalModel, modifiedModel)`
-- `commentSide(active)` → `resolveSide(active, originalModel, modifiedModel)`
+- `commentSide(c)` → `resolveSide(c, modifiedModel, originalModel)`
+- `commentSide(active)` → `resolveSide(active, modifiedModel, originalModel)`
+
+**NOTE:** The signature of `resolveSide` is `(comment, modifiedModel, originalModel)` — the second arg is the modified model, third is the original. This matches the test cases in Task 6.
 
 After all three are replaced, remove the now-unused `commentSide` function.
 
@@ -700,7 +702,7 @@ const leftSideCount = useMemo(() => {
 	const modifiedModel = editorInstance.getModifiedEditor().getModel();
 	let n = 0;
 	for (const c of fileComments) {
-		if (resolveSide(c, originalModel, modifiedModel) === "LEFT") n++;
+		if (resolveSide(c, modifiedModel, originalModel) === "LEFT") n++;
 	}
 	return n;
 }, [editorInstance, fileComments]);
