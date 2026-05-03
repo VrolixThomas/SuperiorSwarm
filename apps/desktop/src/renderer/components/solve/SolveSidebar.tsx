@@ -53,12 +53,14 @@ export function buildSidebarRows(groups: SolveGroupInfo[]): Map<string, FileRow[
 	return byGroup;
 }
 
+const EMPTY_EXPANDED: ReadonlySet<string> = new Set();
+
 export function SolveSidebar({ session }: Props) {
 	const utils = trpc.useUtils();
 	const sessionKey = solveSessionKey(session.workspaceId, session.id);
 
 	const expanded = useSolveSessionStore(
-		(s) => s.sessions.get(sessionKey)?.expandedGroupIds ?? new Set<string>()
+		(s) => s.sessions.get(sessionKey)?.expandedGroupIds ?? EMPTY_EXPANDED
 	);
 	const activeFilePath = useSolveSessionStore(
 		(s) => s.sessions.get(sessionKey)?.activeFilePath ?? null
