@@ -8,7 +8,7 @@ import { trpc } from "../../trpc/client";
 import { DiffEditor } from "../DiffEditor";
 import { type Hint, ReviewHintBar } from "../review/ReviewHintBar";
 import { SolveCommentWidget } from "./SolveCommentWidget";
-import { useSolveCommentZones } from "./useSolveCommentZones";
+import { resolveSide, useSolveCommentZones } from "./useSolveCommentZones";
 
 const SOLVE_HINTS: Hint[] = [
 	{ keys: ["J", "K"], label: "File" },
@@ -97,6 +97,17 @@ export function SolveDiffPane({ session, repoPath, workspaceId }: Props) {
 		onGlyphClick,
 	});
 
+	const leftSideCount = useMemo(() => {
+		if (!editorInstance) return 0;
+		const originalModel = editorInstance.getOriginalEditor().getModel();
+		const modifiedModel = editorInstance.getModifiedEditor().getModel();
+		let n = 0;
+		for (const c of fileComments) {
+			if (resolveSide(c, modifiedModel, originalModel) === "LEFT") n++;
+		}
+		return n;
+	}, [editorInstance, fileComments]);
+
 	useEffect(() => {
 		const ed = editorInstance?.getModifiedEditor();
 		if (!ed || !activeFilePath) return;
@@ -162,6 +173,21 @@ export function SolveDiffPane({ session, repoPath, workspaceId }: Props) {
 					{diffMode === "split" ? "Inline" : "Split"}
 				</button>
 			</div>
+			{diffMode === "inline" && leftSideCount > 0 && commitHash && (
+				<div className="flex h-7 shrink-0 items-center gap-2 border-b border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 text-[11px] text-[var(--text-secondary)]">
+					<span>ⓘ</span>
+					<span>
+						{leftSideCount} {leftSideCount === 1 ? "comment is" : "comments are"} on deleted lines
+					</span>
+					<button
+						type="button"
+						onClick={() => setDiffMode("split")}
+						className="text-[var(--accent)] hover:underline cursor-pointer bg-transparent border-none p-0"
+					>
+						Switch to Split view
+					</button>
+				</div>
+			)}
 			<div className="flex-1 overflow-hidden">
 				{!commitHash ? (
 					<div className="h-full overflow-y-auto p-4">
