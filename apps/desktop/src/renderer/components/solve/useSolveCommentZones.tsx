@@ -1,5 +1,5 @@
 import * as monaco from "monaco-editor";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import type { SolveCommentInfo } from "../../../shared/solve-types";
 import { SolveCommentWidget } from "./SolveCommentWidget";
@@ -91,7 +91,23 @@ export function useSolveCommentZones(
 		RIGHT: new Map(),
 	});
 	const lastEditorRef = useRef<monaco.editor.IStandaloneDiffEditor | null>(null);
+	const [modelTick, setModelTick] = useState(0);
 
+	useEffect(() => {
+		if (!editor) return;
+		const bump = () => setModelTick((n) => n + 1);
+		const subs = [
+			editor.getOriginalEditor().onDidChangeModel(bump),
+			editor.getModifiedEditor().onDidChangeModel(bump),
+			editor.getOriginalEditor().onDidChangeModelContent(bump),
+			editor.getModifiedEditor().onDidChangeModelContent(bump),
+		];
+		return () => {
+			for (const s of subs) s.dispose();
+		};
+	}, [editor]);
+
+	// biome-ignore lint/correctness/useExhaustiveDependencies: modelTick re-runs effect when diff models swap or content loads
 	useEffect(() => {
 		if (!editor) return;
 
@@ -203,8 +219,9 @@ export function useSolveCommentZones(
 				}
 			});
 		}
-	}, [editor, comments, workspaceId, enabled, activeCommentId]);
+	}, [editor, comments, workspaceId, enabled, activeCommentId, modelTick]);
 
+	// biome-ignore lint/correctness/useExhaustiveDependencies: modelTick re-runs effect when diff models swap or content loads
 	useEffect(() => {
 		if (!editor || enabled) return;
 		const editors: Record<Side, monaco.editor.ICodeEditor> = {
@@ -262,8 +279,9 @@ export function useSolveCommentZones(
 			for (const c of collections) c.clear();
 			for (const s of subs) s.dispose();
 		};
-	}, [editor, comments, enabled, onGlyphClick]);
+	}, [editor, comments, enabled, onGlyphClick, modelTick]);
 
+	// biome-ignore lint/correctness/useExhaustiveDependencies: modelTick re-runs effect when diff models swap or content loads
 	useEffect(() => {
 		if (!editor) return;
 		const active = activeCommentId
@@ -287,7 +305,7 @@ export function useSolveCommentZones(
 		return () => {
 			decorations.clear();
 		};
-	}, [editor, comments, activeCommentId]);
+	}, [editor, comments, activeCommentId, modelTick]);
 
 	useEffect(() => {
 		return () => {

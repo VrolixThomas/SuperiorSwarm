@@ -97,16 +97,20 @@ export function SolveDiffPane({ session, repoPath, workspaceId }: Props) {
 		onGlyphClick,
 	});
 
+	const originalContent = originalQuery.data?.content ?? "";
+	const modifiedContent = modifiedQuery.data?.content ?? "";
+
 	const leftSideCount = useMemo(() => {
-		if (!editorInstance) return 0;
-		const originalModel = editorInstance.getOriginalEditor().getModel();
-		const modifiedModel = editorInstance.getModifiedEditor().getModel();
+		const modCount = modifiedContent ? modifiedContent.split("\n").length : 0;
+		const origCount = originalContent ? originalContent.split("\n").length : 0;
+		const fakeMod = { getLineCount: () => modCount };
+		const fakeOrig = { getLineCount: () => origCount };
 		let n = 0;
 		for (const c of fileComments) {
-			if (resolveSide(c, modifiedModel, originalModel) === "LEFT") n++;
+			if (resolveSide(c, fakeMod, fakeOrig) === "LEFT") n++;
 		}
 		return n;
-	}, [editorInstance, fileComments]);
+	}, [fileComments, originalContent, modifiedContent]);
 
 	useEffect(() => {
 		const ed = editorInstance?.getModifiedEditor();
