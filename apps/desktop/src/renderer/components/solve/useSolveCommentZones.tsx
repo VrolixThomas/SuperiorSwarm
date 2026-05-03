@@ -20,10 +20,6 @@ interface Options {
 	onGlyphClick?: (commentId: string) => void;
 }
 
-function commentSide(c: SolveCommentInfo): Side {
-	return c.side?.toUpperCase() === "LEFT" ? "LEFT" : "RIGHT";
-}
-
 interface LineCountModel {
 	getLineCount(): number;
 }
@@ -127,6 +123,9 @@ export function useSolveCommentZones(
 			return;
 		}
 
+		const originalModel = editor.getOriginalEditor().getModel();
+		const modifiedModel = editor.getModifiedEditor().getModel();
+
 		for (const side of ["LEFT", "RIGHT"] as Side[]) {
 			const codeEditor = editors[side];
 			const map = zonesRef.current[side];
@@ -134,7 +133,7 @@ export function useSolveCommentZones(
 
 			const byLine = new Map<number, SolveCommentInfo[]>();
 			for (const c of comments) {
-				if (commentSide(c) !== side) continue;
+				if (resolveSide(c, modifiedModel, originalModel) !== side) continue;
 				const line = c.lineNumber ?? 1;
 				const arr = byLine.get(line) ?? [];
 				arr.push(c);
@@ -220,13 +219,16 @@ export function useSolveCommentZones(
 		editors.LEFT.updateOptions({ glyphMargin: true });
 		editors.RIGHT.updateOptions({ glyphMargin: true });
 
+		const originalModel = editor.getOriginalEditor().getModel();
+		const modifiedModel = editor.getModifiedEditor().getModel();
+
 		const lineToCommentId: Record<Side, Map<number, string>> = {
 			LEFT: new Map(),
 			RIGHT: new Map(),
 		};
 		for (const c of comments) {
 			if (c.lineNumber == null) continue;
-			const side = commentSide(c);
+			const side = resolveSide(c, modifiedModel, originalModel);
 			if (!lineToCommentId[side].has(c.lineNumber)) {
 				lineToCommentId[side].set(c.lineNumber, c.id);
 			}
@@ -268,7 +270,9 @@ export function useSolveCommentZones(
 			? comments.find((c) => c.id === activeCommentId && c.lineNumber != null)
 			: null;
 		if (!active || active.lineNumber == null) return;
-		const side = commentSide(active);
+		const originalModel = editor.getOriginalEditor().getModel();
+		const modifiedModel = editor.getModifiedEditor().getModel();
+		const side = resolveSide(active, modifiedModel, originalModel);
 		const codeEditor = side === "LEFT" ? editor.getOriginalEditor() : editor.getModifiedEditor();
 		const decorations = codeEditor.createDecorationsCollection([
 			{
