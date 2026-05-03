@@ -24,6 +24,25 @@ function commentSide(c: SolveCommentInfo): Side {
 	return c.side?.toUpperCase() === "LEFT" ? "LEFT" : "RIGHT";
 }
 
+interface LineCountModel {
+	getLineCount(): number;
+}
+
+export function resolveSide(
+	comment: SolveCommentInfo,
+	modifiedModel: LineCountModel | null,
+	originalModel: LineCountModel | null
+): Side {
+	const explicit = comment.side?.toUpperCase();
+	if (explicit === "LEFT") return "LEFT";
+	if (explicit === "RIGHT") return "RIGHT";
+	if (comment.lineNumber == null) return "RIGHT";
+	const modCount = modifiedModel?.getLineCount() ?? 0;
+	const origCount = originalModel?.getLineCount() ?? 0;
+	if (comment.lineNumber > modCount && comment.lineNumber <= origCount) return "LEFT";
+	return "RIGHT";
+}
+
 function commentSignature(c: SolveCommentInfo, isActive: boolean): string {
 	const replyKey = c.reply ? `${c.reply.id}:${c.reply.status}:${c.reply.body}` : "-";
 	return `${c.id}|${c.status}|${c.body}|${c.followUpText ?? ""}|${replyKey}|${isActive ? "A" : "_"}`;

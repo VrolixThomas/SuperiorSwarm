@@ -97,6 +97,9 @@ mock.module("better-sqlite3", () => {
 	return { default: Database };
 });
 
+// Monaco accesses `window` at module evaluation time; stub it for test environments.
+mock.module("monaco-editor", () => ({}));
+
 mock.module("electron-log/main.js", () => ({
 	default: {
 		initialize: () => {},
