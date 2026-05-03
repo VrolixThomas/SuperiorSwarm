@@ -91,6 +91,10 @@ export function useSolveCommentZones(
 		RIGHT: new Map(),
 	});
 	const lastEditorRef = useRef<monaco.editor.IStandaloneDiffEditor | null>(null);
+	const lastModelRef = useRef<{
+		LEFT: monaco.editor.ITextModel | null;
+		RIGHT: monaco.editor.ITextModel | null;
+	}>({ LEFT: null, RIGHT: null });
 	const [modelTick, setModelTick] = useState(0);
 
 	useEffect(() => {
@@ -114,6 +118,8 @@ export function useSolveCommentZones(
 		if (lastEditorRef.current && lastEditorRef.current !== editor) {
 			zonesRef.current.LEFT.clear();
 			zonesRef.current.RIGHT.clear();
+			lastModelRef.current.LEFT = null;
+			lastModelRef.current.RIGHT = null;
 		}
 		lastEditorRef.current = editor;
 
@@ -141,6 +147,23 @@ export function useSolveCommentZones(
 
 		const originalModel = editor.getOriginalEditor().getModel();
 		const modifiedModel = editor.getModifiedEditor().getModel();
+
+		const currentModels: Record<Side, monaco.editor.ITextModel | null> = {
+			LEFT: originalModel,
+			RIGHT: modifiedModel,
+		};
+		for (const side of ["LEFT", "RIGHT"] as Side[]) {
+			if (lastModelRef.current[side] !== currentModels[side]) {
+				const stale = [...zonesRef.current[side].values()];
+				if (stale.length > 0) {
+					queueMicrotask(() => {
+						for (const e of stale) e.root.unmount();
+					});
+				}
+				zonesRef.current[side].clear();
+				lastModelRef.current[side] = currentModels[side];
+			}
+		}
 
 		for (const side of ["LEFT", "RIGHT"] as Side[]) {
 			const codeEditor = editors[side];
