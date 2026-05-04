@@ -218,7 +218,6 @@ export function SolveDiffPane({ session, repoPath, workspaceId }: Props) {
 					</div>
 				) : (
 					<DiffEditor
-						key={diffMode}
 						original={originalQuery.data?.content ?? ""}
 						modified={modifiedQuery.data?.content ?? ""}
 						language={language}
