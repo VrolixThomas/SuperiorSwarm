@@ -309,6 +309,32 @@ export function useSolveCommentZones(
 		};
 	}, [editor, comments, enabled, onGlyphClick, modelTick]);
 
+	// biome-ignore lint/correctness/useExhaustiveDependencies: modelTick re-runs effect when diff models swap or content loads
+	useEffect(() => {
+		if (!editor) return;
+		const active = activeCommentId
+			? comments.find((c) => c.id === activeCommentId && c.lineNumber != null)
+			: null;
+		if (!active || active.lineNumber == null) return;
+		const originalModel = editor.getOriginalEditor().getModel();
+		const modifiedModel = editor.getModifiedEditor().getModel();
+		const side = resolveSide(active, modifiedModel, originalModel);
+		const codeEditor = side === "LEFT" ? editor.getOriginalEditor() : editor.getModifiedEditor();
+		const decorations = codeEditor.createDecorationsCollection([
+			{
+				range: new monaco.Range(active.lineNumber, 1, active.lineNumber, 1),
+				options: {
+					isWholeLine: true,
+					className: "solve-comment-active-line",
+					linesDecorationsClassName: "solve-comment-active-line-gutter",
+				},
+			},
+		]);
+		return () => {
+			decorations.clear();
+		};
+	}, [editor, comments, activeCommentId, modelTick]);
+
 	useEffect(() => {
 		return () => {
 			const ed = lastEditorRef.current;
