@@ -97,4 +97,20 @@ describe("RepoWatcher", () => {
 		expect(events.length).toBeLessThanOrEqual(2);
 		expect(events.flat()).toContain("working-tree");
 	});
+
+	test("emits 'index' kind in a git worktree", async () => {
+		const wtPath = `${repoPath}-wt`;
+		await simpleGit(repoPath).raw(["worktree", "add", "-b", "wt-branch", wtPath]);
+		try {
+			watcher = new RepoWatcher(wtPath);
+			await watcher.start();
+
+			writeFileSync(join(wtPath, "wt.txt"), "wt");
+			await simpleGit(wtPath).add(["wt.txt"]);
+
+			await waitForKind("index");
+		} finally {
+			rmSync(wtPath, { recursive: true, force: true });
+		}
+	});
 });

@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { type FSWatcher, watch } from "chokidar";
 import type { RepoChangeKind } from "../../shared/types";
 import { log } from "../logger";
+import { resolveGitDir } from "./operations";
 
 export interface RepoWatcherEvent {
 	kinds: RepoChangeKind[];
@@ -26,7 +27,7 @@ export class RepoWatcher {
 	}
 
 	async start(): Promise<void> {
-		const gitDir = join(this.repoPath, ".git");
+		const gitDir = await resolveGitDir(this.repoPath);
 
 		this.gitDirWatcher = watch(
 			[
