@@ -1,5 +1,6 @@
 import { BrowserWindow, ipcMain } from "electron";
 import type { RepoInvalidateEvent } from "../shared/types";
+import { bumpRepoStateVersion } from "./git/repo-state-version";
 import { RepoWatcherManager } from "./git/repo-watcher-manager";
 import { log } from "./logger";
 
@@ -29,6 +30,7 @@ export function setupRepoIPC(getMainWindow: () => BrowserWindow | null): void {
 
 		try {
 			const unsubscribe = await manager!.subscribe(repoPath, (e) => {
+				bumpRepoStateVersion(repoPath);
 				if (window.isDestroyed()) return;
 				const payload: RepoInvalidateEvent = { repoPath, kinds: e.kinds };
 				window.webContents.send("repo:invalidate", payload);
