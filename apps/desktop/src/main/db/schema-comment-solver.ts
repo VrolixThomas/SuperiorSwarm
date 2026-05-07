@@ -106,6 +106,7 @@ export const prCommentCache = sqliteTable(
 		body: text("body").notNull(),
 		filePath: text("file_path"),
 		lineNumber: integer("line_number"),
+		side: text("side"),
 		/** ISO 8601 string from the platform API (not a local timestamp) */
 		createdAt: text("created_at").notNull(),
 		fetchedAt: integer("fetched_at", { mode: "timestamp" }).notNull(),

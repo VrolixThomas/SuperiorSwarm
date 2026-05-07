@@ -69,6 +69,7 @@ export class GitHubAdapter implements GitProvider {
 			author: c.author ?? "Unknown",
 			filePath: c.path ?? null,
 			lineNumber: c.line ?? null,
+			side: null,
 			createdAt: c.createdAt ?? "",
 		}));
 	}
@@ -110,6 +111,7 @@ export class GitHubAdapter implements GitProvider {
 			created_at: string;
 			path?: string;
 			line?: number;
+			side?: "LEFT" | "RIGHT";
 		}
 
 		// One or both returned 200 — we need the full list from both endpoints.
@@ -138,6 +140,7 @@ export class GitHubAdapter implements GitProvider {
 			author: c.user?.login ?? "Unknown",
 			filePath: c.path ?? null,
 			lineNumber: c.line ?? null,
+			side: c.side ?? null,
 			createdAt: c.created_at ?? "",
 		}));
 

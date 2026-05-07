@@ -1,8 +1,12 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import type { SolveSessionInfo, SolveSessionStatus } from "../../shared/solve-types";
+import { subscribeSolveReviewEvent } from "../lib/solve-review-events";
+import { solveSessionKey, useSolveSessionStore } from "../stores/solve-session-store";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
-import { SolveCommitGroupCard } from "./SolveCommitGroupCard";
+import { SolveDiffPane } from "./solve/SolveDiffPane";
+import { SolveSidebar } from "./solve/SolveSidebar";
+import { useSolveKeyboard } from "./solve/useSolveKeyboard";
 
 interface Props {
 	workspaceId: string;
@@ -34,6 +38,18 @@ export function SolveReviewTab({ workspaceId, solveSessionId }: Props) {
 		onSuccess: () => utils.commentSolver.invalidate(),
 	});
 
+	const approveGroupMutation = trpc.commentSolver.approveGroup.useMutation({
+		onSuccess: () => utils.commentSolver.invalidate(),
+	});
+	const revokeGroupMutation = trpc.commentSolver.revokeGroup.useMutation({
+		onSuccess: () => utils.commentSolver.invalidate(),
+	});
+	const pushGroupMutation = trpc.commentSolver.pushGroup.useMutation({
+		onSuccess: () => utils.commentSolver.invalidate(),
+	});
+
+	const activeWorkspaceCwd = useTabStore((s) => s.activeWorkspaceCwd);
+
 	const prevStatusRef = useRef<SolveSessionStatus | undefined>(undefined);
 	useEffect(() => {
 		if (prevStatusRef.current === "in_progress" && session?.status === "ready") {
@@ -41,6 +57,133 @@ export function SolveReviewTab({ workspaceId, solveSessionId }: Props) {
 		}
 		prevStatusRef.current = session?.status;
 	}, [session?.status, solveSessionId]);
+
+	useSolveKeyboard(!!session);
+
+	const handlersRef = useRef({
+		session,
+		approveGroup: approveGroupMutation.mutate,
+		revokeGroup: revokeGroupMutation.mutate,
+		pushGroup: pushGroupMutation.mutate,
+	});
+	handlersRef.current = {
+		session,
+		approveGroup: approveGroupMutation.mutate,
+		revokeGroup: revokeGroupMutation.mutate,
+		pushGroup: pushGroupMutation.mutate,
+	};
+
+	useEffect(() => {
+		const key = solveSessionKey(workspaceId, solveSessionId);
+		const findGroupForPath = (path: string | null | undefined) =>
+			handlersRef.current.session?.groups.find(
+				(g) =>
+					g.changedFiles.some((f) => f.path === path) || g.comments.some((c) => c.filePath === path)
+			) ?? null;
+		const subs = [
+			subscribeSolveReviewEvent("select-file", ({ delta }) => {
+				useSolveSessionStore.getState().advanceFile(key, delta);
+			}),
+			subscribeSolveReviewEvent("select-group", ({ delta }) => {
+				const session = handlersRef.current.session;
+				if (!session) return;
+				const store = useSolveSessionStore.getState();
+				const ses = store.sessions.get(key);
+				const groups = session.groups.filter((g) => g.status !== "reverted");
+				if (groups.length === 0) return;
+				const currentPath = ses?.activeFilePath;
+				const currentIdx = groups.findIndex(
+					(g) =>
+						g.changedFiles.some((f) => f.path === currentPath) ||
+						g.comments.some((c) => c.filePath === currentPath)
+				);
+				const safeCurrent = currentIdx === -1 ? 0 : currentIdx;
+				const nextIdx = Math.min(groups.length - 1, Math.max(0, safeCurrent + delta));
+				const nextGroup = groups[nextIdx];
+				if (!nextGroup) return;
+				const expanded = new Set(ses?.expandedGroupIds ?? []);
+				expanded.add(nextGroup.id);
+				store.setExpandedGroups(key, expanded);
+				const firstFile =
+					nextGroup.changedFiles[0]?.path ?? nextGroup.comments[0]?.filePath ?? null;
+				if (firstFile) store.selectFile(key, firstFile);
+			}),
+			subscribeSolveReviewEvent("toggle-group", () => {
+				const store = useSolveSessionStore.getState();
+				const ses = store.sessions.get(key);
+				const current = findGroupForPath(ses?.activeFilePath);
+				if (current && current.status !== "reverted") {
+					store.toggleGroupExpanded(key, current.id);
+				}
+			}),
+			subscribeSolveReviewEvent("approve-current-group", () => {
+				const ses = useSolveSessionStore.getState().sessions.get(key);
+				if (!ses?.activeFilePath) return;
+				const group = findGroupForPath(ses.activeFilePath);
+				if (group && group.status === "fixed") {
+					handlersRef.current.approveGroup({ groupId: group.id });
+				}
+			}),
+			subscribeSolveReviewEvent("revoke-current-group", () => {
+				const ses = useSolveSessionStore.getState().sessions.get(key);
+				if (!ses?.activeFilePath) return;
+				const group = findGroupForPath(ses.activeFilePath);
+				if (group && group.status === "approved") {
+					handlersRef.current.revokeGroup({ groupId: group.id });
+				}
+			}),
+			subscribeSolveReviewEvent("push-current-group", () => {
+				const ses = useSolveSessionStore.getState().sessions.get(key);
+				if (!ses?.activeFilePath) return;
+				const group = findGroupForPath(ses.activeFilePath);
+				if (group && group.status === "approved") {
+					const hasDrafts = group.comments.some((c) => c.reply?.status === "draft");
+					if (!hasDrafts) handlersRef.current.pushGroup({ groupId: group.id });
+				}
+			}),
+		];
+		return () => {
+			for (const unsub of subs) unsub();
+		};
+	}, [workspaceId, solveSessionId]);
+
+	const stats = useMemo(() => {
+		const groups = session?.groups ?? [];
+		let resolvedCount = 0;
+		let pendingCount = 0;
+		let unclearCount = 0;
+		let approvedGroups = 0;
+		let submittedGroups = 0;
+		let totalGroups = 0;
+		let hasDraftRepliesInApproved = false;
+		let totalDraftReplies = 0;
+		for (const g of groups) {
+			if (g.status !== "reverted") totalGroups++;
+			if (g.status === "approved") approvedGroups++;
+			if (g.status === "submitted") submittedGroups++;
+			let groupHasDraft = false;
+			for (const c of g.comments) {
+				if (c.status === "fixed" || c.status === "wont_fix") resolvedCount++;
+				else if (c.status === "open") pendingCount++;
+				else if (c.status === "unclear") unclearCount++;
+				if (c.reply?.status === "draft") {
+					totalDraftReplies++;
+					groupHasDraft = true;
+				}
+			}
+			if (g.status === "approved" && groupHasDraft) hasDraftRepliesInApproved = true;
+		}
+		return {
+			resolvedCount,
+			pendingCount,
+			unclearCount,
+			approvedGroups,
+			submittedGroups,
+			totalGroups,
+			hasDraftRepliesInApproved,
+			totalDraftReplies,
+		};
+	}, [session?.groups]);
 
 	if (isLoading || !session) {
 		return <div className="p-6 text-[var(--text-secondary)]">Loading…</div>;
@@ -50,33 +193,21 @@ export function SolveReviewTab({ workspaceId, solveSessionId }: Props) {
 	const isCancelled = session.status === "cancelled";
 	const isReady = session.status === "ready";
 
-	const groups = session.groups ?? [];
-	const allComments = groups.flatMap((g) => g.comments);
-	const resolvedCount = allComments.filter(
-		(c) => c.status === "fixed" || c.status === "wont_fix"
-	).length;
-	const pendingCount = allComments.filter((c) => c.status === "open").length;
-	const unclearCount = allComments.filter((c) => c.status === "unclear").length;
-
-	const approvedGroups = groups.filter((g) => g.status === "approved").length;
-	const submittedGroups = groups.filter((g) => g.status === "submitted").length;
-	const totalGroups = groups.filter((g) => g.status !== "reverted").length;
-
-	// Draft reply info scoped to approved (not-yet-pushed) groups only
-	const draftGroups = groups
-		.filter((g) => g.status === "approved" && g.comments.some((c) => c.reply?.status === "draft"))
-		.map((g) => g.label);
-	const hasDraftRepliesInApproved = draftGroups.length > 0;
-	const totalDraftReplies = groups.reduce(
-		(n, g) => n + g.comments.filter((c) => c.reply?.status === "draft").length,
-		0
-	);
-	// Push all: enabled when at least one approved group exists with no draft replies
+	const {
+		resolvedCount,
+		pendingCount,
+		unclearCount,
+		approvedGroups,
+		submittedGroups,
+		totalGroups,
+		hasDraftRepliesInApproved,
+		totalDraftReplies,
+	} = stats;
 	const canPushAll = approvedGroups > 0 && !hasDraftRepliesInApproved && isReady;
 
 	return (
 		<div className="flex flex-col h-full overflow-hidden">
-			<div className="flex-1 overflow-y-auto px-7 pt-[22px] pb-[18px]">
+			<div className="px-7 pt-[22px] pb-[18px] border-b border-[var(--border-subtle)]">
 				<PRHeader
 					session={session}
 					isSolving={isSolving}
@@ -91,37 +222,40 @@ export function SolveReviewTab({ workspaceId, solveSessionId }: Props) {
 					totalGroups={totalGroups}
 					totalDraftReplies={totalDraftReplies}
 				/>
-				<div className="text-[10.5px] font-semibold uppercase tracking-[0.07em] text-[var(--text-tertiary)] mb-2">
-					{groups.length} Commit Groups
-				</div>
-				{groups.map((group, i) => (
-					<SolveCommitGroupCard
-						key={group.id}
-						group={group}
-						sessionId={solveSessionId}
-						workspaceId={workspaceId}
-						defaultExpanded={i === 0}
-					/>
-				))}
-				{isCancelled && (
-					<div className="mt-3 text-center">
-						{/* TODO: implement re-solve */}
-						<button
-							disabled
-							className="px-4 py-[6px] rounded-[6px] text-[12px] font-medium bg-[var(--accent-subtle)] text-[var(--accent)] border-none opacity-40 cursor-not-allowed"
-						>
-							Re-solve remaining comments
-						</button>
-					</div>
-				)}
 			</div>
+			<div className="flex flex-1 min-h-0 overflow-hidden">
+				<div className="w-[400px] shrink-0">
+					<SolveSidebar session={session} />
+				</div>
+				<div className="flex-1 min-w-0">
+					{activeWorkspaceCwd ? (
+						<SolveDiffPane
+							session={session}
+							repoPath={activeWorkspaceCwd}
+							workspaceId={workspaceId}
+						/>
+					) : (
+						<div className="flex h-full items-center justify-center text-[12px] text-[var(--text-tertiary)]">
+							Loading workspace…
+						</div>
+					)}
+				</div>
+			</div>
+			{isCancelled && (
+				<div className="px-7 py-3 text-center border-t border-[var(--border-subtle)]">
+					<button
+						disabled
+						className="px-4 py-[6px] rounded-[6px] text-[12px] font-medium bg-[var(--accent-subtle)] text-[var(--accent)] border-none opacity-40 cursor-not-allowed"
+					>
+						Re-solve remaining comments
+					</button>
+				</div>
+			)}
 			<BottomBar
 				canPush={canPushAll}
 				isSolving={isSolving}
 				isSubmitted={session.status === "submitted"}
-				draftGroups={draftGroups}
 				approvedGroups={approvedGroups}
-				totalGroups={totalGroups}
 				submittedGroups={submittedGroups}
 				isPushing={pushMutation.isPending}
 				onDismiss={() => dismissMutation.mutate({ sessionId: solveSessionId })}
@@ -270,11 +404,8 @@ function ProgressStrip({
 
 function BottomBar({
 	canPush,
-	isSolving,
 	isSubmitted,
-	draftGroups,
 	approvedGroups,
-	totalGroups,
 	submittedGroups,
 	isPushing,
 	onDismiss,
@@ -283,19 +414,12 @@ function BottomBar({
 	canPush: boolean;
 	isSolving: boolean;
 	isSubmitted: boolean;
-	draftGroups: string[];
 	approvedGroups: number;
-	totalGroups: number;
 	submittedGroups: number;
 	isPushing: boolean;
 	onDismiss: () => void;
 	onPush: () => void;
 }) {
-	const unhandledCount = totalGroups - approvedGroups - submittedGroups;
-	const showCallout =
-		!canPush && !isSolving && !isPushing && approvedGroups === 0 && unhandledCount === 0;
-
-	// Label: "Push N approved" when some are already pushed, otherwise "Push & post replies"
 	const pushLabel = isPushing
 		? "Pushing…"
 		: submittedGroups > 0
@@ -304,21 +428,6 @@ function BottomBar({
 
 	return (
 		<div className="border-t border-[var(--border-subtle)]">
-			{showCallout && (
-				<div className="px-7 py-[10px] bg-[var(--warning-subtle)] flex flex-col gap-[4px]">
-					{draftGroups.length > 0 && (
-						<div className="text-[12px] font-medium text-[var(--warning)]">
-							✉ Sign off draft replies in:{" "}
-							{draftGroups.map((label, i) => (
-								<span key={label}>
-									{i > 0 && ", "}
-									<span className="font-semibold">"{label}"</span>
-								</span>
-							))}
-						</div>
-					)}
-				</div>
-			)}
 			<div className="px-7 py-3 flex items-center justify-end gap-[6px]">
 				{!isSubmitted && (
 					<button

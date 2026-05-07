@@ -281,6 +281,13 @@
 			"when": 1777372800000,
 			"tag": "0039_reset_ai_review_prompts",
 			"breakpoints": true
+		},
+		{
+			"idx": 40,
+			"version": "6",
+			"when": 1777819479401,
+			"tag": "0040_add_side_to_pr_comment_cache",
+			"breakpoints": true
 		}
 	]
 }

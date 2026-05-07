@@ -27,6 +27,7 @@ export interface NormalizedComment {
 	author: string;
 	filePath: string | null;
 	lineNumber: number | null;
+	side: "LEFT" | "RIGHT" | null;
 	createdAt: string;
 }
 

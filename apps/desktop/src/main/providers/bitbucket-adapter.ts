@@ -67,6 +67,7 @@ export function mapBitbucketComment(comment: BitbucketComment): NormalizedCommen
 		author: comment.author,
 		filePath: comment.filePath,
 		lineNumber: comment.lineNumber,
+		side: null,
 		createdAt: comment.createdAt,
 	};
 }

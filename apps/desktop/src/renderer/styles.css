@@ -532,3 +532,27 @@ body,
 		transform: translateY(0);
 	}
 }
+
+/* ── Solve: comment glyph marker (shown when zones are hidden) ───────────── */
+
+.solve-comment-glyph::before {
+	content: "💬";
+	display: inline-block;
+	width: 100%;
+	font-size: 11px;
+	line-height: 1;
+	text-align: center;
+	cursor: pointer;
+}
+
+/* ── Solve: active-comment line highlight (anchor sidebar↔code) ─────────── */
+
+.solve-comment-active-line {
+	background: var(--accent-subtle);
+}
+
+.solve-comment-active-line-gutter {
+	background: var(--accent);
+	width: 2px !important;
+	margin-left: 2px;
+}

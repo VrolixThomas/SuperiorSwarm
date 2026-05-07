@@ -48,6 +48,7 @@ export function DiffEditor({
 		const editor = monaco.editor.createDiffEditor(containerRef.current, {
 			readOnly: readOnly ?? false,
 			renderSideBySide,
+			useInlineViewWhenSpaceIsLimited: false,
 			theme,
 			fontSize: 13,
 			fontFamily: "'SF Mono', 'JetBrains Mono', 'Fira Code', monospace",
