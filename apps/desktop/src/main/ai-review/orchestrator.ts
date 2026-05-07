@@ -15,6 +15,7 @@ import {
 } from "./cli-presets";
 import { getMcpServerPath } from "./mcp-path";
 import { parsePrIdentifier } from "./pr-identifier";
+import { removeKey } from "./mcp-config-merge";
 
 export interface ReviewLaunchInfo {
 	draftId: string;
@@ -721,19 +722,21 @@ export function cleanupStaleReviews(): void {
 
 	for (const { draftId, worktreePath } of stale) {
 		if (worktreePath) {
-			const mcpPaths = [
-				join(worktreePath, ".mcp.json"),
-				join(worktreePath, ".codex", "config.json"),
-				join(worktreePath, ".opencode", "config.json"),
+			const targets: { file: string; keyPath: readonly string[] }[] = [
+				{ file: join(worktreePath, ".mcp.json"), keyPath: ["mcpServers", "superiorswarm"] },
+				{
+					file: join(worktreePath, ".gemini", "settings.json"),
+					keyPath: ["mcpServers", "superiorswarm"],
+				},
+				{
+					file: join(worktreePath, ".codex", "config.json"),
+					keyPath: ["mcpServers", "superiorswarm"],
+				},
+				{ file: join(worktreePath, "opencode.json"), keyPath: ["mcp", "superiorswarm"] },
 			];
-			for (const p of mcpPaths) {
+			for (const t of targets) {
 				try {
-					rmSync(p);
-				} catch {}
-			}
-			for (const dir of [".codex", ".opencode"]) {
-				try {
-					rmSync(join(worktreePath, dir), { recursive: true });
+					removeKey(t.file, t.keyPath, { fileExistedBefore: false, dirExistedBefore: false });
 				} catch {}
 			}
 		}
