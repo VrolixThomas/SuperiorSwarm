@@ -73,7 +73,7 @@ export interface DispatchAgentResponse {
 	status: "started";
 }
 
-export type RemoveWorkspaceStatus = "removed" | "cancelled-by-user" | "blocked-uncommitted";
+export type RemoveWorkspaceStatus = "removed" | "cancelled_by_user" | "blocked_uncommitted";
 
 export interface RemoveWorkspaceResponse {
 	status: RemoveWorkspaceStatus;

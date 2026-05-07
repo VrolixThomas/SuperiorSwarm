@@ -137,7 +137,7 @@ export interface DispatchAgentResponse {
 	status: "started";
 }
 
-export type RemoveWorkspaceStatus = "removed" | "cancelled-by-user" | "blocked-uncommitted";
+export type RemoveWorkspaceStatus = "removed" | "cancelled_by_user" | "blocked_uncommitted";
 
 export interface RemoveWorkspaceResponse {
 	status: RemoveWorkspaceStatus;
@@ -598,7 +598,7 @@ describe("removeWorkspace", () => {
 			projectId: "proj-1",
 			workspaceId: created.workspaceId,
 		});
-		expect(result.status).toBe("blocked-uncommitted");
+		expect(result.status).toBe("blocked_uncommitted");
 	});
 
 	test("force=true bypasses dirty guard", async () => {
@@ -658,7 +658,7 @@ export async function removeWorkspace(
 	const pathExists = wt ? existsSync(wt.path) : false;
 	if (pathExists && wt && !input.force) {
 		const dirty = await hasUncommittedChanges(wt.path);
-		if (dirty) return { status: "blocked-uncommitted" };
+		if (dirty) return { status: "blocked_uncommitted" };
 	}
 
 	// Dispose daemon terminals first so shells release the cwd.
@@ -932,7 +932,7 @@ Find the `delete` block (lines ~378-456) and replace with:
 					workspaceId: input.id,
 					force: input.force,
 				});
-				if (result.status === "blocked-uncommitted") {
+				if (result.status === "blocked_uncommitted") {
 					throw new Error("Worktree has uncommitted changes. Commit or discard them first.");
 				}
 			}),
