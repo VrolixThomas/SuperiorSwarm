@@ -60,23 +60,20 @@ function mcpRuntimeCommand(): { command: string; extraEnv: Record<string, string
 }
 
 /**
- * Write a per-CLI MCP config file and return a cleanup that removes it (and
- * any subdir we created for it). Each CLI has its own JSON shape, so callers
- * pass a builder that turns the resolved (command, args, env) into the
- * provider's expected config object.
- *
- * If `loc.dir` already exists when we run, we treat it as user-owned and
- * leave it in place at cleanup — only the file we wrote is removed.
+ * Merge a per-CLI MCP entry into the provider's existing config file and
+ * return a cleanup that removes only that entry. User-defined entries are
+ * preserved. If the file (or its parent directory) didn't exist before we
+ * touched it, cleanup deletes whatever we created.
  */
 function writeMcpConfig(
 	opts: LaunchOptions,
-	loc: { dir?: string; file: string; keyPath: KeyPath },
+	loc: { file: string; keyPath: KeyPath },
 	buildValue: McpValueBuilder
 ): CleanupFn {
 	const { command, extraEnv } = mcpRuntimeCommand();
 	const env = { ...buildMcpEnv(opts), ...extraEnv };
 	const value = buildValue(command, [opts.mcpServerPath], env);
-	const state = mergeKey(loc.file, loc.keyPath, value, loc.dir);
+	const state = mergeKey(loc.file, loc.keyPath, value);
 	return () => {
 		try {
 			removeKey(loc.file, loc.keyPath, state);
@@ -129,14 +126,15 @@ export const CLI_PRESETS: Record<string, CliPreset> = {
 		permissionFlag: "--yolo",
 		buildArgs: ({ promptFilePath }) => ["-p", `"$(cat '${promptFilePath}')"`],
 		// Gemini CLI reads MCP config from .gemini/settings.json in the project root.
-		setupMcp: (opts) => {
-			const dir = join(opts.worktreePath, ".gemini");
-			return writeMcpConfig(
+		setupMcp: (opts) =>
+			writeMcpConfig(
 				opts,
-				{ dir, file: join(dir, "settings.json"), keyPath: ["mcpServers", "superiorswarm"] },
+				{
+					file: join(opts.worktreePath, ".gemini", "settings.json"),
+					keyPath: ["mcpServers", "superiorswarm"],
+				},
 				STANDARD_MCP_VALUE
-			);
-		},
+			),
 	},
 	codex: {
 		name: "codex",
@@ -144,14 +142,15 @@ export const CLI_PRESETS: Record<string, CliPreset> = {
 		command: "codex",
 		permissionFlag: "--full-auto",
 		buildArgs: ({ promptFilePath }) => [`"$(cat '${promptFilePath}')"`],
-		setupMcp: (opts) => {
-			const dir = join(opts.worktreePath, ".codex");
-			return writeMcpConfig(
+		setupMcp: (opts) =>
+			writeMcpConfig(
 				opts,
-				{ dir, file: join(dir, "config.json"), keyPath: ["mcpServers", "superiorswarm"] },
+				{
+					file: join(opts.worktreePath, ".codex", "config.json"),
+					keyPath: ["mcpServers", "superiorswarm"],
+				},
 				STANDARD_MCP_VALUE
-			);
-		},
+			),
 	},
 	opencode: {
 		name: "opencode",

@@ -138,7 +138,7 @@ describe("mcp-config-merge", () => {
 	test("merge tracks dir existence and remove deletes dir we created", () => {
 		const subdir = join(dir, ".gemini");
 		const file = join(subdir, "settings.json");
-		const state = mergeKey(file, ["mcpServers", "superiorswarm"], { command: "x" }, subdir);
+		const state = mergeKey(file, ["mcpServers", "superiorswarm"], { command: "x" });
 		expect(state.dirExistedBefore).toBe(false);
 		expect(existsSync(subdir)).toBe(true);
 		removeKey(file, ["mcpServers", "superiorswarm"], state);

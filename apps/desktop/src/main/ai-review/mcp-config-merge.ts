@@ -94,17 +94,12 @@ function isEmptyObject(o: unknown): boolean {
 	return !!o && typeof o === "object" && !Array.isArray(o) && Object.keys(o).length === 0;
 }
 
-export function mergeKey(
-	filePath: string,
-	keyPath: KeyPath,
-	value: unknown,
-	dir?: string
-): MergeState {
+export function mergeKey(filePath: string, keyPath: KeyPath, value: unknown): MergeState {
 	const fileExistedBefore = existsSync(filePath);
-	const dirToCheck = dir ?? dirname(filePath);
-	const dirExistedBefore = existsSync(dirToCheck);
+	const dir = dirname(filePath);
+	const dirExistedBefore = existsSync(dir);
 
-	if (!dirExistedBefore) mkdirSync(dirToCheck, { recursive: true });
+	if (!dirExistedBefore) mkdirSync(dir, { recursive: true });
 
 	const { obj, indent } = readJson(filePath);
 	setDeep(obj, keyPath, value);
