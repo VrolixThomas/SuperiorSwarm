@@ -47,4 +47,54 @@ describe("RepoWatcher", () => {
 
 		await waitForKind("index");
 	});
+
+	test("emits 'working-tree' kind when a tracked file changes", async () => {
+		writeFileSync(join(repoPath, "tracked.txt"), "v1");
+		await simpleGit(repoPath).add(["tracked.txt"]);
+		await simpleGit(repoPath).commit("add tracked");
+
+		watcher = new RepoWatcher(repoPath);
+		await watcher.start();
+
+		writeFileSync(join(repoPath, "tracked.txt"), "v2");
+		await waitForKind("working-tree");
+	});
+
+	test("emits 'head' kind on branch checkout", async () => {
+		const git = simpleGit(repoPath);
+		await git.checkoutLocalBranch("feature/x");
+		await git.checkout("main");
+
+		watcher = new RepoWatcher(repoPath);
+		await watcher.start();
+
+		await git.checkout("feature/x");
+		await waitForKind("head");
+	});
+
+	test("emits 'refs' kind on commit", async () => {
+		watcher = new RepoWatcher(repoPath);
+		await watcher.start();
+
+		writeFileSync(join(repoPath, "b.txt"), "b");
+		await simpleGit(repoPath).add(["b.txt"]);
+		await simpleGit(repoPath).commit("b");
+		await waitForKind("refs");
+	});
+
+	test("debounces rapid changes into one event", async () => {
+		watcher = new RepoWatcher(repoPath);
+		await watcher.start();
+
+		const events: RepoChangeKind[][] = [];
+		watcher.on((e) => events.push(e.kinds));
+
+		for (let i = 0; i < 5; i++) {
+			writeFileSync(join(repoPath, `f${i}.txt`), String(i));
+		}
+
+		await new Promise((r) => setTimeout(r, 600));
+		expect(events.length).toBeLessThanOrEqual(2);
+		expect(events.flat()).toContain("working-tree");
+	});
 });
