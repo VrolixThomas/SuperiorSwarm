@@ -369,6 +369,7 @@ for (const signal of ["SIGTERM", "SIGHUP", "SIGINT"] as const) {
 		daemonClient.detachAll();
 		daemonClient.disconnect();
 		serverManager.disposeAll();
+		void disposeRepoIPC();
 		app.exit(0);
 	});
 }
