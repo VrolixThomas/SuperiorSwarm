@@ -124,12 +124,7 @@ export interface QuickActionsAPI {
 
 export type SidebarSegment = "repos" | "tickets" | "prs";
 
-export type RepoChangeKind =
-	| "working-tree"
-	| "index"
-	| "head"
-	| "refs"
-	| "state";
+export type RepoChangeKind = "working-tree" | "index" | "head" | "refs" | "state";
 
 export interface RepoInvalidateEvent {
 	repoPath: string;

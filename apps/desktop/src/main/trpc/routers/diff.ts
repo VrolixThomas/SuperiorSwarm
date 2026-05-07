@@ -5,6 +5,11 @@ import { atlassianFetch } from "../../atlassian/auth";
 import { getDb } from "../../db";
 import { extensionPaths } from "../../db/schema";
 import {
+	getBranchDiffCached,
+	getCommitsAheadCached,
+	getWorkingTreeStatusCached,
+} from "../../git/cached-ops";
+import {
 	createDirectory,
 	deleteFile,
 	readWorkingTreeFile,
@@ -12,11 +17,6 @@ import {
 	saveWorkingTreeFile,
 } from "../../git/file-ops";
 import { listAllEntries, listDirectory } from "../../git/file-tree";
-import {
-	getBranchDiffCached,
-	getCommitsAheadCached,
-	getWorkingTreeStatusCached,
-} from "../../git/cached-ops";
 import {
 	commitChanges,
 	detectDefaultBranch,

@@ -3,8 +3,8 @@ import { mkdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import simpleGit from "simple-git";
-import { RepoWatcher } from "../src/main/git/repo-watcher";
 import { initRepo } from "../src/main/git/operations";
+import { RepoWatcher } from "../src/main/git/repo-watcher";
 import type { RepoChangeKind } from "../src/shared/types";
 
 const TEST_ROOT = realpathSync(tmpdir());
