@@ -1,7 +1,7 @@
 import "./preload-electron-mock";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CLI_PRESETS, type LaunchOptions } from "../src/main/ai-review/cli-presets";
@@ -96,6 +96,47 @@ describe("CLI presets setupMcp — Electron runtime", () => {
 		} finally {
 			cleanup?.();
 		}
+	});
+
+	test("claude preset preserves pre-existing user mcp entries", () => {
+		const preset = CLI_PRESETS.claude;
+		const opts = fakeLaunchOpts(worktree);
+		const userConfig = {
+			mcpServers: { atlassian: { type: "http", url: "https://mcp.atlassian.com/v1/mcp" } },
+		};
+		writeFileSync(join(worktree, ".mcp.json"), JSON.stringify(userConfig, null, 2));
+
+		const cleanup = preset.setupMcp?.(opts);
+		try {
+			const cfg = JSON.parse(readFileSync(join(worktree, ".mcp.json"), "utf-8"));
+			expect(cfg.mcpServers.atlassian).toEqual(userConfig.mcpServers.atlassian);
+			expect(cfg.mcpServers.superiorswarm).toBeDefined();
+		} finally {
+			cleanup?.();
+		}
+		const after = JSON.parse(readFileSync(join(worktree, ".mcp.json"), "utf-8"));
+		expect(after.mcpServers.atlassian).toEqual(userConfig.mcpServers.atlassian);
+		expect(after.mcpServers.superiorswarm).toBeUndefined();
+	});
+
+	test("opencode preset preserves unrelated user keys in opencode.json", () => {
+		const preset = CLI_PRESETS.opencode;
+		const opts = fakeLaunchOpts(worktree);
+		const userConfig = { theme: "tokyonight", $schema: "https://opencode.ai/config.json" };
+		writeFileSync(join(worktree, "opencode.json"), JSON.stringify(userConfig, null, 2));
+
+		const cleanup = preset.setupMcp?.(opts);
+		try {
+			const cfg = JSON.parse(readFileSync(join(worktree, "opencode.json"), "utf-8"));
+			expect(cfg.theme).toBe("tokyonight");
+			expect(cfg.$schema).toBe("https://opencode.ai/config.json");
+			expect(cfg.mcp.superiorswarm).toBeDefined();
+		} finally {
+			cleanup?.();
+		}
+		const after = JSON.parse(readFileSync(join(worktree, "opencode.json"), "utf-8"));
+		expect(after.theme).toBe("tokyonight");
+		expect(after.mcp).toBeUndefined();
 	});
 });
 

@@ -5,6 +5,7 @@ import { eq } from "drizzle-orm";
 import { app } from "electron";
 import { buildDefaultPrompt } from "../../shared/quick-action-prompt";
 import { CLI_PRESETS } from "../ai-review/cli-presets";
+import { mergeKey } from "../ai-review/mcp-config-merge";
 import { getMcpServerPath } from "../ai-review/mcp-path";
 import { getDb } from "../db";
 import * as schema from "../db/schema";
@@ -67,23 +68,20 @@ export async function launchSetupAgent(
 	writeFileSync(promptFilePath, promptText, "utf-8");
 
 	// Write MCP config with quick-action-specific env vars.
+	// Merge into any existing .mcp.json so user-defined MCP servers survive.
 	const mcpConfigPath = join(repoPath, ".mcp.json");
-	const mcpConfig = {
-		mcpServers: {
-			superiorswarm: {
-				command: process.execPath,
-				args: [standaloneServerPath],
-				env: {
-					ELECTRON_RUN_AS_NODE: "1",
-					QUICK_ACTION_SETUP: "1",
-					PROJECT_ID: projectId,
-					DB_PATH: dbPath,
-					WORKTREE_PATH: repoPath,
-				},
-			},
+	const mcpValue = {
+		command: process.execPath,
+		args: [standaloneServerPath],
+		env: {
+			ELECTRON_RUN_AS_NODE: "1",
+			QUICK_ACTION_SETUP: "1",
+			PROJECT_ID: projectId,
+			DB_PATH: dbPath,
+			WORKTREE_PATH: repoPath,
 		},
 	};
-	writeFileSync(mcpConfigPath, JSON.stringify(mcpConfig, null, 2), "utf-8");
+	mergeKey(mcpConfigPath, ["mcpServers", "superiorswarm"], mcpValue);
 
 	// Build the CLI invocation — we craft our own prompt arg instead of using
 	// preset.buildArgs() which generates review-specific text ("Review this PR...").
