@@ -1,6 +1,7 @@
-import { watch, type FSWatcher } from "chokidar";
 import { join } from "node:path";
+import { type FSWatcher, watch } from "chokidar";
 import type { RepoChangeKind } from "../../shared/types";
+import { log } from "../logger";
 
 export interface RepoWatcherEvent {
 	kinds: RepoChangeKind[];
@@ -43,6 +44,7 @@ export class RepoWatcher {
 		);
 
 		this.gitDirWatcher.on("all", (_event, path) => this.classifyGitDirEvent(path));
+		this.gitDirWatcher.on("error", (err) => log.error("[RepoWatcher] gitDir watcher error", err));
 
 		this.worktreeWatcher = watch(this.repoPath, {
 			ignoreInitial: true,
@@ -51,11 +53,11 @@ export class RepoWatcher {
 		});
 
 		this.worktreeWatcher.on("all", () => this.queue("working-tree"));
+		this.worktreeWatcher.on("error", (err) =>
+			log.error("[RepoWatcher] worktree watcher error", err)
+		);
 
-		await Promise.all([
-			waitReady(this.gitDirWatcher),
-			waitReady(this.worktreeWatcher),
-		]);
+		await Promise.all([waitReady(this.gitDirWatcher), waitReady(this.worktreeWatcher)]);
 	}
 
 	async close(): Promise<void> {
@@ -63,20 +65,18 @@ export class RepoWatcher {
 		this.flushTimer = null;
 		this.pending.clear();
 		this.listeners.clear();
-		await Promise.all([
-			this.gitDirWatcher?.close(),
-			this.worktreeWatcher?.close(),
-		]);
+		await Promise.all([this.gitDirWatcher?.close(), this.worktreeWatcher?.close()]);
 		this.gitDirWatcher = null;
 		this.worktreeWatcher = null;
 	}
 
-	private classifyGitDirEvent(path: string): void {
-		if (path.endsWith("/HEAD") || path.endsWith("\\HEAD")) {
+	private classifyGitDirEvent(rawPath: string): void {
+		const path = rawPath.replace(/\\/g, "/");
+		if (path.endsWith("/HEAD")) {
 			this.queue("head");
 			return;
 		}
-		if (path.endsWith("/index") || path.endsWith("\\index")) {
+		if (path.endsWith("/index")) {
 			this.queue("index");
 			return;
 		}
@@ -108,10 +108,27 @@ export class RepoWatcher {
 		const kinds = Array.from(this.pending);
 		this.pending.clear();
 		const event: RepoWatcherEvent = { kinds };
-		for (const listener of this.listeners) listener(event);
+		for (const listener of this.listeners) {
+			try {
+				listener(event);
+			} catch (err) {
+				log.error("[RepoWatcher] listener threw", err);
+			}
+		}
 	}
 }
 
 function waitReady(w: FSWatcher): Promise<void> {
-	return new Promise((resolve) => w.once("ready", () => resolve()));
+	return new Promise((resolve, reject) => {
+		const onReady = () => {
+			w.off("error", onError);
+			resolve();
+		};
+		const onError = (err: unknown) => {
+			w.off("ready", onReady);
+			reject(err instanceof Error ? err : new Error(String(err)));
+		};
+		w.once("ready", onReady);
+		w.once("error", onError);
+	});
 }
