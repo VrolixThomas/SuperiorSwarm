@@ -69,7 +69,12 @@ export class RepoWatcher {
 			log.error("[RepoWatcher] worktree watcher error", err)
 		);
 
-		await Promise.all([waitReady(this.gitDirWatcher), waitReady(this.worktreeWatcher)]);
+		try {
+			await Promise.all([waitReady(this.gitDirWatcher), waitReady(this.worktreeWatcher)]);
+		} catch (err) {
+			await this.close();
+			throw err;
+		}
 	}
 
 	async close(): Promise<void> {
