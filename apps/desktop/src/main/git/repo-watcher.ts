@@ -50,7 +50,18 @@ export class RepoWatcher {
 		this.worktreeWatcher = watch(this.repoPath, {
 			ignoreInitial: true,
 			persistent: true,
-			ignored: [/(^|[\\/])\.git([\\/]|$)/, /node_modules/],
+			ignored: [
+				/(^|[\\/])\.git([\\/]|$)/,
+				/(^|[\\/])node_modules([\\/]|$)/,
+				/(^|[\\/])dist([\\/]|$)/,
+				/(^|[\\/])out([\\/]|$)/,
+				/(^|[\\/])build([\\/]|$)/,
+				/(^|[\\/])\.next([\\/]|$)/,
+				/(^|[\\/])\.turbo([\\/]|$)/,
+				/(^|[\\/])target([\\/]|$)/,
+				/(^|[\\/])coverage([\\/]|$)/,
+				/(^|[\\/])graphify-out([\\/]|$)/,
+			],
 		});
 
 		this.worktreeWatcher.on("all", () => this.queue("working-tree"));
