@@ -87,20 +87,22 @@ export async function pollWorkspace(workspace: schema.Workspace): Promise<void> 
 				.where(eq(schema.prCommentCache.workspaceId, workspaceId))
 				.run();
 
-			for (const c of comments) {
+			if (comments.length > 0) {
 				tx.insert(schema.prCommentCache)
-					.values({
-						id: randomUUID(),
-						workspaceId,
-						platformCommentId: c.id,
-						author: c.author,
-						body: c.body,
-						filePath: c.filePath ?? null,
-						lineNumber: c.lineNumber ?? null,
-						side: c.side ?? null,
-						createdAt: c.createdAt,
-						fetchedAt: now,
-					})
+					.values(
+						comments.map((c) => ({
+							id: randomUUID(),
+							workspaceId,
+							platformCommentId: c.id,
+							author: c.author,
+							body: c.body,
+							filePath: c.filePath ?? null,
+							lineNumber: c.lineNumber ?? null,
+							side: c.side ?? null,
+							createdAt: c.createdAt,
+							fetchedAt: now,
+						}))
+					)
 					.run();
 			}
 
@@ -265,16 +267,16 @@ async function doPoll(): Promise<void> {
 
 	if (linked.length === 0) return;
 
-	for (const workspace of linked) {
-		try {
-			await pollWorkspace(workspace);
-		} catch (err) {
+	const results = await Promise.allSettled(linked.map((ws) => pollWorkspace(ws)));
+	results.forEach((r, i) => {
+		if (r.status === "rejected") {
+			const ws = linked[i];
 			console.error(
-				`[comment-poller] Error polling workspace ${workspace.id} (${workspace.prIdentifier}):`,
-				err
+				`[comment-poller] Error polling workspace ${ws?.id} (${ws?.prIdentifier}):`,
+				r.reason
 			);
 		}
-	}
+	});
 }
 
 // ── Public control API ───────────────────────────────────────────────────────

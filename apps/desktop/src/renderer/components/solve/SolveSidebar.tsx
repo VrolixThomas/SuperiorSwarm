@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { SolveGroupInfo, SolveSessionInfo } from "../../../shared/solve-types";
 import { basename } from "../../lib/format";
 import { solveSessionKey, useSolveSessionStore } from "../../stores/solve-session-store";
@@ -121,11 +121,10 @@ export function SolveSidebar({ session }: Props) {
 	]);
 
 	const activeCardRef = useRef<HTMLDivElement | null>(null);
-
-	useEffect(() => {
-		if (!activeCommentId) return;
-		activeCardRef.current?.scrollIntoView({ block: "nearest" });
-	}, [activeCommentId]);
+	const setActiveCardRef = useCallback((node: HTMLDivElement | null) => {
+		activeCardRef.current = node;
+		if (node) node.scrollIntoView({ block: "nearest" });
+	}, []);
 
 	return (
 		<div className="flex h-full flex-col overflow-y-auto border-r border-[var(--border-subtle)] bg-[var(--bg-base)]">
@@ -244,12 +243,7 @@ export function SolveSidebar({ session }: Props) {
 										{group.comments.map((comment) => {
 											const isActive = activeCommentId === comment.id;
 											return (
-												<div
-													key={comment.id}
-													ref={(node) => {
-														if (isActive && node) activeCardRef.current = node;
-													}}
-												>
+												<div key={comment.id} ref={isActive ? setActiveCardRef : null}>
 													<SolveCommentCard
 														comment={comment}
 														workspaceId={session.workspaceId}

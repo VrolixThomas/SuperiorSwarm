@@ -1,14 +1,18 @@
 import type * as monaco from "monaco-editor";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { detectLanguage } from "../../../shared/diff-types";
-import type { SolveGroupInfo, SolveSessionInfo } from "../../../shared/solve-types";
+import type {
+	SolveCommentInfo,
+	SolveGroupInfo,
+	SolveSessionInfo,
+} from "../../../shared/solve-types";
 import { solveSessionKey, useSolveSessionStore } from "../../stores/solve-session-store";
 import { useTabStore } from "../../stores/tab-store";
 import { trpc } from "../../trpc/client";
 import { DiffEditor } from "../DiffEditor";
 import { type Hint, ReviewHintBar } from "../review/ReviewHintBar";
-import { SolveCommentWidget } from "./SolveCommentWidget";
+import { SolveCommentCard } from "./SolveCommentCard";
 import { resolveSide, useSolveCommentZones } from "./useSolveCommentZones";
 
 const SOLVE_HINTS: Hint[] = [
@@ -16,9 +20,31 @@ const SOLVE_HINTS: Hint[] = [
 	{ keys: ["⇧J", "⇧K"], label: "Group" },
 	{ keys: ["A"], label: "Approve" },
 	{ keys: ["P"], label: "Push" },
-	{ keys: ["⏎"], label: "Follow-up" },
-	{ keys: ["Esc"], label: "Clear" },
 ];
+
+const PortalCardList = memo(function PortalCardList({
+	comments,
+	workspaceId,
+	activeCommentId,
+}: {
+	comments: SolveCommentInfo[];
+	workspaceId: string;
+	activeCommentId: string | null;
+}) {
+	return (
+		<div className="flex flex-col gap-0.5">
+			{comments.map((c) => (
+				<SolveCommentCard
+					key={c.id}
+					comment={c}
+					workspaceId={workspaceId}
+					variant="inline"
+					isActive={c.id === activeCommentId}
+				/>
+			))}
+		</div>
+	);
+});
 
 interface Props {
 	session: SolveSessionInfo;
@@ -203,10 +229,11 @@ export function SolveDiffPane({ session, repoPath, workspaceId }: Props) {
 						</div>
 						<div className="flex flex-col gap-1">
 							{fileComments.map((c) => (
-								<SolveCommentWidget
+								<SolveCommentCard
 									key={c.id}
 									comment={c}
 									workspaceId={workspaceId}
+									variant="inline"
 									isActive={c.id === activeCommentId}
 								/>
 							))}
@@ -230,16 +257,11 @@ export function SolveDiffPane({ session, repoPath, workspaceId }: Props) {
 			<ReviewHintBar hints={SOLVE_HINTS} />
 			{portalEntries.map((entry) =>
 				createPortal(
-					<div className="flex flex-col gap-0.5">
-						{entry.comments.map((c) => (
-							<SolveCommentWidget
-								key={c.id}
-								comment={c}
-								workspaceId={workspaceId}
-								isActive={c.id === activeCommentId}
-							/>
-						))}
-					</div>,
+					<PortalCardList
+						comments={entry.comments}
+						workspaceId={workspaceId}
+						activeCommentId={activeCommentId}
+					/>,
 					entry.domNode,
 					entry.key
 				)

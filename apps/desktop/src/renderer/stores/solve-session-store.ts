@@ -113,7 +113,7 @@ export const useSolveSessionStore = create<SolveSessionStore>()((set, get) => ({
 	setFileOrder: (key, files) =>
 		set((state) => {
 			const next = withSession(state, key, (s) => {
-				const orderUnchanged = arraysEqual(s.fileOrder, files);
+				if (arraysEqual(s.fileOrder, files)) return s;
 				const stillThere = s.activeFilePath != null && files.includes(s.activeFilePath);
 				const nextActive =
 					s.activeFilePath != null && !stillThere ? (files[0] ?? null) : s.activeFilePath;
@@ -130,12 +130,9 @@ export const useSolveSessionStore = create<SolveSessionStore>()((set, get) => ({
 					scroll = new Map();
 					for (const [p, top] of s.scrollByFile) if (fileSet.has(p)) scroll.set(p, top);
 				}
-				if (orderUnchanged && nextActive === s.activeFilePath && scroll === s.scrollByFile) {
-					return s;
-				}
 				return {
 					...s,
-					fileOrder: orderUnchanged ? s.fileOrder : [...files],
+					fileOrder: [...files],
 					activeFilePath: nextActive,
 					scrollByFile: scroll,
 				};

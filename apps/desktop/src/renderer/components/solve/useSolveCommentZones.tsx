@@ -1,5 +1,5 @@
 import * as monaco from "monaco-editor";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { SolveCommentInfo } from "../../../shared/solve-types";
 
 type Side = "LEFT" | "RIGHT";
@@ -119,6 +119,24 @@ export function useSolveCommentZones(
 	}>({ LEFT: null, RIGHT: null });
 	const [modelTick, setModelTick] = useState(0);
 	const [portalEntries, setPortalEntries] = useState<PortalEntry[]>([]);
+	const commentsRef = useRef(comments);
+	commentsRef.current = comments;
+
+	const glyphSignature = useMemo(
+		() =>
+			comments
+				.filter((c) => c.lineNumber != null)
+				.map((c) => `${c.id}:${c.lineNumber}:${c.side ?? ""}`)
+				.sort()
+				.join("|"),
+		[comments]
+	);
+
+	const activeLineKey = useMemo(() => {
+		if (!activeCommentId) return null;
+		const c = comments.find((c) => c.id === activeCommentId);
+		return c?.lineNumber != null ? `${c.id}:${c.lineNumber}:${c.side ?? ""}` : null;
+	}, [activeCommentId, comments]);
 
 	useEffect(() => {
 		if (!editor) return;
@@ -249,7 +267,7 @@ export function useSolveCommentZones(
 		setPortalEntries(flattenEntries(zonesRef.current));
 	}, [editor, comments, enabled, activeCommentId, modelTick]);
 
-	// biome-ignore lint/correctness/useExhaustiveDependencies: modelTick re-runs effect when diff models swap or content loads
+	// biome-ignore lint/correctness/useExhaustiveDependencies: glyphSignature re-runs effect only when comment line/side set actually changes; modelTick covers model swap/content load
 	useEffect(() => {
 		if (!editor || enabled) return;
 		const editors: Record<Side, monaco.editor.ICodeEditor> = {
@@ -271,7 +289,7 @@ export function useSolveCommentZones(
 			LEFT: new Map(),
 			RIGHT: new Map(),
 		};
-		for (const c of comments) {
+		for (const c of commentsRef.current) {
 			if (c.lineNumber == null) continue;
 			const side = resolveSide(c, modifiedModel, originalModel);
 			if (!lineToCommentId[side].has(c.lineNumber)) {
@@ -307,14 +325,14 @@ export function useSolveCommentZones(
 			for (const c of collections) c.clear();
 			for (const s of subs) s.dispose();
 		};
-	}, [editor, comments, enabled, onGlyphClick, modelTick]);
+	}, [editor, glyphSignature, enabled, onGlyphClick, modelTick]);
 
-	// biome-ignore lint/correctness/useExhaustiveDependencies: modelTick re-runs effect when diff models swap or content loads
+	// biome-ignore lint/correctness/useExhaustiveDependencies: activeLineKey collapses to id+line+side; modelTick covers model swap/content load
 	useEffect(() => {
-		if (!editor) return;
-		const active = activeCommentId
-			? comments.find((c) => c.id === activeCommentId && c.lineNumber != null)
-			: null;
+		if (!editor || !activeLineKey) return;
+		const active = commentsRef.current.find(
+			(c) => c.id === activeCommentId && c.lineNumber != null
+		);
 		if (!active || active.lineNumber == null) return;
 		const originalModel = editor.getOriginalEditor().getModel();
 		const modifiedModel = editor.getModifiedEditor().getModel();
@@ -333,7 +351,7 @@ export function useSolveCommentZones(
 		return () => {
 			decorations.clear();
 		};
-	}, [editor, comments, activeCommentId, modelTick]);
+	}, [editor, activeLineKey, modelTick]);
 
 	useEffect(() => {
 		return () => {

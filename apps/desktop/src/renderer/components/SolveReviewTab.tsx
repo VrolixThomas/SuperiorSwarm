@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import type { SolveSessionInfo, SolveSessionStatus } from "../../shared/solve-types";
 import { subscribeSolveReviewEvent } from "../lib/solve-review-events";
 import { solveSessionKey, useSolveSessionStore } from "../stores/solve-session-store";
@@ -60,16 +60,35 @@ export function SolveReviewTab({ workspaceId, solveSessionId }: Props) {
 
 	useSolveKeyboard(!!session);
 
+	const handlersRef = useRef({
+		session,
+		approveGroup: approveGroupMutation.mutate,
+		revokeGroup: revokeGroupMutation.mutate,
+		pushGroup: pushGroupMutation.mutate,
+	});
+	handlersRef.current = {
+		session,
+		approveGroup: approveGroupMutation.mutate,
+		revokeGroup: revokeGroupMutation.mutate,
+		pushGroup: pushGroupMutation.mutate,
+	};
+
 	useEffect(() => {
 		const key = solveSessionKey(workspaceId, solveSessionId);
+		const findGroupForPath = (path: string | null | undefined) =>
+			handlersRef.current.session?.groups.find(
+				(g) =>
+					g.changedFiles.some((f) => f.path === path) || g.comments.some((c) => c.filePath === path)
+			) ?? null;
 		const subs = [
 			subscribeSolveReviewEvent("select-file", ({ delta }) => {
 				useSolveSessionStore.getState().advanceFile(key, delta);
 			}),
 			subscribeSolveReviewEvent("select-group", ({ delta }) => {
+				const session = handlersRef.current.session;
+				if (!session) return;
 				const store = useSolveSessionStore.getState();
 				const ses = store.sessions.get(key);
-				if (!session) return;
 				const groups = session.groups.filter((g) => g.status !== "reverted");
 				if (groups.length === 0) return;
 				const currentPath = ses?.activeFilePath;
@@ -92,65 +111,79 @@ export function SolveReviewTab({ workspaceId, solveSessionId }: Props) {
 			subscribeSolveReviewEvent("toggle-group", () => {
 				const store = useSolveSessionStore.getState();
 				const ses = store.sessions.get(key);
-				if (!session) return;
-				const groups = session.groups.filter((g) => g.status !== "reverted");
-				const currentPath = ses?.activeFilePath;
-				const current = groups.find(
-					(g) =>
-						g.changedFiles.some((f) => f.path === currentPath) ||
-						g.comments.some((c) => c.filePath === currentPath)
-				);
-				if (current) store.toggleGroupExpanded(key, current.id);
+				const current = findGroupForPath(ses?.activeFilePath);
+				if (current && current.status !== "reverted") {
+					store.toggleGroupExpanded(key, current.id);
+				}
 			}),
 			subscribeSolveReviewEvent("approve-current-group", () => {
 				const ses = useSolveSessionStore.getState().sessions.get(key);
-				if (!session || !ses?.activeFilePath) return;
-				const group = session.groups.find(
-					(g) =>
-						g.changedFiles.some((f) => f.path === ses.activeFilePath) ||
-						g.comments.some((c) => c.filePath === ses.activeFilePath)
-				);
+				if (!ses?.activeFilePath) return;
+				const group = findGroupForPath(ses.activeFilePath);
 				if (group && group.status === "fixed") {
-					approveGroupMutation.mutate({ groupId: group.id });
+					handlersRef.current.approveGroup({ groupId: group.id });
 				}
 			}),
 			subscribeSolveReviewEvent("revoke-current-group", () => {
 				const ses = useSolveSessionStore.getState().sessions.get(key);
-				if (!session || !ses?.activeFilePath) return;
-				const group = session.groups.find(
-					(g) =>
-						g.changedFiles.some((f) => f.path === ses.activeFilePath) ||
-						g.comments.some((c) => c.filePath === ses.activeFilePath)
-				);
+				if (!ses?.activeFilePath) return;
+				const group = findGroupForPath(ses.activeFilePath);
 				if (group && group.status === "approved") {
-					revokeGroupMutation.mutate({ groupId: group.id });
+					handlersRef.current.revokeGroup({ groupId: group.id });
 				}
 			}),
 			subscribeSolveReviewEvent("push-current-group", () => {
 				const ses = useSolveSessionStore.getState().sessions.get(key);
-				if (!session || !ses?.activeFilePath) return;
-				const group = session.groups.find(
-					(g) =>
-						g.changedFiles.some((f) => f.path === ses.activeFilePath) ||
-						g.comments.some((c) => c.filePath === ses.activeFilePath)
-				);
+				if (!ses?.activeFilePath) return;
+				const group = findGroupForPath(ses.activeFilePath);
 				if (group && group.status === "approved") {
 					const hasDrafts = group.comments.some((c) => c.reply?.status === "draft");
-					if (!hasDrafts) pushGroupMutation.mutate({ groupId: group.id });
+					if (!hasDrafts) handlersRef.current.pushGroup({ groupId: group.id });
 				}
 			}),
 		];
 		return () => {
 			for (const unsub of subs) unsub();
 		};
-	}, [
-		session,
-		workspaceId,
-		solveSessionId,
-		approveGroupMutation,
-		revokeGroupMutation,
-		pushGroupMutation,
-	]);
+	}, [workspaceId, solveSessionId]);
+
+	const stats = useMemo(() => {
+		const groups = session?.groups ?? [];
+		let resolvedCount = 0;
+		let pendingCount = 0;
+		let unclearCount = 0;
+		let approvedGroups = 0;
+		let submittedGroups = 0;
+		let totalGroups = 0;
+		let hasDraftRepliesInApproved = false;
+		let totalDraftReplies = 0;
+		for (const g of groups) {
+			if (g.status !== "reverted") totalGroups++;
+			if (g.status === "approved") approvedGroups++;
+			if (g.status === "submitted") submittedGroups++;
+			let groupHasDraft = false;
+			for (const c of g.comments) {
+				if (c.status === "fixed" || c.status === "wont_fix") resolvedCount++;
+				else if (c.status === "open") pendingCount++;
+				else if (c.status === "unclear") unclearCount++;
+				if (c.reply?.status === "draft") {
+					totalDraftReplies++;
+					groupHasDraft = true;
+				}
+			}
+			if (g.status === "approved" && groupHasDraft) hasDraftRepliesInApproved = true;
+		}
+		return {
+			resolvedCount,
+			pendingCount,
+			unclearCount,
+			approvedGroups,
+			submittedGroups,
+			totalGroups,
+			hasDraftRepliesInApproved,
+			totalDraftReplies,
+		};
+	}, [session?.groups]);
 
 	if (isLoading || !session) {
 		return <div className="p-6 text-[var(--text-secondary)]">Loading…</div>;
@@ -160,26 +193,16 @@ export function SolveReviewTab({ workspaceId, solveSessionId }: Props) {
 	const isCancelled = session.status === "cancelled";
 	const isReady = session.status === "ready";
 
-	const groups = session.groups ?? [];
-	const allComments = groups.flatMap((g) => g.comments);
-	const resolvedCount = allComments.filter(
-		(c) => c.status === "fixed" || c.status === "wont_fix"
-	).length;
-	const pendingCount = allComments.filter((c) => c.status === "open").length;
-	const unclearCount = allComments.filter((c) => c.status === "unclear").length;
-
-	const approvedGroups = groups.filter((g) => g.status === "approved").length;
-	const submittedGroups = groups.filter((g) => g.status === "submitted").length;
-	const totalGroups = groups.filter((g) => g.status !== "reverted").length;
-
-	const draftGroups = groups
-		.filter((g) => g.status === "approved" && g.comments.some((c) => c.reply?.status === "draft"))
-		.map((g) => g.label);
-	const hasDraftRepliesInApproved = draftGroups.length > 0;
-	const totalDraftReplies = groups.reduce(
-		(n, g) => n + g.comments.filter((c) => c.reply?.status === "draft").length,
-		0
-	);
+	const {
+		resolvedCount,
+		pendingCount,
+		unclearCount,
+		approvedGroups,
+		submittedGroups,
+		totalGroups,
+		hasDraftRepliesInApproved,
+		totalDraftReplies,
+	} = stats;
 	const canPushAll = approvedGroups > 0 && !hasDraftRepliesInApproved && isReady;
 
 	return (
@@ -232,9 +255,7 @@ export function SolveReviewTab({ workspaceId, solveSessionId }: Props) {
 				canPush={canPushAll}
 				isSolving={isSolving}
 				isSubmitted={session.status === "submitted"}
-				draftGroups={draftGroups}
 				approvedGroups={approvedGroups}
-				totalGroups={totalGroups}
 				submittedGroups={submittedGroups}
 				isPushing={pushMutation.isPending}
 				onDismiss={() => dismissMutation.mutate({ sessionId: solveSessionId })}
@@ -383,11 +404,8 @@ function ProgressStrip({
 
 function BottomBar({
 	canPush,
-	isSolving,
 	isSubmitted,
-	draftGroups,
 	approvedGroups,
-	totalGroups,
 	submittedGroups,
 	isPushing,
 	onDismiss,
@@ -396,19 +414,12 @@ function BottomBar({
 	canPush: boolean;
 	isSolving: boolean;
 	isSubmitted: boolean;
-	draftGroups: string[];
 	approvedGroups: number;
-	totalGroups: number;
 	submittedGroups: number;
 	isPushing: boolean;
 	onDismiss: () => void;
 	onPush: () => void;
 }) {
-	const unhandledCount = totalGroups - approvedGroups - submittedGroups;
-	const showCallout =
-		!canPush && !isSolving && !isPushing && approvedGroups === 0 && unhandledCount === 0;
-
-	// Label: "Push N approved" when some are already pushed, otherwise "Push & post replies"
 	const pushLabel = isPushing
 		? "Pushing…"
 		: submittedGroups > 0
@@ -417,21 +428,6 @@ function BottomBar({
 
 	return (
 		<div className="border-t border-[var(--border-subtle)]">
-			{showCallout && (
-				<div className="px-7 py-[10px] bg-[var(--warning-subtle)] flex flex-col gap-[4px]">
-					{draftGroups.length > 0 && (
-						<div className="text-[12px] font-medium text-[var(--warning)]">
-							✉ Sign off draft replies in:{" "}
-							{draftGroups.map((label, i) => (
-								<span key={label}>
-									{i > 0 && ", "}
-									<span className="font-semibold">"{label}"</span>
-								</span>
-							))}
-						</div>
-					)}
-				</div>
-			)}
 			<div className="px-7 py-3 flex items-center justify-end gap-[6px]">
 				{!isSubmitted && (
 					<button
