@@ -1,8 +1,8 @@
 {
 	"version": "6",
 	"dialect": "sqlite",
-	"id": "7191f95a-cfe3-4f86-9236-fe8eb2f5b9a7",
-	"prevId": "8cb3e014-f0d7-4c73-92b2-504a99d72133",
+	"id": "9e5e4a4e-f3b3-42b2-907c-6b3e34960eba",
+	"prevId": "7191f95a-cfe3-4f86-9236-fe8eb2f5b9a7",
 	"tables": {
 		"ai_review_settings": {
 			"name": "ai_review_settings",
@@ -1086,6 +1086,13 @@
 				"line_number": {
 					"name": "line_number",
 					"type": "integer",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				},
+				"side": {
+					"name": "side",
+					"type": "text",
 					"primaryKey": false,
 					"notNull": false,
 					"autoincrement": false

@@ -1,3 +1,4 @@
+import { memo } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
@@ -22,7 +23,10 @@ const MARKDOWN_COMPONENTS: Components = {
 	),
 };
 
-export function MarkdownRenderer({ content, className }: MarkdownRendererProps) {
+export const MarkdownRenderer = memo(function MarkdownRenderer({
+	content,
+	className,
+}: MarkdownRendererProps) {
 	return (
 		<div className={`markdown-body ${className ?? ""}`} style={{ lineHeight: 1.7, fontSize: 13 }}>
 			<ReactMarkdown
@@ -34,4 +38,4 @@ export function MarkdownRenderer({ content, className }: MarkdownRendererProps) 
 			</ReactMarkdown>
 		</div>
 	);
-}
+});

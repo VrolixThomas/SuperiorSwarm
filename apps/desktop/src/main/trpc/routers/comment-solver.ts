@@ -815,6 +815,8 @@ export const commentSolverRouter = router({
 				throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Session or group not found" });
 			}
 
+			const settings = getSettings();
+
 			const prompt = buildSolveFollowUpPrompt({
 				prTitle: session.prTitle,
 				sourceBranch: session.sourceBranch,
@@ -828,6 +830,7 @@ export const commentSolverRouter = router({
 				commentBody: comment.body,
 				commentStatus: comment.status,
 				followUpText: input.followUpText,
+				customPrompt: settings.solvePrompt ?? null,
 			});
 
 			// Write prompt to disk
@@ -848,7 +851,6 @@ export const commentSolverRouter = router({
 			}
 
 			// Build launch script using active CLI preset
-			const settings = getSettings();
 			const preset = CLI_PRESETS[settings.cliPreset ?? "claude"];
 			const launchScript = join(solveDir, `follow-up-launch-${Date.now()}.sh`);
 			const dbPath = join(app.getPath("userData"), "superiorswarm.db");

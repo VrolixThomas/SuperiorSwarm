@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.7.0 (2026-04-30)
+
+### What's New
+
+SuperiorSwarm v0.7.0 overhauls the default AI prompts behind PR review and solve flows, with a new live-preview editor so you can see exactly what the model will receive before saving. Reviews now produce tighter comments with clearer triggers and smarter handling of stale or generated-file diffs, and the solve flow handles ambiguous or stale review comments more gracefully instead of refusing to act.
+
+### Changes
+
+- Update default prompts (#98)
+
 ## v0.6.1 (2026-04-25)
 
 ### What's New

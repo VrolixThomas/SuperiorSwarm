@@ -481,14 +481,16 @@ async function startReview(params: {
 			.run();
 
 		const settings = getSettings();
-		const promptContent = buildReviewPrompt({
-			title: draft.prTitle,
-			author: draft.prAuthor,
-			sourceBranch: draft.sourceBranch,
-			targetBranch: draft.targetBranch,
-			provider: draft.prProvider,
-			customPrompt: settings.customPrompt,
-		});
+		const promptContent = buildReviewPrompt(
+			{
+				title: draft.prTitle,
+				author: draft.prAuthor,
+				sourceBranch: draft.sourceBranch,
+				targetBranch: draft.targetBranch,
+				provider: draft.prProvider,
+			},
+			settings.customPrompt
+		);
 
 		return buildAndLaunchReview({
 			draftId,
@@ -666,26 +668,30 @@ async function startFollowUpReview(params: {
 		}
 
 		const settings = getSettings();
-		const promptContent = buildFollowUpPrompt({
-			title: draft.prTitle,
-			author: draft.prAuthor,
-			sourceBranch: draft.sourceBranch,
-			targetBranch: draft.targetBranch,
-			provider: draft.prProvider,
-			customPrompt: settings.customPrompt,
-			roundNumber: draft.roundNumber,
-			previousCommitSha: previousDraft?.commitSha ?? "unknown",
-			currentCommitSha: commitSha,
-			previousComments: previousComments.map((c) => ({
-				id: c.id,
-				filePath: c.filePath,
-				lineNumber: c.lineNumber,
-				body: c.body,
-				platformStatus: (c.resolution === "resolved-on-platform"
-					? "resolved-on-platform"
-					: "open") as "open" | "resolved-on-platform",
-			})),
-		});
+		const promptContent = buildFollowUpPrompt(
+			{
+				title: draft.prTitle,
+				author: draft.prAuthor,
+				sourceBranch: draft.sourceBranch,
+				targetBranch: draft.targetBranch,
+				provider: draft.prProvider,
+			},
+			settings.customPrompt,
+			{
+				roundNumber: draft.roundNumber,
+				previousCommitSha: previousDraft?.commitSha ?? "unknown",
+				currentCommitSha: commitSha,
+				previousComments: previousComments.map((c) => ({
+					id: c.id,
+					filePath: c.filePath,
+					lineNumber: c.lineNumber,
+					body: c.body,
+					platformStatus: (c.resolution === "resolved-on-platform"
+						? "resolved-on-platform"
+						: "open") as "open" | "resolved-on-platform",
+				})),
+			}
+		);
 
 		return buildAndLaunchReview({ draftId, workspaceId, worktreePath, promptContent });
 	} catch (err) {
