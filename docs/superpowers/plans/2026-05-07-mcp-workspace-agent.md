@@ -1208,13 +1208,15 @@ describe("writeWorkspaceMcpJson", () => {
 Run: `cd apps/desktop && bun test tests/mcp-config.test.ts`
 Expected: FAIL.
 
-- [ ] **Step 3: Implement**
+- [ ] **Step 3: Implement (reuse `mergeKey` util that already lives in ai-review/)**
+
+The repo merged `apps/desktop/src/main/ai-review/mcp-config-merge.ts` from main — it provides `mergeKey(filePath, keyPath, value)` which atomically merges into JSON files preserving user keys, indent, and trailing newline. We reuse it.
 
 ```ts
 // apps/desktop/src/main/services/mcp-config.ts
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { eq } from "drizzle-orm";
+import { mergeKey } from "../ai-review/mcp-config-merge";
 import { getDb } from "../db";
 import { worktrees } from "../db/schema";
 
@@ -1224,10 +1226,6 @@ export interface WorkspaceMcpEnv {
 	projectId: string;
 	port: number;
 	token: string;
-}
-
-interface McpJson {
-	mcpServers?: Record<string, unknown>;
 }
 
 function buildEntry(env: WorkspaceMcpEnv) {
@@ -1246,17 +1244,7 @@ function buildEntry(env: WorkspaceMcpEnv) {
 
 export function writeWorkspaceMcpJson(worktreePath: string, env: WorkspaceMcpEnv): void {
 	const file = join(worktreePath, ".mcp.json");
-	let parsed: McpJson = {};
-	if (existsSync(file)) {
-		try {
-			parsed = JSON.parse(readFileSync(file, "utf-8"));
-		} catch {
-			parsed = {};
-		}
-	}
-	parsed.mcpServers = parsed.mcpServers ?? {};
-	parsed.mcpServers.superiorswarm = buildEntry(env);
-	writeFileSync(file, JSON.stringify(parsed, null, 2), "utf-8");
+	mergeKey(file, ["mcpServers", "superiorswarm"], buildEntry(env));
 }
 
 export function rewriteAllWorkspaceMcpJsons(env: WorkspaceMcpEnv): void {
@@ -1271,6 +1259,8 @@ export function rewriteAllWorkspaceMcpJsons(env: WorkspaceMcpEnv): void {
 	}
 }
 ```
+
+Don't add a fresh `mergeKey` re-implementation. The util is already covered by `apps/desktop/tests/mcp-config-merge.test.ts` — our tests only need to verify the wrapper passes the right keypath + value.
 
 - [ ] **Step 4: Run, expect pass**
 
