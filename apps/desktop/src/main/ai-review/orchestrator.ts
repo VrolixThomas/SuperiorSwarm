@@ -13,9 +13,9 @@ import {
 	buildFollowUpPrompt,
 	buildReviewPrompt,
 } from "./cli-presets";
+import { removeKey } from "./mcp-config-merge";
 import { getMcpServerPath } from "./mcp-path";
 import { parsePrIdentifier } from "./pr-identifier";
-import { removeKey } from "./mcp-config-merge";
 
 export interface ReviewLaunchInfo {
 	draftId: string;

@@ -1,5 +1,4 @@
 import { join } from "node:path";
-import { type KeyPath, mergeKey, removeKey } from "./mcp-config-merge";
 import type { CliPresetName } from "../../shared/cli-preset";
 import {
 	type ReviewPromptContext,
@@ -13,6 +12,7 @@ import {
 	buildFollowUpMcpInstructions,
 	buildReviewMcpInstructions,
 } from "../../shared/review-prompt";
+import { type KeyPath, mergeKey, removeKey } from "./mcp-config-merge";
 
 export { DEFAULT_REVIEW_PROMPT };
 export type { CliPresetName };
