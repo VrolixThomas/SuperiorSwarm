@@ -4,14 +4,20 @@ import { bumpRepoStateVersion } from "./git/repo-state-version";
 import { RepoWatcherManager } from "./git/repo-watcher-manager";
 import { log } from "./logger";
 
+interface SubscriptionEntry {
+	count: number;
+	off: () => Promise<void>;
+}
+
 let manager: RepoWatcherManager | null = null;
-const subscriptionsByWindow = new WeakMap<BrowserWindow, Map<string, () => Promise<void>>>();
+const subscriptionsByWindow = new WeakMap<BrowserWindow, Map<string, SubscriptionEntry>>();
 
 export function setupRepoIPC(getMainWindow: () => BrowserWindow | null): void {
 	manager = new RepoWatcherManager();
 
 	ipcMain.handle("repo:subscribe", async (event, repoPath: unknown) => {
 		if (typeof repoPath !== "string" || repoPath.length === 0) return;
+		if (!manager) return;
 		const window = BrowserWindow.fromWebContents(event.sender) ?? getMainWindow();
 		if (!window) return;
 
@@ -22,20 +28,25 @@ export function setupRepoIPC(getMainWindow: () => BrowserWindow | null): void {
 			window.on("closed", () => {
 				const subs = subscriptionsByWindow.get(window);
 				if (!subs) return;
-				for (const off of subs.values()) void off();
+				for (const entry of subs.values()) void entry.off();
 				subscriptionsByWindow.delete(window);
 			});
 		}
-		if (perWindow.has(repoPath)) return;
+
+		const existing = perWindow.get(repoPath);
+		if (existing) {
+			existing.count += 1;
+			return;
+		}
 
 		try {
-			const unsubscribe = await manager!.subscribe(repoPath, (e) => {
+			const off = await manager.subscribe(repoPath, (e) => {
 				bumpRepoStateVersion(repoPath);
 				if (window.isDestroyed()) return;
 				const payload: RepoInvalidateEvent = { repoPath, kinds: e.kinds };
 				window.webContents.send("repo:invalidate", payload);
 			});
-			perWindow.set(repoPath, unsubscribe);
+			perWindow.set(repoPath, { count: 1, off });
 		} catch (err) {
 			log.error("[repo-ipc] subscribe failed", repoPath, err);
 		}
@@ -46,9 +57,11 @@ export function setupRepoIPC(getMainWindow: () => BrowserWindow | null): void {
 		const window = BrowserWindow.fromWebContents(event.sender) ?? getMainWindow();
 		if (!window) return;
 		const perWindow = subscriptionsByWindow.get(window);
-		const off = perWindow?.get(repoPath);
-		if (off) {
-			await off();
+		const entry = perWindow?.get(repoPath);
+		if (!entry) return;
+		entry.count -= 1;
+		if (entry.count <= 0) {
+			await entry.off();
 			perWindow?.delete(repoPath);
 		}
 	});
