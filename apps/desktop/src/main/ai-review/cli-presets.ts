@@ -1,5 +1,5 @@
-import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { type KeyPath, mergeKey, removeKey } from "./mcp-config-merge";
 import type { CliPresetName } from "../../shared/cli-preset";
 import {
 	type ReviewPromptContext,
@@ -27,7 +27,7 @@ export interface CliPreset {
 }
 
 type CleanupFn = () => void;
-type McpConfigBuilder = (command: string, args: string[], env: Record<string, string>) => unknown;
+type McpValueBuilder = (command: string, args: string[], env: Record<string, string>) => unknown;
 
 export interface LaunchOptions {
 	mcpServerPath: string;
@@ -70,19 +70,16 @@ function mcpRuntimeCommand(): { command: string; extraEnv: Record<string, string
  */
 function writeMcpConfig(
 	opts: LaunchOptions,
-	loc: { dir?: string; file: string },
-	build: McpConfigBuilder
+	loc: { dir?: string; file: string; keyPath: KeyPath },
+	buildValue: McpValueBuilder
 ): CleanupFn {
 	const { command, extraEnv } = mcpRuntimeCommand();
 	const env = { ...buildMcpEnv(opts), ...extraEnv };
-	const weCreatedDir = loc.dir != null && !existsSync(loc.dir);
-	if (loc.dir) mkdirSync(loc.dir, { recursive: true });
-	const config = build(command, [opts.mcpServerPath], env);
-	writeFileSync(loc.file, JSON.stringify(config, null, 2), "utf-8");
+	const value = buildValue(command, [opts.mcpServerPath], env);
+	const state = mergeKey(loc.file, loc.keyPath, value, loc.dir);
 	return () => {
 		try {
-			rmSync(loc.file, { force: true });
-			if (loc.dir && weCreatedDir) rmSync(loc.dir, { recursive: true, force: true });
+			removeKey(loc.file, loc.keyPath, state);
 		} catch {}
 	};
 }
@@ -103,10 +100,8 @@ function buildMcpEnv(opts: LaunchOptions): Record<string, string> {
 	};
 }
 
-/** Shape used by Claude/Gemini/Codex — three CLIs all consume the same JSON. */
-const STANDARD_MCP_BUILD: McpConfigBuilder = (command, args, env) => ({
-	mcpServers: { superiorswarm: { command, args, env } },
-});
+/** Inner value for Claude/Gemini/Codex — all three use { command, args, env } under mcpServers.superiorswarm. */
+const STANDARD_MCP_VALUE: McpValueBuilder = (command, args, env) => ({ command, args, env });
 
 export const CLI_PRESETS: Record<string, CliPreset> = {
 	claude: {
@@ -121,7 +116,11 @@ export const CLI_PRESETS: Record<string, CliPreset> = {
 		// We launch the standalone server through Electron's own Node so we
 		// don't depend on the user's system Node version.
 		setupMcp: (opts) =>
-			writeMcpConfig(opts, { file: join(opts.worktreePath, ".mcp.json") }, STANDARD_MCP_BUILD),
+			writeMcpConfig(
+				opts,
+				{ file: join(opts.worktreePath, ".mcp.json"), keyPath: ["mcpServers", "superiorswarm"] },
+				STANDARD_MCP_VALUE
+			),
 	},
 	gemini: {
 		name: "gemini",
@@ -132,7 +131,11 @@ export const CLI_PRESETS: Record<string, CliPreset> = {
 		// Gemini CLI reads MCP config from .gemini/settings.json in the project root.
 		setupMcp: (opts) => {
 			const dir = join(opts.worktreePath, ".gemini");
-			return writeMcpConfig(opts, { dir, file: join(dir, "settings.json") }, STANDARD_MCP_BUILD);
+			return writeMcpConfig(
+				opts,
+				{ dir, file: join(dir, "settings.json"), keyPath: ["mcpServers", "superiorswarm"] },
+				STANDARD_MCP_VALUE
+			);
 		},
 	},
 	codex: {
@@ -143,7 +146,11 @@ export const CLI_PRESETS: Record<string, CliPreset> = {
 		buildArgs: ({ promptFilePath }) => [`"$(cat '${promptFilePath}')"`],
 		setupMcp: (opts) => {
 			const dir = join(opts.worktreePath, ".codex");
-			return writeMcpConfig(opts, { dir, file: join(dir, "config.json") }, STANDARD_MCP_BUILD);
+			return writeMcpConfig(
+				opts,
+				{ dir, file: join(dir, "config.json"), keyPath: ["mcpServers", "superiorswarm"] },
+				STANDARD_MCP_VALUE
+			);
 		},
 	},
 	opencode: {
@@ -155,15 +162,11 @@ export const CLI_PRESETS: Record<string, CliPreset> = {
 		setupMcp: (opts) =>
 			writeMcpConfig(
 				opts,
-				{ file: join(opts.worktreePath, "opencode.json") },
+				{ file: join(opts.worktreePath, "opencode.json"), keyPath: ["mcp", "superiorswarm"] },
 				(command, args, environment) => ({
-					mcp: {
-						superiorswarm: {
-							type: "local",
-							command: [command, ...args],
-							environment,
-						},
-					},
+					type: "local",
+					command: [command, ...args],
+					environment,
 				})
 			),
 	},
