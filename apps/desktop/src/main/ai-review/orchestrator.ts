@@ -13,6 +13,7 @@ import {
 	buildFollowUpPrompt,
 	buildReviewPrompt,
 } from "./cli-presets";
+import { removeKey } from "./mcp-config-merge";
 import { getMcpServerPath } from "./mcp-path";
 import { parsePrIdentifier } from "./pr-identifier";
 
@@ -721,19 +722,24 @@ export function cleanupStaleReviews(): void {
 
 	for (const { draftId, worktreePath } of stale) {
 		if (worktreePath) {
-			const mcpPaths = [
-				join(worktreePath, ".mcp.json"),
-				join(worktreePath, ".codex", "config.json"),
-				join(worktreePath, ".opencode", "config.json"),
+			const targets: { file: string; keyPath: readonly string[] }[] = [
+				{ file: join(worktreePath, ".mcp.json"), keyPath: ["mcpServers", "superiorswarm"] },
+				{
+					file: join(worktreePath, ".gemini", "settings.json"),
+					keyPath: ["mcpServers", "superiorswarm"],
+				},
+				{
+					file: join(worktreePath, ".codex", "config.json"),
+					keyPath: ["mcpServers", "superiorswarm"],
+				},
+				{ file: join(worktreePath, "opencode.json"), keyPath: ["mcp", "superiorswarm"] },
 			];
-			for (const p of mcpPaths) {
+			// State is unknown for stale reviews from a prior session. Treating both flags
+			// as false makes removeKey delete empty files/dirs (matching the old rmSync
+			// behavior) while still preserving any user-defined entries that share the file.
+			for (const t of targets) {
 				try {
-					rmSync(p);
-				} catch {}
-			}
-			for (const dir of [".codex", ".opencode"]) {
-				try {
-					rmSync(join(worktreePath, dir), { recursive: true });
+					removeKey(t.file, t.keyPath, { fileExistedBefore: false, dirExistedBefore: false });
 				} catch {}
 			}
 		}
