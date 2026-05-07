@@ -734,6 +734,9 @@ export function cleanupStaleReviews(): void {
 				},
 				{ file: join(worktreePath, "opencode.json"), keyPath: ["mcp", "superiorswarm"] },
 			];
+			// State is unknown for stale reviews from a prior session. Treating both flags
+			// as false makes removeKey delete empty files/dirs (matching the old rmSync
+			// behavior) while still preserving any user-defined entries that share the file.
 			for (const t of targets) {
 				try {
 					removeKey(t.file, t.keyPath, { fileExistedBefore: false, dirExistedBefore: false });
