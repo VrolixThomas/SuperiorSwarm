@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.7.1 (2026-05-07)
+
+### What's New
+
+SuperiorSwarm v0.7.1 reworks the comment solver interface for a cleaner, more focused experience, and fixes a bug where Bitbucket pull request comments showed unknown authors instead of the correct commenter names.
+
+### Changes
+
+- Rework comment solver UI (#100)
+- fix unknown author from bitbucket (#99)
+
 ## v0.7.0 (2026-04-30)
 
 ### What's New
