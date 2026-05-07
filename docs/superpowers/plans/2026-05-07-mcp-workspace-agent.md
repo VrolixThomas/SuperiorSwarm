@@ -188,21 +188,32 @@ git commit -m "feat(mcp): add control-plane request/response schemas"
 - Create: `apps/desktop/src/main/services/workspace-service.ts`
 - Create: `apps/desktop/tests/workspace-service.test.ts`
 
+**Test infra note:** This repo's tests use `./preload-electron-mock` (which mocks `electron.app.getPath` to `/tmp/superiorswarm-test-${pid}`) and call drizzle's `migrate()` directly in `beforeAll`. There is no `initializeDatabaseAtPath` helper. Follow the same pattern. The DB is shared across all tests in a single `bun test` run, so use unique project IDs (e.g. `nanoid()`) and clear rows between tests rather than swapping DB files. See `apps/desktop/tests/lsp-trust.test.ts` for the canonical setup.
+
 - [ ] **Step 1: Write failing test**
 
 ```ts
 // apps/desktop/tests/workspace-service.test.ts
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import "./preload-electron-mock";
+import { afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { migrate } from "drizzle-orm/better-sqlite3/migrator";
+import { nanoid } from "nanoid";
 import simpleGit from "simple-git";
-import { initializeDatabaseAtPath } from "../src/main/db";
+import { getDb, schema } from "../src/main/db";
 import { initRepo } from "../src/main/git/operations";
 import { createWorkspace } from "../src/main/services/workspace-service";
 
 let TMP: string;
 let REPO: string;
+let PROJECT_ID: string;
+
+beforeAll(() => {
+	const db = getDb();
+	migrate(db, { migrationsFolder: join(import.meta.dir, "../src/main/db/migrations") });
+});
 
 beforeEach(async () => {
 	TMP = mkdtempSync(join(tmpdir(), "ws-svc-"));
@@ -210,14 +221,13 @@ beforeEach(async () => {
 	mkdirSync(REPO, { recursive: true });
 	await initRepo(REPO, "main");
 	await simpleGit(REPO).raw(["commit", "--allow-empty", "-m", "init"]);
-	initializeDatabaseAtPath(join(TMP, "test.db"));
-	// seed a project row
-	const { getDb, schema } = await import("../src/main/db");
+
+	PROJECT_ID = `proj-${nanoid(8)}`;
+	const db = getDb();
 	const now = new Date();
-	getDb()
-		.insert(schema.projects)
+	db.insert(schema.projects)
 		.values({
-			id: "proj-1",
+			id: PROJECT_ID,
 			repoPath: REPO,
 			name: "repo",
 			defaultBranch: "main",
@@ -228,13 +238,16 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
+	const db = getDb();
+	// Cascade-delete from projects covers worktrees + workspaces.
+	db.delete(schema.projects).where(eq(schema.projects.id, PROJECT_ID)).run();
 	rmSync(TMP, { recursive: true, force: true });
 });
 
 describe("createWorkspace", () => {
 	test("creates worktree, workspace, and worktree DB rows", async () => {
 		const result = await createWorkspace({
-			projectId: "proj-1",
+			projectId: PROJECT_ID,
 			branch: "feature/x",
 			baseBranch: "main",
 		});
@@ -243,18 +256,18 @@ describe("createWorkspace", () => {
 		expect(result.baseBranch).toBe("main");
 		expect(result.path.endsWith("/feature/x")).toBe(true);
 
-		const { getDb, schema } = await import("../src/main/db");
-		const ws = getDb()
+		const db = getDb();
+		const ws = db
 			.select()
 			.from(schema.workspaces)
-			.where((q) => q)
+			.where(eq(schema.workspaces.projectId, PROJECT_ID))
 			.all();
 		expect(ws).toHaveLength(1);
 		expect(ws[0]?.name).toBe("feature/x");
 	});
 
 	test("uses project default branch when baseBranch omitted", async () => {
-		const result = await createWorkspace({ projectId: "proj-1", branch: "feature/y" });
+		const result = await createWorkspace({ projectId: PROJECT_ID, branch: "feature/y" });
 		expect(result.baseBranch).toBe("main");
 	});
 
@@ -266,28 +279,14 @@ describe("createWorkspace", () => {
 });
 ```
 
-NOTE: `initializeDatabaseAtPath` does not exist yet — Task 2.1 below adds a test-only helper. If it already exists, skip Task 2.1.
+Add `import { eq } from "drizzle-orm";` at the top.
 
-- [ ] **Step 2: Confirm db helper exists, otherwise add it**
-
-Read `apps/desktop/src/main/db/index.ts`. If `initializeDatabaseAtPath(path: string)` is not exported, add it as a thin wrapper:
-
-```ts
-// apps/desktop/src/main/db/index.ts (append near initializeDatabase)
-export function initializeDatabaseAtPath(dbFilePath: string): void {
-	process.env.SUPERIORSWARM_DB_PATH = dbFilePath; // honored by initializeDatabase
-	initializeDatabase();
-}
-```
-
-If `initializeDatabase` already takes a path arg or honors a config var, prefer that — don't add a duplicate.
-
-- [ ] **Step 3: Run test, expect failure**
+- [ ] **Step 2: Run test, expect failure**
 
 Run: `cd apps/desktop && bun test tests/workspace-service.test.ts`
 Expected: FAIL — `createWorkspace` not found / module not resolvable.
 
-- [ ] **Step 4: Implement createWorkspace**
+- [ ] **Step 3: Implement createWorkspace**
 
 ```ts
 // apps/desktop/src/main/services/workspace-service.ts
@@ -373,16 +372,15 @@ export async function createWorkspace(
 }
 ```
 
-- [ ] **Step 5: Run test, expect pass**
+- [ ] **Step 4: Run test, expect pass**
 
 Run: `cd apps/desktop && bun test tests/workspace-service.test.ts`
 Expected: PASS (3 tests).
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add apps/desktop/src/main/services/workspace-service.ts apps/desktop/tests/workspace-service.test.ts
-# include db/index.ts if Step 2 changed it
 git commit -m "feat(mcp): add workspace-service.createWorkspace"
 ```
 
@@ -405,24 +403,24 @@ import {
 
 describe("listWorkspaces", () => {
 	test("returns workspaces for the given project only", async () => {
-		await createWorkspace({ projectId: "proj-1", branch: "feature/a" });
-		await createWorkspace({ projectId: "proj-1", branch: "feature/b" });
+		await createWorkspace({ projectId: PROJECT_ID, branch: "feature/a" });
+		await createWorkspace({ projectId: PROJECT_ID, branch: "feature/b" });
 
-		const { workspaces: list } = await listWorkspaces({ projectId: "proj-1" });
+		const { workspaces: list } = await listWorkspaces({ projectId: PROJECT_ID });
 		expect(list).toHaveLength(2);
 		expect(list.map((w) => w.name).sort()).toEqual(["feature/a", "feature/b"]);
 	});
 
 	test("returns empty list for project with no workspaces", async () => {
-		const { workspaces: list } = await listWorkspaces({ projectId: "proj-1" });
+		const { workspaces: list } = await listWorkspaces({ projectId: PROJECT_ID });
 		expect(list).toEqual([]);
 	});
 });
 
 describe("getWorkspace", () => {
 	test("returns workspace + dirty flag", async () => {
-		const created = await createWorkspace({ projectId: "proj-1", branch: "feature/c" });
-		const ws = await getWorkspace({ projectId: "proj-1", workspaceId: created.workspaceId });
+		const created = await createWorkspace({ projectId: PROJECT_ID, branch: "feature/c" });
+		const ws = await getWorkspace({ projectId: PROJECT_ID, workspaceId: created.workspaceId });
 		expect(ws.id).toBe(created.workspaceId);
 		expect(ws.worktreePath).toBe(created.path);
 		expect(ws.hasUncommittedChanges).toBe(false);
@@ -430,12 +428,12 @@ describe("getWorkspace", () => {
 
 	test("throws not_found for unknown id", async () => {
 		await expect(
-			getWorkspace({ projectId: "proj-1", workspaceId: "missing" })
+			getWorkspace({ projectId: PROJECT_ID, workspaceId: "missing" })
 		).rejects.toThrow(/not_found/);
 	});
 
 	test("throws forbidden when projectId mismatches", async () => {
-		const created = await createWorkspace({ projectId: "proj-1", branch: "feature/d" });
+		const created = await createWorkspace({ projectId: PROJECT_ID, branch: "feature/d" });
 		await expect(
 			getWorkspace({ projectId: "other-proj", workspaceId: created.workspaceId })
 		).rejects.toThrow(/forbidden/);
@@ -577,37 +575,37 @@ import { removeWorkspace } from "../src/main/services/workspace-service";
 
 describe("removeWorkspace", () => {
 	test("removes worktree and DB rows", async () => {
-		const created = await createWorkspace({ projectId: "proj-1", branch: "feature/r1" });
+		const created = await createWorkspace({ projectId: PROJECT_ID, branch: "feature/r1" });
 		const result = await removeWorkspace({
-			projectId: "proj-1",
+			projectId: PROJECT_ID,
 			workspaceId: created.workspaceId,
 		});
 		expect(result.status).toBe("removed");
 
-		const { workspaces: list } = await listWorkspaces({ projectId: "proj-1" });
+		const { workspaces: list } = await listWorkspaces({ projectId: PROJECT_ID });
 		expect(list).toEqual([]);
 	});
 
 	test("blocks on uncommitted changes without force", async () => {
-		const created = await createWorkspace({ projectId: "proj-1", branch: "feature/r2" });
+		const created = await createWorkspace({ projectId: PROJECT_ID, branch: "feature/r2" });
 		// dirty the tree
 		const fs = await import("node:fs");
 		fs.writeFileSync(join(created.path, "dirty.txt"), "x");
 
 		const result = await removeWorkspace({
-			projectId: "proj-1",
+			projectId: PROJECT_ID,
 			workspaceId: created.workspaceId,
 		});
 		expect(result.status).toBe("blocked_uncommitted");
 	});
 
 	test("force=true bypasses dirty guard", async () => {
-		const created = await createWorkspace({ projectId: "proj-1", branch: "feature/r3" });
+		const created = await createWorkspace({ projectId: PROJECT_ID, branch: "feature/r3" });
 		const fs = await import("node:fs");
 		fs.writeFileSync(join(created.path, "dirty.txt"), "x");
 
 		const result = await removeWorkspace({
-			projectId: "proj-1",
+			projectId: PROJECT_ID,
 			workspaceId: created.workspaceId,
 			force: true,
 		});
@@ -615,7 +613,7 @@ describe("removeWorkspace", () => {
 	});
 
 	test("forbidden across projects", async () => {
-		const created = await createWorkspace({ projectId: "proj-1", branch: "feature/r4" });
+		const created = await createWorkspace({ projectId: PROJECT_ID, branch: "feature/r4" });
 		await expect(
 			removeWorkspace({ projectId: "other", workspaceId: created.workspaceId })
 		).rejects.toThrow(/forbidden/);
@@ -714,12 +712,12 @@ import { dispatchAgent } from "../src/main/services/workspace-service";
 
 describe("dispatchAgent", () => {
 	test("calls spawnFn with workspace cwd + cli command", async () => {
-		const created = await createWorkspace({ projectId: "proj-1", branch: "feature/d1" });
+		const created = await createWorkspace({ projectId: PROJECT_ID, branch: "feature/d1" });
 		const calls: Array<{ cwd: string; script: string }> = [];
 
 		const result = await dispatchAgent(
 			{
-				projectId: "proj-1",
+				projectId: PROJECT_ID,
 				workspaceId: created.workspaceId,
 				prompt: "Refactor the foo module",
 				cliPreset: "claude",
@@ -742,7 +740,7 @@ describe("dispatchAgent", () => {
 	});
 
 	test("forbidden across projects", async () => {
-		const created = await createWorkspace({ projectId: "proj-1", branch: "feature/d2" });
+		const created = await createWorkspace({ projectId: PROJECT_ID, branch: "feature/d2" });
 		await expect(
 			dispatchAgent(
 				{
@@ -1324,18 +1322,28 @@ git commit -m "feat(mcp): write .mcp.json on worktree create"
 
 ```ts
 // apps/desktop/tests/control-plane.test.ts
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import "./preload-electron-mock";
+import { afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { eq } from "drizzle-orm";
+import { migrate } from "drizzle-orm/better-sqlite3/migrator";
+import { nanoid } from "nanoid";
 import simpleGit from "simple-git";
-import { initializeDatabaseAtPath } from "../src/main/db";
+import { getDb, schema } from "../src/main/db";
 import { initRepo } from "../src/main/git/operations";
 import { startControlPlane } from "../src/main/control-plane";
 
 let TMP: string;
 let REPO: string;
+let PROJECT_ID: string;
 let server: Awaited<ReturnType<typeof startControlPlane>>;
+
+beforeAll(() => {
+	const db = getDb();
+	migrate(db, { migrationsFolder: join(import.meta.dir, "../src/main/db/migrations") });
+});
 
 beforeEach(async () => {
 	TMP = mkdtempSync(join(tmpdir(), "cp-"));
@@ -1343,13 +1351,13 @@ beforeEach(async () => {
 	mkdirSync(REPO, { recursive: true });
 	await initRepo(REPO, "main");
 	await simpleGit(REPO).raw(["commit", "--allow-empty", "-m", "init"]);
-	initializeDatabaseAtPath(join(TMP, "test.db"));
-	const { getDb, schema } = await import("../src/main/db");
+
+	PROJECT_ID = `proj-${nanoid(8)}`;
+	const db = getDb();
 	const now = new Date();
-	getDb()
-		.insert(schema.projects)
+	db.insert(schema.projects)
 		.values({
-			id: "proj-1",
+			id: PROJECT_ID,
 			repoPath: REPO,
 			name: "repo",
 			defaultBranch: "main",
@@ -1364,6 +1372,8 @@ beforeEach(async () => {
 });
 afterEach(async () => {
 	await server.stop();
+	const db = getDb();
+	db.delete(schema.projects).where(eq(schema.projects.id, PROJECT_ID)).run();
 	rmSync(TMP, { recursive: true, force: true });
 });
 
@@ -1372,12 +1382,12 @@ const auth = () => ({ Authorization: `Bearer ${server.token}` });
 
 describe("control-plane HTTP", () => {
 	test("rejects missing token with 401", async () => {
-		const res = await fetch(url("/workspaces.list?projectId=proj-1"));
+		const res = await fetch(url(`/workspaces.list?projectId=${PROJECT_ID}`));
 		expect(res.status).toBe(401);
 	});
 
 	test("rejects bad token with 401", async () => {
-		const res = await fetch(url("/workspaces.list?projectId=proj-1"), {
+		const res = await fetch(url(`/workspaces.list?projectId=${PROJECT_ID}`), {
 			headers: { Authorization: "Bearer wrong" },
 		});
 		expect(res.status).toBe(401);
@@ -1392,17 +1402,17 @@ describe("control-plane HTTP", () => {
 		const create = await fetch(url("/workspaces.create"), {
 			method: "POST",
 			headers: { ...auth(), "Content-Type": "application/json" },
-			body: JSON.stringify({ projectId: "proj-1", branch: "feature/cp1" }),
+			body: JSON.stringify({ projectId: PROJECT_ID, branch: "feature/cp1" }),
 		});
 		expect(create.status).toBe(200);
 		const created = (await create.json()) as { workspaceId: string; path: string };
 
-		const list = await fetch(url("/workspaces.list?projectId=proj-1"), { headers: auth() });
+		const list = await fetch(url(`/workspaces.list?projectId=${PROJECT_ID}`), { headers: auth() });
 		const listed = (await list.json()) as { workspaces: Array<{ name: string }> };
 		expect(listed.workspaces.map((w) => w.name)).toContain("feature/cp1");
 
 		const get = await fetch(
-			url(`/workspaces.get?projectId=proj-1&workspaceId=${created.workspaceId}`),
+			url(`/workspaces.get?projectId=${PROJECT_ID}&workspaceId=${created.workspaceId}`),
 			{ headers: auth() }
 		);
 		expect(get.status).toBe(200);
@@ -1410,7 +1420,7 @@ describe("control-plane HTTP", () => {
 		const rm = await fetch(url("/workspaces.remove"), {
 			method: "POST",
 			headers: { ...auth(), "Content-Type": "application/json" },
-			body: JSON.stringify({ projectId: "proj-1", workspaceId: created.workspaceId }),
+			body: JSON.stringify({ projectId: PROJECT_ID, workspaceId: created.workspaceId }),
 		});
 		const removed = (await rm.json()) as { status: string };
 		expect(removed.status).toBe("removed");
@@ -1420,7 +1430,7 @@ describe("control-plane HTTP", () => {
 		const create = await fetch(url("/workspaces.create"), {
 			method: "POST",
 			headers: { ...auth(), "Content-Type": "application/json" },
-			body: JSON.stringify({ projectId: "proj-1", branch: "feature/cp2" }),
+			body: JSON.stringify({ projectId: PROJECT_ID, branch: "feature/cp2" }),
 		});
 		const created = (await create.json()) as { workspaceId: string };
 
@@ -1435,7 +1445,7 @@ describe("control-plane HTTP", () => {
 		const res = await fetch(url("/workspaces.create"), {
 			method: "POST",
 			headers: { ...auth(), "Content-Type": "application/json" },
-			body: JSON.stringify({ projectId: "proj-1" }), // missing branch
+			body: JSON.stringify({ projectId: PROJECT_ID }), // missing branch
 		});
 		expect(res.status).toBe(400);
 	});
@@ -1444,7 +1454,7 @@ describe("control-plane HTTP", () => {
 		const create = await fetch(url("/workspaces.create"), {
 			method: "POST",
 			headers: { ...auth(), "Content-Type": "application/json" },
-			body: JSON.stringify({ projectId: "proj-1", branch: "feature/cp3" }),
+			body: JSON.stringify({ projectId: PROJECT_ID, branch: "feature/cp3" }),
 		});
 		const created = (await create.json()) as { workspaceId: string };
 
@@ -1452,7 +1462,7 @@ describe("control-plane HTTP", () => {
 			method: "POST",
 			headers: { ...auth(), "Content-Type": "application/json" },
 			body: JSON.stringify({
-				projectId: "proj-1",
+				projectId: PROJECT_ID,
 				workspaceId: created.workspaceId,
 				prompt: "do thing",
 				cliPreset: "claude",
