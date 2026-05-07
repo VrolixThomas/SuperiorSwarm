@@ -13,12 +13,14 @@ import {
 } from "../../git/file-ops";
 import { listAllEntries, listDirectory } from "../../git/file-tree";
 import {
+	getBranchDiffCached,
+	getCommitsAheadCached,
+	getWorkingTreeStatusCached,
+} from "../../git/cached-ops";
+import {
 	commitChanges,
 	detectDefaultBranch,
 	detectLanguage,
-	getCommitsAhead,
-	getCurrentBranch,
-	getUntrackedFiles,
 	listBranches,
 	parseUnifiedDiff,
 	stageFiles,
@@ -44,20 +46,7 @@ export const diffRouter = router({
 				headBranch: z.string(),
 			})
 		)
-		.query(async ({ input }) => {
-			const git = simpleGit(input.repoPath);
-			const mergeBase = await git
-				.raw(["merge-base", input.baseBranch, input.headBranch])
-				.then((r) => r.trim())
-				.catch(() => input.baseBranch);
-			const rawDiff = await git.diff([
-				`${mergeBase}..${input.headBranch}`,
-				"--unified=3",
-				"--no-color",
-			]);
-			const files = parseUnifiedDiff(rawDiff);
-			return { files, stats: computeStats(files) };
-		}),
+		.query(({ input }) => getBranchDiffCached(input)),
 
 	getWorkingTreeDiff: publicProcedure
 		.input(z.object({ repoPath: z.string() }))
@@ -71,32 +60,7 @@ export const diffRouter = router({
 
 	getWorkingTreeStatus: publicProcedure
 		.input(z.object({ repoPath: z.string() }))
-		.query(async ({ input }) => {
-			const git = simpleGit(input.repoPath);
-
-			const [stagedRaw, unstagedRaw, untrackedPaths, branch] = await Promise.all([
-				git.diff(["--cached", "--unified=3", "--no-color"]),
-				git.diff(["--unified=3", "--no-color"]),
-				getUntrackedFiles(input.repoPath),
-				getCurrentBranch(input.repoPath),
-			]);
-
-			const stagedFiles = parseUnifiedDiff(stagedRaw);
-			const unstagedFiles = parseUnifiedDiff(unstagedRaw);
-
-			// Add untracked files as synthetic "added" entries
-			for (const filePath of untrackedPaths) {
-				unstagedFiles.push({
-					path: filePath,
-					status: "added",
-					additions: 0,
-					deletions: 0,
-					hunks: [],
-				});
-			}
-
-			return { stagedFiles, unstagedFiles, branch };
-		}),
+		.query(({ input }) => getWorkingTreeStatusCached(input)),
 
 	stageFiles: publicProcedure
 		.input(z.object({ repoPath: z.string(), paths: z.array(z.string()) }))
@@ -246,9 +210,7 @@ export const diffRouter = router({
 
 	getCommitsAhead: publicProcedure
 		.input(z.object({ repoPath: z.string(), baseBranch: z.string() }))
-		.query(async ({ input }) => {
-			return await getCommitsAhead(input.repoPath, input.baseBranch);
-		}),
+		.query(({ input }) => getCommitsAheadCached(input)),
 
 	getDefaultBranch: publicProcedure
 		.input(z.object({ repoPath: z.string() }))
