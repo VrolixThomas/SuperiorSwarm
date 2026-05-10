@@ -857,7 +857,7 @@ git commit -m "feat(mcp): add workspace-service dispatchAgent (spawn DI)"
 **Files:**
 - Modify: `apps/desktop/src/main/trpc/routers/workspaces.ts`
 
-Goal: replace inline logic in `create`, `delete`, `listByProject`, `getById` with calls into the service. Keep `checkoutExisting`, `linkFromPR`, `getOrCreateReview`, `cleanupReviewWorkspace`, `attachTerminal`, `detachTerminal` untouched (out of scope for this plan — they cover review/PR-link flows that don't share the same shape).
+Goal: replace inline logic in `create` and `delete` with calls into the service. Leave `listByProject` and `getById` untouched — their renderer-facing return shapes include internal fields (`worktreeId`, `terminalId`, `reviewDraftId`, `createdAt`, `updatedAt`, `draftCommitSha`) that the MCP-facing `WorkspaceDto` deliberately omits, so routing them through `workspace-service.listWorkspaces`/`getWorkspace` would silently break the renderer. If a future task wants to share read paths, widen `WorkspaceDto` then or add an internal-shape variant. Also keep `checkoutExisting`, `linkFromPR`, `getOrCreateReview`, `cleanupReviewWorkspace`, `attachTerminal`, `detachTerminal` untouched (out of scope — review/PR-link flows with their own shapes).
 
 - [ ] **Step 1: Replace `create` mutation body**
 
