@@ -13,6 +13,7 @@ import {
 	createWorkspace,
 	getWorkspace,
 	listWorkspaces,
+	removeWorkspace,
 } from "../src/main/services/workspace-service";
 
 let TMP: string;
@@ -121,6 +122,52 @@ describe("getWorkspace", () => {
 		const created = await createWorkspace({ projectId: PROJECT_ID, branch: "feature/d" });
 		await expect(
 			getWorkspace({ projectId: "other-proj", workspaceId: created.workspaceId })
+		).rejects.toThrow(/forbidden/);
+	});
+});
+
+describe("removeWorkspace", () => {
+	test("removes worktree and DB rows", async () => {
+		const created = await createWorkspace({ projectId: PROJECT_ID, branch: "feature/r1" });
+		const result = await removeWorkspace({
+			projectId: PROJECT_ID,
+			workspaceId: created.workspaceId,
+		});
+		expect(result.status).toBe("removed");
+
+		const { workspaces: list } = await listWorkspaces({ projectId: PROJECT_ID });
+		expect(list).toEqual([]);
+	});
+
+	test("blocks on uncommitted changes without force", async () => {
+		const created = await createWorkspace({ projectId: PROJECT_ID, branch: "feature/r2" });
+		const fs = await import("node:fs");
+		fs.writeFileSync(join(created.path, "dirty.txt"), "x");
+
+		const result = await removeWorkspace({
+			projectId: PROJECT_ID,
+			workspaceId: created.workspaceId,
+		});
+		expect(result.status).toBe("blocked_uncommitted");
+	});
+
+	test("force=true bypasses dirty guard", async () => {
+		const created = await createWorkspace({ projectId: PROJECT_ID, branch: "feature/r3" });
+		const fs = await import("node:fs");
+		fs.writeFileSync(join(created.path, "dirty.txt"), "x");
+
+		const result = await removeWorkspace({
+			projectId: PROJECT_ID,
+			workspaceId: created.workspaceId,
+			force: true,
+		});
+		expect(result.status).toBe("removed");
+	});
+
+	test("forbidden across projects", async () => {
+		const created = await createWorkspace({ projectId: PROJECT_ID, branch: "feature/r4" });
+		await expect(
+			removeWorkspace({ projectId: "other", workspaceId: created.workspaceId })
 		).rejects.toThrow(/forbidden/);
 	});
 });
