@@ -171,6 +171,41 @@ describe("removeWorkspace", () => {
 			removeWorkspace({ projectId: "other", workspaceId: created.workspaceId })
 		).rejects.toThrow(/forbidden/);
 	});
+
+	test("removes orphan workspace (worktreeId set but worktrees row missing)", async () => {
+		const db = getDb();
+		const workspaceId = `ws-orphan-${nanoid(8)}`;
+		const now = new Date();
+		// Disable FK enforcement temporarily so we can insert an orphan row
+		// (worktreeId points to a non-existent worktrees row).
+		db.run("PRAGMA foreign_keys = OFF");
+		db.insert(schema.workspaces)
+			.values({
+				id: workspaceId,
+				projectId: PROJECT_ID,
+				type: "worktree",
+				name: "orphan",
+				worktreeId: "never-existed",
+				terminalId: null,
+				createdAt: now,
+				updatedAt: now,
+			})
+			.run();
+		db.run("PRAGMA foreign_keys = ON");
+
+		const result = await removeWorkspace({
+			projectId: PROJECT_ID,
+			workspaceId,
+		});
+		expect(result.status).toBe("removed");
+
+		const remaining = db
+			.select()
+			.from(schema.workspaces)
+			.where(eq(schema.workspaces.id, workspaceId))
+			.all();
+		expect(remaining).toHaveLength(0);
+	});
 });
 
 describe("dispatchAgent", () => {

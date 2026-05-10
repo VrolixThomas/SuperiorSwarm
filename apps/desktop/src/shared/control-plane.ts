@@ -57,6 +57,8 @@ export interface CreateWorkspaceResponse {
 	path: string;
 	branch: string;
 	baseBranch: string;
+	createdAt: Date;
+	updatedAt: Date;
 }
 
 export interface ListWorkspacesResponse {

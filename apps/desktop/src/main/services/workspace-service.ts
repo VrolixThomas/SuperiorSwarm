@@ -92,6 +92,8 @@ export async function createWorkspace(
 		path,
 		branch: input.branch,
 		baseBranch,
+		createdAt: now,
+		updatedAt: now,
 	};
 }
 
@@ -185,9 +187,10 @@ export async function removeWorkspace(
 	if (!ws) throw new Error(`not_found: ${input.workspaceId}`);
 	if (ws.projectId !== input.projectId) throw new Error("forbidden");
 	if (ws.type === "branch") throw new Error("Cannot delete the main branch workspace");
-	if (!ws.worktreeId) throw new Error("Workspace has no associated worktree");
 
-	const wt = db.select().from(worktrees).where(eq(worktrees.id, ws.worktreeId)).get();
+	const wt = ws.worktreeId
+		? db.select().from(worktrees).where(eq(worktrees.id, ws.worktreeId)).get()
+		: null;
 	const project = db.select().from(projects).where(eq(projects.id, ws.projectId)).get();
 	if (!project) throw new Error("Project not found");
 

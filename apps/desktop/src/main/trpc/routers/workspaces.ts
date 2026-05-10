@@ -99,8 +99,8 @@ export const workspacesRouter = router({
 				terminalId: null as string | null,
 				prProvider: matchingPR?.provider ?? null,
 				prIdentifier: matchingPR?.identifier ?? null,
-				createdAt: new Date(),
-				updatedAt: new Date(),
+				createdAt: created.createdAt,
+				updatedAt: created.updatedAt,
 			};
 		}),
 
