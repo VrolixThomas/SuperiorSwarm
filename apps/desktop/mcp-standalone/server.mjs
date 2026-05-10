@@ -60,7 +60,7 @@ const server = new McpServer({
 	version: "1.0.0",
 });
 
-if (!isSolverMode && !isQuickActionMode) {
+if (!isSolverMode && !isQuickActionMode && !isWorkspaceAgentMode) {
 	// Tool: get_pr_metadata
 	server.tool("get_pr_metadata", "Get metadata about the PR being reviewed", {}, async () => {
 		return {
