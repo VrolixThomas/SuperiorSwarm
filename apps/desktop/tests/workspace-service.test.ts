@@ -9,7 +9,11 @@ import { nanoid } from "nanoid";
 import simpleGit from "simple-git";
 import { getDb, schema } from "../src/main/db";
 import { initRepo } from "../src/main/git/operations";
-import { createWorkspace } from "../src/main/services/workspace-service";
+import {
+	createWorkspace,
+	getWorkspace,
+	listWorkspaces,
+} from "../src/main/services/workspace-service";
 
 let TMP: string;
 let REPO: string;
@@ -79,5 +83,44 @@ describe("createWorkspace", () => {
 		await expect(createWorkspace({ projectId: "missing", branch: "feature/z" })).rejects.toThrow(
 			/not found/i
 		);
+	});
+});
+
+describe("listWorkspaces", () => {
+	test("returns workspaces for the given project only", async () => {
+		await createWorkspace({ projectId: PROJECT_ID, branch: "feature/a" });
+		await createWorkspace({ projectId: PROJECT_ID, branch: "feature/b" });
+
+		const { workspaces: list } = await listWorkspaces({ projectId: PROJECT_ID });
+		expect(list).toHaveLength(2);
+		expect(list.map((w) => w.name).sort()).toEqual(["feature/a", "feature/b"]);
+	});
+
+	test("returns empty list for project with no workspaces", async () => {
+		const { workspaces: list } = await listWorkspaces({ projectId: PROJECT_ID });
+		expect(list).toEqual([]);
+	});
+});
+
+describe("getWorkspace", () => {
+	test("returns workspace + dirty flag", async () => {
+		const created = await createWorkspace({ projectId: PROJECT_ID, branch: "feature/c" });
+		const ws = await getWorkspace({ projectId: PROJECT_ID, workspaceId: created.workspaceId });
+		expect(ws.id).toBe(created.workspaceId);
+		expect(ws.worktreePath).toBe(created.path);
+		expect(ws.hasUncommittedChanges).toBe(false);
+	});
+
+	test("throws not_found for unknown id", async () => {
+		await expect(
+			getWorkspace({ projectId: PROJECT_ID, workspaceId: "missing" })
+		).rejects.toThrow(/not_found/);
+	});
+
+	test("throws forbidden when projectId mismatches", async () => {
+		const created = await createWorkspace({ projectId: PROJECT_ID, branch: "feature/d" });
+		await expect(
+			getWorkspace({ projectId: "other-proj", workspaceId: created.workspaceId })
+		).rejects.toThrow(/forbidden/);
 	});
 });
