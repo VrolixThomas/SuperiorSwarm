@@ -186,8 +186,8 @@ describe("dispatchAgent", () => {
 				cliPreset: "claude",
 			},
 			{
-				spawnFn: async ({ cwd, launchScript }) => {
-					calls.push({ cwd, script: launchScript });
+				spawnFn: async ({ cwd, launchScriptContent }) => {
+					calls.push({ cwd, script: launchScriptContent });
 					return { sessionId: "sess-1", terminalId: "term-1" };
 				},
 			}
@@ -215,5 +215,48 @@ describe("dispatchAgent", () => {
 				{ spawnFn: async () => ({ sessionId: "s", terminalId: "t" }) }
 			)
 		).rejects.toThrow(/forbidden/);
+	});
+
+	test("includes correct permission flag per preset", async () => {
+		const created = await createWorkspace({ projectId: PROJECT_ID, branch: "feature/d3" });
+
+		let geminiScript = "";
+		await dispatchAgent(
+			{
+				projectId: PROJECT_ID,
+				workspaceId: created.workspaceId,
+				prompt: "p",
+				cliPreset: "gemini",
+				skipPermissions: true,
+			},
+			{
+				spawnFn: async ({ launchScriptContent }) => {
+					geminiScript = launchScriptContent;
+					return { sessionId: "s", terminalId: "t" };
+				},
+			}
+		);
+		expect(geminiScript).toContain("--yolo");
+
+		let opencodeScript = "";
+		await dispatchAgent(
+			{
+				projectId: PROJECT_ID,
+				workspaceId: created.workspaceId,
+				prompt: "p",
+				cliPreset: "opencode",
+				skipPermissions: true,
+			},
+			{
+				spawnFn: async ({ launchScriptContent }) => {
+					opencodeScript = launchScriptContent;
+					return { sessionId: "s", terminalId: "t" };
+				},
+			}
+		);
+		// opencode has no permissionFlag — script should not contain any flag string
+		expect(opencodeScript).not.toContain("--yolo");
+		expect(opencodeScript).not.toContain("--dangerously-skip-permissions");
+		expect(opencodeScript).not.toContain("--full-auto");
 	});
 });

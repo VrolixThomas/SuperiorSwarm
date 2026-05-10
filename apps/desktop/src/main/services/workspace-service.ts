@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
+import { CLI_PRESETS } from "../ai-review/cli-presets";
 import type {
 	CreateWorkspaceRequest,
 	CreateWorkspaceResponse,
@@ -219,7 +220,7 @@ export async function removeWorkspace(
 
 export interface SpawnArgs {
 	cwd: string;
-	launchScript: string;
+	launchScriptContent: string;
 	workspaceId: string;
 }
 export interface SpawnResult {
@@ -242,8 +243,8 @@ function buildLaunchScript(opts: {
 	prompt: string;
 	skipPermissions: boolean;
 }): string {
-	const flag =
-		opts.cliPreset === "claude" && opts.skipPermissions ? "--dangerously-skip-permissions " : "";
+	const presetFlag = opts.skipPermissions ? CLI_PRESETS[opts.cliPreset]?.permissionFlag : undefined;
+	const flag = presetFlag ? `${presetFlag} ` : "";
 	const cmd = `${opts.cliPreset} ${flag}'${escapeShellSingleQuote(opts.prompt)}'`;
 	return ["#!/bin/bash", `cd '${escapeShellSingleQuote(opts.cwd)}'`, "", cmd, ""].join("\n");
 }
@@ -262,7 +263,7 @@ export async function dispatchAgent(
 	if (!wt) throw new Error("Worktree row missing");
 
 	const cliPreset = input.cliPreset ?? "claude";
-	const launchScript = buildLaunchScript({
+	const launchScriptContent = buildLaunchScript({
 		cwd: wt.path,
 		cliPreset,
 		prompt: input.prompt,
@@ -272,7 +273,7 @@ export async function dispatchAgent(
 	const spawnFn = deps.spawnFn ?? defaultSpawnFn;
 	const { sessionId, terminalId } = await spawnFn({
 		cwd: wt.path,
-		launchScript,
+		launchScriptContent,
 		workspaceId: input.workspaceId,
 	});
 
