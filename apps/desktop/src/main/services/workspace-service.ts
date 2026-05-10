@@ -5,6 +5,8 @@ import { nanoid } from "nanoid";
 import type {
 	CreateWorkspaceRequest,
 	CreateWorkspaceResponse,
+	DispatchAgentRequest,
+	DispatchAgentResponse,
 	GetWorkspaceRequest,
 	GetWorkspaceResponse,
 	ListWorkspacesRequest,
@@ -213,4 +215,72 @@ export async function removeWorkspace(
 	db.delete(workspaces).where(eq(workspaces.id, input.workspaceId)).run();
 
 	return { status: "removed" };
+}
+
+export interface SpawnArgs {
+	cwd: string;
+	launchScript: string;
+	workspaceId: string;
+}
+export interface SpawnResult {
+	sessionId: string;
+	terminalId: string;
+}
+export type SpawnFn = (args: SpawnArgs) => Promise<SpawnResult>;
+
+export interface DispatchAgentDeps {
+	spawnFn?: SpawnFn;
+}
+
+function escapeShellSingleQuote(s: string): string {
+	return s.replace(/'/g, "'\\''");
+}
+
+function buildLaunchScript(opts: {
+	cwd: string;
+	cliPreset: "claude" | "codex" | "gemini" | "opencode";
+	prompt: string;
+	skipPermissions: boolean;
+}): string {
+	const flag =
+		opts.cliPreset === "claude" && opts.skipPermissions ? "--dangerously-skip-permissions " : "";
+	const cmd = `${opts.cliPreset} ${flag}'${escapeShellSingleQuote(opts.prompt)}'`;
+	return ["#!/bin/bash", `cd '${escapeShellSingleQuote(opts.cwd)}'`, "", cmd, ""].join("\n");
+}
+
+export async function dispatchAgent(
+	input: DispatchAgentRequest,
+	deps: DispatchAgentDeps = {}
+): Promise<DispatchAgentResponse> {
+	const db = getDb();
+	const ws = db.select().from(workspaces).where(eq(workspaces.id, input.workspaceId)).get();
+	if (!ws) throw new Error(`not_found: ${input.workspaceId}`);
+	if (ws.projectId !== input.projectId) throw new Error("forbidden");
+	if (!ws.worktreeId) throw new Error("Workspace has no associated worktree");
+
+	const wt = db.select().from(worktrees).where(eq(worktrees.id, ws.worktreeId)).get();
+	if (!wt) throw new Error("Worktree row missing");
+
+	const cliPreset = input.cliPreset ?? "claude";
+	const launchScript = buildLaunchScript({
+		cwd: wt.path,
+		cliPreset,
+		prompt: input.prompt,
+		skipPermissions: input.skipPermissions ?? false,
+	});
+
+	const spawnFn = deps.spawnFn ?? defaultSpawnFn;
+	const { sessionId, terminalId } = await spawnFn({
+		cwd: wt.path,
+		launchScript,
+		workspaceId: input.workspaceId,
+	});
+
+	return { sessionId, terminalId, status: "started" };
+}
+
+export async function defaultSpawnFn(_args: SpawnArgs): Promise<SpawnResult> {
+	throw new Error(
+		"defaultSpawnFn not implemented — call dispatchAgent with deps.spawnFn until the control plane wires the real spawn"
+	);
 }

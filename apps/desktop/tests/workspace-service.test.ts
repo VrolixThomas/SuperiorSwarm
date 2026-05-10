@@ -11,6 +11,7 @@ import { getDb, schema } from "../src/main/db";
 import { initRepo } from "../src/main/git/operations";
 import {
 	createWorkspace,
+	dispatchAgent,
 	getWorkspace,
 	listWorkspaces,
 	removeWorkspace,
@@ -168,6 +169,51 @@ describe("removeWorkspace", () => {
 		const created = await createWorkspace({ projectId: PROJECT_ID, branch: "feature/r4" });
 		await expect(
 			removeWorkspace({ projectId: "other", workspaceId: created.workspaceId })
+		).rejects.toThrow(/forbidden/);
+	});
+});
+
+describe("dispatchAgent", () => {
+	test("calls spawnFn with workspace cwd + cli command", async () => {
+		const created = await createWorkspace({ projectId: PROJECT_ID, branch: "feature/d1" });
+		const calls: Array<{ cwd: string; script: string }> = [];
+
+		const result = await dispatchAgent(
+			{
+				projectId: PROJECT_ID,
+				workspaceId: created.workspaceId,
+				prompt: "Refactor the foo module",
+				cliPreset: "claude",
+			},
+			{
+				spawnFn: async ({ cwd, launchScript }) => {
+					calls.push({ cwd, script: launchScript });
+					return { sessionId: "sess-1", terminalId: "term-1" };
+				},
+			}
+		);
+
+		expect(result.sessionId).toBe("sess-1");
+		expect(result.terminalId).toBe("term-1");
+		expect(result.status).toBe("started");
+		expect(calls).toHaveLength(1);
+		expect(calls[0]?.cwd).toBe(created.path);
+		expect(calls[0]?.script).toContain("claude");
+		expect(calls[0]?.script).toContain("Refactor the foo module");
+	});
+
+	test("forbidden across projects", async () => {
+		const created = await createWorkspace({ projectId: PROJECT_ID, branch: "feature/d2" });
+		await expect(
+			dispatchAgent(
+				{
+					projectId: "other",
+					workspaceId: created.workspaceId,
+					prompt: "x",
+					cliPreset: "claude",
+				},
+				{ spawnFn: async () => ({ sessionId: "s", terminalId: "t" }) }
+			)
 		).rejects.toThrow(/forbidden/);
 	});
 });
