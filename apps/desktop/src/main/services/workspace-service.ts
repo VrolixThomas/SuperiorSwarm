@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
@@ -116,23 +117,25 @@ function rowToDto(row: WorkspaceRow): WorkspaceDto {
 	};
 }
 
+const WORKSPACE_SELECT = {
+	id: workspaces.id,
+	projectId: workspaces.projectId,
+	type: workspaces.type,
+	name: workspaces.name,
+	branch: worktrees.branch,
+	worktreePath: worktrees.path,
+	baseBranch: worktrees.baseBranch,
+	prProvider: workspaces.prProvider,
+	prIdentifier: workspaces.prIdentifier,
+	draftStatus: reviewDrafts.status,
+} as const;
+
 export async function listWorkspaces(
 	input: ListWorkspacesRequest
 ): Promise<ListWorkspacesResponse> {
 	const db = getDb();
 	const rows = db
-		.select({
-			id: workspaces.id,
-			projectId: workspaces.projectId,
-			type: workspaces.type,
-			name: workspaces.name,
-			branch: worktrees.branch,
-			worktreePath: worktrees.path,
-			baseBranch: worktrees.baseBranch,
-			prProvider: workspaces.prProvider,
-			prIdentifier: workspaces.prIdentifier,
-			draftStatus: reviewDrafts.status,
-		})
+		.select(WORKSPACE_SELECT)
 		.from(workspaces)
 		.leftJoin(worktrees, eq(workspaces.worktreeId, worktrees.id))
 		.leftJoin(reviewDrafts, eq(workspaces.reviewDraftId, reviewDrafts.id))
@@ -147,18 +150,7 @@ export async function getWorkspace(
 ): Promise<GetWorkspaceResponse> {
 	const db = getDb();
 	const row = db
-		.select({
-			id: workspaces.id,
-			projectId: workspaces.projectId,
-			type: workspaces.type,
-			name: workspaces.name,
-			branch: worktrees.branch,
-			worktreePath: worktrees.path,
-			baseBranch: worktrees.baseBranch,
-			prProvider: workspaces.prProvider,
-			prIdentifier: workspaces.prIdentifier,
-			draftStatus: reviewDrafts.status,
-		})
+		.select(WORKSPACE_SELECT)
 		.from(workspaces)
 		.leftJoin(worktrees, eq(workspaces.worktreeId, worktrees.id))
 		.leftJoin(reviewDrafts, eq(workspaces.reviewDraftId, reviewDrafts.id))
@@ -172,6 +164,9 @@ export async function getWorkspace(
 		throw new Error(`forbidden: workspace belongs to a different project`);
 	}
 
-	const dirty = row.worktreePath ? await hasUncommittedChanges(row.worktreePath) : false;
+	const dirty =
+		row.worktreePath && existsSync(row.worktreePath)
+			? await hasUncommittedChanges(row.worktreePath)
+			: false;
 	return { ...rowToDto(row), hasUncommittedChanges: dirty };
 }
