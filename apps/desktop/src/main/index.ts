@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { eq } from "drizzle-orm";
 import { BrowserWindow, app, dialog, ipcMain, shell } from "electron";
@@ -12,6 +13,7 @@ import { cleanupReviewWorkspace, findReviewWorkspaceByPR } from "./ai-review/cle
 import { startCommentPoller, stopCommentPoller } from "./ai-review/comment-poller";
 import { recoverStuckSessions } from "./ai-review/comment-solver-orchestrator";
 import { startPolling } from "./ai-review/commit-poller";
+import { getMcpServerPath } from "./ai-review/mcp-path";
 import { cleanupStaleReviews } from "./ai-review/orchestrator";
 import {
 	onNewPRDetected,
@@ -19,6 +21,8 @@ import {
 	onPRCommitChanged,
 	startPolling as startPRPolling,
 } from "./ai-review/pr-poller";
+import { type RunningControlPlane, startControlPlane } from "./control-plane";
+import { registerConfirmBridge, requestConfirm } from "./control-plane/confirm-bridge";
 import { backfillRemoteHosts, getDb, initializeDatabase } from "./db";
 import * as schema from "./db/schema";
 import {
@@ -31,6 +35,8 @@ import { log, setupCrashHandlers } from "./logger";
 import { setupLspIPC } from "./lsp/ipc-handler";
 import { serverManager, warmShellPathCache } from "./lsp/server-manager";
 import { syncShortcuts } from "./quick-actions/shortcuts";
+import { writeWorkspaceMcpJson } from "./services/mcp-config";
+import { defaultSpawnFn, setMcpEnvProvider } from "./services/workspace-service";
 import { registerSingleInstance } from "./single-instance";
 import { ensureTelemetryState } from "./telemetry/state";
 import { DaemonClient } from "./terminal/daemon-client";
@@ -52,6 +58,7 @@ import { LinearAdapter } from "./providers/linear-adapter";
 let mainWindow: BrowserWindow | null = null;
 let daemonClient: DaemonClient;
 let alertListener: AgentAlertListener | null = null;
+let controlPlane: RunningControlPlane | null = null;
 
 function isHttpUrl(url: string): boolean {
 	return url.startsWith("http://") || url.startsWith("https://");
@@ -232,6 +239,41 @@ app.whenReady().then(async () => {
 		setupLspIPC(mainWindow);
 	}
 
+	registerConfirmBridge(() => mainWindow);
+
+	try {
+		controlPlane = await startControlPlane({
+			confirm: (r) => requestConfirm(r),
+			spawnFn: defaultSpawnFn,
+		});
+
+		const baseEnv = {
+			mcpServerPath: getMcpServerPath(),
+			execPath: process.execPath,
+			port: controlPlane.port,
+			token: controlPlane.token,
+		};
+		setMcpEnvProvider((projectId) => ({ ...baseEnv, projectId }));
+
+		const rows = getDb()
+			.select({ path: schema.worktrees.path, projectId: schema.worktrees.projectId })
+			.from(schema.worktrees)
+			.all();
+		for (const r of rows) {
+			if (r.path && r.projectId && existsSync(r.path)) {
+				try {
+					writeWorkspaceMcpJson(r.path, { ...baseEnv, projectId: r.projectId });
+				} catch (err) {
+					log.warn("[mcp-config] rewrite failed:", err);
+				}
+			}
+		}
+
+		log.info(`[control-plane] listening on 127.0.0.1:${controlPlane.port}`);
+	} catch (err) {
+		log.error("[control-plane] failed to start:", err);
+	}
+
 	app.on("activate", () => {
 		if (BrowserWindow.getAllWindows().length === 0) {
 			createWindow();
@@ -342,6 +384,12 @@ app.on("before-quit", () => {
 	daemonClient.detachAll();
 	daemonClient.disconnect();
 	serverManager.disposeAll();
+	if (controlPlane) {
+		void controlPlane.stop().catch((err) => {
+			log.error("[control-plane] stop failed:", err);
+		});
+		controlPlane = null;
+	}
 });
 
 app.on("window-all-closed", () => {
