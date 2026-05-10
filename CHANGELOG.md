@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.7.2 (2026-05-10)
+
+### What's New
+
+SuperiorSwarm v0.7.2 is a performance and reliability release. Real-time filesystem watching now replaces 2-second polling across the diff panel, branch changes, committed stack, and review tab — the UI reacts instantly to file changes with no background polling overhead. MCP server configuration now merges safely with your existing settings instead of overwriting them, so custom entries are preserved. Large repositories no longer cause laggy behavior or file-descriptor exhaustion.
+
+### Changes
+
+- Laggy big repos fix (#102)
+- Mcpserver bug (#101)
+
 ## v0.7.1 (2026-05-07)
 
 ### What's New
