@@ -1,6 +1,7 @@
 import { useEffect, useMemo } from "react";
 import { detectLanguage } from "../../../shared/diff-types";
 import type { ReviewScope, ScopedDiffFile } from "../../../shared/review-types";
+import { useRepoSubscription } from "../../hooks/useRepoSubscription";
 import { buildWorkingFileList } from "../../lib/working-files";
 import { useReviewSessionStore } from "../../stores/review-session-store";
 import { useTabStore } from "../../stores/tab-store";
@@ -38,15 +39,17 @@ export function ReviewTab({
 	const setDiffMode = useTabStore((s) => s.setDiffMode);
 	const markdownPreviewMode = useTabStore((s) => s.markdownPreviewMode);
 
+	useRepoSubscription(repoPath);
+
 	const statusQuery = trpc.diff.getWorkingTreeStatus.useQuery(
 		{ repoPath },
-		{ refetchInterval: 2_000 }
+		{ staleTime: 30_000, refetchOnWindowFocus: true }
 	);
 	const currentBranch = statusQuery.data?.branch ?? "";
 
 	const branchQuery = trpc.diff.getBranchDiff.useQuery(
 		{ repoPath, baseBranch, headBranch: currentBranch },
-		{ refetchInterval: 2_000, enabled: !!currentBranch }
+		{ enabled: !!currentBranch, staleTime: 30_000 }
 	);
 
 	// Working list mirrors the sidebar (DraftCommitCard) exactly: same data source

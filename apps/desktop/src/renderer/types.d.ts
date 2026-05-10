@@ -3,6 +3,7 @@ import type {
 	DaemonAPI,
 	DialogAPI,
 	LspAPI,
+	RepoAPI,
 	SessionAPI,
 	SettingsAPI,
 	ShellAPI,
@@ -20,6 +21,7 @@ export interface ElectronAPI {
 	daemon: DaemonAPI;
 	agentAlert: AgentAlertAPI;
 	settings: SettingsAPI;
+	repo: RepoAPI;
 }
 
 declare global {

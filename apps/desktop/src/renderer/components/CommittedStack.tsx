@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { DiffContext, DiffFile } from "../../shared/diff-types";
 import { detectLanguage } from "../../shared/diff-types";
+import { useRepoSubscription } from "../hooks/useRepoSubscription";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 
@@ -131,9 +132,11 @@ export function CommittedStack({
 	diffCtx: DiffContext;
 	workspaceId: string;
 }) {
+	useRepoSubscription(repoPath);
+
 	const commitsQuery = trpc.diff.getCommitsAhead.useQuery(
 		{ repoPath, baseBranch },
-		{ refetchInterval: 2_000 }
+		{ staleTime: 30_000 }
 	);
 
 	const commits = commitsQuery.data ?? [];

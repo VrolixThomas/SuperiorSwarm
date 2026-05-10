@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import type { DiffFile } from "../../shared/diff-types";
+import { useRepoSubscription } from "../hooks/useRepoSubscription";
 import { useReviewSessionStore } from "../stores/review-session-store";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
@@ -55,9 +56,11 @@ export function BranchChanges({
 	const selectedFilePath = useReviewSessionStore((s) => s.activeSession?.selectedFilePath ?? null);
 	const scope = useReviewSessionStore((s) => s.activeSession?.scope ?? "all");
 
+	useRepoSubscription(repoPath);
+
 	const branchDiffQuery = trpc.diff.getBranchDiff.useQuery(
 		{ repoPath, baseBranch, headBranch: currentBranch },
-		{ refetchInterval: 2_000 }
+		{ staleTime: 30_000, refetchOnWindowFocus: true }
 	);
 
 	const files = branchDiffQuery.data?.files ?? [];

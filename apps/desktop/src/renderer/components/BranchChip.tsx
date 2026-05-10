@@ -1,3 +1,4 @@
+import { useRepoSubscription } from "../hooks/useRepoSubscription";
 import { useBranchStore } from "../stores/branch-store";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
@@ -6,9 +7,13 @@ export function BranchChip({ projectId }: { projectId: string }) {
 	const openPalette = useBranchStore((s) => s.openPalette);
 	const cwd = useTabStore((s) => s.activeWorkspaceCwd);
 
+	const projectsQuery = trpc.projects.list.useQuery(undefined, { staleTime: 60_000 });
+	const repoPath = projectsQuery.data?.find((p) => p.id === projectId)?.repoPath ?? null;
+	useRepoSubscription(repoPath);
+
 	const statusQuery = trpc.branches.getStatus.useQuery(
 		{ projectId, cwd: cwd || undefined },
-		{ refetchInterval: 2_000 }
+		{ staleTime: 30_000 }
 	);
 
 	const status = statusQuery.data;
