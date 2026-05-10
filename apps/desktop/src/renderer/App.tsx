@@ -8,6 +8,7 @@ import { AddRepositoryModal } from "./components/AddRepositoryModal";
 import { BranchActionMenu } from "./components/BranchActionMenu";
 import { BranchPalette } from "./components/BranchPalette";
 import { CommandPalette } from "./components/CommandPalette";
+import { ConfirmAgentActionModal } from "./components/ConfirmAgentActionModal";
 import { CreateWorktreeModal } from "./components/CreateWorktreeModal";
 import { DaemonStatus } from "./components/DaemonStatus";
 import { DiffPanel } from "./components/DiffPanel";
@@ -748,6 +749,7 @@ function AuthenticatedApp() {
 			)}
 			<UpdateToast />
 			<WhatsNewModal />
+			<ConfirmAgentActionModal />
 			{notification && (
 				<div
 					className={[
