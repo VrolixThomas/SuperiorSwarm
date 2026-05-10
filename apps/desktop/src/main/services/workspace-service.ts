@@ -300,8 +300,42 @@ export async function dispatchAgent(
 	return { sessionId, terminalId, status: "started" };
 }
 
-export async function defaultSpawnFn(_args: SpawnArgs): Promise<SpawnResult> {
-	throw new Error(
-		"defaultSpawnFn not implemented — call dispatchAgent with deps.spawnFn until the control plane wires the real spawn"
+export async function defaultSpawnFn(args: SpawnArgs): Promise<SpawnResult> {
+	const { mkdtempSync, writeFileSync, chmodSync } = await import("node:fs");
+	const { tmpdir } = await import("node:os");
+	const { join: joinPath } = await import("node:path");
+
+	const dir = mkdtempSync(joinPath(tmpdir(), "ss-dispatch-"));
+	const scriptPath = joinPath(dir, "launch.sh");
+	writeFileSync(scriptPath, args.launchScriptContent, "utf-8");
+	chmodSync(scriptPath, 0o755);
+
+	const sessionId = nanoid();
+	const terminalId = sessionId;
+
+	const daemon = getDaemonClient();
+	if (!daemon) throw new Error("Terminal daemon not available");
+
+	await daemon.create(
+		terminalId,
+		args.cwd,
+		() => {},
+		() => {}
 	);
+	daemon.write(terminalId, `bash '${scriptPath.replace(/'/g, "'\\''")}'\n`);
+
+	const db = getDb();
+	const now = new Date();
+	db.insert(terminalSessions)
+		.values({
+			id: sessionId,
+			workspaceId: args.workspaceId,
+			title: "Agent session",
+			cwd: args.cwd,
+			sortOrder: 999,
+			updatedAt: now,
+		})
+		.run();
+
+	return { sessionId, terminalId };
 }
