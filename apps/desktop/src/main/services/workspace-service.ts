@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { CLI_PRESETS } from "../ai-review/cli-presets";
+import { writeWorkspaceMcpJson, type WorkspaceMcpEnv } from "./mcp-config";
 import type {
 	CreateWorkspaceRequest,
 	CreateWorkspaceResponse,
@@ -27,6 +28,11 @@ function worktreeBasePath(repoPath: string): string {
 	const parent = dirname(repoPath);
 	const name = repoPath.split("/").pop() ?? "repo";
 	return join(parent, `${name}-worktrees`);
+}
+
+let mcpEnvProvider: (projectId: string) => WorkspaceMcpEnv | null = () => null;
+export function setMcpEnvProvider(fn: (projectId: string) => WorkspaceMcpEnv | null): void {
+	mcpEnvProvider = fn;
 }
 
 export async function createWorkspace(
@@ -84,6 +90,15 @@ export async function createWorkspace(
 			path,
 			sharedEntries.map((e) => ({ relativePath: e.relativePath, type: e.type }))
 		);
+	}
+
+	const env = mcpEnvProvider(input.projectId);
+	if (env) {
+		try {
+			writeWorkspaceMcpJson(path, env);
+		} catch (err) {
+			console.warn("[workspace-service] writeWorkspaceMcpJson failed:", err);
+		}
 	}
 
 	return {
