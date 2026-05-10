@@ -1,6 +1,6 @@
+import { randomUUID } from "node:crypto";
 import type { BrowserWindow } from "electron";
 import { ipcMain } from "electron";
-import { randomUUID } from "node:crypto";
 
 export interface ConfirmRequest {
 	kind: "dispatch" | "remove";

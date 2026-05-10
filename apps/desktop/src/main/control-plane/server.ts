@@ -1,4 +1,5 @@
 import { type IncomingMessage, type Server, type ServerResponse, createServer } from "node:http";
+import { randomUUID } from "node:crypto";
 import {
 	createWorkspaceRequestSchema,
 	dispatchAgentRequestSchema,
@@ -7,12 +8,12 @@ import {
 	removeWorkspaceRequestSchema,
 } from "../../shared/control-plane";
 import {
+	type SpawnFn,
 	createWorkspace,
 	dispatchAgent,
 	getWorkspace,
 	listWorkspaces,
 	removeWorkspace,
-	type SpawnFn,
 } from "../services/workspace-service";
 import { isValidBearer } from "./auth";
 
@@ -31,8 +32,17 @@ export interface ControlPlaneDeps {
 
 export function createControlPlaneServer(deps: ControlPlaneDeps): Server {
 	return createServer((req, res) => {
-		void handleRequest(req, res, deps).catch((err) => {
-			respond(res, 500, { error: "internal", message: String(err) });
+		const requestId = randomUUID();
+		const start = Date.now();
+		res.on("finish", () => {
+			const ms = Date.now() - start;
+			console.log(
+				`[control-plane] ${req.method ?? "GET"} ${req.url ?? "/"} ${res.statusCode} request_id=${requestId} latency=${ms}ms`
+			);
+		});
+		void handleRequest(req, res, deps, requestId).catch((err) => {
+			console.error(`[control-plane] unhandled error request_id=${requestId}:`, err);
+			respond(res, 500, requestId, { error: "internal" });
 		});
 	});
 }
@@ -50,14 +60,16 @@ function isLoopback(addr: string | undefined): boolean {
 async function handleRequest(
 	req: IncomingMessage,
 	res: ServerResponse,
-	deps: ControlPlaneDeps
+	deps: ControlPlaneDeps,
+	requestId: string
 ): Promise<void> {
 	if (!isLoopback(req.socket.remoteAddress)) {
-		respond(res, 401, { error: "unauthorized" });
+		respond(res, 401, requestId, { error: "unauthorized" });
 		return;
 	}
 	if (!isValidBearer(req.headers.authorization, deps.token)) {
-		respond(res, 401, { error: "unauthorized" });
+		console.warn(`[control-plane] unauthorized request request_id=${requestId}`);
+		respond(res, 401, requestId, { error: "unauthorized" });
 		return;
 	}
 
@@ -71,10 +83,10 @@ async function handleRequest(
 					projectId: url.searchParams.get("projectId"),
 				});
 				if (!parsed.success) {
-					respond(res, 400, { error: "validation", details: parsed.error.flatten() });
+					respond(res, 400, requestId, { error: "validation", details: parsed.error.flatten() });
 					return;
 				}
-				respond(res, 200, await listWorkspaces(parsed.data));
+				respond(res, 200, requestId, await listWorkspaces(parsed.data));
 				return;
 			}
 			case "GET /workspaces.get": {
@@ -83,27 +95,27 @@ async function handleRequest(
 					workspaceId: url.searchParams.get("workspaceId"),
 				});
 				if (!parsed.success) {
-					respond(res, 400, { error: "validation", details: parsed.error.flatten() });
+					respond(res, 400, requestId, { error: "validation", details: parsed.error.flatten() });
 					return;
 				}
-				respond(res, 200, await getWorkspace(parsed.data));
+				respond(res, 200, requestId, await getWorkspace(parsed.data));
 				return;
 			}
 			case "POST /workspaces.create": {
 				const body = await readJson(req);
 				const parsed = createWorkspaceRequestSchema.safeParse(body);
 				if (!parsed.success) {
-					respond(res, 400, { error: "validation", details: parsed.error.flatten() });
+					respond(res, 400, requestId, { error: "validation", details: parsed.error.flatten() });
 					return;
 				}
-				respond(res, 200, await createWorkspace(parsed.data));
+				respond(res, 200, requestId, await createWorkspace(parsed.data));
 				return;
 			}
 			case "POST /workspaces.dispatch": {
 				const body = await readJson(req);
 				const parsed = dispatchAgentRequestSchema.safeParse(body);
 				if (!parsed.success) {
-					respond(res, 400, { error: "validation", details: parsed.error.flatten() });
+					respond(res, 400, requestId, { error: "validation", details: parsed.error.flatten() });
 					return;
 				}
 				const ws = await getWorkspace({
@@ -117,18 +129,18 @@ async function handleRequest(
 					summary: `Run "${parsed.data.cliPreset ?? "claude"}" with prompt: ${parsed.data.prompt.slice(0, 200)}`,
 				});
 				if (!allowed) {
-					respond(res, 499, { error: "cancelled_by_user" });
+					respond(res, 499, requestId, { error: "cancelled_by_user" });
 					return;
 				}
 				const result = await dispatchAgent(parsed.data, { spawnFn: deps.spawnFn });
-				respond(res, 200, result);
+				respond(res, 200, requestId, result);
 				return;
 			}
 			case "POST /workspaces.remove": {
 				const body = await readJson(req);
 				const parsed = removeWorkspaceRequestSchema.safeParse(body);
 				if (!parsed.success) {
-					respond(res, 400, { error: "validation", details: parsed.error.flatten() });
+					respond(res, 400, requestId, { error: "validation", details: parsed.error.flatten() });
 					return;
 				}
 				const ws = await getWorkspace({
@@ -142,33 +154,39 @@ async function handleRequest(
 					summary: `Remove worktree for "${ws.name}"${parsed.data.force ? " (force)" : ""}`,
 				});
 				if (!allowed) {
-					respond(res, 499, { error: "cancelled_by_user" });
+					respond(res, 499, requestId, { error: "cancelled_by_user" });
 					return;
 				}
 				const result = await removeWorkspace(parsed.data);
-				respond(res, 200, result);
+				respond(res, 200, requestId, result);
 				return;
 			}
 			default:
-				respond(res, 404, { error: "not_found" });
+				respond(res, 404, requestId, { error: "not_found" });
 		}
 	} catch (err) {
-		const msg = String(err);
-		if (/forbidden/i.test(msg)) {
-			respond(res, 403, { error: "forbidden" });
+		const msg = err instanceof Error ? err.message : String(err);
+		if (/^forbidden(:|$)/i.test(msg)) {
+			respond(res, 403, requestId, { error: "forbidden" });
 			return;
 		}
-		if (/not_found/i.test(msg)) {
-			respond(res, 404, { error: "not_found", message: msg });
+		if (/^not_found(:|$)/i.test(msg)) {
+			respond(res, 404, requestId, { error: "not_found" });
 			return;
 		}
-		respond(res, 409, { error: "git_conflict", message: msg });
+		console.error(`[control-plane] internal error request_id=${requestId}:`, err);
+		respond(res, 500, requestId, { error: "internal" });
 	}
 }
 
-function respond(res: ServerResponse, status: number, body: unknown): void {
-	res.writeHead(status, { "Content-Type": "application/json" });
-	res.end(JSON.stringify(body));
+function respond(
+	res: ServerResponse,
+	status: number,
+	requestId: string,
+	body: Record<string, unknown>
+): void {
+	res.writeHead(status, { "Content-Type": "application/json", "X-Request-Id": requestId });
+	res.end(JSON.stringify({ ...body, request_id: requestId }));
 }
 
 async function readJson(req: IncomingMessage): Promise<unknown> {

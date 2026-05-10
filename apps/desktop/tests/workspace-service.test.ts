@@ -114,9 +114,9 @@ describe("getWorkspace", () => {
 	});
 
 	test("throws not_found for unknown id", async () => {
-		await expect(
-			getWorkspace({ projectId: PROJECT_ID, workspaceId: "missing" })
-		).rejects.toThrow(/not_found/);
+		await expect(getWorkspace({ projectId: PROJECT_ID, workspaceId: "missing" })).rejects.toThrow(
+			/not_found/
+		);
 	});
 
 	test("throws forbidden when projectId mismatches", async () => {

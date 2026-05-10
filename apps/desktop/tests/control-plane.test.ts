@@ -148,4 +148,41 @@ describe("control-plane HTTP", () => {
 		const body = (await dispatch.json()) as { status: string };
 		expect(body.status).toBe("started");
 	});
+
+	test("499 when confirm denies dispatch", async () => {
+		await server.stop();
+		server = await startControlPlane({
+			confirm: async () => false,
+			spawnFn: async () => ({ sessionId: "s", terminalId: "t" }),
+		});
+
+		const create = await fetch(url("/workspaces.create"), {
+			method: "POST",
+			headers: { ...auth(), "Content-Type": "application/json" },
+			body: JSON.stringify({ projectId: PROJECT_ID, branch: "feature/cp-deny" }),
+		});
+		const created = (await create.json()) as { workspaceId: string };
+
+		const dispatch = await fetch(url("/workspaces.dispatch"), {
+			method: "POST",
+			headers: { ...auth(), "Content-Type": "application/json" },
+			body: JSON.stringify({
+				projectId: PROJECT_ID,
+				workspaceId: created.workspaceId,
+				prompt: "x",
+				cliPreset: "claude",
+			}),
+		});
+		expect(dispatch.status).toBe(499);
+		const body = (await dispatch.json()) as { error: string };
+		expect(body.error).toBe("cancelled_by_user");
+	});
+
+	test("404 when workspaceId not found", async () => {
+		const get = await fetch(
+			url(`/workspaces.get?projectId=${PROJECT_ID}&workspaceId=does-not-exist`),
+			{ headers: auth() }
+		);
+		expect(get.status).toBe(404);
+	});
 });

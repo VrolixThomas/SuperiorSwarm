@@ -2,8 +2,6 @@ import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
-import { CLI_PRESETS } from "../ai-review/cli-presets";
-import { writeWorkspaceMcpJson, type WorkspaceMcpEnv } from "./mcp-config";
 import type {
 	CreateWorkspaceRequest,
 	CreateWorkspaceResponse,
@@ -17,12 +15,18 @@ import type {
 	RemoveWorkspaceResponse,
 	WorkspaceDto,
 } from "../../shared/control-plane";
+import { CLI_PRESETS } from "../ai-review/cli-presets";
 import { getDb } from "../db";
-import { reviewDrafts } from "../db/schema-ai-review";
 import { projects, sharedFiles, terminalSessions, workspaces, worktrees } from "../db/schema";
-import { createWorktree, hasUncommittedChanges, removeWorktree as gitRemoveWorktree } from "../git/operations";
-import { getDaemonClient } from "../terminal/daemon-instance";
+import { reviewDrafts } from "../db/schema-ai-review";
+import {
+	createWorktree,
+	removeWorktree as gitRemoveWorktree,
+	hasUncommittedChanges,
+} from "../git/operations";
 import { symlinkSharedFiles } from "../shared-files";
+import { getDaemonClient } from "../terminal/daemon-instance";
+import { type WorkspaceMcpEnv, writeWorkspaceMcpJson } from "./mcp-config";
 
 function worktreeBasePath(repoPath: string): string {
 	const parent = dirname(repoPath);
@@ -168,9 +172,7 @@ export async function listWorkspaces(
 	return { workspaces: rows.map(rowToDto) };
 }
 
-export async function getWorkspace(
-	input: GetWorkspaceRequest
-): Promise<GetWorkspaceResponse> {
+export async function getWorkspace(input: GetWorkspaceRequest): Promise<GetWorkspaceResponse> {
 	const db = getDb();
 	const row = db
 		.select(WORKSPACE_SELECT)
