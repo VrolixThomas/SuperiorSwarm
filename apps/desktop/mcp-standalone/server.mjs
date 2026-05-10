@@ -18,21 +18,42 @@ const QUICK_ACTION_SETUP = process.env.QUICK_ACTION_SETUP;
 const PROJECT_ID = process.env.PROJECT_ID;
 const isSolverMode = !!SOLVE_SESSION_ID;
 const isQuickActionMode = QUICK_ACTION_SETUP === "1";
+const SUPERIORSWARM_CONTROL_PORT = process.env.SUPERIORSWARM_CONTROL_PORT;
+const SUPERIORSWARM_CONTROL_TOKEN = process.env.SUPERIORSWARM_CONTROL_TOKEN;
+const isWorkspaceAgentMode = process.env.WORKSPACE_AGENT === "1";
 
-if (!isQuickActionMode && !isSolverMode && (!REVIEW_DRAFT_ID || !DB_PATH)) {
+if (
+	isWorkspaceAgentMode &&
+	(!PROJECT_ID || !SUPERIORSWARM_CONTROL_PORT || !SUPERIORSWARM_CONTROL_TOKEN)
+) {
+	console.error(
+		"WORKSPACE_AGENT mode requires PROJECT_ID, SUPERIORSWARM_CONTROL_PORT, SUPERIORSWARM_CONTROL_TOKEN"
+	);
+	process.exit(1);
+}
+
+if (
+	!isWorkspaceAgentMode &&
+	!isQuickActionMode &&
+	!isSolverMode &&
+	(!REVIEW_DRAFT_ID || !DB_PATH)
+) {
 	console.error("Missing required env vars: REVIEW_DRAFT_ID or SOLVE_SESSION_ID, and DB_PATH");
 	process.exit(1);
 }
-if ((isSolverMode || isQuickActionMode) && !DB_PATH) {
+if (!isWorkspaceAgentMode && (isSolverMode || isQuickActionMode) && !DB_PATH) {
 	console.error("Missing required env var: DB_PATH");
 	process.exit(1);
 }
 
 // Connect to SQLite with WAL mode and busy timeout for concurrent access
-const db = new Database(DB_PATH);
-db.pragma("journal_mode = WAL");
-db.pragma("busy_timeout = 5000");
-db.pragma("foreign_keys = ON");
+let db = null;
+if (!isWorkspaceAgentMode) {
+	db = new Database(DB_PATH);
+	db.pragma("journal_mode = WAL");
+	db.pragma("busy_timeout = 5000");
+	db.pragma("foreign_keys = ON");
+}
 
 const server = new McpServer({
 	name: "superiorswarm",
@@ -756,6 +777,118 @@ if (isQuickActionMode) {
 				content: [{ type: "text", text: JSON.stringify({ status: "removed", id }) }],
 			};
 		}
+	);
+}
+
+if (isWorkspaceAgentMode) {
+	const baseUrl = `http://127.0.0.1:${SUPERIORSWARM_CONTROL_PORT}`;
+	const authHeader = `Bearer ${SUPERIORSWARM_CONTROL_TOKEN}`;
+
+	async function call(method, path, body) {
+		try {
+			const res = await fetch(`${baseUrl}${path}`, {
+				method,
+				headers: {
+					Authorization: authHeader,
+					...(body ? { "Content-Type": "application/json" } : {}),
+				},
+				body: body ? JSON.stringify(body) : undefined,
+			});
+			const text = await res.text();
+			let parsed;
+			try {
+				parsed = text ? JSON.parse(text) : {};
+			} catch {
+				parsed = { raw: text };
+			}
+			if (!res.ok) {
+				return {
+					content: [{ type: "text", text: JSON.stringify({ status: res.status, ...parsed }) }],
+					isError: true,
+				};
+			}
+			return { content: [{ type: "text", text: JSON.stringify(parsed) }] };
+		} catch (err) {
+			return {
+				content: [
+					{
+						type: "text",
+						text: `control plane unreachable — is SuperiorSwarm running? (${err && err.message ? err.message : String(err)})`,
+					},
+				],
+				isError: true,
+			};
+		}
+	}
+
+	server.tool(
+		"create_worktree",
+		"Create a new app-managed worktree for a new branch. The new worktree gets its own .mcp.json so child agents inherit the same control plane.",
+		{
+			branch: z.string().describe("Branch name to create"),
+			base_branch: z
+				.string()
+				.optional()
+				.describe("Branch to fork from. Defaults to project default branch."),
+		},
+		async ({ branch, base_branch }) =>
+			call("POST", "/workspaces.create", {
+				projectId: PROJECT_ID,
+				branch,
+				baseBranch: base_branch,
+			})
+	);
+
+	server.tool(
+		"list_workspaces",
+		"List all workspaces (worktrees and review sessions) in the current project.",
+		{},
+		async () => call("GET", `/workspaces.list?projectId=${encodeURIComponent(PROJECT_ID)}`)
+	);
+
+	server.tool(
+		"get_workspace",
+		"Get details about a specific workspace, including whether it has uncommitted changes.",
+		{ workspace_id: z.string().describe("Workspace ID") },
+		async ({ workspace_id }) =>
+			call(
+				"GET",
+				`/workspaces.get?projectId=${encodeURIComponent(PROJECT_ID)}&workspaceId=${encodeURIComponent(workspace_id)}`
+			)
+	);
+
+	server.tool(
+		"dispatch_agent",
+		"Open a terminal in the target workspace and run the configured CLI agent with a prompt. User must approve via app modal.",
+		{
+			workspace_id: z.string().describe("Workspace ID to dispatch into"),
+			prompt: z.string().describe("Prompt to send to the CLI agent"),
+			cli_preset: z.enum(["claude", "codex", "gemini", "opencode"]).optional(),
+			skip_permissions: z.boolean().optional(),
+		},
+		async ({ workspace_id, prompt, cli_preset, skip_permissions }) =>
+			call("POST", "/workspaces.dispatch", {
+				projectId: PROJECT_ID,
+				workspaceId: workspace_id,
+				prompt,
+				cliPreset: cli_preset,
+				skipPermissions: skip_permissions,
+			})
+	);
+
+	server.tool(
+		"remove_worktree",
+		"Remove a worktree and its workspace. User must approve via app modal. Set force=true to bypass uncommitted-changes guard.",
+		{
+			workspace_id: z.string().describe("Workspace ID to remove"),
+			force: z.boolean().optional().describe("Bypass uncommitted-changes guard"),
+		},
+		async ({ workspace_id, force }) =>
+			call("POST", "/workspaces.remove", {
+				projectId: PROJECT_ID,
+				workspaceId: workspace_id,
+				force,
+			})
 	);
 }
 
