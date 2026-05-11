@@ -105,6 +105,7 @@ export const agentMessages = sqliteTable(
 		}).notNull(),
 		content: text("content").notNull(),
 		inReplyTo: text("in_reply_to"),
+		// ms precision: orchestrator polling reads "since X" with sub-second cutoffs
 		createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
 	},
 	(t) => [
