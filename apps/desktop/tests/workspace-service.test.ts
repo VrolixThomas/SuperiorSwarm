@@ -235,6 +235,24 @@ describe("dispatchAgent", () => {
 		expect(calls[0]?.cwd).toBe(created.path);
 		expect(calls[0]?.script).toContain("claude");
 		expect(calls[0]?.script).toContain("Refactor the foo module");
+
+		// NEW: workspace row should now have a cli_session_id and cli_preset=claude
+		const db = getDb();
+		const row = db
+			.select({
+				cliSessionId: schema.workspaces.cliSessionId,
+				cliPreset: schema.workspaces.cliPreset,
+			})
+			.from(schema.workspaces)
+			.where(eq(schema.workspaces.id, created.workspaceId))
+			.get();
+		expect(row?.cliPreset).toBe("claude");
+		expect(row?.cliSessionId).toBeTruthy();
+		expect(row?.cliSessionId).toMatch(/^[0-9a-f-]{36}$/);
+
+		// AND the launch script should embed --session-id
+		expect(calls[0]?.script).toContain("--session-id");
+		expect(calls[0]?.script).toContain(row?.cliSessionId ?? "");
 	});
 
 	test("forbidden across projects", async () => {

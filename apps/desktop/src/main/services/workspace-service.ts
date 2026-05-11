@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { randomUUID } from "node:crypto";
 import { and, desc, eq, gt, isNull, or } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import type {
@@ -298,10 +299,15 @@ function buildLaunchScript(opts: {
 	cliPreset: "claude" | "codex" | "gemini" | "opencode";
 	prompt: string;
 	skipPermissions: boolean;
+	cliSessionId: string | null;
 }): string {
 	const presetFlag = opts.skipPermissions ? CLI_PRESETS[opts.cliPreset]?.permissionFlag : undefined;
 	const flag = presetFlag ? `${presetFlag} ` : "";
-	const cmd = `${opts.cliPreset} ${flag}'${escapeShellSingleQuote(opts.prompt)}'`;
+	const sessionFlag =
+		opts.cliPreset === "claude" && opts.cliSessionId
+			? `--session-id '${escapeShellSingleQuote(opts.cliSessionId)}' --print `
+			: "";
+	const cmd = `${opts.cliPreset} ${sessionFlag}${flag}'${escapeShellSingleQuote(opts.prompt)}'`;
 	return ["#!/bin/bash", `cd '${escapeShellSingleQuote(opts.cwd)}'`, "", cmd, ""].join("\n");
 }
 
@@ -319,11 +325,32 @@ export async function dispatchAgent(
 	if (!wt) throw new Error("Worktree row missing");
 
 	const cliPreset = input.cliPreset ?? "claude";
+
+	// Mint or reuse a claude session id so resumeAgent can target it later
+	let cliSessionId: string | null = null;
+	if (cliPreset === "claude") {
+		const existing = db
+			.select({ cliSessionId: workspaces.cliSessionId })
+			.from(workspaces)
+			.where(eq(workspaces.id, input.workspaceId))
+			.get();
+		cliSessionId = existing?.cliSessionId ?? randomUUID();
+		db.update(workspaces)
+			.set({
+				cliSessionId,
+				cliPreset: "claude",
+				updatedAt: new Date(),
+			})
+			.where(eq(workspaces.id, input.workspaceId))
+			.run();
+	}
+
 	const launchScriptContent = buildLaunchScript({
 		cwd: wt.path,
 		cliPreset,
 		prompt: input.prompt,
 		skipPermissions: input.skipPermissions ?? false,
+		cliSessionId,
 	});
 
 	const spawnFn = deps.spawnFn ?? defaultSpawnFn;
