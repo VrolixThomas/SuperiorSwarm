@@ -12,6 +12,7 @@ import { initRepo } from "../src/main/git/operations";
 import {
 	createWorkspace,
 	readMessages,
+	resumeAgent,
 	sendMessage,
 	setOrchestrator,
 	setStatus,
@@ -166,5 +167,82 @@ describe("sendMessage / readMessages", () => {
 				{ toWorkspaceId: "ws-in-other-project", kind: "note", content: "x" }
 			)
 		).rejects.toThrow(/forbidden|not_found/i);
+	});
+});
+
+describe("resumeAgent", () => {
+	test("rejects non-orchestrator caller with forbidden", async () => {
+		const a = await createWorkspace({ projectId: PROJECT_ID, branch: "feature/r-a" });
+		const b = await createWorkspace({ projectId: PROJECT_ID, branch: "feature/r-b" });
+		// Neither is orchestrator
+		await expect(
+			resumeAgent(
+				{ workspaceId: a.workspaceId, projectId: PROJECT_ID },
+				{ workspaceId: b.workspaceId, message: "hi" },
+				{ writeToTerminal: async () => undefined }
+			)
+		).rejects.toThrow(/forbidden/i);
+	});
+
+	test("orchestrator can resume — writes message row + calls writeToTerminal", async () => {
+		const orch = await createWorkspace({
+			projectId: PROJECT_ID,
+			branch: "feature/orch-main",
+		});
+		const target = await createWorkspace({
+			projectId: PROJECT_ID,
+			branch: "feature/orch-tgt",
+		});
+		await setOrchestrator({ workspaceId: orch.workspaceId });
+		const db = getDb();
+		db.update(schema.workspaces)
+			.set({ cliSessionId: "uuid-target", cliPreset: "claude" })
+			.where(eq(schema.workspaces.id, target.workspaceId))
+			.run();
+
+		const calls: Array<{ command: string; cwd: string; workspaceId: string }> = [];
+		const result = await resumeAgent(
+			{ workspaceId: orch.workspaceId, projectId: PROJECT_ID },
+			{ workspaceId: target.workspaceId, message: "next task" },
+			{
+				writeToTerminal: async (args) => {
+					calls.push(args);
+				},
+			}
+		);
+		expect(result.ok).toBe(true);
+		expect(result.messageId).toBeTruthy();
+		expect(calls).toHaveLength(1);
+		expect(calls[0]?.command).toContain("claude --resume 'uuid-target'");
+		expect(calls[0]?.command).toContain("'next task'");
+
+		const messageRows = db
+			.select()
+			.from(schema.agentMessages)
+			.where(eq(schema.agentMessages.toWorkspaceId, target.workspaceId))
+			.all();
+		expect(messageRows).toHaveLength(1);
+		expect(messageRows[0]?.kind).toBe("resume");
+		expect(messageRows[0]?.content).toBe("next task");
+	});
+
+	test("orchestrator resuming non-claude target returns resume_not_supported", async () => {
+		const orch = await createWorkspace({
+			projectId: PROJECT_ID,
+			branch: "feature/r-no-claude-o",
+		});
+		const target = await createWorkspace({
+			projectId: PROJECT_ID,
+			branch: "feature/r-no-claude-t",
+		});
+		await setOrchestrator({ workspaceId: orch.workspaceId });
+
+		await expect(
+			resumeAgent(
+				{ workspaceId: orch.workspaceId, projectId: PROJECT_ID },
+				{ workspaceId: target.workspaceId, message: "x" },
+				{ writeToTerminal: async () => undefined }
+			)
+		).rejects.toThrow(/resume_not_supported/);
 	});
 });

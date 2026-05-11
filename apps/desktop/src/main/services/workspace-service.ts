@@ -16,6 +16,8 @@ import type {
 	ReadMessagesResponse,
 	RemoveWorkspaceRequest,
 	RemoveWorkspaceResponse,
+	ResumeAgentRequest,
+	ResumeAgentResponse,
 	SendMessageRequest,
 	SendMessageResponse,
 	SetStatusRequest,
@@ -529,4 +531,150 @@ export async function readMessages(
 		.all();
 
 	return { messages: rows.map(messageRowToDto) };
+}
+
+export interface WriteToTerminalArgs {
+	workspaceId: string;
+	command: string;
+	cwd: string;
+}
+export type WriteToTerminalFn = (args: WriteToTerminalArgs) => Promise<void>;
+
+export interface ResumeAgentDeps {
+	writeToTerminal?: WriteToTerminalFn;
+}
+
+function escapeShellSingleQuoteMsg(s: string): string {
+	return s.replace(/'/g, "'\\''");
+}
+
+export async function resumeAgent(
+	ctx: CallerContext,
+	input: ResumeAgentRequest,
+	deps: ResumeAgentDeps = {}
+): Promise<ResumeAgentResponse> {
+	const db = getDb();
+
+	// 1. Authorize: caller must be project orchestrator
+	const callerWs = db
+		.select({
+			projectId: workspaces.projectId,
+			isOrchestrator: workspaces.isOrchestrator,
+		})
+		.from(workspaces)
+		.where(eq(workspaces.id, ctx.workspaceId))
+		.get();
+	if (!callerWs) throw new Error(`not_found: ${ctx.workspaceId}`);
+	if (callerWs.projectId !== ctx.projectId) throw new Error("forbidden");
+	if (!callerWs.isOrchestrator) {
+		throw new Error("forbidden: caller is not the project orchestrator");
+	}
+
+	// 2. Look up target
+	const target = db
+		.select({
+			projectId: workspaces.projectId,
+			worktreeId: workspaces.worktreeId,
+			cliSessionId: workspaces.cliSessionId,
+			cliPreset: workspaces.cliPreset,
+		})
+		.from(workspaces)
+		.where(eq(workspaces.id, input.workspaceId))
+		.get();
+	if (!target) throw new Error(`not_found: ${input.workspaceId}`);
+	if (target.projectId !== ctx.projectId) throw new Error("forbidden");
+	if (target.cliPreset !== "claude" || !target.cliSessionId) {
+		throw new Error("resume_not_supported: workspace has no claude session");
+	}
+
+	// 3. Resolve worktree path (cwd)
+	const wt = target.worktreeId
+		? db
+				.select({ path: worktrees.path })
+				.from(worktrees)
+				.where(eq(worktrees.id, target.worktreeId))
+				.get()
+		: null;
+	if (!wt?.path) throw new Error(`not_found: worktree path for ${input.workspaceId}`);
+
+	// 4. Compose the resume command
+	const escSession = escapeShellSingleQuoteMsg(target.cliSessionId);
+	const escMsg = escapeShellSingleQuoteMsg(input.message);
+	const command = `claude --resume '${escSession}' --print '${escMsg}'\n`;
+
+	// 5. Insert agent_messages row (audit log)
+	const messageId = nanoid();
+	db.insert(agentMessages)
+		.values({
+			id: messageId,
+			projectId: ctx.projectId,
+			fromWorkspaceId: ctx.workspaceId,
+			toWorkspaceId: input.workspaceId,
+			kind: "resume",
+			content: input.message,
+			inReplyTo: null,
+			createdAt: new Date(),
+		})
+		.run();
+
+	// 6. Write to terminal (DI seam)
+	const writeFn = deps.writeToTerminal ?? defaultWriteToTerminal;
+	await writeFn({
+		workspaceId: input.workspaceId,
+		command,
+		cwd: wt.path,
+	});
+
+	// 7. Emit on bus
+	eventBus?.emit(ctx.projectId, {
+		event: "message",
+		messageId,
+		from: ctx.workspaceId,
+		to: input.workspaceId,
+		kind: "resume",
+		content: input.message,
+		ts: new Date().toISOString(),
+	});
+
+	return { ok: true, messageId };
+}
+
+export async function defaultWriteToTerminal(args: WriteToTerminalArgs): Promise<void> {
+	const daemon = getDaemonClient();
+	if (!daemon) throw new Error("Terminal daemon not available");
+
+	const db = getDb();
+	const existing = db
+		.select({ id: terminalSessions.id })
+		.from(terminalSessions)
+		.where(eq(terminalSessions.workspaceId, args.workspaceId))
+		.orderBy(desc(terminalSessions.updatedAt))
+		.limit(1)
+		.get();
+
+	if (existing) {
+		daemon.write(existing.id, args.command);
+		return;
+	}
+
+	// No existing terminal — broadcast a dispatch so the renderer opens a new tab.
+	const { mkdtempSync, writeFileSync, chmodSync } = await import("node:fs");
+	const { tmpdir } = await import("node:os");
+	const { join: joinPath } = await import("node:path");
+	const dir = mkdtempSync(joinPath(tmpdir(), "ss-resume-"));
+	const scriptPath = joinPath(dir, "resume.sh");
+	writeFileSync(
+		scriptPath,
+		["#!/bin/bash", `cd '${escapeShellSingleQuoteMsg(args.cwd)}'`, "", args.command, ""].join(
+			"\n"
+		),
+		"utf-8"
+	);
+	chmodSync(scriptPath, 0o755);
+	dispatchBroadcaster({
+		workspaceId: args.workspaceId,
+		cwd: args.cwd,
+		scriptPath,
+		title: "Agent session",
+	});
 }
