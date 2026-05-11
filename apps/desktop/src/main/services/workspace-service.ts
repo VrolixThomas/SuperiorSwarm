@@ -35,8 +35,11 @@ function worktreeBasePath(repoPath: string): string {
 	return join(parent, `${name}-worktrees`);
 }
 
-let mcpEnvProvider: (projectId: string) => WorkspaceMcpEnv | null = () => null;
-export function setMcpEnvProvider(fn: (projectId: string) => WorkspaceMcpEnv | null): void {
+let mcpEnvProvider: (workspaceId: string, projectId: string) => WorkspaceMcpEnv | null =
+	() => null;
+export function setMcpEnvProvider(
+	fn: (workspaceId: string, projectId: string) => WorkspaceMcpEnv | null
+): void {
 	mcpEnvProvider = fn;
 }
 
@@ -97,7 +100,7 @@ export async function createWorkspace(
 		);
 	}
 
-	const env = mcpEnvProvider(input.projectId);
+	const env = mcpEnvProvider(workspaceId, input.projectId);
 	if (env) {
 		try {
 			writeWorkspaceMcpJson(path, env);

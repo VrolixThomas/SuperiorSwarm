@@ -17,6 +17,7 @@ const ENV = {
 	mcpServerPath: "/app/server.mjs",
 	execPath: "/app/electron",
 	projectId: "proj-1",
+	workspaceId: "ws-1",
 	port: 51234,
 	token: "t".repeat(64),
 };
@@ -29,6 +30,7 @@ describe("writeWorkspaceMcpJson", () => {
 		expect(raw.mcpServers.superiorswarm.env.SUPERIORSWARM_CONTROL_PORT).toBe("51234");
 		expect(raw.mcpServers.superiorswarm.env.WORKSPACE_AGENT).toBe("1");
 		expect(raw.mcpServers.superiorswarm.env.PROJECT_ID).toBe("proj-1");
+		expect(raw.mcpServers.superiorswarm.env.WORKSPACE_ID).toBe("ws-1");
 	});
 
 	test("preserves user's other mcp servers, replaces only superiorswarm entry", () => {

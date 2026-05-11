@@ -254,16 +254,25 @@ app.whenReady().then(async () => {
 			port: controlPlane.port,
 			token: controlPlane.token,
 		};
-		setMcpEnvProvider((projectId) => ({ ...baseEnv, projectId }));
+		setMcpEnvProvider((workspaceId, projectId) => ({ ...baseEnv, workspaceId, projectId }));
 
 		const rows = getDb()
-			.select({ path: schema.worktrees.path, projectId: schema.worktrees.projectId })
+			.select({
+				path: schema.worktrees.path,
+				projectId: schema.worktrees.projectId,
+				workspaceId: schema.workspaces.id,
+			})
 			.from(schema.worktrees)
+			.leftJoin(schema.workspaces, eq(schema.workspaces.worktreeId, schema.worktrees.id))
 			.all();
 		for (const r of rows) {
-			if (r.path && r.projectId && existsSync(r.path)) {
+			if (r.path && r.projectId && r.workspaceId && existsSync(r.path)) {
 				try {
-					writeWorkspaceMcpJson(r.path, { ...baseEnv, projectId: r.projectId });
+					writeWorkspaceMcpJson(r.path, {
+						...baseEnv,
+						workspaceId: r.workspaceId,
+						projectId: r.projectId,
+					});
 				} catch (err) {
 					log.warn("[mcp-config] rewrite failed:", err);
 				}
