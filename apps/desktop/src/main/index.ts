@@ -265,6 +265,8 @@ app.whenReady().then(async () => {
 			.from(schema.worktrees)
 			.leftJoin(schema.workspaces, eq(schema.workspaces.worktreeId, schema.worktrees.id))
 			.all();
+		// Worktree rows without a workspace (e.g. partial creation crash) are skipped;
+		// they can't be addressed via WORKSPACE_ID and would receive a stale port/token.
 		for (const r of rows) {
 			if (r.path && r.projectId && r.workspaceId && existsSync(r.path)) {
 				try {

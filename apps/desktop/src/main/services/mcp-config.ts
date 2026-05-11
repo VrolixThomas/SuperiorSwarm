@@ -1,8 +1,5 @@
-import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { mergeKey } from "../ai-review/mcp-config-merge";
-import { getDb } from "../db";
-import { worktrees } from "../db/schema";
 
 export interface WorkspaceMcpEnv {
 	mcpServerPath: string;
@@ -33,14 +30,3 @@ export function writeWorkspaceMcpJson(worktreePath: string, env: WorkspaceMcpEnv
 	mergeKey(file, ["mcpServers", "superiorswarm"], buildEntry(env));
 }
 
-export function rewriteAllWorkspaceMcpJsons(env: WorkspaceMcpEnv): void {
-	const db = getDb();
-	const all = db.select({ path: worktrees.path }).from(worktrees).all();
-	for (const row of all) {
-		try {
-			if (existsSync(row.path)) writeWorkspaceMcpJson(row.path, env);
-		} catch {
-			// best-effort
-		}
-	}
-}
