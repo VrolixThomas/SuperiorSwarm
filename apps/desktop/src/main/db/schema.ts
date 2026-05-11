@@ -100,7 +100,7 @@ export const agentMessages = sqliteTable(
 			.notNull()
 			.references(() => workspaces.id, { onDelete: "cascade" }),
 		toWorkspaceId: text("to_workspace_id").references(() => workspaces.id, {
-			onDelete: "cascade",
+			onDelete: "set null",
 		}),
 		kind: text("kind", {
 			enum: ["resume", "note", "question", "answer", "broadcast"],

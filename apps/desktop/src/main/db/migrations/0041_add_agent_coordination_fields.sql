@@ -9,7 +9,7 @@ CREATE TABLE `agent_messages` (
 	`created_at` integer NOT NULL,
 	FOREIGN KEY (`project_id`) REFERENCES `projects`(`id`) ON UPDATE no action ON DELETE cascade,
 	FOREIGN KEY (`from_workspace_id`) REFERENCES `workspaces`(`id`) ON UPDATE no action ON DELETE cascade,
-	FOREIGN KEY (`to_workspace_id`) REFERENCES `workspaces`(`id`) ON UPDATE no action ON DELETE cascade
+	FOREIGN KEY (`to_workspace_id`) REFERENCES `workspaces`(`id`) ON UPDATE no action ON DELETE set null
 );
 --> statement-breakpoint
 CREATE INDEX `agent_messages_to_idx` ON `agent_messages` (`to_workspace_id`,`created_at`);--> statement-breakpoint
