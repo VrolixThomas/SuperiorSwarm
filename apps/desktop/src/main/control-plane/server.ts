@@ -1,8 +1,6 @@
-import { type IncomingMessage, type Server, type ServerResponse, createServer } from "node:http";
 import { randomUUID } from "node:crypto";
+import { type IncomingMessage, type Server, type ServerResponse, createServer } from "node:http";
 import { eq } from "drizzle-orm";
-import { getDb } from "../db";
-import { workspaces } from "../db/schema";
 import {
 	createWorkspaceRequestSchema,
 	dispatchAgentRequestSchema,
@@ -10,7 +8,10 @@ import {
 	listWorkspacesRequestSchema,
 	removeWorkspaceRequestSchema,
 } from "../../shared/control-plane";
+import { getDb } from "../db";
+import { workspaces } from "../db/schema";
 import {
+	type CallerContext,
 	type SpawnFn,
 	createWorkspace,
 	dispatchAgent,
@@ -31,11 +32,6 @@ export interface ControlPlaneDeps {
 	token: string;
 	confirm: ConfirmFn;
 	spawnFn: SpawnFn;
-}
-
-export interface CallerContext {
-	workspaceId: string;
-	projectId: string;
 }
 
 async function resolveCaller(
