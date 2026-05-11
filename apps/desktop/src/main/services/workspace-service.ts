@@ -13,6 +13,8 @@ import type {
 	ListWorkspacesResponse,
 	RemoveWorkspaceRequest,
 	RemoveWorkspaceResponse,
+	SetStatusRequest,
+	SetStatusResponse,
 	WorkspaceDto,
 	WorkspacePhase,
 } from "../../shared/control-plane";
@@ -360,4 +362,61 @@ export async function defaultSpawnFn(args: SpawnArgs): Promise<SpawnResult> {
 	});
 
 	return { sessionId, terminalId };
+}
+
+export interface CallerContext {
+	workspaceId: string;
+	projectId: string;
+}
+
+export async function setStatus(
+	ctx: CallerContext,
+	input: SetStatusRequest
+): Promise<SetStatusResponse> {
+	const db = getDb();
+	const ws = db
+		.select({ projectId: workspaces.projectId })
+		.from(workspaces)
+		.where(eq(workspaces.id, ctx.workspaceId))
+		.get();
+	if (!ws) throw new Error(`not_found: ${ctx.workspaceId}`);
+	if (ws.projectId !== ctx.projectId) throw new Error("forbidden");
+
+	const now = new Date();
+	db.update(workspaces)
+		.set({
+			currentPhase: input.phase,
+			statusText: input.statusText ?? null,
+			needs: input.needs ?? null,
+			statusUpdatedAt: now,
+			updatedAt: now,
+		})
+		.where(eq(workspaces.id, ctx.workspaceId))
+		.run();
+
+	return { ok: true };
+}
+
+export async function setOrchestrator(input: { workspaceId: string }): Promise<{ ok: true }> {
+	const db = getDb();
+	const ws = db
+		.select({ projectId: workspaces.projectId })
+		.from(workspaces)
+		.where(eq(workspaces.id, input.workspaceId))
+		.get();
+	if (!ws) throw new Error(`not_found: ${input.workspaceId}`);
+
+	const now = new Date();
+	db.transaction((tx) => {
+		tx.update(workspaces)
+			.set({ isOrchestrator: false, updatedAt: now })
+			.where(eq(workspaces.projectId, ws.projectId))
+			.run();
+		tx.update(workspaces)
+			.set({ isOrchestrator: true, updatedAt: now })
+			.where(eq(workspaces.id, input.workspaceId))
+			.run();
+	});
+
+	return { ok: true };
 }
