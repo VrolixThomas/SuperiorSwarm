@@ -408,6 +408,7 @@ app.on("before-quit", () => {
 			log.error("[control-plane] stop failed:", err);
 		});
 		controlPlane = null;
+		setEventBus(null);
 	}
 });
 

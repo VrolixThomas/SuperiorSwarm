@@ -1,7 +1,9 @@
+import type { AgentMessageDto, WorkspacePhase } from "../../shared/control-plane";
+
 export interface StatusEvent {
 	event: "status";
 	workspaceId: string;
-	phase: string;
+	phase: WorkspacePhase;
 	statusText: string | null;
 	needs: string | null;
 	ts: string;
@@ -12,7 +14,7 @@ export interface MessageEvent {
 	messageId: string;
 	from: string;
 	to: string | null;
-	kind: string;
+	kind: AgentMessageDto["kind"];
 	content: string;
 	ts: string;
 }
