@@ -228,17 +228,17 @@ async function handleRequest(
 			}
 
 			case "GET /workspaces.read_messages": {
-				const caller = await resolveCaller(req, url.searchParams.get("projectId"));
-				if ("error" in caller) {
-					respond(res, 401, requestId, { error: "unauthorized" });
-					return;
-				}
 				const parsed = readMessagesRequestSchema.safeParse({
 					since: url.searchParams.get("since") ?? undefined,
 					includeBroadcasts: url.searchParams.get("includeBroadcasts") === "false" ? false : true,
 				});
 				if (!parsed.success) {
 					respond(res, 400, requestId, { error: "validation", details: parsed.error.flatten() });
+					return;
+				}
+				const caller = await resolveCaller(req, url.searchParams.get("projectId"));
+				if ("error" in caller) {
+					respond(res, 401, requestId, { error: "unauthorized" });
 					return;
 				}
 				respond(res, 200, requestId, await readMessages(caller, parsed.data));

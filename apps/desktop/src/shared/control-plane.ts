@@ -113,6 +113,7 @@ export interface ControlPlaneError {
 		| "not_found"
 		| "git_conflict"
 		| "cancelled_by_user"
+		| "resume_not_supported"
 		| "internal";
 	message?: string;
 	details?: unknown;
