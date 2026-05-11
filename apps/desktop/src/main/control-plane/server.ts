@@ -6,7 +6,11 @@ import {
 	dispatchAgentRequestSchema,
 	getWorkspaceRequestSchema,
 	listWorkspacesRequestSchema,
+	readMessagesRequestSchema,
 	removeWorkspaceRequestSchema,
+	resumeAgentRequestSchema,
+	sendMessageRequestSchema,
+	setStatusRequestSchema,
 } from "../../shared/control-plane";
 import { getDb } from "../db";
 import { workspaces } from "../db/schema";
@@ -17,7 +21,11 @@ import {
 	dispatchAgent,
 	getWorkspace,
 	listWorkspaces,
+	readMessages,
 	removeWorkspace,
+	resumeAgent,
+	sendMessage,
+	setStatus,
 } from "../services/workspace-service";
 import { isValidBearer } from "./auth";
 import { EventBus } from "./event-bus";
@@ -187,6 +195,72 @@ async function handleRequest(
 				respond(res, 200, requestId, result);
 				return;
 			}
+			case "POST /workspaces.set_status": {
+				const body = await readJson(req);
+				const parsed = setStatusRequestSchema.safeParse(body);
+				if (!parsed.success) {
+					respond(res, 400, requestId, { error: "validation", details: parsed.error.flatten() });
+					return;
+				}
+				const caller = await resolveCaller(req, null);
+				if ("error" in caller) {
+					respond(res, 401, requestId, { error: "unauthorized" });
+					return;
+				}
+				respond(res, 200, requestId, await setStatus(caller, parsed.data));
+				return;
+			}
+
+			case "POST /workspaces.send_message": {
+				const body = await readJson(req);
+				const parsed = sendMessageRequestSchema.safeParse(body);
+				if (!parsed.success) {
+					respond(res, 400, requestId, { error: "validation", details: parsed.error.flatten() });
+					return;
+				}
+				const caller = await resolveCaller(req, null);
+				if ("error" in caller) {
+					respond(res, 401, requestId, { error: "unauthorized" });
+					return;
+				}
+				respond(res, 200, requestId, await sendMessage(caller, parsed.data));
+				return;
+			}
+
+			case "GET /workspaces.read_messages": {
+				const caller = await resolveCaller(req, url.searchParams.get("projectId"));
+				if ("error" in caller) {
+					respond(res, 401, requestId, { error: "unauthorized" });
+					return;
+				}
+				const parsed = readMessagesRequestSchema.safeParse({
+					since: url.searchParams.get("since") ?? undefined,
+					includeBroadcasts: url.searchParams.get("includeBroadcasts") === "false" ? false : true,
+				});
+				if (!parsed.success) {
+					respond(res, 400, requestId, { error: "validation", details: parsed.error.flatten() });
+					return;
+				}
+				respond(res, 200, requestId, await readMessages(caller, parsed.data));
+				return;
+			}
+
+			case "POST /workspaces.resume_agent": {
+				const body = await readJson(req);
+				const parsed = resumeAgentRequestSchema.safeParse(body);
+				if (!parsed.success) {
+					respond(res, 400, requestId, { error: "validation", details: parsed.error.flatten() });
+					return;
+				}
+				const caller = await resolveCaller(req, null);
+				if ("error" in caller) {
+					respond(res, 401, requestId, { error: "unauthorized" });
+					return;
+				}
+				respond(res, 200, requestId, await resumeAgent(caller, parsed.data));
+				return;
+			}
+
 			case "GET /workspaces.watch": {
 				const caller = await resolveCaller(req, url.searchParams.get("projectId"));
 				if ("error" in caller) {
@@ -222,6 +296,10 @@ async function handleRequest(
 		}
 	} catch (err) {
 		const msg = err instanceof Error ? err.message : String(err);
+		if (/^resume_not_supported(:|$)/i.test(msg)) {
+			respond(res, 409, requestId, { error: "resume_not_supported" });
+			return;
+		}
 		if (/^forbidden(:|$)/i.test(msg)) {
 			respond(res, 403, requestId, { error: "forbidden" });
 			return;

@@ -56,6 +56,10 @@ afterEach(async () => {
 
 const url = (p: string) => `http://127.0.0.1:${server.port}${p}`;
 const auth = () => ({ Authorization: `Bearer ${server.token}` });
+const authWs = (wsId: string) => ({
+	Authorization: `Bearer ${server.token}`,
+	"X-Workspace-Id": wsId,
+});
 
 describe("control-plane HTTP", () => {
 	test("rejects missing token with 401", async () => {
@@ -184,5 +188,103 @@ describe("control-plane HTTP", () => {
 			{ headers: auth() }
 		);
 		expect(get.status).toBe(404);
+	});
+});
+
+describe("control-plane coordination routes", () => {
+	test("set_status updates the row", async () => {
+		const create = await fetch(url("/workspaces.create"), {
+			method: "POST",
+			headers: { ...auth(), "Content-Type": "application/json" },
+			body: JSON.stringify({ projectId: PROJECT_ID, branch: "feature/cp-s1" }),
+		});
+		const { workspaceId } = (await create.json()) as { workspaceId: string };
+
+		const res = await fetch(url("/workspaces.set_status"), {
+			method: "POST",
+			headers: { ...authWs(workspaceId), "Content-Type": "application/json" },
+			body: JSON.stringify({
+				phase: "blocked",
+				statusText: "waiting on review",
+				needs: "approval",
+			}),
+		});
+		expect(res.status).toBe(200);
+
+		const get = await fetch(
+			url(`/workspaces.get?projectId=${PROJECT_ID}&workspaceId=${workspaceId}`),
+			{ headers: auth() }
+		);
+		const body = (await get.json()) as {
+			currentPhase: string;
+			statusText: string;
+			needs: string;
+		};
+		expect(body.currentPhase).toBe("blocked");
+		expect(body.statusText).toBe("waiting on review");
+		expect(body.needs).toBe("approval");
+	});
+
+	test("set_status without X-Workspace-Id returns 401", async () => {
+		const res = await fetch(url("/workspaces.set_status"), {
+			method: "POST",
+			headers: { ...auth(), "Content-Type": "application/json" },
+			body: JSON.stringify({ phase: "working" }),
+		});
+		expect(res.status).toBe(401);
+	});
+
+	test("send_message + read_messages round-trip", async () => {
+		const a = await fetch(url("/workspaces.create"), {
+			method: "POST",
+			headers: { ...auth(), "Content-Type": "application/json" },
+			body: JSON.stringify({ projectId: PROJECT_ID, branch: "feature/cp-m-a" }),
+		});
+		const wsA = ((await a.json()) as { workspaceId: string }).workspaceId;
+		const b = await fetch(url("/workspaces.create"), {
+			method: "POST",
+			headers: { ...auth(), "Content-Type": "application/json" },
+			body: JSON.stringify({ projectId: PROJECT_ID, branch: "feature/cp-m-b" }),
+		});
+		const wsB = ((await b.json()) as { workspaceId: string }).workspaceId;
+
+		const send = await fetch(url("/workspaces.send_message"), {
+			method: "POST",
+			headers: { ...authWs(wsA), "Content-Type": "application/json" },
+			body: JSON.stringify({
+				toWorkspaceId: wsB,
+				kind: "note",
+				content: "hello from A",
+			}),
+		});
+		expect(send.status).toBe(200);
+
+		const read = await fetch(url(`/workspaces.read_messages?projectId=${PROJECT_ID}`), {
+			headers: authWs(wsB),
+		});
+		const body = (await read.json()) as { messages: Array<{ content: string }> };
+		expect(body.messages.map((m) => m.content)).toContain("hello from A");
+	});
+
+	test("resume_agent returns 403 for non-orchestrator caller", async () => {
+		const a = await fetch(url("/workspaces.create"), {
+			method: "POST",
+			headers: { ...auth(), "Content-Type": "application/json" },
+			body: JSON.stringify({ projectId: PROJECT_ID, branch: "feature/cp-r-403" }),
+		});
+		const wsA = ((await a.json()) as { workspaceId: string }).workspaceId;
+		const b = await fetch(url("/workspaces.create"), {
+			method: "POST",
+			headers: { ...auth(), "Content-Type": "application/json" },
+			body: JSON.stringify({ projectId: PROJECT_ID, branch: "feature/cp-r-403b" }),
+		});
+		const wsB = ((await b.json()) as { workspaceId: string }).workspaceId;
+
+		const res = await fetch(url("/workspaces.resume_agent"), {
+			method: "POST",
+			headers: { ...authWs(wsA), "Content-Type": "application/json" },
+			body: JSON.stringify({ workspaceId: wsB, message: "go" }),
+		});
+		expect(res.status).toBe(403);
 	});
 });
