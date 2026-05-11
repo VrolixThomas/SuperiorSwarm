@@ -602,7 +602,15 @@ export async function resumeAgent(
 	const escMsg = escapeShellSingleQuoteMsg(input.message);
 	const command = `claude --resume '${escSession}' --print '${escMsg}'\n`;
 
-	// 5. Insert agent_messages row (audit log)
+	// 5. Write to terminal first — if this fails, no audit row + no event
+	const writeFn = deps.writeToTerminal ?? defaultWriteToTerminal;
+	await writeFn({
+		workspaceId: input.workspaceId,
+		command,
+		cwd: wt.path,
+	});
+
+	// 6. Insert agent_messages row (audit log)
 	const messageId = nanoid();
 	db.insert(agentMessages)
 		.values({
@@ -616,14 +624,6 @@ export async function resumeAgent(
 			createdAt: new Date(),
 		})
 		.run();
-
-	// 6. Write to terminal (DI seam)
-	const writeFn = deps.writeToTerminal ?? defaultWriteToTerminal;
-	await writeFn({
-		workspaceId: input.workspaceId,
-		command,
-		cwd: wt.path,
-	});
 
 	// 7. Emit on bus
 	eventBus?.emit(ctx.projectId, {
