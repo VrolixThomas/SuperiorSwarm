@@ -14,6 +14,7 @@ import type {
 	RemoveWorkspaceRequest,
 	RemoveWorkspaceResponse,
 	WorkspaceDto,
+	WorkspacePhase,
 } from "../../shared/control-plane";
 import { CLI_PRESETS } from "../ai-review/cli-presets";
 import { getDb } from "../db";
@@ -127,7 +128,7 @@ type WorkspaceRow = {
 	prProvider: string | null;
 	prIdentifier: string | null;
 	draftStatus: string | null;
-	currentPhase: "idle" | "working" | "blocked" | "done";
+	currentPhase: WorkspacePhase;
 	statusText: string | null;
 	needs: string | null;
 	statusUpdatedAt: Date | null;

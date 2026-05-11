@@ -36,6 +36,22 @@ export const removeWorkspaceRequestSchema = z.object({
 });
 export type RemoveWorkspaceRequest = z.infer<typeof removeWorkspaceRequestSchema>;
 
+// ---- Status ----
+
+export const phaseSchema = z.enum(["idle", "working", "blocked", "done"]);
+export type WorkspacePhase = z.infer<typeof phaseSchema>;
+
+export const setStatusRequestSchema = z.object({
+	phase: phaseSchema,
+	statusText: z.string().max(2000).optional(),
+	needs: z.string().max(2000).optional(),
+});
+export type SetStatusRequest = z.infer<typeof setStatusRequestSchema>;
+
+export interface SetStatusResponse {
+	ok: true;
+}
+
 // ---- Response DTOs ----
 
 export interface WorkspaceDto {
@@ -111,28 +127,13 @@ export class CancelledByUserError extends Error {
 	}
 }
 
-// ---- Status ----
-
-export const phaseSchema = z.enum(["idle", "working", "blocked", "done"]);
-export type WorkspacePhase = z.infer<typeof phaseSchema>;
-
-export const setStatusRequestSchema = z.object({
-	phase: phaseSchema,
-	statusText: z.string().max(2000).optional(),
-	needs: z.string().max(2000).optional(),
-});
-export type SetStatusRequest = z.infer<typeof setStatusRequestSchema>;
-
-export interface SetStatusResponse {
-	ok: true;
-}
-
 // ---- Messages ----
 
 export const messageKindSchema = z.enum(["note", "question", "answer"]);
 export type MessageKindInput = z.infer<typeof messageKindSchema>;
 
 export const sendMessageRequestSchema = z.object({
+	// omit to broadcast to all workspaces in the project
 	toWorkspaceId: z.string().min(1).optional(),
 	kind: messageKindSchema,
 	content: z.string().min(1).max(8192),
