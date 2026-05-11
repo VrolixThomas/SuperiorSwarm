@@ -20,6 +20,7 @@ import {
 	removeWorkspace,
 } from "../services/workspace-service";
 import { isValidBearer } from "./auth";
+import { EventBus } from "./event-bus";
 
 export type ConfirmFn = (req: {
 	kind: "dispatch" | "remove";
@@ -32,6 +33,7 @@ export interface ControlPlaneDeps {
 	token: string;
 	confirm: ConfirmFn;
 	spawnFn: SpawnFn;
+	eventBus: EventBus;
 }
 
 async function resolveCaller(
@@ -184,6 +186,36 @@ async function handleRequest(
 				const result = await removeWorkspace(parsed.data);
 				respond(res, 200, requestId, result);
 				return;
+			}
+			case "GET /workspaces.watch": {
+				const caller = await resolveCaller(req, url.searchParams.get("projectId"));
+				if ("error" in caller) {
+					respond(res, 401, requestId, { error: "unauthorized" });
+					return;
+				}
+
+				res.writeHead(200, {
+					"Content-Type": "text/event-stream",
+					"Cache-Control": "no-cache",
+					Connection: "keep-alive",
+				});
+
+				const unsubscribe = deps.eventBus.subscribe(caller.projectId, (ev) => {
+					res.write(`data: ${JSON.stringify(ev)}\n\n`);
+				});
+
+				const heartbeat = setInterval(() => {
+					res.write(
+						`data: ${JSON.stringify({ event: "heartbeat", ts: new Date().toISOString() })}\n\n`
+					);
+				}, 30_000);
+
+				req.on("close", () => {
+					clearInterval(heartbeat);
+					unsubscribe();
+				});
+
+				return; // do NOT call respond — connection stays open
 			}
 			default:
 				respond(res, 404, requestId, { error: "not_found" });

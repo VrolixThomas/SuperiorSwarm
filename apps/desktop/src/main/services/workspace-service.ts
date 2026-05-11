@@ -34,6 +34,7 @@ import {
 } from "../git/operations";
 import { symlinkSharedFiles } from "../shared-files";
 import { getDaemonClient } from "../terminal/daemon-instance";
+import type { EventBus } from "../control-plane/event-bus";
 import { type WorkspaceMcpEnv, writeWorkspaceMcpJson } from "./mcp-config";
 
 function worktreeBasePath(repoPath: string): string {
@@ -47,6 +48,11 @@ export function setMcpEnvProvider(
 	fn: (workspaceId: string, projectId: string) => WorkspaceMcpEnv | null
 ): void {
 	mcpEnvProvider = fn;
+}
+
+let eventBus: EventBus | null = null;
+export function setEventBus(bus: EventBus | null): void {
+	eventBus = bus;
 }
 
 export async function createWorkspace(
@@ -398,6 +404,15 @@ export async function setStatus(
 		.where(eq(workspaces.id, ctx.workspaceId))
 		.run();
 
+	eventBus?.emit(ctx.projectId, {
+		event: "status",
+		workspaceId: ctx.workspaceId,
+		phase: input.phase,
+		statusText: input.statusText ?? null,
+		needs: input.needs ?? null,
+		ts: now.toISOString(),
+	});
+
 	return { ok: true };
 }
 
@@ -468,6 +483,16 @@ export async function sendMessage(
 			createdAt: new Date(),
 		})
 		.run();
+
+	eventBus?.emit(ctx.projectId, {
+		event: "message",
+		messageId,
+		from: ctx.workspaceId,
+		to: input.toWorkspaceId ?? null,
+		kind: input.kind,
+		content: input.content,
+		ts: new Date().toISOString(),
+	});
 
 	return { messageId };
 }
