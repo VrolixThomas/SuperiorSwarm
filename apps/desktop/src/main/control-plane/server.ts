@@ -1,5 +1,8 @@
 import { type IncomingMessage, type Server, type ServerResponse, createServer } from "node:http";
 import { randomUUID } from "node:crypto";
+import { eq } from "drizzle-orm";
+import { getDb } from "../db";
+import { workspaces } from "../db/schema";
 import {
 	createWorkspaceRequestSchema,
 	dispatchAgentRequestSchema,
@@ -28,6 +31,31 @@ export interface ControlPlaneDeps {
 	token: string;
 	confirm: ConfirmFn;
 	spawnFn: SpawnFn;
+}
+
+export interface CallerContext {
+	workspaceId: string;
+	projectId: string;
+}
+
+async function resolveCaller(
+	req: IncomingMessage,
+	projectIdHint: string | null
+): Promise<CallerContext | { error: string }> {
+	const wsId = req.headers["x-workspace-id"];
+	if (typeof wsId !== "string" || wsId.length === 0) {
+		return { error: "missing X-Workspace-Id header" };
+	}
+	const row = getDb()
+		.select({ projectId: workspaces.projectId })
+		.from(workspaces)
+		.where(eq(workspaces.id, wsId))
+		.get();
+	if (!row) return { error: "unknown workspace" };
+	if (projectIdHint && row.projectId !== projectIdHint) {
+		return { error: "workspace/project mismatch" };
+	}
+	return { workspaceId: wsId, projectId: row.projectId };
 }
 
 export function createControlPlaneServer(deps: ControlPlaneDeps): Server {
