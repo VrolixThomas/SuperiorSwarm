@@ -127,6 +127,12 @@ type WorkspaceRow = {
 	prProvider: string | null;
 	prIdentifier: string | null;
 	draftStatus: string | null;
+	currentPhase: "idle" | "working" | "blocked" | "done";
+	statusText: string | null;
+	needs: string | null;
+	statusUpdatedAt: Date | null;
+	isOrchestrator: boolean;
+	cliPreset: string | null;
 };
 
 function rowToDto(row: WorkspaceRow): WorkspaceDto {
@@ -141,6 +147,12 @@ function rowToDto(row: WorkspaceRow): WorkspaceDto {
 		prProvider: row.prProvider,
 		prIdentifier: row.prIdentifier,
 		draftStatus: row.draftStatus,
+		currentPhase: row.currentPhase,
+		statusText: row.statusText,
+		needs: row.needs,
+		statusUpdatedAt: row.statusUpdatedAt ? row.statusUpdatedAt.toISOString() : null,
+		isOrchestrator: row.isOrchestrator,
+		cliPreset: row.cliPreset,
 	};
 }
 
@@ -155,6 +167,12 @@ const WORKSPACE_SELECT = {
 	prProvider: workspaces.prProvider,
 	prIdentifier: workspaces.prIdentifier,
 	draftStatus: reviewDrafts.status,
+	currentPhase: workspaces.currentPhase,
+	statusText: workspaces.statusText,
+	needs: workspaces.needs,
+	statusUpdatedAt: workspaces.statusUpdatedAt,
+	isOrchestrator: workspaces.isOrchestrator,
+	cliPreset: workspaces.cliPreset,
 } as const;
 
 export async function listWorkspaces(
