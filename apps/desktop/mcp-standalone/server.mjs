@@ -16,6 +16,7 @@ const SOLVE_SESSION_ID = process.env.SOLVE_SESSION_ID;
 const WORKTREE_PATH = process.env.WORKTREE_PATH;
 const QUICK_ACTION_SETUP = process.env.QUICK_ACTION_SETUP;
 const PROJECT_ID = process.env.PROJECT_ID;
+const WORKSPACE_ID = process.env.WORKSPACE_ID;
 const isSolverMode = !!SOLVE_SESSION_ID;
 const isQuickActionMode = QUICK_ACTION_SETUP === "1";
 const SUPERIORSWARM_CONTROL_PORT = process.env.SUPERIORSWARM_CONTROL_PORT;
@@ -24,10 +25,10 @@ const isWorkspaceAgentMode = process.env.WORKSPACE_AGENT === "1";
 
 if (
 	isWorkspaceAgentMode &&
-	(!PROJECT_ID || !SUPERIORSWARM_CONTROL_PORT || !SUPERIORSWARM_CONTROL_TOKEN)
+	(!PROJECT_ID || !WORKSPACE_ID || !SUPERIORSWARM_CONTROL_PORT || !SUPERIORSWARM_CONTROL_TOKEN)
 ) {
 	console.error(
-		"WORKSPACE_AGENT mode requires PROJECT_ID, SUPERIORSWARM_CONTROL_PORT, SUPERIORSWARM_CONTROL_TOKEN"
+		"WORKSPACE_AGENT mode requires PROJECT_ID, WORKSPACE_ID, SUPERIORSWARM_CONTROL_PORT, SUPERIORSWARM_CONTROL_TOKEN"
 	);
 	process.exit(1);
 }
@@ -790,6 +791,7 @@ if (isWorkspaceAgentMode) {
 				method,
 				headers: {
 					Authorization: authHeader,
+					"X-Workspace-Id": WORKSPACE_ID,
 					...(body ? { "Content-Type": "application/json" } : {}),
 				},
 				body: body ? JSON.stringify(body) : undefined,
