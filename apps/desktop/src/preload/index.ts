@@ -3,6 +3,8 @@ import type {
 	AgentAlertAPI,
 	AgentConfirmAPI,
 	AgentConfirmRequestPayload,
+	AgentDispatchAPI,
+	AgentDispatchOpenPayload,
 	DaemonAPI,
 	DialogAPI,
 	LspAPI,
@@ -130,6 +132,17 @@ const agentConfirmAPI: AgentConfirmAPI = {
 	},
 };
 
+const agentDispatchAPI: AgentDispatchAPI = {
+	onOpen: (callback) => {
+		const handler = (_event: Electron.IpcRendererEvent, payload: AgentDispatchOpenPayload) =>
+			callback(payload);
+		ipcRenderer.on("agent-dispatch:open", handler);
+		return () => {
+			ipcRenderer.removeListener("agent-dispatch:open", handler);
+		};
+	},
+};
+
 const settingsAPI: SettingsAPI = {
 	onThemeChanged: (callback) => {
 		const handler = (_event: Electron.IpcRendererEvent, value: "system" | "light" | "dark") => {
@@ -152,5 +165,6 @@ contextBridge.exposeInMainWorld("electron", {
 	daemon: daemonAPI,
 	agentAlert: agentAlertAPI,
 	agentConfirm: agentConfirmAPI,
+	agentDispatch: agentDispatchAPI,
 	settings: settingsAPI,
 });

@@ -72,6 +72,17 @@ export interface AgentConfirmAPI {
 	reply: (id: string, allow: boolean) => void;
 }
 
+export interface AgentDispatchOpenPayload {
+	workspaceId: string;
+	cwd: string;
+	scriptPath: string;
+	title: string;
+}
+
+export interface AgentDispatchAPI {
+	onOpen: (callback: (payload: AgentDispatchOpenPayload) => void) => () => void;
+}
+
 export type ThemePref = "system" | "light" | "dark";
 
 export interface SettingsAPI {

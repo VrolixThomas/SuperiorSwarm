@@ -300,6 +300,23 @@ export async function dispatchAgent(
 	return { sessionId, terminalId, status: "started" };
 }
 
+export interface AgentDispatchBroadcast {
+	workspaceId: string;
+	cwd: string;
+	scriptPath: string;
+	title: string;
+}
+
+let dispatchBroadcaster: (payload: AgentDispatchBroadcast) => void = () => {
+	throw new Error(
+		"Agent dispatch broadcaster not registered — main process must call setDispatchBroadcaster at boot"
+	);
+};
+
+export function setDispatchBroadcaster(fn: (payload: AgentDispatchBroadcast) => void): void {
+	dispatchBroadcaster = fn;
+}
+
 export async function defaultSpawnFn(args: SpawnArgs): Promise<SpawnResult> {
 	const { mkdtempSync, writeFileSync, chmodSync } = await import("node:fs");
 	const { tmpdir } = await import("node:os");
@@ -313,29 +330,12 @@ export async function defaultSpawnFn(args: SpawnArgs): Promise<SpawnResult> {
 	const sessionId = nanoid();
 	const terminalId = sessionId;
 
-	const daemon = getDaemonClient();
-	if (!daemon) throw new Error("Terminal daemon not available");
-
-	await daemon.create(
-		terminalId,
-		args.cwd,
-		() => {},
-		() => {}
-	);
-	daemon.write(terminalId, `bash '${scriptPath.replace(/'/g, "'\\''")}'\n`);
-
-	const db = getDb();
-	const now = new Date();
-	db.insert(terminalSessions)
-		.values({
-			id: sessionId,
-			workspaceId: args.workspaceId,
-			title: "Agent session",
-			cwd: args.cwd,
-			sortOrder: 999,
-			updatedAt: now,
-		})
-		.run();
+	dispatchBroadcaster({
+		workspaceId: args.workspaceId,
+		cwd: args.cwd,
+		scriptPath,
+		title: "Agent session",
+	});
 
 	return { sessionId, terminalId };
 }

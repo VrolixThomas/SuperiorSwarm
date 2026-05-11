@@ -36,7 +36,7 @@ import { setupLspIPC } from "./lsp/ipc-handler";
 import { serverManager, warmShellPathCache } from "./lsp/server-manager";
 import { syncShortcuts } from "./quick-actions/shortcuts";
 import { writeWorkspaceMcpJson } from "./services/mcp-config";
-import { defaultSpawnFn, setMcpEnvProvider } from "./services/workspace-service";
+import { defaultSpawnFn, setDispatchBroadcaster, setMcpEnvProvider } from "./services/workspace-service";
 import { registerSingleInstance } from "./single-instance";
 import { ensureTelemetryState } from "./telemetry/state";
 import { DaemonClient } from "./terminal/daemon-client";
@@ -240,6 +240,7 @@ app.whenReady().then(async () => {
 	}
 
 	registerConfirmBridge(() => mainWindow);
+	setDispatchBroadcaster((payload) => broadcastToWindows("agent-dispatch:open", payload));
 
 	try {
 		controlPlane = await startControlPlane({

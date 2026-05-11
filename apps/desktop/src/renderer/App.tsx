@@ -369,6 +369,20 @@ function AuthenticatedApp() {
 		};
 	}, []);
 
+	// Agent dispatch: main process asks renderer to open a terminal in a workspace and run a script.
+	useEffect(() => {
+		const off = window.electron.agentDispatch.onOpen(({ workspaceId, cwd, scriptPath, title }) => {
+			const store = useTabStore.getState();
+			store.setActiveWorkspace(workspaceId, cwd);
+			const tabId = store.addTerminalTab(workspaceId, cwd, title);
+			const escaped = scriptPath.replace(/'/g, "'\\''");
+			setTimeout(() => {
+				window.electron.terminal.write(tabId, `bash '${escaped}'\n`);
+			}, 300);
+		});
+		return off;
+	}, []);
+
 	useShortcutListener();
 	useAgentAlertListener();
 
