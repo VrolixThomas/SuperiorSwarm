@@ -11,6 +11,8 @@ import { getDb, schema } from "../src/main/db";
 import { initRepo } from "../src/main/git/operations";
 import {
 	createWorkspace,
+	readMessages,
+	sendMessage,
 	setOrchestrator,
 	setStatus,
 } from "../src/main/services/workspace-service";
@@ -92,5 +94,77 @@ describe("setOrchestrator", () => {
 			.get();
 		expect(rowA?.isOrchestrator).toBe(false);
 		expect(rowB?.isOrchestrator).toBe(true);
+	});
+});
+
+describe("sendMessage / readMessages", () => {
+	test("DM lands in target's inbox", async () => {
+		const a = await createWorkspace({ projectId: PROJECT_ID, branch: "feature/msg-a" });
+		const b = await createWorkspace({ projectId: PROJECT_ID, branch: "feature/msg-b" });
+
+		const sent = await sendMessage(
+			{ workspaceId: a.workspaceId, projectId: PROJECT_ID },
+			{ toWorkspaceId: b.workspaceId, kind: "note", content: "hello B" }
+		);
+		expect(sent.messageId).toBeTruthy();
+
+		const inbox = await readMessages(
+			{ workspaceId: b.workspaceId, projectId: PROJECT_ID },
+			{}
+		);
+		expect(inbox.messages.map((m) => m.content)).toContain("hello B");
+		expect(inbox.messages[0]?.kind).toBe("note");
+		expect(inbox.messages[0]?.fromWorkspaceId).toBe(a.workspaceId);
+	});
+
+	test("broadcast lands in everyone's inbox", async () => {
+		const a = await createWorkspace({ projectId: PROJECT_ID, branch: "feature/bcast-a" });
+		const b = await createWorkspace({ projectId: PROJECT_ID, branch: "feature/bcast-b" });
+
+		await sendMessage(
+			{ workspaceId: a.workspaceId, projectId: PROJECT_ID },
+			{ kind: "note", content: "everyone heads up" }
+		);
+
+		const inboxB = await readMessages(
+			{ workspaceId: b.workspaceId, projectId: PROJECT_ID },
+			{ includeBroadcasts: true }
+		);
+		expect(inboxB.messages.map((m) => m.content)).toContain("everyone heads up");
+		expect(inboxB.messages[0]?.toWorkspaceId).toBeNull();
+	});
+
+	test("readMessages filters by since", async () => {
+		const a = await createWorkspace({ projectId: PROJECT_ID, branch: "feature/since-a" });
+		const b = await createWorkspace({ projectId: PROJECT_ID, branch: "feature/since-b" });
+
+		await sendMessage(
+			{ workspaceId: a.workspaceId, projectId: PROJECT_ID },
+			{ toWorkspaceId: b.workspaceId, kind: "note", content: "old" }
+		);
+		const cutoff = new Date().toISOString();
+		await new Promise((r) => setTimeout(r, 10));
+		await sendMessage(
+			{ workspaceId: a.workspaceId, projectId: PROJECT_ID },
+			{ toWorkspaceId: b.workspaceId, kind: "note", content: "new" }
+		);
+
+		const inbox = await readMessages(
+			{ workspaceId: b.workspaceId, projectId: PROJECT_ID },
+			{ since: cutoff }
+		);
+		const contents = inbox.messages.map((m) => m.content);
+		expect(contents).toContain("new");
+		expect(contents).not.toContain("old");
+	});
+
+	test("sendMessage rejects cross-project target", async () => {
+		const a = await createWorkspace({ projectId: PROJECT_ID, branch: "feature/cross-a" });
+		await expect(
+			sendMessage(
+				{ workspaceId: a.workspaceId, projectId: PROJECT_ID },
+				{ toWorkspaceId: "ws-in-other-project", kind: "note", content: "x" }
+			)
+		).rejects.toThrow(/forbidden|not_found/i);
 	});
 });

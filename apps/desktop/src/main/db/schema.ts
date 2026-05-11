@@ -70,9 +70,7 @@ export const workspaces = sqliteTable(
 		statusUpdatedAt: integer("status_updated_at", { mode: "timestamp" }),
 		cliSessionId: text("cli_session_id"),
 		cliPreset: text("cli_preset"),
-		isOrchestrator: integer("is_orchestrator", { mode: "boolean" })
-			.notNull()
-			.default(false),
+		isOrchestrator: integer("is_orchestrator", { mode: "boolean" }).notNull().default(false),
 		createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
 		updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
 	},
@@ -107,7 +105,7 @@ export const agentMessages = sqliteTable(
 		}).notNull(),
 		content: text("content").notNull(),
 		inReplyTo: text("in_reply_to"),
-		createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+		createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
 	},
 	(t) => [
 		index("agent_messages_to_idx").on(t.toWorkspaceId, t.createdAt),

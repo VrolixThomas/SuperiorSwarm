@@ -1,8 +1,9 @@
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { eq } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, or } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import type {
+	AgentMessageDto,
 	CreateWorkspaceRequest,
 	CreateWorkspaceResponse,
 	DispatchAgentRequest,
@@ -11,8 +12,12 @@ import type {
 	GetWorkspaceResponse,
 	ListWorkspacesRequest,
 	ListWorkspacesResponse,
+	ReadMessagesRequest,
+	ReadMessagesResponse,
 	RemoveWorkspaceRequest,
 	RemoveWorkspaceResponse,
+	SendMessageRequest,
+	SendMessageResponse,
 	SetStatusRequest,
 	SetStatusResponse,
 	WorkspaceDto,
@@ -20,7 +25,7 @@ import type {
 } from "../../shared/control-plane";
 import { CLI_PRESETS } from "../ai-review/cli-presets";
 import { getDb } from "../db";
-import { projects, sharedFiles, terminalSessions, workspaces, worktrees } from "../db/schema";
+import { agentMessages, projects, sharedFiles, terminalSessions, workspaces, worktrees } from "../db/schema";
 import { reviewDrafts } from "../db/schema-ai-review";
 import {
 	createWorktree,
@@ -37,8 +42,7 @@ function worktreeBasePath(repoPath: string): string {
 	return join(parent, `${name}-worktrees`);
 }
 
-let mcpEnvProvider: (workspaceId: string, projectId: string) => WorkspaceMcpEnv | null =
-	() => null;
+let mcpEnvProvider: (workspaceId: string, projectId: string) => WorkspaceMcpEnv | null = () => null;
 export function setMcpEnvProvider(
 	fn: (workspaceId: string, projectId: string) => WorkspaceMcpEnv | null
 ): void {
@@ -419,4 +423,85 @@ export async function setOrchestrator(input: { workspaceId: string }): Promise<{
 	});
 
 	return { ok: true };
+}
+
+function messageRowToDto(row: typeof agentMessages.$inferSelect): AgentMessageDto {
+	return {
+		id: row.id,
+		fromWorkspaceId: row.fromWorkspaceId,
+		toWorkspaceId: row.toWorkspaceId,
+		kind: row.kind,
+		content: row.content,
+		inReplyTo: row.inReplyTo,
+		createdAt: row.createdAt.toISOString(),
+	};
+}
+
+export async function sendMessage(
+	ctx: CallerContext,
+	input: SendMessageRequest
+): Promise<SendMessageResponse> {
+	const db = getDb();
+
+	if (input.toWorkspaceId) {
+		const target = db
+			.select({ projectId: workspaces.projectId })
+			.from(workspaces)
+			.where(eq(workspaces.id, input.toWorkspaceId))
+			.get();
+		if (!target) throw new Error(`not_found: ${input.toWorkspaceId}`);
+		if (target.projectId !== ctx.projectId) {
+			throw new Error("forbidden: cross-project message");
+		}
+	}
+
+	const messageId = nanoid();
+	db.insert(agentMessages)
+		.values({
+			id: messageId,
+			projectId: ctx.projectId,
+			fromWorkspaceId: ctx.workspaceId,
+			toWorkspaceId: input.toWorkspaceId ?? null,
+			kind: input.kind,
+			content: input.content,
+			inReplyTo: input.inReplyTo ?? null,
+			createdAt: new Date(),
+		})
+		.run();
+
+	return { messageId };
+}
+
+export async function readMessages(
+	ctx: CallerContext,
+	input: ReadMessagesRequest
+): Promise<ReadMessagesResponse> {
+	const db = getDb();
+	const includeBroadcasts = input.includeBroadcasts ?? true;
+	const sinceDate = input.since
+		? new Date(input.since)
+		: new Date(Date.now() - 60 * 60 * 1000);
+
+	const targetFilter = includeBroadcasts
+		? or(
+				eq(agentMessages.toWorkspaceId, ctx.workspaceId),
+				isNull(agentMessages.toWorkspaceId)
+			)
+		: eq(agentMessages.toWorkspaceId, ctx.workspaceId);
+
+	const rows = db
+		.select()
+		.from(agentMessages)
+		.where(
+			and(
+				eq(agentMessages.projectId, ctx.projectId),
+				gt(agentMessages.createdAt, sinceDate),
+				targetFilter
+			)
+		)
+		.orderBy(desc(agentMessages.createdAt))
+		.limit(200)
+		.all();
+
+	return { messages: rows.map(messageRowToDto) };
 }
