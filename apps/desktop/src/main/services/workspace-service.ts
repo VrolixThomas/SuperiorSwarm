@@ -352,19 +352,9 @@ export async function dispatchAgent(
 
 	const cliPreset = input.cliPreset ?? "claude";
 
-	// Mint or reuse a claude session id so resumeAgent can target it later
-	let cliSessionId: string | null = null;
-	if (cliPreset === "claude") {
-		cliSessionId = ws.cliSessionId ?? randomUUID();
-		db.update(workspaces)
-			.set({
-				cliSessionId,
-				cliPreset: "claude",
-				updatedAt: new Date(),
-			})
-			.where(eq(workspaces.id, input.workspaceId))
-			.run();
-	}
+	// Mint a candidate session id but do NOT persist until spawn succeeds.
+	// Persisting up-front poisons future resumeAgent calls if the spawn throws.
+	const cliSessionId = cliPreset === "claude" ? (ws.cliSessionId ?? randomUUID()) : null;
 
 	// Orchestrator workspaces get a coordination preamble that primes the
 	// agent to subscribe to .ss-events.jsonl via Monitor(...) before doing
@@ -389,6 +379,15 @@ export async function dispatchAgent(
 		launchScriptContent,
 		workspaceId: input.workspaceId,
 	});
+
+	// Spawn succeeded — only now persist the session id so resumeAgent has a
+	// target that actually exists.
+	if (cliPreset === "claude" && cliSessionId) {
+		db.update(workspaces)
+			.set({ cliSessionId, cliPreset: "claude", updatedAt: new Date() })
+			.where(eq(workspaces.id, input.workspaceId))
+			.run();
+	}
 
 	return { sessionId, terminalId, status: "started" };
 }

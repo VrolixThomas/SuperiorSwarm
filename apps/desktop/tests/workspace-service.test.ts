@@ -368,4 +368,30 @@ describe("dispatchAgent", () => {
 		expect(opencodeScript).not.toContain("--dangerously-skip-permissions");
 		expect(opencodeScript).not.toContain("--full-auto");
 	});
+
+	test("does not persist cliSessionId if spawn throws", async () => {
+		const created = await createWorkspace({ projectId: PROJECT_ID, branch: "feature/d4" });
+		const throwingSpawn = async () => {
+			throw new Error("simulated spawn failure");
+		};
+		await expect(
+			dispatchAgent(
+				{
+					projectId: PROJECT_ID,
+					workspaceId: created.workspaceId,
+					prompt: "x",
+					cliPreset: "claude",
+				},
+				{ spawnFn: throwingSpawn }
+			)
+		).rejects.toThrow(/simulated spawn failure/);
+
+		const db = getDb();
+		const row = db
+			.select({ cliSessionId: schema.workspaces.cliSessionId })
+			.from(schema.workspaces)
+			.where(eq(schema.workspaces.id, created.workspaceId))
+			.get();
+		expect(row?.cliSessionId).toBeNull();
+	});
 });
