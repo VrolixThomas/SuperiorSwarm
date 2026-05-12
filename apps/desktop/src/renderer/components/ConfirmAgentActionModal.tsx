@@ -42,7 +42,7 @@ export function ConfirmAgentActionModal() {
 					</button>
 					<button
 						type="button"
-						className="rounded-[var(--radius-sm)] bg-[var(--color-success)] px-3 py-1.5 text-[13px] font-medium text-white transition-colors duration-[120ms] hover:opacity-90"
+						className="rounded-[var(--radius-sm)] bg-[var(--accent)] px-3 py-1.5 text-[13px] font-medium text-[var(--accent-foreground)] transition-colors duration-[120ms] hover:bg-[var(--accent-hover)]"
 						onClick={() => reply(true)}
 					>
 						Allow
