@@ -1,6 +1,6 @@
+import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { randomUUID } from "node:crypto";
 import { and, desc, eq, gt, isNull, or } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import type {
@@ -27,8 +27,16 @@ import type {
 	WorkspacePhase,
 } from "../../shared/control-plane";
 import { CLI_PRESETS } from "../ai-review/cli-presets";
+import type { EventBus } from "../control-plane/event-bus";
 import { getDb } from "../db";
-import { agentMessages, projects, sharedFiles, terminalSessions, workspaces, worktrees } from "../db/schema";
+import {
+	agentMessages,
+	projects,
+	sharedFiles,
+	terminalSessions,
+	workspaces,
+	worktrees,
+} from "../db/schema";
 import { reviewDrafts } from "../db/schema-ai-review";
 import {
 	createWorktree,
@@ -37,7 +45,6 @@ import {
 } from "../git/operations";
 import { symlinkSharedFiles } from "../shared-files";
 import { getDaemonClient } from "../terminal/daemon-instance";
-import type { EventBus } from "../control-plane/event-bus";
 import { type WorkspaceMcpEnv, writeWorkspaceMcpJson } from "./mcp-config";
 
 function worktreeBasePath(repoPath: string): string {
@@ -468,7 +475,10 @@ export async function setStatus(
 	return { ok: true };
 }
 
-export async function setOrchestrator(input: { workspaceId: string }): Promise<{ ok: true }> {
+export async function setOrchestrator(
+	ctx: CallerContext,
+	input: { workspaceId: string }
+): Promise<{ ok: true }> {
 	const db = getDb();
 	const ws = db
 		.select({ projectId: workspaces.projectId })
@@ -476,6 +486,9 @@ export async function setOrchestrator(input: { workspaceId: string }): Promise<{
 		.where(eq(workspaces.id, input.workspaceId))
 		.get();
 	if (!ws) throw new Error(`not_found: ${input.workspaceId}`);
+	if (ws.projectId !== ctx.projectId) {
+		throw new Error("forbidden: cross-project setOrchestrator");
+	}
 
 	const now = new Date();
 	db.transaction((tx) => {
@@ -555,15 +568,10 @@ export async function readMessages(
 ): Promise<ReadMessagesResponse> {
 	const db = getDb();
 	const includeBroadcasts = input.includeBroadcasts ?? true;
-	const sinceDate = input.since
-		? new Date(input.since)
-		: new Date(Date.now() - 60 * 60 * 1000);
+	const sinceDate = input.since ? new Date(input.since) : new Date(Date.now() - 60 * 60 * 1000);
 
 	const targetFilter = includeBroadcasts
-		? or(
-				eq(agentMessages.toWorkspaceId, ctx.workspaceId),
-				isNull(agentMessages.toWorkspaceId)
-			)
+		? or(eq(agentMessages.toWorkspaceId, ctx.workspaceId), isNull(agentMessages.toWorkspaceId))
 		: eq(agentMessages.toWorkspaceId, ctx.workspaceId);
 
 	const rows = db
@@ -724,9 +732,7 @@ export async function defaultRespawnAgent(args: RespawnAgentArgs): Promise<void>
 	const scriptPath = joinPath(dir, "resume.sh");
 	writeFileSync(
 		scriptPath,
-		["#!/bin/bash", `cd '${escapeShellSingleQuoteMsg(args.cwd)}'`, "", args.command, ""].join(
-			"\n"
-		),
+		["#!/bin/bash", `cd '${escapeShellSingleQuoteMsg(args.cwd)}'`, "", args.command, ""].join("\n"),
 		"utf-8"
 	);
 	chmodSync(scriptPath, 0o755);

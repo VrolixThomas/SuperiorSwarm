@@ -28,7 +28,7 @@ import {
 	setStatus,
 } from "../services/workspace-service";
 import { isValidBearer } from "./auth";
-import { EventBus } from "./event-bus";
+import type { EventBus } from "./event-bus";
 
 export type ConfirmFn = (req: {
 	kind: "dispatch" | "remove";

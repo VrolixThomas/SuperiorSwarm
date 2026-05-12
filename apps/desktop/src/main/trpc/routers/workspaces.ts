@@ -348,10 +348,13 @@ export const workspacesRouter = router({
 		}),
 
 	setOrchestrator: publicProcedure
-		.input(z.object({ workspaceId: z.string().min(1) }))
+		.input(z.object({ projectId: z.string().min(1), workspaceId: z.string().min(1) }))
 		.mutation(async ({ input }) => {
 			const { setOrchestrator } = await import("../../services/workspace-service");
-			await setOrchestrator(input);
+			await setOrchestrator(
+				{ projectId: input.projectId, workspaceId: input.workspaceId },
+				{ workspaceId: input.workspaceId }
+			);
 			return { ok: true } as const;
 		}),
 

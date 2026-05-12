@@ -7,9 +7,9 @@ import { eq } from "drizzle-orm";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { nanoid } from "nanoid";
 import simpleGit from "simple-git";
-import { getDb, schema } from "../src/main/db";
 import { EventBus } from "../src/main/control-plane/event-bus";
 import { attachOrchestratorEventSink } from "../src/main/control-plane/orchestrator-event-sink";
+import { getDb, schema } from "../src/main/db";
 import { initRepo } from "../src/main/git/operations";
 import {
 	createWorkspace,
@@ -82,8 +82,14 @@ describe("setOrchestrator", () => {
 	test("flips the bit on chosen workspace, clears others in same project", async () => {
 		const a = await createWorkspace({ projectId: PROJECT_ID, branch: "feature/orch-a" });
 		const b = await createWorkspace({ projectId: PROJECT_ID, branch: "feature/orch-b" });
-		await setOrchestrator({ workspaceId: a.workspaceId });
-		await setOrchestrator({ workspaceId: b.workspaceId });
+		await setOrchestrator(
+			{ workspaceId: a.workspaceId, projectId: PROJECT_ID },
+			{ workspaceId: a.workspaceId }
+		);
+		await setOrchestrator(
+			{ workspaceId: b.workspaceId, projectId: PROJECT_ID },
+			{ workspaceId: b.workspaceId }
+		);
 
 		const db = getDb();
 		const rowA = db
@@ -99,6 +105,41 @@ describe("setOrchestrator", () => {
 		expect(rowA?.isOrchestrator).toBe(false);
 		expect(rowB?.isOrchestrator).toBe(true);
 	});
+
+	test("setOrchestrator rejects cross-project caller", async () => {
+		const wsA = await createWorkspace({ projectId: PROJECT_ID, branch: "feature/orch-cross-a" });
+
+		const OTHER_PROJECT = `proj-${nanoid(8)}`;
+		const OTHER_REPO = join(TMP, "other-repo-orch");
+		mkdirSync(OTHER_REPO, { recursive: true });
+		await initRepo(OTHER_REPO, "main");
+		await simpleGit(OTHER_REPO).raw(["commit", "--allow-empty", "-m", "init"]);
+		const db = getDb();
+		const now = new Date();
+		db.insert(schema.projects)
+			.values({
+				id: OTHER_PROJECT,
+				repoPath: OTHER_REPO,
+				name: "other-orch",
+				defaultBranch: "main",
+				createdAt: now,
+				updatedAt: now,
+			})
+			.run();
+		const wsB = await createWorkspace({
+			projectId: OTHER_PROJECT,
+			branch: "feature/orch-cross-b",
+		});
+
+		await expect(
+			setOrchestrator(
+				{ projectId: PROJECT_ID, workspaceId: wsA.workspaceId },
+				{ workspaceId: wsB.workspaceId }
+			)
+		).rejects.toThrow(/forbidden: cross-project/);
+
+		db.delete(schema.projects).where(eq(schema.projects.id, OTHER_PROJECT)).run();
+	});
 });
 
 describe("sendMessage / readMessages", () => {
@@ -112,10 +153,7 @@ describe("sendMessage / readMessages", () => {
 		);
 		expect(sent.messageId).toBeTruthy();
 
-		const inbox = await readMessages(
-			{ workspaceId: b.workspaceId, projectId: PROJECT_ID },
-			{}
-		);
+		const inbox = await readMessages({ workspaceId: b.workspaceId, projectId: PROJECT_ID }, {});
 		expect(inbox.messages.map((m) => m.content)).toContain("hello B");
 		expect(inbox.messages[0]?.kind).toBe("note");
 		expect(inbox.messages[0]?.fromWorkspaceId).toBe(a.workspaceId);
@@ -217,9 +255,7 @@ describe("agent_messages audit retention", () => {
 
 		const db = getDb();
 		// Delete the recipient workspace + its worktree row to trigger the FK SET NULL
-		db.delete(schema.workspaces)
-			.where(eq(schema.workspaces.id, recipient.workspaceId))
-			.run();
+		db.delete(schema.workspaces).where(eq(schema.workspaces.id, recipient.workspaceId)).run();
 
 		const surviving = db
 			.select()
@@ -236,7 +272,10 @@ describe("orchestrator event sink", () => {
 	test("appends a JSON line to .ss-events.jsonl in the orchestrator's worktree", async () => {
 		const orch = await createWorkspace({ projectId: PROJECT_ID, branch: "feature/sink-orch" });
 		const other = await createWorkspace({ projectId: PROJECT_ID, branch: "feature/sink-other" });
-		await setOrchestrator({ workspaceId: orch.workspaceId });
+		await setOrchestrator(
+			{ workspaceId: orch.workspaceId, projectId: PROJECT_ID },
+			{ workspaceId: orch.workspaceId }
+		);
 
 		const bus = new EventBus();
 		setEventBus(bus);
@@ -252,7 +291,10 @@ describe("orchestrator event sink", () => {
 			);
 
 			const file = join(orch.path, ".ss-events.jsonl");
-			const lines = readFileSync(file, "utf-8").trim().split("\n").map((l) => JSON.parse(l));
+			const lines = readFileSync(file, "utf-8")
+				.trim()
+				.split("\n")
+				.map((l) => JSON.parse(l));
 			expect(lines).toHaveLength(2);
 			expect(lines[0]?.event).toBe("status");
 			expect(lines[0]?.phase).toBe("blocked");
@@ -271,10 +313,7 @@ describe("orchestrator event sink", () => {
 		setEventBus(bus);
 		const detach = attachOrchestratorEventSink(bus);
 		try {
-			await setStatus(
-				{ workspaceId: a.workspaceId, projectId: PROJECT_ID },
-				{ phase: "working" }
-			);
+			await setStatus({ workspaceId: a.workspaceId, projectId: PROJECT_ID }, { phase: "working" });
 			const file = join(a.path, ".ss-events.jsonl");
 			const { existsSync } = await import("node:fs");
 			expect(existsSync(file)).toBe(false);
@@ -308,7 +347,10 @@ describe("resumeAgent", () => {
 			projectId: PROJECT_ID,
 			branch: "feature/orch-tgt",
 		});
-		await setOrchestrator({ workspaceId: orch.workspaceId });
+		await setOrchestrator(
+			{ workspaceId: orch.workspaceId, projectId: PROJECT_ID },
+			{ workspaceId: orch.workspaceId }
+		);
 		const db = getDb();
 		db.update(schema.workspaces)
 			.set({ cliSessionId: "uuid-target", cliPreset: "claude" })
@@ -351,7 +393,10 @@ describe("resumeAgent", () => {
 			projectId: PROJECT_ID,
 			branch: "feature/r-no-claude-t",
 		});
-		await setOrchestrator({ workspaceId: orch.workspaceId });
+		await setOrchestrator(
+			{ workspaceId: orch.workspaceId, projectId: PROJECT_ID },
+			{ workspaceId: orch.workspaceId }
+		);
 
 		await expect(
 			resumeAgent(

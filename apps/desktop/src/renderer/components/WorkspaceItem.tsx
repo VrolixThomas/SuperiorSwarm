@@ -291,7 +291,7 @@ export function WorkspaceItem({
 	});
 
 	const handleSetOrchestrator = useCallback(() => {
-		setOrchestrator.mutate({ workspaceId: workspace.id });
+		setOrchestrator.mutate({ projectId, workspaceId: workspace.id });
 		setContextMenu(null);
 	}, [workspace.id, setOrchestrator]);
 

@@ -280,7 +280,10 @@ describe("dispatchAgent", () => {
 	});
 
 	test("orchestrator workspace gets coordination preamble in prompt", async () => {
-		const created = await createWorkspace({ projectId: PROJECT_ID, branch: "feature/orch-preamble" });
+		const created = await createWorkspace({
+			projectId: PROJECT_ID,
+			branch: "feature/orch-preamble",
+		});
 		const db = getDb();
 		db.update(schema.workspaces)
 			.set({ isOrchestrator: true })
