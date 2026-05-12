@@ -136,9 +136,6 @@ export async function queueSolve(sessionId: string): Promise<SolveLaunchInfo> {
 			solveSessionId: sessionId,
 		};
 
-		// Setup MCP config (triggers solver env vars via solveSessionId)
-		preset.setupMcp?.(launchOpts);
-
 		// Build CLI command. See orchestrator.ts:startReview for the rationale
 		// behind using the bare command name instead of an absolute path.
 		const args = preset.buildArgs(launchOpts);
@@ -150,15 +147,15 @@ export async function queueSolve(sessionId: string): Promise<SolveLaunchInfo> {
 		const cliCommand = parts.join(" ");
 
 		// Build launch script
+		// TODO(task-token): wire SUPERIORSWARM_TASK_TOKEN here once solve sessions
+		// are registered in TaskRegistry (follow-up task).
 		const launchScript = join(solveDir, "start-solve.sh");
-		const envLines = preset.setupMcp
-			? []
-			: [
-					`export SOLVE_SESSION_ID='${sessionId}'`,
-					`export PR_METADATA='${prMetadata.replace(/'/g, "'\\''")}'`,
-					`export DB_PATH='${dbPath}'`,
-					`export WORKTREE_PATH='${worktreePath}'`,
-				];
+		const envLines = [
+			`export SOLVE_SESSION_ID='${sessionId}'`,
+			`export PR_METADATA='${prMetadata.replace(/'/g, "'\\''")}'`,
+			`export DB_PATH='${dbPath}'`,
+			`export WORKTREE_PATH='${worktreePath}'`,
+		];
 		const pidFilePath = join(solveDir, "solver.pid");
 		const scriptContent = [
 			"#!/bin/bash",

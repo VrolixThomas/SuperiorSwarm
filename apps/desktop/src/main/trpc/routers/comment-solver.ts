@@ -871,8 +871,6 @@ export const commentSolverRouter = router({
 				solveSessionId: session.id,
 			};
 
-			preset.setupMcp?.(launchOpts);
-
 			const launchArgs = preset.buildArgs(launchOpts);
 			const escapedWorktreePath = worktreePath.replace(/'/g, "'\\''");
 			writeFileSync(
