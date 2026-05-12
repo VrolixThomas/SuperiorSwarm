@@ -288,3 +288,81 @@ describe("control-plane coordination routes", () => {
 		expect(res.status).toBe(403);
 	});
 });
+
+describe("/context.resolve", () => {
+	test("returns mode:none when cwd unknown and no token", async () => {
+		const res = await fetch(url(`/context.resolve?cwd=${encodeURIComponent("/nowhere")}`), {
+			headers: auth(),
+		});
+		expect(res.status).toBe(200);
+		const body = await res.json();
+		expect(body.mode).toBe("none");
+	});
+
+	test("returns workspace-agent for registered worktree", async () => {
+		const db = getDb();
+		const wsId = `ws-${nanoid(6)}`;
+		const wtId = `wt-${nanoid(6)}`;
+		const now = new Date();
+		db.insert(schema.worktrees)
+			.values({
+				id: wtId,
+				projectId: PROJECT_ID,
+				path: REPO,
+				branch: "feat/x",
+				baseBranch: "main",
+				createdAt: now,
+				updatedAt: now,
+			})
+			.run();
+		db.insert(schema.workspaces)
+			.values({
+				id: wsId,
+				projectId: PROJECT_ID,
+				type: "worktree",
+				name: "feat/x",
+				worktreeId: wtId,
+				createdAt: now,
+				updatedAt: now,
+			})
+			.run();
+		const res = await fetch(url(`/context.resolve?cwd=${encodeURIComponent(REPO)}`), {
+			headers: auth(),
+		});
+		const body = await res.json();
+		expect(body.mode).toBe("workspace-agent");
+		expect(body.projectId).toBe(PROJECT_ID);
+		expect(body.workspaceId).toBe(wsId);
+	});
+
+	test("resolves taskToken to review mode", async () => {
+		server.taskRegistry.register("tok-1", {
+			mode: "review",
+			projectId: PROJECT_ID,
+			workspaceId: "ws-r",
+			modeContext: { reviewDraftId: "d", dbPath: "/db" },
+		});
+		const res = await fetch(url(`/context.resolve?cwd=/x&taskToken=tok-1`), { headers: auth() });
+		const body = await res.json();
+		expect(body.mode).toBe("review");
+		expect(body.modeContext.reviewDraftId).toBe("d");
+	});
+
+	test("taskToken is single-use", async () => {
+		server.taskRegistry.register("tok-2", {
+			mode: "solve",
+			projectId: PROJECT_ID,
+			workspaceId: "ws-s",
+			modeContext: {},
+		});
+		await fetch(url(`/context.resolve?cwd=/x&taskToken=tok-2`), { headers: auth() });
+		const res = await fetch(url(`/context.resolve?cwd=/x&taskToken=tok-2`), { headers: auth() });
+		const body = await res.json();
+		expect(body.mode).toBe("none");
+	});
+
+	test("requires auth", async () => {
+		const res = await fetch(url("/context.resolve?cwd=/x"));
+		expect(res.status).toBe(401);
+	});
+});

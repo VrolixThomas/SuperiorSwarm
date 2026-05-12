@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { realpathSync } from "node:fs";
 import { type IncomingMessage, type Server, type ServerResponse, createServer } from "node:http";
 import { eq } from "drizzle-orm";
 import {
@@ -13,7 +14,7 @@ import {
 	setStatusRequestSchema,
 } from "../../shared/control-plane";
 import { getDb } from "../db";
-import { workspaces } from "../db/schema";
+import { workspaces, worktrees } from "../db/schema";
 import {
 	type CallerContext,
 	type SpawnFn,
@@ -29,6 +30,7 @@ import {
 } from "../services/workspace-service";
 import { isValidBearer } from "./auth";
 import type { EventBus } from "./event-bus";
+import type { TaskRegistry } from "./task-registry";
 
 export type ConfirmFn = (req: {
 	kind: "dispatch" | "remove";
@@ -42,6 +44,7 @@ export interface ControlPlaneDeps {
 	confirm: ConfirmFn;
 	spawnFn: SpawnFn;
 	eventBus: EventBus;
+	taskRegistry: TaskRegistry;
 }
 
 async function resolveCaller(
@@ -112,6 +115,50 @@ async function handleRequest(
 
 	try {
 		switch (route) {
+			case "GET /context.resolve": {
+				const cwd = url.searchParams.get("cwd") ?? "";
+				const taskToken = url.searchParams.get("taskToken");
+				if (taskToken) {
+					const reg = deps.taskRegistry.consume(taskToken);
+					if (reg) {
+						respond(res, 200, requestId, reg);
+						return;
+					}
+				}
+				let realCwd = cwd;
+				try {
+					realCwd = cwd ? realpathSync(cwd) : "";
+				} catch {}
+				const row = realCwd
+					? getDb()
+							.select({
+								projectId: worktrees.projectId,
+								workspaceId: workspaces.id,
+								path: worktrees.path,
+							})
+							.from(worktrees)
+							.leftJoin(workspaces, eq(workspaces.worktreeId, worktrees.id))
+							.all()
+							.find((r) => {
+								try {
+									return realpathSync(r.path) === realCwd;
+								} catch {
+									return r.path === realCwd;
+								}
+							})
+					: undefined;
+				if (row?.workspaceId) {
+					respond(res, 200, requestId, {
+						mode: "workspace-agent",
+						projectId: row.projectId,
+						workspaceId: row.workspaceId,
+						modeContext: {},
+					});
+					return;
+				}
+				respond(res, 200, requestId, { mode: "none" });
+				return;
+			}
 			case "GET /workspaces.list": {
 				const parsed = listWorkspacesRequestSchema.safeParse({
 					projectId: url.searchParams.get("projectId"),
