@@ -37,12 +37,12 @@ import { setupLspIPC } from "./lsp/ipc-handler";
 import { serverManager, warmShellPathCache } from "./lsp/server-manager";
 import { syncShortcuts } from "./quick-actions/shortcuts";
 import { disposeRepoIPC, setupRepoIPC } from "./repo-ipc";
-import { writeWorkspaceMcpJson } from "./services/mcp-config";
+import { deleteControlDiscovery, writeControlDiscovery } from "./services/control-discovery";
+import { writeLauncherScript } from "./services/global-mcp-launcher";
 import {
 	defaultSpawnFn,
 	setDispatchBroadcaster,
 	setEventBus,
-	setMcpEnvProvider,
 } from "./services/workspace-service";
 import { registerSingleInstance } from "./single-instance";
 import { ensureTelemetryState } from "./telemetry/state";
@@ -261,38 +261,17 @@ app.whenReady().then(async () => {
 		setEventBus(controlPlane.eventBus);
 		detachOrchestratorSink = attachOrchestratorEventSink(controlPlane.eventBus);
 
-		const baseEnv = {
-			mcpServerPath: getMcpServerPath(),
-			execPath: process.execPath,
+		const userData = app.getPath("userData");
+		writeControlDiscovery(userData, {
 			port: controlPlane.port,
 			token: controlPlane.token,
-		};
-		setMcpEnvProvider((workspaceId, projectId) => ({ ...baseEnv, workspaceId, projectId }));
+			pid: process.pid,
+		});
 
-		const rows = getDb()
-			.select({
-				path: schema.worktrees.path,
-				projectId: schema.worktrees.projectId,
-				workspaceId: schema.workspaces.id,
-			})
-			.from(schema.worktrees)
-			.leftJoin(schema.workspaces, eq(schema.workspaces.worktreeId, schema.worktrees.id))
-			.all();
-		// Worktree rows without a workspace (e.g. partial creation crash) are skipped;
-		// they can't be addressed via WORKSPACE_ID and would receive a stale port/token.
-		for (const r of rows) {
-			if (r.path && r.projectId && r.workspaceId && existsSync(r.path)) {
-				try {
-					writeWorkspaceMcpJson(r.path, {
-						...baseEnv,
-						workspaceId: r.workspaceId,
-						projectId: r.projectId,
-					});
-				} catch (err) {
-					log.warn("[mcp-config] rewrite failed:", err);
-				}
-			}
-		}
+		const electronPath = process.execPath;
+		const serverPath = getMcpServerPath();
+		const launcherPath = writeLauncherScript(userData, electronPath, serverPath);
+		log.info(`[global-mcp] launcher refreshed at ${launcherPath}`);
 
 		log.info(`[control-plane] listening on 127.0.0.1:${controlPlane.port}`);
 	} catch (err) {
@@ -401,6 +380,7 @@ app.whenReady().then(async () => {
 });
 
 app.on("before-quit", () => {
+	try { deleteControlDiscovery(app.getPath("userData")); } catch {}
 	alertListener?.stop();
 	setAgentNotifyPort(null);
 	stopCommentPoller();
