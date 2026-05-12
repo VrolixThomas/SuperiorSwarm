@@ -3,6 +3,8 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { CliPresetName } from "../../shared/cli-preset";
 import { mergeKey, removeKey } from "../ai-review/mcp-config-merge";
+import { getDb } from "../db";
+import * as schema from "../db/schema";
 import { mergeTomlKey, removeTomlKey } from "./toml-merge";
 
 interface PathOpts {
@@ -73,4 +75,24 @@ export async function detectInstalledClis(
 		if (await probe(cli)) found.push(cli);
 	}
 	return found;
+}
+
+export async function runGlobalMcpInstall(
+	launcherPath: string,
+	probe: (cmd: string) => Promise<boolean>,
+): Promise<CliPresetName[]> {
+	const detected = await detectInstalledClis(probe);
+	const db = getDb();
+	const now = new Date();
+	for (const cli of detected) {
+		const configPath = installEntryForCli(cli, launcherPath);
+		db.insert(schema.globalMcpInstall)
+			.values({ cliPreset: cli, configPath, installedAt: now })
+			.onConflictDoUpdate({
+				target: schema.globalMcpInstall.cliPreset,
+				set: { configPath, installedAt: now },
+			})
+			.run();
+	}
+	return detected;
 }

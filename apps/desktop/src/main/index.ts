@@ -38,7 +38,10 @@ import { serverManager, warmShellPathCache } from "./lsp/server-manager";
 import { syncShortcuts } from "./quick-actions/shortcuts";
 import { disposeRepoIPC, setupRepoIPC } from "./repo-ipc";
 import { deleteControlDiscovery, writeControlDiscovery } from "./services/control-discovery";
+import { probeCliInPath } from "./services/cli-probe";
+import { runGlobalMcpInstall } from "./services/global-mcp-install";
 import { writeLauncherScript } from "./services/global-mcp-launcher";
+import { runGlobalMcpMigration } from "./services/global-mcp-migration";
 import { setTaskRegistry } from "./services/task-registry-handle";
 import {
 	defaultSpawnFn,
@@ -274,6 +277,22 @@ app.whenReady().then(async () => {
 		const serverPath = getMcpServerPath();
 		const launcherPath = writeLauncherScript(userData, electronPath, serverPath);
 		log.info(`[global-mcp] launcher refreshed at ${launcherPath}`);
+
+		try {
+			const installedClis = await runGlobalMcpInstall(launcherPath, probeCliInPath);
+			log.info(`[global-mcp] installed for: ${installedClis.join(", ") || "none"}`);
+		} catch (err) {
+			log.warn("[global-mcp] install failed:", err);
+		}
+
+		try {
+			const { scrubbedCount } = runGlobalMcpMigration();
+			if (scrubbedCount > 0) {
+				log.info(`[global-mcp] migration scrubbed ${scrubbedCount} repo config(s)`);
+			}
+		} catch (err) {
+			log.warn("[global-mcp] migration failed:", err);
+		}
 
 		log.info(`[control-plane] listening on 127.0.0.1:${controlPlane.port}`);
 	} catch (err) {
