@@ -294,6 +294,25 @@ function escapeShellSingleQuote(s: string): string {
 	return s.replace(/'/g, "'\\''");
 }
 
+export const ORCHESTRATOR_PREAMBLE = `[SuperiorSwarm orchestrator preamble]
+You are the orchestrator agent for this project. Coordination events from child workspace agents are streamed to a file named .ss-events.jsonl in your current working directory.
+
+Your FIRST action this session, before anything else, must be:
+
+  Use the Monitor tool with command="tail -F -n 0 .ss-events.jsonl" and persistent=true.
+
+Each new line in that file is a JSON event of one of these shapes:
+  {"event":"status","workspaceId":"...","phase":"idle|working|blocked|done","statusText":"...","needs":"...","ts":"..."}
+  {"event":"message","messageId":"...","from":"...","to":"...|null","kind":"note|question|result|resume","content":"...","ts":"..."}
+
+You have these MCP tools (superiorswarm namespace) for coordination:
+  - set_status({phase, statusText?, needs?}) — publish your own status to children
+  - send_message({toWorkspaceId?, kind, content}) — DM (with toWorkspaceId) or broadcast (omit)
+  - read_messages({since?, includeBroadcasts?}) — query your inbox
+  - resume_agent({workspaceId, message}) — restart a child's claude session with a new task
+
+React to events as they arrive: when a child reports blocked with a 'needs', decide whether to provide the missing info via resume_agent, dispatch help, or wait. When a child reports done, decide the next task and resume_agent them.`;
+
 function buildLaunchScript(opts: {
 	cwd: string;
 	cliPreset: "claude" | "codex" | "gemini" | "opencode";
@@ -340,11 +359,20 @@ export async function dispatchAgent(
 			.run();
 	}
 
+	// Orchestrator workspaces get a coordination preamble that primes the
+	// agent to subscribe to .ss-events.jsonl via Monitor(...) before doing
+	// any user-task work.
+	const prompt = ws.isOrchestrator
+		? `${ORCHESTRATOR_PREAMBLE}\n\n---\n\nUser task:\n${input.prompt}`
+		: input.prompt;
+
 	const launchScriptContent = buildLaunchScript({
 		cwd: wt.path,
 		cliPreset,
-		prompt: input.prompt,
-		skipPermissions: input.skipPermissions ?? false,
+		prompt,
+		// Always skip permissions for dispatched agents — they run in their own
+		// worktree and the user explicitly opted in by dispatching.
+		skipPermissions: input.skipPermissions ?? true,
 		cliSessionId,
 	});
 
@@ -599,6 +627,7 @@ export async function resumeAgent(
 			worktreeId: workspaces.worktreeId,
 			cliSessionId: workspaces.cliSessionId,
 			cliPreset: workspaces.cliPreset,
+			isOrchestrator: workspaces.isOrchestrator,
 		})
 		.from(workspaces)
 		.where(eq(workspaces.id, input.workspaceId))
@@ -621,9 +650,14 @@ export async function resumeAgent(
 
 	// 4. Compose the resume command (interactive — no --print, so the child
 	//    keeps running and can be resumed again on the next coordination event).
+	//    --dangerously-skip-permissions matches the dispatch flow: orchestrated
+	//    agents always run with permissions auto-approved.
+	const message = target.isOrchestrator
+		? `${ORCHESTRATOR_PREAMBLE}\n\n---\n\n${input.message}`
+		: input.message;
 	const escSession = escapeShellSingleQuoteMsg(target.cliSessionId);
-	const escMsg = escapeShellSingleQuoteMsg(input.message);
-	const command = `claude --resume '${escSession}' '${escMsg}'`;
+	const escMsg = escapeShellSingleQuoteMsg(message);
+	const command = `claude --resume '${escSession}' --dangerously-skip-permissions '${escMsg}'`;
 
 	// 5. Kill the previous claude session (if any) and spawn a fresh one.
 	//    Writing into a running claude PTY would inject the command as a user

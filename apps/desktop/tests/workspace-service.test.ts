@@ -254,6 +254,58 @@ describe("dispatchAgent", () => {
 		expect(calls[0]?.script).toContain("--session-id");
 		expect(calls[0]?.script).not.toContain("--print");
 		expect(calls[0]?.script).toContain(row?.cliSessionId ?? "");
+		// AND skipPermissions defaults to true for dispatched claude agents
+		expect(calls[0]?.script).toContain("--dangerously-skip-permissions");
+	});
+
+	test("does NOT include orchestrator preamble for non-orchestrator workspaces", async () => {
+		const created = await createWorkspace({ projectId: PROJECT_ID, branch: "feature/no-preamble" });
+		let captured = "";
+		await dispatchAgent(
+			{
+				projectId: PROJECT_ID,
+				workspaceId: created.workspaceId,
+				prompt: "ordinary task",
+				cliPreset: "claude",
+			},
+			{
+				spawnFn: async ({ launchScriptContent }) => {
+					captured = launchScriptContent;
+					return { sessionId: "s", terminalId: "t" };
+				},
+			}
+		);
+		expect(captured).not.toContain("SuperiorSwarm orchestrator preamble");
+		expect(captured).toContain("ordinary task");
+	});
+
+	test("orchestrator workspace gets coordination preamble in prompt", async () => {
+		const created = await createWorkspace({ projectId: PROJECT_ID, branch: "feature/orch-preamble" });
+		const db = getDb();
+		db.update(schema.workspaces)
+			.set({ isOrchestrator: true })
+			.where(eq(schema.workspaces.id, created.workspaceId))
+			.run();
+
+		let captured = "";
+		await dispatchAgent(
+			{
+				projectId: PROJECT_ID,
+				workspaceId: created.workspaceId,
+				prompt: "coordinate the team",
+				cliPreset: "claude",
+			},
+			{
+				spawnFn: async ({ launchScriptContent }) => {
+					captured = launchScriptContent;
+					return { sessionId: "s", terminalId: "t" };
+				},
+			}
+		);
+		expect(captured).toContain("SuperiorSwarm orchestrator preamble");
+		expect(captured).toContain(".ss-events.jsonl");
+		expect(captured).toContain("Monitor");
+		expect(captured).toContain("coordinate the team");
 	});
 
 	test("forbidden across projects", async () => {

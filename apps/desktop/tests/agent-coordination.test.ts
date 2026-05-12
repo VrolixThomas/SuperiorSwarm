@@ -329,6 +329,7 @@ describe("resumeAgent", () => {
 		expect(result.messageId).toBeTruthy();
 		expect(calls).toHaveLength(1);
 		expect(calls[0]?.command).toContain("claude --resume 'uuid-target'");
+		expect(calls[0]?.command).toContain("--dangerously-skip-permissions");
 		expect(calls[0]?.command).toContain("'next task'");
 
 		const messageRows = db
