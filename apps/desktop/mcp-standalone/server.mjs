@@ -1,6 +1,9 @@
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
+import { homedir, platform } from "node:os";
+import { join } from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
@@ -8,48 +11,67 @@ import { z } from "zod";
 const require = createRequire(import.meta.url);
 const Database = require("better-sqlite3");
 
-// Configuration from environment variables
-const REVIEW_DRAFT_ID = process.env.REVIEW_DRAFT_ID;
-const PR_METADATA = JSON.parse(process.env.PR_METADATA || "{}");
-const DB_PATH = process.env.DB_PATH;
-const SOLVE_SESSION_ID = process.env.SOLVE_SESSION_ID;
-const WORKTREE_PATH = process.env.WORKTREE_PATH;
-const QUICK_ACTION_SETUP = process.env.QUICK_ACTION_SETUP;
-const PROJECT_ID = process.env.PROJECT_ID;
-const WORKSPACE_ID = process.env.WORKSPACE_ID;
-const isSolverMode = !!SOLVE_SESSION_ID;
-const isQuickActionMode = QUICK_ACTION_SETUP === "1";
-const SUPERIORSWARM_CONTROL_PORT = process.env.SUPERIORSWARM_CONTROL_PORT;
-const SUPERIORSWARM_CONTROL_TOKEN = process.env.SUPERIORSWARM_CONTROL_TOKEN;
-const isWorkspaceAgentMode = process.env.WORKSPACE_AGENT === "1";
+function defaultUserDataDir() {
+	if (process.env.SUPERIORSWARM_USER_DATA) return process.env.SUPERIORSWARM_USER_DATA;
+	const home = homedir();
+	if (platform() === "darwin") return join(home, "Library", "Application Support", "SuperiorSwarm");
+	if (platform() === "win32") return join(process.env.APPDATA || home, "SuperiorSwarm");
+	return join(process.env.XDG_CONFIG_HOME || join(home, ".config"), "SuperiorSwarm");
+}
 
-if (
-	isWorkspaceAgentMode &&
-	(!PROJECT_ID || !WORKSPACE_ID || !SUPERIORSWARM_CONTROL_PORT || !SUPERIORSWARM_CONTROL_TOKEN)
-) {
-	console.error(
-		"WORKSPACE_AGENT mode requires PROJECT_ID, WORKSPACE_ID, SUPERIORSWARM_CONTROL_PORT, SUPERIORSWARM_CONTROL_TOKEN"
-	);
+function readControlDiscovery(dir) {
+	const file = join(dir, "control.json");
+	if (!existsSync(file)) return null;
+	try {
+		const v = JSON.parse(readFileSync(file, "utf-8"));
+		if (typeof v.port === "number" && typeof v.token === "string") return v;
+	} catch {}
+	return null;
+}
+
+const USER_DATA = defaultUserDataDir();
+const discovery = readControlDiscovery(USER_DATA);
+if (!discovery) {
+	console.error("SuperiorSwarm is not running (no control.json). Open the app and retry.");
 	process.exit(1);
 }
 
-if (
-	!isWorkspaceAgentMode &&
-	!isQuickActionMode &&
-	!isSolverMode &&
-	(!REVIEW_DRAFT_ID || !DB_PATH)
-) {
-	console.error("Missing required env vars: REVIEW_DRAFT_ID or SOLVE_SESSION_ID, and DB_PATH");
-	process.exit(1);
+async function resolveContext(taskToken) {
+	const params = new URLSearchParams({ cwd: process.cwd() });
+	if (taskToken) params.set("taskToken", taskToken);
+	const res = await fetch(`http://127.0.0.1:${discovery.port}/context.resolve?${params}`, {
+		headers: { Authorization: `Bearer ${discovery.token}` },
+	});
+	if (!res.ok) throw new Error(`/context.resolve ${res.status}`);
+	return res.json();
 }
-if (!isWorkspaceAgentMode && (isSolverMode || isQuickActionMode) && !DB_PATH) {
-	console.error("Missing required env var: DB_PATH");
+
+const ctx = await resolveContext(process.env.SUPERIORSWARM_TASK_TOKEN);
+const MODE = ctx.mode;
+const PROJECT_ID = ctx.projectId;
+const WORKSPACE_ID = ctx.workspaceId;
+const modeContext = ctx.modeContext || {};
+const REVIEW_DRAFT_ID = modeContext.reviewDraftId;
+const SOLVE_SESSION_ID = modeContext.solveSessionId;
+const DB_PATH = modeContext.dbPath;
+const PR_METADATA = modeContext.prMetadata ? JSON.parse(modeContext.prMetadata) : {};
+const WORKTREE_PATH = modeContext.worktreePath;
+const SUPERIORSWARM_CONTROL_PORT = String(discovery.port);
+const SUPERIORSWARM_CONTROL_TOKEN = discovery.token;
+
+if (MODE === "none") {
+	console.error("SuperiorSwarm: this cwd is not part of any registered workspace.");
 	process.exit(1);
 }
 
-// Connect to SQLite with WAL mode and busy timeout for concurrent access
+const isWorkspaceAgentMode = MODE === "workspace-agent";
+const isSolverMode = MODE === "solve";
+const isQuickActionMode = MODE === "quick-action-setup";
+const isReviewMode = MODE === "review";
+
+// Open DB only when a DB path was supplied (review/solve/quick-action modes).
 let db = null;
-if (!isWorkspaceAgentMode) {
+if (DB_PATH) {
 	db = new Database(DB_PATH);
 	db.pragma("journal_mode = WAL");
 	db.pragma("busy_timeout = 5000");
@@ -61,7 +83,7 @@ const server = new McpServer({
 	version: "1.0.0",
 });
 
-if (!isSolverMode && !isQuickActionMode && !isWorkspaceAgentMode) {
+if (isReviewMode) {
 	// Tool: get_pr_metadata
 	server.tool("get_pr_metadata", "Get metadata about the PR being reviewed", {}, async () => {
 		return {
@@ -519,14 +541,6 @@ if (isSolverMode) {
 				const cwd = WORKTREE_PATH || process.cwd();
 
 				execFileSync("git", ["add", "-A"], { cwd });
-
-				for (const path of [".mcp.json", ".gemini/", "opencode.json", ".codex/"]) {
-					try {
-						execFileSync("git", ["reset", "HEAD", path], { cwd });
-					} catch {
-						// Ignore errors — file may not exist or not be staged
-					}
-				}
 
 				try {
 					execFileSync("git", ["commit", "-m", `fix: ${group.label}`], { cwd });
