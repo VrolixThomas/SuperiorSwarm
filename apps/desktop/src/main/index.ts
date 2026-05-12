@@ -39,6 +39,7 @@ import { syncShortcuts } from "./quick-actions/shortcuts";
 import { disposeRepoIPC, setupRepoIPC } from "./repo-ipc";
 import { deleteControlDiscovery, writeControlDiscovery } from "./services/control-discovery";
 import { writeLauncherScript } from "./services/global-mcp-launcher";
+import { setTaskRegistry } from "./services/task-registry-handle";
 import {
 	defaultSpawnFn,
 	setDispatchBroadcaster,
@@ -259,6 +260,7 @@ app.whenReady().then(async () => {
 		});
 
 		setEventBus(controlPlane.eventBus);
+		setTaskRegistry(controlPlane.taskRegistry);
 		detachOrchestratorSink = attachOrchestratorEventSink(controlPlane.eventBus);
 
 		const userData = app.getPath("userData");
