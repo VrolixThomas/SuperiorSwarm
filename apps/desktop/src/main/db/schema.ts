@@ -500,3 +500,11 @@ export const appSettings = sqliteTable("app_settings", {
 
 export type AppSetting = typeof appSettings.$inferSelect;
 export type NewAppSetting = typeof appSettings.$inferInsert;
+
+export const globalMcpInstall = sqliteTable("global_mcp_install", {
+	cliPreset: text("cli_preset").primaryKey(), // "claude" | "gemini" | "codex" | "opencode"
+	configPath: text("config_path").notNull(),
+	installedAt: integer("installed_at", { mode: "timestamp" }).notNull(),
+});
+
+export type GlobalMcpInstall = typeof globalMcpInstall.$inferSelect;
