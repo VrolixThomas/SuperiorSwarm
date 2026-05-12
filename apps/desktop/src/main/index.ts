@@ -36,6 +36,7 @@ import { log, setupCrashHandlers } from "./logger";
 import { setupLspIPC } from "./lsp/ipc-handler";
 import { serverManager, warmShellPathCache } from "./lsp/server-manager";
 import { syncShortcuts } from "./quick-actions/shortcuts";
+import { disposeRepoIPC, setupRepoIPC } from "./repo-ipc";
 import { writeWorkspaceMcpJson } from "./services/mcp-config";
 import {
 	defaultSpawnFn,
@@ -182,6 +183,8 @@ app.whenReady().then(async () => {
 
 	// Set up tRPC IPC so the renderer can make queries once it loads
 	setupTRPCIPC(appRouter);
+
+	setupRepoIPC(() => mainWindow);
 
 	void (async () => {
 		try {
@@ -406,6 +409,7 @@ app.on("before-quit", () => {
 	daemonClient.detachAll();
 	daemonClient.disconnect();
 	serverManager.disposeAll();
+	void disposeRepoIPC();
 	if (controlPlane) {
 		void controlPlane.stop().catch((err) => {
 			log.error("[control-plane] stop failed:", err);
@@ -440,6 +444,7 @@ for (const signal of ["SIGTERM", "SIGHUP", "SIGINT"] as const) {
 		daemonClient.detachAll();
 		daemonClient.disconnect();
 		serverManager.disposeAll();
+		void disposeRepoIPC();
 		app.exit(0);
 	});
 }

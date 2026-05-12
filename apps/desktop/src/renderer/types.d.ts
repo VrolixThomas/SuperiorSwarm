@@ -5,6 +5,7 @@ import type {
 	DaemonAPI,
 	DialogAPI,
 	LspAPI,
+	RepoAPI,
 	SessionAPI,
 	SettingsAPI,
 	ShellAPI,
@@ -24,6 +25,7 @@ export interface ElectronAPI {
 	agentConfirm: AgentConfirmAPI;
 	agentDispatch: AgentDispatchAPI;
 	settings: SettingsAPI;
+	repo: RepoAPI;
 }
 
 declare global {

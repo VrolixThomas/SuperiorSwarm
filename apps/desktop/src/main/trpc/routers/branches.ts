@@ -7,10 +7,10 @@ import {
 	createBranch,
 	deleteBranch,
 	getBranchInfo,
-	getBranchStatus,
 	listBranchesDetailed,
 	renameBranch,
 } from "../../git/branch-ops";
+import { getBranchStatusCached } from "../../git/cached-ops";
 import { publicProcedure, router } from "../index";
 import { resolvePath } from "./shared";
 
@@ -83,7 +83,7 @@ export const branchesRouter = router({
 		.input(z.object({ projectId: z.string(), cwd: z.string().optional() }))
 		.query(async ({ input }) => {
 			const path = await resolvePath(input.projectId, input.cwd);
-			return getBranchStatus(path);
+			return getBranchStatusCached(path);
 		}),
 
 	getInfo: publicProcedure

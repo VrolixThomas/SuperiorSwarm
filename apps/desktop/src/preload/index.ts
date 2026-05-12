@@ -8,6 +8,8 @@ import type {
 	DaemonAPI,
 	DialogAPI,
 	LspAPI,
+	RepoAPI,
+	RepoInvalidateEvent,
 	SessionAPI,
 	SessionSaveData,
 	SettingsAPI,
@@ -155,6 +157,20 @@ const settingsAPI: SettingsAPI = {
 	},
 };
 
+const repoAPI: RepoAPI = {
+	subscribe: (repoPath: string) => ipcRenderer.invoke("repo:subscribe", repoPath),
+	unsubscribe: (repoPath: string) => ipcRenderer.invoke("repo:unsubscribe", repoPath),
+	onInvalidate: (callback) => {
+		const handler = (_event: Electron.IpcRendererEvent, payload: RepoInvalidateEvent) => {
+			callback(payload);
+		};
+		ipcRenderer.on("repo:invalidate", handler);
+		return () => {
+			ipcRenderer.removeListener("repo:invalidate", handler);
+		};
+	},
+};
+
 contextBridge.exposeInMainWorld("electron", {
 	terminal: terminalAPI,
 	trpc: trpcAPI,
@@ -167,4 +183,5 @@ contextBridge.exposeInMainWorld("electron", {
 	agentConfirm: agentConfirmAPI,
 	agentDispatch: agentDispatchAPI,
 	settings: settingsAPI,
+	repo: repoAPI,
 });

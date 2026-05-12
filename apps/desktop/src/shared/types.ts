@@ -147,3 +147,16 @@ export interface QuickActionsAPI {
 }
 
 export type SidebarSegment = "repos" | "tickets" | "prs";
+
+export type RepoChangeKind = "working-tree" | "index" | "head" | "refs" | "state";
+
+export interface RepoInvalidateEvent {
+	repoPath: string;
+	kinds: RepoChangeKind[];
+}
+
+export interface RepoAPI {
+	subscribe: (repoPath: string) => Promise<void>;
+	unsubscribe: (repoPath: string) => Promise<void>;
+	onInvalidate: (callback: (event: RepoInvalidateEvent) => void) => () => void;
+}
