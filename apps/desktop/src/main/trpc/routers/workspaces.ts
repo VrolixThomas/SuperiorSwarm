@@ -25,6 +25,11 @@ export const workspacesRouter = router({
 					projectId: workspaces.projectId,
 					type: workspaces.type,
 					name: workspaces.name,
+					currentPhase: workspaces.currentPhase,
+					statusText: workspaces.statusText,
+					needs: workspaces.needs,
+					isOrchestrator: workspaces.isOrchestrator,
+					cliPreset: workspaces.cliPreset,
 				})
 				.from(workspaces)
 				.where(eq(workspaces.id, input.id))
@@ -50,6 +55,11 @@ export const workspacesRouter = router({
 				worktreePath: worktrees.path,
 				draftStatus: reviewDrafts.status,
 				draftCommitSha: reviewDrafts.commitSha,
+				currentPhase: workspaces.currentPhase,
+				statusText: workspaces.statusText,
+				needs: workspaces.needs,
+				isOrchestrator: workspaces.isOrchestrator,
+				cliPreset: workspaces.cliPreset,
 			})
 			.from(workspaces)
 			.leftJoin(worktrees, eq(workspaces.worktreeId, worktrees.id))
@@ -335,6 +345,14 @@ export const workspacesRouter = router({
 			if (result.status === "blocked_uncommitted") {
 				throw new Error("Worktree has uncommitted changes. Commit or discard them first.");
 			}
+		}),
+
+	setOrchestrator: publicProcedure
+		.input(z.object({ workspaceId: z.string().min(1) }))
+		.mutation(async ({ input }) => {
+			const { setOrchestrator } = await import("../../services/workspace-service");
+			await setOrchestrator(input);
+			return { ok: true } as const;
 		}),
 
 	attachTerminal: publicProcedure

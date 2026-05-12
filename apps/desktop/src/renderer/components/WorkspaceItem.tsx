@@ -12,6 +12,11 @@ interface WorkspaceData {
 	terminalId: string | null;
 	worktreePath: string | null;
 	prProvider: string | null;
+	currentPhase?: string | null;
+	statusText?: string | null;
+	needs?: string | null;
+	isOrchestrator?: boolean | null;
+	cliPreset?: string | null;
 }
 
 interface WorkspaceItemProps {
@@ -151,10 +156,14 @@ function WorkspaceContextMenu({
 	position,
 	onClose,
 	onDelete,
+	onSetOrchestrator,
+	isOrchestrator,
 }: {
 	position: { x: number; y: number };
 	onClose: () => void;
 	onDelete: () => void;
+	onSetOrchestrator?: () => void;
+	isOrchestrator?: boolean | null;
 }) {
 	const menuRef = useRef<HTMLDivElement>(null);
 	const [adjusted, setAdjusted] = useState(position);
@@ -202,6 +211,19 @@ function WorkspaceContextMenu({
 			className="fixed z-50 min-w-[160px] rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-elevated)] py-1 shadow-[var(--shadow-md)]"
 			style={{ left: adjusted.x, top: adjusted.y }}
 		>
+			{onSetOrchestrator && !isOrchestrator && (
+				<div
+					role="menuitem"
+					tabIndex={0}
+					className="px-3 py-1.5 text-[13px] cursor-pointer hover:bg-[var(--bg-overlay)] transition-all duration-[120ms] text-[var(--text)]"
+					onClick={onSetOrchestrator}
+					onKeyDown={(e) => {
+						if (e.key === "Enter") onSetOrchestrator();
+					}}
+				>
+					Set as orchestrator
+				</div>
+			)}
 			<div
 				role="menuitem"
 				tabIndex={0}
@@ -261,6 +283,17 @@ export function WorkspaceItem({
 	});
 	const deleteWorkspaceRef = useRef(deleteWorkspace.mutate);
 	deleteWorkspaceRef.current = deleteWorkspace.mutate;
+
+	const setOrchestrator = trpc.workspaces.setOrchestrator.useMutation({
+		onSuccess: () => {
+			utils.workspaces.listByProject.invalidate({ projectId });
+		},
+	});
+
+	const handleSetOrchestrator = useCallback(() => {
+		setOrchestrator.mutate({ workspaceId: workspace.id });
+		setContextMenu(null);
+	}, [workspace.id, setOrchestrator]);
 
 	const isActive = useTabStore((s) => s.activeWorkspaceId === workspace.id);
 	const alert = useAgentAlertStore((s) => s.alerts[workspace.id]);
@@ -362,6 +395,21 @@ export function WorkspaceItem({
 					>
 						{workspace.name}
 					</span>
+					{workspace.isOrchestrator && (
+						<span className="ml-1 text-[10px] uppercase tracking-wide text-[var(--accent)]">
+							Orchestrator
+						</span>
+					)}
+					{workspace.statusText && (
+						<span className="block text-[11px] text-[var(--text-secondary)] truncate mt-0.5">
+							{workspace.statusText}
+						</span>
+					)}
+					{workspace.currentPhase === "blocked" && workspace.needs && (
+						<span className="block text-[11px] text-[var(--text-tertiary)] italic truncate mt-0.5">
+							needs: {workspace.needs}
+						</span>
+					)}
 					{hasSolveInProgress && (
 						<span className="flex items-center gap-1 mt-0.5">
 							<svg width="10" height="10" viewBox="0 0 16 16" fill="none" className="shrink-0">
@@ -389,6 +437,24 @@ export function WorkspaceItem({
 						</span>
 					)}
 				</div>
+				{workspace.currentPhase === "working" && (
+					<span
+						className="ml-auto inline-block h-1.5 w-1.5 rounded-full bg-[var(--accent)]"
+						title="working"
+					/>
+				)}
+				{workspace.currentPhase === "blocked" && (
+					<span
+						className="ml-auto inline-block h-1.5 w-1.5 rounded-full bg-[var(--term-yellow)]"
+						title="blocked"
+					/>
+				)}
+				{workspace.currentPhase === "done" && (
+					<span
+						className="ml-auto inline-block h-1.5 w-1.5 rounded-full bg-[var(--term-green)]"
+						title="done"
+					/>
+				)}
 				{alert && <SwarmIndicator alert={alert} className="ml-auto" />}
 			</button>
 
@@ -397,6 +463,8 @@ export function WorkspaceItem({
 					position={contextMenu}
 					onClose={() => setContextMenu(null)}
 					onDelete={handleDelete}
+					onSetOrchestrator={workspace.type === "worktree" ? handleSetOrchestrator : undefined}
+					isOrchestrator={workspace.isOrchestrator}
 				/>
 			)}
 		</div>
