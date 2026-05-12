@@ -293,7 +293,7 @@ export function WorkspaceItem({
 	const handleSetOrchestrator = useCallback(() => {
 		setOrchestrator.mutate({ projectId, workspaceId: workspace.id });
 		setContextMenu(null);
-	}, [workspace.id, setOrchestrator]);
+	}, [workspace.id, projectId, setOrchestrator]);
 
 	const isActive = useTabStore((s) => s.activeWorkspaceId === workspace.id);
 	const alert = useAgentAlertStore((s) => s.alerts[workspace.id]);
