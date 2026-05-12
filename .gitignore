@@ -59,5 +59,3 @@ docs/
 # Graphify output
 graphify-out
 
-# MCP per-workspace runtime config (ephemeral token, regenerated each app launch)
-.mcp.json
