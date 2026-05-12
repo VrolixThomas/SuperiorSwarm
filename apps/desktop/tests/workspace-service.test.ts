@@ -250,9 +250,9 @@ describe("dispatchAgent", () => {
 		expect(row?.cliSessionId).toBeTruthy();
 		expect(row?.cliSessionId).toMatch(/^[0-9a-f-]{36}$/);
 
-		// AND the launch script should embed --session-id + --print
+		// AND the launch script should embed --session-id (interactive — no --print on dispatch)
 		expect(calls[0]?.script).toContain("--session-id");
-		expect(calls[0]?.script).toContain("--print");
+		expect(calls[0]?.script).not.toContain("--print");
 		expect(calls[0]?.script).toContain(row?.cliSessionId ?? "");
 	});
 

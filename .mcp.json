@@ -1,0 +1,18 @@
+{
+	"mcpServers": {
+		"superiorswarm": {
+			"command": "/Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/mcp-support-for-app/node_modules/.bun/electron@40.8.5/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron",
+			"args": [
+				"/Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/mcp-support-for-app/apps/desktop/mcp-standalone/server.mjs"
+			],
+			"env": {
+				"ELECTRON_RUN_AS_NODE": "1",
+				"WORKSPACE_AGENT": "1",
+				"PROJECT_ID": "r5z5VhZC2XuA29LGyuTfy",
+				"WORKSPACE_ID": "uQ6wjN3wKiHa267GpcG_D",
+				"SUPERIORSWARM_CONTROL_PORT": "63095",
+				"SUPERIORSWARM_CONTROL_TOKEN": "4837acd7d47991138e2951f397c2f172c604d2ac178f9924d40d818b5bbd3b1e"
+			}
+		}
+	}
+}

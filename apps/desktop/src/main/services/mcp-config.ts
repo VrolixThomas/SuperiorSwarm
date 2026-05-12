@@ -29,4 +29,3 @@ export function writeWorkspaceMcpJson(worktreePath: string, env: WorkspaceMcpEnv
 	const file = join(worktreePath, ".mcp.json");
 	mergeKey(file, ["mcpServers", "superiorswarm"], buildEntry(env));
 }
-

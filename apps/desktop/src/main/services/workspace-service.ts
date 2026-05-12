@@ -305,7 +305,7 @@ function buildLaunchScript(opts: {
 	const flag = presetFlag ? `${presetFlag} ` : "";
 	const sessionFlag =
 		opts.cliPreset === "claude" && opts.cliSessionId
-			? `--session-id '${escapeShellSingleQuote(opts.cliSessionId)}' --print `
+			? `--session-id '${escapeShellSingleQuote(opts.cliSessionId)}' `
 			: "";
 	const cmd = `${opts.cliPreset} ${sessionFlag}${flag}'${escapeShellSingleQuote(opts.prompt)}'`;
 	return ["#!/bin/bash", `cd '${escapeShellSingleQuote(opts.cwd)}'`, "", cmd, ""].join("\n");
