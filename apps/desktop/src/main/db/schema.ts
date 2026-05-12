@@ -94,9 +94,9 @@ export const agentMessages = sqliteTable(
 		projectId: text("project_id")
 			.notNull()
 			.references(() => projects.id, { onDelete: "cascade" }),
-		fromWorkspaceId: text("from_workspace_id")
-			.notNull()
-			.references(() => workspaces.id, { onDelete: "cascade" }),
+		fromWorkspaceId: text("from_workspace_id").references(() => workspaces.id, {
+			onDelete: "set null",
+		}),
 		toWorkspaceId: text("to_workspace_id").references(() => workspaces.id, {
 			onDelete: "set null",
 		}),

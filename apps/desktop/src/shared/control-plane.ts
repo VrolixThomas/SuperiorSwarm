@@ -154,7 +154,7 @@ export type ReadMessagesRequest = z.infer<typeof readMessagesRequestSchema>;
 
 export interface AgentMessageDto {
 	id: string;
-	fromWorkspaceId: string;
+	fromWorkspaceId: string | null;
 	toWorkspaceId: string | null;
 	kind: "resume" | "note" | "question" | "answer" | "broadcast";
 	content: string;

@@ -239,6 +239,33 @@ describe("sendMessage / readMessages", () => {
 });
 
 describe("agent_messages audit retention", () => {
+	test("audit retention: deleting sender preserves message with fromWorkspaceId=null", async () => {
+		const sender = await createWorkspace({
+			projectId: PROJECT_ID,
+			branch: "feature/audit-sender2",
+		});
+		const recipient = await createWorkspace({
+			projectId: PROJECT_ID,
+			branch: "feature/audit-recipient2",
+		});
+		await sendMessage(
+			{ workspaceId: sender.workspaceId, projectId: PROJECT_ID },
+			{ toWorkspaceId: recipient.workspaceId, kind: "note", content: "audit me" }
+		);
+
+		const db = getDb();
+		db.delete(schema.workspaces).where(eq(schema.workspaces.id, sender.workspaceId)).run();
+
+		const rows = db
+			.select()
+			.from(schema.agentMessages)
+			.where(eq(schema.agentMessages.toWorkspaceId, recipient.workspaceId))
+			.all();
+		expect(rows.length).toBe(1);
+		expect(rows[0]?.fromWorkspaceId).toBeNull();
+		expect(rows[0]?.content).toBe("audit me");
+	});
+
 	test("messages persist after recipient workspace is removed (toWorkspaceId SET NULL)", async () => {
 		const sender = await createWorkspace({
 			projectId: PROJECT_ID,
