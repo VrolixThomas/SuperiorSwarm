@@ -329,12 +329,7 @@ export async function dispatchAgent(
 	// Mint or reuse a claude session id so resumeAgent can target it later
 	let cliSessionId: string | null = null;
 	if (cliPreset === "claude") {
-		const existing = db
-			.select({ cliSessionId: workspaces.cliSessionId })
-			.from(workspaces)
-			.where(eq(workspaces.id, input.workspaceId))
-			.get();
-		cliSessionId = existing?.cliSessionId ?? randomUUID();
+		cliSessionId = ws.cliSessionId ?? randomUUID();
 		db.update(workspaces)
 			.set({
 				cliSessionId,
