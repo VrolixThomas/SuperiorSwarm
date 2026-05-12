@@ -7,6 +7,7 @@ import { app } from "electron";
 import type { SolveLaunchInfo, SolveSessionStatus } from "../../shared/solve-types";
 import { getDb } from "../db";
 import * as schema from "../db/schema";
+import { getTaskRegistry } from "../services/task-registry-handle";
 import { CLI_PRESETS, type LaunchOptions } from "./cli-presets";
 import { getMcpServerPath } from "./mcp-path";
 import { getSettings } from "./orchestrator";
@@ -147,15 +148,21 @@ export async function queueSolve(sessionId: string): Promise<SolveLaunchInfo> {
 		const cliCommand = parts.join(" ");
 
 		// Build launch script
-		// TODO(task-token): wire SUPERIORSWARM_TASK_TOKEN here once solve sessions
-		// are registered in TaskRegistry (follow-up task).
+		const taskToken = randomUUID();
+		getTaskRegistry().register(taskToken, {
+			mode: "solve",
+			projectId: workspace.projectId,
+			workspaceId: session.workspaceId,
+			modeContext: {
+				solveSessionId: sessionId,
+				dbPath,
+				prMetadata,
+				worktreePath,
+			},
+		});
+
 		const launchScript = join(solveDir, "start-solve.sh");
-		const envLines = [
-			`export SOLVE_SESSION_ID='${sessionId}'`,
-			`export PR_METADATA='${prMetadata.replace(/'/g, "'\\''")}'`,
-			`export DB_PATH='${dbPath}'`,
-			`export WORKTREE_PATH='${worktreePath}'`,
-		];
+		const envLines = [`export SUPERIORSWARM_TASK_TOKEN='${taskToken}'`];
 		const pidFilePath = join(solveDir, "solver.pid");
 		const scriptContent = [
 			"#!/bin/bash",
