@@ -892,6 +892,69 @@ if (isWorkspaceAgentMode) {
 				force,
 			})
 	);
+
+	server.tool(
+		"set_status",
+		"Publish this workspace's current phase + optional status text and needs. Other agents and the user can see this. Phase is one of: idle, working, blocked, done.",
+		{
+			phase: z.enum(["idle", "working", "blocked", "done"]),
+			status_text: z.string().max(2000).optional(),
+			needs: z.string().max(2000).optional(),
+		},
+		async ({ phase, status_text, needs }) =>
+			call("POST", "/workspaces.set_status", {
+				phase,
+				statusText: status_text,
+				needs,
+			})
+	);
+
+	server.tool(
+		"send_message",
+		"Send a durable message to another workspace in this project, or broadcast to all. The recipient sees it via read_messages. The orchestrator agent also sees broadcasts and direct messages via its watch stream.",
+		{
+			to_workspace_id: z.string().optional().describe("Omit for broadcast"),
+			kind: z.enum(["note", "question", "answer"]),
+			content: z.string().min(1).max(8192),
+			in_reply_to: z.string().optional(),
+		},
+		async ({ to_workspace_id, kind, content, in_reply_to }) =>
+			call("POST", "/workspaces.send_message", {
+				toWorkspaceId: to_workspace_id,
+				kind,
+				content,
+				inReplyTo: in_reply_to,
+			})
+	);
+
+	server.tool(
+		"read_messages",
+		"Read messages directed at this workspace (and project-wide broadcasts unless excluded). Returns the most recent up to 200 messages.",
+		{
+			since: z.string().optional().describe("ISO timestamp; default = last 1 hour"),
+			include_broadcasts: z.boolean().optional(),
+		},
+		async ({ since, include_broadcasts }) => {
+			const params = new URLSearchParams({ projectId: PROJECT_ID });
+			if (since) params.set("since", since);
+			if (include_broadcasts === false) params.set("includeBroadcasts", "false");
+			return call("GET", `/workspaces.read_messages?${params.toString()}`);
+		}
+	);
+
+	server.tool(
+		"resume_agent",
+		"(Orchestrator-only) Wake another agent in this project by sending it a follow-up message. The control plane runs `claude --resume` in the target workspace's terminal.",
+		{
+			workspace_id: z.string(),
+			message: z.string().min(1).max(8192),
+		},
+		async ({ workspace_id, message }) =>
+			call("POST", "/workspaces.resume_agent", {
+				workspaceId: workspace_id,
+				message,
+			})
+	);
 }
 
 // Start the server
