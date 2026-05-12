@@ -20,6 +20,7 @@ import { publishGroup, publishSolve } from "../../ai-review/solve-publisher";
 import { resolveSessionWorktree } from "../../ai-review/solve-session-resolver";
 import { getDb } from "../../db";
 import * as schema from "../../db/schema";
+import { getTaskRegistry } from "../../services/task-registry-handle";
 import type {
 	ChangedFile,
 	SolveCommentStatus,
@@ -841,8 +842,9 @@ export const commentSolverRouter = router({
 
 			// Resolve worktree for this session
 			let worktreePath: string;
+			let workspace: { projectId: string };
 			try {
-				({ worktreePath } = resolveSessionWorktree(session.id));
+				({ worktreePath, workspace } = resolveSessionWorktree(session.id));
 			} catch (err) {
 				throw new TRPCError({
 					code: "PRECONDITION_FAILED",
@@ -873,9 +875,21 @@ export const commentSolverRouter = router({
 
 			const launchArgs = preset.buildArgs(launchOpts);
 			const escapedWorktreePath = worktreePath.replace(/'/g, "'\\''");
+			const taskToken = randomUUID();
+			getTaskRegistry().register(taskToken, {
+				mode: "solve",
+				projectId: workspace.projectId,
+				workspaceId: session.workspaceId,
+				modeContext: {
+					solveSessionId: session.id,
+					dbPath,
+					prMetadata,
+					worktreePath,
+				},
+			});
 			writeFileSync(
 				launchScript,
-				`#!/bin/bash\ncd '${escapedWorktreePath}'\n${preset.command} ${launchArgs.join(" ")}\n`,
+				`#!/bin/bash\ncd '${escapedWorktreePath}'\nexport SUPERIORSWARM_TASK_TOKEN='${taskToken}'\n${preset.command} ${launchArgs.join(" ")}\n`,
 				{ mode: 0o755 }
 			);
 
