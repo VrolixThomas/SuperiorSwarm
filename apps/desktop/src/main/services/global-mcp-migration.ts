@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { eq } from "drizzle-orm";
 import { getDb } from "../db";
 import * as schema from "../db/schema";
+import { ensureRepoExclude } from "./git-exclude";
 import { removeTomlKey } from "./toml-merge";
 
 const FLAG_KEY = "global_mcp_migration_v2_complete";
@@ -97,6 +98,14 @@ export function runGlobalMcpMigration(): { scrubbedCount: number } {
 				scrubbedCount++;
 			}
 		}
+	}
+
+	const projectRows = db.select({ repoPath: schema.projects.repoPath }).from(schema.projects).all();
+	for (const p of projectRows) {
+		if (!p.repoPath || !existsSync(p.repoPath)) continue;
+		try {
+			ensureRepoExclude(p.repoPath);
+		} catch {}
 	}
 
 	db.insert(schema.sessionState).values({ key: FLAG_KEY, value: "1" }).run();
