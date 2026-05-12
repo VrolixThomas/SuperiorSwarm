@@ -161,12 +161,71 @@ describe("sendMessage / readMessages", () => {
 
 	test("sendMessage rejects cross-project target", async () => {
 		const a = await createWorkspace({ projectId: PROJECT_ID, branch: "feature/cross-a" });
+
+		// Create a second project + workspace so we exercise the forbidden branch
+		// (cross-project DM), not just not_found
+		const OTHER_PROJECT = `proj-${nanoid(8)}`;
+		const OTHER_REPO = join(TMP, "other-repo");
+		mkdirSync(OTHER_REPO, { recursive: true });
+		await initRepo(OTHER_REPO, "main");
+		await simpleGit(OTHER_REPO).raw(["commit", "--allow-empty", "-m", "init"]);
+		const db = getDb();
+		const now = new Date();
+		db.insert(schema.projects)
+			.values({
+				id: OTHER_PROJECT,
+				repoPath: OTHER_REPO,
+				name: "other",
+				defaultBranch: "main",
+				createdAt: now,
+				updatedAt: now,
+			})
+			.run();
+		const otherWs = await createWorkspace({
+			projectId: OTHER_PROJECT,
+			branch: "feature/cross-other",
+		});
+
 		await expect(
 			sendMessage(
 				{ workspaceId: a.workspaceId, projectId: PROJECT_ID },
-				{ toWorkspaceId: "ws-in-other-project", kind: "note", content: "x" }
+				{ toWorkspaceId: otherWs.workspaceId, kind: "note", content: "x" }
 			)
-		).rejects.toThrow(/forbidden|not_found/i);
+		).rejects.toThrow(/forbidden/i);
+
+		db.delete(schema.projects).where(eq(schema.projects.id, OTHER_PROJECT)).run();
+	});
+});
+
+describe("agent_messages audit retention", () => {
+	test("messages persist after recipient workspace is removed (toWorkspaceId SET NULL)", async () => {
+		const sender = await createWorkspace({
+			projectId: PROJECT_ID,
+			branch: "feature/audit-sender",
+		});
+		const recipient = await createWorkspace({
+			projectId: PROJECT_ID,
+			branch: "feature/audit-recipient",
+		});
+		await sendMessage(
+			{ workspaceId: sender.workspaceId, projectId: PROJECT_ID },
+			{ toWorkspaceId: recipient.workspaceId, kind: "note", content: "for the record" }
+		);
+
+		const db = getDb();
+		// Delete the recipient workspace + its worktree row to trigger the FK SET NULL
+		db.delete(schema.workspaces)
+			.where(eq(schema.workspaces.id, recipient.workspaceId))
+			.run();
+
+		const surviving = db
+			.select()
+			.from(schema.agentMessages)
+			.where(eq(schema.agentMessages.fromWorkspaceId, sender.workspaceId))
+			.all();
+		expect(surviving).toHaveLength(1);
+		expect(surviving[0]?.toWorkspaceId).toBeNull();
+		expect(surviving[0]?.content).toBe("for the record");
 	});
 });
 
