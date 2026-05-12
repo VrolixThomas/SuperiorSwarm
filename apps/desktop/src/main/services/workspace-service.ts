@@ -65,8 +65,14 @@ export function setEventBus(bus: EventBus | null): void {
 	eventBus = bus;
 }
 
+export interface CreateWorkspaceDeps {
+	/** Test-only hook: called after disk worktree is created, before DB inserts. Throw to simulate insert failure. */
+	_afterDiskWorktree?: () => void;
+}
+
 export async function createWorkspace(
-	input: CreateWorkspaceRequest
+	input: CreateWorkspaceRequest,
+	deps: CreateWorkspaceDeps = {}
 ): Promise<CreateWorkspaceResponse> {
 	const db = getDb();
 	const project = db.select().from(projects).where(eq(projects.id, input.projectId)).get();
@@ -83,30 +89,44 @@ export async function createWorkspace(
 	const worktreeId = nanoid();
 	const workspaceId = nanoid();
 
-	db.insert(worktrees)
-		.values({
-			id: worktreeId,
-			projectId: input.projectId,
-			path,
-			branch: input.branch,
-			baseBranch,
-			createdAt: now,
-			updatedAt: now,
-		})
-		.run();
+	try {
+		// Test-only hook fires after disk op, before DB inserts — lets tests simulate insert failure.
+		deps._afterDiskWorktree?.();
 
-	db.insert(workspaces)
-		.values({
-			id: workspaceId,
-			projectId: input.projectId,
-			type: "worktree",
-			name: input.branch,
-			worktreeId,
-			terminalId: null,
-			createdAt: now,
-			updatedAt: now,
-		})
-		.run();
+		db.transaction((tx) => {
+			tx.insert(worktrees)
+				.values({
+					id: worktreeId,
+					projectId: input.projectId,
+					path,
+					branch: input.branch,
+					baseBranch,
+					createdAt: now,
+					updatedAt: now,
+				})
+				.run();
+			tx.insert(workspaces)
+				.values({
+					id: workspaceId,
+					projectId: input.projectId,
+					type: "worktree",
+					name: input.branch,
+					worktreeId,
+					terminalId: null,
+					createdAt: now,
+					updatedAt: now,
+				})
+				.run();
+		});
+	} catch (err) {
+		// Roll back the on-disk worktree so a retry can succeed without manual cleanup.
+		try {
+			await gitRemoveWorktree(project.repoPath, path);
+		} catch (rollbackErr) {
+			console.warn("[workspace-service] createWorkspace rollback failed:", rollbackErr);
+		}
+		throw err;
+	}
 
 	const sharedEntries = db
 		.select()

@@ -1,6 +1,6 @@
 import "./preload-electron-mock";
 import { afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { eq } from "drizzle-orm";
@@ -85,6 +85,39 @@ describe("createWorkspace", () => {
 		await expect(createWorkspace({ projectId: "missing", branch: "feature/z" })).rejects.toThrow(
 			/not found/i
 		);
+	});
+
+	test("rolls back on-disk worktree if DB insert fails", async () => {
+		const branch = "feature/rollback-test";
+		// Compute the expected on-disk path using the same formula as the service.
+		const repoName = REPO.split("/").pop() ?? "repo";
+		const worktreesDir = join(REPO, "..", `${repoName}-worktrees`);
+		const expectedPath = join(worktreesDir, branch);
+
+		await expect(
+			createWorkspace(
+				{ projectId: PROJECT_ID, branch },
+				{
+					_afterDiskWorktree: () => {
+						// Verify the disk worktree was actually created before we throw.
+						expect(existsSync(expectedPath)).toBe(true);
+						throw new Error("simulated DB insert failure");
+					},
+				}
+			)
+		).rejects.toThrow("simulated DB insert failure");
+
+		// The on-disk worktree must have been cleaned up — no orphan directory.
+		expect(existsSync(expectedPath)).toBe(false);
+
+		// No DB rows should have been inserted.
+		const db = getDb();
+		const rows = db
+			.select()
+			.from(schema.workspaces)
+			.where(eq(schema.workspaces.projectId, PROJECT_ID))
+			.all();
+		expect(rows).toHaveLength(0);
 	});
 });
 
