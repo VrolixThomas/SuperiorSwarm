@@ -66,8 +66,8 @@ export function setEventBus(bus: EventBus | null): void {
 }
 
 export interface CreateWorkspaceDeps {
-	/** Test-only hook: called after disk worktree is created, before DB inserts. Throw to simulate insert failure. */
-	_afterDiskWorktree?: () => void;
+	/** Test-only hook: called inside the DB transaction after the first insert. Throw to exercise transaction rollback. */
+	_afterFirstInsert?: () => void;
 }
 
 export async function createWorkspace(
@@ -90,9 +90,6 @@ export async function createWorkspace(
 	const workspaceId = nanoid();
 
 	try {
-		// Test-only hook fires after disk op, before DB inserts — lets tests simulate insert failure.
-		deps._afterDiskWorktree?.();
-
 		db.transaction((tx) => {
 			tx.insert(worktrees)
 				.values({
@@ -105,6 +102,8 @@ export async function createWorkspace(
 					updatedAt: now,
 				})
 				.run();
+			// Test-only hook fires inside the transaction after first insert — exercises transaction rollback.
+			deps._afterFirstInsert?.();
 			tx.insert(workspaces)
 				.values({
 					id: workspaceId,

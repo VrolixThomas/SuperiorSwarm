@@ -98,7 +98,7 @@ describe("createWorkspace", () => {
 			createWorkspace(
 				{ projectId: PROJECT_ID, branch },
 				{
-					_afterDiskWorktree: () => {
+					_afterFirstInsert: () => {
 						// Verify the disk worktree was actually created before we throw.
 						expect(existsSync(expectedPath)).toBe(true);
 						throw new Error("simulated DB insert failure");
@@ -110,7 +110,7 @@ describe("createWorkspace", () => {
 		// The on-disk worktree must have been cleaned up — no orphan directory.
 		expect(existsSync(expectedPath)).toBe(false);
 
-		// No DB rows should have been inserted.
+		// No DB rows should have been inserted (transaction must have rolled back both tables).
 		const db = getDb();
 		const rows = db
 			.select()
@@ -118,6 +118,13 @@ describe("createWorkspace", () => {
 			.where(eq(schema.workspaces.projectId, PROJECT_ID))
 			.all();
 		expect(rows).toHaveLength(0);
+
+		const worktreeRows = db
+			.select()
+			.from(schema.worktrees)
+			.where(eq(schema.worktrees.projectId, PROJECT_ID))
+			.all();
+		expect(worktreeRows).toHaveLength(0);
 	});
 });
 
