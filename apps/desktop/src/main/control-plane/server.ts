@@ -81,8 +81,8 @@ export function createControlPlaneServer(deps: ControlPlaneDeps): Server {
 	});
 }
 
-function isLoopback(addr: string | undefined): boolean {
-	if (!addr) return true; // unknown — trust by default (loopback-only bind)
+export function isLoopback(addr: string | undefined): boolean {
+	if (!addr) return false; // unknown remote address — fail closed
 	return (
 		addr === "127.0.0.1" ||
 		addr === "::1" ||

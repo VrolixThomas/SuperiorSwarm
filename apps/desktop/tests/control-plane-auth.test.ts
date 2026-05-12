@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { generateToken, isValidBearer } from "../src/main/control-plane/auth";
+import { isLoopback } from "../src/main/control-plane/server";
 
 describe("control-plane auth", () => {
 	test("generateToken returns 64 hex chars", () => {
@@ -29,4 +30,12 @@ describe("control-plane auth", () => {
 		expect(isValidBearer(undefined, t)).toBe(false);
 		expect(isValidBearer("", t)).toBe(false);
 	});
+});
+
+test("isLoopback denies unknown / undefined remote address", () => {
+	expect(isLoopback(undefined)).toBe(false);
+	expect(isLoopback("")).toBe(false);
+	expect(isLoopback("192.168.1.5")).toBe(false);
+	expect(isLoopback("127.0.0.1")).toBe(true);
+	expect(isLoopback("::1")).toBe(true);
 });
