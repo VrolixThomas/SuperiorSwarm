@@ -52,7 +52,7 @@ To run a single test file: `bun test tests/cmd-buffer.test.ts`
 - **Never bypass pre-commit hooks** with `--no-verify`.
 - **Never install ESLint or Prettier.** Use Biome exclusively.
 - **Never use `npm` or `yarn`.** Use Bun.
-- **Renderer↔main IPC:** All renderer-initiated communication goes through preload + tRPC. Push-from-main event channels (e.g. `agent-alert:*`, `agent-confirm:*`, `agent-dispatch:*`) are the documented exception — they are wired via `contextBridge` in the preload and live in `src/main/control-plane/confirm-bridge.ts` and adjacent files.
+- **Renderer↔main IPC:** All renderer-initiated communication goes through preload + tRPC. Push-from-main event channels (e.g. `agent:alert`, `agent-confirm:*`, `agent-dispatch:*`) are the documented exception — they are wired via `contextBridge` in the preload and live in `src/main/control-plane/confirm-bridge.ts` and adjacent files.
 - **Never store tokens or secrets in plain text.** Encrypt via Electron `safeStorage`.
 
 ## Maintenance
