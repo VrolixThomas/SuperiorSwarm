@@ -1,6 +1,6 @@
 import "./preload-electron-mock";
 import { afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { eq } from "drizzle-orm";
@@ -8,12 +8,15 @@ import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { nanoid } from "nanoid";
 import simpleGit from "simple-git";
 import { getDb, schema } from "../src/main/db";
+import { EventBus } from "../src/main/control-plane/event-bus";
+import { attachOrchestratorEventSink } from "../src/main/control-plane/orchestrator-event-sink";
 import { initRepo } from "../src/main/git/operations";
 import {
 	createWorkspace,
 	readMessages,
 	resumeAgent,
 	sendMessage,
+	setEventBus,
 	setOrchestrator,
 	setStatus,
 } from "../src/main/services/workspace-service";
@@ -226,6 +229,59 @@ describe("agent_messages audit retention", () => {
 		expect(surviving).toHaveLength(1);
 		expect(surviving[0]?.toWorkspaceId).toBeNull();
 		expect(surviving[0]?.content).toBe("for the record");
+	});
+});
+
+describe("orchestrator event sink", () => {
+	test("appends a JSON line to .ss-events.jsonl in the orchestrator's worktree", async () => {
+		const orch = await createWorkspace({ projectId: PROJECT_ID, branch: "feature/sink-orch" });
+		const other = await createWorkspace({ projectId: PROJECT_ID, branch: "feature/sink-other" });
+		await setOrchestrator({ workspaceId: orch.workspaceId });
+
+		const bus = new EventBus();
+		setEventBus(bus);
+		const detach = attachOrchestratorEventSink(bus);
+		try {
+			await setStatus(
+				{ workspaceId: other.workspaceId, projectId: PROJECT_ID },
+				{ phase: "blocked", needs: "ack" }
+			);
+			await sendMessage(
+				{ workspaceId: other.workspaceId, projectId: PROJECT_ID },
+				{ toWorkspaceId: orch.workspaceId, kind: "note", content: "ping" }
+			);
+
+			const file = join(orch.path, ".ss-events.jsonl");
+			const lines = readFileSync(file, "utf-8").trim().split("\n").map((l) => JSON.parse(l));
+			expect(lines).toHaveLength(2);
+			expect(lines[0]?.event).toBe("status");
+			expect(lines[0]?.phase).toBe("blocked");
+			expect(lines[1]?.event).toBe("message");
+			expect(lines[1]?.content).toBe("ping");
+		} finally {
+			detach();
+			setEventBus(null);
+		}
+	});
+
+	test("no orchestrator → no file written", async () => {
+		const a = await createWorkspace({ projectId: PROJECT_ID, branch: "feature/sink-noop-a" });
+
+		const bus = new EventBus();
+		setEventBus(bus);
+		const detach = attachOrchestratorEventSink(bus);
+		try {
+			await setStatus(
+				{ workspaceId: a.workspaceId, projectId: PROJECT_ID },
+				{ phase: "working" }
+			);
+			const file = join(a.path, ".ss-events.jsonl");
+			const { existsSync } = await import("node:fs");
+			expect(existsSync(file)).toBe(false);
+		} finally {
+			detach();
+			setEventBus(null);
+		}
 	});
 });
 

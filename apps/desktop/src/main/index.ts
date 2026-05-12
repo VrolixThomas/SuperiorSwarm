@@ -23,6 +23,7 @@ import {
 } from "./ai-review/pr-poller";
 import { type RunningControlPlane, startControlPlane } from "./control-plane";
 import { registerConfirmBridge, requestConfirm } from "./control-plane/confirm-bridge";
+import { attachOrchestratorEventSink } from "./control-plane/orchestrator-event-sink";
 import { backfillRemoteHosts, getDb, initializeDatabase } from "./db";
 import * as schema from "./db/schema";
 import {
@@ -64,6 +65,7 @@ let mainWindow: BrowserWindow | null = null;
 let daemonClient: DaemonClient;
 let alertListener: AgentAlertListener | null = null;
 let controlPlane: RunningControlPlane | null = null;
+let detachOrchestratorSink: (() => void) | null = null;
 
 function isHttpUrl(url: string): boolean {
 	return url.startsWith("http://") || url.startsWith("https://");
@@ -254,6 +256,7 @@ app.whenReady().then(async () => {
 		});
 
 		setEventBus(controlPlane.eventBus);
+		detachOrchestratorSink = attachOrchestratorEventSink(controlPlane.eventBus);
 
 		const baseEnv = {
 			mcpServerPath: getMcpServerPath(),
@@ -409,6 +412,10 @@ app.on("before-quit", () => {
 		});
 		controlPlane = null;
 		setEventBus(null);
+		if (detachOrchestratorSink) {
+			detachOrchestratorSink();
+			detachOrchestratorSink = null;
+		}
 	}
 });
 

@@ -22,9 +22,11 @@ export interface MessageEvent {
 export type CoordinationEvent = StatusEvent | MessageEvent;
 
 type Subscriber = (ev: CoordinationEvent) => void;
+type WildcardSubscriber = (projectId: string, ev: CoordinationEvent) => void;
 
 export class EventBus {
 	private subs = new Map<string, Set<Subscriber>>();
+	private wildcard = new Set<WildcardSubscriber>();
 
 	subscribe(projectId: string, fn: Subscriber): () => void {
 		let set = this.subs.get(projectId);
@@ -39,12 +41,27 @@ export class EventBus {
 		};
 	}
 
+	subscribeAll(fn: WildcardSubscriber): () => void {
+		this.wildcard.add(fn);
+		return () => {
+			this.wildcard.delete(fn);
+		};
+	}
+
 	emit(projectId: string, ev: CoordinationEvent): void {
 		const set = this.subs.get(projectId);
-		if (!set) return;
-		for (const fn of set) {
+		if (set) {
+			for (const fn of set) {
+				try {
+					fn(ev);
+				} catch {
+					// best-effort: ignore subscriber failures
+				}
+			}
+		}
+		for (const fn of this.wildcard) {
 			try {
-				fn(ev);
+				fn(projectId, ev);
 			} catch {
 				// best-effort: ignore subscriber failures
 			}
