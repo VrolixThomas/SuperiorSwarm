@@ -555,15 +555,15 @@ export async function readMessages(
 	return { messages: rows.map(messageRowToDto) };
 }
 
-export interface WriteToTerminalArgs {
+export interface RespawnAgentArgs {
 	workspaceId: string;
 	command: string;
 	cwd: string;
 }
-export type WriteToTerminalFn = (args: WriteToTerminalArgs) => Promise<void>;
+export type RespawnAgentFn = (args: RespawnAgentArgs) => Promise<void>;
 
 export interface ResumeAgentDeps {
-	writeToTerminal?: WriteToTerminalFn;
+	respawnAgent?: RespawnAgentFn;
 }
 
 function escapeShellSingleQuoteMsg(s: string): string {
@@ -619,14 +619,17 @@ export async function resumeAgent(
 		: null;
 	if (!wt?.path) throw new Error(`not_found: worktree path for ${input.workspaceId}`);
 
-	// 4. Compose the resume command
+	// 4. Compose the resume command (interactive — no --print, so the child
+	//    keeps running and can be resumed again on the next coordination event).
 	const escSession = escapeShellSingleQuoteMsg(target.cliSessionId);
 	const escMsg = escapeShellSingleQuoteMsg(input.message);
-	const command = `claude --resume '${escSession}' --print '${escMsg}'\n`;
+	const command = `claude --resume '${escSession}' '${escMsg}'`;
 
-	// 5. Write to terminal first — if this fails, no audit row + no event
-	const writeFn = deps.writeToTerminal ?? defaultWriteToTerminal;
-	await writeFn({
+	// 5. Kill the previous claude session (if any) and spawn a fresh one.
+	//    Writing into a running claude PTY would inject the command as a user
+	//    message instead of launching a new resume — we need a clean shell.
+	const respawnFn = deps.respawnAgent ?? defaultRespawnAgent;
+	await respawnFn({
 		workspaceId: input.workspaceId,
 		command,
 		cwd: wt.path,
@@ -661,25 +664,25 @@ export async function resumeAgent(
 	return { ok: true, messageId };
 }
 
-export async function defaultWriteToTerminal(args: WriteToTerminalArgs): Promise<void> {
+export async function defaultRespawnAgent(args: RespawnAgentArgs): Promise<void> {
 	const daemon = getDaemonClient();
-	if (!daemon) throw new Error("Terminal daemon not available");
-
 	const db = getDb();
-	const existing = db
+
+	// 1. Kill all existing terminal sessions for this workspace so the previous
+	//    claude (or shell) exits cleanly. Writing into a live claude would land
+	//    inside its input box as a typed message, not a new process.
+	const sessions = db
 		.select({ id: terminalSessions.id })
 		.from(terminalSessions)
 		.where(eq(terminalSessions.workspaceId, args.workspaceId))
-		.orderBy(desc(terminalSessions.updatedAt))
-		.limit(1)
-		.get();
-
-	if (existing) {
-		daemon.write(existing.id, args.command);
-		return;
+		.all();
+	for (const s of sessions) daemon?.dispose(s.id);
+	if (sessions.length > 0) {
+		db.delete(terminalSessions).where(eq(terminalSessions.workspaceId, args.workspaceId)).run();
 	}
 
-	// No existing terminal — broadcast a dispatch so the renderer opens a new tab.
+	// 2. Broadcast a fresh dispatch — renderer opens a new agent session tab
+	//    whose first action is the resume command.
 	const { mkdtempSync, writeFileSync, chmodSync } = await import("node:fs");
 	const { tmpdir } = await import("node:os");
 	const { join: joinPath } = await import("node:path");

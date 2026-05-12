@@ -294,12 +294,12 @@ describe("resumeAgent", () => {
 			resumeAgent(
 				{ workspaceId: a.workspaceId, projectId: PROJECT_ID },
 				{ workspaceId: b.workspaceId, message: "hi" },
-				{ writeToTerminal: async () => undefined }
+				{ respawnAgent: async () => undefined }
 			)
 		).rejects.toThrow(/forbidden/i);
 	});
 
-	test("orchestrator can resume — writes message row + calls writeToTerminal", async () => {
+	test("orchestrator can resume — writes message row + calls respawnAgent", async () => {
 		const orch = await createWorkspace({
 			projectId: PROJECT_ID,
 			branch: "feature/orch-main",
@@ -320,7 +320,7 @@ describe("resumeAgent", () => {
 			{ workspaceId: orch.workspaceId, projectId: PROJECT_ID },
 			{ workspaceId: target.workspaceId, message: "next task" },
 			{
-				writeToTerminal: async (args) => {
+				respawnAgent: async (args) => {
 					calls.push(args);
 				},
 			}
@@ -356,7 +356,7 @@ describe("resumeAgent", () => {
 			resumeAgent(
 				{ workspaceId: orch.workspaceId, projectId: PROJECT_ID },
 				{ workspaceId: target.workspaceId, message: "x" },
-				{ writeToTerminal: async () => undefined }
+				{ respawnAgent: async () => undefined }
 			)
 		).rejects.toThrow(/resume_not_supported/);
 	});
