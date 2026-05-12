@@ -1,3 +1,7 @@
+// Push-from-main event bridge for agent confirms. This intentionally uses raw
+// ipcMain.on/handle — the rule "all IPC via tRPC" applies to renderer-initiated
+// requests; push events are exposed to the renderer via contextBridge in the
+// preload (see preload/index.ts agentConfirm.*).
 import { randomUUID } from "node:crypto";
 import type { BrowserWindow } from "electron";
 import { ipcMain } from "electron";
