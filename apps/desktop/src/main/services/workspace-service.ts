@@ -45,19 +45,10 @@ import {
 } from "../git/operations";
 import { symlinkSharedFiles } from "../shared-files";
 import { getDaemonClient } from "../terminal/daemon-instance";
-import { type WorkspaceMcpEnv, writeWorkspaceMcpJson } from "./mcp-config";
-
 function worktreeBasePath(repoPath: string): string {
 	const parent = dirname(repoPath);
 	const name = repoPath.split("/").pop() ?? "repo";
 	return join(parent, `${name}-worktrees`);
-}
-
-let mcpEnvProvider: (workspaceId: string, projectId: string) => WorkspaceMcpEnv | null = () => null;
-export function setMcpEnvProvider(
-	fn: (workspaceId: string, projectId: string) => WorkspaceMcpEnv | null
-): void {
-	mcpEnvProvider = fn;
 }
 
 let eventBus: EventBus | null = null;
@@ -139,15 +130,6 @@ export async function createWorkspace(
 			path,
 			sharedEntries.map((e) => ({ relativePath: e.relativePath, type: e.type }))
 		);
-	}
-
-	const env = mcpEnvProvider(workspaceId, input.projectId);
-	if (env) {
-		try {
-			writeWorkspaceMcpJson(path, env);
-		} catch (err) {
-			console.warn("[workspace-service] writeWorkspaceMcpJson failed:", err);
-		}
 	}
 
 	return {
