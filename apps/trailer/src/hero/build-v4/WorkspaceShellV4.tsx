@@ -9,6 +9,7 @@ import { WithCommentsPR } from "./views/WithCommentsPR";
 import { WithFileNav } from "./views/WithFileNav";
 import { WithRightPanelChanges } from "./views/WithRightPanelChanges";
 import { WithSidebarRepos } from "./views/WithSidebarRepos";
+import { WithTicketsTab } from "./views/WithTicketsTab";
 
 function ViewStub({ name }: { name: string }) {
 	const c = useColorsV4();
@@ -45,6 +46,8 @@ function ViewRenderer({ viewKey }: { viewKey: ViewKeyV4 }) {
 			return <WithCommentsPR />;
 		case "solveResultFull":
 			return <SolveResultFull />;
+		case "withTicketsTab":
+			return <WithTicketsTab />;
 		default:
 			return <ViewStub name={viewKey} />;
 	}
