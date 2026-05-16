@@ -1,6 +1,8 @@
 // Mirrors PanelHeader inside apps/desktop/src/renderer/components/DiffPanel.tsx.
 // Static — active tab is prop-driven, no click handlers.
 
+import type { ReactElement } from "react";
+
 type Tab = "changes" | "files" | "comments" | "ai-fixes";
 
 function ChangesIcon() {
@@ -75,7 +77,7 @@ function FixesIcon() {
 	);
 }
 
-const ICONS: Record<Tab, () => React.ReactElement> = {
+const ICONS: Record<Tab, () => ReactElement> = {
 	changes: ChangesIcon,
 	files: FilesIcon,
 	comments: CommentsIcon,

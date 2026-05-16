@@ -1,14 +1,12 @@
 import { interpolate, useCurrentFrame } from "remotion";
 import { BranchChanges } from "../../build-real/BranchChanges";
 import { CommittedStack } from "../../build-real/CommittedStack";
-import { DiffPanelHeader } from "../../build-real/DiffPanelHeader";
 import { DraftCommitCard } from "../../build-real/DraftCommitCard";
-import { SmartHeaderBar } from "../../build-real/SmartHeaderBar";
-import { CodeEditor } from "../../build/CodeEditor";
 import { RepoSidebarV4, type WorktreeAlertV4 } from "../RepoSidebarV4";
 import { useColorsV4 } from "../colors-v4";
 import { REPOS_V4 } from "../data";
 import { SCENES_V4 } from "../timeline";
+import { ReviewTabV4 } from "./ReviewTabV4";
 
 const RIGHT_PANEL_TARGET_W = 420;
 const ACTIVE_BRANCH = "feat/agent-terminal-chat";
@@ -23,7 +21,6 @@ export function WithRightPanelChanges() {
 		extrapolateRight: "clamp",
 	});
 
-	// Keep s4 alert state — all done by this scene.
 	const worktrees = REPOS_V4[0]?.worktrees ?? [];
 	const alerts: WorktreeAlertV4[] = worktrees.map((_, i) => (i === 0 ? null : "done"));
 
@@ -31,17 +28,11 @@ export function WithRightPanelChanges() {
 		<>
 			<RepoSidebarV4 segment="repos" worktreeAlerts={alerts} activeBranch={ACTIVE_BRANCH} />
 
-			<div
-				style={{
-					flex: 1,
-					background: c.bgBase,
-					display: "flex",
-					flexDirection: "column",
-					overflow: "hidden",
-				}}
-			>
-				<CodeEditor entryFrame={SCENES_V4.s5DiffPanel.from} variant="use-agent-terminal-stream" />
-			</div>
+			<ReviewTabV4
+				entryFrame={SCENES_V4.s5DiffPanel.from}
+				currentBranch={ACTIVE_BRANCH}
+				baseBranch="main"
+			/>
 
 			<div
 				style={{
@@ -61,8 +52,6 @@ export function WithRightPanelChanges() {
 						overflow: "hidden",
 					}}
 				>
-					<DiffPanelHeader activeTab="changes" />
-					<SmartHeaderBar currentBranch={ACTIVE_BRANCH} baseBranch="main" />
 					<div style={{ flex: 1, overflowY: "auto" }}>
 						<DraftCommitCard />
 						<div style={{ marginTop: 12 }}>
