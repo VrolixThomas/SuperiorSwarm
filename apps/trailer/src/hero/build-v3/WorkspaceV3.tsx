@@ -54,11 +54,20 @@ const WORKTREES_SS = [
 const SOLVE_LINES: TerminalLine[] = [
 	{ t: "> claude --solve --pr 214", from: 0, c: C.textSecondary },
 	{ t: "", from: 4 },
-	{ t: "Reading review comments on #214 · feat/agent-terminal-chat...", from: 12, c: C.textTertiary },
+	{
+		t: "Reading review comments on #214 · feat/agent-terminal-chat...",
+		from: 12,
+		c: C.textTertiary,
+	},
 	{ t: "", from: 22 },
 	{ t: "Group 1/4 · Unsubscribe stream on terminal close", from: 28 },
 	{ t: "  Applying fix → useAgentTerminalStream.ts", from: 38, c: C.textTertiary },
-	{ t: "✓ d8f3a2b — fix(stream): cancel terminal subscriptions", from: 54, c: C.termGreen, bold: true },
+	{
+		t: "✓ d8f3a2b — fix(stream): cancel terminal subscriptions",
+		from: 54,
+		c: C.termGreen,
+		bold: true,
+	},
 	{ t: "", from: 62 },
 	{ t: "Group 2/4 · Pass theme through to xterm", from: 70 },
 	{ t: "  Applying fix → Terminal.tsx", from: 80, c: C.textTertiary },
@@ -140,7 +149,11 @@ export function WorkspaceV3() {
 	} else if (inReview) {
 		rightPaneTabs.push({ id: "pr-overview", kind: "review", title: "PR · #214" });
 	} else if (inSplit) {
-		rightPaneTabs.push({ id: "use-agent-terminal-stream", kind: "file", title: "useAgentTerminalStream.ts" });
+		rightPaneTabs.push({
+			id: "use-agent-terminal-stream",
+			kind: "file",
+			title: "useAgentTerminalStream.ts",
+		});
 	}
 
 	let leftContent: React.ReactNode = <TerminalBody startFrame={-12} />;
@@ -196,13 +209,22 @@ export function WorkspaceV3() {
 											const expanded = isActive && frame >= T_WORKTREES + 8;
 											return (
 												<div key={r.key}>
-													<RepoCard name={r.name} entryFrame={repoEntry} expanded={expanded} active={isActive} />
+													<RepoCard
+														name={r.name}
+														entryFrame={repoEntry}
+														expanded={expanded}
+														active={isActive}
+													/>
 													{expanded && isActive && (
 														<div style={{ marginTop: 2, marginBottom: 4 }}>
 															{WORKTREES_SS.map((w, wi) => {
 																const wEntry = beatEntryFrameV3("worktrees") + 10 + wi * 6;
-																const swarmEntry = w.active ? beatEntryFrameV3("worktrees") + 36 : undefined;
-																const statusEntry = w.active ? beatEntryFrameV3("worktrees") + 52 : undefined;
+																const swarmEntry = w.active
+																	? beatEntryFrameV3("worktrees") + 36
+																	: undefined;
+																const statusEntry = w.active
+																	? beatEntryFrameV3("worktrees") + 52
+																	: undefined;
 																return (
 																	<WorktreeRow
 																		key={w.key}
