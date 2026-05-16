@@ -1,6 +1,5 @@
-// Mirrors apps/desktop/src/renderer/components/TabBar.tsx. Renders inside
-// the AppWindow's 52px title bar (hiddenInset chrome) — traffic lights stay
-// on the left, tab pills fill the rest, "+" button on the right.
+// Mirrors apps/desktop/.../panes/PaneTabBar.tsx — sits ABOVE the main pane
+// content (right of the sidebar), not in the window title bar. 36px tall.
 //
 // Static / prop-driven; no click handlers.
 
@@ -21,7 +20,7 @@ interface Props {
 }
 
 const ACCENT_BY_KIND: Record<TabKindV4, string> = {
-	terminal: "var(--text-quaternary)",
+	terminal: "#0a84ff",
 	"diff-file": "#ffd43b",
 	file: "#0a84ff",
 	review: "#0a84ff",
@@ -36,13 +35,15 @@ export function WorkspaceTabBarV4({ tabs, activeTabId, opacity = 1 }: Props) {
 	return (
 		<div
 			style={{
-				flex: 1,
+				height: 36,
+				flexShrink: 0,
 				display: "flex",
-				alignItems: "flex-end",
+				alignItems: "center",
 				gap: 2,
-				paddingBottom: 7,
-				paddingLeft: 12,
+				paddingLeft: 8,
 				paddingRight: 8,
+				background: c.bgTabBar,
+				borderBottom: `1px solid ${c.borderSubtle}`,
 				overflow: "hidden",
 				opacity,
 			}}

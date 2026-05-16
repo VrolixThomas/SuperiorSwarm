@@ -1,14 +1,13 @@
 import type { ReactNode } from "react";
 import { useColorsV4 } from "./colors-v4";
 
-// V4 app window chrome. Matches real app's hiddenInset title bar: 52px tall,
-// traffic lights at left, optional tab strip filling the rest.
+// V4 app window chrome. Title bar holds only traffic lights (hiddenInset).
+// Tab strips belong above main pane content (inside views), not in title bar.
 interface Props {
 	children?: ReactNode;
-	tabBar?: ReactNode;
 }
 
-export function AppWindowV4({ children, tabBar }: Props) {
+export function AppWindowV4({ children }: Props) {
 	const c = useColorsV4();
 	return (
 		<div
@@ -29,9 +28,9 @@ export function AppWindowV4({ children, tabBar }: Props) {
 		>
 			<div
 				style={{
-					height: 52,
+					height: 32,
 					display: "flex",
-					alignItems: "flex-end",
+					alignItems: "center",
 					padding: "0 0 0 16px",
 					flexShrink: 0,
 					background: c.bgTabBar,
@@ -43,7 +42,6 @@ export function AppWindowV4({ children, tabBar }: Props) {
 						display: "flex",
 						gap: 8,
 						alignItems: "center",
-						height: 52,
 						flexShrink: 0,
 					}}
 				>
@@ -51,7 +49,6 @@ export function AppWindowV4({ children, tabBar }: Props) {
 					<span style={{ width: 12, height: 12, borderRadius: "50%", background: "#febc2e" }} />
 					<span style={{ width: 12, height: 12, borderRadius: "50%", background: "#28c840" }} />
 				</div>
-				{tabBar}
 			</div>
 			<div style={{ flex: 1, display: "flex", overflow: "hidden" }}>{children}</div>
 		</div>

@@ -1,5 +1,7 @@
+import type { ReactNode } from "react";
 import { interpolate, useCurrentFrame } from "remotion";
 import { AppWindowV4 } from "./AppWindowV4";
+import { MainPaneHeaderV4 } from "./MainPaneHeaderV4";
 import { type TabPillV4, WorkspaceTabBarV4 } from "./WorkspaceTabBarV4";
 import { type ViewKeyV4, selectView } from "./WorkspaceViewSelector";
 import { type ThemeModeV4, ThemeProviderV4 } from "./colors-v4";
@@ -14,46 +16,49 @@ import { WithRightPanelChanges } from "./views/WithRightPanelChanges";
 import { WithSidebarRepos } from "./views/WithSidebarRepos";
 import { WithTicketsTab } from "./views/WithTicketsTab";
 
-function ViewRenderer({ viewKey }: { viewKey: ViewKeyV4 }) {
+function ViewRenderer({ viewKey, header }: { viewKey: ViewKeyV4; header: ReactNode }) {
 	switch (viewKey) {
 		case "terminalOnly":
-			return <TerminalOnly />;
+			return <TerminalOnly header={header} />;
 		case "withSidebarRepos":
-			return <WithSidebarRepos />;
+			return <WithSidebarRepos header={header} />;
 		case "withActiveWorkspaces":
-			return <WithActiveWorkspaces />;
+			return <WithActiveWorkspaces header={header} />;
 		case "withRightPanelChanges":
-			return <WithRightPanelChanges />;
+			return <WithRightPanelChanges tabBar={header} />;
 		case "withFileNav":
-			return <WithFileNav />;
+			return <WithFileNav tabBar={header} />;
 		case "withCommentsPR":
-			return <WithCommentsPR />;
+			return <WithCommentsPR tabBar={header} />;
 		case "solveResultFull":
-			return <SolveResultFull />;
+			return <SolveResultFull tabBar={header} />;
 		case "withTicketsTab":
-			return <WithTicketsTab />;
+			return <WithTicketsTab header={header} />;
 		case "withPRsTab":
-			return <WithPRsTab />;
+			return <WithPRsTab header={header} />;
 	}
 }
 
-// Per-scene tab strip composition. Tab strip appears from s5 onward; earlier
-// scenes (terminal-only / sidebar build / starting workspaces) keep the
-// chrome empty so the build-up reads cleanly.
+// Per-scene tab strip composition. Terminal-only scenes still get a Terminal 1
+// tab so the chrome is consistent from the first frame.
 function tabsForScene(viewKey: ViewKeyV4): { tabs: TabPillV4[]; activeId: string | null } {
 	const terminal: TabPillV4 = { id: "term-1", title: "Terminal 1", kind: "terminal" };
 	const review: TabPillV4 = { id: "review", title: "Review", kind: "review" };
-	const solve: TabPillV4 = { id: "solve", title: "Solve Review", kind: "solve" };
 
 	switch (viewKey) {
+		case "terminalOnly":
+		case "withSidebarRepos":
+		case "withActiveWorkspaces":
+			return { tabs: [terminal], activeId: terminal.id };
 		case "withRightPanelChanges":
 		case "withFileNav":
 			return { tabs: [terminal, review], activeId: review.id };
 		case "withCommentsPR":
 		case "solveResultFull":
-			return { tabs: [terminal, review, solve], activeId: solve.id };
-		default:
 			return { tabs: [], activeId: null };
+		case "withTicketsTab":
+		case "withPRsTab":
+			return { tabs: [terminal], activeId: terminal.id };
 	}
 }
 
@@ -69,23 +74,27 @@ export function WorkspaceShellV4({ mode = "dark" }: Props) {
 	const viewKey = selectView(frame);
 	const { tabs, activeId } = tabsForScene(viewKey);
 
-	// Fade the tab strip in over 18f when it first appears at s5DiffPanel.from.
-	const tabsOp = interpolate(
+	// Fade the whole pane chrome in over 18f when it first becomes meaningful
+	// (workspace pane fully visible at withActiveWorkspaces).
+	const chromeOp = interpolate(
 		frame,
-		[SCENES_V4.s5DiffPanel.from, SCENES_V4.s5DiffPanel.from + 18],
+		[SCENES_V4.s1Terminal.from, SCENES_V4.s1Terminal.from + 18],
 		[0, 1],
 		{ extrapolateLeft: "clamp", extrapolateRight: "clamp" }
 	);
 
-	const tabBar =
+	const header =
 		tabs.length > 0 ? (
-			<WorkspaceTabBarV4 tabs={tabs} activeTabId={activeId} opacity={tabsOp} />
+			<MainPaneHeaderV4
+				opacity={chromeOp}
+				tabBar={<WorkspaceTabBarV4 tabs={tabs} activeTabId={activeId} />}
+			/>
 		) : null;
 
 	return (
 		<ThemeProviderV4 value={mode}>
-			<AppWindowV4 tabBar={tabBar}>
-				<ViewRenderer viewKey={viewKey} />
+			<AppWindowV4>
+				<ViewRenderer viewKey={viewKey} header={header} />
 			</AppWindowV4>
 		</ThemeProviderV4>
 	);

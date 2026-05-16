@@ -309,26 +309,40 @@ function StatusPill({
 }
 
 function ProgressStrip() {
+	const resolved = 2;
+	const pending = 2;
+	const approved = 2;
+	const total = 4;
+	const pct = (approved / total) * 100;
 	return (
 		<div className="mb-[22px]">
 			<div className="flex gap-[5px] mb-[10px]">
-				<StatusPill color="var(--success)" bg="var(--success-subtle)" count={4} label="resolved" />
+				<StatusPill
+					color="var(--success)"
+					bg="var(--success-subtle)"
+					count={resolved}
+					label="resolved"
+				/>
+				<StatusPill
+					color="var(--text-tertiary)"
+					bg="var(--bg-elevated)"
+					count={pending}
+					label="pending"
+				/>
 			</div>
-			<div className="flex justify-between items-center mb-[5px]">
+			<div className="mb-[5px]">
 				<span className="text-[10px] font-semibold uppercase tracking-[0.07em] text-[var(--text-tertiary)]">
 					Approval
 				</span>
-				<div className="flex items-center gap-[8px]">
-					<span className="[font-family:var(--font-mono)] text-[11px] text-[var(--text-tertiary)]">
-						4 pushed · 0 approved / 4
-					</span>
-				</div>
 			</div>
 			<div className="h-[2px] bg-[var(--bg-elevated)] rounded-[1px] overflow-hidden">
 				<div
 					className="h-full bg-[var(--success)] rounded-[1px]"
-					style={{ width: "100%", transition: "width 0.5s ease" }}
+					style={{ width: `${pct}%`, transition: "width 0.5s ease" }}
 				/>
+			</div>
+			<div className="mt-[6px] [font-family:var(--font-mono)] text-[11px] text-[var(--text-tertiary)]">
+				{approved} / {total} approved
 			</div>
 		</div>
 	);

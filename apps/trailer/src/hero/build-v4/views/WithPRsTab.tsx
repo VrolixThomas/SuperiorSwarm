@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { interpolate, useCurrentFrame } from "remotion";
 import { CommentsOverviewTab } from "../../build-real/CommentsOverviewTab";
 import { PROverviewPane } from "../../build-real/PROverviewPane";
@@ -9,7 +10,7 @@ const SIDEBAR_WIDTH = 320;
 const RIGHT_PANEL_W = 380;
 const FOCUS_FRAME = 120;
 
-export function WithPRsTab() {
+export function WithPRsTab({ header }: { header?: ReactNode }) {
 	const c = useColorsV4();
 	const frame = useCurrentFrame();
 	const local = frame - SCENES_V4.s10PRsList.from;
@@ -75,6 +76,7 @@ export function WithPRsTab() {
 					opacity: focusOp,
 				}}
 			>
+				{header}
 				<PROverviewPane />
 			</div>
 

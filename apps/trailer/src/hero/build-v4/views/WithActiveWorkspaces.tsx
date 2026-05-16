@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { useCurrentFrame } from "remotion";
 import { TerminalBody } from "../../build/TerminalBody";
 import { RepoSidebarV4, type WorktreeAlertV4 } from "../RepoSidebarV4";
@@ -6,7 +7,7 @@ import { useColorsV4 } from "../colors-v4";
 import { REPOS_V4 } from "../data";
 import { SCENES_V4 } from "../timeline";
 
-export function WithActiveWorkspaces() {
+export function WithActiveWorkspaces({ header }: { header?: ReactNode }) {
 	const c = useColorsV4();
 	const frame = useCurrentFrame();
 
@@ -29,8 +30,11 @@ export function WithActiveWorkspaces() {
 	return (
 		<>
 			<RepoSidebarV4 segment="repos" worktreeAlerts={alerts} />
-			<div style={{ flex: 1, background: c.bgBase }}>
-				<TerminalBody startFrame={SCENES_V4.s3StartWS.from} />
+			<div style={{ flex: 1, background: c.bgBase, display: "flex", flexDirection: "column" }}>
+				{header}
+				<div style={{ flex: 1, minHeight: 0 }}>
+					<TerminalBody startFrame={SCENES_V4.s3StartWS.from} />
+				</div>
 			</div>
 		</>
 	);

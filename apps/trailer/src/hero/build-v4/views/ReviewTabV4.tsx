@@ -9,10 +9,10 @@
 import { interpolate, useCurrentFrame } from "remotion";
 import { useColorsV4 } from "../colors-v4";
 import { DEMO_FILES_V4 } from "../data";
+import { tokenizeTs } from "../syntax";
 
 const SELECT_START = 90;
 const CYCLE = 160;
-const TOTAL_REVIEWED_GOAL = 9;
 const ALL_COUNT = 12;
 const WORKING_COUNT = 3;
 const BRANCH_COUNT = 9;
@@ -51,14 +51,6 @@ export function ReviewTabV4({ entryFrame, currentBranch, baseBranch }: ReviewTab
 	const selectedFile = DEMO_FILES_V4[selectedIndex] ?? DEMO_FILES_V4[0];
 	if (!selectedFile) return null;
 
-	const reviewed = Math.max(
-		0,
-		Math.min(
-			TOTAL_REVIEWED_GOAL,
-			Math.floor((local - SELECT_START + CYCLE * 0.75) / CYCLE)
-		)
-	);
-
 	// j key pulses on each cycle boundary
 	const cyclePhase = ((local - SELECT_START) % CYCLE) / CYCLE;
 	const jPulse =
@@ -77,12 +69,7 @@ export function ReviewTabV4({ entryFrame, currentBranch, baseBranch }: ReviewTab
 			}}
 		>
 			<FilterTabsRow opacity={tabsOp} />
-			<ProgressRow
-				opacity={progressOp}
-				reviewed={reviewed}
-				total={ALL_COUNT}
-				splitMode="unified"
-			/>
+			<ModeRow opacity={progressOp} splitMode="unified" />
 			<FilePathStrip opacity={progressOp} path={selectedFile.path} />
 			<div style={{ flex: 1, overflow: "hidden", opacity: bodyOp }}>
 				<DiffBody
@@ -155,55 +142,27 @@ function FilterTabsRow({ opacity }: { opacity: number }) {
 	);
 }
 
-function ProgressRow({
+function ModeRow({
 	opacity,
-	reviewed,
-	total,
 	splitMode,
 }: {
 	opacity: number;
-	reviewed: number;
-	total: number;
 	splitMode: "split" | "unified";
 }) {
 	const c = useColorsV4();
-	const pct = total === 0 ? 0 : Math.round((reviewed / total) * 100);
 
 	return (
 		<div
 			style={{
 				display: "flex",
 				alignItems: "center",
+				justifyContent: "flex-end",
 				gap: 10,
 				padding: "6px 12px",
 				borderBottom: `1px solid ${c.borderSubtle}`,
 				opacity,
 			}}
 		>
-			<span style={{ fontSize: 11, color: c.textTertiary, fontVariantNumeric: "tabular-nums" }}>
-				{reviewed} of {total} reviewed
-			</span>
-			<div
-				style={{
-					height: 4,
-					flex: 1,
-					overflow: "hidden",
-					borderRadius: 99,
-					background: c.bgOverlay,
-				}}
-			>
-				<div
-					style={{
-						height: "100%",
-						width: `${pct}%`,
-						background: c.success,
-						transition: "width 150ms ease",
-					}}
-				/>
-			</div>
-			<span style={{ fontSize: 11, color: c.textQuaternary, fontVariantNumeric: "tabular-nums" }}>
-				{pct}%
-			</span>
 			<div
 				style={{
 					padding: "1px 8px",
@@ -339,37 +298,42 @@ function DiffBody({
 						: l.kind === "del"
 							? "rgba(255,107,107,0.10)"
 							: "transparent";
-				const fg =
+				const prefixColor =
 					l.kind === "add"
 						? c.success
 						: l.kind === "del"
 							? "#ff8a8a"
-							: l.kind === "hunk"
-								? c.textQuaternary
-								: c.textSecondary;
+							: c.textQuaternary;
 				const prefix =
 					l.kind === "add" ? "+" : l.kind === "del" ? "-" : l.kind === "hunk" ? " " : " ";
+				if (l.kind === "hunk") {
+					return (
+						<div
+							key={`${l.kind}-${i}`}
+							style={{ display: "flex", padding: "0 12px", whiteSpace: "pre" }}
+						>
+							<span style={{ width: 14, color: prefixColor, flexShrink: 0 }}>{prefix}</span>
+							<span style={{ color: prefixColor, fontStyle: "italic" }}>{l.text}</span>
+						</div>
+					);
+				}
+				const tokens = tokenizeTs(l.text, c.textSecondary);
 				return (
 					<div
 						key={`${l.kind}-${i}`}
-						style={{
-							display: "flex",
-							background: bg,
-							padding: "0 12px",
-							whiteSpace: "pre",
-						}}
+						style={{ display: "flex", background: bg, padding: "0 12px", whiteSpace: "pre" }}
 					>
-						<span
-							style={{
-								width: 14,
-								color: fg,
-								flexShrink: 0,
-							}}
-						>
-							{prefix}
-						</span>
-						<span style={{ color: fg, fontStyle: l.kind === "hunk" ? "italic" : "normal" }}>
-							{l.text}
+						<span style={{ width: 14, color: prefixColor, flexShrink: 0 }}>{prefix}</span>
+						<span>
+							{tokens.map((t, ti) => (
+								<span
+									// biome-ignore lint/suspicious/noArrayIndexKey: token stream
+									key={ti}
+									style={{ color: t.color, fontStyle: t.italic ? "italic" : "normal" }}
+								>
+									{t.text}
+								</span>
+							))}
 						</span>
 					</div>
 				);

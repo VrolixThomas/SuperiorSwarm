@@ -1,18 +1,19 @@
+import type { ReactNode } from "react";
 import { interpolate, useCurrentFrame } from "remotion";
 import { useColorsV4 } from "../colors-v4";
 import { TICKETS_V4 } from "../data";
 import { SCENES_V4 } from "../timeline";
 
 const SIDEBAR_WIDTH = 280;
-const DETAIL_WIDTH = 520;
+const DETAIL_HEIGHT = 360;
 const HIGHLIGHTED_TICKET_ID = "SS-148";
 const DETAIL_FRAME = 120;
 
-// Mirrors apps/desktop/src/renderer/components/tickets/TicketsSidebar.tsx +
-// TicketsBoardView.tsx + TicketDetailPanel.tsx. Selecting SS-148 slides
-// TicketDetailPanelV4 in from the right (real-app flow). No fabricated
-// "Start worktree" pill on the ticket card itself.
-export function WithTicketsTab() {
+// Mirrors apps/desktop/src/renderer/components/tickets/* — left sidebar +
+// kanban board on top, ticket detail panel sliding up from BOTTOM (full
+// width). Inside the detail panel: body left + 200px metadata column right
+// (matches real TicketDetailPanel layout).
+export function WithTicketsTab({ header }: { header?: ReactNode }) {
 	const c = useColorsV4();
 	const frame = useCurrentFrame();
 	const local = frame - SCENES_V4.s9Tickets.from;
@@ -21,7 +22,7 @@ export function WithTicketsTab() {
 		extrapolateLeft: "clamp",
 		extrapolateRight: "clamp",
 	});
-	const detailW = interpolate(local, [DETAIL_FRAME, DETAIL_FRAME + 24], [0, DETAIL_WIDTH], {
+	const detailH = interpolate(local, [DETAIL_FRAME, DETAIL_FRAME + 24], [0, DETAIL_HEIGHT], {
 		extrapolateLeft: "clamp",
 		extrapolateRight: "clamp",
 	});
@@ -78,24 +79,95 @@ export function WithTicketsTab() {
 					position: "relative",
 				}}
 			>
-				<TicketsBoardInline highlightedId={HIGHLIGHTED_TICKET_ID} highlightOp={detailOp} />
-			</div>
-
-			<div
-				style={{
-					width: detailW,
-					flexShrink: 0,
-					overflow: "hidden",
-					background: c.bgSurface,
-					borderLeft: `1px solid ${c.borderSubtle}`,
-					opacity: detailOp,
-				}}
-			>
-				<div style={{ width: DETAIL_WIDTH, height: "100%" }}>
-					<TicketDetailPanelV4 ticketId={HIGHLIGHTED_TICKET_ID} />
+				{header}
+				<TicketsBoardHeader total={TICKETS_V4.length} />
+				<div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
+					<TicketsBoardInline highlightedId={HIGHLIGHTED_TICKET_ID} highlightOp={detailOp} />
+				</div>
+				<div
+					style={{
+						height: detailH,
+						flexShrink: 0,
+						overflow: "hidden",
+						background: c.bgSurface,
+						borderTop: `1px solid ${c.borderSubtle}`,
+						opacity: detailOp,
+					}}
+				>
+					<div style={{ height: DETAIL_HEIGHT }}>
+						<TicketDetailPanelV4 ticketId={HIGHLIGHTED_TICKET_ID} />
+					</div>
 				</div>
 			</div>
 		</>
+	);
+}
+
+function TicketsBoardHeader({ total }: { total: number }) {
+	const c = useColorsV4();
+	return (
+		<div
+			style={{
+				display: "flex",
+				alignItems: "center",
+				gap: 10,
+				padding: "8px 14px",
+				borderBottom: `1px solid ${c.borderSubtle}`,
+				flexShrink: 0,
+			}}
+		>
+			<span style={{ fontSize: 13, fontWeight: 600, color: c.text }}>SuperiorSwarm</span>
+			<span style={{ fontSize: 11, color: c.textQuaternary }}>Linear · {total} tickets</span>
+			<div
+				style={{
+					display: "flex",
+					alignItems: "center",
+					gap: 4,
+					marginLeft: 4,
+					padding: "3px 8px",
+					borderRadius: 4,
+					background: c.bgOverlay,
+					fontSize: 11,
+					color: c.textSecondary,
+				}}
+			>
+				<svg width="9" height="9" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+					<circle cx="6" cy="4" r="2" stroke={c.textTertiary} strokeWidth="1.2" />
+					<path
+						d="M2.5 10c.5-1.5 1.8-2.5 3.5-2.5s3 1 3.5 2.5"
+						stroke={c.textTertiary}
+						strokeWidth="1.2"
+						strokeLinecap="round"
+					/>
+				</svg>
+				Me
+				<svg width="8" height="8" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+					<path
+						d="M3 4.5l3 3 3-3"
+						stroke={c.textTertiary}
+						strokeWidth="1.4"
+						strokeLinecap="round"
+					/>
+				</svg>
+			</div>
+			<div style={{ flex: 1 }} />
+			<div style={{ display: "flex", padding: 2, borderRadius: 6, background: c.bgOverlay }}>
+				{(["Board", "List", "Table"] as const).map((label, i) => (
+					<div
+						key={label}
+						style={{
+							padding: "3px 10px",
+							borderRadius: 4,
+							background: i === 0 ? c.bgElevated : "transparent",
+							color: i === 0 ? c.textSecondary : c.textQuaternary,
+							fontSize: 11,
+						}}
+					>
+						{label}
+					</div>
+				))}
+			</div>
+		</div>
 	);
 }
 
@@ -394,13 +466,7 @@ function TicketDetailPanelV4({ ticketId }: { ticketId: string }) {
 			</div>
 
 			<div style={{ display: "flex", flex: 1, minHeight: 0 }}>
-				<div
-					style={{
-						flex: 1,
-						overflow: "hidden",
-						padding: "16px 20px",
-					}}
-				>
+				<div style={{ flex: 1, overflowY: "auto", padding: "16px 20px" }}>
 					<div
 						style={{
 							fontSize: 16,
@@ -476,9 +542,9 @@ function TicketDetailPanelV4({ ticketId }: { ticketId: string }) {
 									justifyContent: "center",
 								}}
 							>
-								T
+								S
 							</div>
-							<span style={{ fontSize: 11, color: c.textSecondary }}>Thomas</span>
+							<span style={{ fontSize: 11, color: c.textSecondary }}>sam</span>
 						</div>
 					</DetailField>
 

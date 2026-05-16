@@ -1,8 +1,9 @@
+import type { ReactNode } from "react";
 import { TerminalBody } from "../../build/TerminalBody";
 import { useColorsV4 } from "../colors-v4";
 import { SCENES_V4 } from "../timeline";
 
-export function TerminalOnly() {
+export function TerminalOnly({ header }: { header?: ReactNode }) {
 	const c = useColorsV4();
 	return (
 		<div
@@ -13,7 +14,10 @@ export function TerminalOnly() {
 				flexDirection: "column",
 			}}
 		>
-			<TerminalBody startFrame={SCENES_V4.s1Terminal.from} />
+			{header}
+			<div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+				<TerminalBody startFrame={SCENES_V4.s1Terminal.from} />
+			</div>
 		</div>
 	);
 }

@@ -1,5 +1,6 @@
 // Mirrors apps/desktop/src/renderer/components/solve/SolveDiffPane.tsx. Static (no monaco, no tRPC, no stores) — diff rendered as plain row list.
 
+import { tokenizeTs } from "../build-v4/syntax";
 import type { SolveSessionInfo } from "./SolveReviewTab";
 
 interface Props {
@@ -123,8 +124,16 @@ function DiffBody() {
 						<span className={`shrink-0 w-[16px] text-center py-[1px] ${sigilColor} select-none`}>
 							{sigil}
 						</span>
-						<span className="flex-1 pr-3 py-[1px] whitespace-pre text-[var(--text)] overflow-hidden">
-							{line.text}
+						<span className="flex-1 pr-3 py-[1px] whitespace-pre overflow-hidden">
+							{tokenizeTs(line.text, "var(--text)").map((t, ti) => (
+								<span
+									// biome-ignore lint/suspicious/noArrayIndexKey: token stream
+									key={ti}
+									style={{ color: t.color, fontStyle: t.italic ? "italic" : "normal" }}
+								>
+									{t.text}
+								</span>
+							))}
 						</span>
 					</div>
 				);
