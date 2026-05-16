@@ -172,12 +172,9 @@ app.whenReady().then(async () => {
 
 	setupRepoIPC(() => mainWindow);
 
-	session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
-		if (permission === "media") {
-			callback(true);
-		} else {
-			callback(false);
-		}
+	const ALLOWED_PERMISSIONS = new Set(["media", "clipboard-sanitized-write"]);
+	session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
+		callback(ALLOWED_PERMISSIONS.has(permission));
 	});
 
 	void (async () => {
