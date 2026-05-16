@@ -3,7 +3,7 @@ import { beforeAll, beforeEach, expect, test } from "bun:test";
 import { join } from "node:path";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { getDb } from "../../src/main/db";
-import { ftsUpsert, ftsDelete, ftsSearch } from "../../src/main/memory/fts";
+import { ftsDelete, ftsSearch, ftsUpsert } from "../../src/main/memory/fts";
 
 beforeAll(() => {
 	const db = getDb();

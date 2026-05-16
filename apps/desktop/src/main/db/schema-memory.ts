@@ -85,9 +85,7 @@ export const memoryOpenQuestions = sqliteTable(
 		createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
 		answeredAt: integer("answered_at", { mode: "timestamp" }),
 	},
-	(t) => [
-		index("memory_questions_project_status_idx").on(t.projectId, t.status),
-	]
+	(t) => [index("memory_questions_project_status_idx").on(t.projectId, t.status)]
 );
 
 export type MemoryOpenQuestion = typeof memoryOpenQuestions.$inferSelect;

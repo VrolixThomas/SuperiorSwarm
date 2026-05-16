@@ -1,6 +1,6 @@
-import { and, asc, eq, gt, lt, type SQL } from "drizzle-orm";
+import { type SQL, and, asc, eq, gt, lt } from "drizzle-orm";
 import { getDb } from "../db";
-import { memoryFollowups, type MemoryFollowup } from "../db/schema-memory";
+import { type MemoryFollowup, memoryFollowups } from "../db/schema-memory";
 import { newMemoryId } from "./ids";
 
 type FollowupStatus = "open" | "done" | "cancelled";
@@ -47,11 +47,7 @@ export interface UpdateFollowupInput {
 
 export function updateFollowup(input: UpdateFollowupInput): void {
 	const db = getDb();
-	const existing = db
-		.select()
-		.from(memoryFollowups)
-		.where(eq(memoryFollowups.id, input.id))
-		.get();
+	const existing = db.select().from(memoryFollowups).where(eq(memoryFollowups.id, input.id)).get();
 	if (!existing) throw new Error(`followup not found: ${input.id}`);
 
 	db.update(memoryFollowups)

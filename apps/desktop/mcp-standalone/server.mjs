@@ -52,9 +52,7 @@ if (!isWorkspaceAgentMode && (isSolverMode || isQuickActionMode) && !DB_PATH) {
 let db = null;
 if (isWorkspaceAgentMode) {
 	if (!DB_PATH || !MEMORY_ROOT) {
-		console.error(
-			"WORKSPACE_AGENT mode requires DB_PATH and MEMORY_ROOT for memory tools"
-		);
+		console.error("WORKSPACE_AGENT mode requires DB_PATH and MEMORY_ROOT for memory tools");
 		process.exit(1);
 	}
 	db = new Database(DB_PATH);
@@ -988,12 +986,13 @@ if (isWorkspaceAgentMode) {
 		}
 
 		function ftsUpsert(kind, refId, projectId, body) {
-			db.prepare(
-				"DELETE FROM memory_fts WHERE kind = ? AND ref_id = ?"
-			).run(kind, refId);
-			db.prepare(
-				"INSERT INTO memory_fts (kind, ref_id, project_id, body) VALUES (?, ?, ?, ?)"
-			).run(kind, refId, projectId, body);
+			db.prepare("DELETE FROM memory_fts WHERE kind = ? AND ref_id = ?").run(kind, refId);
+			db.prepare("INSERT INTO memory_fts (kind, ref_id, project_id, body) VALUES (?, ?, ?, ?)").run(
+				kind,
+				refId,
+				projectId,
+				body
+			);
 		}
 
 		// add_goal
@@ -1031,9 +1030,7 @@ if (isWorkspaceAgentMode) {
 							)
 							.all(PROJECT_ID, status)
 					: db
-							.prepare(
-								"SELECT * FROM memory_goals WHERE project_id = ? ORDER BY created_at DESC"
-							)
+							.prepare("SELECT * FROM memory_goals WHERE project_id = ? ORDER BY created_at DESC")
 							.all(PROJECT_ID);
 				return { content: [{ type: "text", text: JSON.stringify(rows) }] };
 			}
@@ -1127,9 +1124,7 @@ if (isWorkspaceAgentMode) {
 					`INSERT INTO memory_decisions (id, project_id, title, rationale, alternatives, created_at)
 					 VALUES (?, ?, ?, ?, ?, ?)`
 				).run(id, PROJECT_ID, title, rationale, alternatives ?? null, now);
-				const body = [title, rationale, alternatives ?? ""]
-					.filter(Boolean)
-					.join("\n\n");
+				const body = [title, rationale, alternatives ?? ""].filter(Boolean).join("\n\n");
 				ftsUpsert("decision", id, PROJECT_ID, body);
 				return { content: [{ type: "text", text: JSON.stringify({ id }) }] };
 			}
@@ -1169,9 +1164,7 @@ if (isWorkspaceAgentMode) {
 				answer: z.string(),
 			},
 			async ({ id, answer }) => {
-				const row = db
-					.prepare("SELECT * FROM memory_open_questions WHERE id = ?")
-					.get(id);
+				const row = db.prepare("SELECT * FROM memory_open_questions WHERE id = ?").get(id);
 				if (!row) throw new Error(`question not found: ${id}`);
 				db.prepare(
 					`UPDATE memory_open_questions
@@ -1204,10 +1197,7 @@ if (isWorkspaceAgentMode) {
 				const hh = String(startedAt.getUTCHours()).padStart(2, "0");
 				const mi = String(startedAt.getUTCMinutes()).padStart(2, "0");
 				const ss = String(startedAt.getUTCSeconds()).padStart(2, "0");
-				const filePath = path.join(
-					dir,
-					`${yyyy}-${mm}-${dd}-${hh}${mi}${ss}-${sessionId}.md`
-				);
+				const filePath = path.join(dir, `${yyyy}-${mm}-${dd}-${hh}${mi}${ss}-${sessionId}.md`);
 				fs.writeFileSync(
 					filePath,
 					`# Session ${startedAt.toISOString()} (${sessionId})\n\n`,
@@ -1234,9 +1224,7 @@ if (isWorkspaceAgentMode) {
 				text: z.string(),
 			},
 			async ({ session_id, text }) => {
-				const row = db
-					.prepare("SELECT * FROM memory_journal WHERE session_id = ?")
-					.get(session_id);
+				const row = db.prepare("SELECT * FROM memory_journal WHERE session_id = ?").get(session_id);
 				if (!row) throw new Error(`journal session not found: ${session_id}`);
 				if (row.ended_at) throw new Error(`journal already ended: ${session_id}`);
 				const withNl = text.endsWith("\n") ? text : `${text}\n`;
@@ -1254,13 +1242,13 @@ if (isWorkspaceAgentMode) {
 				summary: z.string(),
 			},
 			async ({ session_id, summary }) => {
-				const row = db
-					.prepare("SELECT * FROM memory_journal WHERE session_id = ?")
-					.get(session_id);
+				const row = db.prepare("SELECT * FROM memory_journal WHERE session_id = ?").get(session_id);
 				if (!row) throw new Error(`journal session not found: ${session_id}`);
-				db.prepare(
-					"UPDATE memory_journal SET ended_at = ?, summary = ? WHERE session_id = ?"
-				).run(nowS(), summary, session_id);
+				db.prepare("UPDATE memory_journal SET ended_at = ?, summary = ? WHERE session_id = ?").run(
+					nowS(),
+					summary,
+					session_id
+				);
 				ftsUpsert("journal", session_id, row.project_id, summary);
 				return { content: [{ type: "text", text: JSON.stringify({ ok: true }) }] };
 			}
@@ -1289,9 +1277,7 @@ if (isWorkspaceAgentMode) {
 			"Read the MD body of a journal session",
 			{ session_id: z.string() },
 			async ({ session_id }) => {
-				const row = db
-					.prepare("SELECT * FROM memory_journal WHERE session_id = ?")
-					.get(session_id);
+				const row = db.prepare("SELECT * FROM memory_journal WHERE session_id = ?").get(session_id);
 				if (!row) throw new Error(`journal session not found: ${session_id}`);
 				const body = fs.readFileSync(row.file_path, "utf-8");
 				return { content: [{ type: "text", text: body }] };
@@ -1347,16 +1333,12 @@ if (isWorkspaceAgentMode) {
 			"Full-text search across goals, decisions, questions, and journal summaries",
 			{
 				query: z.string(),
-				kinds: z
-					.array(z.enum(["goal", "decision", "question", "journal"]))
-					.optional(),
+				kinds: z.array(z.enum(["goal", "decision", "question", "journal"])).optional(),
 				limit: z.number().optional(),
 			},
 			async ({ query, kinds, limit }) => {
 				const kindFilter =
-					kinds && kinds.length > 0
-						? ` AND kind IN (${kinds.map(() => "?").join(",")})`
-						: "";
+					kinds && kinds.length > 0 ? ` AND kind IN (${kinds.map(() => "?").join(",")})` : "";
 				const params = [PROJECT_ID, query];
 				if (kinds && kinds.length > 0) params.push(...kinds);
 				params.push(limit ?? 50);

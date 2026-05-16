@@ -1,9 +1,6 @@
 import { and, desc, eq } from "drizzle-orm";
 import { getDb } from "../db";
-import {
-	memoryOpenQuestions,
-	type MemoryOpenQuestion,
-} from "../db/schema-memory";
+import { type MemoryOpenQuestion, memoryOpenQuestions } from "../db/schema-memory";
 import { ftsUpsert } from "./fts";
 import { newMemoryId } from "./ids";
 
@@ -75,9 +72,7 @@ export interface ListQuestionsInput {
 	status?: QuestionStatus;
 }
 
-export function listQuestions(
-	input: ListQuestionsInput
-): MemoryOpenQuestion[] {
+export function listQuestions(input: ListQuestionsInput): MemoryOpenQuestion[] {
 	const conds = [eq(memoryOpenQuestions.projectId, input.projectId)];
 	if (input.status) conds.push(eq(memoryOpenQuestions.status, input.status));
 

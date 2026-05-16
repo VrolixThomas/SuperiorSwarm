@@ -1,6 +1,6 @@
 import { and, desc, eq } from "drizzle-orm";
 import { getDb } from "../db";
-import { memoryGoals, type MemoryGoal } from "../db/schema-memory";
+import { type MemoryGoal, memoryGoals } from "../db/schema-memory";
 import { ftsDelete, ftsUpsert } from "./fts";
 import { newMemoryId } from "./ids";
 
@@ -45,11 +45,7 @@ export interface UpdateGoalInput {
 
 export function updateGoal(input: UpdateGoalInput): void {
 	const db = getDb();
-	const existing = db
-		.select()
-		.from(memoryGoals)
-		.where(eq(memoryGoals.id, input.id))
-		.get();
+	const existing = db.select().from(memoryGoals).where(eq(memoryGoals.id, input.id)).get();
 	if (!existing) throw new Error(`goal not found: ${input.id}`);
 
 	const next: Partial<MemoryGoal> = {
@@ -79,12 +75,7 @@ export function listGoals(input: ListGoalsInput): MemoryGoal[] {
 	const where = input.status
 		? and(eq(memoryGoals.projectId, input.projectId), eq(memoryGoals.status, input.status))
 		: eq(memoryGoals.projectId, input.projectId);
-	return db
-		.select()
-		.from(memoryGoals)
-		.where(where)
-		.orderBy(desc(memoryGoals.createdAt))
-		.all();
+	return db.select().from(memoryGoals).where(where).orderBy(desc(memoryGoals.createdAt)).all();
 }
 
 export function deleteGoal(id: string): void {

@@ -1,7 +1,7 @@
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { desc, eq } from "drizzle-orm";
 import { getDb } from "../db";
-import { memoryJournal, type MemoryJournalEntry } from "../db/schema-memory";
+import { type MemoryJournalEntry, memoryJournal } from "../db/schema-memory";
 import { ftsDelete, ftsUpsert } from "./fts";
 import { newMemoryId } from "./ids";
 import { journalDir, journalFileName } from "./paths";
