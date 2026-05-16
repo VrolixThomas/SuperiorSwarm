@@ -20,9 +20,11 @@ export function WithRightPanelChanges() {
 
 	const repo = REPOS_V4[0];
 
+	const ACTIVE_BRANCH = "feature/auth-refactor";
+
 	return (
 		<>
-			{/* Left: 280px sidebar */}
+			{/* Left: real Repos sidebar */}
 			<div
 				style={{
 					width: SIDEBAR_WIDTH,
@@ -31,64 +33,73 @@ export function WithRightPanelChanges() {
 					borderRight: `1px solid ${c.borderSubtle}`,
 					display: "flex",
 					flexDirection: "column",
-					padding: "12px 0",
 				}}
 			>
+				{/* Tab strip */}
 				<div
 					style={{
-						padding: "0 12px 12px",
+						display: "flex",
+						padding: "6px 8px",
+						gap: 4,
 						borderBottom: `1px solid ${c.borderSubtle}`,
 					}}
 				>
+					{(["Repos", "Tickets", "PRs"] as const).map((label, i) => (
+						<div
+							key={label}
+							style={{
+								flex: 1,
+								padding: "5px 0",
+								textAlign: "center",
+								fontSize: 10,
+								fontWeight: 500,
+								borderRadius: 5,
+								background: i === 0 ? c.bgElevated : "transparent",
+								color: i === 0 ? c.textSecondary : c.textQuaternary,
+							}}
+						>
+							{label}
+						</div>
+					))}
+				</div>
+
+				{/* Repo header + worktrees */}
+				<div style={{ flex: 1, overflow: "hidden", padding: "8px 0" }}>
 					<div
 						style={{
 							fontSize: 13,
 							fontWeight: 600,
 							color: c.text,
-							marginBottom: 4,
+							padding: "6px 16px",
+							display: "flex",
+							alignItems: "center",
+							gap: 6,
 						}}
 					>
-						{repo?.name ?? "SuperiorSwarm"}
+						<span style={{ color: c.textTertiary }}>▾</span>
+						{repo?.name}
 					</div>
-					<div
-						style={{
-							fontSize: 11,
-							color: c.accent,
-							background: c.accentSubtle,
-							borderRadius: 4,
-							padding: "2px 6px",
-							display: "inline-block",
-						}}
-					>
-						feature/auth-refactor
-					</div>
-				</div>
-				<div
-					style={{
-						flex: 1,
-						padding: "8px 12px",
-						overflow: "hidden",
-					}}
-				>
-					{repo?.worktrees.map((wt) => (
-						<div
-							key={wt.branch}
-							style={{
-								padding: "4px 8px",
-								fontSize: 12,
-								color: wt.branch === "feature/auth-refactor" ? c.text : c.textTertiary,
-								fontWeight: wt.branch === "feature/auth-refactor" ? 600 : 400,
-								background: wt.branch === "feature/auth-refactor" ? c.bgElevated : "transparent",
-								borderRadius: 5,
-								marginBottom: 2,
-								whiteSpace: "nowrap",
-								overflow: "hidden",
-								textOverflow: "ellipsis",
-							}}
-						>
-							{wt.branch}
-						</div>
-					))}
+					{repo?.worktrees.map((wt) => {
+						const isActive = wt.branch === ACTIVE_BRANCH;
+						return (
+							<div
+								key={wt.branch}
+								style={{
+									padding: "5px 12px 5px 32px",
+									fontSize: 12,
+									color: isActive ? c.text : c.textSecondary,
+									fontWeight: isActive ? 600 : 400,
+									background: isActive ? c.bgActive : "transparent",
+									borderLeft: isActive ? `2px solid ${c.accent}` : "2px solid transparent",
+									whiteSpace: "nowrap",
+									overflow: "hidden",
+									textOverflow: "ellipsis",
+								}}
+							>
+								{wt.branch}
+							</div>
+						);
+					})}
 				</div>
 			</div>
 

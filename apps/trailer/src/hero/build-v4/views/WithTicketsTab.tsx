@@ -39,7 +39,7 @@ export function WithTicketsTab() {
 
 	return (
 		<>
-			{/* Left: 280px tickets sidebar */}
+			{/* Left: real Sidebar with Tickets tab active */}
 			<div
 				style={{
 					width: SIDEBAR_WIDTH,
@@ -50,19 +50,32 @@ export function WithTicketsTab() {
 					flexDirection: "column",
 				}}
 			>
-				{/* Header */}
+				{/* Tab strip */}
 				<div
 					style={{
-						padding: "10px 12px",
+						display: "flex",
+						padding: "6px 8px",
+						gap: 4,
 						borderBottom: `1px solid ${c.borderSubtle}`,
-						fontSize: 11,
-						fontWeight: 600,
-						letterSpacing: "0.06em",
-						textTransform: "uppercase",
-						color: c.textTertiary,
 					}}
 				>
-					Tickets
+					{(["Repos", "Tickets", "PRs"] as const).map((label, i) => (
+						<div
+							key={label}
+							style={{
+								flex: 1,
+								padding: "5px 0",
+								textAlign: "center",
+								fontSize: 10,
+								fontWeight: 500,
+								borderRadius: 5,
+								background: i === 1 ? c.bgElevated : "transparent",
+								color: i === 1 ? c.textSecondary : c.textQuaternary,
+							}}
+						>
+							{label}
+						</div>
+					))}
 				</div>
 
 				{/* Ticket list */}
@@ -232,37 +245,30 @@ function TicketsBoardInline() {
 							minWidth: 0,
 						}}
 					>
-						{/* Column header */}
+						{/* Column header — matches real TicketsBoardView style */}
 						<div
 							style={{
 								display: "flex",
 								alignItems: "center",
 								gap: 6,
-								paddingBottom: 6,
-								borderBottom: `2px solid ${col.color}`,
+								padding: "4px 4px",
+								fontSize: 9,
+								fontWeight: 600,
+								letterSpacing: "0.3px",
+								textTransform: "uppercase",
+								color: c.textTertiary,
 							}}
 						>
+							<svg width="8" height="8" viewBox="0 0 16 16" aria-hidden="true">
+								<circle cx="8" cy="8" r="6" fill="none" stroke={col.color} strokeWidth="1.5" />
+							</svg>
+							<span>{col.label}</span>
 							<span
 								style={{
-									fontSize: 11,
-									fontWeight: 700,
-									color: col.color,
-									letterSpacing: "0.04em",
-									textTransform: "uppercase",
-								}}
-							>
-								{col.label}
-							</span>
-							<span
-								style={{
-									fontSize: 10,
-									fontWeight: 600,
-									color: c.textQuaternary,
-									background: c.bgOverlay,
-									borderRadius: 10,
-									padding: "0 6px",
-									minWidth: 16,
-									textAlign: "center",
+									marginLeft: "auto",
+									fontWeight: 400,
+									opacity: 0.5,
+									fontVariantNumeric: "tabular-nums",
 								}}
 							>
 								{tickets.length}

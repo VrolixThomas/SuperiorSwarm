@@ -125,32 +125,78 @@ export function WithSidebarRepos() {
 						);
 					})}
 				</div>
+				{/* Add Repository inline button (matches real Sidebar.tsx layout) */}
 				<div
 					style={{
 						opacity: footerOp,
-						borderTop: `1px solid ${c.borderSubtle}`,
-						padding: "8px 12px",
-						display: "flex",
-						alignItems: "center",
-						justifyContent: "space-between",
-						fontSize: 12,
-						color: c.textSecondary,
+						padding: "4px 8px 8px",
 					}}
 				>
 					<div
 						style={{
 							display: "flex",
 							alignItems: "center",
-							gap: 6,
-							padding: "6px 8px",
+							gap: 8,
+							padding: "6px 12px",
 							borderRadius: 6,
-							background: c.bgElevated,
+							color: c.textQuaternary,
+							fontSize: 12,
 						}}
 					>
-						<span style={{ fontSize: 14 }}>+</span>
-						Repository
+						<svg
+							aria-hidden="true"
+							width="13"
+							height="13"
+							viewBox="0 0 16 16"
+							fill="none"
+							style={{ flexShrink: 0 }}
+						>
+							<path
+								d="M8 3v10M3 8h10"
+								stroke="currentColor"
+								strokeWidth="1.5"
+								strokeLinecap="round"
+							/>
+						</svg>
+						<span>Add Repository</span>
 					</div>
-					<div style={{ padding: "4px 6px", color: c.textTertiary, fontSize: 16 }}>⚙</div>
+				</div>
+				{/* Settings footer */}
+				<div
+					style={{
+						opacity: footerOp,
+						borderTop: `1px solid ${c.borderSubtle}`,
+						padding: "8px",
+					}}
+				>
+					<div
+						style={{
+							display: "flex",
+							alignItems: "center",
+							gap: 8,
+							padding: "6px 12px",
+							borderRadius: 6,
+							fontSize: 13,
+							color: c.textTertiary,
+						}}
+					>
+						<svg
+							aria-hidden="true"
+							width="15"
+							height="15"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							strokeWidth="1.5"
+							strokeLinecap="round"
+							strokeLinejoin="round"
+							style={{ flexShrink: 0 }}
+						>
+							<circle cx="12" cy="12" r="3" />
+							<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+						</svg>
+						<span>Settings</span>
+					</div>
 				</div>
 			</div>
 			<div style={{ flex: 1, background: c.bgBase, display: "flex", flexDirection: "column" }}>

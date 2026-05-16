@@ -56,12 +56,12 @@ export const REPOS_V4: RepoV4[] = [
 		worktrees: [
 			{ branch: "main" },
 			{ branch: "MarketingImages" },
+			{ branch: "feat/agent-terminal-chat" },
 			{ branch: "feature/auth-refactor" },
 			{ branch: "fix/repo-watcher" },
 			{ branch: "feature/ticket-drag" },
 			{ branch: "chore/biome-config" },
 			{ branch: "release/0.7.3" },
-			{ branch: "wip/lsp-settings" },
 		],
 	},
 ];
@@ -74,135 +74,78 @@ export const TICKETS_V4: TicketV4[] = [
 	{ id: "SS-157", title: "Worktree picker should sort by recency", state: "todo" },
 ];
 
+// Aligned to MOCK_PR in build-real/pr-showcase.ts so the same PR (#214 "feat:
+// agent terminal chat" by alex) appears consistently across PR scenes.
 export const PRS_V4: PRV4[] = [
 	{
-		number: 142,
-		title: "fix: dedupe terminal PTY events",
-		author: "jess",
+		number: 214,
+		title: "feat: agent terminal chat",
+		author: "alex",
 		role: "incoming-review",
 		comments: [
 			{
-				author: "jess",
-				body: "Can we extract this dedupe into a hook so the worktree picker can use it too?",
-				file: "src/main/terminal/pty-events.ts",
-				line: 47,
+				author: "sam",
+				body: "Cancel the stream subscription when the terminal closes — we're leaking handlers on unmount.",
+				file: "src/renderer/hooks/useAgentTerminalStream.ts",
+				line: 42,
 			},
 			{
-				author: "jess",
-				body: "Type assertion here is suspicious — should we narrow the union instead?",
-				file: "src/main/terminal/pty-events.ts",
-				line: 92,
-			},
-		],
-	},
-	{
-		number: 148,
-		title: "feat: drag-to-reorder tickets",
-		author: "thomas",
-		role: "outgoing-needs-review",
-		comments: [
-			{
-				author: "marko",
-				body: "Drag preview position drifts when sidebar is collapsed.",
-				file: "src/renderer/components/TicketsBoard.tsx",
-				line: 134,
+				author: "sam",
+				body: "Also make sure the cleanup runs before re-subscribing on sessionId change — otherwise we double-subscribe for one tick.",
+				file: "src/renderer/hooks/useAgentTerminalStream.ts",
+				line: 56,
 			},
 			{
-				author: "marko",
-				body: "Persist order to db on drag end, not on hover.",
-				file: "src/renderer/components/TicketsBoard.tsx",
-				line: 218,
-			},
-			{
-				author: "marko",
-				body: "Add a keyboard alternative for accessibility.",
-				file: "src/renderer/components/TicketsBoard.tsx",
-				line: 260,
-			},
-		],
-	},
-	{
-		number: 151,
-		title: "fix: MCP reconnect on sleep wake",
-		author: "marko",
-		role: "incoming-review",
-		comments: [
-			{
-				author: "marko",
-				body: "I think we want exponential backoff here, not a fixed delay.",
-				file: "src/main/mcp/reconnect.ts",
-				line: 31,
-			},
-		],
-	},
-	{
-		number: 153,
-		title: "feat: settings shortcut",
-		author: "thomas",
-		role: "outgoing-needs-review",
-		comments: [
-			{
-				author: "jess",
-				body: "Conflicts with the existing cmd+, on macOS — different namespace?",
-				file: "src/renderer/actions/core-actions.ts",
-				line: 78,
-			},
-			{
-				author: "jess",
-				body: "Add this to the keyboard shortcuts settings page.",
-				file: "src/renderer/components/settings/SettingsNav.tsx",
-				line: 22,
+				author: "jordan",
+				body: "Keep MCP server names stable across refreshes — id should derive from name + version.",
+				file: "src/renderer/main/mcp/mcp-server-registry.ts",
+				line: 18,
 			},
 		],
 	},
 ];
 
+// File paths align with MOCK_PR.files in build-real/pr-showcase.ts so the same
+// PR (#214) appears consistently across diff scenes.
 export const DEMO_FILES_V4: DemoFileV4[] = [
 	{
-		path: "src/main/git/repo-watcher.ts",
+		path: "src/renderer/hooks/useAgentTerminalStream.ts",
+		language: "typescript",
+		hunks: [
+			{
+				startLine: 38,
+				deletions: ["\t\tstreamRef.current = stream.subscribe(handler);"],
+				additions: [
+					"\t\tconst sub = stream.subscribe(handler);",
+					"\t\treturn () => sub.unsubscribe();",
+				],
+			},
+			{
+				startLine: 54,
+				deletions: ["\t}, []);"],
+				additions: ["\t}, [sessionId]);"],
+			},
+		],
+	},
+	{
+		path: "src/renderer/components/terminal/Terminal.tsx",
+		language: "typescript",
+		hunks: [
+			{
+				startLine: 84,
+				deletions: ["\t<Terminal stream={stream} />"],
+				additions: ["\t<Terminal stream={stream} theme={theme} />"],
+			},
+		],
+	},
+	{
+		path: "src/renderer/main/mcp/mcp-server-registry.ts",
 		language: "typescript",
 		hunks: [
 			{
 				startLine: 14,
-				deletions: ['import chokidar from "chokidar";'],
-				additions: [
-					'import chokidar from "chokidar";',
-					"// Use v3 for fsevents binding — v4 leaks file handles on macOS",
-				],
-			},
-			{
-				startLine: 48,
-				deletions: ["\tignoreInitial: true,"],
-				additions: ["\tignoreInitial: true,", "\tusePolling: false,", "\tatomic: true,"],
-			},
-		],
-	},
-	{
-		path: "src/renderer/components/TicketsBoard.tsx",
-		language: "typescript",
-		hunks: [
-			{
-				startLine: 132,
-				deletions: ["\tconst handleDrag = (e: DragEvent) => {"],
-				additions: [
-					"\tconst handleDrag = (e: DragEvent) => {",
-					"\t\tif (!sidebarExpanded) return offsetDrag(e, sidebarWidth);",
-				],
-			},
-		],
-	},
-	{
-		path: "src/main/mcp/reconnect.ts",
-		language: "typescript",
-		hunks: [
-			{
-				startLine: 29,
-				deletions: ["\t\tawait sleep(1000);", "\t\treturn this.connect();"],
-				additions: [
-					"\t\tawait sleep(this.backoffMs);",
-					"\t\tthis.backoffMs = Math.min(this.backoffMs * 2, 30_000);",
-					"\t\treturn this.connect();",
-				],
+				deletions: ["\t\tid: crypto.randomUUID(),"],
+				additions: ["\t\tid: `${cfg.name}@${cfg.version}`,", "\t\tname: cfg.name,"],
 			},
 		],
 	},
@@ -227,7 +170,7 @@ export const OPENING_TERMINALS_V4: OpeningTerminalV4[] = [
 	{ kind: "swarm", label: "auth-refactor", lines: swarmLines("auth-refactor") },
 	{ kind: "swarm", label: "migration-runner", lines: swarmLines("migration-runner") },
 	{ kind: "swarm", label: "pty-dedup", lines: swarmLines("pty-dedup") },
-	{ kind: "swarm", label: "review-pr-142", lines: swarmLines("review-pr-142") },
+	{ kind: "swarm", label: "review-pr-214", lines: swarmLines("review-pr-214") },
 	{ kind: "swarm", label: "rebuild-graph", lines: swarmLines("rebuild-graph") },
 	{
 		kind: "claude",

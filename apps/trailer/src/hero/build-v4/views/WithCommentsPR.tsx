@@ -1,28 +1,20 @@
-import { interpolate, useCurrentFrame } from "remotion";
+import { CommentsOverviewTab } from "../../build-real/CommentsOverviewTab";
 import { CodeEditor } from "../../build/CodeEditor";
 import { useColorsV4 } from "../colors-v4";
-import { PRS_V4 } from "../data";
+import { REPOS_V4 } from "../data";
 import { SCENES_V4 } from "../timeline";
 
 const SIDEBAR_WIDTH = 280;
 const RIGHT_PANEL_W = 420;
+const ACTIVE_BRANCH = "feat/agent-terminal-chat";
 
 export function WithCommentsPR() {
 	const c = useColorsV4();
-	const frame = useCurrentFrame();
-	const local = frame - SCENES_V4.s7PRComment.from;
-
-	const pr = PRS_V4.find((p) => p.number === 142) ?? PRS_V4[0];
-	const commentsToShow = pr != null ? Math.min(Math.floor(local / 40) + 1, pr.comments.length) : 0;
-
-	const solveOpacity = interpolate(local, [60, 90], [0, 1], {
-		extrapolateLeft: "clamp",
-		extrapolateRight: "clamp",
-	});
+	const repo = REPOS_V4[0];
 
 	return (
 		<>
-			{/* Left: 280px PR sidebar */}
+			{/* Left: real Repos sidebar */}
 			<div
 				style={{
 					width: SIDEBAR_WIDTH,
@@ -31,99 +23,70 @@ export function WithCommentsPR() {
 					borderRight: `1px solid ${c.borderSubtle}`,
 					display: "flex",
 					flexDirection: "column",
-					padding: "12px 0",
 				}}
 			>
-				{/* PR badge + number */}
 				<div
 					style={{
-						padding: "0 12px 12px",
+						display: "flex",
+						padding: "6px 8px",
+						gap: 4,
 						borderBottom: `1px solid ${c.borderSubtle}`,
 					}}
 				>
+					{(["Repos", "Tickets", "PRs"] as const).map((label, i) => (
+						<div
+							key={label}
+							style={{
+								flex: 1,
+								padding: "5px 0",
+								textAlign: "center",
+								fontSize: 10,
+								fontWeight: 500,
+								borderRadius: 5,
+								background: i === 0 ? c.bgElevated : "transparent",
+								color: i === 0 ? c.textSecondary : c.textQuaternary,
+							}}
+						>
+							{label}
+						</div>
+					))}
+				</div>
+				<div style={{ flex: 1, overflow: "hidden", padding: "8px 0" }}>
 					<div
 						style={{
+							fontSize: 13,
+							fontWeight: 600,
+							color: c.text,
+							padding: "6px 16px",
 							display: "flex",
 							alignItems: "center",
 							gap: 6,
-							marginBottom: 6,
 						}}
 					>
-						<span
-							style={{
-								fontSize: 10,
-								fontWeight: 700,
-								background: c.accentSubtle,
-								color: c.accent,
-								borderRadius: 4,
-								padding: "2px 6px",
-								letterSpacing: "0.04em",
-							}}
-						>
-							PR
-						</span>
-						<span
-							style={{
-								fontSize: 13,
-								fontWeight: 600,
-								color: c.textQuaternary,
-							}}
-						>
-							#{pr?.number}
-						</span>
+						<span style={{ color: c.textTertiary }}>▾</span>
+						{repo?.name}
 					</div>
-					<div
-						style={{
-							fontSize: 12,
-							fontWeight: 600,
-							color: c.text,
-							lineHeight: 1.4,
-							marginBottom: 4,
-						}}
-					>
-						{pr?.title}
-					</div>
-					<div
-						style={{
-							fontSize: 11,
-							color: c.textTertiary,
-						}}
-					>
-						by <span style={{ color: c.textSecondary, fontWeight: 500 }}>{pr?.author}</span>
-					</div>
-				</div>
-
-				{/* Role badge */}
-				<div
-					style={{
-						padding: "8px 12px",
-						fontSize: 11,
-						color: c.textTertiary,
-					}}
-				>
-					<span
-						style={{
-							background: pr?.role === "incoming-review" ? c.accentSubtle : "transparent",
-							color: pr?.role === "incoming-review" ? c.accent : c.textTertiary,
-							borderRadius: 4,
-							padding: "2px 6px",
-							fontWeight: 500,
-						}}
-					>
-						{pr?.role === "incoming-review" ? "Needs your review" : "Outgoing"}
-					</span>
-				</div>
-
-				{/* Comment count summary */}
-				<div
-					style={{
-						padding: "6px 12px",
-						fontSize: 12,
-						color: c.textSecondary,
-					}}
-				>
-					<span style={{ fontWeight: 600, color: c.text }}>{pr?.comments.length}</span> inline
-					comments
+					{repo?.worktrees.map((wt) => {
+						const isActive = wt.branch === ACTIVE_BRANCH;
+						return (
+							<div
+								key={wt.branch}
+								style={{
+									padding: "5px 12px 5px 32px",
+									fontSize: 12,
+									color: isActive ? c.text : c.textSecondary,
+									fontWeight: isActive ? 600 : 400,
+									background: isActive ? c.bgActive : "transparent",
+									borderLeft: isActive ? `2px solid ${c.accent}` : "2px solid transparent",
+									whiteSpace: "nowrap",
+									overflow: "hidden",
+									textOverflow: "ellipsis",
+								}}
+							>
+								{wt.branch}
+							</div>
+						);
+					})}
 				</div>
 			</div>
 
@@ -140,105 +103,17 @@ export function WithCommentsPR() {
 				<CodeEditor entryFrame={SCENES_V4.s7PRComment.from} variant="use-agent-terminal-stream" />
 			</div>
 
-			{/* Right: 420px comments panel */}
+			{/* Right: real CommentsOverviewTab (has Solve with AI button) */}
 			<div
 				style={{
 					width: RIGHT_PANEL_W,
 					flexShrink: 0,
 					background: c.bgSurface,
 					borderLeft: `1px solid ${c.borderSubtle}`,
-					display: "flex",
-					flexDirection: "column",
 					overflow: "hidden",
 				}}
 			>
-				{/* Panel header */}
-				<div
-					style={{
-						padding: "10px 14px",
-						borderBottom: `1px solid ${c.borderSubtle}`,
-						fontSize: 12,
-						fontWeight: 600,
-						color: c.text,
-						flexShrink: 0,
-					}}
-				>
-					Comments
-				</div>
-
-				{/* Inline comments list */}
-				<div
-					style={{
-						flex: 1,
-						overflow: "hidden",
-						padding: "8px 0",
-					}}
-				>
-					{(pr?.comments ?? []).slice(0, commentsToShow).map((comment) => (
-						<div
-							key={`${comment.file}:${comment.line}`}
-							style={{
-								padding: "10px 14px",
-								borderBottom: `1px solid ${c.borderSubtle}`,
-							}}
-						>
-							{/* File + line */}
-							<div
-								style={{
-									fontFamily: "monospace",
-									fontSize: 10,
-									color: c.accent,
-									marginBottom: 4,
-									overflow: "hidden",
-									textOverflow: "ellipsis",
-									whiteSpace: "nowrap",
-								}}
-							>
-								{comment.file}:{comment.line}
-							</div>
-							{/* Author */}
-							<div
-								style={{
-									fontSize: 11,
-									fontWeight: 600,
-									color: c.textSecondary,
-									marginBottom: 4,
-								}}
-							>
-								{comment.author}
-							</div>
-							{/* Body */}
-							<div
-								style={{
-									fontSize: 12,
-									color: c.text,
-									lineHeight: 1.5,
-								}}
-							>
-								{comment.body}
-							</div>
-						</div>
-					))}
-				</div>
-
-				{/* Solve with AI button */}
-				<div
-					data-solve-button-anchor
-					style={{
-						margin: 16,
-						padding: "10px 14px",
-						borderRadius: 8,
-						background: c.accent,
-						color: "#fff",
-						textAlign: "center",
-						fontWeight: 600,
-						fontSize: 14,
-						opacity: solveOpacity,
-						flexShrink: 0,
-					}}
-				>
-					Solve with AI
-				</div>
+				<CommentsOverviewTab />
 			</div>
 		</>
 	);

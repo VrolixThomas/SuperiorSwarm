@@ -1,16 +1,13 @@
 import type { ReactNode } from "react";
 import { useColorsV4 } from "./colors-v4";
 
-// V4 app window chrome. Reads colors from theme context so the same component
-// renders both dark and light variants. Distinct from build/AppWindow which
-// hardcodes dark via build/colors.ts.
+// V4 app window chrome. Matches real app's hiddenInset title bar: 52px tall,
+// traffic lights at left, no center title, no right-side agent counter.
 interface Props {
-	agentCount?: number;
-	title?: string;
 	children?: ReactNode;
 }
 
-export function AppWindowV4({ agentCount = 3, title = "SuperiorSwarm", children }: Props) {
+export function AppWindowV4({ children }: Props) {
 	const c = useColorsV4();
 	return (
 		<div
@@ -35,7 +32,6 @@ export function AppWindowV4({ agentCount = 3, title = "SuperiorSwarm", children 
 					display: "flex",
 					alignItems: "center",
 					padding: "0 16px",
-					position: "relative",
 					flexShrink: 0,
 					background: c.bgTabBar,
 					borderBottom: `1px solid ${c.borderSubtle}`,
@@ -45,41 +41,6 @@ export function AppWindowV4({ agentCount = 3, title = "SuperiorSwarm", children 
 					<span style={{ width: 12, height: 12, borderRadius: "50%", background: "#ff5f57" }} />
 					<span style={{ width: 12, height: 12, borderRadius: "50%", background: "#febc2e" }} />
 					<span style={{ width: 12, height: 12, borderRadius: "50%", background: "#28c840" }} />
-				</div>
-				<div
-					style={{
-						position: "absolute",
-						left: 0,
-						right: 0,
-						textAlign: "center",
-						pointerEvents: "none",
-						fontSize: 13,
-						color: c.textTertiary,
-						fontWeight: 500,
-					}}
-				>
-					{title}
-				</div>
-				<div
-					style={{
-						marginLeft: "auto",
-						display: "flex",
-						alignItems: "center",
-						gap: 6,
-						fontSize: 12,
-						color: c.textSecondary,
-					}}
-				>
-					<span
-						style={{
-							width: 7,
-							height: 7,
-							borderRadius: "50%",
-							background: c.success,
-							boxShadow: `0 0 8px ${c.success}`,
-						}}
-					/>
-					<span>{agentCount} agents</span>
 				</div>
 			</div>
 			<div style={{ flex: 1, display: "flex", overflow: "hidden" }}>{children}</div>
