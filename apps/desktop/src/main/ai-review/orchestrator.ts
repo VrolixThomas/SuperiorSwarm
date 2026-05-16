@@ -366,11 +366,7 @@ async function buildAndLaunchReview(params: {
 		prMetadata: JSON.stringify(prMetadata),
 	};
 
-	const ws = db
-		.select()
-		.from(schema.workspaces)
-		.where(eq(schema.workspaces.id, workspaceId))
-		.get();
+	const ws = db.select().from(schema.workspaces).where(eq(schema.workspaces.id, workspaceId)).get();
 	const projectId = ws?.projectId ?? "";
 
 	const taskToken = randomUUID();

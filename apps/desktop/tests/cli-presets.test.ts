@@ -1,9 +1,9 @@
 import "./preload-electron-mock";
 import { describe, expect, test } from "bun:test";
+import { spawn } from "node:child_process";
 import { existsSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { spawn } from "node:child_process";
 import { CLI_PRESETS } from "../src/main/ai-review/cli-presets";
 
 describe("CLI presets", () => {

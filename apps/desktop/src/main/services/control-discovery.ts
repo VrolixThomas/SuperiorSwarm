@@ -1,11 +1,4 @@
-import {
-	chmodSync,
-	existsSync,
-	mkdirSync,
-	readFileSync,
-	unlinkSync,
-	writeFileSync,
-} from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 export interface ControlDiscovery {
@@ -21,7 +14,7 @@ export function controlFilePath(userDataDir: string): string {
 
 export function writeControlDiscovery(
 	userDataDir: string,
-	value: { port: number; token: string; pid: number },
+	value: { port: number; token: string; pid: number }
 ): void {
 	if (!existsSync(userDataDir)) mkdirSync(userDataDir, { recursive: true });
 	const file = controlFilePath(userDataDir);

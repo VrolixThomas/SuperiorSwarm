@@ -37,17 +37,13 @@ import { setupLspIPC } from "./lsp/ipc-handler";
 import { serverManager, warmShellPathCache } from "./lsp/server-manager";
 import { syncShortcuts } from "./quick-actions/shortcuts";
 import { disposeRepoIPC, setupRepoIPC } from "./repo-ipc";
-import { deleteControlDiscovery, writeControlDiscovery } from "./services/control-discovery";
 import { probeCliInPath } from "./services/cli-probe";
+import { deleteControlDiscovery, writeControlDiscovery } from "./services/control-discovery";
 import { runGlobalMcpInstall } from "./services/global-mcp-install";
 import { writeLauncherScript } from "./services/global-mcp-launcher";
 import { runGlobalMcpMigration } from "./services/global-mcp-migration";
 import { setTaskRegistry } from "./services/task-registry-handle";
-import {
-	defaultSpawnFn,
-	setDispatchBroadcaster,
-	setEventBus,
-} from "./services/workspace-service";
+import { defaultSpawnFn, setDispatchBroadcaster, setEventBus } from "./services/workspace-service";
 import { registerSingleInstance } from "./single-instance";
 import { ensureTelemetryState } from "./telemetry/state";
 import { DaemonClient } from "./terminal/daemon-client";
@@ -401,7 +397,9 @@ app.whenReady().then(async () => {
 });
 
 app.on("before-quit", () => {
-	try { deleteControlDiscovery(app.getPath("userData")); } catch {}
+	try {
+		deleteControlDiscovery(app.getPath("userData"));
+	} catch {}
 	alertListener?.stop();
 	setAgentNotifyPort(null);
 	stopCommentPoller();

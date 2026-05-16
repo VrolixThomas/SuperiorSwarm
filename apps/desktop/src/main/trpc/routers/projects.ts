@@ -6,7 +6,6 @@ import { nanoid } from "nanoid";
 import { z } from "zod";
 import { getDb } from "../../db";
 import { projects, workspaces } from "../../db/schema";
-import { ensureRepoExclude } from "../../services/git-exclude";
 import {
 	cloneRepo,
 	detectDefaultBranch,
@@ -18,6 +17,7 @@ import {
 } from "../../git/operations";
 import { BitbucketAdapter } from "../../providers/bitbucket-adapter";
 import { GitHubAdapter } from "../../providers/github-adapter";
+import { ensureRepoExclude } from "../../services/git-exclude";
 import { publicProcedure, router } from "../index";
 
 const PROJECT_COLORS = [

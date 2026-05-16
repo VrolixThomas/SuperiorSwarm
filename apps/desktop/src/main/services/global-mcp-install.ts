@@ -44,7 +44,7 @@ function keyPath(cli: CliPresetName): string[] {
 export function installEntryForCli(
 	cli: CliPresetName,
 	launcherPath: string,
-	opts?: PathOpts,
+	opts?: PathOpts
 ): string {
 	const file = cliConfigPaths(cli, opts);
 	const entry = buildEntry(cli, launcherPath);
@@ -67,7 +67,7 @@ export function uninstallEntryForCli(cli: CliPresetName, opts?: PathOpts): void 
 }
 
 export async function detectInstalledClis(
-	probe: (cmd: string) => Promise<boolean>,
+	probe: (cmd: string) => Promise<boolean>
 ): Promise<CliPresetName[]> {
 	const all: CliPresetName[] = ["claude", "gemini", "codex", "opencode"];
 	const found: CliPresetName[] = [];
@@ -79,7 +79,7 @@ export async function detectInstalledClis(
 
 export async function runGlobalMcpInstall(
 	launcherPath: string,
-	probe: (cmd: string) => Promise<boolean>,
+	probe: (cmd: string) => Promise<boolean>
 ): Promise<CliPresetName[]> {
 	const detected = await detectInstalledClis(probe);
 	const db = getDb();
