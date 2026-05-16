@@ -37,35 +37,9 @@ export const workspacesRouter = router({
 		);
 	}),
 
-	listByProject: publicProcedure.input(z.object({ projectId: z.string() })).query(({ input }) => {
-		const db = getDb();
-		return db
-			.select({
-				id: workspaces.id,
-				projectId: workspaces.projectId,
-				type: workspaces.type,
-				name: workspaces.name,
-				worktreeId: workspaces.worktreeId,
-				terminalId: workspaces.terminalId,
-				prProvider: workspaces.prProvider,
-				prIdentifier: workspaces.prIdentifier,
-				reviewDraftId: workspaces.reviewDraftId,
-				createdAt: workspaces.createdAt,
-				updatedAt: workspaces.updatedAt,
-				worktreePath: worktrees.path,
-				draftStatus: reviewDrafts.status,
-				draftCommitSha: reviewDrafts.commitSha,
-				currentPhase: workspaces.currentPhase,
-				statusText: workspaces.statusText,
-				needs: workspaces.needs,
-				isOrchestrator: workspaces.isOrchestrator,
-				cliPreset: workspaces.cliPreset,
-			})
-			.from(workspaces)
-			.leftJoin(worktrees, eq(workspaces.worktreeId, worktrees.id))
-			.leftJoin(reviewDrafts, eq(workspaces.reviewDraftId, reviewDrafts.id))
-			.where(eq(workspaces.projectId, input.projectId))
-			.all();
+	listByProject: publicProcedure.input(z.object({ projectId: z.string() })).query(async ({ input }) => {
+		const { listByProjectTree } = await import("../../services/workspace-service");
+		return listByProjectTree({ projectId: input.projectId });
 	}),
 
 	create: publicProcedure
@@ -356,6 +330,34 @@ export const workspacesRouter = router({
 				{ workspaceId: input.workspaceId }
 			);
 			return { ok: true } as const;
+		}),
+
+	attachToOrchestrator: publicProcedure
+		.input(z.object({ orchestratorId: z.string().min(1), workspaceId: z.string().min(1) }))
+		.mutation(async ({ input }) => {
+			const { attachToOrchestrator } = await import("../../services/orchestrator-membership");
+			return attachToOrchestrator(input);
+		}),
+
+	detachFromOrchestrator: publicProcedure
+		.input(z.object({ workspaceId: z.string().min(1) }))
+		.mutation(async ({ input }) => {
+			const { detachFromOrchestrator } = await import("../../services/orchestrator-membership");
+			return detachFromOrchestrator(input);
+		}),
+
+	reorderTopLevel: publicProcedure
+		.input(z.object({ projectId: z.string().min(1), orderedIds: z.array(z.string().min(1)) }))
+		.mutation(async ({ input }) => {
+			const { reorderTopLevel } = await import("../../services/workspace-ordering");
+			return reorderTopLevel(input);
+		}),
+
+	reorderChildren: publicProcedure
+		.input(z.object({ orchestratorId: z.string().min(1), orderedIds: z.array(z.string().min(1)) }))
+		.mutation(async ({ input }) => {
+			const { reorderChildren } = await import("../../services/workspace-ordering");
+			return reorderChildren(input);
 		}),
 
 	attachTerminal: publicProcedure
