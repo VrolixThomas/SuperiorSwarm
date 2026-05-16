@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { eq } from "drizzle-orm";
-import { BrowserWindow, app, dialog, ipcMain, session, shell } from "electron";
+import { BrowserWindow, app, dialog, ipcMain, session, shell, systemPreferences } from "electron";
 import { AGENT_NOTIFY_PORT } from "../shared/agent-events";
 import { daemonInstanceId, daemonPaths } from "../shared/daemon-protocol";
 import { updateOpenCodePluginPort } from "./agent-hooks/agents/opencode";
@@ -124,6 +124,13 @@ function createWindow() {
 app.whenReady().then(async () => {
 	setupCrashHandlers();
 	log.info("App started", { version: app.getVersion() });
+
+	if (process.platform === "darwin") {
+		const micStatus = systemPreferences.getMediaAccessStatus("microphone");
+		if (micStatus !== "granted") {
+			await systemPreferences.askForMediaAccess("microphone");
+		}
+	}
 	const instanceId = daemonInstanceId(__dirname);
 	const paths = daemonPaths(instanceId);
 	daemonClient = new DaemonClient(
