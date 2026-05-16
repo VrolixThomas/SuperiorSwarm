@@ -71,6 +71,7 @@ export const workspaces = sqliteTable(
 		cliSessionId: text("cli_session_id"),
 		cliPreset: text("cli_preset"),
 		isOrchestrator: integer("is_orchestrator", { mode: "boolean" }).notNull().default(false),
+		sortOrder: integer("sort_order").notNull().default(0),
 		createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
 		updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
 	},
@@ -508,3 +509,25 @@ export const globalMcpInstall = sqliteTable("global_mcp_install", {
 });
 
 export type GlobalMcpInstall = typeof globalMcpInstall.$inferSelect;
+
+export const orchestratorMembers = sqliteTable(
+	"orchestrator_members",
+	{
+		orchestratorId: text("orchestrator_id")
+			.notNull()
+			.references(() => workspaces.id, { onDelete: "cascade" }),
+		workspaceId: text("workspace_id")
+			.notNull()
+			.references(() => workspaces.id, { onDelete: "cascade" }),
+		sortOrder: integer("sort_order").notNull(),
+		createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+	},
+	(t) => [
+		primaryKey({ columns: [t.orchestratorId, t.workspaceId] }),
+		index("orch_members_workspace_idx").on(t.workspaceId),
+		index("orch_members_orch_sort_idx").on(t.orchestratorId, t.sortOrder),
+	]
+);
+
+export type OrchestratorMember = typeof orchestratorMembers.$inferSelect;
+export type NewOrchestratorMember = typeof orchestratorMembers.$inferInsert;
