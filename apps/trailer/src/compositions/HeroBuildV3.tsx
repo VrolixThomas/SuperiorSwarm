@@ -5,6 +5,7 @@ import { CameraV3 } from "../hero/build-v3/Camera";
 import { CaptionV3 } from "../hero/build-v3/Caption";
 import { ColdOpenV3 } from "../hero/build-v3/ColdOpenV3";
 import { CollapseV3 } from "../hero/build-v3/CollapseV3";
+import { RevealV3 } from "../hero/build-v3/RevealV3";
 import { WorkspaceV3 } from "../hero/build-v3/WorkspaceV3";
 import { ACTS_V3, TOTAL_FRAMES_V3 } from "../hero/build-v3/timeline";
 
@@ -37,6 +38,9 @@ export function HeroBuildV3() {
 				</Freeze>
 			</Sequence>
 			<BeforeAfterV3 />
+			<Sequence from={ACTS_V3.reveal.from} durationInFrames={ACTS_V3.reveal.durationInFrames}>
+				<RevealV3 />
+			</Sequence>
 			<CaptionV3 />
 		</AbsoluteFill>
 	);
