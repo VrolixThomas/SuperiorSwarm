@@ -1,4 +1,4 @@
-import { chmodSync, existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 export interface ControlDiscovery {
@@ -19,8 +19,11 @@ export function writeControlDiscovery(
 	if (!existsSync(userDataDir)) mkdirSync(userDataDir, { recursive: true });
 	const file = controlFilePath(userDataDir);
 	const payload: ControlDiscovery = { ...value, updatedAt: new Date().toISOString() };
-	writeFileSync(file, JSON.stringify(payload, null, 2), "utf-8");
-	if (process.platform !== "win32") chmodSync(file, 0o600);
+	const writeOpts =
+		process.platform !== "win32"
+			? ({ encoding: "utf-8", mode: 0o600 } as const)
+			: ("utf-8" as const);
+	writeFileSync(file, JSON.stringify(payload, null, 2), writeOpts);
 }
 
 export function readControlDiscovery(userDataDir: string): ControlDiscovery | null {
