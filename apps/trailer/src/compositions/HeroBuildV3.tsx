@@ -1,5 +1,6 @@
-import { AbsoluteFill, Sequence } from "remotion";
+import { AbsoluteFill, Freeze, Sequence } from "remotion";
 import { Bg } from "../hero/Bg";
+import { BeforeAfterV3 } from "../hero/build-v3/BeforeAfterV3";
 import { CameraV3 } from "../hero/build-v3/Camera";
 import { CaptionV3 } from "../hero/build-v3/Caption";
 import { ColdOpenV3 } from "../hero/build-v3/ColdOpenV3";
@@ -24,6 +25,18 @@ export function HeroBuildV3() {
 			<CameraV3>
 				<WorkspaceV3 />
 			</CameraV3>
+			{/* Frozen workspace overlay during beforeAfter act */}
+			<Sequence
+				from={ACTS_V3.beforeAfter.from}
+				durationInFrames={ACTS_V3.beforeAfter.durationInFrames}
+			>
+				<Freeze frame={ACTS_V3.build.from + ACTS_V3.build.durationInFrames - 1}>
+					<CameraV3>
+						<WorkspaceV3 />
+					</CameraV3>
+				</Freeze>
+			</Sequence>
+			<BeforeAfterV3 />
 			<CaptionV3 />
 		</AbsoluteFill>
 	);
