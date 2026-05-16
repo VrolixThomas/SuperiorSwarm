@@ -8,6 +8,8 @@ export interface WorkspaceMcpEnv {
 	workspaceId: string;
 	port: number;
 	token: string;
+	dbPath: string;
+	memoryRoot: string;
 }
 
 function buildEntry(env: WorkspaceMcpEnv) {
@@ -21,6 +23,8 @@ function buildEntry(env: WorkspaceMcpEnv) {
 			WORKSPACE_ID: env.workspaceId,
 			SUPERIORSWARM_CONTROL_PORT: String(env.port),
 			SUPERIORSWARM_CONTROL_TOKEN: env.token,
+			DB_PATH: env.dbPath,
+			MEMORY_ROOT: env.memoryRoot,
 		},
 	};
 }

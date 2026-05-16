@@ -10,7 +10,7 @@ import * as schema from "./schema";
 
 let _db: ReturnType<typeof drizzle<typeof schema>> | null = null;
 
-function getDbPath(): string {
+export function getDbPath(): string {
 	const userDataPath = app.getPath("userData");
 	return join(userDataPath, "superiorswarm.db");
 }

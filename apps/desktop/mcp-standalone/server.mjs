@@ -22,6 +22,7 @@ const isQuickActionMode = QUICK_ACTION_SETUP === "1";
 const SUPERIORSWARM_CONTROL_PORT = process.env.SUPERIORSWARM_CONTROL_PORT;
 const SUPERIORSWARM_CONTROL_TOKEN = process.env.SUPERIORSWARM_CONTROL_TOKEN;
 const isWorkspaceAgentMode = process.env.WORKSPACE_AGENT === "1";
+const MEMORY_ROOT = process.env.MEMORY_ROOT;
 
 if (
 	isWorkspaceAgentMode &&
@@ -49,7 +50,18 @@ if (!isWorkspaceAgentMode && (isSolverMode || isQuickActionMode) && !DB_PATH) {
 
 // Connect to SQLite with WAL mode and busy timeout for concurrent access
 let db = null;
-if (!isWorkspaceAgentMode) {
+if (isWorkspaceAgentMode) {
+	if (!DB_PATH || !MEMORY_ROOT) {
+		console.error(
+			"WORKSPACE_AGENT mode requires DB_PATH and MEMORY_ROOT for memory tools"
+		);
+		process.exit(1);
+	}
+	db = new Database(DB_PATH);
+	db.pragma("journal_mode = WAL");
+	db.pragma("busy_timeout = 5000");
+	db.pragma("foreign_keys = ON");
+} else {
 	db = new Database(DB_PATH);
 	db.pragma("journal_mode = WAL");
 	db.pragma("busy_timeout = 5000");
@@ -955,6 +967,414 @@ if (isWorkspaceAgentMode) {
 				message,
 			})
 	);
+
+	// Memory tools
+	{
+		const fs = require("node:fs");
+		const path = require("node:path");
+
+		function nowS() {
+			return Math.floor(Date.now() / 1000);
+		}
+
+		function memoryRoot() {
+			return path.join(MEMORY_ROOT, "memory");
+		}
+		function projectRoot(pid) {
+			return path.join(memoryRoot(), pid);
+		}
+		function journalDir(pid) {
+			return path.join(projectRoot(pid), "journal");
+		}
+
+		function ftsUpsert(kind, refId, projectId, body) {
+			db.prepare(
+				"DELETE FROM memory_fts WHERE kind = ? AND ref_id = ?"
+			).run(kind, refId);
+			db.prepare(
+				"INSERT INTO memory_fts (kind, ref_id, project_id, body) VALUES (?, ?, ?, ?)"
+			).run(kind, refId, projectId, body);
+		}
+
+		// add_goal
+		server.tool(
+			"memory_add_goal",
+			"Add a project goal to long-lived orchestrator memory",
+			{
+				title: z.string(),
+				body: z.string().optional(),
+			},
+			async ({ title, body }) => {
+				const id = `goal_${randomUUID().slice(0, 12)}`;
+				const now = nowS();
+				db.prepare(
+					`INSERT INTO memory_goals (id, project_id, title, body, status, created_at, updated_at)
+					 VALUES (?, ?, ?, ?, 'active', ?, ?)`
+				).run(id, PROJECT_ID, title, body ?? null, now, now);
+				ftsUpsert("goal", id, PROJECT_ID, body ? `${title}\n\n${body}` : title);
+				return { content: [{ type: "text", text: JSON.stringify({ id }) }] };
+			}
+		);
+
+		// list_goals
+		server.tool(
+			"memory_list_goals",
+			"List project goals",
+			{
+				status: z.enum(["active", "done", "abandoned"]).optional(),
+			},
+			async ({ status }) => {
+				const rows = status
+					? db
+							.prepare(
+								"SELECT * FROM memory_goals WHERE project_id = ? AND status = ? ORDER BY created_at DESC"
+							)
+							.all(PROJECT_ID, status)
+					: db
+							.prepare(
+								"SELECT * FROM memory_goals WHERE project_id = ? ORDER BY created_at DESC"
+							)
+							.all(PROJECT_ID);
+				return { content: [{ type: "text", text: JSON.stringify(rows) }] };
+			}
+		);
+
+		// add_followup
+		server.tool(
+			"memory_add_followup",
+			"Add a follow-up item",
+			{
+				title: z.string(),
+				body: z.string().optional(),
+				owner: z.string().optional(),
+				due_at: z.number().optional().describe("unix seconds"),
+				goal_id: z.string().optional(),
+			},
+			async ({ title, body, owner, due_at, goal_id }) => {
+				const id = `fu_${randomUUID().slice(0, 12)}`;
+				const now = nowS();
+				db.prepare(
+					`INSERT INTO memory_followups (id, project_id, goal_id, title, body, owner, due_at, status, created_at, updated_at)
+					 VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)`
+				).run(
+					id,
+					PROJECT_ID,
+					goal_id ?? null,
+					title,
+					body ?? null,
+					owner ?? null,
+					due_at ?? null,
+					now,
+					now
+				);
+				return { content: [{ type: "text", text: JSON.stringify({ id }) }] };
+			}
+		);
+
+		// list_followups
+		server.tool(
+			"memory_list_followups",
+			"List follow-ups with optional filters",
+			{
+				status: z.enum(["open", "done", "cancelled"]).optional(),
+				owner: z.string().optional(),
+				due_before: z.number().optional(),
+				due_after: z.number().optional(),
+			},
+			async ({ status, owner, due_before, due_after }) => {
+				const where = ["project_id = ?"];
+				const params = [PROJECT_ID];
+				if (status) {
+					where.push("status = ?");
+					params.push(status);
+				}
+				if (owner) {
+					where.push("owner = ?");
+					params.push(owner);
+				}
+				if (due_before !== undefined) {
+					where.push("due_at < ?");
+					params.push(due_before);
+				}
+				if (due_after !== undefined) {
+					where.push("due_at > ?");
+					params.push(due_after);
+				}
+				const rows = db
+					.prepare(
+						`SELECT * FROM memory_followups WHERE ${where.join(
+							" AND "
+						)} ORDER BY due_at ASC, created_at ASC`
+					)
+					.all(...params);
+				return { content: [{ type: "text", text: JSON.stringify(rows) }] };
+			}
+		);
+
+		// log_decision
+		server.tool(
+			"memory_log_decision",
+			"Record a decision and its rationale",
+			{
+				title: z.string(),
+				rationale: z.string(),
+				alternatives: z.string().optional(),
+			},
+			async ({ title, rationale, alternatives }) => {
+				const id = `dec_${randomUUID().slice(0, 12)}`;
+				const now = nowS();
+				db.prepare(
+					`INSERT INTO memory_decisions (id, project_id, title, rationale, alternatives, created_at)
+					 VALUES (?, ?, ?, ?, ?, ?)`
+				).run(id, PROJECT_ID, title, rationale, alternatives ?? null, now);
+				const body = [title, rationale, alternatives ?? ""]
+					.filter(Boolean)
+					.join("\n\n");
+				ftsUpsert("decision", id, PROJECT_ID, body);
+				return { content: [{ type: "text", text: JSON.stringify({ id }) }] };
+			}
+		);
+
+		// add_question
+		server.tool(
+			"memory_add_question",
+			"Record an open question",
+			{
+				question: z.string(),
+				context: z.string().optional(),
+			},
+			async ({ question, context }) => {
+				const id = `q_${randomUUID().slice(0, 12)}`;
+				const now = nowS();
+				db.prepare(
+					`INSERT INTO memory_open_questions (id, project_id, question, context, status, created_at)
+					 VALUES (?, ?, ?, ?, 'open', ?)`
+				).run(id, PROJECT_ID, question, context ?? null, now);
+				ftsUpsert(
+					"question",
+					id,
+					PROJECT_ID,
+					[question, context ?? ""].filter(Boolean).join("\n\n")
+				);
+				return { content: [{ type: "text", text: JSON.stringify({ id }) }] };
+			}
+		);
+
+		// answer_question
+		server.tool(
+			"memory_answer_question",
+			"Mark an open question answered",
+			{
+				id: z.string(),
+				answer: z.string(),
+			},
+			async ({ id, answer }) => {
+				const row = db
+					.prepare("SELECT * FROM memory_open_questions WHERE id = ?")
+					.get(id);
+				if (!row) throw new Error(`question not found: ${id}`);
+				db.prepare(
+					`UPDATE memory_open_questions
+					    SET answer = ?, status = 'answered', answered_at = ?
+					  WHERE id = ?`
+				).run(answer, nowS(), id);
+				ftsUpsert(
+					"question",
+					id,
+					row.project_id,
+					[row.question, row.context ?? "", answer].filter(Boolean).join("\n\n")
+				);
+				return { content: [{ type: "text", text: JSON.stringify({ ok: true }) }] };
+			}
+		);
+
+		// journal_start
+		server.tool(
+			"memory_journal_start",
+			"Open a new journal session and return its session id and file path",
+			{},
+			async () => {
+				const sessionId = `sess_${randomUUID().slice(0, 12)}`;
+				const startedAt = new Date();
+				const dir = journalDir(PROJECT_ID);
+				fs.mkdirSync(dir, { recursive: true });
+				const yyyy = startedAt.getUTCFullYear();
+				const mm = String(startedAt.getUTCMonth() + 1).padStart(2, "0");
+				const dd = String(startedAt.getUTCDate()).padStart(2, "0");
+				const hh = String(startedAt.getUTCHours()).padStart(2, "0");
+				const mi = String(startedAt.getUTCMinutes()).padStart(2, "0");
+				const ss = String(startedAt.getUTCSeconds()).padStart(2, "0");
+				const filePath = path.join(
+					dir,
+					`${yyyy}-${mm}-${dd}-${hh}${mi}${ss}-${sessionId}.md`
+				);
+				fs.writeFileSync(
+					filePath,
+					`# Session ${startedAt.toISOString()} (${sessionId})\n\n`,
+					"utf-8"
+				);
+				db.prepare(
+					`INSERT INTO memory_journal (id, project_id, session_id, file_path, started_at)
+					 VALUES (?, ?, ?, ?, ?)`
+				).run(sessionId, PROJECT_ID, sessionId, filePath, nowS());
+				return {
+					content: [
+						{ type: "text", text: JSON.stringify({ session_id: sessionId, file_path: filePath }) },
+					],
+				};
+			}
+		);
+
+		// journal_append
+		server.tool(
+			"memory_journal_append",
+			"Append markdown text to an open journal session",
+			{
+				session_id: z.string(),
+				text: z.string(),
+			},
+			async ({ session_id, text }) => {
+				const row = db
+					.prepare("SELECT * FROM memory_journal WHERE session_id = ?")
+					.get(session_id);
+				if (!row) throw new Error(`journal session not found: ${session_id}`);
+				if (row.ended_at) throw new Error(`journal already ended: ${session_id}`);
+				const withNl = text.endsWith("\n") ? text : `${text}\n`;
+				fs.appendFileSync(row.file_path, withNl, "utf-8");
+				return { content: [{ type: "text", text: JSON.stringify({ ok: true }) }] };
+			}
+		);
+
+		// journal_end
+		server.tool(
+			"memory_journal_end",
+			"Close a journal session, attach a summary, index FTS",
+			{
+				session_id: z.string(),
+				summary: z.string(),
+			},
+			async ({ session_id, summary }) => {
+				const row = db
+					.prepare("SELECT * FROM memory_journal WHERE session_id = ?")
+					.get(session_id);
+				if (!row) throw new Error(`journal session not found: ${session_id}`);
+				db.prepare(
+					"UPDATE memory_journal SET ended_at = ?, summary = ? WHERE session_id = ?"
+				).run(nowS(), summary, session_id);
+				ftsUpsert("journal", session_id, row.project_id, summary);
+				return { content: [{ type: "text", text: JSON.stringify({ ok: true }) }] };
+			}
+		);
+
+		// recent_journals
+		server.tool(
+			"memory_recent_journals",
+			"List recent journal index rows",
+			{
+				limit: z.number().optional(),
+			},
+			async ({ limit }) => {
+				const rows = db
+					.prepare(
+						"SELECT * FROM memory_journal WHERE project_id = ? ORDER BY started_at DESC LIMIT ?"
+					)
+					.all(PROJECT_ID, limit ?? 20);
+				return { content: [{ type: "text", text: JSON.stringify(rows) }] };
+			}
+		);
+
+		// read_journal
+		server.tool(
+			"memory_read_journal",
+			"Read the MD body of a journal session",
+			{ session_id: z.string() },
+			async ({ session_id }) => {
+				const row = db
+					.prepare("SELECT * FROM memory_journal WHERE session_id = ?")
+					.get(session_id);
+				if (!row) throw new Error(`journal session not found: ${session_id}`);
+				const body = fs.readFileSync(row.file_path, "utf-8");
+				return { content: [{ type: "text", text: body }] };
+			}
+		);
+
+		// list_decisions
+		server.tool(
+			"memory_list_decisions",
+			"List decisions, newest first",
+			{ limit: z.number().optional(), since: z.number().optional() },
+			async ({ limit, since }) => {
+				const rows =
+					since !== undefined
+						? db
+								.prepare(
+									"SELECT * FROM memory_decisions WHERE project_id = ? AND created_at > ? ORDER BY created_at DESC LIMIT ?"
+								)
+								.all(PROJECT_ID, since, limit ?? 100)
+						: db
+								.prepare(
+									"SELECT * FROM memory_decisions WHERE project_id = ? ORDER BY created_at DESC LIMIT ?"
+								)
+								.all(PROJECT_ID, limit ?? 100);
+				return { content: [{ type: "text", text: JSON.stringify(rows) }] };
+			}
+		);
+
+		// list_questions
+		server.tool(
+			"memory_list_questions",
+			"List open questions",
+			{ status: z.enum(["open", "answered", "stale"]).optional() },
+			async ({ status }) => {
+				const rows = status
+					? db
+							.prepare(
+								"SELECT * FROM memory_open_questions WHERE project_id = ? AND status = ? ORDER BY created_at DESC"
+							)
+							.all(PROJECT_ID, status)
+					: db
+							.prepare(
+								"SELECT * FROM memory_open_questions WHERE project_id = ? ORDER BY created_at DESC"
+							)
+							.all(PROJECT_ID);
+				return { content: [{ type: "text", text: JSON.stringify(rows) }] };
+			}
+		);
+
+		// search
+		server.tool(
+			"memory_search",
+			"Full-text search across goals, decisions, questions, and journal summaries",
+			{
+				query: z.string(),
+				kinds: z
+					.array(z.enum(["goal", "decision", "question", "journal"]))
+					.optional(),
+				limit: z.number().optional(),
+			},
+			async ({ query, kinds, limit }) => {
+				const kindFilter =
+					kinds && kinds.length > 0
+						? ` AND kind IN (${kinds.map(() => "?").join(",")})`
+						: "";
+				const params = [PROJECT_ID, query];
+				if (kinds && kinds.length > 0) params.push(...kinds);
+				params.push(limit ?? 50);
+				const rows = db
+					.prepare(
+						`SELECT kind, ref_id, project_id,
+						        snippet(memory_fts, 3, '[', ']', '...', 16) AS snippet,
+						        bm25(memory_fts) AS rank
+						   FROM memory_fts
+						  WHERE project_id = ? AND memory_fts MATCH ?${kindFilter}
+						  ORDER BY rank
+						  LIMIT ?`
+					)
+					.all(...params);
+				return { content: [{ type: "text", text: JSON.stringify(rows) }] };
+			}
+		);
+	}
 }
 
 // Start the server

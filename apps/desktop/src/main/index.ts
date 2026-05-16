@@ -24,7 +24,7 @@ import {
 import { type RunningControlPlane, startControlPlane } from "./control-plane";
 import { registerConfirmBridge, requestConfirm } from "./control-plane/confirm-bridge";
 import { attachOrchestratorEventSink } from "./control-plane/orchestrator-event-sink";
-import { backfillRemoteHosts, getDb, initializeDatabase } from "./db";
+import { backfillRemoteHosts, getDb, getDbPath, initializeDatabase } from "./db";
 import * as schema from "./db/schema";
 import {
 	type SessionSaveData,
@@ -266,6 +266,8 @@ app.whenReady().then(async () => {
 			execPath: process.execPath,
 			port: controlPlane.port,
 			token: controlPlane.token,
+			dbPath: getDbPath(),
+			memoryRoot: app.getPath("userData"),
 		};
 		setMcpEnvProvider((workspaceId, projectId) => ({ ...baseEnv, workspaceId, projectId }));
 
