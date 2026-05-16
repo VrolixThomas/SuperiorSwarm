@@ -1,9 +1,9 @@
 import { useCurrentFrame } from "remotion";
 import { AppWindowV4 } from "./AppWindowV4";
-import { selectView } from "./WorkspaceViewSelector";
+import { type ViewKeyV4, selectView } from "./WorkspaceViewSelector";
 import { type ThemeModeV4, ThemeProviderV4, useColorsV4 } from "./colors-v4";
+import { TerminalOnly } from "./views/TerminalOnly";
 
-// Placeholder view stub used during Task 6 only. Replaced by real views in Tasks 7-16.
 function ViewStub({ name }: { name: string }) {
 	const c = useColorsV4();
 	return (
@@ -23,6 +23,15 @@ function ViewStub({ name }: { name: string }) {
 	);
 }
 
+function ViewRenderer({ viewKey }: { viewKey: ViewKeyV4 }) {
+	switch (viewKey) {
+		case "terminalOnly":
+			return <TerminalOnly />;
+		default:
+			return <ViewStub name={viewKey} />;
+	}
+}
+
 interface Props {
 	mode?: ThemeModeV4;
 }
@@ -33,7 +42,7 @@ export function WorkspaceShellV4({ mode = "dark" }: Props) {
 	return (
 		<ThemeProviderV4 value={mode}>
 			<AppWindowV4>
-				<ViewStub name={viewKey} />
+				<ViewRenderer viewKey={viewKey} />
 			</AppWindowV4>
 		</ThemeProviderV4>
 	);
