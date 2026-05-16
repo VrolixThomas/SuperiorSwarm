@@ -13,10 +13,11 @@ import {
 	verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import type { Project } from "../../main/db/schema";
 import type { OrchestratorGroupNode } from "../../shared/types";
 import { useOrchestratorColor } from "../hooks/useOrchestratorColor";
+import { useAgentAlertStore } from "../stores/agent-alert-store";
 import { useProjectStore } from "../stores/projects";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
@@ -361,6 +362,29 @@ function OrchestratorGroupBlock({
 	const activeChild = node.children.find((c) => c.id === activeWorkspaceId);
 	const hasActiveChild = activeChild !== undefined;
 
+	const attachTerminal = trpc.workspaces.attachTerminal.useMutation();
+
+	const handleActivate = useCallback(() => {
+		useAgentAlertStore.getState().clearAlert(node.workspace.id);
+		const cwd = node.workspace.worktreePath ?? projectRepoPath;
+		const store = useTabStore.getState();
+		store.setActiveWorkspace(node.workspace.id, cwd);
+		const existing = store.getTabsByWorkspace(node.workspace.id);
+		const hasTerminal = existing.some((t) => t.kind === "terminal");
+		if (!hasTerminal) {
+			const title = `${projectName}: ${node.workspace.name}`;
+			const tabId = store.addTerminalTab(node.workspace.id, cwd, title);
+			attachTerminal.mutate({ workspaceId: node.workspace.id, terminalId: tabId });
+		}
+	}, [
+		node.workspace.id,
+		node.workspace.name,
+		node.workspace.worktreePath,
+		projectName,
+		projectRepoPath,
+		attachTerminal,
+	]);
+
 	return (
 		<>
 			<OrchestratorRow
@@ -373,6 +397,7 @@ function OrchestratorGroupBlock({
 					utils.workspaces.getOrchestratorExpand.setData({ key: expandedKey }, next);
 					setExpanded.mutate({ key: expandedKey, value: next });
 				}}
+				onActivate={handleActivate}
 				activeChildName={!expanded && activeChild ? activeChild.name : undefined}
 			/>
 			{expanded && (
