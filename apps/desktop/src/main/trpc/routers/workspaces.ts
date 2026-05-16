@@ -3,7 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { z } from "zod";
 import { getDb } from "../../db";
-import { githubBranchPrs, projects, sharedFiles, workspaces, worktrees } from "../../db/schema";
+import { githubBranchPrs, projects, sessionState, sharedFiles, workspaces, worktrees } from "../../db/schema";
 import { checkoutBranchWorktree } from "../../git/operations";
 import { symlinkSharedFiles } from "../../shared-files";
 import { publicProcedure, router } from "../index";
@@ -503,5 +503,32 @@ export const workspacesRouter = router({
 		.mutation(async ({ input }) => {
 			const { cleanupReviewWorkspace } = await import("../../ai-review/cleanup");
 			await cleanupReviewWorkspace(input.workspaceId);
+		}),
+
+	getOrchestratorColors: publicProcedure
+		.input(z.object({ projectId: z.string().min(1) }))
+		.query(({ input }) => {
+			const db = getDb();
+			const key = `orchestratorColors:${input.projectId}`;
+			const row = db.select().from(sessionState).where(eq(sessionState.key, key)).get();
+			return row ? (JSON.parse(row.value) as Record<string, number>) : {};
+		}),
+
+	setOrchestratorColors: publicProcedure
+		.input(
+			z.object({
+				projectId: z.string().min(1),
+				map: z.record(z.string(), z.number().int().min(0).max(2)),
+			})
+		)
+		.mutation(({ input }) => {
+			const db = getDb();
+			const key = `orchestratorColors:${input.projectId}`;
+			const value = JSON.stringify(input.map);
+			db.insert(sessionState)
+				.values({ key, value })
+				.onConflictDoUpdate({ target: sessionState.key, set: { value } })
+				.run();
+			return { ok: true } as const;
 		}),
 });
