@@ -508,3 +508,5 @@ export const globalMcpInstall = sqliteTable("global_mcp_install", {
 });
 
 export type GlobalMcpInstall = typeof globalMcpInstall.$inferSelect;
+
+export * from "./schema-memory";
