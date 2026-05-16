@@ -14,6 +14,8 @@ const RIPPLE_DUR = 30;
 export function AIResolveCursor() {
 	const c = useColorsV4();
 	const frame = useCurrentFrame();
+	const SCENE = SCENES_V4.s7PRComment;
+	if (frame < SCENE.from || frame >= SCENE.from + SCENE.duration) return null;
 	const { fps } = useVideoConfig();
 	const local = frame - SCENES_V4.s7PRComment.from;
 

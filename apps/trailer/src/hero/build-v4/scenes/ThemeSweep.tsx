@@ -10,6 +10,8 @@ const PROGRESS_VALUES = [0, 1, 1, 0]; // 0=hidden, 1=full reveal
 
 export function ThemeSweep() {
 	const frame = useCurrentFrame();
+	const SCENE = SCENES_V4.s2bThemeSweep;
+	if (frame < SCENE.from || frame >= SCENE.from + SCENE.duration) return null;
 	const local = frame - SCENES_V4.s2bThemeSweep.from;
 	const t = interpolate(local, PROGRESS_POINTS, PROGRESS_VALUES, {
 		extrapolateLeft: "clamp",

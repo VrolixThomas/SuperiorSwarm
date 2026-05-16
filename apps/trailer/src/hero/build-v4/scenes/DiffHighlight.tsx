@@ -14,6 +14,8 @@ const EDITOR_RIGHT_GAP = 380 + 16; // right panel + gap
 export function DiffHighlight() {
 	const c = useColorsV4();
 	const frame = useCurrentFrame();
+	const SCENE = SCENES_V4.s5DiffPanel;
+	if (frame < SCENE.from || frame >= SCENE.from + SCENE.duration) return null;
 	const local = frame - SCENES_V4.s5DiffPanel.from;
 
 	// Each hunk highlights for 180f, sequenced through DEMO_FILES_V4[0].hunks.
