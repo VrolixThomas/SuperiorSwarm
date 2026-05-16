@@ -3,8 +3,8 @@ import { BEAT_COPY_V4 } from "../src/hero/build-v4/beat-copy";
 import { SCENES_V4, TOTAL_FRAMES_V4 } from "../src/hero/build-v4/timeline";
 
 describe("beat-copy-v4", () => {
-	test("has at least one entry per scene", () => {
-		expect(BEAT_COPY_V4.length).toBeGreaterThanOrEqual(13);
+	test("has one entry per primary scene (outro renders its own CTA, no caption)", () => {
+		expect(BEAT_COPY_V4.length).toBe(12);
 	});
 
 	test("every startFrame is within total range", () => {

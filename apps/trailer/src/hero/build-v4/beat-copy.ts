@@ -7,6 +7,8 @@ export interface BeatCopyV4 {
 }
 
 // Captions only — no VO. Hold ~3.5s, fade out before next caption.
+// Outro renders its own large CTA copy (superiorswarm.com / Download for
+// macOS) inside the Outro scene, so no caption is needed there.
 export const BEAT_COPY_V4: BeatCopyV4[] = [
 	{ key: "opening", caption: "Agents run everywhere.", startFrame: SCENES_V4.opening.from + 90 },
 	{ key: "s1", caption: "You watch from one place.", startFrame: SCENES_V4.s1Terminal.from + 30 },
@@ -24,10 +26,4 @@ export const BEAT_COPY_V4: BeatCopyV4[] = [
 	{ key: "s8", caption: "Solve them with AI.", startFrame: SCENES_V4.s8SolveResult.from + 60 },
 	{ key: "s9", caption: "Pick up a ticket.", startFrame: SCENES_V4.s9Tickets.from + 30 },
 	{ key: "s10", caption: "Review what others ship.", startFrame: SCENES_V4.s10PRsList.from + 30 },
-	{
-		key: "s11",
-		caption: "Or let AI review for you.",
-		startFrame: SCENES_V4.s11ReviewResult.from + 60,
-	},
-	{ key: "end", caption: "SuperiorSwarm.", startFrame: SCENES_V4.endHold.from + 12 },
 ];

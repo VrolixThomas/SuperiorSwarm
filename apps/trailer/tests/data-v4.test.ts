@@ -8,17 +8,16 @@ import {
 } from "../src/hero/build-v4/data";
 
 describe("data-v4", () => {
-	test("REPOS_V4 only contains the real SuperiorSwarm repo (no fabricated repos)", () => {
-		expect(REPOS_V4.length).toBe(1);
-		for (const repo of REPOS_V4) {
-			expect(repo.worktrees.length).toBeGreaterThanOrEqual(1);
-		}
+	test("REPOS_V4 matches the v2/v3 list (SuperiorSwarm + 3 sibling repos)", () => {
+		expect(REPOS_V4.length).toBe(4);
+		const names = REPOS_V4.map((r) => r.name);
+		expect(names).toEqual(["SuperiorSwarm", "mcp-lab", "agent-skills", "prompt-registry"]);
 	});
 
-	test("SuperiorSwarm is the first repo with 8 worktrees", () => {
+	test("SuperiorSwarm is the first repo with 6 worktrees (main + 5 active branches)", () => {
 		const first = REPOS_V4[0];
 		expect(first?.name).toBe("SuperiorSwarm");
-		expect(first?.worktrees.length).toBe(8);
+		expect(first?.worktrees.length).toBe(6);
 	});
 
 	test("TICKETS_V4 ids match /^SS-\\d+$/", () => {
@@ -34,7 +33,7 @@ describe("data-v4", () => {
 		expect(pr?.number).toBe(214);
 		expect(pr?.author).toBe("alex");
 		expect(pr?.role).toBe("incoming-review");
-		expect((pr?.comments.length ?? 0)).toBeGreaterThanOrEqual(1);
+		expect(pr?.comments.length ?? 0).toBeGreaterThanOrEqual(1);
 	});
 
 	test("OPENING_TERMINALS_V4 has exactly 8 entries, 5 swarm + 3 other", () => {

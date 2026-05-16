@@ -50,20 +50,24 @@ export interface OpeningTerminalV4 {
 	lines: TerminalLine[];
 }
 
+// Mirrors build-v2/v3 REPO_LIST + WORKTREES_SS so the sidebar shows the same
+// repos across all trailer builds. SuperiorSwarm is the expanded repo; the
+// other three appear collapsed.
 export const REPOS_V4: RepoV4[] = [
 	{
 		name: "SuperiorSwarm",
 		worktrees: [
 			{ branch: "main" },
-			{ branch: "MarketingImages" },
 			{ branch: "feat/agent-terminal-chat" },
-			{ branch: "feature/auth-refactor" },
-			{ branch: "fix/repo-watcher" },
-			{ branch: "feature/ticket-drag" },
-			{ branch: "chore/biome-config" },
-			{ branch: "release/0.7.3" },
+			{ branch: "feat/mcp-server-registry" },
+			{ branch: "fix/pr-comment-resolver" },
+			{ branch: "feat/linear-jira-sync" },
+			{ branch: "release/macos-onboarding" },
 		],
 	},
+	{ name: "mcp-lab", worktrees: [] },
+	{ name: "agent-skills", worktrees: [] },
+	{ name: "prompt-registry", worktrees: [] },
 ];
 
 export const TICKETS_V4: TicketV4[] = [
@@ -151,27 +155,83 @@ export const DEMO_FILES_V4: DemoFileV4[] = [
 	},
 ];
 
-// Each tile runs ~5-7 seconds of scripted output. Frames inside `lines` are local
-// to the tile (TerminalBody's startFrame prop normalizes them).
-const swarmLines = (label: string): TerminalLine[] => [
-	{ t: `> ${label}`, from: 0, c: "#8e8e93" },
-	{ t: "", from: 6 },
-	{ t: "Reading files...", from: 18, c: "#8e8e93" },
-	{ t: "Found target. Drafting changes...", from: 48 },
-	{ t: "+ const next = prev.filter(unique);", from: 90, c: "#69db7c" },
-	{ t: "- const next = prev.unique();", from: 108, c: "#ff6b6b" },
-	{ t: "Writing src/main/...", from: 138, c: "#8e8e93" },
-	{ t: "✓ type-check passed", from: 180, c: "#69db7c", bold: true },
-	{ t: "✓ tests 12/12", from: 210, c: "#69db7c", bold: true },
-	{ t: ">", from: 240, c: "#8e8e93", bold: true },
-];
-
+// Each tile has its own scripted output so the 8-tile grid doesn't read as
+// monotonous lockstep. Pacing, line counts, color mix, and prompt style vary
+// per tile to suggest each agent is genuinely running independently.
 export const OPENING_TERMINALS_V4: OpeningTerminalV4[] = [
-	{ kind: "swarm", label: "auth-refactor", lines: swarmLines("auth-refactor") },
-	{ kind: "swarm", label: "migration-runner", lines: swarmLines("migration-runner") },
-	{ kind: "swarm", label: "pty-dedup", lines: swarmLines("pty-dedup") },
-	{ kind: "swarm", label: "review-pr-214", lines: swarmLines("review-pr-214") },
-	{ kind: "swarm", label: "rebuild-graph", lines: swarmLines("rebuild-graph") },
+	// Fast / clean: boots, writes, done in ~3s.
+	{
+		kind: "swarm",
+		label: "auth-refactor",
+		lines: [
+			{ t: "> auth-refactor", from: 0, c: "#8e8e93" },
+			{ t: "Reading src/main/auth/...", from: 12, c: "#8e8e93" },
+			{ t: "+ token = await refresh(session);", from: 42, c: "#69db7c" },
+			{ t: "- token = session.token;", from: 54, c: "#ff6b6b" },
+			{ t: "✓ tests 18/18", from: 96, c: "#69db7c", bold: true },
+			{ t: ">", from: 150, c: "#8e8e93", bold: true },
+		],
+	},
+	// Slow stream: many "running N of M" lines.
+	{
+		kind: "swarm",
+		label: "migration-runner",
+		lines: [
+			{ t: "> migration-runner", from: 0, c: "#8e8e93" },
+			{ t: "Detected 12 pending migrations", from: 18 },
+			{ t: "  → 0007_add_workspace_index.sql", from: 36, c: "#8e8e93" },
+			{ t: "  → 0008_split_review_threads.sql", from: 54, c: "#8e8e93" },
+			{ t: "  → 0009_add_solve_sessions.sql", from: 72, c: "#8e8e93" },
+			{ t: "  → 0010_index_pr_status.sql", from: 90, c: "#8e8e93" },
+			{ t: "  → 0011_add_review_drafts.sql", from: 108, c: "#8e8e93" },
+			{ t: "  → 0012_normalize_ticket_state.sql", from: 126, c: "#8e8e93" },
+			{ t: "Applying batch (12)...", from: 156 },
+			{ t: "✓ migrated 12/12 in 1.8s", from: 216, c: "#69db7c", bold: true },
+		],
+	},
+	// Mixed: finds bug, stacktrace-style red, then green.
+	{
+		kind: "swarm",
+		label: "pty-dedup",
+		lines: [
+			{ t: "> pty-dedup", from: 0, c: "#8e8e93" },
+			{ t: "Reproducing duplicate-output bug...", from: 18, c: "#8e8e93" },
+			{ t: "FAIL  src/daemon/pty.test.ts > emits each line once", from: 60, c: "#ff6b6b" },
+			{ t: "  expected 4 emits, got 8", from: 78, c: "#ff6b6b" },
+			{ t: "  at PtyDaemon.flush (pty.ts:142)", from: 90, c: "#ff6b6b" },
+			{ t: "Patching ring-buffer drain...", from: 132, c: "#8e8e93" },
+			{ t: "✓ tests 6/6", from: 192, c: "#69db7c", bold: true },
+		],
+	},
+	// Pauses in the middle (waiting for token), then bursts.
+	{
+		kind: "swarm",
+		label: "review-pr-214",
+		lines: [
+			{ t: "> review-pr-214", from: 0, c: "#8e8e93" },
+			{ t: "Fetching diff for PR #214...", from: 24, c: "#8e8e93" },
+			{ t: "Waiting for GitHub token...", from: 72, c: "#ffd43b" },
+			{ t: "✓ token refreshed", from: 144, c: "#69db7c" },
+			{ t: "Analyzing 3 changed files", from: 162 },
+			{ t: "3 suggestions, 1 nit", from: 198, c: "#74c0fc" },
+		],
+	},
+	// Heavy IO: long file paths streaming.
+	{
+		kind: "swarm",
+		label: "rebuild-graph",
+		lines: [
+			{ t: "> rebuild-graph", from: 0, c: "#8e8e93" },
+			{ t: "Indexing apps/desktop/src/...", from: 18, c: "#8e8e93" },
+			{ t: "  components/Sidebar.tsx", from: 36, c: "#8e8e93" },
+			{ t: "  components/DiffPanel.tsx", from: 48, c: "#8e8e93" },
+			{ t: "  components/CommentsOverviewTab.tsx", from: 60, c: "#8e8e93" },
+			{ t: "  components/solve/SolveSidebar.tsx", from: 72, c: "#8e8e93" },
+			{ t: "  components/tickets/TicketsBoardView.tsx", from: 84, c: "#8e8e93" },
+			{ t: "  hooks/useAgentTerminalStream.ts", from: 96, c: "#8e8e93" },
+			{ t: "✓ 184 nodes · 412 edges", from: 168, c: "#69db7c", bold: true },
+		],
+	},
 	{
 		kind: "claude",
 		label: "claude code",

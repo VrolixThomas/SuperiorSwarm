@@ -50,16 +50,12 @@ describe("view-selector-v4", () => {
 		expect(selectView(SCENES_V4.s10PRsList.from - 1)).toBe("withTicketsTab");
 	});
 
-	test("s10 returns withPRsTab", () => {
+	test("s10 + outro return withPRsTab (outro shell is replaced by Outro scene at render time)", () => {
 		expect(selectView(SCENES_V4.s10PRsList.from)).toBe("withPRsTab");
-		expect(selectView(SCENES_V4.s11ReviewResult.from - 1)).toBe("withPRsTab");
-	});
-
-	test("s11 + endHold return prReviewResult", () => {
-		expect(selectView(SCENES_V4.s11ReviewResult.from)).toBe("prReviewResult");
-		expect(selectView(SCENES_V4.endHold.from)).toBe("prReviewResult");
-		expect(selectView(SCENES_V4.endHold.from + SCENES_V4.endHold.duration - 1)).toBe(
-			"prReviewResult"
-		);
+		expect(selectView(SCENES_V4.outro.from - 1)).toBe("withPRsTab");
+		// selectView keeps returning withPRsTab past outro start; WorkspaceShellV4
+		// short-circuits to null at SCENES_V4.outro.from and the Outro scene takes
+		// over the full screen.
+		expect(selectView(SCENES_V4.outro.from)).toBe("withPRsTab");
 	});
 });

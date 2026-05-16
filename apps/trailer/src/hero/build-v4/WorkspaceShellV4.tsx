@@ -2,7 +2,7 @@ import { useCurrentFrame } from "remotion";
 import { AppWindowV4 } from "./AppWindowV4";
 import { type ViewKeyV4, selectView } from "./WorkspaceViewSelector";
 import { type ThemeModeV4, ThemeProviderV4 } from "./colors-v4";
-import { PRReviewResult } from "./views/PRReviewResult";
+import { SCENES_V4 } from "./timeline";
 import { SolveResultFull } from "./views/SolveResultFull";
 import { TerminalOnly } from "./views/TerminalOnly";
 import { WithActiveWorkspaces } from "./views/WithActiveWorkspaces";
@@ -33,8 +33,6 @@ function ViewRenderer({ viewKey }: { viewKey: ViewKeyV4 }) {
 			return <WithTicketsTab />;
 		case "withPRsTab":
 			return <WithPRsTab />;
-		case "prReviewResult":
-			return <PRReviewResult />;
 	}
 }
 
@@ -44,6 +42,11 @@ interface Props {
 
 export function WorkspaceShellV4({ mode = "dark" }: Props) {
 	const frame = useCurrentFrame();
+
+	// During outro, the AppWindow shell is replaced by the full-screen Outro
+	// scene rendered separately in HeroBuildV4.
+	if (frame >= SCENES_V4.outro.from) return null;
+
 	const viewKey = selectView(frame);
 	return (
 		<ThemeProviderV4 value={mode}>

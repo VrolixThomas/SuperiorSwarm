@@ -21,7 +21,7 @@ export function WithPRsTab() {
 
 	return (
 		<>
-			{/* Left: 320px PRs list */}
+			{/* Left: 320px sidebar — Repos/Tickets/PRs strip + PullRequestsTab content */}
 			<div
 				style={{
 					width: SIDEBAR_WIDTH,
@@ -33,7 +33,35 @@ export function WithPRsTab() {
 					overflow: "hidden",
 				}}
 			>
-				<PullRequestsTab />
+				<div
+					style={{
+						display: "flex",
+						padding: "6px 8px",
+						gap: 4,
+						borderBottom: `1px solid ${c.borderSubtle}`,
+					}}
+				>
+					{(["Repos", "Tickets", "PRs"] as const).map((label, i) => (
+						<div
+							key={label}
+							style={{
+								flex: 1,
+								padding: "5px 0",
+								textAlign: "center",
+								fontSize: 10,
+								fontWeight: 500,
+								borderRadius: 5,
+								background: i === 2 ? c.bgElevated : "transparent",
+								color: i === 2 ? c.textSecondary : c.textQuaternary,
+							}}
+						>
+							{label}
+						</div>
+					))}
+				</div>
+				<div style={{ flex: 1, overflow: "hidden" }}>
+					<PullRequestsTab />
+				</div>
 			</div>
 
 			{/* Center: PR overview (PROverviewPane renders its own PRHeader) */}

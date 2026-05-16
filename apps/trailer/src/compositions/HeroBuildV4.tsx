@@ -3,9 +3,9 @@ import { Bg } from "../hero/Bg";
 import { AudioTracksV4 } from "../hero/build-v4/AudioTracksV4";
 import { CaptionV4 } from "../hero/build-v4/Caption";
 import { WorkspaceShellV4 } from "../hero/build-v4/WorkspaceShellV4";
-import { AIResolveCursor } from "../hero/build-v4/scenes/AIResolveCursor";
 import { DiffHighlight } from "../hero/build-v4/scenes/DiffHighlight";
 import { Opening8Terminals } from "../hero/build-v4/scenes/Opening8Terminals";
+import { Outro } from "../hero/build-v4/scenes/Outro";
 import { ThemeSweep } from "../hero/build-v4/scenes/ThemeSweep";
 import { TOTAL_FRAMES_V4 } from "../hero/build-v4/timeline";
 
@@ -20,7 +20,7 @@ export function HeroBuildV4() {
 			<Opening8Terminals />
 			<ThemeSweep />
 			<DiffHighlight />
-			<AIResolveCursor />
+			<Outro />
 			<CaptionV4 />
 			<AudioTracksV4 />
 		</AbsoluteFill>

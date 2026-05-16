@@ -9,8 +9,7 @@ export type ViewKeyV4 =
 	| "withCommentsPR"
 	| "solveResultFull"
 	| "withTicketsTab"
-	| "withPRsTab"
-	| "prReviewResult";
+	| "withPRsTab";
 
 export function selectView(frame: number): ViewKeyV4 {
 	const s = SCENES_V4;
@@ -22,6 +21,5 @@ export function selectView(frame: number): ViewKeyV4 {
 	if (frame < s.s8SolveResult.from) return "withCommentsPR";
 	if (frame < s.s9Tickets.from) return "solveResultFull";
 	if (frame < s.s10PRsList.from) return "withTicketsTab";
-	if (frame < s.s11ReviewResult.from) return "withPRsTab";
-	return "prReviewResult";
+	return "withPRsTab";
 }

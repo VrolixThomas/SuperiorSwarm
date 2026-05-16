@@ -9,7 +9,7 @@ describe("timeline-v4", () => {
 	test("total frames matches sum of scene durations", () => {
 		const sum = Object.values(SCENES_V4).reduce((acc, s) => acc + s.duration, 0);
 		expect(sum).toBe(TOTAL_FRAMES_V4);
-		expect(TOTAL_FRAMES_V4).toBe(4980);
+		expect(TOTAL_FRAMES_V4).toBe(4680);
 	});
 
 	test("scenes are contiguous, no gaps no overlaps", () => {

@@ -1,45 +1,28 @@
 import { interpolate, useCurrentFrame } from "remotion";
-import type { TerminalLine } from "../../build/TerminalBody";
-import { TerminalBody } from "../../build/TerminalBody";
 import { useColorsV4 } from "../colors-v4";
 import { TICKETS_V4 } from "../data";
 import { SCENES_V4 } from "../timeline";
 
 const SIDEBAR_WIDTH = 280;
+const HIGHLIGHTED_TICKET_ID = "SS-148";
+const HIGHLIGHT_FRAME = 120;
 
-const CLICKED_TICKET_ID = "SS-148";
-const CLICK_FRAME = 90;
-
-const WORKTREE_BOOT: TerminalLine[] = [
-	{ t: "> Creating worktree for SS-148...", from: 0, c: "#8e8e93" },
-	{ t: "git worktree add ../SS-148 -b feature/ticket-drag", from: 24 },
-	{ t: "✓ worktree created", from: 60, c: "#69db7c", bold: true },
-	{ t: "Starting agent in SS-148 worktree...", from: 80, c: "#8e8e93" },
-	{ t: "Agent: Reading tickets/SS-148.md...", from: 110 },
-	{ t: "Agent: Starting work on drag handle drift fix.", from: 140 },
-	{ t: ">", from: 170, c: "#8e8e93", bold: true },
-];
-
-const STATE_LABELS: Record<string, string> = {
-	todo: "Todo",
-	"in-progress": "In Progress",
-	done: "Done",
-};
-
+// Mirrors apps/desktop/src/renderer/components/tickets/TicketsSidebar.tsx +
+// TicketsBoardView.tsx layout. Static — no terminal swap in this scene; the
+// "Start worktree" affordance is just visual (real app switches to Repos +
+// opens a worktree view, which is shown elsewhere in the trailer).
 export function WithTicketsTab() {
 	const c = useColorsV4();
 	const frame = useCurrentFrame();
 	const local = frame - SCENES_V4.s9Tickets.from;
 
-	const showTerminal = local >= CLICK_FRAME;
-	const terminalOp = interpolate(local, [CLICK_FRAME, CLICK_FRAME + 24], [0, 1], {
+	const highlightOp = interpolate(local, [HIGHLIGHT_FRAME, HIGHLIGHT_FRAME + 18], [0, 1], {
 		extrapolateLeft: "clamp",
 		extrapolateRight: "clamp",
 	});
 
 	return (
 		<>
-			{/* Left: real Sidebar with Tickets tab active */}
 			<div
 				style={{
 					width: SIDEBAR_WIDTH,
@@ -50,7 +33,7 @@ export function WithTicketsTab() {
 					flexDirection: "column",
 				}}
 			>
-				{/* Tab strip */}
+				{/* Tab strip — Tickets active */}
 				<div
 					style={{
 						display: "flex",
@@ -78,83 +61,9 @@ export function WithTicketsTab() {
 					))}
 				</div>
 
-				{/* Ticket list */}
-				<div
-					style={{
-						flex: 1,
-						overflow: "hidden",
-						padding: "6px 0",
-					}}
-				>
-					{TICKETS_V4.map((ticket) => {
-						const isActive = ticket.id === CLICKED_TICKET_ID;
-						const stateColor =
-							ticket.state === "done"
-								? c.success
-								: ticket.state === "in-progress"
-									? c.accent
-									: c.textQuaternary;
-						return (
-							<div
-								key={ticket.id}
-								style={{
-									padding: "6px 12px",
-									background: isActive ? c.bgActive : "transparent",
-									borderLeft: isActive ? `2px solid ${c.accent}` : "2px solid transparent",
-									display: "flex",
-									flexDirection: "column",
-									gap: 3,
-								}}
-							>
-								<div
-									style={{
-										display: "flex",
-										alignItems: "center",
-										justifyContent: "space-between",
-										gap: 6,
-									}}
-								>
-									<span
-										style={{
-											fontSize: 10,
-											fontWeight: 700,
-											fontFamily: "monospace",
-											color: isActive ? c.accent : c.textQuaternary,
-										}}
-									>
-										{ticket.id}
-									</span>
-									<span
-										style={{
-											fontSize: 9,
-											fontWeight: 600,
-											color: stateColor,
-											background: `${stateColor}22`,
-											borderRadius: 3,
-											padding: "1px 5px",
-											letterSpacing: "0.04em",
-										}}
-									>
-										{STATE_LABELS[ticket.state] ?? ticket.state}
-									</span>
-								</div>
-								<div
-									style={{
-										fontSize: 12,
-										color: isActive ? c.text : c.textSecondary,
-										fontWeight: isActive ? 600 : 400,
-										lineHeight: 1.4,
-									}}
-								>
-									{ticket.title}
-								</div>
-							</div>
-						);
-					})}
-				</div>
+				<TicketsSidebarInline />
 			</div>
 
-			{/* Right: board or terminal */}
 			<div
 				style={{
 					flex: 1,
@@ -165,61 +74,111 @@ export function WithTicketsTab() {
 					position: "relative",
 				}}
 			>
-				{!showTerminal ? (
-					/* Tickets kanban board (inline fallback) */
-					<TicketsBoardInline />
-				) : (
-					/* Worktree boot terminal */
-					<div
-						style={{
-							flex: 1,
-							display: "flex",
-							flexDirection: "column",
-							opacity: terminalOp,
-						}}
-					>
-						{/* Terminal header */}
-						<div
-							style={{
-								padding: "8px 14px",
-								borderBottom: `1px solid ${c.borderSubtle}`,
-								fontSize: 11,
-								fontWeight: 600,
-								color: c.textTertiary,
-								flexShrink: 0,
-								fontFamily: "monospace",
-							}}
-						>
-							Terminal — SS-148
-						</div>
-						<div
-							style={{
-								flex: 1,
-								background: "#0a0a0a",
-								display: "flex",
-								flexDirection: "column",
-								overflow: "hidden",
-							}}
-						>
-							<TerminalBody
-								startFrame={SCENES_V4.s9Tickets.from + CLICK_FRAME}
-								lines={WORKTREE_BOOT}
-							/>
-						</div>
-					</div>
-				)}
+				<TicketsBoardInline highlightedId={HIGHLIGHTED_TICKET_ID} highlightOp={highlightOp} />
 			</div>
 		</>
 	);
 }
 
-function TicketsBoardInline() {
+function TicketsSidebarInline() {
+	const c = useColorsV4();
+	const total = TICKETS_V4.length;
+
+	return (
+		<div style={{ display: "flex", flexDirection: "column", gap: 4, padding: "4px 8px" }}>
+			{/* All Tickets */}
+			<div
+				style={{
+					display: "flex",
+					alignItems: "center",
+					gap: 8,
+					padding: "6px 8px",
+					borderRadius: 6,
+					background: "rgba(10,132,255,0.08)",
+					color: c.text,
+					fontSize: 11,
+					fontWeight: 500,
+				}}
+			>
+				<svg width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+					<rect x="2" y="2" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.3" />
+					<rect x="9" y="2" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.3" />
+					<rect x="2" y="9" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.3" />
+					<rect x="9" y="9" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.3" />
+				</svg>
+				<span style={{ flex: 1 }}>All Tickets</span>
+				<span style={{ fontSize: 10, color: c.textQuaternary, fontVariantNumeric: "tabular-nums" }}>
+					{total}
+				</span>
+			</div>
+
+			<div style={{ height: 1, background: c.borderSubtle, margin: "4px 8px" }} />
+
+			{/* Linear section */}
+			<div
+				style={{
+					padding: "4px 8px",
+					fontSize: 9,
+					fontWeight: 600,
+					letterSpacing: "0.5px",
+					textTransform: "uppercase",
+					color: c.textQuaternary,
+				}}
+			>
+				Linear
+			</div>
+
+			{[
+				{ name: "SuperiorSwarm", count: total },
+				{ name: "Platform", count: 2 },
+				{ name: "Growth", count: 1 },
+			].map((p) => (
+				<div
+					key={p.name}
+					style={{
+						display: "flex",
+						alignItems: "center",
+						gap: 8,
+						padding: "6px 8px",
+						borderRadius: 6,
+						color: c.textSecondary,
+						fontSize: 11,
+					}}
+				>
+					<div
+						style={{
+							width: 6,
+							height: 6,
+							borderRadius: "50%",
+							background: c.textQuaternary,
+							flexShrink: 0,
+						}}
+					/>
+					<span style={{ flex: 1 }}>{p.name}</span>
+					<span
+						style={{ fontSize: 10, color: c.textQuaternary, fontVariantNumeric: "tabular-nums" }}
+					>
+						{p.count}
+					</span>
+				</div>
+			))}
+		</div>
+	);
+}
+
+function TicketsBoardInline({
+	highlightedId,
+	highlightOp,
+}: {
+	highlightedId: string;
+	highlightOp: number;
+}) {
 	const c = useColorsV4();
 
 	const columns: Array<{ key: string; label: string; color: string }> = [
 		{ key: "todo", label: "Todo", color: c.textQuaternary },
 		{ key: "in-progress", label: "In Progress", color: c.accent },
-		{ key: "done", label: "Done", color: c.success },
+		{ key: "done", label: "Done", color: "#69db7c" },
 	];
 
 	return (
@@ -227,8 +186,8 @@ function TicketsBoardInline() {
 			style={{
 				flex: 1,
 				display: "flex",
-				gap: 12,
-				padding: 16,
+				gap: 10,
+				padding: "12px 14px",
 				overflow: "hidden",
 			}}
 		>
@@ -241,11 +200,10 @@ function TicketsBoardInline() {
 							flex: 1,
 							display: "flex",
 							flexDirection: "column",
-							gap: 8,
+							gap: 6,
 							minWidth: 0,
 						}}
 					>
-						{/* Column header — matches real TicketsBoardView style */}
 						<div
 							style={{
 								display: "flex",
@@ -275,42 +233,104 @@ function TicketsBoardInline() {
 							</span>
 						</div>
 
-						{/* Cards */}
 						{tickets.map((ticket) => {
-							const isActive = ticket.id === CLICKED_TICKET_ID;
+							const isHighlighted = ticket.id === highlightedId;
 							return (
 								<div
 									key={ticket.id}
 									style={{
-										background: isActive ? c.bgElevated : c.bgSurface,
-										border: isActive ? `1px solid ${c.accent}` : `1px solid ${c.borderSubtle}`,
+										position: "relative",
+										background: c.bgSurface,
+										border: `1px solid ${c.borderSubtle}`,
 										borderRadius: 6,
 										padding: "8px 10px",
 										display: "flex",
 										flexDirection: "column",
-										gap: 3,
+										gap: 4,
 									}}
 								>
+									{isHighlighted && highlightOp > 0 && (
+										<div
+											style={{
+												position: "absolute",
+												inset: -2,
+												borderRadius: 8,
+												border: `2px solid ${c.accent}`,
+												opacity: highlightOp,
+												pointerEvents: "none",
+											}}
+										/>
+									)}
 									<div
 										style={{
+											display: "flex",
+											alignItems: "center",
+											gap: 6,
 											fontSize: 10,
-											fontFamily: "monospace",
-											fontWeight: 700,
-											color: isActive ? c.accent : c.textQuaternary,
 										}}
 									>
-										{ticket.id}
+										<svg width="8" height="8" viewBox="0 0 16 16" aria-hidden="true">
+											<circle
+												cx="8"
+												cy="8"
+												r="6"
+												fill="none"
+												stroke={col.color}
+												strokeWidth="1.5"
+											/>
+										</svg>
+										<span
+											style={{
+												fontFamily: "monospace",
+												fontWeight: 600,
+												color: c.textQuaternary,
+											}}
+										>
+											{ticket.id}
+										</span>
+										<span style={{ color: c.textQuaternary, opacity: 0.6 }}>Linear</span>
 									</div>
 									<div
 										style={{
-											fontSize: 12,
-											color: isActive ? c.text : c.textSecondary,
-											fontWeight: isActive ? 600 : 400,
-											lineHeight: 1.4,
+											fontSize: 11,
+											color: c.text,
+											lineHeight: 1.35,
 										}}
 									>
 										{ticket.title}
 									</div>
+									{isHighlighted && highlightOp > 0 && (
+										<div
+											style={{
+												opacity: highlightOp,
+												marginTop: 4,
+												display: "flex",
+												alignItems: "center",
+												gap: 6,
+												padding: "5px 8px",
+												borderRadius: 5,
+												background: "rgba(10,132,255,0.12)",
+												color: c.accent,
+												fontSize: 10,
+												fontWeight: 500,
+												width: "fit-content",
+											}}
+										>
+											<svg
+												width="11"
+												height="11"
+												viewBox="0 0 16 16"
+												fill="none"
+												stroke="currentColor"
+												strokeWidth="1.6"
+												strokeLinecap="round"
+												aria-hidden="true"
+											>
+												<path d="M8 3v10M3 8h10" />
+											</svg>
+											Start worktree
+										</div>
+									)}
 								</div>
 							);
 						})}
