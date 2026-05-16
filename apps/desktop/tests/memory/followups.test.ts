@@ -4,11 +4,7 @@ import { join } from "node:path";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { nanoid } from "nanoid";
 import { getDb, schema } from "../../src/main/db";
-import {
-	addFollowup,
-	listFollowups,
-	updateFollowup,
-} from "../../src/main/memory/followups";
+import { addFollowup, listFollowups, updateFollowup } from "../../src/main/memory/followups";
 
 let PROJECT_ID: string;
 

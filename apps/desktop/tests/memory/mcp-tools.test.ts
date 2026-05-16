@@ -3,10 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const SERVER = readFileSync(
-	join(import.meta.dir, "../../mcp-standalone/server.mjs"),
-	"utf-8"
-);
+const SERVER = readFileSync(join(import.meta.dir, "../../mcp-standalone/server.mjs"), "utf-8");
 
 const REQUIRED_TOOLS = [
 	"memory_add_goal",

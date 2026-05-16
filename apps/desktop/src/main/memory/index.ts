@@ -1,15 +1,7 @@
-import {
-	addFollowup,
-	listFollowups,
-	updateFollowup,
-} from "./followups";
-import { addGoal, deleteGoal, listGoals, updateGoal } from "./goals";
-import {
-	addQuestion,
-	answerQuestion,
-	listQuestions,
-} from "./questions";
 import { listDecisions, logDecision } from "./decisions";
+import { addFollowup, listFollowups, updateFollowup } from "./followups";
+import { type FtsHit, type FtsKind, ftsSearch } from "./fts";
+import { addGoal, deleteGoal, listGoals, updateGoal } from "./goals";
 import {
 	deleteJournal,
 	journalAppend,
@@ -18,7 +10,7 @@ import {
 	readJournal,
 	recentJournals,
 } from "./journal";
-import { ftsSearch, type FtsHit, type FtsKind } from "./fts";
+import { addQuestion, answerQuestion, listQuestions } from "./questions";
 
 export interface SearchInput {
 	projectId: string;

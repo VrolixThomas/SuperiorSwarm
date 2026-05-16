@@ -4,8 +4,8 @@ import { join } from "node:path";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { nanoid } from "nanoid";
 import { getDb, schema } from "../../src/main/db";
-import { addGoal, listGoals, updateGoal } from "../../src/main/memory/goals";
 import { ftsSearch } from "../../src/main/memory/fts";
+import { addGoal, listGoals, updateGoal } from "../../src/main/memory/goals";
 
 let PROJECT_ID: string;
 

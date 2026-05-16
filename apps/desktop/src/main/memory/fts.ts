@@ -39,9 +39,7 @@ export function ftsUpsert(input: FtsUpsertInput): void {
 		.prepare("DELETE FROM memory_fts WHERE kind = ? AND ref_id = ?")
 		.run(input.kind, input.refId);
 	sqlite
-		.prepare(
-			"INSERT INTO memory_fts (kind, ref_id, project_id, body) VALUES (?, ?, ?, ?)"
-		)
+		.prepare("INSERT INTO memory_fts (kind, ref_id, project_id, body) VALUES (?, ?, ?, ?)")
 		.run(input.kind, input.refId, input.projectId, input.body);
 }
 

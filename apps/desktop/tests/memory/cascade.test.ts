@@ -3,8 +3,8 @@ import { beforeAll, beforeEach, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { eq } from "drizzle-orm";
+import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { nanoid } from "nanoid";
 import { getDb, schema } from "../../src/main/db";
 import { memory } from "../../src/main/memory";
@@ -50,9 +50,7 @@ test("deleting a project cascades to all memory tables", () => {
 	memory.journalStart({ userDataPath: MEM_ROOT, projectId: PROJECT_ID });
 
 	const db = getDb();
-	db.delete(schema.projects)
-		.where(eq(schema.projects.id, PROJECT_ID))
-		.run();
+	db.delete(schema.projects).where(eq(schema.projects.id, PROJECT_ID)).run();
 
 	expect(memory.listGoals({ projectId: PROJECT_ID }).length).toBe(0);
 	expect(memory.listFollowups({ projectId: PROJECT_ID }).length).toBe(0);

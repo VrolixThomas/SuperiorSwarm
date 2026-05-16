@@ -1,9 +1,6 @@
 import { and, desc, eq, gt } from "drizzle-orm";
 import { getDb } from "../db";
-import {
-	memoryDecisions,
-	type MemoryDecision,
-} from "../db/schema-memory";
+import { type MemoryDecision, memoryDecisions } from "../db/schema-memory";
 import { ftsUpsert } from "./fts";
 import { newMemoryId } from "./ids";
 

@@ -4,10 +4,7 @@ import { join } from "node:path";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { nanoid } from "nanoid";
 import { getDb, schema } from "../../src/main/db";
-import {
-	logDecision,
-	listDecisions,
-} from "../../src/main/memory/decisions";
+import { listDecisions, logDecision } from "../../src/main/memory/decisions";
 import { ftsSearch } from "../../src/main/memory/fts";
 
 let PROJECT_ID: string;
