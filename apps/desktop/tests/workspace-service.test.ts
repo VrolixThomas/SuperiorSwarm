@@ -10,10 +10,12 @@ import simpleGit from "simple-git";
 import { getDb, schema } from "../src/main/db";
 import { initRepo } from "../src/main/git/operations";
 import {
+	type CallerContext,
 	createWorkspace,
 	dispatchAgent,
 	getWorkspace,
 	listWorkspaces,
+	readMessages,
 	removeWorkspace,
 } from "../src/main/services/workspace-service";
 
@@ -433,5 +435,38 @@ describe("dispatchAgent", () => {
 			.where(eq(schema.workspaces.id, created.workspaceId))
 			.get();
 		expect(row?.cliSessionId).toBeNull();
+	});
+});
+
+describe("readMessages", () => {
+	test("readMessages with no since returns messages older than 1 hour", async () => {
+		const created = await createWorkspace({ projectId: PROJECT_ID, branch: "feature/rm1" });
+		const db = getDb();
+
+		// Insert a message with createdAt set to 2 hours ago
+		const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
+		const messageId = `msg-${nanoid(8)}`;
+		db.insert(schema.agentMessages)
+			.values({
+				id: messageId,
+				projectId: PROJECT_ID,
+				toWorkspaceId: created.workspaceId,
+				kind: "note",
+				content: "old message",
+				createdAt: twoHoursAgo,
+			})
+			.run();
+
+		const ctx: CallerContext = {
+			projectId: PROJECT_ID,
+			workspaceId: created.workspaceId,
+		};
+
+		// Call readMessages with no `since` — should return all messages including the old one
+		const result = await readMessages(ctx, {});
+
+		const found = result.messages.find((m) => m.id === messageId);
+		expect(found).toBeDefined();
+		expect(found?.content).toBe("old message");
 	});
 });

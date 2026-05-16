@@ -566,7 +566,7 @@ export async function readMessages(
 ): Promise<ReadMessagesResponse> {
 	const db = getDb();
 	const includeBroadcasts = input.includeBroadcasts ?? true;
-	const sinceDate = input.since ? new Date(input.since) : new Date(Date.now() - 60 * 60 * 1000);
+	const sinceDate = input.since ? new Date(input.since) : new Date(0);
 
 	const targetFilter = includeBroadcasts
 		? or(eq(agentMessages.toWorkspaceId, ctx.workspaceId), isNull(agentMessages.toWorkspaceId))
