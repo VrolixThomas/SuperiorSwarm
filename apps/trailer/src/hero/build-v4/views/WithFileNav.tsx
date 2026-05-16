@@ -1,12 +1,16 @@
+// s6FileNav repurposed as "keyboard-nav demo" inside the Review tab. Same
+// layout as WithRightPanelChanges (s5); the visible difference is that the
+// in-tab j-key pulse keeps cycling files at a faster cadence here so the
+// reader registers the keyboard-driven flow.
+
 import { BranchChanges } from "../../build-real/BranchChanges";
 import { CommittedStack } from "../../build-real/CommittedStack";
-import { DiffPanelHeader } from "../../build-real/DiffPanelHeader";
 import { DraftCommitCard } from "../../build-real/DraftCommitCard";
-import { RepoFileTree } from "../../build-real/RepoFileTree";
-import { SmartHeaderBar } from "../../build-real/SmartHeaderBar";
 import { RepoSidebarV4, type WorktreeAlertV4 } from "../RepoSidebarV4";
 import { useColorsV4 } from "../colors-v4";
 import { REPOS_V4 } from "../data";
+import { SCENES_V4 } from "../timeline";
+import { ReviewTabV4 } from "./ReviewTabV4";
 
 const RIGHT_PANEL_W = 420;
 const ACTIVE_BRANCH = "feat/agent-terminal-chat";
@@ -17,24 +21,18 @@ export function WithFileNav() {
 	const worktrees = REPOS_V4[0]?.worktrees ?? [];
 	const alerts: WorktreeAlertV4[] = worktrees.map((_, i) => (i === 0 ? null : "done"));
 
+	// Pass s5's entryFrame so ReviewTabV4's selection cycle continues seamlessly
+	// across s5→s6 — the j-key pulse keeps stepping files instead of resetting.
 	return (
 		<>
 			<RepoSidebarV4 segment="repos" worktreeAlerts={alerts} activeBranch={ACTIVE_BRANCH} />
 
-			{/* Center: file tree pane (Files tab swap in main area) */}
-			<div
-				style={{
-					flex: 1,
-					background: c.bgBase,
-					display: "flex",
-					flexDirection: "column",
-					overflow: "hidden",
-				}}
-			>
-				<RepoFileTree />
-			</div>
+			<ReviewTabV4
+				entryFrame={SCENES_V4.s5DiffPanel.from}
+				currentBranch={ACTIVE_BRANCH}
+				baseBranch="main"
+			/>
 
-			{/* Right: same DiffPanel chrome as s5, Files tab active */}
 			<div
 				style={{
 					width: RIGHT_PANEL_W,
@@ -46,8 +44,6 @@ export function WithFileNav() {
 					flexDirection: "column",
 				}}
 			>
-				<DiffPanelHeader activeTab="files" />
-				<SmartHeaderBar currentBranch={ACTIVE_BRANCH} baseBranch="main" />
 				<div style={{ flex: 1, overflowY: "auto" }}>
 					<DraftCommitCard />
 					<div style={{ marginTop: 12 }}>
