@@ -50,10 +50,10 @@ export interface ControlPlaneDeps {
 	taskRegistry: TaskRegistry;
 }
 
-async function resolveCaller(
+function resolveCaller(
 	req: IncomingMessage,
 	projectIdHint: string | null
-): Promise<CallerContext | { error: string }> {
+): CallerContext | { error: string } {
 	const wsId = req.headers["x-workspace-id"];
 	if (typeof wsId !== "string" || wsId.length === 0) {
 		return { error: "missing X-Workspace-Id header" };
@@ -252,7 +252,7 @@ async function handleRequest(
 					respond(res, 400, requestId, { error: "validation", details: parsed.error.flatten() });
 					return;
 				}
-				const caller = await resolveCaller(req, null);
+				const caller = resolveCaller(req, null);
 				if ("error" in caller) {
 					respond(res, 401, requestId, { error: "unauthorized" });
 					return;
@@ -268,7 +268,7 @@ async function handleRequest(
 					respond(res, 400, requestId, { error: "validation", details: parsed.error.flatten() });
 					return;
 				}
-				const caller = await resolveCaller(req, null);
+				const caller = resolveCaller(req, null);
 				if ("error" in caller) {
 					respond(res, 401, requestId, { error: "unauthorized" });
 					return;
@@ -286,7 +286,7 @@ async function handleRequest(
 					respond(res, 400, requestId, { error: "validation", details: parsed.error.flatten() });
 					return;
 				}
-				const caller = await resolveCaller(req, url.searchParams.get("projectId"));
+				const caller = resolveCaller(req, url.searchParams.get("projectId"));
 				if ("error" in caller) {
 					respond(res, 401, requestId, { error: "unauthorized" });
 					return;
@@ -302,7 +302,7 @@ async function handleRequest(
 					respond(res, 400, requestId, { error: "validation", details: parsed.error.flatten() });
 					return;
 				}
-				const caller = await resolveCaller(req, null);
+				const caller = resolveCaller(req, null);
 				if ("error" in caller) {
 					respond(res, 401, requestId, { error: "unauthorized" });
 					return;
@@ -312,7 +312,7 @@ async function handleRequest(
 			}
 
 			case "GET /workspaces.watch": {
-				const caller = await resolveCaller(req, url.searchParams.get("projectId"));
+				const caller = resolveCaller(req, url.searchParams.get("projectId"));
 				if ("error" in caller) {
 					respond(res, 401, requestId, { error: "unauthorized" });
 					return;
@@ -380,6 +380,6 @@ async function readJson(req: IncomingMessage): Promise<unknown> {
 	try {
 		return JSON.parse(raw);
 	} catch {
-		return null;
+		return {};
 	}
 }
