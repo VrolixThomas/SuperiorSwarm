@@ -2,8 +2,11 @@ import { useCurrentFrame } from "remotion";
 import { AppWindowV4 } from "./AppWindowV4";
 import { type ViewKeyV4, selectView } from "./WorkspaceViewSelector";
 import { type ThemeModeV4, ThemeProviderV4, useColorsV4 } from "./colors-v4";
+import { SolveResultFull } from "./views/SolveResultFull";
 import { TerminalOnly } from "./views/TerminalOnly";
 import { WithActiveWorkspaces } from "./views/WithActiveWorkspaces";
+import { WithCommentsPR } from "./views/WithCommentsPR";
+import { WithFileNav } from "./views/WithFileNav";
 import { WithRightPanelChanges } from "./views/WithRightPanelChanges";
 import { WithSidebarRepos } from "./views/WithSidebarRepos";
 
@@ -36,6 +39,12 @@ function ViewRenderer({ viewKey }: { viewKey: ViewKeyV4 }) {
 			return <WithActiveWorkspaces />;
 		case "withRightPanelChanges":
 			return <WithRightPanelChanges />;
+		case "withFileNav":
+			return <WithFileNav />;
+		case "withCommentsPR":
+			return <WithCommentsPR />;
+		case "solveResultFull":
+			return <SolveResultFull />;
 		default:
 			return <ViewStub name={viewKey} />;
 	}
