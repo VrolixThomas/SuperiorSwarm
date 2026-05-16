@@ -3,94 +3,97 @@
 
 type Tab = "changes" | "files" | "comments" | "ai-fixes";
 
-const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
-	{
-		key: "changes",
-		label: "Changes",
-		icon: (
-			<svg
-				width="14"
-				height="14"
-				viewBox="0 0 16 16"
-				fill="none"
-				stroke="currentColor"
-				strokeWidth="1.5"
-				strokeLinecap="round"
-				aria-hidden="true"
-			>
-				<path d="M4 6h8M4 10h5" />
-				<circle cx="13" cy="10" r="1.5" fill="currentColor" stroke="none" />
-			</svg>
-		),
-	},
-	{
-		key: "files",
-		label: "Files",
-		icon: (
-			<svg
-				width="14"
-				height="14"
-				viewBox="0 0 16 16"
-				fill="none"
-				stroke="currentColor"
-				strokeWidth="1.5"
-				strokeLinecap="round"
-				strokeLinejoin="round"
-				aria-hidden="true"
-			>
-				<path d="M2 3h5l2 2h5v8H2z" />
-			</svg>
-		),
-	},
-	{
-		key: "comments",
-		label: "Comments",
-		icon: (
-			<svg
-				width="14"
-				height="14"
-				viewBox="0 0 16 16"
-				fill="none"
-				stroke="currentColor"
-				strokeWidth="1.5"
-				strokeLinecap="round"
-				strokeLinejoin="round"
-				aria-hidden="true"
-			>
-				<path d="M3 3h10a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H6l-3 3V4a1 1 0 0 1 1-1z" />
-			</svg>
-		),
-	},
-	{
-		key: "ai-fixes",
-		label: "Fixes",
-		icon: (
-			<svg
-				width="14"
-				height="14"
-				viewBox="0 0 16 16"
-				fill="none"
-				stroke="currentColor"
-				strokeWidth="1.5"
-				strokeLinecap="round"
-				strokeLinejoin="round"
-				aria-hidden="true"
-			>
-				<path d="M6 2l1 3 3 1-3 1-1 3-1-3-3-1 3-1zM11 8l.5 1.5L13 10l-1.5.5L11 12l-.5-1.5L9 10l1.5-.5z" />
-			</svg>
-		),
-	},
-];
+function ChangesIcon() {
+	return (
+		<svg
+			width="14"
+			height="14"
+			viewBox="0 0 16 16"
+			fill="none"
+			stroke="currentColor"
+			strokeWidth="1.5"
+			strokeLinecap="round"
+			aria-hidden="true"
+		>
+			<path d="M4 6h8M4 10h5" />
+			<circle cx="13" cy="10" r="1.5" fill="currentColor" stroke="none" />
+		</svg>
+	);
+}
+
+function FilesIcon() {
+	return (
+		<svg
+			width="14"
+			height="14"
+			viewBox="0 0 16 16"
+			fill="none"
+			stroke="currentColor"
+			strokeWidth="1.5"
+			strokeLinecap="round"
+			strokeLinejoin="round"
+			aria-hidden="true"
+		>
+			<path d="M2 3h5l2 2h5v8H2z" />
+		</svg>
+	);
+}
+
+function CommentsIcon() {
+	return (
+		<svg
+			width="14"
+			height="14"
+			viewBox="0 0 16 16"
+			fill="none"
+			stroke="currentColor"
+			strokeWidth="1.5"
+			strokeLinecap="round"
+			strokeLinejoin="round"
+			aria-hidden="true"
+		>
+			<path d="M3 3h10a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H6l-3 3V4a1 1 0 0 1 1-1z" />
+		</svg>
+	);
+}
+
+function FixesIcon() {
+	return (
+		<svg
+			width="14"
+			height="14"
+			viewBox="0 0 16 16"
+			fill="none"
+			stroke="currentColor"
+			strokeWidth="1.5"
+			strokeLinecap="round"
+			strokeLinejoin="round"
+			aria-hidden="true"
+		>
+			<path d="M6 2l1 3 3 1-3 1-1 3-1-3-3-1 3-1zM11 8l.5 1.5L13 10l-1.5.5L11 12l-.5-1.5L9 10l1.5-.5z" />
+		</svg>
+	);
+}
+
+const ICONS: Record<Tab, () => React.ReactElement> = {
+	changes: ChangesIcon,
+	files: FilesIcon,
+	comments: CommentsIcon,
+	"ai-fixes": FixesIcon,
+};
+
+const TABS: Tab[] = ["changes", "files", "comments", "ai-fixes"];
 
 export function DiffPanelHeader({ activeTab }: { activeTab: Tab }) {
 	return (
 		<div className="flex shrink-0 items-center gap-2 border-b border-[var(--border)] px-3 py-2">
 			<div className="flex rounded-[var(--radius-sm)] bg-[var(--bg-base)] p-0.5">
-				{tabs.map((t) => {
-					const active = activeTab === t.key;
+				{TABS.map((t) => {
+					const active = activeTab === t;
+					const Icon = ICONS[t];
 					return (
 						<div
-							key={t.key}
+							key={t}
 							className={[
 								"flex items-center gap-1 rounded-[4px] px-2 py-1 transition-all duration-[120ms]",
 								active
@@ -98,7 +101,7 @@ export function DiffPanelHeader({ activeTab }: { activeTab: Tab }) {
 									: "text-[var(--text-quaternary)]",
 							].join(" ")}
 						>
-							{t.icon}
+							<Icon />
 						</div>
 					);
 				})}
