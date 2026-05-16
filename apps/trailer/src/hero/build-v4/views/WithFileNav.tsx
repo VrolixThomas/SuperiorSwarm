@@ -1,8 +1,8 @@
-import { interpolate, useCurrentFrame } from "remotion";
+import { useCurrentFrame } from "remotion";
 import { BranchChanges } from "../../build-real/BranchChanges";
 import { CodeEditor } from "../../build/CodeEditor";
 import { useColorsV4 } from "../colors-v4";
-import { DEMO_FILES_V4 } from "../data";
+import { REPOS_V4 } from "../data";
 import { SCENES_V4 } from "../timeline";
 
 const SIDEBAR_WIDTH = 280;
@@ -11,19 +11,13 @@ const RIGHT_PANEL_W = 380;
 export function WithFileNav() {
 	const c = useColorsV4();
 	const frame = useCurrentFrame();
-	const local = frame - SCENES_V4.s6FileNav.from;
+	void frame;
 
-	const fileIndex = Math.min(Math.floor(local / 80), DEMO_FILES_V4.length - 1);
-	const active = DEMO_FILES_V4[fileIndex] ?? DEMO_FILES_V4[0];
-
-	const treeOp = interpolate(local, [0, 18], [0, 1], {
-		extrapolateLeft: "clamp",
-		extrapolateRight: "clamp",
-	});
+	const repo = REPOS_V4[0];
 
 	return (
 		<>
-			{/* Left: 280px file tree */}
+			{/* Left: real Repos sidebar — expanded to show active worktree */}
 			<div
 				style={{
 					width: SIDEBAR_WIDTH,
@@ -32,93 +26,74 @@ export function WithFileNav() {
 					borderRight: `1px solid ${c.borderSubtle}`,
 					display: "flex",
 					flexDirection: "column",
-					opacity: treeOp,
 				}}
 			>
-				{/* Header */}
+				{/* Tab strip */}
 				<div
 					style={{
-						padding: "10px 12px",
+						display: "flex",
+						padding: "6px 8px",
+						gap: 4,
 						borderBottom: `1px solid ${c.borderSubtle}`,
-						fontSize: 11,
-						fontWeight: 600,
-						letterSpacing: "0.06em",
-						textTransform: "uppercase",
-						color: c.textTertiary,
 					}}
 				>
-					Files
+					{(["Repos", "Tickets", "PRs"] as const).map((label, i) => (
+						<div
+							key={label}
+							style={{
+								flex: 1,
+								padding: "5px 0",
+								textAlign: "center",
+								fontSize: 10,
+								fontWeight: 500,
+								borderRadius: 5,
+								background: i === 0 ? c.bgElevated : "transparent",
+								color: i === 0 ? c.textSecondary : c.textQuaternary,
+							}}
+						>
+							{label}
+						</div>
+					))}
 				</div>
 
-				{/* File list */}
-				<div
-					style={{
-						flex: 1,
-						overflow: "hidden",
-						padding: "6px 0",
-					}}
-				>
-					{DEMO_FILES_V4.map((file, i) => {
-						const isActive = i === fileIndex;
-						const filename = file.path.split("/").pop() ?? file.path;
-						const dir = file.path.split("/").slice(0, -1).join("/");
+				{/* Repo name + worktrees */}
+				<div style={{ flex: 1, overflow: "hidden", padding: "8px 0" }}>
+					<div
+						style={{
+							fontSize: 13,
+							fontWeight: 600,
+							color: c.text,
+							padding: "6px 16px",
+							display: "flex",
+							alignItems: "center",
+							gap: 6,
+						}}
+					>
+						<span style={{ color: c.textTertiary }}>▾</span>
+						{repo?.name}
+					</div>
+					{repo?.worktrees.map((wt) => {
+						const isActive = wt.branch === "feature/auth-refactor";
 						return (
 							<div
-								key={file.path}
+								key={wt.branch}
 								style={{
-									padding: "4px 12px",
+									padding: "5px 12px 5px 32px",
 									fontSize: 12,
+									color: isActive ? c.text : c.textSecondary,
+									fontWeight: isActive ? 600 : 400,
 									background: isActive ? c.bgActive : "transparent",
 									borderLeft: isActive ? `2px solid ${c.accent}` : "2px solid transparent",
-									display: "flex",
-									flexDirection: "column",
-									gap: 1,
-									cursor: "default",
+									whiteSpace: "nowrap",
+									overflow: "hidden",
+									textOverflow: "ellipsis",
 								}}
 							>
-								<span
-									style={{
-										color: isActive ? c.text : c.textSecondary,
-										fontWeight: isActive ? 600 : 400,
-										fontFamily: "monospace",
-										fontSize: 12,
-									}}
-								>
-									{filename}
-								</span>
-								<span
-									style={{
-										color: c.textQuaternary,
-										fontFamily: "monospace",
-										fontSize: 10,
-									}}
-								>
-									{dir}
-								</span>
+								{wt.branch}
 							</div>
 						);
 					})}
 				</div>
-
-				{/* Active file info */}
-				{active != null && (
-					<div
-						style={{
-							padding: "8px 12px",
-							borderTop: `1px solid ${c.borderSubtle}`,
-							fontSize: 11,
-							color: c.textTertiary,
-						}}
-					>
-						<span style={{ color: c.accent, fontWeight: 600 }}>
-							{active.hunks.reduce((n, h) => n + h.additions.length, 0)}+
-						</span>
-						{" / "}
-						<span style={{ color: c.danger, fontWeight: 600 }}>
-							{active.hunks.reduce((n, h) => n + h.deletions.length, 0)}-
-						</span>
-					</div>
-				)}
 			</div>
 
 			{/* Center: code editor */}
@@ -134,7 +109,7 @@ export function WithFileNav() {
 				<CodeEditor entryFrame={SCENES_V4.s6FileNav.from} variant="use-agent-terminal-stream" />
 			</div>
 
-			{/* Right: 380px BranchChanges panel */}
+			{/* Right: BranchChanges panel */}
 			<div
 				style={{
 					width: RIGHT_PANEL_W,

@@ -115,14 +115,9 @@ export function WithSidebarRepos() {
 													padding: "4px 8px 4px 28px",
 													fontSize: 12,
 													color: c.textSecondary,
-													display: "flex",
-													justifyContent: "space-between",
 												}}
 											>
-												<span>{wt.branch}</span>
-												<span style={{ color: c.textQuaternary, fontSize: 11 }}>
-													{wt.lastActivity}
-												</span>
+												{wt.branch}
 											</div>
 										);
 									})}

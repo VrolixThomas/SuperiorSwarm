@@ -2,7 +2,6 @@ import type { TerminalLine } from "../build/TerminalBody";
 
 export interface WorktreeV4 {
 	branch: string;
-	lastActivity: string;
 }
 
 export interface RepoV4 {
@@ -55,29 +54,14 @@ export const REPOS_V4: RepoV4[] = [
 	{
 		name: "SuperiorSwarm",
 		worktrees: [
-			{ branch: "main", lastActivity: "2m ago" },
-			{ branch: "MarketingImages", lastActivity: "12m ago" },
-			{ branch: "feature/auth-refactor", lastActivity: "1h ago" },
-			{ branch: "fix/repo-watcher", lastActivity: "3h ago" },
-			{ branch: "feature/ticket-drag", lastActivity: "5h ago" },
-			{ branch: "chore/biome-config", lastActivity: "1d ago" },
-			{ branch: "release/0.7.3", lastActivity: "2d ago" },
-			{ branch: "wip/lsp-settings", lastActivity: "3d ago" },
-		],
-	},
-	{
-		name: "acme-api",
-		worktrees: [
-			{ branch: "main", lastActivity: "30m ago" },
-			{ branch: "feature/rate-limit", lastActivity: "2h ago" },
-			{ branch: "fix/cors-preflight", lastActivity: "1d ago" },
-		],
-	},
-	{
-		name: "acme-mobile",
-		worktrees: [
-			{ branch: "main", lastActivity: "1h ago" },
-			{ branch: "feature/push-notifications", lastActivity: "4h ago" },
+			{ branch: "main" },
+			{ branch: "MarketingImages" },
+			{ branch: "feature/auth-refactor" },
+			{ branch: "fix/repo-watcher" },
+			{ branch: "feature/ticket-drag" },
+			{ branch: "chore/biome-config" },
+			{ branch: "release/0.7.3" },
+			{ branch: "wip/lsp-settings" },
 		],
 	},
 ];

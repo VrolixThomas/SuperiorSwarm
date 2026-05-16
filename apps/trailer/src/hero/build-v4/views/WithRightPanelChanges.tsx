@@ -2,15 +2,11 @@ import { interpolate, useCurrentFrame } from "remotion";
 import { BranchChanges } from "../../build-real/BranchChanges";
 import { CodeEditor } from "../../build/CodeEditor";
 import { useColorsV4 } from "../colors-v4";
-import { DEMO_FILES_V4, REPOS_V4 } from "../data";
+import { REPOS_V4 } from "../data";
 import { SCENES_V4 } from "../timeline";
 
 const SIDEBAR_WIDTH = 280;
 const RIGHT_PANEL_TARGET_W = 380;
-
-// Suppress unused-variable warnings — these are intentionally imported per spec
-// and may be used in future scenes built on this view.
-void DEMO_FILES_V4;
 
 export function WithRightPanelChanges() {
 	const c = useColorsV4();
@@ -84,14 +80,13 @@ export function WithRightPanelChanges() {
 								fontWeight: wt.branch === "feature/auth-refactor" ? 600 : 400,
 								background: wt.branch === "feature/auth-refactor" ? c.bgElevated : "transparent",
 								borderRadius: 5,
-								display: "flex",
-								justifyContent: "space-between",
-								alignItems: "center",
 								marginBottom: 2,
+								whiteSpace: "nowrap",
+								overflow: "hidden",
+								textOverflow: "ellipsis",
 							}}
 						>
-							<span style={{ truncate: true } as React.CSSProperties}>{wt.branch}</span>
-							<span style={{ fontSize: 10, color: c.textQuaternary }}>{wt.lastActivity}</span>
+							{wt.branch}
 						</div>
 					))}
 				</div>
