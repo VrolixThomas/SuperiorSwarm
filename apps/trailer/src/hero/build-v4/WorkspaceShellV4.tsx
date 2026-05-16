@@ -1,7 +1,8 @@
 import { useCurrentFrame } from "remotion";
 import { AppWindowV4 } from "./AppWindowV4";
 import { type ViewKeyV4, selectView } from "./WorkspaceViewSelector";
-import { type ThemeModeV4, ThemeProviderV4, useColorsV4 } from "./colors-v4";
+import { type ThemeModeV4, ThemeProviderV4 } from "./colors-v4";
+import { PRReviewResult } from "./views/PRReviewResult";
 import { SolveResultFull } from "./views/SolveResultFull";
 import { TerminalOnly } from "./views/TerminalOnly";
 import { WithActiveWorkspaces } from "./views/WithActiveWorkspaces";
@@ -11,25 +12,6 @@ import { WithPRsTab } from "./views/WithPRsTab";
 import { WithRightPanelChanges } from "./views/WithRightPanelChanges";
 import { WithSidebarRepos } from "./views/WithSidebarRepos";
 import { WithTicketsTab } from "./views/WithTicketsTab";
-
-function ViewStub({ name }: { name: string }) {
-	const c = useColorsV4();
-	return (
-		<div
-			style={{
-				flex: 1,
-				display: "flex",
-				alignItems: "center",
-				justifyContent: "center",
-				color: c.textSecondary,
-				fontFamily: "monospace",
-				fontSize: 24,
-			}}
-		>
-			{name}
-		</div>
-	);
-}
 
 function ViewRenderer({ viewKey }: { viewKey: ViewKeyV4 }) {
 	switch (viewKey) {
@@ -51,8 +33,8 @@ function ViewRenderer({ viewKey }: { viewKey: ViewKeyV4 }) {
 			return <WithTicketsTab />;
 		case "withPRsTab":
 			return <WithPRsTab />;
-		default:
-			return <ViewStub name={viewKey} />;
+		case "prReviewResult":
+			return <PRReviewResult />;
 	}
 }
 
