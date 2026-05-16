@@ -1,5 +1,6 @@
 import { AbsoluteFill, Freeze, Sequence } from "remotion";
 import { Bg } from "../hero/Bg";
+import { AudioTracksV3 } from "../hero/build-v3/AudioTracksV3";
 import { BeforeAfterV3 } from "../hero/build-v3/BeforeAfterV3";
 import { CameraV3 } from "../hero/build-v3/Camera";
 import { CaptionV3 } from "../hero/build-v3/Caption";
@@ -41,6 +42,7 @@ export function HeroBuildV3() {
 			<Sequence from={ACTS_V3.reveal.from} durationInFrames={ACTS_V3.reveal.durationInFrames}>
 				<RevealV3 />
 			</Sequence>
+			<AudioTracksV3 />
 			<CaptionV3 />
 		</AbsoluteFill>
 	);
