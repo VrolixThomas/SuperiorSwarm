@@ -26,6 +26,7 @@ import type {
 	WorkspaceDto,
 	WorkspacePhase,
 } from "../../shared/control-plane";
+import { ForbiddenError, NotFoundError, ResumeNotSupportedError } from "../../shared/control-plane";
 import { CLI_PRESETS } from "../ai-review/cli-presets";
 import type { EventBus } from "../control-plane/event-bus";
 import { getDb } from "../db";
@@ -228,10 +229,10 @@ export async function getWorkspace(input: GetWorkspaceRequest): Promise<GetWorks
 		.get();
 
 	if (!row) {
-		throw new Error(`not_found: ${input.workspaceId}`);
+		throw new NotFoundError(input.workspaceId);
 	}
 	if (row.projectId !== input.projectId) {
-		throw new Error(`forbidden: workspace belongs to a different project`);
+		throw new ForbiddenError("workspace belongs to a different project");
 	}
 
 	const dirty =
@@ -246,8 +247,8 @@ export async function removeWorkspace(
 ): Promise<RemoveWorkspaceResponse> {
 	const db = getDb();
 	const ws = db.select().from(workspaces).where(eq(workspaces.id, input.workspaceId)).get();
-	if (!ws) throw new Error(`not_found: ${input.workspaceId}`);
-	if (ws.projectId !== input.projectId) throw new Error("forbidden");
+	if (!ws) throw new NotFoundError(input.workspaceId);
+	if (ws.projectId !== input.projectId) throw new ForbiddenError();
 	if (ws.type === "branch") throw new Error("Cannot delete the main branch workspace");
 
 	const wt = ws.worktreeId
@@ -344,8 +345,8 @@ export async function dispatchAgent(
 ): Promise<DispatchAgentResponse> {
 	const db = getDb();
 	const ws = db.select().from(workspaces).where(eq(workspaces.id, input.workspaceId)).get();
-	if (!ws) throw new Error(`not_found: ${input.workspaceId}`);
-	if (ws.projectId !== input.projectId) throw new Error("forbidden");
+	if (!ws) throw new NotFoundError(input.workspaceId);
+	if (ws.projectId !== input.projectId) throw new ForbiddenError();
 	if (!ws.worktreeId) throw new Error("Workspace has no associated worktree");
 
 	const wt = db.select().from(worktrees).where(eq(worktrees.id, ws.worktreeId)).get();
@@ -448,8 +449,8 @@ export async function setStatus(
 		.from(workspaces)
 		.where(eq(workspaces.id, ctx.workspaceId))
 		.get();
-	if (!ws) throw new Error(`not_found: ${ctx.workspaceId}`);
-	if (ws.projectId !== ctx.projectId) throw new Error("forbidden");
+	if (!ws) throw new NotFoundError(ctx.workspaceId);
+	if (ws.projectId !== ctx.projectId) throw new ForbiddenError();
 
 	const now = new Date();
 	db.update(workspaces)
@@ -485,9 +486,9 @@ export async function setOrchestrator(
 		.from(workspaces)
 		.where(eq(workspaces.id, input.workspaceId))
 		.get();
-	if (!ws) throw new Error(`not_found: ${input.workspaceId}`);
+	if (!ws) throw new NotFoundError(input.workspaceId);
 	if (ws.projectId !== ctx.projectId) {
-		throw new Error("forbidden: cross-project setOrchestrator");
+		throw new ForbiddenError("cross-project setOrchestrator");
 	}
 
 	const now = new Date();
@@ -529,9 +530,9 @@ export async function sendMessage(
 			.from(workspaces)
 			.where(eq(workspaces.id, input.toWorkspaceId))
 			.get();
-		if (!target) throw new Error(`not_found: ${input.toWorkspaceId}`);
+		if (!target) throw new NotFoundError(input.toWorkspaceId);
 		if (target.projectId !== ctx.projectId) {
-			throw new Error("forbidden: cross-project message");
+			throw new ForbiddenError("cross-project message");
 		}
 	}
 
@@ -622,10 +623,10 @@ export async function resumeAgent(
 		.from(workspaces)
 		.where(eq(workspaces.id, ctx.workspaceId))
 		.get();
-	if (!callerWs) throw new Error(`not_found: ${ctx.workspaceId}`);
-	if (callerWs.projectId !== ctx.projectId) throw new Error("forbidden");
+	if (!callerWs) throw new NotFoundError(ctx.workspaceId);
+	if (callerWs.projectId !== ctx.projectId) throw new ForbiddenError();
 	if (!callerWs.isOrchestrator) {
-		throw new Error("forbidden: caller is not the project orchestrator");
+		throw new ForbiddenError("caller is not the project orchestrator");
 	}
 
 	// 2. Look up target
@@ -640,10 +641,10 @@ export async function resumeAgent(
 		.from(workspaces)
 		.where(eq(workspaces.id, input.workspaceId))
 		.get();
-	if (!target) throw new Error(`not_found: ${input.workspaceId}`);
-	if (target.projectId !== ctx.projectId) throw new Error("forbidden");
+	if (!target) throw new NotFoundError(input.workspaceId);
+	if (target.projectId !== ctx.projectId) throw new ForbiddenError();
 	if (target.cliPreset !== "claude" || !target.cliSessionId) {
-		throw new Error("resume_not_supported: workspace has no claude session");
+		throw new ResumeNotSupportedError("workspace has no claude session");
 	}
 
 	// 3. Resolve worktree path (cwd)
@@ -654,7 +655,7 @@ export async function resumeAgent(
 				.where(eq(worktrees.id, target.worktreeId))
 				.get()
 		: null;
-	if (!wt?.path) throw new Error(`not_found: worktree path for ${input.workspaceId}`);
+	if (!wt?.path) throw new NotFoundError(`worktree path for ${input.workspaceId}`);
 
 	// 4. Compose the resume command (interactive — no --print, so the child
 	//    keeps running and can be resumed again on the next coordination event).

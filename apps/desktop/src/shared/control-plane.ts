@@ -128,6 +128,27 @@ export class CancelledByUserError extends Error {
 	}
 }
 
+export class NotFoundError extends Error {
+	constructor(detail?: string) {
+		super(detail ? `not_found: ${detail}` : "not_found");
+		this.name = "NotFoundError";
+	}
+}
+
+export class ForbiddenError extends Error {
+	constructor(detail?: string) {
+		super(detail ? `forbidden: ${detail}` : "forbidden");
+		this.name = "ForbiddenError";
+	}
+}
+
+export class ResumeNotSupportedError extends Error {
+	constructor(detail?: string) {
+		super(detail ? `resume_not_supported: ${detail}` : "resume_not_supported");
+		this.name = "ResumeNotSupportedError";
+	}
+}
+
 // ---- Messages ----
 
 export const messageKindSchema = z.enum(["note", "question", "answer"]);

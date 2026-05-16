@@ -189,6 +189,16 @@ describe("control-plane HTTP", () => {
 		);
 		expect(get.status).toBe(404);
 	});
+
+	test("unknown workspace returns 404 via typed NotFoundError", async () => {
+		const res = await fetch(
+			url(`/workspaces.get?projectId=${PROJECT_ID}&workspaceId=does-not-exist`),
+			{ headers: auth() }
+		);
+		expect(res.status).toBe(404);
+		const body = (await res.json()) as { error: string };
+		expect(body.error).toBe("not_found");
+	});
 });
 
 describe("control-plane coordination routes", () => {

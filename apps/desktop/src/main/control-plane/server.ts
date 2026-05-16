@@ -3,6 +3,9 @@ import { realpathSync } from "node:fs";
 import { type IncomingMessage, type Server, type ServerResponse, createServer } from "node:http";
 import { eq } from "drizzle-orm";
 import {
+	ForbiddenError,
+	NotFoundError,
+	ResumeNotSupportedError,
 	createWorkspaceRequestSchema,
 	dispatchAgentRequestSchema,
 	getWorkspaceRequestSchema,
@@ -342,16 +345,15 @@ async function handleRequest(
 				respond(res, 404, requestId, { error: "not_found" });
 		}
 	} catch (err) {
-		const msg = err instanceof Error ? err.message : String(err);
-		if (/^resume_not_supported(:|$)/i.test(msg)) {
+		if (err instanceof ResumeNotSupportedError) {
 			respond(res, 409, requestId, { error: "resume_not_supported" });
 			return;
 		}
-		if (/^forbidden(:|$)/i.test(msg)) {
+		if (err instanceof ForbiddenError) {
 			respond(res, 403, requestId, { error: "forbidden" });
 			return;
 		}
-		if (/^not_found(:|$)/i.test(msg)) {
+		if (err instanceof NotFoundError) {
 			respond(res, 404, requestId, { error: "not_found" });
 			return;
 		}
