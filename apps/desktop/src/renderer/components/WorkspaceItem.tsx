@@ -25,6 +25,7 @@ interface WorkspaceItemProps {
 	projectName: string;
 	projectRepoPath: string;
 	isInActiveProject: boolean;
+	indentLevel?: 0 | 1;
 }
 
 /**
@@ -245,6 +246,7 @@ export function WorkspaceItem({
 	projectName,
 	projectRepoPath,
 	isInActiveProject,
+	indentLevel = 0,
 }: WorkspaceItemProps) {
 	const [contextMenu, setContextMenu] = useState<{
 		x: number;
@@ -381,8 +383,9 @@ export function WorkspaceItem({
 					}
 				}}
 				className={[
-					"relative flex w-full items-center gap-2 border-none pl-[22px] pr-3 py-[7px] cursor-pointer",
-					"transition-all duration-[120ms] text-left rounded-[6px]",
+					"relative flex w-full items-center gap-2 border-none",
+					indentLevel === 1 ? "pl-[36px] pr-3 py-[7px]" : "pl-[22px] pr-3 py-[7px]",
+					"cursor-pointer transition-all duration-[120ms] text-left rounded-[6px]",
 					isActive
 						? "bg-[var(--accent-subtle)] hover:bg-[var(--accent-subtle)]"
 						: "bg-transparent hover:bg-[var(--bg-elevated)]",
