@@ -347,6 +347,15 @@ function OrchestratorGroupBlock({
 }) {
 	const utils = trpc.useUtils();
 	const colorIndex = useOrchestratorColor(node.workspace.id, projectId, allOrchestratorIds);
+
+	const unsetOrchestratorMut = trpc.workspaces.unsetOrchestrator.useMutation({
+		onSuccess: () => utils.workspaces.listByProject.invalidate({ projectId }),
+	});
+
+	const handleUnsetOrchestrator = useCallback(() => {
+		unsetOrchestratorMut.mutate({ projectId, workspaceId: node.workspace.id });
+	}, [node.workspace.id, projectId, unsetOrchestratorMut]);
+
 	const expandedKey = `orchExpand:${node.workspace.id}`;
 	const expandedQuery = trpc.workspaces.getOrchestratorExpand.useQuery(
 		{ key: expandedKey },
@@ -399,6 +408,7 @@ function OrchestratorGroupBlock({
 				}}
 				onActivate={handleActivate}
 				activeChildName={!expanded && activeChild ? activeChild.name : undefined}
+				onUnsetOrchestrator={handleUnsetOrchestrator}
 			/>
 			{expanded && (
 				<OrchestratorGroup colorIndex={colorIndex} hasActiveChild={hasActiveChild}>

@@ -1,8 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { setupTestDb, teardownTestDb, seedProject, seedWorkspace } from "./helpers/db";
-import { listByProjectTree } from "../src/main/services/workspace-service";
+import { eq } from "drizzle-orm";
+import { getDb } from "../src/main/db";
+import { workspaces } from "../src/main/db/schema";
 import { attachToOrchestrator } from "../src/main/services/orchestrator-membership";
-import { reorderTopLevel, reorderChildren } from "../src/main/services/workspace-ordering";
+import { reorderChildren, reorderTopLevel } from "../src/main/services/workspace-ordering";
+import { listByProjectTree } from "../src/main/services/workspace-service";
+import { seedProject, seedWorkspace, setupTestDb, teardownTestDb } from "./helpers/db";
 
 describe("listByProjectTree", () => {
 	beforeEach(() => setupTestDb());
@@ -49,5 +52,20 @@ describe("listByProjectTree", () => {
 		await seedWorkspace(p, { name: "b" });
 		const tree = await listByProjectTree({ projectId: p });
 		expect(tree.loose.map((w) => w.name)).toEqual(["b"]);
+	});
+
+	test("children of a demoted orchestrator fall back to loose", async () => {
+		const p = await seedProject();
+		const orch = await seedWorkspace(p, { name: "orch", isOrchestrator: true });
+		const child = await seedWorkspace(p, { name: "child" });
+		await attachToOrchestrator({ orchestratorId: orch, workspaceId: child });
+
+		// Demote the orchestrator WITHOUT cleaning up join rows (simulates the historical bug).
+		const db = getDb();
+		db.update(workspaces).set({ isOrchestrator: false }).where(eq(workspaces.id, orch)).run();
+
+		const tree = await listByProjectTree({ projectId: p });
+		expect(tree.orchestrators).toEqual([]);
+		expect(tree.loose.map((w) => w.id).sort()).toEqual([child, orch].sort());
 	});
 });

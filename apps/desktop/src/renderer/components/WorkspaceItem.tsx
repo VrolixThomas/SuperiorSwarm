@@ -158,12 +158,14 @@ function WorkspaceContextMenu({
 	onClose,
 	onDelete,
 	onSetOrchestrator,
+	onUnsetOrchestrator,
 	isOrchestrator,
 }: {
 	position: { x: number; y: number };
 	onClose: () => void;
 	onDelete: () => void;
 	onSetOrchestrator?: () => void;
+	onUnsetOrchestrator?: () => void;
 	isOrchestrator?: boolean | null;
 }) {
 	const menuRef = useRef<HTMLDivElement>(null);
@@ -223,6 +225,19 @@ function WorkspaceContextMenu({
 					}}
 				>
 					Set as orchestrator
+				</div>
+			)}
+			{onUnsetOrchestrator && isOrchestrator && (
+				<div
+					role="menuitem"
+					tabIndex={0}
+					className="px-3 py-1.5 text-[13px] cursor-pointer hover:bg-[var(--bg-overlay)] transition-all duration-[120ms] text-[var(--text)]"
+					onClick={onUnsetOrchestrator}
+					onKeyDown={(e) => {
+						if (e.key === "Enter") onUnsetOrchestrator();
+					}}
+				>
+					Unset orchestrator
 				</div>
 			)}
 			<div
@@ -317,6 +332,17 @@ export function WorkspaceItem({
 		setOrchestrator.mutate({ projectId, workspaceId: workspace.id });
 		setContextMenu(null);
 	}, [workspace.id, projectId, setOrchestrator]);
+
+	const unsetOrchestrator = trpc.workspaces.unsetOrchestrator.useMutation({
+		onSuccess: () => {
+			utils.workspaces.listByProject.invalidate({ projectId });
+		},
+	});
+
+	const handleUnsetOrchestrator = useCallback(() => {
+		unsetOrchestrator.mutate({ projectId, workspaceId: workspace.id });
+		setContextMenu(null);
+	}, [workspace.id, projectId, unsetOrchestrator]);
 
 	const isActive = useTabStore((s) => s.activeWorkspaceId === workspace.id);
 	const alert = useAgentAlertStore((s) => s.alerts[workspace.id]);
@@ -488,6 +514,7 @@ export function WorkspaceItem({
 					onClose={() => setContextMenu(null)}
 					onDelete={handleDelete}
 					onSetOrchestrator={workspace.type === "worktree" ? handleSetOrchestrator : undefined}
+					onUnsetOrchestrator={workspace.type === "worktree" ? handleUnsetOrchestrator : undefined}
 					isOrchestrator={workspace.isOrchestrator}
 				/>
 			)}

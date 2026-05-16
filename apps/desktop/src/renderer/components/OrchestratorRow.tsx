@@ -1,3 +1,4 @@
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTabStore } from "../stores/tab-store";
 
 interface OrchestratorRowProps {
@@ -8,6 +9,77 @@ interface OrchestratorRowProps {
 	onToggle: () => void;
 	onActivate: () => void;
 	activeChildName?: string;
+	onUnsetOrchestrator?: () => void;
+}
+
+function OrchestratorContextMenu({
+	position,
+	onClose,
+	onUnsetOrchestrator,
+}: {
+	position: { x: number; y: number };
+	onClose: () => void;
+	onUnsetOrchestrator: () => void;
+}) {
+	const menuRef = useRef<HTMLDivElement>(null);
+	const [adjusted, setAdjusted] = useState(position);
+
+	useEffect(() => {
+		if (!menuRef.current) return;
+		const rect = menuRef.current.getBoundingClientRect();
+		let { x, y } = position;
+
+		if (x + rect.width > window.innerWidth) {
+			x = window.innerWidth - rect.width - 8;
+		}
+		if (y + rect.height > window.innerHeight) {
+			y = window.innerHeight - rect.height - 8;
+		}
+
+		if (x !== position.x || y !== position.y) {
+			setAdjusted({ x, y });
+		}
+	}, [position]);
+
+	useEffect(() => {
+		function handleClickOutside(e: MouseEvent) {
+			if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+				onClose();
+			}
+		}
+		document.addEventListener("mousedown", handleClickOutside);
+		return () => document.removeEventListener("mousedown", handleClickOutside);
+	}, [onClose]);
+
+	useEffect(() => {
+		function handleKeyDown(e: KeyboardEvent) {
+			if (e.key === "Escape") {
+				onClose();
+			}
+		}
+		document.addEventListener("keydown", handleKeyDown);
+		return () => document.removeEventListener("keydown", handleKeyDown);
+	}, [onClose]);
+
+	return (
+		<div
+			ref={menuRef}
+			className="fixed z-50 min-w-[160px] rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-elevated)] py-1 shadow-[var(--shadow-md)]"
+			style={{ left: adjusted.x, top: adjusted.y }}
+		>
+			<div
+				role="menuitem"
+				tabIndex={0}
+				className="px-3 py-1.5 text-[13px] cursor-pointer hover:bg-[var(--bg-overlay)] transition-all duration-[120ms] text-[var(--text)]"
+				onClick={onUnsetOrchestrator}
+				onKeyDown={(e) => {
+					if (e.key === "Enter") onUnsetOrchestrator();
+				}}
+			>
+				Unset orchestrator
+			</div>
+		</div>
+	);
 }
 
 export function OrchestratorRow({
@@ -18,10 +90,27 @@ export function OrchestratorRow({
 	onToggle,
 	onActivate,
 	activeChildName,
+	onUnsetOrchestrator,
 }: OrchestratorRowProps) {
 	const isActive = useTabStore((s) => s.activeWorkspaceId === workspace.id);
 	const isActiveByChild = !expanded && activeChildName !== undefined;
 	const isAccented = isActive || isActiveByChild;
+
+	const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+
+	const handleContextMenu = useCallback(
+		(e: React.MouseEvent) => {
+			if (!onUnsetOrchestrator) return;
+			e.preventDefault();
+			setContextMenu({ x: e.clientX, y: e.clientY });
+		},
+		[onUnsetOrchestrator]
+	);
+
+	const handleUnset = useCallback(() => {
+		onUnsetOrchestrator?.();
+		setContextMenu(null);
+	}, [onUnsetOrchestrator]);
 
 	const swatchVar = `var(--orch-${colorIndex})`;
 	const pillBg = `var(--orch-${colorIndex}-bg)`;
@@ -36,7 +125,7 @@ export function OrchestratorRow({
 	].join(" ");
 
 	return (
-		<div className="relative flex items-center">
+		<div className="relative flex items-center" onContextMenu={handleContextMenu}>
 			{isAccented && (
 				<span
 					aria-hidden="true"
@@ -74,6 +163,13 @@ export function OrchestratorRow({
 					{childCount}
 				</span>
 			</button>
+			{contextMenu && onUnsetOrchestrator && (
+				<OrchestratorContextMenu
+					position={contextMenu}
+					onClose={() => setContextMenu(null)}
+					onUnsetOrchestrator={handleUnset}
+				/>
+			)}
 		</div>
 	);
 }

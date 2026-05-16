@@ -274,10 +274,18 @@ export async function listByProjectTree(input: {
 		.where(eq(workspaces.projectId, input.projectId))
 		.all();
 
-	const memberOf = new Map<string, { orchestratorId: string; sortOrder: number }>();
-	for (const m of memberRows) memberOf.set(m.workspaceId, m);
+	const allOrchestratorIds = new Set(rows.filter((r) => r.isOrchestrator).map((r) => r.id));
 
-	const childrenByOrch = new Map<string, Array<{ row: VisibleWorkspaceTreeRow; sortOrder: number }>>();
+	const memberOf = new Map<string, { orchestratorId: string; sortOrder: number }>();
+	for (const m of memberRows) {
+		if (!allOrchestratorIds.has(m.orchestratorId)) continue; // defensive: drop orphaned join rows
+		memberOf.set(m.workspaceId, m);
+	}
+
+	const childrenByOrch = new Map<
+		string,
+		Array<{ row: VisibleWorkspaceTreeRow; sortOrder: number }>
+	>();
 	for (const ws of rows) {
 		const mem = memberOf.get(ws.id);
 		if (!mem) continue;
@@ -566,13 +574,38 @@ export async function setOrchestrator(
 	}
 
 	const now = new Date();
+	db.update(workspaces)
+		.set({ isOrchestrator: true, updatedAt: now })
+		.where(eq(workspaces.id, input.workspaceId))
+		.run();
+
+	invalidateOrchestratorPresenceCache(ws.projectId);
+
+	return { ok: true };
+}
+
+export async function unsetOrchestrator(
+	ctx: CallerContext,
+	input: { workspaceId: string }
+): Promise<{ ok: true }> {
+	const db = getDb();
+	const ws = db
+		.select({ projectId: workspaces.projectId })
+		.from(workspaces)
+		.where(eq(workspaces.id, input.workspaceId))
+		.get();
+	if (!ws) throw new NotFoundError(input.workspaceId);
+	if (ws.projectId !== ctx.projectId) {
+		throw new ForbiddenError("cross-project unsetOrchestrator");
+	}
+
+	const now = new Date();
 	db.transaction((tx) => {
-		tx.update(workspaces)
-			.set({ isOrchestrator: false, updatedAt: now })
-			.where(eq(workspaces.projectId, ws.projectId))
+		tx.delete(orchestratorMembers)
+			.where(eq(orchestratorMembers.orchestratorId, input.workspaceId))
 			.run();
 		tx.update(workspaces)
-			.set({ isOrchestrator: true, updatedAt: now })
+			.set({ isOrchestrator: false, updatedAt: now })
 			.where(eq(workspaces.id, input.workspaceId))
 			.run();
 	});
