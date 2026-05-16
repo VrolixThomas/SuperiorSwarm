@@ -500,3 +500,5 @@ export const appSettings = sqliteTable("app_settings", {
 
 export type AppSetting = typeof appSettings.$inferSelect;
 export type NewAppSetting = typeof appSettings.$inferInsert;
+
+export * from "./schema-memory";
