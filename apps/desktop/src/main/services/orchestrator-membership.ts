@@ -1,4 +1,4 @@
-import { and, asc, eq, max } from "drizzle-orm";
+import { asc, eq, max } from "drizzle-orm";
 import { ForbiddenError, NotFoundError } from "../../shared/control-plane";
 import { getDb } from "../db";
 import { orchestratorMembers, workspaces } from "../db/schema";
@@ -34,7 +34,9 @@ export async function attachToOrchestrator(input: {
 
 	db.transaction((tx) => {
 		// V1 single-parent: remove any existing membership for this workspace
-		tx.delete(orchestratorMembers).where(eq(orchestratorMembers.workspaceId, input.workspaceId)).run();
+		tx.delete(orchestratorMembers)
+			.where(eq(orchestratorMembers.workspaceId, input.workspaceId))
+			.run();
 
 		const maxRow = tx
 			.select({ m: max(orchestratorMembers.sortOrder) })
@@ -60,7 +62,9 @@ export async function detachFromOrchestrator(input: {
 	workspaceId: string;
 }): Promise<{ ok: true }> {
 	const db = getDb();
-	db.delete(orchestratorMembers).where(eq(orchestratorMembers.workspaceId, input.workspaceId)).run();
+	db.delete(orchestratorMembers)
+		.where(eq(orchestratorMembers.workspaceId, input.workspaceId))
+		.run();
 	return { ok: true };
 }
 

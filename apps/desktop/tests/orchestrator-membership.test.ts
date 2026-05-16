@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { setupTestDb, teardownTestDb, seedProject, seedWorkspace } from "./helpers/db";
 import {
 	attachToOrchestrator,
 	detachFromOrchestrator,
 	listMembership,
 } from "../src/main/services/orchestrator-membership";
+import { seedProject, seedWorkspace, setupTestDb, teardownTestDb } from "./helpers/db";
 
 describe("orchestrator-membership", () => {
 	beforeEach(() => setupTestDb());
@@ -34,7 +34,9 @@ describe("orchestrator-membership", () => {
 		await attachToOrchestrator({ orchestratorId: orch2, workspaceId: x });
 
 		expect((await listMembership({ orchestratorId: orch1 })).length).toBe(0);
-		expect((await listMembership({ orchestratorId: orch2 })).map((m) => m.workspaceId)).toEqual([x]);
+		expect((await listMembership({ orchestratorId: orch2 })).map((m) => m.workspaceId)).toEqual([
+			x,
+		]);
 	});
 
 	test("detach removes the member row", async () => {
@@ -50,9 +52,9 @@ describe("orchestrator-membership", () => {
 		const p = await seedProject();
 		const notOrch = await seedWorkspace(p, { name: "no", isOrchestrator: false });
 		const a = await seedWorkspace(p, { name: "a" });
-		await expect(
-			attachToOrchestrator({ orchestratorId: notOrch, workspaceId: a })
-		).rejects.toThrow(/not.*orchestrator/i);
+		await expect(attachToOrchestrator({ orchestratorId: notOrch, workspaceId: a })).rejects.toThrow(
+			/not.*orchestrator/i
+		);
 	});
 
 	test("attach rejects when worktree is in different project", async () => {
@@ -60,17 +62,33 @@ describe("orchestrator-membership", () => {
 		const p2 = await seedProject();
 		const orch = await seedWorkspace(p1, { name: "orch", isOrchestrator: true });
 		const a = await seedWorkspace(p2, { name: "a" });
-		await expect(
-			attachToOrchestrator({ orchestratorId: orch, workspaceId: a })
-		).rejects.toThrow(/different project|cross-project/i);
+		await expect(attachToOrchestrator({ orchestratorId: orch, workspaceId: a })).rejects.toThrow(
+			/different project|cross-project/i
+		);
 	});
 
 	test("attach rejects attaching an orchestrator to another orchestrator", async () => {
 		const p = await seedProject();
 		const o1 = await seedWorkspace(p, { name: "o1", isOrchestrator: true });
 		const o2 = await seedWorkspace(p, { name: "o2", isOrchestrator: true });
+		await expect(attachToOrchestrator({ orchestratorId: o1, workspaceId: o2 })).rejects.toThrow(
+			/cannot nest|orchestrator/i
+		);
+	});
+
+	test("attach rejects when orchestratorId does not exist", async () => {
+		const p = await seedProject();
+		const a = await seedWorkspace(p, { name: "a" });
 		await expect(
-			attachToOrchestrator({ orchestratorId: o1, workspaceId: o2 })
-		).rejects.toThrow(/cannot nest|orchestrator/i);
+			attachToOrchestrator({ orchestratorId: "ws-nonexistent", workspaceId: a })
+		).rejects.toThrow(/not.?found|unknown/i);
+	});
+
+	test("attach rejects when workspaceId does not exist", async () => {
+		const p = await seedProject();
+		const orch = await seedWorkspace(p, { name: "orch", isOrchestrator: true });
+		await expect(
+			attachToOrchestrator({ orchestratorId: orch, workspaceId: "ws-nonexistent" })
+		).rejects.toThrow(/not.?found|unknown/i);
 	});
 });
