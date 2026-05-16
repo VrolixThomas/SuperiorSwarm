@@ -1,5 +1,6 @@
-import { useCurrentFrame } from "remotion";
+import { interpolate, useCurrentFrame } from "remotion";
 import { AppWindowV4 } from "./AppWindowV4";
+import { type TabPillV4, WorkspaceTabBarV4 } from "./WorkspaceTabBarV4";
 import { type ViewKeyV4, selectView } from "./WorkspaceViewSelector";
 import { type ThemeModeV4, ThemeProviderV4 } from "./colors-v4";
 import { SCENES_V4 } from "./timeline";
@@ -36,6 +37,26 @@ function ViewRenderer({ viewKey }: { viewKey: ViewKeyV4 }) {
 	}
 }
 
+// Per-scene tab strip composition. Tab strip appears from s5 onward; earlier
+// scenes (terminal-only / sidebar build / starting workspaces) keep the
+// chrome empty so the build-up reads cleanly.
+function tabsForScene(viewKey: ViewKeyV4): { tabs: TabPillV4[]; activeId: string | null } {
+	const terminal: TabPillV4 = { id: "term-1", title: "Terminal 1", kind: "terminal" };
+	const review: TabPillV4 = { id: "review", title: "Review", kind: "review" };
+	const solve: TabPillV4 = { id: "solve", title: "Solve Review", kind: "solve" };
+
+	switch (viewKey) {
+		case "withRightPanelChanges":
+		case "withFileNav":
+			return { tabs: [terminal, review], activeId: review.id };
+		case "withCommentsPR":
+		case "solveResultFull":
+			return { tabs: [terminal, review, solve], activeId: solve.id };
+		default:
+			return { tabs: [], activeId: null };
+	}
+}
+
 interface Props {
 	mode?: ThemeModeV4;
 }
@@ -43,14 +64,27 @@ interface Props {
 export function WorkspaceShellV4({ mode = "dark" }: Props) {
 	const frame = useCurrentFrame();
 
-	// During outro, the AppWindow shell is replaced by the full-screen Outro
-	// scene rendered separately in HeroBuildV4.
 	if (frame >= SCENES_V4.outro.from) return null;
 
 	const viewKey = selectView(frame);
+	const { tabs, activeId } = tabsForScene(viewKey);
+
+	// Fade the tab strip in over 18f when it first appears at s5DiffPanel.from.
+	const tabsOp = interpolate(
+		frame,
+		[SCENES_V4.s5DiffPanel.from, SCENES_V4.s5DiffPanel.from + 18],
+		[0, 1],
+		{ extrapolateLeft: "clamp", extrapolateRight: "clamp" }
+	);
+
+	const tabBar =
+		tabs.length > 0 ? (
+			<WorkspaceTabBarV4 tabs={tabs} activeTabId={activeId} opacity={tabsOp} />
+		) : null;
+
 	return (
 		<ThemeProviderV4 value={mode}>
-			<AppWindowV4>
+			<AppWindowV4 tabBar={tabBar}>
 				<ViewRenderer viewKey={viewKey} />
 			</AppWindowV4>
 		</ThemeProviderV4>
