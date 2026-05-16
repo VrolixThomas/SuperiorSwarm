@@ -1,15 +1,56 @@
-import { useEffect, useRef, useState } from "react";
+import {
+	DndContext,
+	type DragEndEvent,
+	PointerSensor,
+	closestCenter,
+	useSensor,
+	useSensors,
+} from "@dnd-kit/core";
+import {
+	SortableContext,
+	arrayMove,
+	useSortable,
+	verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import type { Project } from "../../main/db/schema";
 import type { OrchestratorGroupNode } from "../../shared/types";
+import { useOrchestratorColor } from "../hooks/useOrchestratorColor";
 import { useProjectStore } from "../stores/projects";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
-import { useOrchestratorColor } from "../hooks/useOrchestratorColor";
 import { OrchestratorGroup } from "./OrchestratorGroup";
 import { OrchestratorRow } from "./OrchestratorRow";
 import { ProjectContextMenu } from "./ProjectContextMenu";
 import { RepoGroup } from "./RepoGroup";
 import { WorkspaceItem } from "./WorkspaceItem";
+
+function SortableWorkspace({
+	id,
+	children,
+}: {
+	id: string;
+	children: ReactNode;
+}) {
+	const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+		id,
+	});
+	return (
+		<div
+			ref={setNodeRef}
+			style={{
+				transform: CSS.Transform.toString(transform),
+				transition,
+				opacity: isDragging ? 0.5 : 1,
+			}}
+			{...attributes}
+			{...listeners}
+		>
+			{children}
+		</div>
+	);
+}
 
 interface ProjectItemProps {
 	project: Project;
@@ -80,6 +121,100 @@ export function ProjectItem({ project, isExpanded, onToggle }: ProjectItemProps)
 
 	const activeWorkspaceIdLocal = useTabStore((s) => s.activeWorkspaceId);
 
+	const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
+
+	const reorderTopLevelMut = trpc.workspaces.reorderTopLevel.useMutation({
+		onSuccess: () => utils.workspaces.listByProject.invalidate({ projectId: project.id }),
+	});
+	const reorderChildrenMut = trpc.workspaces.reorderChildren.useMutation({
+		onSuccess: () => utils.workspaces.listByProject.invalidate({ projectId: project.id }),
+	});
+	const attachMut = trpc.workspaces.attachToOrchestrator.useMutation({
+		onSuccess: () => utils.workspaces.listByProject.invalidate({ projectId: project.id }),
+	});
+	const detachMut = trpc.workspaces.detachFromOrchestrator.useMutation({
+		onSuccess: () => utils.workspaces.listByProject.invalidate({ projectId: project.id }),
+	});
+
+	function onDragEnd(e: DragEndEvent) {
+		const activeId = String(e.active.id);
+		const overId = e.over ? String(e.over.id) : null;
+		if (!overId || activeId === overId) return;
+
+		const isOrch = (id: string) => orchestrators.some((o) => o.workspace.id === id);
+		const orchOfChild = (id: string) =>
+			orchestrators.find((o) => o.children.some((c) => c.id === id))?.workspace.id;
+		const isLoose = (id: string) => loose.some((w) => w.id === id);
+		const overIsOrch = isOrch(overId);
+		const overIsChild = orchOfChild(overId);
+		const overIsLoose = isLoose(overId);
+
+		// Case 1: reorder orchestrators among themselves
+		if (isOrch(activeId) && overIsOrch) {
+			const ids = orchestrators.map((o) => o.workspace.id);
+			const from = ids.indexOf(activeId);
+			const to = ids.indexOf(overId);
+			const next = arrayMove(ids, from, to);
+			reorderTopLevelMut.mutate({
+				projectId: project.id,
+				orderedIds: [...next, ...loose.map((w) => w.id)],
+			});
+			return;
+		}
+
+		// Case 2: reorder loose worktrees among themselves
+		if (isLoose(activeId) && overIsLoose) {
+			const ids = loose.map((w) => w.id);
+			const from = ids.indexOf(activeId);
+			const to = ids.indexOf(overId);
+			const next = arrayMove(ids, from, to);
+			reorderTopLevelMut.mutate({
+				projectId: project.id,
+				orderedIds: [...orchestrators.map((o) => o.workspace.id), ...next],
+			});
+			return;
+		}
+
+		// Case 3: loose worktree dropped onto an orchestrator row → attach
+		if (isLoose(activeId) && overIsOrch) {
+			attachMut.mutate({ orchestratorId: overId, workspaceId: activeId });
+			return;
+		}
+
+		// Case 4: loose worktree dropped onto a child row → attach to that child's orchestrator
+		if (isLoose(activeId) && overIsChild) {
+			attachMut.mutate({ orchestratorId: overIsChild, workspaceId: activeId });
+			return;
+		}
+
+		// Case 5: child dragged onto another orchestrator → move (or reorder within same group)
+		if (orchOfChild(activeId) && (overIsOrch || overIsChild)) {
+			const target = overIsOrch ? overId : (overIsChild as string);
+			const fromOrch = orchOfChild(activeId);
+			if (!fromOrch) return;
+			if (target === fromOrch) {
+				const node = orchestrators.find((o) => o.workspace.id === fromOrch);
+				if (!node) return;
+				const ids = node.children.map((c) => c.id);
+				const from = ids.indexOf(activeId);
+				const to = overIsChild ? ids.indexOf(overId) : ids.length - 1;
+				const next = arrayMove(ids, from, to);
+				reorderChildrenMut.mutate({ orchestratorId: fromOrch, orderedIds: next });
+			} else {
+				attachMut.mutate({ orchestratorId: target, workspaceId: activeId });
+			}
+			return;
+		}
+
+		// Case 6: child dragged into loose zone → detach
+		if (orchOfChild(activeId) && overIsLoose) {
+			detachMut.mutate({ workspaceId: activeId });
+			return;
+		}
+
+		// Default: no-op
+	}
+
 	const isActiveProject =
 		orchestrators.some(
 			(o) =>
@@ -141,30 +276,43 @@ export function ProjectItem({ project, isExpanded, onToggle }: ProjectItemProps)
 				}
 			>
 				{isReady && tree && (
-					<div className="flex flex-col pt-0.5">
-						{orchestrators.map((node) => (
-							<OrchestratorGroupBlock
-								key={node.workspace.id}
-								node={node}
-								projectId={project.id}
-								projectName={project.name}
-								projectRepoPath={project.repoPath}
-								isActiveProject={isActiveProject}
-								allOrchestratorIds={allOrchestratorIds}
-								activeWorkspaceId={activeWorkspaceIdLocal ?? ""}
-							/>
-						))}
-						{loose.map((ws) => (
-							<WorkspaceItem
-								key={ws.id}
-								workspace={ws}
-								projectId={project.id}
-								projectName={project.name}
-								projectRepoPath={project.repoPath}
-								isInActiveProject={isActiveProject}
-							/>
-						))}
-					</div>
+					<DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+						<SortableContext
+							items={orchestrators.map((o) => o.workspace.id)}
+							strategy={verticalListSortingStrategy}
+						>
+							<div className="flex flex-col pt-0.5">
+								{orchestrators.map((node) => (
+									<SortableWorkspace key={node.workspace.id} id={node.workspace.id}>
+										<OrchestratorGroupBlock
+											node={node}
+											projectId={project.id}
+											projectName={project.name}
+											projectRepoPath={project.repoPath}
+											isActiveProject={isActiveProject}
+											allOrchestratorIds={allOrchestratorIds}
+											activeWorkspaceId={activeWorkspaceIdLocal ?? ""}
+										/>
+									</SortableWorkspace>
+								))}
+							</div>
+						</SortableContext>
+						<SortableContext items={loose.map((w) => w.id)} strategy={verticalListSortingStrategy}>
+							<div className="flex flex-col">
+								{loose.map((ws) => (
+									<SortableWorkspace key={ws.id} id={ws.id}>
+										<WorkspaceItem
+											workspace={ws}
+											projectId={project.id}
+											projectName={project.name}
+											projectRepoPath={project.repoPath}
+											isInActiveProject={isActiveProject}
+										/>
+									</SortableWorkspace>
+								))}
+							</div>
+						</SortableContext>
+					</DndContext>
 				)}
 			</RepoGroup>
 
@@ -201,7 +349,7 @@ function OrchestratorGroupBlock({
 	const expandedKey = `orchExpand:${node.workspace.id}`;
 	const expandedQuery = trpc.workspaces.getOrchestratorExpand.useQuery(
 		{ key: expandedKey },
-		{ staleTime: Infinity }
+		{ staleTime: Number.POSITIVE_INFINITY }
 	);
 	const setExpanded = trpc.workspaces.setOrchestratorExpand.useMutation({
 		onSuccess: (_data, { key, value }) => {
@@ -229,17 +377,23 @@ function OrchestratorGroupBlock({
 			/>
 			{expanded && (
 				<OrchestratorGroup colorIndex={colorIndex} hasActiveChild={hasActiveChild}>
-					{node.children.map((c) => (
-						<WorkspaceItem
-							key={c.id}
-							workspace={c}
-							projectId={projectId}
-							projectName={projectName}
-							projectRepoPath={projectRepoPath}
-							isInActiveProject={isActiveProject}
-							indentLevel={1}
-						/>
-					))}
+					<SortableContext
+						items={node.children.map((c) => c.id)}
+						strategy={verticalListSortingStrategy}
+					>
+						{node.children.map((c) => (
+							<SortableWorkspace key={c.id} id={c.id}>
+								<WorkspaceItem
+									workspace={c}
+									projectId={projectId}
+									projectName={projectName}
+									projectRepoPath={projectRepoPath}
+									isInActiveProject={isActiveProject}
+									indentLevel={1}
+								/>
+							</SortableWorkspace>
+						))}
+					</SortableContext>
 				</OrchestratorGroup>
 			)}
 		</>
