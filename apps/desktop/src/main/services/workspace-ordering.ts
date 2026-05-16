@@ -10,11 +10,12 @@ export async function reorderTopLevel(input: {
 	const db = getDb();
 
 	// Enforce completeness: orderedIds must cover every workspace in the project
-	const [{ total }] = db
+	const totalRow = db
 		.select({ total: count() })
 		.from(workspaces)
 		.where(eq(workspaces.projectId, input.projectId))
-		.all();
+		.get();
+	const total = totalRow?.total ?? 0;
 	if (total !== input.orderedIds.length) {
 		throw new Error("reorderTopLevel: orderedIds must contain every workspace in the project");
 	}
@@ -62,11 +63,12 @@ export async function reorderChildren(input: {
 	const db = getDb();
 
 	// Enforce completeness: orderedIds must cover every member of the orchestrator
-	const [{ total }] = db
+	const totalRow = db
 		.select({ total: count() })
 		.from(orchestratorMembers)
 		.where(eq(orchestratorMembers.orchestratorId, input.orchestratorId))
-		.all();
+		.get();
+	const total = totalRow?.total ?? 0;
 	if (total !== input.orderedIds.length) {
 		throw new Error("reorderChildren: orderedIds must contain every member of the orchestrator");
 	}
@@ -83,8 +85,8 @@ export async function reorderChildren(input: {
 		.all();
 	if (found.length !== input.orderedIds.length) {
 		const foundIds = new Set(found.map((r) => r.workspaceId));
-		const missingId = input.orderedIds.find((id) => !foundIds.has(id));
-		throw new NotFoundError(missingId!);
+		const missingId = input.orderedIds.find((id) => !foundIds.has(id)) ?? "unknown";
+		throw new NotFoundError(missingId);
 	}
 
 	db.transaction((tx) => {

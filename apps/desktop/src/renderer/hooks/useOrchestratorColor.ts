@@ -24,6 +24,7 @@ export function useOrchestratorColor(
 	// stable ids to a primitive that participates correctly in dep equality.
 	const idsKey = allOrchestratorIds.join("|");
 
+	// biome-ignore lint/correctness/useExhaustiveDependencies: intentional — idsKey is a stable primitive derived from allOrchestratorIds
 	const computed = useMemo<Record<string, number>>(() => {
 		const map: Record<string, number> = { ...(existing ?? {}) };
 		const taken = new Set<number>();
@@ -52,7 +53,6 @@ export function useOrchestratorColor(
 		}
 		return map;
 		// idsKey captures the stable identity of the ids list; existing changes on fetch
-		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [existing, idsKey]);
 
 	useEffect(() => {

@@ -3,7 +3,14 @@ import { and, eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { z } from "zod";
 import { getDb } from "../../db";
-import { githubBranchPrs, projects, sessionState, sharedFiles, workspaces, worktrees } from "../../db/schema";
+import {
+	githubBranchPrs,
+	projects,
+	sessionState,
+	sharedFiles,
+	workspaces,
+	worktrees,
+} from "../../db/schema";
 import { checkoutBranchWorktree } from "../../git/operations";
 import { symlinkSharedFiles } from "../../shared-files";
 import { publicProcedure, router } from "../index";
@@ -36,10 +43,12 @@ export const workspacesRouter = router({
 		);
 	}),
 
-	listByProject: publicProcedure.input(z.object({ projectId: z.string() })).query(async ({ input }) => {
-		const { listByProjectTree } = await import("../../services/workspace-service");
-		return listByProjectTree({ projectId: input.projectId });
-	}),
+	listByProject: publicProcedure
+		.input(z.object({ projectId: z.string() }))
+		.query(async ({ input }) => {
+			const { listByProjectTree } = await import("../../services/workspace-service");
+			return listByProjectTree({ projectId: input.projectId });
+		}),
 
 	create: publicProcedure
 		.input(
