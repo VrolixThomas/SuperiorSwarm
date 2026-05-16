@@ -3,6 +3,7 @@ import { AppWindowV4 } from "./AppWindowV4";
 import { type ViewKeyV4, selectView } from "./WorkspaceViewSelector";
 import { type ThemeModeV4, ThemeProviderV4, useColorsV4 } from "./colors-v4";
 import { TerminalOnly } from "./views/TerminalOnly";
+import { WithSidebarRepos } from "./views/WithSidebarRepos";
 
 function ViewStub({ name }: { name: string }) {
 	const c = useColorsV4();
@@ -27,6 +28,8 @@ function ViewRenderer({ viewKey }: { viewKey: ViewKeyV4 }) {
 	switch (viewKey) {
 		case "terminalOnly":
 			return <TerminalOnly />;
+		case "withSidebarRepos":
+			return <WithSidebarRepos />;
 		default:
 			return <ViewStub name={viewKey} />;
 	}
