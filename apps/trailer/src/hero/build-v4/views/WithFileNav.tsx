@@ -111,7 +111,6 @@ const FILE_CONTENT_LINES: string[] = [
 	"}",
 ];
 
-
 function FilePaneBody({ path }: { path: string }) {
 	const c = useColorsV4();
 	return (
@@ -190,4 +189,3 @@ function FilePaneBody({ path }: { path: string }) {
 		</div>
 	);
 }
-

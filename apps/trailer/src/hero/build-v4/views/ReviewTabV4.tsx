@@ -43,10 +43,7 @@ export function ReviewTabV4({ entryFrame, currentBranch, baseBranch }: ReviewTab
 
 	const selectedIndex = Math.max(
 		0,
-		Math.min(
-			DEMO_FILES_V4.length - 1,
-			Math.floor((local - SELECT_START) / CYCLE)
-		)
+		Math.min(DEMO_FILES_V4.length - 1, Math.floor((local - SELECT_START) / CYCLE))
 	);
 	const selectedFile = DEMO_FILES_V4[selectedIndex] ?? DEMO_FILES_V4[0];
 	if (!selectedFile) return null;
@@ -72,11 +69,7 @@ export function ReviewTabV4({ entryFrame, currentBranch, baseBranch }: ReviewTab
 			<ModeRow opacity={progressOp} splitMode="unified" />
 			<FilePathStrip opacity={progressOp} path={selectedFile.path} />
 			<div style={{ flex: 1, overflow: "hidden", opacity: bodyOp }}>
-				<DiffBody
-					file={selectedFile}
-					currentBranch={currentBranch}
-					baseBranch={baseBranch}
-				/>
+				<DiffBody file={selectedFile} currentBranch={currentBranch} baseBranch={baseBranch} />
 			</div>
 			<HintBar jPulse={jPulse} />
 		</div>
@@ -299,11 +292,7 @@ function DiffBody({
 							? "rgba(255,107,107,0.10)"
 							: "transparent";
 				const prefixColor =
-					l.kind === "add"
-						? c.success
-						: l.kind === "del"
-							? "#ff8a8a"
-							: c.textQuaternary;
+					l.kind === "add" ? c.success : l.kind === "del" ? "#ff8a8a" : c.textQuaternary;
 				const prefix =
 					l.kind === "add" ? "+" : l.kind === "del" ? "-" : l.kind === "hunk" ? " " : " ";
 				if (l.kind === "hunk") {

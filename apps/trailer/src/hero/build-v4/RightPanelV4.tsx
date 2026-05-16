@@ -244,7 +244,14 @@ function TreeToolbar() {
 	const c = useColorsV4();
 	const icons = [
 		// compact toggle
-		<svg key="compact" width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+		<svg
+			key="compact"
+			width="12"
+			height="12"
+			viewBox="0 0 16 16"
+			fill="currentColor"
+			aria-hidden="true"
+		>
 			<rect x="2" y="3" width="12" height="2" rx="1" />
 			<rect x="2" y="7" width="12" height="2" rx="1" />
 			<rect x="2" y="11" width="12" height="2" rx="1" />
@@ -255,11 +262,25 @@ function TreeToolbar() {
 			<circle cx="8" cy="8" r="1.8" fill="currentColor" />
 		</svg>,
 		// expand all
-		<svg key="expand" width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+		<svg
+			key="expand"
+			width="12"
+			height="12"
+			viewBox="0 0 16 16"
+			fill="currentColor"
+			aria-hidden="true"
+		>
 			<path d="M5 6l3 3 3-3" />
 		</svg>,
 		// collapse all
-		<svg key="collapse" width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+		<svg
+			key="collapse"
+			width="12"
+			height="12"
+			viewBox="0 0 16 16"
+			fill="currentColor"
+			aria-hidden="true"
+		>
 			<path d="M5 9l3-3 3 3" />
 		</svg>,
 		// refresh
@@ -379,7 +400,12 @@ function TreeFileIcon({ color }: { color: string }) {
 function ChangesIcon() {
 	return (
 		<svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-			<path d="M3 4h10M3 8h7M3 12h4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+			<path
+				d="M3 4h10M3 8h7M3 12h4"
+				stroke="currentColor"
+				strokeWidth="1.4"
+				strokeLinecap="round"
+			/>
 		</svg>
 	);
 }
@@ -452,4 +478,3 @@ function ChevronDown() {
 		</svg>
 	);
 }
-

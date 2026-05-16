@@ -1,10 +1,25 @@
 // AUTO-GENERATED. Do not edit. Run: bun scripts/generate-audio-v4.ts
 export const AUDIO_AVAILABLE_V4 = {
-	music: false,
+	music: true,
 	sfxType: false,
 	sfxPop: false,
 	sfxWhoosh: false,
 	sfxDing: false,
 	sfxChime: false,
 	sfxClick: false,
+	voiceover: {
+		opening: true,
+		s1: true,
+		s2: true,
+		s2b: true,
+		s3: true,
+		s4: true,
+		s5: true,
+		s6: true,
+		s7: true,
+		s8: true,
+		s9: true,
+		s10: true,
+		outro: true,
+	} as Record<string, boolean>,
 } as const;

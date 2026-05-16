@@ -359,7 +359,14 @@ function TicketsBoardInline({
 										}}
 									>
 										<svg width="8" height="8" viewBox="0 0 16 16" aria-hidden="true">
-											<circle cx="8" cy="8" r="6" fill="none" stroke={col.color} strokeWidth="1.5" />
+											<circle
+												cx="8"
+												cy="8"
+												r="6"
+												fill="none"
+												stroke={col.color}
+												strokeWidth="1.5"
+											/>
 										</svg>
 										<span
 											style={{
