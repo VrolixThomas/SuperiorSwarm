@@ -7,6 +7,7 @@
 		"dev": "remotion studio src/index.ts",
 		"generate-audio": "bun scripts/generate-audio-v2.ts",
 		"generate-audio-v3": "bun scripts/generate-audio-v3.ts",
+		"generate-audio-v4": "bun scripts/generate-audio-v4.ts",
 		"render": "bun scripts/render.ts",
 		"type-check": "tsc --noEmit"
 	},
