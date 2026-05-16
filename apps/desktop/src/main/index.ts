@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { eq } from "drizzle-orm";
-import { BrowserWindow, app, dialog, ipcMain, shell } from "electron";
+import { BrowserWindow, app, dialog, ipcMain, session, shell } from "electron";
 import { AGENT_NOTIFY_PORT } from "../shared/agent-events";
 import { daemonInstanceId, daemonPaths } from "../shared/daemon-protocol";
 import { updateOpenCodePluginPort } from "./agent-hooks/agents/opencode";
@@ -171,6 +171,14 @@ app.whenReady().then(async () => {
 	setupTRPCIPC(appRouter);
 
 	setupRepoIPC(() => mainWindow);
+
+	session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
+		if (permission === "media") {
+			callback(true);
+		} else {
+			callback(false);
+		}
+	});
 
 	void (async () => {
 		try {
