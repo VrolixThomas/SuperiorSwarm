@@ -1,5 +1,9 @@
 import { getDb } from "../db";
 
+// FTS5 rows are not auto-deleted when a parent project row goes away
+// (FTS5 virtual tables cannot be FK targets). Searches scope by project_id
+// so orphans are invisible; rely on per-row ftsDelete for cleanup.
+
 export type FtsKind = "goal" | "decision" | "question" | "journal";
 
 export interface FtsUpsertInput {
