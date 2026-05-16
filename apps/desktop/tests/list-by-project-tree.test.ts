@@ -45,10 +45,9 @@ describe("listByProjectTree", () => {
 
 	test("review-type workspaces are filtered out", async () => {
 		const p = await seedProject();
-		const a = await seedWorkspace(p, { name: "a", type: "review" });
-		const b = await seedWorkspace(p, { name: "b" });
+		await seedWorkspace(p, { name: "a", type: "review" });
+		await seedWorkspace(p, { name: "b" });
 		const tree = await listByProjectTree({ projectId: p });
 		expect(tree.loose.map((w) => w.name)).toEqual(["b"]);
-		void a;
 	});
 });

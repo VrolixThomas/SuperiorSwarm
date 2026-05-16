@@ -161,7 +161,7 @@ export interface RepoAPI {
 	onInvalidate: (callback: (event: RepoInvalidateEvent) => void) => () => void;
 }
 
-export interface WorkspaceRow {
+export interface WorkspaceTreeRow {
 	id: string;
 	projectId: string;
 	type: "branch" | "worktree" | "review";
@@ -185,11 +185,11 @@ export interface WorkspaceRow {
 }
 
 export interface OrchestratorGroupNode {
-	workspace: WorkspaceRow;
-	children: WorkspaceRow[];
+	workspace: WorkspaceTreeRow;
+	children: WorkspaceTreeRow[];
 }
 
 export interface ProjectWorkspaceTree {
 	orchestrators: OrchestratorGroupNode[];
-	loose: WorkspaceRow[];
+	loose: WorkspaceTreeRow[];
 }

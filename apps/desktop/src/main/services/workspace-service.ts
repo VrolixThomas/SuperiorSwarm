@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { chmodSync, existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { and, asc, desc, eq, gt, isNull, or } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, or } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import type {
 	AgentMessageDto,
@@ -28,7 +28,7 @@ import type {
 	WorkspacePhase,
 } from "../../shared/control-plane";
 import { ForbiddenError, NotFoundError, ResumeNotSupportedError } from "../../shared/control-plane";
-import type { ProjectWorkspaceTree, WorkspaceRow as SharedWorkspaceRow } from "../../shared/types";
+import type { ProjectWorkspaceTree, WorkspaceTreeRow } from "../../shared/types";
 import { CLI_PRESETS } from "../ai-review/cli-presets";
 import type { EventBus } from "../control-plane/event-bus";
 import {
@@ -261,7 +261,7 @@ export async function listByProjectTree(input: {
 		.leftJoin(reviewDrafts, eq(workspaces.reviewDraftId, reviewDrafts.id))
 		.where(eq(workspaces.projectId, input.projectId))
 		.all()
-		.filter((r) => r.type !== "review") as SharedWorkspaceRow[];
+		.filter((r) => r.type !== "review") as WorkspaceTreeRow[];
 
 	const memberRows = db
 		.select({
@@ -277,20 +277,16 @@ export async function listByProjectTree(input: {
 	const memberOf = new Map<string, { orchestratorId: string; sortOrder: number }>();
 	for (const m of memberRows) memberOf.set(m.workspaceId, m);
 
-	const childrenByOrch = new Map<string, SharedWorkspaceRow[]>();
+	const childrenByOrch = new Map<string, Array<{ row: WorkspaceTreeRow; sortOrder: number }>>();
 	for (const ws of rows) {
 		const mem = memberOf.get(ws.id);
 		if (!mem) continue;
 		const arr = childrenByOrch.get(mem.orchestratorId) ?? [];
-		arr.push(ws);
+		arr.push({ row: ws, sortOrder: mem.sortOrder });
 		childrenByOrch.set(mem.orchestratorId, arr);
 	}
 	for (const arr of childrenByOrch.values()) {
-		arr.sort((a, b) => {
-			const am = memberOf.get(a.id)!.sortOrder;
-			const bm = memberOf.get(b.id)!.sortOrder;
-			return am - bm;
-		});
+		arr.sort((a, b) => a.sortOrder - b.sortOrder);
 	}
 
 	const orchestrators = rows
@@ -298,7 +294,7 @@ export async function listByProjectTree(input: {
 		.sort((a, b) => a.sortOrder - b.sortOrder)
 		.map((workspace) => ({
 			workspace,
-			children: childrenByOrch.get(workspace.id) ?? [],
+			children: (childrenByOrch.get(workspace.id) ?? []).map((c) => c.row),
 		}));
 
 	const loose = rows
