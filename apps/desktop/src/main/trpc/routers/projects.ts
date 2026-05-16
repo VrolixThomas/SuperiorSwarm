@@ -17,6 +17,7 @@ import {
 } from "../../git/operations";
 import { BitbucketAdapter } from "../../providers/bitbucket-adapter";
 import { GitHubAdapter } from "../../providers/github-adapter";
+import { ensureRepoExclude } from "../../services/git-exclude";
 import { publicProcedure, router } from "../index";
 
 const PROJECT_COLORS = [
@@ -133,6 +134,11 @@ export const projectsRouter = router({
 			};
 
 			db.insert(projects).values(project).run();
+			try {
+				ensureRepoExclude(project.repoPath);
+			} catch (err) {
+				console.warn("[git-exclude] failed:", err);
+			}
 
 			// Background clone — don't await
 			cloneRepo(input.url, targetPath, (progress) => {
@@ -226,6 +232,11 @@ export const projectsRouter = router({
 		};
 
 		db.insert(projects).values(project).run();
+		try {
+			ensureRepoExclude(project.repoPath);
+		} catch (err) {
+			console.warn("[git-exclude] failed:", err);
+		}
 
 		// Auto-create the branch workspace
 		db.insert(workspaces)
@@ -278,6 +289,11 @@ export const projectsRouter = router({
 			};
 
 			db.insert(projects).values(project).run();
+			try {
+				ensureRepoExclude(project.repoPath);
+			} catch (err) {
+				console.warn("[git-exclude] failed:", err);
+			}
 
 			db.insert(workspaces)
 				.values({

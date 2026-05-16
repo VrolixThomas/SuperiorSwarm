@@ -5,10 +5,9 @@ import { eq } from "drizzle-orm";
 import { app } from "electron";
 import { buildDefaultPrompt } from "../../shared/quick-action-prompt";
 import { CLI_PRESETS } from "../ai-review/cli-presets";
-import { mergeKey } from "../ai-review/mcp-config-merge";
-import { getMcpServerPath } from "../ai-review/mcp-path";
 import { getDb } from "../db";
 import * as schema from "../db/schema";
+import { getTaskRegistry } from "../services/task-registry-handle";
 
 export interface AgentSetupLaunchInfo {
 	sessionId: string;
@@ -59,29 +58,22 @@ export async function launchSetupAgent(
 	const preset = CLI_PRESETS[settings.cliPreset];
 	if (!preset) throw new Error(`Unknown CLI preset: ${settings.cliPreset}`);
 
-	// Use the standalone MCP server (same path resolution as cli-presets.ts)
-	const standaloneServerPath = getMcpServerPath();
-
 	// Write the prompt file — use custom prompt if provided, otherwise default
 	const promptFilePath = join(sessionDir, "setup-prompt.txt");
 	const promptText = customPrompt || buildDefaultPrompt(repoPath);
 	writeFileSync(promptFilePath, promptText, "utf-8");
 
-	// Write MCP config with quick-action-specific env vars.
-	// Merge into any existing .mcp.json so user-defined MCP servers survive.
-	const mcpConfigPath = join(repoPath, ".mcp.json");
-	const mcpValue = {
-		command: process.execPath,
-		args: [standaloneServerPath],
-		env: {
-			ELECTRON_RUN_AS_NODE: "1",
-			QUICK_ACTION_SETUP: "1",
-			PROJECT_ID: projectId,
-			DB_PATH: dbPath,
-			WORKTREE_PATH: repoPath,
+	// Register a task token so the global MCP server can look up context
+	const taskToken = randomUUID();
+	getTaskRegistry().register(taskToken, {
+		mode: "quick-action-setup",
+		projectId,
+		workspaceId: "",
+		modeContext: {
+			dbPath,
+			worktreePath: repoPath,
 		},
-	};
-	mergeKey(mcpConfigPath, ["mcpServers", "superiorswarm"], mcpValue);
+	});
 
 	// Build the CLI invocation — we craft our own prompt arg instead of using
 	// preset.buildArgs() which generates review-specific text ("Review this PR...").
@@ -98,7 +90,13 @@ export async function launchSetupAgent(
 
 	// Write the launch script
 	const launchScript = join(sessionDir, "start-setup.sh");
-	const scriptContent = ["#!/bin/bash", `cd '${repoPath}'`, "", cliCommand].join("\n");
+	const scriptContent = [
+		"#!/bin/bash",
+		`cd '${repoPath}'`,
+		`export SUPERIORSWARM_TASK_TOKEN='${taskToken}'`,
+		"",
+		cliCommand,
+	].join("\n");
 	writeFileSync(launchScript, scriptContent, "utf-8");
 	chmodSync(launchScript, 0o755);
 

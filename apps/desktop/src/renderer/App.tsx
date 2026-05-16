@@ -8,6 +8,7 @@ import { AddRepositoryModal } from "./components/AddRepositoryModal";
 import { BranchActionMenu } from "./components/BranchActionMenu";
 import { BranchPalette } from "./components/BranchPalette";
 import { CommandPalette } from "./components/CommandPalette";
+import { ConfirmAgentActionModal } from "./components/ConfirmAgentActionModal";
 import { CreateWorktreeModal } from "./components/CreateWorktreeModal";
 import { DaemonStatus } from "./components/DaemonStatus";
 import { DiffPanel } from "./components/DiffPanel";
@@ -365,6 +366,26 @@ function AuthenticatedApp() {
 		return () => {
 			cleanupGotoDef();
 			cleanupRestartListener();
+		};
+	}, []);
+
+	// Agent dispatch: main process asks renderer to open a terminal in a workspace and run a script.
+	useEffect(() => {
+		const timers = new Set<ReturnType<typeof setTimeout>>();
+		const off = window.electron.agentDispatch.onOpen(({ workspaceId, cwd, scriptPath, title }) => {
+			const store = useTabStore.getState();
+			store.setActiveWorkspace(workspaceId, cwd);
+			const tabId = store.addTerminalTab(workspaceId, cwd, title);
+			const escaped = scriptPath.replace(/'/g, "'\\''");
+			const id = setTimeout(() => {
+				timers.delete(id);
+				window.electron.terminal.write(tabId, `bash '${escaped}'\n`);
+			}, 300);
+			timers.add(id);
+		});
+		return () => {
+			for (const id of timers) clearTimeout(id);
+			off();
 		};
 	}, []);
 
@@ -748,6 +769,7 @@ function AuthenticatedApp() {
 			)}
 			<UpdateToast />
 			<WhatsNewModal />
+			<ConfirmAgentActionModal />
 			{notification && (
 				<div
 					className={[

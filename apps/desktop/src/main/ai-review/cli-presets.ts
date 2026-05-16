@@ -1,4 +1,3 @@
-import { join } from "node:path";
 import type { CliPresetName } from "../../shared/cli-preset";
 import {
 	type ReviewPromptContext,
@@ -12,7 +11,6 @@ import {
 	buildFollowUpMcpInstructions,
 	buildReviewMcpInstructions,
 } from "../../shared/review-prompt";
-import { type KeyPath, mergeKey, removeKey } from "./mcp-config-merge";
 
 export { DEFAULT_REVIEW_PROMPT };
 export type { CliPresetName };
@@ -23,11 +21,7 @@ export interface CliPreset {
 	command: string;
 	permissionFlag?: string;
 	buildArgs: (opts: LaunchOptions) => string[];
-	setupMcp?: (opts: LaunchOptions) => CleanupFn;
 }
-
-type CleanupFn = () => void;
-type McpValueBuilder = (command: string, args: string[], env: Record<string, string>) => unknown;
 
 export interface LaunchOptions {
 	mcpServerPath: string;
@@ -40,66 +34,6 @@ export interface LaunchOptions {
 	solveSessionId?: string; // When set, MCP uses solve mode instead of review mode
 }
 
-/**
- * Returns the command + extra env needed to run the MCP standalone server
- * via Electron's own embedded Node (`ELECTRON_RUN_AS_NODE=1`).
- *
- * We do not shell out to the user's system `node` because (a) many users do
- * not have Node installed at all, and (b) even when they do, its ABI may
- * not match the prebuilt `better-sqlite3` binary we ship in
- * `mcp-standalone/node_modules`. The packaging pipeline rebuilds that
- * binary against Electron's ABI (see `scripts/rebuild-mcp-native.mjs`), so
- * running it through Electron's own Node is guaranteed to work for every
- * user of every release.
- */
-function mcpRuntimeCommand(): { command: string; extraEnv: Record<string, string> } {
-	return {
-		command: process.execPath,
-		extraEnv: { ELECTRON_RUN_AS_NODE: "1" },
-	};
-}
-
-/**
- * Merge a per-CLI MCP entry into the provider's existing config file and
- * return a cleanup that removes only that entry. User-defined entries are
- * preserved. If the file (or its parent directory) didn't exist before we
- * touched it, cleanup deletes whatever we created.
- */
-function writeMcpConfig(
-	opts: LaunchOptions,
-	loc: { file: string; keyPath: KeyPath },
-	buildValue: McpValueBuilder
-): CleanupFn {
-	const { command, extraEnv } = mcpRuntimeCommand();
-	const env = { ...buildMcpEnv(opts), ...extraEnv };
-	const value = buildValue(command, [opts.mcpServerPath], env);
-	const state = mergeKey(loc.file, loc.keyPath, value);
-	return () => {
-		try {
-			removeKey(loc.file, loc.keyPath, state);
-		} catch {}
-	};
-}
-
-function buildMcpEnv(opts: LaunchOptions): Record<string, string> {
-	if (opts.solveSessionId) {
-		return {
-			SOLVE_SESSION_ID: opts.solveSessionId,
-			PR_METADATA: opts.prMetadata,
-			DB_PATH: opts.dbPath,
-			WORKTREE_PATH: opts.worktreePath,
-		};
-	}
-	return {
-		REVIEW_DRAFT_ID: opts.reviewDraftId,
-		PR_METADATA: opts.prMetadata,
-		DB_PATH: opts.dbPath,
-	};
-}
-
-/** Inner value for Claude/Gemini/Codex — all three use { command, args, env } under mcpServers.superiorswarm. */
-const STANDARD_MCP_VALUE: McpValueBuilder = (command, args, env) => ({ command, args, env });
-
 export const CLI_PRESETS: Record<string, CliPreset> = {
 	claude: {
 		name: "claude",
@@ -109,15 +43,6 @@ export const CLI_PRESETS: Record<string, CliPreset> = {
 		buildArgs: ({ promptFilePath }) => [
 			`"Review this PR. Read ${promptFilePath} for detailed instructions and use the SuperiorSwarm MCP tools."`,
 		],
-		// Claude Code reads MCP config from .mcp.json in the project root.
-		// We launch the standalone server through Electron's own Node so we
-		// don't depend on the user's system Node version.
-		setupMcp: (opts) =>
-			writeMcpConfig(
-				opts,
-				{ file: join(opts.worktreePath, ".mcp.json"), keyPath: ["mcpServers", "superiorswarm"] },
-				STANDARD_MCP_VALUE
-			),
 	},
 	gemini: {
 		name: "gemini",
@@ -125,16 +50,6 @@ export const CLI_PRESETS: Record<string, CliPreset> = {
 		command: "gemini",
 		permissionFlag: "--yolo",
 		buildArgs: ({ promptFilePath }) => ["-p", `"$(cat '${promptFilePath}')"`],
-		// Gemini CLI reads MCP config from .gemini/settings.json in the project root.
-		setupMcp: (opts) =>
-			writeMcpConfig(
-				opts,
-				{
-					file: join(opts.worktreePath, ".gemini", "settings.json"),
-					keyPath: ["mcpServers", "superiorswarm"],
-				},
-				STANDARD_MCP_VALUE
-			),
 	},
 	codex: {
 		name: "codex",
@@ -142,32 +57,12 @@ export const CLI_PRESETS: Record<string, CliPreset> = {
 		command: "codex",
 		permissionFlag: "--full-auto",
 		buildArgs: ({ promptFilePath }) => [`"$(cat '${promptFilePath}')"`],
-		setupMcp: (opts) =>
-			writeMcpConfig(
-				opts,
-				{
-					file: join(opts.worktreePath, ".codex", "config.json"),
-					keyPath: ["mcpServers", "superiorswarm"],
-				},
-				STANDARD_MCP_VALUE
-			),
 	},
 	opencode: {
 		name: "opencode",
 		label: "OpenCode",
 		command: "opencode",
 		buildArgs: ({ promptFilePath }) => ["--prompt", `"$(cat '${promptFilePath}')"`],
-		// OpenCode reads MCP config from opencode.json in the project root.
-		setupMcp: (opts) =>
-			writeMcpConfig(
-				opts,
-				{ file: join(opts.worktreePath, "opencode.json"), keyPath: ["mcp", "superiorswarm"] },
-				(command, args, environment) => ({
-					type: "local",
-					command: [command, ...args],
-					environment,
-				})
-			),
 	},
 };
 

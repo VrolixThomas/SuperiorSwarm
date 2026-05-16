@@ -59,6 +59,30 @@ export interface AgentAlertAPI {
 	onAlert: (callback: (event: AgentEvent) => void) => () => void;
 }
 
+export interface AgentConfirmRequestPayload {
+	id: string;
+	kind: "dispatch" | "remove";
+	workspaceName: string;
+	branch: string | null;
+	summary: string;
+}
+
+export interface AgentConfirmAPI {
+	onRequest: (callback: (payload: AgentConfirmRequestPayload) => void) => () => void;
+	reply: (id: string, allow: boolean) => void;
+}
+
+export interface AgentDispatchOpenPayload {
+	workspaceId: string;
+	cwd: string;
+	scriptPath: string;
+	title: string;
+}
+
+export interface AgentDispatchAPI {
+	onOpen: (callback: (payload: AgentDispatchOpenPayload) => void) => () => void;
+}
+
 export type ThemePref = "system" | "light" | "dark";
 
 export interface SettingsAPI {

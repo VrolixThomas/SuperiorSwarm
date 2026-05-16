@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { eq } from "drizzle-orm";
 import { BrowserWindow, app, dialog, ipcMain, session, shell, systemPreferences } from "electron";
@@ -12,6 +13,7 @@ import { cleanupReviewWorkspace, findReviewWorkspaceByPR } from "./ai-review/cle
 import { startCommentPoller, stopCommentPoller } from "./ai-review/comment-poller";
 import { recoverStuckSessions } from "./ai-review/comment-solver-orchestrator";
 import { startPolling } from "./ai-review/commit-poller";
+import { getMcpServerPath } from "./ai-review/mcp-path";
 import { cleanupStaleReviews } from "./ai-review/orchestrator";
 import {
 	onNewPRDetected,
@@ -19,6 +21,9 @@ import {
 	onPRCommitChanged,
 	startPolling as startPRPolling,
 } from "./ai-review/pr-poller";
+import { type RunningControlPlane, startControlPlane } from "./control-plane";
+import { registerConfirmBridge, requestConfirm } from "./control-plane/confirm-bridge";
+import { attachOrchestratorEventSink } from "./control-plane/orchestrator-event-sink";
 import { backfillRemoteHosts, getDb, initializeDatabase } from "./db";
 import * as schema from "./db/schema";
 import {
@@ -32,6 +37,13 @@ import { setupLspIPC } from "./lsp/ipc-handler";
 import { serverManager, warmShellPathCache } from "./lsp/server-manager";
 import { syncShortcuts } from "./quick-actions/shortcuts";
 import { disposeRepoIPC, setupRepoIPC } from "./repo-ipc";
+import { probeCliInPath } from "./services/cli-probe";
+import { deleteControlDiscovery, writeControlDiscovery } from "./services/control-discovery";
+import { runGlobalMcpInstall } from "./services/global-mcp-install";
+import { writeLauncherScript } from "./services/global-mcp-launcher";
+import { runGlobalMcpMigration } from "./services/global-mcp-migration";
+import { setTaskRegistry } from "./services/task-registry-handle";
+import { defaultSpawnFn, setDispatchBroadcaster, setEventBus } from "./services/workspace-service";
 import { registerSingleInstance } from "./single-instance";
 import { ensureTelemetryState } from "./telemetry/state";
 import { DaemonClient } from "./terminal/daemon-client";
@@ -53,6 +65,8 @@ import { LinearAdapter } from "./providers/linear-adapter";
 let mainWindow: BrowserWindow | null = null;
 let daemonClient: DaemonClient;
 let alertListener: AgentAlertListener | null = null;
+let controlPlane: RunningControlPlane | null = null;
+let detachOrchestratorSink: (() => void) | null = null;
 
 function isHttpUrl(url: string): boolean {
 	return url.startsWith("http://") || url.startsWith("https://");
@@ -247,6 +261,52 @@ app.whenReady().then(async () => {
 		setupLspIPC(mainWindow);
 	}
 
+	registerConfirmBridge(() => mainWindow);
+	setDispatchBroadcaster((payload) => broadcastToWindows("agent-dispatch:open", payload));
+
+	try {
+		controlPlane = await startControlPlane({
+			confirm: (r) => requestConfirm(r),
+			spawnFn: defaultSpawnFn,
+		});
+
+		setEventBus(controlPlane.eventBus);
+		setTaskRegistry(controlPlane.taskRegistry);
+		detachOrchestratorSink = attachOrchestratorEventSink(controlPlane.eventBus);
+
+		const userData = app.getPath("userData");
+		writeControlDiscovery(userData, {
+			port: controlPlane.port,
+			token: controlPlane.token,
+			pid: process.pid,
+		});
+
+		const electronPath = process.execPath;
+		const serverPath = getMcpServerPath();
+		const launcherPath = writeLauncherScript(userData, electronPath, serverPath);
+		log.info(`[global-mcp] launcher refreshed at ${launcherPath}`);
+
+		try {
+			const installedClis = await runGlobalMcpInstall(launcherPath, probeCliInPath);
+			log.info(`[global-mcp] installed for: ${installedClis.join(", ") || "none"}`);
+		} catch (err) {
+			log.warn("[global-mcp] install failed:", err);
+		}
+
+		try {
+			const { scrubbedCount } = runGlobalMcpMigration();
+			if (scrubbedCount > 0) {
+				log.info(`[global-mcp] migration scrubbed ${scrubbedCount} repo config(s)`);
+			}
+		} catch (err) {
+			log.warn("[global-mcp] migration failed:", err);
+		}
+
+		log.info(`[control-plane] listening on 127.0.0.1:${controlPlane.port}`);
+	} catch (err) {
+		log.error("[control-plane] failed to start:", err);
+	}
+
 	app.on("activate", () => {
 		if (BrowserWindow.getAllWindows().length === 0) {
 			createWindow();
@@ -349,6 +409,9 @@ app.whenReady().then(async () => {
 });
 
 app.on("before-quit", () => {
+	try {
+		deleteControlDiscovery(app.getPath("userData"));
+	} catch {}
 	alertListener?.stop();
 	setAgentNotifyPort(null);
 	stopCommentPoller();
@@ -358,6 +421,17 @@ app.on("before-quit", () => {
 	daemonClient.disconnect();
 	serverManager.disposeAll();
 	void disposeRepoIPC();
+	if (controlPlane) {
+		void controlPlane.stop().catch((err) => {
+			log.error("[control-plane] stop failed:", err);
+		});
+		controlPlane = null;
+		setEventBus(null);
+		if (detachOrchestratorSink) {
+			detachOrchestratorSink();
+			detachOrchestratorSink = null;
+		}
+	}
 });
 
 app.on("window-all-closed", () => {
