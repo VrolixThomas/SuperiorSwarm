@@ -28,7 +28,7 @@ import type {
 	WorkspacePhase,
 } from "../../shared/control-plane";
 import { ForbiddenError, NotFoundError, ResumeNotSupportedError } from "../../shared/control-plane";
-import type { ProjectWorkspaceTree, WorkspaceTreeRow } from "../../shared/types";
+import type { ProjectWorkspaceTree, VisibleWorkspaceTreeRow } from "../../shared/types";
 import { CLI_PRESETS } from "../ai-review/cli-presets";
 import type { EventBus } from "../control-plane/event-bus";
 import {
@@ -261,7 +261,7 @@ export async function listByProjectTree(input: {
 		.leftJoin(reviewDrafts, eq(workspaces.reviewDraftId, reviewDrafts.id))
 		.where(eq(workspaces.projectId, input.projectId))
 		.all()
-		.filter((r) => r.type !== "review") as WorkspaceTreeRow[];
+		.filter((r) => r.type !== "review") as VisibleWorkspaceTreeRow[];
 
 	const memberRows = db
 		.select({
@@ -277,7 +277,7 @@ export async function listByProjectTree(input: {
 	const memberOf = new Map<string, { orchestratorId: string; sortOrder: number }>();
 	for (const m of memberRows) memberOf.set(m.workspaceId, m);
 
-	const childrenByOrch = new Map<string, Array<{ row: WorkspaceTreeRow; sortOrder: number }>>();
+	const childrenByOrch = new Map<string, Array<{ row: VisibleWorkspaceTreeRow; sortOrder: number }>>();
 	for (const ws of rows) {
 		const mem = memberOf.get(ws.id);
 		if (!mem) continue;

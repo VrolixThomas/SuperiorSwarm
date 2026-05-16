@@ -184,12 +184,17 @@ export interface WorkspaceTreeRow {
 	sortOrder: number;
 }
 
+/** A workspace row that is guaranteed not to be a "review" type (the service filters these out). */
+export type VisibleWorkspaceTreeRow = Omit<WorkspaceTreeRow, "type"> & {
+	type: "branch" | "worktree";
+};
+
 export interface OrchestratorGroupNode {
 	workspace: WorkspaceTreeRow;
-	children: WorkspaceTreeRow[];
+	children: VisibleWorkspaceTreeRow[];
 }
 
 export interface ProjectWorkspaceTree {
 	orchestrators: OrchestratorGroupNode[];
-	loose: WorkspaceTreeRow[];
+	loose: VisibleWorkspaceTreeRow[];
 }

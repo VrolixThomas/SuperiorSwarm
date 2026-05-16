@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { Project } from "../../main/db/schema";
-import type { WorkspaceTreeRow } from "../../shared/types";
+import type { OrchestratorGroupNode } from "../../shared/types";
 import { useProjectStore } from "../stores/projects";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
@@ -188,7 +188,7 @@ function OrchestratorGroupBlock({
 	allOrchestratorIds,
 	activeWorkspaceId,
 }: {
-	node: { workspace: WorkspaceTreeRow; children: WorkspaceTreeRow[] };
+	node: OrchestratorGroupNode;
 	projectId: string;
 	projectName: string;
 	projectRepoPath: string;
@@ -196,13 +196,18 @@ function OrchestratorGroupBlock({
 	allOrchestratorIds: string[];
 	activeWorkspaceId: string;
 }) {
+	const utils = trpc.useUtils();
 	const colorIndex = useOrchestratorColor(node.workspace.id, projectId, allOrchestratorIds);
 	const expandedKey = `orchExpand:${node.workspace.id}`;
 	const expandedQuery = trpc.workspaces.getOrchestratorExpand.useQuery(
 		{ key: expandedKey },
 		{ staleTime: Infinity }
 	);
-	const setExpanded = trpc.workspaces.setOrchestratorExpand.useMutation();
+	const setExpanded = trpc.workspaces.setOrchestratorExpand.useMutation({
+		onSuccess: (_data, { key, value }) => {
+			utils.workspaces.getOrchestratorExpand.setData({ key }, value);
+		},
+	});
 	const expanded = expandedQuery.data ?? true;
 
 	const activeChild = node.children.find((c) => c.id === activeWorkspaceId);
@@ -215,7 +220,11 @@ function OrchestratorGroupBlock({
 				colorIndex={colorIndex}
 				childCount={node.children.length}
 				expanded={expanded}
-				onToggle={() => setExpanded.mutate({ key: expandedKey, value: !expanded })}
+				onToggle={() => {
+					const next = !expanded;
+					utils.workspaces.getOrchestratorExpand.setData({ key: expandedKey }, next);
+					setExpanded.mutate({ key: expandedKey, value: next });
+				}}
 				activeChildName={!expanded && activeChild ? activeChild.name : undefined}
 			/>
 			{expanded && (

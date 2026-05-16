@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useProjectStore } from "../stores/projects";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
+import { flattenWorkspaceTree } from "../utils/workspace-tree";
 
 export function CreateWorktreeModal() {
 	const { isCreateWorktreeModalOpen, createWorktreeProjectId, closeCreateWorktreeModal } =
@@ -117,13 +118,7 @@ export function CreateWorktreeModal() {
 
 	// Branches that already have worktrees
 	const workspacesTree = workspacesQuery.data;
-	const workspacesList = workspacesTree
-		? [
-				...workspacesTree.orchestrators.map((o) => o.workspace),
-				...workspacesTree.orchestrators.flatMap((o) => o.children),
-				...workspacesTree.loose,
-		  ]
-		: [];
+	const workspacesList = workspacesTree ? flattenWorkspaceTree(workspacesTree) : [];
 	const existingWorktreeBranches = new Set(workspacesList.map((ws) => ws.name).filter(Boolean));
 
 	// Available branches for checkout (remote branches minus those already checked out)

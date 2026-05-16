@@ -6,6 +6,7 @@ import type { TicketIssue } from "../../shared/tickets";
 import { useProjectStore } from "../stores/projects";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
+import { flattenWorkspaceTree } from "../utils/workspace-tree";
 import { CreateBranchFromIssueModal } from "./CreateBranchFromIssueModal";
 import { CreateWorktreeFromPRModal, type LinkablePR } from "./CreateWorktreeFromPRModal";
 import { ProjectItem } from "./ProjectItem";
@@ -118,13 +119,7 @@ function RailProjectItem({
 	);
 
 	const isFlyoutActive = flyout?.kind === "project" && flyout.project.id === project.id;
-	const flatWorkspaces = workspacesList
-		? [
-				...workspacesList.orchestrators.map((o) => o.workspace),
-				...workspacesList.orchestrators.flatMap((o) => o.children),
-				...workspacesList.loose,
-		  ]
-		: undefined;
+	const flatWorkspaces = workspacesList ? flattenWorkspaceTree(workspacesList) : undefined;
 	const visiblePills = flatWorkspaces?.slice(0, MAX_PILLS);
 	const hoveredWsData = flatWorkspaces?.find((ws) => ws.id === hoveredWs);
 

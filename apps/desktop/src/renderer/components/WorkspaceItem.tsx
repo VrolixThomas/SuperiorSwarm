@@ -7,7 +7,7 @@ import { trpc } from "../trpc/client";
 
 interface WorkspaceData {
 	id: string;
-	type: "branch" | "worktree" | "review";
+	type: "branch" | "worktree";
 	name: string;
 	terminalId: string | null;
 	worktreePath: string | null;
