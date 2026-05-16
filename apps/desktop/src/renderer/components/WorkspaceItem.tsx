@@ -7,7 +7,7 @@ import { trpc } from "../trpc/client";
 
 interface WorkspaceData {
 	id: string;
-	type: "branch" | "worktree";
+	type: "branch" | "worktree" | "review";
 	name: string;
 	terminalId: string | null;
 	worktreePath: string | null;
@@ -267,9 +267,18 @@ export function WorkspaceItem({
 			const previousLayout = paneStore.getLayout(id);
 			const previousMetadata = tabStore.workspaceMetadata[id];
 
-			utils.workspaces.listByProject.setData({ projectId }, (old) =>
-				old?.filter((ws) => ws.id !== id)
-			);
+			utils.workspaces.listByProject.setData({ projectId }, (old) => {
+				if (!old) return old;
+				return {
+					orchestrators: old.orchestrators
+						.filter((o) => o.workspace.id !== id)
+						.map((o) => ({
+							...o,
+							children: o.children.filter((c) => c.id !== id),
+						})),
+					loose: old.loose.filter((w) => w.id !== id),
+				};
+			});
 			paneStore.clearLayout(id);
 			tabStore.cleanupWorkspace(id);
 

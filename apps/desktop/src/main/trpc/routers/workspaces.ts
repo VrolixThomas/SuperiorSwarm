@@ -531,4 +531,23 @@ export const workspacesRouter = router({
 				.run();
 			return { ok: true } as const;
 		}),
+
+	getOrchestratorExpand: publicProcedure
+		.input(z.object({ key: z.string().min(1) }))
+		.query(({ input }) => {
+			const db = getDb();
+			const row = db.select().from(sessionState).where(eq(sessionState.key, input.key)).get();
+			return row ? row.value === "1" : true;
+		}),
+
+	setOrchestratorExpand: publicProcedure
+		.input(z.object({ key: z.string().min(1), value: z.boolean() }))
+		.mutation(({ input }) => {
+			const db = getDb();
+			db.insert(sessionState)
+				.values({ key: input.key, value: input.value ? "1" : "0" })
+				.onConflictDoUpdate({ target: sessionState.key, set: { value: input.value ? "1" : "0" } })
+				.run();
+			return { ok: true } as const;
+		}),
 });

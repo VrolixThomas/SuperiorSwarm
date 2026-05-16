@@ -116,9 +116,15 @@ export function CreateWorktreeModal() {
 	const branchNames = (branchesQuery.data ?? []).map((b) => b.name);
 
 	// Branches that already have worktrees
-	const existingWorktreeBranches = new Set(
-		(workspacesQuery.data ?? []).map((ws) => ws.name).filter(Boolean)
-	);
+	const workspacesTree = workspacesQuery.data;
+	const workspacesList = workspacesTree
+		? [
+				...workspacesTree.orchestrators.map((o) => o.workspace),
+				...workspacesTree.orchestrators.flatMap((o) => o.children),
+				...workspacesTree.loose,
+		  ]
+		: [];
+	const existingWorktreeBranches = new Set(workspacesList.map((ws) => ws.name).filter(Boolean));
 
 	// Available branches for checkout (remote branches minus those already checked out)
 	const availableBranches = branchNames.filter((branch) => !existingWorktreeBranches.has(branch));

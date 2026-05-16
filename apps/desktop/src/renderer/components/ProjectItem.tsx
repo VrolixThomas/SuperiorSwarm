@@ -1,7 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import type { Project } from "../../main/db/schema";
+import type { WorkspaceTreeRow } from "../../shared/types";
 import { useProjectStore } from "../stores/projects";
+import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
+import { useOrchestratorColor } from "../hooks/useOrchestratorColor";
+import { OrchestratorGroup } from "./OrchestratorGroup";
+import { OrchestratorRow } from "./OrchestratorRow";
 import { ProjectContextMenu } from "./ProjectContextMenu";
 import { RepoGroup } from "./RepoGroup";
 import { WorkspaceItem } from "./WorkspaceItem";
@@ -10,15 +15,9 @@ interface ProjectItemProps {
 	project: Project;
 	isExpanded: boolean;
 	onToggle: () => void;
-	activeWorkspaceId: string;
 }
 
-export function ProjectItem({
-	project,
-	isExpanded,
-	onToggle,
-	activeWorkspaceId,
-}: ProjectItemProps) {
+export function ProjectItem({ project, isExpanded, onToggle }: ProjectItemProps) {
 	const isCloning = project.status === "cloning";
 	const isReady = project.status === "ready";
 
@@ -69,11 +68,24 @@ export function ProjectItem({
 		}
 	}, [isCloning, projectStatusQuery.data?.status, utils]);
 
-	// Fetch workspaces when expanded and project is ready
-	const { data: workspacesList } = trpc.workspaces.listByProject.useQuery(
+	// Fetch workspaces (as tree) when expanded and project is ready
+	const { data: tree } = trpc.workspaces.listByProject.useQuery(
 		{ projectId: project.id },
 		{ enabled: isExpanded && isReady, refetchInterval: 60_000 }
 	);
+
+	const orchestrators = tree?.orchestrators ?? [];
+	const loose = tree?.loose ?? [];
+	const allOrchestratorIds = orchestrators.map((o) => o.workspace.id);
+
+	const activeWorkspaceIdLocal = useTabStore((s) => s.activeWorkspaceId);
+
+	const isActiveProject =
+		orchestrators.some(
+			(o) =>
+				o.workspace.id === activeWorkspaceIdLocal ||
+				o.children.some((c) => c.id === activeWorkspaceIdLocal)
+		) || loose.some((w) => w.id === activeWorkspaceIdLocal);
 
 	const openCreateWorktreeModal = useProjectStore((s) => s.openCreateWorktreeModal);
 
@@ -81,10 +93,6 @@ export function ProjectItem({
 		x: number;
 		y: number;
 	} | null>(null);
-
-	// Determine if this project contains the active workspace
-	const visibleWorkspaces = workspacesList?.filter((ws) => ws.type !== "review") ?? [];
-	const isActiveProject = visibleWorkspaces.some((ws) => ws.id === activeWorkspaceId);
 
 	return (
 		<>
@@ -132,9 +140,21 @@ export function ProjectItem({
 					) : undefined
 				}
 			>
-				{isReady && workspacesList && (
+				{isReady && tree && (
 					<div className="flex flex-col pt-0.5">
-						{visibleWorkspaces.map((ws) => (
+						{orchestrators.map((node) => (
+							<OrchestratorGroupBlock
+								key={node.workspace.id}
+								node={node}
+								projectId={project.id}
+								projectName={project.name}
+								projectRepoPath={project.repoPath}
+								isActiveProject={isActiveProject}
+								allOrchestratorIds={allOrchestratorIds}
+								activeWorkspaceId={activeWorkspaceIdLocal ?? ""}
+							/>
+						))}
+						{loose.map((ws) => (
 							<WorkspaceItem
 								key={ws.id}
 								workspace={ws}
@@ -154,6 +174,64 @@ export function ProjectItem({
 					position={contextMenu}
 					onClose={() => setContextMenu(null)}
 				/>
+			)}
+		</>
+	);
+}
+
+function OrchestratorGroupBlock({
+	node,
+	projectId,
+	projectName,
+	projectRepoPath,
+	isActiveProject,
+	allOrchestratorIds,
+	activeWorkspaceId,
+}: {
+	node: { workspace: WorkspaceTreeRow; children: WorkspaceTreeRow[] };
+	projectId: string;
+	projectName: string;
+	projectRepoPath: string;
+	isActiveProject: boolean;
+	allOrchestratorIds: string[];
+	activeWorkspaceId: string;
+}) {
+	const colorIndex = useOrchestratorColor(node.workspace.id, projectId, allOrchestratorIds);
+	const expandedKey = `orchExpand:${node.workspace.id}`;
+	const expandedQuery = trpc.workspaces.getOrchestratorExpand.useQuery(
+		{ key: expandedKey },
+		{ staleTime: Infinity }
+	);
+	const setExpanded = trpc.workspaces.setOrchestratorExpand.useMutation();
+	const expanded = expandedQuery.data ?? true;
+
+	const activeChild = node.children.find((c) => c.id === activeWorkspaceId);
+	const hasActiveChild = activeChild !== undefined;
+
+	return (
+		<>
+			<OrchestratorRow
+				workspace={node.workspace}
+				colorIndex={colorIndex}
+				childCount={node.children.length}
+				expanded={expanded}
+				onToggle={() => setExpanded.mutate({ key: expandedKey, value: !expanded })}
+				activeChildName={!expanded && activeChild ? activeChild.name : undefined}
+			/>
+			{expanded && (
+				<OrchestratorGroup colorIndex={colorIndex} hasActiveChild={hasActiveChild}>
+					{node.children.map((c) => (
+						<WorkspaceItem
+							key={c.id}
+							workspace={c}
+							projectId={projectId}
+							projectName={projectName}
+							projectRepoPath={projectRepoPath}
+							isInActiveProject={isActiveProject}
+							indentLevel={1}
+						/>
+					))}
+				</OrchestratorGroup>
 			)}
 		</>
 	);

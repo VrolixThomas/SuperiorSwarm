@@ -71,7 +71,14 @@ export function BranchPalette({ projectId, onOpenActionMenu }: Props) {
 
 	const allBranches: BranchInfo[] = useMemo(() => {
 		const branches = branchesQuery.data ?? [];
-		const wsData = workspacesQuery.data ?? [];
+		const tree = workspacesQuery.data;
+		const wsData = tree
+			? [
+					...tree.orchestrators.map((o) => o.workspace),
+					...tree.orchestrators.flatMap((o) => o.children),
+					...tree.loose,
+			  ]
+			: [];
 
 		// Enrich with workspace info
 		const branchesWithWorkspace = new Set(
