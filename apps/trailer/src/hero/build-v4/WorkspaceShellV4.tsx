@@ -4,6 +4,7 @@ import { type ViewKeyV4, selectView } from "./WorkspaceViewSelector";
 import { type ThemeModeV4, ThemeProviderV4, useColorsV4 } from "./colors-v4";
 import { TerminalOnly } from "./views/TerminalOnly";
 import { WithActiveWorkspaces } from "./views/WithActiveWorkspaces";
+import { WithRightPanelChanges } from "./views/WithRightPanelChanges";
 import { WithSidebarRepos } from "./views/WithSidebarRepos";
 
 function ViewStub({ name }: { name: string }) {
@@ -33,6 +34,8 @@ function ViewRenderer({ viewKey }: { viewKey: ViewKeyV4 }) {
 			return <WithSidebarRepos />;
 		case "withActiveWorkspaces":
 			return <WithActiveWorkspaces />;
+		case "withRightPanelChanges":
+			return <WithRightPanelChanges />;
 		default:
 			return <ViewStub name={viewKey} />;
 	}
