@@ -37,7 +37,7 @@ export async function seedProject(): Promise<string> {
 
 export async function seedWorkspace(
 	projectId: string,
-	opts: { name: string; isOrchestrator?: boolean }
+	opts: { name: string; isOrchestrator?: boolean; type?: "branch" | "worktree" | "review" }
 ): Promise<string> {
 	const id = `ws-${nanoid(8)}`;
 	const now = new Date();
@@ -46,7 +46,7 @@ export async function seedWorkspace(
 		.values({
 			id,
 			projectId,
-			type: "worktree",
+			type: opts.type ?? "worktree",
 			name: opts.name,
 			currentPhase: "idle",
 			isOrchestrator: opts.isOrchestrator ?? false,

@@ -160,3 +160,36 @@ export interface RepoAPI {
 	unsubscribe: (repoPath: string) => Promise<void>;
 	onInvalidate: (callback: (event: RepoInvalidateEvent) => void) => () => void;
 }
+
+export interface WorkspaceRow {
+	id: string;
+	projectId: string;
+	type: "branch" | "worktree" | "review";
+	name: string;
+	worktreeId: string | null;
+	terminalId: string | null;
+	prProvider: string | null;
+	prIdentifier: string | null;
+	reviewDraftId: string | null;
+	createdAt: Date;
+	updatedAt: Date;
+	worktreePath: string | null;
+	draftStatus: string | null;
+	draftCommitSha: string | null;
+	currentPhase: "idle" | "working" | "blocked" | "done";
+	statusText: string | null;
+	needs: string | null;
+	isOrchestrator: boolean;
+	cliPreset: string | null;
+	sortOrder: number;
+}
+
+export interface OrchestratorGroupNode {
+	workspace: WorkspaceRow;
+	children: WorkspaceRow[];
+}
+
+export interface ProjectWorkspaceTree {
+	orchestrators: OrchestratorGroupNode[];
+	loose: WorkspaceRow[];
+}

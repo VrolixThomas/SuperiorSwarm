@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { chmodSync, existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { and, desc, eq, gt, isNull, or } from "drizzle-orm";
+import { and, asc, desc, eq, gt, isNull, or } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import type {
 	AgentMessageDto,
@@ -28,6 +28,7 @@ import type {
 	WorkspacePhase,
 } from "../../shared/control-plane";
 import { ForbiddenError, NotFoundError, ResumeNotSupportedError } from "../../shared/control-plane";
+import type { ProjectWorkspaceTree, WorkspaceRow as SharedWorkspaceRow } from "../../shared/types";
 import { CLI_PRESETS } from "../ai-review/cli-presets";
 import type { EventBus } from "../control-plane/event-bus";
 import {
@@ -37,6 +38,7 @@ import {
 import { getDb } from "../db";
 import {
 	agentMessages,
+	orchestratorMembers,
 	projects,
 	sharedFiles,
 	terminalSessions,
@@ -222,6 +224,88 @@ export async function listWorkspaces(
 		.all();
 
 	return { workspaces: rows.map(rowToDto) };
+}
+
+const TREE_WORKSPACE_SELECT = {
+	id: workspaces.id,
+	projectId: workspaces.projectId,
+	type: workspaces.type,
+	name: workspaces.name,
+	worktreeId: workspaces.worktreeId,
+	terminalId: workspaces.terminalId,
+	prProvider: workspaces.prProvider,
+	prIdentifier: workspaces.prIdentifier,
+	reviewDraftId: workspaces.reviewDraftId,
+	createdAt: workspaces.createdAt,
+	updatedAt: workspaces.updatedAt,
+	worktreePath: worktrees.path,
+	draftStatus: reviewDrafts.status,
+	draftCommitSha: reviewDrafts.commitSha,
+	currentPhase: workspaces.currentPhase,
+	statusText: workspaces.statusText,
+	needs: workspaces.needs,
+	isOrchestrator: workspaces.isOrchestrator,
+	cliPreset: workspaces.cliPreset,
+	sortOrder: workspaces.sortOrder,
+} as const;
+
+export async function listByProjectTree(input: {
+	projectId: string;
+}): Promise<ProjectWorkspaceTree> {
+	const db = getDb();
+
+	const rows = db
+		.select(TREE_WORKSPACE_SELECT)
+		.from(workspaces)
+		.leftJoin(worktrees, eq(workspaces.worktreeId, worktrees.id))
+		.leftJoin(reviewDrafts, eq(workspaces.reviewDraftId, reviewDrafts.id))
+		.where(eq(workspaces.projectId, input.projectId))
+		.all()
+		.filter((r) => r.type !== "review") as SharedWorkspaceRow[];
+
+	const memberRows = db
+		.select({
+			orchestratorId: orchestratorMembers.orchestratorId,
+			workspaceId: orchestratorMembers.workspaceId,
+			sortOrder: orchestratorMembers.sortOrder,
+		})
+		.from(orchestratorMembers)
+		.innerJoin(workspaces, eq(workspaces.id, orchestratorMembers.workspaceId))
+		.where(eq(workspaces.projectId, input.projectId))
+		.all();
+
+	const memberOf = new Map<string, { orchestratorId: string; sortOrder: number }>();
+	for (const m of memberRows) memberOf.set(m.workspaceId, m);
+
+	const childrenByOrch = new Map<string, SharedWorkspaceRow[]>();
+	for (const ws of rows) {
+		const mem = memberOf.get(ws.id);
+		if (!mem) continue;
+		const arr = childrenByOrch.get(mem.orchestratorId) ?? [];
+		arr.push(ws);
+		childrenByOrch.set(mem.orchestratorId, arr);
+	}
+	for (const arr of childrenByOrch.values()) {
+		arr.sort((a, b) => {
+			const am = memberOf.get(a.id)!.sortOrder;
+			const bm = memberOf.get(b.id)!.sortOrder;
+			return am - bm;
+		});
+	}
+
+	const orchestrators = rows
+		.filter((r) => r.isOrchestrator)
+		.sort((a, b) => a.sortOrder - b.sortOrder)
+		.map((workspace) => ({
+			workspace,
+			children: childrenByOrch.get(workspace.id) ?? [],
+		}));
+
+	const loose = rows
+		.filter((r) => !r.isOrchestrator && !memberOf.has(r.id))
+		.sort((a, b) => a.sortOrder - b.sortOrder);
+
+	return { orchestrators, loose };
 }
 
 export async function getWorkspace(input: GetWorkspaceRequest): Promise<GetWorkspaceResponse> {
