@@ -7,6 +7,7 @@ import { TerminalOnly } from "./views/TerminalOnly";
 import { WithActiveWorkspaces } from "./views/WithActiveWorkspaces";
 import { WithCommentsPR } from "./views/WithCommentsPR";
 import { WithFileNav } from "./views/WithFileNav";
+import { WithPRsTab } from "./views/WithPRsTab";
 import { WithRightPanelChanges } from "./views/WithRightPanelChanges";
 import { WithSidebarRepos } from "./views/WithSidebarRepos";
 import { WithTicketsTab } from "./views/WithTicketsTab";
@@ -48,6 +49,8 @@ function ViewRenderer({ viewKey }: { viewKey: ViewKeyV4 }) {
 			return <SolveResultFull />;
 		case "withTicketsTab":
 			return <WithTicketsTab />;
+		case "withPRsTab":
+			return <WithPRsTab />;
 		default:
 			return <ViewStub name={viewKey} />;
 	}
