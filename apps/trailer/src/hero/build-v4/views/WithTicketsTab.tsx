@@ -4,19 +4,24 @@ import { TICKETS_V4 } from "../data";
 import { SCENES_V4 } from "../timeline";
 
 const SIDEBAR_WIDTH = 280;
+const DETAIL_WIDTH = 520;
 const HIGHLIGHTED_TICKET_ID = "SS-148";
-const HIGHLIGHT_FRAME = 120;
+const DETAIL_FRAME = 120;
 
 // Mirrors apps/desktop/src/renderer/components/tickets/TicketsSidebar.tsx +
-// TicketsBoardView.tsx layout. Static — no terminal swap in this scene; the
-// "Start worktree" affordance is just visual (real app switches to Repos +
-// opens a worktree view, which is shown elsewhere in the trailer).
+// TicketsBoardView.tsx + TicketDetailPanel.tsx. Selecting SS-148 slides
+// TicketDetailPanelV4 in from the right (real-app flow). No fabricated
+// "Start worktree" pill on the ticket card itself.
 export function WithTicketsTab() {
 	const c = useColorsV4();
 	const frame = useCurrentFrame();
 	const local = frame - SCENES_V4.s9Tickets.from;
 
-	const highlightOp = interpolate(local, [HIGHLIGHT_FRAME, HIGHLIGHT_FRAME + 18], [0, 1], {
+	const detailOp = interpolate(local, [DETAIL_FRAME, DETAIL_FRAME + 18], [0, 1], {
+		extrapolateLeft: "clamp",
+		extrapolateRight: "clamp",
+	});
+	const detailW = interpolate(local, [DETAIL_FRAME, DETAIL_FRAME + 24], [0, DETAIL_WIDTH], {
 		extrapolateLeft: "clamp",
 		extrapolateRight: "clamp",
 	});
@@ -33,7 +38,6 @@ export function WithTicketsTab() {
 					flexDirection: "column",
 				}}
 			>
-				{/* Tab strip — Tickets active */}
 				<div
 					style={{
 						display: "flex",
@@ -74,7 +78,22 @@ export function WithTicketsTab() {
 					position: "relative",
 				}}
 			>
-				<TicketsBoardInline highlightedId={HIGHLIGHTED_TICKET_ID} highlightOp={highlightOp} />
+				<TicketsBoardInline highlightedId={HIGHLIGHTED_TICKET_ID} highlightOp={detailOp} />
+			</div>
+
+			<div
+				style={{
+					width: detailW,
+					flexShrink: 0,
+					overflow: "hidden",
+					background: c.bgSurface,
+					borderLeft: `1px solid ${c.borderSubtle}`,
+					opacity: detailOp,
+				}}
+			>
+				<div style={{ width: DETAIL_WIDTH, height: "100%" }}>
+					<TicketDetailPanelV4 ticketId={HIGHLIGHTED_TICKET_ID} />
+				</div>
 			</div>
 		</>
 	);
@@ -86,7 +105,6 @@ function TicketsSidebarInline() {
 
 	return (
 		<div style={{ display: "flex", flexDirection: "column", gap: 4, padding: "4px 8px" }}>
-			{/* All Tickets */}
 			<div
 				style={{
 					display: "flex",
@@ -114,7 +132,6 @@ function TicketsSidebarInline() {
 
 			<div style={{ height: 1, background: c.borderSubtle, margin: "4px 8px" }} />
 
-			{/* Linear section */}
 			<div
 				style={{
 					padding: "4px 8px",
@@ -270,14 +287,7 @@ function TicketsBoardInline({
 										}}
 									>
 										<svg width="8" height="8" viewBox="0 0 16 16" aria-hidden="true">
-											<circle
-												cx="8"
-												cy="8"
-												r="6"
-												fill="none"
-												stroke={col.color}
-												strokeWidth="1.5"
-											/>
+											<circle cx="8" cy="8" r="6" fill="none" stroke={col.color} strokeWidth="1.5" />
 										</svg>
 										<span
 											style={{
@@ -299,44 +309,227 @@ function TicketsBoardInline({
 									>
 										{ticket.title}
 									</div>
-									{isHighlighted && highlightOp > 0 && (
-										<div
-											style={{
-												opacity: highlightOp,
-												marginTop: 4,
-												display: "flex",
-												alignItems: "center",
-												gap: 6,
-												padding: "5px 8px",
-												borderRadius: 5,
-												background: "rgba(10,132,255,0.12)",
-												color: c.accent,
-												fontSize: 10,
-												fontWeight: 500,
-												width: "fit-content",
-											}}
-										>
-											<svg
-												width="11"
-												height="11"
-												viewBox="0 0 16 16"
-												fill="none"
-												stroke="currentColor"
-												strokeWidth="1.6"
-												strokeLinecap="round"
-												aria-hidden="true"
-											>
-												<path d="M8 3v10M3 8h10" />
-											</svg>
-											Start worktree
-										</div>
-									)}
 								</div>
 							);
 						})}
 					</div>
 				);
 			})}
+		</div>
+	);
+}
+
+// Mirrors apps/desktop/.../tickets/TicketDetailPanel.tsx structure: header
+// row (status pill, identifier, provider, Open ↗ + Esc), two-column body
+// (left = title + description + activity, right 200px = Status / Assignee /
+// Workspaces / Provider / "Create Worktree" button).
+function TicketDetailPanelV4({ ticketId }: { ticketId: string }) {
+	const c = useColorsV4();
+	const ticket = TICKETS_V4.find((t) => t.id === ticketId);
+	if (!ticket) return null;
+
+	const description =
+		"Drag handle on the kanban column header drifts left when the sidebar is collapsed mid-drag. " +
+		"Reproduces every time with the Repos pane open and the user toggling collapse during an in-flight drag. " +
+		"Suspect the pointer offset is captured against the original viewport rect.";
+
+	return (
+		<div
+			style={{
+				display: "flex",
+				height: "100%",
+				flexDirection: "column",
+				background: c.bgSurface,
+			}}
+		>
+			<div
+				style={{
+					display: "flex",
+					alignItems: "center",
+					gap: 10,
+					padding: "10px 20px",
+					borderBottom: `1px solid ${c.borderSubtle}`,
+					flexShrink: 0,
+				}}
+			>
+				<svg width="10" height="10" viewBox="0 0 16 16" aria-hidden="true">
+					<circle cx="8" cy="8" r="6" fill="none" stroke={c.textQuaternary} strokeWidth="1.5" />
+				</svg>
+				<span style={{ fontSize: 13, fontWeight: 600, color: c.text }}>{ticket.id}</span>
+				<span
+					style={{
+						padding: "2px 8px",
+						borderRadius: 99,
+						background: c.bgOverlay,
+						color: c.textTertiary,
+						fontSize: 10,
+					}}
+				>
+					Todo
+				</span>
+				<span style={{ fontSize: 10, color: c.textQuaternary }}>Linear · SuperiorSwarm</span>
+				<div style={{ flex: 1 }} />
+				<div
+					style={{
+						padding: "4px 8px",
+						borderRadius: 4,
+						background: c.bgElevated,
+						color: c.textTertiary,
+						fontSize: 10,
+					}}
+				>
+					Open in Linear ↗
+				</div>
+				<div
+					style={{
+						padding: "4px 8px",
+						borderRadius: 4,
+						background: c.bgElevated,
+						color: c.textQuaternary,
+						fontSize: 10,
+					}}
+				>
+					Esc
+				</div>
+			</div>
+
+			<div style={{ display: "flex", flex: 1, minHeight: 0 }}>
+				<div
+					style={{
+						flex: 1,
+						overflow: "hidden",
+						padding: "16px 20px",
+					}}
+				>
+					<div
+						style={{
+							fontSize: 16,
+							fontWeight: 600,
+							lineHeight: 1.3,
+							color: c.text,
+						}}
+					>
+						{ticket.title}
+					</div>
+					<p
+						style={{
+							marginTop: 12,
+							fontSize: 12,
+							lineHeight: 1.7,
+							color: c.textSecondary,
+							whiteSpace: "pre-wrap",
+						}}
+					>
+						{description}
+					</p>
+				</div>
+
+				<div
+					style={{
+						width: 200,
+						flexShrink: 0,
+						borderLeft: `1px solid ${c.borderSubtle}`,
+						padding: 16,
+						display: "flex",
+						flexDirection: "column",
+						gap: 16,
+					}}
+				>
+					<DetailField label="Status">
+						<div
+							style={{
+								padding: "6px 8px",
+								borderRadius: 5,
+								background: c.bgElevated,
+								border: `1px solid ${c.borderSubtle}`,
+								fontSize: 11,
+								color: c.textSecondary,
+							}}
+						>
+							Todo
+						</div>
+					</DetailField>
+
+					<DetailField label="Assignee">
+						<div
+							style={{
+								display: "flex",
+								alignItems: "center",
+								gap: 8,
+								padding: "6px 8px",
+								borderRadius: 5,
+								background: c.bgElevated,
+								border: `1px solid ${c.borderSubtle}`,
+							}}
+						>
+							<div
+								style={{
+									width: 18,
+									height: 18,
+									borderRadius: "50%",
+									background: c.accent,
+									color: "#fff",
+									fontSize: 9,
+									fontWeight: 600,
+									display: "flex",
+									alignItems: "center",
+									justifyContent: "center",
+								}}
+							>
+								T
+							</div>
+							<span style={{ fontSize: 11, color: c.textSecondary }}>Thomas</span>
+						</div>
+					</DetailField>
+
+					<DetailField label="Workspaces">
+						<div style={{ fontSize: 11, fontStyle: "italic", color: c.textQuaternary }}>
+							None yet
+						</div>
+					</DetailField>
+
+					<DetailField label="Provider">
+						<div style={{ fontSize: 11, color: c.textSecondary }}>Linear · SuperiorSwarm</div>
+					</DetailField>
+
+					<div style={{ marginTop: "auto" }}>
+						<div
+							style={{
+								padding: "8px 12px",
+								borderRadius: 6,
+								background: c.accent,
+								color: "#fff",
+								fontSize: 11,
+								fontWeight: 500,
+								textAlign: "center",
+							}}
+						>
+							Create Worktree
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	);
+}
+
+function DetailField({ label, children }: { label: string; children: React.ReactNode }) {
+	const c = useColorsV4();
+	return (
+		<div>
+			<div
+				style={{
+					marginBottom: 6,
+					fontSize: 9,
+					fontWeight: 600,
+					letterSpacing: "0.3px",
+					textTransform: "uppercase",
+					color: c.textQuaternary,
+				}}
+			>
+				{label}
+			</div>
+			{children}
 		</div>
 	);
 }
