@@ -12,9 +12,10 @@
 //   s8SolveResult  3420–3720  5s   solve review — all resolved, approval focus
 //   s9Tickets      3720–4080  6s   tickets tab → Start-worktree affordance
 //   s10PRsList     4080–4380  5s   PRs to review
-//   outro          4380–4680  5s   pulsing logo + CTA
+//   outro          4380–4920  9s   pulsing logo + CTA (longer breath so the
+//                                   logo pulse plays multiple full cycles)
 export const FPS_V4 = 60;
-export const TOTAL_FRAMES_V4 = 4680;
+export const TOTAL_FRAMES_V4 = 4920;
 
 export const SCENES_V4 = {
 	opening: { from: 0, duration: 420 },
@@ -29,7 +30,7 @@ export const SCENES_V4 = {
 	s8SolveResult: { from: 3420, duration: 300 },
 	s9Tickets: { from: 3720, duration: 360 },
 	s10PRsList: { from: 4080, duration: 300 },
-	outro: { from: 4380, duration: 300 },
+	outro: { from: 4380, duration: 540 },
 } as const;
 
 export type SceneKeyV4 = keyof typeof SCENES_V4;
