@@ -33,6 +33,8 @@ mac:
   notarize: true
   entitlements: resources/build/entitlements.mac.plist
   entitlementsInherit: resources/build/entitlements.mac.inherit.plist
+  extendInfo:
+    NSMicrophoneUsageDescription: "SuperiorSwarm uses the microphone for Claude voice mode."
   target:
     - dmg
     - zip

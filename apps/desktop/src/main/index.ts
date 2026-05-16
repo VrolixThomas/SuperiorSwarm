@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { eq } from "drizzle-orm";
-import { BrowserWindow, app, dialog, ipcMain, shell } from "electron";
+import { BrowserWindow, app, dialog, ipcMain, session, shell, systemPreferences } from "electron";
 import { AGENT_NOTIFY_PORT } from "../shared/agent-events";
 import { daemonInstanceId, daemonPaths } from "../shared/daemon-protocol";
 import { updateOpenCodePluginPort } from "./agent-hooks/agents/opencode";
@@ -124,6 +124,13 @@ function createWindow() {
 app.whenReady().then(async () => {
 	setupCrashHandlers();
 	log.info("App started", { version: app.getVersion() });
+
+	if (process.platform === "darwin") {
+		const micStatus = systemPreferences.getMediaAccessStatus("microphone");
+		if (micStatus !== "granted") {
+			await systemPreferences.askForMediaAccess("microphone");
+		}
+	}
 	const instanceId = daemonInstanceId(__dirname);
 	const paths = daemonPaths(instanceId);
 	daemonClient = new DaemonClient(
@@ -171,6 +178,11 @@ app.whenReady().then(async () => {
 	setupTRPCIPC(appRouter);
 
 	setupRepoIPC(() => mainWindow);
+
+	const ALLOWED_PERMISSIONS = new Set(["media", "clipboard-sanitized-write"]);
+	session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
+		callback(ALLOWED_PERMISSIONS.has(permission));
+	});
 
 	void (async () => {
 		try {
