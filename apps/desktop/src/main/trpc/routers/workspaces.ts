@@ -4,7 +4,6 @@ import { nanoid } from "nanoid";
 import { z } from "zod";
 import { getDb } from "../../db";
 import { githubBranchPrs, projects, sharedFiles, workspaces, worktrees } from "../../db/schema";
-import { reviewDrafts } from "../../db/schema-ai-review";
 import { checkoutBranchWorktree } from "../../git/operations";
 import { symlinkSharedFiles } from "../../shared-files";
 import { publicProcedure, router } from "../index";
