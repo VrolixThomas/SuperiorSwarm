@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { existsSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { and, desc, eq, gt, isNull, or } from "drizzle-orm";
 import { nanoid } from "nanoid";
@@ -412,12 +413,8 @@ export function setDispatchBroadcaster(fn: (payload: AgentDispatchBroadcast) => 
 }
 
 export async function defaultSpawnFn(args: SpawnArgs): Promise<SpawnResult> {
-	const { mkdtempSync, writeFileSync, chmodSync } = await import("node:fs");
-	const { tmpdir } = await import("node:os");
-	const { join: joinPath } = await import("node:path");
-
-	const dir = mkdtempSync(joinPath(tmpdir(), "ss-dispatch-"));
-	const scriptPath = joinPath(dir, "launch.sh");
+	const dir = mkdtempSync(join(tmpdir(), "ss-dispatch-"));
+	const scriptPath = join(dir, "launch.sh");
 	writeFileSync(scriptPath, args.launchScriptContent, "utf-8");
 	chmodSync(scriptPath, 0o755);
 
@@ -603,10 +600,6 @@ export interface ResumeAgentDeps {
 	respawnAgent?: RespawnAgentFn;
 }
 
-function escapeShellSingleQuoteMsg(s: string): string {
-	return s.replace(/'/g, "'\\''");
-}
-
 export async function resumeAgent(
 	ctx: CallerContext,
 	input: ResumeAgentRequest,
@@ -664,8 +657,8 @@ export async function resumeAgent(
 	const message = target.isOrchestrator
 		? `${ORCHESTRATOR_PREAMBLE}\n\n---\n\n${input.message}`
 		: input.message;
-	const escSession = escapeShellSingleQuoteMsg(target.cliSessionId);
-	const escMsg = escapeShellSingleQuoteMsg(message);
+	const escSession = escapeShellSingleQuote(target.cliSessionId);
+	const escMsg = escapeShellSingleQuote(message);
 	const command = `claude --resume '${escSession}' --dangerously-skip-permissions '${escMsg}'`;
 
 	// 5. Kill the previous claude session (if any) and spawn a fresh one.
@@ -726,14 +719,11 @@ export async function defaultRespawnAgent(args: RespawnAgentArgs): Promise<void>
 
 	// 2. Broadcast a fresh dispatch — renderer opens a new agent session tab
 	//    whose first action is the resume command.
-	const { mkdtempSync, writeFileSync, chmodSync } = await import("node:fs");
-	const { tmpdir } = await import("node:os");
-	const { join: joinPath } = await import("node:path");
-	const dir = mkdtempSync(joinPath(tmpdir(), "ss-resume-"));
-	const scriptPath = joinPath(dir, "resume.sh");
+	const dir = mkdtempSync(join(tmpdir(), "ss-resume-"));
+	const scriptPath = join(dir, "resume.sh");
 	writeFileSync(
 		scriptPath,
-		["#!/bin/bash", `cd '${escapeShellSingleQuoteMsg(args.cwd)}'`, "", args.command, ""].join("\n"),
+		["#!/bin/bash", `cd '${escapeShellSingleQuote(args.cwd)}'`, "", args.command, ""].join("\n"),
 		"utf-8"
 	);
 	chmodSync(scriptPath, 0o755);
