@@ -107,7 +107,7 @@ export function SolveResultFull() {
 						margin: "12px 12px 0",
 						padding: "8px 12px",
 						borderRadius: 8,
-						background: "rgba(48,209,88,0.14)",
+						background: `${c.success}24`,
 						border: `1px solid ${c.success}`,
 						display: "flex",
 						alignItems: "center",
@@ -272,7 +272,7 @@ export function SolveResultFull() {
 										fontSize: 10,
 										fontWeight: 700,
 										color: c.success,
-										background: "rgba(48,209,88,0.14)",
+										background: `${c.success}24`,
 										borderRadius: 3,
 										padding: "1px 5px",
 									}}
