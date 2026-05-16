@@ -70,4 +70,13 @@ describe("workspace-ordering", () => {
 			/must contain every|incomplete/i
 		);
 	});
+
+	test("reorderTopLevel succeeds when project has review workspaces (excluded from total)", async () => {
+		const projectId = await seedProject();
+		const a = await seedWorkspace(projectId, { name: "a" });
+		const b = await seedWorkspace(projectId, { name: "b" });
+		await seedWorkspace(projectId, { name: "rev", type: "review" });
+		// orderedIds only contains non-review workspaces — should succeed
+		await expect(reorderTopLevel({ projectId, orderedIds: [b, a] })).resolves.toBeDefined();
+	});
 });

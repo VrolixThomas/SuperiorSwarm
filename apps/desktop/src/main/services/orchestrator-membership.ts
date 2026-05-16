@@ -62,9 +62,32 @@ export async function detachFromOrchestrator(input: {
 	workspaceId: string;
 }): Promise<{ ok: true }> {
 	const db = getDb();
-	db.delete(orchestratorMembers)
-		.where(eq(orchestratorMembers.workspaceId, input.workspaceId))
-		.run();
+
+	const child = db
+		.select({ projectId: workspaces.projectId })
+		.from(workspaces)
+		.where(eq(workspaces.id, input.workspaceId))
+		.get();
+	if (!child) throw new NotFoundError(input.workspaceId);
+
+	db.transaction((tx) => {
+		tx.delete(orchestratorMembers)
+			.where(eq(orchestratorMembers.workspaceId, input.workspaceId))
+			.run();
+
+		const maxRow = tx
+			.select({ m: max(workspaces.sortOrder) })
+			.from(workspaces)
+			.where(eq(workspaces.projectId, child.projectId))
+			.get();
+		const nextSort = (maxRow?.m ?? -1) + 1;
+
+		tx.update(workspaces)
+			.set({ sortOrder: nextSort, updatedAt: new Date() })
+			.where(eq(workspaces.id, input.workspaceId))
+			.run();
+	});
+
 	return { ok: true };
 }
 

@@ -1,4 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { eq } from "drizzle-orm";
+import { getDb } from "../src/main/db";
+import { workspaces } from "../src/main/db/schema";
 import {
 	attachToOrchestrator,
 	detachFromOrchestrator,
@@ -90,5 +93,24 @@ describe("orchestrator-membership", () => {
 		await expect(
 			attachToOrchestrator({ orchestratorId: orch, workspaceId: "ws-nonexistent" })
 		).rejects.toThrow(/not.?found|unknown/i);
+	});
+
+	test("detach sets workspace.sortOrder to max+1 so it appears at end of loose zone", async () => {
+		const p = await seedProject();
+		const orch = await seedWorkspace(p, { name: "orch", isOrchestrator: true });
+		await seedWorkspace(p, { name: "looseA" });
+		await seedWorkspace(p, { name: "looseB" });
+		const child = await seedWorkspace(p, { name: "child" });
+
+		await attachToOrchestrator({ orchestratorId: orch, workspaceId: child });
+		await detachFromOrchestrator({ workspaceId: child });
+
+		const row = getDb()
+			.select({ sortOrder: workspaces.sortOrder })
+			.from(workspaces)
+			.where(eq(workspaces.id, child))
+			.get();
+		// sortOrder must be at least 1 (max of all workspaces seeded at 0, plus 1)
+		expect(row?.sortOrder).toBeGreaterThanOrEqual(1);
 	});
 });

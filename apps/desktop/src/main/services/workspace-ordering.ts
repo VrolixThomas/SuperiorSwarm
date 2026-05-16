@@ -1,4 +1,4 @@
-import { and, count, eq, inArray } from "drizzle-orm";
+import { and, count, eq, inArray, ne } from "drizzle-orm";
 import { ForbiddenError, NotFoundError } from "../../shared/control-plane";
 import { getDb } from "../db";
 import { orchestratorMembers, workspaces } from "../db/schema";
@@ -9,22 +9,29 @@ export async function reorderTopLevel(input: {
 }): Promise<{ ok: true }> {
 	const db = getDb();
 
-	// Enforce completeness: orderedIds must cover every workspace in the project
+	// Enforce completeness: orderedIds must cover every non-review workspace in the project.
+	// Review workspaces are filtered out by listByProjectTree and never sent by the renderer.
 	const totalRow = db
 		.select({ total: count() })
 		.from(workspaces)
-		.where(eq(workspaces.projectId, input.projectId))
+		.where(and(eq(workspaces.projectId, input.projectId), ne(workspaces.type, "review")))
 		.get();
 	const total = totalRow?.total ?? 0;
 	if (total !== input.orderedIds.length) {
 		throw new Error("reorderTopLevel: orderedIds must contain every workspace in the project");
 	}
 
-	// Validate each submitted id
+	// Validate each submitted id — also exclude review-type defensively
 	const found = db
 		.select({ id: workspaces.id })
 		.from(workspaces)
-		.where(and(eq(workspaces.projectId, input.projectId), inArray(workspaces.id, input.orderedIds)))
+		.where(
+			and(
+				eq(workspaces.projectId, input.projectId),
+				inArray(workspaces.id, input.orderedIds),
+				ne(workspaces.type, "review")
+			)
+		)
 		.all();
 	if (found.length !== input.orderedIds.length) {
 		const foundIds = new Set(found.map((r) => r.id));
