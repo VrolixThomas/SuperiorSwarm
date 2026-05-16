@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.8.0 (2026-05-16)
+
+### What's New
+
+SuperiorSwarm v0.8.0 adds voice input support. You can now use your microphone directly within the app — SuperiorSwarm requests the necessary permissions on first use and handles macOS microphone access automatically, so there's no manual setup required.
+
+### Changes
+
+- Voice (#104)
+
 ## v0.7.2 (2026-05-10)
 
 ### What's New
