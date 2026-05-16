@@ -88,6 +88,8 @@ export function WorkspaceV3() {
 	const frame = useCurrentFrame();
 	const { fps } = useVideoConfig();
 
+	if (frame < ACTS_V3.build.from || frame >= T_BUILD_END) return null;
+
 	const inTickets = frame >= T_TICKETS && frame < T_WORKSPACE;
 	const inWorkspace = frame >= T_WORKSPACE && frame < T_WORKTREES;
 	const inWorktrees = frame >= T_WORKTREES && frame < T_SPLIT;
