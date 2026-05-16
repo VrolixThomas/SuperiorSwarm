@@ -1,6 +1,8 @@
 import { AbsoluteFill, Sequence } from "remotion";
 import { Bg } from "../hero/Bg";
+import { CaptionV3 } from "../hero/build-v3/Caption";
 import { ColdOpenV3 } from "../hero/build-v3/ColdOpenV3";
+import { CollapseV3 } from "../hero/build-v3/CollapseV3";
 import { ACTS_V3, TOTAL_FRAMES_V3 } from "../hero/build-v3/timeline";
 
 export const HERO_BUILD_V3_FRAMES = TOTAL_FRAMES_V3;
@@ -16,6 +18,8 @@ export function HeroBuildV3() {
 			>
 				<ColdOpenV3 />
 			</Sequence>
+			<CollapseV3 />
+			<CaptionV3 />
 		</AbsoluteFill>
 	);
 }
