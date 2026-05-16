@@ -44,38 +44,46 @@ function repoConfigsFor(worktreePath: string): RepoConfig[] {
 	];
 }
 
-function scrubJson(cfg: RepoConfig): void {
-	if (!existsSync(cfg.file)) return;
+function scrubJson(cfg: RepoConfig): boolean {
+	if (!existsSync(cfg.file)) return false;
 	let data: Record<string, unknown>;
 	try {
 		const parsed = JSON.parse(readFileSync(cfg.file, "utf-8"));
-		if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return;
+		if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return false;
 		data = parsed as Record<string, unknown>;
 	} catch {
-		return;
+		return false;
 	}
 	const container = cfg.parentContainer;
 	const containerObj = data[container];
-	if (containerObj && typeof containerObj === "object" && !Array.isArray(containerObj)) {
-		delete (containerObj as Record<string, unknown>).superiorswarm;
-		if (Object.keys(containerObj as Record<string, unknown>).length === 0) {
-			delete data[container];
-		}
+	if (!containerObj || typeof containerObj !== "object" || Array.isArray(containerObj)) return false;
+
+	if (!("superiorswarm" in (containerObj as Record<string, unknown>))) return false;
+
+	delete (containerObj as Record<string, unknown>).superiorswarm;
+	if (Object.keys(containerObj as Record<string, unknown>).length === 0) {
+		delete data[container];
 	}
 	if (Object.keys(data).length === 0) {
 		try {
 			unlinkSync(cfg.file);
 		} catch {}
-		return;
+		return true;
 	}
 	writeFileSync(cfg.file, JSON.stringify(data, null, 2), "utf-8");
+	return true;
 }
 
-function scrubToml(cfg: RepoConfig): void {
-	if (!existsSync(cfg.file)) return;
+function scrubToml(cfg: RepoConfig): boolean {
+	if (!existsSync(cfg.file)) return false;
 	try {
+		const before = readFileSync(cfg.file, "utf-8");
 		removeTomlKey(cfg.file, cfg.keyPath);
-	} catch {}
+		const after = existsSync(cfg.file) ? readFileSync(cfg.file, "utf-8") : "";
+		return before !== after;
+	} catch {
+		return false;
+	}
 }
 
 export function runGlobalMcpMigration(): { scrubbedCount: number } {
@@ -92,11 +100,8 @@ export function runGlobalMcpMigration(): { scrubbedCount: number } {
 	for (const r of rows) {
 		if (!r.path || !existsSync(r.path)) continue;
 		for (const cfg of repoConfigsFor(r.path)) {
-			if (existsSync(cfg.file)) {
-				if (cfg.isToml) scrubToml(cfg);
-				else scrubJson(cfg);
-				scrubbedCount++;
-			}
+			const modified = cfg.isToml ? scrubToml(cfg) : scrubJson(cfg);
+			if (modified) scrubbedCount++;
 		}
 	}
 
