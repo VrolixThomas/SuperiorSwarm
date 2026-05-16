@@ -27,7 +27,14 @@ async function main() {
 		availability[key] = exists;
 		console.log(`[audio-v3] ${rel} → ${exists ? "OK" : "MISSING"}`);
 	}
-	const body = `// AUTO-GENERATED. Do not edit. Run: bun scripts/generate-audio-v3.ts\nexport const AUDIO_AVAILABLE_V3 = ${JSON.stringify(availability, null, 2)} as const;\n`;
+	const lines: string[] = [];
+	lines.push("// AUTO-GENERATED. Do not edit. Run: bun scripts/generate-audio-v3.ts");
+	lines.push("export const AUDIO_AVAILABLE_V3 = {");
+	for (const [key, value] of Object.entries(availability)) {
+		lines.push(`\t${key}: ${value},`);
+	}
+	lines.push("} as const;");
+	const body = `${lines.join("\n")}\n`;
 	await writeFile(outFile, body, "utf8");
 	console.log(`[audio-v3] wrote ${outFile}`);
 }
