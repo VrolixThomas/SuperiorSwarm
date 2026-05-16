@@ -56,7 +56,8 @@ function scrubJson(cfg: RepoConfig): boolean {
 	}
 	const container = cfg.parentContainer;
 	const containerObj = data[container];
-	if (!containerObj || typeof containerObj !== "object" || Array.isArray(containerObj)) return false;
+	if (!containerObj || typeof containerObj !== "object" || Array.isArray(containerObj))
+		return false;
 
 	if (!("superiorswarm" in (containerObj as Record<string, unknown>))) return false;
 

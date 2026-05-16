@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { getDb, schema } from "../../db";
 import { savePaneLayouts, saveTerminalSessions } from "../../db/session-persistence";
-import { removeWorktree } from "../../git/operations";
+import { forceRemoveWorktree, pruneWorktrees } from "../../git/operations";
 import { getDaemonClient } from "../../terminal/daemon-instance";
 import { publicProcedure, router } from "../index";
 
@@ -243,18 +243,9 @@ export const terminalSessionsRouter = router({
 			}
 
 			// 3. Remove worktree from disk
-			const { existsSync, rmSync } = await import("node:fs");
+			const { existsSync } = await import("node:fs");
 			if (existsSync(input.path)) {
-				try {
-					await removeWorktree(input.repoPath, input.path);
-				} catch {
-					// Force remove if git worktree remove fails
-					rmSync(input.path, { recursive: true, force: true });
-					const { default: simpleGit } = await import("simple-git");
-					await simpleGit(input.repoPath)
-						.raw(["worktree", "prune"])
-						.catch(() => {});
-				}
+				await forceRemoveWorktree(input.repoPath, input.path);
 			}
 
 			// 4. Delete DB records (cascade deletes workspaces)
@@ -268,10 +259,9 @@ export const terminalSessionsRouter = router({
 	pruneWorktrees: publicProcedure.mutation(async () => {
 		const db = getDb();
 		const allProjects = db.select().from(schema.projects).all();
-		const { default: simpleGit } = await import("simple-git");
 		for (const project of allProjects) {
 			try {
-				await simpleGit(project.repoPath).raw(["worktree", "prune"]);
+				await pruneWorktrees(project.repoPath);
 			} catch {
 				// repo might not exist
 			}

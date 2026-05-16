@@ -259,23 +259,35 @@ export function WorkspaceItem({
 	const deleteWorkspace = trpc.workspaces.delete.useMutation({
 		onMutate: async ({ id }) => {
 			await utils.workspaces.listByProject.cancel({ projectId });
-			const previous = utils.workspaces.listByProject.getData({ projectId });
+			const previousList = utils.workspaces.listByProject.getData({ projectId });
+			const paneStore = usePaneStore.getState();
+			const tabStore = useTabStore.getState();
+			const previousLayout = paneStore.getLayout(id);
+			const previousMetadata = tabStore.workspaceMetadata[id];
+
 			utils.workspaces.listByProject.setData({ projectId }, (old) =>
 				old?.filter((ws) => ws.id !== id)
 			);
-			return { previous };
+			paneStore.clearLayout(id);
+			tabStore.cleanupWorkspace(id);
+
+			return { previousList, previousLayout, previousMetadata };
 		},
-		onError: (_err, _vars, context) => {
-			if (context?.previous) {
-				utils.workspaces.listByProject.setData({ projectId }, context.previous);
+		// On error we restore the list, pane layout, and workspace metadata.
+		// `cleanupWorkspace` also clears active segment / right panel / PR-solve
+		// session stores; those are not restored — user must reselect. Acceptable
+		// because `force: true` failures are rare and the user can click again.
+		onError: (err, { id }, context) => {
+			if (context?.previousList) {
+				utils.workspaces.listByProject.setData({ projectId }, context.previousList);
 			}
-			window.alert(`Failed to delete worktree: ${_err.message}`);
-		},
-		onSuccess: () => {
-			// Clean up Zustand state after server confirms deletion
-			const paneStore = usePaneStore.getState();
-			paneStore.clearLayout(workspace.id);
-			useTabStore.getState().cleanupWorkspace(workspace.id);
+			if (context?.previousLayout) {
+				usePaneStore.getState().hydrateLayout(id, context.previousLayout);
+			}
+			if (context?.previousMetadata) {
+				useTabStore.getState().setWorkspaceMetadata(id, context.previousMetadata);
+			}
+			window.alert(`Failed to delete worktree: ${err.message}`);
 		},
 		onSettled: () => {
 			utils.workspaces.listByProject.invalidate({ projectId });
@@ -339,18 +351,18 @@ export function WorkspaceItem({
 		projectRepoPath,
 	]);
 
-	const handleDelete = useCallback(async () => {
+	const handleDelete = useCallback(() => {
 		const confirmed = window.confirm(
 			`Delete worktree "${workspace.name}"? This will remove the worktree directory.`
 		);
 		if (confirmed) {
-			// Await terminal disposal so daemon processes release the worktree cwd
+			// Fire-and-forget; backend re-disposes PTYs as a safety net.
 			const wsTabs = useTabStore.getState().getTabsByWorkspace(workspace.id);
-			await Promise.all(
-				wsTabs
-					.filter((tab) => tab.kind === "terminal")
-					.map((tab) => window.electron.terminal.dispose(tab.id))
-			);
+			for (const tab of wsTabs) {
+				if (tab.kind === "terminal") {
+					window.electron.terminal.dispose(tab.id).catch(() => {});
+				}
+			}
 
 			deleteWorkspaceRef.current({ id: workspace.id, force: true });
 		}
