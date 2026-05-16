@@ -30,6 +30,7 @@ import type {
 import { ForbiddenError, NotFoundError, ResumeNotSupportedError } from "../../shared/control-plane";
 import { CLI_PRESETS } from "../ai-review/cli-presets";
 import type { EventBus } from "../control-plane/event-bus";
+import { invalidateOrchestratorPathCache } from "../control-plane/orchestrator-event-sink";
 import { getDb } from "../db";
 import {
 	agentMessages,
@@ -499,6 +500,8 @@ export async function setOrchestrator(
 			.where(eq(workspaces.id, input.workspaceId))
 			.run();
 	});
+
+	invalidateOrchestratorPathCache(ws.projectId);
 
 	return { ok: true };
 }
