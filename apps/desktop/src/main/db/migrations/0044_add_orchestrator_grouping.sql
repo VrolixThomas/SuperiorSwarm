@@ -17,5 +17,6 @@ SET sort_order = (
 	SELECT COUNT(*) - 1
 	FROM workspaces AS w2
 	WHERE w2.project_id = workspaces.project_id
-	  AND w2.created_at <= workspaces.created_at
+	  AND (w2.created_at < workspaces.created_at
+	       OR (w2.created_at = workspaces.created_at AND w2.id <= workspaces.id))
 );
