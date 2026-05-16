@@ -54,8 +54,20 @@ describe("workspace-ordering", () => {
 	test("reorderTopLevel throws when orderedIds contains an id not in the project", async () => {
 		const projectId = await seedProject();
 		const a = await seedWorkspace(projectId, { name: "a" });
+		const b = await seedWorkspace(projectId, { name: "b" });
+		// Replace b with a foreign id so completeness (2==2) passes but validation fails
 		await expect(reorderTopLevel({ projectId, orderedIds: [a, "ws-foreign"] })).rejects.toThrow(
-			/cross-project|unknown/i
+			/not.?found|unknown|forbidden|cross-project/i
+		);
+		void b; // seeded so total count matches orderedIds.length
+	});
+
+	test("reorderTopLevel throws when orderedIds is incomplete", async () => {
+		const projectId = await seedProject();
+		const a = await seedWorkspace(projectId, { name: "a" });
+		await seedWorkspace(projectId, { name: "b" });
+		await expect(reorderTopLevel({ projectId, orderedIds: [a] })).rejects.toThrow(
+			/must contain every|incomplete/i
 		);
 	});
 });
