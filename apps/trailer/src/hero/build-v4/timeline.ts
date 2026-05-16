@@ -8,8 +8,8 @@
 //   s4AgentsDone   1680–2100  7s   random green flips (task-complete)
 //   s5DiffPanel    2100–2640  9s   right diff panel + code editor
 //   s6FileNav      2640–2880  4s   file tree navigation + Files-tab right panel
-//   s7PRComment    2880–3240  6s   comments tab right panel
-//   s8SolveResult  3240–3720  8s   full solve result (3 panes)
+//   s7PRComment    2880–3420  9s   solve review — comments unresolved → resolving
+//   s8SolveResult  3420–3720  5s   solve review — all resolved, approval focus
 //   s9Tickets      3720–4080  6s   tickets tab → Start-worktree affordance
 //   s10PRsList     4080–4380  5s   PRs to review
 //   outro          4380–4680  5s   pulsing logo + CTA
@@ -25,8 +25,8 @@ export const SCENES_V4 = {
 	s4AgentsDone: { from: 1680, duration: 420 },
 	s5DiffPanel: { from: 2100, duration: 540 },
 	s6FileNav: { from: 2640, duration: 240 },
-	s7PRComment: { from: 2880, duration: 360 },
-	s8SolveResult: { from: 3240, duration: 480 },
+	s7PRComment: { from: 2880, duration: 540 },
+	s8SolveResult: { from: 3420, duration: 300 },
 	s9Tickets: { from: 3720, duration: 360 },
 	s10PRsList: { from: 4080, duration: 300 },
 	outro: { from: 4380, duration: 300 },
