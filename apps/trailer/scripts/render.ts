@@ -56,7 +56,7 @@ async function main() {
 	const arg = process.argv[2] ?? "both";
 	const which: ("v2" | "v3")[] = arg === "v2" ? ["v2"] : arg === "v3" ? ["v3"] : ["v2", "v3"];
 
-	console.log(`[trailer] bundling…`);
+	console.log("[trailer] bundling…");
 	const serveUrl = await bundle({
 		entryPoint: path.resolve(projectRoot, "src/index.ts"),
 		webpackOverride: (config) => enableTailwind(config),
