@@ -154,6 +154,9 @@ export class ResumeNotSupportedError extends Error {
 export const messageKindSchema = z.enum(["note", "question", "answer"]);
 export type MessageKindInput = z.infer<typeof messageKindSchema>;
 
+export const allMessageKinds = ["resume", "note", "question", "answer", "broadcast"] as const;
+export type AgentMessageKind = (typeof allMessageKinds)[number];
+
 export const sendMessageRequestSchema = z.object({
 	// omit to broadcast to all workspaces in the project
 	toWorkspaceId: z.string().min(1).optional(),
@@ -177,7 +180,8 @@ export interface AgentMessageDto {
 	id: string;
 	fromWorkspaceId: string | null;
 	toWorkspaceId: string | null;
-	kind: "resume" | "note" | "question" | "answer" | "broadcast";
+	/** Full kind set from DB. API callers can only send via messageKindSchema (3 kinds: note/question/answer). */
+	kind: AgentMessageKind;
 	content: string;
 	inReplyTo: string | null;
 	createdAt: string;
