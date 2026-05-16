@@ -14,9 +14,9 @@ const COLLAPSE_END = SCENES_V4.opening.from + SCENES_V4.opening.duration;
 export function Opening8Terminals() {
 	const c = useColorsV4();
 	const frame = useCurrentFrame();
+	const { fps } = useVideoConfig();
 	const SCENE = SCENES_V4.opening;
 	if (frame < SCENE.from || frame >= SCENE.from + SCENE.duration) return null;
-	const { fps } = useVideoConfig();
 
 	const collapseT = interpolate(frame, [COLLAPSE_START, COLLAPSE_END], [0, 1], {
 		extrapolateLeft: "clamp",
