@@ -55,6 +55,9 @@ export async function requestConfirm(req: ConfirmRequest): Promise<boolean> {
 }
 
 export function _drainAll(allow: boolean): void {
+	if (process.env.NODE_ENV === "production") {
+		throw new Error("_drainAll is not available in production");
+	}
 	for (const entry of pending.values()) {
 		clearTimeout(entry.timer);
 		entry.resolve(allow);
