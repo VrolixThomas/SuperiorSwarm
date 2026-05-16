@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.9.0 (2026-05-16)
+
+### What's New
+
+SuperiorSwarm v0.9.0 introduces multi-agent coordination. Agents spawned inside a workspace can now talk to each other, hand off work, and resume sessions through a built-in MCP control plane — including a designated orchestrator that drives the rest of the swarm. The MCP server is now installed globally per CLI instead of being scattered across every worktree, so your repos stay clean and configuration survives across projects. The Settings page gains a section to install or uninstall the global MCP integration on demand.
+
+### Changes
+
+- Mcp support for app (#103)
+- Global mcp tool (#105)
+
 ## v0.8.0 (2026-05-16)
 
 ### What's New
