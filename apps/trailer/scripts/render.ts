@@ -15,7 +15,7 @@ interface Target {
 	audioBitrate: `${number}M` | `${number}K` | `${number}k`;
 }
 
-const TARGETS: Record<"v2" | "v3", Target> = {
+const TARGETS: Record<"v2" | "v3" | "v4", Target> = {
 	v2: {
 		id: "HeroBuildV2",
 		output: "hero-build-v2.mp4",
@@ -25,6 +25,12 @@ const TARGETS: Record<"v2" | "v3", Target> = {
 	v3: {
 		id: "HeroBuildV3",
 		output: "hero-build-v3.mp4",
+		videoBitrate: "10M",
+		audioBitrate: "192k",
+	},
+	v4: {
+		id: "HeroBuildV4",
+		output: "hero-build-v4.mp4",
 		videoBitrate: "10M",
 		audioBitrate: "192k",
 	},
@@ -53,8 +59,17 @@ async function renderOne(target: Target, serveUrl: string) {
 }
 
 async function main() {
-	const arg = process.argv[2] ?? "both";
-	const which: ("v2" | "v3")[] = arg === "v2" ? ["v2"] : arg === "v3" ? ["v3"] : ["v2", "v3"];
+	const arg = process.argv[2] ?? "all";
+	const which: ("v2" | "v3" | "v4")[] =
+		arg === "v2"
+			? ["v2"]
+			: arg === "v3"
+				? ["v3"]
+				: arg === "v4"
+					? ["v4"]
+					: arg === "all"
+						? ["v2", "v3", "v4"]
+						: ["v2", "v3", "v4"];
 
 	console.log("[trailer] bundling…");
 	const serveUrl = await bundle({
