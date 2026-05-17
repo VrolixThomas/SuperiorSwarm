@@ -78,7 +78,7 @@ export async function detachFromOrchestrator(input: {
 
 		// Only bump sortOrder when we actually removed a membership row.
 		// Otherwise this is a no-op (idempotent re-detach).
-		if ((deleted as { changes: number }).changes === 0) return;
+		if (deleted.changes === 0) return;
 
 		const maxRow = tx
 			.select({ m: max(workspaces.sortOrder) })
