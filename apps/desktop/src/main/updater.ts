@@ -5,6 +5,7 @@ import * as semver from "semver";
 import { getDb } from "./db";
 import { sessionState } from "./db/schema";
 import { GITHUB_API_BASE } from "./github/constants";
+import { log } from "./logger";
 
 const UPDATE_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000;
 let updateCheckTimer: ReturnType<typeof setInterval> | null = null;
@@ -215,7 +216,7 @@ export async function initializeUpdater(): Promise<void> {
 
 	// Skip electron-updater in dev mode — it requires a packaged app
 	if (!app.isPackaged) {
-		console.log("[updater] Skipping auto-updater in dev mode");
+		log.info("[updater] Skipping auto-updater in dev mode");
 		return;
 	}
 
@@ -240,17 +241,17 @@ export async function initializeUpdater(): Promise<void> {
 	});
 
 	autoUpdater.on("error", (err) => {
-		console.error("[updater] Auto-update error:", err);
+		log.error("[updater] Auto-update error:", err);
 	});
 
 	autoUpdater.checkForUpdates().catch((err) => {
-		console.error("[updater] Failed to check for updates:", err);
+		log.error("[updater] Failed to check for updates:", err);
 	});
 
 	if (updateCheckTimer) clearInterval(updateCheckTimer);
 	updateCheckTimer = setInterval(() => {
 		autoUpdater.checkForUpdates().catch((err) => {
-			console.error("[updater] Failed to check for updates:", err);
+			log.error("[updater] Failed to check for updates:", err);
 		});
 	}, UPDATE_CHECK_INTERVAL_MS);
 }
