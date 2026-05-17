@@ -149,11 +149,11 @@ export function OrchestratorRow({
 			style={
 				isDropTargetCandidate
 					? {
-						outlineStyle: "dashed",
-						outlineWidth: 1,
-						outlineOffset: -1,
-						outlineColor: swatchVar,
-					}
+							outlineStyle: "dashed",
+							outlineWidth: 1,
+							outlineOffset: -1,
+							outlineColor: swatchVar,
+						}
 					: undefined
 			}
 			onContextMenu={
@@ -224,7 +224,14 @@ export function OrchestratorRow({
 				}}
 				className="flex shrink-0 items-center justify-center px-1 py-[7px] bg-transparent border-none cursor-pointer rounded-[6px] hover:bg-[var(--bg-overlay)] opacity-0 group-hover:opacity-100 focus:opacity-100"
 			>
-				<svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true" className="text-[var(--text-quaternary)]">
+				<svg
+					width="12"
+					height="12"
+					viewBox="0 0 12 12"
+					fill="currentColor"
+					aria-hidden="true"
+					className="text-[var(--text-quaternary)]"
+				>
 					<circle cx="6" cy="2" r="1.1" />
 					<circle cx="6" cy="6" r="1.1" />
 					<circle cx="6" cy="10" r="1.1" />
@@ -273,17 +280,17 @@ export function OrchestratorRow({
 					onRename={
 						onRename
 							? () => {
-								onRename();
-								setContextMenu(null);
-							}
+									onRename();
+									setContextMenu(null);
+								}
 							: undefined
 					}
 					onDetachAll={
 						onDetachAll
 							? () => {
-								onDetachAll();
-								setContextMenu(null);
-							}
+									onDetachAll();
+									setContextMenu(null);
+								}
 							: undefined
 					}
 					canDetachAll={childCount > 0}

@@ -10,7 +10,6 @@ import { BranchPalette } from "./components/BranchPalette";
 import { CommandPalette } from "./components/CommandPalette";
 import { ConfirmAgentActionModal } from "./components/ConfirmAgentActionModal";
 import { CreateWorktreeModal } from "./components/CreateWorktreeModal";
-import { OrchestratorCoachmark } from "./components/OrchestratorHints";
 import { DaemonStatus } from "./components/DaemonStatus";
 import { DiffPanel } from "./components/DiffPanel";
 import { LoginScreen } from "./components/LoginScreen";
@@ -740,7 +739,6 @@ function AuthenticatedApp() {
 					)}
 					<AddRepositoryModal />
 					<CreateWorktreeModal />
-					<OrchestratorCoachmark />
 					<SharedFilesPanel />
 					<DaemonStatus />
 					<CommandPalette />

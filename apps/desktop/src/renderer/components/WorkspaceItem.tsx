@@ -641,9 +641,7 @@ export function WorkspaceItem({
 						setContextMenu(null);
 					}}
 					onCreateOrchestrator={() => {
-						useProjectStore
-							.getState()
-							.openCreateWorktreeModal(projectId, { asOrchestrator: true });
+						useProjectStore.getState().openCreateWorktreeModal(projectId, { asOrchestrator: true });
 						setContextMenu(null);
 					}}
 					canAttach={

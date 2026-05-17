@@ -19,7 +19,6 @@ import type { Project } from "../../main/db/schema";
 import type { OrchestratorGroupNode } from "../../shared/types";
 import { useOrchestratorColor } from "../hooks/useOrchestratorColor";
 import { useAgentAlertStore } from "../stores/agent-alert-store";
-import { useOrchestratorHintsStore } from "../stores/orchestrator-hints";
 import { useProjectStore } from "../stores/projects";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
@@ -32,11 +31,9 @@ import { WorkspaceItem } from "./WorkspaceItem";
 function SortableWorkspace({
 	id,
 	children,
-	onFirstHover,
 }: {
 	id: string;
 	children: ReactNode;
-	onFirstHover?: (rect: DOMRect) => void;
 }) {
 	const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
 		id,
@@ -51,11 +48,6 @@ function SortableWorkspace({
 			}}
 			{...attributes}
 			{...listeners}
-			onMouseEnter={
-				onFirstHover
-					? (e) => onFirstHover((e.currentTarget as HTMLElement).getBoundingClientRect())
-					: undefined
-			}
 			className="group/sortable relative"
 		>
 			<span
@@ -157,28 +149,6 @@ export function ProjectItem({ project, isExpanded, onToggle }: ProjectItemProps)
 	const detachMut = trpc.workspaces.detachFromOrchestrator.useMutation({
 		onSuccess: () => utils.workspaces.listByProject.invalidate({ projectId: project.id }),
 	});
-
-	const coachmarkKey = "orchDragCoachmark:dismissed";
-	const coachmarkQuery = trpc.workspaces.getOrchestratorExpand.useQuery(
-		{ key: coachmarkKey },
-		{ staleTime: Number.POSITIVE_INFINITY }
-	);
-	const dismissCoachmark = trpc.workspaces.setOrchestratorExpand.useMutation({
-		onSuccess: (_data, vars) => {
-			utils.workspaces.getOrchestratorExpand.setData({ key: vars.key }, vars.value);
-		},
-	});
-	const coachmarkDismissed = coachmarkQuery.data === false;
-	const showCoachmark = useOrchestratorHintsStore((s) => s.showCoachmark);
-	const clearCoachmark = useOrchestratorHintsStore((s) => s.clearCoachmark);
-
-	const handleFirstHover = useCallback(
-		(rect: DOMRect) => {
-			if (coachmarkDismissed) return;
-			showCoachmark({ x: rect.right, y: rect.top });
-		},
-		[coachmarkDismissed, showCoachmark]
-	);
 
 	function onDragEnd(e: DragEndEvent) {
 		const activeId = String(e.active.id);
@@ -327,10 +297,6 @@ export function ProjectItem({ project, isExpanded, onToggle }: ProjectItemProps)
 						onDragEnd={(e) => {
 							setDraggingId(null);
 							onDragEnd(e);
-							if (!coachmarkDismissed) {
-								dismissCoachmark.mutate({ key: coachmarkKey, value: false });
-								clearCoachmark();
-							}
 						}}
 						onDragCancel={() => setDraggingId(null)}
 					>
@@ -340,11 +306,7 @@ export function ProjectItem({ project, isExpanded, onToggle }: ProjectItemProps)
 						>
 							<div className="flex flex-col pt-0.5">
 								{orchestrators.map((node) => (
-									<SortableWorkspace
-										key={node.workspace.id}
-										id={node.workspace.id}
-										onFirstHover={handleFirstHover}
-									>
+									<SortableWorkspace key={node.workspace.id} id={node.workspace.id}>
 										<OrchestratorGroupBlock
 											node={node}
 											projectId={project.id}
@@ -356,7 +318,6 @@ export function ProjectItem({ project, isExpanded, onToggle }: ProjectItemProps)
 											isDropTargetCandidate={
 												draggingId !== null && draggingId !== node.workspace.id
 											}
-											onFirstHover={handleFirstHover}
 										/>
 									</SortableWorkspace>
 								))}
@@ -370,7 +331,7 @@ export function ProjectItem({ project, isExpanded, onToggle }: ProjectItemProps)
 						<SortableContext items={loose.map((w) => w.id)} strategy={verticalListSortingStrategy}>
 							<div className="flex flex-col">
 								{loose.map((ws) => (
-									<SortableWorkspace key={ws.id} id={ws.id} onFirstHover={handleFirstHover}>
+									<SortableWorkspace key={ws.id} id={ws.id}>
 										<WorkspaceItem
 											workspace={ws}
 											projectId={project.id}
@@ -406,7 +367,6 @@ function OrchestratorGroupBlock({
 	allOrchestratorIds,
 	activeWorkspaceId,
 	isDropTargetCandidate,
-	onFirstHover,
 }: {
 	node: OrchestratorGroupNode;
 	projectId: string;
@@ -416,7 +376,6 @@ function OrchestratorGroupBlock({
 	allOrchestratorIds: string[];
 	activeWorkspaceId: string;
 	isDropTargetCandidate: boolean;
-	onFirstHover?: (rect: DOMRect) => void;
 }) {
 	const utils = trpc.useUtils();
 	const colorIndex = useOrchestratorColor(node.workspace.id, projectId, allOrchestratorIds);
@@ -513,7 +472,7 @@ function OrchestratorGroupBlock({
 						strategy={verticalListSortingStrategy}
 					>
 						{node.children.map((c) => (
-							<SortableWorkspace key={c.id} id={c.id} onFirstHover={onFirstHover}>
+							<SortableWorkspace key={c.id} id={c.id}>
 								<WorkspaceItem
 									workspace={c}
 									projectId={projectId}

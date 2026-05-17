@@ -184,9 +184,7 @@ async function handleRequest(
 						projectId: row.projectId,
 						workspaceId: row.workspaceId,
 						isOrchestrator: isOrch,
-						orchestratorEventsPath: isOrch
-							? eventsFilePathForProject(row.projectId)
-							: undefined,
+						orchestratorEventsPath: isOrch ? eventsFilePathForProject(row.projectId) : undefined,
 						modeContext: {},
 					});
 					return;

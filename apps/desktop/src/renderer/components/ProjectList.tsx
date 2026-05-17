@@ -1,6 +1,5 @@
 import { useProjectStore } from "../stores/projects";
 import { trpc } from "../trpc/client";
-import { OrchestratorOnboardingTip } from "./OrchestratorOnboardingTip";
 import { ProjectItem } from "./ProjectItem";
 
 export function ProjectList() {
@@ -19,7 +18,6 @@ export function ProjectList() {
 					onToggle={() => toggleProjectExpanded(project.id)}
 				/>
 			))}
-			<OrchestratorOnboardingTip />
 		</div>
 	);
 }
