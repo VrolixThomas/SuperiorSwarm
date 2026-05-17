@@ -5,6 +5,7 @@ describe("worktree-cleanup-queue", () => {
 	test("schedule() returns synchronously and runs cleanup asynchronously", async () => {
 		const calls: Array<{ repoPath: string; worktreePath: string }> = [];
 		const queue = createWorktreeCleanupQueue({
+			graceMs: 0,
 			forceRemove: async (repoPath, worktreePath) => {
 				calls.push({ repoPath, worktreePath });
 			},
@@ -24,6 +25,7 @@ describe("worktree-cleanup-queue", () => {
 		let active = 0;
 		let maxActive = 0;
 		const queue = createWorktreeCleanupQueue({
+			graceMs: 0,
 			forceRemove: async () => {
 				active++;
 				maxActive = Math.max(maxActive, active);
@@ -42,6 +44,7 @@ describe("worktree-cleanup-queue", () => {
 	test("a failing cleanup does not stop the queue", async () => {
 		const ran: string[] = [];
 		const queue = createWorktreeCleanupQueue({
+			graceMs: 0,
 			forceRemove: async (_repo, path) => {
 				ran.push(path);
 				if (path === "/b") throw new Error("boom");

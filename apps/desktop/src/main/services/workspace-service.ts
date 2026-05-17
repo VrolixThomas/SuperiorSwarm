@@ -46,10 +46,10 @@ import {
 import { reviewDrafts } from "../db/schema-ai-review";
 import {
 	createWorktree,
-	forceRemoveWorktree,
 	removeWorktree as gitRemoveWorktree,
 	hasUncommittedChanges,
 } from "../git/operations";
+import { getWorktreeCleanupQueue } from "./worktree-cleanup-queue";
 import { symlinkSharedFiles } from "../shared-files";
 import { getDaemonClient } from "../terminal/daemon-instance";
 function worktreeBasePath(repoPath: string): string {
@@ -281,27 +281,20 @@ export async function removeWorkspace(
 		db.delete(terminalSessions).where(eq(terminalSessions.workspaceId, input.workspaceId)).run();
 	}
 
-	// Grace period so daemon SIGKILLs propagate to claude/shell children before
-	// git tries to remove the worktree dir. Without this, lingering child procs
-	// can race git's rm and leave the worktree in a partial state (metadata gone
-	// but dir present), causing subsequent removes to fail with "not a working tree".
-	if (sessions.length > 0) {
-		console.log("[del:main] grace 200ms", Date.now());
-		await new Promise((resolve) => setTimeout(resolve, 200));
-	}
-
-	if (pathExists && wt) {
-		console.log("[del:main] forceRemoveWorktree start", Date.now());
-		await forceRemoveWorktree(project.repoPath, wt.path);
-		console.log("[del:main] forceRemoveWorktree done", Date.now());
-	}
-
+	// DB cleanup is synchronous + immediate so the renderer's next list refetch
+	// never sees this workspace again. Filesystem cleanup happens in the
+	// background queue — the user does not wait on git.
 	if (wt) db.delete(worktrees).where(eq(worktrees.id, wt.id)).run();
 	db.delete(workspaces).where(eq(workspaces.id, input.workspaceId)).run();
 
 	if (ws.isOrchestrator) {
 		invalidateOrchestratorPresenceCache(ws.projectId);
 		removeProjectEventsFile(ws.projectId);
+	}
+
+	if (pathExists && wt) {
+		console.log("[del:main] scheduled cleanup", Date.now());
+		getWorktreeCleanupQueue().schedule(project.repoPath, wt.path);
 	}
 
 	console.log("[del:main] return", Date.now());

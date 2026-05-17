@@ -2,6 +2,8 @@ import { forceRemoveWorktree as defaultForceRemove } from "../git/operations";
 
 export interface WorktreeCleanupQueueDeps {
 	forceRemove?: (repoPath: string, worktreePath: string) => Promise<void>;
+	/** Grace period in ms before each forceRemove call. Default: 200. Set to 0 in tests. */
+	graceMs?: number;
 }
 
 export interface WorktreeCleanupQueue {
@@ -19,6 +21,7 @@ export function createWorktreeCleanupQueue(
 	deps: WorktreeCleanupQueueDeps = {}
 ): WorktreeCleanupQueue {
 	const forceRemove = deps.forceRemove ?? defaultForceRemove;
+	const graceMs = deps.graceMs ?? 200;
 	const items: QueueItem[] = [];
 	let running: Promise<void> | null = null;
 	let activeCount = 0;
@@ -29,6 +32,11 @@ export function createWorktreeCleanupQueue(
 			if (!next) break;
 			activeCount++;
 			try {
+				// Grace so any daemon SIGKILLs from the just-deleted terminal_sessions
+				// propagate to claude/shell children before git tries to remove the dir.
+				if (graceMs > 0) {
+					await new Promise((r) => setTimeout(r, graceMs));
+				}
 				await forceRemove(next.repoPath, next.worktreePath);
 			} catch (err) {
 				console.error(`[worktree-cleanup-queue] failed for ${next.worktreePath}:`, err);
@@ -69,4 +77,9 @@ export function getWorktreeCleanupQueue(): WorktreeCleanupQueue {
 /** Test-only — reset the singleton between tests. */
 export function _resetWorktreeCleanupQueueForTesting(): void {
 	singleton = null;
+}
+
+/** Test-only — replace the singleton with a pre-configured queue. */
+export function _setWorktreeCleanupQueueForTesting(q: WorktreeCleanupQueue | null): void {
+	singleton = q;
 }
