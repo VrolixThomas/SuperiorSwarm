@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { chmodSync, existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { and, desc, eq, gt, isNull, ne, or } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull, ne, or } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import type {
 	AgentMessageDto,
@@ -872,6 +872,30 @@ export async function createOrchestrator(
 	worktreeId: string;
 	isOrchestrator: true;
 }> {
+	if (input.attachWorkspaceIds.length > 0) {
+		const db = getDb();
+		const rows = db
+			.select({ id: workspaces.id, projectId: workspaces.projectId, isOrchestrator: workspaces.isOrchestrator })
+			.from(workspaces)
+			.where(inArray(workspaces.id, input.attachWorkspaceIds))
+			.all();
+
+		const found = new Set(rows.map((r) => r.id));
+		for (const id of input.attachWorkspaceIds) {
+			if (!found.has(id)) {
+				throw new Error(`workspace ${id} not found`);
+			}
+		}
+		for (const r of rows) {
+			if (r.projectId !== input.projectId) {
+				throw new Error(`workspace ${r.id} belongs to a different project`);
+			}
+			if (r.isOrchestrator) {
+				throw new Error(`workspace ${r.id} is itself an orchestrator and cannot be attached`);
+			}
+		}
+	}
+
 	const create = deps.createWorkspaceFn ?? createWorkspace;
 	const created = await create({
 		projectId: input.projectId,

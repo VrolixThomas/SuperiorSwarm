@@ -76,15 +76,23 @@ describe("createOrchestrator", () => {
 		expect(members.map((m) => m.workspaceId)).toEqual([a, b]);
 	});
 
-	test("rejects attach of a workspace from another project", async () => {
+	test("rejects attach of a workspace from another project, leaving no partial state", async () => {
 		const p1 = await seedProject();
 		const p2 = await seedProject();
 		const foreign = await seedWorkspace(p2, { name: "foreign" });
+
 		await expect(
 			createOrchestrator(
 				{ projectId: p1, name: "orch", baseBranch: "main", attachWorkspaceIds: [foreign] },
 				{ createWorkspaceFn: fakeCreateWorkspace }
 			)
-		).rejects.toThrow();
+		).rejects.toThrow(/different project/i);
+
+		const p1Workspaces = getDb()
+			.select()
+			.from(workspaces)
+			.where(eq(workspaces.projectId, p1))
+			.all();
+		expect(p1Workspaces.length).toBe(0);
 	});
 });
