@@ -113,4 +113,26 @@ describe("orchestrator-membership", () => {
 		// sortOrder must be at least 1 (max of all workspaces seeded at 0, plus 1)
 		expect(row?.sortOrder).toBeGreaterThanOrEqual(1);
 	});
+
+	test("detachFromOrchestrator is a no-op on sortOrder when workspace has no membership row", async () => {
+		const p = await seedProject();
+		const initialSort = 5;
+		const wsId = await seedWorkspace(p, { name: "lone" });
+
+		// Bump sortOrder directly to a known non-default value.
+		getDb()
+			.update(workspaces)
+			.set({ sortOrder: initialSort })
+			.where(eq(workspaces.id, wsId))
+			.run();
+
+		await detachFromOrchestrator({ workspaceId: wsId });
+
+		const after = getDb()
+			.select({ sortOrder: workspaces.sortOrder })
+			.from(workspaces)
+			.where(eq(workspaces.id, wsId))
+			.get();
+		expect(after?.sortOrder).toBe(initialSort);
+	});
 });

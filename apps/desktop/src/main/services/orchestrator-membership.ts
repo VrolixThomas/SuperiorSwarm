@@ -71,9 +71,14 @@ export async function detachFromOrchestrator(input: {
 	if (!child) throw new NotFoundError(input.workspaceId);
 
 	db.transaction((tx) => {
-		tx.delete(orchestratorMembers)
+		const deleted = tx
+			.delete(orchestratorMembers)
 			.where(eq(orchestratorMembers.workspaceId, input.workspaceId))
 			.run();
+
+		// Only bump sortOrder when we actually removed a membership row.
+		// Otherwise this is a no-op (idempotent re-detach).
+		if ((deleted as { changes: number }).changes === 0) return;
 
 		const maxRow = tx
 			.select({ m: max(workspaces.sortOrder) })
