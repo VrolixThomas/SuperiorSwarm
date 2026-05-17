@@ -10,16 +10,25 @@ interface OrchestratorRowProps {
 	onActivate: () => void;
 	activeChildName?: string;
 	onUnsetOrchestrator?: () => void;
+	onRename?: () => void;
+	onDetachAll?: () => void;
+	isDropTargetCandidate?: boolean;
 }
 
 function OrchestratorContextMenu({
 	position,
 	onClose,
 	onUnsetOrchestrator,
+	onRename,
+	onDetachAll,
+	canDetachAll,
 }: {
 	position: { x: number; y: number };
 	onClose: () => void;
 	onUnsetOrchestrator: () => void;
+	onRename?: () => void;
+	onDetachAll?: () => void;
+	canDetachAll: boolean;
 }) {
 	const menuRef = useRef<HTMLDivElement>(null);
 	const [adjusted, setAdjusted] = useState(position);
@@ -67,6 +76,32 @@ function OrchestratorContextMenu({
 			className="fixed z-50 min-w-[160px] rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-elevated)] py-1 shadow-[var(--shadow-md)]"
 			style={{ left: adjusted.x, top: adjusted.y }}
 		>
+			{onRename && (
+				<div
+					role="menuitem"
+					tabIndex={0}
+					className="px-3 py-1.5 text-[13px] cursor-pointer hover:bg-[var(--bg-overlay)] transition-all duration-[120ms] text-[var(--text)]"
+					onClick={onRename}
+					onKeyDown={(e) => {
+						if (e.key === "Enter") onRename();
+					}}
+				>
+					Rename…
+				</div>
+			)}
+			{onDetachAll && canDetachAll && (
+				<div
+					role="menuitem"
+					tabIndex={0}
+					className="px-3 py-1.5 text-[13px] cursor-pointer hover:bg-[var(--bg-overlay)] transition-all duration-[120ms] text-[var(--text)]"
+					onClick={onDetachAll}
+					onKeyDown={(e) => {
+						if (e.key === "Enter") onDetachAll();
+					}}
+				>
+					Detach all worktrees
+				</div>
+			)}
 			<div
 				role="menuitem"
 				tabIndex={0}
@@ -91,6 +126,9 @@ export function OrchestratorRow({
 	onActivate,
 	activeChildName,
 	onUnsetOrchestrator,
+	onRename,
+	onDetachAll,
+	isDropTargetCandidate: _isDropTargetCandidate,
 }: OrchestratorRowProps) {
 	const isActive = useTabStore((s) => s.activeWorkspaceId === workspace.id);
 	const isActiveByChild = !expanded && activeChildName !== undefined;
@@ -105,7 +143,7 @@ export function OrchestratorRow({
 	return (
 		<div
 			className={[
-				"relative flex items-center w-full rounded-[6px] transition-colors duration-[120ms]",
+				"group relative flex items-center w-full rounded-[6px] transition-colors duration-[120ms]",
 				isAccented ? "bg-[var(--accent-subtle)]" : "bg-transparent hover:bg-[var(--bg-elevated)]",
 			].join(" ")}
 			onContextMenu={
@@ -166,6 +204,25 @@ export function OrchestratorRow({
 
 			<button
 				type="button"
+				aria-label="Orchestrator options"
+				aria-haspopup="menu"
+				aria-expanded={contextMenu !== null}
+				onClick={(e) => {
+					e.stopPropagation();
+					const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+					setContextMenu({ x: rect.right, y: rect.bottom });
+				}}
+				className="flex shrink-0 items-center justify-center px-1 py-[7px] bg-transparent border-none cursor-pointer rounded-[6px] hover:bg-[var(--bg-overlay)] opacity-0 group-hover:opacity-100 focus:opacity-100"
+			>
+				<svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true" className="text-[var(--text-quaternary)]">
+					<circle cx="6" cy="2" r="1.1" />
+					<circle cx="6" cy="6" r="1.1" />
+					<circle cx="6" cy="10" r="1.1" />
+				</svg>
+			</button>
+
+			<button
+				type="button"
 				onClick={(e) => {
 					e.stopPropagation();
 					onToggle();
@@ -203,6 +260,23 @@ export function OrchestratorRow({
 						onUnsetOrchestrator();
 						setContextMenu(null);
 					}}
+					onRename={
+						onRename
+							? () => {
+								onRename();
+								setContextMenu(null);
+							}
+							: undefined
+					}
+					onDetachAll={
+						onDetachAll
+							? () => {
+								onDetachAll();
+								setContextMenu(null);
+							}
+							: undefined
+					}
+					canDetachAll={childCount > 0}
 				/>
 			)}
 		</div>

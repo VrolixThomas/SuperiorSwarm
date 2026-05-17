@@ -352,9 +352,29 @@ function OrchestratorGroupBlock({
 		onSuccess: () => utils.workspaces.listByProject.invalidate({ projectId }),
 	});
 
+	const renameMut = trpc.workspaces.renameWorkspace.useMutation({
+		onSuccess: () => utils.workspaces.listByProject.invalidate({ projectId }),
+	});
+
+	const detachAllMut = trpc.workspaces.detachAllFromOrchestrator.useMutation({
+		onSuccess: () => utils.workspaces.listByProject.invalidate({ projectId }),
+	});
+
 	const handleUnsetOrchestrator = useCallback(() => {
 		unsetOrchestratorMut.mutate({ projectId, workspaceId: node.workspace.id });
 	}, [node.workspace.id, projectId, unsetOrchestratorMut]);
+
+	const handleRename = useCallback(() => {
+		const next = window.prompt("Rename orchestrator", node.workspace.name);
+		if (next === null) return;
+		const trimmed = next.trim();
+		if (trimmed.length === 0 || trimmed === node.workspace.name) return;
+		renameMut.mutate({ workspaceId: node.workspace.id, name: trimmed });
+	}, [node.workspace.id, node.workspace.name, renameMut]);
+
+	const handleDetachAll = useCallback(() => {
+		detachAllMut.mutate({ orchestratorId: node.workspace.id });
+	}, [node.workspace.id, detachAllMut]);
 
 	const expandedKey = `orchExpand:${node.workspace.id}`;
 	const expandedQuery = trpc.workspaces.getOrchestratorExpand.useQuery(
@@ -409,6 +429,8 @@ function OrchestratorGroupBlock({
 				onActivate={handleActivate}
 				activeChildName={!expanded && activeChild ? activeChild.name : undefined}
 				onUnsetOrchestrator={handleUnsetOrchestrator}
+				onRename={handleRename}
+				onDetachAll={handleDetachAll}
 			/>
 			{expanded && (
 				<OrchestratorGroup colorIndex={colorIndex} hasActiveChild={hasActiveChild}>
