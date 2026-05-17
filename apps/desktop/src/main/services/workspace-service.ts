@@ -251,6 +251,7 @@ export async function getWorkspace(input: GetWorkspaceRequest): Promise<GetWorks
 export async function removeWorkspace(
 	input: RemoveWorkspaceRequest
 ): Promise<RemoveWorkspaceResponse> {
+	console.log("[del:main] enter", Date.now());
 	const db = getDb();
 	const ws = db.select().from(workspaces).where(eq(workspaces.id, input.workspaceId)).get();
 	if (!ws) throw new NotFoundError(input.workspaceId);
@@ -285,11 +286,14 @@ export async function removeWorkspace(
 	// can race git's rm and leave the worktree in a partial state (metadata gone
 	// but dir present), causing subsequent removes to fail with "not a working tree".
 	if (sessions.length > 0) {
+		console.log("[del:main] grace 200ms", Date.now());
 		await new Promise((resolve) => setTimeout(resolve, 200));
 	}
 
 	if (pathExists && wt) {
+		console.log("[del:main] forceRemoveWorktree start", Date.now());
 		await forceRemoveWorktree(project.repoPath, wt.path);
+		console.log("[del:main] forceRemoveWorktree done", Date.now());
 	}
 
 	if (wt) db.delete(worktrees).where(eq(worktrees.id, wt.id)).run();
@@ -300,6 +304,7 @@ export async function removeWorkspace(
 		removeProjectEventsFile(ws.projectId);
 	}
 
+	console.log("[del:main] return", Date.now());
 	return { status: "removed" };
 }
 
