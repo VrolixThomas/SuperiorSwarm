@@ -91,6 +91,55 @@ export async function detachFromOrchestrator(input: {
 	return { ok: true };
 }
 
+export async function detachAllFromOrchestrator(input: {
+	orchestratorId: string;
+}): Promise<{ detachedCount: number }> {
+	const db = getDb();
+
+	const orch = db
+		.select({ projectId: workspaces.projectId, isOrchestrator: workspaces.isOrchestrator })
+		.from(workspaces)
+		.where(eq(workspaces.id, input.orchestratorId))
+		.get();
+	if (!orch) throw new NotFoundError(input.orchestratorId);
+	if (!orch.isOrchestrator) {
+		throw new Error(`workspace ${input.orchestratorId} is not an orchestrator`);
+	}
+
+	let detachedCount = 0;
+	db.transaction((tx) => {
+		const rows = tx
+			.select({ workspaceId: orchestratorMembers.workspaceId })
+			.from(orchestratorMembers)
+			.where(eq(orchestratorMembers.orchestratorId, input.orchestratorId))
+			.all();
+		detachedCount = rows.length;
+
+		if (rows.length === 0) return;
+
+		tx.delete(orchestratorMembers)
+			.where(eq(orchestratorMembers.orchestratorId, input.orchestratorId))
+			.run();
+
+		const maxRow = tx
+			.select({ m: max(workspaces.sortOrder) })
+			.from(workspaces)
+			.where(eq(workspaces.projectId, orch.projectId))
+			.get();
+		let nextSort = (maxRow?.m ?? -1) + 1;
+		const now = new Date();
+		for (const r of rows) {
+			tx.update(workspaces)
+				.set({ sortOrder: nextSort, updatedAt: now })
+				.where(eq(workspaces.id, r.workspaceId))
+				.run();
+			nextSort++;
+		}
+	});
+
+	return { detachedCount };
+}
+
 export async function listMembership(input: {
 	orchestratorId: string;
 }): Promise<Array<{ workspaceId: string; sortOrder: number }>> {
