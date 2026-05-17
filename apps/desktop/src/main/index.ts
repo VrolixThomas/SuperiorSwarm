@@ -23,7 +23,10 @@ import {
 } from "./ai-review/pr-poller";
 import { type RunningControlPlane, startControlPlane } from "./control-plane";
 import { registerConfirmBridge, requestConfirm } from "./control-plane/confirm-bridge";
-import { attachOrchestratorEventSink } from "./control-plane/orchestrator-event-sink";
+import {
+	attachOrchestratorEventSink,
+	setEventsDir,
+} from "./control-plane/orchestrator-event-sink";
 import { backfillRemoteHosts, getDb, initializeDatabase } from "./db";
 import * as schema from "./db/schema";
 import {
@@ -265,6 +268,11 @@ app.whenReady().then(async () => {
 	setDispatchBroadcaster((payload) => broadcastToWindows("agent-dispatch:open", payload));
 
 	try {
+		const userData = app.getPath("userData");
+		// Set the events dir BEFORE the control plane starts accepting requests —
+		// /context.resolve for an orchestrator workspace calls eventsFilePathForProject().
+		setEventsDir(join(userData, "events"));
+
 		controlPlane = await startControlPlane({
 			confirm: (r) => requestConfirm(r),
 			spawnFn: defaultSpawnFn,
@@ -273,8 +281,6 @@ app.whenReady().then(async () => {
 		setEventBus(controlPlane.eventBus);
 		setTaskRegistry(controlPlane.taskRegistry);
 		detachOrchestratorSink = attachOrchestratorEventSink(controlPlane.eventBus);
-
-		const userData = app.getPath("userData");
 		writeControlDiscovery(userData, {
 			port: controlPlane.port,
 			token: controlPlane.token,

@@ -33,6 +33,7 @@ import {
 } from "../services/workspace-service";
 import { isValidBearer } from "./auth";
 import type { EventBus } from "./event-bus";
+import { eventsFilePathForProject } from "./orchestrator-event-sink";
 import type { TaskRegistry } from "./task-registry";
 
 export type ConfirmFn = (req: {
@@ -137,6 +138,7 @@ async function handleRequest(
 							.select({
 								projectId: worktrees.projectId,
 								workspaceId: workspaces.id,
+								isOrchestrator: workspaces.isOrchestrator,
 								path: worktrees.path,
 							})
 							.from(worktrees)
@@ -151,10 +153,15 @@ async function handleRequest(
 							})
 					: undefined;
 				if (row?.workspaceId) {
+					const isOrch = row.isOrchestrator ?? false;
 					respond(res, 200, requestId, {
 						mode: "workspace-agent",
 						projectId: row.projectId,
 						workspaceId: row.workspaceId,
+						isOrchestrator: isOrch,
+						orchestratorEventsPath: isOrch
+							? eventsFilePathForProject(row.projectId)
+							: undefined,
 						modeContext: {},
 					});
 					return;
