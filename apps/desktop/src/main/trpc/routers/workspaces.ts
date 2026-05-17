@@ -365,6 +365,15 @@ export const workspacesRouter = router({
 			return detachFromOrchestrator(input);
 		}),
 
+	detachAllFromOrchestrator: publicProcedure
+		.input(z.object({ orchestratorId: z.string().min(1) }))
+		.mutation(async ({ input }) => {
+			const { detachAllFromOrchestrator } = await import(
+				"../../services/orchestrator-membership"
+			);
+			return detachAllFromOrchestrator(input);
+		}),
+
 	reorderTopLevel: publicProcedure
 		.input(z.object({ projectId: z.string().min(1), orderedIds: z.array(z.string().min(1)) }))
 		.mutation(async ({ input }) => {
