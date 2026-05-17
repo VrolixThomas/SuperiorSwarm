@@ -1,47 +1,64 @@
-import { appendFileSync, existsSync } from "node:fs";
+import { appendFileSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { and, eq } from "drizzle-orm";
 import { getDb } from "../db";
-import { workspaces, worktrees } from "../db/schema";
+import { workspaces } from "../db/schema";
 import type { EventBus } from "./event-bus";
 
-export const ORCHESTRATOR_EVENTS_FILENAME = ".ss-events.jsonl";
+// Per-project events live in <userData>/events/<projectId>.jsonl, outside
+// the user's repo so they can never leak into `git status` or be committed.
+// The orchestrator agent learns the absolute path through the superiorswarm
+// MCP server's instructions (see mcp-standalone/server.mjs).
 
-// Per-project cache of the orchestrator's events file path.
-// null = looked up, no orchestrator found. undefined (missing key) = not yet cached.
-const pathCache = new Map<string, string | null>();
+let eventsDir: string | null = null;
 
-export function invalidateOrchestratorPathCache(projectId: string): void {
-	pathCache.delete(projectId);
+// Per-project cache: does this project currently have an orchestrator?
+// true = write events, false = skip, undefined (missing key) = not yet cached.
+const orchestratorPresence = new Map<string, boolean>();
+
+export function setEventsDir(dir: string): void {
+	eventsDir = dir;
+	mkdirSync(dir, { recursive: true });
+}
+
+export function eventsFilePathForProject(projectId: string): string {
+	if (!eventsDir) throw new Error("events dir not configured — call setEventsDir() at startup");
+	return join(eventsDir, `${projectId}.jsonl`);
+}
+
+export function invalidateOrchestratorPresenceCache(projectId: string): void {
+	orchestratorPresence.delete(projectId);
+}
+
+export function removeProjectEventsFile(projectId: string): void {
+	try {
+		rmSync(eventsFilePathForProject(projectId), { force: true });
+	} catch {}
 }
 
 export function attachOrchestratorEventSink(bus: EventBus): () => void {
 	return bus.subscribeAll((projectId, ev) => {
 		try {
-			const path = resolveOrchestratorEventsPath(projectId);
-			if (!path) return;
-			appendFileSync(path, `${JSON.stringify(ev)}\n`, "utf-8");
+			if (!projectHasOrchestrator(projectId)) return;
+			appendFileSync(eventsFilePathForProject(projectId), `${JSON.stringify(ev)}\n`, "utf-8");
 		} catch (err) {
 			console.warn("[orchestrator-event-sink] write failed:", err);
-			// Invalidate on write failure — orchestrator may have moved.
-			pathCache.delete(projectId);
+			orchestratorPresence.delete(projectId);
 		}
 	});
 }
 
-function resolveOrchestratorEventsPath(projectId: string): string | null {
-	if (pathCache.has(projectId)) return pathCache.get(projectId) ?? null;
+function projectHasOrchestrator(projectId: string): boolean {
+	const cached = orchestratorPresence.get(projectId);
+	if (cached !== undefined) return cached;
 
 	const row = getDb()
-		.select({ wtPath: worktrees.path })
+		.select({ id: workspaces.id })
 		.from(workspaces)
-		.leftJoin(worktrees, eq(workspaces.worktreeId, worktrees.id))
 		.where(and(eq(workspaces.projectId, projectId), eq(workspaces.isOrchestrator, true)))
 		.get();
 
-	const resolved =
-		row?.wtPath && existsSync(row.wtPath) ? join(row.wtPath, ORCHESTRATOR_EVENTS_FILENAME) : null;
-
-	pathCache.set(projectId, resolved);
-	return resolved;
+	const present = !!row;
+	orchestratorPresence.set(projectId, present);
+	return present;
 }

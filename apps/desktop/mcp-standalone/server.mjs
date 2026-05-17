@@ -50,6 +50,8 @@ const ctx = await resolveContext(process.env.SUPERIORSWARM_TASK_TOKEN);
 const MODE = ctx.mode;
 const PROJECT_ID = ctx.projectId;
 const WORKSPACE_ID = ctx.workspaceId;
+const IS_ORCHESTRATOR = ctx.isOrchestrator === true;
+const ORCHESTRATOR_EVENTS_PATH = ctx.orchestratorEventsPath || null;
 const modeContext = ctx.modeContext || {};
 const REVIEW_DRAFT_ID = modeContext.reviewDraftId;
 const SOLVE_SESSION_ID = modeContext.solveSessionId;
@@ -78,10 +80,68 @@ if (DB_PATH) {
 	db.pragma("foreign_keys = ON");
 }
 
-const server = new McpServer({
-	name: "superiorswarm",
-	version: "1.0.0",
-});
+const ORCHESTRATOR_INSTRUCTIONS = `You are the ORCHESTRATOR workspace for this SuperiorSwarm project. Coordinate child workspace agents via the superiorswarm MCP tools.
+
+REQUIRED FIRST ACTION (do this before any user task work):
+  Use the Monitor tool with command="tail -F -n 0 '${ORCHESTRATOR_EVENTS_PATH ?? ""}'" and persistent=true.
+
+(The events file lives in SuperiorSwarm's app data dir — outside your worktree — so it never appears in git status.)
+
+Each new line is a JSON event:
+  {"event":"status","workspaceId":"...","phase":"idle|working|blocked|done","statusText":"...","needs":"...","ts":"..."}
+  {"event":"message","messageId":"...","from":"...","to":"...|null","kind":"note|question|result|resume","content":"...","ts":"..."}
+
+React to events as they arrive:
+  - child reports phase=blocked with 'needs' → call resume_agent with the missing info, or dispatch help
+  - child reports phase=done → decide next task and call resume_agent
+  - inbound question → answer via send_message; broadcast notes for project-wide updates
+
+Coordination tools (superiorswarm namespace):
+  - set_status({phase, statusText?, needs?}) — publish your own status
+  - send_message({toWorkspaceId?, kind, content}) — DM (with toWorkspaceId) or broadcast (omit)
+  - read_messages({since?, includeBroadcasts?}) — query inbox
+  - resume_agent({workspaceId, message}) — restart a child's claude session with a new task
+  - list_workspaces / get_workspace / create_worktree / dispatch_agent / remove_worktree — workspace management`;
+
+const CHILD_INSTRUCTIONS = `You are a CHILD workspace in a SuperiorSwarm project. The orchestrator workspace coordinates work across the project.
+
+Coordination rules:
+  - Call set_status({phase: "working"}) when you start a task, {phase: "blocked", needs: "..."} when you need input, {phase: "done", statusText: "..."} when finished.
+  - Use send_message to ask the orchestrator questions or post notes; the orchestrator sees broadcasts and DMs through its event stream.
+  - read_messages returns the most recent inbox entries — check it if you were resumed without an obvious task in context.`;
+
+const server = new McpServer(
+	{
+		name: "superiorswarm",
+		version: "1.0.0",
+	},
+	{
+		instructions: isWorkspaceAgentMode
+			? IS_ORCHESTRATOR
+				? ORCHESTRATOR_INSTRUCTIONS
+				: CHILD_INSTRUCTIONS
+			: undefined,
+	}
+);
+
+// Tool-result reminder appended to every workspace-agent tool response so the
+// agent re-sees its coordination contract on every MCP interaction. MCP server
+// `instructions` are sent at initialize and may be summarized away on long
+// sessions; tool-result reminders ride along with every call.
+const ROLE_REMINDER = IS_ORCHESTRATOR
+	? `[superiorswarm] ORCHESTRATOR reminder: keep Monitor(tail -F -n 0 '${ORCHESTRATOR_EVENTS_PATH ?? ""}', persistent=true) running. On child phase=done/blocked, call resume_agent.`
+	: "[superiorswarm] CHILD reminder: publish set_status at each phase transition; use send_message for questions to the orchestrator.";
+
+function withRoleReminder(handler) {
+	return async (...args) => {
+		const result = await handler(...args);
+		if (!result || !Array.isArray(result.content)) return result;
+		return {
+			...result,
+			content: [...result.content, { type: "text", text: ROLE_REMINDER }],
+		};
+	};
+}
 
 if (isReviewMode) {
 	// Tool: get_pr_metadata
@@ -796,6 +856,13 @@ if (isQuickActionMode) {
 }
 
 if (isWorkspaceAgentMode) {
+	// Wrap every tool registered in this mode so its handler appends ROLE_REMINDER
+	// to the result content. Scoped to workspace-agent — review/solve modes are
+	// unaffected.
+	const _origTool = server.tool.bind(server);
+	server.tool = (name, description, schema, handler) =>
+		_origTool(name, description, schema, withRoleReminder(handler));
+
 	const baseUrl = `http://127.0.0.1:${SUPERIORSWARM_CONTROL_PORT}`;
 	const authHeader = `Bearer ${SUPERIORSWARM_CONTROL_TOKEN}`;
 
@@ -909,7 +976,7 @@ if (isWorkspaceAgentMode) {
 
 	server.tool(
 		"set_status",
-		"Publish this workspace's current phase + optional status text and needs. Other agents and the user can see this. Phase is one of: idle, working, blocked, done.",
+		"Publish this workspace's current phase. Call this at every phase transition: 'working' when you start a task, 'blocked' (with needs=\"<what you need>\") when you cannot continue, 'done' (with statusText=\"<summary>\") when finished, 'idle' when waiting. Status is streamed to the orchestrator's events log. Phase ∈ idle | working | blocked | done.",
 		{
 			phase: z.enum(["idle", "working", "blocked", "done"]),
 			status_text: z.string().max(2000).optional(),
@@ -925,7 +992,7 @@ if (isWorkspaceAgentMode) {
 
 	server.tool(
 		"send_message",
-		"Send a durable message to another workspace in this project, or broadcast to all. The recipient sees it via read_messages. The orchestrator agent also sees broadcasts and direct messages via its watch stream.",
+		"Send a durable message to another workspace, or broadcast to the whole project (omit to_workspace_id). Use 'question' to ask the orchestrator something, 'note' for status/result updates, 'answer' for replies (set in_reply_to). The orchestrator sees broadcasts and DMs in its events stream.",
 		{
 			to_workspace_id: z.string().optional().describe("Omit for broadcast"),
 			kind: z.enum(["note", "question", "answer"]),
@@ -943,7 +1010,7 @@ if (isWorkspaceAgentMode) {
 
 	server.tool(
 		"read_messages",
-		"Read messages directed at this workspace (and project-wide broadcasts unless excluded). Returns the most recent up to 200 messages.",
+		"Read messages directed at this workspace (plus project broadcasts unless excluded). Useful when you've been resumed without obvious task context — check the inbox for the orchestrator's latest instructions. Returns up to 200 most recent messages.",
 		{
 			since: z.string().optional().describe("ISO timestamp; default = last 1 hour"),
 			include_broadcasts: z.boolean().optional(),
@@ -958,7 +1025,7 @@ if (isWorkspaceAgentMode) {
 
 	server.tool(
 		"resume_agent",
-		"(Orchestrator-only) Wake another agent in this project by sending it a follow-up message. The control plane runs `claude --resume` in the target workspace's terminal.",
+		"ORCHESTRATOR-ONLY. Wake a child workspace agent with a follow-up message. Use this when a child reports phase=done (give it the next task) or phase=blocked (provide the missing input from 'needs'). The control plane runs `claude --resume` in the target workspace's terminal, so the child resumes its existing session with the new message as the next user turn.",
 		{
 			workspace_id: z.string(),
 			message: z.string().min(1).max(8192),

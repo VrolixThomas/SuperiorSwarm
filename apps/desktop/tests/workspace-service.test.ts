@@ -300,7 +300,7 @@ describe("dispatchAgent", () => {
 		expect(calls[0]?.script).toContain("--dangerously-skip-permissions");
 	});
 
-	test("does NOT include orchestrator preamble for non-orchestrator workspaces", async () => {
+	test("dispatch prompt is passed through unchanged for non-orchestrator workspaces", async () => {
 		const created = await createWorkspace({ projectId: PROJECT_ID, branch: "feature/no-preamble" });
 		let captured = "";
 		await dispatchAgent(
@@ -321,7 +321,11 @@ describe("dispatchAgent", () => {
 		expect(captured).toContain("ordinary task");
 	});
 
-	test("orchestrator workspace gets coordination preamble in prompt", async () => {
+	test("orchestrator dispatch does NOT prepend a preamble — coordination rules are delivered via MCP", async () => {
+		// Coordination instructions now live in the superiorswarm MCP server's
+		// `instructions` field + per-tool reminders (see mcp-standalone/server.mjs).
+		// The launch script must NOT carry a preamble — orchestrator and non-
+		// orchestrator dispatches look identical at the prompt level.
 		const created = await createWorkspace({
 			projectId: PROJECT_ID,
 			branch: "feature/orch-preamble",
@@ -347,9 +351,8 @@ describe("dispatchAgent", () => {
 				},
 			}
 		);
-		expect(captured).toContain("SuperiorSwarm orchestrator preamble");
-		expect(captured).toContain(".ss-events.jsonl");
-		expect(captured).toContain("Monitor");
+		expect(captured).not.toContain("SuperiorSwarm orchestrator preamble");
+		expect(captured).not.toContain(".ss-events.jsonl");
 		expect(captured).toContain("coordinate the team");
 	});
 

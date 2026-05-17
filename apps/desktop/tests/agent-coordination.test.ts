@@ -8,7 +8,11 @@ import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { nanoid } from "nanoid";
 import simpleGit from "simple-git";
 import { EventBus } from "../src/main/control-plane/event-bus";
-import { attachOrchestratorEventSink } from "../src/main/control-plane/orchestrator-event-sink";
+import {
+	attachOrchestratorEventSink,
+	eventsFilePathForProject,
+	setEventsDir,
+} from "../src/main/control-plane/orchestrator-event-sink";
 import { getDb, schema } from "../src/main/db";
 import { initRepo } from "../src/main/git/operations";
 import {
@@ -36,6 +40,10 @@ beforeEach(async () => {
 	mkdirSync(REPO, { recursive: true });
 	await initRepo(REPO, "main");
 	await simpleGit(REPO).raw(["commit", "--allow-empty", "-m", "init"]);
+
+	// Sink writes events to setEventsDir(); point it inside TMP so tests don't
+	// touch the real userData dir.
+	setEventsDir(join(TMP, "events"));
 
 	PROJECT_ID = `proj-${nanoid(8)}`;
 	const db = getDb();
@@ -296,7 +304,7 @@ describe("agent_messages audit retention", () => {
 });
 
 describe("orchestrator event sink", () => {
-	test("appends a JSON line to .ss-events.jsonl in the orchestrator's worktree", async () => {
+	test("appends a JSON line to <eventsDir>/<projectId>.jsonl when project has an orchestrator", async () => {
 		const orch = await createWorkspace({ projectId: PROJECT_ID, branch: "feature/sink-orch" });
 		const other = await createWorkspace({ projectId: PROJECT_ID, branch: "feature/sink-other" });
 		await setOrchestrator(
@@ -317,7 +325,7 @@ describe("orchestrator event sink", () => {
 				{ toWorkspaceId: orch.workspaceId, kind: "note", content: "ping" }
 			);
 
-			const file = join(orch.path, ".ss-events.jsonl");
+			const file = eventsFilePathForProject(PROJECT_ID);
 			const lines = readFileSync(file, "utf-8")
 				.trim()
 				.split("\n")
@@ -327,6 +335,8 @@ describe("orchestrator event sink", () => {
 			expect(lines[0]?.phase).toBe("blocked");
 			expect(lines[1]?.event).toBe("message");
 			expect(lines[1]?.content).toBe("ping");
+			// File must live outside the worktree so it can never leak into git.
+			expect(file).not.toContain(orch.path);
 		} finally {
 			detach();
 			setEventBus(null);
@@ -341,7 +351,7 @@ describe("orchestrator event sink", () => {
 		const detach = attachOrchestratorEventSink(bus);
 		try {
 			await setStatus({ workspaceId: a.workspaceId, projectId: PROJECT_ID }, { phase: "working" });
-			const file = join(a.path, ".ss-events.jsonl");
+			const file = eventsFilePathForProject(PROJECT_ID);
 			const { existsSync } = await import("node:fs");
 			expect(existsSync(file)).toBe(false);
 		} finally {
