@@ -47,7 +47,14 @@ function SortableWorkspace({
 			}}
 			{...attributes}
 			{...listeners}
+			className="group/sortable relative"
 		>
+			<span
+				aria-hidden="true"
+				className="absolute left-1 top-1/2 -translate-y-1/2 pointer-events-none text-[var(--text-quaternary)] opacity-0 group-hover/sortable:opacity-55 transition-opacity duration-[120ms] select-none text-[10px] leading-none"
+			>
+				⋮⋮
+			</span>
 			{children}
 		</div>
 	);
