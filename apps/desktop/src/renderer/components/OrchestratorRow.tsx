@@ -128,7 +128,7 @@ export function OrchestratorRow({
 	onUnsetOrchestrator,
 	onRename,
 	onDetachAll,
-	isDropTargetCandidate: _isDropTargetCandidate,
+	isDropTargetCandidate,
 }: OrchestratorRowProps) {
 	const isActive = useTabStore((s) => s.activeWorkspaceId === workspace.id);
 	const isActiveByChild = !expanded && activeChildName !== undefined;
@@ -146,6 +146,16 @@ export function OrchestratorRow({
 				"group relative flex items-center w-full rounded-[6px] transition-colors duration-[120ms]",
 				isAccented ? "bg-[var(--accent-subtle)]" : "bg-transparent hover:bg-[var(--bg-elevated)]",
 			].join(" ")}
+			style={
+				isDropTargetCandidate
+					? {
+						outlineStyle: "dashed",
+						outlineWidth: 1,
+						outlineOffset: -1,
+						outlineColor: swatchVar,
+					}
+					: undefined
+			}
 			onContextMenu={
 				onUnsetOrchestrator
 					? (e) => {

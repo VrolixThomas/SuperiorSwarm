@@ -1,6 +1,7 @@
 import {
 	DndContext,
 	type DragEndEvent,
+	type DragStartEvent,
 	PointerSensor,
 	closestCenter,
 	useSensor,
@@ -126,6 +127,12 @@ export function ProjectItem({ project, isExpanded, onToggle }: ProjectItemProps)
 	const orchestrators = tree?.orchestrators ?? [];
 	const loose = tree?.loose ?? [];
 	const allOrchestratorIds = orchestrators.map((o) => o.workspace.id);
+
+	const [draggingId, setDraggingId] = useState<string | null>(null);
+
+	const draggedIsChild =
+		draggingId !== null &&
+		orchestrators.some((o) => o.children.some((c) => c.id === draggingId));
 
 	const activeWorkspaceIdLocal = useTabStore((s) => s.activeWorkspaceId);
 
@@ -310,7 +317,16 @@ export function ProjectItem({ project, isExpanded, onToggle }: ProjectItemProps)
 				}
 			>
 				{isReady && tree && (
-					<DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+					<DndContext
+						sensors={sensors}
+						collisionDetection={closestCenter}
+						onDragStart={(e: DragStartEvent) => setDraggingId(String(e.active.id))}
+						onDragEnd={(e) => {
+							setDraggingId(null);
+							onDragEnd(e);
+						}}
+						onDragCancel={() => setDraggingId(null)}
+					>
 						<SortableContext
 							items={orchestrators.map((o) => o.workspace.id)}
 							strategy={verticalListSortingStrategy}
@@ -326,11 +342,17 @@ export function ProjectItem({ project, isExpanded, onToggle }: ProjectItemProps)
 											isActiveProject={isActiveProject}
 											allOrchestratorIds={allOrchestratorIds}
 											activeWorkspaceId={activeWorkspaceIdLocal ?? ""}
+											isDropTargetCandidate={draggingId !== null && draggingId !== node.workspace.id}
 										/>
 									</SortableWorkspace>
 								))}
 							</div>
 						</SortableContext>
+						{draggedIsChild && (
+							<div className="px-[22px] py-1 text-[10px] text-[var(--text-quaternary)]">
+								Loose worktrees — drop here to detach
+							</div>
+						)}
 						<SortableContext items={loose.map((w) => w.id)} strategy={verticalListSortingStrategy}>
 							<div className="flex flex-col">
 								{loose.map((ws) => (
@@ -369,6 +391,7 @@ function OrchestratorGroupBlock({
 	isActiveProject,
 	allOrchestratorIds,
 	activeWorkspaceId,
+	isDropTargetCandidate,
 }: {
 	node: OrchestratorGroupNode;
 	projectId: string;
@@ -377,6 +400,7 @@ function OrchestratorGroupBlock({
 	isActiveProject: boolean;
 	allOrchestratorIds: string[];
 	activeWorkspaceId: string;
+	isDropTargetCandidate: boolean;
 }) {
 	const utils = trpc.useUtils();
 	const colorIndex = useOrchestratorColor(node.workspace.id, projectId, allOrchestratorIds);
@@ -464,6 +488,7 @@ function OrchestratorGroupBlock({
 				onUnsetOrchestrator={handleUnsetOrchestrator}
 				onRename={handleRename}
 				onDetachAll={handleDetachAll}
+				isDropTargetCandidate={isDropTargetCandidate}
 			/>
 			{expanded && (
 				<OrchestratorGroup colorIndex={colorIndex} hasActiveChild={hasActiveChild}>
