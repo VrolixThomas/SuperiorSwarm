@@ -18,6 +18,8 @@ interface ProjectStore {
 	isAddModalOpen: boolean;
 	isCreateWorktreeModalOpen: boolean;
 	createWorktreeProjectId: string | null;
+	isCreateOrchestratorModalOpen: boolean;
+	createOrchestratorProjectId: string | null;
 	sharedFilesProjectId: string | null;
 	selectProject: (id: string | null) => void;
 	toggleProjectExpanded: (id: string) => void;
@@ -26,6 +28,8 @@ interface ProjectStore {
 	closeAddModal: () => void;
 	openCreateWorktreeModal: (projectId: string) => void;
 	closeCreateWorktreeModal: () => void;
+	openCreateOrchestratorModal: (projectId: string) => void;
+	closeCreateOrchestratorModal: () => void;
 	openSharedFilesPanel: (projectId: string) => void;
 	closeSharedFilesPanel: () => void;
 	sidebarView: "main" | "settings";
@@ -45,6 +49,8 @@ export const useProjectStore = create<ProjectStore>((set) => ({
 	isAddModalOpen: false,
 	isCreateWorktreeModalOpen: false,
 	createWorktreeProjectId: null,
+	isCreateOrchestratorModalOpen: false,
+	createOrchestratorProjectId: null,
 	sharedFilesProjectId: null,
 	sidebarView: "main",
 	settingsCategory: "general",
@@ -74,6 +80,11 @@ export const useProjectStore = create<ProjectStore>((set) => ({
 		set({ isCreateWorktreeModalOpen: true, createWorktreeProjectId: projectId }),
 	closeCreateWorktreeModal: () =>
 		set({ isCreateWorktreeModalOpen: false, createWorktreeProjectId: null }),
+
+	openCreateOrchestratorModal: (projectId) =>
+		set({ isCreateOrchestratorModalOpen: true, createOrchestratorProjectId: projectId }),
+	closeCreateOrchestratorModal: () =>
+		set({ isCreateOrchestratorModalOpen: false, createOrchestratorProjectId: null }),
 
 	openSharedFilesPanel: (projectId) => set({ sharedFilesProjectId: projectId }),
 	closeSharedFilesPanel: () => set({ sharedFilesProjectId: null }),
