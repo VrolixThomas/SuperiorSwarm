@@ -1,12 +1,10 @@
 import { useProjectStore } from "../stores/projects";
-import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import { ProjectItem } from "./ProjectItem";
 
 export function ProjectList() {
 	const { data: projectsList } = trpc.projects.list.useQuery();
 	const { expandedProjectIds, toggleProjectExpanded } = useProjectStore();
-	const activeWorkspaceId = useTabStore((s) => s.activeWorkspaceId);
 
 	if (!projectsList?.length) return null;
 
@@ -18,7 +16,6 @@ export function ProjectList() {
 					project={project}
 					isExpanded={expandedProjectIds.has(project.id)}
 					onToggle={() => toggleProjectExpanded(project.id)}
-					activeWorkspaceId={activeWorkspaceId}
 				/>
 			))}
 		</div>

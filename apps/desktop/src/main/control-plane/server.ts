@@ -36,6 +36,31 @@ import type { EventBus } from "./event-bus";
 import { eventsFilePathForProject } from "./orchestrator-event-sink";
 import type { TaskRegistry } from "./task-registry";
 
+async function attachIfCallerIsOrchestrator(
+	req: IncomingMessage,
+	projectId: string,
+	targetWorkspaceId: string
+): Promise<void> {
+	const caller = resolveCaller(req, projectId);
+	if ("error" in caller) return;
+	if (caller.workspaceId === targetWorkspaceId) return;
+	const orch = getDb()
+		.select({ isOrchestrator: workspaces.isOrchestrator })
+		.from(workspaces)
+		.where(eq(workspaces.id, caller.workspaceId))
+		.get();
+	if (!orch?.isOrchestrator) return;
+	try {
+		const { attachToOrchestrator } = await import("../services/orchestrator-membership");
+		await attachToOrchestrator({
+			orchestratorId: caller.workspaceId,
+			workspaceId: targetWorkspaceId,
+		});
+	} catch (err) {
+		console.warn(`[control-plane] auto-attach failed: ${(err as Error).message}`);
+	}
+}
+
 export type ConfirmFn = (req: {
 	kind: "dispatch" | "remove";
 	workspaceName: string;
@@ -159,9 +184,7 @@ async function handleRequest(
 						projectId: row.projectId,
 						workspaceId: row.workspaceId,
 						isOrchestrator: isOrch,
-						orchestratorEventsPath: isOrch
-							? eventsFilePathForProject(row.projectId)
-							: undefined,
+						orchestratorEventsPath: isOrch ? eventsFilePathForProject(row.projectId) : undefined,
 						modeContext: {},
 					});
 					return;
@@ -199,7 +222,9 @@ async function handleRequest(
 					respond(res, 400, requestId, { error: "validation", details: parsed.error.flatten() });
 					return;
 				}
-				respond(res, 200, requestId, await createWorkspace(parsed.data));
+				const created = await createWorkspace(parsed.data);
+				await attachIfCallerIsOrchestrator(req, parsed.data.projectId, created.workspaceId);
+				respond(res, 200, requestId, created);
 				return;
 			}
 			case "POST /workspaces.dispatch": {
@@ -224,6 +249,7 @@ async function handleRequest(
 					return;
 				}
 				const result = await dispatchAgent(parsed.data, { spawnFn: deps.spawnFn });
+				await attachIfCallerIsOrchestrator(req, parsed.data.projectId, parsed.data.workspaceId);
 				respond(res, 200, requestId, result);
 				return;
 			}

@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { chmodSync, existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { and, desc, eq, gt, isNull, or } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull, max, ne, or } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import type {
 	AgentMessageDto,
@@ -28,6 +28,7 @@ import type {
 	WorkspacePhase,
 } from "../../shared/control-plane";
 import { ForbiddenError, NotFoundError, ResumeNotSupportedError } from "../../shared/control-plane";
+import type { ProjectWorkspaceTree, VisibleWorkspaceTreeRow } from "../../shared/types";
 import { CLI_PRESETS } from "../ai-review/cli-presets";
 import type { EventBus } from "../control-plane/event-bus";
 import {
@@ -37,6 +38,7 @@ import {
 import { getDb } from "../db";
 import {
 	agentMessages,
+	orchestratorMembers,
 	projects,
 	sharedFiles,
 	terminalSessions,
@@ -52,6 +54,7 @@ import {
 } from "../git/operations";
 import { symlinkSharedFiles } from "../shared-files";
 import { getDaemonClient } from "../terminal/daemon-instance";
+import { attachToOrchestrator } from "./orchestrator-membership";
 function worktreeBasePath(repoPath: string): string {
 	const parent = dirname(repoPath);
 	const name = repoPath.split("/").pop() ?? "repo";
@@ -224,6 +227,92 @@ export async function listWorkspaces(
 	return { workspaces: rows.map(rowToDto) };
 }
 
+const TREE_WORKSPACE_SELECT = {
+	id: workspaces.id,
+	projectId: workspaces.projectId,
+	type: workspaces.type,
+	name: workspaces.name,
+	worktreeId: workspaces.worktreeId,
+	terminalId: workspaces.terminalId,
+	prProvider: workspaces.prProvider,
+	prIdentifier: workspaces.prIdentifier,
+	reviewDraftId: workspaces.reviewDraftId,
+	createdAt: workspaces.createdAt,
+	updatedAt: workspaces.updatedAt,
+	worktreePath: worktrees.path,
+	draftStatus: reviewDrafts.status,
+	draftCommitSha: reviewDrafts.commitSha,
+	currentPhase: workspaces.currentPhase,
+	statusText: workspaces.statusText,
+	needs: workspaces.needs,
+	isOrchestrator: workspaces.isOrchestrator,
+	cliPreset: workspaces.cliPreset,
+	sortOrder: workspaces.sortOrder,
+} as const;
+
+export async function listByProjectTree(input: {
+	projectId: string;
+}): Promise<ProjectWorkspaceTree> {
+	const db = getDb();
+
+	const rows = db
+		.select(TREE_WORKSPACE_SELECT)
+		.from(workspaces)
+		.leftJoin(worktrees, eq(workspaces.worktreeId, worktrees.id))
+		.leftJoin(reviewDrafts, eq(workspaces.reviewDraftId, reviewDrafts.id))
+		.where(eq(workspaces.projectId, input.projectId))
+		.all()
+		.filter((r) => r.type !== "review") as VisibleWorkspaceTreeRow[];
+
+	const memberRows = db
+		.select({
+			orchestratorId: orchestratorMembers.orchestratorId,
+			workspaceId: orchestratorMembers.workspaceId,
+			sortOrder: orchestratorMembers.sortOrder,
+		})
+		.from(orchestratorMembers)
+		.innerJoin(workspaces, eq(workspaces.id, orchestratorMembers.workspaceId))
+		.where(eq(workspaces.projectId, input.projectId))
+		.all();
+
+	const allOrchestratorIds = new Set(rows.filter((r) => r.isOrchestrator).map((r) => r.id));
+
+	const memberOf = new Map<string, { orchestratorId: string; sortOrder: number }>();
+	for (const m of memberRows) {
+		if (!allOrchestratorIds.has(m.orchestratorId)) continue; // defensive: drop orphaned join rows
+		memberOf.set(m.workspaceId, m);
+	}
+
+	const childrenByOrch = new Map<
+		string,
+		Array<{ row: VisibleWorkspaceTreeRow; sortOrder: number }>
+	>();
+	for (const ws of rows) {
+		const mem = memberOf.get(ws.id);
+		if (!mem) continue;
+		const arr = childrenByOrch.get(mem.orchestratorId) ?? [];
+		arr.push({ row: ws, sortOrder: mem.sortOrder });
+		childrenByOrch.set(mem.orchestratorId, arr);
+	}
+	for (const arr of childrenByOrch.values()) {
+		arr.sort((a, b) => a.sortOrder - b.sortOrder);
+	}
+
+	const orchestrators = rows
+		.filter((r) => r.isOrchestrator)
+		.sort((a, b) => a.sortOrder - b.sortOrder)
+		.map((workspace) => ({
+			workspace,
+			children: (childrenByOrch.get(workspace.id) ?? []).map((c) => c.row),
+		}));
+
+	const loose = rows
+		.filter((r) => !r.isOrchestrator && !memberOf.has(r.id))
+		.sort((a, b) => a.sortOrder - b.sortOrder);
+
+	return { orchestrators, loose };
+}
+
 export async function getWorkspace(input: GetWorkspaceRequest): Promise<GetWorkspaceResponse> {
 	const db = getDb();
 	const row = db
@@ -327,7 +416,7 @@ function escapeShellSingleQuote(s: string): string {
 // prompt prepending — that keeps the rules visible across compaction and
 // session restarts. See apps/desktop/mcp-standalone/server.mjs.
 
-function buildLaunchScript(opts: {
+export function buildLaunchScript(opts: {
 	cwd: string;
 	cliPreset: "claude" | "codex" | "gemini" | "opencode";
 	prompt: string;
@@ -340,7 +429,11 @@ function buildLaunchScript(opts: {
 		opts.cliPreset === "claude" && opts.cliSessionId
 			? `--session-id '${escapeShellSingleQuote(opts.cliSessionId)}' `
 			: "";
-	const cmd = `${opts.cliPreset} ${sessionFlag}${flag}'${escapeShellSingleQuote(opts.prompt)}'`;
+	// Per-preset invocation shape. Most CLIs accept a positional prompt; opencode
+	// reserves the positional slot for `[project]` (a directory) and requires the
+	// `run` subcommand to deliver a prompt as a message.
+	const invocation = opts.cliPreset === "opencode" ? "opencode run" : opts.cliPreset;
+	const cmd = `${invocation} ${sessionFlag}${flag}'${escapeShellSingleQuote(opts.prompt)}'`;
 	return ["#!/bin/bash", `cd '${escapeShellSingleQuote(opts.cwd)}'`, "", cmd, ""].join("\n");
 }
 
@@ -486,13 +579,38 @@ export async function setOrchestrator(
 	}
 
 	const now = new Date();
+	db.update(workspaces)
+		.set({ isOrchestrator: true, updatedAt: now })
+		.where(eq(workspaces.id, input.workspaceId))
+		.run();
+
+	invalidateOrchestratorPresenceCache(ws.projectId);
+
+	return { ok: true };
+}
+
+export async function unsetOrchestrator(
+	ctx: CallerContext,
+	input: { workspaceId: string }
+): Promise<{ ok: true }> {
+	const db = getDb();
+	const ws = db
+		.select({ projectId: workspaces.projectId })
+		.from(workspaces)
+		.where(eq(workspaces.id, input.workspaceId))
+		.get();
+	if (!ws) throw new NotFoundError(input.workspaceId);
+	if (ws.projectId !== ctx.projectId) {
+		throw new ForbiddenError("cross-project unsetOrchestrator");
+	}
+
+	const now = new Date();
 	db.transaction((tx) => {
-		tx.update(workspaces)
-			.set({ isOrchestrator: false, updatedAt: now })
-			.where(eq(workspaces.projectId, ws.projectId))
+		tx.delete(orchestratorMembers)
+			.where(eq(orchestratorMembers.orchestratorId, input.workspaceId))
 			.run();
 		tx.update(workspaces)
-			.set({ isOrchestrator: true, updatedAt: now })
+			.set({ isOrchestrator: false, updatedAt: now })
 			.where(eq(workspaces.id, input.workspaceId))
 			.run();
 	});
@@ -733,4 +851,184 @@ export async function defaultRespawnAgent(args: RespawnAgentArgs): Promise<void>
 		scriptPath,
 		title: "Agent session",
 	});
+}
+
+export interface CreateOrchestratorDeps {
+	/** Override the inner createWorkspace call. Default: the module's real createWorkspace. */
+	createWorkspaceFn?: (input: {
+		projectId: string;
+		branch: string;
+		baseBranch?: string;
+	}) => Promise<{ workspaceId: string; worktreeId: string }>;
+	/** Test seam: override the per-id attach call. Default: the module's real attachToOrchestrator. */
+	attachFn?: typeof attachToOrchestrator;
+}
+
+export async function createOrchestrator(
+	input: {
+		projectId: string;
+		name: string;
+		baseBranch: string;
+		attachWorkspaceIds: string[];
+	},
+	deps: CreateOrchestratorDeps = {}
+): Promise<{
+	id: string;
+	projectId: string;
+	name: string;
+	worktreeId: string;
+	isOrchestrator: true;
+}> {
+	if (input.attachWorkspaceIds.length > 0) {
+		const db = getDb();
+		const rows = db
+			.select({
+				id: workspaces.id,
+				projectId: workspaces.projectId,
+				isOrchestrator: workspaces.isOrchestrator,
+			})
+			.from(workspaces)
+			.where(inArray(workspaces.id, input.attachWorkspaceIds))
+			.all();
+
+		const found = new Set(rows.map((r) => r.id));
+		for (const id of input.attachWorkspaceIds) {
+			if (!found.has(id)) {
+				throw new Error(`workspace ${id} not found`);
+			}
+		}
+		for (const r of rows) {
+			if (r.projectId !== input.projectId) {
+				throw new Error(`workspace ${r.id} belongs to a different project`);
+			}
+			if (r.isOrchestrator) {
+				throw new Error(`workspace ${r.id} is itself an orchestrator and cannot be attached`);
+			}
+		}
+	}
+
+	// Dedupe attach ids (preserve first-seen order) after the pre-check so the
+	// downstream tx-loop never inserts duplicates.
+	const attachIds = Array.from(new Set(input.attachWorkspaceIds));
+
+	const create = deps.createWorkspaceFn ?? createWorkspace;
+	const created = await create({
+		projectId: input.projectId,
+		branch: input.name,
+		baseBranch: input.baseBranch,
+	});
+
+	const db = getDb();
+	const doAttach = deps.attachFn;
+
+	if (doAttach) {
+		// Test seam: caller supplied a custom attach. Atomicity is enforced
+		// manually: promote first, run attaches, and on any failure delete any
+		// inserted member rows + revert the promotion. This mirrors the
+		// production tx's all-or-nothing semantics for the test path.
+		const now = new Date();
+		db.update(workspaces)
+			.set({ isOrchestrator: true, updatedAt: now })
+			.where(eq(workspaces.id, created.workspaceId))
+			.run();
+		try {
+			for (const wsId of attachIds) {
+				await doAttach({ orchestratorId: created.workspaceId, workspaceId: wsId });
+			}
+		} catch (e) {
+			db.delete(orchestratorMembers)
+				.where(eq(orchestratorMembers.orchestratorId, created.workspaceId))
+				.run();
+			db.update(workspaces)
+				.set({ isOrchestrator: false, updatedAt: new Date() })
+				.where(eq(workspaces.id, created.workspaceId))
+				.run();
+			throw e;
+		}
+	} else {
+		// Production path: a single db.transaction wraps the promote + the entire
+		// attach loop, so a mid-loop failure rolls back the promote AND every
+		// previously-inserted member row in one shot.
+		db.transaction((tx) => {
+			const now = new Date();
+			tx.update(workspaces)
+				.set({ isOrchestrator: true, updatedAt: now })
+				.where(eq(workspaces.id, created.workspaceId))
+				.run();
+
+			for (const wsId of attachIds) {
+				// Inlined equivalent of attachToOrchestrator's tx body so the
+				// whole promote+attach sequence shares one transaction.
+				tx.delete(orchestratorMembers)
+					.where(eq(orchestratorMembers.workspaceId, wsId))
+					.run();
+				const maxRow = tx
+					.select({ m: max(orchestratorMembers.sortOrder) })
+					.from(orchestratorMembers)
+					.where(eq(orchestratorMembers.orchestratorId, created.workspaceId))
+					.get();
+				const nextSort = (maxRow?.m ?? -1) + 1;
+				tx.insert(orchestratorMembers)
+					.values({
+						orchestratorId: created.workspaceId,
+						workspaceId: wsId,
+						sortOrder: nextSort,
+						createdAt: new Date(),
+					})
+					.run();
+			}
+		});
+	}
+
+	invalidateOrchestratorPresenceCache(input.projectId);
+
+	return {
+		id: created.workspaceId,
+		projectId: input.projectId,
+		name: input.name,
+		worktreeId: created.worktreeId,
+		isOrchestrator: true,
+	};
+}
+
+export async function renameWorkspace(
+	ctx: CallerContext,
+	input: {
+		workspaceId: string;
+		name: string;
+	}
+): Promise<{ ok: true }> {
+	const trimmed = input.name.trim();
+	if (trimmed.length === 0) {
+		throw new Error("name cannot be empty");
+	}
+	const db = getDb();
+	const ws = db
+		.select({ projectId: workspaces.projectId })
+		.from(workspaces)
+		.where(eq(workspaces.id, input.workspaceId))
+		.get();
+	if (!ws) throw new NotFoundError(input.workspaceId);
+	if (ws.projectId !== ctx.projectId) {
+		throw new ForbiddenError("cross-project renameWorkspace");
+	}
+
+	const dup = db
+		.select({ id: workspaces.id })
+		.from(workspaces)
+		.where(
+			and(
+				eq(workspaces.projectId, ws.projectId),
+				eq(workspaces.name, trimmed),
+				ne(workspaces.id, input.workspaceId)
+			)
+		)
+		.get();
+	if (dup) throw new Error(`name "${trimmed}" already in use in this project`);
+
+	db.update(workspaces)
+		.set({ name: trimmed, updatedAt: new Date() })
+		.where(eq(workspaces.id, input.workspaceId))
+		.run();
+	return { ok: true };
 }

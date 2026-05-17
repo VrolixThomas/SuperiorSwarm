@@ -23,6 +23,7 @@ import {
 	setEventBus,
 	setOrchestrator,
 	setStatus,
+	unsetOrchestrator,
 } from "../src/main/services/workspace-service";
 
 let TMP: string;
@@ -87,7 +88,7 @@ describe("setStatus", () => {
 });
 
 describe("setOrchestrator", () => {
-	test("flips the bit on chosen workspace, clears others in same project", async () => {
+	test("setOrchestrator can promote multiple workspaces independently", async () => {
 		const a = await createWorkspace({ projectId: PROJECT_ID, branch: "feature/orch-a" });
 		const b = await createWorkspace({ projectId: PROJECT_ID, branch: "feature/orch-b" });
 		await setOrchestrator(
@@ -110,8 +111,40 @@ describe("setOrchestrator", () => {
 			.from(schema.workspaces)
 			.where(eq(schema.workspaces.id, b.workspaceId))
 			.get();
-		expect(rowA?.isOrchestrator).toBe(false);
+		expect(rowA?.isOrchestrator).toBe(true);
 		expect(rowB?.isOrchestrator).toBe(true);
+	});
+
+	test("unsetOrchestrator clears flag and detaches members", async () => {
+		const { attachToOrchestrator, listMembership } = await import(
+			"../src/main/services/orchestrator-membership"
+		);
+
+		const orch = await createWorkspace({ projectId: PROJECT_ID, branch: "feature/unset-orch" });
+		const child = await createWorkspace({ projectId: PROJECT_ID, branch: "feature/unset-child" });
+		await setOrchestrator(
+			{ workspaceId: orch.workspaceId, projectId: PROJECT_ID },
+			{ workspaceId: orch.workspaceId }
+		);
+		await attachToOrchestrator({
+			orchestratorId: orch.workspaceId,
+			workspaceId: child.workspaceId,
+		});
+
+		await unsetOrchestrator(
+			{ workspaceId: orch.workspaceId, projectId: PROJECT_ID },
+			{ workspaceId: orch.workspaceId }
+		);
+
+		const db = getDb();
+		const row = db
+			.select()
+			.from(schema.workspaces)
+			.where(eq(schema.workspaces.id, orch.workspaceId))
+			.get();
+		expect(row?.isOrchestrator).toBe(false);
+		const members = await listMembership({ orchestratorId: orch.workspaceId });
+		expect(members.length).toBe(0);
 	});
 
 	test("setOrchestrator rejects cross-project caller", async () => {

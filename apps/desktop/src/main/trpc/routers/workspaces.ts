@@ -3,8 +3,14 @@ import { and, eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { z } from "zod";
 import { getDb } from "../../db";
-import { githubBranchPrs, projects, sharedFiles, workspaces, worktrees } from "../../db/schema";
-import { reviewDrafts } from "../../db/schema-ai-review";
+import {
+	githubBranchPrs,
+	projects,
+	sessionState,
+	sharedFiles,
+	workspaces,
+	worktrees,
+} from "../../db/schema";
 import { checkoutBranchWorktree } from "../../git/operations";
 import { symlinkSharedFiles } from "../../shared-files";
 import { publicProcedure, router } from "../index";
@@ -37,36 +43,12 @@ export const workspacesRouter = router({
 		);
 	}),
 
-	listByProject: publicProcedure.input(z.object({ projectId: z.string() })).query(({ input }) => {
-		const db = getDb();
-		return db
-			.select({
-				id: workspaces.id,
-				projectId: workspaces.projectId,
-				type: workspaces.type,
-				name: workspaces.name,
-				worktreeId: workspaces.worktreeId,
-				terminalId: workspaces.terminalId,
-				prProvider: workspaces.prProvider,
-				prIdentifier: workspaces.prIdentifier,
-				reviewDraftId: workspaces.reviewDraftId,
-				createdAt: workspaces.createdAt,
-				updatedAt: workspaces.updatedAt,
-				worktreePath: worktrees.path,
-				draftStatus: reviewDrafts.status,
-				draftCommitSha: reviewDrafts.commitSha,
-				currentPhase: workspaces.currentPhase,
-				statusText: workspaces.statusText,
-				needs: workspaces.needs,
-				isOrchestrator: workspaces.isOrchestrator,
-				cliPreset: workspaces.cliPreset,
-			})
-			.from(workspaces)
-			.leftJoin(worktrees, eq(workspaces.worktreeId, worktrees.id))
-			.leftJoin(reviewDrafts, eq(workspaces.reviewDraftId, reviewDrafts.id))
-			.where(eq(workspaces.projectId, input.projectId))
-			.all();
-	}),
+	listByProject: publicProcedure
+		.input(z.object({ projectId: z.string() }))
+		.query(async ({ input }) => {
+			const { listByProjectTree } = await import("../../services/workspace-service");
+			return listByProjectTree({ projectId: input.projectId });
+		}),
 
 	create: publicProcedure
 		.input(
@@ -347,6 +329,22 @@ export const workspacesRouter = router({
 			}
 		}),
 
+	renameWorkspace: publicProcedure
+		.input(
+			z.object({
+				projectId: z.string().min(1),
+				workspaceId: z.string().min(1),
+				name: z.string(),
+			})
+		)
+		.mutation(async ({ input }) => {
+			const { renameWorkspace } = await import("../../services/workspace-service");
+			return renameWorkspace(
+				{ projectId: input.projectId, workspaceId: input.workspaceId },
+				{ workspaceId: input.workspaceId, name: input.name }
+			);
+		}),
+
 	setOrchestrator: publicProcedure
 		.input(z.object({ projectId: z.string().min(1), workspaceId: z.string().min(1) }))
 		.mutation(async ({ input }) => {
@@ -356,6 +354,71 @@ export const workspacesRouter = router({
 				{ workspaceId: input.workspaceId }
 			);
 			return { ok: true } as const;
+		}),
+
+	unsetOrchestrator: publicProcedure
+		.input(z.object({ projectId: z.string().min(1), workspaceId: z.string().min(1) }))
+		.mutation(async ({ input }) => {
+			const { unsetOrchestrator } = await import("../../services/workspace-service");
+			await unsetOrchestrator(
+				{ projectId: input.projectId, workspaceId: input.workspaceId },
+				{ workspaceId: input.workspaceId }
+			);
+			return { ok: true } as const;
+		}),
+
+	createOrchestrator: publicProcedure
+		.input(
+			z.object({
+				projectId: z.string().min(1),
+				name: z.string().min(1),
+				baseBranch: z.string().min(1),
+				attachWorkspaceIds: z
+					.array(z.string().min(1))
+					.refine((arr) => new Set(arr).size === arr.length, {
+						message: "attachWorkspaceIds must not contain duplicates",
+					})
+					.default([]),
+			})
+		)
+		.mutation(async ({ input }) => {
+			const { createOrchestrator } = await import("../../services/workspace-service");
+			return createOrchestrator(input);
+		}),
+
+	attachToOrchestrator: publicProcedure
+		.input(z.object({ orchestratorId: z.string().min(1), workspaceId: z.string().min(1) }))
+		.mutation(async ({ input }) => {
+			const { attachToOrchestrator } = await import("../../services/orchestrator-membership");
+			return attachToOrchestrator(input);
+		}),
+
+	detachFromOrchestrator: publicProcedure
+		.input(z.object({ workspaceId: z.string().min(1) }))
+		.mutation(async ({ input }) => {
+			const { detachFromOrchestrator } = await import("../../services/orchestrator-membership");
+			return detachFromOrchestrator(input);
+		}),
+
+	detachAllFromOrchestrator: publicProcedure
+		.input(z.object({ orchestratorId: z.string().min(1) }))
+		.mutation(async ({ input }) => {
+			const { detachAllFromOrchestrator } = await import("../../services/orchestrator-membership");
+			return detachAllFromOrchestrator(input);
+		}),
+
+	reorderTopLevel: publicProcedure
+		.input(z.object({ projectId: z.string().min(1), orderedIds: z.array(z.string().min(1)) }))
+		.mutation(async ({ input }) => {
+			const { reorderTopLevel } = await import("../../services/workspace-ordering");
+			return reorderTopLevel(input);
+		}),
+
+	reorderChildren: publicProcedure
+		.input(z.object({ orchestratorId: z.string().min(1), orderedIds: z.array(z.string().min(1)) }))
+		.mutation(async ({ input }) => {
+			const { reorderChildren } = await import("../../services/workspace-ordering");
+			return reorderChildren(input);
 		}),
 
 	attachTerminal: publicProcedure
@@ -502,5 +565,51 @@ export const workspacesRouter = router({
 		.mutation(async ({ input }) => {
 			const { cleanupReviewWorkspace } = await import("../../ai-review/cleanup");
 			await cleanupReviewWorkspace(input.workspaceId);
+		}),
+
+	getOrchestratorColors: publicProcedure
+		.input(z.object({ projectId: z.string().min(1) }))
+		.query(({ input }) => {
+			const db = getDb();
+			const key = `orchestratorColors:${input.projectId}`;
+			const row = db.select().from(sessionState).where(eq(sessionState.key, key)).get();
+			return row ? (JSON.parse(row.value) as Record<string, number>) : {};
+		}),
+
+	setOrchestratorColors: publicProcedure
+		.input(
+			z.object({
+				projectId: z.string().min(1),
+				map: z.record(z.string(), z.number().int().min(0).max(7)),
+			})
+		)
+		.mutation(({ input }) => {
+			const db = getDb();
+			const key = `orchestratorColors:${input.projectId}`;
+			const value = JSON.stringify(input.map);
+			db.insert(sessionState)
+				.values({ key, value })
+				.onConflictDoUpdate({ target: sessionState.key, set: { value } })
+				.run();
+			return { ok: true } as const;
+		}),
+
+	getOrchestratorExpand: publicProcedure
+		.input(z.object({ key: z.string().min(1) }))
+		.query(({ input }) => {
+			const db = getDb();
+			const row = db.select().from(sessionState).where(eq(sessionState.key, input.key)).get();
+			return row ? row.value === "1" : true;
+		}),
+
+	setOrchestratorExpand: publicProcedure
+		.input(z.object({ key: z.string().min(1), value: z.boolean() }))
+		.mutation(({ input }) => {
+			const db = getDb();
+			db.insert(sessionState)
+				.values({ key: input.key, value: input.value ? "1" : "0" })
+				.onConflictDoUpdate({ target: sessionState.key, set: { value: input.value ? "1" : "0" } })
+				.run();
+			return { ok: true } as const;
 		}),
 });

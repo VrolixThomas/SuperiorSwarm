@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { AgentAlert } from "../../shared/agent-events";
 import { useAgentAlertStore } from "../stores/agent-alert-store";
 import { usePaneStore } from "../stores/pane-store";
+import { useProjectStore } from "../stores/projects";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 
@@ -25,6 +26,7 @@ interface WorkspaceItemProps {
 	projectName: string;
 	projectRepoPath: string;
 	isInActiveProject: boolean;
+	indentLevel?: 0 | 1;
 }
 
 /**
@@ -157,16 +159,31 @@ function WorkspaceContextMenu({
 	onClose,
 	onDelete,
 	onSetOrchestrator,
+	onUnsetOrchestrator,
 	isOrchestrator,
+	orchestrators,
+	onAttachTo,
+	onDetach,
+	onCreateOrchestrator,
+	canAttach,
+	canDetach,
 }: {
 	position: { x: number; y: number };
 	onClose: () => void;
 	onDelete: () => void;
 	onSetOrchestrator?: () => void;
+	onUnsetOrchestrator?: () => void;
 	isOrchestrator?: boolean | null;
+	orchestrators: Array<{ id: string; name: string }>;
+	onAttachTo?: (orchestratorId: string) => void;
+	onDetach?: () => void;
+	onCreateOrchestrator?: () => void;
+	canAttach: boolean;
+	canDetach: boolean;
 }) {
 	const menuRef = useRef<HTMLDivElement>(null);
 	const [adjusted, setAdjusted] = useState(position);
+	const [attachOpen, setAttachOpen] = useState(false);
 
 	useEffect(() => {
 		if (!menuRef.current) return;
@@ -224,6 +241,70 @@ function WorkspaceContextMenu({
 					Set as orchestrator
 				</div>
 			)}
+			{onUnsetOrchestrator && isOrchestrator && (
+				<div
+					role="menuitem"
+					tabIndex={0}
+					className="px-3 py-1.5 text-[13px] cursor-pointer hover:bg-[var(--bg-overlay)] transition-all duration-[120ms] text-[var(--text)]"
+					onClick={onUnsetOrchestrator}
+					onKeyDown={(e) => {
+						if (e.key === "Enter") onUnsetOrchestrator();
+					}}
+				>
+					Unset orchestrator
+				</div>
+			)}
+			{canAttach && (
+				<div
+					className="relative"
+					onMouseEnter={() => setAttachOpen(true)}
+					onMouseLeave={() => setAttachOpen(false)}
+				>
+					<div
+						role="menuitem"
+						tabIndex={0}
+						className="px-3 py-1.5 text-[13px] cursor-pointer hover:bg-[var(--bg-overlay)] transition-all duration-[120ms] text-[var(--text)] flex items-center justify-between"
+					>
+						<span>Attach to</span>
+						<span className="text-[var(--text-quaternary)]">▸</span>
+					</div>
+					{attachOpen && (
+						<div className="absolute left-full top-0 ml-1 min-w-[180px] rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-elevated)] py-1 shadow-[var(--shadow-md)]">
+							{orchestrators.length === 0 && (
+								<div
+									role="menuitem"
+									tabIndex={0}
+									className="px-3 py-1.5 text-[12px] cursor-pointer hover:bg-[var(--bg-overlay)] text-[var(--text-tertiary)]"
+									onClick={onCreateOrchestrator}
+								>
+									No orchestrators in this project. Create one →
+								</div>
+							)}
+							{orchestrators.map((o) => (
+								<div
+									key={o.id}
+									role="menuitem"
+									tabIndex={0}
+									className="px-3 py-1.5 text-[13px] cursor-pointer hover:bg-[var(--bg-overlay)] text-[var(--text)]"
+									onClick={() => onAttachTo?.(o.id)}
+								>
+									{o.name}
+								</div>
+							))}
+						</div>
+					)}
+				</div>
+			)}
+			{canDetach && onDetach && (
+				<div
+					role="menuitem"
+					tabIndex={0}
+					className="px-3 py-1.5 text-[13px] cursor-pointer hover:bg-[var(--bg-overlay)] transition-all duration-[120ms] text-[var(--text)]"
+					onClick={onDetach}
+				>
+					Detach from orchestrator
+				</div>
+			)}
 			<div
 				role="menuitem"
 				tabIndex={0}
@@ -245,6 +326,7 @@ export function WorkspaceItem({
 	projectName,
 	projectRepoPath,
 	isInActiveProject,
+	indentLevel = 0,
 }: WorkspaceItemProps) {
 	const [contextMenu, setContextMenu] = useState<{
 		x: number;
@@ -265,9 +347,18 @@ export function WorkspaceItem({
 			const previousLayout = paneStore.getLayout(id);
 			const previousMetadata = tabStore.workspaceMetadata[id];
 
-			utils.workspaces.listByProject.setData({ projectId }, (old) =>
-				old?.filter((ws) => ws.id !== id)
-			);
+			utils.workspaces.listByProject.setData({ projectId }, (old) => {
+				if (!old) return old;
+				return {
+					orchestrators: old.orchestrators
+						.filter((o) => o.workspace.id !== id)
+						.map((o) => ({
+							...o,
+							children: o.children.filter((c) => c.id !== id),
+						})),
+					loose: old.loose.filter((w) => w.id !== id),
+				};
+			});
 			paneStore.clearLayout(id);
 			tabStore.cleanupWorkspace(id);
 
@@ -306,6 +397,36 @@ export function WorkspaceItem({
 		setOrchestrator.mutate({ projectId, workspaceId: workspace.id });
 		setContextMenu(null);
 	}, [workspace.id, projectId, setOrchestrator]);
+
+	const unsetOrchestrator = trpc.workspaces.unsetOrchestrator.useMutation({
+		onSuccess: () => {
+			utils.workspaces.listByProject.invalidate({ projectId });
+		},
+	});
+
+	const treeQueryForMenu = trpc.workspaces.listByProject.useQuery(
+		{ projectId },
+		{ staleTime: 60_000 }
+	);
+	const orchestratorsInProject = (treeQueryForMenu.data?.orchestrators ?? []).map((o) => ({
+		id: o.workspace.id,
+		name: o.workspace.name,
+	}));
+	const isChildOfOrchestrator = (treeQueryForMenu.data?.orchestrators ?? []).some((o) =>
+		o.children.some((c) => c.id === workspace.id)
+	);
+
+	const attachMut = trpc.workspaces.attachToOrchestrator.useMutation({
+		onSuccess: () => utils.workspaces.listByProject.invalidate({ projectId }),
+	});
+	const detachMut = trpc.workspaces.detachFromOrchestrator.useMutation({
+		onSuccess: () => utils.workspaces.listByProject.invalidate({ projectId }),
+	});
+
+	const handleUnsetOrchestrator = useCallback(() => {
+		unsetOrchestrator.mutate({ projectId, workspaceId: workspace.id });
+		setContextMenu(null);
+	}, [workspace.id, projectId, unsetOrchestrator]);
 
 	const isActive = useTabStore((s) => s.activeWorkspaceId === workspace.id);
 	const alert = useAgentAlertStore((s) => s.alerts[workspace.id]);
@@ -370,7 +491,7 @@ export function WorkspaceItem({
 	}, [workspace.id, workspace.name]);
 
 	return (
-		<div className="relative">
+		<div className="group relative">
 			<button
 				type="button"
 				onClick={handleClick}
@@ -380,9 +501,26 @@ export function WorkspaceItem({
 						setContextMenu({ x: e.clientX, y: e.clientY });
 					}
 				}}
+				onKeyDown={(e) => {
+					const mod = e.metaKey || e.ctrlKey;
+					if (mod && e.shiftKey && (e.key === "a" || e.key === "A")) {
+						e.preventDefault();
+						if (!workspace.isOrchestrator && indentLevel === 0 && workspace.type === "worktree") {
+							const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+							setContextMenu({ x: rect.right - 200, y: rect.bottom });
+						}
+					}
+					if (mod && e.shiftKey && (e.key === "d" || e.key === "D")) {
+						e.preventDefault();
+						if (isChildOfOrchestrator) {
+							detachMut.mutate({ workspaceId: workspace.id });
+						}
+					}
+				}}
 				className={[
-					"relative flex w-full items-center gap-2 border-none pl-[22px] pr-3 py-[7px] cursor-pointer",
-					"transition-all duration-[120ms] text-left rounded-[6px]",
+					"relative flex w-full items-center gap-2 border-none",
+					indentLevel === 1 ? "pl-[36px] pr-3 py-[7px]" : "pl-[22px] pr-3 py-[7px]",
+					"cursor-pointer transition-all duration-[120ms] text-left rounded-[6px]",
 					isActive
 						? "bg-[var(--accent-subtle)] hover:bg-[var(--accent-subtle)]"
 						: "bg-transparent hover:bg-[var(--bg-elevated)]",
@@ -470,13 +608,46 @@ export function WorkspaceItem({
 				{alert && <SwarmIndicator alert={alert} className="ml-auto" />}
 			</button>
 
+			{indentLevel === 0 && !workspace.isOrchestrator && workspace.type === "worktree" && (
+				<button
+					type="button"
+					aria-label="Promote to orchestrator"
+					title="Promote to orchestrator"
+					onClick={(e) => {
+						e.stopPropagation();
+						handleSetOrchestrator();
+					}}
+					className="absolute right-7 top-1/2 -translate-y-1/2 h-5 w-5 flex items-center justify-center rounded text-[14px] text-[var(--text-quaternary)] hover:text-[var(--text-secondary)] opacity-0 group-hover:opacity-55 focus:opacity-100 transition-opacity duration-[120ms]"
+				>
+					↥
+				</button>
+			)}
+
 			{contextMenu && (
 				<WorkspaceContextMenu
 					position={contextMenu}
 					onClose={() => setContextMenu(null)}
 					onDelete={handleDelete}
 					onSetOrchestrator={workspace.type === "worktree" ? handleSetOrchestrator : undefined}
+					onUnsetOrchestrator={workspace.type === "worktree" ? handleUnsetOrchestrator : undefined}
 					isOrchestrator={workspace.isOrchestrator}
+					orchestrators={orchestratorsInProject}
+					onAttachTo={(orchId) => {
+						attachMut.mutate({ orchestratorId: orchId, workspaceId: workspace.id });
+						setContextMenu(null);
+					}}
+					onDetach={() => {
+						detachMut.mutate({ workspaceId: workspace.id });
+						setContextMenu(null);
+					}}
+					onCreateOrchestrator={() => {
+						useProjectStore.getState().openCreateWorktreeModal(projectId, { asOrchestrator: true });
+						setContextMenu(null);
+					}}
+					canAttach={
+						!workspace.isOrchestrator && indentLevel === 0 && workspace.type === "worktree"
+					}
+					canDetach={isChildOfOrchestrator}
 				/>
 			)}
 		</div>

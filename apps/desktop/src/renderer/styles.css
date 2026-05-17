@@ -64,6 +64,26 @@
 	--term-bright-cyan: #99e9f2;
 	--term-bright-white: #ffffff;
 
+	/* Orchestrator group colors — muted ~40% saturation tints.
+	   Cycled per-project via session_state map; --accent stays reserved
+	   for active-selection treatment. */
+	--orch-1: #8a9ab0;
+	--orch-1-bg: rgba(138, 154, 176, 0.12);
+	--orch-2: #b09a8a;
+	--orch-2-bg: rgba(176, 154, 138, 0.12);
+	--orch-3: #9ab08a;
+	--orch-3-bg: rgba(154, 176, 138, 0.12);
+	--orch-4: #b08a9a;
+	--orch-4-bg: rgba(176, 138, 154, 0.12);
+	--orch-5: #8ab0a8;
+	--orch-5-bg: rgba(138, 176, 168, 0.12);
+	--orch-6: #a8a08a;
+	--orch-6-bg: rgba(168, 160, 138, 0.12);
+	--orch-7: #9a8ab0;
+	--orch-7-bg: rgba(154, 138, 176, 0.12);
+	--orch-8: #b0a08a;
+	--orch-8-bg: rgba(176, 160, 138, 0.12);
+
 	/* Shadows */
 	--shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
 	--shadow-md: 0 2px 8px rgba(0, 0, 0, 0.4);
@@ -135,6 +155,24 @@ html[data-theme="light"] {
 	--shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);
 	--shadow-md: 0 2px 8px rgba(0, 0, 0, 0.08);
 	--shadow-lg: 0 4px 24px rgba(0, 0, 0, 0.12);
+
+	/* Orchestrator group colors — slightly higher alpha for light-bg legibility */
+	--orch-1: #6f8094;
+	--orch-1-bg: rgba(111, 128, 148, 0.14);
+	--orch-2: #948070;
+	--orch-2-bg: rgba(148, 128, 112, 0.14);
+	--orch-3: #809470;
+	--orch-3-bg: rgba(128, 148, 112, 0.14);
+	--orch-4: #946f80;
+	--orch-4-bg: rgba(148, 111, 128, 0.14);
+	--orch-5: #70948c;
+	--orch-5-bg: rgba(112, 148, 140, 0.14);
+	--orch-6: #8c8470;
+	--orch-6-bg: rgba(140, 132, 112, 0.14);
+	--orch-7: #80708c;
+	--orch-7-bg: rgba(128, 112, 140, 0.14);
+	--orch-8: #948870;
+	--orch-8-bg: rgba(148, 136, 112, 0.14);
 }
 
 @layer base {

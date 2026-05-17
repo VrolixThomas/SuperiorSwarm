@@ -6,6 +6,7 @@ import type { TicketIssue } from "../../shared/tickets";
 import { useProjectStore } from "../stores/projects";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
+import { flattenWorkspaceTree } from "../utils/workspace-tree";
 import { CreateBranchFromIssueModal } from "./CreateBranchFromIssueModal";
 import { CreateWorktreeFromPRModal, type LinkablePR } from "./CreateWorktreeFromPRModal";
 import { ProjectItem } from "./ProjectItem";
@@ -118,8 +119,9 @@ function RailProjectItem({
 	);
 
 	const isFlyoutActive = flyout?.kind === "project" && flyout.project.id === project.id;
-	const visiblePills = workspacesList?.slice(0, MAX_PILLS);
-	const hoveredWsData = workspacesList?.find((ws) => ws.id === hoveredWs);
+	const flatWorkspaces = workspacesList ? flattenWorkspaceTree(workspacesList) : undefined;
+	const visiblePills = flatWorkspaces?.slice(0, MAX_PILLS);
+	const hoveredWsData = flatWorkspaces?.find((ws) => ws.id === hoveredWs);
 
 	return (
 		<div className="flex w-full flex-col items-stretch rounded-[8px] border border-[var(--border)] bg-[var(--bg-elevated)] px-1.5 py-1.5">
