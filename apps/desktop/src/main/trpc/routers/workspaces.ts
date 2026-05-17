@@ -373,7 +373,12 @@ export const workspacesRouter = router({
 				projectId: z.string().min(1),
 				name: z.string().min(1),
 				baseBranch: z.string().min(1),
-				attachWorkspaceIds: z.array(z.string().min(1)).default([]),
+				attachWorkspaceIds: z
+					.array(z.string().min(1))
+					.refine((arr) => new Set(arr).size === arr.length, {
+						message: "attachWorkspaceIds must not contain duplicates",
+					})
+					.default([]),
 			})
 		)
 		.mutation(async ({ input }) => {

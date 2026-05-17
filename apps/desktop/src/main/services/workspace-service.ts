@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { chmodSync, existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { and, desc, eq, gt, inArray, isNull, ne, or } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull, max, ne, or } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import type {
 	AgentMessageDto,
@@ -54,6 +54,7 @@ import {
 } from "../git/operations";
 import { symlinkSharedFiles } from "../shared-files";
 import { getDaemonClient } from "../terminal/daemon-instance";
+import { attachToOrchestrator } from "./orchestrator-membership";
 function worktreeBasePath(repoPath: string): string {
 	const parent = dirname(repoPath);
 	const name = repoPath.split("/").pop() ?? "repo";
@@ -855,6 +856,8 @@ export interface CreateOrchestratorDeps {
 		branch: string;
 		baseBranch?: string;
 	}) => Promise<{ workspaceId: string; worktreeId: string }>;
+	/** Test seam: override the per-id attach call. Default: the module's real attachToOrchestrator. */
+	attachFn?: typeof attachToOrchestrator;
 }
 
 export async function createOrchestrator(
@@ -900,6 +903,10 @@ export async function createOrchestrator(
 		}
 	}
 
+	// Dedupe attach ids (preserve first-seen order) after the pre-check so the
+	// downstream tx-loop never inserts duplicates.
+	const attachIds = Array.from(new Set(input.attachWorkspaceIds));
+
 	const create = deps.createWorkspaceFn ?? createWorkspace;
 	const created = await create({
 		projectId: input.projectId,
@@ -907,18 +914,69 @@ export async function createOrchestrator(
 		baseBranch: input.baseBranch,
 	});
 
-	await setOrchestrator(
-		{ projectId: input.projectId, workspaceId: created.workspaceId },
-		{ workspaceId: created.workspaceId }
-	);
+	const db = getDb();
+	const doAttach = deps.attachFn;
 
-	const { attachToOrchestrator } = await import("./orchestrator-membership");
-	for (const wsId of input.attachWorkspaceIds) {
-		await attachToOrchestrator({
-			orchestratorId: created.workspaceId,
-			workspaceId: wsId,
+	if (doAttach) {
+		// Test seam: caller supplied a custom attach. Atomicity is enforced
+		// manually: promote first, run attaches, and on any failure delete any
+		// inserted member rows + revert the promotion. This mirrors the
+		// production tx's all-or-nothing semantics for the test path.
+		const now = new Date();
+		db.update(workspaces)
+			.set({ isOrchestrator: true, updatedAt: now })
+			.where(eq(workspaces.id, created.workspaceId))
+			.run();
+		try {
+			for (const wsId of attachIds) {
+				await doAttach({ orchestratorId: created.workspaceId, workspaceId: wsId });
+			}
+		} catch (e) {
+			db.delete(orchestratorMembers)
+				.where(eq(orchestratorMembers.orchestratorId, created.workspaceId))
+				.run();
+			db.update(workspaces)
+				.set({ isOrchestrator: false, updatedAt: new Date() })
+				.where(eq(workspaces.id, created.workspaceId))
+				.run();
+			throw e;
+		}
+	} else {
+		// Production path: a single db.transaction wraps the promote + the entire
+		// attach loop, so a mid-loop failure rolls back the promote AND every
+		// previously-inserted member row in one shot.
+		db.transaction((tx) => {
+			const now = new Date();
+			tx.update(workspaces)
+				.set({ isOrchestrator: true, updatedAt: now })
+				.where(eq(workspaces.id, created.workspaceId))
+				.run();
+
+			for (const wsId of attachIds) {
+				// Inlined equivalent of attachToOrchestrator's tx body so the
+				// whole promote+attach sequence shares one transaction.
+				tx.delete(orchestratorMembers)
+					.where(eq(orchestratorMembers.workspaceId, wsId))
+					.run();
+				const maxRow = tx
+					.select({ m: max(orchestratorMembers.sortOrder) })
+					.from(orchestratorMembers)
+					.where(eq(orchestratorMembers.orchestratorId, created.workspaceId))
+					.get();
+				const nextSort = (maxRow?.m ?? -1) + 1;
+				tx.insert(orchestratorMembers)
+					.values({
+						orchestratorId: created.workspaceId,
+						workspaceId: wsId,
+						sortOrder: nextSort,
+						createdAt: new Date(),
+					})
+					.run();
+			}
 		});
 	}
+
+	invalidateOrchestratorPresenceCache(input.projectId);
 
 	return {
 		id: created.workspaceId,

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { getDb } from "../src/main/db";
-import { workspaces, worktrees } from "../src/main/db/schema";
+import { orchestratorMembers, workspaces, worktrees } from "../src/main/db/schema";
 import { listMembership } from "../src/main/services/orchestrator-membership";
 import { createOrchestrator } from "../src/main/services/workspace-service";
 import { seedProject, seedWorkspace, setupTestDb, teardownTestDb } from "./helpers/db";
@@ -94,5 +94,67 @@ describe("createOrchestrator", () => {
 			.where(eq(workspaces.projectId, p1))
 			.all();
 		expect(p1Workspaces.length).toBe(0);
+	});
+
+	test("rolls back promote + attaches when an attach mid-loop fails", async () => {
+		const projectId = await seedProject();
+		const ok1 = await seedWorkspace(projectId, { name: "ok-1" });
+		const ok2 = await seedWorkspace(projectId, { name: "ok-2" });
+
+		let calls = 0;
+		const failingAttach = async () => {
+			calls++;
+			if (calls === 2) throw new Error("simulated attach failure");
+			return { ok: true as const };
+		};
+
+		await expect(
+			createOrchestrator(
+				{
+					projectId,
+					name: "test-orch",
+					baseBranch: "main",
+					attachWorkspaceIds: [ok1, ok2],
+				},
+				{ createWorkspaceFn: fakeCreateWorkspace, attachFn: failingAttach }
+			)
+		).rejects.toThrow(/simulated attach failure/);
+
+		// Assert rollback: no orchestrator promotion persists in this project.
+		const orchRows = getDb()
+			.select()
+			.from(workspaces)
+			.where(eq(workspaces.projectId, projectId))
+			.all();
+		const promoted = orchRows.filter((r) => r.isOrchestrator);
+		expect(promoted.length).toBe(0);
+
+		// And no member rows reference the would-be orchestrator's attach targets.
+		const memberRows = getDb().select().from(orchestratorMembers).all();
+		const scopedMemberRows = memberRows.filter((r) => [ok1, ok2].includes(r.workspaceId));
+		expect(scopedMemberRows.length).toBe(0);
+	});
+
+	test("dedupes attachWorkspaceIds", async () => {
+		const projectId = await seedProject();
+		const a = await seedWorkspace(projectId, { name: "child-a" });
+
+		const result = await createOrchestrator(
+			{
+				projectId,
+				name: "test-orch-dedupe",
+				baseBranch: "main",
+				attachWorkspaceIds: [a, a, a],
+			},
+			{ createWorkspaceFn: fakeCreateWorkspace }
+		);
+		expect(result.isOrchestrator).toBe(true);
+
+		const rows = getDb()
+			.select()
+			.from(orchestratorMembers)
+			.where(eq(orchestratorMembers.orchestratorId, result.id))
+			.all();
+		expect(rows.length).toBe(1);
 	});
 });
