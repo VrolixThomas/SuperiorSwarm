@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-type ToastState = "hidden" | "new-version" | "patch" | "downloading" | "ready";
+type ToastState = "hidden" | "new-version" | "patch" | "downloading" | "ready" | "installing";
 
 interface UpdateStore {
 	toastState: ToastState;
@@ -20,6 +20,7 @@ interface UpdateStore {
 	dismissUpdateOptimistic: (version: string) => string | null;
 	restoreDismissedUpdateVersion: (version: string | null) => void;
 	setUpdateReadyIfNotDismissed: (version: string) => void;
+	setInstalling: () => void;
 }
 
 export const useUpdateStore = create<UpdateStore>()((set, get) => ({
@@ -34,7 +35,10 @@ export const useUpdateStore = create<UpdateStore>()((set, get) => ({
 	showToast: (toastState, version, summary) =>
 		set({ toastState, toastVersion: version, toastSummary: summary }),
 
-	dismissToast: () => set({ toastState: "hidden", toastVersion: null, toastSummary: null }),
+	dismissToast: () => {
+		if (get().toastState === "installing") return;
+		set({ toastState: "hidden", toastVersion: null, toastSummary: null });
+	},
 
 	openWhatsNew: (version) => set({ showWhatsNewModal: true, modalVersion: version }),
 
@@ -56,4 +60,6 @@ export const useUpdateStore = create<UpdateStore>()((set, get) => ({
 		if (get().dismissedUpdateVersion === version) return;
 		set({ toastState: "ready", toastVersion: version, downloadProgress: null });
 	},
+
+	setInstalling: () => set({ toastState: "installing" }),
 }));
