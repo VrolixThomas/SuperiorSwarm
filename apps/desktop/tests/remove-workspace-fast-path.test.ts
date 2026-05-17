@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { execSync } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Database from "better-sqlite3";
@@ -87,27 +88,131 @@ describe("removeWorkspace fast-path", () => {
 		});
 		_setWorktreeCleanupQueueForTesting(queue);
 
-		const start = Date.now();
-		const result = await removeWorkspace({ projectId, workspaceId, force: true });
-		const elapsed = Date.now() - start;
+		try {
+			const start = Date.now();
+			const result = await removeWorkspace({ projectId, workspaceId, force: true });
+			const elapsed = Date.now() - start;
 
-		expect(result.status).toBe("removed");
-		expect(elapsed).toBeLessThan(500);
-		expect(released).toBe(false);
-		expect(
-			db.select().from(schema.workspaces).where(eq(schema.workspaces.id, workspaceId)).all()
-				.length
-		).toBe(0);
-		expect(
-			db.select().from(schema.worktrees).where(eq(schema.worktrees.id, worktreeId)).all().length
-		).toBe(0);
-		expect(queue.pendingCount()).toBe(1);
+			expect(result.status).toBe("removed");
+			expect(elapsed).toBeLessThan(500);
+			expect(released).toBe(false);
+			expect(
+				db.select().from(schema.workspaces).where(eq(schema.workspaces.id, workspaceId)).all()
+					.length
+			).toBe(0);
+			expect(
+				db.select().from(schema.worktrees).where(eq(schema.worktrees.id, worktreeId)).all()
+					.length
+			).toBe(0);
+			expect(queue.pendingCount()).toBe(1);
+		} finally {
+			releaseResolve?.();
+			await queue.drain();
+			rmSync(wtPath, { recursive: true, force: true });
+			rmSync(repoPath, { recursive: true, force: true });
+			_resetWorktreeCleanupQueueForTesting();
+			_setDbForTesting(null);
+		}
+	});
 
-		releaseResolve?.();
-		await queue.drain();
-		rmSync(wtPath, { recursive: true, force: true });
-		rmSync(repoPath, { recursive: true, force: true });
-		_resetWorktreeCleanupQueueForTesting();
-		_setDbForTesting(null);
+	test("blocked_uncommitted path does not schedule cleanup", async () => {
+		const sqlite = new Database(":memory:");
+		const db = drizzle(sqlite, { schema });
+		migrate(db, { migrationsFolder: "src/main/db/migrations" });
+		_setDbForTesting(db);
+
+		const projectId = "p2";
+		const workspaceId = "w2";
+		const worktreeId = "wt2";
+		const now = new Date();
+
+		// Create a real tmp dir for the worktree and make it a dirty git repo
+		// so hasUncommittedChanges returns true (git status --porcelain is non-empty).
+		const wtPath = mkdtempSync(join(tmpdir(), "ss-test-wt-dirty-"));
+		const repoPath = mkdtempSync(join(tmpdir(), "ss-test-repo-dirty-"));
+
+		execSync("git init -q", { cwd: wtPath });
+		execSync("git config user.email t@x", { cwd: wtPath });
+		execSync("git config user.name t", { cwd: wtPath });
+		writeFileSync(join(wtPath, "dirty.txt"), "x");
+
+		// Seed the DB identically to the first test
+		db.insert(schema.projects)
+			.values({
+				id: projectId,
+				name: "Test Project Dirty",
+				repoPath,
+				defaultBranch: "main",
+				status: "ready",
+				createdAt: now,
+				updatedAt: now,
+			})
+			.run();
+
+		db.insert(schema.worktrees)
+			.values({
+				id: worktreeId,
+				projectId,
+				path: wtPath,
+				branch: "feature/dirty",
+				baseBranch: "main",
+				createdAt: now,
+				updatedAt: now,
+			})
+			.run();
+
+		db.insert(schema.workspaces)
+			.values({
+				id: workspaceId,
+				projectId,
+				type: "worktree",
+				name: "feature/dirty",
+				worktreeId,
+				terminalId: null,
+				currentPhase: "idle",
+				isOrchestrator: false,
+				createdAt: now,
+				updatedAt: now,
+			})
+			.run();
+
+		// Use a spy forceRemove to detect if the queue is ever called
+		let forceRemoveCalls = 0;
+		const queue = createWorktreeCleanupQueue({
+			graceMs: 0,
+			forceRemove: async () => {
+				forceRemoveCalls++;
+			},
+		});
+		_setWorktreeCleanupQueueForTesting(queue);
+
+		try {
+			const result = await removeWorkspace({ projectId, workspaceId, force: false });
+
+			expect(result.status).toBe("blocked_uncommitted");
+			expect(queue.pendingCount()).toBe(0);
+			expect(forceRemoveCalls).toBe(0);
+
+			// DB rows must NOT be deleted — the user hasn't committed/discarded changes
+			expect(
+				db
+					.select()
+					.from(schema.workspaces)
+					.where(eq(schema.workspaces.id, workspaceId))
+					.all().length
+			).toBe(1);
+			expect(
+				db
+					.select()
+					.from(schema.worktrees)
+					.where(eq(schema.worktrees.id, worktreeId))
+					.all().length
+			).toBe(1);
+		} finally {
+			rmSync(wtPath, { recursive: true, force: true });
+			rmSync(repoPath, { recursive: true, force: true });
+			_resetWorktreeCleanupQueueForTesting();
+			_setDbForTesting(null);
+		}
 	});
 });
