@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.9.2 (2026-05-17)
+
+### What's New
+
+SuperiorSwarm v0.9.2 brings orchestrator workspaces front and center. You can now group workspaces under one or more orchestrators per project, reorder them with drag-and-drop, and attach or detach via right-click, keyboard shortcuts, or a dedicated hover button. A new create-orchestrator modal lets you spin up a coordinator and attach existing workspaces in one step, with color-coded rows so each group stays visually distinct. The auto-updater no longer looks frozen during install — a spinner overlay paints before the app quits, and a watchdog guarantees clean shutdown so updates apply reliably.
+
+### Changes
+
+- Orchestrator ordering (#108)
+- Updating application not responding (#109)
+
 ## v0.9.1 (2026-05-17)
 
 ### What's New
