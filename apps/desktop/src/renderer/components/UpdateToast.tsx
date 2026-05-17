@@ -60,7 +60,19 @@ export function UpdateToast() {
 	};
 
 	const handleRestart = () => {
-		installUpdate.mutate();
+		useUpdateStore.getState().setInstalling();
+		// Best-effort final save while the app is still responsive. The
+		// periodic autosave in App.tsx is the durable path; this dispatches
+		// one extra mutation so any work since the last interval may land.
+		window.dispatchEvent(new Event("superiorswarm:save-now"));
+		// Wait for two animation frames so React commits + the browser paints
+		// the overlay before the main process starts shutting down. A single
+		// macrotask isn't a paint guarantee.
+		requestAnimationFrame(() => {
+			requestAnimationFrame(() => {
+				installUpdate.mutate();
+			});
+		});
 	};
 
 	const handleLater = () => {
