@@ -23,10 +23,7 @@ import {
 } from "./ai-review/pr-poller";
 import { type RunningControlPlane, startControlPlane } from "./control-plane";
 import { registerConfirmBridge, requestConfirm } from "./control-plane/confirm-bridge";
-import {
-	attachOrchestratorEventSink,
-	setEventsDir,
-} from "./control-plane/orchestrator-event-sink";
+import { attachOrchestratorEventSink, setEventsDir } from "./control-plane/orchestrator-event-sink";
 import { backfillRemoteHosts, getDb, initializeDatabase } from "./db";
 import * as schema from "./db/schema";
 import {
@@ -66,6 +63,11 @@ import { JiraAdapter } from "./providers/jira-adapter";
 import { LinearAdapter } from "./providers/linear-adapter";
 
 let mainWindow: BrowserWindow | null = null;
+
+export function getMainWindow(): BrowserWindow | null {
+	return mainWindow;
+}
+
 let daemonClient: DaemonClient;
 let alertListener: AgentAlertListener | null = null;
 let controlPlane: RunningControlPlane | null = null;

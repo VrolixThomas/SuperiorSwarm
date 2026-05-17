@@ -72,9 +72,25 @@ export const updatesRouter = router({
 		const t0 = Date.now();
 		log.info("[updater] installUpdate mutation entered");
 		try {
-			log.info("[updater] calling quitAndInstall");
-			autoUpdater.quitAndInstall();
-			log.info(`[updater] quitAndInstall returned +${Date.now() - t0}ms`);
+			// Close the main window first so the renderer can release tRPC
+			// subscriptions and IPC handles in a controlled order, then trigger
+			// quitAndInstall on the next tick. This avoids racing window close
+			// with main-process teardown.
+			const { getMainWindow } = await import("../../index");
+			const win = getMainWindow();
+			if (win && !win.isDestroyed()) {
+				log.info(`[updater] closing main window +${Date.now() - t0}ms`);
+				win.close();
+			}
+			setImmediate(() => {
+				log.info(`[updater] calling quitAndInstall +${Date.now() - t0}ms`);
+				try {
+					autoUpdater.quitAndInstall();
+					log.info(`[updater] quitAndInstall returned +${Date.now() - t0}ms`);
+				} catch (err) {
+					log.error("[updater] quitAndInstall threw:", err);
+				}
+			});
 		} catch (err) {
 			log.error("[updater] Install update failed:", err);
 		}
