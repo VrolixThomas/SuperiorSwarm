@@ -407,7 +407,7 @@ export function WorkspaceItem({
 	}, [workspace.id, workspace.name]);
 
 	return (
-		<div className="relative">
+		<div className="group relative">
 			<button
 				type="button"
 				onClick={handleClick}
@@ -507,6 +507,21 @@ export function WorkspaceItem({
 				)}
 				{alert && <SwarmIndicator alert={alert} className="ml-auto" />}
 			</button>
+
+			{indentLevel === 0 && !workspace.isOrchestrator && workspace.type === "worktree" && (
+				<button
+					type="button"
+					aria-label="Promote to orchestrator"
+					title="Promote to orchestrator"
+					onClick={(e) => {
+						e.stopPropagation();
+						handleSetOrchestrator();
+					}}
+					className="absolute right-7 top-1/2 -translate-y-1/2 h-5 w-5 flex items-center justify-center rounded text-[14px] text-[var(--text-quaternary)] hover:text-[var(--text-secondary)] opacity-0 group-hover:opacity-55 focus:opacity-100 transition-opacity duration-[120ms]"
+				>
+					↥
+				</button>
+			)}
 
 			{contextMenu && (
 				<WorkspaceContextMenu
