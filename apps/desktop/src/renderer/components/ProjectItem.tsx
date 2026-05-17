@@ -224,6 +224,7 @@ export function ProjectItem({ project, isExpanded, onToggle }: ProjectItemProps)
 		) || loose.some((w) => w.id === activeWorkspaceIdLocal);
 
 	const openCreateWorktreeModal = useProjectStore((s) => s.openCreateWorktreeModal);
+	const openCreateOrchestratorModal = useProjectStore((s) => s.openCreateOrchestratorModal);
 
 	const [contextMenu, setContextMenu] = useState<{
 		x: number;
@@ -250,29 +251,54 @@ export function ProjectItem({ project, isExpanded, onToggle }: ProjectItemProps)
 				}
 				rightContent={
 					isReady ? (
-						<button
-							type="button"
-							onClick={(e) => {
-								e.stopPropagation();
-								openCreateWorktreeModal(project.id);
-							}}
-							onKeyDown={(e) => {
-								if (e.key === "Enter") {
+						<div className="flex items-center gap-0.5">
+							<button
+								type="button"
+								onClick={(e) => {
 									e.stopPropagation();
 									openCreateWorktreeModal(project.id);
-								}
-							}}
-							className={[
-								"flex h-5 w-5 shrink-0 items-center justify-center rounded text-[14px]",
-								"transition-colors duration-[120ms]",
-								isActiveProject
-									? "text-[var(--text-quaternary)] hover:text-[var(--text-secondary)]"
-									: "text-[#3a3a42] hover:text-[#505058]",
-							].join(" ")}
-							title="New Worktree"
-						>
-							+
-						</button>
+								}}
+								onKeyDown={(e) => {
+									if (e.key === "Enter") {
+										e.stopPropagation();
+										openCreateWorktreeModal(project.id);
+									}
+								}}
+								className={[
+									"flex h-5 min-w-[22px] shrink-0 items-center justify-center rounded font-mono text-[11px]",
+									"transition-colors duration-[120ms]",
+									isActiveProject
+										? "text-[var(--text-quaternary)] hover:text-[var(--text-secondary)]"
+										: "text-[#3a3a42] hover:text-[#505058]",
+								].join(" ")}
+								title="New Worktree"
+							>
+								+W
+							</button>
+							<button
+								type="button"
+								onClick={(e) => {
+									e.stopPropagation();
+									openCreateOrchestratorModal(project.id);
+								}}
+								onKeyDown={(e) => {
+									if (e.key === "Enter") {
+										e.stopPropagation();
+										openCreateOrchestratorModal(project.id);
+									}
+								}}
+								className={[
+									"flex h-5 min-w-[22px] shrink-0 items-center justify-center rounded font-mono text-[11px]",
+									"transition-colors duration-[120ms]",
+									isActiveProject
+										? "text-[var(--text-quaternary)] hover:text-[var(--text-secondary)]"
+										: "text-[#3a3a42] hover:text-[#505058]",
+								].join(" ")}
+								title="New Orchestrator"
+							>
+								+O
+							</button>
+						</div>
 					) : undefined
 				}
 			>
