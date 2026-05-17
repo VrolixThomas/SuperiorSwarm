@@ -19,6 +19,7 @@ import type { Project } from "../../main/db/schema";
 import type { OrchestratorGroupNode } from "../../shared/types";
 import { useOrchestratorColor } from "../hooks/useOrchestratorColor";
 import { useAgentAlertStore } from "../stores/agent-alert-store";
+import { useOrchestratorHintsStore } from "../stores/orchestrator-hints";
 import { useProjectStore } from "../stores/projects";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
@@ -168,31 +169,15 @@ export function ProjectItem({ project, isExpanded, onToggle }: ProjectItemProps)
 		},
 	});
 	const coachmarkDismissed = coachmarkQuery.data === false;
-
-	const tipKey = "orchTip:dismissed";
-	const tipQuery = trpc.workspaces.getOrchestratorExpand.useQuery(
-		{ key: tipKey },
-		{ staleTime: Number.POSITIVE_INFINITY }
-	);
-	const dismissTip = trpc.workspaces.setOrchestratorExpand.useMutation({
-		onSuccess: (_data, vars) => {
-			utils.workspaces.getOrchestratorExpand.setData({ key: vars.key }, vars.value);
-		},
-	});
-	const tipDismissed = tipQuery.data === false; // same inverted convention as coachmark
-	const [coachmarkAnchor, setCoachmarkAnchor] = useState<{ x: number; y: number } | null>(null);
-	const coachmarkFiredRef = useRef(false);
-
-	const shouldShowTip = isReady && !tipDismissed && orchestrators.length === 0;
+	const showCoachmark = useOrchestratorHintsStore((s) => s.showCoachmark);
+	const clearCoachmark = useOrchestratorHintsStore((s) => s.clearCoachmark);
 
 	const handleFirstHover = useCallback(
 		(rect: DOMRect) => {
-			if (coachmarkFiredRef.current) return;
 			if (coachmarkDismissed) return;
-			coachmarkFiredRef.current = true;
-			setCoachmarkAnchor({ x: rect.right, y: rect.top });
+			showCoachmark({ x: rect.right, y: rect.top });
 		},
-		[coachmarkDismissed]
+		[coachmarkDismissed, showCoachmark]
 	);
 
 	function onDragEnd(e: DragEndEvent) {
@@ -344,7 +329,7 @@ export function ProjectItem({ project, isExpanded, onToggle }: ProjectItemProps)
 							onDragEnd(e);
 							if (!coachmarkDismissed) {
 								dismissCoachmark.mutate({ key: coachmarkKey, value: false });
-								setCoachmarkAnchor(null);
+								clearCoachmark();
 							}
 						}}
 						onDragCancel={() => setDraggingId(null)}
@@ -397,44 +382,6 @@ export function ProjectItem({ project, isExpanded, onToggle }: ProjectItemProps)
 								))}
 							</div>
 						</SortableContext>
-						{shouldShowTip && (
-							<div className="mt-1 flex items-start gap-2 border-t border-[var(--border-subtle)] px-3 py-3">
-								<svg
-									role="img"
-									aria-label=""
-									width="12"
-									height="12"
-									viewBox="0 0 12 12"
-									fill="none"
-									className="mt-[2px] shrink-0 text-[var(--text-tertiary)]"
-								>
-									<circle cx="6" cy="2.5" r="1.4" stroke="currentColor" strokeWidth="1.2" />
-									<circle cx="2.5" cy="9.5" r="1.4" stroke="currentColor" strokeWidth="1.2" />
-									<circle cx="9.5" cy="9.5" r="1.4" stroke="currentColor" strokeWidth="1.2" />
-									<path
-										d="M6 4 L3 8 M6 4 L9 8"
-										stroke="currentColor"
-										strokeWidth="1.2"
-										strokeLinecap="round"
-									/>
-								</svg>
-								<button
-									type="button"
-									className="flex-1 text-left text-[11px] text-[var(--text-secondary)] leading-snug"
-									onClick={() => openCreateWorktreeModal(project.id, { asOrchestrator: true })}
-								>
-									Orchestrators coordinate multiple agents. Create one →
-								</button>
-								<button
-									type="button"
-									aria-label="Dismiss tip"
-									className="text-[11px] text-[var(--text-quaternary)] hover:text-[var(--text-secondary)]"
-									onClick={() => dismissTip.mutate({ key: tipKey, value: false })}
-								>
-									×
-								</button>
-							</div>
-						)}
 					</DndContext>
 				)}
 			</RepoGroup>
@@ -445,28 +392,6 @@ export function ProjectItem({ project, isExpanded, onToggle }: ProjectItemProps)
 					position={contextMenu}
 					onClose={() => setContextMenu(null)}
 				/>
-			)}
-
-			{!coachmarkDismissed && coachmarkAnchor && (
-				<div
-					role="status"
-					className="fixed z-50 max-w-[220px] rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-elevated)] p-3 text-[11px] text-[var(--text-secondary)] shadow-[var(--shadow-md)]"
-					style={{ left: coachmarkAnchor.x + 16, top: coachmarkAnchor.y }}
-				>
-					<div className="leading-snug">
-						Drag to reorder, or onto an orchestrator row to attach.
-					</div>
-					<button
-						type="button"
-						className="mt-2 text-[10px] text-[var(--text-quaternary)] hover:text-[var(--text-secondary)]"
-						onClick={() => {
-							dismissCoachmark.mutate({ key: coachmarkKey, value: false });
-							setCoachmarkAnchor(null);
-						}}
-					>
-						Got it
-					</button>
-				</div>
 			)}
 		</>
 	);
