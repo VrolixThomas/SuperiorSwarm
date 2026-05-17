@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.9.1 (2026-05-17)
+
+### What's New
+
+SuperiorSwarm v0.9.1 is a reliability release. Deleting a worktree is now instant and resilient — a 15-second timeout and force-remove fallback ensure cleanup always completes even when git hangs or a terminal is still active. Orchestrator coordination is now delivered via MCP-level instructions so the agent contract survives context compaction and session resume.
+
+### Changes
+
+- fix: harden worktree removal against hangs and partial state (#107)
+- fix: deliver orchestrator coordination via MCP, store events outside worktree (#106)
+
 ## v0.9.0 (2026-05-16)
 
 ### What's New
