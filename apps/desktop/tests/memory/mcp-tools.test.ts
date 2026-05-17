@@ -23,15 +23,6 @@ const REQUIRED_TOOLS = [
 	"memory_search",
 ];
 
-const REQUIRED_TABLES = [
-	"memory_goals",
-	"memory_followups",
-	"memory_decisions",
-	"memory_open_questions",
-	"memory_journal",
-	"memory_fts",
-];
-
 describe("mcp-standalone/server.mjs memory wiring", () => {
 	for (const name of REQUIRED_TOOLS) {
 		test(`registers ${name}`, () => {
@@ -39,59 +30,39 @@ describe("mcp-standalone/server.mjs memory wiring", () => {
 		});
 	}
 
-	for (const table of REQUIRED_TABLES) {
-		test(`references ${table}`, () => {
-			expect(SERVER).toContain(table);
-		});
-	}
-
-	test("reads MEMORY_ROOT env var", () => {
-		expect(SERVER).toContain("process.env.MEMORY_ROOT");
-	});
-
-	test("reads DB_PATH env var", () => {
-		expect(SERVER).toContain("DB_PATH");
-	});
-
 	test("memory tools live inside the isWorkspaceAgentMode branch", () => {
-		// crude check: every memory_* tool name occurs AFTER the
-		// last 'if (isWorkspaceAgentMode)' that opens a block.
 		const branchIdx = SERVER.lastIndexOf("isWorkspaceAgentMode");
 		expect(branchIdx).toBeGreaterThan(-1);
 		for (const name of REQUIRED_TOOLS) {
 			const toolIdx = SERVER.indexOf(`"${name}"`);
-			expect(toolIdx).toBeGreaterThan(-1);
 			expect(toolIdx).toBeGreaterThan(branchIdx);
 		}
 	});
 
-	test("every memory_list_/search/recent uses PROJECT_ID scope", () => {
-		// Heuristic: the list/search tool handlers each include "project_id"
-		// somewhere in the SELECT string that queries a memory_* table.
-		// We collect all lines that contain both SELECT and FROM memory_ (single-line queries)
-		// plus lines that contain project_id near a memory_ table reference.
-		const lines = SERVER.split("\n");
-		const memorySelectLines = lines.filter(
-			(l) => l.includes("FROM memory_") || l.includes("FROM\n")
-		);
-		// At minimum there should be several SELECT queries against memory_* tables
-		expect(memorySelectLines.length).toBeGreaterThan(3);
-		// The full server text must reference project_id in the context of memory queries
-		const memorySection = SERVER.slice(SERVER.indexOf("memory_add_goal"));
-		expect(memorySection).toContain("project_id");
+	test("every memory tool handler calls the control plane via call()", () => {
+		for (const name of REQUIRED_TOOLS) {
+			const toolIdx = SERVER.indexOf(`"${name}"`);
+			const slice = SERVER.slice(toolIdx, toolIdx + 2000);
+			// Match both literal paths ("/memory.x") and template-literal paths (`/memory.x?…`)
+			expect(slice).toMatch(/call\("(POST|GET)",\s*[`"]\/memory\./);
+		}
 	});
 
-	test("memory_add_goal includes both INSERT and ftsUpsert", () => {
-		const addGoalIdx = SERVER.indexOf('"memory_add_goal"');
-		// Slice ~3KB after the tool definition to scan its handler body
-		const slice = SERVER.slice(addGoalIdx, addGoalIdx + 3000);
-		expect(slice).toContain("INSERT INTO memory_goals");
-		expect(slice).toContain("ftsUpsert");
+	test("server.mjs does not open SQLite from workspace-agent branch", () => {
+		// All DB writes go through the control plane in the new architecture.
+		const branchIdx = SERVER.lastIndexOf("isWorkspaceAgentMode");
+		const wsBranch = SERVER.slice(branchIdx);
+		expect(wsBranch).not.toMatch(/new Database\(/);
+		expect(wsBranch).not.toMatch(/process\.env\.DB_PATH/);
+		expect(wsBranch).not.toMatch(/process\.env\.MEMORY_ROOT/);
 	});
 
-	test("memory_journal_append rejects ended sessions", () => {
-		const idx = SERVER.indexOf('"memory_journal_append"');
-		const slice = SERVER.slice(idx, idx + 2000);
-		expect(slice).toMatch(/ended_at/);
+	test("memory tools omit project_id from their inputs (server derives via X-Workspace-Id)", () => {
+		for (const name of REQUIRED_TOOLS) {
+			const toolIdx = SERVER.indexOf(`"${name}"`);
+			const slice = SERVER.slice(toolIdx, toolIdx + 2000);
+			expect(slice).not.toMatch(/project_id:/);
+			expect(slice).not.toMatch(/projectId:/);
+		}
 	});
 });
