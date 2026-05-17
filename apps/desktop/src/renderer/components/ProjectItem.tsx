@@ -138,8 +138,7 @@ export function ProjectItem({ project, isExpanded, onToggle }: ProjectItemProps)
 	const [draggingId, setDraggingId] = useState<string | null>(null);
 
 	const draggedIsChild =
-		draggingId !== null &&
-		orchestrators.some((o) => o.children.some((c) => c.id === draggingId));
+		draggingId !== null && orchestrators.some((o) => o.children.some((c) => c.id === draggingId));
 
 	const activeWorkspaceIdLocal = useTabStore((s) => s.activeWorkspaceId);
 
@@ -283,7 +282,6 @@ export function ProjectItem({ project, isExpanded, onToggle }: ProjectItemProps)
 		) || loose.some((w) => w.id === activeWorkspaceIdLocal);
 
 	const openCreateWorktreeModal = useProjectStore((s) => s.openCreateWorktreeModal);
-	const openCreateOrchestratorModal = useProjectStore((s) => s.openCreateOrchestratorModal);
 
 	const [contextMenu, setContextMenu] = useState<{
 		x: number;
@@ -310,54 +308,29 @@ export function ProjectItem({ project, isExpanded, onToggle }: ProjectItemProps)
 				}
 				rightContent={
 					isReady ? (
-						<div className="flex items-center gap-0.5">
-							<button
-								type="button"
-								onClick={(e) => {
+						<button
+							type="button"
+							onClick={(e) => {
+								e.stopPropagation();
+								openCreateWorktreeModal(project.id);
+							}}
+							onKeyDown={(e) => {
+								if (e.key === "Enter") {
 									e.stopPropagation();
 									openCreateWorktreeModal(project.id);
-								}}
-								onKeyDown={(e) => {
-									if (e.key === "Enter") {
-										e.stopPropagation();
-										openCreateWorktreeModal(project.id);
-									}
-								}}
-								className={[
-									"flex h-5 min-w-[22px] shrink-0 items-center justify-center rounded font-mono text-[11px]",
-									"transition-colors duration-[120ms]",
-									isActiveProject
-										? "text-[var(--text-quaternary)] hover:text-[var(--text-secondary)]"
-										: "text-[#3a3a42] hover:text-[#505058]",
-								].join(" ")}
-								title="New Worktree"
-							>
-								+W
-							</button>
-							<button
-								type="button"
-								onClick={(e) => {
-									e.stopPropagation();
-									openCreateOrchestratorModal(project.id);
-								}}
-								onKeyDown={(e) => {
-									if (e.key === "Enter") {
-										e.stopPropagation();
-										openCreateOrchestratorModal(project.id);
-									}
-								}}
-								className={[
-									"flex h-5 min-w-[22px] shrink-0 items-center justify-center rounded font-mono text-[11px]",
-									"transition-colors duration-[120ms]",
-									isActiveProject
-										? "text-[var(--text-quaternary)] hover:text-[var(--text-secondary)]"
-										: "text-[#3a3a42] hover:text-[#505058]",
-								].join(" ")}
-								title="New Orchestrator"
-							>
-								+O
-							</button>
-						</div>
+								}
+							}}
+							className={[
+								"flex h-5 w-5 shrink-0 items-center justify-center rounded text-[14px]",
+								"transition-colors duration-[120ms]",
+								isActiveProject
+									? "text-[var(--text-quaternary)] hover:text-[var(--text-secondary)]"
+									: "text-[#3a3a42] hover:text-[#505058]",
+							].join(" ")}
+							title="New Worktree"
+						>
+							+
+						</button>
 					) : undefined
 				}
 			>
@@ -395,7 +368,9 @@ export function ProjectItem({ project, isExpanded, onToggle }: ProjectItemProps)
 											isActiveProject={isActiveProject}
 											allOrchestratorIds={allOrchestratorIds}
 											activeWorkspaceId={activeWorkspaceIdLocal ?? ""}
-											isDropTargetCandidate={draggingId !== null && draggingId !== node.workspace.id}
+											isDropTargetCandidate={
+												draggingId !== null && draggingId !== node.workspace.id
+											}
 											onFirstHover={handleFirstHover}
 										/>
 									</SortableWorkspace>
@@ -436,12 +411,17 @@ export function ProjectItem({ project, isExpanded, onToggle }: ProjectItemProps)
 									<circle cx="6" cy="2.5" r="1.4" stroke="currentColor" strokeWidth="1.2" />
 									<circle cx="2.5" cy="9.5" r="1.4" stroke="currentColor" strokeWidth="1.2" />
 									<circle cx="9.5" cy="9.5" r="1.4" stroke="currentColor" strokeWidth="1.2" />
-									<path d="M6 4 L3 8 M6 4 L9 8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+									<path
+										d="M6 4 L3 8 M6 4 L9 8"
+										stroke="currentColor"
+										strokeWidth="1.2"
+										strokeLinecap="round"
+									/>
 								</svg>
 								<button
 									type="button"
 									className="flex-1 text-left text-[11px] text-[var(--text-secondary)] leading-snug"
-									onClick={() => openCreateOrchestratorModal(project.id)}
+									onClick={() => openCreateWorktreeModal(project.id, { asOrchestrator: true })}
 								>
 									Orchestrators coordinate multiple agents. Create one →
 								</button>

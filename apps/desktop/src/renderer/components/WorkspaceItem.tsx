@@ -505,11 +505,7 @@ export function WorkspaceItem({
 					const mod = e.metaKey || e.ctrlKey;
 					if (mod && e.shiftKey && (e.key === "a" || e.key === "A")) {
 						e.preventDefault();
-						if (
-							!workspace.isOrchestrator &&
-							indentLevel === 0 &&
-							workspace.type === "worktree"
-						) {
+						if (!workspace.isOrchestrator && indentLevel === 0 && workspace.type === "worktree") {
 							const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
 							setContextMenu({ x: rect.right - 200, y: rect.bottom });
 						}
@@ -645,10 +641,14 @@ export function WorkspaceItem({
 						setContextMenu(null);
 					}}
 					onCreateOrchestrator={() => {
-						useProjectStore.getState().openCreateOrchestratorModal(projectId);
+						useProjectStore
+							.getState()
+							.openCreateWorktreeModal(projectId, { asOrchestrator: true });
 						setContextMenu(null);
 					}}
-					canAttach={!workspace.isOrchestrator && indentLevel === 0 && workspace.type === "worktree"}
+					canAttach={
+						!workspace.isOrchestrator && indentLevel === 0 && workspace.type === "worktree"
+					}
 					canDetach={isChildOfOrchestrator}
 				/>
 			)}

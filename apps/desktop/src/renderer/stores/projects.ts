@@ -18,18 +18,15 @@ interface ProjectStore {
 	isAddModalOpen: boolean;
 	isCreateWorktreeModalOpen: boolean;
 	createWorktreeProjectId: string | null;
-	isCreateOrchestratorModalOpen: boolean;
-	createOrchestratorProjectId: string | null;
+	createWorktreeAsOrchestrator: boolean;
 	sharedFilesProjectId: string | null;
 	selectProject: (id: string | null) => void;
 	toggleProjectExpanded: (id: string) => void;
 	hydrateExpandedProjects: (ids: string[]) => void;
 	openAddModal: () => void;
 	closeAddModal: () => void;
-	openCreateWorktreeModal: (projectId: string) => void;
+	openCreateWorktreeModal: (projectId: string, opts?: { asOrchestrator?: boolean }) => void;
 	closeCreateWorktreeModal: () => void;
-	openCreateOrchestratorModal: (projectId: string) => void;
-	closeCreateOrchestratorModal: () => void;
 	openSharedFilesPanel: (projectId: string) => void;
 	closeSharedFilesPanel: () => void;
 	sidebarView: "main" | "settings";
@@ -49,8 +46,7 @@ export const useProjectStore = create<ProjectStore>((set) => ({
 	isAddModalOpen: false,
 	isCreateWorktreeModalOpen: false,
 	createWorktreeProjectId: null,
-	isCreateOrchestratorModalOpen: false,
-	createOrchestratorProjectId: null,
+	createWorktreeAsOrchestrator: false,
 	sharedFilesProjectId: null,
 	sidebarView: "main",
 	settingsCategory: "general",
@@ -76,15 +72,18 @@ export const useProjectStore = create<ProjectStore>((set) => ({
 	openAddModal: () => set({ isAddModalOpen: true }),
 	closeAddModal: () => set({ isAddModalOpen: false }),
 
-	openCreateWorktreeModal: (projectId) =>
-		set({ isCreateWorktreeModalOpen: true, createWorktreeProjectId: projectId }),
+	openCreateWorktreeModal: (projectId, opts) =>
+		set({
+			isCreateWorktreeModalOpen: true,
+			createWorktreeProjectId: projectId,
+			createWorktreeAsOrchestrator: opts?.asOrchestrator ?? false,
+		}),
 	closeCreateWorktreeModal: () =>
-		set({ isCreateWorktreeModalOpen: false, createWorktreeProjectId: null }),
-
-	openCreateOrchestratorModal: (projectId) =>
-		set({ isCreateOrchestratorModalOpen: true, createOrchestratorProjectId: projectId }),
-	closeCreateOrchestratorModal: () =>
-		set({ isCreateOrchestratorModalOpen: false, createOrchestratorProjectId: null }),
+		set({
+			isCreateWorktreeModalOpen: false,
+			createWorktreeProjectId: null,
+			createWorktreeAsOrchestrator: false,
+		}),
 
 	openSharedFilesPanel: (projectId) => set({ sharedFilesProjectId: projectId }),
 	closeSharedFilesPanel: () => set({ sharedFilesProjectId: null }),
