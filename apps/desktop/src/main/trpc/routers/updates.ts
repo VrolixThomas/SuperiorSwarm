@@ -1,6 +1,7 @@
 import { app } from "electron";
 import { autoUpdater } from "electron-updater";
 import { z } from "zod";
+import { log } from "../../logger";
 import {
 	dismissUpdateVersion,
 	fetchReleaseNotes,
@@ -61,7 +62,7 @@ export const updatesRouter = router({
 			};
 		} catch (err) {
 			const message = err instanceof Error ? err.message : String(err);
-			console.error("[updater] Check for updates failed:", message);
+			log.error("[updater] Check for updates failed:", message);
 			return { updateAvailable: false, version: null, error: message };
 		}
 	}),
@@ -69,13 +70,13 @@ export const updatesRouter = router({
 	installUpdate: publicProcedure.mutation(async () => {
 		if (!app.isPackaged) return;
 		const t0 = Date.now();
-		console.log("[updater] installUpdate mutation entered");
+		log.info("[updater] installUpdate mutation entered");
 		try {
-			console.log(`[updater] calling quitAndInstall +${Date.now() - t0}ms`);
+			log.info("[updater] calling quitAndInstall");
 			autoUpdater.quitAndInstall();
-			console.log(`[updater] quitAndInstall returned +${Date.now() - t0}ms`);
+			log.info(`[updater] quitAndInstall returned +${Date.now() - t0}ms`);
 		} catch (err) {
-			console.error("[updater] Install update failed:", err);
+			log.error("[updater] Install update failed:", err);
 		}
 	}),
 
