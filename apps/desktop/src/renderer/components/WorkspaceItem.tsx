@@ -378,7 +378,6 @@ export function WorkspaceItem({
 			if (context?.previousMetadata) {
 				useTabStore.getState().setWorkspaceMetadata(id, context.previousMetadata);
 			}
-			window.alert(`Failed to delete worktree: ${err.message}`);
 		},
 		onSettled: () => {
 			utils.workspaces.listByProject.invalidate({ projectId });
@@ -484,7 +483,6 @@ export function WorkspaceItem({
 					window.electron.terminal.dispose(tab.id).catch(() => {});
 				}
 			}
-
 			deleteWorkspaceRef.current({ id: workspace.id, force: true });
 		}
 		setContextMenu(null);
