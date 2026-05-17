@@ -220,11 +220,8 @@ export async function initializeUpdater(): Promise<void> {
 		return;
 	}
 
-	// Set up electron-updater. autoInstallOnAppQuit is disabled because we
-	// have an explicit "Restart now" flow via the toast; doubling up confuses
-	// Squirrel and adds work to the regular quit path.
 	autoUpdater.autoDownload = true;
-	autoUpdater.autoInstallOnAppQuit = false;
+	autoUpdater.autoInstallOnAppQuit = true;
 
 	autoUpdater.on("update-available", (info) => {
 		state.updateAvailable = true;

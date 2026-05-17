@@ -65,12 +65,14 @@ export function UpdateToast() {
 		// periodic autosave in App.tsx is the durable path; this dispatches
 		// one extra mutation so any work since the last interval may land.
 		window.dispatchEvent(new Event("superiorswarm:save-now"));
-		// Defer the mutation to the next tick so React paints the overlay first.
-		// This makes the spinner visible before the main process starts shutting
-		// down, keeping the OS run-loop happy and giving the user feedback.
-		setTimeout(() => {
-			installUpdate.mutate();
-		}, 0);
+		// Wait for two animation frames so React commits + the browser paints
+		// the overlay before the main process starts shutting down. A single
+		// macrotask isn't a paint guarantee.
+		requestAnimationFrame(() => {
+			requestAnimationFrame(() => {
+				installUpdate.mutate();
+			});
+		});
 	};
 
 	const handleLater = () => {

@@ -35,6 +35,7 @@ import { isCloneable, setDebugMode } from "./ipc-safety";
 import { log, setupCrashHandlers } from "./logger";
 import { setupLspIPC } from "./lsp/ipc-handler";
 import { serverManager, warmShellPathCache } from "./lsp/server-manager";
+import { getMainWindow, setMainWindow } from "./main-window";
 import { syncShortcuts } from "./quick-actions/shortcuts";
 import { disposeRepoIPC, setupRepoIPC } from "./repo-ipc";
 import { probeCliInPath } from "./services/cli-probe";
@@ -62,12 +63,6 @@ import { registerIssueTracker } from "./providers/issue-tracker";
 import { JiraAdapter } from "./providers/jira-adapter";
 import { LinearAdapter } from "./providers/linear-adapter";
 
-let mainWindow: BrowserWindow | null = null;
-
-export function getMainWindow(): BrowserWindow | null {
-	return mainWindow;
-}
-
 let daemonClient: DaemonClient;
 let alertListener: AgentAlertListener | null = null;
 let controlPlane: RunningControlPlane | null = null;
@@ -77,7 +72,7 @@ function isHttpUrl(url: string): boolean {
 	return url.startsWith("http://") || url.startsWith("https://");
 }
 
-if (!import.meta.env.DEV && !registerSingleInstance(app, () => mainWindow)) {
+if (!import.meta.env.DEV && !registerSingleInstance(app, getMainWindow)) {
 	process.exit(0);
 }
 
@@ -92,7 +87,7 @@ function broadcastToWindows(channel: string, payload: unknown): void {
 }
 
 function createWindow() {
-	mainWindow = new BrowserWindow({
+	const win = new BrowserWindow({
 		width: 1400,
 		height: 900,
 		minWidth: 800,
@@ -106,23 +101,24 @@ function createWindow() {
 			nodeIntegration: false,
 		},
 	});
+	setMainWindow(win);
 
-	mainWindow.on("ready-to-show", () => {
-		mainWindow?.show();
+	win.on("ready-to-show", () => {
+		win.show();
 	});
 
-	mainWindow.on("closed", () => {
-		mainWindow = null;
+	win.on("closed", () => {
+		setMainWindow(null);
 	});
 
-	mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+	win.webContents.setWindowOpenHandler(({ url }) => {
 		if (isHttpUrl(url)) {
 			void shell.openExternal(url);
 		}
 		return { action: "deny" };
 	});
 
-	mainWindow.webContents.on("will-navigate", (event, url) => {
+	win.webContents.on("will-navigate", (event, url) => {
 		const devURL = process.env["ELECTRON_RENDERER_URL"];
 		const isDevURL = Boolean(devURL) && url.startsWith(devURL ?? "");
 		if (!isDevURL && !url.startsWith("file://")) {
@@ -134,9 +130,9 @@ function createWindow() {
 	});
 
 	if (process.env["ELECTRON_RENDERER_URL"]) {
-		mainWindow.loadURL(process.env["ELECTRON_RENDERER_URL"]);
+		win.loadURL(process.env["ELECTRON_RENDERER_URL"]);
 	} else {
-		mainWindow.loadFile(join(__dirname, "../renderer/index.html"));
+		win.loadFile(join(__dirname, "../renderer/index.html"));
 	}
 }
 
@@ -196,7 +192,7 @@ app.whenReady().then(async () => {
 	// Set up tRPC IPC so the renderer can make queries once it loads
 	setupTRPCIPC(appRouter);
 
-	setupRepoIPC(() => mainWindow);
+	setupRepoIPC(getMainWindow);
 
 	const ALLOWED_PERMISSIONS = new Set(["media", "clipboard-sanitized-write"]);
 	session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
@@ -262,11 +258,12 @@ app.whenReady().then(async () => {
 	// Show the window NOW — branded splash screen in index.html is visible immediately
 	createWindow();
 
-	if (mainWindow) {
-		setupLspIPC(mainWindow);
+	const win = getMainWindow();
+	if (win) {
+		setupLspIPC(win);
 	}
 
-	registerConfirmBridge(() => mainWindow);
+	registerConfirmBridge(getMainWindow);
 	setDispatchBroadcaster((payload) => broadcastToWindows("agent-dispatch:open", payload));
 
 	try {
@@ -430,19 +427,19 @@ app.on("before-quit", () => {
 	try {
 		deleteControlDiscovery(app.getPath("userData"));
 	} catch {}
-	log.info(`[quit] discovery-deleted +${Date.now() - t0}ms`);
+	log.debug(`[quit] discovery-deleted +${Date.now() - t0}ms`);
 	alertListener?.stop();
 	setAgentNotifyPort(null);
 	stopCommentPoller();
 	teardownUpdater();
-	log.info(`[quit] timers-stopped +${Date.now() - t0}ms`);
+	log.debug(`[quit] timers-stopped +${Date.now() - t0}ms`);
 	daemonClient.setQuitting();
 	daemonClient.detachAll();
 	daemonClient.disconnect();
-	log.info(`[quit] daemon-disconnected +${Date.now() - t0}ms`);
+	log.debug(`[quit] daemon-disconnected +${Date.now() - t0}ms`);
 	serverManager.disposeAll();
 	void disposeRepoIPC();
-	log.info(`[quit] async-cleanup-dispatched +${Date.now() - t0}ms`);
+	log.debug(`[quit] async-cleanup-dispatched +${Date.now() - t0}ms`);
 	if (controlPlane) {
 		void controlPlane.stop().catch((err) => {
 			log.error("[control-plane] stop failed:", err);
