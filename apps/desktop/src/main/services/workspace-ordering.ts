@@ -1,4 +1,4 @@
-import { and, count, eq, inArray, ne } from "drizzle-orm";
+import { and, count, eq, inArray, isNull, ne } from "drizzle-orm";
 import { ForbiddenError, NotFoundError } from "../../shared/control-plane";
 import { getDb } from "../db";
 import { orchestratorMembers, workspaces } from "../db/schema";
@@ -9,16 +9,26 @@ export async function reorderTopLevel(input: {
 }): Promise<{ ok: true }> {
 	const db = getDb();
 
-	// Enforce completeness: orderedIds must cover every non-review workspace in the project.
-	// Review workspaces are filtered out by listByProjectTree and never sent by the renderer.
+	// Enforce completeness: orderedIds must cover every TOP-LEVEL workspace in the
+	// project (i.e. excluding orchestrator children, which live inside groups and
+	// are reordered via reorderChildren).
 	const totalRow = db
 		.select({ total: count() })
 		.from(workspaces)
-		.where(and(eq(workspaces.projectId, input.projectId), ne(workspaces.type, "review")))
+		.leftJoin(orchestratorMembers, eq(orchestratorMembers.workspaceId, workspaces.id))
+		.where(
+			and(
+				eq(workspaces.projectId, input.projectId),
+				ne(workspaces.type, "review"),
+				isNull(orchestratorMembers.workspaceId)
+			)
+		)
 		.get();
 	const total = totalRow?.total ?? 0;
 	if (total !== input.orderedIds.length) {
-		throw new Error("reorderTopLevel: orderedIds must contain every workspace in the project");
+		throw new Error(
+			"reorderTopLevel: orderedIds must contain every top-level workspace in the project"
+		);
 	}
 
 	// Validate each submitted id — also exclude review-type defensively

@@ -79,4 +79,19 @@ describe("workspace-ordering", () => {
 		// orderedIds only contains non-review workspaces — should succeed
 		await expect(reorderTopLevel({ projectId, orderedIds: [b, a] })).resolves.toBeDefined();
 	});
+
+	test("reorderTopLevel excludes orchestrator children from completeness count", async () => {
+		const projectId = await seedProject();
+		// Seed: 1 orchestrator (top-level), 1 child (attached → not top-level),
+		// 1 loose worktree (top-level). orderedIds should contain only orch + loose.
+		const orchId = await seedWorkspace(projectId, { name: "orch", isOrchestrator: true });
+		const childId = await seedWorkspace(projectId, { name: "child" });
+		const looseId = await seedWorkspace(projectId, { name: "loose" });
+		await attachToOrchestrator({ orchestratorId: orchId, workspaceId: childId });
+
+		// Only orchestrator + loose are in the top-level zone
+		await expect(
+			reorderTopLevel({ projectId, orderedIds: [looseId, orchId] })
+		).resolves.toEqual({ ok: true });
+	});
 });
