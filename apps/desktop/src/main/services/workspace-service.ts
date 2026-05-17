@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { chmodSync, existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { and, desc, eq, gt, isNull, or } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, ne, or } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import type {
 	AgentMessageDto,
@@ -846,4 +846,40 @@ export async function defaultRespawnAgent(args: RespawnAgentArgs): Promise<void>
 		scriptPath,
 		title: "Agent session",
 	});
+}
+
+export async function renameWorkspace(input: {
+	workspaceId: string;
+	name: string;
+}): Promise<{ ok: true }> {
+	const trimmed = input.name.trim();
+	if (trimmed.length === 0) {
+		throw new Error("name cannot be empty");
+	}
+	const db = getDb();
+	const ws = db
+		.select({ projectId: workspaces.projectId })
+		.from(workspaces)
+		.where(eq(workspaces.id, input.workspaceId))
+		.get();
+	if (!ws) throw new Error(`workspace ${input.workspaceId} not found`);
+
+	const dup = db
+		.select({ id: workspaces.id })
+		.from(workspaces)
+		.where(
+			and(
+				eq(workspaces.projectId, ws.projectId),
+				eq(workspaces.name, trimmed),
+				ne(workspaces.id, input.workspaceId)
+			)
+		)
+		.get();
+	if (dup) throw new Error(`name "${trimmed}" already in use in this project`);
+
+	db.update(workspaces)
+		.set({ name: trimmed, updatedAt: new Date() })
+		.where(eq(workspaces.id, input.workspaceId))
+		.run();
+	return { ok: true };
 }
