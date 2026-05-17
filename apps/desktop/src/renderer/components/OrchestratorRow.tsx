@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTabStore } from "../stores/tab-store";
 
 interface OrchestratorRowProps {
@@ -96,55 +96,39 @@ export function OrchestratorRow({
 	const isActiveByChild = !expanded && activeChildName !== undefined;
 	const isAccented = isActive || isActiveByChild;
 
-	const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
-
-	const handleContextMenu = useCallback(
-		(e: React.MouseEvent) => {
-			if (!onUnsetOrchestrator) return;
-			e.preventDefault();
-			setContextMenu({ x: e.clientX, y: e.clientY });
-		},
-		[onUnsetOrchestrator]
-	);
-
-	const handleUnset = useCallback(() => {
-		onUnsetOrchestrator?.();
-		setContextMenu(null);
-	}, [onUnsetOrchestrator]);
-
 	const swatchVar = `var(--orch-${colorIndex})`;
 	const pillBg = `var(--orch-${colorIndex}-bg)`;
 	const pillFg = swatchVar;
 
-	const rowClass = [
-		"relative flex w-full items-center gap-2 border-none pl-[22px] pr-3 py-[7px] cursor-pointer",
-		"transition-all duration-[120ms] text-left rounded-[6px]",
-		isAccented
-			? "bg-[var(--accent-subtle)] hover:bg-[var(--accent-subtle)]"
-			: "bg-transparent hover:bg-[var(--bg-elevated)]",
-	].join(" ");
+	const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
 
 	return (
-		<div className="relative flex items-center" onContextMenu={handleContextMenu}>
+		<div
+			className={[
+				"relative flex items-center w-full rounded-[6px] transition-colors duration-[120ms]",
+				isAccented ? "bg-[var(--accent-subtle)]" : "bg-transparent hover:bg-[var(--bg-elevated)]",
+			].join(" ")}
+			onContextMenu={
+				onUnsetOrchestrator
+					? (e) => {
+							e.preventDefault();
+							setContextMenu({ x: e.clientX, y: e.clientY });
+						}
+					: undefined
+			}
+		>
 			{isAccented && (
 				<span
 					aria-hidden="true"
-					className="absolute left-0 top-1 bottom-1 w-[3px] rounded-r-[2px] bg-[var(--accent)] z-10"
+					className="absolute left-0 top-1 bottom-1 w-[3px] rounded-r-[2px] bg-[var(--accent)] z-10 pointer-events-none"
 				/>
 			)}
+
 			<button
 				type="button"
-				aria-label={expanded ? "Collapse group" : "Expand group"}
-				onClick={(e) => {
-					e.stopPropagation();
-					onToggle();
-				}}
-				className="absolute left-[22px] z-10 text-[10px] text-[var(--text-quaternary)] w-[10px] border-none bg-transparent p-0 cursor-pointer"
+				onClick={onActivate}
+				className="flex min-w-0 flex-1 items-center gap-2 border-none pl-[22px] pr-2 py-[7px] bg-transparent cursor-pointer text-left rounded-[6px]"
 			>
-				{expanded ? "▾" : "▸"}
-			</button>
-			<button type="button" onClick={onActivate} className={rowClass}>
-				<span className="w-[10px] -mr-[2px]" aria-hidden="true" />
 				<span
 					aria-hidden="true"
 					className="h-[8px] w-[8px] rounded-[2px] shrink-0"
@@ -163,11 +147,46 @@ export function OrchestratorRow({
 					{childCount}
 				</span>
 			</button>
+
+			<button
+				type="button"
+				onClick={(e) => {
+					e.stopPropagation();
+					onToggle();
+				}}
+				aria-label={expanded ? "Collapse group" : "Expand group"}
+				className="flex shrink-0 items-center justify-center px-2 py-[7px] bg-transparent border-none cursor-pointer rounded-[6px] hover:bg-[var(--bg-overlay)]"
+			>
+				<svg
+					aria-hidden="true"
+					width="10"
+					height="10"
+					viewBox="0 0 10 10"
+					fill="none"
+					className={[
+						"shrink-0 transition-transform duration-[120ms]",
+						expanded ? "rotate-90" : "rotate-0",
+						"text-[var(--text-quaternary)]",
+					].join(" ")}
+				>
+					<path
+						d="M3 1.5L7 5L3 8.5"
+						stroke="currentColor"
+						strokeWidth="1.3"
+						strokeLinecap="round"
+						strokeLinejoin="round"
+					/>
+				</svg>
+			</button>
+
 			{contextMenu && onUnsetOrchestrator && (
 				<OrchestratorContextMenu
 					position={contextMenu}
 					onClose={() => setContextMenu(null)}
-					onUnsetOrchestrator={handleUnset}
+					onUnsetOrchestrator={() => {
+						onUnsetOrchestrator();
+						setContextMenu(null);
+					}}
 				/>
 			)}
 		</div>
