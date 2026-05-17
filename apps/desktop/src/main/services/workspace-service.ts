@@ -848,6 +848,59 @@ export async function defaultRespawnAgent(args: RespawnAgentArgs): Promise<void>
 	});
 }
 
+export interface CreateOrchestratorDeps {
+	/** Override the inner createWorkspace call. Default: the module's real createWorkspace. */
+	createWorkspaceFn?: (input: {
+		projectId: string;
+		branch: string;
+		baseBranch?: string;
+	}) => Promise<{ workspaceId: string; worktreeId: string }>;
+}
+
+export async function createOrchestrator(
+	input: {
+		projectId: string;
+		name: string;
+		baseBranch: string;
+		attachWorkspaceIds: string[];
+	},
+	deps: CreateOrchestratorDeps = {}
+): Promise<{
+	id: string;
+	projectId: string;
+	name: string;
+	worktreeId: string;
+	isOrchestrator: true;
+}> {
+	const create = deps.createWorkspaceFn ?? createWorkspace;
+	const created = await create({
+		projectId: input.projectId,
+		branch: input.name,
+		baseBranch: input.baseBranch,
+	});
+
+	await setOrchestrator(
+		{ projectId: input.projectId, workspaceId: created.workspaceId },
+		{ workspaceId: created.workspaceId }
+	);
+
+	const { attachToOrchestrator } = await import("./orchestrator-membership");
+	for (const wsId of input.attachWorkspaceIds) {
+		await attachToOrchestrator({
+			orchestratorId: created.workspaceId,
+			workspaceId: wsId,
+		});
+	}
+
+	return {
+		id: created.workspaceId,
+		projectId: input.projectId,
+		name: input.name,
+		worktreeId: created.worktreeId,
+		isOrchestrator: true,
+	};
+}
+
 export async function renameWorkspace(input: {
 	workspaceId: string;
 	name: string;
