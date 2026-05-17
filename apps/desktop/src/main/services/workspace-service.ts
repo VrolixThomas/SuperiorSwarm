@@ -251,7 +251,6 @@ export async function getWorkspace(input: GetWorkspaceRequest): Promise<GetWorks
 export async function removeWorkspace(
 	input: RemoveWorkspaceRequest
 ): Promise<RemoveWorkspaceResponse> {
-	console.log("[del:main] enter", Date.now());
 	const db = getDb();
 	const ws = db.select().from(workspaces).where(eq(workspaces.id, input.workspaceId)).get();
 	if (!ws) throw new NotFoundError(input.workspaceId);
@@ -293,11 +292,9 @@ export async function removeWorkspace(
 	}
 
 	if (pathExists && wt) {
-		console.log("[del:main] scheduled cleanup", Date.now());
 		getWorktreeCleanupQueue().schedule(project.repoPath, wt.path);
 	}
 
-	console.log("[del:main] return", Date.now());
 	return { status: "removed" };
 }
 

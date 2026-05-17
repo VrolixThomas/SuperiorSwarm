@@ -258,27 +258,18 @@ export function WorkspaceItem({
 
 	const deleteWorkspace = trpc.workspaces.delete.useMutation({
 		onMutate: async ({ id }) => {
-			console.log("[del] onMutate start", performance.now());
 			await utils.workspaces.listByProject.cancel({ projectId });
-			console.log("[del] cancel done", performance.now());
 			const previousList = utils.workspaces.listByProject.getData({ projectId });
 			const paneStore = usePaneStore.getState();
 			const tabStore = useTabStore.getState();
 			const previousLayout = paneStore.getLayout(id);
 			const previousMetadata = tabStore.workspaceMetadata[id];
 
-			utils.workspaces.listByProject.setData({ projectId }, (old) => {
-				const next = old?.filter((ws) => ws.id !== id);
-				console.log(
-					"[del] setData applied",
-					{ before: old?.length, after: next?.length },
-					performance.now()
-				);
-				return next;
-			});
+			utils.workspaces.listByProject.setData({ projectId }, (old) =>
+				old?.filter((ws) => ws.id !== id)
+			);
 			paneStore.clearLayout(id);
 			tabStore.cleanupWorkspace(id);
-			console.log("[del] onMutate done", performance.now());
 
 			return { previousList, previousLayout, previousMetadata };
 		},
@@ -287,7 +278,6 @@ export function WorkspaceItem({
 		// session stores; those are not restored — user must reselect. Acceptable
 		// because `force: true` failures are rare and the user can click again.
 		onError: (err, { id }, context) => {
-			console.error("[del] onError", performance.now(), err.message);
 			if (context?.previousList) {
 				utils.workspaces.listByProject.setData({ projectId }, context.previousList);
 			}
@@ -298,11 +288,7 @@ export function WorkspaceItem({
 				useTabStore.getState().setWorkspaceMetadata(id, context.previousMetadata);
 			}
 		},
-		onSuccess: () => {
-			console.log("[del] onSuccess", performance.now());
-		},
 		onSettled: () => {
-			console.log("[del] onSettled", performance.now());
 			utils.workspaces.listByProject.invalidate({ projectId });
 		},
 	});
@@ -369,7 +355,6 @@ export function WorkspaceItem({
 			`Delete worktree "${workspace.name}"? This will remove the worktree directory.`
 		);
 		if (confirmed) {
-			console.log("[del] click confirmed", performance.now());
 			// Fire-and-forget; backend re-disposes PTYs as a safety net.
 			const wsTabs = useTabStore.getState().getTabsByWorkspace(workspace.id);
 			for (const tab of wsTabs) {
@@ -377,9 +362,7 @@ export function WorkspaceItem({
 					window.electron.terminal.dispose(tab.id).catch(() => {});
 				}
 			}
-			console.log("[del] dispose IPCs fired", performance.now());
 			deleteWorkspaceRef.current({ id: workspace.id, force: true });
-			console.log("[del] mutate returned", performance.now());
 		}
 		setContextMenu(null);
 	}, [workspace.id, workspace.name]);
