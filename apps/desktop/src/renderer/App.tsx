@@ -16,6 +16,7 @@ import { LoginScreen } from "./components/LoginScreen";
 import { MainContentArea } from "./components/MainContentArea";
 import { SharedFilesPanel } from "./components/SharedFilesPanel";
 import { Sidebar } from "./components/Sidebar";
+import { InstallingOverlay } from "./components/InstallingOverlay";
 import { UpdateToast } from "./components/UpdateToast";
 import { WhatsNewModal } from "./components/WhatsNewModal";
 import { PRReviewKeyboardListener } from "./components/review/PRReviewKeyboardListener";
@@ -767,6 +768,7 @@ function AuthenticatedApp() {
 					)}
 				</>
 			)}
+			<InstallingOverlay />
 			<UpdateToast />
 			<WhatsNewModal />
 			<ConfirmAgentActionModal />
