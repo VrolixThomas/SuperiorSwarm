@@ -55,7 +55,9 @@ export const CLI_PRESETS: Record<string, CliPreset> = {
 		name: "codex",
 		label: "Codex",
 		command: "codex",
-		permissionFlag: "--full-auto",
+		// `--full-auto` was removed in newer codex builds; use config overrides
+		// to match prior auto-approve + workspace-write semantics.
+		permissionFlag: "-c approval_policy=never -c sandbox_mode=danger-full-access",
 		buildArgs: ({ promptFilePath }) => [`"$(cat '${promptFilePath}')"`],
 	},
 	opencode: {

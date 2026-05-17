@@ -416,7 +416,7 @@ function escapeShellSingleQuote(s: string): string {
 // prompt prepending — that keeps the rules visible across compaction and
 // session restarts. See apps/desktop/mcp-standalone/server.mjs.
 
-function buildLaunchScript(opts: {
+export function buildLaunchScript(opts: {
 	cwd: string;
 	cliPreset: "claude" | "codex" | "gemini" | "opencode";
 	prompt: string;
