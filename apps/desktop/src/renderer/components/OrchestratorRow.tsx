@@ -129,11 +129,26 @@ export function OrchestratorRow({
 				onClick={onActivate}
 				className="flex min-w-0 flex-1 items-center gap-2 border-none pl-[22px] pr-2 py-[7px] bg-transparent cursor-pointer text-left rounded-[6px]"
 			>
-				<span
-					aria-hidden="true"
-					className="h-[8px] w-[8px] rounded-[2px] shrink-0"
-					style={{ background: swatchVar }}
-				/>
+				<svg
+					role="img"
+					aria-label="Orchestrator"
+					width="12"
+					height="12"
+					viewBox="0 0 12 12"
+					fill="none"
+					className="shrink-0"
+				>
+					<title>Orchestrator</title>
+					<circle cx="6" cy="2.5" r="1.4" stroke={swatchVar} strokeWidth="1.2" />
+					<circle cx="2.5" cy="9.5" r="1.4" stroke={swatchVar} strokeWidth="1.2" />
+					<circle cx="9.5" cy="9.5" r="1.4" stroke={swatchVar} strokeWidth="1.2" />
+					<path
+						d="M6 4 L3 8 M6 4 L9 8"
+						stroke={swatchVar}
+						strokeWidth="1.2"
+						strokeLinecap="round"
+					/>
+				</svg>
 				<span className="flex-1 min-w-0 truncate text-[13px] font-medium text-[var(--text-secondary)]">
 					{workspace.name}
 					{!expanded && activeChildName && (
@@ -143,6 +158,7 @@ export function OrchestratorRow({
 				<span
 					className="text-[10px] font-medium px-[7px] py-[1px] rounded-[9px] min-w-[16px] text-center"
 					style={{ background: pillBg, color: pillFg }}
+					title={`${childCount} ${childCount === 1 ? "worktree" : "worktrees"} attached`}
 				>
 					{childCount}
 				</span>
