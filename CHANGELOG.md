@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.9.3 (2026-05-17)
+
+### What's New
+
+SuperiorSwarm v0.9.3 makes worktree deletion fully non-blocking. Removing a workspace now returns instantly while filesystem cleanup runs in a background queue, so the app never freezes while git tears down large worktrees. Failed deletions no longer pop a blocking dialog — errors surface inline and the UI stays responsive.
+
+### Changes
+
+- Removing worktrees freezing followup (#110)
+
 ## v0.9.2 (2026-05-17)
 
 ### What's New
