@@ -10,6 +10,21 @@ import {
 	dispatchAgentRequestSchema,
 	getWorkspaceRequestSchema,
 	listWorkspacesRequestSchema,
+	memoryAddFollowupRequestSchema,
+	memoryAddGoalRequestSchema,
+	memoryAddQuestionRequestSchema,
+	memoryAnswerQuestionRequestSchema,
+	memoryJournalAppendRequestSchema,
+	memoryJournalEndRequestSchema,
+	memoryJournalStartRequestSchema,
+	memoryListDecisionsRequestSchema,
+	memoryListFollowupsRequestSchema,
+	memoryListGoalsRequestSchema,
+	memoryListQuestionsRequestSchema,
+	memoryLogDecisionRequestSchema,
+	memoryReadJournalRequestSchema,
+	memoryRecentJournalsRequestSchema,
+	memorySearchRequestSchema,
 	readMessagesRequestSchema,
 	removeWorkspaceRequestSchema,
 	resumeAgentRequestSchema,
@@ -18,6 +33,8 @@ import {
 } from "../../shared/control-plane";
 import { getDb } from "../db";
 import { workspaces, worktrees } from "../db/schema";
+import { memory } from "../memory";
+import type { FtsKind } from "../memory";
 import {
 	type CallerContext,
 	type SpawnFn,
@@ -49,6 +66,7 @@ export interface ControlPlaneDeps {
 	spawnFn: SpawnFn;
 	eventBus: EventBus;
 	taskRegistry: TaskRegistry;
+	userDataPath: string;
 }
 
 function resolveCaller(
@@ -315,6 +333,334 @@ async function handleRequest(
 					return;
 				}
 				respond(res, 200, requestId, await resumeAgent(caller, parsed.data));
+				return;
+			}
+
+			case "POST /memory.add_goal": {
+				const body = await readJson(req);
+				const parsed = memoryAddGoalRequestSchema.safeParse(body);
+				if (!parsed.success) {
+					respond(res, 400, requestId, { error: "validation", details: parsed.error.flatten() });
+					return;
+				}
+				const caller = resolveCaller(req, null);
+				if ("error" in caller) {
+					respond(res, 401, requestId, { error: "unauthorized" });
+					return;
+				}
+				respond(res, 200, requestId, memory.addGoal({ projectId: caller.projectId, ...parsed.data }));
+				return;
+			}
+
+			case "GET /memory.list_goals": {
+				const parsed = memoryListGoalsRequestSchema.safeParse({
+					status: url.searchParams.get("status") ?? undefined,
+				});
+				if (!parsed.success) {
+					respond(res, 400, requestId, { error: "validation", details: parsed.error.flatten() });
+					return;
+				}
+				const caller = resolveCaller(req, null);
+				if ("error" in caller) {
+					respond(res, 401, requestId, { error: "unauthorized" });
+					return;
+				}
+				respond(res, 200, requestId, {
+					goals: memory.listGoals({ projectId: caller.projectId, status: parsed.data.status }),
+				});
+				return;
+			}
+
+			case "POST /memory.add_followup": {
+				const body = await readJson(req);
+				const parsed = memoryAddFollowupRequestSchema.safeParse(body);
+				if (!parsed.success) {
+					respond(res, 400, requestId, { error: "validation", details: parsed.error.flatten() });
+					return;
+				}
+				const caller = resolveCaller(req, null);
+				if ("error" in caller) {
+					respond(res, 401, requestId, { error: "unauthorized" });
+					return;
+				}
+				respond(
+					res,
+					200,
+					requestId,
+					memory.addFollowup({
+						projectId: caller.projectId,
+						title: parsed.data.title,
+						body: parsed.data.body ?? null,
+						owner: parsed.data.owner ?? null,
+						dueAt: parsed.data.dueAt ? new Date(parsed.data.dueAt) : null,
+						goalId: parsed.data.goalId ?? null,
+					})
+				);
+				return;
+			}
+
+			case "GET /memory.list_followups": {
+				const parsed = memoryListFollowupsRequestSchema.safeParse({
+					status: url.searchParams.get("status") ?? undefined,
+					owner: url.searchParams.get("owner") ?? undefined,
+					dueBefore: url.searchParams.get("dueBefore") ?? undefined,
+					dueAfter: url.searchParams.get("dueAfter") ?? undefined,
+				});
+				if (!parsed.success) {
+					respond(res, 400, requestId, { error: "validation", details: parsed.error.flatten() });
+					return;
+				}
+				const caller = resolveCaller(req, null);
+				if ("error" in caller) {
+					respond(res, 401, requestId, { error: "unauthorized" });
+					return;
+				}
+				respond(res, 200, requestId, {
+					followups: memory.listFollowups({
+						projectId: caller.projectId,
+						status: parsed.data.status,
+						owner: parsed.data.owner,
+						dueBefore: parsed.data.dueBefore ? new Date(parsed.data.dueBefore) : undefined,
+						dueAfter: parsed.data.dueAfter ? new Date(parsed.data.dueAfter) : undefined,
+					}),
+				});
+				return;
+			}
+
+			case "POST /memory.log_decision": {
+				const body = await readJson(req);
+				const parsed = memoryLogDecisionRequestSchema.safeParse(body);
+				if (!parsed.success) {
+					respond(res, 400, requestId, { error: "validation", details: parsed.error.flatten() });
+					return;
+				}
+				const caller = resolveCaller(req, null);
+				if ("error" in caller) {
+					respond(res, 401, requestId, { error: "unauthorized" });
+					return;
+				}
+				respond(
+					res,
+					200,
+					requestId,
+					memory.logDecision({
+						projectId: caller.projectId,
+						title: parsed.data.title,
+						rationale: parsed.data.rationale,
+						alternatives: parsed.data.alternatives ?? null,
+					})
+				);
+				return;
+			}
+
+			case "GET /memory.list_decisions": {
+				const limitRaw = url.searchParams.get("limit");
+				const parsed = memoryListDecisionsRequestSchema.safeParse({
+					since: url.searchParams.get("since") ?? undefined,
+					limit: limitRaw ? Number(limitRaw) : undefined,
+				});
+				if (!parsed.success) {
+					respond(res, 400, requestId, { error: "validation", details: parsed.error.flatten() });
+					return;
+				}
+				const caller = resolveCaller(req, null);
+				if ("error" in caller) {
+					respond(res, 401, requestId, { error: "unauthorized" });
+					return;
+				}
+				respond(res, 200, requestId, {
+					decisions: memory.listDecisions({
+						projectId: caller.projectId,
+						since: parsed.data.since ? new Date(parsed.data.since) : undefined,
+						limit: parsed.data.limit,
+					}),
+				});
+				return;
+			}
+
+			case "POST /memory.add_question": {
+				const body = await readJson(req);
+				const parsed = memoryAddQuestionRequestSchema.safeParse(body);
+				if (!parsed.success) {
+					respond(res, 400, requestId, { error: "validation", details: parsed.error.flatten() });
+					return;
+				}
+				const caller = resolveCaller(req, null);
+				if ("error" in caller) {
+					respond(res, 401, requestId, { error: "unauthorized" });
+					return;
+				}
+				respond(
+					res,
+					200,
+					requestId,
+					memory.addQuestion({
+						projectId: caller.projectId,
+						question: parsed.data.question,
+						context: parsed.data.context ?? null,
+					})
+				);
+				return;
+			}
+
+			case "POST /memory.answer_question": {
+				const body = await readJson(req);
+				const parsed = memoryAnswerQuestionRequestSchema.safeParse(body);
+				if (!parsed.success) {
+					respond(res, 400, requestId, { error: "validation", details: parsed.error.flatten() });
+					return;
+				}
+				const caller = resolveCaller(req, null);
+				if ("error" in caller) {
+					respond(res, 401, requestId, { error: "unauthorized" });
+					return;
+				}
+				memory.answerQuestion(parsed.data);
+				respond(res, 200, requestId, { ok: true });
+				return;
+			}
+
+			case "GET /memory.list_questions": {
+				const parsed = memoryListQuestionsRequestSchema.safeParse({
+					status: url.searchParams.get("status") ?? undefined,
+				});
+				if (!parsed.success) {
+					respond(res, 400, requestId, { error: "validation", details: parsed.error.flatten() });
+					return;
+				}
+				const caller = resolveCaller(req, null);
+				if ("error" in caller) {
+					respond(res, 401, requestId, { error: "unauthorized" });
+					return;
+				}
+				respond(res, 200, requestId, {
+					questions: memory.listQuestions({
+						projectId: caller.projectId,
+						status: parsed.data.status,
+					}),
+				});
+				return;
+			}
+
+			case "POST /memory.journal_start": {
+				const caller = resolveCaller(req, null);
+				if ("error" in caller) {
+					respond(res, 401, requestId, { error: "unauthorized" });
+					return;
+				}
+				respond(
+					res,
+					200,
+					requestId,
+					memory.journalStart({
+						userDataPath: deps.userDataPath,
+						projectId: caller.projectId,
+					})
+				);
+				return;
+			}
+
+			case "POST /memory.journal_append": {
+				const body = await readJson(req);
+				const parsed = memoryJournalAppendRequestSchema.safeParse(body);
+				if (!parsed.success) {
+					respond(res, 400, requestId, { error: "validation", details: parsed.error.flatten() });
+					return;
+				}
+				const caller = resolveCaller(req, null);
+				if ("error" in caller) {
+					respond(res, 401, requestId, { error: "unauthorized" });
+					return;
+				}
+				memory.journalAppend(parsed.data);
+				respond(res, 200, requestId, { ok: true });
+				return;
+			}
+
+			case "POST /memory.journal_end": {
+				const body = await readJson(req);
+				const parsed = memoryJournalEndRequestSchema.safeParse(body);
+				if (!parsed.success) {
+					respond(res, 400, requestId, { error: "validation", details: parsed.error.flatten() });
+					return;
+				}
+				const caller = resolveCaller(req, null);
+				if ("error" in caller) {
+					respond(res, 401, requestId, { error: "unauthorized" });
+					return;
+				}
+				memory.journalEnd(parsed.data);
+				respond(res, 200, requestId, { ok: true });
+				return;
+			}
+
+			case "GET /memory.read_journal": {
+				const parsed = memoryReadJournalRequestSchema.safeParse({
+					sessionId: url.searchParams.get("sessionId") ?? undefined,
+				});
+				if (!parsed.success) {
+					respond(res, 400, requestId, { error: "validation", details: parsed.error.flatten() });
+					return;
+				}
+				const caller = resolveCaller(req, null);
+				if ("error" in caller) {
+					respond(res, 401, requestId, { error: "unauthorized" });
+					return;
+				}
+				respond(res, 200, requestId, {
+					content: memory.readJournal(parsed.data),
+				});
+				return;
+			}
+
+			case "GET /memory.recent_journals": {
+				const limitRaw = url.searchParams.get("limit");
+				const parsed = memoryRecentJournalsRequestSchema.safeParse({
+					limit: limitRaw ? Number(limitRaw) : undefined,
+				});
+				if (!parsed.success) {
+					respond(res, 400, requestId, { error: "validation", details: parsed.error.flatten() });
+					return;
+				}
+				const caller = resolveCaller(req, null);
+				if ("error" in caller) {
+					respond(res, 401, requestId, { error: "unauthorized" });
+					return;
+				}
+				respond(res, 200, requestId, {
+					journals: memory.recentJournals({
+						projectId: caller.projectId,
+						limit: parsed.data.limit,
+					}),
+				});
+				return;
+			}
+
+			case "GET /memory.search": {
+				const limitRaw = url.searchParams.get("limit");
+				const kindsRaw = url.searchParams.get("kinds");
+				const parsed = memorySearchRequestSchema.safeParse({
+					query: url.searchParams.get("query") ?? undefined,
+					kinds: kindsRaw ? (kindsRaw.split(",") as FtsKind[]) : undefined,
+					limit: limitRaw ? Number(limitRaw) : undefined,
+				});
+				if (!parsed.success) {
+					respond(res, 400, requestId, { error: "validation", details: parsed.error.flatten() });
+					return;
+				}
+				const caller = resolveCaller(req, null);
+				if ("error" in caller) {
+					respond(res, 401, requestId, { error: "unauthorized" });
+					return;
+				}
+				respond(res, 200, requestId, {
+					hits: memory.search({
+						projectId: caller.projectId,
+						query: parsed.data.query,
+						kinds: parsed.data.kinds,
+						limit: parsed.data.limit,
+					}),
+				});
 				return;
 			}
 

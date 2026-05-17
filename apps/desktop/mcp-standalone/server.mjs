@@ -1036,6 +1036,203 @@ if (isWorkspaceAgentMode) {
 				message,
 			})
 	);
+
+	// ── Memory tools ──────────────────────────────────────────────────────
+	// Project-scoped; control plane derives projectId from the X-Workspace-Id header.
+
+	server.tool(
+		"memory_add_goal",
+		"Record a project goal. Use to capture multi-step objectives the orchestrator is tracking.",
+		{
+			title: z.string().min(1).max(500),
+			body: z.string().max(8192).optional(),
+		},
+		async ({ title, body }) => call("POST", "/memory.add_goal", { title, body })
+	);
+
+	server.tool(
+		"memory_list_goals",
+		"List goals for this project, optionally filtered by status (active/done/abandoned).",
+		{
+			status: z.enum(["active", "done", "abandoned"]).optional(),
+		},
+		async ({ status }) => {
+			const params = new URLSearchParams();
+			if (status) params.set("status", status);
+			const q = params.toString();
+			return call("GET", q ? `/memory.list_goals?${q}` : "/memory.list_goals");
+		}
+	);
+
+	server.tool(
+		"memory_add_followup",
+		"Record a follow-up action to take. Optionally link to a goal, set owner, due date (ISO 8601).",
+		{
+			title: z.string().min(1).max(500),
+			body: z.string().max(8192).optional(),
+			owner: z.string().max(200).optional(),
+			due_at: z.string().datetime().optional().describe("ISO 8601 datetime"),
+			goal_id: z.string().optional(),
+		},
+		async ({ title, body, owner, due_at, goal_id }) =>
+			call("POST", "/memory.add_followup", {
+				title,
+				body,
+				owner,
+				dueAt: due_at,
+				goalId: goal_id,
+			})
+	);
+
+	server.tool(
+		"memory_list_followups",
+		"List follow-ups for this project, optionally filtered by status/owner/due-date range.",
+		{
+			status: z.enum(["open", "done", "cancelled"]).optional(),
+			owner: z.string().optional(),
+			due_before: z.string().datetime().optional(),
+			due_after: z.string().datetime().optional(),
+		},
+		async ({ status, owner, due_before, due_after }) => {
+			const params = new URLSearchParams();
+			if (status) params.set("status", status);
+			if (owner) params.set("owner", owner);
+			if (due_before) params.set("dueBefore", due_before);
+			if (due_after) params.set("dueAfter", due_after);
+			const q = params.toString();
+			return call("GET", q ? `/memory.list_followups?${q}` : "/memory.list_followups");
+		}
+	);
+
+	server.tool(
+		"memory_log_decision",
+		"Record a project decision with rationale (append-only). Use for choices the orchestrator wants to recall later.",
+		{
+			title: z.string().min(1).max(500),
+			rationale: z.string().min(1).max(8192),
+			alternatives: z.string().max(8192).optional(),
+		},
+		async ({ title, rationale, alternatives }) =>
+			call("POST", "/memory.log_decision", { title, rationale, alternatives })
+	);
+
+	server.tool(
+		"memory_list_decisions",
+		"List recent decisions for this project, newest first.",
+		{
+			since: z.string().datetime().optional(),
+			limit: z.number().int().min(1).max(500).optional(),
+		},
+		async ({ since, limit }) => {
+			const params = new URLSearchParams();
+			if (since) params.set("since", since);
+			if (limit !== undefined) params.set("limit", String(limit));
+			const q = params.toString();
+			return call("GET", q ? `/memory.list_decisions?${q}` : "/memory.list_decisions");
+		}
+	);
+
+	server.tool(
+		"memory_add_question",
+		"Record an open question the orchestrator wants to resolve later.",
+		{
+			question: z.string().min(1).max(2000),
+			context: z.string().max(8192).optional(),
+		},
+		async ({ question, context }) =>
+			call("POST", "/memory.add_question", { question, context })
+	);
+
+	server.tool(
+		"memory_answer_question",
+		"Mark an open question as answered with the resolution.",
+		{
+			id: z.string().min(1),
+			answer: z.string().min(1).max(8192),
+		},
+		async ({ id, answer }) => call("POST", "/memory.answer_question", { id, answer })
+	);
+
+	server.tool(
+		"memory_list_questions",
+		"List questions for this project, optionally filtered by status (open/answered/stale).",
+		{
+			status: z.enum(["open", "answered", "stale"]).optional(),
+		},
+		async ({ status }) => {
+			const params = new URLSearchParams();
+			if (status) params.set("status", status);
+			const q = params.toString();
+			return call("GET", q ? `/memory.list_questions?${q}` : "/memory.list_questions");
+		}
+	);
+
+	server.tool(
+		"memory_journal_start",
+		"Start a new session journal. Returns sessionId; pass to memory_journal_append and memory_journal_end. One journal per orchestrator session.",
+		{},
+		async () => call("POST", "/memory.journal_start", {})
+	);
+
+	server.tool(
+		"memory_journal_append",
+		"Append a narrative entry to an open journal session. Text is added verbatim to the session's Markdown file.",
+		{
+			session_id: z.string().min(1),
+			text: z.string().min(1),
+		},
+		async ({ session_id, text }) =>
+			call("POST", "/memory.journal_append", { sessionId: session_id, text })
+	);
+
+	server.tool(
+		"memory_journal_end",
+		"Close a journal session with a summary. After this, appends are rejected.",
+		{
+			session_id: z.string().min(1),
+			summary: z.string().min(1).max(8192),
+		},
+		async ({ session_id, summary }) =>
+			call("POST", "/memory.journal_end", { sessionId: session_id, summary })
+	);
+
+	server.tool(
+		"memory_read_journal",
+		"Read the full Markdown contents of a journal session.",
+		{ session_id: z.string().min(1) },
+		async ({ session_id }) =>
+			call("GET", `/memory.read_journal?sessionId=${encodeURIComponent(session_id)}`)
+	);
+
+	server.tool(
+		"memory_recent_journals",
+		"List recent journal sessions for this project, newest first.",
+		{
+			limit: z.number().int().min(1).max(100).optional(),
+		},
+		async ({ limit }) => {
+			const params = new URLSearchParams();
+			if (limit !== undefined) params.set("limit", String(limit));
+			const q = params.toString();
+			return call("GET", q ? `/memory.recent_journals?${q}` : "/memory.recent_journals");
+		}
+	);
+
+	server.tool(
+		"memory_search",
+		"Full-text search across goals, decisions, questions, and journal summaries for this project.",
+		{
+			query: z.string().min(1),
+			kinds: z.array(z.enum(["goal", "decision", "question", "journal"])).optional(),
+			limit: z.number().int().min(1).max(100).optional(),
+		},
+		async ({ query, kinds, limit }) => {
+			const params = new URLSearchParams({ query });
+			if (kinds && kinds.length > 0) params.set("kinds", kinds.join(","));
+			if (limit !== undefined) params.set("limit", String(limit));
+			return call("GET", `/memory.search?${params.toString()}`);
+		}
+	);
 }
 
 // Start the server

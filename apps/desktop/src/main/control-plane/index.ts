@@ -16,6 +16,7 @@ export interface RunningControlPlane {
 export interface StartOpts {
 	confirm: ConfirmFn;
 	spawnFn: SpawnFn;
+	userDataPath: string;
 	token?: string;
 	eventBus?: EventBus;
 }
@@ -30,6 +31,7 @@ export async function startControlPlane(opts: StartOpts): Promise<RunningControl
 		spawnFn: opts.spawnFn,
 		eventBus,
 		taskRegistry,
+		userDataPath: opts.userDataPath,
 	});
 
 	const port = await new Promise<number>((resolve, reject) => {

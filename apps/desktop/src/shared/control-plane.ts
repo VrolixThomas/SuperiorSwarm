@@ -203,3 +203,97 @@ export interface ResumeAgentResponse {
 	ok: true;
 	messageId: string;
 }
+
+// ---- Memory ----
+
+export const memoryFtsKindSchema = z.enum(["goal", "decision", "question", "journal"]);
+
+export const memoryAddGoalRequestSchema = z.object({
+	title: z.string().min(1).max(500),
+	body: z.string().max(8192).nullish(),
+});
+export type MemoryAddGoalRequest = z.infer<typeof memoryAddGoalRequestSchema>;
+
+export const memoryListGoalsRequestSchema = z.object({
+	status: z.enum(["active", "done", "abandoned"]).optional(),
+});
+export type MemoryListGoalsRequest = z.infer<typeof memoryListGoalsRequestSchema>;
+
+export const memoryAddFollowupRequestSchema = z.object({
+	title: z.string().min(1).max(500),
+	body: z.string().max(8192).nullish(),
+	owner: z.string().max(200).nullish(),
+	dueAt: z.string().datetime().nullish(),
+	goalId: z.string().nullish(),
+});
+export type MemoryAddFollowupRequest = z.infer<typeof memoryAddFollowupRequestSchema>;
+
+export const memoryListFollowupsRequestSchema = z.object({
+	status: z.enum(["open", "done", "cancelled"]).optional(),
+	owner: z.string().optional(),
+	dueBefore: z.string().datetime().optional(),
+	dueAfter: z.string().datetime().optional(),
+});
+export type MemoryListFollowupsRequest = z.infer<typeof memoryListFollowupsRequestSchema>;
+
+export const memoryLogDecisionRequestSchema = z.object({
+	title: z.string().min(1).max(500),
+	rationale: z.string().min(1).max(8192),
+	alternatives: z.string().max(8192).nullish(),
+});
+export type MemoryLogDecisionRequest = z.infer<typeof memoryLogDecisionRequestSchema>;
+
+export const memoryListDecisionsRequestSchema = z.object({
+	since: z.string().datetime().optional(),
+	limit: z.number().int().min(1).max(500).optional(),
+});
+export type MemoryListDecisionsRequest = z.infer<typeof memoryListDecisionsRequestSchema>;
+
+export const memoryAddQuestionRequestSchema = z.object({
+	question: z.string().min(1).max(2000),
+	context: z.string().max(8192).nullish(),
+});
+export type MemoryAddQuestionRequest = z.infer<typeof memoryAddQuestionRequestSchema>;
+
+export const memoryAnswerQuestionRequestSchema = z.object({
+	id: z.string().min(1),
+	answer: z.string().min(1).max(8192),
+});
+export type MemoryAnswerQuestionRequest = z.infer<typeof memoryAnswerQuestionRequestSchema>;
+
+export const memoryListQuestionsRequestSchema = z.object({
+	status: z.enum(["open", "answered", "stale"]).optional(),
+});
+export type MemoryListQuestionsRequest = z.infer<typeof memoryListQuestionsRequestSchema>;
+
+export const memoryJournalStartRequestSchema = z.object({});
+export type MemoryJournalStartRequest = z.infer<typeof memoryJournalStartRequestSchema>;
+
+export const memoryJournalAppendRequestSchema = z.object({
+	sessionId: z.string().min(1),
+	text: z.string().min(1),
+});
+export type MemoryJournalAppendRequest = z.infer<typeof memoryJournalAppendRequestSchema>;
+
+export const memoryJournalEndRequestSchema = z.object({
+	sessionId: z.string().min(1),
+	summary: z.string().min(1).max(8192),
+});
+export type MemoryJournalEndRequest = z.infer<typeof memoryJournalEndRequestSchema>;
+
+export const memoryReadJournalRequestSchema = z.object({
+	sessionId: z.string().min(1),
+});
+export type MemoryReadJournalRequest = z.infer<typeof memoryReadJournalRequestSchema>;
+
+export const memoryRecentJournalsRequestSchema = z.object({
+	limit: z.number().int().min(1).max(100).optional(),
+});
+export type MemoryRecentJournalsRequest = z.infer<typeof memoryRecentJournalsRequestSchema>;
+
+export const memorySearchRequestSchema = z.object({
+	query: z.string().min(1),
+	kinds: z.array(memoryFtsKindSchema).optional(),
+	limit: z.number().int().min(1).max(100).optional(),
+});
+export type MemorySearchRequest = z.infer<typeof memorySearchRequestSchema>;

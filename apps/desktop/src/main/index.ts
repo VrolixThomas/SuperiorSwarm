@@ -276,6 +276,7 @@ app.whenReady().then(async () => {
 		controlPlane = await startControlPlane({
 			confirm: (r) => requestConfirm(r),
 			spawnFn: defaultSpawnFn,
+			userDataPath: userData,
 		});
 
 		setEventBus(controlPlane.eventBus);
