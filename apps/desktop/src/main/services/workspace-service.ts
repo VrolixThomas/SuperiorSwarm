@@ -429,7 +429,11 @@ export function buildLaunchScript(opts: {
 		opts.cliPreset === "claude" && opts.cliSessionId
 			? `--session-id '${escapeShellSingleQuote(opts.cliSessionId)}' `
 			: "";
-	const cmd = `${opts.cliPreset} ${sessionFlag}${flag}'${escapeShellSingleQuote(opts.prompt)}'`;
+	// Per-preset invocation shape. Most CLIs accept a positional prompt; opencode
+	// reserves the positional slot for `[project]` (a directory) and requires the
+	// `run` subcommand to deliver a prompt as a message.
+	const invocation = opts.cliPreset === "opencode" ? "opencode run" : opts.cliPreset;
+	const cmd = `${invocation} ${sessionFlag}${flag}'${escapeShellSingleQuote(opts.prompt)}'`;
 	return ["#!/bin/bash", `cd '${escapeShellSingleQuote(opts.cwd)}'`, "", cmd, ""].join("\n");
 }
 
