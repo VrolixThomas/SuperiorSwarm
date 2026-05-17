@@ -94,4 +94,24 @@ describe("workspace-ordering", () => {
 			reorderTopLevel({ projectId, orderedIds: [looseId, orchId] })
 		).resolves.toEqual({ ok: true });
 	});
+
+	test("reorderTopLevel and reorderChildren do all reads inside the transaction", async () => {
+		// Source-shape regression: both functions must perform validation reads
+		// (count + found-id lookup) inside the same db.transaction block as their writes.
+		// Prevents TOCTOU race with concurrent attach/detach.
+		const src = await Bun.file(
+			new URL("../src/main/services/workspace-ordering.ts", import.meta.url)
+		).text();
+		const txBlocks = src.match(/db\.transaction\(\(tx\) => \{[\s\S]*?\n\t\}\)/g) ?? [];
+		// reorderTopLevel: tx block contains count() AND update(workspaces)
+		expect(
+			txBlocks.some((b) => b.includes("count()") && b.includes("update(workspaces)"))
+		).toBe(true);
+		// reorderChildren: tx block contains count() AND update(orchestratorMembers)
+		expect(
+			txBlocks.some(
+				(b) => b.includes("count()") && b.includes("update(orchestratorMembers)")
+			)
+		).toBe(true);
+	});
 });
