@@ -1,3 +1,4 @@
+import { Children } from "react";
 import type { ReactNode } from "react";
 
 interface OrchestratorGroupProps {
@@ -24,6 +25,16 @@ export function OrchestratorGroup({
 				}}
 			/>
 			{children}
+			{Children.count(children) === 0 && (
+				<div className="pl-[36px] py-2">
+					<div className="text-[11px] text-[var(--text-tertiary)] leading-snug">
+						No worktrees attached.
+					</div>
+					<div className="text-[11px] text-[var(--text-quaternary)] leading-snug">
+						Drag a worktree here, or use Attach… from a worktree's context menu.
+					</div>
+				</div>
+			)}
 		</div>
 	);
 }
