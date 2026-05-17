@@ -7,10 +7,8 @@ export function InstallingOverlay() {
 	if (toastState !== "installing") return null;
 
 	return (
-		<div
-			className="fixed inset-0 z-[9999] flex flex-col items-center justify-center gap-4 bg-[var(--bg)]/95 backdrop-blur-sm"
-			role="dialog"
-			aria-live="polite"
+		<output
+			className="fixed inset-0 z-[9999] flex flex-col items-center justify-center gap-4 bg-[var(--bg-base)]/95 backdrop-blur-sm"
 			aria-label="Installing update"
 		>
 			<div className="size-8 animate-spin rounded-full border-2 border-[var(--border)] border-t-[var(--accent)]" />
@@ -22,6 +20,6 @@ export function InstallingOverlay() {
 					This may take a few seconds. Please don't quit the app.
 				</div>
 			</div>
-		</div>
+		</output>
 	);
 }
