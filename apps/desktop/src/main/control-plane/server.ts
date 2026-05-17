@@ -177,9 +177,7 @@ async function handleRequest(
 						projectId: row.projectId,
 						workspaceId: row.workspaceId,
 						isOrchestrator: isOrch,
-						orchestratorEventsPath: isOrch
-							? eventsFilePathForProject(row.projectId)
-							: undefined,
+						orchestratorEventsPath: isOrch ? eventsFilePathForProject(row.projectId) : undefined,
 						modeContext: {},
 					});
 					return;
@@ -348,7 +346,12 @@ async function handleRequest(
 					respond(res, 401, requestId, { error: "unauthorized" });
 					return;
 				}
-				respond(res, 200, requestId, memory.addGoal({ projectId: caller.projectId, ...parsed.data }));
+				respond(
+					res,
+					200,
+					requestId,
+					memory.addGoal({ projectId: caller.projectId, ...parsed.data })
+				);
 				return;
 			}
 

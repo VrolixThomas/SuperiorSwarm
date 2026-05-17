@@ -183,7 +183,7 @@ describe("control-plane memory routes", () => {
 		};
 		expect(sessionId).toMatch(/^sess_/);
 		expect(filePath).toContain(join(USER_DATA, "memory", PROJECT_ID, "journal"));
-		expect(readFileSync(filePath, "utf-8")).toContain(`Session`);
+		expect(readFileSync(filePath, "utf-8")).toContain("Session");
 
 		const append = await fetch(url("/memory.journal_append"), {
 			method: "POST",
@@ -215,10 +215,9 @@ describe("control-plane memory routes", () => {
 			}),
 		});
 
-		const search = await fetch(
-			url(`/memory.search?query=${encodeURIComponent("caboodle")}`),
-			{ headers: headers() }
-		);
+		const search = await fetch(url(`/memory.search?query=${encodeURIComponent("caboodle")}`), {
+			headers: headers(),
+		});
 		expect(search.status).toBe(200);
 		const { hits } = (await search.json()) as {
 			hits: Array<{ kind: string; refId: string }>;

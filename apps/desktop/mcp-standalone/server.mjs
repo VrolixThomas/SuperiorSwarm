@@ -1139,8 +1139,7 @@ if (isWorkspaceAgentMode) {
 			question: z.string().min(1).max(2000),
 			context: z.string().max(8192).optional(),
 		},
-		async ({ question, context }) =>
-			call("POST", "/memory.add_question", { question, context })
+		async ({ question, context }) => call("POST", "/memory.add_question", { question, context })
 	);
 
 	server.tool(
