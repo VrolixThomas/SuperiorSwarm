@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useRef } from "react";
 import { trpc } from "../trpc/client";
 
-const PALETTE_SIZE = 3; // matches --orch-1, --orch-2, --orch-3
+const PALETTE_SIZE = 8; // matches --orch-1 through --orch-8
 
 export function useOrchestratorColor(
 	orchestratorId: string,
 	projectId: string,
 	allOrchestratorIds: string[]
-): 1 | 2 | 3 {
+): 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 {
 	const colorsQuery = trpc.workspaces.getOrchestratorColors.useQuery(
 		{ projectId },
 		{ staleTime: 60_000 }
@@ -63,5 +63,5 @@ export function useOrchestratorColor(
 	}, [computed, existing, projectId]);
 
 	const idx = computed[orchestratorId] ?? 0;
-	return (idx + 1) as 1 | 2 | 3;
+	return (idx + 1) as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
 }

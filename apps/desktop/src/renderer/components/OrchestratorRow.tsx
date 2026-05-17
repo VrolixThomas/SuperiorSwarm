@@ -3,7 +3,7 @@ import { useTabStore } from "../stores/tab-store";
 
 interface OrchestratorRowProps {
 	workspace: { id: string; name: string };
-	colorIndex: 1 | 2 | 3;
+	colorIndex: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
 	childCount: number;
 	expanded: boolean;
 	onToggle: () => void;

@@ -538,7 +538,7 @@ export const workspacesRouter = router({
 		.input(
 			z.object({
 				projectId: z.string().min(1),
-				map: z.record(z.string(), z.number().int().min(0).max(2)),
+				map: z.record(z.string(), z.number().int().min(0).max(7)),
 			})
 		)
 		.mutation(({ input }) => {

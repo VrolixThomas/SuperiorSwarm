@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 
 interface OrchestratorGroupProps {
-	colorIndex: 1 | 2 | 3;
+	colorIndex: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
 	hasActiveChild: boolean;
 	children: ReactNode;
 }
