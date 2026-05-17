@@ -419,6 +419,14 @@ app.whenReady().then(async () => {
 app.on("before-quit", () => {
 	const t0 = Date.now();
 	log.info("[quit] before-quit start");
+	// Watchdog: if any cleanup blocks the main thread, hard-exit before macOS
+	// flags the window as not responding. Squirrel's Autoupdate helper only
+	// needs our PID to die — graceful or not — to complete the bundle swap.
+	const watchdog = setTimeout(() => {
+		log.error("[quit] watchdog fired after 3s — forcing exit");
+		app.exit(0);
+	}, 3000);
+	watchdog.unref();
 	try {
 		deleteControlDiscovery(app.getPath("userData"));
 	} catch {}
