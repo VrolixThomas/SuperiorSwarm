@@ -501,6 +501,26 @@ export function WorkspaceItem({
 						setContextMenu({ x: e.clientX, y: e.clientY });
 					}
 				}}
+				onKeyDown={(e) => {
+					const mod = e.metaKey || e.ctrlKey;
+					if (mod && e.shiftKey && (e.key === "a" || e.key === "A")) {
+						e.preventDefault();
+						if (
+							!workspace.isOrchestrator &&
+							indentLevel === 0 &&
+							workspace.type === "worktree"
+						) {
+							const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+							setContextMenu({ x: rect.right - 200, y: rect.bottom });
+						}
+					}
+					if (mod && e.shiftKey && (e.key === "d" || e.key === "D")) {
+						e.preventDefault();
+						if (isChildOfOrchestrator) {
+							detachMut.mutate({ workspaceId: workspace.id });
+						}
+					}
+				}}
 				className={[
 					"relative flex w-full items-center gap-2 border-none",
 					indentLevel === 1 ? "pl-[36px] pr-3 py-[7px]" : "pl-[22px] pr-3 py-[7px]",
