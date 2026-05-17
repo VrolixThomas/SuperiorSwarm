@@ -415,18 +415,24 @@ app.whenReady().then(async () => {
 });
 
 app.on("before-quit", () => {
+	const t0 = Date.now();
+	log.info("[quit] before-quit start");
 	try {
 		deleteControlDiscovery(app.getPath("userData"));
 	} catch {}
+	log.info(`[quit] discovery-deleted +${Date.now() - t0}ms`);
 	alertListener?.stop();
 	setAgentNotifyPort(null);
 	stopCommentPoller();
 	teardownUpdater();
+	log.info(`[quit] timers-stopped +${Date.now() - t0}ms`);
 	daemonClient.setQuitting();
 	daemonClient.detachAll();
 	daemonClient.disconnect();
+	log.info(`[quit] daemon-disconnected +${Date.now() - t0}ms`);
 	serverManager.disposeAll();
 	void disposeRepoIPC();
+	log.info(`[quit] async-cleanup-dispatched +${Date.now() - t0}ms`);
 	if (controlPlane) {
 		void controlPlane.stop().catch((err) => {
 			log.error("[control-plane] stop failed:", err);
@@ -438,6 +444,7 @@ app.on("before-quit", () => {
 			detachOrchestratorSink = null;
 		}
 	}
+	log.info(`[quit] before-quit done +${Date.now() - t0}ms`);
 });
 
 app.on("window-all-closed", () => {

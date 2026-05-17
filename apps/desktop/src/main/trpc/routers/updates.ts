@@ -68,8 +68,12 @@ export const updatesRouter = router({
 
 	installUpdate: publicProcedure.mutation(async () => {
 		if (!app.isPackaged) return;
+		const t0 = Date.now();
+		console.log("[updater] installUpdate mutation entered");
 		try {
+			console.log(`[updater] calling quitAndInstall +${Date.now() - t0}ms`);
 			autoUpdater.quitAndInstall();
+			console.log(`[updater] quitAndInstall returned +${Date.now() - t0}ms`);
 		} catch (err) {
 			console.error("[updater] Install update failed:", err);
 		}
