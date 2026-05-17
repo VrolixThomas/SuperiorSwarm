@@ -169,8 +169,22 @@ export function ProjectItem({ project, isExpanded, onToggle }: ProjectItemProps)
 		},
 	});
 	const coachmarkDismissed = coachmarkQuery.data === false;
+
+	const tipKey = "orchTip:dismissed";
+	const tipQuery = trpc.workspaces.getOrchestratorExpand.useQuery(
+		{ key: tipKey },
+		{ staleTime: Number.POSITIVE_INFINITY }
+	);
+	const dismissTip = trpc.workspaces.setOrchestratorExpand.useMutation({
+		onSuccess: (_data, vars) => {
+			utils.workspaces.getOrchestratorExpand.setData({ key: vars.key }, vars.value);
+		},
+	});
+	const tipDismissed = tipQuery.data === false; // same inverted convention as coachmark
 	const [coachmarkAnchor, setCoachmarkAnchor] = useState<{ x: number; y: number } | null>(null);
 	const coachmarkFiredRef = useRef(false);
+
+	const shouldShowTip = isReady && !tipDismissed && orchestrators.length === 0;
 
 	const handleFirstHover = useCallback(
 		(rect: DOMRect) => {
@@ -408,6 +422,39 @@ export function ProjectItem({ project, isExpanded, onToggle }: ProjectItemProps)
 								))}
 							</div>
 						</SortableContext>
+						{shouldShowTip && (
+							<div className="mt-1 flex items-start gap-2 border-t border-[var(--border-subtle)] px-3 py-3">
+								<svg
+									role="img"
+									aria-label=""
+									width="12"
+									height="12"
+									viewBox="0 0 12 12"
+									fill="none"
+									className="mt-[2px] shrink-0 text-[var(--text-tertiary)]"
+								>
+									<circle cx="6" cy="2.5" r="1.4" stroke="currentColor" strokeWidth="1.2" />
+									<circle cx="2.5" cy="9.5" r="1.4" stroke="currentColor" strokeWidth="1.2" />
+									<circle cx="9.5" cy="9.5" r="1.4" stroke="currentColor" strokeWidth="1.2" />
+									<path d="M6 4 L3 8 M6 4 L9 8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+								</svg>
+								<button
+									type="button"
+									className="flex-1 text-left text-[11px] text-[var(--text-secondary)] leading-snug"
+									onClick={() => openCreateOrchestratorModal(project.id)}
+								>
+									Orchestrators coordinate multiple agents. Create one →
+								</button>
+								<button
+									type="button"
+									aria-label="Dismiss tip"
+									className="text-[11px] text-[var(--text-quaternary)] hover:text-[var(--text-secondary)]"
+									onClick={() => dismissTip.mutate({ key: tipKey, value: false })}
+								>
+									×
+								</button>
+							</div>
+						)}
 					</DndContext>
 				)}
 			</RepoGroup>
