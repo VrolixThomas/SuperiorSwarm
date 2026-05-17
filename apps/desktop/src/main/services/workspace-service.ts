@@ -875,7 +875,11 @@ export async function createOrchestrator(
 	if (input.attachWorkspaceIds.length > 0) {
 		const db = getDb();
 		const rows = db
-			.select({ id: workspaces.id, projectId: workspaces.projectId, isOrchestrator: workspaces.isOrchestrator })
+			.select({
+				id: workspaces.id,
+				projectId: workspaces.projectId,
+				isOrchestrator: workspaces.isOrchestrator,
+			})
 			.from(workspaces)
 			.where(inArray(workspaces.id, input.attachWorkspaceIds))
 			.all();
@@ -925,10 +929,13 @@ export async function createOrchestrator(
 	};
 }
 
-export async function renameWorkspace(input: {
-	workspaceId: string;
-	name: string;
-}): Promise<{ ok: true }> {
+export async function renameWorkspace(
+	ctx: CallerContext,
+	input: {
+		workspaceId: string;
+		name: string;
+	}
+): Promise<{ ok: true }> {
 	const trimmed = input.name.trim();
 	if (trimmed.length === 0) {
 		throw new Error("name cannot be empty");
@@ -939,7 +946,10 @@ export async function renameWorkspace(input: {
 		.from(workspaces)
 		.where(eq(workspaces.id, input.workspaceId))
 		.get();
-	if (!ws) throw new Error(`workspace ${input.workspaceId} not found`);
+	if (!ws) throw new NotFoundError(input.workspaceId);
+	if (ws.projectId !== ctx.projectId) {
+		throw new ForbiddenError("cross-project renameWorkspace");
+	}
 
 	const dup = db
 		.select({ id: workspaces.id })

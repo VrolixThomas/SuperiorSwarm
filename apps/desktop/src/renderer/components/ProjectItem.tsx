@@ -442,8 +442,8 @@ function OrchestratorGroupBlock({
 		if (next === null) return;
 		const trimmed = next.trim();
 		if (trimmed.length === 0 || trimmed === node.workspace.name) return;
-		renameMut.mutate({ workspaceId: node.workspace.id, name: trimmed });
-	}, [node.workspace.id, node.workspace.name, renameMut]);
+		renameMut.mutate({ projectId, workspaceId: node.workspace.id, name: trimmed });
+	}, [node.workspace.id, node.workspace.name, projectId, renameMut]);
 
 	const handleDetachAll = useCallback(() => {
 		detachAllMut.mutate({ orchestratorId: node.workspace.id });

@@ -12,7 +12,10 @@ describe("renameWorkspace", () => {
 	test("updates the display name", async () => {
 		const p = await seedProject();
 		const id = await seedWorkspace(p, { name: "old-name" });
-		await renameWorkspace({ workspaceId: id, name: "new-name" });
+		await renameWorkspace(
+			{ projectId: p, workspaceId: id },
+			{ workspaceId: id, name: "new-name" }
+		);
 		const row = getDb().select().from(workspaces).where(eq(workspaces.id, id)).get();
 		expect(row?.name).toBe("new-name");
 	});
@@ -20,16 +23,18 @@ describe("renameWorkspace", () => {
 	test("rejects empty name", async () => {
 		const p = await seedProject();
 		const id = await seedWorkspace(p, { name: "x" });
-		await expect(renameWorkspace({ workspaceId: id, name: "   " })).rejects.toThrow(/empty/i);
+		await expect(
+			renameWorkspace({ projectId: p, workspaceId: id }, { workspaceId: id, name: "   " })
+		).rejects.toThrow(/empty/i);
 	});
 
 	test("rejects duplicate name within the same project", async () => {
 		const p = await seedProject();
 		await seedWorkspace(p, { name: "alpha" });
 		const beta = await seedWorkspace(p, { name: "beta" });
-		await expect(renameWorkspace({ workspaceId: beta, name: "alpha" })).rejects.toThrow(
-			/already in use/i
-		);
+		await expect(
+			renameWorkspace({ projectId: p, workspaceId: beta }, { workspaceId: beta, name: "alpha" })
+		).rejects.toThrow(/already in use/i);
 	});
 
 	test("allows duplicate name across different projects", async () => {
@@ -37,6 +42,21 @@ describe("renameWorkspace", () => {
 		const p2 = await seedProject();
 		await seedWorkspace(p1, { name: "shared" });
 		const id = await seedWorkspace(p2, { name: "other" });
-		await expect(renameWorkspace({ workspaceId: id, name: "shared" })).resolves.toBeDefined();
+		await expect(
+			renameWorkspace({ projectId: p2, workspaceId: id }, { workspaceId: id, name: "shared" })
+		).resolves.toBeDefined();
+	});
+
+	test("rejects cross-project rename", async () => {
+		const p1 = await seedProject();
+		const p2 = await seedProject();
+		const caller = await seedWorkspace(p1, { name: "caller" });
+		const victim = await seedWorkspace(p2, { name: "victim" });
+		await expect(
+			renameWorkspace(
+				{ projectId: p1, workspaceId: caller },
+				{ workspaceId: victim, name: "pwned" }
+			)
+		).rejects.toThrow(/forbidden: cross-project/);
 	});
 });

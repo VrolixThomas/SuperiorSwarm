@@ -330,10 +330,19 @@ export const workspacesRouter = router({
 		}),
 
 	renameWorkspace: publicProcedure
-		.input(z.object({ workspaceId: z.string().min(1), name: z.string() }))
+		.input(
+			z.object({
+				projectId: z.string().min(1),
+				workspaceId: z.string().min(1),
+				name: z.string(),
+			})
+		)
 		.mutation(async ({ input }) => {
 			const { renameWorkspace } = await import("../../services/workspace-service");
-			return renameWorkspace(input);
+			return renameWorkspace(
+				{ projectId: input.projectId, workspaceId: input.workspaceId },
+				{ workspaceId: input.workspaceId, name: input.name }
+			);
 		}),
 
 	setOrchestrator: publicProcedure
@@ -389,9 +398,7 @@ export const workspacesRouter = router({
 	detachAllFromOrchestrator: publicProcedure
 		.input(z.object({ orchestratorId: z.string().min(1) }))
 		.mutation(async ({ input }) => {
-			const { detachAllFromOrchestrator } = await import(
-				"../../services/orchestrator-membership"
-			);
+			const { detachAllFromOrchestrator } = await import("../../services/orchestrator-membership");
 			return detachAllFromOrchestrator(input);
 		}),
 
