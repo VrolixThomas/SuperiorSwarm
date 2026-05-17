@@ -269,7 +269,11 @@ export function WorkspaceItem({
 
 			utils.workspaces.listByProject.setData({ projectId }, (old) => {
 				const next = old?.filter((ws) => ws.id !== id);
-				console.log("[del] setData applied", { before: old?.length, after: next?.length }, performance.now());
+				console.log(
+					"[del] setData applied",
+					{ before: old?.length, after: next?.length },
+					performance.now()
+				);
 				return next;
 			});
 			paneStore.clearLayout(id);
@@ -283,7 +287,7 @@ export function WorkspaceItem({
 		// session stores; those are not restored — user must reselect. Acceptable
 		// because `force: true` failures are rare and the user can click again.
 		onError: (err, { id }, context) => {
-			console.log("[del] onError", performance.now(), err.message);
+			console.error("[del] onError", performance.now(), err.message);
 			if (context?.previousList) {
 				utils.workspaces.listByProject.setData({ projectId }, context.previousList);
 			}
@@ -293,7 +297,6 @@ export function WorkspaceItem({
 			if (context?.previousMetadata) {
 				useTabStore.getState().setWorkspaceMetadata(id, context.previousMetadata);
 			}
-			window.alert(`Failed to delete worktree: ${err.message}`);
 		},
 		onSuccess: () => {
 			console.log("[del] onSuccess", performance.now());
