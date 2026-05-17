@@ -60,7 +60,16 @@ export function UpdateToast() {
 	};
 
 	const handleRestart = () => {
-		installUpdate.mutate();
+		useUpdateStore.getState().setInstalling();
+		// Trigger one final session save while the app is still fully
+		// responsive. The autosave effect in App.tsx listens for this event.
+		window.dispatchEvent(new Event("superiorswarm:save-now"));
+		// Defer the mutation to the next tick so React paints the overlay first.
+		// This makes the spinner visible before the main process starts shutting
+		// down, keeping the OS run-loop happy and giving the user feedback.
+		setTimeout(() => {
+			installUpdate.mutate();
+		}, 0);
 	};
 
 	const handleLater = () => {
