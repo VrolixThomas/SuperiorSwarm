@@ -46,6 +46,7 @@ import {
 import { reviewDrafts } from "../db/schema-ai-review";
 import {
 	createWorktree,
+	forceRemoveWorktree,
 	removeWorktree as gitRemoveWorktree,
 	hasUncommittedChanges,
 } from "../git/operations";
@@ -279,8 +280,16 @@ export async function removeWorkspace(
 		db.delete(terminalSessions).where(eq(terminalSessions.workspaceId, input.workspaceId)).run();
 	}
 
+	// Grace period so daemon SIGKILLs propagate to claude/shell children before
+	// git tries to remove the worktree dir. Without this, lingering child procs
+	// can race git's rm and leave the worktree in a partial state (metadata gone
+	// but dir present), causing subsequent removes to fail with "not a working tree".
+	if (sessions.length > 0) {
+		await new Promise((resolve) => setTimeout(resolve, 200));
+	}
+
 	if (pathExists && wt) {
-		await gitRemoveWorktree(project.repoPath, wt.path);
+		await forceRemoveWorktree(project.repoPath, wt.path);
 	}
 
 	if (wt) db.delete(worktrees).where(eq(worktrees.id, wt.id)).run();

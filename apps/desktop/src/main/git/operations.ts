@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { resolve } from "node:path";
 import simpleGit, { type SimpleGitProgressEvent } from "simple-git";
 
@@ -163,7 +163,44 @@ export async function checkoutBranchWorktree(
 
 export async function removeWorktree(repoPath: string, worktreePath: string): Promise<void> {
 	const git = simpleGit(repoPath);
-	await git.raw(["worktree", "remove", worktreePath, "--force"]);
+	let timer: NodeJS.Timeout | undefined;
+	try {
+		await Promise.race([
+			git.raw(["worktree", "remove", worktreePath, "--force"]),
+			new Promise<never>((_, reject) => {
+				timer = setTimeout(
+					() => reject(new Error("git worktree remove timed out after 15s")),
+					15_000
+				);
+			}),
+		]);
+	} finally {
+		if (timer) clearTimeout(timer);
+	}
+}
+
+export async function pruneWorktrees(repoPath: string): Promise<void> {
+	await simpleGit(repoPath).raw(["worktree", "prune"]);
+}
+
+// Best-effort: try `git worktree remove`; on failure rmSync the dir and prune
+// stale metadata so callers can proceed with DB cleanup even when git is wedged.
+export async function forceRemoveWorktree(repoPath: string, worktreePath: string): Promise<void> {
+	try {
+		await removeWorktree(repoPath, worktreePath);
+	} catch (err) {
+		console.error("[forceRemoveWorktree] removeWorktree failed, falling back:", err);
+		try {
+			rmSync(worktreePath, { recursive: true, force: true });
+		} catch (rmErr) {
+			console.error("[forceRemoveWorktree] rmSync fallback failed:", rmErr);
+		}
+		try {
+			await pruneWorktrees(repoPath);
+		} catch (pruneErr) {
+			console.error("[forceRemoveWorktree] prune fallback failed:", pruneErr);
+		}
+	}
 }
 
 export async function listWorktrees(repoPath: string): Promise<WorktreeInfo[]> {
