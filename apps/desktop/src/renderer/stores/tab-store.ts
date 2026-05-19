@@ -284,7 +284,16 @@ function defaultPanelForCwd(cwd: string): RightPanelState {
 }
 
 /** Derive the correct right panel state from workspace metadata. */
-function panelForWorkspace(cwd: string, meta: WorkspaceMetadata | undefined): RightPanelState {
+function panelForWorkspace(
+	workspaceId: string,
+	cwd: string,
+	meta: WorkspaceMetadata | undefined
+): RightPanelState {
+	// Cross-repo orchestrator tabs are terminal-only — the workDir is not a git
+	// repo, so any diff/working-tree subscription would fail. Return closed so
+	// DiffPanel never mounts a subscription for this workspace.
+	if (workspaceId.startsWith("xro-")) return PANEL_CLOSED;
+
 	if (meta?.type === "review" && meta.prProvider && meta.prIdentifier) {
 		const [ownerRepo, numStr] = meta.prIdentifier.split("#");
 		const [owner, repo] = (ownerRepo ?? "").split("/");
@@ -555,7 +564,7 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 			return;
 		}
 
-		const panel = panelForWorkspace(cwd, meta);
+		const panel = panelForWorkspace(workspaceId, cwd, meta);
 		set({
 			activeWorkspaceId: workspaceId,
 			activeWorkspaceCwd: cwd,
@@ -753,8 +762,9 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 	openRightPanel: () => {
 		const { rightPanel, activeWorkspaceCwd, activeWorkspaceId, workspaceMetadata } = get();
 		if (rightPanel.open) return;
+		if (activeWorkspaceId?.startsWith("xro-")) return;
 		const meta = activeWorkspaceId ? workspaceMetadata[activeWorkspaceId] : undefined;
-		set({ rightPanel: panelForWorkspace(activeWorkspaceCwd, meta) });
+		set({ rightPanel: panelForWorkspace(activeWorkspaceId ?? "", activeWorkspaceCwd, meta) });
 	},
 
 	openExplorer: () => {
@@ -1122,7 +1132,7 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 		const activeId = activeEntry?.id ?? activeWs;
 		const activeMeta = activeId ? workspaceMetadata[activeId] : undefined;
 		const activeCwdResolved = activeEntry?.cwd ?? activeCwd;
-		const rightPanel = panelForWorkspace(activeCwdResolved, activeMeta);
+		const rightPanel = panelForWorkspace(activeId ?? "", activeCwdResolved, activeMeta);
 
 		set({
 			activeWorkspaceId: activeId ?? null,
