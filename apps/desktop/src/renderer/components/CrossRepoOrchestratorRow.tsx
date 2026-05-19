@@ -22,18 +22,41 @@ export function CrossRepoOrchestratorRow({
 	const colorIndex = useCrossRepoOrchestratorColor(orchestrator.id, allOrchestratorIds);
 	const members = trpc.crossRepoOrchestrators.listMembers.useQuery({ id: orchestrator.id });
 	const linked = trpc.crossRepoOrchestrators.listLinkedProjects.useQuery({ id: orchestrator.id });
+	const projects = trpc.projects.list.useQuery();
+	const utils = trpc.useUtils();
 	const memberCount = members.data?.length ?? 0;
 	const repoCount = linked.data?.length ?? 0;
 
 	const start = trpc.crossRepoOrchestrators.startAgent.useMutation({
 		onError: (err) => console.warn("[xro] start failed:", err.message),
 	});
+	const linkProject = trpc.crossRepoOrchestrators.linkProject.useMutation({
+		onSuccess: () => {
+			utils.crossRepoOrchestrators.listLinkedProjects.invalidate({ id: orchestrator.id });
+		},
+	});
 
 	const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+	const [linkMenuOpen, setLinkMenuOpen] = useState(false);
+	const linkMenuRef = useRef<HTMLDivElement>(null);
+
+	// Close link-repo dropdown on outside click
+	useEffect(() => {
+		if (!linkMenuOpen) return;
+		function onDown(e: MouseEvent) {
+			if (linkMenuRef.current && !linkMenuRef.current.contains(e.target as Node)) {
+				setLinkMenuOpen(false);
+			}
+		}
+		document.addEventListener("mousedown", onDown);
+		return () => document.removeEventListener("mousedown", onDown);
+	}, [linkMenuOpen]);
+
+	const unlinkedProjects = (projects.data ?? []).filter((p) => !(linked.data ?? []).includes(p.id));
 
 	return (
 		<div
-			className="group flex items-center gap-2 px-2 py-1.5 hover:bg-[var(--bg-elevated)] rounded-[var(--radius-md)] cursor-default"
+			className="group relative flex items-center gap-2 px-2 py-1.5 hover:bg-[var(--bg-elevated)] rounded-[var(--radius-md)] cursor-default"
 			onContextMenu={(e) => {
 				e.preventDefault();
 				setMenu({ x: e.clientX, y: e.clientY });
@@ -52,18 +75,57 @@ export function CrossRepoOrchestratorRow({
 				aria-hidden="true"
 			/>
 			<span className="text-[13px] text-[var(--text)] truncate">{orchestrator.name}</span>
-			<button
-				type="button"
-				onClick={(e) => {
-					e.stopPropagation();
-					start.mutate({ id: orchestrator.id });
-				}}
-				disabled={start.isPending}
-				className="opacity-0 group-hover:opacity-100 focus:opacity-100 text-[10px] text-[var(--accent)] hover:underline transition-opacity"
-				aria-label="Start cross-repo orchestrator agent"
-			>
-				{start.isPending ? "starting…" : "start"}
-			</button>
+
+			{/* Hover-only action buttons */}
+			<div className="opacity-0 group-hover:opacity-100 focus-within:opacity-100 flex items-center gap-2 transition-opacity">
+				<button
+					type="button"
+					onClick={(e) => {
+						e.stopPropagation();
+						start.mutate({ id: orchestrator.id });
+					}}
+					disabled={start.isPending}
+					className="text-[10px] text-[var(--accent)] hover:underline"
+					aria-label="Start cross-repo orchestrator agent"
+				>
+					{start.isPending ? "starting…" : "start"}
+				</button>
+
+				{unlinkedProjects.length > 0 && (
+					<div className="relative" ref={linkMenuRef}>
+						<button
+							type="button"
+							onClick={(e) => {
+								e.stopPropagation();
+								setLinkMenuOpen((v) => !v);
+							}}
+							className="text-[10px] text-[var(--text-tertiary)] hover:text-[var(--text)]"
+							aria-label="Link a repo"
+						>
+							+ repo
+						</button>
+						{linkMenuOpen && (
+							<div className="absolute left-0 top-full mt-1 z-50 min-w-[160px] rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-elevated)] py-1 shadow-[var(--shadow-md)]">
+								{unlinkedProjects.map((p) => (
+									<button
+										key={p.id}
+										type="button"
+										className="block w-full text-left px-3 py-1.5 text-[12px] hover:bg-[var(--bg-overlay)] text-[var(--text)]"
+										onClick={(e) => {
+											e.stopPropagation();
+											linkProject.mutate({ id: orchestrator.id, projectId: p.id });
+											setLinkMenuOpen(false);
+										}}
+									>
+										{p.name}
+									</button>
+								))}
+							</div>
+						)}
+					</div>
+				)}
+			</div>
+
 			<span className="ml-auto text-[10px] text-[var(--text-tertiary)] tabular-nums">
 				{repoCount} {repoCount === 1 ? "repo" : "repos"} · {memberCount}
 			</span>

@@ -5,11 +5,6 @@ export function CrossRepoOrchestratorBody({ orchestratorId }: { orchestratorId: 
 	const members = trpc.crossRepoOrchestrators.listMembers.useQuery({ id: orchestratorId });
 	const projects = trpc.projects.list.useQuery();
 	const utils = trpc.useUtils();
-	const linkProject = trpc.crossRepoOrchestrators.linkProject.useMutation({
-		onSuccess: () => {
-			utils.crossRepoOrchestrators.listLinkedProjects.invalidate({ id: orchestratorId });
-		},
-	});
 	const unlinkProject = trpc.crossRepoOrchestrators.unlinkProject.useMutation({
 		onSuccess: () => {
 			utils.crossRepoOrchestrators.listLinkedProjects.invalidate({ id: orchestratorId });
@@ -24,6 +19,11 @@ export function CrossRepoOrchestratorBody({ orchestratorId }: { orchestratorId: 
 			<div className="text-[10px] uppercase tracking-wider text-[var(--text-quaternary)] px-2 py-1">
 				Repos
 			</div>
+			{(linked.data ?? []).length === 0 && (
+				<div className="px-2 py-1 text-[11px] text-[var(--text-quaternary)]">
+					No repos linked — hover the row to add one.
+				</div>
+			)}
 			{(linked.data ?? []).map((pid) => (
 				<div
 					key={pid}
@@ -40,32 +40,16 @@ export function CrossRepoOrchestratorBody({ orchestratorId }: { orchestratorId: 
 					</button>
 				</div>
 			))}
-			<div className="px-2 py-1">
-				<select
-					className="bg-transparent border border-[var(--border)] rounded text-[11px] py-0.5 text-[var(--text-secondary)]"
-					value=""
-					onChange={(e) => {
-						if (!e.target.value) return;
-						linkProject.mutate({ id: orchestratorId, projectId: e.target.value });
-					}}
-				>
-					<option value="">+ link repo…</option>
-					{(projects.data ?? [])
-						.filter((p) => !(linked.data ?? []).includes(p.id))
-						.map((p) => (
-							<option key={p.id} value={p.id}>
-								{p.name}
-							</option>
-						))}
-				</select>
-			</div>
 
 			<div className="text-[10px] uppercase tracking-wider text-[var(--text-quaternary)] px-2 py-1 mt-2">
 				Members
 			</div>
+			{(members.data ?? []).length === 0 && (
+				<div className="px-2 py-1 text-[11px] text-[var(--text-quaternary)]">No active members</div>
+			)}
 			{(members.data ?? []).map((m) => (
 				<div key={m.workspaceId} className="px-2 py-1 text-[12px] text-[var(--text)] truncate">
-					{projectsById.get(m.projectId)?.name ?? m.projectId} / {m.workspaceId}
+					{projectsById.get(m.projectId)?.name ?? m.projectId} / {m.workspaceName ?? m.workspaceId}
 				</div>
 			))}
 		</div>
