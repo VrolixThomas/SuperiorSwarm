@@ -513,12 +513,11 @@ export type GlobalMcpInstall = typeof globalMcpInstall.$inferSelect;
 export const orchestratorMembers = sqliteTable(
 	"orchestrator_members",
 	{
-		orchestratorId: text("orchestrator_id")
-			.notNull()
-			.references(() => workspaces.id, { onDelete: "cascade" }),
+		orchestratorId: text("orchestrator_id").notNull(),
 		workspaceId: text("workspace_id")
 			.notNull()
 			.references(() => workspaces.id, { onDelete: "cascade" }),
+		parentKind: text("parent_kind").notNull().default("workspace"),
 		sortOrder: integer("sort_order").notNull(),
 		createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
 	},
@@ -526,8 +525,44 @@ export const orchestratorMembers = sqliteTable(
 		primaryKey({ columns: [t.orchestratorId, t.workspaceId] }),
 		index("orch_members_workspace_idx").on(t.workspaceId),
 		index("orch_members_orch_sort_idx").on(t.orchestratorId, t.sortOrder),
+		index("orch_members_parent_kind_idx").on(t.parentKind, t.orchestratorId),
 	]
 );
 
 export type OrchestratorMember = typeof orchestratorMembers.$inferSelect;
 export type NewOrchestratorMember = typeof orchestratorMembers.$inferInsert;
+
+export const crossRepoOrchestrators = sqliteTable("cross_repo_orchestrators", {
+	id: text("id").primaryKey(),
+	name: text("name").notNull(),
+	workDir: text("work_dir").notNull(),
+	agentKind: text("agent_kind").notNull(),
+	status: text("status").notNull().default("idle"),
+	colorIndex: integer("color_index"),
+	sortOrder: integer("sort_order").notNull(),
+	createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+	updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+});
+
+export type CrossRepoOrchestrator = typeof crossRepoOrchestrators.$inferSelect;
+export type NewCrossRepoOrchestrator = typeof crossRepoOrchestrators.$inferInsert;
+
+export const crossRepoOrchestratorProjects = sqliteTable(
+	"cross_repo_orchestrator_projects",
+	{
+		orchestratorId: text("orchestrator_id")
+			.notNull()
+			.references(() => crossRepoOrchestrators.id, { onDelete: "cascade" }),
+		projectId: text("project_id")
+			.notNull()
+			.references(() => projects.id, { onDelete: "cascade" }),
+		sortOrder: integer("sort_order").notNull(),
+		createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+	},
+	(t) => [
+		primaryKey({ columns: [t.orchestratorId, t.projectId] }),
+		index("xro_projects_proj_idx").on(t.projectId),
+	]
+);
+
+export type CrossRepoOrchestratorProject = typeof crossRepoOrchestratorProjects.$inferSelect;
