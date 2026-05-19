@@ -896,11 +896,17 @@ if (isWorkspaceAgentOrCrossRepo) {
 
 	async function call(method, path, body) {
 		try {
+			// In cross-repo mode we identify via X-Cross-Repo-Orchestrator-Id.
+			// In workspace-agent mode we identify via X-Workspace-Id.
+			// Never send both at once.
+			const callerHeader = isCrossRepoMode
+				? { "X-Cross-Repo-Orchestrator-Id": CROSS_REPO_ID }
+				: { "X-Workspace-Id": WORKSPACE_ID };
 			const res = await fetch(`${baseUrl}${path}`, {
 				method,
 				headers: {
 					Authorization: authHeader,
-					"X-Workspace-Id": WORKSPACE_ID,
+					...callerHeader,
 					...(body ? { "Content-Type": "application/json" } : {}),
 				},
 				body: body ? JSON.stringify(body) : undefined,

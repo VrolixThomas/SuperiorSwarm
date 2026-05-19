@@ -54,6 +54,9 @@ async function attachIfCallerIsOrchestrator(
 ): Promise<void> {
 	const caller = resolveCaller(req, projectId);
 	if ("error" in caller) return;
+	// Only workspace-agent orchestrators participate in orchestrator_members.
+	// Cross-repo orchestrators manage membership through cross_repo_orchestrator_projects.
+	if (caller.kind !== "workspace") return;
 	if (caller.workspaceId === targetWorkspaceId) return;
 	const orch = getDb()
 		.select({ isOrchestrator: workspaces.isOrchestrator })
@@ -92,6 +95,28 @@ function resolveCaller(
 	projectIdHint: string | null
 ): CallerContext | { error: string } {
 	const wsId = req.headers["x-workspace-id"];
+	const xroId = req.headers["x-cross-repo-orchestrator-id"];
+
+	if (typeof xroId === "string" && xroId.length > 0) {
+		// Cross-repo orchestrator mode: look up in cross_repo_orchestrators.
+		const row = getDb()
+			.select({ id: crossRepoOrchestrators.id })
+			.from(crossRepoOrchestrators)
+			.where(eq(crossRepoOrchestrators.id, xroId))
+			.get();
+		if (!row) return { error: "unknown cross-repo orchestrator" };
+		const linkedProjectIds = getDb()
+			.select({ projectId: crossRepoOrchestratorProjects.projectId })
+			.from(crossRepoOrchestratorProjects)
+			.where(eq(crossRepoOrchestratorProjects.orchestratorId, xroId))
+			.all()
+			.map((r) => r.projectId);
+		if (projectIdHint && !linkedProjectIds.includes(projectIdHint)) {
+			return { error: "project not linked to this cross-repo orchestrator" };
+		}
+		return { kind: "xro", xroId, linkedProjectIds };
+	}
+
 	if (typeof wsId !== "string" || wsId.length === 0) {
 		return { error: "missing X-Workspace-Id header" };
 	}
@@ -104,7 +129,7 @@ function resolveCaller(
 	if (projectIdHint && row.projectId !== projectIdHint) {
 		return { error: "workspace/project mismatch" };
 	}
-	return { workspaceId: wsId, projectId: row.projectId };
+	return { kind: "workspace", workspaceId: wsId, projectId: row.projectId };
 }
 
 export function createControlPlaneServer(deps: ControlPlaneDeps): Server {
@@ -429,6 +454,12 @@ async function handleRequest(
 				const caller = resolveCaller(req, url.searchParams.get("projectId"));
 				if ("error" in caller) {
 					respond(res, 401, requestId, { error: "unauthorized" });
+					return;
+				}
+				// Cross-repo orchestrators use file-based event aggregation rather
+				// than per-project SSE; reject the SSE subscription gracefully.
+				if (caller.kind === "xro") {
+					respond(res, 400, requestId, { error: "xro_use_file_events" });
 					return;
 				}
 

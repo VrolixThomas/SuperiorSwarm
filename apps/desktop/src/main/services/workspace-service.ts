@@ -38,6 +38,8 @@ import {
 import { getDb } from "../db";
 import {
 	agentMessages,
+	crossRepoOrchestrators,
+	crossRepoOrchestratorProjects,
 	orchestratorMembers,
 	projects,
 	sharedFiles,
@@ -537,16 +539,45 @@ export async function defaultSpawnFn(args: SpawnArgs): Promise<SpawnResult> {
 	return { sessionId, terminalId };
 }
 
-export interface CallerContext {
-	workspaceId: string;
-	projectId: string;
-}
+export type CallerContext =
+	| { kind: "workspace"; workspaceId: string; projectId: string }
+	| { kind: "xro"; xroId: string; linkedProjectIds: string[] };
 
 export async function setStatus(
 	ctx: CallerContext,
 	input: SetStatusRequest
 ): Promise<SetStatusResponse> {
 	const db = getDb();
+	const now = new Date();
+
+	if (ctx.kind === "xro") {
+		// Update the cross-repo orchestrator's own status column.
+		const xro = db
+			.select({ id: crossRepoOrchestrators.id })
+			.from(crossRepoOrchestrators)
+			.where(eq(crossRepoOrchestrators.id, ctx.xroId))
+			.get();
+		if (!xro) throw new NotFoundError(ctx.xroId);
+
+		db.update(crossRepoOrchestrators)
+			.set({ status: input.phase, updatedAt: now })
+			.where(eq(crossRepoOrchestrators.id, ctx.xroId))
+			.run();
+
+		// Emit on every linked project bus so per-project event sinks pick it up.
+		for (const projectId of ctx.linkedProjectIds) {
+			eventBus?.emit(projectId, {
+				event: "status",
+				workspaceId: ctx.xroId,
+				phase: input.phase,
+				statusText: input.statusText ?? null,
+				needs: input.needs ?? null,
+				ts: now.toISOString(),
+			});
+		}
+		return { ok: true };
+	}
+
 	const ws = db
 		.select({ projectId: workspaces.projectId })
 		.from(workspaces)
@@ -555,7 +586,6 @@ export async function setStatus(
 	if (!ws) throw new NotFoundError(ctx.workspaceId);
 	if (ws.projectId !== ctx.projectId) throw new ForbiddenError();
 
-	const now = new Date();
 	db.update(workspaces)
 		.set({
 			currentPhase: input.phase,
@@ -583,6 +613,7 @@ export async function setOrchestrator(
 	ctx: CallerContext,
 	input: { workspaceId: string }
 ): Promise<{ ok: true }> {
+	if (ctx.kind !== "workspace") throw new ForbiddenError("xro cannot set orchestrator");
 	const db = getDb();
 	const ws = db
 		.select({ projectId: workspaces.projectId })
@@ -609,6 +640,7 @@ export async function unsetOrchestrator(
 	ctx: CallerContext,
 	input: { workspaceId: string }
 ): Promise<{ ok: true }> {
+	if (ctx.kind !== "workspace") throw new ForbiddenError("xro cannot unset orchestrator");
 	const db = getDb();
 	const ws = db
 		.select({ projectId: workspaces.projectId })
@@ -659,6 +691,74 @@ export async function sendMessage(
 ): Promise<SendMessageResponse> {
 	const db = getDb();
 
+	if (ctx.kind === "xro") {
+		// Derive the project id from the target workspace (for DMs) or fan out
+		// across all linked projects (for broadcasts).
+		if (input.toWorkspaceId) {
+			const target = db
+				.select({ projectId: workspaces.projectId })
+				.from(workspaces)
+				.where(eq(workspaces.id, input.toWorkspaceId))
+				.get();
+			if (!target) throw new NotFoundError(input.toWorkspaceId);
+			if (!ctx.linkedProjectIds.includes(target.projectId)) {
+				throw new ForbiddenError("target workspace's project is not linked to this cross-repo orchestrator");
+			}
+			const messageId = nanoid();
+			const now = new Date();
+			db.insert(agentMessages)
+				.values({
+					id: messageId,
+					projectId: target.projectId,
+					fromWorkspaceId: ctx.xroId,
+					toWorkspaceId: input.toWorkspaceId,
+					kind: input.kind,
+					content: input.content,
+					inReplyTo: input.inReplyTo ?? null,
+					createdAt: now,
+				})
+				.run();
+			eventBus?.emit(target.projectId, {
+				event: "message",
+				messageId,
+				from: ctx.xroId,
+				to: input.toWorkspaceId,
+				kind: input.kind,
+				content: input.content,
+				ts: now.toISOString(),
+			});
+			return { messageId };
+		}
+
+		// Broadcast: fan out one row per linked project.
+		const messageId = nanoid();
+		const now = new Date();
+		for (const projectId of ctx.linkedProjectIds) {
+			db.insert(agentMessages)
+				.values({
+					id: `${messageId}-${projectId}`,
+					projectId,
+					fromWorkspaceId: ctx.xroId,
+					toWorkspaceId: null,
+					kind: input.kind,
+					content: input.content,
+					inReplyTo: input.inReplyTo ?? null,
+					createdAt: now,
+				})
+				.run();
+			eventBus?.emit(projectId, {
+				event: "message",
+				messageId,
+				from: ctx.xroId,
+				to: null,
+				kind: input.kind,
+				content: input.content,
+				ts: now.toISOString(),
+			});
+		}
+		return { messageId };
+	}
+
 	if (input.toWorkspaceId) {
 		const target = db
 			.select({ projectId: workspaces.projectId })
@@ -706,6 +806,29 @@ export async function readMessages(
 	const includeBroadcasts = input.includeBroadcasts ?? true;
 	const sinceDate = input.since ? new Date(input.since) : new Date(0);
 
+	if (ctx.kind === "xro") {
+		// Read messages across all linked projects addressed to this xro or broadcast.
+		const targetFilter = includeBroadcasts
+			? or(eq(agentMessages.toWorkspaceId, ctx.xroId), isNull(agentMessages.toWorkspaceId))
+			: eq(agentMessages.toWorkspaceId, ctx.xroId);
+
+		const rows = db
+			.select()
+			.from(agentMessages)
+			.where(
+				and(
+					inArray(agentMessages.projectId, ctx.linkedProjectIds),
+					gt(agentMessages.createdAt, sinceDate),
+					targetFilter
+				)
+			)
+			.orderBy(desc(agentMessages.createdAt))
+			.limit(200)
+			.all();
+
+		return { messages: rows.map(messageRowToDto) };
+	}
+
 	const targetFilter = includeBroadcasts
 		? or(eq(agentMessages.toWorkspaceId, ctx.workspaceId), isNull(agentMessages.toWorkspaceId))
 		: eq(agentMessages.toWorkspaceId, ctx.workspaceId);
@@ -744,6 +867,78 @@ export async function resumeAgent(
 	deps: ResumeAgentDeps = {}
 ): Promise<ResumeAgentResponse> {
 	const db = getDb();
+
+	if (ctx.kind === "xro") {
+		// 1. Cross-repo orchestrators are always authorized to resume agents in
+		//    any of their linked projects — no per-workspace isOrchestrator check.
+
+		// 2. Look up target
+		const target = db
+			.select({
+				projectId: workspaces.projectId,
+				worktreeId: workspaces.worktreeId,
+				cliSessionId: workspaces.cliSessionId,
+				cliPreset: workspaces.cliPreset,
+			})
+			.from(workspaces)
+			.where(eq(workspaces.id, input.workspaceId))
+			.get();
+		if (!target) throw new NotFoundError(input.workspaceId);
+		if (!ctx.linkedProjectIds.includes(target.projectId)) {
+			throw new ForbiddenError("target workspace's project is not linked to this cross-repo orchestrator");
+		}
+		if (target.cliPreset !== "claude" || !target.cliSessionId) {
+			throw new ResumeNotSupportedError("workspace has no claude session");
+		}
+
+		// 3. Resolve worktree path
+		const wt = target.worktreeId
+			? db
+					.select({ path: worktrees.path })
+					.from(worktrees)
+					.where(eq(worktrees.id, target.worktreeId))
+					.get()
+			: null;
+		if (!wt?.path) throw new NotFoundError(`worktree path for ${input.workspaceId}`);
+
+		// 4. Compose command
+		const escSession = escapeShellSingleQuote(target.cliSessionId);
+		const escMsg = escapeShellSingleQuote(input.message);
+		const command = `claude --resume '${escSession}' --dangerously-skip-permissions '${escMsg}'`;
+
+		// 5. Spawn
+		const respawnFn = deps.respawnAgent ?? defaultRespawnAgent;
+		await respawnFn({ workspaceId: input.workspaceId, command, cwd: wt.path });
+
+		// 6. Audit log
+		const messageId = nanoid();
+		const now = new Date();
+		db.insert(agentMessages)
+			.values({
+				id: messageId,
+				projectId: target.projectId,
+				fromWorkspaceId: ctx.xroId,
+				toWorkspaceId: input.workspaceId,
+				kind: "resume",
+				content: input.message,
+				inReplyTo: null,
+				createdAt: now,
+			})
+			.run();
+
+		// 7. Emit
+		eventBus?.emit(target.projectId, {
+			event: "message",
+			messageId,
+			from: ctx.xroId,
+			to: input.workspaceId,
+			kind: "resume",
+			content: input.message,
+			ts: now.toISOString(),
+		});
+
+		return { ok: true, messageId };
+	}
 
 	// 1. Authorize: caller must be project orchestrator
 	const callerWs = db
@@ -1014,6 +1209,7 @@ export async function renameWorkspace(
 		name: string;
 	}
 ): Promise<{ ok: true }> {
+	if (ctx.kind !== "workspace") throw new ForbiddenError("xro cannot rename workspace");
 	const trimmed = input.name.trim();
 	if (trimmed.length === 0) {
 		throw new Error("name cannot be empty");

@@ -95,9 +95,10 @@ export const agentMessages = sqliteTable(
 		projectId: text("project_id")
 			.notNull()
 			.references(() => projects.id, { onDelete: "cascade" }),
-		fromWorkspaceId: text("from_workspace_id").references(() => workspaces.id, {
-			onDelete: "set null",
-		}),
+		// No FK on from_workspace_id — the sender may be a cross-repo orchestrator
+		// (xro-… id) which is not in the workspaces table.  Application-level
+		// integrity is enforced by resolveCaller / sendMessage / resumeAgent.
+		fromWorkspaceId: text("from_workspace_id"),
 		toWorkspaceId: text("to_workspace_id").references(() => workspaces.id, {
 			onDelete: "set null",
 		}),
