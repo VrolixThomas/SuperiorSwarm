@@ -6,6 +6,8 @@ import {
 	getCrossRepoOrchestrator,
 	listCrossRepoOrchestrators,
 	renameCrossRepoOrchestrator,
+	startCrossRepoOrchestratorAgent,
+	stopCrossRepoOrchestratorAgent,
 } from "../../services/cross-repo-orchestrators";
 import {
 	addProjectToCrossRepoOrchestrator,
@@ -75,4 +77,12 @@ export const crossRepoOrchestratorsRouter = router({
 	detachMember: publicProcedure
 		.input(z.object({ workspaceId: z.string() }))
 		.mutation(({ input }) => detachFromCrossRepoOrchestrator(input)),
+
+	startAgent: publicProcedure
+		.input(z.object({ id: z.string() }))
+		.mutation(({ input }) => startCrossRepoOrchestratorAgent(input)),
+
+	stopAgent: publicProcedure
+		.input(z.object({ id: z.string() }))
+		.mutation(({ input }) => stopCrossRepoOrchestratorAgent(input)),
 });
