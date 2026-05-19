@@ -1,12 +1,15 @@
-import { app } from "electron";
 import { mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { asc, eq, max } from "drizzle-orm";
+import { and, asc, eq, max } from "drizzle-orm";
+import { app } from "electron";
 import { nanoid } from "nanoid";
 import { CLI_PRESETS } from "../ai-review/cli-presets";
+import {
+	invalidateAllCrossRepoLinks,
+	removeCrossRepoEventsFile,
+} from "../control-plane/orchestrator-event-sink";
 import { getDb } from "../db";
-import { crossRepoOrchestrators, type CrossRepoOrchestrator } from "../db/schema";
-import { invalidateAllCrossRepoLinks, removeCrossRepoEventsFile } from "../control-plane/orchestrator-event-sink";
+import { type CrossRepoOrchestrator, crossRepoOrchestrators, orchestratorMembers } from "../db/schema";
 import { defaultSpawnFn } from "./workspace-service";
 
 function workDirFor(id: string): string {
@@ -82,9 +85,15 @@ export async function deleteCrossRepoOrchestrator(input: { id: string }): Promis
 		rmSync(row.workDir, { recursive: true, force: true });
 	} catch {}
 	getDb()
-		.delete(crossRepoOrchestrators)
-		.where(eq(crossRepoOrchestrators.id, input.id))
+		.delete(orchestratorMembers)
+		.where(
+			and(
+				eq(orchestratorMembers.orchestratorId, input.id),
+				eq(orchestratorMembers.parentKind, "cross_repo")
+			)
+		)
 		.run();
+	getDb().delete(crossRepoOrchestrators).where(eq(crossRepoOrchestrators.id, input.id)).run();
 	removeCrossRepoEventsFile(input.id);
 	invalidateAllCrossRepoLinks();
 	return { ok: true };
