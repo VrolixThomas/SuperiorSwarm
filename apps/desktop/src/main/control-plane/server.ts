@@ -17,7 +17,12 @@ import {
 	setStatusRequestSchema,
 } from "../../shared/control-plane";
 import { getDb } from "../db";
-import { crossRepoOrchestratorProjects, crossRepoOrchestrators, workspaces, worktrees } from "../db/schema";
+import {
+	crossRepoOrchestratorProjects,
+	crossRepoOrchestrators,
+	workspaces,
+	worktrees,
+} from "../db/schema";
 import {
 	type CallerContext,
 	type SpawnFn,
@@ -54,6 +59,23 @@ async function attachIfCallerIsOrchestrator(
 ): Promise<void> {
 	const caller = resolveCaller(req, projectId);
 	if ("error" in caller) return;
+
+	if (caller.kind === "xro") {
+		// Cross-repo orchestrator dispatching/creating a child: insert an orchestrator_members row.
+		try {
+			const { attachToCrossRepoOrchestrator } = await import(
+				"../services/cross-repo-orchestrator-membership"
+			);
+			await attachToCrossRepoOrchestrator({
+				orchestratorId: caller.xroId,
+				workspaceId: targetWorkspaceId,
+			});
+		} catch (err) {
+			console.warn(`[control-plane] xro auto-attach failed: ${(err as Error).message}`);
+		}
+		return;
+	}
+
 	// Only workspace-agent orchestrators participate in orchestrator_members.
 	// Cross-repo orchestrators manage membership through cross_repo_orchestrator_projects.
 	if (caller.kind !== "workspace") return;
@@ -297,7 +319,12 @@ async function handleRequest(
 					}
 					getProjectId = derived;
 				}
-				respond(res, 200, requestId, await getWorkspace({ ...parsed.data, projectId: getProjectId }));
+				respond(
+					res,
+					200,
+					requestId,
+					await getWorkspace({ ...parsed.data, projectId: getProjectId })
+				);
 				return;
 			}
 			case "POST /workspaces.create": {
@@ -344,7 +371,7 @@ async function handleRequest(
 				}
 				const result = await dispatchAgent(
 					{ ...parsed.data, projectId: dispatchProjectId },
-					{ spawnFn: deps.spawnFn },
+					{ spawnFn: deps.spawnFn }
 				);
 				await attachIfCallerIsOrchestrator(req, dispatchProjectId, parsed.data.workspaceId);
 				respond(res, 200, requestId, result);
