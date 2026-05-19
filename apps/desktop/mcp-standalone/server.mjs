@@ -52,6 +52,8 @@ const PROJECT_ID = ctx.projectId;
 const WORKSPACE_ID = ctx.workspaceId;
 const IS_ORCHESTRATOR = ctx.isOrchestrator === true;
 const ORCHESTRATOR_EVENTS_PATH = ctx.orchestratorEventsPath || null;
+const CROSS_REPO_ID = ctx.crossRepoOrchestratorId || null;
+const LINKED_PROJECT_IDS = Array.isArray(ctx.linkedProjectIds) ? ctx.linkedProjectIds : [];
 const modeContext = ctx.modeContext || {};
 const REVIEW_DRAFT_ID = modeContext.reviewDraftId;
 const SOLVE_SESSION_ID = modeContext.solveSessionId;
@@ -70,6 +72,8 @@ const isWorkspaceAgentMode = MODE === "workspace-agent";
 const isSolverMode = MODE === "solve";
 const isQuickActionMode = MODE === "quick-action-setup";
 const isReviewMode = MODE === "review";
+const isCrossRepoMode = MODE === "cross-repo-orchestrator";
+const isWorkspaceAgentOrCrossRepo = isWorkspaceAgentMode || isCrossRepoMode;
 
 // Open DB only when a DB path was supplied (review/solve/quick-action modes).
 let db = null;
@@ -103,6 +107,26 @@ Coordination tools (superiorswarm namespace):
   - resume_agent({workspaceId, message}) — restart a child's claude session with a new task
   - list_workspaces / get_workspace / create_worktree / dispatch_agent / remove_worktree — workspace management`;
 
+const CROSS_REPO_ORCH_INSTRUCTIONS = `You are a CROSS-REPO ORCHESTRATOR. You coordinate workspaces drawn from multiple repositories. Your linked project IDs: ${JSON.stringify(LINKED_PROJECT_IDS)}.
+
+REQUIRED FIRST ACTION (do this before any user task work):
+  Use the Monitor tool with command="tail -F -n 0 '${ORCHESTRATOR_EVENTS_PATH ?? ""}'" and persistent=true.
+
+(The events file aggregates status/message events from ALL workspaces in your linked projects.)
+
+Each new line is a JSON event (same shape as per-repo mode).
+
+Coordination tools (superiorswarm namespace):
+  - set_status({phase, statusText?, needs?}) — publish your own status
+  - send_message({toWorkspaceId?, kind, content}) — DM or broadcast
+  - read_messages({since?, includeBroadcasts?}) — query inbox
+  - resume_agent({workspaceId, message}) — restart a child's session
+  - list_workspaces({projectId?}) — list workspaces; omit projectId to merge across linked projects
+  - get_workspace({workspaceId}) — workspace detail
+  - create_worktree({projectId, branch, baseBranch?}) — REQUIRED projectId, must be one of your linked IDs
+  - dispatch_agent({workspaceId, prompt, ...}) — workspaceId implies project
+  - remove_worktree({workspaceId, force?}) — workspaceId implies project`;
+
 const CHILD_INSTRUCTIONS = `You are a CHILD workspace in a SuperiorSwarm project. The orchestrator workspace coordinates work across the project.
 
 Coordination rules:
@@ -120,7 +144,9 @@ const server = new McpServer(
 			? IS_ORCHESTRATOR
 				? ORCHESTRATOR_INSTRUCTIONS
 				: CHILD_INSTRUCTIONS
-			: undefined,
+			: isCrossRepoMode
+				? CROSS_REPO_ORCH_INSTRUCTIONS
+				: undefined,
 	}
 );
 
@@ -128,9 +154,11 @@ const server = new McpServer(
 // agent re-sees its coordination contract on every MCP interaction. MCP server
 // `instructions` are sent at initialize and may be summarized away on long
 // sessions; tool-result reminders ride along with every call.
-const ROLE_REMINDER = IS_ORCHESTRATOR
-	? `[superiorswarm] ORCHESTRATOR reminder: keep Monitor(tail -F -n 0 '${ORCHESTRATOR_EVENTS_PATH ?? ""}', persistent=true) running. On child phase=done/blocked, call resume_agent.`
-	: "[superiorswarm] CHILD reminder: publish set_status at each phase transition; use send_message for questions to the orchestrator.";
+const ROLE_REMINDER = isCrossRepoMode
+	? `[superiorswarm] CROSS-REPO ORCHESTRATOR reminder: keep Monitor(tail -F -n 0 '${ORCHESTRATOR_EVENTS_PATH ?? ""}', persistent=true) running. Pass projectId to create_worktree.`
+	: IS_ORCHESTRATOR
+		? `[superiorswarm] ORCHESTRATOR reminder: keep Monitor(tail -F -n 0 '${ORCHESTRATOR_EVENTS_PATH ?? ""}', persistent=true) running. On child phase=done/blocked, call resume_agent.`
+		: "[superiorswarm] CHILD reminder: publish set_status at each phase transition; use send_message for questions to the orchestrator.";
 
 function withRoleReminder(handler) {
 	return async (...args) => {
@@ -855,9 +883,9 @@ if (isQuickActionMode) {
 	);
 }
 
-if (isWorkspaceAgentMode) {
+if (isWorkspaceAgentOrCrossRepo) {
 	// Wrap every tool registered in this mode so its handler appends ROLE_REMINDER
-	// to the result content. Scoped to workspace-agent — review/solve modes are
+	// to the result content. Scoped to workspace-agent and cross-repo-orchestrator — review/solve modes are
 	// unaffected.
 	const _origTool = server.tool.bind(server);
 	server.tool = (name, description, schema, handler) =>
@@ -906,38 +934,74 @@ if (isWorkspaceAgentMode) {
 
 	server.tool(
 		"create_worktree",
-		"Create a new app-managed worktree for a new branch. The new worktree gets its own .mcp.json so child agents inherit the same control plane.",
+		isCrossRepoMode
+			? "Create a new worktree in one of your linked projects. project_id is required."
+			: "Create a new app-managed worktree for a new branch.",
 		{
 			branch: z.string().describe("Branch name to create"),
 			base_branch: z
 				.string()
 				.optional()
 				.describe("Branch to fork from. Defaults to project default branch."),
+			...(isCrossRepoMode
+				? { project_id: z.string().describe("One of your linked project IDs") }
+				: {}),
 		},
-		async ({ branch, base_branch }) =>
-			call("POST", "/workspaces.create", {
-				projectId: PROJECT_ID,
+		async (args) => {
+			const branch = args.branch;
+			const base_branch = args.base_branch;
+			const project_id = args.project_id;
+			const projectId = isCrossRepoMode ? project_id : PROJECT_ID;
+			if (isCrossRepoMode && !LINKED_PROJECT_IDS.includes(projectId)) {
+				throw new Error(
+					`project_id ${projectId} is not in linked projects ${JSON.stringify(LINKED_PROJECT_IDS)}`
+				);
+			}
+			return call("POST", "/workspaces.create", {
+				projectId,
 				branch,
 				baseBranch: base_branch,
-			})
+			});
+		}
 	);
 
 	server.tool(
 		"list_workspaces",
-		"List all workspaces (worktrees and review sessions) in the current project.",
-		{},
-		async () => call("GET", `/workspaces.list?projectId=${encodeURIComponent(PROJECT_ID)}`)
+		isCrossRepoMode
+			? "List workspaces across your linked projects. Pass project_id to scope to one."
+			: "List all workspaces in the current project.",
+		isCrossRepoMode
+			? { project_id: z.string().optional().describe("Restrict to one linked project") }
+			: {},
+		async (args) => {
+			if (isCrossRepoMode) {
+				const ids = args && args.project_id ? [args.project_id] : LINKED_PROJECT_IDS;
+				return call(
+					"GET",
+					`/workspaces.list?projectIds=${encodeURIComponent(ids.join(","))}`
+				);
+			}
+			return call("GET", `/workspaces.list?projectId=${encodeURIComponent(PROJECT_ID)}`);
+		}
 	);
 
 	server.tool(
 		"get_workspace",
 		"Get details about a specific workspace, including whether it has uncommitted changes.",
 		{ workspace_id: z.string().describe("Workspace ID") },
-		async ({ workspace_id }) =>
-			call(
+		async ({ workspace_id }) => {
+			// In cross-repo mode the server derives projectId from workspaceId.
+			if (isCrossRepoMode) {
+				return call(
+					"GET",
+					`/workspaces.get?workspaceId=${encodeURIComponent(workspace_id)}`
+				);
+			}
+			return call(
 				"GET",
 				`/workspaces.get?projectId=${encodeURIComponent(PROJECT_ID)}&workspaceId=${encodeURIComponent(workspace_id)}`
-			)
+			);
+		}
 	);
 
 	server.tool(
@@ -949,14 +1013,16 @@ if (isWorkspaceAgentMode) {
 			cli_preset: z.enum(["claude", "codex", "gemini", "opencode"]).optional(),
 			skip_permissions: z.boolean().optional(),
 		},
-		async ({ workspace_id, prompt, cli_preset, skip_permissions }) =>
-			call("POST", "/workspaces.dispatch", {
-				projectId: PROJECT_ID,
+		async ({ workspace_id, prompt, cli_preset, skip_permissions }) => {
+			const body = {
 				workspaceId: workspace_id,
 				prompt,
 				cliPreset: cli_preset,
 				skipPermissions: skip_permissions,
-			})
+			};
+			if (!isCrossRepoMode) body.projectId = PROJECT_ID;
+			return call("POST", "/workspaces.dispatch", body);
+		}
 	);
 
 	server.tool(
@@ -966,12 +1032,14 @@ if (isWorkspaceAgentMode) {
 			workspace_id: z.string().describe("Workspace ID to remove"),
 			force: z.boolean().optional().describe("Bypass uncommitted-changes guard"),
 		},
-		async ({ workspace_id, force }) =>
-			call("POST", "/workspaces.remove", {
-				projectId: PROJECT_ID,
+		async ({ workspace_id, force }) => {
+			const body = {
 				workspaceId: workspace_id,
 				force,
-			})
+			};
+			if (!isCrossRepoMode) body.projectId = PROJECT_ID;
+			return call("POST", "/workspaces.remove", body);
+		}
 	);
 
 	server.tool(
