@@ -982,10 +982,7 @@ if (isWorkspaceAgentOrCrossRepo) {
 		async (args) => {
 			if (isCrossRepoMode) {
 				const ids = args && args.project_id ? [args.project_id] : LINKED_PROJECT_IDS;
-				return call(
-					"GET",
-					`/workspaces.list?projectIds=${encodeURIComponent(ids.join(","))}`
-				);
+				return call("GET", `/workspaces.list?projectIds=${encodeURIComponent(ids.join(","))}`);
 			}
 			return call("GET", `/workspaces.list?projectId=${encodeURIComponent(PROJECT_ID)}`);
 		}
@@ -998,10 +995,7 @@ if (isWorkspaceAgentOrCrossRepo) {
 		async ({ workspace_id }) => {
 			// In cross-repo mode the server derives projectId from workspaceId.
 			if (isCrossRepoMode) {
-				return call(
-					"GET",
-					`/workspaces.get?workspaceId=${encodeURIComponent(workspace_id)}`
-				);
+				return call("GET", `/workspaces.get?workspaceId=${encodeURIComponent(workspace_id)}`);
 			}
 			return call(
 				"GET",
@@ -1090,7 +1084,8 @@ if (isWorkspaceAgentOrCrossRepo) {
 			include_broadcasts: z.boolean().optional(),
 		},
 		async ({ since, include_broadcasts }) => {
-			const params = new URLSearchParams({ projectId: PROJECT_ID });
+			const params = new URLSearchParams();
+			if (!isCrossRepoMode) params.set("projectId", PROJECT_ID);
 			if (since) params.set("since", since);
 			if (include_broadcasts === false) params.set("includeBroadcasts", "false");
 			return call("GET", `/workspaces.read_messages?${params.toString()}`);
