@@ -3,6 +3,7 @@ import { useProjectStore } from "../stores/projects";
 import { useTabStore } from "../stores/tab-store";
 import { useUpdateStore } from "../stores/update-store";
 import { trpc } from "../trpc/client";
+import { CrossRepoOrchestratorGroup } from "./CrossRepoOrchestratorGroup";
 import { ProjectList } from "./ProjectList";
 import { PullRequestsTab } from "./PullRequestsTab";
 import { SidebarRail } from "./SidebarRail";
@@ -88,6 +89,7 @@ export function Sidebar({ collapsed, onExpand }: SidebarProps) {
 				{segment === "repos" && (
 					<>
 						<ProjectList />
+						<CrossRepoOrchestratorGroup />
 						<div className="px-2 py-1.5">
 							<button
 								type="button"
