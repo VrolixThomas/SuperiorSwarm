@@ -25,6 +25,10 @@ export function CrossRepoOrchestratorRow({
 	const memberCount = members.data?.length ?? 0;
 	const repoCount = linked.data?.length ?? 0;
 
+	const start = trpc.crossRepoOrchestrators.startAgent.useMutation({
+		onError: (err) => console.warn("[xro] start failed:", err.message),
+	});
+
 	const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
 
 	return (
@@ -48,6 +52,18 @@ export function CrossRepoOrchestratorRow({
 				aria-hidden="true"
 			/>
 			<span className="text-[13px] text-[var(--text)] truncate">{orchestrator.name}</span>
+			<button
+				type="button"
+				onClick={(e) => {
+					e.stopPropagation();
+					start.mutate({ id: orchestrator.id });
+				}}
+				disabled={start.isPending}
+				className="opacity-0 group-hover:opacity-100 focus:opacity-100 text-[10px] text-[var(--accent)] hover:underline transition-opacity"
+				aria-label="Start cross-repo orchestrator agent"
+			>
+				{start.isPending ? "starting…" : "start"}
+			</button>
 			<span className="ml-auto text-[10px] text-[var(--text-tertiary)] tabular-nums">
 				{repoCount} {repoCount === 1 ? "repo" : "repos"} · {memberCount}
 			</span>
