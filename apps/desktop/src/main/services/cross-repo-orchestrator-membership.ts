@@ -1,13 +1,13 @@
 import { and, asc, eq, inArray, max } from "drizzle-orm";
 import { ForbiddenError, NotFoundError } from "../../shared/control-plane";
+import { invalidateCrossRepoLinksCache } from "../control-plane/orchestrator-event-sink";
 import { getDb } from "../db";
 import {
-	crossRepoOrchestrators,
 	crossRepoOrchestratorProjects,
+	crossRepoOrchestrators,
 	orchestratorMembers,
 	workspaces,
 } from "../db/schema";
-import { invalidateCrossRepoLinksCache } from "../control-plane/orchestrator-event-sink";
 
 export async function attachToCrossRepoOrchestrator(input: {
 	orchestratorId: string;
@@ -43,9 +43,7 @@ export async function attachToCrossRepoOrchestrator(input: {
 		)
 		.get();
 	if (!link) {
-		throw new ForbiddenError(
-			"workspace's project is not linked to this cross-repo orchestrator"
-		);
+		throw new ForbiddenError("workspace's project is not linked to this cross-repo orchestrator");
 	}
 
 	db.transaction((tx) => {
@@ -117,7 +115,15 @@ export async function detachFromCrossRepoOrchestrator(input: {
 
 export async function listCrossRepoMembers(input: {
 	orchestratorId: string;
-}): Promise<Array<{ workspaceId: string; sortOrder: number; parentKind: string; projectId: string }>> {
+}): Promise<
+	Array<{
+		workspaceId: string;
+		sortOrder: number;
+		parentKind: string;
+		projectId: string;
+		workspaceName: string;
+	}>
+> {
 	const db = getDb();
 	return db
 		.select({
@@ -125,6 +131,7 @@ export async function listCrossRepoMembers(input: {
 			sortOrder: orchestratorMembers.sortOrder,
 			parentKind: orchestratorMembers.parentKind,
 			projectId: workspaces.projectId,
+			workspaceName: workspaces.name,
 		})
 		.from(orchestratorMembers)
 		.innerJoin(workspaces, eq(workspaces.id, orchestratorMembers.workspaceId))

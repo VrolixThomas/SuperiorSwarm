@@ -1,5 +1,12 @@
 import { z } from "zod";
-import { publicProcedure, router } from "../index";
+import {
+	addProjectToCrossRepoOrchestrator,
+	attachToCrossRepoOrchestrator,
+	detachFromCrossRepoOrchestrator,
+	listCrossRepoMembers,
+	listLinkedProjects,
+	removeProjectFromCrossRepoOrchestrator,
+} from "../../services/cross-repo-orchestrator-membership";
 import {
 	createCrossRepoOrchestrator,
 	deleteCrossRepoOrchestrator,
@@ -9,14 +16,7 @@ import {
 	startCrossRepoOrchestratorAgent,
 	stopCrossRepoOrchestratorAgent,
 } from "../../services/cross-repo-orchestrators";
-import {
-	addProjectToCrossRepoOrchestrator,
-	attachToCrossRepoOrchestrator,
-	detachFromCrossRepoOrchestrator,
-	listCrossRepoMembers,
-	listLinkedProjects,
-	removeProjectFromCrossRepoOrchestrator,
-} from "../../services/cross-repo-orchestrator-membership";
+import { publicProcedure, router } from "../index";
 
 export const crossRepoOrchestratorsRouter = router({
 	list: publicProcedure.query(() => listCrossRepoOrchestrators()),

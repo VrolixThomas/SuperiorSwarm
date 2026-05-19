@@ -9,7 +9,11 @@ import {
 	removeCrossRepoEventsFile,
 } from "../control-plane/orchestrator-event-sink";
 import { getDb } from "../db";
-import { type CrossRepoOrchestrator, crossRepoOrchestrators, orchestratorMembers } from "../db/schema";
+import {
+	type CrossRepoOrchestrator,
+	crossRepoOrchestrators,
+	orchestratorMembers,
+} from "../db/schema";
 import { defaultSpawnFn } from "./workspace-service";
 
 function workDirFor(id: string): string {
