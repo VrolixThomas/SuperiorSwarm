@@ -566,3 +566,4 @@ export const crossRepoOrchestratorProjects = sqliteTable(
 );
 
 export type CrossRepoOrchestratorProject = typeof crossRepoOrchestratorProjects.$inferSelect;
+export type NewCrossRepoOrchestratorProject = typeof crossRepoOrchestratorProjects.$inferInsert;

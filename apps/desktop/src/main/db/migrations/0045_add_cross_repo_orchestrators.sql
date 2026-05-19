@@ -1,14 +1,3 @@
-CREATE TABLE `cross_repo_orchestrator_projects` (
-	`orchestrator_id` text NOT NULL,
-	`project_id` text NOT NULL,
-	`sort_order` integer NOT NULL,
-	`created_at` integer NOT NULL,
-	PRIMARY KEY(`orchestrator_id`, `project_id`),
-	FOREIGN KEY (`orchestrator_id`) REFERENCES `cross_repo_orchestrators`(`id`) ON UPDATE no action ON DELETE cascade,
-	FOREIGN KEY (`project_id`) REFERENCES `projects`(`id`) ON UPDATE no action ON DELETE cascade
-);
---> statement-breakpoint
-CREATE INDEX `xro_projects_proj_idx` ON `cross_repo_orchestrator_projects` (`project_id`);--> statement-breakpoint
 CREATE TABLE `cross_repo_orchestrators` (
 	`id` text PRIMARY KEY NOT NULL,
 	`name` text NOT NULL,
@@ -20,6 +9,18 @@ CREATE TABLE `cross_repo_orchestrators` (
 	`created_at` integer NOT NULL,
 	`updated_at` integer NOT NULL
 );
+--> statement-breakpoint
+CREATE TABLE `cross_repo_orchestrator_projects` (
+	`orchestrator_id` text NOT NULL,
+	`project_id` text NOT NULL,
+	`sort_order` integer NOT NULL,
+	`created_at` integer NOT NULL,
+	PRIMARY KEY(`orchestrator_id`, `project_id`),
+	FOREIGN KEY (`orchestrator_id`) REFERENCES `cross_repo_orchestrators`(`id`) ON UPDATE no action ON DELETE cascade,
+	FOREIGN KEY (`project_id`) REFERENCES `projects`(`id`) ON UPDATE no action ON DELETE cascade
+);
+--> statement-breakpoint
+CREATE INDEX `xro_projects_proj_idx` ON `cross_repo_orchestrator_projects` (`project_id`);
 --> statement-breakpoint
 PRAGMA foreign_keys=OFF;--> statement-breakpoint
 CREATE TABLE `__new_orchestrator_members` (
