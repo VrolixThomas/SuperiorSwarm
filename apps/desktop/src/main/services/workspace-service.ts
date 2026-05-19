@@ -395,6 +395,15 @@ export async function removeWorkspace(
 	// DB cleanup is synchronous + immediate so the renderer's next list refetch
 	// never sees this workspace again. Filesystem cleanup happens in the
 	// background queue — the user does not wait on git.
+	//
+	// Null out fromWorkspaceId on any agent_messages sent by this workspace
+	// before deleting the row. The FK on fromWorkspaceId was dropped in
+	// 0046_allow_cross_repo_sender.sql to permit xro IDs there, so ON DELETE
+	// SET NULL no longer fires automatically — we replicate it at the app layer.
+	db.update(agentMessages)
+		.set({ fromWorkspaceId: null })
+		.where(eq(agentMessages.fromWorkspaceId, input.workspaceId))
+		.run();
 	if (wt) db.delete(worktrees).where(eq(worktrees.id, wt.id)).run();
 	db.delete(workspaces).where(eq(workspaces.id, input.workspaceId)).run();
 

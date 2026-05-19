@@ -16,8 +16,10 @@ import {
 import { getDb, schema } from "../src/main/db";
 import { initRepo } from "../src/main/git/operations";
 import {
+	type CallerContext,
 	createWorkspace,
 	readMessages,
+	removeWorkspace,
 	resumeAgent,
 	sendMessage,
 	setEventBus,
@@ -25,6 +27,10 @@ import {
 	setStatus,
 	unsetOrchestrator,
 } from "../src/main/services/workspace-service";
+
+function wsCtx(workspaceId: string, projectId: string): CallerContext {
+	return { kind: "workspace", workspaceId, projectId };
+}
 
 let TMP: string;
 let REPO: string;
@@ -71,7 +77,7 @@ describe("setStatus", () => {
 	test("updates phase + status_text + needs", async () => {
 		const ws = await createWorkspace({ projectId: PROJECT_ID, branch: "feature/a" });
 		await setStatus(
-			{ workspaceId: ws.workspaceId, projectId: PROJECT_ID },
+			wsCtx(ws.workspaceId, PROJECT_ID),
 			{ phase: "blocked", statusText: "waiting", needs: "decision X" }
 		);
 		const db = getDb();
@@ -91,14 +97,8 @@ describe("setOrchestrator", () => {
 	test("setOrchestrator can promote multiple workspaces independently", async () => {
 		const a = await createWorkspace({ projectId: PROJECT_ID, branch: "feature/orch-a" });
 		const b = await createWorkspace({ projectId: PROJECT_ID, branch: "feature/orch-b" });
-		await setOrchestrator(
-			{ workspaceId: a.workspaceId, projectId: PROJECT_ID },
-			{ workspaceId: a.workspaceId }
-		);
-		await setOrchestrator(
-			{ workspaceId: b.workspaceId, projectId: PROJECT_ID },
-			{ workspaceId: b.workspaceId }
-		);
+		await setOrchestrator(wsCtx(a.workspaceId, PROJECT_ID), { workspaceId: a.workspaceId });
+		await setOrchestrator(wsCtx(b.workspaceId, PROJECT_ID), { workspaceId: b.workspaceId });
 
 		const db = getDb();
 		const rowA = db
@@ -122,19 +122,13 @@ describe("setOrchestrator", () => {
 
 		const orch = await createWorkspace({ projectId: PROJECT_ID, branch: "feature/unset-orch" });
 		const child = await createWorkspace({ projectId: PROJECT_ID, branch: "feature/unset-child" });
-		await setOrchestrator(
-			{ workspaceId: orch.workspaceId, projectId: PROJECT_ID },
-			{ workspaceId: orch.workspaceId }
-		);
+		await setOrchestrator(wsCtx(orch.workspaceId, PROJECT_ID), { workspaceId: orch.workspaceId });
 		await attachToOrchestrator({
 			orchestratorId: orch.workspaceId,
 			workspaceId: child.workspaceId,
 		});
 
-		await unsetOrchestrator(
-			{ workspaceId: orch.workspaceId, projectId: PROJECT_ID },
-			{ workspaceId: orch.workspaceId }
-		);
+		await unsetOrchestrator(wsCtx(orch.workspaceId, PROJECT_ID), { workspaceId: orch.workspaceId });
 
 		const db = getDb();
 		const row = db
@@ -173,10 +167,7 @@ describe("setOrchestrator", () => {
 		});
 
 		await expect(
-			setOrchestrator(
-				{ projectId: PROJECT_ID, workspaceId: wsA.workspaceId },
-				{ workspaceId: wsB.workspaceId }
-			)
+			setOrchestrator(wsCtx(wsA.workspaceId, PROJECT_ID), { workspaceId: wsB.workspaceId })
 		).rejects.toThrow(/forbidden: cross-project/);
 
 		db.delete(schema.projects).where(eq(schema.projects.id, OTHER_PROJECT)).run();
@@ -189,12 +180,12 @@ describe("sendMessage / readMessages", () => {
 		const b = await createWorkspace({ projectId: PROJECT_ID, branch: "feature/msg-b" });
 
 		const sent = await sendMessage(
-			{ workspaceId: a.workspaceId, projectId: PROJECT_ID },
+			wsCtx(a.workspaceId, PROJECT_ID),
 			{ toWorkspaceId: b.workspaceId, kind: "note", content: "hello B" }
 		);
 		expect(sent.messageId).toBeTruthy();
 
-		const inbox = await readMessages({ workspaceId: b.workspaceId, projectId: PROJECT_ID }, {});
+		const inbox = await readMessages(wsCtx(b.workspaceId, PROJECT_ID), {});
 		expect(inbox.messages.map((m) => m.content)).toContain("hello B");
 		expect(inbox.messages[0]?.kind).toBe("note");
 		expect(inbox.messages[0]?.fromWorkspaceId).toBe(a.workspaceId);
@@ -204,15 +195,11 @@ describe("sendMessage / readMessages", () => {
 		const a = await createWorkspace({ projectId: PROJECT_ID, branch: "feature/bcast-a" });
 		const b = await createWorkspace({ projectId: PROJECT_ID, branch: "feature/bcast-b" });
 
-		await sendMessage(
-			{ workspaceId: a.workspaceId, projectId: PROJECT_ID },
-			{ kind: "note", content: "everyone heads up" }
-		);
+		await sendMessage(wsCtx(a.workspaceId, PROJECT_ID), { kind: "note", content: "everyone heads up" });
 
-		const inboxB = await readMessages(
-			{ workspaceId: b.workspaceId, projectId: PROJECT_ID },
-			{ includeBroadcasts: true }
-		);
+		const inboxB = await readMessages(wsCtx(b.workspaceId, PROJECT_ID), {
+			includeBroadcasts: true,
+		});
 		expect(inboxB.messages.map((m) => m.content)).toContain("everyone heads up");
 		expect(inboxB.messages[0]?.toWorkspaceId).toBeNull();
 	});
@@ -221,21 +208,20 @@ describe("sendMessage / readMessages", () => {
 		const a = await createWorkspace({ projectId: PROJECT_ID, branch: "feature/since-a" });
 		const b = await createWorkspace({ projectId: PROJECT_ID, branch: "feature/since-b" });
 
-		await sendMessage(
-			{ workspaceId: a.workspaceId, projectId: PROJECT_ID },
-			{ toWorkspaceId: b.workspaceId, kind: "note", content: "old" }
-		);
+		await sendMessage(wsCtx(a.workspaceId, PROJECT_ID), {
+			toWorkspaceId: b.workspaceId,
+			kind: "note",
+			content: "old",
+		});
 		const cutoff = new Date().toISOString();
 		await new Promise((r) => setTimeout(r, 10));
-		await sendMessage(
-			{ workspaceId: a.workspaceId, projectId: PROJECT_ID },
-			{ toWorkspaceId: b.workspaceId, kind: "note", content: "new" }
-		);
+		await sendMessage(wsCtx(a.workspaceId, PROJECT_ID), {
+			toWorkspaceId: b.workspaceId,
+			kind: "note",
+			content: "new",
+		});
 
-		const inbox = await readMessages(
-			{ workspaceId: b.workspaceId, projectId: PROJECT_ID },
-			{ since: cutoff }
-		);
+		const inbox = await readMessages(wsCtx(b.workspaceId, PROJECT_ID), { since: cutoff });
 		const contents = inbox.messages.map((m) => m.content);
 		expect(contents).toContain("new");
 		expect(contents).not.toContain("old");
@@ -269,10 +255,11 @@ describe("sendMessage / readMessages", () => {
 		});
 
 		await expect(
-			sendMessage(
-				{ workspaceId: a.workspaceId, projectId: PROJECT_ID },
-				{ toWorkspaceId: otherWs.workspaceId, kind: "note", content: "x" }
-			)
+			sendMessage(wsCtx(a.workspaceId, PROJECT_ID), {
+				toWorkspaceId: otherWs.workspaceId,
+				kind: "note",
+				content: "x",
+			})
 		).rejects.toThrow(/forbidden/i);
 
 		db.delete(schema.projects).where(eq(schema.projects.id, OTHER_PROJECT)).run();
@@ -289,14 +276,15 @@ describe("agent_messages audit retention", () => {
 			projectId: PROJECT_ID,
 			branch: "feature/audit-recipient2",
 		});
-		await sendMessage(
-			{ workspaceId: sender.workspaceId, projectId: PROJECT_ID },
-			{ toWorkspaceId: recipient.workspaceId, kind: "note", content: "audit me" }
-		);
+		await sendMessage(wsCtx(sender.workspaceId, PROJECT_ID), {
+			toWorkspaceId: recipient.workspaceId,
+			kind: "note",
+			content: "audit me",
+		});
+
+		await removeWorkspace({ workspaceId: sender.workspaceId, projectId: PROJECT_ID, force: true });
 
 		const db = getDb();
-		db.delete(schema.workspaces).where(eq(schema.workspaces.id, sender.workspaceId)).run();
-
 		const rows = db
 			.select()
 			.from(schema.agentMessages)
@@ -316,10 +304,11 @@ describe("agent_messages audit retention", () => {
 			projectId: PROJECT_ID,
 			branch: "feature/audit-recipient",
 		});
-		await sendMessage(
-			{ workspaceId: sender.workspaceId, projectId: PROJECT_ID },
-			{ toWorkspaceId: recipient.workspaceId, kind: "note", content: "for the record" }
-		);
+		await sendMessage(wsCtx(sender.workspaceId, PROJECT_ID), {
+			toWorkspaceId: recipient.workspaceId,
+			kind: "note",
+			content: "for the record",
+		});
 
 		const db = getDb();
 		// Delete the recipient workspace + its worktree row to trigger the FK SET NULL
@@ -340,23 +329,18 @@ describe("orchestrator event sink", () => {
 	test("appends a JSON line to <eventsDir>/<projectId>.jsonl when project has an orchestrator", async () => {
 		const orch = await createWorkspace({ projectId: PROJECT_ID, branch: "feature/sink-orch" });
 		const other = await createWorkspace({ projectId: PROJECT_ID, branch: "feature/sink-other" });
-		await setOrchestrator(
-			{ workspaceId: orch.workspaceId, projectId: PROJECT_ID },
-			{ workspaceId: orch.workspaceId }
-		);
+		await setOrchestrator(wsCtx(orch.workspaceId, PROJECT_ID), { workspaceId: orch.workspaceId });
 
 		const bus = new EventBus();
 		setEventBus(bus);
 		const detach = attachOrchestratorEventSink(bus);
 		try {
-			await setStatus(
-				{ workspaceId: other.workspaceId, projectId: PROJECT_ID },
-				{ phase: "blocked", needs: "ack" }
-			);
-			await sendMessage(
-				{ workspaceId: other.workspaceId, projectId: PROJECT_ID },
-				{ toWorkspaceId: orch.workspaceId, kind: "note", content: "ping" }
-			);
+			await setStatus(wsCtx(other.workspaceId, PROJECT_ID), { phase: "blocked", needs: "ack" });
+			await sendMessage(wsCtx(other.workspaceId, PROJECT_ID), {
+				toWorkspaceId: orch.workspaceId,
+				kind: "note",
+				content: "ping",
+			});
 
 			const file = eventsFilePathForProject(PROJECT_ID);
 			const lines = readFileSync(file, "utf-8")
@@ -383,7 +367,7 @@ describe("orchestrator event sink", () => {
 		setEventBus(bus);
 		const detach = attachOrchestratorEventSink(bus);
 		try {
-			await setStatus({ workspaceId: a.workspaceId, projectId: PROJECT_ID }, { phase: "working" });
+			await setStatus(wsCtx(a.workspaceId, PROJECT_ID), { phase: "working" });
 			const file = eventsFilePathForProject(PROJECT_ID);
 			const { existsSync } = await import("node:fs");
 			expect(existsSync(file)).toBe(false);
@@ -401,7 +385,7 @@ describe("resumeAgent", () => {
 		// Neither is orchestrator
 		await expect(
 			resumeAgent(
-				{ workspaceId: a.workspaceId, projectId: PROJECT_ID },
+				wsCtx(a.workspaceId, PROJECT_ID),
 				{ workspaceId: b.workspaceId, message: "hi" },
 				{ respawnAgent: async () => undefined }
 			)
@@ -417,10 +401,7 @@ describe("resumeAgent", () => {
 			projectId: PROJECT_ID,
 			branch: "feature/orch-tgt",
 		});
-		await setOrchestrator(
-			{ workspaceId: orch.workspaceId, projectId: PROJECT_ID },
-			{ workspaceId: orch.workspaceId }
-		);
+		await setOrchestrator(wsCtx(orch.workspaceId, PROJECT_ID), { workspaceId: orch.workspaceId });
 		const db = getDb();
 		db.update(schema.workspaces)
 			.set({ cliSessionId: "uuid-target", cliPreset: "claude" })
@@ -429,7 +410,7 @@ describe("resumeAgent", () => {
 
 		const calls: Array<{ command: string; cwd: string; workspaceId: string }> = [];
 		const result = await resumeAgent(
-			{ workspaceId: orch.workspaceId, projectId: PROJECT_ID },
+			wsCtx(orch.workspaceId, PROJECT_ID),
 			{ workspaceId: target.workspaceId, message: "next task" },
 			{
 				respawnAgent: async (args) => {
@@ -463,14 +444,11 @@ describe("resumeAgent", () => {
 			projectId: PROJECT_ID,
 			branch: "feature/r-no-claude-t",
 		});
-		await setOrchestrator(
-			{ workspaceId: orch.workspaceId, projectId: PROJECT_ID },
-			{ workspaceId: orch.workspaceId }
-		);
+		await setOrchestrator(wsCtx(orch.workspaceId, PROJECT_ID), { workspaceId: orch.workspaceId });
 
 		await expect(
 			resumeAgent(
-				{ workspaceId: orch.workspaceId, projectId: PROJECT_ID },
+				wsCtx(orch.workspaceId, PROJECT_ID),
 				{ workspaceId: target.workspaceId, message: "x" },
 				{ respawnAgent: async () => undefined }
 			)
