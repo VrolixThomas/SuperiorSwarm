@@ -198,3 +198,20 @@ export interface ProjectWorkspaceTree {
 	orchestrators: OrchestratorGroupNode[];
 	loose: VisibleWorkspaceTreeRow[];
 }
+
+export interface CrossRepoOrchestratorNode {
+	id: string;
+	name: string;
+	colorIndex: number | null;
+	status: string;
+	repoCount: number;
+	memberCount: number;
+}
+
+export interface CrossRepoMemberRow {
+	workspaceId: string;
+	workspaceName: string;
+	projectId: string;
+	projectName: string;
+	sortOrder: number;
+}
