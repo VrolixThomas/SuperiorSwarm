@@ -32,7 +32,7 @@ CREATE TABLE `__new_orchestrator_members` (
 	FOREIGN KEY (`workspace_id`) REFERENCES `workspaces`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
-INSERT INTO `__new_orchestrator_members`("orchestrator_id", "workspace_id", "parent_kind", "sort_order", "created_at") SELECT "orchestrator_id", "workspace_id", "parent_kind", "sort_order", "created_at" FROM `orchestrator_members`;--> statement-breakpoint
+INSERT INTO `__new_orchestrator_members`("orchestrator_id", "workspace_id", "sort_order", "created_at") SELECT "orchestrator_id", "workspace_id", "sort_order", "created_at" FROM `orchestrator_members`;--> statement-breakpoint
 DROP TABLE `orchestrator_members`;--> statement-breakpoint
 ALTER TABLE `__new_orchestrator_members` RENAME TO `orchestrator_members`;--> statement-breakpoint
 PRAGMA foreign_keys=ON;--> statement-breakpoint
