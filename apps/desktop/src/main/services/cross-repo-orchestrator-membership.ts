@@ -7,6 +7,7 @@ import {
 	orchestratorMembers,
 	workspaces,
 } from "../db/schema";
+import { invalidateCrossRepoLinksCache } from "../control-plane/orchestrator-event-sink";
 
 export async function attachToCrossRepoOrchestrator(input: {
 	orchestratorId: string;
@@ -167,6 +168,8 @@ export async function addProjectToCrossRepoOrchestrator(input: {
 		.onConflictDoNothing()
 		.run();
 
+	invalidateCrossRepoLinksCache(input.projectId);
+
 	return { ok: true };
 }
 
@@ -217,6 +220,8 @@ export async function removeProjectFromCrossRepoOrchestrator(input: {
 			)
 			.run();
 	});
+
+	invalidateCrossRepoLinksCache(input.projectId);
 
 	return { detachedCount };
 }

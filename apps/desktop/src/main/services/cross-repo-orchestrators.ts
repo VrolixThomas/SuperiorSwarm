@@ -5,6 +5,7 @@ import { asc, eq, max } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { getDb } from "../db";
 import { crossRepoOrchestrators, type CrossRepoOrchestrator } from "../db/schema";
+import { invalidateAllCrossRepoLinks, removeCrossRepoEventsFile } from "../control-plane/orchestrator-event-sink";
 
 function workDirFor(id: string): string {
 	const base = app.getPath("userData");
@@ -82,5 +83,7 @@ export async function deleteCrossRepoOrchestrator(input: { id: string }): Promis
 		.delete(crossRepoOrchestrators)
 		.where(eq(crossRepoOrchestrators.id, input.id))
 		.run();
+	removeCrossRepoEventsFile(input.id);
+	invalidateAllCrossRepoLinks();
 	return { ok: true };
 }
