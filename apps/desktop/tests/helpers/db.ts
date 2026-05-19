@@ -20,7 +20,10 @@ export function setupTestDb(): void {
 }
 
 export function teardownTestDb(): void {
-	// Noop — isolation is achieved via nanoid-scoped project IDs
+	// Most tables use nanoid-scoped IDs for isolation; cross_repo_orchestrators
+	// supports a list-all query in CRUD tests, so we clean it up explicitly.
+	// FK cascade takes care of cross_repo_orchestrator_projects rows.
+	getDb().run(`DELETE FROM cross_repo_orchestrators`);
 }
 
 export async function seedProject(): Promise<string> {
