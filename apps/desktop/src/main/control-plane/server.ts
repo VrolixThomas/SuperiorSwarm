@@ -37,6 +37,16 @@ import type { EventBus } from "./event-bus";
 import { crossRepoEventsFilePath, eventsFilePathForProject } from "./orchestrator-event-sink";
 import type { TaskRegistry } from "./task-registry";
 
+function resolveProjectIdFromWorkspace(workspaceId: string): string | null {
+	return (
+		getDb()
+			.select({ projectId: workspaces.projectId })
+			.from(workspaces)
+			.where(eq(workspaces.id, workspaceId))
+			.get()?.projectId ?? null
+	);
+}
+
 async function attachIfCallerIsOrchestrator(
 	req: IncomingMessage,
 	projectId: string,
@@ -244,15 +254,25 @@ async function handleRequest(
 				return;
 			}
 			case "GET /workspaces.get": {
+				const rawProjectId = url.searchParams.get("projectId");
 				const parsed = getWorkspaceRequestSchema.safeParse({
-					projectId: url.searchParams.get("projectId"),
+					projectId: rawProjectId && rawProjectId.length > 0 ? rawProjectId : undefined,
 					workspaceId: url.searchParams.get("workspaceId"),
 				});
 				if (!parsed.success) {
 					respond(res, 400, requestId, { error: "validation", details: parsed.error.flatten() });
 					return;
 				}
-				respond(res, 200, requestId, await getWorkspace(parsed.data));
+				let getProjectId = parsed.data.projectId;
+				if (!getProjectId) {
+					const derived = resolveProjectIdFromWorkspace(parsed.data.workspaceId);
+					if (!derived) {
+						respond(res, 404, requestId, { error: "not_found" });
+						return;
+					}
+					getProjectId = derived;
+				}
+				respond(res, 200, requestId, await getWorkspace({ ...parsed.data, projectId: getProjectId }));
 				return;
 			}
 			case "POST /workspaces.create": {
@@ -276,16 +296,12 @@ async function handleRequest(
 				}
 				let dispatchProjectId = parsed.data.projectId;
 				if (!dispatchProjectId) {
-					const wsRow = getDb()
-						.select({ projectId: workspaces.projectId })
-						.from(workspaces)
-						.where(eq(workspaces.id, parsed.data.workspaceId))
-						.get();
-					if (!wsRow) {
+					const derived = resolveProjectIdFromWorkspace(parsed.data.workspaceId);
+					if (!derived) {
 						respond(res, 404, requestId, { error: "not_found" });
 						return;
 					}
-					dispatchProjectId = wsRow.projectId;
+					dispatchProjectId = derived;
 				}
 				const ws = await getWorkspace({
 					projectId: dispatchProjectId,
@@ -318,16 +334,12 @@ async function handleRequest(
 				}
 				let removeProjectId = parsed.data.projectId;
 				if (!removeProjectId) {
-					const wsRow = getDb()
-						.select({ projectId: workspaces.projectId })
-						.from(workspaces)
-						.where(eq(workspaces.id, parsed.data.workspaceId))
-						.get();
-					if (!wsRow) {
+					const derived = resolveProjectIdFromWorkspace(parsed.data.workspaceId);
+					if (!derived) {
 						respond(res, 404, requestId, { error: "not_found" });
 						return;
 					}
-					removeProjectId = wsRow.projectId;
+					removeProjectId = derived;
 				}
 				const ws = await getWorkspace({
 					projectId: removeProjectId,
