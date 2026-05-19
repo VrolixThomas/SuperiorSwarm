@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { chmodSync, existsSync, mkdtempSync, writeFileSync } from "node:fs";
+import { appendFileSync, chmodSync, existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { and, desc, eq, gt, inArray, isNull, max, ne, or } from "drizzle-orm";
@@ -32,14 +32,15 @@ import type { ProjectWorkspaceTree, VisibleWorkspaceTreeRow } from "../../shared
 import { CLI_PRESETS } from "../ai-review/cli-presets";
 import type { EventBus } from "../control-plane/event-bus";
 import {
+	crossRepoEventsFilePath,
 	invalidateOrchestratorPresenceCache,
 	removeProjectEventsFile,
 } from "../control-plane/orchestrator-event-sink";
 import { getDb } from "../db";
 import {
 	agentMessages,
-	crossRepoOrchestrators,
 	crossRepoOrchestratorProjects,
+	crossRepoOrchestrators,
 	orchestratorMembers,
 	projects,
 	sharedFiles,
@@ -53,10 +54,10 @@ import {
 	removeWorktree as gitRemoveWorktree,
 	hasUncommittedChanges,
 } from "../git/operations";
-import { getWorktreeCleanupQueue } from "./worktree-cleanup-queue";
 import { symlinkSharedFiles } from "../shared-files";
 import { getDaemonClient } from "../terminal/daemon-instance";
-import { attachToOrchestrator } from "./orchestrator-membership";
+import type { attachToOrchestrator } from "./orchestrator-membership";
+import { getWorktreeCleanupQueue } from "./worktree-cleanup-queue";
 function worktreeBasePath(repoPath: string): string {
 	const parent = dirname(repoPath);
 	const name = repoPath.split("/").pop() ?? "repo";
@@ -564,17 +565,21 @@ export async function setStatus(
 			.where(eq(crossRepoOrchestrators.id, ctx.xroId))
 			.run();
 
-		// Emit on every linked project bus so per-project event sinks pick it up.
-		for (const projectId of ctx.linkedProjectIds) {
-			eventBus?.emit(projectId, {
+		// Write the status event directly to the xro's events file.
+		// Emitting on per-project buses would produce one duplicate line per linked
+		// project; the xro has its own events file so we write there once instead.
+		appendFileSync(
+			crossRepoEventsFilePath(ctx.xroId),
+			JSON.stringify({
 				event: "status",
 				workspaceId: ctx.xroId,
 				phase: input.phase,
 				statusText: input.statusText ?? null,
 				needs: input.needs ?? null,
 				ts: now.toISOString(),
-			});
-		}
+			}) + "\n",
+			"utf-8"
+		);
 		return { ok: true };
 	}
 
@@ -702,7 +707,9 @@ export async function sendMessage(
 				.get();
 			if (!target) throw new NotFoundError(input.toWorkspaceId);
 			if (!ctx.linkedProjectIds.includes(target.projectId)) {
-				throw new ForbiddenError("target workspace's project is not linked to this cross-repo orchestrator");
+				throw new ForbiddenError(
+					"target workspace's project is not linked to this cross-repo orchestrator"
+				);
 			}
 			const messageId = nanoid();
 			const now = new Date();
@@ -885,7 +892,9 @@ export async function resumeAgent(
 			.get();
 		if (!target) throw new NotFoundError(input.workspaceId);
 		if (!ctx.linkedProjectIds.includes(target.projectId)) {
-			throw new ForbiddenError("target workspace's project is not linked to this cross-repo orchestrator");
+			throw new ForbiddenError(
+				"target workspace's project is not linked to this cross-repo orchestrator"
+			);
 		}
 		if (target.cliPreset !== "claude" || !target.cliSessionId) {
 			throw new ResumeNotSupportedError("workspace has no claude session");
@@ -1170,9 +1179,7 @@ export async function createOrchestrator(
 			for (const wsId of attachIds) {
 				// Inlined equivalent of attachToOrchestrator's tx body so the
 				// whole promote+attach sequence shares one transaction.
-				tx.delete(orchestratorMembers)
-					.where(eq(orchestratorMembers.workspaceId, wsId))
-					.run();
+				tx.delete(orchestratorMembers).where(eq(orchestratorMembers.workspaceId, wsId)).run();
 				const maxRow = tx
 					.select({ m: max(orchestratorMembers.sortOrder) })
 					.from(orchestratorMembers)
