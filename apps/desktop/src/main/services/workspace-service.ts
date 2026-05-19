@@ -227,6 +227,22 @@ export async function listWorkspaces(
 	return { workspaces: rows.map(rowToDto) };
 }
 
+export async function listWorkspacesForProjects(input: {
+	projectIds: string[];
+}): Promise<ListWorkspacesResponse> {
+	if (input.projectIds.length === 0) return { workspaces: [] };
+	const db = getDb();
+	const rows = db
+		.select(WORKSPACE_SELECT)
+		.from(workspaces)
+		.leftJoin(worktrees, eq(workspaces.worktreeId, worktrees.id))
+		.leftJoin(reviewDrafts, eq(workspaces.reviewDraftId, reviewDrafts.id))
+		.where(inArray(workspaces.projectId, input.projectIds))
+		.all();
+
+	return { workspaces: rows.map(rowToDto) };
+}
+
 const TREE_WORKSPACE_SELECT = {
 	id: workspaces.id,
 	projectId: workspaces.projectId,
@@ -326,7 +342,10 @@ export async function getWorkspace(input: GetWorkspaceRequest): Promise<GetWorks
 	if (!row) {
 		throw new NotFoundError(input.workspaceId);
 	}
-	if (row.projectId !== input.projectId) {
+	// When projectId is provided, enforce cross-project guard.
+	// When absent (cross-repo orchestrator callers), skip the check — the row is already
+	// scoped to the workspaceId so there is no foreign-project risk.
+	if (input.projectId !== undefined && row.projectId !== input.projectId) {
 		throw new ForbiddenError("workspace belongs to a different project");
 	}
 
@@ -343,7 +362,8 @@ export async function removeWorkspace(
 	const db = getDb();
 	const ws = db.select().from(workspaces).where(eq(workspaces.id, input.workspaceId)).get();
 	if (!ws) throw new NotFoundError(input.workspaceId);
-	if (ws.projectId !== input.projectId) throw new ForbiddenError();
+	// When projectId is provided, enforce cross-project guard.
+	if (input.projectId !== undefined && ws.projectId !== input.projectId) throw new ForbiddenError();
 	if (ws.type === "branch") throw new Error("Cannot delete the main branch workspace");
 
 	const wt = ws.worktreeId
@@ -439,7 +459,8 @@ export async function dispatchAgent(
 	const db = getDb();
 	const ws = db.select().from(workspaces).where(eq(workspaces.id, input.workspaceId)).get();
 	if (!ws) throw new NotFoundError(input.workspaceId);
-	if (ws.projectId !== input.projectId) throw new ForbiddenError();
+	// When projectId is provided, enforce cross-project guard.
+	if (input.projectId !== undefined && ws.projectId !== input.projectId) throw new ForbiddenError();
 	if (!ws.worktreeId) throw new Error("Workspace has no associated worktree");
 
 	const wt = db.select().from(worktrees).where(eq(worktrees.id, ws.worktreeId)).get();

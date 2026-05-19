@@ -17,7 +17,7 @@ import {
 	setStatusRequestSchema,
 } from "../../shared/control-plane";
 import { getDb } from "../db";
-import { workspaces, worktrees } from "../db/schema";
+import { crossRepoOrchestratorProjects, crossRepoOrchestrators, workspaces, worktrees } from "../db/schema";
 import {
 	type CallerContext,
 	type SpawnFn,
@@ -25,6 +25,7 @@ import {
 	dispatchAgent,
 	getWorkspace,
 	listWorkspaces,
+	listWorkspacesForProjects,
 	readMessages,
 	removeWorkspace,
 	resumeAgent,
@@ -33,7 +34,7 @@ import {
 } from "../services/workspace-service";
 import { isValidBearer } from "./auth";
 import type { EventBus } from "./event-bus";
-import { eventsFilePathForProject } from "./orchestrator-event-sink";
+import { crossRepoEventsFilePath, eventsFilePathForProject } from "./orchestrator-event-sink";
 import type { TaskRegistry } from "./task-registry";
 
 async function attachIfCallerIsOrchestrator(
@@ -189,10 +190,49 @@ async function handleRequest(
 					});
 					return;
 				}
+				if (realCwd) {
+					const xro = getDb()
+						.select({
+							id: crossRepoOrchestrators.id,
+							workDir: crossRepoOrchestrators.workDir,
+						})
+						.from(crossRepoOrchestrators)
+						.all()
+						.find((r) => {
+							try {
+								return realpathSync(r.workDir) === realCwd;
+							} catch {
+								return r.workDir === realCwd;
+							}
+						});
+					if (xro) {
+						const linkedProjectIds = getDb()
+							.select({ projectId: crossRepoOrchestratorProjects.projectId })
+							.from(crossRepoOrchestratorProjects)
+							.where(eq(crossRepoOrchestratorProjects.orchestratorId, xro.id))
+							.all()
+							.map((r) => r.projectId);
+						respond(res, 200, requestId, {
+							mode: "cross-repo-orchestrator",
+							crossRepoOrchestratorId: xro.id,
+							linkedProjectIds,
+							orchestratorEventsPath: crossRepoEventsFilePath(xro.id),
+							isOrchestrator: true,
+							modeContext: {},
+						});
+						return;
+					}
+				}
 				respond(res, 200, requestId, { mode: "none" });
 				return;
 			}
 			case "GET /workspaces.list": {
+				const projectIdsRaw = url.searchParams.get("projectIds");
+				if (projectIdsRaw) {
+					const ids = projectIdsRaw.split(",").filter(Boolean);
+					respond(res, 200, requestId, await listWorkspacesForProjects({ projectIds: ids }));
+					return;
+				}
 				const parsed = listWorkspacesRequestSchema.safeParse({
 					projectId: url.searchParams.get("projectId"),
 				});
@@ -234,8 +274,21 @@ async function handleRequest(
 					respond(res, 400, requestId, { error: "validation", details: parsed.error.flatten() });
 					return;
 				}
+				let dispatchProjectId = parsed.data.projectId;
+				if (!dispatchProjectId) {
+					const wsRow = getDb()
+						.select({ projectId: workspaces.projectId })
+						.from(workspaces)
+						.where(eq(workspaces.id, parsed.data.workspaceId))
+						.get();
+					if (!wsRow) {
+						respond(res, 404, requestId, { error: "not_found" });
+						return;
+					}
+					dispatchProjectId = wsRow.projectId;
+				}
 				const ws = await getWorkspace({
-					projectId: parsed.data.projectId,
+					projectId: dispatchProjectId,
 					workspaceId: parsed.data.workspaceId,
 				});
 				const allowed = await deps.confirm({
@@ -248,8 +301,11 @@ async function handleRequest(
 					respond(res, 499, requestId, { error: "cancelled_by_user" });
 					return;
 				}
-				const result = await dispatchAgent(parsed.data, { spawnFn: deps.spawnFn });
-				await attachIfCallerIsOrchestrator(req, parsed.data.projectId, parsed.data.workspaceId);
+				const result = await dispatchAgent(
+					{ ...parsed.data, projectId: dispatchProjectId },
+					{ spawnFn: deps.spawnFn },
+				);
+				await attachIfCallerIsOrchestrator(req, dispatchProjectId, parsed.data.workspaceId);
 				respond(res, 200, requestId, result);
 				return;
 			}
@@ -260,8 +316,21 @@ async function handleRequest(
 					respond(res, 400, requestId, { error: "validation", details: parsed.error.flatten() });
 					return;
 				}
+				let removeProjectId = parsed.data.projectId;
+				if (!removeProjectId) {
+					const wsRow = getDb()
+						.select({ projectId: workspaces.projectId })
+						.from(workspaces)
+						.where(eq(workspaces.id, parsed.data.workspaceId))
+						.get();
+					if (!wsRow) {
+						respond(res, 404, requestId, { error: "not_found" });
+						return;
+					}
+					removeProjectId = wsRow.projectId;
+				}
 				const ws = await getWorkspace({
-					projectId: parsed.data.projectId,
+					projectId: removeProjectId,
 					workspaceId: parsed.data.workspaceId,
 				});
 				const allowed = await deps.confirm({
@@ -274,7 +343,7 @@ async function handleRequest(
 					respond(res, 499, requestId, { error: "cancelled_by_user" });
 					return;
 				}
-				const result = await removeWorkspace(parsed.data);
+				const result = await removeWorkspace({ ...parsed.data, projectId: removeProjectId });
 				respond(res, 200, requestId, result);
 				return;
 			}

@@ -15,13 +15,13 @@ export const listWorkspacesRequestSchema = z.object({
 export type ListWorkspacesRequest = z.infer<typeof listWorkspacesRequestSchema>;
 
 export const getWorkspaceRequestSchema = z.object({
-	projectId: z.string().min(1),
+	projectId: z.string().min(1).optional(),
 	workspaceId: z.string().min(1),
 });
 export type GetWorkspaceRequest = z.infer<typeof getWorkspaceRequestSchema>;
 
 export const dispatchAgentRequestSchema = z.object({
-	projectId: z.string().min(1),
+	projectId: z.string().min(1).optional(),
 	workspaceId: z.string().min(1),
 	prompt: z.string().min(1),
 	cliPreset: z.enum(["claude", "codex", "gemini", "opencode"]).optional(),
@@ -30,7 +30,7 @@ export const dispatchAgentRequestSchema = z.object({
 export type DispatchAgentRequest = z.infer<typeof dispatchAgentRequestSchema>;
 
 export const removeWorkspaceRequestSchema = z.object({
-	projectId: z.string().min(1),
+	projectId: z.string().min(1).optional(),
 	workspaceId: z.string().min(1),
 	force: z.boolean().optional(),
 });
