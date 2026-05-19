@@ -167,6 +167,8 @@ function WorkspaceContextMenu({
 	onCreateOrchestrator,
 	canAttach,
 	canDetach,
+	xros,
+	onAttachToXro,
 }: {
 	position: { x: number; y: number };
 	onClose: () => void;
@@ -180,6 +182,8 @@ function WorkspaceContextMenu({
 	onCreateOrchestrator?: () => void;
 	canAttach: boolean;
 	canDetach: boolean;
+	xros: Array<{ id: string; name: string }>;
+	onAttachToXro?: (xroId: string) => void;
 }) {
 	const menuRef = useRef<HTMLDivElement>(null);
 	const [adjusted, setAdjusted] = useState(position);
@@ -305,6 +309,28 @@ function WorkspaceContextMenu({
 					Detach from orchestrator
 				</div>
 			)}
+			{xros.length > 0 && onAttachToXro && (
+				<>
+					<div className="border-t border-[var(--border)] my-1" />
+					<div className="px-3 py-1 text-[10px] uppercase tracking-wider text-[var(--text-quaternary)]">
+						Attach to cross-repo orchestrator
+					</div>
+					{xros.map((xro) => (
+						<div
+							key={xro.id}
+							role="menuitem"
+							tabIndex={0}
+							className="px-3 py-1.5 text-[13px] cursor-pointer hover:bg-[var(--bg-overlay)] transition-all duration-[120ms] text-[var(--text)]"
+							onClick={() => onAttachToXro(xro.id)}
+							onKeyDown={(e) => {
+								if (e.key === "Enter") onAttachToXro(xro.id);
+							}}
+						>
+							{xro.name}
+						</div>
+					))}
+				</>
+			)}
 			<div
 				role="menuitem"
 				tabIndex={0}
@@ -420,6 +446,14 @@ export function WorkspaceItem({
 	});
 	const detachMut = trpc.workspaces.detachFromOrchestrator.useMutation({
 		onSuccess: () => utils.workspaces.listByProject.invalidate({ projectId }),
+	});
+
+	const xrosQuery = trpc.crossRepoOrchestrators.list.useQuery(undefined, {
+		staleTime: 60_000,
+	});
+	const xros = xrosQuery.data ?? [];
+	const attachXroMut = trpc.crossRepoOrchestrators.attachMember.useMutation({
+		onError: (err) => console.warn("[xro] attach failed:", err.message),
 	});
 
 	const handleUnsetOrchestrator = useCallback(() => {
@@ -646,6 +680,11 @@ export function WorkspaceItem({
 						!workspace.isOrchestrator && indentLevel === 0 && workspace.type === "worktree"
 					}
 					canDetach={isChildOfOrchestrator}
+					xros={xros}
+					onAttachToXro={(xroId) => {
+						attachXroMut.mutate({ id: xroId, workspaceId: workspace.id });
+						setContextMenu(null);
+					}}
 				/>
 			)}
 		</div>
