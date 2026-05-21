@@ -13,7 +13,7 @@ export const PROJECTS = [
 				children: [
 					{
 						id: "w-feature",
-						name: "feature/inline-agent-chat",
+						name: "orchestrator-ordering",
 						active: true,
 						statusText: "3 agents running",
 						currentPhase: "working" as const,
@@ -61,7 +61,7 @@ export const PULL_REQUESTS = [
 			{
 				id: 34,
 				title: "Add inline agent chat with streaming responses",
-				branch: "feature/inline-agent-chat",
+				branch: "orchestrator-ordering",
 				target: "main",
 				author: "ThomasV",
 				authorInitial: "T",
@@ -151,7 +151,7 @@ export const TICKET_STATUSES = [
 // PR comments / review threads (AI review on PR #34)
 export const PR_COMMENTS = [
 	{
-		file: "src/main/chat/chat-service.ts",
+		file: "src/renderer/components/OrchestratorGroup.tsx",
 		threads: [
 			{
 				line: 47,
@@ -168,7 +168,7 @@ export const PR_COMMENTS = [
 		],
 	},
 	{
-		file: "src/renderer/components/ChatPanel.tsx",
+		file: "src/renderer/components/OrchestratorRow.tsx",
 		threads: [
 			{
 				line: 23,
@@ -189,21 +189,21 @@ export const PR_COMMENTS = [
 // Comment solver commit groups (AI fixes for PR #34)
 export const COMMIT_GROUPS = [
 	{
-		label: "Message queue and WebSocket reconnection in chat-service.ts",
+		label: "Message queue and WebSocket reconnection in OrchestratorGroup.tsx",
 		resolved: 2,
 		total: 2,
 		approved: true,
 		commits: ["a7f3c21"],
-		files: ["chat-service.ts"],
+		files: ["OrchestratorGroup.tsx"],
 		comments: [
 			{
-				file: "chat-service.ts",
+				file: "OrchestratorGroup.tsx",
 				line: 47,
 				author: "PR Review Agent",
 				text: "Messages are dispatched without a queue. If two agents respond simultaneously, messages will interleave unpredictably. Add a message queue per conversation that serializes writes.",
 			},
 			{
-				file: "chat-service.ts",
+				file: "OrchestratorGroup.tsx",
 				line: 89,
 				author: "PR Review Agent",
 				text: "The WebSocket connection has no reconnection logic. When the network drops, the agent session is lost silently. Implement exponential backoff reconnection with session resumption.",
@@ -216,16 +216,16 @@ export const COMMIT_GROUPS = [
 		total: 2,
 		approved: true,
 		commits: ["e4b8d09"],
-		files: ["ChatPanel.tsx"],
+		files: ["OrchestratorRow.tsx"],
 		comments: [
 			{
-				file: "ChatPanel.tsx",
+				file: "OrchestratorRow.tsx",
 				line: 23,
 				author: "PR Review Agent",
 				text: "The `useEffect` that subscribes to the message stream doesn't return a cleanup function. This will leak subscriptions when the component unmounts or the conversation changes.",
 			},
 			{
-				file: "ChatPanel.tsx",
+				file: "OrchestratorRow.tsx",
 				line: 156,
 				author: "PR Review Agent",
 				text: "Streaming message content is appended to state on every chunk without batching. With fast responses this causes hundreds of re-renders per second. Use `requestAnimationFrame` or batch state updates.",
@@ -234,7 +234,7 @@ export const COMMIT_GROUPS = [
 	},
 ] as const;
 
-// Diff lines for the solver center panel — chat-service.ts message queue fix
+// Diff lines for the solver center panel — OrchestratorGroup.tsx message queue fix
 export const DIFF_LINES = [
 	{
 		type: "context" as const,
@@ -385,7 +385,10 @@ export const DIFF_LINES = [
 ] as const;
 
 // Working changes for git panel
-export const WORKING_CHANGES = [{ name: "chat-service.ts" }, { name: "ChatPanel.tsx" }] as const;
+export const WORKING_CHANGES = [
+	{ name: "OrchestratorGroup.tsx" },
+	{ name: "OrchestratorRow.tsx" },
+] as const;
 
 // Commits list (feature branch commits for the chat feature)
 export const COMMITS = [
@@ -441,8 +444,8 @@ export const COMMITS = [
 
 // Branch changes
 export const BRANCH_FILES = [
-	{ name: "ChatPanel.tsx", path: "src/renderer/components/", additions: 156 },
-	{ name: "chat-service.ts", path: "src/main/chat/", additions: 198 },
+	{ name: "OrchestratorRow.tsx", path: "src/renderer/components/", additions: 156 },
+	{ name: "OrchestratorGroup.tsx", path: "src/renderer/components/", additions: 198 },
 	{ name: "useAgentChat.ts", path: "src/renderer/hooks/", additions: 89 },
 	{ name: "ChatMessage.tsx", path: "src/renderer/components/", additions: 67 },
 	{ name: "chat-types.ts", path: "src/shared/", additions: 34 },
@@ -454,9 +457,9 @@ export const FILE_TREE = [
 		name: "src",
 		type: "dir" as const,
 		children: [
-			{ name: "main/chat/chat-service.ts", type: "file" as const },
+			{ name: "main/chat/OrchestratorGroup.tsx", type: "file" as const },
 			{ name: "main/chat/message-queue.ts", type: "file" as const },
-			{ name: "renderer/components/ChatPanel.tsx", type: "file" as const },
+			{ name: "renderer/components/OrchestratorRow.tsx", type: "file" as const },
 			{ name: "renderer/components/ChatMessage.tsx", type: "file" as const },
 			{ name: "renderer/hooks/useAgentChat.ts", type: "file" as const },
 			{ name: "shared/chat-types.ts", type: "file" as const },

@@ -39,14 +39,14 @@ function PrHeader() {
 	return (
 		<header className="border-b border-app-border-subtle px-6 py-5">
 			<h1 className="text-[18px] font-semibold leading-tight text-app-text">
-				Add inline agent chat with streaming responses
+				Orchestrator workspace ordering with drag-and-drop
 			</h1>
 
 			<div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-app-text-tertiary">
 				<span className="font-mono">
 					<span className="text-app-text-secondary">main</span>{" "}
 					<span className="text-app-text-quaternary">←</span>{" "}
-					<span className="text-app-text-secondary">feature/inline-agent-chat</span>
+					<span className="text-app-text-secondary">orchestrator-ordering</span>
 				</span>
 				<span className="text-app-text-quaternary">·</span>
 				<span>opened 2 hours ago by</span>
@@ -124,19 +124,18 @@ function AiSummaryCard() {
 				<span className="ml-auto text-[10px] text-app-text-quaternary">generated 2m ago</span>
 			</div>
 			<div className="bg-app-bg-surface px-4 py-3 text-[12px] leading-relaxed text-app-text-secondary">
-				Introduces an end-to-end agent chat surface backed by a streaming WebSocket service. Adds a
-				per-conversation message queue to serialize concurrent agent writes, exponential-backoff
-				reconnection, and a render-batched{" "}
+				Lets users drag-and-drop orchestrator groups and child worktrees in the sidebar. Adds two
+				new tRPC procedures{" "}
 				<code className="rounded bg-app-bg-elevated px-1 py-px font-mono text-[11px] text-app-text">
-					ChatPanel
+					workspaces.reorderTopLevel
 				</code>{" "}
-				that subscribes via{" "}
+				and{" "}
 				<code className="rounded bg-app-bg-elevated px-1 py-px font-mono text-[11px] text-app-text">
-					useAgentChat
+					workspaces.reorderChildren
 				</code>
-				. 4 inline review comments resolved across{" "}
-				<span className="font-mono">chat-service.ts</span> and{" "}
-				<span className="font-mono">ChatPanel.tsx</span>.
+				, wires up @dnd-kit with collision detection in{" "}
+				<span className="font-mono">ProjectItem.tsx</span>, and persists ordering through{" "}
+				<span className="font-mono">OrchestratorGroup.tsx</span>.
 			</div>
 		</section>
 	);

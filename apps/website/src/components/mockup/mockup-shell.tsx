@@ -57,20 +57,15 @@ export function MockupShell() {
 
 			<div className="relative overflow-hidden rounded-xl border border-app-border-subtle bg-app-bg-elevated shadow-[0_40px_100px_rgba(0,0,0,0.6)]">
 				{/* macOS window chrome */}
-				<div className="flex items-center justify-between border-b border-app-border-subtle px-3 py-2">
+				<div className="relative flex items-center border-b border-app-border-subtle px-3 py-2">
 					<div className="flex items-center gap-1.5">
 						<div className="size-2.5 rounded-full bg-app-danger" />
 						<div className="size-2.5 rounded-full bg-app-warning" />
 						<div className="size-2.5 rounded-full bg-app-success" />
 					</div>
-					<span className="text-[11px] text-app-text-tertiary">SuperiorSwarm</span>
-					<div className="flex items-center gap-1.5">
-						<span className="relative flex size-2">
-							<span className="absolute inline-flex size-full animate-ping rounded-full bg-app-success opacity-40" />
-							<span className="relative inline-flex size-2 rounded-full bg-app-success" />
-						</span>
-						<span className="text-[10px] text-app-text-tertiary">3 agents</span>
-					</div>
+					<span className="absolute left-1/2 -translate-x-1/2 text-[11px] text-app-text-tertiary">
+						SuperiorSwarm
+					</span>
 				</div>
 
 				{/* Mobile tab bar */}
@@ -190,52 +185,63 @@ export function MockupShell() {
 }
 
 function BranchChipHeader() {
+	// Matches real BranchChip.tsx + QuickActionBar.tsx empty-state.
+	// BranchChip = single button: branch icon + name + ahead/behind badges + chevron.
+	// QuickActionBar with no user-defined actions renders only a "+" button.
 	return (
 		<div className="flex shrink-0 items-center gap-2 border-b border-app-border-subtle px-3 py-1">
-			{/* Branch chip — matches real BranchChip */}
-			<div className="flex items-center gap-1.5 rounded-[5px] bg-app-bg-elevated px-2 py-1">
+			<button
+				type="button"
+				className="flex items-center gap-1.5 rounded-[6px] border border-app-border bg-app-bg-overlay px-2 py-1 text-[12px] transition-colors hover:bg-app-bg-active"
+			>
 				<svg
 					aria-hidden="true"
-					width="10"
-					height="10"
-					viewBox="0 0 16 16"
-					fill="currentColor"
-					className="shrink-0 text-app-text-quaternary"
+					width="12"
+					height="12"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="var(--color-app-text-secondary)"
+					strokeWidth="2"
+					className="shrink-0"
 				>
-					<path d="M9.5 3.25a2.25 2.25 0 1 1 3 2.122V6A2.5 2.5 0 0 1 10 8.5H6a1 1 0 0 0-1 1v1.128a2.251 2.251 0 1 1-1.5 0V5.372a2.25 2.25 0 1 1 1.5 0v1.836A2.5 2.5 0 0 1 6 7h4a1 1 0 0 0 1-1v-.628A2.25 2.25 0 0 1 9.5 3.25Z" />
+					<path d="M6 3v12" />
+					<circle cx="18" cy="6" r="3" />
+					<circle cx="6" cy="18" r="3" />
+					<path d="M18 9a9 9 0 0 1-9 9" />
 				</svg>
-				<span className="font-mono text-[11px] text-app-text-secondary">
-					feature/inline-agent-chat
+				<span className="max-w-[200px] truncate font-medium text-app-text">
+					orchestrator-ordering
 				</span>
-				<span className="text-[10px] text-app-text-quaternary">·</span>
-				<span className="font-mono text-[10px] text-app-text-quaternary">main</span>
-			</div>
+				<span
+					className="rounded-full px-1.5 text-[10px]"
+					style={{
+						background: "rgba(48,209,88,0.10)",
+						color: "var(--color-app-success)",
+					}}
+				>
+					↑3
+				</span>
+				<svg
+					aria-hidden="true"
+					width="8"
+					height="8"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="var(--color-app-text-quaternary)"
+					strokeWidth="2.5"
+				>
+					<path d="m6 9 6 6 6-6" />
+				</svg>
+			</button>
 
-			{/* Quick actions: push / pull / fetch */}
-			<div className="ml-auto flex items-center gap-0.5">
-				{[
-					{ label: "Pull", path: "M8 2v8M5 7l3 3 3-3" },
-					{ label: "Push", path: "M8 14V6M5 9l3-3 3 3" },
-					{ label: "Fetch", path: "M3 8a5 5 0 0 1 9-3M13 8a5 5 0 0 1-9 3M12 2v3h-3M4 14v-3h3" },
-				].map((a) => (
-					<button
-						key={a.label}
-						type="button"
-						title={a.label}
-						className="flex h-[24px] w-[24px] items-center justify-center rounded-[5px] text-app-text-quaternary transition-colors hover:bg-app-bg-elevated hover:text-app-text-secondary"
-					>
-						<svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-							<path
-								d={a.path}
-								stroke="currentColor"
-								strokeWidth="1.4"
-								strokeLinecap="round"
-								strokeLinejoin="round"
-							/>
-						</svg>
-					</button>
-				))}
-			</div>
+			{/* QuickActionBar empty-state: just a + */}
+			<button
+				type="button"
+				className="ml-1 shrink-0 rounded-[6px] px-2 py-0.5 text-[12px] text-app-text-quaternary transition-colors hover:text-app-text-secondary"
+				title="Add quick action"
+			>
+				+
+			</button>
 		</div>
 	);
 }

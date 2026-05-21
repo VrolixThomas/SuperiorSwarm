@@ -15,7 +15,7 @@ export function DiffView() {
 							className="size-1.5 shrink-0 rounded-full"
 							style={{ background: "var(--color-app-term-yellow)" }}
 						/>
-						<span className="min-w-0 truncate">chat-service.ts (fix)</span>
+						<span className="min-w-0 truncate">OrchestratorGroup.tsx (fix)</span>
 						<span className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-[5px] text-app-text-tertiary">
 							<svg aria-hidden="true" width="9" height="9" viewBox="0 0 9 9" fill="none">
 								<path
@@ -50,7 +50,7 @@ export function DiffView() {
 			{/* File path bar — file path, commit hash, inline toggle */}
 			<div className="flex h-8 shrink-0 items-center gap-2 border-b border-app-border-subtle bg-app-bg-surface px-3">
 				<span className="flex-1 truncate font-mono text-[11px] text-app-text-quaternary">
-					src/main/chat/chat-service.ts
+					src/renderer/components/OrchestratorGroup.tsx
 				</span>
 				<span className="font-mono text-[10px] text-app-text-quaternary">a7f3c21</span>
 				<span className="rounded px-2 py-0.5 text-[11px] text-app-text-tertiary transition-colors hover:bg-app-bg-elevated hover:text-app-text-secondary">

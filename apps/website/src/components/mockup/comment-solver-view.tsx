@@ -113,7 +113,7 @@ export function CommentSolverView() {
 				</div>
 				{/* PR title (branch name as title in solver mode) */}
 				<h1 className="mt-1 truncate font-mono text-[13px] font-semibold text-app-text">
-					#34 &middot; feature/inline-agent-chat
+					#34 &middot; orchestrator-ordering
 				</h1>
 				{/* Status summary */}
 				<div className="mt-1.5 flex items-center gap-3 text-[10px]">
