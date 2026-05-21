@@ -39,7 +39,6 @@ const FOOTER_NAV: {
 		heading: "Resources",
 		links: [
 			{ label: "Features", href: "/#features" },
-			{ label: "Waitlist", href: "/#waitlist" },
 			{ label: "Issues", href: `${SITE.github}/issues`, external: true },
 		],
 	},
