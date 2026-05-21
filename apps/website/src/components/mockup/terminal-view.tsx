@@ -9,9 +9,9 @@ export function TerminalView() {
 	return (
 		<div className="flex flex-1 flex-col">
 			{/* Pane tab bar — matches real app PaneTabBar */}
-			<div className="flex h-[36px] shrink-0 items-center border-b border-border bg-bg-elevated">
+			<div className="flex h-[36px] shrink-0 items-center border-b border-app-border-subtle bg-app-bg-elevated">
 				{/* Pane index */}
-				<div className="flex h-full w-[28px] shrink-0 items-center justify-center text-[11px] font-medium text-text-faint">
+				<div className="flex h-full w-[28px] shrink-0 items-center justify-center text-[11px] font-medium text-app-text-quaternary">
 					1
 				</div>
 
@@ -19,7 +19,7 @@ export function TerminalView() {
 				<TabPill
 					active={activeTab === "terminal"}
 					onClick={() => setActiveTab("terminal")}
-					icon={<span className="shrink-0 font-mono text-[10px] text-text-faint">&gt;_</span>}
+					icon={<span className="shrink-0 font-mono text-[10px] text-app-text-quaternary">&gt;_</span>}
 					label="* Claude Code"
 				/>
 
@@ -42,7 +42,7 @@ export function TerminalView() {
 				{/* Spacer + new tab button */}
 				<div className="flex-1" />
 				<div className="shrink-0 pr-1">
-					<span className="flex h-[24px] w-[24px] items-center justify-center rounded-[5px] text-text-faint">
+					<span className="flex h-[24px] w-[24px] items-center justify-center rounded-[5px] text-app-text-quaternary">
 						<svg aria-hidden="true" width="12" height="12" viewBox="0 0 16 16" fill="none">
 							<path
 								d="M8 3v10M3 8h10"
@@ -61,8 +61,8 @@ export function TerminalView() {
 			{activeTab === "chat-service.ts" && <CodeEditorContent file="chat-service.ts" />}
 
 			{/* Bottom workspace label */}
-			<div className="flex items-center border-t border-border px-3 py-1">
-				<span className="rounded bg-accent-dim px-1.5 py-0.5 text-[10px] font-medium text-accent">
+			<div className="flex items-center border-t border-app-border-subtle px-3 py-1">
+				<span className="rounded bg-app-accent-subtle px-1.5 py-0.5 text-[10px] font-medium text-app-accent">
 					PR #34
 				</span>
 			</div>
@@ -88,14 +88,14 @@ function TabPill({
 			className={[
 				"relative flex h-[28px] max-w-[180px] shrink-0 items-center gap-1.5 rounded-[6px] pl-2.5 pr-1.5 text-[12px]",
 				active
-					? "bg-bg-overlay text-text-primary shadow-[0_1px_3px_rgba(0,0,0,0.4),inset_0_0.5px_0_rgba(255,255,255,0.04)]"
-					: "text-text-faint hover:text-text-muted",
+					? "bg-app-bg-overlay text-app-text shadow-[0_1px_3px_rgba(0,0,0,0.4),inset_0_0.5px_0_rgba(255,255,255,0.04)]"
+					: "text-app-text-quaternary hover:text-app-text-tertiary",
 			].join(" ")}
 		>
-			{active && <span className="absolute inset-x-2 bottom-0 h-[2px] rounded-full bg-accent" />}
+			{active && <span className="absolute inset-x-2 bottom-0 h-[2px] rounded-full bg-app-accent" />}
 			{icon}
 			<span className="min-w-0 truncate">{label}</span>
-			<span className="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[4px] text-text-muted">
+			<span className="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[4px] text-app-text-tertiary">
 				<svg aria-hidden="true" width="8" height="8" viewBox="0 0 9 9" fill="none">
 					<path
 						d="M2 2l5 5M7 2l-5 5"
@@ -112,73 +112,73 @@ function TabPill({
 function TerminalContent() {
 	return (
 		<div className="flex-1 overflow-hidden p-3">
-			<pre className="font-mono text-[11px] leading-[1.7] text-text-primary">
+			<pre className="font-mono text-[11px] leading-[1.7] text-app-text">
 				{/* Shell prompt */}
-				<span className="text-accent">~/SuperiorSwarm</span>
-				<span className="text-text-muted"> on </span>
-				<span className="text-purple">feature/inline-agent-chat</span>
+				<span className="text-app-accent">~/SuperiorSwarm</span>
+				<span className="text-app-text-tertiary"> on </span>
+				<span className="text-app-purple">feature/inline-agent-chat</span>
 				{"\n"}
-				<span className="text-green">❯ </span>
-				<span className="text-text-primary">claude</span>
+				<span className="text-app-success">❯ </span>
+				<span className="text-app-text">claude</span>
 				{"\n"}
 				{/* Minimal Claude Code header — matches the real ── line style */}
-				<span className="text-accent">{"── "}</span>
-				<span className="text-accent">Claude Code</span>
-				<span className="text-text-faint"> v2.1.87</span>
-				<span className="text-accent">{" ──────────────────────────────────────────"}</span>
+				<span className="text-app-accent">{"── "}</span>
+				<span className="text-app-accent">Claude Code</span>
+				<span className="text-app-text-quaternary"> v2.1.87</span>
+				<span className="text-app-accent">{" ──────────────────────────────────────────"}</span>
 				{"\n\n"}
 				{/* User prompt */}
-				<span className="text-text-primary">
+				<span className="text-app-text">
 					{">"} implement the ChatPanel component with streaming message display
 				</span>
 				{"\n\n"}
 				{/* Agent reading files */}
-				<span className="text-text-faint">{"  ⠸ "}</span>
-				<span className="text-text-muted">Analyzing codebase...</span>
+				<span className="text-app-text-quaternary">{"  ⠸ "}</span>
+				<span className="text-app-text-tertiary">Analyzing codebase...</span>
 				{"\n"}
-				<span className="text-text-faint">{"  ⠸ "}</span>
-				<span className="text-text-muted">
+				<span className="text-app-text-quaternary">{"  ⠸ "}</span>
+				<span className="text-app-text-tertiary">
 					Reading src/shared/chat-types.ts, src/main/chat/chat-service.ts
 				</span>
 				{"\n\n"}
 				{/* File operations */}
-				<span className="text-green">{"  ✓ "}</span>
-				<span className="text-text-secondary">Created </span>
-				<span className="text-text-primary">src/renderer/hooks/useAgentChat.ts</span>
-				<span className="text-green"> (+89 lines)</span>
+				<span className="text-app-success">{"  ✓ "}</span>
+				<span className="text-app-text-secondary">Created </span>
+				<span className="text-app-text">src/renderer/hooks/useAgentChat.ts</span>
+				<span className="text-app-success"> (+89 lines)</span>
 				{"\n"}
-				<span className="text-green">{"  ✓ "}</span>
-				<span className="text-text-secondary">Created </span>
-				<span className="text-text-primary">src/renderer/components/ChatMessage.tsx</span>
-				<span className="text-green"> (+67 lines)</span>
+				<span className="text-app-success">{"  ✓ "}</span>
+				<span className="text-app-text-secondary">Created </span>
+				<span className="text-app-text">src/renderer/components/ChatMessage.tsx</span>
+				<span className="text-app-success"> (+67 lines)</span>
 				{"\n"}
-				<span className="text-green">{"  ✓ "}</span>
-				<span className="text-text-secondary">Modified </span>
-				<span className="text-text-primary">src/renderer/components/ChatPanel.tsx</span>
-				<span className="text-green"> +156</span>
-				<span className="text-red"> -23</span>
+				<span className="text-app-success">{"  ✓ "}</span>
+				<span className="text-app-text-secondary">Modified </span>
+				<span className="text-app-text">src/renderer/components/ChatPanel.tsx</span>
+				<span className="text-app-success"> +156</span>
+				<span className="text-app-danger"> -23</span>
 				{"\n"}
-				<span className="text-green">{"  ✓ "}</span>
-				<span className="text-text-secondary">Modified </span>
-				<span className="text-text-primary">src/main/chat/chat-service.ts</span>
-				<span className="text-green"> +34</span>
-				<span className="text-red"> -8</span>
+				<span className="text-app-success">{"  ✓ "}</span>
+				<span className="text-app-text-secondary">Modified </span>
+				<span className="text-app-text">src/main/chat/chat-service.ts</span>
+				<span className="text-app-success"> +34</span>
+				<span className="text-app-danger"> -8</span>
 				{"\n\n"}
 				{/* Test results */}
-				<span className="text-text-secondary">{"  "}Running tests...</span>
+				<span className="text-app-text-secondary">{"  "}Running tests...</span>
 				{"\n"}
-				<span className="text-green">{"  ✓ "}</span>
-				<span className="text-text-secondary">chat/chat-service.test.ts (6 tests)</span>
+				<span className="text-app-success">{"  ✓ "}</span>
+				<span className="text-app-text-secondary">chat/chat-service.test.ts (6 tests)</span>
 				{"\n"}
-				<span className="text-green">{"  ✓ "}</span>
-				<span className="text-text-secondary">hooks/useAgentChat.test.ts (4 tests)</span>
+				<span className="text-app-success">{"  ✓ "}</span>
+				<span className="text-app-text-secondary">hooks/useAgentChat.test.ts (4 tests)</span>
 				{"\n"}
-				<span className="text-green">{"  ✓ "}</span>
-				<span className="text-green">10 tests passed</span>
+				<span className="text-app-success">{"  ✓ "}</span>
+				<span className="text-app-success">10 tests passed</span>
 				{"\n\n"}
 				{/* Cursor */}
-				<span className="text-text-primary">{">"} </span>
-				<span className="animate-pulse text-text-primary">█</span>
+				<span className="text-app-text">{">"} </span>
+				<span className="animate-pulse text-app-text">█</span>
 			</pre>
 		</div>
 	);
@@ -220,9 +220,9 @@ export function ChatPanel({ conversationId, agentId, onClose }: ChatPanelProps) 
   );
 
   return (
-    <div className="flex h-full flex-col bg-bg-base">
+    <div className="flex h-full flex-col bg-app-bg-base">
       <header className="flex items-center gap-2 border-b px-3 py-2">
-        <div className="size-2 rounded-full bg-green animate-pulse" />
+        <div className="size-2 rounded-full bg-app-success animate-pulse" />
         <span className="text-sm font-medium">{agentId}</span>
         <span className="text-xs text-muted">{status}</span>
         <button onClick={onClose} className="ml-auto">x</button>
@@ -318,22 +318,22 @@ function CodeEditorContent({ file }: { file: "ChatPanel.tsx" | "chat-service.ts"
 	return (
 		<div className="flex flex-1 flex-col overflow-hidden">
 			{/* File path bar */}
-			<div className="flex h-8 shrink-0 items-center gap-2 border-b border-border bg-bg-surface px-3">
-				<span className="flex-1 truncate font-mono text-[11px] text-text-faint">{filePath}</span>
-				<span className="font-mono text-[10px] text-text-faint">feature/inline-agent-chat</span>
+			<div className="flex h-8 shrink-0 items-center gap-2 border-b border-app-border-subtle bg-app-bg-surface px-3">
+				<span className="flex-1 truncate font-mono text-[11px] text-app-text-quaternary">{filePath}</span>
+				<span className="font-mono text-[10px] text-app-text-quaternary">feature/inline-agent-chat</span>
 			</div>
 
 			{/* Code content */}
-			<div className="flex-1 overflow-auto bg-bg-base">
+			<div className="flex-1 overflow-auto bg-app-bg-base">
 				<table className="w-full border-collapse font-mono text-[11px] leading-[1.7]">
 					<tbody>
 						{lines.map((line, i) => (
 							// biome-ignore lint/suspicious/noArrayIndexKey: static mock data, never reorders
-							<tr key={i} className="hover:bg-bg-elevated/40">
-								<td className="w-[42px] select-none border-r border-border px-2 text-right text-[10px] text-text-faint/50">
+							<tr key={i} className="hover:bg-app-bg-elevated/40">
+								<td className="w-[42px] select-none border-r border-app-border-subtle px-2 text-right text-[10px] text-app-text-quaternary/50">
 									{i + 1}
 								</td>
-								<td className="whitespace-pre pl-3 pr-4 text-text-muted">
+								<td className="whitespace-pre pl-3 pr-4 text-app-text-tertiary">
 									<CodeLine content={line} />
 								</td>
 							</tr>
@@ -358,15 +358,15 @@ function highlightSyntax(line: string): React.ReactNode[] {
 
 	// Match patterns in order of priority
 	const patterns: [RegExp, string][] = [
-		[/^(\/\/.*)/, "text-text-faint"], // single-line comments
+		[/^(\/\/.*)/, "text-app-text-quaternary"], // single-line comments
 		[
 			/^(import|export|from|return|const|let|new|type|interface|class|function|if|else|async|await|typeof|private|this|void)\b/,
-			"text-accent",
+			"text-app-accent",
 		],
-		[/^("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`)/, "text-green"],
-		[/^(true|false|null|undefined|Date)\b/, "text-yellow"],
-		[/^(\d+(?:_\d+)*)/, "text-yellow"],
-		[/^(=>|\.\.\.|\?\.)/, "text-accent"],
+		[/^("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`)/, "text-app-success"],
+		[/^(true|false|null|undefined|Date)\b/, "text-app-warning"],
+		[/^(\d+(?:_\d+)*)/, "text-app-warning"],
+		[/^(=>|\.\.\.|\?\.)/, "text-app-accent"],
 	];
 
 	while (remaining.length > 0) {

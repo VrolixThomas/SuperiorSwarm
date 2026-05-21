@@ -15,10 +15,10 @@ export function Sidebar({
 	mobile?: boolean;
 }) {
 	return (
-		<div className="flex h-full w-full flex-col overflow-hidden bg-bg-surface">
+		<div className="flex h-full w-full flex-col overflow-hidden bg-app-bg-surface">
 			{/* Segmented control */}
 			{!mobile && (
-				<div className="flex gap-1 px-2 py-1.5 border-b border-border">
+				<div className="flex gap-1 px-2 py-1.5 border-b border-app-border-subtle">
 					{(["repos", "tickets", "prs"] as const).map((seg) => (
 						<button
 							key={seg}
@@ -26,8 +26,8 @@ export function Sidebar({
 							onClick={() => onSegmentChange(seg)}
 							className={`flex-1 rounded-[5px] py-1 text-[10px] font-medium capitalize transition-colors ${
 								segment === seg
-									? "bg-bg-elevated text-text-secondary"
-									: "text-text-faint hover:text-text-muted"
+									? "bg-app-bg-elevated text-app-text-secondary"
+									: "text-app-text-quaternary hover:text-app-text-tertiary"
 							}`}
 						>
 							{seg === "prs" ? "PRs" : seg.charAt(0).toUpperCase() + seg.slice(1)}
@@ -44,10 +44,10 @@ export function Sidebar({
 			</div>
 
 			{/* Footer — Settings + Terminal icon */}
-			<div className="flex items-center gap-1 border-t border-border p-2">
+			<div className="flex items-center gap-1 border-t border-app-border-subtle p-2">
 				<button
 					type="button"
-					className="flex flex-1 items-center gap-2 rounded-[6px] px-3 py-1.5 text-[13px] text-text-muted transition-all duration-[120ms] hover:bg-bg-elevated hover:text-text-secondary"
+					className="flex flex-1 items-center gap-2 rounded-[6px] px-3 py-1.5 text-[13px] text-app-text-tertiary transition-all duration-[120ms] hover:bg-app-bg-elevated hover:text-app-text-secondary"
 				>
 					<svg
 						aria-hidden="true"
@@ -69,7 +69,7 @@ export function Sidebar({
 				<button
 					type="button"
 					title="Terminal"
-					className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-[6px] text-text-faint transition-all duration-[120ms] hover:bg-bg-elevated hover:text-text-secondary"
+					className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-[6px] text-app-text-quaternary transition-all duration-[120ms] hover:bg-app-bg-elevated hover:text-app-text-secondary"
 				>
 					<svg
 						aria-hidden="true"
@@ -99,12 +99,12 @@ function OrchestratorList() {
 			{ORCHESTRATORS.map((orch) => (
 				<div
 					key={orch.name}
-					className="overflow-hidden rounded-[6px] border border-accent/25 bg-[rgba(196,149,108,0.04)]"
+					className="overflow-hidden rounded-[6px] border border-app-accent/25 bg-[rgba(196,149,108,0.04)]"
 				>
-					<div className="flex items-center gap-1.5 border-b border-accent/20 bg-accent-dim/30 px-2.5 py-1.5">
+					<div className="flex items-center gap-1.5 border-b border-app-accent/20 bg-app-accent-subtle/30 px-2.5 py-1.5">
 						<svg
 							viewBox="0 0 12 12"
-							className="size-3 shrink-0 text-accent"
+							className="size-3 shrink-0 text-app-accent"
 							fill="none"
 							stroke="currentColor"
 							strokeWidth="1.5"
@@ -115,38 +115,38 @@ function OrchestratorList() {
 							<circle cx="9" cy="9" r="1.3" />
 							<path d="M6 4.3L4 8M6 4.3L8 8" strokeLinecap="round" />
 						</svg>
-						<span className="truncate text-[11px] font-semibold text-text-primary">
+						<span className="truncate text-[11px] font-semibold text-app-text">
 							{orch.name}
 						</span>
-						<span className="ml-auto font-mono text-[9px] text-text-faint">
+						<span className="ml-auto font-mono text-[9px] text-app-text-quaternary">
 							{orch.worktrees.length}
 						</span>
 					</div>
 					<div className="relative py-1">
 						<div
-							className="pointer-events-none absolute left-3 top-0 h-full w-px bg-accent/15"
+							className="pointer-events-none absolute left-3 top-0 h-full w-px bg-app-accent/15"
 							aria-hidden="true"
 						/>
 						{orch.worktrees.map((wt) => (
 							<div key={wt.name} className="relative flex items-center gap-1.5 py-1 pl-6 pr-2.5">
 								<span
-									className="absolute left-3 top-1/2 h-px w-1.5 -translate-y-1/2 bg-accent/25"
+									className="absolute left-3 top-1/2 h-px w-1.5 -translate-y-1/2 bg-app-accent/25"
 									aria-hidden="true"
 								/>
 								<span className="relative flex size-1.5 shrink-0">
 									{wt.state === "running" ? (
 										<>
-											<span className="absolute inline-flex size-full animate-ping rounded-full bg-green opacity-40" />
-											<span className="relative inline-flex size-1.5 rounded-full bg-green" />
+											<span className="absolute inline-flex size-full animate-ping rounded-full bg-app-success opacity-40" />
+											<span className="relative inline-flex size-1.5 rounded-full bg-app-success" />
 										</>
 									) : (
 										<span className="relative inline-flex size-1.5 rounded-full bg-text-faint" />
 									)}
 								</span>
-								<span className="min-w-0 flex-1 truncate font-mono text-[10px] text-text-secondary">
+								<span className="min-w-0 flex-1 truncate font-mono text-[10px] text-app-text-secondary">
 									{wt.name}
 								</span>
-								<span className="rounded-[3px] bg-bg-elevated px-1 py-px text-[8px] text-text-faint">
+								<span className="rounded-[3px] bg-app-bg-elevated px-1 py-px text-[8px] text-app-text-quaternary">
 									{wt.agent}
 								</span>
 							</div>
@@ -189,7 +189,7 @@ function ReposView() {
 										hasActiveBranch && isExpanded
 											? "rounded-r-[8px] rounded-l-none"
 											: "rounded-[8px]",
-										hasActiveBranch ? "text-text-primary" : "text-[#505058]",
+										hasActiveBranch ? "text-app-text" : "text-[#505058]",
 										hasActiveBranch && isExpanded
 											? "bg-gradient-to-br from-[#1a1a24] to-[#16161e]"
 											: "bg-transparent",
@@ -204,7 +204,7 @@ function ReposView() {
 									<span
 										className={[
 											"flex h-5 w-5 shrink-0 items-center justify-center rounded text-[14px]",
-											hasActiveBranch ? "text-text-faint" : "text-[#3a3a42]",
+											hasActiveBranch ? "text-app-text-quaternary" : "text-[#3a3a42]",
 										].join(" ")}
 									>
 										+
@@ -220,7 +220,7 @@ function ReposView() {
 										className={[
 											"shrink-0 transition-transform duration-[120ms]",
 											isExpanded ? "rotate-90" : "rotate-0",
-											hasActiveBranch ? "text-text-faint" : "text-[#3a3a42]",
+											hasActiveBranch ? "text-app-text-quaternary" : "text-[#3a3a42]",
 										].join(" ")}
 									>
 										<path
@@ -305,7 +305,7 @@ function ReposView() {
 			<div className="px-2 py-1.5">
 				<button
 					type="button"
-					className="flex w-full items-center gap-2 rounded-[6px] px-3 py-1.5 text-[12px] text-text-faint transition-all duration-[120ms] hover:bg-bg-elevated hover:text-text-muted"
+					className="flex w-full items-center gap-2 rounded-[6px] px-3 py-1.5 text-[12px] text-app-text-quaternary transition-all duration-[120ms] hover:bg-app-bg-elevated hover:text-app-text-tertiary"
 				>
 					<svg
 						aria-hidden="true"
@@ -339,7 +339,7 @@ function TicketsView() {
 			{/* All Tickets */}
 			<button
 				type="button"
-				className="flex w-full items-center gap-2 rounded-[6px] px-2 py-1.5 text-left text-[11px] bg-[rgba(196,149,108,0.08)] font-medium text-text-primary transition-colors duration-[120ms]"
+				className="flex w-full items-center gap-2 rounded-[6px] px-2 py-1.5 text-left text-[11px] bg-[rgba(196,149,108,0.08)] font-medium text-app-text transition-colors duration-[120ms]"
 			>
 				<svg
 					width="11"
@@ -355,24 +355,24 @@ function TicketsView() {
 					<rect x="9" y="9" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.3" />
 				</svg>
 				<span className="flex-1">All Tickets</span>
-				<span className="text-[10px] tabular-nums text-text-faint">{totalCount}</span>
+				<span className="text-[10px] tabular-nums text-app-text-quaternary">{totalCount}</span>
 			</button>
 
 			<div className="mx-2 my-1 h-px bg-border" />
 
 			{/* LINEAR section header */}
-			<div className="px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.5px] text-text-faint">
+			<div className="px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.5px] text-app-text-quaternary">
 				Linear
 			</div>
 
 			{/* Linear project item */}
 			<button
 				type="button"
-				className="flex w-full items-center gap-2 rounded-[6px] px-2 py-1.5 text-left text-[11px] text-text-secondary transition-colors duration-[120ms] hover:bg-bg-elevated"
+				className="flex w-full items-center gap-2 rounded-[6px] px-2 py-1.5 text-left text-[11px] text-app-text-secondary transition-colors duration-[120ms] hover:bg-app-bg-elevated"
 			>
 				<div className="h-[6px] w-[6px] shrink-0 rounded-full bg-text-faint" />
 				<span className="flex-1 truncate">SuperiorSwarm</span>
-				<span className="text-[10px] tabular-nums text-text-faint">{totalCount}</span>
+				<span className="text-[10px] tabular-nums text-app-text-quaternary">{totalCount}</span>
 			</button>
 		</div>
 	);
@@ -394,7 +394,7 @@ function PrsView({
 					{/* Repo group header */}
 					<button
 						type="button"
-						className="flex w-full items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium uppercase tracking-[0.05em] text-text-faint transition-colors hover:text-text-muted"
+						className="flex w-full items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium uppercase tracking-[0.05em] text-app-text-quaternary transition-colors hover:text-app-text-tertiary"
 					>
 						<svg
 							aria-hidden="true"
@@ -416,7 +416,7 @@ function PrsView({
 							className={`shrink-0 rounded-[3px] px-1 py-px text-[8px] font-semibold uppercase tracking-[0.05em] ${
 								group.source === "bitbucket"
 									? "bg-[rgba(38,132,255,0.12)] text-[#5b8def]"
-									: "bg-bg-elevated text-text-faint"
+									: "bg-app-bg-elevated text-app-text-quaternary"
 							}`}
 						>
 							{group.source === "bitbucket" ? "BB" : "GH"}
@@ -442,8 +442,8 @@ function PrsView({
 									onClick={() => onPrSelect(pr.id)}
 									className={`group flex w-full flex-col gap-0.5 rounded-[6px] px-2.5 py-1.5 text-left text-[12px] transition-all duration-[120ms] ${
 										selectedPr === pr.id
-											? "bg-bg-overlay text-text-primary"
-											: "text-text-muted hover:bg-bg-elevated hover:text-text-secondary"
+											? "bg-app-bg-overlay text-app-text"
+											: "text-app-text-tertiary hover:bg-app-bg-elevated hover:text-app-text-secondary"
 									}`}
 									title={`${group.repo}#${pr.id}: ${pr.title}`}
 								>
@@ -456,23 +456,23 @@ function PrsView({
 											className="size-1.5 shrink-0 rounded-full"
 											style={{ backgroundColor: healthColor }}
 										/>
-										<span className="shrink-0 font-mono text-[10px] text-text-faint">#{pr.id}</span>
+										<span className="shrink-0 font-mono text-[10px] text-app-text-quaternary">#{pr.id}</span>
 									</div>
 
 									{/* Row 2: Branch info */}
-									<div className="flex items-center gap-1 text-[10px] text-text-faint">
+									<div className="flex items-center gap-1 text-[10px] text-app-text-quaternary">
 										<span className="min-w-0 truncate font-mono">{pr.branch}</span>
 										<span className="shrink-0">{">"}</span>
 										<span className="shrink-0 truncate font-mono">{pr.target}</span>
 									</div>
 
 									{/* Row 3: Author */}
-									<div className="mt-0.5 flex items-center gap-1 text-[10px] text-text-faint">
+									<div className="mt-0.5 flex items-center gap-1 text-[10px] text-app-text-quaternary">
 										<span className="shrink-0 text-[8px] uppercase tracking-[0.05em] opacity-50">
 											by
 										</span>
 										<div
-											className="flex size-4 shrink-0 items-center justify-center rounded-full text-[7px] font-bold text-text-muted"
+											className="flex size-4 shrink-0 items-center justify-center rounded-full text-[7px] font-bold text-app-text-tertiary"
 											style={{ backgroundColor: "var(--color-bg-overlay)" }}
 										>
 											{pr.authorInitial}

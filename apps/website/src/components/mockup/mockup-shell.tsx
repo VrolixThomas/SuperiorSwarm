@@ -55,33 +55,33 @@ export function MockupShell() {
 				style={{ animation: reduced ? "none" : "glow-breathe 8s ease-in-out infinite" }}
 			/>
 
-			<div className="relative overflow-hidden rounded-xl border border-border bg-bg-elevated shadow-[0_40px_100px_rgba(0,0,0,0.6)]">
+			<div className="relative overflow-hidden rounded-xl border border-app-border-subtle bg-app-bg-elevated shadow-[0_40px_100px_rgba(0,0,0,0.6)]">
 				{/* macOS window chrome */}
-				<div className="flex items-center justify-between border-b border-border px-3 py-2">
+				<div className="flex items-center justify-between border-b border-app-border-subtle px-3 py-2">
 					<div className="flex items-center gap-1.5">
-						<div className="size-2.5 rounded-full bg-red" />
-						<div className="size-2.5 rounded-full bg-yellow" />
-						<div className="size-2.5 rounded-full bg-green" />
+						<div className="size-2.5 rounded-full bg-app-danger" />
+						<div className="size-2.5 rounded-full bg-app-warning" />
+						<div className="size-2.5 rounded-full bg-app-success" />
 					</div>
-					<span className="text-[11px] text-text-muted">SuperiorSwarm</span>
+					<span className="text-[11px] text-app-text-tertiary">SuperiorSwarm</span>
 					<div className="flex items-center gap-1.5">
 						<span className="relative flex size-2">
-							<span className="absolute inline-flex size-full animate-ping rounded-full bg-green opacity-40" />
-							<span className="relative inline-flex size-2 rounded-full bg-green" />
+							<span className="absolute inline-flex size-full animate-ping rounded-full bg-app-success opacity-40" />
+							<span className="relative inline-flex size-2 rounded-full bg-app-success" />
 						</span>
-						<span className="text-[10px] text-text-muted">3 agents</span>
+						<span className="text-[10px] text-app-text-tertiary">3 agents</span>
 					</div>
 				</div>
 
 				{/* Mobile tab bar */}
-				<div className="flex border-b border-border md:hidden">
+				<div className="flex border-b border-app-border-subtle md:hidden">
 					{(["repos", "tickets", "prs"] as const).map((s) => (
 						<button
 							key={s}
 							type="button"
 							onClick={() => handleSegmentChange(s)}
 							className={`flex-1 py-2 text-xs font-medium capitalize transition-colors ${
-								segment === s ? "border-b-2 border-accent text-accent" : "text-text-muted"
+								segment === s ? "border-b-2 border-app-accent text-app-accent" : "text-app-text-tertiary"
 							}`}
 						>
 							{s === "prs" ? "PRs" : s}
@@ -92,7 +92,7 @@ export function MockupShell() {
 				{/* Desktop 3-panel layout */}
 				<div className="hidden md:flex" style={{ height: 480 }}>
 					{/* Left sidebar */}
-					<div className="w-[220px] shrink-0 overflow-y-auto border-r border-border bg-bg-surface">
+					<div className="w-[220px] shrink-0 overflow-y-auto border-r border-app-border-subtle bg-app-bg-surface">
 						<Sidebar
 							segment={segment}
 							onSegmentChange={handleSegmentChange}
@@ -102,12 +102,12 @@ export function MockupShell() {
 					</div>
 
 					{/* Center panel */}
-					<div className="flex min-w-0 flex-1 flex-col bg-bg-base">
+					<div className="flex min-w-0 flex-1 flex-col bg-app-bg-base">
 						{segment === "repos" && (solverActive ? <DiffView /> : <TerminalView />)}
 						{segment === "tickets" && <TicketBoardView />}
 						{segment === "prs" && selectedPr !== null && <PrDetailView />}
 						{segment === "prs" && selectedPr === null && (
-							<div className="flex flex-1 items-center justify-center text-xs text-text-faint">
+							<div className="flex flex-1 items-center justify-center text-xs text-app-text-quaternary">
 								Select a PR to view details
 							</div>
 						)}
@@ -115,7 +115,7 @@ export function MockupShell() {
 
 					{/* Right panel */}
 					{showRightPanel && (
-						<div className="w-[300px] shrink-0 overflow-y-auto border-l border-border bg-bg-surface">
+						<div className="w-[300px] shrink-0 overflow-y-auto border-l border-app-border-subtle bg-app-bg-surface">
 							{rightPanel === "review" && selectedPr !== null && (
 								<ReviewPanel prId={selectedPr} onFixClick={handleFixClick} segment={segment} />
 							)}
@@ -135,11 +135,11 @@ export function MockupShell() {
 								onPrSelect={handlePrSelect}
 								mobile
 							/>
-							<div className="border-t border-border">
+							<div className="border-t border-app-border-subtle">
 								{solverActive ? <DiffView /> : <TerminalView />}
 							</div>
 							{solverActive && (
-								<div className="border-t border-border">
+								<div className="border-t border-app-border-subtle">
 									<CommentSolverView />
 								</div>
 							)}
@@ -157,10 +157,10 @@ export function MockupShell() {
 							/>
 							{selectedPr !== null && (
 								<>
-									<div className="border-t border-border">
+									<div className="border-t border-app-border-subtle">
 										<PrDetailView />
 									</div>
-									<div className="border-t border-border">
+									<div className="border-t border-app-border-subtle">
 										{rightPanel === "solver" ? (
 											<CommentSolverView />
 										) : (

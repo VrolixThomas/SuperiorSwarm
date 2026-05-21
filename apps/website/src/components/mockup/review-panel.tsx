@@ -93,8 +93,8 @@ function PanelToolbar({
 	onSetView: (v: PanelView) => void;
 }) {
 	return (
-		<div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
-			<div className="flex rounded-md bg-bg-base p-0.5">
+		<div className="flex shrink-0 items-center gap-2 border-b border-app-border-subtle px-3 py-2">
+			<div className="flex rounded-md bg-app-bg-base p-0.5">
 				{views.map((v) => (
 					<button
 						key={v}
@@ -105,8 +105,8 @@ function PanelToolbar({
 						className={[
 							"flex items-center gap-1 rounded px-2 py-1 transition-all duration-100",
 							activeView === v
-								? "bg-bg-elevated text-text-secondary shadow-sm"
-								: "text-text-faint hover:text-text-muted",
+								? "bg-app-bg-elevated text-app-text-secondary shadow-sm"
+								: "text-app-text-quaternary hover:text-app-text-tertiary",
 						].join(" ")}
 					>
 						{panelIcons[v]}
@@ -121,35 +121,35 @@ function PanelToolbar({
 function BranchChangesCard({ className }: { className?: string }) {
 	return (
 		<div
-			className={`mx-1.5 overflow-hidden rounded-lg border border-border bg-bg-elevated ${className ?? ""}`}
+			className={`mx-1.5 overflow-hidden rounded-lg border border-app-border-subtle bg-app-bg-elevated ${className ?? ""}`}
 		>
-			<div className="flex items-center gap-2 px-3 py-2 hover:bg-bg-overlay">
-				<span className="text-[10px] text-text-faint">&#x25BE;</span>
-				<span className="text-[11px] font-medium uppercase tracking-wider text-text-faint">
+			<div className="flex items-center gap-2 px-3 py-2 hover:bg-app-bg-overlay">
+				<span className="text-[10px] text-app-text-quaternary">&#x25BE;</span>
+				<span className="text-[11px] font-medium uppercase tracking-wider text-app-text-quaternary">
 					Branch Changes
 				</span>
-				<span className="rounded-full bg-bg-overlay px-1.5 py-px text-[10px] text-text-muted">
+				<span className="rounded-full bg-app-bg-overlay px-1.5 py-px text-[10px] text-app-text-tertiary">
 					{BRANCH_FILES.length} files
 				</span>
 				<div className="flex-1" />
 				<span className="text-[11px]">
-					<span className="text-green">+{TOTAL_ADDITIONS}</span>
-					<span className="mx-1 text-text-faint">/</span>
-					<span className="text-red">-0</span>
+					<span className="text-app-success">+{TOTAL_ADDITIONS}</span>
+					<span className="mx-1 text-app-text-quaternary">/</span>
+					<span className="text-app-danger">-0</span>
 				</span>
 			</div>
-			<div className="border-t border-border px-1 py-1">
+			<div className="border-t border-app-border-subtle px-1 py-1">
 				{BRANCH_FILES.map((file) => (
 					<div
 						key={file.name}
-						className="flex items-center gap-1.5 rounded px-2 py-0.5 text-[12px] text-text-secondary hover:bg-bg-overlay"
+						className="flex items-center gap-1.5 rounded px-2 py-0.5 text-[12px] text-app-text-secondary hover:bg-app-bg-overlay"
 					>
-						<span className="size-1.5 shrink-0 rounded-full bg-accent" />
+						<span className="size-1.5 shrink-0 rounded-full bg-app-accent" />
 						<span className="min-w-0 flex-1 truncate">
 							{file.path}
 							{file.name}
 						</span>
-						<span className="shrink-0 text-[10px] text-green">+{file.additions}</span>
+						<span className="shrink-0 text-[10px] text-app-success">+{file.additions}</span>
 					</div>
 				))}
 			</div>
@@ -163,20 +163,20 @@ function GitChangesView() {
 	return (
 		<div className="flex flex-1 flex-col overflow-y-auto">
 			{/* Smart header bar — branch selector */}
-			<div className="flex shrink-0 items-center gap-1.5 border-b border-border px-3 py-1.5">
+			<div className="flex shrink-0 items-center gap-1.5 border-b border-app-border-subtle px-3 py-1.5">
 				<svg
 					aria-hidden="true"
 					width="10"
 					height="10"
 					viewBox="0 0 16 16"
 					fill="currentColor"
-					className="shrink-0 text-text-faint"
+					className="shrink-0 text-app-text-quaternary"
 				>
 					<path d="M9.5 3.25a2.25 2.25 0 1 1 3 2.122V6A2.5 2.5 0 0 1 10 8.5H6a1 1 0 0 0-1 1v1.128a2.251 2.251 0 1 1-1.5 0V5.372a2.25 2.25 0 1 1 1.5 0v1.836A2.5 2.5 0 0 1 6 7h4a1 1 0 0 0 1-1v-.628A2.25 2.25 0 0 1 9.5 3.25Z" />
 				</svg>
-				<span className="truncate text-[12px] text-text-secondary">feature/inline-agent-chat</span>
-				<span className="text-[11px] text-text-faint">&rarr;</span>
-				<span className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[12px] text-text-muted hover:bg-bg-elevated">
+				<span className="truncate text-[12px] text-app-text-secondary">feature/inline-agent-chat</span>
+				<span className="text-[11px] text-app-text-quaternary">&rarr;</span>
+				<span className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[12px] text-app-text-tertiary hover:bg-app-bg-elevated">
 					main
 					<svg
 						aria-hidden="true"
@@ -193,40 +193,40 @@ function GitChangesView() {
 
 			<div className="flex-1 overflow-y-auto">
 				{/* Working changes card */}
-				<div className="mx-1.5 mt-2 overflow-hidden rounded-lg border border-border bg-bg-elevated">
+				<div className="mx-1.5 mt-2 overflow-hidden rounded-lg border border-app-border-subtle bg-app-bg-elevated">
 					<div className="flex items-center gap-2 px-3 py-1.5">
-						<span className="text-[11px] font-medium uppercase tracking-wider text-text-faint">
+						<span className="text-[11px] font-medium uppercase tracking-wider text-app-text-quaternary">
 							Working Changes
 						</span>
-						<span className="rounded-full bg-bg-overlay px-1.5 py-px text-[10px] text-text-muted">
+						<span className="rounded-full bg-app-bg-overlay px-1.5 py-px text-[10px] text-app-text-tertiary">
 							{WORKING_CHANGES.length}
 						</span>
 						<div className="flex-1" />
-						<span className="text-[11px] text-text-faint hover:text-text-secondary">Stage All</span>
+						<span className="text-[11px] text-app-text-quaternary hover:text-app-text-secondary">Stage All</span>
 					</div>
 					<div className="px-1 pb-1">
 						{WORKING_CHANGES.map((file) => (
 							<div
 								key={file.name}
-								className="flex items-center gap-1.5 rounded px-2 py-0.5 text-[12px] text-text-secondary hover:bg-bg-overlay"
+								className="flex items-center gap-1.5 rounded px-2 py-0.5 text-[12px] text-app-text-secondary hover:bg-app-bg-overlay"
 							>
 								<div className="flex size-3.5 shrink-0 items-center justify-center rounded border border-text-faint" />
-								<span className="size-1.5 shrink-0 rounded-full bg-green" />
+								<span className="size-1.5 shrink-0 rounded-full bg-app-success" />
 								<span className="min-w-0 flex-1 truncate">{file.name}</span>
 							</div>
 						))}
 					</div>
 
 					{/* Commit footer */}
-					<div className="border-t border-border px-2 py-2">
-						<div className="w-full rounded border border-border bg-bg-base px-2 py-1.5 text-[12px] text-text-faint">
+					<div className="border-t border-app-border-subtle px-2 py-2">
+						<div className="w-full rounded border border-app-border-subtle bg-app-bg-base px-2 py-1.5 text-[12px] text-app-text-quaternary">
 							Commit message...
 						</div>
 						<div className="mt-1.5 flex gap-1.5">
-							<div className="flex-1 rounded bg-accent px-2 py-1 text-center text-[11px] font-medium text-white opacity-40">
+							<div className="flex-1 rounded bg-app-accent px-2 py-1 text-center text-[11px] font-medium text-white opacity-40">
 								Commit
 							</div>
-							<div className="rounded border border-border px-2 py-1 text-[11px] text-text-secondary">
+							<div className="rounded border border-app-border-subtle px-2 py-1 text-[11px] text-app-text-secondary">
 								Push &uarr;
 							</div>
 						</div>
@@ -241,17 +241,17 @@ function GitChangesView() {
 						className="flex items-center gap-2 px-3 py-1.5"
 					>
 						<span
-							className="text-[10px] text-text-faint transition-transform duration-150"
+							className="text-[10px] text-app-text-quaternary transition-transform duration-150"
 							style={{
 								transform: commitsCollapsed ? "rotate(-90deg)" : "rotate(0deg)",
 							}}
 						>
 							&#x25BE;
 						</span>
-						<span className="text-[11px] font-medium uppercase tracking-wider text-text-faint">
+						<span className="text-[11px] font-medium uppercase tracking-wider text-app-text-quaternary">
 							Commits
 						</span>
-						<span className="rounded-full bg-bg-overlay px-1.5 py-px text-[10px] text-text-muted">
+						<span className="rounded-full bg-app-bg-overlay px-1.5 py-px text-[10px] text-app-text-tertiary">
 							{COMMITS.length}
 						</span>
 					</button>
@@ -260,24 +260,24 @@ function GitChangesView() {
 						COMMITS.map((commit) => (
 							<div
 								key={commit.hash}
-								className="mx-1.5 overflow-hidden rounded-lg border border-border bg-bg-surface"
+								className="mx-1.5 overflow-hidden rounded-lg border border-app-border-subtle bg-app-bg-surface"
 							>
-								<div className="flex flex-col gap-0.5 px-3 py-1.5 hover:bg-bg-elevated">
+								<div className="flex flex-col gap-0.5 px-3 py-1.5 hover:bg-app-bg-elevated">
 									<div className="flex items-center gap-2">
-										<span className="shrink-0 font-mono text-[11px] text-text-faint">
+										<span className="shrink-0 font-mono text-[11px] text-app-text-quaternary">
 											{commit.hash}
 										</span>
-										<span className="min-w-0 flex-1 truncate text-[12px] text-text-secondary">
+										<span className="min-w-0 flex-1 truncate text-[12px] text-app-text-secondary">
 											{commit.message}
 										</span>
-										<span className="shrink-0 text-[11px] text-text-faint">{commit.time}</span>
+										<span className="shrink-0 text-[11px] text-app-text-quaternary">{commit.time}</span>
 									</div>
 									<div className="flex items-center gap-2">
 										<span className="text-[11px]">
-											<span className="text-green">+{commit.additions}</span>
-											<span className="ml-1 text-red">-{commit.deletions}</span>
+											<span className="text-app-success">+{commit.additions}</span>
+											<span className="ml-1 text-app-danger">-{commit.deletions}</span>
 										</span>
-										<span className="text-[11px] text-text-faint">
+										<span className="text-[11px] text-app-text-quaternary">
 											&middot; {commit.files} file
 											{commit.files !== 1 ? "s" : ""}
 										</span>
@@ -301,7 +301,7 @@ function FileTreeView() {
 		<div className="flex flex-1 flex-col overflow-y-auto">
 			{/* Search input */}
 			<div className="shrink-0 px-3 py-2">
-				<div className="flex items-center gap-2 rounded border border-border bg-bg-base px-2 py-1.5 text-[12px] text-text-faint">
+				<div className="flex items-center gap-2 rounded border border-app-border-subtle bg-app-bg-base px-2 py-1.5 text-[12px] text-app-text-quaternary">
 					<svg
 						aria-hidden="true"
 						width="12"
@@ -326,10 +326,10 @@ function FileTreeView() {
 							<button
 								type="button"
 								onClick={() => setExpanded((e) => !e)}
-								className="flex w-full items-center gap-1.5 rounded px-2 py-0.5 text-[12px] text-text-muted transition-colors hover:bg-bg-overlay"
+								className="flex w-full items-center gap-1.5 rounded px-2 py-0.5 text-[12px] text-app-text-tertiary transition-colors hover:bg-app-bg-overlay"
 							>
 								<span
-									className="text-[10px] text-text-faint transition-transform duration-150"
+									className="text-[10px] text-app-text-quaternary transition-transform duration-150"
 									style={{
 										transform: expanded ? "rotate(0deg)" : "rotate(-90deg)",
 									}}
@@ -343,7 +343,7 @@ function FileTreeView() {
 									height="14"
 									viewBox="0 0 16 16"
 									fill="currentColor"
-									className="shrink-0 text-text-faint"
+									className="shrink-0 text-app-text-quaternary"
 								>
 									{expanded ? (
 										<>
@@ -358,13 +358,13 @@ function FileTreeView() {
 									)}
 								</svg>
 								<span className="truncate">{node.name}/</span>
-								<span className="ml-auto text-[10px] text-text-faint">{node.children.length}</span>
+								<span className="ml-auto text-[10px] text-app-text-quaternary">{node.children.length}</span>
 							</button>
 							{expanded &&
 								node.children.map((child) => (
 									<div
 										key={child.name}
-										className="flex items-center gap-1.5 rounded py-0.5 pl-7 pr-2 text-[12px] text-text-secondary hover:bg-bg-overlay"
+										className="flex items-center gap-1.5 rounded py-0.5 pl-7 pr-2 text-[12px] text-app-text-secondary hover:bg-app-bg-overlay"
 									>
 										<FileIcon color={extColor(child.name)} size={14} />
 										<span className="min-w-0 flex-1 truncate">{child.name}</span>
@@ -374,7 +374,7 @@ function FileTreeView() {
 					) : (
 						<div
 							key={node.name}
-							className="flex items-center gap-1.5 rounded px-2 py-0.5 text-[12px] text-text-secondary hover:bg-bg-overlay"
+							className="flex items-center gap-1.5 rounded px-2 py-0.5 text-[12px] text-app-text-secondary hover:bg-app-bg-overlay"
 						>
 							<FileIcon color={extColor(node.name)} size={14} />
 							<span className="min-w-0 flex-1 truncate">{node.name}</span>
@@ -398,18 +398,18 @@ function PRCommentsView({
 	return (
 		<div className="flex flex-1 flex-col overflow-y-auto">
 			{/* Header */}
-			<div className="shrink-0 border-b border-border px-3 py-3">
-				<h2 className="text-[14px] font-semibold text-text-primary">Pull Request</h2>
-				<p className="mt-0.5 text-[11px] text-text-muted">
+			<div className="shrink-0 border-b border-app-border-subtle px-3 py-3">
+				<h2 className="text-[14px] font-semibold text-app-text">Pull Request</h2>
+				<p className="mt-0.5 text-[11px] text-app-text-tertiary">
 					#{prId} &middot; {totalThreads} comments
 				</p>
 			</div>
 
 			{/* Thread count + filter */}
-			<div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-1.5">
-				<span className="text-[11px] text-text-muted">{totalThreads} threads</span>
+			<div className="flex shrink-0 items-center gap-2 border-b border-app-border-subtle px-3 py-1.5">
+				<span className="text-[11px] text-app-text-tertiary">{totalThreads} threads</span>
 				<div className="flex-1" />
-				<span className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-text-faint hover:bg-bg-elevated">
+				<span className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-app-text-quaternary hover:bg-app-bg-elevated">
 					By file
 					<svg aria-hidden="true" width="8" height="8" viewBox="0 0 16 16" fill="currentColor">
 						<path d="M4.427 7.427l3.396 3.396a.25.25 0 00.354 0l3.396-3.396A.25.25 0 0011.396 7H4.604a.25.25 0 00-.177.427z" />
@@ -422,8 +422,8 @@ function PRCommentsView({
 				{PR_COMMENTS.map((fileGroup) => (
 					<div key={fileGroup.file}>
 						{/* File section header */}
-						<div className="sticky top-0 bg-bg-surface px-3 py-1.5">
-							<span className="text-[10px] font-medium uppercase tracking-wider text-text-faint">
+						<div className="sticky top-0 bg-app-bg-surface px-3 py-1.5">
+							<span className="text-[10px] font-medium uppercase tracking-wider text-app-text-quaternary">
 								{fileGroup.file.toUpperCase()}
 							</span>
 						</div>
@@ -433,30 +433,30 @@ function PRCommentsView({
 							<div
 								// biome-ignore lint/suspicious/noArrayIndexKey: static mock data
 								key={i}
-								className="mx-1.5 mb-1.5 rounded-lg border border-border bg-bg-elevated p-2.5"
+								className="mx-1.5 mb-1.5 rounded-lg border border-app-border-subtle bg-app-bg-elevated p-2.5"
 							>
 								{/* Card header: file:line + actions */}
 								<div className="flex items-center gap-2">
-									<span className="font-mono text-[11px] text-accent">
+									<span className="font-mono text-[11px] text-app-accent">
 										{fileGroup.file.split("/").pop()}:{thread.line}
 									</span>
 									<div className="flex-1" />
-									<span className="text-[10px] text-green hover:text-green/80">Resolve</span>
-									<span className="text-[10px] text-text-faint hover:text-text-muted">Skip</span>
+									<span className="text-[10px] text-app-success hover:text-app-success/80">Resolve</span>
+									<span className="text-[10px] text-app-text-quaternary hover:text-app-text-tertiary">Skip</span>
 								</div>
 
 								{/* Author + date */}
-								<div className="mt-1 flex items-center gap-1.5 text-[10px] text-text-muted">
-									<span className="font-medium text-text-secondary">{thread.author}</span>
+								<div className="mt-1 flex items-center gap-1.5 text-[10px] text-app-text-tertiary">
+									<span className="font-medium text-app-text-secondary">{thread.author}</span>
 									<span>&middot;</span>
 									<span>{thread.date}</span>
 								</div>
 
 								{/* Comment text */}
-								<p className="mt-1.5 text-[11px] leading-relaxed text-text-muted">{thread.text}</p>
+								<p className="mt-1.5 text-[11px] leading-relaxed text-app-text-tertiary">{thread.text}</p>
 
 								{/* Reply input */}
-								<div className="mt-2 rounded border border-border bg-bg-base px-2 py-1 text-[11px] text-text-faint">
+								<div className="mt-2 rounded border border-app-border-subtle bg-app-bg-base px-2 py-1 text-[11px] text-app-text-quaternary">
 									Reply...
 								</div>
 							</div>
@@ -466,11 +466,11 @@ function PRCommentsView({
 			</div>
 
 			{/* Solve with AI button */}
-			<div className="shrink-0 border-t border-border px-3 py-2">
+			<div className="shrink-0 border-t border-app-border-subtle px-3 py-2">
 				<button
 					type="button"
 					onClick={onFixClick}
-					className="w-full rounded-lg bg-accent px-3 py-2 text-[12px] font-medium text-white transition-opacity hover:opacity-90"
+					className="w-full rounded-lg bg-app-accent px-3 py-2 text-[12px] font-medium text-white transition-opacity hover:opacity-90"
 				>
 					Solve with AI ({totalThreads} comments)
 				</button>
@@ -485,7 +485,7 @@ function BranchOverviewView() {
 	return (
 		<div className="flex flex-1 flex-col overflow-y-auto">
 			{/* Branch info header */}
-			<div className="shrink-0 border-b border-border px-3 py-3">
+			<div className="shrink-0 border-b border-app-border-subtle px-3 py-3">
 				<div className="flex items-center gap-1.5">
 					<svg
 						aria-hidden="true"
@@ -493,13 +493,13 @@ function BranchOverviewView() {
 						height="12"
 						viewBox="0 0 16 16"
 						fill="currentColor"
-						className="text-text-faint"
+						className="text-app-text-quaternary"
 					>
 						<path d="M9.5 3.25a2.25 2.25 0 1 1 3 2.122V6A2.5 2.5 0 0 1 10 8.5H6a1 1 0 0 0-1 1v1.128a2.251 2.251 0 1 1-1.5 0V5.372a2.25 2.25 0 1 1 1.5 0v1.836A2.5 2.5 0 0 1 6 7h4a1 1 0 0 0 1-1v-.628A2.25 2.25 0 0 1 9.5 3.25Z" />
 					</svg>
-					<span className="text-[12px] text-text-secondary">feature/inline-agent-chat</span>
-					<span className="text-[11px] text-text-faint">&rarr;</span>
-					<span className="text-[12px] text-text-muted">main</span>
+					<span className="text-[12px] text-app-text-secondary">feature/inline-agent-chat</span>
+					<span className="text-[11px] text-app-text-quaternary">&rarr;</span>
+					<span className="text-[12px] text-app-text-tertiary">main</span>
 				</div>
 			</div>
 
@@ -510,44 +510,44 @@ function BranchOverviewView() {
 				{/* Commits section */}
 				<div className="mt-3 flex flex-col gap-1 pb-2">
 					<div className="flex items-center gap-2 px-3 py-1.5">
-						<span className="text-[11px] font-medium uppercase tracking-wider text-text-faint">
+						<span className="text-[11px] font-medium uppercase tracking-wider text-app-text-quaternary">
 							Commits
 						</span>
-						<span className="rounded-full bg-bg-overlay px-1.5 py-px text-[10px] text-text-muted">
+						<span className="rounded-full bg-app-bg-overlay px-1.5 py-px text-[10px] text-app-text-tertiary">
 							{COMMITS.length}
 						</span>
 					</div>
 					{COMMITS.slice(0, 4).map((commit) => (
 						<div
 							key={commit.hash}
-							className="mx-1.5 rounded-lg border border-border bg-bg-surface px-3 py-1.5"
+							className="mx-1.5 rounded-lg border border-app-border-subtle bg-app-bg-surface px-3 py-1.5"
 						>
 							<div className="flex items-center gap-2">
-								<span className="shrink-0 font-mono text-[11px] text-text-faint">
+								<span className="shrink-0 font-mono text-[11px] text-app-text-quaternary">
 									{commit.hash}
 								</span>
-								<span className="min-w-0 flex-1 truncate text-[12px] text-text-secondary">
+								<span className="min-w-0 flex-1 truncate text-[12px] text-app-text-secondary">
 									{commit.message}
 								</span>
 							</div>
 						</div>
 					))}
 					{COMMITS.length > 4 && (
-						<div className="px-3 py-0.5 text-[11px] text-text-faint">
+						<div className="px-3 py-0.5 text-[11px] text-app-text-quaternary">
 							+{COMMITS.length - 4} more commits
 						</div>
 					)}
 				</div>
 
 				{/* AI suggestions */}
-				<div className="mx-1.5 mt-1 mb-2 overflow-hidden rounded-lg border border-border bg-bg-elevated">
+				<div className="mx-1.5 mt-1 mb-2 overflow-hidden rounded-lg border border-app-border-subtle bg-app-bg-elevated">
 					<button
 						type="button"
 						onClick={() => setSuggestionsExpanded((e) => !e)}
-						className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-bg-overlay"
+						className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-app-bg-overlay"
 					>
 						<span
-							className="text-[10px] text-text-faint transition-transform duration-150"
+							className="text-[10px] text-app-text-quaternary transition-transform duration-150"
 							style={{
 								transform: suggestionsExpanded ? "rotate(0deg)" : "rotate(-90deg)",
 							}}
@@ -564,25 +564,25 @@ function BranchOverviewView() {
 							strokeWidth="1.5"
 							strokeLinecap="round"
 							strokeLinejoin="round"
-							className="text-accent"
+							className="text-app-accent"
 						>
 							<path d="M6 2l1 3 3 1-3 1-1 3-1-3-3-1 3-1z" />
 						</svg>
-						<span className="text-[11px] font-medium text-accent">AI 3 suggestions</span>
+						<span className="text-[11px] font-medium text-app-accent">AI 3 suggestions</span>
 					</button>
 					{suggestionsExpanded && (
-						<div className="border-t border-border px-3 py-2 text-[11px] text-text-muted">
+						<div className="border-t border-app-border-subtle px-3 py-2 text-[11px] text-app-text-tertiary">
 							<div className="flex flex-col gap-1.5">
 								<div className="flex items-start gap-1.5">
-									<span className="mt-0.5 text-yellow">&#x25CF;</span>
+									<span className="mt-0.5 text-app-warning">&#x25CF;</span>
 									<span>Add rate limiting to chat-service.ts WebSocket messages</span>
 								</div>
 								<div className="flex items-start gap-1.5">
-									<span className="mt-0.5 text-yellow">&#x25CF;</span>
+									<span className="mt-0.5 text-app-warning">&#x25CF;</span>
 									<span>ChatPanel.tsx should debounce scroll-to-bottom on resize</span>
 								</div>
 								<div className="flex items-start gap-1.5">
-									<span className="mt-0.5 text-yellow">&#x25CF;</span>
+									<span className="mt-0.5 text-app-warning">&#x25CF;</span>
 									<span>useAgentChat hook missing error boundary integration</span>
 								</div>
 							</div>
@@ -592,10 +592,10 @@ function BranchOverviewView() {
 			</div>
 
 			{/* Submit review button */}
-			<div className="shrink-0 border-t border-border px-3 py-2">
+			<div className="shrink-0 border-t border-app-border-subtle px-3 py-2">
 				<button
 					type="button"
-					className="w-full rounded-lg bg-accent px-3 py-2 text-[12px] font-medium text-white transition-opacity hover:opacity-90"
+					className="w-full rounded-lg bg-app-accent px-3 py-2 text-[12px] font-medium text-white transition-opacity hover:opacity-90"
 				>
 					Submit Review
 				</button>
