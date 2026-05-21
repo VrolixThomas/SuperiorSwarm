@@ -1,4 +1,4 @@
-import { PROJECTS, PULL_REQUESTS, TICKETS } from "./mock-data";
+import { ORCHESTRATORS, PROJECTS, PULL_REQUESTS, TICKETS } from "./mock-data";
 import type { Segment } from "./mockup-shell";
 
 export function Sidebar({
@@ -93,9 +93,75 @@ export function Sidebar({
 
 /* ── Repos View ─────────────────────────────────────────────────────────── */
 
+function OrchestratorList() {
+	return (
+		<div className="px-2 pt-2">
+			{ORCHESTRATORS.map((orch) => (
+				<div
+					key={orch.name}
+					className="overflow-hidden rounded-[6px] border border-accent/25 bg-[rgba(196,149,108,0.04)]"
+				>
+					<div className="flex items-center gap-1.5 border-b border-accent/20 bg-accent-dim/30 px-2.5 py-1.5">
+						<svg
+							viewBox="0 0 12 12"
+							className="size-3 shrink-0 text-accent"
+							fill="none"
+							stroke="currentColor"
+							strokeWidth="1.5"
+							aria-hidden="true"
+						>
+							<circle cx="6" cy="3" r="1.3" />
+							<circle cx="3" cy="9" r="1.3" />
+							<circle cx="9" cy="9" r="1.3" />
+							<path d="M6 4.3L4 8M6 4.3L8 8" strokeLinecap="round" />
+						</svg>
+						<span className="truncate text-[11px] font-semibold text-text-primary">
+							{orch.name}
+						</span>
+						<span className="ml-auto font-mono text-[9px] text-text-faint">
+							{orch.worktrees.length}
+						</span>
+					</div>
+					<div className="relative py-1">
+						<div
+							className="pointer-events-none absolute left-3 top-0 h-full w-px bg-accent/15"
+							aria-hidden="true"
+						/>
+						{orch.worktrees.map((wt) => (
+							<div key={wt.name} className="relative flex items-center gap-1.5 py-1 pl-6 pr-2.5">
+								<span
+									className="absolute left-3 top-1/2 h-px w-1.5 -translate-y-1/2 bg-accent/25"
+									aria-hidden="true"
+								/>
+								<span className="relative flex size-1.5 shrink-0">
+									{wt.state === "running" ? (
+										<>
+											<span className="absolute inline-flex size-full animate-ping rounded-full bg-green opacity-40" />
+											<span className="relative inline-flex size-1.5 rounded-full bg-green" />
+										</>
+									) : (
+										<span className="relative inline-flex size-1.5 rounded-full bg-text-faint" />
+									)}
+								</span>
+								<span className="min-w-0 flex-1 truncate font-mono text-[10px] text-text-secondary">
+									{wt.name}
+								</span>
+								<span className="rounded-[3px] bg-bg-elevated px-1 py-px text-[8px] text-text-faint">
+									{wt.agent}
+								</span>
+							</div>
+						))}
+					</div>
+				</div>
+			))}
+		</div>
+	);
+}
+
 function ReposView() {
 	return (
 		<>
+			<OrchestratorList />
 			<div className="flex flex-col gap-2 px-2 pt-2">
 				{PROJECTS.map((project, i) => {
 					const isFirst = i === 0;
@@ -346,6 +412,15 @@ function PrsView({
 								strokeLinejoin="round"
 							/>
 						</svg>
+						<span
+							className={`shrink-0 rounded-[3px] px-1 py-px text-[8px] font-semibold uppercase tracking-[0.05em] ${
+								group.source === "bitbucket"
+									? "bg-[rgba(38,132,255,0.12)] text-[#5b8def]"
+									: "bg-bg-elevated text-text-faint"
+							}`}
+						>
+							{group.source === "bitbucket" ? "BB" : "GH"}
+						</span>
 						<span className="truncate">{group.repo}</span>
 						<span className="ml-auto text-[10px] tabular-nums opacity-60">{group.prs.length}</span>
 					</button>

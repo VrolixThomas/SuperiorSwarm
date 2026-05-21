@@ -1,7 +1,21 @@
+// Orchestrator groups (real-app v0.9.x feature)
+export const ORCHESTRATORS = [
+	{
+		name: "Release v1.0",
+		project: "SuperiorSwarm",
+		worktrees: [
+			{ name: "feature/inline-agent-chat", agent: "Claude Code", state: "running" as const },
+			{ name: "review/PR-110", agent: "Codex", state: "running" as const },
+			{ name: "voice-input", agent: "Gemini CLI", state: "idle" as const },
+		],
+	},
+] as const;
+
 // Projects with expandable branches (from real app Repos sidebar)
 export const PROJECTS = [
 	{
 		name: "SuperiorSwarm",
+		source: "github" as const,
 		branches: [
 			{ name: "main", active: false },
 			{
@@ -14,6 +28,12 @@ export const PROJECTS = [
 	},
 	{
 		name: "superiorswarm-docs",
+		source: "github" as const,
+		branches: [{ name: "main", active: false }],
+	},
+	{
+		name: "ss-marketing",
+		source: "bitbucket" as const,
 		branches: [{ name: "main", active: false }],
 	},
 ] as const;
@@ -22,6 +42,7 @@ export const PROJECTS = [
 export const PULL_REQUESTS = [
 	{
 		repo: "VROLIXTHOMAS/SUPERIORSWARM",
+		source: "github" as const,
 		prs: [
 			{
 				id: 34,
@@ -40,6 +61,21 @@ export const PULL_REQUESTS = [
 				author: "ThomasV",
 				authorInitial: "T",
 				status: "success" as const,
+			},
+		],
+	},
+	{
+		repo: "SUPERIORSWARM/SS-MARKETING",
+		source: "bitbucket" as const,
+		prs: [
+			{
+				id: 12,
+				title: "Refresh OG image with new orchestrator UI",
+				branch: "marketing/og-refresh",
+				target: "main",
+				author: "ThomasV",
+				authorInitial: "T",
+				status: "pending" as const,
 			},
 		],
 	},

@@ -2,8 +2,9 @@ import { Caps, LegalPage, P, Section, UL } from "@/components/legal-page";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-	title: "Terms of Service — SuperiorSwarm",
+	title: "Terms of Service",
 	description: "Terms governing your use of SuperiorSwarm.",
+	alternates: { canonical: "/terms" },
 };
 
 export default function TermsPage() {
