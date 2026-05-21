@@ -103,11 +103,13 @@ function BoardView() {
 							return (
 								<div
 									key={ticket.key}
-									className="flex w-full flex-col gap-1 rounded-[6px] border border-app-border-subtle bg-app-bg-elevated px-2.5 py-2 text-left"
+									className="flex w-full flex-col gap-1 rounded-[6px] border border-[rgba(255,255,255,0.03)] bg-app-bg-surface px-2.5 py-2 text-left transition-colors hover:border-[rgba(10,132,255,0.12)]"
 								>
 									<div className="flex items-center gap-1.5">
 										<StateIcon type={type} color={svgColor} size={10} />
-										<span className="text-[10px] font-medium text-app-text-quaternary">{ticket.key}</span>
+										<span className="text-[10px] font-medium text-app-text-quaternary">
+											{ticket.key}
+										</span>
 										<span className="ml-auto text-[8px] text-app-text-quaternary opacity-60">
 											{ticket.provider}
 										</span>
@@ -186,7 +188,9 @@ function ListView() {
 										<span className="min-w-0 flex-1 truncate text-[11px] text-app-text-secondary">
 											{ticket.title}
 										</span>
-										<span className="shrink-0 text-[9px] text-app-text-quaternary">{ticket.provider}</span>
+										<span className="shrink-0 text-[9px] text-app-text-quaternary">
+											{ticket.provider}
+										</span>
 									</div>
 								);
 							})}
@@ -311,8 +315,12 @@ function TableView() {
 						>
 							{ticket.status}
 						</span>
-						<span className="w-[50px] shrink-0 text-[10px] text-app-text-tertiary">{ticket.project}</span>
-						<span className="w-[44px] shrink-0 text-[10px] text-app-text-quaternary">{ticket.provider}</span>
+						<span className="w-[50px] shrink-0 text-[10px] text-app-text-tertiary">
+							{ticket.project}
+						</span>
+						<span className="w-[44px] shrink-0 text-[10px] text-app-text-quaternary">
+							{ticket.provider}
+						</span>
 					</div>
 				);
 			})}

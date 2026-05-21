@@ -8,42 +8,38 @@ export function TerminalView() {
 
 	return (
 		<div className="flex flex-1 flex-col">
-			{/* Pane tab bar — matches real app PaneTabBar */}
-			<div className="flex h-[36px] shrink-0 items-center border-b border-app-border-subtle bg-app-bg-elevated">
-				{/* Pane index */}
-				<div className="flex h-full w-[28px] shrink-0 items-center justify-center text-[11px] font-medium text-app-text-quaternary">
-					1
-				</div>
+			{/* Pane tab bar — matches real TabBar.tsx (52px, 36px pills, 2px accent underline) */}
+			<div className="flex h-[52px] shrink-0 items-end border-b border-app-border bg-app-bg-tab-bar">
+				<div className="flex h-full w-full items-end gap-[2px] pb-[7px] pl-2 pr-1">
+					<TabPill
+						active={activeTab === "terminal"}
+						onClick={() => setActiveTab("terminal")}
+						icon={
+							<span className="shrink-0 font-mono text-[11px] text-app-text-quaternary">&gt;_</span>
+						}
+						label="Claude Code"
+					/>
+					<TabPill
+						active={activeTab === "ChatPanel.tsx"}
+						onClick={() => setActiveTab("ChatPanel.tsx")}
+						icon={<FileIcon color="#3178c6" />}
+						label="ChatPanel.tsx"
+					/>
+					<TabPill
+						active={activeTab === "chat-service.ts"}
+						onClick={() => setActiveTab("chat-service.ts")}
+						icon={<FileIcon color="#3178c6" />}
+						label="chat-service.ts"
+					/>
 
-				{/* Terminal tab */}
-				<TabPill
-					active={activeTab === "terminal"}
-					onClick={() => setActiveTab("terminal")}
-					icon={<span className="shrink-0 font-mono text-[10px] text-app-text-quaternary">&gt;_</span>}
-					label="* Claude Code"
-				/>
+					<div className="flex-1" />
 
-				{/* ChatPanel.tsx tab */}
-				<TabPill
-					active={activeTab === "ChatPanel.tsx"}
-					onClick={() => setActiveTab("ChatPanel.tsx")}
-					icon={<FileIcon color="#3178c6" />}
-					label="ChatPanel.tsx"
-				/>
-
-				{/* chat-service.ts tab */}
-				<TabPill
-					active={activeTab === "chat-service.ts"}
-					onClick={() => setActiveTab("chat-service.ts")}
-					icon={<FileIcon color="#3178c6" />}
-					label="chat-service.ts"
-				/>
-
-				{/* Spacer + new tab button */}
-				<div className="flex-1" />
-				<div className="shrink-0 pr-1">
-					<span className="flex h-[24px] w-[24px] items-center justify-center rounded-[5px] text-app-text-quaternary">
-						<svg aria-hidden="true" width="12" height="12" viewBox="0 0 16 16" fill="none">
+					<button
+						type="button"
+						title="New terminal"
+						className="flex h-[30px] w-[30px] items-center justify-center rounded-[6px] text-app-text-quaternary transition-colors hover:bg-app-bg-elevated hover:text-app-text-secondary"
+					>
+						<svg aria-hidden="true" width="13" height="13" viewBox="0 0 16 16" fill="none">
 							<path
 								d="M8 3v10M3 8h10"
 								stroke="currentColor"
@@ -51,7 +47,7 @@ export function TerminalView() {
 								strokeLinecap="round"
 							/>
 						</svg>
-					</span>
+					</button>
 				</div>
 			</div>
 
@@ -59,13 +55,6 @@ export function TerminalView() {
 			{activeTab === "terminal" && <TerminalContent />}
 			{activeTab === "ChatPanel.tsx" && <CodeEditorContent file="ChatPanel.tsx" />}
 			{activeTab === "chat-service.ts" && <CodeEditorContent file="chat-service.ts" />}
-
-			{/* Bottom workspace label */}
-			<div className="flex items-center border-t border-app-border-subtle px-3 py-1">
-				<span className="rounded bg-app-accent-subtle px-1.5 py-0.5 text-[10px] font-medium text-app-accent">
-					PR #34
-				</span>
-			</div>
 		</div>
 	);
 }
@@ -86,17 +75,26 @@ function TabPill({
 			type="button"
 			onClick={onClick}
 			className={[
-				"relative flex h-[28px] max-w-[180px] shrink-0 items-center gap-1.5 rounded-[6px] pl-2.5 pr-1.5 text-[12px]",
+				"group relative flex h-[36px] max-w-[220px] shrink-0 items-center gap-2 rounded-[7px] pl-3 pr-2 text-[13px] transition-colors",
 				active
-					? "bg-app-bg-overlay text-app-text shadow-[0_1px_3px_rgba(0,0,0,0.4),inset_0_0.5px_0_rgba(255,255,255,0.04)]"
+					? "bg-app-tab-active text-app-text shadow-[0_1px_2px_rgba(0,0,0,0.3)]"
 					: "text-app-text-quaternary hover:text-app-text-tertiary",
 			].join(" ")}
 		>
-			{active && <span className="absolute inset-x-2 bottom-0 h-[2px] rounded-full bg-app-accent" />}
+			{active && (
+				<span className="absolute inset-x-2.5 bottom-0 h-[2px] rounded-full bg-app-accent" />
+			)}
 			{icon}
 			<span className="min-w-0 truncate">{label}</span>
-			<span className="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[4px] text-app-text-tertiary">
-				<svg aria-hidden="true" width="8" height="8" viewBox="0 0 9 9" fill="none">
+			<span
+				className={[
+					"flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-[5px] transition-opacity",
+					active
+						? "text-app-text-tertiary"
+						: "text-app-text-quaternary opacity-0 group-hover:opacity-100",
+				].join(" ")}
+			>
+				<svg aria-hidden="true" width="9" height="9" viewBox="0 0 9 9" fill="none">
 					<path
 						d="M2 2l5 5M7 2l-5 5"
 						stroke="currentColor"
@@ -319,8 +317,12 @@ function CodeEditorContent({ file }: { file: "ChatPanel.tsx" | "chat-service.ts"
 		<div className="flex flex-1 flex-col overflow-hidden">
 			{/* File path bar */}
 			<div className="flex h-8 shrink-0 items-center gap-2 border-b border-app-border-subtle bg-app-bg-surface px-3">
-				<span className="flex-1 truncate font-mono text-[11px] text-app-text-quaternary">{filePath}</span>
-				<span className="font-mono text-[10px] text-app-text-quaternary">feature/inline-agent-chat</span>
+				<span className="flex-1 truncate font-mono text-[11px] text-app-text-quaternary">
+					{filePath}
+				</span>
+				<span className="font-mono text-[10px] text-app-text-quaternary">
+					feature/inline-agent-chat
+				</span>
 			</div>
 
 			{/* Code content */}

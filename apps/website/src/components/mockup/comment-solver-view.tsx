@@ -62,7 +62,9 @@ function CommitGroupCard({
 					{group.files.map((file, i) => (
 						<span key={file} className="flex items-center gap-1">
 							{i > 0 && <span>,</span>}
-							<span className="text-app-text-quaternary hover:text-app-accent hover:underline">{file}</span>
+							<span className="text-app-text-quaternary hover:text-app-accent hover:underline">
+								{file}
+							</span>
 						</span>
 					))}
 				</div>

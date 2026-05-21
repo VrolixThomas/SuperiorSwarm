@@ -174,7 +174,9 @@ function GitChangesView() {
 				>
 					<path d="M9.5 3.25a2.25 2.25 0 1 1 3 2.122V6A2.5 2.5 0 0 1 10 8.5H6a1 1 0 0 0-1 1v1.128a2.251 2.251 0 1 1-1.5 0V5.372a2.25 2.25 0 1 1 1.5 0v1.836A2.5 2.5 0 0 1 6 7h4a1 1 0 0 0 1-1v-.628A2.25 2.25 0 0 1 9.5 3.25Z" />
 				</svg>
-				<span className="truncate text-[12px] text-app-text-secondary">feature/inline-agent-chat</span>
+				<span className="truncate text-[12px] text-app-text-secondary">
+					feature/inline-agent-chat
+				</span>
 				<span className="text-[11px] text-app-text-quaternary">&rarr;</span>
 				<span className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[12px] text-app-text-tertiary hover:bg-app-bg-elevated">
 					main
@@ -202,7 +204,9 @@ function GitChangesView() {
 							{WORKING_CHANGES.length}
 						</span>
 						<div className="flex-1" />
-						<span className="text-[11px] text-app-text-quaternary hover:text-app-text-secondary">Stage All</span>
+						<span className="text-[11px] text-app-text-quaternary hover:text-app-text-secondary">
+							Stage All
+						</span>
 					</div>
 					<div className="px-1 pb-1">
 						{WORKING_CHANGES.map((file) => (
@@ -270,7 +274,9 @@ function GitChangesView() {
 										<span className="min-w-0 flex-1 truncate text-[12px] text-app-text-secondary">
 											{commit.message}
 										</span>
-										<span className="shrink-0 text-[11px] text-app-text-quaternary">{commit.time}</span>
+										<span className="shrink-0 text-[11px] text-app-text-quaternary">
+											{commit.time}
+										</span>
 									</div>
 									<div className="flex items-center gap-2">
 										<span className="text-[11px]">
@@ -358,7 +364,9 @@ function FileTreeView() {
 									)}
 								</svg>
 								<span className="truncate">{node.name}/</span>
-								<span className="ml-auto text-[10px] text-app-text-quaternary">{node.children.length}</span>
+								<span className="ml-auto text-[10px] text-app-text-quaternary">
+									{node.children.length}
+								</span>
 							</button>
 							{expanded &&
 								node.children.map((child) => (
@@ -428,36 +436,53 @@ function PRCommentsView({
 							</span>
 						</div>
 
-						{/* Individual comment cards */}
+						{/* Individual comment cards — matches CommentThreadCard.tsx */}
 						{fileGroup.threads.map((thread, i) => (
 							<div
 								// biome-ignore lint/suspicious/noArrayIndexKey: static mock data
 								key={i}
-								className="mx-1.5 mb-1.5 rounded-lg border border-app-border-subtle bg-app-bg-elevated p-2.5"
+								className="mx-2 mb-1.5 overflow-hidden rounded-[6px] border border-app-border-subtle bg-app-bg-surface"
 							>
-								{/* Card header: file:line + actions */}
-								<div className="flex items-center gap-2">
-									<span className="font-mono text-[11px] text-app-accent">
+								{/* Header strip — AI badge + file:line + PR number */}
+								<div className="flex items-center gap-1.5 border-b border-app-border-subtle px-3 py-1">
+									<span className="rounded-[4px] bg-app-ai-badge-bg px-1.5 py-px text-[10px] font-semibold text-app-ai-badge-text">
+										AI
+									</span>
+									<span className="font-mono text-[10px] text-app-text-quaternary hover:text-app-accent">
 										{fileGroup.file.split("/").pop()}:{thread.line}
 									</span>
-									<div className="flex-1" />
-									<span className="text-[10px] text-app-success hover:text-app-success/80">Resolve</span>
-									<span className="text-[10px] text-app-text-quaternary hover:text-app-text-tertiary">Skip</span>
+									<span className="ml-auto text-[10px] text-app-text-quaternary">PR #34</span>
 								</div>
 
 								{/* Author + date */}
-								<div className="mt-1 flex items-center gap-1.5 text-[10px] text-app-text-tertiary">
+								<div className="px-3 pt-2 text-[10px] text-app-text-tertiary">
 									<span className="font-medium text-app-text-secondary">{thread.author}</span>
-									<span>&middot;</span>
+									<span className="mx-1.5 text-app-text-quaternary">·</span>
 									<span>{thread.date}</span>
 								</div>
 
-								{/* Comment text */}
-								<p className="mt-1.5 text-[11px] leading-relaxed text-app-text-tertiary">{thread.text}</p>
+								{/* Comment body */}
+								<p className="px-3 py-2 text-[11px] leading-relaxed text-app-text-secondary">
+									{thread.text}
+								</p>
 
-								{/* Reply input */}
-								<div className="mt-2 rounded border border-app-border-subtle bg-app-bg-base px-2 py-1 text-[11px] text-app-text-quaternary">
-									Reply...
+								{/* Accept / Decline action row */}
+								<div className="flex items-center gap-2 border-t border-app-border-subtle px-3 py-1.5">
+									<button
+										type="button"
+										className="rounded-[4px] bg-app-success-subtle px-2 py-0.5 text-[10px] font-medium text-app-success"
+									>
+										Accept
+									</button>
+									<button
+										type="button"
+										className="rounded-[4px] bg-app-bg-elevated px-2 py-0.5 text-[10px] text-app-text-tertiary"
+									>
+										Decline
+									</button>
+									<span className="ml-auto text-[9px] text-app-text-quaternary">
+										Enter ↵ · Shift+Enter for newline
+									</span>
 								</div>
 							</div>
 						))}
@@ -591,11 +616,11 @@ function BranchOverviewView() {
 				</div>
 			</div>
 
-			{/* Submit review button */}
+			{/* Submit review button — uses success bg per PROverviewTab.tsx:660 */}
 			<div className="shrink-0 border-t border-app-border-subtle px-3 py-2">
 				<button
 					type="button"
-					className="w-full rounded-lg bg-app-accent px-3 py-2 text-[12px] font-medium text-white transition-opacity hover:opacity-90"
+					className="w-full rounded-[6px] bg-app-success px-3 py-2 text-[12px] font-semibold text-white"
 				>
 					Submit Review
 				</button>

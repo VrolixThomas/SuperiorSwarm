@@ -18,7 +18,7 @@ export function Sidebar({
 		<div className="flex h-full w-full flex-col overflow-hidden bg-app-bg-surface">
 			{/* Segmented control */}
 			{!mobile && (
-				<div className="flex gap-1 px-2 py-1.5 border-b border-app-border-subtle">
+				<div className="flex gap-1 border-b border-app-border-subtle px-2 py-1.5">
 					{(["repos", "tickets", "prs"] as const).map((seg) => (
 						<button
 							key={seg}
@@ -43,8 +43,8 @@ export function Sidebar({
 				{segment === "prs" && <PrsView selectedPr={selectedPr} onPrSelect={onPrSelect} />}
 			</div>
 
-			{/* Footer — Settings + Terminal icon */}
-			<div className="flex items-center gap-1 border-t border-app-border-subtle p-2">
+			{/* Footer — Settings (single button, mirrors real Sidebar.tsx:121-153) */}
+			<div className="flex items-center border-t border-app-border-subtle p-2">
 				<button
 					type="button"
 					className="flex flex-1 items-center gap-2 rounded-[6px] px-3 py-1.5 text-[13px] text-app-text-tertiary transition-all duration-[120ms] hover:bg-app-bg-elevated hover:text-app-text-secondary"
@@ -66,26 +66,6 @@ export function Sidebar({
 					</svg>
 					<span className="truncate">Settings</span>
 				</button>
-				<button
-					type="button"
-					title="Terminal"
-					className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-[6px] text-app-text-quaternary transition-all duration-[120ms] hover:bg-app-bg-elevated hover:text-app-text-secondary"
-				>
-					<svg
-						aria-hidden="true"
-						width="14"
-						height="14"
-						viewBox="0 0 24 24"
-						fill="none"
-						stroke="currentColor"
-						strokeWidth="1.5"
-						strokeLinecap="round"
-						strokeLinejoin="round"
-					>
-						<polyline points="4 17 10 11 4 5" />
-						<line x1="12" y1="19" x2="20" y2="19" />
-					</svg>
-				</button>
 			</div>
 		</div>
 	);
@@ -95,44 +75,53 @@ export function Sidebar({
 
 function OrchestratorList() {
 	return (
-		<div className="px-2 pt-2">
+		<div className="flex flex-col gap-2 px-2 pt-2">
 			{ORCHESTRATORS.map((orch) => (
-				<div
-					key={orch.name}
-					className="overflow-hidden rounded-[6px] border border-app-accent/25 bg-[rgba(196,149,108,0.04)]"
-				>
-					<div className="flex items-center gap-1.5 border-b border-app-accent/20 bg-app-accent-subtle/30 px-2.5 py-1.5">
+				<div key={orch.name} className="relative">
+					{/* Orchestrator header row — muted orch-1 palette */}
+					<div className="relative flex items-center gap-2 rounded-[6px] px-3 py-1.5">
 						<svg
 							viewBox="0 0 12 12"
-							className="size-3 shrink-0 text-app-accent"
+							className="size-3 shrink-0"
 							fill="none"
-							stroke="currentColor"
+							stroke="var(--color-orch-1)"
 							strokeWidth="1.5"
 							aria-hidden="true"
 						>
-							<circle cx="6" cy="3" r="1.3" />
-							<circle cx="3" cy="9" r="1.3" />
-							<circle cx="9" cy="9" r="1.3" />
-							<path d="M6 4.3L4 8M6 4.3L8 8" strokeLinecap="round" />
+							<circle cx="6" cy="2.5" r="1.2" />
+							<circle cx="2.5" cy="8" r="1.2" />
+							<circle cx="9.5" cy="8" r="1.2" />
+							<path d="M6 4L3 8M6 4L9 8" strokeLinecap="round" />
 						</svg>
-						<span className="truncate text-[11px] font-semibold text-app-text">
+						<span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-app-text">
 							{orch.name}
 						</span>
-						<span className="ml-auto font-mono text-[9px] text-app-text-quaternary">
+						<span
+							className="shrink-0 rounded-[9px] px-[7px] py-px text-[10px] font-medium tabular-nums"
+							style={{
+								background: "var(--color-orch-1-bg)",
+								color: "var(--color-orch-1)",
+								minWidth: 16,
+							}}
+						>
 							{orch.worktrees.length}
 						</span>
 					</div>
-					<div className="relative py-1">
-						<div
-							className="pointer-events-none absolute left-3 top-0 h-full w-px bg-app-accent/15"
-							aria-hidden="true"
-						/>
+
+					{/* Vertical rail at left:26px, painted with orch-1 */}
+					<div
+						className="pointer-events-none absolute bottom-1 top-[34px] w-[2px] rounded-[1px]"
+						style={{ left: 26, background: "var(--color-orch-1)", opacity: 0.55 }}
+						aria-hidden="true"
+					/>
+
+					{/* Attached worktrees */}
+					<div className="flex flex-col">
 						{orch.worktrees.map((wt) => (
-							<div key={wt.name} className="relative flex items-center gap-1.5 py-1 pl-6 pr-2.5">
-								<span
-									className="absolute left-3 top-1/2 h-px w-1.5 -translate-y-1/2 bg-app-accent/25"
-									aria-hidden="true"
-								/>
+							<div
+								key={wt.name}
+								className="relative flex items-center gap-2 py-[7px] pl-[36px] pr-3"
+							>
 								<span className="relative flex size-1.5 shrink-0">
 									{wt.state === "running" ? (
 										<>
@@ -140,13 +129,13 @@ function OrchestratorList() {
 											<span className="relative inline-flex size-1.5 rounded-full bg-app-success" />
 										</>
 									) : (
-										<span className="relative inline-flex size-1.5 rounded-full bg-text-faint" />
+										<span className="relative inline-flex size-1.5 rounded-full bg-app-text-quaternary" />
 									)}
 								</span>
-								<span className="min-w-0 flex-1 truncate font-mono text-[10px] text-app-text-secondary">
+								<span className="min-w-0 flex-1 truncate font-mono text-[11px] text-app-text-secondary">
 									{wt.name}
 								</span>
-								<span className="rounded-[3px] bg-app-bg-elevated px-1 py-px text-[8px] text-app-text-quaternary">
+								<span className="shrink-0 rounded-[3px] bg-app-bg-elevated px-1.5 py-px text-[9px] text-app-text-tertiary">
 									{wt.agent}
 								</span>
 							</div>
@@ -170,132 +159,110 @@ function ReposView() {
 
 					return (
 						<div key={project.name}>
-							{/* Project group container with accent stripe when active */}
+							{/* Project header */}
 							<div
-								style={
-									hasActiveBranch && isExpanded
-										? {
-												borderLeft: "2px solid rgba(196, 149, 108, 0.19)",
-												borderRadius: 2,
-											}
-										: undefined
-								}
+								className={[
+									"flex w-full items-center gap-2 rounded-[8px] px-3 py-1.5 text-left",
+									hasActiveBranch ? "text-app-text" : "text-app-text-tertiary",
+								].join(" ")}
 							>
-								{/* Project header */}
-								<div
-									className={[
-										"flex w-full items-center gap-2 px-3 py-1.5",
-										"transition-all duration-[120ms] text-left",
-										hasActiveBranch && isExpanded
-											? "rounded-r-[8px] rounded-l-none"
-											: "rounded-[8px]",
-										hasActiveBranch ? "text-app-text" : "text-[#505058]",
-										hasActiveBranch && isExpanded
-											? "bg-gradient-to-br from-[#1a1a24] to-[#16161e]"
-											: "bg-transparent",
-									].join(" ")}
-								>
-									{/* Project name */}
-									<div className="min-w-0 flex-1">
-										<div className="truncate text-[13px] font-semibold">{project.name}</div>
-									</div>
-
-									{/* + button */}
-									<span
-										className={[
-											"flex h-5 w-5 shrink-0 items-center justify-center rounded text-[14px]",
-											hasActiveBranch ? "text-app-text-quaternary" : "text-[#3a3a42]",
-										].join(" ")}
-									>
-										+
-									</span>
-
-									{/* Chevron */}
-									<svg
-										aria-hidden="true"
-										width="10"
-										height="10"
-										viewBox="0 0 10 10"
-										fill="none"
-										className={[
-											"shrink-0 transition-transform duration-[120ms]",
-											isExpanded ? "rotate-90" : "rotate-0",
-											hasActiveBranch ? "text-app-text-quaternary" : "text-[#3a3a42]",
-										].join(" ")}
-									>
-										<path
-											d="M3 1.5L7 5L3 8.5"
-											stroke="currentColor"
-											strokeWidth="1.3"
-											strokeLinecap="round"
-											strokeLinejoin="round"
-										/>
-									</svg>
+								<div className="min-w-0 flex-1">
+									<div className="truncate text-[13px] font-semibold">{project.name}</div>
 								</div>
 
-								{/* Expanded branch list */}
-								{isExpanded && (
-									<div className="flex flex-col pt-0.5">
-										{project.branches.map((branch) => (
-											<div
-												key={branch.name}
-												className={[
-													"flex w-full items-center gap-2 pr-3 py-[7px] text-left",
-													"transition-all duration-[120ms]",
-													branch.active
-														? "rounded-r-[6px] rounded-l-none bg-[#17171e]"
-														: "rounded-[6px] bg-transparent",
-													branch.active && hasActiveBranch ? "pl-[20px]" : "pl-[22px]",
-												].join(" ")}
-												style={
-													branch.active && hasActiveBranch
-														? {
-																borderLeft: "2px solid rgba(196, 149, 108, 0.5)",
-																marginLeft: -2,
-															}
-														: undefined
-												}
-											>
-												<div className="min-w-0 flex-1">
-													<span
-														className={[
-															"truncate text-[13px] block",
-															branch.active
-																? "text-[#d4d4dc]"
-																: hasActiveBranch
-																	? "text-[#707078]"
-																	: "text-[#505058]",
-														].join(" ")}
-													>
-														{branch.name}
-													</span>
-													{"subtitle" in branch && branch.subtitle && (
-														<span className="flex items-center gap-1 mt-0.5">
-															<svg
-																width="10"
-																height="10"
-																viewBox="0 0 16 16"
-																fill="none"
-																className="shrink-0"
-																aria-hidden="true"
-															>
-																<path
-																	d="M5 8l2 2 4-4"
-																	stroke="#28c840"
-																	strokeWidth="1.5"
-																	strokeLinecap="round"
-																	strokeLinejoin="round"
-																/>
-															</svg>
-															<span className="text-[10px] text-[#3e3e46]">comments resolved</span>
-														</span>
-													)}
-												</div>
-											</div>
-										))}
-									</div>
-								)}
+								{/* + button */}
+								<span
+									className={[
+										"flex h-5 w-5 shrink-0 items-center justify-center rounded text-[14px]",
+										hasActiveBranch ? "text-app-text-quaternary" : "text-app-text-quaternary/40",
+									].join(" ")}
+								>
+									+
+								</span>
+
+								{/* Chevron */}
+								<svg
+									aria-hidden="true"
+									width="10"
+									height="10"
+									viewBox="0 0 10 10"
+									fill="none"
+									className={[
+										"shrink-0 transition-transform duration-[120ms]",
+										isExpanded ? "rotate-90" : "rotate-0",
+										"text-app-text-quaternary",
+									].join(" ")}
+								>
+									<path
+										d="M3 1.5L7 5L3 8.5"
+										stroke="currentColor"
+										strokeWidth="1.3"
+										strokeLinecap="round"
+										strokeLinejoin="round"
+									/>
+								</svg>
 							</div>
+
+							{/* Branch list */}
+							{isExpanded && (
+								<div className="flex flex-col">
+									{project.branches.map((branch) => (
+										<div
+											key={branch.name}
+											className={[
+												"relative flex w-full items-center gap-2 rounded-[6px] py-[7px] pl-[22px] pr-3 text-left",
+												"transition-all duration-[120ms]",
+												branch.active ? "bg-app-accent-subtle" : "hover:bg-app-bg-elevated",
+											].join(" ")}
+										>
+											{/* 3px accent rail — matches WorkspaceItem.tsx:528 */}
+											{branch.active && (
+												<span
+													className="absolute left-0 top-1 bottom-1 w-[3px] rounded-r-[2px] bg-app-accent"
+													aria-hidden="true"
+												/>
+											)}
+											<div className="min-w-0 flex-1">
+												<span
+													className={[
+														"block truncate text-[13px]",
+														branch.active
+															? "text-app-text"
+															: hasActiveBranch
+																? "text-app-text-tertiary"
+																: "text-app-text-quaternary",
+													].join(" ")}
+												>
+													{branch.name}
+												</span>
+												{"subtitle" in branch && branch.subtitle && (
+													<span className="mt-0.5 flex items-center gap-1">
+														<svg
+															width="10"
+															height="10"
+															viewBox="0 0 16 16"
+															fill="none"
+															className="shrink-0"
+															aria-hidden="true"
+														>
+															<path
+																d="M5 8l2 2 4-4"
+																stroke="var(--color-app-success)"
+																strokeWidth="1.5"
+																strokeLinecap="round"
+																strokeLinejoin="round"
+															/>
+														</svg>
+														<span className="text-[10px] text-app-text-quaternary">
+															{branch.subtitle}
+														</span>
+													</span>
+												)}
+											</div>
+										</div>
+									))}
+								</div>
+							)}
 						</div>
 					);
 				})}
@@ -336,11 +303,14 @@ function TicketsView() {
 
 	return (
 		<div className="flex flex-col gap-1 px-2 py-1">
-			{/* All Tickets */}
 			<button
 				type="button"
-				className="flex w-full items-center gap-2 rounded-[6px] px-2 py-1.5 text-left text-[11px] bg-[rgba(196,149,108,0.08)] font-medium text-app-text transition-colors duration-[120ms]"
+				className="relative flex w-full items-center gap-2 rounded-[6px] bg-app-accent-subtle px-2 py-1.5 text-left text-[11px] font-medium text-app-text transition-colors duration-[120ms]"
 			>
+				<span
+					className="absolute left-0 top-1 bottom-1 w-[3px] rounded-r-[2px] bg-app-accent"
+					aria-hidden="true"
+				/>
 				<svg
 					width="11"
 					height="11"
@@ -358,19 +328,17 @@ function TicketsView() {
 				<span className="text-[10px] tabular-nums text-app-text-quaternary">{totalCount}</span>
 			</button>
 
-			<div className="mx-2 my-1 h-px bg-border" />
+			<div className="mx-2 my-1 h-px bg-app-border-subtle" />
 
-			{/* LINEAR section header */}
 			<div className="px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.5px] text-app-text-quaternary">
 				Linear
 			</div>
 
-			{/* Linear project item */}
 			<button
 				type="button"
 				className="flex w-full items-center gap-2 rounded-[6px] px-2 py-1.5 text-left text-[11px] text-app-text-secondary transition-colors duration-[120ms] hover:bg-app-bg-elevated"
 			>
-				<div className="h-[6px] w-[6px] shrink-0 rounded-full bg-text-faint" />
+				<div className="h-[6px] w-[6px] shrink-0 rounded-full bg-app-text-quaternary" />
 				<span className="flex-1 truncate">SuperiorSwarm</span>
 				<span className="text-[10px] tabular-nums text-app-text-quaternary">{totalCount}</span>
 			</button>
@@ -378,7 +346,7 @@ function TicketsView() {
 	);
 }
 
-/* ── PRs View ───────────────────────────────────────────────────────────── */
+/* ── PRs View — 3-line layout matching PullRequestItem.tsx ──────────────── */
 
 function PrsView({
 	selectedPr,
@@ -388,7 +356,7 @@ function PrsView({
 	onPrSelect: (id: number) => void;
 }) {
 	return (
-		<div className="flex flex-col">
+		<div className="flex flex-col gap-2 px-2 pt-2">
 			{PULL_REQUESTS.map((group) => (
 				<div key={group.repo}>
 					{/* Repo group header */}
@@ -415,7 +383,7 @@ function PrsView({
 						<span
 							className={`shrink-0 rounded-[3px] px-1 py-px text-[8px] font-semibold uppercase tracking-[0.05em] ${
 								group.source === "bitbucket"
-									? "bg-[rgba(38,132,255,0.12)] text-[#5b8def]"
+									? "bg-[rgba(38,132,255,0.16)] text-[#5b8def]"
 									: "bg-app-bg-elevated text-app-text-quaternary"
 							}`}
 						>
@@ -426,58 +394,86 @@ function PrsView({
 					</button>
 
 					{/* PR items */}
-					<div className="flex flex-col gap-0.5 px-1">
+					<div className="flex flex-col">
 						{group.prs.map((pr) => {
-							const healthColor =
+							const healthVar =
 								pr.status === "success"
-									? "#3fb950"
+									? "var(--color-pr-health-success)"
 									: pr.status === "pending"
-										? "#d29922"
-										: "#484848";
+										? "var(--color-pr-health-warning)"
+										: "var(--color-pr-health-neutral)";
+							const isActive = selectedPr === pr.id;
+							const reviewers =
+								"reviewers" in pr && Array.isArray((pr as { reviewers?: unknown }).reviewers)
+									? (pr as { reviewers: { initial: string; decision: string }[] }).reviewers
+									: REVIEWER_FALLBACK;
 
 							return (
 								<button
 									key={pr.id}
 									type="button"
 									onClick={() => onPrSelect(pr.id)}
-									className={`group flex w-full flex-col gap-0.5 rounded-[6px] px-2.5 py-1.5 text-left text-[12px] transition-all duration-[120ms] ${
-										selectedPr === pr.id
-											? "bg-app-bg-overlay text-app-text"
-											: "text-app-text-tertiary hover:bg-app-bg-elevated hover:text-app-text-secondary"
-									}`}
+									className={[
+										"group relative flex w-full flex-col gap-0.5 rounded-[6px] py-[7px] pl-[22px] pr-3 text-left text-[12px] transition-all duration-[120ms]",
+										isActive
+											? "bg-app-accent-subtle text-app-text"
+											: "text-app-text-tertiary hover:bg-app-bg-elevated hover:text-app-text-secondary",
+									].join(" ")}
 									title={`${group.repo}#${pr.id}: ${pr.title}`}
 								>
-									{/* Row 1: Title + health dot + PR number */}
-									<div className="flex items-center gap-1">
+									{isActive && (
+										<span
+											className="absolute left-0 top-1 bottom-1 w-[3px] rounded-r-[2px] bg-app-accent"
+											aria-hidden="true"
+										/>
+									)}
+
+									{/* Row 1: title + health dot + #num */}
+									<div className="flex items-center gap-1.5">
 										<span className="min-w-0 flex-1 truncate text-[12px] leading-tight">
 											{pr.title}
 										</span>
 										<span
 											className="size-1.5 shrink-0 rounded-full"
-											style={{ backgroundColor: healthColor }}
+											style={{ backgroundColor: healthVar }}
 										/>
-										<span className="shrink-0 font-mono text-[10px] text-app-text-quaternary">#{pr.id}</span>
-									</div>
-
-									{/* Row 2: Branch info */}
-									<div className="flex items-center gap-1 text-[10px] text-app-text-quaternary">
-										<span className="min-w-0 truncate font-mono">{pr.branch}</span>
-										<span className="shrink-0">{">"}</span>
-										<span className="shrink-0 truncate font-mono">{pr.target}</span>
-									</div>
-
-									{/* Row 3: Author */}
-									<div className="mt-0.5 flex items-center gap-1 text-[10px] text-app-text-quaternary">
-										<span className="shrink-0 text-[8px] uppercase tracking-[0.05em] opacity-50">
-											by
+										<span className="shrink-0 font-mono text-[10px] text-app-text-quaternary">
+											#{pr.id}
 										</span>
-										<div
-											className="flex size-4 shrink-0 items-center justify-center rounded-full text-[7px] font-bold text-app-text-tertiary"
-											style={{ backgroundColor: "var(--color-bg-overlay)" }}
-										>
+									</div>
+
+									{/* Row 2: mono branch source > target */}
+									<div className="flex items-center gap-1 font-mono text-[10px] text-app-text-quaternary">
+										<span className="min-w-0 truncate">{pr.branch}</span>
+										<span className="shrink-0">{">"}</span>
+										<span className="shrink-0 truncate">{pr.target}</span>
+									</div>
+
+									{/* Row 3: author avatar + reviewer ring avatars */}
+									<div className="mt-0.5 flex items-center gap-1.5">
+										<div className="flex size-4 shrink-0 items-center justify-center rounded-full bg-app-bg-overlay text-[7px] font-bold text-app-text-tertiary">
 											{pr.authorInitial}
 										</div>
-										<span className="truncate">{pr.author}</span>
+										<span className="truncate text-[10px] text-app-text-quaternary">
+											{pr.author}
+										</span>
+										{reviewers.length > 0 && (
+											<div className="ml-auto flex items-center -space-x-1.5">
+												{reviewers.slice(0, 3).map((r, i) => (
+													<div
+														// biome-ignore lint/suspicious/noArrayIndexKey: static mock data
+														key={`${pr.id}-${i}`}
+														className="flex size-5 items-center justify-center rounded-full bg-app-bg-elevated text-[8px] font-medium text-app-text-tertiary"
+														style={{
+															border: `2px solid ${decisionBorder(r.decision)}`,
+														}}
+														title={`${r.initial} · ${r.decision}`}
+													>
+														{r.initial}
+													</div>
+												))}
+											</div>
+										)}
 									</div>
 								</button>
 							);
@@ -487,4 +483,20 @@ function PrsView({
 			))}
 		</div>
 	);
+}
+
+const REVIEWER_FALLBACK: { initial: string; decision: string }[] = [
+	{ initial: "M", decision: "approved" },
+	{ initial: "K", decision: "pending" },
+];
+
+function decisionBorder(decision: string): string {
+	switch (decision) {
+		case "approved":
+			return "var(--color-pr-health-success)";
+		case "changes":
+			return "var(--color-pr-health-warning)";
+		default:
+			return "var(--color-pr-health-neutral)";
+	}
 }

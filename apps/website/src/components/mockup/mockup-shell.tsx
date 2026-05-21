@@ -81,7 +81,9 @@ export function MockupShell() {
 							type="button"
 							onClick={() => handleSegmentChange(s)}
 							className={`flex-1 py-2 text-xs font-medium capitalize transition-colors ${
-								segment === s ? "border-b-2 border-app-accent text-app-accent" : "text-app-text-tertiary"
+								segment === s
+									? "border-b-2 border-app-accent text-app-accent"
+									: "text-app-text-tertiary"
 							}`}
 						>
 							{s === "prs" ? "PRs" : s}
@@ -103,6 +105,9 @@ export function MockupShell() {
 
 					{/* Center panel */}
 					<div className="flex min-w-0 flex-1 flex-col bg-app-bg-base">
+						{/* Branch chip header — matches real MainContentArea.tsx:66-79 */}
+						{segment !== "tickets" && <BranchChipHeader />}
+
 						{segment === "repos" && (solverActive ? <DiffView /> : <TerminalView />)}
 						{segment === "tickets" && <TicketBoardView />}
 						{segment === "prs" && selectedPr !== null && <PrDetailView />}
@@ -181,5 +186,56 @@ export function MockupShell() {
 			{/* Bottom fade gradient */}
 			<div className="pointer-events-none absolute -bottom-1 left-0 right-0 h-24 bg-gradient-to-t from-bg-base to-transparent" />
 		</motion.section>
+	);
+}
+
+function BranchChipHeader() {
+	return (
+		<div className="flex shrink-0 items-center gap-2 border-b border-app-border-subtle px-3 py-1">
+			{/* Branch chip — matches real BranchChip */}
+			<div className="flex items-center gap-1.5 rounded-[5px] bg-app-bg-elevated px-2 py-1">
+				<svg
+					aria-hidden="true"
+					width="10"
+					height="10"
+					viewBox="0 0 16 16"
+					fill="currentColor"
+					className="shrink-0 text-app-text-quaternary"
+				>
+					<path d="M9.5 3.25a2.25 2.25 0 1 1 3 2.122V6A2.5 2.5 0 0 1 10 8.5H6a1 1 0 0 0-1 1v1.128a2.251 2.251 0 1 1-1.5 0V5.372a2.25 2.25 0 1 1 1.5 0v1.836A2.5 2.5 0 0 1 6 7h4a1 1 0 0 0 1-1v-.628A2.25 2.25 0 0 1 9.5 3.25Z" />
+				</svg>
+				<span className="font-mono text-[11px] text-app-text-secondary">
+					feature/inline-agent-chat
+				</span>
+				<span className="text-[10px] text-app-text-quaternary">·</span>
+				<span className="font-mono text-[10px] text-app-text-quaternary">main</span>
+			</div>
+
+			{/* Quick actions: push / pull / fetch */}
+			<div className="ml-auto flex items-center gap-0.5">
+				{[
+					{ label: "Pull", path: "M8 2v8M5 7l3 3 3-3" },
+					{ label: "Push", path: "M8 14V6M5 9l3-3 3 3" },
+					{ label: "Fetch", path: "M3 8a5 5 0 0 1 9-3M13 8a5 5 0 0 1-9 3M12 2v3h-3M4 14v-3h3" },
+				].map((a) => (
+					<button
+						key={a.label}
+						type="button"
+						title={a.label}
+						className="flex h-[24px] w-[24px] items-center justify-center rounded-[5px] text-app-text-quaternary transition-colors hover:bg-app-bg-elevated hover:text-app-text-secondary"
+					>
+						<svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+							<path
+								d={a.path}
+								stroke="currentColor"
+								strokeWidth="1.4"
+								strokeLinecap="round"
+								strokeLinejoin="round"
+							/>
+						</svg>
+					</button>
+				))}
+			</div>
+		</div>
 	);
 }

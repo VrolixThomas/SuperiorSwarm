@@ -3,34 +3,39 @@ import { DIFF_LINES } from "./mock-data";
 export function DiffView() {
 	return (
 		<div className="flex flex-1 flex-col overflow-hidden">
-			{/* File tab bar — matches real app PaneTabBar */}
-			<div className="flex h-[36px] shrink-0 items-center border-b border-app-border-subtle bg-app-bg-elevated">
-				{/* Pane index */}
-				<div className="flex h-full w-[28px] shrink-0 items-center justify-center text-[11px] font-medium text-app-text-quaternary">
-					1
-				</div>
+			{/* File tab bar — diff tabs use yellow accent (TabBar.tsx:72) */}
+			<div className="flex h-[52px] shrink-0 items-end border-b border-app-border bg-app-bg-tab-bar">
+				<div className="flex h-full w-full items-end gap-[2px] pb-[7px] pl-2 pr-1">
+					<div className="relative flex h-[36px] max-w-[220px] shrink-0 items-center gap-2 rounded-[7px] bg-app-tab-active pl-3 pr-2 text-[13px] text-app-text shadow-[0_1px_2px_rgba(0,0,0,0.3)]">
+						<span
+							className="absolute inset-x-2.5 bottom-0 h-[2px] rounded-full"
+							style={{ background: "var(--color-app-term-yellow)" }}
+						/>
+						<span
+							className="size-1.5 shrink-0 rounded-full"
+							style={{ background: "var(--color-app-term-yellow)" }}
+						/>
+						<span className="min-w-0 truncate">chat-service.ts (fix)</span>
+						<span className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-[5px] text-app-text-tertiary">
+							<svg aria-hidden="true" width="9" height="9" viewBox="0 0 9 9" fill="none">
+								<path
+									d="M2 2l5 5M7 2l-5 5"
+									stroke="currentColor"
+									strokeWidth="1.4"
+									strokeLinecap="round"
+								/>
+							</svg>
+						</span>
+					</div>
 
-				{/* Active tab pill */}
-				<div className="relative flex h-[28px] max-w-[200px] shrink-0 items-center gap-1.5 rounded-[6px] bg-app-bg-overlay pl-2.5 pr-1.5 text-[12px] text-app-text shadow-[0_1px_3px_rgba(0,0,0,0.4),inset_0_0.5px_0_rgba(255,255,255,0.04)]">
-					<span className="absolute inset-x-2 bottom-0 h-[2px] rounded-full bg-app-accent" />
-					<span className="min-w-0 truncate">chat-service.ts (fix)</span>
-					<span className="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[4px] text-app-text-tertiary">
-						<svg aria-hidden="true" width="8" height="8" viewBox="0 0 9 9" fill="none">
-							<path
-								d="M2 2l5 5M7 2l-5 5"
-								stroke="currentColor"
-								strokeWidth="1.4"
-								strokeLinecap="round"
-							/>
-						</svg>
-					</span>
-				</div>
+					<div className="flex-1" />
 
-				{/* Spacer + new tab button */}
-				<div className="flex-1" />
-				<div className="shrink-0 pr-1">
-					<div className="flex h-[24px] w-[24px] items-center justify-center rounded text-app-text-quaternary hover:bg-app-bg-overlay hover:text-app-text-tertiary">
-						<svg aria-hidden="true" width="12" height="12" viewBox="0 0 16 16" fill="none">
+					<button
+						type="button"
+						title="New tab"
+						className="flex h-[30px] w-[30px] items-center justify-center rounded-[6px] text-app-text-quaternary transition-colors hover:bg-app-bg-elevated hover:text-app-text-secondary"
+					>
+						<svg aria-hidden="true" width="13" height="13" viewBox="0 0 16 16" fill="none">
 							<path
 								d="M8 3v10M3 8h10"
 								stroke="currentColor"
@@ -38,7 +43,7 @@ export function DiffView() {
 								strokeLinecap="round"
 							/>
 						</svg>
-					</div>
+					</button>
 				</div>
 			</div>
 
@@ -61,7 +66,11 @@ export function DiffView() {
 							const isRemove = line.type === "remove";
 							const isAdd = line.type === "add";
 
-							const rowBg = isRemove ? "bg-app-danger/[0.06]" : isAdd ? "bg-app-success/[0.06]" : "";
+							const rowBg = isRemove
+								? "bg-app-danger/[0.06]"
+								: isAdd
+									? "bg-app-success/[0.06]"
+									: "";
 
 							const prefix = isRemove ? "-" : isAdd ? "+" : " ";
 
