@@ -11,6 +11,7 @@ import { useColorsV4 } from "../../build-v4/colors-v4";
 import { REPOS_V4 } from "../../build-v4/data";
 
 const FLIP_SPACING = 10;
+const FLIP_START = 18;
 const ACTIVE_BRANCH = "feat/agent-terminal-chat";
 
 interface Props {
@@ -28,7 +29,7 @@ export function AgentsDoneFastScene({ startFrame }: Props) {
 
 	const alerts: WorktreeAlertV4[] = worktrees.map((_, i) => {
 		if (i === 0) return null;
-		const flipAt = (i - 1) * FLIP_SPACING;
+		const flipAt = FLIP_START + (i - 1) * FLIP_SPACING;
 		return local >= flipAt ? "done" : "active";
 	});
 

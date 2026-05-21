@@ -36,7 +36,7 @@ interface Props {
 
 export function PoppyDiffPanel({ tabBar }: Props) {
 	const worktrees = REPOS_V4[0]?.worktrees ?? [];
-	const alerts: WorktreeAlertV4[] = worktrees.map((_, i) => (i === 0 ? null : "done"));
+	const alerts: WorktreeAlertV4[] = worktrees.map((_, i) => (i === 0 ? null : "active"));
 
 	return (
 		<>

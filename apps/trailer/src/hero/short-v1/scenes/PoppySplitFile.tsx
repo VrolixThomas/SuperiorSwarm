@@ -27,7 +27,7 @@ interface Props {
 export function PoppySplitFile({ tabBar: _tabBar }: Props) {
 	const c = useColorsV4();
 	const worktrees = REPOS_V4[0]?.worktrees ?? [];
-	const alerts: WorktreeAlertV4[] = worktrees.map((_, i) => (i === 0 ? null : "done"));
+	const alerts: WorktreeAlertV4[] = worktrees.map((_, i) => (i === 0 ? null : "active"));
 	const file = DEMO_FILES_V4[0];
 	const fileName = file?.path.split("/").pop() ?? "useAgentTerminalStream.ts";
 

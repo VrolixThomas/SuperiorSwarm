@@ -11,8 +11,10 @@ const outputDir = path.resolve(projectRoot, "../../launchcontent/videos");
 interface Target {
 	id: string;
 	output: string;
-	videoBitrate: `${number}M` | `${number}K` | `${number}k`;
+	videoBitrate?: `${number}M` | `${number}K` | `${number}k`;
 	audioBitrate: `${number}M` | `${number}K` | `${number}k`;
+	crf?: number;
+	x264Preset?: "ultrafast" | "fast" | "medium" | "slow" | "veryslow";
 }
 
 type TargetKey = "v2" | "v3" | "v4" | "short";
@@ -39,7 +41,9 @@ const TARGETS: Record<TargetKey, Target> = {
 	short: {
 		id: "HeroBuildShortV1",
 		output: "hero-build-short-v1.mp4",
-		videoBitrate: "12M",
+		// CRF mode + slow preset → crisper text/UI edges than fixed bitrate.
+		crf: 17,
+		x264Preset: "slow",
 		audioBitrate: "192k",
 	},
 };
@@ -49,13 +53,16 @@ async function renderOne(target: Target, serveUrl: string) {
 	const composition = await selectComposition({ serveUrl, id: target.id });
 
 	const outputPath = path.join(outputDir, target.output);
-	console.log(`[trailer] rendering → ${outputPath} @ ${target.videoBitrate}`);
+	const qualityLabel = target.crf != null ? `crf ${target.crf}` : (target.videoBitrate ?? "?");
+	console.log(`[trailer] rendering → ${outputPath} @ ${qualityLabel}`);
 	await renderMedia({
 		composition,
 		serveUrl,
 		codec: "h264",
 		outputLocation: outputPath,
-		videoBitrate: target.videoBitrate,
+		...(target.crf != null
+			? { crf: target.crf, x264Preset: target.x264Preset ?? "medium" }
+			: { videoBitrate: target.videoBitrate }),
 		audioBitrate: target.audioBitrate,
 		onProgress: ({ progress }) => {
 			if (progress % 0.05 < 0.01) {
