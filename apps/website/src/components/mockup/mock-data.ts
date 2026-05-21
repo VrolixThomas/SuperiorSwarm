@@ -1,40 +1,54 @@
-// Orchestrator groups (real-app v0.9.x feature)
-export const ORCHESTRATORS = [
-	{
-		name: "Release v1.0",
-		project: "SuperiorSwarm",
-		worktrees: [
-			{ name: "feature/inline-agent-chat", agent: "Claude Code", state: "running" as const },
-			{ name: "review/PR-110", agent: "Codex", state: "running" as const },
-			{ name: "voice-input", agent: "Gemini CLI", state: "idle" as const },
-		],
-	},
-] as const;
-
-// Projects with expandable branches (from real app Repos sidebar)
+// Project tree — matches real app's OrchestratorGroupNode + loose structure
+// (apps/desktop/src/renderer/components/ProjectItem.tsx)
 export const PROJECTS = [
 	{
+		id: "ss",
 		name: "SuperiorSwarm",
 		source: "github" as const,
-		branches: [
-			{ name: "main", active: false },
+		orchestrators: [
 			{
-				name: "feature/inline-agent-chat",
-				active: true,
-				subtitle: "3 agents running",
+				id: "orch-release",
+				name: "Release v1.0",
+				colorIndex: 1 as const,
+				children: [
+					{
+						id: "w-feature",
+						name: "feature/inline-agent-chat",
+						active: true,
+						statusText: "3 agents running",
+						currentPhase: "working" as const,
+					},
+					{
+						id: "w-review",
+						name: "review/PR-110",
+						active: false,
+					},
+					{
+						id: "w-voice",
+						name: "voice-input",
+						active: false,
+					},
+				],
 			},
-			{ name: "fix/terminal-scrollback", active: false },
+		],
+		loose: [
+			{ id: "w-main", name: "main", active: false },
+			{ id: "w-fix", name: "fix/terminal-scrollback", active: false },
 		],
 	},
 	{
+		id: "docs",
 		name: "superiorswarm-docs",
 		source: "github" as const,
-		branches: [{ name: "main", active: false }],
+		orchestrators: [],
+		loose: [{ id: "d-main", name: "main", active: false }],
 	},
 	{
+		id: "ssm",
 		name: "ss-marketing",
 		source: "bitbucket" as const,
-		branches: [{ name: "main", active: false }],
+		orchestrators: [],
+		loose: [{ id: "m-main", name: "main", active: false }],
 	},
 ] as const;
 
