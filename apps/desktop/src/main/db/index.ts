@@ -59,3 +59,10 @@ export async function backfillRemoteHosts(): Promise<void> {
 }
 
 export { schema };
+
+/** Test-only: replace the cached db handle so unit tests can run against in-memory sqlite. */
+export function _setDbForTesting(
+	testDb: ReturnType<typeof drizzle<typeof schema>> | null
+): void {
+	_db = testDb;
+}

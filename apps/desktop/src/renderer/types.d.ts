@@ -1,5 +1,7 @@
 import type {
 	AgentAlertAPI,
+	AgentConfirmAPI,
+	AgentDispatchAPI,
 	DaemonAPI,
 	DialogAPI,
 	LspAPI,
@@ -20,6 +22,8 @@ export interface ElectronAPI {
 	lsp: LspAPI;
 	daemon: DaemonAPI;
 	agentAlert: AgentAlertAPI;
+	agentConfirm: AgentConfirmAPI;
+	agentDispatch: AgentDispatchAPI;
 	settings: SettingsAPI;
 	repo: RepoAPI;
 }

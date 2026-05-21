@@ -1,6 +1,8 @@
 import { app } from "electron";
 import { autoUpdater } from "electron-updater";
 import { z } from "zod";
+import { log } from "../../logger";
+import { getMainWindow } from "../../main-window";
 import {
 	dismissUpdateVersion,
 	fetchReleaseNotes,
@@ -61,18 +63,33 @@ export const updatesRouter = router({
 			};
 		} catch (err) {
 			const message = err instanceof Error ? err.message : String(err);
-			console.error("[updater] Check for updates failed:", message);
+			log.error("[updater] Check for updates failed:", message);
 			return { updateAvailable: false, version: null, error: message };
 		}
 	}),
 
-	installUpdate: publicProcedure.mutation(async () => {
+	installUpdate: publicProcedure.mutation(() => {
 		if (!app.isPackaged) return;
-		try {
-			autoUpdater.quitAndInstall();
-		} catch (err) {
-			console.error("[updater] Install update failed:", err);
+		const t0 = Date.now();
+		log.info("[updater] installUpdate mutation entered");
+		// Close the main window first so the renderer can release tRPC
+		// subscriptions and IPC handles in a controlled order, then trigger
+		// quitAndInstall on the next tick. This avoids racing window close
+		// with main-process teardown.
+		const win = getMainWindow();
+		if (win && !win.isDestroyed()) {
+			log.debug(`[updater] closing main window +${Date.now() - t0}ms`);
+			win.close();
 		}
+		setImmediate(() => {
+			log.debug(`[updater] calling quitAndInstall +${Date.now() - t0}ms`);
+			try {
+				autoUpdater.quitAndInstall();
+				log.debug(`[updater] quitAndInstall returned +${Date.now() - t0}ms`);
+			} catch (err) {
+				log.error("[updater] quitAndInstall threw:", err);
+			}
+		});
 	}),
 
 	markVersionSeen: publicProcedure

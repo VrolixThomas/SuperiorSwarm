@@ -60,6 +60,18 @@ export const workspaces = sqliteTable(
 		reviewDraftId: text("review_draft_id").references(() => reviewDrafts.id, {
 			onDelete: "set null",
 		}),
+		currentPhase: text("current_phase", {
+			enum: ["idle", "working", "blocked", "done"],
+		})
+			.notNull()
+			.default("idle"),
+		statusText: text("status_text"),
+		needs: text("needs"),
+		statusUpdatedAt: integer("status_updated_at", { mode: "timestamp" }),
+		cliSessionId: text("cli_session_id"),
+		cliPreset: text("cli_preset"),
+		isOrchestrator: integer("is_orchestrator", { mode: "boolean" }).notNull().default(false),
+		sortOrder: integer("sort_order").notNull().default(0),
 		createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
 		updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
 	},
@@ -75,6 +87,36 @@ export const workspaces = sqliteTable(
 
 export type Workspace = typeof workspaces.$inferSelect;
 export type NewWorkspace = typeof workspaces.$inferInsert;
+
+export const agentMessages = sqliteTable(
+	"agent_messages",
+	{
+		id: text("id").primaryKey(),
+		projectId: text("project_id")
+			.notNull()
+			.references(() => projects.id, { onDelete: "cascade" }),
+		fromWorkspaceId: text("from_workspace_id").references(() => workspaces.id, {
+			onDelete: "set null",
+		}),
+		toWorkspaceId: text("to_workspace_id").references(() => workspaces.id, {
+			onDelete: "set null",
+		}),
+		kind: text("kind", {
+			enum: ["resume", "note", "question", "answer", "broadcast"],
+		}).notNull(),
+		content: text("content").notNull(),
+		inReplyTo: text("in_reply_to"),
+		// ms precision: orchestrator polling reads "since X" with sub-second cutoffs
+		createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+	},
+	(t) => [
+		index("agent_messages_to_idx").on(t.toWorkspaceId, t.createdAt),
+		index("agent_messages_project_idx").on(t.projectId, t.createdAt),
+	]
+);
+
+export type AgentMessage = typeof agentMessages.$inferSelect;
+export type NewAgentMessage = typeof agentMessages.$inferInsert;
 
 export const terminalSessions = sqliteTable("terminal_sessions", {
 	id: text("id").primaryKey(),
@@ -459,3 +501,33 @@ export const appSettings = sqliteTable("app_settings", {
 
 export type AppSetting = typeof appSettings.$inferSelect;
 export type NewAppSetting = typeof appSettings.$inferInsert;
+
+export const globalMcpInstall = sqliteTable("global_mcp_install", {
+	cliPreset: text("cli_preset").primaryKey(), // "claude" | "gemini" | "codex" | "opencode"
+	configPath: text("config_path").notNull(),
+	installedAt: integer("installed_at", { mode: "timestamp" }).notNull(),
+});
+
+export type GlobalMcpInstall = typeof globalMcpInstall.$inferSelect;
+
+export const orchestratorMembers = sqliteTable(
+	"orchestrator_members",
+	{
+		orchestratorId: text("orchestrator_id")
+			.notNull()
+			.references(() => workspaces.id, { onDelete: "cascade" }),
+		workspaceId: text("workspace_id")
+			.notNull()
+			.references(() => workspaces.id, { onDelete: "cascade" }),
+		sortOrder: integer("sort_order").notNull(),
+		createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+	},
+	(t) => [
+		primaryKey({ columns: [t.orchestratorId, t.workspaceId] }),
+		index("orch_members_workspace_idx").on(t.workspaceId),
+		index("orch_members_orch_sort_idx").on(t.orchestratorId, t.sortOrder),
+	]
+);
+
+export type OrchestratorMember = typeof orchestratorMembers.$inferSelect;
+export type NewOrchestratorMember = typeof orchestratorMembers.$inferInsert;

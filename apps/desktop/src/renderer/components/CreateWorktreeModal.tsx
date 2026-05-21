@@ -2,10 +2,15 @@ import { useEffect, useRef, useState } from "react";
 import { useProjectStore } from "../stores/projects";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
+import { flattenWorkspaceTree } from "../utils/workspace-tree";
 
 export function CreateWorktreeModal() {
-	const { isCreateWorktreeModalOpen, createWorktreeProjectId, closeCreateWorktreeModal } =
-		useProjectStore();
+	const {
+		isCreateWorktreeModalOpen,
+		createWorktreeProjectId,
+		createWorktreeAsOrchestrator,
+		closeCreateWorktreeModal,
+	} = useProjectStore();
 
 	const [mode, setMode] = useState<"new" | "existing">("new");
 	const [branchName, setBranchName] = useState("");
@@ -14,6 +19,8 @@ export function CreateWorktreeModal() {
 	const [branchSearch, setBranchSearch] = useState("");
 	const [baseBranchSearch, setBaseBranchSearch] = useState("");
 	const [baseBranchDropdownOpen, setBaseBranchDropdownOpen] = useState(false);
+	const [asOrchestrator, setAsOrchestrator] = useState(false);
+	const [attachIds, setAttachIds] = useState<Set<string>>(new Set());
 	const baseBranchInitialized = useRef(false);
 	const utils = trpc.useUtils();
 
@@ -62,6 +69,10 @@ export function CreateWorktreeModal() {
 
 	const createMutation = trpc.workspaces.create.useMutation({ onSuccess });
 
+	const createOrchestratorMutation = trpc.workspaces.createOrchestrator.useMutation({
+		onSuccess,
+	});
+
 	const checkoutMutation = trpc.workspaces.checkoutExisting.useMutation({ onSuccess });
 
 	const updateProjectMutation = trpc.projects.update.useMutation({
@@ -90,11 +101,27 @@ export function CreateWorktreeModal() {
 			setBranchSearch("");
 			setBaseBranchSearch("");
 			setBaseBranchDropdownOpen(false);
+			setAsOrchestrator(false);
+			setAttachIds(new Set());
 			baseBranchInitialized.current = false;
 			createMutation.reset();
+			createOrchestratorMutation.reset();
 			checkoutMutation.reset();
 		}
-	}, [isCreateWorktreeModalOpen, createMutation.reset, checkoutMutation.reset]);
+	}, [
+		isCreateWorktreeModalOpen,
+		createMutation.reset,
+		createOrchestratorMutation.reset,
+		checkoutMutation.reset,
+	]);
+
+	// Sync orchestrator-mode flag from store (when caller opens modal with asOrchestrator: true)
+	useEffect(() => {
+		if (isCreateWorktreeModalOpen) {
+			setAsOrchestrator(createWorktreeAsOrchestrator);
+			if (createWorktreeAsOrchestrator) setMode("new");
+		}
+	}, [isCreateWorktreeModalOpen, createWorktreeAsOrchestrator]);
 
 	// Escape key to close
 	useEffect(() => {
@@ -116,9 +143,12 @@ export function CreateWorktreeModal() {
 	const branchNames = (branchesQuery.data ?? []).map((b) => b.name);
 
 	// Branches that already have worktrees
-	const existingWorktreeBranches = new Set(
-		(workspacesQuery.data ?? []).map((ws) => ws.name).filter(Boolean)
-	);
+	const workspacesTree = workspacesQuery.data;
+	const workspacesList = workspacesTree ? flattenWorkspaceTree(workspacesTree) : [];
+	const existingWorktreeBranches = new Set(workspacesList.map((ws) => ws.name).filter(Boolean));
+
+	// Loose worktrees that can be attached at orchestrator creation time
+	const looseWorkspaces = workspacesTree?.loose ?? [];
 
 	// Available branches for checkout (remote branches minus those already checked out)
 	const availableBranches = branchNames.filter((branch) => !existingWorktreeBranches.has(branch));
@@ -131,16 +161,34 @@ export function CreateWorktreeModal() {
 		? branchNames.filter((b) => b.toLowerCase().includes(baseBranchSearch.toLowerCase()))
 		: branchNames;
 
+	function toggleAttach(id: string) {
+		setAttachIds((prev) => {
+			const next = new Set(prev);
+			if (next.has(id)) next.delete(id);
+			else next.add(id);
+			return next;
+		});
+	}
+
 	const handleSubmit = (e: React.FormEvent) => {
 		e.preventDefault();
 
 		if (mode === "new") {
 			if (!branchName.trim() || !projectId) return;
-			createMutation.mutate({
-				projectId,
-				branch: branchName.trim(),
-				baseBranch: baseBranch || undefined,
-			});
+			if (asOrchestrator) {
+				createOrchestratorMutation.mutate({
+					projectId,
+					name: branchName.trim(),
+					baseBranch: baseBranch || projectQuery.data?.defaultBranch || "main",
+					attachWorkspaceIds: Array.from(attachIds),
+				});
+			} else {
+				createMutation.mutate({
+					projectId,
+					branch: branchName.trim(),
+					baseBranch: baseBranch || undefined,
+				});
+			}
 		} else {
 			if (!selectedBranch || !projectId) return;
 			checkoutMutation.mutate({
@@ -150,10 +198,11 @@ export function CreateWorktreeModal() {
 		}
 	};
 
-	const isPending = mode === "new" ? createMutation.isPending : checkoutMutation.isPending;
-	const isError = mode === "new" ? createMutation.isError : checkoutMutation.isError;
+	const activeNewMutation = asOrchestrator ? createOrchestratorMutation : createMutation;
+	const isPending = mode === "new" ? activeNewMutation.isPending : checkoutMutation.isPending;
+	const isError = mode === "new" ? activeNewMutation.isError : checkoutMutation.isError;
 	const errorMessage =
-		mode === "new" ? createMutation.error?.message : checkoutMutation.error?.message;
+		mode === "new" ? activeNewMutation.error?.message : checkoutMutation.error?.message;
 
 	const isSubmitDisabled = isPending || (mode === "new" ? !branchName.trim() : !selectedBranch);
 
@@ -169,7 +218,9 @@ export function CreateWorktreeModal() {
 			<div className="w-[480px] rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-surface)] shadow-[var(--shadow-md)]">
 				{/* Header */}
 				<div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
-					<h2 className="text-[15px] font-semibold text-[var(--text)]">New Worktree</h2>
+					<h2 className="text-[15px] font-semibold text-[var(--text)]">
+						{asOrchestrator ? "New Orchestrator" : "New Worktree"}
+					</h2>
 					<button
 						type="button"
 						onClick={closeCreateWorktreeModal}
@@ -188,31 +239,33 @@ export function CreateWorktreeModal() {
 
 				{/* Form */}
 				<form onSubmit={handleSubmit} className="flex flex-col gap-4 p-4">
-					{/* Mode toggle */}
-					<div className="flex rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-elevated)] p-0.5">
-						<button
-							type="button"
-							onClick={() => setMode("new")}
-							className="flex-1 rounded-[4px] px-3 py-1.5 text-[13px] font-medium transition-all duration-[120ms]"
-							style={{
-								background: mode === "new" ? "var(--bg-overlay)" : "transparent",
-								color: mode === "new" ? "var(--text)" : "var(--text-tertiary)",
-							}}
-						>
-							New branch
-						</button>
-						<button
-							type="button"
-							onClick={() => setMode("existing")}
-							className="flex-1 rounded-[4px] px-3 py-1.5 text-[13px] font-medium transition-all duration-[120ms]"
-							style={{
-								background: mode === "existing" ? "var(--bg-overlay)" : "transparent",
-								color: mode === "existing" ? "var(--text)" : "var(--text-tertiary)",
-							}}
-						>
-							Existing branch
-						</button>
-					</div>
+					{/* Mode toggle — hidden when creating an orchestrator (always a new branch) */}
+					{!asOrchestrator && (
+						<div className="flex rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-elevated)] p-0.5">
+							<button
+								type="button"
+								onClick={() => setMode("new")}
+								className="flex-1 rounded-[4px] px-3 py-1.5 text-[13px] font-medium transition-all duration-[120ms]"
+								style={{
+									background: mode === "new" ? "var(--bg-overlay)" : "transparent",
+									color: mode === "new" ? "var(--text)" : "var(--text-tertiary)",
+								}}
+							>
+								New branch
+							</button>
+							<button
+								type="button"
+								onClick={() => setMode("existing")}
+								className="flex-1 rounded-[4px] px-3 py-1.5 text-[13px] font-medium transition-all duration-[120ms]"
+								style={{
+									background: mode === "existing" ? "var(--bg-overlay)" : "transparent",
+									color: mode === "existing" ? "var(--text)" : "var(--text-tertiary)",
+								}}
+							>
+								Existing branch
+							</button>
+						</div>
+					)}
 
 					{mode === "new" && (
 						<>
@@ -326,6 +379,54 @@ export function CreateWorktreeModal() {
 						</>
 					)}
 
+					{mode === "new" && (
+						<div className="flex flex-col gap-2 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-2.5">
+							<label className="flex items-start gap-2 text-[13px] text-[var(--text)]">
+								<input
+									type="checkbox"
+									checked={asOrchestrator}
+									onChange={(e) => setAsOrchestrator(e.target.checked)}
+									className="mt-[3px]"
+								/>
+								<span className="flex-1">
+									<span className="font-medium">Create as orchestrator</span>
+									<span className="block text-[11px] text-[var(--text-tertiary)] leading-snug">
+										Lets this workspace coordinate other worktrees in this project.
+									</span>
+								</span>
+							</label>
+
+							{asOrchestrator && (
+								<div className="mt-1 flex flex-col gap-1.5 border-t border-[var(--border-subtle)] pt-2">
+									<div className="text-[12px] font-medium text-[var(--text-secondary)]">
+										Attach existing worktrees (optional)
+									</div>
+									{looseWorkspaces.length === 0 ? (
+										<div className="text-[11px] text-[var(--text-tertiary)]">
+											No loose worktrees in this project.
+										</div>
+									) : (
+										<div className="max-h-[140px] overflow-y-auto">
+											{looseWorkspaces.map((w) => (
+												<label
+													key={w.id}
+													className="flex items-center gap-2 py-[3px] text-[12px] text-[var(--text)]"
+												>
+													<input
+														type="checkbox"
+														checked={attachIds.has(w.id)}
+														onChange={() => toggleAttach(w.id)}
+													/>
+													<span className="truncate">{w.name}</span>
+												</label>
+											))}
+										</div>
+									)}
+								</div>
+							)}
+						</div>
+					)}
+
 					{mode === "existing" && (
 						<div className="flex flex-col gap-1.5">
 							<label
@@ -387,7 +488,9 @@ export function CreateWorktreeModal() {
 								? "Creating..."
 								: "Checking out..."
 							: mode === "new"
-								? "Create Worktree"
+								? asOrchestrator
+									? "Create Orchestrator"
+									: "Create Worktree"
 								: "Checkout Branch"}
 					</button>
 

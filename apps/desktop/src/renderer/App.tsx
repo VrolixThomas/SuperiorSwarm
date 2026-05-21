@@ -8,9 +8,11 @@ import { AddRepositoryModal } from "./components/AddRepositoryModal";
 import { BranchActionMenu } from "./components/BranchActionMenu";
 import { BranchPalette } from "./components/BranchPalette";
 import { CommandPalette } from "./components/CommandPalette";
+import { ConfirmAgentActionModal } from "./components/ConfirmAgentActionModal";
 import { CreateWorktreeModal } from "./components/CreateWorktreeModal";
 import { DaemonStatus } from "./components/DaemonStatus";
 import { DiffPanel } from "./components/DiffPanel";
+import { InstallingOverlay } from "./components/InstallingOverlay";
 import { LoginScreen } from "./components/LoginScreen";
 import { MainContentArea } from "./components/MainContentArea";
 import { SharedFilesPanel } from "./components/SharedFilesPanel";
@@ -332,30 +334,28 @@ function AuthenticatedApp() {
 		}
 	}, [restoreQuery.data]);
 
-	// Periodic save
+	// Periodic save + save-now event listener
 	useEffect(() => {
-		const interval = setInterval(() => {
+		const triggerSave = () => {
 			const snapshot = collectSnapshot();
 			if (snapshot.sessions.length > 0 || Object.keys(snapshot.paneLayouts).length > 0) {
 				saveMutateRef.current(snapshot);
 			}
-		}, SAVE_INTERVAL_MS);
-
-		return () => clearInterval(interval);
-	}, []);
-
-	// Save on quit (sync IPC)
-	useEffect(() => {
-		const handleBeforeUnload = () => {
-			const snapshot = collectSnapshot();
-			if (snapshot.sessions.length > 0 || Object.keys(snapshot.paneLayouts).length > 0) {
-				window.electron.session.saveSync(snapshot);
-			}
 		};
 
-		window.addEventListener("beforeunload", handleBeforeUnload);
-		return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+		const interval = setInterval(triggerSave, SAVE_INTERVAL_MS);
+		window.addEventListener("superiorswarm:save-now", triggerSave);
+
+		return () => {
+			clearInterval(interval);
+			window.removeEventListener("superiorswarm:save-now", triggerSave);
+		};
 	}, []);
+
+	// Note: we intentionally do not save on `beforeunload`. Synchronous IPC
+	// during window-close was the dominant cause of the "Not Responding" hang
+	// during auto-update. The periodic autosave + the "Restart now" save-now
+	// event (UpdateToast.handleRestart) cover the durable + final save paths.
 
 	// LSP diagnostics listener, go-to-definition handler, and crash restart listener
 	useEffect(() => {
@@ -365,6 +365,26 @@ function AuthenticatedApp() {
 		return () => {
 			cleanupGotoDef();
 			cleanupRestartListener();
+		};
+	}, []);
+
+	// Agent dispatch: main process asks renderer to open a terminal in a workspace and run a script.
+	useEffect(() => {
+		const timers = new Set<ReturnType<typeof setTimeout>>();
+		const off = window.electron.agentDispatch.onOpen(({ workspaceId, cwd, scriptPath, title }) => {
+			const store = useTabStore.getState();
+			store.setActiveWorkspace(workspaceId, cwd);
+			const tabId = store.addTerminalTab(workspaceId, cwd, title);
+			const escaped = scriptPath.replace(/'/g, "'\\''");
+			const id = setTimeout(() => {
+				timers.delete(id);
+				window.electron.terminal.write(tabId, `bash '${escaped}'\n`);
+			}, 300);
+			timers.add(id);
+		});
+		return () => {
+			for (const id of timers) clearTimeout(id);
+			off();
 		};
 	}, []);
 
@@ -746,8 +766,10 @@ function AuthenticatedApp() {
 					)}
 				</>
 			)}
+			<InstallingOverlay />
 			<UpdateToast />
 			<WhatsNewModal />
+			<ConfirmAgentActionModal />
 			{notification && (
 				<div
 					className={[

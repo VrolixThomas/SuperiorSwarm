@@ -1,6 +1,7 @@
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { eq } from "drizzle-orm";
-import { BrowserWindow, app, dialog, ipcMain, shell } from "electron";
+import { BrowserWindow, app, dialog, ipcMain, session, shell, systemPreferences } from "electron";
 import { AGENT_NOTIFY_PORT } from "../shared/agent-events";
 import { daemonInstanceId, daemonPaths } from "../shared/daemon-protocol";
 import { updateOpenCodePluginPort } from "./agent-hooks/agents/opencode";
@@ -12,6 +13,7 @@ import { cleanupReviewWorkspace, findReviewWorkspaceByPR } from "./ai-review/cle
 import { startCommentPoller, stopCommentPoller } from "./ai-review/comment-poller";
 import { recoverStuckSessions } from "./ai-review/comment-solver-orchestrator";
 import { startPolling } from "./ai-review/commit-poller";
+import { getMcpServerPath } from "./ai-review/mcp-path";
 import { cleanupStaleReviews } from "./ai-review/orchestrator";
 import {
 	onNewPRDetected,
@@ -19,6 +21,9 @@ import {
 	onPRCommitChanged,
 	startPolling as startPRPolling,
 } from "./ai-review/pr-poller";
+import { type RunningControlPlane, startControlPlane } from "./control-plane";
+import { registerConfirmBridge, requestConfirm } from "./control-plane/confirm-bridge";
+import { attachOrchestratorEventSink, setEventsDir } from "./control-plane/orchestrator-event-sink";
 import { backfillRemoteHosts, getDb, initializeDatabase } from "./db";
 import * as schema from "./db/schema";
 import {
@@ -30,8 +35,16 @@ import { isCloneable, setDebugMode } from "./ipc-safety";
 import { log, setupCrashHandlers } from "./logger";
 import { setupLspIPC } from "./lsp/ipc-handler";
 import { serverManager, warmShellPathCache } from "./lsp/server-manager";
+import { getMainWindow, setMainWindow } from "./main-window";
 import { syncShortcuts } from "./quick-actions/shortcuts";
 import { disposeRepoIPC, setupRepoIPC } from "./repo-ipc";
+import { probeCliInPath } from "./services/cli-probe";
+import { deleteControlDiscovery, writeControlDiscovery } from "./services/control-discovery";
+import { runGlobalMcpInstall } from "./services/global-mcp-install";
+import { writeLauncherScript } from "./services/global-mcp-launcher";
+import { runGlobalMcpMigration } from "./services/global-mcp-migration";
+import { setTaskRegistry } from "./services/task-registry-handle";
+import { defaultSpawnFn, setDispatchBroadcaster, setEventBus } from "./services/workspace-service";
 import { registerSingleInstance } from "./single-instance";
 import { ensureTelemetryState } from "./telemetry/state";
 import { DaemonClient } from "./terminal/daemon-client";
@@ -50,15 +63,16 @@ import { registerIssueTracker } from "./providers/issue-tracker";
 import { JiraAdapter } from "./providers/jira-adapter";
 import { LinearAdapter } from "./providers/linear-adapter";
 
-let mainWindow: BrowserWindow | null = null;
 let daemonClient: DaemonClient;
 let alertListener: AgentAlertListener | null = null;
+let controlPlane: RunningControlPlane | null = null;
+let detachOrchestratorSink: (() => void) | null = null;
 
 function isHttpUrl(url: string): boolean {
 	return url.startsWith("http://") || url.startsWith("https://");
 }
 
-if (!import.meta.env.DEV && !registerSingleInstance(app, () => mainWindow)) {
+if (!import.meta.env.DEV && !registerSingleInstance(app, getMainWindow)) {
 	process.exit(0);
 }
 
@@ -73,7 +87,7 @@ function broadcastToWindows(channel: string, payload: unknown): void {
 }
 
 function createWindow() {
-	mainWindow = new BrowserWindow({
+	const win = new BrowserWindow({
 		width: 1400,
 		height: 900,
 		minWidth: 800,
@@ -87,23 +101,24 @@ function createWindow() {
 			nodeIntegration: false,
 		},
 	});
+	setMainWindow(win);
 
-	mainWindow.on("ready-to-show", () => {
-		mainWindow?.show();
+	win.on("ready-to-show", () => {
+		win.show();
 	});
 
-	mainWindow.on("closed", () => {
-		mainWindow = null;
+	win.on("closed", () => {
+		setMainWindow(null);
 	});
 
-	mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+	win.webContents.setWindowOpenHandler(({ url }) => {
 		if (isHttpUrl(url)) {
 			void shell.openExternal(url);
 		}
 		return { action: "deny" };
 	});
 
-	mainWindow.webContents.on("will-navigate", (event, url) => {
+	win.webContents.on("will-navigate", (event, url) => {
 		const devURL = process.env["ELECTRON_RENDERER_URL"];
 		const isDevURL = Boolean(devURL) && url.startsWith(devURL ?? "");
 		if (!isDevURL && !url.startsWith("file://")) {
@@ -115,15 +130,22 @@ function createWindow() {
 	});
 
 	if (process.env["ELECTRON_RENDERER_URL"]) {
-		mainWindow.loadURL(process.env["ELECTRON_RENDERER_URL"]);
+		win.loadURL(process.env["ELECTRON_RENDERER_URL"]);
 	} else {
-		mainWindow.loadFile(join(__dirname, "../renderer/index.html"));
+		win.loadFile(join(__dirname, "../renderer/index.html"));
 	}
 }
 
 app.whenReady().then(async () => {
 	setupCrashHandlers();
 	log.info("App started", { version: app.getVersion() });
+
+	if (process.platform === "darwin") {
+		const micStatus = systemPreferences.getMediaAccessStatus("microphone");
+		if (micStatus !== "granted") {
+			await systemPreferences.askForMediaAccess("microphone");
+		}
+	}
 	const instanceId = daemonInstanceId(__dirname);
 	const paths = daemonPaths(instanceId);
 	daemonClient = new DaemonClient(
@@ -170,7 +192,12 @@ app.whenReady().then(async () => {
 	// Set up tRPC IPC so the renderer can make queries once it loads
 	setupTRPCIPC(appRouter);
 
-	setupRepoIPC(() => mainWindow);
+	setupRepoIPC(getMainWindow);
+
+	const ALLOWED_PERMISSIONS = new Set(["media", "clipboard-sanitized-write"]);
+	session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
+		callback(ALLOWED_PERMISSIONS.has(permission));
+	});
 
 	void (async () => {
 		try {
@@ -231,8 +258,58 @@ app.whenReady().then(async () => {
 	// Show the window NOW — branded splash screen in index.html is visible immediately
 	createWindow();
 
-	if (mainWindow) {
-		setupLspIPC(mainWindow);
+	const win = getMainWindow();
+	if (win) {
+		setupLspIPC(win);
+	}
+
+	registerConfirmBridge(getMainWindow);
+	setDispatchBroadcaster((payload) => broadcastToWindows("agent-dispatch:open", payload));
+
+	try {
+		const userData = app.getPath("userData");
+		// Set the events dir BEFORE the control plane starts accepting requests —
+		// /context.resolve for an orchestrator workspace calls eventsFilePathForProject().
+		setEventsDir(join(userData, "events"));
+
+		controlPlane = await startControlPlane({
+			confirm: (r) => requestConfirm(r),
+			spawnFn: defaultSpawnFn,
+		});
+
+		setEventBus(controlPlane.eventBus);
+		setTaskRegistry(controlPlane.taskRegistry);
+		detachOrchestratorSink = attachOrchestratorEventSink(controlPlane.eventBus);
+		writeControlDiscovery(userData, {
+			port: controlPlane.port,
+			token: controlPlane.token,
+			pid: process.pid,
+		});
+
+		const electronPath = process.execPath;
+		const serverPath = getMcpServerPath();
+		const launcherPath = writeLauncherScript(userData, electronPath, serverPath);
+		log.info(`[global-mcp] launcher refreshed at ${launcherPath}`);
+
+		try {
+			const installedClis = await runGlobalMcpInstall(launcherPath, probeCliInPath);
+			log.info(`[global-mcp] installed for: ${installedClis.join(", ") || "none"}`);
+		} catch (err) {
+			log.warn("[global-mcp] install failed:", err);
+		}
+
+		try {
+			const { scrubbedCount } = runGlobalMcpMigration();
+			if (scrubbedCount > 0) {
+				log.info(`[global-mcp] migration scrubbed ${scrubbedCount} repo config(s)`);
+			}
+		} catch (err) {
+			log.warn("[global-mcp] migration failed:", err);
+		}
+
+		log.info(`[control-plane] listening on 127.0.0.1:${controlPlane.port}`);
+	} catch (err) {
+		log.error("[control-plane] failed to start:", err);
 	}
 
 	app.on("activate", () => {
@@ -337,15 +414,44 @@ app.whenReady().then(async () => {
 });
 
 app.on("before-quit", () => {
+	const t0 = Date.now();
+	log.info("[quit] before-quit start");
+	// Watchdog: if any cleanup blocks the main thread, hard-exit before macOS
+	// flags the window as not responding. Squirrel's Autoupdate helper only
+	// needs our PID to die — graceful or not — to complete the bundle swap.
+	const watchdog = setTimeout(() => {
+		log.error("[quit] watchdog fired after 3s — forcing exit");
+		app.exit(0);
+	}, 3000);
+	watchdog.unref();
+	try {
+		deleteControlDiscovery(app.getPath("userData"));
+	} catch {}
+	log.debug(`[quit] discovery-deleted +${Date.now() - t0}ms`);
 	alertListener?.stop();
 	setAgentNotifyPort(null);
 	stopCommentPoller();
 	teardownUpdater();
+	log.debug(`[quit] timers-stopped +${Date.now() - t0}ms`);
 	daemonClient.setQuitting();
 	daemonClient.detachAll();
 	daemonClient.disconnect();
+	log.debug(`[quit] daemon-disconnected +${Date.now() - t0}ms`);
 	serverManager.disposeAll();
 	void disposeRepoIPC();
+	log.debug(`[quit] async-cleanup-dispatched +${Date.now() - t0}ms`);
+	if (controlPlane) {
+		void controlPlane.stop().catch((err) => {
+			log.error("[control-plane] stop failed:", err);
+		});
+		controlPlane = null;
+		setEventBus(null);
+		if (detachOrchestratorSink) {
+			detachOrchestratorSink();
+			detachOrchestratorSink = null;
+		}
+	}
+	log.info(`[quit] before-quit done +${Date.now() - t0}ms`);
 });
 
 app.on("window-all-closed", () => {

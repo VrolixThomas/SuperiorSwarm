@@ -1,5 +1,58 @@
 # Changelog
 
+## v0.9.3 (2026-05-17)
+
+### What's New
+
+SuperiorSwarm v0.9.3 makes worktree deletion fully non-blocking. Removing a workspace now returns instantly while filesystem cleanup runs in a background queue, so the app never freezes while git tears down large worktrees. Failed deletions no longer pop a blocking dialog — errors surface inline and the UI stays responsive.
+
+### Changes
+
+- Removing worktrees freezing followup (#110)
+
+## v0.9.2 (2026-05-17)
+
+### What's New
+
+SuperiorSwarm v0.9.2 brings orchestrator workspaces front and center. You can now group workspaces under one or more orchestrators per project, reorder them with drag-and-drop, and attach or detach via right-click, keyboard shortcuts, or a dedicated hover button. A new create-orchestrator modal lets you spin up a coordinator and attach existing workspaces in one step, with color-coded rows so each group stays visually distinct. The auto-updater no longer looks frozen during install — a spinner overlay paints before the app quits, and a watchdog guarantees clean shutdown so updates apply reliably.
+
+### Changes
+
+- Orchestrator ordering (#108)
+- Updating application not responding (#109)
+
+## v0.9.1 (2026-05-17)
+
+### What's New
+
+SuperiorSwarm v0.9.1 is a reliability release. Deleting a worktree is now instant and resilient — a 15-second timeout and force-remove fallback ensure cleanup always completes even when git hangs or a terminal is still active. Orchestrator coordination is now delivered via MCP-level instructions so the agent contract survives context compaction and session resume.
+
+### Changes
+
+- fix: harden worktree removal against hangs and partial state (#107)
+- fix: deliver orchestrator coordination via MCP, store events outside worktree (#106)
+
+## v0.9.0 (2026-05-16)
+
+### What's New
+
+SuperiorSwarm v0.9.0 introduces multi-agent coordination. Agents spawned inside a workspace can now talk to each other, hand off work, and resume sessions through a built-in MCP control plane — including a designated orchestrator that drives the rest of the swarm. The MCP server is now installed globally per CLI instead of being scattered across every worktree, so your repos stay clean and configuration survives across projects. The Settings page gains a section to install or uninstall the global MCP integration on demand.
+
+### Changes
+
+- Mcp support for app (#103)
+- Global mcp tool (#105)
+
+## v0.8.0 (2026-05-16)
+
+### What's New
+
+SuperiorSwarm v0.8.0 adds voice input support. You can now use your microphone directly within the app — SuperiorSwarm requests the necessary permissions on first use and handles macOS microphone access automatically, so there's no manual setup required.
+
+### Changes
+
+- Voice (#104)
+
 ## v0.7.2 (2026-05-10)
 
 ### What's New

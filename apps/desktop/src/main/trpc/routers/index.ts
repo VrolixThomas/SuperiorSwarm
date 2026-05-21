@@ -6,6 +6,7 @@ import { branchesRouter } from "./branches";
 import { commentSolverRouter } from "./comment-solver";
 import { diffRouter } from "./diff";
 import { githubRouter } from "./github";
+import { globalMcpRouter } from "./global-mcp";
 import { linearRouter } from "./linear";
 import { lspRouter } from "./lsp";
 import { mergeRouter } from "./merge";
@@ -42,6 +43,7 @@ export const appRouter = router({
 	sharedFiles: sharedFilesRouter,
 	linear: linearRouter,
 	github: githubRouter,
+	globalMcp: globalMcpRouter,
 	tickets: ticketsRouter,
 	prPoller: prPollerRouter,
 	updates: updatesRouter,

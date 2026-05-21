@@ -3,6 +3,7 @@ import type { BranchInfo } from "../../shared/branch-types";
 import { useBranchStore } from "../stores/branch-store";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
+import { flattenWorkspaceTree } from "../utils/workspace-tree";
 import { BranchRow } from "./BranchRow";
 
 interface Props {
@@ -71,7 +72,8 @@ export function BranchPalette({ projectId, onOpenActionMenu }: Props) {
 
 	const allBranches: BranchInfo[] = useMemo(() => {
 		const branches = branchesQuery.data ?? [];
-		const wsData = workspacesQuery.data ?? [];
+		const tree = workspacesQuery.data;
+		const wsData = tree ? flattenWorkspaceTree(tree) : [];
 
 		// Enrich with workspace info
 		const branchesWithWorkspace = new Set(

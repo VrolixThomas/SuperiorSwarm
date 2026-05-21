@@ -1,6 +1,10 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type {
 	AgentAlertAPI,
+	AgentConfirmAPI,
+	AgentConfirmRequestPayload,
+	AgentDispatchAPI,
+	AgentDispatchOpenPayload,
 	DaemonAPI,
 	DialogAPI,
 	LspAPI,
@@ -116,6 +120,31 @@ const agentAlertAPI: AgentAlertAPI = {
 	},
 };
 
+const agentConfirmAPI: AgentConfirmAPI = {
+	onRequest: (callback) => {
+		const handler = (_event: Electron.IpcRendererEvent, payload: AgentConfirmRequestPayload) =>
+			callback(payload);
+		ipcRenderer.on("agent-confirm:request", handler);
+		return () => {
+			ipcRenderer.removeListener("agent-confirm:request", handler);
+		};
+	},
+	reply: (id, allow) => {
+		ipcRenderer.send("agent-confirm:reply", { id, allow });
+	},
+};
+
+const agentDispatchAPI: AgentDispatchAPI = {
+	onOpen: (callback) => {
+		const handler = (_event: Electron.IpcRendererEvent, payload: AgentDispatchOpenPayload) =>
+			callback(payload);
+		ipcRenderer.on("agent-dispatch:open", handler);
+		return () => {
+			ipcRenderer.removeListener("agent-dispatch:open", handler);
+		};
+	},
+};
+
 const settingsAPI: SettingsAPI = {
 	onThemeChanged: (callback) => {
 		const handler = (_event: Electron.IpcRendererEvent, value: "system" | "light" | "dark") => {
@@ -151,6 +180,8 @@ contextBridge.exposeInMainWorld("electron", {
 	lsp: lspAPI,
 	daemon: daemonAPI,
 	agentAlert: agentAlertAPI,
+	agentConfirm: agentConfirmAPI,
+	agentDispatch: agentDispatchAPI,
 	settings: settingsAPI,
 	repo: repoAPI,
 });

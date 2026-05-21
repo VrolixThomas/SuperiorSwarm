@@ -1,6 +1,9 @@
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
+import { homedir, platform } from "node:os";
+import { join } from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
@@ -8,38 +11,139 @@ import { z } from "zod";
 const require = createRequire(import.meta.url);
 const Database = require("better-sqlite3");
 
-// Configuration from environment variables
-const REVIEW_DRAFT_ID = process.env.REVIEW_DRAFT_ID;
-const PR_METADATA = JSON.parse(process.env.PR_METADATA || "{}");
-const DB_PATH = process.env.DB_PATH;
-const SOLVE_SESSION_ID = process.env.SOLVE_SESSION_ID;
-const WORKTREE_PATH = process.env.WORKTREE_PATH;
-const QUICK_ACTION_SETUP = process.env.QUICK_ACTION_SETUP;
-const PROJECT_ID = process.env.PROJECT_ID;
-const isSolverMode = !!SOLVE_SESSION_ID;
-const isQuickActionMode = QUICK_ACTION_SETUP === "1";
-
-if (!isQuickActionMode && !isSolverMode && (!REVIEW_DRAFT_ID || !DB_PATH)) {
-	console.error("Missing required env vars: REVIEW_DRAFT_ID or SOLVE_SESSION_ID, and DB_PATH");
-	process.exit(1);
-}
-if ((isSolverMode || isQuickActionMode) && !DB_PATH) {
-	console.error("Missing required env var: DB_PATH");
-	process.exit(1);
+function defaultUserDataDir() {
+	if (process.env.SUPERIORSWARM_USER_DATA) return process.env.SUPERIORSWARM_USER_DATA;
+	const home = homedir();
+	if (platform() === "darwin") return join(home, "Library", "Application Support", "SuperiorSwarm");
+	if (platform() === "win32") return join(process.env.APPDATA || home, "SuperiorSwarm");
+	return join(process.env.XDG_CONFIG_HOME || join(home, ".config"), "SuperiorSwarm");
 }
 
-// Connect to SQLite with WAL mode and busy timeout for concurrent access
-const db = new Database(DB_PATH);
-db.pragma("journal_mode = WAL");
-db.pragma("busy_timeout = 5000");
-db.pragma("foreign_keys = ON");
+function readControlDiscovery(dir) {
+	const file = join(dir, "control.json");
+	if (!existsSync(file)) return null;
+	try {
+		const v = JSON.parse(readFileSync(file, "utf-8"));
+		if (typeof v.port === "number" && typeof v.token === "string") return v;
+	} catch {}
+	return null;
+}
 
-const server = new McpServer({
-	name: "superiorswarm",
-	version: "1.0.0",
-});
+const USER_DATA = defaultUserDataDir();
+const discovery = readControlDiscovery(USER_DATA);
+if (!discovery) {
+	console.error("SuperiorSwarm is not running (no control.json). Open the app and retry.");
+	process.exit(1);
+}
 
-if (!isSolverMode && !isQuickActionMode) {
+async function resolveContext(taskToken) {
+	const params = new URLSearchParams({ cwd: process.cwd() });
+	if (taskToken) params.set("taskToken", taskToken);
+	const res = await fetch(`http://127.0.0.1:${discovery.port}/context.resolve?${params}`, {
+		headers: { Authorization: `Bearer ${discovery.token}` },
+	});
+	if (!res.ok) throw new Error(`/context.resolve ${res.status}`);
+	return res.json();
+}
+
+const ctx = await resolveContext(process.env.SUPERIORSWARM_TASK_TOKEN);
+const MODE = ctx.mode;
+const PROJECT_ID = ctx.projectId;
+const WORKSPACE_ID = ctx.workspaceId;
+const IS_ORCHESTRATOR = ctx.isOrchestrator === true;
+const ORCHESTRATOR_EVENTS_PATH = ctx.orchestratorEventsPath || null;
+const modeContext = ctx.modeContext || {};
+const REVIEW_DRAFT_ID = modeContext.reviewDraftId;
+const SOLVE_SESSION_ID = modeContext.solveSessionId;
+const DB_PATH = modeContext.dbPath;
+const PR_METADATA = modeContext.prMetadata ? JSON.parse(modeContext.prMetadata) : {};
+const WORKTREE_PATH = modeContext.worktreePath;
+const SUPERIORSWARM_CONTROL_PORT = String(discovery.port);
+const SUPERIORSWARM_CONTROL_TOKEN = discovery.token;
+
+if (MODE === "none") {
+	console.error("SuperiorSwarm: this cwd is not part of any registered workspace.");
+	process.exit(1);
+}
+
+const isWorkspaceAgentMode = MODE === "workspace-agent";
+const isSolverMode = MODE === "solve";
+const isQuickActionMode = MODE === "quick-action-setup";
+const isReviewMode = MODE === "review";
+
+// Open DB only when a DB path was supplied (review/solve/quick-action modes).
+let db = null;
+if (DB_PATH) {
+	db = new Database(DB_PATH);
+	db.pragma("journal_mode = WAL");
+	db.pragma("busy_timeout = 5000");
+	db.pragma("foreign_keys = ON");
+}
+
+const ORCHESTRATOR_INSTRUCTIONS = `You are the ORCHESTRATOR workspace for this SuperiorSwarm project. Coordinate child workspace agents via the superiorswarm MCP tools.
+
+REQUIRED FIRST ACTION (do this before any user task work):
+  Use the Monitor tool with command="tail -F -n 0 '${ORCHESTRATOR_EVENTS_PATH ?? ""}'" and persistent=true.
+
+(The events file lives in SuperiorSwarm's app data dir — outside your worktree — so it never appears in git status.)
+
+Each new line is a JSON event:
+  {"event":"status","workspaceId":"...","phase":"idle|working|blocked|done","statusText":"...","needs":"...","ts":"..."}
+  {"event":"message","messageId":"...","from":"...","to":"...|null","kind":"note|question|result|resume","content":"...","ts":"..."}
+
+React to events as they arrive:
+  - child reports phase=blocked with 'needs' → call resume_agent with the missing info, or dispatch help
+  - child reports phase=done → decide next task and call resume_agent
+  - inbound question → answer via send_message; broadcast notes for project-wide updates
+
+Coordination tools (superiorswarm namespace):
+  - set_status({phase, statusText?, needs?}) — publish your own status
+  - send_message({toWorkspaceId?, kind, content}) — DM (with toWorkspaceId) or broadcast (omit)
+  - read_messages({since?, includeBroadcasts?}) — query inbox
+  - resume_agent({workspaceId, message}) — restart a child's claude session with a new task
+  - list_workspaces / get_workspace / create_worktree / dispatch_agent / remove_worktree — workspace management`;
+
+const CHILD_INSTRUCTIONS = `You are a CHILD workspace in a SuperiorSwarm project. The orchestrator workspace coordinates work across the project.
+
+Coordination rules:
+  - Call set_status({phase: "working"}) when you start a task, {phase: "blocked", needs: "..."} when you need input, {phase: "done", statusText: "..."} when finished.
+  - Use send_message to ask the orchestrator questions or post notes; the orchestrator sees broadcasts and DMs through its event stream.
+  - read_messages returns the most recent inbox entries — check it if you were resumed without an obvious task in context.`;
+
+const server = new McpServer(
+	{
+		name: "superiorswarm",
+		version: "1.0.0",
+	},
+	{
+		instructions: isWorkspaceAgentMode
+			? IS_ORCHESTRATOR
+				? ORCHESTRATOR_INSTRUCTIONS
+				: CHILD_INSTRUCTIONS
+			: undefined,
+	}
+);
+
+// Tool-result reminder appended to every workspace-agent tool response so the
+// agent re-sees its coordination contract on every MCP interaction. MCP server
+// `instructions` are sent at initialize and may be summarized away on long
+// sessions; tool-result reminders ride along with every call.
+const ROLE_REMINDER = IS_ORCHESTRATOR
+	? `[superiorswarm] ORCHESTRATOR reminder: keep Monitor(tail -F -n 0 '${ORCHESTRATOR_EVENTS_PATH ?? ""}', persistent=true) running. On child phase=done/blocked, call resume_agent.`
+	: "[superiorswarm] CHILD reminder: publish set_status at each phase transition; use send_message for questions to the orchestrator.";
+
+function withRoleReminder(handler) {
+	return async (...args) => {
+		const result = await handler(...args);
+		if (!result || !Array.isArray(result.content)) return result;
+		return {
+			...result,
+			content: [...result.content, { type: "text", text: ROLE_REMINDER }],
+		};
+	};
+}
+
+if (isReviewMode) {
 	// Tool: get_pr_metadata
 	server.tool("get_pr_metadata", "Get metadata about the PR being reviewed", {}, async () => {
 		return {
@@ -498,14 +602,6 @@ if (isSolverMode) {
 
 				execFileSync("git", ["add", "-A"], { cwd });
 
-				for (const path of [".mcp.json", ".gemini/", "opencode.json", ".codex/"]) {
-					try {
-						execFileSync("git", ["reset", "HEAD", path], { cwd });
-					} catch {
-						// Ignore errors — file may not exist or not be staged
-					}
-				}
-
 				try {
 					execFileSync("git", ["commit", "-m", `fix: ${group.label}`], { cwd });
 				} catch (commitErr) {
@@ -756,6 +852,189 @@ if (isQuickActionMode) {
 				content: [{ type: "text", text: JSON.stringify({ status: "removed", id }) }],
 			};
 		}
+	);
+}
+
+if (isWorkspaceAgentMode) {
+	// Wrap every tool registered in this mode so its handler appends ROLE_REMINDER
+	// to the result content. Scoped to workspace-agent — review/solve modes are
+	// unaffected.
+	const _origTool = server.tool.bind(server);
+	server.tool = (name, description, schema, handler) =>
+		_origTool(name, description, schema, withRoleReminder(handler));
+
+	const baseUrl = `http://127.0.0.1:${SUPERIORSWARM_CONTROL_PORT}`;
+	const authHeader = `Bearer ${SUPERIORSWARM_CONTROL_TOKEN}`;
+
+	async function call(method, path, body) {
+		try {
+			const res = await fetch(`${baseUrl}${path}`, {
+				method,
+				headers: {
+					Authorization: authHeader,
+					"X-Workspace-Id": WORKSPACE_ID,
+					...(body ? { "Content-Type": "application/json" } : {}),
+				},
+				body: body ? JSON.stringify(body) : undefined,
+			});
+			const text = await res.text();
+			let parsed;
+			try {
+				parsed = text ? JSON.parse(text) : {};
+			} catch {
+				parsed = { raw: text };
+			}
+			if (!res.ok) {
+				return {
+					content: [{ type: "text", text: JSON.stringify({ status: res.status, ...parsed }) }],
+					isError: true,
+				};
+			}
+			return { content: [{ type: "text", text: JSON.stringify(parsed) }] };
+		} catch (err) {
+			return {
+				content: [
+					{
+						type: "text",
+						text: `control plane unreachable — is SuperiorSwarm running? (${err && err.message ? err.message : String(err)})`,
+					},
+				],
+				isError: true,
+			};
+		}
+	}
+
+	server.tool(
+		"create_worktree",
+		"Create a new app-managed worktree for a new branch. The new worktree gets its own .mcp.json so child agents inherit the same control plane.",
+		{
+			branch: z.string().describe("Branch name to create"),
+			base_branch: z
+				.string()
+				.optional()
+				.describe("Branch to fork from. Defaults to project default branch."),
+		},
+		async ({ branch, base_branch }) =>
+			call("POST", "/workspaces.create", {
+				projectId: PROJECT_ID,
+				branch,
+				baseBranch: base_branch,
+			})
+	);
+
+	server.tool(
+		"list_workspaces",
+		"List all workspaces (worktrees and review sessions) in the current project.",
+		{},
+		async () => call("GET", `/workspaces.list?projectId=${encodeURIComponent(PROJECT_ID)}`)
+	);
+
+	server.tool(
+		"get_workspace",
+		"Get details about a specific workspace, including whether it has uncommitted changes.",
+		{ workspace_id: z.string().describe("Workspace ID") },
+		async ({ workspace_id }) =>
+			call(
+				"GET",
+				`/workspaces.get?projectId=${encodeURIComponent(PROJECT_ID)}&workspaceId=${encodeURIComponent(workspace_id)}`
+			)
+	);
+
+	server.tool(
+		"dispatch_agent",
+		"Open a terminal in the target workspace and run the configured CLI agent with a prompt. User must approve via app modal.",
+		{
+			workspace_id: z.string().describe("Workspace ID to dispatch into"),
+			prompt: z.string().describe("Prompt to send to the CLI agent"),
+			cli_preset: z.enum(["claude", "codex", "gemini", "opencode"]).optional(),
+			skip_permissions: z.boolean().optional(),
+		},
+		async ({ workspace_id, prompt, cli_preset, skip_permissions }) =>
+			call("POST", "/workspaces.dispatch", {
+				projectId: PROJECT_ID,
+				workspaceId: workspace_id,
+				prompt,
+				cliPreset: cli_preset,
+				skipPermissions: skip_permissions,
+			})
+	);
+
+	server.tool(
+		"remove_worktree",
+		"Remove a worktree and its workspace. User must approve via app modal. Set force=true to bypass uncommitted-changes guard.",
+		{
+			workspace_id: z.string().describe("Workspace ID to remove"),
+			force: z.boolean().optional().describe("Bypass uncommitted-changes guard"),
+		},
+		async ({ workspace_id, force }) =>
+			call("POST", "/workspaces.remove", {
+				projectId: PROJECT_ID,
+				workspaceId: workspace_id,
+				force,
+			})
+	);
+
+	server.tool(
+		"set_status",
+		"Publish this workspace's current phase. Call this at every phase transition: 'working' when you start a task, 'blocked' (with needs=\"<what you need>\") when you cannot continue, 'done' (with statusText=\"<summary>\") when finished, 'idle' when waiting. Status is streamed to the orchestrator's events log. Phase ∈ idle | working | blocked | done.",
+		{
+			phase: z.enum(["idle", "working", "blocked", "done"]),
+			status_text: z.string().max(2000).optional(),
+			needs: z.string().max(2000).optional(),
+		},
+		async ({ phase, status_text, needs }) =>
+			call("POST", "/workspaces.set_status", {
+				phase,
+				statusText: status_text,
+				needs,
+			})
+	);
+
+	server.tool(
+		"send_message",
+		"Send a durable message to another workspace, or broadcast to the whole project (omit to_workspace_id). Use 'question' to ask the orchestrator something, 'note' for status/result updates, 'answer' for replies (set in_reply_to). The orchestrator sees broadcasts and DMs in its events stream.",
+		{
+			to_workspace_id: z.string().optional().describe("Omit for broadcast"),
+			kind: z.enum(["note", "question", "answer"]),
+			content: z.string().min(1).max(8192),
+			in_reply_to: z.string().optional(),
+		},
+		async ({ to_workspace_id, kind, content, in_reply_to }) =>
+			call("POST", "/workspaces.send_message", {
+				toWorkspaceId: to_workspace_id,
+				kind,
+				content,
+				inReplyTo: in_reply_to,
+			})
+	);
+
+	server.tool(
+		"read_messages",
+		"Read messages directed at this workspace (plus project broadcasts unless excluded). Useful when you've been resumed without obvious task context — check the inbox for the orchestrator's latest instructions. Returns up to 200 most recent messages.",
+		{
+			since: z.string().optional().describe("ISO timestamp; default = last 1 hour"),
+			include_broadcasts: z.boolean().optional(),
+		},
+		async ({ since, include_broadcasts }) => {
+			const params = new URLSearchParams({ projectId: PROJECT_ID });
+			if (since) params.set("since", since);
+			if (include_broadcasts === false) params.set("includeBroadcasts", "false");
+			return call("GET", `/workspaces.read_messages?${params.toString()}`);
+		}
+	);
+
+	server.tool(
+		"resume_agent",
+		"ORCHESTRATOR-ONLY. Wake a child workspace agent with a follow-up message. Use this when a child reports phase=done (give it the next task) or phase=blocked (provide the missing input from 'needs'). The control plane runs `claude --resume` in the target workspace's terminal, so the child resumes its existing session with the new message as the next user turn.",
+		{
+			workspace_id: z.string(),
+			message: z.string().min(1).max(8192),
+		},
+		async ({ workspace_id, message }) =>
+			call("POST", "/workspaces.resume_agent", {
+				workspaceId: workspace_id,
+				message,
+			})
 	);
 }
 

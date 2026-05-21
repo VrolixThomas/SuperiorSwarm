@@ -6,20 +6,13 @@ import { getDb } from "../../db";
 import {
 	githubBranchPrs,
 	projects,
+	sessionState,
 	sharedFiles,
-	terminalSessions,
 	workspaces,
 	worktrees,
 } from "../../db/schema";
-import { reviewDrafts } from "../../db/schema-ai-review";
-import {
-	checkoutBranchWorktree,
-	createWorktree,
-	hasUncommittedChanges,
-	removeWorktree,
-} from "../../git/operations";
+import { checkoutBranchWorktree } from "../../git/operations";
 import { symlinkSharedFiles } from "../../shared-files";
-import { getDaemonClient } from "../../terminal/daemon-instance";
 import { publicProcedure, router } from "../index";
 
 function worktreeBasePath(repoPath: string): string {
@@ -38,6 +31,11 @@ export const workspacesRouter = router({
 					projectId: workspaces.projectId,
 					type: workspaces.type,
 					name: workspaces.name,
+					currentPhase: workspaces.currentPhase,
+					statusText: workspaces.statusText,
+					needs: workspaces.needs,
+					isOrchestrator: workspaces.isOrchestrator,
+					cliPreset: workspaces.cliPreset,
 				})
 				.from(workspaces)
 				.where(eq(workspaces.id, input.id))
@@ -45,31 +43,12 @@ export const workspacesRouter = router({
 		);
 	}),
 
-	listByProject: publicProcedure.input(z.object({ projectId: z.string() })).query(({ input }) => {
-		const db = getDb();
-		return db
-			.select({
-				id: workspaces.id,
-				projectId: workspaces.projectId,
-				type: workspaces.type,
-				name: workspaces.name,
-				worktreeId: workspaces.worktreeId,
-				terminalId: workspaces.terminalId,
-				prProvider: workspaces.prProvider,
-				prIdentifier: workspaces.prIdentifier,
-				reviewDraftId: workspaces.reviewDraftId,
-				createdAt: workspaces.createdAt,
-				updatedAt: workspaces.updatedAt,
-				worktreePath: worktrees.path,
-				draftStatus: reviewDrafts.status,
-				draftCommitSha: reviewDrafts.commitSha,
-			})
-			.from(workspaces)
-			.leftJoin(worktrees, eq(workspaces.worktreeId, worktrees.id))
-			.leftJoin(reviewDrafts, eq(workspaces.reviewDraftId, reviewDrafts.id))
-			.where(eq(workspaces.projectId, input.projectId))
-			.all();
-	}),
+	listByProject: publicProcedure
+		.input(z.object({ projectId: z.string() }))
+		.query(async ({ input }) => {
+			const { listByProjectTree } = await import("../../services/workspace-service");
+			return listByProjectTree({ projectId: input.projectId });
+		}),
 
 	create: publicProcedure
 		.input(
@@ -80,82 +59,40 @@ export const workspacesRouter = router({
 			})
 		)
 		.mutation(async ({ input }) => {
-			const db = getDb();
-			const project = db.select().from(projects).where(eq(projects.id, input.projectId)).get();
-
-			if (!project) {
-				throw new Error("Project not found");
-			}
-
-			const baseBranch = input.baseBranch || project.defaultBranch;
-			const worktreePath = join(worktreeBasePath(project.repoPath), input.branch);
-
-			await createWorktree(project.repoPath, worktreePath, input.branch, baseBranch);
-
-			const now = new Date();
-			const worktreeId = nanoid();
-			const workspaceId = nanoid();
-
-			db.insert(worktrees)
-				.values({
-					id: worktreeId,
-					projectId: input.projectId,
-					path: worktreePath,
-					branch: input.branch,
-					baseBranch,
-					createdAt: now,
-					updatedAt: now,
-				})
-				.run();
-
-			const workspace = {
-				id: workspaceId,
+			const { createWorkspace } = await import("../../services/workspace-service");
+			const created = await createWorkspace({
 				projectId: input.projectId,
-				type: "worktree" as const,
-				name: input.branch,
-				worktreeId,
-				terminalId: null as string | null,
-				createdAt: now,
-				updatedAt: now,
-			};
+				branch: input.branch,
+				baseBranch: input.baseBranch,
+			});
 
-			db.insert(workspaces).values(workspace).run();
-
-			// Symlink shared files from main repo to new worktree
-			const sharedEntries = db
-				.select()
-				.from(sharedFiles)
-				.where(eq(sharedFiles.projectId, input.projectId))
-				.all();
-
-			if (sharedEntries.length > 0) {
-				await symlinkSharedFiles(
-					project.repoPath,
-					worktreePath,
-					sharedEntries.map((e) => ({ relativePath: e.relativePath }))
-				);
-			}
-
-			// Auto-detect authored PR for the new branch
 			const { getCachedPRs } = await import("../../ai-review/pr-poller");
 			const matchingPR = getCachedPRs(input.projectId).find(
 				(pr) => pr.sourceBranch === input.branch && pr.state === "open"
 			);
 			if (matchingPR) {
+				const db = getDb();
 				db.update(workspaces)
 					.set({
 						prProvider: matchingPR.provider,
 						prIdentifier: matchingPR.identifier,
 						updatedAt: new Date(),
 					})
-					.where(eq(workspaces.id, workspaceId))
+					.where(eq(workspaces.id, created.workspaceId))
 					.run();
 			}
 
 			return {
-				...workspace,
+				id: created.workspaceId,
+				projectId: input.projectId,
+				type: "worktree" as const,
+				name: input.branch,
+				worktreeId: created.worktreeId,
+				terminalId: null as string | null,
 				prProvider: matchingPR?.provider ?? null,
 				prIdentifier: matchingPR?.identifier ?? null,
+				createdAt: created.createdAt,
+				updatedAt: created.updatedAt,
 			};
 		}),
 
@@ -379,80 +316,109 @@ export const workspacesRouter = router({
 		.input(z.object({ id: z.string(), force: z.boolean().optional() }))
 		.mutation(async ({ input }) => {
 			const db = getDb();
-			const workspace = db.select().from(workspaces).where(eq(workspaces.id, input.id)).get();
-
-			if (!workspace) {
-				throw new Error("Workspace not found");
+			const ws = db.select().from(workspaces).where(eq(workspaces.id, input.id)).get();
+			if (!ws) throw new Error("Workspace not found");
+			const { removeWorkspace } = await import("../../services/workspace-service");
+			const result = await removeWorkspace({
+				projectId: ws.projectId,
+				workspaceId: input.id,
+				force: input.force,
+			});
+			if (result.status === "blocked_uncommitted") {
+				throw new Error("Worktree has uncommitted changes. Commit or discard them first.");
 			}
+		}),
 
-			if (workspace.type === "branch") {
-				throw new Error("Cannot delete the main branch workspace");
-			}
+	renameWorkspace: publicProcedure
+		.input(
+			z.object({
+				projectId: z.string().min(1),
+				workspaceId: z.string().min(1),
+				name: z.string(),
+			})
+		)
+		.mutation(async ({ input }) => {
+			const { renameWorkspace } = await import("../../services/workspace-service");
+			return renameWorkspace(
+				{ projectId: input.projectId, workspaceId: input.workspaceId },
+				{ workspaceId: input.workspaceId, name: input.name }
+			);
+		}),
 
-			if (!workspace.worktreeId) {
-				throw new Error("Workspace has no associated worktree");
-			}
+	setOrchestrator: publicProcedure
+		.input(z.object({ projectId: z.string().min(1), workspaceId: z.string().min(1) }))
+		.mutation(async ({ input }) => {
+			const { setOrchestrator } = await import("../../services/workspace-service");
+			await setOrchestrator(
+				{ projectId: input.projectId, workspaceId: input.workspaceId },
+				{ workspaceId: input.workspaceId }
+			);
+			return { ok: true } as const;
+		}),
 
-			const worktree = db
-				.select()
-				.from(worktrees)
-				.where(eq(worktrees.id, workspace.worktreeId))
-				.get();
+	unsetOrchestrator: publicProcedure
+		.input(z.object({ projectId: z.string().min(1), workspaceId: z.string().min(1) }))
+		.mutation(async ({ input }) => {
+			const { unsetOrchestrator } = await import("../../services/workspace-service");
+			await unsetOrchestrator(
+				{ projectId: input.projectId, workspaceId: input.workspaceId },
+				{ workspaceId: input.workspaceId }
+			);
+			return { ok: true } as const;
+		}),
 
-			if (!worktree) {
-				// Dispose daemon terminals before deleting workspace
-				const wsSessions = db
-					.select({ id: terminalSessions.id })
-					.from(terminalSessions)
-					.where(eq(terminalSessions.workspaceId, input.id))
-					.all();
-				const daemon = getDaemonClient();
-				for (const session of wsSessions) {
-					daemon?.dispose(session.id);
-				}
-				if (wsSessions.length > 0) {
-					db.delete(terminalSessions).where(eq(terminalSessions.workspaceId, input.id)).run();
-				}
-				// Worktree record missing — just clean up the workspace
-				db.delete(workspaces).where(eq(workspaces.id, input.id)).run();
-				return;
-			}
+	createOrchestrator: publicProcedure
+		.input(
+			z.object({
+				projectId: z.string().min(1),
+				name: z.string().min(1),
+				baseBranch: z.string().min(1),
+				attachWorkspaceIds: z
+					.array(z.string().min(1))
+					.refine((arr) => new Set(arr).size === arr.length, {
+						message: "attachWorkspaceIds must not contain duplicates",
+					})
+					.default([]),
+			})
+		)
+		.mutation(async ({ input }) => {
+			const { createOrchestrator } = await import("../../services/workspace-service");
+			return createOrchestrator(input);
+		}),
 
-			const { existsSync } = await import("node:fs");
-			const pathExists = existsSync(worktree.path);
+	attachToOrchestrator: publicProcedure
+		.input(z.object({ orchestratorId: z.string().min(1), workspaceId: z.string().min(1) }))
+		.mutation(async ({ input }) => {
+			const { attachToOrchestrator } = await import("../../services/orchestrator-membership");
+			return attachToOrchestrator(input);
+		}),
 
-			if (pathExists && !input.force) {
-				const dirty = await hasUncommittedChanges(worktree.path);
-				if (dirty) {
-					throw new Error("Worktree has uncommitted changes. Commit or discard them first.");
-				}
-			}
+	detachFromOrchestrator: publicProcedure
+		.input(z.object({ workspaceId: z.string().min(1) }))
+		.mutation(async ({ input }) => {
+			const { detachFromOrchestrator } = await import("../../services/orchestrator-membership");
+			return detachFromOrchestrator(input);
+		}),
 
-			const project = db.select().from(projects).where(eq(projects.id, workspace.projectId)).get();
+	detachAllFromOrchestrator: publicProcedure
+		.input(z.object({ orchestratorId: z.string().min(1) }))
+		.mutation(async ({ input }) => {
+			const { detachAllFromOrchestrator } = await import("../../services/orchestrator-membership");
+			return detachAllFromOrchestrator(input);
+		}),
 
-			if (!project) {
-				throw new Error("Project not found");
-			}
+	reorderTopLevel: publicProcedure
+		.input(z.object({ projectId: z.string().min(1), orderedIds: z.array(z.string().min(1)) }))
+		.mutation(async ({ input }) => {
+			const { reorderTopLevel } = await import("../../services/workspace-ordering");
+			return reorderTopLevel(input);
+		}),
 
-			// Dispose daemon terminals FIRST so shell processes release the worktree cwd
-			const wsSessions = db
-				.select({ id: terminalSessions.id })
-				.from(terminalSessions)
-				.where(eq(terminalSessions.workspaceId, input.id))
-				.all();
-			const daemon = getDaemonClient();
-			for (const session of wsSessions) {
-				daemon?.dispose(session.id);
-			}
-			if (wsSessions.length > 0) {
-				db.delete(terminalSessions).where(eq(terminalSessions.workspaceId, input.id)).run();
-			}
-
-			if (pathExists) {
-				await removeWorktree(project.repoPath, worktree.path);
-			}
-
-			db.delete(worktrees).where(eq(worktrees.id, worktree.id)).run();
+	reorderChildren: publicProcedure
+		.input(z.object({ orchestratorId: z.string().min(1), orderedIds: z.array(z.string().min(1)) }))
+		.mutation(async ({ input }) => {
+			const { reorderChildren } = await import("../../services/workspace-ordering");
+			return reorderChildren(input);
 		}),
 
 	attachTerminal: publicProcedure
@@ -599,5 +565,51 @@ export const workspacesRouter = router({
 		.mutation(async ({ input }) => {
 			const { cleanupReviewWorkspace } = await import("../../ai-review/cleanup");
 			await cleanupReviewWorkspace(input.workspaceId);
+		}),
+
+	getOrchestratorColors: publicProcedure
+		.input(z.object({ projectId: z.string().min(1) }))
+		.query(({ input }) => {
+			const db = getDb();
+			const key = `orchestratorColors:${input.projectId}`;
+			const row = db.select().from(sessionState).where(eq(sessionState.key, key)).get();
+			return row ? (JSON.parse(row.value) as Record<string, number>) : {};
+		}),
+
+	setOrchestratorColors: publicProcedure
+		.input(
+			z.object({
+				projectId: z.string().min(1),
+				map: z.record(z.string(), z.number().int().min(0).max(7)),
+			})
+		)
+		.mutation(({ input }) => {
+			const db = getDb();
+			const key = `orchestratorColors:${input.projectId}`;
+			const value = JSON.stringify(input.map);
+			db.insert(sessionState)
+				.values({ key, value })
+				.onConflictDoUpdate({ target: sessionState.key, set: { value } })
+				.run();
+			return { ok: true } as const;
+		}),
+
+	getOrchestratorExpand: publicProcedure
+		.input(z.object({ key: z.string().min(1) }))
+		.query(({ input }) => {
+			const db = getDb();
+			const row = db.select().from(sessionState).where(eq(sessionState.key, input.key)).get();
+			return row ? row.value === "1" : true;
+		}),
+
+	setOrchestratorExpand: publicProcedure
+		.input(z.object({ key: z.string().min(1), value: z.boolean() }))
+		.mutation(({ input }) => {
+			const db = getDb();
+			db.insert(sessionState)
+				.values({ key: input.key, value: input.value ? "1" : "0" })
+				.onConflictDoUpdate({ target: sessionState.key, set: { value: input.value ? "1" : "0" } })
+				.run();
+			return { ok: true } as const;
 		}),
 });

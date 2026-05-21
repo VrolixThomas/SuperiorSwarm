@@ -63,12 +63,19 @@ export function saveTerminalSessions(data: SessionSaveData): void {
 		}
 
 		// Session state: replace entirely (renderer owns this)
-		// Preserve supabase_session: keys (Supabase auth) and lastSeenVersion (updater)
+		// Preserve keys written by the main process / non-renderer flows:
+		// - supabase_session:* (Supabase auth)
+		// - lastSeenVersion (updater)
+		// - orch*:* (orchestrator UI flags: per-orchestrator expand state,
+		//   per-project color assignments; written via tRPC mutations, not part
+		//   of the renderer's collectSnapshot)
 		tx.delete(schema.sessionState)
 			.where(
 				and(
 					notLike(schema.sessionState.key, "supabase_session:%"),
-					ne(schema.sessionState.key, "lastSeenVersion")
+					ne(schema.sessionState.key, "lastSeenVersion"),
+					notLike(schema.sessionState.key, "orchExpand:%"),
+					notLike(schema.sessionState.key, "orchestratorColors:%")
 				)
 			)
 			.run();

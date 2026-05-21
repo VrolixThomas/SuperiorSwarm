@@ -6,6 +6,7 @@ import { app } from "electron";
 import { getDb } from "../db";
 import * as schema from "../db/schema";
 import { getGitProvider } from "../providers/git-provider";
+import { getTaskRegistry } from "../services/task-registry-handle";
 import { incrementCounter } from "../telemetry/state";
 import {
 	CLI_PRESETS,
@@ -13,7 +14,6 @@ import {
 	buildFollowUpPrompt,
 	buildReviewPrompt,
 } from "./cli-presets";
-import { removeKey } from "./mcp-config-merge";
 import { getMcpServerPath } from "./mcp-path";
 import { parsePrIdentifier } from "./pr-identifier";
 
@@ -366,13 +366,26 @@ async function buildAndLaunchReview(params: {
 		prMetadata: JSON.stringify(prMetadata),
 	};
 
-	// Setup MCP config — for Claude this writes .mcp.json with env vars,
-	// for others it writes their specific config files
-	const cleanupMcp = preset.setupMcp?.(launchOpts) ?? null;
+	const ws = db.select().from(schema.workspaces).where(eq(schema.workspaces.id, workspaceId)).get();
+	const projectId = ws?.projectId ?? "";
+
+	const taskToken = randomUUID();
+	getTaskRegistry().register(taskToken, {
+		mode: "review",
+		projectId,
+		workspaceId,
+		modeContext: {
+			reviewDraftId: draftId,
+			dbPath,
+			prMetadata: launchOpts.prMetadata,
+			worktreePath,
+		},
+	});
+
 	activeReviews.set(draftId, {
 		draftId,
 		reviewWorkspaceId: workspaceId,
-		cleanup: cleanupMcp,
+		cleanup: null,
 	});
 	startPollingIfNeeded();
 
@@ -387,15 +400,9 @@ async function buildAndLaunchReview(params: {
 	parts.push(...args);
 	const cliCommand = parts.join(" ");
 
-	// Write a launch script that sets env vars (if not handled by MCP config) and runs the CLI
+	// Write a launch script that sets env vars and runs the CLI
 	const launchScript = join(reviewDir, "start-review.sh");
-	const envLines = preset.setupMcp
-		? []
-		: [
-				`export REVIEW_DRAFT_ID='${draftId}'`,
-				`export PR_METADATA='${launchOpts.prMetadata.replace(/'/g, "'\\''")}'`,
-				`export DB_PATH='${dbPath}'`,
-			];
+	const envLines = [`export SUPERIORSWARM_TASK_TOKEN='${taskToken}'`];
 	// For TUI-mode CLIs (no prompt arg), show the prompt file path
 	const hintLines =
 		params.showTuiHints && args.length === 0
@@ -710,40 +717,12 @@ async function startFollowUpReview(params: {
 export function cleanupStaleReviews(): void {
 	const db = getDb();
 	const stale = db
-		.select({
-			draftId: schema.reviewDrafts.id,
-			worktreePath: schema.worktrees.path,
-		})
+		.select({ draftId: schema.reviewDrafts.id })
 		.from(schema.reviewDrafts)
-		.leftJoin(schema.workspaces, eq(schema.workspaces.reviewDraftId, schema.reviewDrafts.id))
-		.leftJoin(schema.worktrees, eq(schema.workspaces.worktreeId, schema.worktrees.id))
 		.where(eq(schema.reviewDrafts.status, "in_progress"))
 		.all();
 
-	for (const { draftId, worktreePath } of stale) {
-		if (worktreePath) {
-			const targets: { file: string; keyPath: readonly string[] }[] = [
-				{ file: join(worktreePath, ".mcp.json"), keyPath: ["mcpServers", "superiorswarm"] },
-				{
-					file: join(worktreePath, ".gemini", "settings.json"),
-					keyPath: ["mcpServers", "superiorswarm"],
-				},
-				{
-					file: join(worktreePath, ".codex", "config.json"),
-					keyPath: ["mcpServers", "superiorswarm"],
-				},
-				{ file: join(worktreePath, "opencode.json"), keyPath: ["mcp", "superiorswarm"] },
-			];
-			// State is unknown for stale reviews from a prior session. Treating both flags
-			// as false makes removeKey delete empty files/dirs (matching the old rmSync
-			// behavior) while still preserving any user-defined entries that share the file.
-			for (const t of targets) {
-				try {
-					removeKey(t.file, t.keyPath, { fileExistedBefore: false, dirExistedBefore: false });
-				} catch {}
-			}
-		}
-
+	for (const { draftId } of stale) {
 		const reviewDir = join(app.getPath("userData"), "reviews", draftId);
 		try {
 			rmSync(reviewDir, { recursive: true, force: true });

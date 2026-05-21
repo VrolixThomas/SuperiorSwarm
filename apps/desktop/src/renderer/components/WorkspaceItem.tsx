@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { AgentAlert } from "../../shared/agent-events";
 import { useAgentAlertStore } from "../stores/agent-alert-store";
 import { usePaneStore } from "../stores/pane-store";
+import { useProjectStore } from "../stores/projects";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 
@@ -12,6 +13,11 @@ interface WorkspaceData {
 	terminalId: string | null;
 	worktreePath: string | null;
 	prProvider: string | null;
+	currentPhase?: string | null;
+	statusText?: string | null;
+	needs?: string | null;
+	isOrchestrator?: boolean | null;
+	cliPreset?: string | null;
 }
 
 interface WorkspaceItemProps {
@@ -20,6 +26,7 @@ interface WorkspaceItemProps {
 	projectName: string;
 	projectRepoPath: string;
 	isInActiveProject: boolean;
+	indentLevel?: 0 | 1;
 }
 
 /**
@@ -151,13 +158,32 @@ function WorkspaceContextMenu({
 	position,
 	onClose,
 	onDelete,
+	onSetOrchestrator,
+	onUnsetOrchestrator,
+	isOrchestrator,
+	orchestrators,
+	onAttachTo,
+	onDetach,
+	onCreateOrchestrator,
+	canAttach,
+	canDetach,
 }: {
 	position: { x: number; y: number };
 	onClose: () => void;
 	onDelete: () => void;
+	onSetOrchestrator?: () => void;
+	onUnsetOrchestrator?: () => void;
+	isOrchestrator?: boolean | null;
+	orchestrators: Array<{ id: string; name: string }>;
+	onAttachTo?: (orchestratorId: string) => void;
+	onDetach?: () => void;
+	onCreateOrchestrator?: () => void;
+	canAttach: boolean;
+	canDetach: boolean;
 }) {
 	const menuRef = useRef<HTMLDivElement>(null);
 	const [adjusted, setAdjusted] = useState(position);
+	const [attachOpen, setAttachOpen] = useState(false);
 
 	useEffect(() => {
 		if (!menuRef.current) return;
@@ -202,6 +228,83 @@ function WorkspaceContextMenu({
 			className="fixed z-50 min-w-[160px] rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-elevated)] py-1 shadow-[var(--shadow-md)]"
 			style={{ left: adjusted.x, top: adjusted.y }}
 		>
+			{onSetOrchestrator && !isOrchestrator && (
+				<div
+					role="menuitem"
+					tabIndex={0}
+					className="px-3 py-1.5 text-[13px] cursor-pointer hover:bg-[var(--bg-overlay)] transition-all duration-[120ms] text-[var(--text)]"
+					onClick={onSetOrchestrator}
+					onKeyDown={(e) => {
+						if (e.key === "Enter") onSetOrchestrator();
+					}}
+				>
+					Set as orchestrator
+				</div>
+			)}
+			{onUnsetOrchestrator && isOrchestrator && (
+				<div
+					role="menuitem"
+					tabIndex={0}
+					className="px-3 py-1.5 text-[13px] cursor-pointer hover:bg-[var(--bg-overlay)] transition-all duration-[120ms] text-[var(--text)]"
+					onClick={onUnsetOrchestrator}
+					onKeyDown={(e) => {
+						if (e.key === "Enter") onUnsetOrchestrator();
+					}}
+				>
+					Unset orchestrator
+				</div>
+			)}
+			{canAttach && (
+				<div
+					className="relative"
+					onMouseEnter={() => setAttachOpen(true)}
+					onMouseLeave={() => setAttachOpen(false)}
+				>
+					<div
+						role="menuitem"
+						tabIndex={0}
+						className="px-3 py-1.5 text-[13px] cursor-pointer hover:bg-[var(--bg-overlay)] transition-all duration-[120ms] text-[var(--text)] flex items-center justify-between"
+					>
+						<span>Attach to</span>
+						<span className="text-[var(--text-quaternary)]">▸</span>
+					</div>
+					{attachOpen && (
+						<div className="absolute left-full top-0 ml-1 min-w-[180px] rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-elevated)] py-1 shadow-[var(--shadow-md)]">
+							{orchestrators.length === 0 && (
+								<div
+									role="menuitem"
+									tabIndex={0}
+									className="px-3 py-1.5 text-[12px] cursor-pointer hover:bg-[var(--bg-overlay)] text-[var(--text-tertiary)]"
+									onClick={onCreateOrchestrator}
+								>
+									No orchestrators in this project. Create one →
+								</div>
+							)}
+							{orchestrators.map((o) => (
+								<div
+									key={o.id}
+									role="menuitem"
+									tabIndex={0}
+									className="px-3 py-1.5 text-[13px] cursor-pointer hover:bg-[var(--bg-overlay)] text-[var(--text)]"
+									onClick={() => onAttachTo?.(o.id)}
+								>
+									{o.name}
+								</div>
+							))}
+						</div>
+					)}
+				</div>
+			)}
+			{canDetach && onDetach && (
+				<div
+					role="menuitem"
+					tabIndex={0}
+					className="px-3 py-1.5 text-[13px] cursor-pointer hover:bg-[var(--bg-overlay)] transition-all duration-[120ms] text-[var(--text)]"
+					onClick={onDetach}
+				>
+					Detach from orchestrator
+				</div>
+			)}
 			<div
 				role="menuitem"
 				tabIndex={0}
@@ -223,6 +326,7 @@ export function WorkspaceItem({
 	projectName,
 	projectRepoPath,
 	isInActiveProject,
+	indentLevel = 0,
 }: WorkspaceItemProps) {
 	const [contextMenu, setContextMenu] = useState<{
 		x: number;
@@ -237,23 +341,43 @@ export function WorkspaceItem({
 	const deleteWorkspace = trpc.workspaces.delete.useMutation({
 		onMutate: async ({ id }) => {
 			await utils.workspaces.listByProject.cancel({ projectId });
-			const previous = utils.workspaces.listByProject.getData({ projectId });
-			utils.workspaces.listByProject.setData({ projectId }, (old) =>
-				old?.filter((ws) => ws.id !== id)
-			);
-			return { previous };
-		},
-		onError: (_err, _vars, context) => {
-			if (context?.previous) {
-				utils.workspaces.listByProject.setData({ projectId }, context.previous);
-			}
-			window.alert(`Failed to delete worktree: ${_err.message}`);
-		},
-		onSuccess: () => {
-			// Clean up Zustand state after server confirms deletion
+			const previousList = utils.workspaces.listByProject.getData({ projectId });
 			const paneStore = usePaneStore.getState();
-			paneStore.clearLayout(workspace.id);
-			useTabStore.getState().cleanupWorkspace(workspace.id);
+			const tabStore = useTabStore.getState();
+			const previousLayout = paneStore.getLayout(id);
+			const previousMetadata = tabStore.workspaceMetadata[id];
+
+			utils.workspaces.listByProject.setData({ projectId }, (old) => {
+				if (!old) return old;
+				return {
+					orchestrators: old.orchestrators
+						.filter((o) => o.workspace.id !== id)
+						.map((o) => ({
+							...o,
+							children: o.children.filter((c) => c.id !== id),
+						})),
+					loose: old.loose.filter((w) => w.id !== id),
+				};
+			});
+			paneStore.clearLayout(id);
+			tabStore.cleanupWorkspace(id);
+
+			return { previousList, previousLayout, previousMetadata };
+		},
+		// On error we restore the list, pane layout, and workspace metadata.
+		// `cleanupWorkspace` also clears active segment / right panel / PR-solve
+		// session stores; those are not restored — user must reselect. Acceptable
+		// because `force: true` failures are rare and the user can click again.
+		onError: (err, { id }, context) => {
+			if (context?.previousList) {
+				utils.workspaces.listByProject.setData({ projectId }, context.previousList);
+			}
+			if (context?.previousLayout) {
+				usePaneStore.getState().hydrateLayout(id, context.previousLayout);
+			}
+			if (context?.previousMetadata) {
+				useTabStore.getState().setWorkspaceMetadata(id, context.previousMetadata);
+			}
 		},
 		onSettled: () => {
 			utils.workspaces.listByProject.invalidate({ projectId });
@@ -261,6 +385,47 @@ export function WorkspaceItem({
 	});
 	const deleteWorkspaceRef = useRef(deleteWorkspace.mutate);
 	deleteWorkspaceRef.current = deleteWorkspace.mutate;
+
+	const setOrchestrator = trpc.workspaces.setOrchestrator.useMutation({
+		onSuccess: () => {
+			utils.workspaces.listByProject.invalidate({ projectId });
+		},
+	});
+
+	const handleSetOrchestrator = useCallback(() => {
+		setOrchestrator.mutate({ projectId, workspaceId: workspace.id });
+		setContextMenu(null);
+	}, [workspace.id, projectId, setOrchestrator]);
+
+	const unsetOrchestrator = trpc.workspaces.unsetOrchestrator.useMutation({
+		onSuccess: () => {
+			utils.workspaces.listByProject.invalidate({ projectId });
+		},
+	});
+
+	const treeQueryForMenu = trpc.workspaces.listByProject.useQuery(
+		{ projectId },
+		{ staleTime: 60_000 }
+	);
+	const orchestratorsInProject = (treeQueryForMenu.data?.orchestrators ?? []).map((o) => ({
+		id: o.workspace.id,
+		name: o.workspace.name,
+	}));
+	const isChildOfOrchestrator = (treeQueryForMenu.data?.orchestrators ?? []).some((o) =>
+		o.children.some((c) => c.id === workspace.id)
+	);
+
+	const attachMut = trpc.workspaces.attachToOrchestrator.useMutation({
+		onSuccess: () => utils.workspaces.listByProject.invalidate({ projectId }),
+	});
+	const detachMut = trpc.workspaces.detachFromOrchestrator.useMutation({
+		onSuccess: () => utils.workspaces.listByProject.invalidate({ projectId }),
+	});
+
+	const handleUnsetOrchestrator = useCallback(() => {
+		unsetOrchestrator.mutate({ projectId, workspaceId: workspace.id });
+		setContextMenu(null);
+	}, [workspace.id, projectId, unsetOrchestrator]);
 
 	const isActive = useTabStore((s) => s.activeWorkspaceId === workspace.id);
 	const alert = useAgentAlertStore((s) => s.alerts[workspace.id]);
@@ -306,26 +471,25 @@ export function WorkspaceItem({
 		projectRepoPath,
 	]);
 
-	const handleDelete = useCallback(async () => {
+	const handleDelete = useCallback(() => {
 		const confirmed = window.confirm(
 			`Delete worktree "${workspace.name}"? This will remove the worktree directory.`
 		);
 		if (confirmed) {
-			// Await terminal disposal so daemon processes release the worktree cwd
+			// Fire-and-forget; backend re-disposes PTYs as a safety net.
 			const wsTabs = useTabStore.getState().getTabsByWorkspace(workspace.id);
-			await Promise.all(
-				wsTabs
-					.filter((tab) => tab.kind === "terminal")
-					.map((tab) => window.electron.terminal.dispose(tab.id))
-			);
-
+			for (const tab of wsTabs) {
+				if (tab.kind === "terminal") {
+					window.electron.terminal.dispose(tab.id).catch(() => {});
+				}
+			}
 			deleteWorkspaceRef.current({ id: workspace.id, force: true });
 		}
 		setContextMenu(null);
 	}, [workspace.id, workspace.name]);
 
 	return (
-		<div className="relative">
+		<div className="group relative">
 			<button
 				type="button"
 				onClick={handleClick}
@@ -335,9 +499,26 @@ export function WorkspaceItem({
 						setContextMenu({ x: e.clientX, y: e.clientY });
 					}
 				}}
+				onKeyDown={(e) => {
+					const mod = e.metaKey || e.ctrlKey;
+					if (mod && e.shiftKey && (e.key === "a" || e.key === "A")) {
+						e.preventDefault();
+						if (!workspace.isOrchestrator && indentLevel === 0 && workspace.type === "worktree") {
+							const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+							setContextMenu({ x: rect.right - 200, y: rect.bottom });
+						}
+					}
+					if (mod && e.shiftKey && (e.key === "d" || e.key === "D")) {
+						e.preventDefault();
+						if (isChildOfOrchestrator) {
+							detachMut.mutate({ workspaceId: workspace.id });
+						}
+					}
+				}}
 				className={[
-					"relative flex w-full items-center gap-2 border-none pl-[22px] pr-3 py-[7px] cursor-pointer",
-					"transition-all duration-[120ms] text-left rounded-[6px]",
+					"relative flex w-full items-center gap-2 border-none",
+					indentLevel === 1 ? "pl-[36px] pr-3 py-[7px]" : "pl-[22px] pr-3 py-[7px]",
+					"cursor-pointer transition-all duration-[120ms] text-left rounded-[6px]",
 					isActive
 						? "bg-[var(--accent-subtle)] hover:bg-[var(--accent-subtle)]"
 						: "bg-transparent hover:bg-[var(--bg-elevated)]",
@@ -362,6 +543,21 @@ export function WorkspaceItem({
 					>
 						{workspace.name}
 					</span>
+					{workspace.isOrchestrator && (
+						<span className="ml-1 text-[10px] uppercase tracking-wide text-[var(--accent)]">
+							Orchestrator
+						</span>
+					)}
+					{workspace.statusText && (
+						<span className="block text-[11px] text-[var(--text-secondary)] truncate mt-0.5">
+							{workspace.statusText}
+						</span>
+					)}
+					{workspace.currentPhase === "blocked" && workspace.needs && (
+						<span className="block text-[11px] text-[var(--text-tertiary)] italic truncate mt-0.5">
+							needs: {workspace.needs}
+						</span>
+					)}
 					{hasSolveInProgress && (
 						<span className="flex items-center gap-1 mt-0.5">
 							<svg width="10" height="10" viewBox="0 0 16 16" fill="none" className="shrink-0">
@@ -389,14 +585,67 @@ export function WorkspaceItem({
 						</span>
 					)}
 				</div>
+				{workspace.currentPhase === "working" && (
+					<span
+						className="ml-auto inline-block h-1.5 w-1.5 rounded-full bg-[var(--accent)]"
+						title="working"
+					/>
+				)}
+				{workspace.currentPhase === "blocked" && (
+					<span
+						className="ml-auto inline-block h-1.5 w-1.5 rounded-full bg-[var(--term-yellow)]"
+						title="blocked"
+					/>
+				)}
+				{workspace.currentPhase === "done" && (
+					<span
+						className="ml-auto inline-block h-1.5 w-1.5 rounded-full bg-[var(--term-green)]"
+						title="done"
+					/>
+				)}
 				{alert && <SwarmIndicator alert={alert} className="ml-auto" />}
 			</button>
+
+			{indentLevel === 0 && !workspace.isOrchestrator && workspace.type === "worktree" && (
+				<button
+					type="button"
+					aria-label="Promote to orchestrator"
+					title="Promote to orchestrator"
+					onClick={(e) => {
+						e.stopPropagation();
+						handleSetOrchestrator();
+					}}
+					className="absolute right-7 top-1/2 -translate-y-1/2 h-5 w-5 flex items-center justify-center rounded text-[14px] text-[var(--text-quaternary)] hover:text-[var(--text-secondary)] opacity-0 group-hover:opacity-55 focus:opacity-100 transition-opacity duration-[120ms]"
+				>
+					↥
+				</button>
+			)}
 
 			{contextMenu && (
 				<WorkspaceContextMenu
 					position={contextMenu}
 					onClose={() => setContextMenu(null)}
 					onDelete={handleDelete}
+					onSetOrchestrator={workspace.type === "worktree" ? handleSetOrchestrator : undefined}
+					onUnsetOrchestrator={workspace.type === "worktree" ? handleUnsetOrchestrator : undefined}
+					isOrchestrator={workspace.isOrchestrator}
+					orchestrators={orchestratorsInProject}
+					onAttachTo={(orchId) => {
+						attachMut.mutate({ orchestratorId: orchId, workspaceId: workspace.id });
+						setContextMenu(null);
+					}}
+					onDetach={() => {
+						detachMut.mutate({ workspaceId: workspace.id });
+						setContextMenu(null);
+					}}
+					onCreateOrchestrator={() => {
+						useProjectStore.getState().openCreateWorktreeModal(projectId, { asOrchestrator: true });
+						setContextMenu(null);
+					}}
+					canAttach={
+						!workspace.isOrchestrator && indentLevel === 0 && workspace.type === "worktree"
+					}
+					canDetach={isChildOfOrchestrator}
 				/>
 			)}
 		</div>

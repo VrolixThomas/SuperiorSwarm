@@ -2,7 +2,8 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { getDb, schema } from "../../db";
 import { savePaneLayouts, saveTerminalSessions } from "../../db/session-persistence";
-import { removeWorktree } from "../../git/operations";
+import { pruneWorktrees } from "../../git/operations";
+import { getWorktreeCleanupQueue } from "../../services/worktree-cleanup-queue";
 import { getDaemonClient } from "../../terminal/daemon-instance";
 import { publicProcedure, router } from "../index";
 
@@ -242,24 +243,17 @@ export const terminalSessionsRouter = router({
 				}
 			}
 
-			// 3. Remove worktree from disk
-			const { existsSync, rmSync } = await import("node:fs");
-			if (existsSync(input.path)) {
-				try {
-					await removeWorktree(input.repoPath, input.path);
-				} catch {
-					// Force remove if git worktree remove fails
-					rmSync(input.path, { recursive: true, force: true });
-					const { default: simpleGit } = await import("simple-git");
-					await simpleGit(input.repoPath)
-						.raw(["worktree", "prune"])
-						.catch(() => {});
-				}
-			}
-
-			// 4. Delete DB records (cascade deletes workspaces)
+			// 3. Delete DB records (cascade deletes workspaces) synchronously so a
+			//    refetch never resurfaces this worktree. Filesystem cleanup happens
+			//    in the background queue — the caller does not wait on git.
 			if (dbWorktree) {
 				db.delete(schema.worktrees).where(eq(schema.worktrees.id, dbWorktree.id)).run();
+			}
+
+			// 4. Schedule worktree removal from disk (fire-and-forget).
+			const { existsSync } = await import("node:fs");
+			if (existsSync(input.path)) {
+				getWorktreeCleanupQueue().schedule(input.repoPath, input.path);
 			}
 
 			return { ok: true };
@@ -268,10 +262,9 @@ export const terminalSessionsRouter = router({
 	pruneWorktrees: publicProcedure.mutation(async () => {
 		const db = getDb();
 		const allProjects = db.select().from(schema.projects).all();
-		const { default: simpleGit } = await import("simple-git");
 		for (const project of allProjects) {
 			try {
-				await simpleGit(project.repoPath).raw(["worktree", "prune"]);
+				await pruneWorktrees(project.repoPath);
 			} catch {
 				// repo might not exist
 			}

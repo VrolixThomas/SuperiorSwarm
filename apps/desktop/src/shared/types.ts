@@ -59,6 +59,30 @@ export interface AgentAlertAPI {
 	onAlert: (callback: (event: AgentEvent) => void) => () => void;
 }
 
+export interface AgentConfirmRequestPayload {
+	id: string;
+	kind: "dispatch" | "remove";
+	workspaceName: string;
+	branch: string | null;
+	summary: string;
+}
+
+export interface AgentConfirmAPI {
+	onRequest: (callback: (payload: AgentConfirmRequestPayload) => void) => () => void;
+	reply: (id: string, allow: boolean) => void;
+}
+
+export interface AgentDispatchOpenPayload {
+	workspaceId: string;
+	cwd: string;
+	scriptPath: string;
+	title: string;
+}
+
+export interface AgentDispatchAPI {
+	onOpen: (callback: (payload: AgentDispatchOpenPayload) => void) => () => void;
+}
+
 export type ThemePref = "system" | "light" | "dark";
 
 export interface SettingsAPI {
@@ -135,4 +159,42 @@ export interface RepoAPI {
 	subscribe: (repoPath: string) => Promise<void>;
 	unsubscribe: (repoPath: string) => Promise<void>;
 	onInvalidate: (callback: (event: RepoInvalidateEvent) => void) => () => void;
+}
+
+export interface WorkspaceTreeRow {
+	id: string;
+	projectId: string;
+	type: "branch" | "worktree" | "review";
+	name: string;
+	worktreeId: string | null;
+	terminalId: string | null;
+	prProvider: string | null;
+	prIdentifier: string | null;
+	reviewDraftId: string | null;
+	createdAt: Date;
+	updatedAt: Date;
+	worktreePath: string | null;
+	draftStatus: string | null;
+	draftCommitSha: string | null;
+	currentPhase: "idle" | "working" | "blocked" | "done";
+	statusText: string | null;
+	needs: string | null;
+	isOrchestrator: boolean;
+	cliPreset: string | null;
+	sortOrder: number;
+}
+
+/** A workspace row that is guaranteed not to be a "review" type (the service filters these out). */
+export type VisibleWorkspaceTreeRow = Omit<WorkspaceTreeRow, "type"> & {
+	type: "branch" | "worktree";
+};
+
+export interface OrchestratorGroupNode {
+	workspace: WorkspaceTreeRow;
+	children: VisibleWorkspaceTreeRow[];
+}
+
+export interface ProjectWorkspaceTree {
+	orchestrators: OrchestratorGroupNode[];
+	loose: VisibleWorkspaceTreeRow[];
 }
