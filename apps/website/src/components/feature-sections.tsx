@@ -10,32 +10,34 @@ function PrIntelligenceVisual() {
 	return (
 		<div className="relative flex items-center justify-center">
 			{/* Glow behind */}
-			<div className="pointer-events-none absolute h-[300px] w-[300px] rounded-full bg-[radial-gradient(ellipse,rgba(196,149,108,0.06)_0%,transparent_70%)]" />
+			<div className="pointer-events-none absolute h-[300px] w-[300px] rounded-full bg-[radial-gradient(ellipse,rgba(10,132,255,0.06)_0%,transparent_70%)]" />
 
 			<div className="relative w-[300px] space-y-2.5" aria-hidden="true">
 				{/* AI review comment card — matches real CommentThreadCard */}
-				<div className="rounded-[6px] border border-border bg-bg-surface">
-					<div className="flex items-center gap-1.5 border-b border-border px-3 py-1.5">
-						<span className="rounded-[3px] bg-accent-dim px-1.5 py-px text-[9px] font-semibold text-accent">
+				<div className="rounded-[6px] border border-app-border-subtle bg-app-bg-surface">
+					<div className="flex items-center gap-1.5 border-b border-app-border-subtle px-3 py-1.5">
+						<span className="rounded-[3px] bg-app-accent-subtle px-1.5 py-px text-[9px] font-semibold text-app-accent">
 							AI
 						</span>
-						<span className="font-mono text-[10px] text-text-faint">chat-service.ts:47</span>
-						<span className="ml-auto text-[10px] text-text-faint">PR #34</span>
+						<span className="font-mono text-[10px] text-app-text-quaternary">
+							chat-service.ts:47
+						</span>
+						<span className="ml-auto text-[10px] text-app-text-quaternary">PR #34</span>
 					</div>
-					<p className="px-3 py-2 text-[11px] leading-relaxed text-text-secondary">
+					<p className="px-3 py-2 text-[11px] leading-relaxed text-app-text-secondary">
 						Messages are dispatched without a queue. If two agents respond simultaneously, messages
 						will interleave. Add a message queue that serializes writes.
 					</p>
-					<div className="flex items-center gap-2 border-t border-border px-3 py-1.5">
+					<div className="flex items-center gap-2 border-t border-app-border-subtle px-3 py-1.5">
 						<button
 							type="button"
-							className="rounded-[4px] bg-green/15 px-2 py-0.5 text-[10px] font-medium text-green"
+							className="rounded-[4px] bg-app-success/15 px-2 py-0.5 text-[10px] font-medium text-app-success"
 						>
 							Accept
 						</button>
 						<button
 							type="button"
-							className="rounded-[4px] bg-bg-elevated px-2 py-0.5 text-[10px] text-text-muted"
+							className="rounded-[4px] bg-app-bg-elevated px-2 py-0.5 text-[10px] text-app-text-tertiary"
 						>
 							Decline
 						</button>
@@ -43,11 +45,11 @@ function PrIntelligenceVisual() {
 				</div>
 
 				{/* Solved commit group — matches real CommentSolverView */}
-				<div className="rounded-[6px] border border-border bg-bg-surface">
+				<div className="rounded-[6px] border border-app-border-subtle bg-app-bg-surface">
 					<div className="flex items-center gap-2 px-3 py-2">
-						<span className="text-[11px] text-green">✓</span>
-						<span className="text-[11px] font-medium text-text-primary">2/2 comments resolved</span>
-						<span className="ml-auto font-mono text-[10px] text-text-faint">a7f3c21</span>
+						<span className="text-[11px] text-app-success">✓</span>
+						<span className="text-[11px] font-medium text-app-text">2/2 comments resolved</span>
+						<span className="ml-auto font-mono text-[10px] text-app-text-quaternary">a7f3c21</span>
 					</div>
 				</div>
 			</div>
@@ -59,32 +61,32 @@ function AgentOrchestrationVisual() {
 	return (
 		<div className="relative flex items-center justify-center">
 			{/* Glow behind */}
-			<div className="pointer-events-none absolute h-[300px] w-[300px] rounded-full bg-[radial-gradient(ellipse,rgba(196,149,108,0.06)_0%,transparent_70%)]" />
+			<div className="pointer-events-none absolute h-[300px] w-[300px] rounded-full bg-[radial-gradient(ellipse,rgba(10,132,255,0.06)_0%,transparent_70%)]" />
 
 			{/* Mini terminal multiplexer — matches real app window */}
 			<div
-				className="relative w-[300px] overflow-hidden rounded-[6px] border border-border bg-bg-elevated"
+				className="relative w-[300px] overflow-hidden rounded-[6px] border border-app-border-subtle bg-app-bg-elevated"
 				aria-hidden="true"
 			>
 				{/* Window chrome with agent indicator */}
-				<div className="flex items-center justify-between border-b border-border px-2.5 py-1.5">
+				<div className="flex items-center justify-between border-b border-app-border-subtle px-2.5 py-1.5">
 					<div className="flex items-center gap-1.5">
-						<div className="size-2 rounded-full bg-red" />
-						<div className="size-2 rounded-full bg-yellow" />
-						<div className="size-2 rounded-full bg-green" />
+						<div className="size-2 rounded-full bg-app-danger" />
+						<div className="size-2 rounded-full bg-app-warning" />
+						<div className="size-2 rounded-full bg-app-success" />
 					</div>
-					<span className="text-[10px] text-text-muted">SuperiorSwarm</span>
+					<span className="text-[10px] text-app-text-tertiary">SuperiorSwarm</span>
 					<div className="flex items-center gap-1.5">
 						<span className="relative flex size-1.5">
-							<span className="absolute inline-flex size-full animate-ping rounded-full bg-green opacity-40" />
-							<span className="relative inline-flex size-1.5 rounded-full bg-green" />
+							<span className="absolute inline-flex size-full animate-ping rounded-full bg-app-success opacity-40" />
+							<span className="relative inline-flex size-1.5 rounded-full bg-app-success" />
 						</span>
-						<span className="text-[9px] text-text-muted">3 agents</span>
+						<span className="text-[9px] text-app-text-tertiary">3 agents</span>
 					</div>
 				</div>
 
 				{/* Terminal tabs — matches real terminal tab bar */}
-				<div className="flex border-b border-border bg-bg-surface">
+				<div className="flex border-b border-app-border-subtle bg-app-bg-surface">
 					{[
 						{ label: "Claude Code", active: true },
 						{ label: "Codex", active: false },
@@ -94,12 +96,12 @@ function AgentOrchestrationVisual() {
 							key={tab.label}
 							className={`flex items-center gap-1.5 px-3 py-1.5 text-[10px] ${
 								tab.active
-									? "border-b border-accent bg-bg-base text-text-primary"
-									: "text-text-faint"
+									? "border-b border-app-accent bg-app-bg-base text-app-text"
+									: "text-app-text-quaternary"
 							}`}
 						>
 							<span className="relative flex size-1.5">
-								<span className="relative inline-flex size-1.5 rounded-full bg-green" />
+								<span className="relative inline-flex size-1.5 rounded-full bg-app-success" />
 							</span>
 							{tab.label}
 						</div>
@@ -107,16 +109,16 @@ function AgentOrchestrationVisual() {
 				</div>
 
 				{/* Terminal content — matches real Claude Code session */}
-				<div className="bg-bg-base px-3 py-2 font-mono text-[10px] leading-relaxed">
-					<div className="text-text-muted">
-						~/SuperiorSwarm on <span className="text-purple">feature/inline-agent-chat</span>
+				<div className="bg-app-bg-base px-3 py-2 font-mono text-[10px] leading-relaxed">
+					<div className="text-app-text-tertiary">
+						~/SuperiorSwarm on <span className="text-app-purple">feature/inline-agent-chat</span>
 					</div>
-					<div className="text-text-faint">{">"} implement the ChatPanel component</div>
-					<div className="mt-1.5 text-text-faint">
-						<span className="text-text-muted">{"│"}</span> Analyzing codebase...
+					<div className="text-app-text-quaternary">{">"} implement the ChatPanel component</div>
+					<div className="mt-1.5 text-app-text-quaternary">
+						<span className="text-app-text-tertiary">{"│"}</span> Analyzing codebase...
 					</div>
-					<div className="text-green">✓ Created src/renderer/hooks/useAgentChat.ts</div>
-					<div className="text-green">✓ Created src/renderer/components/ChatPanel.tsx</div>
+					<div className="text-app-success">✓ Created src/renderer/hooks/useAgentChat.ts</div>
+					<div className="text-app-success">✓ Created src/renderer/components/ChatPanel.tsx</div>
 				</div>
 			</div>
 		</div>
@@ -126,37 +128,51 @@ function AgentOrchestrationVisual() {
 function OrchestrateVisual() {
 	return (
 		<div className="relative flex items-center justify-center">
-			<div className="pointer-events-none absolute h-[300px] w-[300px] rounded-full bg-[radial-gradient(ellipse,rgba(196,149,108,0.06)_0%,transparent_70%)]" />
+			<div className="pointer-events-none absolute h-[300px] w-[300px] rounded-full bg-[radial-gradient(ellipse,rgba(10,132,255,0.06)_0%,transparent_70%)]" />
 
 			<div
-				className="relative w-[300px] overflow-hidden rounded-[6px] border border-border bg-bg-surface"
+				className="relative w-[300px] overflow-hidden rounded-[6px] border border-app-border-subtle bg-app-bg-surface"
 				aria-hidden="true"
 			>
-				{/* Orchestrator header row */}
-				<div className="flex items-center gap-2 border-b border-accent/30 bg-accent-dim/40 px-3 py-2">
-					<div className="flex h-5 w-5 items-center justify-center rounded-[4px] bg-accent/20">
-						<svg
-							viewBox="0 0 12 12"
-							className="size-3 text-accent"
-							fill="none"
-							stroke="currentColor"
-							strokeWidth="1.5"
-							aria-hidden="true"
-						>
-							<circle cx="6" cy="3" r="1.5" />
-							<circle cx="3" cy="9" r="1.5" />
-							<circle cx="9" cy="9" r="1.5" />
-							<path d="M6 4.5L4 8M6 4.5L8 8" strokeLinecap="round" />
-						</svg>
-					</div>
-					<span className="text-[11px] font-semibold text-text-primary">Orchestrator</span>
-					<span className="ml-auto font-mono text-[9px] text-text-faint">3 agents</span>
+				{/* Orchestrator header row — muted orch-1 palette */}
+				<div className="relative flex items-center gap-2 px-3 py-2">
+					<svg
+						viewBox="0 0 12 12"
+						className="size-3 shrink-0"
+						fill="none"
+						stroke="var(--color-orch-1)"
+						strokeWidth="1.5"
+						aria-hidden="true"
+					>
+						<circle cx="6" cy="2.5" r="1.2" />
+						<circle cx="2.5" cy="8" r="1.2" />
+						<circle cx="9.5" cy="8" r="1.2" />
+						<path d="M6 4L3 8M6 4L9 8" strokeLinecap="round" />
+					</svg>
+					<span className="text-[12px] font-semibold text-app-text">Release v1.0</span>
+					<span
+						className="ml-auto shrink-0 rounded-[9px] px-[7px] py-px text-[10px] font-medium tabular-nums"
+						style={{
+							background: "var(--color-orch-1-bg)",
+							color: "var(--color-orch-1)",
+							minWidth: 16,
+						}}
+					>
+						3
+					</span>
 				</div>
 
-				{/* Attached worktrees */}
-				<div className="relative py-1.5">
+				{/* Attached worktrees with orch-1 vertical rail */}
+				<div className="relative pb-2">
 					<div
-						className="pointer-events-none absolute left-[14px] top-0 h-full w-px bg-accent/20"
+						className="pointer-events-none absolute w-[2px] rounded-[1px]"
+						style={{
+							left: 26,
+							top: 0,
+							bottom: 8,
+							background: "var(--color-orch-1)",
+							opacity: 0.55,
+						}}
 						aria-hidden="true"
 					/>
 					{[
@@ -164,25 +180,24 @@ function OrchestrateVisual() {
 						{ name: "review/PR-110", agent: "Codex", state: "running" },
 						{ name: "voice-input", agent: "Gemini CLI", state: "idle" },
 					].map((row) => (
-						<div key={row.name} className="relative flex items-center gap-2 py-1.5 pl-7 pr-3">
-							<span
-								className="absolute left-[14px] top-1/2 h-px w-2 -translate-y-1/2 bg-accent/30"
-								aria-hidden="true"
-							/>
+						<div
+							key={row.name}
+							className="relative flex items-center gap-2 py-[7px] pl-[36px] pr-3"
+						>
 							<span className="relative flex size-1.5 shrink-0">
 								{row.state === "running" ? (
 									<>
-										<span className="absolute inline-flex size-full animate-ping rounded-full bg-green opacity-40" />
-										<span className="relative inline-flex size-1.5 rounded-full bg-green" />
+										<span className="absolute inline-flex size-full animate-ping rounded-full bg-app-success opacity-40" />
+										<span className="relative inline-flex size-1.5 rounded-full bg-app-success" />
 									</>
 								) : (
-									<span className="relative inline-flex size-1.5 rounded-full bg-text-faint" />
+									<span className="relative inline-flex size-1.5 rounded-full bg-app-text-quaternary" />
 								)}
 							</span>
-							<span className="min-w-0 flex-1 truncate font-mono text-[10px] text-text-primary">
+							<span className="min-w-0 flex-1 truncate font-mono text-[10px] text-app-text-secondary">
 								{row.name}
 							</span>
-							<span className="rounded-[3px] bg-bg-elevated px-1.5 py-px text-[9px] text-text-muted">
+							<span className="rounded-[3px] bg-app-bg-elevated px-1.5 py-px text-[9px] text-app-text-tertiary">
 								{row.agent}
 							</span>
 						</div>
@@ -196,14 +211,16 @@ function OrchestrateVisual() {
 function McpVisual() {
 	return (
 		<div className="relative flex items-center justify-center">
-			<div className="pointer-events-none absolute h-[300px] w-[300px] rounded-full bg-[radial-gradient(ellipse,rgba(196,149,108,0.06)_0%,transparent_70%)]" />
+			<div className="pointer-events-none absolute h-[300px] w-[300px] rounded-full bg-[radial-gradient(ellipse,rgba(10,132,255,0.06)_0%,transparent_70%)]" />
 
 			<div className="relative w-[280px]" aria-hidden="true">
 				{/* MCP tool-call card */}
-				<div className="overflow-hidden rounded-[6px] border border-border bg-bg-surface">
-					<div className="flex items-center justify-between border-b border-border px-3 py-1.5">
-						<span className="font-mono text-[10px] text-text-faint">mcp · superiorswarm</span>
-						<span className="rounded-[3px] bg-green/15 px-1.5 py-px text-[9px] font-medium text-green">
+				<div className="overflow-hidden rounded-[6px] border border-app-border-subtle bg-app-bg-surface">
+					<div className="flex items-center justify-between border-b border-app-border-subtle px-3 py-1.5">
+						<span className="font-mono text-[10px] text-app-text-quaternary">
+							mcp · superiorswarm
+						</span>
+						<span className="rounded-[3px] bg-app-success/15 px-1.5 py-px text-[9px] font-medium text-app-success">
 							connected
 						</span>
 					</div>
@@ -215,14 +232,14 @@ function McpVisual() {
 							{ name: "read_messages", status: "ok" },
 						].map((tool) => (
 							<li key={tool.name} className="flex items-center gap-2 px-3 py-1.5">
-								<span className="font-mono text-[10px] text-text-secondary">{tool.name}</span>
+								<span className="font-mono text-[10px] text-app-text-secondary">{tool.name}</span>
 								<span className="ml-auto">
 									{tool.status === "ok" ? (
-										<span className="text-[10px] text-green">✓</span>
+										<span className="text-[10px] text-app-success">✓</span>
 									) : (
 										<span className="relative flex size-1.5">
-											<span className="absolute inline-flex size-full animate-ping rounded-full bg-yellow opacity-50" />
-											<span className="relative inline-flex size-1.5 rounded-full bg-yellow" />
+											<span className="absolute inline-flex size-full animate-ping rounded-full bg-app-warning opacity-50" />
+											<span className="relative inline-flex size-1.5 rounded-full bg-app-warning" />
 										</span>
 									)}
 								</span>
@@ -232,10 +249,10 @@ function McpVisual() {
 				</div>
 
 				{/* Voice support footnote */}
-				<div className="mt-2 flex items-center gap-1.5 rounded-[6px] border border-border/60 bg-bg-surface/60 px-3 py-1.5">
+				<div className="mt-2 flex items-center gap-1.5 rounded-[6px] border border-app-border-subtle/60 bg-app-bg-surface/60 px-3 py-1.5">
 					<svg
 						viewBox="0 0 12 12"
-						className="size-3 text-text-muted"
+						className="size-3 text-app-text-tertiary"
 						fill="none"
 						stroke="currentColor"
 						strokeWidth="1.4"
@@ -244,8 +261,8 @@ function McpVisual() {
 						<rect x="4.5" y="1.5" width="3" height="6" rx="1.5" />
 						<path d="M2.5 6a3.5 3.5 0 0 0 7 0M6 9.5v1.5" strokeLinecap="round" />
 					</svg>
-					<span className="font-mono text-[9px] text-text-faint">
-						mic wired · <span className="text-text-muted">/voice</span> supported
+					<span className="font-mono text-[9px] text-app-text-quaternary">
+						mic wired · <span className="text-app-text-tertiary">/voice</span> supported
 					</span>
 				</div>
 			</div>
@@ -257,20 +274,22 @@ function IntegrationVisual() {
 	return (
 		<div className="relative flex items-center justify-center">
 			{/* Glow behind */}
-			<div className="pointer-events-none absolute h-[300px] w-[300px] rounded-full bg-[radial-gradient(ellipse,rgba(196,149,108,0.06)_0%,transparent_70%)]" />
+			<div className="pointer-events-none absolute h-[300px] w-[300px] rounded-full bg-[radial-gradient(ellipse,rgba(10,132,255,0.06)_0%,transparent_70%)]" />
 
 			{/* Mini sidebar — matches real app Sidebar with segmented control */}
 			<div
-				className="relative w-[260px] overflow-hidden rounded-[6px] border border-border bg-bg-surface"
+				className="relative w-[260px] overflow-hidden rounded-[6px] border border-app-border-subtle bg-app-bg-surface"
 				aria-hidden="true"
 			>
 				{/* Segmented control — matches real sidebar tabs */}
-				<div className="flex gap-1 border-b border-border px-2 py-1.5">
+				<div className="flex gap-1 border-b border-app-border-subtle px-2 py-1.5">
 					{["Repos", "Tickets", "PRs"].map((tab) => (
 						<span
 							key={tab}
 							className={`flex-1 rounded-[5px] py-1 text-center text-[10px] font-medium ${
-								tab === "Tickets" ? "bg-bg-elevated text-text-secondary" : "text-text-faint"
+								tab === "Tickets"
+									? "bg-app-bg-elevated text-app-text-secondary"
+									: "text-app-text-quaternary"
 							}`}
 						>
 							{tab}
@@ -281,12 +300,14 @@ function IntegrationVisual() {
 				{/* Ticket list — real data from mock-data.ts */}
 				<div className="py-1">
 					{/* Source row — Jira, Linear, GitHub, Bitbucket */}
-					<div className="flex items-center gap-1.5 px-2 py-1.5 text-[9px] font-semibold uppercase tracking-[0.5px] text-text-faint">
+					<div className="flex items-center gap-1.5 px-2 py-1.5 text-[9px] font-semibold uppercase tracking-[0.5px] text-app-text-quaternary">
 						{["Jira", "Linear", "GitHub", "Bitbucket"].map((src, i) => (
 							<span
 								key={src}
 								className={`rounded-[3px] px-1.5 py-0.5 ${
-									i === 1 ? "bg-accent-dim text-accent" : "bg-bg-elevated text-text-faint"
+									i === 1
+										? "bg-app-accent-subtle text-app-accent"
+										: "bg-app-bg-elevated text-app-text-quaternary"
 								}`}
 							>
 								{src}
@@ -307,7 +328,7 @@ function IntegrationVisual() {
 						<div
 							key={ticket.key}
 							className={`flex items-center gap-2 px-2 py-1.5 text-[11px] ${
-								ticket.key === "SUP-12" ? "bg-bg-elevated" : ""
+								ticket.key === "SUP-12" ? "bg-app-bg-elevated" : ""
 							}`}
 						>
 							{/* Status icon — matches real ticket status icons */}
@@ -341,15 +362,15 @@ function IntegrationVisual() {
 									</>
 								)}
 							</svg>
-							<span className="text-[10px] font-medium text-text-faint">{ticket.key}</span>
-							<span className="min-w-0 flex-1 truncate text-text-primary">{ticket.title}</span>
+							<span className="text-[10px] font-medium text-app-text-quaternary">{ticket.key}</span>
+							<span className="min-w-0 flex-1 truncate text-app-text">{ticket.title}</span>
 						</div>
 					))}
 				</div>
 
 				{/* Footer — matches real sidebar footer */}
-				<div className="flex items-center gap-1 border-t border-border p-2">
-					<div className="flex flex-1 items-center gap-2 rounded-[6px] px-2 py-1 text-[11px] text-text-faint">
+				<div className="flex items-center gap-1 border-t border-app-border-subtle p-2">
+					<div className="flex flex-1 items-center gap-2 rounded-[6px] px-2 py-1 text-[11px] text-app-text-quaternary">
 						<svg
 							className="size-3"
 							viewBox="0 0 16 16"
@@ -423,12 +444,12 @@ export function FeatureSections() {
 						{/* Text */}
 						<div className="flex-1 text-center md:text-left">
 							<StaggerChild index={0}>
-								<h2 className="whitespace-pre-line text-3xl font-semibold tracking-tight text-text-primary md:text-5xl md:leading-[1.1]">
+								<h2 className="whitespace-pre-line text-3xl font-semibold tracking-tight text-app-text md:text-5xl md:leading-[1.1]">
 									{feature.headline}
 								</h2>
 							</StaggerChild>
 							<StaggerChild index={1}>
-								<p className="mx-auto mt-4 max-w-lg text-base leading-relaxed text-text-secondary md:mx-0 md:text-lg">
+								<p className="mx-auto mt-4 max-w-lg text-base leading-relaxed text-app-text-secondary md:mx-0 md:text-lg">
 									{feature.copy}
 								</p>
 							</StaggerChild>
