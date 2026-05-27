@@ -3,6 +3,7 @@
 import { motion, useReducedMotion } from "motion/react";
 import { useState } from "react";
 import { CommentSolverView } from "./comment-solver-view";
+import { DiffPanelView } from "./diff-panel-view";
 import { DiffView } from "./diff-view";
 import { PrDetailView } from "./pr-detail-view";
 import { ReviewPanel } from "./review-panel";
@@ -37,8 +38,10 @@ export function MockupShell() {
 		setSolverActive(true);
 	}
 
+	// Real app keeps the diff panel open by default for repos + PR review,
+	// collapsing it only on the tickets segment (App.tsx:592-603, 717).
 	const showRightPanel =
-		(segment === "prs" && selectedPr !== null && rightPanel !== "hidden") || solverActive;
+		solverActive || segment === "repos" || (segment === "prs" && selectedPr !== null);
 
 	return (
 		<motion.section
@@ -46,7 +49,7 @@ export function MockupShell() {
 			whileInView={{ opacity: 1, y: 0 }}
 			viewport={{ once: true, amount: 0.15 }}
 			transition={{ duration: 0.7, ease: "easeOut" }}
-			className="relative mx-auto max-w-[1060px] px-4 pt-4 md:px-8"
+			className="relative mx-auto max-w-[1200px] px-4 pt-4 md:px-8"
 			aria-label="Interactive preview of SuperiorSwarm desktop app"
 		>
 			{/* Glow halo behind mockup */}
@@ -86,10 +89,10 @@ export function MockupShell() {
 					))}
 				</div>
 
-				{/* Desktop 3-panel layout */}
-				<div className="hidden md:flex" style={{ height: 480 }}>
+				{/* Desktop 3-panel layout — proportions mirror App.tsx (sidebar 15.3% / main / diff 19.4%) */}
+				<div className="hidden md:flex" style={{ height: 660 }}>
 					{/* Left sidebar */}
-					<div className="w-[220px] shrink-0 overflow-y-auto border-r border-app-border-subtle bg-app-bg-surface">
+					<div className="basis-[16%] min-w-0 shrink-0 grow-0 overflow-y-auto border-r border-app-border-subtle bg-app-bg-surface">
 						<Sidebar
 							segment={segment}
 							onSegmentChange={handleSegmentChange}
@@ -113,13 +116,16 @@ export function MockupShell() {
 						)}
 					</div>
 
-					{/* Right panel */}
+					{/* Right panel — diff panel by default, swaps to review/solver in the PR flow */}
 					{showRightPanel && (
-						<div className="w-[300px] shrink-0 overflow-y-auto border-l border-app-border-subtle bg-app-bg-surface">
-							{rightPanel === "review" && selectedPr !== null && (
+						<div className="basis-[20%] min-w-0 shrink-0 grow-0 overflow-y-auto border-l border-app-border-subtle bg-app-bg-surface">
+							{solverActive ? (
+								<CommentSolverView />
+							) : segment === "prs" && selectedPr !== null ? (
 								<ReviewPanel prId={selectedPr} onFixClick={handleFixClick} segment={segment} />
+							) : (
+								<DiffPanelView />
 							)}
-							{rightPanel === "solver" && <CommentSolverView />}
 						</div>
 					)}
 				</div>
@@ -138,9 +144,13 @@ export function MockupShell() {
 							<div className="border-t border-app-border-subtle">
 								{solverActive ? <DiffView /> : <TerminalView />}
 							</div>
-							{solverActive && (
+							{solverActive ? (
 								<div className="border-t border-app-border-subtle">
 									<CommentSolverView />
+								</div>
+							) : (
+								<div className="h-[360px] border-t border-app-border-subtle">
+									<DiffPanelView />
 								</div>
 							)}
 						</>

@@ -576,7 +576,6 @@ function PrsView({
 											<div className="ml-auto flex items-center -space-x-1.5">
 												{reviewers.slice(0, 3).map((r, i) => (
 													<div
-														// biome-ignore lint/suspicious/noArrayIndexKey: static mock data
 														key={`${pr.id}-${i}`}
 														className="flex size-5 items-center justify-center rounded-full bg-app-bg-elevated text-[8px] font-medium text-app-text-tertiary"
 														style={{ border: `2px solid ${decisionBorder(r.decision)}` }}

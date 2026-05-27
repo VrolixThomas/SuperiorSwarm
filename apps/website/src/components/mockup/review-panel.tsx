@@ -598,15 +598,15 @@ function BranchOverviewView() {
 							<div className="flex flex-col gap-1.5">
 								<div className="flex items-start gap-1.5">
 									<span className="mt-0.5 text-app-warning">&#x25CF;</span>
-									<span>Add rate limiting to OrchestratorGroup.tsx WebSocket messages</span>
+									<span>Add a bounds check to reorderTopLevel before persisting the new index</span>
 								</div>
 								<div className="flex items-start gap-1.5">
 									<span className="mt-0.5 text-app-warning">&#x25CF;</span>
-									<span>OrchestratorRow.tsx should debounce scroll-to-bottom on resize</span>
+									<span>OrchestratorRow.tsx drag handle needs an accessible keyboard sensor</span>
 								</div>
 								<div className="flex items-start gap-1.5">
 									<span className="mt-0.5 text-app-warning">&#x25CF;</span>
-									<span>useAgentChat hook missing error boundary integration</span>
+									<span>Wrap reorderChildren writes in a transaction to avoid partial updates</span>
 								</div>
 							</div>
 						</div>
