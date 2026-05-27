@@ -24,6 +24,60 @@
 	--color-bitbucket-blue: #0052cc;
 	--font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 	--font-mono: "Geist Mono", "SF Mono", "Fira Code", monospace;
+
+	/* ── App-mockup palette — mirrors apps/desktop/src/renderer/styles.css ── */
+	--color-app-bg-base: #0a0a0a;
+	--color-app-bg-surface: #161618;
+	--color-app-bg-elevated: #1f1f22;
+	--color-app-bg-overlay: #2c2c2e;
+	--color-app-bg-active: #3a3a3d;
+	--color-app-bg-tab-bar: #111113;
+	--color-app-tab-active: #1f1f22;
+	--color-app-border: rgba(255, 255, 255, 0.1);
+	--color-app-border-subtle: rgba(255, 255, 255, 0.06);
+	--color-app-border-active: rgba(255, 255, 255, 0.16);
+	--color-app-text: #f5f5f7;
+	--color-app-text-secondary: #b5b5ba;
+	--color-app-text-tertiary: #8e8e93;
+	--color-app-text-quaternary: #6e6e73;
+	--color-app-accent: #0a84ff;
+	--color-app-accent-hover: #409cff;
+	--color-app-accent-subtle: rgba(10, 132, 255, 0.16);
+	--color-app-success: #30d158;
+	--color-app-success-subtle: rgba(48, 209, 88, 0.15);
+	--color-app-danger: #ff453a;
+	--color-app-danger-subtle: rgba(255, 69, 58, 0.15);
+	--color-app-warning: #ff9f0a;
+	--color-app-warning-subtle: rgba(255, 159, 10, 0.15);
+	--color-app-purple: #bf5af2;
+	--color-app-purple-subtle: rgba(191, 90, 242, 0.15);
+	--color-app-ai-badge-bg: rgba(167, 139, 250, 0.15);
+	--color-app-ai-badge-text: #c4b5fd;
+
+	/* PR health-dot palette — GitHub-derived, NOT semantic vars */
+	--color-pr-health-success: #3fb950;
+	--color-pr-health-warning: #d29922;
+	--color-pr-health-danger: #f85149;
+	--color-pr-health-neutral: #484848;
+
+	/* Orchestrator group palette — muted ~40% sat hues + 12% alpha bg */
+	--color-orch-1: #8a9ab0;
+	--color-orch-1-bg: rgba(138, 154, 176, 0.12);
+	--color-orch-2: #b09a8a;
+	--color-orch-2-bg: rgba(176, 154, 138, 0.12);
+	--color-orch-3: #9ab08a;
+	--color-orch-3-bg: rgba(154, 176, 138, 0.12);
+	--color-orch-4: #b08a9a;
+	--color-orch-4-bg: rgba(176, 138, 154, 0.12);
+	--color-orch-5: #8ab0a8;
+	--color-orch-5-bg: rgba(138, 176, 168, 0.12);
+
+	/* Terminal palette */
+	--color-app-term-green: #69db7c;
+	--color-app-term-yellow: #ffd43b;
+	--color-app-term-magenta: #da77f2;
+	--color-app-term-cyan: #66d9e8;
+	--color-app-term-red: #ff6b6b;
 }
 
 /* Clip horizontal overflow from glow effects without blocking scroll */

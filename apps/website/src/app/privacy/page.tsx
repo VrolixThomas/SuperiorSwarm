@@ -2,8 +2,9 @@ import { LegalPage, P, Section, UL } from "@/components/legal-page";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-	title: "Privacy Notice — SuperiorSwarm",
+	title: "Privacy Notice",
 	description: "How SuperiorSwarm collects and uses your data.",
+	alternates: { canonical: "/privacy" },
 };
 
 export default function PrivacyPage() {

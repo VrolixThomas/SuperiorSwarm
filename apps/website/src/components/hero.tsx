@@ -4,18 +4,19 @@ import { DownloadButton } from "@/components/download-button";
 import { useRelease } from "@/lib/release-context";
 import { shouldShowDownload, useDetectedPlatform } from "@/lib/use-detected-platform";
 import { motion, useReducedMotion } from "motion/react";
+import type { ReactNode } from "react";
 import { AnimatedLogo } from "./animated-logo";
 import { GitHubStarLink } from "./github-stars";
 import { WaitlistForm } from "./waitlist-form";
 
-export function Hero() {
+export function Hero({ whatsNew }: { whatsNew?: ReactNode }) {
 	const reduced = useReducedMotion();
 	const platform = useDetectedPlatform();
 	const release = useRelease();
 	const showDownload = shouldShowDownload(platform);
 
 	return (
-		<section aria-label="Hero" className="relative overflow-hidden pt-28 pb-8 md:pt-36">
+		<section id="hero" aria-label="Hero" className="relative overflow-hidden pt-28 pb-8 md:pt-36">
 			{/* Enhanced brand glow behind logo */}
 			<div className="pointer-events-none absolute -top-10 left-1/2 h-[400px] w-[700px] -translate-x-1/2 bg-[radial-gradient(ellipse,var(--color-brand-glow)_0%,transparent_70%)]" />
 
@@ -29,6 +30,16 @@ export function Hero() {
 				>
 					<AnimatedLogo size={140} />
 				</motion.div>
+
+				{whatsNew && (
+					<motion.div
+						initial={reduced ? false : { opacity: 0, y: -4 }}
+						animate={{ opacity: 1, y: 0 }}
+						transition={{ duration: 0.3, delay: 0.1 }}
+					>
+						{whatsNew}
+					</motion.div>
+				)}
 
 				<motion.h1
 					initial={reduced ? false : { opacity: 0 }}
@@ -49,8 +60,8 @@ export function Hero() {
 					transition={{ duration: 0.3, delay: 0.25 }}
 					className="mx-auto mt-5 max-w-[480px] text-base text-text-secondary md:text-[17px] md:leading-relaxed"
 				>
-					The desktop command center for AI coding agents. Run agents, review PRs automatically, and
-					manage every branch, all from one window.
+					The desktop command center for AI coding agents. Spawn, orchestrate, and review Claude
+					Code, Codex, and Gemini agents across every branch — all from one window.
 				</motion.p>
 
 				{/* CTA area */}
