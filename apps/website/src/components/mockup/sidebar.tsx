@@ -502,14 +502,8 @@ function PrsView({
 								strokeLinejoin="round"
 							/>
 						</svg>
-						<span
-							className={`shrink-0 rounded-[3px] px-1 py-px text-[8px] font-semibold uppercase tracking-[0.05em] ${
-								group.source === "bitbucket"
-									? "bg-[rgba(38,132,255,0.16)] text-[#5b8def]"
-									: "bg-app-bg-elevated text-app-text-quaternary"
-							}`}
-						>
-							{group.source === "bitbucket" ? "BB" : "GH"}
+						<span className="shrink-0 rounded-[3px] bg-app-bg-elevated px-1 py-px text-[8px] font-semibold uppercase tracking-[0.05em] text-app-text-quaternary">
+							GH
 						</span>
 						<span className="truncate">{group.repo}</span>
 						<span className="ml-auto text-[10px] tabular-nums opacity-60">{group.prs.length}</span>

@@ -43,13 +43,6 @@ export const PROJECTS = [
 		orchestrators: [],
 		loose: [{ id: "d-main", name: "main", active: false }],
 	},
-	{
-		id: "ssm",
-		name: "ss-marketing",
-		source: "bitbucket" as const,
-		orchestrators: [],
-		loose: [{ id: "m-main", name: "main", active: false }],
-	},
 ] as const;
 
 // PR list grouped by repo (from real app PRs sidebar)
@@ -75,21 +68,6 @@ export const PULL_REQUESTS = [
 				author: "ThomasV",
 				authorInitial: "T",
 				status: "success" as const,
-			},
-		],
-	},
-	{
-		repo: "SUPERIORSWARM/SS-MARKETING",
-		source: "bitbucket" as const,
-		prs: [
-			{
-				id: 12,
-				title: "Refresh OG image with new orchestrator UI",
-				branch: "marketing/og-refresh",
-				target: "main",
-				author: "ThomasV",
-				authorInitial: "T",
-				status: "pending" as const,
 			},
 		],
 	},
