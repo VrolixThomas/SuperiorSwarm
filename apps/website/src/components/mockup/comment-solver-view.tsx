@@ -13,23 +13,23 @@ function CommitGroupCard({
 	const [expanded, setExpanded] = useState(defaultExpanded);
 
 	const allFixed = group.resolved === group.total && group.total > 0;
-	const badgeBg = allFixed ? "bg-green/15" : "bg-bg-overlay";
-	const badgeText = allFixed ? "text-green" : "text-text-faint";
+	const badgeBg = allFixed ? "bg-app-success/15" : "bg-app-bg-overlay";
+	const badgeText = allFixed ? "text-app-success" : "text-app-text-quaternary";
 
 	return (
-		<div className="overflow-hidden rounded-[6px] border border-border bg-bg-surface">
+		<div className="overflow-hidden rounded-[6px] border border-app-border-subtle bg-app-bg-surface">
 			{/* Header — label + badge + actions */}
 			<button
 				type="button"
 				onClick={() => setExpanded((prev) => !prev)}
-				className="w-full px-3 py-1.5 text-left transition-colors hover:bg-bg-elevated"
+				className="w-full px-3 py-1.5 text-left transition-colors hover:bg-app-bg-elevated"
 			>
 				{/* Row 1: chevron + label + progress badge */}
 				<div className="flex items-start gap-1.5">
-					<span className="mt-0.5 shrink-0 text-[10px] text-text-faint">
+					<span className="mt-0.5 shrink-0 text-[10px] text-app-text-quaternary">
 						{expanded ? "\u25BE" : "\u25B8"}
 					</span>
-					<span className="min-w-0 flex-1 text-[12px] font-semibold leading-snug text-text-secondary">
+					<span className="min-w-0 flex-1 text-[12px] font-semibold leading-snug text-app-text-secondary">
 						{group.label}
 					</span>
 					<span
@@ -42,19 +42,19 @@ function CommitGroupCard({
 				{/* Row 2: Approve + Follow up actions */}
 				<div className="mt-1 flex items-center gap-2 pl-4">
 					{group.approved && (
-						<span className="rounded-[4px] bg-green/15 px-2 py-0.5 text-[10px] font-medium text-green">
+						<span className="rounded-[4px] bg-app-success/15 px-2 py-0.5 text-[10px] font-medium text-app-success">
 							Approve
 						</span>
 					)}
-					<span className="rounded-[4px] px-2 py-0.5 text-[10px] text-text-faint transition-colors hover:text-text-secondary">
+					<span className="rounded-[4px] px-2 py-0.5 text-[10px] text-app-text-quaternary transition-colors hover:text-app-text-secondary">
 						Follow up
 					</span>
 				</div>
 			</button>
 
 			{/* Sub-header: commit hash + file names */}
-			<div className="border-t border-border px-3 py-1.5">
-				<div className="flex flex-wrap items-center gap-1 font-mono text-[10px] text-text-faint">
+			<div className="border-t border-app-border-subtle px-3 py-1.5">
+				<div className="flex flex-wrap items-center gap-1 font-mono text-[10px] text-app-text-quaternary">
 					{group.commits.map((hash) => (
 						<span key={hash}>{hash}</span>
 					))}
@@ -62,7 +62,9 @@ function CommitGroupCard({
 					{group.files.map((file, i) => (
 						<span key={file} className="flex items-center gap-1">
 							{i > 0 && <span>,</span>}
-							<span className="text-text-faint hover:text-accent hover:underline">{file}</span>
+							<span className="text-app-text-quaternary hover:text-app-accent hover:underline">
+								{file}
+							</span>
 						</span>
 					))}
 				</div>
@@ -70,20 +72,20 @@ function CommitGroupCard({
 
 			{/* Expanded content: comment threads */}
 			{expanded && group.comments.length > 0 && (
-				<div className="flex flex-col divide-y divide-border border-t border-border">
+				<div className="flex flex-col divide-y divide-border border-t border-app-border-subtle">
 					{group.comments.map((comment, i) => (
 						// biome-ignore lint/suspicious/noArrayIndexKey: static mock data
 						<div key={i} className="px-3 py-2">
 							{/* Author + file:line */}
 							<div className="mb-0.5 flex items-center gap-1.5 text-[10px]">
-								<span className="font-bold text-text-secondary">{comment.author}</span>
-								<span className="font-mono text-text-faint hover:text-text-secondary hover:underline">
+								<span className="font-bold text-app-text-secondary">{comment.author}</span>
+								<span className="font-mono text-app-text-quaternary hover:text-app-text-secondary hover:underline">
 									{comment.file}
 									{comment.line != null && `:${comment.line}`}
 								</span>
 							</div>
 							{/* Comment body */}
-							<p className="whitespace-pre-wrap text-[11px] leading-[1.5] text-text-muted">
+							<p className="whitespace-pre-wrap text-[11px] leading-[1.5] text-app-text-tertiary">
 								{comment.text}
 							</p>
 						</div>
@@ -100,31 +102,31 @@ export function CommentSolverView() {
 	const totalResolved = COMMIT_GROUPS.reduce((s, g) => s + g.resolved, 0);
 
 	return (
-		<div className="flex h-full flex-col overflow-hidden bg-bg-base">
+		<div className="flex h-full flex-col overflow-hidden bg-app-bg-base">
 			{/* PR Header */}
-			<div className="shrink-0 border-b border-border px-4 py-3">
+			<div className="shrink-0 border-b border-app-border-subtle px-4 py-3">
 				{/* Top row: label */}
 				<div className="flex items-center justify-between">
-					<span className="text-[10px] uppercase tracking-[0.5px] text-text-faint">
+					<span className="text-[10px] uppercase tracking-[0.5px] text-app-text-quaternary">
 						Pull Request
 					</span>
 				</div>
 				{/* PR title (branch name as title in solver mode) */}
-				<h1 className="mt-1 truncate font-mono text-[13px] font-semibold text-text-primary">
-					#34 &middot; feature/inline-agent-chat
+				<h1 className="mt-1 truncate font-mono text-[13px] font-semibold text-app-text">
+					#34 &middot; orchestrator-ordering
 				</h1>
 				{/* Status summary */}
 				<div className="mt-1.5 flex items-center gap-3 text-[10px]">
 					<span className="flex items-center gap-1">
-						<span className="inline-block size-[5px] rounded-full bg-green" />
-						<span className="text-text-secondary">{totalResolved} resolved</span>
+						<span className="inline-block size-[5px] rounded-full bg-app-success" />
+						<span className="text-app-text-secondary">{totalResolved} resolved</span>
 					</span>
 				</div>
 			</div>
 
 			{/* Commit Groups section */}
 			<div className="flex-1 overflow-y-auto px-3 py-2">
-				<div className="mb-2 text-[10px] uppercase tracking-[0.5px] text-text-faint">
+				<div className="mb-2 text-[10px] uppercase tracking-[0.5px] text-app-text-quaternary">
 					{COMMIT_GROUPS.length} Commit Groups
 				</div>
 
@@ -141,17 +143,17 @@ export function CommentSolverView() {
 			</div>
 
 			{/* Bottom action bar */}
-			<div className="shrink-0 border-t border-border bg-bg-elevated">
+			<div className="shrink-0 border-t border-app-border-subtle bg-app-bg-elevated">
 				<div className="flex items-center gap-2 px-4 py-2.5">
 					<button
 						type="button"
-						className="flex-1 rounded-[6px] bg-green/90 px-4 py-1.5 text-[11px] font-semibold text-black transition-colors hover:bg-green"
+						className="flex-1 rounded-[6px] bg-app-success/90 px-4 py-1.5 text-[11px] font-semibold text-black transition-colors hover:bg-app-success"
 					>
 						Push changes & post replies
 					</button>
 					<button
 						type="button"
-						className="rounded-[6px] border border-border bg-transparent px-4 py-1.5 text-[11px] text-text-secondary transition-colors hover:bg-bg-overlay"
+						className="rounded-[6px] border border-app-border-subtle bg-transparent px-4 py-1.5 text-[11px] text-app-text-secondary transition-colors hover:bg-app-bg-overlay"
 					>
 						Revert all
 					</button>

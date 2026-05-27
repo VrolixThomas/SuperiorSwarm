@@ -92,7 +92,7 @@ function BoardView() {
 		<div className="flex h-full gap-2.5 overflow-x-auto px-3 py-2">
 			{COLUMNS.map((col) => (
 				<div key={col.label} className="flex min-w-[200px] flex-1 flex-col gap-1.5">
-					<div className="flex items-center gap-1.5 px-1 py-1 text-[9px] font-semibold uppercase tracking-[0.3px] text-text-muted">
+					<div className="flex items-center gap-1.5 px-1 py-1 text-[9px] font-semibold uppercase tracking-[0.3px] text-app-text-tertiary">
 						<StateIcon type={col.type} color={col.svgColor} size={8} />
 						<span>{col.label}</span>
 						<span className="ml-auto font-normal tabular-nums opacity-50">{col.items.length}</span>
@@ -103,16 +103,18 @@ function BoardView() {
 							return (
 								<div
 									key={ticket.key}
-									className="flex w-full flex-col gap-1 rounded-[6px] border border-border bg-bg-elevated px-2.5 py-2 text-left"
+									className="flex w-full flex-col gap-1 rounded-[6px] border border-[rgba(255,255,255,0.03)] bg-app-bg-surface px-2.5 py-2 text-left transition-colors hover:border-[rgba(10,132,255,0.12)]"
 								>
 									<div className="flex items-center gap-1.5">
 										<StateIcon type={type} color={svgColor} size={10} />
-										<span className="text-[10px] font-medium text-text-faint">{ticket.key}</span>
-										<span className="ml-auto text-[8px] text-text-faint opacity-60">
+										<span className="text-[10px] font-medium text-app-text-quaternary">
+											{ticket.key}
+										</span>
+										<span className="ml-auto text-[8px] text-app-text-quaternary opacity-60">
 											{ticket.provider}
 										</span>
 									</div>
-									<span className="line-clamp-2 text-[11px] leading-[1.35] text-text-primary">
+									<span className="line-clamp-2 text-[11px] leading-[1.35] text-app-text">
 										{ticket.title}
 									</span>
 								</div>
@@ -146,7 +148,7 @@ function ListView() {
 					<button
 						type="button"
 						onClick={() => toggle(col.label)}
-						className="flex w-full items-center gap-1.5 px-1 py-1.5 text-[9px] font-semibold uppercase tracking-[0.3px] text-text-muted"
+						className="flex w-full items-center gap-1.5 px-1 py-1.5 text-[9px] font-semibold uppercase tracking-[0.3px] text-app-text-tertiary"
 					>
 						<svg
 							width="8"
@@ -180,13 +182,15 @@ function ListView() {
 										className="ml-4 flex w-[calc(100%-16px)] items-center gap-2.5 rounded-[6px] px-2 py-1.5 text-left hover:bg-[rgba(255,255,255,0.03)]"
 									>
 										<StateIcon type={type} color={svgColor} size={8} />
-										<span className="w-[58px] shrink-0 text-[11px] font-medium text-text-faint">
+										<span className="w-[58px] shrink-0 text-[11px] font-medium text-app-text-quaternary">
 											{ticket.key}
 										</span>
-										<span className="min-w-0 flex-1 truncate text-[11px] text-text-secondary">
+										<span className="min-w-0 flex-1 truncate text-[11px] text-app-text-secondary">
 											{ticket.title}
 										</span>
-										<span className="shrink-0 text-[9px] text-text-faint">{ticket.provider}</span>
+										<span className="shrink-0 text-[9px] text-app-text-quaternary">
+											{ticket.provider}
+										</span>
 									</div>
 								);
 							})}
@@ -239,20 +243,20 @@ function TableView() {
 	);
 
 	const headerClass =
-		"text-[10px] font-semibold uppercase tracking-[0.3px] text-text-faint cursor-pointer select-none";
+		"text-[10px] font-semibold uppercase tracking-[0.3px] text-app-text-quaternary cursor-pointer select-none";
 	const arrow = (field: SortField) =>
 		sortField === field ? (sortDir === "asc" ? " \u2191" : " \u2193") : "";
 
 	const statusPillColor: Record<string, string> = {
-		"In Progress": "bg-yellow/15 text-yellow",
-		Todo: "bg-text-secondary/15 text-text-secondary",
-		Backlog: "bg-text-faint/20 text-text-muted",
-		Done: "bg-green/15 text-green",
+		"In Progress": "bg-app-warning/15 text-app-warning",
+		Todo: "bg-text-secondary/15 text-app-text-secondary",
+		Backlog: "bg-text-faint/20 text-app-text-tertiary",
+		Done: "bg-app-success/15 text-app-success",
 	};
 
 	return (
 		<div className="flex h-full flex-col overflow-y-auto">
-			<div className="sticky top-0 z-10 flex items-center gap-2.5 border-b border-border bg-bg-surface px-4 py-2">
+			<div className="sticky top-0 z-10 flex items-center gap-2.5 border-b border-app-border-subtle bg-app-bg-surface px-4 py-2">
 				<span className="w-[14px]" />
 				<button
 					type="button"
@@ -298,21 +302,25 @@ function TableView() {
 						className="flex items-center gap-2.5 border-b border-[rgba(255,255,255,0.02)] px-4 py-1.5 text-left hover:bg-[rgba(255,255,255,0.02)]"
 					>
 						<StateIcon type={type} color={svgColor} size={8} />
-						<span className="w-[62px] shrink-0 text-[11px] font-medium text-text-faint">
+						<span className="w-[62px] shrink-0 text-[11px] font-medium text-app-text-quaternary">
 							{ticket.key}
 						</span>
-						<span className="min-w-0 flex-1 truncate text-[11px] text-text-secondary">
+						<span className="min-w-0 flex-1 truncate text-[11px] text-app-text-secondary">
 							{ticket.title}
 						</span>
 						<span
 							className={`w-[80px] shrink-0 rounded-full px-2 py-0.5 text-center text-[9px] font-medium ${
-								statusPillColor[ticket.status] ?? "bg-text-faint/20 text-text-muted"
+								statusPillColor[ticket.status] ?? "bg-text-faint/20 text-app-text-tertiary"
 							}`}
 						>
 							{ticket.status}
 						</span>
-						<span className="w-[50px] shrink-0 text-[10px] text-text-muted">{ticket.project}</span>
-						<span className="w-[44px] shrink-0 text-[10px] text-text-faint">{ticket.provider}</span>
+						<span className="w-[50px] shrink-0 text-[10px] text-app-text-tertiary">
+							{ticket.project}
+						</span>
+						<span className="w-[44px] shrink-0 text-[10px] text-app-text-quaternary">
+							{ticket.provider}
+						</span>
 					</div>
 				);
 			})}
@@ -328,13 +336,13 @@ export function TicketBoardView() {
 	return (
 		<div className="flex flex-1 flex-col overflow-hidden">
 			{/* Toolbar — matches TicketsToolbar from the real app */}
-			<div className="flex shrink-0 items-center gap-2 border-b border-border px-4 py-2">
-				<span className="text-[13px] font-semibold text-text-primary">All Tickets</span>
-				<span className="text-[10px] text-text-faint">
+			<div className="flex shrink-0 items-center gap-2 border-b border-app-border-subtle px-4 py-2">
+				<span className="text-[13px] font-semibold text-app-text">All Tickets</span>
+				<span className="text-[10px] text-app-text-quaternary">
 					All providers &middot; {TICKETS.length} tickets
 				</span>
 				<div className="flex-1" />
-				<div className="flex gap-0.5 rounded-[6px] bg-bg-elevated p-[2px]">
+				<div className="flex gap-0.5 rounded-[6px] bg-app-bg-elevated p-[2px]">
 					{VIEW_MODES.map(({ mode, label }) => (
 						<button
 							key={mode}
@@ -342,8 +350,8 @@ export function TicketBoardView() {
 							onClick={() => setViewMode(mode)}
 							className={`rounded-[4px] px-2.5 py-1 text-[10px] transition-colors ${
 								viewMode === mode
-									? "bg-bg-overlay font-medium text-text-primary"
-									: "text-text-faint hover:text-text-muted"
+									? "bg-app-bg-overlay font-medium text-app-text"
+									: "text-app-text-quaternary hover:text-app-text-tertiary"
 							}`}
 						>
 							{label}

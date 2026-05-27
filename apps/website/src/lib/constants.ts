@@ -6,4 +6,18 @@ export const SITE = {
 	url: "https://superiorswarm.com",
 	github: "https://github.com/VrolixThomas/SuperiorSwarm",
 	download: "https://github.com/VrolixThomas/SuperiorSwarm/releases/latest",
+	releases: "https://github.com/VrolixThomas/SuperiorSwarm/releases",
+	socials: {
+		x: "https://x.com/superiorswarm",
+		linkedin: "https://linkedin.com/company/superiorswarm",
+		youtube: "https://youtube.com/@superiorswarm",
+		github: "https://github.com/VrolixThomas/SuperiorSwarm",
+	},
 } as const;
+
+export const SOCIAL_LIST = [
+	{ key: "x", label: "X (Twitter)", href: SITE.socials.x },
+	{ key: "linkedin", label: "LinkedIn", href: SITE.socials.linkedin },
+	{ key: "youtube", label: "YouTube", href: SITE.socials.youtube },
+	{ key: "github", label: "GitHub", href: SITE.socials.github },
+] as const;

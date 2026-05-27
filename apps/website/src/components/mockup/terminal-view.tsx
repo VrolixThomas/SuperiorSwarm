@@ -1,49 +1,45 @@
 import { useState } from "react";
 import { FileIcon } from "./icons";
 
-type CenterTab = "terminal" | "ChatPanel.tsx" | "chat-service.ts";
+type CenterTab = "terminal" | "OrchestratorRow.tsx" | "OrchestratorGroup.tsx";
 
 export function TerminalView() {
 	const [activeTab, setActiveTab] = useState<CenterTab>("terminal");
 
 	return (
 		<div className="flex flex-1 flex-col">
-			{/* Pane tab bar — matches real app PaneTabBar */}
-			<div className="flex h-[36px] shrink-0 items-center border-b border-border bg-bg-elevated">
-				{/* Pane index */}
-				<div className="flex h-full w-[28px] shrink-0 items-center justify-center text-[11px] font-medium text-text-faint">
-					1
-				</div>
+			{/* Pane tab bar — matches real TabBar.tsx (52px, 36px pills, 2px accent underline) */}
+			<div className="flex h-[52px] shrink-0 items-end border-b border-app-border bg-app-bg-tab-bar">
+				<div className="flex h-full w-full items-end gap-[2px] pb-[7px] pl-2 pr-1">
+					<TabPill
+						active={activeTab === "terminal"}
+						onClick={() => setActiveTab("terminal")}
+						icon={
+							<span className="shrink-0 font-mono text-[11px] text-app-text-quaternary">&gt;_</span>
+						}
+						label="Claude Code"
+					/>
+					<TabPill
+						active={activeTab === "OrchestratorRow.tsx"}
+						onClick={() => setActiveTab("OrchestratorRow.tsx")}
+						icon={<FileIcon color="#3178c6" />}
+						label="OrchestratorRow.tsx"
+					/>
+					<TabPill
+						active={activeTab === "OrchestratorGroup.tsx"}
+						onClick={() => setActiveTab("OrchestratorGroup.tsx")}
+						icon={<FileIcon color="#3178c6" />}
+						label="OrchestratorGroup.tsx"
+					/>
 
-				{/* Terminal tab */}
-				<TabPill
-					active={activeTab === "terminal"}
-					onClick={() => setActiveTab("terminal")}
-					icon={<span className="shrink-0 font-mono text-[10px] text-text-faint">&gt;_</span>}
-					label="* Claude Code"
-				/>
+					<div className="flex-1" />
 
-				{/* ChatPanel.tsx tab */}
-				<TabPill
-					active={activeTab === "ChatPanel.tsx"}
-					onClick={() => setActiveTab("ChatPanel.tsx")}
-					icon={<FileIcon color="#3178c6" />}
-					label="ChatPanel.tsx"
-				/>
-
-				{/* chat-service.ts tab */}
-				<TabPill
-					active={activeTab === "chat-service.ts"}
-					onClick={() => setActiveTab("chat-service.ts")}
-					icon={<FileIcon color="#3178c6" />}
-					label="chat-service.ts"
-				/>
-
-				{/* Spacer + new tab button */}
-				<div className="flex-1" />
-				<div className="shrink-0 pr-1">
-					<span className="flex h-[24px] w-[24px] items-center justify-center rounded-[5px] text-text-faint">
-						<svg aria-hidden="true" width="12" height="12" viewBox="0 0 16 16" fill="none">
+					<button
+						type="button"
+						title="New terminal"
+						className="flex h-[30px] w-[30px] items-center justify-center rounded-[6px] text-app-text-quaternary transition-colors hover:bg-app-bg-elevated hover:text-app-text-secondary"
+					>
+						<svg aria-hidden="true" width="13" height="13" viewBox="0 0 16 16" fill="none">
 							<path
 								d="M8 3v10M3 8h10"
 								stroke="currentColor"
@@ -51,21 +47,14 @@ export function TerminalView() {
 								strokeLinecap="round"
 							/>
 						</svg>
-					</span>
+					</button>
 				</div>
 			</div>
 
 			{/* Tab content */}
 			{activeTab === "terminal" && <TerminalContent />}
-			{activeTab === "ChatPanel.tsx" && <CodeEditorContent file="ChatPanel.tsx" />}
-			{activeTab === "chat-service.ts" && <CodeEditorContent file="chat-service.ts" />}
-
-			{/* Bottom workspace label */}
-			<div className="flex items-center border-t border-border px-3 py-1">
-				<span className="rounded bg-accent-dim px-1.5 py-0.5 text-[10px] font-medium text-accent">
-					PR #34
-				</span>
-			</div>
+			{activeTab === "OrchestratorRow.tsx" && <CodeEditorContent file="OrchestratorRow.tsx" />}
+			{activeTab === "OrchestratorGroup.tsx" && <CodeEditorContent file="OrchestratorGroup.tsx" />}
 		</div>
 	);
 }
@@ -86,17 +75,26 @@ function TabPill({
 			type="button"
 			onClick={onClick}
 			className={[
-				"relative flex h-[28px] max-w-[180px] shrink-0 items-center gap-1.5 rounded-[6px] pl-2.5 pr-1.5 text-[12px]",
+				"group relative flex h-[36px] max-w-[220px] shrink-0 items-center gap-2 rounded-[7px] pl-3 pr-2 text-[13px] transition-colors",
 				active
-					? "bg-bg-overlay text-text-primary shadow-[0_1px_3px_rgba(0,0,0,0.4),inset_0_0.5px_0_rgba(255,255,255,0.04)]"
-					: "text-text-faint hover:text-text-muted",
+					? "bg-app-tab-active text-app-text shadow-[0_1px_2px_rgba(0,0,0,0.3)]"
+					: "text-app-text-quaternary hover:text-app-text-tertiary",
 			].join(" ")}
 		>
-			{active && <span className="absolute inset-x-2 bottom-0 h-[2px] rounded-full bg-accent" />}
+			{active && (
+				<span className="absolute inset-x-2.5 bottom-0 h-[2px] rounded-full bg-app-accent" />
+			)}
 			{icon}
 			<span className="min-w-0 truncate">{label}</span>
-			<span className="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[4px] text-text-muted">
-				<svg aria-hidden="true" width="8" height="8" viewBox="0 0 9 9" fill="none">
+			<span
+				className={[
+					"flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-[5px] transition-opacity",
+					active
+						? "text-app-text-tertiary"
+						: "text-app-text-quaternary opacity-0 group-hover:opacity-100",
+				].join(" ")}
+			>
+				<svg aria-hidden="true" width="9" height="9" viewBox="0 0 9 9" fill="none">
 					<path
 						d="M2 2l5 5M7 2l-5 5"
 						stroke="currentColor"
@@ -112,228 +110,218 @@ function TabPill({
 function TerminalContent() {
 	return (
 		<div className="flex-1 overflow-hidden p-3">
-			<pre className="font-mono text-[11px] leading-[1.7] text-text-primary">
+			<pre className="font-mono text-[11px] leading-[1.7] text-app-text">
 				{/* Shell prompt */}
-				<span className="text-accent">~/SuperiorSwarm</span>
-				<span className="text-text-muted"> on </span>
-				<span className="text-purple">feature/inline-agent-chat</span>
+				<span className="text-app-accent">~/SuperiorSwarm</span>
+				<span className="text-app-text-tertiary"> on </span>
+				<span className="text-app-purple">orchestrator-ordering</span>
 				{"\n"}
-				<span className="text-green">❯ </span>
-				<span className="text-text-primary">claude</span>
+				<span className="text-app-success">❯ </span>
+				<span className="text-app-text">claude</span>
 				{"\n"}
 				{/* Minimal Claude Code header — matches the real ── line style */}
-				<span className="text-accent">{"── "}</span>
-				<span className="text-accent">Claude Code</span>
-				<span className="text-text-faint"> v2.1.87</span>
-				<span className="text-accent">{" ──────────────────────────────────────────"}</span>
+				<span className="text-app-accent">{"── "}</span>
+				<span className="text-app-accent">Claude Code</span>
+				<span className="text-app-text-quaternary"> v2.1.87</span>
+				<span className="text-app-accent">{" ──────────────────────────────────────────"}</span>
 				{"\n\n"}
 				{/* User prompt */}
-				<span className="text-text-primary">
-					{">"} implement the ChatPanel component with streaming message display
+				<span className="text-app-text">
+					{">"} let me reorder orchestrator groups with drag-and-drop
 				</span>
 				{"\n\n"}
 				{/* Agent reading files */}
-				<span className="text-text-faint">{"  ⠸ "}</span>
-				<span className="text-text-muted">Analyzing codebase...</span>
+				<span className="text-app-text-quaternary">{"  ⠸ "}</span>
+				<span className="text-app-text-tertiary">Analyzing codebase...</span>
 				{"\n"}
-				<span className="text-text-faint">{"  ⠸ "}</span>
-				<span className="text-text-muted">
-					Reading src/shared/chat-types.ts, src/main/chat/chat-service.ts
+				<span className="text-app-text-quaternary">{"  ⠸ "}</span>
+				<span className="text-app-text-tertiary">
+					Reading ProjectItem.tsx, OrchestratorRow.tsx, OrchestratorGroup.tsx
 				</span>
 				{"\n\n"}
 				{/* File operations */}
-				<span className="text-green">{"  ✓ "}</span>
-				<span className="text-text-secondary">Created </span>
-				<span className="text-text-primary">src/renderer/hooks/useAgentChat.ts</span>
-				<span className="text-green"> (+89 lines)</span>
+				<span className="text-app-success">{"  ✓ "}</span>
+				<span className="text-app-text-secondary">Modified </span>
+				<span className="text-app-text">src/renderer/components/ProjectItem.tsx</span>
+				<span className="text-app-success"> +52</span>
+				<span className="text-app-danger"> -6</span>
 				{"\n"}
-				<span className="text-green">{"  ✓ "}</span>
-				<span className="text-text-secondary">Created </span>
-				<span className="text-text-primary">src/renderer/components/ChatMessage.tsx</span>
-				<span className="text-green"> (+67 lines)</span>
+				<span className="text-app-success">{"  ✓ "}</span>
+				<span className="text-app-text-secondary">Modified </span>
+				<span className="text-app-text">src/renderer/components/OrchestratorRow.tsx</span>
+				<span className="text-app-success"> +14</span>
+				<span className="text-app-danger"> -2</span>
 				{"\n"}
-				<span className="text-green">{"  ✓ "}</span>
-				<span className="text-text-secondary">Modified </span>
-				<span className="text-text-primary">src/renderer/components/ChatPanel.tsx</span>
-				<span className="text-green"> +156</span>
-				<span className="text-red"> -23</span>
-				{"\n"}
-				<span className="text-green">{"  ✓ "}</span>
-				<span className="text-text-secondary">Modified </span>
-				<span className="text-text-primary">src/main/chat/chat-service.ts</span>
-				<span className="text-green"> +34</span>
-				<span className="text-red"> -8</span>
+				<span className="text-app-success">{"  ✓ "}</span>
+				<span className="text-app-text-secondary">Modified </span>
+				<span className="text-app-text">src/main/trpc/routers/workspaces.ts</span>
+				<span className="text-app-success"> +28</span>
+				<span className="text-app-danger"> -0</span>
 				{"\n\n"}
 				{/* Test results */}
-				<span className="text-text-secondary">{"  "}Running tests...</span>
+				<span className="text-app-text-secondary">{"  "}Running tests...</span>
 				{"\n"}
-				<span className="text-green">{"  ✓ "}</span>
-				<span className="text-text-secondary">chat/chat-service.test.ts (6 tests)</span>
+				<span className="text-app-success">{"  ✓ "}</span>
+				<span className="text-app-text-secondary">
+					workspaces.reorderTopLevel.test.ts (5 tests)
+				</span>
 				{"\n"}
-				<span className="text-green">{"  ✓ "}</span>
-				<span className="text-text-secondary">hooks/useAgentChat.test.ts (4 tests)</span>
+				<span className="text-app-success">{"  ✓ "}</span>
+				<span className="text-app-text-secondary">
+					workspaces.reorderChildren.test.ts (4 tests)
+				</span>
 				{"\n"}
-				<span className="text-green">{"  ✓ "}</span>
-				<span className="text-green">10 tests passed</span>
+				<span className="text-app-success">{"  ✓ "}</span>
+				<span className="text-app-success">9 tests passed</span>
 				{"\n\n"}
 				{/* Cursor */}
-				<span className="text-text-primary">{">"} </span>
-				<span className="animate-pulse text-text-primary">█</span>
+				<span className="text-app-text">{">"} </span>
+				<span className="animate-pulse text-app-text">█</span>
 			</pre>
 		</div>
 	);
 }
 
-const CHAT_PANEL_CODE = `import { useEffect, useRef, useCallback } from "react";
-import { useAgentChat } from "../hooks/useAgentChat";
-import { ChatMessage } from "./ChatMessage";
-import type { AgentMessage } from "../../shared/chat-types";
+// Real excerpts from apps/desktop/src/renderer/components/
+const ORCH_ROW_CODE = `import { useState } from "react";
+import { useTabStore } from "../stores/tab-store";
 
-interface ChatPanelProps {
-  conversationId: string;
-  agentId: string;
-  onClose: () => void;
+interface OrchestratorRowProps {
+  workspace: { id: string; name: string };
+  colorIndex: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
+  childCount: number;
+  expanded: boolean;
+  onToggle: () => void;
+  onActivate: () => void;
 }
 
-export function ChatPanel({ conversationId, agentId, onClose }: ChatPanelProps) {
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const { messages, streamingContent, send, status } = useAgentChat({
-    conversationId,
-    agentId,
-  });
-
-  // Subscribe to message stream with cleanup
-  useEffect(() => {
-    const unsubscribe = messages.subscribe(() => {
-      requestAnimationFrame(() => {
-        scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
-      });
-    });
-    return () => unsubscribe();
-  }, [messages]);
-
-  const handleSend = useCallback(
-    (content: string) => {
-      send({ role: "user", content, timestamp: Date.now() });
-    },
-    [send],
-  );
+export function OrchestratorRow({
+  workspace,
+  colorIndex,
+  childCount,
+  expanded,
+  onToggle,
+  onActivate,
+}: OrchestratorRowProps) {
+  const isActive = useTabStore((s) => s.activeWorkspaceId === workspace.id);
+  const swatchVar = \`var(--orch-\${colorIndex})\`;
+  const pillBg = \`var(--orch-\${colorIndex}-bg)\`;
 
   return (
-    <div className="flex h-full flex-col bg-bg-base">
-      <header className="flex items-center gap-2 border-b px-3 py-2">
-        <div className="size-2 rounded-full bg-green animate-pulse" />
-        <span className="text-sm font-medium">{agentId}</span>
-        <span className="text-xs text-muted">{status}</span>
-        <button onClick={onClose} className="ml-auto">x</button>
-      </header>
+    <div
+      className={[
+        "group relative flex items-center w-full rounded-[6px]",
+        isActive
+          ? "bg-[var(--accent-subtle)]"
+          : "hover:bg-[var(--bg-elevated)]",
+      ].join(" ")}
+    >
+      {isActive && (
+        <span
+          aria-hidden="true"
+          className="absolute left-0 top-1 bottom-1 w-[3px] rounded-r-[2px] bg-[var(--accent)]"
+        />
+      )}
 
-      <div ref={scrollRef} className="flex-1 overflow-y-auto p-3">
-        {messages.map((msg: AgentMessage) => (
-          <ChatMessage key={msg.id} message={msg} />
-        ))}
-        {streamingContent && (
-          <ChatMessage
-            message={{ role: "assistant", content: streamingContent }}
-            streaming
-          />
-        )}
-      </div>
-
-      <ChatInput onSend={handleSend} disabled={status !== "connected"} />
+      <button
+        type="button"
+        onClick={onActivate}
+        className="flex min-w-0 flex-1 items-center gap-2 pl-[22px] pr-2 py-[7px]"
+      >
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+          <circle cx="6" cy="2.5" r="1.4" stroke={swatchVar} />
+          <circle cx="2.5" cy="9.5" r="1.4" stroke={swatchVar} />
+          <circle cx="9.5" cy="9.5" r="1.4" stroke={swatchVar} />
+          <path d="M6 4 L3 8 M6 4 L9 8" stroke={swatchVar} />
+        </svg>
+        <span className="flex-1 truncate text-[13px] font-medium">
+          {workspace.name}
+        </span>
+        <span
+          className="px-[7px] py-px rounded-[9px] text-[10px]"
+          style={{ background: pillBg, color: swatchVar }}
+        >
+          {childCount}
+        </span>
+      </button>
     </div>
   );
 }`;
 
-const CHAT_SERVICE_CODE = `import { MessageQueue } from "./message-queue";
-import type { ChatMessage, ChatEvent } from "../../shared/chat-types";
+const ORCH_GROUP_CODE = `import { Children } from "react";
+import type { ReactNode } from "react";
 
-export class ChatService {
-  private ws: WebSocket;
-  private queue: MessageQueue;
-  private reconnectAttempts = 0;
-  private listeners = new Map<string, Set<(e: ChatEvent) => void>>();
+interface OrchestratorGroupProps {
+  colorIndex: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
+  hasActiveChild: boolean;
+  children: ReactNode;
+}
 
-  constructor(private url: string) {
-    this.queue = new MessageQueue();
-    this.connect(url);
-  }
-
-  async send(message: ChatMessage): Promise<void> {
-    this.queue.enqueue(message);
-    await this.queue.flush(this.ws);
-  }
-
-  on(event: string, handler: (e: ChatEvent) => void): () => void {
-    if (!this.listeners.has(event)) {
-      this.listeners.set(event, new Set());
-    }
-    this.listeners.get(event)!.add(handler);
-    return () => this.listeners.get(event)?.delete(handler);
-  }
-
-  private connect(url: string): void {
-    this.ws = this.createSocket(url);
-    this.ws.onmessage = (e) => this.handleMessage(e);
-    this.ws.onopen = () => {
-      this.reconnectAttempts = 0;
-      this.queue.flush(this.ws);
-    };
-    this.ws.onclose = () => this.reconnectWithBackoff(url);
-  }
-
-  private reconnectWithBackoff(url: string): void {
-    const delay = Math.min(1000 * 2 ** this.reconnectAttempts, 30_000);
-    setTimeout(() => {
-      this.reconnectAttempts++;
-      this.connect(url);
-    }, delay);
-  }
-
-  private createSocket(url: string): WebSocket {
-    return new WebSocket(url);
-  }
-
-  private handleMessage(event: MessageEvent): void {
-    const data = JSON.parse(event.data) as ChatEvent;
-    this.listeners.get(data.type)?.forEach((fn) => fn(data));
-  }
-
-  dispose(): void {
-    this.ws.close();
-    this.listeners.clear();
-  }
+export function OrchestratorGroup({
+  colorIndex,
+  hasActiveChild,
+  children,
+}: OrchestratorGroupProps) {
+  const railColor = \`var(--orch-\${colorIndex})\`;
+  return (
+    <div className="relative pl-[14px]">
+      <span
+        aria-hidden="true"
+        className="absolute top-[2px] bottom-[4px] w-[2px] rounded-[2px]"
+        style={{
+          left: "26px",
+          background: railColor,
+          opacity: hasActiveChild ? 1 : 0.55,
+        }}
+      />
+      {children}
+      {Children.count(children) === 0 && (
+        <div className="pl-[36px] py-2">
+          <div className="text-[11px] text-[var(--text-tertiary)]">
+            No worktrees attached.
+          </div>
+          <div className="text-[11px] text-[var(--text-quaternary)]">
+            Drag a worktree here to attach.
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }`;
 
-const CHAT_PANEL_LINES = CHAT_PANEL_CODE.split("\n");
-const CHAT_SERVICE_LINES = CHAT_SERVICE_CODE.split("\n");
+const ORCH_ROW_LINES = ORCH_ROW_CODE.split("\n");
+const ORCH_GROUP_LINES = ORCH_GROUP_CODE.split("\n");
 
-function CodeEditorContent({ file }: { file: "ChatPanel.tsx" | "chat-service.ts" }) {
-	const lines = file === "ChatPanel.tsx" ? CHAT_PANEL_LINES : CHAT_SERVICE_LINES;
+function CodeEditorContent({ file }: { file: "OrchestratorRow.tsx" | "OrchestratorGroup.tsx" }) {
+	const lines = file === "OrchestratorRow.tsx" ? ORCH_ROW_LINES : ORCH_GROUP_LINES;
 	const filePath =
-		file === "ChatPanel.tsx"
-			? "src/renderer/components/ChatPanel.tsx"
-			: "src/main/chat/chat-service.ts";
+		file === "OrchestratorRow.tsx"
+			? "src/renderer/components/OrchestratorRow.tsx"
+			: "src/renderer/components/OrchestratorGroup.tsx";
 
 	return (
 		<div className="flex flex-1 flex-col overflow-hidden">
 			{/* File path bar */}
-			<div className="flex h-8 shrink-0 items-center gap-2 border-b border-border bg-bg-surface px-3">
-				<span className="flex-1 truncate font-mono text-[11px] text-text-faint">{filePath}</span>
-				<span className="font-mono text-[10px] text-text-faint">feature/inline-agent-chat</span>
+			<div className="flex h-8 shrink-0 items-center gap-2 border-b border-app-border-subtle bg-app-bg-surface px-3">
+				<span className="flex-1 truncate font-mono text-[11px] text-app-text-quaternary">
+					{filePath}
+				</span>
+				<span className="font-mono text-[10px] text-app-text-quaternary">
+					orchestrator-ordering
+				</span>
 			</div>
 
 			{/* Code content */}
-			<div className="flex-1 overflow-auto bg-bg-base">
+			<div className="flex-1 overflow-auto bg-app-bg-base">
 				<table className="w-full border-collapse font-mono text-[11px] leading-[1.7]">
 					<tbody>
 						{lines.map((line, i) => (
 							// biome-ignore lint/suspicious/noArrayIndexKey: static mock data, never reorders
-							<tr key={i} className="hover:bg-bg-elevated/40">
-								<td className="w-[42px] select-none border-r border-border px-2 text-right text-[10px] text-text-faint/50">
+							<tr key={i} className="hover:bg-app-bg-elevated/40">
+								<td className="w-[42px] select-none border-r border-app-border-subtle px-2 text-right text-[10px] text-app-text-quaternary/50">
 									{i + 1}
 								</td>
-								<td className="whitespace-pre pl-3 pr-4 text-text-muted">
+								<td className="whitespace-pre pl-3 pr-4 text-app-text-tertiary">
 									<CodeLine content={line} />
 								</td>
 							</tr>
@@ -356,17 +344,17 @@ function highlightSyntax(line: string): React.ReactNode[] {
 	let remaining = line;
 	let keyIdx = 0;
 
-	// Match patterns in order of priority
+	// Match patterns in order of priority — muted palette so keywords don't shout
 	const patterns: [RegExp, string][] = [
-		[/^(\/\/.*)/, "text-text-faint"], // single-line comments
+		[/^(\/\/.*)/, "text-app-text-quaternary"], // single-line comments
 		[
 			/^(import|export|from|return|const|let|new|type|interface|class|function|if|else|async|await|typeof|private|this|void)\b/,
-			"text-accent",
+			"text-[#7fa3c7]", // desaturated slate-blue, lower-contrast than accent
 		],
-		[/^("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`)/, "text-green"],
-		[/^(true|false|null|undefined|Date)\b/, "text-yellow"],
-		[/^(\d+(?:_\d+)*)/, "text-yellow"],
-		[/^(=>|\.\.\.|\?\.)/, "text-accent"],
+		[/^("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`)/, "text-[#a8c8a0]"], // muted green
+		[/^(true|false|null|undefined|Date)\b/, "text-[#c8a87a]"], // muted amber
+		[/^(\d+(?:_\d+)*)/, "text-[#c8a87a]"],
+		[/^(=>|\.\.\.|\?\.)/, "text-app-text-tertiary"],
 	];
 
 	while (remaining.length > 0) {
