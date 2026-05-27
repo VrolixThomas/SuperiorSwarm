@@ -1,0 +1,13 @@
+{
+	"extends": "@superiorswarm/typescript-config/react.json",
+	"compilerOptions": {
+		"strict": true,
+		"noUnusedLocals": true,
+		"noUnusedParameters": true,
+		"noUncheckedIndexedAccess": true,
+		"skipLibCheck": true,
+		"isolatedModules": true,
+		"verbatimModuleSyntax": false
+	},
+	"include": ["src", "scripts"]
+}

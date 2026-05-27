@@ -1,0 +1,6 @@
+node_modules
+out
+public/screenshots
+public/brand
+public/audio
+.env.local

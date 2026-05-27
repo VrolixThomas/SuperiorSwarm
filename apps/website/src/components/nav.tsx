@@ -4,6 +4,7 @@ import { SITE } from "@/lib/constants";
 import { useRelease } from "@/lib/release-context";
 import { shouldShowDownload, useDetectedPlatform } from "@/lib/use-detected-platform";
 import { useEffect, useState } from "react";
+import { SocialIcons } from "./social-icons";
 
 export function Nav() {
 	const [scrolled, setScrolled] = useState(false);
@@ -28,7 +29,7 @@ export function Nav() {
 					: "border-b border-transparent bg-transparent"
 			}`}
 		>
-			<a href="#top" className="flex items-center gap-2.5">
+			<a href="#hero" className="flex items-center gap-2.5">
 				<svg
 					width={30}
 					height={30}
@@ -48,15 +49,14 @@ export function Nav() {
 				</svg>
 				<span className="text-sm font-semibold text-text-primary tracking-wide">{SITE.name}</span>
 			</a>
-			<div className="flex items-center gap-6">
+			<div className="flex items-center gap-5">
 				<a
-					href={SITE.github}
-					target="_blank"
-					rel="noopener noreferrer"
-					className="hidden text-xs text-text-muted transition-colors hover:text-text-secondary md:block"
+					href="/changelog"
+					className="hidden text-xs text-text-muted transition-colors hover:text-text-primary md:block"
 				>
-					GitHub
+					Changelog
 				</a>
+				<SocialIcons size={14} className="hidden md:flex" />
 				{showDownload ? (
 					<a
 						href={release?.dmgUrl ?? SITE.download}

@@ -1,20 +1,47 @@
-// Projects with expandable branches (from real app Repos sidebar)
+// Project tree — matches real app's OrchestratorGroupNode + loose structure
+// (apps/desktop/src/renderer/components/ProjectItem.tsx)
 export const PROJECTS = [
 	{
+		id: "ss",
 		name: "SuperiorSwarm",
-		branches: [
-			{ name: "main", active: false },
+		source: "github" as const,
+		orchestrators: [
 			{
-				name: "feature/inline-agent-chat",
-				active: true,
-				subtitle: "3 agents running",
+				id: "orch-release",
+				name: "Release v1.0",
+				colorIndex: 1 as const,
+				children: [
+					{
+						id: "w-feature",
+						name: "orchestrator-ordering",
+						active: true,
+						statusText: "3 agents running",
+						currentPhase: "working" as const,
+					},
+					{
+						id: "w-review",
+						name: "review/PR-110",
+						active: false,
+					},
+					{
+						id: "w-voice",
+						name: "voice-input",
+						active: false,
+					},
+				],
 			},
-			{ name: "fix/terminal-scrollback", active: false },
+		],
+		loose: [
+			{ id: "w-main", name: "main", active: false },
+			{ id: "w-fix", name: "fix/terminal-scrollback", active: false },
 		],
 	},
 	{
+		id: "docs",
 		name: "superiorswarm-docs",
-		branches: [{ name: "main", active: false }],
+		source: "github" as const,
+		orchestrators: [],
+		loose: [{ id: "d-main", name: "main", active: false }],
 	},
 ] as const;
 
@@ -22,11 +49,12 @@ export const PROJECTS = [
 export const PULL_REQUESTS = [
 	{
 		repo: "VROLIXTHOMAS/SUPERIORSWARM",
+		source: "github" as const,
 		prs: [
 			{
 				id: 34,
-				title: "Add inline agent chat with streaming responses",
-				branch: "feature/inline-agent-chat",
+				title: "Orchestrator workspace ordering with drag-and-drop",
+				branch: "orchestrator-ordering",
 				target: "main",
 				author: "ThomasV",
 				authorInitial: "T",
@@ -49,7 +77,7 @@ export const PULL_REQUESTS = [
 export const TICKETS = [
 	{
 		key: "SUP-12",
-		title: "Inline agent chatting in terminal panes",
+		title: "Reorder orchestrator workspaces via drag-and-drop",
 		status: "In Progress" as const,
 		provider: "Linear" as const,
 		project: "SuperiorSwarm",
@@ -98,233 +126,191 @@ export const TICKET_STATUSES = [
 	{ name: "Done" },
 ] as const;
 
-// PR comments / review threads (AI review on PR #34)
+// PR comments / review threads (AI review on PR #34 — orchestrator reordering)
 export const PR_COMMENTS = [
 	{
-		file: "src/main/chat/chat-service.ts",
+		file: "src/renderer/components/ProjectItem.tsx",
 		threads: [
 			{
-				line: 47,
+				line: 142,
 				author: "PR Review Agent",
 				date: "3/29/2026",
-				text: "Messages are dispatched without a queue. If two agents respond simultaneously, messages will interleave unpredictably. Add a message queue per conversation that serializes writes.",
+				text: "The optimistic reorder updates local state before `reorderTopLevel` resolves but never reverts on error. A rejected mutation leaves the sidebar showing an order the backend never accepted. Roll back to the previous order in onError.",
 			},
 			{
-				line: 89,
+				line: 168,
 				author: "PR Review Agent",
 				date: "3/29/2026",
-				text: "The WebSocket connection has no reconnection logic. When the network drops, the agent session is lost silently. Implement exponential backoff reconnection with session resumption.",
+				text: "@dnd-kit is configured with `closestCenter`, so nested workspaces snap to the wrong orchestrator on fast drags. Use `closestCorners` or constrain droppables to the active container.",
 			},
 		],
 	},
 	{
-		file: "src/renderer/components/ChatPanel.tsx",
+		file: "src/renderer/components/OrchestratorGroup.tsx",
 		threads: [
 			{
-				line: 23,
+				line: 54,
 				author: "PR Review Agent",
 				date: "3/29/2026",
-				text: "The `useEffect` that subscribes to the message stream doesn't return a cleanup function. This will leak subscriptions when the component unmounts or the conversation changes.",
+				text: "The reorder mutation fires on every `onDragOver` instead of `onDragEnd`, so a single drag dispatches dozens of writes. Persist the order only once when the drag completes.",
 			},
 			{
-				line: 156,
+				line: 96,
 				author: "PR Review Agent",
 				date: "3/29/2026",
-				text: "Streaming message content is appended to state on every chunk without batching. With fast responses this causes hundreds of re-renders per second. Use `requestAnimationFrame` or batch state updates.",
+				text: "`arrayMove` is called with the pre-drag index after state has already shifted, producing an off-by-one when dragging downward. Capture the source index at drag start.",
 			},
 		],
 	},
 ] as const;
 
-// Comment solver commit groups (AI fixes for PR #34)
+// Comment solver commit groups (AI fixes for PR #34 — orchestrator reordering)
 export const COMMIT_GROUPS = [
 	{
-		label: "Message queue and WebSocket reconnection in chat-service.ts",
+		label: "Revert optimistic reorder on error + fix collision detection",
 		resolved: 2,
 		total: 2,
 		approved: true,
 		commits: ["a7f3c21"],
-		files: ["chat-service.ts"],
+		files: ["ProjectItem.tsx"],
 		comments: [
 			{
-				file: "chat-service.ts",
-				line: 47,
+				file: "ProjectItem.tsx",
+				line: 142,
 				author: "PR Review Agent",
-				text: "Messages are dispatched without a queue. If two agents respond simultaneously, messages will interleave unpredictably. Add a message queue per conversation that serializes writes.",
+				text: "The optimistic reorder updates local state before `reorderTopLevel` resolves but never reverts on error. A rejected mutation leaves the sidebar showing an order the backend never accepted. Roll back to the previous order in onError.",
 			},
 			{
-				file: "chat-service.ts",
-				line: 89,
+				file: "ProjectItem.tsx",
+				line: 168,
 				author: "PR Review Agent",
-				text: "The WebSocket connection has no reconnection logic. When the network drops, the agent session is lost silently. Implement exponential backoff reconnection with session resumption.",
+				text: "@dnd-kit is configured with `closestCenter`, so nested workspaces snap to the wrong orchestrator on fast drags. Use `closestCorners` or constrain droppables to the active container.",
 			},
 		],
 	},
 	{
-		label: "ChatPanel subscription cleanup and render batching",
+		label: "Persist order on drag end + fix arrayMove index",
 		resolved: 2,
 		total: 2,
 		approved: true,
 		commits: ["e4b8d09"],
-		files: ["ChatPanel.tsx"],
+		files: ["OrchestratorGroup.tsx"],
 		comments: [
 			{
-				file: "ChatPanel.tsx",
-				line: 23,
+				file: "OrchestratorGroup.tsx",
+				line: 54,
 				author: "PR Review Agent",
-				text: "The `useEffect` that subscribes to the message stream doesn't return a cleanup function. This will leak subscriptions when the component unmounts or the conversation changes.",
+				text: "The reorder mutation fires on every `onDragOver` instead of `onDragEnd`, so a single drag dispatches dozens of writes. Persist the order only once when the drag completes.",
 			},
 			{
-				file: "ChatPanel.tsx",
-				line: 156,
+				file: "OrchestratorGroup.tsx",
+				line: 96,
 				author: "PR Review Agent",
-				text: "Streaming message content is appended to state on every chunk without batching. With fast responses this causes hundreds of re-renders per second. Use `requestAnimationFrame` or batch state updates.",
+				text: "`arrayMove` is called with the pre-drag index after state has already shifted, producing an off-by-one when dragging downward. Capture the source index at drag start.",
 			},
 		],
 	},
 ] as const;
 
-// Diff lines for the solver center panel — chat-service.ts message queue fix
+// Diff lines for the solver center panel — OrchestratorGroup.tsx reorder fix
+// (persist on drag end with a captured source index instead of per drag-over)
 export const DIFF_LINES = [
 	{
 		type: "context" as const,
-		left: "42",
-		right: "42",
-		content: "export class ChatService {",
-	},
-	{
-		type: "context" as const,
-		left: "43",
-		right: "43",
-		content: "  private ws: WebSocket;",
-	},
-	{
-		type: "add" as const,
-		left: "",
-		right: "44",
-		content: "  private queue: MessageQueue;",
-	},
-	{
-		type: "add" as const,
-		left: "",
-		right: "45",
-		content: "  private reconnectAttempts = 0;",
-	},
-	{
-		type: "context" as const,
-		left: "44",
-		right: "46",
-		content: "",
-	},
-	{
-		type: "remove" as const,
-		left: "45",
-		right: "",
-		content: "  async send(message: ChatMessage): Promise<void> {",
-	},
-	{
-		type: "remove" as const,
-		left: "46",
-		right: "",
-		content: "    this.ws.send(JSON.stringify(message));",
-	},
-	{
-		type: "remove" as const,
-		left: "47",
-		right: "",
-		content: "  }",
-	},
-	{
-		type: "add" as const,
-		left: "",
-		right: "47",
-		content: "  async send(message: ChatMessage): Promise<void> {",
-	},
-	{
-		type: "add" as const,
-		left: "",
-		right: "48",
-		content: "    this.queue.enqueue(message);",
-	},
-	{
-		type: "add" as const,
-		left: "",
-		right: "49",
-		content: "    await this.queue.flush(this.ws);",
-	},
-	{
-		type: "add" as const,
-		left: "",
-		right: "50",
-		content: "  }",
-	},
-	{ type: "context" as const, left: "48", right: "51", content: "" },
-	{
-		type: "context" as const,
-		left: "49",
-		right: "52",
-		content: "  private connect(url: string): void {",
-	},
-	{
-		type: "remove" as const,
 		left: "50",
+		right: "50",
+		content: "  const sensors = useSensors(useSensor(PointerSensor));",
+	},
+	{ type: "context" as const, left: "51", right: "51", content: "" },
+	{
+		type: "remove" as const,
+		left: "52",
 		right: "",
-		content: "    this.ws = new WebSocket(url);",
+		content: "  function handleDragOver(event: DragOverEvent) {",
+	},
+	{
+		type: "remove" as const,
+		left: "53",
+		right: "",
+		content: "    const { active, over } = event;",
+	},
+	{
+		type: "remove" as const,
+		left: "54",
+		right: "",
+		content: "    reorder.mutate({ id: active.id }); // fires on every move",
+	},
+	{
+		type: "remove" as const,
+		left: "55",
+		right: "",
+		content: "  }",
+	},
+	{
+		type: "add" as const,
+		left: "",
+		right: "52",
+		content: "  function handleDragEnd(event: DragEndEvent) {",
 	},
 	{
 		type: "add" as const,
 		left: "",
 		right: "53",
-		content: "    this.ws = this.createSocket(url);",
+		content: "    const { active, over } = event;",
 	},
 	{
 		type: "add" as const,
 		left: "",
 		right: "54",
-		content: "    this.ws.onclose = () => this.reconnectWithBackoff(url);",
+		content: "    if (!over || active.id === over.id) return;",
 	},
 	{
-		type: "context" as const,
-		left: "51",
+		type: "add" as const,
+		left: "",
 		right: "55",
-		content: "  }",
+		content: "    const from = items.findIndex((i) => i.id === active.id);",
 	},
-	{ type: "context" as const, left: "52", right: "56", content: "" },
+	{
+		type: "add" as const,
+		left: "",
+		right: "56",
+		content: "    const to = items.findIndex((i) => i.id === over.id);",
+	},
 	{
 		type: "add" as const,
 		left: "",
 		right: "57",
-		content: "  private reconnectWithBackoff(url: string): void {",
+		content: "    const next = arrayMove(items, from, to);",
 	},
 	{
 		type: "add" as const,
 		left: "",
 		right: "58",
-		content: "    const delay = Math.min(1000 * 2 ** this.reconnectAttempts, 30_000);",
+		content: "    setItems(next); // optimistic",
 	},
 	{
 		type: "add" as const,
 		left: "",
 		right: "59",
-		content: "    setTimeout(() => {",
+		content: "    reorder.mutate(",
 	},
 	{
 		type: "add" as const,
 		left: "",
 		right: "60",
-		content: "      this.reconnectAttempts++;",
+		content: "      { orderedIds: next.map((i) => i.id) },",
 	},
 	{
 		type: "add" as const,
 		left: "",
 		right: "61",
-		content: "      this.connect(url);",
+		content: "      { onError: () => setItems(items) }, // revert",
 	},
 	{
 		type: "add" as const,
 		left: "",
 		right: "62",
-		content: "    }, delay);",
+		content: "    );",
 	},
 	{
 		type: "add" as const,
@@ -332,16 +318,32 @@ export const DIFF_LINES = [
 		right: "63",
 		content: "  }",
 	},
+	{ type: "context" as const, left: "56", right: "64", content: "" },
+	{
+		type: "context" as const,
+		left: "57",
+		right: "65",
+		content: "  return (",
+	},
+	{
+		type: "context" as const,
+		left: "58",
+		right: "66",
+		content: "    <DndContext sensors={sensors} collisionDetection={closestCorners}>",
+	},
 ] as const;
 
 // Working changes for git panel
-export const WORKING_CHANGES = [{ name: "chat-service.ts" }, { name: "ChatPanel.tsx" }] as const;
+export const WORKING_CHANGES = [
+	{ name: "ProjectItem.tsx" },
+	{ name: "OrchestratorGroup.tsx" },
+] as const;
 
-// Commits list (feature branch commits for the chat feature)
+// Commits list (feature branch commits for the orchestrator reordering feature)
 export const COMMITS = [
 	{
 		hash: "e4b8d09",
-		message: "fix: batch streaming renders with requestAnimationFrame",
+		message: "fix: revert optimistic reorder when mutation fails",
 		time: "12 min ago",
 		additions: 18,
 		deletions: 6,
@@ -349,15 +351,15 @@ export const COMMITS = [
 	},
 	{
 		hash: "b2c4a17",
-		message: "fix: implement WebSocket reconnection with backoff",
+		message: "fix: capture source index at drag start",
 		time: "28 min ago",
-		additions: 52,
-		deletions: 3,
+		additions: 21,
+		deletions: 4,
 		files: 1,
 	},
 	{
 		hash: "a7f3c21",
-		message: "fix: add message queue for concurrent agent responses",
+		message: "feat: persist order on drag end only",
 		time: "43 min ago",
 		additions: 34,
 		deletions: 8,
@@ -365,37 +367,124 @@ export const COMMITS = [
 	},
 	{
 		hash: "8d1e5f3",
-		message: "feat: add useAgentChat hook for conversation state",
+		message: "feat: add reorderTopLevel + reorderChildren tRPC procedures",
 		time: "2 hours ago",
-		additions: 89,
+		additions: 74,
 		deletions: 0,
 		files: 1,
 	},
 	{
 		hash: "3f7a9b2",
-		message: "feat: implement chat-service with WebSocket transport",
+		message: "feat: wire @dnd-kit sortable context into ProjectItem",
 		time: "3 hours ago",
-		additions: 245,
-		deletions: 12,
+		additions: 96,
+		deletions: 8,
 		files: 2,
 	},
 	{
 		hash: "c5d2e84",
-		message: "feat: add ChatPanel component with streaming UI",
+		message: "feat: add drag handle + sortable rows to OrchestratorRow",
 		time: "4 hours ago",
-		additions: 187,
-		deletions: 0,
-		files: 3,
+		additions: 118,
+		deletions: 5,
+		files: 2,
 	},
 ] as const;
 
+// Right diff panel — Changes tab content for the orchestrator-ordering branch.
+// File +/- and commit +/- both total +345 / -31 across 6 files / 3 commits (↑3).
+export const DIFF_PANEL = {
+	branch: "orchestrator-ordering",
+	baseBranch: "main",
+	ahead: 3,
+	totalAdditions: 345,
+	totalDeletions: 31,
+	// Grouped by top-level dir (mirrors real BranchChanges groupByDirectory on parts[0])
+	files: [
+		{
+			dir: "src",
+			name: "ProjectItem.tsx",
+			path: "src/renderer/components/ProjectItem.tsx",
+			status: "modified" as const,
+			additions: 118,
+			deletions: 19,
+		},
+		{
+			dir: "src",
+			name: "OrchestratorGroup.tsx",
+			path: "src/renderer/components/OrchestratorGroup.tsx",
+			status: "modified" as const,
+			additions: 96,
+			deletions: 8,
+		},
+		{
+			dir: "src",
+			name: "OrchestratorRow.tsx",
+			path: "src/renderer/components/OrchestratorRow.tsx",
+			status: "modified" as const,
+			additions: 21,
+			deletions: 4,
+		},
+		{
+			dir: "src",
+			name: "workspaces.ts",
+			path: "src/main/trpc/workspaces.ts",
+			status: "modified" as const,
+			additions: 74,
+			deletions: 0,
+		},
+		{
+			dir: "src",
+			name: "projects.ts",
+			path: "src/renderer/stores/projects.ts",
+			status: "modified" as const,
+			additions: 24,
+			deletions: 0,
+		},
+		{
+			dir: "src",
+			name: "pane-types.ts",
+			path: "src/shared/pane-types.ts",
+			status: "modified" as const,
+			additions: 12,
+			deletions: 0,
+		},
+	],
+	commits: [
+		{
+			shortHash: "e4b8d09",
+			message: "feat: persist ordering via workspaces.reorder* procedures",
+			time: "1 hour ago",
+			additions: 110,
+			deletions: 9,
+			files: 2,
+		},
+		{
+			shortHash: "a7f3c21",
+			message: "feat: drag-and-drop orchestrator groups with @dnd-kit",
+			time: "2 hours ago",
+			additions: 152,
+			deletions: 18,
+			files: 3,
+		},
+		{
+			shortHash: "3f7a9b2",
+			message: "refactor: extract orchestrator ordering logic",
+			time: "3 hours ago",
+			additions: 83,
+			deletions: 4,
+			files: 1,
+		},
+	],
+} as const;
+
 // Branch changes
 export const BRANCH_FILES = [
-	{ name: "ChatPanel.tsx", path: "src/renderer/components/", additions: 156 },
-	{ name: "chat-service.ts", path: "src/main/chat/", additions: 198 },
-	{ name: "useAgentChat.ts", path: "src/renderer/hooks/", additions: 89 },
-	{ name: "ChatMessage.tsx", path: "src/renderer/components/", additions: 67 },
-	{ name: "chat-types.ts", path: "src/shared/", additions: 34 },
+	{ name: "ProjectItem.tsx", path: "src/renderer/components/", additions: 118 },
+	{ name: "OrchestratorGroup.tsx", path: "src/renderer/components/", additions: 96 },
+	{ name: "OrchestratorRow.tsx", path: "src/renderer/components/", additions: 21 },
+	{ name: "workspaces.ts", path: "src/main/trpc/", additions: 74 },
+	{ name: "projects.ts", path: "src/renderer/stores/", additions: 24 },
 ] as const;
 
 // File tree
@@ -404,12 +493,12 @@ export const FILE_TREE = [
 		name: "src",
 		type: "dir" as const,
 		children: [
-			{ name: "main/chat/chat-service.ts", type: "file" as const },
-			{ name: "main/chat/message-queue.ts", type: "file" as const },
-			{ name: "renderer/components/ChatPanel.tsx", type: "file" as const },
-			{ name: "renderer/components/ChatMessage.tsx", type: "file" as const },
-			{ name: "renderer/hooks/useAgentChat.ts", type: "file" as const },
-			{ name: "shared/chat-types.ts", type: "file" as const },
+			{ name: "main/trpc/workspaces.ts", type: "file" as const },
+			{ name: "renderer/components/ProjectItem.tsx", type: "file" as const },
+			{ name: "renderer/components/OrchestratorGroup.tsx", type: "file" as const },
+			{ name: "renderer/components/OrchestratorRow.tsx", type: "file" as const },
+			{ name: "renderer/stores/projects.ts", type: "file" as const },
+			{ name: "shared/pane-types.ts", type: "file" as const },
 		],
 	},
 	{ name: "package.json", type: "file" as const },
