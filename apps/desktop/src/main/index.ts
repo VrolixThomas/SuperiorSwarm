@@ -24,7 +24,7 @@ import {
 import { type RunningControlPlane, startControlPlane } from "./control-plane";
 import { registerConfirmBridge, requestConfirm } from "./control-plane/confirm-bridge";
 import { attachOrchestratorEventSink, setEventsDir } from "./control-plane/orchestrator-event-sink";
-import { backfillRemoteHosts, getDb, initializeDatabase } from "./db";
+import { backfillRemoteHosts, closeDb, getDb, initializeDatabase } from "./db";
 import * as schema from "./db/schema";
 import {
 	type SessionSaveData,
@@ -37,7 +37,8 @@ import { setupLspIPC } from "./lsp/ipc-handler";
 import { serverManager, warmShellPathCache } from "./lsp/server-manager";
 import { getMainWindow, setMainWindow } from "./main-window";
 import { syncShortcuts } from "./quick-actions/shortcuts";
-import { disposeRepoIPC, setupRepoIPC } from "./repo-ipc";
+import { disposeRepoIPCWithTimeout, setupRepoIPC } from "./repo-ipc";
+import { armKillWatchdog } from "./process-watchdog";
 import { probeCliInPath } from "./services/cli-probe";
 import { deleteControlDiscovery, writeControlDiscovery } from "./services/control-discovery";
 import { runGlobalMcpInstall } from "./services/global-mcp-install";
@@ -416,14 +417,17 @@ app.whenReady().then(async () => {
 app.on("before-quit", () => {
 	const t0 = Date.now();
 	log.info("[quit] before-quit start");
-	// Watchdog: if any cleanup blocks the main thread, hard-exit before macOS
-	// flags the window as not responding. Squirrel's Autoupdate helper only
-	// needs our PID to die — graceful or not — to complete the bundle swap.
+	// In-process watchdog: hard-exit if the event loop is still alive but quit
+	// stalls. Squirrel's Autoupdate helper only needs our PID to die.
 	const watchdog = setTimeout(() => {
-		log.error("[quit] watchdog fired after 3s — forcing exit");
+		log.error("[quit] watchdog fired after 3s - forcing exit");
 		app.exit(0);
 	}, 3000);
 	watchdog.unref();
+	// Out-of-process guard: a detached process SIGKILLs us if the main thread
+	// wedges in native teardown (e.g. the fsevents finalizer) where the in-process
+	// timer above can never fire because the event loop is being destroyed.
+	armKillWatchdog(5000);
 	try {
 		deleteControlDiscovery(app.getPath("userData"));
 	} catch {}
@@ -433,13 +437,24 @@ app.on("before-quit", () => {
 	stopCommentPoller();
 	teardownUpdater();
 	log.debug(`[quit] timers-stopped +${Date.now() - t0}ms`);
+	// Close chokidar/fsevents watchers BEFORE env teardown so the fsevents
+	// threadsafe-function is gone before Node finalizes it. Bounded so a wedged
+	// close() cannot stall us (the kill-watchdog still covers the worst case).
+	void disposeRepoIPCWithTimeout(2000).then((ok) => {
+		log.info(`[quit] repo watchers disposed=${ok} +${Date.now() - t0}ms`);
+	});
 	daemonClient.setQuitting();
 	daemonClient.detachAll();
+	daemonClient.killDaemonProcess();
 	daemonClient.disconnect();
-	log.debug(`[quit] daemon-disconnected +${Date.now() - t0}ms`);
+	log.debug(`[quit] daemon-stopped +${Date.now() - t0}ms`);
 	serverManager.disposeAll();
-	void disposeRepoIPC();
-	log.debug(`[quit] async-cleanup-dispatched +${Date.now() - t0}ms`);
+	try {
+		closeDb();
+	} catch (err) {
+		log.error("[quit] closeDb failed", err);
+	}
+	log.debug(`[quit] db-closed +${Date.now() - t0}ms`);
 	if (controlPlane) {
 		void controlPlane.stop().catch((err) => {
 			log.error("[control-plane] stop failed:", err);
@@ -468,14 +483,19 @@ app.on("window-all-closed", () => {
 // Catching the signals lets us dispose PTY processes before the environment tears down.
 for (const signal of ["SIGTERM", "SIGHUP", "SIGINT"] as const) {
 	process.on(signal, () => {
+		armKillWatchdog(5000);
 		alertListener?.stop();
 		setAgentNotifyPort(null);
 		teardownUpdater();
 		daemonClient.setQuitting();
 		daemonClient.detachAll();
+		daemonClient.killDaemonProcess();
 		daemonClient.disconnect();
+		void disposeRepoIPCWithTimeout(2000);
 		serverManager.disposeAll();
-		void disposeRepoIPC();
+		try {
+			closeDb();
+		} catch {}
 		app.exit(0);
 	});
 }
