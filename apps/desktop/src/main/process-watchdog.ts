@@ -27,7 +27,7 @@ export function armKillWatchdog(delayMs = 5000): void {
 	const { log } = require("./logger") as typeof import("./logger");
 	const entryScript = join(app.getAppPath(), "out", "main", "process-watchdog-entry.js");
 	if (!existsSync(entryScript)) {
-		log.error("[quit] kill-watchdog entry script not found — skipping");
+		log.error("[quit] kill-watchdog entry script not found - skipping");
 		return;
 	}
 	try {

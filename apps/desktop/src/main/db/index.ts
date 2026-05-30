@@ -78,7 +78,7 @@ export function _closeRawDb(sqlite: Database.Database): void {
 		}
 		sqlite.close();
 	} catch {
-		// already closed / closing — ignore
+		// already closed / closing - ignore
 	}
 }
 
