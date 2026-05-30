@@ -72,6 +72,7 @@ export default defineConfig({
 				input: {
 					index: resolve(__dirname, "src/main/index.ts"),
 					daemon: resolve(__dirname, "src/daemon/index.ts"),
+					"process-watchdog-entry": resolve(__dirname, "src/main/process-watchdog-entry.ts"),
 				},
 			},
 		},

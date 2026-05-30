@@ -17,6 +17,10 @@ export function setupTerminalIPC(daemonClient: DaemonClient): void {
 		"terminal:create",
 		async (event, id: unknown, cwd: unknown, workspaceId: unknown) => {
 			assertNonEmptyString(id, "id");
+			// During quit the renderer may still resolve an in-flight session
+			// restore and fire terminal:create after we have already detached from
+			// the daemon. Short-circuit so it does not throw "Daemon not connected".
+			if (daemonClient.quitting) return { wasAttached: false };
 			const cwdStr = typeof cwd === "string" && cwd.length > 0 ? cwd : undefined;
 			const wsId = typeof workspaceId === "string" ? workspaceId : undefined;
 
