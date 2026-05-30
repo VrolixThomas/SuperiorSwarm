@@ -158,6 +158,10 @@ export class DaemonClient {
 		this.isQuitting = true;
 	}
 
+	get quitting(): boolean {
+		return this.isQuitting;
+	}
+
 	detachAll(): void {
 		try {
 			this.send({ type: "detach-all" });
