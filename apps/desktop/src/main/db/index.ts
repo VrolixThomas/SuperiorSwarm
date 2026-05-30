@@ -72,7 +72,11 @@ export function _closeRawDb(sqlite: Database.Database): void {
 	try {
 		if (!sqlite.open) return;
 		try {
-			sqlite.pragma("wal_checkpoint(TRUNCATE)");
+			// PASSIVE: never blocks on the busy_timeout if the daemon still holds WAL
+			// locks. A synchronous TRUNCATE could stall the main thread up to 5s at
+			// quit, and the in-process watchdog timer cannot fire mid native call. The
+			// WAL is durable and gets checkpointed on next open regardless.
+			sqlite.pragma("wal_checkpoint(PASSIVE)");
 		} catch {
 			// checkpoint is best-effort
 		}

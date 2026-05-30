@@ -79,11 +79,9 @@ export async function disposeRepoIPC(): Promise<void> {
  * completed, false if it timed out (caller proceeds to exit regardless).
  */
 export async function disposeRepoIPCWithTimeout(ms: number): Promise<boolean> {
-	const completed = Symbol("completed");
-	const result = await withTimeout<typeof completed | "timeout">(
-		disposeRepoIPC().then(() => completed),
+	return withTimeout(
+		disposeRepoIPC().then(() => true),
 		ms,
-		"timeout"
+		false
 	);
-	return result === completed;
 }
