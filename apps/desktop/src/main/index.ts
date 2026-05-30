@@ -415,13 +415,16 @@ app.whenReady().then(async () => {
 });
 
 // Common service teardown shared by before-quit and the POSIX signal handlers.
-// Arms the out-of-process kill-watchdog, stops timers/listeners, tears down the
-// daemon, then closes repo watchers (bounded) and the DB. Never throws.
+// Arms the out-of-process kill-watchdog, stops timers/listeners, detaches from
+// the daemon, then closes repo watchers (bounded) and the DB. Never throws.
+// NOTE: we only DETACH from the daemon - we do not kill it. The daemon is a
+// detached process that intentionally outlives the app so background agent PTYs
+// survive quit and can be re-attached on next launch (see src/daemon/index.ts).
 function teardownServices(t0: number): void {
 	// Out-of-process guard: a detached process SIGKILLs us if the main thread
 	// wedges in native teardown (e.g. the fsevents finalizer) where an in-process
 	// timer can never fire because the event loop is being destroyed.
-	armKillWatchdog(5000);
+	armKillWatchdog(app.getAppPath(), log, 5000);
 	alertListener?.stop();
 	setAgentNotifyPort(null);
 	stopCommentPoller();
@@ -435,9 +438,8 @@ function teardownServices(t0: number): void {
 	});
 	daemonClient.setQuitting();
 	daemonClient.detachAll();
-	daemonClient.killDaemonProcess();
 	daemonClient.disconnect();
-	log.debug(`[quit] daemon-stopped +${Date.now() - t0}ms`);
+	log.debug(`[quit] daemon-detached +${Date.now() - t0}ms`);
 	serverManager.disposeAll();
 	try {
 		closeDb();

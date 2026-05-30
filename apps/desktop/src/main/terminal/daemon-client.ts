@@ -158,22 +158,6 @@ export class DaemonClient {
 		this.isQuitting = true;
 	}
 
-	/**
-	 * Best-effort: SIGTERM the detached daemon by its PID file so it releases the
-	 * shared WAL DB + socket promptly instead of waiting out its idle timeout. The
-	 * daemon handles SIGTERM cleanly (src/daemon/index.ts). Never throws.
-	 */
-	killDaemonProcess(): void {
-		try {
-			if (!existsSync(this.pidPath)) return;
-			const pid = Number(readFileSync(this.pidPath, "utf-8").trim());
-			if (!pid || !isPidAlive(pid)) return;
-			process.kill(pid, "SIGTERM");
-		} catch {
-			// best effort - daemon may already be gone
-		}
-	}
-
 	detachAll(): void {
 		try {
 			this.send({ type: "detach-all" });

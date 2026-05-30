@@ -4,6 +4,11 @@ import { join } from "node:path";
 
 let spawned = false;
 
+interface WatchdogLogger {
+	info: (...args: unknown[]) => void;
+	error: (...args: unknown[]) => void;
+}
+
 /** Pure arg builder, unit-testable without spawning or importing electron. */
 export function buildWatchdogArgs(
 	entryScript: string,
@@ -18,14 +23,16 @@ export function buildWatchdogArgs(
  * repeated calls are ignored. This is the only guard that survives a frozen main
  * thread (e.g. the fsevents teardown deadlock), because an in-process JS timer
  * cannot fire once Node's environment is being destroyed.
+ *
+ * `appPath` and `log` are injected by the caller (which already holds them) so
+ * this module imports neither electron nor the logger - importing electron's
+ * `app` at module scope would crash unit tests, and a relative `require("./logger")`
+ * does not resolve inside the single-file electron-vite bundle.
  */
-export function armKillWatchdog(delayMs = 5000): void {
+export function armKillWatchdog(appPath: string, log: WatchdogLogger, delayMs = 5000): void {
 	if (spawned) return;
 	spawned = true;
-	// Lazy require: keeps the module import-clean for unit tests (no Electron at import time).
-	const { app } = require("electron") as typeof import("electron");
-	const { log } = require("./logger") as typeof import("./logger");
-	const entryScript = join(app.getAppPath(), "out", "main", "process-watchdog-entry.js");
+	const entryScript = join(appPath, "out", "main", "process-watchdog-entry.js");
 	if (!existsSync(entryScript)) {
 		log.error("[quit] kill-watchdog entry script not found - skipping");
 		return;
