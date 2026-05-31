@@ -259,6 +259,24 @@ describe("cross-repo-orchestrator-membership", () => {
 		expect(xroRow).toBeUndefined();
 	});
 
+	test("re-attach preserves createdByDispatch=true (dispatch must not downgrade)", async () => {
+		const p = await seedProject();
+		const xro = await seedCrossRepoOrchestrator({ projectIds: [p] });
+		const ws = await seedWorkspace(p, { name: "child" });
+
+		// create_worktree path stamps true...
+		await attachToCrossRepoOrchestrator({
+			orchestratorId: xro,
+			workspaceId: ws,
+			createdByDispatch: true,
+		});
+		// ...then a later dispatch re-attaches WITHOUT the flag.
+		await attachToCrossRepoOrchestrator({ orchestratorId: xro, workspaceId: ws });
+
+		const members = await listCrossRepoMembers({ orchestratorId: xro });
+		expect(members.find((m) => m.workspaceId === ws)?.createdByDispatch).toBe(true);
+	});
+
 	test("delete without removeWorkspaces keeps all workspaces", async () => {
 		const p = await seedProject();
 		const xro = await seedCrossRepoOrchestrator({ projectIds: [p] });

@@ -49,6 +49,16 @@ export async function attachToCrossRepoOrchestrator(input: {
 	}
 
 	db.transaction((tx) => {
+		// Preserve provenance across single-parent re-attach: once a workspace was
+		// created by this orchestrator, a later dispatch re-attach must not downgrade it.
+		const existing = tx
+			.select({ createdByDispatch: orchestratorMembers.createdByDispatch })
+			.from(orchestratorMembers)
+			.where(eq(orchestratorMembers.workspaceId, input.workspaceId))
+			.get();
+		const createdByDispatch =
+			(input.createdByDispatch ?? false) || (existing?.createdByDispatch ?? false);
+
 		// Single-parent: remove any existing membership (per-repo or cross-repo)
 		tx.delete(orchestratorMembers)
 			.where(eq(orchestratorMembers.workspaceId, input.workspaceId))
@@ -66,7 +76,7 @@ export async function attachToCrossRepoOrchestrator(input: {
 				orchestratorId: input.orchestratorId,
 				workspaceId: input.workspaceId,
 				parentKind: "cross_repo",
-				createdByDispatch: input.createdByDispatch ?? false,
+				createdByDispatch,
 				sortOrder: nextSort,
 				createdAt: new Date(),
 			})

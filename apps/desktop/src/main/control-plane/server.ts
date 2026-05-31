@@ -55,7 +55,8 @@ function resolveProjectIdFromWorkspace(workspaceId: string): string | null {
 async function attachIfCallerIsOrchestrator(
 	req: IncomingMessage,
 	projectId: string,
-	targetWorkspaceId: string
+	targetWorkspaceId: string,
+	createdByDispatch = false
 ): Promise<void> {
 	const caller = resolveCaller(req, projectId);
 	if ("error" in caller) return;
@@ -69,6 +70,7 @@ async function attachIfCallerIsOrchestrator(
 			await attachToCrossRepoOrchestrator({
 				orchestratorId: caller.xroId,
 				workspaceId: targetWorkspaceId,
+				createdByDispatch,
 			});
 		} catch (err) {
 			console.warn(`[control-plane] xro auto-attach failed: ${(err as Error).message}`);
@@ -335,7 +337,7 @@ async function handleRequest(
 					return;
 				}
 				const created = await createWorkspace(parsed.data);
-				await attachIfCallerIsOrchestrator(req, parsed.data.projectId, created.workspaceId);
+				await attachIfCallerIsOrchestrator(req, parsed.data.projectId, created.workspaceId, true);
 				respond(res, 200, requestId, created);
 				return;
 			}
