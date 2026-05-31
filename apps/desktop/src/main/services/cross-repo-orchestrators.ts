@@ -15,7 +15,7 @@ import {
 	orchestratorMembers,
 } from "../db/schema";
 import { attachToCrossRepoOrchestrator } from "./cross-repo-orchestrator-membership";
-import { createWorkspace, defaultSpawnFn } from "./workspace-service";
+import { createWorkspace } from "./workspace-service";
 
 function workDirFor(id: string): string {
 	const base = app.getPath("userData");
@@ -104,10 +104,6 @@ export async function deleteCrossRepoOrchestrator(input: { id: string }): Promis
 	return { ok: true };
 }
 
-function escapeShellSingleQuote(s: string): string {
-	return s.replace(/'/g, "'\\''");
-}
-
 const VALID_AGENT_KINDS = ["claude", "codex", "gemini", "opencode"] as const;
 type AgentKind = (typeof VALID_AGENT_KINDS)[number];
 
@@ -116,9 +112,9 @@ function assertAgentKind(kind: string): AgentKind {
 	throw new Error(`unsupported agentKind: ${kind}`);
 }
 
-export async function startCrossRepoOrchestratorAgent(input: {
+export async function getCoordinatorLaunch(input: {
 	id: string;
-}): Promise<{ ok: true }> {
+}): Promise<{ cwd: string; command: string }> {
 	const row = await getCrossRepoOrchestrator({ id: input.id });
 	if (!row) throw new Error(`cross-repo orchestrator ${input.id} not found`);
 
@@ -126,28 +122,16 @@ export async function startCrossRepoOrchestratorAgent(input: {
 	const preset = CLI_PRESETS[agentKind];
 	if (!preset) throw new Error(`no CLI preset for agentKind: ${agentKind}`);
 
-	// Build a minimal launch script: cd into the XRO workDir and run the CLI.
-	// The agent's cwd is used by context.resolve to identify the caller as a
-	// cross-repo orchestrator (cwd-based lookup in control-plane/server.ts).
-	// No prompt arg — the MCP server delivers instructions at initialize time.
-	const escapedCwd = escapeShellSingleQuote(row.workDir);
-	const parts = [preset.command, preset.permissionFlag].filter(Boolean).join(" ");
-	const launchScriptContent = ["#!/bin/bash", `cd '${escapedCwd}'`, "", parts, ""].join("\n");
+	const command = [preset.command, preset.permissionFlag].filter(Boolean).join(" ");
+	return { cwd: row.workDir, command };
+}
 
-	// Use the XRO id as the workspaceId key — the renderer tab store treats it
-	// as an opaque key (no DB lookup); it just scopes terminal tabs.
-	await defaultSpawnFn({
-		cwd: row.workDir,
-		launchScriptContent,
-		workspaceId: row.id,
-	});
-
+export async function markAgentStarted(input: { id: string }): Promise<{ ok: true }> {
 	getDb()
 		.update(crossRepoOrchestrators)
 		.set({ status: "working", updatedAt: new Date() })
 		.where(eq(crossRepoOrchestrators.id, input.id))
 		.run();
-
 	return { ok: true };
 }
 

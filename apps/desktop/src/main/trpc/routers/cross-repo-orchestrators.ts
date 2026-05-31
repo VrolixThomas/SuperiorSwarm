@@ -11,10 +11,11 @@ import {
 	createCrossRepoOrchestrator,
 	deleteCrossRepoOrchestrator,
 	dispatchAcrossRepos,
+	getCoordinatorLaunch,
 	getCrossRepoOrchestrator,
 	listCrossRepoOrchestrators,
+	markAgentStarted,
 	renameCrossRepoOrchestrator,
-	startCrossRepoOrchestratorAgent,
 	stopCrossRepoOrchestratorAgent,
 } from "../../services/cross-repo-orchestrators";
 import { publicProcedure, router } from "../index";
@@ -79,9 +80,13 @@ export const crossRepoOrchestratorsRouter = router({
 		.input(z.object({ workspaceId: z.string() }))
 		.mutation(({ input }) => detachFromCrossRepoOrchestrator(input)),
 
-	startAgent: publicProcedure
+	getCoordinatorLaunch: publicProcedure
 		.input(z.object({ id: z.string() }))
-		.mutation(({ input }) => startCrossRepoOrchestratorAgent(input)),
+		.query(({ input }) => getCoordinatorLaunch(input)),
+
+	markAgentStarted: publicProcedure
+		.input(z.object({ id: z.string() }))
+		.mutation(({ input }) => markAgentStarted(input)),
 
 	stopAgent: publicProcedure
 		.input(z.object({ id: z.string() }))
