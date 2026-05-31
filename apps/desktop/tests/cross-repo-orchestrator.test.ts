@@ -1,7 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+import { nanoid } from "nanoid";
 import { getDb } from "../src/main/db";
-import { orchestratorMembers, workspaces, worktrees } from "../src/main/db/schema";
+import {
+	crossRepoOrchestrators,
+	orchestratorMembers,
+	workspaces,
+	worktrees,
+} from "../src/main/db/schema";
 import {
 	addProjectToCrossRepoOrchestrator,
 	attachToCrossRepoOrchestrator,
@@ -184,8 +190,8 @@ describe("cross-repo-orchestrator-membership", () => {
 
 		// Dispatched member: worktree row + worktree-type workspace with a path that
 		// does NOT exist on disk, so removeWorkspace deletes DB rows only.
-		const worktreeId = `wt-${Date.now()}`;
-		const dispatchedWsId = `ws-dispatched-${Date.now()}`;
+		const worktreeId = `wt-${nanoid(8)}`;
+		const dispatchedWsId = `ws-dispatched-${nanoid(8)}`;
 		getDb()
 			.insert(worktrees)
 			.values({
@@ -244,6 +250,13 @@ describe("cross-repo-orchestrator-membership", () => {
 		expect(dispatchedRow).toBeUndefined();
 		expect(worktreeRow).toBeUndefined();
 		expect(attachedRow?.id).toBe(attachedWsId);
+
+		const xroRow = getDb()
+			.select({ id: crossRepoOrchestrators.id })
+			.from(crossRepoOrchestrators)
+			.where(eq(crossRepoOrchestrators.id, xro))
+			.get();
+		expect(xroRow).toBeUndefined();
 	});
 
 	test("delete without removeWorkspaces keeps all workspaces", async () => {
