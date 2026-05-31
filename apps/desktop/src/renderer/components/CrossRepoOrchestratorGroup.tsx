@@ -10,7 +10,10 @@ export function CrossRepoOrchestratorGroup() {
 		onSuccess: () => utils.crossRepoOrchestrators.list.invalidate(),
 	});
 	const deleteMut = trpc.crossRepoOrchestrators.delete.useMutation({
-		onSuccess: () => utils.crossRepoOrchestrators.list.invalidate(),
+		onSuccess: () => {
+			utils.crossRepoOrchestrators.list.invalidate();
+			utils.workspaces.listByProject.invalidate();
+		},
 	});
 
 	const [showCreate, setShowCreate] = useState(false);
@@ -108,8 +111,19 @@ export function CrossRepoOrchestratorGroup() {
 								const name = window.prompt("Rename cross-repo orchestrator", o.name);
 								if (name?.trim()) renameMut.mutate({ id: o.id, name: name.trim() });
 							}}
-							onDelete={() => {
-								if (window.confirm(`Delete "${o.name}"?`)) deleteMut.mutate({ id: o.id });
+							onDelete={async () => {
+								if (!window.confirm(`Delete "${o.name}"?`)) return;
+								const members = await utils.crossRepoOrchestrators.listMembers.fetch({
+									id: o.id,
+								});
+								const n = members.filter((m) => m.createdByDispatch).length;
+								let removeWorkspaces = false;
+								if (n > 0) {
+									removeWorkspaces = window.confirm(
+										`Also permanently delete ${n} worktree workspace${n === 1 ? "" : "s"} this orchestrator created, including any uncommitted changes? Cancel keeps them.`
+									);
+								}
+								deleteMut.mutate({ id: o.id, removeWorkspaces });
 							}}
 						/>
 					))}
