@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Cross-repo orchestrator — split workspace redesign (v3)</title>
+		<style>
+			:root {
+				--bg-base: #0a0a0a;
+				--bg-surface: #161618;
+				--bg-elevated: #1f1f22;
+				--bg-overlay: #2c2c2e;
+				--bg-active: #3a3a3d;
+				--bg-tab-bar: #111113;
+				--border: rgba(255, 255, 255, 0.1);
+				--border-subtle: rgba(255, 255, 255, 0.06);
+				--border-active: rgba(255, 255, 255, 0.16);
+				--text: #f5f5f7;
+				--text-secondary: #b5b5ba;
+				--text-tertiary: #8e8e93;
+				--text-quaternary: #6e6e73;
+				--accent: #0a84ff;
+				--accent-hover: #409cff;
+				--accent-subtle: rgba(10, 132, 255, 0.16);
+				--orch-3: #9ab08a;
+				--orch-3-bg: rgba(154, 176, 138, 0.12);
+				--st-working: #0a84ff;
+				--st-working-bg: rgba(10, 132, 255, 0.14);
+				--st-blocked: #e6a23c;
+				--st-blocked-bg: rgba(230, 162, 60, 0.14);
+				--st-done: #5dc983;
+				--st-done-bg: rgba(93, 201, 131, 0.13);
+				--st-idle: #8e8e93;
+				--st-idle-bg: rgba(142, 142, 147, 0.12);
+				--accent-xro: var(--orch-3);
+				--accent-xro-bg: var(--orch-3-bg);
+			}
+			* { box-sizing: border-box; margin: 0; padding: 0; }
+			body {
+				font-family: -apple-system, "SF Pro Text", "SF Pro Display", system-ui, sans-serif;
+				background: #050505;
+				color: var(--text);
+				-webkit-font-smoothing: antialiased;
+				padding: 28px;
+				display: flex;
+				flex-direction: column;
+				gap: 22px;
+				align-items: center;
+			}
+			.caption { color: var(--text-tertiary); font-size: 12px; letter-spacing: 0.02em; }
+			.app {
+				width: 1180px;
+				height: 720px;
+				display: grid;
+				grid-template-columns: 248px 1fr;
+				background: var(--bg-base);
+				border: 1px solid var(--border);
+				border-radius: 14px;
+				overflow: hidden;
+				box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
+			}
+
+			/* ── Sidebar ───────────────────────────────────────────────── */
+			.sidebar { background: var(--bg-surface); border-right: 1px solid var(--border-subtle); display: flex; flex-direction: column; }
+			.sb-top { padding: 14px 14px 8px; display: flex; align-items: center; gap: 9px; }
+			.logo { width: 22px; height: 22px; border-radius: 6px; background: linear-gradient(150deg, #2a2a30, #141417); border: 1px solid var(--border); display: grid; place-items: center; font-size: 11px; color: var(--text-secondary); }
+			.sb-title { font-size: 13px; font-weight: 600; }
+			.sb-scroll { flex: 1; overflow-y: auto; padding: 6px 8px 14px; }
+
+			.sec-head { display: flex; align-items: center; gap: 8px; padding: 8px 6px 4px; }
+			.sec-head .glyph { color: var(--text-tertiary); }
+			.sec-label { flex: 1; font-size: 12px; font-weight: 600; color: var(--text-secondary); letter-spacing: 0.01em; }
+			.new-btn { display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 8px 0 6px; border-radius: 6px; border: 1px solid rgba(10,132,255,0.25); background: var(--accent-subtle); color: var(--accent-hover); font-size: 11.5px; font-weight: 600; cursor: pointer; }
+
+			/* clean orchestrator row — icon + name + lightweight status, nothing else at rest */
+			.xrow { position: relative; display: flex; align-items: center; gap: 9px; padding: 8px 9px; border-radius: 8px; cursor: pointer; border: 1px solid transparent; }
+			.xrow:hover { background: var(--bg-elevated); }
+			.xrow.active { background: var(--accent-xro-bg); border-color: rgba(154,176,138,0.28); }
+			.xrow.active::before { content: ""; position: absolute; left: -8px; top: 7px; bottom: 7px; width: 2.5px; border-radius: 2px; background: var(--accent-xro); }
+			.xrow .ic { flex: 0 0 16px; }
+			.xrow .nm { flex: 1; min-width: 0; font-size: 13px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+			.xrow .st { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text-tertiary); }
+			.dot { width: 6px; height: 6px; border-radius: 50%; flex: 0 0 6px; }
+			.muted { color: var(--text-tertiary); }
+
+			.sec-projects { margin-top: 14px; }
+			.p-head { padding: 8px 6px 4px; font-size: 11px; font-weight: 600; color: var(--text-quaternary); letter-spacing: 0.04em; text-transform: uppercase; }
+			.p-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 7px; font-size: 12.5px; color: var(--text-secondary); }
+			.p-row:hover { background: var(--bg-elevated); }
+			.p-row .tag { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; height: 16px; padding: 0 6px; border-radius: 5px; background: var(--accent-xro-bg); color: var(--accent-xro); font-size: 9.5px; font-weight: 600; }
+			.child { padding-left: 20px; }
+
+			/* ── Main: tab bar + split ─────────────────────────────────── */
+			.main { display: flex; flex-direction: column; min-width: 0; }
+			.tabbar { height: 40px; background: var(--bg-tab-bar); border-bottom: 1px solid var(--border-subtle); display: flex; align-items: stretch; padding: 0 8px; gap: 2px; }
+			.tab { display: inline-flex; align-items: center; gap: 7px; padding: 0 14px; font-size: 12.5px; color: var(--text-tertiary); border-bottom: 2px solid transparent; cursor: pointer; }
+			.tab.active { color: var(--text); border-bottom-color: var(--accent-xro); }
+			.tab .tdot { width: 7px; height: 7px; border-radius: 50%; }
+
+			.split { flex: 1; display: grid; grid-template-columns: 45% 55%; min-height: 0; }
+
+			/* terminal pane */
+			.term { background: #070707; border-right: 1px solid var(--border-subtle); display: flex; flex-direction: column; min-width: 0; }
+			.pane-head { height: 30px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-bottom: 1px solid var(--border-subtle); font-size: 11px; color: var(--text-tertiary); }
+			.term-body { flex: 1; overflow: hidden; padding: 12px 14px; font-family: "SF Mono", ui-monospace, Menlo, monospace; font-size: 11.5px; line-height: 1.7; color: #cfd2d6; }
+			.term-body .p { color: var(--st-done); }
+			.term-body .u { color: #e8e8ea; }
+			.term-body .d { color: var(--text-quaternary); }
+			.cursor { display: inline-block; width: 7px; height: 14px; background: var(--accent-xro); vertical-align: -2px; animation: blink 1.1s steps(1) infinite; }
+			@keyframes blink { 50% { opacity: 0; } }
+
+			/* overview pane */
+			.ov { background: var(--bg-base); overflow-y: auto; display: flex; flex-direction: column; min-width: 0; }
+			.ov-body { padding: 18px 20px 28px; }
+			.ov h1 { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; display: flex; align-items: center; gap: 9px; }
+			.ov h1 .ic { flex: 0 0 16px; }
+			.ov .sub { margin-top: 2px; font-size: 12px; color: var(--text-tertiary); }
+
+			.composer { margin-top: 15px; border: 1px solid var(--border); border-radius: 11px; background: var(--bg-surface); padding: 12px 13px; }
+			.composer textarea { width: 100%; resize: none; border: 0; background: transparent; color: var(--text); font: inherit; font-size: 13px; outline: none; min-height: 40px; }
+			.composer textarea::placeholder { color: var(--text-quaternary); }
+			.composer .row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+			.chip { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 9px; border-radius: 12px; border: 1px solid var(--border-subtle); background: var(--bg-base); font-size: 11.5px; color: var(--text-secondary); font-family: "SF Mono", ui-monospace, monospace; }
+			.chip.on { border-color: rgba(154,176,138,0.5); background: var(--accent-xro-bg); color: var(--accent-xro); }
+			.send { margin-left: auto; height: 28px; padding: 0 13px; border-radius: 8px; border: 0; background: var(--accent-xro); color: #0a0a0a; font-size: 12px; font-weight: 700; cursor: pointer; }
+
+			.ov h2 { margin: 22px 0 10px; font-size: 12px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.04em; }
+			.lane { margin-bottom: 11px; }
+			.lane-head { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; font-size: 12.5px; }
+			.lane-head .rn { font-weight: 600; }
+			.lane-head .cnt { font-size: 11px; color: var(--text-quaternary); }
+
+			/* clickable member card — the navigation the user was missing */
+			.mcard { display: flex; align-items: center; gap: 10px; padding: 9px 11px; border: 1px solid var(--border-subtle); border-radius: 9px; background: var(--bg-surface); cursor: pointer; margin-bottom: 6px; transition: border-color .12s, background .12s; }
+			.mcard:hover { border-color: var(--border-active); background: var(--bg-elevated); }
+			.mcard .pill { display: inline-flex; align-items: center; gap: 5px; height: 19px; padding: 0 8px; border-radius: 10px; font-size: 10.5px; font-weight: 600; }
+			.mcard .meta { min-width: 0; flex: 1; }
+			.mcard .br { font-family: "SF Mono", ui-monospace, monospace; font-size: 12px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+			.mcard .stx { font-size: 11px; color: var(--text-tertiary); margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+			.mcard .open { color: var(--text-quaternary); font-size: 11px; }
+			.mcard:hover .open { color: var(--accent-xro); }
+			.answer { margin-left: auto; height: 24px; padding: 0 10px; border-radius: 7px; border: 1px solid rgba(230,162,60,0.35); background: var(--st-blocked-bg); color: var(--st-blocked); font-size: 11px; font-weight: 600; cursor: pointer; }
+		</style>
+	</head>
+	<body>
+		<div class="caption">Cross-repo orchestrator — v3. Click a row → split workspace (coordinator terminal · all-info overview). Member cards open the member's own terminal.</div>
+
+		<div class="app">
+			<!-- ───── Sidebar ───── -->
+			<aside class="sidebar">
+				<div class="sb-top">
+					<div class="logo">◆</div>
+					<div class="sb-title">SuperiorSwarm</div>
+				</div>
+				<div class="sb-scroll">
+					<div class="sec-head">
+						<svg class="glyph" width="15" height="15" viewBox="0 0 14 14" fill="none">
+							<circle cx="3" cy="7" r="2" stroke="currentColor" stroke-width="1.2" />
+							<circle cx="11" cy="7" r="2" stroke="currentColor" stroke-width="1.2" />
+							<circle cx="7" cy="7" r="1" fill="currentColor" />
+							<path d="M5 7h.6M8.4 7H9" stroke="currentColor" stroke-width="1.1" />
+						</svg>
+						<span class="sec-label">Orchestrators</span>
+						<button class="new-btn">
+							<svg width="10" height="10" viewBox="0 0 11 11" fill="none"><path d="M5.5 1.5v8M1.5 5.5h8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+							New
+						</button>
+					</div>
+
+					<!-- active orchestrator -->
+					<div class="xrow active">
+						<svg class="ic" width="16" height="16" viewBox="0 0 14 14" fill="none">
+							<circle cx="3" cy="7" r="2" stroke="var(--accent-xro)" stroke-width="1.2" />
+							<circle cx="11" cy="7" r="2" stroke="var(--accent-xro)" stroke-width="1.2" />
+							<circle cx="7" cy="7" r="1.1" fill="var(--accent-xro)" />
+							<path d="M5 7h.6M8.4 7H9" stroke="var(--accent-xro)" stroke-width="1.1" />
+						</svg>
+						<span class="nm">Checkout revamp</span>
+						<span class="st"><span class="dot" style="background:var(--st-working)"></span>2</span>
+						<span class="st"><span class="dot" style="background:var(--st-blocked)"></span>1</span>
+					</div>
+
+					<!-- idle orchestrator -->
+					<div class="xrow">
+						<svg class="ic" width="16" height="16" viewBox="0 0 14 14" fill="none">
+							<circle cx="3" cy="7" r="2" stroke="var(--text-tertiary)" stroke-width="1.2" />
+							<circle cx="11" cy="7" r="2" stroke="var(--text-tertiary)" stroke-width="1.2" />
+							<circle cx="7" cy="7" r="1.1" fill="var(--text-tertiary)" />
+							<path d="M5 7h.6M8.4 7H9" stroke="var(--text-tertiary)" stroke-width="1.1" />
+						</svg>
+						<span class="nm">Billing migration</span>
+						<span class="st muted">idle</span>
+					</div>
+
+					<!-- projects keep their members tagged in place (option B) -->
+					<div class="sec-projects">
+						<div class="p-head">Projects</div>
+						<div class="p-row">
+							<svg width="13" height="13" viewBox="0 0 11 11" fill="none"><path d="M2.5 1.5h5a1 1 0 0 1 1 1v6.5l-1.5-1-1.5 1-1.5-1-1.5 1V2.5a1 1 0 0 1 1-1Z" stroke="var(--text-quaternary)" stroke-width="1"/></svg>
+							web-frontend
+						</div>
+						<div class="p-row child">
+							<span class="dot" style="background:var(--st-working)"></span>
+							<span style="font-family:'SF Mono',monospace;font-size:12px">feat/checkout-ui</span>
+							<span class="tag">◆ Checkout</span>
+						</div>
+						<div class="p-row child">
+							<span class="dot" style="background:var(--st-blocked)"></span>
+							<span style="font-family:'SF Mono',monospace;font-size:12px">feat/cart-state</span>
+							<span class="tag">◆ Checkout</span>
+						</div>
+						<div class="p-row">
+							<svg width="13" height="13" viewBox="0 0 11 11" fill="none"><path d="M2.5 1.5h5a1 1 0 0 1 1 1v6.5l-1.5-1-1.5 1-1.5-1-1.5 1V2.5a1 1 0 0 1 1-1Z" stroke="var(--text-quaternary)" stroke-width="1"/></svg>
+							api-backend
+						</div>
+						<div class="p-row child">
+							<span class="dot" style="background:var(--st-working)"></span>
+							<span style="font-family:'SF Mono',monospace;font-size:12px">feat/checkout-api</span>
+							<span class="tag">◆ Checkout</span>
+						</div>
+					</div>
+				</div>
+			</aside>
+
+			<!-- ───── Main split workspace ───── -->
+			<section class="main">
+				<div class="tabbar">
+					<div class="tab active"><span class="tdot" style="background:var(--accent-xro)"></span>Checkout revamp</div>
+				</div>
+				<div class="split">
+					<!-- coordinator terminal (auto-started) -->
+					<div class="term">
+						<div class="pane-head">
+							<span class="dot" style="background:var(--st-working)"></span>
+							Coordinator · claude
+						</div>
+						<div class="term-body">
+							<div><span class="d">~/checkout-revamp $</span> <span class="u">claude</span></div>
+							<div class="d">cross-repo orchestrator ready · 3 repos linked</div>
+							<div>&nbsp;</div>
+							<div><span class="p">●</span> dispatched <span class="u">feat/checkout-ui</span> → web-frontend</div>
+							<div><span class="p">●</span> dispatched <span class="u">feat/checkout-api</span> → api-backend</div>
+							<div class="d">waiting on cart-state (blocked: needs schema)</div>
+							<div>&nbsp;</div>
+							<div><span class="u">&gt; </span><span class="cursor"></span></div>
+						</div>
+					</div>
+
+					<!-- all-info overview -->
+					<div class="ov">
+						<div class="ov-body">
+							<h1>
+								<svg class="ic" width="16" height="16" viewBox="0 0 14 14" fill="none">
+									<circle cx="3" cy="7" r="2" stroke="var(--accent-xro)" stroke-width="1.2" />
+									<circle cx="11" cy="7" r="2" stroke="var(--accent-xro)" stroke-width="1.2" />
+									<circle cx="7" cy="7" r="1.1" fill="var(--accent-xro)" />
+									<path d="M5 7h.6M8.4 7H9" stroke="var(--accent-xro)" stroke-width="1.1" />
+								</svg>
+								Checkout revamp
+							</h1>
+							<div class="sub">3 repos · 3 agents · coordinator running</div>
+
+							<div class="composer">
+								<textarea placeholder="Dispatch a task across repos — the coordinator picks which repos and branches…"></textarea>
+								<div class="row">
+									<span class="chip on">✓ web-frontend</span>
+									<span class="chip on">✓ api-backend</span>
+									<span class="chip">payments-svc</span>
+									<button class="send">Dispatch</button>
+								</div>
+							</div>
+
+							<h2>Repos</h2>
+
+							<div class="lane">
+								<div class="lane-head"><span class="rn">web-frontend</span><span class="cnt">· 2 agents</span></div>
+								<div class="mcard">
+									<span class="pill" style="background:var(--st-working-bg);color:var(--st-working)"><span class="dot" style="background:var(--st-working)"></span>working</span>
+									<div class="meta"><div class="br">feat/checkout-ui</div><div class="stx">Building the payment step component</div></div>
+									<span class="open">open ›</span>
+								</div>
+								<div class="mcard">
+									<span class="pill" style="background:var(--st-blocked-bg);color:var(--st-blocked)"><span class="dot" style="background:var(--st-blocked)"></span>blocked</span>
+									<div class="meta"><div class="br">feat/cart-state</div><div class="stx">Needs cart schema from api-backend</div></div>
+									<button class="answer">Answer</button>
+								</div>
+							</div>
+
+							<div class="lane">
+								<div class="lane-head"><span class="rn">api-backend</span><span class="cnt">· 1 agent</span></div>
+								<div class="mcard">
+									<span class="pill" style="background:var(--st-working-bg);color:var(--st-working)"><span class="dot" style="background:var(--st-working)"></span>working</span>
+									<div class="meta"><div class="br">feat/checkout-api</div><div class="stx">Implementing /checkout endpoint</div></div>
+									<span class="open">open ›</span>
+								</div>
+							</div>
+
+							<div class="lane">
+								<div class="lane-head"><span class="rn">payments-svc</span><span class="cnt">· no agents</span></div>
+								<div class="mcard" style="justify-content:center;color:var(--text-quaternary);font-size:12px;cursor:default;background:transparent;border-style:dashed">
+									Linked · dispatch a task to start an agent here
+								</div>
+							</div>
+						</div>
+					</div>
+				</div>
+			</section>
+		</div>
+	</body>
+</html>
