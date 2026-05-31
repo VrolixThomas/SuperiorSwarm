@@ -34,7 +34,10 @@ export function AgentCard({
 				<StatusPill phase={data.phase} />
 			</div>
 			{data.statusText && (
-				<div className="mt-[7px] text-[12px] text-[var(--text-tertiary)]">
+				<div
+					title={blocked && data.needs ? `Needs input: ${data.needs}` : data.statusText}
+					className="mt-[7px] overflow-hidden text-[12px] text-[var(--text-tertiary)] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] [display:-webkit-box]"
+				>
 					{blocked && data.needs ? (
 						<>
 							Needs input: <b className="font-semibold text-[var(--st-blocked)]">{data.needs}</b>
