@@ -2,8 +2,6 @@ import { useMemo } from "react";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import type { AgentCardData } from "./orchestrator/AgentCard";
-import type { ActivityEvent } from "./orchestrator/CrossRepoActivityRail";
-import { CrossRepoActivityRail } from "./orchestrator/CrossRepoActivityRail";
 import { DispatchComposer } from "./orchestrator/DispatchComposer";
 import { RepoLane } from "./orchestrator/RepoLane";
 
@@ -57,25 +55,9 @@ export function CrossRepoOrchestratorCanvas({ orchestratorId }: { orchestratorId
 		return map;
 	}, [members.data]);
 
-	const events: ActivityEvent[] = useMemo(
-		() =>
-			(members.data ?? [])
-				.filter((m) => m.statusText)
-				.map((m) => ({
-					id: m.workspaceId,
-					who: m.workspaceName,
-					repo: projectsById.get(m.projectId)?.name ?? m.projectId,
-					relTime: "",
-					kind: m.currentPhase,
-					text:
-						m.currentPhase === "blocked" && m.needs ? `Blocked: ${m.needs}` : (m.statusText ?? ""),
-				})),
-		[members.data, projectsById]
-	);
-
 	return (
-		<div className="grid h-full min-h-0 grid-cols-[1fr_312px] bg-[var(--bg-base)]">
-			<main className="min-h-0 overflow-y-auto p-[22px_26px_40px]">
+		<div className="flex h-full min-h-0 flex-col overflow-y-auto bg-[var(--bg-base)]">
+			<div className="mx-auto w-full max-w-[820px] p-[22px_26px_40px]">
 				<h1 className="text-[19px] font-semibold tracking-[-0.01em]">
 					{orch.data?.name ?? "Orchestrator"}
 				</h1>
@@ -90,7 +72,7 @@ export function CrossRepoOrchestratorCanvas({ orchestratorId }: { orchestratorId
 				<h2 className="mb-[12px] mt-[26px] text-[13px] font-semibold text-[var(--text-secondary)]">
 					Repos
 				</h2>
-				<div className="grid grid-cols-3 gap-[13px]">
+				<div className="flex flex-col gap-[12px]">
 					{repos.map((r) => (
 						// biome-ignore lint/a11y/useValidAriaRole: `role` is a domain prop (backend/frontend), not an ARIA role
 						<RepoLane
@@ -104,8 +86,7 @@ export function CrossRepoOrchestratorCanvas({ orchestratorId }: { orchestratorId
 						/>
 					))}
 				</div>
-			</main>
-			<CrossRepoActivityRail events={events} />
+			</div>
 		</div>
 	);
 }
