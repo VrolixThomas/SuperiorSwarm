@@ -49,7 +49,7 @@ export function CrossRepoOrchestratorCanvas({ orchestratorId }: { orchestratorId
 					relTime: "",
 					kind: m.currentPhase,
 					text:
-						m.currentPhase === "blocked" && m.needs ? `Blocked — ${m.needs}` : (m.statusText ?? ""),
+						m.currentPhase === "blocked" && m.needs ? `Blocked: ${m.needs}` : (m.statusText ?? ""),
 				})),
 		[members.data, projectsById]
 	);
