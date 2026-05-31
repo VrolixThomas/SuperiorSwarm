@@ -188,6 +188,11 @@ interface TabStore {
 	openPROverview: (workspaceId: string, prCtx: PRContext) => string;
 
 	openXroCanvas: (orchestratorId: string, title: string) => string;
+	openXroWorkspace: (
+		orchestratorId: string,
+		title: string,
+		workDir: string
+	) => { terminalTabId: string; started: boolean };
 
 	openMergeConflict: (
 		workspaceId: string,
@@ -758,6 +763,53 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 			ps().addTabToPane(workspaceId, focused.id, tab);
 		}
 		return id;
+	},
+
+	openXroWorkspace: (orchestratorId, title, workDir) => {
+		const workspaceId = orchestratorId;
+		get().setActiveWorkspace(workspaceId, workDir);
+		ps().ensureLayout(workspaceId);
+
+		// Reattach: if a coordinator terminal already exists, focus it and ensure
+		// the canvas tab is present. Do not spawn a second coordinator.
+		const existingCoord = findTabInWorkspace(
+			workspaceId,
+			(t) => t.kind === "terminal" && t.presetName === "xro-coordinator"
+		);
+		if (existingCoord) {
+			// Ensure the canvas tab exists first — openXroCanvas focuses the canvas
+			// pane — then give focus back to the coordinator terminal pane.
+			get().openXroCanvas(orchestratorId, title);
+			ps().setActiveTabInPane(workspaceId, existingCoord.pane.id, existingCoord.tab.id);
+			ps().setFocusedPane(existingCoord.pane.id);
+			return { terminalTabId: existingCoord.tab.id, started: false };
+		}
+
+		// First open: coordinator terminal in the original (left) pane, then split
+		// the canvas off into the new (right) pane.
+		const left = resolveFocusedPane(workspaceId);
+		const terminalTabId = nextTerminalId();
+		const terminalTab: TabItem = {
+			kind: "terminal",
+			id: terminalTabId,
+			workspaceId,
+			title: "Coordinator",
+			cwd: workDir,
+			presetName: "xro-coordinator",
+		};
+		if (left) {
+			ps().addTabToPane(workspaceId, left.id, terminalTab);
+			const canvasTab: TabItem = {
+				kind: "xro-canvas",
+				id: `xro-canvas-${orchestratorId}`,
+				workspaceId,
+				orchestratorId,
+				title,
+			};
+			ps().splitPane(workspaceId, left.id, "horizontal", canvasTab);
+			ps().setFocusedPane(left.id);
+		}
+		return { terminalTabId, started: true };
 	},
 
 	openMergeConflict: (workspaceId, mergeType, sourceBranch, targetBranch) => {
