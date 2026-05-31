@@ -53,7 +53,7 @@ export function RepoLane({
 				) : (
 					<div className="flex flex-wrap gap-[8px]">
 						{cards.map((c) => (
-							<div key={c.workspaceId} className="w-[240px]">
+							<div key={c.workspaceId} className="min-w-0 basis-[240px]">
 								<AgentCard
 									data={c}
 									onAnswer={() => onAnswer(c.workspaceId)}

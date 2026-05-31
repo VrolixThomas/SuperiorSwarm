@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { trpc } from "../../trpc/client";
 
 interface Target {
@@ -23,7 +23,26 @@ export function DispatchComposer({
 	repos: Target[];
 }) {
 	const [task, setTask] = useState("");
-	const [selected, setSelected] = useState<Set<string>>(new Set(repos.map((r) => r.projectId)));
+	const [selected, setSelected] = useState<Set<string>>(new Set());
+
+	// Reconcile the selection whenever the linked repo set changes (it loads
+	// async and changes on link/unlink). Keep prior toggles, drop repos that are
+	// gone, and auto-select newly linked repos. Keyed by the id list so the
+	// effect does not fire on every render (repos is a fresh array each time).
+	const repoIdsKey = repos.map((r) => r.projectId).join(",");
+	const prevIdsRef = useRef<string[]>([]);
+	useEffect(() => {
+		const ids = repoIdsKey ? repoIdsKey.split(",") : [];
+		setSelected((prev) => {
+			const next = new Set<string>();
+			for (const id of ids) {
+				if (!prevIdsRef.current.includes(id) || prev.has(id)) next.add(id);
+			}
+			return next;
+		});
+		prevIdsRef.current = ids;
+	}, [repoIdsKey]);
+
 	const utils = trpc.useUtils();
 	const dispatch = trpc.crossRepoOrchestrators.dispatch.useMutation({
 		onSuccess: () => {
