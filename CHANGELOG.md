@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.9.4 (2026-05-30)
+
+### What's New
+
+Quitting SuperiorSwarm is now reliable. The app shuts down cleanly instead of hanging on exit: the terminal daemon is signaled to stop, the database is checkpointed and closed safely, and a watchdog guarantees the process exits even if teardown stalls. The marketing site also got a refresh, including a Discord community invite to join other users.
+
+### Changes
+
+- **SUP-37**: point TERMS_URL at superiorswarm.com (#111)
+- Website: marketing site refresh + app-accurate mockup (#113)
+- Discord community invite in nav, footer + CTA (#114)
+- Quit/shutdown reliability: SIGTERM the terminal daemon, ordered teardown to fix fsevents deadlock, explicit WAL checkpoint, kill-watchdog (#115)
+
 ## v0.9.3 (2026-05-17)
 
 ### What's New

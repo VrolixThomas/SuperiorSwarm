@@ -3,6 +3,7 @@ import type { RepoInvalidateEvent } from "../shared/types";
 import { bumpRepoStateVersion } from "./git/repo-state-version";
 import { RepoWatcherManager } from "./git/repo-watcher-manager";
 import { log } from "./logger";
+import { withTimeout } from "./util/with-timeout";
 
 interface SubscriptionEntry {
 	count: number;
@@ -71,4 +72,16 @@ export async function disposeRepoIPC(): Promise<void> {
 	if (!manager) return;
 	await manager.disposeAll();
 	manager = null;
+}
+
+/**
+ * Best-effort watcher teardown bounded to `ms`. Returns true if disposal
+ * completed, false if it timed out (caller proceeds to exit regardless).
+ */
+export async function disposeRepoIPCWithTimeout(ms: number): Promise<boolean> {
+	return withTimeout(
+		disposeRepoIPC().then(() => true),
+		ms,
+		false
+	);
 }

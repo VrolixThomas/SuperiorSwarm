@@ -1,7 +1,7 @@
 {
 	"name": "superiorswarm",
 	"productName": "SuperiorSwarm",
-	"version": "0.9.3",
+	"version": "0.9.4",
 	"description": "SuperiorSwarm Desktop Application",
 	"main": "./out/main/index.js",
 	"type": "module",
