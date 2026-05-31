@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { trpc } from "../trpc/client";
-import { CrossRepoOrchestratorBody } from "./CrossRepoOrchestratorBody";
 import { CrossRepoOrchestratorCreatePopover } from "./CrossRepoOrchestratorCreatePopover";
 import { CrossRepoOrchestratorRow } from "./CrossRepoOrchestratorRow";
 
@@ -14,7 +13,6 @@ export function CrossRepoOrchestratorGroup() {
 		onSuccess: () => utils.crossRepoOrchestrators.list.invalidate(),
 	});
 
-	const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 	const [showCreate, setShowCreate] = useState(false);
 
 	const all = orchs.data ?? [];
@@ -62,7 +60,7 @@ export function CrossRepoOrchestratorGroup() {
 				{showCreate && (
 					<CrossRepoOrchestratorCreatePopover
 						onClose={() => setShowCreate(false)}
-						onCreated={(id) => setExpanded((p) => ({ ...p, [id]: true }))}
+						onCreated={() => utils.crossRepoOrchestrators.list.invalidate()}
 					/>
 				)}
 			</div>
@@ -102,22 +100,18 @@ export function CrossRepoOrchestratorGroup() {
 			) : (
 				<div className="mt-1 px-1">
 					{all.map((o) => (
-						<div key={o.id}>
-							<CrossRepoOrchestratorRow
-								orchestrator={o}
-								allOrchestratorIds={allIds}
-								expanded={!!expanded[o.id]}
-								onToggle={() => setExpanded((p) => ({ ...p, [o.id]: !p[o.id] }))}
-								onRename={() => {
-									const name = window.prompt("Rename cross-repo orchestrator", o.name);
-									if (name?.trim()) renameMut.mutate({ id: o.id, name: name.trim() });
-								}}
-								onDelete={() => {
-									if (window.confirm(`Delete "${o.name}"?`)) deleteMut.mutate({ id: o.id });
-								}}
-							/>
-							{expanded[o.id] && <CrossRepoOrchestratorBody orchestratorId={o.id} />}
-						</div>
+						<CrossRepoOrchestratorRow
+							key={o.id}
+							orchestrator={o}
+							allOrchestratorIds={allIds}
+							onRename={() => {
+								const name = window.prompt("Rename cross-repo orchestrator", o.name);
+								if (name?.trim()) renameMut.mutate({ id: o.id, name: name.trim() });
+							}}
+							onDelete={() => {
+								if (window.confirm(`Delete "${o.name}"?`)) deleteMut.mutate({ id: o.id });
+							}}
+						/>
 					))}
 				</div>
 			)}
