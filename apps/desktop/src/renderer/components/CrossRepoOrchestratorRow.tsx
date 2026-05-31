@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useCrossRepoOrchestratorColor } from "../hooks/useCrossRepoOrchestratorColor";
+import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 
 interface Props {
@@ -19,6 +20,7 @@ export function CrossRepoOrchestratorRow({
 	onRename,
 	onDelete,
 }: Props) {
+	const openXroCanvas = useTabStore((s) => s.openXroCanvas);
 	const colorIndex = useCrossRepoOrchestratorColor(orchestrator.id, allOrchestratorIds);
 	const members = trpc.crossRepoOrchestrators.listMembers.useQuery({ id: orchestrator.id });
 	const linked = trpc.crossRepoOrchestrators.listLinkedProjects.useQuery({ id: orchestrator.id });
@@ -51,7 +53,7 @@ export function CrossRepoOrchestratorRow({
 		>
 			<button
 				type="button"
-				onClick={onToggle}
+				onClick={() => openXroCanvas(orchestrator.id, orchestrator.name)}
 				className="flex min-w-0 flex-1 items-center gap-2 border-none pl-[10px] pr-2 py-[7px] bg-transparent cursor-pointer text-left rounded-[6px]"
 			>
 				<svg

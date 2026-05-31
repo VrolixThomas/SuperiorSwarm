@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 
 export function CrossRepoOrchestratorBody({ orchestratorId }: { orchestratorId: string }) {
@@ -49,10 +50,12 @@ export function CrossRepoOrchestratorBody({ orchestratorId }: { orchestratorId: 
 					<EmptyHint>No members yet</EmptyHint>
 				) : (
 					(members.data ?? []).map((m) => (
-						<MemberLine
+						<ReferenceLine
 							key={m.workspaceId}
-							projectName={projectsById.get(m.projectId)?.name ?? m.projectId}
-							workspaceName={m.workspaceName ?? m.workspaceId}
+							orchestratorId={orchestratorId}
+							phase={m.currentPhase}
+							repoName={projectsById.get(m.projectId)?.name ?? m.projectId}
+							branch={m.workspaceName}
 						/>
 					))
 				)}
@@ -121,31 +124,32 @@ function RepoLine({ name, onUnlink }: { name: string; onUnlink: () => void }) {
 	);
 }
 
-function MemberLine({
-	projectName,
-	workspaceName,
+function ReferenceLine({
+	orchestratorId,
+	phase,
+	repoName,
+	branch,
 }: {
-	projectName: string;
-	workspaceName: string;
+	orchestratorId: string;
+	phase: "idle" | "working" | "blocked" | "done";
+	repoName: string;
+	branch: string;
 }) {
+	const openXroCanvas = useTabStore((s) => s.openXroCanvas);
 	return (
-		<div className="flex items-center gap-1.5 px-2 py-[3px] text-[12px]">
-			<svg
-				aria-hidden="true"
-				width="10"
-				height="10"
-				viewBox="0 0 10 10"
-				fill="none"
-				className="shrink-0 text-[var(--text-quaternary)]"
-			>
-				<circle cx="2.5" cy="5" r="1.4" stroke="currentColor" strokeWidth="1" />
-				<path d="M3.9 5h2.7" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
-				<circle cx="7.5" cy="5" r="1.4" fill="currentColor" />
-			</svg>
-			<span className="truncate text-[var(--text-tertiary)]">{projectName}</span>
-			<span className="text-[var(--text-quaternary)]">/</span>
-			<span className="truncate text-[var(--text-secondary)]">{workspaceName}</span>
-		</div>
+		<button
+			type="button"
+			onClick={() => openXroCanvas(orchestratorId, repoName)}
+			className="flex w-full items-center gap-[7px] rounded-[6px] px-2 py-[4px] text-left text-[11px] text-[var(--text-quaternary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-tertiary)]"
+		>
+			<span
+				className="h-[6px] w-[6px] shrink-0 rounded-full"
+				style={{ background: `var(--st-${phase})` }}
+			/>
+			<span className="truncate font-mono">
+				{repoName} / {branch}
+			</span>
+		</button>
 	);
 }
 
