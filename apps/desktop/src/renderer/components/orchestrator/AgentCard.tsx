@@ -25,7 +25,10 @@ export function AgentCard({
 	const [expanded, setExpanded] = useState(false);
 	const blocked = data.phase === "blocked";
 	const relTime = formatRelativeTime(data.statusUpdatedAt ?? undefined);
-	const isLong = (data.statusText?.length ?? 0) > 140;
+	// Measure the text actually shown (blocked cards render `needs`), and treat
+	// multi-line content as long too, so the 4-line clamp always has an escape.
+	const shown = blocked && data.needs ? data.needs : data.statusText;
+	const isLong = (shown?.length ?? 0) > 140 || (shown?.split("\n").length ?? 0) > 4;
 
 	return (
 		<div
@@ -42,7 +45,7 @@ export function AgentCard({
 				<StatusPill phase={data.phase} />
 			</div>
 
-			{data.statusText && (
+			{shown && (
 				<div
 					className={[
 						"mt-[8px] whitespace-pre-wrap text-[12px] leading-[1.5] text-[var(--text-tertiary)]",
