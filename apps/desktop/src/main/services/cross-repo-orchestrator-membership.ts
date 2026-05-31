@@ -1,13 +1,13 @@
 import { and, asc, eq, inArray, max } from "drizzle-orm";
-import { type WorkspacePhase, ForbiddenError, NotFoundError } from "../../shared/control-plane";
+import { ForbiddenError, NotFoundError, type WorkspacePhase } from "../../shared/control-plane";
 import { invalidateCrossRepoLinksCache } from "../control-plane/orchestrator-event-sink";
 import { getDb } from "../db";
 import {
 	crossRepoOrchestratorProjects,
 	crossRepoOrchestrators,
 	orchestratorMembers,
-	worktrees,
 	workspaces,
+	worktrees,
 } from "../db/schema";
 
 export async function attachToCrossRepoOrchestrator(input: {
@@ -126,6 +126,7 @@ export async function listCrossRepoMembers(input: {
 		currentPhase: WorkspacePhase;
 		statusText: string | null;
 		needs: string | null;
+		statusUpdatedAt: Date | null;
 		worktreePath: string | null;
 	}>
 > {
@@ -140,6 +141,7 @@ export async function listCrossRepoMembers(input: {
 			currentPhase: workspaces.currentPhase,
 			statusText: workspaces.statusText,
 			needs: workspaces.needs,
+			statusUpdatedAt: workspaces.statusUpdatedAt,
 			worktreePath: worktrees.path,
 		})
 		.from(orchestratorMembers)

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { getDb } from "../src/main/db";
-import { worktrees, workspaces } from "../src/main/db/schema";
+import { workspaces, worktrees } from "../src/main/db/schema";
 import {
 	addProjectToCrossRepoOrchestrator,
 	attachToCrossRepoOrchestrator,
@@ -54,5 +54,25 @@ describe("listCrossRepoMembers worktreePath", () => {
 		const byId = new Map(members.map((m) => [m.workspaceId, m]));
 		expect(byId.get(withWt)?.worktreePath).toBe(wtPath);
 		expect(byId.get(noWt)?.worktreePath).toBeNull();
+	});
+
+	test("returns statusUpdatedAt, or null when unset", async () => {
+		const project = await seedProject();
+		const xro = await seedCrossRepoOrchestrator({ projectIds: [project] });
+
+		const withTs = await seedWorkspace(project, { name: "with-ts" });
+		const ts = new Date("2026-05-30T12:00:00.000Z");
+		getDb().update(workspaces).set({ statusUpdatedAt: ts }).where(eq(workspaces.id, withTs)).run();
+
+		const noTs = await seedWorkspace(project, { name: "no-ts" });
+
+		await addProjectToCrossRepoOrchestrator({ orchestratorId: xro, projectId: project });
+		await attachToCrossRepoOrchestrator({ orchestratorId: xro, workspaceId: withTs });
+		await attachToCrossRepoOrchestrator({ orchestratorId: xro, workspaceId: noTs });
+
+		const members = await listCrossRepoMembers({ orchestratorId: xro });
+		const byId = new Map(members.map((m) => [m.workspaceId, m]));
+		expect(byId.get(withTs)?.statusUpdatedAt?.getTime()).toBe(ts.getTime());
+		expect(byId.get(noTs)?.statusUpdatedAt).toBeNull();
 	});
 });
