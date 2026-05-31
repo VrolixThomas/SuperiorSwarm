@@ -13,6 +13,7 @@ import {
 export async function attachToCrossRepoOrchestrator(input: {
 	orchestratorId: string;
 	workspaceId: string;
+	createdByDispatch?: boolean;
 }): Promise<{ ok: true }> {
 	const db = getDb();
 
@@ -65,6 +66,7 @@ export async function attachToCrossRepoOrchestrator(input: {
 				orchestratorId: input.orchestratorId,
 				workspaceId: input.workspaceId,
 				parentKind: "cross_repo",
+				createdByDispatch: input.createdByDispatch ?? false,
 				sortOrder: nextSort,
 				createdAt: new Date(),
 			})

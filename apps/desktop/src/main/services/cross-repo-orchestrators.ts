@@ -149,6 +149,7 @@ export async function dispatchAcrossRepos(input: {
 		await attachToCrossRepoOrchestrator({
 			orchestratorId: input.orchestratorId,
 			workspaceId: ws.workspaceId,
+			createdByDispatch: true,
 		});
 		created.push({ projectId: t.projectId, workspaceId: ws.workspaceId });
 	}

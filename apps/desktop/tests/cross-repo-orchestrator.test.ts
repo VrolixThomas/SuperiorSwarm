@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { getDb } from "../src/main/db";
-import { workspaces } from "../src/main/db/schema";
+import { orchestratorMembers, workspaces } from "../src/main/db/schema";
 import {
 	addProjectToCrossRepoOrchestrator,
 	attachToCrossRepoOrchestrator,
@@ -127,5 +127,34 @@ describe("cross-repo-orchestrator-membership", () => {
 		expect(member.currentPhase).toBe("blocked");
 		expect(member.statusText).toBe("waiting for review");
 		expect(member.needs).toBe("decision on API design");
+	});
+
+	test("createdByDispatch defaults to false on plain attach and is true when set", async () => {
+		const p = await seedProject();
+		const xro = await seedCrossRepoOrchestrator({ projectIds: [p] });
+		const wsPlain = await seedWorkspace(p, { name: "plain" });
+		const wsDispatched = await seedWorkspace(p, { name: "dispatched" });
+
+		await attachToCrossRepoOrchestrator({ orchestratorId: xro, workspaceId: wsPlain });
+		await attachToCrossRepoOrchestrator({
+			orchestratorId: xro,
+			workspaceId: wsDispatched,
+			createdByDispatch: true,
+		});
+
+		const readFlag = (workspaceId: string) =>
+			getDb()
+				.select({ createdByDispatch: orchestratorMembers.createdByDispatch })
+				.from(orchestratorMembers)
+				.where(
+					and(
+						eq(orchestratorMembers.orchestratorId, xro),
+						eq(orchestratorMembers.workspaceId, workspaceId)
+					)
+				)
+				.get();
+
+		expect(readFlag(wsPlain)?.createdByDispatch).toBe(false);
+		expect(readFlag(wsDispatched)?.createdByDispatch).toBe(true);
 	});
 });
