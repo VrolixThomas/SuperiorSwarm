@@ -7,6 +7,7 @@ export interface AgentCardData {
 	phase: WorkspacePhase;
 	statusText: string | null;
 	needs: string | null;
+	worktreePath: string | null;
 }
 
 export function AgentCard({

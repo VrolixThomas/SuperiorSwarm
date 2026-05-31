@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import type { AgentCardData } from "./orchestrator/AgentCard";
 import type { ActivityEvent } from "./orchestrator/CrossRepoActivityRail";
@@ -12,10 +13,27 @@ export function CrossRepoOrchestratorCanvas({ orchestratorId }: { orchestratorId
 	const members = trpc.crossRepoOrchestrators.listMembers.useQuery({ id: orchestratorId });
 	const projects = trpc.projects.list.useQuery();
 
+	const attachTerminal = trpc.workspaces.attachTerminal.useMutation();
 	const projectsById = useMemo(
 		() => new Map((projects.data ?? []).map((p) => [p.id, p])),
 		[projects.data]
 	);
+	const membersById = useMemo(
+		() => new Map((members.data ?? []).map((m) => [m.workspaceId, m])),
+		[members.data]
+	);
+
+	function openMember(workspaceId: string) {
+		const m = membersById.get(workspaceId);
+		if (!m?.worktreePath) return;
+		const store = useTabStore.getState();
+		store.setActiveWorkspace(m.workspaceId, m.worktreePath);
+		const existing = store.getTabsByWorkspace(m.workspaceId);
+		if (!existing.some((t) => t.kind === "terminal")) {
+			const tabId = store.addTerminalTab(m.workspaceId, m.worktreePath, m.workspaceName);
+			attachTerminal.mutate({ workspaceId: m.workspaceId, terminalId: tabId });
+		}
+	}
 
 	const repos = (linked.data ?? []).map((pid) => ({
 		projectId: pid,
@@ -32,6 +50,7 @@ export function CrossRepoOrchestratorCanvas({ orchestratorId }: { orchestratorId
 				phase: m.currentPhase,
 				statusText: m.statusText,
 				needs: m.needs,
+				worktreePath: m.worktreePath,
 			});
 			map.set(m.projectId, arr);
 		}
@@ -79,8 +98,8 @@ export function CrossRepoOrchestratorCanvas({ orchestratorId }: { orchestratorId
 							repoName={r.name}
 							role={null}
 							cards={cardsByProject.get(r.projectId) ?? []}
-							onAnswer={() => {}}
-							onOpen={() => {}}
+							onAnswer={(workspaceId) => openMember(workspaceId)}
+							onOpen={(workspaceId) => openMember(workspaceId)}
 							onDispatchHere={() => {}}
 						/>
 					))}
