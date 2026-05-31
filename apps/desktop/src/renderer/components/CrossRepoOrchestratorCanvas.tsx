@@ -57,6 +57,7 @@ export function CrossRepoOrchestratorCanvas({ orchestratorId }: { orchestratorId
 				statusText: m.statusText,
 				needs: m.needs,
 				worktreePath: m.worktreePath,
+				statusUpdatedAt: m.statusUpdatedAt ? new Date(m.statusUpdatedAt).toISOString() : null,
 			});
 			map.set(m.projectId, arr);
 		}
@@ -65,7 +66,7 @@ export function CrossRepoOrchestratorCanvas({ orchestratorId }: { orchestratorId
 
 	return (
 		<div className="flex h-full min-h-0 flex-col overflow-y-auto bg-[var(--bg-base)]">
-			<div className="mx-auto w-full max-w-[820px] p-[22px_26px_40px]">
+			<div className="mx-auto w-full max-w-[1100px] p-[22px_26px_40px]">
 				<h1 className="text-[19px] font-semibold tracking-[-0.01em]">
 					{orch.data?.name ?? "Orchestrator"}
 				</h1>
