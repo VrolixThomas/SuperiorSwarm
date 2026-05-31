@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AgentAlert } from "../../shared/agent-events";
+import { useCrossRepoOrchestratorColor } from "../hooks/useCrossRepoOrchestratorColor";
 import { useAgentAlertStore } from "../stores/agent-alert-store";
 import { usePaneStore } from "../stores/pane-store";
 import { useProjectStore } from "../stores/projects";
@@ -27,6 +28,7 @@ interface WorkspaceItemProps {
 	projectRepoPath: string;
 	isInActiveProject: boolean;
 	indentLevel?: 0 | 1;
+	crossRepoOrchestrator?: { id: string; name: string } | null;
 }
 
 /**
@@ -353,6 +355,7 @@ export function WorkspaceItem({
 	projectRepoPath,
 	isInActiveProject,
 	indentLevel = 0,
+	crossRepoOrchestrator = null,
 }: WorkspaceItemProps) {
 	const [contextMenu, setContextMenu] = useState<{
 		x: number;
@@ -452,6 +455,8 @@ export function WorkspaceItem({
 		staleTime: 60_000,
 	});
 	const xros = xrosQuery.data ?? [];
+	const allXroIds = xros.map((x) => x.id);
+	const xroColor = useCrossRepoOrchestratorColor(crossRepoOrchestrator?.id ?? "", allXroIds);
 	const attachXroMut = trpc.crossRepoOrchestrators.attachMember.useMutation({
 		onError: (err) => console.warn("[xro] attach failed:", err.message),
 	});
@@ -577,6 +582,22 @@ export function WorkspaceItem({
 					>
 						{workspace.name}
 					</span>
+					{crossRepoOrchestrator && (
+						<span
+							className="inline-flex shrink-0 items-center gap-[4px] rounded-[8px] px-[5px] py-[1px] text-[9.5px] font-semibold"
+							style={{
+								color: `var(--orch-${xroColor})`,
+								background: `var(--orch-${xroColor}-bg)`,
+							}}
+							title={`Member of ${crossRepoOrchestrator.name}`}
+						>
+							<span
+								className="h-[6px] w-[6px] rounded-full"
+								style={{ background: `var(--orch-${xroColor})` }}
+							/>
+							{crossRepoOrchestrator.name}
+						</span>
+					)}
 					{workspace.isOrchestrator && (
 						<span className="ml-1 text-[10px] uppercase tracking-wide text-[var(--accent)]">
 							Orchestrator

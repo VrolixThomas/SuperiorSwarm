@@ -302,6 +302,31 @@ export async function listByProjectTree(input: {
 		memberOf.set(m.workspaceId, m);
 	}
 
+	// Cross-repo memberships are those whose orchestrator is NOT a workspace in this
+	// project (their id is a cross_repo orchestrator id). Look up their display names.
+	const crossRepoIds = [
+		...new Set(
+			memberRows
+				.filter((m) => !allOrchestratorIds.has(m.orchestratorId))
+				.map((m) => m.orchestratorId)
+		),
+	];
+	const xroNameById = new Map<string, string>();
+	if (crossRepoIds.length > 0) {
+		const xroRows = db
+			.select({ id: crossRepoOrchestrators.id, name: crossRepoOrchestrators.name })
+			.from(crossRepoOrchestrators)
+			.where(inArray(crossRepoOrchestrators.id, crossRepoIds))
+			.all();
+		for (const x of xroRows) xroNameById.set(x.id, x.name);
+	}
+	const crossRepoMemberOf = new Map<string, { id: string; name: string }>();
+	for (const m of memberRows) {
+		if (allOrchestratorIds.has(m.orchestratorId)) continue;
+		const name = xroNameById.get(m.orchestratorId);
+		if (name) crossRepoMemberOf.set(m.workspaceId, { id: m.orchestratorId, name });
+	}
+
 	const childrenByOrch = new Map<
 		string,
 		Array<{ row: VisibleWorkspaceTreeRow; sortOrder: number }>
@@ -322,12 +347,19 @@ export async function listByProjectTree(input: {
 		.sort((a, b) => a.sortOrder - b.sortOrder)
 		.map((workspace) => ({
 			workspace,
-			children: (childrenByOrch.get(workspace.id) ?? []).map((c) => c.row),
+			children: (childrenByOrch.get(workspace.id) ?? []).map((c) => ({
+				...c.row,
+				crossRepoOrchestrator: crossRepoMemberOf.get(c.row.id) ?? null,
+			})),
 		}));
 
 	const loose = rows
 		.filter((r) => !r.isOrchestrator && !memberOf.has(r.id))
-		.sort((a, b) => a.sortOrder - b.sortOrder);
+		.sort((a, b) => a.sortOrder - b.sortOrder)
+		.map((row) => ({
+			...row,
+			crossRepoOrchestrator: crossRepoMemberOf.get(row.id) ?? null,
+		}));
 
 	return { orchestrators, loose };
 }

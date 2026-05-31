@@ -338,6 +338,7 @@ export function ProjectItem({ project, isExpanded, onToggle }: ProjectItemProps)
 											projectName={project.name}
 											projectRepoPath={project.repoPath}
 											isInActiveProject={isActiveProject}
+											crossRepoOrchestrator={ws.crossRepoOrchestrator ?? null}
 										/>
 									</SortableWorkspace>
 								))}
@@ -480,6 +481,7 @@ function OrchestratorGroupBlock({
 									projectRepoPath={projectRepoPath}
 									isInActiveProject={isActiveProject}
 									indentLevel={1}
+									crossRepoOrchestrator={c.crossRepoOrchestrator ?? null}
 								/>
 							</SortableWorkspace>
 						))}

@@ -182,6 +182,7 @@ export interface WorkspaceTreeRow {
 	isOrchestrator: boolean;
 	cliPreset: string | null;
 	sortOrder: number;
+	crossRepoOrchestrator?: { id: string; name: string } | null;
 }
 
 /** A workspace row that is guaranteed not to be a "review" type (the service filters these out). */
