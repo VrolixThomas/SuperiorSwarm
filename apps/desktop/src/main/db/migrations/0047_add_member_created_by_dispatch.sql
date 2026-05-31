@@ -1,0 +1,1 @@
+ALTER TABLE `orchestrator_members` ADD `created_by_dispatch` integer DEFAULT false NOT NULL;

@@ -519,6 +519,9 @@ export const orchestratorMembers = sqliteTable(
 			.notNull()
 			.references(() => workspaces.id, { onDelete: "cascade" }),
 		parentKind: text("parent_kind").notNull().default("workspace"),
+		createdByDispatch: integer("created_by_dispatch", { mode: "boolean" })
+			.notNull()
+			.default(false),
 		sortOrder: integer("sort_order").notNull(),
 		createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
 	},
