@@ -7,21 +7,19 @@ export function RepoLane({
 	cards,
 	onAnswer,
 	onOpen,
-	onDispatchHere,
+	onUnlink,
 }: {
 	repoName: string;
 	role: "backend" | "frontend" | null;
 	cards: AgentCardData[];
 	onAnswer: (workspaceId: string) => void;
 	onOpen: (workspaceId: string) => void;
-	onDispatchHere: () => void;
+	onUnlink: () => void;
 }) {
 	return (
-		<section className="flex min-h-[220px] flex-col rounded-[10px] border border-[var(--border-subtle)] bg-[var(--bg-surface)]">
+		<section className="group/repo rounded-[10px] border border-[var(--border-subtle)] bg-[var(--bg-surface)]">
 			<div className="flex items-center gap-[8px] border-b border-[var(--border-subtle)] p-[11px_12px]">
-				<span className="flex-1 font-mono text-[12.5px] font-semibold text-[var(--text)]">
-					{repoName}
-				</span>
+				<span className="font-mono text-[12.5px] font-semibold text-[var(--text)]">{repoName}</span>
 				{role && (
 					<span
 						className="rounded-[5px] px-[6px] py-[1px] text-[10px] font-semibold"
@@ -34,30 +32,38 @@ export function RepoLane({
 						{role.toUpperCase()}
 					</span>
 				)}
+				<span className="text-[11px] text-[var(--text-quaternary)] tabular-nums">
+					{cards.length} {cards.length === 1 ? "agent" : "agents"}
+				</span>
+				<button
+					type="button"
+					onClick={onUnlink}
+					aria-label={`Unlink ${repoName}`}
+					title="Unlink repo"
+					className="ml-auto px-[4px] text-[14px] leading-none text-[var(--text-quaternary)] opacity-0 transition-opacity hover:text-[var(--text)] focus:opacity-100 group-hover/repo:opacity-100"
+				>
+					×
+				</button>
 			</div>
-			<div className="flex flex-1 flex-col gap-[8px] p-[9px]">
+			<div className="p-[10px]">
 				{cards.length === 0 ? (
-					<div className="px-[2px] py-[6px] text-[11.5px] italic text-[var(--text-quaternary)]">
-						No agents in this repo yet
+					<div className="px-[2px] py-[4px] text-[11.5px] italic text-[var(--text-quaternary)]">
+						No agents yet — dispatch a task to start one here
 					</div>
 				) : (
-					cards.map((c) => (
-						<AgentCard
-							key={c.workspaceId}
-							data={c}
-							onAnswer={() => onAnswer(c.workspaceId)}
-							onOpen={() => onOpen(c.workspaceId)}
-						/>
-					))
+					<div className="flex flex-wrap gap-[8px]">
+						{cards.map((c) => (
+							<div key={c.workspaceId} className="w-[240px]">
+								<AgentCard
+									data={c}
+									onAnswer={() => onAnswer(c.workspaceId)}
+									onOpen={() => onOpen(c.workspaceId)}
+								/>
+							</div>
+						))}
+					</div>
 				)}
 			</div>
-			<button
-				type="button"
-				onClick={onDispatchHere}
-				className="m-[0_9px_10px] flex h-[30px] items-center justify-center gap-[6px] rounded-[8px] border border-dashed border-[var(--border)] text-[11.5px] text-[var(--text-quaternary)] hover:border-[var(--border-active)] hover:text-[var(--text-tertiary)]"
-			>
-				+ dispatch agent here
-			</button>
 		</section>
 	);
 }
