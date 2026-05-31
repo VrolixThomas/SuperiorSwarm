@@ -1,4 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { eq } from "drizzle-orm";
+import { getDb } from "../src/main/db";
+import { workspaces } from "../src/main/db/schema";
 import {
 	addProjectToCrossRepoOrchestrator,
 	attachToCrossRepoOrchestrator,
@@ -97,5 +100,32 @@ describe("cross-repo-orchestrator-membership", () => {
 
 		const members = await listCrossRepoMembers({ orchestratorId: xro });
 		expect(members.map((m) => m.workspaceId)).toEqual([wsP2]);
+	});
+
+	test("listCrossRepoMembers returns live status fields from workspaces table", async () => {
+		const p = await seedProject();
+		const xro = await seedCrossRepoOrchestrator({ projectIds: [p] });
+		const ws = await seedWorkspace(p, { name: "blocked-ws" });
+
+		await attachToCrossRepoOrchestrator({ orchestratorId: xro, workspaceId: ws });
+
+		// Directly update the workspace status fields (simulating setStatus)
+		getDb()
+			.update(workspaces)
+			.set({
+				currentPhase: "blocked",
+				statusText: "waiting for review",
+				needs: "decision on API design",
+				updatedAt: new Date(),
+			})
+			.where(eq(workspaces.id, ws))
+			.run();
+
+		const members = await listCrossRepoMembers({ orchestratorId: xro });
+		expect(members).toHaveLength(1);
+		const member = members[0]!;
+		expect(member.currentPhase).toBe("blocked");
+		expect(member.statusText).toBe("waiting for review");
+		expect(member.needs).toBe("decision on API design");
 	});
 });

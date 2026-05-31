@@ -1,5 +1,5 @@
 import { and, asc, eq, inArray, max } from "drizzle-orm";
-import { ForbiddenError, NotFoundError } from "../../shared/control-plane";
+import { type WorkspacePhase, ForbiddenError, NotFoundError } from "../../shared/control-plane";
 import { invalidateCrossRepoLinksCache } from "../control-plane/orchestrator-event-sink";
 import { getDb } from "../db";
 import {
@@ -122,6 +122,9 @@ export async function listCrossRepoMembers(input: {
 		parentKind: string;
 		projectId: string;
 		workspaceName: string;
+		currentPhase: WorkspacePhase;
+		statusText: string | null;
+		needs: string | null;
 	}>
 > {
 	const db = getDb();
@@ -132,6 +135,9 @@ export async function listCrossRepoMembers(input: {
 			parentKind: orchestratorMembers.parentKind,
 			projectId: workspaces.projectId,
 			workspaceName: workspaces.name,
+			currentPhase: workspaces.currentPhase,
+			statusText: workspaces.statusText,
+			needs: workspaces.needs,
 		})
 		.from(orchestratorMembers)
 		.innerJoin(workspaces, eq(workspaces.id, orchestratorMembers.workspaceId))
