@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { getDb } from "../src/main/db";
-import { orchestratorMembers, workspaces } from "../src/main/db/schema";
+import { orchestratorMembers, workspaces, worktrees } from "../src/main/db/schema";
 import {
 	addProjectToCrossRepoOrchestrator,
 	attachToCrossRepoOrchestrator,
@@ -9,6 +9,7 @@ import {
 	listCrossRepoMembers,
 	removeProjectFromCrossRepoOrchestrator,
 } from "../src/main/services/cross-repo-orchestrator-membership";
+import { deleteCrossRepoOrchestrator } from "../src/main/services/cross-repo-orchestrators";
 import {
 	seedCrossRepoOrchestrator,
 	seedProject,
@@ -174,5 +175,94 @@ describe("cross-repo-orchestrator-membership", () => {
 		const byId = new Map(members.map((m) => [m.workspaceId, m]));
 		expect(byId.get(wsPlain)?.createdByDispatch).toBe(false);
 		expect(byId.get(wsDispatched)?.createdByDispatch).toBe(true);
+	});
+
+	test("delete with removeWorkspaces removes only dispatched workspaces", async () => {
+		const p = await seedProject();
+		const xro = await seedCrossRepoOrchestrator({ projectIds: [p] });
+		const now = new Date();
+
+		// Dispatched member: worktree row + worktree-type workspace with a path that
+		// does NOT exist on disk, so removeWorkspace deletes DB rows only.
+		const worktreeId = `wt-${Date.now()}`;
+		const dispatchedWsId = `ws-dispatched-${Date.now()}`;
+		getDb()
+			.insert(worktrees)
+			.values({
+				id: worktreeId,
+				projectId: p,
+				path: `/tmp/does-not-exist-${worktreeId}`,
+				branch: "feat/x",
+				baseBranch: "main",
+				createdAt: now,
+				updatedAt: now,
+			})
+			.run();
+		getDb()
+			.insert(workspaces)
+			.values({
+				id: dispatchedWsId,
+				projectId: p,
+				type: "worktree",
+				name: "feat/x",
+				worktreeId,
+				currentPhase: "idle",
+				isOrchestrator: false,
+				sortOrder: 0,
+				createdAt: now,
+				updatedAt: now,
+			})
+			.run();
+		await attachToCrossRepoOrchestrator({
+			orchestratorId: xro,
+			workspaceId: dispatchedWsId,
+			createdByDispatch: true,
+		});
+
+		// Plain attached member (not created by this orchestrator).
+		const attachedWsId = await seedWorkspace(p, { name: "attached" });
+		await attachToCrossRepoOrchestrator({ orchestratorId: xro, workspaceId: attachedWsId });
+
+		await deleteCrossRepoOrchestrator({ id: xro, removeWorkspaces: true });
+
+		const dispatchedRow = getDb()
+			.select({ id: workspaces.id })
+			.from(workspaces)
+			.where(eq(workspaces.id, dispatchedWsId))
+			.get();
+		const worktreeRow = getDb()
+			.select({ id: worktrees.id })
+			.from(worktrees)
+			.where(eq(worktrees.id, worktreeId))
+			.get();
+		const attachedRow = getDb()
+			.select({ id: workspaces.id })
+			.from(workspaces)
+			.where(eq(workspaces.id, attachedWsId))
+			.get();
+
+		expect(dispatchedRow).toBeUndefined();
+		expect(worktreeRow).toBeUndefined();
+		expect(attachedRow?.id).toBe(attachedWsId);
+	});
+
+	test("delete without removeWorkspaces keeps all workspaces", async () => {
+		const p = await seedProject();
+		const xro = await seedCrossRepoOrchestrator({ projectIds: [p] });
+		const ws = await seedWorkspace(p, { name: "keep" });
+		await attachToCrossRepoOrchestrator({
+			orchestratorId: xro,
+			workspaceId: ws,
+			createdByDispatch: true,
+		});
+
+		await deleteCrossRepoOrchestrator({ id: xro });
+
+		const row = getDb()
+			.select({ id: workspaces.id })
+			.from(workspaces)
+			.where(eq(workspaces.id, ws))
+			.get();
+		expect(row?.id).toBe(ws);
 	});
 });

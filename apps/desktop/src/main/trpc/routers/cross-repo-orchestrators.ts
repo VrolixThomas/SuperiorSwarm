@@ -41,7 +41,7 @@ export const crossRepoOrchestratorsRouter = router({
 		.mutation(({ input }) => renameCrossRepoOrchestrator(input)),
 
 	delete: publicProcedure
-		.input(z.object({ id: z.string() }))
+		.input(z.object({ id: z.string(), removeWorkspaces: z.boolean().default(false) }))
 		.mutation(({ input }) => deleteCrossRepoOrchestrator(input)),
 
 	listLinkedProjects: publicProcedure

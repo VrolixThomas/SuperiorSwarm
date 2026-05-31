@@ -15,7 +15,7 @@ import {
 	orchestratorMembers,
 } from "../db/schema";
 import { attachToCrossRepoOrchestrator } from "./cross-repo-orchestrator-membership";
-import { createWorkspace } from "./workspace-service";
+import { createWorkspace, removeWorkspace } from "./workspace-service";
 
 function workDirFor(id: string): string {
 	const base = app.getPath("userData");
@@ -83,9 +83,39 @@ export async function renameCrossRepoOrchestrator(input: {
 	return { ok: true };
 }
 
-export async function deleteCrossRepoOrchestrator(input: { id: string }): Promise<{ ok: true }> {
+export async function deleteCrossRepoOrchestrator(input: {
+	id: string;
+	removeWorkspaces?: boolean;
+}): Promise<{ ok: true }> {
 	const row = await getCrossRepoOrchestrator({ id: input.id });
 	if (!row) return { ok: true };
+
+	if (input.removeWorkspaces) {
+		// Capture the workspace ids the orchestrator created before deleting anything,
+		// then force-remove each. `force` skips the uncommitted-changes check (the user
+		// consented). Wrapped per-workspace so one failure cannot abort the rest or the
+		// orchestrator deletion. Dispatched workspaces are always type "worktree", so the
+		// "cannot delete the main branch workspace" guard in removeWorkspace never trips.
+		const dispatched = getDb()
+			.select({ workspaceId: orchestratorMembers.workspaceId })
+			.from(orchestratorMembers)
+			.where(
+				and(
+					eq(orchestratorMembers.orchestratorId, input.id),
+					eq(orchestratorMembers.parentKind, "cross_repo"),
+					eq(orchestratorMembers.createdByDispatch, true)
+				)
+			)
+			.all();
+		for (const m of dispatched) {
+			try {
+				await removeWorkspace({ workspaceId: m.workspaceId, force: true });
+			} catch (err) {
+				console.warn("[xro] removeWorkspace failed during orchestrator delete:", err);
+			}
+		}
+	}
+
 	try {
 		rmSync(row.workDir, { recursive: true, force: true });
 	} catch {}
