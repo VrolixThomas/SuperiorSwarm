@@ -788,6 +788,10 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 		// First open: coordinator terminal in the original (left) pane, then split
 		// the canvas off into the new (right) pane.
 		const left = resolveFocusedPane(workspaceId);
+		// ensureLayout above guarantees a pane; bail out safely if somehow absent so
+		// the caller never writes a launch command to a terminal that was not created.
+		if (!left) return { terminalTabId: "", started: false };
+
 		const terminalTabId = nextTerminalId();
 		const terminalTab: TabItem = {
 			kind: "terminal",
@@ -797,18 +801,16 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 			cwd: workDir,
 			presetName: "xro-coordinator",
 		};
-		if (left) {
-			ps().addTabToPane(workspaceId, left.id, terminalTab);
-			const canvasTab: TabItem = {
-				kind: "xro-canvas",
-				id: `xro-canvas-${orchestratorId}`,
-				workspaceId,
-				orchestratorId,
-				title,
-			};
-			ps().splitPane(workspaceId, left.id, "horizontal", canvasTab);
-			ps().setFocusedPane(left.id);
-		}
+		ps().addTabToPane(workspaceId, left.id, terminalTab);
+		const canvasTab: TabItem = {
+			kind: "xro-canvas",
+			id: `xro-canvas-${orchestratorId}`,
+			workspaceId,
+			orchestratorId,
+			title,
+		};
+		ps().splitPane(workspaceId, left.id, "horizontal", canvasTab);
+		ps().setFocusedPane(left.id);
 		return { terminalTabId, started: true };
 	},
 

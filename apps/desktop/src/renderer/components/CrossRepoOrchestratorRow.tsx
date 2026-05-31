@@ -29,7 +29,6 @@ export function CrossRepoOrchestratorRow({
 		{ enabled: false }
 	);
 	const markStarted = trpc.crossRepoOrchestrators.markAgentStarted.useMutation();
-	const attachTerminal = trpc.workspaces.attachTerminal.useMutation();
 
 	const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
 
@@ -56,7 +55,6 @@ export function CrossRepoOrchestratorRow({
 			const res = await getLaunch.refetch();
 			const cmd = res.data?.command;
 			if (cmd) {
-				attachTerminal.mutate({ workspaceId: orchestrator.id, terminalId: terminalTabId });
 				setTimeout(() => {
 					window.electron.terminal.write(terminalTabId, `${cmd}\n`);
 				}, 300);
