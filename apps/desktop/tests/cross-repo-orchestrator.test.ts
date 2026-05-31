@@ -157,4 +157,22 @@ describe("cross-repo-orchestrator-membership", () => {
 		expect(readFlag(wsPlain)?.createdByDispatch).toBe(false);
 		expect(readFlag(wsDispatched)?.createdByDispatch).toBe(true);
 	});
+
+	test("listCrossRepoMembers returns createdByDispatch per member", async () => {
+		const p = await seedProject();
+		const xro = await seedCrossRepoOrchestrator({ projectIds: [p] });
+		const wsPlain = await seedWorkspace(p, { name: "plain" });
+		const wsDispatched = await seedWorkspace(p, { name: "dispatched" });
+		await attachToCrossRepoOrchestrator({ orchestratorId: xro, workspaceId: wsPlain });
+		await attachToCrossRepoOrchestrator({
+			orchestratorId: xro,
+			workspaceId: wsDispatched,
+			createdByDispatch: true,
+		});
+
+		const members = await listCrossRepoMembers({ orchestratorId: xro });
+		const byId = new Map(members.map((m) => [m.workspaceId, m]));
+		expect(byId.get(wsPlain)?.createdByDispatch).toBe(false);
+		expect(byId.get(wsDispatched)?.createdByDispatch).toBe(true);
+	});
 });

@@ -130,6 +130,7 @@ export async function listCrossRepoMembers(input: {
 		needs: string | null;
 		statusUpdatedAt: Date | null;
 		worktreePath: string | null;
+		createdByDispatch: boolean;
 	}>
 > {
 	const db = getDb();
@@ -145,6 +146,7 @@ export async function listCrossRepoMembers(input: {
 			needs: workspaces.needs,
 			statusUpdatedAt: workspaces.statusUpdatedAt,
 			worktreePath: worktrees.path,
+			createdByDispatch: orchestratorMembers.createdByDispatch,
 		})
 		.from(orchestratorMembers)
 		.innerJoin(workspaces, eq(workspaces.id, orchestratorMembers.workspaceId))
