@@ -80,6 +80,10 @@ function deserializeLayout(
 				if ((saved as { kind: string }).kind === "solve-review") {
 					return null;
 				}
+				// Cross-repo orchestrator canvas tabs are re-opened on demand, not restored
+				if ((saved as { kind: string }).kind === "xro-canvas") {
+					return null;
+				}
 				// File tabs: use directly from serialized data
 				return saved;
 			})

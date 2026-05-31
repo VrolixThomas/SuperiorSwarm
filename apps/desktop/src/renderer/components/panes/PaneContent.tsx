@@ -1,5 +1,6 @@
 import type { Pane } from "../../../shared/pane-types";
 import { trpc } from "../../trpc/client";
+import { CrossRepoOrchestratorCanvas } from "../CrossRepoOrchestratorCanvas";
 import { DiffFileTab } from "../DiffFileTab";
 import { FileEditor } from "../FileEditor";
 import { MergeConflictPane } from "../MergeConflictPane";
@@ -108,6 +109,14 @@ export function PaneContent({
 					<SolveReviewTab
 						workspaceId={activeTab.workspaceId}
 						solveSessionId={activeTab.solveSessionId}
+					/>
+				</div>
+			)}
+			{activeTab?.kind === "xro-canvas" && (
+				<div className="absolute inset-0">
+					<CrossRepoOrchestratorCanvas
+						key={activeTab.orchestratorId}
+						orchestratorId={activeTab.orchestratorId}
 					/>
 				</div>
 			)}

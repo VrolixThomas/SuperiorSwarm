@@ -81,6 +81,13 @@ export type TabItem =
 			repoPath: string;
 			baseBranch: string;
 			title: "Review";
+	  }
+	| {
+			kind: "xro-canvas";
+			id: string;
+			workspaceId: string;
+			orchestratorId: string;
+			title: string;
 	  };
 export type PanelMode = "diff" | "explorer" | "pr-review";
 
@@ -179,6 +186,8 @@ interface TabStore {
 		language: string
 	) => string;
 	openPROverview: (workspaceId: string, prCtx: PRContext) => string;
+
+	openXroCanvas: (orchestratorId: string, title: string) => string;
 
 	openMergeConflict: (
 		workspaceId: string,
@@ -713,6 +722,35 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 			workspaceId,
 			title: `PR: ${prCtx.title}`,
 			prCtx,
+		};
+		ps().ensureLayout(workspaceId);
+		const focused = resolveFocusedPane(workspaceId);
+		if (focused) {
+			ps().addTabToPane(workspaceId, focused.id, tab);
+		}
+		return id;
+	},
+
+	openXroCanvas: (orchestratorId, title) => {
+		// The orchestrator id is itself the xro-* workspace id, so the canvas tab
+		// lives in that workspace's pane layout (dedupe per-workspace by orchestratorId).
+		const workspaceId = orchestratorId;
+		const found = findTabInWorkspace(
+			workspaceId,
+			(t) => t.kind === "xro-canvas" && t.orchestratorId === orchestratorId
+		);
+		if (found) {
+			ps().setActiveTabInPane(workspaceId, found.pane.id, found.tab.id);
+			ps().setFocusedPane(found.pane.id);
+			return found.tab.id;
+		}
+		const id = `xro-canvas-${orchestratorId}`;
+		const tab: TabItem = {
+			kind: "xro-canvas",
+			id,
+			workspaceId,
+			orchestratorId,
+			title,
 		};
 		ps().ensureLayout(workspaceId);
 		const focused = resolveFocusedPane(workspaceId);
