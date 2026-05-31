@@ -12,10 +12,7 @@ describe("renameWorkspace", () => {
 	test("updates the display name", async () => {
 		const p = await seedProject();
 		const id = await seedWorkspace(p, { name: "old-name" });
-		await renameWorkspace(
-			{ projectId: p, workspaceId: id },
-			{ workspaceId: id, name: "new-name" }
-		);
+		await renameWorkspace({ projectId: p, workspaceId: id }, { workspaceId: id, name: "new-name" });
 		const row = getDb().select().from(workspaces).where(eq(workspaces.id, id)).get();
 		expect(row?.name).toBe("new-name");
 	});

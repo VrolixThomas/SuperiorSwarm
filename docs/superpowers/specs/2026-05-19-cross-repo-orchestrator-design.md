@@ -370,10 +370,9 @@ that returns the `cross-repo-orchestrator` mode payload.
   orch.** Both orchestrators will receive events from that project. That's
   intended (different consumers). Confirm there's no UX implication other
   than the double-file write cost.
-- **Existing ID format.** Workspace IDs today are already prefixed/UUIDs
-  (verify in `workspaces.id` generator). If they already use a distinct
-  prefix, cross-repo IDs only need their own (`xro_`); no backfill needed.
-  Confirm before writing the migration.
+- **ID prefix (resolved).** Existing IDs are `proj-<nanoid(8)>` and
+  `ws-<nanoid(8)>` (see `apps/desktop/tests/helpers/db.ts`). Cross-repo
+  orchestrators will use `xro-<nanoid(8)>`. No collision risk, no backfill.
 
 ## Out of Scope (re-statement)
 

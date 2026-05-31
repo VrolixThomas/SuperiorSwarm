@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
+	addProjectToCrossRepoOrchestrator,
 	attachToCrossRepoOrchestrator,
 	detachFromCrossRepoOrchestrator,
 	listCrossRepoMembers,
-	addProjectToCrossRepoOrchestrator,
 	removeProjectFromCrossRepoOrchestrator,
 } from "../src/main/services/cross-repo-orchestrator-membership";
 import {
@@ -50,9 +50,7 @@ describe("cross-repo-orchestrator-membership", () => {
 		const perRepo = await seedWorkspace(p, { name: "orch", isOrchestrator: true });
 		const ws = await seedWorkspace(p, { name: "a" });
 
-		const { attachToOrchestrator } = await import(
-			"../src/main/services/orchestrator-membership"
-		);
+		const { attachToOrchestrator } = await import("../src/main/services/orchestrator-membership");
 		await attachToOrchestrator({ orchestratorId: perRepo, workspaceId: ws });
 
 		await attachToCrossRepoOrchestrator({ orchestratorId: xro, workspaceId: ws });
@@ -60,9 +58,7 @@ describe("cross-repo-orchestrator-membership", () => {
 		const xroMembers = await listCrossRepoMembers({ orchestratorId: xro });
 		expect(xroMembers.map((m) => m.workspaceId)).toEqual([ws]);
 
-		const { listMembership } = await import(
-			"../src/main/services/orchestrator-membership"
-		);
+		const { listMembership } = await import("../src/main/services/orchestrator-membership");
 		const perRepoMembers = await listMembership({ orchestratorId: perRepo });
 		expect(perRepoMembers.length).toBe(0);
 	});

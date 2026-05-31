@@ -120,11 +120,7 @@ describe("orchestrator-membership", () => {
 		const wsId = await seedWorkspace(p, { name: "lone" });
 
 		// Bump sortOrder directly to a known non-default value.
-		getDb()
-			.update(workspaces)
-			.set({ sortOrder: initialSort })
-			.where(eq(workspaces.id, wsId))
-			.run();
+		getDb().update(workspaces).set({ sortOrder: initialSort }).where(eq(workspaces.id, wsId)).run();
 
 		await detachFromOrchestrator({ workspaceId: wsId });
 

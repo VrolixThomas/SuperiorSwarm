@@ -76,10 +76,11 @@ afterEach(() => {
 describe("setStatus", () => {
 	test("updates phase + status_text + needs", async () => {
 		const ws = await createWorkspace({ projectId: PROJECT_ID, branch: "feature/a" });
-		await setStatus(
-			wsCtx(ws.workspaceId, PROJECT_ID),
-			{ phase: "blocked", statusText: "waiting", needs: "decision X" }
-		);
+		await setStatus(wsCtx(ws.workspaceId, PROJECT_ID), {
+			phase: "blocked",
+			statusText: "waiting",
+			needs: "decision X",
+		});
 		const db = getDb();
 		const row = db
 			.select()
@@ -179,10 +180,11 @@ describe("sendMessage / readMessages", () => {
 		const a = await createWorkspace({ projectId: PROJECT_ID, branch: "feature/msg-a" });
 		const b = await createWorkspace({ projectId: PROJECT_ID, branch: "feature/msg-b" });
 
-		const sent = await sendMessage(
-			wsCtx(a.workspaceId, PROJECT_ID),
-			{ toWorkspaceId: b.workspaceId, kind: "note", content: "hello B" }
-		);
+		const sent = await sendMessage(wsCtx(a.workspaceId, PROJECT_ID), {
+			toWorkspaceId: b.workspaceId,
+			kind: "note",
+			content: "hello B",
+		});
 		expect(sent.messageId).toBeTruthy();
 
 		const inbox = await readMessages(wsCtx(b.workspaceId, PROJECT_ID), {});
@@ -195,7 +197,10 @@ describe("sendMessage / readMessages", () => {
 		const a = await createWorkspace({ projectId: PROJECT_ID, branch: "feature/bcast-a" });
 		const b = await createWorkspace({ projectId: PROJECT_ID, branch: "feature/bcast-b" });
 
-		await sendMessage(wsCtx(a.workspaceId, PROJECT_ID), { kind: "note", content: "everyone heads up" });
+		await sendMessage(wsCtx(a.workspaceId, PROJECT_ID), {
+			kind: "note",
+			content: "everyone heads up",
+		});
 
 		const inboxB = await readMessages(wsCtx(b.workspaceId, PROJECT_ID), {
 			includeBroadcasts: true,

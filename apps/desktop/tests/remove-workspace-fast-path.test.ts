@@ -10,12 +10,12 @@ import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 
 import { _setDbForTesting } from "../src/main/db";
 import * as schema from "../src/main/db/schema";
+import { removeWorkspace } from "../src/main/services/workspace-service";
 import {
 	_resetWorktreeCleanupQueueForTesting,
 	_setWorktreeCleanupQueueForTesting,
 	createWorktreeCleanupQueue,
 } from "../src/main/services/worktree-cleanup-queue";
-import { removeWorkspace } from "../src/main/services/workspace-service";
 
 describe("removeWorkspace fast-path", () => {
 	test("returns before forceRemove resolves and deletes DB rows synchronously", async () => {
@@ -101,8 +101,7 @@ describe("removeWorkspace fast-path", () => {
 					.length
 			).toBe(0);
 			expect(
-				db.select().from(schema.worktrees).where(eq(schema.worktrees.id, worktreeId)).all()
-					.length
+				db.select().from(schema.worktrees).where(eq(schema.worktrees.id, worktreeId)).all().length
 			).toBe(0);
 			expect(queue.pendingCount()).toBe(1);
 		} finally {
@@ -195,18 +194,11 @@ describe("removeWorkspace fast-path", () => {
 
 			// DB rows must NOT be deleted — the user hasn't committed/discarded changes
 			expect(
-				db
-					.select()
-					.from(schema.workspaces)
-					.where(eq(schema.workspaces.id, workspaceId))
-					.all().length
+				db.select().from(schema.workspaces).where(eq(schema.workspaces.id, workspaceId)).all()
+					.length
 			).toBe(1);
 			expect(
-				db
-					.select()
-					.from(schema.worktrees)
-					.where(eq(schema.worktrees.id, worktreeId))
-					.all().length
+				db.select().from(schema.worktrees).where(eq(schema.worktrees.id, worktreeId)).all().length
 			).toBe(1);
 		} finally {
 			rmSync(wtPath, { recursive: true, force: true });
