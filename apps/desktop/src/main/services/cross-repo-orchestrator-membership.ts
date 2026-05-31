@@ -6,6 +6,7 @@ import {
 	crossRepoOrchestratorProjects,
 	crossRepoOrchestrators,
 	orchestratorMembers,
+	worktrees,
 	workspaces,
 } from "../db/schema";
 
@@ -125,6 +126,7 @@ export async function listCrossRepoMembers(input: {
 		currentPhase: WorkspacePhase;
 		statusText: string | null;
 		needs: string | null;
+		worktreePath: string | null;
 	}>
 > {
 	const db = getDb();
@@ -138,9 +140,11 @@ export async function listCrossRepoMembers(input: {
 			currentPhase: workspaces.currentPhase,
 			statusText: workspaces.statusText,
 			needs: workspaces.needs,
+			worktreePath: worktrees.path,
 		})
 		.from(orchestratorMembers)
 		.innerJoin(workspaces, eq(workspaces.id, orchestratorMembers.workspaceId))
+		.leftJoin(worktrees, eq(worktrees.id, workspaces.worktreeId))
 		.where(
 			and(
 				eq(orchestratorMembers.orchestratorId, input.orchestratorId),
