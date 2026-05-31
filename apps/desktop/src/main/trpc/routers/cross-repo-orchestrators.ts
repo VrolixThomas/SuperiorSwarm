@@ -10,6 +10,7 @@ import {
 import {
 	createCrossRepoOrchestrator,
 	deleteCrossRepoOrchestrator,
+	dispatchAcrossRepos,
 	getCrossRepoOrchestrator,
 	listCrossRepoOrchestrators,
 	renameCrossRepoOrchestrator,
@@ -85,4 +86,22 @@ export const crossRepoOrchestratorsRouter = router({
 	stopAgent: publicProcedure
 		.input(z.object({ id: z.string() }))
 		.mutation(({ input }) => stopCrossRepoOrchestratorAgent(input)),
+
+	dispatch: publicProcedure
+		.input(
+			z.object({
+				id: z.string(),
+				task: z.string().min(1).max(8000),
+				targets: z
+					.array(z.object({ projectId: z.string(), branch: z.string().min(1).max(200) }))
+					.min(1),
+			})
+		)
+		.mutation(({ input }) =>
+			dispatchAcrossRepos({
+				orchestratorId: input.id,
+				task: input.task,
+				targets: input.targets,
+			})
+		),
 });

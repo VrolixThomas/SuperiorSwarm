@@ -14,7 +14,8 @@ import {
 	crossRepoOrchestrators,
 	orchestratorMembers,
 } from "../db/schema";
-import { defaultSpawnFn } from "./workspace-service";
+import { attachToCrossRepoOrchestrator } from "./cross-repo-orchestrator-membership";
+import { createWorkspace, defaultSpawnFn } from "./workspace-service";
 
 function workDirFor(id: string): string {
 	const base = app.getPath("userData");
@@ -148,6 +149,26 @@ export async function startCrossRepoOrchestratorAgent(input: {
 		.run();
 
 	return { ok: true };
+}
+
+export async function dispatchAcrossRepos(input: {
+	orchestratorId: string;
+	task: string;
+	targets: Array<{ projectId: string; branch: string }>;
+}): Promise<{ created: Array<{ projectId: string; workspaceId: string }> }> {
+	const xro = await getCrossRepoOrchestrator({ id: input.orchestratorId });
+	if (!xro) throw new Error(`cross-repo orchestrator ${input.orchestratorId} not found`);
+
+	const created: Array<{ projectId: string; workspaceId: string }> = [];
+	for (const t of input.targets) {
+		const ws = await createWorkspace({ projectId: t.projectId, branch: t.branch });
+		await attachToCrossRepoOrchestrator({
+			orchestratorId: input.orchestratorId,
+			workspaceId: ws.workspaceId,
+		});
+		created.push({ projectId: t.projectId, workspaceId: ws.workspaceId });
+	}
+	return { created };
 }
 
 export async function stopCrossRepoOrchestratorAgent(input: { id: string }): Promise<{ ok: true }> {

@@ -1,12 +1,22 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { nanoid } from "nanoid";
+import simpleGit from "simple-git";
+import { getDb } from "../src/main/db";
+import { projects } from "../src/main/db/schema";
+import { initRepo } from "../src/main/git/operations";
+import { listCrossRepoMembers } from "../src/main/services/cross-repo-orchestrator-membership";
 import {
 	createCrossRepoOrchestrator,
 	deleteCrossRepoOrchestrator,
+	dispatchAcrossRepos,
 	getCrossRepoOrchestrator,
 	listCrossRepoOrchestrators,
 	renameCrossRepoOrchestrator,
 } from "../src/main/services/cross-repo-orchestrators";
-import { setupTestDb, teardownTestDb } from "./helpers/db";
+import { seedCrossRepoOrchestrator, setupTestDb, teardownTestDb } from "./helpers/db";
 
 describe("cross-repo-orchestrators CRUD", () => {
 	beforeEach(() => setupTestDb());
@@ -46,5 +56,55 @@ describe("cross-repo-orchestrators CRUD", () => {
 		const id = await createCrossRepoOrchestrator({ name: "doomed", agentKind: "claude" });
 		await deleteCrossRepoOrchestrator({ id });
 		expect(await getCrossRepoOrchestrator({ id })).toBeUndefined();
+	});
+});
+
+describe("dispatchAcrossRepos", () => {
+	let TMP: string;
+	let PROJECT_ID: string;
+
+	beforeEach(async () => {
+		setupTestDb();
+		TMP = mkdtempSync(join(tmpdir(), "xro-dispatch-"));
+		const repo = join(TMP, "repo");
+		mkdirSync(repo, { recursive: true });
+		await initRepo(repo, "main");
+		await simpleGit(repo).raw(["commit", "--allow-empty", "-m", "init"]);
+
+		PROJECT_ID = `proj-${nanoid(8)}`;
+		const now = new Date();
+		getDb()
+			.insert(projects)
+			.values({
+				id: PROJECT_ID,
+				repoPath: repo,
+				name: "repo",
+				defaultBranch: "main",
+				createdAt: now,
+				updatedAt: now,
+			})
+			.run();
+	});
+
+	afterEach(() => {
+		teardownTestDb();
+		getDb().run("DELETE FROM projects");
+		rmSync(TMP, { recursive: true, force: true });
+	});
+
+	test("creates a worktree workspace per target and attaches it as a member", async () => {
+		const orchestratorId = await seedCrossRepoOrchestrator({ projectIds: [PROJECT_ID] });
+
+		const res = await dispatchAcrossRepos({
+			orchestratorId,
+			task: "Add idempotency keys",
+			targets: [{ projectId: PROJECT_ID, branch: "feat/idempotency" }],
+		});
+
+		expect(res.created).toHaveLength(1);
+		const workspaceId = res.created[0]!.workspaceId;
+
+		const members = await listCrossRepoMembers({ orchestratorId });
+		expect(members.map((m) => m.workspaceId)).toContain(workspaceId);
 	});
 });
