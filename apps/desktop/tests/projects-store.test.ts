@@ -36,3 +36,24 @@ describe("useProjectStore — settings", () => {
 		expect(useProjectStore.getState().sidebarView).toBe("main");
 	});
 });
+
+describe("orchestrator pane state", () => {
+	test("defaults", () => {
+		const s = useProjectStore.getState();
+		expect(typeof s.orchestratorPaneHeight).toBe("number");
+		expect(s.orchestratorPaneCollapsed).toBe(false);
+	});
+
+	test("setOrchestratorPaneHeight updates height", () => {
+		useProjectStore.getState().setOrchestratorPaneHeight(240);
+		expect(useProjectStore.getState().orchestratorPaneHeight).toBe(240);
+	});
+
+	test("toggleOrchestratorPaneCollapsed flips the flag", () => {
+		const before = useProjectStore.getState().orchestratorPaneCollapsed;
+		useProjectStore.getState().toggleOrchestratorPaneCollapsed();
+		expect(useProjectStore.getState().orchestratorPaneCollapsed).toBe(!before);
+		useProjectStore.getState().toggleOrchestratorPaneCollapsed();
+		expect(useProjectStore.getState().orchestratorPaneCollapsed).toBe(before);
+	});
+});
