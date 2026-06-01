@@ -3,7 +3,6 @@ import type { MouseEvent, ReactNode } from "react";
 interface RepoGroupProps {
 	name: string;
 	isActive: boolean;
-	isCurrent?: boolean;
 	isExpanded: boolean;
 	count?: number;
 	onToggle?: () => void;
@@ -17,12 +16,12 @@ interface RepoGroupProps {
  * Presentational chrome for a repo group in the left sidebar.
  * Used by both `ProjectItem` (Repos tab) and `PullRequestGroup` (PRs tab).
  * The header is always a filled, bordered box so repo boundaries are obvious;
- * the "current" repo (holding the active worktree) gets a brighter box.
+ * the active repo (the one holding the active worktree / active group) gets a
+ * brighter box.
  */
 export function RepoGroup({
 	name,
 	isActive,
-	isCurrent = false,
 	isExpanded,
 	count,
 	onToggle,
@@ -41,7 +40,7 @@ export function RepoGroup({
 					className={[
 						"flex min-w-0 flex-1 cursor-pointer items-center gap-2 border px-3 py-2",
 						"rounded-[8px] text-left transition-all duration-[120ms]",
-						isCurrent
+						isActive
 							? "border-[var(--border-active)] bg-[var(--bg-overlay)]"
 							: "border-[var(--border-subtle)] bg-[var(--bg-elevated)] hover:bg-[var(--bg-overlay)]",
 					].join(" ")}
