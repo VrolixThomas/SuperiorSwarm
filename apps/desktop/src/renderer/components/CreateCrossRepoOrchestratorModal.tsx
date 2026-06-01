@@ -1,11 +1,19 @@
 import { useEffect, useRef, useState } from "react";
+import { useProjectStore } from "../stores/projects";
 import { trpc } from "../trpc/client";
 
 type AgentKind = "claude" | "codex" | "gemini" | "opencode";
 
 const AGENT_OPTIONS: AgentKind[] = ["claude", "codex", "gemini", "opencode"];
 
-export function CreateCrossRepoOrchestratorModal({ onClose }: { onClose: () => void }) {
+export function CreateCrossRepoOrchestratorModal() {
+	const isOpen = useProjectStore((s) => s.isCreateCrossRepoModalOpen);
+	const onClose = useProjectStore((s) => s.closeCreateCrossRepoModal);
+	if (!isOpen) return null;
+	return <CreateCrossRepoOrchestratorModalInner onClose={onClose} />;
+}
+
+function CreateCrossRepoOrchestratorModalInner({ onClose }: { onClose: () => void }) {
 	const [name, setName] = useState("");
 	const [agentKind, setAgentKind] = useState<AgentKind>("claude");
 	const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -56,47 +64,57 @@ export function CreateCrossRepoOrchestratorModal({ onClose }: { onClose: () => v
 
 	const projectList = projects.data ?? [];
 
+	const canCreate = name.trim().length > 0 && selected.size > 0 && !isPending;
+
 	return (
 		<div
-			className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-[2px]"
-			onClick={onClose}
+			className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--scrim)] backdrop-blur-sm"
+			onClick={(e) => {
+				if (e.target === e.currentTarget) onClose();
+			}}
 			onKeyDown={onKey}
 			role="presentation"
 		>
-			<dialog
-				open
-				className="block bg-[var(--bg-elevated)] rounded-[10px] border border-[var(--border)] shadow-[var(--shadow-md)] w-[440px] overflow-hidden p-0 text-[var(--text)]"
-				onClick={(e) => e.stopPropagation()}
-				onKeyDown={(e) => e.stopPropagation()}
-				aria-labelledby="xro-create-title"
-			>
+			<div className="w-[460px] overflow-hidden rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text)] shadow-[var(--shadow-md)]">
 				{/* Header */}
-				<div className="px-5 pt-4 pb-3 border-b border-[var(--border-subtle)]">
-					<div className="flex items-center gap-2">
-						<svg
-							aria-hidden="true"
-							width="14"
-							height="14"
-							viewBox="0 0 14 14"
-							fill="none"
-							className="text-[var(--text-tertiary)]"
-						>
-							<circle cx="3" cy="7" r="2" stroke="currentColor" strokeWidth="1.2" />
-							<circle cx="11" cy="7" r="2" stroke="currentColor" strokeWidth="1.2" />
-							<circle cx="7" cy="7" r="1" fill="currentColor" />
-						</svg>
-						<h3 id="xro-create-title" className="text-[13px] font-medium text-[var(--text)]">
-							New cross-repo orchestrator
-						</h3>
+				<div className="flex items-start justify-between border-b border-[var(--border)] px-4 py-3">
+					<div className="flex items-center gap-2.5">
+						<span className="grid h-[26px] w-[26px] shrink-0 place-items-center rounded-[7px] border border-[rgba(138,154,176,0.35)] bg-[var(--orch-1-bg)]">
+							<svg aria-hidden="true" width="15" height="15" viewBox="0 0 14 14" fill="none">
+								<circle cx="3" cy="7" r="2" stroke="var(--orch-1)" strokeWidth="1.2" />
+								<circle cx="11" cy="7" r="2" stroke="var(--orch-1)" strokeWidth="1.2" />
+								<circle cx="7" cy="7" r="1.1" fill="var(--orch-1)" />
+								<path d="M5 7h.6M8.4 7H9" stroke="var(--orch-1)" strokeWidth="1.1" />
+							</svg>
+						</span>
+						<div>
+							<h2 id="xro-create-title" className="text-[14px] font-semibold text-[var(--text)]">
+								New orchestrator
+							</h2>
+							<p className="mt-0.5 text-[11px] leading-snug text-[var(--text-quaternary)]">
+								Coordinates work across the repos you pick. Add or remove them anytime.
+							</p>
+						</div>
 					</div>
-					<p className="mt-1 text-[11px] text-[var(--text-quaternary)] leading-snug">
-						Coordinates work across multiple repos. Pick which to include — you can add or remove
-						later.
-					</p>
+					<button
+						type="button"
+						onClick={onClose}
+						aria-label="Close"
+						className="-mr-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-[var(--radius-sm)] text-[var(--text-tertiary)] transition-colors hover:bg-[var(--bg-elevated)] hover:text-[var(--text-secondary)]"
+					>
+						<svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none">
+							<path
+								d="M4 4l8 8M12 4l-8 8"
+								stroke="currentColor"
+								strokeWidth="1.5"
+								strokeLinecap="round"
+							/>
+						</svg>
+					</button>
 				</div>
 
 				{/* Body */}
-				<div className="px-5 py-4 space-y-4">
+				<div className="space-y-4 px-4 py-4">
 					<Field label="Name" htmlFor="xro-name">
 						<input
 							id="xro-name"
@@ -104,7 +122,7 @@ export function CreateCrossRepoOrchestratorModal({ onClose }: { onClose: () => v
 							value={name}
 							onChange={(e) => setName(e.target.value)}
 							placeholder="Auth migration"
-							className="w-full bg-transparent border border-[var(--border)] rounded-[6px] px-2.5 py-1.5 text-[13px] text-[var(--text)] placeholder:text-[var(--text-quaternary)] focus:outline-none focus:border-[var(--accent)] transition-colors"
+							className="w-full rounded-[6px] border border-[var(--border)] bg-transparent px-2.5 py-1.5 text-[13px] text-[var(--text)] transition-colors placeholder:text-[var(--text-quaternary)] focus:border-[var(--accent)] focus:outline-none"
 						/>
 					</Field>
 
@@ -118,10 +136,10 @@ export function CreateCrossRepoOrchestratorModal({ onClose }: { onClose: () => v
 										type="button"
 										onClick={() => setAgentKind(opt)}
 										className={[
-											"text-[12px] py-1 rounded-[5px] border transition-colors",
+											"rounded-[5px] border py-1 text-[12px] transition-colors",
 											active
 												? "border-[var(--accent)] bg-[var(--accent-subtle)] text-[var(--text)]"
-												: "border-[var(--border)] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:border-[var(--border-strong)]",
+												: "border-[var(--border)] text-[var(--text-tertiary)] hover:border-[var(--border-strong)] hover:text-[var(--text-secondary)]",
 										].join(" ")}
 									>
 										{opt}
@@ -134,17 +152,19 @@ export function CreateCrossRepoOrchestratorModal({ onClose }: { onClose: () => v
 					<Field
 						label="Repos"
 						hint={
-							selected.size === 0
-								? "Pick at least one — orchestrator can't do much without repos"
-								: `${selected.size} selected`
+							projectList.length === 0
+								? undefined
+								: selected.size === 0
+									? "Pick at least one"
+									: `${selected.size} of ${projectList.length} selected`
 						}
 					>
 						{projectList.length === 0 ? (
-							<div className="text-[11px] text-[var(--text-quaternary)] italic py-2">
+							<div className="rounded-[6px] border border-dashed border-[var(--border)] px-3 py-2.5 text-[11px] italic text-[var(--text-quaternary)]">
 								No repos yet. Add a repo first, then create an orchestrator.
 							</div>
 						) : (
-							<div className="max-h-[180px] overflow-y-auto rounded-[6px] border border-[var(--border)]">
+							<div className="max-h-[200px] overflow-y-auto rounded-[6px] border border-[var(--border)]">
 								{projectList.map((p, i) => {
 									const checked = selected.has(p.id);
 									return (
@@ -152,8 +172,9 @@ export function CreateCrossRepoOrchestratorModal({ onClose }: { onClose: () => v
 											key={p.id}
 											type="button"
 											onClick={() => toggle(p.id)}
+											aria-pressed={checked}
 											className={[
-												"flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] transition-colors",
+												"flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[12px] transition-colors",
 												i > 0 ? "border-t border-[var(--border-subtle)]" : "",
 												checked
 													? "bg-[var(--accent-subtle)] text-[var(--text)]"
@@ -163,7 +184,7 @@ export function CreateCrossRepoOrchestratorModal({ onClose }: { onClose: () => v
 											<span
 												aria-hidden="true"
 												className={[
-													"flex h-3.5 w-3.5 items-center justify-center rounded-[3px] border transition-colors",
+													"flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[3px] border transition-colors",
 													checked
 														? "border-[var(--accent)] bg-[var(--accent)]"
 														: "border-[var(--border)] bg-transparent",
@@ -179,7 +200,7 @@ export function CreateCrossRepoOrchestratorModal({ onClose }: { onClose: () => v
 													>
 														<path
 															d="M1.5 4.5L3.5 6.5L7.5 2.5"
-															stroke="white"
+															stroke="var(--accent-foreground)"
 															strokeWidth="1.4"
 															strokeLinecap="round"
 															strokeLinejoin="round"
@@ -199,27 +220,27 @@ export function CreateCrossRepoOrchestratorModal({ onClose }: { onClose: () => v
 				</div>
 
 				{/* Footer */}
-				<div className="px-5 py-3 border-t border-[var(--border-subtle)] flex items-center justify-between">
-					<div className="text-[10px] text-[var(--text-quaternary)] tabular-nums">⌘↵ to create</div>
+				<div className="flex items-center justify-between border-t border-[var(--border)] px-4 py-3">
+					<div className="text-[10px] tabular-nums text-[var(--text-quaternary)]">⌘↵ to create</div>
 					<div className="flex items-center gap-2">
 						<button
 							type="button"
 							onClick={onClose}
-							className="px-3 py-1 text-[12px] text-[var(--text-tertiary)] hover:text-[var(--text)] rounded-[5px] transition-colors"
+							className="rounded-[6px] border border-[var(--border-subtle)] px-3 py-1 text-[12px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-elevated)] hover:text-[var(--text)]"
 						>
 							Cancel
 						</button>
 						<button
 							type="button"
 							onClick={handleCreate}
-							disabled={!name.trim() || isPending}
-							className="px-3 py-1 text-[12px] font-medium text-white bg-[var(--accent)] rounded-[5px] disabled:opacity-40 disabled:cursor-not-allowed hover:brightness-110 transition-all"
+							disabled={!canCreate}
+							className="rounded-[6px] bg-[var(--accent)] px-3 py-1 text-[12px] font-semibold text-[var(--accent-foreground)] transition-colors hover:bg-[var(--accent-hover)] disabled:cursor-not-allowed disabled:opacity-40"
 						>
 							{isPending ? "Creating…" : "Create"}
 						</button>
 					</div>
 				</div>
-			</dialog>
+			</div>
 		</div>
 	);
 }

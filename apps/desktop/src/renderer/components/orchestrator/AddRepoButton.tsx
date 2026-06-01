@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { trpc } from "../../trpc/client";
 
 export function AddRepoButton({ orchestratorId }: { orchestratorId: string }) {
@@ -24,8 +24,10 @@ export function AddRepoButton({ orchestratorId }: { orchestratorId: string }) {
 		return () => document.removeEventListener("mousedown", onDown);
 	}, [open]);
 
-	const linkedIds = new Set(linked.data ?? []);
-	const unlinked = (projects.data ?? []).filter((p) => !linkedIds.has(p.id));
+	const unlinked = useMemo(() => {
+		const linkedIds = new Set(linked.data ?? []);
+		return (projects.data ?? []).filter((p) => !linkedIds.has(p.id));
+	}, [linked.data, projects.data]);
 
 	return (
 		<div className="relative" ref={wrap}>

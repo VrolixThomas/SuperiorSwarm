@@ -31,20 +31,28 @@ export function CrossRepoOrchestratorCanvas({ orchestratorId }: { orchestratorId
 
 	function openMember(workspaceId: string) {
 		const m = membersById.get(workspaceId);
-		if (!m?.worktreePath) return;
+		if (!m) return;
+		// Member may be a repo's main "branch" workspace (no worktree) — fall back to
+		// the project's repo checkout, same as the sidebar does (WorkspaceItem).
+		const cwd = m.worktreePath ?? projectsById.get(m.projectId)?.repoPath;
+		if (!cwd) return;
 		const store = useTabStore.getState();
-		store.setActiveWorkspace(m.workspaceId, m.worktreePath);
+		store.setActiveWorkspace(m.workspaceId, cwd);
 		const existing = store.getTabsByWorkspace(m.workspaceId);
 		if (!existing.some((t) => t.kind === "terminal")) {
-			const tabId = store.addTerminalTab(m.workspaceId, m.worktreePath, m.workspaceName);
+			const tabId = store.addTerminalTab(m.workspaceId, cwd, m.workspaceName);
 			attachTerminal.mutate({ workspaceId: m.workspaceId, terminalId: tabId });
 		}
 	}
 
-	const repos = (linked.data ?? []).map((pid) => ({
-		projectId: pid,
-		name: projectsById.get(pid)?.name ?? pid,
-	}));
+	const repos = useMemo(
+		() =>
+			(linked.data ?? []).map((pid) => ({
+				projectId: pid,
+				name: projectsById.get(pid)?.name ?? pid,
+			})),
+		[linked.data, projectsById]
+	);
 
 	const cardsByProject = useMemo(() => {
 		const map = new Map<string, AgentCardData[]>();
