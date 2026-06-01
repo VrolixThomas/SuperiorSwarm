@@ -30,13 +30,12 @@ export function SidebarSplit({ top, bottom }: { top: ReactNode; bottom: ReactNod
 		} catch {}
 	}, [setHeight, setCollapsed]);
 
-	// Persist on change.
+	// Persist collapsed state immediately on change.
 	useEffect(() => {
 		try {
-			window.localStorage.setItem(LS_HEIGHT, String(height));
 			window.localStorage.setItem(LS_COLLAPSED, String(collapsed));
 		} catch {}
-	}, [height, collapsed]);
+	}, [collapsed]);
 
 	const onPointerMove = useCallback(
 		(e: PointerEvent) => {
@@ -51,7 +50,14 @@ export function SidebarSplit({ top, bottom }: { top: ReactNode; bottom: ReactNod
 		draggingRef.current = false;
 		window.removeEventListener("pointermove", onPointerMove);
 		window.removeEventListener("pointerup", endDrag);
+		window.removeEventListener("pointercancel", endDrag);
 		document.body.style.cursor = "";
+		try {
+			window.localStorage.setItem(
+				LS_HEIGHT,
+				String(useProjectStore.getState().orchestratorPaneHeight)
+			);
+		} catch {}
 	}, [onPointerMove]);
 
 	const startDrag = useCallback(
@@ -62,6 +68,7 @@ export function SidebarSplit({ top, bottom }: { top: ReactNode; bottom: ReactNod
 			document.body.style.cursor = "row-resize";
 			window.addEventListener("pointermove", onPointerMove);
 			window.addEventListener("pointerup", endDrag);
+			window.addEventListener("pointercancel", endDrag);
 		},
 		[collapsed, onPointerMove, endDrag]
 	);
