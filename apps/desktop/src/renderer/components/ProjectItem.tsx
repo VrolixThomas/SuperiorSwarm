@@ -127,6 +127,9 @@ export function ProjectItem({ project, isExpanded, onToggle }: ProjectItemProps)
 	const orchestrators = tree?.orchestrators ?? [];
 	const loose = tree?.loose ?? [];
 	const allOrchestratorIds = orchestrators.map((o) => o.workspace.id);
+	const worktreeCount = tree
+		? loose.length + orchestrators.reduce((n, o) => n + 1 + o.children.length, 0)
+		: undefined;
 
 	const [draggingId, setDraggingId] = useState<string | null>(null);
 
@@ -248,6 +251,7 @@ export function ProjectItem({ project, isExpanded, onToggle }: ProjectItemProps)
 			<RepoGroup
 				name={project.name}
 				isActive={isActiveProject}
+				count={worktreeCount}
 				isExpanded={isExpanded}
 				onToggle={isReady ? onToggle : undefined}
 				onContextMenu={(e) => {
