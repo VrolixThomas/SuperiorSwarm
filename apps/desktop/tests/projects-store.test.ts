@@ -38,9 +38,14 @@ describe("useProjectStore — settings", () => {
 });
 
 describe("orchestrator pane state", () => {
+	beforeEach(() => {
+		useProjectStore.getState().setOrchestratorPaneHeight(180);
+		useProjectStore.getState().setOrchestratorPaneCollapsed(false);
+	});
+
 	test("defaults", () => {
 		const s = useProjectStore.getState();
-		expect(typeof s.orchestratorPaneHeight).toBe("number");
+		expect(s.orchestratorPaneHeight).toBe(180);
 		expect(s.orchestratorPaneCollapsed).toBe(false);
 	});
 
