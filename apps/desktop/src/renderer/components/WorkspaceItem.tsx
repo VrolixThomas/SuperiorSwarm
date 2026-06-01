@@ -6,6 +6,7 @@ import { usePaneStore } from "../stores/pane-store";
 import { useProjectStore } from "../stores/projects";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
+import { splitBranchPrefix } from "../utils/branch-name";
 
 interface WorkspaceData {
 	id: string;
@@ -563,12 +564,6 @@ export function WorkspaceItem({
 						: "bg-transparent hover:bg-[var(--bg-elevated)]",
 				].join(" ")}
 			>
-				{isActive && isInActiveProject && (
-					<span
-						aria-hidden="true"
-						className="absolute left-0 top-1 bottom-1 w-[3px] rounded-r-[2px] bg-[var(--accent)]"
-					/>
-				)}
 				<div className="flex-1 min-w-0">
 					<span
 						className={[
@@ -580,7 +575,23 @@ export function WorkspaceItem({
 									: "text-[var(--text-tertiary)]",
 						].join(" ")}
 					>
-						{workspace.name}
+						{(() => {
+							const { prefix, rest } = splitBranchPrefix(workspace.name);
+							return (
+								<>
+									{prefix && (
+										<span
+											className={
+												isActive ? "text-[var(--accent-hover)]" : "text-[var(--text-quaternary)]"
+											}
+										>
+											{prefix}
+										</span>
+									)}
+									{rest}
+								</>
+							);
+						})()}
 					</span>
 					{crossRepoOrchestrator && (
 						<span
@@ -640,25 +651,25 @@ export function WorkspaceItem({
 						</span>
 					)}
 				</div>
-				{workspace.currentPhase === "working" && (
+				{indentLevel === 0 && workspace.currentPhase === "working" && (
 					<span
 						className="ml-auto inline-block h-1.5 w-1.5 rounded-full bg-[var(--accent)]"
 						title="working"
 					/>
 				)}
-				{workspace.currentPhase === "blocked" && (
+				{indentLevel === 0 && workspace.currentPhase === "blocked" && (
 					<span
 						className="ml-auto inline-block h-1.5 w-1.5 rounded-full bg-[var(--term-yellow)]"
 						title="blocked"
 					/>
 				)}
-				{workspace.currentPhase === "done" && (
+				{indentLevel === 0 && workspace.currentPhase === "done" && (
 					<span
 						className="ml-auto inline-block h-1.5 w-1.5 rounded-full bg-[var(--term-green)]"
 						title="done"
 					/>
 				)}
-				{alert && <SwarmIndicator alert={alert} className="ml-auto" />}
+				{indentLevel === 0 && alert && <SwarmIndicator alert={alert} className="ml-auto" />}
 			</button>
 
 			{indentLevel === 0 && !workspace.isOrchestrator && workspace.type === "worktree" && (
