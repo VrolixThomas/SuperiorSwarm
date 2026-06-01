@@ -51,7 +51,7 @@ export function RepoGroup({
 					</div>
 
 					{count != null && (
-						<span className="shrink-0 rounded-[9px] bg-[rgba(255,255,255,0.08)] px-[7px] py-[1px] text-[10px] font-semibold text-[var(--text-tertiary)]">
+						<span className="shrink-0 rounded-[9px] bg-[var(--bg-overlay)] px-[7px] py-[1px] text-[10px] font-semibold text-[var(--text-tertiary)]">
 							{count}
 						</span>
 					)}

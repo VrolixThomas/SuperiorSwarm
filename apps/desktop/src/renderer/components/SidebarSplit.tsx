@@ -80,14 +80,14 @@ export function SidebarSplit({ top, bottom }: { top: ReactNode; bottom: ReactNod
 			<div className="min-h-0 flex-1 overflow-y-auto">{top}</div>
 
 			<hr
-				className="group relative m-0 h-[7px] shrink-0 cursor-row-resize border-0 bg-transparent p-0 outline-none before:absolute before:inset-x-0 before:top-[3px] before:block before:h-px before:bg-[var(--border-subtle)] hover:before:bg-[var(--border-active)]"
+				className={`group relative m-0 h-[7px] shrink-0 border-0 bg-transparent p-0 outline-none before:absolute before:inset-x-0 before:top-[3px] before:block before:h-px before:bg-[var(--border-subtle)]${!collapsed ? " cursor-row-resize hover:before:bg-[var(--border-active)]" : ""}`}
 				onPointerDown={startDrag}
 				aria-orientation="horizontal"
 				tabIndex={0}
 			/>
 
 			<div
-				className="flex min-h-0 shrink-0 flex-col"
+				className="flex min-h-0 shrink-0 flex-col max-h-[60%]"
 				style={{ height: collapsed ? "auto" : `${height}px` }}
 			>
 				{bottom}
