@@ -45,3 +45,7 @@ export type DaemonMessage =
 	| { type: "data"; id: string; data: string; replay?: boolean; fg?: string }
 	| { type: "exit"; id: string; code: number }
 	| { type: "error"; id: string; message: string };
+
+// Metadata attached to PTY data delivered to consumers. Present only for
+// attach-time scrollback replay.
+export type TerminalDataMeta = { replay: true; fg?: string };
