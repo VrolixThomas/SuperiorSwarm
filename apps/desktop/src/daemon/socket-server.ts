@@ -134,7 +134,7 @@ export class SocketServer {
 				break;
 			}
 			case "attach": {
-				const buffered = this.ptyManager.attach(
+				const attached = this.ptyManager.attach(
 					msg.id,
 					(data) => {
 						this.send(socket, {
@@ -151,13 +151,13 @@ export class SocketServer {
 					},
 					clientId
 				);
-				if (buffered === null) {
+				if (attached === null) {
 					this.send(socket, { type: "error", id: msg.id, message: "session not found" });
-				} else if (buffered.length > 0) {
+				} else if (attached.buffer.length > 0) {
 					this.send(socket, {
 						type: "data",
 						id: msg.id,
-						data: Buffer.from(buffered, "utf-8").toString("base64"),
+						data: Buffer.from(attached.buffer, "utf-8").toString("base64"),
 					});
 				}
 				break;

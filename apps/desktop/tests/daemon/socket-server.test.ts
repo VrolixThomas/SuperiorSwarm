@@ -28,9 +28,9 @@ class MockPtyManager {
 		_onData: (d: string) => void,
 		_onExit: (c: number) => void,
 		_clientId: string
-	): string | null {
+	): { buffer: string; process: string } | null {
 		this.attached.push(id);
-		return "buffered-content";
+		return { buffer: "buffered-content", process: "zsh" };
 	}
 	dispose(id: string): void {
 		this.disposed.push(id);
