@@ -3,7 +3,7 @@ import { RESET_STALE_MODES, isShellProcess } from "../src/shared/lib/terminal-mo
 
 describe("RESET_STALE_MODES", () => {
 	test("disables all mouse tracking modes", () => {
-		for (const mode of ["9", "1000", "1002", "1003", "1005", "1006", "1015"]) {
+		for (const mode of ["9", "1000", "1002", "1003", "1005", "1006", "1015", "1016"]) {
 			expect(RESET_STALE_MODES).toContain(`\x1b[?${mode}l`);
 		}
 	});
@@ -22,7 +22,7 @@ describe("RESET_STALE_MODES", () => {
 
 describe("isShellProcess", () => {
 	test("recognizes common shells", () => {
-		for (const sh of ["zsh", "bash", "fish", "sh", "dash", "nu", "pwsh", "tcsh", "ksh"]) {
+		for (const sh of ["zsh", "bash", "fish", "sh", "dash", "nu", "pwsh", "tcsh", "csh", "ksh"]) {
 			expect(isShellProcess(sh)).toBe(true);
 		}
 	});
