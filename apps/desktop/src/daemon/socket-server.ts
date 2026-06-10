@@ -158,6 +158,8 @@ export class SocketServer {
 						type: "data",
 						id: msg.id,
 						data: Buffer.from(attached.buffer, "utf-8").toString("base64"),
+						replay: true,
+						fg: attached.process,
 					});
 				}
 				break;
