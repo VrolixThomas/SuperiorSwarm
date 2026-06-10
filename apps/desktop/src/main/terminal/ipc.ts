@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import { BrowserWindow, ipcMain } from "electron";
+import type { TerminalDataMeta } from "../../shared/daemon-protocol";
 import { getAgentNotifyPort } from "../agent-hooks/port";
 import { getDb } from "../db";
 import { terminalSessions } from "../db/schema";
@@ -27,9 +28,9 @@ export function setupTerminalIPC(daemonClient: DaemonClient): void {
 			const window = BrowserWindow.fromWebContents(event.sender);
 			if (!window) return { wasAttached: false };
 
-			const onData = (data: string) => {
+			const onData = (data: string, meta?: TerminalDataMeta) => {
 				if (!window.isDestroyed()) {
-					window.webContents.send("terminal:data", id, data);
+					window.webContents.send("terminal:data", id, data, meta);
 				}
 			};
 			const onExit = (exitCode: number) => {

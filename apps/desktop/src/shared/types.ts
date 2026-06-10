@@ -1,4 +1,7 @@
 import type { AgentEvent } from "./agent-events";
+import type { TerminalDataMeta } from "./daemon-protocol";
+
+export type { TerminalDataMeta } from "./daemon-protocol";
 
 export interface TerminalAPI {
 	create: (id: string, cwd?: string, workspaceId?: string) => Promise<{ wasAttached: boolean }>;
@@ -6,7 +9,7 @@ export interface TerminalAPI {
 	resize: (id: string, cols: number, rows: number) => Promise<void>;
 	detach: (id: string) => Promise<void>;
 	dispose: (id: string) => Promise<void>;
-	onData: (id: string, callback: (data: string) => void) => () => void;
+	onData: (id: string, callback: (data: string, meta?: TerminalDataMeta) => void) => () => void;
 	onExit: (id: string, callback: (exitCode: number) => void) => () => void;
 }
 
