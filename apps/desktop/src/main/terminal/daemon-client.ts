@@ -371,7 +371,7 @@ export class DaemonClient {
 				if (cb) {
 					cb.onData(
 						Buffer.from(msg.data, "base64").toString("utf-8"),
-						msg.replay ? { replay: true, fg: msg.fg } : undefined
+						msg.replay ? { replay: true, fg: msg.fg || undefined } : undefined
 					);
 				}
 				break;
