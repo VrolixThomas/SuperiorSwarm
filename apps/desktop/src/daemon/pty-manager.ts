@@ -100,7 +100,7 @@ export class PtyManager {
 		if (!entry) return null;
 		entry.dataListeners.set(clientId, onData);
 		entry.exitListeners.set(clientId, onExit);
-		return { buffer: entry.buffer, process: entry.pty.process };
+		return { buffer: entry.buffer, process: entry.pty.process ?? "" };
 	}
 
 	detachClient(clientId: string): void {

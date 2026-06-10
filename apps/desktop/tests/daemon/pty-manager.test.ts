@@ -122,7 +122,6 @@ describe("PtyManager", () => {
 		expect(typeof result?.buffer).toBe("string");
 		expect(result?.buffer).toBe("");
 		expect(typeof result?.process).toBe("string");
-		expect(result?.process.length).toBeGreaterThan(0);
 	});
 
 	test("attach returns null for nonexistent session", () => {
@@ -419,23 +418,6 @@ describe("PtyManager", () => {
 		const entries = manager.list();
 		const pids = entries.map((e) => e.pid);
 		expect(new Set(pids).size).toBe(2);
-	});
-
-	test("attach returns buffer plus foreground process name", () => {
-		// Verify the return shape includes both buffer and process fields.
-		// Note: node-pty's .process getter returns undefined shortly after spawn on
-		// macOS (kernel sysctl limitation), so we only check the shape here, not the
-		// value. The field is present and comes from pty.process at attach time.
-		const manager2 = new PtyManager();
-		manager2.create("attach-fg", undefined, () => {}, () => {}, "client-a");
-
-		const result = manager2.attach("attach-fg", () => {}, () => {}, "client-b");
-		expect(result).not.toBeNull();
-		expect(typeof result?.buffer).toBe("string");
-		// process is the pty.process value at attach time; may be empty string on macOS
-		expect("process" in (result ?? {})).toBe(true);
-
-		manager2.dispose("attach-fg");
 	});
 
 	test("attach returns null for unknown session", () => {
