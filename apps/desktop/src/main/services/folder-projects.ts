@@ -1,4 +1,4 @@
-import { existsSync, statSync } from "node:fs";
+import { existsSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import { eq } from "drizzle-orm";
@@ -40,21 +40,23 @@ export async function openFolderProject(input: OpenFolderInput): Promise<OpenFol
 		throw new Error(`Not a folder: ${path}`);
 	}
 
+	const canonical = realpathSync(path);
+
 	const db = getDb();
-	const existing = db.select().from(projects).where(eq(projects.repoPath, path)).get();
+	const existing = db.select().from(projects).where(eq(projects.repoPath, canonical)).get();
 	if (existing) {
 		return { project: existing, isGitRepo: false };
 	}
 
-	if (!input.force && !input.quick && (await isGitRepo(path))) {
+	if (!input.force && !input.quick && (await isGitRepo(canonical))) {
 		return { project: null, isGitRepo: true };
 	}
 
 	const now = new Date();
 	const project = {
 		id: nanoid(),
-		name: path.split("/").pop() ?? "folder",
-		repoPath: path,
+		name: canonical.split("/").pop() ?? "folder",
+		repoPath: canonical,
 		defaultBranch: "main",
 		color: randomColor(),
 		remoteOwner: null as string | null,
@@ -74,7 +76,7 @@ export async function openFolderProject(input: OpenFolderInput): Promise<OpenFol
 			name: "default",
 			worktreeId: null,
 			terminalId: null,
-			folderPath: null,
+			folderPath: null, // null = project root
 			createdAt: now,
 			updatedAt: now,
 		})

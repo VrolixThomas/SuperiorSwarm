@@ -19,13 +19,8 @@ import { BitbucketAdapter } from "../../providers/bitbucket-adapter";
 import { GitHubAdapter } from "../../providers/github-adapter";
 import { ensureRepoExclude } from "../../services/git-exclude";
 import { randomColor } from "../../services/project-colors";
+import { resolveTilde } from "../../services/folder-projects";
 import { publicProcedure, router } from "../index";
-
-function resolveTilde(p: string): string {
-	if (p.startsWith("~/")) return join(homedir(), p.slice(2));
-	if (p === "~") return homedir();
-	return p;
-}
 
 function assertSafePath(baseDir: string, childName: string): string {
 	if (/[/\\]/.test(childName)) {

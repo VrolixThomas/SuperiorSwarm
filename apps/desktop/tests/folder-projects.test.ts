@@ -1,6 +1,6 @@
 import "./preload-electron-mock";
 import { afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { eq } from "drizzle-orm";
@@ -44,7 +44,7 @@ describe("openFolderProject", () => {
 		expect(res.isGitRepo).toBe(false);
 		expect(res.project?.kind).toBe("folder");
 		expect(res.project?.name).toBe("plain");
-		expect(res.project?.repoPath).toBe(dir);
+		expect(res.project?.repoPath).toBe(realpathSync(dir));
 
 		const db = getDb();
 		const ws = db
