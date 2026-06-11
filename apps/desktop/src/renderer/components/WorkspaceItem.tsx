@@ -664,7 +664,7 @@ export function WorkspaceItem({
 						title="done"
 					/>
 				)}
-				{showStatusIndicators && alert && <SwarmIndicator alert={alert} className="ml-auto" />}
+				{alert && <SwarmIndicator alert={alert} className="ml-auto" />}
 			</button>
 
 			{indentLevel === 0 && !workspace.isOrchestrator && workspace.type === "worktree" && (
