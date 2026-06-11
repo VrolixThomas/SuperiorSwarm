@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
+import { useClickOutside } from "../../hooks/useClickOutside";
 import { trpc } from "../../trpc/client";
 
 export function AddRepoButton({ orchestratorId }: { orchestratorId: string }) {
@@ -15,14 +16,7 @@ export function AddRepoButton({ orchestratorId }: { orchestratorId: string }) {
 		},
 	});
 
-	useEffect(() => {
-		if (!open) return;
-		function onDown(e: MouseEvent) {
-			if (wrap.current && !wrap.current.contains(e.target as Node)) setOpen(false);
-		}
-		document.addEventListener("mousedown", onDown);
-		return () => document.removeEventListener("mousedown", onDown);
-	}, [open]);
+	useClickOutside(wrap, () => setOpen(false), open);
 
 	const unlinked = useMemo(() => {
 		const linkedIds = new Set(linked.data ?? []);

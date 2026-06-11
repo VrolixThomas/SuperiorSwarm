@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useClickOutside } from "../hooks/useClickOutside";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import { OrchestratorIcon } from "./orchestrator/OrchestratorIcon";
@@ -162,12 +163,14 @@ function ContextMenu({
 }) {
 	const ref = useRef<HTMLDivElement>(null);
 
+	useClickOutside(ref, onClose);
+
 	useEffect(() => {
-		function onClick(e: MouseEvent) {
-			if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+		function onKey(e: KeyboardEvent) {
+			if (e.key === "Escape") onClose();
 		}
-		document.addEventListener("mousedown", onClick);
-		return () => document.removeEventListener("mousedown", onClick);
+		document.addEventListener("keydown", onKey);
+		return () => document.removeEventListener("keydown", onKey);
 	}, [onClose]);
 
 	if (!onRename && !onDelete) return null;
