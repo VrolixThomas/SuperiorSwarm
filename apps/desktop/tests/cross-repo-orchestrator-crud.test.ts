@@ -121,12 +121,18 @@ describe("dispatchAcrossRepos", () => {
 	test("creates a worktree workspace per target and attaches it as a member", async () => {
 		const orchestratorId = await seedCrossRepoOrchestrator({ projectIds: [PROJECT_ID] });
 
-		const res = await dispatchAcrossRepos({
-			orchestratorId,
-			task: "Add idempotency keys",
-			targets: [{ projectId: PROJECT_ID, branch: "feat/idempotency" }],
-		});
+		const res = await dispatchAcrossRepos(
+			{
+				orchestratorId,
+				task: "Add idempotency keys",
+				targets: [{ projectId: PROJECT_ID, branch: "feat/idempotency" }],
+			},
+			{
+				dispatchAgentFn: async () => ({ sessionId: "s", terminalId: "t", status: "started" as const }),
+			},
+		);
 
+		expect(res.failed).toHaveLength(0);
 		expect(res.created).toHaveLength(1);
 		const workspaceId = res.created[0]!.workspaceId;
 
