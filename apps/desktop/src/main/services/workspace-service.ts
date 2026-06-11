@@ -51,11 +51,11 @@ import {
 	removeWorktree as gitRemoveWorktree,
 	hasUncommittedChanges,
 } from "../git/operations";
-import { getWorktreeCleanupQueue } from "./worktree-cleanup-queue";
-import { resolveWorkspaceCwd } from "./workspace-cwd";
 import { symlinkSharedFiles } from "../shared-files";
 import { getDaemonClient } from "../terminal/daemon-instance";
-import { attachToOrchestrator } from "./orchestrator-membership";
+import type { attachToOrchestrator } from "./orchestrator-membership";
+import { resolveWorkspaceCwd } from "./workspace-cwd";
+import { getWorktreeCleanupQueue } from "./worktree-cleanup-queue";
 function worktreeBasePath(repoPath: string): string {
 	const parent = dirname(repoPath);
 	const name = repoPath.split("/").pop() ?? "repo";
@@ -792,6 +792,7 @@ export async function resumeAgent(
 				.where(eq(worktrees.id, target.worktreeId))
 				.get()
 		: null;
+	if (target.worktreeId && !wt) throw new NotFoundError(`worktree row for ${input.workspaceId}`);
 	const targetProject = db
 		.select({ repoPath: projects.repoPath })
 		.from(projects)
@@ -1021,9 +1022,7 @@ export async function createOrchestrator(
 			for (const wsId of attachIds) {
 				// Inlined equivalent of attachToOrchestrator's tx body so the
 				// whole promote+attach sequence shares one transaction.
-				tx.delete(orchestratorMembers)
-					.where(eq(orchestratorMembers.workspaceId, wsId))
-					.run();
+				tx.delete(orchestratorMembers).where(eq(orchestratorMembers.workspaceId, wsId)).run();
 				const maxRow = tx
 					.select({ m: max(orchestratorMembers.sortOrder) })
 					.from(orchestratorMembers)

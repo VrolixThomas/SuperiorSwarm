@@ -71,6 +71,7 @@ export const terminalSessionsRouter = router({
 				type: schema.workspaces.type,
 				projectId: schema.workspaces.projectId,
 				worktreeId: schema.workspaces.worktreeId,
+				folderPath: schema.workspaces.folderPath,
 				prProvider: schema.workspaces.prProvider,
 				prIdentifier: schema.workspaces.prIdentifier,
 			})
@@ -92,7 +93,7 @@ export const terminalSessionsRouter = router({
 			const worktree = ws.worktreeId ? worktreeMap[ws.worktreeId] : null;
 			workspaceMeta[ws.id] = {
 				type: ws.type === "review" ? "review" : "repo",
-				cwd: worktree?.path ?? project.repoPath,
+				cwd: worktree?.path ?? ws.folderPath ?? project.repoPath,
 				prProvider: ws.prProvider ?? undefined,
 				prIdentifier: ws.prIdentifier ?? undefined,
 			};

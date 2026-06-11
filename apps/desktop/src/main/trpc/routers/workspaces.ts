@@ -96,6 +96,19 @@ export const workspacesRouter = router({
 			};
 		}),
 
+	createFolderWorkspace: publicProcedure
+		.input(
+			z.object({
+				projectId: z.string(),
+				name: z.string().min(1),
+				folderPath: z.string().optional(),
+			})
+		)
+		.mutation(async ({ input }) => {
+			const { createFolderWorkspace } = await import("../../services/folder-projects");
+			return createFolderWorkspace(input);
+		}),
+
 	checkoutExisting: publicProcedure
 		.input(
 			z.object({

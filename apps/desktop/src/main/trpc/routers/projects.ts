@@ -12,14 +12,15 @@ import {
 	extractRepoName,
 	getGitRoot,
 	initRepo,
+	isGitRepo,
 	parseRemoteUrl,
 	validateGitUrl,
 } from "../../git/operations";
 import { BitbucketAdapter } from "../../providers/bitbucket-adapter";
 import { GitHubAdapter } from "../../providers/github-adapter";
+import { resolveTilde } from "../../services/folder-projects";
 import { ensureRepoExclude } from "../../services/git-exclude";
 import { randomColor } from "../../services/project-colors";
-import { resolveTilde } from "../../services/folder-projects";
 import { publicProcedure, router } from "../index";
 
 function assertSafePath(baseDir: string, childName: string): string {
@@ -233,6 +234,31 @@ export const projectsRouter = router({
 			})
 			.run();
 		return project;
+	}),
+
+	openFolder: publicProcedure
+		.input(
+			z.object({
+				path: z.string().min(1),
+				force: z.boolean().optional(),
+				quick: z.boolean().optional(),
+			})
+		)
+		.mutation(async ({ input }) => {
+			const { openFolderProject } = await import("../../services/folder-projects");
+			return openFolderProject(input);
+		}),
+
+	convertToRepo: publicProcedure.input(z.object({ id: z.string() })).mutation(async ({ input }) => {
+		const { convertProjectToRepo } = await import("../../services/folder-projects");
+		return convertProjectToRepo(input);
+	}),
+
+	checkGitRepo: publicProcedure.input(z.object({ id: z.string() })).query(async ({ input }) => {
+		const db = getDb();
+		const project = db.select().from(projects).where(eq(projects.id, input.id)).get();
+		if (!project) return false;
+		return isGitRepo(project.repoPath);
 	}),
 
 	createEmpty: publicProcedure
