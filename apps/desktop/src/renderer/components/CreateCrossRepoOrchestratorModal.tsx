@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useProjectStore } from "../stores/projects";
 import { trpc } from "../trpc/client";
+import { OrchestratorIcon } from "./orchestrator/OrchestratorIcon";
 
 type AgentKind = "claude" | "codex" | "gemini" | "opencode";
 

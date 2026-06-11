@@ -1,6 +1,7 @@
 import { useProjectStore } from "../stores/projects";
 import { trpc } from "../trpc/client";
 import { CrossRepoOrchestratorRow } from "./CrossRepoOrchestratorRow";
+import { OrchestratorIcon } from "./orchestrator/OrchestratorIcon";
 
 export function CrossRepoOrchestratorGroup() {
 	const orchs = trpc.crossRepoOrchestrators.list.useQuery();
