@@ -52,6 +52,7 @@ import {
 	hasUncommittedChanges,
 } from "../git/operations";
 import { getWorktreeCleanupQueue } from "./worktree-cleanup-queue";
+import { resolveWorkspaceCwd } from "./workspace-cwd";
 import { symlinkSharedFiles } from "../shared-files";
 import { getDaemonClient } from "../terminal/daemon-instance";
 import { attachToOrchestrator } from "./orchestrator-membership";
@@ -156,10 +157,12 @@ export async function createWorkspace(
 type WorkspaceRow = {
 	id: string;
 	projectId: string;
-	type: "branch" | "worktree" | "review";
+	type: "branch" | "worktree" | "review" | "folder";
 	name: string;
 	branch: string | null;
 	worktreePath: string | null;
+	folderPath: string | null;
+	repoPath: string;
 	baseBranch: string | null;
 	prProvider: string | null;
 	prIdentifier: string | null;
@@ -180,6 +183,11 @@ function rowToDto(row: WorkspaceRow): WorkspaceDto {
 		name: row.name,
 		branch: row.branch,
 		worktreePath: row.worktreePath,
+		path: resolveWorkspaceCwd({
+			worktreePath: row.worktreePath,
+			folderPath: row.folderPath,
+			repoPath: row.repoPath,
+		}),
 		baseBranch: row.baseBranch,
 		prProvider: row.prProvider,
 		prIdentifier: row.prIdentifier,
@@ -200,6 +208,8 @@ const WORKSPACE_SELECT = {
 	name: workspaces.name,
 	branch: worktrees.branch,
 	worktreePath: worktrees.path,
+	folderPath: workspaces.folderPath,
+	repoPath: projects.repoPath,
 	baseBranch: worktrees.baseBranch,
 	prProvider: workspaces.prProvider,
 	prIdentifier: workspaces.prIdentifier,
@@ -219,6 +229,7 @@ export async function listWorkspaces(
 	const rows = db
 		.select(WORKSPACE_SELECT)
 		.from(workspaces)
+		.innerJoin(projects, eq(workspaces.projectId, projects.id))
 		.leftJoin(worktrees, eq(workspaces.worktreeId, worktrees.id))
 		.leftJoin(reviewDrafts, eq(workspaces.reviewDraftId, reviewDrafts.id))
 		.where(eq(workspaces.projectId, input.projectId))
@@ -240,6 +251,7 @@ const TREE_WORKSPACE_SELECT = {
 	createdAt: workspaces.createdAt,
 	updatedAt: workspaces.updatedAt,
 	worktreePath: worktrees.path,
+	folderPath: workspaces.folderPath,
 	draftStatus: reviewDrafts.status,
 	draftCommitSha: reviewDrafts.commitSha,
 	currentPhase: workspaces.currentPhase,
@@ -318,6 +330,7 @@ export async function getWorkspace(input: GetWorkspaceRequest): Promise<GetWorks
 	const row = db
 		.select(WORKSPACE_SELECT)
 		.from(workspaces)
+		.innerJoin(projects, eq(workspaces.projectId, projects.id))
 		.leftJoin(worktrees, eq(workspaces.worktreeId, worktrees.id))
 		.leftJoin(reviewDrafts, eq(workspaces.reviewDraftId, reviewDrafts.id))
 		.where(eq(workspaces.id, input.workspaceId))
