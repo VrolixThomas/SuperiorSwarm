@@ -13,6 +13,7 @@ import {
 import { getDb } from "../db";
 import {
 	type CrossRepoOrchestrator,
+	crossRepoOrchestratorProjects,
 	crossRepoOrchestrators,
 	orchestratorMembers,
 	terminalSessions,
@@ -67,12 +68,29 @@ export async function getCrossRepoOrchestrator(input: {
 		.get();
 }
 
-export async function listCrossRepoOrchestrators(): Promise<CrossRepoOrchestrator[]> {
-	return getDb()
+export async function listCrossRepoOrchestrators(): Promise<
+	Array<CrossRepoOrchestrator & { linkedProjectIds: string[] }>
+> {
+	const db = getDb();
+	const rows = db
 		.select()
 		.from(crossRepoOrchestrators)
 		.orderBy(asc(crossRepoOrchestrators.sortOrder))
 		.all();
+	const links = db
+		.select({
+			orchestratorId: crossRepoOrchestratorProjects.orchestratorId,
+			projectId: crossRepoOrchestratorProjects.projectId,
+		})
+		.from(crossRepoOrchestratorProjects)
+		.all();
+	const byOrch = new Map<string, string[]>();
+	for (const l of links) {
+		const arr = byOrch.get(l.orchestratorId) ?? [];
+		arr.push(l.projectId);
+		byOrch.set(l.orchestratorId, arr);
+	}
+	return rows.map((r) => ({ ...r, linkedProjectIds: byOrch.get(r.id) ?? [] }));
 }
 
 export async function renameCrossRepoOrchestrator(input: {

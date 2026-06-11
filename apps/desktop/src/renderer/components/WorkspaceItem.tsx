@@ -455,10 +455,15 @@ export function WorkspaceItem({
 	const xrosQuery = trpc.crossRepoOrchestrators.list.useQuery(undefined, {
 		staleTime: 60_000,
 	});
-	const xros = xrosQuery.data ?? [];
-	const allXroIds = xros.map((x) => x.id);
+	// Only orchestrators that link THIS workspace's project are valid attach targets.
+	const xros = (xrosQuery.data ?? []).filter((x) => x.linkedProjectIds.includes(projectId));
+	const allXroIds = (xrosQuery.data ?? []).map((x) => x.id);
 	const xroColor = useCrossRepoOrchestratorColor(crossRepoOrchestrator?.id ?? "", allXroIds);
 	const attachXroMut = trpc.crossRepoOrchestrators.attachMember.useMutation({
+		onSuccess: () => {
+			utils.workspaces.listByProject.invalidate({ projectId });
+			utils.crossRepoOrchestrators.listMembers.invalidate();
+		},
 		onError: (err) => console.warn("[xro] attach failed:", err.message),
 	});
 

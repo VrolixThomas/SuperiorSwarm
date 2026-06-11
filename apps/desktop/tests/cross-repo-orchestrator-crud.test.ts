@@ -17,7 +17,7 @@ import {
 	listCrossRepoOrchestrators,
 	renameCrossRepoOrchestrator,
 } from "../src/main/services/cross-repo-orchestrators";
-import { seedCrossRepoOrchestrator, setupTestDb, teardownTestDb } from "./helpers/db";
+import { seedCrossRepoOrchestrator, seedProject, setupTestDb, teardownTestDb } from "./helpers/db";
 
 describe("cross-repo-orchestrators CRUD", () => {
 	beforeEach(() => setupTestDb());
@@ -83,6 +83,16 @@ describe("cross-repo-orchestrators CRUD", () => {
 			.all();
 		expect(left).toHaveLength(0);
 	});
+
+	test("list returns linkedProjectIds per orchestrator", async () => {
+		const p1 = await seedProject();
+		const p2 = await seedProject();
+		const xro = await seedCrossRepoOrchestrator({ projectIds: [p1, p2] });
+
+		const rows = await listCrossRepoOrchestrators();
+		const row = rows.find((r) => r.id === xro);
+		expect(row?.linkedProjectIds?.sort()).toEqual([p1, p2].sort());
+	});
 });
 
 describe("dispatchAcrossRepos", () => {
@@ -128,8 +138,12 @@ describe("dispatchAcrossRepos", () => {
 				targets: [{ projectId: PROJECT_ID, branch: "feat/idempotency" }],
 			},
 			{
-				dispatchAgentFn: async () => ({ sessionId: "s", terminalId: "t", status: "started" as const }),
-			},
+				dispatchAgentFn: async () => ({
+					sessionId: "s",
+					terminalId: "t",
+					status: "started" as const,
+				}),
+			}
 		);
 
 		expect(res.failed).toHaveLength(0);
