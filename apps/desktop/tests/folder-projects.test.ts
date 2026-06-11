@@ -8,7 +8,10 @@ import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import simpleGit from "simple-git";
 import { getDb, schema } from "../src/main/db";
 import { initRepo } from "../src/main/git/operations";
-import { openFolderProject } from "../src/main/services/folder-projects";
+import {
+	createFolderWorkspace,
+	openFolderProject,
+} from "../src/main/services/folder-projects";
 
 let TMP: string;
 const createdProjectIds: string[] = [];
@@ -116,5 +119,85 @@ describe("openFolderProject", () => {
 		const res = await openFolderProject({ path: "~", quick: true });
 		track(res.project?.id);
 		expect(res.project?.repoPath.startsWith("/")).toBe(true);
+	});
+});
+
+describe("createFolderWorkspace", () => {
+	async function makeFolderProject(name: string) {
+		const dir = join(TMP, name);
+		mkdirSync(dir);
+		const res = await openFolderProject({ path: dir });
+		track(res.project?.id);
+		if (!res.project) throw new Error("setup failed");
+		return res.project;
+	}
+
+	test("creates a folder workspace with null folderPath by default", async () => {
+		const project = await makeFolderProject("svc1");
+		const created = await createFolderWorkspace({ projectId: project.id, name: "deploy" });
+
+		const db = getDb();
+		const ws = db
+			.select()
+			.from(schema.workspaces)
+			.where(eq(schema.workspaces.id, created.workspaceId))
+			.get();
+		expect(ws?.type).toBe("folder");
+		expect(ws?.name).toBe("deploy");
+		expect(ws?.folderPath).toBeNull();
+	});
+
+	test("accepts a subfolder of the project path", async () => {
+		const project = await makeFolderProject("svc2");
+		const sub = join(project.repoPath, "api");
+		mkdirSync(sub);
+		const created = await createFolderWorkspace({
+			projectId: project.id,
+			name: "api",
+			folderPath: sub,
+		});
+		expect(created.folderPath).toBe(sub);
+	});
+
+	test("normalizes folderPath equal to project path to null", async () => {
+		const project = await makeFolderProject("svc3");
+		const created = await createFolderWorkspace({
+			projectId: project.id,
+			name: "root",
+			folderPath: project.repoPath,
+		});
+		expect(created.folderPath).toBeNull();
+	});
+
+	test("rejects folderPath outside the project", async () => {
+		const project = await makeFolderProject("svc4");
+		const outside = join(TMP, "outside");
+		mkdirSync(outside);
+		await expect(
+			createFolderWorkspace({ projectId: project.id, name: "x", folderPath: outside })
+		).rejects.toThrow(/inside the project/i);
+	});
+
+	test("rejects missing folderPath dir, empty name, and repo-kind projects", async () => {
+		const project = await makeFolderProject("svc5");
+		await expect(
+			createFolderWorkspace({
+				projectId: project.id,
+				name: "x",
+				folderPath: join(project.repoPath, "missing"),
+			})
+		).rejects.toThrow(/exist/i);
+		await expect(createFolderWorkspace({ projectId: project.id, name: "  " })).rejects.toThrow(
+			/empty/i
+		);
+
+		const db = getDb();
+		db.update(schema.projects)
+			.set({ kind: "repo" })
+			.where(eq(schema.projects.id, project.id))
+			.run();
+		await expect(createFolderWorkspace({ projectId: project.id, name: "x" })).rejects.toThrow(
+			/folder projects/i
+		);
 	});
 });

@@ -1,6 +1,6 @@
 import { existsSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { isAbsolute, join } from "node:path";
+import { isAbsolute, join, sep } from "node:path";
 import { eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { getDb } from "../db";
@@ -83,4 +83,68 @@ export async function openFolderProject(input: OpenFolderInput): Promise<OpenFol
 		.run();
 
 	return { project, isGitRepo: false };
+}
+
+export interface CreateFolderWorkspaceInput {
+	projectId: string;
+	name: string;
+	folderPath?: string;
+}
+
+export interface CreateFolderWorkspaceResult {
+	workspaceId: string;
+	folderPath: string | null;
+}
+
+export async function createFolderWorkspace(
+	input: CreateFolderWorkspaceInput
+): Promise<CreateFolderWorkspaceResult> {
+	const trimmed = input.name.trim();
+	if (trimmed.length === 0) {
+		throw new Error("Name cannot be empty");
+	}
+
+	const db = getDb();
+	const project = db.select().from(projects).where(eq(projects.id, input.projectId)).get();
+	if (!project) {
+		throw new Error(`Project not found: ${input.projectId}`);
+	}
+	if (project.kind !== "folder") {
+		throw new Error("Workspaces with a custom folder can only be added to folder projects");
+	}
+
+	let folderPath: string | null = null;
+	if (input.folderPath) {
+		const candidate = resolveTilde(input.folderPath);
+		if (!isAbsolute(candidate)) {
+			throw new Error("Folder path must be absolute");
+		}
+		if (!existsSync(candidate) || !statSync(candidate).isDirectory()) {
+			throw new Error(`Folder does not exist: ${candidate}`);
+		}
+		const realBase = realpathSync(project.repoPath);
+		const realCandidate = realpathSync(candidate);
+		if (realCandidate !== realBase && !realCandidate.startsWith(realBase + sep)) {
+			throw new Error("Folder must be inside the project folder");
+		}
+		folderPath = realCandidate === realBase ? null : candidate;
+	}
+
+	const now = new Date();
+	const id = nanoid();
+	db.insert(workspaces)
+		.values({
+			id,
+			projectId: input.projectId,
+			type: "folder",
+			name: trimmed,
+			worktreeId: null,
+			terminalId: null,
+			folderPath,
+			createdAt: now,
+			updatedAt: now,
+		})
+		.run();
+
+	return { workspaceId: id, folderPath };
 }
