@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useProjectStore } from "../stores/projects";
 import { useTabStore } from "../stores/tab-store";
 import { useUpdateStore } from "../stores/update-store";
@@ -24,8 +24,13 @@ export function Sidebar({ collapsed, onExpand }: SidebarProps) {
 	const openFolderMut = trpc.projects.openFolder.useMutation();
 	const attachTerminalMut = trpc.workspaces.attachTerminal.useMutation();
 
+	const openFolderAsyncRef = useRef(openFolderMut.mutateAsync);
+	openFolderAsyncRef.current = openFolderMut.mutateAsync;
+	const attachTerminalRef = useRef(attachTerminalMut.mutate);
+	attachTerminalRef.current = attachTerminalMut.mutate;
+
 	const handleNewTerminal = useCallback(async () => {
-		const res = await openFolderMut.mutateAsync({ path: "~", quick: true });
+		const res = await openFolderAsyncRef.current({ path: "~", quick: true });
 		if (!res.project) return;
 		utils.projects.list.invalidate();
 		const tree = await utils.workspaces.listByProject.fetch({ projectId: res.project.id });
@@ -40,9 +45,9 @@ export function Sidebar({ collapsed, onExpand }: SidebarProps) {
 		const tabs = store.getTabsByWorkspace(ws.id);
 		if (!tabs.some((t) => t.kind === "terminal")) {
 			const tabId = store.addTerminalTab(ws.id, cwd, `${res.project.name}: ${ws.name}`);
-			attachTerminalMut.mutate({ workspaceId: ws.id, terminalId: tabId });
+			attachTerminalRef.current({ workspaceId: ws.id, terminalId: tabId });
 		}
-	}, [openFolderMut, attachTerminalMut, utils]);
+	}, [utils]);
 
 	useEffect(() => {
 		const listener = () => {
@@ -146,7 +151,8 @@ export function Sidebar({ collapsed, onExpand }: SidebarProps) {
 							<button
 								type="button"
 								onClick={() => void handleNewTerminal()}
-								className="flex w-full items-center gap-2 rounded-[6px] px-3 py-1.5 text-[12px] text-[var(--text-quaternary)] transition-all duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-tertiary)]"
+								disabled={openFolderMut.isPending}
+								className="flex w-full items-center gap-2 rounded-[6px] px-3 py-1.5 text-[12px] text-[var(--text-quaternary)] transition-all duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-tertiary)] disabled:opacity-50"
 							>
 								<svg
 									aria-hidden="true"
