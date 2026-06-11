@@ -287,6 +287,7 @@ export async function listByProjectTree(input: {
 			orchestratorId: orchestratorMembers.orchestratorId,
 			workspaceId: orchestratorMembers.workspaceId,
 			sortOrder: orchestratorMembers.sortOrder,
+			parentKind: orchestratorMembers.parentKind,
 		})
 		.from(orchestratorMembers)
 		.innerJoin(workspaces, eq(workspaces.id, orchestratorMembers.workspaceId))
@@ -295,19 +296,20 @@ export async function listByProjectTree(input: {
 
 	const allOrchestratorIds = new Set(rows.filter((r) => r.isOrchestrator).map((r) => r.id));
 
+	// Classify by parentKind, not by set-difference. An orphaned per-repo row
+	// (orchestratorId references a deleted workspace, parentKind="workspace") is
+	// indistinguishable from a cross-repo row under set-difference logic.
 	const memberOf = new Map<string, { orchestratorId: string; sortOrder: number }>();
 	for (const m of memberRows) {
-		if (!allOrchestratorIds.has(m.orchestratorId)) continue; // defensive: drop orphaned join rows
+		if (m.parentKind !== "workspace") continue;
+		if (!allOrchestratorIds.has(m.orchestratorId)) continue; // defensive: orphaned row
 		memberOf.set(m.workspaceId, m);
 	}
 
-	// Cross-repo memberships are those whose orchestrator is NOT a workspace in this
-	// project (their id is a cross_repo orchestrator id). Look up their display names.
+	// Cross-repo memberships are rows explicitly tagged parentKind="cross_repo".
 	const crossRepoIds = [
 		...new Set(
-			memberRows
-				.filter((m) => !allOrchestratorIds.has(m.orchestratorId))
-				.map((m) => m.orchestratorId)
+			memberRows.filter((m) => m.parentKind === "cross_repo").map((m) => m.orchestratorId)
 		),
 	];
 	const xroNameById = new Map<string, string>();
@@ -321,7 +323,7 @@ export async function listByProjectTree(input: {
 	}
 	const crossRepoMemberOf = new Map<string, { id: string; name: string }>();
 	for (const m of memberRows) {
-		if (allOrchestratorIds.has(m.orchestratorId)) continue;
+		if (m.parentKind !== "cross_repo") continue;
 		const name = xroNameById.get(m.orchestratorId);
 		if (name) crossRepoMemberOf.set(m.workspaceId, { id: m.orchestratorId, name });
 	}
