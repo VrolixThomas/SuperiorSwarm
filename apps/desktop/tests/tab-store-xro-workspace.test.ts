@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { usePaneStore } from "../src/renderer/stores/pane-store";
+import { getAllPanes, usePaneStore } from "../src/renderer/stores/pane-store";
 import { useTabStore } from "../src/renderer/stores/tab-store";
 
 function resetStores() {
@@ -43,5 +43,29 @@ describe("openXroWorkspace", () => {
 			.getTabsByWorkspace("xro-1")
 			.filter((t) => t.kind === "terminal");
 		expect(terminals).toHaveLength(1);
+	});
+
+	test("re-open after closing only the coordinator terminal does not duplicate the canvas tab", () => {
+		const first = useTabStore.getState().openXroWorkspace("xro-dup", "Dup", "/tmp/xro-dup");
+		expect(first.started).toBe(true);
+
+		// Close only the coordinator terminal tab
+		useTabStore.getState().removeTab(first.terminalTabId);
+
+		const second = useTabStore.getState().openXroWorkspace("xro-dup", "Dup", "/tmp/xro-dup");
+		expect(second.started).toBe(true);
+
+		// Collect all canvas tab ids across every pane of the xro-dup workspace
+		const layout = usePaneStore.getState().layouts["xro-dup"];
+		const allTabs = layout ? getAllPanes(layout).flatMap((p) => p.tabs) : [];
+		const canvasIds = allTabs.filter((t) => t.kind === "xro-canvas").map((t) => t.id);
+
+		// Exactly one canvas tab should exist with the correct id
+		expect(canvasIds).toEqual(["xro-canvas-xro-dup"]);
+
+		// The terminal tab for the new coordinator should also exist
+		const terminals = allTabs.filter((t) => t.kind === "terminal");
+		expect(terminals).toHaveLength(1);
+		expect(second.terminalTabId).toBe(terminals[0]?.id);
 	});
 });

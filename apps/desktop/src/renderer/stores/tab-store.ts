@@ -802,14 +802,23 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 			presetName: "xro-coordinator",
 		};
 		ps().addTabToPane(workspaceId, left.id, terminalTab);
-		const canvasTab: TabItem = {
-			kind: "xro-canvas",
-			id: `xro-canvas-${orchestratorId}`,
+
+		// The canvas may still exist from a previous open (user closed only the
+		// coordinator terminal) — never create a second tab with the same id.
+		const existingCanvas = findTabInWorkspace(
 			workspaceId,
-			orchestratorId,
-			title,
-		};
-		ps().splitPane(workspaceId, left.id, "horizontal", canvasTab);
+			(t) => t.kind === "xro-canvas" && t.orchestratorId === orchestratorId
+		);
+		if (!existingCanvas) {
+			const canvasTab: TabItem = {
+				kind: "xro-canvas",
+				id: `xro-canvas-${orchestratorId}`,
+				workspaceId,
+				orchestratorId,
+				title,
+			};
+			ps().splitPane(workspaceId, left.id, "horizontal", canvasTab);
+		}
 		ps().setFocusedPane(left.id);
 		return { terminalTabId, started: true };
 	},
