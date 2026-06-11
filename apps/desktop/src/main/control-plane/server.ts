@@ -365,6 +365,11 @@ async function handleRequest(
 					respond(res, 400, requestId, { error: "validation", details: parsed.error.flatten() });
 					return;
 				}
+				const caller = resolveCaller(req, parsed.data.projectId);
+				if ("error" in caller) {
+					respond(res, 401, requestId, { error: "unauthorized" });
+					return;
+				}
 				const created = await createWorkspace(parsed.data);
 				await attachIfCallerIsOrchestrator(req, parsed.data.projectId, created.workspaceId, true);
 				respond(res, 200, requestId, created);

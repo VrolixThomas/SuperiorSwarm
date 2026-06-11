@@ -15,6 +15,7 @@ import { seedCrossRepoOrchestrator, seedProject, seedWorkspace } from "./helpers
 let TMP: string;
 let REPO: string;
 let PROJECT_ID: string;
+let CALLER_WS_ID: string;
 let server: Awaited<ReturnType<typeof startControlPlane>>;
 
 beforeAll(() => {
@@ -42,6 +43,12 @@ beforeEach(async () => {
 			updatedAt: now,
 		})
 		.run();
+	// Seed a caller workspace so create tests can supply a valid caller header.
+	CALLER_WS_ID = await seedWorkspace(PROJECT_ID, {
+		name: "orchestrator",
+		type: "worktree",
+		isOrchestrator: true,
+	});
 	server = await startControlPlane({
 		confirm: async () => true,
 		spawnFn: async () => ({ sessionId: "s", terminalId: "t" }),
@@ -83,7 +90,7 @@ describe("control-plane HTTP", () => {
 	test("create + list + get + remove round-trip", async () => {
 		const create = await fetch(url("/workspaces.create"), {
 			method: "POST",
-			headers: { ...auth(), "Content-Type": "application/json" },
+			headers: { ...authWs(CALLER_WS_ID), "Content-Type": "application/json" },
 			body: JSON.stringify({ projectId: PROJECT_ID, branch: "feature/cp1" }),
 		});
 		expect(create.status).toBe(200);
@@ -111,7 +118,7 @@ describe("control-plane HTTP", () => {
 	test("401 on cross-project access (caller scoping rejects before service layer)", async () => {
 		const create = await fetch(url("/workspaces.create"), {
 			method: "POST",
-			headers: { ...auth(), "Content-Type": "application/json" },
+			headers: { ...authWs(CALLER_WS_ID), "Content-Type": "application/json" },
 			body: JSON.stringify({ projectId: PROJECT_ID, branch: "feature/cp2" }),
 		});
 		const created = (await create.json()) as { workspaceId: string };
@@ -128,7 +135,7 @@ describe("control-plane HTTP", () => {
 	test("400 on invalid body", async () => {
 		const res = await fetch(url("/workspaces.create"), {
 			method: "POST",
-			headers: { ...auth(), "Content-Type": "application/json" },
+			headers: { ...authWs(CALLER_WS_ID), "Content-Type": "application/json" },
 			body: JSON.stringify({ projectId: PROJECT_ID }),
 		});
 		expect(res.status).toBe(400);
@@ -137,7 +144,7 @@ describe("control-plane HTTP", () => {
 	test("dispatch route returns started status", async () => {
 		const create = await fetch(url("/workspaces.create"), {
 			method: "POST",
-			headers: { ...auth(), "Content-Type": "application/json" },
+			headers: { ...authWs(CALLER_WS_ID), "Content-Type": "application/json" },
 			body: JSON.stringify({ projectId: PROJECT_ID, branch: "feature/cp3" }),
 		});
 		const created = (await create.json()) as { workspaceId: string };
@@ -165,7 +172,7 @@ describe("control-plane HTTP", () => {
 
 		const create = await fetch(url("/workspaces.create"), {
 			method: "POST",
-			headers: { ...auth(), "Content-Type": "application/json" },
+			headers: { ...authWs(CALLER_WS_ID), "Content-Type": "application/json" },
 			body: JSON.stringify({ projectId: PROJECT_ID, branch: "feature/cp-deny" }),
 		});
 		const created = (await create.json()) as { workspaceId: string };
@@ -188,7 +195,7 @@ describe("control-plane HTTP", () => {
 	test("404 when workspaceId not found", async () => {
 		const create = await fetch(url("/workspaces.create"), {
 			method: "POST",
-			headers: { ...auth(), "Content-Type": "application/json" },
+			headers: { ...authWs(CALLER_WS_ID), "Content-Type": "application/json" },
 			body: JSON.stringify({ projectId: PROJECT_ID, branch: "feature/cp-404a" }),
 		});
 		const { workspaceId: callerWsId } = (await create.json()) as { workspaceId: string };
@@ -203,7 +210,7 @@ describe("control-plane HTTP", () => {
 	test("unknown workspace returns 404 via typed NotFoundError", async () => {
 		const create = await fetch(url("/workspaces.create"), {
 			method: "POST",
-			headers: { ...auth(), "Content-Type": "application/json" },
+			headers: { ...authWs(CALLER_WS_ID), "Content-Type": "application/json" },
 			body: JSON.stringify({ projectId: PROJECT_ID, branch: "feature/cp-404b" }),
 		});
 		const { workspaceId: callerWsId } = (await create.json()) as { workspaceId: string };
@@ -269,13 +276,53 @@ describe("control-plane HTTP", () => {
 		expect(res.status).toBe(401);
 		expect(spawnCalled).toBe(false);
 	});
+
+	test("workspaces.create rejects xro caller for non-linked project", async () => {
+		const linked = await seedProject();
+		const unlinked = await seedProject();
+		const xro = await seedCrossRepoOrchestrator({ projectIds: [linked] });
+
+		const res = await fetch(url("/workspaces.create"), {
+			method: "POST",
+			headers: {
+				...auth(),
+				"x-cross-repo-orchestrator-id": xro,
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({ projectId: unlinked, branch: "feat/escape" }),
+		});
+		expect(res.status).toBe(401);
+		// Assert no workspace row was created for the unlinked project/branch.
+		const rows = getDb()
+			.select()
+			.from(schema.workspaces)
+			.where(eq(schema.workspaces.projectId, unlinked))
+			.all();
+		expect(rows).toHaveLength(0);
+	});
+
+	test("workspaces.create rejects caller with no header", async () => {
+		const res = await fetch(url("/workspaces.create"), {
+			method: "POST",
+			headers: { ...auth(), "Content-Type": "application/json" },
+			body: JSON.stringify({ projectId: PROJECT_ID, branch: "feat/no-header" }),
+		});
+		expect(res.status).toBe(401);
+		const rows = getDb()
+			.select()
+			.from(schema.workspaces)
+			.where(eq(schema.workspaces.projectId, PROJECT_ID))
+			.all();
+		// Only CALLER_WS_ID (seeded in beforeEach) should exist — no new row.
+		expect(rows.every((r) => r.name !== "feat/no-header")).toBe(true);
+	});
 });
 
 describe("control-plane coordination routes", () => {
 	test("set_status updates the row", async () => {
 		const create = await fetch(url("/workspaces.create"), {
 			method: "POST",
-			headers: { ...auth(), "Content-Type": "application/json" },
+			headers: { ...authWs(CALLER_WS_ID), "Content-Type": "application/json" },
 			body: JSON.stringify({ projectId: PROJECT_ID, branch: "feature/cp-s1" }),
 		});
 		const { workspaceId } = (await create.json()) as { workspaceId: string };
@@ -317,13 +364,13 @@ describe("control-plane coordination routes", () => {
 	test("send_message + read_messages round-trip", async () => {
 		const a = await fetch(url("/workspaces.create"), {
 			method: "POST",
-			headers: { ...auth(), "Content-Type": "application/json" },
+			headers: { ...authWs(CALLER_WS_ID), "Content-Type": "application/json" },
 			body: JSON.stringify({ projectId: PROJECT_ID, branch: "feature/cp-m-a" }),
 		});
 		const wsA = ((await a.json()) as { workspaceId: string }).workspaceId;
 		const b = await fetch(url("/workspaces.create"), {
 			method: "POST",
-			headers: { ...auth(), "Content-Type": "application/json" },
+			headers: { ...authWs(CALLER_WS_ID), "Content-Type": "application/json" },
 			body: JSON.stringify({ projectId: PROJECT_ID, branch: "feature/cp-m-b" }),
 		});
 		const wsB = ((await b.json()) as { workspaceId: string }).workspaceId;
@@ -349,13 +396,13 @@ describe("control-plane coordination routes", () => {
 	test("resume_agent returns 403 for non-orchestrator caller", async () => {
 		const a = await fetch(url("/workspaces.create"), {
 			method: "POST",
-			headers: { ...auth(), "Content-Type": "application/json" },
+			headers: { ...authWs(CALLER_WS_ID), "Content-Type": "application/json" },
 			body: JSON.stringify({ projectId: PROJECT_ID, branch: "feature/cp-r-403" }),
 		});
 		const wsA = ((await a.json()) as { workspaceId: string }).workspaceId;
 		const b = await fetch(url("/workspaces.create"), {
 			method: "POST",
-			headers: { ...auth(), "Content-Type": "application/json" },
+			headers: { ...authWs(CALLER_WS_ID), "Content-Type": "application/json" },
 			body: JSON.stringify({ projectId: PROJECT_ID, branch: "feature/cp-r-403b" }),
 		});
 		const wsB = ((await b.json()) as { workspaceId: string }).workspaceId;
