@@ -459,10 +459,18 @@ export async function dispatchAgent(
 	const ws = db.select().from(workspaces).where(eq(workspaces.id, input.workspaceId)).get();
 	if (!ws) throw new NotFoundError(input.workspaceId);
 	if (ws.projectId !== input.projectId) throw new ForbiddenError();
-	if (!ws.worktreeId) throw new Error("Workspace has no associated worktree");
-
-	const wt = db.select().from(worktrees).where(eq(worktrees.id, ws.worktreeId)).get();
-	if (!wt) throw new Error("Worktree row missing");
+	const wt = ws.worktreeId
+		? db.select().from(worktrees).where(eq(worktrees.id, ws.worktreeId)).get()
+		: null;
+	if (ws.worktreeId && !wt) throw new Error("Worktree row missing");
+	const project = db.select().from(projects).where(eq(projects.id, ws.projectId)).get();
+	if (!project) throw new Error(`Project not found: ${ws.projectId}`);
+	const cwd = resolveWorkspaceCwd({
+		worktreePath: wt?.path ?? null,
+		folderPath: ws.folderPath,
+		repoPath: project.repoPath,
+	});
+	if (!existsSync(cwd)) throw new Error(`Workspace folder no longer exists: ${cwd}`);
 
 	const cliPreset = input.cliPreset ?? "claude";
 
@@ -471,7 +479,7 @@ export async function dispatchAgent(
 	const cliSessionId = cliPreset === "claude" ? (ws.cliSessionId ?? randomUUID()) : null;
 
 	const launchScriptContent = buildLaunchScript({
-		cwd: wt.path,
+		cwd,
 		cliPreset,
 		prompt: input.prompt,
 		// Always skip permissions for dispatched agents — they run in their own
@@ -482,7 +490,7 @@ export async function dispatchAgent(
 
 	const spawnFn = deps.spawnFn ?? defaultSpawnFn;
 	const { sessionId, terminalId } = await spawnFn({
-		cwd: wt.path,
+		cwd,
 		launchScriptContent,
 		workspaceId: input.workspaceId,
 	});
@@ -763,6 +771,7 @@ export async function resumeAgent(
 		.select({
 			projectId: workspaces.projectId,
 			worktreeId: workspaces.worktreeId,
+			folderPath: workspaces.folderPath,
 			cliSessionId: workspaces.cliSessionId,
 			cliPreset: workspaces.cliPreset,
 		})
@@ -775,7 +784,7 @@ export async function resumeAgent(
 		throw new ResumeNotSupportedError("workspace has no claude session");
 	}
 
-	// 3. Resolve worktree path (cwd)
+	// 3. Resolve the working directory (worktree > folderPath > project path)
 	const wt = target.worktreeId
 		? db
 				.select({ path: worktrees.path })
@@ -783,7 +792,18 @@ export async function resumeAgent(
 				.where(eq(worktrees.id, target.worktreeId))
 				.get()
 		: null;
-	if (!wt?.path) throw new NotFoundError(`worktree path for ${input.workspaceId}`);
+	const targetProject = db
+		.select({ repoPath: projects.repoPath })
+		.from(projects)
+		.where(eq(projects.id, target.projectId))
+		.get();
+	if (!targetProject) throw new NotFoundError(`project for ${input.workspaceId}`);
+	const cwd = resolveWorkspaceCwd({
+		worktreePath: wt?.path ?? null,
+		folderPath: target.folderPath,
+		repoPath: targetProject.repoPath,
+	});
+	if (!existsSync(cwd)) throw new NotFoundError(`workspace folder for ${input.workspaceId}`);
 
 	// 4. Compose the resume command (interactive — no --print, so the child
 	//    keeps running and can be resumed again on the next coordination event).
@@ -800,7 +820,7 @@ export async function resumeAgent(
 	await respawnFn({
 		workspaceId: input.workspaceId,
 		command,
-		cwd: wt.path,
+		cwd,
 	});
 
 	// 6. Insert agent_messages row (audit log)

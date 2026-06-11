@@ -16,6 +16,7 @@ import {
 import {
 	createOrchestrator,
 	createWorkspace,
+	dispatchAgent,
 	removeWorkspace,
 } from "../src/main/services/workspace-service";
 import { t } from "../src/main/trpc/index";
@@ -394,5 +395,46 @@ describe("removeWorkspace for folder workspaces", () => {
 			.where(eq(schema.workspaces.id, created.workspaceId))
 			.get();
 		expect(ws).toBeUndefined();
+	});
+});
+
+describe("dispatchAgent for folder workspaces", () => {
+	test("dispatches into the folder path", async () => {
+		const dir = join(TMP, "disp1");
+		mkdirSync(dir);
+		const res = await openFolderProject({ path: dir });
+		track(res.project?.id);
+		const projectId = res.project?.id ?? "";
+		const created = await createFolderWorkspace({ projectId, name: "agent" });
+
+		let spawnedCwd = "";
+		const result = await dispatchAgent(
+			{ projectId, workspaceId: created.workspaceId, prompt: "hello" },
+			{
+				spawnFn: async (args) => {
+					spawnedCwd = args.cwd;
+					return { sessionId: "s1", terminalId: "t1" };
+				},
+			}
+		);
+		expect(result.status).toBe("started");
+		expect(spawnedCwd).toBe(realpathSync(dir));
+	});
+
+	test("fails clearly when the folder no longer exists on disk", async () => {
+		const dir = join(TMP, "disp2");
+		mkdirSync(dir);
+		const res = await openFolderProject({ path: dir });
+		track(res.project?.id);
+		const projectId = res.project?.id ?? "";
+		const created = await createFolderWorkspace({ projectId, name: "agent" });
+		rmSync(dir, { recursive: true, force: true });
+
+		await expect(
+			dispatchAgent(
+				{ projectId, workspaceId: created.workspaceId, prompt: "hello" },
+				{ spawnFn: async () => ({ sessionId: "s", terminalId: "t" }) }
+			)
+		).rejects.toThrow(/no longer exists/i);
 	});
 });
