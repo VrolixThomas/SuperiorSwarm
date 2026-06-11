@@ -143,7 +143,8 @@ export function Terminal({
 		// answers to replayed device queries (DA/DSR) and replayed DECSET sequences
 		// re-arm mouse reporting. None of that may reach the PTY — the app that
 		// asked already got its answers when the bytes were live.
-		let suppressInput = false;
+		// Counter (not boolean) so back-to-back replay chunks can't clear each other's gate.
+		let suppressDepth = 0;
 
 		const resetStaleModes = () => {
 			// Written into xterm only — never the PTY.
@@ -168,9 +169,9 @@ export function Terminal({
 					// via onData — writing initialContent too would stack old content
 					// before the live buffer and misplace the cursor inside TUI apps.
 					if (!wasAttached && initialContentRef.current) {
-						suppressInput = true;
+						suppressDepth++;
 						term.write(initialContentRef.current, () => {
-							suppressInput = false;
+							suppressDepth--;
 							// Fresh PTY: the saved scrollback's app is gone by definition.
 							resetStaleModes();
 						});
@@ -207,9 +208,9 @@ export function Terminal({
 
 			cleanupData = api.terminal.onData(id, (data, meta) => {
 				if (meta?.replay) {
-					suppressInput = true;
+					suppressDepth++;
 					term.write(data, () => {
-						suppressInput = false;
+						suppressDepth--;
 						// Shell in the foreground means whatever set those modes is gone.
 						if (isShellProcess(meta.fg)) {
 							resetStaleModes();
@@ -221,8 +222,12 @@ export function Terminal({
 			});
 
 			cleanupExit = api.terminal.onExit(id, (code) => {
-				resetStaleModes();
-				term.write(formatTerminalExitMessage(code));
+				// Empty write = barrier: the buffer check inside resetStaleModes must
+				// run after any still-queued replay chunk has parsed.
+				term.write("", () => {
+					resetStaleModes();
+					term.write(formatTerminalExitMessage(code));
+				});
 			});
 
 			const MAX_TITLE = 48;
@@ -244,7 +249,7 @@ export function Terminal({
 			const cmd = new CmdBuffer();
 
 			term.onData((data) => {
-				if (suppressInput) return;
+				if (suppressDepth > 0) return;
 				// Suppress the \r that xterm may still emit after our
 				// Shift+Enter handler already sent the CSI u sequence.
 				if (shiftEnterPending) {
