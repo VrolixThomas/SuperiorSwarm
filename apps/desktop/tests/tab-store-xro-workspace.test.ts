@@ -67,5 +67,24 @@ describe("openXroWorkspace", () => {
 		const terminals = allTabs.filter((t) => t.kind === "terminal");
 		expect(terminals).toHaveLength(1);
 		expect(second.terminalTabId).toBe(terminals[0]?.id);
+
+		// ── Structural guard ─────────────────────────────────────────────────
+		// Without the `if (!existingCanvas)` guard in openXroWorkspace, splitPane
+		// is called on the surviving canvas pane, which produces a 2-pane split
+		// layout (type "split") rather than a single flat pane.  Assert that the
+		// surviving canvas and the new terminal tab both live in the SAME pane
+		// (layout root is type "pane", not "split").
+		expect(layout?.type).toBe("pane");
+
+		// The single pane must contain both tabs; canvas first (it survived the
+		// close), terminal second (just appended by the re-open).
+		const panes = layout ? getAllPanes(layout) : [];
+		expect(panes).toHaveLength(1);
+		const singlePane = panes[0];
+		expect(singlePane?.tabs.map((t) => t.kind)).toEqual(["xro-canvas", "terminal"]);
+		expect(singlePane?.tabs.map((t) => t.id)).toEqual([
+			"xro-canvas-xro-dup",
+			second.terminalTabId,
+		]);
 	});
 });
