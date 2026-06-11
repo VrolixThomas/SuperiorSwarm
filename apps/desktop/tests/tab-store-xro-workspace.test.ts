@@ -82,9 +82,6 @@ describe("openXroWorkspace", () => {
 		expect(panes).toHaveLength(1);
 		const singlePane = panes[0];
 		expect(singlePane?.tabs.map((t) => t.kind)).toEqual(["xro-canvas", "terminal"]);
-		expect(singlePane?.tabs.map((t) => t.id)).toEqual([
-			"xro-canvas-xro-dup",
-			second.terminalTabId,
-		]);
+		expect(singlePane?.tabs.map((t) => t.id)).toEqual(["xro-canvas-xro-dup", second.terminalTabId]);
 	});
 });
