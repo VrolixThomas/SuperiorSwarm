@@ -274,4 +274,27 @@ describe("convertProjectToRepo", () => {
 			/rooted at/i
 		);
 	});
+
+	test("does not duplicate names when a workspace already has the default branch name", async () => {
+		const dir = join(TMP, "conv4");
+		mkdirSync(dir);
+		const res = await openFolderProject({ path: dir });
+		track(res.project?.id);
+		const projectId = res.project?.id ?? "";
+		await createFolderWorkspace({ projectId, name: "main" });
+
+		await initRepo(dir, "main");
+		await simpleGit(dir).raw(["commit", "--allow-empty", "-m", "init"]);
+		await convertProjectToRepo({ id: projectId });
+
+		const db = getDb();
+		const ws = db
+			.select()
+			.from(schema.workspaces)
+			.where(eq(schema.workspaces.projectId, projectId))
+			.all();
+		const names = ws.map((w) => w.name);
+		expect(names.filter((n) => n === "main")).toHaveLength(1);
+		expect(ws.find((w) => w.type === "branch")?.name).toBe("default");
+	});
 });

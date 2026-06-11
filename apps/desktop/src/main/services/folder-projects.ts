@@ -1,7 +1,7 @@
 import { existsSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join, sep } from "node:path";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, ne } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { getDb } from "../db";
 import { type Project, projects, workspaces } from "../db/schema";
@@ -180,22 +180,6 @@ export async function convertProjectToRepo(input: { id: string }): Promise<Proje
 	const defaultBranch = await detectDefaultBranch(project.repoPath);
 	const remote = await parseRemoteUrl(project.repoPath);
 	const now = new Date();
-	db.update(projects)
-		.set({
-			kind: "repo",
-			defaultBranch,
-			remoteOwner: remote?.owner ?? null,
-			remoteRepo: remote?.repo ?? null,
-			remoteHost: remote?.host ?? null,
-			updatedAt: now,
-		})
-		.where(eq(projects.id, input.id))
-		.run();
-	try {
-		ensureRepoExclude(project.repoPath);
-	} catch (err) {
-		console.warn("[git-exclude] failed:", err);
-	}
 
 	// Promote the default folder workspace (cwd = project root) to the branch workspace.
 	const defaultWs = db
@@ -209,24 +193,61 @@ export async function convertProjectToRepo(input: { id: string }): Promise<Proje
 			)
 		)
 		.get();
-	if (defaultWs) {
-		db.update(workspaces)
-			.set({ type: "branch", name: defaultBranch, updatedAt: now })
-			.where(eq(workspaces.id, defaultWs.id))
-			.run();
-	} else {
-		db.insert(workspaces)
-			.values({
-				id: nanoid(),
-				projectId: input.id,
-				type: "branch",
-				name: defaultBranch,
-				worktreeId: null,
-				terminalId: null,
-				createdAt: now,
+
+	db.transaction((tx) => {
+		tx.update(projects)
+			.set({
+				kind: "repo",
+				defaultBranch,
+				remoteOwner: remote?.owner ?? null,
+				remoteRepo: remote?.repo ?? null,
+				remoteHost: remote?.host ?? null,
 				updatedAt: now,
 			})
+			.where(eq(projects.id, input.id))
 			.run();
+
+		if (defaultWs) {
+			const nameTaken = tx
+				.select({ id: workspaces.id })
+				.from(workspaces)
+				.where(
+					and(
+						eq(workspaces.projectId, input.id),
+						eq(workspaces.name, defaultBranch),
+						ne(workspaces.id, defaultWs.id)
+					)
+				)
+				.get();
+			tx.update(workspaces)
+				.set({
+					type: "branch",
+					...(nameTaken ? {} : { name: defaultBranch }),
+					updatedAt: now,
+				})
+				.where(eq(workspaces.id, defaultWs.id))
+				.run();
+		} else {
+			tx.insert(workspaces)
+				.values({
+					id: nanoid(),
+					projectId: input.id,
+					type: "branch",
+					name: defaultBranch,
+					worktreeId: null,
+					terminalId: null,
+					folderPath: null,
+					createdAt: now,
+					updatedAt: now,
+				})
+				.run();
+		}
+	});
+
+	try {
+		ensureRepoExclude(project.repoPath);
+	} catch (err) {
+		console.warn("[git-exclude] failed:", err);
 	}
 
 	const updated = db.select().from(projects).where(eq(projects.id, input.id)).get();
