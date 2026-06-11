@@ -103,10 +103,19 @@ export function registerCoreActions() {
 		},
 		{
 			id: "general.addRepository",
-			label: "Add Repository",
+			label: "Add Project",
 			category: "General",
 			execute: () => useProjectStore.getState().openAddModal(),
-			keywords: ["clone", "open", "create", "repo"],
+			keywords: ["clone", "open", "create", "repo", "folder"],
+		},
+		{
+			id: "general.newTerminal",
+			label: "New Terminal",
+			category: "General",
+			execute: () => {
+				window.dispatchEvent(new CustomEvent("quick-terminal"));
+			},
+			keywords: ["shell", "home", "terminal", "folder"],
 		},
 		{
 			id: "general.checkUpdates",

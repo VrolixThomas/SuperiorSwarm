@@ -1,4 +1,4 @@
-import type { SidebarSegment } from "../../shared/types";
+import { useCallback, useEffect } from "react";
 import { useProjectStore } from "../stores/projects";
 import { useTabStore } from "../stores/tab-store";
 import { useUpdateStore } from "../stores/update-store";
@@ -19,6 +19,38 @@ export function Sidebar({ collapsed, onExpand }: SidebarProps) {
 	const segment = useTabStore((s) => s.sidebarSegment);
 	const hasDismissedUpdate = useUpdateStore((s) => s.dismissedUpdateVersion !== null);
 	const setSidebarSegment = useTabStore((s) => s.setSidebarSegment);
+
+	const utils = trpc.useUtils();
+	const openFolderMut = trpc.projects.openFolder.useMutation();
+	const attachTerminalMut = trpc.workspaces.attachTerminal.useMutation();
+
+	const handleNewTerminal = useCallback(async () => {
+		const res = await openFolderMut.mutateAsync({ path: "~", quick: true });
+		if (!res.project) return;
+		utils.projects.list.invalidate();
+		const tree = await utils.workspaces.listByProject.fetch({ projectId: res.project.id });
+		const ws =
+			tree.loose.find((w) => w.type === "branch" || (w.type === "folder" && !w.folderPath)) ??
+			tree.loose[0] ??
+			tree.orchestrators[0]?.workspace;
+		if (!ws) return;
+		const cwd = ws.worktreePath ?? ws.folderPath ?? res.project.repoPath;
+		const store = useTabStore.getState();
+		store.setActiveWorkspace(ws.id, cwd);
+		const tabs = store.getTabsByWorkspace(ws.id);
+		if (!tabs.some((t) => t.kind === "terminal")) {
+			const tabId = store.addTerminalTab(ws.id, cwd, `${res.project.name}: ${ws.name}`);
+			attachTerminalMut.mutate({ workspaceId: ws.id, terminalId: tabId });
+		}
+	}, [openFolderMut, attachTerminalMut, utils]);
+
+	useEffect(() => {
+		const listener = () => {
+			void handleNewTerminal();
+		};
+		window.addEventListener("quick-terminal", listener);
+		return () => window.removeEventListener("quick-terminal", listener);
+	}, [handleNewTerminal]);
 
 	// Check if any AI reviews need attention (ready or failed)
 	const reviewDraftsQuery = trpc.aiReview.getReviewDrafts.useQuery(undefined, {
@@ -61,7 +93,7 @@ export function Sidebar({ collapsed, onExpand }: SidebarProps) {
 						tickets: "nav.tickets",
 						prs: "nav.prs",
 					} as const;
-					const labels = { repos: "Repos", tickets: "Tickets", prs: "PRs" } as const;
+					const labels = { repos: "Projects", tickets: "Tickets", prs: "PRs" } as const;
 					return (
 						<Tooltip key={seg} label={labels[seg]} actionId={actionIds[seg]} className="flex-1">
 							<button
@@ -73,7 +105,7 @@ export function Sidebar({ collapsed, onExpand }: SidebarProps) {
 										: "text-[var(--text-quaternary)] hover:text-[var(--text-tertiary)]"
 								}`}
 							>
-								{seg === "prs" ? "PRs" : seg.charAt(0).toUpperCase() + seg.slice(1)}
+								{labels[seg]}
 								{seg === "prs" && (hasAINotification || hasNewPRs) && segment !== "prs" && (
 									<span className="absolute right-1.5 top-1 h-1.5 w-1.5 rounded-full bg-[#30d158]" />
 								)}
@@ -109,7 +141,30 @@ export function Sidebar({ collapsed, onExpand }: SidebarProps) {
 										strokeLinecap="round"
 									/>
 								</svg>
-								<span className="truncate">Add Repository</span>
+								<span className="truncate">Add Project</span>
+							</button>
+							<button
+								type="button"
+								onClick={() => void handleNewTerminal()}
+								className="flex w-full items-center gap-2 rounded-[6px] px-3 py-1.5 text-[12px] text-[var(--text-quaternary)] transition-all duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-tertiary)]"
+							>
+								<svg
+									aria-hidden="true"
+									width="13"
+									height="13"
+									viewBox="0 0 16 16"
+									fill="none"
+									className="shrink-0"
+								>
+									<path
+										d="M3 5l3 3-3 3M8 11h5"
+										stroke="currentColor"
+										strokeWidth="1.5"
+										strokeLinecap="round"
+										strokeLinejoin="round"
+									/>
+								</svg>
+								<span className="truncate">New Terminal</span>
 							</button>
 						</div>
 					</>
