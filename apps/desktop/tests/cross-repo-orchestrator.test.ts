@@ -277,6 +277,23 @@ describe("cross-repo-orchestrator-membership", () => {
 		expect(members.find((m) => m.workspaceId === ws)?.createdByDispatch).toBe(true);
 	});
 
+	test("createdByDispatch does not leak to a different orchestrator", async () => {
+		const p = await seedProject();
+		const xroA = await seedCrossRepoOrchestrator({ projectIds: [p] });
+		const xroB = await seedCrossRepoOrchestrator({ projectIds: [p] });
+		const ws = await seedWorkspace(p, { name: "leak-check" });
+
+		await attachToCrossRepoOrchestrator({
+			orchestratorId: xroA,
+			workspaceId: ws,
+			createdByDispatch: true,
+		});
+		await attachToCrossRepoOrchestrator({ orchestratorId: xroB, workspaceId: ws });
+
+		const members = await listCrossRepoMembers({ orchestratorId: xroB });
+		expect(members.find((m) => m.workspaceId === ws)?.createdByDispatch).toBe(false);
+	});
+
 	test("delete without removeWorkspaces keeps all workspaces", async () => {
 		const p = await seedProject();
 		const xro = await seedCrossRepoOrchestrator({ projectIds: [p] });
