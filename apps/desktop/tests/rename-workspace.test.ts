@@ -12,7 +12,7 @@ describe("renameWorkspace", () => {
 	test("updates the display name", async () => {
 		const p = await seedProject();
 		const id = await seedWorkspace(p, { name: "old-name" });
-		await renameWorkspace({ projectId: p, workspaceId: id }, { workspaceId: id, name: "new-name" });
+		await renameWorkspace({ kind: "workspace", projectId: p, workspaceId: id }, { workspaceId: id, name: "new-name" });
 		const row = getDb().select().from(workspaces).where(eq(workspaces.id, id)).get();
 		expect(row?.name).toBe("new-name");
 	});
@@ -21,7 +21,7 @@ describe("renameWorkspace", () => {
 		const p = await seedProject();
 		const id = await seedWorkspace(p, { name: "x" });
 		await expect(
-			renameWorkspace({ projectId: p, workspaceId: id }, { workspaceId: id, name: "   " })
+			renameWorkspace({ kind: "workspace", projectId: p, workspaceId: id }, { workspaceId: id, name: "   " })
 		).rejects.toThrow(/empty/i);
 	});
 
@@ -30,7 +30,7 @@ describe("renameWorkspace", () => {
 		await seedWorkspace(p, { name: "alpha" });
 		const beta = await seedWorkspace(p, { name: "beta" });
 		await expect(
-			renameWorkspace({ projectId: p, workspaceId: beta }, { workspaceId: beta, name: "alpha" })
+			renameWorkspace({ kind: "workspace", projectId: p, workspaceId: beta }, { workspaceId: beta, name: "alpha" })
 		).rejects.toThrow(/already in use/i);
 	});
 
@@ -40,7 +40,7 @@ describe("renameWorkspace", () => {
 		await seedWorkspace(p1, { name: "shared" });
 		const id = await seedWorkspace(p2, { name: "other" });
 		await expect(
-			renameWorkspace({ projectId: p2, workspaceId: id }, { workspaceId: id, name: "shared" })
+			renameWorkspace({ kind: "workspace", projectId: p2, workspaceId: id }, { workspaceId: id, name: "shared" })
 		).resolves.toBeDefined();
 	});
 
@@ -51,7 +51,7 @@ describe("renameWorkspace", () => {
 		const victim = await seedWorkspace(p2, { name: "victim" });
 		await expect(
 			renameWorkspace(
-				{ projectId: p1, workspaceId: caller },
+				{ kind: "workspace", projectId: p1, workspaceId: caller },
 				{ workspaceId: victim, name: "pwned" }
 			)
 		).rejects.toThrow(/forbidden: cross-project/);
