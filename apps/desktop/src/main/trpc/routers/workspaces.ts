@@ -157,7 +157,7 @@ export const workspacesRouter = router({
 				await symlinkSharedFiles(
 					project.repoPath,
 					worktreePath,
-					sharedEntries.map((e) => ({ relativePath: e.relativePath }))
+					sharedEntries.map((e) => ({ relativePath: e.relativePath, type: e.type }))
 				);
 			}
 
@@ -269,7 +269,7 @@ export const workspacesRouter = router({
 					await symlinkSharedFiles(
 						project.repoPath,
 						worktreePath,
-						sharedEntries.map((e) => ({ relativePath: e.relativePath }))
+						sharedEntries.map((e) => ({ relativePath: e.relativePath, type: e.type }))
 					);
 				}
 			}
