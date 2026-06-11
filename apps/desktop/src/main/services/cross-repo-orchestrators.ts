@@ -15,7 +15,9 @@ import {
 	type CrossRepoOrchestrator,
 	crossRepoOrchestrators,
 	orchestratorMembers,
+	terminalSessions,
 } from "../db/schema";
+import { getDaemonClient } from "../terminal/daemon-instance";
 import { attachToCrossRepoOrchestrator } from "./cross-repo-orchestrator-membership";
 import { createWorkspace, dispatchAgent, removeWorkspace } from "./workspace-service";
 
@@ -91,6 +93,20 @@ export async function deleteCrossRepoOrchestrator(input: {
 }): Promise<{ ok: true }> {
 	const row = await getCrossRepoOrchestrator({ id: input.id });
 	if (!row) return { ok: true };
+
+	// Stop the coordinator: dispose any pty sessions keyed by this orchestrator id
+	// (the coordinator terminal tab lives in the xro's own pane layout, so its
+	// terminal_sessions rows carry the xro id as workspaceId).
+	const sessions = getDb()
+		.select({ id: terminalSessions.id })
+		.from(terminalSessions)
+		.where(eq(terminalSessions.workspaceId, input.id))
+		.all();
+	const daemon = getDaemonClient();
+	for (const s of sessions) daemon?.dispose(s.id);
+	if (sessions.length > 0) {
+		getDb().delete(terminalSessions).where(eq(terminalSessions.workspaceId, input.id)).run();
+	}
 
 	if (input.removeWorkspaces) {
 		// Capture the workspace ids the orchestrator created before deleting anything,

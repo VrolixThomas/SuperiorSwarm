@@ -2,10 +2,11 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import simpleGit from "simple-git";
 import { getDb } from "../src/main/db";
-import { projects } from "../src/main/db/schema";
+import { projects, terminalSessions } from "../src/main/db/schema";
 import { initRepo } from "../src/main/git/operations";
 import { listCrossRepoMembers } from "../src/main/services/cross-repo-orchestrator-membership";
 import {
@@ -56,6 +57,31 @@ describe("cross-repo-orchestrators CRUD", () => {
 		const id = await createCrossRepoOrchestrator({ name: "doomed", agentKind: "claude" });
 		await deleteCrossRepoOrchestrator({ id });
 		expect(await getCrossRepoOrchestrator({ id })).toBeUndefined();
+	});
+
+	test("delete disposes coordinator terminal sessions", async () => {
+		const xro = await seedCrossRepoOrchestrator({});
+		const now = new Date();
+		getDb()
+			.insert(terminalSessions)
+			.values({
+				id: `term-${nanoid(6)}`,
+				workspaceId: xro,
+				title: "Coordinator",
+				cwd: `/tmp/xro-${xro}`,
+				sortOrder: 0,
+				updatedAt: now,
+			})
+			.run();
+
+		await deleteCrossRepoOrchestrator({ id: xro });
+
+		const left = getDb()
+			.select()
+			.from(terminalSessions)
+			.where(eq(terminalSessions.workspaceId, xro))
+			.all();
+		expect(left).toHaveLength(0);
 	});
 });
 

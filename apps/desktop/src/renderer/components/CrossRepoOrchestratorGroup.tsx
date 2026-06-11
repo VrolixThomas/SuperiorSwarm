@@ -1,4 +1,5 @@
 import { useProjectStore } from "../stores/projects";
+import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import { CrossRepoOrchestratorRow } from "./CrossRepoOrchestratorRow";
 import { OrchestratorIcon } from "./orchestrator/OrchestratorIcon";
@@ -11,7 +12,8 @@ export function CrossRepoOrchestratorGroup() {
 		onSuccess: () => utils.crossRepoOrchestrators.list.invalidate(),
 	});
 	const deleteMut = trpc.crossRepoOrchestrators.delete.useMutation({
-		onSuccess: () => {
+		onSuccess: (_data, vars) => {
+			useTabStore.getState().cleanupWorkspace(vars.id);
 			utils.crossRepoOrchestrators.list.invalidate();
 			utils.workspaces.listByProject.invalidate();
 		},
