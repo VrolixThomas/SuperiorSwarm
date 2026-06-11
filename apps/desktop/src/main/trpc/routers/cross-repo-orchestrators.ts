@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
 	addProjectToCrossRepoOrchestrator,
 	attachToCrossRepoOrchestrator,
+	countCrossRepoMembers,
 	detachFromCrossRepoOrchestrator,
 	listCrossRepoMembers,
 	listLinkedProjects,
@@ -22,6 +23,8 @@ import { publicProcedure, router } from "../index";
 
 export const crossRepoOrchestratorsRouter = router({
 	list: publicProcedure.query(() => listCrossRepoOrchestrators()),
+
+	memberCounts: publicProcedure.query(() => countCrossRepoMembers()),
 
 	get: publicProcedure
 		.input(z.object({ id: z.string() }))

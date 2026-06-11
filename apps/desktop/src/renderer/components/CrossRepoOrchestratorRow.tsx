@@ -4,17 +4,16 @@ import { trpc } from "../trpc/client";
 import { OrchestratorIcon } from "./orchestrator/OrchestratorIcon";
 
 interface Props {
-	orchestrator: { id: string; name: string; colorIndex: number | null };
+	orchestrator: { id: string; name: string; colorIndex: number | null; workDir: string };
+	counts: { total: number; working: number; blocked: number };
 	onRename?: () => void;
 	onDelete?: () => void;
 }
 
-export function CrossRepoOrchestratorRow({ orchestrator, onRename, onDelete }: Props) {
+export function CrossRepoOrchestratorRow({ orchestrator, counts, onRename, onDelete }: Props) {
 	const openXroWorkspace = useTabStore((s) => s.openXroWorkspace);
 	const activeWorkspaceId = useTabStore((s) => s.activeWorkspaceId);
 	const colorIndex = ((orchestrator.colorIndex ?? 0) + 1) as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
-	const members = trpc.crossRepoOrchestrators.listMembers.useQuery({ id: orchestrator.id });
-	const detail = trpc.crossRepoOrchestrators.get.useQuery({ id: orchestrator.id });
 
 	const utils = trpc.useUtils();
 	// Fetch-on-demand: the launch command is only needed at click time.
@@ -29,14 +28,12 @@ export function CrossRepoOrchestratorRow({ orchestrator, onRename, onDelete }: P
 	const swatchVar = `var(--orch-${colorIndex})`;
 	const isActive = activeWorkspaceId === orchestrator.id;
 
-	const memberRows = members.data ?? [];
-	const working = memberRows.filter((m) => m.currentPhase === "working").length;
-	const blocked = memberRows.filter((m) => m.currentPhase === "blocked").length;
-	const memberCount = memberRows.length;
+	const working = counts.working;
+	const blocked = counts.blocked;
+	const memberCount = counts.total;
 
 	async function open() {
-		if (!detail.data) return; // orchestrator row not loaded yet — avoid an empty workDir
-		const workDir = detail.data.workDir;
+		const workDir = orchestrator.workDir;
 		const { terminalTabId, started } = openXroWorkspace(
 			orchestrator.id,
 			orchestrator.name,

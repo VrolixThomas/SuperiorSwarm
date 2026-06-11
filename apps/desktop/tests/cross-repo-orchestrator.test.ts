@@ -11,6 +11,7 @@ import {
 import {
 	addProjectToCrossRepoOrchestrator,
 	attachToCrossRepoOrchestrator,
+	countCrossRepoMembers,
 	detachFromCrossRepoOrchestrator,
 	listCrossRepoMembers,
 	removeProjectFromCrossRepoOrchestrator,
@@ -278,6 +279,20 @@ describe("cross-repo-orchestrator-membership", () => {
 
 		const members = await listCrossRepoMembers({ orchestratorId: xro });
 		expect(members.find((m) => m.workspaceId === ws)?.createdByDispatch).toBe(true);
+	});
+
+	test("countCrossRepoMembers aggregates per orchestrator in one query", async () => {
+		const p = await seedProject();
+		const xro = await seedCrossRepoOrchestrator({ projectIds: [p] });
+		const w1 = await seedWorkspace(p, { name: "w1" });
+		const w2 = await seedWorkspace(p, { name: "w2" });
+		await attachToCrossRepoOrchestrator({ orchestratorId: xro, workspaceId: w1 });
+		await attachToCrossRepoOrchestrator({ orchestratorId: xro, workspaceId: w2 });
+		getDb().update(workspaces).set({ currentPhase: "working" }).where(eq(workspaces.id, w1)).run();
+		getDb().update(workspaces).set({ currentPhase: "blocked" }).where(eq(workspaces.id, w2)).run();
+
+		const counts = countCrossRepoMembers();
+		expect(counts[xro]).toEqual({ total: 2, working: 1, blocked: 1 });
 	});
 
 	test("createdByDispatch does not leak to a different orchestrator", async () => {

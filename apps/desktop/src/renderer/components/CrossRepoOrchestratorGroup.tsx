@@ -7,6 +7,9 @@ import { OrchestratorIcon } from "./orchestrator/OrchestratorIcon";
 
 export function CrossRepoOrchestratorGroup() {
 	const orchs = trpc.crossRepoOrchestrators.list.useQuery();
+	const counts = trpc.crossRepoOrchestrators.memberCounts.useQuery(undefined, {
+		refetchInterval: 30_000,
+	});
 	const utils = trpc.useUtils();
 	const openCreate = useProjectStore((s) => s.openCreateCrossRepoModal);
 	const renameMut = trpc.crossRepoOrchestrators.rename.useMutation({
@@ -95,6 +98,7 @@ export function CrossRepoOrchestratorGroup() {
 							<CrossRepoOrchestratorRow
 								key={o.id}
 								orchestrator={o}
+								counts={counts.data?.[o.id] ?? { total: 0, working: 0, blocked: 0 }}
 								onRename={() => {
 									const name = window.prompt("Rename cross-repo orchestrator", o.name);
 									if (name?.trim()) renameMut.mutate({ id: o.id, name: name.trim() });

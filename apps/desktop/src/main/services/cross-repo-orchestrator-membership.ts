@@ -266,6 +266,32 @@ export async function removeProjectFromCrossRepoOrchestrator(input: {
 	return { detachedCount };
 }
 
+export function countCrossRepoMembers(): Record<
+	string,
+	{ total: number; working: number; blocked: number }
+> {
+	const db = getDb();
+	const rows = db
+		.select({
+			orchestratorId: orchestratorMembers.orchestratorId,
+			currentPhase: workspaces.currentPhase,
+		})
+		.from(orchestratorMembers)
+		.innerJoin(workspaces, eq(workspaces.id, orchestratorMembers.workspaceId))
+		.where(eq(orchestratorMembers.parentKind, "cross_repo"))
+		.all();
+	const out: Record<string, { total: number; working: number; blocked: number }> = {};
+	for (const r of rows) {
+		const existing = out[r.orchestratorId];
+		const c = existing ?? { total: 0, working: 0, blocked: 0 };
+		if (!existing) out[r.orchestratorId] = c;
+		c.total++;
+		if (r.currentPhase === "working") c.working++;
+		if (r.currentPhase === "blocked") c.blocked++;
+	}
+	return out;
+}
+
 export async function listLinkedProjects(input: {
 	orchestratorId: string;
 }): Promise<string[]> {
