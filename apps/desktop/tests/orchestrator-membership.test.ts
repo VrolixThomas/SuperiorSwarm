@@ -1,12 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { getDb } from "../src/main/db";
-import { workspaces } from "../src/main/db/schema";
+import { orchestratorMembers, workspaces } from "../src/main/db/schema";
 import {
 	attachToOrchestrator,
 	detachFromOrchestrator,
 	listMembership,
 } from "../src/main/services/orchestrator-membership";
+import { removeWorkspace } from "../src/main/services/workspace-service";
 import { seedProject, seedWorkspace, setupTestDb, teardownTestDb } from "./helpers/db";
 
 describe("orchestrator-membership", () => {
@@ -130,5 +131,34 @@ describe("orchestrator-membership", () => {
 			.where(eq(workspaces.id, wsId))
 			.get();
 		expect(after?.sortOrder).toBe(initialSort);
+	});
+});
+
+describe("removeWorkspace cascade", () => {
+	beforeEach(() => setupTestDb());
+	afterEach(() => teardownTestDb());
+
+	test("removing an orchestrator workspace deletes its member rows", async () => {
+		const p = await seedProject();
+		const orch = await seedWorkspace(p, { name: "orch", isOrchestrator: true });
+		const child = await seedWorkspace(p, { name: "child" });
+
+		await attachToOrchestrator({ orchestratorId: orch, workspaceId: child });
+
+		// Confirm membership exists before removal
+		const before = await listMembership({ orchestratorId: orch });
+		expect(before).toHaveLength(1);
+
+		// removeWorkspace with force: true skips dirty-check; worktree cleanup
+		// tolerates missing paths and runs in background — acceptable noise.
+		await removeWorkspace({ workspaceId: orch, projectId: p, force: true });
+
+		// Parent-side orchestrator_members rows must be gone
+		const dangling = getDb()
+			.select()
+			.from(orchestratorMembers)
+			.where(eq(orchestratorMembers.orchestratorId, orch))
+			.all();
+		expect(dangling).toHaveLength(0);
 	});
 });

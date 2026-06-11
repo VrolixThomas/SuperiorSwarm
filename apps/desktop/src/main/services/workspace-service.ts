@@ -436,6 +436,14 @@ export async function removeWorkspace(
 		.set({ fromWorkspaceId: null })
 		.where(eq(agentMessages.fromWorkspaceId, input.workspaceId))
 		.run();
+	// The orchestrator_id → workspaces FK (ON DELETE CASCADE) was dropped in
+	// 0045_add_cross_repo_orchestrators.sql so orchestrator_id can hold xro ids.
+	// Replicate the parent-side cascade at the app layer: deleting an orchestrator
+	// workspace must delete its membership rows. (Member-side rows are still
+	// covered by the surviving workspace_id FK cascade.)
+	db.delete(orchestratorMembers)
+		.where(eq(orchestratorMembers.orchestratorId, input.workspaceId))
+		.run();
 	if (wt) db.delete(worktrees).where(eq(worktrees.id, wt.id)).run();
 	db.delete(workspaces).where(eq(workspaces.id, input.workspaceId)).run();
 
