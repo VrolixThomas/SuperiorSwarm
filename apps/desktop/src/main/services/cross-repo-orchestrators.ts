@@ -1,5 +1,5 @@
 import { appendFileSync, mkdirSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { and, asc, eq, max } from "drizzle-orm";
 import { app } from "electron";
 import { nanoid } from "nanoid";
@@ -13,6 +13,7 @@ import {
 import { getDb } from "../db";
 import {
 	type CrossRepoOrchestrator,
+	agentMessages,
 	crossRepoOrchestratorProjects,
 	crossRepoOrchestrators,
 	orchestratorMembers,
@@ -189,6 +190,13 @@ export async function deleteCrossRepoOrchestrator(input: {
 			)
 		)
 		.run();
+	// agent_messages.from_workspace_id can hold xro ids (FK dropped in 0046) —
+	// replicate ON DELETE SET NULL for this orchestrator's sent messages.
+	getDb()
+		.update(agentMessages)
+		.set({ fromWorkspaceId: null })
+		.where(eq(agentMessages.fromWorkspaceId, input.id))
+		.run();
 	getDb().delete(crossRepoOrchestrators).where(eq(crossRepoOrchestrators.id, input.id)).run();
 	removeCrossRepoEventsFile(input.id);
 	invalidateAllCrossRepoLinks();
@@ -287,8 +295,10 @@ export async function dispatchAcrossRepos(
 
 	// Let the coordinator see what was dispatched and why, via its events file.
 	try {
+		const eventsPath = crossRepoEventsFilePath(input.orchestratorId);
+		mkdirSync(dirname(eventsPath), { recursive: true });
 		appendFileSync(
-			crossRepoEventsFilePath(input.orchestratorId),
+			eventsPath,
 			`${JSON.stringify({
 				event: "dispatch",
 				task: input.task,

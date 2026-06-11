@@ -480,7 +480,7 @@ describe("xro sendMessage broadcast", () => {
 
 		const res = await sendMessage(
 			{ kind: "xro", xroId: xro, linkedProjectIds: [p1, p2] },
-			{ kind: "info", content: "hello all" }
+			{ kind: "note", content: "hello all" }
 		);
 		setEventBus(null);
 

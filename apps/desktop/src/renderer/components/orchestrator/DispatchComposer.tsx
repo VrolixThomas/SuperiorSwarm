@@ -49,6 +49,8 @@ export function DispatchComposer({
 			if (res.failed.length === 0) setTask("");
 			utils.crossRepoOrchestrators.listMembers.invalidate({ id: orchestratorId });
 			utils.crossRepoOrchestrators.memberCounts.invalidate();
+			// Dispatch creates worktrees in each target project — refresh the sidebar trees.
+			utils.workspaces.listByProject.invalidate();
 		},
 	});
 

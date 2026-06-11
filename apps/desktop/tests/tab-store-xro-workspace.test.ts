@@ -22,7 +22,7 @@ describe("openXroWorkspace", () => {
 		expect(terminals).toHaveLength(1);
 		expect(canvases).toHaveLength(1);
 		const [term] = terminals;
-		expect(result.terminalTabId).toBe(term?.id);
+		expect(term?.id).toBe(result.terminalTabId);
 
 		const layout = usePaneStore.getState().layouts["xro-1"];
 		expect(layout?.type).toBe("split");
@@ -66,7 +66,7 @@ describe("openXroWorkspace", () => {
 		// The terminal tab for the new coordinator should also exist
 		const terminals = allTabs.filter((t) => t.kind === "terminal");
 		expect(terminals).toHaveLength(1);
-		expect(second.terminalTabId).toBe(terminals[0]?.id);
+		expect(terminals[0]?.id).toBe(second.terminalTabId);
 
 		// ── Structural guard ─────────────────────────────────────────────────
 		// Without the `if (!existingCanvas)` guard in openXroWorkspace, splitPane

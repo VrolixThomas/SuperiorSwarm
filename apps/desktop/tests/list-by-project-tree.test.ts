@@ -47,8 +47,8 @@ describe("listByProjectTree", () => {
 
 		const tree = await listByProjectTree({ projectId: p });
 		expect(tree.orchestrators).toHaveLength(1);
-		expect(tree.orchestrators[0].workspace.id).toBe(orch);
-		expect(tree.orchestrators[0].children.map((c) => c.id)).toEqual([c2, c1]);
+		expect(tree.orchestrators[0]?.workspace.id).toBe(orch);
+		expect(tree.orchestrators[0]?.children.map((c) => c.id)).toEqual([c2, c1]);
 		expect(tree.loose.map((w) => w.id)).toEqual([loose]);
 	});
 
