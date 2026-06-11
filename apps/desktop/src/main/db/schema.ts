@@ -20,6 +20,9 @@ export const projects = sqliteTable("projects", {
 	status: text("status", { enum: ["cloning", "initializing", "ready", "error"] })
 		.notNull()
 		.default("ready"),
+	kind: text("kind", { enum: ["repo", "folder"] })
+		.notNull()
+		.default("repo"),
 	createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
 	updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
 });
@@ -49,12 +52,14 @@ export const workspaces = sqliteTable(
 		projectId: text("project_id")
 			.notNull()
 			.references(() => projects.id, { onDelete: "cascade" }),
-		type: text("type", { enum: ["branch", "worktree", "review"] }).notNull(),
+		type: text("type", { enum: ["branch", "worktree", "review", "folder"] }).notNull(),
 		name: text("name").notNull(),
 		worktreeId: text("worktree_id").references(() => worktrees.id, {
 			onDelete: "cascade",
 		}),
 		terminalId: text("terminal_id"),
+		// cwd override for "folder" workspaces; null = project path. Always null for git types.
+		folderPath: text("folder_path"),
 		prProvider: text("pr_provider"),
 		prIdentifier: text("pr_identifier"),
 		reviewDraftId: text("review_draft_id").references(() => reviewDrafts.id, {
