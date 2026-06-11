@@ -1,3 +1,4 @@
+import { usePaneStore } from "../stores/pane-store";
 import { useProjectStore } from "../stores/projects";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
@@ -13,6 +14,7 @@ export function CrossRepoOrchestratorGroup() {
 	});
 	const deleteMut = trpc.crossRepoOrchestrators.delete.useMutation({
 		onSuccess: (_data, vars) => {
+			usePaneStore.getState().clearLayout(vars.id);
 			useTabStore.getState().cleanupWorkspace(vars.id);
 			utils.crossRepoOrchestrators.list.invalidate();
 			utils.workspaces.listByProject.invalidate();
