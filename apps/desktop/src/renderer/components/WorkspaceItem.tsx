@@ -462,6 +462,7 @@ export function WorkspaceItem({
 		onSuccess: () => {
 			utils.workspaces.listByProject.invalidate({ projectId });
 			utils.crossRepoOrchestrators.listMembers.invalidate();
+			utils.crossRepoOrchestrators.memberCounts.invalidate();
 		},
 		onError: (err) => console.warn("[xro] attach failed:", err.message),
 	});

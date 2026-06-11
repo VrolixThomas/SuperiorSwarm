@@ -48,6 +48,7 @@ export function DispatchComposer({
 		onSuccess: (res) => {
 			if (res.failed.length === 0) setTask("");
 			utils.crossRepoOrchestrators.listMembers.invalidate({ id: orchestratorId });
+			utils.crossRepoOrchestrators.memberCounts.invalidate();
 		},
 	});
 

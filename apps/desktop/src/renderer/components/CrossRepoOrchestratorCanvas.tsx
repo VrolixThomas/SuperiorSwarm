@@ -18,6 +18,7 @@ export function CrossRepoOrchestratorCanvas({ orchestratorId }: { orchestratorId
 		onSuccess: () => {
 			utils.crossRepoOrchestrators.listLinkedProjects.invalidate({ id: orchestratorId });
 			utils.crossRepoOrchestrators.listMembers.invalidate({ id: orchestratorId });
+			utils.crossRepoOrchestrators.memberCounts.invalidate();
 		},
 	});
 	const projectsById = useMemo(
