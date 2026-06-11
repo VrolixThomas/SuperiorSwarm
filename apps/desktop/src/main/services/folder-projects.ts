@@ -1,11 +1,12 @@
 import { existsSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join, sep } from "node:path";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { getDb } from "../db";
 import { type Project, projects, workspaces } from "../db/schema";
-import { isGitRepo } from "../git/operations";
+import { detectDefaultBranch, getGitRoot, isGitRepo, parseRemoteUrl } from "../git/operations";
+import { ensureRepoExclude } from "./git-exclude";
 import { randomColor } from "./project-colors";
 
 export function resolveTilde(p: string): string {
@@ -154,4 +155,81 @@ export async function createFolderWorkspace(
 		.run();
 
 	return { workspaceId: id, folderPath };
+}
+
+export async function convertProjectToRepo(input: { id: string }): Promise<Project> {
+	const db = getDb();
+	const project = db.select().from(projects).where(eq(projects.id, input.id)).get();
+	if (!project) {
+		throw new Error(`Project not found: ${input.id}`);
+	}
+	if (project.kind !== "folder") {
+		return project;
+	}
+
+	const gitRoot = await getGitRoot(project.repoPath);
+	if (!gitRoot) {
+		throw new Error("Not a git repository. Run git init in the folder first.");
+	}
+	if (realpathSync(gitRoot) !== realpathSync(project.repoPath)) {
+		throw new Error(
+			`Folder is inside a git repository rooted at ${gitRoot}. Open that path as a repository instead.`
+		);
+	}
+
+	const defaultBranch = await detectDefaultBranch(project.repoPath);
+	const remote = await parseRemoteUrl(project.repoPath);
+	const now = new Date();
+	db.update(projects)
+		.set({
+			kind: "repo",
+			defaultBranch,
+			remoteOwner: remote?.owner ?? null,
+			remoteRepo: remote?.repo ?? null,
+			remoteHost: remote?.host ?? null,
+			updatedAt: now,
+		})
+		.where(eq(projects.id, input.id))
+		.run();
+	try {
+		ensureRepoExclude(project.repoPath);
+	} catch (err) {
+		console.warn("[git-exclude] failed:", err);
+	}
+
+	// Promote the default folder workspace (cwd = project root) to the branch workspace.
+	const defaultWs = db
+		.select()
+		.from(workspaces)
+		.where(
+			and(
+				eq(workspaces.projectId, input.id),
+				eq(workspaces.type, "folder"),
+				isNull(workspaces.folderPath)
+			)
+		)
+		.get();
+	if (defaultWs) {
+		db.update(workspaces)
+			.set({ type: "branch", name: defaultBranch, updatedAt: now })
+			.where(eq(workspaces.id, defaultWs.id))
+			.run();
+	} else {
+		db.insert(workspaces)
+			.values({
+				id: nanoid(),
+				projectId: input.id,
+				type: "branch",
+				name: defaultBranch,
+				worktreeId: null,
+				terminalId: null,
+				createdAt: now,
+				updatedAt: now,
+			})
+			.run();
+	}
+
+	const updated = db.select().from(projects).where(eq(projects.id, input.id)).get();
+	if (!updated) throw new Error(`Project not found after convert: ${input.id}`);
+	return updated;
 }

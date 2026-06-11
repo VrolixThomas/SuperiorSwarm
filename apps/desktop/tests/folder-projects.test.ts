@@ -9,6 +9,7 @@ import simpleGit from "simple-git";
 import { getDb, schema } from "../src/main/db";
 import { initRepo } from "../src/main/git/operations";
 import {
+	convertProjectToRepo,
 	createFolderWorkspace,
 	openFolderProject,
 } from "../src/main/services/folder-projects";
@@ -213,6 +214,64 @@ describe("createFolderWorkspace", () => {
 		await createFolderWorkspace({ projectId: project.id, name: "dup" });
 		await expect(createFolderWorkspace({ projectId: project.id, name: "dup" })).rejects.toThrow(
 			/already in use/i
+		);
+	});
+});
+
+describe("convertProjectToRepo", () => {
+	test("rejects non-git folders", async () => {
+		const dir = join(TMP, "conv1");
+		mkdirSync(dir);
+		const res = await openFolderProject({ path: dir });
+		track(res.project?.id);
+		await expect(convertProjectToRepo({ id: res.project?.id ?? "" })).rejects.toThrow(
+			/not a git repository/i
+		);
+	});
+
+	test("converts: kind=repo, default branch detected, default workspace becomes branch type", async () => {
+		const dir = join(TMP, "conv2");
+		mkdirSync(dir);
+		const res = await openFolderProject({ path: dir });
+		track(res.project?.id);
+		const projectId = res.project?.id ?? "";
+
+		// extra subfolder workspace must survive untouched
+		const sub = join(dir, "api");
+		mkdirSync(sub);
+		await createFolderWorkspace({ projectId, name: "api", folderPath: sub });
+
+		await initRepo(dir, "main");
+		await simpleGit(dir).raw(["commit", "--allow-empty", "-m", "init"]);
+
+		const converted = await convertProjectToRepo({ id: projectId });
+		expect(converted.kind).toBe("repo");
+		expect(converted.defaultBranch).toBe("main");
+
+		const db = getDb();
+		const ws = db
+			.select()
+			.from(schema.workspaces)
+			.where(eq(schema.workspaces.projectId, projectId))
+			.all();
+		const branchWs = ws.filter((w) => w.type === "branch");
+		const folderWs = ws.filter((w) => w.type === "folder");
+		expect(branchWs).toHaveLength(1);
+		expect(branchWs[0]?.name).toBe("main");
+		expect(folderWs).toHaveLength(1);
+		expect(folderWs[0]?.name).toBe("api");
+	});
+
+	test("rejects folders nested inside a repo rooted elsewhere", async () => {
+		const root = join(TMP, "conv3");
+		mkdirSync(root);
+		await initRepo(root, "main");
+		const nested = join(root, "nested");
+		mkdirSync(nested);
+		const res = await openFolderProject({ path: nested, force: true });
+		track(res.project?.id);
+		await expect(convertProjectToRepo({ id: res.project?.id ?? "" })).rejects.toThrow(
+			/rooted at/i
 		);
 	});
 });
