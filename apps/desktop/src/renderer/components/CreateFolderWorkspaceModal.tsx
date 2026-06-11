@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useProjectStore } from "../stores/projects";
 import { trpc } from "../trpc/client";
 
@@ -20,12 +20,12 @@ export function CreateFolderWorkspaceModal() {
 		onError: (err) => setError(err.message),
 	});
 
-	function handleClose() {
+	const handleClose = useCallback(() => {
 		setName("");
 		setFolderPath(null);
 		setError(null);
 		close();
-	}
+	}, [close]);
 
 	useEffect(() => {
 		if (!isOpen) return;
@@ -34,7 +34,7 @@ export function CreateFolderWorkspaceModal() {
 		};
 		document.addEventListener("keydown", handleKeyDown);
 		return () => document.removeEventListener("keydown", handleKeyDown);
-	});
+	}, [isOpen, handleClose]);
 
 	if (!isOpen || !projectId) return null;
 

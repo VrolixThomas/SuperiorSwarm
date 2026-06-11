@@ -475,6 +475,8 @@ export function WorkspaceItem({
 		projectRepoPath,
 	]);
 
+	const supportsOrchestrator = workspace.type === "worktree" || workspace.type === "folder";
+
 	const handleDelete = useCallback(() => {
 		const confirmed = window.confirm(
 			workspace.type === "folder"
@@ -509,7 +511,7 @@ export function WorkspaceItem({
 					const mod = e.metaKey || e.ctrlKey;
 					if (mod && e.shiftKey && (e.key === "a" || e.key === "A")) {
 						e.preventDefault();
-						if (!workspace.isOrchestrator && indentLevel === 0 && workspace.type === "worktree") {
+						if (!workspace.isOrchestrator && indentLevel === 0 && supportsOrchestrator) {
 							const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
 							setContextMenu({ x: rect.right - 200, y: rect.bottom });
 						}
@@ -612,7 +614,7 @@ export function WorkspaceItem({
 				{alert && <SwarmIndicator alert={alert} className="ml-auto" />}
 			</button>
 
-			{indentLevel === 0 && !workspace.isOrchestrator && workspace.type === "worktree" && (
+			{indentLevel === 0 && !workspace.isOrchestrator && supportsOrchestrator && (
 				<button
 					type="button"
 					aria-label="Promote to orchestrator"
@@ -633,8 +635,8 @@ export function WorkspaceItem({
 					onClose={() => setContextMenu(null)}
 					onDelete={handleDelete}
 					deleteLabel={workspace.type === "folder" ? "Remove Workspace" : undefined}
-					onSetOrchestrator={workspace.type === "worktree" ? handleSetOrchestrator : undefined}
-					onUnsetOrchestrator={workspace.type === "worktree" ? handleUnsetOrchestrator : undefined}
+					onSetOrchestrator={supportsOrchestrator ? handleSetOrchestrator : undefined}
+					onUnsetOrchestrator={supportsOrchestrator ? handleUnsetOrchestrator : undefined}
 					isOrchestrator={workspace.isOrchestrator}
 					orchestrators={orchestratorsInProject}
 					onAttachTo={(orchId) => {
