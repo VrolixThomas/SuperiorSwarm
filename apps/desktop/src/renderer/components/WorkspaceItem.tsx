@@ -8,10 +8,11 @@ import { trpc } from "../trpc/client";
 
 interface WorkspaceData {
 	id: string;
-	type: "branch" | "worktree";
+	type: "branch" | "worktree" | "folder";
 	name: string;
 	terminalId: string | null;
 	worktreePath: string | null;
+	folderPath: string | null;
 	prProvider: string | null;
 	currentPhase?: string | null;
 	statusText?: string | null;
@@ -158,6 +159,7 @@ function WorkspaceContextMenu({
 	position,
 	onClose,
 	onDelete,
+	deleteLabel,
 	onSetOrchestrator,
 	onUnsetOrchestrator,
 	isOrchestrator,
@@ -171,6 +173,7 @@ function WorkspaceContextMenu({
 	position: { x: number; y: number };
 	onClose: () => void;
 	onDelete: () => void;
+	deleteLabel?: string;
 	onSetOrchestrator?: () => void;
 	onUnsetOrchestrator?: () => void;
 	isOrchestrator?: boolean | null;
@@ -314,7 +317,7 @@ function WorkspaceContextMenu({
 					if (e.key === "Enter") onDelete();
 				}}
 			>
-				Delete Worktree
+				{deleteLabel ?? "Delete Worktree"}
 			</div>
 		</div>
 	);
@@ -446,7 +449,7 @@ export function WorkspaceItem({
 		const cwd =
 			workspace.type === "worktree" && workspace.worktreePath
 				? workspace.worktreePath
-				: projectRepoPath;
+				: (workspace.folderPath ?? projectRepoPath);
 
 		const store = useTabStore.getState();
 		store.setActiveWorkspace(workspace.id, cwd);
@@ -466,6 +469,7 @@ export function WorkspaceItem({
 		workspace.id,
 		workspace.type,
 		workspace.worktreePath,
+		workspace.folderPath,
 		workspace.name,
 		projectName,
 		projectRepoPath,
@@ -473,7 +477,9 @@ export function WorkspaceItem({
 
 	const handleDelete = useCallback(() => {
 		const confirmed = window.confirm(
-			`Delete worktree "${workspace.name}"? This will remove the worktree directory.`
+			workspace.type === "folder"
+				? `Remove workspace "${workspace.name}"? Files on disk are not deleted.`
+				: `Delete worktree "${workspace.name}"? This will remove the worktree directory.`
 		);
 		if (confirmed) {
 			// Fire-and-forget; backend re-disposes PTYs as a safety net.
@@ -494,7 +500,7 @@ export function WorkspaceItem({
 				type="button"
 				onClick={handleClick}
 				onContextMenu={(e) => {
-					if (workspace.type === "worktree") {
+					if (workspace.type === "worktree" || workspace.type === "folder") {
 						e.preventDefault();
 						setContextMenu({ x: e.clientX, y: e.clientY });
 					}
@@ -626,6 +632,7 @@ export function WorkspaceItem({
 					position={contextMenu}
 					onClose={() => setContextMenu(null)}
 					onDelete={handleDelete}
+					deleteLabel={workspace.type === "folder" ? "Remove Workspace" : undefined}
 					onSetOrchestrator={workspace.type === "worktree" ? handleSetOrchestrator : undefined}
 					onUnsetOrchestrator={workspace.type === "worktree" ? handleUnsetOrchestrator : undefined}
 					isOrchestrator={workspace.isOrchestrator}
@@ -643,7 +650,9 @@ export function WorkspaceItem({
 						setContextMenu(null);
 					}}
 					canAttach={
-						!workspace.isOrchestrator && indentLevel === 0 && workspace.type === "worktree"
+						!workspace.isOrchestrator &&
+						indentLevel === 0 &&
+						(workspace.type === "worktree" || workspace.type === "folder")
 					}
 					canDetach={isChildOfOrchestrator}
 				/>

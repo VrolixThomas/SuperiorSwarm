@@ -2,6 +2,7 @@ import type { MouseEvent, ReactNode } from "react";
 
 interface RepoGroupProps {
 	name: string;
+	icon?: ReactNode;
 	isActive: boolean;
 	isExpanded: boolean;
 	onToggle?: () => void;
@@ -18,6 +19,7 @@ interface RepoGroupProps {
  */
 export function RepoGroup({
 	name,
+	icon,
 	isActive,
 	isExpanded,
 	onToggle,
@@ -48,7 +50,10 @@ export function RepoGroup({
 					].join(" ")}
 				>
 					<div className="min-w-0 flex-1">
-						<div className="truncate text-[13px] font-semibold">{name}</div>
+						<div className="flex items-center gap-1.5">
+							{icon}
+							<div className="truncate text-[13px] font-semibold">{name}</div>
+						</div>
 						{subTitle}
 					</div>
 

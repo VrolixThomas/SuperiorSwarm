@@ -70,6 +70,7 @@ interface ProjectItemProps {
 export function ProjectItem({ project, isExpanded, onToggle }: ProjectItemProps) {
 	const isCloning = project.status === "cloning";
 	const isReady = project.status === "ready";
+	const isFolderProject = project.kind === "folder";
 
 	// Poll clone progress when cloning
 	const { data: progress } = trpc.projects.cloneProgress.useQuery(
@@ -247,6 +248,25 @@ export function ProjectItem({ project, isExpanded, onToggle }: ProjectItemProps)
 		<>
 			<RepoGroup
 				name={project.name}
+				icon={
+					isFolderProject ? (
+						<svg
+							aria-hidden="true"
+							width="11"
+							height="11"
+							viewBox="0 0 16 16"
+							fill="none"
+							className="shrink-0 text-[var(--text-quaternary)]"
+						>
+							<path
+								d="M1.5 3.5h4l1.5 2h7.5v7a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1v-9z"
+								stroke="currentColor"
+								strokeWidth="1.2"
+								strokeLinejoin="round"
+							/>
+						</svg>
+					) : undefined
+				}
 				isActive={isActiveProject}
 				isExpanded={isExpanded}
 				onToggle={isReady ? onToggle : undefined}
@@ -267,12 +287,20 @@ export function ProjectItem({ project, isExpanded, onToggle }: ProjectItemProps)
 							type="button"
 							onClick={(e) => {
 								e.stopPropagation();
-								openCreateWorktreeModal(project.id);
+								if (isFolderProject) {
+									useProjectStore.getState().openCreateFolderWorkspaceModal(project.id);
+								} else {
+									openCreateWorktreeModal(project.id);
+								}
 							}}
 							onKeyDown={(e) => {
 								if (e.key === "Enter") {
 									e.stopPropagation();
-									openCreateWorktreeModal(project.id);
+									if (isFolderProject) {
+										useProjectStore.getState().openCreateFolderWorkspaceModal(project.id);
+									} else {
+										openCreateWorktreeModal(project.id);
+									}
 								}
 							}}
 							className={[
@@ -282,7 +310,7 @@ export function ProjectItem({ project, isExpanded, onToggle }: ProjectItemProps)
 									? "text-[var(--text-quaternary)] hover:text-[var(--text-secondary)]"
 									: "text-[#3a3a42] hover:text-[#505058]",
 							].join(" ")}
-							title="New Worktree"
+							title={isFolderProject ? "New Workspace" : "New Worktree"}
 						>
 							+
 						</button>
@@ -427,7 +455,7 @@ function OrchestratorGroupBlock({
 
 	const handleActivate = useCallback(() => {
 		useAgentAlertStore.getState().clearAlert(node.workspace.id);
-		const cwd = node.workspace.worktreePath ?? projectRepoPath;
+		const cwd = node.workspace.worktreePath ?? node.workspace.folderPath ?? projectRepoPath;
 		const store = useTabStore.getState();
 		store.setActiveWorkspace(node.workspace.id, cwd);
 		const existing = store.getTabsByWorkspace(node.workspace.id);
@@ -441,6 +469,7 @@ function OrchestratorGroupBlock({
 		node.workspace.id,
 		node.workspace.name,
 		node.workspace.worktreePath,
+		node.workspace.folderPath,
 		projectName,
 		projectRepoPath,
 		attachTerminal,

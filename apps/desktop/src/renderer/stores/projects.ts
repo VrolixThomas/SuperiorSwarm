@@ -27,6 +27,10 @@ interface ProjectStore {
 	closeAddModal: () => void;
 	openCreateWorktreeModal: (projectId: string, opts?: { asOrchestrator?: boolean }) => void;
 	closeCreateWorktreeModal: () => void;
+	isCreateFolderWorkspaceModalOpen: boolean;
+	createFolderWorkspaceProjectId: string | null;
+	openCreateFolderWorkspaceModal: (projectId: string) => void;
+	closeCreateFolderWorkspaceModal: () => void;
 	openSharedFilesPanel: (projectId: string) => void;
 	closeSharedFilesPanel: () => void;
 	sidebarView: "main" | "settings";
@@ -84,6 +88,13 @@ export const useProjectStore = create<ProjectStore>((set) => ({
 			createWorktreeProjectId: null,
 			createWorktreeAsOrchestrator: false,
 		}),
+
+	isCreateFolderWorkspaceModalOpen: false,
+	createFolderWorkspaceProjectId: null,
+	openCreateFolderWorkspaceModal: (projectId) =>
+		set({ isCreateFolderWorkspaceModalOpen: true, createFolderWorkspaceProjectId: projectId }),
+	closeCreateFolderWorkspaceModal: () =>
+		set({ isCreateFolderWorkspaceModalOpen: false, createFolderWorkspaceProjectId: null }),
 
 	openSharedFilesPanel: (projectId) => set({ sharedFilesProjectId: projectId }),
 	closeSharedFilesPanel: () => set({ sharedFilesProjectId: null }),
