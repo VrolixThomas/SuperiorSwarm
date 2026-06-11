@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.9.5 (2026-06-11)
+
+### What's New
+
+Terminals no longer show gibberish characters when reopening a workspace. Replayed terminal output is now properly gated: stale query responses are suppressed and leftover terminal modes are reset, so restored sessions display clean output every time.
+
+### Changes
+
+- Fix gibberish showing (#116)
+
 ## v0.9.4 (2026-05-30)
 
 ### What's New
