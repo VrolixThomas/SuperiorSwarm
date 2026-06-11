@@ -42,7 +42,7 @@ function CreateCrossRepoOrchestratorModalInner({ onClose }: { onClose: () => voi
 
 	async function handleCreate() {
 		const trimmed = name.trim();
-		if (!trimmed) return;
+		if (!trimmed || selected.size === 0 || isPending) return;
 		setErr(null);
 		setIsPending(true);
 		try {
