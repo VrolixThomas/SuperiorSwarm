@@ -782,9 +782,10 @@ export async function sendMessage(
 		const messageId = nanoid();
 		const now = new Date();
 		for (const projectId of ctx.linkedProjectIds) {
+			const rowId = `${messageId}-${projectId}`;
 			db.insert(agentMessages)
 				.values({
-					id: `${messageId}-${projectId}`,
+					id: rowId,
 					projectId,
 					fromWorkspaceId: ctx.xroId,
 					toWorkspaceId: null,
@@ -796,7 +797,7 @@ export async function sendMessage(
 				.run();
 			eventBus?.emit(projectId, {
 				event: "message",
-				messageId,
+				messageId: rowId,
 				from: ctx.xroId,
 				to: null,
 				kind: input.kind,

@@ -14,6 +14,7 @@ import {
 	setEventsDir,
 } from "../src/main/control-plane/orchestrator-event-sink";
 import { getDb, schema } from "../src/main/db";
+import { agentMessages } from "../src/main/db/schema";
 import { initRepo } from "../src/main/git/operations";
 import {
 	type CallerContext,
@@ -27,6 +28,7 @@ import {
 	setStatus,
 	unsetOrchestrator,
 } from "../src/main/services/workspace-service";
+import { seedCrossRepoOrchestrator, seedProject } from "./helpers/db";
 
 function wsCtx(workspaceId: string, projectId: string): CallerContext {
 	return { kind: "workspace", workspaceId, projectId };
@@ -458,5 +460,39 @@ describe("resumeAgent", () => {
 				{ respawnAgent: async () => undefined }
 			)
 		).rejects.toThrow(/resume_not_supported/);
+	});
+});
+
+describe("xro sendMessage broadcast", () => {
+	test("xro broadcast emits the per-project row id, not the bare id", async () => {
+		const p1 = await seedProject();
+		const p2 = await seedProject();
+		const xro = await seedCrossRepoOrchestrator({ projectIds: [p1, p2] });
+
+		const emitted: Array<{ projectId: string; messageId: string }> = [];
+		setEventBus({
+			emit: (projectId: string, ev: { messageId?: string }) => {
+				if (ev.messageId) emitted.push({ projectId, messageId: ev.messageId });
+			},
+			subscribe: () => () => {},
+			subscribeAll: () => () => {},
+		} as never);
+
+		const res = await sendMessage(
+			{ kind: "xro", xroId: xro, linkedProjectIds: [p1, p2] },
+			{ kind: "info", content: "hello all" }
+		);
+		setEventBus(null);
+
+		expect(emitted).toHaveLength(2);
+		for (const e of emitted) {
+			expect(e.messageId).toBe(`${res.messageId}-${e.projectId}`);
+			const row = getDb()
+				.select()
+				.from(agentMessages)
+				.where(eq(agentMessages.id, e.messageId))
+				.get();
+			expect(row).toBeDefined();
+		}
 	});
 });
