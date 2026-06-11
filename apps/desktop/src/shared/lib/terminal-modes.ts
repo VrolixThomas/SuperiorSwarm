@@ -7,18 +7,7 @@
 export const RESET_STALE_MODES =
 	"\x1b[?9l\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1005l\x1b[?1006l\x1b[?1015l\x1b[?1016l\x1b[?1004l\x1b[?25h";
 
-const SHELLS = new Set([
-	"zsh",
-	"bash",
-	"fish",
-	"sh",
-	"dash",
-	"nu",
-	"pwsh",
-	"tcsh",
-	"csh",
-	"ksh",
-]);
+const SHELLS = new Set(["zsh", "bash", "fish", "sh", "dash", "nu", "pwsh", "tcsh", "csh", "ksh"]);
 
 // node-pty's IPty.process reports the PTY's current foreground process name
 // (e.g. "zsh", "-zsh" for login shells, sometimes a full path). A shell in the

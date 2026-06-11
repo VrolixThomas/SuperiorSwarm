@@ -13,8 +13,8 @@ import { type Socket, connect } from "node:net";
 import {
 	type ClientMessage,
 	type DaemonMessage,
-	type TerminalDataMeta,
 	SUPERIORSWARM_DIR,
+	type TerminalDataMeta,
 } from "../../shared/daemon-protocol";
 import {
 	DaemonOwnershipMismatchError,

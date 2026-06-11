@@ -422,6 +422,13 @@ describe("PtyManager", () => {
 
 	test("attach returns null for unknown session", () => {
 		const manager2 = new PtyManager();
-		expect(manager2.attach("nope", () => {}, () => {}, "client-x")).toBeNull();
+		expect(
+			manager2.attach(
+				"nope",
+				() => {},
+				() => {},
+				"client-x"
+			)
+		).toBeNull();
 	});
 });
