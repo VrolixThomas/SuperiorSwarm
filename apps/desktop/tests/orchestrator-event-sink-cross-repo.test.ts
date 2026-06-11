@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { EventBus } from "../src/main/control-plane/event-bus";
@@ -87,5 +87,27 @@ describe("orchestrator-event-sink cross-repo aggregation", () => {
 
 		expect(readFileSync(crossRepoEventsFilePath(xro1), "utf-8")).toContain("ws-y");
 		expect(readFileSync(crossRepoEventsFilePath(xro2), "utf-8")).toContain("ws-y");
+	});
+
+	test("a failing xro events file does not block later xros", async () => {
+		const p = await seedProject();
+		const xroBad = await seedCrossRepoOrchestrator({ projectIds: [p] });
+		const xroGood = await seedCrossRepoOrchestrator({ projectIds: [p] });
+		invalidateCrossRepoLinksCache(p);
+
+		// Make the BAD xro's events path unwritable: create a DIRECTORY at its file path.
+		mkdirSync(crossRepoEventsFilePath(xroBad), { recursive: true });
+
+		bus.emit(p, {
+			event: "status",
+			workspaceId: "w",
+			phase: "working",
+			statusText: null,
+			needs: null,
+			ts: new Date().toISOString(),
+		});
+
+		const goodContent = readFileSync(crossRepoEventsFilePath(xroGood), "utf-8");
+		expect(goodContent).toContain('"status"');
 	});
 });

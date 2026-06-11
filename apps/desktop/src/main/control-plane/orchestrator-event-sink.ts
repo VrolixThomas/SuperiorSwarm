@@ -78,11 +78,20 @@ export function attachOrchestratorEventSink(bus: EventBus): () => void {
 
 		try {
 			const xros = crossRepoOrchestratorsForProject(projectId);
+			let anyFailed = false;
 			for (const xroId of xros) {
-				appendFileSync(crossRepoEventsFilePath(xroId), line, "utf-8");
+				try {
+					appendFileSync(crossRepoEventsFilePath(xroId), line, "utf-8");
+				} catch (err) {
+					anyFailed = true;
+					console.warn(`[orchestrator-event-sink] cross-repo write failed for ${xroId}:`, err);
+				}
 			}
+			// Refresh the link cache only when something failed — the failure may be a
+			// stale link (xro deleted) that the next lookup resolves.
+			if (anyFailed) crossRepoLinks.delete(projectId);
 		} catch (err) {
-			console.warn("[orchestrator-event-sink] cross-repo write failed:", err);
+			console.warn("[orchestrator-event-sink] cross-repo lookup failed:", err);
 			crossRepoLinks.delete(projectId);
 		}
 	});
