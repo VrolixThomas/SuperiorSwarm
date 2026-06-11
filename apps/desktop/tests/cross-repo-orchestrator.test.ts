@@ -15,7 +15,10 @@ import {
 	listCrossRepoMembers,
 	removeProjectFromCrossRepoOrchestrator,
 } from "../src/main/services/cross-repo-orchestrator-membership";
-import { deleteCrossRepoOrchestrator } from "../src/main/services/cross-repo-orchestrators";
+import {
+	deleteCrossRepoOrchestrator,
+	dispatchAcrossRepos,
+} from "../src/main/services/cross-repo-orchestrators";
 import {
 	seedCrossRepoOrchestrator,
 	seedProject,
@@ -312,5 +315,77 @@ describe("cross-repo-orchestrator-membership", () => {
 			.where(eq(workspaces.id, ws))
 			.get();
 		expect(row?.id).toBe(ws);
+	});
+});
+
+describe("dispatchAcrossRepos", () => {
+	beforeEach(() => setupTestDb());
+	afterEach(() => teardownTestDb());
+
+	test("dispatchAcrossRepos starts an agent with the task in each created workspace", async () => {
+		const p1 = await seedProject();
+		const p2 = await seedProject();
+		const xro = await seedCrossRepoOrchestrator({ projectIds: [p1, p2] });
+
+		const dispatched: Array<{ workspaceId: string; prompt: string }> = [];
+		const result = await dispatchAcrossRepos(
+			{
+				orchestratorId: xro,
+				task: "Fix the login flow",
+				targets: [
+					{ projectId: p1, branch: "feat/fix-login" },
+					{ projectId: p2, branch: "feat/fix-login" },
+				],
+			},
+			{
+				createWorkspaceFn: async (i) => {
+					const ws = await seedWorkspace(i.projectId, { name: i.branch });
+					return { workspaceId: ws, worktreeId: "wt-stub" };
+				},
+				dispatchAgentFn: async (i) => {
+					dispatched.push({ workspaceId: i.workspaceId, prompt: i.prompt });
+					return { sessionId: "s", terminalId: "t", status: "started" as const };
+				},
+			}
+		);
+
+		expect(result.created).toHaveLength(2);
+		expect(result.failed).toHaveLength(0);
+		expect(dispatched).toHaveLength(2);
+		expect(dispatched[0]?.prompt).toContain("Fix the login flow");
+	});
+
+	test("dispatchAcrossRepos continues past a failing target and reports it", async () => {
+		const p1 = await seedProject();
+		const p2 = await seedProject();
+		const p3 = await seedProject();
+		const xro = await seedCrossRepoOrchestrator({ projectIds: [p1, p2, p3] });
+
+		const result = await dispatchAcrossRepos(
+			{
+				orchestratorId: xro,
+				task: "task",
+				targets: [
+					{ projectId: p1, branch: "b" },
+					{ projectId: p2, branch: "b" },
+					{ projectId: p3, branch: "b" },
+				],
+			},
+			{
+				createWorkspaceFn: async (i) => {
+					if (i.projectId === p2) throw new Error("branch already exists");
+					const ws = await seedWorkspace(i.projectId, { name: `${i.branch}-${i.projectId}` });
+					return { workspaceId: ws, worktreeId: "wt-stub" };
+				},
+				dispatchAgentFn: async () => ({
+					sessionId: "s",
+					terminalId: "t",
+					status: "started" as const,
+				}),
+			}
+		);
+
+		expect(result.created.map((c) => c.projectId).sort()).toEqual([p1, p3].sort());
+		expect(result.failed).toEqual([{ projectId: p2, error: "branch already exists" }]);
 	});
 });

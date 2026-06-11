@@ -45,8 +45,8 @@ export function DispatchComposer({
 
 	const utils = trpc.useUtils();
 	const dispatch = trpc.crossRepoOrchestrators.dispatch.useMutation({
-		onSuccess: () => {
-			setTask("");
+		onSuccess: (res) => {
+			if (res.failed.length === 0) setTask("");
 			utils.crossRepoOrchestrators.listMembers.invalidate({ id: orchestratorId });
 		},
 	});
@@ -129,6 +129,18 @@ export function DispatchComposer({
 					Dispatch
 				</button>
 			</div>
+			{(dispatch.error || (dispatch.data && dispatch.data.failed.length > 0)) && (
+				<div className="border-t border-[var(--border-subtle)] px-[13px] py-[8px] text-[11.5px] text-[var(--st-blocked)]">
+					{dispatch.error
+						? dispatch.error.message
+						: dispatch.data?.failed
+								.map((f) => {
+									const name = repos.find((r) => r.projectId === f.projectId)?.name ?? f.projectId;
+									return `${name}: ${f.error}`;
+								})
+								.join(" · ")}
+				</div>
+			)}
 		</div>
 	);
 }

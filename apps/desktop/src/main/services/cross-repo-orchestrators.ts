@@ -1,10 +1,11 @@
-import { mkdirSync, rmSync } from "node:fs";
+import { appendFileSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { and, asc, eq, max } from "drizzle-orm";
 import { app } from "electron";
 import { nanoid } from "nanoid";
 import { CLI_PRESETS } from "../ai-review/cli-presets";
 import {
+	crossRepoEventsFilePath,
 	invalidateAllCrossRepoLinks,
 	removeCrossRepoEventsFile,
 } from "../control-plane/orchestrator-event-sink";
@@ -15,7 +16,7 @@ import {
 	orchestratorMembers,
 } from "../db/schema";
 import { attachToCrossRepoOrchestrator } from "./cross-repo-orchestrator-membership";
-import { createWorkspace, removeWorkspace } from "./workspace-service";
+import { createWorkspace, dispatchAgent, removeWorkspace } from "./workspace-service";
 
 function workDirFor(id: string): string {
 	const base = app.getPath("userData");
@@ -165,25 +166,74 @@ export async function markAgentStarted(input: { id: string }): Promise<{ ok: tru
 	return { ok: true };
 }
 
-export async function dispatchAcrossRepos(input: {
-	orchestratorId: string;
-	task: string;
-	targets: Array<{ projectId: string; branch: string }>;
-}): Promise<{ created: Array<{ projectId: string; workspaceId: string }> }> {
+export interface DispatchAcrossReposDeps {
+	/** Narrow signature (matches CreateOrchestratorDeps) so test stubs need not build a full CreateWorkspaceResponse. */
+	createWorkspaceFn?: (input: {
+		projectId: string;
+		branch: string;
+		baseBranch?: string;
+	}) => Promise<{ workspaceId: string; worktreeId: string }>;
+	dispatchAgentFn?: typeof dispatchAgent;
+	attachFn?: typeof attachToCrossRepoOrchestrator;
+}
+
+export async function dispatchAcrossRepos(
+	input: {
+		orchestratorId: string;
+		task: string;
+		targets: Array<{ projectId: string; branch: string }>;
+	},
+	deps: DispatchAcrossReposDeps = {}
+): Promise<{
+	created: Array<{ projectId: string; workspaceId: string }>;
+	failed: Array<{ projectId: string; error: string }>;
+}> {
 	const xro = await getCrossRepoOrchestrator({ id: input.orchestratorId });
 	if (!xro) throw new Error(`cross-repo orchestrator ${input.orchestratorId} not found`);
 
+	const create = deps.createWorkspaceFn ?? createWorkspace;
+	const dispatch = deps.dispatchAgentFn ?? dispatchAgent;
+	const attach = deps.attachFn ?? attachToCrossRepoOrchestrator;
+
 	const created: Array<{ projectId: string; workspaceId: string }> = [];
+	const failed: Array<{ projectId: string; error: string }> = [];
 	for (const t of input.targets) {
-		const ws = await createWorkspace({ projectId: t.projectId, branch: t.branch });
-		await attachToCrossRepoOrchestrator({
-			orchestratorId: input.orchestratorId,
-			workspaceId: ws.workspaceId,
-			createdByDispatch: true,
-		});
-		created.push({ projectId: t.projectId, workspaceId: ws.workspaceId });
+		try {
+			const ws = await create({ projectId: t.projectId, branch: t.branch });
+			await attach({
+				orchestratorId: input.orchestratorId,
+				workspaceId: ws.workspaceId,
+				createdByDispatch: true,
+			});
+			await dispatch({
+				projectId: t.projectId,
+				workspaceId: ws.workspaceId,
+				prompt: input.task,
+			});
+			created.push({ projectId: t.projectId, workspaceId: ws.workspaceId });
+		} catch (err) {
+			failed.push({ projectId: t.projectId, error: (err as Error).message });
+		}
 	}
-	return { created };
+
+	// Let the coordinator see what was dispatched and why, via its events file.
+	try {
+		appendFileSync(
+			crossRepoEventsFilePath(input.orchestratorId),
+			`${JSON.stringify({
+				event: "dispatch",
+				task: input.task,
+				created,
+				failed,
+				ts: new Date().toISOString(),
+			})}\n`,
+			"utf-8"
+		);
+	} catch (err) {
+		console.warn("[xro] dispatch event write failed:", err);
+	}
+
+	return { created, failed };
 }
 
 export async function stopCrossRepoOrchestratorAgent(input: { id: string }): Promise<{ ok: true }> {
