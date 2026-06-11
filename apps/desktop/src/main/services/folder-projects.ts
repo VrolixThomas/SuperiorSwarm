@@ -1,7 +1,7 @@
 import { existsSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join, sep } from "node:path";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { getDb } from "../db";
 import { type Project, projects, workspaces } from "../db/schema";
@@ -127,8 +127,15 @@ export async function createFolderWorkspace(
 		if (realCandidate !== realBase && !realCandidate.startsWith(realBase + sep)) {
 			throw new Error("Folder must be inside the project folder");
 		}
-		folderPath = realCandidate === realBase ? null : candidate;
+		folderPath = realCandidate === realBase ? null : realCandidate;
 	}
+
+	const dup = db
+		.select({ id: workspaces.id })
+		.from(workspaces)
+		.where(and(eq(workspaces.projectId, input.projectId), eq(workspaces.name, trimmed)))
+		.get();
+	if (dup) throw new Error(`Name "${trimmed}" is already in use in this project`);
 
 	const now = new Date();
 	const id = nanoid();

@@ -178,8 +178,8 @@ describe("createFolderWorkspace", () => {
 		).rejects.toThrow(/inside the project/i);
 	});
 
-	test("rejects missing folderPath dir, empty name, and repo-kind projects", async () => {
-		const project = await makeFolderProject("svc5");
+	test("rejects missing folderPath dir", async () => {
+		const project = await makeFolderProject("svc5a");
 		await expect(
 			createFolderWorkspace({
 				projectId: project.id,
@@ -187,10 +187,17 @@ describe("createFolderWorkspace", () => {
 				folderPath: join(project.repoPath, "missing"),
 			})
 		).rejects.toThrow(/exist/i);
+	});
+
+	test("rejects empty name", async () => {
+		const project = await makeFolderProject("svc5b");
 		await expect(createFolderWorkspace({ projectId: project.id, name: "  " })).rejects.toThrow(
 			/empty/i
 		);
+	});
 
+	test("rejects repo-kind projects", async () => {
+		const project = await makeFolderProject("svc5c");
 		const db = getDb();
 		db.update(schema.projects)
 			.set({ kind: "repo" })
@@ -198,6 +205,14 @@ describe("createFolderWorkspace", () => {
 			.run();
 		await expect(createFolderWorkspace({ projectId: project.id, name: "x" })).rejects.toThrow(
 			/folder projects/i
+		);
+	});
+
+	test("rejects duplicate workspace names in the same project", async () => {
+		const project = await makeFolderProject("svc6");
+		await createFolderWorkspace({ projectId: project.id, name: "dup" });
+		await expect(createFolderWorkspace({ projectId: project.id, name: "dup" })).rejects.toThrow(
+			/already in use/i
 		);
 	});
 });
