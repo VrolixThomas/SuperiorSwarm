@@ -1,6 +1,6 @@
 import "./preload-electron-mock";
 import { afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { eq } from "drizzle-orm";
@@ -13,6 +13,11 @@ import {
 	createFolderWorkspace,
 	openFolderProject,
 } from "../src/main/services/folder-projects";
+import {
+	createOrchestrator,
+	createWorkspace,
+	removeWorkspace,
+} from "../src/main/services/workspace-service";
 
 let TMP: string;
 const createdProjectIds: string[] = [];
@@ -296,5 +301,66 @@ describe("convertProjectToRepo", () => {
 		const names = ws.map((w) => w.name);
 		expect(names.filter((n) => n === "main")).toHaveLength(1);
 		expect(ws.find((w) => w.type === "branch")?.name).toBe("default");
+	});
+});
+
+describe("folder project guards", () => {
+	test("createWorkspace rejects folder projects", async () => {
+		const dir = join(TMP, "guard1");
+		mkdirSync(dir);
+		const res = await openFolderProject({ path: dir });
+		track(res.project?.id);
+		await expect(
+			createWorkspace({ projectId: res.project?.id ?? "", branch: "feat/x" })
+		).rejects.toThrow(/git repository/i);
+	});
+
+	test("createOrchestrator on a folder project creates a folder workspace, no worktree", async () => {
+		const dir = join(TMP, "guard2");
+		mkdirSync(dir);
+		const res = await openFolderProject({ path: dir });
+		track(res.project?.id);
+		const projectId = res.project?.id ?? "";
+
+		const orch = await createOrchestrator({
+			projectId,
+			name: "coordinator",
+			baseBranch: "main",
+			attachWorkspaceIds: [],
+		});
+		expect(orch.isOrchestrator).toBe(true);
+		expect(orch.worktreeId).toBeNull();
+
+		const db = getDb();
+		const ws = db
+			.select()
+			.from(schema.workspaces)
+			.where(eq(schema.workspaces.id, orch.id))
+			.get();
+		expect(ws?.type).toBe("folder");
+		expect(ws?.isOrchestrator).toBe(true);
+	});
+});
+
+describe("removeWorkspace for folder workspaces", () => {
+	test("removes the row and never touches the folder on disk", async () => {
+		const dir = join(TMP, "rm1");
+		mkdirSync(dir);
+		const res = await openFolderProject({ path: dir });
+		track(res.project?.id);
+		const projectId = res.project?.id ?? "";
+		const created = await createFolderWorkspace({ projectId, name: "scratch" });
+
+		const result = await removeWorkspace({ projectId, workspaceId: created.workspaceId });
+		expect(result.status).toBe("removed");
+		expect(existsSync(dir)).toBe(true);
+
+		const db = getDb();
+		const ws = db
+			.select()
+			.from(schema.workspaces)
+			.where(eq(schema.workspaces.id, created.workspaceId))
+			.get();
+		expect(ws).toBeUndefined();
 	});
 });

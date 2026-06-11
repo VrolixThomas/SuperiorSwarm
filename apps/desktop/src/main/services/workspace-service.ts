@@ -82,6 +82,12 @@ export async function createWorkspace(
 		throw new Error(`Project not found: ${input.projectId}`);
 	}
 
+	if (project.kind === "folder") {
+		throw new Error(
+			"This project is a plain folder. Worktrees require a git repository. Use Convert to Repository first."
+		);
+	}
+
 	const baseBranch = input.baseBranch ?? project.defaultBranch;
 	const path = join(worktreeBasePath(project.repoPath), input.branch);
 
@@ -867,7 +873,7 @@ export interface CreateOrchestratorDeps {
 		projectId: string;
 		branch: string;
 		baseBranch?: string;
-	}) => Promise<{ workspaceId: string; worktreeId: string }>;
+	}) => Promise<{ workspaceId: string; worktreeId: string | null }>;
 	/** Test seam: override the per-id attach call. Default: the module's real attachToOrchestrator. */
 	attachFn?: typeof attachToOrchestrator;
 }
@@ -884,7 +890,7 @@ export async function createOrchestrator(
 	id: string;
 	projectId: string;
 	name: string;
-	worktreeId: string;
+	worktreeId: string | null;
 	isOrchestrator: true;
 }> {
 	if (input.attachWorkspaceIds.length > 0) {
@@ -919,12 +925,41 @@ export async function createOrchestrator(
 	// downstream tx-loop never inserts duplicates.
 	const attachIds = Array.from(new Set(input.attachWorkspaceIds));
 
-	const create = deps.createWorkspaceFn ?? createWorkspace;
-	const created = await create({
-		projectId: input.projectId,
-		branch: input.name,
-		baseBranch: input.baseBranch,
-	});
+	const dbForKind = getDb();
+	const projectRow = dbForKind
+		.select({ kind: projects.kind })
+		.from(projects)
+		.where(eq(projects.id, input.projectId))
+		.get();
+	if (!projectRow) throw new Error(`Project not found: ${input.projectId}`);
+
+	let created: { workspaceId: string; worktreeId: string | null };
+	if (projectRow.kind === "folder") {
+		// Folder projects have no worktrees; the orchestrator is a plain folder workspace.
+		const id = nanoid();
+		const now = new Date();
+		dbForKind
+			.insert(workspaces)
+			.values({
+				id,
+				projectId: input.projectId,
+				type: "folder",
+				name: input.name,
+				worktreeId: null,
+				terminalId: null,
+				createdAt: now,
+				updatedAt: now,
+			})
+			.run();
+		created = { workspaceId: id, worktreeId: null };
+	} else {
+		const create = deps.createWorkspaceFn ?? createWorkspace;
+		created = await create({
+			projectId: input.projectId,
+			branch: input.name,
+			baseBranch: input.baseBranch,
+		});
+	}
 
 	const db = getDb();
 	const doAttach = deps.attachFn;

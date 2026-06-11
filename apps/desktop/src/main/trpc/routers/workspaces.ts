@@ -111,6 +111,10 @@ export const workspacesRouter = router({
 				throw new Error("Project not found");
 			}
 
+			if (project.kind === "folder") {
+				throw new Error("This project is a plain folder. This action requires a git repository.");
+			}
+
 			const worktreePath = join(worktreeBasePath(project.repoPath), input.branch);
 
 			await checkoutBranchWorktree(project.repoPath, worktreePath, input.branch);
@@ -200,6 +204,10 @@ export const workspacesRouter = router({
 
 			if (!project) {
 				throw new Error("Project not found");
+			}
+
+			if (project.kind === "folder") {
+				throw new Error("This project is a plain folder. This action requires a git repository.");
 			}
 
 			// Check if a workspace already exists for this branch in this project
@@ -491,6 +499,10 @@ export const workspacesRouter = router({
 			// 3. Ensure worktree exists
 			const project = db.select().from(projects).where(eq(projects.id, input.projectId)).get();
 			if (!project) throw new Error("Project not found");
+
+			if (project.kind === "folder") {
+				throw new Error("This project is a plain folder. This action requires a git repository.");
+			}
 
 			if (!workspace.worktreeId) {
 				// Compute worktree path
