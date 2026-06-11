@@ -96,7 +96,9 @@ describe("control-plane HTTP", () => {
 		expect(create.status).toBe(200);
 		const created = (await create.json()) as { workspaceId: string; path: string };
 
-		const list = await fetch(url(`/workspaces.list?projectId=${PROJECT_ID}`), { headers: auth() });
+		const list = await fetch(url(`/workspaces.list?projectId=${PROJECT_ID}`), {
+			headers: authWs(CALLER_WS_ID),
+		});
 		const listed = (await list.json()) as { workspaces: Array<{ name: string }> };
 		expect(listed.workspaces.map((w) => w.name)).toContain("feature/cp1");
 
@@ -315,6 +317,44 @@ describe("control-plane HTTP", () => {
 			.all();
 		// Only CALLER_WS_ID (seeded in beforeEach) should exist — no new row.
 		expect(rows.every((r) => r.name !== "feat/no-header")).toBe(true);
+	});
+
+	test("workspaces.list rejects caller with no workspace/xro header", async () => {
+		const res = await fetch(url(`/workspaces.list?projectId=${PROJECT_ID}`), {
+			headers: auth(),
+		});
+		expect(res.status).toBe(401);
+	});
+
+	test("workspaces.list rejects workspace caller requesting a different project", async () => {
+		const otherProject = await seedProject();
+		const res = await fetch(url(`/workspaces.list?projectId=${otherProject}`), {
+			headers: authWs(CALLER_WS_ID),
+		});
+		expect(res.status).toBe(401);
+	});
+
+	test("workspaces.list rejects xro caller when any projectId is not linked", async () => {
+		const linked = await seedProject();
+		const unlinked = await seedProject();
+		const xro = await seedCrossRepoOrchestrator({ projectIds: [linked] });
+
+		const res = await fetch(url(`/workspaces.list?projectIds=${linked},${unlinked}`), {
+			headers: { ...auth(), "x-cross-repo-orchestrator-id": xro },
+		});
+		expect(res.status).toBe(401);
+	});
+
+	test("workspaces.list allows xro caller when all projectIds are linked", async () => {
+		const linked = await seedProject();
+		const xro = await seedCrossRepoOrchestrator({ projectIds: [linked] });
+
+		const res = await fetch(url(`/workspaces.list?projectIds=${linked}`), {
+			headers: { ...auth(), "x-cross-repo-orchestrator-id": xro },
+		});
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as { workspaces: unknown[] };
+		expect(Array.isArray(body.workspaces)).toBe(true);
 	});
 });
 

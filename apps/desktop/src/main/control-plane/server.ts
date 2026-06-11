@@ -319,6 +319,23 @@ async function handleRequest(
 				const projectIdsRaw = url.searchParams.get("projectIds");
 				if (projectIdsRaw) {
 					const ids = projectIdsRaw.split(",").filter(Boolean);
+					const caller = resolveCaller(req, null);
+					if ("error" in caller) {
+						respond(res, 401, requestId, { error: "unauthorized" });
+						return;
+					}
+					if (caller.kind === "xro") {
+						if (!ids.every((id) => caller.linkedProjectIds.includes(id))) {
+							respond(res, 401, requestId, { error: "unauthorized" });
+							return;
+						}
+					} else {
+						// workspace caller: every requested id must equal caller.projectId
+						if (!ids.every((id) => id === caller.projectId)) {
+							respond(res, 401, requestId, { error: "unauthorized" });
+							return;
+						}
+					}
 					respond(res, 200, requestId, await listWorkspacesForProjects({ projectIds: ids }));
 					return;
 				}
@@ -327,6 +344,11 @@ async function handleRequest(
 				});
 				if (!parsed.success) {
 					respond(res, 400, requestId, { error: "validation", details: parsed.error.flatten() });
+					return;
+				}
+				const listCaller = resolveCaller(req, parsed.data.projectId);
+				if ("error" in listCaller) {
+					respond(res, 401, requestId, { error: "unauthorized" });
 					return;
 				}
 				respond(res, 200, requestId, await listWorkspaces(parsed.data));
