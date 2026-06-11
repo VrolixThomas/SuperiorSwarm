@@ -101,7 +101,7 @@ describe("PtyManager", () => {
 
 	// -- attach --
 
-	test("attach returns buffer string for existing session", () => {
+	test("attach returns buffer and process for existing session", () => {
 		setup();
 		manager.create(
 			"t1",
@@ -112,14 +112,16 @@ describe("PtyManager", () => {
 		);
 
 		// Buffer starts empty (no data has arrived from the PTY yet).
-		const buffered = manager.attach(
+		const result = manager.attach(
 			"t1",
 			() => {},
 			() => {},
 			"c2"
 		);
-		expect(buffered).toBeTypeOf("string");
-		expect(buffered).toBe("");
+		expect(result).not.toBeNull();
+		expect(typeof result?.buffer).toBe("string");
+		expect(result?.buffer).toBe("");
+		expect(typeof result?.process).toBe("string");
 	});
 
 	test("attach returns null for nonexistent session", () => {
@@ -416,5 +418,17 @@ describe("PtyManager", () => {
 		const entries = manager.list();
 		const pids = entries.map((e) => e.pid);
 		expect(new Set(pids).size).toBe(2);
+	});
+
+	test("attach returns null for unknown session", () => {
+		const manager2 = new PtyManager();
+		expect(
+			manager2.attach(
+				"nope",
+				() => {},
+				() => {},
+				"client-x"
+			)
+		).toBeNull();
 	});
 });

@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DaemonClient } from "../../src/main/terminal/daemon-client";
 import { DaemonOwnershipMismatchError } from "../../src/main/terminal/daemon-ownership";
+import type { TerminalDataMeta } from "../../src/shared/daemon-protocol";
 
 const TEST_SOCKET = join(tmpdir(), `superiorswarm-client-test-${process.pid}.sock`);
 const TEST_PID = join(tmpdir(), `superiorswarm-client-test-${process.pid}.pid`);
@@ -547,6 +548,36 @@ describe("DaemonClient", () => {
 		if (existsSync(noPid)) rmSync(noPid);
 		if (existsSync(noLog)) rmSync(noLog);
 		if (existsSync(ownerPath)) rmSync(ownerPath);
+	});
+
+	test("onData receives replay metadata for scrollback messages", async () => {
+		const received: Array<{ data: string; meta: TerminalDataMeta | undefined }> = [];
+
+		await client.attach(
+			"term-1",
+			(data, meta) => {
+				received.push({ data, meta });
+			},
+			() => {}
+		);
+
+		const sock = daemon.lastSocket();
+		expect(sock).not.toBeNull();
+		if (!sock) return;
+
+		// Send a replay-tagged data message followed by a live data message
+		const replayData = Buffer.from("old").toString("base64");
+		const liveData = Buffer.from("new").toString("base64");
+		sock.write(
+			`${JSON.stringify({ type: "data", id: "term-1", data: replayData, replay: true, fg: "zsh" })}\n`
+		);
+		sock.write(`${JSON.stringify({ type: "data", id: "term-1", data: liveData })}\n`);
+
+		await new Promise<void>((r) => setTimeout(r, 80));
+
+		expect(received).toHaveLength(2);
+		expect(received[0]).toEqual({ data: "old", meta: { replay: true, fg: "zsh" } });
+		expect(received[1]).toEqual({ data: "new", meta: undefined });
 	});
 
 	test("allows foreign owner record when startedAtMs is obviously invalid", () => {

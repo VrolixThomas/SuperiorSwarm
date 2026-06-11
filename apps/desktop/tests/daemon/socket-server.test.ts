@@ -28,9 +28,9 @@ class MockPtyManager {
 		_onData: (d: string) => void,
 		_onExit: (c: number) => void,
 		_clientId: string
-	): string | null {
+	): { buffer: string; process: string } | null {
 		this.attached.push(id);
-		return "buffered-content";
+		return { buffer: "buffered-content", process: "zsh" };
 	}
 	dispose(id: string): void {
 		this.disposed.push(id);
@@ -165,6 +165,21 @@ describe("SocketServer", () => {
 			console.warn = originalWarn;
 			socket.destroy();
 		}
+	});
+
+	test("attach sends buffered content marked as replay with fg process", async () => {
+		const socket = connect(TEST_SOCKET);
+		await collectMessages(socket); // consume ready
+		sendMsg(socket, { type: "attach", id: "replay-test" });
+		const msgs = await collectMessages(socket);
+		socket.destroy();
+
+		const dataMsg = msgs.find((m) => m.type === "data" && m.id === "replay-test");
+		expect(dataMsg).toBeDefined();
+		if (dataMsg?.type !== "data") throw new Error("unreachable");
+		expect(Buffer.from(dataMsg.data, "base64").toString("utf-8")).toBe("buffered-content");
+		expect(dataMsg.replay).toBe(true);
+		expect(dataMsg.fg).toBe("zsh");
 	});
 
 	test("parses complete frames before bounding oversized partial frame", async () => {

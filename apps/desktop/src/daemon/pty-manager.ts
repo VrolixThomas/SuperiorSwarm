@@ -88,18 +88,19 @@ export class PtyManager {
 		this.terminals.set(id, entry);
 	}
 
-	// Returns the buffered content, or null if the session does not exist.
+	// Returns the buffered content and current foreground process name,
+	// or null if the session does not exist.
 	attach(
 		id: string,
 		onData: (data: string) => void,
 		onExit: (code: number, finalBuffer: string) => void,
 		clientId: string
-	): string | null {
+	): { buffer: string; process: string } | null {
 		const entry = this.terminals.get(id);
 		if (!entry) return null;
 		entry.dataListeners.set(clientId, onData);
 		entry.exitListeners.set(clientId, onExit);
-		return entry.buffer;
+		return { buffer: entry.buffer, process: entry.pty.process ?? "" };
 	}
 
 	detachClient(clientId: string): void {

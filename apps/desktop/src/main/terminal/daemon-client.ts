@@ -14,6 +14,7 @@ import {
 	type ClientMessage,
 	type DaemonMessage,
 	SUPERIORSWARM_DIR,
+	type TerminalDataMeta,
 } from "../../shared/daemon-protocol";
 import {
 	DaemonOwnershipMismatchError,
@@ -35,7 +36,7 @@ interface OutboundQueueEntry {
 }
 
 interface TerminalCallbacks {
-	onData: (data: string) => void;
+	onData: (data: string, meta?: TerminalDataMeta) => void;
 	onExit: (code: number) => void;
 	cwd?: string;
 }
@@ -173,7 +174,7 @@ export class DaemonClient {
 	async create(
 		id: string,
 		cwd: string | undefined,
-		onData: (data: string) => void,
+		onData: (data: string, meta?: TerminalDataMeta) => void,
 		onExit: (code: number) => void,
 		env?: Record<string, string>
 	): Promise<void> {
@@ -191,7 +192,7 @@ export class DaemonClient {
 
 	async attach(
 		id: string,
-		onData: (data: string) => void,
+		onData: (data: string, meta?: TerminalDataMeta) => void,
 		onExit: (code: number) => void,
 		cwd?: string
 	): Promise<void> {
@@ -368,7 +369,10 @@ export class DaemonClient {
 			case "data": {
 				const cb = this.callbacks.get(msg.id);
 				if (cb) {
-					cb.onData(Buffer.from(msg.data, "base64").toString("utf-8"));
+					cb.onData(
+						Buffer.from(msg.data, "base64").toString("utf-8"),
+						msg.replay ? { replay: true, fg: msg.fg || undefined } : undefined
+					);
 				}
 				break;
 			}

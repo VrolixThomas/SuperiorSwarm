@@ -9,6 +9,7 @@ import type { ITheme } from "@xterm/xterm";
 import { Terminal as XTerm } from "@xterm/xterm";
 import { useEffect, useRef } from "react";
 import { CmdBuffer } from "../../shared/lib/cmd-buffer";
+import { RESET_STALE_MODES, isShellProcess } from "../../shared/lib/terminal-modes";
 import { useTabStore } from "../stores/tab-store";
 import { interceptPaste } from "./terminal-paste";
 
@@ -138,6 +139,21 @@ export function Terminal({
 			term.focus();
 		});
 
+		// Replay gate: while attach/restore scrollback is parsed, xterm re-emits
+		// answers to replayed device queries (DA/DSR) and replayed DECSET sequences
+		// re-arm mouse reporting. None of that may reach the PTY — the app that
+		// asked already got its answers when the bytes were live.
+		// Counter (not boolean) so back-to-back replay chunks can't clear each other's gate.
+		let suppressDepth = 0;
+
+		const resetStaleModes = () => {
+			// Written into xterm only — never the PTY.
+			if (term.buffer.active.type === "alternate") {
+				term.write("\x1b[?1049l");
+			}
+			term.write(RESET_STALE_MODES);
+		};
+
 		// Wire up PTY if running inside Electron
 		const api = window.electron;
 		let cleanupData: (() => void) | undefined;
@@ -153,7 +169,12 @@ export function Terminal({
 					// via onData — writing initialContent too would stack old content
 					// before the live buffer and misplace the cursor inside TUI apps.
 					if (!wasAttached && initialContentRef.current) {
-						term.write(initialContentRef.current);
+						suppressDepth++;
+						term.write(initialContentRef.current, () => {
+							suppressDepth--;
+							// Fresh PTY: the saved scrollback's app is gone by definition.
+							resetStaleModes();
+						});
 					}
 				})
 				.catch((err: Error) => {
@@ -185,12 +206,28 @@ export function Terminal({
 				return true;
 			});
 
-			cleanupData = api.terminal.onData(id, (data) => {
-				term.write(data);
+			cleanupData = api.terminal.onData(id, (data, meta) => {
+				if (meta?.replay) {
+					suppressDepth++;
+					term.write(data, () => {
+						suppressDepth--;
+						// Shell in the foreground means whatever set those modes is gone.
+						if (isShellProcess(meta.fg)) {
+							resetStaleModes();
+						}
+					});
+				} else {
+					term.write(data);
+				}
 			});
 
 			cleanupExit = api.terminal.onExit(id, (code) => {
-				term.write(formatTerminalExitMessage(code));
+				// Empty write = barrier: the buffer check inside resetStaleModes must
+				// run after any still-queued replay chunk has parsed.
+				term.write("", () => {
+					resetStaleModes();
+					term.write(formatTerminalExitMessage(code));
+				});
 			});
 
 			const MAX_TITLE = 48;
@@ -212,6 +249,7 @@ export function Terminal({
 			const cmd = new CmdBuffer();
 
 			term.onData((data) => {
+				if (suppressDepth > 0) return;
 				// Suppress the \r that xterm may still emit after our
 				// Shift+Enter handler already sent the CSI u sequence.
 				if (shiftEnterPending) {
