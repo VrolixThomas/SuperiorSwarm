@@ -4,6 +4,7 @@ import { and, asc, eq, max } from "drizzle-orm";
 import { app } from "electron";
 import { nanoid } from "nanoid";
 import { CLI_PRESETS } from "../ai-review/cli-presets";
+import { getSettings } from "../ai-review/orchestrator";
 import {
 	crossRepoEventsFilePath,
 	invalidateAllCrossRepoLinks,
@@ -143,9 +144,14 @@ function assertAgentKind(kind: string): AgentKind {
 	throw new Error(`unsupported agentKind: ${kind}`);
 }
 
-export async function getCoordinatorLaunch(input: {
-	id: string;
-}): Promise<{ cwd: string; command: string }> {
+export interface CoordinatorLaunchDeps {
+	getSettingsFn?: typeof getSettings;
+}
+
+export async function getCoordinatorLaunch(
+	input: { id: string },
+	deps: CoordinatorLaunchDeps = {}
+): Promise<{ cwd: string; command: string }> {
 	const row = await getCrossRepoOrchestrator({ id: input.id });
 	if (!row) throw new Error(`cross-repo orchestrator ${input.id} not found`);
 
@@ -153,8 +159,12 @@ export async function getCoordinatorLaunch(input: {
 	const preset = CLI_PRESETS[agentKind];
 	if (!preset) throw new Error(`no CLI preset for agentKind: ${agentKind}`);
 
-	const command = [preset.command, preset.permissionFlag].filter(Boolean).join(" ");
-	return { cwd: row.workDir, command };
+	const settings = (deps.getSettingsFn ?? getSettings)();
+	const parts = [preset.command];
+	if (settings.skipPermissions && preset.permissionFlag) {
+		parts.push(preset.permissionFlag);
+	}
+	return { cwd: row.workDir, command: parts.join(" ") };
 }
 
 export async function markAgentStarted(input: { id: string }): Promise<{ ok: true }> {
