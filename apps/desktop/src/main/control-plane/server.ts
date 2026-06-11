@@ -52,6 +52,36 @@ function resolveProjectIdFromWorkspace(workspaceId: string): string | null {
 	);
 }
 
+/**
+ * Derive the effective projectId for a workspace-targeting route and verify the
+ * caller is allowed to touch it. Returns null after writing the error response.
+ */
+function resolveScopedProjectId(
+	req: IncomingMessage,
+	res: ServerResponse,
+	requestId: string,
+	explicitProjectId: string | undefined,
+	workspaceId: string
+): string | null {
+	let projectId = explicitProjectId;
+	if (!projectId) {
+		const derived = resolveProjectIdFromWorkspace(workspaceId);
+		if (!derived) {
+			respond(res, 404, requestId, { error: "not_found" });
+			return null;
+		}
+		projectId = derived;
+	}
+	// Same enforcement as set_status/send_message: xro callers must have the
+	// project linked; workspace callers must belong to the project.
+	const caller = resolveCaller(req, projectId);
+	if ("error" in caller) {
+		respond(res, 401, requestId, { error: "unauthorized" });
+		return null;
+	}
+	return projectId;
+}
+
 async function attachIfCallerIsOrchestrator(
 	req: IncomingMessage,
 	projectId: string,
@@ -312,15 +342,14 @@ async function handleRequest(
 					respond(res, 400, requestId, { error: "validation", details: parsed.error.flatten() });
 					return;
 				}
-				let getProjectId = parsed.data.projectId;
-				if (!getProjectId) {
-					const derived = resolveProjectIdFromWorkspace(parsed.data.workspaceId);
-					if (!derived) {
-						respond(res, 404, requestId, { error: "not_found" });
-						return;
-					}
-					getProjectId = derived;
-				}
+				const getProjectId = resolveScopedProjectId(
+					req,
+					res,
+					requestId,
+					parsed.data.projectId,
+					parsed.data.workspaceId
+				);
+				if (!getProjectId) return;
 				respond(
 					res,
 					200,
@@ -348,15 +377,14 @@ async function handleRequest(
 					respond(res, 400, requestId, { error: "validation", details: parsed.error.flatten() });
 					return;
 				}
-				let dispatchProjectId = parsed.data.projectId;
-				if (!dispatchProjectId) {
-					const derived = resolveProjectIdFromWorkspace(parsed.data.workspaceId);
-					if (!derived) {
-						respond(res, 404, requestId, { error: "not_found" });
-						return;
-					}
-					dispatchProjectId = derived;
-				}
+				const dispatchProjectId = resolveScopedProjectId(
+					req,
+					res,
+					requestId,
+					parsed.data.projectId,
+					parsed.data.workspaceId
+				);
+				if (!dispatchProjectId) return;
 				const ws = await getWorkspace({
 					projectId: dispatchProjectId,
 					workspaceId: parsed.data.workspaceId,
@@ -386,15 +414,14 @@ async function handleRequest(
 					respond(res, 400, requestId, { error: "validation", details: parsed.error.flatten() });
 					return;
 				}
-				let removeProjectId = parsed.data.projectId;
-				if (!removeProjectId) {
-					const derived = resolveProjectIdFromWorkspace(parsed.data.workspaceId);
-					if (!derived) {
-						respond(res, 404, requestId, { error: "not_found" });
-						return;
-					}
-					removeProjectId = derived;
-				}
+				const removeProjectId = resolveScopedProjectId(
+					req,
+					res,
+					requestId,
+					parsed.data.projectId,
+					parsed.data.workspaceId
+				);
+				if (!removeProjectId) return;
 				const ws = await getWorkspace({
 					projectId: removeProjectId,
 					workspaceId: parsed.data.workspaceId,

@@ -10,6 +10,7 @@ import simpleGit from "simple-git";
 import { startControlPlane } from "../src/main/control-plane";
 import { getDb, schema } from "../src/main/db";
 import { initRepo } from "../src/main/git/operations";
+import { seedCrossRepoOrchestrator, seedProject, seedWorkspace } from "./helpers/db";
 
 let TMP: string;
 let REPO: string;
@@ -94,20 +95,20 @@ describe("control-plane HTTP", () => {
 
 		const get = await fetch(
 			url(`/workspaces.get?projectId=${PROJECT_ID}&workspaceId=${created.workspaceId}`),
-			{ headers: auth() }
+			{ headers: { ...authWs(created.workspaceId), "Content-Type": "application/json" } }
 		);
 		expect(get.status).toBe(200);
 
 		const rm = await fetch(url("/workspaces.remove"), {
 			method: "POST",
-			headers: { ...auth(), "Content-Type": "application/json" },
+			headers: { ...authWs(created.workspaceId), "Content-Type": "application/json" },
 			body: JSON.stringify({ projectId: PROJECT_ID, workspaceId: created.workspaceId }),
 		});
 		const removed = (await rm.json()) as { status: string };
 		expect(removed.status).toBe("removed");
 	});
 
-	test("403 on cross-project access", async () => {
+	test("401 on cross-project access (caller scoping rejects before service layer)", async () => {
 		const create = await fetch(url("/workspaces.create"), {
 			method: "POST",
 			headers: { ...auth(), "Content-Type": "application/json" },
@@ -115,11 +116,13 @@ describe("control-plane HTTP", () => {
 		});
 		const created = (await create.json()) as { workspaceId: string };
 
+		// Workspace belongs to PROJECT_ID but request claims projectId=other;
+		// resolveScopedProjectId -> resolveCaller detects the mismatch and returns 401.
 		const get = await fetch(
 			url(`/workspaces.get?projectId=other&workspaceId=${created.workspaceId}`),
-			{ headers: auth() }
+			{ headers: { ...authWs(created.workspaceId), "Content-Type": "application/json" } }
 		);
-		expect(get.status).toBe(403);
+		expect(get.status).toBe(401);
 	});
 
 	test("400 on invalid body", async () => {
@@ -141,7 +144,7 @@ describe("control-plane HTTP", () => {
 
 		const dispatch = await fetch(url("/workspaces.dispatch"), {
 			method: "POST",
-			headers: { ...auth(), "Content-Type": "application/json" },
+			headers: { ...authWs(created.workspaceId), "Content-Type": "application/json" },
 			body: JSON.stringify({
 				projectId: PROJECT_ID,
 				workspaceId: created.workspaceId,
@@ -169,7 +172,7 @@ describe("control-plane HTTP", () => {
 
 		const dispatch = await fetch(url("/workspaces.dispatch"), {
 			method: "POST",
-			headers: { ...auth(), "Content-Type": "application/json" },
+			headers: { ...authWs(created.workspaceId), "Content-Type": "application/json" },
 			body: JSON.stringify({
 				projectId: PROJECT_ID,
 				workspaceId: created.workspaceId,
@@ -183,21 +186,88 @@ describe("control-plane HTTP", () => {
 	});
 
 	test("404 when workspaceId not found", async () => {
+		const create = await fetch(url("/workspaces.create"), {
+			method: "POST",
+			headers: { ...auth(), "Content-Type": "application/json" },
+			body: JSON.stringify({ projectId: PROJECT_ID, branch: "feature/cp-404a" }),
+		});
+		const { workspaceId: callerWsId } = (await create.json()) as { workspaceId: string };
+
 		const get = await fetch(
 			url(`/workspaces.get?projectId=${PROJECT_ID}&workspaceId=does-not-exist`),
-			{ headers: auth() }
+			{ headers: authWs(callerWsId) }
 		);
 		expect(get.status).toBe(404);
 	});
 
 	test("unknown workspace returns 404 via typed NotFoundError", async () => {
+		const create = await fetch(url("/workspaces.create"), {
+			method: "POST",
+			headers: { ...auth(), "Content-Type": "application/json" },
+			body: JSON.stringify({ projectId: PROJECT_ID, branch: "feature/cp-404b" }),
+		});
+		const { workspaceId: callerWsId } = (await create.json()) as { workspaceId: string };
+
 		const res = await fetch(
 			url(`/workspaces.get?projectId=${PROJECT_ID}&workspaceId=does-not-exist`),
-			{ headers: auth() }
+			{ headers: authWs(callerWsId) }
 		);
 		expect(res.status).toBe(404);
 		const body = (await res.json()) as { error: string };
 		expect(body.error).toBe("not_found");
+	});
+
+	test("workspaces.remove rejects xro caller for non-linked project", async () => {
+		const linked = await seedProject();
+		const unlinked = await seedProject();
+		const xro = await seedCrossRepoOrchestrator({ projectIds: [linked] });
+		const victim = await seedWorkspace(unlinked, { name: "victim", type: "worktree" });
+
+		const res = await fetch(url("/workspaces.remove"), {
+			method: "POST",
+			headers: {
+				...auth(),
+				"x-cross-repo-orchestrator-id": xro,
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({ workspaceId: victim, force: true }),
+		});
+		expect(res.status).toBe(401);
+		const row = getDb()
+			.select()
+			.from(schema.workspaces)
+			.where(eq(schema.workspaces.id, victim))
+			.get();
+		expect(row).toBeDefined();
+	});
+
+	test("workspaces.dispatch rejects xro caller for non-linked project", async () => {
+		const linked = await seedProject();
+		const unlinked = await seedProject();
+		const xro = await seedCrossRepoOrchestrator({ projectIds: [linked] });
+		const target = await seedWorkspace(unlinked, { name: "target", type: "worktree" });
+
+		let spawnCalled = false;
+		await server.stop();
+		server = await startControlPlane({
+			confirm: async () => true,
+			spawnFn: async () => {
+				spawnCalled = true;
+				return { sessionId: "s", terminalId: "t" };
+			},
+		});
+
+		const res = await fetch(url("/workspaces.dispatch"), {
+			method: "POST",
+			headers: {
+				...auth(),
+				"x-cross-repo-orchestrator-id": xro,
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({ workspaceId: target, prompt: "do thing", cliPreset: "claude" }),
+		});
+		expect(res.status).toBe(401);
+		expect(spawnCalled).toBe(false);
 	});
 });
 
@@ -223,7 +293,7 @@ describe("control-plane coordination routes", () => {
 
 		const get = await fetch(
 			url(`/workspaces.get?projectId=${PROJECT_ID}&workspaceId=${workspaceId}`),
-			{ headers: auth() }
+			{ headers: authWs(workspaceId) }
 		);
 		const body = (await get.json()) as {
 			currentPhase: string;
