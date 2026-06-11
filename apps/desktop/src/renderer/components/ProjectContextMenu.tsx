@@ -34,6 +34,11 @@ export function ProjectContextMenu({ project, position, onClose }: ProjectContex
 		onSuccess: () => {
 			utils.projects.list.invalidate();
 			utils.workspaces.listByProject.invalidate({ projectId: project.id });
+			utils.projects.getById.invalidate({ id: project.id });
+			utils.projects.checkGitRepo.invalidate({ id: project.id });
+		},
+		onError: (err) => {
+			window.alert(`Convert to repository failed: ${err.message}`);
 		},
 	});
 

@@ -28,24 +28,33 @@ export function Sidebar({ collapsed, onExpand }: SidebarProps) {
 	openFolderAsyncRef.current = openFolderMut.mutateAsync;
 	const attachTerminalRef = useRef(attachTerminalMut.mutate);
 	attachTerminalRef.current = attachTerminalMut.mutate;
+	const newTerminalInFlightRef = useRef(false);
 
 	const handleNewTerminal = useCallback(async () => {
-		const res = await openFolderAsyncRef.current({ path: "~", quick: true });
-		if (!res.project) return;
-		utils.projects.list.invalidate();
-		const tree = await utils.workspaces.listByProject.fetch({ projectId: res.project.id });
-		const ws =
-			tree.loose.find((w) => w.type === "branch" || (w.type === "folder" && !w.folderPath)) ??
-			tree.loose[0] ??
-			tree.orchestrators[0]?.workspace;
-		if (!ws) return;
-		const cwd = ws.worktreePath ?? ws.folderPath ?? res.project.repoPath;
-		const store = useTabStore.getState();
-		store.setActiveWorkspace(ws.id, cwd);
-		const tabs = store.getTabsByWorkspace(ws.id);
-		if (!tabs.some((t) => t.kind === "terminal")) {
-			const tabId = store.addTerminalTab(ws.id, cwd, `${res.project.name}: ${ws.name}`);
-			attachTerminalRef.current({ workspaceId: ws.id, terminalId: tabId });
+		if (newTerminalInFlightRef.current) return;
+		newTerminalInFlightRef.current = true;
+		try {
+			const res = await openFolderAsyncRef.current({ path: "~", quick: true });
+			if (!res.project) return;
+			utils.projects.list.invalidate();
+			const tree = await utils.workspaces.listByProject.fetch({ projectId: res.project.id });
+			const ws =
+				tree.loose.find((w) => w.type === "branch" || (w.type === "folder" && !w.folderPath)) ??
+				tree.loose[0] ??
+				tree.orchestrators[0]?.workspace;
+			if (!ws) return;
+			const cwd = ws.worktreePath ?? ws.folderPath ?? res.project.repoPath;
+			const store = useTabStore.getState();
+			store.setActiveWorkspace(ws.id, cwd);
+			const tabs = store.getTabsByWorkspace(ws.id);
+			if (!tabs.some((t) => t.kind === "terminal")) {
+				const tabId = store.addTerminalTab(ws.id, cwd, `${res.project.name}: ${ws.name}`);
+				attachTerminalRef.current({ workspaceId: ws.id, terminalId: tabId });
+			}
+		} catch (err) {
+			console.error("[quick-terminal]", err);
+		} finally {
+			newTerminalInFlightRef.current = false;
 		}
 	}, [utils]);
 

@@ -44,12 +44,17 @@ export function initializeDatabase(): void {
 export async function backfillRemoteHosts(): Promise<void> {
 	const db = getDb();
 	const needsBackfill = db
-		.select({ id: schema.projects.id, repoPath: schema.projects.repoPath })
+		.select({
+			id: schema.projects.id,
+			repoPath: schema.projects.repoPath,
+			kind: schema.projects.kind,
+		})
 		.from(schema.projects)
 		.where(isNull(schema.projects.remoteHost))
 		.all();
 
 	for (const project of needsBackfill) {
+		if (project.kind !== "repo") continue;
 		const remote = await parseRemoteUrl(project.repoPath);
 		if (remote?.host) {
 			db.update(schema.projects)
