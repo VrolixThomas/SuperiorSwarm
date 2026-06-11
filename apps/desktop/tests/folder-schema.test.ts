@@ -39,11 +39,7 @@ describe("folder project schema", () => {
 			.run();
 
 		const repo = db.select().from(schema.projects).where(eq(schema.projects.id, repoId)).get();
-		const folder = db
-			.select()
-			.from(schema.projects)
-			.where(eq(schema.projects.id, folderId))
-			.get();
+		const folder = db.select().from(schema.projects).where(eq(schema.projects.id, folderId)).get();
 		expect(repo?.kind).toBe("repo");
 		expect(folder?.kind).toBe("folder");
 

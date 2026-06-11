@@ -8,9 +8,9 @@ describe("resolveWorkspaceCwd", () => {
 		).toBe("/wt");
 	});
 	test("folderPath wins over repoPath", () => {
-		expect(
-			resolveWorkspaceCwd({ worktreePath: null, folderPath: "/sub", repoPath: "/repo" })
-		).toBe("/sub");
+		expect(resolveWorkspaceCwd({ worktreePath: null, folderPath: "/sub", repoPath: "/repo" })).toBe(
+			"/sub"
+		);
 	});
 	test("falls back to repoPath", () => {
 		expect(resolveWorkspaceCwd({ worktreePath: null, folderPath: null, repoPath: "/repo" })).toBe(

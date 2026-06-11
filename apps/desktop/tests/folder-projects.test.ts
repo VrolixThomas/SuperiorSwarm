@@ -278,9 +278,7 @@ describe("convertProjectToRepo", () => {
 		mkdirSync(nested);
 		const res = await openFolderProject({ path: nested, force: true });
 		track(res.project?.id);
-		await expect(convertProjectToRepo({ id: res.project?.id ?? "" })).rejects.toThrow(
-			/rooted at/i
-		);
+		await expect(convertProjectToRepo({ id: res.project?.id ?? "" })).rejects.toThrow(/rooted at/i);
 	});
 
 	test("does not duplicate names when a workspace already has the default branch name", async () => {
@@ -365,11 +363,7 @@ describe("folder project guards", () => {
 		expect(orch.worktreeId).toBeNull();
 
 		const db = getDb();
-		const ws = db
-			.select()
-			.from(schema.workspaces)
-			.where(eq(schema.workspaces.id, orch.id))
-			.get();
+		const ws = db.select().from(schema.workspaces).where(eq(schema.workspaces.id, orch.id)).get();
 		expect(ws?.type).toBe("folder");
 		expect(ws?.isOrchestrator).toBe(true);
 	});
