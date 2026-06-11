@@ -746,6 +746,37 @@ export async function sendMessage(
 ): Promise<SendMessageResponse> {
 	const db = getDb();
 
+	function insertAndEmitDm(opts: {
+		projectId: string;
+		fromId: string;
+		toWorkspaceId: string | null;
+	}): { messageId: string } {
+		const messageId = nanoid();
+		const now = new Date();
+		db.insert(agentMessages)
+			.values({
+				id: messageId,
+				projectId: opts.projectId,
+				fromWorkspaceId: opts.fromId,
+				toWorkspaceId: opts.toWorkspaceId,
+				kind: input.kind,
+				content: input.content,
+				inReplyTo: input.inReplyTo ?? null,
+				createdAt: now,
+			})
+			.run();
+		eventBus?.emit(opts.projectId, {
+			event: "message",
+			messageId,
+			from: opts.fromId,
+			to: opts.toWorkspaceId,
+			kind: input.kind,
+			content: input.content,
+			ts: now.toISOString(),
+		});
+		return { messageId };
+	}
+
 	if (ctx.kind === "xro") {
 		// Derive the project id from the target workspace (for DMs) or fan out
 		// across all linked projects (for broadcasts).
@@ -761,30 +792,11 @@ export async function sendMessage(
 					"target workspace's project is not linked to this cross-repo orchestrator"
 				);
 			}
-			const messageId = nanoid();
-			const now = new Date();
-			db.insert(agentMessages)
-				.values({
-					id: messageId,
-					projectId: target.projectId,
-					fromWorkspaceId: ctx.xroId,
-					toWorkspaceId: input.toWorkspaceId,
-					kind: input.kind,
-					content: input.content,
-					inReplyTo: input.inReplyTo ?? null,
-					createdAt: now,
-				})
-				.run();
-			eventBus?.emit(target.projectId, {
-				event: "message",
-				messageId,
-				from: ctx.xroId,
-				to: input.toWorkspaceId,
-				kind: input.kind,
-				content: input.content,
-				ts: now.toISOString(),
+			return insertAndEmitDm({
+				projectId: target.projectId,
+				fromId: ctx.xroId,
+				toWorkspaceId: input.toWorkspaceId,
 			});
-			return { messageId };
 		}
 
 		// Broadcast: fan out one row per linked project.
@@ -829,31 +841,11 @@ export async function sendMessage(
 		}
 	}
 
-	const messageId = nanoid();
-	db.insert(agentMessages)
-		.values({
-			id: messageId,
-			projectId: ctx.projectId,
-			fromWorkspaceId: ctx.workspaceId,
-			toWorkspaceId: input.toWorkspaceId ?? null,
-			kind: input.kind,
-			content: input.content,
-			inReplyTo: input.inReplyTo ?? null,
-			createdAt: new Date(),
-		})
-		.run();
-
-	eventBus?.emit(ctx.projectId, {
-		event: "message",
-		messageId,
-		from: ctx.workspaceId,
-		to: input.toWorkspaceId ?? null,
-		kind: input.kind,
-		content: input.content,
-		ts: new Date().toISOString(),
+	return insertAndEmitDm({
+		projectId: ctx.projectId,
+		fromId: ctx.workspaceId,
+		toWorkspaceId: input.toWorkspaceId ?? null,
 	});
-
-	return { messageId };
 }
 
 export async function readMessages(
@@ -926,96 +918,9 @@ export async function resumeAgent(
 ): Promise<ResumeAgentResponse> {
 	const db = getDb();
 
-	if (ctx.kind === "xro") {
-		// 1. Cross-repo orchestrators are always authorized to resume agents in
-		//    any of their linked projects — no per-workspace isOrchestrator check.
-
-		// 2. Look up target
-		const target = db
-			.select({
-				projectId: workspaces.projectId,
-				worktreeId: workspaces.worktreeId,
-				cliSessionId: workspaces.cliSessionId,
-				cliPreset: workspaces.cliPreset,
-			})
-			.from(workspaces)
-			.where(eq(workspaces.id, input.workspaceId))
-			.get();
-		if (!target) throw new NotFoundError(input.workspaceId);
-		if (!ctx.linkedProjectIds.includes(target.projectId)) {
-			throw new ForbiddenError(
-				"target workspace's project is not linked to this cross-repo orchestrator"
-			);
-		}
-		if (target.cliPreset !== "claude" || !target.cliSessionId) {
-			throw new ResumeNotSupportedError("workspace has no claude session");
-		}
-
-		// 3. Resolve worktree path
-		const wt = target.worktreeId
-			? db
-					.select({ path: worktrees.path })
-					.from(worktrees)
-					.where(eq(worktrees.id, target.worktreeId))
-					.get()
-			: null;
-		if (!wt?.path) throw new NotFoundError(`worktree path for ${input.workspaceId}`);
-
-		// 4. Compose command
-		const escSession = escapeShellSingleQuote(target.cliSessionId);
-		const escMsg = escapeShellSingleQuote(input.message);
-		const command = `claude --resume '${escSession}' --dangerously-skip-permissions '${escMsg}'`;
-
-		// 5. Spawn
-		const respawnFn = deps.respawnAgent ?? defaultRespawnAgent;
-		await respawnFn({ workspaceId: input.workspaceId, command, cwd: wt.path });
-
-		// 6. Audit log
-		const messageId = nanoid();
-		const now = new Date();
-		db.insert(agentMessages)
-			.values({
-				id: messageId,
-				projectId: target.projectId,
-				fromWorkspaceId: ctx.xroId,
-				toWorkspaceId: input.workspaceId,
-				kind: "resume",
-				content: input.message,
-				inReplyTo: null,
-				createdAt: now,
-			})
-			.run();
-
-		// 7. Emit
-		eventBus?.emit(target.projectId, {
-			event: "message",
-			messageId,
-			from: ctx.xroId,
-			to: input.workspaceId,
-			kind: "resume",
-			content: input.message,
-			ts: now.toISOString(),
-		});
-
-		return { ok: true, messageId };
-	}
-
-	// 1. Authorize: caller must be project orchestrator
-	const callerWs = db
-		.select({
-			projectId: workspaces.projectId,
-			isOrchestrator: workspaces.isOrchestrator,
-		})
-		.from(workspaces)
-		.where(eq(workspaces.id, ctx.workspaceId))
-		.get();
-	if (!callerWs) throw new NotFoundError(ctx.workspaceId);
-	if (callerWs.projectId !== ctx.projectId) throw new ForbiddenError();
-	if (!callerWs.isOrchestrator) {
-		throw new ForbiddenError("caller is not the project orchestrator");
-	}
-
-	// 2. Look up target
+	// 1. Look up target (no throw yet — the workspace branch authorizes the
+	//    caller BEFORE surfacing a missing-target NotFound, preserving the
+	//    historical Forbidden-before-NotFound ordering for that path).
 	const target = db
 		.select({
 			projectId: workspaces.projectId,
@@ -1026,13 +931,46 @@ export async function resumeAgent(
 		.from(workspaces)
 		.where(eq(workspaces.id, input.workspaceId))
 		.get();
-	if (!target) throw new NotFoundError(input.workspaceId);
-	if (target.projectId !== ctx.projectId) throw new ForbiddenError();
+
+	let fromId: string;
+	let auditProjectId: string;
+	if (ctx.kind === "xro") {
+		// Cross-repo orchestrators are always authorized to resume agents in any
+		// of their linked projects — no per-workspace isOrchestrator check.
+		if (!target) throw new NotFoundError(input.workspaceId);
+		if (!ctx.linkedProjectIds.includes(target.projectId)) {
+			throw new ForbiddenError(
+				"target workspace's project is not linked to this cross-repo orchestrator"
+			);
+		}
+		fromId = ctx.xroId;
+		auditProjectId = target.projectId;
+	} else {
+		// Authorize: caller must be the project orchestrator.
+		const callerWs = db
+			.select({
+				projectId: workspaces.projectId,
+				isOrchestrator: workspaces.isOrchestrator,
+			})
+			.from(workspaces)
+			.where(eq(workspaces.id, ctx.workspaceId))
+			.get();
+		if (!callerWs) throw new NotFoundError(ctx.workspaceId);
+		if (callerWs.projectId !== ctx.projectId) throw new ForbiddenError();
+		if (!callerWs.isOrchestrator) {
+			throw new ForbiddenError("caller is not the project orchestrator");
+		}
+		if (!target) throw new NotFoundError(input.workspaceId);
+		if (target.projectId !== ctx.projectId) throw new ForbiddenError();
+		fromId = ctx.workspaceId;
+		auditProjectId = ctx.projectId;
+	}
+
 	if (target.cliPreset !== "claude" || !target.cliSessionId) {
 		throw new ResumeNotSupportedError("workspace has no claude session");
 	}
 
-	// 3. Resolve worktree path (cwd)
+	// 2. Resolve worktree path (cwd)
 	const wt = target.worktreeId
 		? db
 				.select({ path: worktrees.path })
@@ -1042,7 +980,7 @@ export async function resumeAgent(
 		: null;
 	if (!wt?.path) throw new NotFoundError(`worktree path for ${input.workspaceId}`);
 
-	// 4. Compose the resume command (interactive — no --print, so the child
+	// 3. Compose the resume command (interactive — no --print, so the child
 	//    keeps running and can be resumed again on the next coordination event).
 	//    --dangerously-skip-permissions matches the dispatch flow: orchestrated
 	//    agents always run with permissions auto-approved.
@@ -1050,7 +988,7 @@ export async function resumeAgent(
 	const escMsg = escapeShellSingleQuote(input.message);
 	const command = `claude --resume '${escSession}' --dangerously-skip-permissions '${escMsg}'`;
 
-	// 5. Kill the previous claude session (if any) and spawn a fresh one.
+	// 4. Kill the previous claude session (if any) and spawn a fresh one.
 	//    Writing into a running claude PTY would inject the command as a user
 	//    message instead of launching a new resume — we need a clean shell.
 	const respawnFn = deps.respawnAgent ?? defaultRespawnAgent;
@@ -1060,30 +998,31 @@ export async function resumeAgent(
 		cwd: wt.path,
 	});
 
-	// 6. Insert agent_messages row (audit log)
+	// 5. Insert agent_messages row (audit log)
 	const messageId = nanoid();
+	const now = new Date();
 	db.insert(agentMessages)
 		.values({
 			id: messageId,
-			projectId: ctx.projectId,
-			fromWorkspaceId: ctx.workspaceId,
+			projectId: auditProjectId,
+			fromWorkspaceId: fromId,
 			toWorkspaceId: input.workspaceId,
 			kind: "resume",
 			content: input.message,
 			inReplyTo: null,
-			createdAt: new Date(),
+			createdAt: now,
 		})
 		.run();
 
-	// 7. Emit on bus
-	eventBus?.emit(ctx.projectId, {
+	// 6. Emit on bus
+	eventBus?.emit(auditProjectId, {
 		event: "message",
 		messageId,
-		from: ctx.workspaceId,
+		from: fromId,
 		to: input.workspaceId,
 		kind: "resume",
 		content: input.message,
-		ts: new Date().toISOString(),
+		ts: now.toISOString(),
 	});
 
 	return { ok: true, messageId };
