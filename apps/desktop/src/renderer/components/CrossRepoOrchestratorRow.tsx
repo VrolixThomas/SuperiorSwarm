@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useCrossRepoOrchestratorColor } from "../hooks/useCrossRepoOrchestratorColor";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
+import { OrchestratorIcon } from "./orchestrator/OrchestratorIcon";
 
 interface Props {
 	orchestrator: { id: string; name: string };
@@ -104,21 +105,7 @@ export function CrossRepoOrchestratorRow({
 					style={{ background: swatchVar }}
 				/>
 			)}
-			<svg
-				role="img"
-				aria-label="Cross-repo orchestrator"
-				width="16"
-				height="16"
-				viewBox="0 0 14 14"
-				fill="none"
-				className="shrink-0"
-			>
-				<title>Cross-repo orchestrator</title>
-				<circle cx="3" cy="7" r="2" stroke={swatchVar} strokeWidth="1.2" />
-				<circle cx="11" cy="7" r="2" stroke={swatchVar} strokeWidth="1.2" />
-				<circle cx="7" cy="7" r="1.1" fill={swatchVar} />
-				<path d="M5 7h.6M8.4 7H9" stroke={swatchVar} strokeWidth="1.1" />
-			</svg>
+			<OrchestratorIcon size={13} color={swatchVar} />
 
 			<span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-[var(--text)]">
 				{orchestrator.name}

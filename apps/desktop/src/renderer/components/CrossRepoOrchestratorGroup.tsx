@@ -58,9 +58,10 @@ export function CrossRepoOrchestratorGroup() {
 				<button
 					type="button"
 					onClick={openCreate}
-					className="shrink-0 text-[12.5px] font-medium text-[var(--accent)] hover:text-[var(--accent-hover)]"
+					className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-[14px] text-[var(--text-quaternary)] transition-colors duration-[120ms] hover:text-[var(--text-secondary)]"
+					title="New Orchestrator"
 				>
-					+ New
+					+
 				</button>
 			</div>
 
@@ -73,12 +74,7 @@ export function CrossRepoOrchestratorGroup() {
 						className="mx-2 mt-1 flex shrink-0 items-center gap-[10px] rounded-[9px] border border-dashed border-[var(--border)] px-[12px] py-[9px] text-left transition-colors hover:border-[var(--border-active)]"
 					>
 						<span className="grid h-[26px] w-[26px] shrink-0 place-items-center rounded-[7px] border border-[rgba(138,154,176,0.35)] bg-[var(--orch-1-bg)]">
-							<svg width="15" height="15" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-								<circle cx="3" cy="7" r="2" stroke="var(--orch-1)" strokeWidth="1.2" />
-								<circle cx="11" cy="7" r="2" stroke="var(--orch-1)" strokeWidth="1.2" />
-								<circle cx="7" cy="7" r="1.1" fill="var(--orch-1)" />
-								<path d="M5 7h.6M8.4 7H9" stroke="var(--orch-1)" strokeWidth="1.1" />
-							</svg>
+							<OrchestratorIcon size={14} color="var(--orch-1)" />
 						</span>
 						<span className="min-w-0 flex-1">
 							<span className="block text-[12px] font-semibold text-[var(--text)]">

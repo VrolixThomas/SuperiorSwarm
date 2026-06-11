@@ -80,12 +80,7 @@ function CreateCrossRepoOrchestratorModalInner({ onClose }: { onClose: () => voi
 				<div className="flex items-start justify-between border-b border-[var(--border)] px-4 py-3">
 					<div className="flex items-center gap-2.5">
 						<span className="grid h-[26px] w-[26px] shrink-0 place-items-center rounded-[7px] border border-[rgba(138,154,176,0.35)] bg-[var(--orch-1-bg)]">
-							<svg aria-hidden="true" width="15" height="15" viewBox="0 0 14 14" fill="none">
-								<circle cx="3" cy="7" r="2" stroke="var(--orch-1)" strokeWidth="1.2" />
-								<circle cx="11" cy="7" r="2" stroke="var(--orch-1)" strokeWidth="1.2" />
-								<circle cx="7" cy="7" r="1.1" fill="var(--orch-1)" />
-								<path d="M5 7h.6M8.4 7H9" stroke="var(--orch-1)" strokeWidth="1.1" />
-							</svg>
+							<OrchestratorIcon size={14} color="var(--orch-1)" />
 						</span>
 						<div>
 							<h2 id="xro-create-title" className="text-[14px] font-semibold text-[var(--text)]">
