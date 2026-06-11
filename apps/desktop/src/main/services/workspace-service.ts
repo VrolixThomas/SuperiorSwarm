@@ -925,8 +925,8 @@ export async function createOrchestrator(
 	// downstream tx-loop never inserts duplicates.
 	const attachIds = Array.from(new Set(input.attachWorkspaceIds));
 
-	const dbForKind = getDb();
-	const projectRow = dbForKind
+	const db = getDb();
+	const projectRow = db
 		.select({ kind: projects.kind })
 		.from(projects)
 		.where(eq(projects.id, input.projectId))
@@ -938,13 +938,13 @@ export async function createOrchestrator(
 		// Folder projects have no worktrees; the orchestrator is a plain folder workspace.
 		const id = nanoid();
 		const now = new Date();
-		dbForKind
-			.insert(workspaces)
+		db.insert(workspaces)
 			.values({
 				id,
 				projectId: input.projectId,
 				type: "folder",
 				name: input.name,
+				folderPath: null,
 				worktreeId: null,
 				terminalId: null,
 				createdAt: now,
@@ -961,7 +961,6 @@ export async function createOrchestrator(
 		});
 	}
 
-	const db = getDb();
 	const doAttach = deps.attachFn;
 
 	if (doAttach) {

@@ -18,6 +18,8 @@ import {
 	createWorkspace,
 	removeWorkspace,
 } from "../src/main/services/workspace-service";
+import { t } from "../src/main/trpc/index";
+import { workspacesRouter } from "../src/main/trpc/routers/workspaces";
 
 let TMP: string;
 const createdProjectIds: string[] = [];
@@ -313,6 +315,36 @@ describe("folder project guards", () => {
 		await expect(
 			createWorkspace({ projectId: res.project?.id ?? "", branch: "feat/x" })
 		).rejects.toThrow(/git repository/i);
+	});
+
+	test("getOrCreateReview rejects folder projects without leaking a workspace row", async () => {
+		const dir = join(TMP, "guard-review");
+		mkdirSync(dir);
+		const res = await openFolderProject({ path: dir });
+		track(res.project?.id);
+		const projectId = res.project?.id ?? "";
+
+		const caller = t.createCallerFactory(workspacesRouter)({});
+		await expect(
+			caller.getOrCreateReview({
+				projectId,
+				prProvider: "github",
+				prIdentifier: "PR#1",
+				prTitle: "Test PR",
+				sourceBranch: "feat/x",
+				targetBranch: "main",
+			})
+		).rejects.toThrow(/plain folder/i);
+
+		const db = getDb();
+		const ws = db
+			.select()
+			.from(schema.workspaces)
+			.where(eq(schema.workspaces.projectId, projectId))
+			.all();
+		// Only the original default folder workspace should exist; no leaked review row
+		expect(ws).toHaveLength(1);
+		expect(ws[0]?.type).toBe("folder");
 	});
 
 	test("createOrchestrator on a folder project creates a folder workspace, no worktree", async () => {
