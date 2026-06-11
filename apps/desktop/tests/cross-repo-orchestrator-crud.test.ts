@@ -84,6 +84,21 @@ describe("cross-repo-orchestrators CRUD", () => {
 		expect(left).toHaveLength(0);
 	});
 
+	test("create assigns the first free colorIndex; list backfills nulls", async () => {
+		const a = await createCrossRepoOrchestrator({ name: "a", agentKind: "claude" });
+		const b = await createCrossRepoOrchestrator({ name: "b", agentKind: "claude" });
+		const rows = await listCrossRepoOrchestrators();
+		const ca = rows.find((r) => r.id === a)?.colorIndex;
+		const cb = rows.find((r) => r.id === b)?.colorIndex;
+		expect(ca).not.toBeNull();
+		expect(cb).not.toBeNull();
+		expect(ca).not.toBe(cb);
+
+		const legacy = await seedCrossRepoOrchestrator({}); // seeds with NULL colorIndex
+		const rows2 = await listCrossRepoOrchestrators();
+		expect(rows2.find((r) => r.id === legacy)?.colorIndex).not.toBeNull();
+	});
+
 	test("list returns linkedProjectIds per orchestrator", async () => {
 		const p1 = await seedProject();
 		const p2 = await seedProject();

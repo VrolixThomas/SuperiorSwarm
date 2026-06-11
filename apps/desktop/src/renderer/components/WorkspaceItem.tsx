@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AgentAlert } from "../../shared/agent-events";
-import { useCrossRepoOrchestratorColor } from "../hooks/useCrossRepoOrchestratorColor";
 import { useAgentAlertStore } from "../stores/agent-alert-store";
 import { usePaneStore } from "../stores/pane-store";
 import { useProjectStore } from "../stores/projects";
@@ -457,8 +456,8 @@ export function WorkspaceItem({
 	});
 	// Only orchestrators that link THIS workspace's project are valid attach targets.
 	const xros = (xrosQuery.data ?? []).filter((x) => x.linkedProjectIds.includes(projectId));
-	const allXroIds = (xrosQuery.data ?? []).map((x) => x.id);
-	const xroColor = useCrossRepoOrchestratorColor(crossRepoOrchestrator?.id ?? "", allXroIds);
+	const xroColor =
+		((xrosQuery.data ?? []).find((x) => x.id === crossRepoOrchestrator?.id)?.colorIndex ?? 0) + 1;
 	const attachXroMut = trpc.crossRepoOrchestrators.attachMember.useMutation({
 		onSuccess: () => {
 			utils.workspaces.listByProject.invalidate({ projectId });

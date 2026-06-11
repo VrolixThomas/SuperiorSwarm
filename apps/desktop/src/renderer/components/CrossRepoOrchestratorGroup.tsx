@@ -25,7 +25,6 @@ export function CrossRepoOrchestratorGroup() {
 	const toggleCollapsed = useProjectStore((s) => s.toggleOrchestratorPaneCollapsed);
 
 	const all = orchs.data ?? [];
-	const allIds = all.map((o) => o.id);
 
 	return (
 		<div className="flex h-full min-h-0 flex-col">
@@ -96,7 +95,6 @@ export function CrossRepoOrchestratorGroup() {
 							<CrossRepoOrchestratorRow
 								key={o.id}
 								orchestrator={o}
-								allOrchestratorIds={allIds}
 								onRename={() => {
 									const name = window.prompt("Rename cross-repo orchestrator", o.name);
 									if (name?.trim()) renameMut.mutate({ id: o.id, name: name.trim() });

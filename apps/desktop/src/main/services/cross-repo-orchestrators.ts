@@ -27,6 +27,20 @@ function workDirFor(id: string): string {
 	return join(base, "cross-repo-orchestrators", id);
 }
 
+const PALETTE_SIZE = 8;
+
+function nextFreeColorIndex(db: ReturnType<typeof getDb>): number {
+	const rows = db
+		.select({ colorIndex: crossRepoOrchestrators.colorIndex })
+		.from(crossRepoOrchestrators)
+		.all();
+	const taken = new Set(rows.map((r) => r.colorIndex).filter((c): c is number => c !== null));
+	for (let i = 0; i < PALETTE_SIZE; i++) {
+		if (!taken.has(i)) return i;
+	}
+	return rows.length % PALETTE_SIZE; // all taken — cycle
+}
+
 export async function createCrossRepoOrchestrator(input: {
 	name: string;
 	agentKind: string;
@@ -51,6 +65,7 @@ export async function createCrossRepoOrchestrator(input: {
 			agentKind: input.agentKind,
 			status: "idle",
 			sortOrder: nextSort,
+			colorIndex: nextFreeColorIndex(db),
 			createdAt: now,
 			updatedAt: now,
 		})
@@ -89,6 +104,16 @@ export async function listCrossRepoOrchestrators(): Promise<
 		const arr = byOrch.get(l.orchestratorId) ?? [];
 		arr.push(l.projectId);
 		byOrch.set(l.orchestratorId, arr);
+	}
+	// Lazily backfill colorIndex for legacy rows created before server-side assignment.
+	for (const r of rows) {
+		if (r.colorIndex === null) {
+			r.colorIndex = nextFreeColorIndex(db);
+			db.update(crossRepoOrchestrators)
+				.set({ colorIndex: r.colorIndex })
+				.where(eq(crossRepoOrchestrators.id, r.id))
+				.run();
+		}
 	}
 	return rows.map((r) => ({ ...r, linkedProjectIds: byOrch.get(r.id) ?? [] }));
 }

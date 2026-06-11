@@ -1,25 +1,18 @@
 import { useEffect, useRef, useState } from "react";
-import { useCrossRepoOrchestratorColor } from "../hooks/useCrossRepoOrchestratorColor";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import { OrchestratorIcon } from "./orchestrator/OrchestratorIcon";
 
 interface Props {
-	orchestrator: { id: string; name: string };
-	allOrchestratorIds: string[];
+	orchestrator: { id: string; name: string; colorIndex: number | null };
 	onRename?: () => void;
 	onDelete?: () => void;
 }
 
-export function CrossRepoOrchestratorRow({
-	orchestrator,
-	allOrchestratorIds,
-	onRename,
-	onDelete,
-}: Props) {
+export function CrossRepoOrchestratorRow({ orchestrator, onRename, onDelete }: Props) {
 	const openXroWorkspace = useTabStore((s) => s.openXroWorkspace);
 	const activeWorkspaceId = useTabStore((s) => s.activeWorkspaceId);
-	const colorIndex = useCrossRepoOrchestratorColor(orchestrator.id, allOrchestratorIds);
+	const colorIndex = ((orchestrator.colorIndex ?? 0) + 1) as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
 	const members = trpc.crossRepoOrchestrators.listMembers.useQuery({ id: orchestrator.id });
 	const detail = trpc.crossRepoOrchestrators.get.useQuery({ id: orchestrator.id });
 
