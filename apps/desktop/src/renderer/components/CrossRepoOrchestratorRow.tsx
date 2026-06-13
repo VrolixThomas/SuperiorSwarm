@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import { useClickOutside } from "../hooks/useClickOutside";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
-import { OrchestratorIcon } from "./orchestrator/OrchestratorIcon";
 
 interface Props {
 	orchestrator: { id: string; name: string; colorIndex: number | null; workDir: string };
@@ -14,7 +13,6 @@ interface Props {
 export function CrossRepoOrchestratorRow({ orchestrator, counts, onRename, onDelete }: Props) {
 	const openXroWorkspace = useTabStore((s) => s.openXroWorkspace);
 	const activeWorkspaceId = useTabStore((s) => s.activeWorkspaceId);
-	const colorIndex = ((orchestrator.colorIndex ?? 0) + 1) as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
 
 	const utils = trpc.useUtils();
 	// Fetch-on-demand: the launch command is only needed at click time.
@@ -26,7 +24,6 @@ export function CrossRepoOrchestratorRow({ orchestrator, counts, onRename, onDel
 
 	const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
 
-	const swatchVar = `var(--orch-${colorIndex})`;
 	const isActive = activeWorkspaceId === orchestrator.id;
 
 	const working = counts.working;
@@ -83,28 +80,25 @@ export function CrossRepoOrchestratorRow({ orchestrator, counts, onRename, onDel
 				setMenu({ x: e.clientX, y: e.clientY });
 			}}
 			className={[
-				"group relative flex w-full cursor-pointer items-center gap-[9px] rounded-[8px] border py-[9px] pl-[10px] pr-[8px] text-left transition-colors duration-[120ms]",
+				"group relative flex w-full shrink-0 cursor-pointer items-center gap-2 rounded-[8px] border px-3 py-2 text-left transition-all duration-[120ms]",
 				isActive
-					? "border-[rgba(154,176,138,0.28)]"
-					: "border-transparent hover:bg-[var(--bg-elevated)]",
+					? "border-[var(--border-active)] bg-[var(--bg-overlay)]"
+					: "border-[var(--border-subtle)] bg-[var(--bg-elevated)] hover:bg-[var(--bg-overlay)]",
 			].join(" ")}
-			style={isActive ? { background: `var(--orch-${colorIndex}-bg)` } : undefined}
 		>
-			{isActive && (
-				<span
-					className="absolute left-[-2px] top-[7px] bottom-[7px] w-[2.5px] rounded-[2px]"
-					style={{ background: swatchVar }}
-				/>
-			)}
-			<OrchestratorIcon size={13} color={swatchVar} />
-
 			<span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-[var(--text)]">
 				{orchestrator.name}
 			</span>
 
 			<span className="flex shrink-0 items-center gap-[8px] text-[11px] text-[var(--text-tertiary)]">
 				{working === 0 && blocked === 0 ? (
-					<span>{memberCount === 0 ? "" : "idle"}</span>
+					memberCount > 0 ? (
+						<span
+							title="Idle"
+							aria-label="Idle"
+							className="h-[6px] w-[6px] rounded-full bg-[var(--text-quaternary)]"
+						/>
+					) : null
 				) : (
 					<>
 						{working > 0 && (

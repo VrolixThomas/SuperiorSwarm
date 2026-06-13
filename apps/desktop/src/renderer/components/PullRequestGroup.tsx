@@ -52,9 +52,7 @@ export function PullRequestGroup({
 			isActive={isGroupActive}
 			isExpanded={!isCollapsed}
 			onToggle={onToggleCollapse}
-			rightContent={
-				<span className="text-[11px] tabular-nums text-[var(--text-quaternary)]">{prs.length}</span>
-			}
+			count={prs.length}
 		>
 			{prs.map((pr) => {
 				const identifier = getPrIdentifier(pr);

@@ -3,6 +3,7 @@ import { useProjectStore } from "../stores/projects";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import { CrossRepoOrchestratorRow } from "./CrossRepoOrchestratorRow";
+import { SidebarSectionHeader } from "./SidebarSectionHeader";
 import { OrchestratorIcon } from "./orchestrator/OrchestratorIcon";
 
 export function CrossRepoOrchestratorGroup() {
@@ -30,47 +31,17 @@ export function CrossRepoOrchestratorGroup() {
 	const all = orchs.data ?? [];
 
 	return (
-		<div className="flex h-full min-h-0 flex-col">
+		<div className="flex h-full min-h-0 flex-col bg-[var(--bg-base)]">
 			{/* Pane header */}
-			<div className="flex shrink-0 items-center gap-2 px-3 pb-1 pt-2">
-				<button
-					type="button"
-					onClick={toggleCollapsed}
-					aria-expanded={!collapsed}
-					className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
-				>
-					<svg
-						aria-hidden="true"
-						width="9"
-						height="9"
-						viewBox="0 0 10 10"
-						fill="none"
-						className={[
-							"shrink-0 text-[var(--text-quaternary)] transition-transform duration-[120ms]",
-							collapsed ? "rotate-0" : "rotate-90",
-						].join(" ")}
-					>
-						<path
-							d="M3 1.5L7 5L3 8.5"
-							stroke="currentColor"
-							strokeWidth="1.3"
-							strokeLinecap="round"
-							strokeLinejoin="round"
-						/>
-					</svg>
-					<span className="text-[11px] font-bold uppercase tracking-[0.07em] text-[var(--text-quaternary)]">
-						Orchestrators
-					</span>
-				</button>
-				<button
-					type="button"
-					onClick={openCreate}
-					className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-[14px] text-[var(--text-quaternary)] transition-colors duration-[120ms] hover:text-[var(--text-secondary)]"
-					title="New Orchestrator"
-				>
-					+
-				</button>
-			</div>
+			<SidebarSectionHeader
+				title="Orchestrators"
+				count={all.length}
+				onNew={openCreate}
+				newLabel="New Orchestrator"
+				onToggle={toggleCollapsed}
+				expanded={!collapsed}
+				className="shrink-0"
+			/>
 
 			{/* Pane body */}
 			{!collapsed &&
@@ -93,7 +64,7 @@ export function CrossRepoOrchestratorGroup() {
 						</span>
 					</button>
 				) : (
-					<div className="min-h-0 flex-1 overflow-y-auto px-1 pb-2">
+					<div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-2 pb-2">
 						{all.map((o) => (
 							<CrossRepoOrchestratorRow
 								key={o.id}

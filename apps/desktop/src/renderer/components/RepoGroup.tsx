@@ -32,7 +32,7 @@ export function RepoGroup({
 }: RepoGroupProps) {
 	return (
 		<div>
-			<div className="flex items-center">
+			<div className="group/repohead flex items-center">
 				<button
 					type="button"
 					onClick={onToggle}
@@ -77,10 +77,18 @@ export function RepoGroup({
 					</svg>
 				</button>
 
-				{rightContent && <div className="flex shrink-0 items-center pr-2">{rightContent}</div>}
+				{rightContent && (
+					<div className="flex shrink-0 items-center pr-2 opacity-0 transition-opacity duration-[120ms] focus-within:opacity-100 group-hover/repohead:opacity-100">
+						{rightContent}
+					</div>
+				)}
 			</div>
 
-			{isExpanded && children}
+			{isExpanded && children && (
+				<div className="ml-[10px] border-l border-[var(--border-subtle)] pl-[6px] pt-0.5">
+					{children}
+				</div>
+			)}
 		</div>
 	);
 }

@@ -279,13 +279,7 @@ export function ProjectItem({ project, isExpanded, onToggle }: ProjectItemProps)
 									openCreateWorktreeModal(project.id);
 								}
 							}}
-							className={[
-								"flex h-5 w-5 shrink-0 items-center justify-center rounded text-[14px]",
-								"transition-colors duration-[120ms]",
-								isActiveProject
-									? "text-[var(--text-quaternary)] hover:text-[var(--text-secondary)]"
-									: "text-[#3a3a42] hover:text-[#505058]",
-							].join(" ")}
+							className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-[14px] text-[var(--text-quaternary)] transition-colors duration-[120ms] hover:text-[var(--text-secondary)]"
 							title="New Worktree"
 						>
 							+

@@ -1,4 +1,3 @@
-import type { SidebarSegment } from "../../shared/types";
 import { useProjectStore } from "../stores/projects";
 import { useTabStore } from "../stores/tab-store";
 import { useUpdateStore } from "../stores/update-store";
@@ -17,7 +16,7 @@ interface SidebarProps {
 }
 
 export function Sidebar({ collapsed, onExpand }: SidebarProps) {
-	const { openAddModal, openSettings } = useProjectStore();
+	const { openSettings } = useProjectStore();
 	const segment = useTabStore((s) => s.sidebarSegment);
 	const hasDismissedUpdate = useUpdateStore((s) => s.dismissedUpdateVersion !== null);
 	const setSidebarSegment = useTabStore((s) => s.setSidebarSegment);
@@ -101,34 +100,6 @@ export function Sidebar({ collapsed, onExpand }: SidebarProps) {
 					</div>
 				)}
 			</div>
-
-			{/* Add Repository — footer row (repos segment only) */}
-			{segment === "repos" && (
-				<div className="shrink-0 border-t border-[var(--border-subtle)] px-2 py-1.5">
-					<button
-						type="button"
-						onClick={openAddModal}
-						className="flex w-full items-center gap-2 rounded-[6px] px-3 py-1.5 text-[12px] text-[var(--text-quaternary)] transition-all duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-tertiary)]"
-					>
-						<svg
-							aria-hidden="true"
-							width="13"
-							height="13"
-							viewBox="0 0 16 16"
-							fill="none"
-							className="shrink-0"
-						>
-							<path
-								d="M8 3v10M3 8h10"
-								stroke="currentColor"
-								strokeWidth="1.5"
-								strokeLinecap="round"
-							/>
-						</svg>
-						<span className="truncate">Add Repository</span>
-					</button>
-				</div>
-			)}
 
 			{/* Footer — Settings */}
 			<div className="flex items-center border-t border-[var(--border-subtle)] p-2">
