@@ -474,7 +474,30 @@ export function WorkspaceItem({
 
 	const isActive = useTabStore((s) => s.activeWorkspaceId === workspace.id);
 	const { prefix: branchPrefix, rest: branchRest } = splitBranchPrefix(workspace.name);
-	const showStatusIndicators = indentLevel === 0;
+	const phaseColorVar =
+		workspace.currentPhase === "working"
+			? "var(--st-working)"
+			: workspace.currentPhase === "blocked"
+				? "var(--st-blocked)"
+				: workspace.currentPhase === "done"
+					? "var(--st-done)"
+					: null;
+	const phaseRingVar =
+		workspace.currentPhase === "working"
+			? "var(--st-working-bg)"
+			: workspace.currentPhase === "blocked"
+				? "var(--st-blocked-bg)"
+				: workspace.currentPhase === "done"
+					? "var(--st-done-bg)"
+					: null;
+	const phaseLabel =
+		workspace.currentPhase === "working"
+			? "working"
+			: workspace.currentPhase === "blocked"
+				? "blocked"
+				: workspace.currentPhase === "done"
+					? "done"
+					: null;
 	const alert = useAgentAlertStore((s) => s.alerts[workspace.id]);
 
 	const solveSessionsQuery = trpc.commentSolver.getSolveSessions.useQuery(
@@ -563,18 +586,32 @@ export function WorkspaceItem({
 					}
 				}}
 				className={[
-					"relative flex w-full items-center gap-2 border-none",
-					indentLevel === 1 ? "pl-[36px] pr-3 py-[7px]" : "pl-[22px] pr-3 py-[7px]",
+					"relative flex w-full items-start gap-2 border-none",
+					indentLevel === 1 ? "pl-[36px] pr-3 py-[6px]" : "pl-[22px] pr-3 py-[6px]",
 					"cursor-pointer transition-all duration-[120ms] text-left rounded-[6px]",
 					isActive
 						? "bg-[var(--accent-subtle)] hover:bg-[var(--accent-subtle)]"
 						: "bg-transparent hover:bg-[var(--bg-elevated)]",
 				].join(" ")}
 			>
+				{phaseColorVar && (
+					<span
+						aria-hidden="true"
+						title={phaseLabel ?? undefined}
+						className={[
+							"absolute top-[11px] h-[6px] w-[6px] rounded-full",
+							indentLevel === 1 ? "left-[23px]" : "left-[9px]",
+						].join(" ")}
+						style={{
+							background: phaseColorVar,
+							boxShadow: phaseRingVar ? `0 0 0 3px ${phaseRingVar}` : undefined,
+						}}
+					/>
+				)}
 				<div className="flex-1 min-w-0">
 					<span
 						className={[
-							"truncate text-[13px] block",
+							"truncate text-[13px] leading-[1.3] block",
 							isActive
 								? "font-medium text-[var(--text)]"
 								: isInActiveProject
@@ -614,11 +651,18 @@ export function WorkspaceItem({
 							Orchestrator
 						</span>
 					)}
-					{workspace.statusText && (
-						<span className="block text-[11px] text-[var(--text-secondary)] truncate mt-0.5">
+					{workspace.statusText ? (
+						<span className="block text-[11px] leading-[1.35] text-[var(--text-tertiary)] truncate mt-[3px]">
 							{workspace.statusText}
 						</span>
-					)}
+					) : phaseLabel ? (
+						<span
+							className="block text-[10px] font-medium uppercase tracking-[0.04em] truncate mt-[3px]"
+							style={{ color: phaseColorVar ?? undefined }}
+						>
+							{phaseLabel}
+						</span>
+					) : null}
 					{workspace.currentPhase === "blocked" && workspace.needs && (
 						<span className="block text-[11px] text-[var(--text-tertiary)] italic truncate mt-0.5">
 							needs: {workspace.needs}
@@ -651,25 +695,7 @@ export function WorkspaceItem({
 						</span>
 					)}
 				</div>
-				{showStatusIndicators && workspace.currentPhase === "working" && (
-					<span
-						className="ml-auto inline-block h-1.5 w-1.5 rounded-full bg-[var(--accent)]"
-						title="working"
-					/>
-				)}
-				{showStatusIndicators && workspace.currentPhase === "blocked" && (
-					<span
-						className="ml-auto inline-block h-1.5 w-1.5 rounded-full bg-[var(--term-yellow)]"
-						title="blocked"
-					/>
-				)}
-				{showStatusIndicators && workspace.currentPhase === "done" && (
-					<span
-						className="ml-auto inline-block h-1.5 w-1.5 rounded-full bg-[var(--term-green)]"
-						title="done"
-					/>
-				)}
-				{alert && <SwarmIndicator alert={alert} className="ml-auto" />}
+				{alert && <SwarmIndicator alert={alert} className="ml-auto mt-[1px]" />}
 			</button>
 
 			{indentLevel === 0 && !workspace.isOrchestrator && workspace.type === "worktree" && (

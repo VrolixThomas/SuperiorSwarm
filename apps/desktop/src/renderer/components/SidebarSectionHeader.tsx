@@ -23,7 +23,9 @@ export function SidebarSectionHeader({
 }) {
 	const titleContent = (
 		<>
-			<span className="truncate text-[15px] font-medium text-[var(--text)]">{title}</span>
+			<span className="truncate text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--text-tertiary)]">
+				{title}
+			</span>
 			{count != null && count > 0 && (
 				<span className="shrink-0 rounded-full bg-[var(--bg-overlay)] px-[7px] py-[1px] text-[10px] font-semibold tabular-nums text-[var(--text-tertiary)]">
 					{count}
@@ -33,7 +35,7 @@ export function SidebarSectionHeader({
 	);
 
 	return (
-		<div className={["flex items-center gap-2 px-3 pb-[10px] pt-4", className ?? ""].join(" ")}>
+		<div className={["flex items-center gap-2 px-3 pb-[8px] pt-[14px]", className ?? ""].join(" ")}>
 			{onToggle ? (
 				<button
 					type="button"

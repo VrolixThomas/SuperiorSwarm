@@ -34,13 +34,19 @@ export function RepoGroup({
 		<div>
 			<div
 				className={[
-					"group/repohead flex items-center gap-2 border px-3 py-2",
+					"group/repohead relative flex items-center gap-2 border px-3 py-2",
 					"rounded-[8px] transition-all duration-[120ms]",
 					isActive
 						? "border-[var(--border-active)] bg-[var(--bg-overlay)]"
 						: "border-[var(--border-subtle)] bg-[var(--bg-elevated)] hover:bg-[var(--bg-overlay)]",
 				].join(" ")}
 			>
+				{isActive && (
+					<span
+						aria-hidden="true"
+						className="absolute left-0 top-2 bottom-2 w-[3px] rounded-r-[2px] bg-[var(--accent)]"
+					/>
+				)}
 				<button
 					type="button"
 					onClick={onToggle}
@@ -62,7 +68,7 @@ export function RepoGroup({
 					className="flex shrink-0 cursor-pointer items-center gap-2"
 				>
 					{count != null && (
-						<span className="rounded-[9px] bg-[var(--bg-base)] px-[7px] py-[1px] text-[10px] font-semibold text-[var(--text-tertiary)]">
+						<span className="rounded-full bg-[var(--bg-overlay)] px-[7px] py-[1px] text-[10px] font-semibold tabular-nums text-[var(--text-tertiary)]">
 							{count}
 						</span>
 					)}
