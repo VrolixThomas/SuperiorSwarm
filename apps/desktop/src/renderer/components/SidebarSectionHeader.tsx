@@ -6,7 +6,6 @@ export function SidebarSectionHeader({
 	onToggle,
 	expanded,
 	className,
-	terminalAction,
 }: {
 	title: string;
 	count?: number;
@@ -15,7 +14,6 @@ export function SidebarSectionHeader({
 	onToggle?: () => void;
 	expanded?: boolean;
 	className?: string;
-	terminalAction?: { onClick: () => void; disabled?: boolean };
 }) {
 	const titleContent = (
 		<>
@@ -45,25 +43,6 @@ export function SidebarSectionHeader({
 				<div className="flex min-w-0 flex-1 items-center gap-2">{titleContent}</div>
 			)}
 			<div className="flex shrink-0 items-center gap-1">
-				{terminalAction && (
-					<button
-						type="button"
-						onClick={terminalAction.onClick}
-						disabled={terminalAction.disabled}
-						title="New Terminal"
-						className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-[6px] border border-[var(--border-subtle)] text-[var(--text-secondary)] transition-colors duration-[120ms] hover:border-[var(--border-active)] hover:text-[var(--text)] disabled:opacity-40"
-					>
-						<svg aria-hidden="true" width="11" height="11" viewBox="0 0 16 16" fill="none">
-							<path
-								d="M3 5l3 3-3 3M8 11h5"
-								stroke="currentColor"
-								strokeWidth="1.5"
-								strokeLinecap="round"
-								strokeLinejoin="round"
-							/>
-						</svg>
-					</button>
-				)}
 				<button
 					type="button"
 					onClick={onNew}

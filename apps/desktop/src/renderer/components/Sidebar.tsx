@@ -134,15 +134,7 @@ export function Sidebar({ collapsed, onExpand }: SidebarProps) {
 			{/* Segment content */}
 			<div className="flex min-h-0 flex-1 flex-col">
 				{segment === "repos" && (
-					<SidebarSplit
-						top={
-							<ProjectList
-								onNewTerminal={() => void handleNewTerminal()}
-								terminalPending={openFolderMut.isPending}
-							/>
-						}
-						bottom={<CrossRepoOrchestratorGroup />}
-					/>
+					<SidebarSplit top={<ProjectList />} bottom={<CrossRepoOrchestratorGroup />} />
 				)}
 				{segment === "tickets" && (
 					<div className="min-h-0 flex-1 overflow-y-auto">

@@ -251,25 +251,6 @@ export function ProjectItem({ project, isExpanded, onToggle }: ProjectItemProps)
 		<>
 			<RepoGroup
 				name={project.name}
-				icon={
-					isFolderProject ? (
-						<svg
-							aria-hidden="true"
-							width="11"
-							height="11"
-							viewBox="0 0 16 16"
-							fill="none"
-							className="shrink-0 text-[var(--text-quaternary)]"
-						>
-							<path
-								d="M1.5 3.5h4l1.5 2h7.5v7a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1v-9z"
-								stroke="currentColor"
-								strokeWidth="1.2"
-								strokeLinejoin="round"
-							/>
-						</svg>
-					) : undefined
-				}
 				isActive={isActiveProject}
 				count={worktreeCount}
 				isExpanded={isExpanded}
