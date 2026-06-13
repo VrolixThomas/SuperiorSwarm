@@ -32,26 +32,37 @@ export function RepoGroup({
 }: RepoGroupProps) {
 	return (
 		<div>
-			<div className="group/repohead flex items-center">
+			<div
+				className={[
+					"group/repohead flex items-center gap-2 border px-3 py-2",
+					"rounded-[8px] transition-all duration-[120ms]",
+					isActive
+						? "border-[var(--border-active)] bg-[var(--bg-overlay)]"
+						: "border-[var(--border-subtle)] bg-[var(--bg-elevated)] hover:bg-[var(--bg-overlay)]",
+				].join(" ")}
+			>
 				<button
 					type="button"
 					onClick={onToggle}
 					onContextMenu={onContextMenu}
-					className={[
-						"flex min-w-0 flex-1 cursor-pointer items-center gap-2 border px-3 py-2",
-						"rounded-[8px] text-left transition-all duration-[120ms]",
-						isActive
-							? "border-[var(--border-active)] bg-[var(--bg-overlay)]"
-							: "border-[var(--border-subtle)] bg-[var(--bg-elevated)] hover:bg-[var(--bg-overlay)]",
-					].join(" ")}
+					className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left"
 				>
 					<div className="min-w-0 flex-1">
 						<div className="truncate text-[13px] font-semibold text-[var(--text)]">{name}</div>
 						{subTitle}
 					</div>
+				</button>
 
+				{rightContent && <div className="flex shrink-0 items-center">{rightContent}</div>}
+
+				<button
+					type="button"
+					onClick={onToggle}
+					aria-label={isExpanded ? "Collapse" : "Expand"}
+					className="flex shrink-0 cursor-pointer items-center gap-2"
+				>
 					{count != null && (
-						<span className="shrink-0 rounded-[9px] bg-[var(--bg-overlay)] px-[7px] py-[1px] text-[10px] font-semibold text-[var(--text-tertiary)]">
+						<span className="rounded-[9px] bg-[var(--bg-base)] px-[7px] py-[1px] text-[10px] font-semibold text-[var(--text-tertiary)]">
 							{count}
 						</span>
 					)}
@@ -63,7 +74,7 @@ export function RepoGroup({
 						viewBox="0 0 10 10"
 						fill="none"
 						className={[
-							"shrink-0 text-[var(--text-quaternary)] transition-transform duration-[120ms]",
+							"text-[var(--text-quaternary)] transition-transform duration-[120ms]",
 							isExpanded ? "rotate-90" : "rotate-0",
 						].join(" ")}
 					>
@@ -76,12 +87,6 @@ export function RepoGroup({
 						/>
 					</svg>
 				</button>
-
-				{rightContent && (
-					<div className="flex shrink-0 items-center pr-2 opacity-0 transition-opacity duration-[120ms] focus-within:opacity-100 group-hover/repohead:opacity-100">
-						{rightContent}
-					</div>
-				)}
 			</div>
 
 			{isExpanded && children && (
