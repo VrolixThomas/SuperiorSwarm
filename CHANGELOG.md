@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.10.1 (2026-06-13)
+
+### What's New
+
+This release polishes the cross-repository orchestration experience. The Orchestrators sidebar pane drops its empty-state call-to-action for a cleaner, less cluttered look, and some interface copy has been tidied up.
+
+### Changes
+
+- **Cross repo orchestrator follow-ups** (#118)
+- fix(sidebar): drop empty-state CTA in Orchestrators pane
+- fix useless text
+
 ## v0.10.0 (2026-06-13)
 
 ### What's New
