@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.11.0 (2026-06-14)
+
+### What's New
+
+SuperiorSwarm now works with plain folders, not just git repositories. Open any directory as a workspace, dispatch and resume agents inside it, and promote it to a full repository later with one click via Convert to Repository. The Add Project modal gains a dedicated Folder tab, and the sidebar is redesigned to split your projects into a pinned Folders band and a scrolling Repositories band for faster navigation. Adding a project and opening a new terminal are now both one click.
+
+### Changes
+
+- **Add non repo workspaces** (#119)
+
 ## v0.10.1 (2026-06-13)
 
 ### What's New
