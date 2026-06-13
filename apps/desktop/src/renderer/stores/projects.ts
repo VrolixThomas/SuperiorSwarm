@@ -16,15 +16,20 @@ interface ProjectStore {
 	selectedProjectId: string | null;
 	expandedProjectIds: Set<string>;
 	isAddModalOpen: boolean;
+	isCreateCrossRepoModalOpen: boolean;
 	isCreateWorktreeModalOpen: boolean;
 	createWorktreeProjectId: string | null;
 	createWorktreeAsOrchestrator: boolean;
 	sharedFilesProjectId: string | null;
+	orchestratorPaneHeight: number;
+	orchestratorPaneCollapsed: boolean;
 	selectProject: (id: string | null) => void;
 	toggleProjectExpanded: (id: string) => void;
 	hydrateExpandedProjects: (ids: string[]) => void;
 	openAddModal: () => void;
 	closeAddModal: () => void;
+	openCreateCrossRepoModal: () => void;
+	closeCreateCrossRepoModal: () => void;
 	openCreateWorktreeModal: (projectId: string, opts?: { asOrchestrator?: boolean }) => void;
 	closeCreateWorktreeModal: () => void;
 	openSharedFilesPanel: (projectId: string) => void;
@@ -38,16 +43,22 @@ interface ProjectStore {
 	openSettingsToIntegrations: (returnTo?: SidebarSegment) => void;
 	sidebarCollapsed: boolean;
 	setSidebarCollapsed: (collapsed: boolean) => void;
+	setOrchestratorPaneHeight: (height: number) => void;
+	toggleOrchestratorPaneCollapsed: () => void;
+	setOrchestratorPaneCollapsed: (collapsed: boolean) => void;
 }
 
 export const useProjectStore = create<ProjectStore>((set) => ({
 	selectedProjectId: null,
 	expandedProjectIds: new Set<string>(),
 	isAddModalOpen: false,
+	isCreateCrossRepoModalOpen: false,
 	isCreateWorktreeModalOpen: false,
 	createWorktreeProjectId: null,
 	createWorktreeAsOrchestrator: false,
 	sharedFilesProjectId: null,
+	orchestratorPaneHeight: 180,
+	orchestratorPaneCollapsed: false,
 	sidebarView: "main",
 	settingsCategory: "general",
 	setSettingsCategory: (category) => set({ settingsCategory: category }),
@@ -72,6 +83,9 @@ export const useProjectStore = create<ProjectStore>((set) => ({
 	openAddModal: () => set({ isAddModalOpen: true }),
 	closeAddModal: () => set({ isAddModalOpen: false }),
 
+	openCreateCrossRepoModal: () => set({ isCreateCrossRepoModalOpen: true }),
+	closeCreateCrossRepoModal: () => set({ isCreateCrossRepoModalOpen: false }),
+
 	openCreateWorktreeModal: (projectId, opts) =>
 		set({
 			isCreateWorktreeModalOpen: true,
@@ -84,6 +98,11 @@ export const useProjectStore = create<ProjectStore>((set) => ({
 			createWorktreeProjectId: null,
 			createWorktreeAsOrchestrator: false,
 		}),
+
+	setOrchestratorPaneHeight: (height) => set({ orchestratorPaneHeight: height }),
+	toggleOrchestratorPaneCollapsed: () =>
+		set((s) => ({ orchestratorPaneCollapsed: !s.orchestratorPaneCollapsed })),
+	setOrchestratorPaneCollapsed: (collapsed) => set({ orchestratorPaneCollapsed: collapsed }),
 
 	openSharedFilesPanel: (projectId) => set({ sharedFilesProjectId: projectId }),
 	closeSharedFilesPanel: () => set({ sharedFilesProjectId: null }),

@@ -83,6 +83,14 @@
 	--orch-7-bg: rgba(154, 138, 176, 0.12);
 	--orch-8: #b0a08a;
 	--orch-8-bg: rgba(176, 160, 138, 0.12);
+	--st-working: #0a84ff;
+	--st-working-bg: rgba(10, 132, 255, 0.14);
+	--st-blocked: #e6a23c;
+	--st-blocked-bg: rgba(230, 162, 60, 0.14);
+	--st-done: #5dc983;
+	--st-done-bg: rgba(93, 201, 131, 0.13);
+	--st-idle: #8e8e93;
+	--st-idle-bg: rgba(142, 142, 147, 0.12);
 
 	/* Shadows */
 	--shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
@@ -173,6 +181,14 @@ html[data-theme="light"] {
 	--orch-7-bg: rgba(128, 112, 140, 0.14);
 	--orch-8: #948870;
 	--orch-8-bg: rgba(148, 136, 112, 0.14);
+	--st-working: #0066cc;
+	--st-working-bg: rgba(0, 102, 204, 0.12);
+	--st-blocked: #b9760f;
+	--st-blocked-bg: rgba(185, 118, 15, 0.12);
+	--st-done: #2e9e5b;
+	--st-done-bg: rgba(46, 158, 91, 0.12);
+	--st-idle: #76767a;
+	--st-idle-bg: rgba(118, 118, 122, 0.1);
 }
 
 @layer base {

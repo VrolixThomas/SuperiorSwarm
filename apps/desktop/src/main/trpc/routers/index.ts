@@ -4,6 +4,7 @@ import { atlassianRouter } from "./atlassian";
 import { authRouter } from "./auth";
 import { branchesRouter } from "./branches";
 import { commentSolverRouter } from "./comment-solver";
+import { crossRepoOrchestratorsRouter } from "./cross-repo-orchestrators";
 import { diffRouter } from "./diff";
 import { githubRouter } from "./github";
 import { globalMcpRouter } from "./global-mcp";
@@ -29,6 +30,7 @@ export const appRouter = router({
 	auth: authRouter,
 	aiReview: aiReviewRouter,
 	commentSolver: commentSolverRouter,
+	crossRepoOrchestrators: crossRepoOrchestratorsRouter,
 	projects: projectsRouter,
 	quickActions: quickActionsRouter,
 	workspaces: workspacesRouter,

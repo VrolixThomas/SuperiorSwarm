@@ -6,12 +6,7 @@
 const targetPid = Number(process.argv[2]);
 const delayMs = Number(process.argv[3]);
 
-if (
-	!Number.isInteger(targetPid) ||
-	targetPid <= 0 ||
-	!Number.isFinite(delayMs) ||
-	delayMs < 0
-) {
+if (!Number.isInteger(targetPid) || targetPid <= 0 || !Number.isFinite(delayMs) || delayMs < 0) {
 	console.error("[watchdog] bad args", process.argv.slice(2));
 	process.exit(1);
 }

@@ -185,6 +185,7 @@ export interface WorkspaceTreeRow {
 	isOrchestrator: boolean;
 	cliPreset: string | null;
 	sortOrder: number;
+	crossRepoOrchestrator?: { id: string; name: string } | null;
 }
 
 /** A workspace row that is guaranteed not to be a "review" type (the service filters these out). */
@@ -200,4 +201,21 @@ export interface OrchestratorGroupNode {
 export interface ProjectWorkspaceTree {
 	orchestrators: OrchestratorGroupNode[];
 	loose: VisibleWorkspaceTreeRow[];
+}
+
+export interface CrossRepoOrchestratorNode {
+	id: string;
+	name: string;
+	colorIndex: number | null;
+	status: string;
+	repoCount: number;
+	memberCount: number;
+}
+
+export interface CrossRepoMemberRow {
+	workspaceId: string;
+	workspaceName: string;
+	projectId: string;
+	projectName: string;
+	sortOrder: number;
 }

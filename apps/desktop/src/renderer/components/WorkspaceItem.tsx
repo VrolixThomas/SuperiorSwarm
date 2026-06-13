@@ -5,6 +5,7 @@ import { usePaneStore } from "../stores/pane-store";
 import { useProjectStore } from "../stores/projects";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
+import { splitBranchPrefix } from "../utils/branch-name";
 
 interface WorkspaceData {
 	id: string;
@@ -27,6 +28,7 @@ interface WorkspaceItemProps {
 	projectRepoPath: string;
 	isInActiveProject: boolean;
 	indentLevel?: 0 | 1;
+	crossRepoOrchestrator?: { id: string; name: string } | null;
 }
 
 /**
@@ -167,6 +169,8 @@ function WorkspaceContextMenu({
 	onCreateOrchestrator,
 	canAttach,
 	canDetach,
+	xros,
+	onAttachToXro,
 }: {
 	position: { x: number; y: number };
 	onClose: () => void;
@@ -180,6 +184,8 @@ function WorkspaceContextMenu({
 	onCreateOrchestrator?: () => void;
 	canAttach: boolean;
 	canDetach: boolean;
+	xros: Array<{ id: string; name: string }>;
+	onAttachToXro?: (xroId: string) => void;
 }) {
 	const menuRef = useRef<HTMLDivElement>(null);
 	const [adjusted, setAdjusted] = useState(position);
@@ -305,6 +311,28 @@ function WorkspaceContextMenu({
 					Detach from orchestrator
 				</div>
 			)}
+			{xros.length > 0 && onAttachToXro && (
+				<>
+					<div className="border-t border-[var(--border)] my-1" />
+					<div className="px-3 py-1 text-[10px] uppercase tracking-wider text-[var(--text-quaternary)]">
+						Attach to cross-repo orchestrator
+					</div>
+					{xros.map((xro) => (
+						<div
+							key={xro.id}
+							role="menuitem"
+							tabIndex={0}
+							className="px-3 py-1.5 text-[13px] cursor-pointer hover:bg-[var(--bg-overlay)] transition-all duration-[120ms] text-[var(--text)]"
+							onClick={() => onAttachToXro(xro.id)}
+							onKeyDown={(e) => {
+								if (e.key === "Enter") onAttachToXro(xro.id);
+							}}
+						>
+							{xro.name}
+						</div>
+					))}
+				</>
+			)}
 			<div
 				role="menuitem"
 				tabIndex={0}
@@ -327,6 +355,7 @@ export function WorkspaceItem({
 	projectRepoPath,
 	isInActiveProject,
 	indentLevel = 0,
+	crossRepoOrchestrator = null,
 }: WorkspaceItemProps) {
 	const [contextMenu, setContextMenu] = useState<{
 		x: number;
@@ -422,12 +451,53 @@ export function WorkspaceItem({
 		onSuccess: () => utils.workspaces.listByProject.invalidate({ projectId }),
 	});
 
+	const xrosQuery = trpc.crossRepoOrchestrators.list.useQuery(undefined, {
+		staleTime: 60_000,
+	});
+	// Only orchestrators that link THIS workspace's project are valid attach targets.
+	const xros = (xrosQuery.data ?? []).filter((x) => x.linkedProjectIds.includes(projectId));
+	const xroColor =
+		((xrosQuery.data ?? []).find((x) => x.id === crossRepoOrchestrator?.id)?.colorIndex ?? 0) + 1;
+	const attachXroMut = trpc.crossRepoOrchestrators.attachMember.useMutation({
+		onSuccess: () => {
+			utils.workspaces.listByProject.invalidate({ projectId });
+			utils.crossRepoOrchestrators.listMembers.invalidate();
+			utils.crossRepoOrchestrators.memberCounts.invalidate();
+		},
+		onError: (err) => console.warn("[xro] attach failed:", err.message),
+	});
+
 	const handleUnsetOrchestrator = useCallback(() => {
 		unsetOrchestrator.mutate({ projectId, workspaceId: workspace.id });
 		setContextMenu(null);
 	}, [workspace.id, projectId, unsetOrchestrator]);
 
 	const isActive = useTabStore((s) => s.activeWorkspaceId === workspace.id);
+	const { prefix: branchPrefix, rest: branchRest } = splitBranchPrefix(workspace.name);
+	const phaseColorVar =
+		workspace.currentPhase === "working"
+			? "var(--st-working)"
+			: workspace.currentPhase === "blocked"
+				? "var(--st-blocked)"
+				: workspace.currentPhase === "done"
+					? "var(--st-done)"
+					: null;
+	const phaseRingVar =
+		workspace.currentPhase === "working"
+			? "var(--st-working-bg)"
+			: workspace.currentPhase === "blocked"
+				? "var(--st-blocked-bg)"
+				: workspace.currentPhase === "done"
+					? "var(--st-done-bg)"
+					: null;
+	const phaseLabel =
+		workspace.currentPhase === "working"
+			? "working"
+			: workspace.currentPhase === "blocked"
+				? "blocked"
+				: workspace.currentPhase === "done"
+					? "done"
+					: null;
 	const alert = useAgentAlertStore((s) => s.alerts[workspace.id]);
 
 	const solveSessionsQuery = trpc.commentSolver.getSolveSessions.useQuery(
@@ -516,24 +586,32 @@ export function WorkspaceItem({
 					}
 				}}
 				className={[
-					"relative flex w-full items-center gap-2 border-none",
-					indentLevel === 1 ? "pl-[36px] pr-3 py-[7px]" : "pl-[22px] pr-3 py-[7px]",
+					"relative flex w-full items-start gap-2 border-none",
+					indentLevel === 1 ? "pl-[36px] pr-3 py-[6px]" : "pl-[22px] pr-3 py-[6px]",
 					"cursor-pointer transition-all duration-[120ms] text-left rounded-[6px]",
 					isActive
 						? "bg-[var(--accent-subtle)] hover:bg-[var(--accent-subtle)]"
 						: "bg-transparent hover:bg-[var(--bg-elevated)]",
 				].join(" ")}
 			>
-				{isActive && isInActiveProject && (
+				{phaseColorVar && (
 					<span
 						aria-hidden="true"
-						className="absolute left-0 top-1 bottom-1 w-[3px] rounded-r-[2px] bg-[var(--accent)]"
+						title={phaseLabel ?? undefined}
+						className={[
+							"absolute top-[11px] h-[6px] w-[6px] rounded-full",
+							indentLevel === 1 ? "left-[23px]" : "left-[9px]",
+						].join(" ")}
+						style={{
+							background: phaseColorVar,
+							boxShadow: phaseRingVar ? `0 0 0 3px ${phaseRingVar}` : undefined,
+						}}
 					/>
 				)}
 				<div className="flex-1 min-w-0">
 					<span
 						className={[
-							"truncate text-[13px] block",
+							"truncate text-[13px] leading-[1.3] block",
 							isActive
 								? "font-medium text-[var(--text)]"
 								: isInActiveProject
@@ -541,18 +619,50 @@ export function WorkspaceItem({
 									: "text-[var(--text-tertiary)]",
 						].join(" ")}
 					>
-						{workspace.name}
+						{branchPrefix && (
+							<span
+								className={
+									isActive ? "text-[var(--accent-hover)]" : "text-[var(--text-quaternary)]"
+								}
+							>
+								{branchPrefix}
+							</span>
+						)}
+						{branchRest}
 					</span>
+					{crossRepoOrchestrator && (
+						<span
+							className="inline-flex shrink-0 items-center gap-[4px] rounded-[8px] px-[5px] py-[1px] text-[9.5px] font-semibold"
+							style={{
+								color: `var(--orch-${xroColor})`,
+								background: `var(--orch-${xroColor}-bg)`,
+							}}
+							title={`Member of ${crossRepoOrchestrator.name}`}
+						>
+							<span
+								className="h-[6px] w-[6px] rounded-full"
+								style={{ background: `var(--orch-${xroColor})` }}
+							/>
+							{crossRepoOrchestrator.name}
+						</span>
+					)}
 					{workspace.isOrchestrator && (
 						<span className="ml-1 text-[10px] uppercase tracking-wide text-[var(--accent)]">
 							Orchestrator
 						</span>
 					)}
-					{workspace.statusText && (
-						<span className="block text-[11px] text-[var(--text-secondary)] truncate mt-0.5">
+					{workspace.statusText ? (
+						<span className="block text-[11px] leading-[1.35] text-[var(--text-tertiary)] truncate mt-[3px]">
 							{workspace.statusText}
 						</span>
-					)}
+					) : phaseLabel ? (
+						<span
+							className="block text-[10px] font-medium uppercase tracking-[0.04em] truncate mt-[3px]"
+							style={{ color: phaseColorVar ?? undefined }}
+						>
+							{phaseLabel}
+						</span>
+					) : null}
 					{workspace.currentPhase === "blocked" && workspace.needs && (
 						<span className="block text-[11px] text-[var(--text-tertiary)] italic truncate mt-0.5">
 							needs: {workspace.needs}
@@ -585,25 +695,7 @@ export function WorkspaceItem({
 						</span>
 					)}
 				</div>
-				{workspace.currentPhase === "working" && (
-					<span
-						className="ml-auto inline-block h-1.5 w-1.5 rounded-full bg-[var(--accent)]"
-						title="working"
-					/>
-				)}
-				{workspace.currentPhase === "blocked" && (
-					<span
-						className="ml-auto inline-block h-1.5 w-1.5 rounded-full bg-[var(--term-yellow)]"
-						title="blocked"
-					/>
-				)}
-				{workspace.currentPhase === "done" && (
-					<span
-						className="ml-auto inline-block h-1.5 w-1.5 rounded-full bg-[var(--term-green)]"
-						title="done"
-					/>
-				)}
-				{alert && <SwarmIndicator alert={alert} className="ml-auto" />}
+				{alert && <SwarmIndicator alert={alert} className="ml-auto mt-[1px]" />}
 			</button>
 
 			{indentLevel === 0 && !workspace.isOrchestrator && workspace.type === "worktree" && (
@@ -646,6 +738,11 @@ export function WorkspaceItem({
 						!workspace.isOrchestrator && indentLevel === 0 && workspace.type === "worktree"
 					}
 					canDetach={isChildOfOrchestrator}
+					xros={xros}
+					onAttachToXro={(xroId) => {
+						attachXroMut.mutate({ id: xroId, workspaceId: workspace.id });
+						setContextMenu(null);
+					}}
 				/>
 			)}
 		</div>

@@ -157,7 +157,7 @@ export const workspacesRouter = router({
 				await symlinkSharedFiles(
 					project.repoPath,
 					worktreePath,
-					sharedEntries.map((e) => ({ relativePath: e.relativePath }))
+					sharedEntries.map((e) => ({ relativePath: e.relativePath, type: e.type }))
 				);
 			}
 
@@ -269,7 +269,7 @@ export const workspacesRouter = router({
 					await symlinkSharedFiles(
 						project.repoPath,
 						worktreePath,
-						sharedEntries.map((e) => ({ relativePath: e.relativePath }))
+						sharedEntries.map((e) => ({ relativePath: e.relativePath, type: e.type }))
 					);
 				}
 			}
@@ -340,7 +340,7 @@ export const workspacesRouter = router({
 		.mutation(async ({ input }) => {
 			const { renameWorkspace } = await import("../../services/workspace-service");
 			return renameWorkspace(
-				{ projectId: input.projectId, workspaceId: input.workspaceId },
+				{ kind: "workspace", projectId: input.projectId, workspaceId: input.workspaceId },
 				{ workspaceId: input.workspaceId, name: input.name }
 			);
 		}),
@@ -350,7 +350,7 @@ export const workspacesRouter = router({
 		.mutation(async ({ input }) => {
 			const { setOrchestrator } = await import("../../services/workspace-service");
 			await setOrchestrator(
-				{ projectId: input.projectId, workspaceId: input.workspaceId },
+				{ kind: "workspace", projectId: input.projectId, workspaceId: input.workspaceId },
 				{ workspaceId: input.workspaceId }
 			);
 			return { ok: true } as const;
@@ -361,7 +361,7 @@ export const workspacesRouter = router({
 		.mutation(async ({ input }) => {
 			const { unsetOrchestrator } = await import("../../services/workspace-service");
 			await unsetOrchestrator(
-				{ projectId: input.projectId, workspaceId: input.workspaceId },
+				{ kind: "workspace", projectId: input.projectId, workspaceId: input.workspaceId },
 				{ workspaceId: input.workspaceId }
 			);
 			return { ok: true } as const;

@@ -127,6 +127,9 @@ export function ProjectItem({ project, isExpanded, onToggle }: ProjectItemProps)
 	const orchestrators = tree?.orchestrators ?? [];
 	const loose = tree?.loose ?? [];
 	const allOrchestratorIds = orchestrators.map((o) => o.workspace.id);
+	const worktreeCount = tree
+		? loose.length + orchestrators.reduce((n, o) => n + 1 + o.children.length, 0)
+		: undefined;
 
 	const [draggingId, setDraggingId] = useState<string | null>(null);
 
@@ -248,6 +251,7 @@ export function ProjectItem({ project, isExpanded, onToggle }: ProjectItemProps)
 			<RepoGroup
 				name={project.name}
 				isActive={isActiveProject}
+				count={worktreeCount}
 				isExpanded={isExpanded}
 				onToggle={isReady ? onToggle : undefined}
 				onContextMenu={(e) => {
@@ -275,13 +279,7 @@ export function ProjectItem({ project, isExpanded, onToggle }: ProjectItemProps)
 									openCreateWorktreeModal(project.id);
 								}
 							}}
-							className={[
-								"flex h-5 w-5 shrink-0 items-center justify-center rounded text-[14px]",
-								"transition-colors duration-[120ms]",
-								isActiveProject
-									? "text-[var(--text-quaternary)] hover:text-[var(--text-secondary)]"
-									: "text-[#3a3a42] hover:text-[#505058]",
-							].join(" ")}
+							className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-[14px] text-[var(--text-quaternary)] transition-colors duration-[120ms] hover:text-[var(--text-secondary)]"
 							title="New Worktree"
 						>
 							+
@@ -338,6 +336,7 @@ export function ProjectItem({ project, isExpanded, onToggle }: ProjectItemProps)
 											projectName={project.name}
 											projectRepoPath={project.repoPath}
 											isInActiveProject={isActiveProject}
+											crossRepoOrchestrator={ws.crossRepoOrchestrator ?? null}
 										/>
 									</SortableWorkspace>
 								))}
@@ -480,6 +479,7 @@ function OrchestratorGroupBlock({
 									projectRepoPath={projectRepoPath}
 									isInActiveProject={isActiveProject}
 									indentLevel={1}
+									crossRepoOrchestrator={c.crossRepoOrchestrator ?? null}
 								/>
 							</SortableWorkspace>
 						))}

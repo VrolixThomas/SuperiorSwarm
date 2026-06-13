@@ -4,6 +4,7 @@ interface RepoGroupProps {
 	name: string;
 	isActive: boolean;
 	isExpanded: boolean;
+	count?: number;
 	onToggle?: () => void;
 	onContextMenu?: (e: MouseEvent) => void;
 	subTitle?: ReactNode;
@@ -13,44 +14,64 @@ interface RepoGroupProps {
 
 /**
  * Presentational chrome for a repo group in the left sidebar.
- * Used by both `ProjectItem` (Repos tab) and `PullRequestGroup` (PRs tab)
- * so the two tabs render through identical visual primitives.
+ * Used by both `ProjectItem` (Repos tab) and `PullRequestGroup` (PRs tab).
+ * The header is always a filled, bordered box so repo boundaries are obvious;
+ * the active repo (the one holding the active worktree / active group) gets a
+ * brighter box.
  */
 export function RepoGroup({
 	name,
 	isActive,
 	isExpanded,
+	count,
 	onToggle,
 	onContextMenu,
 	subTitle,
 	rightContent,
 	children,
 }: RepoGroupProps) {
-	const showActiveChrome = isActive && isExpanded;
-
 	return (
-		<div
-			className={showActiveChrome ? "rounded-[2px] border-l-2 border-[var(--accent-subtle)]" : ""}
-		>
-			<div className="flex items-center">
+		<div>
+			<div
+				className={[
+					"group/repohead relative flex items-center gap-2 border px-3 py-2",
+					"rounded-[8px] transition-all duration-[120ms]",
+					isActive
+						? "border-[var(--border-active)] bg-[var(--bg-overlay)]"
+						: "border-[var(--border-subtle)] bg-[var(--bg-elevated)] hover:bg-[var(--bg-overlay)]",
+				].join(" ")}
+			>
+				{isActive && (
+					<span
+						aria-hidden="true"
+						className="absolute left-0 top-2 bottom-2 w-[3px] rounded-r-[2px] bg-[var(--accent)]"
+					/>
+				)}
 				<button
 					type="button"
 					onClick={onToggle}
 					onContextMenu={onContextMenu}
-					className={[
-						"flex min-w-0 flex-1 items-center gap-2 border-none px-3 py-1.5 cursor-pointer",
-						"transition-all duration-[120ms] text-left",
-						showActiveChrome ? "rounded-r-[8px] rounded-l-none" : "rounded-[8px]",
-						isActive ? "text-[var(--text)]" : "text-[var(--text-quaternary)]",
-						showActiveChrome
-							? "bg-[var(--bg-elevated)]"
-							: "bg-transparent hover:bg-[var(--bg-elevated)]",
-					].join(" ")}
+					className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left"
 				>
 					<div className="min-w-0 flex-1">
-						<div className="truncate text-[13px] font-semibold">{name}</div>
+						<div className="truncate text-[13px] font-semibold text-[var(--text)]">{name}</div>
 						{subTitle}
 					</div>
+				</button>
+
+				{rightContent && <div className="flex shrink-0 items-center">{rightContent}</div>}
+
+				<button
+					type="button"
+					onClick={onToggle}
+					aria-label={isExpanded ? "Collapse" : "Expand"}
+					className="flex shrink-0 cursor-pointer items-center gap-2"
+				>
+					{count != null && (
+						<span className="rounded-full bg-[var(--bg-overlay)] px-[7px] py-[1px] text-[10px] font-semibold tabular-nums text-[var(--text-tertiary)]">
+							{count}
+						</span>
+					)}
 
 					<svg
 						aria-hidden="true"
@@ -59,9 +80,8 @@ export function RepoGroup({
 						viewBox="0 0 10 10"
 						fill="none"
 						className={[
-							"shrink-0 transition-transform duration-[120ms]",
+							"text-[var(--text-quaternary)] transition-transform duration-[120ms]",
 							isExpanded ? "rotate-90" : "rotate-0",
-							"text-[var(--text-quaternary)]",
 						].join(" ")}
 					>
 						<path
@@ -73,11 +93,13 @@ export function RepoGroup({
 						/>
 					</svg>
 				</button>
-
-				{rightContent && <div className="flex shrink-0 items-center pr-2">{rightContent}</div>}
 			</div>
 
-			{isExpanded && children}
+			{isExpanded && children && (
+				<div className="ml-[10px] border-l border-[var(--border-subtle)] pl-[6px] pt-0.5">
+					{children}
+				</div>
+			)}
 		</div>
 	);
 }

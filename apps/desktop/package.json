@@ -16,7 +16,7 @@
 		"pack": "electron-vite build && electron-builder --mac --dir",
 		"preview": "electron-vite preview",
 		"test": "bun test",
-		"type-check": "tsc --noEmit",
+		"type-check": "tsc --noEmit -p tsconfig.main.json && tsc --noEmit -p tsconfig.preload.json && tsc --noEmit -p tsconfig.renderer.json && tsc --noEmit -p tests/tsconfig.json",
 		"db:generate": "drizzle-kit generate"
 	},
 	"dependencies": {

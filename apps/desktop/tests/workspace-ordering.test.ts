@@ -90,9 +90,9 @@ describe("workspace-ordering", () => {
 		await attachToOrchestrator({ orchestratorId: orchId, workspaceId: childId });
 
 		// Only orchestrator + loose are in the top-level zone
-		await expect(
-			reorderTopLevel({ projectId, orderedIds: [looseId, orchId] })
-		).resolves.toEqual({ ok: true });
+		await expect(reorderTopLevel({ projectId, orderedIds: [looseId, orchId] })).resolves.toEqual({
+			ok: true,
+		});
 	});
 
 	test("reorderTopLevel and reorderChildren do all reads inside the transaction", async () => {
@@ -104,14 +104,12 @@ describe("workspace-ordering", () => {
 		).text();
 		const txBlocks = src.match(/db\.transaction\(\(tx\) => \{[\s\S]*?\n\t\}\)/g) ?? [];
 		// reorderTopLevel: tx block contains count() AND update(workspaces)
-		expect(
-			txBlocks.some((b) => b.includes("count()") && b.includes("update(workspaces)"))
-		).toBe(true);
+		expect(txBlocks.some((b) => b.includes("count()") && b.includes("update(workspaces)"))).toBe(
+			true
+		);
 		// reorderChildren: tx block contains count() AND update(orchestratorMembers)
 		expect(
-			txBlocks.some(
-				(b) => b.includes("count()") && b.includes("update(orchestratorMembers)")
-			)
+			txBlocks.some((b) => b.includes("count()") && b.includes("update(orchestratorMembers)"))
 		).toBe(true);
 	});
 });
