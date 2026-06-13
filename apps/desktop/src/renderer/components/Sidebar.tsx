@@ -36,6 +36,9 @@ export function Sidebar({ collapsed, onExpand }: SidebarProps) {
 	});
 	const hasNewPRs = (cachedPRs.data?.length ?? 0) > 0;
 
+	// Empty orchestrator pane should size to its header, not reserve fixed split height.
+	const orchCount = trpc.crossRepoOrchestrators.list.useQuery().data?.length ?? 0;
+
 	const handleExpand = (section?: "tickets" | "prs") => {
 		onExpand(section);
 		if (section === "tickets") {
@@ -87,7 +90,11 @@ export function Sidebar({ collapsed, onExpand }: SidebarProps) {
 			{/* Segment content */}
 			<div className="flex min-h-0 flex-1 flex-col">
 				{segment === "repos" && (
-					<SidebarSplit top={<ProjectList />} bottom={<CrossRepoOrchestratorGroup />} />
+					<SidebarSplit
+						top={<ProjectList />}
+						bottom={<CrossRepoOrchestratorGroup />}
+						bottomAutoHeight={orchCount === 0}
+					/>
 				)}
 				{segment === "tickets" && (
 					<div className="min-h-0 flex-1 overflow-y-auto">
