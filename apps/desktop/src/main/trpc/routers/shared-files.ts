@@ -17,9 +17,9 @@ import { publicProcedure, router } from "../index";
  */
 function walkDir(dir: string, root: string): string[] {
 	const results: string[] = [];
-	let entries: ReturnType<typeof readdirSync>;
+	let entries: import("node:fs").Dirent<string>[];
 	try {
-		entries = readdirSync(dir, { withFileTypes: true });
+		entries = readdirSync(dir, { withFileTypes: true, encoding: "utf-8" });
 	} catch {
 		return results;
 	}

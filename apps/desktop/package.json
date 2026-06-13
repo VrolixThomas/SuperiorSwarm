@@ -1,7 +1,7 @@
 {
 	"name": "superiorswarm",
 	"productName": "SuperiorSwarm",
-	"version": "0.9.4",
+	"version": "0.10.0",
 	"description": "SuperiorSwarm Desktop Application",
 	"main": "./out/main/index.js",
 	"type": "module",
@@ -16,7 +16,7 @@
 		"pack": "electron-vite build && electron-builder --mac --dir",
 		"preview": "electron-vite preview",
 		"test": "bun test",
-		"type-check": "tsc --noEmit",
+		"type-check": "tsc --noEmit -p tsconfig.main.json && tsc --noEmit -p tsconfig.preload.json && tsc --noEmit -p tsconfig.renderer.json && tsc --noEmit -p tests/tsconfig.json",
 		"db:generate": "drizzle-kit generate"
 	},
 	"dependencies": {

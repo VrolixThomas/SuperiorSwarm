@@ -3,9 +3,11 @@ import { useProjectStore } from "../stores/projects";
 import { useTabStore } from "../stores/tab-store";
 import { useUpdateStore } from "../stores/update-store";
 import { trpc } from "../trpc/client";
+import { CrossRepoOrchestratorGroup } from "./CrossRepoOrchestratorGroup";
 import { ProjectList } from "./ProjectList";
 import { PullRequestsTab } from "./PullRequestsTab";
 import { SidebarRail } from "./SidebarRail";
+import { SidebarSplit } from "./SidebarSplit";
 import { Tooltip } from "./Tooltip";
 import { TicketsSidebar } from "./tickets/TicketsSidebar";
 
@@ -15,7 +17,7 @@ interface SidebarProps {
 }
 
 export function Sidebar({ collapsed, onExpand }: SidebarProps) {
-	const { openAddModal, openSettings } = useProjectStore();
+	const { openSettings } = useProjectStore();
 	const segment = useTabStore((s) => s.sidebarSegment);
 	const hasDismissedUpdate = useUpdateStore((s) => s.dismissedUpdateVersion !== null);
 	const setSidebarSegment = useTabStore((s) => s.setSidebarSegment);
@@ -130,62 +132,28 @@ export function Sidebar({ collapsed, onExpand }: SidebarProps) {
 			</div>
 
 			{/* Segment content */}
-			<div className="flex-1 overflow-y-auto">
+			<div className="flex min-h-0 flex-1 flex-col">
 				{segment === "repos" && (
-					<>
-						<ProjectList />
-						<div className="px-2 py-1.5">
-							<button
-								type="button"
-								onClick={openAddModal}
-								className="flex w-full items-center gap-2 rounded-[6px] px-3 py-1.5 text-[12px] text-[var(--text-quaternary)] transition-all duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-tertiary)]"
-							>
-								<svg
-									aria-hidden="true"
-									width="13"
-									height="13"
-									viewBox="0 0 16 16"
-									fill="none"
-									className="shrink-0"
-								>
-									<path
-										d="M8 3v10M3 8h10"
-										stroke="currentColor"
-										strokeWidth="1.5"
-										strokeLinecap="round"
-									/>
-								</svg>
-								<span className="truncate">Add Project</span>
-							</button>
-							<button
-								type="button"
-								onClick={() => void handleNewTerminal()}
-								disabled={openFolderMut.isPending}
-								className="flex w-full items-center gap-2 rounded-[6px] px-3 py-1.5 text-[12px] text-[var(--text-quaternary)] transition-all duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-tertiary)] disabled:opacity-50"
-							>
-								<svg
-									aria-hidden="true"
-									width="13"
-									height="13"
-									viewBox="0 0 16 16"
-									fill="none"
-									className="shrink-0"
-								>
-									<path
-										d="M3 5l3 3-3 3M8 11h5"
-										stroke="currentColor"
-										strokeWidth="1.5"
-										strokeLinecap="round"
-										strokeLinejoin="round"
-									/>
-								</svg>
-								<span className="truncate">New Terminal</span>
-							</button>
-						</div>
-					</>
+					<SidebarSplit
+						top={
+							<ProjectList
+								onNewTerminal={() => void handleNewTerminal()}
+								terminalPending={openFolderMut.isPending}
+							/>
+						}
+						bottom={<CrossRepoOrchestratorGroup />}
+					/>
 				)}
-				{segment === "tickets" && <TicketsSidebar />}
-				{segment === "prs" && <PullRequestsTab />}
+				{segment === "tickets" && (
+					<div className="min-h-0 flex-1 overflow-y-auto">
+						<TicketsSidebar />
+					</div>
+				)}
+				{segment === "prs" && (
+					<div className="min-h-0 flex-1 overflow-y-auto">
+						<PullRequestsTab />
+					</div>
+				)}
 			</div>
 
 			{/* Footer — Settings */}

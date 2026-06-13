@@ -7,7 +7,16 @@
 	},
 	"files": {
 		"ignoreUnknown": false,
-		"ignore": ["node_modules", "dist", "build", "out", ".next", ".turbo", "*.min.js"]
+		"ignore": [
+			"node_modules",
+			"dist",
+			"build",
+			"out",
+			".next",
+			".turbo",
+			"*.min.js",
+			"**/db/migrations/**"
+		]
 	},
 	"formatter": {
 		"enabled": true,

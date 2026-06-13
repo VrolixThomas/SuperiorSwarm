@@ -17,7 +17,12 @@ import {
 	setStatusRequestSchema,
 } from "../../shared/control-plane";
 import { getDb } from "../db";
-import { workspaces, worktrees } from "../db/schema";
+import {
+	crossRepoOrchestratorProjects,
+	crossRepoOrchestrators,
+	workspaces,
+	worktrees,
+} from "../db/schema";
 import {
 	type CallerContext,
 	type SpawnFn,
@@ -25,6 +30,7 @@ import {
 	dispatchAgent,
 	getWorkspace,
 	listWorkspaces,
+	listWorkspacesForProjects,
 	readMessages,
 	removeWorkspace,
 	resumeAgent,
@@ -33,16 +39,78 @@ import {
 } from "../services/workspace-service";
 import { isValidBearer } from "./auth";
 import type { EventBus } from "./event-bus";
-import { eventsFilePathForProject } from "./orchestrator-event-sink";
+import { crossRepoEventsFilePath, eventsFilePathForProject } from "./orchestrator-event-sink";
 import type { TaskRegistry } from "./task-registry";
+
+function resolveProjectIdFromWorkspace(workspaceId: string): string | null {
+	return (
+		getDb()
+			.select({ projectId: workspaces.projectId })
+			.from(workspaces)
+			.where(eq(workspaces.id, workspaceId))
+			.get()?.projectId ?? null
+	);
+}
+
+/**
+ * Derive the effective projectId for a workspace-targeting route and verify the
+ * caller is allowed to touch it. Returns null after writing the error response.
+ */
+function resolveScopedProjectId(
+	req: IncomingMessage,
+	res: ServerResponse,
+	requestId: string,
+	explicitProjectId: string | undefined,
+	workspaceId: string
+): string | null {
+	let projectId = explicitProjectId;
+	if (!projectId) {
+		const derived = resolveProjectIdFromWorkspace(workspaceId);
+		if (!derived) {
+			respond(res, 404, requestId, { error: "not_found" });
+			return null;
+		}
+		projectId = derived;
+	}
+	// Same enforcement as set_status/send_message: xro callers must have the
+	// project linked; workspace callers must belong to the project.
+	const caller = resolveCaller(req, projectId);
+	if ("error" in caller) {
+		respond(res, 401, requestId, { error: "unauthorized" });
+		return null;
+	}
+	return projectId;
+}
 
 async function attachIfCallerIsOrchestrator(
 	req: IncomingMessage,
 	projectId: string,
-	targetWorkspaceId: string
+	targetWorkspaceId: string,
+	createdByDispatch = false
 ): Promise<void> {
 	const caller = resolveCaller(req, projectId);
 	if ("error" in caller) return;
+
+	if (caller.kind === "xro") {
+		// Cross-repo orchestrator dispatching/creating a child: insert an orchestrator_members row.
+		try {
+			const { attachToCrossRepoOrchestrator } = await import(
+				"../services/cross-repo-orchestrator-membership"
+			);
+			await attachToCrossRepoOrchestrator({
+				orchestratorId: caller.xroId,
+				workspaceId: targetWorkspaceId,
+				createdByDispatch,
+			});
+		} catch (err) {
+			console.warn(`[control-plane] xro auto-attach failed: ${(err as Error).message}`);
+		}
+		return;
+	}
+
+	// Only workspace-agent orchestrators participate in orchestrator_members.
+	// Cross-repo orchestrators manage membership through cross_repo_orchestrator_projects.
+	if (caller.kind !== "workspace") return;
 	if (caller.workspaceId === targetWorkspaceId) return;
 	const orch = getDb()
 		.select({ isOrchestrator: workspaces.isOrchestrator })
@@ -81,6 +149,28 @@ function resolveCaller(
 	projectIdHint: string | null
 ): CallerContext | { error: string } {
 	const wsId = req.headers["x-workspace-id"];
+	const xroId = req.headers["x-cross-repo-orchestrator-id"];
+
+	if (typeof xroId === "string" && xroId.length > 0) {
+		// Cross-repo orchestrator mode: look up in cross_repo_orchestrators.
+		const row = getDb()
+			.select({ id: crossRepoOrchestrators.id })
+			.from(crossRepoOrchestrators)
+			.where(eq(crossRepoOrchestrators.id, xroId))
+			.get();
+		if (!row) return { error: "unknown cross-repo orchestrator" };
+		const linkedProjectIds = getDb()
+			.select({ projectId: crossRepoOrchestratorProjects.projectId })
+			.from(crossRepoOrchestratorProjects)
+			.where(eq(crossRepoOrchestratorProjects.orchestratorId, xroId))
+			.all()
+			.map((r) => r.projectId);
+		if (projectIdHint && !linkedProjectIds.includes(projectIdHint)) {
+			return { error: "project not linked to this cross-repo orchestrator" };
+		}
+		return { kind: "xro", xroId, linkedProjectIds };
+	}
+
 	if (typeof wsId !== "string" || wsId.length === 0) {
 		return { error: "missing X-Workspace-Id header" };
 	}
@@ -93,7 +183,7 @@ function resolveCaller(
 	if (projectIdHint && row.projectId !== projectIdHint) {
 		return { error: "workspace/project mismatch" };
 	}
-	return { workspaceId: wsId, projectId: row.projectId };
+	return { kind: "workspace", workspaceId: wsId, projectId: row.projectId };
 }
 
 export function createControlPlaneServer(deps: ControlPlaneDeps): Server {
@@ -189,10 +279,66 @@ async function handleRequest(
 					});
 					return;
 				}
+				if (realCwd) {
+					const xro = getDb()
+						.select({
+							id: crossRepoOrchestrators.id,
+							workDir: crossRepoOrchestrators.workDir,
+						})
+						.from(crossRepoOrchestrators)
+						.all()
+						.find((r) => {
+							try {
+								return realpathSync(r.workDir) === realCwd;
+							} catch {
+								return r.workDir === realCwd;
+							}
+						});
+					if (xro) {
+						const linkedProjectIds = getDb()
+							.select({ projectId: crossRepoOrchestratorProjects.projectId })
+							.from(crossRepoOrchestratorProjects)
+							.where(eq(crossRepoOrchestratorProjects.orchestratorId, xro.id))
+							.all()
+							.map((r) => r.projectId);
+						respond(res, 200, requestId, {
+							mode: "cross-repo-orchestrator",
+							crossRepoOrchestratorId: xro.id,
+							linkedProjectIds,
+							orchestratorEventsPath: crossRepoEventsFilePath(xro.id),
+							isOrchestrator: true,
+							modeContext: {},
+						});
+						return;
+					}
+				}
 				respond(res, 200, requestId, { mode: "none" });
 				return;
 			}
 			case "GET /workspaces.list": {
+				const projectIdsRaw = url.searchParams.get("projectIds");
+				if (projectIdsRaw) {
+					const ids = projectIdsRaw.split(",").filter(Boolean);
+					const caller = resolveCaller(req, null);
+					if ("error" in caller) {
+						respond(res, 401, requestId, { error: "unauthorized" });
+						return;
+					}
+					if (caller.kind === "xro") {
+						if (!ids.every((id) => caller.linkedProjectIds.includes(id))) {
+							respond(res, 401, requestId, { error: "unauthorized" });
+							return;
+						}
+					} else {
+						// workspace caller: every requested id must equal caller.projectId
+						if (!ids.every((id) => id === caller.projectId)) {
+							respond(res, 401, requestId, { error: "unauthorized" });
+							return;
+						}
+					}
+					respond(res, 200, requestId, await listWorkspacesForProjects({ projectIds: ids }));
+					return;
+				}
 				const parsed = listWorkspacesRequestSchema.safeParse({
 					projectId: url.searchParams.get("projectId"),
 				});
@@ -200,19 +346,38 @@ async function handleRequest(
 					respond(res, 400, requestId, { error: "validation", details: parsed.error.flatten() });
 					return;
 				}
+				const listCaller = resolveCaller(req, parsed.data.projectId);
+				if ("error" in listCaller) {
+					respond(res, 401, requestId, { error: "unauthorized" });
+					return;
+				}
 				respond(res, 200, requestId, await listWorkspaces(parsed.data));
 				return;
 			}
 			case "GET /workspaces.get": {
+				const rawProjectId = url.searchParams.get("projectId");
 				const parsed = getWorkspaceRequestSchema.safeParse({
-					projectId: url.searchParams.get("projectId"),
+					projectId: rawProjectId && rawProjectId.length > 0 ? rawProjectId : undefined,
 					workspaceId: url.searchParams.get("workspaceId"),
 				});
 				if (!parsed.success) {
 					respond(res, 400, requestId, { error: "validation", details: parsed.error.flatten() });
 					return;
 				}
-				respond(res, 200, requestId, await getWorkspace(parsed.data));
+				const getProjectId = resolveScopedProjectId(
+					req,
+					res,
+					requestId,
+					parsed.data.projectId,
+					parsed.data.workspaceId
+				);
+				if (!getProjectId) return;
+				respond(
+					res,
+					200,
+					requestId,
+					await getWorkspace({ ...parsed.data, projectId: getProjectId })
+				);
 				return;
 			}
 			case "POST /workspaces.create": {
@@ -222,8 +387,13 @@ async function handleRequest(
 					respond(res, 400, requestId, { error: "validation", details: parsed.error.flatten() });
 					return;
 				}
+				const caller = resolveCaller(req, parsed.data.projectId);
+				if ("error" in caller) {
+					respond(res, 401, requestId, { error: "unauthorized" });
+					return;
+				}
 				const created = await createWorkspace(parsed.data);
-				await attachIfCallerIsOrchestrator(req, parsed.data.projectId, created.workspaceId);
+				await attachIfCallerIsOrchestrator(req, parsed.data.projectId, created.workspaceId, true);
 				respond(res, 200, requestId, created);
 				return;
 			}
@@ -234,8 +404,16 @@ async function handleRequest(
 					respond(res, 400, requestId, { error: "validation", details: parsed.error.flatten() });
 					return;
 				}
+				const dispatchProjectId = resolveScopedProjectId(
+					req,
+					res,
+					requestId,
+					parsed.data.projectId,
+					parsed.data.workspaceId
+				);
+				if (!dispatchProjectId) return;
 				const ws = await getWorkspace({
-					projectId: parsed.data.projectId,
+					projectId: dispatchProjectId,
 					workspaceId: parsed.data.workspaceId,
 				});
 				const allowed = await deps.confirm({
@@ -248,8 +426,11 @@ async function handleRequest(
 					respond(res, 499, requestId, { error: "cancelled_by_user" });
 					return;
 				}
-				const result = await dispatchAgent(parsed.data, { spawnFn: deps.spawnFn });
-				await attachIfCallerIsOrchestrator(req, parsed.data.projectId, parsed.data.workspaceId);
+				const result = await dispatchAgent(
+					{ ...parsed.data, projectId: dispatchProjectId },
+					{ spawnFn: deps.spawnFn }
+				);
+				await attachIfCallerIsOrchestrator(req, dispatchProjectId, parsed.data.workspaceId);
 				respond(res, 200, requestId, result);
 				return;
 			}
@@ -260,8 +441,16 @@ async function handleRequest(
 					respond(res, 400, requestId, { error: "validation", details: parsed.error.flatten() });
 					return;
 				}
+				const removeProjectId = resolveScopedProjectId(
+					req,
+					res,
+					requestId,
+					parsed.data.projectId,
+					parsed.data.workspaceId
+				);
+				if (!removeProjectId) return;
 				const ws = await getWorkspace({
-					projectId: parsed.data.projectId,
+					projectId: removeProjectId,
 					workspaceId: parsed.data.workspaceId,
 				});
 				const allowed = await deps.confirm({
@@ -274,7 +463,7 @@ async function handleRequest(
 					respond(res, 499, requestId, { error: "cancelled_by_user" });
 					return;
 				}
-				const result = await removeWorkspace(parsed.data);
+				const result = await removeWorkspace({ ...parsed.data, projectId: removeProjectId });
 				respond(res, 200, requestId, result);
 				return;
 			}
@@ -348,6 +537,12 @@ async function handleRequest(
 				const caller = resolveCaller(req, url.searchParams.get("projectId"));
 				if ("error" in caller) {
 					respond(res, 401, requestId, { error: "unauthorized" });
+					return;
+				}
+				// Cross-repo orchestrators use file-based event aggregation rather
+				// than per-project SSE; reject the SSE subscription gracefully.
+				if (caller.kind === "xro") {
+					respond(res, 400, requestId, { error: "xro_use_file_events" });
 					return;
 				}
 

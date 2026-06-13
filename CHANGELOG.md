@@ -1,5 +1,25 @@
 # Changelog
 
+## v0.10.0 (2026-06-13)
+
+### What's New
+
+SuperiorSwarm v0.10.0 introduces cross-repository orchestration. You can now create orchestrators that span multiple repos, dispatch tasks to member workspaces simultaneously, and monitor all agents from a unified mission-control canvas. The sidebar gains a dedicated orchestrators pane with collapsible sections and at-a-glance status indicators. Orchestrators can start their own coordinator agent, open a split view with the canvas, and optionally clean up dispatched workspaces when deleted.
+
+### Changes
+
+- Cross repo orchestrator (#117)
+
+## v0.9.5 (2026-06-11)
+
+### What's New
+
+Terminals no longer show gibberish characters when reopening a workspace. Replayed terminal output is now properly gated: stale query responses are suppressed and leftover terminal modes are reset, so restored sessions display clean output every time.
+
+### Changes
+
+- Fix gibberish showing (#116)
+
 ## v0.9.4 (2026-05-30)
 
 ### What's New

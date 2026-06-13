@@ -9,6 +9,7 @@ import { BranchActionMenu } from "./components/BranchActionMenu";
 import { BranchPalette } from "./components/BranchPalette";
 import { CommandPalette } from "./components/CommandPalette";
 import { ConfirmAgentActionModal } from "./components/ConfirmAgentActionModal";
+import { CreateCrossRepoOrchestratorModal } from "./components/CreateCrossRepoOrchestratorModal";
 import { CreateFolderWorkspaceModal } from "./components/CreateFolderWorkspaceModal";
 import { CreateWorktreeModal } from "./components/CreateWorktreeModal";
 import { DaemonStatus } from "./components/DaemonStatus";
@@ -79,6 +80,10 @@ function deserializeLayout(
 				}
 				// Solve-review tabs are transient — solve sessions don't survive restart
 				if ((saved as { kind: string }).kind === "solve-review") {
+					return null;
+				}
+				// Cross-repo orchestrator canvas tabs are re-opened on demand, not restored
+				if ((saved as { kind: string }).kind === "xro-canvas") {
 					return null;
 				}
 				// File tabs: use directly from serialized data
@@ -715,29 +720,32 @@ function AuthenticatedApp() {
 							<DiffPanel onClose={closeDiffPanel} />
 						</Panel>
 					</Group>
-					{!rightPanelOpen && sidebarSegment !== "tickets" && (
-						<button
-							type="button"
-							onClick={openRightPanel}
-							className="fixed top-1/2 right-0 z-10 -translate-y-1/2 rounded-l-md border border-r-0 border-[var(--border)] bg-[var(--bg-surface)] px-1 py-5 text-[var(--text-quaternary)] transition-colors duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-tertiary)]"
-							title="Open panel"
-						>
-							<svg
-								width="8"
-								height="14"
-								viewBox="0 0 8 14"
-								fill="none"
-								stroke="currentColor"
-								strokeWidth="1.5"
-								strokeLinecap="round"
-								strokeLinejoin="round"
-								aria-hidden="true"
+					{!rightPanelOpen &&
+						sidebarSegment !== "tickets" &&
+						!activeWorkspaceId?.startsWith("xro-") && (
+							<button
+								type="button"
+								onClick={openRightPanel}
+								className="fixed top-1/2 right-0 z-10 -translate-y-1/2 rounded-l-md border border-r-0 border-[var(--border)] bg-[var(--bg-surface)] px-1 py-5 text-[var(--text-quaternary)] transition-colors duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-tertiary)]"
+								title="Open panel"
 							>
-								<path d="M7 1L1 7l6 6" />
-							</svg>
-						</button>
-					)}
+								<svg
+									width="8"
+									height="14"
+									viewBox="0 0 8 14"
+									fill="none"
+									stroke="currentColor"
+									strokeWidth="1.5"
+									strokeLinecap="round"
+									strokeLinejoin="round"
+									aria-hidden="true"
+								>
+									<path d="M7 1L1 7l6 6" />
+								</svg>
+							</button>
+						)}
 					<AddRepositoryModal />
+					<CreateCrossRepoOrchestratorModal />
 					<CreateWorktreeModal />
 					<CreateFolderWorkspaceModal />
 					<SharedFilesPanel />

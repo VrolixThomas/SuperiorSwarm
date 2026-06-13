@@ -1,0 +1,591 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Cross-Repo Orchestrator · Create / Discover / Open</title>
+		<style>
+			:root {
+				--bg-base: #0a0a0a;
+				--bg-surface: #161618;
+				--bg-elevated: #1f1f22;
+				--bg-overlay: #2c2c2e;
+				--bg-active: #3a3a3d;
+				--bg-tab-bar: #111113;
+				--border: rgba(255, 255, 255, 0.1);
+				--border-subtle: rgba(255, 255, 255, 0.06);
+				--border-active: rgba(255, 255, 255, 0.16);
+				--text: #f5f5f7;
+				--text-secondary: #b5b5ba;
+				--text-tertiary: #8e8e93;
+				--text-quaternary: #6e6e73;
+				--accent: #0a84ff;
+				--accent-hover: #409cff;
+				--accent-subtle: rgba(10, 132, 255, 0.16);
+				--accent-foreground: #ffffff;
+				--orch: #8a9ab0;
+				--orch-bg: rgba(138, 154, 176, 0.12);
+				--orch-2: #b09a8a;
+				--orch-2-bg: rgba(176, 154, 138, 0.12);
+				--st-working: #0a84ff;
+				--st-blocked: #e6a23c;
+				--st-done: #5dc983;
+				--st-idle: #8e8e93;
+				--shadow-md: 0 2px 8px rgba(0, 0, 0, 0.4);
+				--shadow-lg: 0 4px 24px rgba(0, 0, 0, 0.5);
+				--radius-sm: 6px;
+				--radius-md: 8px;
+				--radius-lg: 10px;
+				--font-ui: "SF Pro", "SF Pro Text", -apple-system, BlinkMacSystemFont, "Helvetica Neue",
+					sans-serif;
+				--font-mono: "SF Mono", "JetBrains Mono", "Fira Code", monospace;
+			}
+			* {
+				box-sizing: border-box;
+				margin: 0;
+				padding: 0;
+			}
+			body {
+				background: #050505;
+				color: var(--text);
+				font-family: var(--font-ui);
+				font-feature-settings: "cv02", "cv03", "cv04";
+				-webkit-font-smoothing: antialiased;
+				font-size: 13px;
+				padding: 40px;
+				display: flex;
+				gap: 48px;
+				align-items: flex-start;
+				flex-wrap: wrap;
+			}
+			button {
+				font-family: inherit;
+				cursor: pointer;
+			}
+			.mono {
+				font-family: var(--font-mono);
+			}
+			.col {
+				display: flex;
+				flex-direction: column;
+				gap: 14px;
+			}
+			.caption {
+				font-size: 12px;
+				color: var(--text-tertiary);
+				letter-spacing: 0.02em;
+			}
+			.caption b {
+				color: var(--text);
+				font-weight: 600;
+			}
+			.dot {
+				width: 6px;
+				height: 6px;
+				border-radius: 50%;
+				flex: none;
+			}
+			.dot.working {
+				background: var(--st-working);
+			}
+			.dot.blocked {
+				background: var(--st-blocked);
+			}
+			.dot.done {
+				background: var(--st-done);
+			}
+			.dot.idle {
+				background: var(--st-idle);
+			}
+
+			/* sidebar frame */
+			.sidebar {
+				width: 264px;
+				background: var(--bg-surface);
+				border: 1px solid var(--border-subtle);
+				border-radius: 12px;
+				padding: 10px 8px 14px;
+				box-shadow: var(--shadow-lg);
+			}
+
+			/* section header — promoted, matches Projects weight */
+			.sec {
+				display: flex;
+				align-items: center;
+				gap: 8px;
+				padding: 8px 8px 6px;
+			}
+			.sec .glyph {
+				width: 15px;
+				height: 15px;
+				flex: none;
+			}
+			.sec .title {
+				font-size: 12px;
+				font-weight: 650;
+				letter-spacing: 0.01em;
+				color: var(--text-secondary);
+				flex: 1;
+			}
+			.sec .new {
+				display: inline-flex;
+				align-items: center;
+				gap: 5px;
+				height: 22px;
+				padding: 0 8px 0 6px;
+				border-radius: 6px;
+				font-size: 11.5px;
+				font-weight: 550;
+				color: var(--accent-hover);
+				background: var(--accent-subtle);
+				border: 1px solid rgba(10, 132, 255, 0.25);
+			}
+			.sec .new:hover {
+				background: rgba(10, 132, 255, 0.24);
+			}
+			.sec .new svg {
+				width: 10px;
+				height: 10px;
+			}
+
+			/* empty-state teaching card */
+			.empty {
+				margin: 4px 4px 0;
+				padding: 16px 14px;
+				border: 1px dashed var(--border);
+				border-radius: var(--radius-lg);
+				background: linear-gradient(
+					180deg,
+					rgba(138, 154, 176, 0.06),
+					rgba(138, 154, 176, 0.01)
+				);
+				text-align: center;
+			}
+			.empty .badge {
+				width: 34px;
+				height: 34px;
+				margin: 0 auto 10px;
+				border-radius: 9px;
+				background: var(--orch-bg);
+				border: 1px solid rgba(138, 154, 176, 0.35);
+				display: grid;
+				place-items: center;
+			}
+			.empty h4 {
+				font-size: 13px;
+				font-weight: 600;
+				margin-bottom: 4px;
+			}
+			.empty p {
+				font-size: 11.5px;
+				line-height: 1.5;
+				color: var(--text-tertiary);
+				margin-bottom: 12px;
+			}
+			.empty .cta {
+				display: inline-flex;
+				align-items: center;
+				gap: 7px;
+				height: 30px;
+				padding: 0 14px;
+				border-radius: var(--radius-md);
+				background: var(--accent);
+				color: var(--accent-foreground);
+				font-size: 12.5px;
+				font-weight: 550;
+				border: none;
+			}
+			.empty .cta:hover {
+				background: var(--accent-hover);
+			}
+			.empty .cta svg {
+				width: 12px;
+				height: 12px;
+			}
+
+			/* orchestrator row — whole row is one big open target */
+			.row {
+				position: relative;
+				display: flex;
+				align-items: center;
+				gap: 9px;
+				width: 100%;
+				padding: 9px 8px 9px 10px;
+				border: 1px solid transparent;
+				border-radius: var(--radius-md);
+				background: transparent;
+				text-align: left;
+				color: var(--text);
+				margin-top: 2px;
+			}
+			.row:hover {
+				background: var(--bg-elevated);
+			}
+			.row.active {
+				background: var(--orch-bg);
+				border-color: rgba(138, 154, 176, 0.28);
+			}
+			.row.active::before {
+				content: "";
+				position: absolute;
+				left: 0;
+				top: 7px;
+				bottom: 7px;
+				width: 2.5px;
+				border-radius: 2px;
+				background: var(--orch);
+			}
+			.row .ico {
+				width: 16px;
+				height: 16px;
+				flex: none;
+			}
+			.row .body {
+				flex: 1;
+				min-width: 0;
+			}
+			.row .name {
+				font-size: 13px;
+				font-weight: 600;
+				white-space: nowrap;
+				overflow: hidden;
+				text-overflow: ellipsis;
+			}
+			.row .sub {
+				display: flex;
+				align-items: center;
+				gap: 6px;
+				margin-top: 2px;
+				font-size: 11px;
+				color: var(--text-tertiary);
+			}
+			.row .sub .live {
+				display: inline-flex;
+				align-items: center;
+				gap: 4px;
+			}
+			.count {
+				font-size: 10.5px;
+				font-weight: 550;
+				color: var(--orch);
+				background: var(--orch-bg);
+				padding: 1.5px 7px;
+				border-radius: 9px;
+				font-variant-numeric: tabular-nums;
+				flex: none;
+			}
+			/* hover actions */
+			.actions {
+				display: flex;
+				align-items: center;
+				gap: 4px;
+				flex: none;
+				opacity: 0;
+				transition: opacity 0.12s;
+			}
+			.row:hover .actions,
+			.row.active .actions {
+				opacity: 1;
+			}
+			.row:hover .count,
+			.row.active .count {
+				display: none;
+			}
+			.start {
+				display: inline-flex;
+				align-items: center;
+				gap: 5px;
+				height: 24px;
+				padding: 0 9px 0 8px;
+				border-radius: 7px;
+				font-size: 11px;
+				font-weight: 600;
+				color: var(--st-done);
+				background: rgba(93, 201, 131, 0.13);
+				border: 1px solid rgba(93, 201, 131, 0.28);
+			}
+			.start:hover {
+				background: rgba(93, 201, 131, 0.22);
+			}
+			.start svg {
+				width: 8px;
+				height: 8px;
+			}
+			.iconbtn {
+				width: 24px;
+				height: 24px;
+				display: grid;
+				place-items: center;
+				border-radius: 6px;
+				border: none;
+				background: transparent;
+				color: var(--text-quaternary);
+			}
+			.iconbtn:hover {
+				background: var(--bg-overlay);
+				color: var(--text-secondary);
+			}
+			.chev {
+				transition: transform 0.12s;
+			}
+			.chev.open {
+				transform: rotate(90deg);
+			}
+
+			/* expanded reference body */
+			.refs {
+				padding: 2px 0 6px 28px;
+			}
+			.ref {
+				display: flex;
+				align-items: center;
+				gap: 7px;
+				padding: 4px 8px;
+				border-radius: 6px;
+				font-size: 11px;
+				color: var(--text-quaternary);
+			}
+			.ref:hover {
+				background: var(--bg-elevated);
+				color: var(--text-tertiary);
+			}
+			.ref .mono {
+				white-space: nowrap;
+				overflow: hidden;
+				text-overflow: ellipsis;
+			}
+
+			/* annotation chips */
+			.note {
+				display: flex;
+				gap: 8px;
+				align-items: flex-start;
+				max-width: 264px;
+				font-size: 11.5px;
+				color: var(--text-tertiary);
+				line-height: 1.45;
+			}
+			.note .k {
+				flex: none;
+				width: 18px;
+				height: 18px;
+				border-radius: 5px;
+				background: var(--accent-subtle);
+				color: var(--accent-hover);
+				display: grid;
+				place-items: center;
+				font-size: 11px;
+				font-weight: 700;
+			}
+			.cursor {
+				position: absolute;
+				width: 16px;
+				height: 16px;
+				right: 86px;
+				bottom: -2px;
+				pointer-events: none;
+				filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6));
+			}
+		</style>
+	</head>
+	<body>
+		<!-- ───────── Empty state: teach + obvious create ───────── -->
+		<div class="col">
+			<div class="caption"><b>1 · First run</b> — discover + create</div>
+			<div class="sidebar">
+				<!-- projects above for context -->
+				<div class="sec">
+					<svg class="glyph" viewBox="0 0 14 14" fill="none">
+						<rect
+							x="2"
+							y="2.5"
+							width="10"
+							height="9"
+							rx="1.4"
+							stroke="var(--text-quaternary)"
+							stroke-width="1.1"
+						/>
+					</svg>
+					<span class="title">Projects</span>
+					<button class="iconbtn" aria-label="New project">
+						<svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+							<path d="M5.5 1.5v8M1.5 5.5h8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
+						</svg>
+					</button>
+				</div>
+				<div class="row" style="margin-bottom: 8px">
+					<svg class="ico" viewBox="0 0 14 14" fill="none">
+						<path d="M3 2.5h6a1 1 0 0 1 1 1v8l-2-1.3-2 1.3-2-1.3-2 1.3v-8a1 1 0 0 1 1-1Z" stroke="var(--text-tertiary)" stroke-width="1" stroke-linejoin="round" />
+					</svg>
+					<div class="body"><div class="name" style="font-weight: 500; color: var(--text-secondary)">payments-api</div></div>
+				</div>
+
+				<!-- promoted orchestrator section -->
+				<div class="sec">
+					<svg class="glyph" viewBox="0 0 14 14" fill="none">
+						<circle cx="3" cy="7" r="2" stroke="var(--orch)" stroke-width="1.2" />
+						<circle cx="11" cy="7" r="2" stroke="var(--orch)" stroke-width="1.2" />
+						<circle cx="7" cy="7" r="1" fill="var(--orch)" />
+						<path d="M5 7h.6M8.4 7H9" stroke="var(--orch)" stroke-width="1.1" />
+					</svg>
+					<span class="title">Orchestrators</span>
+					<button class="new">
+						<svg viewBox="0 0 11 11" fill="none">
+							<path d="M5.5 1.5v8M1.5 5.5h8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
+						</svg>
+						New
+					</button>
+				</div>
+
+				<div class="empty">
+					<div class="badge">
+						<svg width="18" height="18" viewBox="0 0 14 14" fill="none">
+							<circle cx="3" cy="7" r="2" stroke="var(--orch)" stroke-width="1.2" />
+							<circle cx="11" cy="7" r="2" stroke="var(--orch)" stroke-width="1.2" />
+							<circle cx="7" cy="7" r="1.1" fill="var(--orch)" />
+							<path d="M5 7h.6M8.4 7H9" stroke="var(--orch)" stroke-width="1.1" />
+						</svg>
+					</div>
+					<h4>Coordinate across repos</h4>
+					<p>One agent that dispatches and tracks work across backend, frontend, and more.</p>
+					<button class="cta">
+						<svg viewBox="0 0 12 12" fill="none">
+							<path d="M6 1.5v9M1.5 6h9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+						</svg>
+						New orchestrator
+					</button>
+				</div>
+			</div>
+			<div class="note">
+				<span class="k">A</span>
+				<span>Real <b>section header</b> with a labeled <b>New</b> button, plus a teaching card. No more hunting for a 11px “+”.</span>
+			</div>
+		</div>
+
+		<!-- ───────── Populated: whole-row open + clear actions ───────── -->
+		<div class="col">
+			<div class="caption"><b>2 · In use</b> — open + start are obvious</div>
+			<div class="sidebar">
+				<div class="sec">
+					<svg class="glyph" viewBox="0 0 14 14" fill="none">
+						<circle cx="3" cy="7" r="2" stroke="var(--orch)" stroke-width="1.2" />
+						<circle cx="11" cy="7" r="2" stroke="var(--orch)" stroke-width="1.2" />
+						<circle cx="7" cy="7" r="1" fill="var(--orch)" />
+						<path d="M5 7h.6M8.4 7H9" stroke="var(--orch)" stroke-width="1.1" />
+					</svg>
+					<span class="title">Orchestrators</span>
+					<button class="new">
+						<svg viewBox="0 0 11 11" fill="none">
+							<path d="M5.5 1.5v8M1.5 5.5h8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
+						</svg>
+						New
+					</button>
+				</div>
+
+				<!-- active / open row -->
+				<button class="row active">
+					<svg class="ico" viewBox="0 0 14 14" fill="none">
+						<circle cx="3" cy="7" r="2" stroke="var(--orch)" stroke-width="1.2" />
+						<circle cx="11" cy="7" r="2" stroke="var(--orch)" stroke-width="1.2" />
+						<circle cx="7" cy="7" r="1.1" fill="var(--orch)" />
+						<path d="M5 7h.6M8.4 7H9" stroke="var(--orch)" stroke-width="1.1" />
+					</svg>
+					<div class="body">
+						<div class="name">Payments Platform</div>
+						<div class="sub">
+							<span class="live"><span class="dot working"></span>2 working</span>
+							<span class="live"><span class="dot blocked"></span>1 blocked</span>
+						</div>
+					</div>
+					<div class="actions">
+						<span class="start">
+							<svg viewBox="0 0 8 8" fill="currentColor"><path d="M1.5 1 L7 4 L1.5 7 Z" /></svg>
+							Start
+						</span>
+						<span class="iconbtn" title="Options">
+							<svg width="13" height="13" viewBox="0 0 12 12" fill="currentColor"><circle cx="6" cy="2" r="1.1" /><circle cx="6" cy="6" r="1.1" /><circle cx="6" cy="10" r="1.1" /></svg>
+						</span>
+						<span class="iconbtn" title="Expand">
+							<svg class="chev open" width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M3 1.5 7 5 3 8.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" /></svg>
+						</span>
+					</div>
+				</button>
+				<div class="refs">
+					<div class="ref"><span class="dot working"></span><span class="mono">api / idempotency-keys</span></div>
+					<div class="ref"><span class="dot blocked"></span><span class="mono">api / webhook-retries</span></div>
+					<div class="ref"><span class="dot working"></span><span class="mono">web / checkout-v2</span></div>
+				</div>
+
+				<!-- hovered (not open) row -->
+				<button class="row" style="background: var(--bg-elevated)">
+					<svg class="ico" viewBox="0 0 14 14" fill="none">
+						<circle cx="3" cy="7" r="2" stroke="var(--orch-2)" stroke-width="1.2" />
+						<circle cx="11" cy="7" r="2" stroke="var(--orch-2)" stroke-width="1.2" />
+						<circle cx="7" cy="7" r="1.1" fill="var(--orch-2)" />
+					</svg>
+					<div class="body">
+						<div class="name">Data Pipeline</div>
+						<div class="sub"><span class="live"><span class="dot idle"></span>idle · 3 agents</span></div>
+					</div>
+					<div class="actions" style="opacity: 1">
+						<span class="start">
+							<svg viewBox="0 0 8 8" fill="currentColor"><path d="M1.5 1 L7 4 L1.5 7 Z" /></svg>
+							Start
+						</span>
+						<span class="iconbtn"><svg width="13" height="13" viewBox="0 0 12 12" fill="currentColor"><circle cx="6" cy="2" r="1.1" /><circle cx="6" cy="6" r="1.1" /><circle cx="6" cy="10" r="1.1" /></svg></span>
+						<span class="iconbtn"><svg class="chev" width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M3 1.5 7 5 3 8.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" /></svg></span>
+					</div>
+					<!-- pointer hint -->
+					<svg class="cursor" viewBox="0 0 16 16" fill="none">
+						<path d="M2 1l11 6-5 1.5L6 14 2 1z" fill="#fff" stroke="#000" stroke-width="1" stroke-linejoin="round" />
+					</svg>
+				</button>
+			</div>
+			<div class="note">
+				<span class="k">B</span>
+				<span>The <b>entire row opens</b> the canvas (cursor + hover highlight). <b>Start</b> is a labeled pill, not a bare icon. Menu + expand sit apart and stop propagation.</span>
+			</div>
+		</div>
+
+		<!-- ───────── Quick-create popover ───────── -->
+		<div class="col">
+			<div class="caption"><b>3 · Create</b> — inline, no context loss</div>
+			<div class="sidebar" style="padding-bottom: 18px">
+				<div class="sec">
+					<svg class="glyph" viewBox="0 0 14 14" fill="none">
+						<circle cx="3" cy="7" r="2" stroke="var(--orch)" stroke-width="1.2" />
+						<circle cx="11" cy="7" r="2" stroke="var(--orch)" stroke-width="1.2" />
+						<circle cx="7" cy="7" r="1" fill="var(--orch)" />
+					</svg>
+					<span class="title">Orchestrators</span>
+					<button class="new" style="background: rgba(10, 132, 255, 0.24)">
+						<svg viewBox="0 0 11 11" fill="none"><path d="M5.5 1.5v8M1.5 5.5h8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" /></svg>
+						New
+					</button>
+				</div>
+				<!-- popover -->
+				<div style="margin: 6px 4px 0; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-elevated); box-shadow: var(--shadow-lg); padding: 13px;">
+					<div style="font-size: 12px; font-weight: 600; margin-bottom: 10px;">New orchestrator</div>
+					<input
+						value="Payments Platform"
+						style="width: 100%; height: 30px; border-radius: 7px; border: 1px solid var(--border-active); background: var(--bg-base); color: var(--text); font-family: inherit; font-size: 13px; padding: 0 10px; outline: none; margin-bottom: 10px;"
+					/>
+					<div style="font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-quaternary); margin-bottom: 6px;">Link repos</div>
+					<div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 13px;">
+						<span style="display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 13px; font-size: 12px; border: 1px solid rgba(10,132,255,0.5); background: var(--accent-subtle); color: var(--accent-hover); font-family: var(--font-mono);">✓ payments-api</span>
+						<span style="display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 13px; font-size: 12px; border: 1px solid rgba(10,132,255,0.5); background: var(--accent-subtle); color: var(--accent-hover); font-family: var(--font-mono);">✓ payments-web</span>
+						<span style="display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 13px; font-size: 12px; border: 1px solid var(--border-subtle); background: var(--bg-surface); color: var(--text-tertiary); font-family: var(--font-mono);">payments-mobile</span>
+					</div>
+					<div style="display: flex; gap: 8px; justify-content: flex-end;">
+						<button style="height: 30px; padding: 0 12px; border-radius: 8px; background: transparent; border: 1px solid var(--border-subtle); color: var(--text-secondary); font-size: 12.5px;">Cancel</button>
+						<button style="height: 30px; padding: 0 14px; border-radius: 8px; background: var(--accent); border: none; color: #fff; font-size: 12.5px; font-weight: 550;">Create</button>
+					</div>
+				</div>
+			</div>
+			<div class="note">
+				<span class="k">C</span>
+				<span>“New” opens an <b>inline popover</b> right under the section: name + pick repos in one step. Created orchestrator drops in as the first row, expanded.</span>
+			</div>
+		</div>
+	</body>
+</html>

@@ -515,7 +515,7 @@ export const usePaneStore = create<PaneStore>((set, get) => ({
 				if (!hasTab) return pane;
 				return {
 					...pane,
-					tabs: pane.tabs.map((t) => (t.id === tabId ? { ...t, title } : t)),
+					tabs: pane.tabs.map((t) => (t.id === tabId ? ({ ...t, title } as TabItem) : t)),
 				};
 			});
 			newLayouts[wsId] = newRoot;

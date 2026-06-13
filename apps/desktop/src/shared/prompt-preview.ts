@@ -67,11 +67,12 @@ export interface ReviewHistoryFields {
 	commentLines: string;
 }
 
-const REVIEW_PLACEHOLDERS: ReviewPromptContext = {
+const REVIEW_PLACEHOLDERS: { [K in keyof ReviewPromptContext]: string } = {
 	title: "{{title}}",
 	author: "{{author}}",
 	sourceBranch: "{{sourceBranch}}",
 	targetBranch: "{{targetBranch}}",
+	// placeholder only — never used as a real provider at runtime
 	provider: "{{provider}}",
 };
 
@@ -191,7 +192,7 @@ export function assembleSolveFollowUpPrompt(opts: {
 /** Render the full review prompt with placeholders for the UI Full Prompt tab. */
 export function renderReviewFullPrompt(body: string): string {
 	return assembleReviewPrompt({
-		ctx: REVIEW_PLACEHOLDERS,
+		ctx: REVIEW_PLACEHOLDERS as unknown as ReviewPromptContext,
 		body: effectiveBody(body, DEFAULT_REVIEW_PROMPT),
 		mcpInstructions: buildReviewMcpInstructions(REVIEW_PLACEHOLDERS.targetBranch),
 	});
@@ -207,7 +208,7 @@ Previous comments and their current state:
 {{previousCommentList}}
 </review_history>`;
 	return assembleReviewPrompt({
-		ctx: REVIEW_PLACEHOLDERS,
+		ctx: REVIEW_PLACEHOLDERS as unknown as ReviewPromptContext,
 		body: effectiveBody(body, DEFAULT_REVIEW_PROMPT),
 		reviewHistory,
 		mcpInstructions: buildFollowUpMcpInstructions(REVIEW_PLACEHOLDERS.targetBranch),

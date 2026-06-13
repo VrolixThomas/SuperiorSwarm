@@ -1,11 +1,17 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { getDb } from "../src/main/db";
-import { workspaces } from "../src/main/db/schema";
+import { orchestratorMembers, workspaces } from "../src/main/db/schema";
 import { attachToOrchestrator } from "../src/main/services/orchestrator-membership";
 import { reorderChildren, reorderTopLevel } from "../src/main/services/workspace-ordering";
 import { listByProjectTree } from "../src/main/services/workspace-service";
-import { seedProject, seedWorkspace, setupTestDb, teardownTestDb } from "./helpers/db";
+import {
+	seedCrossRepoOrchestrator,
+	seedProject,
+	seedWorkspace,
+	setupTestDb,
+	teardownTestDb,
+} from "./helpers/db";
 
 describe("listByProjectTree", () => {
 	beforeEach(() => setupTestDb());
@@ -41,8 +47,8 @@ describe("listByProjectTree", () => {
 
 		const tree = await listByProjectTree({ projectId: p });
 		expect(tree.orchestrators).toHaveLength(1);
-		expect(tree.orchestrators[0].workspace.id).toBe(orch);
-		expect(tree.orchestrators[0].children.map((c) => c.id)).toEqual([c2, c1]);
+		expect(tree.orchestrators[0]?.workspace.id).toBe(orch);
+		expect(tree.orchestrators[0]?.children.map((c) => c.id)).toEqual([c2, c1]);
 		expect(tree.loose.map((w) => w.id)).toEqual([loose]);
 	});
 
@@ -67,5 +73,75 @@ describe("listByProjectTree", () => {
 		const tree = await listByProjectTree({ projectId: p });
 		expect(tree.orchestrators).toEqual([]);
 		expect(tree.loose.map((w) => w.id).sort()).toEqual([child, orch].sort());
+	});
+
+	test("orphaned per-repo member row is not misclassified as cross-repo membership", async () => {
+		// ws has ONLY an orphaned per-repo row (orchestratorId points at a deleted workspace,
+		// parentKind="workspace"). Under the old set-difference logic, this row would be
+		// misidentified as a cross-repo membership because its orchestratorId is absent
+		// from allOrchestratorIds. The new parentKind-based logic must ignore it.
+		const p = await seedProject();
+		const ws = await seedWorkspace(p, { name: "ws" });
+
+		// Orphaned per-repo row: references a nonexistent orchestrator workspace.
+		const orphanOrchId = `ws-deleted-${Date.now()}`;
+		const db = getDb();
+		db.insert(orchestratorMembers)
+			.values({
+				orchestratorId: orphanOrchId,
+				workspaceId: ws,
+				parentKind: "workspace",
+				sortOrder: 0,
+				createdAt: new Date(),
+			})
+			.run();
+
+		const tree = await listByProjectTree({ projectId: p });
+
+		// ws should appear as loose with no cross-repo orchestrator.
+		expect(tree.orchestrators).toHaveLength(0);
+		expect(tree.loose).toHaveLength(1);
+		expect(tree.loose[0]?.id).toBe(ws);
+		expect(tree.loose[0]?.crossRepoOrchestrator).toBeNull();
+	});
+
+	test("cross-repo membership still shows after orphaned per-repo row is present", async () => {
+		// Same workspace has both an orphaned per-repo row AND a valid cross-repo membership.
+		// The xro must still show; the orphan must not clobber or duplicate.
+		const p = await seedProject();
+		const xro = await seedCrossRepoOrchestrator({ name: "my-xro", projectIds: [p] });
+		const ws = await seedWorkspace(p, { name: "ws" });
+
+		const db = getDb();
+
+		// Legitimate cross-repo membership.
+		db.insert(orchestratorMembers)
+			.values({
+				orchestratorId: xro,
+				workspaceId: ws,
+				parentKind: "cross_repo",
+				sortOrder: 0,
+				createdAt: new Date(),
+			})
+			.run();
+
+		// Orphaned per-repo row for the same workspace.
+		const orphanOrchId = `ws-gone-${Date.now()}`;
+		db.insert(orchestratorMembers)
+			.values({
+				orchestratorId: orphanOrchId,
+				workspaceId: ws,
+				parentKind: "workspace",
+				sortOrder: 1,
+				createdAt: new Date(),
+			})
+			.run();
+
+		const tree = await listByProjectTree({ projectId: p });
+
+		expect(tree.loose).toHaveLength(1);
+		expect(tree.loose[0]?.id).toBe(ws);
+		expect(tree.loose[0]?.crossRepoOrchestrator?.id).toBe(xro);
+		expect(tree.loose[0]?.crossRepoOrchestrator?.name).toBe("my-xro");
 	});
 });

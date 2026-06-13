@@ -15,6 +15,7 @@ import type {
 	SettingsAPI,
 	ShellAPI,
 	TerminalAPI,
+	TerminalDataMeta,
 	TrpcAPI,
 } from "../shared/types";
 
@@ -31,7 +32,7 @@ function createDispatcher<T extends unknown[]>(channel: string) {
 	};
 }
 
-const dataDispatcher = createDispatcher<[string]>("terminal:data");
+const dataDispatcher = createDispatcher<[string, TerminalDataMeta | undefined]>("terminal:data");
 const exitDispatcher = createDispatcher<[number]>("terminal:exit");
 
 const terminalAPI: TerminalAPI = {
@@ -42,7 +43,8 @@ const terminalAPI: TerminalAPI = {
 		ipcRenderer.invoke("terminal:resize", id, cols, rows),
 	detach: (id: string) => ipcRenderer.invoke("terminal:detach", id),
 	dispose: (id: string) => ipcRenderer.invoke("terminal:dispose", id),
-	onData: (id: string, callback: (data: string) => void) => dataDispatcher.add(id, callback),
+	onData: (id: string, callback: (data: string, meta?: TerminalDataMeta) => void) =>
+		dataDispatcher.add(id, callback),
 	onExit: (id: string, callback: (exitCode: number) => void) => exitDispatcher.add(id, callback),
 };
 

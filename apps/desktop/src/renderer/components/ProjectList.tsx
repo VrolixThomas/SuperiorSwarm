@@ -1,23 +1,40 @@
 import { useProjectStore } from "../stores/projects";
 import { trpc } from "../trpc/client";
 import { ProjectItem } from "./ProjectItem";
+import { SidebarSectionHeader } from "./SidebarSectionHeader";
 
-export function ProjectList() {
+export function ProjectList({
+	onNewTerminal,
+	terminalPending,
+}: {
+	onNewTerminal?: () => void;
+	terminalPending?: boolean;
+}) {
 	const { data: projectsList } = trpc.projects.list.useQuery();
-	const { expandedProjectIds, toggleProjectExpanded } = useProjectStore();
-
-	if (!projectsList?.length) return null;
+	const { expandedProjectIds, toggleProjectExpanded, openAddModal } = useProjectStore();
 
 	return (
-		<div className="flex flex-col gap-2 px-2 pt-2">
-			{projectsList.map((project) => (
-				<ProjectItem
-					key={project.id}
-					project={project}
-					isExpanded={expandedProjectIds.has(project.id)}
-					onToggle={() => toggleProjectExpanded(project.id)}
-				/>
-			))}
+		<div className="flex flex-col px-2 pb-2">
+			<SidebarSectionHeader
+				title="Projects"
+				count={projectsList?.length}
+				onNew={openAddModal}
+				newLabel="Add Project"
+				terminalAction={
+					onNewTerminal ? { onClick: onNewTerminal, disabled: terminalPending } : undefined
+				}
+				className="sticky top-0 z-10 -mx-2 bg-[var(--bg-surface)]"
+			/>
+			<div className="flex flex-col gap-2">
+				{(projectsList ?? []).map((project) => (
+					<ProjectItem
+						key={project.id}
+						project={project}
+						isExpanded={expandedProjectIds.has(project.id)}
+						onToggle={() => toggleProjectExpanded(project.id)}
+					/>
+				))}
+			</div>
 		</div>
 	);
 }

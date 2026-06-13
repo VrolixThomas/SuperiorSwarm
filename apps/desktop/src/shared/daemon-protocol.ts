@@ -39,6 +39,13 @@ export type DaemonSession = { id: string; cwd: string; pid: number };
 export type DaemonMessage =
 	| { type: "ready" }
 	| { type: "sessions"; sessions: DaemonSession[] }
-	| { type: "data"; id: string; data: string } // base64-encoded PTY output
+	// base64-encoded PTY output. replay=true marks a scrollback replay sent on
+	// attach (not live output); fg is the PTY's foreground process name at
+	// attach time. Optional so old daemons/clients interoperate.
+	| { type: "data"; id: string; data: string; replay?: boolean; fg?: string }
 	| { type: "exit"; id: string; code: number }
 	| { type: "error"; id: string; message: string };
+
+// Metadata attached to PTY data delivered to consumers. Present only for
+// attach-time scrollback replay.
+export type TerminalDataMeta = { replay: true; fg?: string };

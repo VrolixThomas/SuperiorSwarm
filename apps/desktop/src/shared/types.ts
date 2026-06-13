@@ -1,4 +1,7 @@
 import type { AgentEvent } from "./agent-events";
+import type { TerminalDataMeta } from "./daemon-protocol";
+
+export type { TerminalDataMeta } from "./daemon-protocol";
 
 export interface TerminalAPI {
 	create: (id: string, cwd?: string, workspaceId?: string) => Promise<{ wasAttached: boolean }>;
@@ -6,7 +9,7 @@ export interface TerminalAPI {
 	resize: (id: string, cols: number, rows: number) => Promise<void>;
 	detach: (id: string) => Promise<void>;
 	dispose: (id: string) => Promise<void>;
-	onData: (id: string, callback: (data: string) => void) => () => void;
+	onData: (id: string, callback: (data: string, meta?: TerminalDataMeta) => void) => () => void;
 	onExit: (id: string, callback: (exitCode: number) => void) => () => void;
 }
 
@@ -183,6 +186,7 @@ export interface WorkspaceTreeRow {
 	isOrchestrator: boolean;
 	cliPreset: string | null;
 	sortOrder: number;
+	crossRepoOrchestrator?: { id: string; name: string } | null;
 }
 
 /** A workspace row that is guaranteed not to be a "review" type (the service filters these out). */
@@ -198,4 +202,21 @@ export interface OrchestratorGroupNode {
 export interface ProjectWorkspaceTree {
 	orchestrators: OrchestratorGroupNode[];
 	loose: VisibleWorkspaceTreeRow[];
+}
+
+export interface CrossRepoOrchestratorNode {
+	id: string;
+	name: string;
+	colorIndex: number | null;
+	status: string;
+	repoCount: number;
+	memberCount: number;
+}
+
+export interface CrossRepoMemberRow {
+	workspaceId: string;
+	workspaceName: string;
+	projectId: string;
+	projectName: string;
+	sortOrder: number;
 }

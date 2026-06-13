@@ -32,7 +32,7 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
 	hydrate: async () => {
 		const pref = await trpcVanilla.settings.getTheme.query();
 		const resolved = resolveTheme(pref, systemPrefersDark());
-		if (document.documentElement.dataset.theme !== resolved) {
+		if (document.documentElement.dataset["theme"] !== resolved) {
 			applyTheme(resolved);
 		}
 		set({ pref, resolved });

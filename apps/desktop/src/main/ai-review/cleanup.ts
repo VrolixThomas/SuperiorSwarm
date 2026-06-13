@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { getDb } from "../db";
-import { projects, terminalSessions, workspaces, worktrees } from "../db/schema";
+import { agentMessages, projects, terminalSessions, workspaces, worktrees } from "../db/schema";
 import { reviewDrafts } from "../db/schema-ai-review";
 import { removeWorktree } from "../git/operations";
 import { getDaemonClient } from "../terminal/daemon-instance";
@@ -75,6 +75,13 @@ export async function cleanupReviewWorkspace(workspaceId: string): Promise<void>
 	if (sessions.length > 0) {
 		db.delete(terminalSessions).where(eq(terminalSessions.workspaceId, workspaceId)).run();
 	}
+
+	// Replicate the dropped ON DELETE SET NULL on agent_messages.from_workspace_id
+	// (FK removed in 0046_allow_cross_repo_sender.sql) — same as removeWorkspace.
+	db.update(agentMessages)
+		.set({ fromWorkspaceId: null })
+		.where(eq(agentMessages.fromWorkspaceId, workspaceId))
+		.run();
 
 	// 4. Delete workspace record
 	db.delete(workspaces).where(eq(workspaces.id, workspaceId)).run();

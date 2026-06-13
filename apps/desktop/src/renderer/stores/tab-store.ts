@@ -81,6 +81,13 @@ export type TabItem =
 			repoPath: string;
 			baseBranch: string;
 			title: "Review";
+	  }
+	| {
+			kind: "xro-canvas";
+			id: string;
+			workspaceId: string;
+			orchestratorId: string;
+			title: string;
 	  };
 export type PanelMode = "diff" | "explorer" | "pr-review";
 
@@ -179,6 +186,13 @@ interface TabStore {
 		language: string
 	) => string;
 	openPROverview: (workspaceId: string, prCtx: PRContext) => string;
+
+	openXroCanvas: (orchestratorId: string, title: string) => string;
+	openXroWorkspace: (
+		orchestratorId: string,
+		title: string,
+		workDir: string
+	) => { terminalTabId: string; started: boolean };
 
 	openMergeConflict: (
 		workspaceId: string,
@@ -284,7 +298,16 @@ function defaultPanelForCwd(cwd: string): RightPanelState {
 }
 
 /** Derive the correct right panel state from workspace metadata. */
-function panelForWorkspace(cwd: string, meta: WorkspaceMetadata | undefined): RightPanelState {
+function panelForWorkspace(
+	workspaceId: string,
+	cwd: string,
+	meta: WorkspaceMetadata | undefined
+): RightPanelState {
+	// Cross-repo orchestrator tabs are terminal-only — the workDir is not a git
+	// repo, so any diff/working-tree subscription would fail. Return closed so
+	// DiffPanel never mounts a subscription for this workspace.
+	if (workspaceId.startsWith("xro-")) return PANEL_CLOSED;
+
 	if (meta?.type === "review" && meta.prProvider && meta.prIdentifier) {
 		const [ownerRepo, numStr] = meta.prIdentifier.split("#");
 		const [owner, repo] = (ownerRepo ?? "").split("/");
@@ -555,7 +578,7 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 			return;
 		}
 
-		const panel = panelForWorkspace(cwd, meta);
+		const panel = panelForWorkspace(workspaceId, cwd, meta);
 		set({
 			activeWorkspaceId: workspaceId,
 			activeWorkspaceCwd: cwd,
@@ -713,6 +736,93 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 		return id;
 	},
 
+	openXroCanvas: (orchestratorId, title) => {
+		// The orchestrator id is itself the xro-* workspace id, so the canvas tab
+		// lives in that workspace's pane layout (dedupe per-workspace by orchestratorId).
+		const workspaceId = orchestratorId;
+		const found = findTabInWorkspace(
+			workspaceId,
+			(t) => t.kind === "xro-canvas" && t.orchestratorId === orchestratorId
+		);
+		if (found) {
+			ps().setActiveTabInPane(workspaceId, found.pane.id, found.tab.id);
+			ps().setFocusedPane(found.pane.id);
+			return found.tab.id;
+		}
+		const id = `xro-canvas-${orchestratorId}`;
+		const tab: TabItem = {
+			kind: "xro-canvas",
+			id,
+			workspaceId,
+			orchestratorId,
+			title,
+		};
+		ps().ensureLayout(workspaceId);
+		const focused = resolveFocusedPane(workspaceId);
+		if (focused) {
+			ps().addTabToPane(workspaceId, focused.id, tab);
+		}
+		return id;
+	},
+
+	openXroWorkspace: (orchestratorId, title, workDir) => {
+		const workspaceId = orchestratorId;
+		get().setActiveWorkspace(workspaceId, workDir);
+		ps().ensureLayout(workspaceId);
+
+		// Reattach: if a coordinator terminal already exists, focus it and ensure
+		// the canvas tab is present. Do not spawn a second coordinator.
+		const existingCoord = findTabInWorkspace(
+			workspaceId,
+			(t) => t.kind === "terminal" && t.presetName === "xro-coordinator"
+		);
+		if (existingCoord) {
+			// Ensure the canvas tab exists first — openXroCanvas focuses the canvas
+			// pane — then give focus back to the coordinator terminal pane.
+			get().openXroCanvas(orchestratorId, title);
+			ps().setActiveTabInPane(workspaceId, existingCoord.pane.id, existingCoord.tab.id);
+			ps().setFocusedPane(existingCoord.pane.id);
+			return { terminalTabId: existingCoord.tab.id, started: false };
+		}
+
+		// First open: coordinator terminal in the original (left) pane, then split
+		// the canvas off into the new (right) pane.
+		const left = resolveFocusedPane(workspaceId);
+		// ensureLayout above guarantees a pane; bail out safely if somehow absent so
+		// the caller never writes a launch command to a terminal that was not created.
+		if (!left) return { terminalTabId: "", started: false };
+
+		const terminalTabId = nextTerminalId();
+		const terminalTab: TabItem = {
+			kind: "terminal",
+			id: terminalTabId,
+			workspaceId,
+			title: "Coordinator",
+			cwd: workDir,
+			presetName: "xro-coordinator",
+		};
+		ps().addTabToPane(workspaceId, left.id, terminalTab);
+
+		// The canvas may still exist from a previous open (user closed only the
+		// coordinator terminal) — never create a second tab with the same id.
+		const existingCanvas = findTabInWorkspace(
+			workspaceId,
+			(t) => t.kind === "xro-canvas" && t.orchestratorId === orchestratorId
+		);
+		if (!existingCanvas) {
+			const canvasTab: TabItem = {
+				kind: "xro-canvas",
+				id: `xro-canvas-${orchestratorId}`,
+				workspaceId,
+				orchestratorId,
+				title,
+			};
+			ps().splitPane(workspaceId, left.id, "horizontal", canvasTab);
+		}
+		ps().setFocusedPane(left.id);
+		return { terminalTabId, started: true };
+	},
+
 	openMergeConflict: (workspaceId, mergeType, sourceBranch, targetBranch) => {
 		const id = nextFileTabId();
 		const label =
@@ -753,8 +863,9 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 	openRightPanel: () => {
 		const { rightPanel, activeWorkspaceCwd, activeWorkspaceId, workspaceMetadata } = get();
 		if (rightPanel.open) return;
+		if (activeWorkspaceId?.startsWith("xro-")) return;
 		const meta = activeWorkspaceId ? workspaceMetadata[activeWorkspaceId] : undefined;
-		set({ rightPanel: panelForWorkspace(activeWorkspaceCwd, meta) });
+		set({ rightPanel: panelForWorkspace(activeWorkspaceId ?? "", activeWorkspaceCwd, meta) });
 	},
 
 	openExplorer: () => {
@@ -1122,7 +1233,7 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 		const activeId = activeEntry?.id ?? activeWs;
 		const activeMeta = activeId ? workspaceMetadata[activeId] : undefined;
 		const activeCwdResolved = activeEntry?.cwd ?? activeCwd;
-		const rightPanel = panelForWorkspace(activeCwdResolved, activeMeta);
+		const rightPanel = panelForWorkspace(activeId ?? "", activeCwdResolved, activeMeta);
 
 		set({
 			activeWorkspaceId: activeId ?? null,
