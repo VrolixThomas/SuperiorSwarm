@@ -11,7 +11,16 @@ const LS_COLLAPSED = "ss.sidebar.orchCollapsed";
  * pane can collapse to just its own header (the header lives inside `bottom`).
  * Height + collapsed state persist to localStorage.
  */
-export function SidebarSplit({ top, bottom }: { top: ReactNode; bottom: ReactNode }) {
+export function SidebarSplit({
+	top,
+	bottom,
+	bottomAutoHeight = false,
+}: {
+	top: ReactNode;
+	bottom: ReactNode;
+	/** When true, the bottom pane sizes to its content (no fixed/draggable height) — used for empty panes. */
+	bottomAutoHeight?: boolean;
+}) {
 	const rootRef = useRef<HTMLDivElement>(null);
 	const draggingRef = useRef(false);
 
@@ -60,9 +69,11 @@ export function SidebarSplit({ top, bottom }: { top: ReactNode; bottom: ReactNod
 		} catch {}
 	}, [onPointerMove]);
 
+	const autoHeight = collapsed || bottomAutoHeight;
+
 	const startDrag = useCallback(
 		(e: React.PointerEvent) => {
-			if (collapsed) return;
+			if (autoHeight) return;
 			e.preventDefault();
 			draggingRef.current = true;
 			document.body.style.cursor = "row-resize";
@@ -70,7 +81,7 @@ export function SidebarSplit({ top, bottom }: { top: ReactNode; bottom: ReactNod
 			window.addEventListener("pointerup", endDrag);
 			window.addEventListener("pointercancel", endDrag);
 		},
-		[collapsed, onPointerMove, endDrag]
+		[autoHeight, onPointerMove, endDrag]
 	);
 
 	useEffect(() => endDrag, [endDrag]);
@@ -80,7 +91,7 @@ export function SidebarSplit({ top, bottom }: { top: ReactNode; bottom: ReactNod
 			<div className="min-h-0 flex-1 overflow-y-auto">{top}</div>
 
 			<hr
-				className={`group relative m-0 h-[7px] shrink-0 border-0 bg-transparent p-0 outline-none before:absolute before:inset-x-0 before:top-[3px] before:block before:h-px before:bg-[var(--border-subtle)]${!collapsed ? " cursor-row-resize hover:before:bg-[var(--border-active)]" : ""}`}
+				className={`group relative m-0 h-[7px] shrink-0 border-0 bg-transparent p-0 outline-none before:absolute before:inset-x-0 before:top-[3px] before:block before:h-px before:bg-[var(--border-subtle)]${!autoHeight ? " cursor-row-resize hover:before:bg-[var(--border-active)]" : ""}`}
 				onPointerDown={startDrag}
 				aria-orientation="horizontal"
 				tabIndex={0}
@@ -88,7 +99,7 @@ export function SidebarSplit({ top, bottom }: { top: ReactNode; bottom: ReactNod
 
 			<div
 				className="flex min-h-0 shrink-0 flex-col max-h-[60%]"
-				style={{ height: collapsed ? "auto" : `${height}px` }}
+				style={{ height: autoHeight ? "auto" : `${height}px` }}
 			>
 				{bottom}
 			</div>
