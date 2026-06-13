@@ -1,15 +1,17 @@
 import { useEffect, useState } from "react";
 import { useProjectStore } from "../stores/projects";
+import { AddProjectFolderTab } from "./AddProjectFolderTab";
 import { AddRepositoryCloneTab } from "./AddRepositoryCloneTab";
 import { AddRepositoryCreateTab } from "./AddRepositoryCreateTab";
 import { AddRepositoryOpenTab } from "./AddRepositoryOpenTab";
 
-type Tab = "clone" | "open" | "create";
+type Tab = "clone" | "open" | "create" | "folder";
 
 const TABS: { key: Tab; label: string }[] = [
 	{ key: "clone", label: "Clone" },
 	{ key: "open", label: "Open" },
 	{ key: "create", label: "Create" },
+	{ key: "folder", label: "Folder" },
 ];
 
 export function AddRepositoryModal() {
@@ -43,7 +45,7 @@ export function AddRepositoryModal() {
 			<div className="w-[480px] rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-surface)] shadow-[var(--shadow-md)]">
 				{/* Header */}
 				<div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
-					<h2 className="text-[15px] font-semibold text-[var(--text)]">Add Repository</h2>
+					<h2 className="text-[15px] font-semibold text-[var(--text)]">Add Project</h2>
 					<button
 						type="button"
 						onClick={closeAddModal}
@@ -82,6 +84,7 @@ export function AddRepositoryModal() {
 				{activeTab === "clone" && <AddRepositoryCloneTab />}
 				{activeTab === "open" && <AddRepositoryOpenTab />}
 				{activeTab === "create" && <AddRepositoryCreateTab />}
+				{activeTab === "folder" && <AddProjectFolderTab />}
 			</div>
 		</div>
 	);

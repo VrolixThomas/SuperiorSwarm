@@ -12,34 +12,16 @@ import {
 	extractRepoName,
 	getGitRoot,
 	initRepo,
+	isGitRepo,
 	parseRemoteUrl,
 	validateGitUrl,
 } from "../../git/operations";
 import { BitbucketAdapter } from "../../providers/bitbucket-adapter";
 import { GitHubAdapter } from "../../providers/github-adapter";
+import { resolveTilde } from "../../services/folder-projects";
 import { ensureRepoExclude } from "../../services/git-exclude";
+import { randomColor } from "../../services/project-colors";
 import { publicProcedure, router } from "../index";
-
-const PROJECT_COLORS = [
-	"#0a84ff",
-	"#30d158",
-	"#ff9f0a",
-	"#ff375f",
-	"#bf5af2",
-	"#64d2ff",
-	"#ffd60a",
-	"#ff6482",
-];
-
-function randomColor(): string {
-	return PROJECT_COLORS[Math.floor(Math.random() * PROJECT_COLORS.length)] ?? "#0a84ff";
-}
-
-function resolveTilde(p: string): string {
-	if (p.startsWith("~/")) return join(homedir(), p.slice(2));
-	if (p === "~") return homedir();
-	return p;
-}
 
 function assertSafePath(baseDir: string, childName: string): string {
 	if (/[/\\]/.test(childName)) {
@@ -252,6 +234,31 @@ export const projectsRouter = router({
 			})
 			.run();
 		return project;
+	}),
+
+	openFolder: publicProcedure
+		.input(
+			z.object({
+				path: z.string().min(1),
+				force: z.boolean().optional(),
+				quick: z.boolean().optional(),
+			})
+		)
+		.mutation(async ({ input }) => {
+			const { openFolderProject } = await import("../../services/folder-projects");
+			return openFolderProject(input);
+		}),
+
+	convertToRepo: publicProcedure.input(z.object({ id: z.string() })).mutation(async ({ input }) => {
+		const { convertProjectToRepo } = await import("../../services/folder-projects");
+		return convertProjectToRepo(input);
+	}),
+
+	checkGitRepo: publicProcedure.input(z.object({ id: z.string() })).query(async ({ input }) => {
+		const db = getDb();
+		const project = db.select().from(projects).where(eq(projects.id, input.id)).get();
+		if (!project) return false;
+		return isGitRepo(project.repoPath);
 	}),
 
 	createEmpty: publicProcedure

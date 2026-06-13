@@ -70,6 +70,7 @@ interface ProjectItemProps {
 export function ProjectItem({ project, isExpanded, onToggle }: ProjectItemProps) {
 	const isCloning = project.status === "cloning";
 	const isReady = project.status === "ready";
+	const isFolderProject = project.kind === "folder";
 
 	// Poll clone progress when cloning
 	const { data: progress } = trpc.projects.cloneProgress.useQuery(
@@ -271,16 +272,24 @@ export function ProjectItem({ project, isExpanded, onToggle }: ProjectItemProps)
 							type="button"
 							onClick={(e) => {
 								e.stopPropagation();
-								openCreateWorktreeModal(project.id);
+								if (isFolderProject) {
+									useProjectStore.getState().openCreateFolderWorkspaceModal(project.id);
+								} else {
+									openCreateWorktreeModal(project.id);
+								}
 							}}
 							onKeyDown={(e) => {
 								if (e.key === "Enter") {
 									e.stopPropagation();
-									openCreateWorktreeModal(project.id);
+									if (isFolderProject) {
+										useProjectStore.getState().openCreateFolderWorkspaceModal(project.id);
+									} else {
+										openCreateWorktreeModal(project.id);
+									}
 								}
 							}}
 							className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-[14px] text-[var(--text-quaternary)] transition-colors duration-[120ms] hover:text-[var(--text-secondary)]"
-							title="New Worktree"
+							title={isFolderProject ? "New Workspace" : "New Worktree"}
 						>
 							+
 						</button>
@@ -426,7 +435,7 @@ function OrchestratorGroupBlock({
 
 	const handleActivate = useCallback(() => {
 		useAgentAlertStore.getState().clearAlert(node.workspace.id);
-		const cwd = node.workspace.worktreePath ?? projectRepoPath;
+		const cwd = node.workspace.worktreePath ?? node.workspace.folderPath ?? projectRepoPath;
 		const store = useTabStore.getState();
 		store.setActiveWorkspace(node.workspace.id, cwd);
 		const existing = store.getTabsByWorkspace(node.workspace.id);
@@ -440,6 +449,7 @@ function OrchestratorGroupBlock({
 		node.workspace.id,
 		node.workspace.name,
 		node.workspace.worktreePath,
+		node.workspace.folderPath,
 		projectName,
 		projectRepoPath,
 		attachTerminal,

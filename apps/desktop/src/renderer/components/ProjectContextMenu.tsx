@@ -3,7 +3,7 @@ import { useProjectStore } from "../stores/projects";
 import { trpc } from "../trpc/client";
 
 interface ProjectContextMenuProps {
-	project: { id: string; name: string; color: string | null };
+	project: { id: string; name: string; color: string | null; kind: "repo" | "folder" };
 	position: { x: number; y: number };
 	onClose: () => void;
 }
@@ -24,6 +24,28 @@ export function ProjectContextMenu({ project, position, onClose }: ProjectContex
 			utils.projects.list.invalidate();
 		},
 	});
+
+	const gitCheckQuery = trpc.projects.checkGitRepo.useQuery(
+		{ id: project.id },
+		{ enabled: project.kind === "folder" }
+	);
+
+	const convertMutation = trpc.projects.convertToRepo.useMutation({
+		onSuccess: () => {
+			utils.projects.list.invalidate();
+			utils.workspaces.listByProject.invalidate({ projectId: project.id });
+			utils.projects.getById.invalidate({ id: project.id });
+			utils.projects.checkGitRepo.invalidate({ id: project.id });
+		},
+		onError: (err) => {
+			window.alert(`Convert to repository failed: ${err.message}`);
+		},
+	});
+
+	function handleConvert() {
+		convertMutation.mutate({ id: project.id });
+		onClose();
+	}
 
 	// Adjust position to avoid going off-screen
 	useEffect(() => {
@@ -127,6 +149,31 @@ export function ProjectContextMenu({ project, position, onClose }: ProjectContex
 			>
 				Shared Files
 			</div>
+			{project.kind === "folder" && (
+				<>
+					<div className="my-0.5 border-t border-[var(--border-subtle)]" />
+					{gitCheckQuery.data ? (
+						<div
+							role="menuitem"
+							tabIndex={0}
+							className={itemClass}
+							onClick={handleConvert}
+							onKeyDown={(e) => {
+								if (e.key === "Enter") handleConvert();
+							}}
+						>
+							Convert to Repository
+						</div>
+					) : (
+						<div
+							className="cursor-default px-3 py-1.5 text-[13px] text-[var(--text-quaternary)]"
+							title="Run git init in the folder first"
+						>
+							Convert to Repository
+						</div>
+					)}
+				</>
+			)}
 			<div className="my-0.5 border-t border-[var(--border-subtle)]" />
 			<div
 				role="menuitem"

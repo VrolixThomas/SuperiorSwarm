@@ -2,6 +2,7 @@ import type { MouseEvent, ReactNode } from "react";
 
 interface RepoGroupProps {
 	name: string;
+	icon?: ReactNode;
 	isActive: boolean;
 	isExpanded: boolean;
 	count?: number;
@@ -21,6 +22,7 @@ interface RepoGroupProps {
  */
 export function RepoGroup({
 	name,
+	icon,
 	isActive,
 	isExpanded,
 	count,
@@ -54,7 +56,10 @@ export function RepoGroup({
 					className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left"
 				>
 					<div className="min-w-0 flex-1">
-						<div className="truncate text-[13px] font-semibold text-[var(--text)]">{name}</div>
+						<div className="flex items-center gap-1.5">
+							{icon}
+							<div className="truncate text-[13px] font-semibold text-[var(--text)]">{name}</div>
+						</div>
 						{subTitle}
 					</div>
 				</button>

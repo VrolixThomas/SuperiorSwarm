@@ -57,10 +57,12 @@ export interface SetStatusResponse {
 export interface WorkspaceDto {
 	id: string;
 	projectId: string;
-	type: "branch" | "worktree" | "review";
+	type: "branch" | "worktree" | "review" | "folder";
 	name: string;
 	branch: string | null;
 	worktreePath: string | null;
+	/** Resolved working directory: worktree path, else folderPath, else project path. */
+	path: string;
 	baseBranch: string | null;
 	prProvider: string | null;
 	prIdentifier: string | null;

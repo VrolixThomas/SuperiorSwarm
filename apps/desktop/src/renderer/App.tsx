@@ -10,6 +10,7 @@ import { BranchPalette } from "./components/BranchPalette";
 import { CommandPalette } from "./components/CommandPalette";
 import { ConfirmAgentActionModal } from "./components/ConfirmAgentActionModal";
 import { CreateCrossRepoOrchestratorModal } from "./components/CreateCrossRepoOrchestratorModal";
+import { CreateFolderWorkspaceModal } from "./components/CreateFolderWorkspaceModal";
 import { CreateWorktreeModal } from "./components/CreateWorktreeModal";
 import { DaemonStatus } from "./components/DaemonStatus";
 import { DiffPanel } from "./components/DiffPanel";
@@ -746,6 +747,7 @@ function AuthenticatedApp() {
 					<AddRepositoryModal />
 					<CreateCrossRepoOrchestratorModal />
 					<CreateWorktreeModal />
+					<CreateFolderWorkspaceModal />
 					<SharedFilesPanel />
 					<DaemonStatus />
 					<CommandPalette />

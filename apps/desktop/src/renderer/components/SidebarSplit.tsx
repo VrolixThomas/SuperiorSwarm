@@ -6,7 +6,8 @@ const LS_HEIGHT = "ss.sidebar.orchHeight";
 const LS_COLLAPSED = "ss.sidebar.orchCollapsed";
 
 /**
- * Vertical split for the Repos segment: `top` (repo tree) flexes and scrolls;
+ * Vertical split for the Repos segment: `top` (repo tree) flexes and delegates
+ * scrolling to its child (ProjectList manages its own scroll regions);
  * a draggable divider resizes the `bottom` pane (orchestrators); the bottom
  * pane can collapse to just its own header (the header lives inside `bottom`).
  * Height + collapsed state persist to localStorage.
@@ -88,7 +89,7 @@ export function SidebarSplit({
 
 	return (
 		<div ref={rootRef} className="flex h-full min-h-0 flex-col">
-			<div className="min-h-0 flex-1 overflow-y-auto">{top}</div>
+			<div className="flex min-h-0 flex-1 flex-col">{top}</div>
 
 			<hr
 				className={`group relative m-0 h-[7px] shrink-0 border-0 bg-transparent p-0 outline-none before:absolute before:inset-x-0 before:top-[3px] before:block before:h-px before:bg-[var(--border-subtle)]${!autoHeight ? " cursor-row-resize hover:before:bg-[var(--border-active)]" : ""}`}

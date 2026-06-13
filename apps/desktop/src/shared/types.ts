@@ -167,7 +167,7 @@ export interface RepoAPI {
 export interface WorkspaceTreeRow {
 	id: string;
 	projectId: string;
-	type: "branch" | "worktree" | "review";
+	type: "branch" | "worktree" | "review" | "folder";
 	name: string;
 	worktreeId: string | null;
 	terminalId: string | null;
@@ -177,6 +177,7 @@ export interface WorkspaceTreeRow {
 	createdAt: Date;
 	updatedAt: Date;
 	worktreePath: string | null;
+	folderPath: string | null;
 	draftStatus: string | null;
 	draftCommitSha: string | null;
 	currentPhase: "idle" | "working" | "blocked" | "done";
@@ -190,7 +191,7 @@ export interface WorkspaceTreeRow {
 
 /** A workspace row that is guaranteed not to be a "review" type (the service filters these out). */
 export type VisibleWorkspaceTreeRow = Omit<WorkspaceTreeRow, "type"> & {
-	type: "branch" | "worktree";
+	type: "branch" | "worktree" | "folder";
 };
 
 export interface OrchestratorGroupNode {

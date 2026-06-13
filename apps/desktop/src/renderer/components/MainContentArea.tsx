@@ -32,6 +32,12 @@ export function MainContentArea({ savedScrollback }: { savedScrollback: Record<s
 	);
 	const projectId = wsQuery.data?.projectId ?? null;
 
+	const projectQuery = trpc.projects.getById.useQuery(
+		{ id: projectId ?? "" },
+		{ enabled: !!projectId, staleTime: 30_000 }
+	);
+	const isFolderProject = projectQuery.data?.kind === "folder";
+
 	useEffect(() => {
 		function handleQuickActionContext(e: Event) {
 			const detail = (e as CustomEvent<ContextMenuState>).detail;
@@ -63,7 +69,7 @@ export function MainContentArea({ savedScrollback }: { savedScrollback: Record<s
 	return (
 		<main className="flex h-full min-w-0 flex-col overflow-hidden">
 			{/* Branch indicator bar */}
-			{projectId && (
+			{projectId && !isFolderProject && (
 				<div className="app-drag flex shrink-0 items-center gap-2 border-b border-[var(--border-subtle)] px-3 py-1">
 					<BranchChip projectId={projectId} />
 					<QuickActionBar
@@ -96,7 +102,7 @@ export function MainContentArea({ savedScrollback }: { savedScrollback: Record<s
 				/>
 			)}
 
-			{showQuickActionPopover && projectId && (
+			{showQuickActionPopover && projectId && !isFolderProject && (
 				<QuickActionPopover
 					projectId={projectId}
 					repoPath={cwd}

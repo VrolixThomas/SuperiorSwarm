@@ -56,6 +56,7 @@ import {
 import { symlinkSharedFiles } from "../shared-files";
 import { getDaemonClient } from "../terminal/daemon-instance";
 import type { attachToOrchestrator } from "./orchestrator-membership";
+import { resolveWorkspaceCwd } from "./workspace-cwd";
 import { getWorktreeCleanupQueue } from "./worktree-cleanup-queue";
 function worktreeBasePath(repoPath: string): string {
 	const parent = dirname(repoPath);
@@ -81,6 +82,12 @@ export async function createWorkspace(
 	const project = db.select().from(projects).where(eq(projects.id, input.projectId)).get();
 	if (!project) {
 		throw new Error(`Project not found: ${input.projectId}`);
+	}
+
+	if (project.kind === "folder") {
+		throw new Error(
+			"This project is a plain folder. Worktrees require a git repository. Use Convert to Repository first."
+		);
 	}
 
 	const baseBranch = input.baseBranch ?? project.defaultBranch;
@@ -158,10 +165,12 @@ export async function createWorkspace(
 type WorkspaceRow = {
 	id: string;
 	projectId: string;
-	type: "branch" | "worktree" | "review";
+	type: "branch" | "worktree" | "review" | "folder";
 	name: string;
 	branch: string | null;
 	worktreePath: string | null;
+	folderPath: string | null;
+	repoPath: string;
 	baseBranch: string | null;
 	prProvider: string | null;
 	prIdentifier: string | null;
@@ -182,6 +191,11 @@ function rowToDto(row: WorkspaceRow): WorkspaceDto {
 		name: row.name,
 		branch: row.branch,
 		worktreePath: row.worktreePath,
+		path: resolveWorkspaceCwd({
+			worktreePath: row.worktreePath,
+			folderPath: row.folderPath,
+			repoPath: row.repoPath,
+		}),
 		baseBranch: row.baseBranch,
 		prProvider: row.prProvider,
 		prIdentifier: row.prIdentifier,
@@ -202,6 +216,8 @@ const WORKSPACE_SELECT = {
 	name: workspaces.name,
 	branch: worktrees.branch,
 	worktreePath: worktrees.path,
+	folderPath: workspaces.folderPath,
+	repoPath: projects.repoPath,
 	baseBranch: worktrees.baseBranch,
 	prProvider: workspaces.prProvider,
 	prIdentifier: workspaces.prIdentifier,
@@ -221,6 +237,7 @@ export async function listWorkspaces(
 	const rows = db
 		.select(WORKSPACE_SELECT)
 		.from(workspaces)
+		.innerJoin(projects, eq(workspaces.projectId, projects.id))
 		.leftJoin(worktrees, eq(workspaces.worktreeId, worktrees.id))
 		.leftJoin(reviewDrafts, eq(workspaces.reviewDraftId, reviewDrafts.id))
 		.where(eq(workspaces.projectId, input.projectId))
@@ -258,6 +275,7 @@ const TREE_WORKSPACE_SELECT = {
 	createdAt: workspaces.createdAt,
 	updatedAt: workspaces.updatedAt,
 	worktreePath: worktrees.path,
+	folderPath: workspaces.folderPath,
 	draftStatus: reviewDrafts.status,
 	draftCommitSha: reviewDrafts.commitSha,
 	currentPhase: workspaces.currentPhase,
@@ -370,6 +388,7 @@ export async function getWorkspace(input: GetWorkspaceRequest): Promise<GetWorks
 	const row = db
 		.select(WORKSPACE_SELECT)
 		.from(workspaces)
+		.innerJoin(projects, eq(workspaces.projectId, projects.id))
 		.leftJoin(worktrees, eq(workspaces.worktreeId, worktrees.id))
 		.leftJoin(reviewDrafts, eq(workspaces.reviewDraftId, reviewDrafts.id))
 		.where(eq(workspaces.id, input.workspaceId))
@@ -514,10 +533,18 @@ export async function dispatchAgent(
 	if (!ws) throw new NotFoundError(input.workspaceId);
 	// When projectId is provided, enforce cross-project guard.
 	if (input.projectId !== undefined && ws.projectId !== input.projectId) throw new ForbiddenError();
-	if (!ws.worktreeId) throw new Error("Workspace has no associated worktree");
-
-	const wt = db.select().from(worktrees).where(eq(worktrees.id, ws.worktreeId)).get();
-	if (!wt) throw new Error("Worktree row missing");
+	const wt = ws.worktreeId
+		? db.select().from(worktrees).where(eq(worktrees.id, ws.worktreeId)).get()
+		: null;
+	if (ws.worktreeId && !wt) throw new Error("Worktree row missing");
+	const project = db.select().from(projects).where(eq(projects.id, ws.projectId)).get();
+	if (!project) throw new Error(`Project not found: ${ws.projectId}`);
+	const cwd = resolveWorkspaceCwd({
+		worktreePath: wt?.path ?? null,
+		folderPath: ws.folderPath,
+		repoPath: project.repoPath,
+	});
+	if (!existsSync(cwd)) throw new Error(`Workspace folder no longer exists: ${cwd}`);
 
 	const cliPreset = input.cliPreset ?? "claude";
 
@@ -526,7 +553,7 @@ export async function dispatchAgent(
 	const cliSessionId = cliPreset === "claude" ? (ws.cliSessionId ?? randomUUID()) : null;
 
 	const launchScriptContent = buildLaunchScript({
-		cwd: wt.path,
+		cwd,
 		cliPreset,
 		prompt: input.prompt,
 		// Always skip permissions for dispatched agents — they run in their own
@@ -537,7 +564,7 @@ export async function dispatchAgent(
 
 	const spawnFn = deps.spawnFn ?? defaultSpawnFn;
 	const { sessionId, terminalId } = await spawnFn({
-		cwd: wt.path,
+		cwd,
 		launchScriptContent,
 		workspaceId: input.workspaceId,
 	});
@@ -925,6 +952,7 @@ export async function resumeAgent(
 		.select({
 			projectId: workspaces.projectId,
 			worktreeId: workspaces.worktreeId,
+			folderPath: workspaces.folderPath,
 			cliSessionId: workspaces.cliSessionId,
 			cliPreset: workspaces.cliPreset,
 		})
@@ -970,7 +998,7 @@ export async function resumeAgent(
 		throw new ResumeNotSupportedError("workspace has no claude session");
 	}
 
-	// 2. Resolve worktree path (cwd)
+	// 3. Resolve the working directory (worktree > folderPath > project path)
 	const wt = target.worktreeId
 		? db
 				.select({ path: worktrees.path })
@@ -978,7 +1006,19 @@ export async function resumeAgent(
 				.where(eq(worktrees.id, target.worktreeId))
 				.get()
 		: null;
-	if (!wt?.path) throw new NotFoundError(`worktree path for ${input.workspaceId}`);
+	if (target.worktreeId && !wt) throw new NotFoundError(`worktree row for ${input.workspaceId}`);
+	const targetProject = db
+		.select({ repoPath: projects.repoPath })
+		.from(projects)
+		.where(eq(projects.id, target.projectId))
+		.get();
+	if (!targetProject) throw new NotFoundError(`project for ${input.workspaceId}`);
+	const cwd = resolveWorkspaceCwd({
+		worktreePath: wt?.path ?? null,
+		folderPath: target.folderPath,
+		repoPath: targetProject.repoPath,
+	});
+	if (!existsSync(cwd)) throw new NotFoundError(`workspace folder for ${input.workspaceId}`);
 
 	// 3. Compose the resume command (interactive — no --print, so the child
 	//    keeps running and can be resumed again on the next coordination event).
@@ -995,7 +1035,7 @@ export async function resumeAgent(
 	await respawnFn({
 		workspaceId: input.workspaceId,
 		command,
-		cwd: wt.path,
+		cwd,
 	});
 
 	// 5. Insert agent_messages row (audit log)
@@ -1069,7 +1109,7 @@ export interface CreateOrchestratorDeps {
 		projectId: string;
 		branch: string;
 		baseBranch?: string;
-	}) => Promise<{ workspaceId: string; worktreeId: string }>;
+	}) => Promise<{ workspaceId: string; worktreeId: string | null }>;
 	/** Test seam: override the per-id attach call. Default: the module's real attachToOrchestrator. */
 	attachFn?: typeof attachToOrchestrator;
 }
@@ -1086,7 +1126,7 @@ export async function createOrchestrator(
 	id: string;
 	projectId: string;
 	name: string;
-	worktreeId: string;
+	worktreeId: string | null;
 	isOrchestrator: true;
 }> {
 	if (input.attachWorkspaceIds.length > 0) {
@@ -1121,14 +1161,42 @@ export async function createOrchestrator(
 	// downstream tx-loop never inserts duplicates.
 	const attachIds = Array.from(new Set(input.attachWorkspaceIds));
 
-	const create = deps.createWorkspaceFn ?? createWorkspace;
-	const created = await create({
-		projectId: input.projectId,
-		branch: input.name,
-		baseBranch: input.baseBranch,
-	});
-
 	const db = getDb();
+	const projectRow = db
+		.select({ kind: projects.kind })
+		.from(projects)
+		.where(eq(projects.id, input.projectId))
+		.get();
+	if (!projectRow) throw new Error(`Project not found: ${input.projectId}`);
+
+	let created: { workspaceId: string; worktreeId: string | null };
+	if (projectRow.kind === "folder") {
+		// Folder projects have no worktrees; the orchestrator is a plain folder workspace.
+		const id = nanoid();
+		const now = new Date();
+		db.insert(workspaces)
+			.values({
+				id,
+				projectId: input.projectId,
+				type: "folder",
+				name: input.name,
+				folderPath: null,
+				worktreeId: null,
+				terminalId: null,
+				createdAt: now,
+				updatedAt: now,
+			})
+			.run();
+		created = { workspaceId: id, worktreeId: null };
+	} else {
+		const create = deps.createWorkspaceFn ?? createWorkspace;
+		created = await create({
+			projectId: input.projectId,
+			branch: input.name,
+			baseBranch: input.baseBranch,
+		});
+	}
+
 	const doAttach = deps.attachFn;
 
 	if (doAttach) {

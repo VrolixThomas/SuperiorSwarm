@@ -1,9 +1,3 @@
-/**
- * Shared section header for sidebar zones (Repositories, Orchestrators).
- * One design for every zone: 15px medium title, neutral count badge,
- * persistent "+ New" action on the right. Pass `onToggle` to make the
- * title a collapse toggle for the section.
- */
 export function SidebarSectionHeader({
 	title,
 	count,
@@ -48,15 +42,17 @@ export function SidebarSectionHeader({
 			) : (
 				<div className="flex min-w-0 flex-1 items-center gap-2">{titleContent}</div>
 			)}
-			<button
-				type="button"
-				onClick={onNew}
-				title={newLabel}
-				className="flex shrink-0 items-center gap-1 rounded-[6px] border border-[var(--border-subtle)] px-2 py-[3px] text-[12px] text-[var(--text-secondary)] transition-colors duration-[120ms] hover:border-[var(--border-active)] hover:text-[var(--text)]"
-			>
-				<span className="text-[13px] leading-none">+</span>
-				New
-			</button>
+			<div className="flex shrink-0 items-center gap-1">
+				<button
+					type="button"
+					onClick={onNew}
+					title={newLabel}
+					className="flex shrink-0 items-center gap-1 rounded-[6px] border border-[var(--border-subtle)] px-2 py-[3px] text-[12px] text-[var(--text-secondary)] transition-colors duration-[120ms] hover:border-[var(--border-active)] hover:text-[var(--text)]"
+				>
+					<span className="text-[13px] leading-none">+</span>
+					New
+				</button>
+			</div>
 		</div>
 	);
 }

@@ -1,3 +1,4 @@
+import { useCallback, useEffect, useRef } from "react";
 import { useProjectStore } from "../stores/projects";
 import { useTabStore } from "../stores/tab-store";
 import { useUpdateStore } from "../stores/update-store";
@@ -20,6 +21,52 @@ export function Sidebar({ collapsed, onExpand }: SidebarProps) {
 	const segment = useTabStore((s) => s.sidebarSegment);
 	const hasDismissedUpdate = useUpdateStore((s) => s.dismissedUpdateVersion !== null);
 	const setSidebarSegment = useTabStore((s) => s.setSidebarSegment);
+
+	const utils = trpc.useUtils();
+	const openFolderMut = trpc.projects.openFolder.useMutation();
+	const attachTerminalMut = trpc.workspaces.attachTerminal.useMutation();
+
+	const openFolderAsyncRef = useRef(openFolderMut.mutateAsync);
+	openFolderAsyncRef.current = openFolderMut.mutateAsync;
+	const attachTerminalRef = useRef(attachTerminalMut.mutate);
+	attachTerminalRef.current = attachTerminalMut.mutate;
+	const newTerminalInFlightRef = useRef(false);
+
+	const handleNewTerminal = useCallback(async () => {
+		if (newTerminalInFlightRef.current) return;
+		newTerminalInFlightRef.current = true;
+		try {
+			const res = await openFolderAsyncRef.current({ path: "~", quick: true });
+			if (!res.project) return;
+			utils.projects.list.invalidate();
+			const tree = await utils.workspaces.listByProject.fetch({ projectId: res.project.id });
+			const ws =
+				tree.loose.find((w) => w.type === "branch" || (w.type === "folder" && !w.folderPath)) ??
+				tree.loose[0] ??
+				tree.orchestrators[0]?.workspace;
+			if (!ws) return;
+			const cwd = ws.worktreePath ?? ws.folderPath ?? res.project.repoPath;
+			const store = useTabStore.getState();
+			store.setActiveWorkspace(ws.id, cwd);
+			const tabs = store.getTabsByWorkspace(ws.id);
+			if (!tabs.some((t) => t.kind === "terminal")) {
+				const tabId = store.addTerminalTab(ws.id, cwd, `${res.project.name}: ${ws.name}`);
+				attachTerminalRef.current({ workspaceId: ws.id, terminalId: tabId });
+			}
+		} catch (err) {
+			console.error("[quick-terminal]", err);
+		} finally {
+			newTerminalInFlightRef.current = false;
+		}
+	}, [utils]);
+
+	useEffect(() => {
+		const listener = () => {
+			void handleNewTerminal();
+		};
+		window.addEventListener("quick-terminal", listener);
+		return () => window.removeEventListener("quick-terminal", listener);
+	}, [handleNewTerminal]);
 
 	// Check if any AI reviews need attention (ready or failed)
 	const reviewDraftsQuery = trpc.aiReview.getReviewDrafts.useQuery(undefined, {
@@ -65,7 +112,7 @@ export function Sidebar({ collapsed, onExpand }: SidebarProps) {
 						tickets: "nav.tickets",
 						prs: "nav.prs",
 					} as const;
-					const labels = { repos: "Repos", tickets: "Tickets", prs: "PRs" } as const;
+					const labels = { repos: "Projects", tickets: "Tickets", prs: "PRs" } as const;
 					return (
 						<Tooltip key={seg} label={labels[seg]} actionId={actionIds[seg]} className="flex-1">
 							<button
@@ -77,7 +124,7 @@ export function Sidebar({ collapsed, onExpand }: SidebarProps) {
 										: "text-[var(--text-quaternary)] hover:text-[var(--text-tertiary)]"
 								}`}
 							>
-								{seg === "prs" ? "PRs" : seg.charAt(0).toUpperCase() + seg.slice(1)}
+								{labels[seg]}
 								{seg === "prs" && (hasAINotification || hasNewPRs) && segment !== "prs" && (
 									<span className="absolute right-1.5 top-1 h-1.5 w-1.5 rounded-full bg-[#30d158]" />
 								)}

@@ -9,10 +9,11 @@ import { splitBranchPrefix } from "../utils/branch-name";
 
 interface WorkspaceData {
 	id: string;
-	type: "branch" | "worktree";
+	type: "branch" | "worktree" | "folder";
 	name: string;
 	terminalId: string | null;
 	worktreePath: string | null;
+	folderPath: string | null;
 	prProvider: string | null;
 	currentPhase?: string | null;
 	statusText?: string | null;
@@ -160,6 +161,7 @@ function WorkspaceContextMenu({
 	position,
 	onClose,
 	onDelete,
+	deleteLabel,
 	onSetOrchestrator,
 	onUnsetOrchestrator,
 	isOrchestrator,
@@ -175,6 +177,7 @@ function WorkspaceContextMenu({
 	position: { x: number; y: number };
 	onClose: () => void;
 	onDelete: () => void;
+	deleteLabel?: string;
 	onSetOrchestrator?: () => void;
 	onUnsetOrchestrator?: () => void;
 	isOrchestrator?: boolean | null;
@@ -342,7 +345,7 @@ function WorkspaceContextMenu({
 					if (e.key === "Enter") onDelete();
 				}}
 			>
-				Delete Worktree
+				{deleteLabel ?? "Delete Worktree"}
 			</div>
 		</div>
 	);
@@ -516,7 +519,7 @@ export function WorkspaceItem({
 		const cwd =
 			workspace.type === "worktree" && workspace.worktreePath
 				? workspace.worktreePath
-				: projectRepoPath;
+				: (workspace.folderPath ?? projectRepoPath);
 
 		const store = useTabStore.getState();
 		store.setActiveWorkspace(workspace.id, cwd);
@@ -536,14 +539,19 @@ export function WorkspaceItem({
 		workspace.id,
 		workspace.type,
 		workspace.worktreePath,
+		workspace.folderPath,
 		workspace.name,
 		projectName,
 		projectRepoPath,
 	]);
 
+	const supportsOrchestrator = workspace.type === "worktree" || workspace.type === "folder";
+
 	const handleDelete = useCallback(() => {
 		const confirmed = window.confirm(
-			`Delete worktree "${workspace.name}"? This will remove the worktree directory.`
+			workspace.type === "folder"
+				? `Remove workspace "${workspace.name}"? Files on disk are not deleted.`
+				: `Delete worktree "${workspace.name}"? This will remove the worktree directory.`
 		);
 		if (confirmed) {
 			// Fire-and-forget; backend re-disposes PTYs as a safety net.
@@ -564,7 +572,7 @@ export function WorkspaceItem({
 				type="button"
 				onClick={handleClick}
 				onContextMenu={(e) => {
-					if (workspace.type === "worktree") {
+					if (workspace.type === "worktree" || workspace.type === "folder") {
 						e.preventDefault();
 						setContextMenu({ x: e.clientX, y: e.clientY });
 					}
@@ -573,7 +581,7 @@ export function WorkspaceItem({
 					const mod = e.metaKey || e.ctrlKey;
 					if (mod && e.shiftKey && (e.key === "a" || e.key === "A")) {
 						e.preventDefault();
-						if (!workspace.isOrchestrator && indentLevel === 0 && workspace.type === "worktree") {
+						if (!workspace.isOrchestrator && indentLevel === 0 && supportsOrchestrator) {
 							const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
 							setContextMenu({ x: rect.right - 200, y: rect.bottom });
 						}
@@ -698,7 +706,7 @@ export function WorkspaceItem({
 				{alert && <SwarmIndicator alert={alert} className="ml-auto mt-[1px]" />}
 			</button>
 
-			{indentLevel === 0 && !workspace.isOrchestrator && workspace.type === "worktree" && (
+			{indentLevel === 0 && !workspace.isOrchestrator && supportsOrchestrator && (
 				<button
 					type="button"
 					aria-label="Promote to orchestrator"
@@ -718,8 +726,9 @@ export function WorkspaceItem({
 					position={contextMenu}
 					onClose={() => setContextMenu(null)}
 					onDelete={handleDelete}
-					onSetOrchestrator={workspace.type === "worktree" ? handleSetOrchestrator : undefined}
-					onUnsetOrchestrator={workspace.type === "worktree" ? handleUnsetOrchestrator : undefined}
+					deleteLabel={workspace.type === "folder" ? "Remove Workspace" : undefined}
+					onSetOrchestrator={supportsOrchestrator ? handleSetOrchestrator : undefined}
+					onUnsetOrchestrator={supportsOrchestrator ? handleUnsetOrchestrator : undefined}
 					isOrchestrator={workspace.isOrchestrator}
 					orchestrators={orchestratorsInProject}
 					onAttachTo={(orchId) => {
@@ -735,7 +744,9 @@ export function WorkspaceItem({
 						setContextMenu(null);
 					}}
 					canAttach={
-						!workspace.isOrchestrator && indentLevel === 0 && workspace.type === "worktree"
+						!workspace.isOrchestrator &&
+						indentLevel === 0 &&
+						(workspace.type === "worktree" || workspace.type === "folder")
 					}
 					canDetach={isChildOfOrchestrator}
 					xros={xros}

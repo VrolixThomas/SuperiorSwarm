@@ -96,6 +96,19 @@ export const workspacesRouter = router({
 			};
 		}),
 
+	createFolderWorkspace: publicProcedure
+		.input(
+			z.object({
+				projectId: z.string(),
+				name: z.string().min(1),
+				folderPath: z.string().optional(),
+			})
+		)
+		.mutation(async ({ input }) => {
+			const { createFolderWorkspace } = await import("../../services/folder-projects");
+			return createFolderWorkspace(input);
+		}),
+
 	checkoutExisting: publicProcedure
 		.input(
 			z.object({
@@ -109,6 +122,10 @@ export const workspacesRouter = router({
 
 			if (!project) {
 				throw new Error("Project not found");
+			}
+
+			if (project.kind === "folder") {
+				throw new Error("This project is a plain folder. This action requires a git repository.");
 			}
 
 			const worktreePath = join(worktreeBasePath(project.repoPath), input.branch);
@@ -200,6 +217,10 @@ export const workspacesRouter = router({
 
 			if (!project) {
 				throw new Error("Project not found");
+			}
+
+			if (project.kind === "folder") {
+				throw new Error("This project is a plain folder. This action requires a git repository.");
 			}
 
 			// Check if a workspace already exists for this branch in this project
@@ -455,7 +476,15 @@ export const workspacesRouter = router({
 		.mutation(async ({ input }) => {
 			const db = getDb();
 
-			// 1. Check for existing review workspace
+			// 1. Guard: project must exist and be a git repository
+			const project = db.select().from(projects).where(eq(projects.id, input.projectId)).get();
+			if (!project) throw new Error("Project not found");
+
+			if (project.kind === "folder") {
+				throw new Error("This project is a plain folder. This action requires a git repository.");
+			}
+
+			// 2. Check for existing review workspace
 			let workspace = db
 				.select()
 				.from(workspaces)
@@ -468,7 +497,7 @@ export const workspacesRouter = router({
 				)
 				.get();
 
-			// 2. Create if not exists
+			// 3. Create if not exists
 			if (!workspace) {
 				const id = nanoid();
 				const now = new Date();
@@ -488,9 +517,7 @@ export const workspacesRouter = router({
 				workspace = db.select().from(workspaces).where(eq(workspaces.id, id)).get()!;
 			}
 
-			// 3. Ensure worktree exists
-			const project = db.select().from(projects).where(eq(projects.id, input.projectId)).get();
-			if (!project) throw new Error("Project not found");
+			// 4. Ensure worktree exists
 
 			if (!workspace.worktreeId) {
 				// Compute worktree path
