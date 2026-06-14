@@ -51,7 +51,7 @@ export function parsePersisted(
 			if (p.heights && typeof p.heights === "object") {
 				for (const id of ALL_BANDS) {
 					const h = p.heights[id];
-					if (typeof h === "number" || h === null) base.heights[id] = h;
+					if ((typeof h === "number" && h > 0) || h === null) base.heights[id] = h;
 				}
 			}
 			return base;
@@ -96,7 +96,9 @@ interface SidebarBandsStore extends BandPersistedState {
 }
 
 export const useSidebarBandsStore = create<SidebarBandsStore>((set, get) => ({
-	...defaultBandState(),
+	// Initialise from storage so an early mutation can't persist defaults over
+	// the user's saved settings before the mount-time hydrate() runs.
+	...readStorage(),
 	hydrated: false,
 	hydrate: () => {
 		if (get().hydrated) return;

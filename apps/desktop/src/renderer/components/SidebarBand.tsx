@@ -14,7 +14,7 @@ function sizingClass(style: BandStyle): string {
 		case "fixed":
 			return "flex min-h-0 shrink-0 flex-col";
 		case "auto":
-			return "flex max-h-[40%] shrink-0 flex-col";
+			return "flex max-h-[60%] shrink-0 flex-col";
 		default:
 			// collapsed: header only, no body
 			return "flex shrink-0 flex-col";
