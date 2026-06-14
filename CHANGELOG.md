@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.11.1 (2026-06-14)
+
+### What's New
+
+The sidebar is now fully customizable. Folders, Repositories, and Orchestrators are unified into reorderable bands that you can drag to rearrange, collapse to save space, and resize with draggable dividers. Your layout is remembered between sessions, and adding a new item to a section is now a single click on a compact + button.
+
+### Changes
+
+- **Update sidebar** (#120)
+
 ## v0.11.0 (2026-06-14)
 
 ### What's New
