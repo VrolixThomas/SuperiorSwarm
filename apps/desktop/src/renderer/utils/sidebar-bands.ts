@@ -18,7 +18,7 @@ export type BandStyle =
 export function clampBandHeight(
 	desired: number,
 	containerHeight: number,
-	opts: { min?: number; maxFraction?: number } = {},
+	opts: { min?: number; maxFraction?: number } = {}
 ): number {
 	const min = opts.min ?? 80;
 	const maxFraction = opts.maxFraction ?? 0.6;

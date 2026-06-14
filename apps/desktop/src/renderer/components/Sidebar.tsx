@@ -3,11 +3,12 @@ import { useProjectStore } from "../stores/projects";
 import { useTabStore } from "../stores/tab-store";
 import { useUpdateStore } from "../stores/update-store";
 import { trpc } from "../trpc/client";
-import { CrossRepoOrchestratorGroup } from "./CrossRepoOrchestratorGroup";
-import { ProjectList } from "./ProjectList";
+import { FolderList } from "./FolderList";
+import { OrchestratorList } from "./OrchestratorList";
 import { PullRequestsTab } from "./PullRequestsTab";
+import { RepositoryList } from "./RepositoryList";
+import { type BandDescriptor, SidebarBandStack } from "./SidebarBandStack";
 import { SidebarRail } from "./SidebarRail";
-import { SidebarSplit } from "./SidebarSplit";
 import { Tooltip } from "./Tooltip";
 import { TicketsSidebar } from "./tickets/TicketsSidebar";
 
@@ -17,7 +18,8 @@ interface SidebarProps {
 }
 
 export function Sidebar({ collapsed, onExpand }: SidebarProps) {
-	const { openSettings } = useProjectStore();
+	const { openSettings, openAddModal, openCreateCrossRepoModal } = useProjectStore();
+	const { data: projectsList } = trpc.projects.list.useQuery();
 	const segment = useTabStore((s) => s.sidebarSegment);
 	const hasDismissedUpdate = useUpdateStore((s) => s.dismissedUpdateVersion !== null);
 	const setSidebarSegment = useTabStore((s) => s.setSidebarSegment);
@@ -83,8 +85,40 @@ export function Sidebar({ collapsed, onExpand }: SidebarProps) {
 	});
 	const hasNewPRs = (cachedPRs.data?.length ?? 0) > 0;
 
-	// Empty orchestrator pane should size to its header, not reserve fixed split height.
 	const orchCount = trpc.crossRepoOrchestrators.list.useQuery().data?.length ?? 0;
+
+	const all = projectsList ?? [];
+	const folders = all.filter((p) => p.kind === "folder");
+	const repos = all.filter((p) => p.kind !== "folder");
+	const bands: BandDescriptor[] = [
+		{
+			id: "folders",
+			title: "Folders",
+			count: folders.length,
+			onNew: openAddModal,
+			newLabel: "Add Folder",
+			present: folders.length > 0,
+			body: <FolderList items={folders} />,
+		},
+		{
+			id: "repositories",
+			title: folders.length > 0 ? "Repositories" : "Projects",
+			count: repos.length,
+			onNew: openAddModal,
+			newLabel: "Add Project",
+			present: true,
+			body: <RepositoryList items={repos} />,
+		},
+		{
+			id: "orchestrators",
+			title: "Orchestrators",
+			count: orchCount,
+			onNew: openCreateCrossRepoModal,
+			newLabel: "New Orchestrator",
+			present: true,
+			body: <OrchestratorList />,
+		},
+	];
 
 	const handleExpand = (section?: "tickets" | "prs") => {
 		onExpand(section);
@@ -136,13 +170,7 @@ export function Sidebar({ collapsed, onExpand }: SidebarProps) {
 
 			{/* Segment content */}
 			<div className="flex min-h-0 flex-1 flex-col">
-				{segment === "repos" && (
-					<SidebarSplit
-						top={<ProjectList />}
-						bottom={<CrossRepoOrchestratorGroup />}
-						bottomAutoHeight={orchCount === 0}
-					/>
-				)}
+				{segment === "repos" && <SidebarBandStack bands={bands} />}
 				{segment === "tickets" && (
 					<div className="min-h-0 flex-1 overflow-y-auto">
 						<TicketsSidebar />

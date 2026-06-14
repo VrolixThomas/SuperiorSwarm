@@ -21,8 +21,6 @@ interface ProjectStore {
 	createWorktreeProjectId: string | null;
 	createWorktreeAsOrchestrator: boolean;
 	sharedFilesProjectId: string | null;
-	orchestratorPaneHeight: number;
-	orchestratorPaneCollapsed: boolean;
 	selectProject: (id: string | null) => void;
 	toggleProjectExpanded: (id: string) => void;
 	hydrateExpandedProjects: (ids: string[]) => void;
@@ -47,9 +45,6 @@ interface ProjectStore {
 	openSettingsToIntegrations: (returnTo?: SidebarSegment) => void;
 	sidebarCollapsed: boolean;
 	setSidebarCollapsed: (collapsed: boolean) => void;
-	setOrchestratorPaneHeight: (height: number) => void;
-	toggleOrchestratorPaneCollapsed: () => void;
-	setOrchestratorPaneCollapsed: (collapsed: boolean) => void;
 }
 
 export const useProjectStore = create<ProjectStore>((set) => ({
@@ -61,8 +56,6 @@ export const useProjectStore = create<ProjectStore>((set) => ({
 	createWorktreeProjectId: null,
 	createWorktreeAsOrchestrator: false,
 	sharedFilesProjectId: null,
-	orchestratorPaneHeight: 180,
-	orchestratorPaneCollapsed: false,
 	sidebarView: "main",
 	settingsCategory: "general",
 	setSettingsCategory: (category) => set({ settingsCategory: category }),
@@ -109,11 +102,6 @@ export const useProjectStore = create<ProjectStore>((set) => ({
 		set({ isCreateFolderWorkspaceModalOpen: true, createFolderWorkspaceProjectId: projectId }),
 	closeCreateFolderWorkspaceModal: () =>
 		set({ isCreateFolderWorkspaceModalOpen: false, createFolderWorkspaceProjectId: null }),
-
-	setOrchestratorPaneHeight: (height) => set({ orchestratorPaneHeight: height }),
-	toggleOrchestratorPaneCollapsed: () =>
-		set((s) => ({ orchestratorPaneCollapsed: !s.orchestratorPaneCollapsed })),
-	setOrchestratorPaneCollapsed: (collapsed) => set({ orchestratorPaneCollapsed: collapsed }),
 
 	openSharedFilesPanel: (projectId) => set({ sharedFilesProjectId: projectId }),
 	closeSharedFilesPanel: () => set({ sharedFilesProjectId: null }),

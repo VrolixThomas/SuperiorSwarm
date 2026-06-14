@@ -36,7 +36,7 @@ export function sanitizeOrder(input: unknown[]): BandId[] {
 
 export function parsePersisted(
 	raw: string | null,
-	legacyOrchCollapsed: string | null,
+	legacyOrchCollapsed: string | null
 ): BandPersistedState {
 	const base = defaultBandState();
 	if (raw) {
@@ -70,7 +70,7 @@ function readStorage(): BandPersistedState {
 	try {
 		return parsePersisted(
 			window.localStorage.getItem(STORAGE_KEY),
-			window.localStorage.getItem(LEGACY_ORCH_COLLAPSED),
+			window.localStorage.getItem(LEGACY_ORCH_COLLAPSED)
 		);
 	} catch {
 		return defaultBandState();
@@ -82,7 +82,7 @@ function writeStorage(state: BandPersistedState): void {
 	try {
 		window.localStorage.setItem(
 			STORAGE_KEY,
-			JSON.stringify({ order: state.order, open: state.open, heights: state.heights }),
+			JSON.stringify({ order: state.order, open: state.open, heights: state.heights })
 		);
 	} catch {}
 }

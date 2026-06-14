@@ -54,7 +54,11 @@ export function SidebarSectionHeader({
 	);
 
 	return (
-		<div className={["flex items-center gap-2 px-3 pb-[8px] pt-[14px]", className].filter(Boolean).join(" ")}>
+		<div
+			className={["flex items-center gap-2 px-3 pb-[8px] pt-[14px]", className]
+				.filter(Boolean)
+				.join(" ")}
+		>
 			{onToggle ? (
 				<button
 					type="button"
@@ -76,13 +80,7 @@ export function SidebarSectionHeader({
 						{...dragHandle.attributes}
 						{...dragHandle.listeners}
 					>
-						<svg
-							aria-hidden="true"
-							width="12"
-							height="12"
-							viewBox="0 0 24 24"
-							fill="currentColor"
-						>
+						<svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
 							<circle cx="9" cy="6" r="1.6" />
 							<circle cx="15" cy="6" r="1.6" />
 							<circle cx="9" cy="12" r="1.6" />

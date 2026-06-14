@@ -1,10 +1,4 @@
-import {
-	DndContext,
-	type DragEndEvent,
-	PointerSensor,
-	useSensor,
-	useSensors,
-} from "@dnd-kit/core";
+import { DndContext, type DragEndEvent, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, arrayMove, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useSidebarBandsStore } from "../stores/sidebar-bands";
