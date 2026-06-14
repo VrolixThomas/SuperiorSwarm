@@ -94,10 +94,10 @@ export function SidebarSectionHeader({
 					type="button"
 					onClick={onNew}
 					title={newLabel}
-					className="flex shrink-0 items-center gap-1 rounded-[6px] border border-[var(--border-subtle)] px-2 py-[3px] text-[12px] text-[var(--text-secondary)] transition-colors duration-[120ms] hover:border-[var(--border-active)] hover:text-[var(--text)]"
+					aria-label={newLabel}
+					className="flex shrink-0 items-center justify-center rounded-[6px] border border-[var(--border-subtle)] px-[7px] py-[3px] text-[14px] leading-none text-[var(--text-secondary)] transition-colors duration-[120ms] hover:border-[var(--border-active)] hover:text-[var(--text)]"
 				>
-					<span className="text-[13px] leading-none">+</span>
-					New
+					+
 				</button>
 			</div>
 		</div>
