@@ -30,17 +30,50 @@ export function cliConfigPaths(cli: CliPresetName, opts?: PathOpts): string {
 	}
 }
 
-function buildEntry(cli: CliPresetName, launcherPath: string): Record<string, unknown> {
-	if (cli === "opencode") {
-		return { type: "local", command: [launcherPath] };
-	}
+export type McpFormat = "json" | "toml" | "opencode";
+
+function formatForCli(cli: CliPresetName): McpFormat {
+	if (cli === "codex") return "toml";
+	if (cli === "opencode") return "opencode";
+	return "json";
+}
+
+function entryFor(format: McpFormat, launcherPath: string): Record<string, unknown> {
+	if (format === "opencode") return { type: "local", command: [launcherPath] };
 	return { command: launcherPath, args: [] };
 }
 
-function keyPath(cli: CliPresetName): string[] {
-	if (cli === "opencode") return ["mcp", "superiorswarm"];
-	if (cli === "codex") return ["mcp_servers", "superiorswarm"];
+function keyPathFor(format: McpFormat): string[] {
+	if (format === "opencode") return ["mcp", "superiorswarm"];
+	if (format === "toml") return ["mcp_servers", "superiorswarm"];
 	return ["mcpServers", "superiorswarm"];
+}
+
+/** Write the superiorswarm entry into an arbitrary config file in the given format. */
+export function installEntryToConfig(
+	configPath: string,
+	format: McpFormat,
+	launcherPath: string
+): void {
+	const entry = entryFor(format, launcherPath);
+	if (format === "toml") {
+		mergeTomlKey(configPath, keyPathFor(format), entry);
+	} else {
+		mergeKey(configPath, keyPathFor(format), entry);
+	}
+}
+
+/** Remove the superiorswarm entry from an arbitrary config file. No-op if absent. */
+export function uninstallEntryFromConfig(configPath: string, format: McpFormat): void {
+	if (!existsSync(configPath)) return;
+	if (format === "toml") {
+		removeTomlKey(configPath, keyPathFor(format));
+	} else {
+		removeKey(configPath, keyPathFor(format), {
+			fileExistedBefore: true,
+			dirExistedBefore: true,
+		});
+	}
 }
 
 export function installEntryForCli(
@@ -49,23 +82,12 @@ export function installEntryForCli(
 	opts?: PathOpts
 ): string {
 	const file = cliConfigPaths(cli, opts);
-	const entry = buildEntry(cli, launcherPath);
-	if (cli === "codex") {
-		mergeTomlKey(file, keyPath(cli), entry);
-	} else {
-		mergeKey(file, keyPath(cli), entry);
-	}
+	installEntryToConfig(file, formatForCli(cli), launcherPath);
 	return file;
 }
 
 export function uninstallEntryForCli(cli: CliPresetName, opts?: PathOpts): void {
-	const file = cliConfigPaths(cli, opts);
-	if (!existsSync(file)) return;
-	if (cli === "codex") {
-		removeTomlKey(file, keyPath(cli));
-	} else {
-		removeKey(file, keyPath(cli), { fileExistedBefore: true, dirExistedBefore: true });
-	}
+	uninstallEntryFromConfig(cliConfigPaths(cli, opts), formatForCli(cli));
 }
 
 export async function detectInstalledClis(
