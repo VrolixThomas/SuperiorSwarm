@@ -56,20 +56,22 @@ export function installEntryToConfig(
 	launcherPath: string
 ): void {
 	const entry = entryFor(format, launcherPath);
+	const keyPath = keyPathFor(format);
 	if (format === "toml") {
-		mergeTomlKey(configPath, keyPathFor(format), entry);
+		mergeTomlKey(configPath, keyPath, entry);
 	} else {
-		mergeKey(configPath, keyPathFor(format), entry);
+		mergeKey(configPath, keyPath, entry);
 	}
 }
 
 /** Remove the superiorswarm entry from an arbitrary config file. No-op if absent. */
 export function uninstallEntryFromConfig(configPath: string, format: McpFormat): void {
 	if (!existsSync(configPath)) return;
+	const keyPath = keyPathFor(format);
 	if (format === "toml") {
-		removeTomlKey(configPath, keyPathFor(format));
+		removeTomlKey(configPath, keyPath);
 	} else {
-		removeKey(configPath, keyPathFor(format), {
+		removeKey(configPath, keyPath, {
 			fileExistedBefore: true,
 			dirExistedBefore: true,
 		});

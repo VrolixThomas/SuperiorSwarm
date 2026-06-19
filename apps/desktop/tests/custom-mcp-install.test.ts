@@ -49,4 +49,16 @@ describe("installEntryToConfig", () => {
 		expect(cfg.mcp.superiorswarm.type).toBe("local");
 		expect(cfg.mcp.superiorswarm.command).toEqual(["/launcher"]);
 	});
+
+	test("toml uninstall removes only our entry", () => {
+		const file = join(dir, "config.toml");
+		installEntryToConfig(file, "toml", "/launcher");
+		uninstallEntryFromConfig(file, "toml");
+		const text = readFileSync(file, "utf-8");
+		expect(text).not.toMatch(/\[mcp_servers\.superiorswarm\]/);
+	});
+
+	test("uninstall on missing file is a no-op", () => {
+		expect(() => uninstallEntryFromConfig(join(dir, "missing.json"), "json")).not.toThrow();
+	});
 });
