@@ -30,7 +30,7 @@ function McpCliRow({
 }) {
 	let subtitle: string;
 	if (!detected) subtitle = "Not detected on PATH";
-	else if (!installed) subtitle = "Detected — not installed";
+	else if (!installed) subtitle = "Detected, not installed";
 	else subtitle = configPath;
 
 	return (

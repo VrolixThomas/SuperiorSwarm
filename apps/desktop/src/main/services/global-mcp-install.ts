@@ -11,6 +11,8 @@ interface PathOpts {
 	home?: string;
 }
 
+const ALL_CLIS: CliPresetName[] = ["claude", "gemini", "codex", "opencode"];
+
 function h(opts?: PathOpts): string {
 	return opts?.home ?? homedir();
 }
@@ -69,14 +71,18 @@ export function uninstallEntryForCli(cli: CliPresetName, opts?: PathOpts): void 
 export async function detectInstalledClis(
 	probe: (cmd: string) => Promise<boolean>
 ): Promise<CliPresetName[]> {
-	const all: CliPresetName[] = ["claude", "gemini", "codex", "opencode"];
-	const found: CliPresetName[] = [];
-	for (const cli of all) {
-		if (await probe(cli)) found.push(cli);
-	}
-	return found;
+	// Probe in parallel — each probe can wait up to the shell timeout, so running
+	// them serially would stack those timeouts on every app startup.
+	const results = await Promise.all(ALL_CLIS.map(async (cli) => ((await probe(cli)) ? cli : null)));
+	return results.filter((c): c is CliPresetName => c !== null);
 }
 
+/**
+ * Register the superiorswarm MCP for every CLI that is actually installed on the
+ * user's machine. We only write into detected CLIs — writing into undetected
+ * ones would scatter config files (~/.codex, ~/.gemini, ...) for tools the user
+ * never uses. Reliable detection is therefore on the probe (see cli-probe.ts).
+ */
 export async function runGlobalMcpInstall(
 	launcherPath: string,
 	probe: (cmd: string) => Promise<boolean>
