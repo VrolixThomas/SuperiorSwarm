@@ -1,9 +1,8 @@
 import { useState } from "react";
 import type { CliPresetName } from "../../../shared/cli-preset";
+import type { McpFormat } from "../../../shared/mcp-format";
 import { trpc } from "../../trpc/client";
 import { PageHeading, SectionLabel } from "./SectionHeading";
-
-type McpFormat = "json" | "toml" | "opencode";
 
 const CLI_LABELS: Record<CliPresetName, string> = {
 	claude: "Claude Code",

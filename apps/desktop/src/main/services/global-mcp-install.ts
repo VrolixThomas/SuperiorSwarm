@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { CliPresetName } from "../../shared/cli-preset";
+import type { McpFormat } from "../../shared/mcp-format";
 import { mergeKey, removeKey } from "../ai-review/mcp-config-merge";
 import { getDb } from "../db";
 import * as schema from "../db/schema";
@@ -29,8 +30,6 @@ export function cliConfigPaths(cli: CliPresetName, opts?: PathOpts): string {
 			return join(h(opts), ".config", "opencode", "opencode.json");
 	}
 }
-
-export type McpFormat = "json" | "toml" | "opencode";
 
 function formatForCli(cli: CliPresetName): McpFormat {
 	if (cli === "codex") return "toml";
