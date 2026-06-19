@@ -516,6 +516,16 @@ export const globalMcpInstall = sqliteTable("global_mcp_install", {
 
 export type GlobalMcpInstall = typeof globalMcpInstall.$inferSelect;
 
+export const customMcpInstall = sqliteTable("custom_mcp_install", {
+	id: text("id").primaryKey(),
+	label: text("label").notNull(),
+	configPath: text("config_path").notNull(),
+	format: text("format").notNull(), // "json" | "toml" | "opencode"
+	installedAt: integer("installed_at", { mode: "timestamp" }).notNull(),
+});
+
+export type CustomMcpInstall = typeof customMcpInstall.$inferSelect;
+
 export const orchestratorMembers = sqliteTable(
 	"orchestrator_members",
 	{
