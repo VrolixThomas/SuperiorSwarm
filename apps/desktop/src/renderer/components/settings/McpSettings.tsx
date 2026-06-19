@@ -129,6 +129,7 @@ export function McpSettings() {
 		if (picked) {
 			setConfigPath(picked);
 			setFormat(picked.endsWith(".toml") ? "toml" : "json");
+			setAddError(null);
 		}
 	};
 
@@ -190,7 +191,10 @@ export function McpSettings() {
 					<input
 						type="text"
 						value={label}
-						onChange={(e) => setLabel(e.target.value)}
+						onChange={(e) => {
+							setLabel(e.target.value);
+							setAddError(null);
+						}}
 						placeholder="Agent name (e.g. Cursor)"
 						className="rounded-[6px] border border-[var(--border)] bg-[var(--bg-base)] px-2.5 py-1.5 text-[12px] text-[var(--text)] placeholder:text-[var(--text-quaternary)] focus:border-[var(--accent)] focus:outline-none"
 					/>
