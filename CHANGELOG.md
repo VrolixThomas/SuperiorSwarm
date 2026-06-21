@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.11.2 (2026-06-22)
+
+### What's New
+
+SuperiorSwarm now has a dedicated MCP settings page. Add MCP servers to your custom agents, install servers manually, and rely on more accurate detection of installed CLI tools that respects your shell's PATH. Setup errors now clear automatically as you correct your inputs.
+
+### Changes
+
+- **Mcp not available** (#121)
+
 ## v0.11.1 (2026-06-14)
 
 ### What's New
