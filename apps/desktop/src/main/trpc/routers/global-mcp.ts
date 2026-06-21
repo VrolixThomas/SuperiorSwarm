@@ -2,8 +2,8 @@ import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { app } from "electron";
 import { z } from "zod";
-import type { CliPresetName } from "../../../shared/cli-preset";
-import { MCP_FORMATS, type McpFormat } from "../../../shared/mcp-format";
+import { CLI_PRESET_NAMES } from "../../../shared/cli-preset";
+import { MCP_FORMATS } from "../../../shared/mcp-format";
 import { getDb } from "../../db";
 import { customMcpInstall, globalMcpInstall } from "../../db/schema";
 import { probeCliInPath } from "../../services/cli-probe";
@@ -18,11 +18,9 @@ import {
 import { launcherPath } from "../../services/global-mcp-launcher";
 import { publicProcedure, router } from "../index";
 
-const cliPresetSchema = z.enum(["claude", "gemini", "codex", "opencode"]);
+const cliPresetSchema = z.enum(CLI_PRESET_NAMES);
 
 const mcpFormatSchema = z.enum(MCP_FORMATS);
-
-const ALL_CLIS: CliPresetName[] = ["claude", "gemini", "codex", "opencode"];
 
 export const globalMcpRouter = router({
 	listInstalls: publicProcedure.query(async () => {
@@ -32,7 +30,7 @@ export const globalMcpRouter = router({
 		// Probe all CLIs in parallel — serial probes would stack the per-CLI
 		// shell timeout on every settings query.
 		const detected = new Set(await detectInstalledClis(probeCliInPath));
-		const items = ALL_CLIS.map((cli) => {
+		const items = CLI_PRESET_NAMES.map((cli) => {
 			const installed = installedMap.get(cli);
 			return {
 				cliPreset: cli,
@@ -109,7 +107,7 @@ export const globalMcpRouter = router({
 		const db = getDb();
 		const row = db.select().from(customMcpInstall).where(eq(customMcpInstall.id, input.id)).get();
 		if (row) {
-			uninstallEntryFromConfig(row.configPath, row.format as McpFormat);
+			uninstallEntryFromConfig(row.configPath, row.format);
 			db.delete(customMcpInstall).where(eq(customMcpInstall.id, input.id)).run();
 		}
 		return { ok: true };

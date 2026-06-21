@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import type { CliPresetName } from "../../shared/cli-preset";
+import { CLI_PRESET_NAMES, type CliPresetName } from "../../shared/cli-preset";
 import type { McpFormat } from "../../shared/mcp-format";
 import { mergeKey, removeKey } from "../ai-review/mcp-config-merge";
 import { getDb } from "../db";
@@ -11,8 +11,6 @@ import { mergeTomlKey, removeTomlKey } from "./toml-merge";
 interface PathOpts {
 	home?: string;
 }
-
-const ALL_CLIS: CliPresetName[] = ["claude", "gemini", "codex", "opencode"];
 
 function h(opts?: PathOpts): string {
 	return opts?.home ?? homedir();
@@ -96,7 +94,9 @@ export async function detectInstalledClis(
 ): Promise<CliPresetName[]> {
 	// Probe in parallel — each probe can wait up to the shell timeout, so running
 	// them serially would stack those timeouts on every app startup.
-	const results = await Promise.all(ALL_CLIS.map(async (cli) => ((await probe(cli)) ? cli : null)));
+	const results = await Promise.all(
+		CLI_PRESET_NAMES.map(async (cli) => ((await probe(cli)) ? cli : null))
+	);
 	return results.filter((c): c is CliPresetName => c !== null);
 }
 

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { CliPresetName } from "../../../shared/cli-preset";
-import type { McpFormat } from "../../../shared/mcp-format";
+import { MCP_FORMATS, type McpFormat } from "../../../shared/mcp-format";
 import { trpc } from "../../trpc/client";
 import { PageHeading, SectionLabel } from "./SectionHeading";
 
@@ -146,18 +146,21 @@ export function McpSettings() {
 
 			<SectionLabel>Quick install</SectionLabel>
 			<div className="overflow-hidden rounded-[10px] border border-[var(--border)] bg-[var(--bg-surface)] divide-y divide-[var(--border-subtle)]">
-				{mcpData?.items.map((item) => (
-					<McpCliRow
-						key={item.cliPreset}
-						name={CLI_LABELS[item.cliPreset as CliPresetName] ?? item.cliPreset}
-						detected={item.detected}
-						installed={item.installed}
-						configPath={item.configPath}
-						isPending={installMcp.isPending || uninstallMcp.isPending}
-						onInstall={() => installMcp.mutate({ cliPreset: item.cliPreset as CliPresetName })}
-						onUninstall={() => uninstallMcp.mutate({ cliPreset: item.cliPreset as CliPresetName })}
-					/>
-				))}
+				{mcpData?.items.map((item) => {
+					const cli = item.cliPreset as CliPresetName;
+					return (
+						<McpCliRow
+							key={cli}
+							name={CLI_LABELS[cli] ?? cli}
+							detected={item.detected}
+							installed={item.installed}
+							configPath={item.configPath}
+							isPending={installMcp.isPending || uninstallMcp.isPending}
+							onInstall={() => installMcp.mutate({ cliPreset: cli })}
+							onUninstall={() => uninstallMcp.mutate({ cliPreset: cli })}
+						/>
+					);
+				})}
 			</div>
 
 			<SectionLabel>Custom agents</SectionLabel>
@@ -168,7 +171,7 @@ export function McpSettings() {
 							<div className="flex min-w-0 flex-1 flex-col gap-0.5">
 								<span className="text-[13px] font-medium text-[var(--text)]">{row.label}</span>
 								<span className="truncate text-[11px] text-[var(--text-tertiary)]">
-									{row.configPath} · {FORMAT_LABELS[row.format as McpFormat] ?? row.format}
+									{row.configPath} · {FORMAT_LABELS[row.format] ?? row.format}
 								</span>
 							</div>
 							<button
@@ -214,7 +217,7 @@ export function McpSettings() {
 						</button>
 					</div>
 					<div className="flex items-center gap-1.5">
-						{(["json", "toml", "opencode"] as McpFormat[]).map((f) => (
+						{MCP_FORMATS.map((f) => (
 							<button
 								key={f}
 								type="button"
