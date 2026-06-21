@@ -7,6 +7,7 @@ import { GeneralSettings } from "./GeneralSettings";
 import { IntegrationsSettings } from "./IntegrationsSettings";
 import { KeyboardShortcutsSettings } from "./KeyboardShortcutsSettings";
 import { LspSettings } from "./LspSettings";
+import { McpSettings } from "./McpSettings";
 import { SettingsNav } from "./SettingsNav";
 import { TerminalsSettings } from "./TerminalsSettings";
 import { WorktreesSettings } from "./WorktreesSettings";
@@ -19,6 +20,8 @@ function SettingsContent() {
 			return <GeneralSettings />;
 		case "integrations":
 			return <IntegrationsSettings />;
+		case "mcp":
+			return <McpSettings />;
 		case "ai-reviewer":
 			return <AIReviewerSettings />;
 		case "comment-solver":

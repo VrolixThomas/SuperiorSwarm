@@ -6,6 +6,7 @@ import {
 	text,
 	uniqueIndex,
 } from "drizzle-orm/sqlite-core";
+import { MCP_FORMATS } from "../../shared/mcp-format";
 import { reviewDrafts } from "./schema-ai-review";
 
 export const projects = sqliteTable("projects", {
@@ -515,6 +516,16 @@ export const globalMcpInstall = sqliteTable("global_mcp_install", {
 });
 
 export type GlobalMcpInstall = typeof globalMcpInstall.$inferSelect;
+
+export const customMcpInstall = sqliteTable("custom_mcp_install", {
+	id: text("id").primaryKey(),
+	label: text("label").notNull(),
+	configPath: text("config_path").notNull(),
+	format: text("format", { enum: MCP_FORMATS }).notNull(),
+	installedAt: integer("installed_at", { mode: "timestamp" }).notNull(),
+});
+
+export type CustomMcpInstall = typeof customMcpInstall.$inferSelect;
 
 export const orchestratorMembers = sqliteTable(
 	"orchestrator_members",

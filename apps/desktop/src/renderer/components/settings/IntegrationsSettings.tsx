@@ -1,77 +1,7 @@
-import type { CliPresetName } from "../../../shared/cli-preset";
 import { useProjectStore } from "../../stores/projects";
 import { useTabStore } from "../../stores/tab-store";
 import { trpc } from "../../trpc/client";
-import { PageHeading, SectionLabel } from "./SectionHeading";
-
-const CLI_LABELS: Record<CliPresetName, string> = {
-	claude: "Claude Code",
-	gemini: "Gemini CLI",
-	codex: "Codex",
-	opencode: "OpenCode",
-};
-
-function McpCliRow({
-	name,
-	detected,
-	installed,
-	configPath,
-	isPending,
-	onInstall,
-	onUninstall,
-}: {
-	name: string;
-	detected: boolean;
-	installed: boolean;
-	configPath: string;
-	isPending: boolean;
-	onInstall: () => void;
-	onUninstall: () => void;
-}) {
-	let subtitle: string;
-	if (!detected) subtitle = "Not detected on PATH";
-	else if (!installed) subtitle = "Detected — not installed";
-	else subtitle = configPath;
-
-	return (
-		<div className="flex items-center gap-3 px-4 py-3.5">
-			<div className="flex min-w-0 flex-1 flex-col gap-0.5">
-				<span className="text-[13px] font-medium text-[var(--text)]">{name}</span>
-				<div className="flex items-center gap-1.5">
-					<div
-						className={`size-1.5 shrink-0 rounded-full ${
-							installed
-								? "bg-[#32d74b]"
-								: detected
-									? "bg-[var(--text-tertiary)]"
-									: "bg-[var(--text-quaternary)]"
-						}`}
-					/>
-					<span className="truncate text-[11px] text-[var(--text-tertiary)]">{subtitle}</span>
-				</div>
-			</div>
-			{installed ? (
-				<button
-					type="button"
-					onClick={onUninstall}
-					disabled={isPending}
-					className="shrink-0 rounded-[5px] px-2.5 py-1 text-[11px] font-medium text-[var(--text-tertiary)] transition-colors hover:bg-[rgba(255,59,48,0.1)] hover:text-[var(--color-danger)] disabled:opacity-50"
-				>
-					Uninstall
-				</button>
-			) : (
-				<button
-					type="button"
-					onClick={onInstall}
-					disabled={!detected || isPending}
-					className="shrink-0 rounded-[5px] px-2.5 py-1 text-[11px] font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-elevated)] hover:text-[var(--text)] disabled:opacity-50"
-				>
-					Install
-				</button>
-			)}
-		</div>
-	);
-}
+import { PageHeading } from "./SectionHeading";
 
 function IntegrationRow({
 	name,
@@ -204,17 +134,6 @@ export function IntegrationsSettings() {
 		},
 	});
 
-	// AI Coding Assistants (global MCP)
-	const { data: mcpData } = trpc.globalMcp.listInstalls.useQuery(undefined, {
-		staleTime: 5_000,
-	});
-	const installMcp = trpc.globalMcp.installFor.useMutation({
-		onSuccess: () => utils.globalMcp.listInstalls.invalidate(),
-	});
-	const uninstallMcp = trpc.globalMcp.uninstallFor.useMutation({
-		onSuccess: () => utils.globalMcp.listInstalls.invalidate(),
-	});
-
 	return (
 		<div>
 			<PageHeading title="Integrations" subtitle="Connect your development tools" />
@@ -280,22 +199,6 @@ export function IntegrationsSettings() {
 					onConnect={() => githubConnect.mutate()}
 					onDisconnect={() => githubDisconnect.mutate()}
 				/>
-			</div>
-
-			<SectionLabel>AI Coding Assistants</SectionLabel>
-			<div className="overflow-hidden rounded-[10px] border border-[var(--border)] bg-[var(--bg-surface)] divide-y divide-[var(--border-subtle)]">
-				{mcpData?.items.map((item) => (
-					<McpCliRow
-						key={item.cliPreset}
-						name={CLI_LABELS[item.cliPreset as CliPresetName] ?? item.cliPreset}
-						detected={item.detected}
-						installed={item.installed}
-						configPath={item.configPath}
-						isPending={installMcp.isPending || uninstallMcp.isPending}
-						onInstall={() => installMcp.mutate({ cliPreset: item.cliPreset as CliPresetName })}
-						onUninstall={() => uninstallMcp.mutate({ cliPreset: item.cliPreset as CliPresetName })}
-					/>
-				))}
 			</div>
 		</div>
 	);

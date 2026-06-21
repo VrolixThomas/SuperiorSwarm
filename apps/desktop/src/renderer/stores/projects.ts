@@ -4,6 +4,7 @@ import type { SidebarSegment } from "../../shared/types";
 export type SettingsCategory =
 	| "general"
 	| "integrations"
+	| "mcp"
 	| "ai-reviewer"
 	| "comment-solver"
 	| "shortcuts"
