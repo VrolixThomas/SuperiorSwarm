@@ -509,6 +509,103 @@ describe("DaemonClient", () => {
 		}
 	});
 
+	test("create rejects instead of silently dropping when the queue is full of control messages", async () => {
+		const internalSocket = (client as unknown as { socket: Socket | null }).socket;
+		expect(internalSocket).not.toBeNull();
+		if (!internalSocket) return;
+
+		const originalWrite = internalSocket.write.bind(internalSocket);
+		let forcedBackpressure = false;
+		(internalSocket as unknown as { write: Socket["write"] }).write = ((
+			data: Parameters<Socket["write"]>[0],
+			encoding?: Parameters<Socket["write"]>[1],
+			cb?: Parameters<Socket["write"]>[2]
+		) => {
+			const result = originalWrite(data, encoding, cb);
+			if (!forcedBackpressure) {
+				forcedBackpressure = true;
+				return false;
+			}
+			return result;
+		}) as Socket["write"];
+
+		try {
+			// Trigger backpressure so subsequent messages queue.
+			client.write("term-1", "trigger-backpressure");
+
+			// Fill the 512KB queue with non-droppable create messages that
+			// eviction cannot make room for.
+			const bigEnv = { PAYLOAD: "x".repeat(100_000) };
+			for (let i = 0; i < 5; i++) {
+				await client.create(
+					`crowded-${i}`,
+					"/tmp",
+					() => {},
+					() => {},
+					bigEnv
+				);
+			}
+
+			// The next create cannot fit. Silently dropping it left a permanently
+			// blank terminal tab; it must reject so the caller can surface failure.
+			await expect(
+				client.create(
+					"crowded-overflow",
+					"/tmp",
+					() => {},
+					() => {},
+					bigEnv
+				)
+			).rejects.toThrow();
+			// And local state must be rolled back so a retry is possible.
+			expect(client.hasLiveSession("crowded-overflow")).toBe(false);
+
+			// Droppable traffic still degrades silently, never throws.
+			expect(() => client.write("term-1", "still-silent")).not.toThrow();
+		} finally {
+			(internalSocket as unknown as { write: Socket["write"] }).write = originalWrite;
+		}
+	});
+
+	test("create rejects when a single control message exceeds the queue limit", async () => {
+		const internalSocket = (client as unknown as { socket: Socket | null }).socket;
+		expect(internalSocket).not.toBeNull();
+		if (!internalSocket) return;
+
+		const originalWrite = internalSocket.write.bind(internalSocket);
+		let forcedBackpressure = false;
+		(internalSocket as unknown as { write: Socket["write"] }).write = ((
+			data: Parameters<Socket["write"]>[0],
+			encoding?: Parameters<Socket["write"]>[1],
+			cb?: Parameters<Socket["write"]>[2]
+		) => {
+			const result = originalWrite(data, encoding, cb);
+			if (!forcedBackpressure) {
+				forcedBackpressure = true;
+				return false;
+			}
+			return result;
+		}) as Socket["write"];
+
+		try {
+			client.write("term-1", "trigger-backpressure");
+
+			const hugeEnv = { PAYLOAD: "x".repeat(600_000) };
+			await expect(
+				client.create(
+					"huge-message",
+					"/tmp",
+					() => {},
+					() => {},
+					hugeEnv
+				)
+			).rejects.toThrow();
+			expect(client.hasLiveSession("huge-message")).toBe(false);
+		} finally {
+			(internalSocket as unknown as { write: Socket["write"] }).write = originalWrite;
+		}
+	});
+
 	test("refuses to hijack daemon owned by another app dir hash", async () => {
 		const noSocket = join(tmpdir(), `superiorswarm-owner-test-${process.pid}.sock`);
 		const noPid = join(tmpdir(), `superiorswarm-owner-test-${process.pid}.pid`);

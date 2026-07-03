@@ -112,7 +112,12 @@ export class DaemonClient {
 		// sessions that died while disconnected get an onExit(-1) cleanup.
 		for (const [id, cb] of this.callbacks) {
 			if (this.liveSessions.has(id)) {
-				this.send({ type: "attach", id });
+				try {
+					this.send({ type: "attach", id });
+				} catch (err) {
+					// One failed re-attach must not strand the remaining sessions.
+					console.error(`[daemon-client] re-attach for ${id} failed:`, err);
+				}
 			} else {
 				cb.onExit(-1);
 				this.callbacks.delete(id);
@@ -390,7 +395,11 @@ export class DaemonClient {
 				// If attach failed because the session wasn't found, fall back to create
 				if (msg.message === "session not found" && this.callbacks.has(msg.id)) {
 					const stored = this.callbacks.get(msg.id);
-					this.send({ type: "create", id: msg.id, cwd: stored?.cwd });
+					try {
+						this.send({ type: "create", id: msg.id, cwd: stored?.cwd });
+					} catch (err) {
+						console.error(`[daemon-client] fallback create for ${msg.id} failed:`, err);
+					}
 				}
 				break;
 			}
@@ -549,6 +558,13 @@ export class DaemonClient {
 		}
 
 		if (messageBytes > MAX_OUTBOUND_QUEUE_BYTES) {
+			// Control messages (create/attach/dispose/...) must never vanish
+			// silently — a dropped create leaves a permanently blank terminal tab.
+			if (!droppable) {
+				throw new Error(
+					`Outbound ${msg.type} message (${messageBytes}B) exceeds daemon queue limit ${MAX_OUTBOUND_QUEUE_BYTES}B`
+				);
+			}
 			console.warn(
 				`[daemon-client] outbound message ${messageBytes}B exceeds queue limit ${MAX_OUTBOUND_QUEUE_BYTES}B; dropping message`
 			);
@@ -560,6 +576,11 @@ export class DaemonClient {
 		}
 
 		if (this.outboundQueuedBytes + messageBytes > MAX_OUTBOUND_QUEUE_BYTES) {
+			if (!droppable) {
+				throw new Error(
+					`Daemon outbound queue full (${this.outboundQueuedBytes}/${MAX_OUTBOUND_QUEUE_BYTES}B); cannot send ${msg.type}`
+				);
+			}
 			console.warn(
 				`[daemon-client] outbound queue full (${this.outboundQueuedBytes}/${MAX_OUTBOUND_QUEUE_BYTES}B); dropping message`
 			);
