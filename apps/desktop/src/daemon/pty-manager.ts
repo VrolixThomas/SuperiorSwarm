@@ -103,6 +103,16 @@ export class PtyManager {
 		return { buffer: entry.buffer, process: entry.pty.process ?? "" };
 	}
 
+	// Detach one client from one session. Returns true if the client had
+	// listeners on that session. Other sessions and other clients are untouched.
+	detachSession(clientId: string, id: string): boolean {
+		const entry = this.terminals.get(id);
+		if (!entry) return false;
+		const had = entry.dataListeners.delete(clientId);
+		entry.exitListeners.delete(clientId);
+		return had;
+	}
+
 	detachClient(clientId: string): void {
 		for (const entry of this.terminals.values()) {
 			entry.dataListeners.delete(clientId);

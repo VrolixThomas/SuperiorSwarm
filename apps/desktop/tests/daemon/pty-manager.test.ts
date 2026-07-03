@@ -172,6 +172,79 @@ describe("PtyManager", () => {
 		expect(manager.has("t1")).toBe(true);
 	});
 
+	// -- detachSession --
+
+	test("detachSession removes only that session's listeners, leaving other sessions attached", () => {
+		setup();
+		manager.create(
+			"t1",
+			undefined,
+			() => {},
+			() => {},
+			"c1"
+		);
+		manager.create(
+			"t2",
+			undefined,
+			() => {},
+			() => {},
+			"c1"
+		);
+
+		expect(manager.detachSession("c1", "t1")).toBe(true);
+		// t1 is already detached for c1 — a second detach removes nothing.
+		expect(manager.detachSession("c1", "t1")).toBe(false);
+		// t2 must still have c1's listeners: if detachSession behaved like
+		// detachClient (all sessions), this would return false.
+		expect(manager.detachSession("c1", "t2")).toBe(true);
+	});
+
+	test("detachSession does not remove the terminal itself", () => {
+		setup();
+		manager.create(
+			"t1",
+			undefined,
+			() => {},
+			() => {},
+			"c1"
+		);
+		manager.detachSession("c1", "t1");
+		expect(manager.has("t1")).toBe(true);
+	});
+
+	test("detachSession returns false for unknown session or client", () => {
+		setup();
+		manager.create(
+			"t1",
+			undefined,
+			() => {},
+			() => {},
+			"c1"
+		);
+		expect(manager.detachSession("c1", "ghost")).toBe(false);
+		expect(manager.detachSession("other-client", "t1")).toBe(false);
+	});
+
+	test("detachSession leaves other clients attached to the same session", () => {
+		setup();
+		manager.create(
+			"t1",
+			undefined,
+			() => {},
+			() => {},
+			"c1"
+		);
+		manager.attach(
+			"t1",
+			() => {},
+			() => {},
+			"c2"
+		);
+		manager.detachSession("c1", "t1");
+		// c2's listeners must survive c1's detach.
+		expect(manager.detachSession("c2", "t1")).toBe(true);
+	});
+
 	test("detachClient on unknown client does not throw", () => {
 		setup();
 		manager.create(

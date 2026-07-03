@@ -182,7 +182,7 @@ export class SocketServer {
 				break;
 			}
 			case "detach": {
-				this.ptyManager.detachClient(clientId);
+				this.ptyManager.detachSession(clientId, msg.id);
 				break;
 			}
 			case "detach-all": {

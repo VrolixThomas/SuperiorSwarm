@@ -37,7 +37,15 @@ class MockPtyManager {
 	}
 	write(_id: string, _data: string): void {}
 	resize(_id: string, _c: number, _r: number): void {}
-	detachClient(_clientId: string): void {}
+	detachedClients: string[] = [];
+	detachedSessions: Array<{ clientId: string; id: string }> = [];
+	detachClient(clientId: string): void {
+		this.detachedClients.push(clientId);
+	}
+	detachSession(clientId: string, id: string): boolean {
+		this.detachedSessions.push({ clientId, id });
+		return true;
+	}
 	list(): Array<{ id: string; cwd: string; pid: number }> {
 		return [{ id: "t1", cwd: "/tmp", pid: 123 }];
 	}
@@ -141,6 +149,30 @@ describe("SocketServer", () => {
 		await collectMessages(socket);
 		socket.destroy();
 		expect(mockPty.disposed).toContain("term-1");
+	});
+
+	test("detach with id detaches only that session, not the whole client", async () => {
+		const socket = connect(TEST_SOCKET);
+		await collectMessages(socket); // consume ready
+		sendMsg(socket, { type: "detach", id: "term-1" });
+		await collectMessages(socket);
+
+		expect(mockPty.detachedSessions).toEqual([{ clientId: "client-1", id: "term-1" }]);
+		// A per-session detach must never strip the client from all terminals —
+		// that froze every other open terminal for the shared main-process client.
+		expect(mockPty.detachedClients).toEqual([]);
+		socket.destroy();
+	});
+
+	test("detach-all detaches the client from all sessions", async () => {
+		const socket = connect(TEST_SOCKET);
+		await collectMessages(socket); // consume ready
+		sendMsg(socket, { type: "detach-all" });
+		await collectMessages(socket);
+
+		expect(mockPty.detachedClients).toEqual(["client-1"]);
+		expect(mockPty.detachedSessions).toEqual([]);
+		socket.destroy();
 	});
 
 	test("drops oversized inbound line, warns, and continues parsing subsequent frames", async () => {
