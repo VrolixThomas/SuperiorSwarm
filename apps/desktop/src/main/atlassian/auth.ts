@@ -3,6 +3,7 @@ import { safeStorage } from "electron";
 import { getDb } from "../db";
 import { atlassianAuth } from "../db/schema";
 import { markProviderConnected } from "../telemetry/state";
+import { TokenEndpointError, createAuthCore } from "./auth-core";
 import {
 	BITBUCKET_CLIENT_ID,
 	BITBUCKET_CLIENT_SECRET,
@@ -91,7 +92,7 @@ export function deleteAuth(service: Service) {
 
 async function refreshJiraToken(refreshToken: string): Promise<{
 	access_token: string;
-	refresh_token: string;
+	refresh_token?: string;
 	expires_in: number;
 }> {
 	const res = await fetch(JIRA_TOKEN_URL, {
@@ -105,14 +106,14 @@ async function refreshJiraToken(refreshToken: string): Promise<{
 		}),
 	});
 	if (!res.ok) {
-		throw new Error(`Jira token refresh failed: ${res.status} ${await res.text()}`);
+		throw new TokenEndpointError(res.status, `jira token refresh failed: ${await res.text()}`);
 	}
 	return res.json();
 }
 
 async function refreshBitbucketToken(refreshToken: string): Promise<{
 	access_token: string;
-	refresh_token: string;
+	refresh_token?: string;
 	expires_in: number;
 }> {
 	const credentials = Buffer.from(`${BITBUCKET_CLIENT_ID}:${BITBUCKET_CLIENT_SECRET}`).toString(
@@ -130,97 +131,50 @@ async function refreshBitbucketToken(refreshToken: string): Promise<{
 		}),
 	});
 	if (!res.ok) {
-		throw new Error(`Bitbucket token refresh failed: ${res.status} ${await res.text()}`);
+		throw new TokenEndpointError(res.status, `bitbucket token refresh failed: ${await res.text()}`);
 	}
 	return res.json();
 }
 
-// Guard against concurrent refresh requests for the same service
-const refreshPromises = new Map<Service, Promise<string | null>>();
-
-async function doRefresh(service: Service): Promise<string | null> {
-	const auth = getAuth(service);
-	if (!auth) return null;
-
-	try {
-		const refreshFn = service === "jira" ? refreshJiraToken : refreshBitbucketToken;
-		const result = await refreshFn(auth.refreshToken);
-
+// Token lifecycle (expiry check, refresh dedup, transient-vs-permanent failure
+// handling, 401 retry) lives in auth-core.ts so it can be unit-tested without
+// Electron or the database.
+const core = createAuthCore<Service>({
+	getAuth,
+	saveTokens(service, tokens) {
+		const auth = getAuth(service);
+		if (!auth) return;
 		saveAuth({
 			service,
-			accessToken: result.access_token,
-			refreshToken: result.refresh_token,
-			expiresIn: result.expires_in,
+			accessToken: tokens.accessToken,
+			refreshToken: tokens.refreshToken,
+			expiresIn: tokens.expiresIn,
 			cloudId: auth.cloudId ?? undefined,
 			siteUrl: auth.siteUrl ?? undefined,
 			accountId: auth.accountId,
 			displayName: auth.displayName ?? undefined,
 			email: auth.email ?? undefined,
 		});
-
-		return result.access_token;
-	} catch (err) {
-		console.error(`Token refresh failed for ${service}:`, err);
-		deleteAuth(service);
-		return null;
-	}
-}
+	},
+	deleteAuth,
+	refreshToken(service, refreshToken) {
+		return service === "jira"
+			? refreshJiraToken(refreshToken)
+			: refreshBitbucketToken(refreshToken);
+	},
+});
 
 /**
  * Returns a valid access token for the given service.
  * Refreshes automatically if expired. Returns null if not connected.
  * Deduplicates concurrent refresh calls per service.
  */
-export async function getValidToken(service: Service): Promise<string | null> {
-	const auth = getAuth(service);
-	if (!auth) return null;
-
-	// Token still valid — return it
-	const now = new Date();
-	const bufferMs = 60_000;
-	if (auth.expiresAt.getTime() - now.getTime() > bufferMs) {
-		return auth.accessToken;
-	}
-
-	// Deduplicate concurrent refreshes
-	const existing = refreshPromises.get(service);
-	if (existing) return existing;
-
-	const promise = doRefresh(service).finally(() => {
-		refreshPromises.delete(service);
-	});
-	refreshPromises.set(service, promise);
-	return promise;
-}
+export const getValidToken = core.getValidToken;
 
 /**
  * Authenticated fetch — adds Bearer token, refreshes if needed.
  * Throws if not connected or refresh fails.
- * Automatically cleans up auth on 401 responses.
+ * On a 401 API response, force-refreshes the token and retries once before
+ * treating the session as dead.
  */
-export async function atlassianFetch(
-	service: Service,
-	url: string,
-	init?: RequestInit
-): Promise<Response> {
-	const token = await getValidToken(service);
-	if (!token) {
-		throw new Error(`Not connected to ${service}`);
-	}
-
-	const res = await fetch(url, {
-		...init,
-		headers: {
-			...init?.headers,
-			Authorization: `Bearer ${token}`,
-			Accept: "application/json",
-		},
-	});
-
-	if (res.status === 401) {
-		deleteAuth(service);
-		throw new Error(`${service} session expired. Please reconnect.`);
-	}
-
-	return res;
-}
+export const atlassianFetch = core.authFetch;
