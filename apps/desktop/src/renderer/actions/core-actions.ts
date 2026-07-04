@@ -161,6 +161,28 @@ export function registerCoreActions() {
 			},
 			keywords: ["pull requests", "review", "github"],
 		},
+		{
+			id: "nav.workspaceBack",
+			label: "Go Back",
+			category: "Navigation",
+			shortcut: { key: "BracketLeft", meta: true },
+			when: () => useTabStore.getState().canGoBackWorkspace(),
+			execute: () => {
+				useTabStore.getState().goBackWorkspace();
+			},
+			keywords: ["back", "previous workspace", "previous project"],
+		},
+		{
+			id: "nav.workspaceForward",
+			label: "Go Forward",
+			category: "Navigation",
+			shortcut: { key: "BracketRight", meta: true },
+			when: () => useTabStore.getState().canGoForwardWorkspace(),
+			execute: () => {
+				useTabStore.getState().goForwardWorkspace();
+			},
+			keywords: ["forward", "next workspace", "next project"],
+		},
 
 		// ── Branch ──────────────────────────────────────────────────────────
 		{

@@ -21,8 +21,12 @@ export function Sidebar({ collapsed, onExpand }: SidebarProps) {
 	const { openSettings, openAddModal, openCreateCrossRepoModal } = useProjectStore();
 	const { data: projectsList } = trpc.projects.list.useQuery();
 	const segment = useTabStore((s) => s.sidebarSegment);
+	const canGoBackWorkspace = useTabStore((s) => s.workspaceBackStack.length > 0);
+	const canGoForwardWorkspace = useTabStore((s) => s.workspaceForwardStack.length > 0);
 	const hasDismissedUpdate = useUpdateStore((s) => s.dismissedUpdateVersion !== null);
 	const setSidebarSegment = useTabStore((s) => s.setSidebarSegment);
+	const goBackWorkspace = useTabStore((s) => s.goBackWorkspace);
+	const goForwardWorkspace = useTabStore((s) => s.goForwardWorkspace);
 
 	const utils = trpc.useUtils();
 	const openFolderMut = trpc.projects.openFolder.useMutation();
@@ -136,10 +140,59 @@ export function Sidebar({ collapsed, onExpand }: SidebarProps) {
 	return (
 		<div className="flex h-full w-full flex-col overflow-hidden bg-[var(--bg-surface)]">
 			{/* Traffic light clearance */}
-			<div className="app-drag h-[52px] shrink-0" />
+			<div className="app-drag flex h-[52px] shrink-0 items-center pl-[88px] pr-2">
+				<div className="app-no-drag flex shrink-0 items-center gap-0.5">
+					<Tooltip label="Go Back" actionId="nav.workspaceBack">
+						<button
+							type="button"
+							onClick={() => goBackWorkspace()}
+							disabled={!canGoBackWorkspace}
+							aria-label="Go Back"
+							className="flex h-7 w-7 items-center justify-center rounded-full text-[var(--text-quaternary)] transition-colors duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-secondary)] disabled:pointer-events-none disabled:opacity-35"
+						>
+							<svg
+								aria-hidden="true"
+								width="14"
+								height="14"
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								strokeWidth="2"
+								strokeLinecap="round"
+								strokeLinejoin="round"
+							>
+								<path d="M15 18l-6-6 6-6" />
+							</svg>
+						</button>
+					</Tooltip>
+					<Tooltip label="Go Forward" actionId="nav.workspaceForward">
+						<button
+							type="button"
+							onClick={() => goForwardWorkspace()}
+							disabled={!canGoForwardWorkspace}
+							aria-label="Go Forward"
+							className="flex h-7 w-7 items-center justify-center rounded-full text-[var(--text-quaternary)] transition-colors duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-secondary)] disabled:pointer-events-none disabled:opacity-35"
+						>
+							<svg
+								aria-hidden="true"
+								width="14"
+								height="14"
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								strokeWidth="2"
+								strokeLinecap="round"
+								strokeLinejoin="round"
+							>
+								<path d="M9 18l6-6-6-6" />
+							</svg>
+						</button>
+					</Tooltip>
+				</div>
+			</div>
 
 			{/* Segmented control — always at top */}
-			<div className="flex gap-1 px-2 py-1.5 border-b border-[var(--border-subtle)]">
+			<div className="flex gap-1 border-b border-[var(--border-subtle)] px-2 py-1.5">
 				{(["repos", "tickets", "prs"] as const).map((seg) => {
 					const actionIds = {
 						repos: "nav.repos",
