@@ -80,6 +80,11 @@ function resetStore() {
 		markdownPreviewMode: "off",
 		rightPanel: PANEL_CLOSED,
 		workspaceMetadata: {},
+		workspaceBackStack: [],
+		workspaceForwardStack: [],
+		pendingWorkspaceHistoryEntry: null,
+		sidebarSegment: "repos",
+		activeWorkspaceBySegment: { repos: null, tickets: null, prs: null },
 		activeTicketProject: "all",
 		selectedTicketId: null,
 		ticketDetailOpen: false,
@@ -244,6 +249,83 @@ describe("setActiveWorkspace", () => {
 		assertPanelOpen(rightPanel);
 		expect(rightPanel.mode).toBe("diff");
 		expect(rightPanel.diffCtx).toBeNull();
+	});
+});
+
+// ── workspace history ───────────────────────────────────────────────────────
+
+describe("workspace history", () => {
+	beforeEach(resetStore);
+
+	test("goes back and forward through previously active workspaces", () => {
+		const store = useTabStore.getState();
+		store.setActiveWorkspace("ws-a", "/repo/a");
+		store.setActiveWorkspace("ws-b", "/repo/b");
+		store.setActiveWorkspace("ws-c", "/repo/c");
+
+		expect(useTabStore.getState().canGoBackWorkspace()).toBe(true);
+		expect(useTabStore.getState().canGoForwardWorkspace()).toBe(false);
+
+		expect(useTabStore.getState().goBackWorkspace()).toBe(true);
+		expect(useTabStore.getState().activeWorkspaceId).toBe("ws-b");
+		expect(useTabStore.getState().activeWorkspaceCwd).toBe("/repo/b");
+
+		expect(useTabStore.getState().goBackWorkspace()).toBe(true);
+		expect(useTabStore.getState().activeWorkspaceId).toBe("ws-a");
+		expect(useTabStore.getState().activeWorkspaceCwd).toBe("/repo/a");
+		expect(useTabStore.getState().canGoBackWorkspace()).toBe(false);
+		expect(useTabStore.getState().canGoForwardWorkspace()).toBe(true);
+
+		expect(useTabStore.getState().goForwardWorkspace()).toBe(true);
+		expect(useTabStore.getState().activeWorkspaceId).toBe("ws-b");
+		expect(useTabStore.getState().activeWorkspaceCwd).toBe("/repo/b");
+	});
+
+	test("clears forward history after a new manual workspace selection", () => {
+		const store = useTabStore.getState();
+		store.setActiveWorkspace("ws-a", "/repo/a");
+		store.setActiveWorkspace("ws-b", "/repo/b");
+		store.setActiveWorkspace("ws-c", "/repo/c");
+
+		expect(useTabStore.getState().goBackWorkspace()).toBe(true);
+		expect(useTabStore.getState().activeWorkspaceId).toBe("ws-b");
+		expect(useTabStore.getState().canGoForwardWorkspace()).toBe(true);
+
+		useTabStore.getState().setActiveWorkspace("ws-d", "/repo/d");
+
+		expect(useTabStore.getState().activeWorkspaceId).toBe("ws-d");
+		expect(useTabStore.getState().canGoForwardWorkspace()).toBe(false);
+		expect(useTabStore.getState().goBackWorkspace()).toBe(true);
+		expect(useTabStore.getState().activeWorkspaceId).toBe("ws-b");
+	});
+
+	test("removes cleaned up workspaces from back and forward history", () => {
+		const store = useTabStore.getState();
+		store.setActiveWorkspace("ws-a", "/repo/a");
+		store.setActiveWorkspace("ws-b", "/repo/b");
+		store.setActiveWorkspace("ws-c", "/repo/c");
+		store.goBackWorkspace();
+
+		useTabStore.getState().cleanupWorkspace("ws-a");
+		useTabStore.getState().cleanupWorkspace("ws-c");
+
+		expect(useTabStore.getState().canGoBackWorkspace()).toBe(false);
+		expect(useTabStore.getState().canGoForwardWorkspace()).toBe(false);
+	});
+
+	test("preserves back history when navigating through an empty sidebar segment", () => {
+		const store = useTabStore.getState();
+		store.setActiveWorkspace("ws-a", "/repo/a");
+
+		store.setSidebarSegment("prs");
+		expect(useTabStore.getState().activeWorkspaceId).toBeNull();
+
+		useTabStore.getState().setActiveWorkspace("ws-b", "/repo/b");
+
+		expect(useTabStore.getState().canGoBackWorkspace()).toBe(true);
+		expect(useTabStore.getState().goBackWorkspace()).toBe(true);
+		expect(useTabStore.getState().activeWorkspaceId).toBe("ws-a");
+		expect(useTabStore.getState().activeWorkspaceCwd).toBe("/repo/a");
 	});
 });
 

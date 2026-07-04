@@ -113,12 +113,42 @@ export interface WorkspaceMetadata {
 	targetBranch?: string;
 }
 
+export interface WorkspaceHistoryEntry {
+	id: string;
+	cwd: string;
+}
+
+const MAX_WORKSPACE_HISTORY = 50;
+
+function workspaceHistoryEntriesEqual(a: WorkspaceHistoryEntry, b: WorkspaceHistoryEntry): boolean {
+	return a.id === b.id && a.cwd === b.cwd;
+}
+
+function pushWorkspaceHistoryEntry(
+	stack: WorkspaceHistoryEntry[],
+	entry: WorkspaceHistoryEntry
+): WorkspaceHistoryEntry[] {
+	const last = stack.at(-1);
+	if (last && workspaceHistoryEntriesEqual(last, entry)) return stack;
+	return [...stack, entry].slice(-MAX_WORKSPACE_HISTORY);
+}
+
+function removeWorkspaceFromHistory(
+	stack: WorkspaceHistoryEntry[],
+	workspaceId: string
+): WorkspaceHistoryEntry[] {
+	return stack.filter((entry) => entry.id !== workspaceId);
+}
+
 // ─── Store interface ─────────────────────────────────────────────────────────
 
 interface TabStore {
 	// UI-level state (not pane-level)
 	activeWorkspaceId: string | null;
 	activeWorkspaceCwd: string;
+	workspaceBackStack: WorkspaceHistoryEntry[];
+	workspaceForwardStack: WorkspaceHistoryEntry[];
+	pendingWorkspaceHistoryEntry: WorkspaceHistoryEntry | null;
 	diffMode: "split" | "inline";
 	rightPanel: RightPanelState;
 	baseBranchByWorkspace: Record<string, string>;
@@ -157,8 +187,12 @@ interface TabStore {
 	setActiveWorkspace: (
 		workspaceId: string,
 		cwd: string,
-		options?: { rightPanel?: RightPanelState }
+		options?: { rightPanel?: RightPanelState; recordHistory?: boolean }
 	) => void;
+	canGoBackWorkspace: () => boolean;
+	canGoForwardWorkspace: () => boolean;
+	goBackWorkspace: () => boolean;
+	goForwardWorkspace: () => boolean;
 
 	// Terminal convenience
 	addTerminalTab: (workspaceId: string, cwd: string, title?: string) => string;
@@ -400,6 +434,9 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 	// UI-level state
 	activeWorkspaceId: null,
 	activeWorkspaceCwd: "",
+	workspaceBackStack: [],
+	workspaceForwardStack: [],
+	pendingWorkspaceHistoryEntry: null,
 	diffMode: "split",
 	markdownPreviewMode: "off",
 	rightPanel: defaultPanelForCwd(""),
@@ -524,6 +561,12 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 		set({
 			workspaceMetadata: rest,
 			activeWorkspaceBySegment: updatedBySegment,
+			workspaceBackStack: removeWorkspaceFromHistory(state.workspaceBackStack, workspaceId),
+			workspaceForwardStack: removeWorkspaceFromHistory(state.workspaceForwardStack, workspaceId),
+			pendingWorkspaceHistoryEntry:
+				state.pendingWorkspaceHistoryEntry?.id === workspaceId
+					? null
+					: state.pendingWorkspaceHistoryEntry,
 		});
 		if (state.activeWorkspaceId === workspaceId) {
 			set({ activeWorkspaceId: null, activeWorkspaceCwd: "", rightPanel: PANEL_CLOSED });
@@ -538,15 +581,35 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 		if (entry) {
 			get().setActiveWorkspace(entry.id, entry.cwd);
 		} else {
+			const current = get();
+			const pendingWorkspaceHistoryEntry = current.activeWorkspaceId
+				? { id: current.activeWorkspaceId, cwd: current.activeWorkspaceCwd }
+				: current.pendingWorkspaceHistoryEntry;
 			set({
 				activeWorkspaceId: null,
 				activeWorkspaceCwd: "",
 				rightPanel: PANEL_CLOSED,
+				pendingWorkspaceHistoryEntry,
 			});
 		}
 	},
 
 	setActiveWorkspace: (workspaceId, cwd, options) => {
+		const current = get();
+		const previousEntry = current.activeWorkspaceId
+			? { id: current.activeWorkspaceId, cwd: current.activeWorkspaceCwd }
+			: current.pendingWorkspaceHistoryEntry;
+		if (
+			options?.recordHistory !== false &&
+			previousEntry &&
+			previousEntry.id !== workspaceId
+		) {
+			set((s) => ({
+				workspaceBackStack: pushWorkspaceHistoryEntry(s.workspaceBackStack, previousEntry),
+				workspaceForwardStack: [],
+			}));
+		}
+
 		ps().ensureLayout(workspaceId);
 		const focused = ps().getFocusedPane(workspaceId);
 		if (!focused) {
@@ -574,6 +637,7 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 				activeWorkspaceId: workspaceId,
 				activeWorkspaceCwd: cwd,
 				rightPanel: options.rightPanel,
+				pendingWorkspaceHistoryEntry: null,
 			});
 			return;
 		}
@@ -583,6 +647,7 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 			activeWorkspaceId: workspaceId,
 			activeWorkspaceCwd: cwd,
 			rightPanel: panel,
+			pendingWorkspaceHistoryEntry: null,
 		});
 
 		// Only open PR overview on first activation (no existing tabs yet)
@@ -593,6 +658,48 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 				queueMicrotask(() => get().openPROverview(workspaceId, prCtx));
 			}
 		}
+	},
+
+	canGoBackWorkspace: () => get().workspaceBackStack.length > 0,
+
+	canGoForwardWorkspace: () => get().workspaceForwardStack.length > 0,
+
+	goBackWorkspace: () => {
+		const state = get();
+		const target = state.workspaceBackStack.at(-1);
+		if (!target) return false;
+		const currentEntry = state.activeWorkspaceId
+			? { id: state.activeWorkspaceId, cwd: state.activeWorkspaceCwd }
+			: state.pendingWorkspaceHistoryEntry;
+
+		set({
+			workspaceBackStack: state.workspaceBackStack.slice(0, -1),
+			workspaceForwardStack: currentEntry
+				? pushWorkspaceHistoryEntry(state.workspaceForwardStack, currentEntry)
+				: state.workspaceForwardStack,
+			pendingWorkspaceHistoryEntry: null,
+		});
+		get().setActiveWorkspace(target.id, target.cwd, { recordHistory: false });
+		return true;
+	},
+
+	goForwardWorkspace: () => {
+		const state = get();
+		const target = state.workspaceForwardStack.at(-1);
+		if (!target) return false;
+		const currentEntry = state.activeWorkspaceId
+			? { id: state.activeWorkspaceId, cwd: state.activeWorkspaceCwd }
+			: state.pendingWorkspaceHistoryEntry;
+
+		set({
+			workspaceForwardStack: state.workspaceForwardStack.slice(0, -1),
+			workspaceBackStack: currentEntry
+				? pushWorkspaceHistoryEntry(state.workspaceBackStack, currentEntry)
+				: state.workspaceBackStack,
+			pendingWorkspaceHistoryEntry: null,
+		});
+		get().setActiveWorkspace(target.id, target.cwd, { recordHistory: false });
+		return true;
 	},
 
 	addTerminalTab: (workspaceId, cwd, title) => {
@@ -1243,6 +1350,9 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 			workspaceMetadata,
 			sidebarSegment,
 			activeWorkspaceBySegment,
+			workspaceBackStack: [],
+			workspaceForwardStack: [],
+			pendingWorkspaceHistoryEntry: null,
 		});
 	},
 }));

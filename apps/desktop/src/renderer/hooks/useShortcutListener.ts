@@ -15,11 +15,22 @@ function isPlainPrintableKey(e: KeyboardEvent): boolean {
 	return e.key.length === 1 && !e.metaKey && !e.ctrlKey && !e.altKey;
 }
 
+function isTerminalControlBracketKey(e: KeyboardEvent): boolean {
+	if (!e.ctrlKey || e.metaKey || e.altKey) return false;
+	return (
+		e.code === "BracketLeft" ||
+		e.code === "BracketRight" ||
+		e.key === "[" ||
+		e.key === "]"
+	);
+}
+
 export function shouldSkipShortcutHandling(e: KeyboardEvent, target: HTMLElement | null): boolean {
 	if (!target) return false;
 
 	if (isTerminalElement(target)) {
 		if (isPlainPrintableKey(e)) return true;
+		if (isTerminalControlBracketKey(e)) return true;
 		if (e.metaKey || e.ctrlKey || e.altKey) return false;
 	}
 

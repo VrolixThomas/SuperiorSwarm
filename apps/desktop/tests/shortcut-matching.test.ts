@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { matchesShortcut } from "../src/renderer/hooks/useShortcutListener";
+import { matchesShortcut, shouldSkipShortcutHandling } from "../src/renderer/hooks/useShortcutListener";
 import type { Shortcut } from "../src/renderer/stores/action-store";
 
 function fakeEvent(overrides: Partial<KeyboardEvent>): KeyboardEvent {
@@ -12,6 +12,16 @@ function fakeEvent(overrides: Partial<KeyboardEvent>): KeyboardEvent {
 		altKey: false,
 		...overrides,
 	} as KeyboardEvent;
+}
+
+function fakeTarget({ xterm = false } = {}): HTMLElement {
+	return {
+		tagName: "DIV",
+		closest: (selector: string) => (xterm && selector === ".xterm" ? {} : null),
+		classList: {
+			contains: (className: string) => xterm && className === "xterm-helper-textarea",
+		},
+	} as unknown as HTMLElement;
 }
 
 describe("matchesShortcut", () => {
@@ -91,5 +101,27 @@ describe("matchesShortcut", () => {
 		const shortcut: Shortcut = { key: "BracketRight", meta: true, shift: true };
 		const event = fakeEvent({ key: "}", code: "BracketRight", metaKey: true, shiftKey: true });
 		expect(matchesShortcut(event, shortcut)).toBe(true);
+	});
+
+	test("matches Cmd+[ via code", () => {
+		const shortcut: Shortcut = { key: "BracketLeft", meta: true };
+		const event = fakeEvent({ key: "[", code: "BracketLeft", metaKey: true });
+		expect(matchesShortcut(event, shortcut)).toBe(true);
+	});
+
+	test("matches Cmd+] via code", () => {
+		const shortcut: Shortcut = { key: "BracketRight", meta: true };
+		const event = fakeEvent({ key: "]", code: "BracketRight", metaKey: true });
+		expect(matchesShortcut(event, shortcut)).toBe(true);
+	});
+
+	test("skips terminal Ctrl+[ so xterm receives Escape", () => {
+		const event = fakeEvent({ key: "[", code: "BracketLeft", ctrlKey: true });
+		expect(shouldSkipShortcutHandling(event, fakeTarget({ xterm: true }))).toBe(true);
+	});
+
+	test("skips terminal Ctrl+] so xterm receives the control sequence", () => {
+		const event = fakeEvent({ key: "]", code: "BracketRight", ctrlKey: true });
+		expect(shouldSkipShortcutHandling(event, fakeTarget({ xterm: true }))).toBe(true);
 	});
 });
