@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.12.0 (2026-07-04)
+
+### What's New
+
+SuperiorSwarm now supports external managers, starting with Hermes, so you can drive agents through your preferred workflow. Navigating between workspaces is faster with new history navigation that lets you jump back to where you were. This release also keeps your Atlassian and Bitbucket connections signed in through transient token refresh hiccups, so you stay logged in.
+
+### Changes
+
+- **feat(desktop): external manager (Hermes) support** (#124)
+- **Add workspace history navigation** (#122)
+- **fix(atlassian): keep auth on transient token refresh failures** (#123)
+
 ## v0.11.2 (2026-06-22)
 
 ### What's New
