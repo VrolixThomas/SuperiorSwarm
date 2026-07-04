@@ -2,6 +2,7 @@ import "./../../tests/preload-electron-mock";
 import { join } from "node:path";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { nanoid } from "nanoid";
+import { generateToken, hashToken } from "../../src/main/control-plane/auth";
 import { getDb } from "../../src/main/db";
 import {
 	crossRepoOrchestratorProjects,
@@ -101,4 +102,44 @@ export async function seedCrossRepoOrchestrator(opts: {
 		}
 	}
 	return id;
+}
+
+export async function seedExternalManager(opts: {
+	name?: string;
+	projectIds?: string[];
+	dispatchPolicy?: "confirm" | "auto";
+}): Promise<{ id: string; token: string }> {
+	const id = `mgr-${nanoid(8)}`;
+	const token = generateToken();
+	const now = new Date();
+	getDb()
+		.insert(crossRepoOrchestrators)
+		.values({
+			id,
+			name: opts.name ?? `manager-${id}`,
+			workDir: `/tmp/mgr-${id}`,
+			agentKind: "external",
+			status: "idle",
+			sortOrder: 0,
+			kind: "external",
+			tokenHash: hashToken(token),
+			dispatchPolicy: opts.dispatchPolicy ?? "confirm",
+			createdAt: now,
+			updatedAt: now,
+		})
+		.run();
+	if (opts.projectIds) {
+		for (let i = 0; i < opts.projectIds.length; i++) {
+			getDb()
+				.insert(crossRepoOrchestratorProjects)
+				.values({
+					orchestratorId: id,
+					projectId: opts.projectIds[i]!,
+					sortOrder: i,
+					createdAt: now,
+				})
+				.run();
+		}
+	}
+	return { id, token };
 }

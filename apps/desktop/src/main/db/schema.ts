@@ -558,6 +558,20 @@ export const crossRepoOrchestrators = sqliteTable("cross_repo_orchestrators", {
 	status: text("status").notNull().default("idle"),
 	colorIndex: integer("color_index"),
 	sortOrder: integer("sort_order").notNull(),
+	// "workspace" = in-app coordinator terminal (cwd-resolved). "external" = an
+	// outside agent runtime (e.g. Hermes) authenticated per-request via tokenHash.
+	kind: text("kind", { enum: ["workspace", "external"] })
+		.notNull()
+		.default("workspace"),
+	// SHA-256 hex of the manager token. Only set for kind="external"; the raw
+	// token is shown once at creation and never stored.
+	tokenHash: text("token_hash"),
+	// "confirm" gates dispatch_agent behind the app modal; "auto" skips it.
+	// remove_worktree always confirms regardless of policy.
+	dispatchPolicy: text("dispatch_policy", { enum: ["confirm", "auto"] })
+		.notNull()
+		.default("confirm"),
+	lastSeenAt: integer("last_seen_at", { mode: "timestamp" }),
 	createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
 	updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
 });

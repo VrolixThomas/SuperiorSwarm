@@ -284,6 +284,12 @@ export function CreateWorktreeModal() {
 									placeholder="feature-branch-name"
 									className="w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-2 text-[13px] text-[var(--text)] placeholder:text-[var(--text-quaternary)] focus:border-[var(--accent)] focus:outline-none"
 								/>
+								{branchNames.includes(branchName.trim()) && (
+									<span className="text-[12px] text-[var(--color-warning)]">
+										This branch already exists and will be checked out as-is. The base branch will
+										not apply.
+									</span>
+								)}
 							</div>
 
 							<div className="flex flex-col gap-1.5">

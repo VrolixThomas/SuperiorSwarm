@@ -6,6 +6,7 @@ import { branchesRouter } from "./branches";
 import { commentSolverRouter } from "./comment-solver";
 import { crossRepoOrchestratorsRouter } from "./cross-repo-orchestrators";
 import { diffRouter } from "./diff";
+import { externalManagersRouter } from "./external-managers";
 import { githubRouter } from "./github";
 import { globalMcpRouter } from "./global-mcp";
 import { linearRouter } from "./linear";
@@ -31,6 +32,7 @@ export const appRouter = router({
 	aiReview: aiReviewRouter,
 	commentSolver: commentSolverRouter,
 	crossRepoOrchestrators: crossRepoOrchestratorsRouter,
+	externalManagers: externalManagersRouter,
 	projects: projectsRouter,
 	quickActions: quickActionsRouter,
 	workspaces: workspacesRouter,

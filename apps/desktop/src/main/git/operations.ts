@@ -161,6 +161,38 @@ export async function checkoutBranchWorktree(
 	await git.raw(["worktree", "add", worktreePath, branch]);
 }
 
+/** True when `ref` (e.g. refs/heads/x or refs/remotes/origin/x) resolves in the repo. */
+export async function refExists(repoPath: string, ref: string): Promise<boolean> {
+	// No --quiet: simple-git only rejects when git writes to stderr, and
+	// --quiet suppresses the "Needed a single revision" message, which made
+	// missing refs read as existing.
+	try {
+		const out = await simpleGit(repoPath).raw(["rev-parse", "--verify", ref]);
+		return out.trim().length > 0;
+	} catch {
+		return false;
+	}
+}
+
+/**
+ * Add a worktree for a branch that already exists (locally, or as a
+ * remote-tracking ref — git's DWIM creates the tracking branch). Fetch is
+ * best-effort so local-only branches and offline repos still work.
+ */
+export async function addWorktreeForExistingBranch(
+	repoPath: string,
+	worktreePath: string,
+	branch: string
+): Promise<void> {
+	const git = simpleGit(repoPath);
+	try {
+		await git.fetch("origin", branch);
+	} catch {
+		// no remote / offline / local-only branch — DWIM on what we have
+	}
+	await git.raw(["worktree", "add", worktreePath, branch]);
+}
+
 export async function removeWorktree(repoPath: string, worktreePath: string): Promise<void> {
 	const git = simpleGit(repoPath);
 	let timer: NodeJS.Timeout | undefined;

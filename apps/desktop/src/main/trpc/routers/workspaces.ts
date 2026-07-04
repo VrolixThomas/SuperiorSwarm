@@ -93,6 +93,10 @@ export const workspacesRouter = router({
 				prIdentifier: matchingPR?.identifier ?? null,
 				createdAt: created.createdAt,
 				updatedAt: created.updatedAt,
+				// Surfaced so the UI can warn: the branch already existed and was
+				// checked out as-is — the requested base branch was not applied.
+				reusedExistingBranch: created.reusedExistingBranch,
+				baseBranch: created.baseBranch,
 			};
 		}),
 
