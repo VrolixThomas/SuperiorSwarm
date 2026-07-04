@@ -49,9 +49,11 @@ import {
 } from "../db/schema";
 import { reviewDrafts } from "../db/schema-ai-review";
 import {
+	addWorktreeForExistingBranch,
 	createWorktree,
 	removeWorktree as gitRemoveWorktree,
 	hasUncommittedChanges,
+	refExists,
 } from "../git/operations";
 import { symlinkSharedFiles } from "../shared-files";
 import { getDaemonClient } from "../terminal/daemon-instance";
@@ -90,10 +92,23 @@ export async function createWorkspace(
 		);
 	}
 
-	const baseBranch = input.baseBranch ?? project.defaultBranch;
+	let baseBranch = input.baseBranch ?? project.defaultBranch;
 	const path = join(worktreeBasePath(project.repoPath), input.branch);
 
-	await createWorktree(project.repoPath, path, input.branch, baseBranch);
+	// Reuse an existing branch (local, or already-fetched remote) instead of
+	// failing on `worktree add -b`. Mirrors the UI's checkoutExisting flow:
+	// the branch is its own base. Only never-fetched remote branches fall
+	// through to fresh-branch creation.
+	const reusedExistingBranch =
+		(await refExists(project.repoPath, `refs/heads/${input.branch}`)) ||
+		(await refExists(project.repoPath, `refs/remotes/origin/${input.branch}`));
+
+	if (reusedExistingBranch) {
+		await addWorktreeForExistingBranch(project.repoPath, path, input.branch);
+		baseBranch = input.branch;
+	} else {
+		await createWorktree(project.repoPath, path, input.branch, baseBranch);
+	}
 
 	const now = new Date();
 	const worktreeId = nanoid();
@@ -157,6 +172,7 @@ export async function createWorkspace(
 		path,
 		branch: input.branch,
 		baseBranch,
+		reusedExistingBranch,
 		createdAt: now,
 		updatedAt: now,
 	};
@@ -254,6 +270,7 @@ export async function listWorkspacesForProjects(input: {
 	const rows = db
 		.select(WORKSPACE_SELECT)
 		.from(workspaces)
+		.innerJoin(projects, eq(workspaces.projectId, projects.id))
 		.leftJoin(worktrees, eq(workspaces.worktreeId, worktrees.id))
 		.leftJoin(reviewDrafts, eq(workspaces.reviewDraftId, reviewDrafts.id))
 		.where(inArray(workspaces.projectId, input.projectIds))
@@ -619,7 +636,15 @@ export async function defaultSpawnFn(args: SpawnArgs): Promise<SpawnResult> {
 
 export type CallerContext =
 	| { kind: "workspace"; workspaceId: string; projectId: string }
-	| { kind: "xro"; xroId: string; linkedProjectIds: string[] };
+	| {
+			kind: "xro";
+			xroId: string;
+			linkedProjectIds: string[];
+			/** True when the xro row is an external manager (kind="external"). */
+			external?: boolean;
+			/** External managers only: whether dispatch_agent skips the confirm modal. */
+			dispatchPolicy?: "confirm" | "auto";
+	  };
 
 export async function setStatus(
 	ctx: CallerContext,

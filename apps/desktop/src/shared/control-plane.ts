@@ -81,6 +81,8 @@ export interface CreateWorkspaceResponse {
 	path: string;
 	branch: string;
 	baseBranch: string;
+	/** True when the branch already existed (locally or on origin) and was checked out instead of created. */
+	reusedExistingBranch: boolean;
 	createdAt: Date;
 	updatedAt: Date;
 }
@@ -191,6 +193,51 @@ export interface AgentMessageDto {
 
 export interface ReadMessagesResponse {
 	messages: AgentMessageDto[];
+}
+
+// ---- Events polling (external managers + non-Claude orchestrators) ----
+
+export const eventsPollRequestSchema = z.object({
+	afterSeq: z.coerce.number().int().min(0).default(0),
+	waitMs: z.coerce.number().int().min(0).max(55_000).default(25_000),
+});
+export type EventsPollRequest = z.infer<typeof eventsPollRequestSchema>;
+
+export interface EventsPollResponse {
+	/** Parsed jsonl event objects after the cursor. Unparseable lines are skipped. */
+	events: unknown[];
+	/** New cursor: total line count of the events file. */
+	nextSeq: number;
+}
+
+// ---- Projects (external manager discovery) ----
+
+export interface ProjectDto {
+	id: string;
+	name: string;
+	repoPath: string;
+	defaultBranch: string;
+	kind: "repo" | "folder";
+}
+
+export interface ListProjectsResponse {
+	projects: ProjectDto[];
+}
+
+// ---- Agent output snapshot ----
+
+export const agentOutputRequestSchema = z.object({
+	workspaceId: z.string().min(1),
+	lines: z.coerce.number().int().min(1).max(500).default(100),
+});
+export type AgentOutputRequest = z.infer<typeof agentOutputRequestSchema>;
+
+export interface AgentOutputResponse {
+	workspaceId: string;
+	/** ANSI-stripped tail of the workspace's most recent terminal scrollback; null if none. */
+	output: string | null;
+	/** When the scrollback row was last persisted; output may lag live terminal slightly. */
+	capturedAt: string | null;
 }
 
 // ---- Resume ----

@@ -88,9 +88,12 @@ export async function listCrossRepoOrchestrators(): Promise<
 	Array<CrossRepoOrchestrator & { linkedProjectIds: string[] }>
 > {
 	const db = getDb();
+	// External managers (kind="external") are listed via the external-managers
+	// service, not as coordinator terminals.
 	const rows = db
 		.select()
 		.from(crossRepoOrchestrators)
+		.where(eq(crossRepoOrchestrators.kind, "workspace"))
 		.orderBy(asc(crossRepoOrchestrators.sortOrder))
 		.all();
 	const links = db

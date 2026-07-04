@@ -4,6 +4,10 @@ import { z } from "zod";
 import type { ThemePref } from "../../../shared/types";
 import { getDb } from "../../db";
 import { appSettings } from "../../db/schema";
+import {
+	getOrchestratorAutoDispatch,
+	setOrchestratorAutoDispatch,
+} from "../../services/orchestrator-dispatch-policy";
 import { publicProcedure, router } from "../index";
 
 const themeSchema = z.enum(["system", "light", "dark"]);
@@ -39,6 +43,12 @@ export const settingsRouter = router({
 	setTheme: publicProcedure.input(themeSchema).mutation(({ input }) => {
 		writeTheme(input);
 		broadcastTheme(input);
+		return input;
+	}),
+
+	getOrchestratorAutoDispatch: publicProcedure.query(() => getOrchestratorAutoDispatch()),
+	setOrchestratorAutoDispatch: publicProcedure.input(z.boolean()).mutation(({ input }) => {
+		setOrchestratorAutoDispatch(input);
 		return input;
 	}),
 });

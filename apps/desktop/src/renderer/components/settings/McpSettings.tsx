@@ -2,7 +2,9 @@ import { useState } from "react";
 import type { CliPresetName } from "../../../shared/cli-preset";
 import { MCP_FORMATS, type McpFormat } from "../../../shared/mcp-format";
 import { trpc } from "../../trpc/client";
+import { ExternalManagersSettings } from "./ExternalManagersSettings";
 import { PageHeading, SectionLabel } from "./SectionHeading";
+import { ToggleRow } from "./ToggleRow";
 
 const CLI_LABELS: Record<CliPresetName, string> = {
 	claude: "Claude Code",
@@ -15,6 +17,7 @@ const FORMAT_LABELS: Record<McpFormat, string> = {
 	json: "JSON",
 	toml: "TOML",
 	opencode: "OpenCode",
+	yaml: "YAML",
 };
 
 function McpCliRow({
@@ -79,6 +82,30 @@ function McpCliRow({
 	);
 }
 
+function OrchestratorDispatchToggle() {
+	const utils = trpc.useUtils();
+	const { data: autoDispatch } = trpc.settings.getOrchestratorAutoDispatch.useQuery(undefined, {
+		staleTime: 5_000,
+	});
+	const setAutoDispatch = trpc.settings.setOrchestratorAutoDispatch.useMutation({
+		onSuccess: () => utils.settings.getOrchestratorAutoDispatch.invalidate(),
+	});
+
+	return (
+		<>
+			<SectionLabel>Dispatch approvals</SectionLabel>
+			<div className="overflow-hidden rounded-[10px] border border-[var(--border)] bg-[var(--bg-surface)]">
+				<ToggleRow
+					label="Auto-approve orchestrator dispatches"
+					description="Orchestrators and cross-repo coordinators dispatch agents without the approval modal. Dispatched agents skip permission prompts. External managers keep their per-manager policy."
+					checked={autoDispatch ?? false}
+					onChange={() => setAutoDispatch.mutate(!(autoDispatch ?? false))}
+				/>
+			</div>
+		</>
+	);
+}
+
 export function McpSettings() {
 	const utils = trpc.useUtils();
 
@@ -121,13 +148,19 @@ export function McpSettings() {
 	const browse = async () => {
 		const picked = await window.electron.dialog.openFile({
 			filters: [
-				{ name: "Config", extensions: ["json", "toml"] },
+				{ name: "Config", extensions: ["json", "toml", "yaml", "yml"] },
 				{ name: "All Files", extensions: ["*"] },
 			],
 		});
 		if (picked) {
 			setConfigPath(picked);
-			setFormat(picked.endsWith(".toml") ? "toml" : "json");
+			setFormat(
+				picked.endsWith(".toml")
+					? "toml"
+					: picked.endsWith(".yaml") || picked.endsWith(".yml")
+						? "yaml"
+						: "json"
+			);
 			setAddError(null);
 		}
 	};
@@ -249,6 +282,10 @@ export function McpSettings() {
 					{addError && <span className="text-[11px] text-[var(--color-danger)]">{addError}</span>}
 				</div>
 			</div>
+
+			<OrchestratorDispatchToggle />
+
+			<ExternalManagersSettings />
 
 			<SectionLabel>Manual setup</SectionLabel>
 			<div className="overflow-hidden rounded-[10px] border border-[var(--border)] bg-[var(--bg-surface)]">

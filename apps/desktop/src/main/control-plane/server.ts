@@ -1,13 +1,15 @@
 import { randomUUID } from "node:crypto";
-import { realpathSync } from "node:fs";
+import { closeSync, openSync, readSync, realpathSync, statSync } from "node:fs";
 import { type IncomingMessage, type Server, type ServerResponse, createServer } from "node:http";
-import { eq } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, ne } from "drizzle-orm";
 import {
 	ForbiddenError,
 	NotFoundError,
 	ResumeNotSupportedError,
+	agentOutputRequestSchema,
 	createWorkspaceRequestSchema,
 	dispatchAgentRequestSchema,
+	eventsPollRequestSchema,
 	getWorkspaceRequestSchema,
 	listWorkspacesRequestSchema,
 	readMessagesRequestSchema,
@@ -20,9 +22,12 @@ import { getDb } from "../db";
 import {
 	crossRepoOrchestratorProjects,
 	crossRepoOrchestrators,
+	projects,
+	terminalSessions,
 	workspaces,
 	worktrees,
 } from "../db/schema";
+import { getOrchestratorAutoDispatch } from "../services/orchestrator-dispatch-policy";
 import {
 	type CallerContext,
 	type SpawnFn,
@@ -37,7 +42,7 @@ import {
 	sendMessage,
 	setStatus,
 } from "../services/workspace-service";
-import { isValidBearer } from "./auth";
+import { hashToken, isValidBearer, tokenMatchesHash } from "./auth";
 import type { EventBus } from "./event-bus";
 import { crossRepoEventsFilePath, eventsFilePathForProject } from "./orchestrator-event-sink";
 import type { TaskRegistry } from "./task-registry";
@@ -54,7 +59,10 @@ function resolveProjectIdFromWorkspace(workspaceId: string): string | null {
 
 /**
  * Derive the effective projectId for a workspace-targeting route and verify the
- * caller is allowed to touch it. Returns null after writing the error response.
+ * caller is allowed to touch it. Returns the projectId together with the
+ * resolved caller so handlers make policy decisions (e.g. dispatch
+ * auto-approve) from the same identity that passed authorization, instead of
+ * resolving it a second time. Returns null after writing the error response.
  */
 function resolveScopedProjectId(
 	req: IncomingMessage,
@@ -62,7 +70,7 @@ function resolveScopedProjectId(
 	requestId: string,
 	explicitProjectId: string | undefined,
 	workspaceId: string
-): string | null {
+): { projectId: string; caller: CallerContext } | null {
 	let projectId = explicitProjectId;
 	if (!projectId) {
 		const derived = resolveProjectIdFromWorkspace(workspaceId);
@@ -79,7 +87,7 @@ function resolveScopedProjectId(
 		respond(res, 401, requestId, { error: "unauthorized" });
 		return null;
 	}
-	return projectId;
+	return { projectId, caller };
 }
 
 async function attachIfCallerIsOrchestrator(
@@ -154,11 +162,24 @@ function resolveCaller(
 	if (typeof xroId === "string" && xroId.length > 0) {
 		// Cross-repo orchestrator mode: look up in cross_repo_orchestrators.
 		const row = getDb()
-			.select({ id: crossRepoOrchestrators.id })
+			.select({
+				id: crossRepoOrchestrators.id,
+				kind: crossRepoOrchestrators.kind,
+				tokenHash: crossRepoOrchestrators.tokenHash,
+				dispatchPolicy: crossRepoOrchestrators.dispatchPolicy,
+			})
 			.from(crossRepoOrchestrators)
 			.where(eq(crossRepoOrchestrators.id, xroId))
 			.get();
 		if (!row) return { error: "unknown cross-repo orchestrator" };
+		if (row.kind === "external") {
+			// External managers must prove identity on every request — the xro id
+			// alone is guessable by anything holding the control token.
+			const managerToken = req.headers["x-manager-token"];
+			if (typeof managerToken !== "string" || !tokenMatchesHash(managerToken, row.tokenHash)) {
+				return { error: "invalid manager token" };
+			}
+		}
 		const linkedProjectIds = getDb()
 			.select({ projectId: crossRepoOrchestratorProjects.projectId })
 			.from(crossRepoOrchestratorProjects)
@@ -168,7 +189,13 @@ function resolveCaller(
 		if (projectIdHint && !linkedProjectIds.includes(projectIdHint)) {
 			return { error: "project not linked to this cross-repo orchestrator" };
 		}
-		return { kind: "xro", xroId, linkedProjectIds };
+		return {
+			kind: "xro",
+			xroId,
+			linkedProjectIds,
+			external: row.kind === "external",
+			dispatchPolicy: row.dispatchPolicy,
+		};
 	}
 
 	if (typeof wsId !== "string" || wsId.length === 0) {
@@ -184,6 +211,96 @@ function resolveCaller(
 		return { error: "workspace/project mismatch" };
 	}
 	return { kind: "workspace", workspaceId: wsId, projectId: row.projectId };
+}
+
+function isOrchestratorWorkspace(workspaceId: string): boolean {
+	const row = getDb()
+		.select({ isOrchestrator: workspaces.isOrchestrator })
+		.from(workspaces)
+		.where(eq(workspaces.id, workspaceId))
+		.get();
+	return row?.isOrchestrator === true;
+}
+
+/**
+ * Resolve the events jsonl the caller may poll: xros (incl. external managers)
+ * get their aggregated file; workspace callers must be the project orchestrator.
+ */
+function eventsFileForCaller(caller: CallerContext): string | null {
+	if (caller.kind === "xro") return crossRepoEventsFilePath(caller.xroId);
+	if (!isOrchestratorWorkspace(caller.workspaceId)) return null;
+	return eventsFilePathForProject(caller.projectId);
+}
+
+/**
+ * Incremental reader for an append-only \n-terminated jsonl file. refresh()
+ * reads only bytes appended since the last call, so a long-poll loop does not
+ * re-read the whole file every tick. A shrink (orchestrator reset) discards
+ * state and re-reads from the start. Splitting on \n at the byte level is safe
+ * for UTF-8: 0x0a never occurs inside a multibyte sequence.
+ */
+class EventFileTail {
+	private offset = 0;
+	private partial = Buffer.alloc(0);
+	private lines: string[] = [];
+
+	constructor(private readonly path: string) {}
+
+	refresh(): string[] {
+		let size = 0;
+		try {
+			size = statSync(this.path).size;
+		} catch {
+			size = 0;
+		}
+		if (size < this.offset) {
+			this.offset = 0;
+			this.partial = Buffer.alloc(0);
+			this.lines = [];
+		}
+		if (size === this.offset) return this.lines;
+		let appended: Buffer;
+		try {
+			const fd = openSync(this.path, "r");
+			try {
+				appended = Buffer.alloc(size - this.offset);
+				let read = 0;
+				while (read < appended.length) {
+					const n = readSync(fd, appended, read, appended.length - read, this.offset + read);
+					if (n === 0) break;
+					read += n;
+				}
+				appended = appended.subarray(0, read);
+			} finally {
+				closeSync(fd);
+			}
+		} catch {
+			return this.lines;
+		}
+		this.offset += appended.length;
+		const chunk = Buffer.concat([this.partial, appended]);
+		let start = 0;
+		for (let i = 0; i < chunk.length; i++) {
+			if (chunk[i] === 0x0a) {
+				if (i > start) this.lines.push(chunk.subarray(start, i).toString("utf-8"));
+				start = i + 1;
+			}
+		}
+		this.partial = Buffer.from(chunk.subarray(start));
+		return this.lines;
+	}
+}
+
+function stripAnsi(s: string): string {
+	return (
+		s
+			// biome-ignore lint/suspicious/noControlCharactersInRegex: stripping terminal output requires matching ESC/BEL
+			.replace(/\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)/g, "") // OSC sequences
+			// biome-ignore lint/suspicious/noControlCharactersInRegex: stripping terminal output requires matching ESC/BEL
+			.replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/g, "") // CSI sequences
+			// biome-ignore lint/suspicious/noControlCharactersInRegex: stripping terminal output requires matching ESC/BEL
+			.replace(/\u001b[@-Z\\^_]/g, "") // remaining C1 escapes
+	);
 }
 
 export function createControlPlaneServer(deps: ControlPlaneDeps): Server {
@@ -236,6 +353,9 @@ async function handleRequest(
 		switch (route) {
 			case "GET /context.resolve": {
 				const cwd = url.searchParams.get("cwd") ?? "";
+				// Task tokens outrank manager tokens: a review/solve/quick-action
+				// launch that inherits SUPERIORSWARM_MANAGER_TOKEN from its
+				// environment must still resolve as its task, not as the manager.
 				const taskToken = url.searchParams.get("taskToken");
 				if (taskToken) {
 					const reg = deps.taskRegistry.consume(taskToken);
@@ -243,6 +363,45 @@ async function handleRequest(
 						respond(res, 200, requestId, reg);
 						return;
 					}
+				}
+				// External manager bootstrap: identity comes from the token, not cwd.
+				// Header only, never a query param — req.url is logged on every
+				// response and must not contain the raw secret.
+				const managerToken = req.headers["x-manager-token"];
+				if (typeof managerToken === "string" && managerToken.length > 0) {
+					const manager = getDb()
+						.select({ id: crossRepoOrchestrators.id })
+						.from(crossRepoOrchestrators)
+						.where(
+							and(
+								eq(crossRepoOrchestrators.kind, "external"),
+								eq(crossRepoOrchestrators.tokenHash, hashToken(managerToken))
+							)
+						)
+						.get();
+					if (!manager) {
+						respond(res, 401, requestId, { error: "unauthorized" });
+						return;
+					}
+					getDb()
+						.update(crossRepoOrchestrators)
+						.set({ lastSeenAt: new Date() })
+						.where(eq(crossRepoOrchestrators.id, manager.id))
+						.run();
+					const linkedProjectIds = getDb()
+						.select({ projectId: crossRepoOrchestratorProjects.projectId })
+						.from(crossRepoOrchestratorProjects)
+						.where(eq(crossRepoOrchestratorProjects.orchestratorId, manager.id))
+						.all()
+						.map((r) => r.projectId);
+					respond(res, 200, requestId, {
+						mode: "external-manager",
+						crossRepoOrchestratorId: manager.id,
+						linkedProjectIds,
+						isOrchestrator: true,
+						modeContext: {},
+					});
+					return;
 				}
 				let realCwd = cwd;
 				try {
@@ -280,12 +439,16 @@ async function handleRequest(
 					return;
 				}
 				if (realCwd) {
+					// External-manager rows never resolve by cwd — without a manager
+					// token the session could not authenticate any follow-up call, so
+					// matching one here would only produce a broken half-session.
 					const xro = getDb()
 						.select({
 							id: crossRepoOrchestrators.id,
 							workDir: crossRepoOrchestrators.workDir,
 						})
 						.from(crossRepoOrchestrators)
+						.where(ne(crossRepoOrchestrators.kind, "external"))
 						.all()
 						.find((r) => {
 							try {
@@ -364,19 +527,19 @@ async function handleRequest(
 					respond(res, 400, requestId, { error: "validation", details: parsed.error.flatten() });
 					return;
 				}
-				const getProjectId = resolveScopedProjectId(
+				const getScope = resolveScopedProjectId(
 					req,
 					res,
 					requestId,
 					parsed.data.projectId,
 					parsed.data.workspaceId
 				);
-				if (!getProjectId) return;
+				if (!getScope) return;
 				respond(
 					res,
 					200,
 					requestId,
-					await getWorkspace({ ...parsed.data, projectId: getProjectId })
+					await getWorkspace({ ...parsed.data, projectId: getScope.projectId })
 				);
 				return;
 			}
@@ -404,24 +567,41 @@ async function handleRequest(
 					respond(res, 400, requestId, { error: "validation", details: parsed.error.flatten() });
 					return;
 				}
-				const dispatchProjectId = resolveScopedProjectId(
+				const dispatchScope = resolveScopedProjectId(
 					req,
 					res,
 					requestId,
 					parsed.data.projectId,
 					parsed.data.workspaceId
 				);
-				if (!dispatchProjectId) return;
+				if (!dispatchScope) return;
+				const { projectId: dispatchProjectId, caller: dispatchCaller } = dispatchScope;
 				const ws = await getWorkspace({
 					projectId: dispatchProjectId,
 					workspaceId: parsed.data.workspaceId,
 				});
-				const allowed = await deps.confirm({
-					kind: "dispatch",
-					workspaceName: ws.name,
-					branch: ws.branch,
-					summary: `Run "${parsed.data.cliPreset ?? "claude"}" with prompt: ${parsed.data.prompt.slice(0, 200)}`,
-				});
+				// Auto-approval, two independent opt-ins (remove_worktree is never
+				// auto-approved):
+				//  - external managers whose per-manager dispatch_policy is "auto"
+				//  - in-app orchestrators (per-repo orchestrator workspaces and
+				//    cross-repo coordinators) when the global orchestratorAutoDispatch
+				//    setting is on. The global setting deliberately does NOT extend to
+				//    external managers — their policy stays per-manager.
+				let autoApproved = false;
+				if (dispatchCaller.kind === "xro" && dispatchCaller.external === true) {
+					autoApproved = dispatchCaller.dispatchPolicy === "auto";
+				} else if (getOrchestratorAutoDispatch()) {
+					autoApproved =
+						dispatchCaller.kind === "xro" || isOrchestratorWorkspace(dispatchCaller.workspaceId);
+				}
+				const allowed =
+					autoApproved ||
+					(await deps.confirm({
+						kind: "dispatch",
+						workspaceName: ws.name,
+						branch: ws.branch,
+						summary: `Run "${parsed.data.cliPreset ?? "claude"}" with prompt: ${parsed.data.prompt.slice(0, 200)}`,
+					}));
 				if (!allowed) {
 					respond(res, 499, requestId, { error: "cancelled_by_user" });
 					return;
@@ -441,14 +621,15 @@ async function handleRequest(
 					respond(res, 400, requestId, { error: "validation", details: parsed.error.flatten() });
 					return;
 				}
-				const removeProjectId = resolveScopedProjectId(
+				const removeScope = resolveScopedProjectId(
 					req,
 					res,
 					requestId,
 					parsed.data.projectId,
 					parsed.data.workspaceId
 				);
-				if (!removeProjectId) return;
+				if (!removeScope) return;
+				const removeProjectId = removeScope.projectId;
 				const ws = await getWorkspace({
 					projectId: removeProjectId,
 					workspaceId: parsed.data.workspaceId,
@@ -530,6 +711,133 @@ async function handleRequest(
 					return;
 				}
 				respond(res, 200, requestId, await resumeAgent(caller, parsed.data));
+				return;
+			}
+
+			case "GET /events.poll": {
+				const parsed = eventsPollRequestSchema.safeParse({
+					afterSeq: url.searchParams.get("afterSeq") ?? undefined,
+					waitMs: url.searchParams.get("waitMs") ?? undefined,
+				});
+				if (!parsed.success) {
+					respond(res, 400, requestId, { error: "validation", details: parsed.error.flatten() });
+					return;
+				}
+				const caller = resolveCaller(req, null);
+				if ("error" in caller) {
+					respond(res, 401, requestId, { error: "unauthorized" });
+					return;
+				}
+				const eventsFile = eventsFileForCaller(caller);
+				if (!eventsFile) {
+					respond(res, 403, requestId, { error: "forbidden" });
+					return;
+				}
+				let afterSeq = parsed.data.afterSeq;
+				const deadline = Date.now() + parsed.data.waitMs;
+				let clientGone = false;
+				req.on("close", () => {
+					clientGone = true;
+				});
+				const tail = new EventFileTail(eventsFile);
+				for (;;) {
+					const lines = tail.refresh();
+					// File shrank (orchestrator reset) — restart the cursor.
+					if (lines.length < afterSeq) afterSeq = 0;
+					if (lines.length > afterSeq || Date.now() >= deadline) {
+						if (clientGone) return;
+						const events = lines
+							.slice(afterSeq)
+							.map((l) => {
+								try {
+									return JSON.parse(l) as unknown;
+								} catch {
+									return null;
+								}
+							})
+							.filter((v) => v !== null);
+						respond(res, 200, requestId, { events, nextSeq: lines.length });
+						return;
+					}
+					if (clientGone) return;
+					await new Promise<void>((r) => setTimeout(r, 500));
+				}
+			}
+
+			case "GET /projects.list": {
+				const caller = resolveCaller(req, null);
+				if ("error" in caller) {
+					respond(res, 401, requestId, { error: "unauthorized" });
+					return;
+				}
+				const ids = caller.kind === "xro" ? caller.linkedProjectIds : [caller.projectId];
+				const rows =
+					ids.length > 0
+						? getDb()
+								.select({
+									id: projects.id,
+									name: projects.name,
+									repoPath: projects.repoPath,
+									defaultBranch: projects.defaultBranch,
+									kind: projects.kind,
+								})
+								.from(projects)
+								.where(inArray(projects.id, ids))
+								.all()
+						: [];
+				respond(res, 200, requestId, { projects: rows });
+				return;
+			}
+
+			case "GET /workspaces.agent_output": {
+				const parsed = agentOutputRequestSchema.safeParse({
+					workspaceId: url.searchParams.get("workspaceId"),
+					lines: url.searchParams.get("lines") ?? undefined,
+				});
+				if (!parsed.success) {
+					respond(res, 400, requestId, { error: "validation", details: parsed.error.flatten() });
+					return;
+				}
+				const outputScope = resolveScopedProjectId(
+					req,
+					res,
+					requestId,
+					undefined,
+					parsed.data.workspaceId
+				);
+				if (!outputScope) return;
+				// v1 source: the workspace's most recently flushed terminal scrollback.
+				// Persisted on the daemon's cadence, so it may lag the live terminal.
+				// Sessions without scrollback (never-flushed panes) are excluded so a
+				// freshly opened shell can't shadow the agent terminal with null.
+				const session = getDb()
+					.select({
+						scrollback: terminalSessions.scrollback,
+						updatedAt: terminalSessions.updatedAt,
+					})
+					.from(terminalSessions)
+					.where(
+						and(
+							eq(terminalSessions.workspaceId, parsed.data.workspaceId),
+							isNotNull(terminalSessions.scrollback)
+						)
+					)
+					.orderBy(desc(terminalSessions.updatedAt))
+					.get();
+				if (!session?.scrollback) {
+					respond(res, 200, requestId, {
+						workspaceId: parsed.data.workspaceId,
+						output: null,
+						capturedAt: null,
+					});
+					return;
+				}
+				const tail = stripAnsi(session.scrollback).split("\n").slice(-parsed.data.lines).join("\n");
+				respond(res, 200, requestId, {
+					workspaceId: parsed.data.workspaceId,
+					output: tail,
+					capturedAt: session.updatedAt.toISOString(),
+				});
 				return;
 			}
 

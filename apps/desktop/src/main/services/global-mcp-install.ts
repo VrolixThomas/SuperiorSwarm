@@ -7,6 +7,7 @@ import { mergeKey, removeKey } from "../ai-review/mcp-config-merge";
 import { getDb } from "../db";
 import * as schema from "../db/schema";
 import { mergeTomlKey, removeTomlKey } from "./toml-merge";
+import { mergeYamlKey, removeYamlKey } from "./yaml-merge";
 
 interface PathOpts {
 	home?: string;
@@ -35,14 +36,18 @@ function formatForCli(cli: CliPresetName): McpFormat {
 	return "json";
 }
 
-function entryFor(format: McpFormat, launcherPath: string): Record<string, unknown> {
+export function entryFor(
+	format: McpFormat,
+	launcherPath: string,
+	env?: Record<string, string>
+): Record<string, unknown> {
 	if (format === "opencode") return { type: "local", command: [launcherPath] };
-	return { command: launcherPath, args: [] };
+	return { command: launcherPath, args: [], ...(env ? { env } : {}) };
 }
 
-function keyPathFor(format: McpFormat): string[] {
+export function keyPathFor(format: McpFormat): string[] {
 	if (format === "opencode") return ["mcp", "superiorswarm"];
-	if (format === "toml") return ["mcp_servers", "superiorswarm"];
+	if (format === "toml" || format === "yaml") return ["mcp_servers", "superiorswarm"];
 	return ["mcpServers", "superiorswarm"];
 }
 
@@ -50,12 +55,15 @@ function keyPathFor(format: McpFormat): string[] {
 export function installEntryToConfig(
 	configPath: string,
 	format: McpFormat,
-	launcherPath: string
+	launcherPath: string,
+	env?: Record<string, string>
 ): void {
-	const entry = entryFor(format, launcherPath);
+	const entry = entryFor(format, launcherPath, env);
 	const keyPath = keyPathFor(format);
 	if (format === "toml") {
 		mergeTomlKey(configPath, keyPath, entry);
+	} else if (format === "yaml") {
+		mergeYamlKey(configPath, keyPath, entry);
 	} else {
 		mergeKey(configPath, keyPath, entry);
 	}
@@ -67,6 +75,8 @@ export function uninstallEntryFromConfig(configPath: string, format: McpFormat):
 	const keyPath = keyPathFor(format);
 	if (format === "toml") {
 		removeTomlKey(configPath, keyPath);
+	} else if (format === "yaml") {
+		removeYamlKey(configPath, keyPath);
 	} else {
 		removeKey(configPath, keyPath, {
 			fileExistedBefore: true,

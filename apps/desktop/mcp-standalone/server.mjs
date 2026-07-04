@@ -39,8 +39,16 @@ if (!discovery) {
 async function resolveContext(taskToken) {
 	const params = new URLSearchParams({ cwd: process.cwd() });
 	if (taskToken) params.set("taskToken", taskToken);
+	const headers = { Authorization: `Bearer ${discovery.token}` };
+	// External managers (e.g. Hermes) authenticate via token, not cwd. Sent as
+	// a header, never a query param — the control plane logs request URLs. A
+	// task token wins: a task launch that inherited the manager env var must
+	// resolve as its task, not as the manager.
+	if (!taskToken && process.env.SUPERIORSWARM_MANAGER_TOKEN) {
+		headers["X-Manager-Token"] = process.env.SUPERIORSWARM_MANAGER_TOKEN;
+	}
 	const res = await fetch(`http://127.0.0.1:${discovery.port}/context.resolve?${params}`, {
-		headers: { Authorization: `Bearer ${discovery.token}` },
+		headers,
 	});
 	if (!res.ok) throw new Error(`/context.resolve ${res.status}`);
 	return res.json();
@@ -72,7 +80,11 @@ const isWorkspaceAgentMode = MODE === "workspace-agent";
 const isSolverMode = MODE === "solve";
 const isQuickActionMode = MODE === "quick-action-setup";
 const isReviewMode = MODE === "review";
-const isCrossRepoMode = MODE === "cross-repo-orchestrator";
+const isExternalManagerMode = MODE === "external-manager";
+// External managers reuse the cross-repo wire protocol (xro header, projectless
+// requests, project_id-scoped create_worktree) — fold them into isCrossRepoMode
+// and differentiate only instructions/reminders/auth header.
+const isCrossRepoMode = MODE === "cross-repo-orchestrator" || isExternalManagerMode;
 const isWorkspaceAgentOrCrossRepo = isWorkspaceAgentMode || isCrossRepoMode;
 
 // Open DB only when a DB path was supplied (review/solve/quick-action modes).
@@ -88,6 +100,7 @@ const ORCHESTRATOR_INSTRUCTIONS = `You are the ORCHESTRATOR workspace for this S
 
 REQUIRED FIRST ACTION (do this before any user task work):
   Use the Monitor tool with command="tail -F -n 0 '${ORCHESTRATOR_EVENTS_PATH ?? ""}'" and persistent=true.
+  (No Monitor/background-tail tool in your CLI? Poll wait_for_events({after_seq}) in a loop instead.)
 
 (The events file lives in SuperiorSwarm's app data dir — outside your worktree — so it never appears in git status.)
 
@@ -111,6 +124,7 @@ const CROSS_REPO_ORCH_INSTRUCTIONS = `You are a CROSS-REPO ORCHESTRATOR. You coo
 
 REQUIRED FIRST ACTION (do this before any user task work):
   Use the Monitor tool with command="tail -F -n 0 '${ORCHESTRATOR_EVENTS_PATH ?? ""}'" and persistent=true.
+  (No Monitor/background-tail tool in your CLI? Poll wait_for_events({after_seq}) in a loop instead.)
 
 (The events file aggregates status/message events from ALL workspaces in your linked projects.)
 
@@ -126,6 +140,22 @@ Coordination tools (superiorswarm namespace):
   - create_worktree({projectId, branch, baseBranch?}) — REQUIRED projectId, must be one of your linked IDs
   - dispatch_agent({workspaceId, prompt, ...}) — workspaceId implies project
   - remove_worktree({workspaceId, force?}) — workspaceId implies project`;
+
+const EXTERNAL_MANAGER_INSTRUCTIONS = `You are an EXTERNAL MANAGER for SuperiorSwarm. You coordinate agent workspaces across your linked projects: ${JSON.stringify(LINKED_PROJECT_IDS)}.
+
+Coordination loop:
+  1. list_projects / list_workspaces to see current state.
+  2. create_worktree({project_id, branch}) then dispatch_agent({workspace_id, prompt}) to start work.
+  3. wait_for_events({after_seq}) — long-polls the coordination event stream (default 25s). Call it again with the returned next_seq. Events:
+       {"event":"status","workspaceId":"...","phase":"idle|working|blocked|done","statusText":"...","needs":"...","ts":"..."}
+       {"event":"message","messageId":"...","from":"...","to":"...|null","kind":"note|question|result|resume","content":"...","ts":"..."}
+  4. Child phase=blocked → resume_agent({workspace_id, message}) with the missing input from 'needs'. Child phase=done → verify (get_workspace, get_agent_output) and resume_agent with the next task, or wrap up.
+  5. get_agent_output({workspace_id}) shows a child's recent terminal output when its status is unclear or it has gone silent.
+
+Notes:
+  - dispatch_agent may require the user to approve in the SuperiorSwarm app unless auto-dispatch is enabled for this manager.
+  - remove_worktree always requires in-app approval.
+  - If you have no pending work, prefer scheduled/periodic wait_for_events checks over tight polling loops.`;
 
 const CHILD_INSTRUCTIONS = `You are a CHILD workspace in a SuperiorSwarm project. The orchestrator workspace coordinates work across the project.
 
@@ -144,9 +174,11 @@ const server = new McpServer(
 			? IS_ORCHESTRATOR
 				? ORCHESTRATOR_INSTRUCTIONS
 				: CHILD_INSTRUCTIONS
-			: isCrossRepoMode
-				? CROSS_REPO_ORCH_INSTRUCTIONS
-				: undefined,
+			: isExternalManagerMode
+				? EXTERNAL_MANAGER_INSTRUCTIONS
+				: isCrossRepoMode
+					? CROSS_REPO_ORCH_INSTRUCTIONS
+					: undefined,
 	}
 );
 
@@ -154,11 +186,13 @@ const server = new McpServer(
 // agent re-sees its coordination contract on every MCP interaction. MCP server
 // `instructions` are sent at initialize and may be summarized away on long
 // sessions; tool-result reminders ride along with every call.
-const ROLE_REMINDER = isCrossRepoMode
-	? `[superiorswarm] CROSS-REPO ORCHESTRATOR reminder: keep Monitor(tail -F -n 0 '${ORCHESTRATOR_EVENTS_PATH ?? ""}', persistent=true) running. Pass projectId to create_worktree.`
-	: IS_ORCHESTRATOR
-		? `[superiorswarm] ORCHESTRATOR reminder: keep Monitor(tail -F -n 0 '${ORCHESTRATOR_EVENTS_PATH ?? ""}', persistent=true) running. On child phase=done/blocked, call resume_agent.`
-		: "[superiorswarm] CHILD reminder: publish set_status at each phase transition; use send_message for questions to the orchestrator.";
+const ROLE_REMINDER = isExternalManagerMode
+	? "[superiorswarm] EXTERNAL MANAGER reminder: poll wait_for_events with your last next_seq; on child phase=done/blocked, call resume_agent. Pass project_id to create_worktree."
+	: isCrossRepoMode
+		? `[superiorswarm] CROSS-REPO ORCHESTRATOR reminder: keep Monitor(tail -F -n 0 '${ORCHESTRATOR_EVENTS_PATH ?? ""}', persistent=true) running. Pass projectId to create_worktree.`
+		: IS_ORCHESTRATOR
+			? `[superiorswarm] ORCHESTRATOR reminder: keep Monitor(tail -F -n 0 '${ORCHESTRATOR_EVENTS_PATH ?? ""}', persistent=true) running. On child phase=done/blocked, call resume_agent.`
+			: "[superiorswarm] CHILD reminder: publish set_status at each phase transition; use send_message for questions to the orchestrator.";
 
 function withRoleReminder(handler) {
 	return async (...args) => {
@@ -898,9 +932,15 @@ if (isWorkspaceAgentOrCrossRepo) {
 		try {
 			// In cross-repo mode we identify via X-Cross-Repo-Orchestrator-Id.
 			// In workspace-agent mode we identify via X-Workspace-Id.
-			// Never send both at once.
+			// Never send both at once. External managers additionally prove
+			// identity per-request with X-Manager-Token.
 			const callerHeader = isCrossRepoMode
-				? { "X-Cross-Repo-Orchestrator-Id": CROSS_REPO_ID }
+				? {
+						"X-Cross-Repo-Orchestrator-Id": CROSS_REPO_ID,
+						...(isExternalManagerMode && process.env.SUPERIORSWARM_MANAGER_TOKEN
+							? { "X-Manager-Token": process.env.SUPERIORSWARM_MANAGER_TOKEN }
+							: {}),
+					}
 				: { "X-Workspace-Id": WORKSPACE_ID };
 			const res = await fetch(`${baseUrl}${path}`, {
 				method,
@@ -941,14 +981,16 @@ if (isWorkspaceAgentOrCrossRepo) {
 	server.tool(
 		"create_worktree",
 		isCrossRepoMode
-			? "Create a new worktree in one of your linked projects. project_id is required."
-			: "Create a new app-managed worktree for a new branch.",
+			? "Create an app-managed worktree in one of your linked projects (project_id required). If the branch already exists (locally or on origin) it is checked out instead of created; the response sets reusedExistingBranch=true and base_branch is ignored."
+			: "Create an app-managed worktree. If the branch already exists (locally or on origin) it is checked out instead of created; the response sets reusedExistingBranch=true and base_branch is ignored.",
 		{
-			branch: z.string().describe("Branch name to create"),
+			branch: z.string().describe("Branch name to create or check out"),
 			base_branch: z
 				.string()
 				.optional()
-				.describe("Branch to fork from. Defaults to project default branch."),
+				.describe(
+					"Branch to fork from when creating a NEW branch. Defaults to project default branch. Ignored when the branch already exists."
+				),
 			...(isCrossRepoMode
 				? { project_id: z.string().describe("One of your linked project IDs") }
 				: {}),
@@ -1105,6 +1147,63 @@ if (isWorkspaceAgentOrCrossRepo) {
 				message,
 			})
 	);
+
+	// Coordination-observer tools: orchestrators (any CLI, incl. those without a
+	// persistent tail tool) and external managers. Children don't get them.
+	if (IS_ORCHESTRATOR || isCrossRepoMode) {
+		server.tool(
+			"wait_for_events",
+			"Long-poll the coordination event stream. Returns status/message events after your cursor plus next_seq. Call again with after_seq=next_seq. Blocks up to timeout_s (default 25) waiting for new events; returns immediately when events exist.",
+			{
+				after_seq: z
+					.number()
+					.int()
+					.min(0)
+					.optional()
+					.describe("Cursor from the previous call's next_seq. Omit or 0 to read from the start."),
+				timeout_s: z
+					.number()
+					.int()
+					.min(0)
+					.max(55)
+					.optional()
+					.describe("Seconds to wait for new events before returning empty (default 25)"),
+			},
+			async ({ after_seq, timeout_s }) => {
+				const params = new URLSearchParams();
+				if (after_seq) params.set("afterSeq", String(after_seq));
+				if (timeout_s !== undefined) params.set("waitMs", String(timeout_s * 1000));
+				return call("GET", `/events.poll?${params.toString()}`);
+			}
+		);
+
+		server.tool(
+			"list_projects",
+			"List the projects this manager/orchestrator can operate on (id, name, repoPath, defaultBranch).",
+			{},
+			async () => call("GET", "/projects.list")
+		);
+
+		server.tool(
+			"get_agent_output",
+			"Get the recent terminal output (ANSI-stripped tail) of a workspace's agent session. Use when a child's status is unclear or it has gone silent. Output is a persisted snapshot and may lag the live terminal slightly.",
+			{
+				workspace_id: z.string().describe("Workspace ID to inspect"),
+				lines: z
+					.number()
+					.int()
+					.min(1)
+					.max(500)
+					.optional()
+					.describe("Number of trailing lines to return (default 100)"),
+			},
+			async ({ workspace_id, lines }) => {
+				const params = new URLSearchParams({ workspaceId: workspace_id });
+				if (lines !== undefined) params.set("lines", String(lines));
+				return call("GET", `/workspaces.agent_output?${params.toString()}`);
+			}
+		);
+	}
 }
 
 // Start the server

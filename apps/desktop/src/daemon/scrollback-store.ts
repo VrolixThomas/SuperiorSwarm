@@ -16,14 +16,20 @@ export class ScrollbackStore {
 			this.db = dbOrPath;
 			this.ownsDb = false;
 		}
-		this.stmt = this.db.prepare("UPDATE terminal_sessions SET scrollback = ? WHERE id = ?");
+		// Stamp updated_at (epoch seconds, matching drizzle's timestamp mode) so
+		// "most recently updated session" reflects actual output recency — the
+		// control plane's agent_output picks its session by this column.
+		this.stmt = this.db.prepare(
+			"UPDATE terminal_sessions SET scrollback = ?, updated_at = ? WHERE id = ?"
+		);
 	}
 
 	flush(sessions: Array<{ id: string; buffer: string }>): void {
+		const now = Math.floor(Date.now() / 1000);
 		const tx = this.db.transaction(() => {
 			for (const { id, buffer } of sessions) {
 				if (buffer.length > 0) {
-					this.stmt.run(buffer, id);
+					this.stmt.run(buffer, now, id);
 				}
 			}
 		});

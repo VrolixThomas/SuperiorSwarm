@@ -351,6 +351,13 @@
       "when": 1781895905158,
       "tag": "0049_add_custom_mcp_install",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "6",
+      "when": 1783106508157,
+      "tag": "0050_add_external_manager_support",
+      "breakpoints": true
     }
   ]
 }
