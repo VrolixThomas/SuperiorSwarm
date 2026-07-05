@@ -22,7 +22,7 @@ const TAB_LABELS: Record<SearchTab, string> = {
 	text: "Text",
 };
 
-export const SYMBOL_KIND_GLYPHS: Record<number, string> = {
+export const SYMBOL_KIND_GLYPHS: Readonly<Partial<Record<number, string>>> = {
 	5: "C", // Class
 	6: "M", // Method
 	9: "⊕", // Constructor
@@ -63,8 +63,9 @@ export function getSearchEverywhereEmptyStateMessage({
 	if (activeTab === "symbols") {
 		if (trimmedQuery.length < 2) return "Type at least 2 characters";
 		if (!queryMatchesInput) return "Searching...";
+		if (isError) return "Search failed";
 		if (isFetching) return "Searching...";
-		if ((serversQueried ?? 0) === 0)
+		if (serversQueried === 0)
 			return "No language servers running — symbols appear once files are opened in the editor";
 	}
 	return "No results";
@@ -244,6 +245,7 @@ export function SearchEverywherePopup() {
 				activeTab,
 				trimmedQuery,
 				queryMatchesInput: symbolsQueryMatchesInput,
+				isError: symbolsQuery.isError,
 				isFetching: symbolsQuery.isFetching,
 				serversQueried: symbolsQuery.data?.serversQueried,
 			});
@@ -396,7 +398,10 @@ function ResultRow({
 			}`}
 		>
 			{item.type === "symbol" && (
-				<span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-[3px] bg-[var(--bg-base)] text-[10px] text-[var(--text-tertiary)]">
+				<span
+					aria-hidden="true"
+					className="flex h-4 w-4 shrink-0 items-center justify-center rounded-[3px] bg-[var(--bg-base)] text-[10px] text-[var(--text-tertiary)]"
+				>
 					{symbolKindGlyph(item.kind)}
 				</span>
 			)}

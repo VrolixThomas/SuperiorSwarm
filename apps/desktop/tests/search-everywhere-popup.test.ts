@@ -110,6 +110,32 @@ describe("symbolKindGlyph", () => {
 });
 
 describe("getSearchEverywhereEmptyStateMessage", () => {
+	test("shows search failed for current symbols query errors", () => {
+		expect(
+			getSearchEverywhereEmptyStateMessage({
+				activeTab: "symbols",
+				trimmedQuery: "render",
+				queryMatchesInput: true,
+				isError: true,
+				isFetching: false,
+				serversQueried: undefined,
+			})
+		).toBe("Search failed");
+	});
+
+	test("shows no results for current symbols query when servers queried is unknown", () => {
+		expect(
+			getSearchEverywhereEmptyStateMessage({
+				activeTab: "symbols",
+				trimmedQuery: "render",
+				queryMatchesInput: true,
+				isError: false,
+				isFetching: false,
+				serversQueried: undefined,
+			})
+		).toBe("No results");
+	});
+
 	test("shows no-server hint only for current symbols query state", () => {
 		expect(
 			getSearchEverywhereEmptyStateMessage({
