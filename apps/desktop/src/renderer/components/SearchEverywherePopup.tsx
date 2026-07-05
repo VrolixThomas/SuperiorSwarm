@@ -7,6 +7,10 @@ import {
 	useSearchEverywhereStore,
 } from "../stores/search-everywhere-store";
 import { useTabStore } from "../stores/tab-store";
+import { type ResultItem, resultKey } from "../utils/search-everywhere-results";
+
+export { resultKey };
+export type { ResultItem };
 
 const TAB_LABELS: Record<SearchTab, string> = {
 	all: "All",
@@ -14,30 +18,6 @@ const TAB_LABELS: Record<SearchTab, string> = {
 	symbols: "Symbols",
 	text: "Text",
 };
-
-export type ResultItem =
-	| { type: "file"; path: string }
-	| {
-			type: "symbol";
-			name: string;
-			kind: number;
-			path: string;
-			line: number;
-			column: number;
-			container?: string;
-	  }
-	| { type: "text"; path: string; line: number; text: string };
-
-export function resultKey(item: ResultItem): string {
-	switch (item.type) {
-		case "file":
-			return `file:${item.path}`;
-		case "symbol":
-			return `symbol:${item.name}:${item.path}:${item.line}:${item.column}`;
-		case "text":
-			return `text:${item.path}:${item.line}:${item.text}`;
-	}
-}
 
 function resultPath(item: ResultItem): string {
 	return item.type === "text" || item.type === "symbol" ? `${item.path}:${item.line}` : item.path;

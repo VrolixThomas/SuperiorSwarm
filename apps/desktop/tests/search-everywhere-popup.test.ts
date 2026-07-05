@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type ResultItem, resultKey } from "../src/renderer/components/SearchEverywherePopup";
+import { type ResultItem, resultKey } from "../src/renderer/utils/search-everywhere-results";
 
 describe("resultKey", () => {
 	test("distinguishes symbols on the same file and line by column", () => {
@@ -24,6 +24,59 @@ describe("resultKey", () => {
 			text: "const isOpen = true;",
 		};
 		const second: ResultItem = { ...first, text: "const isOpen = false;" };
+
+		expect(resultKey(first)).not.toBe(resultKey(second));
+	});
+
+	test("distinguishes text matches whose colon-bearing fields would join the same", () => {
+		const first: ResultItem = {
+			type: "text",
+			path: "src/App.tsx",
+			line: 2,
+			text: "query:3:needle",
+		};
+		const second: ResultItem = {
+			type: "text",
+			path: "src/App.tsx:2:query",
+			line: 3,
+			text: "needle",
+		};
+
+		expect(resultKey(first)).not.toBe(resultKey(second));
+	});
+
+	test("distinguishes symbols whose colon-bearing fields would join the same", () => {
+		const first: ResultItem = {
+			type: "symbol",
+			name: "render:default",
+			kind: 12,
+			path: "src/App.tsx",
+			line: 42,
+			column: 3,
+		};
+		const second: ResultItem = {
+			type: "symbol",
+			name: "render",
+			kind: 12,
+			path: "default:src/App.tsx",
+			line: 42,
+			column: 3,
+		};
+
+		expect(resultKey(first)).not.toBe(resultKey(second));
+	});
+
+	test("distinguishes symbols with the same location but different kind and container", () => {
+		const first: ResultItem = {
+			type: "symbol",
+			name: "render",
+			kind: 12,
+			path: "src/App.tsx",
+			line: 42,
+			column: 3,
+			container: "App",
+		};
+		const second: ResultItem = { ...first, kind: 13, container: "Layout" };
 
 		expect(resultKey(first)).not.toBe(resultKey(second));
 	});
