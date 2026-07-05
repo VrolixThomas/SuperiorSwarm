@@ -52,7 +52,7 @@ export function setupTerminalIPC(daemonClient: DaemonClient): void {
 
 			try {
 				if (daemonClient.hasLiveSession(id)) {
-					await daemonClient.attach(id, onData, onExit, cwdStr);
+					await daemonClient.attach(id, onData, onExit, cwdStr, env);
 					return { wasAttached: true };
 				}
 				await daemonClient.create(id, cwdStr, onData, onExit, env);

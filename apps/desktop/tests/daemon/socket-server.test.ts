@@ -35,7 +35,10 @@ class MockPtyManager {
 	dispose(id: string): void {
 		this.disposed.push(id);
 	}
-	write(_id: string, _data: string): void {}
+	written: Array<{ id: string; data: string }> = [];
+	write(id: string, data: string): void {
+		this.written.push({ id, data });
+	}
 	resize(_id: string, _c: number, _r: number): void {}
 	detachedClients: string[] = [];
 	detachedSessions: Array<{ clientId: string; id: string }> = [];
@@ -186,7 +189,7 @@ describe("SocketServer", () => {
 		await collectMessages(socket);
 
 		try {
-			socket.write(`${"x".repeat(70_000)}\n`);
+			socket.write(`${"x".repeat(250_000)}\n`);
 			sendMsg(socket, { type: "list" });
 
 			const msgs = await collectMessages(socket, 600);
@@ -195,6 +198,70 @@ describe("SocketServer", () => {
 			expect(warnings.some((w) => w.includes("oversized inbound frame"))).toBe(true);
 		} finally {
 			console.warn = originalWarn;
+			socket.destroy();
+		}
+	});
+
+	test("accepts multibyte frames a char-bounded v1 client could legitimately send", async () => {
+		const socket = connect(TEST_SOCKET);
+		await collectMessages(socket);
+
+		try {
+			// v1 clients bounded outbound frames in UTF-16 chars, not bytes: 25k
+			// "€" is well under 64k chars but ~75KB of UTF-8. Dropping it would
+			// silently swallow pastes from a v1 client talking to this daemon.
+			const data = "€".repeat(25_000);
+			sendMsg(socket, { type: "write", id: "t1", data });
+			await collectMessages(socket, 400);
+
+			expect(mockPty.written).toEqual([{ id: "t1", data }]);
+		} finally {
+			socket.destroy();
+		}
+	});
+
+	test("drops inbound frames beyond the v1 char-based envelope in bytes", async () => {
+		const warnings: string[] = [];
+		const originalWarn = console.warn;
+		console.warn = (...args: unknown[]) => {
+			warnings.push(args.map((a) => String(a)).join(" "));
+		};
+
+		const socket = connect(TEST_SOCKET);
+		await collectMessages(socket);
+
+		try {
+			// 70k "€" = 210KB of UTF-8 — beyond anything either client version can
+			// legitimately produce (v1 caps chars at 64k; UTF-8 is ≤3 bytes/char).
+			socket.write(`${"€".repeat(70_000)}\n`);
+			sendMsg(socket, { type: "list" });
+
+			const msgs = await collectMessages(socket, 600);
+			expect(msgs.some((m) => m.type === "sessions")).toBe(true);
+			expect(warnings.some((w) => w.includes("oversized inbound frame"))).toBe(true);
+		} finally {
+			console.warn = originalWarn;
+			socket.destroy();
+		}
+	});
+
+	test("decodes multibyte characters split across inbound socket chunks", async () => {
+		const socket = connect(TEST_SOCKET);
+		await collectMessages(socket);
+
+		try {
+			const data = "héllo🐟wörld";
+			const frame = Buffer.from(`${JSON.stringify({ type: "write", id: "t1", data })}\n`, "utf-8");
+			// Split inside the 4-byte fish emoji: per-chunk toString() would feed
+			// the PTY U+FFFD garbage instead of the pasted character.
+			const splitAt = frame.indexOf(Buffer.from("🐟")) + 2;
+			socket.write(frame.subarray(0, splitAt));
+			await new Promise<void>((r) => setTimeout(r, 50));
+			socket.write(frame.subarray(splitAt));
+			await collectMessages(socket, 300);
+
+			expect(mockPty.written).toEqual([{ id: "t1", data }]);
+		} finally {
 			socket.destroy();
 		}
 	});
@@ -225,7 +292,7 @@ describe("SocketServer", () => {
 		await collectMessages(socket);
 
 		try {
-			socket.write(`${JSON.stringify({ type: "list" })}\n${"x".repeat(70_000)}`);
+			socket.write(`${JSON.stringify({ type: "list" })}\n${"x".repeat(250_000)}`);
 			socket.write(`\n${JSON.stringify({ type: "list" })}\n`);
 
 			const msgs = await collectMessages(socket, 700);
