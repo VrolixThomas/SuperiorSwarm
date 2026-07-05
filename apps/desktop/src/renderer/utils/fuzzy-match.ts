@@ -8,6 +8,10 @@ function isSubsequence(needle: string, haystack: string): boolean {
 	return needleIndex === needle.length;
 }
 
+function matchScore(score: number): number {
+	return score === -1 ? -1 - Number.EPSILON : score;
+}
+
 /** Higher = better. -1 = no match. Case-insensitive. */
 export function fuzzyScore(query: string, path: string): number {
 	const q = query.toLowerCase();
@@ -18,12 +22,12 @@ export function fuzzyScore(query: string, path: string): number {
 	const filename = slashIndex === -1 ? p : p.slice(slashIndex + 1);
 	const tiebreak = -path.length;
 
-	if (filename === q) return 2000 + tiebreak;
-	if (filename.startsWith(q)) return 1000 + tiebreak;
-	if (filename.includes(q)) return 800 + tiebreak;
-	if (isSubsequence(q, filename)) return 600 + tiebreak;
-	if (p.includes(q)) return 400 + tiebreak;
-	if (isSubsequence(q, p)) return 200 + tiebreak;
+	if (filename === q) return matchScore(2000 + tiebreak);
+	if (filename.startsWith(q)) return matchScore(1000 + tiebreak);
+	if (filename.includes(q)) return matchScore(800 + tiebreak);
+	if (isSubsequence(q, filename)) return matchScore(600 + tiebreak);
+	if (p.includes(q)) return matchScore(400 + tiebreak);
+	if (isSubsequence(q, p)) return matchScore(200 + tiebreak);
 	return -1;
 }
 

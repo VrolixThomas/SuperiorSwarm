@@ -37,6 +37,13 @@ describe("fuzzyScore", () => {
 	test("empty query scores 0", () => {
 		expect(fuzzyScore("", "src/app.ts")).toBe(0);
 	});
+
+	test("valid match does not collide with no-match sentinel", () => {
+		const path = `a/${"x".repeat(197)}/z`;
+		expect(path.length).toBe(201);
+		expect(fuzzyScore("az", path)).not.toBe(-1);
+		expect(fuzzyFilterPaths("az", [path], 10)).toEqual([path]);
+	});
 });
 
 describe("fuzzyFilterPaths", () => {
