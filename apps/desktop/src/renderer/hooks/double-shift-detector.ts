@@ -8,9 +8,7 @@ export type DetectorKeyEvent = {
 	altKey: boolean;
 };
 
-export function createDoubleShiftDetector(
-	onTrigger: () => void,
-): {
+export function createDoubleShiftDetector(onTrigger: () => void): {
 	keydown(e: DetectorKeyEvent, now: number): void;
 	keyup(e: DetectorKeyEvent, now: number): void;
 } {

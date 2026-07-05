@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { matchesShortcut, shouldSkipShortcutHandling } from "../src/renderer/hooks/useShortcutListener";
+import {
+	matchesShortcut,
+	shouldSkipShortcutHandling,
+} from "../src/renderer/hooks/useShortcutListener";
 import type { Shortcut } from "../src/renderer/stores/action-store";
 
 function fakeEvent(overrides: Partial<KeyboardEvent>): KeyboardEvent {
