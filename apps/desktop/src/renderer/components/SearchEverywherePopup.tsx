@@ -248,31 +248,22 @@ function ResultRow({
 	}
 
 	return (
-		// biome-ignore lint/a11y/useSemanticElements: Rich popup rows use option semantics without native select rendering.
-		<div
-			role="option"
-			aria-selected={isSelected}
-			tabIndex={-1}
+		<button
+			type="button"
 			data-result-index={index}
 			data-selected={isSelected}
 			onClick={onSelect}
-			onKeyDown={(event) => {
-				if (event.key === "Enter" || event.key === " ") {
-					event.preventDefault();
-					onSelect();
-				}
-			}}
 			onMouseEnter={onHover}
-			className={`mx-2 flex cursor-pointer items-center gap-3 rounded-[6px] px-3 py-1.5 text-[13px] transition-colors ${
+			className={`mx-2 flex w-[calc(100%-1rem)] cursor-pointer items-center gap-3 rounded-[6px] border-0 px-3 py-1.5 text-left font-sans text-[13px] transition-colors ${
 				isSelected
 					? "bg-[var(--bg-elevated)] text-[var(--text)]"
-					: "text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]"
+					: "bg-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]"
 			}`}
 		>
 			<span className="min-w-0 truncate font-medium">{primary}</span>
 			<span className="min-w-0 flex-1 truncate text-right text-[11px] text-[var(--text-quaternary)]">
 				{secondary}
 			</span>
-		</div>
+		</button>
 	);
 }
