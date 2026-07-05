@@ -18,6 +18,7 @@ import {
 } from "../../lsp/registry";
 import { serverManager } from "../../lsp/server-manager";
 import { getRepoTrust, setRepoTrust } from "../../lsp/trust";
+import { normalizeWorkspaceSymbols } from "../../lsp/workspace-symbols";
 import { publicProcedure, router } from "../index";
 
 function getUserConfigPath(): string {
@@ -60,6 +61,31 @@ export const lspRouter = router({
 	getPresets: publicProcedure.query(() => {
 		return LSP_PRESETS;
 	}),
+
+	searchWorkspaceSymbols: publicProcedure
+		.input(z.object({ repoPath: z.string().min(1), query: z.string().min(2) }))
+		.query(async ({ input }) => {
+			const running = serverManager.getRunningConnections(input.repoPath);
+			const perServer = await Promise.all(
+				running.map(async ({ connection }) => {
+					try {
+						const res = await Promise.race([
+							connection.sendRequest("workspace/symbol", { query: input.query }),
+							new Promise((_, reject) =>
+								setTimeout(() => reject(new Error("workspace/symbol timeout")), 3000)
+							),
+						]);
+						return Array.isArray(res) ? res : [];
+					} catch {
+						return [];
+					}
+				})
+			);
+			return {
+				symbols: normalizeWorkspaceSymbols(perServer.flat(), input.repoPath),
+				serversQueried: running.length,
+			};
+		}),
 
 	detectSuggestions: publicProcedure
 		.input(z.object({ repoPath: z.string().min(1) }))

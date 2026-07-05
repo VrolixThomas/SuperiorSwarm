@@ -85,16 +85,16 @@ Mount `<SearchEverywherePopup />` next to `<CommandPalette />` in `App.tsx`.
 - Enter → `openFile(..., { lineNumber, column })` (editor already supports `initialPosition`).
 
 ### Symbols
-- `window.api.lsp.getHealth(repoPath)` → running servers with their `languageId`s.
-- For each running server: `window.api.lsp.sendRequest({ languageId, repoPath,
-  method: "workspace/symbol", params: { query } })`. Merge results across servers,
-  dedup by name+path+line. Debounce 200ms, min 2 chars.
+- New tRPC proc `lsp.searchWorkspaceSymbols({ repoPath, query })`: main process fans
+  `workspace/symbol` out to all initialized LSP server connections for the repo
+  (3s per-server timeout), merges + dedups (name+path+line), caps at 100.
+  (Main-side fan-out instead of renderer-side: main owns the connections and the
+  config→language mapping.) Renderer debounces 200ms, min 2 chars.
 - Server not running / method unsupported / timeout → that server contributes nothing
   (silent). No servers running → Symbols tab shows hint: "No language servers running —
   symbols appear once files are opened in the editor."
-- Row: symbol-kind glyph (fn/class/var etc.) + name + dimmed containerName/path.
-- Enter → map `file://` URI to repo-relative path → `openFile` with `initialPosition`
-  from the returned range start.
+- Row: symbol-kind glyph (fn/class/var etc.) + name + dimmed container/path.
+- Enter → `openFile` with the returned repo-relative path and 1-based line/column.
 
 ### All tab
 - Files + symbols merged (text excluded, Rider parity). Ranking: exact filename match >

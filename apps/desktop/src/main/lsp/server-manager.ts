@@ -159,9 +159,7 @@ function resolveDotnetRoot(): string | undefined {
 				cachedDotnetRoot = binDir;
 				return cachedDotnetRoot;
 			}
-		} catch {
-			continue;
-		}
+		} catch {}
 	}
 
 	cachedDotnetRoot = null;
@@ -464,6 +462,20 @@ export class ServerManager {
 		if (existing) return null; // Still initializing
 
 		return this.startServer(configId, repoPath);
+	}
+
+	getRunningConnections(repoPath: string): { configId: string; connection: MessageConnection }[] {
+		const suffix = `:${repoPath}`;
+		const out: { configId: string; connection: MessageConnection }[] = [];
+		for (const [key, instance] of this.servers) {
+			if (!key.endsWith(suffix)) continue;
+			if (!instance.initialized || instance.shuttingDown) continue;
+			out.push({
+				configId: key.slice(0, key.length - suffix.length),
+				connection: instance.connection,
+			});
+		}
+		return out;
 	}
 
 	private async startServer(configId: string, repoPath: string): Promise<MessageConnection | null> {
