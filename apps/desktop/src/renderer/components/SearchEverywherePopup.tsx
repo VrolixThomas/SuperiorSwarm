@@ -10,6 +10,7 @@ import {
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import { fuzzyFilterPaths } from "../utils/fuzzy-match";
+import { mergeAllResults } from "../utils/merge-all-results";
 import { type ResultItem, resultKey } from "../utils/search-everywhere-results";
 
 export { resultKey };
@@ -127,6 +128,7 @@ export function SearchEverywherePopup() {
 	const symbolsQueryMatchesInput = debouncedQuery === trimmedQuery;
 	const canShowSymbolQueryState =
 		activeTab === "symbols" && symbolsQueryMatchesInput && trimmedQuery.length >= 2;
+	const canShowAllSymbolResults = symbolsQueryMatchesInput && trimmedQuery.length >= 2;
 	const symbolsEnabled =
 		isOpen && (activeTab === "symbols" || activeTab === "all") && debouncedQuery.length >= 2;
 	const symbolsQuery = trpc.lsp.searchWorkspaceSymbols.useQuery(
@@ -149,12 +151,25 @@ export function SearchEverywherePopup() {
 	);
 
 	const results: ResultItem[] = useMemo(() => {
-		if (activeTab === "files" || activeTab === "all") {
+		if (activeTab === "files") {
 			if (trimmedQuery.length === 0) return [];
 			return fuzzyFilterPaths(trimmedQuery, filePaths, 50).map((path) => ({
 				type: "file" as const,
 				path,
 			}));
+		}
+		if (activeTab === "all") {
+			if (trimmedQuery.length === 0) return [];
+			const fileItems = fuzzyFilterPaths(trimmedQuery, filePaths, 50).map((path) => ({
+				type: "file" as const,
+				path,
+			}));
+			const symbolItems = canShowAllSymbolResults
+				? symbolHits.filter(
+						(symbol): symbol is Extract<ResultItem, { type: "symbol" }> => symbol.type === "symbol"
+					)
+				: [];
+			return mergeAllResults(trimmedQuery, fileItems, symbolItems, 50);
 		}
 		if (activeTab === "text") {
 			if (!canShowTextQueryState) return [];
@@ -174,10 +189,11 @@ export function SearchEverywherePopup() {
 		activeTab,
 		trimmedQuery,
 		filePaths,
+		canShowAllSymbolResults,
+		symbolHits,
 		canShowTextQueryState,
 		textQuery.data,
 		canShowSymbolQueryState,
-		symbolHits,
 	]);
 
 	useEffect(() => {
