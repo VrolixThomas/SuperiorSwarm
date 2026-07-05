@@ -21,6 +21,7 @@ import { SharedFilesPanel } from "./components/SharedFilesPanel";
 import { Sidebar } from "./components/Sidebar";
 import { UpdateToast } from "./components/UpdateToast";
 import { WhatsNewModal } from "./components/WhatsNewModal";
+import { ReviewModeShell } from "./components/review-mode/ReviewModeShell";
 import { PRReviewKeyboardListener } from "./components/review/PRReviewKeyboardListener";
 import { SettingsPage } from "./components/settings/SettingsPage";
 import { useAgentAlertListener } from "./hooks/useAgentAlertListener";
@@ -720,6 +721,7 @@ function AuthenticatedApp() {
 							<DiffPanel onClose={closeDiffPanel} />
 						</Panel>
 					</Group>
+					<ReviewModeShell />
 					{!rightPanelOpen &&
 						sidebarSegment !== "tickets" &&
 						!activeWorkspaceId?.startsWith("xro-") && (
