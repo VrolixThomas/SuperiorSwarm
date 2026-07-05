@@ -1,9 +1,19 @@
 import { type Server, type Socket, createServer } from "node:net";
-import type { ClientMessage, DaemonMessage } from "../shared/daemon-protocol";
+import { StringDecoder } from "node:string_decoder";
+import {
+	type ClientMessage,
+	DAEMON_PROTOCOL_VERSION,
+	type DaemonMessage,
+	MAX_FRAME_BYTES,
+} from "../shared/daemon-protocol";
 import type { PtyManager } from "./pty-manager";
 import type { ScrollbackStore } from "./scrollback-store";
 
-const MAX_INBOUND_FRAME_BYTES = 64_000;
+// Current clients chunk outbound frames to MAX_FRAME_BYTES, but v1 clients
+// bounded frames in UTF-16 chars (up to MAX_FRAME_BYTES of them). At ≤3 UTF-8
+// bytes per char, ×3 accepts every frame a v1 client can legitimately send
+// instead of silently swallowing its multibyte pastes.
+const MAX_INBOUND_FRAME_BYTES = MAX_FRAME_BYTES * 3;
 
 export class SocketServer {
 	private server: Server;
@@ -43,12 +53,15 @@ export class SocketServer {
 		const clientId = `client-${++this.clientIdCounter}`;
 		this.clients.set(clientId, socket);
 
-		this.send(socket, { type: "ready" });
+		this.send(socket, { type: "ready", protocolVersion: DAEMON_PROTOCOL_VERSION });
 
 		let lineBuffer = "";
 		let droppingOversizedFrame = false;
+		// Per-connection decoder: a multibyte character split across two chunks
+		// must not decode to U+FFFD on either side of the boundary.
+		const decoder = new StringDecoder("utf8");
 		socket.on("data", (chunk) => {
-			let inbound = chunk.toString("utf-8");
+			let inbound = decoder.write(chunk);
 
 			if (droppingOversizedFrame) {
 				const newlineInDrop = inbound.indexOf("\n");
@@ -65,7 +78,9 @@ export class SocketServer {
 				if (newline === -1) break;
 				const rawLine = lineBuffer.slice(0, newline);
 				lineBuffer = lineBuffer.slice(newline + 1);
-				if (rawLine.length > MAX_INBOUND_FRAME_BYTES) {
+				// Measured in UTF-8 bytes to match the client's outbound check —
+				// a char-based limit would accept frames the client rejects.
+				if (Buffer.byteLength(rawLine, "utf-8") > MAX_INBOUND_FRAME_BYTES) {
 					console.warn(
 						`[socket-server] oversized inbound frame (>${MAX_INBOUND_FRAME_BYTES}B), dropping line`
 					);
@@ -81,7 +96,7 @@ export class SocketServer {
 				}
 			}
 
-			if (lineBuffer.length > MAX_INBOUND_FRAME_BYTES) {
+			if (Buffer.byteLength(lineBuffer, "utf-8") > MAX_INBOUND_FRAME_BYTES) {
 				console.warn(
 					`[socket-server] oversized inbound frame (>${MAX_INBOUND_FRAME_BYTES}B), discarding until newline`
 				);
@@ -182,7 +197,7 @@ export class SocketServer {
 				break;
 			}
 			case "detach": {
-				this.ptyManager.detachClient(clientId);
+				this.ptyManager.detachSession(clientId, msg.id);
 				break;
 			}
 			case "detach-all": {

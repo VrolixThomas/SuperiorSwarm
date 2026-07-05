@@ -1,8 +1,9 @@
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import * as pty from "node-pty";
+import { MAX_SCROLLBACK_CHARS } from "../shared/daemon-protocol";
 
-const MAX_BUFFER_CHARS = 200_000;
+const MAX_BUFFER_CHARS = MAX_SCROLLBACK_CHARS;
 
 interface TerminalEntry {
 	pty: pty.IPty;
@@ -103,10 +104,19 @@ export class PtyManager {
 		return { buffer: entry.buffer, process: entry.pty.process ?? "" };
 	}
 
+	// Detach one client from one session. Returns true if the client had
+	// listeners on that session. Other sessions and other clients are untouched.
+	detachSession(clientId: string, id: string): boolean {
+		const entry = this.terminals.get(id);
+		if (!entry) return false;
+		const had = entry.dataListeners.delete(clientId);
+		entry.exitListeners.delete(clientId);
+		return had;
+	}
+
 	detachClient(clientId: string): void {
-		for (const entry of this.terminals.values()) {
-			entry.dataListeners.delete(clientId);
-			entry.exitListeners.delete(clientId);
+		for (const id of this.terminals.keys()) {
+			this.detachSession(clientId, id);
 		}
 	}
 

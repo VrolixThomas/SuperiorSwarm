@@ -1,6 +1,25 @@
 import { existsSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { SUPERIORSWARM_DIR, daemonPaths } from "../../shared/daemon-protocol";
 
+/** Read and validate a daemon pid file. Returns null for missing/garbage/non-positive pids. */
+export function readPidFile(pidPath: string): number | null {
+	try {
+		const pid = Number(readFileSync(pidPath, "utf-8").trim());
+		return Number.isInteger(pid) && pid > 0 ? pid : null;
+	} catch {
+		return null;
+	}
+}
+
+/** Best-effort removal of daemon housekeeping files; missing files are ignored. */
+export function removeFiles(...paths: string[]): void {
+	for (const p of paths) {
+		try {
+			rmSync(p);
+		} catch {}
+	}
+}
+
 /**
  * Clean up stale daemon files from previous sessions.
  * Scans ~/.superiorswarm/daemon-*.pid files. For each:
@@ -33,15 +52,9 @@ export function cleanupStaleDaemons(ownInstanceId: string): void {
 
 		const { pidPath, socketPath, logPath } = daemonPaths(instanceId);
 
-		let pid: number;
-		try {
-			pid = Number(readFileSync(pidPath, "utf-8").trim());
-			if (!pid || Number.isNaN(pid)) {
-				cleanup(pidPath, socketPath, logPath);
-				continue;
-			}
-		} catch {
-			cleanup(pidPath, socketPath, logPath);
+		const pid = readPidFile(pidPath);
+		if (pid === null) {
+			removeFiles(pidPath, socketPath, logPath);
 			continue;
 		}
 
@@ -57,15 +70,7 @@ export function cleanupStaleDaemons(ownInstanceId: string): void {
 
 		if (!alive) {
 			console.log(`[stale-cleanup] removing dead daemon ${instanceId} (pid ${pid})`);
-			cleanup(pidPath, socketPath, logPath);
+			removeFiles(pidPath, socketPath, logPath);
 		}
-	}
-}
-
-function cleanup(...paths: string[]): void {
-	for (const p of paths) {
-		try {
-			rmSync(p);
-		} catch {}
 	}
 }
