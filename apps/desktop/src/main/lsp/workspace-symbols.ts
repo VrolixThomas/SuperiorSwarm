@@ -14,7 +14,12 @@ export interface WorkspaceSymbolHit {
 
 interface RawLocation {
 	uri?: string;
-	range?: { start?: { line?: number; character?: number } };
+	range?: { start?: RawPosition };
+}
+
+interface RawPosition {
+	line?: unknown;
+	character?: unknown;
 }
 
 interface RawSymbol {
@@ -42,8 +47,24 @@ function pathForRepo(uri: string, repoPath: string): string {
 	const absolutePath = uriToPath(uri);
 	const repoRelative = relative(repoPath, absolutePath);
 	if (repoRelative === "") return "";
-	if (!repoRelative.startsWith("..") && !repoRelative.startsWith("/")) return repoRelative;
-	return absolutePath;
+	if (repoRelative === ".." || repoRelative.startsWith("../") || repoRelative.startsWith("..\\")) {
+		return absolutePath;
+	}
+	return repoRelative;
+}
+
+function readStartPosition(
+	start: RawPosition | undefined
+): { line: number; column: number } | null {
+	const line = start?.line;
+	if (line !== undefined && typeof line !== "number") return null;
+	const character = start?.character;
+	if (character !== undefined && typeof character !== "number") return null;
+
+	return {
+		line: (line ?? 0) + 1,
+		column: (character ?? 0) + 1,
+	};
 }
 
 export function normalizeWorkspaceSymbols(raw: unknown[], repoPath: string): WorkspaceSymbolHit[] {
@@ -58,10 +79,9 @@ export function normalizeWorkspaceSymbols(raw: unknown[], repoPath: string): Wor
 		if (typeof symbol.name !== "string" || typeof symbol.location?.uri !== "string") continue;
 
 		const path = pathForRepo(symbol.location.uri, repoPath);
-		const start = symbol.location.range?.start;
-		const line = (start?.line ?? 0) + 1;
-		const column = (start?.character ?? 0) + 1;
-		const key = `${symbol.name}:${path}:${line}`;
+		const position = readStartPosition(symbol.location.range?.start);
+		if (!position) continue;
+		const key = `${symbol.name}:${path}:${position.line}`;
 
 		if (seen.has(key)) continue;
 		seen.add(key);
@@ -70,8 +90,8 @@ export function normalizeWorkspaceSymbols(raw: unknown[], repoPath: string): Wor
 			name: symbol.name,
 			kind: typeof symbol.kind === "number" ? symbol.kind : 0,
 			path,
-			line,
-			column,
+			line: position.line,
+			column: position.column,
 		};
 		if (typeof symbol.containerName === "string" && symbol.containerName.length > 0) {
 			hit.container = symbol.containerName;
