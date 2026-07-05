@@ -65,7 +65,11 @@ export function SearchEverywherePopup() {
 				.map((entry) => entry.path),
 		[filesQuery.data]
 	);
-	const debouncedQuery = useDebouncedValue(query.trim(), 200);
+	const trimmedQuery = query.trim();
+	const debouncedQuery = useDebouncedValue(trimmedQuery, 200);
+	const textQueryMatchesInput = debouncedQuery === trimmedQuery;
+	const canShowTextQueryState =
+		activeTab === "text" && textQueryMatchesInput && trimmedQuery.length >= 2;
 	const textEnabled = isOpen && activeTab === "text" && debouncedQuery.length >= 2;
 	const textQuery = trpc.diff.searchText.useQuery(
 		{ repoPath, query: debouncedQuery },
@@ -73,12 +77,15 @@ export function SearchEverywherePopup() {
 	);
 
 	const results: ResultItem[] = useMemo(() => {
-		const q = query.trim();
 		if (activeTab === "files" || activeTab === "all") {
-			if (q.length === 0) return [];
-			return fuzzyFilterPaths(q, filePaths, 50).map((path) => ({ type: "file" as const, path }));
+			if (trimmedQuery.length === 0) return [];
+			return fuzzyFilterPaths(trimmedQuery, filePaths, 50).map((path) => ({
+				type: "file" as const,
+				path,
+			}));
 		}
 		if (activeTab === "text") {
+			if (!canShowTextQueryState) return [];
 			return (textQuery.data?.matches ?? []).map((match) => ({
 				type: "text" as const,
 				path: match.path,
@@ -87,7 +94,7 @@ export function SearchEverywherePopup() {
 			}));
 		}
 		return [];
-	}, [activeTab, query, filePaths, textQuery.data]);
+	}, [activeTab, trimmedQuery, filePaths, canShowTextQueryState, textQuery.data]);
 
 	useEffect(() => {
 		if (selectedIndex >= results.length) {
@@ -139,6 +146,22 @@ export function SearchEverywherePopup() {
 	if (!isOpen) return null;
 
 	const selected = results[selectedIndex];
+	const emptyStateText =
+		activeTab === "text"
+			? trimmedQuery.length === 0
+				? "Type to search"
+				: trimmedQuery.length < 2
+					? "Type at least 2 characters"
+					: !textQueryMatchesInput
+						? "Searching..."
+						: textQuery.isError
+							? "Search failed"
+							: textQuery.isFetching
+								? "Searching..."
+								: "No results"
+			: trimmedQuery.length === 0
+				? "Type to search"
+				: "No results";
 
 	return createPortal(
 		<div
@@ -211,18 +234,10 @@ export function SearchEverywherePopup() {
 				<div ref={listRef} className="min-h-[120px] overflow-y-auto py-2">
 					{results.length === 0 && (
 						<div className="px-4 py-6 text-center text-[13px] text-[var(--text-quaternary)]">
-							{activeTab === "text" && textQuery.isError
-								? "Search failed"
-								: activeTab === "text" && query.trim().length > 0 && query.trim().length < 2
-									? "Type at least 2 characters"
-									: query.trim().length === 0
-										? "Type to search"
-										: textQuery.isFetching && activeTab === "text"
-											? "Searching..."
-											: "No results"}
+							{emptyStateText}
 						</div>
 					)}
-					{activeTab === "text" && textQuery.data?.truncated && (
+					{canShowTextQueryState && textQuery.data?.truncated && (
 						<div className="px-4 pb-1 text-center text-[11px] text-[var(--text-quaternary)]">
 							Showing first {results.length} matches
 						</div>
