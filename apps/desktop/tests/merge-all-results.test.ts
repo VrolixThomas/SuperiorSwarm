@@ -1,13 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { mergeAllResults } from "../src/renderer/utils/merge-all-results";
 
-type Item = { type: "file"; path: string } | { type: "symbol"; name: string; path: string };
+type FileItem = { type: "file"; path: string };
+type SymbolItem = { type: "symbol"; name: string; path: string };
 
-function file(path: string): Item {
+function file(path: string): FileItem {
 	return { type: "file", path };
 }
 
-function symbol(name: string, path = "src/x.ts"): Item {
+function symbol(name: string, path = "src/x.ts"): SymbolItem {
 	return { type: "symbol", name, path };
 }
 
@@ -36,5 +37,12 @@ describe("mergeAllResults", () => {
 		const files = Array.from({ length: 60 }, (_, i) => file(`src/store-${i}.ts`));
 		const merged = mergeAllResults("store", files, [], 50);
 		expect(merged.length).toBe(50);
+	});
+
+	test("preserves input order for matches in the same fuzzy band", () => {
+		const first = file("deep/nested/store.ts");
+		const second = file("store.ts");
+		const merged = mergeAllResults("store", [first, second], [], 10);
+		expect(merged).toEqual([first, second]);
 	});
 });
