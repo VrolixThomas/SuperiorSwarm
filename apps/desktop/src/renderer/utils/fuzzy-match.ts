@@ -8,8 +8,12 @@ function isSubsequence(needle: string, haystack: string): boolean {
 	return needleIndex === needle.length;
 }
 
-function matchScore(score: number): number {
-	return score === -1 ? -1 - Number.EPSILON : score;
+function lengthPenalty(pathLength: number): number {
+	return Math.min(pathLength, 999_999) / 1_000_000;
+}
+
+function bandScore(band: number, path: string): number {
+	return band - lengthPenalty(path.length);
 }
 
 /** Higher = better. -1 = no match. Case-insensitive. */
@@ -18,16 +22,15 @@ export function fuzzyScore(query: string, path: string): number {
 	if (q.length === 0) return 0;
 
 	const p = path.toLowerCase();
-	const slashIndex = p.lastIndexOf("/");
+	const slashIndex = Math.max(p.lastIndexOf("/"), p.lastIndexOf("\\"));
 	const filename = slashIndex === -1 ? p : p.slice(slashIndex + 1);
-	const tiebreak = -path.length;
 
-	if (filename === q) return matchScore(2000 + tiebreak);
-	if (filename.startsWith(q)) return matchScore(1000 + tiebreak);
-	if (filename.includes(q)) return matchScore(800 + tiebreak);
-	if (isSubsequence(q, filename)) return matchScore(600 + tiebreak);
-	if (p.includes(q)) return matchScore(400 + tiebreak);
-	if (isSubsequence(q, p)) return matchScore(200 + tiebreak);
+	if (filename === q) return bandScore(2000, path);
+	if (filename.startsWith(q)) return bandScore(1000, path);
+	if (filename.includes(q)) return bandScore(800, path);
+	if (isSubsequence(q, filename)) return bandScore(600, path);
+	if (p.includes(q)) return bandScore(400, path);
+	if (isSubsequence(q, p)) return bandScore(200, path);
 	return -1;
 }
 

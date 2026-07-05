@@ -12,14 +12,44 @@ describe("fuzzyScore", () => {
 		);
 	});
 
+	test("filename starts-with beats filename substring regardless of path length", () => {
+		const longStartsWith = `${"deep/".repeat(300)}store.ts`;
+		const shortSubstring = "tab-store.ts";
+		expect(fuzzyScore("store", longStartsWith)).toBeGreaterThan(
+			fuzzyScore("store", shortSubstring)
+		);
+		expect(fuzzyFilterPaths("store", [shortSubstring, longStartsWith], 2)).toEqual([
+			longStartsWith,
+			shortSubstring,
+		]);
+	});
+
 	test("filename substring beats path substring", () => {
 		expect(fuzzyScore("store", "a/tab-store.ts")).toBeGreaterThan(
 			fuzzyScore("store", "stores/index.ts")
 		);
 	});
 
+	test("filename substring beats path substring regardless of path length", () => {
+		const longFilenameSubstring = `${"deep/".repeat(300)}tab-store.ts`;
+		const shortPathSubstring = "stores/index.ts";
+		expect(fuzzyScore("store", longFilenameSubstring)).toBeGreaterThan(
+			fuzzyScore("store", shortPathSubstring)
+		);
+		expect(fuzzyFilterPaths("store", [shortPathSubstring, longFilenameSubstring], 2)).toEqual([
+			longFilenameSubstring,
+			shortPathSubstring,
+		]);
+	});
+
 	test("subsequence on filename matches", () => {
 		expect(fuzzyScore("sep", "components/SearchEverywherePopup.tsx")).toBeGreaterThan(-1);
+	});
+
+	test("backslash separates filename", () => {
+		expect(fuzzyScore("store", "dir\\store.ts")).toBeGreaterThan(
+			fuzzyScore("store", "tab-store.ts")
+		);
 	});
 
 	test("no match returns -1", () => {
@@ -57,16 +87,16 @@ describe("fuzzyFilterPaths", () => {
 		expect(fuzzyFilterPaths("zzz", ["a.ts", "b.ts"], 10)).toEqual([]);
 	});
 
-	test("includes matches with negative scores", () => {
+	test("includes long matches with bounded positive scores", () => {
 		const path = `${"deep/".repeat(130)}SearchEverywherePopup.tsx`;
-		expect(fuzzyScore("sep", path)).toBeLessThan(0);
-		expect(fuzzyScore("sep", path)).not.toBe(-1);
+		expect(fuzzyScore("sep", path)).toBeGreaterThan(0);
 		expect(fuzzyFilterPaths("sep", [path], 10)).toEqual([path]);
 	});
 
-	test("sorts equal scores by shorter path length", () => {
-		const longPath = `${"x".repeat(1000)}/a`;
-		expect(fuzzyScore("a", longPath)).toBe(fuzzyScore("a", "aa"));
-		expect(fuzzyFilterPaths("a", [longPath, "aa"], 10)).toEqual(["aa", longPath]);
+	test("sorts same-band ties by shorter path length", () => {
+		const shortPath = "src/store.ts";
+		const longPath = `${"deep/".repeat(20)}store.ts`;
+		expect(fuzzyScore("store", shortPath)).toBeGreaterThan(fuzzyScore("store", longPath));
+		expect(fuzzyFilterPaths("store", [longPath, shortPath], 10)).toEqual([shortPath, longPath]);
 	});
 });
