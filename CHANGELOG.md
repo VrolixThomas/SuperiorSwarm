@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.13.0 (2026-07-05)
+
+### What's New
+
+This release focuses on terminal stability. SuperiorSwarm now prevents daemon terminals from freezing during heavy activity, handles output correctly when a terminal's queue fills up, and makes sure detaching one terminal session no longer disrupts your other running sessions.
+
+### Changes
+
+- Bug frozen terminals (#125)
+- fix(terminal): reject control frames dropped by full outbound queue
+- fix(daemon): detach only the requested session, not all PTYs
+
 ## v0.12.0 (2026-07-04)
 
 ### What's New
