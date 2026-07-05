@@ -1,4 +1,5 @@
 import { useCallback, useMemo } from "react";
+import { type ThreadFilter, fileCommentCounts } from "../../lib/pr-review-threads";
 import { openThreadInChanges } from "../../lib/review-mode-nav";
 import { useReviewModeStore } from "../../stores/review-mode-store";
 import { trpc } from "../../trpc/client";
@@ -9,12 +10,7 @@ import type { ThreadCallbacks } from "./thread/ThreadCard";
 import { useReviewData } from "./useReviewData";
 import { ChangesView } from "./views/ChangesView";
 import { CommentsView } from "./views/CommentsView";
-
-const VIEW_LABELS = {
-	overview: "Overview",
-	changes: "Changes",
-	comments: "Comments",
-} as const;
+import { OverviewView } from "./views/OverviewView";
 
 type ActiveReview = NonNullable<ReturnType<typeof useReviewModeStore.getState>["active"]>;
 
@@ -29,13 +25,16 @@ export function ReviewModeShell() {
 function ActiveReviewModeShell({ active }: { active: ActiveReview }) {
 	const { workspaceId, prCtx } = active;
 	const view = useReviewModeStore((s) => s.view);
+	const setView = useReviewModeStore((s) => s.setView);
+	const setCommentFilter = useReviewModeStore((s) => s.setCommentFilter);
 	const navigatorCollapsed = useReviewModeStore((s) => s.navigatorCollapsed);
 	const utils = trpc.useUtils();
-	const { details, isLoading, allThreads, counts, sessionKey, fileOrder } = useReviewData(
+	const { details, isLoading, aiDraft, allThreads, counts, sessionKey, fileOrder } = useReviewData(
 		workspaceId,
 		prCtx
 	);
 	const commentCount = (counts.pending ?? 0) + (counts.open ?? 0);
+	const commentCountByFile = useMemo(() => fileCommentCounts(allThreads), [allThreads]);
 
 	const invalidateDrafts = useCallback(() => {
 		void utils.aiReview.getReviewDrafts.invalidate();
@@ -119,6 +118,14 @@ function ActiveReviewModeShell({ active }: { active: ActiveReview }) {
 		]
 	);
 
+	const jumpToComments = useCallback(
+		(filter: ThreadFilter) => {
+			setCommentFilter(filter);
+			setView("comments");
+		},
+		[setCommentFilter, setView]
+	);
+
 	useReviewKeymap({
 		workspaceId,
 		prCtx,
@@ -141,6 +148,7 @@ function ActiveReviewModeShell({ active }: { active: ActiveReview }) {
 								prCtx={prCtx}
 								details={details}
 								threads={allThreads}
+								commentCountByFile={commentCountByFile}
 							/>
 						) : (
 							<div className="p-4 text-[13px] text-[var(--text-tertiary)]">
@@ -152,7 +160,15 @@ function ActiveReviewModeShell({ active }: { active: ActiveReview }) {
 				<main
 					className={`min-w-0 flex-1 ${view === "changes" ? "overflow-hidden" : "overflow-y-auto"}`}
 				>
-					{view === "comments" && details ? (
+					{view === "overview" && details ? (
+						<OverviewView
+							prCtx={prCtx}
+							details={details}
+							aiDraft={aiDraft}
+							counts={counts}
+							onJumpToComments={jumpToComments}
+						/>
+					) : view === "comments" && details ? (
 						<CommentsView
 							prCtx={prCtx}
 							allThreads={allThreads}
@@ -172,7 +188,9 @@ function ActiveReviewModeShell({ active }: { active: ActiveReview }) {
 							callbacks={callbacks}
 						/>
 					) : (
-						<div className="p-8 text-[13px] text-[var(--text-tertiary)]">{VIEW_LABELS[view]}</div>
+						<div className="p-8 text-[13px] text-[var(--text-tertiary)]">
+							{isLoading ? "Loading review details..." : "Review details unavailable"}
+						</div>
 					)}
 				</main>
 			</div>

@@ -94,6 +94,17 @@ export function threadCounts(threads: UnifiedThread[]): Record<ThreadFilter, num
 	return counts;
 }
 
+export function fileCommentCounts(threads: UnifiedThread[]): Map<string, number> {
+	const counts = new Map<string, number>();
+
+	for (const thread of threads) {
+		if (!thread.isAIDraft && thread.isResolved) continue;
+		counts.set(thread.path, (counts.get(thread.path) ?? 0) + 1);
+	}
+
+	return counts;
+}
+
 export function mapDraftComment(c: DraftCommentLike, roundNumber?: number): AIDraftThread {
 	const thread: AIDraftThread = {
 		id: `ai-${c.id}`,

@@ -37,7 +37,15 @@ interface ReviewData {
 	fileOrder: string[];
 }
 
-const DRAFT_THREAD_STATUSES = new Set(["pending", "edited", "error", "user-pending"]);
+const DRAFT_THREAD_STATUSES = new Set([
+	"pending",
+	"approved",
+	"rejected",
+	"edited",
+	"submitted",
+	"user-pending",
+	"error",
+]);
 
 function toDraftCommentLike(comment: ReviewDraftComment): DraftCommentLike {
 	return {

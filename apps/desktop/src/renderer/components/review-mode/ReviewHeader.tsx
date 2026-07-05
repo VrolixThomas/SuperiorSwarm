@@ -20,7 +20,7 @@ export function ReviewHeader({ prCtx, commentCount, rightSlot }: ReviewHeaderPro
 	const close = useReviewModeStore((s) => s.close);
 
 	return (
-		<header className="flex h-12 shrink-0 items-center gap-3 border-b border-[var(--border)] bg-[var(--bg-surface)] px-3 text-[var(--text)]">
+		<header className="relative z-50 flex h-12 shrink-0 items-center gap-3 border-b border-[var(--border)] bg-[var(--bg-surface)] px-3 text-[var(--text)]">
 			<div className="flex min-w-0 flex-1 items-center gap-2">
 				<button
 					type="button"

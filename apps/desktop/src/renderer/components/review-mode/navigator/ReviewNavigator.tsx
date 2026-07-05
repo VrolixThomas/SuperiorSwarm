@@ -15,6 +15,7 @@ interface ReviewNavigatorProps {
 	prCtx: PRContext;
 	details: GitHubPRDetails;
 	threads: UnifiedThread[];
+	commentCountByFile: Map<string, number>;
 }
 
 type CIState = NonNullable<GitHubPRDetails["ciState"]>;
@@ -33,7 +34,13 @@ const REVIEW_DECISION_META: Record<ReviewDecision, { label: string; className: s
 	REVIEW_REQUIRED: { label: "Review required", className: "text-[var(--color-warning)]" },
 };
 
-export function ReviewNavigator({ workspaceId, prCtx, details, threads }: ReviewNavigatorProps) {
+export function ReviewNavigator({
+	workspaceId,
+	prCtx,
+	details,
+	threads,
+	commentCountByFile,
+}: ReviewNavigatorProps) {
 	const utils = trpc.useUtils();
 	const isGitHubPR = prCtx.provider === "github";
 	const sessionKey = prReviewSessionKey(workspaceId, formatPrIdentifier(prCtx));
@@ -61,14 +68,6 @@ export function ReviewNavigator({ workspaceId, prCtx, details, threads }: Review
 		() => (isGitHubPR ? new Set(viewedFilesList ?? []) : new Set<string>()),
 		[isGitHubPR, viewedFilesList]
 	);
-
-	const commentCountByFile = useMemo(() => {
-		const counts = new Map<string, number>();
-		for (const thread of threads) {
-			counts.set(thread.path, (counts.get(thread.path) ?? 0) + 1);
-		}
-		return counts;
-	}, [threads]);
 
 	const onSelectFile = useCallback(
 		(path: string) => {

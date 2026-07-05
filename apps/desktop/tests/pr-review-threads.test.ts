@@ -3,6 +3,7 @@ import {
 	CONDENSED_TO_FILTERS,
 	type DraftLike,
 	extractDiffContext,
+	fileCommentCounts,
 	groupThreadsByFile,
 	mapDraftComment,
 	matchesFilter,
@@ -198,6 +199,19 @@ describe("pr-review-threads", () => {
 
 		expect(groups.map((g) => g.path)).toEqual(["b.ts", "a.ts", "m.ts", "z.ts"]);
 		expect(groups.at(1)?.threads.map((t) => t.id)).toEqual(["a-null", "a-2", "a-10"]);
+	});
+
+	test("counts active comments by file without resolved provider threads", () => {
+		const counts = fileCommentCounts([
+			githubThread(false, { id: "open-gh", path: "src/a.ts" }),
+			githubThread(true, { id: "resolved-gh", path: "src/a.ts" }),
+			aiThread("pending", { id: "draft-pending", path: "src/a.ts" }),
+			aiThread("user-pending", { id: "draft-accepted", path: "src/b.ts" }),
+		]);
+
+		expect(counts.get("src/a.ts")).toBe(2);
+		expect(counts.get("src/b.ts")).toBe(1);
+		expect(counts.has("missing.ts")).toBe(false);
 	});
 
 	test("reads thread author and date from the thread source", () => {
