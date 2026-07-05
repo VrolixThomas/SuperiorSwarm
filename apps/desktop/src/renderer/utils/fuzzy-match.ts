@@ -34,6 +34,10 @@ export function fuzzyFilterPaths(query: string, paths: string[], limit: number):
 		if (score !== -1) scored.push({ path, score });
 	}
 
-	scored.sort((a, b) => b.score - a.score);
+	scored.sort((a, b) => {
+		const scoreDifference = b.score - a.score;
+		if (scoreDifference !== 0) return scoreDifference;
+		return a.path.length - b.path.length;
+	});
 	return scored.slice(0, limit).map((entry) => entry.path);
 }

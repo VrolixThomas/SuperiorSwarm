@@ -56,4 +56,10 @@ describe("fuzzyFilterPaths", () => {
 		expect(fuzzyScore("sep", path)).not.toBe(-1);
 		expect(fuzzyFilterPaths("sep", [path], 10)).toEqual([path]);
 	});
+
+	test("sorts equal scores by shorter path length", () => {
+		const longPath = `${"x".repeat(1000)}/a`;
+		expect(fuzzyScore("a", longPath)).toBe(fuzzyScore("a", "aa"));
+		expect(fuzzyFilterPaths("a", [longPath, "aa"], 10)).toEqual(["aa", longPath]);
+	});
 });
