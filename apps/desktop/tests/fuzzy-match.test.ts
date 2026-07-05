@@ -49,4 +49,11 @@ describe("fuzzyFilterPaths", () => {
 	test("excludes non-matches", () => {
 		expect(fuzzyFilterPaths("zzz", ["a.ts", "b.ts"], 10)).toEqual([]);
 	});
+
+	test("includes matches with negative scores", () => {
+		const path = `${"deep/".repeat(130)}SearchEverywherePopup.tsx`;
+		expect(fuzzyScore("sep", path)).toBeLessThan(0);
+		expect(fuzzyScore("sep", path)).not.toBe(-1);
+		expect(fuzzyFilterPaths("sep", [path], 10)).toEqual([path]);
+	});
 });

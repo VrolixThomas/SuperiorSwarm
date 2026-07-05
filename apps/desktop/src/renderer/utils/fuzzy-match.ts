@@ -31,7 +31,7 @@ export function fuzzyFilterPaths(query: string, paths: string[], limit: number):
 	const scored: { path: string; score: number }[] = [];
 	for (const path of paths) {
 		const score = fuzzyScore(query, path);
-		if (score >= 0) scored.push({ path, score });
+		if (score !== -1) scored.push({ path, score });
 	}
 
 	scored.sort((a, b) => b.score - a.score);
