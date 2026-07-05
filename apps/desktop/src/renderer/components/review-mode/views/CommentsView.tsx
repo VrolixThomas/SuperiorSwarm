@@ -5,20 +5,18 @@ import {
 	groupThreadsByFile,
 	matchesFilter,
 } from "../../../lib/pr-review-threads";
-import { openThreadInChanges } from "../../../lib/review-mode-nav";
 import { usePRReviewSessionStore } from "../../../stores/pr-review-session-store";
 import { useReviewModeStore } from "../../../stores/review-mode-store";
-import { trpc } from "../../../trpc/client";
 import { DiffContextSnippet } from "../thread/DiffContextSnippet";
 import { type ThreadCallbacks, ThreadCard } from "../thread/ThreadCard";
 
 interface CommentsViewProps {
-	workspaceId: string;
 	prCtx: PRContext;
 	allThreads: UnifiedThread[];
 	counts: Record<ThreadFilter, number>;
 	fileOrder: string[];
 	sessionKey: string;
+	callbacks: ThreadCallbacks;
 }
 
 const FILTERS: Array<{ label: string; value: ThreadFilter }> = [
@@ -44,14 +42,13 @@ function escapeThreadIdForSelector(threadId: string): string {
 }
 
 export function CommentsView({
-	workspaceId,
 	prCtx,
 	allThreads,
 	counts,
 	fileOrder,
 	sessionKey,
+	callbacks,
 }: CommentsViewProps) {
-	const utils = trpc.useUtils();
 	const commentFilter = useReviewModeStore((s) => s.commentFilter);
 	const setCommentFilter = useReviewModeStore((s) => s.setCommentFilter);
 	const activeThreadId = usePRReviewSessionStore(
@@ -96,74 +93,6 @@ export function CommentsView({
 	const selectThreadWithoutScroll = (threadId: string) => {
 		if (threadId !== activeThreadId) skipNextScrollRef.current = true;
 		selectThread(sessionKey, threadId);
-	};
-
-	const invalidateDrafts = () => {
-		utils.aiReview.getReviewDrafts.invalidate();
-		utils.aiReview.getReviewDraft.invalidate();
-	};
-	const invalidateDetails = () =>
-		utils.projects.getPRDetails.invalidate({
-			provider: prCtx.provider,
-			owner: prCtx.owner,
-			repo: prCtx.repo,
-			number: prCtx.number,
-		});
-
-	const updateDraftComment = trpc.aiReview.updateDraftComment.useMutation({
-		onSuccess: invalidateDrafts,
-	});
-	const deleteDraftComment = trpc.aiReview.deleteDraftComment.useMutation({
-		onSuccess: invalidateDrafts,
-	});
-	const addComment = trpc.github.addReviewComment.useMutation({
-		onSuccess: invalidateDetails,
-	});
-	const resolveThread = trpc.github.resolveThread.useMutation({
-		onSuccess: invalidateDetails,
-	});
-	const bitbucketReplyComment = trpc.atlassian.replyToPRComment.useMutation({
-		onSuccess: invalidateDetails,
-	});
-	const bitbucketResolveComment = trpc.atlassian.resolvePRComment.useMutation({
-		onSuccess: invalidateDetails,
-	});
-
-	const callbacks: ThreadCallbacks = {
-		onAccept: (commentId) => updateDraftComment.mutate({ commentId, status: "user-pending" }),
-		onDecline: (commentId) => updateDraftComment.mutate({ commentId, status: "rejected" }),
-		onDelete: (commentId) => deleteDraftComment.mutate({ commentId }),
-		onSaveEdit: (commentId, body) =>
-			updateDraftComment.mutate({ commentId, status: "edited", userEdit: body }),
-		onReply: (threadId, body) => {
-			if (prCtx.provider === "github") {
-				addComment.mutate({ threadId, body });
-				return;
-			}
-
-			bitbucketReplyComment.mutate({
-				workspace: prCtx.owner,
-				repoSlug: prCtx.repo,
-				prId: prCtx.number,
-				parentCommentId: Number.parseInt(threadId, 10),
-				body,
-			});
-		},
-		onResolve: (threadId) => {
-			if (prCtx.provider === "github") {
-				resolveThread.mutate({ threadId });
-				return;
-			}
-
-			bitbucketResolveComment.mutate({
-				workspace: prCtx.owner,
-				repoSlug: prCtx.repo,
-				prId: prCtx.number,
-				commentId: Number.parseInt(threadId, 10),
-				resolved: true,
-			});
-		},
-		onOpenInChanges: (path, threadId) => openThreadInChanges(workspaceId, prCtx, path, threadId),
 	};
 
 	return (

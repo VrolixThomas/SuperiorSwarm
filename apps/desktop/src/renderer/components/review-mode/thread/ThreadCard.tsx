@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useState } from "react";
 import type {
 	AIDraftThread,
 	GitHubReviewThread,
@@ -27,6 +27,8 @@ interface ThreadCardProps {
 	active?: boolean;
 	callbacks: ThreadCallbacks;
 	contextSlot?: ReactNode;
+	defaultCollapsed?: boolean;
+	onCollapsedChange?: (collapsed: boolean) => void;
 }
 
 type GitHubThread = GitHubReviewThread & { isAIDraft?: false };
@@ -160,40 +162,53 @@ export function ThreadCard({
 	active = false,
 	callbacks,
 	contextSlot,
+	defaultCollapsed = true,
+	onCollapsedChange,
 }: ThreadCardProps) {
 	const { aiThread, githubThread } = splitThread(thread);
 	const isAIDraft = aiThread !== null;
 	const isInlineResolvedGitHub =
 		variant === "inline" && githubThread !== null && githubThread.isResolved;
 	const [composer, setComposer] = useState<"reply" | "edit" | null>(null);
-	const [collapsed, setCollapsed] = useState(isInlineResolvedGitHub);
+	const [collapsed, setCollapsed] = useState(isInlineResolvedGitHub ? defaultCollapsed : false);
 	const intent = useReviewModeStore((state) => state.intent);
 	const clearIntent = useReviewModeStore((state) => state.clearIntent);
 	const paddingClassName = variant === "full" ? "px-4" : "px-3";
 	const bodyPaddingClassName = variant === "full" ? "px-4 py-3" : "px-3 py-2.5";
 	const dateLabel = relativeDate(threadDate(thread));
 	const showActions = hasActions(thread, callbacks);
+	const updateCollapsed = useCallback(
+		(nextCollapsed: boolean) => {
+			setCollapsed(nextCollapsed);
+			if (isInlineResolvedGitHub) onCollapsedChange?.(nextCollapsed);
+		},
+		[isInlineResolvedGitHub, onCollapsedChange]
+	);
 
 	useEffect(() => {
-		setCollapsed(isInlineResolvedGitHub);
-	}, [isInlineResolvedGitHub]);
+		setCollapsed(isInlineResolvedGitHub ? defaultCollapsed : false);
+	}, [defaultCollapsed, isInlineResolvedGitHub]);
 
 	useEffect(() => {
 		if (!intent || intent.threadId !== thread.id) return;
 
 		if (intent.kind === "reply" && !isAIDraft) {
-			setCollapsed(false);
+			updateCollapsed(false);
 			setComposer("reply");
 		} else if (intent.kind === "edit" && isAIDraft) {
 			setComposer("edit");
 		}
 
 		clearIntent();
-	}, [clearIntent, intent, isAIDraft, thread.id]);
+	}, [clearIntent, intent, isAIDraft, thread.id, updateCollapsed]);
 
 	if (collapsed && githubThread !== null) {
 		return (
-			<CollapsedThread thread={githubThread} active={active} onExpand={() => setCollapsed(false)} />
+			<CollapsedThread
+				thread={githubThread}
+				active={active}
+				onExpand={() => updateCollapsed(false)}
+			/>
 		);
 	}
 
@@ -236,7 +251,7 @@ export function ThreadCard({
 						aria-label="Collapse resolved thread"
 						onClick={(event) => {
 							event.stopPropagation();
-							setCollapsed(true);
+							updateCollapsed(true);
 						}}
 						className="shrink-0 rounded-[var(--radius-sm)] px-1.5 py-0.5 text-[11px] text-[var(--text-quaternary)] transition-colors duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-tertiary)]"
 					>
