@@ -7,6 +7,8 @@ import {
 	useSearchEverywhereStore,
 } from "../stores/search-everywhere-store";
 import { useTabStore } from "../stores/tab-store";
+import { trpc } from "../trpc/client";
+import { fuzzyFilterPaths } from "../utils/fuzzy-match";
 import { type ResultItem, resultKey } from "../utils/search-everywhere-results";
 
 export { resultKey };
@@ -33,6 +35,10 @@ export function SearchEverywherePopup() {
 	const workspaceId = useTabStore((s) => s.activeWorkspaceId);
 	const repoPath = useTabStore((s) => s.activeWorkspaceCwd);
 	const openFile = useTabStore((s) => s.openFile);
+	const filesQuery = trpc.diff.listAllFiles.useQuery(
+		{ repoPath },
+		{ enabled: isOpen && repoPath.length > 0, staleTime: 60_000 }
+	);
 
 	const [query, setQuery] = useState("");
 	const [selectedIndex, setSelectedIndex] = useState(0);
@@ -51,7 +57,22 @@ export function SearchEverywherePopup() {
 		if (isOpen && workspaceId === null) close();
 	}, [isOpen, workspaceId, close]);
 
-	const results = useMemo<ResultItem[]>(() => [], []);
+	const filePaths = useMemo(
+		() =>
+			(filesQuery.data?.entries ?? [])
+				.filter((entry) => entry.type === "file")
+				.map((entry) => entry.path),
+		[filesQuery.data]
+	);
+
+	const results: ResultItem[] = useMemo(() => {
+		const q = query.trim();
+		if (activeTab === "files" || activeTab === "all") {
+			if (q.length === 0) return [];
+			return fuzzyFilterPaths(q, filePaths, 50).map((path) => ({ type: "file" as const, path }));
+		}
+		return [];
+	}, [activeTab, query, filePaths]);
 
 	useEffect(() => {
 		if (selectedIndex >= results.length) {
@@ -212,30 +233,46 @@ function ResultRow({
 	onSelect: () => void;
 	onHover: () => void;
 }) {
-	const name =
-		item.type === "file"
-			? (item.path.split("/").pop() ?? item.path)
-			: item.type === "symbol"
-				? item.name
-				: item.path;
+	let primary: string;
+	let secondary: string;
+	if (item.type === "file") {
+		const slash = item.path.lastIndexOf("/");
+		primary = slash === -1 ? item.path : item.path.slice(slash + 1);
+		secondary = slash === -1 ? "" : item.path.slice(0, slash);
+	} else if (item.type === "symbol") {
+		primary = item.name;
+		secondary = `${item.container ? `${item.container} - ` : ""}${item.path}:${item.line}`;
+	} else {
+		primary = item.text.trim();
+		secondary = `${item.path}:${item.line}`;
+	}
 
 	return (
-		<button
-			type="button"
+		// biome-ignore lint/a11y/useSemanticElements: Rich popup rows use option semantics without native select rendering.
+		<div
+			role="option"
+			aria-selected={isSelected}
+			tabIndex={-1}
 			data-result-index={index}
 			data-selected={isSelected}
 			onClick={onSelect}
+			onKeyDown={(event) => {
+				if (event.key === "Enter" || event.key === " ") {
+					event.preventDefault();
+					onSelect();
+				}
+			}}
 			onMouseEnter={onHover}
-			className={`mx-2 flex w-[calc(100%-1rem)] cursor-pointer items-center gap-2 rounded-[6px] border-0 px-3 py-1.5 text-left font-sans text-[13px] transition-colors ${
+			className={`mx-2 flex cursor-pointer items-center gap-3 rounded-[6px] px-3 py-1.5 text-[13px] transition-colors ${
 				isSelected
 					? "bg-[var(--bg-elevated)] text-[var(--text)]"
-					: "bg-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]"
+					: "text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]"
 			}`}
 		>
-			<span className="truncate">{name}</span>
+			<span className="min-w-0 truncate font-medium">{primary}</span>
 			<span className="min-w-0 flex-1 truncate text-right text-[11px] text-[var(--text-quaternary)]">
-				{resultPath(item)}
+				{secondary}
 			</span>
-		</button>
+		</div>
 	);
 }
