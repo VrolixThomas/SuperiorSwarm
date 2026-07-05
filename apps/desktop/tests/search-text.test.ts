@@ -4,13 +4,22 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import { MAX_MATCHES, parseGrepOutput, searchText } from "../src/main/git/search-text";
+import {
+	MAX_MATCHES,
+	parseGrepExecFileError,
+	parseGrepOutput,
+	searchText,
+} from "../src/main/git/search-text";
 
 const run = promisify(execFile);
 
+function grepRecord(path: string, line: string | number, text: string): string {
+	return `${path}\0${line}\0${text}\n`;
+}
+
 describe("parseGrepOutput", () => {
-	test("parses path:line:text lines", () => {
-		const out = "src/a.ts:12:const x = 1;\nsrc/b.ts:3:hello\n";
+	test("parses path nul line nul text records", () => {
+		const out = `${grepRecord("src/a.ts", 12, "const x = 1;")}${grepRecord("src/b.ts", 3, "hello")}`;
 		expect(parseGrepOutput(out)).toEqual({
 			matches: [
 				{ path: "src/a.ts", line: 12, text: "const x = 1;" },
@@ -20,39 +29,55 @@ describe("parseGrepOutput", () => {
 		});
 	});
 
-	test("keeps colons in the matched text", () => {
-		const out = "a.ts:1:url: https://example.com\n";
-		expect(parseGrepOutput(out).matches[0]?.text).toBe("url: https://example.com");
+	test("keeps colons in paths and matched text", () => {
+		const out = grepRecord("a:b.ts", 1, "url: https://example.com");
+		expect(parseGrepOutput(out).matches[0]).toEqual({
+			path: "a:b.ts",
+			line: 1,
+			text: "url: https://example.com",
+		});
 	});
 
-	test("skips malformed lines", () => {
+	test("skips malformed and incomplete records", () => {
 		expect(parseGrepOutput("garbage\n\n").matches).toEqual([]);
+		expect(parseGrepOutput(["a.ts", "1", "unterminated"].join("\0")).matches).toEqual([]);
 	});
 
 	test("skips line numbers with non-numeric suffixes", () => {
-		expect(parseGrepOutput("a.ts:12abc:text\n").matches).toEqual([]);
+		expect(parseGrepOutput(grepRecord("a.ts", "12abc", "text")).matches).toEqual([]);
 	});
 
 	test("caps matches and sets truncated when an additional valid match exists", () => {
-		const out = Array.from({ length: MAX_MATCHES + 10 }, (_, i) => `a.ts:${i + 1}:x`).join("\n");
+		const out = Array.from({ length: MAX_MATCHES + 10 }, (_, i) =>
+			grepRecord("a.ts", i + 1, "x")
+		).join("");
 		const result = parseGrepOutput(out);
 		expect(result.matches.length).toBe(MAX_MATCHES);
 		expect(result.truncated).toBe(true);
 	});
 
 	test("does not set truncated for malformed lines after the match cap", () => {
-		const validMatches = Array.from({ length: MAX_MATCHES }, (_, i) => `a.ts:${i + 1}:x`).join(
-			"\n"
-		);
-		const result = parseGrepOutput(`${validMatches}\na.ts:12abc:text\n`);
+		const validMatches = Array.from({ length: MAX_MATCHES }, (_, i) =>
+			grepRecord("a.ts", i + 1, "x")
+		).join("");
+		const result = parseGrepOutput(`${validMatches}${grepRecord("a.ts", "12abc", "text")}`);
 		expect(result.matches.length).toBe(MAX_MATCHES);
 		expect(result.truncated).toBe(false);
 	});
 
 	test("truncates long lines to 200 chars", () => {
 		const long = "y".repeat(500);
-		const result = parseGrepOutput(`a.ts:1:${long}\n`);
+		const result = parseGrepOutput(grepRecord("a.ts", 1, long));
 		expect(result.matches[0]?.text.length).toBe(200);
+	});
+});
+
+describe("parseGrepExecFileError", () => {
+	test("parses captured stdout and marks results truncated", () => {
+		expect(parseGrepExecFileError({ stdout: grepRecord("a.ts", 1, "hello") })).toEqual({
+			matches: [{ path: "a.ts", line: 1, text: "hello" }],
+			truncated: true,
+		});
 	});
 });
 
@@ -63,6 +88,8 @@ describe("searchText (fixture repo)", () => {
 		repo = await mkdtemp(join(tmpdir(), "search-text-"));
 		await run("git", ["init"], { cwd: repo });
 		await writeFile(join(repo, "tracked.ts"), "const greeting = 'Hello World';\n");
+		await writeFile(join(repo, "a:b.txt"), "colon path\n");
+		await writeFile(join(repo, "dash.txt"), "--fixed literal\n");
 		await run("git", ["add", "."], { cwd: repo });
 		await writeFile(join(repo, "untracked.ts"), "// hello there\n");
 	});
@@ -84,15 +111,19 @@ describe("searchText (fixture repo)", () => {
 		expect(result.matches[0]?.line).toBe(1);
 	});
 
+	test("finds tracked files with colons in their paths", async () => {
+		const result = await searchText(repo, "colon path");
+		expect(result.matches).toEqual([{ path: "a:b.txt", line: 1, text: "colon path" }]);
+	});
+
 	test("no matches returns empty, not an error", async () => {
 		const result = await searchText(repo, "zzznomatch");
 		expect(result).toEqual({ matches: [], truncated: false });
 	});
 
 	test("query starting with dash is treated literally", async () => {
-		await expect(searchText(repo, "--fixed")).resolves.toEqual({
-			matches: [],
-			truncated: false,
-		});
+		const result = await searchText(repo, "--fixed");
+		expect(result.matches.map((match) => match.path)).toEqual(["dash.txt"]);
+		expect(result.truncated).toBe(false);
 	});
 });

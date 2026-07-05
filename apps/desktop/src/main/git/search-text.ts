@@ -20,17 +20,23 @@ export interface TextSearchResult {
 export function parseGrepOutput(stdout: string): TextSearchResult {
 	const matches: TextMatch[] = [];
 	let truncated = false;
+	let cursor = 0;
 
-	for (const line of stdout.split("\n")) {
-		if (line.length === 0) continue;
+	while (cursor < stdout.length) {
+		const pathEnd = stdout.indexOf("\0", cursor);
+		if (pathEnd === -1) break;
 
-		const first = line.indexOf(":");
-		if (first === -1) continue;
+		const lineEnd = stdout.indexOf("\0", pathEnd + 1);
+		if (lineEnd === -1) break;
 
-		const second = line.indexOf(":", first + 1);
-		if (second === -1) continue;
+		const textEnd = stdout.indexOf("\n", lineEnd + 1);
+		if (textEnd === -1) break;
 
-		const lineNumberText = line.slice(first + 1, second);
+		const path = stdout.slice(cursor, pathEnd);
+		const lineNumberText = stdout.slice(pathEnd + 1, lineEnd);
+		const text = stdout.slice(lineEnd + 1, textEnd);
+		cursor = textEnd + 1;
+
 		if (!/^\d+$/.test(lineNumberText)) continue;
 
 		if (matches.length >= MAX_MATCHES) {
@@ -39,13 +45,25 @@ export function parseGrepOutput(stdout: string): TextSearchResult {
 		}
 
 		matches.push({
-			path: line.slice(0, first),
+			path,
 			line: Number.parseInt(lineNumberText, 10),
-			text: line.slice(second + 1, second + 1 + MAX_LINE_LENGTH),
+			text: text.slice(0, MAX_LINE_LENGTH),
 		});
 	}
 
 	return { matches, truncated };
+}
+
+export function parseGrepExecFileError(err: unknown): TextSearchResult | null {
+	const error = err as { code?: number | string; stdout?: unknown };
+	if (error.code === 1) return { matches: [], truncated: false };
+
+	if (typeof error.stdout === "string") {
+		const result = parseGrepOutput(error.stdout);
+		return { ...result, truncated: true };
+	}
+
+	return null;
 }
 
 /**
@@ -53,7 +71,7 @@ export function parseGrepOutput(stdout: string): TextSearchResult {
  * non-ignored files while skipping binary content.
  */
 export async function searchText(repoPath: string, query: string): Promise<TextSearchResult> {
-	const args = ["grep", "-n", "-I", "--untracked", "--fixed-strings"];
+	const args = ["grep", "-z", "-n", "-I", "--untracked", "--fixed-strings"];
 	if (query === query.toLowerCase()) args.push("-i");
 	args.push("-e", query);
 
@@ -64,8 +82,8 @@ export async function searchText(repoPath: string, query: string): Promise<TextS
 		});
 		return parseGrepOutput(stdout);
 	} catch (err) {
-		const error = err as { code?: number | string };
-		if (error.code === 1) return { matches: [], truncated: false };
+		const result = parseGrepExecFileError(err);
+		if (result) return result;
 		throw err;
 	}
 }
