@@ -53,6 +53,15 @@ describe("createDoubleShiftDetector", () => {
 		expect(fired).toBe(0);
 	});
 
+	test("non-shift keyup between two taps resets the sequence", () => {
+		let fired = 0;
+		const d = createDoubleShiftDetector(() => fired++);
+		tap(d, 0, 50);
+		d.keyup(key("a"), 100);
+		tap(d, 200, 250);
+		expect(fired).toBe(0);
+	});
+
 	test("shift pressed with meta held does not count", () => {
 		let fired = 0;
 		const d = createDoubleShiftDetector(() => fired++);

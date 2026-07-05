@@ -41,6 +41,10 @@ export function createDoubleShiftDetector(
 		},
 		keyup(e, now) {
 			if (e.key !== "Shift") {
+				if (shiftDown) {
+					dirty = true;
+				}
+				lastTapAt = NO_PENDING_TAP_AT;
 				return;
 			}
 
