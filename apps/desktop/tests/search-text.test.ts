@@ -73,10 +73,27 @@ describe("parseGrepOutput", () => {
 });
 
 describe("parseGrepExecFileError", () => {
-	test("parses captured stdout and marks results truncated", () => {
-		expect(parseGrepExecFileError({ stdout: grepRecord("a.ts", 1, "hello") })).toEqual({
+	test("returns null for fatal git errors with empty stdout", () => {
+		expect(parseGrepExecFileError({ code: 128, stdout: "" })).toBeNull();
+	});
+
+	test("returns null for fatal git errors with stdout that parses to no matches", () => {
+		expect(
+			parseGrepExecFileError({ code: 128, stdout: "fatal: not a git repository\n" })
+		).toBeNull();
+	});
+
+	test("parses captured stdout from fatal git errors and marks results truncated", () => {
+		expect(parseGrepExecFileError({ code: 128, stdout: grepRecord("a.ts", 1, "hello") })).toEqual({
 			matches: [{ path: "a.ts", line: 1, text: "hello" }],
 			truncated: true,
+		});
+	});
+
+	test("returns empty results for git grep no-match exit code", () => {
+		expect(parseGrepExecFileError({ code: 1, stdout: "" })).toEqual({
+			matches: [],
+			truncated: false,
 		});
 	});
 });

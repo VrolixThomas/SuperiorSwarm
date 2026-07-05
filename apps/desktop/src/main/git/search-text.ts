@@ -60,6 +60,7 @@ export function parseGrepExecFileError(err: unknown): TextSearchResult | null {
 
 	if (typeof error.stdout === "string") {
 		const result = parseGrepOutput(error.stdout);
+		if (result.matches.length === 0) return null;
 		return { ...result, truncated: true };
 	}
 
