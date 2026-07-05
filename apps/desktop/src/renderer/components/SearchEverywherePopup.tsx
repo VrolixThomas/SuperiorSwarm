@@ -160,7 +160,7 @@ export function SearchEverywherePopup() {
 		}
 		if (activeTab === "all") {
 			if (trimmedQuery.length === 0) return [];
-			const fileItems = fuzzyFilterPaths(trimmedQuery, filePaths, 50).map((path) => ({
+			const fileItems = filePaths.map((path) => ({
 				type: "file" as const,
 				path,
 			}));

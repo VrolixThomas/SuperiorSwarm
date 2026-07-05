@@ -39,6 +39,14 @@ describe("mergeAllResults", () => {
 		expect(merged.length).toBe(50);
 	});
 
+	test("ranks before capping across files and symbols", () => {
+		const files = Array.from({ length: 60 }, (_, i) => file(`src/store-${i}.ts`));
+		const exactSymbol = symbol("store");
+		const merged = mergeAllResults("store", files, [exactSymbol], 50);
+		expect(merged[0]).toEqual(exactSymbol);
+		expect(merged.length).toBe(50);
+	});
+
 	test("preserves input order for matches in the same fuzzy band", () => {
 		const first = file("deep/nested/store.ts");
 		const second = file("store.ts");
