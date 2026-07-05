@@ -57,9 +57,11 @@ function readStartPosition(
 	start: RawPosition | undefined
 ): { line: number; column: number } | null {
 	const line = start?.line;
-	if (line !== undefined && typeof line !== "number") return null;
+	if (line !== undefined && (typeof line !== "number" || !Number.isFinite(line))) return null;
 	const character = start?.character;
-	if (character !== undefined && typeof character !== "number") return null;
+	if (character !== undefined && (typeof character !== "number" || !Number.isFinite(character))) {
+		return null;
+	}
 
 	return {
 		line: (line ?? 0) + 1,
@@ -81,7 +83,7 @@ export function normalizeWorkspaceSymbols(raw: unknown[], repoPath: string): Wor
 		const path = pathForRepo(symbol.location.uri, repoPath);
 		const position = readStartPosition(symbol.location.range?.start);
 		if (!position) continue;
-		const key = `${symbol.name}:${path}:${position.line}`;
+		const key = JSON.stringify([symbol.name, path, position.line]);
 
 		if (seen.has(key)) continue;
 		seen.add(key);

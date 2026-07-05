@@ -103,8 +103,7 @@ Mount `<SearchEverywherePopup />` next to `<CommandPalette />` in `App.tsx`.
 ## Error handling
 
 - Text search process errors → inline error row; never crashes popup.
-- LSP requests race a 10s timeout (existing passthrough behavior); rejected promises ignored
-  per-server.
+- LSP requests race a 3s per-server timeout; rejected promises ignored per-server.
 - Stale async results (query changed, tab switched, popup closed) discarded via request id.
 - Workspace switched while open → popup closes.
 

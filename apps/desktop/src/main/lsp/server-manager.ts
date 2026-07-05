@@ -39,6 +39,7 @@ interface ServerInstance {
 	config: LanguageServerConfig;
 	connection: MessageConnection;
 	process: ChildProcess;
+	repoPath: string;
 	rootUri: string;
 	initialized: boolean;
 	shuttingDown: boolean;
@@ -465,13 +466,12 @@ export class ServerManager {
 	}
 
 	getRunningConnections(repoPath: string): { configId: string; connection: MessageConnection }[] {
-		const suffix = `:${repoPath}`;
 		const out: { configId: string; connection: MessageConnection }[] = [];
-		for (const [key, instance] of this.servers) {
-			if (!key.endsWith(suffix)) continue;
+		for (const instance of this.servers.values()) {
+			if (instance.repoPath !== repoPath) continue;
 			if (!instance.initialized || instance.shuttingDown) continue;
 			out.push({
-				configId: key.slice(0, key.length - suffix.length),
+				configId: instance.config.id,
 				connection: instance.connection,
 			});
 		}
@@ -543,6 +543,7 @@ export class ServerManager {
 			config,
 			connection,
 			process: childProcess,
+			repoPath,
 			rootUri: pathToFileURL(repoPath).toString(),
 			initialized: false,
 			shuttingDown: false,

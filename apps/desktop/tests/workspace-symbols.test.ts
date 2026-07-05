@@ -100,10 +100,7 @@ describe("normalizeWorkspaceSymbols", () => {
 
 	test("does not dedup distinct symbols whose colon-delimited keys would collide", () => {
 		const hits = normalizeWorkspaceSymbols(
-			[
-				sym("a:b", `file://${REPO}/c/d.ts`, 6),
-				sym("a", `file://${REPO}/b:c/d.ts`, 6),
-			],
+			[sym("a:b", `file://${REPO}/c/d.ts`, 6), sym("a", `file://${REPO}/b:c/d.ts`, 6)],
 			REPO
 		);
 		expect(hits.map((hit) => hit.name)).toEqual(["a:b", "a"]);
