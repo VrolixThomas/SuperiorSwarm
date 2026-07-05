@@ -23,7 +23,7 @@ export function resultKey(item: ResultItem): string {
 				item.line,
 				item.column,
 				item.kind,
-				item.container ?? "",
+				item.container ?? null,
 			]);
 		case "text":
 			return JSON.stringify(["text", item.path, item.line, item.text]);

@@ -80,4 +80,18 @@ describe("resultKey", () => {
 
 		expect(resultKey(first)).not.toBe(resultKey(second));
 	});
+
+	test("distinguishes omitted symbol container from an empty container", () => {
+		const withoutContainer: ResultItem = {
+			type: "symbol",
+			name: "render",
+			kind: 12,
+			path: "src/App.tsx",
+			line: 42,
+			column: 3,
+		};
+		const withEmptyContainer: ResultItem = { ...withoutContainer, container: "" };
+
+		expect(resultKey(withoutContainer)).not.toBe(resultKey(withEmptyContainer));
+	});
 });
