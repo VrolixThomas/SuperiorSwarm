@@ -22,6 +22,54 @@ const TAB_LABELS: Record<SearchTab, string> = {
 	text: "Text",
 };
 
+export const SYMBOL_KIND_GLYPHS: Record<number, string> = {
+	5: "C", // Class
+	6: "M", // Method
+	9: "+", // Constructor
+	10: "E", // Enum
+	11: "I", // Interface
+	12: "F", // Function
+	13: "V", // Variable
+	14: "K", // Constant
+	23: "S", // Struct
+};
+
+export function symbolKindGlyph(kind: number): string {
+	return SYMBOL_KIND_GLYPHS[kind] ?? "?";
+}
+
+export function getSearchEverywhereEmptyStateMessage({
+	activeTab,
+	trimmedQuery,
+	queryMatchesInput,
+	isError = false,
+	isFetching = false,
+	serversQueried,
+}: {
+	activeTab: SearchTab;
+	trimmedQuery: string;
+	queryMatchesInput: boolean;
+	isError?: boolean;
+	isFetching?: boolean;
+	serversQueried?: number;
+}): string {
+	if (trimmedQuery.length === 0) return "Type to search";
+	if (activeTab === "text") {
+		if (trimmedQuery.length < 2) return "Type at least 2 characters";
+		if (!queryMatchesInput) return "Searching...";
+		if (isError) return "Search failed";
+		if (isFetching) return "Searching...";
+	}
+	if (activeTab === "symbols") {
+		if (trimmedQuery.length < 2) return "Type at least 2 characters";
+		if (!queryMatchesInput) return "Searching...";
+		if (isFetching) return "Searching...";
+		if ((serversQueried ?? 0) === 0)
+			return "No language servers running - symbols appear once files are opened in the editor";
+	}
+	return "No results";
+}
+
 function resultPath(item: ResultItem): string {
 	return item.type === "text" || item.type === "symbol" ? `${item.path}:${item.line}` : item.path;
 }
@@ -75,6 +123,29 @@ export function SearchEverywherePopup() {
 		{ repoPath, query: debouncedQuery },
 		{ enabled: textEnabled && repoPath.length > 0, staleTime: 10_000 }
 	);
+	const symbolsQueryMatchesInput = debouncedQuery === trimmedQuery;
+	const canShowSymbolQueryState =
+		activeTab === "symbols" && symbolsQueryMatchesInput && trimmedQuery.length >= 2;
+	const symbolsEnabled =
+		isOpen && (activeTab === "symbols" || activeTab === "all") && debouncedQuery.length >= 2;
+	const symbolsQuery = trpc.lsp.searchWorkspaceSymbols.useQuery(
+		{ repoPath, query: debouncedQuery },
+		{ enabled: symbolsEnabled && repoPath.length > 0, staleTime: 10_000 }
+	);
+
+	const symbolHits: ResultItem[] = useMemo(
+		() =>
+			(symbolsQuery.data?.symbols ?? []).map((s) => ({
+				type: "symbol" as const,
+				name: s.name,
+				kind: s.kind,
+				path: s.path,
+				line: s.line,
+				column: s.column,
+				container: s.container,
+			})),
+		[symbolsQuery.data]
+	);
 
 	const results: ResultItem[] = useMemo(() => {
 		if (activeTab === "files" || activeTab === "all") {
@@ -93,8 +164,20 @@ export function SearchEverywherePopup() {
 				text: match.text,
 			}));
 		}
+		if (activeTab === "symbols") {
+			if (!canShowSymbolQueryState) return [];
+			return symbolHits;
+		}
 		return [];
-	}, [activeTab, trimmedQuery, filePaths, canShowTextQueryState, textQuery.data]);
+	}, [
+		activeTab,
+		trimmedQuery,
+		filePaths,
+		canShowTextQueryState,
+		textQuery.data,
+		canShowSymbolQueryState,
+		symbolHits,
+	]);
 
 	useEffect(() => {
 		if (selectedIndex >= results.length) {
@@ -146,22 +229,31 @@ export function SearchEverywherePopup() {
 	if (!isOpen) return null;
 
 	const selected = results[selectedIndex];
-	const emptyStateText =
-		activeTab === "text"
-			? trimmedQuery.length === 0
-				? "Type to search"
-				: trimmedQuery.length < 2
-					? "Type at least 2 characters"
-					: !textQueryMatchesInput
-						? "Searching..."
-						: textQuery.isError
-							? "Search failed"
-							: textQuery.isFetching
-								? "Searching..."
-								: "No results"
-			: trimmedQuery.length === 0
-				? "Type to search"
-				: "No results";
+	function emptyStateMessage(): string {
+		if (activeTab === "text") {
+			return getSearchEverywhereEmptyStateMessage({
+				activeTab,
+				trimmedQuery,
+				queryMatchesInput: textQueryMatchesInput,
+				isError: textQuery.isError,
+				isFetching: textQuery.isFetching,
+			});
+		}
+		if (activeTab === "symbols") {
+			return getSearchEverywhereEmptyStateMessage({
+				activeTab,
+				trimmedQuery,
+				queryMatchesInput: symbolsQueryMatchesInput,
+				isFetching: symbolsQuery.isFetching,
+				serversQueried: symbolsQuery.data?.serversQueried,
+			});
+		}
+		return getSearchEverywhereEmptyStateMessage({
+			activeTab,
+			trimmedQuery,
+			queryMatchesInput: true,
+		});
+	}
 
 	return createPortal(
 		<div
@@ -234,7 +326,7 @@ export function SearchEverywherePopup() {
 				<div ref={listRef} className="min-h-[120px] overflow-y-auto py-2">
 					{results.length === 0 && (
 						<div className="px-4 py-6 text-center text-[13px] text-[var(--text-quaternary)]">
-							{emptyStateText}
+							{emptyStateMessage()}
 						</div>
 					)}
 					{canShowTextQueryState && textQuery.data?.truncated && (
@@ -303,6 +395,11 @@ function ResultRow({
 					: "bg-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]"
 			}`}
 		>
+			{item.type === "symbol" && (
+				<span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-[3px] bg-[var(--bg-base)] text-[10px] text-[var(--text-tertiary)]">
+					{symbolKindGlyph(item.kind)}
+				</span>
+			)}
 			<span className="min-w-0 truncate font-medium">{primary}</span>
 			<span className="min-w-0 flex-1 truncate text-right text-[11px] text-[var(--text-quaternary)]">
 				{secondary}

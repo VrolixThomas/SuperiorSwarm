@@ -1,4 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import {
+	getSearchEverywhereEmptyStateMessage,
+	symbolKindGlyph,
+} from "../src/renderer/components/SearchEverywherePopup";
 import { type ResultItem, resultKey } from "../src/renderer/utils/search-everywhere-results";
 
 describe("resultKey", () => {
@@ -93,5 +97,37 @@ describe("resultKey", () => {
 		const withEmptyContainer: ResultItem = { ...withoutContainer, container: "" };
 
 		expect(resultKey(withoutContainer)).not.toBe(resultKey(withEmptyContainer));
+	});
+});
+
+describe("symbolKindGlyph", () => {
+	test("returns LSP symbol kind glyphs with fallback", () => {
+		expect(symbolKindGlyph(5)).toBe("C");
+		expect(symbolKindGlyph(12)).toBe("F");
+		expect(symbolKindGlyph(999)).toBe("•");
+	});
+});
+
+describe("getSearchEverywhereEmptyStateMessage", () => {
+	test("shows no-server hint only for current symbols query state", () => {
+		expect(
+			getSearchEverywhereEmptyStateMessage({
+				activeTab: "symbols",
+				trimmedQuery: "render",
+				queryMatchesInput: true,
+				isFetching: false,
+				serversQueried: 0,
+			})
+		).toBe("No language servers running — symbols appear once files are opened in the editor");
+
+		expect(
+			getSearchEverywhereEmptyStateMessage({
+				activeTab: "symbols",
+				trimmedQuery: "renderer",
+				queryMatchesInput: false,
+				isFetching: false,
+				serversQueried: 0,
+			})
+		).toBe("Searching...");
 	});
 });
