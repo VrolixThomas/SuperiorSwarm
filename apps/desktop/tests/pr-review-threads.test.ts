@@ -2,11 +2,15 @@ import { describe, expect, test } from "bun:test";
 import {
 	CONDENSED_TO_FILTERS,
 	type DraftLike,
+	draftStatusAfterEdit,
 	extractDiffContext,
 	fileCommentCounts,
+	filtersForReviewFilter,
 	groupThreadsByFile,
 	mapDraftComment,
 	matchesFilter,
+	matchesReviewFilter,
+	pickActiveDraft,
 	pickLatestDraft,
 	threadAuthor,
 	threadBucket,
@@ -79,6 +83,7 @@ describe("pr-review-threads", () => {
 	test("matches filters and counts threads by bucket", () => {
 		const threads: UnifiedThread[] = [
 			aiThread("pending", { id: "ai-pending" }),
+			aiThread("user-pending", { id: "ai-accepted" }),
 			aiThread("approved", { id: "ai-approved" }),
 			aiThread("rejected", { id: "ai-rejected" }),
 			githubThread(false, { id: "gh-open" }),
@@ -93,13 +98,37 @@ describe("pr-review-threads", () => {
 		expect(CONDENSED_TO_FILTERS.attention).toEqual(["pending", "open"]);
 		expect(CONDENSED_TO_FILTERS.done).toEqual(["declined", "resolved"]);
 		expect(threadCounts(threads)).toEqual({
-			all: 5,
+			all: 6,
 			pending: 1,
-			accepted: 1,
+			accepted: 2,
 			declined: 1,
 			open: 1,
 			resolved: 1,
 		});
+	});
+
+	test("matches condensed review filters across multiple buckets", () => {
+		const pending = aiThread("pending");
+		const accepted = aiThread("user-pending");
+		const declined = aiThread("rejected");
+		const open = githubThread(false);
+		const resolved = githubThread(true);
+
+		expect(filtersForReviewFilter("attention")).toEqual(["pending", "open"]);
+		expect(filtersForReviewFilter("done")).toEqual(["declined", "resolved"]);
+		expect(matchesReviewFilter(pending, "attention")).toBe(true);
+		expect(matchesReviewFilter(open, "attention")).toBe(true);
+		expect(matchesReviewFilter(accepted, "attention")).toBe(false);
+		expect(matchesReviewFilter(declined, "done")).toBe(true);
+		expect(matchesReviewFilter(resolved, "done")).toBe(true);
+		expect(matchesReviewFilter(open, "done")).toBe(false);
+	});
+
+	test("editing accepted draft comments keeps them accepted for submission", () => {
+		expect(draftStatusAfterEdit("pending")).toBe("edited");
+		expect(draftStatusAfterEdit("edited")).toBe("edited");
+		expect(draftStatusAfterEdit("user-pending")).toBe("user-pending");
+		expect(draftStatusAfterEdit("approved")).toBe("user-pending");
 	});
 
 	test("maps raw draft comments to AI draft threads", () => {
@@ -173,6 +202,27 @@ describe("pr-review-threads", () => {
 		expect(pickLatestDraft(drafts, "github:org/repo#1")?.id).toBe("ready-high");
 	});
 
+	test("picks active queued or in-progress draft ahead of older ready draft", () => {
+		const drafts: DraftLike[] = [
+			{ id: "ready-round-1", prIdentifier: "github:org/repo#1", status: "ready", roundNumber: 1 },
+			{
+				id: "queued-round-2",
+				prIdentifier: "github:org/repo#1",
+				status: "queued",
+				roundNumber: 2,
+			},
+			{
+				id: "in-progress-round-3",
+				prIdentifier: "github:org/repo#1",
+				status: "in_progress",
+				roundNumber: 3,
+			},
+		];
+
+		expect(pickLatestDraft(drafts, "github:org/repo#1")?.id).toBe("ready-round-1");
+		expect(pickActiveDraft(drafts, "github:org/repo#1")?.id).toBe("in-progress-round-3");
+	});
+
 	test("returns undefined when no matching draft exists", () => {
 		expect(pickLatestDraft(undefined, "github:org/repo#1")).toBeUndefined();
 		expect(pickLatestDraft([], "github:org/repo#1")).toBeUndefined();
@@ -201,16 +251,23 @@ describe("pr-review-threads", () => {
 		expect(groups.at(1)?.threads.map((t) => t.id)).toEqual(["a-null", "a-2", "a-10"]);
 	});
 
-	test("counts active comments by file without resolved provider threads", () => {
+	test("counts active comments by file without resolved provider threads or terminal AI drafts", () => {
 		const counts = fileCommentCounts([
 			githubThread(false, { id: "open-gh", path: "src/a.ts" }),
 			githubThread(true, { id: "resolved-gh", path: "src/a.ts" }),
 			aiThread("pending", { id: "draft-pending", path: "src/a.ts" }),
 			aiThread("user-pending", { id: "draft-accepted", path: "src/b.ts" }),
+			aiThread("approved", { id: "draft-approved", path: "src/b.ts" }),
+			aiThread("error", { id: "draft-error", path: "src/c.ts" }),
+			aiThread("rejected", { id: "draft-rejected", path: "src/d.ts" }),
+			aiThread("submitted", { id: "draft-submitted", path: "src/e.ts" }),
 		]);
 
 		expect(counts.get("src/a.ts")).toBe(2);
-		expect(counts.get("src/b.ts")).toBe(1);
+		expect(counts.get("src/b.ts")).toBe(2);
+		expect(counts.get("src/c.ts")).toBe(1);
+		expect(counts.has("src/d.ts")).toBe(false);
+		expect(counts.has("src/e.ts")).toBe(false);
 		expect(counts.has("missing.ts")).toBe(false);
 	});
 

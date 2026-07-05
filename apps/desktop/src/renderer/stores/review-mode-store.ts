@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import type { PRContext } from "../../shared/github-types";
-import type { ThreadFilter } from "../lib/pr-review-threads";
+import type { ReviewCommentFilter } from "../lib/pr-review-threads";
 
 export type ReviewView = "overview" | "changes" | "comments";
 
@@ -22,7 +22,7 @@ export interface ReviewModeStore {
 	navigatorCollapsed: boolean;
 	drawerOpen: boolean;
 	terminal: ReviewTerminal | null;
-	commentFilter: ThreadFilter;
+	commentFilter: ReviewCommentFilter;
 	intent: ReviewIntent | null;
 
 	open: (workspaceId: string, prCtx: PRContext) => void;
@@ -31,7 +31,7 @@ export interface ReviewModeStore {
 	toggleNavigator: () => void;
 	setDrawerOpen: (open: boolean) => void;
 	setTerminal: (terminal: ReviewTerminal | null) => void;
-	setCommentFilter: (filter: ThreadFilter) => void;
+	setCommentFilter: (filter: ReviewCommentFilter) => void;
 	sendIntent: (kind: ReviewIntent["kind"], threadId?: string) => void;
 	clearIntent: () => void;
 }
@@ -57,6 +57,7 @@ export const useReviewModeStore = create<ReviewModeStore>()((set) => ({
 			active: { workspaceId, prCtx },
 			view: "overview",
 			drawerOpen: false,
+			terminal: null,
 			commentFilter: "all",
 			intent: null,
 		}),

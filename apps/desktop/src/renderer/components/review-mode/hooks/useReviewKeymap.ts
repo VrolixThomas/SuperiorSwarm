@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo } from "react";
 import type { PRContext, UnifiedThread } from "../../../../shared/github-types";
-import { groupThreadsByFile, matchesFilter } from "../../../lib/pr-review-threads";
+import { groupThreadsByFile, matchesReviewFilter } from "../../../lib/pr-review-threads";
 import { type ReviewKeyAction, mapReviewKey } from "../../../lib/review-keymap";
 import { openThreadInChanges } from "../../../lib/review-mode-nav";
 import { usePRReviewSessionStore } from "../../../stores/pr-review-session-store";
@@ -125,7 +125,7 @@ export function useReviewKeymap({
 	const visibleCommentThreadRefs = useMemo(
 		() =>
 			groupThreadsByFile(
-				allThreads.filter((thread) => matchesFilter(thread, commentFilter)),
+				allThreads.filter((thread) => matchesReviewFilter(thread, commentFilter)),
 				fileOrder
 			).flatMap((group) => group.threads.map((thread) => ({ id: thread.id, path: thread.path }))),
 		[allThreads, commentFilter, fileOrder]

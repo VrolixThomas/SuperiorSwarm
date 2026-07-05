@@ -21,11 +21,15 @@ export function ReplyComposer({
 }: ReplyComposerProps) {
 	const [body, setBody] = useState(initialValue);
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
+	const initialValueRef = useRef(initialValue);
+	const dirtyRef = useRef(false);
 	const rows = Math.min(Math.max(body.split("\n").length, 2), 8);
 	const trimmedBody = body.trim();
 
 	useEffect(() => {
-		setBody(initialValue);
+		if (initialValueRef.current === initialValue) return;
+		initialValueRef.current = initialValue;
+		if (!dirtyRef.current) setBody(initialValue);
 	}, [initialValue]);
 
 	useEffect(() => {
@@ -40,7 +44,10 @@ export function ReplyComposer({
 			<textarea
 				ref={textareaRef}
 				value={body}
-				onChange={(event) => setBody(event.target.value)}
+				onChange={(event) => {
+					dirtyRef.current = true;
+					setBody(event.target.value);
+				}}
 				placeholder={placeholder}
 				aria-label={ariaLabel ?? placeholder}
 				rows={rows}

@@ -15,7 +15,7 @@ export interface ThreadCallbacks {
 	onAccept?: (draftCommentId: string) => void;
 	onDecline?: (draftCommentId: string) => void;
 	onDelete?: (draftCommentId: string) => void;
-	onSaveEdit?: (draftCommentId: string, body: string) => void;
+	onSaveEdit?: (draftCommentId: string, body: string, status: AIDraftThread["status"]) => void;
 	onReply?: (threadId: string, body: string) => void;
 	onResolve?: (threadId: string) => void;
 	onOpenInChanges?: (path: string, threadId: string) => void;
@@ -48,13 +48,20 @@ function fileLabel(path: string, line: number | null): string {
 	return line == null ? path : `${path}:${line}`;
 }
 
-function hasActions(thread: UnifiedThread, callbacks: ThreadCallbacks): boolean {
-	if (callbacks.onOpenInChanges) return true;
+function hasActions(
+	thread: UnifiedThread,
+	callbacks: ThreadCallbacks,
+	showOpenInChanges: boolean
+): boolean {
+	if (showOpenInChanges && callbacks.onOpenInChanges) return true;
 
 	if (thread.isAIDraft) {
 		const canAccept = thread.status === "pending" || thread.status === "edited";
 		const canEdit =
-			thread.status === "pending" || thread.status === "edited" || thread.status === "user-pending";
+			thread.status === "pending" ||
+			thread.status === "edited" ||
+			thread.status === "user-pending" ||
+			thread.status === "approved";
 		const canDecline = canEdit;
 
 		return (
@@ -84,6 +91,26 @@ function relativeDate(iso: string): string {
 	if (days < 30) return `${days}d ago`;
 
 	return new Date(iso).toLocaleDateString();
+}
+
+function ResolutionBadge({ resolution }: { resolution: string | null | undefined }) {
+	if (resolution === "resolved-by-code") {
+		return (
+			<span className="shrink-0 rounded-[var(--radius-sm)] bg-[var(--success-subtle)] px-1.5 py-0.5 text-[11px] font-medium text-[var(--color-success)]">
+				Resolved by code
+			</span>
+		);
+	}
+
+	if (resolution === "incorrectly-resolved") {
+		return (
+			<span className="shrink-0 rounded-[var(--radius-sm)] bg-[var(--warning-subtle)] px-1.5 py-0.5 text-[11px] font-medium text-[var(--color-warning)]">
+				Incorrectly resolved
+			</span>
+		);
+	}
+
+	return null;
 }
 
 function FileLineLink({
@@ -176,7 +203,7 @@ export function ThreadCard({
 	const paddingClassName = variant === "full" ? "px-4" : "px-3";
 	const bodyPaddingClassName = variant === "full" ? "px-4 py-3" : "px-3 py-2.5";
 	const dateLabel = relativeDate(threadDate(thread));
-	const showActions = hasActions(thread, callbacks);
+	const showActions = hasActions(thread, callbacks, variant === "full");
 	const updateCollapsed = useCallback(
 		(nextCollapsed: boolean) => {
 			setCollapsed(nextCollapsed);
@@ -239,6 +266,7 @@ export function ThreadCard({
 						Round {aiThread.roundNumber}
 					</span>
 				)}
+				{aiThread !== null && <ResolutionBadge resolution={aiThread.resolution} />}
 
 				<div className="min-w-2 flex-1" />
 				<ThreadStatusChip thread={thread} />
@@ -316,7 +344,7 @@ export function ThreadCard({
 						initialValue={aiThread.userEdit ?? aiThread.body}
 						autoFocus
 						onSubmit={(body) => {
-							callbacks.onSaveEdit?.(aiThread.draftCommentId, body);
+							callbacks.onSaveEdit?.(aiThread.draftCommentId, body, aiThread.status);
 							setComposer(null);
 						}}
 						onCancel={() => setComposer(null)}

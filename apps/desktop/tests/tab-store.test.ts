@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { getAllPanes, usePaneStore } from "../src/renderer/stores/pane-store";
+import { useReviewModeStore } from "../src/renderer/stores/review-mode-store";
 import {
 	PANEL_CLOSED,
 	type RightPanelState,
@@ -73,6 +74,15 @@ function assertPanelOpen(
 
 function resetStore() {
 	usePaneStore.setState({ layouts: {}, focusedPaneId: null });
+	useReviewModeStore.setState({
+		active: null,
+		view: "overview",
+		navigatorCollapsed: false,
+		drawerOpen: false,
+		terminal: null,
+		commentFilter: "all",
+		intent: null,
+	});
 	useTabStore.setState({
 		activeWorkspaceId: null,
 		activeWorkspaceCwd: "",
@@ -512,7 +522,7 @@ describe("addTerminalTab", () => {
 describe("review workspace activation", () => {
 	beforeEach(resetStore);
 
-	test("setActiveWorkspace with review type sets pr-review panel mode", () => {
+	test("setActiveWorkspace with review type opens Review Mode and keeps diff panel", () => {
 		const store = useTabStore.getState();
 		// Store workspace metadata first
 		store.setWorkspaceMetadata("ws-review-1", {
@@ -527,10 +537,25 @@ describe("review workspace activation", () => {
 		store.setActiveWorkspace("ws-review-1", "/path/to/worktree");
 
 		const state = useTabStore.getState();
-		expect(state.rightPanel.mode).toBe("pr-review");
-		expect(state.rightPanel.prCtx).toBeTruthy();
-		expect(state.rightPanel.prCtx?.repoPath).toBe("/path/to/worktree");
-		expect(state.rightPanel.prCtx?.provider).toBe("github");
+		assertPanelOpen(state.rightPanel);
+		expect(state.rightPanel.mode).toBe("diff");
+		expect(state.rightPanel.diffCtx).toEqual({
+			type: "working-tree",
+			repoPath: "/path/to/worktree",
+		});
+		expect(useReviewModeStore.getState().active).toEqual({
+			workspaceId: "ws-review-1",
+			prCtx: {
+				provider: "github",
+				owner: "owner",
+				repo: "repo",
+				number: 16,
+				title: "Create Claude.md",
+				sourceBranch: "patch-testreview",
+				targetBranch: "main",
+				repoPath: "/path/to/worktree",
+			},
+		});
 	});
 
 	test("setActiveWorkspace with non-review type uses default diff panel", () => {

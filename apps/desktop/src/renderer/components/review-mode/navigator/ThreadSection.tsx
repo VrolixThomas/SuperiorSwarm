@@ -2,9 +2,9 @@ import { useCallback, useMemo } from "react";
 import type { PRContext, UnifiedThread } from "../../../../shared/github-types";
 import { formatPrIdentifier } from "../../../../shared/pr-identifier";
 import {
+	type ReviewCommentFilter,
 	type ThreadBucket,
-	type ThreadFilter,
-	matchesFilter,
+	matchesReviewFilter,
 	threadBucket,
 	threadExcerpt,
 } from "../../../lib/pr-review-threads";
@@ -20,10 +20,10 @@ interface ThreadSectionProps {
 	threads: UnifiedThread[];
 }
 
-const FILTERS: Array<{ label: string; value: ThreadFilter }> = [
+const FILTERS: Array<{ label: string; value: ReviewCommentFilter }> = [
 	{ label: "All", value: "all" },
-	{ label: "Attention", value: "pending" },
-	{ label: "Done", value: "resolved" },
+	{ label: "Attention", value: "attention" },
+	{ label: "Done", value: "done" },
 ];
 
 const DOT_CLASSES: Record<ThreadBucket, string> = {
@@ -58,7 +58,7 @@ export function ThreadSection({ workspaceId, prCtx, threads }: ThreadSectionProp
 	const setView = useReviewModeStore((s) => s.setView);
 
 	const visibleThreads = useMemo(
-		() => threads.filter((thread) => matchesFilter(thread, filter)),
+		() => threads.filter((thread) => matchesReviewFilter(thread, filter)),
 		[threads, filter]
 	);
 
@@ -76,7 +76,10 @@ export function ThreadSection({ workspaceId, prCtx, threads }: ThreadSectionProp
 				<h2 className="text-[12px] font-medium text-[var(--text-secondary)]">Comments</h2>
 				<div className="flex shrink-0 items-center rounded-[var(--radius-sm)] bg-[var(--bg-base)] p-0.5">
 					{FILTERS.map((item) => {
-						const active = filter === item.value;
+						const active =
+							filter === item.value ||
+							(item.value === "attention" && (filter === "pending" || filter === "open")) ||
+							(item.value === "done" && (filter === "declined" || filter === "resolved"));
 						return (
 							<button
 								key={item.value}

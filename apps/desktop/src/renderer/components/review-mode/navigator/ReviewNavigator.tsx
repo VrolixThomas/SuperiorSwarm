@@ -142,6 +142,7 @@ export function ReviewNavigator({
 			<FileSection
 				files={details.files}
 				viewedFiles={viewedFiles}
+				canToggleViewed={isGitHubPR}
 				commentCountByFile={commentCountByFile}
 				activeFilePath={activeFilePath}
 				onSelectFile={onSelectFile}

@@ -12,7 +12,15 @@ export function openThreadInChanges(
 ): void {
 	const sessionKey = prReviewSessionKey(workspaceId, formatPrIdentifier(prCtx));
 	const session = usePRReviewSessionStore.getState();
+	const reviewMode = useReviewModeStore.getState();
 	session.selectFile(sessionKey, path);
-	if (threadId !== undefined) session.selectThread(sessionKey, threadId);
+	session.selectThread(sessionKey, threadId ?? null);
+	if (
+		!reviewMode.active ||
+		reviewMode.active.workspaceId !== workspaceId ||
+		formatPrIdentifier(reviewMode.active.prCtx) !== formatPrIdentifier(prCtx)
+	) {
+		reviewMode.open(workspaceId, prCtx);
+	}
 	useReviewModeStore.getState().setView("changes");
 }

@@ -383,7 +383,6 @@ export function ChangesView({
 		if (intent?.kind !== "new-comment") return;
 		const editor = editorInstance?.getModifiedEditor();
 		if (!editor) {
-			clearIntent();
 			return;
 		}
 

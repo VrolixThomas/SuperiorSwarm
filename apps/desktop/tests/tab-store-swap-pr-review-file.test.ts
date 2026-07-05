@@ -1,7 +1,13 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import { usePaneStore } from "../src/renderer/stores/pane-store";
+import {
+	prReviewSessionKey,
+	usePRReviewSessionStore,
+} from "../src/renderer/stores/pr-review-session-store";
+import { useReviewModeStore } from "../src/renderer/stores/review-mode-store";
 import { useTabStore } from "../src/renderer/stores/tab-store";
 import type { PRContext } from "../src/shared/github-types";
+import { formatPrIdentifier } from "../src/shared/pr-identifier";
 
 const prCtx: PRContext = {
 	provider: "github",
@@ -16,6 +22,16 @@ const prCtx: PRContext = {
 
 function reset() {
 	usePaneStore.setState({ panesByWorkspace: new Map(), focusedPaneId: null });
+	usePRReviewSessionStore.setState({ sessions: new Map() });
+	useReviewModeStore.setState({
+		active: null,
+		view: "overview",
+		navigatorCollapsed: false,
+		drawerOpen: false,
+		terminal: null,
+		commentFilter: "all",
+		intent: null,
+	});
 	useTabStore.setState({
 		activeWorkspaceId: "ws1",
 		activeWorkspaceCwd: "/tmp",
@@ -26,31 +42,34 @@ function reset() {
 describe("swapPRReviewFile", () => {
 	beforeEach(reset);
 
-	test("falls back to open when no pr-review-file tab exists", () => {
+	test("opens Review Mode changes view when no legacy pr-review-file tab exists", () => {
 		const id = useTabStore.getState().swapPRReviewFile("ws1", prCtx, "src/a.ts", "typescript");
-		const tabs = useTabStore.getState().getTabsByWorkspace("ws1");
-		const tab = tabs.find((t) => t.id === id);
-		expect(tab?.kind).toBe("pr-review-file");
-		if (tab?.kind === "pr-review-file") {
-			expect(tab.filePath).toBe("src/a.ts");
-		}
+		const sessionKey = prReviewSessionKey("ws1", formatPrIdentifier(prCtx));
+		const reviewMode = useReviewModeStore.getState();
+
+		expect(id).toBe("review-mode");
+		expect(reviewMode.active).toEqual({ workspaceId: "ws1", prCtx });
+		expect(reviewMode.view).toBe("changes");
+		expect(usePRReviewSessionStore.getState().sessions.get(sessionKey)?.activeFilePath).toBe(
+			"src/a.ts"
+		);
+		expect(useTabStore.getState().getTabsByWorkspace("ws1")).toHaveLength(0);
 	});
 
-	test("mutates existing pr-review-file tab in place when present", () => {
+	test("legacy openPRReviewFile and swapPRReviewFile keep using one Review Mode surface", () => {
 		const id = useTabStore.getState().openPRReviewFile("ws1", prCtx, "src/a.ts", "typescript");
 		const swappedId = useTabStore
 			.getState()
 			.swapPRReviewFile("ws1", prCtx, "src/b.ts", "typescript");
 		expect(swappedId).toBe(id);
-		const tabs = useTabStore.getState().getTabsByWorkspace("ws1");
-		const sameTab = tabs.find((t) => t.id === id);
-		if (sameTab?.kind === "pr-review-file") {
-			expect(sameTab.filePath).toBe("src/b.ts");
-			expect(sameTab.title).toBe("b.ts");
-		} else {
-			throw new Error("expected pr-review-file tab");
-		}
-		const prFileTabs = tabs.filter((t) => t.kind === "pr-review-file");
-		expect(prFileTabs).toHaveLength(1);
+		const sessionKey = prReviewSessionKey("ws1", formatPrIdentifier(prCtx));
+
+		expect(id).toBe("review-mode");
+		expect(useReviewModeStore.getState().active).toEqual({ workspaceId: "ws1", prCtx });
+		expect(useReviewModeStore.getState().view).toBe("changes");
+		expect(usePRReviewSessionStore.getState().sessions.get(sessionKey)?.activeFilePath).toBe(
+			"src/b.ts"
+		);
+		expect(useTabStore.getState().getTabsByWorkspace("ws1")).toHaveLength(0);
 	});
 });

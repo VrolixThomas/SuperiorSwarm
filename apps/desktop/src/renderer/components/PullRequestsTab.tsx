@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { BitbucketPullRequest } from "../../main/atlassian/bitbucket";
-import type { GitHubPR } from "../../main/github/github";
-import type { AgentAlert } from "../../shared/agent-events";
 import type { GitHubPREnriched, PRContext } from "../../shared/github-types";
 import { useAgentAlertStore } from "../stores/agent-alert-store";
+import { useReviewModeStore } from "../stores/review-mode-store";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import { ConnectBanner } from "./ConnectBanner";
@@ -11,7 +9,7 @@ import { CreateWorktreeFromPRModal, type LinkablePR } from "./CreateWorktreeFrom
 import { PullRequestGroup } from "./PullRequestGroup";
 import type { MergedPR } from "./PullRequestItem";
 import { type LinkedWorkspace, WorkspacePopover } from "./WorkspacePopover";
-import { findActivePRIdentifier, splitPROverviewRight } from "./pr-panel-helpers";
+import { findActivePRIdentifier } from "./pr-panel-helpers";
 
 // ── Context Menu ──────────────────────────────────────────────────────────────
 
@@ -188,24 +186,17 @@ export function PullRequestsTab() {
 				sourceBranch: prCtx?.sourceBranch,
 				targetBranch: prCtx?.targetBranch,
 			});
-			tabStore.setActiveWorkspace(launchInfo.reviewWorkspaceId, launchInfo.worktreePath, {
-				rightPanel: prCtx
-					? { open: true, mode: "pr-review", diffCtx: null, prCtx }
-					: { open: true, mode: "pr-review", diffCtx: null },
-			});
+			tabStore.setActiveWorkspace(launchInfo.reviewWorkspaceId, launchInfo.worktreePath);
+			if (prCtx) useReviewModeStore.getState().open(launchInfo.reviewWorkspaceId, prCtx);
 
-			// Create PR overview tab if prCtx is available
+			const tabId = `terminal-${crypto.randomUUID()}`;
 			if (prCtx) {
-				tabStore.openPROverview(launchInfo.reviewWorkspaceId, prCtx);
-			}
-
-			const tabId = tabStore.addTerminalTab(
-				launchInfo.reviewWorkspaceId,
-				launchInfo.worktreePath,
-				"AI Review"
-			);
-			if (prCtx) {
-				splitPROverviewRight(launchInfo.reviewWorkspaceId, prCtx);
+				useReviewModeStore.getState().setTerminal({
+					tabId,
+					workspaceId: launchInfo.reviewWorkspaceId,
+					cwd: launchInfo.worktreePath,
+				});
+				useReviewModeStore.getState().setDrawerOpen(true);
 			}
 			attachTerminalRef.current({
 				workspaceId: launchInfo.reviewWorkspaceId,
@@ -526,7 +517,7 @@ export function PullRequestsTab() {
 	// The memo recomputes whenever the active workspace changes, which is the
 	// only time the result can differ in practice.
 	const activePRIdentifier = useMemo(
-		() => findActivePRIdentifier(workspaceIdMapRef.current, activeWorkspaceId),
+		() => findActivePRIdentifier(workspaceIdMapRef.current, activeWorkspaceId ?? ""),
 		[activeWorkspaceId]
 	);
 
@@ -641,15 +632,8 @@ export function PullRequestsTab() {
 					sourceBranch: resolvedPrCtx.sourceBranch,
 					targetBranch: resolvedPrCtx.targetBranch,
 				});
-				tabStore.setActiveWorkspace(ws.id, cwd, {
-					rightPanel: { open: true, mode: "pr-review", diffCtx: null, prCtx: resolvedPrCtx },
-				});
-
-				// Create initial PR overview tab if no tabs exist for this workspace
-				const existingTabs = tabStore.getTabsByWorkspace(ws.id);
-				if (existingTabs.length === 0) {
-					tabStore.openPROverview(ws.id, resolvedPrCtx);
-				}
+				tabStore.setActiveWorkspace(ws.id, cwd);
+				useReviewModeStore.getState().open(ws.id, resolvedPrCtx);
 			} finally {
 				openingPRRef.current = null;
 			}

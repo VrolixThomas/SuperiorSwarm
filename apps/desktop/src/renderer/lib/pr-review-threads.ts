@@ -4,6 +4,7 @@ import type { AIDraftThread, GitHubReviewThread, UnifiedThread } from "../../sha
 export type ThreadFilter = "all" | "pending" | "accepted" | "declined" | "open" | "resolved";
 export type ThreadBucket = Exclude<ThreadFilter, "all">;
 export type CondensedFilter = "all" | "attention" | "done";
+export type ReviewCommentFilter = ThreadFilter | Exclude<CondensedFilter, "all">;
 
 export const CONDENSED_TO_FILTERS: Record<CondensedFilter, ThreadFilter[]> = {
 	all: ["all"],
@@ -77,6 +78,16 @@ export function matchesFilter(t: UnifiedThread, f: ThreadFilter): boolean {
 	return f === "all" || threadBucket(t) === f;
 }
 
+export function filtersForReviewFilter(filter: ReviewCommentFilter): ThreadFilter[] {
+	if (filter === "attention" || filter === "done") return CONDENSED_TO_FILTERS[filter];
+	return [filter];
+}
+
+export function matchesReviewFilter(t: UnifiedThread, filter: ReviewCommentFilter): boolean {
+	const filters = filtersForReviewFilter(filter);
+	return filters.includes("all") || filters.includes(threadBucket(t));
+}
+
 export function threadCounts(threads: UnifiedThread[]): Record<ThreadFilter, number> {
 	const counts: Record<ThreadFilter, number> = {
 		all: threads.length,
@@ -94,11 +105,19 @@ export function threadCounts(threads: UnifiedThread[]): Record<ThreadFilter, num
 	return counts;
 }
 
+export function draftStatusAfterEdit(status: AIDraftThread["status"]): "edited" | "user-pending" {
+	return status === "user-pending" || status === "approved" ? "user-pending" : "edited";
+}
+
 export function fileCommentCounts(threads: UnifiedThread[]): Map<string, number> {
 	const counts = new Map<string, number>();
 
 	for (const thread of threads) {
-		if (!thread.isAIDraft && thread.isResolved) continue;
+		if (thread.isAIDraft) {
+			if (!isDraftCountedForFileBadge(thread.status)) continue;
+		} else if (thread.isResolved) {
+			continue;
+		}
 		counts.set(thread.path, (counts.get(thread.path) ?? 0) + 1);
 	}
 
@@ -153,6 +172,34 @@ export function pickLatestDraft<T extends DraftLike>(
 	}
 
 	return latest;
+}
+
+export function pickActiveDraft<T extends DraftLike>(
+	drafts: T[] | undefined,
+	prIdentifier: string
+): T | undefined {
+	let active: T | undefined;
+
+	for (const draft of drafts ?? []) {
+		if (draft.prIdentifier !== prIdentifier) continue;
+		if (draft.status !== "queued" && draft.status !== "in_progress") continue;
+		if (!active) {
+			active = draft;
+			continue;
+		}
+
+		const priority = draft.status === "in_progress" ? 0 : 1;
+		const activePriority = active.status === "in_progress" ? 0 : 1;
+		if (priority < activePriority) {
+			active = draft;
+			continue;
+		}
+		if (priority === activePriority && (draft.roundNumber ?? 1) > (active.roundNumber ?? 1)) {
+			active = draft;
+		}
+	}
+
+	return active;
 }
 
 export function groupThreadsByFile(
@@ -218,4 +265,18 @@ export function extractDiffContext(hunks: DiffHunk[], line: number, context = 2)
 
 function firstLine(value: string | null | undefined): string {
 	return (value ?? "").split(/\r?\n/, 1)[0] ?? "";
+}
+
+function isDraftCountedForFileBadge(status: AIDraftThread["status"]): boolean {
+	switch (status) {
+		case "pending":
+		case "approved":
+		case "edited":
+		case "user-pending":
+		case "error":
+			return true;
+		case "rejected":
+		case "submitted":
+			return false;
+	}
 }

@@ -1,12 +1,27 @@
-import { useCallback, useMemo } from "react";
-import { type ThreadFilter, fileCommentCounts } from "../../lib/pr-review-threads";
+import {
+	type PointerEvent as ReactPointerEvent,
+	useCallback,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
+import {
+	type ThreadFilter,
+	draftStatusAfterEdit,
+	fileCommentCounts,
+} from "../../lib/pr-review-threads";
 import { openThreadInChanges } from "../../lib/review-mode-nav";
 import { useReviewModeStore } from "../../stores/review-mode-store";
 import { trpc } from "../../trpc/client";
+import { AgentStatusChip } from "./AgentStatusChip";
 import { ReviewHeader } from "./ReviewHeader";
+import { SubmitReviewPopover } from "./SubmitReviewPopover";
+import { TerminalDrawer } from "./TerminalDrawer";
 import { useReviewKeymap } from "./hooks/useReviewKeymap";
 import { ReviewNavigator } from "./navigator/ReviewNavigator";
 import type { ThreadCallbacks } from "./thread/ThreadCard";
+import { useReviewAgentActions } from "./useReviewAgentActions";
 import { useReviewData } from "./useReviewData";
 import { ChangesView } from "./views/ChangesView";
 import { CommentsView } from "./views/CommentsView";
@@ -27,14 +42,38 @@ function ActiveReviewModeShell({ active }: { active: ActiveReview }) {
 	const view = useReviewModeStore((s) => s.view);
 	const setView = useReviewModeStore((s) => s.setView);
 	const setCommentFilter = useReviewModeStore((s) => s.setCommentFilter);
+	const setDrawerOpen = useReviewModeStore((s) => s.setDrawerOpen);
 	const navigatorCollapsed = useReviewModeStore((s) => s.navigatorCollapsed);
+	const [submitOpen, setSubmitOpen] = useState(false);
+	const [navigatorWidth, setNavigatorWidth] = useState(280);
+	const shellRef = useRef<HTMLDivElement>(null);
 	const utils = trpc.useUtils();
-	const { details, isLoading, aiDraft, allThreads, counts, sessionKey, fileOrder } = useReviewData(
-		workspaceId,
-		prCtx
-	);
+	const {
+		details,
+		isLoading,
+		matchingDraft,
+		activeDraft,
+		aiDraft,
+		allThreads,
+		acceptedThreads,
+		pendingCount,
+		counts,
+		sessionKey,
+		fileOrder,
+	} = useReviewData(workspaceId, prCtx);
 	const commentCount = (counts.pending ?? 0) + (counts.open ?? 0);
 	const commentCountByFile = useMemo(() => fileCommentCounts(allThreads), [allThreads]);
+	const reviewChainId =
+		activeDraft?.reviewChainId ??
+		aiDraft?.reviewChainId ??
+		matchingDraft?.reviewChainId ??
+		matchingDraft?.id ??
+		null;
+	const agentActions = useReviewAgentActions({
+		prCtx,
+		matchingDraft: activeDraft ?? matchingDraft,
+		reviewChainId,
+	});
 
 	const invalidateDrafts = useCallback(() => {
 		void utils.aiReview.getReviewDrafts.invalidate();
@@ -74,8 +113,12 @@ function ActiveReviewModeShell({ active }: { active: ActiveReview }) {
 			onAccept: (commentId) => updateDraftComment({ commentId, status: "user-pending" }),
 			onDecline: (commentId) => updateDraftComment({ commentId, status: "rejected" }),
 			onDelete: (commentId) => deleteDraftComment({ commentId }),
-			onSaveEdit: (commentId, body) =>
-				updateDraftComment({ commentId, status: "edited", userEdit: body }),
+			onSaveEdit: (commentId, body, status) =>
+				updateDraftComment({
+					commentId,
+					status: draftStatusAfterEdit(status),
+					userEdit: body,
+				}),
 			onReply: (threadId, body) => {
 				if (prCtx.provider === "github") {
 					addReviewComment({ threadId, body });
@@ -126,6 +169,43 @@ function ActiveReviewModeShell({ active }: { active: ActiveReview }) {
 		[setCommentFilter, setView]
 	);
 
+	const handleSubmitted = useCallback(() => {
+		setSubmitOpen(false);
+		invalidateDrafts();
+		invalidateDetails();
+		void utils.github.getMyPRs.invalidate();
+	}, [invalidateDetails, invalidateDrafts, utils]);
+
+	useEffect(() => {
+		shellRef.current?.focus();
+	}, []);
+
+	const resizeNavigatorBy = useCallback((delta: number) => {
+		setNavigatorWidth((width) => Math.min(360, Math.max(220, width + delta)));
+	}, []);
+
+	const startNavigatorResize = useCallback(
+		(event: ReactPointerEvent<HTMLDivElement>) => {
+			event.preventDefault();
+			const startX = event.clientX;
+			const startWidth = navigatorWidth;
+
+			function onPointerMove(moveEvent: PointerEvent) {
+				const nextWidth = Math.min(360, Math.max(220, startWidth + moveEvent.clientX - startX));
+				setNavigatorWidth(nextWidth);
+			}
+
+			function onPointerUp() {
+				window.removeEventListener("pointermove", onPointerMove);
+				window.removeEventListener("pointerup", onPointerUp);
+			}
+
+			window.addEventListener("pointermove", onPointerMove);
+			window.addEventListener("pointerup", onPointerUp);
+		},
+		[navigatorWidth]
+	);
+
 	useReviewKeymap({
 		workspaceId,
 		prCtx,
@@ -137,11 +217,61 @@ function ActiveReviewModeShell({ active }: { active: ActiveReview }) {
 	});
 
 	return (
-		<div className="fixed inset-0 z-40 flex flex-col bg-[var(--bg-base)]">
-			<ReviewHeader prCtx={prCtx} commentCount={commentCount} />
+		<div
+			ref={shellRef}
+			tabIndex={-1}
+			className="fixed inset-0 z-40 flex flex-col bg-[var(--bg-base)] outline-none"
+		>
+			<ReviewHeader
+				prCtx={prCtx}
+				commentCount={commentCount}
+				rightSlot={
+					<div
+						className="relative flex items-center gap-2"
+						onPointerDown={(event) => event.stopPropagation()}
+					>
+						<AgentStatusChip
+							active={agentActions.isReviewActive}
+							startedAt={agentActions.startedAt}
+							canceling={agentActions.isPending}
+							onOpen={() => setDrawerOpen(true)}
+							onCancel={agentActions.cancel}
+						/>
+						<button
+							type="button"
+							disabled={agentActions.isPending}
+							onClick={() => void agentActions.trigger()}
+							className="rounded-[var(--radius-sm)] border border-[var(--border-subtle)] px-3 py-1.5 text-[12px] font-medium text-[var(--text-secondary)] transition-colors duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-50"
+						>
+							{agentActions.isPending ? "Starting..." : agentActions.label}
+						</button>
+						<button
+							type="button"
+							onClick={() => setSubmitOpen((open) => !open)}
+							className="rounded-[var(--radius-sm)] bg-[var(--accent)] px-3 py-1.5 text-[12px] font-semibold text-[var(--accent-foreground)] transition-opacity duration-[120ms] hover:opacity-90"
+						>
+							Submit review
+							{acceptedThreads.length > 0 ? ` · ${acceptedThreads.length}` : ""}
+						</button>
+						{submitOpen && details && (
+							<SubmitReviewPopover
+								prCtx={prCtx}
+								headCommitOid={details.headCommitOid}
+								acceptedThreads={acceptedThreads}
+								pendingCount={pendingCount}
+								onClose={() => setSubmitOpen(false)}
+								onSubmitted={handleSubmitted}
+							/>
+						)}
+					</div>
+				}
+			/>
 			<div className="flex min-h-0 flex-1">
 				{!navigatorCollapsed && (
-					<aside className="w-[280px] shrink-0 overflow-y-auto border-r border-[var(--border)] bg-[var(--bg-surface)]">
+					<aside
+						className="relative shrink-0 overflow-y-auto border-r border-[var(--border)] bg-[var(--bg-surface)]"
+						style={{ width: navigatorWidth }}
+					>
 						{details ? (
 							<ReviewNavigator
 								workspaceId={workspaceId}
@@ -155,6 +285,24 @@ function ActiveReviewModeShell({ active }: { active: ActiveReview }) {
 								{isLoading ? "Loading review details..." : "Review details unavailable"}
 							</div>
 						)}
+						<div
+							role="separator"
+							aria-orientation="vertical"
+							aria-label="Resize navigator"
+							tabIndex={0}
+							onPointerDown={startNavigatorResize}
+							onKeyDown={(event) => {
+								if (event.key === "ArrowLeft") {
+									event.preventDefault();
+									resizeNavigatorBy(-20);
+								}
+								if (event.key === "ArrowRight") {
+									event.preventDefault();
+									resizeNavigatorBy(20);
+								}
+							}}
+							className="absolute right-0 top-0 h-full w-1 cursor-col-resize bg-transparent transition-colors duration-[120ms] hover:bg-[var(--accent)]"
+						/>
 					</aside>
 				)}
 				<main
@@ -194,6 +342,7 @@ function ActiveReviewModeShell({ active }: { active: ActiveReview }) {
 					)}
 				</main>
 			</div>
+			<TerminalDrawer />
 		</div>
 	);
 }

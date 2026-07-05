@@ -87,7 +87,7 @@ function NewThreadWidget({
 }) {
 	return (
 		<div className="mx-2 my-1 rounded-[6px] border border-[var(--accent)] bg-[var(--bg-surface)] p-2 text-[11px] shadow-lg">
-			<div className="mb-1.5 text-[10px] font-medium text-[var(--text-tertiary)]">Line {line}</div>
+			<div className="mb-1.5 text-[11px] font-medium text-[var(--text-tertiary)]">Line {line}</div>
 			<ReplyComposer
 				placeholder="Write a comment..."
 				ariaLabel="New comment"

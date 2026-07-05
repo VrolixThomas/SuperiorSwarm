@@ -2,8 +2,9 @@ import { useEffect, useMemo, useRef } from "react";
 import type { PRContext, UnifiedThread } from "../../../../shared/github-types";
 import {
 	type ThreadFilter,
+	filtersForReviewFilter,
 	groupThreadsByFile,
-	matchesFilter,
+	matchesReviewFilter,
 } from "../../../lib/pr-review-threads";
 import { usePRReviewSessionStore } from "../../../stores/pr-review-session-store";
 import { useReviewModeStore } from "../../../stores/review-mode-store";
@@ -57,9 +58,10 @@ export function CommentsView({
 	const selectThread = usePRReviewSessionStore((s) => s.selectThread);
 	const setThreadOrder = usePRReviewSessionStore((s) => s.setThreadOrder);
 	const skipNextScrollRef = useRef(false);
+	const lastAutoScrollThreadIdRef = useRef<string | null>(null);
 
 	const visibleThreads = useMemo(
-		() => allThreads.filter((thread) => matchesFilter(thread, commentFilter)),
+		() => allThreads.filter((thread) => matchesReviewFilter(thread, commentFilter)),
 		[allThreads, commentFilter]
 	);
 	const groupedThreads = useMemo(
@@ -79,15 +81,21 @@ export function CommentsView({
 	}, [sessionKey, setThreadOrder, visibleThreadRefs]);
 
 	useEffect(() => {
-		if (activeThreadId === null) return;
+		if (activeThreadId === null) {
+			lastAutoScrollThreadIdRef.current = null;
+			return;
+		}
 		if (!visibleThreadRefs.some((thread) => thread.id === activeThreadId)) return;
 		if (skipNextScrollRef.current) {
 			skipNextScrollRef.current = false;
+			lastAutoScrollThreadIdRef.current = activeThreadId;
 			return;
 		}
+		if (lastAutoScrollThreadIdRef.current === activeThreadId) return;
 
 		const escapedId = escapeThreadIdForSelector(activeThreadId);
 		document.querySelector(`[data-thread-id="${escapedId}"]`)?.scrollIntoView({ block: "center" });
+		lastAutoScrollThreadIdRef.current = activeThreadId;
 	}, [activeThreadId, visibleThreadRefs]);
 
 	const selectThreadWithoutScroll = (threadId: string) => {
@@ -99,7 +107,7 @@ export function CommentsView({
 		<div className="mx-auto max-w-[760px] px-6 py-6">
 			<div className="mb-5 flex flex-wrap items-center gap-1.5">
 				{FILTERS.map((filter) => {
-					const active = commentFilter === filter.value;
+					const active = filtersForReviewFilter(commentFilter).includes(filter.value);
 					return (
 						<button
 							key={filter.value}

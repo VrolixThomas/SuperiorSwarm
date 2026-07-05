@@ -12,6 +12,7 @@ import {
 	type DraftCommentLike,
 	type ThreadFilter,
 	mapDraftComment,
+	pickActiveDraft,
 	pickLatestDraft,
 	threadCounts,
 } from "../../lib/pr-review-threads";
@@ -28,6 +29,7 @@ interface ReviewData {
 	details: GitHubPRDetails | undefined;
 	isLoading: boolean;
 	matchingDraft: ReviewDraft | undefined;
+	activeDraft: ReviewDraft | undefined;
 	aiDraft: ReviewDraftWithComments | undefined;
 	allThreads: UnifiedThread[];
 	acceptedThreads: AIDraftThread[];
@@ -85,6 +87,10 @@ export function useReviewData(workspaceId: string, prCtx: PRContext): ReviewData
 		() => pickLatestDraft(reviewDraftsQuery.data, prIdentifier),
 		[reviewDraftsQuery.data, prIdentifier]
 	);
+	const activeDraft = useMemo(
+		() => pickActiveDraft(reviewDraftsQuery.data, prIdentifier),
+		[reviewDraftsQuery.data, prIdentifier]
+	);
 
 	const aiDraftQuery = trpc.aiReview.getReviewDraft.useQuery(
 		{ draftId: matchingDraft?.id ?? "" },
@@ -116,7 +122,10 @@ export function useReviewData(workspaceId: string, prCtx: PRContext): ReviewData
 	);
 
 	const acceptedThreads = useMemo(
-		() => draftThreads.filter((thread) => thread.status === "user-pending"),
+		() =>
+			draftThreads.filter(
+				(thread) => thread.status === "user-pending" || thread.status === "approved"
+			),
 		[draftThreads]
 	);
 
@@ -126,6 +135,7 @@ export function useReviewData(workspaceId: string, prCtx: PRContext): ReviewData
 		details,
 		isLoading: detailsQuery.isLoading,
 		matchingDraft,
+		activeDraft,
 		aiDraft,
 		allThreads,
 		acceptedThreads,

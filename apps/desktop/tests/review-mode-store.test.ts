@@ -102,14 +102,14 @@ describe("review-mode-store", () => {
 		expect(useReviewModeStore.getState().navigatorCollapsed).toBe(false);
 	});
 
-	test("setTerminal persists terminal across close", () => {
+	test("open clears stale terminal from prior review workspace", () => {
 		const terminal = { tabId: "tab-1", workspaceId: "ws-1", cwd: "/tmp/r" };
 		const store = useReviewModeStore.getState();
 		store.open("ws-1", prCtx);
 		store.setTerminal(terminal);
 
-		store.close();
+		store.open("ws-2", { ...prCtx, number: 2, title: "other" });
 
-		expect(useReviewModeStore.getState().terminal).toEqual(terminal);
+		expect(useReviewModeStore.getState().terminal).toBeNull();
 	});
 });

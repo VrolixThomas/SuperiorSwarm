@@ -3,6 +3,7 @@ import type { GitHubPRFile } from "../../../../shared/github-types";
 interface FileSectionProps {
 	files: GitHubPRFile[];
 	viewedFiles: Set<string>;
+	canToggleViewed: boolean;
 	commentCountByFile: Map<string, number>;
 	activeFilePath: string | null;
 	onSelectFile: (path: string) => void;
@@ -10,10 +11,10 @@ interface FileSectionProps {
 }
 
 const CHANGE_TYPE_DOT: Record<GitHubPRFile["changeType"], string> = {
-	ADDED: "bg-[var(--term-green)]",
-	MODIFIED: "bg-[var(--term-yellow)]",
-	CHANGED: "bg-[var(--term-yellow)]",
-	DELETED: "bg-[var(--term-red)]",
+	ADDED: "bg-[var(--color-success)]",
+	MODIFIED: "bg-[var(--accent)]",
+	CHANGED: "bg-[var(--accent)]",
+	DELETED: "bg-[var(--color-danger)]",
 	RENAMED: "bg-[var(--accent)]",
 	COPIED: "bg-[var(--accent)]",
 	UNCHANGED: "bg-[var(--text-quaternary)]",
@@ -31,6 +32,7 @@ function splitPath(path: string): { directory: string; filename: string } {
 export function FileSection({
 	files,
 	viewedFiles,
+	canToggleViewed,
 	commentCountByFile,
 	activeFilePath,
 	onSelectFile,
@@ -47,15 +49,17 @@ export function FileSection({
 			<div className="flex items-center justify-between gap-3 px-3 pb-2 pt-3">
 				<h2 className="text-[12px] font-medium text-[var(--text-secondary)]">Files</h2>
 				<span className="shrink-0 text-[11px] tabular-nums text-[var(--text-quaternary)]">
-					{viewedCount}/{files.length} viewed
+					{canToggleViewed ? `${viewedCount}/${files.length} viewed` : `${files.length} files`}
 				</span>
 			</div>
-			<div className="mx-3 h-[2px] overflow-hidden rounded-full bg-[var(--bg-elevated)]">
-				<div
-					className="h-full rounded-full bg-[var(--accent)] transition-all duration-200"
-					style={{ width: `${progressPercent}%` }}
-				/>
-			</div>
+			{canToggleViewed && (
+				<div className="mx-3 h-[2px] overflow-hidden rounded-full bg-[var(--bg-elevated)]">
+					<div
+						className="h-full rounded-full bg-[var(--accent)] transition-all duration-200"
+						style={{ width: `${progressPercent}%` }}
+					/>
+				</div>
+			)}
 
 			<div className="mt-2 pb-2">
 				{files.length === 0 && (
@@ -104,38 +108,40 @@ export function FileSection({
 								)}
 							</button>
 
-							<button
-								type="button"
-								aria-pressed={isViewed}
-								aria-label={viewedLabel}
-								title={viewedLabel}
-								onClick={(event) => {
-									event.stopPropagation();
-									onToggleViewed(file.path, !isViewed);
-								}}
-								className={[
-									"mr-2 flex size-5 shrink-0 items-center justify-center rounded-[var(--radius-sm)] border transition-colors duration-[120ms]",
-									isViewed
-										? "border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-foreground)]"
-										: "border-[var(--border)] text-[var(--text-quaternary)] hover:border-[var(--accent)] hover:text-[var(--accent)]",
-								].join(" ")}
-							>
-								{isViewed && (
-									<svg
-										width="12"
-										height="12"
-										viewBox="0 0 12 12"
-										fill="none"
-										stroke="currentColor"
-										strokeWidth="2"
-										strokeLinecap="round"
-										strokeLinejoin="round"
-										aria-hidden="true"
-									>
-										<path d="m2.5 6 2 2 5-5" />
-									</svg>
-								)}
-							</button>
+							{canToggleViewed && (
+								<button
+									type="button"
+									aria-pressed={isViewed}
+									aria-label={viewedLabel}
+									title={viewedLabel}
+									onClick={(event) => {
+										event.stopPropagation();
+										onToggleViewed(file.path, !isViewed);
+									}}
+									className={[
+										"mr-2 flex size-5 shrink-0 items-center justify-center rounded-[var(--radius-sm)] border transition-colors duration-[120ms]",
+										isViewed
+											? "border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-foreground)]"
+											: "border-[var(--border)] text-[var(--text-quaternary)] hover:border-[var(--accent)] hover:text-[var(--accent)]",
+									].join(" ")}
+								>
+									{isViewed && (
+										<svg
+											width="12"
+											height="12"
+											viewBox="0 0 12 12"
+											fill="none"
+											stroke="currentColor"
+											strokeWidth="2"
+											strokeLinecap="round"
+											strokeLinejoin="round"
+											aria-hidden="true"
+										>
+											<path d="m2.5 6 2 2 5-5" />
+										</svg>
+									)}
+								</button>
+							)}
 						</div>
 					);
 				})}

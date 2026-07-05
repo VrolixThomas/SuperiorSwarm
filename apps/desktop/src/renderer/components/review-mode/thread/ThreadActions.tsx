@@ -50,7 +50,10 @@ export function ThreadActions({
 	if (thread.isAIDraft) {
 		const canAccept = thread.status === "pending" || thread.status === "edited";
 		const canEdit =
-			thread.status === "pending" || thread.status === "edited" || thread.status === "user-pending";
+			thread.status === "pending" ||
+			thread.status === "edited" ||
+			thread.status === "user-pending" ||
+			thread.status === "approved";
 		const canDecline = canEdit;
 
 		if (canAccept && callbacks.onAccept) {
