@@ -98,6 +98,31 @@ describe("normalizeWorkspaceSymbols", () => {
 		expect(hits).toEqual([]);
 	});
 
+	test("ignores range positions with negative line or character values", () => {
+		const hits = normalizeWorkspaceSymbols(
+			[
+				{
+					name: "badLine",
+					kind: 12,
+					location: {
+						uri: `file://${REPO}/bad-line.ts`,
+						range: { start: { line: -1, character: 2 } },
+					},
+				},
+				{
+					name: "badCharacter",
+					kind: 12,
+					location: {
+						uri: `file://${REPO}/bad-character.ts`,
+						range: { start: { line: 4, character: -2 } },
+					},
+				},
+			],
+			REPO
+		);
+		expect(hits).toEqual([]);
+	});
+
 	test("does not dedup distinct symbols whose colon-delimited keys would collide", () => {
 		const hits = normalizeWorkspaceSymbols(
 			[sym("a:b", `file://${REPO}/c/d.ts`, 6), sym("a", `file://${REPO}/b:c/d.ts`, 6)],

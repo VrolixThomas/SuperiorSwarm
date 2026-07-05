@@ -57,16 +57,21 @@ function readStartPosition(
 	start: RawPosition | undefined
 ): { line: number; column: number } | null {
 	const line = start?.line;
-	if (line !== undefined && (typeof line !== "number" || !Number.isFinite(line))) return null;
+	if (!isValidPositionValue(line)) return null;
 	const character = start?.character;
-	if (character !== undefined && (typeof character !== "number" || !Number.isFinite(character))) {
-		return null;
-	}
+	if (!isValidPositionValue(character)) return null;
 
 	return {
 		line: (line ?? 0) + 1,
 		column: (character ?? 0) + 1,
 	};
+}
+
+function isValidPositionValue(value: unknown): value is number | undefined {
+	if (value === undefined) return true;
+	return (
+		typeof value === "number" && Number.isFinite(value) && Number.isInteger(value) && value >= 0
+	);
 }
 
 export function normalizeWorkspaceSymbols(raw: unknown[], repoPath: string): WorkspaceSymbolHit[] {
