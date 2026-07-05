@@ -29,11 +29,24 @@ describe("parseGrepOutput", () => {
 		expect(parseGrepOutput("garbage\n\n").matches).toEqual([]);
 	});
 
-	test("caps matches and sets truncated", () => {
+	test("skips line numbers with non-numeric suffixes", () => {
+		expect(parseGrepOutput("a.ts:12abc:text\n").matches).toEqual([]);
+	});
+
+	test("caps matches and sets truncated when an additional valid match exists", () => {
 		const out = Array.from({ length: MAX_MATCHES + 10 }, (_, i) => `a.ts:${i + 1}:x`).join("\n");
 		const result = parseGrepOutput(out);
 		expect(result.matches.length).toBe(MAX_MATCHES);
 		expect(result.truncated).toBe(true);
+	});
+
+	test("does not set truncated for malformed lines after the match cap", () => {
+		const validMatches = Array.from({ length: MAX_MATCHES }, (_, i) => `a.ts:${i + 1}:x`).join(
+			"\n"
+		);
+		const result = parseGrepOutput(`${validMatches}\na.ts:12abc:text\n`);
+		expect(result.matches.length).toBe(MAX_MATCHES);
+		expect(result.truncated).toBe(false);
 	});
 
 	test("truncates long lines to 200 chars", () => {

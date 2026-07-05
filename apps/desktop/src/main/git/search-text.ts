@@ -23,10 +23,6 @@ export function parseGrepOutput(stdout: string): TextSearchResult {
 
 	for (const line of stdout.split("\n")) {
 		if (line.length === 0) continue;
-		if (matches.length >= MAX_MATCHES) {
-			truncated = true;
-			break;
-		}
 
 		const first = line.indexOf(":");
 		if (first === -1) continue;
@@ -34,12 +30,17 @@ export function parseGrepOutput(stdout: string): TextSearchResult {
 		const second = line.indexOf(":", first + 1);
 		if (second === -1) continue;
 
-		const lineNumber = Number.parseInt(line.slice(first + 1, second), 10);
-		if (Number.isNaN(lineNumber)) continue;
+		const lineNumberText = line.slice(first + 1, second);
+		if (!/^\d+$/.test(lineNumberText)) continue;
+
+		if (matches.length >= MAX_MATCHES) {
+			truncated = true;
+			break;
+		}
 
 		matches.push({
 			path: line.slice(0, first),
-			line: lineNumber,
+			line: Number.parseInt(lineNumberText, 10),
 			text: line.slice(second + 1, second + 1 + MAX_LINE_LENGTH),
 		});
 	}
