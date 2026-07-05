@@ -33,9 +33,9 @@ export function resultKey(item: ResultItem): string {
 		case "file":
 			return `file:${item.path}`;
 		case "symbol":
-			return `symbol:${item.name}:${item.path}:${item.line}`;
+			return `symbol:${item.name}:${item.path}:${item.line}:${item.column}`;
 		case "text":
-			return `text:${item.path}:${item.line}`;
+			return `text:${item.path}:${item.line}:${item.text}`;
 	}
 }
 
@@ -80,9 +80,10 @@ export function SearchEverywherePopup() {
 	}, [results.length, selectedIndex]);
 
 	useEffect(() => {
-		const selected = listRef.current?.querySelector("[data-selected='true']");
+		if (results.length === 0) return;
+		const selected = listRef.current?.querySelector(`[data-result-index="${selectedIndex}"]`);
 		selected?.scrollIntoView({ block: "nearest" });
-	});
+	}, [selectedIndex, results.length]);
 
 	function openResult(item: ResultItem) {
 		if (workspaceId === null || repoPath.length === 0) return;
@@ -201,6 +202,7 @@ export function SearchEverywherePopup() {
 						<ResultRow
 							key={resultKey(item)}
 							item={item}
+							index={i}
 							isSelected={i === selectedIndex}
 							onSelect={() => openResult(item)}
 							onHover={() => setSelectedIndex(i)}
@@ -219,11 +221,13 @@ export function SearchEverywherePopup() {
 
 function ResultRow({
 	item,
+	index,
 	isSelected,
 	onSelect,
 	onHover,
 }: {
 	item: ResultItem;
+	index: number;
 	isSelected: boolean;
 	onSelect: () => void;
 	onHover: () => void;
@@ -238,6 +242,7 @@ function ResultRow({
 	return (
 		<button
 			type="button"
+			data-result-index={index}
 			data-selected={isSelected}
 			onClick={onSelect}
 			onMouseEnter={onHover}
