@@ -88,6 +88,7 @@ Mount `<SearchEverywherePopup />` next to `<CommandPalette />` in `App.tsx`.
 - New tRPC proc `lsp.searchWorkspaceSymbols({ repoPath, query })`: main process fans
   `workspace/symbol` out to all initialized LSP server connections for the repo
   (3s per-server timeout), merges + dedups (name+path+line), caps at 100.
+  Symbols outside the repo are ignored because file tabs open repo-relative paths.
   (Main-side fan-out instead of renderer-side: main owns the connections and the
   config→language mapping.) Renderer debounces 200ms, min 2 chars.
 - Server not running / method unsupported / timeout → that server contributes nothing

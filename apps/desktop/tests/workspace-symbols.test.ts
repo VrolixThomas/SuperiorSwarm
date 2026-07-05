@@ -33,14 +33,14 @@ describe("normalizeWorkspaceSymbols", () => {
 		expect(hits[0]?.path).toBe("my dir/c.ts");
 	});
 
-	test("keeps absolute path when outside repo", () => {
+	test("ignores symbols outside the repo", () => {
 		const hits = normalizeWorkspaceSymbols([sym("z", "file:///other/place/d.ts")], REPO);
-		expect(hits[0]?.path).toBe("/other/place/d.ts");
+		expect(hits).toEqual([]);
 	});
 
-	test("keeps absolute path for sibling directories outside repo", () => {
+	test("ignores symbols in sibling directories outside the repo", () => {
 		const hits = normalizeWorkspaceSymbols([sym("z", "file:///Users/me/other/d.ts")], REPO);
-		expect(hits[0]?.path).toBe("/Users/me/other/d.ts");
+		expect(hits).toEqual([]);
 	});
 
 	test("keeps in-repo path segments that start with two dots repo-relative", () => {

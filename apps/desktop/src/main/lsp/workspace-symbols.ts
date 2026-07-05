@@ -43,12 +43,12 @@ function uriToPath(uri: string): string {
 	}
 }
 
-function pathForRepo(uri: string, repoPath: string): string {
+function pathForRepo(uri: string, repoPath: string): string | null {
 	const absolutePath = uriToPath(uri);
 	const repoRelative = relative(repoPath, absolutePath);
 	if (repoRelative === "") return "";
 	if (repoRelative === ".." || repoRelative.startsWith("../") || repoRelative.startsWith("..\\")) {
-		return absolutePath;
+		return null;
 	}
 	return repoRelative;
 }
@@ -86,6 +86,7 @@ export function normalizeWorkspaceSymbols(raw: unknown[], repoPath: string): Wor
 		if (typeof symbol.name !== "string" || typeof symbol.location?.uri !== "string") continue;
 
 		const path = pathForRepo(symbol.location.uri, repoPath);
+		if (path === null) continue;
 		const position = readStartPosition(symbol.location.range?.start);
 		if (!position) continue;
 		const key = JSON.stringify([symbol.name, path, position.line]);
