@@ -3,6 +3,7 @@ import { openThreadInChanges } from "../../lib/review-mode-nav";
 import { useReviewModeStore } from "../../stores/review-mode-store";
 import { trpc } from "../../trpc/client";
 import { ReviewHeader } from "./ReviewHeader";
+import { useReviewKeymap } from "./hooks/useReviewKeymap";
 import { ReviewNavigator } from "./navigator/ReviewNavigator";
 import type { ThreadCallbacks } from "./thread/ThreadCard";
 import { useReviewData } from "./useReviewData";
@@ -117,6 +118,16 @@ function ActiveReviewModeShell({ active }: { active: ActiveReview }) {
 			workspaceId,
 		]
 	);
+
+	useReviewKeymap({
+		workspaceId,
+		prCtx,
+		sessionKey,
+		view,
+		allThreads,
+		fileOrder,
+		callbacks,
+	});
 
 	return (
 		<div className="fixed inset-0 z-40 flex flex-col bg-[var(--bg-base)]">

@@ -4,6 +4,7 @@ import { detectLanguage } from "../../../../shared/diff-types";
 import type { GitHubPRDetails, PRContext, UnifiedThread } from "../../../../shared/github-types";
 import { formatPrIdentifier } from "../../../../shared/pr-identifier";
 import { usePRReviewSessionStore } from "../../../stores/pr-review-session-store";
+import { useReviewModeStore } from "../../../stores/review-mode-store";
 import { useTabStore } from "../../../stores/tab-store";
 import { trpc } from "../../../trpc/client";
 import { DiffEditor } from "../../DiffEditor";
@@ -87,6 +88,31 @@ function resolvedInlineCollapsed(
 	return overrides.get(thread.id) ?? defaultCollapsed;
 }
 
+function pickNewCommentLine(
+	editor: monaco.editor.IStandaloneCodeEditor,
+	validDiffLines: Set<number> | undefined
+): number | null {
+	let line = editor.getPosition()?.lineNumber ?? null;
+	if (line && (!validDiffLines || validDiffLines.has(line))) return line;
+
+	line = null;
+	for (const range of editor.getVisibleRanges()) {
+		for (let candidate = range.startLineNumber; candidate <= range.endLineNumber; candidate++) {
+			if (!validDiffLines || validDiffLines.has(candidate)) {
+				line = candidate;
+				break;
+			}
+		}
+		if (line !== null) break;
+	}
+
+	if (line === null) return null;
+
+	editor.focus();
+	editor.setPosition({ lineNumber: line, column: 1 });
+	return line;
+}
+
 export function ChangesView({
 	workspaceId,
 	prCtx,
@@ -111,6 +137,8 @@ export function ChangesView({
 	const selectThread = usePRReviewSessionStore((s) => s.selectThread);
 	const setScroll = usePRReviewSessionStore((s) => s.setScroll);
 	const getScroll = usePRReviewSessionStore((s) => s.getScroll);
+	const intent = useReviewModeStore((s) => s.intent);
+	const clearIntent = useReviewModeStore((s) => s.clearIntent);
 	const [editorState, setEditorState] = useState<{
 		filePath: string;
 		editor: monaco.editor.IStandaloneDiffEditor;
@@ -350,6 +378,19 @@ export function ChangesView({
 	);
 	useThreadDecorations(editorInstance, inlineFileThreads, activeThreadId);
 	useGutterPlusButton(editorInstance, setPendingLine, validDiffLines);
+
+	useEffect(() => {
+		if (intent?.kind !== "new-comment") return;
+		const editor = editorInstance?.getModifiedEditor();
+		if (!editor) {
+			clearIntent();
+			return;
+		}
+
+		const line = pickNewCommentLine(editor, validDiffLines);
+		if (line !== null) setPendingLine(line);
+		clearIntent();
+	}, [clearIntent, editorInstance, intent, validDiffLines]);
 
 	useEffect(() => {
 		if (!editorInstance || effectiveMarkdownPreviewMode !== "split") return;
