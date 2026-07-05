@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { detectLanguage } from "../../shared/diff-types";
+import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import {
 	SEARCH_TABS,
 	type SearchTab,
@@ -64,6 +65,12 @@ export function SearchEverywherePopup() {
 				.map((entry) => entry.path),
 		[filesQuery.data]
 	);
+	const debouncedQuery = useDebouncedValue(query.trim(), 200);
+	const textEnabled = isOpen && activeTab === "text" && debouncedQuery.length >= 2;
+	const textQuery = trpc.diff.searchText.useQuery(
+		{ repoPath, query: debouncedQuery },
+		{ enabled: textEnabled && repoPath.length > 0, staleTime: 10_000 }
+	);
 
 	const results: ResultItem[] = useMemo(() => {
 		const q = query.trim();
@@ -71,8 +78,16 @@ export function SearchEverywherePopup() {
 			if (q.length === 0) return [];
 			return fuzzyFilterPaths(q, filePaths, 50).map((path) => ({ type: "file" as const, path }));
 		}
+		if (activeTab === "text") {
+			return (textQuery.data?.matches ?? []).map((match) => ({
+				type: "text" as const,
+				path: match.path,
+				line: match.line,
+				text: match.text,
+			}));
+		}
 		return [];
-	}, [activeTab, query, filePaths]);
+	}, [activeTab, query, filePaths, textQuery.data]);
 
 	useEffect(() => {
 		if (selectedIndex >= results.length) {
@@ -196,7 +211,20 @@ export function SearchEverywherePopup() {
 				<div ref={listRef} className="min-h-[120px] overflow-y-auto py-2">
 					{results.length === 0 && (
 						<div className="px-4 py-6 text-center text-[13px] text-[var(--text-quaternary)]">
-							{query.trim().length === 0 ? "Type to search" : "No results"}
+							{activeTab === "text" && textQuery.isError
+								? "Search failed"
+								: activeTab === "text" && query.trim().length > 0 && query.trim().length < 2
+									? "Type at least 2 characters"
+									: query.trim().length === 0
+										? "Type to search"
+										: textQuery.isFetching && activeTab === "text"
+											? "Searching..."
+											: "No results"}
+						</div>
+					)}
+					{activeTab === "text" && textQuery.data?.truncated && (
+						<div className="px-4 pb-1 text-center text-[11px] text-[var(--text-quaternary)]">
+							Showing first {results.length} matches
 						</div>
 					)}
 					{results.map((item, i) => (
