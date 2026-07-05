@@ -35,7 +35,7 @@ export const SYMBOL_KIND_GLYPHS: Record<number, string> = {
 };
 
 export function symbolKindGlyph(kind: number): string {
-	return SYMBOL_KIND_GLYPHS[kind] ?? "?";
+	return SYMBOL_KIND_GLYPHS[kind] ?? "•";
 }
 
 export function getSearchEverywhereEmptyStateMessage({
@@ -65,7 +65,7 @@ export function getSearchEverywhereEmptyStateMessage({
 		if (!queryMatchesInput) return "Searching...";
 		if (isFetching) return "Searching...";
 		if ((serversQueried ?? 0) === 0)
-			return "No language servers running - symbols appear once files are opened in the editor";
+			return "No language servers running — symbols appear once files are opened in the editor";
 	}
 	return "No results";
 }
