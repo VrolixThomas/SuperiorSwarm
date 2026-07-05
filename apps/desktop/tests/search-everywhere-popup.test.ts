@@ -103,6 +103,7 @@ describe("resultKey", () => {
 describe("symbolKindGlyph", () => {
 	test("returns LSP symbol kind glyphs with fallback", () => {
 		expect(symbolKindGlyph(5)).toBe("C");
+		expect(symbolKindGlyph(9)).toBe("⊕");
 		expect(symbolKindGlyph(12)).toBe("F");
 		expect(symbolKindGlyph(999)).toBe("•");
 	});

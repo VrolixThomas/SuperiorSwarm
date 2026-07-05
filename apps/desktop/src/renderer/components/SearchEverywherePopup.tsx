@@ -25,7 +25,7 @@ const TAB_LABELS: Record<SearchTab, string> = {
 export const SYMBOL_KIND_GLYPHS: Record<number, string> = {
 	5: "C", // Class
 	6: "M", // Method
-	9: "+", // Constructor
+	9: "⊕", // Constructor
 	10: "E", // Enum
 	11: "I", // Interface
 	12: "F", // Function
