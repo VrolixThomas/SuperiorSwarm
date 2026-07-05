@@ -8,6 +8,7 @@ import {
 import { useReviewModeStore } from "../../../stores/review-mode-store";
 import { trpc } from "../../../trpc/client";
 import { FileSection } from "./FileSection";
+import { ThreadSection } from "./ThreadSection";
 
 interface ReviewNavigatorProps {
 	workspaceId: string;
@@ -148,7 +149,7 @@ export function ReviewNavigator({ workspaceId, prCtx, details, threads }: Review
 				onToggleViewed={onToggleViewed}
 			/>
 
-			{/* Task 5: ThreadSection will land here. */}
+			<ThreadSection workspaceId={workspaceId} prCtx={prCtx} threads={threads} />
 		</nav>
 	);
 }
