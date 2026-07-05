@@ -45,4 +45,11 @@ describe("mergeAllResults", () => {
 		const merged = mergeAllResults("store", [first, second], [], 10);
 		expect(merged).toEqual([first, second]);
 	});
+
+	test("preserves input order for symbols in the same fuzzy band", () => {
+		const first = symbol("StoreController");
+		const second = symbol("Store");
+		const merged = mergeAllResults("sto", [], [first, second], 10);
+		expect(merged).toEqual([first, second]);
+	});
 });
