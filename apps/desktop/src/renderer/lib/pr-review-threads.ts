@@ -39,6 +39,13 @@ export const DRAFT_STATUS_PRIORITY: Record<string, number> = {
 	failed: 4,
 };
 
+/** True while any review draft is queued or running — the only time polling is useful. */
+export function hasActiveReviewDraft(
+	drafts: ReadonlyArray<{ status: string }> | undefined
+): boolean {
+	return (drafts ?? []).some((d) => d.status === "queued" || d.status === "in_progress");
+}
+
 export function threadBucket(t: UnifiedThread): ThreadBucket {
 	if (t.isAIDraft) {
 		switch (t.status) {

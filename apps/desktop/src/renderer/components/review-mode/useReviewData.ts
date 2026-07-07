@@ -11,6 +11,7 @@ import { formatPrIdentifier } from "../../../shared/pr-identifier";
 import {
 	type DraftCommentLike,
 	type ThreadFilter,
+	hasActiveReviewDraft,
 	mapDraftComment,
 	pickActiveDraft,
 	pickLatestDraft,
@@ -80,7 +81,7 @@ export function useReviewData(workspaceId: string, prCtx: PRContext): ReviewData
 
 	const reviewDraftsQuery = trpc.aiReview.getReviewDrafts.useQuery(undefined, {
 		staleTime: 5_000,
-		refetchInterval: 5_000,
+		refetchInterval: (query) => (hasActiveReviewDraft(query.state.data) ? 5_000 : false),
 	});
 
 	const matchingDraft = useMemo(
@@ -92,9 +93,10 @@ export function useReviewData(workspaceId: string, prCtx: PRContext): ReviewData
 		[reviewDraftsQuery.data, prIdentifier]
 	);
 
+	const draftActive = matchingDraft?.status === "queued" || matchingDraft?.status === "in_progress";
 	const aiDraftQuery = trpc.aiReview.getReviewDraft.useQuery(
 		{ draftId: matchingDraft?.id ?? "" },
-		{ enabled: !!matchingDraft?.id, refetchInterval: 5_000 }
+		{ enabled: !!matchingDraft?.id, refetchInterval: draftActive ? 5_000 : false }
 	);
 
 	const details = detailsQuery.data;

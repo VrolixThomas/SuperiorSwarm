@@ -7,6 +7,7 @@ import {
 	fileCommentCounts,
 	filtersForReviewFilter,
 	groupThreadsByFile,
+	hasActiveReviewDraft,
 	mapDraftComment,
 	matchesFilter,
 	matchesReviewFilter,
@@ -341,5 +342,13 @@ describe("pr-review-threads", () => {
 			"line 12",
 		]);
 		expect(extractDiffContext(hunks, 99)).toEqual([]);
+	});
+
+	test("hasActiveReviewDraft true only while a draft is queued or in progress", () => {
+		expect(hasActiveReviewDraft(undefined)).toBe(false);
+		expect(hasActiveReviewDraft([])).toBe(false);
+		expect(hasActiveReviewDraft([{ status: "completed" }, { status: "failed" }])).toBe(false);
+		expect(hasActiveReviewDraft([{ status: "completed" }, { status: "queued" }])).toBe(true);
+		expect(hasActiveReviewDraft([{ status: "in_progress" }])).toBe(true);
 	});
 });
