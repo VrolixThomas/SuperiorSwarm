@@ -270,7 +270,22 @@ export function InlineCommentLayer({
 
 	// View zones: one per anchor line (displayEndLine), plus at most one composer.
 	useEffect(() => {
-		if (!editor) return;
+		if (!editor) {
+			// The editor was disposed (e.g. DiffEditor unmounted before this layer
+			// did). Its view zones went away with it — don't call Monaco APIs on a
+			// disposed editor. Just unmount our React roots and clear bookkeeping so
+			// the final teardown effect (which reads lastEditorRef) doesn't try to
+			// touch it either.
+			const entries = [...zonesRef.current.values()];
+			if (pendingZoneRef.current) entries.push(pendingZoneRef.current);
+			queueMicrotask(() => {
+				for (const e of entries) e.root.unmount();
+			});
+			zonesRef.current.clear();
+			pendingZoneRef.current = null;
+			lastEditorRef.current = null;
+			return;
+		}
 
 		if (lastEditorRef.current && lastEditorRef.current !== editor) {
 			zonesRef.current.clear();
