@@ -171,9 +171,13 @@ export function useReviewKeymap({
 				case "escape":
 					if (drawerOpen) {
 						setDrawerOpen(false);
-					} else {
-						close();
+						return;
 					}
+					if (activeThreadId !== null) {
+						selectThread(sessionKey, null);
+						return;
+					}
+					close();
 					return;
 				case "next":
 					if (view === "changes") advanceFile(sessionKey, 1);
@@ -234,6 +238,7 @@ export function useReviewKeymap({
 			isGitHubPR,
 			markFileViewed,
 			prCtx,
+			selectThread,
 			sendIntent,
 			sessionKey,
 			setDrawerOpen,
