@@ -1,5 +1,6 @@
 import type * as monaco from "monaco-editor";
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { reanchorComment } from "../../shared/comment-anchor";
 import { type DiffContext, refsForDiffContext } from "../../shared/diff-types";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
@@ -7,14 +8,17 @@ import { DiffEditor } from "./DiffEditor";
 import { MarkdownPreviewButton } from "./MarkdownPreviewButton";
 import { MarkdownRenderedDiff } from "./MarkdownRenderedDiff";
 import { MarkdownRenderer } from "./MarkdownRenderer";
+import { type AnchoredComment, InlineCommentLayer } from "./inline-comments/InlineCommentLayer";
+import { InlineCommentSendBar } from "./inline-comments/InlineCommentSendBar";
 
 interface DiffFileTabProps {
 	diffCtx: DiffContext;
 	filePath: string;
 	language: string;
+	workspaceId?: string;
 }
 
-export function DiffFileTab({ diffCtx, filePath, language }: DiffFileTabProps) {
+export function DiffFileTab({ diffCtx, filePath, language, workspaceId }: DiffFileTabProps) {
 	const diffMode = useTabStore((s) => s.diffMode);
 	const setDiffMode = useTabStore((s) => s.setDiffMode);
 	const markdownPreviewMode = useTabStore((s) => s.markdownPreviewMode);
@@ -23,6 +27,9 @@ export function DiffFileTab({ diffCtx, filePath, language }: DiffFileTabProps) {
 	const isSyncingScrollRef = useRef(false);
 	const splitEditorRef = useRef<monaco.editor.IStandaloneDiffEditor | null>(null);
 	const scrollSubRef = useRef<monaco.IDisposable | null>(null);
+	const [editorInstance, setEditorInstance] = useState<monaco.editor.IStandaloneDiffEditor | null>(
+		null
+	);
 
 	useEffect(() => {
 		return () => {
@@ -63,6 +70,77 @@ export function DiffFileTab({ diffCtx, filePath, language }: DiffFileTabProps) {
 	const isLoading = originalQuery.isLoading || modifiedQuery.isLoading;
 	const hideEditor = markdownPreviewMode === "rendered" || markdownPreviewMode === "rich-diff";
 
+	const commentingEnabled =
+		!!workspaceId && (diffCtx.type === "working-tree" || diffCtx.type === "branch");
+
+	const commentsQuery = trpc.inlineComments.list.useQuery(
+		{ workspaceId: workspaceId ?? "" },
+		{ enabled: commentingEnabled }
+	);
+
+	const fileComments: AnchoredComment[] = useMemo(() => {
+		if (!commentingEnabled) return [];
+		const modifiedContent = modifiedQuery.data?.content ?? "";
+		return (commentsQuery.data ?? [])
+			.filter((c) => c.filePath === filePath)
+			.map((c) => {
+				const anchor = reanchorComment(modifiedContent, c.startLine, c.endLine, c.codeSnapshot);
+				return {
+					...c,
+					displayStartLine: anchor.startLine,
+					displayEndLine: anchor.endLine,
+					outdated: anchor.outdated,
+				};
+			});
+	}, [commentingEnabled, commentsQuery.data, filePath, modifiedQuery.data?.content]);
+
+	const allAnchoredComments: AnchoredComment[] = useMemo(
+		() =>
+			(commentsQuery.data ?? []).map((c) => ({
+				...c,
+				displayStartLine: c.startLine,
+				displayEndLine: c.endLine,
+				outdated: false,
+			})),
+		[commentsQuery.data]
+	);
+
+	const createCommentMut = trpc.inlineComments.create.useMutation({
+		onSuccess: () => utils.inlineComments.list.invalidate({ workspaceId: workspaceId ?? "" }),
+	});
+	const updateCommentMut = trpc.inlineComments.update.useMutation({
+		onSuccess: () => utils.inlineComments.list.invalidate({ workspaceId: workspaceId ?? "" }),
+	});
+	const deleteCommentMut = trpc.inlineComments.delete.useMutation({
+		onSuccess: () => utils.inlineComments.list.invalidate({ workspaceId: workspaceId ?? "" }),
+	});
+
+	const handleCreateComment = useCallback(
+		(draft: { startLine: number; endLine: number; body: string }) => {
+			if (!commentingEnabled || !workspaceId) return;
+			const modifiedContent = modifiedQuery.data?.content ?? "";
+			const lines = modifiedContent.split("\n");
+			const codeSnapshot = lines.slice(draft.startLine - 1, draft.endLine).join("\n");
+			createCommentMut.mutate({
+				workspaceId,
+				repoPath: diffCtx.repoPath,
+				filePath,
+				startLine: draft.startLine,
+				endLine: draft.endLine,
+				codeSnapshot,
+				body: draft.body,
+			});
+		},
+		[
+			commentingEnabled,
+			workspaceId,
+			modifiedQuery.data?.content,
+			diffCtx.repoPath,
+			filePath,
+			createCommentMut,
+		]
+	);
+
 	return (
 		<div className="flex h-full flex-col overflow-hidden">
 			{/* Minimal toolbar */}
@@ -88,6 +166,9 @@ export function DiffFileTab({ diffCtx, filePath, language }: DiffFileTabProps) {
 					<span className="text-[11px] text-[var(--text-quaternary)]">Saving…</span>
 				)}
 			</div>
+			{commentingEnabled && workspaceId && (
+				<InlineCommentSendBar workspaceId={workspaceId} comments={allAnchoredComments} />
+			)}
 
 			<div className="flex-1 overflow-hidden">
 				{isLoading ? (
@@ -116,6 +197,7 @@ export function DiffFileTab({ diffCtx, filePath, language }: DiffFileTabProps) {
 								onModifiedChange={isEditable ? handleModifiedChange : undefined}
 								onEditorReady={(editor) => {
 									splitEditorRef.current = editor;
+									setEditorInstance(editor);
 									scrollSubRef.current?.dispose();
 									const modEditor = editor.getModifiedEditor();
 									scrollSubRef.current = modEditor.onDidScrollChange((e) => {
@@ -166,9 +248,19 @@ export function DiffFileTab({ diffCtx, filePath, language }: DiffFileTabProps) {
 						language={language}
 						renderSideBySide={diffMode === "split"}
 						onModifiedChange={isEditable ? handleModifiedChange : undefined}
+						onEditorReady={setEditorInstance}
 					/>
 				)}
 			</div>
+			{commentingEnabled && (
+				<InlineCommentLayer
+					editor={editorInstance}
+					comments={fileComments}
+					onCreate={handleCreateComment}
+					onUpdate={(id, body) => updateCommentMut.mutate({ id, body })}
+					onDelete={(id) => deleteCommentMut.mutate({ id })}
+				/>
+			)}
 		</div>
 	);
 }
