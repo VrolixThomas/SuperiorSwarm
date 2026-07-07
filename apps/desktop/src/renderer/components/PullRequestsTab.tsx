@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { GitHubPREnriched, PRContext } from "../../shared/github-types";
+import { launchReviewTerminal } from "../lib/review-launch";
 import { useAgentAlertStore } from "../stores/agent-alert-store";
 import { useReviewModeStore } from "../stores/review-mode-store";
 import { useTabStore } from "../stores/tab-store";
@@ -155,66 +156,12 @@ export function PullRequestsTab() {
 	});
 
 	const [reviewError, setReviewError] = useState<string | null>(null);
-	// Store PR context for the pending triggerReview call so onSuccess can use it
-	const pendingReviewCtxRef = useRef<PRContext | null>(null);
 	// Local map of prIdentifier → workspaceId, populated when workspaces are created
 	const workspaceIdMapRef = useRef<Map<string, string>>(new Map());
 	// Tracks which prIdentifier is currently being opened to prevent duplicate calls
 	const openingPRRef = useRef<string | null>(null);
 
-	const triggerReview = trpc.aiReview.triggerReview.useMutation({
-		onSuccess: (launchInfo) => {
-			setReviewError(null);
-			reviewDrafts.refetch();
-
-			if (!launchInfo.reviewWorkspaceId || !launchInfo.worktreePath) return;
-
-			// Track workspace ID for dismiss/cleanup lookups
-			const prCtx = pendingReviewCtxRef.current;
-			if (prCtx) {
-				const identifier = `${prCtx.owner}/${prCtx.repo}#${prCtx.number}`;
-				workspaceIdMapRef.current.set(identifier, launchInfo.reviewWorkspaceId);
-			}
-
-			const tabStore = useTabStore.getState();
-
-			tabStore.setWorkspaceMetadata(launchInfo.reviewWorkspaceId, {
-				type: "review",
-				prProvider: prCtx?.provider,
-				prIdentifier: prCtx ? `${prCtx.owner}/${prCtx.repo}#${prCtx.number}` : undefined,
-				prTitle: prCtx?.title,
-				sourceBranch: prCtx?.sourceBranch,
-				targetBranch: prCtx?.targetBranch,
-			});
-			tabStore.setActiveWorkspace(launchInfo.reviewWorkspaceId, launchInfo.worktreePath);
-			if (prCtx) useReviewModeStore.getState().open(launchInfo.reviewWorkspaceId, prCtx);
-
-			const tabId = `terminal-${crypto.randomUUID()}`;
-			if (prCtx) {
-				useReviewModeStore.getState().setTerminal({
-					tabId,
-					workspaceId: launchInfo.reviewWorkspaceId,
-					cwd: launchInfo.worktreePath,
-				});
-				useReviewModeStore.getState().setDrawerOpen(true);
-			}
-			attachTerminalRef.current({
-				workspaceId: launchInfo.reviewWorkspaceId,
-				terminalId: tabId,
-			});
-
-			setTimeout(() => {
-				window.electron.terminal.write(tabId, `bash '${launchInfo.launchScript}'\n`);
-			}, 500);
-
-			pendingReviewCtxRef.current = null;
-		},
-		onError: (err) => {
-			setReviewError(err.message);
-			reviewDrafts.refetch();
-			pendingReviewCtxRef.current = null;
-		},
-	});
+	const triggerReview = trpc.aiReview.triggerReview.useMutation();
 
 	const triggerReviewWithCtx = useCallback(
 		(
@@ -230,10 +177,38 @@ export function PullRequestsTab() {
 			},
 			prCtx?: PRContext
 		) => {
-			pendingReviewCtxRef.current = prCtx ?? null;
-			triggerReview.mutate(args);
+			triggerReview.mutateAsync(args).then(
+				(launchInfo) => {
+					setReviewError(null);
+					reviewDrafts.refetch();
+					if (!prCtx) {
+						console.error("[ai-review] triggerReview launched without PR context", args.identifier);
+						return;
+					}
+					if (launchInfo.reviewWorkspaceId) {
+						workspaceIdMapRef.current.set(
+							`${prCtx.owner}/${prCtx.repo}#${prCtx.number}`,
+							launchInfo.reviewWorkspaceId
+						);
+					}
+					const launched = launchReviewTerminal(launchInfo, prCtx, {
+						attachTerminal: (input) => attachTerminalRef.current(input),
+						writeTerminal: (tabId, data) => window.electron.terminal.write(tabId, data),
+					});
+					if (launched && launchInfo.reviewWorkspaceId && launchInfo.worktreePath) {
+						useTabStore
+							.getState()
+							.setActiveWorkspace(launchInfo.reviewWorkspaceId, launchInfo.worktreePath);
+						useReviewModeStore.getState().open(launchInfo.reviewWorkspaceId, prCtx);
+					}
+				},
+				(err: { message: string }) => {
+					setReviewError(err.message);
+					reviewDrafts.refetch();
+				}
+			);
 		},
-		[triggerReview.mutate]
+		[triggerReview.mutateAsync, reviewDrafts]
 	);
 
 	const markCommitSeen = trpc.aiReview.markCommitSeen.useMutation({

@@ -1,7 +1,6 @@
 import type { PRContext } from "../../../shared/github-types";
 import { formatPrIdentifier } from "../../../shared/pr-identifier";
-import { useReviewModeStore } from "../../stores/review-mode-store";
-import { useTabStore } from "../../stores/tab-store";
+import { launchReviewTerminal } from "../../lib/review-launch";
 import { trpc } from "../../trpc/client";
 
 interface ReviewDraftSummary {
@@ -36,31 +35,10 @@ export function useReviewAgentActions({
 	}) => {
 		void utils.aiReview.getReviewDrafts.invalidate();
 		void utils.aiReview.getReviewDraft.invalidate();
-		if (!launchInfo.reviewWorkspaceId || !launchInfo.worktreePath || !launchInfo.launchScript)
-			return;
-
-		useTabStore.getState().setWorkspaceMetadata(launchInfo.reviewWorkspaceId, {
-			type: "review",
-			prProvider: prCtx.provider,
-			prIdentifier: `${prCtx.owner}/${prCtx.repo}#${prCtx.number}`,
-			prTitle: prCtx.title,
-			sourceBranch: prCtx.sourceBranch,
-			targetBranch: prCtx.targetBranch,
+		launchReviewTerminal(launchInfo, prCtx, {
+			attachTerminal: (input) => attachTerminal.mutate(input),
+			writeTerminal: (tabId, data) => window.electron.terminal.write(tabId, data),
 		});
-		const tabId = `terminal-${crypto.randomUUID()}`;
-		useReviewModeStore.getState().setTerminal({
-			tabId,
-			workspaceId: launchInfo.reviewWorkspaceId,
-			cwd: launchInfo.worktreePath,
-		});
-		useReviewModeStore.getState().setDrawerOpen(true);
-		attachTerminal.mutate({
-			workspaceId: launchInfo.reviewWorkspaceId,
-			terminalId: tabId,
-		});
-		setTimeout(() => {
-			window.electron.terminal.write(tabId, `bash '${launchInfo.launchScript}'\n`);
-		}, 500);
 	};
 
 	const triggerReview = trpc.aiReview.triggerReview.useMutation({ onSuccess: handleLaunch });
