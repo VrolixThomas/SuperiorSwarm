@@ -45,10 +45,8 @@ export const inlineCommentsRouter = router({
 		return { ok: true };
 	}),
 
-	markSent: publicProcedure
-		.input(z.object({ ids: z.array(z.string()) }))
-		.mutation(({ input }) => {
-			markCommentsSent(getDb(), input.ids);
-			return { ok: true };
-		}),
+	markSent: publicProcedure.input(z.object({ ids: z.array(z.string()) })).mutation(({ input }) => {
+		markCommentsSent(getDb(), input.ids);
+		return { ok: true };
+	}),
 });
