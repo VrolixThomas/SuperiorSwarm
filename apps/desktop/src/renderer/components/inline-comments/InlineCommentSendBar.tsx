@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { buildInlineCommentsPrompt } from "../../../shared/inline-comment-prompt";
 import { bracketedPasteSubmit } from "../../../shared/terminal-injection";
 import { useTabStore } from "../../stores/tab-store";
@@ -13,10 +13,30 @@ export function InlineCommentSendBar({
 	comments: AnchoredComment[];
 }) {
 	const [pickerOpen, setPickerOpen] = useState(false);
+	const rootRef = useRef<HTMLDivElement>(null);
 	const utils = trpc.useUtils();
 	const markSentMut = trpc.inlineComments.markSent.useMutation({
 		onSuccess: () => utils.inlineComments.list.invalidate({ workspaceId }),
 	});
+
+	useEffect(() => {
+		if (!pickerOpen) return;
+		function onMouseDown(e: MouseEvent) {
+			if (rootRef.current && e.target instanceof Node && rootRef.current.contains(e.target)) {
+				return;
+			}
+			setPickerOpen(false);
+		}
+		function onKeyDown(e: KeyboardEvent) {
+			if (e.key === "Escape") setPickerOpen(false);
+		}
+		document.addEventListener("mousedown", onMouseDown);
+		document.addEventListener("keydown", onKeyDown);
+		return () => {
+			document.removeEventListener("mousedown", onMouseDown);
+			document.removeEventListener("keydown", onKeyDown);
+		};
+	}, [pickerOpen]);
 
 	if (comments.length === 0) return null;
 
@@ -26,6 +46,7 @@ export function InlineCommentSendBar({
 		.filter((t) => t.kind === "terminal");
 
 	function handleSend(terminalId: string) {
+		if (markSentMut.isPending) return;
 		const prompt = buildInlineCommentsPrompt(
 			comments.map((c) => ({
 				filePath: c.filePath,
@@ -42,15 +63,19 @@ export function InlineCommentSendBar({
 	}
 
 	return (
-		<div className="relative flex shrink-0 items-center gap-2 border-b border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-1">
+		<div
+			ref={rootRef}
+			className="relative flex shrink-0 items-center gap-2 border-b border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-1"
+		>
 			<span className="text-[11px] text-[var(--text-secondary)]">
 				{comments.length} {comments.length === 1 ? "comment" : "comments"} pending
 			</span>
 			<div className="flex-1" />
 			<button
 				type="button"
+				disabled={markSentMut.isPending}
 				onClick={() => setPickerOpen((o) => !o)}
-				className="rounded-[4px] bg-[var(--accent)] px-2 py-0.5 text-[10px] font-medium text-[var(--accent-foreground)] hover:opacity-80"
+				className="rounded-[4px] bg-[var(--accent)] px-2 py-0.5 text-[10px] font-medium text-[var(--accent-foreground)] hover:opacity-80 disabled:opacity-50"
 			>
 				Send to agent
 			</button>
@@ -65,12 +90,13 @@ export function InlineCommentSendBar({
 							<button
 								key={t.id}
 								type="button"
+								disabled={markSentMut.isPending}
 								onClick={() => handleSend(t.id)}
-								className="flex w-full flex-col px-3 py-1.5 text-left hover:bg-[var(--bg-overlay)]"
+								className="flex w-full flex-col px-3 py-1.5 text-left hover:bg-[var(--bg-overlay)] disabled:opacity-50"
 							>
 								<span className="text-[11px] text-[var(--text-secondary)]">{t.title}</span>
 								<span className="truncate font-mono text-[10px] text-[var(--text-quaternary)]">
-									{t.kind === "terminal" ? t.cwd : ""}
+									{t.cwd}
 								</span>
 							</button>
 						))
