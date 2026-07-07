@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { postAcceptedDrafts } from "../src/renderer/lib/pr-review-submit";
+import { hasSubmitPayload, postAcceptedDrafts } from "../src/renderer/lib/pr-review-submit";
 import type { AIDraftThread, PRContext } from "../src/shared/github-types";
 
 const prCtx: PRContext = {
@@ -149,5 +149,19 @@ describe("postAcceptedDrafts", () => {
 		expect(outcome.failed).toBe(0);
 		expect(outcome.verdictSubmitted).toBe(false);
 		expect(verdictCount).toBe(0);
+	});
+});
+
+describe("hasSubmitPayload", () => {
+	test("false for zero accepted, COMMENT verdict, empty body", () => {
+		expect(hasSubmitPayload(0, "COMMENT", "")).toBe(false);
+		expect(hasSubmitPayload(0, "COMMENT", "   ")).toBe(false);
+	});
+
+	test("true when anything would actually be sent", () => {
+		expect(hasSubmitPayload(1, "COMMENT", "")).toBe(true);
+		expect(hasSubmitPayload(0, "APPROVE", "")).toBe(true);
+		expect(hasSubmitPayload(0, "REQUEST_CHANGES", "")).toBe(true);
+		expect(hasSubmitPayload(0, "COMMENT", "lgtm")).toBe(true);
 	});
 });

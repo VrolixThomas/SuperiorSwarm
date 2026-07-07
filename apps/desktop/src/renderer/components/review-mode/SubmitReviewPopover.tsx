@@ -3,6 +3,7 @@ import type { AIDraftThread, PRContext } from "../../../shared/github-types";
 import {
 	type ReviewVerdict,
 	type SubmitOutcome,
+	hasSubmitPayload,
 	postAcceptedDrafts,
 } from "../../lib/pr-review-submit";
 import { threadExcerpt } from "../../lib/pr-review-threads";
@@ -50,7 +51,8 @@ export function SubmitReviewPopover({
 	});
 	const submitReview = trpc.github.submitReview.useMutation();
 	const isGitHub = prCtx.provider === "github";
-	const canSubmit = isGitHub && !submitting;
+	const nothingToSubmit = !hasSubmitPayload(acceptedThreads.length, verdict, body);
+	const canSubmit = isGitHub && !submitting && !nothingToSubmit;
 
 	const acceptedCountLabel = useMemo(() => {
 		const count = acceptedThreads.length;
@@ -96,7 +98,7 @@ export function SubmitReviewPopover({
 		});
 		setOutcome(result);
 		setSubmitting(false);
-		if (result.failed === 0 && (result.posted > 0 || acceptedThreads.length === 0)) {
+		if (result.failed === 0 && (result.posted > 0 || result.verdictSubmitted)) {
 			onSubmitted();
 		}
 	};
@@ -151,7 +153,8 @@ export function SubmitReviewPopover({
 				<div className="max-h-[220px] overflow-y-auto rounded-[var(--radius-sm)] border border-[var(--border-subtle)]">
 					{acceptedThreads.length === 0 ? (
 						<div className="px-3 py-3 text-[12px] text-[var(--text-quaternary)]">
-							No accepted AI comments to post.
+							No accepted AI comments to post. Accept comments, pick a verdict, or add a summary to
+							submit.
 						</div>
 					) : (
 						acceptedThreads.map((thread) => (

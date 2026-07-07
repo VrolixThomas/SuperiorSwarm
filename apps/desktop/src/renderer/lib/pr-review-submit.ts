@@ -32,6 +32,15 @@ export interface SubmitReviewDeps {
 	submitReview: (input: SubmitReviewInput) => Promise<unknown>;
 }
 
+/** True when submitting would perform at least one API call. */
+export function hasSubmitPayload(
+	acceptedCount: number,
+	verdict: ReviewVerdict,
+	body: string
+): boolean {
+	return acceptedCount > 0 || verdict !== "COMMENT" || body.trim().length > 0;
+}
+
 export interface PostAcceptedDraftsOptions {
 	prCtx: PRContext;
 	headCommitOid: string;
