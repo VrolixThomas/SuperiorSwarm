@@ -47,6 +47,7 @@ function ActiveReviewModeShell({ active }: { active: ActiveReview }) {
 	const [submitOpen, setSubmitOpen] = useState(false);
 	const [navigatorWidth, setNavigatorWidth] = useState(280);
 	const shellRef = useRef<HTMLDivElement>(null);
+	const navRef = useRef<HTMLElement>(null);
 	const utils = trpc.useUtils();
 	const {
 		details,
@@ -189,13 +190,21 @@ function ActiveReviewModeShell({ active }: { active: ActiveReview }) {
 			event.preventDefault();
 			const startX = event.clientX;
 			const startWidth = navigatorWidth;
+			let latest = startWidth;
+			let frame = 0;
 
 			function onPointerMove(moveEvent: PointerEvent) {
-				const nextWidth = Math.min(360, Math.max(220, startWidth + moveEvent.clientX - startX));
-				setNavigatorWidth(nextWidth);
+				latest = Math.min(360, Math.max(220, startWidth + moveEvent.clientX - startX));
+				if (frame) return;
+				frame = requestAnimationFrame(() => {
+					frame = 0;
+					if (navRef.current) navRef.current.style.width = `${latest}px`;
+				});
 			}
 
 			function onPointerUp() {
+				cancelAnimationFrame(frame);
+				setNavigatorWidth(latest);
 				window.removeEventListener("pointermove", onPointerMove);
 				window.removeEventListener("pointerup", onPointerUp);
 			}
@@ -269,6 +278,7 @@ function ActiveReviewModeShell({ active }: { active: ActiveReview }) {
 			<div className="flex min-h-0 flex-1">
 				{!navigatorCollapsed && (
 					<aside
+						ref={navRef}
 						className="relative shrink-0 overflow-y-auto border-r border-[var(--border)] bg-[var(--bg-surface)]"
 						style={{ width: navigatorWidth }}
 					>
