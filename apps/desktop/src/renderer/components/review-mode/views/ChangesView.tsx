@@ -54,31 +54,6 @@ function toolbarButtonClass(active = false, disabled = false): string {
 	].join(" ");
 }
 
-function estimateInlineBodyHeight(text: string): number {
-	const lines = Math.max(1, Math.ceil(text.length / 60));
-	return lines * 16 + 12;
-}
-
-function estimateInlineThreadHeight(thread: UnifiedThread, collapsedResolved: boolean): number {
-	if (!thread.isAIDraft) {
-		if (thread.isResolved && collapsedResolved) return 42;
-		const commentsHeight = thread.comments.reduce(
-			(sum, comment) => sum + 24 + estimateInlineBodyHeight(comment.body),
-			0
-		);
-		const possibleReplyComposer = thread.isResolved ? 0 : 160;
-		return 40 + commentsHeight + 44 + possibleReplyComposer;
-	}
-
-	const bodyHeight = estimateInlineBodyHeight(thread.userEdit ?? thread.body);
-	const possibleEditComposer =
-		thread.status === "pending" || thread.status === "edited" || thread.status === "user-pending"
-			? 190
-			: 0;
-	const actionsHeight = thread.status === "submitted" ? 0 : 44;
-	return 40 + bodyHeight + actionsHeight + possibleEditComposer;
-}
-
 function resolvedInlineCollapsed(
 	thread: UnifiedThread,
 	defaultCollapsed: boolean,
@@ -341,32 +316,13 @@ export function ChangesView({
 			sessionKey,
 		]
 	);
-	const estimateInlineThreadsHeight = useCallback(
-		(threads: UnifiedThread[]) =>
-			threads.reduce(
-				(sum, thread) =>
-					sum +
-					estimateInlineThreadHeight(
-						thread,
-						resolvedInlineCollapsed(
-							thread,
-							collapseCommand.defaultCollapsed,
-							collapsedThreadOverrides
-						)
-					),
-				0
-			),
-		[collapseCommand.defaultCollapsed, collapsedThreadOverrides]
-	);
-
 	useInlineCommentZones(
 		editorInstance,
 		inlineFileThreads,
 		pendingLine,
 		renderThread,
 		handleSaveNew,
-		handleCancelNew,
-		estimateInlineThreadsHeight
+		handleCancelNew
 	);
 	useThreadDecorations(editorInstance, inlineFileThreads, activeThreadId);
 	useGutterPlusButton(editorInstance, setPendingLine, validDiffLines);

@@ -11,7 +11,9 @@ import { ReplyComposer } from "../thread/ReplyComposer";
 interface ZoneEntry {
 	zoneId: string;
 	domNode: HTMLElement;
+	inner: HTMLElement;
 	root: Root;
+	ro: ResizeObserver;
 	heightInLines: number;
 	signature: string;
 }
@@ -26,32 +28,17 @@ function threadSignature(t: UnifiedThread): string {
 	return `gh|${gh.id}|${gh.line}|${gh.isResolved ? 1 : 0}|${comments}`;
 }
 
-function estimateBodyHeight(text: string): number {
-	const lines = Math.max(1, Math.ceil(text.length / 60));
-	return lines * 16 + 12;
-}
-
-function estimateZonePx(threads: UnifiedThread[]): number {
-	return threads.reduce((sum, t) => {
-		if (t.isAIDraft) {
-			const ai = t as AIDraftThread;
-			const bodyH = estimateBodyHeight(ai.userEdit ?? ai.body);
-			return sum + 32 + bodyH + (ai.status === "pending" ? 36 : 24);
-		}
-		const gh = t as GitHubReviewThread;
-		const commentsH = gh.comments.reduce((s, c) => s + 24 + estimateBodyHeight(c.body), 0);
-		return sum + 32 + commentsH + 36;
-	}, 0);
-}
-
-function makeZoneNode(): HTMLElement {
+function makeZoneNode(): { domNode: HTMLElement; inner: HTMLElement } {
 	const domNode = document.createElement("div");
 	domNode.style.pointerEvents = "auto";
 	domNode.style.zIndex = "10";
 	domNode.style.width = "100%";
+	domNode.style.overflow = "hidden";
 	domNode.addEventListener("mousedown", (e) => e.stopPropagation());
 	domNode.addEventListener("keydown", (e) => e.stopPropagation());
-	return domNode;
+	const inner = document.createElement("div");
+	domNode.appendChild(inner);
+	return { domNode, inner };
 }
 
 function disposeZones(
@@ -70,6 +57,8 @@ function disposeZones(
 			// The editor may already be disposed during file switches; roots still need unmounting.
 		}
 	}
+
+	for (const entry of entries) entry.ro.disconnect();
 
 	queueMicrotask(() => {
 		for (const entry of entries) entry.root.unmount();
@@ -105,7 +94,9 @@ function NewThreadWidget({
  * touches Monaco/React for zones that actually changed. Background refetches
  * that produce structurally-equivalent threads cause zero churn; partial
  * updates re-render only the affected line so sibling textareas keep their
- * in-progress state.
+ * in-progress state. Zone height is measured via ResizeObserver against the
+ * rendered content rather than estimated from character counts, so markdown
+ * (fenced code blocks, lists, etc.) never overflows its view zone.
  */
 export function useInlineCommentZones(
 	editor: monaco.editor.IStandaloneDiffEditor | null,
@@ -113,8 +104,7 @@ export function useInlineCommentZones(
 	pendingLine: number | null,
 	renderThread: (thread: UnifiedThread) => ReactNode,
 	onSaveNew: (body: string) => void,
-	onCancelNew: () => void,
-	estimateThreadsHeightPx: (threads: UnifiedThread[]) => number = estimateZonePx
+	onCancelNew: () => void
 ): void {
 	const zonesRef = useRef<Map<number, ZoneEntry>>(new Map());
 	const pendingZoneRef = useRef<(ZoneEntry & { line: number }) | null>(null);
@@ -161,11 +151,36 @@ export function useInlineCommentZones(
 			);
 		};
 
+		// Guards against layout feedback loops: only re-layout the zone when the
+		// measured content height actually maps to a different line count.
+		const resizeZone = (entry: ZoneEntry, line: number) => {
+			const contentPx = entry.inner.offsetHeight;
+			if (contentPx === 0) return;
+			const heightInLines = Math.max(1, Math.ceil(contentPx / lineHeight));
+			if (heightInLines === entry.heightInLines) return;
+			modEditor.changeViewZones((acc) => {
+				acc.removeZone(entry.zoneId);
+				entry.zoneId = acc.addZone({
+					afterLineNumber: line,
+					heightInLines,
+					domNode: entry.domNode,
+				});
+				entry.heightInLines = heightInLines;
+			});
+		};
+
+		const resizePendingZone = () => {
+			const entry = pendingZoneRef.current;
+			if (!entry) return;
+			resizeZone(entry, entry.line);
+		};
+
 		modEditor.changeViewZones((acc) => {
 			// Remove zones whose line no longer has threads.
 			for (const [line, entry] of zonesRef.current) {
 				if (!byLine.has(line)) {
 					acc.removeZone(entry.zoneId);
+					entry.ro.disconnect();
 					const root = entry.root;
 					queueMicrotask(() => root.unmount());
 					zonesRef.current.delete(line);
@@ -175,38 +190,35 @@ export function useInlineCommentZones(
 			// Add new / update existing.
 			for (const [line, lineThreads] of byLine) {
 				const sig = `${renderVersionRef.current}\u001d${lineThreads.map(threadSignature).join("\u001e")}`;
-				const heightInLines = Math.ceil(estimateThreadsHeightPx(lineThreads) / lineHeight);
 				const existing = zonesRef.current.get(line);
 
 				if (!existing) {
-					const domNode = makeZoneNode();
+					const { domNode, inner } = makeZoneNode();
+					const heightInLines = 4;
 					const zoneId = acc.addZone({ afterLineNumber: line, heightInLines, domNode });
-					const root = createRoot(domNode);
-					const entry: ZoneEntry = { zoneId, domNode, root, heightInLines, signature: sig };
+					const root = createRoot(inner);
+					const ro = new ResizeObserver(() => {
+						const current = zonesRef.current.get(line);
+						if (current) resizeZone(current, line);
+					});
+					ro.observe(inner);
+					const entry: ZoneEntry = {
+						zoneId,
+						domNode,
+						inner,
+						root,
+						ro,
+						heightInLines,
+						signature: sig,
+					};
 					zonesRef.current.set(line, entry);
 					renderLine(lineThreads, entry);
-					continue;
-				}
-
-				if (existing.signature === sig && existing.heightInLines === heightInLines) {
 					continue;
 				}
 
 				if (existing.signature !== sig) {
 					renderLine(lineThreads, existing);
 					existing.signature = sig;
-				}
-
-				if (existing.heightInLines !== heightInLines) {
-					// Re-add with new height; same DOM node + React root are reparented, so
-					// component state (in-progress textarea, etc.) survives.
-					acc.removeZone(existing.zoneId);
-					existing.zoneId = acc.addZone({
-						afterLineNumber: line,
-						heightInLines,
-						domNode: existing.domNode,
-					});
-					existing.heightInLines = heightInLines;
 				}
 			}
 
@@ -215,6 +227,7 @@ export function useInlineCommentZones(
 			if (pendingLine === null) {
 				if (pending) {
 					acc.removeZone(pending.zoneId);
+					pending.ro.disconnect();
 					const root = pending.root;
 					queueMicrotask(() => root.unmount());
 					pendingZoneRef.current = null;
@@ -222,20 +235,25 @@ export function useInlineCommentZones(
 			} else if (!pending || pending.line !== pendingLine) {
 				if (pending) {
 					acc.removeZone(pending.zoneId);
+					pending.ro.disconnect();
 					const root = pending.root;
 					queueMicrotask(() => root.unmount());
 				}
-				const domNode = makeZoneNode();
+				const { domNode, inner } = makeZoneNode();
 				const heightInLines = Math.ceil(120 / lineHeight);
 				const zoneId = acc.addZone({ afterLineNumber: pendingLine, heightInLines, domNode });
-				const root = createRoot(domNode);
+				const root = createRoot(inner);
 				root.render(
 					<NewThreadWidget line={pendingLine} onSave={onSaveNew} onCancel={onCancelNew} />
 				);
+				const ro = new ResizeObserver(() => resizePendingZone());
+				ro.observe(inner);
 				pendingZoneRef.current = {
 					zoneId,
 					domNode,
+					inner,
 					root,
+					ro,
 					heightInLines,
 					signature: "",
 					line: pendingLine,
@@ -247,7 +265,7 @@ export function useInlineCommentZones(
 				);
 			}
 		});
-	}, [editor, threads, pendingLine, renderThread, onSaveNew, onCancelNew, estimateThreadsHeightPx]);
+	}, [editor, threads, pendingLine, renderThread, onSaveNew, onCancelNew]);
 
 	useEffect(() => {
 		// Final teardown when the component unmounts. The captured editor is the
