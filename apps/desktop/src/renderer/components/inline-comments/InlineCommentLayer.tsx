@@ -341,8 +341,8 @@ export function InlineCommentLayer({
 
 			// Composer zone.
 			const pending = pendingZoneRef.current;
-			const anchorLine = pendingRange?.end ?? null;
-			if (anchorLine === null) {
+			const range = pendingRange;
+			if (range === null) {
 				if (pending) {
 					acc.removeZone(pending.zoneId);
 					const root = pending.root;
@@ -350,7 +350,7 @@ export function InlineCommentLayer({
 					pendingZoneRef.current = null;
 				}
 			} else {
-				const range = pendingRange;
+				const anchorLine = range.end;
 				const title =
 					range.start === range.end
 						? `New comment on line ${anchorLine}`
