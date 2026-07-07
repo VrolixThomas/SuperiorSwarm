@@ -4,7 +4,9 @@ import { Terminal } from "../Terminal";
 export function TerminalDrawer() {
 	const drawerOpen = useReviewModeStore((state) => state.drawerOpen);
 	const setDrawerOpen = useReviewModeStore((state) => state.setDrawerOpen);
-	const terminal = useReviewModeStore((state) => state.terminal);
+	const terminal = useReviewModeStore((state) =>
+		state.active ? (state.terminals[state.active.workspaceId] ?? null) : null
+	);
 
 	if (!drawerOpen || !terminal) return null;
 

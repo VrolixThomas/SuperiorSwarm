@@ -18,10 +18,11 @@ export interface ReviewTerminal {
 
 export interface ReviewModeStore {
 	active: { workspaceId: string; prCtx: PRContext } | null;
+	lastWorkspaceId: string | null;
 	view: ReviewView;
 	navigatorCollapsed: boolean;
 	drawerOpen: boolean;
-	terminal: ReviewTerminal | null;
+	terminals: Record<string, ReviewTerminal>;
 	commentFilter: ReviewCommentFilter;
 	intent: ReviewIntent | null;
 
@@ -30,7 +31,7 @@ export interface ReviewModeStore {
 	setView: (view: ReviewView) => void;
 	toggleNavigator: () => void;
 	setDrawerOpen: (open: boolean) => void;
-	setTerminal: (terminal: ReviewTerminal | null) => void;
+	setTerminal: (terminal: ReviewTerminal) => void;
 	setCommentFilter: (filter: ReviewCommentFilter) => void;
 	sendIntent: (kind: ReviewIntent["kind"], threadId?: string) => void;
 	clearIntent: () => void;
@@ -45,34 +46,50 @@ function createIntent(kind: ReviewIntent["kind"], threadId?: string): ReviewInte
 
 export const useReviewModeStore = create<ReviewModeStore>()((set) => ({
 	active: null,
+	lastWorkspaceId: null,
 	view: "overview",
 	navigatorCollapsed: false,
 	drawerOpen: false,
-	terminal: null,
+	terminals: {},
 	commentFilter: "all",
 	intent: null,
 
 	open: (workspaceId, prCtx) =>
-		set({
-			active: { workspaceId, prCtx },
-			view: "overview",
-			drawerOpen: false,
-			terminal: null,
-			commentFilter: "all",
-			intent: null,
+		set((state) => {
+			const sameWorkspace =
+				state.active?.workspaceId === workspaceId || state.lastWorkspaceId === workspaceId;
+			if (sameWorkspace) {
+				return {
+					active: { workspaceId, prCtx },
+					lastWorkspaceId: null,
+					intent: null,
+				};
+			}
+			return {
+				active: { workspaceId, prCtx },
+				lastWorkspaceId: null,
+				view: "overview",
+				drawerOpen: false,
+				commentFilter: "all",
+				intent: null,
+			};
 		}),
 
 	close: () =>
-		set({
+		set((state) => ({
 			active: null,
+			lastWorkspaceId: state.active?.workspaceId ?? state.lastWorkspaceId,
 			drawerOpen: false,
 			intent: null,
-		}),
+		})),
 
 	setView: (view) => set({ view }),
 	toggleNavigator: () => set((state) => ({ navigatorCollapsed: !state.navigatorCollapsed })),
 	setDrawerOpen: (open) => set({ drawerOpen: open }),
-	setTerminal: (terminal) => set({ terminal }),
+	setTerminal: (terminal) =>
+		set((state) => ({
+			terminals: { ...state.terminals, [terminal.workspaceId]: terminal },
+		})),
 	setCommentFilter: (filter) => set({ commentFilter: filter }),
 	sendIntent: (kind, threadId) => set({ intent: createIntent(kind, threadId) }),
 	clearIntent: () => set({ intent: null }),
