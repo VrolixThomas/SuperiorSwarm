@@ -13,6 +13,7 @@ export function InlineCommentSendBar({
 	comments: AnchoredComment[];
 }) {
 	const [pickerOpen, setPickerOpen] = useState(false);
+	const [sendError, setSendError] = useState(false);
 	const rootRef = useRef<HTMLDivElement>(null);
 	const utils = trpc.useUtils();
 	const markSentMut = trpc.inlineComments.markSent.useMutation({
@@ -45,7 +46,7 @@ export function InlineCommentSendBar({
 		.getTabsByWorkspace(workspaceId)
 		.filter((t) => t.kind === "terminal");
 
-	function handleSend(terminalId: string) {
+	async function handleSend(terminalId: string) {
 		if (markSentMut.isPending) return;
 		const prompt = buildInlineCommentsPrompt(
 			comments.map((c) => ({
@@ -57,9 +58,14 @@ export function InlineCommentSendBar({
 				outdated: c.outdated,
 			}))
 		);
-		window.electron.terminal.write(terminalId, bracketedPasteSubmit(prompt));
-		markSentMut.mutate({ ids: comments.map((c) => c.id) });
-		setPickerOpen(false);
+		try {
+			await window.electron.terminal.write(terminalId, bracketedPasteSubmit(prompt));
+			markSentMut.mutate({ ids: comments.map((c) => c.id) });
+			setSendError(false);
+			setPickerOpen(false);
+		} catch {
+			setSendError(true);
+		}
 	}
 
 	return (
@@ -70,11 +76,17 @@ export function InlineCommentSendBar({
 			<span className="text-[11px] text-[var(--text-secondary)]">
 				{comments.length} {comments.length === 1 ? "comment" : "comments"} pending
 			</span>
+			{sendError && (
+				<span className="text-[11px] text-[var(--danger)]">Send failed - terminal unavailable</span>
+			)}
 			<div className="flex-1" />
 			<button
 				type="button"
 				disabled={markSentMut.isPending}
-				onClick={() => setPickerOpen((o) => !o)}
+				onClick={() => {
+					setSendError(false);
+					setPickerOpen((o) => !o);
+				}}
 				className="rounded-[4px] bg-[var(--accent)] px-2 py-0.5 text-[10px] font-medium text-[var(--accent-foreground)] hover:opacity-80 disabled:opacity-50"
 			>
 				Send to agent
