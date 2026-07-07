@@ -172,7 +172,8 @@ export function ChangesView({
 		(originalQuery.isPending || modifiedQuery.isPending) &&
 		originalQuery.data === undefined &&
 		modifiedQuery.data === undefined;
-	const editorInstance = !hideEditor && !isLoading ? editor : null;
+	const swapping = originalQuery.isPlaceholderData || modifiedQuery.isPlaceholderData;
+	const editorInstance = !hideEditor && !isLoading && !swapping ? editor : null;
 
 	const validDiffLines = useMemo(() => {
 		const fileData = branchDiffQuery.data?.files.find((file) => file.path === currentFilePath);

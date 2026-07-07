@@ -191,16 +191,16 @@ export function PullRequestsTab() {
 							launchInfo.reviewWorkspaceId
 						);
 					}
-					const launched = launchReviewTerminal(launchInfo, prCtx, {
-						attachTerminal: (input) => attachTerminalRef.current(input),
-						writeTerminal: (tabId, data) => window.electron.terminal.write(tabId, data),
-					});
-					if (launched && launchInfo.reviewWorkspaceId && launchInfo.worktreePath) {
+					if (launchInfo.reviewWorkspaceId && launchInfo.worktreePath) {
 						useTabStore
 							.getState()
 							.setActiveWorkspace(launchInfo.reviewWorkspaceId, launchInfo.worktreePath);
 						useReviewModeStore.getState().open(launchInfo.reviewWorkspaceId, prCtx);
 					}
+					launchReviewTerminal(launchInfo, prCtx, {
+						attachTerminal: (input) => attachTerminalRef.current(input),
+						writeTerminal: (tabId, data) => window.electron.terminal.write(tabId, data),
+					});
 				},
 				(err: { message: string }) => {
 					setReviewError(err.message);
