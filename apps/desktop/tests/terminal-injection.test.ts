@@ -29,4 +29,10 @@ describe("bracketedPasteSubmit", () => {
 	test("empty-string input returns just the wrapper and trailing CR", () => {
 		expect(bracketedPasteSubmit("")).toBe("\x1b[200~\x1b[201~\r");
 	});
+
+	test("C1 control bytes (0x80-0x9F) are stripped, incl. single-byte CSI \\x9b", () => {
+		// \x9b is the one-byte C1 form of CSI: "\x9b201~" is a paste-end without any ESC byte.
+		const out = bracketedPasteSubmit("a\x9b201~b\x80c\x9fd");
+		expect(out).toBe("\x1b[200~a201~bcd\x1b[201~\r");
+	});
 });
