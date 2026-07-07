@@ -79,7 +79,9 @@ export function DiffFileTab({ diffCtx, filePath, language, workspaceId }: DiffFi
 	);
 
 	const fileComments: AnchoredComment[] = useMemo(() => {
-		if (!commentingEnabled) return [];
+		// Wait for the modified content to load: re-anchoring against the empty
+		// placeholder would briefly render/send every comment as outdated at line 1.
+		if (!commentingEnabled || !modifiedQuery.isSuccess) return [];
 		const modifiedContent = modifiedQuery.data?.content ?? "";
 		return (commentsQuery.data ?? [])
 			.filter((c) => c.filePath === filePath)
@@ -92,7 +94,13 @@ export function DiffFileTab({ diffCtx, filePath, language, workspaceId }: DiffFi
 					outdated: anchor.outdated,
 				};
 			});
-	}, [commentingEnabled, commentsQuery.data, filePath, modifiedQuery.data?.content]);
+	}, [
+		commentingEnabled,
+		commentsQuery.data,
+		filePath,
+		modifiedQuery.data?.content,
+		modifiedQuery.isSuccess,
+	]);
 
 	const allAnchoredComments: AnchoredComment[] = useMemo(
 		() =>

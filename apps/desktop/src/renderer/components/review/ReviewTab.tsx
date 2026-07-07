@@ -147,7 +147,9 @@ export function ReviewTab({
 	const commentsQuery = trpc.inlineComments.list.useQuery({ workspaceId });
 
 	const fileComments: AnchoredComment[] = useMemo(() => {
-		if (!selectedFile) return [];
+		// Wait for the modified content to load: re-anchoring against the empty
+		// placeholder would briefly render/send every comment as outdated at line 1.
+		if (!selectedFile || !modifiedQ.isSuccess) return [];
 		return (commentsQuery.data ?? [])
 			.filter((c) => c.filePath === selectedFile.path)
 			.map((c) => {
@@ -159,7 +161,7 @@ export function ReviewTab({
 					outdated: anchor.outdated,
 				};
 			});
-	}, [commentsQuery.data, selectedFile, modifiedContent]);
+	}, [commentsQuery.data, selectedFile, modifiedContent, modifiedQ.isSuccess]);
 
 	const allAnchoredComments: AnchoredComment[] = useMemo(
 		() =>
