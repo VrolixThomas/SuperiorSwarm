@@ -9,6 +9,7 @@ import { diffRouter } from "./diff";
 import { externalManagersRouter } from "./external-managers";
 import { githubRouter } from "./github";
 import { globalMcpRouter } from "./global-mcp";
+import { inlineCommentsRouter } from "./inline-comments";
 import { linearRouter } from "./linear";
 import { lspRouter } from "./lsp";
 import { mergeRouter } from "./merge";
@@ -48,6 +49,7 @@ export const appRouter = router({
 	linear: linearRouter,
 	github: githubRouter,
 	globalMcp: globalMcpRouter,
+	inlineComments: inlineCommentsRouter,
 	tickets: ticketsRouter,
 	prPoller: prPollerRouter,
 	updates: updatesRouter,
