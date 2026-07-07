@@ -172,6 +172,14 @@ export function ReviewTab({
 		[commentsQuery.data]
 	);
 
+	// Send-bar list: substitute in the re-anchored entries for the currently open
+	// file (fileComments), so the prompt carries real re-anchored lines and the
+	// outdated note for it. Other files keep their stored (unanchored) lines.
+	const sendComments: AnchoredComment[] = useMemo(() => {
+		const fileCommentsById = new Map(fileComments.map((c) => [c.id, c]));
+		return allAnchoredComments.map((c) => fileCommentsById.get(c.id) ?? c);
+	}, [allAnchoredComments, fileComments]);
+
 	const createCommentMut = trpc.inlineComments.create.useMutation({
 		onSuccess: () => utils.inlineComments.list.invalidate({ workspaceId }),
 	});
@@ -198,6 +206,15 @@ export function ReviewTab({
 			});
 		},
 		[selectedFile, modifiedContent, workspaceId, repoPath, createCommentMut]
+	);
+
+	const handleUpdateComment = useCallback(
+		(id: string, body: string) => updateCommentMut.mutate({ id, body }),
+		[updateCommentMut.mutate]
+	);
+	const handleDeleteComment = useCallback(
+		(id: string) => deleteCommentMut.mutate({ id }),
+		[deleteCommentMut.mutate]
 	);
 
 	useEffect(() => {
@@ -276,7 +293,7 @@ export function ReviewTab({
 				branchCount={branchCount}
 				onScopeChange={handleScopeChange}
 			/>
-			<InlineCommentSendBar workspaceId={workspaceId} comments={allAnchoredComments} />
+			<InlineCommentSendBar workspaceId={workspaceId} comments={sendComments} />
 			<div className="flex items-center gap-2 border-b border-[var(--border)] px-2 py-1">
 				<ReviewProgressBar reviewed={reviewedInScope} total={scopedFiles.length} />
 				<MarkdownPreviewButton language={language} showRichDiff />
@@ -384,8 +401,8 @@ export function ReviewTab({
 				editor={editorInstance}
 				comments={fileComments}
 				onCreate={handleCreateComment}
-				onUpdate={(id, body) => updateCommentMut.mutate({ id, body })}
-				onDelete={(id) => deleteCommentMut.mutate({ id })}
+				onUpdate={handleUpdateComment}
+				onDelete={handleDeleteComment}
 			/>
 			<ReviewHintBar />
 		</div>
