@@ -1,3 +1,4 @@
+import { keepPreviousData } from "@tanstack/react-query";
 import type * as monaco from "monaco-editor";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { detectLanguage } from "../../../../shared/diff-types";
@@ -139,10 +140,7 @@ export function ChangesView({
 	const getScroll = usePRReviewSessionStore((s) => s.getScroll);
 	const intent = useReviewModeStore((s) => s.intent);
 	const clearIntent = useReviewModeStore((s) => s.clearIntent);
-	const [editorState, setEditorState] = useState<{
-		filePath: string;
-		editor: monaco.editor.IStandaloneDiffEditor;
-	} | null>(null);
+	const [editor, setEditor] = useState<monaco.editor.IStandaloneDiffEditor | null>(null);
 	const [pendingLine, setPendingLine] = useState<number | null>(null);
 	const [collapseCommand, setCollapseCommand] = useState<CollapseCommand>({
 		defaultCollapsed: true,
@@ -176,18 +174,16 @@ export function ChangesView({
 		setPendingLine((line) => (currentFilePath === null || line !== null ? null : line));
 	}, [currentFilePath]);
 
-	useEffect(() => {
-		if (hideEditor) setEditorState(null);
-	}, [hideEditor]);
-
 	const originalQuery = trpc.diff.getFileContent.useQuery(
 		{ repoPath: prCtx.repoPath, ref: prCtx.targetBranch, filePath: queryFilePath },
-		{ enabled: currentFilePath !== null, staleTime: 60_000 }
+		{ enabled: currentFilePath !== null, staleTime: 60_000, placeholderData: keepPreviousData }
 	);
 	const modifiedQuery = trpc.diff.getFileContent.useQuery(
 		{ repoPath: prCtx.repoPath, ref: prCtx.sourceBranch, filePath: queryFilePath },
-		{ enabled: currentFilePath !== null, staleTime: 60_000 }
+		{ enabled: currentFilePath !== null, staleTime: 60_000, placeholderData: keepPreviousData }
 	);
+	const originalContent = originalQuery.data?.content ?? "";
+	const modifiedContent = modifiedQuery.data?.content ?? "";
 	const branchDiffQuery = trpc.diff.getBranchDiff.useQuery(
 		{
 			repoPath: prCtx.repoPath,
@@ -197,15 +193,11 @@ export function ChangesView({
 		{ staleTime: 60_000 }
 	);
 	const isLoading =
-		currentFilePath !== null && (originalQuery.isLoading || modifiedQuery.isLoading);
-	const editorInstance =
-		!hideEditor && !isLoading && editorState?.filePath === currentFilePath
-			? editorState.editor
-			: null;
-
-	useEffect(() => {
-		if (hideEditor || isLoading || currentFilePath === null) setEditorState(null);
-	}, [currentFilePath, hideEditor, isLoading]);
+		currentFilePath !== null &&
+		(originalQuery.isPending || modifiedQuery.isPending) &&
+		originalQuery.data === undefined &&
+		modifiedQuery.data === undefined;
+	const editorInstance = !hideEditor && !isLoading ? editor : null;
 
 	const validDiffLines = useMemo(() => {
 		const fileData = branchDiffQuery.data?.files.find((file) => file.path === currentFilePath);
@@ -381,12 +373,13 @@ export function ChangesView({
 
 	useEffect(() => {
 		if (intent?.kind !== "new-comment") return;
-		const editor = editorInstance?.getModifiedEditor();
-		if (!editor) {
+		const modEditor = editorInstance?.getModifiedEditor();
+		if (!modEditor) {
+			clearIntent();
 			return;
 		}
 
-		const line = pickNewCommentLine(editor, validDiffLines);
+		const line = pickNewCommentLine(modEditor, validDiffLines);
 		if (line !== null) setPendingLine(line);
 		clearIntent();
 	}, [clearIntent, editorInstance, intent, validDiffLines]);
@@ -413,6 +406,7 @@ export function ChangesView({
 		return () => scrollSub.dispose();
 	}, [editorInstance, effectiveMarkdownPreviewMode]);
 
+	// biome-ignore lint/correctness/useExhaustiveDependencies: modifiedContent re-runs restore after the model swap resets scrollTop
 	useEffect(() => {
 		const editor = editorInstance?.getModifiedEditor();
 		if (!editor || currentFilePath === null) return;
@@ -429,7 +423,7 @@ export function ChangesView({
 			cancelAnimationFrame(raf);
 			sub.dispose();
 		};
-	}, [currentFilePath, editorInstance, getScroll, sessionKey, setScroll]);
+	}, [currentFilePath, editorInstance, getScroll, sessionKey, setScroll, modifiedContent]);
 
 	useEffect(() => {
 		const editor = editorInstance?.getModifiedEditor();
@@ -458,9 +452,6 @@ export function ChangesView({
 			isSyncingScrollRef.current = false;
 		});
 	}, [editorInstance]);
-
-	const originalContent = originalQuery.data?.content ?? "";
-	const modifiedContent = modifiedQuery.data?.content ?? "";
 
 	return (
 		<div data-workspace-id={workspaceId} className="flex h-full min-h-0 flex-col overflow-hidden">
@@ -592,16 +583,12 @@ export function ChangesView({
 					<div className="flex h-full overflow-hidden">
 						<div className="flex-1 overflow-hidden">
 							<DiffEditor
-								key={currentFilePath}
 								original={originalContent}
 								modified={modifiedContent}
 								language={language}
 								renderSideBySide={diffMode === "split"}
 								readOnly={true}
-								onEditorReady={(editor) => {
-									if (currentFilePath !== null)
-										setEditorState({ filePath: currentFilePath, editor });
-								}}
+								onEditorReady={setEditor}
 							/>
 						</div>
 						<div
@@ -614,15 +601,12 @@ export function ChangesView({
 					</div>
 				) : (
 					<DiffEditor
-						key={currentFilePath}
 						original={originalContent}
 						modified={modifiedContent}
 						language={language}
 						renderSideBySide={diffMode === "split"}
 						readOnly={true}
-						onEditorReady={(editor) => {
-							if (currentFilePath !== null) setEditorState({ filePath: currentFilePath, editor });
-						}}
+						onEditorReady={setEditor}
 					/>
 				)}
 			</div>

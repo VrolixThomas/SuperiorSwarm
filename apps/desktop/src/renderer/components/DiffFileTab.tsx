@@ -117,6 +117,7 @@ export function DiffFileTab({ diffCtx, filePath, language }: DiffFileTabProps) {
 								onEditorReady={(editor) => {
 									splitEditorRef.current = editor;
 									scrollSubRef.current?.dispose();
+									if (!editor) return;
 									const modEditor = editor.getModifiedEditor();
 									scrollSubRef.current = modEditor.onDidScrollChange((e) => {
 										if (isSyncingScrollRef.current) return;
