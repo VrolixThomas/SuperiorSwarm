@@ -14,6 +14,7 @@ export function InlineCommentSendBar({
 }) {
 	const [pickerOpen, setPickerOpen] = useState(false);
 	const [sendError, setSendError] = useState(false);
+	const [sending, setSending] = useState(false);
 	const rootRef = useRef<HTMLDivElement>(null);
 	const utils = trpc.useUtils();
 	const markSentMut = trpc.inlineComments.markSent.useMutation({
@@ -47,7 +48,7 @@ export function InlineCommentSendBar({
 		.filter((t) => t.kind === "terminal");
 
 	async function handleSend(terminalId: string) {
-		if (markSentMut.isPending) return;
+		if (sending || markSentMut.isPending) return;
 		const prompt = buildInlineCommentsPrompt(
 			comments.map((c) => ({
 				filePath: c.filePath,
@@ -58,13 +59,24 @@ export function InlineCommentSendBar({
 				outdated: c.outdated,
 			}))
 		);
+		setSending(true);
 		try {
-			await window.electron.terminal.write(terminalId, bracketedPasteSubmit(prompt));
+			const delivered = await window.electron.terminal.write(
+				terminalId,
+				bracketedPasteSubmit(prompt)
+			);
+			if (delivered === false) {
+				// Daemon not connected: nothing was written. Keep comments pending.
+				setSendError(true);
+				return;
+			}
 			markSentMut.mutate({ ids: comments.map((c) => c.id) });
 			setSendError(false);
 			setPickerOpen(false);
 		} catch {
 			setSendError(true);
+		} finally {
+			setSending(false);
 		}
 	}
 
@@ -82,7 +94,7 @@ export function InlineCommentSendBar({
 			<div className="flex-1" />
 			<button
 				type="button"
-				disabled={markSentMut.isPending}
+				disabled={sending || markSentMut.isPending}
 				onClick={() => {
 					setSendError(false);
 					setPickerOpen((o) => !o);
@@ -102,7 +114,7 @@ export function InlineCommentSendBar({
 							<button
 								key={t.id}
 								type="button"
-								disabled={markSentMut.isPending}
+								disabled={sending || markSentMut.isPending}
 								onClick={() => handleSend(t.id)}
 								className="flex w-full flex-col px-3 py-1.5 text-left hover:bg-[var(--bg-overlay)] disabled:opacity-50"
 							>

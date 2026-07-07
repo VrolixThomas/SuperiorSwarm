@@ -335,15 +335,21 @@ export class DaemonClient {
 		}
 	}
 
-	write(id: string, data: string): void {
-		if (!this.isConnected) return;
+	/**
+	 * Returns false when the daemon is not connected (nothing was delivered),
+	 * true otherwise. Deliberately never throws on a disconnected daemon —
+	 * the keystroke path calls this for every keypress and ignores the result.
+	 */
+	write(id: string, data: string): boolean {
+		if (!this.isConnected) return false;
 		const frames = this.buildWriteFrames(id, data);
 		const first = frames[0];
 		if (frames.length === 1 && first) {
 			this.dispatchFrame("write", id, first.encoded, first.bytes, true, undefined);
-			return;
+			return true;
 		}
 		this.sendWriteGroup(id, frames);
+		return true;
 	}
 
 	// The daemon discards frames over MAX_FRAME_BYTES, so a large paste sent as
