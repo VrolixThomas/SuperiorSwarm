@@ -49,15 +49,11 @@ export function useGutterPlusButton(
 		});
 
 		const clickSub = modEditor.onMouseDown((e) => {
-			const isGutter =
-				e.target.type === monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN ||
-				e.target.type === monaco.editor.MouseTargetType.GUTTER_LINE_NUMBERS ||
-				e.target.type === monaco.editor.MouseTargetType.GUTTER_LINE_DECORATIONS;
-
-			if (isGutter) {
-				const line = e.target.position?.lineNumber;
-				if (line && isValidLine(line)) onAddThread(line);
-			}
+			// Only the glyph margin — where the plus icon renders — opens a composer.
+			// Line-number clicks keep their native select-line behavior.
+			if (e.target.type !== monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN) return;
+			const line = e.target.position?.lineNumber;
+			if (line && isValidLine(line)) onAddThread(line);
 		});
 
 		return () => {
