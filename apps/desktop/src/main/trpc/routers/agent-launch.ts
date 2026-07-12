@@ -16,7 +16,10 @@ export const agentLaunchRouter = router({
 		.query(({ input }) => listAgentSessionsForCwd(getWorkspaceCwdOrThrow(input.workspaceId), 10)),
 
 	installedClis: publicProcedure.query(() => {
-		installedCache ??= detectInstalledClis(probeCliInPath);
+		installedCache ??= detectInstalledClis(probeCliInPath).catch((err) => {
+			installedCache = null;
+			throw err;
+		});
 		return installedCache;
 	}),
 

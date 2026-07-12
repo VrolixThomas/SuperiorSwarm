@@ -81,9 +81,8 @@ export function InlineCommentSendBar({
 
 	const disabled = sending || markSentMut.isPending;
 
-	async function handleSend(terminalId: string) {
-		if (sending || markSentMut.isPending) return;
-		const prompt = buildInlineCommentsPrompt(
+	function buildPrompt(): string {
+		return buildInlineCommentsPrompt(
 			comments.map((c) => ({
 				filePath: c.filePath,
 				startLine: c.displayStartLine,
@@ -93,6 +92,11 @@ export function InlineCommentSendBar({
 				outdated: c.outdated,
 			}))
 		);
+	}
+
+	async function handleSend(terminalId: string) {
+		if (sending || markSentMut.isPending) return;
+		const prompt = buildPrompt();
 		setSending(true);
 		try {
 			const delivered = await window.electron.terminal.write(
@@ -116,16 +120,7 @@ export function InlineCommentSendBar({
 
 	async function handleLaunch(cli: CliPresetName, resumeSessionId?: string) {
 		if (sending || markSentMut.isPending) return;
-		const prompt = buildInlineCommentsPrompt(
-			comments.map((c) => ({
-				filePath: c.filePath,
-				startLine: c.displayStartLine,
-				endLine: c.displayEndLine,
-				codeSnapshot: c.codeSnapshot,
-				body: c.body,
-				outdated: c.outdated,
-			}))
-		);
+		const prompt = buildPrompt();
 		setSending(true);
 		try {
 			const { scriptPath, cwd } = await buildLaunchMut.mutateAsync({
