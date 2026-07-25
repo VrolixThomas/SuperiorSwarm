@@ -1,4 +1,4 @@
-import { fuzzyScore } from "./fuzzy-match";
+import { fuzzyScoreLowered } from "./fuzzy-match";
 
 interface FileLike {
 	type: "file";
@@ -37,12 +37,12 @@ export function mergeAllResults<F extends FileLike, S extends SymbolLike>(
 	let order = 0;
 
 	for (const file of files) {
-		const base = fuzzyScore(q, file.path);
+		const base = fuzzyScoreLowered(q, file.path);
 		if (base !== -1) scored.push({ item: file, score: fuzzyScoreBand(base), order: order++ });
 	}
 
 	for (const symbol of symbols) {
-		const base = fuzzyScore(q, symbol.name);
+		const base = fuzzyScoreLowered(q, symbol.name);
 		if (base === -1) continue;
 		const score = symbol.name.toLowerCase() === q ? 1900 : Math.min(fuzzyScoreBand(base), 1800);
 		scored.push({ item: symbol, score, order: order++ });

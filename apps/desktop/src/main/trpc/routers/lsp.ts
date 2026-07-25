@@ -68,16 +68,19 @@ export const lspRouter = router({
 			const running = serverManager.getRunningConnections(input.repoPath);
 			const perServer = await Promise.all(
 				running.map(async ({ connection }) => {
+					let timer: ReturnType<typeof setTimeout> | undefined;
 					try {
 						const res = await Promise.race([
 							connection.sendRequest("workspace/symbol", { query: input.query }),
-							new Promise((_, reject) =>
-								setTimeout(() => reject(new Error("workspace/symbol timeout")), 3000)
-							),
+							new Promise((_, reject) => {
+								timer = setTimeout(() => reject(new Error("workspace/symbol timeout")), 3000);
+							}),
 						]);
 						return Array.isArray(res) ? res : [];
 					} catch {
 						return [];
+					} finally {
+						clearTimeout(timer);
 					}
 				})
 			);

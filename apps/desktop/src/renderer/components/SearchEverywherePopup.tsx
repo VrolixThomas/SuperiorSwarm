@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { detectLanguage } from "../../shared/diff-types";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
@@ -13,8 +13,8 @@ import { fuzzyFilterPaths } from "../utils/fuzzy-match";
 import { mergeAllResults } from "../utils/merge-all-results";
 import { type ResultItem, resultKey } from "../utils/search-everywhere-results";
 
-export { resultKey };
-export type { ResultItem };
+type FileResult = Extract<ResultItem, { type: "file" }>;
+type SymbolResult = Extract<ResultItem, { type: "symbol" }>;
 
 const TAB_LABELS: Record<SearchTab, string> = {
 	all: "All",
@@ -69,6 +69,7 @@ export function getSearchEverywhereEmptyStateMessage({
 		if (serversQueried === 0)
 			return "No language servers running — symbols appear once files are opened in the editor";
 	}
+	if (!queryMatchesInput) return "Searching...";
 	return "No results";
 }
 
@@ -117,18 +118,17 @@ export function SearchEverywherePopup() {
 	);
 	const trimmedQuery = query.trim();
 	const debouncedQuery = useDebouncedValue(trimmedQuery, 200);
-	const textQueryMatchesInput = debouncedQuery === trimmedQuery;
+	const queryMatchesInput = debouncedQuery === trimmedQuery;
 	const canShowTextQueryState =
-		activeTab === "text" && textQueryMatchesInput && trimmedQuery.length >= 2;
+		activeTab === "text" && queryMatchesInput && trimmedQuery.length >= 2;
 	const textEnabled = isOpen && activeTab === "text" && debouncedQuery.length >= 2;
 	const textQuery = trpc.diff.searchText.useQuery(
 		{ repoPath, query: debouncedQuery },
 		{ enabled: textEnabled && repoPath.length > 0, staleTime: 10_000 }
 	);
-	const symbolsQueryMatchesInput = debouncedQuery === trimmedQuery;
 	const canShowSymbolQueryState =
-		activeTab === "symbols" && symbolsQueryMatchesInput && trimmedQuery.length >= 2;
-	const canShowAllSymbolResults = symbolsQueryMatchesInput && trimmedQuery.length >= 2;
+		activeTab === "symbols" && queryMatchesInput && trimmedQuery.length >= 2;
+	const canShowAllSymbolResults = queryMatchesInput && trimmedQuery.length >= 2;
 	const symbolsEnabled =
 		isOpen && (activeTab === "symbols" || activeTab === "all") && debouncedQuery.length >= 2;
 	const symbolsQuery = trpc.lsp.searchWorkspaceSymbols.useQuery(
@@ -136,7 +136,7 @@ export function SearchEverywherePopup() {
 		{ enabled: symbolsEnabled && repoPath.length > 0, staleTime: 10_000 }
 	);
 
-	const symbolHits: ResultItem[] = useMemo(
+	const symbolHits: SymbolResult[] = useMemo(
 		() =>
 			(symbolsQuery.data?.symbols ?? []).map((s) => ({
 				type: "symbol" as const,
@@ -150,26 +150,23 @@ export function SearchEverywherePopup() {
 		[symbolsQuery.data]
 	);
 
+	const fileItems: FileResult[] = useMemo(
+		() => filePaths.map((path) => ({ type: "file" as const, path })),
+		[filePaths]
+	);
+
 	const results: ResultItem[] = useMemo(() => {
 		if (activeTab === "files") {
-			if (trimmedQuery.length === 0) return [];
-			return fuzzyFilterPaths(trimmedQuery, filePaths, 50).map((path) => ({
+			if (trimmedQuery.length === 0 || debouncedQuery.length === 0) return [];
+			return fuzzyFilterPaths(debouncedQuery, filePaths, 50).map((path) => ({
 				type: "file" as const,
 				path,
 			}));
 		}
 		if (activeTab === "all") {
-			if (trimmedQuery.length === 0) return [];
-			const fileItems = filePaths.map((path) => ({
-				type: "file" as const,
-				path,
-			}));
-			const symbolItems = canShowAllSymbolResults
-				? symbolHits.filter(
-						(symbol): symbol is Extract<ResultItem, { type: "symbol" }> => symbol.type === "symbol"
-					)
-				: [];
-			return mergeAllResults(trimmedQuery, fileItems, symbolItems, 50);
+			if (trimmedQuery.length === 0 || debouncedQuery.length === 0) return [];
+			const symbolItems = canShowAllSymbolResults ? symbolHits : [];
+			return mergeAllResults(debouncedQuery, fileItems, symbolItems, 50);
 		}
 		if (activeTab === "text") {
 			if (!canShowTextQueryState) return [];
@@ -188,7 +185,9 @@ export function SearchEverywherePopup() {
 	}, [
 		activeTab,
 		trimmedQuery,
+		debouncedQuery,
 		filePaths,
+		fileItems,
 		canShowAllSymbolResults,
 		symbolHits,
 		canShowTextQueryState,
@@ -208,19 +207,24 @@ export function SearchEverywherePopup() {
 		selected?.scrollIntoView({ block: "nearest" });
 	}, [selectedIndex, results.length]);
 
-	function openResult(item: ResultItem) {
-		if (workspaceId === null || repoPath.length === 0) return;
-		close();
-		if (item.type === "file") {
-			openFile(workspaceId, repoPath, item.path, detectLanguage(item.path));
-			return;
-		}
+	const openResult = useCallback(
+		(item: ResultItem) => {
+			if (workspaceId === null || repoPath.length === 0) return;
+			close();
+			if (item.type === "file") {
+				openFile(workspaceId, repoPath, item.path, detectLanguage(item.path));
+				return;
+			}
 
-		openFile(workspaceId, repoPath, item.path, detectLanguage(item.path), {
-			lineNumber: item.line,
-			column: item.type === "symbol" ? item.column : 1,
-		});
-	}
+			openFile(workspaceId, repoPath, item.path, detectLanguage(item.path), {
+				lineNumber: item.line,
+				column: item.type === "symbol" ? item.column : 1,
+			});
+		},
+		[workspaceId, repoPath, close, openFile]
+	);
+
+	const hoverResult = useCallback((index: number) => setSelectedIndex(index), []);
 
 	function handleKeyDown(e: React.KeyboardEvent) {
 		if (e.key === "ArrowDown") {
@@ -251,7 +255,7 @@ export function SearchEverywherePopup() {
 			return getSearchEverywhereEmptyStateMessage({
 				activeTab,
 				trimmedQuery,
-				queryMatchesInput: textQueryMatchesInput,
+				queryMatchesInput,
 				isError: textQuery.isError,
 				isFetching: textQuery.isFetching,
 			});
@@ -260,7 +264,7 @@ export function SearchEverywherePopup() {
 			return getSearchEverywhereEmptyStateMessage({
 				activeTab,
 				trimmedQuery,
-				queryMatchesInput: symbolsQueryMatchesInput,
+				queryMatchesInput,
 				isError: symbolsQuery.isError,
 				isFetching: symbolsQuery.isFetching,
 				serversQueried: symbolsQuery.data?.serversQueried,
@@ -269,7 +273,7 @@ export function SearchEverywherePopup() {
 		return getSearchEverywhereEmptyStateMessage({
 			activeTab,
 			trimmedQuery,
-			queryMatchesInput: true,
+			queryMatchesInput,
 		});
 	}
 
@@ -358,8 +362,8 @@ export function SearchEverywherePopup() {
 							item={item}
 							index={i}
 							isSelected={i === selectedIndex}
-							onSelect={() => openResult(item)}
-							onHover={() => setSelectedIndex(i)}
+							onSelect={openResult}
+							onHover={hoverResult}
 						/>
 					))}
 				</div>
@@ -373,7 +377,7 @@ export function SearchEverywherePopup() {
 	);
 }
 
-function ResultRow({
+const ResultRow = memo(function ResultRow({
 	item,
 	index,
 	isSelected,
@@ -383,8 +387,8 @@ function ResultRow({
 	item: ResultItem;
 	index: number;
 	isSelected: boolean;
-	onSelect: () => void;
-	onHover: () => void;
+	onSelect: (item: ResultItem) => void;
+	onHover: (index: number) => void;
 }) {
 	let primary: string;
 	let secondary: string;
@@ -405,8 +409,8 @@ function ResultRow({
 			type="button"
 			data-result-index={index}
 			data-selected={isSelected}
-			onClick={onSelect}
-			onMouseEnter={onHover}
+			onClick={() => onSelect(item)}
+			onMouseEnter={() => onHover(index)}
 			className={`mx-2 flex w-[calc(100%-1rem)] cursor-pointer items-center gap-3 rounded-[6px] border-0 px-3 py-1.5 text-left font-sans text-[13px] transition-colors ${
 				isSelected
 					? "bg-[var(--bg-elevated)] text-[var(--text)]"
@@ -427,4 +431,4 @@ function ResultRow({
 			</span>
 		</button>
 	);
-}
+});

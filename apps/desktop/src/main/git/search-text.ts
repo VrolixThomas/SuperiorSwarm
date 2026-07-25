@@ -1,10 +1,8 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-
-const execFileAsync = promisify(execFile);
+import { spawn } from "node:child_process";
 
 export const MAX_MATCHES = 200;
 const MAX_LINE_LENGTH = 200;
+const MAX_OUTPUT_LENGTH = 16 * 1024 * 1024;
 
 export interface TextMatch {
 	path: string;
@@ -54,37 +52,74 @@ export function parseGrepOutput(stdout: string): TextSearchResult {
 	return { matches, truncated };
 }
 
-export function parseGrepExecFileError(err: unknown): TextSearchResult | null {
-	const error = err as { code?: number | string; stdout?: unknown };
-	if (error.code === 1) return { matches: [], truncated: false };
+/** Maps a completed `git grep` exit to a result. null = fatal error with no usable output. */
+export function resolveGrepExit(code: number | null, stdout: string): TextSearchResult | null {
+	if (code === 0) return parseGrepOutput(stdout);
+	if (code === 1) return { matches: [], truncated: false };
 
-	if (typeof error.stdout === "string") {
-		const result = parseGrepOutput(error.stdout);
-		if (result.matches.length === 0) return null;
-		return { ...result, truncated: true };
-	}
-
-	return null;
+	const result = parseGrepOutput(stdout);
+	if (result.matches.length === 0) return null;
+	return { ...result, truncated: true };
 }
+
+const runningSearches = new Map<string, () => void>();
 
 /**
  * Literal text search via `git grep`, including tracked and untracked
- * non-ignored files while skipping binary content.
+ * non-ignored files while skipping binary content. Output is streamed so the
+ * grep is killed as soon as the match cap (or output budget) is reached, and
+ * a new search for the same repo kills the superseded one.
  */
 export async function searchText(repoPath: string, query: string): Promise<TextSearchResult> {
 	const args = ["grep", "-z", "-n", "-I", "--untracked", "--fixed-strings"];
 	if (query === query.toLowerCase()) args.push("-i");
 	args.push("-e", query);
 
-	try {
-		const { stdout } = await execFileAsync("git", args, {
-			cwd: repoPath,
-			maxBuffer: 16 * 1024 * 1024,
+	runningSearches.get(repoPath)?.();
+
+	return new Promise((resolve, reject) => {
+		const child = spawn("git", args, { cwd: repoPath });
+		let stdout = "";
+		let stderr = "";
+		let records = 0;
+		let killedEarly = false;
+
+		const killEarly = () => {
+			if (killedEarly) return;
+			killedEarly = true;
+			child.kill();
+		};
+		runningSearches.set(repoPath, killEarly);
+		const cleanup = () => {
+			if (runningSearches.get(repoPath) === killEarly) runningSearches.delete(repoPath);
+		};
+
+		child.stdout.setEncoding("utf8");
+		child.stdout.on("data", (chunk: string) => {
+			if (killedEarly) return;
+			stdout += chunk;
+			for (let i = chunk.indexOf("\n"); i !== -1; i = chunk.indexOf("\n", i + 1)) records++;
+			// One match record per newline; one record past the cap is enough to
+			// know the result is truncated, so stop the repo scan there.
+			if (records > MAX_MATCHES || stdout.length >= MAX_OUTPUT_LENGTH) killEarly();
 		});
-		return parseGrepOutput(stdout);
-	} catch (err) {
-		const result = parseGrepExecFileError(err);
-		if (result) return result;
-		throw err;
-	}
+		child.stderr.setEncoding("utf8");
+		child.stderr.on("data", (chunk: string) => {
+			stderr += chunk;
+		});
+		child.on("error", (err) => {
+			cleanup();
+			reject(err);
+		});
+		child.on("close", (code) => {
+			cleanup();
+			if (killedEarly) {
+				resolve(parseGrepOutput(stdout));
+				return;
+			}
+			const result = resolveGrepExit(code, stdout);
+			if (result) resolve(result);
+			else reject(new Error(`git grep failed (exit ${code}): ${stderr.trim()}`));
+		});
+	});
 }

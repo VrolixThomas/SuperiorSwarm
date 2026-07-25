@@ -6,8 +6,8 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import {
 	MAX_MATCHES,
-	parseGrepExecFileError,
 	parseGrepOutput,
+	resolveGrepExit,
 	searchText,
 } from "../src/main/git/search-text";
 
@@ -72,26 +72,31 @@ describe("parseGrepOutput", () => {
 	});
 });
 
-describe("parseGrepExecFileError", () => {
+describe("resolveGrepExit", () => {
+	test("parses stdout for a clean exit", () => {
+		expect(resolveGrepExit(0, grepRecord("a.ts", 1, "hello"))).toEqual({
+			matches: [{ path: "a.ts", line: 1, text: "hello" }],
+			truncated: false,
+		});
+	});
+
 	test("returns null for fatal git errors with empty stdout", () => {
-		expect(parseGrepExecFileError({ code: 128, stdout: "" })).toBeNull();
+		expect(resolveGrepExit(128, "")).toBeNull();
 	});
 
 	test("returns null for fatal git errors with stdout that parses to no matches", () => {
-		expect(
-			parseGrepExecFileError({ code: 128, stdout: "fatal: not a git repository\n" })
-		).toBeNull();
+		expect(resolveGrepExit(128, "fatal: not a git repository\n")).toBeNull();
 	});
 
 	test("parses captured stdout from fatal git errors and marks results truncated", () => {
-		expect(parseGrepExecFileError({ code: 128, stdout: grepRecord("a.ts", 1, "hello") })).toEqual({
+		expect(resolveGrepExit(128, grepRecord("a.ts", 1, "hello"))).toEqual({
 			matches: [{ path: "a.ts", line: 1, text: "hello" }],
 			truncated: true,
 		});
 	});
 
 	test("returns empty results for git grep no-match exit code", () => {
-		expect(parseGrepExecFileError({ code: 1, stdout: "" })).toEqual({
+		expect(resolveGrepExit(1, "")).toEqual({
 			matches: [],
 			truncated: false,
 		});
@@ -142,5 +147,13 @@ describe("searchText (fixture repo)", () => {
 		const result = await searchText(repo, "--fixed");
 		expect(result.matches.map((match) => match.path)).toEqual(["dash.txt"]);
 		expect(result.truncated).toBe(false);
+	});
+
+	test("caps repo-wide matches at MAX_MATCHES and reports truncation", async () => {
+		const lines = Array.from({ length: MAX_MATCHES + 50 }, (_, i) => `needle ${i}`).join("\n");
+		await writeFile(join(repo, "many-matches.txt"), `${lines}\n`);
+		const result = await searchText(repo, "needle");
+		expect(result.matches.length).toBe(MAX_MATCHES);
+		expect(result.truncated).toBe(true);
 	});
 });

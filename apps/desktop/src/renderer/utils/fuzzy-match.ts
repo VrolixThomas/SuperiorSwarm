@@ -18,7 +18,11 @@ function bandScore(band: number, path: string): number {
 
 /** Higher = better. -1 = no match. Case-insensitive. */
 export function fuzzyScore(query: string, path: string): number {
-	const q = query.toLowerCase();
+	return fuzzyScoreLowered(query.toLowerCase(), path);
+}
+
+/** fuzzyScore for callers that already lowercased the query once (hot loops). */
+export function fuzzyScoreLowered(q: string, path: string): number {
 	if (q.length === 0) return 0;
 
 	const p = path.toLowerCase();
@@ -35,9 +39,10 @@ export function fuzzyScore(query: string, path: string): number {
 }
 
 export function fuzzyFilterPaths(query: string, paths: string[], limit: number): string[] {
+	const q = query.toLowerCase();
 	const scored: { path: string; score: number }[] = [];
 	for (const path of paths) {
-		const score = fuzzyScore(query, path);
+		const score = fuzzyScoreLowered(q, path);
 		if (score !== -1) scored.push({ path, score });
 	}
 
