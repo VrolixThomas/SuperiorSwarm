@@ -17,6 +17,7 @@ import { DiffPanel } from "./components/DiffPanel";
 import { InstallingOverlay } from "./components/InstallingOverlay";
 import { LoginScreen } from "./components/LoginScreen";
 import { MainContentArea } from "./components/MainContentArea";
+import { SearchEverywherePopup } from "./components/SearchEverywherePopup";
 import { SharedFilesPanel } from "./components/SharedFilesPanel";
 import { Sidebar } from "./components/Sidebar";
 import { UpdateToast } from "./components/UpdateToast";
@@ -751,6 +752,7 @@ function AuthenticatedApp() {
 					<SharedFilesPanel />
 					<DaemonStatus />
 					<CommandPalette />
+					<SearchEverywherePopup />
 					<PRReviewKeyboardListener />
 					{activeProjectId && (
 						<BranchPalette

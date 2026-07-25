@@ -599,11 +599,7 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 		const previousEntry = current.activeWorkspaceId
 			? { id: current.activeWorkspaceId, cwd: current.activeWorkspaceCwd }
 			: current.pendingWorkspaceHistoryEntry;
-		if (
-			options?.recordHistory !== false &&
-			previousEntry &&
-			previousEntry.id !== workspaceId
-		) {
+		if (options?.recordHistory !== false && previousEntry && previousEntry.id !== workspaceId) {
 			set((s) => ({
 				workspaceBackStack: pushWorkspaceHistoryEntry(s.workspaceBackStack, previousEntry),
 				workspaceForwardStack: [],

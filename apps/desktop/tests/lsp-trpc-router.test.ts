@@ -8,6 +8,7 @@ import { getDb } from "../src/main/db";
 
 const mockServerManager = {
 	getHealth: mock(() => []),
+	getRunningConnections: mock((_repoPath: string) => []),
 	evictServer: mock(async (_id: string, _repoPath?: string) => {}),
 	diffChangedIds: mock((_old: unknown[], _next: unknown[]) => new Set<string>()),
 };
@@ -33,6 +34,8 @@ describe("lsp tRPC router", () => {
 	beforeEach(() => {
 		mockServerManager.getHealth.mockReset();
 		mockServerManager.getHealth.mockImplementation(() => []);
+		mockServerManager.getRunningConnections.mockReset();
+		mockServerManager.getRunningConnections.mockImplementation(() => []);
 		mockServerManager.evictServer.mockReset();
 		mockServerManager.evictServer.mockImplementation(async () => {});
 		mockServerManager.diffChangedIds.mockReset();
@@ -72,6 +75,95 @@ describe("lsp tRPC router", () => {
 			expect(result.length).toBeGreaterThan(0);
 			expect(result[0].id).toBeTruthy();
 			expect(result[0].displayName).toBeTruthy();
+		});
+	});
+
+	describe("searchWorkspaceSymbols", () => {
+		test("fans out to running connections and normalizes merged symbols", async () => {
+			const successConnection = {
+				sendRequest: mock(async (method: string, params: unknown) => {
+					expect(method).toBe("workspace/symbol");
+					expect(params).toEqual({ query: "render" });
+					return [
+						{
+							name: "renderApp",
+							kind: 12,
+							location: {
+								uri: "file:///tmp/repo/src/App.tsx",
+								range: { start: { line: 9, character: 4 } },
+							},
+						},
+					];
+				}),
+			};
+			const emptyConnection = {
+				sendRequest: mock(async () => []),
+			};
+			mockServerManager.getRunningConnections.mockImplementation((repoPath: string) => {
+				expect(repoPath).toBe("/tmp/repo");
+				return [
+					{ configId: "typescript", connection: successConnection as never },
+					{ configId: "eslint", connection: emptyConnection as never },
+				];
+			});
+
+			const result = await caller.searchWorkspaceSymbols({
+				repoPath: "/tmp/repo",
+				query: "render",
+			});
+
+			expect(result).toEqual({
+				symbols: [{ name: "renderApp", kind: 12, path: "src/App.tsx", line: 10, column: 5 }],
+				serversQueried: 2,
+			});
+			expect(successConnection.sendRequest).toHaveBeenCalledTimes(1);
+			expect(emptyConnection.sendRequest).toHaveBeenCalledTimes(1);
+		});
+
+		test("ignores per-server failures and non-array responses", async () => {
+			const failingConnection = {
+				sendRequest: mock(async () => {
+					throw new Error("unsupported");
+				}),
+			};
+			const malformedConnection = {
+				sendRequest: mock(async () => ({ symbols: [] })),
+			};
+			mockServerManager.getRunningConnections.mockImplementation(() => [
+				{ configId: "failing", connection: failingConnection as never },
+				{ configId: "malformed", connection: malformedConnection as never },
+			]);
+
+			const result = await caller.searchWorkspaceSymbols({
+				repoPath: "/tmp/repo",
+				query: "render",
+			});
+
+			expect(result).toEqual({ symbols: [], serversQueried: 2 });
+		});
+
+		test("times out slow servers and returns empty symbols for that server", async () => {
+			const slowConnection = {
+				sendRequest: mock(async () => new Promise(() => {})),
+			};
+			mockServerManager.getRunningConnections.mockImplementation(() => [
+				{ configId: "slow", connection: slowConnection as never },
+			]);
+
+			const startedAt = performance.now();
+			const result = await caller.searchWorkspaceSymbols({
+				repoPath: "/tmp/repo",
+				query: "render",
+			});
+
+			expect(result).toEqual({ symbols: [], serversQueried: 1 });
+			expect(performance.now() - startedAt).toBeGreaterThanOrEqual(2900);
+		});
+
+		test("rejects one-character queries", async () => {
+			await expect(
+				caller.searchWorkspaceSymbols({ repoPath: "/tmp/repo", query: "r" })
+			).rejects.toThrow();
 		});
 	});
 
