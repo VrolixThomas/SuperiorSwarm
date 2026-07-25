@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { and, desc, eq, gt, inArray, isNull, max, ne, or } from "drizzle-orm";
 import { nanoid } from "nanoid";
+import type { AgentProvider } from "../../shared/agent-session";
 import type {
 	AgentMessageDto,
 	CreateWorkspaceRequest,
@@ -57,6 +58,7 @@ import {
 } from "../git/operations";
 import { symlinkSharedFiles } from "../shared-files";
 import { getDaemonClient } from "../terminal/daemon-instance";
+import { getAgentSessionManager } from "./agent-session-manager-handle";
 import type { attachToOrchestrator } from "./orchestrator-membership";
 import { resolveWorkspaceCwd } from "./workspace-cwd";
 import { getWorktreeCleanupQueue } from "./worktree-cleanup-queue";
@@ -500,6 +502,11 @@ export interface SpawnArgs {
 	cwd: string;
 	launchScriptContent: string;
 	workspaceId: string;
+	agent?: {
+		provider: AgentProvider;
+		providerSessionId: string | null;
+		skipPermissions: boolean;
+	};
 }
 export interface SpawnResult {
 	sessionId: string;
@@ -584,6 +591,11 @@ export async function dispatchAgent(
 		cwd,
 		launchScriptContent,
 		workspaceId: input.workspaceId,
+		agent: {
+			provider: cliPreset,
+			providerSessionId: cliSessionId,
+			skipPermissions: input.skipPermissions ?? true,
+		},
 	});
 
 	// Spawn succeeded — only now persist the session id so resumeAgent has a
@@ -603,6 +615,10 @@ export interface AgentDispatchBroadcast {
 	cwd: string;
 	scriptPath: string;
 	title: string;
+	terminalId?: string;
+	provider?: AgentProvider;
+	providerSessionId?: string | null;
+	skipPermissions?: boolean;
 }
 
 let dispatchBroadcaster: (payload: AgentDispatchBroadcast) => void = () => {
@@ -624,12 +640,50 @@ export async function defaultSpawnFn(args: SpawnArgs): Promise<SpawnResult> {
 	const sessionId = nanoid();
 	const terminalId = sessionId;
 
-	dispatchBroadcaster({
-		workspaceId: args.workspaceId,
-		cwd: args.cwd,
-		scriptPath,
-		title: "Agent session",
-	});
+	const db = getDb();
+	const nextSortOrder =
+		(db
+			.select({ value: max(terminalSessions.sortOrder) })
+			.from(terminalSessions)
+			.get()?.value ?? -1) + 1;
+	const manager = getAgentSessionManager();
+	try {
+		db.insert(terminalSessions)
+			.values({
+				id: terminalId,
+				workspaceId: args.workspaceId,
+				title: "Agent session",
+				cwd: args.cwd,
+				scrollback: null,
+				sortOrder: nextSortOrder,
+				updatedAt: new Date(),
+			})
+			.onConflictDoNothing()
+			.run();
+		if (args.agent) {
+			manager?.registerManagedSession({
+				terminalId,
+				workspaceId: args.workspaceId,
+				provider: args.agent.provider,
+				providerSessionId: args.agent.providerSessionId,
+				skipPermissions: args.agent.skipPermissions,
+			});
+		}
+		dispatchBroadcaster({
+			workspaceId: args.workspaceId,
+			cwd: args.cwd,
+			scriptPath,
+			title: "Agent session",
+			terminalId,
+			provider: args.agent?.provider,
+			providerSessionId: args.agent?.providerSessionId,
+			skipPermissions: args.agent?.skipPermissions,
+		});
+	} catch (error) {
+		manager?.removeSession(terminalId);
+		db.delete(terminalSessions).where(eq(terminalSessions.id, terminalId)).run();
+		throw error;
+	}
 
 	return { sessionId, terminalId };
 }
@@ -672,14 +726,14 @@ export async function setStatus(
 		// project; the xro has its own events file so we write there once instead.
 		appendFileSync(
 			crossRepoEventsFilePath(ctx.xroId),
-			JSON.stringify({
+			`${JSON.stringify({
 				event: "status",
 				workspaceId: ctx.xroId,
 				phase: input.phase,
 				statusText: input.statusText ?? null,
 				needs: input.needs ?? null,
 				ts: now.toISOString(),
-			}) + "\n",
+			})}\n`,
 			"utf-8"
 		);
 		return { ok: true };
@@ -1019,49 +1073,49 @@ export async function resumeAgent(
 		auditProjectId = ctx.projectId;
 	}
 
-	if (target.cliPreset !== "claude" || !target.cliSessionId) {
-		throw new ResumeNotSupportedError("workspace has no claude session");
+	const wokeSleepingAgent =
+		(await getAgentSessionManager()?.wakeWorkspace(input.workspaceId, input.message)) ?? false;
+
+	if (!wokeSleepingAgent) {
+		if (target.cliPreset !== "claude" || !target.cliSessionId) {
+			throw new ResumeNotSupportedError("workspace has no resumable agent session");
+		}
+
+		// Resolve the working directory (worktree > folderPath > project path).
+		const wt = target.worktreeId
+			? db
+					.select({ path: worktrees.path })
+					.from(worktrees)
+					.where(eq(worktrees.id, target.worktreeId))
+					.get()
+			: null;
+		if (target.worktreeId && !wt) throw new NotFoundError(`worktree row for ${input.workspaceId}`);
+		const targetProject = db
+			.select({ repoPath: projects.repoPath })
+			.from(projects)
+			.where(eq(projects.id, target.projectId))
+			.get();
+		if (!targetProject) throw new NotFoundError(`project for ${input.workspaceId}`);
+		const cwd = resolveWorkspaceCwd({
+			worktreePath: wt?.path ?? null,
+			folderPath: target.folderPath,
+			repoPath: targetProject.repoPath,
+		});
+		if (!existsSync(cwd)) throw new NotFoundError(`workspace folder for ${input.workspaceId}`);
+
+		// Compose the legacy Claude resume command. This remains the fallback for
+		// sessions created before per-terminal agent state was introduced.
+		const escSession = escapeShellSingleQuote(target.cliSessionId);
+		const escMsg = escapeShellSingleQuote(input.message);
+		const command = `claude --resume '${escSession}' --dangerously-skip-permissions '${escMsg}'`;
+
+		const respawnFn = deps.respawnAgent ?? defaultRespawnAgent;
+		await respawnFn({
+			workspaceId: input.workspaceId,
+			command,
+			cwd,
+		});
 	}
-
-	// 3. Resolve the working directory (worktree > folderPath > project path)
-	const wt = target.worktreeId
-		? db
-				.select({ path: worktrees.path })
-				.from(worktrees)
-				.where(eq(worktrees.id, target.worktreeId))
-				.get()
-		: null;
-	if (target.worktreeId && !wt) throw new NotFoundError(`worktree row for ${input.workspaceId}`);
-	const targetProject = db
-		.select({ repoPath: projects.repoPath })
-		.from(projects)
-		.where(eq(projects.id, target.projectId))
-		.get();
-	if (!targetProject) throw new NotFoundError(`project for ${input.workspaceId}`);
-	const cwd = resolveWorkspaceCwd({
-		worktreePath: wt?.path ?? null,
-		folderPath: target.folderPath,
-		repoPath: targetProject.repoPath,
-	});
-	if (!existsSync(cwd)) throw new NotFoundError(`workspace folder for ${input.workspaceId}`);
-
-	// 3. Compose the resume command (interactive — no --print, so the child
-	//    keeps running and can be resumed again on the next coordination event).
-	//    --dangerously-skip-permissions matches the dispatch flow: orchestrated
-	//    agents always run with permissions auto-approved.
-	const escSession = escapeShellSingleQuote(target.cliSessionId);
-	const escMsg = escapeShellSingleQuote(input.message);
-	const command = `claude --resume '${escSession}' --dangerously-skip-permissions '${escMsg}'`;
-
-	// 4. Kill the previous claude session (if any) and spawn a fresh one.
-	//    Writing into a running claude PTY would inject the command as a user
-	//    message instead of launching a new resume — we need a clean shell.
-	const respawnFn = deps.respawnAgent ?? defaultRespawnAgent;
-	await respawnFn({
-		workspaceId: input.workspaceId,
-		command,
-		cwd,
-	});
 
 	// 5. Insert agent_messages row (audit log)
 	const messageId = nanoid();
@@ -1105,7 +1159,10 @@ export async function defaultRespawnAgent(args: RespawnAgentArgs): Promise<void>
 		.from(terminalSessions)
 		.where(eq(terminalSessions.workspaceId, args.workspaceId))
 		.all();
-	for (const s of sessions) daemon?.dispose(s.id);
+	for (const s of sessions) {
+		daemon?.dispose(s.id);
+		getAgentSessionManager()?.removeSession(s.id);
+	}
 	if (sessions.length > 0) {
 		db.delete(terminalSessions).where(eq(terminalSessions.workspaceId, args.workspaceId)).run();
 	}

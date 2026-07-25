@@ -42,6 +42,8 @@ class MockPtyManager {
 	resize(_id: string, _c: number, _r: number): void {}
 	detachedClients: string[] = [];
 	detachedSessions: Array<{ clientId: string; id: string }> = [];
+	dirtyBuffers: Array<{ id: string; cwd: string; buffer: string }> = [];
+	flushedIds: string[] = [];
 	detachClient(clientId: string): void {
 		this.detachedClients.push(clientId);
 	}
@@ -58,10 +60,19 @@ class MockPtyManager {
 	getAllBuffers(): Array<{ id: string; cwd: string; buffer: string }> {
 		return [];
 	}
+	getDirtyBuffers(): Array<{ id: string; cwd: string; buffer: string }> {
+		return this.dirtyBuffers;
+	}
+	markBuffersFlushed(ids: readonly string[]): void {
+		this.flushedIds.push(...ids);
+	}
 }
 
 class MockScrollbackStore {
-	flush(_sessions: Array<{ id: string; buffer: string }>): void {}
+	flushes: Array<Array<{ id: string; buffer: string; cwd?: string }>> = [];
+	flush(sessions: Array<{ id: string; buffer: string; cwd?: string }>): void {
+		this.flushes.push(sessions);
+	}
 	close(): void {}
 }
 
@@ -116,6 +127,19 @@ describe("SocketServer", () => {
 		const msgs = await collectMessages(socket);
 		socket.destroy();
 		expect(msgs.some((m) => m.type === "ready")).toBe(true);
+	});
+
+	test("flush persists only dirty buffers and marks them clean", () => {
+		mockPty.dirtyBuffers = [{ id: "dirty-1", cwd: "/tmp", buffer: "changed output" }];
+
+		server.flush();
+
+		expect(mockStore.flushes).toEqual([[{ id: "dirty-1", cwd: "/tmp", buffer: "changed output" }]]);
+		expect(mockPty.flushedIds).toEqual(["dirty-1"]);
+
+		mockPty.dirtyBuffers = [];
+		server.flush();
+		expect(mockStore.flushes).toHaveLength(1);
 	});
 
 	test("list returns sessions from PtyManager", async () => {

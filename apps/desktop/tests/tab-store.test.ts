@@ -505,6 +505,21 @@ describe("addTerminalTab", () => {
 		const id = useTabStore.getState().addTerminalTab("ws-1", "/repo");
 		expect(getActiveTabId()).toBe(id);
 	});
+
+	test("uses a main-process terminal ID and deduplicates a replayed dispatch", () => {
+		useTabStore.getState().setActiveWorkspace("ws-1", "/repo");
+		const first = useTabStore
+			.getState()
+			.addTerminalTab("ws-1", "/repo", "Agent session", "agent-terminal-1");
+		const second = useTabStore
+			.getState()
+			.addTerminalTab("ws-1", "/repo", "Agent session", "agent-terminal-1");
+
+		expect(first).toBe("agent-terminal-1");
+		expect(second).toBe(first);
+		expect(getTabsForWorkspace("ws-1")).toHaveLength(1);
+		expect(getActiveTabId()).toBe(first);
+	});
 });
 
 // ── review workspace activation ──────────────────────────────────────────────

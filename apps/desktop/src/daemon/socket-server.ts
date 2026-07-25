@@ -45,8 +45,10 @@ export class SocketServer {
 	}
 
 	flush(): void {
-		const buffers = this.ptyManager.getAllBuffers();
+		const buffers = this.ptyManager.getDirtyBuffers();
+		if (buffers.length === 0) return;
 		this.scrollbackStore.flush(buffers);
+		this.ptyManager.markBuffersFlushed(buffers.map((buffer) => buffer.id));
 	}
 
 	private onConnection(socket: Socket): void {

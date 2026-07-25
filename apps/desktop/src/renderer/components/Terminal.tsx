@@ -54,7 +54,14 @@ export function Terminal({
 	cwd,
 	workspaceId,
 	initialContent,
-}: { id: string; cwd?: string; workspaceId?: string; initialContent?: string }) {
+	active,
+}: {
+	id: string;
+	cwd?: string;
+	workspaceId?: string;
+	initialContent?: string;
+	active: boolean;
+}) {
 	const ref = useRef<HTMLDivElement>(null);
 	const cwdRef = useRef(cwd);
 	const initialContentRef = useRef(initialContent);
@@ -289,6 +296,13 @@ export function Terminal({
 			term.dispose();
 		};
 	}, [id]);
+
+	useEffect(() => {
+		void window.electron?.terminal.setVisible(id, active);
+		return () => {
+			void window.electron?.terminal.setVisible(id, false);
+		};
+	}, [active, id]);
 
 	return <div ref={ref} className="xterm-container" />;
 }

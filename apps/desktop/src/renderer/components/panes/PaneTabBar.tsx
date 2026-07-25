@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useRef, useState } from "react";
 import type { Pane } from "../../../shared/pane-types";
+import { closePaneWithTerminalCleanup } from "../../lib/pane-lifecycle";
 import { usePaneStore } from "../../stores/pane-store";
 import type { TabItem } from "../../stores/tab-store";
 import { useTabStore } from "../../stores/tab-store";
@@ -138,7 +139,6 @@ export function PaneTabBar({
 	const removeTabFromPane = usePaneStore((s) => s.removeTabFromPane);
 	const setFocusedPane = usePaneStore((s) => s.setFocusedPane);
 	const splitPane = usePaneStore((s) => s.splitPane);
-	const closePane = usePaneStore((s) => s.closePane);
 	const addTerminalTab = useTabStore((s) => s.addTerminalTab);
 	const activeWorkspaceCwd = useTabStore((s) => s.activeWorkspaceCwd);
 	// O(1) check: a split root means at least 2 panes exist
@@ -246,7 +246,9 @@ export function PaneTabBar({
 					y={contextMenu.y}
 					onSplitRight={() => splitPane(workspaceId, pane.id, "horizontal", contextMenu.tab)}
 					onSplitDown={() => splitPane(workspaceId, pane.id, "vertical", contextMenu.tab)}
-					onClosePane={canClosePane ? () => closePane(workspaceId, pane.id) : undefined}
+					onClosePane={
+						canClosePane ? () => closePaneWithTerminalCleanup(workspaceId, pane.id) : undefined
+					}
 					onClose={() => setContextMenu(null)}
 				/>
 			)}

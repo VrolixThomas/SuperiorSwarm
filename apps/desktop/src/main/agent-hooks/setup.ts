@@ -7,7 +7,7 @@ import { log } from "../logger";
 import { claudeConfig } from "./agents/claude";
 import { codexConfig } from "./agents/codex";
 import { geminiConfig } from "./agents/gemini";
-import { opencodeConfig } from "./agents/opencode";
+import { opencodeConfig, setOpenCodePluginAuthToken } from "./agents/opencode";
 
 const HOOKS_DIR = join(homedir(), ".agent-notify", "hooks");
 const HOOK_SCRIPT_NAME = "on-event.sh";
@@ -20,6 +20,7 @@ const HOOK_TEMPLATE = `#!/bin/bash
 
 # Exit silently if not running inside a terminal with agent-notify.
 [ -z "$AGENT_NOTIFY_PORT" ] && exit 0
+[ -z "$AGENT_NOTIFY_TOKEN" ] && exit 0
 
 # Read JSON payload from stdin (Claude Code pipes hook data to stdin).
 INPUT=""
@@ -33,20 +34,31 @@ fi
 
 # Extract the raw event type. Try "hook_event_name" first (Claude Code), then "type".
 EVENT_TYPE=""
-EVENT_TYPE=$(echo "$INPUT" | grep -o '"hook_event_name"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/.*"hook_event_name"[[:space:]]*:[[:space:]]*"\\([^"]*\\)".*/\\1/')
+EVENT_TYPE=$(printf '%s' "$INPUT" | grep -o '"hook_event_name"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/.*"hook_event_name"[[:space:]]*:[[:space:]]*"\\([^"]*\\)".*/\\1/')
 if [ -z "$EVENT_TYPE" ]; then
-\tEVENT_TYPE=$(echo "$INPUT" | grep -o '"type"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/.*"type"[[:space:]]*:[[:space:]]*"\\([^"]*\\)".*/\\1/')
+\tEVENT_TYPE=$(printf '%s' "$INPUT" | grep -o '"type"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/.*"type"[[:space:]]*:[[:space:]]*"\\([^"]*\\)".*/\\1/')
 fi
 [ -z "$EVENT_TYPE" ] && exit 0
+
+# Capture the provider's durable conversation ID. The terminal ID remains a
+# separate routing identity owned by SuperiorSwarm.
+PROVIDER_SESSION_ID=""
+PROVIDER_SESSION_ID=$(printf '%s' "$INPUT" | grep -o '"session_id"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/.*"session_id"[[:space:]]*:[[:space:]]*"\\([^"]*\\)".*/\\1/')
+if [ -z "$PROVIDER_SESSION_ID" ]; then
+\tPROVIDER_SESSION_ID=$(printf '%s' "$INPUT" | grep -o '"sessionID"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/.*"sessionID"[[:space:]]*:[[:space:]]*"\\([^"]*\\)".*/\\1/')
+fi
 
 # Forward raw event to the listener. Server-side mapping handles the rest.
 curl -sG \\
 \t--connect-timeout 1 \\
 \t--max-time 2 \\
+\t-H "Authorization: Bearer \${AGENT_NOTIFY_TOKEN}" \\
 \t"http://127.0.0.1:\${AGENT_NOTIFY_PORT}/event" \\
 \t--data-urlencode "rawEvent=\${EVENT_TYPE}" \\
-\t--data-urlencode "sessionId=\${AGENT_NOTIFY_SESSION_ID:-}" \\
+\t--data-urlencode "terminalId=\${AGENT_NOTIFY_TERMINAL_ID:-\${AGENT_NOTIFY_SESSION_ID:-}}" \\
+\t--data-urlencode "providerSessionId=\${PROVIDER_SESSION_ID}" \\
 \t--data-urlencode "workspaceId=\${AGENT_NOTIFY_WORKSPACE_ID:-}" \\
+\t--data-urlencode "cwd=\${PWD}" \\
 \t--data-urlencode "agent=\${AGENT_NOTIFY_AGENT:-unknown}" \\
 \t>/dev/null 2>&1 || true
 
@@ -91,7 +103,8 @@ function installGeminiHookScript(sharedScriptPath: string): string {
 
 const AGENTS: AgentHookConfig[] = [claudeConfig, codexConfig, geminiConfig, opencodeConfig];
 
-export async function setupAgentHooks(): Promise<void> {
+export async function setupAgentHooks(agentNotifyToken: string): Promise<void> {
+	setOpenCodePluginAuthToken(agentNotifyToken);
 	for (const agent of AGENTS) {
 		agentRegistry.set(agent.name, agent);
 	}

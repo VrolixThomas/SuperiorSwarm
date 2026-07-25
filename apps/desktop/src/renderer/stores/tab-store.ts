@@ -195,7 +195,7 @@ interface TabStore {
 	goForwardWorkspace: () => boolean;
 
 	// Terminal convenience
-	addTerminalTab: (workspaceId: string, cwd: string, title?: string) => string;
+	addTerminalTab: (workspaceId: string, cwd: string, title?: string, explicitId?: string) => string;
 
 	// Solve review
 	addSolveReviewTab: (
@@ -599,11 +599,7 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 		const previousEntry = current.activeWorkspaceId
 			? { id: current.activeWorkspaceId, cwd: current.activeWorkspaceCwd }
 			: current.pendingWorkspaceHistoryEntry;
-		if (
-			options?.recordHistory !== false &&
-			previousEntry &&
-			previousEntry.id !== workspaceId
-		) {
+		if (options?.recordHistory !== false && previousEntry && previousEntry.id !== workspaceId) {
 			set((s) => ({
 				workspaceBackStack: pushWorkspaceHistoryEntry(s.workspaceBackStack, previousEntry),
 				workspaceForwardStack: [],
@@ -702,8 +698,15 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 		return true;
 	},
 
-	addTerminalTab: (workspaceId, cwd, title) => {
-		const id = nextTerminalId();
+	addTerminalTab: (workspaceId, cwd, title, explicitId) => {
+		const id = explicitId ?? nextTerminalId();
+		const existing = get()
+			.getAllTabs()
+			.find((tab) => tab.id === id);
+		if (existing) {
+			get().setActiveTab(id);
+			return id;
+		}
 		const tabTitle = title ?? nextTerminalTitle();
 		const tab: TabItem = { kind: "terminal", id, workspaceId, title: tabTitle, cwd };
 		ps().ensureLayout(workspaceId);
@@ -1272,7 +1275,7 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 		// Restore sidebar segment (validate against known values)
 		const validSegments = new Set<string>(["repos", "tickets", "prs"]);
 		let sidebarSegment: SidebarSegment = validSegments.has(extraState?.["sidebarSegment"] ?? "")
-			? (extraState!["sidebarSegment"] as SidebarSegment)
+			? (extraState?.["sidebarSegment"] as SidebarSegment)
 			: "repos";
 
 		// Restore per-segment active workspace

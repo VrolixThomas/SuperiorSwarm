@@ -1,4 +1,4 @@
-import { and, ne, notInArray, notLike } from "drizzle-orm";
+import { eq, notInArray } from "drizzle-orm";
 import type { SessionSaveData } from "../../shared/types";
 import { getDb } from "./index";
 import * as schema from "./schema";
@@ -8,8 +8,29 @@ export type { SessionSaveData };
 export function savePaneLayouts(layouts: Record<string, string>): void {
 	const db = getDb();
 	const now = new Date();
+	const workspaceIds = Object.keys(layouts);
+	const existing = new Map(
+		db
+			.select({
+				workspaceId: schema.paneLayouts.workspaceId,
+				layout: schema.paneLayouts.layout,
+			})
+			.from(schema.paneLayouts)
+			.all()
+			.map((row) => [row.workspaceId, row.layout])
+	);
+
 	db.transaction((tx) => {
+		if (workspaceIds.length > 0) {
+			tx.delete(schema.paneLayouts)
+				.where(notInArray(schema.paneLayouts.workspaceId, workspaceIds))
+				.run();
+		} else {
+			tx.delete(schema.paneLayouts).run();
+		}
+
 		for (const [workspaceId, layoutJson] of Object.entries(layouts)) {
+			if (existing.get(workspaceId) === layoutJson) continue;
 			tx.insert(schema.paneLayouts)
 				.values({ workspaceId, layout: layoutJson, updatedAt: now })
 				.onConflictDoUpdate({
@@ -25,6 +46,26 @@ export function saveTerminalSessions(data: SessionSaveData): void {
 	const db = getDb();
 	const now = new Date();
 	const currentIds = data.sessions.map((s) => s.id);
+	const existingSessions = new Map(
+		db
+			.select({
+				id: schema.terminalSessions.id,
+				workspaceId: schema.terminalSessions.workspaceId,
+				title: schema.terminalSessions.title,
+				cwd: schema.terminalSessions.cwd,
+				sortOrder: schema.terminalSessions.sortOrder,
+			})
+			.from(schema.terminalSessions)
+			.all()
+			.map((row) => [row.id, row])
+	);
+	const existingState = new Map(
+		db
+			.select({ key: schema.sessionState.key, value: schema.sessionState.value })
+			.from(schema.sessionState)
+			.all()
+			.map((row) => [row.key, row.value])
+	);
 
 	db.transaction((tx) => {
 		// Delete sessions no longer open
@@ -36,51 +77,67 @@ export function saveTerminalSessions(data: SessionSaveData): void {
 			tx.delete(schema.terminalSessions).run();
 		}
 
-		// Upsert open sessions — deliberately NOT touching scrollback (daemon owns it)
+		// Insert or update changed session metadata. `updated_at` is deliberately
+		// left untouched on updates: the daemon owns it as the last-output timestamp.
 		for (const session of data.sessions) {
-			tx.insert(schema.terminalSessions)
-				.values({
-					id: session.id,
-					workspaceId: session.workspaceId,
-					title: session.title,
-					cwd: session.cwd,
-					scrollback: null,
-					sortOrder: session.sortOrder,
-					updatedAt: now,
-				})
-				.onConflictDoUpdate({
-					target: schema.terminalSessions.id,
-					set: {
+			const existing = existingSessions.get(session.id);
+			if (!existing) {
+				tx.insert(schema.terminalSessions)
+					.values({
+						id: session.id,
 						workspaceId: session.workspaceId,
 						title: session.title,
 						cwd: session.cwd,
+						scrollback: null,
 						sortOrder: session.sortOrder,
 						updatedAt: now,
-						// scrollback intentionally omitted — daemon owns it
-					},
+					})
+					.run();
+				continue;
+			}
+
+			if (
+				existing.workspaceId === session.workspaceId &&
+				existing.title === session.title &&
+				existing.cwd === session.cwd &&
+				existing.sortOrder === session.sortOrder
+			) {
+				continue;
+			}
+
+			tx.update(schema.terminalSessions)
+				.set({
+					workspaceId: session.workspaceId,
+					title: session.title,
+					cwd: session.cwd,
+					sortOrder: session.sortOrder,
 				})
+				.where(eq(schema.terminalSessions.id, session.id))
 				.run();
 		}
 
-		// Session state: replace entirely (renderer owns this)
-		// Preserve keys written by the main process / non-renderer flows:
-		// - supabase_session:* (Supabase auth)
-		// - lastSeenVersion (updater)
-		// - orch*:* (orchestrator UI flags: per-orchestrator expand state,
-		//   per-project color assignments; written via tRPC mutations, not part
-		//   of the renderer's collectSnapshot)
-		tx.delete(schema.sessionState)
-			.where(
-				and(
-					notLike(schema.sessionState.key, "supabase_session:%"),
-					ne(schema.sessionState.key, "lastSeenVersion"),
-					notLike(schema.sessionState.key, "orchExpand:%"),
-					notLike(schema.sessionState.key, "orchestratorColors:%")
-				)
-			)
-			.run();
+		// Diff renderer-owned session state instead of deleting and reinserting it
+		// every 30 seconds. Main-process keys remain outside renderer ownership.
+		const isProtectedKey = (key: string) =>
+			key.startsWith("supabase_session:") ||
+			key === "lastSeenVersion" ||
+			key.startsWith("orchExpand:") ||
+			key.startsWith("orchestratorColors:");
+
+		for (const key of existingState.keys()) {
+			if (!isProtectedKey(key) && !(key in data.state)) {
+				tx.delete(schema.sessionState).where(eq(schema.sessionState.key, key)).run();
+			}
+		}
 		for (const [key, value] of Object.entries(data.state)) {
-			tx.insert(schema.sessionState).values({ key, value }).run();
+			if (existingState.get(key) === value) continue;
+			tx.insert(schema.sessionState)
+				.values({ key, value })
+				.onConflictDoUpdate({
+					target: schema.sessionState.key,
+					set: { value },
+				})
+				.run();
 		}
 	});
 }

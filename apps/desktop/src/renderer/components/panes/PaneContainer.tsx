@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from "react";
 import type { Pane } from "../../../shared/pane-types";
+import { closePaneWithTerminalCleanup } from "../../lib/pane-lifecycle";
 import { getAllPanes, usePaneStore } from "../../stores/pane-store";
 import type { DropZone } from "./DropZoneOverlay";
 import { DropZoneOverlay, TAB_DRAG_MIME } from "./DropZoneOverlay";
@@ -18,7 +19,6 @@ export function PaneContainer({
 }) {
 	const setFocusedPane = usePaneStore((s) => s.setFocusedPane);
 	const splitPane = usePaneStore((s) => s.splitPane);
-	const closePane = usePaneStore((s) => s.closePane);
 	const moveTabBetweenPanes = usePaneStore((s) => s.moveTabBetweenPanes);
 	const dropTabOnEdge = usePaneStore((s) => s.dropTabOnEdge);
 	// O(1) check: a split root means at least 2 panes exist
@@ -107,7 +107,9 @@ export function PaneContainer({
 					y={contextMenu.y}
 					onSplitRight={() => splitPane(workspaceId, pane.id, "horizontal")}
 					onSplitDown={() => splitPane(workspaceId, pane.id, "vertical")}
-					onClosePane={canClosePane ? () => closePane(workspaceId, pane.id) : undefined}
+					onClosePane={
+						canClosePane ? () => closePaneWithTerminalCleanup(workspaceId, pane.id) : undefined
+					}
 					onClose={() => setContextMenu(null)}
 				/>
 			)}

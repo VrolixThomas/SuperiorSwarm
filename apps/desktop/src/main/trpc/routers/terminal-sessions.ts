@@ -34,7 +34,7 @@ export const terminalSessionsRouter = router({
 	restore: publicProcedure.query(async () => {
 		const db = getDb();
 
-		const sessions = db
+		const persistedSessions = db
 			.select()
 			.from(schema.terminalSessions)
 			.orderBy(schema.terminalSessions.sortOrder)
@@ -77,6 +77,13 @@ export const terminalSessionsRouter = router({
 			})
 			.from(schema.workspaces)
 			.all();
+		const validWorkspaceIds = new Set(allWorkspaces.map((workspace) => workspace.id));
+		const sessions = persistedSessions.filter((session) =>
+			validWorkspaceIds.has(session.workspaceId)
+		);
+		for (const workspaceId of Object.keys(paneLayouts)) {
+			if (!validWorkspaceIds.has(workspaceId)) delete paneLayouts[workspaceId];
+		}
 
 		type WorkspaceMeta = {
 			type: "repo" | "review";

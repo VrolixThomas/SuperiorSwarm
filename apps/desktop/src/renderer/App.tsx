@@ -226,6 +226,7 @@ function AuthenticatedApp() {
 	const saveMutation = trpc.terminalSessions.save.useMutation();
 	const saveMutateRef = useRef(saveMutation.mutate);
 	saveMutateRef.current = saveMutation.mutate;
+	const lastSubmittedSnapshotRef = useRef<string | null>(null);
 	const restoreQuery = trpc.terminalSessions.restore.useQuery(undefined, {
 		staleTime: Number.POSITIVE_INFINITY,
 		refetchOnMount: false,
@@ -345,7 +346,16 @@ function AuthenticatedApp() {
 		const triggerSave = () => {
 			const snapshot = collectSnapshot();
 			if (snapshot.sessions.length > 0 || Object.keys(snapshot.paneLayouts).length > 0) {
-				saveMutateRef.current(snapshot);
+				const serialized = JSON.stringify(snapshot);
+				if (serialized === lastSubmittedSnapshotRef.current) return;
+				lastSubmittedSnapshotRef.current = serialized;
+				saveMutateRef.current(snapshot, {
+					onError: () => {
+						if (lastSubmittedSnapshotRef.current === serialized) {
+							lastSubmittedSnapshotRef.current = null;
+						}
+					},
+				});
 			}
 		};
 
@@ -377,17 +387,19 @@ function AuthenticatedApp() {
 	// Agent dispatch: main process asks renderer to open a terminal in a workspace and run a script.
 	useEffect(() => {
 		const timers = new Set<ReturnType<typeof setTimeout>>();
-		const off = window.electron.agentDispatch.onOpen(({ workspaceId, cwd, scriptPath, title }) => {
-			const store = useTabStore.getState();
-			store.setActiveWorkspace(workspaceId, cwd);
-			const tabId = store.addTerminalTab(workspaceId, cwd, title);
-			const escaped = scriptPath.replace(/'/g, "'\\''");
-			const id = setTimeout(() => {
-				timers.delete(id);
-				window.electron.terminal.write(tabId, `bash '${escaped}'\n`);
-			}, 300);
-			timers.add(id);
-		});
+		const off = window.electron.agentDispatch.onOpen(
+			({ workspaceId, cwd, scriptPath, title, terminalId }) => {
+				const store = useTabStore.getState();
+				store.setActiveWorkspace(workspaceId, cwd);
+				const tabId = store.addTerminalTab(workspaceId, cwd, title, terminalId);
+				const escaped = scriptPath.replace(/'/g, "'\\''");
+				const id = setTimeout(() => {
+					timers.delete(id);
+					window.electron.terminal.write(tabId, `bash '${escaped}'\n`);
+				}, 300);
+				timers.add(id);
+			}
+		);
 		return () => {
 			for (const id of timers) clearTimeout(id);
 			off();
