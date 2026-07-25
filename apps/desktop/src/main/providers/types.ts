@@ -89,6 +89,8 @@ export interface NormalizedPRFile {
 	path: string;
 	status: "added" | "modified" | "removed" | "renamed";
 	previousPath?: string;
+	additions?: number;
+	deletions?: number;
 }
 
 export interface NormalizedReviewThread {

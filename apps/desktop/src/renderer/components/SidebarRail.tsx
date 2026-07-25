@@ -19,7 +19,7 @@ import { type LinkedWorkspace, WorkspacePopover } from "./WorkspacePopover";
 function smartAbbrev(name: string): string {
 	// 1. Ticket-prefixed: PROJ-123-fix-login → "123"
 	const ticketMatch = name.match(/^[A-Za-z]+-(\d+)/);
-	if (ticketMatch) return ticketMatch[1]!;
+	if (ticketMatch?.[1]) return ticketMatch[1];
 
 	// 2. Short names (≤5 chars): main, dev → as-is
 	if (name.length <= 5) return name;
@@ -494,10 +494,6 @@ function RailPRsSection({ flyout, openFlyout, scheduleDismiss, onExpand }: RailS
 	const hasBitbucket = atlassianStatus?.bitbucket.connected;
 	const hasGitHub = githubStatus?.connected;
 
-	const { data: bbMyPRs } = trpc.atlassian.getMyPullRequests.useQuery(undefined, {
-		enabled: hasBitbucket,
-		staleTime: 30_000,
-	});
 	const { data: bbReviewPRs } = trpc.atlassian.getReviewRequests.useQuery(undefined, {
 		enabled: hasBitbucket,
 		staleTime: 30_000,
@@ -581,7 +577,7 @@ function RailPRsSection({ flyout, openFlyout, scheduleDismiss, onExpand }: RailS
 		}[] = [];
 		const seenBb = new Set<string>();
 
-		for (const pr of [...(bbMyPRs ?? []), ...(bbReviewPRs ?? [])]) {
+		for (const pr of bbReviewPRs ?? []) {
 			const key = `${pr.workspace}/${pr.repoSlug}#${pr.id}`;
 			if (seenBb.has(key)) continue;
 			seenBb.add(key);
@@ -596,6 +592,7 @@ function RailPRsSection({ flyout, openFlyout, scheduleDismiss, onExpand }: RailS
 		}
 
 		for (const pr of ghPRs ?? []) {
+			if (pr.role !== "reviewer") continue;
 			items.push({
 				id: `gh-${pr.repoOwner}-${pr.repoName}-${pr.number}`,
 				label: `#${pr.number}`,
@@ -609,7 +606,7 @@ function RailPRsSection({ flyout, openFlyout, scheduleDismiss, onExpand }: RailS
 		}
 
 		return items;
-	}, [bbMyPRs, bbReviewPRs, ghPRs]);
+	}, [bbReviewPRs, ghPRs]);
 
 	const [hoveredId, setHoveredId] = useState<string | null>(null);
 	const [hoverRect, setHoverRect] = useState<DOMRect | null>(null);

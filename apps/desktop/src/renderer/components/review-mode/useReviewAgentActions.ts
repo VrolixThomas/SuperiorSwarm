@@ -14,12 +14,14 @@ interface UseReviewAgentActionsOptions {
 	prCtx: PRContext;
 	matchingDraft: ReviewDraftSummary | undefined;
 	reviewChainId: string | null;
+	enabled?: boolean;
 }
 
 export function useReviewAgentActions({
 	prCtx,
 	matchingDraft,
 	reviewChainId,
+	enabled = true,
 }: UseReviewAgentActionsOptions) {
 	const utils = trpc.useUtils();
 	const attachTerminal = trpc.workspaces.attachTerminal.useMutation();
@@ -59,12 +61,14 @@ export function useReviewAgentActions({
 			? "Restart Review"
 			: "Re-review";
 	const isPending =
+		!enabled ||
 		triggerReview.isPending ||
 		triggerFollowUp.isPending ||
 		cancelReview.isPending ||
 		projectsQuery.isFetching;
 
 	const startFreshReview = () => {
+		if (!enabled) return;
 		const project = projectsQuery.data?.[0];
 		if (!project) {
 			console.error("[ai-review] Cannot start review: project not found", prCtx.owner, prCtx.repo);
@@ -83,6 +87,7 @@ export function useReviewAgentActions({
 	};
 
 	const trigger = async () => {
+		if (!enabled) return;
 		if (isReviewActive && matchingDraft) {
 			await cancelReview.mutateAsync({ draftId: matchingDraft.id });
 			startFreshReview();

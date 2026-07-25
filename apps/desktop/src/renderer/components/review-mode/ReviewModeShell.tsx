@@ -13,11 +13,12 @@ import {
 } from "../../lib/pr-review-threads";
 import { openThreadInChanges } from "../../lib/review-mode-nav";
 import { useReviewModeStore } from "../../stores/review-mode-store";
+import { useTabStore } from "../../stores/tab-store";
 import { trpc } from "../../trpc/client";
 import { AgentStatusChip } from "./AgentStatusChip";
 import { ReviewHeader } from "./ReviewHeader";
 import { SubmitReviewPopover } from "./SubmitReviewPopover";
-import { TerminalDrawer } from "./TerminalDrawer";
+import { TerminalDrawer, TerminalTab } from "./TerminalDrawer";
 import { useReviewKeymap } from "./hooks/useReviewKeymap";
 import { ReviewNavigator } from "./navigator/ReviewNavigator";
 import type { ThreadCallbacks } from "./thread/ThreadCard";
@@ -43,7 +44,9 @@ function ActiveReviewModeShell({ active }: { active: ActiveReview }) {
 	const setView = useReviewModeStore((s) => s.setView);
 	const setCommentFilter = useReviewModeStore((s) => s.setCommentFilter);
 	const setDrawerOpen = useReviewModeStore((s) => s.setDrawerOpen);
+	const closeReview = useReviewModeStore((s) => s.close);
 	const navigatorCollapsed = useReviewModeStore((s) => s.navigatorCollapsed);
+	const terminal = useReviewModeStore((s) => s.terminals[workspaceId] ?? null);
 	const [submitOpen, setSubmitOpen] = useState(false);
 	const [navigatorWidth, setNavigatorWidth] = useState(280);
 	const shellRef = useRef<HTMLDivElement>(null);
@@ -62,6 +65,8 @@ function ActiveReviewModeShell({ active }: { active: ActiveReview }) {
 		sessionKey,
 		fileOrder,
 	} = useReviewData(workspaceId, prCtx);
+	const isOpen = details?.state === "OPEN";
+	const canSubmitReview = isOpen;
 	const commentCount = (counts.pending ?? 0) + (counts.open ?? 0);
 	const commentCountByFile = useMemo(() => fileCommentCounts(allThreads), [allThreads]);
 	const reviewChainId =
@@ -74,6 +79,7 @@ function ActiveReviewModeShell({ active }: { active: ActiveReview }) {
 		prCtx,
 		matchingDraft: activeDraft ?? matchingDraft,
 		reviewChainId,
+		enabled: isOpen,
 	});
 
 	const invalidateDrafts = useCallback(() => {
@@ -108,9 +114,25 @@ function ActiveReviewModeShell({ active }: { active: ActiveReview }) {
 	const { mutate: resolvePRComment } = trpc.atlassian.resolvePRComment.useMutation({
 		onSuccess: invalidateDetails,
 	});
+	const cleanupReviewWorkspace = trpc.workspaces.cleanupReviewWorkspace.useMutation({
+		onSuccess: () => useTabStore.getState().cleanupWorkspace(workspaceId),
+	});
 
-	const callbacks = useMemo<ThreadCallbacks>(
-		() => ({
+	const handleClose = useCallback(() => {
+		closeReview();
+		if (details && details.state !== "OPEN") {
+			cleanupReviewWorkspace.mutate({ workspaceId });
+		}
+	}, [cleanupReviewWorkspace, closeReview, details, workspaceId]);
+
+	const callbacks = useMemo<ThreadCallbacks>(() => {
+		const navigation: ThreadCallbacks = {
+			onOpenInChanges: (path, threadId) => openThreadInChanges(workspaceId, prCtx, path, threadId),
+		};
+		if (!isOpen) return navigation;
+
+		return {
+			...navigation,
 			onAccept: (commentId) => updateDraftComment({ commentId, status: "user-pending" }),
 			onDecline: (commentId) => updateDraftComment({ commentId, status: "rejected" }),
 			onDelete: (commentId) => deleteDraftComment({ commentId }),
@@ -148,19 +170,18 @@ function ActiveReviewModeShell({ active }: { active: ActiveReview }) {
 					resolved: true,
 				});
 			},
-			onOpenInChanges: (path, threadId) => openThreadInChanges(workspaceId, prCtx, path, threadId),
-		}),
-		[
-			addReviewComment,
-			deleteDraftComment,
-			prCtx,
-			replyToPRComment,
-			resolvePRComment,
-			resolveThread,
-			updateDraftComment,
-			workspaceId,
-		]
-	);
+		};
+	}, [
+		addReviewComment,
+		deleteDraftComment,
+		isOpen,
+		prCtx,
+		replyToPRComment,
+		resolvePRComment,
+		resolveThread,
+		updateDraftComment,
+		workspaceId,
+	]);
 
 	const jumpToComments = useCallback(
 		(filter: ThreadFilter) => {
@@ -175,6 +196,7 @@ function ActiveReviewModeShell({ active }: { active: ActiveReview }) {
 		invalidateDrafts();
 		invalidateDetails();
 		void utils.github.getMyPRs.invalidate();
+		void utils.atlassian.getReviewRequests.invalidate();
 	}, [invalidateDetails, invalidateDrafts, utils]);
 
 	useEffect(() => {
@@ -223,17 +245,21 @@ function ActiveReviewModeShell({ active }: { active: ActiveReview }) {
 		allThreads,
 		fileOrder,
 		callbacks,
+		readOnly: !isOpen,
+		onClose: handleClose,
 	});
 
 	return (
 		<div
 			ref={shellRef}
 			tabIndex={-1}
-			className="fixed inset-0 z-40 flex flex-col bg-[var(--bg-base)] outline-none"
+			className="flex h-full min-h-0 min-w-0 flex-col bg-[var(--bg-base)] outline-none"
 		>
 			<ReviewHeader
 				prCtx={prCtx}
 				commentCount={commentCount}
+				onClose={handleClose}
+				terminalAvailable={terminal !== null}
 				rightSlot={
 					<div
 						className="relative flex items-center gap-2"
@@ -243,26 +269,35 @@ function ActiveReviewModeShell({ active }: { active: ActiveReview }) {
 							active={agentActions.isReviewActive}
 							startedAt={agentActions.startedAt}
 							canceling={agentActions.isPending}
-							onOpen={() => setDrawerOpen(true)}
+							onOpen={() => {
+								if (view === "terminal") setView("changes");
+								setDrawerOpen(true);
+							}}
 							onCancel={agentActions.cancel}
 						/>
 						<button
 							type="button"
-							disabled={agentActions.isPending}
+							disabled={!isOpen || agentActions.isPending}
 							onClick={() => void agentActions.trigger()}
 							className="rounded-[var(--radius-sm)] border border-[var(--border-subtle)] px-3 py-1.5 text-[12px] font-medium text-[var(--text-secondary)] transition-colors duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-50"
 						>
-							{agentActions.isPending ? "Starting..." : agentActions.label}
+							{!isOpen
+								? "Review closed"
+								: agentActions.isPending
+									? "Starting..."
+									: agentActions.label}
 						</button>
 						<button
 							type="button"
+							disabled={!canSubmitReview}
+							title={!isOpen ? "Closed and merged pull requests are read-only" : undefined}
 							onClick={() => setSubmitOpen((open) => !open)}
-							className="rounded-[var(--radius-sm)] bg-[var(--accent)] px-3 py-1.5 text-[12px] font-semibold text-[var(--accent-foreground)] transition-opacity duration-[120ms] hover:opacity-90"
+							className="rounded-[var(--radius-sm)] bg-[var(--accent)] px-3 py-1.5 text-[12px] font-semibold text-[var(--accent-foreground)] transition-opacity duration-[120ms] hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
 						>
 							Submit review
 							{acceptedThreads.length > 0 ? ` · ${acceptedThreads.length}` : ""}
 						</button>
-						{submitOpen && details && (
+						{submitOpen && details && canSubmitReview && (
 							<SubmitReviewPopover
 								prCtx={prCtx}
 								headCommitOid={details.headCommitOid}
@@ -275,8 +310,13 @@ function ActiveReviewModeShell({ active }: { active: ActiveReview }) {
 					</div>
 				}
 			/>
+			{details && !isOpen && (
+				<div className="shrink-0 border-b border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-4 py-2 text-[12px] text-[var(--text-secondary)]">
+					This pull request is {details.state.toLowerCase()} and is available in read-only mode.
+				</div>
+			)}
 			<div className="flex min-h-0 flex-1">
-				{!navigatorCollapsed && (
+				{view !== "terminal" && !navigatorCollapsed && (
 					<aside
 						ref={navRef}
 						className="relative shrink-0 overflow-y-auto border-r border-[var(--border)] bg-[var(--bg-surface)]"
@@ -316,9 +356,13 @@ function ActiveReviewModeShell({ active }: { active: ActiveReview }) {
 					</aside>
 				)}
 				<main
-					className={`min-w-0 flex-1 ${view === "changes" ? "overflow-hidden" : "overflow-y-auto"}`}
+					className={`min-w-0 flex-1 ${
+						view === "changes" || view === "terminal" ? "overflow-hidden" : "overflow-y-auto"
+					}`}
 				>
-					{view === "overview" && details ? (
+					{view === "terminal" ? (
+						<TerminalTab />
+					) : view === "overview" && details ? (
 						<OverviewView
 							prCtx={prCtx}
 							details={details}
@@ -334,6 +378,7 @@ function ActiveReviewModeShell({ active }: { active: ActiveReview }) {
 							fileOrder={fileOrder}
 							sessionKey={sessionKey}
 							callbacks={callbacks}
+							readOnly={!isOpen}
 						/>
 					) : view === "changes" && details ? (
 						<ChangesView

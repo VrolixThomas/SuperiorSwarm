@@ -16,6 +16,8 @@ interface UseReviewKeymapOptions {
 	allThreads: UnifiedThread[];
 	fileOrder: string[];
 	callbacks: ThreadCallbacks;
+	readOnly?: boolean;
+	onClose?: () => void;
 }
 
 interface ThreadRef {
@@ -76,6 +78,8 @@ export function useReviewKeymap({
 	allThreads,
 	fileOrder,
 	callbacks,
+	readOnly = false,
+	onClose,
 }: UseReviewKeymapOptions): void {
 	const utils = trpc.useUtils();
 	const activeFilePath = usePRReviewSessionStore(
@@ -173,11 +177,16 @@ export function useReviewKeymap({
 						setDrawerOpen(false);
 						return;
 					}
+					if (view === "terminal") {
+						setView("changes");
+						return;
+					}
 					if (activeThreadId !== null) {
 						selectThread(sessionKey, null);
 						return;
 					}
-					close();
+					if (onClose) onClose();
+					else close();
 					return;
 				case "next":
 					if (view === "changes") advanceFile(sessionKey, 1);
@@ -198,6 +207,7 @@ export function useReviewKeymap({
 					});
 					return;
 				case "new-comment":
+					if (readOnly) return;
 					sendIntent("new-comment");
 					return;
 				case "next-thread":
@@ -207,15 +217,19 @@ export function useReviewKeymap({
 					advanceThread(activeFileThreadRefs, -1);
 					return;
 				case "accept":
+					if (readOnly) return;
 					if (isActionableDraft(activeThread)) callbacks.onAccept?.(activeThread.draftCommentId);
 					return;
 				case "decline":
+					if (readOnly) return;
 					if (isActionableDraft(activeThread)) callbacks.onDecline?.(activeThread.draftCommentId);
 					return;
 				case "edit":
+					if (readOnly) return;
 					if (activeThreadId !== null) sendIntent("edit", activeThreadId);
 					return;
 				case "reply":
+					if (readOnly) return;
 					if (activeThreadId !== null) sendIntent("reply", activeThreadId);
 					return;
 				case "open-in-changes":
@@ -237,7 +251,9 @@ export function useReviewKeymap({
 			drawerOpen,
 			isGitHubPR,
 			markFileViewed,
+			onClose,
 			prCtx,
+			readOnly,
 			selectThread,
 			sendIntent,
 			sessionKey,

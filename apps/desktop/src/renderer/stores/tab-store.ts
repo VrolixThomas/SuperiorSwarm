@@ -333,12 +333,13 @@ function defaultPanelForCwd(cwd: string): RightPanelState {
 function panelForWorkspace(
 	workspaceId: string,
 	cwd: string,
-	_meta: WorkspaceMetadata | undefined
+	meta: WorkspaceMetadata | undefined
 ): RightPanelState {
 	// Cross-repo orchestrator tabs are terminal-only — the workDir is not a git
 	// repo, so any diff/working-tree subscription would fail. Return closed so
 	// DiffPanel never mounts a subscription for this workspace.
 	if (workspaceId.startsWith("xro-")) return PANEL_CLOSED;
+	if (meta?.type === "review") return PANEL_CLOSED;
 
 	return defaultPanelForCwd(cwd);
 }

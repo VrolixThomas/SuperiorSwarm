@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { getAllPanes, usePaneStore } from "../src/renderer/stores/pane-store";
-import { useReviewModeStore } from "../src/renderer/stores/review-mode-store";
+import { usePaneStore } from "../src/renderer/stores/pane-store";
+import { shouldShowReviewMode, useReviewModeStore } from "../src/renderer/stores/review-mode-store";
 import {
 	PANEL_CLOSED,
 	type RightPanelState,
@@ -79,7 +79,8 @@ function resetStore() {
 		view: "overview",
 		navigatorCollapsed: false,
 		drawerOpen: false,
-		terminal: null,
+		drawerHeight: 300,
+		terminals: {},
 		commentFilter: "all",
 		intent: null,
 	});
@@ -522,7 +523,7 @@ describe("addTerminalTab", () => {
 describe("review workspace activation", () => {
 	beforeEach(resetStore);
 
-	test("setActiveWorkspace with review type opens Review Mode and keeps diff panel", () => {
+	test("setActiveWorkspace with review type opens Review Mode in the main panel", () => {
 		const store = useTabStore.getState();
 		// Store workspace metadata first
 		store.setWorkspaceMetadata("ws-review-1", {
@@ -537,12 +538,7 @@ describe("review workspace activation", () => {
 		store.setActiveWorkspace("ws-review-1", "/path/to/worktree");
 
 		const state = useTabStore.getState();
-		assertPanelOpen(state.rightPanel);
-		expect(state.rightPanel.mode).toBe("diff");
-		expect(state.rightPanel.diffCtx).toEqual({
-			type: "working-tree",
-			repoPath: "/path/to/worktree",
-		});
+		expect(state.rightPanel).toEqual(PANEL_CLOSED);
 		expect(useReviewModeStore.getState().active).toEqual({
 			workspaceId: "ws-review-1",
 			prCtx: {
@@ -563,7 +559,65 @@ describe("review workspace activation", () => {
 		store.setActiveWorkspace("ws-branch-1", "/path/to/repo");
 
 		const state = useTabStore.getState();
+		assertPanelOpen(state.rightPanel);
 		expect(state.rightPanel.mode).not.toBe("pr-review");
+	});
+
+	test("switching Projects, Tickets, and PRs restores each segment without leaking Review Mode", () => {
+		const store = useTabStore.getState();
+		store.setActiveWorkspace("ws-project", "/path/to/project");
+		store.setWorkspaceMetadata("ws-review-1", {
+			type: "review",
+			prProvider: "github",
+			prIdentifier: "owner/repo#16",
+			prTitle: "Create Claude.md",
+			sourceBranch: "patch-testreview",
+			targetBranch: "main",
+		});
+		store.setSidebarSegment("prs");
+		store.setActiveWorkspace("ws-review-1", "/path/to/review");
+
+		let state = useTabStore.getState();
+		expect(
+			shouldShowReviewMode(
+				state.sidebarSegment,
+				state.activeWorkspaceId,
+				useReviewModeStore.getState().active
+			)
+		).toBe(true);
+
+		store.setSidebarSegment("tickets");
+		state = useTabStore.getState();
+		expect(state.activeWorkspaceId).toBeNull();
+		expect(
+			shouldShowReviewMode(
+				state.sidebarSegment,
+				state.activeWorkspaceId,
+				useReviewModeStore.getState().active
+			)
+		).toBe(false);
+
+		store.setSidebarSegment("repos");
+		state = useTabStore.getState();
+		expect(state.activeWorkspaceId).toBe("ws-project");
+		expect(
+			shouldShowReviewMode(
+				state.sidebarSegment,
+				state.activeWorkspaceId,
+				useReviewModeStore.getState().active
+			)
+		).toBe(false);
+
+		store.setSidebarSegment("prs");
+		state = useTabStore.getState();
+		expect(state.activeWorkspaceId).toBe("ws-review-1");
+		expect(
+			shouldShowReviewMode(
+				state.sidebarSegment,
+				state.activeWorkspaceId,
+				useReviewModeStore.getState().active
+			)
+		).toBe(true);
 	});
 });
 

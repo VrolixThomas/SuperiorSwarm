@@ -266,6 +266,10 @@ export class BitbucketAdapter implements GitProvider {
 	async submitReview(params: SubmitReviewParams): Promise<void> {
 		const base = `${BITBUCKET_API_BASE}/repositories/${params.owner}/${params.repo}/pullrequests/${params.prNumber}`;
 
+		if (params.body.trim()) {
+			await createPRComment(params.owner, params.repo, params.prNumber, params.body.trim());
+		}
+
 		if (params.verdict === "APPROVE") {
 			const res = await atlassianFetch("bitbucket", `${base}/approve`, { method: "POST" });
 			// 409 = already approved, not an error
@@ -281,7 +285,7 @@ export class BitbucketAdapter implements GitProvider {
 				throw new Error(`Bitbucket request-changes failed: ${res.status}`);
 			}
 		}
-		// "COMMENT" verdict has no Bitbucket equivalent — comments are posted inline
+		// A COMMENT verdict is represented by the general PR comment above.
 	}
 
 	async getPRFiles(owner: string, repo: string, prNumber: number): Promise<NormalizedPRFile[]> {
@@ -297,6 +301,8 @@ export class BitbucketAdapter implements GitProvider {
 					new?: { path: string };
 					old?: { path: string };
 					status: string;
+					lines_added?: number;
+					lines_removed?: number;
 				}>;
 				next?: string;
 			};
@@ -312,6 +318,8 @@ export class BitbucketAdapter implements GitProvider {
 									? ("renamed" as const)
 									: ("modified" as const),
 					previousPath: f.status === "renamed" ? f.old?.path : undefined,
+					additions: f.lines_added ?? 0,
+					deletions: f.lines_removed ?? 0,
 				});
 			}
 			url = data.next ?? null;
@@ -342,24 +350,27 @@ export class BitbucketAdapter implements GitProvider {
 		const reviewDecision = deriveReviewDecision(reviewers);
 
 		// Map comments with file paths to review threads
-		const reviewThreads = comments
-			.filter((c) => c.filePath)
-			.map((c) => ({
-				id: String(c.id),
-				isResolved: false,
-				path: c.filePath!,
-				line: c.lineNumber,
-				diffSide: "RIGHT" as const,
-				comments: [
-					{
-						id: String(c.id),
-						author: c.author,
-						body: c.body,
-						authorAvatarUrl: "",
-						createdAt: c.createdAt,
-					},
-				],
-			}));
+		const reviewThreads = comments.flatMap((c) => {
+			if (!c.filePath) return [];
+			return [
+				{
+					id: String(c.id),
+					isResolved: false,
+					path: c.filePath,
+					line: c.lineNumber,
+					diffSide: "RIGHT" as const,
+					comments: [
+						{
+							id: String(c.id),
+							author: c.author,
+							body: c.body,
+							authorAvatarUrl: "",
+							createdAt: c.createdAt,
+						},
+					],
+				},
+			];
+		});
 
 		// Map comments without file paths to conversation comments
 		const conversationComments = comments
@@ -394,8 +405,8 @@ export class BitbucketAdapter implements GitProvider {
 			conversationComments,
 			files: files.map((f) => ({
 				path: f.path,
-				additions: 0,
-				deletions: 0,
+				additions: f.additions ?? 0,
+				deletions: f.deletions ?? 0,
 				changeType:
 					f.status === "added"
 						? ("ADDED" as const)

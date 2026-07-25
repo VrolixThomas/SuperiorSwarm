@@ -662,16 +662,19 @@ function useThreadDecorations(
 	useEffect(() => {
 		if (!editor) return;
 		const modEditor = editor.getModifiedEditor();
-		const decorations: monaco.editor.IModelDeltaDecoration[] = threads
-			.filter((t) => t.line != null)
-			.map((t) => ({
-				range: new monaco.Range(t.line!, 1, t.line!, 1),
-				options: {
-					isWholeLine: true,
-					linesDecorationsClassName: baseGutterClass(t),
-					className: baseLineClass(t),
+		const decorations: monaco.editor.IModelDeltaDecoration[] = threads.flatMap((thread) => {
+			if (thread.line == null) return [];
+			return [
+				{
+					range: new monaco.Range(thread.line, 1, thread.line, 1),
+					options: {
+						isWholeLine: true,
+						linesDecorationsClassName: baseGutterClass(thread),
+						className: baseLineClass(thread),
+					},
 				},
-			}));
+			];
+		});
 		baseRef.current = modEditor.createDecorationsCollection(decorations);
 		return () => baseRef.current?.clear();
 	}, [editor, threads]);
@@ -1004,7 +1007,7 @@ export function PRReviewFileTab({ prCtx, filePath, language }: PRReviewFileTabPr
 			if (t.isAIDraft) return t.status === "pending" && t.line != null;
 			return !(t as GitHubReviewThread).isResolved && t.line != null;
 		})
-		.map((t) => t.line!)
+		.flatMap((t) => (t.line == null ? [] : [t.line]))
 		.sort((a, b) => a - b);
 	const [navIdx, setNavIdx] = useState(0);
 
@@ -1045,6 +1048,7 @@ export function PRReviewFileTab({ prCtx, filePath, language }: PRReviewFileTabPr
 			if (pendingLine === null) return;
 			const ctx = prCtxRef.current;
 			addUserComment.mutate({
+				prProvider: ctx.provider,
 				prIdentifier: formatPrIdentifier(ctx),
 				prTitle: ctx.title,
 				sourceBranch: ctx.sourceBranch,

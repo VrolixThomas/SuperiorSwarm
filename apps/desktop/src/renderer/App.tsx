@@ -21,7 +21,6 @@ import { SharedFilesPanel } from "./components/SharedFilesPanel";
 import { Sidebar } from "./components/Sidebar";
 import { UpdateToast } from "./components/UpdateToast";
 import { WhatsNewModal } from "./components/WhatsNewModal";
-import { ReviewModeShell } from "./components/review-mode/ReviewModeShell";
 import { PRReviewKeyboardListener } from "./components/review/PRReviewKeyboardListener";
 import { SettingsPage } from "./components/settings/SettingsPage";
 import { useAgentAlertListener } from "./hooks/useAgentAlertListener";
@@ -462,11 +461,6 @@ function AuthenticatedApp() {
 	);
 	const activeProjectId = activeWorkspaceQuery.data?.projectId ?? null;
 
-	const workspacesQuery = trpc.workspaces.listByProject.useQuery(
-		{ projectId: activeProjectId ?? "" },
-		{ enabled: !!activeProjectId }
-	);
-
 	const activeCwd = useTabStore((s) => s.activeWorkspaceCwd);
 	const branchStatusQuery = trpc.branches.getStatus.useQuery(
 		{ projectId: activeProjectId ?? "", cwd: activeCwd || undefined },
@@ -721,9 +715,8 @@ function AuthenticatedApp() {
 							<DiffPanel onClose={closeDiffPanel} />
 						</Panel>
 					</Group>
-					<ReviewModeShell />
 					{!rightPanelOpen &&
-						sidebarSegment !== "tickets" &&
+						sidebarSegment === "repos" &&
 						!activeWorkspaceId?.startsWith("xro-") && (
 							<button
 								type="button"

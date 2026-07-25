@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { GitHubPREnriched, PRContext } from "../../shared/github-types";
+import { formatPrIdentifier } from "../../shared/pr-identifier";
 import { launchReviewTerminal } from "../lib/review-launch";
 import { useAgentAlertStore } from "../stores/agent-alert-store";
 import { useReviewModeStore } from "../stores/review-mode-store";
@@ -10,7 +11,6 @@ import { CreateWorktreeFromPRModal, type LinkablePR } from "./CreateWorktreeFrom
 import { PullRequestGroup } from "./PullRequestGroup";
 import type { MergedPR } from "./PullRequestItem";
 import { type LinkedWorkspace, WorkspacePopover } from "./WorkspacePopover";
-import { findActivePRIdentifier } from "./pr-panel-helpers";
 
 // ── Context Menu ──────────────────────────────────────────────────────────────
 
@@ -273,7 +273,13 @@ export function PullRequestsTab() {
 
 	// ── Cleanup mutation ──────────────────────────────────────────────────────
 
-	const cleanupReviewMutation = trpc.workspaces.cleanupReviewWorkspace.useMutation();
+	const cleanupReviewMutation = trpc.workspaces.cleanupReviewWorkspace.useMutation({
+		onSuccess: (_data, variables) => {
+			const reviewStore = useReviewModeStore.getState();
+			if (reviewStore.active?.workspaceId === variables.workspaceId) reviewStore.close();
+			useTabStore.getState().cleanupWorkspace(variables.workspaceId);
+		},
+	});
 
 	// ── PR state tracking for auto-cleanup on merge/close ──────────────────────
 	// (prevPRStatesRef declared here; the effect that reads `grouped` is placed
@@ -364,6 +370,7 @@ export function PullRequestsTab() {
 	}, [ghPRs, bbReviewPRs, reviewDrafts.data, settings.data, projectsList, triggerReviewWithCtx]);
 
 	const activeWorkspaceId = useTabStore((s) => s.activeWorkspaceId);
+	const activeReview = useReviewModeStore((s) => s.active);
 	const agentAlerts = useAgentAlertStore((s) => s.alerts);
 
 	const getPrIdentifier = useCallback((pr: MergedPR): string => {
@@ -416,15 +423,14 @@ export function PullRequestsTab() {
 		const merged: MergedPR[] = [];
 		const seenBb = new Set<string>();
 
-		// Bitbucket PRs — only review requests, not authored PRs
 		for (const pr of bbReviewPRs ?? []) {
 			const key = `${pr.workspace}/${pr.repoSlug}#${pr.id}`;
 			if (seenBb.has(key)) continue;
 			seenBb.add(key);
-			// Skip merged or declined PRs (stale cache)
 			if (pr.state === "MERGED" || pr.state === "DECLINED") continue;
 			merged.push({
 				provider: "bitbucket",
+				role: "reviewer",
 				id: `bb-${pr.workspace}-${pr.repoSlug}-${pr.id}`,
 				number: pr.id,
 				title: pr.title,
@@ -437,13 +443,15 @@ export function PullRequestsTab() {
 			});
 		}
 
-		// GitHub PRs — only PRs where the user is a reviewer, not authored PRs
+		// GitHub's query returns both authored and review-requested PRs; this
+		// surface is intentionally scoped to PRs that need the user's review.
 		for (const pr of ghPRs ?? []) {
 			if (pr.role !== "reviewer") continue;
 			// Skip closed PRs (stale cache)
 			if (pr.state === "closed") continue;
 			merged.push({
 				provider: "github",
+				role: pr.role,
 				id: `gh-${pr.repoOwner}-${pr.repoName}-${pr.number}`,
 				number: pr.number,
 				title: pr.title,
@@ -485,16 +493,23 @@ export function PullRequestsTab() {
 			}
 		}
 
+		for (const group of groups.values()) {
+			group.items.sort((a, b) => {
+				if (a.role !== b.role) return a.role === "reviewer" ? -1 : 1;
+				return a.title.localeCompare(b.title);
+			});
+		}
+
 		return groups;
 	}, [bbReviewPRs, ghPRs]);
 
 	// workspaceIdMapRef.current is intentionally excluded — refs are not reactive.
 	// The memo recomputes whenever the active workspace changes, which is the
 	// only time the result can differ in practice.
-	const activePRIdentifier = useMemo(
-		() => findActivePRIdentifier(workspaceIdMapRef.current, activeWorkspaceId ?? ""),
-		[activeWorkspaceId]
-	);
+	const activePRIdentifier =
+		activeReview && activeReview.workspaceId === activeWorkspaceId
+			? formatPrIdentifier(activeReview.prCtx)
+			: null;
 
 	// ── PR state tracking effect (auto-cleanup on merge/close) ────────────────
 
@@ -524,6 +539,9 @@ export function PullRequestsTab() {
 			if (wasOpen && isNowClosed) {
 				const workspaceId = workspaceIdMapRef.current.get(identifier);
 				if (workspaceId) {
+					// Keep the review readable while the user is still looking at it.
+					// Explicit close/removal will clean up the backing workspace.
+					if (useReviewModeStore.getState().active?.workspaceId === workspaceId) continue;
 					cleanupReviewMutateRef.current({ workspaceId });
 					workspaceIdMapRef.current.delete(identifier);
 				}

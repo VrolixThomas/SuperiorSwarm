@@ -21,14 +21,15 @@ const prCtx: PRContext = {
 };
 
 function reset() {
-	usePaneStore.setState({ panesByWorkspace: new Map(), focusedPaneId: null });
+	usePaneStore.setState({ layouts: {}, focusedPaneId: null });
 	usePRReviewSessionStore.setState({ sessions: new Map() });
 	useReviewModeStore.setState({
 		active: null,
 		view: "overview",
 		navigatorCollapsed: false,
 		drawerOpen: false,
-		terminal: null,
+		drawerHeight: 300,
+		terminals: {},
 		commentFilter: "all",
 		intent: null,
 	});

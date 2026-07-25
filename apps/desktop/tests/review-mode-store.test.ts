@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { useReviewModeStore } from "../src/renderer/stores/review-mode-store";
+import { shouldShowReviewMode, useReviewModeStore } from "../src/renderer/stores/review-mode-store";
 import type { PRContext } from "../src/shared/github-types";
 
 const prCtx: PRContext = {
@@ -20,6 +20,7 @@ function reset() {
 		view: "overview",
 		navigatorCollapsed: false,
 		drawerOpen: false,
+		drawerHeight: 300,
 		terminals: {},
 		commentFilter: "all",
 		intent: null,
@@ -34,9 +35,20 @@ describe("review-mode-store", () => {
 		expect(useReviewModeStore.getState().view).toBe("overview");
 		expect(useReviewModeStore.getState().navigatorCollapsed).toBe(false);
 		expect(useReviewModeStore.getState().drawerOpen).toBe(false);
+		expect(useReviewModeStore.getState().drawerHeight).toBe(300);
 		expect(useReviewModeStore.getState().terminals).toEqual({});
 		expect(useReviewModeStore.getState().commentFilter).toBe("all");
 		expect(useReviewModeStore.getState().intent).toBeNull();
+	});
+
+	test("Review Mode is visible only in the PR segment for its active workspace", () => {
+		const active = { workspaceId: "ws-1", prCtx };
+
+		expect(shouldShowReviewMode("prs", "ws-1", active)).toBe(true);
+		expect(shouldShowReviewMode("repos", "ws-1", active)).toBe(false);
+		expect(shouldShowReviewMode("tickets", "ws-1", active)).toBe(false);
+		expect(shouldShowReviewMode("prs", "ws-2", active)).toBe(false);
+		expect(shouldShowReviewMode("prs", null, active)).toBe(false);
 	});
 
 	test("open of a different workspace resets view, filter, drawer, intent", () => {
@@ -107,6 +119,19 @@ describe("review-mode-store", () => {
 		store.setTerminal({ tabId: "tab-9", workspaceId: "ws-1", cwd: "/tmp/r" });
 
 		expect(useReviewModeStore.getState().terminals["ws-1"]?.tabId).toBe("tab-9");
+	});
+
+	test("terminal drawer height is resizable within usable bounds", () => {
+		const store = useReviewModeStore.getState();
+
+		store.setDrawerHeight(420);
+		expect(useReviewModeStore.getState().drawerHeight).toBe(420);
+
+		store.setDrawerHeight(40);
+		expect(useReviewModeStore.getState().drawerHeight).toBe(180);
+
+		store.setDrawerHeight(900);
+		expect(useReviewModeStore.getState().drawerHeight).toBe(700);
 	});
 
 	test("close clears active PR, drawer, and intent", () => {

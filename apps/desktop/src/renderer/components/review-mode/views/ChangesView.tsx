@@ -25,6 +25,7 @@ interface ChangesViewProps {
 	fileOrder: string[];
 	sessionKey: string;
 	callbacks: ThreadCallbacks;
+	readOnly?: boolean;
 }
 
 const INLINE_DRAFT_STATUSES = new Set(["pending", "edited", "user-pending"]);
@@ -97,6 +98,7 @@ export function ChangesView({
 	fileOrder,
 	sessionKey,
 	callbacks,
+	readOnly = false,
 }: ChangesViewProps) {
 	const utils = trpc.useUtils();
 	const diffMode = useTabStore((s) => s.diffMode);
@@ -249,6 +251,7 @@ export function ChangesView({
 		(body: string) => {
 			if (pendingLine === null || currentFilePath === null) return;
 			addUserComment.mutate({
+				prProvider: prCtx.provider,
 				prIdentifier: formatPrIdentifier(prCtx),
 				prTitle: prCtx.title,
 				sourceBranch: prCtx.sourceBranch,
@@ -265,6 +268,14 @@ export function ChangesView({
 	const handleCancelNew = useCallback(() => {
 		setPendingLine(null);
 	}, []);
+
+	const startNewComment = useCallback(() => {
+		if (readOnly) return;
+		const modEditor = editorInstance?.getModifiedEditor();
+		if (!modEditor) return;
+		const line = pickNewCommentLine(modEditor, validDiffLines);
+		if (line !== null) setPendingLine(line);
+	}, [editorInstance, readOnly, validDiffLines]);
 
 	const handleInlineCollapsedChange = useCallback(
 		(threadId: string, collapsed: boolean) => {
@@ -326,10 +337,14 @@ export function ChangesView({
 		handleCancelNew
 	);
 	useThreadDecorations(editorInstance, inlineFileThreads, activeThreadId);
-	useGutterPlusButton(editorInstance, setPendingLine, validDiffLines);
+	useGutterPlusButton(readOnly ? null : editorInstance, setPendingLine, validDiffLines);
 
 	useEffect(() => {
 		if (intent?.kind !== "new-comment") return;
+		if (readOnly) {
+			clearIntent();
+			return;
+		}
 		const modEditor = editorInstance?.getModifiedEditor();
 		if (!modEditor) {
 			clearIntent();
@@ -339,7 +354,7 @@ export function ChangesView({
 		const line = pickNewCommentLine(modEditor, validDiffLines);
 		if (line !== null) setPendingLine(line);
 		clearIntent();
-	}, [clearIntent, editorInstance, intent, validDiffLines]);
+	}, [clearIntent, editorInstance, intent, readOnly, validDiffLines]);
 
 	useEffect(() => {
 		if (!editorInstance || effectiveMarkdownPreviewMode !== "split") return;
@@ -442,6 +457,19 @@ export function ChangesView({
 						<span className="text-[var(--color-danger)]">-{currentFile.deletions}</span>
 					</span>
 				)}
+
+				<button
+					type="button"
+					onClick={startNewComment}
+					disabled={readOnly || !editorInstance || currentFilePath === null}
+					className={toolbarButtonClass(
+						pendingLine !== null,
+						readOnly || !editorInstance || currentFilePath === null
+					)}
+					title="Add a comment to the selected or first visible changed line"
+				>
+					Add comment
+				</button>
 
 				{isGitHubPR && currentFilePath && (
 					<label className="flex shrink-0 cursor-pointer items-center gap-1.5">

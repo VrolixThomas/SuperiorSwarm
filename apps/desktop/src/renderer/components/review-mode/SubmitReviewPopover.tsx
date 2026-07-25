@@ -42,17 +42,16 @@ export function SubmitReviewPopover({
 	const [submitting, setSubmitting] = useState(false);
 	const [outcome, setOutcome] = useState<SubmitOutcome | null>(null);
 	const utils = trpc.useUtils();
-	const createThread = trpc.github.createReviewThread.useMutation();
+	const createInlineComment = trpc.review.createInlineComment.useMutation();
 	const updateDraftComment = trpc.aiReview.updateDraftComment.useMutation({
 		onSuccess: () => {
 			void utils.aiReview.getReviewDrafts.invalidate();
 			void utils.aiReview.getReviewDraft.invalidate();
 		},
 	});
-	const submitReview = trpc.github.submitReview.useMutation();
-	const isGitHub = prCtx.provider === "github";
+	const submitReview = trpc.review.submitReview.useMutation();
 	const nothingToSubmit = !hasSubmitPayload(acceptedThreads.length, verdict, body);
-	const canSubmit = isGitHub && !submitting && !nothingToSubmit;
+	const canSubmit = !submitting && !nothingToSubmit;
 
 	const acceptedCountLabel = useMemo(() => {
 		const count = acceptedThreads.length;
@@ -91,9 +90,10 @@ export function SubmitReviewPopover({
 			verdict,
 			body,
 			deps: {
-				createReviewThread: createThread.mutateAsync,
+				createReviewThread: (input) =>
+					createInlineComment.mutateAsync({ provider: prCtx.provider, ...input }),
 				updateDraftComment: updateDraftComment.mutateAsync,
-				submitReview: submitReview.mutateAsync,
+				submitReview: (input) => submitReview.mutateAsync({ provider: prCtx.provider, ...input }),
 			},
 		});
 		setOutcome(result);
@@ -117,12 +117,6 @@ export function SubmitReviewPopover({
 			</div>
 
 			<div className="space-y-3 px-4 py-3">
-				{!isGitHub && (
-					<div className="rounded-[var(--radius-sm)] bg-[var(--warning-subtle)] px-3 py-2 text-[12px] text-[var(--color-warning)]">
-						Manual submit is currently available for GitHub PRs.
-					</div>
-				)}
-
 				<div className="flex rounded-[var(--radius-sm)] bg-[var(--bg-base)] p-0.5">
 					{VERDICTS.map((item) => (
 						<button

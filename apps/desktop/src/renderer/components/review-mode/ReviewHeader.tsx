@@ -6,6 +6,8 @@ interface ReviewHeaderProps {
 	prCtx: PRContext;
 	commentCount: number;
 	rightSlot?: ReactNode;
+	onClose?: () => void;
+	terminalAvailable?: boolean;
 }
 
 const REVIEW_VIEWS: { view: ReviewView; label: string }[] = [
@@ -14,20 +16,30 @@ const REVIEW_VIEWS: { view: ReviewView; label: string }[] = [
 	{ view: "comments", label: "Comments" },
 ];
 
-export function ReviewHeader({ prCtx, commentCount, rightSlot }: ReviewHeaderProps) {
+export function ReviewHeader({
+	prCtx,
+	commentCount,
+	rightSlot,
+	onClose,
+	terminalAvailable = false,
+}: ReviewHeaderProps) {
 	const view = useReviewModeStore((s) => s.view);
 	const setView = useReviewModeStore((s) => s.setView);
+	const setDrawerOpen = useReviewModeStore((s) => s.setDrawerOpen);
 	const close = useReviewModeStore((s) => s.close);
+	const reviewViews = terminalAvailable
+		? [...REVIEW_VIEWS, { view: "terminal" as const, label: "Agent" }]
+		: REVIEW_VIEWS;
 
 	return (
-		<header className="relative z-50 flex h-12 shrink-0 items-center gap-3 border-b border-[var(--border)] bg-[var(--bg-surface)] px-3 text-[var(--text)]">
+		<header className="app-drag relative z-20 flex h-[52px] shrink-0 items-center gap-3 border-b border-[var(--border)] bg-[var(--bg-surface)] pl-6 pr-3 text-[var(--text)]">
 			<div className="flex min-w-0 flex-1 items-center gap-2">
 				<button
 					type="button"
-					onClick={close}
+					onClick={onClose ?? close}
 					title="Back (Esc)"
 					aria-label="Back"
-					className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--radius-sm)] text-[var(--text-tertiary)] transition-colors duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--text)]"
+					className="app-no-drag flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--radius-sm)] text-[var(--text-tertiary)] transition-colors duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--text)]"
 				>
 					<svg
 						width="15"
@@ -51,8 +63,8 @@ export function ReviewHeader({ prCtx, commentCount, rightSlot }: ReviewHeaderPro
 				</div>
 			</div>
 
-			<div className="flex shrink-0 items-center rounded-[var(--radius-sm)] bg-[var(--bg-base)] p-0.5">
-				{REVIEW_VIEWS.map((item) => {
+			<div className="app-no-drag flex shrink-0 items-center rounded-[var(--radius-sm)] bg-[var(--bg-base)] p-0.5">
+				{reviewViews.map((item) => {
 					const active = view === item.view;
 					const badgeCount = item.view === "comments" && commentCount > 0 ? commentCount : null;
 
@@ -60,7 +72,10 @@ export function ReviewHeader({ prCtx, commentCount, rightSlot }: ReviewHeaderPro
 						<button
 							key={item.view}
 							type="button"
-							onClick={() => setView(item.view)}
+							onClick={() => {
+								if (item.view === "terminal") setDrawerOpen(false);
+								setView(item.view);
+							}}
 							aria-pressed={active}
 							className={[
 								"flex h-7 items-center gap-1.5 rounded-[var(--radius-sm)] px-3 text-[12px] font-medium transition-colors duration-[120ms]",
@@ -80,7 +95,7 @@ export function ReviewHeader({ prCtx, commentCount, rightSlot }: ReviewHeaderPro
 				})}
 			</div>
 
-			<div className="flex min-w-0 flex-1 items-center justify-end">{rightSlot}</div>
+			<div className="app-no-drag flex min-w-0 flex-1 items-center justify-end">{rightSlot}</div>
 		</header>
 	);
 }
