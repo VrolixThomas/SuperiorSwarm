@@ -24,16 +24,19 @@ export class ScrollbackStore {
 		);
 	}
 
-	flush(sessions: Array<{ id: string; buffer: string }>): void {
+	flush(sessions: Array<{ id: string; buffer: string }>): string[] {
 		const now = Math.floor(Date.now() / 1000);
+		const persistedIds: string[] = [];
 		const tx = this.db.transaction(() => {
 			for (const { id, buffer } of sessions) {
 				if (buffer.length > 0) {
-					this.stmt.run(buffer, now, id);
+					const result = this.stmt.run(buffer, now, id);
+					if (result.changes > 0) persistedIds.push(id);
 				}
 			}
 		});
 		tx();
+		return persistedIds;
 	}
 
 	close(): void {

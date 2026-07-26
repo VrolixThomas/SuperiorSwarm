@@ -16,6 +16,8 @@ import {
 import { getDb, schema } from "../src/main/db";
 import { agentMessages } from "../src/main/db/schema";
 import { initRepo } from "../src/main/git/operations";
+import type { AgentSessionManager } from "../src/main/services/agent-session-manager";
+import { setAgentSessionManager } from "../src/main/services/agent-session-manager-handle";
 import {
 	type CallerContext,
 	createWorkspace,
@@ -70,6 +72,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
+	setAgentSessionManager(null);
 	const db = getDb();
 	db.delete(schema.projects).where(eq(schema.projects.id, PROJECT_ID)).run();
 	rmSync(TMP, { recursive: true, force: true });
@@ -460,6 +463,42 @@ describe("resumeAgent", () => {
 				{ respawnAgent: async () => undefined }
 			)
 		).rejects.toThrow(/resume_not_supported/);
+	});
+
+	test("ambiguous managed targets fail without recording a successful resume", async () => {
+		const orch = await createWorkspace({
+			projectId: PROJECT_ID,
+			branch: "feature/r-ambiguous-o",
+		});
+		const target = await createWorkspace({
+			projectId: PROJECT_ID,
+			branch: "feature/r-ambiguous-t",
+		});
+		await setOrchestrator(wsCtx(orch.workspaceId, PROJECT_ID), {
+			workspaceId: orch.workspaceId,
+		});
+		setAgentSessionManager({
+			wakeWorkspace: async () => ({
+				status: "ambiguous",
+				terminalIds: ["term-a", "term-b"],
+			}),
+		} as unknown as AgentSessionManager);
+
+		await expect(
+			resumeAgent(
+				wsCtx(orch.workspaceId, PROJECT_ID),
+				{ workspaceId: target.workspaceId, message: "must not be misrouted" },
+				{ respawnAgent: async () => undefined }
+			)
+		).rejects.toThrow(/multiple managed agent targets/);
+
+		expect(
+			getDb()
+				.select()
+				.from(agentMessages)
+				.where(eq(agentMessages.toWorkspaceId, target.workspaceId))
+				.all()
+		).toHaveLength(0);
 	});
 });
 

@@ -1,9 +1,44 @@
-import { eq, notInArray } from "drizzle-orm";
+import { eq, max, notInArray } from "drizzle-orm";
 import type { SessionSaveData } from "../../shared/types";
 import { getDb } from "./index";
 import * as schema from "./schema";
 
 export type { SessionSaveData };
+
+export function ensureTerminalSessionRow(input: {
+	id: string;
+	workspaceId: string;
+	cwd: string;
+	title?: string;
+}): boolean {
+	const db = getDb();
+	const existing = db
+		.select({ id: schema.terminalSessions.id })
+		.from(schema.terminalSessions)
+		.where(eq(schema.terminalSessions.id, input.id))
+		.get();
+	if (existing) return false;
+
+	const sortOrder =
+		(db
+			.select({ value: max(schema.terminalSessions.sortOrder) })
+			.from(schema.terminalSessions)
+			.get()?.value ?? -1) + 1;
+	const result = db
+		.insert(schema.terminalSessions)
+		.values({
+			id: input.id,
+			workspaceId: input.workspaceId,
+			title: input.title ?? "Terminal",
+			cwd: input.cwd,
+			scrollback: null,
+			sortOrder,
+			updatedAt: new Date(),
+		})
+		.onConflictDoNothing()
+		.run();
+	return result.changes > 0;
+}
 
 export function savePaneLayouts(layouts: Record<string, string>): void {
 	const db = getDb();

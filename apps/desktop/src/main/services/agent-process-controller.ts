@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { AgentProvider } from "../../shared/agent-session";
+import type { DaemonSession } from "../../shared/daemon-protocol";
 import type { DaemonClient } from "../terminal/daemon-client";
 
 const execFileAsync = promisify(execFile);
@@ -13,8 +14,19 @@ export interface AgentTerminationResult {
 	error?: string;
 }
 
+export type AgentForegroundInspection =
+	| { status: "agent" }
+	| { status: "shell" }
+	| { status: "other" }
+	| { status: "missing" }
+	| { status: "unknown"; error: string };
+
 export interface AgentProcessController {
 	terminateForeground(terminalId: string, provider: AgentProvider): Promise<AgentTerminationResult>;
+	inspectForeground(
+		terminalId: string,
+		provider: AgentProvider
+	): Promise<AgentForegroundInspection>;
 }
 
 export function matchesProviderCommand(command: string, provider: AgentProvider): boolean {
@@ -72,7 +84,7 @@ async function inspectProcessGroup(pgid: number): Promise<string[]> {
 	return commands;
 }
 
-async function inspectForeground(shellPid: number): Promise<ForegroundSnapshot | null> {
+async function inspectForegroundSnapshot(shellPid: number): Promise<ForegroundSnapshot | null> {
 	try {
 		const { stdout } = await execFileAsync("ps", [
 			"-p",
@@ -107,6 +119,49 @@ function wait(ms: number): Promise<void> {
 export class PosixAgentProcessController implements AgentProcessController {
 	constructor(private readonly daemonClient: DaemonClient) {}
 
+	async inspectForeground(
+		terminalId: string,
+		provider: AgentProvider
+	): Promise<AgentForegroundInspection> {
+		if (process.platform === "win32") {
+			return {
+				status: "unknown",
+				error: "Agent foreground inspection is not supported on Windows yet",
+			};
+		}
+
+		let session: DaemonSession | undefined;
+		try {
+			session = (await this.daemonClient.listSessions()).find(
+				(candidate) => candidate.id === terminalId
+			);
+		} catch (error) {
+			return {
+				status: "unknown",
+				error: error instanceof Error ? error.message : "Could not list terminal sessions",
+			};
+		}
+		if (!session) return { status: "missing" };
+
+		const snapshot = await inspectForegroundSnapshot(session.pid);
+		if (!snapshot) {
+			return {
+				status: "unknown",
+				error: "Could not inspect the terminal foreground process",
+			};
+		}
+		if (snapshot.foregroundPgid === snapshot.shellPgid) return { status: "shell" };
+		if (snapshot.commands.length === 0) {
+			// A terminated foreground group can briefly remain as the TTY's tpgid
+			// before the shell reclaims it. No surviving process means there is no
+			// agent to resume, so recover this as a hibernated shell.
+			return { status: "shell" };
+		}
+		return matchesProviderProcessGroup(snapshot.commands, provider)
+			? { status: "agent" }
+			: { status: "other" };
+	}
+
 	async terminateForeground(
 		terminalId: string,
 		provider: AgentProvider
@@ -120,7 +175,7 @@ export class PosixAgentProcessController implements AgentProcessController {
 		);
 		if (!session) return { ok: false, error: "Terminal session is no longer running" };
 
-		const snapshot = await inspectForeground(session.pid);
+		const snapshot = await inspectForegroundSnapshot(session.pid);
 		if (!snapshot) return { ok: false, error: "Could not inspect the terminal foreground process" };
 		if (snapshot.foregroundPgid === snapshot.shellPgid) {
 			return { ok: true, alreadyStopped: true };
@@ -149,7 +204,7 @@ export class PosixAgentProcessController implements AgentProcessController {
 		const deadline = Date.now() + TERMINATE_TIMEOUT_MS;
 		while (Date.now() < deadline) {
 			await wait(POLL_INTERVAL_MS);
-			const current = await inspectForeground(session.pid);
+			const current = await inspectForegroundSnapshot(session.pid);
 			if (
 				!current ||
 				current.foregroundPgid === current.shellPgid ||

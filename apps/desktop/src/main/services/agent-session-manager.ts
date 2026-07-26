@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, ne } from "drizzle-orm";
 import type { AgentEvent } from "../../shared/agent-events";
 import {
 	AGENT_PROVIDERS,
@@ -11,7 +11,11 @@ import {
 import { getDb } from "../db";
 import { agentSessions, terminalSessions, workspaces } from "../db/schema";
 import type { DaemonClient } from "../terminal/daemon-client";
-import type { AgentProcessController, AgentTerminationResult } from "./agent-process-controller";
+import type {
+	AgentForegroundInspection,
+	AgentProcessController,
+	AgentTerminationResult,
+} from "./agent-process-controller";
 import { getAgentSleepSettings } from "./agent-sleep-settings";
 
 const DEFAULT_MINUTE_MS = 60_000;
@@ -31,6 +35,12 @@ interface AgentSessionManagerOptions {
 	getSettings?: () => AgentSleepSettings;
 	minuteMs?: number;
 }
+
+export type WorkspaceWakeResult =
+	| { status: "woke"; terminalId: string }
+	| { status: "none" }
+	| { status: "ambiguous"; terminalIds: string[] }
+	| { status: "failed"; terminalId: string; error: string };
 
 function isAgentProvider(value: string): value is AgentProvider {
 	return (AGENT_PROVIDERS as readonly string[]).includes(value);
@@ -93,40 +103,55 @@ export class AgentSessionManager {
 	registerManagedSession(input: RegisterManagedAgentInput): AgentSessionInfo {
 		const db = getDb();
 		const now = new Date();
-		db.insert(agentSessions)
-			.values({
-				terminalId: input.terminalId,
-				workspaceId: input.workspaceId,
-				provider: input.provider,
-				providerSessionId: input.providerSessionId,
-				state: "running",
-				managed: true,
-				keepRunning: false,
-				skipPermissions: input.skipPermissions,
-				lastEventAt: now,
-				idleSince: null,
-				hibernatedAt: null,
-				lastError: null,
-				createdAt: now,
-				updatedAt: now,
-			})
-			.onConflictDoUpdate({
-				target: agentSessions.terminalId,
-				set: {
+		db.transaction((tx) => {
+			// `managed` identifies the one dispatch target that orchestrator
+			// follow-ups may wake. Older app-owned terminals remain tracked but
+			// are deliberately demoted so workspace wakeups never rely on recency.
+			tx.update(agentSessions)
+				.set({ managed: false, updatedAt: now })
+				.where(
+					and(
+						eq(agentSessions.workspaceId, input.workspaceId),
+						eq(agentSessions.managed, true),
+						ne(agentSessions.terminalId, input.terminalId)
+					)
+				)
+				.run();
+			tx.insert(agentSessions)
+				.values({
+					terminalId: input.terminalId,
 					workspaceId: input.workspaceId,
 					provider: input.provider,
 					providerSessionId: input.providerSessionId,
 					state: "running",
 					managed: true,
+					keepRunning: false,
 					skipPermissions: input.skipPermissions,
 					lastEventAt: now,
 					idleSince: null,
 					hibernatedAt: null,
 					lastError: null,
+					createdAt: now,
 					updatedAt: now,
-				},
-			})
-			.run();
+				})
+				.onConflictDoUpdate({
+					target: agentSessions.terminalId,
+					set: {
+						workspaceId: input.workspaceId,
+						provider: input.provider,
+						providerSessionId: input.providerSessionId,
+						state: "running",
+						managed: true,
+						skipPermissions: input.skipPermissions,
+						lastEventAt: now,
+						idleSince: null,
+						hibernatedAt: null,
+						lastError: null,
+						updatedAt: now,
+					},
+				})
+				.run();
+		});
 		const session = this.getSession(input.terminalId);
 		if (!session) throw new Error("Failed to persist managed agent session");
 		this.emit(session);
@@ -266,7 +291,9 @@ export class AgentSessionManager {
 	}
 
 	async sleepNow(terminalId: string): Promise<AgentSessionInfo> {
-		return this.sleep(terminalId, false);
+		const session = await this.sleep(terminalId, false);
+		if (!session) throw new Error(`Unknown agent terminal: ${terminalId}`);
+		return session;
 	}
 
 	async wake(terminalId: string, prompt?: string): Promise<AgentSessionInfo | null> {
@@ -306,22 +333,54 @@ export class AgentSessionManager {
 		}
 	}
 
-	async wakeWorkspace(workspaceId: string, prompt: string): Promise<boolean> {
-		const row = getDb()
+	async wakeWorkspace(workspaceId: string, prompt: string): Promise<WorkspaceWakeResult> {
+		const targets = getDb()
 			.select()
 			.from(agentSessions)
-			.where(and(eq(agentSessions.workspaceId, workspaceId), eq(agentSessions.state, "hibernated")))
+			.where(and(eq(agentSessions.workspaceId, workspaceId), eq(agentSessions.managed, true)))
 			.orderBy(desc(agentSessions.updatedAt))
-			.get();
-		if (!row) return false;
-		await this.wake(row.terminalId, prompt);
-		return this.getSession(row.terminalId)?.state === "running";
+			.all();
+		if (targets.length === 0) return { status: "none" };
+		if (targets.length > 1) {
+			return {
+				status: "ambiguous",
+				terminalIds: targets.map((target) => target.terminalId),
+			};
+		}
+
+		const target = targets[0];
+		if (!target || target.state !== "hibernated") return { status: "none" };
+		const result = await this.wake(target.terminalId, prompt);
+		if (result?.state === "running") {
+			return { status: "woke", terminalId: target.terminalId };
+		}
+		return {
+			status: "failed",
+			terminalId: target.terminalId,
+			error: result?.lastError ?? "Agent did not enter the running state",
+		};
 	}
 
 	removeSession(terminalId: string): void {
 		this.cancelTimer(terminalId);
 		this.visibleTerminals.delete(terminalId);
+		this.transitions.delete(terminalId);
 		getDb().delete(agentSessions).where(eq(agentSessions.terminalId, terminalId)).run();
+	}
+
+	removeWorkspaceSessions(workspaceId: string): void {
+		const terminalIds = getDb()
+			.select({ terminalId: agentSessions.terminalId })
+			.from(agentSessions)
+			.where(eq(agentSessions.workspaceId, workspaceId))
+			.all()
+			.map((row) => row.terminalId);
+		for (const terminalId of terminalIds) {
+			this.cancelTimer(terminalId);
+			this.visibleTerminals.delete(terminalId);
+			this.transitions.delete(terminalId);
+		}
+		getDb().delete(agentSessions).where(eq(agentSessions.workspaceId, workspaceId)).run();
 	}
 
 	applySettings(): void {
@@ -333,17 +392,21 @@ export class AgentSessionManager {
 		}
 	}
 
-	reconcile(): void {
+	async reconcile(): Promise<void> {
 		if (this.disposed) return;
-		const now = new Date();
 		for (const session of this.listSessions()) {
-			if (session.state === "hibernating" || session.state === "resuming") {
-				getDb()
-					.update(agentSessions)
-					.set({ state: "running", lastError: null, updatedAt: now })
-					.where(eq(agentSessions.terminalId, session.terminalId))
-					.run();
-			}
+			if (
+				session.state !== "hibernating" &&
+				session.state !== "resuming" &&
+				session.state !== "hibernated"
+			)
+				continue;
+			const inspection = await this.options.processController.inspectForeground(
+				session.terminalId,
+				session.provider
+			);
+			if (this.disposed) return;
+			this.reconcileSession(session, inspection);
 		}
 		this.applySettings();
 		for (const terminalId of this.visibleTerminals) {
@@ -459,14 +522,19 @@ export class AgentSessionManager {
 		const delay = Math.max(0, settings.idleMinutes * this.minuteMs - idleElapsed);
 		const timer = setTimeout(() => {
 			this.timers.delete(session.terminalId);
-			void this.sleep(session.terminalId, true);
+			void this.sleep(session.terminalId, true).catch((error) => {
+				console.warn(`[agent-session] automatic sleep failed for ${session.terminalId}:`, error);
+			});
 		}, delay);
 		this.timers.set(session.terminalId, timer);
 	}
 
-	private async sleep(terminalId: string, automatic: boolean): Promise<AgentSessionInfo> {
+	private async sleep(terminalId: string, automatic: boolean): Promise<AgentSessionInfo | null> {
 		const session = this.getSession(terminalId);
-		if (!session) throw new Error(`Unknown agent terminal: ${terminalId}`);
+		if (!session) {
+			if (automatic) return null;
+			throw new Error(`Unknown agent terminal: ${terminalId}`);
+		}
 		if (session.state === "hibernated") return session;
 		if (this.transitions.has(terminalId)) return session;
 
@@ -548,6 +616,54 @@ export class AgentSessionManager {
 		const session = this.getSession(terminalId);
 		if (session) this.emit(session);
 		return session;
+	}
+
+	private reconcileSession(session: AgentSessionInfo, inspection: AgentForegroundInspection): void {
+		let nextState: AgentSessionState;
+		let lastError: string | null = null;
+
+		switch (inspection.status) {
+			case "agent":
+				nextState = "running";
+				break;
+			case "shell":
+				nextState = "hibernated";
+				break;
+			case "missing":
+				nextState = "error";
+				lastError = "Terminal shell is no longer available";
+				break;
+			case "other":
+				nextState = "error";
+				lastError = "Terminal has an unexpected foreground process";
+				break;
+			case "unknown":
+				// A stable sleeping session remains recoverable when a transient
+				// process inspection fails. Interrupted transitions fail closed.
+				if (session.state === "hibernated") return;
+				nextState = "error";
+				lastError = inspection.error;
+				break;
+		}
+
+		getDb()
+			.update(agentSessions)
+			.set({
+				state: nextState,
+				idleSince: nextState === "running" ? null : session.idleSince,
+				hibernatedAt: nextState === "hibernated" ? (session.hibernatedAt ?? new Date()) : null,
+				lastError,
+				updatedAt: new Date(),
+			})
+			.where(
+				and(
+					eq(agentSessions.terminalId, session.terminalId),
+					eq(agentSessions.state, session.state)
+				)
+			)
+			.run();
+		const current = this.getSession(session.terminalId);
+		if (current && current.state === nextState) this.emit(current);
 	}
 
 	private cancelTimer(terminalId: string): void {

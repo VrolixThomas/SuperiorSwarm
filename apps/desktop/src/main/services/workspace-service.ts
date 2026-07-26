@@ -457,6 +457,7 @@ export async function removeWorkspace(
 		.from(terminalSessions)
 		.where(eq(terminalSessions.workspaceId, input.workspaceId))
 		.all();
+	getAgentSessionManager()?.removeWorkspaceSessions(input.workspaceId);
 	const daemon = getDaemonClient();
 	for (const s of sessions) daemon?.dispose(s.id);
 	if (sessions.length > 0) {
@@ -1073,8 +1074,19 @@ export async function resumeAgent(
 		auditProjectId = ctx.projectId;
 	}
 
-	const wokeSleepingAgent =
-		(await getAgentSessionManager()?.wakeWorkspace(input.workspaceId, input.message)) ?? false;
+	const wakeResult = await getAgentSessionManager()?.wakeWorkspace(
+		input.workspaceId,
+		input.message
+	);
+	if (wakeResult?.status === "ambiguous") {
+		throw new ResumeNotSupportedError(
+			`workspace has multiple managed agent targets: ${wakeResult.terminalIds.join(", ")}`
+		);
+	}
+	if (wakeResult?.status === "failed") {
+		throw new Error(`Failed to wake managed agent ${wakeResult.terminalId}: ${wakeResult.error}`);
+	}
+	const wokeSleepingAgent = wakeResult?.status === "woke";
 
 	if (!wokeSleepingAgent) {
 		if (target.cliPreset !== "claude" || !target.cliSessionId) {

@@ -2,8 +2,9 @@ import "./preload-electron-mock";
 import { afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { getDb } from "../src/main/db";
-import { projects, workspaces } from "../src/main/db/schema";
+import { agentSessions, projects, workspaces } from "../src/main/db/schema";
 import type {
+	AgentForegroundInspection,
 	AgentProcessController,
 	AgentTerminationResult,
 } from "../src/main/services/agent-process-controller";
@@ -43,18 +44,31 @@ function makeManager(options: {
 	settings?: AgentSleepSettings;
 	minuteMs?: number;
 	terminationResult?: AgentTerminationResult;
+	inspectionResult?: AgentForegroundInspection | (() => Promise<AgentForegroundInspection>);
+	terminalIds?: string[];
 }) {
 	const writes: Array<{ id: string; data: string }> = [];
 	const terminations: Array<{ terminalId: string; provider: string }> = [];
 	const daemon = {
 		isConnected: true,
-		listSessions: async () => [{ id: "term-1", cwd: "/tmp/worktree", pid: 123 }],
+		listSessions: async () =>
+			(options.terminalIds ?? ["term-1"]).map((id, index) => ({
+				id,
+				cwd: "/tmp/worktree",
+				pid: 123 + index,
+			})),
 		write: (id: string, data: string) => writes.push({ id, data }),
 	} as unknown as DaemonClient;
 	const processController: AgentProcessController = {
 		terminateForeground: async (terminalId, provider) => {
 			terminations.push({ terminalId, provider });
 			return options.terminationResult ?? { ok: true };
+		},
+		inspectForeground: async () => {
+			if (typeof options.inspectionResult === "function") {
+				return options.inspectionResult();
+			}
+			return options.inspectionResult ?? { status: "agent" };
 		},
 	};
 	const manager = new AgentSessionManager({
@@ -227,7 +241,7 @@ describe("AgentSessionManager", () => {
 
 		const woke = await fixture.manager.wakeWorkspace(workspaceId, "review the failures");
 
-		expect(woke).toBe(true);
+		expect(woke).toEqual({ status: "woke", terminalId: "term-1" });
 		expect(fixture.writes).toEqual([
 			{
 				id: "term-1",
@@ -259,5 +273,149 @@ describe("AgentSessionManager", () => {
 			state: "idle",
 			lastError: "foreground process changed",
 		});
+	});
+
+	test("keeps exactly one managed dispatch target and ignores newer unmanaged sessions", async () => {
+		const fixture = makeManager({
+			terminalIds: ["term-1", "term-2"],
+		});
+		managers.push(fixture.manager);
+		fixture.manager.registerManagedSession({
+			terminalId: "term-1",
+			workspaceId,
+			provider: "claude",
+			providerSessionId: "session-1",
+			skipPermissions: false,
+		});
+		fixture.manager.registerManagedSession({
+			terminalId: "term-2",
+			workspaceId,
+			provider: "codex",
+			providerSessionId: "session-2",
+			skipPermissions: false,
+		});
+
+		expect(fixture.manager.getSession("term-1")?.managed).toBe(false);
+		expect(fixture.manager.getSession("term-2")?.managed).toBe(true);
+
+		await fixture.manager.sleepNow("term-2");
+		await fixture.manager.sleepNow("term-1");
+		const result = await fixture.manager.wakeWorkspace(workspaceId, "continue");
+
+		expect(result).toEqual({ status: "woke", terminalId: "term-2" });
+		expect(fixture.writes).toEqual([
+			{
+				id: "term-2",
+				data: "codex resume 'session-2' 'continue'\r",
+			},
+		]);
+	});
+
+	test("fails closed when persisted data has multiple managed targets", async () => {
+		const fixture = makeManager({
+			terminalIds: ["term-1", "term-2"],
+		});
+		managers.push(fixture.manager);
+		for (const [terminalId, providerSessionId] of [
+			["term-1", "session-1"],
+			["term-2", "session-2"],
+		] as const) {
+			fixture.manager.registerManagedSession({
+				terminalId,
+				workspaceId,
+				provider: "claude",
+				providerSessionId,
+				skipPermissions: false,
+			});
+			await fixture.manager.sleepNow(terminalId);
+		}
+		getDb()
+			.update(agentSessions)
+			.set({ managed: true })
+			.where(eq(agentSessions.terminalId, "term-1"))
+			.run();
+
+		const result = await fixture.manager.wakeWorkspace(workspaceId, "do not misroute");
+
+		expect(result.status).toBe("ambiguous");
+		expect(fixture.writes).toHaveLength(0);
+	});
+
+	test("treats a cascaded session as a harmless automatic-sleep no-op", async () => {
+		const fixture = makeManager({ minuteMs: 5 });
+		managers.push(fixture.manager);
+		fixture.manager.registerManagedSession({
+			terminalId: "term-1",
+			workspaceId,
+			provider: "claude",
+			providerSessionId: "provider-session-1",
+			skipPermissions: false,
+		});
+		fixture.manager.handleAgentEvent(event("term-1", workspaceId));
+
+		getDb().delete(workspaces).where(eq(workspaces.id, workspaceId)).run();
+		await Bun.sleep(20);
+
+		expect(fixture.terminations).toHaveLength(0);
+		expect(fixture.manager.getSession("term-1")).toBeNull();
+	});
+
+	test("recovers an interrupted hibernation from the retained shell and wakes it", async () => {
+		const fixture = makeManager({ inspectionResult: { status: "shell" } });
+		managers.push(fixture.manager);
+		fixture.manager.registerManagedSession({
+			terminalId: "term-1",
+			workspaceId,
+			provider: "claude",
+			providerSessionId: "provider-session-1",
+			skipPermissions: false,
+		});
+		getDb()
+			.update(agentSessions)
+			.set({ state: "hibernating" })
+			.where(eq(agentSessions.terminalId, "term-1"))
+			.run();
+
+		await fixture.manager.reconcile();
+		expect(fixture.manager.getSession("term-1")?.state).toBe("hibernated");
+
+		await fixture.manager.setVisible("term-1", true);
+		expect(fixture.writes).toEqual([
+			{
+				id: "term-1",
+				data: "claude --resume 'provider-session-1'\r",
+			},
+		]);
+	});
+
+	test("does not overwrite a hook event that wins a reconciliation race", async () => {
+		let resolveInspection: ((value: AgentForegroundInspection) => void) | undefined;
+		const inspection = new Promise<AgentForegroundInspection>((resolve) => {
+			resolveInspection = resolve;
+		});
+		const fixture = makeManager({
+			inspectionResult: () => inspection,
+		});
+		managers.push(fixture.manager);
+		fixture.manager.registerManagedSession({
+			terminalId: "term-1",
+			workspaceId,
+			provider: "claude",
+			providerSessionId: "provider-session-1",
+			skipPermissions: false,
+		});
+		getDb()
+			.update(agentSessions)
+			.set({ state: "hibernating" })
+			.where(eq(agentSessions.terminalId, "term-1"))
+			.run();
+
+		const reconciliation = fixture.manager.reconcile();
+		await Bun.sleep(0);
+		fixture.manager.handleAgentEvent(event("term-1", workspaceId, "active"));
+		resolveInspection?.({ status: "shell" });
+		await reconciliation;
+
+		expect(fixture.manager.getSession("term-1")?.state).toBe("running");
 	});
 });

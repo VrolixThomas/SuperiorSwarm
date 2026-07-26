@@ -1,9 +1,11 @@
+import { homedir } from "node:os";
 import { eq } from "drizzle-orm";
 import { BrowserWindow, ipcMain } from "electron";
 import type { TerminalDataMeta } from "../../shared/daemon-protocol";
 import { getAgentNotifyPort, getAgentNotifyToken } from "../agent-hooks/port";
 import { getDb } from "../db";
 import { terminalSessions } from "../db/schema";
+import { ensureTerminalSessionRow } from "../db/session-persistence";
 import type { AgentSessionManager } from "../services/agent-session-manager";
 import { incrementCounter } from "../telemetry/state";
 import type { DaemonClient } from "./daemon-client";
@@ -28,9 +30,17 @@ export function setupTerminalIPC(
 			if (daemonClient.quitting) return { wasAttached: false };
 			const cwdStr = typeof cwd === "string" && cwd.length > 0 ? cwd : undefined;
 			const wsId = typeof workspaceId === "string" ? workspaceId : undefined;
+			const persistedCwd = cwdStr ?? homedir();
 
 			const window = BrowserWindow.fromWebContents(event.sender);
 			if (!window) return { wasAttached: false };
+			const insertedSessionRow = wsId
+				? ensureTerminalSessionRow({
+						id,
+						workspaceId: wsId,
+						cwd: persistedCwd,
+					})
+				: false;
 
 			const onData = (data: string, meta?: TerminalDataMeta) => {
 				if (!window.isDestroyed()) {
@@ -69,6 +79,9 @@ export function setupTerminalIPC(
 				incrementCounter(getDb(), "lifetimeSessionsStarted");
 				return { wasAttached: false };
 			} catch (error) {
+				if (insertedSessionRow) {
+					getDb().delete(terminalSessions).where(eq(terminalSessions.id, id)).run();
+				}
 				console.error(`Failed to create/attach terminal ${id}:`, error);
 				throw error;
 			}
@@ -138,8 +151,10 @@ export function setupTerminalIPC(
 	});
 
 	daemonClient.setConnectionStatusCallback((connected: boolean) => {
-		if (connected) {
-			agentSessionManager?.reconcile();
+		if (connected && agentSessionManager) {
+			void agentSessionManager.reconcile().catch((error) => {
+				console.error("[agent-session] failed to reconcile terminal processes:", error);
+			});
 		}
 		for (const win of BrowserWindow.getAllWindows()) {
 			if (!win.isDestroyed()) {

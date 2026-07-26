@@ -5,7 +5,11 @@ import { drizzle } from "drizzle-orm/better-sqlite3";
 import { getOrCreateAgentNotifyToken } from "../src/main/agent-hooks/auth-token";
 import { _setDbForTesting, getDb } from "../src/main/db";
 import * as schema from "../src/main/db/schema";
-import { savePaneLayouts, saveTerminalSessions } from "../src/main/db/session-persistence";
+import {
+	ensureTerminalSessionRow,
+	savePaneLayouts,
+	saveTerminalSessions,
+} from "../src/main/db/session-persistence";
 import {
 	getAgentSleepSettings,
 	setAgentSleepSettings,
@@ -106,6 +110,34 @@ describe("session persistence diffing", () => {
 		expect(row?.title).toBe("Renamed");
 		expect(row?.updatedAt.getTime()).toBe(old.getTime());
 		expect(row?.scrollback).toBe("valuable output");
+	});
+
+	test("creates terminal metadata before daemon output can be flushed", () => {
+		const inserted = ensureTerminalSessionRow({
+			id: "term-provisional",
+			workspaceId: "ws-provisional",
+			cwd: "/repo",
+		});
+		const duplicate = ensureTerminalSessionRow({
+			id: "term-provisional",
+			workspaceId: "different-workspace",
+			cwd: "/different",
+		});
+
+		expect(inserted).toBe(true);
+		expect(duplicate).toBe(false);
+		expect(
+			isolatedDb
+				.select()
+				.from(schema.terminalSessions)
+				.where(eq(schema.terminalSessions.id, "term-provisional"))
+				.get()
+		).toMatchObject({
+			workspaceId: "ws-provisional",
+			cwd: "/repo",
+			title: "Terminal",
+			scrollback: null,
+		});
 	});
 
 	test("pane layouts update only on change and remove absent layouts", () => {

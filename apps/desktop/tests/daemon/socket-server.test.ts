@@ -70,8 +70,10 @@ class MockPtyManager {
 
 class MockScrollbackStore {
 	flushes: Array<Array<{ id: string; buffer: string; cwd?: string }>> = [];
-	flush(sessions: Array<{ id: string; buffer: string; cwd?: string }>): void {
+	persistedIds: string[] | null = null;
+	flush(sessions: Array<{ id: string; buffer: string; cwd?: string }>): string[] {
 		this.flushes.push(sessions);
+		return this.persistedIds ?? sessions.map((session) => session.id);
 	}
 	close(): void {}
 }
@@ -130,11 +132,20 @@ describe("SocketServer", () => {
 	});
 
 	test("flush persists only dirty buffers and marks them clean", () => {
-		mockPty.dirtyBuffers = [{ id: "dirty-1", cwd: "/tmp", buffer: "changed output" }];
+		mockPty.dirtyBuffers = [
+			{ id: "dirty-1", cwd: "/tmp", buffer: "changed output" },
+			{ id: "missing-row", cwd: "/tmp", buffer: "retry this output" },
+		];
+		mockStore.persistedIds = ["dirty-1"];
 
 		server.flush();
 
-		expect(mockStore.flushes).toEqual([[{ id: "dirty-1", cwd: "/tmp", buffer: "changed output" }]]);
+		expect(mockStore.flushes).toEqual([
+			[
+				{ id: "dirty-1", cwd: "/tmp", buffer: "changed output" },
+				{ id: "missing-row", cwd: "/tmp", buffer: "retry this output" },
+			],
+		]);
 		expect(mockPty.flushedIds).toEqual(["dirty-1"]);
 
 		mockPty.dirtyBuffers = [];
