@@ -18,6 +18,15 @@ interface ZoneEntry {
 	signature: string;
 }
 
+type ThreadSide = UnifiedThread["diffSide"];
+
+function editorForSide(
+	editor: monaco.editor.IStandaloneDiffEditor,
+	side: ThreadSide
+): monaco.editor.IStandaloneCodeEditor {
+	return side === "LEFT" ? editor.getOriginalEditor() : editor.getModifiedEditor();
+}
+
 function threadSignature(t: UnifiedThread): string {
 	if (t.isAIDraft) {
 		const ai = t as AIDraftThread;
@@ -43,14 +52,14 @@ function makeZoneNode(): { domNode: HTMLElement; inner: HTMLElement } {
 
 function disposeZones(
 	editor: monaco.editor.IStandaloneDiffEditor | null,
+	side: ThreadSide,
 	entries: ZoneEntry[]
 ): void {
 	if (entries.length === 0) return;
 
 	if (editor) {
 		try {
-			const modEditor = editor.getModifiedEditor();
-			modEditor.changeViewZones((acc) => {
+			editorForSide(editor, side).changeViewZones((acc) => {
 				for (const entry of entries) acc.removeZone(entry.zoneId);
 			});
 		} catch {
@@ -100,6 +109,7 @@ function NewThreadWidget({
  */
 export function useInlineCommentZones(
 	editor: monaco.editor.IStandaloneDiffEditor | null,
+	side: ThreadSide,
 	threads: UnifiedThread[],
 	pendingLine: number | null,
 	renderThread: (thread: UnifiedThread) => ReactNode,
@@ -121,7 +131,7 @@ export function useInlineCommentZones(
 		if (previousEditor && previousEditor !== editor) {
 			const entries = [...zonesRef.current.values()];
 			if (pendingZoneRef.current) entries.push(pendingZoneRef.current);
-			disposeZones(previousEditor, entries);
+			disposeZones(previousEditor, side, entries);
 			zonesRef.current.clear();
 			pendingZoneRef.current = null;
 			lastEditorRef.current = null;
@@ -130,8 +140,8 @@ export function useInlineCommentZones(
 
 		lastEditorRef.current = editor;
 
-		const modEditor = editor.getModifiedEditor();
-		const lineHeight = modEditor.getOption(monaco.editor.EditorOption.lineHeight);
+		const codeEditor = editorForSide(editor, side);
+		const lineHeight = codeEditor.getOption(monaco.editor.EditorOption.lineHeight);
 
 		const byLine = new Map<number, UnifiedThread[]>();
 		for (const t of threads) {
@@ -158,7 +168,7 @@ export function useInlineCommentZones(
 			if (contentPx === 0) return;
 			const heightInLines = Math.max(1, Math.ceil(contentPx / lineHeight));
 			if (heightInLines === entry.heightInLines) return;
-			modEditor.changeViewZones((acc) => {
+			codeEditor.changeViewZones((acc) => {
 				acc.removeZone(entry.zoneId);
 				entry.zoneId = acc.addZone({
 					afterLineNumber: line,
@@ -175,7 +185,7 @@ export function useInlineCommentZones(
 			resizeZone(entry, entry.line);
 		};
 
-		modEditor.changeViewZones((acc) => {
+		codeEditor.changeViewZones((acc) => {
 			// Remove zones whose line no longer has threads.
 			for (const [line, entry] of zonesRef.current) {
 				if (!byLine.has(line)) {
@@ -265,7 +275,7 @@ export function useInlineCommentZones(
 				);
 			}
 		});
-	}, [editor, threads, pendingLine, renderThread, onSaveNew, onCancelNew]);
+	}, [editor, side, threads, pendingLine, renderThread, onSaveNew, onCancelNew]);
 
 	useEffect(() => {
 		// Final teardown when the component unmounts. The captured editor is the
@@ -275,10 +285,10 @@ export function useInlineCommentZones(
 			const ed = lastEditorRef.current;
 			const entries = [...zonesRef.current.values()];
 			if (pendingZoneRef.current) entries.push(pendingZoneRef.current);
-			disposeZones(ed, entries);
+			disposeZones(ed, side, entries);
 			zonesRef.current.clear();
 			pendingZoneRef.current = null;
 			lastEditorRef.current = null;
 		};
-	}, []);
+	}, [side]);
 }

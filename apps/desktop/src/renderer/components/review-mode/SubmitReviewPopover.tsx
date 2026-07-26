@@ -4,14 +4,13 @@ import {
 	type ReviewVerdict,
 	type SubmitOutcome,
 	hasSubmitPayload,
-	postAcceptedDrafts,
 } from "../../lib/pr-review-submit";
 import { threadExcerpt } from "../../lib/pr-review-threads";
 import { trpc } from "../../trpc/client";
 
 interface SubmitReviewPopoverProps {
 	prCtx: PRContext;
-	headCommitOid: string;
+	draftId: string | null;
 	acceptedThreads: AIDraftThread[];
 	pendingCount: number;
 	onClose: () => void;
@@ -30,7 +29,7 @@ function lineLabel(thread: AIDraftThread): string {
 
 export function SubmitReviewPopover({
 	prCtx,
-	headCommitOid,
+	draftId,
 	acceptedThreads,
 	pendingCount,
 	onClose,
@@ -42,14 +41,14 @@ export function SubmitReviewPopover({
 	const [submitting, setSubmitting] = useState(false);
 	const [outcome, setOutcome] = useState<SubmitOutcome | null>(null);
 	const utils = trpc.useUtils();
-	const createInlineComment = trpc.review.createInlineComment.useMutation();
 	const updateDraftComment = trpc.aiReview.updateDraftComment.useMutation({
 		onSuccess: () => {
 			void utils.aiReview.getReviewDrafts.invalidate();
 			void utils.aiReview.getReviewDraft.invalidate();
 		},
 	});
-	const submitReview = trpc.review.submitReview.useMutation();
+	const publishDraftReview = trpc.aiReview.submitReview.useMutation();
+	const submitProviderReview = trpc.review.submitReview.useMutation();
 	const nothingToSubmit = !hasSubmitPayload(acceptedThreads.length, verdict, body);
 	const canSubmit = !submitting && !nothingToSubmit;
 
@@ -83,23 +82,67 @@ export function SubmitReviewPopover({
 		if (!canSubmit) return;
 		setSubmitting(true);
 		setOutcome(null);
-		const result = await postAcceptedDrafts({
-			prCtx,
-			headCommitOid,
-			threads: acceptedThreads,
-			verdict,
-			body,
-			deps: {
-				createReviewThread: (input) =>
-					createInlineComment.mutateAsync({ provider: prCtx.provider, ...input }),
-				updateDraftComment: updateDraftComment.mutateAsync,
-				submitReview: (input) => submitReview.mutateAsync({ provider: prCtx.provider, ...input }),
-			},
-		});
-		setOutcome(result);
-		setSubmitting(false);
-		if (result.failed === 0 && (result.posted > 0 || result.verdictSubmitted)) {
+		try {
+			if (draftId) {
+				const result = await publishDraftReview.mutateAsync({ draftId, verdict, body });
+				const mapped: SubmitOutcome = {
+					posted: result.postedCount,
+					failed: result.failedCount,
+					skipped: result.skippedCount,
+					errors: result.errors,
+					verdictSubmitted: result.verdictSubmitted,
+					skippedVerdict:
+						!result.verdictSubmitted &&
+						(verdict !== "COMMENT" || body.trim().length > 0) &&
+						(result.failedCount > 0 || result.skippedCount > 0),
+				};
+				setOutcome(mapped);
+				if (result.success && (result.postedCount > 0 || result.verdictSubmitted)) {
+					onSubmitted();
+				}
+				return;
+			}
+
+			if (acceptedThreads.length > 0) {
+				setOutcome({
+					posted: 0,
+					failed: acceptedThreads.length,
+					skipped: 0,
+					errors: ["The review draft is unavailable. Refresh Review Mode and try again."],
+					verdictSubmitted: false,
+					skippedVerdict: true,
+				});
+				return;
+			}
+
+			await submitProviderReview.mutateAsync({
+				provider: prCtx.provider,
+				owner: prCtx.owner,
+				repo: prCtx.repo,
+				prNumber: prCtx.number,
+				verdict,
+				body: body.trim(),
+			});
+			setOutcome({
+				posted: 0,
+				failed: 0,
+				skipped: 0,
+				errors: [],
+				verdictSubmitted: true,
+				skippedVerdict: false,
+			});
 			onSubmitted();
+		} catch (err) {
+			setOutcome({
+				posted: 0,
+				failed: 1,
+				skipped: 0,
+				errors: [err instanceof Error ? err.message : "Review submission failed"],
+				verdictSubmitted: false,
+				skippedVerdict: false,
+			});
+		} finally {
+			setSubmitting(false);
 		}
 	};
 
@@ -185,7 +228,7 @@ export function SubmitReviewPopover({
 					<div
 						className={[
 							"rounded-[var(--radius-sm)] px-3 py-2 text-[12px]",
-							outcome.failed > 0
+							outcome.failed > 0 || outcome.skipped > 0
 								? "bg-[var(--danger-subtle)] text-[var(--color-danger)]"
 								: "bg-[var(--success-subtle)] text-[var(--color-success)]",
 						].join(" ")}
@@ -193,6 +236,7 @@ export function SubmitReviewPopover({
 						<div>
 							{outcome.posted} posted
 							{outcome.failed > 0 ? ` · ${outcome.failed} failed` : ""}
+							{outcome.skipped > 0 ? ` · ${outcome.skipped} skipped` : ""}
 							{outcome.skippedVerdict ? " · verdict skipped" : ""}
 						</div>
 						{outcome.errors.length > 0 && (

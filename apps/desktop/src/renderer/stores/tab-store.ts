@@ -191,6 +191,7 @@ interface TabStore {
 		cwd: string,
 		options?: { rightPanel?: RightPanelState; recordHistory?: boolean }
 	) => void;
+	activateReviewWorkspace: (workspaceId: string, cwd: string, prCtx: PRContext) => void;
 	canGoBackWorkspace: () => boolean;
 	canGoForwardWorkspace: () => boolean;
 	goBackWorkspace: () => boolean;
@@ -597,7 +598,44 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 		}
 	},
 
+	activateReviewWorkspace: (workspaceId, cwd, prCtx) => {
+		const resolvedPrCtx = { ...prCtx, repoPath: cwd };
+		get().setWorkspaceMetadata(workspaceId, {
+			type: "review",
+			prProvider: resolvedPrCtx.provider,
+			prIdentifier: formatPrIdentifier(resolvedPrCtx),
+			prTitle: resolvedPrCtx.title,
+			sourceBranch: resolvedPrCtx.sourceBranch,
+			targetBranch: resolvedPrCtx.targetBranch,
+		});
+		set((state) => ({
+			sidebarSegment: "prs",
+			activeWorkspaceBySegment: {
+				...state.activeWorkspaceBySegment,
+				repos:
+					state.activeWorkspaceBySegment.repos?.id === workspaceId
+						? null
+						: state.activeWorkspaceBySegment.repos,
+				tickets:
+					state.activeWorkspaceBySegment.tickets?.id === workspaceId
+						? null
+						: state.activeWorkspaceBySegment.tickets,
+			},
+		}));
+		get().setActiveWorkspace(workspaceId, cwd);
+		useReviewModeStore.getState().open(workspaceId, resolvedPrCtx);
+	},
+
 	setActiveWorkspace: (workspaceId, cwd, options) => {
+		if (
+			options?.rightPanel?.open &&
+			options.rightPanel.mode === "pr-review" &&
+			options.rightPanel.prCtx
+		) {
+			get().activateReviewWorkspace(workspaceId, cwd, options.rightPanel.prCtx);
+			return;
+		}
+
 		const current = get();
 		const previousEntry = current.activeWorkspaceId
 			? { id: current.activeWorkspaceId, cwd: current.activeWorkspaceCwd }
@@ -632,20 +670,6 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 
 		// If a rightPanel override is supplied, honour it and skip type detection
 		if (options?.rightPanel) {
-			if (
-				options.rightPanel.open &&
-				options.rightPanel.mode === "pr-review" &&
-				options.rightPanel.prCtx
-			) {
-				useReviewModeStore.getState().open(workspaceId, options.rightPanel.prCtx);
-				set({
-					activeWorkspaceId: workspaceId,
-					activeWorkspaceCwd: cwd,
-					rightPanel: defaultPanelForCwd(cwd),
-					pendingWorkspaceHistoryEntry: null,
-				});
-				return;
-			}
 			set({
 				activeWorkspaceId: workspaceId,
 				activeWorkspaceCwd: cwd,
@@ -756,25 +780,26 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 	},
 
 	openPRReviewPanel: (workspaceId, prCtx) => {
-		useReviewModeStore.getState().open(workspaceId, prCtx);
-		if (get().activeWorkspaceId === workspaceId) {
-			set({ rightPanel: defaultPanelForCwd(get().activeWorkspaceCwd) });
-		}
+		const cwd = get().activeWorkspaceId === workspaceId ? get().activeWorkspaceCwd : prCtx.repoPath;
+		get().activateReviewWorkspace(workspaceId, cwd, prCtx);
 	},
 	openPRReviewFile: (workspaceId, prCtx, filePath, language) => {
 		void language;
+		get().activateReviewWorkspace(workspaceId, prCtx.repoPath, prCtx);
 		openThreadInChanges(workspaceId, prCtx, filePath);
 		return "review-mode";
 	},
 
 	swapPRReviewFile: (workspaceId, prCtx, filePath, language) => {
 		void language;
+		get().activateReviewWorkspace(workspaceId, prCtx.repoPath, prCtx);
 		openThreadInChanges(workspaceId, prCtx, filePath);
 		return "review-mode";
 	},
 
 	openPROverview: (workspaceId, prCtx) => {
-		useReviewModeStore.getState().open(workspaceId, prCtx);
+		get().activateReviewWorkspace(workspaceId, prCtx.repoPath, prCtx);
+		useReviewModeStore.getState().setView("overview");
 		return "review-mode";
 	},
 
@@ -1289,6 +1314,14 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 			workspaceForwardStack: [],
 			pendingWorkspaceHistoryEntry: null,
 		});
+
+		const restoredReview =
+			sidebarSegment === "prs" && activeId
+				? prCtxFromReviewMetadata(activeMeta, activeCwdResolved)
+				: null;
+		if (restoredReview && activeId) {
+			useReviewModeStore.getState().open(activeId, restoredReview);
+		}
 	},
 }));
 

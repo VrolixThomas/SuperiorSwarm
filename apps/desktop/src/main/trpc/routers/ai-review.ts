@@ -383,11 +383,12 @@ export const aiReviewRouter = router({
 			})
 		)
 		.mutation(async ({ input }) => {
-			// If user provided a body, update the draft's summary before publishing
-			if (input.body?.trim()) {
+			// An explicitly supplied body is authoritative, including an empty body
+			// when the user chooses to submit only inline comments or a verdict.
+			if (input.body !== undefined) {
 				const db = getDb();
 				db.update(schema.reviewDrafts)
-					.set({ summaryMarkdown: input.body.trim(), updatedAt: new Date() })
+					.set({ summaryMarkdown: input.body.trim() || null, updatedAt: new Date() })
 					.where(eq(schema.reviewDrafts.id, input.draftId))
 					.run();
 			}

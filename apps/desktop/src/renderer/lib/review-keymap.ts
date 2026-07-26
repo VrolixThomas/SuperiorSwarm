@@ -16,6 +16,7 @@ export type ReviewKeyAction =
 	| "edit"
 	| "reply"
 	| "open-in-changes"
+	| "open-in-comments"
 	| "toggle-navigator";
 
 export function mapReviewKey(
@@ -48,6 +49,8 @@ export function mapReviewKey(
 				return "next-thread";
 			case "p":
 				return "prev-thread";
+			case "o":
+				return "open-in-comments";
 		}
 	}
 	if (view === "comments") {

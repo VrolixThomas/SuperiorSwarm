@@ -37,7 +37,7 @@ export function useReviewAgentActions({
 	}) => {
 		void utils.aiReview.getReviewDrafts.invalidate();
 		void utils.aiReview.getReviewDraft.invalidate();
-		launchReviewTerminal(launchInfo, prCtx, {
+		launchReviewTerminal(launchInfo, {
 			attachTerminal: (input) => attachTerminal.mutate(input),
 			writeTerminal: (tabId, data) => window.electron.terminal.write(tabId, data),
 		});

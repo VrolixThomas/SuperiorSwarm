@@ -10,8 +10,9 @@ import {
 	type ThreadFilter,
 	draftStatusAfterEdit,
 	fileCommentCounts,
+	matchesReviewFilter,
 } from "../../lib/pr-review-threads";
-import { openThreadInChanges } from "../../lib/review-mode-nav";
+import { openThreadInChanges, openThreadInComments } from "../../lib/review-mode-nav";
 import { useReviewModeStore } from "../../stores/review-mode-store";
 import { useTabStore } from "../../stores/tab-store";
 import { trpc } from "../../trpc/client";
@@ -35,7 +36,9 @@ export function ReviewModeShell() {
 
 	if (!active) return null;
 
-	return <ActiveReviewModeShell active={active} />;
+	const { workspaceId, prCtx } = active;
+	const reviewIdentity = `${workspaceId}:${prCtx.provider}:${prCtx.owner}/${prCtx.repo}#${prCtx.number}`;
+	return <ActiveReviewModeShell key={reviewIdentity} active={active} />;
 }
 
 function ActiveReviewModeShell({ active }: { active: ActiveReview }) {
@@ -128,6 +131,12 @@ function ActiveReviewModeShell({ active }: { active: ActiveReview }) {
 	const callbacks = useMemo<ThreadCallbacks>(() => {
 		const navigation: ThreadCallbacks = {
 			onOpenInChanges: (path, threadId) => openThreadInChanges(workspaceId, prCtx, path, threadId),
+			onOpenInComments: (path, threadId) => {
+				const thread = allThreads.find((candidate) => candidate.id === threadId);
+				const filter = useReviewModeStore.getState().commentFilter;
+				if (thread && !matchesReviewFilter(thread, filter)) setCommentFilter("all");
+				openThreadInComments(workspaceId, prCtx, path, threadId);
+			},
 		};
 		if (!isOpen) return navigation;
 
@@ -173,12 +182,14 @@ function ActiveReviewModeShell({ active }: { active: ActiveReview }) {
 		};
 	}, [
 		addReviewComment,
+		allThreads,
 		deleteDraftComment,
 		isOpen,
 		prCtx,
 		replyToPRComment,
 		resolvePRComment,
 		resolveThread,
+		setCommentFilter,
 		updateDraftComment,
 		workspaceId,
 	]);
@@ -300,7 +311,7 @@ function ActiveReviewModeShell({ active }: { active: ActiveReview }) {
 						{submitOpen && details && canSubmitReview && (
 							<SubmitReviewPopover
 								prCtx={prCtx}
-								headCommitOid={details.headCommitOid}
+								draftId={aiDraft?.id ?? null}
 								acceptedThreads={acceptedThreads}
 								pendingCount={pendingCount}
 								onClose={() => setSubmitOpen(false)}
@@ -378,7 +389,6 @@ function ActiveReviewModeShell({ active }: { active: ActiveReview }) {
 							fileOrder={fileOrder}
 							sessionKey={sessionKey}
 							callbacks={callbacks}
-							readOnly={!isOpen}
 						/>
 					) : view === "changes" && details ? (
 						<ChangesView
@@ -389,6 +399,7 @@ function ActiveReviewModeShell({ active }: { active: ActiveReview }) {
 							fileOrder={fileOrder}
 							sessionKey={sessionKey}
 							callbacks={callbacks}
+							readOnly={!isOpen}
 						/>
 					) : (
 						<div className="p-8 text-[13px] text-[var(--text-tertiary)]">

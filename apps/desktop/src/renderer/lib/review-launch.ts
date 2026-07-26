@@ -1,6 +1,4 @@
-import type { PRContext } from "../../shared/github-types";
 import { useReviewModeStore } from "../stores/review-mode-store";
-import { useTabStore } from "../stores/tab-store";
 
 export interface ReviewLaunchInfo {
 	reviewWorkspaceId?: string | null;
@@ -16,26 +14,18 @@ export interface ReviewLaunchDeps {
 }
 
 /**
- * Single launch sequence for an AI review terminal: metadata, terminal
- * registration, drawer, PTY attach, and delayed launch-script write.
+ * Single launch sequence for an AI review terminal: terminal registration,
+ * drawer, PTY attach, and delayed launch-script write. Workspace metadata and
+ * Review Mode activation are registered by activateReviewWorkspace first.
  * Returns false (doing nothing) when the launch info is incomplete.
  */
 export function launchReviewTerminal(
 	launchInfo: ReviewLaunchInfo,
-	prCtx: PRContext,
 	deps: ReviewLaunchDeps
 ): boolean {
 	const { reviewWorkspaceId, worktreePath, launchScript } = launchInfo;
 	if (!reviewWorkspaceId || !worktreePath || !launchScript) return false;
 
-	useTabStore.getState().setWorkspaceMetadata(reviewWorkspaceId, {
-		type: "review",
-		prProvider: prCtx.provider,
-		prIdentifier: `${prCtx.owner}/${prCtx.repo}#${prCtx.number}`,
-		prTitle: prCtx.title,
-		sourceBranch: prCtx.sourceBranch,
-		targetBranch: prCtx.targetBranch,
-	});
 	const tabId = deps.newTabId?.() ?? `terminal-${crypto.randomUUID()}`;
 	useReviewModeStore.getState().setTerminal({
 		tabId,

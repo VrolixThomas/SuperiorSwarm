@@ -554,6 +554,69 @@ describe("review workspace activation", () => {
 		});
 	});
 
+	test("activateReviewWorkspace registers metadata before selecting the PR segment", () => {
+		const store = useTabStore.getState();
+		store.setActiveWorkspace("ws-project", "/path/to/project");
+
+		store.activateReviewWorkspace("ws-review-1", "/path/to/review", {
+			provider: "github",
+			owner: "owner",
+			repo: "repo",
+			number: 16,
+			title: "Create Claude.md",
+			sourceBranch: "patch-testreview",
+			targetBranch: "main",
+			repoPath: "/path/to/project",
+		});
+
+		const state = useTabStore.getState();
+		expect(state.sidebarSegment).toBe("prs");
+		expect(state.activeWorkspaceId).toBe("ws-review-1");
+		expect(state.activeWorkspaceBySegment.repos).toEqual({
+			id: "ws-project",
+			cwd: "/path/to/project",
+		});
+		expect(state.activeWorkspaceBySegment.prs).toEqual({
+			id: "ws-review-1",
+			cwd: "/path/to/review",
+		});
+		expect(state.workspaceMetadata["ws-review-1"]?.type).toBe("review");
+		expect(state.rightPanel).toEqual(PANEL_CLOSED);
+		expect(
+			shouldShowReviewMode(
+				state.sidebarSegment,
+				state.activeWorkspaceId,
+				useReviewModeStore.getState().active
+			)
+		).toBe(true);
+	});
+
+	test("legacy PR panel opener uses the same PR-segment activation transition", () => {
+		const store = useTabStore.getState();
+		store.setActiveWorkspace("ws-project", "/path/to/project");
+
+		store.openPRReviewPanel("ws-review-legacy", {
+			provider: "github",
+			owner: "owner",
+			repo: "repo",
+			number: 17,
+			title: "Legacy opener",
+			sourceBranch: "legacy-review",
+			targetBranch: "main",
+			repoPath: "/path/to/legacy-review",
+		});
+
+		const state = useTabStore.getState();
+		expect(state.sidebarSegment).toBe("prs");
+		expect(state.activeWorkspaceId).toBe("ws-review-legacy");
+		expect(state.activeWorkspaceBySegment.prs).toEqual({
+			id: "ws-review-legacy",
+			cwd: "/path/to/legacy-review",
+		});
+		expect(state.workspaceMetadata["ws-review-legacy"]?.type).toBe("review");
+		expect(useReviewModeStore.getState().active?.prCtx.number).toBe(17);
+	});
+
 	test("setActiveWorkspace with non-review type uses default diff panel", () => {
 		const store = useTabStore.getState();
 		store.setActiveWorkspace("ws-branch-1", "/path/to/repo");
@@ -640,6 +703,66 @@ describe("hydrate", () => {
 		expect(tabs).toHaveLength(2);
 		expect(getActiveTabId()).toBe("terminal-1");
 		expect(useTabStore.getState().activeWorkspaceId).toBe("ws-1");
+	});
+
+	test("reopens Review Mode for a persisted active PR workspace", () => {
+		const workspaceMetadata = {
+			"ws-review-1": {
+				type: "review",
+				prProvider: "github",
+				prIdentifier: "owner/repo#16",
+				prTitle: "Create Claude.md",
+				sourceBranch: "patch-testreview",
+				targetBranch: "main",
+			},
+		};
+		const activeWorkspaceBySegment = {
+			repos: null,
+			tickets: null,
+			prs: { id: "ws-review-1", cwd: "/path/to/review" },
+		};
+
+		useTabStore.getState().hydrate(
+			[
+				{
+					id: "terminal-review",
+					workspaceId: "ws-review-1",
+					title: "Review",
+					cwd: "/path/to/review",
+				},
+			],
+			"terminal-review",
+			"ws-review-1",
+			"/path/to/review",
+			{
+				sidebarSegment: "prs",
+				workspaceMetadata: JSON.stringify(workspaceMetadata),
+				activeWorkspaceBySegment: JSON.stringify(activeWorkspaceBySegment),
+			}
+		);
+
+		const state = useTabStore.getState();
+		expect(state.rightPanel).toEqual(PANEL_CLOSED);
+		expect(useReviewModeStore.getState().active).toEqual({
+			workspaceId: "ws-review-1",
+			prCtx: {
+				provider: "github",
+				owner: "owner",
+				repo: "repo",
+				number: 16,
+				title: "Create Claude.md",
+				sourceBranch: "patch-testreview",
+				targetBranch: "main",
+				repoPath: "/path/to/review",
+			},
+		});
+		expect(
+			shouldShowReviewMode(
+				state.sidebarSegment,
+				state.activeWorkspaceId,
+				useReviewModeStore.getState().active
+			)
+		).toBe(true);
 	});
 });
 

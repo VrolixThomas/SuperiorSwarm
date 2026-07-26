@@ -534,7 +534,6 @@ function RailPRsSection({ flyout, openFlyout, scheduleDismiss, onExpand }: RailS
 
 	const navigateToWorkspace = useCallback((ws: LinkedWorkspace, ghPR?: GitHubPR) => {
 		const store = useTabStore.getState();
-		store.setActiveWorkspace(ws.workspaceId, ws.worktreePath);
 		if (ghPR) {
 			const prCtx: PRContext = {
 				provider: "github",
@@ -546,7 +545,9 @@ function RailPRsSection({ flyout, openFlyout, scheduleDismiss, onExpand }: RailS
 				targetBranch: "main",
 				repoPath: ws.worktreePath,
 			};
-			store.openPRReviewPanel(ws.workspaceId, prCtx);
+			store.activateReviewWorkspace(ws.workspaceId, ws.worktreePath, prCtx);
+		} else {
+			store.setActiveWorkspace(ws.workspaceId, ws.worktreePath);
 		}
 		const existing = store.getTabsByWorkspace(ws.workspaceId);
 		const hasTerminal = existing.some((t) => t.kind === "terminal");

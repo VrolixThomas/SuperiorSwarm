@@ -1,4 +1,5 @@
 import type { PRContext } from "../../shared/github-types";
+import { useTabStore } from "../stores/tab-store";
 import { openThreadInChanges } from "./review-mode-nav";
 
 /**
@@ -12,5 +13,6 @@ export function navigateToReviewFile(
 	path: string,
 	threadId?: string
 ): void {
+	useTabStore.getState().activateReviewWorkspace(workspaceId, prCtx.repoPath, prCtx);
 	openThreadInChanges(workspaceId, prCtx, path, threadId);
 }

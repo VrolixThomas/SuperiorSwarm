@@ -194,10 +194,13 @@ export function PullRequestsTab() {
 					if (launchInfo.reviewWorkspaceId && launchInfo.worktreePath) {
 						useTabStore
 							.getState()
-							.setActiveWorkspace(launchInfo.reviewWorkspaceId, launchInfo.worktreePath);
-						useReviewModeStore.getState().open(launchInfo.reviewWorkspaceId, prCtx);
+							.activateReviewWorkspace(
+								launchInfo.reviewWorkspaceId,
+								launchInfo.worktreePath,
+								prCtx
+							);
 					}
-					launchReviewTerminal(launchInfo, prCtx, {
+					launchReviewTerminal(launchInfo, {
 						attachTerminal: (input) => attachTerminalRef.current(input),
 						writeTerminal: (tabId, data) => window.electron.terminal.write(tabId, data),
 					});
@@ -555,7 +558,6 @@ export function PullRequestsTab() {
 
 	const navigateToWorkspace = useCallback((ws: LinkedWorkspace, pr: MergedPR) => {
 		const store = useTabStore.getState();
-		store.setActiveWorkspace(ws.workspaceId, ws.worktreePath);
 
 		if (pr.githubPR) {
 			const prCtx: PRContext = {
@@ -568,7 +570,9 @@ export function PullRequestsTab() {
 				targetBranch: "main",
 				repoPath: ws.worktreePath,
 			};
-			store.openPRReviewPanel(ws.workspaceId, prCtx);
+			store.activateReviewWorkspace(ws.workspaceId, ws.worktreePath, prCtx);
+		} else {
+			store.setActiveWorkspace(ws.workspaceId, ws.worktreePath);
 		}
 
 		const existing = store.getTabsByWorkspace(ws.workspaceId);
@@ -617,16 +621,7 @@ export function PullRequestsTab() {
 				// (getCommitsAhead, getBranchDiff) run in the correct directory
 				const resolvedPrCtx = { ...prCtx, repoPath: cwd };
 				const tabStore = useTabStore.getState();
-				tabStore.setWorkspaceMetadata(ws.id, {
-					type: "review",
-					prProvider: resolvedPrCtx.provider,
-					prIdentifier: `${resolvedPrCtx.owner}/${resolvedPrCtx.repo}#${resolvedPrCtx.number}`,
-					prTitle: resolvedPrCtx.title,
-					sourceBranch: resolvedPrCtx.sourceBranch,
-					targetBranch: resolvedPrCtx.targetBranch,
-				});
-				tabStore.setActiveWorkspace(ws.id, cwd);
-				useReviewModeStore.getState().open(ws.id, resolvedPrCtx);
+				tabStore.activateReviewWorkspace(ws.id, cwd, resolvedPrCtx);
 			} finally {
 				openingPRRef.current = null;
 			}

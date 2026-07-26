@@ -22,5 +22,29 @@ export function openThreadInChanges(
 	) {
 		reviewMode.open(workspaceId, prCtx);
 	}
-	useReviewModeStore.getState().setView("changes");
+	const activeReviewMode = useReviewModeStore.getState();
+	activeReviewMode.setPublishedCommentsVisible(true);
+	activeReviewMode.setView("changes");
+}
+
+/** Open the Comments view focused on a thread without changing the active filter. */
+export function openThreadInComments(
+	workspaceId: string,
+	prCtx: PRContext,
+	path: string,
+	threadId: string
+): void {
+	const sessionKey = prReviewSessionKey(workspaceId, formatPrIdentifier(prCtx));
+	const session = usePRReviewSessionStore.getState();
+	const reviewMode = useReviewModeStore.getState();
+	session.selectFile(sessionKey, path);
+	session.selectThread(sessionKey, threadId);
+	if (
+		!reviewMode.active ||
+		reviewMode.active.workspaceId !== workspaceId ||
+		formatPrIdentifier(reviewMode.active.prCtx) !== formatPrIdentifier(prCtx)
+	) {
+		reviewMode.open(workspaceId, prCtx);
+	}
+	useReviewModeStore.getState().setView("comments");
 }

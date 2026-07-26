@@ -27,6 +27,7 @@ describe("mapReviewKey", () => {
 		expect(mapReviewKey(ev("c"), "changes")).toBe("new-comment");
 		expect(mapReviewKey(ev("n"), "changes")).toBe("next-thread");
 		expect(mapReviewKey(ev("p"), "changes")).toBe("prev-thread");
+		expect(mapReviewKey(ev("o"), "changes")).toBe("open-in-comments");
 		expect(mapReviewKey(ev("v"), "comments")).toBeNull();
 	});
 	test("comments-only triage keys", () => {

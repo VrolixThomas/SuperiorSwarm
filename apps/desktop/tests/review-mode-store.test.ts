@@ -23,6 +23,7 @@ function reset() {
 		drawerHeight: 300,
 		terminals: {},
 		commentFilter: "all",
+		publishedCommentsVisible: true,
 		intent: null,
 	});
 }
@@ -38,6 +39,7 @@ describe("review-mode-store", () => {
 		expect(useReviewModeStore.getState().drawerHeight).toBe(300);
 		expect(useReviewModeStore.getState().terminals).toEqual({});
 		expect(useReviewModeStore.getState().commentFilter).toBe("all");
+		expect(useReviewModeStore.getState().publishedCommentsVisible).toBe(true);
 		expect(useReviewModeStore.getState().intent).toBeNull();
 	});
 
@@ -173,5 +175,18 @@ describe("review-mode-store", () => {
 
 		useReviewModeStore.getState().toggleNavigator();
 		expect(useReviewModeStore.getState().navigatorCollapsed).toBe(false);
+	});
+
+	test("published comment visibility survives view and workspace switches", () => {
+		const store = useReviewModeStore.getState();
+		store.setPublishedCommentsVisible(false);
+		store.setView("comments");
+		store.open("ws-1", prCtx);
+		store.open("ws-2", { ...prCtx, number: 2 });
+
+		expect(useReviewModeStore.getState().publishedCommentsVisible).toBe(false);
+
+		useReviewModeStore.getState().togglePublishedComments();
+		expect(useReviewModeStore.getState().publishedCommentsVisible).toBe(true);
 	});
 });

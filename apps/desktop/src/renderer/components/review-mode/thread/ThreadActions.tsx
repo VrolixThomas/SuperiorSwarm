@@ -1,5 +1,11 @@
 import type { ReactNode } from "react";
 import type { UnifiedThread } from "../../../../shared/github-types";
+import {
+	canAcceptDraft,
+	canDeclineDraft,
+	canEditDraft,
+	canReplyToThread,
+} from "../../../lib/pr-review-threads";
 import type { ThreadCallbacks } from "./ThreadCard";
 
 interface GhostButtonProps {
@@ -36,6 +42,7 @@ interface ThreadActionsProps {
 	onStartReply: () => void;
 	onStartEdit: () => void;
 	showOpenInChanges?: boolean;
+	showOpenInComments?: boolean;
 }
 
 export function ThreadActions({
@@ -44,17 +51,14 @@ export function ThreadActions({
 	onStartReply,
 	onStartEdit,
 	showOpenInChanges = false,
+	showOpenInComments = false,
 }: ThreadActionsProps) {
 	const buttons: ReactNode[] = [];
 
 	if (thread.isAIDraft) {
-		const canAccept = thread.status === "pending" || thread.status === "edited";
-		const canEdit =
-			thread.status === "pending" ||
-			thread.status === "edited" ||
-			thread.status === "user-pending" ||
-			thread.status === "approved";
-		const canDecline = canEdit;
+		const canAccept = canAcceptDraft(thread);
+		const canEdit = canEditDraft(thread);
+		const canDecline = canDeclineDraft(thread);
 
 		if (canAccept && callbacks.onAccept) {
 			buttons.push(
@@ -91,7 +95,7 @@ export function ThreadActions({
 				/>
 			);
 		}
-	} else if (!thread.isResolved) {
+	} else if (canReplyToThread(thread)) {
 		if (callbacks.onReply) {
 			buttons.push(<GhostButton key="reply" label="Reply" onClick={onStartReply} />);
 		}
@@ -110,9 +114,19 @@ export function ThreadActions({
 	if (showOpenInChanges && callbacks.onOpenInChanges) {
 		buttons.push(
 			<GhostButton
-				key="open-in-code"
-				label="Open in code"
+				key="open-in-changes"
+				label="Open in changes"
 				onClick={() => callbacks.onOpenInChanges?.(thread.path, thread.id)}
+			/>
+		);
+	}
+
+	if (showOpenInComments && callbacks.onOpenInComments) {
+		buttons.push(
+			<GhostButton
+				key="open-in-comments"
+				label="View in comments"
+				onClick={() => callbacks.onOpenInComments?.(thread.path, thread.id)}
 			/>
 		);
 	}

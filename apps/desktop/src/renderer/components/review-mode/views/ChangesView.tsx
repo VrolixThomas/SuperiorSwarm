@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { detectLanguage } from "../../../../shared/diff-types";
 import type { GitHubPRDetails, PRContext, UnifiedThread } from "../../../../shared/github-types";
 import { formatPrIdentifier } from "../../../../shared/pr-identifier";
+import { changesThreadsForFile, partitionChangesThreads } from "../../../lib/pr-review-threads";
 import { usePRReviewSessionStore } from "../../../stores/pr-review-session-store";
 import { useReviewModeStore } from "../../../stores/review-mode-store";
 import { useTabStore } from "../../../stores/tab-store";
@@ -28,18 +29,9 @@ interface ChangesViewProps {
 	readOnly?: boolean;
 }
 
-const INLINE_DRAFT_STATUSES = new Set(["pending", "edited", "user-pending"]);
-
 interface CollapseCommand {
 	defaultCollapsed: boolean;
 	nonce: number;
-}
-
-function sortThreadsByLine(a: UnifiedThread, b: UnifiedThread): number {
-	const lineA = a.line ?? Number.MAX_SAFE_INTEGER;
-	const lineB = b.line ?? Number.MAX_SAFE_INTEGER;
-	if (lineA !== lineB) return lineA - lineB;
-	return a.id.localeCompare(b.id);
 }
 
 function toolbarButtonClass(active = false, disabled = false): string {
@@ -63,6 +55,10 @@ function resolvedInlineCollapsed(
 	if (thread.isAIDraft) return false;
 	if (!thread.isResolved) return false;
 	return overrides.get(thread.id) ?? defaultCollapsed;
+}
+
+function lineCount(content: string): number {
+	return content.split(/\r\n|\r|\n/).length;
 }
 
 function pickNewCommentLine(
@@ -104,6 +100,7 @@ export function ChangesView({
 	const diffMode = useTabStore((s) => s.diffMode);
 	const setDiffMode = useTabStore((s) => s.setDiffMode);
 	const markdownPreviewMode = useTabStore((s) => s.markdownPreviewMode);
+	const setMarkdownPreviewMode = useTabStore((s) => s.setMarkdownPreviewMode);
 	const activeFilePath = usePRReviewSessionStore(
 		(s) => s.sessions.get(sessionKey)?.activeFilePath ?? null
 	);
@@ -117,6 +114,8 @@ export function ChangesView({
 	const getScroll = usePRReviewSessionStore((s) => s.getScroll);
 	const intent = useReviewModeStore((s) => s.intent);
 	const clearIntent = useReviewModeStore((s) => s.clearIntent);
+	const publishedCommentsVisible = useReviewModeStore((s) => s.publishedCommentsVisible);
+	const togglePublishedComments = useReviewModeStore((s) => s.togglePublishedComments);
 	const [editor, setEditor] = useState<monaco.editor.IStandaloneDiffEditor | null>(null);
 	const [pendingLine, setPendingLine] = useState<number | null>(null);
 	const [collapseCommand, setCollapseCommand] = useState<CollapseCommand>({
@@ -127,6 +126,7 @@ export function ChangesView({
 		() => new Map()
 	);
 	const markdownPaneRef = useRef<HTMLDivElement>(null);
+	const fallbackThreadsRef = useRef<HTMLDivElement>(null);
 	const isSyncingScrollRef = useRef(false);
 	const currentFilePath = activeFilePath ?? fileOrder[0] ?? null;
 	const queryFilePath = currentFilePath ?? "";
@@ -206,23 +206,30 @@ export function ChangesView({
 			}),
 	});
 
-	const fileThreads = useMemo(
+	const publishedThreadCount = useMemo(
 		() =>
 			currentFilePath === null
-				? []
-				: allThreads
-						.filter((thread) => {
-							if (thread.path !== currentFilePath) return false;
-							if (!thread.isAIDraft) return true;
-							return INLINE_DRAFT_STATUSES.has(thread.status);
-						})
-						.sort(sortThreadsByLine),
+				? 0
+				: allThreads.filter(
+						(thread) => thread.path === currentFilePath && thread.isAIDraft !== true
+					).length,
 		[allThreads, currentFilePath]
 	);
-	const inlineFileThreads = useMemo(
-		() => fileThreads.filter((thread) => thread.diffSide !== "LEFT"),
-		[fileThreads]
+	const fileThreads = useMemo(
+		() => changesThreadsForFile(allThreads, currentFilePath, publishedCommentsVisible),
+		[allThreads, currentFilePath, publishedCommentsVisible]
 	);
+	const threadLayout = useMemo(
+		() =>
+			partitionChangesThreads(fileThreads, diffMode, !hideEditor, {
+				LEFT: lineCount(originalContent),
+				RIGHT: lineCount(modifiedContent),
+			}),
+		[diffMode, fileThreads, hideEditor, modifiedContent, originalContent]
+	);
+	const leftInlineThreads = threadLayout.leftInline;
+	const rightInlineThreads = threadLayout.rightInline;
+	const fallbackThreads = threadLayout.fallback;
 	const activeThreadOnThisFile = useMemo(
 		() =>
 			activeThreadId === null
@@ -231,8 +238,8 @@ export function ChangesView({
 		[activeThreadId, fileThreads]
 	);
 	const hasResolvedThreads = useMemo(
-		() => inlineFileThreads.some((thread) => !thread.isAIDraft && thread.isResolved),
-		[inlineFileThreads]
+		() => fileThreads.some((thread) => !thread.isAIDraft && thread.isResolved),
+		[fileThreads]
 	);
 
 	const invalidateDrafts = useCallback(() => {
@@ -294,14 +301,18 @@ export function ChangesView({
 
 	const renderThread = useCallback(
 		(thread: UnifiedThread) => {
-			const defaultCollapsed = resolvedInlineCollapsed(
-				thread,
-				collapseCommand.defaultCollapsed,
-				collapsedThreadOverrides
-			);
+			const defaultCollapsed =
+				thread.id === activeThreadId
+					? false
+					: resolvedInlineCollapsed(
+							thread,
+							collapseCommand.defaultCollapsed,
+							collapsedThreadOverrides
+						);
 
 			return (
 				<div
+					data-review-thread-id={thread.id}
 					onPointerDownCapture={() => selectThread(sessionKey, thread.id)}
 					onFocusCapture={() => selectThread(sessionKey, thread.id)}
 				>
@@ -330,13 +341,24 @@ export function ChangesView({
 	);
 	useInlineCommentZones(
 		editorInstance,
-		inlineFileThreads,
+		"LEFT",
+		leftInlineThreads,
+		null,
+		renderThread,
+		handleSaveNew,
+		handleCancelNew
+	);
+	useInlineCommentZones(
+		editorInstance,
+		"RIGHT",
+		rightInlineThreads,
 		pendingLine,
 		renderThread,
 		handleSaveNew,
 		handleCancelNew
 	);
-	useThreadDecorations(editorInstance, inlineFileThreads, activeThreadId);
+	useThreadDecorations(editorInstance, "LEFT", leftInlineThreads, activeThreadId);
+	useThreadDecorations(editorInstance, "RIGHT", rightInlineThreads, activeThreadId);
 	useGutterPlusButton(readOnly ? null : editorInstance, setPendingLine, validDiffLines);
 
 	useEffect(() => {
@@ -398,16 +420,32 @@ export function ChangesView({
 	}, [currentFilePath, editorInstance, getScroll, sessionKey, setScroll, modifiedContent]);
 
 	useEffect(() => {
-		const editor = editorInstance?.getModifiedEditor();
-		if (!editor || !activeThreadOnThisFile?.line) return;
-		if (activeThreadOnThisFile.diffSide === "LEFT") return;
+		if (!activeThreadOnThisFile) return;
+		const isFallback = fallbackThreads.some((thread) => thread.id === activeThreadOnThisFile.id);
+		if (isFallback) {
+			const frame = requestAnimationFrame(() => {
+				const container = fallbackThreadsRef.current;
+				if (!container) return;
+				const target = Array.from(
+					container.querySelectorAll<HTMLElement>("[data-review-thread-id]")
+				).find((element) => element.dataset["reviewThreadId"] === activeThreadOnThisFile.id);
+				target?.scrollIntoView({ block: "nearest" });
+			});
+			return () => cancelAnimationFrame(frame);
+		}
+
+		if (!editorInstance || !activeThreadOnThisFile.line) return;
+		const editor =
+			activeThreadOnThisFile.diffSide === "LEFT"
+				? editorInstance.getOriginalEditor()
+				: editorInstance.getModifiedEditor();
 		const line = activeThreadOnThisFile.line;
 		const ranges = editor.getVisibleRanges();
 		const isVisible = ranges.some(
 			(range) => line >= range.startLineNumber && line <= range.endLineNumber
 		);
 		if (!isVisible) editor.revealLineInCenter(line);
-	}, [activeThreadOnThisFile, editorInstance]);
+	}, [activeThreadOnThisFile, editorInstance, fallbackThreads]);
 
 	const handleMarkdownPaneScroll = useCallback(() => {
 		if (isSyncingScrollRef.current) return;
@@ -469,6 +507,21 @@ export function ChangesView({
 					title="Add a comment to the selected or first visible changed line"
 				>
 					Add comment
+				</button>
+
+				<button
+					type="button"
+					aria-pressed={publishedCommentsVisible}
+					onClick={togglePublishedComments}
+					disabled={publishedThreadCount === 0}
+					className={toolbarButtonClass(publishedCommentsVisible, publishedThreadCount === 0)}
+					title={
+						publishedCommentsVisible
+							? "Hide published pull request comments"
+							: "Show published pull request comments"
+					}
+				>
+					Comments · {publishedThreadCount}
 				</button>
 
 				{isGitHubPR && currentFilePath && (
@@ -546,6 +599,49 @@ export function ChangesView({
 					</div>
 				)}
 			</div>
+
+			{fallbackThreads.length > 0 && (
+				<div
+					ref={fallbackThreadsRef}
+					className="max-h-[min(38%,320px)] shrink-0 overflow-y-auto border-b border-[var(--border)] bg-[var(--bg-base)] px-3 py-2"
+				>
+					<div className="mb-2 flex items-center gap-2">
+						<span className="text-[11px] font-medium text-[var(--text-tertiary)]">
+							{hideEditor ? "Comments for this file" : "Comments without an inline anchor"}
+						</span>
+						<span className="text-[11px] tabular-nums text-[var(--text-quaternary)]">
+							{fallbackThreads.length}
+						</span>
+						<div className="flex-1" />
+						{hideEditor ? (
+							<button
+								type="button"
+								onClick={() => setMarkdownPreviewMode("off")}
+								className={toolbarButtonClass()}
+							>
+								Show code diff
+							</button>
+						) : (
+							fallbackThreads.some(
+								(thread) => thread.diffSide === "LEFT" && thread.line != null
+							) && (
+								<button
+									type="button"
+									onClick={() => setDiffMode("split")}
+									className={toolbarButtonClass()}
+								>
+									Show deleted-line comments in split view
+								</button>
+							)
+						)}
+					</div>
+					<div className="flex flex-col gap-2">
+						{fallbackThreads.map((thread) => (
+							<div key={thread.id}>{renderThread(thread)}</div>
+						))}
+					</div>
+				</div>
+			)}
 
 			<div className="min-h-0 flex-1 overflow-hidden">
 				{currentFilePath === null ? (

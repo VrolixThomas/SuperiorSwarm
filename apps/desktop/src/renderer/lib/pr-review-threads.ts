@@ -6,6 +6,12 @@ export type ThreadBucket = Exclude<ThreadFilter, "all">;
 export type CondensedFilter = "all" | "attention" | "done";
 export type ReviewCommentFilter = ThreadFilter | Exclude<CondensedFilter, "all">;
 
+const CHANGES_DRAFT_STATUSES = new Set<AIDraftThread["status"]>([
+	"pending",
+	"edited",
+	"user-pending",
+]);
+
 export const CONDENSED_TO_FILTERS: Record<CondensedFilter, ThreadFilter[]> = {
 	all: ["all"],
 	attention: ["pending", "open"],
@@ -116,6 +122,30 @@ export function draftStatusAfterEdit(status: AIDraftThread["status"]): "edited" 
 	return status === "user-pending" || status === "approved" ? "user-pending" : "edited";
 }
 
+export function canAcceptDraft(
+	thread: UnifiedThread | null
+): thread is AIDraftThread & { status: "pending" | "edited" } {
+	return thread?.isAIDraft === true && (thread.status === "pending" || thread.status === "edited");
+}
+
+export function canEditDraft(thread: UnifiedThread | null): thread is AIDraftThread {
+	return (
+		thread?.isAIDraft === true &&
+		(thread.status === "pending" ||
+			thread.status === "edited" ||
+			thread.status === "user-pending" ||
+			thread.status === "approved")
+	);
+}
+
+export function canDeclineDraft(thread: UnifiedThread | null): thread is AIDraftThread {
+	return canEditDraft(thread);
+}
+
+export function canReplyToThread(thread: UnifiedThread | null): thread is GitHubReviewThread {
+	return thread !== null && thread.isAIDraft !== true && !thread.isResolved;
+}
+
 export function fileCommentCounts(threads: UnifiedThread[]): Map<string, number> {
 	const counts = new Map<string, number>();
 
@@ -129,6 +159,69 @@ export function fileCommentCounts(threads: UnifiedThread[]): Map<string, number>
 	}
 
 	return counts;
+}
+
+/**
+ * Threads that belong in the Changes view for one file. Published provider
+ * comments can be hidden independently, while actionable AI/user drafts stay
+ * visible so review work is never concealed by the display preference.
+ */
+export function changesThreadsForFile(
+	threads: UnifiedThread[],
+	filePath: string | null,
+	publishedCommentsVisible: boolean
+): UnifiedThread[] {
+	if (filePath === null) return [];
+
+	return threads
+		.filter((thread) => {
+			if (thread.path !== filePath) return false;
+			if (!thread.isAIDraft) return publishedCommentsVisible;
+			return CHANGES_DRAFT_STATUSES.has(thread.status);
+		})
+		.sort((a, b) => {
+			const lineA = a.line ?? Number.MAX_SAFE_INTEGER;
+			const lineB = b.line ?? Number.MAX_SAFE_INTEGER;
+			if (lineA !== lineB) return lineA - lineB;
+			return a.id.localeCompare(b.id);
+		});
+}
+
+export interface ChangesThreadLayout {
+	leftInline: UnifiedThread[];
+	rightInline: UnifiedThread[];
+	fallback: UnifiedThread[];
+}
+
+/** Partition visible Changes threads by their renderable Monaco pane. */
+export function partitionChangesThreads(
+	threads: UnifiedThread[],
+	diffMode: "split" | "inline",
+	editorVisible: boolean,
+	lineCounts: Record<UnifiedThread["diffSide"], number> = {
+		LEFT: Number.MAX_SAFE_INTEGER,
+		RIGHT: Number.MAX_SAFE_INTEGER,
+	}
+): ChangesThreadLayout {
+	const layout: ChangesThreadLayout = {
+		leftInline: [],
+		rightInline: [],
+		fallback: [],
+	};
+
+	for (const thread of threads) {
+		const lineIsRenderable =
+			thread.line != null && thread.line >= 1 && thread.line <= lineCounts[thread.diffSide];
+		if (!editorVisible || !lineIsRenderable) {
+			layout.fallback.push(thread);
+		} else if (thread.diffSide === "LEFT") {
+			(diffMode === "split" ? layout.leftInline : layout.fallback).push(thread);
+		} else {
+			layout.rightInline.push(thread);
+		}
+	}
+
+	return layout;
 }
 
 export function mapDraftComment(c: DraftCommentLike, roundNumber?: number): AIDraftThread {

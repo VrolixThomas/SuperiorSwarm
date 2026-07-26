@@ -2,6 +2,11 @@ import { describe, expect, test } from "bun:test";
 import {
 	CONDENSED_TO_FILTERS,
 	type DraftLike,
+	canAcceptDraft,
+	canDeclineDraft,
+	canEditDraft,
+	canReplyToThread,
+	changesThreadsForFile,
 	draftStatusAfterEdit,
 	extractDiffContext,
 	fileCommentCounts,
@@ -11,6 +16,7 @@ import {
 	mapDraftComment,
 	matchesFilter,
 	matchesReviewFilter,
+	partitionChangesThreads,
 	pickActiveDraft,
 	pickLatestDraft,
 	threadAuthor,
@@ -81,6 +87,57 @@ describe("pr-review-threads", () => {
 		expect(threadBucket(githubThread(true))).toBe("resolved");
 	});
 
+	test("Changes visibility hides published comments but keeps actionable drafts", () => {
+		const threads: UnifiedThread[] = [
+			githubThread(false, { id: "published", path: "src/a.ts", line: 8 }),
+			aiThread("pending", { id: "pending", path: "src/a.ts", line: 6 }),
+			aiThread("user-pending", { id: "accepted", path: "src/a.ts", line: 7 }),
+			aiThread("submitted", { id: "submitted", path: "src/a.ts", line: 5 }),
+			githubThread(false, { id: "other-file", path: "src/b.ts", line: 1 }),
+		];
+
+		expect(changesThreadsForFile(threads, "src/a.ts", false).map((thread) => thread.id)).toEqual([
+			"pending",
+			"accepted",
+		]);
+		expect(changesThreadsForFile(threads, "src/a.ts", true).map((thread) => thread.id)).toEqual([
+			"pending",
+			"accepted",
+			"published",
+		]);
+		expect(changesThreadsForFile(threads, null, true)).toEqual([]);
+	});
+
+	test("partitions right, left, and unanchored Changes comments for the active diff mode", () => {
+		const right = githubThread(false, { id: "right", line: 8, diffSide: "RIGHT" });
+		const left = githubThread(false, { id: "left", line: 6, diffSide: "LEFT" });
+		const unanchored = githubThread(false, { id: "unanchored", line: null });
+		const threads = [right, left, unanchored];
+
+		const split = partitionChangesThreads(threads, "split", true);
+		expect(split.rightInline.map((thread) => thread.id)).toEqual(["right"]);
+		expect(split.leftInline.map((thread) => thread.id)).toEqual(["left"]);
+		expect(split.fallback.map((thread) => thread.id)).toEqual(["unanchored"]);
+
+		const inline = partitionChangesThreads(threads, "inline", true);
+		expect(inline.rightInline.map((thread) => thread.id)).toEqual(["right"]);
+		expect(inline.leftInline).toEqual([]);
+		expect(inline.fallback.map((thread) => thread.id)).toEqual(["left", "unanchored"]);
+
+		const preview = partitionChangesThreads(threads, "split", false);
+		expect(preview.leftInline).toEqual([]);
+		expect(preview.rightInline).toEqual([]);
+		expect(preview.fallback.map((thread) => thread.id)).toEqual(["right", "left", "unanchored"]);
+
+		const outOfRange = partitionChangesThreads(threads, "split", true, {
+			LEFT: 5,
+			RIGHT: 7,
+		});
+		expect(outOfRange.leftInline).toEqual([]);
+		expect(outOfRange.rightInline).toEqual([]);
+		expect(outOfRange.fallback.map((thread) => thread.id)).toEqual(["right", "left", "unanchored"]);
+	});
+
 	test("matches filters and counts threads by bucket", () => {
 		const threads: UnifiedThread[] = [
 			aiThread("pending", { id: "ai-pending" }),
@@ -130,6 +187,44 @@ describe("pr-review-threads", () => {
 		expect(draftStatusAfterEdit("edited")).toBe("edited");
 		expect(draftStatusAfterEdit("user-pending")).toBe("user-pending");
 		expect(draftStatusAfterEdit("approved")).toBe("user-pending");
+	});
+
+	test("matches keyboard triage eligibility to visible thread actions", () => {
+		const statuses: AIDraftThread["status"][] = [
+			"pending",
+			"edited",
+			"user-pending",
+			"approved",
+			"rejected",
+			"submitted",
+			"error",
+		];
+		const eligibility = Object.fromEntries(
+			statuses.map((status) => {
+				const thread = aiThread(status);
+				return [
+					status,
+					{
+						accept: canAcceptDraft(thread),
+						decline: canDeclineDraft(thread),
+						edit: canEditDraft(thread),
+					},
+				];
+			})
+		);
+
+		expect(eligibility).toEqual({
+			pending: { accept: true, decline: true, edit: true },
+			edited: { accept: true, decline: true, edit: true },
+			"user-pending": { accept: false, decline: true, edit: true },
+			approved: { accept: false, decline: true, edit: true },
+			rejected: { accept: false, decline: false, edit: false },
+			submitted: { accept: false, decline: false, edit: false },
+			error: { accept: false, decline: false, edit: false },
+		});
+		expect(canReplyToThread(githubThread(false))).toBe(true);
+		expect(canReplyToThread(githubThread(true))).toBe(false);
+		expect(canReplyToThread(aiThread("pending"))).toBe(false);
 	});
 
 	test("maps raw draft comments to AI draft threads", () => {

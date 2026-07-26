@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useMemo } from "react";
 import type { PRContext, UnifiedThread } from "../../../../shared/github-types";
-import { groupThreadsByFile, matchesReviewFilter } from "../../../lib/pr-review-threads";
+import {
+	canAcceptDraft,
+	canDeclineDraft,
+	canEditDraft,
+	canReplyToThread,
+	changesThreadsForFile,
+	groupThreadsByFile,
+	matchesReviewFilter,
+} from "../../../lib/pr-review-threads";
 import { type ReviewKeyAction, mapReviewKey } from "../../../lib/review-keymap";
 import { openThreadInChanges } from "../../../lib/review-mode-nav";
 import { usePRReviewSessionStore } from "../../../stores/pr-review-session-store";
@@ -24,8 +32,6 @@ interface ThreadRef {
 	id: string;
 	path: string;
 }
-
-const CHANGES_DRAFT_STATUSES = new Set(["pending", "edited", "user-pending"]);
 
 function isReviewEditableTarget(target: EventTarget | null): boolean {
 	if (!(target instanceof HTMLElement)) return false;
@@ -63,13 +69,6 @@ function nextThreadRef(
 	return refs[nextIndex] ?? null;
 }
 
-function isActionableDraft(thread: UnifiedThread | null): thread is UnifiedThread & {
-	isAIDraft: true;
-	status: "pending" | "edited";
-} {
-	return Boolean(thread?.isAIDraft && (thread.status === "pending" || thread.status === "edited"));
-}
-
 export function useReviewKeymap({
 	workspaceId,
 	prCtx,
@@ -97,6 +96,7 @@ export function useReviewKeymap({
 	const close = useReviewModeStore((s) => s.close);
 	const sendIntent = useReviewModeStore((s) => s.sendIntent);
 	const commentFilter = useReviewModeStore((s) => s.commentFilter);
+	const publishedCommentsVisible = useReviewModeStore((s) => s.publishedCommentsVisible);
 	const isGitHubPR = prCtx.provider === "github";
 	const currentFilePath = activeFilePath ?? fileOrder[0] ?? null;
 
@@ -136,18 +136,10 @@ export function useReviewKeymap({
 	);
 
 	const activeFileThreadRefs = useMemo(() => {
-		if (currentFilePath === null) return [];
-
-		return allThreads
-			.filter((thread) => {
-				if (thread.path !== currentFilePath) return false;
-				if (thread.diffSide === "LEFT") return false;
-				if (!thread.isAIDraft) return true;
-				return CHANGES_DRAFT_STATUSES.has(thread.status);
-			})
+		return changesThreadsForFile(allThreads, currentFilePath, publishedCommentsVisible)
 			.sort(sortThreadsByLine)
 			.map((thread) => ({ id: thread.id, path: thread.path }));
-	}, [allThreads, currentFilePath]);
+	}, [allThreads, currentFilePath, publishedCommentsVisible]);
 
 	const advanceThread = useCallback(
 		(refs: ThreadRef[], delta: 1 | -1) => {
@@ -218,23 +210,28 @@ export function useReviewKeymap({
 					return;
 				case "accept":
 					if (readOnly) return;
-					if (isActionableDraft(activeThread)) callbacks.onAccept?.(activeThread.draftCommentId);
+					if (canAcceptDraft(activeThread)) callbacks.onAccept?.(activeThread.draftCommentId);
 					return;
 				case "decline":
 					if (readOnly) return;
-					if (isActionableDraft(activeThread)) callbacks.onDecline?.(activeThread.draftCommentId);
+					if (canDeclineDraft(activeThread)) callbacks.onDecline?.(activeThread.draftCommentId);
 					return;
 				case "edit":
 					if (readOnly) return;
-					if (activeThreadId !== null) sendIntent("edit", activeThreadId);
+					if (canEditDraft(activeThread)) sendIntent("edit", activeThread.id);
 					return;
 				case "reply":
 					if (readOnly) return;
-					if (activeThreadId !== null) sendIntent("reply", activeThreadId);
+					if (canReplyToThread(activeThread)) sendIntent("reply", activeThread.id);
 					return;
 				case "open-in-changes":
 					if (activeThread) {
 						openThreadInChanges(workspaceId, prCtx, activeThread.path, activeThread.id);
+					}
+					return;
+				case "open-in-comments":
+					if (activeThread) {
+						callbacks.onOpenInComments?.(activeThread.path, activeThread.id);
 					}
 					return;
 			}

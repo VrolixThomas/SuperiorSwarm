@@ -26,6 +26,7 @@ export interface ReviewModeStore {
 	drawerHeight: number;
 	terminals: Record<string, ReviewTerminal>;
 	commentFilter: ReviewCommentFilter;
+	publishedCommentsVisible: boolean;
 	intent: ReviewIntent | null;
 
 	open: (workspaceId: string, prCtx: PRContext) => void;
@@ -36,6 +37,8 @@ export interface ReviewModeStore {
 	setDrawerHeight: (height: number) => void;
 	setTerminal: (terminal: ReviewTerminal) => void;
 	setCommentFilter: (filter: ReviewCommentFilter) => void;
+	setPublishedCommentsVisible: (visible: boolean) => void;
+	togglePublishedComments: () => void;
 	sendIntent: (kind: ReviewIntent["kind"], threadId?: string) => void;
 	clearIntent: () => void;
 }
@@ -68,6 +71,7 @@ export const useReviewModeStore = create<ReviewModeStore>()((set) => ({
 	drawerHeight: 300,
 	terminals: {},
 	commentFilter: "all",
+	publishedCommentsVisible: true,
 	intent: null,
 
 	open: (workspaceId, prCtx) =>
@@ -108,6 +112,9 @@ export const useReviewModeStore = create<ReviewModeStore>()((set) => ({
 			terminals: { ...state.terminals, [terminal.workspaceId]: terminal },
 		})),
 	setCommentFilter: (filter) => set({ commentFilter: filter }),
+	setPublishedCommentsVisible: (visible) => set({ publishedCommentsVisible: visible }),
+	togglePublishedComments: () =>
+		set((state) => ({ publishedCommentsVisible: !state.publishedCommentsVisible })),
 	sendIntent: (kind, threadId) => set({ intent: createIntent(kind, threadId) }),
 	clearIntent: () => set({ intent: null }),
 }));

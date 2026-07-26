@@ -19,6 +19,7 @@ export interface ThreadCallbacks {
 	onReply?: (threadId: string, body: string) => void;
 	onResolve?: (threadId: string) => void;
 	onOpenInChanges?: (path: string, threadId: string) => void;
+	onOpenInComments?: (path: string, threadId: string) => void;
 }
 
 interface ThreadCardProps {
@@ -51,9 +52,11 @@ function fileLabel(path: string, line: number | null): string {
 function hasActions(
 	thread: UnifiedThread,
 	callbacks: ThreadCallbacks,
-	showOpenInChanges: boolean
+	showOpenInChanges: boolean,
+	showOpenInComments: boolean
 ): boolean {
 	if (showOpenInChanges && callbacks.onOpenInChanges) return true;
+	if (showOpenInComments && callbacks.onOpenInComments) return true;
 
 	if (thread.isAIDraft) {
 		const canAccept = thread.status === "pending" || thread.status === "edited";
@@ -203,7 +206,7 @@ export function ThreadCard({
 	const paddingClassName = variant === "full" ? "px-4" : "px-3";
 	const bodyPaddingClassName = variant === "full" ? "px-4 py-3" : "px-3 py-2.5";
 	const dateLabel = relativeDate(threadDate(thread));
-	const showActions = hasActions(thread, callbacks, variant === "full");
+	const showActions = hasActions(thread, callbacks, variant === "full", variant === "inline");
 	const updateCollapsed = useCallback(
 		(nextCollapsed: boolean) => {
 			setCollapsed(nextCollapsed);
@@ -259,7 +262,10 @@ export function ThreadCard({
 					</span>
 				)}
 
-				<FileLineLink thread={thread} onOpenInChanges={callbacks.onOpenInChanges} />
+				<FileLineLink
+					thread={thread}
+					onOpenInChanges={variant === "full" ? callbacks.onOpenInChanges : undefined}
+				/>
 
 				{aiThread !== null && aiThread.roundNumber != null && aiThread.roundNumber > 1 && (
 					<span className="shrink-0 text-[11px] text-[var(--text-quaternary)]">
@@ -331,6 +337,7 @@ export function ThreadCard({
 						onStartReply={() => setComposer("reply")}
 						onStartEdit={() => setComposer("edit")}
 						showOpenInChanges={variant === "full"}
+						showOpenInComments={variant === "inline"}
 					/>
 				</div>
 			)}

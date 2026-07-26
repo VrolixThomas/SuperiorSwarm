@@ -1,19 +1,6 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import { launchReviewTerminal } from "../src/renderer/lib/review-launch";
 import { useReviewModeStore } from "../src/renderer/stores/review-mode-store";
-import { useTabStore } from "../src/renderer/stores/tab-store";
-import type { PRContext } from "../src/shared/github-types";
-
-const prCtx: PRContext = {
-	provider: "github",
-	owner: "o",
-	repo: "r",
-	number: 7,
-	title: "t",
-	sourceBranch: "feat",
-	targetBranch: "main",
-	repoPath: "/tmp/r",
-};
 
 function makeDeps() {
 	const attached: Array<{ workspaceId: string; terminalId: string }> = [];
@@ -43,7 +30,6 @@ describe("launchReviewTerminal", () => {
 		const { deps, attached, written } = makeDeps();
 		const ok = launchReviewTerminal(
 			{ reviewWorkspaceId: "ws-1", worktreePath: "/wt", launchScript: null },
-			prCtx,
 			deps
 		);
 		expect(ok).toBe(false);
@@ -56,7 +42,6 @@ describe("launchReviewTerminal", () => {
 		const { deps, attached, written } = makeDeps();
 		const ok = launchReviewTerminal(
 			{ reviewWorkspaceId: "ws-1", worktreePath: "/wt", launchScript: "/tmp/launch.sh" },
-			prCtx,
 			deps
 		);
 		expect(ok).toBe(true);
@@ -67,8 +52,6 @@ describe("launchReviewTerminal", () => {
 		});
 		expect(useReviewModeStore.getState().drawerOpen).toBe(true);
 		expect(attached).toEqual([{ workspaceId: "ws-1", terminalId: "terminal-test" }]);
-		expect(useTabStore.getState().workspaceMetadata["ws-1"]?.type).toBe("review");
-
 		await new Promise((resolve) => setTimeout(resolve, 5));
 		expect(written).toEqual([{ tabId: "terminal-test", data: "bash '/tmp/launch.sh'\n" }]);
 	});
