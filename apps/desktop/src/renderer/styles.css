@@ -317,6 +317,13 @@ body,
 	opacity: 1;
 }
 
+/* Local inline comments (send-to-agent review) */
+.local-comment-gutter {
+	background: var(--accent);
+	width: 3px !important;
+	margin-left: 2px;
+}
+
 /* AI draft comment decorations */
 .pr-thread-ai-draft-gutter {
 	width: 6px !important;
