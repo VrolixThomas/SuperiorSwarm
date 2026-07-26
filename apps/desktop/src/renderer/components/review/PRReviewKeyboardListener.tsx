@@ -4,6 +4,7 @@ import { formatPrIdentifier } from "../../../shared/pr-identifier";
 import { emitPRReviewEvent } from "../../lib/pr-review-events";
 import { type PRReviewAction, mapKey } from "../../lib/pr-review-keymap";
 import { prReviewSessionKey, usePRReviewSessionStore } from "../../stores/pr-review-session-store";
+import { useReviewModeStore } from "../../stores/review-mode-store";
 import { useTabStore } from "../../stores/tab-store";
 
 const REVIEW_TAB_KINDS = new Set(["pr-review-file", "pr-overview"]);
@@ -61,6 +62,7 @@ function dispatch(action: PRReviewAction, workspaceId: string, prCtx: PRContext)
 export function PRReviewKeyboardListener() {
 	useEffect(() => {
 		function onKey(event: KeyboardEvent) {
+			if (useReviewModeStore.getState().active) return;
 			if (isReviewEditableTarget(event.target)) return;
 			const ctx = activeReviewTab();
 			if (!ctx) return;

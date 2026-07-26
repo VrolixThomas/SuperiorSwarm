@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { usePaneStore } from "../stores/pane-store";
+import { shouldShowReviewMode, useReviewModeStore } from "../stores/review-mode-store";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import { BranchChip } from "./BranchChip";
@@ -7,6 +8,7 @@ import { QuickActionBar } from "./QuickActionBar";
 import { type ContextMenuAction, QuickActionContextMenu } from "./QuickActionContextMenu";
 import { QuickActionPopover } from "./QuickActionPopover";
 import { LayoutRenderer } from "./panes/LayoutRenderer";
+import { ReviewModeShell } from "./review-mode/ReviewModeShell";
 import { TicketsCanvas } from "./tickets/TicketsCanvas";
 
 interface ContextMenuState {
@@ -20,6 +22,7 @@ export function MainContentArea({ savedScrollback }: { savedScrollback: Record<s
 	const activeWorkspaceId = useTabStore((s) => s.activeWorkspaceId);
 	const cwd = useTabStore((s) => s.activeWorkspaceCwd);
 	const layout = usePaneStore((s) => (activeWorkspaceId ? s.layouts[activeWorkspaceId] : null));
+	const activeReview = useReviewModeStore((s) => s.active);
 
 	const [showQuickActionPopover, setShowQuickActionPopover] = useState(false);
 	const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
@@ -54,6 +57,25 @@ export function MainContentArea({ savedScrollback }: { savedScrollback: Record<s
 
 	if (sidebarSegment === "tickets") {
 		return <TicketsCanvas />;
+	}
+
+	if (sidebarSegment === "prs") {
+		if (shouldShowReviewMode(sidebarSegment, activeWorkspaceId, activeReview)) {
+			return <ReviewModeShell />;
+		}
+
+		return (
+			<main className="flex h-full min-w-0 items-center justify-center overflow-hidden">
+				<div className="max-w-[320px] px-6 text-center">
+					<div className="text-[13px] font-medium text-[var(--text-secondary)]">
+						Select a pull request
+					</div>
+					<div className="mt-1 text-[12px] leading-5 text-[var(--text-quaternary)]">
+						Open PRs stay available in the sidebar while you review.
+					</div>
+				</div>
+			</main>
+		);
 	}
 
 	if (!activeWorkspaceId || !layout) {

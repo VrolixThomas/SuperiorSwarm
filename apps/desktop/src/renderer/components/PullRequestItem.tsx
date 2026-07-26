@@ -10,8 +10,8 @@ import { SwarmIndicator } from "./WorkspaceItem";
 export function getHealthColor(pr: MergedPR, enriched?: GitHubPREnriched): string {
 	if (enriched?.mergeable === "CONFLICTING") return "#f85149";
 	if (enriched?.ciState === "FAILURE") return "#f85149";
-	if (pr.reviewDecision === "CHANGES_REQUESTED") return "#d29922";
-	if (pr.reviewDecision === "APPROVED") return "#3fb950";
+	if (pr.reviewDecision === "changes_requested") return "#d29922";
+	if (pr.reviewDecision === "approved") return "#3fb950";
 	return "#484848";
 }
 
@@ -52,6 +52,7 @@ function EnrichmentSkeleton() {
 
 export interface MergedPR {
 	provider: "github" | "bitbucket";
+	role: "author" | "reviewer";
 	id: string;
 	number: number | string;
 	title: string;
@@ -103,16 +104,17 @@ export function RichPRItem({
 	onClick: (e: React.MouseEvent) => void;
 	onContextMenu?: (e: React.MouseEvent) => void;
 }) {
-	const sourceBranch = pr.githubPR?.branchName ?? pr.bitbucketPR?.source?.branch?.name ?? "";
-	const targetBranch = enriched ? undefined : pr.bitbucketPR?.destination?.branch?.name;
-	const project = pr.githubPR
+	const githubPR = pr.githubPR;
+	const bitbucketPR = pr.bitbucketPR;
+	const sourceBranch = githubPR?.branchName ?? bitbucketPR?.source?.branch?.name ?? "";
+	const targetBranch = enriched ? undefined : bitbucketPR?.destination?.branch?.name;
+	const project = githubPR
 		? projectsList?.find(
-				(p) => p.remoteOwner === pr.githubPR!.repoOwner && p.remoteRepo === pr.githubPR!.repoName
+				(p) => p.remoteOwner === githubPR.repoOwner && p.remoteRepo === githubPR.repoName
 			)
-		: pr.bitbucketPR
+		: bitbucketPR
 			? projectsList?.find(
-					(p) =>
-						p.remoteOwner === pr.bitbucketPR!.workspace && p.remoteRepo === pr.bitbucketPR!.repoSlug
+					(p) => p.remoteOwner === bitbucketPR.workspace && p.remoteRepo === bitbucketPR.repoSlug
 				)
 			: undefined;
 	const resolvedTarget = targetBranch ?? project?.defaultBranch ?? "main";

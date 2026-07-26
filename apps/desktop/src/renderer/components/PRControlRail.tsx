@@ -823,7 +823,8 @@ export function PRControlRail({ prCtx }: { prCtx: PRContext }) {
 		onSuccess: (launchInfo) => {
 			utils.aiReview.getReviewDrafts.invalidate();
 			utils.aiReview.getReviewDraft.invalidate();
-			if (!launchInfo.reviewWorkspaceId || !launchInfo.worktreePath) return;
+			if (!launchInfo.reviewWorkspaceId || !launchInfo.worktreePath || !launchInfo.launchScript)
+				return;
 			const tabStore = useTabStore.getState();
 			const tabId = tabStore.addTerminalTab(
 				launchInfo.reviewWorkspaceId,
@@ -852,7 +853,8 @@ export function PRControlRail({ prCtx }: { prCtx: PRContext }) {
 		onSuccess: (launchInfo) => {
 			utils.aiReview.getReviewDrafts.invalidate();
 			utils.aiReview.getReviewDraft.invalidate();
-			if (!launchInfo.reviewWorkspaceId || !launchInfo.worktreePath) return;
+			if (!launchInfo.reviewWorkspaceId || !launchInfo.worktreePath || !launchInfo.launchScript)
+				return;
 			const tabStore = useTabStore.getState();
 			const tabId = tabStore.addTerminalTab(
 				launchInfo.reviewWorkspaceId,

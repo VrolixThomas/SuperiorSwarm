@@ -56,7 +56,7 @@ export function PullRequestGroup({
 		>
 			{prs.map((pr) => {
 				const identifier = getPrIdentifier(pr);
-				const isReviewer = pr.githubPR?.role === "reviewer" || pr.provider === "bitbucket";
+				const isReviewer = pr.role === "reviewer";
 				const enriched = enrichmentMap.get(identifier);
 				const knownWorkspaceId = workspaceIdMap.get(identifier);
 				const agentAlert = knownWorkspaceId ? agentAlerts[knownWorkspaceId] : undefined;

@@ -462,11 +462,6 @@ function AuthenticatedApp() {
 	);
 	const activeProjectId = activeWorkspaceQuery.data?.projectId ?? null;
 
-	const workspacesQuery = trpc.workspaces.listByProject.useQuery(
-		{ projectId: activeProjectId ?? "" },
-		{ enabled: !!activeProjectId }
-	);
-
 	const activeCwd = useTabStore((s) => s.activeWorkspaceCwd);
 	const branchStatusQuery = trpc.branches.getStatus.useQuery(
 		{ projectId: activeProjectId ?? "", cwd: activeCwd || undefined },
@@ -722,7 +717,7 @@ function AuthenticatedApp() {
 						</Panel>
 					</Group>
 					{!rightPanelOpen &&
-						sidebarSegment !== "tickets" &&
+						sidebarSegment === "repos" &&
 						!activeWorkspaceId?.startsWith("xro-") && (
 							<button
 								type="button"

@@ -278,7 +278,6 @@ export function GitHubPRList() {
 
 	const navigateToWorkspace = useCallback((ws: LinkedWorkspace, pr: GitHubPR) => {
 		const store = useTabStore.getState();
-		store.setActiveWorkspace(ws.workspaceId, ws.worktreePath);
 
 		const prCtx: import("../../shared/github-types").PRContext = {
 			provider: "github",
@@ -290,7 +289,7 @@ export function GitHubPRList() {
 			targetBranch: "main", // We'll update this from PR details once loaded
 			repoPath: ws.worktreePath,
 		};
-		store.openPRReviewPanel(ws.workspaceId, prCtx);
+		store.activateReviewWorkspace(ws.workspaceId, ws.worktreePath, prCtx);
 
 		const existing = store.getTabsByWorkspace(ws.workspaceId);
 		const hasTerminal = existing.some((t) => t.kind === "terminal");

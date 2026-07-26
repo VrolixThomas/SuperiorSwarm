@@ -1,8 +1,6 @@
-import { detectLanguage } from "../../shared/diff-types";
 import type { PRContext } from "../../shared/github-types";
-import { formatPrIdentifier } from "../../shared/pr-identifier";
-import { prReviewSessionKey, usePRReviewSessionStore } from "../stores/pr-review-session-store";
 import { useTabStore } from "../stores/tab-store";
+import { openThreadInChanges } from "./review-mode-nav";
 
 /**
  * Select a file (and optionally a thread) in the PR review session, then swap
@@ -15,9 +13,6 @@ export function navigateToReviewFile(
 	path: string,
 	threadId?: string
 ): void {
-	const sessionKey = prReviewSessionKey(workspaceId, formatPrIdentifier(prCtx));
-	const session = usePRReviewSessionStore.getState();
-	session.selectFile(sessionKey, path);
-	if (threadId !== undefined) session.selectThread(sessionKey, threadId);
-	useTabStore.getState().swapPRReviewFile(workspaceId, prCtx, path, detectLanguage(path));
+	useTabStore.getState().activateReviewWorkspace(workspaceId, prCtx.repoPath, prCtx);
+	openThreadInChanges(workspaceId, prCtx, path, threadId);
 }
