@@ -4,6 +4,8 @@ import { join } from "node:path";
 import type { AgentSessionInfo } from "../../shared/agent-launch-types";
 
 const CLAUDE_FILE_RE = /^[0-9a-f-]{36}\.jsonl$/i;
+// Codex names session transcripts rollout-<timestamp>-<id>.jsonl. Keep the
+// middle permissive because session_meta below is the authoritative validation.
 const CODEX_FILE_RE = /^rollout-.*\.jsonl$/;
 const MAX_LABEL_LEN = 80;
 const CLAUDE_READ_BYTES = 256 * 1024;
