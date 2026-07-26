@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.14.0 (2026-07-26)
+
+### What's New
+
+SuperiorSwarm v0.14.0 introduces a redesigned, full-window pull-request review workspace with overview, changes, and comments navigation, keyboard controls, and an integrated terminal drawer. You can add inline comments directly on diffs and send them to a new or existing Claude or Codex agent session. A new Search Everywhere popup, opened by double-tapping Shift, finds files, text occurrences, and workspace symbols in one place. Links printed by Codex in the terminal now open in your default browser.
+
+### Changes
+
+- File find double tab (#126)
+- fix(terminal): open Codex links in external browser (#127)
+- Inline agent comments (#128)
+- Pr review UI (#129)
+
 ## v0.13.0 (2026-07-05)
 
 ### What's New
