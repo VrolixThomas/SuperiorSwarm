@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.15.0 (2026-07-27)
+
+### What's New
+
+SuperiorSwarm v0.15.0 can now put idle agent sessions to sleep, reducing memory and energy use while preserving their shell and resumable conversation. Configure automatic sleep after 5, 15, 30, or 60 minutes in Terminal settings, keep orchestrators or individual agents awake, and manually sleep or wake sessions at any time. Sleeping agents resume when you return to their terminal or send them follow-up work.
+
+### Changes
+
+- Investigate memory and energy usage (#130)
+
 ## v0.14.0 (2026-07-26)
 
 ### What's New
