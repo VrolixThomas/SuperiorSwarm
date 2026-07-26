@@ -1,6 +1,25 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import { shouldSkipShortcutHandling } from "../src/renderer/hooks/useShortcutListener";
 import { useActionStore } from "../src/renderer/stores/action-store";
+import { useSearchEverywhereStore } from "../src/renderer/stores/search-everywhere-store";
+import { useTabStore } from "../src/renderer/stores/tab-store";
+
+(globalThis as typeof globalThis & { matchMedia: typeof matchMedia }).matchMedia = () =>
+	({
+		matches: false,
+		addEventListener: () => {},
+		removeEventListener: () => {},
+	}) as unknown as MediaQueryList;
+
+(globalThis as unknown as { window: unknown }).window = {
+	electron: {
+		settings: {
+			onThemeChanged: () => undefined,
+		},
+	},
+};
+
+const { registerCoreActions } = await import("../src/renderer/actions/core-actions");
 
 function resetStore() {
 	useActionStore.setState({
@@ -51,6 +70,34 @@ describe("action registration", () => {
 			execute: () => {},
 		});
 		expect(useActionStore.getState().actions.get("test.action")?.label).toBe("Second");
+	});
+});
+
+describe("core search everywhere action", () => {
+	beforeEach(() => {
+		resetStore();
+		useSearchEverywhereStore.setState({ isOpen: false, activeTab: "all" });
+		useTabStore.setState({ activeWorkspaceId: null, activeWorkspaceCwd: "" });
+	});
+
+	test("registers a gated action with a double-shift display shortcut", () => {
+		registerCoreActions();
+
+		const action = useActionStore.getState().actions.get("general.searchEverywhere");
+		expect(action).toBeDefined();
+		if (!action) throw new Error("general.searchEverywhere was not registered");
+
+		expect(action.displayShortcut).toEqual({ key: "Shift", shift: true });
+		expect(action.when?.()).toBe(false);
+
+		useTabStore.setState({ activeWorkspaceId: "ws-1", activeWorkspaceCwd: "/repo" });
+		expect(action.when?.()).toBe(true);
+
+		action.execute();
+		expect(useSearchEverywhereStore.getState().isOpen).toBe(true);
+
+		action.execute();
+		expect(useSearchEverywhereStore.getState().isOpen).toBe(false);
 	});
 });
 

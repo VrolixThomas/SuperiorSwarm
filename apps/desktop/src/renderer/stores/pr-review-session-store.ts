@@ -81,7 +81,7 @@ export const usePRReviewSessionStore = create<PRReviewSessionStore>()((set, get)
 	selectFile: (key, path) =>
 		set((state) => {
 			const next = withSession(state, key, (s) =>
-				s.activeFilePath === path ? s : { ...s, activeFilePath: path }
+				s.activeFilePath === path ? s : { ...s, activeFilePath: path, activeThreadId: null }
 			);
 			return next === state.sessions ? state : { sessions: next };
 		}),
@@ -91,13 +91,17 @@ export const usePRReviewSessionStore = create<PRReviewSessionStore>()((set, get)
 			const next = withSession(state, key, (s) => {
 				if (s.fileOrder.length === 0) return s;
 				if (s.activeFilePath === null) {
-					return { ...s, activeFilePath: s.fileOrder[0] ?? null };
+					return { ...s, activeFilePath: s.fileOrder[0] ?? null, activeThreadId: null };
 				}
 				const idx = s.fileOrder.indexOf(s.activeFilePath);
-				if (idx === -1) return { ...s, activeFilePath: s.fileOrder[0] ?? null };
+				if (idx === -1) {
+					return { ...s, activeFilePath: s.fileOrder[0] ?? null, activeThreadId: null };
+				}
 				const nextIdx = Math.min(s.fileOrder.length - 1, Math.max(0, idx + delta));
 				const nextPath = s.fileOrder[nextIdx] ?? null;
-				return nextPath === s.activeFilePath ? s : { ...s, activeFilePath: nextPath };
+				return nextPath === s.activeFilePath
+					? s
+					: { ...s, activeFilePath: nextPath, activeThreadId: null };
 			});
 			return next === state.sessions ? state : { sessions: next };
 		}),

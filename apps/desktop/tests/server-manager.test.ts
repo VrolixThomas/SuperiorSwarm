@@ -106,6 +106,12 @@ function createRepoWithConfig(name: string, configs: MockConfig[]): string {
 	return repoPath;
 }
 
+function createRepoConfig(repoPath: string, configs: MockConfig[]): string {
+	mkdirSync(join(repoPath, ".superiorswarm"), { recursive: true });
+	writeFileSync(join(repoPath, ".superiorswarm", "lsp.json"), JSON.stringify({ servers: configs }));
+	return repoPath;
+}
+
 describe("ServerManager repo-aware resolution", () => {
 	beforeEach(() => {
 		unavailableCommands.clear();
@@ -151,6 +157,29 @@ describe("ServerManager repo-aware resolution", () => {
 		expect(failedConnectionAgain).toBeNull();
 		expect(healthyConnection).not.toBeNull();
 		expect(spawnCalls).toEqual(["missing-pyright", "working-pyright"]);
+
+		await manager.disposeAll();
+	});
+
+	test("getRunningConnections matches repo paths exactly", async () => {
+		const manager = new ServerManager();
+		const root = mkdtempSync(join(tmpdir(), "ss-server-manager-running-"));
+		createdRepos.push(root);
+		const repoA = createRepoConfig(join(root, "repo"), [buildConfig("typescript", "repo-a-ts")]);
+		const repoB = createRepoConfig(`${join(root, "other")}:${repoA}`, [
+			buildConfig("typescript", "repo-b-ts"),
+		]);
+
+		const connectionA = await manager.getOrCreate("typescript", repoA);
+		const connectionB = await manager.getOrCreate("typescript", repoB);
+		if (!connectionA || !connectionB) throw new Error("Expected test LSP connections");
+
+		expect(manager.getRunningConnections(repoA)).toEqual([
+			{ configId: "typescript", connection: connectionA },
+		]);
+		expect(manager.getRunningConnections(repoB)).toEqual([
+			{ configId: "typescript", connection: connectionB },
+		]);
 
 		await manager.disposeAll();
 	});

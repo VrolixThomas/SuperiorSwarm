@@ -11,7 +11,7 @@ interface DiffEditorProps {
 	renderSideBySide: boolean;
 	readOnly?: boolean;
 	onModifiedChange?: (content: string) => void;
-	onEditorReady?: (editor: monaco.editor.IStandaloneDiffEditor) => void;
+	onEditorReady?: (editor: monaco.editor.IStandaloneDiffEditor | null) => void;
 }
 
 export function DiffEditor({
@@ -66,6 +66,7 @@ export function DiffEditor({
 		onEditorReadyRef.current?.(editor);
 		return () => {
 			setEditorReady(false);
+			onEditorReadyRef.current?.(null);
 			editor.dispose();
 			editorRef.current = null;
 		};

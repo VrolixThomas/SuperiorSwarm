@@ -86,7 +86,7 @@ async function getBitbucketRepos(): Promise<Array<{ workspace: string; repoSlug:
 
 	for (const project of allProjects) {
 		const remote = await parseRemoteUrl(project.repoPath);
-		if (remote && remote.host.includes("bitbucket")) {
+		if (remote?.host.includes("bitbucket")) {
 			repos.push({ workspace: remote.owner, repoSlug: remote.repo });
 		}
 	}
@@ -196,9 +196,9 @@ export async function createPRComment(
 	if (filePath) {
 		const inline: Record<string, unknown> = { path: filePath };
 		if (line) {
-			inline.to = line;
+			inline["to"] = line;
 		}
-		payload.inline = inline;
+		payload["inline"] = inline;
 	}
 
 	const res = await atlassianFetch(
@@ -267,6 +267,23 @@ export interface BitbucketComment {
 	filePath: string | null;
 	lineNumber: number | null;
 	createdAt: string;
+}
+
+/**
+ * Bitbucket occasionally exposes editor layout attribute lines in the raw
+ * description. They are meaningful to Atlassian's renderer but render as
+ * visible noise in standard Markdown.
+ */
+export function normalizeBitbucketDescription(description: string): string {
+	return description
+		.split("\n")
+		.filter(
+			(line) =>
+				!/^\s*\{\s*:?\s*data-layout\s*=\s*(['"])(?:center|wide|full-width)\1\s*\}\s*$/i.test(line)
+		)
+		.join("\n")
+		.replace(/\n{3,}/g, "\n\n")
+		.trim();
 }
 
 /** Fetch all comments on a Bitbucket pull request (follows pagination) */
@@ -346,7 +363,7 @@ export async function getBitbucketPRDetails(
 	};
 	return {
 		title: data.title ?? "",
-		description: data.description ?? "",
+		description: normalizeBitbucketDescription(data.description ?? ""),
 		state: data.state ?? "OPEN",
 		author: data.author?.display_name ?? "Unknown",
 		authorAvatarUrl: data.author?.links?.avatar?.href ?? "",

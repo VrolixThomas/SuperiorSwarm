@@ -39,6 +39,7 @@ interface ServerInstance {
 	config: LanguageServerConfig;
 	connection: MessageConnection;
 	process: ChildProcess;
+	repoPath: string;
 	rootUri: string;
 	initialized: boolean;
 	shuttingDown: boolean;
@@ -159,9 +160,7 @@ function resolveDotnetRoot(): string | undefined {
 				cachedDotnetRoot = binDir;
 				return cachedDotnetRoot;
 			}
-		} catch {
-			continue;
-		}
+		} catch {}
 	}
 
 	cachedDotnetRoot = null;
@@ -466,6 +465,19 @@ export class ServerManager {
 		return this.startServer(configId, repoPath);
 	}
 
+	getRunningConnections(repoPath: string): { configId: string; connection: MessageConnection }[] {
+		const out: { configId: string; connection: MessageConnection }[] = [];
+		for (const instance of this.servers.values()) {
+			if (instance.repoPath !== repoPath) continue;
+			if (!instance.initialized || instance.shuttingDown) continue;
+			out.push({
+				configId: instance.config.id,
+				connection: instance.connection,
+			});
+		}
+		return out;
+	}
+
 	private async startServer(configId: string, repoPath: string): Promise<MessageConnection | null> {
 		const config = this.findConfigById(configId, repoPath);
 		if (!config) return null;
@@ -531,6 +543,7 @@ export class ServerManager {
 			config,
 			connection,
 			process: childProcess,
+			repoPath,
 			rootUri: pathToFileURL(repoPath).toString(),
 			initialized: false,
 			shuttingDown: false,

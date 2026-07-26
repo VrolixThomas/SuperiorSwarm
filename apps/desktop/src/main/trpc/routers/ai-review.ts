@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { CLI_PRESET_NAMES } from "../../../shared/cli-preset";
 import { cleanupReviewWorkspace } from "../../ai-review/cleanup";
@@ -302,6 +302,7 @@ export const aiReviewRouter = router({
 	addUserComment: publicProcedure
 		.input(
 			z.object({
+				prProvider: z.enum(["github", "bitbucket"]),
 				prIdentifier: z.string(),
 				prTitle: z.string(),
 				sourceBranch: z.string().optional(),
@@ -316,19 +317,27 @@ export const aiReviewRouter = router({
 			const db = getDb();
 			const now = new Date();
 
-			// Find or create a review draft for this PR
+			// Attach to the newest active/ready draft. Completed review rounds
+			// stay immutable, so a manual comment starts a fresh local draft.
 			let draft = db
 				.select()
 				.from(schema.reviewDrafts)
-				.where(eq(schema.reviewDrafts.prIdentifier, input.prIdentifier))
-				.get();
+				.where(
+					and(
+						eq(schema.reviewDrafts.prIdentifier, input.prIdentifier),
+						eq(schema.reviewDrafts.prProvider, input.prProvider)
+					)
+				)
+				.orderBy(desc(schema.reviewDrafts.updatedAt))
+				.all()
+				.find((candidate) => ["ready", "queued", "in_progress"].includes(candidate.status));
 
 			if (!draft) {
 				const draftId = randomUUID();
 				db.insert(schema.reviewDrafts)
 					.values({
 						id: draftId,
-						prProvider: "github",
+						prProvider: input.prProvider,
 						prIdentifier: input.prIdentifier,
 						prTitle: input.prTitle,
 						prAuthor: "",
@@ -339,11 +348,13 @@ export const aiReviewRouter = router({
 						updatedAt: now,
 					})
 					.run();
-				draft = db
+				const createdDraft = db
 					.select()
 					.from(schema.reviewDrafts)
 					.where(eq(schema.reviewDrafts.id, draftId))
-					.get()!;
+					.get();
+				if (!createdDraft) throw new Error("Failed to create manual review draft");
+				draft = createdDraft;
 			}
 
 			const id = randomUUID();
@@ -372,11 +383,12 @@ export const aiReviewRouter = router({
 			})
 		)
 		.mutation(async ({ input }) => {
-			// If user provided a body, update the draft's summary before publishing
-			if (input.body?.trim()) {
+			// An explicitly supplied body is authoritative, including an empty body
+			// when the user chooses to submit only inline comments or a verdict.
+			if (input.body !== undefined) {
 				const db = getDb();
 				db.update(schema.reviewDrafts)
-					.set({ summaryMarkdown: input.body.trim(), updatedAt: new Date() })
+					.set({ summaryMarkdown: input.body.trim() || null, updatedAt: new Date() })
 					.where(eq(schema.reviewDrafts.id, input.draftId))
 					.run();
 			}

@@ -9,7 +9,9 @@ mock.module("../src/main/atlassian/auth", () => ({
 	getAuth: mock(() => null),
 }));
 
-const { getBitbucketPRComments } = await import("../src/main/atlassian/bitbucket");
+const { getBitbucketPRComments, normalizeBitbucketDescription } = await import(
+	"../src/main/atlassian/bitbucket"
+);
 
 function jsonResponse(body: unknown): Response {
 	return new Response(JSON.stringify(body), {
@@ -17,6 +19,25 @@ function jsonResponse(body: unknown): Response {
 		headers: { "content-type": "application/json" },
 	});
 }
+
+describe("normalizeBitbucketDescription", () => {
+	test("removes Atlassian layout attribute lines without changing normal Markdown", () => {
+		const input = [
+			"# Summary",
+			"",
+			"{ data-layout='center' }",
+			"Useful description",
+			'{: data-layout="wide" }',
+		].join("\n");
+
+		expect(normalizeBitbucketDescription(input)).toBe("# Summary\n\nUseful description");
+	});
+
+	test("leaves inline text mentioning data-layout untouched", () => {
+		const input = "Document `{ data-layout='center' }` when discussing the source.";
+		expect(normalizeBitbucketDescription(input)).toBe(input);
+	});
+});
 
 describe("getBitbucketPRComments", () => {
 	test("reads author from comment.user.display_name", async () => {

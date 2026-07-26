@@ -11,6 +11,7 @@ import { useEffect, useRef } from "react";
 import { CmdBuffer } from "../../shared/lib/cmd-buffer";
 import { RESET_STALE_MODES, isShellProcess } from "../../shared/lib/terminal-modes";
 import { useTabStore } from "../stores/tab-store";
+import { createTerminalLinkHandler } from "./terminal-links";
 import { interceptPaste } from "./terminal-paste";
 
 function buildTerminalTheme(): ITheme {
@@ -73,12 +74,19 @@ export function Terminal({
 	useEffect(() => {
 		if (!ref.current) return;
 
+		const openExternalLink = createTerminalLinkHandler((url) =>
+			window.electron.shell.openExternal(url)
+		);
 		const term = new XTerm({
 			allowProposedApi: true,
 			cursorBlink: true,
 			fontSize: 13,
 			fontFamily: '"SF Mono", Menlo, Monaco, "Courier New", monospace',
 			lineHeight: 1.2,
+			// Codex emits OSC 8 hyperlinks, while WebLinksAddon handles plain-text URLs.
+			linkHandler: {
+				activate: openExternalLink,
+			},
 			scrollback: 10000,
 			theme: buildTerminalTheme(),
 		});
@@ -86,11 +94,7 @@ export function Terminal({
 		const fit = new FitAddon();
 		term.loadAddon(fit);
 		term.loadAddon(new SearchAddon());
-		term.loadAddon(
-			new WebLinksAddon((_event, uri) => {
-				window.electron.shell.openExternal(uri);
-			})
-		);
+		term.loadAddon(new WebLinksAddon(openExternalLink));
 		term.loadAddon(new ClipboardAddon());
 
 		const unicode11 = new Unicode11Addon();

@@ -17,6 +17,7 @@ import { DiffPanel } from "./components/DiffPanel";
 import { InstallingOverlay } from "./components/InstallingOverlay";
 import { LoginScreen } from "./components/LoginScreen";
 import { MainContentArea } from "./components/MainContentArea";
+import { SearchEverywherePopup } from "./components/SearchEverywherePopup";
 import { SharedFilesPanel } from "./components/SharedFilesPanel";
 import { Sidebar } from "./components/Sidebar";
 import { UpdateToast } from "./components/UpdateToast";
@@ -473,11 +474,6 @@ function AuthenticatedApp() {
 	);
 	const activeProjectId = activeWorkspaceQuery.data?.projectId ?? null;
 
-	const workspacesQuery = trpc.workspaces.listByProject.useQuery(
-		{ projectId: activeProjectId ?? "" },
-		{ enabled: !!activeProjectId }
-	);
-
 	const activeCwd = useTabStore((s) => s.activeWorkspaceCwd);
 	const branchStatusQuery = trpc.branches.getStatus.useQuery(
 		{ projectId: activeProjectId ?? "", cwd: activeCwd || undefined },
@@ -733,7 +729,7 @@ function AuthenticatedApp() {
 						</Panel>
 					</Group>
 					{!rightPanelOpen &&
-						sidebarSegment !== "tickets" &&
+						sidebarSegment === "repos" &&
 						!activeWorkspaceId?.startsWith("xro-") && (
 							<button
 								type="button"
@@ -763,6 +759,7 @@ function AuthenticatedApp() {
 					<SharedFilesPanel />
 					<DaemonStatus />
 					<CommandPalette />
+					<SearchEverywherePopup />
 					<PRReviewKeyboardListener />
 					{activeProjectId && (
 						<BranchPalette

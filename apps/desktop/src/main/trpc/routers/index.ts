@@ -1,4 +1,5 @@
 import { router } from "../index";
+import { agentLaunchRouter } from "./agent-launch";
 import { agentSessionsRouter } from "./agent-sessions";
 import { aiReviewRouter } from "./ai-review";
 import { atlassianRouter } from "./atlassian";
@@ -10,6 +11,7 @@ import { diffRouter } from "./diff";
 import { externalManagersRouter } from "./external-managers";
 import { githubRouter } from "./github";
 import { globalMcpRouter } from "./global-mcp";
+import { inlineCommentsRouter } from "./inline-comments";
 import { linearRouter } from "./linear";
 import { lspRouter } from "./lsp";
 import { mergeRouter } from "./merge";
@@ -30,6 +32,7 @@ import { workspacesRouter } from "./workspaces";
 
 export const appRouter = router({
 	auth: authRouter,
+	agentLaunch: agentLaunchRouter,
 	aiReview: aiReviewRouter,
 	agentSessions: agentSessionsRouter,
 	commentSolver: commentSolverRouter,
@@ -50,6 +53,7 @@ export const appRouter = router({
 	linear: linearRouter,
 	github: githubRouter,
 	globalMcp: globalMcpRouter,
+	inlineComments: inlineCommentsRouter,
 	tickets: ticketsRouter,
 	prPoller: prPollerRouter,
 	updates: updatesRouter,

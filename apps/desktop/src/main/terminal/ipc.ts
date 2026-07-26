@@ -94,7 +94,10 @@ export function setupTerminalIPC(
 			throw new Error("data must be a string");
 		}
 		await agentSessionManager?.beforeTerminalInput(id);
-		daemonClient.write(id, data);
+		// false = daemon not connected, nothing delivered. Callers that need
+		// delivery confirmation (e.g. inline-comment send) check this; the
+		// keystroke path ignores it.
+		return daemonClient.write(id, data);
 	});
 
 	ipcMain.handle("terminal:resize", (_event, id: unknown, cols: unknown, rows: unknown) => {

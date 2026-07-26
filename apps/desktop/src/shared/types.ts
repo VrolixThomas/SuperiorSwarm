@@ -6,7 +6,8 @@ export type { TerminalDataMeta } from "./daemon-protocol";
 
 export interface TerminalAPI {
 	create: (id: string, cwd?: string, workspaceId?: string) => Promise<{ wasAttached: boolean }>;
-	write: (id: string, data: string) => Promise<void>;
+	/** Resolves false when the PTY daemon is not connected (nothing delivered). */
+	write: (id: string, data: string) => Promise<boolean>;
 	resize: (id: string, cols: number, rows: number) => Promise<void>;
 	detach: (id: string) => Promise<void>;
 	dispose: (id: string) => Promise<void>;
