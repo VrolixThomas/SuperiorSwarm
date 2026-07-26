@@ -1,6 +1,6 @@
 import * as monaco from "monaco-editor";
 import { initVimMode } from "monaco-vim";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ensureThemeRegistered } from "../lib/monacoTheme";
 import { useEditorSettingsStore } from "../stores/editor-settings";
 import { useProjectStore } from "../stores/projects";
@@ -34,8 +34,7 @@ export function FileEditor({
 	const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
 	const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-	// Capture initialPosition on mount only; subsequent re-renders (e.g. after store clear) do not update it
-	const initialPositionRef = useRef(initialPosition);
+	const pendingInitialPositionRef = useRef(initialPosition);
 	const clearInitialPosition = useTabStore((s) => s.clearInitialPosition);
 	const utils = trpc.useUtils();
 	const vimStatusRef = useRef<HTMLDivElement>(null);
@@ -87,15 +86,22 @@ export function FileEditor({
 		onLspContentChangedRef.current = onLspContentChanged;
 	}, [onLspContentChanged]);
 
-	// Clear initialPosition from store immediately so re-mounts (tab switch away/back) do not re-navigate.
-	// tabId and clearInitialPosition are intentionally excluded: this runs on mount only, and tabId
-	// is stable for the lifetime of this component instance (it changes only when the key prop changes).
-	// biome-ignore lint/correctness/useExhaustiveDependencies: mount-only effect, deps excluded intentionally
+	const applyPendingInitialPosition = useCallback(() => {
+		const position = pendingInitialPositionRef.current;
+		const editor = editorRef.current;
+		if (!position || !editor?.getModel()) return;
+
+		editor.setPosition(position);
+		editor.revealPositionInCenter(position);
+		pendingInitialPositionRef.current = undefined;
+		clearInitialPosition(tabId);
+	}, [clearInitialPosition, tabId]);
+
 	useEffect(() => {
-		if (initialPositionRef.current) {
-			clearInitialPosition(tabId);
-		}
-	}, []);
+		if (!initialPosition) return;
+		pendingInitialPositionRef.current = initialPosition;
+		applyPendingInitialPosition();
+	}, [initialPosition, applyPendingInitialPosition]);
 
 	const { data, isLoading } = trpc.diff.getFileContent.useQuery(
 		{ repoPath, ref: "", filePath },
@@ -138,7 +144,7 @@ export function FileEditor({
 			editor.dispose();
 			editorRef.current = null;
 		};
-	}, []);
+	}, [paneId]);
 
 	// Snapshot content once on first data arrival. Subsequent query refetches
 	// (triggered by save invalidations, polling, etc.) DO NOT update this snapshot —
@@ -151,7 +157,7 @@ export function FileEditor({
 		if (data) setInitialContent(data.content);
 	}, [data, initialContent]);
 
-	// biome-ignore lint/correctness/useExhaustiveDependencies: saveMutation.mutate identity is stable; initialPositionRef is a ref (intentionally excluded)
+	// biome-ignore lint/correctness/useExhaustiveDependencies: saveMutation.mutate identity is stable; pendingInitialPositionRef is a ref (intentionally excluded)
 	useEffect(() => {
 		const editor = editorRef.current;
 		if (!editor || initialContent === null) return;
@@ -164,13 +170,7 @@ export function FileEditor({
 		setCurrentModel(model);
 		setPreviewContent(initialContent);
 
-		// Use the ref (captured at mount) so re-renders after store clear do not re-navigate
-		const position = initialPositionRef.current;
-		if (position) {
-			editor.setPosition(position);
-			editor.revealPositionInCenter(position);
-			initialPositionRef.current = undefined; // consume once
-		}
+		applyPendingInitialPosition();
 
 		let version = 1;
 		const sub = model.onDidChangeContent(() => {
@@ -199,7 +199,7 @@ export function FileEditor({
 			setCurrentModel(null);
 			model.dispose();
 		};
-	}, [initialContent, language, repoPath, filePath]);
+	}, [initialContent, language, repoPath, filePath, applyPendingInitialPosition]);
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: editorReady is an intentional trigger to re-run after editor creation
 	useEffect(() => {
@@ -238,7 +238,7 @@ export function FileEditor({
 		});
 
 		return () => scrollSub.dispose();
-	}, [editorReady, markdownPreviewMode]);
+	}, [markdownPreviewMode]);
 
 	return (
 		<>

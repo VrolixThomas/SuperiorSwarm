@@ -1,6 +1,9 @@
 import { useEffect } from "react";
 import { type Shortcut, useActionStore } from "../stores/action-store";
+import { useSearchEverywhereStore } from "../stores/search-everywhere-store";
+import { useTabStore } from "../stores/tab-store";
 import { shortcutsMatch } from "../utils/parse-accelerator";
+import { createDoubleShiftDetector } from "./double-shift-detector";
 
 function isTextInputElement(target: HTMLElement): boolean {
 	return target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT";
@@ -17,12 +20,7 @@ function isPlainPrintableKey(e: KeyboardEvent): boolean {
 
 function isTerminalControlBracketKey(e: KeyboardEvent): boolean {
 	if (!e.ctrlKey || e.metaKey || e.altKey) return false;
-	return (
-		e.code === "BracketLeft" ||
-		e.code === "BracketRight" ||
-		e.key === "[" ||
-		e.key === "]"
-	);
+	return e.code === "BracketLeft" || e.code === "BracketRight" || e.key === "[" || e.key === "]";
 }
 
 export function shouldSkipShortcutHandling(e: KeyboardEvent, target: HTMLElement | null): boolean {
@@ -59,7 +57,14 @@ export function matchesShortcut(e: KeyboardEvent, shortcut: Shortcut): boolean {
 
 export function useShortcutListener() {
 	useEffect(() => {
+		const detector = createDoubleShiftDetector(() => {
+			if (useTabStore.getState().activeWorkspaceId === null) return;
+			useSearchEverywhereStore.getState().toggle();
+		});
+
 		function handleKeyDown(e: KeyboardEvent) {
+			detector.keydown(e, Date.now());
+
 			const target = e.target as HTMLElement | null;
 			if (shouldSkipShortcutHandling(e, target)) {
 				return;
@@ -78,7 +83,15 @@ export function useShortcutListener() {
 			}
 		}
 
+		function handleKeyUp(e: KeyboardEvent) {
+			detector.keyup(e, Date.now());
+		}
+
 		window.addEventListener("keydown", handleKeyDown, true);
-		return () => window.removeEventListener("keydown", handleKeyDown, true);
+		window.addEventListener("keyup", handleKeyUp, true);
+		return () => {
+			window.removeEventListener("keydown", handleKeyDown, true);
+			window.removeEventListener("keyup", handleKeyUp, true);
+		};
 	}, []);
 }

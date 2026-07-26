@@ -1,4 +1,6 @@
-import { useEffect, useMemo } from "react";
+import type * as monaco from "monaco-editor";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { reanchorComment } from "../../../shared/comment-anchor";
 import { detectLanguage } from "../../../shared/diff-types";
 import type { ReviewScope, ScopedDiffFile } from "../../../shared/review-types";
 import { useRepoSubscription } from "../../hooks/useRepoSubscription";
@@ -10,6 +12,8 @@ import { DiffEditor } from "../DiffEditor";
 import { MarkdownPreviewButton } from "../MarkdownPreviewButton";
 import { MarkdownRenderedDiff } from "../MarkdownRenderedDiff";
 import { MarkdownRenderer } from "../MarkdownRenderer";
+import { type AnchoredComment, InlineCommentLayer } from "../inline-comments/InlineCommentLayer";
+import { InlineCommentSendBar } from "../inline-comments/InlineCommentSendBar";
 import { ReviewFilterTabs } from "./ReviewFilterTabs";
 import { ReviewHintBar } from "./ReviewHintBar";
 import { ReviewProgressBar } from "./ReviewProgressBar";
@@ -38,6 +42,9 @@ export function ReviewTab({
 	const diffMode = useTabStore((s) => s.diffMode);
 	const setDiffMode = useTabStore((s) => s.setDiffMode);
 	const markdownPreviewMode = useTabStore((s) => s.markdownPreviewMode);
+	const [editorInstance, setEditorInstance] = useState<monaco.editor.IStandaloneDiffEditor | null>(
+		null
+	);
 
 	useRepoSubscription(repoPath);
 
@@ -137,6 +144,81 @@ export function ReviewTab({
 		onSuccess: () => utils.review.getViewed.invalidate({ workspaceId }),
 	});
 
+	const commentsQuery = trpc.inlineComments.list.useQuery({ workspaceId });
+
+	const fileComments: AnchoredComment[] = useMemo(() => {
+		// Wait for the modified content to load: re-anchoring against the empty
+		// placeholder would briefly render/send every comment as outdated at line 1.
+		if (!selectedFile || !modifiedQ.isSuccess) return [];
+		return (commentsQuery.data ?? [])
+			.filter((c) => c.filePath === selectedFile.path)
+			.map((c) => {
+				const anchor = reanchorComment(modifiedContent, c.startLine, c.endLine, c.codeSnapshot);
+				return {
+					...c,
+					displayStartLine: anchor.startLine,
+					displayEndLine: anchor.endLine,
+					outdated: anchor.outdated,
+				};
+			});
+	}, [commentsQuery.data, selectedFile, modifiedContent, modifiedQ.isSuccess]);
+
+	const allAnchoredComments: AnchoredComment[] = useMemo(
+		() =>
+			(commentsQuery.data ?? []).map((c) => ({
+				...c,
+				displayStartLine: c.startLine,
+				displayEndLine: c.endLine,
+				outdated: false,
+			})),
+		[commentsQuery.data]
+	);
+
+	// Send-bar list: substitute in the re-anchored entries for the currently open
+	// file (fileComments), so the prompt carries real re-anchored lines and the
+	// outdated note for it. Other files keep their stored (unanchored) lines.
+	const sendComments: AnchoredComment[] = useMemo(() => {
+		const fileCommentsById = new Map(fileComments.map((c) => [c.id, c]));
+		return allAnchoredComments.map((c) => fileCommentsById.get(c.id) ?? c);
+	}, [allAnchoredComments, fileComments]);
+
+	const createCommentMut = trpc.inlineComments.create.useMutation({
+		onSuccess: () => utils.inlineComments.list.invalidate({ workspaceId }),
+	});
+	const updateCommentMut = trpc.inlineComments.update.useMutation({
+		onSuccess: () => utils.inlineComments.list.invalidate({ workspaceId }),
+	});
+	const deleteCommentMut = trpc.inlineComments.delete.useMutation({
+		onSuccess: () => utils.inlineComments.list.invalidate({ workspaceId }),
+	});
+
+	const handleCreateComment = useCallback(
+		(draft: { startLine: number; endLine: number; body: string }) => {
+			if (!selectedFile) return;
+			const lines = modifiedContent.split("\n");
+			const codeSnapshot = lines.slice(draft.startLine - 1, draft.endLine).join("\n");
+			createCommentMut.mutate({
+				workspaceId,
+				repoPath,
+				filePath: selectedFile.path,
+				startLine: draft.startLine,
+				endLine: draft.endLine,
+				codeSnapshot,
+				body: draft.body,
+			});
+		},
+		[selectedFile, modifiedContent, workspaceId, repoPath, createCommentMut]
+	);
+
+	const handleUpdateComment = useCallback(
+		(id: string, body: string) => updateCommentMut.mutate({ id, body }),
+		[updateCommentMut.mutate]
+	);
+	const handleDeleteComment = useCallback(
+		(id: string) => deleteCommentMut.mutate({ id }),
+		[deleteCommentMut.mutate]
+	);
+
 	useEffect(() => {
 		async function handleToggleViewed() {
 			if (!selectedFile) return;
@@ -213,6 +295,7 @@ export function ReviewTab({
 				branchCount={branchCount}
 				onScopeChange={handleScopeChange}
 			/>
+			<InlineCommentSendBar workspaceId={workspaceId} comments={sendComments} />
 			<div className="flex items-center gap-2 border-b border-[var(--border)] px-2 py-1">
 				<ReviewProgressBar reviewed={reviewedInScope} total={scopedFiles.length} />
 				<MarkdownPreviewButton language={language} showRichDiff />
@@ -298,6 +381,7 @@ export function ReviewTab({
 								language={language}
 								renderSideBySide={diffMode === "split"}
 								readOnly={true}
+								onEditorReady={setEditorInstance}
 							/>
 						</div>
 						<div className="flex-1 overflow-y-auto border-l border-[var(--border)] p-4">
@@ -311,9 +395,17 @@ export function ReviewTab({
 						language={language}
 						renderSideBySide={diffMode === "split"}
 						readOnly={true}
+						onEditorReady={setEditorInstance}
 					/>
 				)}
 			</div>
+			<InlineCommentLayer
+				editor={editorInstance}
+				comments={fileComments}
+				onCreate={handleCreateComment}
+				onUpdate={handleUpdateComment}
+				onDelete={handleDeleteComment}
+			/>
 			<ReviewHintBar />
 		</div>
 	);

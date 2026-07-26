@@ -501,6 +501,29 @@ export const reviewViewed = sqliteTable(
 export type ReviewViewed = typeof reviewViewed.$inferSelect;
 export type NewReviewViewed = typeof reviewViewed.$inferInsert;
 
+export const inlineComments = sqliteTable(
+	"inline_comments",
+	{
+		id: text("id").primaryKey(),
+		workspaceId: text("workspace_id").notNull(),
+		repoPath: text("repo_path").notNull(),
+		filePath: text("file_path").notNull(),
+		startLine: integer("start_line").notNull(),
+		endLine: integer("end_line").notNull(),
+		codeSnapshot: text("code_snapshot").notNull(),
+		body: text("body").notNull(),
+		status: text("status", { enum: ["pending", "sent"] })
+			.notNull()
+			.default("pending"),
+		createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+		sentAt: integer("sent_at", { mode: "timestamp" }),
+	},
+	(table) => [index("idx_inline_comments_workspace").on(table.workspaceId)]
+);
+
+export type InlineCommentRow = typeof inlineComments.$inferSelect;
+export type NewInlineCommentRow = typeof inlineComments.$inferInsert;
+
 export const appSettings = sqliteTable("app_settings", {
 	key: text("key").primaryKey(),
 	value: text("value").notNull(),

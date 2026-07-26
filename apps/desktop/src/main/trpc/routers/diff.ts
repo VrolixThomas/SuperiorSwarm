@@ -27,6 +27,7 @@ import {
 	unstageFiles,
 } from "../../git/operations";
 import { push } from "../../git/remote-ops";
+import { searchText } from "../../git/search-text";
 import { publicProcedure, router } from "../index";
 
 function computeStats(files: ReturnType<typeof parseUnifiedDiff>) {
@@ -232,6 +233,10 @@ export const diffRouter = router({
 			const entries = await listAllEntries(input.repoPath);
 			return { entries };
 		}),
+
+	searchText: publicProcedure
+		.input(z.object({ repoPath: z.string().min(1), query: z.string().min(2) }))
+		.query(({ input }) => searchText(input.repoPath, input.query)),
 
 	revealInFinder: publicProcedure
 		.input(z.object({ absolutePath: z.string() }))

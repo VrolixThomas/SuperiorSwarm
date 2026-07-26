@@ -3,6 +3,7 @@ import { useActionStore } from "../stores/action-store";
 import { useBranchStore } from "../stores/branch-store";
 import { findParentSplit, findSplitById, getAllPanes, usePaneStore } from "../stores/pane-store";
 import { useProjectStore } from "../stores/projects";
+import { useSearchEverywhereStore } from "../stores/search-everywhere-store";
 import { useTabStore } from "../stores/tab-store";
 import { useThemeStore } from "../stores/theme-store";
 
@@ -92,6 +93,15 @@ export function registerCoreActions() {
 				if (s.isPaletteOpen) s.closePalette();
 				else s.openPalette();
 			},
+		},
+		{
+			id: "general.searchEverywhere",
+			label: "Search Everywhere",
+			category: "General",
+			displayShortcut: { key: "Shift", shift: true },
+			when: hasWorkspace,
+			execute: () => useSearchEverywhereStore.getState().toggle(),
+			keywords: ["find", "files", "symbols", "text", "occurrences", "go to"],
 		},
 		{
 			id: "general.settings",

@@ -26,6 +26,8 @@ bun run db:generate  # Generate Drizzle ORM migrations
 
 To run a single test file: `bun test tests/cmd-buffer.test.ts`
 
+Full-suite `bun test` (159 files) is unreliable locally: ~100+ failures are 5s-timeout/fd-exhaustion flakiness under load, not real breakage. Verify changes per directory (e.g. `bun test tests/daemon/`) and compare full-run failure sets against a baseline run before blaming a diff.
+
 ## Architecture
 
 - **Processes:** main (`src/main/`) / daemon (`src/daemon/`) / renderer (`src/renderer/`) + preload script (`src/preload/`)

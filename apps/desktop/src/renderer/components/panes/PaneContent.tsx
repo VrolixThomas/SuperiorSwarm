@@ -59,6 +59,7 @@ export function PaneContent({
 						diffCtx={activeTab.diffCtx}
 						filePath={activeTab.filePath}
 						language={activeTab.language}
+						workspaceId={activeTab.workspaceId}
 					/>
 				</div>
 			)}
