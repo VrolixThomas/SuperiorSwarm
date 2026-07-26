@@ -18,6 +18,7 @@ import {
 } from "../../git/operations";
 import { BitbucketAdapter } from "../../providers/bitbucket-adapter";
 import { GitHubAdapter } from "../../providers/github-adapter";
+import { getAgentSessionManager } from "../../services/agent-session-manager-handle";
 import { resolveTilde } from "../../services/folder-projects";
 import { ensureRepoExclude } from "../../services/git-exclude";
 import { randomColor } from "../../services/project-colors";
@@ -29,7 +30,7 @@ function assertSafePath(baseDir: string, childName: string): string {
 	}
 	const resolvedBase = resolve(baseDir);
 	const resolvedTarget = resolve(baseDir, childName);
-	if (!resolvedTarget.startsWith(resolvedBase + "/")) {
+	if (!resolvedTarget.startsWith(`${resolvedBase}/`)) {
 		throw new Error("Path escapes target directory");
 	}
 	return resolvedTarget;
@@ -342,6 +343,14 @@ export const projectsRouter = router({
 
 	delete: publicProcedure.input(z.object({ id: z.string() })).mutation(({ input }) => {
 		const db = getDb();
+		const workspaceIds = db
+			.select({ id: workspaces.id })
+			.from(workspaces)
+			.where(eq(workspaces.projectId, input.id))
+			.all();
+		for (const workspace of workspaceIds) {
+			getAgentSessionManager()?.removeWorkspaceSessions(workspace.id);
+		}
 		db.delete(projects).where(eq(projects.id, input.id)).run();
 	}),
 });

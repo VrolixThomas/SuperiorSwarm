@@ -1,9 +1,12 @@
+import { homedir } from "node:os";
 import { eq } from "drizzle-orm";
 import { BrowserWindow, ipcMain } from "electron";
 import type { TerminalDataMeta } from "../../shared/daemon-protocol";
-import { getAgentNotifyPort } from "../agent-hooks/port";
+import { getAgentNotifyPort, getAgentNotifyToken } from "../agent-hooks/port";
 import { getDb } from "../db";
 import { terminalSessions } from "../db/schema";
+import { ensureTerminalSessionRow } from "../db/session-persistence";
+import type { AgentSessionManager } from "../services/agent-session-manager";
 import { incrementCounter } from "../telemetry/state";
 import type { DaemonClient } from "./daemon-client";
 
@@ -13,7 +16,10 @@ function assertNonEmptyString(value: unknown, name: string): asserts value is st
 	}
 }
 
-export function setupTerminalIPC(daemonClient: DaemonClient): void {
+export function setupTerminalIPC(
+	daemonClient: DaemonClient,
+	agentSessionManager?: AgentSessionManager
+): void {
 	ipcMain.handle(
 		"terminal:create",
 		async (event, id: unknown, cwd: unknown, workspaceId: unknown) => {
@@ -24,9 +30,17 @@ export function setupTerminalIPC(daemonClient: DaemonClient): void {
 			if (daemonClient.quitting) return { wasAttached: false };
 			const cwdStr = typeof cwd === "string" && cwd.length > 0 ? cwd : undefined;
 			const wsId = typeof workspaceId === "string" ? workspaceId : undefined;
+			const persistedCwd = cwdStr ?? homedir();
 
 			const window = BrowserWindow.fromWebContents(event.sender);
 			if (!window) return { wasAttached: false };
+			const insertedSessionRow = wsId
+				? ensureTerminalSessionRow({
+						id,
+						workspaceId: wsId,
+						cwd: persistedCwd,
+					})
+				: false;
 
 			const onData = (data: string, meta?: TerminalDataMeta) => {
 				if (!window.isDestroyed()) {
@@ -40,7 +54,10 @@ export function setupTerminalIPC(daemonClient: DaemonClient): void {
 			};
 
 			const notifyPort = getAgentNotifyPort();
+			const notifyToken = getAgentNotifyToken();
 			const env: Record<string, string> = {
+				AGENT_NOTIFY_TERMINAL_ID: id,
+				// Legacy alias retained for existing generated hook scripts.
 				AGENT_NOTIFY_SESSION_ID: id,
 			};
 			if (notifyPort) {
@@ -48,6 +65,9 @@ export function setupTerminalIPC(daemonClient: DaemonClient): void {
 			}
 			if (wsId) {
 				env["AGENT_NOTIFY_WORKSPACE_ID"] = wsId;
+			}
+			if (notifyToken) {
+				env["AGENT_NOTIFY_TOKEN"] = notifyToken;
 			}
 
 			try {
@@ -59,17 +79,21 @@ export function setupTerminalIPC(daemonClient: DaemonClient): void {
 				incrementCounter(getDb(), "lifetimeSessionsStarted");
 				return { wasAttached: false };
 			} catch (error) {
+				if (insertedSessionRow) {
+					getDb().delete(terminalSessions).where(eq(terminalSessions.id, id)).run();
+				}
 				console.error(`Failed to create/attach terminal ${id}:`, error);
 				throw error;
 			}
 		}
 	);
 
-	ipcMain.handle("terminal:write", (_event, id: unknown, data: unknown) => {
+	ipcMain.handle("terminal:write", async (_event, id: unknown, data: unknown) => {
 		assertNonEmptyString(id, "id");
 		if (typeof data !== "string") {
 			throw new Error("data must be a string");
 		}
+		await agentSessionManager?.beforeTerminalInput(id);
 		// false = daemon not connected, nothing delivered. Callers that need
 		// delivery confirmation (e.g. inline-comment send) check this; the
 		// keystroke path ignores it.
@@ -95,6 +119,7 @@ export function setupTerminalIPC(daemonClient: DaemonClient): void {
 	ipcMain.handle("terminal:dispose", (_event, id: unknown) => {
 		assertNonEmptyString(id, "id");
 		daemonClient.dispose(id);
+		agentSessionManager?.removeSession(id);
 		// Also remove the DB session record so it doesn't reappear as stale
 		try {
 			const db = getDb();
@@ -102,6 +127,19 @@ export function setupTerminalIPC(daemonClient: DaemonClient): void {
 		} catch {
 			// DB may not be initialized yet during early startup
 		}
+	});
+
+	ipcMain.handle("terminal:set-visible", async (_event, id: unknown, visible: unknown) => {
+		assertNonEmptyString(id, "id");
+		if (typeof visible !== "boolean") {
+			throw new Error("visible must be a boolean");
+		}
+		await agentSessionManager?.setVisible(id, visible);
+	});
+
+	ipcMain.handle("terminal:wake", async (_event, id: unknown) => {
+		assertNonEmptyString(id, "id");
+		await agentSessionManager?.wake(id);
 	});
 
 	ipcMain.handle("daemon:status", () => {
@@ -116,6 +154,11 @@ export function setupTerminalIPC(daemonClient: DaemonClient): void {
 	});
 
 	daemonClient.setConnectionStatusCallback((connected: boolean) => {
+		if (connected && agentSessionManager) {
+			void agentSessionManager.reconcile().catch((error) => {
+				console.error("[agent-session] failed to reconcile terminal processes:", error);
+			});
+		}
 		for (const win of BrowserWindow.getAllWindows()) {
 			if (!win.isDestroyed()) {
 				win.webContents.send("daemon:status", connected);

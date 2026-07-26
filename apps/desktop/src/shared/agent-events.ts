@@ -3,8 +3,12 @@
 export type AgentAlert = "active" | "needs-input" | "task-complete";
 
 export interface AgentEvent {
+	/** @deprecated Legacy alias for terminalId. */
 	sessionId: string;
+	terminalId: string;
+	providerSessionId: string;
 	workspaceId: string;
+	cwd: string;
 	alert: AgentAlert;
 	agent: string;
 	timestamp: number;

@@ -4,6 +4,8 @@ import { z } from "zod";
 import type { ThemePref } from "../../../shared/types";
 import { getDb } from "../../db";
 import { appSettings } from "../../db/schema";
+import { getAgentSessionManager } from "../../services/agent-session-manager-handle";
+import { getAgentSleepSettings, setAgentSleepSettings } from "../../services/agent-sleep-settings";
 import {
 	getOrchestratorAutoDispatch,
 	setOrchestratorAutoDispatch,
@@ -11,6 +13,11 @@ import {
 import { publicProcedure, router } from "../index";
 
 const themeSchema = z.enum(["system", "light", "dark"]);
+const agentSleepSettingsSchema = z.object({
+	enabled: z.boolean(),
+	idleMinutes: z.union([z.literal(5), z.literal(15), z.literal(30), z.literal(60)]),
+	keepOrchestratorsAwake: z.boolean(),
+});
 
 const THEME_KEY = "theme";
 const DEFAULT_THEME: ThemePref = "system";
@@ -50,5 +57,12 @@ export const settingsRouter = router({
 	setOrchestratorAutoDispatch: publicProcedure.input(z.boolean()).mutation(({ input }) => {
 		setOrchestratorAutoDispatch(input);
 		return input;
+	}),
+
+	getAgentSleep: publicProcedure.query(() => getAgentSleepSettings()),
+	setAgentSleep: publicProcedure.input(agentSleepSettingsSchema).mutation(({ input }) => {
+		const settings = setAgentSleepSettings(input);
+		getAgentSessionManager()?.applySettings();
+		return settings;
 	}),
 });

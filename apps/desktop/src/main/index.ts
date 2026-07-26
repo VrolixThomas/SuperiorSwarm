@@ -4,9 +4,10 @@ import { eq } from "drizzle-orm";
 import { BrowserWindow, app, dialog, ipcMain, session, shell, systemPreferences } from "electron";
 import { AGENT_NOTIFY_PORT } from "../shared/agent-events";
 import { daemonInstanceId, daemonPaths } from "../shared/daemon-protocol";
-import { updateOpenCodePluginPort } from "./agent-hooks/agents/opencode";
+import { updateOpenCodePluginConfig } from "./agent-hooks/agents/opencode";
+import { getOrCreateAgentNotifyToken } from "./agent-hooks/auth-token";
 import { type AgentAlertListener, createAlertListener, reclaimPort } from "./agent-hooks/listener";
-import { setAgentNotifyPort } from "./agent-hooks/port";
+import { setAgentNotifyPort, setAgentNotifyToken } from "./agent-hooks/port";
 import { setupAgentHooks } from "./agent-hooks/setup";
 import { maybeAutoReReview, maybeAutoTriggerReview } from "./ai-review/auto-trigger";
 import { cleanupReviewWorkspace, findReviewWorkspaceByPR } from "./ai-review/cleanup";
@@ -39,6 +40,9 @@ import { getMainWindow, setMainWindow } from "./main-window";
 import { armKillWatchdog } from "./process-watchdog";
 import { syncShortcuts } from "./quick-actions/shortcuts";
 import { disposeRepoIPCWithTimeout, setupRepoIPC } from "./repo-ipc";
+import { PosixAgentProcessController } from "./services/agent-process-controller";
+import { AgentSessionManager } from "./services/agent-session-manager";
+import { setAgentSessionManager } from "./services/agent-session-manager-handle";
 import { probeCliInPath } from "./services/cli-probe";
 import { deleteControlDiscovery, writeControlDiscovery } from "./services/control-discovery";
 import { runGlobalMcpInstall } from "./services/global-mcp-install";
@@ -65,6 +69,7 @@ import { JiraAdapter } from "./providers/jira-adapter";
 import { LinearAdapter } from "./providers/linear-adapter";
 
 let daemonClient: DaemonClient;
+let agentSessionManager: AgentSessionManager | null = null;
 let alertListener: AgentAlertListener | null = null;
 let controlPlane: RunningControlPlane | null = null;
 let detachOrchestratorSink: (() => void) | null = null;
@@ -159,8 +164,6 @@ app.whenReady().then(async () => {
 	);
 	setDaemonClient(daemonClient);
 
-	setupTerminalIPC(daemonClient);
-
 	// Initialize database early — tRPC handlers depend on it
 	try {
 		initializeDatabase();
@@ -176,6 +179,16 @@ app.whenReady().then(async () => {
 		app.quit();
 		return;
 	}
+
+	const agentNotifyToken = getOrCreateAgentNotifyToken();
+	setAgentNotifyToken(agentNotifyToken);
+	agentSessionManager = new AgentSessionManager({
+		daemonClient,
+		processController: new PosixAgentProcessController(daemonClient),
+		onStatus: (event) => broadcastToWindows("agent-session:status", event),
+	});
+	setAgentSessionManager(agentSessionManager);
+	setupTerminalIPC(daemonClient, agentSessionManager);
 
 	const debugRow = getDb()
 		.select()
@@ -322,7 +335,7 @@ app.whenReady().then(async () => {
 	// --- Everything below runs AFTER the window is visible ---
 
 	// Register agent hooks (must complete before listener starts)
-	await setupAgentHooks();
+	await setupAgentHooks(agentNotifyToken);
 
 	// Agent notification listener
 	// Dev mode uses OS-assigned port to avoid stealing the prod listener's port.
@@ -331,20 +344,19 @@ app.whenReady().then(async () => {
 	if (!import.meta.env.DEV) {
 		await reclaimPort(AGENT_NOTIFY_PORT);
 	}
-	alertListener = createAlertListener(listenerPort);
+	alertListener = createAlertListener(listenerPort, agentNotifyToken);
 	try {
 		await alertListener.start();
 		const port = alertListener.getPort();
 		if (port) {
 			setAgentNotifyPort(port);
-			// Update the OpenCode plugin with the actual bound port
-			// (may differ from AGENT_NOTIFY_PORT if fallback was used)
-			if (port !== AGENT_NOTIFY_PORT) {
-				updateOpenCodePluginPort(port);
-			}
+			// Always rewrite the generated plugin after binding so both its port
+			// and persisted local authentication token are current.
+			updateOpenCodePluginConfig(port, agentNotifyToken);
 		}
 		alertListener.onEvent((event) => {
-			broadcastToWindows("agent:alert", event);
+			const normalizedEvent = agentSessionManager?.handleAgentEvent(event) ?? event;
+			broadcastToWindows("agent:alert", normalizedEvent);
 		});
 	} catch (err) {
 		log.error("[agent-notify] failed to start listener:", err);
@@ -427,6 +439,10 @@ function teardownServices(t0: number): void {
 	armKillWatchdog(app.getAppPath(), log, 5000);
 	alertListener?.stop();
 	setAgentNotifyPort(null);
+	setAgentNotifyToken(null);
+	agentSessionManager?.dispose();
+	agentSessionManager = null;
+	setAgentSessionManager(null);
 	stopCommentPoller();
 	teardownUpdater();
 	log.debug(`[quit] timers-stopped +${Date.now() - t0}ms`);

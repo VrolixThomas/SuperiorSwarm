@@ -454,6 +454,21 @@ describe("PtyManager", () => {
 		expect(manager.getAllBuffers()).toEqual([]);
 	});
 
+	test("new terminals are not dirty until they produce output", () => {
+		setup();
+		manager.create(
+			"clean",
+			"/tmp",
+			() => {},
+			() => {},
+			"c1"
+		);
+
+		expect(manager.getDirtyBuffers()).toEqual([]);
+		manager.markBuffersFlushed(["clean", "missing"]);
+		expect(manager.getDirtyBuffers()).toEqual([]);
+	});
+
 	// -- PIDs are unique per terminal --
 
 	test("create passes custom env to spawned PTY", () => {

@@ -138,6 +138,41 @@ export const terminalSessions = sqliteTable("terminal_sessions", {
 export type TerminalSession = typeof terminalSessions.$inferSelect;
 export type NewTerminalSession = typeof terminalSessions.$inferInsert;
 
+export const agentSessions = sqliteTable(
+	"agent_sessions",
+	{
+		terminalId: text("terminal_id").primaryKey(),
+		workspaceId: text("workspace_id")
+			.notNull()
+			.references(() => workspaces.id, { onDelete: "cascade" }),
+		provider: text("provider", {
+			enum: ["claude", "codex", "gemini", "opencode"],
+		}).notNull(),
+		providerSessionId: text("provider_session_id"),
+		state: text("state", {
+			enum: ["running", "idle", "needs-input", "hibernating", "hibernated", "resuming", "error"],
+		})
+			.notNull()
+			.default("running"),
+		managed: integer("managed", { mode: "boolean" }).notNull().default(false),
+		keepRunning: integer("keep_running", { mode: "boolean" }).notNull().default(false),
+		skipPermissions: integer("skip_permissions", { mode: "boolean" }).notNull().default(false),
+		lastEventAt: integer("last_event_at", { mode: "timestamp_ms" }),
+		idleSince: integer("idle_since", { mode: "timestamp_ms" }),
+		hibernatedAt: integer("hibernated_at", { mode: "timestamp_ms" }),
+		lastError: text("last_error"),
+		createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+		updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+	},
+	(table) => [
+		index("agent_sessions_workspace_idx").on(table.workspaceId),
+		index("agent_sessions_provider_session_idx").on(table.provider, table.providerSessionId),
+	]
+);
+
+export type AgentSession = typeof agentSessions.$inferSelect;
+export type NewAgentSession = typeof agentSessions.$inferInsert;
+
 export const sessionState = sqliteTable("session_state", {
 	key: text("key").primaryKey(),
 	value: text("value").notNull(),

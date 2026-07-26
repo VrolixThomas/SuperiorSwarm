@@ -1,5 +1,6 @@
 import { router } from "../index";
 import { agentLaunchRouter } from "./agent-launch";
+import { agentSessionsRouter } from "./agent-sessions";
 import { aiReviewRouter } from "./ai-review";
 import { atlassianRouter } from "./atlassian";
 import { authRouter } from "./auth";
@@ -33,6 +34,7 @@ export const appRouter = router({
 	auth: authRouter,
 	agentLaunch: agentLaunchRouter,
 	aiReview: aiReviewRouter,
+	agentSessions: agentSessionsRouter,
 	commentSolver: commentSolverRouter,
 	crossRepoOrchestrators: crossRepoOrchestratorsRouter,
 	externalManagers: externalManagersRouter,

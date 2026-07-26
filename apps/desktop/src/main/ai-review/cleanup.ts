@@ -3,6 +3,7 @@ import { getDb } from "../db";
 import { agentMessages, projects, terminalSessions, workspaces, worktrees } from "../db/schema";
 import { reviewDrafts } from "../db/schema-ai-review";
 import { removeWorktree } from "../git/operations";
+import { getAgentSessionManager } from "../services/agent-session-manager-handle";
 import { getDaemonClient } from "../terminal/daemon-instance";
 import { validateTransition } from "./orchestrator";
 
@@ -22,6 +23,7 @@ export async function cleanupReviewWorkspace(workspaceId: string): Promise<void>
 	}
 
 	const project = db.select().from(projects).where(eq(projects.id, workspace.projectId)).get();
+	getAgentSessionManager()?.removeWorkspaceSessions(workspaceId);
 
 	// 2. Remove worktree from disk if it exists
 	if (workspace.worktreeId && project) {

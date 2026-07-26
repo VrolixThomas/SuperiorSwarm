@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getDb, schema } from "../../db";
 import { savePaneLayouts, saveTerminalSessions } from "../../db/session-persistence";
 import { pruneWorktrees } from "../../git/operations";
+import { getAgentSessionManager } from "../../services/agent-session-manager-handle";
 import { getWorktreeCleanupQueue } from "../../services/worktree-cleanup-queue";
 import { getDaemonClient } from "../../terminal/daemon-instance";
 import { publicProcedure, router } from "../index";
@@ -34,7 +35,7 @@ export const terminalSessionsRouter = router({
 	restore: publicProcedure.query(async () => {
 		const db = getDb();
 
-		const sessions = db
+		const persistedSessions = db
 			.select()
 			.from(schema.terminalSessions)
 			.orderBy(schema.terminalSessions.sortOrder)
@@ -77,6 +78,13 @@ export const terminalSessionsRouter = router({
 			})
 			.from(schema.workspaces)
 			.all();
+		const validWorkspaceIds = new Set(allWorkspaces.map((workspace) => workspace.id));
+		const sessions = persistedSessions.filter((session) =>
+			validWorkspaceIds.has(session.workspaceId)
+		);
+		for (const workspaceId of Object.keys(paneLayouts)) {
+			if (!validWorkspaceIds.has(workspaceId)) delete paneLayouts[workspaceId];
+		}
 
 		type WorkspaceMeta = {
 			type: "repo" | "review";
@@ -230,6 +238,7 @@ export const terminalSessionsRouter = router({
 
 				const daemon = getDaemonClient();
 				for (const ws of linkedWorkspaces) {
+					getAgentSessionManager()?.removeWorkspaceSessions(ws.id);
 					const sessions = db
 						.select({ id: schema.terminalSessions.id })
 						.from(schema.terminalSessions)
@@ -276,6 +285,14 @@ export const terminalSessionsRouter = router({
 		for (const wt of dbWorktrees) {
 			try {
 				if (!existsSync(wt.path)) {
+					const linkedWorkspaces = db
+						.select({ id: schema.workspaces.id })
+						.from(schema.workspaces)
+						.where(eq(schema.workspaces.worktreeId, wt.id))
+						.all();
+					for (const workspace of linkedWorkspaces) {
+						getAgentSessionManager()?.removeWorkspaceSessions(workspace.id);
+					}
 					db.delete(schema.worktrees).where(eq(schema.worktrees.id, wt.id)).run();
 				}
 			} catch {

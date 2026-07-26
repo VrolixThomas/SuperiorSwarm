@@ -66,16 +66,31 @@ describe("AgentAlertListener", () => {
 	});
 
 	test("emits AgentEvent on valid request", async () => {
-		const events: Array<{ alert: string; workspaceId: string }> = [];
+		const events: Array<{
+			alert: string;
+			workspaceId: string;
+			terminalId: string;
+			providerSessionId: string;
+		}> = [];
 		const unsub = listener.onEvent((ev) => {
-			events.push({ alert: ev.alert, workspaceId: ev.workspaceId });
+			events.push({
+				alert: ev.alert,
+				workspaceId: ev.workspaceId,
+				terminalId: ev.terminalId,
+				providerSessionId: ev.providerSessionId,
+			});
 		});
 
-		const url = `http://127.0.0.1:${PORT}/event?rawEvent=PermissionRequest&sessionId=s2&workspaceId=w2&agent=test-agent`;
+		const url = `http://127.0.0.1:${PORT}/event?rawEvent=PermissionRequest&terminalId=t2&providerSessionId=s2&workspaceId=w2&agent=test-agent`;
 		await fetch(url);
 
 		expect(events).toHaveLength(1);
-		expect(events[0]).toEqual({ alert: "needs-input", workspaceId: "w2" });
+		expect(events[0]).toEqual({
+			alert: "needs-input",
+			workspaceId: "w2",
+			terminalId: "t2",
+			providerSessionId: "s2",
+		});
 		unsub();
 	});
 
@@ -95,7 +110,8 @@ describe("AgentAlertListener", () => {
 	test("/shutdown requires POST method", async () => {
 		const shutdownListener = createAlertListener(0);
 		await shutdownListener.start();
-		const shutdownPort = shutdownListener.getPort()!;
+		const shutdownPort = shutdownListener.getPort();
+		if (shutdownPort === null) throw new Error("shutdown listener did not bind");
 
 		// GET should be rejected
 		const getRes = await fetch(`http://127.0.0.1:${shutdownPort}/shutdown`);
@@ -108,6 +124,25 @@ describe("AgentAlertListener", () => {
 		});
 		expect(postRes.status).toBe(200);
 		expect(shutdownListener.getPort()).toBeNull();
+	});
+});
+
+describe("AgentAlertListener authentication", () => {
+	test("rejects missing tokens and accepts the configured bearer token", async () => {
+		agentRegistry.set("test-agent", mockAgent);
+		const listener = createAlertListener(0, "test-secret");
+		await listener.start();
+		const port = listener.getPort();
+		const url = `http://127.0.0.1:${port}/event?rawEvent=Stop&terminalId=t1&agent=test-agent`;
+
+		const unauthorized = await fetch(url);
+		expect(unauthorized.status).toBe(401);
+		const authorized = await fetch(url, {
+			headers: { Authorization: "Bearer test-secret" },
+		});
+		expect(authorized.status).toBe(200);
+		listener.stop();
+		agentRegistry.delete("test-agent");
 	});
 });
 
@@ -164,7 +199,8 @@ describe("EADDRINUSE fallback", () => {
 	});
 
 	test("fallback listener still serves requests", async () => {
-		const fallbackPort = fallback.getPort()!;
+		const fallbackPort = fallback.getPort();
+		if (fallbackPort === null) throw new Error("fallback listener did not bind");
 		agentRegistry.set("test-agent", mockAgent);
 		const url = `http://127.0.0.1:${fallbackPort}/event?rawEvent=Stop&sessionId=s1&workspaceId=w1&agent=test-agent`;
 		const res = await fetch(url);

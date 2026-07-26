@@ -198,7 +198,7 @@ interface TabStore {
 	goForwardWorkspace: () => boolean;
 
 	// Terminal convenience
-	addTerminalTab: (workspaceId: string, cwd: string, title?: string) => string;
+	addTerminalTab: (workspaceId: string, cwd: string, title?: string, explicitId?: string) => string;
 
 	// Solve review
 	addSolveReviewTab: (
@@ -733,8 +733,15 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 		return true;
 	},
 
-	addTerminalTab: (workspaceId, cwd, title) => {
-		const id = nextTerminalId();
+	addTerminalTab: (workspaceId, cwd, title, explicitId) => {
+		const id = explicitId ?? nextTerminalId();
+		const existing = get()
+			.getAllTabs()
+			.find((tab) => tab.id === id);
+		if (existing) {
+			get().setActiveTab(id);
+			return id;
+		}
 		const tabTitle = title ?? nextTerminalTitle();
 		const tab: TabItem = { kind: "terminal", id, workspaceId, title: tabTitle, cwd };
 		ps().ensureLayout(workspaceId);

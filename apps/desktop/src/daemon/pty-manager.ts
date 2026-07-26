@@ -9,6 +9,7 @@ interface TerminalEntry {
 	pty: pty.IPty;
 	cwd: string;
 	buffer: string;
+	dirty: boolean;
 	dataListeners: Map<string, (data: string) => void>;
 	exitListeners: Map<string, (code: number, finalBuffer: string) => void>;
 }
@@ -67,12 +68,14 @@ export class PtyManager {
 			pty: ptyProcess,
 			cwd: resolvedCwd,
 			buffer: "",
+			dirty: false,
 			dataListeners: new Map([[clientId, onData]]),
 			exitListeners: new Map([[clientId, onExit]]),
 		};
 
 		ptyProcess.onData((data) => {
 			entry.buffer = trimBuffer(entry.buffer + data, MAX_BUFFER_CHARS);
+			entry.dirty = true;
 			for (const cb of entry.dataListeners.values()) cb(data);
 		});
 
@@ -178,6 +181,23 @@ export class PtyManager {
 			cwd: e.cwd,
 			buffer: e.buffer,
 		}));
+	}
+
+	getDirtyBuffers(): Array<{ id: string; cwd: string; buffer: string }> {
+		return [...this.terminals.entries()]
+			.filter(([, entry]) => entry.dirty)
+			.map(([id, entry]) => ({
+				id,
+				cwd: entry.cwd,
+				buffer: entry.buffer,
+			}));
+	}
+
+	markBuffersFlushed(ids: readonly string[]): void {
+		for (const id of ids) {
+			const entry = this.terminals.get(id);
+			if (entry) entry.dirty = false;
+		}
 	}
 
 	disposeAll(): void {

@@ -47,6 +47,7 @@ export function PaneContent({
 						cwd={tab.kind === "terminal" ? tab.cwd : undefined}
 						workspaceId={tab.workspaceId}
 						initialContent={savedScrollback[tab.id]}
+						active={tab.id === pane.activeTabId}
 					/>
 				</div>
 			))}

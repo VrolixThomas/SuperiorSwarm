@@ -14,7 +14,7 @@ export interface AgentAlertListener {
 	getPort: () => number | null;
 }
 
-export function createAlertListener(port: number): AgentAlertListener {
+export function createAlertListener(port: number, authToken?: string): AgentAlertListener {
 	const handlers = new Set<EventHandler>();
 	let server: Server | null = null;
 
@@ -46,9 +46,18 @@ export function createAlertListener(port: number): AgentAlertListener {
 			return;
 		}
 
+		if (authToken && req.headers.authorization !== `Bearer ${authToken}`) {
+			res.writeHead(401, { "Content-Type": "application/json" });
+			res.end(JSON.stringify({ ok: false, error: "unauthorized" }));
+			return;
+		}
+
 		const rawEvent = url.searchParams.get("rawEvent");
-		const sessionId = url.searchParams.get("sessionId") ?? "";
+		const terminalId =
+			url.searchParams.get("terminalId") ?? url.searchParams.get("sessionId") ?? "";
+		const providerSessionId = url.searchParams.get("providerSessionId") ?? "";
 		const workspaceId = url.searchParams.get("workspaceId") ?? "";
+		const cwd = url.searchParams.get("cwd") ?? "";
 		const agent = url.searchParams.get("agent") ?? "";
 
 		if (!rawEvent) {
@@ -72,8 +81,11 @@ export function createAlertListener(port: number): AgentAlertListener {
 		}
 
 		const event: AgentEvent = {
-			sessionId,
+			sessionId: terminalId,
+			terminalId,
+			providerSessionId,
 			workspaceId,
+			cwd,
 			alert,
 			agent,
 			timestamp: Date.now(),
