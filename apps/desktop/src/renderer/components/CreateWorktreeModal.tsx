@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useProjectStore } from "../stores/projects";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
+import { filterAndSortBranches } from "../utils/branch-search";
 import { flattenWorkspaceTree } from "../utils/workspace-tree";
 
 export function CreateWorktreeModal() {
@@ -153,13 +154,17 @@ export function CreateWorktreeModal() {
 	// Available branches for checkout (remote branches minus those already checked out)
 	const availableBranches = branchNames.filter((branch) => !existingWorktreeBranches.has(branch));
 
-	const filteredBranches = branchSearch
-		? availableBranches.filter((b) => b.toLowerCase().includes(branchSearch.toLowerCase()))
-		: availableBranches;
+	const filteredBranches = filterAndSortBranches(
+		availableBranches,
+		branchSearch,
+		(branch) => branch
+	);
 
-	const filteredBaseBranches = baseBranchSearch
-		? branchNames.filter((b) => b.toLowerCase().includes(baseBranchSearch.toLowerCase()))
-		: branchNames;
+	const filteredBaseBranches = filterAndSortBranches(
+		branchNames,
+		baseBranchSearch,
+		(branch) => branch
+	);
 
 	function toggleAttach(id: string) {
 		setAttachIds((prev) => {
