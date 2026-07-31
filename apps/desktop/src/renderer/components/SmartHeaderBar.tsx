@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { trpc } from "../trpc/client";
+import { filterAndSortBranches } from "../utils/branch-search";
 import { BranchChip } from "./BranchChip";
 
 export function SmartHeaderBar({
@@ -27,10 +28,11 @@ export function SmartHeaderBar({
 
 	const filtered = useMemo(() => {
 		const branches = branchesQuery.data?.branches ?? [];
-		const q = search.toLowerCase();
-		return branches
-			.filter((b) => b !== currentBranch && b.toLowerCase().includes(q))
-			.sort((a, b) => a.localeCompare(b));
+		return filterAndSortBranches(
+			branches.filter((branch) => branch !== currentBranch),
+			search,
+			(branch) => branch
+		);
 	}, [branchesQuery.data, search, currentBranch]);
 
 	useEffect(() => {

@@ -3,6 +3,7 @@ import type { BranchInfo } from "../../shared/branch-types";
 import { useBranchStore } from "../stores/branch-store";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
+import { filterAndSortBranches } from "../utils/branch-search";
 import { flattenWorkspaceTree } from "../utils/workspace-tree";
 import { BranchRow } from "./BranchRow";
 
@@ -91,12 +92,11 @@ export function BranchPalette({ projectId, onOpenActionMenu }: Props) {
 
 	// Filter branches by search query, excluding the current branch from the main list
 	const filtered = useMemo(() => {
-		const q = searchQuery.toLowerCase().trim();
-		return allBranches.filter((b) => {
-			if (b.isCurrent) return false;
-			if (!q) return true;
-			return b.name.toLowerCase().includes(q);
-		});
+		return filterAndSortBranches(
+			allBranches.filter((branch) => !branch.isCurrent),
+			searchQuery,
+			(branch) => branch.name
+		);
 	}, [allBranches, searchQuery]);
 
 	// Branches that exist locally (may also exist on remote)
