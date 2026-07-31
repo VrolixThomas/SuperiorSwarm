@@ -6,12 +6,15 @@ import {
 	getCurrentBranch,
 	getUntrackedFiles,
 	parseUnifiedDiff,
+	resolveFurthestBranchRef,
 } from "./operations";
 import { getRepoStateVersion } from "./repo-state-version";
 
 const branchDiffCache = createGitCache<{
 	files: ReturnType<typeof parseUnifiedDiff>;
 	stats: { added: number; removed: number; changed: number };
+	baseRef: string;
+	mergeBase: string;
 }>();
 
 const workingTreeStatusCache = createGitCache<{
@@ -39,17 +42,18 @@ export async function getBranchDiffCached(input: {
 	const key = `branch-diff:${input.repoPath}:${input.baseBranch}:${input.headBranch}`;
 	return branchDiffCache.get(key, getRepoStateVersion(input.repoPath), async () => {
 		const git = simpleGit(input.repoPath);
+		const baseRef = await resolveFurthestBranchRef(input.repoPath, input.baseBranch, false);
 		const mergeBase = await git
-			.raw(["merge-base", input.baseBranch, input.headBranch])
+			.raw(["merge-base", baseRef, input.headBranch])
 			.then((r) => r.trim())
-			.catch(() => input.baseBranch);
+			.catch(() => baseRef);
 		const rawDiff = await git.diff([
 			`${mergeBase}..${input.headBranch}`,
 			"--unified=3",
 			"--no-color",
 		]);
 		const files = parseUnifiedDiff(rawDiff);
-		return { files, stats: computeStats(files) };
+		return { files, stats: computeStats(files), baseRef, mergeBase };
 	});
 }
 
@@ -80,9 +84,10 @@ export async function getWorkingTreeStatusCached(input: { repoPath: string }) {
 
 export async function getCommitsAheadCached(input: { repoPath: string; baseBranch: string }) {
 	const key = `commits-ahead:${input.repoPath}:${input.baseBranch}`;
-	return commitsAheadCache.get(key, getRepoStateVersion(input.repoPath), () =>
-		getCommitsAhead(input.repoPath, input.baseBranch)
-	);
+	return commitsAheadCache.get(key, getRepoStateVersion(input.repoPath), async () => {
+		const baseRef = await resolveFurthestBranchRef(input.repoPath, input.baseBranch, false);
+		return getCommitsAhead(input.repoPath, baseRef);
+	});
 }
 
 export async function getBranchStatusCached(repoPath: string) {

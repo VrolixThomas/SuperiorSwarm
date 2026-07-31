@@ -9,12 +9,18 @@ export function SmartHeaderBar({
 	baseBranch,
 	onBaseBranchChange,
 	projectId,
+	defaultBaseBranch,
+	onSetDefaultBaseBranch,
+	isSettingDefault = false,
 }: {
 	repoPath: string;
 	currentBranch: string;
 	baseBranch: string;
 	onBaseBranchChange: (branch: string) => void;
 	projectId?: string | null;
+	defaultBaseBranch?: string | null;
+	onSetDefaultBaseBranch?: (branch: string) => void;
+	isSettingDefault?: boolean;
 }) {
 	const [pickerOpen, setPickerOpen] = useState(false);
 	const [search, setSearch] = useState("");
@@ -137,9 +143,35 @@ export function SmartHeaderBar({
 								].join(" ")}
 							>
 								<span className="truncate">{branch}</span>
+								{branch === defaultBaseBranch && (
+									<span className="ml-auto rounded-full bg-[var(--bg-base)] px-1.5 py-0.5 text-[9px] text-[var(--text-quaternary)]">
+										default
+									</span>
+								)}
 							</button>
 						))}
 					</div>
+					{onSetDefaultBaseBranch && (
+						<div className="border-t border-[var(--border-subtle)] p-1.5">
+							{baseBranch === defaultBaseBranch ? (
+								<div className="px-2 py-1 text-[10px] text-[var(--text-quaternary)]">
+									Repository default
+								</div>
+							) : (
+								<button
+									type="button"
+									disabled={isSettingDefault}
+									onClick={() => {
+										onSetDefaultBaseBranch(baseBranch);
+										setPickerOpen(false);
+									}}
+									className="w-full rounded-[var(--radius-sm)] px-2 py-1 text-left text-[11px] text-[var(--accent)] transition-colors hover:bg-[var(--bg-overlay)] disabled:opacity-50"
+								>
+									{isSettingDefault ? "Saving..." : `Set ${baseBranch} as repository default`}
+								</button>
+							)}
+						</div>
+					)}
 				</div>
 			)}
 		</div>

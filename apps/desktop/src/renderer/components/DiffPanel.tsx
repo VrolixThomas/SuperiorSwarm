@@ -95,17 +95,29 @@ function DiffPanelContent({ diffCtx, onClose }: { diffCtx: DiffContext; onClose?
 	);
 	const utils = trpc.useUtils();
 
-	// Fetch default branch to use as initial base
+	// The worktree records the branch it was created from. Use the repository
+	// default only for workspaces that do not have a recorded base.
 	const defaultBranchQuery = trpc.diff.getDefaultBranch.useQuery(
 		{ repoPath: diffCtx.repoPath },
 		{ staleTime: 60_000 }
 	);
 
-	// Resolve projectId from repoPath so we can pass it down to BranchChip
-	const projectsQuery = trpc.projects.list.useQuery(undefined, { staleTime: 60_000 });
-	const projectId = projectsQuery.data?.find((p) => p.repoPath === diffCtx.repoPath)?.id ?? null;
+	const workspaceQuery = trpc.workspaces.getById.useQuery(
+		{ id: activeWorkspaceId ?? "" },
+		{ enabled: !!activeWorkspaceId, staleTime: 30_000 }
+	);
+	const projectId = workspaceQuery.data?.projectId ?? null;
+	const projectQuery = trpc.projects.getById.useQuery(
+		{ id: projectId ?? "" },
+		{ enabled: !!projectId, staleTime: 60_000 }
+	);
 
-	const effectiveBaseBranch = storedBaseBranch ?? defaultBranchQuery.data?.branch ?? "main";
+	const effectiveBaseBranch =
+		storedBaseBranch ??
+		workspaceQuery.data?.baseBranch ??
+		projectQuery.data?.defaultBranch ??
+		defaultBranchQuery.data?.branch ??
+		"main";
 
 	useRepoSubscription(diffCtx.repoPath);
 
@@ -140,6 +152,15 @@ function DiffPanelContent({ diffCtx, onClose }: { diffCtx: DiffContext; onClose?
 		onSuccess: invalidateAll,
 	});
 
+	const updateProjectMutation = trpc.projects.update.useMutation({
+		onSuccess: () => {
+			if (projectId) {
+				utils.projects.getById.invalidate({ id: projectId });
+			}
+			utils.projects.list.invalidate();
+		},
+	});
+
 	const currentBranch = statusQuery.data?.branch ?? "";
 	const hasStatusData = diffCtx.type === "working-tree" && statusQuery.data != null;
 
@@ -164,12 +185,19 @@ function DiffPanelContent({ diffCtx, onClose }: { diffCtx: DiffContext; onClose?
 							currentBranch={currentBranch}
 							baseBranch={effectiveBaseBranch}
 							projectId={projectId}
+							defaultBaseBranch={projectQuery.data?.defaultBranch ?? null}
+							isSettingDefault={updateProjectMutation.isPending}
 							onBaseBranchChange={(branch) => {
 								if (activeWorkspaceId) {
 									setBaseBranch(activeWorkspaceId, branch);
 									// Force refetch of all queries that depend on baseBranch
 									utils.diff.getBranchDiff.invalidate();
 									utils.diff.getCommitsAhead.invalidate();
+								}
+							}}
+							onSetDefaultBaseBranch={(branch) => {
+								if (projectId) {
+									updateProjectMutation.mutate({ id: projectId, defaultBranch: branch });
 								}
 							}}
 						/>

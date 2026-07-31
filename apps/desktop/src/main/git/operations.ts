@@ -141,6 +141,128 @@ export interface WorktreeInfo {
 	isMain: boolean;
 }
 
+interface BranchRefResolution {
+	selectedRef: string;
+	remoteRef: string;
+	remoteIsAhead: boolean;
+}
+
+function normalizeBranchName(ref: string): string | null {
+	if (ref.startsWith("refs/heads/")) return ref.slice("refs/heads/".length);
+	if (ref.startsWith("refs/remotes/origin/")) {
+		return ref.slice("refs/remotes/origin/".length);
+	}
+	if (ref.startsWith("origin/")) return ref.slice("origin/".length);
+	if (ref.startsWith("refs/")) return null;
+	return ref;
+}
+
+async function resolveCommit(
+	git: ReturnType<typeof simpleGit>,
+	ref: string
+): Promise<string | null> {
+	try {
+		return (await git.raw(["rev-parse", "--verify", `${ref}^{commit}`])).trim() || null;
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * Resolve a branch to its newest comparable local/remote tip. Creation callers
+ * refresh origin first; comparison callers can use the refs already fetched.
+ * If the refs diverged there is no lossless "newest" tip, so the local ref wins.
+ */
+async function resolveBranchRef(
+	repoPath: string,
+	branch: string,
+	refreshRemote = true
+): Promise<BranchRefResolution | null> {
+	const branchName = normalizeBranchName(branch);
+	if (!branchName) return null;
+
+	const git = simpleGit(repoPath);
+	const localRef = `refs/heads/${branchName}`;
+	const remoteRef = `refs/remotes/origin/${branchName}`;
+
+	if (refreshRemote) {
+		try {
+			await git.raw(["fetch", "origin", `+refs/heads/${branchName}:${remoteRef}`]);
+		} catch {
+			// No remote / offline / local-only branch — use the refs already available.
+		}
+	}
+
+	const [localCommit, remoteCommit] = await Promise.all([
+		resolveCommit(git, localRef),
+		resolveCommit(git, remoteRef),
+	]);
+
+	if (!localCommit && !remoteCommit) return null;
+	if (!localCommit) {
+		return { selectedRef: remoteRef, remoteRef, remoteIsAhead: false };
+	}
+	if (!remoteCommit || localCommit === remoteCommit) {
+		return { selectedRef: localRef, remoteRef, remoteIsAhead: false };
+	}
+
+	try {
+		const counts = await git.raw([
+			"rev-list",
+			"--left-right",
+			"--count",
+			`${localRef}...${remoteRef}`,
+		]);
+		const [localAhead = 0, remoteAhead = 0] = counts
+			.trim()
+			.split(/\s+/)
+			.map((count) => Number.parseInt(count, 10));
+		if (localAhead === 0 && remoteAhead > 0) {
+			return { selectedRef: remoteRef, remoteRef, remoteIsAhead: true };
+		}
+	} catch {
+		// Fall through to the lossless local default when comparison fails.
+	}
+
+	// Local is ahead or the refs diverged. In both cases, preserve the local tip.
+	return { selectedRef: localRef, remoteRef, remoteIsAhead: false };
+}
+
+/** Return the local or origin ref whose history contains the other tip. */
+export async function resolveFurthestBranchRef(
+	repoPath: string,
+	branch: string,
+	refreshRemote = true
+): Promise<string> {
+	// An explicitly qualified ref is already an intentional choice.
+	if (branch.startsWith("origin/") || branch.startsWith("refs/")) return branch;
+	return (await resolveBranchRef(repoPath, branch, refreshRemote))?.selectedRef ?? branch;
+}
+
+async function fastForwardLocalBranch(
+	repoPath: string,
+	branch: string,
+	remoteRef: string
+): Promise<void> {
+	const git = simpleGit(repoPath);
+	const output = await git.raw(["worktree", "list", "--porcelain"]);
+	let worktreePath: string | null = null;
+
+	for (const line of output.split("\n")) {
+		if (line.startsWith("worktree ")) {
+			worktreePath = line.slice("worktree ".length);
+		} else if (line === `branch refs/heads/${branch}` && worktreePath) {
+			// Updating the ref directly while it is checked out would leave that
+			// worktree's index and files behind. A fast-forward merge updates all
+			// three together and safely refuses conflicting local changes.
+			await simpleGit(worktreePath).raw(["merge", "--ff-only", remoteRef]);
+			return;
+		}
+	}
+
+	await git.raw(["branch", "-f", branch, remoteRef]);
+}
+
 export async function createWorktree(
 	repoPath: string,
 	worktreePath: string,
@@ -148,7 +270,16 @@ export async function createWorktree(
 	baseBranch: string
 ): Promise<void> {
 	const git = simpleGit(repoPath);
-	await git.raw(["worktree", "add", "-b", branch, worktreePath, baseBranch]);
+	let resolvedBase = baseBranch;
+	if (!baseBranch.startsWith("origin/") && !baseBranch.startsWith("refs/")) {
+		const resolution = await resolveBranchRef(repoPath, baseBranch);
+		resolvedBase = resolution?.selectedRef ?? baseBranch;
+		if (resolution?.remoteIsAhead) {
+			await fastForwardLocalBranch(repoPath, baseBranch, resolution.remoteRef);
+			resolvedBase = `refs/heads/${baseBranch}`;
+		}
+	}
+	await git.raw(["worktree", "add", "-b", branch, worktreePath, resolvedBase]);
 }
 
 export async function checkoutBranchWorktree(
@@ -156,9 +287,7 @@ export async function checkoutBranchWorktree(
 	worktreePath: string,
 	branch: string
 ): Promise<void> {
-	const git = simpleGit(repoPath);
-	await git.fetch("origin", branch);
-	await git.raw(["worktree", "add", worktreePath, branch]);
+	await addWorktreeForExistingBranch(repoPath, worktreePath, branch);
 }
 
 /** True when `ref` (e.g. refs/heads/x or refs/remotes/origin/x) resolves in the repo. */
@@ -185,10 +314,11 @@ export async function addWorktreeForExistingBranch(
 	branch: string
 ): Promise<void> {
 	const git = simpleGit(repoPath);
-	try {
-		await git.fetch("origin", branch);
-	} catch {
-		// no remote / offline / local-only branch — DWIM on what we have
+	const resolution = await resolveBranchRef(repoPath, branch);
+	if (resolution?.remoteIsAhead) {
+		// Fast-forward the existing local branch before attaching it to the new
+		// worktree. This never rewinds local commits or resolves a divergence.
+		await git.raw(["branch", "-f", branch, resolution.remoteRef]);
 	}
 	await git.raw(["worktree", "add", worktreePath, branch]);
 }

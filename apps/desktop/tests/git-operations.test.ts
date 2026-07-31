@@ -1,8 +1,9 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdirSync, realpathSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+	addWorktreeForExistingBranch,
 	createWorktree,
 	extractRepoName,
 	initRepo,
@@ -13,6 +14,23 @@ import {
 	removeWorktree,
 	validateGitUrl,
 } from "../src/main/git/operations";
+
+async function createOriginAndClone(prefix: string) {
+	const testDir = mkdtempSync(join(realpathSync(tmpdir()), prefix));
+	const originPath = join(testDir, "origin");
+	const repoPath = join(testDir, "repo");
+	await initRepo(originPath, "main");
+	const originGit = (await import("simple-git")).default(originPath);
+	await originGit.raw(["commit", "--allow-empty", "-m", "initial commit"]);
+	await (await import("simple-git")).default().clone(originPath, repoPath);
+	return {
+		testDir,
+		originGit,
+		originPath,
+		repoGit: (await import("simple-git")).default(repoPath),
+		repoPath,
+	};
+}
 
 describe("validateGitUrl", () => {
 	test("accepts HTTPS GitHub URL", () => {
@@ -141,6 +159,72 @@ describe("worktree operations", () => {
 		const worktrees = await listWorktrees(repoPath);
 		const found = worktrees.find((w) => w.branch === "feature-test");
 		expect(found).toBeUndefined();
+	});
+});
+
+describe("worktree branch tip selection", () => {
+	test("creates a new branch from origin when origin is ahead", async () => {
+		const { testDir, originGit, originPath, repoGit, repoPath } = await createOriginAndClone(
+			"superiorswarm-remote-ahead-"
+		);
+		const worktreePath = join(testDir, "worktrees", "from-remote");
+
+		try {
+			writeFileSync(join(originPath, "remote.txt"), "remote change\n");
+			await originGit.add(["remote.txt"]);
+			await originGit.commit("remote commit");
+			const remoteHead = (await originGit.revparse(["main"])).trim();
+
+			await createWorktree(repoPath, worktreePath, "from-remote", "main");
+
+			expect((await repoGit.revparse(["from-remote"])).trim()).toBe(remoteHead);
+			expect((await repoGit.revparse(["main"])).trim()).toBe(remoteHead);
+			expect((await repoGit.status()).isClean()).toBe(true);
+		} finally {
+			rmSync(testDir, { recursive: true, force: true });
+		}
+	});
+
+	test("creates a new branch from local when local is ahead", async () => {
+		const { testDir, repoGit, repoPath } = await createOriginAndClone("superiorswarm-local-ahead-");
+		const worktreePath = join(testDir, "worktrees", "from-local");
+
+		try {
+			await repoGit.raw(["commit", "--allow-empty", "-m", "local commit"]);
+			const localHead = (await repoGit.revparse(["main"])).trim();
+
+			await createWorktree(repoPath, worktreePath, "from-local", "main");
+
+			expect((await repoGit.revparse(["from-local"])).trim()).toBe(localHead);
+		} finally {
+			rmSync(testDir, { recursive: true, force: true });
+		}
+	});
+
+	test("fast-forwards an existing branch when origin is ahead", async () => {
+		const { testDir, originGit, repoGit, repoPath } = await createOriginAndClone(
+			"superiorswarm-existing-remote-ahead-"
+		);
+		const branch = "feature/existing";
+		const worktreePath = join(testDir, "worktrees", "existing");
+
+		try {
+			await originGit.branch([branch]);
+			await repoGit.fetch("origin", branch);
+			await repoGit.branch([branch, `origin/${branch}`]);
+			await originGit.checkout(branch);
+			await originGit.raw(["commit", "--allow-empty", "-m", "remote branch commit"]);
+			const remoteHead = (await originGit.revparse([branch])).trim();
+
+			await addWorktreeForExistingBranch(repoPath, worktreePath, branch);
+
+			expect((await repoGit.revparse([branch])).trim()).toBe(remoteHead);
+			expect(
+				(await (await import("simple-git")).default(worktreePath).revparse(["HEAD"])).trim()
+			).toBe(remoteHead);
+		} finally {
+			rmSync(testDir, { recursive: true, force: true });
+		}
 	});
 });
 

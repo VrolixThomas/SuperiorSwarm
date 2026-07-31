@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import simpleGit from "simple-git";
 import { getBranchDiffCached } from "../src/main/git/cached-ops";
-import { initRepo } from "../src/main/git/operations";
+import { createWorktree, initRepo } from "../src/main/git/operations";
 import { bumpRepoStateVersion } from "../src/main/git/repo-state-version";
 
 const TEST_ROOT = realpathSync(tmpdir());
@@ -38,5 +38,49 @@ describe("getBranchDiffCached", () => {
 		bumpRepoStateVersion(repoPath);
 		const b = await getBranchDiffCached({ repoPath, baseBranch: "main", headBranch: "feature/x" });
 		expect(b).not.toBe(a);
+	});
+
+	test("compares against origin when the local base branch is behind", async () => {
+		const testDir = join(TEST_ROOT, `cache-remote-base-${Date.now()}-${Math.random()}`);
+		const originPath = join(testDir, "origin");
+		const clonePath = join(testDir, "clone");
+		const worktreePath = join(testDir, "worktree");
+
+		try {
+			await initRepo(originPath, "main");
+			const originGit = simpleGit(originPath);
+			writeFileSync(join(originPath, "shared.txt"), "one\n");
+			await originGit.add(["shared.txt"]);
+			await originGit.commit("initial");
+			await simpleGit().clone(originPath, clonePath);
+
+			writeFileSync(join(originPath, "shared.txt"), "two\n");
+			await originGit.add(["shared.txt"]);
+			await originGit.commit("remote base update");
+
+			await createWorktree(clonePath, worktreePath, "feature/x", "main");
+			const worktreeGit = simpleGit(worktreePath);
+			writeFileSync(join(worktreePath, "feature.txt"), "feature\n");
+			await worktreeGit.add(["feature.txt"]);
+			await worktreeGit.commit("feature change");
+			const featureBase = (await worktreeGit.raw(["merge-base", "main", "feature/x"])).trim();
+
+			writeFileSync(join(originPath, "shared.txt"), "three\n");
+			await originGit.add(["shared.txt"]);
+			await originGit.commit("later remote base update");
+			await worktreeGit.fetch("origin", "main");
+
+			const result = await getBranchDiffCached({
+				repoPath: worktreePath,
+				baseBranch: "main",
+				headBranch: "feature/x",
+			});
+
+			expect(result.baseRef).toBe("refs/remotes/origin/main");
+			expect(result.mergeBase).toBe(featureBase);
+			expect(result.files.map((file) => file.path)).toEqual(["feature.txt"]);
+		} finally {
+			rmSync(testDir, { recursive: true, force: true });
+		}
 	});
 });

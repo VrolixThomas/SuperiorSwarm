@@ -121,10 +121,11 @@ export function ReviewTab({
 		}
 	}, [session, selectedFilePath, scopedFiles]);
 
-	const originalRef = selectedFile?.scope === "branch" ? baseBranch : "HEAD";
+	const isBranchFile = selectedFile?.scope === "branch";
+	const originalRef = isBranchFile ? (branchQuery.data?.mergeBase ?? "") : "HEAD";
 	const contentQ = trpc.diff.getFileContent.useQuery(
 		{ repoPath, ref: originalRef, filePath: selectedFile?.path ?? "" },
-		{ enabled: !!selectedFile }
+		{ enabled: !!selectedFile && (!isBranchFile || originalRef !== "") }
 	);
 	const modifiedQ = trpc.diff.getFileContent.useQuery(
 		{ repoPath, ref: "", filePath: selectedFile?.path ?? "" },

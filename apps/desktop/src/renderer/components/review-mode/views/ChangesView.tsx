@@ -151,16 +151,6 @@ export function ChangesView({
 		setPendingLine((line) => (currentFilePath === null || line !== null ? null : line));
 	}, [currentFilePath]);
 
-	const originalQuery = trpc.diff.getFileContent.useQuery(
-		{ repoPath: prCtx.repoPath, ref: prCtx.targetBranch, filePath: queryFilePath },
-		{ enabled: currentFilePath !== null, staleTime: 60_000, placeholderData: keepPreviousData }
-	);
-	const modifiedQuery = trpc.diff.getFileContent.useQuery(
-		{ repoPath: prCtx.repoPath, ref: prCtx.sourceBranch, filePath: queryFilePath },
-		{ enabled: currentFilePath !== null, staleTime: 60_000, placeholderData: keepPreviousData }
-	);
-	const originalContent = originalQuery.data?.content ?? "";
-	const modifiedContent = modifiedQuery.data?.content ?? "";
 	const branchDiffQuery = trpc.diff.getBranchDiff.useQuery(
 		{
 			repoPath: prCtx.repoPath,
@@ -169,11 +159,30 @@ export function ChangesView({
 		},
 		{ staleTime: 60_000 }
 	);
+	const originalQuery = trpc.diff.getFileContent.useQuery(
+		{
+			repoPath: prCtx.repoPath,
+			ref: branchDiffQuery.data?.mergeBase ?? "",
+			filePath: queryFilePath,
+		},
+		{
+			enabled: currentFilePath !== null && branchDiffQuery.data?.mergeBase != null,
+			staleTime: 60_000,
+			placeholderData: keepPreviousData,
+		}
+	);
+	const modifiedQuery = trpc.diff.getFileContent.useQuery(
+		{ repoPath: prCtx.repoPath, ref: prCtx.sourceBranch, filePath: queryFilePath },
+		{ enabled: currentFilePath !== null, staleTime: 60_000, placeholderData: keepPreviousData }
+	);
+	const originalContent = originalQuery.data?.content ?? "";
+	const modifiedContent = modifiedQuery.data?.content ?? "";
 	const isLoading =
 		currentFilePath !== null &&
-		(originalQuery.isPending || modifiedQuery.isPending) &&
-		originalQuery.data === undefined &&
-		modifiedQuery.data === undefined;
+		(branchDiffQuery.data?.mergeBase == null ||
+			((originalQuery.isPending || modifiedQuery.isPending) &&
+				originalQuery.data === undefined &&
+				modifiedQuery.data === undefined));
 	const swapping = originalQuery.isPlaceholderData || modifiedQuery.isPlaceholderData;
 	const editorInstance = !hideEditor && !isLoading && !swapping ? editor : null;
 
