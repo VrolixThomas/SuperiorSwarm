@@ -43,7 +43,7 @@ export function CreateWorktreeModal() {
 
 	const attachTerminal = trpc.workspaces.attachTerminal.useMutation();
 
-	const onSuccess = (workspace: { id: string; name: string }) => {
+	const onSuccess = (workspace: { id: string; name: string; baseBranch?: string | null }) => {
 		utils.workspaces.listByProject.invalidate();
 
 		const repoPath = projectQuery.data?.repoPath;
@@ -56,6 +56,9 @@ export function CreateWorktreeModal() {
 
 			const store = useTabStore.getState();
 			store.setActiveWorkspace(workspace.id, cwd);
+			if (workspace.baseBranch) {
+				store.setBaseBranch(workspace.id, workspace.baseBranch);
+			}
 			const tabId = store.addTerminalTab(workspace.id, cwd, title);
 
 			attachTerminal.mutate({

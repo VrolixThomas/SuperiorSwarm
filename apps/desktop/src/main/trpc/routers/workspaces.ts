@@ -36,8 +36,10 @@ export const workspacesRouter = router({
 					needs: workspaces.needs,
 					isOrchestrator: workspaces.isOrchestrator,
 					cliPreset: workspaces.cliPreset,
+					baseBranch: worktrees.baseBranch,
 				})
 				.from(workspaces)
+				.leftJoin(worktrees, eq(workspaces.worktreeId, worktrees.id))
 				.where(eq(workspaces.id, input.id))
 				.get() ?? null
 		);
@@ -202,6 +204,7 @@ export const workspacesRouter = router({
 				...workspace,
 				prProvider: matchingPR?.provider ?? null,
 				prIdentifier: matchingPR?.identifier ?? null,
+				baseBranch: input.branch,
 			};
 		}),
 

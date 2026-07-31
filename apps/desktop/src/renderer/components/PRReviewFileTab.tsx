@@ -842,10 +842,21 @@ export function PRReviewFileTab({ prCtx, filePath, language }: PRReviewFileTabPr
 
 	const [pendingLine, setPendingLine] = useState<number | null>(null);
 
+	// Resolve the immutable comparison point before loading either editor side.
+	// The target branch may advance after the diff was generated.
+	const branchDiffQuery = trpc.diff.getBranchDiff.useQuery(
+		{ repoPath: prCtx.repoPath, baseBranch: prCtx.targetBranch, headBranch: prCtx.sourceBranch },
+		{ staleTime: 60_000 }
+	);
+
 	// File content for both sides
 	const originalQuery = trpc.diff.getFileContent.useQuery(
-		{ repoPath: prCtx.repoPath, ref: prCtx.targetBranch, filePath },
-		{ staleTime: 60_000 }
+		{
+			repoPath: prCtx.repoPath,
+			ref: branchDiffQuery.data?.mergeBase ?? "",
+			filePath,
+		},
+		{ enabled: branchDiffQuery.data?.mergeBase != null, staleTime: 60_000 }
 	);
 	const modifiedQuery = trpc.diff.getFileContent.useQuery(
 		{ repoPath: prCtx.repoPath, ref: prCtx.sourceBranch, filePath },
@@ -853,10 +864,6 @@ export function PRReviewFileTab({ prCtx, filePath, language }: PRReviewFileTabPr
 	);
 
 	// Diff hunks — used to restrict comments to lines GitHub will accept
-	const branchDiffQuery = trpc.diff.getBranchDiff.useQuery(
-		{ repoPath: prCtx.repoPath, baseBranch: prCtx.targetBranch, headBranch: prCtx.sourceBranch },
-		{ staleTime: 60_000 }
-	);
 	const validDiffLines = useMemo(() => {
 		const fileData = branchDiffQuery.data?.files.find((f) => f.path === filePath);
 		if (!fileData) return undefined;
@@ -1212,7 +1219,8 @@ export function PRReviewFileTab({ prCtx, filePath, language }: PRReviewFileTabPr
 		}
 	}, [editorInstance, activeThreadOnThisFile]);
 
-	const isLoading = originalQuery.isLoading || modifiedQuery.isLoading;
+	const isLoading =
+		branchDiffQuery.data?.mergeBase == null || originalQuery.isLoading || modifiedQuery.isLoading;
 
 	return (
 		<div className="flex h-full flex-col overflow-hidden">

@@ -64,7 +64,7 @@ export function BranchChanges({
 	);
 
 	const files = branchDiffQuery.data?.files ?? [];
-	const stats = branchDiffQuery.data?.stats;
+	const mergeBase = branchDiffQuery.data?.mergeBase ?? baseBranch;
 
 	const totalAdditions = useMemo(() => files.reduce((sum, f) => sum + f.additions, 0), [files]);
 	const totalDeletions = useMemo(() => files.reduce((sum, f) => sum + f.deletions, 0), [files]);
@@ -130,7 +130,7 @@ export function BranchChanges({
 									openReviewTab({
 										workspaceId,
 										repoPath,
-										baseBranch,
+										baseBranch: mergeBase,
 										scope: "branch",
 										filePath: file.path,
 									})

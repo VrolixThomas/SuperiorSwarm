@@ -9,6 +9,8 @@ import simpleGit from "simple-git";
 import { getDb, schema } from "../src/main/db";
 import { initRepo } from "../src/main/git/operations";
 import { createWorkspace } from "../src/main/services/workspace-service";
+import { t } from "../src/main/trpc/index";
+import { workspacesRouter } from "../src/main/trpc/routers/workspaces";
 import { setupTestDb } from "./helpers/db";
 
 let TMP: string;
@@ -52,6 +54,20 @@ describe("createWorkspace with existing branches", () => {
 		expect(res.reusedExistingBranch).toBe(false);
 		expect(res.baseBranch).toBe("main");
 		expect(existsSync(res.path)).toBe(true);
+	});
+
+	test("workspace details expose the branch the worktree was created from", async () => {
+		await simpleGit(REPO).branch(["release"]);
+		const res = await createWorkspace({
+			projectId: PROJECT_ID,
+			branch: "feature/from-release",
+			baseBranch: "release",
+		});
+		const caller = t.createCallerFactory(workspacesRouter)({});
+
+		const workspace = await caller.getById({ id: res.workspaceId });
+
+		expect(workspace?.baseBranch).toBe("release");
 	});
 
 	test("existing local branch is checked out, not recreated", async () => {
