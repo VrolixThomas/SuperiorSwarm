@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.16.0 (2026-08-01)
+
+### What's New
+
+SuperiorSwarm now makes branch search more useful by ranking results according to relevance. New worktrees start from the latest version of their base branch, and branch names containing spaces are now handled correctly.
+
+### Changes
+
+- fix(desktop): replace branch name spaces (#133)
+- fix: create worktrees from latest base (#132)
+- feat: rank branch search results by relevance (#131)
+
 ## v0.15.0 (2026-07-27)
 
 ### What's New
