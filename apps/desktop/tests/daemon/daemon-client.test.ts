@@ -188,6 +188,12 @@ describe("DaemonClient", () => {
 		if (existsSync(TEST_LOG)) rmSync(TEST_LOG);
 	});
 
+	test("strict session listing rejects instead of treating disconnect as an empty daemon", async () => {
+		client.disconnect();
+		await expect(client.listSessions()).resolves.toEqual([]);
+		await expect(client.listSessionsStrict()).rejects.toThrow("Terminal daemon is not connected");
+	});
+
 	test("hasLiveSession returns true for daemon-reported sessions", () => {
 		expect(client.hasLiveSession("term-1")).toBe(true);
 	});
@@ -408,6 +414,10 @@ describe("DaemonClient", () => {
 		if (existsSync(noSocket)) rmSync(noSocket);
 
 		const freshClient = new DaemonClient(noSocket, noPid, noLog);
+		const firstListenerStates: boolean[] = [];
+		const secondListenerStates: boolean[] = [];
+		freshClient.addConnectionStatusListener((connected) => firstListenerStates.push(connected));
+		freshClient.addConnectionStatusListener((connected) => secondListenerStates.push(connected));
 
 		// Initial connect fails — no daemon running
 		let connectFailed = false;
@@ -429,6 +439,8 @@ describe("DaemonClient", () => {
 		await new Promise<void>((r) => setTimeout(r, 2_000));
 
 		expect(freshClient.isConnected).toBe(true);
+		expect(firstListenerStates).toContain(true);
+		expect(secondListenerStates).toContain(true);
 
 		freshClient.disconnect();
 		lateDaemon.server.close();

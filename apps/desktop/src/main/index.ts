@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { eq } from "drizzle-orm";
 import { BrowserWindow, app, dialog, ipcMain, session, shell, systemPreferences } from "electron";
 import { AGENT_NOTIFY_PORT } from "../shared/agent-events";
-import { daemonInstanceId, daemonPaths } from "../shared/daemon-protocol";
+import { SUPERIORSWARM_DIR, daemonInstanceId, daemonPaths } from "../shared/daemon-protocol";
 import { updateOpenCodePluginConfig } from "./agent-hooks/agents/opencode";
 import { getOrCreateAgentNotifyToken } from "./agent-hooks/auth-token";
 import { type AgentAlertListener, createAlertListener, reclaimPort } from "./agent-hooks/listener";
@@ -43,6 +43,7 @@ import { disposeRepoIPCWithTimeout, setupRepoIPC } from "./repo-ipc";
 import { PosixAgentProcessController } from "./services/agent-process-controller";
 import { AgentSessionManager } from "./services/agent-session-manager";
 import { setAgentSessionManager } from "./services/agent-session-manager-handle";
+import { setCleanupDaemonClient } from "./services/cleanup-daemon-instance";
 import { probeCliInPath } from "./services/cli-probe";
 import { deleteControlDiscovery, writeControlDiscovery } from "./services/control-discovery";
 import { runGlobalMcpInstall } from "./services/global-mcp-install";
@@ -50,6 +51,7 @@ import { writeLauncherScript } from "./services/global-mcp-launcher";
 import { runGlobalMcpMigration } from "./services/global-mcp-migration";
 import { setTaskRegistry } from "./services/task-registry-handle";
 import { defaultSpawnFn, setDispatchBroadcaster, setEventBus } from "./services/workspace-service";
+import { initializeWorktreeCleanup } from "./services/worktree-cleanup-controller";
 import { registerSingleInstance } from "./single-instance";
 import { ensureTelemetryState } from "./telemetry/state";
 import { DaemonClient } from "./terminal/daemon-client";
@@ -180,6 +182,40 @@ app.whenReady().then(async () => {
 		return;
 	}
 
+	const dbPath = join(app.getPath("userData"), "superiorswarm.db");
+	const cleanupController = await initializeWorktreeCleanup({
+		dbPath,
+		workerScriptPath: join(app.getAppPath(), "out", "main", "cleanup-daemon.js"),
+		logPath: join(SUPERIORSWARM_DIR, `cleanup-daemon-${instanceId}.log`),
+		terminalDaemon: daemonClient,
+	});
+	const daemonScriptPath = join(app.getAppPath(), "out", "main", "daemon.js");
+	let terminalDaemonOwnershipMismatch = false;
+	daemonClient.addConnectionStatusListener((connected) => {
+		if (!connected || cleanupController.isEnabled) return;
+		void cleanupController.enable().catch((error) => {
+			// The terminal connection may have dropped again while sessions were
+			// being reconciled. Keep cleanup fenced; the next reconnect retries it.
+			log.error(
+				"[cleanup-recovery] reconnect reconciliation failed; cleanup remains fenced",
+				error
+			);
+		});
+	});
+
+	// A recovered deletion must fence its detached PTYs before any renderer can
+	// restore terminals or the cleanup worker can touch their cwd.
+	if (cleanupController.requiresTerminalRecovery) {
+		try {
+			await daemonClient.connect(dbPath, daemonScriptPath);
+			await cleanupController.enable();
+		} catch (err) {
+			const { isDaemonOwnershipMismatchError } = await import("./terminal/daemon-ownership");
+			terminalDaemonOwnershipMismatch = isDaemonOwnershipMismatchError(err);
+			log.error("[cleanup-recovery] terminal reconciliation deferred; cleanup remains fenced", err);
+		}
+	}
+
 	const agentNotifyToken = getOrCreateAgentNotifyToken();
 	setAgentNotifyToken(agentNotifyToken);
 	agentSessionManager = new AgentSessionManager({
@@ -189,6 +225,11 @@ app.whenReady().then(async () => {
 	});
 	setAgentSessionManager(agentSessionManager);
 	setupTerminalIPC(daemonClient, agentSessionManager);
+	if (daemonClient.isConnected) {
+		void agentSessionManager.reconcile().catch((error) => {
+			log.error("[agent-session] failed to reconcile terminal processes:", error);
+		});
+	}
 
 	const debugRow = getDb()
 		.select()
@@ -407,17 +448,25 @@ app.whenReady().then(async () => {
 		db.update(schema.workspaces).set({ terminalId: null, updatedAt: new Date() }).run();
 	}
 
-	const dbPath = join(app.getPath("userData"), "superiorswarm.db");
-	const daemonScriptPath = join(app.getAppPath(), "out", "main", "daemon.js");
-	try {
-		await daemonClient.connect(dbPath, daemonScriptPath);
-	} catch (err) {
-		const { isDaemonOwnershipMismatchError } = await import("./terminal/daemon-ownership");
-		if (isDaemonOwnershipMismatchError(err)) {
-			log.error("[main] Daemon owned by another app instance, not retrying:", err);
-		} else {
-			log.error("[main] Failed to connect to terminal daemon, will retry:", err);
-			daemonClient.startReconnecting();
+	if (!daemonClient.isConnected && !terminalDaemonOwnershipMismatch) {
+		try {
+			await daemonClient.connect(dbPath, daemonScriptPath);
+		} catch (err) {
+			const { isDaemonOwnershipMismatchError } = await import("./terminal/daemon-ownership");
+			if (isDaemonOwnershipMismatchError(err)) {
+				terminalDaemonOwnershipMismatch = true;
+				log.error("[main] Daemon owned by another app instance, not retrying:", err);
+			} else {
+				log.error("[main] Failed to connect to terminal daemon, will retry:", err);
+				daemonClient.startReconnecting();
+			}
+		}
+	}
+	if (daemonClient.isConnected && !cleanupController.isEnabled) {
+		try {
+			await cleanupController.enable();
+		} catch (err) {
+			log.error("[cleanup-recovery] failed; cleanup remains fenced", err);
 		}
 	}
 
@@ -443,6 +492,7 @@ function teardownServices(t0: number): void {
 	agentSessionManager?.dispose();
 	agentSessionManager = null;
 	setAgentSessionManager(null);
+	setCleanupDaemonClient(null);
 	stopCommentPoller();
 	teardownUpdater();
 	log.debug(`[quit] timers-stopped +${Date.now() - t0}ms`);

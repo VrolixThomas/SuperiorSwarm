@@ -360,6 +360,37 @@ describe("AgentSessionManager", () => {
 		expect(fixture.manager.getSession("term-1")).toBeNull();
 	});
 
+	test("clears pre-captured in-memory state after database rows cascade away", async () => {
+		const fixture = makeManager({ minuteMs: 1_000, terminalIds: ["term-1", "term-2"] });
+		managers.push(fixture.manager);
+		for (const terminalId of ["term-1", "term-2"]) {
+			fixture.manager.registerManagedSession({
+				terminalId,
+				workspaceId,
+				provider: "claude",
+				providerSessionId: `${terminalId}-provider`,
+				skipPermissions: false,
+			});
+		}
+		fixture.manager.handleAgentEvent(event("term-1", workspaceId));
+		await fixture.manager.setVisible("term-2", true);
+		const internal = fixture.manager as unknown as {
+			timers: Map<string, ReturnType<typeof setTimeout>>;
+			visibleTerminals: Set<string>;
+			transitions: Set<string>;
+		};
+		internal.transitions.add("term-2");
+		expect(internal.timers.has("term-1")).toBe(true);
+		expect(internal.visibleTerminals.has("term-2")).toBe(true);
+
+		getDb().delete(workspaces).where(eq(workspaces.id, workspaceId)).run();
+		fixture.manager.removeSessions(["term-1", "term-2"]);
+
+		expect(internal.timers.size).toBe(0);
+		expect(internal.visibleTerminals.size).toBe(0);
+		expect(internal.transitions.size).toBe(0);
+	});
+
 	test("recovers an interrupted hibernation from the retained shell and wakes it", async () => {
 		const fixture = makeManager({ inspectionResult: { status: "shell" } });
 		managers.push(fixture.manager);

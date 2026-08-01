@@ -18,6 +18,7 @@ export class RepoWatcher {
 	private listeners = new Set<RepoWatcherListener>();
 	private pending = new Set<RepoChangeKind>();
 	private flushTimer: ReturnType<typeof setTimeout> | null = null;
+	private closed = false;
 
 	constructor(private readonly repoPath: string) {}
 
@@ -27,6 +28,7 @@ export class RepoWatcher {
 	}
 
 	async start(): Promise<void> {
+		this.closed = false;
 		const gitDir = await resolveGitDir(this.repoPath);
 
 		this.gitDirWatcher = watch(
@@ -57,6 +59,8 @@ export class RepoWatcher {
 				/(^|[\\/])out([\\/]|$)/,
 				/(^|[\\/])build([\\/]|$)/,
 				/(^|[\\/])\.next([\\/]|$)/,
+				/(^|[\\/])\.cache([\\/]|$)/,
+				/(^|[\\/])~([\\/]|$)/,
 				/(^|[\\/])\.turbo([\\/]|$)/,
 				/(^|[\\/])target([\\/]|$)/,
 				/(^|[\\/])coverage([\\/]|$)/,
@@ -78,6 +82,9 @@ export class RepoWatcher {
 	}
 
 	async close(): Promise<void> {
+		// Set this before awaiting chokidar so events already queued by the native
+		// watcher cannot produce invalidations during worktree deletion.
+		this.closed = true;
 		if (this.flushTimer) clearTimeout(this.flushTimer);
 		this.flushTimer = null;
 		this.pending.clear();
@@ -114,6 +121,7 @@ export class RepoWatcher {
 	}
 
 	private queue(kind: RepoChangeKind): void {
+		if (this.closed) return;
 		this.pending.add(kind);
 		if (this.flushTimer) return;
 		this.flushTimer = setTimeout(() => this.flush(), DEBOUNCE_MS);
@@ -121,6 +129,7 @@ export class RepoWatcher {
 
 	private flush(): void {
 		this.flushTimer = null;
+		if (this.closed) return;
 		if (this.pending.size === 0) return;
 		const kinds = Array.from(this.pending);
 		this.pending.clear();

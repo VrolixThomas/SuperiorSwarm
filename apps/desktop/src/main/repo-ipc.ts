@@ -1,7 +1,7 @@
 import { BrowserWindow, ipcMain } from "electron";
 import type { RepoInvalidateEvent } from "../shared/types";
 import { bumpRepoStateVersion } from "./git/repo-state-version";
-import { RepoWatcherManager } from "./git/repo-watcher-manager";
+import { disposeRepoWatcherManager, getRepoWatcherManager } from "./git/repo-watcher-instance";
 import { log } from "./logger";
 import { withTimeout } from "./util/with-timeout";
 
@@ -10,15 +10,13 @@ interface SubscriptionEntry {
 	off: () => Promise<void>;
 }
 
-let manager: RepoWatcherManager | null = null;
 const subscriptionsByWindow = new WeakMap<BrowserWindow, Map<string, SubscriptionEntry>>();
 
 export function setupRepoIPC(getMainWindow: () => BrowserWindow | null): void {
-	manager = new RepoWatcherManager();
+	const manager = getRepoWatcherManager();
 
 	ipcMain.handle("repo:subscribe", async (event, repoPath: unknown) => {
 		if (typeof repoPath !== "string" || repoPath.length === 0) return;
-		if (!manager) return;
 		const window = BrowserWindow.fromWebContents(event.sender) ?? getMainWindow();
 		if (!window) return;
 
@@ -69,9 +67,7 @@ export function setupRepoIPC(getMainWindow: () => BrowserWindow | null): void {
 }
 
 export async function disposeRepoIPC(): Promise<void> {
-	if (!manager) return;
-	await manager.disposeAll();
-	manager = null;
+	await disposeRepoWatcherManager();
 }
 
 /**

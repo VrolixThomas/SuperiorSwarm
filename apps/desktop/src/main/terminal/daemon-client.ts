@@ -70,7 +70,7 @@ export class DaemonClient {
 	private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 	private dbPath: string | undefined;
 	private daemonScriptPath: string | undefined;
-	private onConnectionStatusChange: ((connected: boolean) => void) | null = null;
+	private connectionStatusListeners = new Set<(connected: boolean) => void>();
 	private outboundQueue: OutboundQueueEntry[] = [];
 	private outboundQueuedBytes = 0;
 	private waitingForDrain = false;
@@ -93,8 +93,19 @@ export class DaemonClient {
 		return this.socket !== null && !this.socket.destroyed;
 	}
 
-	setConnectionStatusCallback(cb: (connected: boolean) => void): void {
-		this.onConnectionStatusChange = cb;
+	addConnectionStatusListener(cb: (connected: boolean) => void): () => void {
+		this.connectionStatusListeners.add(cb);
+		return () => this.connectionStatusListeners.delete(cb);
+	}
+
+	private notifyConnectionStatus(connected: boolean): void {
+		for (const listener of this.connectionStatusListeners) {
+			try {
+				listener(connected);
+			} catch (error) {
+				console.error("[daemon-client] connection status listener failed:", error);
+			}
+		}
 	}
 
 	async connect(dbPath?: string, daemonScriptPath?: string): Promise<void> {
@@ -190,7 +201,7 @@ export class DaemonClient {
 		}
 
 		this.reconnectAttempts = 0;
-		this.onConnectionStatusChange?.(true);
+		this.notifyConnectionStatus(true);
 	}
 
 	// Tear down the current socket and reset all per-connection state. Nulls
@@ -264,6 +275,15 @@ export class DaemonClient {
 
 	async listSessions(): Promise<Array<{ id: string; cwd: string; pid: number }>> {
 		if (!this.isConnected) return [];
+		return this.listSessionsStrict();
+	}
+
+	/**
+	 * List sessions only when the daemon is provably connected. Recovery code
+	 * must use this instead of treating an unavailable daemon as an empty one.
+	 */
+	async listSessionsStrict(): Promise<Array<{ id: string; cwd: string; pid: number }>> {
+		if (!this.isConnected) throw new Error("Terminal daemon is not connected");
 		this.send({ type: "list" });
 		const msg = await this.waitForMessage("sessions");
 		return msg.type === "sessions" ? msg.sessions : [];
@@ -593,7 +613,7 @@ export class DaemonClient {
 			this.socket = null;
 			this.waitingForDrain = false;
 			this.resetOutboundQueue();
-			this.onConnectionStatusChange?.(false);
+			this.notifyConnectionStatus(false);
 			this.attemptReconnect();
 		});
 

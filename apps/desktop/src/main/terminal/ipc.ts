@@ -153,7 +153,7 @@ export function setupTerminalIPC(
 		return { daemonSessions, liveSessions, callbackIds };
 	});
 
-	daemonClient.setConnectionStatusCallback((connected: boolean) => {
+	daemonClient.addConnectionStatusListener((connected: boolean) => {
 		if (connected && agentSessionManager) {
 			void agentSessionManager.reconcile().catch((error) => {
 				console.error("[agent-session] failed to reconcile terminal processes:", error);

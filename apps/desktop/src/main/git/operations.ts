@@ -1,6 +1,8 @@
-import { existsSync, mkdirSync, rmSync } from "node:fs";
+import type { spawn } from "node:child_process";
+import { existsSync, mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import simpleGit, { type SimpleGitProgressEvent } from "simple-git";
+import { runBoundedProcess } from "../../node/bounded-process";
 
 export function validateGitUrl(url: string): boolean {
 	if (!url || url.length < 5) return false;
@@ -323,46 +325,29 @@ export async function addWorktreeForExistingBranch(
 	await git.raw(["worktree", "add", worktreePath, branch]);
 }
 
-export async function removeWorktree(repoPath: string, worktreePath: string): Promise<void> {
-	const git = simpleGit(repoPath);
-	let timer: NodeJS.Timeout | undefined;
-	try {
-		await Promise.race([
-			git.raw(["worktree", "remove", worktreePath, "--force"]),
-			new Promise<never>((_, reject) => {
-				timer = setTimeout(
-					() => reject(new Error("git worktree remove timed out after 15s")),
-					15_000
-				);
-			}),
-		]);
-	} finally {
-		if (timer) clearTimeout(timer);
-	}
+export interface RemoveWorktreeOptions {
+	timeoutMs?: number;
+	terminateGraceMs?: number;
+	/** Test-only process injection. */
+	spawnProcess?: typeof spawn;
+}
+
+export async function removeWorktree(
+	repoPath: string,
+	worktreePath: string,
+	options: RemoveWorktreeOptions = {}
+): Promise<void> {
+	await runBoundedProcess("git", ["-C", repoPath, "worktree", "remove", worktreePath, "--force"], {
+		timeoutMs: options.timeoutMs ?? 15_000,
+		terminateGraceMs: options.terminateGraceMs ?? 1_000,
+		description: "git worktree remove",
+		captureStdout: false,
+		spawnProcess: options.spawnProcess,
+	});
 }
 
 export async function pruneWorktrees(repoPath: string): Promise<void> {
 	await simpleGit(repoPath).raw(["worktree", "prune"]);
-}
-
-// Best-effort: try `git worktree remove`; on failure rmSync the dir and prune
-// stale metadata so callers can proceed with DB cleanup even when git is wedged.
-export async function forceRemoveWorktree(repoPath: string, worktreePath: string): Promise<void> {
-	try {
-		await removeWorktree(repoPath, worktreePath);
-	} catch (err) {
-		console.error("[forceRemoveWorktree] removeWorktree failed, falling back:", err);
-		try {
-			rmSync(worktreePath, { recursive: true, force: true });
-		} catch (rmErr) {
-			console.error("[forceRemoveWorktree] rmSync fallback failed:", rmErr);
-		}
-		try {
-			await pruneWorktrees(repoPath);
-		} catch (pruneErr) {
-			console.error("[forceRemoveWorktree] prune fallback failed:", pruneErr);
-		}
-	}
 }
 
 export async function listWorktrees(repoPath: string): Promise<WorktreeInfo[]> {

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { execSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Database from "better-sqlite3";
@@ -10,15 +10,13 @@ import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 
 import { _setDbForTesting } from "../src/main/db";
 import * as schema from "../src/main/db/schema";
+import type { AgentSessionManager } from "../src/main/services/agent-session-manager";
+import { setAgentSessionManager } from "../src/main/services/agent-session-manager-handle";
 import { removeWorkspace } from "../src/main/services/workspace-service";
-import {
-	_resetWorktreeCleanupQueueForTesting,
-	_setWorktreeCleanupQueueForTesting,
-	createWorktreeCleanupQueue,
-} from "../src/main/services/worktree-cleanup-queue";
+import { assertWorktreePathAvailable } from "../src/main/services/worktree-cleanup-job-store";
 
 describe("removeWorkspace fast-path", () => {
-	test("returns before forceRemove resolves and deletes DB rows synchronously", async () => {
+	test("durably queues cleanup and deletes DB rows without touching the filesystem", async () => {
 		const sqlite = new Database(":memory:");
 		const db = drizzle(sqlite, { schema });
 		migrate(db, { migrationsFolder: "src/main/db/migrations" });
@@ -72,21 +70,26 @@ describe("removeWorkspace fast-path", () => {
 				updatedAt: now,
 			})
 			.run();
-
-		// Replace the queue with one whose forceRemove blocks until released
-		let released = false;
-		let releaseResolve: (() => void) | undefined;
-		const blocked = new Promise<void>((r) => {
-			releaseResolve = r;
-		});
-		const queue = createWorktreeCleanupQueue({
-			graceMs: 0,
-			forceRemove: async () => {
-				await blocked;
-				released = true;
+		db.insert(schema.agentSessions)
+			.values({
+				terminalId: "agent-term-1",
+				workspaceId,
+				provider: "claude",
+				providerSessionId: "provider-session-1",
+				state: "idle",
+				lastEventAt: now,
+				createdAt: now,
+				updatedAt: now,
+			})
+			.run();
+		let clearedAgentIds: readonly string[] = [];
+		let workspaceWasAlreadyDeleted = false;
+		setAgentSessionManager({
+			removeSessions(terminalIds: readonly string[]) {
+				clearedAgentIds = terminalIds;
+				workspaceWasAlreadyDeleted = db.select().from(schema.workspaces).all().length === 0;
 			},
-		});
-		_setWorktreeCleanupQueueForTesting(queue);
+		} as unknown as AgentSessionManager);
 
 		try {
 			const start = Date.now();
@@ -95,7 +98,9 @@ describe("removeWorkspace fast-path", () => {
 
 			expect(result.status).toBe("removed");
 			expect(elapsed).toBeLessThan(500);
-			expect(released).toBe(false);
+			expect(existsSync(wtPath)).toBe(true);
+			expect(clearedAgentIds).toEqual(["agent-term-1"]);
+			expect(workspaceWasAlreadyDeleted).toBe(true);
 			expect(
 				db.select().from(schema.workspaces).where(eq(schema.workspaces.id, workspaceId)).all()
 					.length
@@ -103,13 +108,26 @@ describe("removeWorkspace fast-path", () => {
 			expect(
 				db.select().from(schema.worktrees).where(eq(schema.worktrees.id, worktreeId)).all().length
 			).toBe(0);
-			expect(queue.pendingCount()).toBe(1);
+			const jobs = db.select().from(schema.worktreeCleanupJobs).all();
+			expect(jobs).toHaveLength(1);
+			const job = jobs[0];
+			if (!job) throw new Error("Expected durable cleanup job");
+			expect(job.status).toBe("queued");
+			expect(job.originalPath).toBe(wtPath);
+			db.update(schema.worktreeCleanupJobs)
+				.set({ status: "failed", lastError: "manual retry required" })
+				.where(eq(schema.worktreeCleanupJobs.id, job.id))
+				.run();
+			expect(() => assertWorktreePathAvailable(wtPath)).toThrow();
+			db.update(schema.worktreeCleanupJobs)
+				.set({ pathReusableAt: new Date() })
+				.where(eq(schema.worktreeCleanupJobs.id, job.id))
+				.run();
+			expect(() => assertWorktreePathAvailable(wtPath)).not.toThrow();
 		} finally {
-			releaseResolve?.();
-			await queue.drain();
+			setAgentSessionManager(null);
 			rmSync(wtPath, { recursive: true, force: true });
 			rmSync(repoPath, { recursive: true, force: true });
-			_resetWorktreeCleanupQueueForTesting();
 			_setDbForTesting(null);
 		}
 	});
@@ -175,22 +193,11 @@ describe("removeWorkspace fast-path", () => {
 			})
 			.run();
 
-		// Use a spy forceRemove to detect if the queue is ever called
-		let forceRemoveCalls = 0;
-		const queue = createWorktreeCleanupQueue({
-			graceMs: 0,
-			forceRemove: async () => {
-				forceRemoveCalls++;
-			},
-		});
-		_setWorktreeCleanupQueueForTesting(queue);
-
 		try {
 			const result = await removeWorkspace({ projectId, workspaceId, force: false });
 
 			expect(result.status).toBe("blocked_uncommitted");
-			expect(queue.pendingCount()).toBe(0);
-			expect(forceRemoveCalls).toBe(0);
+			expect(db.select().from(schema.worktreeCleanupJobs).all()).toHaveLength(0);
 
 			// DB rows must NOT be deleted — the user hasn't committed/discarded changes
 			expect(
@@ -203,7 +210,6 @@ describe("removeWorkspace fast-path", () => {
 		} finally {
 			rmSync(wtPath, { recursive: true, force: true });
 			rmSync(repoPath, { recursive: true, force: true });
-			_resetWorktreeCleanupQueueForTesting();
 			_setDbForTesting(null);
 		}
 	});

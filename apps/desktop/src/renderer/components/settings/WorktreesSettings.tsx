@@ -21,14 +21,25 @@ export function WorktreesSettings() {
 		staleTime: 0,
 		refetchOnMount: true,
 	});
+	const cleanupQuery = trpc.terminalSessions.listWorktreeCleanupJobs.useQuery(undefined, {
+		refetchInterval: 2_000,
+	});
 	const [confirmPath, setConfirmPath] = useState<string | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const removeMutation = trpc.terminalSessions.removeWorktree.useMutation({
 		onSuccess: () => {
 			setError(null);
 			worktreeQuery.refetch();
+			cleanupQuery.refetch();
 		},
 		onError: (err) => setError(`Failed to remove worktree: ${err.message}`),
+	});
+	const retryCleanupMutation = trpc.terminalSessions.retryWorktreeCleanup.useMutation({
+		onSuccess: () => {
+			setError(null);
+			cleanupQuery.refetch();
+		},
+		onError: (err) => setError(`Failed to retry cleanup: ${err.message}`),
 	});
 	const pruneMutation = trpc.terminalSessions.pruneWorktrees.useMutation({
 		onSuccess: () => {
@@ -39,6 +50,7 @@ export function WorktreesSettings() {
 	});
 
 	const worktrees = worktreeQuery.data ?? [];
+	const cleanupJobs = cleanupQuery.data ?? [];
 	const ghostCount = worktrees.filter((w) => !w.existsOnDisk).length;
 
 	// Group by project
@@ -63,6 +75,55 @@ export function WorktreesSettings() {
 			</div>
 
 			{error && <ErrorBanner message={error} onDismiss={() => setError(null)} />}
+
+			{cleanupJobs.length > 0 && (
+				<>
+					<SectionLabel>Background cleanup</SectionLabel>
+					<div className="mb-6 overflow-hidden rounded-[10px] border border-[var(--border)] bg-[var(--bg-surface)]">
+						{cleanupJobs.map((job) => (
+							<div
+								key={job.id}
+								className="flex items-start justify-between gap-3 border-b border-[var(--border-subtle)] px-4 py-3 last:border-b-0"
+							>
+								<div className="min-w-0 flex-1">
+									<div className="flex items-center gap-2">
+										<span className="truncate font-mono text-[11px] text-[var(--text-secondary)]">
+											{shortPath(job.originalPath)}
+										</span>
+										<span
+											className={`rounded-full px-2 py-0.5 text-[9px] font-medium ${
+												job.status === "failed"
+													? "bg-[var(--danger-subtle)] text-[var(--color-danger)]"
+													: "bg-[var(--accent-subtle)] text-[var(--accent)]"
+											}`}
+										>
+											{job.status.replace("_", " ")}
+										</span>
+									</div>
+									<div className="mt-1 text-[10px] text-[var(--text-quaternary)]">
+										Phase: {job.phase.replace("_", " ")} · attempt {job.attempts}
+									</div>
+									{job.lastError && (
+										<div className="mt-1 break-words text-[10px] text-[var(--color-danger)]">
+											{job.lastError}
+										</div>
+									)}
+								</div>
+								{job.status === "failed" && (
+									<button
+										type="button"
+										onClick={() => retryCleanupMutation.mutate({ id: job.id })}
+										disabled={retryCleanupMutation.isPending}
+										className="shrink-0 rounded-[6px] border border-[var(--border)] bg-[var(--bg-elevated)] px-2.5 py-1 text-[11px] text-[var(--text-secondary)] hover:bg-[var(--bg-overlay)] disabled:opacity-50"
+									>
+										Retry
+									</button>
+								)}
+							</div>
+						))}
+					</div>
+				</>
+			)}
 
 			{/* Controls */}
 			<div className="mb-4 flex items-center justify-between">
