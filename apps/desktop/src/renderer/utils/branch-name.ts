@@ -10,3 +10,8 @@ export function splitBranchPrefix(name: string): { prefix: string; rest: string 
 	if (i === -1) return { prefix: "", rest: name };
 	return { prefix: name.slice(0, i + 1), rest: name.slice(i + 1) };
 }
+
+/** Replace spaces as they are typed or pasted into a new branch name. */
+export function normalizeBranchNameInput(name: string): string {
+	return name.replace(/ /g, "-");
+}

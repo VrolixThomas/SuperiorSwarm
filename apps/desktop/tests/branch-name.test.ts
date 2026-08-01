@@ -1,5 +1,24 @@
 import { describe, expect, test } from "bun:test";
-import { splitBranchPrefix } from "../src/renderer/utils/branch-name";
+import {
+	normalizeBranchNameInput,
+	splitBranchPrefix,
+} from "../src/renderer/utils/branch-name";
+
+describe("normalizeBranchNameInput", () => {
+	test("replaces typed spaces with hyphens", () => {
+		expect(normalizeBranchNameInput("fix branch name")).toBe("fix-branch-name");
+	});
+
+	test("replaces every space in pasted input", () => {
+		expect(normalizeBranchNameInput("feature/with  two spaces")).toBe(
+			"feature/with--two-spaces"
+		);
+	});
+
+	test("leaves branch names without spaces unchanged", () => {
+		expect(normalizeBranchNameInput("feature/already-valid")).toBe("feature/already-valid");
+	});
+});
 
 describe("splitBranchPrefix", () => {
 	test("splits a feature branch into prefix + rest", () => {
