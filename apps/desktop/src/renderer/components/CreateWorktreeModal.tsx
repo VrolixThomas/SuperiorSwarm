@@ -3,6 +3,7 @@ import { useProjectStore } from "../stores/projects";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import { filterAndSortBranches } from "../utils/branch-search";
+import { normalizeBranchNameInput } from "../utils/branch-name";
 import { flattenWorkspaceTree } from "../utils/workspace-tree";
 
 export function CreateWorktreeModal() {
@@ -288,7 +289,7 @@ export function CreateWorktreeModal() {
 									id="worktree-branch"
 									type="text"
 									value={branchName}
-									onChange={(e) => setBranchName(e.target.value)}
+									onChange={(e) => setBranchName(normalizeBranchNameInput(e.target.value))}
 									placeholder="feature-branch-name"
 									className="w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-2 text-[13px] text-[var(--text)] placeholder:text-[var(--text-quaternary)] focus:border-[var(--accent)] focus:outline-none"
 								/>
