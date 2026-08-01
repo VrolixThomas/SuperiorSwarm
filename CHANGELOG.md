@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.17.0 (2026-08-01)
+
+### What's New
+
+SuperiorSwarm now removes deleted worktrees from the interface immediately while completing cleanup reliably in the background. Cleanup can recover after restarts, safely shuts down associated terminals and agent sessions, and lets you retry failed cleanup jobs.
+
+### Changes
+
+- Move worktree deletion to durable detached cleanup (#134)
+
 ## v0.16.0 (2026-08-01)
 
 ### What's New
