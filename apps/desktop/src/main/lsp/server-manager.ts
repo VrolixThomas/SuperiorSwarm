@@ -1,7 +1,7 @@
-import { type ChildProcess, execSync, spawn } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
 import { constants, accessSync, existsSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
-import { basename, delimiter, dirname, extname, isAbsolute, join } from "node:path";
+import { basename, delimiter, dirname, extname, isAbsolute, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { BrowserWindow } from "electron";
 import {
@@ -12,6 +12,7 @@ import {
 import type { LanguageServerConfig } from "../../shared/lsp-schema";
 import type { LspHealthEntry } from "../../shared/types";
 import { LruMap } from "./lru-map";
+import { execShellSync as execSync, spawnLspProcess as spawn } from "./process-api";
 import {
 	DEFAULT_SERVER_CONFIGS,
 	buildRegistry,
@@ -181,6 +182,7 @@ export class ServerManager {
 	private initFailures = new Map<string, number>();
 	private crashCounts = new Map<string, number>();
 	private restartTimers = new Set<ReturnType<typeof setTimeout>>();
+	private suspendedRepoPaths = new Set<string>();
 	private unavailableServers = new Set<string>();
 	private serverLastErrors = new Map<string, string>();
 	private serverLastStartupErrors = new Map<string, string>();
@@ -457,6 +459,7 @@ export class ServerManager {
 	}
 
 	async getOrCreate(configId: string, repoPath: string): Promise<MessageConnection | null> {
+		if (this.suspendedRepoPaths.has(resolve(repoPath))) return null;
 		const key = this.serverKey(configId, repoPath);
 		const existing = this.servers.get(key);
 		if (existing?.initialized) return existing.connection;
@@ -479,6 +482,8 @@ export class ServerManager {
 	}
 
 	private async startServer(configId: string, repoPath: string): Promise<MessageConnection | null> {
+		const normalizedRepoPath = resolve(repoPath);
+		if (this.suspendedRepoPaths.has(normalizedRepoPath)) return null;
 		const config = this.findConfigById(configId, repoPath);
 		if (!config) return null;
 
@@ -533,6 +538,10 @@ export class ServerManager {
 		});
 
 		if (!spawnResult) return null;
+		if (this.suspendedRepoPaths.has(normalizedRepoPath)) {
+			childProcess.kill();
+			return null;
+		}
 
 		this.unavailableServers.delete(key);
 		this.serverLastErrors.delete(key);
@@ -621,6 +630,17 @@ export class ServerManager {
 			};
 
 			await connection.sendRequest("initialize", initParams);
+			if (
+				this.suspendedRepoPaths.has(normalizedRepoPath) ||
+				instance.shuttingDown ||
+				this.servers.get(key) !== instance
+			) {
+				instance.shuttingDown = true;
+				connection.dispose();
+				childProcess.kill();
+				if (this.servers.get(key) === instance) this.servers.delete(key);
+				return null;
+			}
 			connection.sendNotification("initialized", {});
 			instance.initialized = true;
 			this.initFailures.delete(key);
@@ -866,6 +886,19 @@ export class ServerManager {
 		this.restartTimers.clear();
 		const keys = [...this.servers.keys()];
 		await Promise.all(keys.map((key) => this.shutdownServer(key)));
+	}
+
+	async shutdownRepo(repoPath: string): Promise<void> {
+		const normalized = resolve(repoPath);
+		this.suspendedRepoPaths.add(normalized);
+		const matchingKeys = [...this.servers.entries()]
+			.filter(([, instance]) => resolve(instance.repoPath) === normalized)
+			.map(([key]) => key);
+		await Promise.all(matchingKeys.map((key) => this.shutdownServer(key)));
+	}
+
+	resumeRepo(repoPath: string): void {
+		this.suspendedRepoPaths.delete(resolve(repoPath));
 	}
 
 	async evictServer(configId: string, repoPath?: string): Promise<void> {

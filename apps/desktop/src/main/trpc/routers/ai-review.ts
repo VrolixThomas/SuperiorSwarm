@@ -16,7 +16,6 @@ import { publishReview } from "../../ai-review/review-publisher";
 import { ensureReviewWorkspace } from "../../ai-review/review-workspace";
 import { getDb } from "../../db";
 import * as schema from "../../db/schema";
-import { removeWorktree } from "../../git/operations";
 import { publicProcedure, router } from "../index";
 
 export const aiReviewRouter = router({

@@ -6,6 +6,8 @@ import { nanoid } from "nanoid";
 import { getDb } from "../db";
 import * as schema from "../db/schema";
 import { checkoutBranchWorktree } from "../git/operations";
+import { assertWorktreePathAvailable } from "../services/worktree-cleanup-job-store";
+import { resumeWorktreeServices } from "../services/worktree-deletion-coordinator";
 
 export async function ensureReviewWorkspace(opts: {
 	projectId: string;
@@ -71,6 +73,7 @@ export async function ensureReviewWorkspace(opts: {
 		// Compute worktree path
 		const sanitizedId = opts.prIdentifier.replace(/[^a-zA-Z0-9-]/g, "-");
 		const wtPath = join(worktreeBasePath(project.repoPath), `pr-review-${sanitizedId}`);
+		assertWorktreePathAvailable(wtPath);
 
 		if (!existsSync(wtPath)) {
 			// Worktree doesn't exist on disk — create it
@@ -108,6 +111,7 @@ export async function ensureReviewWorkspace(opts: {
 			.set({ worktreeId, updatedAt: now })
 			.where(eq(schema.workspaces.id, workspace.id))
 			.run();
+		resumeWorktreeServices(wtPath);
 
 		return { workspaceId: workspace.id, worktreePath: wtPath };
 	}

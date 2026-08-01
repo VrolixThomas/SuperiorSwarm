@@ -46,6 +46,48 @@ export const worktrees = sqliteTable("worktrees", {
 export type Worktree = typeof worktrees.$inferSelect;
 export type NewWorktree = typeof worktrees.$inferInsert;
 
+export const worktreeCleanupJobs = sqliteTable(
+	"worktree_cleanup_jobs",
+	{
+		id: text("id").primaryKey(),
+		repoPath: text("repo_path").notNull(),
+		originalPath: text("original_path").notNull(),
+		originalPathIdentity: text("original_path_identity"),
+		stagingPath: text("staging_path").notNull(),
+		status: text("status", {
+			enum: ["pending", "queued", "running", "retry_wait", "completed", "failed"],
+		})
+			.notNull()
+			.default("pending"),
+		phase: text("phase", {
+			enum: ["preparing", "renamed", "git_pruned", "deleting_files", "verifying"],
+		})
+			.notNull()
+			.default("preparing"),
+		attempts: integer("attempts").notNull().default(0),
+		workerId: text("worker_id"),
+		leaseExpiresAt: integer("lease_expires_at", { mode: "timestamp_ms" }),
+		nextAttemptAt: integer("next_attempt_at", { mode: "timestamp_ms" }),
+		lastError: text("last_error"),
+		pathReusableAt: integer("path_reusable_at", { mode: "timestamp_ms" }),
+		createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+		updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+		completedAt: integer("completed_at", { mode: "timestamp_ms" }),
+	},
+	(table) => [
+		index("worktree_cleanup_jobs_status_idx").on(
+			table.status,
+			table.nextAttemptAt,
+			table.createdAt
+		),
+		index("worktree_cleanup_jobs_path_idx").on(table.originalPath, table.status),
+		index("worktree_cleanup_jobs_lease_idx").on(table.status, table.leaseExpiresAt),
+	]
+);
+
+export type WorktreeCleanupJob = typeof worktreeCleanupJobs.$inferSelect;
+export type NewWorktreeCleanupJob = typeof worktreeCleanupJobs.$inferInsert;
+
 export const workspaces = sqliteTable(
 	"workspaces",
 	{

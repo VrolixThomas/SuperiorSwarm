@@ -1,4 +1,4 @@
-import { and, desc, eq, ne } from "drizzle-orm";
+import { and, desc, eq, inArray, ne } from "drizzle-orm";
 import type { AgentEvent } from "../../shared/agent-events";
 import {
 	AGENT_PROVIDERS,
@@ -362,10 +362,18 @@ export class AgentSessionManager {
 	}
 
 	removeSession(terminalId: string): void {
-		this.cancelTimer(terminalId);
-		this.visibleTerminals.delete(terminalId);
-		this.transitions.delete(terminalId);
-		getDb().delete(agentSessions).where(eq(agentSessions.terminalId, terminalId)).run();
+		this.removeSessions([terminalId]);
+	}
+
+	removeSessions(terminalIds: readonly string[]): void {
+		const uniqueTerminalIds = [...new Set(terminalIds)];
+		for (const terminalId of uniqueTerminalIds) {
+			this.cancelTimer(terminalId);
+			this.visibleTerminals.delete(terminalId);
+			this.transitions.delete(terminalId);
+		}
+		if (uniqueTerminalIds.length === 0) return;
+		getDb().delete(agentSessions).where(inArray(agentSessions.terminalId, uniqueTerminalIds)).run();
 	}
 
 	removeWorkspaceSessions(workspaceId: string): void {
@@ -375,12 +383,7 @@ export class AgentSessionManager {
 			.where(eq(agentSessions.workspaceId, workspaceId))
 			.all()
 			.map((row) => row.terminalId);
-		for (const terminalId of terminalIds) {
-			this.cancelTimer(terminalId);
-			this.visibleTerminals.delete(terminalId);
-			this.transitions.delete(terminalId);
-		}
-		getDb().delete(agentSessions).where(eq(agentSessions.workspaceId, workspaceId)).run();
+		this.removeSessions(terminalIds);
 	}
 
 	applySettings(): void {

@@ -12,6 +12,8 @@ import {
 	worktrees,
 } from "../../db/schema";
 import { checkoutBranchWorktree } from "../../git/operations";
+import { assertWorktreePathAvailable } from "../../services/worktree-cleanup-job-store";
+import { resumeWorktreeServices } from "../../services/worktree-deletion-coordinator";
 import { symlinkSharedFiles } from "../../shared-files";
 import { publicProcedure, router } from "../index";
 
@@ -135,6 +137,7 @@ export const workspacesRouter = router({
 			}
 
 			const worktreePath = join(worktreeBasePath(project.repoPath), input.branch);
+			assertWorktreePathAvailable(worktreePath);
 
 			await checkoutBranchWorktree(project.repoPath, worktreePath, input.branch);
 
@@ -168,6 +171,7 @@ export const workspacesRouter = router({
 			};
 
 			db.insert(workspaces).values(workspace).run();
+			resumeWorktreeServices(worktreePath);
 
 			// Symlink shared files from main repo to new worktree
 			const sharedEntries = db
@@ -199,7 +203,6 @@ export const workspacesRouter = router({
 					.where(eq(workspaces.id, workspaceId))
 					.run();
 			}
-
 			return {
 				...workspace,
 				prProvider: matchingPR?.provider ?? null,
@@ -255,6 +258,7 @@ export const workspacesRouter = router({
 			} else {
 				// Create a new worktree for the existing remote branch
 				const worktreePath = join(worktreeBasePath(project.repoPath), input.prBranch);
+				assertWorktreePathAvailable(worktreePath);
 				await checkoutBranchWorktree(project.repoPath, worktreePath, input.prBranch);
 
 				const now = new Date();
@@ -285,6 +289,7 @@ export const workspacesRouter = router({
 						updatedAt: now,
 					})
 					.run();
+				resumeWorktreeServices(worktreePath);
 
 				// Symlink shared files
 				const sharedEntries = db
@@ -530,6 +535,7 @@ export const workspacesRouter = router({
 				// Compute worktree path
 				const sanitizedId = input.prIdentifier.replace(/[^a-zA-Z0-9-]/g, "-");
 				const wtPath = join(worktreeBasePath(project.repoPath), `pr-review-${sanitizedId}`);
+				assertWorktreePathAvailable(wtPath);
 
 				const { existsSync } = await import("node:fs");
 				if (!existsSync(wtPath)) {
@@ -567,6 +573,7 @@ export const workspacesRouter = router({
 					.run();
 
 				workspace = db.select().from(workspaces).where(eq(workspaces.id, workspace.id)).get()!;
+				resumeWorktreeServices(wtPath);
 			} else {
 				// Worktree exists — fetch in background so the UI switch is instant
 				const worktree = db

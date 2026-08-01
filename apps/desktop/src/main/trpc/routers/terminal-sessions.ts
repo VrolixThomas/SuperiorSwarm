@@ -1,11 +1,13 @@
-import { eq } from "drizzle-orm";
+import { resolve } from "node:path";
+import { desc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { getDb, schema } from "../../db";
 import { savePaneLayouts, saveTerminalSessions } from "../../db/session-persistence";
 import { pruneWorktrees } from "../../git/operations";
 import { getAgentSessionManager } from "../../services/agent-session-manager-handle";
-import { getWorktreeCleanupQueue } from "../../services/worktree-cleanup-queue";
-import { getDaemonClient } from "../../terminal/daemon-instance";
+import { wakeCleanupDaemon } from "../../services/cleanup-daemon-instance";
+import { quiesceWorktreeServices } from "../../services/worktree-deletion-coordinator";
+import { deleteWorkspaceRecords } from "../../services/worktree-deletion-service";
 import { publicProcedure, router } from "../index";
 
 const sessionInput = z.object({
@@ -217,7 +219,7 @@ export const terminalSessionsRouter = router({
 	removeWorktree: publicProcedure
 		.input(z.object({ path: z.string(), repoPath: z.string() }))
 		.mutation(async ({ input }) => {
-			console.log("[removeWorktree] Removing:", input.path, "from repo:", input.repoPath);
+			console.log("[removeWorktree] Removing registered worktree:", input.path);
 			const db = getDb();
 
 			// 1. Find DB worktree record by path
@@ -226,46 +228,106 @@ export const terminalSessionsRouter = router({
 				.from(schema.worktrees)
 				.where(eq(schema.worktrees.path, input.path))
 				.get();
-			console.log("[removeWorktree] DB record:", dbWorktree ? "found" : "not found");
-
-			// 2. Dispose any daemon terminals for workspaces using this worktree
-			if (dbWorktree) {
-				const linkedWorkspaces = db
-					.select({ id: schema.workspaces.id })
-					.from(schema.workspaces)
-					.where(eq(schema.workspaces.worktreeId, dbWorktree.id))
-					.all();
-
-				const daemon = getDaemonClient();
-				for (const ws of linkedWorkspaces) {
-					getAgentSessionManager()?.removeWorkspaceSessions(ws.id);
-					const sessions = db
-						.select({ id: schema.terminalSessions.id })
-						.from(schema.terminalSessions)
-						.where(eq(schema.terminalSessions.workspaceId, ws.id))
-						.all();
-					for (const s of sessions) {
-						daemon?.dispose(s.id);
-					}
-					db.delete(schema.terminalSessions)
-						.where(eq(schema.terminalSessions.workspaceId, ws.id))
-						.run();
-				}
+			const project = dbWorktree
+				? db
+						.select()
+						.from(schema.projects)
+						.where(eq(schema.projects.id, dbWorktree.projectId))
+						.get()
+				: db
+						.select()
+						.from(schema.projects)
+						.where(eq(schema.projects.repoPath, input.repoPath))
+						.get();
+			if (!project) throw new Error("Project not found for worktree");
+			let targetPath = dbWorktree?.path;
+			if (!dbWorktree) {
+				// Settings can also show Git-registered worktrees missing from our DB.
+				// Trust the path only after resolving it against Git using a DB-owned repo.
+				const { listWorktrees } = await import("../../git/operations");
+				const target = (await listWorktrees(project.repoPath)).find(
+					(worktree) => resolve(worktree.path) === resolve(input.path)
+				);
+				if (!target || target.isMain)
+					throw new Error("Worktree is not registered for this project");
+				targetPath = target.path;
 			}
+			if (!targetPath) throw new Error("Worktree path could not be resolved");
 
-			// 3. Delete DB records (cascade deletes workspaces) synchronously so a
-			//    refetch never resurfaces this worktree. Filesystem cleanup happens
-			//    in the background queue — the caller does not wait on git.
-			if (dbWorktree) {
-				db.delete(schema.worktrees).where(eq(schema.worktrees.id, dbWorktree.id)).run();
-			}
+			// 2. Remove any linked workspace state and queue durable cleanup.
+			const linkedWorkspaces = dbWorktree
+				? db
+						.select({ id: schema.workspaces.id })
+						.from(schema.workspaces)
+						.where(eq(schema.workspaces.worktreeId, dbWorktree.id))
+						.all()
+				: [];
 
-			// 4. Schedule worktree removal from disk (fire-and-forget).
-			const { existsSync } = await import("node:fs");
-			if (existsSync(input.path)) {
-				getWorktreeCleanupQueue().schedule(input.repoPath, input.path);
-			}
+			const linkedWorkspaceIds = linkedWorkspaces.map((workspace) => workspace.id);
+			await deleteWorkspaceRecords({
+				workspaceIds: linkedWorkspaceIds,
+				worktreeId: dbWorktree?.id,
+				cleanup: { repoPath: project.repoPath, originalPath: targetPath },
+			});
 
+			return { ok: true };
+		}),
+
+	listWorktreeCleanupJobs: publicProcedure.query(() => {
+		return getDb()
+			.select({
+				id: schema.worktreeCleanupJobs.id,
+				originalPath: schema.worktreeCleanupJobs.originalPath,
+				stagingPath: schema.worktreeCleanupJobs.stagingPath,
+				status: schema.worktreeCleanupJobs.status,
+				phase: schema.worktreeCleanupJobs.phase,
+				attempts: schema.worktreeCleanupJobs.attempts,
+				lastError: schema.worktreeCleanupJobs.lastError,
+				pathReusableAt: schema.worktreeCleanupJobs.pathReusableAt,
+				createdAt: schema.worktreeCleanupJobs.createdAt,
+				updatedAt: schema.worktreeCleanupJobs.updatedAt,
+			})
+			.from(schema.worktreeCleanupJobs)
+			.where(
+				inArray(schema.worktreeCleanupJobs.status, [
+					"pending",
+					"queued",
+					"running",
+					"retry_wait",
+					"failed",
+				])
+			)
+			.orderBy(desc(schema.worktreeCleanupJobs.createdAt))
+			.limit(50)
+			.all();
+	}),
+
+	retryWorktreeCleanup: publicProcedure
+		.input(z.object({ id: z.string() }))
+		.mutation(({ input }) => {
+			const db = getDb();
+			const job = db
+				.select()
+				.from(schema.worktreeCleanupJobs)
+				.where(eq(schema.worktreeCleanupJobs.id, input.id))
+				.get();
+			if (!job) throw new Error("Cleanup job not found");
+			if (job.status !== "failed") throw new Error("Only failed cleanup jobs can be retried");
+			if (!job.pathReusableAt) quiesceWorktreeServices(job.originalPath, job.id);
+
+			db.update(schema.worktreeCleanupJobs)
+				.set({
+					status: "queued",
+					attempts: 0,
+					workerId: null,
+					leaseExpiresAt: null,
+					nextAttemptAt: null,
+					lastError: null,
+					updatedAt: new Date(),
+				})
+				.where(eq(schema.worktreeCleanupJobs.id, input.id))
+				.run();
+			wakeCleanupDaemon();
 			return { ok: true };
 		}),
 

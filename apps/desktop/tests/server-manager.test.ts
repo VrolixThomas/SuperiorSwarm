@@ -18,8 +18,11 @@ type MockConfig = {
 
 const unavailableCommands = new Set<string>();
 const initFailCommands = new Set<string>();
+const deferredSpawnCommands = new Set<string>();
 const spawnCalls: string[] = [];
+const killedCommands: string[] = [];
 const createdRepos: string[] = [];
+const deferredProcesses = new Map<string, EventEmitter>();
 let capturedInitParams: unknown = null;
 const originalPath = process.env["PATH"];
 const originalPathExt = process.env["PATHEXT"];
@@ -36,8 +39,8 @@ function buildConfig(id: string, command: string): MockConfig {
 	};
 }
 
-mock.module("node:child_process", () => ({
-	spawn: mock((command: string) => {
+mock.module("../src/main/lsp/process-api", () => ({
+	spawnLspProcess: mock((command: string) => {
 		spawnCalls.push(command);
 
 		const proc = new EventEmitter() as EventEmitter & {
@@ -50,10 +53,15 @@ mock.module("node:child_process", () => ({
 		proc.stdout = new PassThrough();
 		proc.stderr = new PassThrough();
 		proc.kill = () => {
+			killedCommands.push(command);
 			proc.emit("exit", 0);
 			return true;
 		};
 
+		if (deferredSpawnCommands.has(command)) {
+			deferredProcesses.set(command, proc);
+			return proc;
+		}
 		queueMicrotask(() => {
 			if (unavailableCommands.has(command)) {
 				proc.emit("error", new Error(`spawn ${command} ENOENT`));
@@ -64,7 +72,7 @@ mock.module("node:child_process", () => ({
 
 		return proc;
 	}),
-	execSync: mock(() => ""),
+	execShellSync: mock(() => ""),
 }));
 
 mock.module("../src/main/lsp/trust", () => ({
@@ -116,7 +124,10 @@ describe("ServerManager repo-aware resolution", () => {
 	beforeEach(() => {
 		unavailableCommands.clear();
 		initFailCommands.clear();
+		deferredSpawnCommands.clear();
+		deferredProcesses.clear();
 		spawnCalls.length = 0;
+		killedCommands.length = 0;
 		capturedInitParams = null;
 		_resetShellPathCacheForTests();
 	});
@@ -159,6 +170,23 @@ describe("ServerManager repo-aware resolution", () => {
 		expect(spawnCalls).toEqual(["missing-pyright", "working-pyright"]);
 
 		await manager.disposeAll();
+	});
+
+	test("shutdownRepo terminates a server suspended while spawn is in flight", async () => {
+		const manager = new ServerManager();
+		const command = "deferred-lsp";
+		const repoPath = createRepoWithConfig("deferred-spawn", [buildConfig("slow", command)]);
+		deferredSpawnCommands.add(command);
+
+		const starting = manager.getOrCreate("slow", repoPath);
+		await manager.shutdownRepo(repoPath);
+		const process = deferredProcesses.get(command);
+		if (!process) throw new Error("Expected a deferred LSP process");
+		process.emit("spawn");
+
+		expect(await starting).toBeNull();
+		expect(killedCommands).toContain(command);
+		expect((manager["servers"] as Map<string, unknown>).size).toBe(0);
 	});
 
 	test("getRunningConnections matches repo paths exactly", async () => {

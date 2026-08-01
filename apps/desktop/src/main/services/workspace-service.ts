@@ -46,6 +46,7 @@ import {
 	sharedFiles,
 	terminalSessions,
 	workspaces,
+	worktreeCleanupJobs,
 	worktrees,
 } from "../db/schema";
 import { reviewDrafts } from "../db/schema-ai-review";
@@ -61,7 +62,13 @@ import { getDaemonClient } from "../terminal/daemon-instance";
 import { getAgentSessionManager } from "./agent-session-manager-handle";
 import type { attachToOrchestrator } from "./orchestrator-membership";
 import { resolveWorkspaceCwd } from "./workspace-cwd";
-import { getWorktreeCleanupQueue } from "./worktree-cleanup-queue";
+import { assertWorktreePathAvailable } from "./worktree-cleanup-job-store";
+import {
+	prepareWorktreeDeletion,
+	resumeWorktreeServices,
+	startWorktreeDeletion,
+} from "./worktree-deletion-coordinator";
+import { deleteWorkspaceRecords } from "./worktree-deletion-service";
 function worktreeBasePath(repoPath: string): string {
 	const parent = dirname(repoPath);
 	const name = repoPath.split("/").pop() ?? "repo";
@@ -76,6 +83,8 @@ export function setEventBus(bus: EventBus | null): void {
 export interface CreateWorkspaceDeps {
 	/** Test-only hook: called inside the DB transaction after the first insert. Throw to exercise transaction rollback. */
 	_afterFirstInsert?: () => void;
+	/** Test-only hook for exercising durable cleanup after rollback removal fails. */
+	_removeWorktree?: typeof gitRemoveWorktree;
 }
 
 export async function createWorkspace(
@@ -96,6 +105,7 @@ export async function createWorkspace(
 
 	let baseBranch = input.baseBranch ?? project.defaultBranch;
 	const path = join(worktreeBasePath(project.repoPath), input.branch);
+	assertWorktreePathAvailable(path);
 
 	// Reuse an existing branch (local, or already-fetched remote) instead of
 	// failing on `worktree add -b`. Mirrors the UI's checkoutExisting flow:
@@ -147,12 +157,23 @@ export async function createWorkspace(
 	} catch (err) {
 		// Roll back the on-disk worktree so a retry can succeed without manual cleanup.
 		try {
-			await gitRemoveWorktree(project.repoPath, path);
+			await (deps._removeWorktree ?? gitRemoveWorktree)(project.repoPath, path);
 		} catch (rollbackErr) {
 			console.warn("[workspace-service] createWorkspace rollback failed:", rollbackErr);
+			const cleanupJob = await prepareWorktreeDeletion({
+				repoPath: project.repoPath,
+				originalPath: path,
+			});
+			try {
+				db.insert(worktreeCleanupJobs).values(cleanupJob).run();
+				startWorktreeDeletion(cleanupJob);
+			} catch (queueError) {
+				console.warn("[workspace-service] failed to queue rollback cleanup:", queueError);
+			}
 		}
 		throw err;
 	}
+	resumeWorktreeServices(path);
 
 	const sharedEntries = db
 		.select()
@@ -167,7 +188,6 @@ export async function createWorkspace(
 			sharedEntries.map((e) => ({ relativePath: e.relativePath, type: e.type }))
 		);
 	}
-
 	return {
 		workspaceId,
 		worktreeId,
@@ -451,49 +471,15 @@ export async function removeWorkspace(
 		const dirty = await hasUncommittedChanges(wt.path);
 		if (dirty) return { status: "blocked_uncommitted" };
 	}
-
-	const sessions = db
-		.select({ id: terminalSessions.id })
-		.from(terminalSessions)
-		.where(eq(terminalSessions.workspaceId, input.workspaceId))
-		.all();
-	getAgentSessionManager()?.removeWorkspaceSessions(input.workspaceId);
-	const daemon = getDaemonClient();
-	for (const s of sessions) daemon?.dispose(s.id);
-	if (sessions.length > 0) {
-		db.delete(terminalSessions).where(eq(terminalSessions.workspaceId, input.workspaceId)).run();
-	}
-
-	// DB cleanup is synchronous + immediate so the renderer's next list refetch
-	// never sees this workspace again. Filesystem cleanup happens in the
-	// background queue — the user does not wait on git.
-	//
-	// Null out fromWorkspaceId on any agent_messages sent by this workspace
-	// before deleting the row. The FK on fromWorkspaceId was dropped in
-	// 0046_allow_cross_repo_sender.sql to permit xro IDs there, so ON DELETE
-	// SET NULL no longer fires automatically — we replicate it at the app layer.
-	db.update(agentMessages)
-		.set({ fromWorkspaceId: null })
-		.where(eq(agentMessages.fromWorkspaceId, input.workspaceId))
-		.run();
-	// The orchestrator_id → workspaces FK (ON DELETE CASCADE) was dropped in
-	// 0045_add_cross_repo_orchestrators.sql so orchestrator_id can hold xro ids.
-	// Replicate the parent-side cascade at the app layer: deleting an orchestrator
-	// workspace must delete its membership rows. (Member-side rows are still
-	// covered by the surviving workspace_id FK cascade.)
-	db.delete(orchestratorMembers)
-		.where(eq(orchestratorMembers.orchestratorId, input.workspaceId))
-		.run();
-	if (wt) db.delete(worktrees).where(eq(worktrees.id, wt.id)).run();
-	db.delete(workspaces).where(eq(workspaces.id, input.workspaceId)).run();
+	await deleteWorkspaceRecords({
+		workspaceIds: [ws.id],
+		worktreeId: wt?.id,
+		cleanup: wt ? { repoPath: project.repoPath, originalPath: wt.path } : undefined,
+	});
 
 	if (ws.isOrchestrator) {
 		invalidateOrchestratorPresenceCache(ws.projectId);
 		removeProjectEventsFile(ws.projectId);
-	}
-
-	if (pathExists && wt) {
-		getWorktreeCleanupQueue().schedule(project.repoPath, wt.path);
 	}
 
 	return { status: "removed" };

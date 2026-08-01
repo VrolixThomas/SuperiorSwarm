@@ -1,15 +1,13 @@
 import { and, eq } from "drizzle-orm";
 import { getDb } from "../db";
-import { agentMessages, projects, terminalSessions, workspaces, worktrees } from "../db/schema";
+import { workspaces } from "../db/schema";
 import { reviewDrafts } from "../db/schema-ai-review";
-import { removeWorktree } from "../git/operations";
-import { getAgentSessionManager } from "../services/agent-session-manager-handle";
-import { getDaemonClient } from "../terminal/daemon-instance";
+import { removeWorkspace } from "../services/workspace-service";
 import { validateTransition } from "./orchestrator";
 
 /**
- * Full cleanup of a review workspace: removes worktree from disk,
- * deletes workspace record, dismisses all related drafts.
+ * Full cleanup of a review workspace: atomically tombstones the workspace and
+ * queues its worktree for the detached cleanup daemon, then dismisses drafts.
  * Used by: dismissReview, PR close detection, commit-poller on merge.
  */
 export async function cleanupReviewWorkspace(workspaceId: string): Promise<void> {
@@ -22,29 +20,7 @@ export async function cleanupReviewWorkspace(workspaceId: string): Promise<void>
 		throw new Error(`Cannot cleanup non-review workspace: ${workspaceId}`);
 	}
 
-	const project = db.select().from(projects).where(eq(projects.id, workspace.projectId)).get();
-	getAgentSessionManager()?.removeWorkspaceSessions(workspaceId);
-
-	// 2. Remove worktree from disk if it exists
-	if (workspace.worktreeId && project) {
-		const worktree = db
-			.select()
-			.from(worktrees)
-			.where(eq(worktrees.id, workspace.worktreeId))
-			.get();
-		if (worktree?.path) {
-			try {
-				// removeWorktree(repoPath, worktreePath) — needs both args
-				await removeWorktree(project.repoPath, worktree.path);
-			} catch {
-				// Worktree may already be gone — that's fine
-			}
-		}
-		// Delete worktree DB record
-		db.delete(worktrees).where(eq(worktrees.id, workspace.worktreeId)).run();
-	}
-
-	// 3. Dismiss all related drafts for this PR
+	// Dismiss all related drafts for this PR before the workspace row disappears.
 	if (workspace.prProvider && workspace.prIdentifier) {
 		const drafts = db
 			.select({ id: reviewDrafts.id, status: reviewDrafts.status })
@@ -64,29 +40,11 @@ export async function cleanupReviewWorkspace(workspaceId: string): Promise<void>
 		}
 	}
 
-	// 5. Dispose daemon terminals and delete terminal_sessions rows
-	const sessions = db
-		.select({ id: terminalSessions.id })
-		.from(terminalSessions)
-		.where(eq(terminalSessions.workspaceId, workspaceId))
-		.all();
-	const daemon = getDaemonClient();
-	for (const session of sessions) {
-		daemon?.dispose(session.id);
-	}
-	if (sessions.length > 0) {
-		db.delete(terminalSessions).where(eq(terminalSessions.workspaceId, workspaceId)).run();
-	}
-
-	// Replicate the dropped ON DELETE SET NULL on agent_messages.from_workspace_id
-	// (FK removed in 0046_allow_cross_repo_sender.sql) — same as removeWorkspace.
-	db.update(agentMessages)
-		.set({ fromWorkspaceId: null })
-		.where(eq(agentMessages.fromWorkspaceId, workspaceId))
-		.run();
-
-	// 4. Delete workspace record
-	db.delete(workspaces).where(eq(workspaces.id, workspaceId)).run();
+	await removeWorkspace({
+		workspaceId,
+		projectId: workspace.projectId,
+		force: true,
+	});
 }
 
 /**

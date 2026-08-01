@@ -18,6 +18,7 @@ import {
 	readMessages,
 	removeWorkspace,
 } from "../src/main/services/workspace-service";
+import { resumeWorktreeServices } from "../src/main/services/worktree-deletion-coordinator";
 
 let TMP: string;
 let REPO: string;
@@ -52,6 +53,7 @@ beforeEach(async () => {
 
 afterEach(() => {
 	const db = getDb();
+	db.delete(schema.worktreeCleanupJobs).where(eq(schema.worktreeCleanupJobs.repoPath, REPO)).run();
 	db.delete(schema.projects).where(eq(schema.projects.id, PROJECT_ID)).run();
 	rmSync(TMP, { recursive: true, force: true });
 });
@@ -127,6 +129,39 @@ describe("createWorkspace", () => {
 			.where(eq(schema.worktrees.projectId, PROJECT_ID))
 			.all();
 		expect(worktreeRows).toHaveLength(0);
+	});
+
+	test("durably queues cleanup if on-disk rollback removal fails", async () => {
+		const branch = "feature/rollback-cleanup";
+		const repoName = REPO.split("/").pop() ?? "repo";
+		const expectedPath = join(REPO, "..", `${repoName}-worktrees`, branch);
+
+		try {
+			await expect(
+				createWorkspace(
+					{ projectId: PROJECT_ID, branch },
+					{
+						_afterFirstInsert: () => {
+							throw new Error("simulated DB insert failure");
+						},
+						_removeWorktree: async () => {
+							throw new Error("simulated wedged git removal");
+						},
+					}
+				)
+			).rejects.toThrow("simulated DB insert failure");
+
+			expect(existsSync(expectedPath)).toBe(true);
+			const jobs = getDb()
+				.select()
+				.from(schema.worktreeCleanupJobs)
+				.where(eq(schema.worktreeCleanupJobs.originalPath, expectedPath))
+				.all();
+			expect(jobs).toHaveLength(1);
+			expect(jobs[0]?.status).toBe("queued");
+		} finally {
+			resumeWorktreeServices(expectedPath);
+		}
 	});
 });
 
