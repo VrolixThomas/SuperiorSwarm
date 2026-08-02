@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.18.0 (2026-08-02)
+
+### What's New
+
+SuperiorSwarm's Tickets workspace now lets you switch between Jira boards and Linear teams, then narrow your view by sprint or cycle. Creating a branch from a ticket now produces cleaner branch names, and the new-worktree modal is easier to use entirely from the keyboard.
+
+### Changes
+
+- Tickets rework (#136)
+- fix(desktop): make worktree modal keyboard accessible (#135)
+
 ## v0.17.0 (2026-08-01)
 
 ### What's New
