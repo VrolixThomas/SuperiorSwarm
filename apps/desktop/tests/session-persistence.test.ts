@@ -179,8 +179,10 @@ describe("session persistence diffing", () => {
 		isolatedDb
 			.insert(schema.sessionState)
 			.values([
-				{ key: "renderer-unchanged", value: "same" },
-				{ key: "renderer-stale", value: "remove" },
+				{ key: "activeTabId", value: "same" },
+				{ key: "activeWorkspaceId", value: "remove" },
+				{ key: "tickets_visible_teams", value: "[]" },
+				{ key: "tickets_assignee_filter_all", value: "me" },
 				{ key: "lastSeenVersion", value: "0.13.0" },
 				{ key: "supabase_session:user", value: "secret" },
 			])
@@ -189,8 +191,8 @@ describe("session persistence diffing", () => {
 		saveTerminalSessions({
 			sessions: [],
 			state: {
-				"renderer-unchanged": "same",
-				"renderer-new": "new",
+				activeTabId: "same",
+				diffMode: "split",
 			},
 		});
 
@@ -202,8 +204,10 @@ describe("session persistence diffing", () => {
 				.map((row) => [row.key, row.value])
 		);
 		expect(state).toEqual({
-			"renderer-unchanged": "same",
-			"renderer-new": "new",
+			activeTabId: "same",
+			diffMode: "split",
+			tickets_visible_teams: "[]",
+			tickets_assignee_filter_all: "me",
 			lastSeenVersion: "0.13.0",
 			"supabase_session:user": "secret",
 		});

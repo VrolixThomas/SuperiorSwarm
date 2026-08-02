@@ -128,7 +128,7 @@ function DroppableGroup({
 	onTicketClick: (issue: MergedTicketIssue) => void;
 	onTicketContextMenu: (e: React.MouseEvent, issue: MergedTicketIssue) => void;
 }) {
-	const { setNodeRef, isOver } = useDroppable({ id: col.category });
+	const { setNodeRef, isOver } = useDroppable({ id: col.id });
 	const sortableIds = col.items.map((issue) => `${issue.provider}:${issue.id}`);
 
 	return (
@@ -219,10 +219,10 @@ export function TicketsListView({
 			<div className="flex h-full flex-col overflow-y-auto px-3 py-2">
 				{columns.map((col) => (
 					<DroppableGroup
-						key={col.category}
+						key={col.id}
 						col={col}
-						isCollapsed={collapsed.has(col.category)}
-						onToggle={() => toggleGroup(col.category)}
+						isCollapsed={collapsed.has(col.id)}
+						onToggle={() => toggleGroup(col.id)}
 						linkedMap={linkedMap}
 						selectedTicketId={selectedTicketId}
 						showProvider={showProvider}

@@ -3,6 +3,7 @@ import type { Project } from "../../main/db/schema";
 import type { GitHubPR } from "../../main/github/github";
 import type { PRContext } from "../../shared/github-types";
 import type { TicketIssue } from "../../shared/tickets";
+import { useTicketsData } from "../hooks/useTicketsData";
 import { useProjectStore } from "../stores/projects";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
@@ -205,49 +206,7 @@ interface RailSectionProps {
 }
 
 function RailTicketsSection({ flyout, openFlyout, scheduleDismiss, onExpand }: RailSectionProps) {
-	const { data: atlassianStatus } = trpc.atlassian.getStatus.useQuery(undefined, {
-		staleTime: 30_000,
-	});
-	const { data: linearStatus } = trpc.linear.getStatus.useQuery(undefined, {
-		staleTime: 30_000,
-	});
-
-	const hasJira = atlassianStatus?.jira.connected;
-	const hasLinear = linearStatus?.connected;
-
-	const { data: jiraIssues } = trpc.atlassian.getMyIssues.useQuery(undefined, {
-		enabled: hasJira,
-		staleTime: 30_000,
-	});
-	const { data: linearIssues } = trpc.linear.getAssignedIssues.useQuery(undefined, {
-		enabled: hasLinear,
-		staleTime: 30_000,
-	});
-
-	const { data: linkedTickets } = trpc.tickets.getLinkedTickets.useQuery(undefined, {
-		staleTime: 30_000,
-	});
-
-	const linkedMap = useMemo(() => {
-		const map = new Map<string, LinkedWorkspace[]>();
-		if (!linkedTickets) return map;
-		for (const l of linkedTickets) {
-			if (l.worktreePath === null) continue;
-			const entry: LinkedWorkspace = {
-				workspaceId: l.workspaceId,
-				workspaceName: l.workspaceName,
-				worktreePath: l.worktreePath,
-			};
-			const key = `${l.provider}:${l.ticketId}`;
-			const existing = map.get(key);
-			if (existing) {
-				existing.push(entry);
-			} else {
-				map.set(key, [entry]);
-			}
-		}
-		return map;
-	}, [linkedTickets]);
+	const { filteredIssues, linkedMap, isEmpty } = useTicketsData();
 
 	const attachTerminal = trpc.workspaces.attachTerminal.useMutation();
 	const attachTerminalRef = useRef(attachTerminal.mutate);
@@ -280,54 +239,17 @@ function RailTicketsSection({ flyout, openFlyout, scheduleDismiss, onExpand }: R
 			color?: string;
 			ticketIssue: TicketIssue;
 		}[] = [];
-		if (jiraIssues) {
-			for (const issue of jiraIssues) {
-				items.push({
-					id: `jira:${issue.key}`,
-					label: issue.key,
-					title: `${issue.key}: ${issue.summary}`,
-					color: issue.statusColor,
-					ticketIssue: {
-						provider: "jira",
-						id: issue.key,
-						identifier: issue.key,
-						title: issue.summary,
-						url: issue.webUrl,
-						status: {
-							id: issue.status,
-							name: issue.status,
-							color: issue.statusColor,
-						},
-						groupId: issue.projectKey,
-					},
-				});
-			}
-		}
-		if (linearIssues) {
-			for (const issue of linearIssues) {
-				items.push({
-					id: `linear:${issue.id}`,
-					label: issue.identifier,
-					title: `${issue.identifier}: ${issue.title}`,
-					color: issue.stateColor,
-					ticketIssue: {
-						provider: "linear",
-						id: issue.id,
-						identifier: issue.identifier,
-						title: issue.title,
-						url: issue.url,
-						status: {
-							id: issue.stateId,
-							name: issue.stateName,
-							color: issue.stateColor,
-						},
-						groupId: issue.teamId,
-					},
-				});
-			}
+		for (const issue of filteredIssues) {
+			items.push({
+				id: `${issue.provider}:${issue.id}`,
+				label: issue.identifier,
+				title: `${issue.identifier}: ${issue.title}`,
+				color: issue.status.color,
+				ticketIssue: issue,
+			});
 		}
 		return items;
-	}, [jiraIssues, linearIssues]);
+	}, [filteredIssues]);
 
 	const [hoveredId, setHoveredId] = useState<string | null>(null);
 	const [hoverRect, setHoverRect] = useState<DOMRect | null>(null);
@@ -363,7 +285,7 @@ function RailTicketsSection({ flyout, openFlyout, scheduleDismiss, onExpand }: R
 		}
 	}, []);
 
-	if (!hasJira && !hasLinear) return null;
+	if (isEmpty) return null;
 
 	const isFlyoutActive = flyout?.kind === "tickets";
 	const visibleTickets = tickets.slice(0, MAX_PILLS);

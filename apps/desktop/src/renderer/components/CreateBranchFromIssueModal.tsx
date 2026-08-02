@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import type { TicketIssue } from "../../shared/tickets";
-import { slugifyBranchName } from "../lib/slugify";
+import {
+	TICKET_BRANCH_TYPES,
+	type TicketBranchType,
+	slugifyTicketBranchSuffix,
+} from "../lib/slugify";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 
@@ -13,7 +17,8 @@ interface Props {
 
 export function CreateBranchFromIssueModal({ issue, onClose }: Props) {
 	const [selectedProjectId, setSelectedProjectId] = useState("");
-	const [branchName, setBranchName] = useState("");
+	const [branchType, setBranchType] = useState<TicketBranchType>("feature");
+	const [branchSuffix, setBranchSuffix] = useState("");
 	const [baseBranch, setBaseBranch] = useState("");
 	const branchInputRef = useRef<HTMLInputElement>(null);
 	const utils = trpc.useUtils();
@@ -71,7 +76,7 @@ export function CreateBranchFromIssueModal({ issue, onClose }: Props) {
 	// Pre-fill branch name whenever the issue changes
 	useEffect(() => {
 		if (!issue) return;
-		setBranchName(slugifyBranchName(issue.identifier, issue.title));
+		setBranchSuffix(slugifyTicketBranchSuffix(issue.identifier, issue.title));
 	}, [issue]);
 
 	// Default base branch when project branches load
@@ -107,7 +112,8 @@ export function CreateBranchFromIssueModal({ issue, onClose }: Props) {
 	useEffect(() => {
 		if (!issue) {
 			setSelectedProjectId("");
-			setBranchName("");
+			setBranchType("feature");
+			setBranchSuffix("");
 			setBaseBranch("");
 			createMutation.reset();
 		}
@@ -116,14 +122,14 @@ export function CreateBranchFromIssueModal({ issue, onClose }: Props) {
 	if (!issue) return null;
 
 	const readyProjects = projectsQuery.data?.filter((p) => p.status === "ready") ?? [];
-	const canSubmit = !!branchName.trim() && !!selectedProjectId && !createMutation.isPending;
+	const canSubmit = !!branchSuffix.trim() && !!selectedProjectId && !createMutation.isPending;
 
 	const handleSubmit = (e: React.FormEvent) => {
 		e.preventDefault();
 		if (!canSubmit) return;
 		createMutation.mutate({
 			projectId: selectedProjectId,
-			branch: branchName.trim(),
+			branch: `${branchType}/${branchSuffix.trim()}`,
 			baseBranch: baseBranch || undefined,
 		});
 	};
@@ -198,23 +204,26 @@ export function CreateBranchFromIssueModal({ issue, onClose }: Props) {
 						</div>
 					)}
 
-					{/* Branch name */}
+					{/* Branch type */}
 					<div className="flex flex-col gap-1.5">
 						<label
-							htmlFor="cbfi-branch"
+							htmlFor="cbfi-type"
 							className="text-[12px] font-medium text-[var(--text-tertiary)]"
 						>
-							Branch Name
+							Type
 						</label>
-						<input
-							ref={branchInputRef}
-							id="cbfi-branch"
-							type="text"
-							value={branchName}
-							onChange={(e) => setBranchName(e.target.value)}
-							placeholder="eng-123/fix-authentication-bug"
+						<select
+							id="cbfi-type"
+							value={branchType}
+							onChange={(e) => setBranchType(e.target.value as TicketBranchType)}
 							className="w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-2 text-[13px] text-[var(--text)] placeholder:text-[var(--text-quaternary)] focus:border-[var(--accent)] focus:outline-none"
-						/>
+						>
+							{TICKET_BRANCH_TYPES.map((type) => (
+								<option key={type.value} value={type.value}>
+									{type.label}
+								</option>
+							))}
+						</select>
 					</div>
 
 					{/* Base branch */}
@@ -240,6 +249,30 @@ export function CreateBranchFromIssueModal({ issue, onClose }: Props) {
 								</option>
 							))}
 						</select>
+					</div>
+
+					{/* Branch name */}
+					<div className="flex flex-col gap-1.5">
+						<label
+							htmlFor="cbfi-branch"
+							className="text-[12px] font-medium text-[var(--text-tertiary)]"
+						>
+							Branch Name
+						</label>
+						<div className="flex w-full overflow-hidden rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-elevated)] focus-within:border-[var(--accent)]">
+							<span className="flex shrink-0 items-center border-r border-[var(--border)] bg-[var(--bg-overlay)] px-3 text-[13px] text-[var(--text-quaternary)]">
+								{branchType}/
+							</span>
+							<input
+								ref={branchInputRef}
+								id="cbfi-branch"
+								type="text"
+								value={branchSuffix}
+								onChange={(e) => setBranchSuffix(e.target.value.replace(/\s/g, "-"))}
+								placeholder="PI-1234-short-description"
+								className="min-w-0 flex-1 bg-transparent px-3 py-2 text-[13px] text-[var(--text)] outline-none placeholder:text-[var(--text-quaternary)]"
+							/>
+						</div>
 					</div>
 
 					{/* Submit */}

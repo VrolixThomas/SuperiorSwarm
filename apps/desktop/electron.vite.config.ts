@@ -5,6 +5,7 @@ import { defineConfig, externalizeDepsPlugin } from "electron-vite";
 
 // Electron inherits this from parent shells (e.g. VS Code / Claude Code terminals).
 // When set, Electron runs as plain Node.js and `require("electron")` fails.
+// biome-ignore lint/performance/noDelete: Electron checks whether the variable exists, not just its value.
 delete process.env.ELECTRON_RUN_AS_NODE;
 
 // Load .env file into process.env for the define block below

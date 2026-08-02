@@ -13,6 +13,7 @@ import {
 	updateIssueState,
 } from "../../linear/linear";
 import { connectLinear } from "../../linear/oauth-flow";
+import { clearProviderTicketData } from "../../tickets/cache";
 import { publicProcedure, router } from "../index";
 
 const SELECTED_TEAM_KEY = "linear_selected_team_id";
@@ -40,6 +41,7 @@ export const linearRouter = router({
 
 	disconnect: publicProcedure.mutation(() => {
 		deleteAuth();
+		clearProviderTicketData("linear");
 		const db = getDb();
 		db.delete(sessionState).where(eq(sessionState.key, SELECTED_TEAM_KEY)).run();
 	}),

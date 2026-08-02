@@ -5,14 +5,15 @@
  */
 
 /**
- * Error from the OAuth token endpoint itself. Carries the HTTP status so the
- * refresh flow can distinguish a dead refresh token (4xx → re-auth required)
- * from a transient outage (5xx/429/network → keep credentials, retry later).
+ * Error from the OAuth token endpoint itself. Carries the provider error code
+ * so the refresh flow can distinguish `invalid_grant` from configuration,
+ * permission, rate-limit, and transient failures.
  */
 export class TokenEndpointError extends Error {
 	constructor(
 		readonly status: number,
-		message: string
+		message: string,
+		readonly oauthError?: string
 	) {
 		super(message);
 	}
@@ -31,7 +32,12 @@ export interface AuthCoreDeps<S extends string> {
 		service: S,
 		tokens: { accessToken: string; refreshToken: string; expiresIn: number }
 	): void;
-	deleteAuth(service: S): void;
+	/**
+	 * Delete credentials only when they still contain the refresh token used by
+	 * this request. Another app process may have rotated and stored a replacement
+	 * while this refresh was in flight.
+	 */
+	deleteAuthIfRefreshTokenMatches(service: S, refreshToken: string): void;
 	refreshToken(service: S, refreshToken: string): Promise<TokenRefreshResult>;
 	fetchFn?: typeof fetch;
 }
@@ -57,17 +63,11 @@ export function createAuthCore<S extends string>(deps: AuthCoreDeps<S>) {
 			return result.access_token;
 		} catch (err) {
 			console.error(`Token refresh failed for ${service}:`, err);
-			// Only wipe credentials when the token endpoint definitively rejected
-			// the refresh token (4xx other than 429). Network errors, 5xx, and rate
-			// limits are transient — keep the stored auth and retry on a later call,
-			// otherwise a single offline poll (e.g. wake from sleep) logs the user out.
-			const permanent =
-				err instanceof TokenEndpointError &&
-				err.status >= 400 &&
-				err.status < 500 &&
-				err.status !== 429;
-			if (permanent) {
-				deps.deleteAuth(service);
+			// `invalid_grant` specifically means the refresh token is no longer
+			// usable. Other 4xx responses can be an app configuration, scope, or
+			// provider problem and must not silently disconnect the user.
+			if (err instanceof TokenEndpointError && err.oauthError === "invalid_grant") {
+				deps.deleteAuthIfRefreshTokenMatches(service, auth.refreshToken);
 			}
 			return null;
 		}
@@ -107,9 +107,9 @@ export function createAuthCore<S extends string>(deps: AuthCoreDeps<S>) {
 	/**
 	 * Authenticated fetch — adds Bearer token, refreshes if needed.
 	 * Throws if not connected or refresh fails.
-	 * On a 401 API response, force-refreshes the token and retries once before
-	 * treating the session as dead — the local expiresAt can drift from the
-	 * server's view, and a revoked access token is recoverable via refresh.
+	 * On a 401 API response, force-refreshes the token and retries once. A second
+	 * 401 can also mean the token lacks permission for that particular endpoint,
+	 * so it must not erase otherwise valid credentials.
 	 */
 	async function authFetch(service: S, url: string, init?: RequestInit): Promise<Response> {
 		const token = await getValidToken(service);
@@ -138,8 +138,9 @@ export function createAuthCore<S extends string>(deps: AuthCoreDeps<S>) {
 			}
 			res = await doFetch(fresh);
 			if (res.status === 401) {
-				deps.deleteAuth(service);
-				throw new Error(`${service} session expired. Please reconnect.`);
+				throw new Error(
+					`${service} request remained unauthorized after refreshing. The endpoint may require additional permissions.`
+				);
 			}
 		}
 

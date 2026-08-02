@@ -24,6 +24,7 @@ import { UpdateToast } from "./components/UpdateToast";
 import { WhatsNewModal } from "./components/WhatsNewModal";
 import { PRReviewKeyboardListener } from "./components/review/PRReviewKeyboardListener";
 import { SettingsPage } from "./components/settings/SettingsPage";
+import { TicketRefreshCoordinator } from "./components/tickets/TicketRefreshCoordinator";
 import { useAgentAlertListener } from "./hooks/useAgentAlertListener";
 import { useShortcutListener } from "./hooks/useShortcutListener";
 import {
@@ -166,10 +167,11 @@ function collectSnapshot() {
 	if (Object.keys(workspaceMetadata).length > 0) {
 		state["workspaceMetadata"] = JSON.stringify(workspaceMetadata);
 	}
-	const { activeTicketProject } = store;
+	const { activeTicketProject, activeTicketScope } = store;
 	if (activeTicketProject) {
 		state["activeTicketProject"] = JSON.stringify(activeTicketProject);
 	}
+	state["activeTicketScope"] = JSON.stringify(activeTicketScope);
 
 	const { expandedProjectIds } = useProjectStore.getState();
 	if (expandedProjectIds.size > 0) {
@@ -675,6 +677,7 @@ function AuthenticatedApp() {
 
 	return (
 		<>
+			<TicketRefreshCoordinator />
 			{sidebarView === "settings" ? (
 				<SettingsPage />
 			) : (

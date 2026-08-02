@@ -11,6 +11,8 @@ describe("mapIssueNode", () => {
 			state: { id: "s1", name: "In Progress", color: "#0052CC", type: "started" as const },
 			team: { id: "t1", name: "Frontend" },
 			assignee: { id: "u1", name: "Jane Doe", avatarUrl: "https://avatar.url" },
+			updatedAt: "2026-08-01T10:00:00.000Z",
+			cycle: null,
 		};
 		const result = mapIssueNode(node);
 		expect(result.assigneeId).toBe("u1");
@@ -27,6 +29,8 @@ describe("mapIssueNode", () => {
 			state: { id: "s1", name: "Backlog", color: "#6e6e73", type: "backlog" as const },
 			team: { id: "t1", name: "Frontend" },
 			assignee: null,
+			updatedAt: "2026-08-01T10:00:00.000Z",
+			cycle: null,
 		};
 		const result = mapIssueNode(node);
 		expect(result.assigneeId).toBeNull();

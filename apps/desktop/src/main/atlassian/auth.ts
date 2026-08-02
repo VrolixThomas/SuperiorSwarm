@@ -90,6 +90,32 @@ export function deleteAuth(service: Service) {
 	db.delete(atlassianAuth).where(eq(atlassianAuth.service, service)).run();
 }
 
+function createTokenEndpointError(service: Service, status: number, body: string) {
+	let oauthError: string | undefined;
+	try {
+		const parsed = JSON.parse(body) as { error?: unknown };
+		if (typeof parsed.error === "string") oauthError = parsed.error;
+	} catch {
+		// Preserve the response text for diagnostics when the endpoint did not return JSON.
+	}
+	return new TokenEndpointError(status, `${service} token refresh failed: ${body}`, oauthError);
+}
+
+/**
+ * A second app process can rotate an Atlassian refresh token while this process
+ * still has the previous token in flight. Never let a late invalid_grant erase
+ * credentials that another process has already replaced.
+ */
+function deleteAuthIfRefreshTokenMatches(service: Service, refreshToken: string) {
+	const db = getDb();
+	db.transaction((tx) => {
+		const row = tx.select().from(atlassianAuth).where(eq(atlassianAuth.service, service)).get();
+		if (row && decrypt(row.refreshToken) === refreshToken) {
+			tx.delete(atlassianAuth).where(eq(atlassianAuth.service, service)).run();
+		}
+	});
+}
+
 async function refreshJiraToken(refreshToken: string): Promise<{
 	access_token: string;
 	refresh_token?: string;
@@ -106,9 +132,13 @@ async function refreshJiraToken(refreshToken: string): Promise<{
 		}),
 	});
 	if (!res.ok) {
-		throw new TokenEndpointError(res.status, `jira token refresh failed: ${await res.text()}`);
+		throw createTokenEndpointError("jira", res.status, await res.text());
 	}
-	return res.json();
+	return (await res.json()) as {
+		access_token: string;
+		refresh_token?: string;
+		expires_in: number;
+	};
 }
 
 async function refreshBitbucketToken(refreshToken: string): Promise<{
@@ -131,9 +161,13 @@ async function refreshBitbucketToken(refreshToken: string): Promise<{
 		}),
 	});
 	if (!res.ok) {
-		throw new TokenEndpointError(res.status, `bitbucket token refresh failed: ${await res.text()}`);
+		throw createTokenEndpointError("bitbucket", res.status, await res.text());
 	}
-	return res.json();
+	return (await res.json()) as {
+		access_token: string;
+		refresh_token?: string;
+		expires_in: number;
+	};
 }
 
 // Token lifecycle (expiry check, refresh dedup, transient-vs-permanent failure
@@ -156,7 +190,7 @@ const core = createAuthCore<Service>({
 			email: auth.email ?? undefined,
 		});
 	},
-	deleteAuth,
+	deleteAuthIfRefreshTokenMatches,
 	refreshToken(service, refreshToken) {
 		return service === "jira"
 			? refreshJiraToken(refreshToken)
@@ -174,7 +208,7 @@ export const getValidToken = core.getValidToken;
 /**
  * Authenticated fetch — adds Bearer token, refreshes if needed.
  * Throws if not connected or refresh fails.
- * On a 401 API response, force-refreshes the token and retries once before
- * treating the session as dead.
+ * On a 401 API response, force-refreshes the token and retries once. A repeated
+ * endpoint-level 401 is surfaced without deleting the saved connection.
  */
 export const atlassianFetch = core.authFetch;

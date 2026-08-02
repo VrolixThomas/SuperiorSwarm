@@ -1,11 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import type { JiraIssue } from "../src/main/atlassian/jira";
-import { extractJiraAssignees } from "../src/main/tickets/sync-helpers";
+import {
+	extractJiraAssignees,
+	mergeRefreshedIssuesPreservingFailures,
+} from "../src/main/tickets/sync-helpers";
 
 function makeIssue(overrides: Partial<JiraIssue>): JiraIssue {
 	return {
 		key: "PROJ-1",
 		summary: "Issue",
+		statusId: "3",
 		status: "In Progress",
 		statusCategory: "indeterminate",
 		statusColor: "#0052CC",
@@ -140,5 +144,25 @@ describe("extractJiraAssignees", () => {
 			makeIssue({ key: "PROJ-1", projectKey: "PROJ", assigneeId: "acc-1", assigneeName: null }),
 		];
 		expect(extractJiraAssignees(issues)).toEqual([]);
+	});
+});
+
+describe("mergeRefreshedIssuesPreservingFailures", () => {
+	test("keeps stale issues only for projects whose refresh failed", () => {
+		const refreshed = [makeIssue({ key: "GOOD-2", projectKey: "GOOD" })];
+		const cached = [
+			makeIssue({ key: "GOOD-1", projectKey: "GOOD" }),
+			makeIssue({ key: "FAILED-1", projectKey: "FAILED" }),
+		];
+
+		const merged = mergeRefreshedIssuesPreservingFailures(
+			refreshed,
+			cached,
+			new Set(["FAILED"]),
+			(issue) => issue.key,
+			(issue) => issue.projectKey
+		);
+
+		expect(merged.map((issue) => issue.key).sort()).toEqual(["FAILED-1", "GOOD-2"]);
 	});
 });

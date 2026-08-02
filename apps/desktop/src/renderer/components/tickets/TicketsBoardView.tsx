@@ -33,7 +33,7 @@ function DroppableColumn({
 	onTicketClick: (issue: MergedTicketIssue) => void;
 	onTicketContextMenu: (e: React.MouseEvent, issue: MergedTicketIssue) => void;
 }) {
-	const { setNodeRef, isOver } = useDroppable({ id: col.category });
+	const { setNodeRef, isOver } = useDroppable({ id: col.id });
 	const sortableIds = col.items.map((issue) => `${issue.provider}:${issue.id}`);
 
 	return (
@@ -87,7 +87,7 @@ export function TicketsBoardView({
 			<div className="flex h-full gap-2.5 overflow-x-auto px-3 py-2">
 				{columns.map((col) => (
 					<DroppableColumn
-						key={col.category}
+						key={col.id}
 						col={col}
 						linkedMap={linkedMap}
 						selectedTicketId={selectedTicketId}

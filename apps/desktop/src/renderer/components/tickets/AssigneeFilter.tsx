@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { AssigneeFilterValue } from "../../../shared/tickets";
+import type { AssigneeFilterValue, TicketTeamMember } from "../../../shared/tickets";
 import {
 	UNASSIGNED_FILTER_KEY,
 	computeNextAssigneeFilter,
@@ -7,20 +7,26 @@ import {
 } from "../../../shared/tickets";
 import { useClickOutside } from "../../hooks/useClickOutside";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
-import { useTicketsData } from "../../hooks/useTicketsData";
 import { trpc } from "../../trpc/client";
 import { AssigneeAvatar } from "./AssigneeAvatar";
 
 const UNASSIGNED_KEY = UNASSIGNED_FILTER_KEY;
 
-export function AssigneeFilter() {
-	const {
-		teamMembers: members,
-		currentLinearUserId,
-		currentJiraUserId,
-		assigneeFilter: value,
-		projectId,
-	} = useTicketsData();
+interface AssigneeFilterProps {
+	members: TicketTeamMember[];
+	currentLinearUserId: string | null;
+	currentJiraUserId: string | null;
+	value: AssigneeFilterValue;
+	projectId: string;
+}
+
+export function AssigneeFilter({
+	members,
+	currentLinearUserId,
+	currentJiraUserId,
+	value,
+	projectId,
+}: AssigneeFilterProps) {
 	const utils = trpc.useUtils();
 	const setFilter = trpc.tickets.setAssigneeFilter.useMutation();
 	const flushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -197,7 +203,7 @@ export function AssigneeFilter() {
 							className={`flex w-full items-center gap-2 rounded-[4px] px-2 py-1.5 text-left text-[11px] transition-colors ${value === "all" ? "bg-[rgba(10,132,255,0.08)] font-medium text-[var(--text)]" : "text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]"}`}
 						>
 							{/* "All people" group icon */}
-							<svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+							<svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none">
 								<circle cx="5.5" cy="5" r="2.5" stroke="currentColor" strokeWidth="1.2" />
 								<circle cx="10.5" cy="5" r="2.5" stroke="currentColor" strokeWidth="1.2" />
 								<path
@@ -225,7 +231,7 @@ export function AssigneeFilter() {
 								className={`flex w-full items-center gap-2 rounded-[4px] px-2 py-1.5 text-left text-[11px] transition-colors ${value === "me" ? "bg-[rgba(10,132,255,0.08)] font-medium text-[var(--text)]" : "text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]"}`}
 							>
 								{/* Person icon */}
-								<svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+								<svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none">
 									<circle cx="8" cy="5" r="3" stroke="currentColor" strokeWidth="1.2" />
 									<path
 										d="M2 14c0-3.3 2.7-6 6-6s6 2.7 6 6"
@@ -257,7 +263,7 @@ export function AssigneeFilter() {
 							</span>
 							<span className="flex-1">Unassigned</span>
 							{isObjectMode && unassignedChecked && (
-								<svg width="10" height="10" viewBox="0 0 12 12" fill="none">
+								<svg aria-hidden="true" width="10" height="10" viewBox="0 0 12 12" fill="none">
 									<path
 										d="M2 6l3 3 5-5"
 										stroke="rgba(10,132,255,0.8)"
@@ -285,6 +291,7 @@ export function AssigneeFilter() {
 									</span>
 									{checked && (
 										<svg
+											aria-hidden="true"
 											width="10"
 											height="10"
 											viewBox="0 0 12 12"

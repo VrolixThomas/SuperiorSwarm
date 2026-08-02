@@ -97,6 +97,7 @@ function resetStore() {
 		sidebarSegment: "repos",
 		activeWorkspaceBySegment: { repos: null, tickets: null, prs: null },
 		activeTicketProject: "all",
+		activeTicketScope: { kind: "current" },
 		selectedTicketId: null,
 		ticketDetailOpen: false,
 	});
@@ -720,6 +721,21 @@ describe("hydrate", () => {
 		expect(useTabStore.getState().activeWorkspaceId).toBe("ws-1");
 	});
 
+	test("restores a persisted ticket scope", () => {
+		useTabStore.getState().hydrate([], null, null, "", {
+			activeTicketScope: JSON.stringify({
+				kind: "iteration",
+				provider: "linear",
+				iterationId: "cycle-7",
+			}),
+		});
+		expect(useTabStore.getState().activeTicketScope).toEqual({
+			kind: "iteration",
+			provider: "linear",
+			iterationId: "cycle-7",
+		});
+	});
+
 	test("reopens Review Mode for a persisted active PR workspace", () => {
 		const workspaceMetadata = {
 			"ws-review-1": {
@@ -789,8 +805,16 @@ describe("ticket canvas state", () => {
 	test("initial state has activeTicketProject 'all'", () => {
 		const state = useTabStore.getState();
 		expect(state.activeTicketProject).toBe("all");
+		expect(state.activeTicketScope).toEqual({ kind: "current" });
 		expect(state.selectedTicketId).toBe(null);
 		expect(state.ticketDetailOpen).toBe(false);
+	});
+
+	test("changing projects resets a selected iteration scope", () => {
+		const store = useTabStore.getState();
+		store.setActiveTicketScope({ kind: "iteration", provider: "jira", iterationId: "42" });
+		store.setActiveTicketProject({ id: "PI", provider: "jira" });
+		expect(useTabStore.getState().activeTicketScope).toEqual({ kind: "current" });
 	});
 
 	test("setActiveTicketProject changes project and resets detail", () => {

@@ -5,6 +5,22 @@ import * as schema from "./schema";
 
 export type { SessionSaveData };
 
+const RENDERER_OWNED_SESSION_KEYS = new Set([
+	"activeTabId",
+	"activeWorkspaceId",
+	"activeWorkspaceCwd",
+	"diffMode",
+	"baseBranchByWorkspace",
+	"sidebarSegment",
+	"activeWorkspaceBySegment",
+	"workspaceMetadata",
+	"activeTicketProject",
+	"activeTicketScope",
+	"expandedProjectIds",
+	"vimMode",
+	"notificationSounds",
+]);
+
 export function ensureTerminalSessionRow(input: {
 	id: string;
 	workspaceId: string;
@@ -151,16 +167,10 @@ export function saveTerminalSessions(data: SessionSaveData): void {
 				.run();
 		}
 
-		// Diff renderer-owned session state instead of deleting and reinserting it
-		// every 30 seconds. Main-process keys remain outside renderer ownership.
-		const isProtectedKey = (key: string) =>
-			key.startsWith("supabase_session:") ||
-			key === "lastSeenVersion" ||
-			key.startsWith("orchExpand:") ||
-			key.startsWith("orchestratorColors:");
-
+		// Diff only keys this snapshot actually owns. Ticket integrations and other
+		// main-process features persist preferences in the same table.
 		for (const key of existingState.keys()) {
-			if (!isProtectedKey(key) && !(key in data.state)) {
+			if (RENDERER_OWNED_SESSION_KEYS.has(key) && !(key in data.state)) {
 				tx.delete(schema.sessionState).where(eq(schema.sessionState.key, key)).run();
 			}
 		}

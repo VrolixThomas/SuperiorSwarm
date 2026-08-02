@@ -1,6 +1,21 @@
 import type { JiraIssue } from "../atlassian/jira";
 import type { LinearIssue } from "../linear/linear";
 
+export function mergeRefreshedIssuesPreservingFailures<T>(
+	refreshed: T[],
+	cached: T[],
+	failedGroupIds: ReadonlySet<string>,
+	getIssueId: (issue: T) => string,
+	getGroupId: (issue: T) => string
+): T[] {
+	const merged = new Map<string, T>();
+	for (const issue of cached) {
+		if (failedGroupIds.has(getGroupId(issue))) merged.set(getIssueId(issue), issue);
+	}
+	for (const issue of refreshed) merged.set(getIssueId(issue), issue);
+	return [...merged.values()];
+}
+
 export interface JiraProjectAssignees {
 	projectKey: string;
 	members: Array<{ userId: string; name: string; email: null; avatarUrl: string | null }>;

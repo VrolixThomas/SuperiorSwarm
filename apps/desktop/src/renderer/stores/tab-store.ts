@@ -4,6 +4,7 @@ import type { PRContext } from "../../shared/github-types";
 import type { Pane } from "../../shared/pane-types";
 import { formatPrIdentifier } from "../../shared/pr-identifier";
 import type { ReviewScope } from "../../shared/review-types";
+import { type TicketScope, isTicketScope } from "../../shared/tickets";
 import type { SidebarSegment } from "../../shared/types";
 import { basename } from "../lib/format";
 import { openThreadInChanges } from "../lib/review-mode-nav";
@@ -162,9 +163,11 @@ interface TabStore {
 
 	// Ticket canvas state
 	activeTicketProject: { id: string; provider: "jira" | "linear" } | "all" | null;
+	activeTicketScope: TicketScope;
 	selectedTicketId: string | null;
 	ticketDetailOpen: boolean;
 	setActiveTicketProject: (project: { id: string; provider: "jira" | "linear" } | "all") => void;
+	setActiveTicketScope: (scope: TicketScope) => void;
 	setSelectedTicket: (ticketId: string | null) => void;
 	closeTicketDetail: () => void;
 
@@ -451,11 +454,23 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 	activeWorkspaceBySegment: { repos: null, tickets: null, prs: null },
 
 	activeTicketProject: "all",
+	activeTicketScope: { kind: "current" },
 	selectedTicketId: null,
 	ticketDetailOpen: false,
 
 	setActiveTicketProject: (project) =>
-		set({ activeTicketProject: project, selectedTicketId: null, ticketDetailOpen: false }),
+		set((state) => ({
+			activeTicketProject: project,
+			activeTicketScope:
+				state.activeTicketScope.kind === "iteration"
+					? { kind: "current" }
+					: state.activeTicketScope,
+			selectedTicketId: null,
+			ticketDetailOpen: false,
+		})),
+
+	setActiveTicketScope: (scope) =>
+		set({ activeTicketScope: scope, selectedTicketId: null, ticketDetailOpen: false }),
 
 	setSelectedTicket: (ticketId) =>
 		set({
@@ -1271,6 +1286,15 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 			try {
 				const parsed = JSON.parse(extraState["activeTicketProject"]);
 				set({ activeTicketProject: parsed });
+			} catch {
+				// ignore invalid JSON
+			}
+		}
+
+		if (extraState?.["activeTicketScope"]) {
+			try {
+				const parsed = JSON.parse(extraState["activeTicketScope"]);
+				if (isTicketScope(parsed)) set({ activeTicketScope: parsed });
 			} catch {
 				// ignore invalid JSON
 			}
