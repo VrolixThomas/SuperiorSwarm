@@ -2,9 +2,22 @@ import { useEffect, useRef, useState } from "react";
 import { useProjectStore } from "../stores/projects";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
-import { filterAndSortBranches } from "../utils/branch-search";
 import { normalizeBranchNameInput } from "../utils/branch-name";
+import { filterAndSortBranches } from "../utils/branch-search";
 import { flattenWorkspaceTree } from "../utils/workspace-tree";
+
+const FOCUSABLE_SELECTOR = [
+	'button:not([disabled]):not([tabindex="-1"])',
+	'input:not([disabled]):not([tabindex="-1"])',
+	'select:not([disabled]):not([tabindex="-1"])',
+	'textarea:not([disabled]):not([tabindex="-1"])',
+	'[href]:not([tabindex="-1"])',
+	'[tabindex]:not([tabindex="-1"])',
+].join(",");
+
+// These custom roles support searchable comboboxes, which cannot use a native select element.
+const LISTBOX_ROLE = { role: "listbox" as const };
+const OPTION_ROLE = { role: "option" as const };
 
 export function CreateWorktreeModal() {
 	const {
@@ -21,9 +34,20 @@ export function CreateWorktreeModal() {
 	const [branchSearch, setBranchSearch] = useState("");
 	const [baseBranchSearch, setBaseBranchSearch] = useState("");
 	const [baseBranchDropdownOpen, setBaseBranchDropdownOpen] = useState(false);
+	const [baseBranchActiveIndex, setBaseBranchActiveIndex] = useState(-1);
+	const [existingBranchActiveIndex, setExistingBranchActiveIndex] = useState(-1);
 	const [asOrchestrator, setAsOrchestrator] = useState(false);
 	const [attachIds, setAttachIds] = useState<Set<string>>(new Set());
 	const baseBranchInitialized = useRef(false);
+	const dialogRef = useRef<HTMLDialogElement>(null);
+	const branchNameInputRef = useRef<HTMLInputElement>(null);
+	const baseBranchInputRef = useRef<HTMLInputElement>(null);
+	const baseBranchListRef = useRef<HTMLDivElement>(null);
+	const existingBranchInputRef = useRef<HTMLInputElement>(null);
+	const existingBranchListRef = useRef<HTMLDivElement>(null);
+	const newModeTabRef = useRef<HTMLButtonElement>(null);
+	const existingModeTabRef = useRef<HTMLButtonElement>(null);
+	const openerRef = useRef<HTMLElement | null>(null);
 	const utils = trpc.useUtils();
 
 	const projectId = createWorktreeProjectId ?? "";
@@ -106,6 +130,8 @@ export function CreateWorktreeModal() {
 			setBranchSearch("");
 			setBaseBranchSearch("");
 			setBaseBranchDropdownOpen(false);
+			setBaseBranchActiveIndex(-1);
+			setExistingBranchActiveIndex(-1);
 			setAsOrchestrator(false);
 			setAttachIds(new Set());
 			baseBranchInitialized.current = false;
@@ -128,21 +154,50 @@ export function CreateWorktreeModal() {
 		}
 	}, [isCreateWorktreeModalOpen, createWorktreeAsOrchestrator]);
 
-	// Escape key to close
+	// Move focus into the modal when it opens, then return it to the opener on close.
+	useEffect(() => {
+		if (!isCreateWorktreeModalOpen) return;
+
+		const activeElement = document.activeElement;
+		openerRef.current = activeElement instanceof HTMLElement ? activeElement : null;
+		const focusFrame = requestAnimationFrame(() => branchNameInputRef.current?.focus());
+
+		return () => {
+			cancelAnimationFrame(focusFrame);
+			const opener = openerRef.current;
+			openerRef.current = null;
+			if (opener?.isConnected) requestAnimationFrame(() => opener.focus());
+		};
+	}, [isCreateWorktreeModalOpen]);
+
+	// Keep keyboard focus in the modal. Escape closes a picker first, then the modal.
 	useEffect(() => {
 		if (!isCreateWorktreeModalOpen) return;
 
 		const handleKeyDown = (e: KeyboardEvent) => {
-			if (e.key === "Escape") {
-				closeCreateWorktreeModal();
+			if (!isTopmostModal()) return;
+			if (e.key === "Tab") {
+				trapDialogFocus(e);
+				return;
 			}
+			if (e.key !== "Escape") return;
+			e.preventDefault();
+			e.stopPropagation();
+
+			if (baseBranchDropdownOpen) {
+				setBaseBranchDropdownOpen(false);
+				setBaseBranchSearch(baseBranch);
+				setBaseBranchActiveIndex(-1);
+				baseBranchInputRef.current?.focus();
+				return;
+			}
+
+			closeCreateWorktreeModal();
 		};
 
-		document.addEventListener("keydown", handleKeyDown);
-		return () => document.removeEventListener("keydown", handleKeyDown);
-	}, [isCreateWorktreeModalOpen, closeCreateWorktreeModal]);
-
-	if (!isCreateWorktreeModalOpen) return null;
+		document.addEventListener("keydown", handleKeyDown, true);
+		return () => document.removeEventListener("keydown", handleKeyDown, true);
+	}, [isCreateWorktreeModalOpen, baseBranchDropdownOpen, baseBranch, closeCreateWorktreeModal]);
 
 	// Extract branch names from the detailed branch info
 	const branchNames = (branchesQuery.data ?? []).map((b) => b.name);
@@ -170,6 +225,42 @@ export function CreateWorktreeModal() {
 		(branch) => branch
 	);
 
+	useEffect(() => {
+		if (!baseBranchDropdownOpen || filteredBaseBranches.length === 0) {
+			setBaseBranchActiveIndex(-1);
+			return;
+		}
+		setBaseBranchActiveIndex((current) =>
+			current < 0 ? 0 : Math.min(current, filteredBaseBranches.length - 1)
+		);
+	}, [baseBranchDropdownOpen, filteredBaseBranches.length]);
+
+	useEffect(() => {
+		if (mode !== "existing" || filteredBranches.length === 0) {
+			setExistingBranchActiveIndex(-1);
+			return;
+		}
+		setExistingBranchActiveIndex((current) =>
+			current < 0 ? 0 : Math.min(current, filteredBranches.length - 1)
+		);
+	}, [mode, filteredBranches.length]);
+
+	useEffect(() => {
+		if (!baseBranchDropdownOpen || baseBranchActiveIndex < 0) return;
+		baseBranchListRef.current
+			?.querySelector(`[data-branch-index="${baseBranchActiveIndex}"]`)
+			?.scrollIntoView({ block: "nearest" });
+	}, [baseBranchDropdownOpen, baseBranchActiveIndex]);
+
+	useEffect(() => {
+		if (mode !== "existing" || existingBranchActiveIndex < 0) return;
+		existingBranchListRef.current
+			?.querySelector(`[data-branch-index="${existingBranchActiveIndex}"]`)
+			?.scrollIntoView({ block: "nearest" });
+	}, [mode, existingBranchActiveIndex]);
+
+	if (!isCreateWorktreeModalOpen) return null;
+
 	function toggleAttach(id: string) {
 		setAttachIds((prev) => {
 			const next = new Set(prev);
@@ -177,6 +268,150 @@ export function CreateWorktreeModal() {
 			else next.add(id);
 			return next;
 		});
+	}
+
+	function changeMode(nextMode: "new" | "existing") {
+		setMode(nextMode);
+		setBaseBranchDropdownOpen(false);
+		setBaseBranchSearch(baseBranch);
+		setBaseBranchActiveIndex(-1);
+		if (nextMode === "existing") {
+			const selectedIndex = filteredBranches.indexOf(selectedBranch);
+			setExistingBranchActiveIndex(filteredBranches.length === 0 ? -1 : Math.max(0, selectedIndex));
+		}
+	}
+
+	function handleModeKeyDown(e: React.KeyboardEvent<HTMLButtonElement>) {
+		let nextMode: "new" | "existing" | null = null;
+		if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+			nextMode = mode === "new" ? "existing" : "new";
+		} else if (e.key === "Home") {
+			nextMode = "new";
+		} else if (e.key === "End") {
+			nextMode = "existing";
+		}
+
+		if (!nextMode) return;
+		e.preventDefault();
+		e.stopPropagation();
+		changeMode(nextMode);
+		requestAnimationFrame(() => {
+			if (nextMode === "new") newModeTabRef.current?.focus();
+			else existingModeTabRef.current?.focus();
+		});
+	}
+
+	function selectBaseBranch(branch: string) {
+		setBaseBranch(branch);
+		setBaseBranchSearch(branch);
+		setBaseBranchDropdownOpen(false);
+		setBaseBranchActiveIndex(-1);
+	}
+
+	function openBaseBranchPicker() {
+		setBaseBranchSearch("");
+		setBaseBranchDropdownOpen(true);
+		const selectedIndex = branchNames.indexOf(baseBranch);
+		setBaseBranchActiveIndex(branchNames.length === 0 ? -1 : Math.max(0, selectedIndex));
+	}
+
+	function handleBaseBranchKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+		if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+			e.preventDefault();
+			e.stopPropagation();
+			if (!baseBranchDropdownOpen) {
+				openBaseBranchPicker();
+				return;
+			}
+			setBaseBranchDropdownOpen(true);
+			setBaseBranchActiveIndex((current) => {
+				if (filteredBaseBranches.length === 0) return -1;
+				if (e.key === "ArrowDown") {
+					return current < 0 ? 0 : Math.min(current + 1, filteredBaseBranches.length - 1);
+				}
+				return current < 0 ? filteredBaseBranches.length - 1 : Math.max(current - 1, 0);
+			});
+			return;
+		}
+
+		if (e.key === "Enter" && baseBranchDropdownOpen) {
+			e.preventDefault();
+			e.stopPropagation();
+			const branch = filteredBaseBranches[baseBranchActiveIndex];
+			if (branch) selectBaseBranch(branch);
+			return;
+		}
+
+		if (e.key === "Tab" && baseBranchDropdownOpen) {
+			setBaseBranchDropdownOpen(false);
+			setBaseBranchSearch(baseBranch);
+			setBaseBranchActiveIndex(-1);
+		}
+	}
+
+	function selectExistingBranch(branch: string) {
+		setSelectedBranch(branch);
+		setBranchSearch(branch);
+		setExistingBranchActiveIndex(0);
+	}
+
+	function handleExistingBranchKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+		if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+			e.preventDefault();
+			e.stopPropagation();
+			setExistingBranchActiveIndex((current) => {
+				if (filteredBranches.length === 0) return -1;
+				if (e.key === "ArrowDown") {
+					return current < 0 ? 0 : Math.min(current + 1, filteredBranches.length - 1);
+				}
+				return current < 0 ? filteredBranches.length - 1 : Math.max(current - 1, 0);
+			});
+			return;
+		}
+
+		if (e.key === "Enter") {
+			const branch = filteredBranches[existingBranchActiveIndex];
+			if (!branch) return;
+			e.preventDefault();
+			e.stopPropagation();
+			selectExistingBranch(branch);
+		}
+	}
+
+	function trapDialogFocus(e: Pick<KeyboardEvent, "key" | "shiftKey" | "preventDefault">) {
+		if (e.key !== "Tab") return;
+
+		const dialog = dialogRef.current;
+		if (!dialog) return;
+		const focusableElements = Array.from(
+			dialog.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)
+		).filter((element) => element.getClientRects().length > 0);
+		if (focusableElements.length === 0) return;
+
+		const currentIndex = focusableElements.indexOf(document.activeElement as HTMLElement);
+		if (currentIndex === -1) {
+			e.preventDefault();
+			const target = e.shiftKey ? focusableElements.at(-1) : focusableElements[0];
+			target?.focus();
+			return;
+		}
+
+		if (e.shiftKey && currentIndex === 0) {
+			e.preventDefault();
+			focusableElements.at(-1)?.focus();
+		} else if (!e.shiftKey && currentIndex === focusableElements.length - 1) {
+			e.preventDefault();
+			focusableElements[0]?.focus();
+		}
+	}
+
+	function isTopmostModal() {
+		const modalRoot = dialogRef.current?.closest<HTMLElement>("[data-app-modal-root]");
+		if (!modalRoot) return true;
+		const openModals = Array.from(
+			document.querySelectorAll<HTMLElement>("[data-app-modal-root]")
+		).filter((modal) => modal.getClientRects().length > 0);
+		return openModals.at(-1) === modalRoot;
 	}
 
 	const handleSubmit = (e: React.FormEvent) => {
@@ -217,23 +452,32 @@ export function CreateWorktreeModal() {
 
 	return (
 		<div
+			data-app-modal-root=""
 			className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--scrim)] backdrop-blur-sm"
 			onClick={(e) => {
 				if (e.target === e.currentTarget) closeCreateWorktreeModal();
 			}}
-			onKeyDown={() => {}}
+			onKeyDown={trapDialogFocus}
 			role="presentation"
 		>
-			<div className="w-[480px] rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-surface)] shadow-[var(--shadow-md)]">
+			<dialog
+				ref={dialogRef}
+				open
+				aria-modal="true"
+				aria-labelledby="create-worktree-title"
+				tabIndex={-1}
+				className="relative m-0 w-[480px] rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-surface)] p-0 text-[var(--text)] shadow-[var(--shadow-md)]"
+			>
 				{/* Header */}
 				<div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
-					<h2 className="text-[15px] font-semibold text-[var(--text)]">
+					<h2 id="create-worktree-title" className="text-[15px] font-semibold text-[var(--text)]">
 						{asOrchestrator ? "New Orchestrator" : "New Worktree"}
 					</h2>
 					<button
 						type="button"
 						onClick={closeCreateWorktreeModal}
-						className="flex h-6 w-6 items-center justify-center rounded-[var(--radius-sm)] text-[var(--text-tertiary)] transition-all duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-secondary)]"
+						aria-label={`Close ${asOrchestrator ? "new orchestrator" : "new worktree"} dialog`}
+						className="flex h-6 w-6 items-center justify-center rounded-[var(--radius-sm)] text-[var(--text-tertiary)] transition-all duration-[120ms] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-secondary)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent)]"
 					>
 						<svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none">
 							<path
@@ -250,11 +494,22 @@ export function CreateWorktreeModal() {
 				<form onSubmit={handleSubmit} className="flex flex-col gap-4 p-4">
 					{/* Mode toggle — hidden when creating an orchestrator (always a new branch) */}
 					{!asOrchestrator && (
-						<div className="flex rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-elevated)] p-0.5">
+						<div
+							role="tablist"
+							aria-label="Worktree branch mode"
+							className="flex rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-elevated)] p-0.5"
+						>
 							<button
+								ref={newModeTabRef}
+								id="worktree-new-tab"
 								type="button"
-								onClick={() => setMode("new")}
-								className="flex-1 rounded-[4px] px-3 py-1.5 text-[13px] font-medium transition-all duration-[120ms]"
+								role="tab"
+								aria-selected={mode === "new"}
+								aria-controls="worktree-new-panel"
+								tabIndex={mode === "new" ? 0 : -1}
+								onClick={() => changeMode("new")}
+								onKeyDown={handleModeKeyDown}
+								className="flex-1 rounded-[4px] px-3 py-1.5 text-[13px] font-medium transition-all duration-[120ms] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent)]"
 								style={{
 									background: mode === "new" ? "var(--bg-overlay)" : "transparent",
 									color: mode === "new" ? "var(--text)" : "var(--text-tertiary)",
@@ -263,9 +518,16 @@ export function CreateWorktreeModal() {
 								New branch
 							</button>
 							<button
+								ref={existingModeTabRef}
+								id="worktree-existing-tab"
 								type="button"
-								onClick={() => setMode("existing")}
-								className="flex-1 rounded-[4px] px-3 py-1.5 text-[13px] font-medium transition-all duration-[120ms]"
+								role="tab"
+								aria-selected={mode === "existing"}
+								aria-controls="worktree-existing-panel"
+								tabIndex={mode === "existing" ? 0 : -1}
+								onClick={() => changeMode("existing")}
+								onKeyDown={handleModeKeyDown}
+								className="flex-1 rounded-[4px] px-3 py-1.5 text-[13px] font-medium transition-all duration-[120ms] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent)]"
 								style={{
 									background: mode === "existing" ? "var(--bg-overlay)" : "transparent",
 									color: mode === "existing" ? "var(--text)" : "var(--text-tertiary)",
@@ -277,7 +539,12 @@ export function CreateWorktreeModal() {
 					)}
 
 					{mode === "new" && (
-						<>
+						<div
+							id="worktree-new-panel"
+							role={!asOrchestrator ? "tabpanel" : undefined}
+							aria-labelledby={!asOrchestrator ? "worktree-new-tab" : undefined}
+							className="contents"
+						>
 							<div className="flex flex-col gap-1.5">
 								<label
 									htmlFor="worktree-branch"
@@ -286,6 +553,7 @@ export function CreateWorktreeModal() {
 									Branch Name
 								</label>
 								<input
+									ref={branchNameInputRef}
 									id="worktree-branch"
 									type="text"
 									value={branchName}
@@ -310,18 +578,29 @@ export function CreateWorktreeModal() {
 								</label>
 								<div className="relative">
 									<input
+										ref={baseBranchInputRef}
 										id="worktree-base"
 										type="text"
+										role="combobox"
+										aria-autocomplete="list"
+										aria-expanded={baseBranchDropdownOpen}
+										aria-controls="worktree-base-listbox"
+										aria-activedescendant={
+											baseBranchDropdownOpen && baseBranchActiveIndex >= 0
+												? `worktree-base-option-${baseBranchActiveIndex}`
+												: undefined
+										}
 										value={baseBranchSearch}
 										onChange={(e) => {
 											setBaseBranchSearch(e.target.value);
-											setBaseBranch("");
 											setBaseBranchDropdownOpen(true);
+											setBaseBranchActiveIndex(0);
 										}}
-										onFocus={() => {
-											setBaseBranchSearch("");
-											setBaseBranchDropdownOpen(true);
+										onFocus={openBaseBranchPicker}
+										onClick={() => {
+											if (!baseBranchDropdownOpen) openBaseBranchPicker();
 										}}
+										onKeyDown={handleBaseBranchKeyDown}
 										placeholder="Search branches..."
 										className="w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-2 text-[13px] text-[var(--text)] placeholder:text-[var(--text-quaternary)] focus:border-[var(--accent)] focus:outline-none"
 									/>
@@ -329,14 +608,23 @@ export function CreateWorktreeModal() {
 										<>
 											<div
 												className="fixed inset-0 z-10"
+												onMouseDown={(e) => e.preventDefault()}
 												onClick={() => {
 													setBaseBranchDropdownOpen(false);
 													setBaseBranchSearch(baseBranch);
+													setBaseBranchActiveIndex(-1);
 												}}
 												onKeyDown={() => {}}
 												role="presentation"
 											/>
-											<div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-[180px] overflow-y-auto rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-elevated)]">
+											<div
+												{...LISTBOX_ROLE}
+												ref={baseBranchListRef}
+												id="worktree-base-listbox"
+												aria-label="Base branches"
+												tabIndex={-1}
+												className="absolute left-0 right-0 top-full z-20 mt-1 max-h-[180px] overflow-y-auto rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-elevated)]"
+											>
 												{branchesQuery.isPending && (
 													<p className="px-3 py-2 text-[12px] text-[var(--text-tertiary)]">
 														Loading branches...
@@ -347,20 +635,25 @@ export function CreateWorktreeModal() {
 														No branches found
 													</p>
 												)}
-												{filteredBaseBranches.map((branch) => (
+												{filteredBaseBranches.map((branch, index) => (
 													<button
+														{...OPTION_ROLE}
 														key={branch}
+														id={`worktree-base-option-${index}`}
 														type="button"
-														onClick={() => {
-															setBaseBranch(branch);
-															setBaseBranchSearch(branch);
-															setBaseBranchDropdownOpen(false);
-														}}
+														aria-selected={baseBranch === branch}
+														tabIndex={-1}
+														data-branch-index={index}
+														onMouseDown={(e) => e.preventDefault()}
+														onMouseEnter={() => setBaseBranchActiveIndex(index)}
+														onClick={() => selectBaseBranch(branch)}
 														className="flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] transition-all duration-[120ms] hover:bg-[var(--bg-overlay)]"
 														style={{
 															color: baseBranch === branch ? "var(--accent)" : "var(--text)",
 															background:
-																baseBranch === branch ? "var(--bg-overlay)" : "transparent",
+																baseBranchActiveIndex === index || baseBranch === branch
+																	? "var(--bg-overlay)"
+																	: "transparent",
 														}}
 													>
 														{branch}
@@ -385,13 +678,13 @@ export function CreateWorktreeModal() {
 												defaultBranch: baseBranch,
 											});
 										}}
-										className="self-start text-[12px] text-[var(--accent)] transition-opacity duration-[120ms] hover:opacity-80 disabled:opacity-50"
+										className="self-start rounded-[2px] text-[12px] text-[var(--accent)] transition-opacity duration-[120ms] hover:opacity-80 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent)]"
 									>
 										{updateProjectMutation.isPending ? "Saving..." : "Set as default"}
 									</button>
 								)}
 							</div>
-						</>
+						</div>
 					)}
 
 					{mode === "new" && (
@@ -443,7 +736,12 @@ export function CreateWorktreeModal() {
 					)}
 
 					{mode === "existing" && (
-						<div className="flex flex-col gap-1.5">
+						<div
+							id="worktree-existing-panel"
+							role="tabpanel"
+							aria-labelledby="worktree-existing-tab"
+							className="flex flex-col gap-1.5"
+						>
 							<label
 								htmlFor="worktree-existing-search"
 								className="text-[13px] font-medium text-[var(--text-secondary)]"
@@ -451,13 +749,25 @@ export function CreateWorktreeModal() {
 								Branch
 							</label>
 							<input
+								ref={existingBranchInputRef}
 								id="worktree-existing-search"
 								type="text"
+								role="combobox"
+								aria-autocomplete="list"
+								aria-expanded={filteredBranches.length > 0}
+								aria-controls="worktree-existing-listbox"
+								aria-activedescendant={
+									existingBranchActiveIndex >= 0
+										? `worktree-existing-option-${existingBranchActiveIndex}`
+										: undefined
+								}
 								value={branchSearch}
 								onChange={(e) => {
 									setBranchSearch(e.target.value);
 									setSelectedBranch("");
+									setExistingBranchActiveIndex(0);
 								}}
+								onKeyDown={handleExistingBranchKeyDown}
 								placeholder="Search branches..."
 								className="w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-2 text-[13px] text-[var(--text)] placeholder:text-[var(--text-quaternary)] focus:border-[var(--accent)] focus:outline-none"
 							/>
@@ -470,19 +780,33 @@ export function CreateWorktreeModal() {
 									<p className="text-[12px] text-[var(--text-tertiary)]">No branches available</p>
 								)}
 							{filteredBranches.length > 0 && (
-								<div className="max-h-[180px] overflow-y-auto rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-elevated)]">
-									{filteredBranches.map((branch) => (
+								<div
+									{...LISTBOX_ROLE}
+									ref={existingBranchListRef}
+									id="worktree-existing-listbox"
+									aria-label="Existing branches"
+									tabIndex={-1}
+									className="max-h-[180px] overflow-y-auto rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-elevated)]"
+								>
+									{filteredBranches.map((branch, index) => (
 										<button
+											{...OPTION_ROLE}
 											key={branch}
+											id={`worktree-existing-option-${index}`}
 											type="button"
-											onClick={() => {
-												setSelectedBranch(branch);
-												setBranchSearch(branch);
-											}}
+											aria-selected={selectedBranch === branch}
+											tabIndex={-1}
+											data-branch-index={index}
+											onMouseDown={(e) => e.preventDefault()}
+											onMouseEnter={() => setExistingBranchActiveIndex(index)}
+											onClick={() => selectExistingBranch(branch)}
 											className="w-full px-3 py-2 text-left text-[13px] transition-all duration-[120ms] hover:bg-[var(--bg-overlay)]"
 											style={{
 												color: selectedBranch === branch ? "var(--accent)" : "var(--text)",
-												background: selectedBranch === branch ? "var(--bg-overlay)" : "transparent",
+												background:
+													existingBranchActiveIndex === index || selectedBranch === branch
+														? "var(--bg-overlay)"
+														: "transparent",
 											}}
 										>
 											{branch}
@@ -496,7 +820,7 @@ export function CreateWorktreeModal() {
 					<button
 						type="submit"
 						disabled={isSubmitDisabled}
-						className="w-full rounded-[var(--radius-md)] bg-[var(--accent)] px-4 py-2 text-[13px] font-medium text-[var(--accent-foreground)] transition-all duration-[120ms] hover:bg-[var(--accent-hover)] disabled:opacity-50"
+						className="w-full rounded-[var(--radius-md)] bg-[var(--accent)] px-4 py-2 text-[13px] font-medium text-[var(--accent-foreground)] transition-all duration-[120ms] hover:bg-[var(--accent-hover)] disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-hover)]"
 					>
 						{isPending
 							? mode === "new"
@@ -511,7 +835,7 @@ export function CreateWorktreeModal() {
 
 					{isError && <p className="text-[13px] text-[var(--term-red)]">{errorMessage}</p>}
 				</form>
-			</div>
+			</dialog>
 		</div>
 	);
 }
