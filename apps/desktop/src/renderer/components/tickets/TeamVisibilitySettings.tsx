@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from "react";
 import type { TicketTeam } from "../../../shared/tickets";
 import { useClickOutside } from "../../hooks/useClickOutside";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
+import { useTabStore } from "../../stores/tab-store";
 import { trpc } from "../../trpc/client";
 import { CheckboxRow } from "../ui/CheckboxRow";
 
@@ -13,6 +14,8 @@ export function TeamVisibilitySettings({ teams }: TeamVisibilitySettingsProps) {
 	const [open, setOpen] = useState(false);
 	const ref = useRef<HTMLDivElement>(null);
 	const utils = trpc.useUtils();
+	const activeTicketProject = useTabStore((state) => state.activeTicketProject);
+	const setActiveTicketProject = useTabStore((state) => state.setActiveTicketProject);
 	const close = useCallback(() => setOpen(false), []);
 	useClickOutside(ref, close, open);
 	useEscapeKey(close, open);
@@ -22,9 +25,21 @@ export function TeamVisibilitySettings({ teams }: TeamVisibilitySettingsProps) {
 	});
 
 	const setMutation = trpc.tickets.setVisibleTeams.useMutation({
+		onMutate: async ({ teams: nextTeams }) => {
+			await utils.tickets.getVisibleTeams.cancel();
+			const previous = utils.tickets.getVisibleTeams.getData();
+			utils.tickets.getVisibleTeams.setData(undefined, nextTeams);
+			return { previous };
+		},
+		onError: (_error, _input, context) => {
+			utils.tickets.getVisibleTeams.setData(undefined, context?.previous);
+		},
 		onSuccess: () => {
 			utils.tickets.getVisibleTeams.invalidate();
 			utils.tickets.getCachedTickets.invalidate();
+			utils.tickets.getPlanningData.invalidate();
+			utils.tickets.getTeamMembers.invalidate();
+			utils.tickets.getAllTeams.invalidate();
 		},
 	});
 
@@ -39,7 +54,16 @@ export function TeamVisibilitySettings({ teams }: TeamVisibilitySettingsProps) {
 		const next = isOn
 			? current.filter((v) => !(v.provider === team.provider && v.id === team.id))
 			: [...current, { provider: team.provider, id: team.id }];
-		setMutation.mutate({ teams: next.length > 0 ? next : null });
+		if (
+			isOn &&
+			activeTicketProject !== "all" &&
+			activeTicketProject !== null &&
+			activeTicketProject.provider === team.provider &&
+			activeTicketProject.id === team.id
+		) {
+			setActiveTicketProject("all");
+		}
+		setMutation.mutate({ teams: next });
 	};
 
 	return (

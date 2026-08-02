@@ -10,7 +10,16 @@ mock.module("../src/main/db", () => ({
 	schema: require("../src/main/db/schema"),
 }));
 
-const { upsertTeamMembers, getCachedTeamMembers } = await import("../src/main/tickets/cache");
+const {
+	getCachedTeamMembers,
+	getDefaultTicketNavigation,
+	getPlanningData,
+	getVisibleTeamsTyped,
+	replaceProviderPlanning,
+	setVisibleTeamsTyped,
+	setDefaultTicketNavigation,
+	upsertTeamMembers,
+} = await import("../src/main/tickets/cache");
 const { teamMembers } = await import("../src/main/db/schema");
 
 function seed(
@@ -114,5 +123,100 @@ describe("upsertTeamMembers", () => {
 		const after = getCachedTeamMembers({ provider: "linear", teamId: "team-1" })[0];
 		// updatedAt should not have been bumped since row was identical
 		expect(after?.updatedAt.getTime()).toBe(before?.updatedAt.getTime());
+	});
+});
+
+describe("planning metadata cache", () => {
+	beforeEach(() => {
+		state.db = makeTestDb();
+	});
+
+	test("replaces one provider without dropping the other provider", () => {
+		replaceProviderPlanning(
+			"linear",
+			[
+				{
+					id: "team-1",
+					provider: "linear",
+					groupId: "team-1",
+					name: "Engineering",
+					kind: "team",
+					supportsIterations: true,
+					selected: true,
+				},
+			],
+			[]
+		);
+		replaceProviderPlanning(
+			"jira",
+			[
+				{
+					id: "board-1",
+					provider: "jira",
+					groupId: "PROJ",
+					name: "Scrum board",
+					kind: "board",
+					supportsIterations: true,
+					selected: true,
+				},
+			],
+			[
+				{
+					id: "sprint-1",
+					provider: "jira",
+					contextId: "board-1",
+					groupId: "PROJ",
+					name: "Sprint 1",
+					state: "active",
+					startAt: null,
+					endAt: null,
+				},
+			]
+		);
+
+		const planning = getPlanningData();
+		expect(planning.contexts.map((context) => context.provider).sort()).toEqual(["jira", "linear"]);
+		expect(planning.iterations).toHaveLength(1);
+	});
+});
+
+describe("visible team preferences", () => {
+	beforeEach(() => {
+		state.db = makeTestDb();
+	});
+
+	test("distinguishes no visible teams from the default all-teams preference", () => {
+		setVisibleTeamsTyped([]);
+		expect(getVisibleTeamsTyped()).toEqual([]);
+
+		setVisibleTeamsTyped(null);
+		expect(getVisibleTeamsTyped()).toBeNull();
+	});
+});
+
+describe("default ticket navigation", () => {
+	beforeEach(() => {
+		state.db = makeTestDb();
+	});
+
+	test("persists an exact Jira board as the startup default", () => {
+		setDefaultTicketNavigation({
+			kind: "group",
+			provider: "jira",
+			groupId: "PROJ",
+			contextId: "board-42",
+		});
+
+		expect(getDefaultTicketNavigation()).toEqual({
+			kind: "group",
+			provider: "jira",
+			groupId: "PROJ",
+			contextId: "board-42",
+		});
+	});
+
+	test("supports All tickets as the startup default", () => {
+		setDefaultTicketNavigation({ kind: "all" });
+		expect(getDefaultTicketNavigation()).toEqual({ kind: "all" });
 	});
 });

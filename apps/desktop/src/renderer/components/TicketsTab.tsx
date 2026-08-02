@@ -1,7 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { JiraIssue } from "../../main/atlassian/jira";
-import type { LinearIssue } from "../../main/linear/linear";
-import type { TicketIssue } from "../../shared/tickets";
+import { useCallback, useMemo, useRef, useState } from "react";
+import type { MergedTicketIssue, TicketIssue } from "../../shared/tickets";
+import { useTicketsData } from "../hooks/useTicketsData";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import { ConnectBanner } from "./ConnectBanner";
@@ -9,12 +8,6 @@ import { CreateBranchFromIssueModal } from "./CreateBranchFromIssueModal";
 import { IssueContextMenu } from "./IssueContextMenu";
 import { StateIcon } from "./StateIcon";
 import { type LinkedWorkspace, WorkspacePopover } from "./WorkspacePopover";
-
-interface MergedIssue extends TicketIssue {
-	stateType?: string;
-	teamName?: string;
-	projectKey?: string;
-}
 
 export function TicketsTab() {
 	const utils = trpc.useUtils();
@@ -26,7 +19,7 @@ export function TicketsTab() {
 	} | null>(null);
 	const [contextMenu, setContextMenu] = useState<{
 		position: { x: number; y: number };
-		issue: MergedIssue;
+		issue: MergedTicketIssue;
 		workspaces: LinkedWorkspace[] | undefined;
 	} | null>(null);
 
@@ -36,35 +29,8 @@ export function TicketsTab() {
 
 	// ── Data Fetching ─────────────────────────────────────────────────────────
 
-	const { data: atlassianStatus } = trpc.atlassian.getStatus.useQuery(undefined, {
-		staleTime: 30_000,
-	});
-	const { data: linearStatus } = trpc.linear.getStatus.useQuery(undefined, {
-		staleTime: 30_000,
-	});
-
-	const hasJira = atlassianStatus?.jira.connected;
-	const hasLinear = linearStatus?.connected;
-
-	const { data: jiraIssues, isLoading: jiraLoading } = trpc.atlassian.getMyIssues.useQuery(
-		undefined,
-		{
-			enabled: hasJira,
-			staleTime: 30_000,
-		}
-	);
-
-	const { data: linearIssues, isLoading: linearLoading } = trpc.linear.getAssignedIssues.useQuery(
-		undefined,
-		{
-			enabled: hasLinear,
-			staleTime: 30_000,
-		}
-	);
-
-	const { data: linkedTickets } = trpc.tickets.getLinkedTickets.useQuery(undefined, {
-		staleTime: 30_000,
-	});
+	const { activeTicketProject, activeTicketScope, filteredIssues, linkedMap, isLoading, isEmpty } =
+		useTicketsData();
 
 	const { data: collapsedGroupsList } = trpc.tickets.getCollapsedGroups.useQuery(undefined, {
 		staleTime: Number.POSITIVE_INFINITY,
@@ -86,75 +52,13 @@ export function TicketsTab() {
 
 	// ── Merging & Grouping ────────────────────────────────────────────────────
 
-	const linkedMap = useMemo(() => {
-		const map = new Map<string, LinkedWorkspace[]>();
-		if (!linkedTickets) return map;
-		for (const l of linkedTickets) {
-			if (l.worktreePath === null) continue;
-			const entry: LinkedWorkspace = {
-				workspaceId: l.workspaceId,
-				workspaceName: l.workspaceName,
-				worktreePath: l.worktreePath,
-			};
-			const key = `${l.provider}:${l.ticketId}`;
-			const existing = map.get(key);
-			if (existing) {
-				existing.push(entry);
-			} else {
-				map.set(key, [entry]);
-			}
-		}
-		return map;
-	}, [linkedTickets]);
-
 	const grouped = useMemo(() => {
-		const merged: MergedIssue[] = [];
-
-		if (jiraIssues) {
-			for (const issue of jiraIssues) {
-				merged.push({
-					provider: "jira",
-					id: issue.key,
-					identifier: issue.key,
-					title: issue.summary,
-					url: issue.webUrl,
-					status: {
-						id: issue.status,
-						name: issue.status,
-						color: issue.statusColor,
-					},
-					groupId: issue.projectKey,
-					projectKey: issue.projectKey,
-				});
-			}
-		}
-
-		if (linearIssues) {
-			for (const issue of linearIssues) {
-				merged.push({
-					provider: "linear",
-					id: issue.id,
-					identifier: issue.identifier,
-					title: issue.title,
-					url: issue.url,
-					status: {
-						id: issue.stateId,
-						name: issue.stateName,
-						color: issue.stateColor,
-					},
-					groupId: issue.teamId,
-					stateType: issue.stateType,
-					teamName: issue.teamName,
-				});
-			}
-		}
-
 		// Group by groupId (teamId for Linear, projectKey for Jira)
 		const groups = new Map<
 			string,
-			{ name: string; provider: "jira" | "linear"; items: MergedIssue[] }
+			{ name: string; provider: "jira" | "linear"; items: MergedTicketIssue[] }
 		>();
-		for (const issue of merged) {
+		for (const issue of filteredIssues) {
 			const gid = issue.groupId;
 			const existing = groups.get(gid);
 			if (existing) {
@@ -171,7 +75,7 @@ export function TicketsTab() {
 		// Sort items within groups by status type (simplified)
 		// In a real implementation we'd map status names/types to a sort order
 		return groups;
-	}, [jiraIssues, linearIssues]);
+	}, [filteredIssues]);
 
 	// ── Handlers ──────────────────────────────────────────────────────────────
 
@@ -209,16 +113,27 @@ export function TicketsTab() {
 			}
 		);
 
+	const refreshAfterStatusChange = trpc.tickets.refreshTickets.useMutation({
+		onSuccess: () => utils.tickets.getCachedTickets.invalidate(),
+	});
+	const refreshStatus = () =>
+		refreshAfterStatusChange.mutate({
+			scope: activeTicketScope,
+			focus:
+				activeTicketProject === "all" || activeTicketProject === null
+					? undefined
+					: activeTicketProject,
+		});
 	const updateLinearState = trpc.linear.updateIssueState.useMutation({
-		onSettled: () => utils.linear.getAssignedIssues.invalidate(),
+		onSuccess: refreshStatus,
 	});
 	const updateJiraStatus = trpc.atlassian.updateIssueStatus.useMutation({
-		onSettled: () => utils.atlassian.getMyIssues.invalidate(),
+		onSuccess: refreshStatus,
 	});
 
 	// ── Render Helpers ────────────────────────────────────────────────────────
 
-	if (!hasJira && !hasLinear) {
+	if (isEmpty) {
 		return (
 			<div className="px-3 py-2">
 				<ConnectBanner message="Connect Jira or Linear to see your tickets." returnTo="tickets" />
@@ -226,7 +141,7 @@ export function TicketsTab() {
 		);
 	}
 
-	if ((hasJira && jiraLoading && !jiraIssues) || (hasLinear && linearLoading && !linearIssues)) {
+	if (isLoading) {
 		return (
 			<div className="px-3 py-1">
 				<div className="h-3 w-24 animate-pulse rounded bg-[var(--bg-elevated)]" />

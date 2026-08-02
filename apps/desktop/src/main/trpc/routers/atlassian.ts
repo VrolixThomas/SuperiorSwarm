@@ -16,6 +16,7 @@ import {
 import { connectAll, connectBitbucket, connectJira } from "../../atlassian/oauth-flow";
 import type { BitbucketAdapter } from "../../providers/bitbucket-adapter";
 import { getGitProvider } from "../../providers/git-provider";
+import { clearProviderTicketData } from "../../tickets/cache";
 import { publicProcedure, router } from "../index";
 export const atlassianRouter = router({
 	getStatus: publicProcedure.query(() => {
@@ -69,8 +70,10 @@ export const atlassianRouter = router({
 			if (input.service === "all") {
 				deleteAuth("jira");
 				deleteAuth("bitbucket");
+				clearProviderTicketData("jira");
 			} else {
 				deleteAuth(input.service);
+				if (input.service === "jira") clearProviderTicketData("jira");
 			}
 		}),
 

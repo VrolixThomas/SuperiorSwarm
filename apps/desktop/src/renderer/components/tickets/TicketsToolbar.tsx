@@ -1,6 +1,13 @@
 import { useEffect, useState } from "react";
-import type { TicketViewMode } from "../../../shared/tickets";
+import type {
+	AssigneeFilterValue,
+	TicketIteration,
+	TicketScope,
+	TicketTeamMember,
+	TicketViewMode,
+} from "../../../shared/tickets";
 import { AssigneeFilter } from "./AssigneeFilter";
+import { SprintCyclePicker } from "./SprintCyclePicker";
 
 interface TicketsToolbarProps {
 	projectName: string;
@@ -9,6 +16,16 @@ interface TicketsToolbarProps {
 	viewMode: TicketViewMode;
 	onViewModeChange: (mode: TicketViewMode) => void;
 	lastFetched: string | null;
+	scope: TicketScope;
+	onScopeChange: (scope: TicketScope) => void;
+	iterations: TicketIteration[];
+	assignee: {
+		members: TicketTeamMember[];
+		currentLinearUserId: string | null;
+		currentJiraUserId: string | null;
+		value: AssigneeFilterValue;
+		projectId: string;
+	};
 }
 
 const VIEW_MODES: { mode: TicketViewMode; label: string }[] = [
@@ -34,6 +51,10 @@ export function TicketsToolbar({
 	viewMode,
 	onViewModeChange,
 	lastFetched,
+	scope,
+	onScopeChange,
+	iterations,
+	assignee,
 }: TicketsToolbarProps) {
 	const [, setTick] = useState(0);
 	useEffect(() => {
@@ -43,7 +64,7 @@ export function TicketsToolbar({
 	const staleness = formatStaleness(lastFetched);
 
 	return (
-		<div className="flex shrink-0 items-center gap-2 border-b border-[var(--border-subtle)] px-4 py-2">
+		<div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[var(--border-subtle)] px-4 py-2">
 			<span className="text-[13px] font-semibold text-[var(--text)]">{projectName}</span>
 			<span className="text-[10px] text-[var(--text-quaternary)]">
 				{providerLabel} · {ticketCount} tickets
@@ -51,7 +72,30 @@ export function TicketsToolbar({
 			{staleness && (
 				<span className="text-[10px] text-[var(--text-quaternary)] opacity-60">· {staleness}</span>
 			)}
-			<AssigneeFilter />
+			<div className="flex gap-0.5 rounded-[6px] bg-[var(--bg-elevated)] p-[2px]">
+				{(
+					[
+						["current", "Current"],
+						["backlog", "Backlog"],
+						["all_open", "All open"],
+					] as const
+				).map(([kind, label]) => (
+					<button
+						key={kind}
+						type="button"
+						onClick={() => onScopeChange({ kind })}
+						className={`rounded-[4px] px-2 py-1 text-[10px] transition-colors ${
+							scope.kind === kind
+								? "bg-[var(--bg-overlay)] font-medium text-[var(--text)]"
+								: "text-[var(--text-quaternary)] hover:text-[var(--text-tertiary)]"
+						}`}
+					>
+						{label}
+					</button>
+				))}
+			</div>
+			<SprintCyclePicker scope={scope} iterations={iterations} onSelect={onScopeChange} />
+			<AssigneeFilter {...assignee} />
 			<div className="flex-1" />
 			<div className="flex gap-0.5 rounded-[6px] bg-[var(--bg-elevated)] p-[2px]">
 				{VIEW_MODES.map(({ mode, label }) => (

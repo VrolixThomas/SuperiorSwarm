@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Group, Panel, Separator, useDefaultLayout, usePanelRef } from "react-resizable-panels";
-import type { MergedTicketIssue, TicketViewMode } from "../../../shared/tickets";
+import type { MergedTicketIssue, TicketIteration, TicketViewMode } from "../../../shared/tickets";
 import { useTicketDragDrop } from "../../hooks/useTicketDragDrop";
 import { useTicketsData } from "../../hooks/useTicketsData";
 import { useAssigneePickerStore } from "../../stores/assignee-picker-store";
@@ -17,12 +17,24 @@ import { TicketsListView } from "./TicketsListView";
 import { TicketsTableView } from "./TicketsTableView";
 import { TicketsToolbar } from "./TicketsToolbar";
 
+const ITERATION_STATE_ORDER = { active: 0, future: 1, closed: 2 } as const;
+
+function compareIterations(a: TicketIteration, b: TicketIteration): number {
+	const stateDifference = ITERATION_STATE_ORDER[a.state] - ITERATION_STATE_ORDER[b.state];
+	if (stateDifference !== 0) return stateDifference;
+	const aDate = a.endAt ?? a.startAt ?? "";
+	const bDate = b.endAt ?? b.startAt ?? "";
+	if (a.state === "future") return aDate.localeCompare(bDate);
+	return bDate.localeCompare(aDate);
+}
+
 export function TicketsCanvas() {
 	const utils = trpc.useUtils();
 
 	const selectedTicketId = useTabStore((s) => s.selectedTicketId);
 	const ticketDetailOpen = useTabStore((s) => s.ticketDetailOpen);
 	const setSelectedTicket = useTabStore((s) => s.setSelectedTicket);
+	const setActiveTicketScope = useTabStore((s) => s.setActiveTicketScope);
 
 	const {
 		columns,
@@ -30,11 +42,45 @@ export function TicketsCanvas() {
 		linkedMap,
 		isLoading,
 		isEmpty,
+		refreshError,
+		retryRefresh,
+		isRefreshing,
 		activeTicketProject,
 		lastFetched,
 		teamMembers,
+		assigneeFilter,
+		currentLinearUserId,
+		currentJiraUserId,
 		projectId,
+		activeTicketScope,
+		planningContexts,
+		iterations,
+		knownTeams,
 	} = useTicketsData();
+
+	const relevantIterations = useMemo(() => {
+		let scopedIterations = iterations;
+		if (activeTicketProject === "all" || activeTicketProject === null) {
+			return [...scopedIterations].sort(compareIterations);
+		}
+		const selectedContextIds = new Set(
+			planningContexts
+				.filter(
+					(context) =>
+						context.provider === activeTicketProject.provider &&
+						context.groupId === activeTicketProject.id &&
+						context.selected
+				)
+				.map((context) => context.id)
+		);
+		scopedIterations = iterations.filter(
+			(iteration) =>
+				iteration.provider === activeTicketProject.provider &&
+				iteration.groupId === activeTicketProject.id &&
+				selectedContextIds.has(iteration.contextId)
+		);
+		return scopedIterations.sort(compareIterations);
+	}, [activeTicketProject, iterations, planningContexts]);
 
 	const { data: savedViewMode } = trpc.tickets.getViewMode.useQuery(
 		{ projectId },
@@ -148,11 +194,28 @@ export function TicketsCanvas() {
 			}
 		);
 
+	const refreshAfterStatusChange = trpc.tickets.refreshTickets.useMutation({
+		onSuccess: () => utils.tickets.getCachedTickets.invalidate(),
+	});
 	const updateLinearState = trpc.linear.updateIssueState.useMutation({
-		onSettled: () => utils.linear.getAssignedIssues.invalidate(),
+		onSuccess: () =>
+			refreshAfterStatusChange.mutate({
+				scope: activeTicketScope,
+				focus:
+					activeTicketProject === "all" || activeTicketProject === null
+						? undefined
+						: activeTicketProject,
+			}),
 	});
 	const updateJiraStatus = trpc.atlassian.updateIssueStatus.useMutation({
-		onSettled: () => utils.atlassian.getMyIssues.invalidate(),
+		onSuccess: () =>
+			refreshAfterStatusChange.mutate({
+				scope: activeTicketScope,
+				focus:
+					activeTicketProject === "all" || activeTicketProject === null
+						? undefined
+						: activeTicketProject,
+			}),
 	});
 
 	const dnd = useTicketDragDrop(columns, { updateJiraStatus, updateLinearState });
@@ -200,11 +263,28 @@ export function TicketsCanvas() {
 
 	const projectName = useMemo(() => {
 		if (activeTicketProject === "all" || activeTicketProject === null) return "All Tickets";
+		const selectedContext = planningContexts.find(
+			(context) =>
+				context.provider === activeTicketProject.provider &&
+				context.groupId === activeTicketProject.id &&
+				context.selected
+		);
+		if (
+			selectedContext?.name &&
+			(selectedContext.provider !== "jira" || !selectedContext.id.startsWith("jira-project:"))
+		) {
+			return selectedContext.name;
+		}
+		const knownTeam = knownTeams.find(
+			(team) => team.provider === activeTicketProject.provider && team.id === activeTicketProject.id
+		);
+		if (knownTeam?.name) return knownTeam.name;
+		if (selectedContext?.name) return selectedContext.name;
 		const sample = filteredIssues[0];
 		if (sample?.teamName) return sample.teamName;
 		if (sample?.projectKey) return sample.projectKey;
 		return activeTicketProject.id;
-	}, [activeTicketProject, filteredIssues]);
+	}, [activeTicketProject, filteredIssues, knownTeams, planningContexts]);
 
 	const providerLabel = useMemo(() => {
 		if (activeTicketProject === "all" || activeTicketProject === null) return "All providers";
@@ -248,7 +328,32 @@ export function TicketsCanvas() {
 				viewMode={viewMode}
 				onViewModeChange={handleViewModeChange}
 				lastFetched={lastFetched}
+				scope={activeTicketScope}
+				onScopeChange={setActiveTicketScope}
+				iterations={relevantIterations}
+				assignee={{
+					members: teamMembers,
+					currentLinearUserId,
+					currentJiraUserId,
+					value: assigneeFilter,
+					projectId,
+				}}
 			/>
+			{refreshError && (
+				<div className="flex shrink-0 items-center gap-2 border-b border-[rgba(255,159,10,0.2)] bg-[rgba(255,159,10,0.07)] px-4 py-1.5 text-[10px] text-[#d69a32]">
+					<span className="min-w-0 flex-1 truncate" title={refreshError}>
+						Some ticket data could not refresh. Cached boards remain available.
+					</span>
+					<button
+						type="button"
+						onClick={retryRefresh}
+						disabled={isRefreshing}
+						className="rounded-[4px] px-1.5 py-0.5 font-medium hover:bg-[rgba(255,159,10,0.1)] disabled:opacity-50"
+					>
+						{isRefreshing ? "Retrying…" : "Retry"}
+					</button>
+				</div>
+			)}
 
 			<div className="min-h-0 flex-1">
 				<Group

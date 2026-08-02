@@ -42,6 +42,8 @@ describe("mapIssueNode", () => {
 			},
 			team: { id: "team-1", name: "Engineering" },
 			assignee: null,
+			updatedAt: "2026-08-01T10:00:00.000Z",
+			cycle: null,
 		};
 		const result = mapIssueNode(node);
 		expect(result).toEqual({
@@ -58,6 +60,10 @@ describe("mapIssueNode", () => {
 			assigneeId: null,
 			assigneeName: null,
 			assigneeAvatar: null,
+			updatedAt: "2026-08-01T10:00:00.000Z",
+			cycleId: null,
+			cycleName: null,
+			planning: { contextId: "team-1", iterationIds: [], bucket: "backlog" },
 		});
 	});
 
@@ -70,9 +76,39 @@ describe("mapIssueNode", () => {
 			state: { id: "state-2", name: "Todo", color: "#6b7280", type: "unstarted" as const },
 			team: { id: "team-1", name: "Engineering" },
 			assignee: null,
+			updatedAt: "2026-08-01T10:00:00.000Z",
+			cycle: null,
 		};
 		const result = mapIssueNode(node);
 		expect(result.identifier).toBe("ENG-99");
 		expect(result.stateType).toBe("unstarted");
+	});
+
+	test("maps cycle membership into planning metadata", () => {
+		const result = mapIssueNode({
+			id: "issue-cycle",
+			identifier: "ENG-100",
+			title: "Planned issue",
+			url: "https://linear.app/team/issue/ENG-100",
+			state: { id: "state-2", name: "Todo", color: "#6b7280", type: "unstarted" },
+			team: { id: "team-1", name: "Engineering" },
+			assignee: null,
+			updatedAt: "2026-08-01T10:00:00.000Z",
+			cycle: {
+				id: "cycle-10",
+				name: "Cycle 10",
+				number: 10,
+				startsAt: "2999-01-01T00:00:00.000Z",
+				endsAt: "2999-01-14T00:00:00.000Z",
+				completedAt: null,
+			},
+		});
+
+		expect(result.cycleName).toBe("Cycle 10");
+		expect(result.planning).toEqual({
+			contextId: "team-1",
+			iterationIds: ["cycle-10"],
+			bucket: "future",
+		});
 	});
 });

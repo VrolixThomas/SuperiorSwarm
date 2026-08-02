@@ -1,4 +1,10 @@
 import { and, eq, notInArray } from "drizzle-orm";
+import {
+	type TicketIteration,
+	type TicketNavigationTarget,
+	type TicketPlanningContext,
+	isTicketNavigationTarget,
+} from "../../shared/tickets";
 import type { JiraIssue } from "../atlassian/jira";
 import { getDb } from "../db";
 import { sessionState, teamMembers, ticketCache } from "../db/schema";
@@ -6,6 +12,10 @@ import type { LinearIssue } from "../linear/linear";
 
 const LAST_FETCHED_KEY = "tickets_last_fetched";
 const DONE_CUTOFF_KEY = "tickets_done_cutoff_days";
+const PLANNING_CONTEXTS_KEY = "tickets_planning_contexts";
+const PLANNING_ITERATIONS_KEY = "tickets_planning_iterations";
+const JIRA_BOARD_PREFIX = "tickets_jira_board_";
+const DEFAULT_NAVIGATION_KEY = "tickets_default_navigation";
 
 // ── Cache read ───────────────────────────────────────────────────────────────
 
@@ -178,6 +188,33 @@ export function upsertLinearIssues(issues: LinearIssue[]): void {
 	);
 }
 
+export function updateCachedAssignee(
+	provider: "linear" | "jira",
+	ticketId: string,
+	assigneeId: string | null
+): void {
+	const member = assigneeId
+		? getCachedTeamMembers({ provider }).find((candidate) => candidate.userId === assigneeId)
+		: null;
+	if (provider === "jira") {
+		const issues = getCachedJiraIssues();
+		const issue = issues.find((candidate) => candidate.key === ticketId);
+		if (!issue) return;
+		issue.assigneeId = assigneeId;
+		issue.assigneeName = member?.name ?? null;
+		issue.assigneeAvatar = member?.avatarUrl ?? null;
+		upsertJiraIssues(issues);
+		return;
+	}
+	const issues = getCachedLinearIssues();
+	const issue = issues.find((candidate) => candidate.id === ticketId);
+	if (!issue) return;
+	issue.assigneeId = assigneeId;
+	issue.assigneeName = member?.name ?? null;
+	issue.assigneeAvatar = member?.avatarUrl ?? null;
+	upsertLinearIssues(issues);
+}
+
 export function pruneOrphanTeamMembers(provider: "linear" | "jira", keepTeamIds: string[]): void {
 	const db = getDb();
 	if (keepTeamIds.length === 0) {
@@ -198,6 +235,15 @@ export function pruneOrphanTicketCache(provider: "linear" | "jira", keepGroupIds
 	db.delete(ticketCache)
 		.where(and(eq(ticketCache.provider, provider), notInArray(ticketCache.groupId, keepGroupIds)))
 		.run();
+}
+
+export function clearProviderTicketData(provider: "linear" | "jira"): void {
+	const db = getDb();
+	db.transaction((tx) => {
+		tx.delete(ticketCache).where(eq(ticketCache.provider, provider)).run();
+		tx.delete(teamMembers).where(eq(teamMembers.provider, provider)).run();
+	});
+	replaceProviderPlanning(provider, [], []);
 }
 
 // ── Last-fetched timestamp ───────────────────────────────────────────────────
@@ -299,6 +345,101 @@ export function setVisibleTeamsTyped(
 	value: Array<{ provider: "linear" | "jira"; id: string }> | null
 ): void {
 	setVisibleTeams(value === null ? "" : JSON.stringify(value));
+}
+
+// ── Sprint/cycle planning metadata ─────────────────────────────────────────
+
+function readJsonArray<T>(key: string): T[] {
+	const db = getDb();
+	const row = db.select().from(sessionState).where(eq(sessionState.key, key)).get();
+	if (!row?.value) return [];
+	try {
+		const parsed = JSON.parse(row.value);
+		return Array.isArray(parsed) ? (parsed as T[]) : [];
+	} catch {
+		return [];
+	}
+}
+
+function writeJsonArray<T>(key: string, value: T[]): void {
+	const db = getDb();
+	const serialized = JSON.stringify(value);
+	db.insert(sessionState)
+		.values({ key, value: serialized })
+		.onConflictDoUpdate({ target: sessionState.key, set: { value: serialized } })
+		.run();
+}
+
+export function getPlanningData(): {
+	contexts: TicketPlanningContext[];
+	iterations: TicketIteration[];
+} {
+	return {
+		contexts: readJsonArray<TicketPlanningContext>(PLANNING_CONTEXTS_KEY),
+		iterations: readJsonArray<TicketIteration>(PLANNING_ITERATIONS_KEY),
+	};
+}
+
+export function replaceProviderPlanning(
+	provider: "linear" | "jira",
+	contexts: TicketPlanningContext[],
+	iterations: TicketIteration[]
+): void {
+	const current = getPlanningData();
+	writeJsonArray(PLANNING_CONTEXTS_KEY, [
+		...current.contexts.filter((context) => context.provider !== provider),
+		...contexts,
+	]);
+	writeJsonArray(PLANNING_ITERATIONS_KEY, [
+		...current.iterations.filter((iteration) => iteration.provider !== provider),
+		...iterations,
+	]);
+}
+
+export function getSelectedJiraBoard(projectKey: string): string | null {
+	const db = getDb();
+	const row = db
+		.select()
+		.from(sessionState)
+		.where(eq(sessionState.key, `${JIRA_BOARD_PREFIX}${projectKey}`))
+		.get();
+	return row?.value ?? null;
+}
+
+export function setSelectedJiraBoard(projectKey: string, boardId: string): void {
+	const db = getDb();
+	const key = `${JIRA_BOARD_PREFIX}${projectKey}`;
+	db.insert(sessionState)
+		.values({ key, value: boardId })
+		.onConflictDoUpdate({ target: sessionState.key, set: { value: boardId } })
+		.run();
+}
+
+// ── Default ticket navigation ──────────────────────────────────────────────
+
+export function getDefaultTicketNavigation(): TicketNavigationTarget | null {
+	const db = getDb();
+	const row = db
+		.select()
+		.from(sessionState)
+		.where(eq(sessionState.key, DEFAULT_NAVIGATION_KEY))
+		.get();
+	if (!row?.value) return null;
+	try {
+		const parsed: unknown = JSON.parse(row.value);
+		return isTicketNavigationTarget(parsed) ? parsed : null;
+	} catch {
+		return null;
+	}
+}
+
+export function setDefaultTicketNavigation(target: TicketNavigationTarget): void {
+	const db = getDb();
+	const value = JSON.stringify(target);
+	db.insert(sessionState)
+		.values({ key: DEFAULT_NAVIGATION_KEY, value })
+		.onConflictDoUpdate({ target: sessionState.key, set: { value } })
+		.run();
 }
 
 // ── Known teams persistence ─────────────────────────────────────────────────

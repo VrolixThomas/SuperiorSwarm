@@ -16,7 +16,11 @@ interface StoredAuth {
 
 function makeHarness(opts: {
 	auth?: StoredAuth | null;
-	refresh?: (service: Service, refreshToken: string) => Promise<TokenRefreshResult>;
+	refresh?: (
+		service: Service,
+		refreshToken: string,
+		store: Map<Service, StoredAuth>
+	) => Promise<TokenRefreshResult>;
 	fetchFn?: typeof fetch;
 }) {
 	const store = new Map<Service, StoredAuth>();
@@ -31,14 +35,15 @@ function makeHarness(opts: {
 				expiresAt: new Date(Date.now() + tokens.expiresIn * 1000),
 			});
 		},
-		deleteAuth: (service) => {
-			store.delete(service);
+		deleteAuthIfRefreshTokenMatches: (service, refreshToken) => {
+			if (store.get(service)?.refreshToken === refreshToken) {
+				store.delete(service);
+			}
 		},
-		refreshToken:
-			opts.refresh ??
-			(async () => {
-				throw new Error("refresh not expected in this test");
-			}),
+		refreshToken: async (service, refreshToken) => {
+			if (!opts.refresh) throw new Error("refresh not expected in this test");
+			return opts.refresh(service, refreshToken, store);
+		},
 		fetchFn: opts.fetchFn,
 	};
 
@@ -124,13 +129,44 @@ describe("token refresh failure handling", () => {
 		const { core, store } = makeHarness({
 			auth: expiredAuth(),
 			refresh: async () => {
-				throw new TokenEndpointError(400, "invalid_grant");
+				throw new TokenEndpointError(400, "invalid_grant", "invalid_grant");
 			},
 		});
 
 		const token = await core.getValidToken("bitbucket");
 		expect(token).toBeNull();
 		expect(store.get("bitbucket")).toBeUndefined();
+	});
+
+	test("other permanent token errors keep stored auth", async () => {
+		const { core, store } = makeHarness({
+			auth: expiredAuth(),
+			refresh: async () => {
+				throw new TokenEndpointError(401, "invalid_client", "invalid_client");
+			},
+		});
+
+		const token = await core.getValidToken("bitbucket");
+		expect(token).toBeNull();
+		expect(store.get("bitbucket")).toBeDefined();
+	});
+
+	test("invalid_grant for a stale rotating token keeps newer auth", async () => {
+		const harness = makeHarness({
+			auth: expiredAuth(),
+			refresh: async (_service, _refreshToken, store) => {
+				store.set("bitbucket", {
+					accessToken: "access-token-from-another-process",
+					refreshToken: "refresh-token-2",
+					expiresAt: new Date(Date.now() + 7200_000),
+				});
+				throw new TokenEndpointError(400, "invalid_grant", "invalid_grant");
+			},
+		});
+
+		const token = await harness.core.getValidToken("bitbucket");
+		expect(token).toBeNull();
+		expect(harness.store.get("bitbucket")?.refreshToken).toBe("refresh-token-2");
 	});
 
 	test("successful refresh stores new tokens", async () => {
@@ -220,7 +256,7 @@ describe("authFetch 401 handling", () => {
 		expect(store.get("bitbucket")).toBeDefined();
 	});
 
-	test("deletes auth when retry after refresh still 401", async () => {
+	test("keeps auth when retry after refresh still 401", async () => {
 		const { core, store } = makeHarness({
 			auth: validAuth(),
 			refresh: async () => ({
@@ -232,9 +268,9 @@ describe("authFetch 401 handling", () => {
 		});
 
 		await expect(core.authFetch("bitbucket", "https://api.bitbucket.org/2.0/user")).rejects.toThrow(
-			/reconnect/i
+			/additional permissions/i
 		);
-		expect(store.get("bitbucket")).toBeUndefined();
+		expect(store.get("bitbucket")).toBeDefined();
 	});
 
 	test("keeps auth when API 401 but refresh fails transiently", async () => {

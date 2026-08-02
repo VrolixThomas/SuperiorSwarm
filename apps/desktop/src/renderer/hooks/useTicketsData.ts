@@ -1,19 +1,27 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useCallback, useMemo } from "react";
 import type {
 	AssigneeFilterValue,
 	MergedTicketIssue,
 	NormalizedStatusCategory,
 } from "../../shared/tickets";
-import { deserializeAssigneeFilter, normalizeStatusCategory } from "../../shared/tickets";
+import {
+	deserializeAssigneeFilter,
+	matchesTicketPlanningContext,
+	matchesTicketScope,
+	normalizeStatusCategory,
+} from "../../shared/tickets";
 import type { LinkedWorkspace } from "../components/WorkspacePopover";
 import { useTabStore } from "../stores/tab-store";
+import { useTicketRefreshStore } from "../stores/ticket-refresh-store";
 import { trpc } from "../trpc/client";
 
 export interface StatusColumn {
+	id: string;
 	category: NormalizedStatusCategory;
 	label: string;
 	color: string;
 	items: MergedTicketIssue[];
+	jiraStatusIds?: string[];
 }
 
 const STATUS_ORDER: NormalizedStatusCategory[] = ["backlog", "todo", "in_progress", "done"];
@@ -25,11 +33,11 @@ const STATUS_META: Record<NormalizedStatusCategory, { label: string; color: stri
 	done: { label: "Done", color: "#00875A" },
 };
 
-const REFRESH_INTERVAL_MS = 30_000;
-
 export function useTicketsData() {
 	const activeTicketProject = useTabStore((s) => s.activeTicketProject);
-	const utils = trpc.useUtils();
+	const activeTicketScope = useTabStore((s) => s.activeTicketScope);
+	const refreshError = useTicketRefreshStore((state) => state.refreshError);
+	const isRefreshing = useTicketRefreshStore((state) => state.isRefreshing);
 
 	// ── Connection status ────────────────────────────────────────────────────
 	const { data: atlassianStatus } = trpc.atlassian.getStatus.useQuery(undefined, {
@@ -77,41 +85,18 @@ export function useTicketsData() {
 
 	const effectiveJiraIssues = cached?.jiraIssues;
 	const effectiveLinearIssues = cached?.linearIssues;
-
-	// ── Background refresh ───────────────────────────────────────────────────
-	const refreshMutation = trpc.tickets.refreshTickets.useMutation({
-		onSuccess: () => {
-			utils.tickets.getCachedTickets.invalidate();
-			utils.tickets.getLastFetched.invalidate();
-		},
+	const { data: planningData } = trpc.tickets.getPlanningData.useQuery(undefined, {
+		staleTime: 5_000,
 	});
-	const refreshRef = useRef(refreshMutation.mutateAsync);
-	refreshRef.current = refreshMutation.mutateAsync;
+	const { data: visibleTeams } = trpc.tickets.getVisibleTeams.useQuery(undefined, {
+		staleTime: Number.POSITIVE_INFINITY,
+	});
+	const { data: knownTeams } = trpc.tickets.getAllTeams.useQuery(undefined, {
+		staleTime: 30_000,
+	});
 
-	useEffect(() => {
-		let cancelled = false;
-		let timer: ReturnType<typeof setTimeout> | null = null;
-		let consecutiveFailures = 0;
-
-		async function tick() {
-			if (cancelled) return;
-			try {
-				const result = await refreshRef.current();
-				consecutiveFailures = result?.ok ? 0 : consecutiveFailures + 1;
-			} catch {
-				consecutiveFailures += 1;
-			}
-			if (cancelled) return;
-			const delay = Math.min(REFRESH_INTERVAL_MS * 2 ** consecutiveFailures, 5 * 60_000);
-			timer = setTimeout(tick, delay);
-		}
-
-		tick();
-
-		return () => {
-			cancelled = true;
-			if (timer) clearTimeout(timer);
-		};
+	const retryRefresh = useCallback(() => {
+		window.dispatchEvent(new Event("tickets:refresh-now"));
 	}, []);
 
 	// ── Last fetched timestamp ───────────────────────────────────────────────
@@ -165,7 +150,7 @@ export function useTicketsData() {
 	const allIssues = useMemo(() => {
 		const merged: MergedTicketIssue[] = [];
 
-		if (effectiveJiraIssues) {
+		if (effectiveJiraIssues && hasJira !== false) {
 			for (const issue of effectiveJiraIssues) {
 				merged.push({
 					provider: "jira",
@@ -174,7 +159,7 @@ export function useTicketsData() {
 					title: issue.summary,
 					url: issue.webUrl,
 					status: {
-						id: issue.status,
+						id: issue.statusId ?? issue.status,
 						name: issue.status,
 						color: issue.statusColor,
 					},
@@ -185,11 +170,12 @@ export function useTicketsData() {
 					assigneeId: issue.assigneeId ?? null,
 					assigneeName: issue.assigneeName ?? null,
 					assigneeAvatar: issue.assigneeAvatar ?? null,
+					planning: issue.planning,
 				});
 			}
 		}
 
-		if (effectiveLinearIssues) {
+		if (effectiveLinearIssues && hasLinear !== false) {
 			for (const issue of effectiveLinearIssues) {
 				merged.push({
 					provider: "linear",
@@ -205,18 +191,34 @@ export function useTicketsData() {
 					groupId: issue.teamId,
 					stateType: issue.stateType,
 					teamName: issue.teamName,
+					updatedAt: issue.updatedAt,
 					assigneeId: issue.assigneeId ?? null,
 					assigneeName: issue.assigneeName ?? null,
 					assigneeAvatar: issue.assigneeAvatar ?? null,
+					planning: issue.planning,
 				});
 			}
 		}
 
 		return merged;
-	}, [effectiveJiraIssues, effectiveLinearIssues]);
+	}, [effectiveJiraIssues, effectiveLinearIssues, hasJira, hasLinear]);
+
+	const selectedPlanningContext = useMemo(() => {
+		if (activeTicketProject === "all" || activeTicketProject === null) return undefined;
+		return planningData?.contexts.find(
+			(candidate) =>
+				candidate.provider === activeTicketProject.provider &&
+				candidate.groupId === activeTicketProject.id &&
+				candidate.selected
+		);
+	}, [activeTicketProject, planningData]);
 
 	const filteredIssues = useMemo(() => {
 		let issues = allIssues;
+		if (visibleTeams) {
+			const visibleKeys = new Set(visibleTeams.map((team) => `${team.provider}:${team.id}`));
+			issues = issues.filter((issue) => visibleKeys.has(`${issue.provider}:${issue.groupId}`));
+		}
 
 		// Project filter
 		if (activeTicketProject !== "all" && activeTicketProject !== null) {
@@ -226,6 +228,23 @@ export function useTicketsData() {
 					issue.groupId === activeTicketProject.id
 			);
 		}
+
+		issues = issues.filter((issue) => matchesTicketPlanningContext(issue, selectedPlanningContext));
+
+		// Planning scope (current sprint/cycle, backlog, all open, or a selected iteration)
+		issues = issues.filter((issue) => {
+			const context = planningData?.contexts.find(
+				(candidate) =>
+					candidate.provider === issue.provider &&
+					candidate.groupId === issue.groupId &&
+					candidate.selected
+			);
+			return matchesTicketScope(
+				issue,
+				activeTicketScope,
+				context?.supportsIterations ?? issue.planning !== undefined
+			);
+		});
 
 		// Assignee filter
 		if (assigneeFilter === "me") {
@@ -242,9 +261,52 @@ export function useTicketsData() {
 		}
 
 		return issues;
-	}, [allIssues, activeTicketProject, assigneeFilter, currentLinearUserId, currentJiraUserId]);
+	}, [
+		allIssues,
+		visibleTeams,
+		activeTicketProject,
+		activeTicketScope,
+		planningData,
+		selectedPlanningContext,
+		assigneeFilter,
+		currentLinearUserId,
+		currentJiraUserId,
+	]);
 
 	const columns = useMemo(() => {
+		if (
+			selectedPlanningContext?.provider === "jira" &&
+			selectedPlanningContext.columns &&
+			selectedPlanningContext.columns.length > 0
+		) {
+			return selectedPlanningContext.columns.map((column, index, boardColumns) => {
+				const items = filteredIssues.filter((issue) => column.statusIds.includes(issue.status.id));
+				const mappedCategories = new Set(items.map((issue) => issue.statusCategory));
+				let category: NormalizedStatusCategory;
+				if (mappedCategories.has("done") || index === boardColumns.length - 1) {
+					category = "done";
+				} else if (mappedCategories.has("indeterminate")) {
+					category = "in_progress";
+				} else if (mappedCategories.has("new")) {
+					category = "todo";
+				} else if (/backlog/i.test(column.name)) {
+					category = "backlog";
+				} else if (/blocked|to\s*do|open/i.test(column.name)) {
+					category = "todo";
+				} else {
+					category = "in_progress";
+				}
+				return {
+					id: `jira:${selectedPlanningContext.id}:${column.id}`,
+					category,
+					label: column.name,
+					color: STATUS_META[category].color,
+					items,
+					jiraStatusIds: column.statusIds,
+				};
+			});
+		}
+
 		const byCategory = new Map<NormalizedStatusCategory, MergedTicketIssue[]>();
 		for (const cat of STATUS_ORDER) {
 			byCategory.set(cat, []);
@@ -254,14 +316,18 @@ export function useTicketsData() {
 			byCategory.get(cat)?.push(issue);
 		}
 		return STATUS_ORDER.map((cat) => ({
+			id: cat,
 			category: cat,
 			...STATUS_META[cat],
 			items: byCategory.get(cat) ?? [],
 		}));
-	}, [filteredIssues]);
+	}, [filteredIssues, selectedPlanningContext]);
 
-	const isLoading = cacheLoading && !effectiveJiraIssues && !effectiveLinearIssues;
-	const isEmpty = !hasJira && !hasLinear;
+	const isLoading =
+		!atlassianStatus ||
+		!linearStatus ||
+		(cacheLoading && !effectiveJiraIssues && !effectiveLinearIssues);
+	const isEmpty = hasJira === false && hasLinear === false;
 
 	return {
 		columns,
@@ -270,7 +336,14 @@ export function useTicketsData() {
 		linkedMap,
 		isLoading,
 		isEmpty,
+		refreshError,
+		retryRefresh,
+		isRefreshing,
 		activeTicketProject,
+		activeTicketScope,
+		planningContexts: planningData?.contexts ?? [],
+		iterations: planningData?.iterations ?? [],
+		knownTeams: knownTeams ?? [],
 		lastFetched: lastFetched ?? cached?.lastFetched ?? null,
 		teamMembers,
 		assigneeFilter,

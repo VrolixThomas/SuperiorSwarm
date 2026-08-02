@@ -1,10 +1,72 @@
 export type TicketProvider = "linear" | "jira";
 
+export type TicketNavigationTarget =
+	| { kind: "all" }
+	| {
+			kind: "group";
+			provider: TicketProvider;
+			groupId: string;
+			contextId?: string;
+	  };
+
+export type TicketIterationState = "active" | "future" | "closed";
+
+export type TicketPlanningBucket = "active" | "future" | "backlog" | "closed";
+
+export interface TicketPlanningAssignment {
+	contextId: string;
+	iterationIds: string[];
+	bucket: TicketPlanningBucket;
+}
+
+export interface TicketBoardColumn {
+	id: string;
+	name: string;
+	statusIds: string[];
+	min?: number;
+	max?: number;
+}
+
+export interface TicketPlanningContext {
+	id: string;
+	provider: TicketProvider;
+	groupId: string;
+	name: string;
+	kind: "board" | "team";
+	supportsIterations: boolean;
+	selected: boolean;
+	boardType?: "scrum" | "kanban" | "simple";
+	columns?: TicketBoardColumn[];
+}
+
+export interface TicketIteration {
+	id: string;
+	provider: TicketProvider;
+	contextId: string;
+	groupId: string;
+	name: string;
+	state: TicketIterationState;
+	startAt: string | null;
+	endAt: string | null;
+}
+
+export type TicketScope =
+	| { kind: "current" }
+	| { kind: "backlog" }
+	| { kind: "all_open" }
+	| {
+			kind: "iteration";
+			provider: TicketProvider;
+			iterationId: string;
+	  };
+
 export interface TicketStatus {
 	id: string; // stateId (Linear) or transitionId (Jira)
 	name: string;
 	color: string; // hex color for the status dot
 	categoryKey?: string; // Jira statusCategory key (e.g. "new", "indeterminate", "done")
+	targetStatusId?: string; // Jira transition destination status ID
+	targetStatusName?: string; // Jira transition destination status name
 }
 
 export interface TicketIssue {
@@ -28,6 +90,7 @@ export interface MergedTicketIssue extends TicketIssue {
 	assigneeId?: string | null;
 	assigneeName?: string | null;
 	assigneeAvatar?: string | null;
+	planning?: TicketPlanningAssignment;
 }
 
 export interface TicketTeam {
@@ -172,7 +235,7 @@ export function assigneeColorFromId(id: string | null | undefined): string {
 	for (let i = 0; i < id.length; i++) {
 		hash = (hash * 31 + id.charCodeAt(i)) | 0;
 	}
-	return ASSIGNEE_PALETTE[Math.abs(hash) % ASSIGNEE_PALETTE.length]!;
+	return ASSIGNEE_PALETTE[Math.abs(hash) % ASSIGNEE_PALETTE.length] ?? "#6e6e73";
 }
 
 export function serializeAssigneeFilter(value: AssigneeFilterValue): string {
@@ -224,4 +287,81 @@ export function deserializeAssigneeFilter(raw: string | null): AssigneeFilterVal
 		}
 	} catch {}
 	return "me";
+}
+
+export function isTicketScope(value: unknown): value is TicketScope {
+	if (!value || typeof value !== "object") return false;
+	const scope = value as Record<string, unknown>;
+	if (scope["kind"] === "current" || scope["kind"] === "backlog" || scope["kind"] === "all_open") {
+		return true;
+	}
+	return (
+		scope["kind"] === "iteration" &&
+		(scope["provider"] === "linear" || scope["provider"] === "jira") &&
+		typeof scope["iterationId"] === "string"
+	);
+}
+
+export function isTicketNavigationTarget(value: unknown): value is TicketNavigationTarget {
+	if (!value || typeof value !== "object") return false;
+	const target = value as Record<string, unknown>;
+	if (target["kind"] === "all") return true;
+	return (
+		target["kind"] === "group" &&
+		(target["provider"] === "linear" || target["provider"] === "jira") &&
+		typeof target["groupId"] === "string" &&
+		(target["contextId"] === undefined || typeof target["contextId"] === "string")
+	);
+}
+
+export function ticketNavigationTargetsEqual(
+	a: TicketNavigationTarget | null | undefined,
+	b: TicketNavigationTarget | null | undefined
+): boolean {
+	if (!a || !b || a.kind !== b.kind) return false;
+	if (a.kind === "all" || b.kind === "all") return a.kind === b.kind;
+	if (a.provider !== b.provider || a.groupId !== b.groupId) return false;
+	// Linear's planning context is the team itself, so groupId is already exhaustive.
+	// Ignore contextId for compatibility with defaults saved by early planning builds.
+	return a.provider === "linear" || a.contextId === b.contextId;
+}
+
+export function matchesTicketScope(
+	issue: Pick<MergedTicketIssue, "provider" | "statusCategory" | "stateType" | "planning">,
+	scope: TicketScope,
+	supportsIterations = true
+): boolean {
+	const category = normalizeStatusCategory(issue.provider, issue.statusCategory, issue.stateType);
+	if (scope.kind === "all_open") return category !== "done";
+
+	if (scope.kind === "iteration") {
+		return (
+			issue.provider === scope.provider &&
+			(issue.planning?.iterationIds.includes(scope.iterationId) ?? false)
+		);
+	}
+
+	// A synthetic Jira project fallback has no planning assignment. Real Kanban
+	// boards also have no iterations, but do have active/backlog placement.
+	if (!supportsIterations && !issue.planning) return category !== "done";
+
+	if (scope.kind === "backlog") {
+		return category !== "done" && issue.planning?.bucket === "backlog";
+	}
+
+	return issue.planning?.bucket === "active";
+}
+
+/**
+ * Jira projects may expose multiple boards with different filters. Once a
+ * board is selected, only issues confirmed by that board's Agile snapshot
+ * belong on its canvas. The project-level cache remains complete underneath.
+ */
+export function matchesTicketPlanningContext(
+	issue: Pick<MergedTicketIssue, "provider" | "planning">,
+	context: TicketPlanningContext | undefined
+): boolean {
+	if (!context || context.provider !== "jira" || context.id.startsWith("jira-project:"))
+		return true;
+	return issue.provider === "jira" && issue.planning?.contextId === context.id;
 }
