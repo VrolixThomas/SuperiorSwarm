@@ -18,6 +18,7 @@ import { makeTestDb } from "./test-db";
 
 class FakeClient implements HermesRuntimeClientLike {
 	capabilities: readonly string[] = HERMES_REQUIRED_CAPABILITIES;
+	handoffProtocolVersion = 1;
 	catalogSessionId = "session-tip";
 	catalogLineageTipId = "session-tip";
 	resumeStoredSessionId = "session-tip";
@@ -65,28 +66,73 @@ class FakeClient implements HermesRuntimeClientLike {
 	async request(method: string, params: Record<string, unknown>): Promise<unknown> {
 		this.requests.push({ method, params });
 		switch (method) {
+			case "protocol.info":
+				return {
+					name: "hermes-serve-jsonrpc",
+					version: 1,
+					capabilities: {
+						session_handoff: {
+							version: this.handoffProtocolVersion,
+							methods: Object.fromEntries(this.capabilities.map((capability) => [capability, 1])),
+						},
+					},
+				};
 			case "session.catalog":
 				if (this.catalogMethodMissing) {
 					throw new HermesRpcError("Method not found", -32601, false);
 				}
 				return {
 					protocol_version: 1,
-					capabilities: this.capabilities,
 					sessions: [
 						{
-							id: this.catalogSessionId,
-							lineage_tip_id: this.catalogLineageTipId,
+							session_id: this.catalogSessionId,
 							lineage_root_id: "session-root",
+							current_tip_id: this.catalogLineageTipId,
 							title: "Slack task",
+							preview: "Please fix the handoff",
+							profile: "default",
 							source: "slack",
+							created_at: 100,
+							updated_at: 200,
 							open: true,
+							archived: false,
+							running: false,
+							busy: false,
+							claimed: false,
+							claim: null,
+							origin: {
+								platform: "slack",
+								label: "Slack thread?token=origin-secret",
+								origin_ref: "origin_123",
+								can_open_origin: true,
+								can_report_to_origin: true,
+							},
 						},
 					],
 				};
 			case "session.claim":
-				return { claim_id: "claim-1" };
+				return {
+					claim: {
+						claim_id: "claim-1",
+						session_id: "session-tip",
+						lineage_root_id: "session-root",
+						owner: "superiorswarm:desktop-1",
+						client_id: "desktop-1",
+						surface: "superiorswarm",
+						purpose: "handoff",
+						heartbeat_at: 200,
+						expires_at: 260,
+					},
+				};
 			case "session.resume":
-				return { session_id: "runtime-1", stored_session_id: this.resumeStoredSessionId };
+				return {
+					session_id: "runtime-1",
+					resumed: this.resumeStoredSessionId,
+					session_key: this.resumeStoredSessionId,
+					message_count: 1,
+					messages: [],
+					status: "idle",
+				};
 			case "session.history":
 				if (this.failHistory) throw new Error("history unavailable");
 				return {
@@ -112,10 +158,16 @@ class FakeClient implements HermesRuntimeClientLike {
 				return { status: "streaming", turn_id: "turn-1" };
 			case "session.origin":
 				return {
-					display_label: "Slack thread?token=origin-secret",
-					can_open_origin: true,
-					can_report_to_origin: true,
-					permalink: "https://slack.com/archives/thread",
+					session_id: "session-tip",
+					lineage_root_id: "session-root",
+					origin: {
+						platform: "slack",
+						label: "Slack thread?token=origin-secret",
+						origin_ref: "origin_123",
+						can_open_origin: true,
+						can_report_to_origin: true,
+						deep_link: "https://slack.com/archives/thread",
+					},
 				};
 			case "session.report_to_origin":
 				if (this.failReport) throw new Error("connection closed");
@@ -207,19 +259,36 @@ describe("HermesRuntimeService", () => {
 		const resumed = await service.resume(connectionId, "session-tip");
 		expect(resumed.runtimeSessionId).toBe("runtime-1");
 		expect(resumed.history[0]?.text).toBe("Created workspace");
-		expect(client.requests.map((request) => request.method).slice(0, 4)).toEqual([
+		expect(client.requests.map((request) => request.method).slice(0, 5)).toEqual([
+			"protocol.info",
 			"session.catalog",
 			"session.claim",
 			"session.resume",
 			"session.history",
 		]);
+		const claim = client.requests.find((request) => request.method === "session.claim");
+		expect(claim?.params["ttl_seconds"]).toBe(60);
+		expect(claim?.params).not.toHaveProperty("ttl");
 		expect(listHermesWorkspaceLinks(connectionId, "session-tip")).toHaveLength(1);
 	});
 
-	test("submits against the runtime id, reports idempotently, and releases the claim", async () => {
+	test("presents the handoff claim on session mutations and releases it", async () => {
 		await service.connect(connectionId);
 		await service.resume(connectionId, "session-tip");
 		await service.submit(connectionId, "session-tip", "Continue");
+		await service.interrupt(connectionId, "session-tip");
+		await service.respondToApproval({
+			connectionId,
+			hermesSessionId: "session-tip",
+			requestId: "approval-1",
+			choice: "allow",
+		});
+		await service.respondToClarification({
+			connectionId,
+			hermesSessionId: "session-tip",
+			requestId: "clarify-1",
+			answer: "Use the existing branch",
+		});
 		const report = await service.reportToOrigin({
 			connectionId,
 			hermesSessionId: "session-tip",
@@ -242,6 +311,15 @@ describe("HermesRuntimeService", () => {
 		await service.release(connectionId, "session-tip");
 		const submit = client.requests.find((request) => request.method === "prompt.submit");
 		expect(submit?.params["session_id"]).toBe("runtime-1");
+		for (const method of [
+			"prompt.submit",
+			"session.interrupt",
+			"approval.respond",
+			"clarify.respond",
+		]) {
+			const request = client.requests.find((candidate) => candidate.method === method);
+			expect(request?.params["claim_id"]).toBe("claim-1");
+		}
 		const release = client.requests.find((request) => request.method === "session.release");
 		expect(release?.params["claim_id"]).toBe("claim-1");
 	});
@@ -313,6 +391,12 @@ describe("HermesRuntimeService", () => {
 		const report = client.requests.find((request) => request.method === "session.report_to_origin");
 		expect(origin?.params["session_id"]).toBe("session-new-tip");
 		expect(report?.params["session_id"]).toBe("session-new-tip");
+		expect(originInfo).toEqual({
+			displayLabel: "Slack thread?token=[redacted]",
+			canOpen: true,
+			canReport: true,
+			permalink: "https://slack.com/archives/thread",
+		});
 		expect(originInfo.displayLabel).not.toContain("origin-secret");
 	});
 
@@ -365,6 +449,43 @@ describe("HermesRuntimeService", () => {
 		expect(client.requests.filter((request) => request.method === "session.release")).toHaveLength(
 			1
 		);
+	});
+
+	test("routes profile-scoped handoff RPCs to the configured Hermes profile", async () => {
+		client.capabilities = [...HERMES_REQUIRED_CAPABILITIES, "session.tool_artifacts"];
+		const profiledConnectionId = saveHermesConnection(
+			{
+				label: "Work profile",
+				baseUrl: "http://127.0.0.1:8080",
+				profileId: "work",
+				token: "runtime-secret",
+			},
+			vault
+		).id;
+
+		await service.connect(profiledConnectionId);
+		await service.resume(profiledConnectionId, "session-tip");
+		await service.origin(profiledConnectionId, "session-tip");
+		await service.reportToOrigin({
+			connectionId: profiledConnectionId,
+			hermesSessionId: "session-tip",
+			turnId: "turn-profile",
+			content: "Done",
+		});
+		await service.release(profiledConnectionId, "session-tip");
+
+		for (const method of [
+			"session.catalog",
+			"session.claim",
+			"session.resume",
+			"session.origin",
+			"session.report_to_origin",
+			"session.tool_artifacts",
+			"session.release",
+		]) {
+			const request = client.requests.find((candidate) => candidate.method === method);
+			expect(request?.params["profile"]).toBe("work");
+		}
 	});
 
 	test("maps an older Hermes without session.catalog to upgrade-required", async () => {

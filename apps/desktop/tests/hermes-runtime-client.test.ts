@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { HermesRuntimeClient } from "../src/main/hermes/hermes-runtime-client";
+import { HermesRpcError, HermesRuntimeClient } from "../src/main/hermes/hermes-runtime-client";
 
 type Listener = (event: { data?: string }) => void;
 
@@ -95,6 +95,38 @@ describe("HermesRuntimeClient", () => {
 		const sent = JSON.parse(socket?.sent[0] ?? "{}") as { id: string };
 		socket?.message({ jsonrpc: "2.0", id: sent.id, result: { messages: [] } });
 		expect(client.getPendingRequestCount()).toBe(0);
+	});
+
+	test("reads retryability from the actual Hermes JSON-RPC error data envelope", async () => {
+		let socket: FakeSocket | undefined;
+		const client = new HermesRuntimeClient({
+			socketFactory: () => {
+				socket = new FakeSocket();
+				queueMicrotask(() => socket?.open());
+				return socket;
+			},
+			reconnect: false,
+		});
+		await client.connect({ baseUrl: "http://localhost:8080", token: "token" });
+		const request = client.request("session.report_to_origin", {});
+		const sent = JSON.parse(socket?.sent[0] ?? "{}") as { id: string };
+		socket?.message({
+			jsonrpc: "2.0",
+			id: sent.id,
+			error: {
+				code: 5027,
+				message: "origin delivery failed",
+				data: { retryable: true, retry_after: 7 },
+			},
+		});
+
+		try {
+			await request;
+			expect.unreachable("request should reject");
+		} catch (error) {
+			expect(error).toBeInstanceOf(HermesRpcError);
+			expect((error as HermesRpcError).retryable).toBe(true);
+		}
 	});
 
 	test("reconnects with backoff and requests a canonical history refresh", async () => {

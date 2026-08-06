@@ -53,6 +53,8 @@ interface BufferedEvent {
 
 interface ConnectionRuntime {
 	client: HermesRuntimeClientLike;
+	profileId: string;
+	protocolInfo: unknown | null;
 	compatibility: HermesCompatibility | null;
 	catalog: HermesCatalog | null;
 	bindings: Map<string, RuntimeBinding>;
@@ -107,7 +109,11 @@ export class HermesRuntimeService {
 			await Promise.all(
 				[...previousRuntime.bindings.values()].map((binding) =>
 					previousRuntime.client
-						.request("session.release", { claim_id: binding.claimId }, { timeoutMs: 2_000 })
+						.request(
+							"session.release",
+							{ claim_id: binding.claimId, profile: previousRuntime.profileId },
+							{ timeoutMs: 2_000 }
+						)
 						.catch(() => undefined)
 				)
 			);
@@ -118,6 +124,8 @@ export class HermesRuntimeService {
 			const client = this.clientFactory();
 			runtime = {
 				client,
+				profileId: connection.profileId,
+				protocolInfo: null,
 				compatibility: null,
 				catalog: null,
 				bindings: new Map(),
@@ -137,8 +145,10 @@ export class HermesRuntimeService {
 		}
 		let catalog: HermesCatalog;
 		try {
+			runtime.protocolInfo = await runtime.client.request("protocol.info", {});
 			catalog = normalizeHermesCatalog(
-				await runtime.client.request("session.catalog", { profile: connection.profileId })
+				await runtime.client.request("session.catalog", { profile: connection.profileId }),
+				runtime.protocolInfo
 			);
 		} catch (error) {
 			const methodMissing =
@@ -202,7 +212,8 @@ export class HermesRuntimeService {
 		const connection = getHermesConnectionWithToken(connectionId, this.tokenVault);
 		if (!connection) throw new Error("Hermes connection was not found");
 		const catalog = normalizeHermesCatalog(
-			await runtime.client.request("session.catalog", { profile: connection.profileId })
+			await runtime.client.request("session.catalog", { profile: connection.profileId }),
+			runtime.protocolInfo
 		);
 		runtime.compatibility = catalog.compatibility;
 		runtime.catalog = catalog;
@@ -237,10 +248,17 @@ export class HermesRuntimeService {
 				session_id: canonicalSessionId,
 				surface: "superiorswarm",
 				client_id: this.clientId,
-				ttl: this.claimTtlSeconds,
+				ttl_seconds: this.claimTtlSeconds,
+				profile: runtime.profileId,
 			})
 		);
-		const claimId = stringValue(claimResult["claim_id"], claimResult["claimId"]);
+		const claim = object(claimResult["claim"]);
+		const claimId = stringValue(
+			claim["claim_id"],
+			claim["claimId"],
+			claimResult["claim_id"],
+			claimResult["claimId"]
+		);
 		if (!claimId) throw new Error("Hermes returned an invalid session claim");
 
 		try {
@@ -248,6 +266,7 @@ export class HermesRuntimeService {
 				await runtime.client.request("session.resume", {
 					session_id: canonicalSessionId,
 					source: "superiorswarm",
+					profile: runtime.profileId,
 				})
 			);
 			const runtimeSessionId = stringValue(
@@ -260,12 +279,18 @@ export class HermesRuntimeService {
 				stringValue(
 					resumed["stored_session_id"],
 					resumed["canonical_session_id"],
-					resumed["lineage_tip_id"]
+					resumed["lineage_tip_id"],
+					resumed["resumed"],
+					resumed["session_key"]
 				) ?? canonicalSessionId;
 			const renewTimer = setInterval(
 				() => {
 					void runtime.client
-						.request("session.claim_renew", { claim_id: claimId })
+						.request("session.claim_renew", {
+							claim_id: claimId,
+							ttl_seconds: this.claimTtlSeconds,
+							profile: runtime.profileId,
+						})
 						.catch((error) => this.pushRuntimeError(connectionId, error));
 				},
 				Math.max(5_000, (this.claimTtlSeconds * 1_000) / 2)
@@ -297,7 +322,9 @@ export class HermesRuntimeService {
 				runtime.bindings.delete(hermesSessionId);
 				runtime.runtimeToCanonical.delete(failedBinding.runtimeSessionId);
 			}
-			await runtime.client.request("session.release", { claim_id: claimId }).catch(() => undefined);
+			await runtime.client
+				.request("session.release", { claim_id: claimId, profile: runtime.profileId })
+				.catch(() => undefined);
 			throw error;
 		}
 	}
@@ -322,6 +349,7 @@ export class HermesRuntimeService {
 		const binding = this.requireBinding(runtime, hermesSessionId);
 		return runtime.client.request("prompt.submit", {
 			session_id: binding.runtimeSessionId,
+			claim_id: binding.claimId,
 			text,
 		});
 	}
@@ -329,7 +357,10 @@ export class HermesRuntimeService {
 	async interrupt(connectionId: string, hermesSessionId: string): Promise<unknown> {
 		const runtime = this.requireCompatibleRuntime(connectionId);
 		const binding = this.requireBinding(runtime, hermesSessionId);
-		return runtime.client.request("session.interrupt", { session_id: binding.runtimeSessionId });
+		return runtime.client.request("session.interrupt", {
+			session_id: binding.runtimeSessionId,
+			claim_id: binding.claimId,
+		});
 	}
 
 	async respondToApproval(input: {
@@ -342,6 +373,7 @@ export class HermesRuntimeService {
 		const binding = this.requireBinding(runtime, input.hermesSessionId);
 		return runtime.client.request("approval.respond", {
 			session_id: binding.runtimeSessionId,
+			claim_id: binding.claimId,
 			request_id: input.requestId,
 			choice: input.choice,
 		});
@@ -357,6 +389,7 @@ export class HermesRuntimeService {
 		const binding = this.requireBinding(runtime, input.hermesSessionId);
 		return runtime.client.request("clarify.respond", {
 			session_id: binding.runtimeSessionId,
+			claim_id: binding.claimId,
 			request_id: input.requestId,
 			answer: input.answer,
 		});
@@ -366,7 +399,10 @@ export class HermesRuntimeService {
 		const runtime = this.requireCompatibleRuntime(connectionId);
 		const binding = this.requireBinding(runtime, hermesSessionId);
 		clearInterval(binding.renewTimer);
-		const result = await runtime.client.request("session.release", { claim_id: binding.claimId });
+		const result = await runtime.client.request("session.release", {
+			claim_id: binding.claimId,
+			profile: runtime.profileId,
+		});
 		runtime.bindings.delete(hermesSessionId);
 		runtime.runtimeToCanonical.delete(binding.runtimeSessionId);
 		return result;
@@ -377,16 +413,37 @@ export class HermesRuntimeService {
 		const result = object(
 			await runtime.client.request("session.origin", {
 				session_id: this.resolveCanonicalSessionId(runtime, hermesSessionId),
+				profile: runtime.profileId,
 			})
 		);
+		const origin = object(result["origin"]);
 		const displayLabel = sanitizeHermesPayload(
-			stringValue(result["display_label"], result["origin_label"])
+			stringValue(
+				origin["label"],
+				origin["display_label"],
+				origin["origin_label"],
+				result["display_label"],
+				result["origin_label"]
+			)
 		);
 		return {
 			displayLabel: typeof displayLabel === "string" ? displayLabel : null,
-			canOpen: result["can_open_origin"] === true || result["can_open"] === true,
-			canReport: result["can_report_to_origin"] === true || result["can_report"] === true,
-			permalink: stringValue(result["permalink"], result["deep_link"]),
+			canOpen:
+				origin["can_open_origin"] === true ||
+				origin["can_open"] === true ||
+				result["can_open_origin"] === true ||
+				result["can_open"] === true,
+			canReport:
+				origin["can_report_to_origin"] === true ||
+				origin["can_report"] === true ||
+				result["can_report_to_origin"] === true ||
+				result["can_report"] === true,
+			permalink: stringValue(
+				origin["deep_link"],
+				origin["permalink"],
+				result["permalink"],
+				result["deep_link"]
+			),
 		};
 	}
 
@@ -406,6 +463,7 @@ export class HermesRuntimeService {
 					turn_id: input.turnId,
 					content: input.content,
 					idempotency_key: receipt.idempotencyKey,
+					profile: runtime.profileId,
 				})
 			);
 			const duplicate = result["duplicate"] === true || result["duplicate_suppressed"] === true;
@@ -557,6 +615,7 @@ export class HermesRuntimeService {
 		const binding = this.requireBinding(runtime, hermesSessionId);
 		const result = await runtime.client.request("session.tool_artifacts", {
 			session_id: binding.canonicalSessionId,
+			profile: runtime.profileId,
 		});
 		this.linkArtifacts(
 			connectionId,

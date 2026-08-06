@@ -59,6 +59,14 @@ function capabilityList(value: unknown): string[] {
 		.map(([name]) => name);
 }
 
+function versionedCapabilityList(value: unknown): string[] {
+	const values = record(value);
+	if (!values) return [];
+	return Object.entries(values)
+		.filter(([, version]) => (numberValue(version) ?? 0) >= HERMES_PROTOCOL_VERSION)
+		.map(([name]) => name);
+}
+
 const SENSITIVE_KEY = /(token|secret|credential|authorization|password|cookie|origin_json)/i;
 
 function sanitizeString(value: string): string {
@@ -129,7 +137,7 @@ export function extractWorkspaceArtifacts(value: unknown): HermesWorkspaceArtifa
 	return [...found.values()];
 }
 
-export function normalizeHermesCatalog(value: unknown): HermesCatalog {
+export function normalizeHermesCatalog(value: unknown, protocolInfo?: unknown): HermesCatalog {
 	const root = record(value) ?? {};
 	const protocol = record(root["protocol"]);
 	const protocolVersion = numberValue(
@@ -137,21 +145,37 @@ export function normalizeHermesCatalog(value: unknown): HermesCatalog {
 		root["api_version"],
 		protocol?.["version"]
 	);
-	const capabilities = capabilityList(root["capabilities"] ?? protocol?.["capabilities"]);
+	const protocolRoot = protocolInfo === undefined ? null : record(protocolInfo);
+	const advertisedCapabilities = record(protocolRoot?.["capabilities"]);
+	const sessionHandoff = record(advertisedCapabilities?.["session_handoff"]);
+	const capabilities = sessionHandoff
+		? versionedCapabilityList(sessionHandoff["methods"])
+		: capabilityList(root["capabilities"] ?? protocol?.["capabilities"]);
 	const missingCapabilities = HERMES_REQUIRED_CAPABILITIES.filter(
 		(capability) => !capabilities.includes(capability)
 	);
+	const negotiatedVersionsCompatible =
+		protocolInfo === undefined ||
+		((numberValue(protocolRoot?.["version"]) ?? 0) >= HERMES_PROTOCOL_VERSION &&
+			(numberValue(sessionHandoff?.["version"]) ?? 0) >= HERMES_PROTOCOL_VERSION);
 	const compatible =
 		protocolVersion !== null &&
 		protocolVersion >= HERMES_PROTOCOL_VERSION &&
+		negotiatedVersionsCompatible &&
 		missingCapabilities.length === 0;
 	const rawSessions = Array.isArray(root["sessions"]) ? root["sessions"] : [];
 	const sessions = rawSessions.flatMap((value) => {
 		const session = record(value);
 		const id = stringValue(session?.["id"], session?.["session_id"]);
 		if (!session || !id) return [];
+		const origin = record(session["origin"]);
 		const lineageTipId =
-			stringValue(session["lineage_tip_id"], session["lineageTipId"], session["tip_id"]) ?? id;
+			stringValue(
+				session["current_tip_id"],
+				session["lineage_tip_id"],
+				session["lineageTipId"],
+				session["tip_id"]
+			) ?? id;
 		return [
 			{
 				id,
@@ -173,14 +197,28 @@ export function normalizeHermesCatalog(value: unknown): HermesCatalog {
 				busy: booleanValue(false, session["busy"]),
 				claimed: booleanValue(false, session["claimed"]),
 				waitingForUser: booleanValue(false, session["waiting_for_user"], session["waitingForUser"]),
-				originLabel: sanitizedStringValue(session["origin_label"], session["originLabel"]),
-				canOpenOrigin: booleanValue(false, session["can_open_origin"], session["canOpenOrigin"]),
+				originLabel: sanitizedStringValue(
+					origin?.["label"],
+					session["origin_label"],
+					session["originLabel"]
+				),
+				canOpenOrigin: booleanValue(
+					false,
+					origin?.["can_open_origin"],
+					session["can_open_origin"],
+					session["canOpenOrigin"]
+				),
 				canReportToOrigin: booleanValue(
 					false,
+					origin?.["can_report_to_origin"],
 					session["can_report_to_origin"],
 					session["canReportToOrigin"]
 				),
-				opaqueOriginRef: stringValue(session["opaque_origin_ref"], session["origin_ref"]),
+				opaqueOriginRef: stringValue(
+					origin?.["origin_ref"],
+					session["opaque_origin_ref"],
+					session["origin_ref"]
+				),
 			},
 		];
 	});

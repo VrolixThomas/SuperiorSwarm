@@ -7,35 +7,58 @@ import {
 } from "../src/main/hermes/hermes-protocol";
 
 describe("Hermes protocol adapter", () => {
-	test("normalizes the versioned redacted catalog without leaking unknown origin fields", () => {
-		const catalog = normalizeHermesCatalog({
-			protocol_version: 1,
-			capabilities: HERMES_REQUIRED_CAPABILITIES,
-			sessions: [
-				{
-					id: "session-tip",
-					lineage_tip_id: "session-tip",
-					lineage_root_id: "session-root",
-					title: "Fix checkout",
-					preview: "Investigating",
-					profile: "default",
-					source: "slack",
-					updated_at: 123,
-					created_at: 100,
-					open: true,
-					archived: false,
-					running: false,
-					busy: false,
-					claimed: true,
-					waiting_for_user: true,
-					origin_label: "#engineering · thread",
-					can_open_origin: true,
-					can_report_to_origin: true,
-					opaque_origin_ref: "origin_123",
-					slack_token: "must-not-cross",
-				},
-			],
-		});
+	const advertisedCapabilities = [...HERMES_REQUIRED_CAPABILITIES, "session.tool_artifacts"];
+	const protocolInfo = (methods: readonly string[] = advertisedCapabilities, version = 1) => ({
+		name: "hermes-serve-jsonrpc",
+		version: 1,
+		capabilities: {
+			session_handoff: {
+				version,
+				methods: Object.fromEntries(methods.map((method) => [method, 1])),
+			},
+		},
+	});
+
+	test("normalizes the exact Hermes protocol and catalog payloads", () => {
+		const catalog = normalizeHermesCatalog(
+			{
+				protocol_version: 1,
+				sessions: [
+					{
+						session_id: "session-tip",
+						lineage_root_id: "session-root",
+						current_tip_id: "session-tip",
+						title: "Fix checkout",
+						preview: "Investigating",
+						profile: "default",
+						source: "slack",
+						updated_at: 123,
+						created_at: 100,
+						open: true,
+						archived: false,
+						running: false,
+						busy: false,
+						claimed: true,
+						claim: {
+							owner: "superiorswarm:desktop-1",
+							client_id: "desktop-1",
+							surface: "superiorswarm",
+							purpose: "handoff",
+							heartbeat_at: 120,
+							expires_at: 180,
+						},
+						origin: {
+							platform: "slack",
+							label: "#engineering · thread",
+							origin_ref: "origin_123",
+							can_open_origin: true,
+							can_report_to_origin: true,
+						},
+					},
+				],
+			},
+			protocolInfo()
+		);
 
 		expect(catalog.compatibility.state).toBe("compatible");
 		expect(catalog.sessions[0]).toEqual({
@@ -53,39 +76,50 @@ describe("Hermes protocol adapter", () => {
 			running: false,
 			busy: false,
 			claimed: true,
-			waitingForUser: true,
+			waitingForUser: false,
 			originLabel: "#engineering · thread",
 			canOpenOrigin: true,
 			canReportToOrigin: true,
 			opaqueOriginRef: "origin_123",
 		});
-		expect(JSON.stringify(catalog)).not.toContain("must-not-cross");
+		expect(catalog.compatibility.capabilities).toEqual(advertisedCapabilities);
+		expect(JSON.stringify(catalog)).not.toContain("desktop-1");
 	});
 
-	test("fails closed when the Hermes extension is missing required capabilities", () => {
-		const catalog = normalizeHermesCatalog({
-			protocol_version: 1,
-			capabilities: ["session.catalog"],
-			sessions: [],
-		});
+	test("fails closed when the actual Hermes protocol omits a required method", () => {
+		const catalog = normalizeHermesCatalog(
+			{ protocol_version: 1, sessions: [] },
+			protocolInfo(["session.catalog"])
+		);
 
 		expect(catalog.compatibility.state).toBe("upgrade-required");
 		expect(catalog.compatibility.missingCapabilities).toContain("session.claim");
 	});
 
+	test("fails closed when the Hermes handoff protocol version is too old", () => {
+		const catalog = normalizeHermesCatalog(
+			{ protocol_version: 1, sessions: [] },
+			protocolInfo(HERMES_REQUIRED_CAPABILITIES, 0)
+		);
+
+		expect(catalog.compatibility.state).toBe("upgrade-required");
+	});
+
 	test("redacts credentials embedded in catalog display fields", () => {
-		const catalog = normalizeHermesCatalog({
-			protocol_version: 1,
-			capabilities: HERMES_REQUIRED_CAPABILITIES,
-			sessions: [
-				{
-					id: "session-secret",
-					title: "Failed ws://localhost/api/ws?token=title-secret",
-					preview: "Bearer preview-secret",
-					origin_label: "Bearer origin-secret",
-				},
-			],
-		});
+		const catalog = normalizeHermesCatalog(
+			{
+				protocol_version: 1,
+				sessions: [
+					{
+						session_id: "session-secret",
+						title: "Failed ws://localhost/api/ws?token=title-secret",
+						preview: "Bearer preview-secret",
+						origin: { label: "Bearer origin-secret" },
+					},
+				],
+			},
+			protocolInfo()
+		);
 
 		expect(JSON.stringify(catalog)).not.toContain("title-secret");
 		expect(JSON.stringify(catalog)).not.toContain("preview-secret");

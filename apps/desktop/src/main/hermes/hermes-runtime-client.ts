@@ -274,13 +274,17 @@ export class HermesRuntimeClient {
 			pending.removeAbortListener();
 			const error = response["error"] as Record<string, unknown> | undefined;
 			if (error) {
+				const errorData =
+					error["data"] !== null && typeof error["data"] === "object"
+						? (error["data"] as Record<string, unknown>)
+						: null;
 				pending.reject(
 					new HermesRpcError(
 						safeErrorMessage(error["message"]),
 						typeof error["code"] === "number" || typeof error["code"] === "string"
 							? error["code"]
 							: null,
-						error["retryable"] === true
+						error["retryable"] === true || errorData?.["retryable"] === true
 					)
 				);
 			} else {
