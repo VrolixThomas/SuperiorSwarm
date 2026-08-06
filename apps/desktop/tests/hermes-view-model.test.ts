@@ -3,6 +3,7 @@ import {
 	applyHermesEvent,
 	createHermesLiveState,
 	filterHermesSessions,
+	latestReportableHermesTurnResult,
 } from "../src/renderer/hermes/hermes-view-model";
 import type { HermesRuntimeEvent, HermesSessionSummary } from "../src/shared/hermes";
 
@@ -109,7 +110,7 @@ describe("Hermes renderer view model", () => {
 				payload: {
 					choices: [
 						{ value: "allow_once", label: "Allow this deployment" },
-						{ value: "deny", description: "Stop and return to the agent" },
+						{ value: "deny", label: "Stop and return to the agent" },
 					],
 				},
 			})
@@ -146,5 +147,20 @@ describe("Hermes renderer view model", () => {
 
 		expect(state.completed).toEqual([]);
 		expect(state.error).toBe("token=private failure");
+	});
+
+	test("selects the latest successful durable turn result without a live completion event", () => {
+		expect(
+			latestReportableHermesTurnResult([
+				{ turnId: "turn-newer-error", content: "Failed", completedAt: 300, status: "error" },
+				{ turnId: "turn-old", content: "Old result", completedAt: 100, status: "complete" },
+				{ turnId: "turn-latest", content: "Latest result", completedAt: 200, status: "complete" },
+			])
+		).toEqual({
+			turnId: "turn-latest",
+			content: "Latest result",
+			completedAt: 200,
+			status: "complete",
+		});
 	});
 });

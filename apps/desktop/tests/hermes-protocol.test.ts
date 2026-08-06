@@ -4,6 +4,7 @@ import {
 	extractWorkspaceArtifacts,
 	normalizeHermesCatalog,
 	normalizeHermesEvent,
+	normalizeHermesHistory,
 } from "../src/main/hermes/hermes-protocol";
 
 describe("Hermes protocol adapter", () => {
@@ -169,6 +170,64 @@ describe("Hermes protocol adapter", () => {
 		expect(JSON.stringify(event)).not.toContain("another-secret");
 	});
 
+	test("constructs a strict renderer event DTO and drops arbitrary tool arguments and results", () => {
+		const event = normalizeHermesEvent({
+			jsonrpc: "2.0",
+			method: "event",
+			params: {
+				type: "tool.complete",
+				session_id: "runtime-1",
+				payload: {
+					request_id: "tool-1",
+					tool_name: "deploy",
+					status: "complete",
+					text: [
+						"API_KEY=api-key-secret",
+						"Authorization: Basic basic-auth-secret",
+						"https://files.example.test/archive?X-Amz-Signature=signed-url-secret&part=1",
+					].join("\n"),
+					tool_args: { environment: "production", value: "tool-args-secret" },
+					result: {
+						output: "benign-result-field-secret",
+						metadata: { note: "nested-result-secret" },
+					},
+					artifact: {
+						kind: "superiorswarm.workspace.created",
+						workspaceId: "workspace-1",
+						projectId: "project-1",
+						branch: "feat/hermes?token=artifact-url-secret",
+						worktreePath: "/repos/app-worktrees/feat/hermes",
+						metadata: { credential: "artifact-metadata-secret" },
+					},
+				},
+			},
+		});
+
+		expect(event?.payload).toEqual({});
+		expect(event?.workspaceArtifacts).toEqual([
+			{
+				kind: "superiorswarm.workspace.created",
+				workspaceId: "workspace-1",
+				projectId: "project-1",
+				branch: "feat/hermes?token=[redacted]",
+				worktreePath: "/repos/app-worktrees/feat/hermes",
+			},
+		]);
+		const serialized = JSON.stringify(event);
+		for (const secret of [
+			"api-key-secret",
+			"basic-auth-secret",
+			"signed-url-secret",
+			"tool-args-secret",
+			"benign-result-field-secret",
+			"nested-result-secret",
+			"artifact-url-secret",
+			"artifact-metadata-secret",
+		]) {
+			expect(serialized).not.toContain(secret);
+		}
+	});
+
 	test("normalizes real approval and clarification prompts with choices without exposing secrets", () => {
 		const approval = normalizeHermesEvent({
 			jsonrpc: "2.0",
@@ -207,7 +266,7 @@ describe("Hermes protocol adapter", () => {
 			{ value: "allow_once", label: "Allow once" },
 			{ value: "deny", label: "Deny" },
 		]);
-		expect(clarification?.text).toBe("Which environment should use Bearer [redacted]?");
+		expect(clarification?.text).toBe("Which environment should use [redacted]?");
 		expect(JSON.stringify({ approval, clarification })).not.toContain("command-secret");
 		expect(JSON.stringify({ approval, clarification })).not.toContain("description-secret");
 		expect(JSON.stringify({ approval, clarification })).not.toContain("clarification-secret");
@@ -227,5 +286,34 @@ describe("Hermes protocol adapter", () => {
 
 		expect(approval?.text).toBeNull();
 		expect(clarification?.text).toBeNull();
+	});
+
+	test("normalizes allow-listed durable turn results without forwarding extra result fields", () => {
+		const history = normalizeHermesHistory({
+			messages: [{ id: "message-1", role: "assistant", text: "Done" }],
+			turn_results: [
+				{
+					turn_id: "turn-1",
+					content: "Finished with API_KEY=durable-secret",
+					completed_at: 456,
+					status: "complete",
+					result: { summary: "benign-history-result-secret" },
+					extra: "extra-history-secret",
+				},
+			],
+		});
+
+		expect(history.messages).toHaveLength(1);
+		expect(history.turnResults).toEqual([
+			{
+				turnId: "turn-1",
+				content: "Finished with API_KEY=[redacted]",
+				completedAt: 456,
+				status: "complete",
+			},
+		]);
+		expect(JSON.stringify(history)).not.toContain("durable-secret");
+		expect(JSON.stringify(history)).not.toContain("benign-history-result-secret");
+		expect(JSON.stringify(history)).not.toContain("extra-history-secret");
 	});
 });

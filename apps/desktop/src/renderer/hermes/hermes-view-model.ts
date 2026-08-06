@@ -1,4 +1,8 @@
-import type { HermesRuntimeEvent, HermesSessionSummary } from "../../shared/hermes";
+import type {
+	HermesRuntimeEvent,
+	HermesSessionSummary,
+	HermesTurnResult,
+} from "../../shared/hermes";
 
 export type HermesSessionFilter = "open" | "all" | "archived";
 
@@ -43,28 +47,26 @@ export function createHermesLiveState(): HermesLiveState {
 	};
 }
 
-function choiceLabel(value: string): string {
-	const normalized = value.replaceAll("_", " ").replaceAll("-", " ").trim();
-	return normalized ? normalized[0]?.toUpperCase() + normalized.slice(1) : value;
+function choicesFrom(event: HermesRuntimeEvent): HermesInteractionChoice[] {
+	return event.payload.choices?.map((choice) => ({ ...choice })) ?? [];
 }
 
-function choicesFrom(event: HermesRuntimeEvent): HermesInteractionChoice[] {
-	const choices = event.payload["choices"];
-	if (!Array.isArray(choices)) return [];
-	return choices.flatMap((choice) => {
-		if (typeof choice === "string") return [{ value: choice, label: choiceLabel(choice) }];
-		if (choice && typeof choice === "object") {
-			const values = choice as Record<string, unknown>;
-			const value = values["value"];
-			if (typeof value === "string") {
-				const label = [values["label"], values["description"], values["title"]].find(
-					(candidate): candidate is string => typeof candidate === "string" && candidate.length > 0
-				);
-				return [{ value, label: label ?? choiceLabel(value) }];
-			}
+export function latestReportableHermesTurnResult(
+	turnResults: HermesTurnResult[]
+): HermesTurnResult | null {
+	let latest: HermesTurnResult | null = null;
+	for (const result of turnResults) {
+		const status = result.status?.toLocaleLowerCase();
+		if (
+			!result.turnId ||
+			!result.content ||
+			["error", "failed", "cancelled"].includes(status ?? "")
+		) {
+			continue;
 		}
-		return [];
-	});
+		if (!latest || (result.completedAt ?? 0) >= (latest.completedAt ?? 0)) latest = result;
+	}
+	return latest;
 }
 
 const GENERIC_APPROVAL_CHOICES: HermesInteractionChoice[] = [

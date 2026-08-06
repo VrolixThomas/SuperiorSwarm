@@ -95,7 +95,7 @@ function resetStore() {
 		workspaceForwardStack: [],
 		pendingWorkspaceHistoryEntry: null,
 		sidebarSegment: "repos",
-		activeWorkspaceBySegment: { repos: null, tickets: null, prs: null },
+		activeWorkspaceBySegment: { repos: null, tickets: null, prs: null, hermes: null },
 		activeTicketProject: "all",
 		activeTicketScope: { kind: "current" },
 		selectedTicketId: null,

@@ -68,6 +68,36 @@ export interface HermesTranscriptMessage {
 	workspaceArtifacts: HermesWorkspaceArtifact[];
 }
 
+export interface HermesTurnResult {
+	turnId: string;
+	content: string;
+	completedAt: number | null;
+	status: string | null;
+}
+
+export interface HermesSessionHistory {
+	messages: HermesTranscriptMessage[];
+	turnResults: HermesTurnResult[];
+}
+
+export interface HermesInteractionChoiceDto {
+	value: string;
+	label: string;
+}
+
+export interface HermesReconnectBindingMetadata {
+	hermesSessionId: string;
+	canonicalSessionId: string;
+	runtimeSessionId: string;
+	claimId: string;
+}
+
+export interface HermesRuntimeEventPayload {
+	choices?: HermesInteractionChoiceDto[];
+	bindings?: HermesReconnectBindingMetadata[];
+	failedSessionIds?: string[];
+}
+
 export interface HermesRuntimeEvent {
 	type: string;
 	sessionId: string | null;
@@ -76,9 +106,21 @@ export interface HermesRuntimeEvent {
 	text: string | null;
 	toolName: string | null;
 	status: string | null;
-	payload: Record<string, unknown>;
+	payload: HermesRuntimeEventPayload;
 	workspaceArtifacts: HermesWorkspaceArtifact[];
 	receivedAt: number;
+}
+
+export interface HermesSessionSelection {
+	connectionId: string;
+	sessionId: string;
+}
+
+export interface HermesBindingReleaseResult {
+	unbound: boolean;
+	released: boolean;
+	retryable: boolean;
+	error: string | null;
 }
 
 export interface HermesConnectionSummary {

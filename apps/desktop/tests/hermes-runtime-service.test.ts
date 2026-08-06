@@ -26,7 +26,16 @@ class FakeClient implements HermesRuntimeClientLike {
 	failReport = false;
 	catalogMethodMissing = false;
 	failToolArtifacts = false;
+	releaseBusyRemaining = 0;
 	failResumeNumbers = new Set<number>();
+	historyTurnResults: Array<Record<string, unknown>> = [
+		{
+			turn_id: "turn-1",
+			content: "Done",
+			completed_at: 300,
+			status: "complete",
+		},
+	];
 	claimCount = 0;
 	resumeCount = 0;
 	requests: Array<{ method: string; params: Record<string, unknown> }> = [];
@@ -158,6 +167,7 @@ class FakeClient implements HermesRuntimeClientLike {
 							},
 						},
 					],
+					turn_results: this.historyTurnResults,
 				};
 			case "session.tool_artifacts":
 				if (this.failToolArtifacts) throw new Error("artifact projection unavailable");
@@ -185,6 +195,15 @@ class FakeClient implements HermesRuntimeClientLike {
 					permalink: "https://slack.com/archives/thread",
 				};
 			case "session.release":
+				if (this.releaseBusyRemaining > 0) {
+					this.releaseBusyRemaining--;
+					return {
+						released: false,
+						busy: true,
+						retryable: true,
+						error: "Hermes session is busy",
+					};
+				}
 				return { released: true };
 			default:
 				return { ok: true };
@@ -266,7 +285,13 @@ describe("HermesRuntimeService", () => {
 
 		const resumed = await service.resume(connectionId, "session-tip");
 		expect(resumed.runtimeSessionId).toBe("runtime-1");
-		expect(resumed.history[0]?.text).toBe("Created workspace");
+		expect(resumed.history.messages[0]?.text).toBe("Created workspace");
+		expect(resumed.history.turnResults[0]).toEqual({
+			turnId: "turn-1",
+			content: "Done",
+			completedAt: 300,
+			status: "complete",
+		});
 		expect(client.requests.map((request) => request.method).slice(0, 5)).toEqual([
 			"protocol.info",
 			"session.catalog",
@@ -301,7 +326,6 @@ describe("HermesRuntimeService", () => {
 			connectionId,
 			hermesSessionId: "session-tip",
 			turnId: "turn-1",
-			content: "Done",
 		});
 		expect(report.status).toBe("sent");
 		expect(report.permalink).toBe("https://slack.com/archives/thread");
@@ -309,7 +333,6 @@ describe("HermesRuntimeService", () => {
 			connectionId,
 			hermesSessionId: "session-tip",
 			turnId: "turn-1",
-			content: "Done",
 		});
 		expect(repeatedReport.status).toBe("sent");
 		expect(
@@ -385,6 +408,9 @@ describe("HermesRuntimeService", () => {
 		client.catalogSessionId = "session-canonical";
 		client.catalogLineageTipId = "session-tip";
 		client.resumeStoredSessionId = "session-new-tip";
+		client.historyTurnResults = [
+			{ turn_id: "turn-tip", content: "Finished", completed_at: 400, status: "complete" },
+		];
 		await service.connect(connectionId);
 		await service.resume(connectionId, "session-canonical");
 		const originInfo = await service.origin(connectionId, "session-canonical");
@@ -392,7 +418,6 @@ describe("HermesRuntimeService", () => {
 			connectionId,
 			hermesSessionId: "session-canonical",
 			turnId: "turn-tip",
-			content: "Finished",
 		});
 
 		const origin = client.requests.find((request) => request.method === "session.origin");
@@ -425,16 +450,85 @@ describe("HermesRuntimeService", () => {
 
 	test("persists transport report failures as retryable", async () => {
 		await service.connect(connectionId);
+		await service.resume(connectionId, "session-tip");
+		client.historyTurnResults = [
+			{
+				turn_id: "turn-network-failure",
+				content: "Finished",
+				completed_at: 500,
+				status: "complete",
+			},
+		];
 		client.failReport = true;
 		const report = await service.reportToOrigin({
 			connectionId,
 			hermesSessionId: "session-tip",
 			turnId: "turn-network-failure",
-			content: "Finished",
 		});
 
 		expect(report.status).toBe("failed");
 		expect(report.retryable).toBe(true);
+	});
+
+	test("reports the exact latest durable result after reopening without a live completion event", async () => {
+		client.historyTurnResults = [
+			{ turn_id: "turn-old", content: "Old", completed_at: 100, status: "complete" },
+			{
+				turn_id: "turn-latest",
+				content: "Exact durable result with API_KEY=main-only-secret",
+				completed_at: 200,
+				status: "complete",
+				result: { output: "must-never-reach-renderer" },
+			},
+		];
+		await service.connect(connectionId);
+		const firstOpen = await service.resume(connectionId, "session-tip");
+		expect(firstOpen.history.turnResults.at(-1)?.content).toBe(
+			"Exact durable result with API_KEY=[redacted]"
+		);
+		expect(JSON.stringify(firstOpen.history)).not.toContain("main-only-secret");
+		expect(JSON.stringify(firstOpen.history)).not.toContain("must-never-reach-renderer");
+		await service.release(connectionId, "session-tip");
+
+		const reopened = await service.resume(connectionId, "session-tip");
+		expect(reopened.history.turnResults.at(-1)?.turnId).toBe("turn-latest");
+		await service.reportToOrigin({
+			connectionId,
+			hermesSessionId: "session-tip",
+			turnId: "turn-latest",
+		});
+
+		const request = client.requests.find(
+			(candidate) =>
+				candidate.method === "session.report_to_origin" &&
+				candidate.params["turn_id"] === "turn-latest"
+		);
+		expect(request?.params["content"]).toBe("Exact durable result with API_KEY=main-only-secret");
+	});
+
+	test("keeps a busy release explicitly active and renewable for safe retry", async () => {
+		await service.connect(connectionId);
+		await service.resume(connectionId, "session-tip");
+		client.releaseBusyRemaining = 1;
+
+		const busy = await service.release(connectionId, "session-tip");
+		expect(busy).toEqual({
+			unbound: false,
+			released: false,
+			retryable: true,
+			error: "Hermes session is busy",
+		});
+		const safelyRebound = await service.resume(connectionId, "session-tip");
+		expect(safelyRebound.claimId).toBe("claim-1");
+		await service.submit(connectionId, "session-tip", "Still safely bound");
+
+		const retried = await service.release(connectionId, "session-tip");
+		expect(retried).toEqual({
+			unbound: true,
+			released: true,
+			retryable: false,
+			error: null,
+		});
 	});
 
 	test("fails closed with an upgrade-required state when capabilities are missing", async () => {
@@ -468,9 +562,24 @@ describe("HermesRuntimeService", () => {
 		const staleCleanup = await service.unbind(connectionId, "session-tip", first.claimId);
 		await service.submit(connectionId, "session-tip", "Still bound");
 
-		expect(released).toEqual({ unbound: true, released: true });
-		expect(repeated).toEqual({ unbound: false, released: false });
-		expect(staleCleanup).toEqual({ unbound: false, released: false });
+		expect(released).toEqual({
+			unbound: true,
+			released: true,
+			retryable: false,
+			error: null,
+		});
+		expect(repeated).toEqual({
+			unbound: false,
+			released: false,
+			retryable: false,
+			error: null,
+		});
+		expect(staleCleanup).toEqual({
+			unbound: false,
+			released: false,
+			retryable: false,
+			error: null,
+		});
 		expect(second).toMatchObject({ claimId: "claim-2", runtimeSessionId: "runtime-2" });
 		const submit = [...client.requests]
 			.reverse()
@@ -606,7 +715,12 @@ describe("HermesRuntimeService", () => {
 		const recovered = await service.resume(connectionId, "session-tip");
 		expect(recovered).toMatchObject({ claimId: "claim-3", runtimeSessionId: "runtime-3" });
 		const staleCleanup = await service.unbind(connectionId, "session-tip", first.claimId);
-		expect(staleCleanup).toEqual({ unbound: false, released: false });
+		expect(staleCleanup).toEqual({
+			unbound: false,
+			released: false,
+			retryable: false,
+			error: null,
+		});
 		await service.submit(connectionId, "session-tip", "Recovered");
 	});
 
@@ -638,11 +752,13 @@ describe("HermesRuntimeService", () => {
 		});
 		await Bun.sleep(10);
 		await service.origin(profiledConnectionId, "session-tip");
+		client.historyTurnResults = [
+			{ turn_id: "turn-profile", content: "Done", completed_at: 600, status: "complete" },
+		];
 		await service.reportToOrigin({
 			connectionId: profiledConnectionId,
 			hermesSessionId: "session-tip",
 			turnId: "turn-profile",
-			content: "Done",
 		});
 		await service.release(profiledConnectionId, "session-tip");
 

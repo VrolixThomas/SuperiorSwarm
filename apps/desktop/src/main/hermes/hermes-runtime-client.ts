@@ -1,5 +1,5 @@
 import type { HermesRuntimeEvent, HermesRuntimeState } from "../../shared/hermes";
-import { normalizeHermesEvent } from "./hermes-protocol";
+import { normalizeHermesEvent, sanitizeHermesPayload } from "./hermes-protocol";
 
 interface SocketEvent {
 	data?: unknown;
@@ -66,9 +66,8 @@ function defaultSocketFactory(url: string): HermesSocket {
 function safeErrorMessage(value: unknown): string {
 	const message =
 		value instanceof Error ? value.message : String(value || "Hermes connection failed");
-	return message
-		.replace(/([?&](?:token|ticket|internal)=)[^&\s]+/gi, "$1[redacted]")
-		.replace(/Bearer\s+[^\s"']+/gi, "Bearer [redacted]");
+	const sanitized = sanitizeHermesPayload(message);
+	return typeof sanitized === "string" ? sanitized : "Hermes connection failed";
 }
 
 export class HermesRuntimeClient {

@@ -1,8 +1,11 @@
 import {
 	HERMES_WORKSPACE_ARTIFACT_KIND,
 	type HermesCatalog,
+	type HermesInteractionChoiceDto,
 	type HermesRuntimeEvent,
+	type HermesSessionHistory,
 	type HermesTranscriptMessage,
+	type HermesTurnResult,
 	type HermesWorkspaceArtifact,
 } from "../../shared/hermes";
 
@@ -71,7 +74,11 @@ const SENSITIVE_KEY = /(token|secret|credential|authorization|password|cookie|or
 
 function sanitizeString(value: string): string {
 	return value
-		.replace(/([?&](?:token|ticket|internal)=)[^&\s]+/gi, "$1[redacted]")
+		.replace(
+			/([?&](?:token|ticket|internal|signature|sig|x-amz-signature|x-goog-signature|x-amz-credential|x-amz-security-token|access_token)=)[^&\s]+/gi,
+			"$1[redacted]"
+		)
+		.replace(/(\bAuthorization\s*:\s*)(?:Bearer|Basic)\s+[^\s,"';]+/gi, "$1[redacted]")
 		.replace(
 			/(\b(?:api[-_]?key|token|secret|credential|authorization|password|cookie)\b\s*[:=]\s*)(["']?)[^\s,"';]+\2/gi,
 			"$1[redacted]"
@@ -80,7 +87,7 @@ function sanitizeString(value: string): string {
 			/(--(?:api[-_]?key|token|secret|credential|authorization|password|cookie)\s+)(["']?)[^\s,"';]+\2/gi,
 			"$1[redacted]"
 		)
-		.replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [redacted]");
+		.replace(/(?:Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi, "[redacted]");
 }
 
 function sanitizedStringValue(...values: unknown[]): string | null {
@@ -112,13 +119,24 @@ function isWorkspaceArtifact(value: unknown): value is HermesWorkspaceArtifact {
 	);
 }
 
+function normalizeWorkspaceArtifact(value: HermesWorkspaceArtifact): HermesWorkspaceArtifact {
+	return {
+		kind: HERMES_WORKSPACE_ARTIFACT_KIND,
+		workspaceId: sanitizeString(value.workspaceId),
+		projectId: sanitizeString(value.projectId),
+		branch: sanitizeString(value.branch),
+		worktreePath: sanitizeString(value.worktreePath),
+	};
+}
+
 export function extractWorkspaceArtifacts(value: unknown): HermesWorkspaceArtifact[] {
 	const found = new Map<string, HermesWorkspaceArtifact>();
 	const seen = new Set<object>();
 
 	function visit(candidate: unknown): void {
 		if (isWorkspaceArtifact(candidate)) {
-			found.set(`${candidate.projectId}:${candidate.workspaceId}`, { ...candidate });
+			const artifact = normalizeWorkspaceArtifact(candidate);
+			found.set(`${artifact.projectId}:${artifact.workspaceId}`, artifact);
 			return;
 		}
 		if (typeof candidate === "string") {
@@ -249,18 +267,18 @@ export function normalizeHermesEvent(value: unknown): HermesRuntimeEvent | null 
 	const payload = record(params?.["payload"]) ?? {};
 	const type = stringValue(params?.["type"], payload["type"]);
 	if (!type) return null;
-	const sanitized = (sanitizeHermesPayload(payload) ?? {}) as JsonRecord;
-	let text = stringValue(sanitized["text"], sanitized["message"]);
+	let text = sanitizedStringValue(payload["text"], payload["message"]);
 	if (type === "approval.request") {
-		const description = stringValue(sanitized["description"]);
-		const command = stringValue(sanitized["command"]);
+		const description = sanitizedStringValue(payload["description"]);
+		const command = sanitizedStringValue(payload["command"]);
 		if (description && command) text = `${description}\n\nCommand:\n${command}`;
 		else text = description ?? command ?? text;
 	} else if (type === "clarify.request") {
-		text = stringValue(sanitized["question"]) ?? text;
+		text = sanitizedStringValue(payload["question"]) ?? text;
 	}
+	const choices = normalizeInteractionChoices(payload["choices"]);
 	return {
-		type,
+		type: sanitizeString(type),
 		sessionId: stringValue(
 			params?.["session_id"],
 			params?.["sessionId"],
@@ -270,22 +288,76 @@ export function normalizeHermesEvent(value: unknown): HermesRuntimeEvent | null 
 		turnId: stringValue(payload["turn_id"], payload["turnId"]),
 		requestId: stringValue(payload["request_id"], payload["requestId"]),
 		text,
-		toolName: stringValue(payload["tool_name"], payload["toolName"], payload["name"]),
-		status: stringValue(payload["status"]),
-		payload: sanitized,
+		toolName: sanitizedStringValue(payload["tool_name"], payload["toolName"], payload["name"]),
+		status: sanitizedStringValue(payload["status"]),
+		payload: choices.length > 0 ? { choices } : {},
 		workspaceArtifacts: extractWorkspaceArtifacts(payload),
 		receivedAt: Date.now(),
 	};
 }
 
-export function normalizeHermesHistory(value: unknown): HermesTranscriptMessage[] {
+function normalizeInteractionChoices(value: unknown): HermesInteractionChoiceDto[] {
+	if (!Array.isArray(value)) return [];
+	return value.flatMap((choice) => {
+		if (typeof choice === "string") {
+			const safe = sanitizeString(choice);
+			return safe ? [{ value: safe, label: safe }] : [];
+		}
+		const item = record(choice);
+		const rawValue = stringValue(item?.["value"]);
+		if (!item || !rawValue) return [];
+		const safeValue = sanitizeString(rawValue);
+		const label =
+			sanitizedStringValue(item["label"], item["description"], item["title"]) ?? safeValue;
+		return [{ value: safeValue, label }];
+	});
+}
+
+function contentText(value: unknown): string | null {
+	if (typeof value === "string") return value;
+	if (!Array.isArray(value)) return null;
+	const text = value.map((part) => stringValue(record(part)?.["text"]) ?? "").join("");
+	return text || null;
+}
+
+export interface HermesExactTurnResult {
+	turnId: string;
+	content: string;
+	completedAt: number | null;
+	status: string | null;
+}
+
+export function extractExactHermesTurnResults(value: unknown): HermesExactTurnResult[] {
+	const root = record(value) ?? {};
+	const results = Array.isArray(root["turn_results"])
+		? root["turn_results"]
+		: Array.isArray(root["turnResults"])
+			? root["turnResults"]
+			: [];
+	return results.flatMap((value) => {
+		const result = record(value);
+		const turnId = stringValue(result?.["turn_id"], result?.["turnId"]);
+		const content = contentText(result?.["content"]);
+		if (!result || !turnId || content === null) return [];
+		return [
+			{
+				turnId,
+				content,
+				completedAt: numberValue(result["completed_at"], result["completedAt"]),
+				status: stringValue(result["status"]),
+			},
+		];
+	});
+}
+
+export function normalizeHermesHistory(value: unknown): HermesSessionHistory {
 	const root = record(value) ?? {};
 	const messages = Array.isArray(root["messages"])
 		? root["messages"]
 		: Array.isArray(value)
 			? value
 			: [];
-	return messages.flatMap((value, index) => {
+	const normalizedMessages: HermesTranscriptMessage[] = messages.flatMap((value, index) => {
 		const message = record(value);
 		if (!message) return [];
 		const rawRole = stringValue(message["role"]) ?? "system";
@@ -305,10 +377,16 @@ export function normalizeHermesHistory(value: unknown): HermesTranscriptMessage[
 				role,
 				text: sanitizeString(text),
 				createdAt: numberValue(message["created_at"], message["timestamp"]),
-				status: stringValue(message["status"]),
-				toolName: stringValue(message["tool_name"], message["name"]),
+				status: sanitizedStringValue(message["status"]),
+				toolName: sanitizedStringValue(message["tool_name"], message["name"]),
 				workspaceArtifacts: extractWorkspaceArtifacts(message),
 			},
 		];
 	});
+	const turnResults: HermesTurnResult[] = extractExactHermesTurnResults(value).map((result) => ({
+		...result,
+		content: sanitizeString(result.content),
+		status: result.status === null ? null : sanitizeString(result.status),
+	}));
+	return { messages: normalizedMessages, turnResults };
 }

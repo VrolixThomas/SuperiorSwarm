@@ -37,7 +37,12 @@ import { useEditorSettingsStore } from "./stores/editor-settings";
 import { usePaneStore } from "./stores/pane-store";
 import { useProjectStore } from "./stores/projects";
 import type { TabItem } from "./stores/tab-store";
-import { resetFileTabCounter, useTabStore } from "./stores/tab-store";
+import {
+	resetFileTabCounter,
+	serializeHermesSessionSelection,
+	shouldHydrateTabStore,
+	useTabStore,
+} from "./stores/tab-store";
 import { useUpdateStore } from "./stores/update-store";
 import { trpc } from "./trpc/client";
 
@@ -161,11 +166,12 @@ function collectSnapshot() {
 	if (Object.keys(baseBranchByWorkspace).length > 0) {
 		state["baseBranchByWorkspace"] = JSON.stringify(baseBranchByWorkspace);
 	}
-	const { sidebarSegment, activeWorkspaceBySegment, workspaceMetadata, selectedHermesSessionId } =
+	const { sidebarSegment, activeWorkspaceBySegment, workspaceMetadata, selectedHermesSession } =
 		store;
 	if (sidebarSegment) state["sidebarSegment"] = sidebarSegment;
 	state["activeWorkspaceBySegment"] = JSON.stringify(activeWorkspaceBySegment);
-	if (selectedHermesSessionId) state["selectedHermesSessionId"] = selectedHermesSessionId;
+	const serializedHermesSession = serializeHermesSessionSelection(selectedHermesSession);
+	if (serializedHermesSession) state["selectedHermesSession"] = serializedHermesSession;
 	if (Object.keys(workspaceMetadata).length > 0) {
 		state["workspaceMetadata"] = JSON.stringify(workspaceMetadata);
 	}
@@ -263,7 +269,7 @@ function AuthenticatedApp() {
 			}
 		}
 
-		if (!hasSessions && !hasLayouts) return;
+		if (!shouldHydrateTabStore(hasSessions, Boolean(hasLayouts), state)) return;
 
 		const scrollbacks: Record<string, string> = {};
 		for (const session of sessions) {
@@ -273,17 +279,15 @@ function AuthenticatedApp() {
 		}
 		setSavedScrollback(scrollbacks);
 
-		if (hasSessions) {
-			useTabStore
-				.getState()
-				.hydrate(
-					sessions,
-					state["activeTabId"] ?? null,
-					state["activeWorkspaceId"] ?? null,
-					state["activeWorkspaceCwd"] ?? "",
-					state
-				);
-		}
+		useTabStore
+			.getState()
+			.hydrate(
+				sessions,
+				state["activeTabId"] ?? null,
+				state["activeWorkspaceId"] ?? null,
+				state["activeWorkspaceCwd"] ?? "",
+				state
+			);
 
 		// Backfill workspace metadata from backend for workspaces not already saved client-side
 		if (workspaceMeta) {

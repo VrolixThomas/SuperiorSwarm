@@ -21,6 +21,15 @@ const connectionSessionInput = z.object({
 	hermesSessionId: z.string().min(1),
 });
 
+function rendererOriginReportState(state: ReturnType<typeof hermesRuntimeService.reports>[number]) {
+	return {
+		turnId: state.turnId,
+		status: state.status,
+		retryable: state.retryable,
+		updatedAt: state.updatedAt,
+	};
+}
+
 export const hermesRouter = router({
 	connections: publicProcedure.query(() => listHermesConnections()),
 
@@ -63,11 +72,14 @@ export const hermesRouter = router({
 		.input(z.object({ connectionId: z.string().min(1) }))
 		.query(({ input }) => hermesRuntimeService.catalog(input.connectionId)),
 
-	resume: publicProcedure
-		.input(connectionSessionInput)
-		.mutation(({ input }) =>
-			hermesRuntimeService.resume(input.connectionId, input.hermesSessionId)
-		),
+	resume: publicProcedure.input(connectionSessionInput).mutation(async ({ input }) => {
+		const resumed = await hermesRuntimeService.resume(input.connectionId, input.hermesSessionId);
+		return {
+			canonicalSessionId: resumed.canonicalSessionId,
+			runtimeSessionId: resumed.runtimeSessionId,
+			claimId: resumed.claimId,
+		};
+	}),
 
 	history: publicProcedure
 		.input(connectionSessionInput)
@@ -144,14 +156,19 @@ export const hermesRouter = router({
 		.input(
 			connectionSessionInput.extend({
 				turnId: z.string().min(1),
-				content: z.string().min(1).max(200_000),
 			})
 		)
-		.mutation(({ input }) => hermesRuntimeService.reportToOrigin(input)),
+		.mutation(async ({ input }) =>
+			rendererOriginReportState(await hermesRuntimeService.reportToOrigin(input))
+		),
 
 	reports: publicProcedure
 		.input(connectionSessionInput)
-		.query(({ input }) => hermesRuntimeService.reports(input.connectionId, input.hermesSessionId)),
+		.query(({ input }) =>
+			hermesRuntimeService
+				.reports(input.connectionId, input.hermesSessionId)
+				.map(rendererOriginReportState)
+		),
 
 	workspaceLinks: publicProcedure
 		.input(connectionSessionInput)

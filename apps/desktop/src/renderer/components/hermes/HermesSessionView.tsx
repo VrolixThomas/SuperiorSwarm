@@ -1,10 +1,15 @@
-import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { type FormEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { HermesTranscriptMessage } from "../../../shared/hermes";
 import {
 	HermesBindingLifecycle,
 	type HermesRendererBinding,
 } from "../../hermes/hermes-binding-lifecycle";
-import { applyHermesEvent, createHermesLiveState } from "../../hermes/hermes-view-model";
+import { isHermesChatNearBottom, shouldAnchorHermesChat } from "../../hermes/hermes-chat-scroll";
+import {
+	applyHermesEvent,
+	createHermesLiveState,
+	latestReportableHermesTurnResult,
+} from "../../hermes/hermes-view-model";
 import { useTabStore } from "../../stores/tab-store";
 import { trpc } from "../../trpc/client";
 import { HermesApprovalCard, HermesClarificationChoices } from "./HermesInteractionCards";
@@ -33,7 +38,9 @@ function TranscriptMessage({ message }: { message: HermesTranscriptMessage }) {
 }
 
 export function HermesSessionView() {
-	const sessionId = useTabStore((state) => state.selectedHermesSessionId);
+	const selection = useTabStore((state) => state.selectedHermesSession);
+	const sessionId = selection?.sessionId ?? null;
+	const connectionId = selection?.connectionId ?? "";
 	const openWorkspaceFromHermes = useTabStore((state) => state.openWorkspaceFromHermes);
 	const [composer, setComposer] = useState("");
 	const [clarification, setClarification] = useState("");
@@ -41,13 +48,18 @@ export function HermesSessionView() {
 	const [live, setLive] = useState(createHermesLiveState);
 	const [manualWorkspaceId, setManualWorkspaceId] = useState("");
 	const [resumed, setResumed] = useState<ResumedHermesBinding | null>(null);
+	const [releaseFailure, setReleaseFailure] = useState<{
+		retryable: boolean;
+		error: string;
+	} | null>(null);
 	const resumeRequests = useRef(new Set<string>());
 	const processedEventSeq = useRef(0);
+	const transcriptRef = useRef<HTMLDivElement | null>(null);
+	const followingTranscript = useRef(true);
+	const anchoredSelectionKey = useRef<string | null>(null);
 	const utils = trpc.useUtils();
 
 	const connections = trpc.hermes.connections.useQuery();
-	const connection = connections.data?.[0] ?? null;
-	const connectionId = connection?.id ?? "";
 	const selectionKey = `${connectionId}:${sessionId ?? ""}`;
 	const previousSelectionKey = useRef(selectionKey);
 	const status = trpc.hermes.status.useQuery(
@@ -104,7 +116,19 @@ export function HermesSessionView() {
 		);
 	};
 	const release = trpc.hermes.release.useMutation({
-		onSuccess: () => {
+		onSuccess: (result) => {
+			if (!result.released) {
+				setReleaseFailure({
+					retryable: result.retryable,
+					error: result.error ?? "Hermes could not release this session.",
+				});
+				setLive((current) => ({
+					...current,
+					error: result.error ?? "Hermes could not release this session; retry is safe.",
+				}));
+				return;
+			}
+			setReleaseFailure(null);
 			setResumed(null);
 			resume.reset();
 			useTabStore.getState().selectHermesSession(null);
@@ -118,6 +142,12 @@ export function HermesSessionView() {
 	}, [bindingLifecycle]);
 
 	useEffect(() => {
+		if (!selection || !connections.data) return;
+		if (connections.data.some((candidate) => candidate.id === selection.connectionId)) return;
+		useTabStore.getState().selectHermesSession(null);
+	}, [connections.data, selection]);
+
+	useEffect(() => {
 		if (previousSelectionKey.current === selectionKey) return;
 		previousSelectionKey.current = selectionKey;
 		bindingLifecycle.releaseObsolete();
@@ -128,8 +158,12 @@ export function HermesSessionView() {
 		setClarification("");
 		setManualWorkspaceId("");
 		setResumed(null);
+		setReleaseFailure(null);
+		followingTranscript.current = true;
+		anchoredSelectionKey.current = null;
 		resume.reset();
-	}, [bindingLifecycle, resume, selectionKey]);
+		release.reset();
+	}, [bindingLifecycle, release, resume, selectionKey]);
 
 	useEffect(() => {
 		if (!sessionId || !connectionId || status.data?.status !== "connected") return;
@@ -159,22 +193,11 @@ export function HermesSessionView() {
 		const relevantEvents = feed.events.flatMap((entry) => {
 			if (entry.event.type === "runtime.history-refresh-required") {
 				refreshHistory = true;
-				const bindings = entry.event.payload["bindings"];
+				const bindings = entry.event.payload.bindings;
 				if (Array.isArray(bindings)) {
-					for (const candidate of bindings) {
-						if (!candidate || typeof candidate !== "object") continue;
-						const binding = candidate as Record<string, unknown>;
-						if (binding["hermesSessionId"] !== sessionId) continue;
-						const runtimeSessionId = binding["runtimeSessionId"];
-						const claimId = binding["claimId"];
-						const canonicalSessionId = binding["canonicalSessionId"];
-						if (
-							typeof runtimeSessionId !== "string" ||
-							typeof claimId !== "string" ||
-							typeof canonicalSessionId !== "string"
-						) {
-							continue;
-						}
+					for (const binding of bindings) {
+						if (binding.hermesSessionId !== sessionId) continue;
+						const { runtimeSessionId, claimId, canonicalSessionId } = binding;
 						activeRuntimeSessionId = runtimeSessionId;
 						reboundBinding = {
 							connectionId,
@@ -185,7 +208,7 @@ export function HermesSessionView() {
 						};
 					}
 				}
-				const failedSessionIds = entry.event.payload["failedSessionIds"];
+				const failedSessionIds = entry.event.payload.failedSessionIds;
 				retryBinding = Array.isArray(failedSessionIds) && failedSessionIds.includes(sessionId);
 			}
 			if (entry.event.sessionId !== null && entry.event.sessionId !== activeRuntimeSessionId) {
@@ -269,23 +292,10 @@ export function HermesSessionView() {
 		onSettled: () => void utils.hermes.reports.invalidate(),
 	});
 
-	const reportable = useMemo(() => {
-		const completed = live.completed.at(-1);
-		if (completed?.turnId && completed.text) return completed;
-		const messages = history.data ?? [];
-		for (let index = messages.length - 1; index >= 0; index--) {
-			const message = messages[index];
-			if (
-				message?.role === "assistant" &&
-				message.turnId &&
-				message.text &&
-				message.status !== "error"
-			) {
-				return { turnId: message.turnId, text: message.text };
-			}
-		}
-		return null;
-	}, [history.data, live.completed]);
+	const reportable = useMemo(
+		() => latestReportableHermesTurnResult(history.data?.turnResults ?? []),
+		[history.data?.turnResults]
+	);
 	const reportState = reportable
 		? reports.data?.find((candidate) => candidate.turnId === reportable.turnId)
 		: null;
@@ -295,6 +305,22 @@ export function HermesSessionView() {
 		if (!composer.trim() || !sessionId) return;
 		submit.mutate({ connectionId, hermesSessionId: sessionId, text: composer.trim() });
 	}
+
+	useLayoutEffect(() => {
+		const transcript = transcriptRef.current;
+		if (!transcript || !history.data || history.isLoading) return;
+		const initialHistory = anchoredSelectionKey.current !== selectionKey;
+		if (
+			shouldAnchorHermesChat({
+				initialHistory,
+				following: followingTranscript.current,
+			})
+		) {
+			transcript.scrollTop = transcript.scrollHeight;
+			followingTranscript.current = true;
+		}
+		if (initialHistory) anchoredSelectionKey.current = selectionKey;
+	});
 
 	if (!sessionId) {
 		return (
@@ -338,25 +364,35 @@ export function HermesSessionView() {
 						disabled={!resumed || release.isPending}
 						className="rounded-[5px] border border-[var(--border)] px-2 py-1 text-[11px] text-[var(--text-tertiary)] hover:bg-[var(--bg-elevated)] disabled:opacity-40"
 					>
-						Release
+						{release.isPending
+							? "Releasing…"
+							: releaseFailure?.retryable
+								? "Retry release"
+								: "Release"}
 					</button>
 				</div>
 			</header>
 
-			{(resume.error || live.error) && (
+			{(resume.error || release.error || live.error) && (
 				<div className="shrink-0 border-b border-[var(--danger)]/20 bg-[var(--danger)]/5 px-4 py-2 text-[11px] text-[var(--danger)]">
-					{resume.error?.message ?? live.error}
+					{resume.error?.message ?? release.error?.message ?? live.error}
 				</div>
 			)}
 
-			<div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+			<div
+				ref={transcriptRef}
+				onScroll={(event) => {
+					followingTranscript.current = isHermesChatNearBottom(event.currentTarget);
+				}}
+				className="min-h-0 flex-1 overflow-y-auto px-4 py-4"
+			>
 				<div className="mx-auto flex max-w-[860px] flex-col gap-3">
 					{history.isLoading && (
 						<div className="py-8 text-center text-[12px] text-[var(--text-quaternary)]">
 							Resuming canonical Hermes history…
 						</div>
 					)}
-					{history.data?.map((message) => (
+					{history.data?.messages.map((message) => (
 						<TranscriptMessage key={message.id} message={message} />
 					))}
 					{live.streamingText && (
@@ -395,7 +431,10 @@ export function HermesSessionView() {
 											disabled={link.missing || !link.worktreePath}
 											onClick={() => {
 												if (!link.worktreePath) return;
-												openWorkspaceFromHermes(link.workspaceId, link.worktreePath, sessionId);
+												openWorkspaceFromHermes(link.workspaceId, link.worktreePath, {
+													connectionId,
+													sessionId,
+												});
 												const tabs = useTabStore.getState().getTabsByWorkspace(link.workspaceId);
 												if (!tabs.some((tab) => tab.kind === "terminal")) {
 													const tabId = useTabStore
@@ -545,7 +584,6 @@ export function HermesSessionView() {
 										connectionId,
 										hermesSessionId: sessionId,
 										turnId: reportable.turnId ?? "",
-										content: reportable.text,
 									})
 								}
 								className="rounded-[5px] border border-[var(--border)] px-2 py-1 text-[var(--text-secondary)] disabled:opacity-50"

@@ -15,8 +15,9 @@ function relativeTime(timestamp: number): string {
 }
 
 export function HermesSidebar() {
-	const selectedSessionId = useTabStore((state) => state.selectedHermesSessionId);
+	const selectedSession = useTabStore((state) => state.selectedHermesSession);
 	const selectSession = useTabStore((state) => state.selectHermesSession);
+	const changeConnection = useTabStore((state) => state.changeHermesConnection);
 	const [connectionId, setConnectionId] = useState<string | null>(null);
 	const [filter, setFilter] = useState<HermesSessionFilter>("open");
 	const [query, setQuery] = useState("");
@@ -38,6 +39,7 @@ export function HermesSidebar() {
 	});
 	const saveConnection = trpc.hermes.saveConnection.useMutation({
 		onSuccess: async (saved) => {
+			changeConnection(saved.id);
 			setConnectionId(saved.id);
 			setToken("");
 			setShowSettings(false);
@@ -47,9 +49,23 @@ export function HermesSidebar() {
 	});
 
 	useEffect(() => {
-		if (connectionId || !connections.data?.[0]) return;
-		setConnectionId(connections.data[0].id);
-	}, [connectionId, connections.data]);
+		if (!connections.data) return;
+		const selectedConnectionExists = selectedSession
+			? connections.data.some((connection) => connection.id === selectedSession.connectionId)
+			: false;
+		if (selectedSession && !selectedConnectionExists) changeConnection("");
+		const currentConnectionExists = connections.data.some(
+			(connection) => connection.id === connectionId
+		);
+		const nextConnectionId = selectedConnectionExists
+			? selectedSession?.connectionId
+			: currentConnectionExists
+				? connectionId
+				: connections.data[0]?.id;
+		if (nextConnectionId && nextConnectionId !== connectionId) {
+			setConnectionId(nextConnectionId);
+		}
+	}, [changeConnection, connectionId, connections.data, selectedSession]);
 
 	const status = trpc.hermes.status.useQuery(
 		{ connectionId: connectionId ?? "" },
@@ -169,7 +185,11 @@ export function HermesSidebar() {
 			<div className="flex items-center gap-1.5 px-2 pt-2">
 				<select
 					value={connectionId ?? ""}
-					onChange={(event) => setConnectionId(event.target.value)}
+					onChange={(event) => {
+						const nextConnectionId = event.target.value;
+						setConnectionId(nextConnectionId);
+						changeConnection(nextConnectionId);
+					}}
 					className="min-w-0 flex-1 rounded-[5px] border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1 text-[11px] text-[var(--text-secondary)]"
 				>
 					{connections.data?.map((connection) => (
@@ -281,9 +301,12 @@ export function HermesSidebar() {
 								<button
 									key={session.id}
 									type="button"
-									onClick={() => selectSession(session.id)}
+									onClick={() =>
+										connectionId && selectSession({ connectionId, sessionId: session.id })
+									}
 									className={`mb-1 w-full rounded-[6px] px-2 py-2 text-left transition-colors ${
-										selectedSessionId === session.id
+										selectedSession?.connectionId === connectionId &&
+										selectedSession.sessionId === session.id
 											? "bg-[var(--bg-elevated)]"
 											: "hover:bg-[var(--bg-overlay)]"
 									}`}

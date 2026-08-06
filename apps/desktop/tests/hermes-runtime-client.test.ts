@@ -115,7 +115,8 @@ describe("HermesRuntimeClient", () => {
 			id: sent.id,
 			error: {
 				code: 5027,
-				message: "origin delivery failed",
+				message:
+					"origin delivery failed API_KEY=rpc-secret Authorization: Basic basic-secret https://files.test/a?X-Amz-Signature=url-secret",
 				data: { retryable: true, retry_after: 7 },
 			},
 		});
@@ -126,6 +127,9 @@ describe("HermesRuntimeClient", () => {
 		} catch (error) {
 			expect(error).toBeInstanceOf(HermesRpcError);
 			expect((error as HermesRpcError).retryable).toBe(true);
+			expect((error as Error).message).not.toContain("rpc-secret");
+			expect((error as Error).message).not.toContain("basic-secret");
+			expect((error as Error).message).not.toContain("url-secret");
 		}
 	});
 
