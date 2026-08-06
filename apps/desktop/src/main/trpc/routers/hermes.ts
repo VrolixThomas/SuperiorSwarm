@@ -1,6 +1,7 @@
 import { asc, eq } from "drizzle-orm";
 import { shell } from "electron";
 import { z } from "zod";
+import type { HermesBindingReleaseInput } from "../../../shared/hermes";
 import { getDb } from "../../db";
 import { hermesSessionWorkspaces, projects, workspaces, worktrees } from "../../db/schema";
 import {
@@ -19,6 +20,11 @@ import { publicProcedure, router } from "../index";
 const connectionSessionInput = z.object({
 	connectionId: z.string().min(1),
 	hermesSessionId: z.string().min(1),
+});
+
+const bindingReleaseInput: z.ZodType<HermesBindingReleaseInput> = connectionSessionInput.extend({
+	expectedClaimId: z.string().min(1),
+	bindingGeneration: z.number().int().positive(),
 });
 
 function rendererOriginReportState(state: ReturnType<typeof hermesRuntimeService.reports>[number]) {
@@ -99,10 +105,8 @@ export const hermesRouter = router({
 		),
 
 	release: publicProcedure
-		.input(connectionSessionInput)
-		.mutation(({ input }) =>
-			hermesRuntimeService.release(input.connectionId, input.hermesSessionId)
-		),
+		.input(bindingReleaseInput)
+		.mutation(({ input }) => hermesRuntimeService.release(input)),
 
 	unbind: publicProcedure
 		.input(

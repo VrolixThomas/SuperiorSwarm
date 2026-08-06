@@ -350,9 +350,15 @@ export function HermesSessionView() {
 					<button
 						type="button"
 						onClick={() => {
+							if (!resumed) return;
 							const mutationSelection = selectionGeneration;
 							release.mutate(
-								{ connectionId, hermesSessionId: sessionId },
+								{
+									connectionId: resumed.connectionId,
+									hermesSessionId: resumed.hermesSessionId,
+									expectedClaimId: resumed.claimId,
+									bindingGeneration: resumed.bindingGeneration,
+								},
 								{
 									onSuccess: (result) => {
 										bindingLifecycle.runIfCurrent(mutationSelection, () => {

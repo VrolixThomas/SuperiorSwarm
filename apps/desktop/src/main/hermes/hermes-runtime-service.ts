@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type {
+	HermesBindingReleaseInput,
 	HermesBindingReleaseResult,
 	HermesCatalog,
 	HermesCompatibility,
@@ -391,20 +392,25 @@ export class HermesRuntimeService {
 		return { ok: true };
 	}
 
-	async release(
-		connectionId: string,
-		hermesSessionId: string
-	): Promise<HermesBindingReleaseResult> {
-		const runtime = this.requireCompatibleRuntime(connectionId);
-		const binding = runtime.bindings.get(hermesSessionId);
-		if (!binding) throw new Error("Resume and claim the Hermes session first");
+	async release(input: HermesBindingReleaseInput): Promise<HermesBindingReleaseResult> {
+		const { connectionId, hermesSessionId, expectedClaimId, bindingGeneration } = input;
+		const runtime = this.runtimes.get(connectionId);
+		const binding = runtime?.bindings.get(hermesSessionId);
+		if (
+			!runtime ||
+			!binding ||
+			binding.claimId !== expectedClaimId ||
+			binding.generation !== bindingGeneration
+		) {
+			return { unbound: false, released: false, retryable: false, error: null };
+		}
 		this.cancelDeferredRelease(binding);
 		return this.startReleaseOperation(
 			connectionId,
 			runtime,
 			hermesSessionId,
 			binding,
-			binding.generation,
+			bindingGeneration,
 			true
 		);
 	}

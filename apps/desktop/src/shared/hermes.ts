@@ -124,6 +124,13 @@ export interface HermesBindingReleaseResult {
 	error: string | null;
 }
 
+export interface HermesBindingReleaseInput {
+	connectionId: string;
+	hermesSessionId: string;
+	expectedClaimId: string;
+	bindingGeneration: number;
+}
+
 export interface HermesConnectionSummary {
 	id: string;
 	label: string;

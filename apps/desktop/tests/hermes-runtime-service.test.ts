@@ -322,7 +322,7 @@ describe("HermesRuntimeService", () => {
 
 	test("presents the handoff claim on session mutations and releases it", async () => {
 		await service.connect(connectionId);
-		await service.resume(connectionId, "session-tip");
+		const resumed = await service.resume(connectionId, "session-tip");
 		await service.submit(connectionId, "session-tip", "Continue");
 		await service.interrupt(connectionId, "session-tip");
 		await service.respondToApproval({
@@ -354,7 +354,12 @@ describe("HermesRuntimeService", () => {
 			client.requests.filter((request) => request.method === "session.report_to_origin")
 		).toHaveLength(1);
 
-		await service.release(connectionId, "session-tip");
+		await service.release({
+			connectionId,
+			hermesSessionId: "session-tip",
+			expectedClaimId: resumed.claimId,
+			bindingGeneration: resumed.bindingGeneration,
+		});
 		const submit = client.requests.find((request) => request.method === "prompt.submit");
 		expect(submit?.params["session_id"]).toBe("runtime-1");
 		for (const method of [
@@ -503,7 +508,12 @@ describe("HermesRuntimeService", () => {
 		);
 		expect(JSON.stringify(firstOpen.history)).not.toContain("main-only-secret");
 		expect(JSON.stringify(firstOpen.history)).not.toContain("must-never-reach-renderer");
-		await service.release(connectionId, "session-tip");
+		await service.release({
+			connectionId,
+			hermesSessionId: "session-tip",
+			expectedClaimId: firstOpen.claimId,
+			bindingGeneration: firstOpen.bindingGeneration,
+		});
 
 		const reopened = await service.resume(connectionId, "session-tip");
 		expect(reopened.history.turnResults.at(-1)?.turnId).toBe("turn-latest");
@@ -537,10 +547,15 @@ describe("HermesRuntimeService", () => {
 			},
 		});
 		await service.connect(connectionId);
-		await service.resume(connectionId, "session-tip");
+		const resumed = await service.resume(connectionId, "session-tip");
 		client.releaseBusyRemaining = 1;
 
-		const busy = await service.release(connectionId, "session-tip");
+		const busy = await service.release({
+			connectionId,
+			hermesSessionId: "session-tip",
+			expectedClaimId: resumed.claimId,
+			bindingGeneration: resumed.bindingGeneration,
+		});
 		expect(busy).toEqual({
 			unbound: false,
 			released: false,
@@ -557,7 +572,12 @@ describe("HermesRuntimeService", () => {
 		expect(safelyRebound.claimId).toBe("claim-1");
 		await service.submit(connectionId, "session-tip", "Still safely bound");
 
-		const retried = await service.release(connectionId, "session-tip");
+		const retried = await service.release({
+			connectionId,
+			hermesSessionId: "session-tip",
+			expectedClaimId: safelyRebound.claimId,
+			bindingGeneration: safelyRebound.bindingGeneration,
+		});
 		expect(retried).toEqual({
 			unbound: true,
 			released: true,
@@ -704,6 +724,64 @@ describe("HermesRuntimeService", () => {
 			2
 		);
 		await service.submit(connectionId, "session-tip", "A is still safely bound");
+		const submit = client.requests.findLast((request) => request.method === "prompt.submit");
+		expect(submit?.params).toMatchObject({
+			claim_id: secondA.claimId,
+			session_id: secondA.runtimeSessionId,
+		});
+	});
+
+	test("ignores a delayed manual release for the first A after an A-B-A replacement", async () => {
+		service.shutdown();
+		const retryTimer = { unref: () => retryTimer } as unknown as ReturnType<typeof setTimeout>;
+		service = new HermesRuntimeService({
+			clientFactory: () => client,
+			tokenVault: vault,
+			releaseRetryTimerApi: {
+				set: () => retryTimer,
+				clear: () => undefined,
+			},
+		});
+		await service.connect(connectionId);
+		const firstA = await service.resume(connectionId, "session-tip");
+		client.releaseBusyRemaining = 1;
+		const automaticUnbind = await service.unbind(
+			connectionId,
+			"session-tip",
+			firstA.claimId,
+			firstA.bindingGeneration
+		);
+		const sessionB = await service.resume(connectionId, "session-b");
+		await service.unbind(connectionId, "session-b", sessionB.claimId, sessionB.bindingGeneration);
+		const secondA = await service.resume(connectionId, "session-tip");
+
+		const staleRelease = await service.release({
+			connectionId,
+			hermesSessionId: "session-tip",
+			expectedClaimId: firstA.claimId,
+			bindingGeneration: firstA.bindingGeneration,
+		});
+		const wrongClaimRelease = await service.release({
+			connectionId,
+			hermesSessionId: "session-tip",
+			expectedClaimId: "stale-claim",
+			bindingGeneration: secondA.bindingGeneration,
+		});
+
+		expect(automaticUnbind).toMatchObject({ unbound: false, retryable: true });
+		expect(secondA.claimId).toBe(firstA.claimId);
+		expect(secondA.bindingGeneration).not.toBe(firstA.bindingGeneration);
+		expect(staleRelease).toEqual({
+			unbound: false,
+			released: false,
+			retryable: false,
+			error: null,
+		});
+		expect(wrongClaimRelease).toEqual(staleRelease);
+		expect(client.requests.filter((request) => request.method === "session.release")).toHaveLength(
+			2
+		);
+		await service.submit(connectionId, "session-tip", "Replacement A remains usable");
 		const submit = client.requests.findLast((request) => request.method === "prompt.submit");
 		expect(submit?.params).toMatchObject({
 			claim_id: secondA.claimId,
@@ -975,6 +1053,7 @@ describe("HermesRuntimeService", () => {
 			receivedAt: Date.now(),
 		});
 		await Bun.sleep(10);
+		const profiledBinding = await service.resume(profiledConnectionId, "session-tip");
 		await service.origin(profiledConnectionId, "session-tip");
 		client.historyTurnResults = [
 			{ turn_id: "turn-profile", content: "Done", completed_at: 600, status: "complete" },
@@ -984,7 +1063,12 @@ describe("HermesRuntimeService", () => {
 			hermesSessionId: "session-tip",
 			turnId: "turn-profile",
 		});
-		await service.release(profiledConnectionId, "session-tip");
+		await service.release({
+			connectionId: profiledConnectionId,
+			hermesSessionId: "session-tip",
+			expectedClaimId: profiledBinding.claimId,
+			bindingGeneration: profiledBinding.bindingGeneration,
+		});
 
 		for (const method of [
 			"session.catalog",
