@@ -1,8 +1,17 @@
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { HermesTranscriptMessage } from "../../../shared/hermes";
+import {
+	HermesBindingLifecycle,
+	type HermesRendererBinding,
+} from "../../hermes/hermes-binding-lifecycle";
 import { applyHermesEvent, createHermesLiveState } from "../../hermes/hermes-view-model";
 import { useTabStore } from "../../stores/tab-store";
 import { trpc } from "../../trpc/client";
+import { HermesApprovalCard, HermesClarificationChoices } from "./HermesInteractionCards";
+
+interface ResumedHermesBinding extends HermesRendererBinding {
+	canonicalSessionId: string;
+}
 
 function TranscriptMessage({ message }: { message: HermesTranscriptMessage }) {
 	return (
@@ -31,7 +40,9 @@ export function HermesSessionView() {
 	const [cursor, setCursor] = useState(0);
 	const [live, setLive] = useState(createHermesLiveState);
 	const [manualWorkspaceId, setManualWorkspaceId] = useState("");
-	const resumedKey = useRef<string | null>(null);
+	const [resumed, setResumed] = useState<ResumedHermesBinding | null>(null);
+	const resumeRequests = useRef(new Set<string>());
+	const processedEventSeq = useRef(0);
 	const utils = trpc.useUtils();
 
 	const connections = trpc.hermes.connections.useQuery();
@@ -49,9 +60,52 @@ export function HermesSessionView() {
 	);
 	const session = catalog.data?.sessions.find((candidate) => candidate.id === sessionId);
 	const resume = trpc.hermes.resume.useMutation();
+	const unbind = trpc.hermes.unbind.useMutation();
+	const unbindRef = useRef(unbind.mutate);
+	unbindRef.current = unbind.mutate;
+	const bindingLifecycleRef = useRef<HermesBindingLifecycle | null>(null);
+	if (!bindingLifecycleRef.current) {
+		bindingLifecycleRef.current = new HermesBindingLifecycle((binding) => {
+			unbindRef.current({
+				connectionId: binding.connectionId,
+				hermesSessionId: binding.hermesSessionId,
+				expectedClaimId: binding.claimId,
+			});
+		});
+	}
+	const bindingLifecycle = bindingLifecycleRef.current;
+	bindingLifecycle.select(selectionKey);
+	const requestResumeRef = useRef<(key: string, connection: string, session: string) => void>(
+		() => undefined
+	);
+	requestResumeRef.current = (key, selectedConnectionId, selectedSessionId) => {
+		if (resumeRequests.current.has(key)) return;
+		resumeRequests.current.add(key);
+		resume.mutate(
+			{ connectionId: selectedConnectionId, hermesSessionId: selectedSessionId },
+			{
+				onSuccess: (result) => {
+					const binding: ResumedHermesBinding = {
+						connectionId: selectedConnectionId,
+						hermesSessionId: selectedSessionId,
+						canonicalSessionId: result.canonicalSessionId,
+						runtimeSessionId: result.runtimeSessionId,
+						claimId: result.claimId,
+					};
+					if (bindingLifecycle.accept(key, binding)) {
+						setResumed(binding);
+						setLive((current) => ({ ...current, error: null }));
+					}
+				},
+				onSettled: () => {
+					resumeRequests.current.delete(key);
+				},
+			}
+		);
+	};
 	const release = trpc.hermes.release.useMutation({
 		onSuccess: () => {
-			resumedKey.current = null;
+			setResumed(null);
 			resume.reset();
 			useTabStore.getState().selectHermesSession(null);
 			void utils.hermes.catalog.invalidate();
@@ -59,33 +113,32 @@ export function HermesSessionView() {
 	});
 
 	useEffect(() => {
+		bindingLifecycle.activate();
+		return () => bindingLifecycle.dispose();
+	}, [bindingLifecycle]);
+
+	useEffect(() => {
 		if (previousSelectionKey.current === selectionKey) return;
 		previousSelectionKey.current = selectionKey;
+		bindingLifecycle.releaseObsolete();
 		setCursor(0);
+		processedEventSeq.current = 0;
 		setLive(createHermesLiveState());
 		setComposer("");
 		setClarification("");
 		setManualWorkspaceId("");
-		resumedKey.current = null;
-	}, [selectionKey]);
+		setResumed(null);
+		resume.reset();
+	}, [bindingLifecycle, resume, selectionKey]);
 
 	useEffect(() => {
 		if (!sessionId || !connectionId || status.data?.status !== "connected") return;
 		const key = `${connectionId}:${sessionId}`;
-		if (resumedKey.current === key || resume.isPending) return;
-		resume.reset();
-		resumedKey.current = key;
-		resume.mutate(
-			{ connectionId, hermesSessionId: sessionId },
-			{
-				onError: () => {
-					resumedKey.current = null;
-				},
-			}
-		);
-	}, [connectionId, resume, sessionId, status.data?.status]);
+		const current = bindingLifecycle.current();
+		if (current?.connectionId === connectionId && current.hermesSessionId === sessionId) return;
+		requestResumeRef.current(key, connectionId, sessionId);
+	}, [bindingLifecycle, connectionId, sessionId, status.data?.status]);
 
-	const resumed = resume.data && sessionId ? resume.data : null;
 	const history = trpc.hermes.history.useQuery(
 		{ connectionId, hermesSessionId: sessionId ?? "" },
 		{ enabled: Boolean(connectionId && sessionId && resumed), staleTime: 1_000 }
@@ -97,33 +150,74 @@ export function HermesSessionView() {
 
 	useEffect(() => {
 		const feed = eventFeed.data;
-		if (!feed || !resumed) return;
+		if (!feed || !resumed || !sessionId || feed.nextSeq <= processedEventSeq.current) return;
+		processedEventSeq.current = feed.nextSeq;
 		let refreshHistory = false;
+		let retryBinding = false;
+		let activeRuntimeSessionId = resumed.runtimeSessionId;
+		let reboundBinding: ResumedHermesBinding | null = null;
+		const relevantEvents = feed.events.flatMap((entry) => {
+			if (entry.event.type === "runtime.history-refresh-required") {
+				refreshHistory = true;
+				const bindings = entry.event.payload["bindings"];
+				if (Array.isArray(bindings)) {
+					for (const candidate of bindings) {
+						if (!candidate || typeof candidate !== "object") continue;
+						const binding = candidate as Record<string, unknown>;
+						if (binding["hermesSessionId"] !== sessionId) continue;
+						const runtimeSessionId = binding["runtimeSessionId"];
+						const claimId = binding["claimId"];
+						const canonicalSessionId = binding["canonicalSessionId"];
+						if (
+							typeof runtimeSessionId !== "string" ||
+							typeof claimId !== "string" ||
+							typeof canonicalSessionId !== "string"
+						) {
+							continue;
+						}
+						activeRuntimeSessionId = runtimeSessionId;
+						reboundBinding = {
+							connectionId,
+							hermesSessionId: sessionId,
+							canonicalSessionId,
+							runtimeSessionId,
+							claimId,
+						};
+					}
+				}
+				const failedSessionIds = entry.event.payload["failedSessionIds"];
+				retryBinding = Array.isArray(failedSessionIds) && failedSessionIds.includes(sessionId);
+			}
+			if (entry.event.sessionId !== null && entry.event.sessionId !== activeRuntimeSessionId) {
+				return [];
+			}
+			return [entry.event];
+		});
 		setLive((current) => {
 			let next = current;
-			for (const entry of feed.events) {
-				if (entry.event.sessionId !== null && entry.event.sessionId !== resumed.runtimeSessionId) {
-					continue;
-				}
-				next = applyHermesEvent(next, entry.event);
-				if (
-					entry.event.type === "message.complete" ||
-					entry.event.type === "runtime.history-refresh-required"
-				) {
+			for (const event of relevantEvents) {
+				next = applyHermesEvent(next, event);
+				if (event.type === "message.complete") {
 					refreshHistory = true;
 				}
 			}
 			return next;
 		});
 		setCursor(feed.nextSeq);
+		if (reboundBinding && bindingLifecycle.accept(selectionKey, reboundBinding)) {
+			setResumed(reboundBinding);
+		}
 		if (refreshHistory) {
 			void utils.hermes.history.invalidate({
 				connectionId,
 				hermesSessionId: sessionId ?? "",
 			});
 			void utils.hermes.workspaceLinks.invalidate();
+			if (retryBinding && sessionId) {
+				requestResumeRef.current(`${connectionId}:${sessionId}`, connectionId, sessionId);
+			}
 		}
-	}, [connectionId, eventFeed.data, resumed, sessionId, utils]);
+	}, [bindingLifecycle, connectionId, eventFeed.data, resumed, selectionKey, sessionId, utils]);
 
 	const submit = trpc.hermes.submit.useMutation({
 		onSuccess: () => {
@@ -378,41 +472,18 @@ export function HermesSessionView() {
 			<div className="shrink-0 border-t border-[var(--border-subtle)] bg-[var(--bg-surface)] px-4 py-3">
 				<div className="mx-auto max-w-[860px]">
 					{live.pendingApproval && (
-						<div className="mb-2 rounded-[7px] border border-[#ffd60a]/30 bg-[#ffd60a]/5 p-2">
-							<div className="text-[11px] text-[var(--text-secondary)]">
-								{live.pendingApproval.prompt}
-							</div>
-							<div className="mt-2 flex gap-2">
-								<button
-									type="button"
-									onClick={() =>
-										approval.mutate({
-											connectionId,
-											hermesSessionId: sessionId,
-											requestId: live.pendingApproval?.requestId ?? "",
-											choice: live.pendingApproval?.choices[0] ?? "allow_once",
-										})
-									}
-									className="rounded-[5px] bg-[var(--accent)] px-2 py-1 text-[11px] text-white"
-								>
-									Allow once
-								</button>
-								<button
-									type="button"
-									onClick={() =>
-										approval.mutate({
-											connectionId,
-											hermesSessionId: sessionId,
-											requestId: live.pendingApproval?.requestId ?? "",
-											choice: "deny",
-										})
-									}
-									className="rounded-[5px] border border-[var(--border)] px-2 py-1 text-[11px] text-[var(--text-tertiary)]"
-								>
-									Deny
-								</button>
-							</div>
-						</div>
+						<HermesApprovalCard
+							interaction={live.pendingApproval}
+							pending={approval.isPending}
+							onChoose={(choice) =>
+								approval.mutate({
+									connectionId,
+									hermesSessionId: sessionId,
+									requestId: live.pendingApproval?.requestId ?? "",
+									choice,
+								})
+							}
+						/>
 					)}
 
 					{live.pendingClarification && (
@@ -428,9 +499,21 @@ export function HermesSessionView() {
 							}}
 							className="mb-2 rounded-[7px] border border-[#ff9f0a]/30 bg-[#ff9f0a]/5 p-2"
 						>
-							<div className="mb-1 text-[11px] text-[var(--text-secondary)]">
+							<div className="mb-1 whitespace-pre-wrap break-words text-[11px] text-[var(--text-secondary)]">
 								{live.pendingClarification.prompt}
 							</div>
+							<HermesClarificationChoices
+								choices={live.pendingClarification.choices}
+								pending={clarify.isPending}
+								onChoose={(answer) =>
+									clarify.mutate({
+										connectionId,
+										hermesSessionId: sessionId,
+										requestId: live.pendingClarification?.requestId ?? "",
+										answer,
+									})
+								}
+							/>
 							<div className="flex gap-2">
 								<input
 									value={clarification}

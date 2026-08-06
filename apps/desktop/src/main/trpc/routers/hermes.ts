@@ -91,6 +91,12 @@ export const hermesRouter = router({
 			hermesRuntimeService.release(input.connectionId, input.hermesSessionId)
 		),
 
+	unbind: publicProcedure
+		.input(connectionSessionInput.extend({ expectedClaimId: z.string().min(1) }))
+		.mutation(({ input }) =>
+			hermesRuntimeService.unbind(input.connectionId, input.hermesSessionId, input.expectedClaimId)
+		),
+
 	respondApproval: publicProcedure
 		.input(
 			connectionSessionInput.extend({

@@ -168,4 +168,64 @@ describe("Hermes protocol adapter", () => {
 		expect(JSON.stringify(event)).not.toContain("hermes-secret");
 		expect(JSON.stringify(event)).not.toContain("another-secret");
 	});
+
+	test("normalizes real approval and clarification prompts with choices without exposing secrets", () => {
+		const approval = normalizeHermesEvent({
+			jsonrpc: "2.0",
+			method: "event",
+			params: {
+				type: "approval.request",
+				session_id: "runtime-1",
+				payload: {
+					request_id: "approval-1",
+					command: "deploy --api-key command-secret --environment production",
+					description: "Deploy the release? token=description-secret",
+					choices: [
+						{ value: "allow_once", label: "Allow once" },
+						{ value: "deny", label: "Deny" },
+					],
+				},
+			},
+		});
+		const clarification = normalizeHermesEvent({
+			jsonrpc: "2.0",
+			method: "event",
+			params: {
+				type: "clarify.request",
+				payload: {
+					request_id: "clarify-1",
+					question: "Which environment should use Bearer clarification-secret?",
+					choices: ["staging", "production"],
+				},
+			},
+		});
+
+		expect(approval?.text).toBe(
+			"Deploy the release? token=[redacted]\n\nCommand:\ndeploy --api-key [redacted] --environment production"
+		);
+		expect(approval?.payload["choices"]).toEqual([
+			{ value: "allow_once", label: "Allow once" },
+			{ value: "deny", label: "Deny" },
+		]);
+		expect(clarification?.text).toBe("Which environment should use Bearer [redacted]?");
+		expect(JSON.stringify({ approval, clarification })).not.toContain("command-secret");
+		expect(JSON.stringify({ approval, clarification })).not.toContain("description-secret");
+		expect(JSON.stringify({ approval, clarification })).not.toContain("clarification-secret");
+	});
+
+	test("preserves generic interaction fallbacks when Hermes omits a prompt", () => {
+		const approval = normalizeHermesEvent({
+			jsonrpc: "2.0",
+			method: "event",
+			params: { type: "approval.request", payload: { request_id: "approval-1" } },
+		});
+		const clarification = normalizeHermesEvent({
+			jsonrpc: "2.0",
+			method: "event",
+			params: { type: "clarify.request", payload: { request_id: "clarify-1" } },
+		});
+
+		expect(approval?.text).toBeNull();
+		expect(clarification?.text).toBeNull();
+	});
 });

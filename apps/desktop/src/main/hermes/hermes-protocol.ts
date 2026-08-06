@@ -72,7 +72,15 @@ const SENSITIVE_KEY = /(token|secret|credential|authorization|password|cookie|or
 function sanitizeString(value: string): string {
 	return value
 		.replace(/([?&](?:token|ticket|internal)=)[^&\s]+/gi, "$1[redacted]")
-		.replace(/Bearer\s+[^\s"']+/gi, "Bearer [redacted]");
+		.replace(
+			/(\b(?:api[-_]?key|token|secret|credential|authorization|password|cookie)\b\s*[:=]\s*)(["']?)[^\s,"';]+\2/gi,
+			"$1[redacted]"
+		)
+		.replace(
+			/(--(?:api[-_]?key|token|secret|credential|authorization|password|cookie)\s+)(["']?)[^\s,"';]+\2/gi,
+			"$1[redacted]"
+		)
+		.replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [redacted]");
 }
 
 function sanitizedStringValue(...values: unknown[]): string | null {
@@ -242,6 +250,15 @@ export function normalizeHermesEvent(value: unknown): HermesRuntimeEvent | null 
 	const type = stringValue(params?.["type"], payload["type"]);
 	if (!type) return null;
 	const sanitized = (sanitizeHermesPayload(payload) ?? {}) as JsonRecord;
+	let text = stringValue(sanitized["text"], sanitized["message"]);
+	if (type === "approval.request") {
+		const description = stringValue(sanitized["description"]);
+		const command = stringValue(sanitized["command"]);
+		if (description && command) text = `${description}\n\nCommand:\n${command}`;
+		else text = description ?? command ?? text;
+	} else if (type === "clarify.request") {
+		text = stringValue(sanitized["question"]) ?? text;
+	}
 	return {
 		type,
 		sessionId: stringValue(
@@ -252,7 +269,7 @@ export function normalizeHermesEvent(value: unknown): HermesRuntimeEvent | null 
 		),
 		turnId: stringValue(payload["turn_id"], payload["turnId"]),
 		requestId: stringValue(payload["request_id"], payload["requestId"]),
-		text: stringValue(sanitized["text"], sanitized["message"]),
+		text,
 		toolName: stringValue(payload["tool_name"], payload["toolName"], payload["name"]),
 		status: stringValue(payload["status"]),
 		payload: sanitized,

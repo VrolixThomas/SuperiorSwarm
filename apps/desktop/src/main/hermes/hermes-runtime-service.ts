@@ -43,7 +43,10 @@ interface RuntimeBinding {
 	runtimeSessionId: string;
 	lineageRootId: string | null;
 	claimId: string;
-	renewTimer: ReturnType<typeof setInterval>;
+	renewTimer: ReturnType<typeof setInterval> | null;
+	active: boolean;
+	claimReleased: boolean;
+	releaseTask: Promise<boolean> | null;
 }
 
 interface BufferedEvent {
@@ -62,6 +65,8 @@ interface ConnectionRuntime {
 	events: BufferedEvent[];
 	nextSeq: number;
 	unsubscribers: Array<() => void>;
+	bindingTasks: Map<string, Promise<RuntimeBinding>>;
+	reconnectTask: Promise<void> | null;
 }
 
 export interface HermesRuntimeServiceOptions {
@@ -69,6 +74,10 @@ export interface HermesRuntimeServiceOptions {
 	tokenVault?: HermesTokenVault;
 	clientId?: string;
 	claimTtlSeconds?: number;
+	renewTimerApi?: {
+		set(callback: () => void, delayMs: number): ReturnType<typeof setInterval>;
+		clear(timer: ReturnType<typeof setInterval>): void;
+	};
 }
 
 const MAX_BUFFERED_EVENTS = 1_000;
@@ -91,12 +100,19 @@ export class HermesRuntimeService {
 	private readonly tokenVault: HermesTokenVault;
 	private readonly clientId: string;
 	private readonly claimTtlSeconds: number;
+	private readonly renewTimerApi: NonNullable<HermesRuntimeServiceOptions["renewTimerApi"]>;
 
 	constructor(options: HermesRuntimeServiceOptions = {}) {
 		this.clientFactory = options.clientFactory ?? (() => new HermesRuntimeClient());
 		this.tokenVault = options.tokenVault ?? hermesTokenVault;
 		this.clientId = options.clientId ?? `superiorswarm-${randomUUID()}`;
 		this.claimTtlSeconds = options.claimTtlSeconds ?? 60;
+		this.renewTimerApi =
+			options.renewTimerApi ??
+			({
+				set: (callback, delayMs) => setInterval(callback, delayMs),
+				clear: (timer) => clearInterval(timer),
+			} satisfies NonNullable<HermesRuntimeServiceOptions["renewTimerApi"]>);
 	}
 
 	async connect(connectionId: string): Promise<HermesCatalog> {
@@ -106,15 +122,13 @@ export class HermesRuntimeService {
 		}
 		const previousRuntime = this.runtimes.get(connectionId);
 		if (previousRuntime) {
+			const previousBindings = [...previousRuntime.bindings.entries()];
+			for (const [hermesSessionId, binding] of previousBindings) {
+				this.detachBinding(previousRuntime, hermesSessionId, binding);
+			}
 			await Promise.all(
-				[...previousRuntime.bindings.values()].map((binding) =>
-					previousRuntime.client
-						.request(
-							"session.release",
-							{ claim_id: binding.claimId, profile: previousRuntime.profileId },
-							{ timeoutMs: 2_000 }
-						)
-						.catch(() => undefined)
+				previousBindings.map(([, binding]) =>
+					this.releaseClaim(connectionId, previousRuntime, binding, false, 2_000)
 				)
 			);
 			this.disconnect(connectionId);
@@ -133,6 +147,8 @@ export class HermesRuntimeService {
 				events: [],
 				nextSeq: 0,
 				unsubscribers: [],
+				bindingTasks: new Map(),
+				reconnectTask: null,
 			};
 			this.bindClient(connectionId, runtime);
 			this.runtimes.set(connectionId, runtime);
@@ -177,7 +193,9 @@ export class HermesRuntimeService {
 	disconnect(connectionId: string): void {
 		const runtime = this.runtimes.get(connectionId);
 		if (!runtime) return;
-		for (const binding of runtime.bindings.values()) clearInterval(binding.renewTimer);
+		for (const [hermesSessionId, binding] of runtime.bindings) {
+			this.detachBinding(runtime, hermesSessionId, binding);
+		}
 		for (const unsubscribe of runtime.unsubscribers) unsubscribe();
 		runtime.client.disconnect();
 		this.runtimes.delete(connectionId);
@@ -230,101 +248,25 @@ export class HermesRuntimeService {
 		history: HermesTranscriptMessage[];
 	}> {
 		const runtime = this.requireCompatibleRuntime(connectionId);
+		if (runtime.reconnectTask) await runtime.reconnectTask;
 		const existing = runtime.bindings.get(hermesSessionId);
-		if (existing) {
-			return {
-				canonicalSessionId: hermesSessionId,
-				runtimeSessionId: existing.runtimeSessionId,
-				claimId: existing.claimId,
-				history: await this.history(connectionId, hermesSessionId),
-			};
-		}
-		const session = runtime.catalog?.sessions.find(
-			(candidate) => candidate.id === hermesSessionId || candidate.lineageTipId === hermesSessionId
-		);
-		const canonicalSessionId = session?.lineageTipId ?? hermesSessionId;
-		const claimResult = object(
-			await runtime.client.request("session.claim", {
-				session_id: canonicalSessionId,
-				surface: "superiorswarm",
-				client_id: this.clientId,
-				ttl_seconds: this.claimTtlSeconds,
-				profile: runtime.profileId,
-			})
-		);
-		const claim = object(claimResult["claim"]);
-		const claimId = stringValue(
-			claim["claim_id"],
-			claim["claimId"],
-			claimResult["claim_id"],
-			claimResult["claimId"]
-		);
-		if (!claimId) throw new Error("Hermes returned an invalid session claim");
-
+		const acquired = !existing?.active;
+		const binding = acquired
+			? await this.bindSession(connectionId, runtime, hermesSessionId, existing)
+			: existing;
 		try {
-			const resumed = object(
-				await runtime.client.request("session.resume", {
-					session_id: canonicalSessionId,
-					source: "superiorswarm",
-					profile: runtime.profileId,
-				})
-			);
-			const runtimeSessionId = stringValue(
-				resumed["runtime_session_id"],
-				resumed["session_id"],
-				resumed["sessionId"]
-			);
-			if (!runtimeSessionId) throw new Error("Hermes returned an invalid resumed session");
-			const resolvedCanonicalSessionId =
-				stringValue(
-					resumed["stored_session_id"],
-					resumed["canonical_session_id"],
-					resumed["lineage_tip_id"],
-					resumed["resumed"],
-					resumed["session_key"]
-				) ?? canonicalSessionId;
-			const renewTimer = setInterval(
-				() => {
-					void runtime.client
-						.request("session.claim_renew", {
-							claim_id: claimId,
-							ttl_seconds: this.claimTtlSeconds,
-							profile: runtime.profileId,
-						})
-						.catch((error) => this.pushRuntimeError(connectionId, error));
-				},
-				Math.max(5_000, (this.claimTtlSeconds * 1_000) / 2)
-			);
-			renewTimer.unref?.();
-			const binding: RuntimeBinding = {
-				canonicalSessionId: resolvedCanonicalSessionId,
-				runtimeSessionId,
-				lineageRootId: session?.lineageRootId ?? null,
-				claimId,
-				renewTimer,
-			};
-			runtime.bindings.set(hermesSessionId, binding);
-			runtime.runtimeToCanonical.set(runtimeSessionId, hermesSessionId);
 			const history = await this.history(connectionId, hermesSessionId);
 			await this.backfillToolArtifacts(connectionId, hermesSessionId).catch((error) =>
 				this.pushRuntimeError(connectionId, error)
 			);
 			return {
-				canonicalSessionId: resolvedCanonicalSessionId,
-				runtimeSessionId,
-				claimId,
+				canonicalSessionId: binding.canonicalSessionId,
+				runtimeSessionId: binding.runtimeSessionId,
+				claimId: binding.claimId,
 				history,
 			};
 		} catch (error) {
-			const failedBinding = runtime.bindings.get(hermesSessionId);
-			if (failedBinding?.claimId === claimId) {
-				clearInterval(failedBinding.renewTimer);
-				runtime.bindings.delete(hermesSessionId);
-				runtime.runtimeToCanonical.delete(failedBinding.runtimeSessionId);
-			}
-			await runtime.client
-				.request("session.release", { claim_id: claimId, profile: runtime.profileId })
-				.catch(() => undefined);
+			if (acquired) await this.unbind(connectionId, hermesSessionId, binding.claimId);
 			throw error;
 		}
 	}
@@ -398,14 +340,26 @@ export class HermesRuntimeService {
 	async release(connectionId: string, hermesSessionId: string): Promise<unknown> {
 		const runtime = this.requireCompatibleRuntime(connectionId);
 		const binding = this.requireBinding(runtime, hermesSessionId);
-		clearInterval(binding.renewTimer);
-		const result = await runtime.client.request("session.release", {
-			claim_id: binding.claimId,
-			profile: runtime.profileId,
-		});
-		runtime.bindings.delete(hermesSessionId);
-		runtime.runtimeToCanonical.delete(binding.runtimeSessionId);
-		return result;
+		return this.unbind(connectionId, hermesSessionId, binding.claimId);
+	}
+
+	async unbind(
+		connectionId: string,
+		hermesSessionId: string,
+		expectedClaimId: string
+	): Promise<{ unbound: boolean; released: boolean }> {
+		const runtime = this.runtimes.get(connectionId);
+		if (!runtime) return { unbound: false, released: false };
+		const binding = runtime.bindings.get(hermesSessionId);
+		if (!binding || binding.claimId !== expectedClaimId) {
+			return { unbound: false, released: false };
+		}
+
+		this.detachBinding(runtime, hermesSessionId, binding);
+		return {
+			unbound: true,
+			released: await this.releaseClaim(connectionId, runtime, binding),
+		};
 	}
 
 	async origin(connectionId: string, hermesSessionId: string): Promise<HermesOriginInfo> {
@@ -504,6 +458,10 @@ export class HermesRuntimeService {
 	private bindClient(connectionId: string, runtime: ConnectionRuntime): void {
 		runtime.unsubscribers.push(
 			runtime.client.subscribe((event) => {
+				if (event.type === "runtime.history-refresh-required") {
+					this.rebindAfterReconnect(connectionId, runtime);
+					return;
+				}
 				this.pushEvent(connectionId, event);
 				const canonical = event.sessionId
 					? runtime.runtimeToCanonical.get(event.sessionId)
@@ -536,6 +494,268 @@ export class HermesRuntimeService {
 				});
 			})
 		);
+	}
+
+	private rebindAfterReconnect(connectionId: string, runtime: ConnectionRuntime): void {
+		if (runtime.reconnectTask || this.runtimes.get(connectionId) !== runtime) return;
+		const task = this.rebindDurableSessions(connectionId, runtime);
+		runtime.reconnectTask = task;
+		const cleanup = () => {
+			if (runtime.reconnectTask === task) runtime.reconnectTask = null;
+		};
+		void task.then(cleanup, cleanup);
+	}
+
+	private async rebindDurableSessions(
+		connectionId: string,
+		runtime: ConnectionRuntime
+	): Promise<void> {
+		const durableBindings = [...runtime.bindings.entries()];
+		for (const [, binding] of durableBindings) {
+			this.clearRenewTimer(binding);
+			binding.active = false;
+		}
+
+		const results = await Promise.all(
+			durableBindings.map(async ([hermesSessionId, previous]) => {
+				try {
+					const binding = await this.bindSession(connectionId, runtime, hermesSessionId, previous);
+					await this.history(connectionId, hermesSessionId).catch((error) =>
+						this.pushRuntimeError(connectionId, error)
+					);
+					await this.backfillToolArtifacts(connectionId, hermesSessionId).catch((error) =>
+						this.pushRuntimeError(connectionId, error)
+					);
+					return {
+						hermesSessionId,
+						canonicalSessionId: binding.canonicalSessionId,
+						runtimeSessionId: binding.runtimeSessionId,
+						claimId: binding.claimId,
+					};
+				} catch (error) {
+					if (runtime.bindings.get(hermesSessionId) === previous) {
+						runtime.runtimeToCanonical.delete(previous.runtimeSessionId);
+					}
+					this.pushRuntimeError(connectionId, error);
+					return null;
+				}
+			})
+		);
+		if (this.runtimes.get(connectionId) !== runtime) return;
+		const bindings = results.filter(
+			(result): result is NonNullable<typeof result> => result !== null
+		);
+		this.pushEvent(connectionId, {
+			type: "runtime.history-refresh-required",
+			sessionId: null,
+			turnId: null,
+			requestId: null,
+			text: null,
+			toolName: null,
+			status: bindings.length === results.length ? "reconnected" : "recoverable-error",
+			payload: {
+				bindings,
+				failedSessionIds: durableBindings
+					.map(([hermesSessionId]) => hermesSessionId)
+					.filter((hermesSessionId) =>
+						bindings.every((binding) => binding.hermesSessionId !== hermesSessionId)
+					),
+			},
+			workspaceArtifacts: [],
+			receivedAt: Date.now(),
+		});
+	}
+
+	private bindSession(
+		connectionId: string,
+		runtime: ConnectionRuntime,
+		hermesSessionId: string,
+		previous: RuntimeBinding | undefined
+	): Promise<RuntimeBinding> {
+		const pending = runtime.bindingTasks.get(hermesSessionId);
+		if (pending) return pending;
+		const task = this.acquireBinding(connectionId, runtime, hermesSessionId, previous);
+		runtime.bindingTasks.set(hermesSessionId, task);
+		const cleanup = () => {
+			if (runtime.bindingTasks.get(hermesSessionId) === task) {
+				runtime.bindingTasks.delete(hermesSessionId);
+			}
+		};
+		void task.then(cleanup, cleanup);
+		return task;
+	}
+
+	private async acquireBinding(
+		connectionId: string,
+		runtime: ConnectionRuntime,
+		hermesSessionId: string,
+		previous: RuntimeBinding | undefined
+	): Promise<RuntimeBinding> {
+		const session = runtime.catalog?.sessions.find(
+			(candidate) => candidate.id === hermesSessionId || candidate.lineageTipId === hermesSessionId
+		);
+		const canonicalSessionId =
+			previous?.canonicalSessionId ?? session?.lineageTipId ?? hermesSessionId;
+		let claimId: string | null = null;
+		let installed = false;
+		try {
+			const claimResult = object(
+				await runtime.client.request("session.claim", {
+					session_id: canonicalSessionId,
+					surface: "superiorswarm",
+					client_id: this.clientId,
+					ttl_seconds: this.claimTtlSeconds,
+					profile: runtime.profileId,
+				})
+			);
+			const claim = object(claimResult["claim"]);
+			claimId = stringValue(
+				claim["claim_id"],
+				claim["claimId"],
+				claimResult["claim_id"],
+				claimResult["claimId"]
+			);
+			if (!claimId) throw new Error("Hermes returned an invalid session claim");
+
+			const resumed = object(
+				await runtime.client.request("session.resume", {
+					session_id: canonicalSessionId,
+					source: "superiorswarm",
+					profile: runtime.profileId,
+				})
+			);
+			const runtimeSessionId = stringValue(
+				resumed["runtime_session_id"],
+				resumed["session_id"],
+				resumed["sessionId"]
+			);
+			if (!runtimeSessionId) throw new Error("Hermes returned an invalid resumed session");
+			const resolvedCanonicalSessionId =
+				stringValue(
+					resumed["stored_session_id"],
+					resumed["canonical_session_id"],
+					resumed["lineage_tip_id"],
+					resumed["resumed"],
+					resumed["session_key"]
+				) ?? canonicalSessionId;
+
+			if (
+				this.runtimes.get(connectionId) !== runtime ||
+				(previous
+					? runtime.bindings.get(hermesSessionId) !== previous
+					: runtime.bindings.has(hermesSessionId))
+			) {
+				throw new Error("Hermes session binding changed while it was resuming");
+			}
+
+			const binding: RuntimeBinding = {
+				canonicalSessionId: resolvedCanonicalSessionId,
+				runtimeSessionId,
+				lineageRootId: previous?.lineageRootId ?? session?.lineageRootId ?? null,
+				claimId,
+				renewTimer: null,
+				active: true,
+				claimReleased: false,
+				releaseTask: null,
+			};
+			binding.renewTimer = this.createRenewTimer(connectionId, runtime, binding);
+			if (previous) this.detachBinding(runtime, hermesSessionId, previous, false);
+			runtime.bindings.set(hermesSessionId, binding);
+			runtime.runtimeToCanonical.set(runtimeSessionId, hermesSessionId);
+			installed = true;
+
+			if (previous && previous.claimId !== claimId && !previous.claimReleased) {
+				await this.releaseClaim(connectionId, runtime, previous, false);
+			}
+			return binding;
+		} catch (error) {
+			if (claimId && !installed) {
+				const failedBinding: RuntimeBinding = {
+					canonicalSessionId,
+					runtimeSessionId: "",
+					lineageRootId: previous?.lineageRootId ?? session?.lineageRootId ?? null,
+					claimId,
+					renewTimer: null,
+					active: false,
+					claimReleased: false,
+					releaseTask: null,
+				};
+				await this.releaseClaim(connectionId, runtime, failedBinding, false);
+			}
+			if (previous && !previous.claimReleased) {
+				await this.releaseClaim(connectionId, runtime, previous, false);
+			}
+			throw error;
+		}
+	}
+
+	private createRenewTimer(
+		connectionId: string,
+		runtime: ConnectionRuntime,
+		binding: RuntimeBinding
+	): ReturnType<typeof setInterval> {
+		const renewTimer = this.renewTimerApi.set(
+			() => {
+				if (!binding.active || binding.claimReleased) return;
+				void runtime.client
+					.request("session.claim_renew", {
+						claim_id: binding.claimId,
+						ttl_seconds: this.claimTtlSeconds,
+						profile: runtime.profileId,
+					})
+					.catch((error) => this.pushRuntimeError(connectionId, error));
+			},
+			Math.max(5_000, (this.claimTtlSeconds * 1_000) / 2)
+		);
+		renewTimer.unref?.();
+		return renewTimer;
+	}
+
+	private clearRenewTimer(binding: RuntimeBinding): void {
+		if (!binding.renewTimer) return;
+		this.renewTimerApi.clear(binding.renewTimer);
+		binding.renewTimer = null;
+	}
+
+	private releaseClaim(
+		connectionId: string,
+		runtime: ConnectionRuntime,
+		binding: RuntimeBinding,
+		reportError = true,
+		timeoutMs?: number
+	): Promise<boolean> {
+		if (binding.releaseTask) return binding.releaseTask;
+		if (binding.claimReleased) return Promise.resolve(false);
+		binding.claimReleased = true;
+		binding.active = false;
+		this.clearRenewTimer(binding);
+		const task = runtime.client
+			.request(
+				"session.release",
+				{ claim_id: binding.claimId, profile: runtime.profileId },
+				timeoutMs === undefined ? undefined : { timeoutMs }
+			)
+			.then(() => true)
+			.catch((error) => {
+				if (reportError) this.pushRuntimeError(connectionId, error);
+				return false;
+			});
+		binding.releaseTask = task;
+		return task;
+	}
+
+	private detachBinding(
+		runtime: ConnectionRuntime,
+		hermesSessionId: string,
+		binding: RuntimeBinding,
+		remove = true
+	): void {
+		this.clearRenewTimer(binding);
+		binding.active = false;
+		runtime.runtimeToCanonical.delete(binding.runtimeSessionId);
+		if (remove && runtime.bindings.get(hermesSessionId) === binding) {
+			runtime.bindings.delete(hermesSessionId);
+		}
 	}
 
 	private pushEvent(connectionId: string, event: HermesRuntimeEvent): void {
@@ -578,7 +798,7 @@ export class HermesRuntimeService {
 
 	private requireBinding(runtime: ConnectionRuntime, hermesSessionId: string): RuntimeBinding {
 		const binding = runtime.bindings.get(hermesSessionId);
-		if (!binding) throw new Error("Resume and claim the Hermes session first");
+		if (!binding?.active) throw new Error("Resume and claim the Hermes session first");
 		return binding;
 	}
 

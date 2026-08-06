@@ -2,10 +2,15 @@ import type { HermesRuntimeEvent, HermesSessionSummary } from "../../shared/herm
 
 export type HermesSessionFilter = "open" | "all" | "archived";
 
+export interface HermesInteractionChoice {
+	value: string;
+	label: string;
+}
+
 export interface HermesPendingInteraction {
 	requestId: string;
 	prompt: string;
-	choices: string[];
+	choices: HermesInteractionChoice[];
 }
 
 export interface HermesLiveTool {
@@ -38,18 +43,34 @@ export function createHermesLiveState(): HermesLiveState {
 	};
 }
 
-function choicesFrom(event: HermesRuntimeEvent): string[] {
+function choiceLabel(value: string): string {
+	const normalized = value.replaceAll("_", " ").replaceAll("-", " ").trim();
+	return normalized ? normalized[0]?.toUpperCase() + normalized.slice(1) : value;
+}
+
+function choicesFrom(event: HermesRuntimeEvent): HermesInteractionChoice[] {
 	const choices = event.payload["choices"];
 	if (!Array.isArray(choices)) return [];
 	return choices.flatMap((choice) => {
-		if (typeof choice === "string") return [choice];
+		if (typeof choice === "string") return [{ value: choice, label: choiceLabel(choice) }];
 		if (choice && typeof choice === "object") {
-			const value = (choice as Record<string, unknown>)["value"];
-			if (typeof value === "string") return [value];
+			const values = choice as Record<string, unknown>;
+			const value = values["value"];
+			if (typeof value === "string") {
+				const label = [values["label"], values["description"], values["title"]].find(
+					(candidate): candidate is string => typeof candidate === "string" && candidate.length > 0
+				);
+				return [{ value, label: label ?? choiceLabel(value) }];
+			}
 		}
 		return [];
 	});
 }
+
+const GENERIC_APPROVAL_CHOICES: HermesInteractionChoice[] = [
+	{ value: "allow_once", label: "Allow once" },
+	{ value: "deny", label: "Deny" },
+];
 
 export function applyHermesEvent(
 	state: HermesLiveState,
@@ -108,15 +129,17 @@ export function applyHermesEvent(
 			});
 			return { ...state, tools };
 		}
-		case "approval.request":
+		case "approval.request": {
+			const choices = choicesFrom(event);
 			return {
 				...state,
 				pendingApproval: {
 					requestId: event.requestId ?? "approval",
 					prompt: event.text ?? "Hermes needs approval",
-					choices: choicesFrom(event),
+					choices: choices.length > 0 ? choices : GENERIC_APPROVAL_CHOICES,
 				},
 			};
+		}
 		case "clarify.request":
 			return {
 				...state,

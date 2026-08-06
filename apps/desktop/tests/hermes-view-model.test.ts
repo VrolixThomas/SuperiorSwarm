@@ -100,6 +100,44 @@ describe("Hermes renderer view model", () => {
 		expect(state.historyRefreshRequired).toBe(true);
 	});
 
+	test("keeps the response values and safely formatted labels for every offered choice", () => {
+		const state = applyHermesEvent(
+			createHermesLiveState(),
+			event("approval.request", {
+				requestId: "approval-choices",
+				text: "Deploy to production?",
+				payload: {
+					choices: [
+						{ value: "allow_once", label: "Allow this deployment" },
+						{ value: "deny", description: "Stop and return to the agent" },
+					],
+				},
+			})
+		);
+
+		expect(state.pendingApproval).toEqual({
+			requestId: "approval-choices",
+			prompt: "Deploy to production?",
+			choices: [
+				{ value: "allow_once", label: "Allow this deployment" },
+				{ value: "deny", label: "Stop and return to the agent" },
+			],
+		});
+	});
+
+	test("provides conservative generic approval choices when Hermes omits them", () => {
+		const state = applyHermesEvent(createHermesLiveState(), event("approval.request"));
+
+		expect(state.pendingApproval).toEqual({
+			requestId: "approval",
+			prompt: "Hermes needs approval",
+			choices: [
+				{ value: "allow_once", label: "Allow once" },
+				{ value: "deny", label: "Deny" },
+			],
+		});
+	});
+
 	test("does not offer a failed turn as reportable completed output", () => {
 		const state = applyHermesEvent(
 			createHermesLiveState(),

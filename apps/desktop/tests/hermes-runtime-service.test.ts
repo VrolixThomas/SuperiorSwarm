@@ -26,6 +26,9 @@ class FakeClient implements HermesRuntimeClientLike {
 	failReport = false;
 	catalogMethodMissing = false;
 	failToolArtifacts = false;
+	failResumeNumbers = new Set<number>();
+	claimCount = 0;
+	resumeCount = 0;
 	requests: Array<{ method: string; params: Record<string, unknown> }> = [];
 	eventListener: ((event: HermesRuntimeEvent) => void) | null = null;
 	stateListener: ((state: HermesRuntimeState) => void) | null = null;
@@ -111,9 +114,10 @@ class FakeClient implements HermesRuntimeClientLike {
 					],
 				};
 			case "session.claim":
+				this.claimCount++;
 				return {
 					claim: {
-						claim_id: "claim-1",
+						claim_id: `claim-${this.claimCount}`,
 						session_id: "session-tip",
 						lineage_root_id: "session-root",
 						owner: "superiorswarm:desktop-1",
@@ -125,8 +129,12 @@ class FakeClient implements HermesRuntimeClientLike {
 					},
 				};
 			case "session.resume":
+				this.resumeCount++;
+				if (this.failResumeNumbers.has(this.resumeCount)) {
+					throw new Error("resume temporarily unavailable");
+				}
 				return {
-					session_id: "runtime-1",
+					session_id: `runtime-${this.resumeCount}`,
 					resumed: this.resumeStoredSessionId,
 					session_key: this.resumeStoredSessionId,
 					message_count: 1,
@@ -451,6 +459,157 @@ describe("HermesRuntimeService", () => {
 		);
 	});
 
+	test("idempotently unbinds only the expected claim and cannot release a newer binding", async () => {
+		await service.connect(connectionId);
+		const first = await service.resume(connectionId, "session-tip");
+		const released = await service.unbind(connectionId, "session-tip", first.claimId);
+		const repeated = await service.unbind(connectionId, "session-tip", first.claimId);
+		const second = await service.resume(connectionId, "session-tip");
+		const staleCleanup = await service.unbind(connectionId, "session-tip", first.claimId);
+		await service.submit(connectionId, "session-tip", "Still bound");
+
+		expect(released).toEqual({ unbound: true, released: true });
+		expect(repeated).toEqual({ unbound: false, released: false });
+		expect(staleCleanup).toEqual({ unbound: false, released: false });
+		expect(second).toMatchObject({ claimId: "claim-2", runtimeSessionId: "runtime-2" });
+		const submit = [...client.requests]
+			.reverse()
+			.find((request) => request.method === "prompt.submit");
+		expect(submit?.params).toMatchObject({ claim_id: "claim-2", session_id: "runtime-2" });
+		expect(client.requests.filter((request) => request.method === "session.release")).toHaveLength(
+			1
+		);
+	});
+
+	test("rebinds durable sessions after transport reconnect before requesting history", async () => {
+		await service.connect(connectionId);
+		await service.resume(connectionId, "session-tip");
+		const beforeReconnect = client.requests.length;
+
+		const reconnectEvent: HermesRuntimeEvent = {
+			type: "runtime.history-refresh-required",
+			sessionId: null,
+			turnId: null,
+			requestId: null,
+			text: null,
+			toolName: null,
+			status: "reconnected",
+			payload: {},
+			workspaceArtifacts: [],
+			receivedAt: Date.now(),
+		};
+		client.eventListener?.(reconnectEvent);
+		client.eventListener?.(reconnectEvent);
+		await Bun.sleep(10);
+
+		const reconnectMethods = client.requests
+			.slice(beforeReconnect)
+			.map((request) => request.method);
+		expect(reconnectMethods.filter((method) => method === "session.claim")).toHaveLength(1);
+		expect(reconnectMethods.filter((method) => method === "session.resume")).toHaveLength(1);
+		expect(reconnectMethods.indexOf("session.claim")).toBeLessThan(
+			reconnectMethods.indexOf("session.resume")
+		);
+		expect(reconnectMethods.indexOf("session.resume")).toBeLessThan(
+			reconnectMethods.indexOf("session.history")
+		);
+
+		await service.submit(connectionId, "session-tip", "After reconnect");
+		const submit = [...client.requests]
+			.reverse()
+			.find((request) => request.method === "prompt.submit");
+		expect(submit?.params).toMatchObject({ claim_id: "claim-2", session_id: "runtime-2" });
+		const refresh = service
+			.events(connectionId, 0)
+			.events.reverse()
+			.find((entry) => entry.event.type === "runtime.history-refresh-required");
+		expect(refresh?.event.payload).toEqual({
+			bindings: [
+				{
+					hermesSessionId: "session-tip",
+					canonicalSessionId: "session-tip",
+					runtimeSessionId: "runtime-2",
+					claimId: "claim-2",
+				},
+			],
+			failedSessionIds: [],
+		});
+	});
+
+	test("rebinds every currently bound durable session after one reconnect", async () => {
+		await service.connect(connectionId);
+		await service.resume(connectionId, "session-tip");
+		await service.resume(connectionId, "session-other");
+		const beforeReconnect = client.requests.length;
+
+		client.eventListener?.({
+			type: "runtime.history-refresh-required",
+			sessionId: null,
+			turnId: null,
+			requestId: null,
+			text: null,
+			toolName: null,
+			status: "reconnected",
+			payload: {},
+			workspaceArtifacts: [],
+			receivedAt: Date.now(),
+		});
+		await Bun.sleep(10);
+
+		const reconnectRequests = client.requests.slice(beforeReconnect);
+		expect(reconnectRequests.filter((request) => request.method === "session.claim")).toHaveLength(
+			2
+		);
+		expect(reconnectRequests.filter((request) => request.method === "session.resume")).toHaveLength(
+			2
+		);
+		expect(
+			reconnectRequests.filter((request) => request.method === "session.history")
+		).toHaveLength(2);
+		await service.submit(connectionId, "session-tip", "First rebound thread");
+		await service.submit(connectionId, "session-other", "Second rebound thread");
+		const submits = client.requests.filter((request) => request.method === "prompt.submit");
+		expect(submits.at(-2)?.params).toMatchObject({ claim_id: "claim-3", session_id: "runtime-3" });
+		expect(submits.at(-1)?.params).toMatchObject({ claim_id: "claim-4", session_id: "runtime-4" });
+	});
+
+	test("keeps reconnect failures recoverable and retries without duplicate renewal bindings", async () => {
+		await service.connect(connectionId);
+		const first = await service.resume(connectionId, "session-tip");
+		client.failResumeNumbers.add(2);
+		client.eventListener?.({
+			type: "runtime.history-refresh-required",
+			sessionId: null,
+			turnId: null,
+			requestId: null,
+			text: null,
+			toolName: null,
+			status: "reconnected",
+			payload: {},
+			workspaceArtifacts: [],
+			receivedAt: Date.now(),
+		});
+		await Bun.sleep(10);
+
+		const failedRefresh = service
+			.events(connectionId, 0)
+			.events.reverse()
+			.find((entry) => entry.event.type === "runtime.history-refresh-required");
+		expect(failedRefresh?.event.payload).toEqual({
+			bindings: [],
+			failedSessionIds: ["session-tip"],
+		});
+		expect(
+			service.events(connectionId, 0).events.some((entry) => entry.event.type === "runtime.error")
+		).toBe(true);
+
+		const recovered = await service.resume(connectionId, "session-tip");
+		expect(recovered).toMatchObject({ claimId: "claim-3", runtimeSessionId: "runtime-3" });
+		const staleCleanup = await service.unbind(connectionId, "session-tip", first.claimId);
+		expect(staleCleanup).toEqual({ unbound: false, released: false });
+		await service.submit(connectionId, "session-tip", "Recovered");
+	});
+
 	test("routes profile-scoped handoff RPCs to the configured Hermes profile", async () => {
 		client.capabilities = [...HERMES_REQUIRED_CAPABILITIES, "session.tool_artifacts"];
 		const profiledConnectionId = saveHermesConnection(
@@ -465,6 +624,19 @@ describe("HermesRuntimeService", () => {
 
 		await service.connect(profiledConnectionId);
 		await service.resume(profiledConnectionId, "session-tip");
+		client.eventListener?.({
+			type: "runtime.history-refresh-required",
+			sessionId: null,
+			turnId: null,
+			requestId: null,
+			text: null,
+			toolName: null,
+			status: "reconnected",
+			payload: {},
+			workspaceArtifacts: [],
+			receivedAt: Date.now(),
+		});
+		await Bun.sleep(10);
 		await service.origin(profiledConnectionId, "session-tip");
 		await service.reportToOrigin({
 			connectionId: profiledConnectionId,
@@ -483,8 +655,9 @@ describe("HermesRuntimeService", () => {
 			"session.tool_artifacts",
 			"session.release",
 		]) {
-			const request = client.requests.find((candidate) => candidate.method === method);
-			expect(request?.params["profile"]).toBe("work");
+			const requests = client.requests.filter((candidate) => candidate.method === method);
+			expect(requests.length).toBeGreaterThan(0);
+			for (const request of requests) expect(request.params["profile"]).toBe("work");
 		}
 	});
 
