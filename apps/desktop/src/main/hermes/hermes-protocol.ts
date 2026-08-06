@@ -113,9 +113,13 @@ function isWorkspaceArtifact(value: unknown): value is HermesWorkspaceArtifact {
 	return (
 		candidate?.["kind"] === HERMES_WORKSPACE_ARTIFACT_KIND &&
 		typeof candidate["workspaceId"] === "string" &&
+		candidate["workspaceId"].length > 0 &&
 		typeof candidate["projectId"] === "string" &&
+		candidate["projectId"].length > 0 &&
 		typeof candidate["branch"] === "string" &&
-		typeof candidate["worktreePath"] === "string"
+		candidate["branch"].length > 0 &&
+		typeof candidate["worktreePath"] === "string" &&
+		candidate["worktreePath"].length > 0
 	);
 }
 
@@ -129,37 +133,56 @@ function normalizeWorkspaceArtifact(value: HermesWorkspaceArtifact): HermesWorks
 	};
 }
 
-export function extractWorkspaceArtifacts(value: unknown): HermesWorkspaceArtifact[] {
-	const found = new Map<string, HermesWorkspaceArtifact>();
-	const seen = new Set<object>();
+export type HermesArtifactExtractionSource =
+	| "trusted-envelope"
+	| "tool-event"
+	| "history-message"
+	| "tool-artifacts-result";
 
-	function visit(candidate: unknown): void {
+export function extractWorkspaceArtifacts(
+	value: unknown,
+	source: HermesArtifactExtractionSource = "trusted-envelope"
+): HermesWorkspaceArtifact[] {
+	const found = new Map<string, HermesWorkspaceArtifact>();
+
+	function add(candidate: unknown): void {
 		if (isWorkspaceArtifact(candidate)) {
 			const artifact = normalizeWorkspaceArtifact(candidate);
 			found.set(`${artifact.projectId}:${artifact.workspaceId}`, artifact);
-			return;
 		}
-		if (typeof candidate === "string") {
-			const trimmed = candidate.trim();
-			if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return;
-			try {
-				visit(JSON.parse(trimmed));
-			} catch {
-				// Tool text is usually prose; only valid JSON is a structured artifact source.
-			}
-			return;
-		}
-		if (candidate === null || typeof candidate !== "object") return;
-		if (seen.has(candidate)) return;
-		seen.add(candidate);
-		if (Array.isArray(candidate)) {
-			for (const child of candidate) visit(child);
-			return;
-		}
-		for (const child of Object.values(candidate as JsonRecord)) visit(child);
 	}
 
-	visit(value);
+	function addProjection(candidate: unknown): void {
+		add(candidate);
+		const projection = record(candidate);
+		if (!projection) return;
+		add(projection["artifact"]);
+		if (Array.isArray(projection["artifacts"])) {
+			for (const artifact of projection["artifacts"]) add(artifact);
+		}
+	}
+
+	function addStructuredContent(envelope: JsonRecord): void {
+		addProjection(envelope["structuredContent"]);
+		addProjection(envelope["structured_content"]);
+	}
+
+	function addResultEnvelope(candidate: unknown): void {
+		addProjection(candidate);
+		const envelope = record(candidate);
+		if (!envelope) return;
+		addStructuredContent(envelope);
+	}
+
+	const envelope = record(value);
+	if (!envelope) return [];
+	addStructuredContent(envelope);
+	addResultEnvelope(envelope["tool_result"]);
+	addResultEnvelope(envelope["toolResult"]);
+	addResultEnvelope(envelope["result"]);
+	if (source === "tool-artifacts-result" && Array.isArray(envelope["artifacts"])) {
+		for (const artifact of envelope["artifacts"]) add(artifact);
+	}
 	return [...found.values()];
 }
 
@@ -291,7 +314,7 @@ export function normalizeHermesEvent(value: unknown): HermesRuntimeEvent | null 
 		toolName: sanitizedStringValue(payload["tool_name"], payload["toolName"], payload["name"]),
 		status: sanitizedStringValue(payload["status"]),
 		payload: choices.length > 0 ? { choices } : {},
-		workspaceArtifacts: extractWorkspaceArtifacts(payload),
+		workspaceArtifacts: extractWorkspaceArtifacts(payload, "tool-event"),
 		receivedAt: Date.now(),
 	};
 }
@@ -379,7 +402,7 @@ export function normalizeHermesHistory(value: unknown): HermesSessionHistory {
 				createdAt: numberValue(message["created_at"], message["timestamp"]),
 				status: sanitizedStringValue(message["status"]),
 				toolName: sanitizedStringValue(message["tool_name"], message["name"]),
-				workspaceArtifacts: extractWorkspaceArtifacts(message),
+				workspaceArtifacts: extractWorkspaceArtifacts(message, "history-message"),
 			},
 		];
 	});

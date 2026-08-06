@@ -27,6 +27,7 @@ class FakeClient implements HermesRuntimeClientLike {
 	catalogMethodMissing = false;
 	failToolArtifacts = false;
 	releaseBusyRemaining = 0;
+	releaseErrors: Error[] = [];
 	failResumeNumbers = new Set<number>();
 	historyTurnResults: Array<Record<string, unknown>> = [
 		{
@@ -195,6 +196,7 @@ class FakeClient implements HermesRuntimeClientLike {
 					permalink: "https://slack.com/archives/thread",
 				};
 			case "session.release":
+				if (this.releaseErrors.length > 0) throw this.releaseErrors.shift();
 				if (this.releaseBusyRemaining > 0) {
 					this.releaseBusyRemaining--;
 					return {
@@ -529,6 +531,93 @@ describe("HermesRuntimeService", () => {
 			retryable: false,
 			error: null,
 		});
+	});
+
+	test("remembers an automatic unbind rejected with 4094 and releases after turn completion", async () => {
+		await service.connect(connectionId);
+		const resumed = await service.resume(connectionId, "session-tip");
+		client.releaseErrors.push(new HermesRpcError("Hermes session is busy", 4094, true));
+
+		const deferred = await service.unbind(connectionId, "session-tip", resumed.claimId);
+		expect(deferred).toEqual({
+			unbound: false,
+			released: false,
+			retryable: true,
+			error: "Hermes session is busy",
+		});
+
+		client.eventListener?.({
+			type: "message.complete",
+			sessionId: resumed.runtimeSessionId,
+			turnId: "turn-1",
+			requestId: null,
+			text: "Done",
+			toolName: null,
+			status: "complete",
+			payload: {},
+			workspaceArtifacts: [],
+			receivedAt: Date.now(),
+		});
+		await Bun.sleep(10);
+
+		expect(client.requests.filter((request) => request.method === "session.release")).toHaveLength(
+			2
+		);
+		const rebound = await service.resume(connectionId, "session-tip");
+		expect(rebound.claimId).toBe("claim-2");
+	});
+
+	test("retries a hidden busy binding until the deferred release succeeds", async () => {
+		service.shutdown();
+		const retryCallbacks: Array<() => void> = [];
+		const retryTimer = { unref: () => retryTimer } as unknown as ReturnType<typeof setTimeout>;
+		service = new HermesRuntimeService({
+			clientFactory: () => client,
+			tokenVault: vault,
+			releaseRetryTimerApi: {
+				set: (callback) => {
+					retryCallbacks.push(callback);
+					return retryTimer;
+				},
+				clear: () => {
+					retryCallbacks.length = 0;
+				},
+			},
+		});
+		await service.connect(connectionId);
+		const resumed = await service.resume(connectionId, "session-tip");
+		client.releaseBusyRemaining = 1;
+
+		const deferred = await service.unbind(connectionId, "session-tip", resumed.claimId);
+		expect(deferred.unbound).toBe(false);
+		const runRetry = retryCallbacks.shift();
+		expect(runRetry).toBeDefined();
+		runRetry?.();
+		await Bun.sleep(0);
+
+		expect(client.requests.filter((request) => request.method === "session.release")).toHaveLength(
+			2
+		);
+		const rebound = await service.resume(connectionId, "session-tip");
+		expect(rebound.claimId).toBe("claim-2");
+	});
+
+	test("invalidates a local binding after nonretryable 4092 instead of renewing it", async () => {
+		await service.connect(connectionId);
+		const resumed = await service.resume(connectionId, "session-tip");
+		client.releaseErrors.push(new HermesRpcError("Claim is missing or not owned", 4092, false));
+
+		const invalidated = await service.unbind(connectionId, "session-tip", resumed.claimId);
+		expect(invalidated).toEqual({
+			unbound: true,
+			released: false,
+			retryable: false,
+			error: "Claim is missing or not owned",
+		});
+
+		const rebound = await service.resume(connectionId, "session-tip");
+		expect(rebound.claimId).toBe("claim-2");
+		expect(client.requests.filter((request) => request.method === "session.claim")).toHaveLength(2);
 	});
 
 	test("fails closed with an upgrade-required state when capabilities are missing", async () => {

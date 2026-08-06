@@ -50,12 +50,16 @@ interface RuntimeBinding {
 	active: boolean;
 	claimReleased: boolean;
 	releaseTask: Promise<ClaimReleaseResult> | null;
+	releaseRequested: boolean;
+	releaseRetryAttempts: number;
+	releaseRetryTimer: ReturnType<typeof setTimeout> | null;
 }
 
 interface ClaimReleaseResult {
 	released: boolean;
 	retryable: boolean;
 	error: string | null;
+	invalidBinding: boolean;
 }
 
 interface BufferedEvent {
@@ -88,9 +92,15 @@ export interface HermesRuntimeServiceOptions {
 		set(callback: () => void, delayMs: number): ReturnType<typeof setInterval>;
 		clear(timer: ReturnType<typeof setInterval>): void;
 	};
+	releaseRetryTimerApi?: {
+		set(callback: () => void, delayMs: number): ReturnType<typeof setTimeout>;
+		clear(timer: ReturnType<typeof setTimeout>): void;
+	};
 }
 
 const MAX_BUFFERED_EVENTS = 1_000;
+const MAX_AUTOMATIC_RELEASE_RETRIES = 5;
+const MAX_AUTOMATIC_RELEASE_RETRY_DELAY_MS = 5_000;
 
 function object(value: unknown): Record<string, unknown> {
 	return value !== null && typeof value === "object" && !Array.isArray(value)
@@ -111,6 +121,9 @@ export class HermesRuntimeService {
 	private readonly clientId: string;
 	private readonly claimTtlSeconds: number;
 	private readonly renewTimerApi: NonNullable<HermesRuntimeServiceOptions["renewTimerApi"]>;
+	private readonly releaseRetryTimerApi: NonNullable<
+		HermesRuntimeServiceOptions["releaseRetryTimerApi"]
+	>;
 
 	constructor(options: HermesRuntimeServiceOptions = {}) {
 		this.clientFactory = options.clientFactory ?? (() => new HermesRuntimeClient());
@@ -123,6 +136,12 @@ export class HermesRuntimeService {
 				set: (callback, delayMs) => setInterval(callback, delayMs),
 				clear: (timer) => clearInterval(timer),
 			} satisfies NonNullable<HermesRuntimeServiceOptions["renewTimerApi"]>);
+		this.releaseRetryTimerApi =
+			options.releaseRetryTimerApi ??
+			({
+				set: (callback, delayMs) => setTimeout(callback, delayMs),
+				clear: (timer) => clearTimeout(timer),
+			} satisfies NonNullable<HermesRuntimeServiceOptions["releaseRetryTimerApi"]>);
 	}
 
 	async connect(connectionId: string): Promise<HermesCatalog> {
@@ -261,6 +280,7 @@ export class HermesRuntimeService {
 		const runtime = this.requireCompatibleRuntime(connectionId);
 		if (runtime.reconnectTask) await runtime.reconnectTask;
 		const existing = runtime.bindings.get(hermesSessionId);
+		if (existing?.active) this.cancelDeferredRelease(existing);
 		const acquired = !existing?.active;
 		const binding = acquired
 			? await this.bindSession(connectionId, runtime, hermesSessionId, existing)
@@ -317,10 +337,14 @@ export class HermesRuntimeService {
 	async interrupt(connectionId: string, hermesSessionId: string): Promise<{ ok: true }> {
 		const runtime = this.requireCompatibleRuntime(connectionId);
 		const binding = this.requireBinding(runtime, hermesSessionId);
-		await runtime.client.request("session.interrupt", {
-			session_id: binding.runtimeSessionId,
-			claim_id: binding.claimId,
-		});
+		try {
+			await runtime.client.request("session.interrupt", {
+				session_id: binding.runtimeSessionId,
+				claim_id: binding.claimId,
+			});
+		} finally {
+			this.triggerDeferredRelease(connectionId, runtime, hermesSessionId, binding, true);
+		}
 		return { ok: true };
 	}
 
@@ -387,32 +411,10 @@ export class HermesRuntimeService {
 			return { unbound: false, released: false, retryable: false, error: null };
 		}
 
-		const result = await this.releaseClaim(connectionId, runtime, binding);
-		if (result.released) {
-			this.detachBinding(runtime, hermesSessionId, binding);
-			return { unbound: true, released: true, retryable: false, error: null };
-		}
-		if (
-			this.runtimes.get(connectionId) === runtime &&
-			runtime.bindings.get(hermesSessionId) === binding
-		) {
-			binding.active = true;
-			binding.renewTimer ??= this.createRenewTimer(connectionId, runtime, binding);
-			runtime.runtimeToCanonical.set(binding.runtimeSessionId, hermesSessionId);
-		}
-		this.pushEvent(connectionId, {
-			type: "runtime.error",
-			sessionId: binding.runtimeSessionId,
-			turnId: null,
-			requestId: null,
-			text: result.error ?? "Hermes claim release failed",
-			toolName: null,
-			status: "release-failed",
-			payload: {},
-			workspaceArtifacts: [],
-			receivedAt: Date.now(),
-		});
-		return { unbound: false, ...result };
+		binding.releaseRequested = true;
+		binding.releaseRetryAttempts = 0;
+		this.clearReleaseRetryTimer(binding);
+		return this.attemptRequestedRelease(connectionId, runtime, hermesSessionId, binding, true);
 	}
 
 	async origin(connectionId: string, hermesSessionId: string): Promise<HermesOriginInfo> {
@@ -540,14 +542,19 @@ export class HermesRuntimeService {
 				const canonical = event.sessionId
 					? runtime.runtimeToCanonical.get(event.sessionId)
 					: undefined;
-				if (canonical && event.workspaceArtifacts.length > 0) {
+				if (canonical) {
 					const binding = runtime.bindings.get(canonical);
-					this.linkArtifacts(
-						connectionId,
-						canonical,
-						binding?.lineageRootId ?? null,
-						event.workspaceArtifacts
-					);
+					if (event.workspaceArtifacts.length > 0) {
+						this.linkArtifacts(
+							connectionId,
+							canonical,
+							binding?.lineageRootId ?? null,
+							event.workspaceArtifacts
+						);
+					}
+					if (binding && this.isTurnTerminalEvent(event)) {
+						this.triggerDeferredRelease(connectionId, runtime, canonical, binding, true);
+					}
 				}
 			}),
 			runtime.client.subscribeState((state) => {
@@ -729,12 +736,18 @@ export class HermesRuntimeService {
 				active: true,
 				claimReleased: false,
 				releaseTask: null,
+				releaseRequested: previous?.releaseRequested ?? false,
+				releaseRetryAttempts: previous?.releaseRetryAttempts ?? 0,
+				releaseRetryTimer: null,
 			};
 			binding.renewTimer = this.createRenewTimer(connectionId, runtime, binding);
 			if (previous) this.detachBinding(runtime, hermesSessionId, previous, false);
 			runtime.bindings.set(hermesSessionId, binding);
 			runtime.runtimeToCanonical.set(runtimeSessionId, hermesSessionId);
 			installed = true;
+			if (binding.releaseRequested) {
+				this.scheduleDeferredRelease(connectionId, runtime, hermesSessionId, binding);
+			}
 
 			if (previous && previous.claimId !== claimId && !previous.claimReleased) {
 				await this.releaseClaim(connectionId, runtime, previous, false);
@@ -751,6 +764,9 @@ export class HermesRuntimeService {
 					active: false,
 					claimReleased: false,
 					releaseTask: null,
+					releaseRequested: false,
+					releaseRetryAttempts: 0,
+					releaseRetryTimer: null,
 				};
 				await this.releaseClaim(connectionId, runtime, failedBinding, false);
 			}
@@ -789,6 +805,131 @@ export class HermesRuntimeService {
 		binding.renewTimer = null;
 	}
 
+	private clearReleaseRetryTimer(binding: RuntimeBinding): void {
+		if (!binding.releaseRetryTimer) return;
+		this.releaseRetryTimerApi.clear(binding.releaseRetryTimer);
+		binding.releaseRetryTimer = null;
+	}
+
+	private cancelDeferredRelease(binding: RuntimeBinding): void {
+		binding.releaseRequested = false;
+		binding.releaseRetryAttempts = 0;
+		this.clearReleaseRetryTimer(binding);
+	}
+
+	private isCurrentBinding(
+		connectionId: string,
+		runtime: ConnectionRuntime,
+		hermesSessionId: string,
+		binding: RuntimeBinding
+	): boolean {
+		return (
+			this.runtimes.get(connectionId) === runtime &&
+			runtime.bindings.get(hermesSessionId) === binding
+		);
+	}
+
+	private isTurnTerminalEvent(event: HermesRuntimeEvent): boolean {
+		return (
+			event.type === "message.complete" ||
+			event.type === "turn.complete" ||
+			event.type === "turn.completed" ||
+			event.type === "turn.failed" ||
+			event.type === "turn.cancelled"
+		);
+	}
+
+	private triggerDeferredRelease(
+		connectionId: string,
+		runtime: ConnectionRuntime,
+		hermesSessionId: string,
+		binding: RuntimeBinding,
+		reportError: boolean
+	): void {
+		if (
+			!binding.releaseRequested ||
+			!this.isCurrentBinding(connectionId, runtime, hermesSessionId, binding)
+		) {
+			return;
+		}
+		this.clearReleaseRetryTimer(binding);
+		void this.attemptRequestedRelease(connectionId, runtime, hermesSessionId, binding, reportError);
+	}
+
+	private scheduleDeferredRelease(
+		connectionId: string,
+		runtime: ConnectionRuntime,
+		hermesSessionId: string,
+		binding: RuntimeBinding
+	): void {
+		if (
+			binding.releaseRetryTimer ||
+			!binding.releaseRequested ||
+			!this.isCurrentBinding(connectionId, runtime, hermesSessionId, binding)
+		) {
+			return;
+		}
+		if (binding.releaseRetryAttempts >= MAX_AUTOMATIC_RELEASE_RETRIES) {
+			binding.releaseRequested = false;
+			this.detachBinding(runtime, hermesSessionId, binding);
+			return;
+		}
+
+		const delayMs = Math.min(
+			250 * 2 ** binding.releaseRetryAttempts,
+			MAX_AUTOMATIC_RELEASE_RETRY_DELAY_MS
+		);
+		binding.releaseRetryAttempts++;
+		binding.releaseRetryTimer = this.releaseRetryTimerApi.set(() => {
+			binding.releaseRetryTimer = null;
+			this.triggerDeferredRelease(connectionId, runtime, hermesSessionId, binding, false);
+		}, delayMs);
+		binding.releaseRetryTimer.unref?.();
+	}
+
+	private async attemptRequestedRelease(
+		connectionId: string,
+		runtime: ConnectionRuntime,
+		hermesSessionId: string,
+		binding: RuntimeBinding,
+		reportError: boolean
+	): Promise<HermesBindingReleaseResult> {
+		if (
+			!binding.releaseRequested ||
+			!this.isCurrentBinding(connectionId, runtime, hermesSessionId, binding)
+		) {
+			return { unbound: false, released: false, retryable: false, error: null };
+		}
+
+		this.clearReleaseRetryTimer(binding);
+		const result = await this.releaseClaim(connectionId, runtime, binding, reportError);
+		if (!this.isCurrentBinding(connectionId, runtime, hermesSessionId, binding)) {
+			return {
+				unbound: false,
+				released: result.released,
+				retryable: result.retryable,
+				error: result.error,
+			};
+		}
+
+		if (result.released || result.invalidBinding) {
+			binding.releaseRequested = false;
+			this.detachBinding(runtime, hermesSessionId, binding);
+			return {
+				unbound: true,
+				released: result.released,
+				retryable: false,
+				error: result.error,
+			};
+		}
+
+		binding.active = true;
+		binding.renewTimer ??= this.createRenewTimer(connectionId, runtime, binding);
+		runtime.runtimeToCanonical.set(binding.runtimeSessionId, hermesSessionId);
+		this.scheduleDeferredRelease(connectionId, runtime, hermesSessionId, binding);
+		return { unbound: false, released: false, retryable: result.retryable, error: result.error };
+	}
+
 	private releaseClaim(
 		connectionId: string,
 		runtime: ConnectionRuntime,
@@ -798,7 +939,12 @@ export class HermesRuntimeService {
 	): Promise<ClaimReleaseResult> {
 		if (binding.releaseTask) return binding.releaseTask;
 		if (binding.claimReleased) {
-			return Promise.resolve({ released: true, retryable: false, error: null });
+			return Promise.resolve({
+				released: true,
+				retryable: false,
+				error: null,
+				invalidBinding: false,
+			});
 		}
 		binding.active = false;
 		this.clearRenewTimer(binding);
@@ -818,6 +964,7 @@ export class HermesRuntimeService {
 					return {
 						released: false,
 						retryable: result["retryable"] !== false,
+						invalidBinding: result["retryable"] === false,
 						error:
 							typeof sanitized === "string"
 								? sanitized
@@ -825,16 +972,18 @@ export class HermesRuntimeService {
 					};
 				}
 				binding.claimReleased = true;
-				return { released: true, retryable: false, error: null };
+				return { released: true, retryable: false, error: null, invalidBinding: false };
 			})
 			.catch((error) => {
 				if (reportError) this.pushRuntimeError(connectionId, error);
 				const sanitized = sanitizeHermesPayload(
 					error instanceof Error ? error.message : "Hermes claim release failed"
 				);
+				const retryable = error instanceof HermesRpcError ? error.retryable : true;
 				return {
 					released: false,
-					retryable: error instanceof HermesRpcError ? error.retryable : true,
+					retryable,
+					invalidBinding: !retryable,
 					error: typeof sanitized === "string" ? sanitized : "Hermes claim release failed",
 				};
 			});
@@ -853,6 +1002,7 @@ export class HermesRuntimeService {
 		remove = true
 	): void {
 		this.clearRenewTimer(binding);
+		this.clearReleaseRetryTimer(binding);
 		binding.active = false;
 		runtime.runtimeToCanonical.delete(binding.runtimeSessionId);
 		if (remove && runtime.bindings.get(hermesSessionId) === binding) {
@@ -943,7 +1093,7 @@ export class HermesRuntimeService {
 			connectionId,
 			hermesSessionId,
 			binding.lineageRootId,
-			extractWorkspaceArtifacts(result)
+			extractWorkspaceArtifacts(result, "tool-artifacts-result")
 		);
 	}
 }

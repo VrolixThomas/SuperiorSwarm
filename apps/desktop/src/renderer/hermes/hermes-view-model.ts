@@ -69,6 +69,16 @@ export function latestReportableHermesTurnResult(
 	return latest;
 }
 
+export function hermesOriginActionAvailability(
+	session: Pick<HermesSessionSummary, "canReportToOrigin">,
+	resolvedOrigin: { canOpen: boolean } | null | undefined
+): { canOpenOrigin: boolean; canReportToOrigin: boolean } {
+	return {
+		canOpenOrigin: resolvedOrigin?.canOpen === true,
+		canReportToOrigin: session.canReportToOrigin,
+	};
+}
+
 const GENERIC_APPROVAL_CHOICES: HermesInteractionChoice[] = [
 	{ value: "allow_once", label: "Allow once" },
 	{ value: "deny", label: "Deny" },

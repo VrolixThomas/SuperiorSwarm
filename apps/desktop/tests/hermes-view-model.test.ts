@@ -3,6 +3,7 @@ import {
 	applyHermesEvent,
 	createHermesLiveState,
 	filterHermesSessions,
+	hermesOriginActionAvailability,
 	latestReportableHermesTurnResult,
 } from "../src/renderer/hermes/hermes-view-model";
 import type { HermesRuntimeEvent, HermesSessionSummary } from "../src/shared/hermes";
@@ -161,6 +162,13 @@ describe("Hermes renderer view model", () => {
 			content: "Latest result",
 			completedAt: 200,
 			status: "complete",
+		});
+	});
+
+	test("keeps reporting available from the catalog when origin link lookup fails", () => {
+		expect(hermesOriginActionAvailability(session(), undefined)).toEqual({
+			canOpenOrigin: false,
+			canReportToOrigin: true,
 		});
 	});
 });

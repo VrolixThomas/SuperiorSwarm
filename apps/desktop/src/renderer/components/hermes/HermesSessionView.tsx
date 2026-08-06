@@ -3,11 +3,13 @@ import type { HermesTranscriptMessage } from "../../../shared/hermes";
 import {
 	HermesBindingLifecycle,
 	type HermesRendererBinding,
+	type HermesSelectionGeneration,
 } from "../../hermes/hermes-binding-lifecycle";
 import { isHermesChatNearBottom, shouldAnchorHermesChat } from "../../hermes/hermes-chat-scroll";
 import {
 	applyHermesEvent,
 	createHermesLiveState,
+	hermesOriginActionAvailability,
 	latestReportableHermesTurnResult,
 } from "../../hermes/hermes-view-model";
 import { useTabStore } from "../../stores/tab-store";
@@ -86,13 +88,14 @@ export function HermesSessionView() {
 		});
 	}
 	const bindingLifecycle = bindingLifecycleRef.current;
-	bindingLifecycle.select(selectionKey);
-	const requestResumeRef = useRef<(key: string, connection: string, session: string) => void>(
-		() => undefined
-	);
-	requestResumeRef.current = (key, selectedConnectionId, selectedSessionId) => {
-		if (resumeRequests.current.has(key)) return;
-		resumeRequests.current.add(key);
+	const selectionGeneration = bindingLifecycle.select(selectionKey);
+	const requestResumeRef = useRef<
+		(selection: HermesSelectionGeneration, connection: string, session: string) => void
+	>(() => undefined);
+	requestResumeRef.current = (requestSelection, selectedConnectionId, selectedSessionId) => {
+		const requestId = `${requestSelection.key}:${requestSelection.generation}`;
+		if (resumeRequests.current.has(requestId)) return;
+		resumeRequests.current.add(requestId);
 		resume.mutate(
 			{ connectionId: selectedConnectionId, hermesSessionId: selectedSessionId },
 			{
@@ -104,37 +107,18 @@ export function HermesSessionView() {
 						runtimeSessionId: result.runtimeSessionId,
 						claimId: result.claimId,
 					};
-					if (bindingLifecycle.accept(key, binding)) {
+					if (bindingLifecycle.accept(requestSelection, binding)) {
 						setResumed(binding);
 						setLive((current) => ({ ...current, error: null }));
 					}
 				},
 				onSettled: () => {
-					resumeRequests.current.delete(key);
+					resumeRequests.current.delete(requestId);
 				},
 			}
 		);
 	};
-	const release = trpc.hermes.release.useMutation({
-		onSuccess: (result) => {
-			if (!result.released) {
-				setReleaseFailure({
-					retryable: result.retryable,
-					error: result.error ?? "Hermes could not release this session.",
-				});
-				setLive((current) => ({
-					...current,
-					error: result.error ?? "Hermes could not release this session; retry is safe.",
-				}));
-				return;
-			}
-			setReleaseFailure(null);
-			setResumed(null);
-			resume.reset();
-			useTabStore.getState().selectHermesSession(null);
-			void utils.hermes.catalog.invalidate();
-		},
-	});
+	const release = trpc.hermes.release.useMutation();
 
 	useEffect(() => {
 		bindingLifecycle.activate();
@@ -167,11 +151,10 @@ export function HermesSessionView() {
 
 	useEffect(() => {
 		if (!sessionId || !connectionId || status.data?.status !== "connected") return;
-		const key = `${connectionId}:${sessionId}`;
 		const current = bindingLifecycle.current();
 		if (current?.connectionId === connectionId && current.hermesSessionId === sessionId) return;
-		requestResumeRef.current(key, connectionId, sessionId);
-	}, [bindingLifecycle, connectionId, sessionId, status.data?.status]);
+		requestResumeRef.current(selectionGeneration, connectionId, sessionId);
+	}, [bindingLifecycle, connectionId, selectionGeneration, sessionId, status.data?.status]);
 
 	const history = trpc.hermes.history.useQuery(
 		{ connectionId, hermesSessionId: sessionId ?? "" },
@@ -184,7 +167,15 @@ export function HermesSessionView() {
 
 	useEffect(() => {
 		const feed = eventFeed.data;
-		if (!feed || !resumed || !sessionId || feed.nextSeq <= processedEventSeq.current) return;
+		if (
+			!feed ||
+			!resumed ||
+			!sessionId ||
+			!bindingLifecycle.isCurrent(selectionGeneration) ||
+			feed.nextSeq <= processedEventSeq.current
+		) {
+			return;
+		}
 		processedEventSeq.current = feed.nextSeq;
 		let refreshHistory = false;
 		let retryBinding = false;
@@ -227,7 +218,7 @@ export function HermesSessionView() {
 			return next;
 		});
 		setCursor(feed.nextSeq);
-		if (reboundBinding && bindingLifecycle.accept(selectionKey, reboundBinding)) {
+		if (reboundBinding && bindingLifecycle.accept(selectionGeneration, reboundBinding)) {
 			setResumed(reboundBinding);
 		}
 		if (refreshHistory) {
@@ -237,46 +228,31 @@ export function HermesSessionView() {
 			});
 			void utils.hermes.workspaceLinks.invalidate();
 			if (retryBinding && sessionId) {
-				requestResumeRef.current(`${connectionId}:${sessionId}`, connectionId, sessionId);
+				requestResumeRef.current(selectionGeneration, connectionId, sessionId);
 			}
 		}
-	}, [bindingLifecycle, connectionId, eventFeed.data, resumed, selectionKey, sessionId, utils]);
+	}, [
+		bindingLifecycle,
+		connectionId,
+		eventFeed.data,
+		resumed,
+		selectionGeneration,
+		sessionId,
+		utils,
+	]);
 
-	const submit = trpc.hermes.submit.useMutation({
-		onSuccess: () => {
-			setComposer("");
-			setLive((current) => ({ ...current, running: true, error: null }));
-		},
-	});
+	const submit = trpc.hermes.submit.useMutation();
 	const interrupt = trpc.hermes.interrupt.useMutation();
-	const approval = trpc.hermes.respondApproval.useMutation({
-		onSuccess: () => setLive((current) => ({ ...current, pendingApproval: null })),
-	});
-	const clarify = trpc.hermes.respondClarification.useMutation({
-		onSuccess: () => {
-			setClarification("");
-			setLive((current) => ({ ...current, pendingClarification: null }));
-		},
-	});
+	const approval = trpc.hermes.respondApproval.useMutation();
+	const clarify = trpc.hermes.respondClarification.useMutation();
 
 	const links = trpc.hermes.workspaceLinks.useQuery(
 		{ connectionId, hermesSessionId: sessionId ?? "" },
 		{ enabled: Boolean(connectionId && sessionId), refetchInterval: 2_000 }
 	);
 	const availableWorkspaces = trpc.hermes.availableWorkspaces.useQuery();
-	const linkWorkspace = trpc.hermes.linkWorkspace.useMutation({
-		onSuccess: () => {
-			setManualWorkspaceId("");
-			void utils.hermes.workspaceLinks.invalidate();
-			void utils.hermes.workspaceLinkIndex.invalidate();
-		},
-	});
-	const unlinkWorkspace = trpc.hermes.unlinkWorkspace.useMutation({
-		onSuccess: () => {
-			void utils.hermes.workspaceLinks.invalidate();
-			void utils.hermes.workspaceLinkIndex.invalidate();
-		},
-	});
+	const linkWorkspace = trpc.hermes.linkWorkspace.useMutation();
+	const unlinkWorkspace = trpc.hermes.unlinkWorkspace.useMutation();
 	const attachTerminal = trpc.workspaces.attachTerminal.useMutation();
 
 	const origin = trpc.hermes.origin.useQuery(
@@ -284,13 +260,12 @@ export function HermesSessionView() {
 		{ enabled: Boolean(connectionId && sessionId && session?.source === "slack" && resumed) }
 	);
 	const openOrigin = trpc.hermes.openOrigin.useMutation();
+	const originActions = session ? hermesOriginActionAvailability(session, origin.data) : null;
 	const reports = trpc.hermes.reports.useQuery(
 		{ connectionId, hermesSessionId: sessionId ?? "" },
 		{ enabled: Boolean(connectionId && sessionId) }
 	);
-	const report = trpc.hermes.reportToOrigin.useMutation({
-		onSettled: () => void utils.hermes.reports.invalidate(),
-	});
+	const report = trpc.hermes.reportToOrigin.useMutation();
 
 	const reportable = useMemo(
 		() => latestReportableHermesTurnResult(history.data?.turnResults ?? []),
@@ -303,7 +278,18 @@ export function HermesSessionView() {
 	function send(event: FormEvent) {
 		event.preventDefault();
 		if (!composer.trim() || !sessionId) return;
-		submit.mutate({ connectionId, hermesSessionId: sessionId, text: composer.trim() });
+		const mutationSelection = selectionGeneration;
+		submit.mutate(
+			{ connectionId, hermesSessionId: sessionId, text: composer.trim() },
+			{
+				onSuccess: () => {
+					bindingLifecycle.runIfCurrent(mutationSelection, () => {
+						setComposer("");
+						setLive((current) => ({ ...current, running: true, error: null }));
+					});
+				},
+			}
+		);
 	}
 
 	useLayoutEffect(() => {
@@ -349,7 +335,7 @@ export function HermesSessionView() {
 					</div>
 				</div>
 				<div className="app-no-drag flex items-center gap-1.5">
-					{origin.data?.canOpen && (
+					{originActions?.canOpenOrigin && (
 						<button
 							type="button"
 							onClick={() => openOrigin.mutate({ connectionId, hermesSessionId: sessionId })}
@@ -360,7 +346,35 @@ export function HermesSessionView() {
 					)}
 					<button
 						type="button"
-						onClick={() => release.mutate({ connectionId, hermesSessionId: sessionId })}
+						onClick={() => {
+							const mutationSelection = selectionGeneration;
+							release.mutate(
+								{ connectionId, hermesSessionId: sessionId },
+								{
+									onSuccess: (result) => {
+										bindingLifecycle.runIfCurrent(mutationSelection, () => {
+											if (!result.unbound) {
+												setReleaseFailure({
+													retryable: result.retryable,
+													error: result.error ?? "Hermes could not release this session.",
+												});
+												setLive((current) => ({
+													...current,
+													error:
+														result.error ?? "Hermes could not release this session; retry is safe.",
+												}));
+												return;
+											}
+											setReleaseFailure(null);
+											setResumed(null);
+											resume.reset();
+											useTabStore.getState().selectHermesSession(null);
+											void utils.hermes.catalog.invalidate();
+										});
+									},
+								}
+							);
+						}}
 						disabled={!resumed || release.isPending}
 						className="rounded-[5px] border border-[var(--border)] px-2 py-1 text-[11px] text-[var(--text-tertiary)] hover:bg-[var(--bg-elevated)] disabled:opacity-40"
 					>
@@ -458,13 +472,24 @@ export function HermesSessionView() {
 										</button>
 										<button
 											type="button"
-											onClick={() =>
-												unlinkWorkspace.mutate({
-													connectionId,
-													hermesSessionId: sessionId,
-													workspaceId: link.workspaceId,
-												})
-											}
+											onClick={() => {
+												const mutationSelection = selectionGeneration;
+												unlinkWorkspace.mutate(
+													{
+														connectionId,
+														hermesSessionId: sessionId,
+														workspaceId: link.workspaceId,
+													},
+													{
+														onSuccess: () => {
+															bindingLifecycle.runIfCurrent(mutationSelection, () => {
+																void utils.hermes.workspaceLinks.invalidate();
+																void utils.hermes.workspaceLinkIndex.invalidate();
+															});
+														},
+													}
+												);
+											}}
 											className="text-[10px] text-[var(--text-quaternary)] hover:text-[var(--danger)]"
 											title="Unlink workspace"
 										>
@@ -492,14 +517,26 @@ export function HermesSessionView() {
 						<button
 							type="button"
 							disabled={!manualWorkspaceId}
-							onClick={() =>
-								linkWorkspace.mutate({
-									connectionId,
-									hermesSessionId: sessionId,
-									workspaceId: manualWorkspaceId,
-									lineageRootId: session?.lineageRootId,
-								})
-							}
+							onClick={() => {
+								const mutationSelection = selectionGeneration;
+								linkWorkspace.mutate(
+									{
+										connectionId,
+										hermesSessionId: sessionId,
+										workspaceId: manualWorkspaceId,
+										lineageRootId: session?.lineageRootId,
+									},
+									{
+										onSuccess: () => {
+											bindingLifecycle.runIfCurrent(mutationSelection, () => {
+												setManualWorkspaceId("");
+												void utils.hermes.workspaceLinks.invalidate();
+												void utils.hermes.workspaceLinkIndex.invalidate();
+											});
+										},
+									}
+								);
+							}}
 							className="rounded-[5px] border border-[var(--border)] px-2 py-1 text-[var(--text-tertiary)] disabled:opacity-40"
 						>
 							Link
@@ -514,14 +551,24 @@ export function HermesSessionView() {
 						<HermesApprovalCard
 							interaction={live.pendingApproval}
 							pending={approval.isPending}
-							onChoose={(choice) =>
-								approval.mutate({
-									connectionId,
-									hermesSessionId: sessionId,
-									requestId: live.pendingApproval?.requestId ?? "",
-									choice,
-								})
-							}
+							onChoose={(choice) => {
+								const mutationSelection = selectionGeneration;
+								approval.mutate(
+									{
+										connectionId,
+										hermesSessionId: sessionId,
+										requestId: live.pendingApproval?.requestId ?? "",
+										choice,
+									},
+									{
+										onSuccess: () => {
+											bindingLifecycle.runIfCurrent(mutationSelection, () => {
+												setLive((current) => ({ ...current, pendingApproval: null }));
+											});
+										},
+									}
+								);
+							}}
 						/>
 					)}
 
@@ -529,12 +576,26 @@ export function HermesSessionView() {
 						<form
 							onSubmit={(event) => {
 								event.preventDefault();
-								clarify.mutate({
-									connectionId,
-									hermesSessionId: sessionId,
-									requestId: live.pendingClarification?.requestId ?? "",
-									answer: clarification,
-								});
+								const mutationSelection = selectionGeneration;
+								clarify.mutate(
+									{
+										connectionId,
+										hermesSessionId: sessionId,
+										requestId: live.pendingClarification?.requestId ?? "",
+										answer: clarification,
+									},
+									{
+										onSuccess: () => {
+											bindingLifecycle.runIfCurrent(mutationSelection, () => {
+												setClarification("");
+												setLive((current) => ({
+													...current,
+													pendingClarification: null,
+												}));
+											});
+										},
+									}
+								);
 							}}
 							className="mb-2 rounded-[7px] border border-[#ff9f0a]/30 bg-[#ff9f0a]/5 p-2"
 						>
@@ -544,14 +605,28 @@ export function HermesSessionView() {
 							<HermesClarificationChoices
 								choices={live.pendingClarification.choices}
 								pending={clarify.isPending}
-								onChoose={(answer) =>
-									clarify.mutate({
-										connectionId,
-										hermesSessionId: sessionId,
-										requestId: live.pendingClarification?.requestId ?? "",
-										answer,
-									})
-								}
+								onChoose={(answer) => {
+									const mutationSelection = selectionGeneration;
+									clarify.mutate(
+										{
+											connectionId,
+											hermesSessionId: sessionId,
+											requestId: live.pendingClarification?.requestId ?? "",
+											answer,
+										},
+										{
+											onSuccess: () => {
+												bindingLifecycle.runIfCurrent(mutationSelection, () => {
+													setClarification("");
+													setLive((current) => ({
+														...current,
+														pendingClarification: null,
+													}));
+												});
+											},
+										}
+									);
+								}}
 							/>
 							<div className="flex gap-2">
 								<input
@@ -569,7 +644,7 @@ export function HermesSessionView() {
 						</form>
 					)}
 
-					{session?.source === "slack" && origin.data?.canReport && reportable && (
+					{session?.source === "slack" && originActions?.canReportToOrigin && reportable && (
 						<div className="mb-2 flex items-center gap-2 text-[10px] text-[var(--text-quaternary)]">
 							<button
 								type="button"
@@ -579,13 +654,23 @@ export function HermesSessionView() {
 									reportState?.status === "duplicate-suppressed" ||
 									(reportState?.status === "failed" && !reportState.retryable)
 								}
-								onClick={() =>
-									report.mutate({
-										connectionId,
-										hermesSessionId: sessionId,
-										turnId: reportable.turnId ?? "",
-									})
-								}
+								onClick={() => {
+									const mutationSelection = selectionGeneration;
+									report.mutate(
+										{
+											connectionId,
+											hermesSessionId: sessionId,
+											turnId: reportable.turnId ?? "",
+										},
+										{
+											onSettled: () => {
+												bindingLifecycle.runIfCurrent(mutationSelection, () => {
+													void utils.hermes.reports.invalidate();
+												});
+											},
+										}
+									);
+								}}
 								className="rounded-[5px] border border-[var(--border)] px-2 py-1 text-[var(--text-secondary)] disabled:opacity-50"
 							>
 								{report.isPending

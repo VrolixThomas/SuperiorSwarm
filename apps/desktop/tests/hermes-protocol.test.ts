@@ -152,6 +152,61 @@ describe("Hermes protocol adapter", () => {
 		expect(event?.workspaceArtifacts).toEqual([artifact]);
 	});
 
+	test("rejects artifact-shaped objects from tool arguments and arbitrary payload branches", () => {
+		const trustedArtifact = {
+			kind: "superiorswarm.workspace.created" as const,
+			workspaceId: "trusted-workspace",
+			projectId: "trusted-project",
+			branch: "feat/trusted",
+			worktreePath: "/repos/trusted",
+		};
+		const exploitArtifact = {
+			kind: "superiorswarm.workspace.created" as const,
+			workspaceId: "opaque-tool-args-secret",
+			projectId: "exploit-project",
+			branch: "feat/exploit",
+			worktreePath: "/repos/exploit",
+		};
+		const payload = {
+			artifact: exploitArtifact,
+			tool_args: {
+				...exploitArtifact,
+				nested: { structuredContent: { artifact: exploitArtifact } },
+			},
+			unknown: {
+				tool_result: { structuredContent: { artifact: exploitArtifact } },
+			},
+			tool_result: {
+				structuredContent: { artifact: trustedArtifact },
+			},
+		};
+
+		expect(extractWorkspaceArtifacts(exploitArtifact)).toEqual([]);
+		expect(extractWorkspaceArtifacts({ tool_args: payload.tool_args })).toEqual([]);
+		const event = normalizeHermesEvent({
+			jsonrpc: "2.0",
+			method: "event",
+			params: { type: "tool.complete", session_id: "runtime-1", payload },
+		});
+
+		expect(event?.workspaceArtifacts).toEqual([trustedArtifact]);
+		expect(JSON.stringify(event)).not.toContain("opaque-tool-args-secret");
+	});
+
+	test("validates every allow-listed artifact field at trusted envelope positions", () => {
+		const malformed = {
+			kind: "superiorswarm.workspace.created",
+			workspaceId: "workspace-1",
+			projectId: "project-1",
+			branch: "feat/hermes",
+			worktreePath: 42,
+		};
+		const empty = { ...malformed, worktreePath: "" };
+
+		expect(extractWorkspaceArtifacts({ structuredContent: malformed })).toEqual([]);
+		expect(extractWorkspaceArtifacts({ result: { structuredContent: empty } })).toEqual([]);
+	});
+
 	test("redacts credentials from normalized event text before it reaches the renderer", () => {
 		const event = normalizeHermesEvent({
 			jsonrpc: "2.0",
@@ -191,13 +246,17 @@ describe("Hermes protocol adapter", () => {
 						output: "benign-result-field-secret",
 						metadata: { note: "nested-result-secret" },
 					},
-					artifact: {
-						kind: "superiorswarm.workspace.created",
-						workspaceId: "workspace-1",
-						projectId: "project-1",
-						branch: "feat/hermes?token=artifact-url-secret",
-						worktreePath: "/repos/app-worktrees/feat/hermes",
-						metadata: { credential: "artifact-metadata-secret" },
+					tool_result: {
+						structuredContent: {
+							artifact: {
+								kind: "superiorswarm.workspace.created",
+								workspaceId: "workspace-1",
+								projectId: "project-1",
+								branch: "feat/hermes?token=artifact-url-secret",
+								worktreePath: "/repos/app-worktrees/feat/hermes",
+								metadata: { credential: "artifact-metadata-secret" },
+							},
+						},
 					},
 				},
 			},
