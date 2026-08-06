@@ -786,14 +786,14 @@ export function SidebarRail({ onExpand }: SidebarRailProps) {
 				{/* Divider */}
 				<div className="w-6 border-t border-[var(--border-subtle)]" />
 
-				{/* Global Hermes sessions */}
+				{/* Global agent threads */}
 				<button
 					type="button"
 					onClick={() => onExpand("hermes")}
-					title="Hermes"
+					title="Agents"
 					className="flex size-8 shrink-0 items-center justify-center rounded-[6px] border border-[var(--border)] bg-[var(--bg-elevated)] text-[12px] font-semibold text-[var(--text-tertiary)] transition-colors hover:text-[var(--text)]"
 				>
-					H
+					A
 				</button>
 
 				{/* Tickets section */}

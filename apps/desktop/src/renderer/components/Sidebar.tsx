@@ -207,7 +207,7 @@ export function Sidebar({ collapsed, onExpand }: SidebarProps) {
 						repos: "Projects",
 						tickets: "Tickets",
 						prs: "PRs",
-						hermes: "Hermes",
+						hermes: "Agents",
 					} as const;
 					return (
 						<Tooltip key={seg} label={labels[seg]} actionId={actionIds[seg]} className="flex-1">

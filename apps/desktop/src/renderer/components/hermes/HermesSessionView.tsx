@@ -207,10 +207,10 @@ export function HermesSessionView() {
 			<main className="flex h-full min-w-0 items-center justify-center overflow-hidden">
 				<div className="max-w-[360px] px-6 text-center">
 					<div className="text-[14px] font-medium text-[var(--text-secondary)]">
-						Select a Hermes session
+						Select an agent thread
 					</div>
 					<div className="mt-1 text-[12px] leading-5 text-[var(--text-quaternary)]">
-						Open sessions from local or messaging surfaces appear in the sidebar.
+						Agent threads from local or messaging surfaces appear in the sidebar.
 					</div>
 				</div>
 			</main>
@@ -222,7 +222,7 @@ export function HermesSessionView() {
 			<header className="app-drag flex min-h-[52px] shrink-0 items-center gap-3 border-b border-[var(--border-subtle)] px-4">
 				<div className="min-w-0 flex-1">
 					<div className="truncate text-[13px] font-medium text-[var(--text-secondary)]">
-						{session?.title ?? "Hermes session"}
+						{session?.title ?? "Agent thread"}
 					</div>
 					<div className="truncate text-[10px] text-[var(--text-quaternary)]">
 						{session?.originLabel ?? session?.source ?? sessionId}
@@ -494,7 +494,7 @@ export function HermesSessionView() {
 								}
 							}}
 							placeholder={
-								resumed ? "Continue this Hermes session…" : "Claiming and resuming session…"
+								resumed ? "Continue this agent thread…" : "Claiming and resuming session…"
 							}
 							disabled={!resumed || status.data?.status !== "connected"}
 							rows={2}

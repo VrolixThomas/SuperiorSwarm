@@ -267,12 +267,12 @@ export function HermesSidebar() {
 					<div className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-2">
 						{catalog.isLoading && (
 							<div className="px-2 py-5 text-center text-[11px] text-[var(--text-quaternary)]">
-								Loading Hermes sessions…
+								Loading agent threads…
 							</div>
 						)}
 						{!catalog.isLoading && sessions.length === 0 && (
 							<div className="px-2 py-5 text-center text-[11px] text-[var(--text-quaternary)]">
-								No matching Hermes sessions
+								No matching agent threads
 							</div>
 						)}
 						{sessions.map((session) => {
