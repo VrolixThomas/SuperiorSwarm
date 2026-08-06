@@ -46,11 +46,14 @@ interface RuntimeBinding {
 	runtimeSessionId: string;
 	lineageRootId: string | null;
 	claimId: string;
+	generation: number;
 	renewTimer: ReturnType<typeof setInterval> | null;
 	active: boolean;
 	claimReleased: boolean;
 	releaseTask: Promise<ClaimReleaseResult> | null;
+	releaseOperation: Promise<HermesBindingReleaseResult> | null;
 	releaseRequested: boolean;
+	releaseRequestGeneration: number | null;
 	releaseRetryAttempts: number;
 	releaseRetryTimer: ReturnType<typeof setTimeout> | null;
 }
@@ -79,6 +82,7 @@ interface ConnectionRuntime {
 	nextSeq: number;
 	unsubscribers: Array<() => void>;
 	bindingTasks: Map<string, Promise<RuntimeBinding>>;
+	nextBindingGeneration: number;
 	reconnectTask: Promise<void> | null;
 	durableTurnResults: Map<string, Map<string, HermesExactTurnResult>>;
 }
@@ -177,6 +181,7 @@ export class HermesRuntimeService {
 				nextSeq: 0,
 				unsubscribers: [],
 				bindingTasks: new Map(),
+				nextBindingGeneration: 0,
 				reconnectTask: null,
 				durableTurnResults: new Map(),
 			};
@@ -275,16 +280,17 @@ export class HermesRuntimeService {
 		canonicalSessionId: string;
 		runtimeSessionId: string;
 		claimId: string;
+		bindingGeneration: number;
 		history: HermesSessionHistory;
 	}> {
 		const runtime = this.requireCompatibleRuntime(connectionId);
 		if (runtime.reconnectTask) await runtime.reconnectTask;
-		const existing = runtime.bindings.get(hermesSessionId);
-		if (existing?.active) this.cancelDeferredRelease(existing);
-		const acquired = !existing?.active;
-		const binding = acquired
-			? await this.bindSession(connectionId, runtime, hermesSessionId, existing)
-			: existing;
+		const { binding, acquired } = await this.bindingForResume(
+			connectionId,
+			runtime,
+			hermesSessionId
+		);
+		const bindingGeneration = binding.generation;
 		try {
 			const history = await this.history(connectionId, hermesSessionId);
 			await this.backfillToolArtifacts(connectionId, hermesSessionId).catch((error) =>
@@ -294,10 +300,13 @@ export class HermesRuntimeService {
 				canonicalSessionId: binding.canonicalSessionId,
 				runtimeSessionId: binding.runtimeSessionId,
 				claimId: binding.claimId,
+				bindingGeneration,
 				history,
 			};
 		} catch (error) {
-			if (acquired) await this.unbind(connectionId, hermesSessionId, binding.claimId);
+			if (acquired) {
+				await this.unbind(connectionId, hermesSessionId, binding.claimId, bindingGeneration);
+			}
 			throw error;
 		}
 	}
@@ -389,13 +398,22 @@ export class HermesRuntimeService {
 		const runtime = this.requireCompatibleRuntime(connectionId);
 		const binding = runtime.bindings.get(hermesSessionId);
 		if (!binding) throw new Error("Resume and claim the Hermes session first");
-		return this.unbind(connectionId, hermesSessionId, binding.claimId);
+		this.cancelDeferredRelease(binding);
+		return this.startReleaseOperation(
+			connectionId,
+			runtime,
+			hermesSessionId,
+			binding,
+			binding.generation,
+			true
+		);
 	}
 
 	async unbind(
 		connectionId: string,
 		hermesSessionId: string,
-		expectedClaimId: string
+		expectedClaimId: string,
+		expectedBindingGeneration: number
 	): Promise<HermesBindingReleaseResult> {
 		const runtime = this.runtimes.get(connectionId);
 		if (!runtime) {
@@ -407,14 +425,26 @@ export class HermesRuntimeService {
 			};
 		}
 		const binding = runtime.bindings.get(hermesSessionId);
-		if (!binding || binding.claimId !== expectedClaimId) {
+		if (
+			!binding ||
+			binding.claimId !== expectedClaimId ||
+			binding.generation !== expectedBindingGeneration
+		) {
 			return { unbound: false, released: false, retryable: false, error: null };
 		}
 
 		binding.releaseRequested = true;
+		binding.releaseRequestGeneration = expectedBindingGeneration;
 		binding.releaseRetryAttempts = 0;
 		this.clearReleaseRetryTimer(binding);
-		return this.attemptRequestedRelease(connectionId, runtime, hermesSessionId, binding, true);
+		return this.startReleaseOperation(
+			connectionId,
+			runtime,
+			hermesSessionId,
+			binding,
+			expectedBindingGeneration,
+			true
+		);
 	}
 
 	async origin(connectionId: string, hermesSessionId: string): Promise<HermesOriginInfo> {
@@ -598,7 +628,13 @@ export class HermesRuntimeService {
 		const results = await Promise.all(
 			durableBindings.map(async ([hermesSessionId, previous]) => {
 				try {
-					const binding = await this.bindSession(connectionId, runtime, hermesSessionId, previous);
+					const binding = await this.bindSession(
+						connectionId,
+						runtime,
+						hermesSessionId,
+						previous,
+						true
+					);
 					await this.history(connectionId, hermesSessionId).catch((error) =>
 						this.pushRuntimeError(connectionId, error)
 					);
@@ -610,6 +646,7 @@ export class HermesRuntimeService {
 						canonicalSessionId: binding.canonicalSessionId,
 						runtimeSessionId: binding.runtimeSessionId,
 						claimId: binding.claimId,
+						bindingGeneration: binding.generation,
 					};
 				} catch (error) {
 					if (runtime.bindings.get(hermesSessionId) === previous) {
@@ -645,15 +682,74 @@ export class HermesRuntimeService {
 		});
 	}
 
+	private async bindingForResume(
+		connectionId: string,
+		runtime: ConnectionRuntime,
+		hermesSessionId: string
+	): Promise<{ binding: RuntimeBinding; acquired: boolean }> {
+		while (this.runtimes.get(connectionId) === runtime) {
+			const existing = runtime.bindings.get(hermesSessionId);
+			if (!existing) {
+				const pending = runtime.bindingTasks.get(hermesSessionId);
+				if (pending) {
+					await pending;
+					continue;
+				}
+				return {
+					binding: await this.bindSession(connectionId, runtime, hermesSessionId, undefined, false),
+					acquired: true,
+				};
+			}
+
+			this.cancelDeferredRelease(existing);
+			if (existing.releaseOperation) {
+				await existing.releaseOperation;
+				continue;
+			}
+			if (!this.isCurrentBinding(connectionId, runtime, hermesSessionId, existing)) continue;
+			if (existing.claimReleased) {
+				this.detachBinding(runtime, hermesSessionId, existing);
+				continue;
+			}
+			if (existing.releaseTask) {
+				const result = await existing.releaseTask;
+				if (!this.isCurrentBinding(connectionId, runtime, hermesSessionId, existing)) continue;
+				if (result.released || result.invalidBinding) {
+					this.detachBinding(runtime, hermesSessionId, existing);
+				} else {
+					this.restoreBinding(connectionId, runtime, hermesSessionId, existing);
+				}
+				continue;
+			}
+			if (!existing.active) {
+				return {
+					binding: await this.bindSession(connectionId, runtime, hermesSessionId, existing, false),
+					acquired: true,
+				};
+			}
+
+			existing.generation = ++runtime.nextBindingGeneration;
+			return { binding: existing, acquired: false };
+		}
+		throw new Error("Hermes disconnected while resuming the session");
+	}
+
 	private bindSession(
 		connectionId: string,
 		runtime: ConnectionRuntime,
 		hermesSessionId: string,
-		previous: RuntimeBinding | undefined
+		previous: RuntimeBinding | undefined,
+		preserveDeferredRelease = false
 	): Promise<RuntimeBinding> {
 		const pending = runtime.bindingTasks.get(hermesSessionId);
 		if (pending) return pending;
-		const task = this.acquireBinding(connectionId, runtime, hermesSessionId, previous);
+		const task = this.acquireBinding(
+			connectionId,
+			runtime,
+			hermesSessionId,
+			previous,
+			preserveDeferredRelease
+		);
 		runtime.bindingTasks.set(hermesSessionId, task);
 		const cleanup = () => {
 			if (runtime.bindingTasks.get(hermesSessionId) === task) {
@@ -668,7 +764,8 @@ export class HermesRuntimeService {
 		connectionId: string,
 		runtime: ConnectionRuntime,
 		hermesSessionId: string,
-		previous: RuntimeBinding | undefined
+		previous: RuntimeBinding | undefined,
+		preserveDeferredRelease: boolean
 	): Promise<RuntimeBinding> {
 		const session = runtime.catalog?.sessions.find(
 			(candidate) => candidate.id === hermesSessionId || candidate.lineageTipId === hermesSessionId
@@ -727,17 +824,22 @@ export class HermesRuntimeService {
 				throw new Error("Hermes session binding changed while it was resuming");
 			}
 
+			const generation = ++runtime.nextBindingGeneration;
+			const releaseRequested = preserveDeferredRelease && previous?.releaseRequested === true;
 			const binding: RuntimeBinding = {
 				canonicalSessionId: resolvedCanonicalSessionId,
 				runtimeSessionId,
 				lineageRootId: previous?.lineageRootId ?? session?.lineageRootId ?? null,
 				claimId,
+				generation,
 				renewTimer: null,
 				active: true,
 				claimReleased: false,
 				releaseTask: null,
-				releaseRequested: previous?.releaseRequested ?? false,
-				releaseRetryAttempts: previous?.releaseRetryAttempts ?? 0,
+				releaseOperation: null,
+				releaseRequested,
+				releaseRequestGeneration: releaseRequested ? generation : null,
+				releaseRetryAttempts: releaseRequested ? (previous?.releaseRetryAttempts ?? 0) : 0,
 				releaseRetryTimer: null,
 			};
 			binding.renewTimer = this.createRenewTimer(connectionId, runtime, binding);
@@ -760,11 +862,14 @@ export class HermesRuntimeService {
 					runtimeSessionId: "",
 					lineageRootId: previous?.lineageRootId ?? session?.lineageRootId ?? null,
 					claimId,
+					generation: 0,
 					renewTimer: null,
 					active: false,
 					claimReleased: false,
 					releaseTask: null,
+					releaseOperation: null,
 					releaseRequested: false,
+					releaseRequestGeneration: null,
 					releaseRetryAttempts: 0,
 					releaseRetryTimer: null,
 				};
@@ -813,8 +918,26 @@ export class HermesRuntimeService {
 
 	private cancelDeferredRelease(binding: RuntimeBinding): void {
 		binding.releaseRequested = false;
+		binding.releaseRequestGeneration = null;
 		binding.releaseRetryAttempts = 0;
 		this.clearReleaseRetryTimer(binding);
+	}
+
+	private restoreBinding(
+		connectionId: string,
+		runtime: ConnectionRuntime,
+		hermesSessionId: string,
+		binding: RuntimeBinding
+	): void {
+		if (
+			binding.claimReleased ||
+			!this.isCurrentBinding(connectionId, runtime, hermesSessionId, binding)
+		) {
+			return;
+		}
+		binding.active = true;
+		binding.renewTimer ??= this.createRenewTimer(connectionId, runtime, binding);
+		runtime.runtimeToCanonical.set(binding.runtimeSessionId, hermesSessionId);
 	}
 
 	private isCurrentBinding(
@@ -844,16 +967,27 @@ export class HermesRuntimeService {
 		runtime: ConnectionRuntime,
 		hermesSessionId: string,
 		binding: RuntimeBinding,
-		reportError: boolean
+		reportError: boolean,
+		expectedBindingGeneration = binding.releaseRequestGeneration
 	): void {
 		if (
+			expectedBindingGeneration === null ||
 			!binding.releaseRequested ||
+			binding.releaseRequestGeneration !== expectedBindingGeneration ||
+			binding.generation !== expectedBindingGeneration ||
 			!this.isCurrentBinding(connectionId, runtime, hermesSessionId, binding)
 		) {
 			return;
 		}
 		this.clearReleaseRetryTimer(binding);
-		void this.attemptRequestedRelease(connectionId, runtime, hermesSessionId, binding, reportError);
+		void this.startReleaseOperation(
+			connectionId,
+			runtime,
+			hermesSessionId,
+			binding,
+			expectedBindingGeneration,
+			reportError
+		);
 	}
 
 	private scheduleDeferredRelease(
@@ -865,12 +999,13 @@ export class HermesRuntimeService {
 		if (
 			binding.releaseRetryTimer ||
 			!binding.releaseRequested ||
+			binding.releaseRequestGeneration !== binding.generation ||
 			!this.isCurrentBinding(connectionId, runtime, hermesSessionId, binding)
 		) {
 			return;
 		}
 		if (binding.releaseRetryAttempts >= MAX_AUTOMATIC_RELEASE_RETRIES) {
-			binding.releaseRequested = false;
+			this.cancelDeferredRelease(binding);
 			this.detachBinding(runtime, hermesSessionId, binding);
 			return;
 		}
@@ -880,30 +1015,72 @@ export class HermesRuntimeService {
 			MAX_AUTOMATIC_RELEASE_RETRY_DELAY_MS
 		);
 		binding.releaseRetryAttempts++;
+		const expectedBindingGeneration = binding.generation;
 		binding.releaseRetryTimer = this.releaseRetryTimerApi.set(() => {
 			binding.releaseRetryTimer = null;
-			this.triggerDeferredRelease(connectionId, runtime, hermesSessionId, binding, false);
+			this.triggerDeferredRelease(
+				connectionId,
+				runtime,
+				hermesSessionId,
+				binding,
+				false,
+				expectedBindingGeneration
+			);
 		}, delayMs);
 		binding.releaseRetryTimer.unref?.();
 	}
 
-	private async attemptRequestedRelease(
+	private startReleaseOperation(
 		connectionId: string,
 		runtime: ConnectionRuntime,
 		hermesSessionId: string,
 		binding: RuntimeBinding,
+		expectedBindingGeneration: number,
 		reportError: boolean
 	): Promise<HermesBindingReleaseResult> {
 		if (
-			!binding.releaseRequested ||
+			binding.generation !== expectedBindingGeneration ||
 			!this.isCurrentBinding(connectionId, runtime, hermesSessionId, binding)
 		) {
-			return { unbound: false, released: false, retryable: false, error: null };
+			return Promise.resolve({
+				unbound: false,
+				released: false,
+				retryable: false,
+				error: null,
+			});
 		}
+		if (binding.releaseOperation) return binding.releaseOperation;
 
+		const operation = this.attemptRelease(
+			connectionId,
+			runtime,
+			hermesSessionId,
+			binding,
+			expectedBindingGeneration,
+			reportError
+		);
+		binding.releaseOperation = operation;
+		const cleanup = () => {
+			if (binding.releaseOperation === operation) binding.releaseOperation = null;
+		};
+		void operation.then(cleanup, cleanup);
+		return operation;
+	}
+
+	private async attemptRelease(
+		connectionId: string,
+		runtime: ConnectionRuntime,
+		hermesSessionId: string,
+		binding: RuntimeBinding,
+		expectedBindingGeneration: number,
+		reportError: boolean
+	): Promise<HermesBindingReleaseResult> {
 		this.clearReleaseRetryTimer(binding);
 		const result = await this.releaseClaim(connectionId, runtime, binding, reportError);
-		if (!this.isCurrentBinding(connectionId, runtime, hermesSessionId, binding)) {
+		if (
+			binding.generation !== expectedBindingGeneration ||
+			!this.isCurrentBinding(connectionId, runtime, hermesSessionId, binding)
+		) {
 			return {
 				unbound: false,
 				released: result.released,
@@ -913,7 +1090,7 @@ export class HermesRuntimeService {
 		}
 
 		if (result.released || result.invalidBinding) {
-			binding.releaseRequested = false;
+			this.cancelDeferredRelease(binding);
 			this.detachBinding(runtime, hermesSessionId, binding);
 			return {
 				unbound: true,
@@ -923,10 +1100,13 @@ export class HermesRuntimeService {
 			};
 		}
 
-		binding.active = true;
-		binding.renewTimer ??= this.createRenewTimer(connectionId, runtime, binding);
-		runtime.runtimeToCanonical.set(binding.runtimeSessionId, hermesSessionId);
-		this.scheduleDeferredRelease(connectionId, runtime, hermesSessionId, binding);
+		this.restoreBinding(connectionId, runtime, hermesSessionId, binding);
+		if (
+			binding.releaseRequested &&
+			binding.releaseRequestGeneration === expectedBindingGeneration
+		) {
+			this.scheduleDeferredRelease(connectionId, runtime, hermesSessionId, binding);
+		}
 		return { unbound: false, released: false, retryable: result.retryable, error: result.error };
 	}
 

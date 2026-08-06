@@ -90,6 +90,7 @@ export interface HermesReconnectBindingMetadata {
 	canonicalSessionId: string;
 	runtimeSessionId: string;
 	claimId: string;
+	bindingGeneration: number;
 }
 
 export interface HermesRuntimeEventPayload {

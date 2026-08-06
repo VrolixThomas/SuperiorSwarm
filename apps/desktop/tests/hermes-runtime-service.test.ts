@@ -16,6 +16,17 @@ import {
 import type { HermesRuntimeEvent, HermesRuntimeState } from "../src/shared/hermes";
 import { makeTestDb } from "./test-db";
 
+function deferred<T>(): {
+	promise: Promise<T>;
+	resolve: (value: T) => void;
+} {
+	let resolve!: (value: T) => void;
+	const promise = new Promise<T>((complete) => {
+		resolve = complete;
+	});
+	return { promise, resolve };
+}
+
 class FakeClient implements HermesRuntimeClientLike {
 	capabilities: readonly string[] = HERMES_REQUIRED_CAPABILITIES;
 	handoffProtocolVersion = 1;
@@ -28,6 +39,7 @@ class FakeClient implements HermesRuntimeClientLike {
 	failToolArtifacts = false;
 	releaseBusyRemaining = 0;
 	releaseErrors: Error[] = [];
+	releaseResponses: Array<Promise<unknown>> = [];
 	failResumeNumbers = new Set<number>();
 	historyTurnResults: Array<Record<string, unknown>> = [
 		{
@@ -196,6 +208,7 @@ class FakeClient implements HermesRuntimeClientLike {
 					permalink: "https://slack.com/archives/thread",
 				};
 			case "session.release":
+				if (this.releaseResponses.length > 0) return this.releaseResponses.shift();
 				if (this.releaseErrors.length > 0) throw this.releaseErrors.shift();
 				if (this.releaseBusyRemaining > 0) {
 					this.releaseBusyRemaining--;
@@ -509,6 +522,20 @@ describe("HermesRuntimeService", () => {
 	});
 
 	test("keeps a busy release explicitly active and renewable for safe retry", async () => {
+		service.shutdown();
+		const retryCallbacks: Array<() => void> = [];
+		const retryTimer = { unref: () => retryTimer } as unknown as ReturnType<typeof setTimeout>;
+		service = new HermesRuntimeService({
+			clientFactory: () => client,
+			tokenVault: vault,
+			releaseRetryTimerApi: {
+				set: (callback) => {
+					retryCallbacks.push(callback);
+					return retryTimer;
+				},
+				clear: () => undefined,
+			},
+		});
 		await service.connect(connectionId);
 		await service.resume(connectionId, "session-tip");
 		client.releaseBusyRemaining = 1;
@@ -520,6 +547,12 @@ describe("HermesRuntimeService", () => {
 			retryable: true,
 			error: "Hermes session is busy",
 		});
+		const unexpectedRetry = retryCallbacks.shift();
+		unexpectedRetry?.();
+		await Bun.sleep(0);
+		expect(client.requests.filter((request) => request.method === "session.release")).toHaveLength(
+			1
+		);
 		const safelyRebound = await service.resume(connectionId, "session-tip");
 		expect(safelyRebound.claimId).toBe("claim-1");
 		await service.submit(connectionId, "session-tip", "Still safely bound");
@@ -538,7 +571,12 @@ describe("HermesRuntimeService", () => {
 		const resumed = await service.resume(connectionId, "session-tip");
 		client.releaseErrors.push(new HermesRpcError("Hermes session is busy", 4094, true));
 
-		const deferred = await service.unbind(connectionId, "session-tip", resumed.claimId);
+		const deferred = await service.unbind(
+			connectionId,
+			"session-tip",
+			resumed.claimId,
+			resumed.bindingGeneration
+		);
 		expect(deferred).toEqual({
 			unbound: false,
 			released: false,
@@ -588,7 +626,12 @@ describe("HermesRuntimeService", () => {
 		const resumed = await service.resume(connectionId, "session-tip");
 		client.releaseBusyRemaining = 1;
 
-		const deferred = await service.unbind(connectionId, "session-tip", resumed.claimId);
+		const deferred = await service.unbind(
+			connectionId,
+			"session-tip",
+			resumed.claimId,
+			resumed.bindingGeneration
+		);
 		expect(deferred.unbound).toBe(false);
 		const runRetry = retryCallbacks.shift();
 		expect(runRetry).toBeDefined();
@@ -602,12 +645,83 @@ describe("HermesRuntimeService", () => {
 		expect(rebound.claimId).toBe("claim-2");
 	});
 
+	test("keeps a replacement binding safe during a rapid A-B-A deferred-release race", async () => {
+		service.shutdown();
+		const retryCallbacks: Array<() => void> = [];
+		const retryTimer = { unref: () => retryTimer } as unknown as ReturnType<typeof setTimeout>;
+		service = new HermesRuntimeService({
+			clientFactory: () => client,
+			tokenVault: vault,
+			releaseRetryTimerApi: {
+				set: (callback) => {
+					retryCallbacks.push(callback);
+					return retryTimer;
+				},
+				clear: () => undefined,
+			},
+		});
+		await service.connect(connectionId);
+		const firstA = await service.resume(connectionId, "session-tip");
+		const pendingARelease = deferred<unknown>();
+		client.releaseResponses.push(pendingARelease.promise);
+
+		const releasingA = service.unbind(
+			connectionId,
+			"session-tip",
+			firstA.claimId,
+			firstA.bindingGeneration
+		);
+		const sessionB = await service.resume(connectionId, "session-b");
+		await service.unbind(connectionId, "session-b", sessionB.claimId, sessionB.bindingGeneration);
+		const resumingA = service.resume(connectionId, "session-tip");
+		await Bun.sleep(0);
+
+		pendingARelease.resolve({
+			released: false,
+			busy: true,
+			retryable: true,
+			error: "Hermes session is busy",
+		});
+		const [, secondA] = await Promise.all([releasingA, resumingA]);
+		const staleCleanup = await service.unbind(
+			connectionId,
+			"session-tip",
+			firstA.claimId,
+			firstA.bindingGeneration
+		);
+		for (const callback of retryCallbacks.splice(0)) callback();
+		await Bun.sleep(0);
+
+		expect(secondA.claimId).toBe(firstA.claimId);
+		expect(secondA.bindingGeneration).not.toBe(firstA.bindingGeneration);
+		expect(staleCleanup).toEqual({
+			unbound: false,
+			released: false,
+			retryable: false,
+			error: null,
+		});
+		expect(client.requests.filter((request) => request.method === "session.release")).toHaveLength(
+			2
+		);
+		await service.submit(connectionId, "session-tip", "A is still safely bound");
+		const submit = client.requests.findLast((request) => request.method === "prompt.submit");
+		expect(submit?.params).toMatchObject({
+			claim_id: secondA.claimId,
+			session_id: secondA.runtimeSessionId,
+		});
+	});
+
 	test("invalidates a local binding after nonretryable 4092 instead of renewing it", async () => {
 		await service.connect(connectionId);
 		const resumed = await service.resume(connectionId, "session-tip");
 		client.releaseErrors.push(new HermesRpcError("Claim is missing or not owned", 4092, false));
 
-		const invalidated = await service.unbind(connectionId, "session-tip", resumed.claimId);
+		const invalidated = await service.unbind(
+			connectionId,
+			"session-tip",
+			resumed.claimId,
+			resumed.bindingGeneration
+		);
 		expect(invalidated).toEqual({
 			unbound: true,
 			released: false,
@@ -645,10 +759,25 @@ describe("HermesRuntimeService", () => {
 	test("idempotently unbinds only the expected claim and cannot release a newer binding", async () => {
 		await service.connect(connectionId);
 		const first = await service.resume(connectionId, "session-tip");
-		const released = await service.unbind(connectionId, "session-tip", first.claimId);
-		const repeated = await service.unbind(connectionId, "session-tip", first.claimId);
+		const released = await service.unbind(
+			connectionId,
+			"session-tip",
+			first.claimId,
+			first.bindingGeneration
+		);
+		const repeated = await service.unbind(
+			connectionId,
+			"session-tip",
+			first.claimId,
+			first.bindingGeneration
+		);
 		const second = await service.resume(connectionId, "session-tip");
-		const staleCleanup = await service.unbind(connectionId, "session-tip", first.claimId);
+		const staleCleanup = await service.unbind(
+			connectionId,
+			"session-tip",
+			first.claimId,
+			first.bindingGeneration
+		);
 		await service.submit(connectionId, "session-tip", "Still bound");
 
 		expect(released).toEqual({
@@ -728,6 +857,7 @@ describe("HermesRuntimeService", () => {
 					canonicalSessionId: "session-tip",
 					runtimeSessionId: "runtime-2",
 					claimId: "claim-2",
+					bindingGeneration: 2,
 				},
 			],
 			failedSessionIds: [],
@@ -803,7 +933,12 @@ describe("HermesRuntimeService", () => {
 
 		const recovered = await service.resume(connectionId, "session-tip");
 		expect(recovered).toMatchObject({ claimId: "claim-3", runtimeSessionId: "runtime-3" });
-		const staleCleanup = await service.unbind(connectionId, "session-tip", first.claimId);
+		const staleCleanup = await service.unbind(
+			connectionId,
+			"session-tip",
+			first.claimId,
+			first.bindingGeneration
+		);
 		expect(staleCleanup).toEqual({
 			unbound: false,
 			released: false,

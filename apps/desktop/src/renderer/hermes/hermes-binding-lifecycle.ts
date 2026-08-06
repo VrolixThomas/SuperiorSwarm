@@ -3,6 +3,7 @@ export interface HermesRendererBinding {
 	hermesSessionId: string;
 	claimId: string;
 	runtimeSessionId: string;
+	bindingGeneration: number;
 }
 
 export interface HermesSelectionGeneration {

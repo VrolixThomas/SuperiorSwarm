@@ -1,11 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { HermesBindingLifecycle } from "../src/renderer/hermes/hermes-binding-lifecycle";
 
-const binding = (session: string, claim: string) => ({
+const binding = (session: string, claim: string, bindingGeneration = 1) => ({
 	connectionId: "connection-1",
 	hermesSessionId: session,
 	claimId: claim,
 	runtimeSessionId: `runtime-${claim}`,
+	bindingGeneration,
 });
 
 describe("Hermes renderer binding lifecycle", () => {
@@ -49,11 +50,11 @@ describe("Hermes renderer binding lifecycle", () => {
 		lifecycle.select("connection-1:session-b");
 		const secondA = lifecycle.select("connection-1:session-a");
 		await Promise.all(lateCallbacks);
-		expect(lifecycle.accept(firstA, binding("session-a", "claim-old"))).toBe(false);
-		expect(lifecycle.accept(secondA, binding("session-a", "claim-new"))).toBe(true);
+		expect(lifecycle.accept(firstA, binding("session-a", "claim-a", 1))).toBe(false);
+		expect(lifecycle.accept(secondA, binding("session-a", "claim-a", 2))).toBe(true);
 
 		expect(mutations).toEqual([]);
-		expect(lifecycle.current()).toEqual(binding("session-a", "claim-new"));
-		expect(released).toEqual([binding("session-a", "claim-old")]);
+		expect(lifecycle.current()).toEqual(binding("session-a", "claim-a", 2));
+		expect(released).toEqual([binding("session-a", "claim-a", 1)]);
 	});
 });

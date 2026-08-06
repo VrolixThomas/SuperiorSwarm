@@ -84,6 +84,7 @@ export function HermesSessionView() {
 				connectionId: binding.connectionId,
 				hermesSessionId: binding.hermesSessionId,
 				expectedClaimId: binding.claimId,
+				expectedBindingGeneration: binding.bindingGeneration,
 			});
 		});
 	}
@@ -106,6 +107,7 @@ export function HermesSessionView() {
 						canonicalSessionId: result.canonicalSessionId,
 						runtimeSessionId: result.runtimeSessionId,
 						claimId: result.claimId,
+						bindingGeneration: result.bindingGeneration,
 					};
 					if (bindingLifecycle.accept(requestSelection, binding)) {
 						setResumed(binding);
@@ -188,7 +190,7 @@ export function HermesSessionView() {
 				if (Array.isArray(bindings)) {
 					for (const binding of bindings) {
 						if (binding.hermesSessionId !== sessionId) continue;
-						const { runtimeSessionId, claimId, canonicalSessionId } = binding;
+						const { runtimeSessionId, claimId, canonicalSessionId, bindingGeneration } = binding;
 						activeRuntimeSessionId = runtimeSessionId;
 						reboundBinding = {
 							connectionId,
@@ -196,6 +198,7 @@ export function HermesSessionView() {
 							canonicalSessionId,
 							runtimeSessionId,
 							claimId,
+							bindingGeneration,
 						};
 					}
 				}

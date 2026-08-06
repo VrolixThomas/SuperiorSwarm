@@ -78,6 +78,7 @@ export const hermesRouter = router({
 			canonicalSessionId: resumed.canonicalSessionId,
 			runtimeSessionId: resumed.runtimeSessionId,
 			claimId: resumed.claimId,
+			bindingGeneration: resumed.bindingGeneration,
 		};
 	}),
 
@@ -104,9 +105,19 @@ export const hermesRouter = router({
 		),
 
 	unbind: publicProcedure
-		.input(connectionSessionInput.extend({ expectedClaimId: z.string().min(1) }))
+		.input(
+			connectionSessionInput.extend({
+				expectedClaimId: z.string().min(1),
+				expectedBindingGeneration: z.number().int().positive(),
+			})
+		)
 		.mutation(({ input }) =>
-			hermesRuntimeService.unbind(input.connectionId, input.hermesSessionId, input.expectedClaimId)
+			hermesRuntimeService.unbind(
+				input.connectionId,
+				input.hermesSessionId,
+				input.expectedClaimId,
+				input.expectedBindingGeneration
+			)
 		),
 
 	respondApproval: publicProcedure
