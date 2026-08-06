@@ -11,6 +11,7 @@ import { diffRouter } from "./diff";
 import { externalManagersRouter } from "./external-managers";
 import { githubRouter } from "./github";
 import { globalMcpRouter } from "./global-mcp";
+import { hermesRouter } from "./hermes";
 import { inlineCommentsRouter } from "./inline-comments";
 import { linearRouter } from "./linear";
 import { lspRouter } from "./lsp";
@@ -53,6 +54,7 @@ export const appRouter = router({
 	linear: linearRouter,
 	github: githubRouter,
 	globalMcp: globalMcpRouter,
+	hermes: hermesRouter,
 	inlineComments: inlineCommentsRouter,
 	tickets: ticketsRouter,
 	prPoller: prPollerRouter,

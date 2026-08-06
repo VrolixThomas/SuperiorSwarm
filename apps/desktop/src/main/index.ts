@@ -32,6 +32,7 @@ import {
 	savePaneLayouts,
 	saveTerminalSessions,
 } from "./db/session-persistence";
+import { hermesRuntimeService } from "./hermes/hermes-runtime-service";
 import { isCloneable, setDebugMode } from "./ipc-safety";
 import { log, setupCrashHandlers } from "./logger";
 import { setupLspIPC } from "./lsp/ipc-handler";
@@ -495,6 +496,7 @@ function teardownServices(t0: number): void {
 	setCleanupDaemonClient(null);
 	stopCommentPoller();
 	teardownUpdater();
+	hermesRuntimeService.shutdown();
 	log.debug(`[quit] timers-stopped +${Date.now() - t0}ms`);
 	// Close chokidar/fsevents watchers BEFORE env teardown so the fsevents
 	// threadsafe-function is gone before Node finalizes it. Bounded so a wedged

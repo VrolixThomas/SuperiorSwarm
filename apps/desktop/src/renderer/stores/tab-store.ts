@@ -117,9 +117,17 @@ export interface WorkspaceMetadata {
 }
 
 export interface WorkspaceHistoryEntry {
+	kind: "workspace";
 	id: string;
 	cwd: string;
 }
+
+export interface HermesSessionHistoryEntry {
+	kind: "hermes-session";
+	sessionId: string;
+}
+
+export type NavigationHistoryEntry = WorkspaceHistoryEntry | HermesSessionHistoryEntry;
 
 const MAX_WORKSPACE_HISTORY = 50;
 
@@ -128,19 +136,29 @@ function workspaceHistoryEntriesEqual(a: WorkspaceHistoryEntry, b: WorkspaceHist
 }
 
 function pushWorkspaceHistoryEntry(
-	stack: WorkspaceHistoryEntry[],
-	entry: WorkspaceHistoryEntry
-): WorkspaceHistoryEntry[] {
+	stack: NavigationHistoryEntry[],
+	entry: NavigationHistoryEntry
+): NavigationHistoryEntry[] {
 	const last = stack.at(-1);
-	if (last && workspaceHistoryEntriesEqual(last, entry)) return stack;
+	if (
+		last &&
+		((last.kind === "workspace" &&
+			entry.kind === "workspace" &&
+			workspaceHistoryEntriesEqual(last, entry)) ||
+			(last.kind === "hermes-session" &&
+				entry.kind === "hermes-session" &&
+				last.sessionId === entry.sessionId))
+	) {
+		return stack;
+	}
 	return [...stack, entry].slice(-MAX_WORKSPACE_HISTORY);
 }
 
 function removeWorkspaceFromHistory(
-	stack: WorkspaceHistoryEntry[],
+	stack: NavigationHistoryEntry[],
 	workspaceId: string
-): WorkspaceHistoryEntry[] {
-	return stack.filter((entry) => entry.id !== workspaceId);
+): NavigationHistoryEntry[] {
+	return stack.filter((entry) => entry.kind !== "workspace" || entry.id !== workspaceId);
 }
 
 // ─── Store interface ─────────────────────────────────────────────────────────
@@ -149,8 +167,8 @@ interface TabStore {
 	// UI-level state (not pane-level)
 	activeWorkspaceId: string | null;
 	activeWorkspaceCwd: string;
-	workspaceBackStack: WorkspaceHistoryEntry[];
-	workspaceForwardStack: WorkspaceHistoryEntry[];
+	workspaceBackStack: NavigationHistoryEntry[];
+	workspaceForwardStack: NavigationHistoryEntry[];
 	pendingWorkspaceHistoryEntry: WorkspaceHistoryEntry | null;
 	diffMode: "split" | "inline";
 	rightPanel: RightPanelState;
@@ -160,6 +178,7 @@ interface TabStore {
 	_paneVersion: number;
 	sidebarSegment: SidebarSegment;
 	activeWorkspaceBySegment: Record<SidebarSegment, { id: string; cwd: string } | null>;
+	selectedHermesSessionId: string | null;
 
 	// Ticket canvas state
 	activeTicketProject: { id: string; provider: "jira" | "linear" } | "all" | null;
@@ -189,6 +208,8 @@ interface TabStore {
 	setWorkspaceMetadata: (id: string, meta: WorkspaceMetadata) => void;
 	cleanupWorkspace: (workspaceId: string) => void;
 	setSidebarSegment: (segment: SidebarSegment) => void;
+	selectHermesSession: (sessionId: string | null) => void;
+	openWorkspaceFromHermes: (workspaceId: string, cwd: string, sessionId: string) => void;
 	setActiveWorkspace: (
 		workspaceId: string,
 		cwd: string,
@@ -451,7 +472,8 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 	workspaceMetadata: {},
 	_paneVersion: 0,
 	sidebarSegment: "repos" as SidebarSegment,
-	activeWorkspaceBySegment: { repos: null, tickets: null, prs: null },
+	activeWorkspaceBySegment: { repos: null, tickets: null, prs: null, hermes: null },
+	selectedHermesSessionId: null,
 
 	activeTicketProject: "all",
 	activeTicketScope: { kind: "current" },
@@ -571,7 +593,7 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 		const { [workspaceId]: _, ...rest } = state.workspaceMetadata;
 
 		const updatedBySegment = { ...state.activeWorkspaceBySegment };
-		for (const seg of ["repos", "tickets", "prs"] as SidebarSegment[]) {
+		for (const seg of ["repos", "tickets", "prs", "hermes"] as SidebarSegment[]) {
 			if (updatedBySegment[seg]?.id === workspaceId) {
 				updatedBySegment[seg] = null;
 			}
@@ -602,7 +624,11 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 		} else {
 			const current = get();
 			const pendingWorkspaceHistoryEntry = current.activeWorkspaceId
-				? { id: current.activeWorkspaceId, cwd: current.activeWorkspaceCwd }
+				? {
+						kind: "workspace" as const,
+						id: current.activeWorkspaceId,
+						cwd: current.activeWorkspaceCwd,
+					}
 				: current.pendingWorkspaceHistoryEntry;
 			set({
 				activeWorkspaceId: null,
@@ -611,6 +637,25 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 				pendingWorkspaceHistoryEntry,
 			});
 		}
+	},
+
+	selectHermesSession: (sessionId) => {
+		get().setSidebarSegment("hermes");
+		set({ selectedHermesSessionId: sessionId });
+	},
+
+	openWorkspaceFromHermes: (workspaceId, cwd, sessionId) => {
+		set((state) => ({
+			workspaceBackStack: pushWorkspaceHistoryEntry(state.workspaceBackStack, {
+				kind: "hermes-session",
+				sessionId,
+			}),
+			workspaceForwardStack: [],
+			sidebarSegment: "repos",
+			selectedHermesSessionId: sessionId,
+			pendingWorkspaceHistoryEntry: null,
+		}));
+		get().setActiveWorkspace(workspaceId, cwd, { recordHistory: false });
 	},
 
 	activateReviewWorkspace: (workspaceId, cwd, prCtx) => {
@@ -653,7 +698,11 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 
 		const current = get();
 		const previousEntry = current.activeWorkspaceId
-			? { id: current.activeWorkspaceId, cwd: current.activeWorkspaceCwd }
+			? {
+					kind: "workspace" as const,
+					id: current.activeWorkspaceId,
+					cwd: current.activeWorkspaceCwd,
+				}
 			: current.pendingWorkspaceHistoryEntry;
 		if (options?.recordHistory !== false && previousEntry && previousEntry.id !== workspaceId) {
 			set((s) => ({
@@ -715,8 +764,14 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 		const target = state.workspaceBackStack.at(-1);
 		if (!target) return false;
 		const currentEntry = state.activeWorkspaceId
-			? { id: state.activeWorkspaceId, cwd: state.activeWorkspaceCwd }
-			: state.pendingWorkspaceHistoryEntry;
+			? ({
+					kind: "workspace",
+					id: state.activeWorkspaceId,
+					cwd: state.activeWorkspaceCwd,
+				} as const)
+			: state.sidebarSegment === "hermes" && state.selectedHermesSessionId
+				? ({ kind: "hermes-session", sessionId: state.selectedHermesSessionId } as const)
+				: state.pendingWorkspaceHistoryEntry;
 
 		set({
 			workspaceBackStack: state.workspaceBackStack.slice(0, -1),
@@ -725,7 +780,18 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 				: state.workspaceForwardStack,
 			pendingWorkspaceHistoryEntry: null,
 		});
-		get().setActiveWorkspace(target.id, target.cwd, { recordHistory: false });
+		if (target.kind === "hermes-session") {
+			set({
+				sidebarSegment: "hermes",
+				selectedHermesSessionId: target.sessionId,
+				activeWorkspaceId: null,
+				activeWorkspaceCwd: "",
+				rightPanel: PANEL_CLOSED,
+			});
+		} else {
+			set({ sidebarSegment: segmentForWorkspace(get().workspaceMetadata[target.id]) });
+			get().setActiveWorkspace(target.id, target.cwd, { recordHistory: false });
+		}
 		return true;
 	},
 
@@ -734,8 +800,14 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 		const target = state.workspaceForwardStack.at(-1);
 		if (!target) return false;
 		const currentEntry = state.activeWorkspaceId
-			? { id: state.activeWorkspaceId, cwd: state.activeWorkspaceCwd }
-			: state.pendingWorkspaceHistoryEntry;
+			? ({
+					kind: "workspace",
+					id: state.activeWorkspaceId,
+					cwd: state.activeWorkspaceCwd,
+				} as const)
+			: state.sidebarSegment === "hermes" && state.selectedHermesSessionId
+				? ({ kind: "hermes-session", sessionId: state.selectedHermesSessionId } as const)
+				: state.pendingWorkspaceHistoryEntry;
 
 		set({
 			workspaceForwardStack: state.workspaceForwardStack.slice(0, -1),
@@ -744,7 +816,18 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 				: state.workspaceBackStack,
 			pendingWorkspaceHistoryEntry: null,
 		});
-		get().setActiveWorkspace(target.id, target.cwd, { recordHistory: false });
+		if (target.kind === "hermes-session") {
+			set({
+				sidebarSegment: "hermes",
+				selectedHermesSessionId: target.sessionId,
+				activeWorkspaceId: null,
+				activeWorkspaceCwd: "",
+				rightPanel: PANEL_CLOSED,
+			});
+		} else {
+			set({ sidebarSegment: segmentForWorkspace(get().workspaceMetadata[target.id]) });
+			get().setActiveWorkspace(target.id, target.cwd, { recordHistory: false });
+		}
 		return true;
 	},
 
@@ -1252,7 +1335,7 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 		}
 
 		// Restore sidebar segment (validate against known values)
-		const validSegments = new Set<string>(["repos", "tickets", "prs"]);
+		const validSegments = new Set<string>(["repos", "tickets", "prs", "hermes"]);
 		let sidebarSegment: SidebarSegment = validSegments.has(extraState?.["sidebarSegment"] ?? "")
 			? (extraState?.["sidebarSegment"] as SidebarSegment)
 			: "repos";
@@ -1262,6 +1345,7 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 			repos: null,
 			tickets: null,
 			prs: null,
+			hermes: null,
 		};
 		if (extraState?.["activeWorkspaceBySegment"]) {
 			try {
@@ -1328,9 +1412,9 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 
 		// Derive right panel from the active workspace for the restored segment
 		const activeEntry = activeWorkspaceBySegment[sidebarSegment];
-		const activeId = activeEntry?.id ?? activeWs;
+		const activeId = sidebarSegment === "hermes" ? null : (activeEntry?.id ?? activeWs);
 		const activeMeta = activeId ? workspaceMetadata[activeId] : undefined;
-		const activeCwdResolved = activeEntry?.cwd ?? activeCwd;
+		const activeCwdResolved = sidebarSegment === "hermes" ? "" : (activeEntry?.cwd ?? activeCwd);
 		const rightPanel = panelForWorkspace(activeId ?? "", activeCwdResolved, activeMeta);
 
 		set({
@@ -1341,6 +1425,7 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 			workspaceMetadata,
 			sidebarSegment,
 			activeWorkspaceBySegment,
+			selectedHermesSessionId: extraState?.["selectedHermesSessionId"] ?? null,
 			workspaceBackStack: [],
 			workspaceForwardStack: [],
 			pendingWorkspaceHistoryEntry: null,

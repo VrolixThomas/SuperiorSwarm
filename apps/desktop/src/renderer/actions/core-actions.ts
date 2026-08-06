@@ -173,6 +173,17 @@ export function registerCoreActions() {
 			keywords: ["pull requests", "review", "github"],
 		},
 		{
+			id: "nav.hermes",
+			label: "Hermes",
+			category: "Navigation",
+			shortcut: { key: "4", meta: true },
+			execute: () => {
+				useProjectStore.getState().closeSettings();
+				useTabStore.getState().setSidebarSegment("hermes");
+			},
+			keywords: ["agents", "sessions", "slack", "handoff"],
+		},
+		{
 			id: "nav.workspaceBack",
 			label: "Go Back",
 			category: "Navigation",

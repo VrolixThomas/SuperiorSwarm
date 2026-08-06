@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { HermesWorkspaceArtifact } from "./hermes";
 
 // ---- Request schemas ----
 
@@ -77,6 +78,7 @@ export interface WorkspaceDto {
 
 export interface CreateWorkspaceResponse {
 	workspaceId: string;
+	projectId: string;
 	worktreeId: string;
 	path: string;
 	branch: string;
@@ -85,6 +87,8 @@ export interface CreateWorkspaceResponse {
 	reusedExistingBranch: boolean;
 	createdAt: Date;
 	updatedAt: Date;
+	/** Stable cross-runtime correlation record; legacy response fields remain unchanged. */
+	artifact: HermesWorkspaceArtifact;
 }
 
 export interface ListWorkspacesResponse {

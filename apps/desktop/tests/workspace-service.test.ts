@@ -69,6 +69,13 @@ describe("createWorkspace", () => {
 		expect(result.branch).toBe("feature/x");
 		expect(result.baseBranch).toBe("main");
 		expect(result.path.endsWith("/feature/x")).toBe(true);
+		expect(result.artifact).toEqual({
+			kind: "superiorswarm.workspace.created",
+			workspaceId: result.workspaceId,
+			projectId: PROJECT_ID,
+			branch: "feature/x",
+			worktreePath: result.path,
+		});
 
 		const db = getDb();
 		const ws = db

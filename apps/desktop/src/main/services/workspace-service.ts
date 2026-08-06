@@ -190,6 +190,7 @@ export async function createWorkspace(
 	}
 	return {
 		workspaceId,
+		projectId: input.projectId,
 		worktreeId,
 		path,
 		branch: input.branch,
@@ -197,6 +198,13 @@ export async function createWorkspace(
 		reusedExistingBranch,
 		createdAt: now,
 		updatedAt: now,
+		artifact: {
+			kind: "superiorswarm.workspace.created",
+			workspaceId,
+			projectId: input.projectId,
+			branch: input.branch,
+			worktreePath: path,
+		},
 	};
 }
 

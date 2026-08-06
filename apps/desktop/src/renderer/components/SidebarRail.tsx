@@ -35,7 +35,7 @@ function smartAbbrev(name: string): string {
 }
 
 interface SidebarRailProps {
-	onExpand: (section?: "tickets" | "prs") => void;
+	onExpand: (section?: "tickets" | "prs" | "hermes") => void;
 }
 
 type FlyoutTarget = { kind: "project"; project: Project } | { kind: "tickets" } | { kind: "prs" };
@@ -785,6 +785,16 @@ export function SidebarRail({ onExpand }: SidebarRailProps) {
 
 				{/* Divider */}
 				<div className="w-6 border-t border-[var(--border-subtle)]" />
+
+				{/* Global Hermes sessions */}
+				<button
+					type="button"
+					onClick={() => onExpand("hermes")}
+					title="Hermes"
+					className="flex size-8 shrink-0 items-center justify-center rounded-[6px] border border-[var(--border)] bg-[var(--bg-elevated)] text-[12px] font-semibold text-[var(--text-tertiary)] transition-colors hover:text-[var(--text)]"
+				>
+					H
+				</button>
 
 				{/* Tickets section */}
 				<RailTicketsSection

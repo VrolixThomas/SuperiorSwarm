@@ -10,11 +10,12 @@ import { RepositoryList } from "./RepositoryList";
 import { type BandDescriptor, SidebarBandStack } from "./SidebarBandStack";
 import { SidebarRail } from "./SidebarRail";
 import { Tooltip } from "./Tooltip";
+import { HermesSidebar } from "./hermes/HermesSidebar";
 import { TicketsSidebar } from "./tickets/TicketsSidebar";
 
 interface SidebarProps {
 	collapsed: boolean;
-	onExpand: (section?: "tickets" | "prs") => void;
+	onExpand: (section?: "tickets" | "prs" | "hermes") => void;
 }
 
 export function Sidebar({ collapsed, onExpand }: SidebarProps) {
@@ -124,12 +125,14 @@ export function Sidebar({ collapsed, onExpand }: SidebarProps) {
 		},
 	];
 
-	const handleExpand = (section?: "tickets" | "prs") => {
+	const handleExpand = (section?: "tickets" | "prs" | "hermes") => {
 		onExpand(section);
 		if (section === "tickets") {
 			setSidebarSegment("tickets");
 		} else if (section === "prs") {
 			setSidebarSegment("prs");
+		} else if (section === "hermes") {
+			setSidebarSegment("hermes");
 		}
 	};
 
@@ -193,13 +196,19 @@ export function Sidebar({ collapsed, onExpand }: SidebarProps) {
 
 			{/* Segmented control — always at top */}
 			<div className="flex gap-1 border-b border-[var(--border-subtle)] px-2 py-1.5">
-				{(["repos", "tickets", "prs"] as const).map((seg) => {
+				{(["repos", "tickets", "prs", "hermes"] as const).map((seg) => {
 					const actionIds = {
 						repos: "nav.repos",
 						tickets: "nav.tickets",
 						prs: "nav.prs",
+						hermes: "nav.hermes",
 					} as const;
-					const labels = { repos: "Projects", tickets: "Tickets", prs: "PRs" } as const;
+					const labels = {
+						repos: "Projects",
+						tickets: "Tickets",
+						prs: "PRs",
+						hermes: "Hermes",
+					} as const;
 					return (
 						<Tooltip key={seg} label={labels[seg]} actionId={actionIds[seg]} className="flex-1">
 							<button
@@ -234,6 +243,7 @@ export function Sidebar({ collapsed, onExpand }: SidebarProps) {
 						<PullRequestsTab />
 					</div>
 				)}
+				{segment === "hermes" && <HermesSidebar />}
 			</div>
 
 			{/* Footer — Settings */}

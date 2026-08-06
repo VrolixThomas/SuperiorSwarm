@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+import { controlPlaneToolResult } from "./structured-artifact.mjs";
 
 const require = createRequire(import.meta.url);
 const Database = require("better-sqlite3");
@@ -964,13 +965,13 @@ if (isWorkspaceAgentOrCrossRepo) {
 					isError: true,
 				};
 			}
-			return { content: [{ type: "text", text: JSON.stringify(parsed) }] };
+			return controlPlaneToolResult(parsed);
 		} catch (err) {
 			return {
 				content: [
 					{
 						type: "text",
-						text: `control plane unreachable — is SuperiorSwarm running? (${err && err.message ? err.message : String(err)})`,
+						text: `control plane unreachable — is SuperiorSwarm running? (${err?.message ? err.message : String(err)})`,
 					},
 				],
 				isError: true,
@@ -1023,7 +1024,7 @@ if (isWorkspaceAgentOrCrossRepo) {
 			: {},
 		async (args) => {
 			if (isCrossRepoMode) {
-				const ids = args && args.project_id ? [args.project_id] : LINKED_PROJECT_IDS;
+				const ids = args?.project_id ? [args.project_id] : LINKED_PROJECT_IDS;
 				return call("GET", `/workspaces.list?projectIds=${encodeURIComponent(ids.join(","))}`);
 			}
 			return call("GET", `/workspaces.list?projectId=${encodeURIComponent(PROJECT_ID)}`);

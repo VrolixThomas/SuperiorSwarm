@@ -161,9 +161,11 @@ function collectSnapshot() {
 	if (Object.keys(baseBranchByWorkspace).length > 0) {
 		state["baseBranchByWorkspace"] = JSON.stringify(baseBranchByWorkspace);
 	}
-	const { sidebarSegment, activeWorkspaceBySegment, workspaceMetadata } = store;
+	const { sidebarSegment, activeWorkspaceBySegment, workspaceMetadata, selectedHermesSessionId } =
+		store;
 	if (sidebarSegment) state["sidebarSegment"] = sidebarSegment;
 	state["activeWorkspaceBySegment"] = JSON.stringify(activeWorkspaceBySegment);
+	if (selectedHermesSessionId) state["selectedHermesSessionId"] = selectedHermesSessionId;
 	if (Object.keys(workspaceMetadata).length > 0) {
 		state["workspaceMetadata"] = JSON.stringify(workspaceMetadata);
 	}
@@ -604,10 +606,10 @@ function AuthenticatedApp() {
 	});
 
 	// Sync panel collapse/expand with store state.
-	// Always collapse when on tickets segment — the diff panel is not relevant.
+	// Global canvas routes do not use the repository diff panel.
 	useEffect(() => {
 		if (!diffPanelRef.current) return;
-		if (sidebarSegment === "tickets") {
+		if (sidebarSegment === "tickets" || sidebarSegment === "hermes") {
 			if (!diffPanelRef.current.isCollapsed()) diffPanelRef.current.collapse();
 			return;
 		}
