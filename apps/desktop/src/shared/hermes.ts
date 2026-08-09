@@ -227,6 +227,7 @@ export interface HermesLinkedWorkspace {
 	statusText: string | null;
 	needs: string | null;
 	statusUpdatedAt: number | null;
+	hasTerminal: boolean;
 }
 
 export interface HermesOriginReportState {

@@ -31,6 +31,7 @@ function link(overrides: Partial<HermesLinkedWorkspace> = {}): HermesLinkedWorks
 		statusText: "Implementing the fix",
 		needs: null,
 		statusUpdatedAt: 2,
+		hasTerminal: false,
 		...overrides,
 	};
 }
@@ -195,5 +196,54 @@ describe("Hermes Worktrees pane", () => {
 			["terminal", "workspace-1", "/repos/app-worktrees/feat-one", "feat/one"],
 			["attach", "workspace-1", "terminal-1"],
 		]);
+	});
+
+	test("navigates without replacing a persisted terminal that is not in renderer tabs", () => {
+		const calls: unknown[] = [];
+
+		const opened = openHermesLinkedWorktree(
+			link({ hasTerminal: true }),
+			{ connectionId: "connection-1", sessionId: "session-1" },
+			{
+				openWorkspaceFromHermes: (...args: unknown[]) => calls.push(["open", ...args]),
+				getTabsByWorkspace: () => [],
+				addTerminalTab: (...args: unknown[]) => {
+					calls.push(["terminal", ...args]);
+					return "terminal-new";
+				},
+				attachTerminal: (...args: unknown[]) => calls.push(["attach", ...args]),
+			}
+		);
+
+		expect(opened).toBe(true);
+		expect(calls).toEqual([
+			[
+				"open",
+				"workspace-1",
+				"/repos/app-worktrees/feat-one",
+				{ connectionId: "connection-1", sessionId: "session-1" },
+				"worktrees",
+			],
+		]);
+	});
+
+	test("does not duplicate an existing renderer terminal", () => {
+		const calls: unknown[] = [];
+
+		openHermesLinkedWorktree(
+			link(),
+			{ connectionId: "connection-1", sessionId: "session-1" },
+			{
+				openWorkspaceFromHermes: (...args: unknown[]) => calls.push(["open", ...args]),
+				getTabsByWorkspace: () => [{ kind: "terminal" }],
+				addTerminalTab: (...args: unknown[]) => {
+					calls.push(["terminal", ...args]);
+					return "terminal-new";
+				},
+				attachTerminal: (...args: unknown[]) => calls.push(["attach", ...args]),
+			}
+		);
+
+		expect(calls.map((call) => (call as unknown[])[0])).toEqual(["open"]);
 	});
 });

@@ -233,6 +233,7 @@ describe("Hermes persistence services", () => {
 					type: "worktree",
 					name: workspaceId,
 					worktreeId: `worktree-${workspaceId}`,
+					terminalId: workspaceId === "workspace-1" ? "persisted-terminal-1" : null,
 					currentPhase: workspaceId === "workspace-1" ? "blocked" : "working",
 					statusText: workspaceId === "workspace-1" ? "Waiting for CI" : "Implementing",
 					needs: workspaceId === "workspace-1" ? "CI credentials" : null,
@@ -276,6 +277,7 @@ describe("Hermes persistence services", () => {
 		const linked = listHermesWorkspaceLinks(connection.id, "session-tip");
 		expect(linked).toHaveLength(2);
 		expect(linked.find((link) => link.workspaceId === "workspace-1")).toMatchObject({
+			hasTerminal: true,
 			currentPhase: "blocked",
 			statusText: "Waiting for CI",
 			needs: "CI credentials",
@@ -288,6 +290,7 @@ describe("Hermes persistence services", () => {
 		);
 		expect(missing?.missing).toBe(true);
 		expect(missing).toMatchObject({
+			hasTerminal: false,
 			currentPhase: null,
 			statusText: null,
 			needs: null,

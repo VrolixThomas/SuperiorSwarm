@@ -213,6 +213,7 @@ export function listHermesWorkspaceLinks(
 			statusText: workspaces.statusText,
 			needs: workspaces.needs,
 			statusUpdatedAt: workspaces.statusUpdatedAt,
+			terminalId: workspaces.terminalId,
 			projectId: projects.id,
 			projectName: projects.name,
 			branch: worktrees.branch,
@@ -247,5 +248,6 @@ export function listHermesWorkspaceLinks(
 		statusText: row.statusText,
 		needs: row.needs,
 		statusUpdatedAt: row.statusUpdatedAt?.getTime() ?? null,
+		hasTerminal: row.terminalId !== null,
 	}));
 }
