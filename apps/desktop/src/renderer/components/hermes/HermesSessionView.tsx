@@ -40,6 +40,7 @@ import {
 	openHermesLinkedWorktree,
 	resolveHermesWorkspaceSessionId,
 } from "./HermesWorktreesPane";
+import { OverflowPopover } from "./OverflowPopover";
 
 function scrollToLatest(element: HTMLDivElement, smooth: boolean): void {
 	element.scrollTo({
@@ -66,6 +67,7 @@ export function HermesSessionView() {
 	const [showReportPreview, setShowReportPreview] = useState(false);
 	const [attachmentLimitError, setAttachmentLimitError] = useState<string | null>(null);
 	const [showJumpToLatest, setShowJumpToLatest] = useState(false);
+	const [sessionOptionsOpen, setSessionOptionsOpen] = useState(false);
 	const processedEventSeq = useRef(0);
 	const transcriptRef = useRef<HTMLDivElement | null>(null);
 	const composerRef = useRef<HTMLTextAreaElement | null>(null);
@@ -424,144 +426,142 @@ export function HermesSessionView() {
 					onSelect={setActivePane}
 				/>
 
-				<details className="app-no-drag group relative shrink-0">
-					<summary
-						aria-label="Session options"
-						className="flex size-8 cursor-pointer list-none items-center justify-center rounded-full text-[17px] tracking-[2px] text-[var(--text-quaternary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/50 [&::-webkit-details-marker]:hidden"
-					>
-						•••
-					</summary>
-					<div className="absolute right-0 top-10 z-30 max-h-[calc(100vh-88px)] w-[min(360px,calc(100vw-32px))] min-w-0 overflow-x-hidden overflow-y-auto rounded-[14px] border border-[var(--border)] bg-[var(--bg-elevated)] p-3 shadow-[var(--shadow-lg)]">
-						<div className="mb-3 text-[11px] font-medium text-[var(--text-secondary)]">
-							Session options
-						</div>
-
-						{isSlackSession && (
-							<section className="mb-3 min-w-0 border-b border-[var(--border-subtle)] pb-3">
-								<div className="mb-1 text-[10px] font-medium text-[var(--text-tertiary)]">
-									Origin
-								</div>
-								<p className="mb-2 text-[10px] leading-4 text-[var(--text-quaternary)]">
-									Slack remains live. Continue sequentially to avoid overlapping turns.
-								</p>
-								{originActions.canOpenOrigin ? (
-									<button
-										type="button"
-										onClick={() => openOrigin.mutate({ connectionId, hermesSessionId: sessionId })}
-										className="rounded-[6px] border border-[var(--border)] px-2 py-1 text-[10px] text-[var(--text-secondary)] hover:bg-[var(--bg-overlay)]"
-									>
-										Open Slack thread
-									</button>
-								) : (
-									<form
-										onSubmit={(event) => {
-											event.preventDefault();
-											if (!manualOriginUrl.trim()) return;
-											saveOriginLink.mutate(
-												{
-													connectionId,
-													hermesSessionId: sessionId,
-													openUrl: manualOriginUrl.trim(),
-												},
-												{
-													onSuccess: () => {
-														setManualOriginUrl("");
-														void utils.hermes.origin.invalidate({
-															connectionId,
-															hermesSessionId: sessionId,
-														});
-													},
-												}
-											);
-										}}
-										className="flex min-w-0 gap-1.5"
-									>
-										<input
-											value={manualOriginUrl}
-											onChange={(event) => setManualOriginUrl(event.target.value)}
-											placeholder="Trusted Slack thread URL"
-											aria-label="Trusted Slack thread URL"
-											className="min-w-0 flex-1 rounded-[6px] border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1 text-[10px] text-[var(--text)] outline-none focus:border-[var(--accent)]"
-										/>
-										<button
-											type="submit"
-											disabled={!manualOriginUrl.trim() || saveOriginLink.isPending}
-											className="shrink-0 rounded-[6px] border border-[var(--border)] px-2 py-1 text-[10px] text-[var(--text-secondary)] disabled:opacity-40"
-										>
-											Save
-										</button>
-									</form>
-								)}
-							</section>
-						)}
-
-						{isSlackSession && originActions.canReportToOrigin && reportable && (
-							<section className="min-w-0">
-								<div className="mb-1.5 text-[10px] font-medium text-[var(--text-tertiary)]">
-									Report to origin
-								</div>
-								{showReportPreview ? (
-									<div className="min-w-0">
-										<div className="max-h-32 min-w-0 overflow-x-hidden overflow-y-auto whitespace-pre-wrap rounded-[6px] bg-[var(--bg-base)] p-2 text-[10px] leading-4 text-[var(--text-secondary)] [overflow-wrap:anywhere]">
-											{reportable.text}
-										</div>
-										<div className="mt-2 flex flex-wrap items-center gap-1.5">
-											<button
-												type="button"
-												disabled={report.isPending || reportState?.status === "sent"}
-												onClick={() => {
-													const generation = selectionGeneration;
-													report.mutate(
-														{
-															connectionId,
-															hermesSessionId: sessionId,
-															messageId: reportable.id,
-															explicitRetry: hermesReportRequiresExplicitRetry(reportState),
-														},
-														{
-															onSettled: () => {
-																runForSelection(generation, () => {
-																	void utils.hermes.reports.invalidate();
-																});
-															},
-														}
-													);
-												}}
-												className="rounded-[6px] bg-[var(--accent)] px-2 py-1 text-[10px] text-white disabled:opacity-40"
-											>
-												{report.isPending
-													? "Sending…"
-													: hermesReportRequiresExplicitRetry(reportState)
-														? "Confirm retry to Slack"
-														: "Confirm send to Slack"}
-											</button>
-											<button
-												type="button"
-												onClick={() => setShowReportPreview(false)}
-												className="px-2 py-1 text-[10px] text-[var(--text-quaternary)]"
-											>
-												Cancel
-											</button>
-										</div>
-										{reportState && (
-											<div className="mt-1 text-[9px] text-[var(--text-quaternary)]">
-												Status: {reportState.status}
-											</div>
-										)}
-									</div>
-								) : (
-									<button
-										type="button"
-										onClick={() => setShowReportPreview(true)}
-										className="rounded-[6px] border border-[var(--border)] px-2 py-1 text-[10px] text-[var(--text-secondary)]"
-									>
-										Preview Slack update
-									</button>
-								)}
-							</section>
-						)}
+				<OverflowPopover
+					label="Session options"
+					open={sessionOptionsOpen}
+					onOpenChange={setSessionOptionsOpen}
+					panelClassName="absolute right-0 top-9 z-30 max-h-[calc(100vh-88px)] w-[min(360px,calc(100vw-32px))] min-w-0 overflow-x-hidden overflow-y-auto rounded-[14px] border border-[var(--border)] bg-[var(--bg-elevated)] p-3 shadow-[var(--shadow-lg)]"
+				>
+					<div className="mb-3 text-[11px] font-medium text-[var(--text-secondary)]">
+						Session options
 					</div>
-				</details>
+
+					{isSlackSession && (
+						<section className="mb-3 min-w-0 border-b border-[var(--border-subtle)] pb-3">
+							<div className="mb-1 text-[10px] font-medium text-[var(--text-tertiary)]">Origin</div>
+							<p className="mb-2 text-[10px] leading-4 text-[var(--text-quaternary)]">
+								Slack remains live. Continue sequentially to avoid overlapping turns.
+							</p>
+							{originActions.canOpenOrigin ? (
+								<button
+									type="button"
+									data-popover-close
+									onClick={() => openOrigin.mutate({ connectionId, hermesSessionId: sessionId })}
+									className="rounded-[6px] border border-[var(--border)] px-2 py-1 text-[10px] text-[var(--text-secondary)] hover:bg-[var(--bg-overlay)]"
+								>
+									Open Slack thread
+								</button>
+							) : (
+								<form
+									onSubmit={(event) => {
+										event.preventDefault();
+										if (!manualOriginUrl.trim()) return;
+										saveOriginLink.mutate(
+											{
+												connectionId,
+												hermesSessionId: sessionId,
+												openUrl: manualOriginUrl.trim(),
+											},
+											{
+												onSuccess: () => {
+													setManualOriginUrl("");
+													void utils.hermes.origin.invalidate({
+														connectionId,
+														hermesSessionId: sessionId,
+													});
+												},
+											}
+										);
+									}}
+									className="flex min-w-0 gap-1.5"
+								>
+									<input
+										value={manualOriginUrl}
+										onChange={(event) => setManualOriginUrl(event.target.value)}
+										placeholder="Trusted Slack thread URL"
+										aria-label="Trusted Slack thread URL"
+										className="min-w-0 flex-1 rounded-[6px] border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1 text-[10px] text-[var(--text)] outline-none focus:border-[var(--accent)]"
+									/>
+									<button
+										type="submit"
+										data-popover-close
+										disabled={!manualOriginUrl.trim() || saveOriginLink.isPending}
+										className="shrink-0 rounded-[6px] border border-[var(--border)] px-2 py-1 text-[10px] text-[var(--text-secondary)] disabled:opacity-40"
+									>
+										Save
+									</button>
+								</form>
+							)}
+						</section>
+					)}
+
+					{isSlackSession && originActions.canReportToOrigin && reportable && (
+						<section className="min-w-0">
+							<div className="mb-1.5 text-[10px] font-medium text-[var(--text-tertiary)]">
+								Report to origin
+							</div>
+							{showReportPreview ? (
+								<div className="min-w-0">
+									<div className="max-h-32 min-w-0 overflow-x-hidden overflow-y-auto whitespace-pre-wrap rounded-[6px] bg-[var(--bg-base)] p-2 text-[10px] leading-4 text-[var(--text-secondary)] [overflow-wrap:anywhere]">
+										{reportable.text}
+									</div>
+									<div className="mt-2 flex flex-wrap items-center gap-1.5">
+										<button
+											type="button"
+											data-popover-close
+											disabled={report.isPending || reportState?.status === "sent"}
+											onClick={() => {
+												const generation = selectionGeneration;
+												report.mutate(
+													{
+														connectionId,
+														hermesSessionId: sessionId,
+														messageId: reportable.id,
+														explicitRetry: hermesReportRequiresExplicitRetry(reportState),
+													},
+													{
+														onSettled: () => {
+															runForSelection(generation, () => {
+																void utils.hermes.reports.invalidate();
+															});
+														},
+													}
+												);
+											}}
+											className="rounded-[6px] bg-[var(--accent)] px-2 py-1 text-[10px] text-white disabled:opacity-40"
+										>
+											{report.isPending
+												? "Sending…"
+												: hermesReportRequiresExplicitRetry(reportState)
+													? "Confirm retry to Slack"
+													: "Confirm send to Slack"}
+										</button>
+										<button
+											type="button"
+											onClick={() => setShowReportPreview(false)}
+											className="px-2 py-1 text-[10px] text-[var(--text-quaternary)]"
+										>
+											Cancel
+										</button>
+									</div>
+									{reportState && (
+										<div className="mt-1 text-[9px] text-[var(--text-quaternary)]">
+											Status: {reportState.status}
+										</div>
+									)}
+								</div>
+							) : (
+								<button
+									type="button"
+									onClick={() => setShowReportPreview(true)}
+									className="rounded-[6px] border border-[var(--border)] px-2 py-1 text-[10px] text-[var(--text-secondary)]"
+								>
+									Preview Slack update
+								</button>
+							)}
+						</section>
+					)}
+				</OverflowPopover>
 			</header>
 
 			{visibleError && activePane === "chat" && (

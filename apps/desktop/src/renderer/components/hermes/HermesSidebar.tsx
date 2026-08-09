@@ -7,6 +7,7 @@ import {
 } from "../../hermes/hermes-view-model";
 import { useTabStore } from "../../stores/tab-store";
 import { trpc } from "../../trpc/client";
+import { OverflowPopover } from "./OverflowPopover";
 
 function relativeTime(timestamp: number): string {
 	if (!timestamp) return "Unknown";
@@ -200,6 +201,21 @@ export function HermesSidebar() {
 		);
 	}
 
+	function setAdvancedPopoverOpen(open: boolean) {
+		if (open) {
+			if (activeConnection?.managementMode === "external") {
+				setLabel(activeConnection.label);
+				setBaseUrl(activeConnection.baseUrl ?? "");
+				setProfileId(activeConnection.profileId);
+			} else {
+				setLabel("External Hermes");
+				setBaseUrl("");
+				setProfileId(activeConnection?.profileId ?? "default");
+			}
+		}
+		setShowAdvanced(open);
+	}
+
 	return (
 		<div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
 			<div className="flex h-11 min-w-0 shrink-0 items-center gap-2 px-3">
@@ -224,137 +240,123 @@ export function HermesSidebar() {
 						</span>
 					</div>
 				</div>
-				<button
-					type="button"
-					onClick={() => {
-						if (activeConnection?.managementMode === "external") {
-							setLabel(activeConnection.label);
-							setBaseUrl(activeConnection.baseUrl ?? "");
-							setProfileId(activeConnection.profileId);
-						} else {
-							setLabel("External Hermes");
-							setBaseUrl("");
-							setProfileId(activeConnection?.profileId ?? "default");
-						}
-						setShowAdvanced(true);
-					}}
-					className="flex size-7 shrink-0 items-center justify-center rounded-full text-[13px] text-[var(--text-quaternary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-secondary)]"
-					title="Connect external Hermes"
-					aria-label="Advanced connection settings"
+				<OverflowPopover
+					label="Advanced connection settings"
+					open={showAdvanced}
+					onOpenChange={setAdvancedPopoverOpen}
+					panelClassName="absolute right-0 top-9 z-30 flex w-[min(360px,calc(100vw-32px))] min-w-0 flex-col gap-2 rounded-[12px] border border-[var(--border)] bg-[var(--bg-elevated)] p-3 shadow-[var(--shadow-lg)]"
 				>
-					•••
-				</button>
-			</div>
-
-			{showAdvanced && (
-				<form
-					onSubmit={submitConnection}
-					className="absolute left-2 right-2 top-11 z-30 flex min-w-0 flex-col gap-2 rounded-[12px] border border-[var(--border)] bg-[var(--bg-elevated)] p-3 shadow-[var(--shadow-lg)]"
-				>
-					<div className="text-[11px] font-medium text-[var(--text-secondary)]">
-						Connect external Hermes
-					</div>
-					{externalConnections && externalConnections.length > 0 && (
-						<select
-							value={activeConnection?.managementMode === "external" ? activeConnection.id : ""}
-							onChange={(event) => {
-								const selected = externalConnections.find(
-									(connection) => connection.id === event.target.value
-								);
-								if (!selected) {
-									setLabel("External Hermes");
-									setBaseUrl("");
-									setProfileId("default");
-									setConnectionId(managedConnection?.id ?? null);
-									return;
-								}
-								setConnectionId(selected.id);
-								setLabel(selected.label);
-								setBaseUrl(selected.baseUrl ?? "");
-								setProfileId(selected.profileId);
-							}}
-							className="min-w-0 max-w-full rounded-[6px] border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1.5 text-[11px] text-[var(--text)]"
-						>
-							<option value="">New external connection…</option>
-							{externalConnections.map((connection) => (
-								<option key={connection.id} value={connection.id}>
-									{connection.label}
-								</option>
-							))}
-						</select>
-					)}
-					<input
-						value={label}
-						onChange={(event) => setLabel(event.target.value)}
-						placeholder="Label"
-						aria-label="Connection label"
-						className="min-w-0 rounded-[6px] border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1.5 text-[11px] text-[var(--text)] outline-none focus:border-[var(--accent)]"
-					/>
-					<input
-						value={baseUrl}
-						onChange={(event) => setBaseUrl(event.target.value)}
-						placeholder="https://hermes.example.com"
-						aria-label="Hermes URL"
-						className="min-w-0 rounded-[6px] border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1.5 text-[11px] text-[var(--text)] outline-none focus:border-[var(--accent)]"
-					/>
-					<input
-						value={profileId}
-						onChange={(event) => setProfileId(event.target.value)}
-						placeholder="Profile"
-						aria-label="Hermes profile"
-						className="min-w-0 rounded-[6px] border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1.5 text-[11px] text-[var(--text)] outline-none focus:border-[var(--accent)]"
-					/>
-					{showTokenInput && (
+					<form onSubmit={submitConnection} className="flex min-w-0 flex-col gap-2">
+						<div className="text-[11px] font-medium text-[var(--text-secondary)]">
+							Connect external Hermes
+						</div>
+						{externalConnections && externalConnections.length > 0 && (
+							<select
+								value={activeConnection?.managementMode === "external" ? activeConnection.id : ""}
+								onChange={(event) => {
+									const selected = externalConnections.find(
+										(connection) => connection.id === event.target.value
+									);
+									if (!selected) {
+										setLabel("External Hermes");
+										setBaseUrl("");
+										setProfileId("default");
+										setConnectionId(managedConnection?.id ?? null);
+										return;
+									}
+									setConnectionId(selected.id);
+									setLabel(selected.label);
+									setBaseUrl(selected.baseUrl ?? "");
+									setProfileId(selected.profileId);
+								}}
+								className="min-w-0 max-w-full rounded-[6px] border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1.5 text-[11px] text-[var(--text)]"
+							>
+								<option value="">New external connection…</option>
+								{externalConnections.map((connection) => (
+									<option key={connection.id} value={connection.id}>
+										{connection.label}
+									</option>
+								))}
+							</select>
+						)}
 						<input
-							type="password"
-							value={token}
-							onChange={(event) => setToken(event.target.value)}
-							placeholder={activeConnection?.hasToken ? "Token unchanged" : "Hermes session token"}
-							autoComplete="off"
-							aria-label="Hermes session token"
+							value={label}
+							onChange={(event) => setLabel(event.target.value)}
+							placeholder="Label"
+							aria-label="Connection label"
 							className="min-w-0 rounded-[6px] border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1.5 text-[11px] text-[var(--text)] outline-none focus:border-[var(--accent)]"
 						/>
-					)}
-					<div className="text-[9px] leading-4 text-[var(--text-quaternary)]">
-						Stored tokens stay protected and never re-enter renderer state.
-					</div>
-					{saveConnection.error && (
-						<div className="text-[10px] text-[var(--danger)] [overflow-wrap:anywhere]">
-							{saveConnection.error.message}
+						<input
+							value={baseUrl}
+							onChange={(event) => setBaseUrl(event.target.value)}
+							placeholder="https://hermes.example.com"
+							aria-label="Hermes URL"
+							className="min-w-0 rounded-[6px] border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1.5 text-[11px] text-[var(--text)] outline-none focus:border-[var(--accent)]"
+						/>
+						<input
+							value={profileId}
+							onChange={(event) => setProfileId(event.target.value)}
+							placeholder="Profile"
+							aria-label="Hermes profile"
+							className="min-w-0 rounded-[6px] border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1.5 text-[11px] text-[var(--text)] outline-none focus:border-[var(--accent)]"
+						/>
+						{showTokenInput && (
+							<input
+								type="password"
+								value={token}
+								onChange={(event) => setToken(event.target.value)}
+								placeholder={
+									activeConnection?.hasToken ? "Token unchanged" : "Hermes session token"
+								}
+								autoComplete="off"
+								aria-label="Hermes session token"
+								className="min-w-0 rounded-[6px] border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1.5 text-[11px] text-[var(--text)] outline-none focus:border-[var(--accent)]"
+							/>
+						)}
+						<div className="text-[9px] leading-4 text-[var(--text-quaternary)]">
+							Stored tokens stay protected and never re-enter renderer state.
 						</div>
-					)}
-					<div className="flex flex-wrap gap-1.5">
-						<button
-							type="submit"
-							disabled={!canSave || saveConnection.isPending}
-							className="rounded-[6px] bg-[var(--accent)] px-2.5 py-1.5 text-[10px] text-white disabled:opacity-40"
-						>
-							Save & connect
-						</button>
-						{activeConnection?.managementMode === "external" && managedConnection && (
+						{saveConnection.error && (
+							<div className="text-[10px] text-[var(--danger)] [overflow-wrap:anywhere]">
+								{saveConnection.error.message}
+							</div>
+						)}
+						<div className="flex flex-wrap gap-1.5">
+							<button
+								type="submit"
+								data-popover-close
+								disabled={!canSave || saveConnection.isPending}
+								className="rounded-[6px] bg-[var(--accent)] px-2.5 py-1.5 text-[10px] text-white disabled:opacity-40"
+							>
+								Save & connect
+							</button>
+							{activeConnection?.managementMode === "external" && managedConnection && (
+								<button
+									type="button"
+									data-popover-close
+									onClick={() => {
+										connect.reset();
+										setConnectionId(managedConnection.id);
+										changeConnection(managedConnection.id);
+										setShowAdvanced(false);
+									}}
+									className="rounded-[6px] px-2.5 py-1.5 text-[10px] text-[var(--accent)] hover:bg-[var(--bg-overlay)]"
+								>
+									Use local
+								</button>
+							)}
 							<button
 								type="button"
-								onClick={() => {
-									connect.reset();
-									setConnectionId(managedConnection.id);
-									changeConnection(managedConnection.id);
-									setShowAdvanced(false);
-								}}
-								className="rounded-[6px] px-2.5 py-1.5 text-[10px] text-[var(--accent)] hover:bg-[var(--bg-overlay)]"
+								data-popover-close
+								onClick={() => setShowAdvanced(false)}
+								className="rounded-[6px] px-2.5 py-1.5 text-[10px] text-[var(--text-tertiary)] hover:bg-[var(--bg-overlay)]"
 							>
-								Use local
+								Cancel
 							</button>
-						)}
-						<button
-							type="button"
-							onClick={() => setShowAdvanced(false)}
-							className="rounded-[6px] px-2.5 py-1.5 text-[10px] text-[var(--text-tertiary)] hover:bg-[var(--bg-overlay)]"
-						>
-							Cancel
-						</button>
-					</div>
-				</form>
-			)}
+						</div>
+					</form>
+				</OverflowPopover>
+			</div>
 
 			{!connected ? (
 				<div className="min-w-0 px-3 py-5 text-center text-[10px] leading-5 text-[var(--text-quaternary)] [overflow-wrap:anywhere]">

@@ -16,7 +16,7 @@ describe("Hermes layout contract", () => {
 		expect(view).toContain('data-hermes-alignment-frame="transcript"');
 		expect(view).toContain('data-hermes-alignment-frame="composer"');
 		expect(view).toContain("h-14");
-		expect(view).toContain('aria-label="Session options"');
+		expect(view).toContain('label="Session options"');
 		expect(view).toContain("state.hermesSessionPane");
 		expect(view).toContain("state.setHermesSessionPane");
 		expect(view).toContain('hidden={activePane !== "chat"}');
