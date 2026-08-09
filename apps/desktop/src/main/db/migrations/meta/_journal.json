@@ -386,6 +386,13 @@
       "when": 1786028117653,
       "tag": "0054_add_hermes_connections_links_reports",
       "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "6",
+      "when": 1786261303748,
+      "tag": "0055_adapt_hermes_stock_sessions",
+      "breakpoints": true
     }
   ]
 }

@@ -1,7 +1,6 @@
 import { asc, eq } from "drizzle-orm";
 import { shell } from "electron";
 import { z } from "zod";
-import type { HermesBindingReleaseInput } from "../../../shared/hermes";
 import { getDb } from "../../db";
 import { hermesSessionWorkspaces, projects, workspaces, worktrees } from "../../db/schema";
 import {
@@ -9,6 +8,7 @@ import {
 	listHermesConnections,
 	saveHermesConnection,
 } from "../../hermes/hermes-connections";
+import { validateManualSlackThreadUrl } from "../../hermes/hermes-origin-resolver";
 import { hermesRuntimeService } from "../../hermes/hermes-runtime-service";
 import {
 	linkHermesWorkspace,
@@ -22,16 +22,15 @@ const connectionSessionInput = z.object({
 	hermesSessionId: z.string().min(1),
 });
 
-const bindingReleaseInput: z.ZodType<HermesBindingReleaseInput> = connectionSessionInput.extend({
-	expectedClaimId: z.string().min(1),
-	bindingGeneration: z.number().int().positive(),
-});
-
 function rendererOriginReportState(state: ReturnType<typeof hermesRuntimeService.reports>[number]) {
 	return {
-		turnId: state.turnId,
+		connectionId: state.connectionId,
+		hermesSessionId: state.hermesSessionId,
+		messageId: state.messageId,
 		status: state.status,
 		retryable: state.retryable,
+		errorCode: state.errorCode,
+		attemptCount: state.attemptCount,
 		updatedAt: state.updatedAt,
 	};
 }
@@ -78,13 +77,27 @@ export const hermesRouter = router({
 		.input(z.object({ connectionId: z.string().min(1) }))
 		.query(({ input }) => hermesRuntimeService.catalog(input.connectionId)),
 
+	create: publicProcedure
+		.input(
+			z.object({
+				connectionId: z.string().min(1),
+				profileId: z.string().trim().min(1).max(120).optional(),
+				cwd: z.string().trim().min(1).max(4_096).optional(),
+			})
+		)
+		.mutation(({ input }) =>
+			hermesRuntimeService.create(input.connectionId, {
+				profileId: input.profileId,
+				cwd: input.cwd,
+			})
+		),
+
 	resume: publicProcedure.input(connectionSessionInput).mutation(async ({ input }) => {
 		const resumed = await hermesRuntimeService.resume(input.connectionId, input.hermesSessionId);
 		return {
-			canonicalSessionId: resumed.canonicalSessionId,
+			durableSessionId: resumed.durableSessionId,
 			runtimeSessionId: resumed.runtimeSessionId,
-			claimId: resumed.claimId,
-			bindingGeneration: resumed.bindingGeneration,
+			persisted: resumed.persisted,
 		};
 	}),
 
@@ -102,26 +115,6 @@ export const hermesRouter = router({
 		.input(connectionSessionInput)
 		.mutation(({ input }) =>
 			hermesRuntimeService.interrupt(input.connectionId, input.hermesSessionId)
-		),
-
-	release: publicProcedure
-		.input(bindingReleaseInput)
-		.mutation(({ input }) => hermesRuntimeService.release(input)),
-
-	unbind: publicProcedure
-		.input(
-			connectionSessionInput.extend({
-				expectedClaimId: z.string().min(1),
-				expectedBindingGeneration: z.number().int().positive(),
-			})
-		)
-		.mutation(({ input }) =>
-			hermesRuntimeService.unbind(
-				input.connectionId,
-				input.hermesSessionId,
-				input.expectedClaimId,
-				input.expectedBindingGeneration
-			)
 		),
 
 	respondApproval: publicProcedure
@@ -146,31 +139,36 @@ export const hermesRouter = router({
 		.input(z.object({ connectionId: z.string().min(1), afterSeq: z.number().int().min(0) }))
 		.query(({ input }) => hermesRuntimeService.events(input.connectionId, input.afterSeq)),
 
-	origin: publicProcedure.input(connectionSessionInput).query(async ({ input }) => {
-		const origin = await hermesRuntimeService.origin(input.connectionId, input.hermesSessionId);
-		return {
-			displayLabel: origin.displayLabel,
-			canOpen: origin.canOpen,
-			canReport: origin.canReport,
-		};
-	}),
+	origin: publicProcedure
+		.input(connectionSessionInput)
+		.query(({ input }) => hermesRuntimeService.origin(input.connectionId, input.hermesSessionId)),
 
 	openOrigin: publicProcedure.input(connectionSessionInput).mutation(async ({ input }) => {
 		const origin = await hermesRuntimeService.origin(input.connectionId, input.hermesSessionId);
-		if (!origin.canOpen || !origin.permalink)
+		if (!origin.canOpenThread || !origin.openUrl) {
 			throw new Error("This Hermes origin cannot be opened");
-		const url = new URL(origin.permalink);
-		if (url.protocol !== "https:" && url.protocol !== "http:") {
-			throw new Error("Hermes returned an unsupported origin link");
 		}
-		await shell.openExternal(url.toString());
+		const openUrl = validateManualSlackThreadUrl(origin.openUrl);
+		if (!openUrl) throw new Error("This Hermes origin link is not trusted");
+		await shell.openExternal(openUrl);
 		return { opened: true as const };
 	}),
+
+	saveOriginLink: publicProcedure
+		.input(
+			connectionSessionInput.extend({
+				openUrl: z.string().trim().min(1).max(4_096),
+			})
+		)
+		.mutation(({ input }) =>
+			hermesRuntimeService.saveOriginLink(input.connectionId, input.hermesSessionId, input.openUrl)
+		),
 
 	reportToOrigin: publicProcedure
 		.input(
 			connectionSessionInput.extend({
-				turnId: z.string().min(1),
+				messageId: z.string().min(1),
+				explicitRetry: z.boolean(),
 			})
 		)
 		.mutation(async ({ input }) =>

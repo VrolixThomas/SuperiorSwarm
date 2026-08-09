@@ -2,6 +2,7 @@ import "./preload-electron-mock";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { _setDbForTesting } from "../src/main/db";
 import { saveHermesConnection } from "../src/main/hermes/hermes-connections";
+import type { HermesStockSessionDetail } from "../src/main/hermes/hermes-rest-client";
 import type { HermesRestClientLike } from "../src/main/hermes/hermes-runtime-service";
 import {
 	type HermesRuntimeClientLike,
@@ -19,7 +20,6 @@ import { makeTestDb } from "./test-db";
 class FakeRuntimeClient implements HermesRuntimeClientLike {
 	readonly requests: Array<{ method: string; params: Record<string, unknown> }> = [];
 	private eventListener: ((event: HermesRuntimeEvent) => void) | null = null;
-	private stateListener: ((state: HermesRuntimeState) => void) | null = null;
 	state: HermesRuntimeState = {
 		status: "connected",
 		reconnectAttempt: 0,
@@ -55,11 +55,8 @@ class FakeRuntimeClient implements HermesRuntimeClientLike {
 		};
 	}
 
-	subscribeState(listener: (state: HermesRuntimeState) => void): () => void {
-		this.stateListener = listener;
-		return () => {
-			this.stateListener = null;
-		};
+	subscribeState(_listener: (state: HermesRuntimeState) => void): () => void {
+		return () => undefined;
 	}
 
 	emit(event: Partial<HermesRuntimeEvent> & Pick<HermesRuntimeEvent, "type">): void {
@@ -82,6 +79,7 @@ class FakeRuntimeClient implements HermesRuntimeClientLike {
 class FakeRestClient implements HermesRestClientLike {
 	sessions: HermesSessionSummary[] = [];
 	histories = new Map<string, HermesSessionHistory>();
+	details = new Map<string, HermesStockSessionDetail>();
 	listCalls = 0;
 	transcriptCalls: Array<{ durableSessionId: string; profileId: string }> = [];
 
@@ -95,6 +93,34 @@ class FakeRestClient implements HermesRestClientLike {
 		return Promise.resolve(
 			this.histories.get(durableSessionId) ?? { durableSessionId, messages: [] }
 		);
+	}
+
+	getSessionDetail(durableSessionId: string, profileId: string): Promise<HermesStockSessionDetail> {
+		const detail = this.details.get(durableSessionId);
+		if (!detail) throw new Error("Missing fake session detail");
+		return Promise.resolve({ ...detail, profileId });
+	}
+}
+
+class FakeSendService {
+	available = true;
+	sends: Array<{
+		profileId: string;
+		target: { channelId: string; threadId: string };
+		content: string;
+	}> = [];
+
+	isAvailable(): boolean {
+		return this.available;
+	}
+
+	send(input: {
+		profileId: string;
+		target: { channelId: string; threadId: string };
+		content: string;
+	}): Promise<{ providerMessageId: string | null }> {
+		this.sends.push(input);
+		return Promise.resolve({ providerMessageId: "provider-1" });
 	}
 }
 
@@ -127,12 +153,14 @@ describe("HermesRuntimeService stock lifecycle", () => {
 	let client: FakeRuntimeClient;
 	let rest: FakeRestClient;
 	let service: HermesRuntimeService;
+	let sender: FakeSendService;
 	let connectionId: string;
 
 	beforeEach(() => {
 		_setDbForTesting(makeTestDb());
 		client = new FakeRuntimeClient();
 		rest = new FakeRestClient();
+		sender = new FakeSendService();
 		rest.sessions = [session()];
 		const vault = new HermesTokenVault({
 			isEncryptionAvailable: () => true,
@@ -151,6 +179,7 @@ describe("HermesRuntimeService stock lifecycle", () => {
 		service = new HermesRuntimeService({
 			clientFactory: () => client,
 			restClientFactory: () => rest,
+			sendService: sender,
 			tokenVault: vault,
 		});
 	});
@@ -199,6 +228,10 @@ describe("HermesRuntimeService stock lifecycle", () => {
 		await service.connect(connectionId);
 
 		const created = await service.create(connectionId, { cwd: "/tmp/worktree" });
+		expect(await service.history(connectionId, created.durableSessionId)).toEqual({
+			durableSessionId: "stored-new",
+			messages: [],
+		});
 		await service.submit(connectionId, created.durableSessionId, "Continue");
 
 		expect(created).toMatchObject({
@@ -217,6 +250,7 @@ describe("HermesRuntimeService stock lifecycle", () => {
 			},
 		]);
 		expect(JSON.stringify(client.requests)).not.toContain("claim");
+		expect(rest.transcriptCalls).toEqual([]);
 	});
 
 	test("refreshes before resume and activates an already-warm stock runtime", async () => {
@@ -333,5 +367,70 @@ describe("HermesRuntimeService stock lifecycle", () => {
 			.events.find((entry) => entry.event.type === "message.complete");
 		expect(completion?.event.durableSessionId).toBe("stored-1");
 		expect(rest.transcriptCalls.length).toBeGreaterThan(callsBeforeCompletion);
+	});
+
+	test("reports only canonical persisted assistant content to a main-resolved Slack target", async () => {
+		rest.details.set("stored-1", {
+			durableSessionId: "stored-1",
+			profileId: "work",
+			source: "slack",
+			displayName: "Support thread",
+			sessionKey: null,
+			chatId: "C12345",
+			chatType: "channel",
+			threadId: "1234567890.123456",
+			originJson: { platform: "slack", scope_id: "T12345", secret: "never-render" },
+		});
+		rest.histories.set("stored-1", {
+			durableSessionId: "stored-1",
+			messages: [
+				{
+					id: "assistant-1",
+					turnId: "turn-1",
+					role: "assistant",
+					text: "Canonical persisted update",
+					createdAt: 1,
+					status: "complete",
+					toolName: null,
+					workspaceArtifacts: [],
+				},
+			],
+		});
+		await service.connect(connectionId);
+
+		const origin = await service.origin(connectionId, "stored-1");
+		expect(origin).toMatchObject({
+			platform: "slack",
+			displayLabel: "Support thread",
+			hasThread: true,
+			canOpenThread: true,
+			canReport: true,
+		});
+		expect(origin).not.toHaveProperty("target");
+		expect(JSON.stringify(origin)).not.toContain("never-render");
+
+		const sent = await service.reportToOrigin({
+			connectionId,
+			hermesSessionId: "stored-1",
+			messageId: "assistant-1",
+			explicitRetry: false,
+		});
+		expect(sent).toMatchObject({ status: "sent", providerMessageId: "provider-1" });
+		expect(sender.sends).toEqual([
+			{
+				profileId: "work",
+				target: { channelId: "C12345", threadId: "1234567890.123456" },
+				content: "Canonical persisted update",
+			},
+		]);
+
+		const duplicate = await service.reportToOrigin({
+			connectionId,
+			hermesSessionId: "stored-1",
+			messageId: "assistant-1",
+			explicitRetry: false,
+		});
+		expect(duplicate.status).toBe("duplicate-suppressed");
+		expect(sender.sends).toHaveLength(1);
 	});
 });

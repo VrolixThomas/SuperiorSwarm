@@ -1,5 +1,7 @@
 import type {
 	HermesCatalog,
+	HermesOriginProjection,
+	HermesOriginReportState,
 	HermesReconnectBindingMetadata,
 	HermesRuntimeEvent,
 	HermesRuntimeState,
@@ -8,17 +10,26 @@ import type {
 	HermesSessionSummary,
 } from "../../shared/hermes";
 import { getHermesConnectionWithToken, markHermesConnectionConnected } from "./hermes-connections";
+import { getHermesOriginLink, saveHermesOriginLink } from "./hermes-origin-links";
+import {
+	beginHermesOriginReportAttempt,
+	finishHermesOriginReport,
+	listHermesOriginReports,
+	prepareHermesOriginReport,
+} from "./hermes-origin-reports";
+import { type ResolvedHermesOrigin, resolveHermesOrigin } from "./hermes-origin-resolver";
 import {
 	type extractWorkspaceArtifacts,
 	normalizeHermesSessionBinding,
 	sanitizeHermesPayload,
 } from "./hermes-protocol";
-import { HermesRestClient } from "./hermes-rest-client";
+import { HermesRestClient, type HermesStockSessionDetail } from "./hermes-rest-client";
 import {
 	HermesRpcError,
 	HermesRuntimeClient,
 	type HermesRuntimeConnectionSettings,
 } from "./hermes-runtime-client";
+import { HermesSendError, HermesSendService } from "./hermes-send-service";
 import { type HermesTokenVault, hermesTokenVault } from "./hermes-token-vault";
 import { linkHermesWorkspaceArtifacts } from "./hermes-workspace-links";
 
@@ -37,11 +48,21 @@ export interface HermesRuntimeClientLike {
 
 export interface HermesRestClientLike {
 	listSessions(signal?: AbortSignal): Promise<HermesSessionSummary[]>;
+	getSessionDetail(
+		durableSessionId: string,
+		profileId?: string,
+		signal?: AbortSignal
+	): Promise<HermesStockSessionDetail>;
 	getTranscript(
 		durableSessionId: string,
 		profileId?: string,
 		signal?: AbortSignal
 	): Promise<HermesSessionHistory>;
+}
+
+export interface HermesSendServiceLike {
+	isAvailable(): boolean;
+	send(input: Parameters<HermesSendService["send"]>[0]): ReturnType<HermesSendService["send"]>;
 }
 
 interface BufferedEvent {
@@ -67,6 +88,7 @@ interface ConnectionRuntime {
 	unsubscribers: Array<() => void>;
 	reconnectTask: Promise<void> | null;
 	histories: Map<string, HermesSessionHistory>;
+	origins: Map<string, ResolvedHermesOrigin>;
 }
 
 export interface HermesRuntimeServiceOptions {
@@ -77,13 +99,15 @@ export interface HermesRuntimeServiceOptions {
 		token: string;
 	}) => HermesRestClientLike;
 	tokenVault?: HermesTokenVault;
+	sendService?: HermesSendServiceLike;
 }
 
 const MAX_BUFFERED_EVENTS = 1_000;
 
 function stockCatalog(
 	sessions: HermesSessionSummary[],
-	connectionMode: "loopback" | "remote"
+	connectionMode: "loopback" | "remote",
+	senderAvailable: boolean
 ): HermesCatalog {
 	return {
 		compatibility: {
@@ -91,7 +115,7 @@ function stockCatalog(
 			authMode: "token",
 			canBrowse: true,
 			canChat: true,
-			canReport: false,
+			canReport: connectionMode === "loopback" && senderAvailable,
 			limitations:
 				connectionMode === "remote"
 					? ["Slack reporting requires a sender configured for this remote profile"]
@@ -106,12 +130,14 @@ export class HermesRuntimeService {
 	private readonly clientFactory: () => HermesRuntimeClientLike;
 	private readonly restClientFactory: NonNullable<HermesRuntimeServiceOptions["restClientFactory"]>;
 	private readonly tokenVault: HermesTokenVault;
+	private readonly sendService: HermesSendServiceLike;
 
 	constructor(options: HermesRuntimeServiceOptions = {}) {
 		this.clientFactory = options.clientFactory ?? (() => new HermesRuntimeClient());
 		this.restClientFactory =
 			options.restClientFactory ?? ((settings) => new HermesRestClient(settings));
 		this.tokenVault = options.tokenVault ?? hermesTokenVault;
+		this.sendService = options.sendService ?? new HermesSendService();
 	}
 
 	async connect(connectionId: string): Promise<HermesCatalog> {
@@ -131,7 +157,7 @@ export class HermesRuntimeService {
 			rest,
 			profileId: connection.profileId,
 			connectionMode: connection.connectionMode,
-			catalog: stockCatalog([], connection.connectionMode),
+			catalog: stockCatalog([], connection.connectionMode, this.sendService.isAvailable()),
 			bindings: new Map(),
 			runtimeToDurable: new Map(),
 			aliases: new Map(),
@@ -140,6 +166,7 @@ export class HermesRuntimeService {
 			unsubscribers: [],
 			reconnectTask: null,
 			histories: new Map(),
+			origins: new Map(),
 		};
 		this.runtimes.set(connectionId, runtime);
 		this.bindClient(connectionId, runtime);
@@ -150,7 +177,11 @@ export class HermesRuntimeService {
 				token: connection.token,
 			});
 			const sessions = await rest.listSessions();
-			runtime.catalog = stockCatalog(sessions, connection.connectionMode);
+			runtime.catalog = stockCatalog(
+				sessions,
+				connection.connectionMode,
+				this.sendService.isAvailable()
+			);
 			markHermesConnectionConnected(connectionId);
 			return runtime.catalog;
 		} catch (error) {
@@ -181,15 +212,144 @@ export class HermesRuntimeService {
 	async catalog(connectionId: string): Promise<HermesCatalog> {
 		const runtime = this.requireRuntime(connectionId);
 		const sessions = await runtime.rest.listSessions();
-		runtime.catalog = stockCatalog(sessions, runtime.connectionMode);
+		runtime.catalog = stockCatalog(
+			sessions,
+			runtime.connectionMode,
+			this.sendService.isAvailable()
+		);
 		return runtime.catalog;
+	}
+
+	async origin(connectionId: string, hermesSessionId: string): Promise<HermesOriginProjection> {
+		const runtime = this.requireRuntime(connectionId);
+		try {
+			const resolved = await this.resolveOrigin(connectionId, runtime, hermesSessionId);
+			if (resolved) return resolved.projection;
+		} catch {
+			// Origin controls are optional and must never make stock chat/history unavailable.
+		}
+		const durableSessionId = this.resolveDurableId(runtime, hermesSessionId);
+		const summary = runtime.catalog.sessions.find((session) => session.id === durableSessionId);
+		return (
+			summary?.origin ?? {
+				platform: summary?.source ?? "unknown",
+				displayLabel: summary?.source ?? null,
+				hasThread: false,
+				canOpenThread: false,
+				canReport: false,
+				openUrl: null,
+			}
+		);
+	}
+
+	async saveOriginLink(
+		connectionId: string,
+		hermesSessionId: string,
+		openUrl: string
+	): Promise<HermesOriginProjection> {
+		const runtime = this.requireRuntime(connectionId);
+		const durableSessionId = this.resolveDurableId(runtime, hermesSessionId);
+		const profileId = this.profileFor(runtime, durableSessionId);
+		const base = await this.resolveOrigin(connectionId, runtime, durableSessionId, false);
+		if (!base || base.projection.platform !== "slack") {
+			throw new Error("Only Slack-origin sessions support a manual thread URL");
+		}
+		saveHermesOriginLink({
+			connectionId,
+			profileId,
+			hermesSessionId: durableSessionId,
+			originFingerprint: base.originFingerprint,
+			openUrl,
+		});
+		const resolved = await this.resolveOrigin(connectionId, runtime, durableSessionId, true);
+		if (!resolved) throw new Error("The Slack origin is unavailable");
+		return resolved.projection;
+	}
+
+	async reportToOrigin(input: {
+		connectionId: string;
+		hermesSessionId: string;
+		messageId: string;
+		explicitRetry: boolean;
+	}): Promise<HermesOriginReportState> {
+		const runtime = this.requireRuntime(input.connectionId);
+		const durableSessionId = this.resolveDurableId(runtime, input.hermesSessionId);
+		const profileId = this.profileFor(runtime, durableSessionId);
+		const resolved = await this.resolveOrigin(input.connectionId, runtime, durableSessionId);
+		if (!resolved?.projection.canReport || !resolved.target) {
+			throw new Error("Slack reporting is unavailable for this session");
+		}
+		const history = await this.history(input.connectionId, durableSessionId);
+		const message = history.messages.find(
+			(candidate) => candidate.id === input.messageId && candidate.role === "assistant"
+		);
+		if (
+			!message ||
+			!message.text.trim() ||
+			["cancelled", "failed", "interrupted", "error"].includes(message.status?.toLowerCase() ?? "")
+		) {
+			throw new Error("Select a completed assistant message from canonical Hermes history");
+		}
+		const identity = {
+			connectionId: input.connectionId,
+			profileId,
+			hermesSessionId: history.durableSessionId,
+			messageId: message.id,
+			content: message.text,
+			destinationFingerprint: resolved.originFingerprint,
+		};
+		prepareHermesOriginReport(identity);
+		const attempt = beginHermesOriginReportAttempt({
+			...identity,
+			explicitRetry: input.explicitRetry,
+		});
+		if (!attempt.shouldSend) return attempt.state;
+		try {
+			const result = await this.sendService.send({
+				profileId,
+				target: resolved.target,
+				content: message.text,
+			});
+			return finishHermesOriginReport({
+				...identity,
+				status: "sent",
+				retryable: false,
+				providerMessageId: result.providerMessageId,
+			});
+		} catch (error) {
+			const sendError =
+				error instanceof HermesSendError
+					? error
+					: new HermesSendError("The stock Hermes sender failed", "process-failed", true);
+			return finishHermesOriginReport({
+				...identity,
+				status: "failed",
+				retryable: sendError.retryable,
+				errorCode: sendError.code,
+			});
+		}
+	}
+
+	reports(connectionId: string, hermesSessionId: string): HermesOriginReportState[] {
+		const runtime = this.requireRuntime(connectionId);
+		const durableSessionId = this.resolveDurableId(runtime, hermesSessionId);
+		return listHermesOriginReports(
+			connectionId,
+			this.profileFor(runtime, durableSessionId),
+			durableSessionId
+		);
 	}
 
 	async history(connectionId: string, hermesSessionId: string): Promise<HermesSessionHistory> {
 		const runtime = this.requireRuntime(connectionId);
 		const durableSessionId = this.resolveDurableId(runtime, hermesSessionId);
+		const draftBinding = this.bindingFor(runtime, durableSessionId);
+		if (draftBinding && !draftBinding.persisted && !draftBinding.activeTurn) {
+			return { durableSessionId, messages: [] };
+		}
 		const profileId = this.profileFor(runtime, durableSessionId);
 		const history = await runtime.rest.getTranscript(durableSessionId, profileId);
+		if (draftBinding) draftBinding.persisted = true;
 		if (history.durableSessionId !== durableSessionId) {
 			runtime.aliases.set(hermesSessionId, history.durableSessionId);
 			runtime.aliases.set(durableSessionId, history.durableSessionId);
@@ -257,7 +417,10 @@ export class HermesRuntimeService {
 	async submit(connectionId: string, hermesSessionId: string, text: string): Promise<{ ok: true }> {
 		const runtime = this.requireRuntime(connectionId);
 		let binding = this.bindingFor(runtime, hermesSessionId);
-		if (!binding) binding = await this.resume(connectionId, hermesSessionId);
+		if (!binding) {
+			await this.resume(connectionId, hermesSessionId);
+			binding = this.requireBinding(runtime, hermesSessionId);
+		}
 		if (binding.activeTurn) throw new Error("A Hermes turn is already active for this session");
 		binding.activeTurn = true;
 		try {
@@ -437,6 +600,38 @@ export class HermesRuntimeService {
 		return this.installBinding(runtime, binding);
 	}
 
+	private async resolveOrigin(
+		connectionId: string,
+		runtime: ConnectionRuntime,
+		hermesSessionId: string,
+		useStoredLink = true
+	): Promise<ResolvedHermesOrigin | null> {
+		const durableSessionId = this.resolveDurableId(runtime, hermesSessionId);
+		const profileId = this.profileFor(runtime, durableSessionId);
+		const detail = await runtime.rest.getSessionDetail(durableSessionId, profileId);
+		const base = resolveHermesOrigin(detail, {
+			connectionMode: runtime.connectionMode,
+			senderAvailable: this.sendService.isAvailable(),
+		});
+		const manualOpenUrl = useStoredLink
+			? getHermesOriginLink({
+					connectionId,
+					profileId,
+					hermesSessionId: detail.durableSessionId,
+					originFingerprint: base.originFingerprint,
+				})
+			: null;
+		const resolved = manualOpenUrl
+			? resolveHermesOrigin(detail, {
+					connectionMode: runtime.connectionMode,
+					senderAvailable: this.sendService.isAvailable(),
+					manualOpenUrl,
+				})
+			: base;
+		runtime.origins.set(detail.durableSessionId, resolved);
+		return resolved;
+	}
+
 	private installBinding(
 		runtime: ConnectionRuntime,
 		binding: HermesSessionBinding
@@ -487,6 +682,8 @@ export class HermesRuntimeService {
 		durableSessionId: string
 	): Promise<void> {
 		try {
+			const binding = this.bindingFor(runtime, durableSessionId);
+			if (binding) binding.persisted = true;
 			await this.history(connectionId, durableSessionId);
 			if (this.runtimes.get(connectionId) !== runtime) return;
 			this.pushEvent(connectionId, {

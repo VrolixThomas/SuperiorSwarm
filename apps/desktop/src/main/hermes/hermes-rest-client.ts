@@ -44,7 +44,7 @@ export interface HermesRestClientOptions {
 	baseUrl: string;
 	profileId: string;
 	token: string;
-	fetchImpl?: typeof fetch;
+	fetchImpl?: (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 	timeoutMs?: number;
 	maxTranscriptPages?: number;
 }
@@ -85,7 +85,7 @@ export class HermesRestClient {
 	private readonly baseUrl: URL;
 	private readonly profileId: string;
 	private readonly token: string;
-	private readonly fetchImpl: typeof fetch;
+	private readonly fetchImpl: NonNullable<HermesRestClientOptions["fetchImpl"]>;
 	private readonly timeoutMs: number;
 	private readonly maxTranscriptPages: number;
 

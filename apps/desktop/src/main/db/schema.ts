@@ -747,6 +747,35 @@ export const hermesSessionWorkspaces = sqliteTable(
 export type HermesSessionWorkspace = typeof hermesSessionWorkspaces.$inferSelect;
 export type NewHermesSessionWorkspace = typeof hermesSessionWorkspaces.$inferInsert;
 
+// Optional renderer-safe navigation override. Raw Hermes origin/routing data is
+// never persisted here; a changed origin fingerprint invalidates the URL.
+export const hermesOriginLinks = sqliteTable(
+	"hermes_origin_links",
+	{
+		id: text("id").primaryKey(),
+		connectionId: text("connection_id")
+			.notNull()
+			.references(() => hermesConnections.id, { onDelete: "cascade" }),
+		profileId: text("profile_id").notNull(),
+		hermesSessionId: text("hermes_session_id").notNull(),
+		platform: text("platform").notNull(),
+		openUrl: text("open_url").notNull(),
+		originFingerprint: text("origin_fingerprint").notNull(),
+		createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+		updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+	},
+	(table) => [
+		uniqueIndex("hermes_origin_links_unique").on(
+			table.connectionId,
+			table.profileId,
+			table.hermesSessionId
+		),
+	]
+);
+
+export type HermesOriginLink = typeof hermesOriginLinks.$inferSelect;
+export type NewHermesOriginLink = typeof hermesOriginLinks.$inferInsert;
+
 export const hermesOriginReports = sqliteTable(
 	"hermes_origin_reports",
 	{
@@ -755,27 +784,30 @@ export const hermesOriginReports = sqliteTable(
 			.notNull()
 			.references(() => hermesConnections.id, { onDelete: "cascade" }),
 		hermesSessionId: text("hermes_session_id").notNull(),
-		turnId: text("turn_id").notNull(),
-		idempotencyKey: text("idempotency_key").notNull(),
+		profileId: text("profile_id").notNull(),
+		messageKey: text("message_key").notNull(),
+		contentHash: text("content_hash").notNull(),
+		destinationFingerprint: text("destination_fingerprint").notNull(),
 		status: text("status", {
-			enum: ["pending", "sent", "failed", "duplicate-suppressed"],
+			enum: ["pending", "sending", "sent", "failed"],
 		})
 			.notNull()
 			.default("pending"),
 		retryable: integer("retryable", { mode: "boolean" }).notNull().default(false),
-		messageId: text("message_id"),
-		permalink: text("permalink"),
+		providerMessageId: text("provider_message_id"),
 		errorCode: text("error_code"),
+		attemptCount: integer("attempt_count").notNull().default(0),
 		createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
 		updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
 	},
 	(table) => [
 		uniqueIndex("hermes_origin_reports_unique").on(
 			table.connectionId,
+			table.profileId,
 			table.hermesSessionId,
-			table.turnId
+			table.messageKey,
+			table.destinationFingerprint
 		),
-		uniqueIndex("hermes_origin_reports_idempotency_unique").on(table.idempotencyKey),
 	]
 );
 

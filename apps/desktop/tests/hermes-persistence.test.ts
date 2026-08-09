@@ -8,6 +8,12 @@ import {
 	listHermesConnections,
 	saveHermesConnection,
 } from "../src/main/hermes/hermes-connections";
+import { getHermesOriginLink, saveHermesOriginLink } from "../src/main/hermes/hermes-origin-links";
+import {
+	beginHermesOriginReportAttempt,
+	finishHermesOriginReport,
+	prepareHermesOriginReport,
+} from "../src/main/hermes/hermes-origin-reports";
 import { HermesTokenVault } from "../src/main/hermes/hermes-token-vault";
 import {
 	linkHermesWorkspace,
@@ -180,5 +186,94 @@ describe("Hermes persistence services", () => {
 
 		unlinkHermesWorkspace(connection.id, "session-tip", "workspace-1");
 		expect(listHermesWorkspaceLinks(connection.id, "session-tip")).toHaveLength(1);
+	});
+
+	test("atomically suppresses duplicate report clicks and requires explicit retry after failure", () => {
+		const connection = saveHermesConnection(
+			{
+				label: "Local",
+				baseUrl: "http://localhost:8080",
+				profileId: "work",
+				token: "token",
+			},
+			vault
+		);
+		const identity = {
+			connectionId: connection.id,
+			profileId: "work",
+			hermesSessionId: "stored-1",
+			messageId: "assistant-message-1",
+			content: "Confirmed update",
+			destinationFingerprint: "opaque-destination-fingerprint",
+		};
+
+		expect(prepareHermesOriginReport(identity).status).toBe("pending");
+		const first = beginHermesOriginReportAttempt({ ...identity, explicitRetry: false });
+		expect(first.shouldSend).toBe(true);
+		expect(first.state).toMatchObject({ status: "sending", attemptCount: 1 });
+
+		const duplicate = beginHermesOriginReportAttempt({ ...identity, explicitRetry: false });
+		expect(duplicate.shouldSend).toBe(false);
+		expect(duplicate.state.status).toBe("duplicate-suppressed");
+
+		expect(
+			finishHermesOriginReport({
+				...identity,
+				status: "failed",
+				retryable: true,
+				errorCode: "timeout",
+			}).status
+		).toBe("failed");
+		expect(beginHermesOriginReportAttempt({ ...identity, explicitRetry: false }).shouldSend).toBe(
+			false
+		);
+
+		const retry = beginHermesOriginReportAttempt({ ...identity, explicitRetry: true });
+		expect(retry.state).toMatchObject({ status: "sending", attemptCount: 2 });
+		expect(
+			finishHermesOriginReport({
+				...identity,
+				status: "sent",
+				retryable: false,
+				providerMessageId: "provider-1",
+			}).status
+		).toBe("sent");
+		expect(beginHermesOriginReportAttempt({ ...identity, explicitRetry: true }).state.status).toBe(
+			"duplicate-suppressed"
+		);
+
+		const serialized = JSON.stringify(db.select().from(schema.hermesOriginReports).all());
+		expect(serialized).not.toContain("slack:C");
+	});
+
+	test("stores only a validated Slack URL and invalidates it when origin identity changes", () => {
+		const connection = saveHermesConnection(
+			{
+				label: "Local",
+				baseUrl: "http://localhost:8080",
+				profileId: "work",
+				token: "token",
+			},
+			vault
+		);
+		const identity = {
+			connectionId: connection.id,
+			profileId: "work",
+			hermesSessionId: "stored-1",
+			originFingerprint: "fingerprint-1",
+		};
+
+		expect(
+			saveHermesOriginLink({
+				...identity,
+				openUrl: "https://workspace.slack.com/archives/C12345/p1234567890000000",
+			})
+		).toBe("https://workspace.slack.com/archives/C12345/p1234567890000000");
+		expect(getHermesOriginLink(identity)).toContain("workspace.slack.com");
+		expect(getHermesOriginLink({ ...identity, originFingerprint: "fingerprint-2" })).toBeNull();
+		expect(db.select().from(schema.hermesOriginLinks).all()).toEqual([]);
+		expect(() =>
+			saveHermesOriginLink({ ...identity, openUrl: "https://example.com/thread" })
+		).toThrow("Slack");
 	});
 });

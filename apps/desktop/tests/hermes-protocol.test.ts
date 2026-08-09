@@ -7,6 +7,7 @@ import {
 	normalizeHermesSessionList,
 	sanitizeHermesPayload,
 } from "../src/main/hermes/hermes-protocol";
+import type { HermesWorkspaceArtifact } from "../src/shared/hermes";
 import { stockMessagePage, stockSessionList } from "./fixtures/hermes-stock";
 
 describe("stock Hermes protocol adapter", () => {
@@ -131,7 +132,7 @@ describe("stock Hermes protocol adapter", () => {
 	});
 
 	test("keeps structured workspace artifacts from trusted stock event/history envelopes", () => {
-		const artifact = {
+		const artifact: HermesWorkspaceArtifact = {
 			kind: "superiorswarm.workspace.created",
 			workspaceId: "workspace-1",
 			projectId: "project-1",

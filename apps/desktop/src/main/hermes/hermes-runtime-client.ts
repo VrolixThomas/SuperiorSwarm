@@ -205,8 +205,11 @@ export class HermesRuntimeClient {
 			error: null,
 		});
 
-		const authMode = settings.authMode ?? "token";
-		const credential = authMode === "oauth" ? await settings.ticketProvider() : settings.token;
+		const auth =
+			settings.authMode === "oauth"
+				? { mode: "oauth" as const, credential: await settings.ticketProvider() }
+				: { mode: "token" as const, credential: settings.token };
+		const { mode: authMode, credential } = auth;
 		if (!credential) throw new Error("Hermes WebSocket credential is unavailable");
 		const socket = this.socketFactory(
 			buildHermesWebSocketUrl(settings.baseUrl, credential, authMode)
