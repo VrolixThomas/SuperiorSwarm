@@ -1,7 +1,8 @@
 import type {
+	HermesOriginProjection,
 	HermesRuntimeEvent,
 	HermesSessionSummary,
-	HermesTurnResult,
+	HermesTranscriptMessage,
 } from "../../shared/hermes";
 
 export type HermesSessionFilter = "open" | "all" | "archived";
@@ -25,6 +26,7 @@ export interface HermesLiveTool {
 
 export interface HermesLiveState {
 	running: boolean;
+	runtimeStatus: string | null;
 	streamingText: string;
 	completed: Array<{ turnId: string | null; text: string }>;
 	tools: HermesLiveTool[];
@@ -37,6 +39,7 @@ export interface HermesLiveState {
 export function createHermesLiveState(): HermesLiveState {
 	return {
 		running: false,
+		runtimeStatus: null,
 		streamingText: "",
 		completed: [],
 		tools: [],
@@ -51,31 +54,31 @@ function choicesFrom(event: HermesRuntimeEvent): HermesInteractionChoice[] {
 	return event.payload.choices?.map((choice) => ({ ...choice })) ?? [];
 }
 
-export function latestReportableHermesTurnResult(
-	turnResults: HermesTurnResult[]
-): HermesTurnResult | null {
-	let latest: HermesTurnResult | null = null;
-	for (const result of turnResults) {
-		const status = result.status?.toLocaleLowerCase();
+export function latestReportableHermesMessage(
+	messages: HermesTranscriptMessage[]
+): HermesTranscriptMessage | null {
+	let latest: HermesTranscriptMessage | null = null;
+	for (const message of messages) {
+		const status = message.status?.toLocaleLowerCase();
 		if (
-			!result.turnId ||
-			!result.content ||
-			["error", "failed", "cancelled"].includes(status ?? "")
+			message.role !== "assistant" ||
+			!message.id ||
+			!message.text.trim() ||
+			["error", "failed", "cancelled", "interrupted"].includes(status ?? "")
 		) {
 			continue;
 		}
-		if (!latest || (result.completedAt ?? 0) >= (latest.completedAt ?? 0)) latest = result;
+		if (!latest || (message.createdAt ?? 0) >= (latest.createdAt ?? 0)) latest = message;
 	}
 	return latest;
 }
 
 export function hermesOriginActionAvailability(
-	session: Pick<HermesSessionSummary, "canReportToOrigin">,
-	resolvedOrigin: { canOpen: boolean } | null | undefined
+	resolvedOrigin: HermesOriginProjection | null | undefined
 ): { canOpenOrigin: boolean; canReportToOrigin: boolean } {
 	return {
-		canOpenOrigin: resolvedOrigin?.canOpen === true,
-		canReportToOrigin: session.canReportToOrigin,
+		canOpenOrigin: resolvedOrigin?.canOpenThread === true,
+		canReportToOrigin: resolvedOrigin?.canReport === true,
 	};
 }
 
@@ -93,6 +96,7 @@ export function applyHermesEvent(
 			return {
 				...state,
 				running: true,
+				runtimeStatus: "streaming",
 				streamingText: state.streamingText + (event.text ?? ""),
 				error: null,
 			};
@@ -100,6 +104,7 @@ export function applyHermesEvent(
 			return {
 				...state,
 				running: false,
+				runtimeStatus: event.status ?? "complete",
 				streamingText: "",
 				completed:
 					event.status === "error"
@@ -116,6 +121,7 @@ export function applyHermesEvent(
 			return {
 				...state,
 				running: true,
+				runtimeStatus: "running",
 				tools: [
 					...state.tools,
 					{
@@ -161,11 +167,50 @@ export function applyHermesEvent(
 					choices: choicesFrom(event),
 				},
 			};
+		case "approval.expired":
+			return { ...state, pendingApproval: null };
+		case "clarify.expired":
+			return { ...state, pendingClarification: null };
+		case "session.info": {
+			const runtimeStatus = event.status?.toLocaleLowerCase() ?? null;
+			return {
+				...state,
+				runtimeStatus,
+				running: ["busy", "queued", "running", "streaming"].includes(runtimeStatus ?? ""),
+			};
+		}
+		case "turn.complete":
+		case "turn.completed":
+			return {
+				...state,
+				running: false,
+				runtimeStatus: event.status ?? "complete",
+				historyRefreshRequired: true,
+			};
+		case "turn.failed":
+			return {
+				...state,
+				running: false,
+				runtimeStatus: "failed",
+				error: event.text ?? "Hermes turn failed",
+			};
+		case "turn.cancelled":
+			return {
+				...state,
+				running: false,
+				runtimeStatus: "cancelled",
+				error: event.text ?? "Hermes turn was interrupted",
+			};
 		case "runtime.history-refresh-required":
 			return { ...state, historyRefreshRequired: true };
 		case "runtime.error":
 		case "error":
-			return { ...state, running: false, error: event.text ?? "Hermes runtime error" };
+			return {
+				...state,
+				running: false,
+				runtimeStatus: "error",
+				error: event.text ?? "Hermes runtime error",
+			};
 		default:
 			return state;
 	}
@@ -179,14 +224,15 @@ export function filterHermesSessions(
 ): HermesSessionSummary[] {
 	const needle = query.trim().toLocaleLowerCase();
 	return sessions.filter((session) => {
-		if (filter === "open" && (!session.open || session.archived)) return false;
+		if (filter === "open" && session.archived) return false;
 		if (filter === "archived" && !session.archived) return false;
 		if (!needle) return true;
 		const haystack = [
 			session.title,
 			session.preview,
 			session.source,
-			session.originLabel ?? "",
+			session.profileId,
+			session.origin?.displayLabel ?? "",
 			...(linkedBranchesBySession[session.id] ?? []),
 		]
 			.join("\n")

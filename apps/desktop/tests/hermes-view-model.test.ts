@@ -4,36 +4,42 @@ import {
 	createHermesLiveState,
 	filterHermesSessions,
 	hermesOriginActionAvailability,
-	latestReportableHermesTurnResult,
+	latestReportableHermesMessage,
 } from "../src/renderer/hermes/hermes-view-model";
-import type { HermesRuntimeEvent, HermesSessionSummary } from "../src/shared/hermes";
+import type {
+	HermesRuntimeEvent,
+	HermesSessionSummary,
+	HermesTranscriptMessage,
+} from "../src/shared/hermes";
 
 const session = (overrides: Partial<HermesSessionSummary> = {}): HermesSessionSummary => ({
 	id: "session-1",
-	lineageTipId: "session-1",
-	lineageRootId: null,
 	title: "Checkout bug",
 	preview: "Investigating",
 	profileId: "default",
 	source: "slack",
 	updatedAt: 10,
 	createdAt: 1,
-	open: true,
 	archived: false,
 	running: false,
 	busy: false,
-	claimed: false,
 	waitingForUser: false,
-	originLabel: "#engineering",
-	canOpenOrigin: true,
-	canReportToOrigin: true,
-	opaqueOriginRef: "origin-1",
+	messageCount: 2,
+	origin: {
+		platform: "slack",
+		displayLabel: "#engineering",
+		hasThread: true,
+		canOpenThread: false,
+		canReport: false,
+		openUrl: null,
+	},
 	...overrides,
 });
 
 const event = (type: string, payload: Partial<HermesRuntimeEvent> = {}): HermesRuntimeEvent => ({
 	type,
-	sessionId: "runtime-1",
+	runtimeSessionId: "runtime-1",
+	durableSessionId: "session-1",
 	turnId: "turn-1",
 	requestId: null,
 	text: null,
@@ -45,23 +51,30 @@ const event = (type: string, payload: Partial<HermesRuntimeEvent> = {}): HermesR
 	...payload,
 });
 
+const message = (overrides: Partial<HermesTranscriptMessage> = {}): HermesTranscriptMessage => ({
+	id: "assistant-1",
+	turnId: "turn-1",
+	role: "assistant",
+	text: "Complete update",
+	createdAt: 1,
+	status: "complete",
+	toolName: null,
+	workspaceArtifacts: [],
+	...overrides,
+});
+
 describe("Hermes renderer view model", () => {
-	test("filters open/archived sessions and searches origin or linked branch", () => {
-		const openSession = session();
-		const archivedSession = session({
-			id: "session-2",
-			title: "Release",
-			open: false,
-			archived: true,
-		});
-		const sessions = [openSession, archivedSession];
-		expect(filterHermesSessions(sessions, "open", "engineering", {})).toEqual([openSession]);
+	test("filters active/archived sessions and searches source, profile, origin, or linked branch", () => {
+		const active = session();
+		const archived = session({ id: "session-2", title: "Release", archived: true });
+		const sessions = [active, archived];
+		expect(filterHermesSessions(sessions, "open", "engineering", {})).toEqual([active]);
 		expect(
 			filterHermesSessions(sessions, "all", "feat/payments", {
 				"session-2": ["feat/payments"],
 			})
-		).toEqual([archivedSession]);
-		expect(filterHermesSessions(sessions, "archived", "", {})).toEqual([archivedSession]);
+		).toEqual([archived]);
+		expect(filterHermesSessions(sessions, "archived", "default", {})).toEqual([archived]);
 	});
 
 	test("reduces streaming, tool, approval, clarification, and completion events", () => {
@@ -97,12 +110,29 @@ describe("Hermes renderer view model", () => {
 	test("requests canonical refresh after a reconnect", () => {
 		const state = applyHermesEvent(
 			createHermesLiveState(),
-			event("runtime.history-refresh-required", { sessionId: null })
+			event("runtime.history-refresh-required", { runtimeSessionId: null })
 		);
 		expect(state.historyRefreshRequired).toBe(true);
 	});
 
-	test("keeps the response values and safely formatted labels for every offered choice", () => {
+	test("surfaces queued, failed, interrupted, and expired stock runtime states", () => {
+		let state = applyHermesEvent(
+			createHermesLiveState(),
+			event("session.info", { status: "queued" })
+		);
+		expect(state).toMatchObject({ running: true, runtimeStatus: "queued" });
+		state = applyHermesEvent(
+			{ ...state, pendingApproval: { requestId: "a", prompt: "Approve", choices: [] } },
+			event("approval.expired")
+		);
+		expect(state.pendingApproval).toBeNull();
+		state = applyHermesEvent(state, event("turn.failed", { text: "Provider rejected" }));
+		expect(state).toMatchObject({ running: false, error: "Provider rejected" });
+		state = applyHermesEvent({ ...state, running: true, error: null }, event("turn.cancelled"));
+		expect(state).toMatchObject({ running: false, error: "Hermes turn was interrupted" });
+	});
+
+	test("keeps response values and safely formatted labels for server choices", () => {
 		const state = applyHermesEvent(
 			createHermesLiveState(),
 			event("approval.request", {
@@ -116,59 +146,44 @@ describe("Hermes renderer view model", () => {
 				},
 			})
 		);
-
-		expect(state.pendingApproval).toEqual({
-			requestId: "approval-choices",
-			prompt: "Deploy to production?",
-			choices: [
-				{ value: "allow_once", label: "Allow this deployment" },
-				{ value: "deny", label: "Stop and return to the agent" },
-			],
-		});
+		expect(state.pendingApproval?.choices).toEqual([
+			{ value: "allow_once", label: "Allow this deployment" },
+			{ value: "deny", label: "Stop and return to the agent" },
+		]);
 	});
 
 	test("provides conservative generic approval choices when Hermes omits them", () => {
 		const state = applyHermesEvent(createHermesLiveState(), event("approval.request"));
-
-		expect(state.pendingApproval).toEqual({
-			requestId: "approval",
-			prompt: "Hermes needs approval",
-			choices: [
-				{ value: "allow_once", label: "Allow once" },
-				{ value: "deny", label: "Deny" },
-			],
-		});
+		expect(state.pendingApproval?.choices).toEqual([
+			{ value: "allow_once", label: "Allow once" },
+			{ value: "deny", label: "Deny" },
+		]);
 	});
 
-	test("does not offer a failed turn as reportable completed output", () => {
-		const state = applyHermesEvent(
-			createHermesLiveState(),
-			event("message.complete", { text: "token=private failure", status: "error" })
-		);
-
-		expect(state.completed).toEqual([]);
-		expect(state.error).toBe("token=private failure");
-	});
-
-	test("selects the latest successful durable turn result without a live completion event", () => {
+	test("does not offer failed or non-assistant history as a report update", () => {
 		expect(
-			latestReportableHermesTurnResult([
-				{ turnId: "turn-newer-error", content: "Failed", completedAt: 300, status: "error" },
-				{ turnId: "turn-old", content: "Old result", completedAt: 100, status: "complete" },
-				{ turnId: "turn-latest", content: "Latest result", completedAt: 200, status: "complete" },
+			latestReportableHermesMessage([
+				message({ id: "assistant-ok", createdAt: 100 }),
+				message({ id: "assistant-failed", status: "failed", createdAt: 300 }),
+				message({ id: "user-1", role: "user", createdAt: 400 }),
 			])
-		).toEqual({
-			turnId: "turn-latest",
-			content: "Latest result",
-			completedAt: 200,
-			status: "complete",
-		});
+		).toMatchObject({ id: "assistant-ok" });
 	});
 
-	test("keeps reporting available from the catalog when origin link lookup fails", () => {
-		expect(hermesOriginActionAvailability(session(), undefined)).toEqual({
+	test("uses only the resolved redacted projection for optional origin actions", () => {
+		expect(
+			hermesOriginActionAvailability({
+				platform: "slack",
+				displayLabel: "Slack",
+				hasThread: true,
+				canOpenThread: true,
+				canReport: true,
+				openUrl: "https://app.slack.com/client/T1/C1/thread-C1-1",
+			})
+		).toEqual({ canOpenOrigin: true, canReportToOrigin: true });
+		expect(hermesOriginActionAvailability(undefined)).toEqual({
 			canOpenOrigin: false,
-			canReportToOrigin: true,
+			canReportToOrigin: false,
 		});
 	});
 });

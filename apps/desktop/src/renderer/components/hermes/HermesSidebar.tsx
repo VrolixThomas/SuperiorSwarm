@@ -14,6 +14,23 @@ function relativeTime(timestamp: number): string {
 	return `${Math.round(hours / 24)}d`;
 }
 
+function sourceBadge(source: string): string {
+	switch (source.toLowerCase()) {
+		case "slack":
+			return "◫";
+		case "telegram":
+			return "✈";
+		case "desktop":
+			return "▣";
+		case "tui":
+			return ">_";
+		case "superiorswarm":
+			return "A";
+		default:
+			return "◇";
+	}
+}
+
 export function HermesSidebar() {
 	const selectedSession = useTabStore((state) => state.selectedHermesSession);
 	const selectSession = useTabStore((state) => state.selectHermesSession);
@@ -26,6 +43,7 @@ export function HermesSidebar() {
 	const [baseUrl, setBaseUrl] = useState("http://127.0.0.1:8080");
 	const [profileId, setProfileId] = useState("default");
 	const [token, setToken] = useState("");
+	const [newWorkspaceId, setNewWorkspaceId] = useState("");
 	const autoConnectAttempted = useRef(new Set<string>());
 	const utils = trpc.useUtils();
 
@@ -75,10 +93,18 @@ export function HermesSidebar() {
 	const catalog = trpc.hermes.catalog.useQuery(
 		{ connectionId: connectionId ?? "" },
 		{
-			enabled: Boolean(connectionId) && (connected || status.data?.status === "upgrade-required"),
+			enabled: Boolean(connectionId) && connected,
 			refetchInterval: connected ? 5_000 : false,
 		}
 	);
+	const availableWorkspaces = trpc.hermes.availableWorkspaces.useQuery();
+	const create = trpc.hermes.create.useMutation({
+		onSuccess: (binding) => {
+			if (!connectionId) return;
+			selectSession({ connectionId, sessionId: binding.durableSessionId });
+			setNewWorkspaceId("");
+		},
+	});
 	const linkIndex = trpc.hermes.workspaceLinkIndex.useQuery(
 		{ connectionId: connectionId ?? "" },
 		{ enabled: Boolean(connectionId), refetchInterval: connected ? 3_000 : false }
@@ -152,8 +178,8 @@ export function HermesSidebar() {
 					className="rounded-[5px] border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1.5 text-[12px] text-[var(--text)] outline-none focus:border-[var(--accent)]"
 				/>
 				<div className="text-[10px] leading-4 text-[var(--text-quaternary)]">
-					Only loopback `hermes serve` connections are enabled. Tokens stay in Electron safe storage
-					and never enter renderer state after this form is submitted.
+					Tokens stay in Electron safe storage and never re-enter renderer state. HTTPS remote
+					connections support stock browsing and chat; Slack reporting stays local-profile only.
 				</div>
 				{saveConnection.error && (
 					<div className="text-[11px] text-[var(--danger)]">{saveConnection.error.message}</div>
@@ -228,7 +254,7 @@ export function HermesSidebar() {
 				<span className="flex-1 text-[10px] text-[var(--text-quaternary)]">
 					{status.data?.status ?? "disconnected"}
 				</span>
-				{!connected && status.data?.status !== "upgrade-required" && connectionId && (
+				{!connected && connectionId && (
 					<button
 						type="button"
 						onClick={() => connect.mutate({ connectionId })}
@@ -239,27 +265,49 @@ export function HermesSidebar() {
 				)}
 			</div>
 
-			{status.data?.status === "upgrade-required" ? (
-				<div className="mx-2 rounded-[6px] border border-[#ffd60a]/30 bg-[#ffd60a]/5 p-2 text-[11px] leading-4 text-[var(--text-secondary)]">
-					Hermes upgrade required. Install a version that provides the SuperiorSwarm session
-					catalog, claim, origin, and report capabilities.
-					{connectionId && (
-						<button
-							type="button"
-							onClick={() => connect.mutate({ connectionId })}
-							className="mt-2 block text-[10px] text-[var(--accent)] hover:underline"
-						>
-							Retry after upgrading Hermes
-						</button>
-					)}
-				</div>
-			) : !connected ? (
+			{!connected ? (
 				<div className="px-3 py-6 text-center text-[11px] leading-5 text-[var(--text-quaternary)]">
 					{connect.error?.message ?? "Start `hermes serve`, then connect to load sessions."}
 				</div>
 			) : (
 				<>
 					<div className="px-2 pb-2">
+						<div className="mb-2 flex gap-1.5">
+							<select
+								value={newWorkspaceId}
+								onChange={(event) => setNewWorkspaceId(event.target.value)}
+								className="min-w-0 flex-1 rounded-[5px] border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1 text-[10px] text-[var(--text-tertiary)]"
+								title="Optional workspace context for a new session"
+							>
+								<option value="">No workspace</option>
+								{availableWorkspaces.data?.map((workspace) => (
+									<option key={workspace.id} value={workspace.id}>
+										{workspace.projectName} · {workspace.branch ?? workspace.name}
+									</option>
+								))}
+							</select>
+							<button
+								type="button"
+								disabled={!connectionId || create.isPending}
+								onClick={() => {
+									if (!connectionId) return;
+									const workspace = availableWorkspaces.data?.find(
+										(candidate) => candidate.id === newWorkspaceId
+									);
+									create.mutate({
+										connectionId,
+										profileId: activeConnection?.profileId,
+										...(workspace?.cwd ? { cwd: workspace.cwd } : {}),
+									});
+								}}
+								className="rounded-[5px] bg-[var(--accent)] px-2 py-1 text-[10px] text-white disabled:opacity-40"
+							>
+								{create.isPending ? "Creating…" : "New session"}
+							</button>
+						</div>
+						{create.error && (
+							<div className="mb-2 text-[10px] text-[var(--danger)]">{create.error.message}</div>
+						)}
 						<input
 							value={query}
 							onChange={(event) => setQuery(event.target.value)}
@@ -313,7 +361,7 @@ export function HermesSidebar() {
 								>
 									<div className="flex items-center gap-1.5">
 										<span className="text-[10px]" aria-hidden="true">
-											{session.source === "slack" ? "◫" : "◇"}
+											{sourceBadge(session.source)}
 										</span>
 										<span className="min-w-0 flex-1 truncate text-[12px] text-[var(--text-secondary)]">
 											{session.title}
@@ -325,9 +373,10 @@ export function HermesSidebar() {
 									<div className="mt-1 flex items-center gap-1 text-[9px] text-[var(--text-quaternary)]">
 										{session.running && <span className="text-[#30d158]">running</span>}
 										{session.busy && <span className="text-[#ffd60a]">busy</span>}
-										{session.claimed && <span>claimed</span>}
 										{session.waitingForUser && <span className="text-[#ff9f0a]">needs input</span>}
-										<span className="truncate">{session.originLabel ?? session.source}</span>
+										<span className="truncate">
+											{session.origin?.displayLabel ?? session.source} · {session.profileId}
+										</span>
 										{links && (
 											<span>
 												{links.count} workspace{links.count === 1 ? "" : "s"}

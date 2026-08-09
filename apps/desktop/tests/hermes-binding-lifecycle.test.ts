@@ -1,60 +1,41 @@
 import { describe, expect, test } from "bun:test";
-import { HermesBindingLifecycle } from "../src/renderer/hermes/hermes-binding-lifecycle";
+import { HermesSelectionGuard } from "../src/renderer/hermes/hermes-binding-lifecycle";
 
-const binding = (session: string, claim: string, bindingGeneration = 1) => ({
-	connectionId: "connection-1",
-	hermesSessionId: session,
-	claimId: claim,
-	runtimeSessionId: `runtime-${claim}`,
-	bindingGeneration,
-});
+describe("Hermes renderer selection guard", () => {
+	test("changes generations without owning or releasing a Hermes session", () => {
+		const guard = new HermesSelectionGuard();
+		const sessionA = guard.select("connection-1:session-a");
+		const sameA = guard.select("connection-1:session-a");
+		const sessionB = guard.select("connection-1:session-b");
 
-describe("Hermes renderer binding lifecycle", () => {
-	test("releases selection changes and cleanup with the exact accepted claim", () => {
-		const released: ReturnType<typeof binding>[] = [];
-		const lifecycle = new HermesBindingLifecycle((value) => released.push(value));
-		const sessionA = lifecycle.select("connection-1:session-a");
-		expect(lifecycle.accept(sessionA, binding("session-a", "claim-a"))).toBe(true);
-
-		const sessionB = lifecycle.select("connection-1:session-b");
-		lifecycle.releaseObsolete();
-		expect(released).toEqual([binding("session-a", "claim-a")]);
-		expect(lifecycle.accept(sessionB, binding("session-b", "claim-b"))).toBe(true);
-		lifecycle.dispose();
-		expect(released).toEqual([binding("session-a", "claim-a"), binding("session-b", "claim-b")]);
+		expect(sameA).toEqual(sessionA);
+		expect(sessionB.generation).toBe(sessionA.generation + 1);
+		expect(guard.isCurrent(sessionA)).toBe(false);
+		expect(guard.isCurrent(sessionB)).toBe(true);
 	});
 
-	test("rejects a late resume without disturbing the newly selected thread", () => {
-		const released: ReturnType<typeof binding>[] = [];
-		const lifecycle = new HermesBindingLifecycle((value) => released.push(value));
-		const sessionA = lifecycle.select("connection-1:session-a");
-		const sessionB = lifecycle.select("connection-1:session-b");
-		expect(lifecycle.accept(sessionA, binding("session-a", "claim-a"))).toBe(false);
-		expect(lifecycle.accept(sessionB, binding("session-b", "claim-b"))).toBe(true);
-
-		expect(lifecycle.current()).toEqual(binding("session-b", "claim-b"));
-		expect(released).toEqual([binding("session-a", "claim-a")]);
-	});
-
-	test("rejects async mutation callbacks from an earlier generation after a rapid A-B-A switch", async () => {
-		const released: ReturnType<typeof binding>[] = [];
+	test("rejects late async callbacks after a rapid A-B-A switch", async () => {
+		const guard = new HermesSelectionGuard();
 		const mutations: string[] = [];
-		const lifecycle = new HermesBindingLifecycle((value) => released.push(value));
-		const firstA = lifecycle.select("connection-1:session-a");
-		const lateCallbacks = ["release", "submit", "approval", "clarification"].map(
-			async (mutation) => {
-				await Promise.resolve();
-				lifecycle.runIfCurrent(firstA, () => mutations.push(mutation));
-			}
+		const firstA = guard.select("connection-1:session-a");
+		const callback = Promise.resolve().then(() =>
+			guard.runIfCurrent(firstA, () => mutations.push("late-a"))
 		);
-		lifecycle.select("connection-1:session-b");
-		const secondA = lifecycle.select("connection-1:session-a");
-		await Promise.all(lateCallbacks);
-		expect(lifecycle.accept(firstA, binding("session-a", "claim-a", 1))).toBe(false);
-		expect(lifecycle.accept(secondA, binding("session-a", "claim-a", 2))).toBe(true);
+		guard.select("connection-1:session-b");
+		const secondA = guard.select("connection-1:session-a");
+		await callback;
 
 		expect(mutations).toEqual([]);
-		expect(lifecycle.current()).toEqual(binding("session-a", "claim-a", 2));
-		expect(released).toEqual([binding("session-a", "claim-a", 1)]);
+		expect(guard.runIfCurrent(secondA, () => mutations.push("current-a"))).toBe(true);
+		expect(mutations).toEqual(["current-a"]);
+	});
+
+	test("invalidates pending callbacks on disposal without any release operation", () => {
+		const guard = new HermesSelectionGuard();
+		const selection = guard.select("connection-1:session-a");
+		guard.dispose();
+		expect(guard.isCurrent(selection)).toBe(false);
+		guard.activate();
+		expect(guard.isCurrent(guard.select("connection-1:session-a"))).toBe(true);
 	});
 });

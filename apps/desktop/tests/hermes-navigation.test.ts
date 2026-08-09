@@ -30,6 +30,10 @@ async function rendererSource(path: string): Promise<string> {
 	return await Bun.file(new URL(`../src/renderer/components/${path}`, import.meta.url)).text();
 }
 
+async function mainSource(path: string): Promise<string> {
+	return await Bun.file(new URL(`../src/main/${path}`, import.meta.url)).text();
+}
+
 function resetStores() {
 	useActionStore.setState({ actions: new Map(), isPaletteOpen: false });
 	usePaneStore.setState({ layouts: {}, focusedPaneId: null });
@@ -181,5 +185,37 @@ describe("Hermes global navigation", () => {
 		});
 
 		expect(useTabStore.getState().selectedHermesSession).toBeNull();
+	});
+
+	test("keeps stock lifecycle and Slack destinations behind the main-process router", async () => {
+		const router = await mainSource("trpc/routers/hermes.ts");
+		expect(router).toContain("create: publicProcedure");
+		expect(router).toContain("messageId: z.string().min(1)");
+		expect(router).toContain("explicitRetry: z.boolean()");
+		expect(router).toContain("saveOriginLink");
+		expect(router).not.toContain("bindingReleaseInput");
+		expect(router).not.toContain("release: publicProcedure");
+		expect(router).not.toContain("unbind: publicProcedure");
+		expect(router).not.toContain("channelId:");
+		expect(router).not.toContain("threadId:");
+		expect(router).not.toContain("claimId");
+	});
+
+	test("offers passive history and explicit stock session/report actions without claim UI", async () => {
+		const sidebar = await rendererSource("hermes/HermesSidebar.tsx");
+		expect(sidebar).toContain("New session");
+		expect(sidebar).toContain("trpc.hermes.create.useMutation");
+		expect(sidebar).not.toContain('status.data?.status === "upgrade-required"');
+		expect(sidebar).not.toContain("session.claimed");
+
+		const view = await rendererSource("hermes/HermesSessionView.tsx");
+		expect(view).toContain("Loading canonical Hermes history");
+		expect(view).toContain("Preview Slack update");
+		expect(view).toContain("Confirm send to Slack");
+		expect(view).toContain("Slack remains live; continue sequentially");
+		expect(view).not.toContain("HermesBindingLifecycle");
+		expect(view).not.toContain("trpc.hermes.release");
+		expect(view).not.toContain("trpc.hermes.unbind");
+		expect(view).not.toContain("Claiming and resuming");
 	});
 });
