@@ -134,7 +134,7 @@ export function HermesSidebar() {
 	});
 	const linkIndex = trpc.hermes.workspaceLinkIndex.useQuery(
 		{ connectionId: connectionId ?? "" },
-		{ enabled: Boolean(connectionId), refetchInterval: connected ? 3_000 : false }
+		{ enabled: Boolean(connectionId), refetchInterval: 3_000 }
 	);
 
 	useEffect(() => {

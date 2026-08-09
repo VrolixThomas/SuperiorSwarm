@@ -230,7 +230,7 @@ export function HermesSessionView() {
 
 	const links = trpc.hermes.workspaceLinks.useQuery(
 		{ connectionId, hermesSessionId: workspaceSessionId },
-		{ enabled: Boolean(connectionId && sessionId), refetchInterval: connected ? 2_000 : false }
+		{ enabled: Boolean(connectionId && sessionId), refetchInterval: 2_000 }
 	);
 	const availableWorkspaces = trpc.hermes.availableWorkspaces.useQuery();
 	const linkWorkspace = trpc.hermes.linkWorkspace.useMutation();

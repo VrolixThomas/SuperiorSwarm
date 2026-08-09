@@ -278,4 +278,18 @@ describe("Hermes global navigation", () => {
 		expect(view).not.toContain("trpc.hermes.unbind");
 		expect(view).not.toContain("Claiming and resuming");
 	});
+
+	test("keeps local workspace link polling active while Hermes is disconnected", async () => {
+		const view = await rendererSource("hermes/HermesSessionView.tsx");
+		const sidebar = await rendererSource("hermes/HermesSidebar.tsx");
+
+		expect(view).toMatch(
+			/workspaceLinks\.useQuery\([\s\S]*?enabled: Boolean\(connectionId && sessionId\), refetchInterval: 2_000/
+		);
+		expect(view).not.toContain("refetchInterval: connected ? 2_000 : false");
+		expect(sidebar).toMatch(
+			/workspaceLinkIndex\.useQuery\([\s\S]*?enabled: Boolean\(connectionId\), refetchInterval: 3_000/
+		);
+		expect(sidebar).not.toContain("refetchInterval: connected ? 3_000 : false");
+	});
 });
