@@ -164,7 +164,7 @@ export function HermesSessionView() {
 	const isSlackSession = session?.source.toLowerCase() === "slack";
 	const origin = trpc.hermes.origin.useQuery(
 		{ connectionId, hermesSessionId: sessionId ?? "" },
-		{ enabled: Boolean(connectionId && sessionId && isSlackSession && connected) }
+		{ enabled: Boolean(connectionId && sessionId && connected) }
 	);
 	const openOrigin = trpc.hermes.openOrigin.useMutation();
 	const saveOriginLink = trpc.hermes.saveOriginLink.useMutation();
@@ -185,6 +185,17 @@ export function HermesSessionView() {
 			? report.data
 			: reports.data?.find((candidate) => candidate.messageId === reportable.id)
 		: null;
+	const visibleOrigin = origin.data ?? session?.origin;
+	const visibleOriginLabels = [
+		visibleOrigin?.workspaceLabel,
+		visibleOrigin?.accountLabel,
+		visibleOrigin?.channelLabel,
+		visibleOrigin?.chatLabel,
+		visibleOrigin?.threadLabel,
+		visibleOrigin?.displayLabel,
+	].filter(
+		(label, index, labels): label is string => Boolean(label) && labels.indexOf(label) === index
+	);
 
 	function runForSelection(generation: HermesSelectionGeneration, callback: () => void): void {
 		selectionGuard.runIfCurrent(generation, callback);
@@ -250,14 +261,12 @@ export function HermesSessionView() {
 						{session?.title ?? "New agent session"}
 					</div>
 					<div className="truncate text-[10px] text-[var(--text-quaternary)]">
-						{origin.data?.displayLabel ??
-							session?.origin?.displayLabel ??
-							session?.source ??
-							sessionId}
+						Started in {visibleOrigin?.platform ?? session?.source ?? "unknown"}
+						{visibleOriginLabels.length > 0 ? ` · ${visibleOriginLabels.join(" · ")}` : ""}
 					</div>
 				</div>
 				<div className="app-no-drag flex items-center gap-1.5">
-					{originActions.canOpenOrigin && (
+					{isSlackSession && originActions.canOpenOrigin && (
 						<button
 							type="button"
 							onClick={() => openOrigin.mutate({ connectionId, hermesSessionId: sessionId })}

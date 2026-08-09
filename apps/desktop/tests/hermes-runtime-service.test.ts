@@ -147,13 +147,19 @@ function session(id = "stored-1"): HermesSessionSummary {
 		busy: false,
 		waitingForUser: false,
 		messageCount: 2,
+		handover: true,
 		origin: {
 			platform: "slack",
+			source: "slack",
 			displayLabel: "Slack",
+			workspaceLabel: null,
+			accountLabel: null,
+			chatLabel: null,
+			channelLabel: null,
+			threadLabel: null,
 			hasThread: true,
 			canOpenThread: false,
 			canReport: false,
-			openUrl: null,
 		},
 	};
 }

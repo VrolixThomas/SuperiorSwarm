@@ -103,6 +103,10 @@ describe("Hermes global navigation", () => {
 		expect(chat).not.toContain("Select a Hermes session");
 		expect(chat).toContain('const connectionId = selection?.connectionId ?? ""');
 		expect(chat).not.toContain("connections.data?.[0]");
+		expect(chat).toContain("Started in");
+		expect(chat).toMatch(
+			/const origin = trpc\.hermes\.origin\.useQuery\([\s\S]*?enabled: Boolean\(connectionId && sessionId && connected\)/
+		);
 	});
 
 	test("opening a linked workspace and going Back returns to the exact connection and session", () => {
@@ -210,6 +214,8 @@ describe("Hermes global navigation", () => {
 		expect(sidebar).toContain("newSessionSubmitting");
 		expect(sidebar).toContain("trpc.tickets.getCachedTickets.useQuery");
 		expect(sidebar).toContain("trpc.tickets.getLinkedTickets.useQuery");
+		expect(sidebar).toContain("Handovers");
+		expect(sidebar).toContain("Sessions");
 		expect(sidebar).toContain("showTokenInput");
 		expect(sidebar).toContain("canSave");
 		expect(sidebar).not.toContain('status.data?.status === "upgrade-required"');

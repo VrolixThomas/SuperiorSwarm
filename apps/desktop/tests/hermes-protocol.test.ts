@@ -8,7 +8,7 @@ import {
 	sanitizeHermesPayload,
 } from "../src/main/hermes/hermes-protocol";
 import type { HermesWorkspaceArtifact } from "../src/shared/hermes";
-import { stockMessagePage, stockSessionList } from "./fixtures/hermes-stock";
+import { stockMessagePage, stockMessagingSidebar, stockSessionList } from "./fixtures/hermes-stock";
 
 describe("stock Hermes protocol adapter", () => {
 	test("normalizes stock cross-profile session rows and preserves durable identity", () => {
@@ -28,13 +28,19 @@ describe("stock Hermes protocol adapter", () => {
 			busy: false,
 			waitingForUser: false,
 			messageCount: 4,
+			handover: true,
 			origin: {
 				platform: "slack",
+				source: "slack",
 				displayLabel: "Slack",
+				workspaceLabel: null,
+				accountLabel: null,
+				chatLabel: null,
+				channelLabel: null,
+				threadLabel: null,
 				hasThread: true,
 				canOpenThread: false,
 				canReport: false,
-				openUrl: null,
 			},
 		});
 		expect(sessions[1]?.id).toBe("stored-local-1");
@@ -64,6 +70,18 @@ describe("stock Hermes protocol adapter", () => {
 		);
 
 		expect(sessions).toEqual([]);
+	});
+
+	test("marks stock messaging sidebar rows as handovers without hiding local sessions", () => {
+		const sessions = normalizeHermesSessionList(stockMessagingSidebar, "default");
+		const byId = new Map(sessions.map((session) => [session.id, session]));
+
+		expect(byId.get("stored-local")?.handover).toBe(false);
+		expect(byId.get("stored-slack")?.handover).toBe(true);
+		expect(byId.get("stored-telegram")?.handover).toBe(true);
+		expect(byId.get("stored-custom")?.handover).toBe(true);
+		expect(JSON.stringify(sessions)).not.toContain("raw-route-id");
+		expect(JSON.stringify(sessions)).not.toContain("raw-account-id");
 	});
 
 	test("normalizes a stock messages page without custom turn results", () => {

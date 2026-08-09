@@ -12,6 +12,7 @@ export interface HermesSlackTarget {
 export interface ResolvedHermesOrigin {
 	projection: HermesOriginProjection;
 	target: HermesSlackTarget | null;
+	openUrl: string | null;
 	originFingerprint: string;
 }
 
@@ -51,6 +52,23 @@ function validDisplayLabel(value: unknown): string | null {
 	const label = value.trim();
 	if (!label || label.length > 160 || hasControlCharacter(label)) return null;
 	return label;
+}
+
+function firstDisplayLabel(...values: unknown[]): string | null {
+	for (const value of values) {
+		const label = validDisplayLabel(value);
+		if (label) return label;
+	}
+	return null;
+}
+
+function routePresent(value: unknown): boolean {
+	return (
+		typeof value === "string" &&
+		value.length > 0 &&
+		value.length <= 512 &&
+		!hasControlCharacter(value)
+	);
 }
 
 function validTeamId(value: unknown): string | null {
@@ -137,24 +155,53 @@ export function resolveHermesOrigin(
 ): ResolvedHermesOrigin {
 	const rawSource = detail.source.trim().toLowerCase();
 	const source = /^[a-z0-9][a-z0-9._-]{0,63}$/.test(rawSource) ? rawSource : "unknown";
+	const parsedOrigin = parseOriginJson(detail.originJson);
+	const originPlatform = stringValue(parsedOrigin?.["platform"]);
+	const structuredOriginMatchesSource =
+		originPlatform === null || originPlatform.trim().toLowerCase() === source;
+	const origin = structuredOriginMatchesSource ? parsedOrigin : null;
+	const chatType = stringValue(detail.chatType, origin?.["chat_type"])?.trim().toLowerCase();
+	const chatName = firstDisplayLabel(origin?.["chat_name"]);
+	const channelLabel =
+		chatType === "channel" ? firstDisplayLabel(origin?.["channel_name"], chatName) : null;
+	const chatLabel = chatType === "channel" ? null : chatName;
+	const threadLabel = firstDisplayLabel(
+		origin?.["thread_name"],
+		origin?.["thread_title"],
+		origin?.["chat_topic"]
+	);
+	const projectionLabels = {
+		source,
+		displayLabel:
+			firstDisplayLabel(detail.displayName, channelLabel, chatLabel, threadLabel) ??
+			source.replaceAll("_", " "),
+		workspaceLabel: firstDisplayLabel(
+			origin?.["workspace_name"],
+			origin?.["team_name"],
+			origin?.["guild_name"],
+			origin?.["scope_name"]
+		),
+		accountLabel: firstDisplayLabel(origin?.["account_name"], origin?.["user_name"]),
+		chatLabel,
+		channelLabel,
+		threadLabel,
+	};
 	if (source !== "slack") {
 		return {
 			projection: {
 				platform: source,
-				displayLabel: validDisplayLabel(detail.displayName),
-				hasThread: false,
+				...projectionLabels,
+				hasThread: routePresent(detail.threadId) || routePresent(origin?.["thread_id"]),
 				canOpenThread: false,
 				canReport: false,
-				openUrl: null,
 			},
 			target: null,
+			openUrl: null,
 			originFingerprint: fingerprint([source, detail.durableSessionId]),
 		};
 	}
 
-	const origin = parseOriginJson(detail.originJson);
-	const originPlatform = stringValue(origin?.["platform"]);
-	const structuredOriginIsSlack = !originPlatform || originPlatform.toLowerCase() === "slack";
+	const structuredOriginIsSlack = structuredOriginMatchesSource;
 	const fallback = parseStockSlackSessionKey(detail.sessionKey);
 	const team = structuredOriginIsSlack
 		? reconcileRouteValue([
@@ -198,14 +245,15 @@ export function resolveHermesOrigin(
 	return {
 		projection: {
 			platform: "slack",
-			displayLabel: validDisplayLabel(detail.displayName) ?? "Slack",
+			...projectionLabels,
+			displayLabel: firstDisplayLabel(detail.displayName, channelLabel, chatLabel) ?? "Slack",
 			hasThread: !thread.ambiguous && threadId !== null,
 			canOpenThread: openUrl !== null,
 			canReport:
 				options.connectionMode === "loopback" && options.senderAvailable && target !== null,
-			openUrl,
 		},
 		target,
+		openUrl,
 		originFingerprint,
 	};
 }

@@ -3,6 +3,7 @@ import {
 	type HermesSessionFilter,
 	buildHermesTicketChoices,
 	filterHermesSessions,
+	groupHermesSessions,
 	hermesConnectionFormPolicy,
 } from "../../hermes/hermes-view-model";
 import { useTabStore } from "../../stores/tab-store";
@@ -159,6 +160,7 @@ export function HermesSidebar() {
 		query,
 		linkedBranches
 	);
+	const groupedSessions = groupHermesSessions(sessions);
 
 	function submitConnection(event: FormEvent) {
 		event.preventDefault();
@@ -413,49 +415,64 @@ export function HermesSidebar() {
 								No matching agent threads
 							</div>
 						)}
-						{sessions.map((session) => {
-							const links = linkIndex.data?.[session.id];
-							return (
-								<button
-									key={session.id}
-									type="button"
-									onClick={() =>
-										connectionId && selectSession({ connectionId, sessionId: session.id })
-									}
-									className={`mb-1 w-full rounded-[6px] px-2 py-2 text-left transition-colors ${
-										selectedSession?.connectionId === connectionId &&
-										selectedSession.sessionId === session.id
-											? "bg-[var(--bg-elevated)]"
-											: "hover:bg-[var(--bg-overlay)]"
-									}`}
-								>
-									<div className="flex items-center gap-1.5">
-										<span className="text-[10px]" aria-hidden="true">
-											{sourceBadge(session.source)}
-										</span>
-										<span className="min-w-0 flex-1 truncate text-[12px] text-[var(--text-secondary)]">
-											{session.title}
-										</span>
-										<span className="text-[9px] text-[var(--text-quaternary)]">
-											{relativeTime(session.updatedAt)}
-										</span>
-									</div>
-									<div className="mt-1 flex items-center gap-1 text-[9px] text-[var(--text-quaternary)]">
-										{session.running && <span className="text-[#30d158]">running</span>}
-										{session.busy && <span className="text-[#ffd60a]">busy</span>}
-										{session.waitingForUser && <span className="text-[#ff9f0a]">needs input</span>}
-										<span className="truncate">
-											{session.origin?.displayLabel ?? session.source} · {session.profileId}
-										</span>
-										{links && (
-											<span>
-												{links.count} workspace{links.count === 1 ? "" : "s"}
-											</span>
-										)}
-									</div>
-								</button>
-							);
-						})}
+						{[
+							{ title: "Handovers", rows: groupedSessions.handovers },
+							{ title: "Sessions", rows: groupedSessions.sessions },
+						].map(
+							(section) =>
+								section.rows.length > 0 && (
+									<section key={section.title} className="mb-2">
+										<div className="px-2 py-1 text-[9px] font-medium uppercase tracking-wide text-[var(--text-quaternary)]">
+											{section.title}
+										</div>
+										{section.rows.map((session) => {
+											const links = linkIndex.data?.[session.id];
+											return (
+												<button
+													key={session.id}
+													type="button"
+													onClick={() =>
+														connectionId && selectSession({ connectionId, sessionId: session.id })
+													}
+													className={`mb-1 w-full rounded-[6px] px-2 py-2 text-left transition-colors ${
+														selectedSession?.connectionId === connectionId &&
+														selectedSession.sessionId === session.id
+															? "bg-[var(--bg-elevated)]"
+															: "hover:bg-[var(--bg-overlay)]"
+													}`}
+												>
+													<div className="flex items-center gap-1.5">
+														<span className="text-[10px]" aria-hidden="true">
+															{sourceBadge(session.source)}
+														</span>
+														<span className="min-w-0 flex-1 truncate text-[12px] text-[var(--text-secondary)]">
+															{session.title}
+														</span>
+														<span className="text-[9px] text-[var(--text-quaternary)]">
+															{relativeTime(session.updatedAt)}
+														</span>
+													</div>
+													<div className="mt-1 flex items-center gap-1 text-[9px] text-[var(--text-quaternary)]">
+														{session.running && <span className="text-[#30d158]">running</span>}
+														{session.busy && <span className="text-[#ffd60a]">busy</span>}
+														{session.waitingForUser && (
+															<span className="text-[#ff9f0a]">needs input</span>
+														)}
+														<span className="truncate">
+															{session.origin?.displayLabel ?? session.source} · {session.profileId}
+														</span>
+														{links && (
+															<span>
+																{links.count} workspace{links.count === 1 ? "" : "s"}
+															</span>
+														)}
+													</div>
+												</button>
+											);
+										})}
+									</section>
+								)
+						)}
 					</div>
 				</>
 			)}

@@ -4,6 +4,7 @@ import {
 	buildHermesTicketChoices,
 	createHermesLiveState,
 	filterHermesSessions,
+	groupHermesSessions,
 	hermesConnectionFormPolicy,
 	hermesOriginActionAvailability,
 	latestReportableHermesMessage,
@@ -27,13 +28,19 @@ const session = (overrides: Partial<HermesSessionSummary> = {}): HermesSessionSu
 	busy: false,
 	waitingForUser: false,
 	messageCount: 2,
+	handover: false,
 	origin: {
 		platform: "slack",
+		source: "slack",
 		displayLabel: "#engineering",
+		workspaceLabel: null,
+		accountLabel: null,
+		chatLabel: null,
+		channelLabel: "#engineering",
+		threadLabel: null,
 		hasThread: true,
 		canOpenThread: false,
 		canReport: false,
-		openUrl: null,
 	},
 	...overrides,
 });
@@ -66,6 +73,17 @@ const message = (overrides: Partial<HermesTranscriptMessage> = {}): HermesTransc
 });
 
 describe("Hermes renderer view model", () => {
+	test("groups messaging handovers separately while retaining ordinary sessions", () => {
+		const local = session({ id: "local", source: "superiorswarm", handover: false });
+		const telegram = session({ id: "telegram", source: "telegram", handover: true });
+		const custom = session({ id: "custom", source: "custom_adapter", handover: true });
+
+		expect(groupHermesSessions([local, telegram, custom])).toEqual({
+			handovers: [telegram, custom],
+			sessions: [local],
+		});
+	});
+
 	test("builds ticket topics only from tickets with existing selectable workspace links", () => {
 		expect(
 			buildHermesTicketChoices(
@@ -244,11 +262,16 @@ describe("Hermes renderer view model", () => {
 		expect(
 			hermesOriginActionAvailability({
 				platform: "slack",
+				source: "slack",
 				displayLabel: "Slack",
+				workspaceLabel: null,
+				accountLabel: null,
+				chatLabel: null,
+				channelLabel: null,
+				threadLabel: null,
 				hasThread: true,
 				canOpenThread: true,
 				canReport: true,
-				openUrl: "https://app.slack.com/client/T1/C1/thread-C1-1",
 			})
 		).toEqual({ canOpenOrigin: true, canReportToOrigin: true });
 		expect(hermesOriginActionAvailability(undefined)).toEqual({

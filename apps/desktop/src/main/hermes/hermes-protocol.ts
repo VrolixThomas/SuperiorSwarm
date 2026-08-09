@@ -186,26 +186,140 @@ function contentText(value: unknown): string {
 		.join("");
 }
 
-function stockOriginProjection(session: JsonRecord, source: string): HermesOriginProjection | null {
-	if (source !== "slack") return null;
+const LOCAL_SESSION_SOURCES = new Set([
+	"cli",
+	"codex",
+	"desktop",
+	"gateway",
+	"kanban",
+	"local",
+	"superiorswarm",
+	"tool",
+	"subagent",
+	"tui",
+]);
+
+const MESSAGING_SESSION_SOURCES = new Set([
+	"api_server",
+	"bluebubbles",
+	"dingtalk",
+	"discord",
+	"email",
+	"feishu",
+	"homeassistant",
+	"mattermost",
+	"matrix",
+	"photon",
+	"qqbot",
+	"signal",
+	"slack",
+	"sms",
+	"telegram",
+	"webhook",
+	"wecom",
+	"weixin",
+	"whatsapp",
+	"yuanbao",
+]);
+
+function normalizedSource(value: unknown): string {
+	const source = stringValue(value)?.trim().toLowerCase() ?? "local";
+	return /^[a-z0-9][a-z0-9._-]{0,63}$/.test(source) ? source : "unknown";
+}
+
+function isMessagingSource(source: string, fromMessagingSection: boolean): boolean {
+	if (MESSAGING_SESSION_SOURCES.has(source)) return true;
+	return fromMessagingSection && !LOCAL_SESSION_SOURCES.has(source) && source !== "cron";
+}
+
+function parseStockOrigin(value: unknown): JsonRecord | null {
+	if (typeof value !== "string") return record(value);
+	if (!value || value.length > 64 * 1024) return null;
+	try {
+		return record(JSON.parse(value));
+	} catch {
+		return null;
+	}
+}
+
+function safeDisplayValue(...values: unknown[]): string | null {
+	for (const value of values) {
+		if (typeof value !== "string") continue;
+		const label = sanitizeString(value.trim());
+		if (!label || label.length > 160 || safeIdentifier(label) === null) continue;
+		return label;
+	}
+	return null;
+}
+
+function sourceDisplayLabel(source: string): string {
+	return source.replaceAll("_", " ").replace(/\b[a-z]/g, (letter) => letter.toUpperCase());
+}
+
+function stockOriginProjection(
+	session: JsonRecord,
+	source: string,
+	handover: boolean
+): HermesOriginProjection | null {
+	if (!handover) return null;
+	const rawOrigin = parseStockOrigin(session["origin_json"]);
+	const originPlatform = normalizedSource(rawOrigin?.["platform"]);
+	const origin = originPlatform === source ? rawOrigin : null;
+	const chatType = stringValue(session["chat_type"], origin?.["chat_type"])?.toLowerCase();
+	const chatName = safeDisplayValue(origin?.["chat_name"]);
+	const channelLabel =
+		chatType === "channel" ? safeDisplayValue(origin?.["channel_name"], chatName) : null;
+	const chatLabel = chatType === "channel" ? null : chatName;
+	const displayLabel =
+		safeDisplayValue(
+			session["display_name"],
+			channelLabel,
+			chatLabel,
+			origin?.["thread_name"],
+			origin?.["thread_title"],
+			origin?.["chat_topic"]
+		) ?? sourceDisplayLabel(source);
 	return {
-		platform: "slack",
-		displayLabel: sanitizedStringValue(session["display_name"]) ?? "Slack",
-		hasThread: safeIdentifier(session["thread_id"]) !== null,
+		platform: source,
+		source,
+		displayLabel,
+		workspaceLabel: safeDisplayValue(
+			origin?.["workspace_name"],
+			origin?.["team_name"],
+			origin?.["guild_name"],
+			origin?.["scope_name"]
+		),
+		accountLabel: safeDisplayValue(origin?.["account_name"], origin?.["user_name"]),
+		chatLabel,
+		channelLabel,
+		threadLabel: safeDisplayValue(
+			origin?.["thread_name"],
+			origin?.["thread_title"],
+			origin?.["chat_topic"]
+		),
+		hasThread: safeIdentifier(session["thread_id"], origin?.["thread_id"]) !== null,
 		canOpenThread: false,
 		canReport: false,
-		openUrl: null,
 	};
 }
 
-function sessionRows(value: unknown): unknown[] {
+interface SessionRow {
+	value: unknown;
+	section: "sessions" | "recents" | "cron" | "messaging";
+}
+
+function sessionRows(value: unknown): SessionRow[] {
 	const root = record(value);
 	if (!root) return [];
-	if (Array.isArray(root["sessions"])) return root["sessions"];
-	const sections = ["recents", "cron", "messaging"];
+	if (Array.isArray(root["sessions"])) {
+		return root["sessions"].map((row) => ({ value: row, section: "sessions" }));
+	}
+	const sections = ["recents", "cron", "messaging"] as const;
 	return sections.flatMap((section) => {
 		const payload = record(root[section]);
-		return Array.isArray(payload?.["sessions"]) ? payload["sessions"] : [];
+		return Array.isArray(payload?.["sessions"])
+			? payload["sessions"].map((row) => ({ value: row, section }))
+			: [];
 	});
 }
 
@@ -217,17 +331,22 @@ export function normalizeHermesSessionList(
 	const deduped = new Map<string, HermesSessionSummary>();
 	const ambiguousIds = new Set<string>();
 	for (const row of sessionRows(value)) {
-		const session = record(row);
+		const session = record(row.value);
 		const id = safeIdentifier(session?.["id"], session?.["stored_session_id"]);
 		if (!session || !id || ambiguousIds.has(id)) continue;
-		const source = stringValue(session["source"]) ?? "local";
+		const source = normalizedSource(session["source"]);
+		const handover =
+			row.section === "sessions"
+				? MESSAGING_SESSION_SOURCES.has(source) ||
+					(!LOCAL_SESSION_SOURCES.has(source) && source !== "cron")
+				: isMessagingSource(source, row.section === "messaging");
 		const status = stringValue(session["status"]);
 		const summary: HermesSessionSummary = {
 			id,
 			title: sanitizedStringValue(session["title"]) ?? "Untitled session",
 			preview: sanitizedStringValue(session["preview"], session["summary"]) ?? "",
 			profileId: safeIdentifier(session["profile"], session["profile_name"]) ?? defaultProfileId,
-			source: sanitizeString(source),
+			source,
 			updatedAt: timestampValue(
 				session["last_active"],
 				session["updated_at"],
@@ -240,7 +359,8 @@ export function normalizeHermesSessionList(
 			busy: booleanValue(status === "busy" || status === "queued", session["busy"]),
 			waitingForUser: booleanValue(status === "waiting_for_user", session["waiting_for_user"]),
 			messageCount: numberValue(session["message_count"]) ?? 0,
-			origin: stockOriginProjection(session, source),
+			handover,
+			origin: stockOriginProjection(session, source, handover),
 		};
 		const existing = deduped.get(id);
 		if (existing && existing.profileId !== summary.profileId) {
@@ -248,7 +368,15 @@ export function normalizeHermesSessionList(
 			ambiguousIds.add(id);
 			continue;
 		}
-		if (!existing || summary.updatedAt >= existing.updatedAt) deduped.set(id, summary);
+		if (!existing || summary.updatedAt >= existing.updatedAt) {
+			deduped.set(id, {
+				...summary,
+				handover: summary.handover || existing?.handover === true,
+				origin: summary.origin ?? existing?.origin ?? null,
+			});
+		} else if (summary.handover && !existing.handover) {
+			deduped.set(id, { ...existing, handover: true, origin: existing.origin ?? summary.origin });
+		}
 	}
 	return [...deduped.values()];
 }

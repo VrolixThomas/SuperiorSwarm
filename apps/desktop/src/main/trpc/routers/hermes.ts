@@ -146,11 +146,9 @@ export const hermesRouter = router({
 		.query(({ input }) => hermesRuntimeService.origin(input.connectionId, input.hermesSessionId)),
 
 	openOrigin: publicProcedure.input(connectionSessionInput).mutation(async ({ input }) => {
-		const origin = await hermesRuntimeService.origin(input.connectionId, input.hermesSessionId);
-		if (!origin.canOpenThread || !origin.openUrl) {
-			throw new Error("This Hermes origin cannot be opened");
-		}
-		const openUrl = validateManualSlackThreadUrl(origin.openUrl);
+		const openUrl = validateManualSlackThreadUrl(
+			await hermesRuntimeService.originOpenUrl(input.connectionId, input.hermesSessionId)
+		);
 		if (!openUrl) throw new Error("This Hermes origin link is not trusted");
 		await shell.openExternal(openUrl);
 		return { opened: true as const };

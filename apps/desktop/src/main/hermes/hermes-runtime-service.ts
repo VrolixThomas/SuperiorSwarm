@@ -268,13 +268,27 @@ export class HermesRuntimeService {
 		return (
 			summary?.origin ?? {
 				platform: summary?.source ?? "unknown",
+				source: summary?.source ?? "unknown",
 				displayLabel: summary?.source ?? null,
+				workspaceLabel: null,
+				accountLabel: null,
+				chatLabel: null,
+				channelLabel: null,
+				threadLabel: null,
 				hasThread: false,
 				canOpenThread: false,
 				canReport: false,
-				openUrl: null,
 			}
 		);
+	}
+
+	async originOpenUrl(connectionId: string, hermesSessionId: string): Promise<string> {
+		const runtime = this.requireRuntime(connectionId);
+		const resolved = await this.resolveOrigin(connectionId, runtime, hermesSessionId);
+		if (!resolved?.projection.canOpenThread || !resolved.openUrl) {
+			throw new Error("This Hermes origin cannot be opened");
+		}
+		return resolved.openUrl;
 	}
 
 	async saveOriginLink(

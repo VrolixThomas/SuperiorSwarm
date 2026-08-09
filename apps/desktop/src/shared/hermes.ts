@@ -49,11 +49,16 @@ export interface HermesCompatibility {
 
 export interface HermesOriginProjection {
 	platform: "slack" | string;
+	source: string;
 	displayLabel: string | null;
+	workspaceLabel: string | null;
+	accountLabel: string | null;
+	chatLabel: string | null;
+	channelLabel: string | null;
+	threadLabel: string | null;
 	hasThread: boolean;
 	canOpenThread: boolean;
 	canReport: boolean;
-	openUrl: string | null;
 }
 
 /** Renderer-safe persisted session summary. `id` is always the durable Hermes ID. */
@@ -70,6 +75,7 @@ export interface HermesSessionSummary {
 	busy: boolean;
 	waitingForUser: boolean;
 	messageCount: number;
+	handover: boolean;
 	origin: HermesOriginProjection | null;
 }
 

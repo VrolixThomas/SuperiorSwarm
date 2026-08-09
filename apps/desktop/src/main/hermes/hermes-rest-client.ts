@@ -106,8 +106,12 @@ export class HermesRestClient {
 				{
 					recents_profile: "all",
 					recents_limit: "500",
+					recents_exclude:
+						"cron,kanban,subagent,tool,telegram,discord,slack,mattermost,matrix,signal,whatsapp,bluebubbles,photon,homeassistant,email,sms,webhook,api_server,weixin,wecom,qqbot,yuanbao,dingtalk,feishu",
 					cron_limit: "500",
 					messaging_limit: "500",
+					messaging_exclude:
+						"cron,cli,codex,desktop,gateway,kanban,local,tui,superiorswarm,tool,subagent",
 				},
 				signal
 			);

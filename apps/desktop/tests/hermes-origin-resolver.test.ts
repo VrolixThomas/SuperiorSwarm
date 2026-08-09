@@ -3,7 +3,7 @@ import {
 	resolveHermesOrigin,
 	validateManualSlackThreadUrl,
 } from "../src/main/hermes/hermes-origin-resolver";
-import { stockSessionDetail } from "./fixtures/hermes-stock";
+import { stockSessionDetail, stockTelegramSessionDetail } from "./fixtures/hermes-stock";
 
 describe("Hermes Slack origin resolver", () => {
 	test("projects a valid stock Slack detail without exposing routing metadata", () => {
@@ -24,12 +24,20 @@ describe("Hermes Slack origin resolver", () => {
 
 		expect(resolved.projection).toEqual({
 			platform: "slack",
+			source: "slack",
 			displayLabel: "#release · thread",
+			workspaceLabel: null,
+			accountLabel: "Maya",
+			chatLabel: null,
+			channelLabel: "#release",
+			threadLabel: null,
 			hasThread: true,
 			canOpenThread: true,
 			canReport: true,
-			openUrl: "https://app.slack.com/client/T01234567/C01234567/thread-C01234567-1786269600123456",
 		});
+		expect(resolved.openUrl).toBe(
+			"https://app.slack.com/client/T01234567/C01234567/thread-C01234567-1786269600123456"
+		);
 		expect(resolved.target).toEqual({
 			channelId: "C01234567",
 			threadId: "1786269600.123456",
@@ -38,6 +46,44 @@ describe("Hermes Slack origin resolver", () => {
 		expect(rendererJson).not.toContain("U01234567");
 		expect(rendererJson).not.toContain("origin_json");
 		expect(rendererJson).not.toContain("agent:work:slack");
+		expect(rendererJson).not.toContain("app.slack.com");
+	});
+
+	test("projects producer-shaped Telegram origin names without exposing routes or Slack controls", () => {
+		const resolved = resolveHermesOrigin(
+			{
+				durableSessionId: stockTelegramSessionDetail.id,
+				profileId: stockTelegramSessionDetail.profile,
+				source: stockTelegramSessionDetail.source,
+				displayName: stockTelegramSessionDetail.display_name,
+				sessionKey: stockTelegramSessionDetail.session_key,
+				chatId: stockTelegramSessionDetail.chat_id,
+				chatType: stockTelegramSessionDetail.chat_type,
+				threadId: stockTelegramSessionDetail.thread_id,
+				originJson: stockTelegramSessionDetail.origin_json,
+			},
+			{ connectionMode: "loopback", senderAvailable: true }
+		);
+
+		expect(resolved.projection).toEqual({
+			platform: "telegram",
+			source: "telegram",
+			displayLabel: "Ops room",
+			workspaceLabel: null,
+			accountLabel: "Alex",
+			chatLabel: "Ops room",
+			channelLabel: null,
+			threadLabel: "Release incident",
+			hasThread: true,
+			canOpenThread: false,
+			canReport: false,
+		});
+		expect(resolved.target).toBeNull();
+		expect(resolved.openUrl).toBeNull();
+		const rendererJson = JSON.stringify(resolved.projection);
+		expect(rendererJson).not.toContain("-1001234567890");
+		expect(rendererJson).not.toContain("99887766");
+		expect(rendererJson).not.toContain('"77"');
 	});
 
 	test("uses a supported stock session-key shape only as a compatibility fallback", () => {
@@ -80,8 +126,8 @@ describe("Hermes Slack origin resolver", () => {
 			hasThread: false,
 			canOpenThread: false,
 			canReport: false,
-			openUrl: null,
 		});
+		expect(malformed.openUrl).toBeNull();
 		expect(malformed.target).toBeNull();
 
 		const local = resolveHermesOrigin(
@@ -144,8 +190,8 @@ describe("Hermes Slack origin resolver", () => {
 			hasThread: false,
 			canOpenThread: false,
 			canReport: false,
-			openUrl: null,
 		});
+		expect(resolved.openUrl).toBeNull();
 		expect(resolved.target).toBeNull();
 	});
 

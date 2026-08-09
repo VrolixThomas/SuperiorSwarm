@@ -52,6 +52,9 @@ describe("HermesRestClient", () => {
 
 		expect(requests[0]?.url.pathname).toBe("/api/profiles/sessions/sidebar");
 		expect(requests[0]?.url.searchParams.get("recents_profile")).toBe("all");
+		expect(requests[0]?.url.searchParams.get("recents_exclude")).toContain("tool");
+		expect(requests[0]?.url.searchParams.get("messaging_exclude")).toContain("superiorswarm");
+		expect(requests[0]?.url.searchParams.get("messaging_exclude")).toContain("desktop");
 		expect(requests[0]?.headers.get("X-Hermes-Session-Token")).toBe("rest-secret");
 		expect(sessions.map((session) => session.id)).toEqual(["newer", "older"]);
 		expect(JSON.stringify(sessions)).not.toContain("CSECRET");

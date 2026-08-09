@@ -306,10 +306,25 @@ export function filterHermesSessions(
 			session.source,
 			session.profileId,
 			session.origin?.displayLabel ?? "",
+			session.origin?.workspaceLabel ?? "",
+			session.origin?.accountLabel ?? "",
+			session.origin?.chatLabel ?? "",
+			session.origin?.channelLabel ?? "",
+			session.origin?.threadLabel ?? "",
 			...(linkedBranchesBySession[session.id] ?? []),
 		]
 			.join("\n")
 			.toLocaleLowerCase();
 		return haystack.includes(needle);
 	});
+}
+
+export function groupHermesSessions(sessions: HermesSessionSummary[]): {
+	handovers: HermesSessionSummary[];
+	sessions: HermesSessionSummary[];
+} {
+	return {
+		handovers: sessions.filter((session) => session.handover),
+		sessions: sessions.filter((session) => !session.handover),
+	};
 }
