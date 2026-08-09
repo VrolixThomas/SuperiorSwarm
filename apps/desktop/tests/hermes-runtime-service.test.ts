@@ -24,6 +24,7 @@ import {
 	type HermesRuntimeClientLike,
 	HermesRuntimeService,
 } from "../src/main/hermes/hermes-runtime-service";
+import { admitHermesSession } from "../src/main/hermes/hermes-session-admissions";
 import { HermesTokenVault } from "../src/main/hermes/hermes-token-vault";
 import {
 	linkHermesWorkspace,
@@ -224,7 +225,9 @@ function session(id = "stored-1"): HermesSessionSummary {
 		busy: false,
 		waitingForUser: false,
 		messageCount: 2,
+		isCron: false,
 		handover: true,
+		admissionReason: null,
 		origin: {
 			platform: "slack",
 			source: "slack",
@@ -332,10 +335,10 @@ describe("HermesRuntimeService stock lifecycle", () => {
 		return { directory, filePath, imagePath, pdfPath };
 	}
 
-	test("connects without protocol.info or fork-only catalog and browses over REST", async () => {
+	test("does not mirror an unrelated external Slack session into the Agents catalog", async () => {
 		const catalog = await service.connect(connectionId);
 
-		expect(catalog.sessions.map((item) => item.id)).toEqual(["stored-1"]);
+		expect(catalog.sessions).toEqual([]);
 		expect(catalog.compatibility.state).toBe("compatible");
 		expect(client.requests).toEqual([]);
 		expect(rest.listCalls).toBe(1);
@@ -397,6 +400,129 @@ describe("HermesRuntimeService stock lifecycle", () => {
 		});
 		const stored = listHermesConnections(vault).find((connection) => connection.id === managed.id);
 		expect(stored).toMatchObject({ baseUrl: null, hasToken: false, managementMode: "managed" });
+	});
+
+	test("builds the managed session inbox only from structural local origin and matching manager admissions", async () => {
+		service.shutdown();
+		const managed = ensureHermesLocalConnection({ profileId: "default" }, vault);
+		const now = new Date();
+		getDb()
+			.insert(schema.crossRepoOrchestrators)
+			.values({
+				id: "managed-hermes-manager",
+				name: "Managed Hermes",
+				workDir: "/tmp/managed-hermes-manager",
+				agentKind: "external",
+				status: "idle",
+				sortOrder: 0,
+				kind: "external",
+				tokenHash: "b".repeat(64),
+				accessScope: "all",
+				createdAt: now,
+				updatedAt: now,
+			})
+			.run();
+		for (const [durableSessionId, profileId, sourcePlatform, reason] of [
+			["mcp-telegram", "work", "telegram", "mcp"],
+			["explicit-slack", "personal", "slack", "handover"],
+		] as const) {
+			admitHermesSession({
+				managerId: "managed-hermes-manager",
+				metadata: {
+					schemaVersion: 1,
+					durableSessionId,
+					profileId,
+					sourcePlatform,
+					isCron: false,
+				},
+				reason,
+			});
+		}
+		getDb()
+			.insert(schema.hermesSessionWorkspaces)
+			.values({
+				id: "unrelated-link",
+				connectionId: managed.id,
+				hermesSessionId: "linked-but-unadmitted",
+				workspaceId: "missing-workspace-is-retained-structurally",
+				source: "manual",
+				linkedAt: now,
+			})
+			.run();
+		const catalogSession = (
+			id: string,
+			profileId: string,
+			source: string,
+			isCron = false
+		): HermesSessionSummary => ({
+			...session(id),
+			profileId,
+			source,
+			isCron,
+			handover: false,
+			admissionReason: null,
+			origin:
+				source === "superiorswarm"
+					? null
+					: {
+							platform: source,
+							source,
+							displayLabel: source,
+							workspaceLabel: null,
+							accountLabel: null,
+							chatLabel: null,
+							channelLabel: null,
+							threadLabel: null,
+							hasThread: false,
+							canOpenThread: false,
+							canReport: false,
+						},
+		});
+		rest.sessions = [
+			catalogSession("local-created", "default", "superiorswarm"),
+			catalogSession("mcp-telegram", "work", "telegram"),
+			catalogSession("explicit-slack", "personal", "slack"),
+			catalogSession("unrelated-telegram", "work", "telegram"),
+			catalogSession("unrelated-slack", "work", "slack"),
+			catalogSession("unrelated-cli", "work", "cli"),
+			catalogSession("unrelated-api", "work", "api_server"),
+			catalogSession("cron", "work", "cron", true),
+			catalogSession("linked-but-unadmitted", "work", "desktop"),
+		];
+		service = new HermesRuntimeService({
+			clientFactory: () => client,
+			restClientFactory: () => rest,
+			sendService: sender,
+			tokenVault: vault,
+			localBackendManager: {
+				ensure: async () => ({
+					baseUrl: "http://127.0.0.1:54321",
+					profileId: "default",
+					token: "managed-token",
+					managerId: "managed-hermes-manager",
+				}),
+				subscribeRuntimeInvalidated: () => () => undefined,
+				shutdown: () => undefined,
+			},
+		});
+
+		const catalog = await service.connect(managed.id);
+
+		expect(catalog.sessions.map((item) => item.id)).toEqual([
+			"local-created",
+			"mcp-telegram",
+			"explicit-slack",
+		]);
+		expect(catalog.sessions.find((item) => item.id === "mcp-telegram")).toMatchObject({
+			handover: false,
+			admissionReason: "mcp",
+			origin: { platform: "telegram" },
+		});
+		expect(catalog.sessions.find((item) => item.id === "explicit-slack")).toMatchObject({
+			handover: true,
+			admissionReason: "handover",
+			origin: { platform: "slack" },
+		});
 	});
 
 	test("retains a retryable managed-local startup error and shuts down child ownership", async () => {

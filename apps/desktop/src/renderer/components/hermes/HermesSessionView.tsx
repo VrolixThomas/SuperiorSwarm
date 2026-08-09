@@ -21,6 +21,7 @@ import {
 	hermesComposerContainsFiles,
 	hermesComposerTextareaLayout,
 	hermesOriginActionAvailability,
+	hermesOriginReturnLabel,
 	hermesReportRequiresExplicitRetry,
 	latestReportableHermesMessage,
 	projectHermesLiveActivity,
@@ -276,6 +277,7 @@ export function HermesSessionView() {
 			: reports.data?.find((candidate) => candidate.messageId === reportable.id)
 		: null;
 	const visibleOrigin = origin.data ?? session?.origin;
+	const originReturnLabel = hermesOriginReturnLabel(visibleOrigin);
 	const visibleOriginLabels = [
 		visibleOrigin?.workspaceLabel,
 		visibleOrigin?.accountLabel,
@@ -367,7 +369,8 @@ export function HermesSessionView() {
 						Select an agent thread
 					</div>
 					<div className="mt-1 text-[12px] leading-5 text-[var(--text-quaternary)]">
-						Agent threads from local or messaging surfaces appear in the sidebar.
+						Sessions created here or explicitly admitted through SuperiorSwarm appear in the
+						sidebar.
 					</div>
 				</div>
 			</main>
@@ -382,6 +385,7 @@ export function HermesSessionView() {
 		clarify.error?.message ??
 		pickAttachments.error?.message ??
 		attachmentLimitError ??
+		openOrigin.error?.message ??
 		report.error?.message ??
 		live.error;
 
@@ -436,22 +440,29 @@ export function HermesSessionView() {
 						Session options
 					</div>
 
-					{isSlackSession && (
+					{visibleOrigin && session?.source !== "superiorswarm" && (
 						<section className="mb-3 min-w-0 border-b border-[var(--border-subtle)] pb-3">
 							<div className="mb-1 text-[10px] font-medium text-[var(--text-tertiary)]">Origin</div>
 							<p className="mb-2 text-[10px] leading-4 text-[var(--text-quaternary)]">
-								Slack remains live. Continue sequentially to avoid overlapping turns.
+								{isSlackSession ? (
+									<>Slack remains live. Continue sequentially to avoid overlapping turns.</>
+								) : (
+									<>
+										From {visibleOrigin.displayLabel ?? visibleOrigin.platform}. Continue
+										sequentially to avoid overlapping turns at the source.
+									</>
+								)}
 							</p>
-							{originActions.canOpenOrigin ? (
+							{originActions.canOpenOrigin && originReturnLabel ? (
 								<button
 									type="button"
 									data-popover-close
 									onClick={() => openOrigin.mutate({ connectionId, hermesSessionId: sessionId })}
 									className="rounded-[6px] border border-[var(--border)] px-2 py-1 text-[10px] text-[var(--text-secondary)] hover:bg-[var(--bg-overlay)]"
 								>
-									Open Slack thread
+									{originReturnLabel}
 								</button>
-							) : (
+							) : isSlackSession ? (
 								<form
 									onSubmit={(event) => {
 										event.preventDefault();
@@ -491,6 +502,10 @@ export function HermesSessionView() {
 										Save
 									</button>
 								</form>
+							) : (
+								<div className="text-[10px] leading-4 text-[var(--text-quaternary)]">
+									No direct return link is available for this source.
+								</div>
 							)}
 						</section>
 					)}

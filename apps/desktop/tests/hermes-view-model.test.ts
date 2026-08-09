@@ -11,6 +11,7 @@ import {
 	hermesComposerContainsFiles,
 	hermesConnectionFormPolicy,
 	hermesOriginActionAvailability,
+	hermesOriginReturnLabel,
 	hermesReportRequiresExplicitRetry,
 	latestReportableHermesMessage,
 	projectHermesLiveActivity,
@@ -37,7 +38,9 @@ const session = (overrides: Partial<HermesSessionSummary> = {}): HermesSessionSu
 	busy: false,
 	waitingForUser: false,
 	messageCount: 2,
+	isCron: false,
 	handover: false,
+	admissionReason: null,
 	origin: {
 		platform: "slack",
 		source: "slack",
@@ -857,6 +860,37 @@ describe("Hermes renderer view model", () => {
 			canOpenOrigin: false,
 			canReportToOrigin: false,
 		});
+		expect(
+			hermesOriginReturnLabel({
+				platform: "slack",
+				source: "slack",
+				displayLabel: "#release",
+				workspaceLabel: null,
+				accountLabel: null,
+				chatLabel: null,
+				channelLabel: "#release",
+				threadLabel: null,
+				hasThread: true,
+				canOpenThread: true,
+				canReport: false,
+			})
+		).toBe("Return to Slack");
+		expect(
+			hermesOriginReturnLabel({
+				platform: "telegram",
+				source: "telegram",
+				displayLabel: "Telegram",
+				workspaceLabel: null,
+				accountLabel: null,
+				chatLabel: null,
+				channelLabel: null,
+				threadLabel: null,
+				hasThread: true,
+				canOpenThread: true,
+				canReport: false,
+			})
+		).toBeNull();
+		expect(hermesOriginReturnLabel(undefined)).toBeNull();
 	});
 
 	test("requires explicit retry for retryable failed and orphaned-sending receipts", () => {

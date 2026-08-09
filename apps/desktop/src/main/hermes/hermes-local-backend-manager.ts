@@ -48,6 +48,7 @@ export interface HermesLocalBackendRuntime {
 	baseUrl: string;
 	profileId: string;
 	token: string;
+	managerId?: string;
 }
 
 export interface HermesLocalBackendInvalidation {
@@ -76,7 +77,9 @@ export interface HermesLocalBackendManagerOptions {
 	spawnProcess?: (executable: string, argv: string[], options: SpawnOptions) => HermesBackendChild;
 	dashboardTokenResolver?: (baseUrl: string, fallbackToken: string) => Promise<string>;
 	runtimeVerifier?: (runtime: HermesLocalBackendRuntime) => Promise<void>;
-	beforeStart?: (input: { profileId: string; hermesHome: string }) => void;
+	beforeStart?: (input: { profileId: string; hermesHome: string }) =>
+		| { managerId: string }
+		| undefined;
 	portAnnounceTimeoutMs?: number;
 	maxOutputBytes?: number;
 }
@@ -87,6 +90,7 @@ interface BackendEntry {
 	promise: Promise<HermesLocalBackendRuntime>;
 	runtime: HermesLocalBackendRuntime | null;
 	spawnToken: string;
+	managerId: string | null;
 	stdoutBuffer: string;
 	stderrTail: string;
 	outputBytes: number;
@@ -200,8 +204,11 @@ export class HermesLocalBackendManager implements HermesLocalBackendManagerLike 
 			managedProfileId,
 			this.hermesHomeResolver(managedProfileId)
 		);
+		let managerId: string | null = null;
 		try {
-			this.beforeStart({ profileId: managedProfileId, hermesHome: launch.hermesHome });
+			managerId =
+				this.beforeStart({ profileId: managedProfileId, hermesHome: launch.hermesHome })
+					?.managerId ?? null;
 		} catch (error) {
 			return Promise.reject(
 				error instanceof Error ? error : new Error("Managed Hermes MCP setup failed. Retry.")
@@ -224,7 +231,7 @@ export class HermesLocalBackendManager implements HermesLocalBackendManagerLike 
 			return Promise.reject(new Error("Stock Hermes failed to start. Retry."));
 		}
 
-		const entry = this.createEntry(managedProfileId, child, spawnToken);
+		const entry = this.createEntry(managedProfileId, child, spawnToken, managerId);
 		entry.promise = this.startEntry(entry);
 		this.entries.set(managedProfileId, entry);
 		return entry.promise;
@@ -262,7 +269,8 @@ export class HermesLocalBackendManager implements HermesLocalBackendManagerLike 
 	private createEntry(
 		profileId: string,
 		child: HermesBackendChild,
-		spawnToken: string
+		spawnToken: string,
+		managerId: string | null
 	): BackendEntry {
 		const entry: BackendEntry = {
 			profileId,
@@ -270,6 +278,7 @@ export class HermesLocalBackendManager implements HermesLocalBackendManagerLike 
 			promise: Promise.resolve(null as unknown as HermesLocalBackendRuntime),
 			runtime: null,
 			spawnToken,
+			managerId,
 			stdoutBuffer: "",
 			stderrTail: "",
 			outputBytes: 0,
@@ -308,7 +317,12 @@ export class HermesLocalBackendManager implements HermesLocalBackendManagerLike 
 				entry,
 				this.dashboardTokenResolver(baseUrl, entry.spawnToken)
 			);
-			const runtime = { baseUrl, profileId: entry.profileId, token };
+			const runtime = {
+				baseUrl,
+				profileId: entry.profileId,
+				token,
+				...(entry.managerId ? { managerId: entry.managerId } : {}),
+			};
 			await this.raceStartFailure(entry, this.runtimeVerifier(runtime));
 			entry.runtime = runtime;
 			entry.ready = true;
@@ -430,7 +444,6 @@ export class HermesLocalBackendManager implements HermesLocalBackendManagerLike 
 }
 
 export const hermesLocalBackendManager = new HermesLocalBackendManager({
-	beforeStart: ({ hermesHome }) => {
-		ensureManagedHermesMcpAccess({ configPath: join(hermesHome, "config.yaml") });
-	},
+	beforeStart: ({ hermesHome }) =>
+		ensureManagedHermesMcpAccess({ configPath: join(hermesHome, "config.yaml") }),
 });

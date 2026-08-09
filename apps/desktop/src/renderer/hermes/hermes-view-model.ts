@@ -623,6 +623,15 @@ export function hermesOriginActionAvailability(
 	};
 }
 
+export function hermesOriginReturnLabel(
+	resolvedOrigin: HermesOriginProjection | null | undefined
+): string | null {
+	if (resolvedOrigin?.canOpenThread !== true) return null;
+	const platform = resolvedOrigin.platform.trim().toLowerCase();
+	if (platform !== "slack") return null;
+	return "Return to Slack";
+}
+
 export function hermesReportRequiresExplicitRetry(
 	state: { status: string; retryable: boolean } | null | undefined
 ): boolean {

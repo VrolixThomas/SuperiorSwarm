@@ -75,7 +75,9 @@ export interface HermesSessionSummary {
 	busy: boolean;
 	waitingForUser: boolean;
 	messageCount: number;
+	isCron: boolean;
 	handover: boolean;
+	admissionReason: "mcp" | "handover" | null;
 	origin: HermesOriginProjection | null;
 }
 

@@ -29,7 +29,9 @@ describe("stock Hermes protocol adapter", () => {
 			busy: false,
 			waitingForUser: false,
 			messageCount: 4,
-			handover: true,
+			isCron: false,
+			handover: false,
+			admissionReason: null,
 			origin: {
 				platform: "slack",
 				source: "slack",
@@ -73,16 +75,37 @@ describe("stock Hermes protocol adapter", () => {
 		expect(sessions).toEqual([]);
 	});
 
-	test("marks stock messaging sidebar rows as handovers without hiding local sessions", () => {
+	test("preserves messaging provenance without treating every messaging row as a handover", () => {
 		const sessions = normalizeHermesSessionList(stockMessagingSidebar, "default");
 		const byId = new Map(sessions.map((session) => [session.id, session]));
 
 		expect(byId.get("stored-local")?.handover).toBe(false);
-		expect(byId.get("stored-slack")?.handover).toBe(true);
-		expect(byId.get("stored-telegram")?.handover).toBe(true);
-		expect(byId.get("stored-custom")?.handover).toBe(true);
+		expect(byId.get("stored-slack")?.handover).toBe(false);
+		expect(byId.get("stored-telegram")?.handover).toBe(false);
+		expect(byId.get("stored-custom")?.handover).toBe(false);
+		expect(byId.get("stored-slack")?.origin?.displayLabel).toBe("#release");
+		expect(byId.get("stored-telegram")?.origin?.displayLabel).toBe("Ops room");
 		expect(JSON.stringify(sessions)).not.toContain("raw-route-id");
 		expect(JSON.stringify(sessions)).not.toContain("raw-account-id");
+	});
+
+	test("prefers the canonical stored durable ID over a runtime/session alias", () => {
+		const [canonical] = normalizeHermesSessionList(
+			{
+				sessions: [
+					{
+						id: "runtime-or-tip-alias",
+						stored_session_id: "durable-root",
+						profile: "work",
+						source: "superiorswarm",
+					},
+				],
+			},
+			"default"
+		);
+
+		expect(canonical?.id).toBe("durable-root");
+		expect(canonical?.profileId).toBe("work");
 	});
 
 	test("normalizes a stock messages page without custom turn results", () => {

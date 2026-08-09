@@ -50,6 +50,7 @@ import {
 	type HermesRuntimeConnectionSettings,
 } from "./hermes-runtime-client";
 import { HermesSendError, HermesSendService } from "./hermes-send-service";
+import { filterManagedHermesSessionCatalog } from "./hermes-session-admissions";
 import { type HermesTokenVault, hermesTokenVault } from "./hermes-token-vault";
 import {
 	canonicalizeHermesWorkspaceLinks,
@@ -104,6 +105,7 @@ interface ConnectionRuntime {
 	profileId: string;
 	connectionMode: "loopback" | "remote";
 	managementMode: "managed" | "external";
+	managerId: string | null;
 	managedBaseUrl: string | null;
 	catalog: HermesCatalog;
 	bindings: Map<string, RuntimeBinding>;
@@ -205,7 +207,8 @@ function sessionTitleFromTopic(topic: string): string {
 function stockCatalog(
 	sessions: HermesSessionSummary[],
 	connectionMode: "loopback" | "remote",
-	senderAvailable: boolean
+	senderAvailable: boolean,
+	managerId: string | null
 ): HermesCatalog {
 	return {
 		compatibility: {
@@ -219,7 +222,7 @@ function stockCatalog(
 					? ["Slack reporting requires a sender configured for this remote profile"]
 					: ["Slack reporting is available only for validated threaded origins"],
 		},
-		sessions,
+		sessions: filterManagedHermesSessionCatalog({ managerId, sessions }),
 	};
 }
 
@@ -332,7 +335,8 @@ export class HermesRuntimeService {
 		runtime.catalog = stockCatalog(
 			sessions,
 			runtime.connectionMode,
-			this.sendService.isAvailable()
+			this.sendService.isAvailable(),
+			runtime.managerId
 		);
 		return runtime.catalog;
 	}
@@ -903,6 +907,7 @@ export class HermesRuntimeService {
 		let resolvedBaseUrl: string;
 		let resolvedProfileId = summary.profileId;
 		let resolvedToken: string;
+		let resolvedManagerId: string | null = null;
 		if (summary.managementMode === "managed") {
 			const managed = await abortable(
 				this.localBackendManager.ensure(summary.profileId),
@@ -914,6 +919,7 @@ export class HermesRuntimeService {
 			resolvedBaseUrl = managed.baseUrl;
 			resolvedProfileId = managed.profileId;
 			resolvedToken = managed.token;
+			resolvedManagerId = managed.managerId ?? null;
 		} else if (summary.connectionMode === "loopback") {
 			if (!summary.baseUrl) throw new Error("External Hermes URL is unavailable");
 			const token = await abortable(
@@ -979,8 +985,14 @@ export class HermesRuntimeService {
 				profileId: resolvedProfileId,
 				connectionMode: summary.connectionMode,
 				managementMode: summary.managementMode,
+				managerId: resolvedManagerId,
 				managedBaseUrl: summary.managementMode === "managed" ? operation.managedBaseUrl : null,
-				catalog: stockCatalog(sessions, summary.connectionMode, this.sendService.isAvailable()),
+				catalog: stockCatalog(
+					sessions,
+					summary.connectionMode,
+					this.sendService.isAvailable(),
+					resolvedManagerId
+				),
 				bindings: new Map(previous?.bindings),
 				runtimeToDurable: new Map(previous?.runtimeToDurable),
 				aliases: new Map(previous?.aliases),

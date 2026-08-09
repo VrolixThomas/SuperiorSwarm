@@ -7,6 +7,10 @@ import { join } from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+import {
+	handleHermesSessionHandover,
+	withAutomaticHermesSessionAdmission,
+} from "./hermes-session-admission.mjs";
 import { controlPlaneToolResult } from "./structured-artifact.mjs";
 
 const require = createRequire(import.meta.url);
@@ -924,11 +928,42 @@ if (isWorkspaceAgentOrCrossRepo) {
 	// to the result content. Scoped to workspace-agent and cross-repo-orchestrator — review/solve modes are
 	// unaffected.
 	const _origTool = server.tool.bind(server);
-	server.tool = (name, description, schema, handler) =>
-		_origTool(name, description, schema, withRoleReminder(handler));
+	server.tool = (name, description, schema, handler) => {
+		const admittedHandler =
+			isExternalManagerMode && name !== "handover_session"
+				? withAutomaticHermesSessionAdmission(handler, admitHermesSession)
+				: handler;
+		return _origTool(name, description, schema, withRoleReminder(admittedHandler));
+	};
 
 	const baseUrl = `http://127.0.0.1:${SUPERIORSWARM_CONTROL_PORT}`;
 	const authHeader = `Bearer ${SUPERIORSWARM_CONTROL_TOKEN}`;
+
+	async function admitHermesSession(metadata, reason) {
+		const managerToken = process.env.SUPERIORSWARM_MANAGER_TOKEN;
+		if (!isExternalManagerMode || !managerToken) {
+			throw new Error("Hermes session admission is unavailable");
+		}
+		const res = await fetch(`${baseUrl}/hermes.sessions.admit`, {
+			method: "POST",
+			headers: {
+				Authorization: authHeader,
+				"X-Cross-Repo-Orchestrator-Id": CROSS_REPO_ID,
+				"X-Manager-Token": managerToken,
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({ metadata, reason }),
+			signal: AbortSignal.timeout(5_000),
+		});
+		let parsed = {};
+		try {
+			parsed = await res.json();
+		} catch {
+			// Status and a content-free error stay authoritative for malformed responses.
+		}
+		if (!res.ok) throw new Error(`Hermes session admission failed (${res.status})`);
+		return parsed;
+	}
 
 	async function call(method, path, body) {
 		try {
@@ -978,6 +1013,18 @@ if (isWorkspaceAgentOrCrossRepo) {
 				isError: true,
 			};
 		}
+	}
+
+	if (isExternalManagerMode) {
+		server.tool(
+			"handover_session",
+			"Explicitly admit this non-cron Hermes session to the SuperiorSwarm Agents inbox. The current MCP request must include validated _meta.hermes session metadata.",
+			{},
+			async (_args, extra) =>
+				handleHermesSessionHandover(extra, (metadata, reason) =>
+					admitHermesSession(metadata, reason)
+				)
+		);
 	}
 
 	server.tool(

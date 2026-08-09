@@ -202,50 +202,9 @@ function contentText(value: unknown): string {
 		.join("");
 }
 
-const LOCAL_SESSION_SOURCES = new Set([
-	"cli",
-	"codex",
-	"desktop",
-	"gateway",
-	"kanban",
-	"local",
-	"superiorswarm",
-	"tool",
-	"subagent",
-	"tui",
-]);
-
-const MESSAGING_SESSION_SOURCES = new Set([
-	"api_server",
-	"bluebubbles",
-	"dingtalk",
-	"discord",
-	"email",
-	"feishu",
-	"homeassistant",
-	"mattermost",
-	"matrix",
-	"photon",
-	"qqbot",
-	"signal",
-	"slack",
-	"sms",
-	"telegram",
-	"webhook",
-	"wecom",
-	"weixin",
-	"whatsapp",
-	"yuanbao",
-]);
-
 function normalizedSource(value: unknown): string {
 	const source = stringValue(value)?.trim().toLowerCase() ?? "local";
 	return /^[a-z0-9][a-z0-9._-]{0,63}$/.test(source) ? source : "unknown";
-}
-
-function isMessagingSource(source: string, fromMessagingSection: boolean): boolean {
-	if (MESSAGING_SESSION_SOURCES.has(source)) return true;
-	return fromMessagingSection && !LOCAL_SESSION_SOURCES.has(source) && source !== "cron";
 }
 
 function parseStockOrigin(value: unknown): JsonRecord | null {
@@ -273,12 +232,7 @@ function sourceDisplayLabel(source: string): string {
 	return source.replaceAll("_", " ").replace(/\b[a-z]/g, (letter) => letter.toUpperCase());
 }
 
-function stockOriginProjection(
-	session: JsonRecord,
-	source: string,
-	handover: boolean
-): HermesOriginProjection | null {
-	if (!handover) return null;
+function stockOriginProjection(session: JsonRecord, source: string): HermesOriginProjection {
 	const rawOrigin = parseStockOrigin(session["origin_json"]);
 	const originPlatform = normalizedSource(rawOrigin?.["platform"]);
 	const origin = originPlatform === source ? rawOrigin : null;
@@ -367,14 +321,10 @@ export function normalizeHermesSessionList(
 	const ambiguousIds = new Set<string>();
 	for (const row of sessionRows(value)) {
 		const session = record(row.value);
-		const id = safeIdentifier(session?.["id"], session?.["stored_session_id"]);
+		const id = safeIdentifier(session?.["stored_session_id"], session?.["id"]);
 		if (!session || !id || ambiguousIds.has(id)) continue;
 		const source = normalizedSource(session["source"]);
-		const handover =
-			row.section === "sessions"
-				? MESSAGING_SESSION_SOURCES.has(source) ||
-					(!LOCAL_SESSION_SOURCES.has(source) && source !== "cron")
-				: isMessagingSource(source, row.section === "messaging");
+		const isCron = row.section === "cron" || source === "cron";
 		const status = stringValue(session["status"]);
 		const summary: HermesSessionSummary = {
 			id,
@@ -394,8 +344,10 @@ export function normalizeHermesSessionList(
 			busy: booleanValue(status === "busy" || status === "queued", session["busy"]),
 			waitingForUser: booleanValue(status === "waiting_for_user", session["waiting_for_user"]),
 			messageCount: numberValue(session["message_count"]) ?? 0,
-			handover,
-			origin: stockOriginProjection(session, source, handover),
+			isCron,
+			handover: false,
+			admissionReason: null,
+			origin: source === "superiorswarm" ? null : stockOriginProjection(session, source),
 		};
 		const existing = deduped.get(id);
 		if (existing && existing.profileId !== summary.profileId) {

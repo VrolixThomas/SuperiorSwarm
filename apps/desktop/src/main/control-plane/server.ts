@@ -11,6 +11,7 @@ import {
 	dispatchAgentRequestSchema,
 	eventsPollRequestSchema,
 	getWorkspaceRequestSchema,
+	hermesSessionAdmissionRequestSchema,
 	listWorkspacesRequestSchema,
 	readMessagesRequestSchema,
 	removeWorkspaceRequestSchema,
@@ -27,6 +28,7 @@ import {
 	workspaces,
 	worktrees,
 } from "../db/schema";
+import { admitHermesSession } from "../hermes/hermes-session-admissions";
 import { getOrchestratorAutoDispatch } from "../services/orchestrator-dispatch-policy";
 import {
 	type CallerContext,
@@ -489,6 +491,34 @@ async function handleRequest(
 				respond(res, 200, requestId, { mode: "none" });
 				return;
 			}
+			case "POST /hermes.sessions.admit": {
+				const body = await readJson(req, 4_096);
+				const parsed = hermesSessionAdmissionRequestSchema.safeParse(body);
+				if (!parsed.success) {
+					respond(res, 400, requestId, { error: "validation", details: parsed.error.flatten() });
+					return;
+				}
+				const caller = resolveCaller(req, null);
+				if ("error" in caller) {
+					respond(res, 401, requestId, { error: "unauthorized" });
+					return;
+				}
+				if (caller.kind !== "xro" || caller.external !== true) {
+					respond(res, 403, requestId, { error: "forbidden" });
+					return;
+				}
+				respond(
+					res,
+					200,
+					requestId,
+					admitHermesSession({
+						managerId: caller.xroId,
+						metadata: parsed.data.metadata,
+						reason: parsed.data.reason,
+					})
+				);
+				return;
+			}
 			case "GET /workspaces.list": {
 				if (url.searchParams.get("accessible") === "true") {
 					const caller = resolveCaller(req, null);
@@ -930,9 +960,20 @@ function respond(
 	res.end(JSON.stringify({ ...body, request_id: requestId }));
 }
 
-async function readJson(req: IncomingMessage): Promise<unknown> {
+async function readJson(req: IncomingMessage, maxBytes = 1_048_576): Promise<unknown> {
 	const chunks: Buffer[] = [];
-	for await (const c of req) chunks.push(c as Buffer);
+	let bytes = 0;
+	let oversized = false;
+	for await (const c of req) {
+		const chunk = c as Buffer;
+		bytes += chunk.byteLength;
+		if (bytes > maxBytes) {
+			oversized = true;
+			continue;
+		}
+		chunks.push(chunk);
+	}
+	if (oversized) return null;
 	const raw = Buffer.concat(chunks).toString("utf-8");
 	if (!raw) return {};
 	try {

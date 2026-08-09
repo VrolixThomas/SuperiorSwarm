@@ -22,6 +22,7 @@ describe("Hermes persistence migration", () => {
 		expect(tableNames).toContain("hermes_session_workspaces");
 		expect(tableNames).toContain("hermes_origin_links");
 		expect(tableNames).toContain("hermes_origin_reports");
+		expect(tableNames).toContain("hermes_session_admissions");
 
 		const indexes = sqlite
 			.prepare("SELECT name FROM sqlite_master WHERE type = 'index'")
@@ -29,6 +30,22 @@ describe("Hermes persistence migration", () => {
 			.map((row) => (row as { name: string }).name);
 		expect(indexes).toContain("hermes_session_workspaces_unique");
 		expect(indexes).toContain("hermes_origin_reports_unique");
+		expect(indexes).toContain("hermes_session_admissions_manager_profile_idx");
+
+		const admissionColumns = sqlite
+			.prepare("PRAGMA table_info(hermes_session_admissions)")
+			.all()
+			.map((row) => (row as { name: string }).name);
+		expect(admissionColumns).toEqual([
+			"manager_id",
+			"profile_id",
+			"durable_session_id",
+			"admission_reason",
+			"source_platform",
+			"is_cron",
+			"first_seen_at",
+			"last_seen_at",
+		]);
 
 		const reportColumns = sqlite
 			.prepare("PRAGMA table_info(hermes_origin_reports)")

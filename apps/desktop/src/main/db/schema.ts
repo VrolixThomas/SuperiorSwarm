@@ -728,6 +728,35 @@ export const hermesConnections = sqliteTable("hermes_connections", {
 export type HermesConnection = typeof hermesConnections.$inferSelect;
 export type NewHermesConnection = typeof hermesConnections.$inferInsert;
 
+// Durable inbox membership for external Hermes sessions. The manager identity
+// is derived from the authenticated control-plane caller, never request metadata.
+export const hermesSessionAdmissions = sqliteTable(
+	"hermes_session_admissions",
+	{
+		managerId: text("manager_id")
+			.notNull()
+			.references(() => crossRepoOrchestrators.id, { onDelete: "cascade" }),
+		profileId: text("profile_id").notNull(),
+		durableSessionId: text("durable_session_id").notNull(),
+		reason: text("admission_reason", { enum: ["mcp", "handover"] }).notNull(),
+		sourcePlatform: text("source_platform").notNull(),
+		isCron: integer("is_cron", { mode: "boolean" }).notNull().default(false),
+		firstSeenAt: integer("first_seen_at", { mode: "timestamp_ms" }).notNull(),
+		lastSeenAt: integer("last_seen_at", { mode: "timestamp_ms" }).notNull(),
+	},
+	(table) => [
+		primaryKey({ columns: [table.managerId, table.profileId, table.durableSessionId] }),
+		index("hermes_session_admissions_manager_profile_idx").on(
+			table.managerId,
+			table.profileId,
+			table.lastSeenAt
+		),
+	]
+);
+
+export type HermesSessionAdmission = typeof hermesSessionAdmissions.$inferSelect;
+export type NewHermesSessionAdmission = typeof hermesSessionAdmissions.$inferInsert;
+
 export const hermesSessionWorkspaces = sqliteTable(
 	"hermes_session_workspaces",
 	{

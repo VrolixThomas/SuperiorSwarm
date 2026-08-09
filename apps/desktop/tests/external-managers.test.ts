@@ -32,7 +32,13 @@ import {
 	uninstallFromHermesConfig,
 } from "../src/main/services/external-managers";
 import { mergeYamlKey, removeYamlKey } from "../src/main/services/yaml-merge";
-import { seedExternalManager, seedProject, seedWorkspace, setupTestDb } from "./helpers/db";
+import {
+	seedCrossRepoOrchestrator,
+	seedExternalManager,
+	seedProject,
+	seedWorkspace,
+	setupTestDb,
+} from "./helpers/db";
 
 beforeAll(() => {
 	setupTestDb();
@@ -185,6 +191,93 @@ describe("external manager control-plane access", () => {
 			headers: authMgr(mgr.id, generateToken()),
 		});
 		expect(res.status).toBe(401);
+	});
+
+	test("Hermes admission binds only to the authenticated manager identity", async () => {
+		const first = await seedExternalManager({ projectIds: [PROJECT_ID] });
+		const second = await seedExternalManager({ projectIds: [PROJECT_ID] });
+		const metadata = {
+			schemaVersion: 1,
+			durableSessionId: "shared-durable-session",
+			profileId: "work",
+			sourcePlatform: "slack",
+			isCron: false,
+		};
+		for (const manager of [first, second]) {
+			const res = await fetch(url("/hermes.sessions.admit"), {
+				method: "POST",
+				headers: { ...authMgr(manager.id, manager.token), "Content-Type": "application/json" },
+				body: JSON.stringify({ metadata, reason: "mcp" }),
+			});
+			expect(res.status).toBe(200);
+			expect(await res.json()).toMatchObject({
+				admitted: true,
+				managerId: manager.id,
+				durableSessionId: metadata.durableSessionId,
+				profileId: metadata.profileId,
+			});
+		}
+
+		const rows = getDb()
+			.select()
+			.from(schema.hermesSessionAdmissions)
+			.all()
+			.filter((row) => row.durableSessionId === metadata.durableSessionId);
+		expect(rows).toHaveLength(2);
+		expect(new Set(rows.map((row) => row.managerId))).toEqual(new Set([first.id, second.id]));
+	});
+
+	test("Hermes admission rejects forged identity, invalid metadata, cron, and non-external callers", async () => {
+		const manager = await seedExternalManager({ projectIds: [PROJECT_ID] });
+		const validMetadata = {
+			schemaVersion: 1,
+			durableSessionId: "external-session",
+			profileId: "work",
+			sourcePlatform: "telegram",
+			isCron: false,
+		};
+		for (const body of [
+			{ metadata: { ...validMetadata, profileId: "not valid" }, reason: "mcp" },
+			{ metadata: validMetadata, reason: "mcp", managerId: "forged-manager" },
+		]) {
+			const res = await fetch(url("/hermes.sessions.admit"), {
+				method: "POST",
+				headers: { ...authMgr(manager.id, manager.token), "Content-Type": "application/json" },
+				body: JSON.stringify(body),
+			});
+			expect(res.status).toBe(400);
+		}
+
+		const cron = await fetch(url("/hermes.sessions.admit"), {
+			method: "POST",
+			headers: { ...authMgr(manager.id, manager.token), "Content-Type": "application/json" },
+			body: JSON.stringify({
+				metadata: { ...validMetadata, durableSessionId: "cron-session", isCron: true },
+				reason: "handover",
+			}),
+		});
+		expect(cron.status).toBe(200);
+		expect(await cron.json()).toMatchObject({ admitted: false, code: "cron_session" });
+
+		const workspaceManager = await seedCrossRepoOrchestrator({ projectIds: [PROJECT_ID] });
+		const nonExternal = await fetch(url("/hermes.sessions.admit"), {
+			method: "POST",
+			headers: {
+				Authorization: `Bearer ${server.token}`,
+				"X-Cross-Repo-Orchestrator-Id": workspaceManager,
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({ metadata: validMetadata, reason: "mcp" }),
+		});
+		expect(nonExternal.status).toBe(403);
+
+		expect(
+			getDb()
+				.select()
+				.from(schema.hermesSessionAdmissions)
+				.all()
+				.filter((row) => row.managerId === manager.id)
+		).toEqual([]);
 	});
 
 	test("projects.list returns only linked projects", async () => {
