@@ -4,6 +4,7 @@ import { usePaneStore } from "../src/renderer/stores/pane-store";
 import {
 	PANEL_CLOSED,
 	deserializeHermesSessionSelection,
+	resolveAvailableHermesSelection,
 	serializeHermesSessionSelection,
 	shouldHydrateTabStore,
 	useTabStore,
@@ -211,6 +212,49 @@ describe("Hermes global navigation", () => {
 		);
 		expect(useTabStore.getState().activeWorkspaceId).toBeNull();
 		expect(useTabStore.getState().activeWorkspaceCwd).toBe("");
+	});
+
+	test("hydrates the exact Agents pane with no terminal sessions or workspace layouts", () => {
+		const selection = { connectionId: "connection-restored", sessionId: "session-restored" };
+		useTabStore.getState().hydrate([], null, null, "", {
+			sidebarSegment: "hermes",
+			selectedHermesSession: serializeHermesSessionSelection(selection) ?? "",
+			hermesSessionPane: "worktrees",
+		});
+
+		expect(useTabStore.getState().sidebarSegment).toBe("hermes");
+		expect(useTabStore.getState().selectedHermesSession).toEqual(selection);
+		expect(useTabStore.getState().hermesSessionPane).toBe("worktrees");
+
+		useTabStore.getState().hydrate([], null, null, "", {
+			sidebarSegment: "hermes",
+			selectedHermesSession: serializeHermesSessionSelection(selection) ?? "",
+			hermesSessionPane: "unknown",
+		});
+		expect(useTabStore.getState().hermesSessionPane).toBe("chat");
+	});
+
+	test("keeps a hydrated selection while availability loads and safely drops missing targets", () => {
+		const selection = { connectionId: "connection-a", sessionId: "session-a" };
+
+		expect(resolveAvailableHermesSelection(selection, undefined, undefined)).toEqual(selection);
+		expect(resolveAvailableHermesSelection(selection, ["connection-a"], undefined)).toEqual(
+			selection
+		);
+		expect(resolveAvailableHermesSelection(selection, [], undefined)).toBeNull();
+		expect(resolveAvailableHermesSelection(selection, ["connection-a"], [])).toBeNull();
+		expect(
+			resolveAvailableHermesSelection(selection, ["connection-a"], ["session-a"])
+		).toEqual(selection);
+	});
+
+	test("saves task-first Agents state even when there are no terminals or layouts", async () => {
+		const app = await Bun.file(new URL("../src/renderer/App.tsx", import.meta.url)).text();
+
+		expect(app).toContain('state["hermesSessionPane"] = hermesSessionPane');
+		expect(app).not.toContain(
+			"if (snapshot.sessions.length > 0 || Object.keys(snapshot.paneLayouts).length > 0)"
+		);
 	});
 
 	test("drops legacy session-only persistence because its connection is ambiguous", () => {

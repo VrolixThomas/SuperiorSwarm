@@ -37,7 +37,7 @@ import {
 	settleHermesOptimisticUserTurn,
 	type HermesOptimisticUserTurn,
 } from "../../hermes/hermes-view-model";
-import { useTabStore } from "../../stores/tab-store";
+import { resolveAvailableHermesSelection, useTabStore } from "../../stores/tab-store";
 import { trpc } from "../../trpc/client";
 import { HermesComposerAttachments } from "./HermesComposerAttachments";
 import { HermesApprovalCard, HermesClarificationChoices } from "./HermesInteractionCards";
@@ -156,10 +156,15 @@ export function HermesSessionView() {
 	);
 
 	useEffect(() => {
-		if (!selection || !connections.data) return;
-		if (connections.data.some((candidate) => candidate.id === selection.connectionId)) return;
+		if (!selection) return;
+		const available = resolveAvailableHermesSelection(
+			selection,
+			connections.data?.map((candidate) => candidate.id),
+			catalog.data?.sessions.map((candidate) => candidate.id)
+		);
+		if (available) return;
 		useTabStore.getState().selectHermesSession(null);
-	}, [connections.data, selection]);
+	}, [catalog.data?.sessions, connections.data, selection]);
 
 	useEffect(() => {
 		if (previousSelectionKey.current === selectionKey) return;

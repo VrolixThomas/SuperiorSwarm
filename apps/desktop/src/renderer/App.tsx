@@ -166,12 +166,18 @@ function collectSnapshot() {
 	if (Object.keys(baseBranchByWorkspace).length > 0) {
 		state["baseBranchByWorkspace"] = JSON.stringify(baseBranchByWorkspace);
 	}
-	const { sidebarSegment, activeWorkspaceBySegment, workspaceMetadata, selectedHermesSession } =
-		store;
+	const {
+		sidebarSegment,
+		activeWorkspaceBySegment,
+		workspaceMetadata,
+		selectedHermesSession,
+		hermesSessionPane,
+	} = store;
 	if (sidebarSegment) state["sidebarSegment"] = sidebarSegment;
 	state["activeWorkspaceBySegment"] = JSON.stringify(activeWorkspaceBySegment);
 	const serializedHermesSession = serializeHermesSessionSelection(selectedHermesSession);
 	if (serializedHermesSession) state["selectedHermesSession"] = serializedHermesSession;
+	state["hermesSessionPane"] = hermesSessionPane;
 	if (Object.keys(workspaceMetadata).length > 0) {
 		state["workspaceMetadata"] = JSON.stringify(workspaceMetadata);
 	}
@@ -354,18 +360,16 @@ function AuthenticatedApp() {
 	useEffect(() => {
 		const triggerSave = () => {
 			const snapshot = collectSnapshot();
-			if (snapshot.sessions.length > 0 || Object.keys(snapshot.paneLayouts).length > 0) {
-				const serialized = JSON.stringify(snapshot);
-				if (serialized === lastSubmittedSnapshotRef.current) return;
-				lastSubmittedSnapshotRef.current = serialized;
-				saveMutateRef.current(snapshot, {
-					onError: () => {
-						if (lastSubmittedSnapshotRef.current === serialized) {
-							lastSubmittedSnapshotRef.current = null;
-						}
-					},
-				});
-			}
+			const serialized = JSON.stringify(snapshot);
+			if (serialized === lastSubmittedSnapshotRef.current) return;
+			lastSubmittedSnapshotRef.current = serialized;
+			saveMutateRef.current(snapshot, {
+				onError: () => {
+					if (lastSubmittedSnapshotRef.current === serialized) {
+						lastSubmittedSnapshotRef.current = null;
+					}
+				},
+			});
 		};
 
 		const interval = setInterval(triggerSave, SAVE_INTERVAL_MS);

@@ -162,6 +162,28 @@ export function deserializeHermesSessionSelection(
 	return null;
 }
 
+export function deserializeHermesSessionPane(value: string | undefined): HermesSessionPane {
+	return value === "worktrees" ? "worktrees" : "chat";
+}
+
+export function resolveAvailableHermesSelection(
+	selection: HermesSessionSelection | null,
+	availableConnectionIds: readonly string[] | undefined,
+	availableSessionIds: readonly string[] | undefined
+): HermesSessionSelection | null {
+	if (!selection) return null;
+	if (
+		availableConnectionIds !== undefined &&
+		!availableConnectionIds.includes(selection.connectionId)
+	) {
+		return null;
+	}
+	if (availableSessionIds !== undefined && !availableSessionIds.includes(selection.sessionId)) {
+		return null;
+	}
+	return selection;
+}
+
 export function shouldHydrateTabStore(
 	hasSessions: boolean,
 	hasLayouts: boolean,
@@ -1509,6 +1531,7 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 		const selectedHermesSession = deserializeHermesSessionSelection(
 			extraState?.["selectedHermesSession"]
 		);
+		const hermesSessionPane = deserializeHermesSessionPane(extraState?.["hermesSessionPane"]);
 
 		set({
 			activeWorkspaceId: activeId ?? null,
@@ -1519,7 +1542,7 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 			sidebarSegment,
 			activeWorkspaceBySegment,
 			selectedHermesSession,
-			hermesSessionPane: "chat",
+			hermesSessionPane,
 			workspaceBackStack: [],
 			workspaceForwardStack: [],
 			pendingWorkspaceHistoryEntry: null,
