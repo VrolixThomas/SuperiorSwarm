@@ -400,6 +400,13 @@
       "when": 1786271718989,
       "tag": "0056_manage_local_hermes_backend",
       "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "6",
+      "when": 1786301843820,
+      "tag": "0057_add_external_manager_access_scope",
+      "breakpoints": true
     }
   ]
 }

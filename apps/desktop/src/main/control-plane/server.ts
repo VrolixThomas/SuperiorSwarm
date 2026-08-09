@@ -47,6 +47,24 @@ import type { EventBus } from "./event-bus";
 import { crossRepoEventsFilePath, eventsFilePathForProject } from "./orchestrator-event-sink";
 import type { TaskRegistry } from "./task-registry";
 
+type CrossRepoAccessScope = "selected" | "all";
+
+function crossRepoProjectIds(orchestratorId: string, accessScope: CrossRepoAccessScope): string[] {
+	if (accessScope === "all") {
+		return getDb()
+			.select({ projectId: projects.id })
+			.from(projects)
+			.all()
+			.map((row) => row.projectId);
+	}
+	return getDb()
+		.select({ projectId: crossRepoOrchestratorProjects.projectId })
+		.from(crossRepoOrchestratorProjects)
+		.where(eq(crossRepoOrchestratorProjects.orchestratorId, orchestratorId))
+		.all()
+		.map((row) => row.projectId);
+}
+
 function resolveProjectIdFromWorkspace(workspaceId: string): string | null {
 	return (
 		getDb()
@@ -167,6 +185,7 @@ function resolveCaller(
 				kind: crossRepoOrchestrators.kind,
 				tokenHash: crossRepoOrchestrators.tokenHash,
 				dispatchPolicy: crossRepoOrchestrators.dispatchPolicy,
+				accessScope: crossRepoOrchestrators.accessScope,
 			})
 			.from(crossRepoOrchestrators)
 			.where(eq(crossRepoOrchestrators.id, xroId))
@@ -180,12 +199,7 @@ function resolveCaller(
 				return { error: "invalid manager token" };
 			}
 		}
-		const linkedProjectIds = getDb()
-			.select({ projectId: crossRepoOrchestratorProjects.projectId })
-			.from(crossRepoOrchestratorProjects)
-			.where(eq(crossRepoOrchestratorProjects.orchestratorId, xroId))
-			.all()
-			.map((r) => r.projectId);
+		const linkedProjectIds = crossRepoProjectIds(xroId, row.accessScope);
 		if (projectIdHint && !linkedProjectIds.includes(projectIdHint)) {
 			return { error: "project not linked to this cross-repo orchestrator" };
 		}
@@ -195,6 +209,7 @@ function resolveCaller(
 			linkedProjectIds,
 			external: row.kind === "external",
 			dispatchPolicy: row.dispatchPolicy,
+			accessScope: row.accessScope,
 		};
 	}
 
@@ -370,7 +385,10 @@ async function handleRequest(
 				const managerToken = req.headers["x-manager-token"];
 				if (typeof managerToken === "string" && managerToken.length > 0) {
 					const manager = getDb()
-						.select({ id: crossRepoOrchestrators.id })
+						.select({
+							id: crossRepoOrchestrators.id,
+							accessScope: crossRepoOrchestrators.accessScope,
+						})
 						.from(crossRepoOrchestrators)
 						.where(
 							and(
@@ -388,16 +406,12 @@ async function handleRequest(
 						.set({ lastSeenAt: new Date() })
 						.where(eq(crossRepoOrchestrators.id, manager.id))
 						.run();
-					const linkedProjectIds = getDb()
-						.select({ projectId: crossRepoOrchestratorProjects.projectId })
-						.from(crossRepoOrchestratorProjects)
-						.where(eq(crossRepoOrchestratorProjects.orchestratorId, manager.id))
-						.all()
-						.map((r) => r.projectId);
+					const linkedProjectIds = crossRepoProjectIds(manager.id, manager.accessScope);
 					respond(res, 200, requestId, {
 						mode: "external-manager",
 						crossRepoOrchestratorId: manager.id,
 						linkedProjectIds,
+						accessScope: manager.accessScope,
 						isOrchestrator: true,
 						modeContext: {},
 					});
@@ -446,6 +460,7 @@ async function handleRequest(
 						.select({
 							id: crossRepoOrchestrators.id,
 							workDir: crossRepoOrchestrators.workDir,
+							accessScope: crossRepoOrchestrators.accessScope,
 						})
 						.from(crossRepoOrchestrators)
 						.where(ne(crossRepoOrchestrators.kind, "external"))
@@ -458,16 +473,12 @@ async function handleRequest(
 							}
 						});
 					if (xro) {
-						const linkedProjectIds = getDb()
-							.select({ projectId: crossRepoOrchestratorProjects.projectId })
-							.from(crossRepoOrchestratorProjects)
-							.where(eq(crossRepoOrchestratorProjects.orchestratorId, xro.id))
-							.all()
-							.map((r) => r.projectId);
+						const linkedProjectIds = crossRepoProjectIds(xro.id, xro.accessScope);
 						respond(res, 200, requestId, {
 							mode: "cross-repo-orchestrator",
 							crossRepoOrchestratorId: xro.id,
 							linkedProjectIds,
+							accessScope: xro.accessScope,
 							orchestratorEventsPath: crossRepoEventsFilePath(xro.id),
 							isOrchestrator: true,
 							modeContext: {},
@@ -479,6 +490,17 @@ async function handleRequest(
 				return;
 			}
 			case "GET /workspaces.list": {
+				if (url.searchParams.get("accessible") === "true") {
+					const caller = resolveCaller(req, null);
+					if ("error" in caller) {
+						respond(res, 401, requestId, { error: "unauthorized" });
+						return;
+					}
+					const ids = caller.kind === "xro" ? caller.linkedProjectIds : [caller.projectId];
+					const accessible = await listWorkspacesForProjects({ projectIds: ids });
+					respond(res, 200, requestId, { workspaces: accessible.workspaces });
+					return;
+				}
 				const projectIdsRaw = url.searchParams.get("projectIds");
 				if (projectIdsRaw) {
 					const ids = projectIdsRaw.split(",").filter(Boolean);
@@ -683,7 +705,7 @@ async function handleRequest(
 			case "GET /workspaces.read_messages": {
 				const parsed = readMessagesRequestSchema.safeParse({
 					since: url.searchParams.get("since") ?? undefined,
-					includeBroadcasts: url.searchParams.get("includeBroadcasts") === "false" ? false : true,
+					includeBroadcasts: url.searchParams.get("includeBroadcasts") !== "false",
 				});
 				if (!parsed.success) {
 					respond(res, 400, requestId, { error: "validation", details: parsed.error.flatten() });

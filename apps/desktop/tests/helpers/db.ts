@@ -24,7 +24,7 @@ export function teardownTestDb(): void {
 	// Most tables use nanoid-scoped IDs for isolation; cross_repo_orchestrators
 	// supports a list-all query in CRUD tests, so we clean it up explicitly.
 	// FK cascade takes care of cross_repo_orchestrator_projects rows.
-	getDb().run(`DELETE FROM cross_repo_orchestrators`);
+	getDb().run("DELETE FROM cross_repo_orchestrators");
 }
 
 export async function seedProject(): Promise<string> {
@@ -89,12 +89,12 @@ export async function seedCrossRepoOrchestrator(opts: {
 		})
 		.run();
 	if (opts.projectIds) {
-		for (let i = 0; i < opts.projectIds.length; i++) {
+		for (const [i, projectId] of opts.projectIds.entries()) {
 			getDb()
 				.insert(crossRepoOrchestratorProjects)
 				.values({
 					orchestratorId: id,
-					projectId: opts.projectIds[i]!,
+					projectId,
 					sortOrder: i,
 					createdAt: now,
 				})
@@ -108,6 +108,7 @@ export async function seedExternalManager(opts: {
 	name?: string;
 	projectIds?: string[];
 	dispatchPolicy?: "confirm" | "auto";
+	accessScope?: "selected" | "all";
 }): Promise<{ id: string; token: string }> {
 	const id = `mgr-${nanoid(8)}`;
 	const token = generateToken();
@@ -124,17 +125,18 @@ export async function seedExternalManager(opts: {
 			kind: "external",
 			tokenHash: hashToken(token),
 			dispatchPolicy: opts.dispatchPolicy ?? "confirm",
+			accessScope: opts.accessScope ?? "selected",
 			createdAt: now,
 			updatedAt: now,
 		})
 		.run();
 	if (opts.projectIds) {
-		for (let i = 0; i < opts.projectIds.length; i++) {
+		for (const [i, projectId] of opts.projectIds.entries()) {
 			getDb()
 				.insert(crossRepoOrchestratorProjects)
 				.values({
 					orchestratorId: id,
-					projectId: opts.projectIds[i]!,
+					projectId,
 					sortOrder: i,
 					createdAt: now,
 				})

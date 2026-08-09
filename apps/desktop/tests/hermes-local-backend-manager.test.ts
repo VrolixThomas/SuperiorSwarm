@@ -60,6 +60,7 @@ function testManager(input: {
 	token?: string;
 	timeoutMs?: number;
 	maxOutputBytes?: number;
+	beforeStart?: (input: { profileId: string; hermesHome: string }) => void;
 }): HermesLocalBackendManager {
 	let nextPid = 41_000;
 	const manager = new HermesLocalBackendManager({
@@ -76,6 +77,7 @@ function testManager(input: {
 		runtimeVerifier: async () => undefined,
 		portAnnounceTimeoutMs: input.timeoutMs,
 		maxOutputBytes: input.maxOutputBytes,
+		beforeStart: input.beforeStart,
 	});
 	managers.push(manager);
 	return manager;
@@ -175,6 +177,32 @@ describe("HermesLocalBackendManager", () => {
 		expect(environment?.["HERMES_DESKTOP"]).toBeUndefined();
 		expect(JSON.stringify(invocations[0]?.argv)).not.toContain("spawn-session-secret");
 		expect(JSON.stringify(manager.describeOwnedBackends())).not.toContain("session-secret");
+	});
+
+	test("provisions managed MCP access before spawning the owned backend", async () => {
+		const children: FakeChild[] = [];
+		const order: string[] = [];
+		const manager = new HermesLocalBackendManager({
+			executableResolver: () => "/opt/hermes/bin/hermes",
+			hermesHomeResolver: () => "/Users/test/.hermes",
+			beforeStart: (input) => {
+				order.push(`provision:${input.profileId}:${input.hermesHome}`);
+			},
+			spawnProcess: () => {
+				order.push("spawn");
+				const child = new FakeChild(41_500);
+				children.push(child);
+				return child;
+			},
+			dashboardTokenResolver: async () => "served-session-secret",
+			runtimeVerifier: async () => undefined,
+		});
+		managers.push(manager);
+
+		const starting = manager.ensure("default");
+		expect(order).toEqual(["provision:default:/Users/test/.hermes", "spawn"]);
+		announceReady(children[0] as FakeChild, 54_322);
+		await starting;
 	});
 
 	test("drops an exited owned child and starts a fresh child on the next ensure", async () => {

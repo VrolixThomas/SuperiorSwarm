@@ -693,6 +693,8 @@ export type CallerContext =
 			external?: boolean;
 			/** External managers only: whether dispatch_agent skips the confirm modal. */
 			dispatchPolicy?: "confirm" | "auto";
+			/** Project authorization is either explicit links or the live app inventory. */
+			accessScope?: "selected" | "all";
 	  };
 
 export async function setStatus(

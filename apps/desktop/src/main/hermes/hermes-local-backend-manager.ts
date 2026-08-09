@@ -1,5 +1,7 @@
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
+import { join } from "node:path";
+import { ensureManagedHermesMcpAccess } from "../services/external-managers";
 import {
 	HERMES_PROFILE_ID_PATTERN,
 	buildHermesBackendLaunch,
@@ -74,6 +76,7 @@ export interface HermesLocalBackendManagerOptions {
 	spawnProcess?: (executable: string, argv: string[], options: SpawnOptions) => HermesBackendChild;
 	dashboardTokenResolver?: (baseUrl: string, fallbackToken: string) => Promise<string>;
 	runtimeVerifier?: (runtime: HermesLocalBackendRuntime) => Promise<void>;
+	beforeStart?: (input: { profileId: string; hermesHome: string }) => void;
 	portAnnounceTimeoutMs?: number;
 	maxOutputBytes?: number;
 }
@@ -150,6 +153,7 @@ export class HermesLocalBackendManager implements HermesLocalBackendManagerLike 
 		fallbackToken: string
 	) => Promise<string>;
 	private readonly runtimeVerifier: (runtime: HermesLocalBackendRuntime) => Promise<void>;
+	private readonly beforeStart: NonNullable<HermesLocalBackendManagerOptions["beforeStart"]>;
 	private readonly portAnnounceTimeoutMs: number;
 	private readonly maxOutputBytes: number;
 	private closed = false;
@@ -172,6 +176,7 @@ export class HermesLocalBackendManager implements HermesLocalBackendManagerLike 
 				}
 			});
 		this.runtimeVerifier = options.runtimeVerifier ?? verifyLocalRuntime;
+		this.beforeStart = options.beforeStart ?? (() => undefined);
 		this.portAnnounceTimeoutMs = options.portAnnounceTimeoutMs ?? DEFAULT_PORT_ANNOUNCE_TIMEOUT_MS;
 		this.maxOutputBytes = options.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES;
 	}
@@ -195,6 +200,13 @@ export class HermesLocalBackendManager implements HermesLocalBackendManagerLike 
 			managedProfileId,
 			this.hermesHomeResolver(managedProfileId)
 		);
+		try {
+			this.beforeStart({ profileId: managedProfileId, hermesHome: launch.hermesHome });
+		} catch (error) {
+			return Promise.reject(
+				error instanceof Error ? error : new Error("Managed Hermes MCP setup failed. Retry.")
+			);
+		}
 		const spawnToken = this.tokenFactory();
 		let child: HermesBackendChild;
 		try {
@@ -417,4 +429,8 @@ export class HermesLocalBackendManager implements HermesLocalBackendManagerLike 
 	}
 }
 
-export const hermesLocalBackendManager = new HermesLocalBackendManager();
+export const hermesLocalBackendManager = new HermesLocalBackendManager({
+	beforeStart: ({ hermesHome }) => {
+		ensureManagedHermesMcpAccess({ configPath: join(hermesHome, "config.yaml") });
+	},
+});

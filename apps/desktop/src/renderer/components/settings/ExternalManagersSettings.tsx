@@ -110,6 +110,7 @@ export function ExternalManagersSettings() {
 	const [name, setName] = useState("");
 	const [selectedProjects, setSelectedProjects] = useState<string[]>([]);
 	const [autoDispatch, setAutoDispatch] = useState(false);
+	const [allProjects, setAllProjects] = useState(false);
 	// One-time raw token, keyed by manager id (from create or regenerate).
 	const [revealedToken, setRevealedToken] = useState<{ id: string; token: string } | null>(null);
 	const [installedPath, setInstalledPath] = useState<string | null>(null);
@@ -122,6 +123,7 @@ export function ExternalManagersSettings() {
 			setName("");
 			setSelectedProjects([]);
 			setAutoDispatch(false);
+			setAllProjects(false);
 		},
 	});
 	const regenerate = trpc.externalManagers.regenerateToken.useMutation({
@@ -131,6 +133,9 @@ export function ExternalManagersSettings() {
 		},
 	});
 	const setPolicy = trpc.externalManagers.setDispatchPolicy.useMutation({
+		onSuccess: () => utils.externalManagers.list.invalidate(),
+	});
+	const setAccessScope = trpc.externalManagers.setAccessScope.useMutation({
 		onSuccess: () => utils.externalManagers.list.invalidate(),
 	});
 	const remove = trpc.externalManagers.delete.useMutation({
@@ -150,7 +155,8 @@ export function ExternalManagersSettings() {
 	};
 
 	const projectName = (id: string) => projects?.find((p) => p.id === id)?.name ?? id;
-	const canCreate = name.trim().length > 0 && selectedProjects.length > 0 && !create.isPending;
+	const canCreate =
+		name.trim().length > 0 && (allProjects || selectedProjects.length > 0) && !create.isPending;
 
 	return (
 		<>
@@ -164,12 +170,33 @@ export function ExternalManagersSettings() {
 									<span className="text-[13px] font-medium text-[var(--text)]">{m.name}</span>
 									<span className="truncate text-[11px] text-[var(--text-tertiary)]">
 										{policyLabel(m.dispatchPolicy)} ·{" "}
-										{m.linkedProjectIds.map(projectName).join(", ") || "no projects"} ·{" "}
+										{m.accessScope === "all"
+											? "all current and future projects"
+											: m.linkedProjectIds.map(projectName).join(", ") || "no projects"}{" "}
+										·{" "}
 										{m.lastSeenAt
 											? `last seen ${new Date(m.lastSeenAt).toLocaleString()}`
 											: "never connected"}
 									</span>
 								</div>
+								<button
+									type="button"
+									onClick={() =>
+										setAccessScope.mutate({
+											id: m.id,
+											accessScope: m.accessScope === "all" ? "selected" : "all",
+										})
+									}
+									disabled={setAccessScope.isPending}
+									title={
+										m.accessScope === "all"
+											? "Restrict this manager to its selected project links."
+											: "Allow this manager to discover and operate on every current and future project."
+									}
+									className="shrink-0 rounded-[5px] border border-[var(--border)] px-2.5 py-1 text-[11px] font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-elevated)] hover:text-[var(--text)] disabled:opacity-50"
+								>
+									{m.accessScope === "all" ? "All projects" : "Selected projects"}
+								</button>
 								<button
 									type="button"
 									onClick={() =>
@@ -252,6 +279,14 @@ export function ExternalManagersSettings() {
 							</button>
 						))}
 					</div>
+					<label className="flex items-center gap-1.5 text-[11px] text-[var(--text-secondary)]">
+						<input
+							type="checkbox"
+							checked={allProjects}
+							onChange={(event) => setAllProjects(event.target.checked)}
+						/>
+						All current and future projects
+					</label>
 					<div className="flex items-center gap-2">
 						<label className="flex items-center gap-1.5 text-[11px] text-[var(--text-secondary)]">
 							<input
@@ -268,6 +303,7 @@ export function ExternalManagersSettings() {
 									name: name.trim(),
 									projectIds: selectedProjects,
 									dispatchPolicy: autoDispatch ? "auto" : "confirm",
+									accessScope: allProjects ? "all" : "selected",
 								})
 							}
 							disabled={!canCreate}

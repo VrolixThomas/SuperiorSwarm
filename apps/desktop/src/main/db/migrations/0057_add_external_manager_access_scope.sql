@@ -1,0 +1,1 @@
+ALTER TABLE `cross_repo_orchestrators` ADD `access_scope` text DEFAULT 'selected' NOT NULL;

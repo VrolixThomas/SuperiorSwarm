@@ -197,6 +197,60 @@ describe("external manager control-plane access", () => {
 		expect(body.projects.map((p) => p.id)).not.toContain(otherProject);
 	});
 
+	test("all-scope manager lists current and future projects and can operate on both", async () => {
+		const currentProject = await seedProject();
+		const mgr = await seedExternalManager({
+			accessScope: "all",
+			dispatchPolicy: "auto",
+		});
+
+		const first = await fetch(url("/projects.list"), { headers: authMgr(mgr.id, mgr.token) });
+		expect(first.status).toBe(200);
+		const firstBody = (await first.json()) as { projects: Array<{ id: string }> };
+		expect(firstBody.projects.map((project) => project.id)).toContain(PROJECT_ID);
+		expect(firstBody.projects.map((project) => project.id)).toContain(currentProject);
+
+		const futureProject = await seedProject();
+		const futureRepo = join(TMP, "future-repo");
+		mkdirSync(futureRepo, { recursive: true });
+		getDb()
+			.update(schema.projects)
+			.set({ repoPath: futureRepo })
+			.where(eq(schema.projects.id, futureProject))
+			.run();
+		const futureWorkspace = await seedWorkspace(futureProject, { name: "future-child" });
+		const second = await fetch(url("/projects.list"), { headers: authMgr(mgr.id, mgr.token) });
+		expect(second.status).toBe(200);
+		const secondBody = (await second.json()) as { projects: Array<{ id: string }> };
+		expect(secondBody.projects.map((project) => project.id)).toContain(futureProject);
+
+		const get = await fetch(url(`/workspaces.get?workspaceId=${futureWorkspace}`), {
+			headers: authMgr(mgr.id, mgr.token),
+		});
+		expect(get.status).toBe(200);
+
+		const dispatch = await fetch(url("/workspaces.dispatch"), {
+			method: "POST",
+			headers: { ...authMgr(mgr.id, mgr.token), "Content-Type": "application/json" },
+			body: JSON.stringify({ workspaceId: futureWorkspace, prompt: "future project task" }),
+		});
+		expect(dispatch.status).toBe(200);
+		expect(confirmCalls).toBe(0);
+		const membership = getDb()
+			.select({ orchestratorId: schema.orchestratorMembers.orchestratorId })
+			.from(schema.orchestratorMembers)
+			.where(eq(schema.orchestratorMembers.workspaceId, futureWorkspace))
+			.get();
+		expect(membership?.orchestratorId).toBe(mgr.id);
+		expect(
+			getDb()
+				.select()
+				.from(schema.crossRepoOrchestratorProjects)
+				.where(eq(schema.crossRepoOrchestratorProjects.orchestratorId, mgr.id))
+				.all()
+		).toHaveLength(0);
+	});
+
 	test("events.poll returns events after cursor and advances nextSeq", async () => {
 		const mgr = await seedExternalManager({ projectIds: [PROJECT_ID] });
 		const file = crossRepoEventsFilePath(mgr.id);
@@ -390,6 +444,7 @@ describe("external manager service CRUD", () => {
 			.get();
 		expect(row?.kind).toBe("external");
 		expect(row?.dispatchPolicy).toBe("auto");
+		expect(row?.accessScope).toBe("selected");
 		expect(tokenMatchesHash(created.token, row?.tokenHash ?? null)).toBe(true);
 
 		const listed = await listExternalManagers();
@@ -417,6 +472,22 @@ describe("external manager service CRUD", () => {
 			.where(eq(schema.crossRepoOrchestrators.id, created.id))
 			.get();
 		expect(gone).toBeUndefined();
+	});
+
+	test("all-project access is explicit while selected remains the safe default", async () => {
+		const selected = await createExternalManager({ name: "Restricted", projectIds: [] });
+		const broad = await createExternalManager({
+			name: "Installation manager",
+			projectIds: [],
+			accessScope: "all",
+		});
+
+		const listed = await listExternalManagers();
+		expect(listed.find((manager) => manager.id === selected.id)?.accessScope).toBe("selected");
+		expect(listed.find((manager) => manager.id === broad.id)?.accessScope).toBe("all");
+
+		await deleteExternalManager({ id: selected.id });
+		await deleteExternalManager({ id: broad.id });
 	});
 });
 

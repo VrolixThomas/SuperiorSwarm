@@ -671,6 +671,12 @@ export const crossRepoOrchestrators = sqliteTable("cross_repo_orchestrators", {
 	dispatchPolicy: text("dispatch_policy", { enum: ["confirm", "auto"] })
 		.notNull()
 		.default("confirm"),
+	// "selected" authorizes only cross_repo_orchestrator_projects rows. "all"
+	// resolves against the live projects inventory on every request, so projects
+	// registered later are included without creating synthetic link rows.
+	accessScope: text("access_scope", { enum: ["selected", "all"] })
+		.notNull()
+		.default("selected"),
 	lastSeenAt: integer("last_seen_at", { mode: "timestamp" }),
 	createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
 	updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
