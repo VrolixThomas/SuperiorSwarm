@@ -3,7 +3,7 @@ import { nanoid } from "nanoid";
 import { type HermesConnectionSummary, isHermesLoopbackUrl } from "../../shared/hermes";
 import { getDb } from "../db";
 import { hermesConnections } from "../db/schema";
-import { HERMES_PROFILE_ID_PATTERN } from "./hermes-cli";
+import { HERMES_PROFILE_ID_PATTERN, normalizeManagedHermesProfileId } from "./hermes-cli";
 import { discoverHermesDashboardToken } from "./hermes-dashboard-token";
 import {
 	type HermesTokenVault,
@@ -101,8 +101,11 @@ export function ensureHermesLocalConnection(
 			.from(hermesConnections)
 			.all()
 			.find((connection) => connection.managementMode === "managed");
-	const profileId = input.profileId?.trim() || existing?.profileId || "default";
-	if (!HERMES_PROFILE_ID_PATTERN.test(profileId)) throw new Error("Hermes profile is invalid");
+	const requestedProfileId = input.profileId?.trim() || existing?.profileId || "default";
+	if (!HERMES_PROFILE_ID_PATTERN.test(requestedProfileId)) {
+		throw new Error("Hermes profile is invalid");
+	}
+	const profileId = normalizeManagedHermesProfileId(requestedProfileId);
 	const fixedIdCollision = existing
 		? null
 		: db
@@ -116,11 +119,11 @@ export function ensureHermesLocalConnection(
 	const values = {
 		id,
 		label: input.label?.trim() || existing?.label || "Local Hermes",
-		baseUrl: HERMES_LOCAL_MANAGED_URL,
+		baseUrl: existing?.baseUrl ?? HERMES_LOCAL_MANAGED_URL,
 		profileId,
 		managementMode: "managed" as const,
-		encryptedToken: null,
-		tokenStorage: "memory" as const,
+		encryptedToken: existing?.encryptedToken ?? null,
+		tokenStorage: existing?.tokenStorage ?? ("memory" as const),
 		createdAt: existing?.createdAt ?? now,
 		updatedAt: now,
 	};
@@ -133,13 +136,13 @@ export function ensureHermesLocalConnection(
 				baseUrl: values.baseUrl,
 				profileId,
 				managementMode: values.managementMode,
-				encryptedToken: null,
-				tokenStorage: "memory",
+				encryptedToken: values.encryptedToken,
+				tokenStorage: values.tokenStorage,
 				updatedAt: now,
 			},
 		})
 		.run();
-	vault.forget(id);
+	if (!existing || existing.baseUrl === HERMES_LOCAL_MANAGED_URL) vault.forget(id);
 	const saved = db.select().from(hermesConnections).where(eq(hermesConnections.id, id)).get();
 	if (!saved) throw new Error("Local Hermes configuration could not be saved");
 	return toSummary(saved, vault);

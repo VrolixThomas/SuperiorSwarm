@@ -49,9 +49,10 @@ describe("Hermes persistence migration", () => {
 		sqlite.close();
 	});
 
-	test("adapts feature-local loopback rows to stable managed configuration", () => {
+	test("migrates only deterministic legacy Local Hermes defaults and preserves rollback data", () => {
 		const sqlite = new Database(":memory:");
 		const migrations = join(import.meta.dir, "../src/main/db/migrations");
+		let advancedLoopbackBefore: unknown = null;
 		for (const name of [
 			"0054_add_hermes_connections_links_reports.sql",
 			"0055_adapt_hermes_stock_sessions.sql",
@@ -63,26 +64,61 @@ describe("Hermes persistence migration", () => {
 						 (id, label, base_url, profile_id, encrypted_token, token_storage, created_at, updated_at)
 						 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
 				);
-				insertConnection.run(
-					"legacy-local",
-					"Local Hermes",
-					"http://127.0.0.1:8080",
-					"default",
-					"stale-ciphertext",
-					"safe-storage",
-					1,
-					1
-				);
-				insertConnection.run(
-					"external-loopback-lookalike",
-					"External Hermes",
-					"http://127.0.0.1.example.com:8080",
-					"default",
-					"protected-external-token",
-					"safe-storage",
-					1,
-					1
-				);
+				for (const fixture of [
+					[
+						"legacy-local-a",
+						"Local Hermes",
+						"http://127.0.0.1:8080",
+						"default",
+						"legacy-ciphertext-a",
+					],
+					[
+						"advanced-loopback",
+						"Local Hermes",
+						"http://127.0.0.1:9119",
+						"default",
+						"advanced-ciphertext",
+					],
+					[
+						"custom-label",
+						"Development Hermes",
+						"http://127.0.0.1:8080",
+						"default",
+						"custom-label-ciphertext",
+					],
+					[
+						"custom-profile",
+						"Local Hermes",
+						"http://127.0.0.1:8080",
+						"work",
+						"custom-profile-ciphertext",
+					],
+					[
+						"external-loopback-lookalike",
+						"External Hermes",
+						"http://127.0.0.1.example.com:8080",
+						"default",
+						"protected-external-token",
+					],
+					[
+						"legacy-local-b",
+						"Local Hermes",
+						"http://127.0.0.1:8080",
+						"default",
+						"legacy-ciphertext-b",
+					],
+				] as const) {
+					insertConnection.run(...fixture, "safe-storage", 1, 1);
+				}
+			}
+			if (name.startsWith("0056")) {
+				advancedLoopbackBefore = sqlite
+					.prepare(
+						`SELECT id, label, base_url, profile_id, encrypted_token, token_storage,
+								last_connected_at, created_at, updated_at
+						 FROM hermes_connections WHERE id = ?`
+					)
+					.get("advanced-loopback");
 			}
 			const sql = readFileSync(join(migrations, name), "utf8").replaceAll(
 				"--> statement-breakpoint",
@@ -91,24 +127,71 @@ describe("Hermes persistence migration", () => {
 			sqlite.exec(sql);
 		}
 
-		expect(
-			sqlite.prepare("SELECT * FROM hermes_connections WHERE id = ?").get("legacy-local")
-		).toMatchObject({
-			base_url: "hermes-local://managed",
-			management_mode: "managed",
-			encrypted_token: null,
-			token_storage: "memory",
-		});
+		for (const [id, ciphertext] of [
+			["legacy-local-a", "legacy-ciphertext-a"],
+			["legacy-local-b", "legacy-ciphertext-b"],
+		]) {
+			expect(sqlite.prepare("SELECT * FROM hermes_connections WHERE id = ?").get(id)).toMatchObject(
+				{
+					label: "Local Hermes",
+					base_url: "http://127.0.0.1:8080",
+					profile_id: "default",
+					management_mode: "managed",
+					encrypted_token: ciphertext,
+					token_storage: "safe-storage",
+				}
+			);
+		}
+		for (const [id, label, baseUrl, profileId, ciphertext] of [
+			[
+				"advanced-loopback",
+				"Local Hermes",
+				"http://127.0.0.1:9119",
+				"default",
+				"advanced-ciphertext",
+			],
+			[
+				"custom-label",
+				"Development Hermes",
+				"http://127.0.0.1:8080",
+				"default",
+				"custom-label-ciphertext",
+			],
+			[
+				"custom-profile",
+				"Local Hermes",
+				"http://127.0.0.1:8080",
+				"work",
+				"custom-profile-ciphertext",
+			],
+			[
+				"external-loopback-lookalike",
+				"External Hermes",
+				"http://127.0.0.1.example.com:8080",
+				"default",
+				"protected-external-token",
+			],
+		] as const) {
+			expect(sqlite.prepare("SELECT * FROM hermes_connections WHERE id = ?").get(id)).toMatchObject(
+				{
+					label,
+					base_url: baseUrl,
+					profile_id: profileId,
+					management_mode: "external",
+					encrypted_token: ciphertext,
+					token_storage: "safe-storage",
+				}
+			);
+		}
 		expect(
 			sqlite
-				.prepare("SELECT * FROM hermes_connections WHERE id = ?")
-				.get("external-loopback-lookalike")
-		).toMatchObject({
-			base_url: "http://127.0.0.1.example.com:8080",
-			management_mode: "external",
-			encrypted_token: "protected-external-token",
-			token_storage: "safe-storage",
-		});
+				.prepare(
+					`SELECT id, label, base_url, profile_id, encrypted_token, token_storage,
+							last_connected_at, created_at, updated_at
+					 FROM hermes_connections WHERE id = ?`
+				)
+				.get("advanced-loopback")
+		).toEqual(advancedLoopbackBefore);
 		sqlite.close();
 	});
 

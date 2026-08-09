@@ -17,6 +17,7 @@ import {
 } from "./hermes-connections";
 import { discoverHermesDashboardToken } from "./hermes-dashboard-token";
 import {
+	type HermesLocalBackendInvalidation,
 	type HermesLocalBackendManagerLike,
 	hermesLocalBackendManager,
 } from "./hermes-local-backend-manager";
@@ -91,6 +92,8 @@ interface ConnectionRuntime {
 	rest: HermesRestClientLike;
 	profileId: string;
 	connectionMode: "loopback" | "remote";
+	managementMode: "managed" | "external";
+	managedBaseUrl: string | null;
 	catalog: HermesCatalog;
 	bindings: Map<string, RuntimeBinding>;
 	runtimeToDurable: Map<string, string>;
@@ -101,6 +104,15 @@ interface ConnectionRuntime {
 	reconnectTask: Promise<void> | null;
 	histories: Map<string, HermesSessionHistory>;
 	origins: Map<string, ResolvedHermesOrigin>;
+}
+
+interface ConnectionOperation {
+	generation: number;
+	controller: AbortController;
+	managementMode: "managed" | "external" | null;
+	managedProfileId: string | null;
+	managedBaseUrl: string | null;
+	previousRuntime: ConnectionRuntime | null;
 }
 
 export interface HermesRuntimeServiceOptions {
@@ -114,10 +126,59 @@ export interface HermesRuntimeServiceOptions {
 	sendService?: HermesSendServiceLike;
 	loopbackTokenResolver?: (baseUrl: string) => Promise<string>;
 	localBackendManager?: HermesLocalBackendManagerLike;
+	recoveryBaseMs?: number;
+	recoveryMaxMs?: number;
 }
 
 const MAX_BUFFERED_EVENTS = 1_000;
 const PROMPT_SUBMIT_TIMEOUT_MS = 1_800_000;
+const DEFAULT_RECOVERY_BASE_MS = 500;
+const DEFAULT_RECOVERY_MAX_MS = 15_000;
+
+function connectionCancelledError(): Error {
+	return new Error("Hermes connection cancelled");
+}
+
+function sanitizedConnectionError(error: unknown): Error {
+	const sanitized = sanitizeHermesPayload(
+		error instanceof Error ? error.message : "Hermes connection failed"
+	);
+	return new Error(typeof sanitized === "string" ? sanitized : "Hermes connection failed");
+}
+
+function abortable<T>(operation: Promise<T>, signal: AbortSignal): Promise<T> {
+	if (signal.aborted) return Promise.reject(connectionCancelledError());
+	return new Promise<T>((resolve, reject) => {
+		const onAbort = () => reject(connectionCancelledError());
+		signal.addEventListener("abort", onAbort, { once: true });
+		void operation.then(
+			(value) => {
+				signal.removeEventListener("abort", onAbort);
+				resolve(value);
+			},
+			(error) => {
+				signal.removeEventListener("abort", onAbort);
+				reject(error);
+			}
+		);
+	});
+}
+
+function abortableDelay(milliseconds: number, signal: AbortSignal): Promise<void> {
+	if (signal.aborted) return Promise.reject(connectionCancelledError());
+	return new Promise<void>((resolve, reject) => {
+		const finish = (error?: Error) => {
+			clearTimeout(timer);
+			signal.removeEventListener("abort", onAbort);
+			if (error) reject(error);
+			else resolve();
+		};
+		const onAbort = () => finish(connectionCancelledError());
+		const timer = setTimeout(finish, milliseconds);
+		timer.unref?.();
+		signal.addEventListener("abort", onAbort, { once: true });
+	});
+}
 
 function sessionTitleFromTopic(topic: string): string {
 	const firstLine = topic
@@ -156,7 +217,13 @@ export class HermesRuntimeService {
 	private readonly sendService: HermesSendServiceLike;
 	private readonly loopbackTokenResolver: (baseUrl: string) => Promise<string>;
 	private readonly localBackendManager: HermesLocalBackendManagerLike;
+	private readonly recoveryBaseMs: number;
+	private readonly recoveryMaxMs: number;
+	private readonly connectionGenerations = new Map<string, number>();
+	private readonly connectionOperations = new Map<string, ConnectionOperation>();
 	private readonly connectionStates = new Map<string, HermesRuntimeState>();
+	private readonly unsubscribeBackendInvalidation: () => void;
+	private closed = false;
 
 	constructor(options: HermesRuntimeServiceOptions = {}) {
 		this.clientFactory = options.clientFactory ?? (() => new HermesRuntimeClient());
@@ -166,10 +233,18 @@ export class HermesRuntimeService {
 		this.sendService = options.sendService ?? new HermesSendService();
 		this.loopbackTokenResolver = options.loopbackTokenResolver ?? discoverHermesDashboardToken;
 		this.localBackendManager = options.localBackendManager ?? hermesLocalBackendManager;
+		this.recoveryBaseMs = options.recoveryBaseMs ?? DEFAULT_RECOVERY_BASE_MS;
+		this.recoveryMaxMs = options.recoveryMaxMs ?? DEFAULT_RECOVERY_MAX_MS;
+		this.unsubscribeBackendInvalidation = this.localBackendManager.subscribeRuntimeInvalidated(
+			(event) => {
+				this.handleBackendInvalidation(event);
+			}
+		);
 	}
 
 	async connect(connectionId: string): Promise<HermesCatalog> {
-		this.disconnect(connectionId);
+		if (this.closed) throw new Error("Hermes runtime service is shut down");
+		const operation = this.beginConnectionOperation(connectionId, false);
 		this.connectionStates.set(connectionId, {
 			status: "connecting",
 			reconnectAttempt: 0,
@@ -177,101 +252,28 @@ export class HermesRuntimeService {
 			error: null,
 		});
 		try {
-			const summary = listHermesConnections(this.tokenVault).find(
-				(connection) => connection.id === connectionId
-			);
-			if (!summary) throw new Error("Hermes connection was not found");
-			let resolvedBaseUrl: string;
-			let resolvedToken: string;
-			if (summary.managementMode === "managed") {
-				const managed = await this.localBackendManager.ensure(summary.profileId);
-				resolvedBaseUrl = managed.baseUrl;
-				resolvedToken = managed.token;
-			} else if (summary.connectionMode === "loopback") {
-				if (!summary.baseUrl) throw new Error("External Hermes URL is unavailable");
-				const token = await this.loopbackTokenResolver(summary.baseUrl);
-				saveHermesConnection(
-					{
-						id: summary.id,
-						label: summary.label,
-						baseUrl: summary.baseUrl,
-						profileId: summary.profileId,
-						token,
-					},
-					this.tokenVault
-				);
-				resolvedBaseUrl = summary.baseUrl;
-				resolvedToken = token;
-			} else {
-				const external = getHermesConnectionWithToken(connectionId, this.tokenVault);
-				if (!external || !external.baseUrl) {
-					throw new Error("Hermes token is unavailable; enter it again to reconnect");
-				}
-				resolvedBaseUrl = external.baseUrl;
-				resolvedToken = external.token;
-			}
-			const client = this.clientFactory();
-			const rest = this.restClientFactory({
-				baseUrl: resolvedBaseUrl,
-				profileId: summary.profileId,
-				token: resolvedToken,
-			});
-			const runtime: ConnectionRuntime = {
-				client,
-				rest,
-				profileId: summary.profileId,
-				connectionMode: summary.connectionMode,
-				catalog: stockCatalog([], summary.connectionMode, this.sendService.isAvailable()),
-				bindings: new Map(),
-				runtimeToDurable: new Map(),
-				aliases: new Map(),
-				events: [],
-				nextSeq: 0,
-				unsubscribers: [],
-				reconnectTask: null,
-				histories: new Map(),
-				origins: new Map(),
-			};
-			this.runtimes.set(connectionId, runtime);
-			this.bindClient(connectionId, runtime);
-			await client.connect({
-				baseUrl: resolvedBaseUrl,
-				authMode: "token",
-				token: resolvedToken,
-			});
-			const sessions = await rest.listSessions();
-			runtime.catalog = stockCatalog(
-				sessions,
-				summary.connectionMode,
-				this.sendService.isAvailable()
-			);
-			markHermesConnectionConnected(connectionId);
-			this.connectionStates.delete(connectionId);
-			return runtime.catalog;
+			const catalog = await this.establishConnection(connectionId, operation);
+			this.finishConnectionOperation(connectionId, operation);
+			return catalog;
 		} catch (error) {
-			this.disconnect(connectionId);
-			const sanitized = sanitizeHermesPayload(
-				error instanceof Error ? error.message : "Hermes connection failed"
-			);
+			if (!this.isCurrentOperation(connectionId, operation)) {
+				throw connectionCancelledError();
+			}
+			this.finishConnectionOperation(connectionId, operation);
+			const sanitized = sanitizedConnectionError(error);
 			this.connectionStates.set(connectionId, {
 				status: "error",
 				reconnectAttempt: 0,
 				lastConnectedAt: null,
-				error: typeof sanitized === "string" ? sanitized : "Hermes connection failed",
+				error: sanitized.message,
 			});
-			throw error;
+			throw sanitized;
 		}
 	}
 
 	disconnect(connectionId: string): void {
-		const runtime = this.runtimes.get(connectionId);
-		if (!runtime) {
-			this.connectionStates.delete(connectionId);
-			return;
-		}
-		for (const unsubscribe of runtime.unsubscribers) unsubscribe();
-		runtime.client.disconnect();
-		this.runtimes.delete(connectionId);
+		this.invalidateConnectionOperation(connectionId);
+		this.disposeInstalledRuntime(connectionId);
 		this.connectionStates.delete(connectionId);
 	}
 
@@ -610,9 +612,267 @@ export class HermesRuntimeService {
 	}
 
 	shutdown(): void {
-		for (const connectionId of [...this.runtimes.keys()]) this.disconnect(connectionId);
+		if (this.closed) return;
+		this.closed = true;
+		this.unsubscribeBackendInvalidation();
+		const connectionIds = new Set([...this.runtimes.keys(), ...this.connectionOperations.keys()]);
+		for (const connectionId of connectionIds) this.disconnect(connectionId);
 		this.connectionStates.clear();
 		this.localBackendManager.shutdown();
+	}
+
+	private beginConnectionOperation(
+		connectionId: string,
+		preserveRuntime: boolean
+	): ConnectionOperation {
+		const previousOperation = this.connectionOperations.get(connectionId);
+		const previousRuntime = preserveRuntime
+			? (this.runtimes.get(connectionId) ?? previousOperation?.previousRuntime ?? null)
+			: null;
+		this.invalidateConnectionOperation(connectionId);
+		this.disposeInstalledRuntime(connectionId);
+		const operation: ConnectionOperation = {
+			generation: this.connectionGenerations.get(connectionId) ?? 0,
+			controller: new AbortController(),
+			managementMode: null,
+			managedProfileId: null,
+			managedBaseUrl: null,
+			previousRuntime,
+		};
+		this.connectionOperations.set(connectionId, operation);
+		return operation;
+	}
+
+	private invalidateConnectionOperation(connectionId: string): void {
+		const operation = this.connectionOperations.get(connectionId);
+		this.connectionOperations.delete(connectionId);
+		operation?.controller.abort();
+		this.connectionGenerations.set(
+			connectionId,
+			(this.connectionGenerations.get(connectionId) ?? 0) + 1
+		);
+	}
+
+	private finishConnectionOperation(connectionId: string, operation: ConnectionOperation): void {
+		if (this.connectionOperations.get(connectionId) === operation) {
+			this.connectionOperations.delete(connectionId);
+		}
+	}
+
+	private isCurrentOperation(connectionId: string, operation: ConnectionOperation): boolean {
+		return (
+			!this.closed &&
+			!operation.controller.signal.aborted &&
+			this.connectionGenerations.get(connectionId) === operation.generation &&
+			this.connectionOperations.get(connectionId) === operation
+		);
+	}
+
+	private assertCurrentOperation(connectionId: string, operation: ConnectionOperation): void {
+		if (!this.isCurrentOperation(connectionId, operation)) throw connectionCancelledError();
+	}
+
+	private async establishConnection(
+		connectionId: string,
+		operation: ConnectionOperation
+	): Promise<HermesCatalog> {
+		this.assertCurrentOperation(connectionId, operation);
+		const summary = listHermesConnections(this.tokenVault).find(
+			(connection) => connection.id === connectionId
+		);
+		if (!summary) throw new Error("Hermes connection was not found");
+		operation.managementMode = summary.managementMode;
+		operation.managedProfileId = summary.managementMode === "managed" ? summary.profileId : null;
+
+		let resolvedBaseUrl: string;
+		let resolvedProfileId = summary.profileId;
+		let resolvedToken: string;
+		if (summary.managementMode === "managed") {
+			const managed = await abortable(
+				this.localBackendManager.ensure(summary.profileId),
+				operation.controller.signal
+			);
+			this.assertCurrentOperation(connectionId, operation);
+			operation.managedProfileId = managed.profileId;
+			operation.managedBaseUrl = managed.baseUrl;
+			resolvedBaseUrl = managed.baseUrl;
+			resolvedProfileId = managed.profileId;
+			resolvedToken = managed.token;
+		} else if (summary.connectionMode === "loopback") {
+			if (!summary.baseUrl) throw new Error("External Hermes URL is unavailable");
+			const token = await abortable(
+				this.loopbackTokenResolver(summary.baseUrl),
+				operation.controller.signal
+			);
+			this.assertCurrentOperation(connectionId, operation);
+			saveHermesConnection(
+				{
+					id: summary.id,
+					label: summary.label,
+					baseUrl: summary.baseUrl,
+					profileId: summary.profileId,
+					token,
+				},
+				this.tokenVault
+			);
+			resolvedBaseUrl = summary.baseUrl;
+			resolvedToken = token;
+		} else {
+			const external = getHermesConnectionWithToken(connectionId, this.tokenVault);
+			if (!external || !external.baseUrl) {
+				throw new Error("Hermes token is unavailable; enter it again to reconnect");
+			}
+			resolvedBaseUrl = external.baseUrl;
+			resolvedToken = external.token;
+		}
+		this.assertCurrentOperation(connectionId, operation);
+
+		const client = this.clientFactory();
+		let clientDisposed = false;
+		const disposePendingClient = () => {
+			if (clientDisposed) return;
+			clientDisposed = true;
+			client.disconnect();
+		};
+		operation.controller.signal.addEventListener("abort", disposePendingClient, { once: true });
+		let installedRuntime: ConnectionRuntime | null = null;
+		try {
+			const rest = this.restClientFactory({
+				baseUrl: resolvedBaseUrl,
+				profileId: resolvedProfileId,
+				token: resolvedToken,
+			});
+			await abortable(
+				client.connect({
+					baseUrl: resolvedBaseUrl,
+					authMode: "token",
+					token: resolvedToken,
+				}),
+				operation.controller.signal
+			);
+			this.assertCurrentOperation(connectionId, operation);
+			const sessions = await abortable(
+				rest.listSessions(operation.controller.signal),
+				operation.controller.signal
+			);
+			this.assertCurrentOperation(connectionId, operation);
+			const previous = operation.previousRuntime;
+			installedRuntime = {
+				client,
+				rest,
+				profileId: resolvedProfileId,
+				connectionMode: summary.connectionMode,
+				managementMode: summary.managementMode,
+				managedBaseUrl: summary.managementMode === "managed" ? operation.managedBaseUrl : null,
+				catalog: stockCatalog(sessions, summary.connectionMode, this.sendService.isAvailable()),
+				bindings: new Map(previous?.bindings),
+				runtimeToDurable: new Map(previous?.runtimeToDurable),
+				aliases: new Map(previous?.aliases),
+				events: previous ? [...previous.events] : [],
+				nextSeq: previous?.nextSeq ?? 0,
+				unsubscribers: [],
+				reconnectTask: null,
+				histories: new Map(previous?.histories),
+				origins: new Map(previous?.origins),
+			};
+			this.runtimes.set(connectionId, installedRuntime);
+			this.bindClient(connectionId, installedRuntime);
+			markHermesConnectionConnected(connectionId);
+			this.connectionStates.delete(connectionId);
+			operation.controller.signal.removeEventListener("abort", disposePendingClient);
+			if (previous && installedRuntime.bindings.size > 0) {
+				this.reconcileAfterReconnect(connectionId, installedRuntime);
+			}
+			return installedRuntime.catalog;
+		} catch (error) {
+			operation.controller.signal.removeEventListener("abort", disposePendingClient);
+			if (installedRuntime && this.runtimes.get(connectionId) === installedRuntime) {
+				this.disposeInstalledRuntime(connectionId);
+			} else {
+				disposePendingClient();
+			}
+			throw error;
+		}
+	}
+
+	private handleBackendInvalidation(event: HermesLocalBackendInvalidation): void {
+		if (this.closed) return;
+		const affectedConnectionIds = new Set<string>();
+		for (const [connectionId, runtime] of this.runtimes) {
+			if (
+				runtime.managementMode === "managed" &&
+				runtime.profileId === event.profileId &&
+				runtime.managedBaseUrl === event.baseUrl
+			) {
+				affectedConnectionIds.add(connectionId);
+			}
+		}
+		for (const [connectionId, operation] of this.connectionOperations) {
+			if (
+				operation.managementMode === "managed" &&
+				(operation.managedProfileId === event.profileId ||
+					operation.managedProfileId === "custom") &&
+				(!operation.managedBaseUrl || operation.managedBaseUrl === event.baseUrl)
+			) {
+				affectedConnectionIds.add(connectionId);
+			}
+		}
+		for (const connectionId of affectedConnectionIds) {
+			const operation = this.beginConnectionOperation(connectionId, true);
+			this.connectionStates.set(connectionId, {
+				status: "reconnecting",
+				reconnectAttempt: 1,
+				lastConnectedAt: null,
+				error: null,
+			});
+			void this.recoverManagedConnection(connectionId, operation);
+		}
+	}
+
+	private async recoverManagedConnection(
+		connectionId: string,
+		operation: ConnectionOperation
+	): Promise<void> {
+		let attempt = 0;
+		while (this.isCurrentOperation(connectionId, operation)) {
+			attempt++;
+			if (attempt > 1) {
+				const delay = Math.min(this.recoveryBaseMs * 2 ** (attempt - 2), this.recoveryMaxMs);
+				try {
+					await abortableDelay(delay, operation.controller.signal);
+				} catch {
+					return;
+				}
+			}
+			if (!this.isCurrentOperation(connectionId, operation)) return;
+			this.connectionStates.set(connectionId, {
+				status: "reconnecting",
+				reconnectAttempt: attempt,
+				lastConnectedAt: null,
+				error: null,
+			});
+			try {
+				await this.establishConnection(connectionId, operation);
+				this.finishConnectionOperation(connectionId, operation);
+				return;
+			} catch (error) {
+				if (!this.isCurrentOperation(connectionId, operation)) return;
+				this.connectionStates.set(connectionId, {
+					status: "reconnecting",
+					reconnectAttempt: attempt,
+					lastConnectedAt: null,
+					error: sanitizedConnectionError(error).message,
+				});
+			}
+		}
+	}
+
+	private disposeInstalledRuntime(connectionId: string): void {
+		const runtime = this.runtimes.get(connectionId);
+		if (!runtime) return;
+		this.runtimes.delete(connectionId);
+		for (const unsubscribe of runtime.unsubscribers.splice(0)) unsubscribe();
+		runtime.client.disconnect();
 	}
 
 	private bindClient(connectionId: string, runtime: ConnectionRuntime): void {
@@ -676,6 +936,7 @@ export class HermesRuntimeService {
 		const bindings: HermesReconnectBindingMetadata[] = [];
 		const failedSessionIds: string[] = [];
 		for (const durableSessionId of durableIds) {
+			if (this.runtimes.get(connectionId) !== runtime) return;
 			let binding: RuntimeBinding;
 			try {
 				const previous = previousBindings.get(durableSessionId);
@@ -685,6 +946,7 @@ export class HermesRuntimeService {
 					this.profileFor(runtime, durableSessionId),
 					previous
 				);
+				if (this.runtimes.get(connectionId) !== runtime) return;
 				bindings.push({
 					hermesSessionId: durableSessionId,
 					durableSessionId: binding.durableSessionId,
@@ -693,17 +955,21 @@ export class HermesRuntimeService {
 					status: binding.runtimeStatus,
 				});
 			} catch (error) {
+				if (this.runtimes.get(connectionId) !== runtime) return;
 				failedSessionIds.push(durableSessionId);
 				this.pushRuntimeError(connectionId, error);
 				continue;
 			}
 			try {
 				await this.history(connectionId, binding.durableSessionId);
+				if (this.runtimes.get(connectionId) !== runtime) return;
 			} catch (error) {
+				if (this.runtimes.get(connectionId) !== runtime) return;
 				failedSessionIds.push(durableSessionId);
 				this.pushRuntimeError(connectionId, error);
 			}
 		}
+		if (this.runtimes.get(connectionId) !== runtime) return;
 		this.pushEvent(connectionId, {
 			type: "runtime.history-refresh-required",
 			runtimeSessionId: null,
@@ -841,6 +1107,7 @@ export class HermesRuntimeService {
 				receivedAt: Date.now(),
 			});
 		} catch (error) {
+			if (this.runtimes.get(connectionId) !== runtime) return;
 			this.pushRuntimeError(connectionId, error);
 		}
 	}

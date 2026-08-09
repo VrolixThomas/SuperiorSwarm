@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import {
 	HERMES_PROFILE_ID_PATTERN,
 	buildHermesBackendLaunch,
+	normalizeManagedHermesProfileId,
 	resolveHermesExecutable,
 	resolveHermesHomeRoot,
 } from "./hermes-cli";
@@ -47,8 +48,16 @@ export interface HermesLocalBackendRuntime {
 	token: string;
 }
 
+export interface HermesLocalBackendInvalidation {
+	baseUrl: string;
+	profileId: string;
+}
+
 export interface HermesLocalBackendManagerLike {
 	ensure(profileId: string): Promise<HermesLocalBackendRuntime>;
+	subscribeRuntimeInvalidated(
+		listener: (event: HermesLocalBackendInvalidation) => void
+	): () => void;
 	shutdown(): void;
 }
 
@@ -129,6 +138,9 @@ async function verifyLocalRuntime(runtime: HermesLocalBackendRuntime): Promise<v
 
 export class HermesLocalBackendManager implements HermesLocalBackendManagerLike {
 	private readonly entries = new Map<string, BackendEntry>();
+	private readonly invalidationSubscribers = new Set<
+		(event: HermesLocalBackendInvalidation) => void
+	>();
 	private readonly executableResolver: () => string | null;
 	private readonly hermesHomeResolver: (profileId: string) => string;
 	private readonly tokenFactory: () => string;
@@ -169,7 +181,8 @@ export class HermesLocalBackendManager implements HermesLocalBackendManagerLike 
 		if (!HERMES_PROFILE_ID_PATTERN.test(profileId)) {
 			return Promise.reject(new Error("Hermes profile is invalid"));
 		}
-		const existing = this.entries.get(profileId);
+		const managedProfileId = normalizeManagedHermesProfileId(profileId);
+		const existing = this.entries.get(managedProfileId);
 		if (existing) return existing.promise;
 
 		const executable = this.executableResolver();
@@ -178,7 +191,10 @@ export class HermesLocalBackendManager implements HermesLocalBackendManagerLike 
 				new Error("Stock Hermes is unavailable. Install the stock Hermes launcher, then Retry.")
 			);
 		}
-		const launch = buildHermesBackendLaunch(profileId, this.hermesHomeResolver(profileId));
+		const launch = buildHermesBackendLaunch(
+			managedProfileId,
+			this.hermesHomeResolver(managedProfileId)
+		);
 		const spawnToken = this.tokenFactory();
 		let child: HermesBackendChild;
 		try {
@@ -196,10 +212,18 @@ export class HermesLocalBackendManager implements HermesLocalBackendManagerLike 
 			return Promise.reject(new Error("Stock Hermes failed to start. Retry."));
 		}
 
-		const entry = this.createEntry(profileId, child, spawnToken);
+		const entry = this.createEntry(managedProfileId, child, spawnToken);
 		entry.promise = this.startEntry(entry);
-		this.entries.set(profileId, entry);
+		this.entries.set(managedProfileId, entry);
 		return entry.promise;
+	}
+
+	subscribeRuntimeInvalidated(
+		listener: (event: HermesLocalBackendInvalidation) => void
+	): () => void {
+		if (this.closed) return () => undefined;
+		this.invalidationSubscribers.add(listener);
+		return () => this.invalidationSubscribers.delete(listener);
 	}
 
 	describeOwnedBackends(): Array<{
@@ -217,6 +241,7 @@ export class HermesLocalBackendManager implements HermesLocalBackendManagerLike 
 	shutdown(): void {
 		if (this.closed) return;
 		this.closed = true;
+		this.invalidationSubscribers.clear();
 		const owned = [...this.entries.values()];
 		this.entries.clear();
 		for (const entry of owned) this.stopEntry(entry);
@@ -249,21 +274,13 @@ export class HermesLocalBackendManager implements HermesLocalBackendManagerLike 
 		};
 		entry.onStdout = (chunk) => this.onOutput(entry, chunk, true);
 		entry.onStderr = (chunk) => this.onOutput(entry, chunk, false);
-		entry.onError = () => {
-			this.removeEntry(entry);
-			this.failEntry(entry, new Error("Stock Hermes process failed"));
-			this.stopEntry(entry);
-		};
-		entry.onExit = (code, signal) => {
-			this.removeEntry(entry);
-			if (!entry.ready) {
-				this.failEntry(
-					entry,
-					new Error(`Stock Hermes exited before readiness (${signal ?? code ?? "unknown"})`)
-				);
-			}
-			this.stopEntry(entry);
-		};
+		entry.onError = () =>
+			this.handleEntryTermination(entry, new Error("Stock Hermes process failed"));
+		entry.onExit = (code, signal) =>
+			this.handleEntryTermination(
+				entry,
+				new Error(`Stock Hermes exited before readiness (${signal ?? code ?? "unknown"})`)
+			);
 		child.stdout.on("data", entry.onStdout);
 		child.stderr.on("data", entry.onStderr);
 		child.on("error", entry.onError);
@@ -360,6 +377,25 @@ export class HermesLocalBackendManager implements HermesLocalBackendManagerLike 
 
 	private removeEntry(entry: BackendEntry): void {
 		if (this.entries.get(entry.profileId) === entry) this.entries.delete(entry.profileId);
+	}
+
+	private handleEntryTermination(entry: BackendEntry, startupError: Error): void {
+		if (entry.stopping) return;
+		const invalidation =
+			entry.ready && entry.runtime && !this.closed
+				? { profileId: entry.profileId, baseUrl: entry.runtime.baseUrl }
+				: null;
+		this.removeEntry(entry);
+		if (!entry.ready) this.failEntry(entry, startupError);
+		this.stopEntry(entry);
+		if (!invalidation) return;
+		for (const subscriber of this.invalidationSubscribers) {
+			try {
+				subscriber(invalidation);
+			} catch {
+				// A lifecycle observer cannot interfere with owned-child cleanup.
+			}
+		}
 	}
 
 	private stopEntry(entry: BackendEntry): void {

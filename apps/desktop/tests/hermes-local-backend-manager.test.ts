@@ -4,6 +4,7 @@ import {
 	buildHermesBackendLaunch,
 	hermesExecutableCandidates,
 	normalizeHermesHomeRoot,
+	resolveHermesExecutable,
 } from "../src/main/hermes/hermes-cli";
 import {
 	type HermesBackendChild,
@@ -86,8 +87,13 @@ function announceReady(child: FakeChild, port: number): void {
 	});
 }
 
+function stockSelectedProfile(argv: string[], activeProfile: string): string {
+	const profileFlag = argv.indexOf("--profile");
+	return profileFlag >= 0 ? (argv[profileFlag + 1] ?? activeProfile) : activeProfile;
+}
+
 describe("HermesLocalBackendManager", () => {
-	test("constructs stock serve argv without creating profiles/default or profiles/custom", () => {
+	test("pins managed profiles instead of following stock active_profile state", () => {
 		expect(
 			hermesExecutableCandidates(
 				{ HERMES_EXECUTABLE: "/explicit/hermes", PATH: "/first:/second" },
@@ -97,24 +103,49 @@ describe("HermesLocalBackendManager", () => {
 			"/explicit/hermes",
 			"/first/hermes",
 			"/second/hermes",
+			"/opt/homebrew/bin/hermes",
+			"/opt/homebrew/sbin/hermes",
+			"/usr/local/bin/hermes",
+			"/usr/local/sbin/hermes",
 			"/Users/test/.local/bin/hermes",
 			"/Users/test/.hermes/bin/hermes",
 		]);
-		expect(buildHermesBackendLaunch("default", "/Users/test/.hermes")).toEqual({
-			argv: ["serve", "--host", "127.0.0.1", "--port", "0"],
+		const defaultLaunch = buildHermesBackendLaunch("default", "/Users/test/.hermes");
+		const customLaunch = buildHermesBackendLaunch("custom", "/Users/test/.hermes");
+		const namedLaunch = buildHermesBackendLaunch("work", "/Users/test/.hermes");
+		expect(defaultLaunch).toEqual({
+			argv: ["--profile", "default", "serve", "--host", "127.0.0.1", "--port", "0"],
 			hermesHome: "/Users/test/.hermes",
 		});
-		expect(buildHermesBackendLaunch("custom", "/Users/test/.hermes")).toEqual({
-			argv: ["serve", "--host", "127.0.0.1", "--port", "0"],
+		expect(customLaunch).toEqual({
+			argv: ["--profile", "default", "serve", "--host", "127.0.0.1", "--port", "0"],
 			hermesHome: "/Users/test/.hermes",
 		});
-		expect(buildHermesBackendLaunch("work", "/Users/test/.hermes")).toEqual({
+		expect(namedLaunch).toEqual({
 			argv: ["--profile", "work", "serve", "--host", "127.0.0.1", "--port", "0"],
 			hermesHome: "/Users/test/.hermes",
 		});
+		expect(stockSelectedProfile(defaultLaunch.argv, "sticky-active-profile")).toBe("default");
+		expect(stockSelectedProfile(customLaunch.argv, "sticky-active-profile")).toBe("default");
+		expect(stockSelectedProfile(namedLaunch.argv, "sticky-active-profile")).toBe("work");
 		expect(normalizeHermesHomeRoot("/Users/test/.hermes/profiles/work")).toBe(
 			"/Users/test/.hermes"
 		);
+	});
+
+	test("finds a Homebrew Hermes executable from a sparse packaged-app PATH", () => {
+		const checked: string[] = [];
+		const resolved = resolveHermesExecutable(
+			{ PATH: "/usr/bin:/bin" },
+			"/Users/test",
+			(candidate) => {
+				checked.push(candidate);
+				return candidate === "/opt/homebrew/bin/hermes";
+			}
+		);
+
+		expect(resolved).toBe("/opt/homebrew/bin/hermes");
+		expect(checked).toEqual(["/usr/bin/hermes", "/bin/hermes", "/opt/homebrew/bin/hermes"]);
 	});
 
 	test("singleflights one owned child per profile and keeps the token out of argv and descriptors", async () => {
@@ -135,7 +166,7 @@ describe("HermesLocalBackendManager", () => {
 		expect(left.baseUrl).toBe("http://127.0.0.1:54321");
 		expect(invocations[0]).toMatchObject({
 			executable: "/opt/hermes/bin/hermes",
-			argv: ["serve", "--host", "127.0.0.1", "--port", "0"],
+			argv: ["--profile", "default", "serve", "--host", "127.0.0.1", "--port", "0"],
 			options: { shell: false, stdio: ["ignore", "pipe", "pipe"] },
 		});
 		const environment = invocations[0]?.options.env;
@@ -158,6 +189,23 @@ describe("HermesLocalBackendManager", () => {
 		expect(children).toHaveLength(2);
 		announceReady(children[1] as FakeChild, 51_002);
 		expect((await restarted).baseUrl).toBe("http://127.0.0.1:51002");
+	});
+
+	test("notifies subscribers once when a ready owned runtime is invalidated", async () => {
+		const children: FakeChild[] = [];
+		const manager = testManager({ children });
+		const invalidations: unknown[] = [];
+		const unsubscribe = manager.subscribeRuntimeInvalidated((event) => invalidations.push(event));
+		const starting = manager.ensure("work");
+		announceReady(children[0] as FakeChild, 51_101);
+		await starting;
+
+		children[0]?.exit(9, null);
+		children[0]?.emit("exit", 9, null);
+
+		expect(invalidations).toEqual([{ profileId: "work", baseUrl: "http://127.0.0.1:51101" }]);
+		expect(JSON.stringify(invalidations)).not.toContain("session-secret");
+		unsubscribe();
 	});
 
 	test("bounds startup time and output while returning content-free errors", async () => {
@@ -183,6 +231,8 @@ describe("HermesLocalBackendManager", () => {
 	test("shutdown kills only owned children and removes startup listeners", async () => {
 		const children: FakeChild[] = [];
 		const manager = testManager({ children });
+		const invalidations: unknown[] = [];
+		manager.subscribeRuntimeInvalidated((event) => invalidations.push(event));
 		const starting = manager.ensure("default");
 		announceReady(children[0] as FakeChild, 52_001);
 		await starting;
@@ -193,6 +243,7 @@ describe("HermesLocalBackendManager", () => {
 		expect(manager.describeOwnedBackends()).toEqual([]);
 		expect(children[0]?.stdout.listenerCount("data")).toBe(0);
 		expect(children[0]?.stderr.listenerCount("data")).toBe(0);
+		expect(invalidations).toEqual([]);
 	});
 
 	test("adopts an announced ephemeral endpoint and verifies real REST plus WebSocket auth", async () => {
@@ -244,10 +295,12 @@ describe("HermesLocalBackendManager", () => {
 		managers.push(manager);
 
 		const starting = manager.ensure("default");
-		announceReady(children[0] as FakeChild, server.port);
+		const serverPort = server.port;
+		if (!serverPort) throw new Error("fixture server did not bind");
+		announceReady(children[0] as FakeChild, serverPort);
 		const runtime = await starting;
 
-		expect(runtime.baseUrl).toBe(`http://127.0.0.1:${server.port}`);
+		expect(runtime.baseUrl).toBe(`http://127.0.0.1:${serverPort}`);
 		expect(runtime.baseUrl).not.toContain(":8080");
 		expect(statusAuthenticated).toBe(true);
 		expect(webSocketAuthenticated).toBe(true);
@@ -303,7 +356,9 @@ describe("HermesLocalBackendManager", () => {
 		managers.push(manager);
 
 		const starting = manager.ensure("default");
-		announceReady(children[0] as FakeChild, server.port);
+		const serverPort = server.port;
+		if (!serverPort) throw new Error("fixture server did not bind");
+		announceReady(children[0] as FakeChild, serverPort);
 		const runtime = await starting;
 
 		expect(runtime.token).toBe(spawnToken);

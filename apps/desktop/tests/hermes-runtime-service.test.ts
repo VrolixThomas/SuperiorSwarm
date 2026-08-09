@@ -1,12 +1,17 @@
 import "./preload-electron-mock";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { EventEmitter } from "node:events";
 import { _setDbForTesting } from "../src/main/db";
 import {
 	ensureHermesLocalConnection,
 	listHermesConnections,
 	saveHermesConnection,
 } from "../src/main/hermes/hermes-connections";
-import type { HermesLocalBackendRuntime } from "../src/main/hermes/hermes-local-backend-manager";
+import {
+	type HermesBackendChild,
+	HermesLocalBackendManager,
+	type HermesLocalBackendRuntime,
+} from "../src/main/hermes/hermes-local-backend-manager";
 import type { HermesStockSessionDetail } from "../src/main/hermes/hermes-rest-client";
 import type { HermesRuntimeConnectionSettings } from "../src/main/hermes/hermes-runtime-client";
 import type { HermesRestClientLike } from "../src/main/hermes/hermes-runtime-service";
@@ -34,15 +39,20 @@ class FakeRuntimeClient implements HermesRuntimeClientLike {
 	};
 	responses = new Map<string, unknown[]>();
 	connectionSettings: HermesRuntimeConnectionSettings | null = null;
+	connectGate: Promise<void> | null = null;
+	connectCalls = 0;
+	disconnectCalls = 0;
 
 	constructor(private readonly operations: string[] = []) {}
 
 	connect(settings: HermesRuntimeConnectionSettings): Promise<void> {
+		this.connectCalls++;
 		this.connectionSettings = settings;
-		return Promise.resolve();
+		return this.connectGate ?? Promise.resolve();
 	}
 
 	disconnect(): void {
+		this.disconnectCalls++;
 		this.state.status = "disconnected";
 	}
 
@@ -52,6 +62,7 @@ class FakeRuntimeClient implements HermesRuntimeClientLike {
 		const queued = this.responses.get(method) ?? [];
 		if (queued.length === 0) return Promise.resolve({ ok: true });
 		const response = queued.shift();
+		if (response instanceof Promise) return response;
 		return response instanceof Error ? Promise.reject(response) : Promise.resolve(response);
 	}
 
@@ -84,6 +95,58 @@ class FakeRuntimeClient implements HermesRuntimeClientLike {
 			receivedAt: Date.now(),
 			...event,
 		});
+	}
+}
+
+class Deferred<T> {
+	readonly promise: Promise<T>;
+	resolve!: (value: T) => void;
+	reject!: (error: Error) => void;
+
+	constructor() {
+		this.promise = new Promise<T>((resolve, reject) => {
+			this.resolve = resolve;
+			this.reject = reject;
+		});
+	}
+}
+
+class FakeBackendChild extends EventEmitter implements HermesBackendChild {
+	readonly stdout = new EventEmitter();
+	readonly stderr = new EventEmitter();
+	readonly pid: number;
+	exitCode: number | null = null;
+	readonly killSignals: NodeJS.Signals[] = [];
+
+	constructor(pid: number) {
+		super();
+		this.pid = pid;
+	}
+
+	kill(signal: NodeJS.Signals = "SIGTERM"): boolean {
+		this.killSignals.push(signal);
+		queueMicrotask(() => this.exit(0, signal));
+		return true;
+	}
+
+	exit(code: number | null, signal: NodeJS.Signals | null = null): void {
+		if (this.exitCode !== null) return;
+		this.exitCode = code ?? 0;
+		this.emit("exit", code, signal);
+	}
+}
+
+function announceBackend(child: FakeBackendChild, port: number): void {
+	queueMicrotask(() => {
+		child.stdout.emit("data", Buffer.from(`HERMES_BACKEND_READY port=${port}\n`));
+	});
+}
+
+async function waitFor(predicate: () => boolean, message: string): Promise<void> {
+	const deadline = Date.now() + 500;
+	while (!predicate()) {
+		if (Date.now() >= deadline) throw new Error(message);
+		await Bun.sleep(1);
 	}
 }
 
@@ -247,7 +310,7 @@ describe("HermesRuntimeService stock lifecycle", () => {
 	test("resolves managed local runtime in memory without persisting its ephemeral endpoint", async () => {
 		service.shutdown();
 		const managed = ensureHermesLocalConnection({ profileId: "default" }, vault);
-		let ensuredProfile: string | null = null;
+		const ensuredProfiles: string[] = [];
 		const runtime: HermesLocalBackendRuntime = {
 			baseUrl: "http://127.0.0.1:54321",
 			profileId: "default",
@@ -260,16 +323,17 @@ describe("HermesRuntimeService stock lifecycle", () => {
 			tokenVault: vault,
 			localBackendManager: {
 				ensure: (profileId) => {
-					ensuredProfile = profileId;
+					ensuredProfiles.push(profileId);
 					return Promise.resolve(runtime);
 				},
+				subscribeRuntimeInvalidated: () => () => undefined,
 				shutdown: () => undefined,
 			},
 		});
 
 		await service.connect(managed.id);
 
-		expect(ensuredProfile).toBe("default");
+		expect(ensuredProfiles).toEqual(["default"]);
 		expect(client.connectionSettings).toEqual({
 			baseUrl: runtime.baseUrl,
 			authMode: "token",
@@ -290,6 +354,7 @@ describe("HermesRuntimeService stock lifecycle", () => {
 			tokenVault: vault,
 			localBackendManager: {
 				ensure: () => Promise.reject(new Error("Stock Hermes is unavailable. Retry.")),
+				subscribeRuntimeInvalidated: () => () => undefined,
 				shutdown: () => {
 					shutdownCalls++;
 				},
@@ -302,6 +367,254 @@ describe("HermesRuntimeService stock lifecycle", () => {
 			error: "Stock Hermes is unavailable. Retry.",
 		});
 		service.shutdown();
+		expect(shutdownCalls).toBe(1);
+	});
+
+	test("cancels a deferred managed ensure when disconnected before it resolves", async () => {
+		service.shutdown();
+		const managed = ensureHermesLocalConnection({ profileId: "default" }, vault);
+		const deferred = new Deferred<HermesLocalBackendRuntime>();
+		let clientCreations = 0;
+		service = new HermesRuntimeService({
+			clientFactory: () => {
+				clientCreations++;
+				return new FakeRuntimeClient();
+			},
+			restClientFactory: () => new FakeRestClient(),
+			sendService: sender,
+			tokenVault: vault,
+			localBackendManager: {
+				ensure: () => deferred.promise,
+				subscribeRuntimeInvalidated: () => () => undefined,
+				shutdown: () => undefined,
+			},
+		});
+
+		const connecting = service.connect(managed.id);
+		service.disconnect(managed.id);
+		deferred.resolve({
+			baseUrl: "http://127.0.0.1:55001",
+			profileId: "default",
+			token: "stale-managed-token",
+		});
+
+		await expect(connecting).rejects.toThrow("cancelled");
+		expect(clientCreations).toBe(0);
+		expect(service.getState(managed.id).status).toBe("disconnected");
+	});
+
+	test("lets only the newest concurrent connect install a client", async () => {
+		const firstGate = new Deferred<void>();
+		const clients: FakeRuntimeClient[] = [];
+		service.shutdown();
+		service = new HermesRuntimeService({
+			clientFactory: () => {
+				const created = new FakeRuntimeClient();
+				if (clients.length === 0) created.connectGate = firstGate.promise;
+				clients.push(created);
+				return created;
+			},
+			restClientFactory: () => new FakeRestClient(),
+			sendService: sender,
+			tokenVault: vault,
+			loopbackTokenResolver: async () => "current-token",
+		});
+
+		const staleConnect = service.connect(connectionId);
+		const staleResult = staleConnect.catch((error: unknown) => error);
+		await waitFor(() => clients.length === 1, "first client was not created");
+		const currentConnect = service.connect(connectionId);
+		await waitFor(() => clients.length === 2, "replacement client was not created");
+		await currentConnect;
+		firstGate.resolve();
+
+		const staleError = await staleResult;
+		expect(staleError).toBeInstanceOf(Error);
+		expect((staleError as Error).message).toContain("cancelled");
+		expect(clients[0]?.disconnectCalls).toBe(1);
+		expect(clients[1]?.disconnectCalls).toBe(0);
+		expect(service.getState(connectionId).status).toBe("connected");
+	});
+
+	test("drops stale binding reconciliation after a newer connection installs", async () => {
+		const deferredResume = new Deferred<unknown>();
+		const clients: FakeRuntimeClient[] = [];
+		service.shutdown();
+		service = new HermesRuntimeService({
+			clientFactory: () => {
+				const created = new FakeRuntimeClient();
+				clients.push(created);
+				return created;
+			},
+			restClientFactory: () => new FakeRestClient(),
+			sendService: sender,
+			tokenVault: vault,
+			loopbackTokenResolver: async () => "current-token",
+		});
+		await service.connect(connectionId);
+		clients[0]?.responses.set("session.resume", [
+			{ session_id: "runtime-1", session_key: "stored-1", profile: "work" },
+			deferredResume.promise,
+		]);
+		await service.resume(connectionId, "stored-1");
+		clients[0]?.emit({ type: "runtime.history-refresh-required", status: "reconnected" });
+		await waitFor(
+			() =>
+				clients[0]?.requests.filter((request) => request.method === "session.resume").length === 2,
+			"binding reconciliation did not start"
+		);
+
+		await service.connect(connectionId);
+		deferredResume.resolve({
+			session_id: "stale-runtime",
+			session_key: "stored-1",
+			profile: "work",
+		});
+		await Bun.sleep(5);
+
+		expect(clients).toHaveLength(2);
+		expect(clients[0]?.disconnectCalls).toBe(1);
+		expect(service.events(connectionId, 0).events).toEqual([]);
+	});
+
+	test("replaces an exited ready managed backend once with fresh REST and WebSocket auth", async () => {
+		service.shutdown();
+		const managed = ensureHermesLocalConnection({ profileId: "default" }, vault);
+		const children: FakeBackendChild[] = [];
+		let tokenNumber = 0;
+		const manager = new HermesLocalBackendManager({
+			executableResolver: () => "/opt/hermes/bin/hermes",
+			hermesHomeResolver: () => "/Users/test/.hermes",
+			tokenFactory: () => `managed-token-${++tokenNumber}`,
+			spawnProcess: () => {
+				const child = new FakeBackendChild(52_000 + children.length);
+				children.push(child);
+				return child;
+			},
+			dashboardTokenResolver: async (_baseUrl, fallbackToken) => fallbackToken,
+			runtimeVerifier: async () => undefined,
+			portAnnounceTimeoutMs: 100,
+		});
+		const clients: FakeRuntimeClient[] = [];
+		const restSettings: Array<{ baseUrl: string; profileId: string; token: string }> = [];
+		service = new HermesRuntimeService({
+			clientFactory: () => {
+				const created = new FakeRuntimeClient();
+				clients.push(created);
+				return created;
+			},
+			restClientFactory: (settings) => {
+				restSettings.push(settings);
+				return new FakeRestClient();
+			},
+			sendService: sender,
+			tokenVault: vault,
+			localBackendManager: manager,
+			recoveryBaseMs: 1,
+			recoveryMaxMs: 2,
+		});
+
+		const initialConnect = service.connect(managed.id);
+		await waitFor(() => children.length === 1, "initial managed child was not started");
+		announceBackend(children[0] as FakeBackendChild, 55_101);
+		await initialConnect;
+		children[0]?.exit(17, null);
+		await waitFor(() => children.length === 2, "replacement managed child was not started");
+		announceBackend(children[1] as FakeBackendChild, 55_102);
+		await waitFor(
+			() => service.getState(managed.id).status === "connected" && clients.length === 2,
+			"replacement runtime did not connect"
+		);
+
+		expect(children).toHaveLength(2);
+		expect(clients[0]?.disconnectCalls).toBe(1);
+		expect(clients.map((item) => item.connectionSettings)).toEqual([
+			{
+				baseUrl: "http://127.0.0.1:55101",
+				authMode: "token",
+				token: "managed-token-1",
+			},
+			{
+				baseUrl: "http://127.0.0.1:55102",
+				authMode: "token",
+				token: "managed-token-2",
+			},
+		]);
+		expect(restSettings).toEqual([
+			{
+				baseUrl: "http://127.0.0.1:55101",
+				profileId: "default",
+				token: "managed-token-1",
+			},
+			{
+				baseUrl: "http://127.0.0.1:55102",
+				profileId: "default",
+				token: "managed-token-2",
+			},
+		]);
+		await Bun.sleep(10);
+		expect(children).toHaveLength(2);
+		service.disconnect(managed.id);
+		children[1]?.exit(18, null);
+		await Bun.sleep(10);
+		expect(children).toHaveLength(2);
+	});
+
+	test("backs off replacement failures and cancels recovery on shutdown", async () => {
+		service.shutdown();
+		const managed = ensureHermesLocalConnection({ profileId: "default" }, vault);
+		let ensureCalls = 0;
+		let shutdownCalls = 0;
+		let unsubscribeCalls = 0;
+		const invalidation = {
+			listener: null as ((event: { profileId: string; baseUrl: string }) => void) | null,
+		};
+		service = new HermesRuntimeService({
+			clientFactory: () => new FakeRuntimeClient(),
+			restClientFactory: () => new FakeRestClient(),
+			sendService: sender,
+			tokenVault: vault,
+			localBackendManager: {
+				ensure: () => {
+					ensureCalls++;
+					if (ensureCalls === 1) {
+						return Promise.resolve({
+							baseUrl: "http://127.0.0.1:55201",
+							profileId: "default",
+							token: "initial-token",
+						});
+					}
+					return Promise.reject(new Error("replacement unavailable token=hidden-secret"));
+				},
+				subscribeRuntimeInvalidated: (listener) => {
+					invalidation.listener = listener;
+					return () => {
+						unsubscribeCalls++;
+						invalidation.listener = null;
+					};
+				},
+				shutdown: () => {
+					shutdownCalls++;
+				},
+			},
+			recoveryBaseMs: 30,
+			recoveryMaxMs: 30,
+		});
+		await service.connect(managed.id);
+
+		invalidation.listener?.({
+			profileId: "default",
+			baseUrl: "http://127.0.0.1:55201",
+		});
+		await waitFor(() => ensureCalls === 2, "first recovery attempt did not run");
+		await Bun.sleep(5);
+		expect(ensureCalls).toBe(2);
+		expect(JSON.stringify(service.getState(managed.id))).not.toContain("hidden-secret");
+
+		service.shutdown();
+		await Bun.sleep(40);
+		expect(ensureCalls).toBe(2);
+		expect(unsubscribeCalls).toBe(1);
 		expect(shutdownCalls).toBe(1);
 	});
 

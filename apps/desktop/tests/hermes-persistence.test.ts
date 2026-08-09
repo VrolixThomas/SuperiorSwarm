@@ -90,6 +90,59 @@ describe("Hermes persistence services", () => {
 		expect(JSON.stringify(first)).not.toContain("8080");
 	});
 
+	test("maps legacy managed custom to stock default without changing external custom", () => {
+		const external = saveHermesConnection(
+			{
+				label: "External custom profile",
+				baseUrl: "https://hermes.example.com",
+				profileId: "custom",
+				token: "external-token",
+			},
+			vault
+		);
+		const managed = ensureHermesLocalConnection({ profileId: "custom" }, vault);
+
+		expect(external).toMatchObject({
+			managementMode: "external",
+			profileId: "custom",
+		});
+		expect(managed).toMatchObject({
+			managementMode: "managed",
+			profileId: "default",
+		});
+	});
+
+	test("keeps migrated legacy transport fields recoverable during startup ensure", () => {
+		const now = new Date(1);
+		db.insert(schema.hermesConnections)
+			.values({
+				id: "migrated-local",
+				label: "Local Hermes",
+				baseUrl: "http://127.0.0.1:8080",
+				profileId: "default",
+				managementMode: "managed",
+				encryptedToken: "recoverable-ciphertext",
+				tokenStorage: "safe-storage",
+				createdAt: now,
+				updatedAt: now,
+			})
+			.run();
+
+		ensureHermesLocalConnection({}, vault);
+
+		const stored = db
+			.select()
+			.from(schema.hermesConnections)
+			.where(eq(schema.hermesConnections.id, "migrated-local"))
+			.get();
+		expect(stored).toMatchObject({
+			baseUrl: "http://127.0.0.1:8080",
+			encryptedToken: "recoverable-ciphertext",
+			tokenStorage: "safe-storage",
+			managementMode: "managed",
+		});
+	});
+
 	test("reports a memory-only token as available during the current process", () => {
 		const memoryVault = new HermesTokenVault({
 			isEncryptionAvailable: () => false,
