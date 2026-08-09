@@ -76,18 +76,29 @@ describe("Hermes persistence services", () => {
 		expect(JSON.stringify(listHermesConnections(memoryVault))).not.toContain("memory-secret");
 	});
 
-	test("accepts loopback only and deletes dependent link/report rows", () => {
+	test("allows secure remote stock browsing but distinguishes it from loopback delivery", () => {
+		const remote = saveHermesConnection(
+			{
+				label: "Remote",
+				baseUrl: "https://hermes.example.com",
+				profileId: "default",
+				token: "token",
+			},
+			vault
+		);
+		expect(remote.connectionMode).toBe("remote");
+		expect(remote.authMode).toBe("token");
 		expect(() =>
 			saveHermesConnection(
 				{
-					label: "Remote",
-					baseUrl: "https://hermes.example.com",
+					label: "Insecure remote",
+					baseUrl: "http://hermes.example.com",
 					profileId: "default",
 					token: "token",
 				},
 				vault
 			)
-		).toThrow("loopback");
+		).toThrow("HTTPS");
 
 		const connection = saveHermesConnection(
 			{
@@ -98,7 +109,9 @@ describe("Hermes persistence services", () => {
 			},
 			vault
 		);
+		expect(connection.connectionMode).toBe("loopback");
 		deleteHermesConnection(connection.id, vault);
+		deleteHermesConnection(remote.id, vault);
 		expect(listHermesConnections()).toEqual([]);
 	});
 

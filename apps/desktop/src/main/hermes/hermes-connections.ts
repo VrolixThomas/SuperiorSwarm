@@ -21,6 +21,16 @@ function timestamp(value: Date | null): number | null {
 	return value?.getTime() ?? null;
 }
 
+export function isHermesLoopbackUrl(value: string): boolean {
+	const hostname = new URL(value).hostname.toLowerCase();
+	return (
+		hostname === "localhost" ||
+		hostname === "::1" ||
+		hostname === "[::1]" ||
+		/^127(?:\.\d{1,3}){3}$/.test(hostname)
+	);
+}
+
 function toSummary(
 	row: typeof hermesConnections.$inferSelect,
 	vault: HermesTokenVault = hermesTokenVault
@@ -31,6 +41,8 @@ function toSummary(
 		label: row.label,
 		baseUrl: row.baseUrl,
 		profileId: row.profileId,
+		authMode: "token",
+		connectionMode: isHermesLoopbackUrl(row.baseUrl) ? "loopback" : "remote",
 		hasToken:
 			row.tokenStorage === "safe-storage"
 				? row.encryptedToken !== null
@@ -53,13 +65,10 @@ export function normalizeHermesBaseUrl(value: string): string {
 		throw new Error("Hermes URL must use http, https, ws, or wss");
 	}
 	if (url.username || url.password) throw new Error("Hermes URL must not contain credentials");
-	const hostname = url.hostname.toLowerCase();
-	const loopback =
-		hostname === "localhost" ||
-		hostname === "::1" ||
-		hostname === "[::1]" ||
-		/^127(?:\.\d{1,3}){3}$/.test(hostname);
-	if (!loopback) throw new Error("Hermes connections currently require a loopback URL");
+	const loopback = isHermesLoopbackUrl(url.toString());
+	if (!loopback && url.protocol !== "https:" && url.protocol !== "wss:") {
+		throw new Error("Remote Hermes connections require HTTPS or WSS");
+	}
 	url.hash = "";
 	return url.toString().replace(/\/$/, "");
 }
