@@ -9,6 +9,8 @@ import {
 	groupHermesSessions,
 	hermesActivitySummary,
 	hermesComposerContainsFiles,
+	hermesComposerEnterAction,
+	hermesComposerInteractionPolicy,
 	hermesConnectionFormPolicy,
 	hermesOriginActionAvailability,
 	hermesOriginReturnLabel,
@@ -91,6 +93,41 @@ const message = (overrides: Partial<HermesTranscriptMessage> = {}): HermesTransc
 });
 
 describe("Hermes renderer view model", () => {
+	test("keeps the active-turn draft editable while gating send and attachment mutation", () => {
+		const policy = hermesComposerInteractionPolicy({
+			connected: true,
+			running: true,
+			submitPending: false,
+			attachmentPickerPending: false,
+			attachmentAttaching: false,
+			hasPayload: true,
+		});
+
+		expect(policy).toEqual({
+			textareaDisabled: false,
+			sendDisabled: true,
+			attachmentMutationDisabled: true,
+		});
+		expect(
+			hermesComposerEnterAction({
+				connected: true,
+				running: true,
+				submitPending: false,
+				shiftKey: false,
+				isComposing: false,
+			})
+		).toBe("preserve");
+		expect(
+			hermesComposerEnterAction({
+				connected: true,
+				running: true,
+				submitPending: false,
+				shiftKey: false,
+				isComposing: true,
+			})
+		).toBe("native");
+	});
+
 	test("deduplicates retained physical copies by canonical identity across compactions", () => {
 		const timeline = deriveHermesCanonicalTimeline([
 			message({

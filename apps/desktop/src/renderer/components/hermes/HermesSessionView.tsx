@@ -19,6 +19,8 @@ import {
 	createHermesLiveState,
 	deriveHermesCanonicalTimeline,
 	hermesComposerContainsFiles,
+	hermesComposerEnterAction,
+	hermesComposerInteractionPolicy,
 	hermesComposerTextareaLayout,
 	hermesOriginActionAvailability,
 	hermesOriginReturnLabel,
@@ -101,11 +103,6 @@ export function HermesSessionView() {
 	const releaseAttachment = trpc.hermes.releaseAttachment.useMutation();
 	const releaseAttachmentRef = useRef(releaseAttachment.mutate);
 	releaseAttachmentRef.current = releaseAttachment.mutate;
-	const attachmentRemovalDisabled =
-		pickAttachments.isPending ||
-		submit.isPending ||
-		attachments.some((attachment) => attachment.status === "attaching");
-
 	const selectionKey = `${connectionId}:${sessionId ?? ""}`;
 	const previousSelectionKey = useRef(selectionKey);
 	const selectionGuardRef = useRef<HermesSelectionGuard | null>(null);
@@ -119,6 +116,14 @@ export function HermesSessionView() {
 		{ enabled: Boolean(connectionId), refetchInterval: 1_000 }
 	);
 	const connected = status.data?.status === "connected";
+	const composerPolicy = hermesComposerInteractionPolicy({
+		connected,
+		running: live.running,
+		submitPending: submit.isPending,
+		attachmentPickerPending: pickAttachments.isPending,
+		attachmentAttaching: attachments.some((attachment) => attachment.status === "attaching"),
+		hasPayload: Boolean(composer.trim() || attachments.length > 0),
+	});
 	const catalog = trpc.hermes.catalog.useQuery(
 		{ connectionId },
 		{ enabled: Boolean(connectionId) && connected }
@@ -299,8 +304,7 @@ export function HermesSessionView() {
 			(!composer.trim() && attachments.length === 0) ||
 			!sessionId ||
 			!connected ||
-			live.running ||
-			submit.isPending
+			composerPolicy.sendDisabled
 		) {
 			return;
 		}
@@ -772,9 +776,9 @@ export function HermesSessionView() {
 					>
 						<HermesComposerAttachments
 							attachments={attachments}
-							removalDisabled={attachmentRemovalDisabled}
+							removalDisabled={composerPolicy.attachmentMutationDisabled}
 							onRemove={(handle) => {
-								if (attachmentRemovalDisabled) return;
+								if (composerPolicy.attachmentMutationDisabled) return;
 								dispatchAttachments({ type: "remove", handle });
 								releaseAttachment.mutate({ handle });
 								setAttachmentLimitError(null);
@@ -784,9 +788,7 @@ export function HermesSessionView() {
 							<button
 								type="button"
 								onClick={() => pickAttachments.mutate()}
-								disabled={
-									!connected || live.running || submit.isPending || pickAttachments.isPending
-								}
+								disabled={composerPolicy.attachmentMutationDisabled}
 								aria-label="Attach files"
 								title="Attach files"
 								className="mb-[11px] flex size-8 shrink-0 items-center justify-center rounded-full text-[var(--text-tertiary)] hover:bg-[var(--bg-overlay)] hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/50 disabled:opacity-35"
@@ -815,13 +817,20 @@ export function HermesSessionView() {
 									setAttachmentLimitError("Use the paperclip to attach files.");
 								}}
 								onKeyDown={(event) => {
-									if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
-										event.preventDefault();
-										event.currentTarget.form?.requestSubmit();
-									}
+									if (event.key !== "Enter") return;
+									const action = hermesComposerEnterAction({
+										connected,
+										running: live.running,
+										submitPending: submit.isPending,
+										shiftKey: event.shiftKey,
+										isComposing: event.nativeEvent.isComposing,
+									});
+									if (action === "native") return;
+									event.preventDefault();
+									if (action === "submit") event.currentTarget.form?.requestSubmit();
 								}}
 								placeholder={connected ? "Continue this agent thread…" : "Reconnect to continue…"}
-								disabled={!connected || live.running || submit.isPending}
+								disabled={composerPolicy.textareaDisabled}
 								rows={1}
 								aria-label="Message"
 								className="min-h-14 min-w-0 flex-1 resize-none bg-transparent px-1.5 py-[17px] text-[14px] leading-[20px] text-[var(--text)] outline-none placeholder:text-[var(--text-quaternary)] disabled:opacity-50 [overflow-wrap:anywhere]"
@@ -836,9 +845,7 @@ export function HermesSessionView() {
 								disabled={
 									live.running
 										? interrupt.isPending
-										: (!composer.trim() && attachments.length === 0) ||
-											!connected ||
-											submit.isPending
+										: composerPolicy.sendDisabled
 								}
 								aria-label={live.running ? "Stop response" : "Send message"}
 								title={live.running ? "Stop response" : "Send message"}

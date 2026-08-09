@@ -289,6 +289,43 @@ export function hermesComposerContainsFiles(transfer: HermesFileTransferLike): b
 	return false;
 }
 
+export function hermesComposerInteractionPolicy(input: {
+	connected: boolean;
+	running: boolean;
+	submitPending: boolean;
+	attachmentPickerPending: boolean;
+	attachmentAttaching: boolean;
+	hasPayload: boolean;
+}): {
+	textareaDisabled: boolean;
+	sendDisabled: boolean;
+	attachmentMutationDisabled: boolean;
+} {
+	return {
+		textareaDisabled: !input.connected || input.submitPending,
+		sendDisabled:
+			!input.hasPayload || !input.connected || input.running || input.submitPending,
+		attachmentMutationDisabled:
+			!input.connected ||
+			input.running ||
+			input.submitPending ||
+			input.attachmentPickerPending ||
+			input.attachmentAttaching,
+	};
+}
+
+export function hermesComposerEnterAction(input: {
+	connected: boolean;
+	running: boolean;
+	submitPending: boolean;
+	shiftKey: boolean;
+	isComposing: boolean;
+}): "native" | "preserve" | "submit" {
+	if (input.shiftKey || input.isComposing) return "native";
+	if (!input.connected || input.running || input.submitPending) return "preserve";
+	return "submit";
+}
+
 function safeProjectedAttachmentName(value: unknown): string | null {
 	if (typeof value !== "string") return null;
 	const name = Array.from(value.trim())
