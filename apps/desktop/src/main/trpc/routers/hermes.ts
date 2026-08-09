@@ -81,12 +81,14 @@ export const hermesRouter = router({
 		.input(
 			z.object({
 				connectionId: z.string().min(1),
+				topic: z.string().trim().min(1).max(200_000),
 				profileId: z.string().trim().min(1).max(120).optional(),
 				cwd: z.string().trim().min(1).max(4_096).optional(),
 			})
 		)
 		.mutation(({ input }) =>
 			hermesRuntimeService.create(input.connectionId, {
+				initialPrompt: input.topic,
 				profileId: input.profileId,
 				cwd: input.cwd,
 			})

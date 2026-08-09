@@ -190,6 +190,7 @@ describe("Hermes global navigation", () => {
 	test("keeps stock lifecycle and Slack destinations behind the main-process router", async () => {
 		const router = await mainSource("trpc/routers/hermes.ts");
 		expect(router).toContain("create: publicProcedure");
+		expect(router).toContain("topic: z.string().trim().min(1)");
 		expect(router).toContain("messageId: z.string().min(1)");
 		expect(router).toContain("explicitRetry: z.boolean()");
 		expect(router).toContain("saveOriginLink");
@@ -205,6 +206,10 @@ describe("Hermes global navigation", () => {
 		const sidebar = await rendererSource("hermes/HermesSidebar.tsx");
 		expect(sidebar).toContain("New session");
 		expect(sidebar).toContain("trpc.hermes.create.useMutation");
+		expect(sidebar).toContain("newTopic");
+		expect(sidebar).toContain("newSessionSubmitting");
+		expect(sidebar).toContain("trpc.tickets.getCachedTickets.useQuery");
+		expect(sidebar).toContain("trpc.tickets.getLinkedTickets.useQuery");
 		expect(sidebar).toContain("showTokenInput");
 		expect(sidebar).toContain("canSave");
 		expect(sidebar).not.toContain('status.data?.status === "upgrade-required"');

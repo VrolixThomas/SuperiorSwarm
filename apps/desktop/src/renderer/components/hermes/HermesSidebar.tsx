@@ -1,6 +1,7 @@
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
 	type HermesSessionFilter,
+	buildHermesTicketChoices,
 	filterHermesSessions,
 	hermesConnectionFormPolicy,
 } from "../../hermes/hermes-view-model";
@@ -47,8 +48,11 @@ export function HermesSidebar() {
 	const [baseUrl, setBaseUrl] = useState("http://127.0.0.1:8080");
 	const [profileId, setProfileId] = useState("default");
 	const [token, setToken] = useState("");
+	const [newTopic, setNewTopic] = useState("");
+	const [newTicketChoice, setNewTicketChoice] = useState("");
 	const [newWorkspaceId, setNewWorkspaceId] = useState("");
 	const autoConnectAttempted = useRef(new Set<string>());
+	const newSessionSubmitting = useRef(false);
 	const utils = trpc.useUtils();
 
 	const connections = trpc.hermes.connections.useQuery();
@@ -110,11 +114,21 @@ export function HermesSidebar() {
 		}
 	);
 	const availableWorkspaces = trpc.hermes.availableWorkspaces.useQuery();
+	const cachedTickets = trpc.tickets.getCachedTickets.useQuery();
+	const linkedTickets = trpc.tickets.getLinkedTickets.useQuery();
+	const ticketChoices = useMemo(
+		() =>
+			buildHermesTicketChoices(cachedTickets.data, linkedTickets.data, availableWorkspaces.data),
+		[availableWorkspaces.data, cachedTickets.data, linkedTickets.data]
+	);
 	const create = trpc.hermes.create.useMutation({
 		onSuccess: (binding) => {
 			if (!connectionId) return;
 			selectSession({ connectionId, sessionId: binding.durableSessionId });
+			setNewTopic("");
+			setNewTicketChoice("");
 			setNewWorkspaceId("");
+			void utils.hermes.catalog.invalidate({ connectionId });
 		},
 	});
 	const linkIndex = trpc.hermes.workspaceLinkIndex.useQuery(
@@ -155,6 +169,29 @@ export function HermesSidebar() {
 			profileId,
 			...(showTokenInput && token ? { token } : {}),
 		});
+	}
+
+	function submitNewSession(event: FormEvent) {
+		event.preventDefault();
+		const topic = newTopic.trim();
+		if (!connectionId || !topic || newSessionSubmitting.current) return;
+		const workspace = availableWorkspaces.data?.find(
+			(candidate) => candidate.id === newWorkspaceId
+		);
+		newSessionSubmitting.current = true;
+		create.mutate(
+			{
+				connectionId,
+				topic,
+				profileId: activeConnection?.profileId,
+				...(workspace?.cwd ? { cwd: workspace.cwd } : {}),
+			},
+			{
+				onSettled: () => {
+					newSessionSubmitting.current = false;
+				},
+			}
+		);
 	}
 
 	if (showSettings || (connections.data && connections.data.length === 0)) {
@@ -286,39 +323,58 @@ export function HermesSidebar() {
 			) : (
 				<>
 					<div className="px-2 pb-2">
-						<div className="mb-2 flex gap-1.5">
-							<select
-								value={newWorkspaceId}
-								onChange={(event) => setNewWorkspaceId(event.target.value)}
-								className="min-w-0 flex-1 rounded-[5px] border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1 text-[10px] text-[var(--text-tertiary)]"
-								title="Optional workspace context for a new session"
-							>
-								<option value="">No workspace</option>
-								{availableWorkspaces.data?.map((workspace) => (
-									<option key={workspace.id} value={workspace.id}>
-										{workspace.projectName} · {workspace.branch ?? workspace.name}
-									</option>
-								))}
-							</select>
-							<button
-								type="button"
-								disabled={!connectionId || create.isPending}
-								onClick={() => {
-									if (!connectionId) return;
-									const workspace = availableWorkspaces.data?.find(
-										(candidate) => candidate.id === newWorkspaceId
-									);
-									create.mutate({
-										connectionId,
-										profileId: activeConnection?.profileId,
-										...(workspace?.cwd ? { cwd: workspace.cwd } : {}),
-									});
-								}}
-								className="rounded-[5px] bg-[var(--accent)] px-2 py-1 text-[10px] text-white disabled:opacity-40"
-							>
-								{create.isPending ? "Creating…" : "New session"}
-							</button>
-						</div>
+						<form onSubmit={submitNewSession} className="mb-2 flex flex-col gap-1.5">
+							<div className="text-[10px] font-medium text-[var(--text-tertiary)]">New session</div>
+							<textarea
+								value={newTopic}
+								onChange={(event) => setNewTopic(event.target.value)}
+								placeholder="What should this agent work on? Ticket ID, title, or a full prompt"
+								rows={3}
+								className="w-full resize-y rounded-[5px] border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1.5 text-[11px] text-[var(--text)] outline-none focus:border-[var(--accent)]"
+							/>
+							{ticketChoices.length > 0 && (
+								<select
+									value={newTicketChoice}
+									onChange={(event) => {
+										const value = event.target.value;
+										setNewTicketChoice(value);
+										const choice = ticketChoices.find((candidate) => candidate.value === value);
+										if (!choice) return;
+										setNewTopic(choice.topic);
+										setNewWorkspaceId(choice.workspaceId);
+									}}
+									className="min-w-0 rounded-[5px] border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1 text-[10px] text-[var(--text-tertiary)]"
+								>
+									<option value="">Optional linked ticket…</option>
+									{ticketChoices.map((choice) => (
+										<option key={choice.value} value={choice.value}>
+											{choice.label}
+										</option>
+									))}
+								</select>
+							)}
+							<div className="flex gap-1.5">
+								<select
+									value={newWorkspaceId}
+									onChange={(event) => setNewWorkspaceId(event.target.value)}
+									className="min-w-0 flex-1 rounded-[5px] border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1 text-[10px] text-[var(--text-tertiary)]"
+								>
+									<option value="">No workspace</option>
+									{availableWorkspaces.data?.map((workspace) => (
+										<option key={workspace.id} value={workspace.id}>
+											{workspace.projectName} · {workspace.branch ?? workspace.name}
+										</option>
+									))}
+								</select>
+								<button
+									type="submit"
+									disabled={!connectionId || !newTopic.trim() || create.isPending}
+									className="rounded-[5px] bg-[var(--accent)] px-2 py-1 text-[10px] text-white disabled:opacity-40"
+								>
+									{create.isPending ? "Starting…" : "Start session"}
+								</button>
+							</div>
+						</form>
 						{create.error && (
 							<div className="mb-2 text-[10px] text-[var(--danger)]">{create.error.message}</div>
 						)}

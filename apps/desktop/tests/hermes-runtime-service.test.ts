@@ -255,37 +255,72 @@ describe("HermesRuntimeService stock lifecycle", () => {
 		expect(client.requests).toEqual([]);
 	});
 
-	test("creates with source superiorswarm and submits only against the runtime ID", async () => {
+	test("creates a titled SuperiorSwarm session and immediately starts its initial topic", async () => {
 		client.responses.set("session.create", [
 			{ session_id: "runtime-new", stored_session_id: "stored-new", profile: "work" },
 		]);
 		client.responses.set("prompt.submit", [{ status: "streaming" }]);
 		await service.connect(connectionId);
 
-		const created = await service.create(connectionId, { cwd: "/tmp/worktree" });
-		expect(await service.history(connectionId, created.durableSessionId)).toEqual({
-			durableSessionId: "stored-new",
-			messages: [],
+		const created = await service.create(connectionId, {
+			cwd: "/tmp/worktree",
+			initialPrompt: "Investigate ticket SUP-42 and fix the failing release build",
 		});
-		await service.submit(connectionId, created.durableSessionId, "Continue");
 
 		expect(created).toMatchObject({
 			runtimeSessionId: "runtime-new",
 			durableSessionId: "stored-new",
 			persisted: false,
 		});
+		expect(await service.history(connectionId, created.durableSessionId)).toEqual({
+			durableSessionId: "stored-new",
+			messages: [
+				expect.objectContaining({
+					role: "user",
+					text: "Investigate ticket SUP-42 and fix the failing release build",
+				}),
+			],
+		});
 		expect(client.requests).toEqual([
 			{
 				method: "session.create",
-				params: { source: "superiorswarm", profile: "work", cwd: "/tmp/worktree" },
+				params: {
+					title: "Investigate ticket SUP-42 and fix the failing release build",
+					source: "superiorswarm",
+					profile: "work",
+					cwd: "/tmp/worktree",
+				},
 			},
 			{
 				method: "prompt.submit",
-				params: { session_id: "runtime-new", text: "Continue" },
+				params: {
+					session_id: "runtime-new",
+					text: "Investigate ticket SUP-42 and fix the failing release build",
+				},
 			},
 		]);
+		await expect(
+			service.submit(connectionId, created.durableSessionId, "Duplicate")
+		).rejects.toThrow("already active");
 		expect(JSON.stringify(client.requests)).not.toContain("claim");
 		expect(rest.transcriptCalls).toEqual([]);
+	});
+
+	test("buffers an initial-topic submission failure for the newly selected session", async () => {
+		client.responses.set("session.create", [
+			{ session_id: "runtime-new", stored_session_id: "stored-new", profile: "work" },
+		]);
+		client.responses.set("prompt.submit", [new Error("token=secret provider rejected topic")]);
+		await service.connect(connectionId);
+
+		await service.create(connectionId, { initialPrompt: "Start the task" });
+		await Bun.sleep(0);
+
+		const error = service
+			.events(connectionId, 0)
+			.events.find((entry) => entry.event.type === "runtime.error")?.event;
+		expect(error?.text).toContain("provider rejected topic");
+		expect(error?.text).not.toContain("secret");
 	});
 
 	test("refreshes before resume and activates an already-warm stock runtime", async () => {

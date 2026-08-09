@@ -110,6 +110,15 @@ export interface HermesRuntimeServiceOptions {
 }
 
 const MAX_BUFFERED_EVENTS = 1_000;
+const PROMPT_SUBMIT_TIMEOUT_MS = 1_800_000;
+
+function sessionTitleFromTopic(topic: string): string {
+	const firstLine = topic
+		.split(/\r?\n/)
+		.map((line) => line.trim())
+		.find(Boolean);
+	return (firstLine ?? "New agent session").replace(/\s+/g, " ").slice(0, 100);
+}
 
 function stockCatalog(
 	sessions: HermesSessionSummary[],
@@ -370,8 +379,8 @@ export class HermesRuntimeService {
 		const runtime = this.requireRuntime(connectionId);
 		const durableSessionId = this.resolveDurableId(runtime, hermesSessionId);
 		const draftBinding = this.bindingFor(runtime, durableSessionId);
-		if (draftBinding && !draftBinding.persisted && !draftBinding.activeTurn) {
-			return { durableSessionId, messages: [] };
+		if (draftBinding && !draftBinding.persisted) {
+			return runtime.histories.get(durableSessionId) ?? { durableSessionId, messages: [] };
 		}
 		const profileId = this.profileFor(runtime, durableSessionId);
 		const history = await runtime.rest.getTranscript(durableSessionId, profileId);
@@ -391,11 +400,15 @@ export class HermesRuntimeService {
 
 	async create(
 		connectionId: string,
-		input: { cwd?: string; profileId?: string } = {}
+		input: { initialPrompt: string; cwd?: string; profileId?: string }
 	): Promise<HermesSessionBinding> {
 		const runtime = this.requireRuntime(connectionId);
 		const profileId = input.profileId ?? runtime.profileId;
-		const params: Record<string, unknown> = { source: "superiorswarm", profile: profileId };
+		const params: Record<string, unknown> = {
+			title: sessionTitleFromTopic(input.initialPrompt),
+			source: "superiorswarm",
+			profile: profileId,
+		};
 		if (input.cwd) params["cwd"] = input.cwd;
 		const binding = normalizeHermesSessionBinding(
 			await runtime.client.request("session.create", params),
@@ -403,6 +416,24 @@ export class HermesRuntimeService {
 			profileId
 		);
 		this.installBinding(runtime, binding);
+		runtime.histories.set(binding.durableSessionId, {
+			durableSessionId: binding.durableSessionId,
+			messages: [
+				{
+					id: `draft-${binding.durableSessionId}`,
+					turnId: null,
+					role: "user",
+					text: input.initialPrompt,
+					createdAt: Date.now(),
+					status: "submitting",
+					toolName: null,
+					workspaceArtifacts: [],
+				},
+			],
+		});
+		void this.submit(connectionId, binding.durableSessionId, input.initialPrompt).catch((error) => {
+			this.pushRuntimeError(connectionId, error, binding.durableSessionId);
+		});
 		return binding;
 	}
 
@@ -450,10 +481,14 @@ export class HermesRuntimeService {
 		if (binding.activeTurn) throw new Error("A Hermes turn is already active for this session");
 		binding.activeTurn = true;
 		try {
-			await runtime.client.request("prompt.submit", {
-				session_id: binding.runtimeSessionId,
-				text,
-			});
+			await runtime.client.request(
+				"prompt.submit",
+				{
+					session_id: binding.runtimeSessionId,
+					text,
+				},
+				{ timeoutMs: PROMPT_SUBMIT_TIMEOUT_MS }
+			);
 			return { ok: true };
 		} catch (error) {
 			binding.activeTurn = false;
@@ -772,14 +807,18 @@ export class HermesRuntimeService {
 		if (runtime.events.length > MAX_BUFFERED_EVENTS) runtime.events.shift();
 	}
 
-	private pushRuntimeError(connectionId: string, error: unknown): void {
+	private pushRuntimeError(
+		connectionId: string,
+		error: unknown,
+		durableSessionId: string | null = null
+	): void {
 		const sanitized = sanitizeHermesPayload(
 			error instanceof Error ? error.message : "Hermes runtime error"
 		);
 		this.pushEvent(connectionId, {
 			type: "runtime.error",
 			runtimeSessionId: null,
-			durableSessionId: null,
+			durableSessionId,
 			turnId: null,
 			requestId: null,
 			text: typeof sanitized === "string" ? sanitized : "Hermes runtime error",
