@@ -1,7 +1,5 @@
 import { spawn } from "node:child_process";
-import { constants, accessSync } from "node:fs";
-import { homedir } from "node:os";
-import { delimiter, join } from "node:path";
+import { resolveHermesExecutable, resolveHermesHomeRoot } from "./hermes-cli";
 import type { HermesSlackTarget } from "./hermes-origin-resolver";
 
 interface HermesOutputStream {
@@ -57,33 +55,6 @@ export interface HermesSendServiceOptions {
 	maxContentBytes?: number;
 }
 
-function defaultExecutableResolver(): string | null {
-	const candidates: string[] = [];
-	const explicit = process.env["HERMES_EXECUTABLE"]?.trim();
-	if (explicit) candidates.push(explicit);
-	for (const directory of (process.env["PATH"] ?? "").split(delimiter)) {
-		if (directory) candidates.push(join(directory, "hermes"));
-	}
-	candidates.push(join(homedir(), ".local", "bin", "hermes"));
-	candidates.push(join(homedir(), ".hermes", "bin", "hermes"));
-	for (const candidate of candidates) {
-		try {
-			accessSync(candidate, constants.X_OK);
-			return candidate;
-		} catch {
-			// Continue through approved executable candidates without invoking a shell.
-		}
-	}
-	return null;
-}
-
-function defaultHermesHomeResolver(profileId: string): string {
-	if (profileId === "default" || profileId === "custom") {
-		return process.env["HERMES_HOME"]?.trim() || join(homedir(), ".hermes");
-	}
-	return join(homedir(), ".hermes", "profiles", profileId);
-}
-
 function defaultSpawnProcess(
 	executable: string,
 	argv: string[],
@@ -131,8 +102,8 @@ export class HermesSendService {
 	private readonly maxContentBytes: number;
 
 	constructor(options: HermesSendServiceOptions = {}) {
-		this.executableResolver = options.executableResolver ?? defaultExecutableResolver;
-		this.hermesHomeResolver = options.hermesHomeResolver ?? defaultHermesHomeResolver;
+		this.executableResolver = options.executableResolver ?? resolveHermesExecutable;
+		this.hermesHomeResolver = options.hermesHomeResolver ?? (() => resolveHermesHomeRoot());
 		this.spawnProcess = options.spawnProcess ?? defaultSpawnProcess;
 		this.timeoutMs = options.timeoutMs ?? 30_000;
 		this.maxOutputBytes = options.maxOutputBytes ?? 256 * 1024;

@@ -16,6 +16,7 @@ export interface HermesSocket {
 export interface HermesRuntimeClientOptions {
 	socketFactory?: (url: string) => HermesSocket;
 	reconnect?: boolean;
+	connectTimeoutMs?: number;
 	requestTimeoutMs?: number;
 	reconnectBaseMs?: number;
 	reconnectMaxMs?: number;
@@ -84,6 +85,7 @@ function safeErrorMessage(value: unknown): string {
 export class HermesRuntimeClient {
 	private readonly socketFactory: (url: string) => HermesSocket;
 	private readonly shouldReconnect: boolean;
+	private readonly connectTimeoutMs: number;
 	private readonly requestTimeoutMs: number;
 	private readonly reconnectBaseMs: number;
 	private readonly reconnectMaxMs: number;
@@ -105,6 +107,7 @@ export class HermesRuntimeClient {
 	constructor(options: HermesRuntimeClientOptions = {}) {
 		this.socketFactory = options.socketFactory ?? defaultSocketFactory;
 		this.shouldReconnect = options.reconnect ?? true;
+		this.connectTimeoutMs = options.connectTimeoutMs ?? 15_000;
 		this.requestTimeoutMs = options.requestTimeoutMs ?? 30_000;
 		this.reconnectBaseMs = options.reconnectBaseMs ?? 500;
 		this.reconnectMaxMs = options.reconnectMaxMs ?? 15_000;
@@ -217,9 +220,12 @@ export class HermesRuntimeClient {
 		this.socket = socket;
 		await new Promise<void>((resolve, reject) => {
 			let settled = false;
+			let connectTimer: ReturnType<typeof setTimeout> | null = null;
 			const finish = (error?: Error) => {
 				if (settled) return;
 				settled = true;
+				if (connectTimer) clearTimeout(connectTimer);
+				connectTimer = null;
 				if (error) reject(error);
 				else resolve();
 			};
@@ -261,6 +267,11 @@ export class HermesRuntimeClient {
 				if (!settled) finish(new Error("Hermes WebSocket closed before connecting"));
 				this.handleClose();
 			};
+			connectTimer = setTimeout(
+				() => finish(new Error("Hermes WebSocket connection timed out")),
+				this.connectTimeoutMs
+			);
+			connectTimer.unref?.();
 			socket.addEventListener("open", onOpen);
 			socket.addEventListener("error", onError);
 			socket.addEventListener("message", onMessage);

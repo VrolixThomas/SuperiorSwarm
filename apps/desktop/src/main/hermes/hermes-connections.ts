@@ -3,6 +3,7 @@ import { nanoid } from "nanoid";
 import { type HermesConnectionSummary, isHermesLoopbackUrl } from "../../shared/hermes";
 import { getDb } from "../db";
 import { hermesConnections } from "../db/schema";
+import { HERMES_PROFILE_ID_PATTERN } from "./hermes-cli";
 import { discoverHermesDashboardToken } from "./hermes-dashboard-token";
 import {
 	type HermesTokenVault,
@@ -11,6 +12,9 @@ import {
 } from "./hermes-token-vault";
 
 export { isHermesLoopbackUrl } from "../../shared/hermes";
+
+export const HERMES_LOCAL_MANAGED_URL = "hermes-local://managed";
+const HERMES_LOCAL_MANAGED_ID = "hermes-local-managed";
 
 export interface SaveHermesConnectionInput {
 	id?: string;
@@ -28,16 +32,19 @@ function toSummary(
 	row: typeof hermesConnections.$inferSelect,
 	vault: HermesTokenVault = hermesTokenVault
 ): HermesConnectionSummary {
+	const managed = row.managementMode === "managed";
 	const protectedToken = { storage: row.tokenStorage, ciphertext: row.encryptedToken };
 	return {
 		id: row.id,
 		label: row.label,
-		baseUrl: row.baseUrl,
+		baseUrl: managed ? null : row.baseUrl,
 		profileId: row.profileId,
 		authMode: "token",
-		connectionMode: isHermesLoopbackUrl(row.baseUrl) ? "loopback" : "remote",
-		hasToken:
-			row.tokenStorage === "safe-storage"
+		connectionMode: managed || isHermesLoopbackUrl(row.baseUrl) ? "loopback" : "remote",
+		managementMode: row.managementMode,
+		hasToken: managed
+			? false
+			: row.tokenStorage === "safe-storage"
 				? row.encryptedToken !== null
 				: vault.reveal(row.id, protectedToken) !== null,
 		tokenStorage: row.tokenStorage,
@@ -76,6 +83,68 @@ export function listHermesConnections(
 		.map((row) => toSummary(row, vault));
 }
 
+export function ensureHermesLocalConnection(
+	input: { id?: string; label?: string; profileId?: string } = {},
+	vault: HermesTokenVault = hermesTokenVault
+): HermesConnectionSummary {
+	const db = getDb();
+	const requested = input.id
+		? db.select().from(hermesConnections).where(eq(hermesConnections.id, input.id)).get()
+		: null;
+	if (requested && requested.managementMode !== "managed") {
+		throw new Error("The selected Hermes connection is not managed locally");
+	}
+	const existing =
+		requested ??
+		db
+			.select()
+			.from(hermesConnections)
+			.all()
+			.find((connection) => connection.managementMode === "managed");
+	const profileId = input.profileId?.trim() || existing?.profileId || "default";
+	if (!HERMES_PROFILE_ID_PATTERN.test(profileId)) throw new Error("Hermes profile is invalid");
+	const fixedIdCollision = existing
+		? null
+		: db
+				.select()
+				.from(hermesConnections)
+				.where(eq(hermesConnections.id, HERMES_LOCAL_MANAGED_ID))
+				.get();
+	const id =
+		existing?.id ?? (fixedIdCollision ? `hermes-local-${nanoid(10)}` : HERMES_LOCAL_MANAGED_ID);
+	const now = new Date();
+	const values = {
+		id,
+		label: input.label?.trim() || existing?.label || "Local Hermes",
+		baseUrl: HERMES_LOCAL_MANAGED_URL,
+		profileId,
+		managementMode: "managed" as const,
+		encryptedToken: null,
+		tokenStorage: "memory" as const,
+		createdAt: existing?.createdAt ?? now,
+		updatedAt: now,
+	};
+	db.insert(hermesConnections)
+		.values(values)
+		.onConflictDoUpdate({
+			target: hermesConnections.id,
+			set: {
+				label: values.label,
+				baseUrl: values.baseUrl,
+				profileId,
+				managementMode: values.managementMode,
+				encryptedToken: null,
+				tokenStorage: "memory",
+				updatedAt: now,
+			},
+		})
+		.run();
+	vault.forget(id);
+	const saved = db.select().from(hermesConnections).where(eq(hermesConnections.id, id)).get();
+	if (!saved) throw new Error("Local Hermes configuration could not be saved");
+	return toSummary(saved, vault);
+}
+
 export function saveHermesConnection(
 	input: SaveHermesConnectionInput,
 	vault: HermesTokenVault = hermesTokenVault
@@ -83,6 +152,9 @@ export function saveHermesConnection(
 	const db = getDb();
 	const id = input.id ?? `hermes-${nanoid(10)}`;
 	const existing = db.select().from(hermesConnections).where(eq(hermesConnections.id, id)).get();
+	if (existing?.managementMode === "managed") {
+		throw new Error("Managed Local Hermes cannot be replaced by an external connection");
+	}
 	const now = new Date();
 	let protectedToken: ProtectedHermesToken = existing
 		? { storage: existing.tokenStorage, ciphertext: existing.encryptedToken }
@@ -94,6 +166,7 @@ export function saveHermesConnection(
 		label: input.label.trim(),
 		baseUrl: normalizeHermesBaseUrl(input.baseUrl),
 		profileId: input.profileId.trim() || "default",
+		managementMode: "external" as const,
 		encryptedToken: protectedToken.ciphertext,
 		tokenStorage: protectedToken.storage,
 		createdAt: existing?.createdAt ?? now,
@@ -107,6 +180,7 @@ export function saveHermesConnection(
 				label: values.label,
 				baseUrl: values.baseUrl,
 				profileId: values.profileId,
+				managementMode: values.managementMode,
 				encryptedToken: values.encryptedToken,
 				tokenStorage: values.tokenStorage,
 				updatedAt: now,
@@ -134,7 +208,8 @@ export async function saveHermesConnectionWithDiscovery(
 	}
 	const existing = input.id ? getHermesConnectionWithToken(input.id, vault) : null;
 	const canReuseExistingToken =
-		existing?.connectionMode === "remote" &&
+		existing?.managementMode === "external" &&
+		existing.connectionMode === "remote" &&
 		existing.baseUrl === baseUrl &&
 		existing.profileId === input.profileId.trim();
 	if (!input.token && !canReuseExistingToken) {
@@ -148,7 +223,7 @@ export function getHermesConnectionWithToken(
 	vault: HermesTokenVault = hermesTokenVault
 ): (HermesConnectionSummary & { token: string }) | null {
 	const row = getDb().select().from(hermesConnections).where(eq(hermesConnections.id, id)).get();
-	if (!row) return null;
+	if (!row || row.managementMode === "managed") return null;
 	const token = vault.reveal(id, {
 		storage: row.tokenStorage,
 		ciphertext: row.encryptedToken,
@@ -170,6 +245,10 @@ export function deleteHermesConnection(
 	id: string,
 	vault: HermesTokenVault = hermesTokenVault
 ): void {
+	const row = getDb().select().from(hermesConnections).where(eq(hermesConnections.id, id)).get();
+	if (row?.managementMode === "managed") {
+		throw new Error("Managed Local Hermes cannot be deleted");
+	}
 	getDb().delete(hermesConnections).where(eq(hermesConnections.id, id)).run();
 	vault.forget(id);
 }

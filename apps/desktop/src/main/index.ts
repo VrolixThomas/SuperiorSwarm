@@ -32,6 +32,7 @@ import {
 	savePaneLayouts,
 	saveTerminalSessions,
 } from "./db/session-persistence";
+import { ensureHermesLocalConnection } from "./hermes/hermes-connections";
 import { hermesRuntimeService } from "./hermes/hermes-runtime-service";
 import { isCloneable, setDebugMode } from "./ipc-safety";
 import { log, setupCrashHandlers } from "./logger";
@@ -170,6 +171,7 @@ app.whenReady().then(async () => {
 	// Initialize database early — tRPC handlers depend on it
 	try {
 		initializeDatabase();
+		ensureHermesLocalConnection();
 		await backfillRemoteHosts();
 		ensureTelemetryState(getDb());
 		recoverStuckSessions();

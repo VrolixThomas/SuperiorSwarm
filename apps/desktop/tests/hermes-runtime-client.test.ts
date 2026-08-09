@@ -206,6 +206,19 @@ describe("HermesRuntimeClient", () => {
 		expect(client.getState().status).toBe("error");
 	});
 
+	test("bounds an initial socket that never opens", async () => {
+		const client = new HermesRuntimeClient({
+			socketFactory: () => new FakeSocket(),
+			reconnect: false,
+			connectTimeoutMs: 5,
+		});
+
+		await expect(
+			client.connect({ baseUrl: "http://localhost:8080", token: "token" })
+		).rejects.toThrow("timed out");
+		expect(client.getState()).toMatchObject({ status: "error" });
+	});
+
 	test("ignores a stale socket closing after a replacement connection opens", async () => {
 		const sockets: FakeSocket[] = [];
 		const client = new HermesRuntimeClient({

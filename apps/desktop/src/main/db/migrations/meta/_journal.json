@@ -393,6 +393,13 @@
       "when": 1786261303748,
       "tag": "0055_adapt_hermes_stock_sessions",
       "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "6",
+      "when": 1786271718989,
+      "tag": "0056_manage_local_hermes_backend",
+      "breakpoints": true
     }
   ]
 }

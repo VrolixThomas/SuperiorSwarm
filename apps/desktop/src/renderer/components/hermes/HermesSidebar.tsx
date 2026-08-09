@@ -44,9 +44,9 @@ export function HermesSidebar() {
 	const [connectionId, setConnectionId] = useState<string | null>(null);
 	const [filter, setFilter] = useState<HermesSessionFilter>("open");
 	const [query, setQuery] = useState("");
-	const [showSettings, setShowSettings] = useState(false);
-	const [label, setLabel] = useState("Local Hermes");
-	const [baseUrl, setBaseUrl] = useState("http://127.0.0.1:8080");
+	const [showAdvanced, setShowAdvanced] = useState(false);
+	const [label, setLabel] = useState("External Hermes");
+	const [baseUrl, setBaseUrl] = useState("");
 	const [profileId, setProfileId] = useState("default");
 	const [token, setToken] = useState("");
 	const [newTopic, setNewTopic] = useState("");
@@ -58,12 +58,21 @@ export function HermesSidebar() {
 
 	const connections = trpc.hermes.connections.useQuery();
 	const activeConnection = connections.data?.find((connection) => connection.id === connectionId);
+	const managedConnection = connections.data?.find(
+		(connection) => connection.managementMode === "managed"
+	);
+	const externalConnections = connections.data?.filter(
+		(connection) => connection.managementMode === "external"
+	);
 	const { showTokenInput, canSave } = hermesConnectionFormPolicy({
 		baseUrl,
-		hasStoredToken: activeConnection?.hasToken ?? false,
-		storedBaseUrl: activeConnection?.baseUrl ?? null,
+		hasStoredToken:
+			activeConnection?.managementMode === "external" ? activeConnection.hasToken : false,
+		storedBaseUrl:
+			activeConnection?.managementMode === "external" ? activeConnection.baseUrl : null,
 		profileId,
-		storedProfileId: activeConnection?.profileId,
+		storedProfileId:
+			activeConnection?.managementMode === "external" ? activeConnection.profileId : null,
 		tokenInput: token,
 	});
 	const connect = trpc.hermes.connect.useMutation({
@@ -77,7 +86,7 @@ export function HermesSidebar() {
 			changeConnection(saved.id);
 			setConnectionId(saved.id);
 			setToken("");
-			setShowSettings(false);
+			setShowAdvanced(false);
 			await utils.hermes.connections.invalidate();
 			connect.mutate({ connectionId: saved.id });
 		},
@@ -96,17 +105,21 @@ export function HermesSidebar() {
 			? selectedSession?.connectionId
 			: currentConnectionExists
 				? connectionId
-				: connections.data[0]?.id;
+				: (managedConnection?.id ?? connections.data[0]?.id);
 		if (nextConnectionId && nextConnectionId !== connectionId) {
 			setConnectionId(nextConnectionId);
 		}
-	}, [changeConnection, connectionId, connections.data, selectedSession]);
+	}, [changeConnection, connectionId, connections.data, managedConnection?.id, selectedSession]);
 
 	const status = trpc.hermes.status.useQuery(
 		{ connectionId: connectionId ?? "" },
 		{ enabled: Boolean(connectionId), refetchInterval: 1_000 }
 	);
 	const connected = status.data?.status === "connected";
+	const connecting =
+		connect.isPending ||
+		status.data?.status === "connecting" ||
+		status.data?.status === "reconnecting";
 	const catalog = trpc.hermes.catalog.useQuery(
 		{ connectionId: connectionId ?? "" },
 		{
@@ -138,11 +151,19 @@ export function HermesSidebar() {
 	);
 
 	useEffect(() => {
-		if (!activeConnection?.hasToken || !connectionId || connected || connect.isPending) return;
+		const canAutoConnect =
+			activeConnection?.managementMode === "managed" || activeConnection?.hasToken === true;
+		if (!canAutoConnect || !connectionId || connected || connect.isPending) return;
 		if (autoConnectAttempted.current.has(connectionId)) return;
 		autoConnectAttempted.current.add(connectionId);
 		connect.mutate({ connectionId });
-	}, [activeConnection?.hasToken, connect, connected, connectionId]);
+	}, [
+		activeConnection?.hasToken,
+		activeConnection?.managementMode,
+		connect,
+		connected,
+		connectionId,
+	]);
 
 	const linkedBranches = useMemo(
 		() =>
@@ -165,7 +186,7 @@ export function HermesSidebar() {
 	function submitConnection(event: FormEvent) {
 		event.preventDefault();
 		saveConnection.mutate({
-			id: activeConnection?.id,
+			id: activeConnection?.managementMode === "external" ? activeConnection.id : undefined,
 			label,
 			baseUrl,
 			profileId,
@@ -196,12 +217,41 @@ export function HermesSidebar() {
 		);
 	}
 
-	if (showSettings || (connections.data && connections.data.length === 0)) {
+	if (showAdvanced) {
 		return (
 			<form onSubmit={submitConnection} className="flex min-h-0 flex-1 flex-col gap-2 p-3">
 				<div className="text-[12px] font-medium text-[var(--text-secondary)]">
-					Hermes connection
+					Connect external Hermes
 				</div>
+				{externalConnections && externalConnections.length > 0 && (
+					<select
+						value={activeConnection?.managementMode === "external" ? activeConnection.id : ""}
+						onChange={(event) => {
+							const selected = externalConnections.find(
+								(connection) => connection.id === event.target.value
+							);
+							if (!selected) {
+								setLabel("External Hermes");
+								setBaseUrl("");
+								setProfileId("default");
+								setConnectionId(managedConnection?.id ?? null);
+								return;
+							}
+							setConnectionId(selected.id);
+							setLabel(selected.label);
+							setBaseUrl(selected.baseUrl ?? "");
+							setProfileId(selected.profileId);
+						}}
+						className="rounded-[5px] border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1.5 text-[12px] text-[var(--text)]"
+					>
+						<option value="">New external connection…</option>
+						{externalConnections.map((connection) => (
+							<option key={connection.id} value={connection.id}>
+								{connection.label}
+							</option>
+						))}
+					</select>
+				)}
 				<input
 					value={label}
 					onChange={(event) => setLabel(event.target.value)}
@@ -211,7 +261,7 @@ export function HermesSidebar() {
 				<input
 					value={baseUrl}
 					onChange={(event) => setBaseUrl(event.target.value)}
-					placeholder="http://127.0.0.1:8080"
+					placeholder="https://hermes.example.com"
 					className="rounded-[5px] border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1.5 text-[12px] text-[var(--text)] outline-none focus:border-[var(--accent)]"
 				/>
 				<input
@@ -231,8 +281,8 @@ export function HermesSidebar() {
 					/>
 				)}
 				<div className="text-[10px] leading-4 text-[var(--text-quaternary)]">
-					Loopback connections discover the token served by stock Hermes in Electron. Explicit
-					remote tokens stay in safe storage and never re-enter renderer state.
+					Advanced external connections require an explicit secure URL and token. Stored tokens stay
+					protected and never re-enter renderer state.
 				</div>
 				{saveConnection.error && (
 					<div className="text-[11px] text-[var(--danger)]">{saveConnection.error.message}</div>
@@ -245,15 +295,13 @@ export function HermesSidebar() {
 					>
 						Save & connect
 					</button>
-					{connections.data && connections.data.length > 0 && (
-						<button
-							type="button"
-							onClick={() => setShowSettings(false)}
-							className="rounded-[5px] px-2.5 py-1.5 text-[11px] text-[var(--text-tertiary)] hover:bg-[var(--bg-elevated)]"
-						>
-							Cancel
-						</button>
-					)}
+					<button
+						type="button"
+						onClick={() => setShowAdvanced(false)}
+						className="rounded-[5px] px-2.5 py-1.5 text-[11px] text-[var(--text-tertiary)] hover:bg-[var(--bg-elevated)]"
+					>
+						Cancel
+					</button>
 				</div>
 			</form>
 		);
@@ -262,65 +310,78 @@ export function HermesSidebar() {
 	return (
 		<div className="flex min-h-0 flex-1 flex-col">
 			<div className="flex items-center gap-1.5 px-2 pt-2">
-				<select
-					value={connectionId ?? ""}
-					onChange={(event) => {
-						const nextConnectionId = event.target.value;
-						setConnectionId(nextConnectionId);
-						changeConnection(nextConnectionId);
-					}}
-					className="min-w-0 flex-1 rounded-[5px] border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1 text-[11px] text-[var(--text-secondary)]"
-				>
-					{connections.data?.map((connection) => (
-						<option key={connection.id} value={connection.id}>
-							{connection.label}
-						</option>
-					))}
-				</select>
+				<div className="min-w-0 flex-1">
+					<div className="truncate text-[11px] font-medium text-[var(--text-secondary)]">
+						{activeConnection?.managementMode === "external"
+							? activeConnection.label
+							: "Local Hermes"}
+					</div>
+					<div className="truncate text-[9px] text-[var(--text-quaternary)]">
+						{activeConnection?.managementMode === "external" ? "External" : "Automatic"} ·{" "}
+						{activeConnection?.profileId ?? "default"}
+					</div>
+				</div>
+				{activeConnection?.managementMode === "external" && managedConnection && (
+					<button
+						type="button"
+						onClick={() => {
+							connect.reset();
+							setConnectionId(managedConnection.id);
+							changeConnection(managedConnection.id);
+						}}
+						className="rounded-[5px] px-2 py-1 text-[10px] text-[var(--accent)] hover:bg-[var(--bg-elevated)]"
+					>
+						Use local
+					</button>
+				)}
 				<button
 					type="button"
 					onClick={() => {
-						if (activeConnection) {
+						if (activeConnection?.managementMode === "external") {
 							setLabel(activeConnection.label);
-							setBaseUrl(activeConnection.baseUrl);
+							setBaseUrl(activeConnection.baseUrl ?? "");
 							setProfileId(activeConnection.profileId);
+						} else {
+							setLabel("External Hermes");
+							setBaseUrl("");
+							setProfileId(activeConnection?.profileId ?? "default");
 						}
-						setShowSettings(true);
+						setShowAdvanced(true);
 					}}
 					className="rounded-[5px] px-2 py-1 text-[11px] text-[var(--text-quaternary)] hover:bg-[var(--bg-elevated)]"
-					title="Hermes connection settings"
+					title="Connect external Hermes"
 				>
-					•••
+					Advanced
 				</button>
 			</div>
 
 			<div className="flex items-center gap-1.5 px-2 py-2">
 				<span
 					className={`size-2 rounded-full ${
-						connected
-							? "bg-[#30d158]"
-							: status.data?.status === "connecting" || status.data?.status === "reconnecting"
-								? "bg-[#ffd60a]"
-								: "bg-[var(--text-quaternary)]"
+						connected ? "bg-[#30d158]" : connecting ? "bg-[#ffd60a]" : "bg-[var(--text-quaternary)]"
 					}`}
 				/>
 				<span className="flex-1 text-[10px] text-[var(--text-quaternary)]">
-					{status.data?.status ?? "disconnected"}
+					{connecting ? "connecting" : (status.data?.status ?? "disconnected")}
 				</span>
-				{!connected && connectionId && (
+				{!connected && !connecting && connectionId && (
 					<button
 						type="button"
 						onClick={() => connect.mutate({ connectionId })}
 						className="text-[10px] text-[var(--accent)] hover:underline"
 					>
-						Reconnect
+						Retry
 					</button>
 				)}
 			</div>
 
 			{!connected ? (
 				<div className="px-3 py-6 text-center text-[11px] leading-5 text-[var(--text-quaternary)]">
-					{connect.error?.message ?? "Start `hermes serve`, then connect to load sessions."}
+					{connect.error?.message ??
+						status.data?.error ??
+						(activeConnection?.managementMode === "external"
+							? "Connect the external Hermes gateway to load sessions."
+							: "Local Hermes starts automatically when Agents opens.")}
 				</div>
 			) : (
 				<>

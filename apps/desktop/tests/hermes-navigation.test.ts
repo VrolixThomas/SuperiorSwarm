@@ -218,6 +218,13 @@ describe("Hermes global navigation", () => {
 		expect(sidebar).toContain("Sessions");
 		expect(sidebar).toContain("showTokenInput");
 		expect(sidebar).toContain("canSave");
+		expect(sidebar).toContain("showAdvanced");
+		expect(sidebar).toContain("Connect external Hermes");
+		expect(sidebar).toContain("Local Hermes");
+		expect(sidebar).toContain("Retry");
+		expect(sidebar).not.toContain("Hermes connection");
+		expect(sidebar).not.toContain("127.0.0.1:8080");
+		expect(sidebar).not.toContain("token discovery failed");
 		expect(sidebar).not.toContain('status.data?.status === "upgrade-required"');
 		expect(sidebar).not.toContain("session.claimed");
 

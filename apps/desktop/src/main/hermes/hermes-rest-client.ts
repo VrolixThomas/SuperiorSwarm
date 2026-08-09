@@ -98,6 +98,10 @@ export class HermesRestClient {
 		this.maxTranscriptPages = options.maxTranscriptPages ?? 200;
 	}
 
+	async status(signal?: AbortSignal): Promise<unknown> {
+		return await this.requestJson("/api/status", {}, signal);
+	}
+
 	async listSessions(signal?: AbortSignal): Promise<HermesSessionSummary[]> {
 		let payload: unknown;
 		try {

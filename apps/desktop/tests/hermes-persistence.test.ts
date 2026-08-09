@@ -3,7 +3,9 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { _setDbForTesting, schema } from "../src/main/db";
 import {
+	HERMES_LOCAL_MANAGED_URL,
 	deleteHermesConnection,
+	ensureHermesLocalConnection,
 	getHermesConnectionWithToken,
 	listHermesConnections,
 	saveHermesConnection,
@@ -60,6 +62,32 @@ describe("Hermes persistence services", () => {
 		expect(JSON.stringify(connection)).not.toContain("hermes-secret");
 		expect(listHermesConnections()[0]?.hasToken).toBe(true);
 		expect(getHermesConnectionWithToken(connection.id, vault)?.token).toBe("hermes-secret");
+	});
+
+	test("persists a stable managed-local identity without an ephemeral endpoint or token", () => {
+		const first = ensureHermesLocalConnection({ profileId: "work" }, vault);
+		const second = ensureHermesLocalConnection({}, vault);
+		const stored = db
+			.select()
+			.from(schema.hermesConnections)
+			.where(eq(schema.hermesConnections.id, first.id))
+			.get();
+
+		expect(second.id).toBe(first.id);
+		expect(first).toMatchObject({
+			managementMode: "managed",
+			connectionMode: "loopback",
+			baseUrl: null,
+			hasToken: false,
+			profileId: "work",
+		});
+		expect(stored).toMatchObject({
+			baseUrl: HERMES_LOCAL_MANAGED_URL,
+			managementMode: "managed",
+			encryptedToken: null,
+			tokenStorage: "memory",
+		});
+		expect(JSON.stringify(first)).not.toContain("8080");
 	});
 
 	test("reports a memory-only token as available during the current process", () => {

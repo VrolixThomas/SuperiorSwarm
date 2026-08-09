@@ -149,10 +149,11 @@ export interface HermesSessionSelection {
 export interface HermesConnectionSummary {
 	id: string;
 	label: string;
-	baseUrl: string;
+	baseUrl: string | null;
 	profileId: string;
 	authMode: "token";
 	connectionMode: "loopback" | "remote";
+	managementMode: "managed" | "external";
 	hasToken: boolean;
 	tokenStorage: "safe-storage" | "memory";
 	lastConnectedAt: number | null;

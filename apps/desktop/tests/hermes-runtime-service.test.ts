@@ -1,7 +1,12 @@
 import "./preload-electron-mock";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { _setDbForTesting } from "../src/main/db";
-import { saveHermesConnection } from "../src/main/hermes/hermes-connections";
+import {
+	ensureHermesLocalConnection,
+	listHermesConnections,
+	saveHermesConnection,
+} from "../src/main/hermes/hermes-connections";
+import type { HermesLocalBackendRuntime } from "../src/main/hermes/hermes-local-backend-manager";
 import type { HermesStockSessionDetail } from "../src/main/hermes/hermes-rest-client";
 import type { HermesRuntimeConnectionSettings } from "../src/main/hermes/hermes-runtime-client";
 import type { HermesRestClientLike } from "../src/main/hermes/hermes-runtime-service";
@@ -237,6 +242,67 @@ describe("HermesRuntimeService stock lifecycle", () => {
 		expect(JSON.stringify(await service.catalog(connectionId))).not.toContain(
 			"served-current-token"
 		);
+	});
+
+	test("resolves managed local runtime in memory without persisting its ephemeral endpoint", async () => {
+		service.shutdown();
+		const managed = ensureHermesLocalConnection({ profileId: "default" }, vault);
+		let ensuredProfile: string | null = null;
+		const runtime: HermesLocalBackendRuntime = {
+			baseUrl: "http://127.0.0.1:54321",
+			profileId: "default",
+			token: "ephemeral-managed-token",
+		};
+		service = new HermesRuntimeService({
+			clientFactory: () => client,
+			restClientFactory: () => rest,
+			sendService: sender,
+			tokenVault: vault,
+			localBackendManager: {
+				ensure: (profileId) => {
+					ensuredProfile = profileId;
+					return Promise.resolve(runtime);
+				},
+				shutdown: () => undefined,
+			},
+		});
+
+		await service.connect(managed.id);
+
+		expect(ensuredProfile).toBe("default");
+		expect(client.connectionSettings).toEqual({
+			baseUrl: runtime.baseUrl,
+			authMode: "token",
+			token: runtime.token,
+		});
+		const stored = listHermesConnections(vault).find((connection) => connection.id === managed.id);
+		expect(stored).toMatchObject({ baseUrl: null, hasToken: false, managementMode: "managed" });
+	});
+
+	test("retains a retryable managed-local startup error and shuts down child ownership", async () => {
+		service.shutdown();
+		const managed = ensureHermesLocalConnection({ profileId: "default" }, vault);
+		let shutdownCalls = 0;
+		service = new HermesRuntimeService({
+			clientFactory: () => client,
+			restClientFactory: () => rest,
+			sendService: sender,
+			tokenVault: vault,
+			localBackendManager: {
+				ensure: () => Promise.reject(new Error("Stock Hermes is unavailable. Retry.")),
+				shutdown: () => {
+					shutdownCalls++;
+				},
+			},
+		});
+
+		await expect(service.connect(managed.id)).rejects.toThrow("Stock Hermes is unavailable");
+		expect(service.getState(managed.id)).toMatchObject({
+			status: "error",
+			error: "Stock Hermes is unavailable. Retry.",
+		});
+		service.shutdown();
+		expect(shutdownCalls).toBe(1);
 	});
 
 	test("reads canonical history without creating a live runtime", async () => {

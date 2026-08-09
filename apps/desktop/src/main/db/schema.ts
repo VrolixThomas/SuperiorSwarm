@@ -707,6 +707,9 @@ export const hermesConnections = sqliteTable("hermes_connections", {
 	label: text("label").notNull(),
 	baseUrl: text("base_url").notNull(),
 	profileId: text("profile_id").notNull(),
+	managementMode: text("management_mode", { enum: ["managed", "external"] })
+		.notNull()
+		.default("external"),
 	encryptedToken: text("encrypted_token"),
 	tokenStorage: text("token_storage", { enum: ["safe-storage", "memory"] })
 		.notNull()

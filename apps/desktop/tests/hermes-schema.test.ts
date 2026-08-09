@@ -40,7 +40,75 @@ describe("Hermes persistence migration", () => {
 		expect(reportColumns).toContain("destination_fingerprint");
 		expect(reportColumns).toContain("attempt_count");
 		expect(reportColumns).toContain("provider_message_id");
+		const connectionColumns = sqlite
+			.prepare("PRAGMA table_info(hermes_connections)")
+			.all()
+			.map((row) => (row as { name: string }).name);
+		expect(connectionColumns).toContain("management_mode");
 
+		sqlite.close();
+	});
+
+	test("adapts feature-local loopback rows to stable managed configuration", () => {
+		const sqlite = new Database(":memory:");
+		const migrations = join(import.meta.dir, "../src/main/db/migrations");
+		for (const name of [
+			"0054_add_hermes_connections_links_reports.sql",
+			"0055_adapt_hermes_stock_sessions.sql",
+			"0056_manage_local_hermes_backend.sql",
+		]) {
+			if (name.startsWith("0055")) {
+				const insertConnection = sqlite.prepare(
+					`INSERT INTO hermes_connections
+						 (id, label, base_url, profile_id, encrypted_token, token_storage, created_at, updated_at)
+						 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+				);
+				insertConnection.run(
+					"legacy-local",
+					"Local Hermes",
+					"http://127.0.0.1:8080",
+					"default",
+					"stale-ciphertext",
+					"safe-storage",
+					1,
+					1
+				);
+				insertConnection.run(
+					"external-loopback-lookalike",
+					"External Hermes",
+					"http://127.0.0.1.example.com:8080",
+					"default",
+					"protected-external-token",
+					"safe-storage",
+					1,
+					1
+				);
+			}
+			const sql = readFileSync(join(migrations, name), "utf8").replaceAll(
+				"--> statement-breakpoint",
+				""
+			);
+			sqlite.exec(sql);
+		}
+
+		expect(
+			sqlite.prepare("SELECT * FROM hermes_connections WHERE id = ?").get("legacy-local")
+		).toMatchObject({
+			base_url: "hermes-local://managed",
+			management_mode: "managed",
+			encrypted_token: null,
+			token_storage: "memory",
+		});
+		expect(
+			sqlite
+				.prepare("SELECT * FROM hermes_connections WHERE id = ?")
+				.get("external-loopback-lookalike")
+		).toMatchObject({
+			base_url: "http://127.0.0.1.example.com:8080",
+			management_mode: "external",
+			encrypted_token: "protected-external-token",
+			token_storage: "safe-storage",
+		});
 		sqlite.close();
 	});
 

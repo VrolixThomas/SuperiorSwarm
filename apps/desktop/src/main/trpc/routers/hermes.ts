@@ -5,6 +5,7 @@ import { getDb } from "../../db";
 import { hermesSessionWorkspaces, projects, workspaces, worktrees } from "../../db/schema";
 import {
 	deleteHermesConnection,
+	ensureHermesLocalConnection,
 	listHermesConnections,
 	saveHermesConnectionWithDiscovery,
 } from "../../hermes/hermes-connections";
@@ -37,6 +38,15 @@ function rendererOriginReportState(state: ReturnType<typeof hermesRuntimeService
 
 export const hermesRouter = router({
 	connections: publicProcedure.query(() => listHermesConnections()),
+
+	configureLocal: publicProcedure
+		.input(
+			z.object({
+				id: z.string().min(1).optional(),
+				profileId: z.string().trim().min(1).max(120).default("default"),
+			})
+		)
+		.mutation(({ input }) => ensureHermesLocalConnection(input)),
 
 	saveConnection: publicProcedure
 		.input(
