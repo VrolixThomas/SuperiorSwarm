@@ -215,12 +215,28 @@ describe("Hermes persistence services", () => {
 			})
 			.run();
 		for (const workspaceId of ["workspace-1", "workspace-2"]) {
+			db.insert(schema.worktrees)
+				.values({
+					id: `worktree-${workspaceId}`,
+					projectId: "project-1",
+					path: `/repos/app-worktrees/${workspaceId}`,
+					branch: `feat/${workspaceId}`,
+					baseBranch: "main",
+					createdAt: now,
+					updatedAt: now,
+				})
+				.run();
 			db.insert(schema.workspaces)
 				.values({
 					id: workspaceId,
 					projectId: "project-1",
 					type: "worktree",
 					name: workspaceId,
+					worktreeId: `worktree-${workspaceId}`,
+					currentPhase: workspaceId === "workspace-1" ? "blocked" : "working",
+					statusText: workspaceId === "workspace-1" ? "Waiting for CI" : "Implementing",
+					needs: workspaceId === "workspace-1" ? "CI credentials" : null,
+					statusUpdatedAt: now,
 					createdAt: now,
 					updatedAt: now,
 				})
@@ -257,13 +273,26 @@ describe("Hermes persistence services", () => {
 			source: "manual",
 		});
 		expect(duplicate.id).toBe(first.id);
-		expect(listHermesWorkspaceLinks(connection.id, "session-tip")).toHaveLength(2);
+		const linked = listHermesWorkspaceLinks(connection.id, "session-tip");
+		expect(linked).toHaveLength(2);
+		expect(linked.find((link) => link.workspaceId === "workspace-1")).toMatchObject({
+			currentPhase: "blocked",
+			statusText: "Waiting for CI",
+			needs: "CI credentials",
+			statusUpdatedAt: Math.floor(now.getTime() / 1_000) * 1_000,
+		});
 
 		db.delete(schema.workspaces).where(eq(schema.workspaces.id, "workspace-1")).run();
 		const missing = listHermesWorkspaceLinks(connection.id, "session-tip").find(
 			(link) => link.workspaceId === "workspace-1"
 		);
 		expect(missing?.missing).toBe(true);
+		expect(missing).toMatchObject({
+			currentPhase: null,
+			statusText: null,
+			needs: null,
+			statusUpdatedAt: null,
+		});
 
 		unlinkHermesWorkspace(connection.id, "session-tip", "workspace-1");
 		expect(listHermesWorkspaceLinks(connection.id, "session-tip")).toHaveLength(1);

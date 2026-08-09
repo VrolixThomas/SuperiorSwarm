@@ -1,0 +1,164 @@
+import { describe, expect, test } from "bun:test";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+// @ts-expect-error The tests project omits JSX; the renderer project type-checks this TSX module.
+import {
+	HermesSessionTabStrip,
+	HermesWorktreesPane,
+	groupHermesWorktrees,
+	openHermesLinkedWorktree,
+} from "../src/renderer/components/hermes/HermesWorktreesPane";
+import type { HermesLinkedWorkspace } from "../src/shared/hermes";
+
+function link(overrides: Partial<HermesLinkedWorkspace> = {}): HermesLinkedWorkspace {
+	return {
+		id: "link-1",
+		connectionId: "connection-1",
+		hermesSessionId: "session-1",
+		hermesLineageRootId: null,
+		workspaceId: "workspace-1",
+		source: "tool-artifact",
+		linkedAt: 1,
+		missing: false,
+		projectId: "project-1",
+		projectName: "App",
+		workspaceName: "feat/one",
+		branch: "feat/one",
+		worktreePath: "/repos/app-worktrees/feat-one",
+		currentPhase: "working",
+		statusText: "Implementing the fix",
+		needs: null,
+		statusUpdatedAt: 2,
+		...overrides,
+	};
+}
+
+describe("Hermes Worktrees pane", () => {
+	test("renders an accessible Chat-first tab strip with Worktrees immediately to its right", () => {
+		const html = renderToStaticMarkup(
+			createElement(HermesSessionTabStrip, {
+				activePane: "chat",
+				worktreeCount: 3,
+				onSelect: () => {},
+			})
+		);
+
+		expect(html).toContain('role="tablist"');
+		expect(html).toMatch(/>Chat<.*>Worktrees</s);
+		expect(html).toContain('id="hermes-chat-tab"');
+		expect(html).toContain('aria-selected="true"');
+		expect(html).toContain('aria-controls="hermes-chat-panel"');
+		expect(html).toContain('aria-controls="hermes-worktrees-panel"');
+		expect(html).toContain("3");
+	});
+
+	test("groups every linked worktree by repository", () => {
+		const groups = groupHermesWorktrees([
+			link(),
+			link({ id: "link-2", workspaceId: "workspace-2", branch: "feat/two" }),
+			link({
+				id: "link-3",
+				workspaceId: "workspace-3",
+				projectId: "project-2",
+				projectName: "API",
+				branch: "fix/api",
+			}),
+		]);
+
+		expect(
+			groups.map((group: { projectName: string; worktrees: unknown[] }) => [
+				group.projectName,
+				group.worktrees.length,
+			])
+		).toEqual([
+			["API", 1],
+			["App", 2],
+		]);
+	});
+
+	test("explains the empty state without asking for a preselected repository", () => {
+		const html = renderToStaticMarkup(
+			createElement(HermesWorktreesPane, {
+				links: [],
+				availableWorktrees: [],
+				recoveryWorktreeId: "",
+				recoveryPending: false,
+				onOpen: () => {},
+				onRecoveryChange: () => {},
+				onRecoveryLink: () => {},
+				onRecoveryUnlink: () => {},
+			})
+		);
+
+		expect(html).toContain("Hermes will add worktrees here when repository changes are needed.");
+		expect(html).not.toContain("Select a repository");
+		expect(html).not.toContain("No workspace");
+	});
+
+	test("shows phase, status, needs, and a disabled missing/deleted state", () => {
+		const html = renderToStaticMarkup(
+			createElement(HermesWorktreesPane, {
+				links: [
+					link({ currentPhase: "blocked", statusText: "Waiting for CI", needs: "CI token" }),
+					link({
+						id: "link-missing",
+						workspaceId: "workspace-missing",
+						missing: true,
+						projectId: null,
+						projectName: null,
+						workspaceName: null,
+						branch: null,
+						worktreePath: null,
+						currentPhase: null,
+						statusText: null,
+						needs: null,
+						statusUpdatedAt: null,
+					}),
+				],
+				availableWorktrees: [],
+				recoveryWorktreeId: "",
+				recoveryPending: false,
+				onOpen: () => {},
+				onRecoveryChange: () => {},
+				onRecoveryLink: () => {},
+				onRecoveryUnlink: () => {},
+			})
+		);
+
+		expect(html).toContain("blocked");
+		expect(html).toContain("Waiting for CI");
+		expect(html).toContain("Needs:");
+		expect(html).toContain("CI token");
+		expect(html).toContain("Missing or deleted");
+		expect(html).toMatch(/workspace-missing[\s\S]*disabled/);
+	});
+
+	test("opens the exact worktree and preserves established terminal attachment behavior", () => {
+		const calls: unknown[] = [];
+		const opened = openHermesLinkedWorktree(
+			link(),
+			{ connectionId: "connection-1", sessionId: "session-1" },
+			{
+				openWorkspaceFromHermes: (...args: unknown[]) => calls.push(["open", ...args]),
+				getTabsByWorkspace: () => [],
+				addTerminalTab: (...args: unknown[]) => {
+					calls.push(["terminal", ...args]);
+					return "terminal-1";
+				},
+				attachTerminal: (...args: unknown[]) => calls.push(["attach", ...args]),
+			}
+		);
+
+		expect(opened).toBe(true);
+		expect(calls).toEqual([
+			[
+				"open",
+				"workspace-1",
+				"/repos/app-worktrees/feat-one",
+				{ connectionId: "connection-1", sessionId: "session-1" },
+			],
+			["terminal", "workspace-1", "/repos/app-worktrees/feat-one", "feat/one"],
+			["attach", "workspace-1", "terminal-1"],
+		]);
+	});
+});

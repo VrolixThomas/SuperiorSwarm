@@ -1,7 +1,6 @@
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
 	type HermesSessionFilter,
-	buildHermesTicketChoices,
 	filterHermesSessions,
 	groupHermesSessions,
 	hermesConnectionFormPolicy,
@@ -50,8 +49,6 @@ export function HermesSidebar() {
 	const [profileId, setProfileId] = useState("default");
 	const [token, setToken] = useState("");
 	const [newTopic, setNewTopic] = useState("");
-	const [newTicketChoice, setNewTicketChoice] = useState("");
-	const [newWorkspaceId, setNewWorkspaceId] = useState("");
 	const autoConnectAttempted = useRef(new Set<string>());
 	const newSessionSubmitting = useRef(false);
 	const utils = trpc.useUtils();
@@ -127,21 +124,11 @@ export function HermesSidebar() {
 			refetchInterval: connected ? 5_000 : false,
 		}
 	);
-	const availableWorkspaces = trpc.hermes.availableWorkspaces.useQuery();
-	const cachedTickets = trpc.tickets.getCachedTickets.useQuery();
-	const linkedTickets = trpc.tickets.getLinkedTickets.useQuery();
-	const ticketChoices = useMemo(
-		() =>
-			buildHermesTicketChoices(cachedTickets.data, linkedTickets.data, availableWorkspaces.data),
-		[availableWorkspaces.data, cachedTickets.data, linkedTickets.data]
-	);
 	const create = trpc.hermes.create.useMutation({
 		onSuccess: (binding) => {
 			if (!connectionId) return;
 			selectSession({ connectionId, sessionId: binding.durableSessionId });
 			setNewTopic("");
-			setNewTicketChoice("");
-			setNewWorkspaceId("");
 			void utils.hermes.catalog.invalidate({ connectionId });
 		},
 	});
@@ -198,16 +185,12 @@ export function HermesSidebar() {
 		event.preventDefault();
 		const topic = newTopic.trim();
 		if (!connectionId || !topic || newSessionSubmitting.current) return;
-		const workspace = availableWorkspaces.data?.find(
-			(candidate) => candidate.id === newWorkspaceId
-		);
 		newSessionSubmitting.current = true;
 		create.mutate(
 			{
 				connectionId,
 				topic,
 				profileId: activeConnection?.profileId,
-				...(workspace?.cwd ? { cwd: workspace.cwd } : {}),
 			},
 			{
 				onSettled: () => {
@@ -407,44 +390,11 @@ export function HermesSidebar() {
 								<textarea
 									value={newTopic}
 									onChange={(event) => setNewTopic(event.target.value)}
-									placeholder="What should this agent work on? Ticket ID, title, or a full prompt"
+									placeholder="Describe the task for this agent"
 									rows={3}
 									className="min-w-0 resize-y rounded-[6px] border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1.5 text-[11px] text-[var(--text)] outline-none focus:border-[var(--accent)]"
 								/>
-								{ticketChoices.length > 0 && (
-									<select
-										value={newTicketChoice}
-										onChange={(event) => {
-											const value = event.target.value;
-											setNewTicketChoice(value);
-											const choice = ticketChoices.find((candidate) => candidate.value === value);
-											if (!choice) return;
-											setNewTopic(choice.topic);
-											setNewWorkspaceId(choice.workspaceId);
-										}}
-										className="min-w-0 max-w-full rounded-[6px] border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1 text-[10px] text-[var(--text-tertiary)]"
-									>
-										<option value="">Optional linked ticket…</option>
-										{ticketChoices.map((choice) => (
-											<option key={choice.value} value={choice.value}>
-												{choice.label}
-											</option>
-										))}
-									</select>
-								)}
-								<div className="flex gap-1.5">
-									<select
-										value={newWorkspaceId}
-										onChange={(event) => setNewWorkspaceId(event.target.value)}
-										className="w-0 min-w-0 max-w-full flex-1 rounded-[6px] border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1 text-[10px] text-[var(--text-tertiary)]"
-									>
-										<option value="">No workspace</option>
-										{availableWorkspaces.data?.map((workspace) => (
-											<option key={workspace.id} value={workspace.id}>
-												{workspace.projectName} · {workspace.branch ?? workspace.name}
-											</option>
-										))}
-									</select>
+								<div className="flex justify-end">
 									<button
 										type="submit"
 										disabled={!connectionId || !newTopic.trim() || create.isPending}

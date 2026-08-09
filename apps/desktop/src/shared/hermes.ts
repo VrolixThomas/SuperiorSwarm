@@ -221,6 +221,10 @@ export interface HermesLinkedWorkspace {
 	workspaceName: string | null;
 	branch: string | null;
 	worktreePath: string | null;
+	currentPhase: "idle" | "working" | "blocked" | "done" | null;
+	statusText: string | null;
+	needs: string | null;
+	statusUpdatedAt: number | null;
 }
 
 export interface HermesOriginReportState {

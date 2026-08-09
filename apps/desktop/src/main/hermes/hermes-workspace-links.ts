@@ -138,6 +138,10 @@ export function listHermesWorkspaceLinks(
 			linkedAt: hermesSessionWorkspaces.linkedAt,
 			resolvedWorkspaceId: workspaces.id,
 			workspaceName: workspaces.name,
+			currentPhase: workspaces.currentPhase,
+			statusText: workspaces.statusText,
+			needs: workspaces.needs,
+			statusUpdatedAt: workspaces.statusUpdatedAt,
 			projectId: projects.id,
 			projectName: projects.name,
 			branch: worktrees.branch,
@@ -168,5 +172,9 @@ export function listHermesWorkspaceLinks(
 		workspaceName: row.workspaceName,
 		branch: row.branch,
 		worktreePath: row.worktreePath,
+		currentPhase: row.currentPhase,
+		statusText: row.statusText,
+		needs: row.needs,
+		statusUpdatedAt: row.statusUpdatedAt?.getTime() ?? null,
 	}));
 }

@@ -17,6 +17,8 @@ describe("Hermes layout contract", () => {
 		expect(view).toContain('data-hermes-alignment-frame="composer"');
 		expect(view).toContain("h-14");
 		expect(view).toContain('aria-label="Session options"');
+		expect(view).toContain('useState<HermesSessionPane>("chat")');
+		expect(view).toContain('hidden={activePane !== "chat"}');
 		expect(view).toContain("Jump to latest");
 		expect(view).toContain("hermesComposerTextareaLayout");
 		expect(view).toContain('aria-label="Attach files"');
@@ -79,5 +81,7 @@ describe("Hermes layout contract", () => {
 		expect(sidebar).toContain("<details");
 		expect(sidebar).toContain("min-h-[56px]");
 		expect(sidebar).toContain('aria-label="Search agent sessions"');
+		expect(sidebar).not.toContain("No workspace");
+		expect(sidebar).not.toContain("Optional linked ticket");
 	});
 });

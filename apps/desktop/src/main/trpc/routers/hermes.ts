@@ -24,6 +24,14 @@ const connectionSessionInput = z.object({
 	hermesSessionId: z.string().min(1),
 });
 
+export const hermesCreateInputSchema = z
+	.object({
+		connectionId: z.string().min(1),
+		topic: z.string().trim().min(1).max(200_000),
+		profileId: z.string().trim().min(1).max(120).optional(),
+	})
+	.strict();
+
 const submitInput = connectionSessionInput
 	.extend({
 		text: z.string().max(200_000),
@@ -102,22 +110,12 @@ export const hermesRouter = router({
 		.input(z.object({ connectionId: z.string().min(1) }))
 		.query(({ input }) => hermesRuntimeService.catalog(input.connectionId)),
 
-	create: publicProcedure
-		.input(
-			z.object({
-				connectionId: z.string().min(1),
-				topic: z.string().trim().min(1).max(200_000),
-				profileId: z.string().trim().min(1).max(120).optional(),
-				cwd: z.string().trim().min(1).max(4_096).optional(),
-			})
-		)
-		.mutation(({ input }) =>
-			hermesRuntimeService.create(input.connectionId, {
-				initialPrompt: input.topic,
-				profileId: input.profileId,
-				cwd: input.cwd,
-			})
-		),
+	create: publicProcedure.input(hermesCreateInputSchema).mutation(({ input }) =>
+		hermesRuntimeService.create(input.connectionId, {
+			initialPrompt: input.topic,
+			profileId: input.profileId,
+		})
+	),
 
 	resume: publicProcedure.input(connectionSessionInput).mutation(async ({ input }) => {
 		const resumed = await hermesRuntimeService.resume(input.connectionId, input.hermesSessionId);

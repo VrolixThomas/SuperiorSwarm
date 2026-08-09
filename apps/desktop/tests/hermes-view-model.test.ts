@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import {
 	HERMES_CHAT_OVERFLOW_CLASSES,
 	applyHermesEvent,
-	buildHermesTicketChoices,
 	classifyHermesTranscriptMessage,
 	createHermesLiveState,
 	deriveHermesCanonicalTimeline,
@@ -638,39 +637,6 @@ describe("Hermes renderer view model", () => {
 			handovers: [telegram, custom],
 			sessions: [local],
 		});
-	});
-
-	test("builds ticket topics only from tickets with existing selectable workspace links", () => {
-		expect(
-			buildHermesTicketChoices(
-				{
-					jiraIssues: [
-						{ key: "SUP-42", summary: "Fix the release build" },
-						{ key: "SUP-99", summary: "Unlinked issue" },
-					],
-					linearIssues: [{ id: "linear-1", identifier: "ENG-7", title: "Audit retries" }],
-				},
-				[
-					{ provider: "jira", ticketId: "SUP-42", workspaceId: "workspace-jira" },
-					{ provider: "linear", ticketId: "linear-1", workspaceId: "workspace-missing" },
-				],
-				[
-					{
-						id: "workspace-jira",
-						projectName: "SuperiorSwarm",
-						name: "SUP-42",
-						branch: "feat/sup-42",
-					},
-				]
-			)
-		).toEqual([
-			{
-				value: "jira:SUP-42:workspace-jira",
-				topic: "SUP-42: Fix the release build",
-				workspaceId: "workspace-jira",
-				label: "SUP-42: Fix the release build · SuperiorSwarm / feat/sup-42",
-			},
-		]);
 	});
 
 	test("hides loopback token entry and enables save without renderer credentials", () => {

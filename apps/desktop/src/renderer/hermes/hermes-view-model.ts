@@ -562,57 +562,6 @@ export function projectHermesLiveCompletions(
 	);
 }
 
-export interface HermesTicketChoice {
-	value: string;
-	topic: string;
-	workspaceId: string;
-	label: string;
-}
-
-export function buildHermesTicketChoices(
-	cached:
-		| {
-				jiraIssues?: Array<{ key: string; summary: string }>;
-				linearIssues?: Array<{ id: string; identifier: string; title: string }>;
-		  }
-		| null
-		| undefined,
-	links: Array<{ provider: string; ticketId: string; workspaceId: string }> | null | undefined,
-	workspaces:
-		| Array<{
-				id: string;
-				projectName: string;
-				name: string;
-				branch: string | null;
-		  }>
-		| null
-		| undefined
-): HermesTicketChoice[] {
-	const topics = new Map<string, string>();
-	for (const issue of cached?.jiraIssues ?? []) {
-		topics.set(`jira:${issue.key}`, `${issue.key}: ${issue.summary}`);
-	}
-	for (const issue of cached?.linearIssues ?? []) {
-		topics.set(`linear:${issue.id}`, `${issue.identifier}: ${issue.title}`);
-	}
-	const workspaceById = new Map((workspaces ?? []).map((workspace) => [workspace.id, workspace]));
-	const choices = new Map<string, HermesTicketChoice>();
-	for (const link of links ?? []) {
-		if (link.provider !== "jira" && link.provider !== "linear") continue;
-		const topic = topics.get(`${link.provider}:${link.ticketId}`);
-		const workspace = workspaceById.get(link.workspaceId);
-		if (!topic || !workspace) continue;
-		const value = `${link.provider}:${link.ticketId}:${link.workspaceId}`;
-		choices.set(value, {
-			value,
-			topic,
-			workspaceId: link.workspaceId,
-			label: `${topic} · ${workspace.projectName} / ${workspace.branch ?? workspace.name}`,
-		});
-	}
-	return [...choices.values()];
-}
-
 export function hermesConnectionFormPolicy(input: {
 	baseUrl: string;
 	hasStoredToken: boolean;

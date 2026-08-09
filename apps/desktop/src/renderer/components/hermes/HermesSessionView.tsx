@@ -34,6 +34,12 @@ import { HermesComposerAttachments } from "./HermesComposerAttachments";
 import { HermesApprovalCard, HermesClarificationChoices } from "./HermesInteractionCards";
 import { HermesMarkdown } from "./HermesMarkdown";
 import { HermesActivityGroup, HermesTranscript } from "./HermesTranscript";
+import {
+	type HermesSessionPane,
+	HermesSessionTabStrip,
+	HermesWorktreesPane,
+	openHermesLinkedWorktree,
+} from "./HermesWorktreesPane";
 
 function scrollToLatest(element: HTMLDivElement, smooth: boolean): void {
 	element.scrollTo({
@@ -48,12 +54,13 @@ export function HermesSessionView() {
 	const sessionId = selection?.sessionId ?? null;
 	const connectionId = selection?.connectionId ?? "";
 	const openWorkspaceFromHermes = useTabStore((state) => state.openWorkspaceFromHermes);
+	const [activePane, setActivePane] = useState<HermesSessionPane>("chat");
 	const [composer, setComposer] = useState("");
 	const [clarification, setClarification] = useState("");
 	const [cursor, setCursor] = useState(0);
 	const [live, setLive] = useState(createHermesLiveState);
 	const [attachments, dispatchAttachments] = useReducer(reduceHermesComposerAttachments, []);
-	const [manualWorkspaceId, setManualWorkspaceId] = useState("");
+	const [recoveryWorktreeId, setRecoveryWorktreeId] = useState("");
 	const [manualOriginUrl, setManualOriginUrl] = useState("");
 	const [showReportPreview, setShowReportPreview] = useState(false);
 	const [attachmentLimitError, setAttachmentLimitError] = useState<string | null>(null);
@@ -146,7 +153,8 @@ export function HermesSessionView() {
 		setLive(createHermesLiveState());
 		setComposer("");
 		setClarification("");
-		setManualWorkspaceId("");
+		setRecoveryWorktreeId("");
+		setActivePane("chat");
 		setManualOriginUrl("");
 		setShowReportPreview(false);
 		setAttachmentLimitError(null);
@@ -336,7 +344,7 @@ export function HermesSessionView() {
 
 	useLayoutEffect(() => {
 		const transcript = transcriptRef.current;
-		if (!transcript || !history.data || history.isLoading) return;
+		if (activePane !== "chat" || !transcript || !history.data || history.isLoading) return;
 		const initialHistory = anchoredSelectionKey.current !== selectionKey;
 		if (shouldAnchorHermesChat({ initialHistory, following: followingTranscript.current })) {
 			transcript.scrollTop = transcript.scrollHeight;
@@ -397,7 +405,7 @@ export function HermesSessionView() {
 							<>
 								<span aria-hidden="true">·</span>
 								<span className="shrink-0">
-									{links.data.length} workspace{links.data.length === 1 ? "" : "s"}
+									{links.data.length} worktree{links.data.length === 1 ? "" : "s"}
 								</span>
 							</>
 						)}
@@ -409,6 +417,11 @@ export function HermesSessionView() {
 						)}
 					</div>
 				</div>
+				<HermesSessionTabStrip
+					activePane={activePane}
+					worktreeCount={links.data?.length ?? 0}
+					onSelect={setActivePane}
+				/>
 
 				<details className="app-no-drag group relative shrink-0">
 					<summary
@@ -481,123 +494,6 @@ export function HermesSessionView() {
 							</section>
 						)}
 
-						<section className="mb-3 min-w-0 border-b border-[var(--border-subtle)] pb-3">
-							<div className="mb-1.5 text-[10px] font-medium text-[var(--text-tertiary)]">
-								Linked workspaces
-							</div>
-							<div className="mb-2 flex min-w-0 flex-col gap-1">
-								{links.data?.map((link) => (
-									<div
-										key={link.id}
-										className="flex min-w-0 items-center gap-1 rounded-[6px] bg-[var(--bg-base)]/50 px-2 py-1"
-									>
-										<button
-											type="button"
-											disabled={link.missing || !link.worktreePath}
-											onClick={() => {
-												if (!link.worktreePath) return;
-												openWorkspaceFromHermes(link.workspaceId, link.worktreePath, {
-													connectionId,
-													sessionId,
-												});
-												const tabs = useTabStore.getState().getTabsByWorkspace(link.workspaceId);
-												if (!tabs.some((tab) => tab.kind === "terminal")) {
-													const tabId = useTabStore
-														.getState()
-														.addTerminalTab(
-															link.workspaceId,
-															link.worktreePath,
-															link.branch ?? "Hermes"
-														);
-													attachTerminal.mutate({
-														workspaceId: link.workspaceId,
-														terminalId: tabId,
-													});
-												}
-											}}
-											className="min-w-0 flex-1 truncate text-left text-[10px] text-[var(--text-secondary)] disabled:text-[var(--danger)]"
-										>
-											{link.missing
-												? `Missing: ${link.workspaceId}`
-												: `${link.projectName ?? "Project"} · ${link.branch ?? link.workspaceName}`}
-										</button>
-										<button
-											type="button"
-											aria-label="Unlink workspace"
-											onClick={() => {
-												const generation = selectionGeneration;
-												unlinkWorkspace.mutate(
-													{
-														connectionId,
-														hermesSessionId: sessionId,
-														workspaceId: link.workspaceId,
-													},
-													{
-														onSuccess: () => {
-															runForSelection(generation, () => {
-																void utils.hermes.workspaceLinks.invalidate();
-																void utils.hermes.workspaceLinkIndex.invalidate();
-															});
-														},
-													}
-												);
-											}}
-											className="flex size-5 shrink-0 items-center justify-center rounded-full text-[var(--text-quaternary)] hover:bg-[var(--bg-overlay)] hover:text-[var(--danger)]"
-										>
-											×
-										</button>
-									</div>
-								))}
-								{links.data?.length === 0 && (
-									<div className="text-[10px] text-[var(--text-quaternary)]">
-										No linked workspace
-									</div>
-								)}
-							</div>
-							<div className="flex min-w-0 gap-1.5">
-								<select
-									value={manualWorkspaceId}
-									onChange={(event) => setManualWorkspaceId(event.target.value)}
-									aria-label="Link a recovery workspace"
-									className="w-0 min-w-0 max-w-full flex-1 rounded-[6px] border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1 text-[10px] text-[var(--text-tertiary)]"
-								>
-									<option value="">Link a recovery workspace…</option>
-									{availableWorkspaces.data?.map((workspace) => (
-										<option key={workspace.id} value={workspace.id}>
-											{workspace.projectName} · {workspace.branch ?? workspace.name}
-										</option>
-									))}
-								</select>
-								<button
-									type="button"
-									disabled={!manualWorkspaceId}
-									onClick={() => {
-										const generation = selectionGeneration;
-										linkWorkspace.mutate(
-											{
-												connectionId,
-												hermesSessionId: sessionId,
-												workspaceId: manualWorkspaceId,
-												lineageRootId: null,
-											},
-											{
-												onSuccess: () => {
-													runForSelection(generation, () => {
-														setManualWorkspaceId("");
-														void utils.hermes.workspaceLinks.invalidate();
-														void utils.hermes.workspaceLinkIndex.invalidate();
-													});
-												},
-											}
-										);
-									}}
-									className="shrink-0 rounded-[6px] border border-[var(--border)] px-2 py-1 text-[10px] text-[var(--text-secondary)] disabled:opacity-40"
-								>
-									Link
-								</button>
-							</div>
-						</section>
-
 						{isSlackSession && originActions.canReportToOrigin && reportable && (
 							<section className="min-w-0">
 								<div className="mb-1.5 text-[10px] font-medium text-[var(--text-tertiary)]">
@@ -667,20 +563,24 @@ export function HermesSessionView() {
 				</details>
 			</header>
 
-			{visibleError && (
+			{visibleError && activePane === "chat" && (
 				<div className="shrink-0 border-b border-[var(--danger)]/15 bg-[var(--danger-subtle)] px-4 py-1.5 text-[11px] text-[var(--danger)] [overflow-wrap:anywhere]">
 					{visibleError}
 				</div>
 			)}
 
 			<div
+				id="hermes-chat-panel"
+				role="tabpanel"
+				aria-labelledby="hermes-chat-tab"
+				hidden={activePane !== "chat"}
 				ref={transcriptRef}
 				onScroll={(event) => {
 					const following = isHermesChatNearBottom(event.currentTarget);
 					followingTranscript.current = following;
 					setShowJumpToLatest(!following);
 				}}
-				className={`${HERMES_CHAT_OVERFLOW_CLASSES.transcriptOwner} ${HERMES_CHAT_LAYOUT_CLASSES.gutter} flex-1 py-6 sm:py-7`}
+				className={`${activePane !== "chat" ? "hidden" : ""} ${HERMES_CHAT_OVERFLOW_CLASSES.transcriptOwner} ${HERMES_CHAT_LAYOUT_CLASSES.gutter} flex-1 py-6 sm:py-7`}
 			>
 				<div
 					className={`${HERMES_CHAT_LAYOUT_CLASSES.frame} pb-6`}
@@ -715,7 +615,8 @@ export function HermesSessionView() {
 			</div>
 
 			<div
-				className={`relative z-10 min-w-0 shrink-0 bg-gradient-to-t from-[var(--bg-base)] via-[var(--bg-base)] to-transparent pb-4 pt-2 sm:pb-5 ${HERMES_CHAT_LAYOUT_CLASSES.gutter}`}
+				hidden={activePane !== "chat"}
+				className={`${activePane !== "chat" ? "hidden" : ""} relative z-10 min-w-0 shrink-0 bg-gradient-to-t from-[var(--bg-base)] via-[var(--bg-base)] to-transparent pb-4 pt-2 sm:pb-5 ${HERMES_CHAT_LAYOUT_CLASSES.gutter}`}
 			>
 				{showJumpToLatest && (
 					<div className="pointer-events-none absolute -top-9 left-0 right-0 flex justify-center">
@@ -964,6 +865,69 @@ export function HermesSessionView() {
 					</form>
 				</div>
 			</div>
+
+			<HermesWorktreesPane
+				links={links.data ?? []}
+				availableWorktrees={availableWorkspaces.data ?? []}
+				recoveryWorktreeId={recoveryWorktreeId}
+				recoveryPending={linkWorkspace.isPending || unlinkWorkspace.isPending}
+				hidden={activePane !== "worktrees"}
+				onOpen={(link) => {
+					openHermesLinkedWorktree(
+						link,
+						{ connectionId, sessionId },
+						{
+							openWorkspaceFromHermes,
+							getTabsByWorkspace: (workspaceId) =>
+								useTabStore.getState().getTabsByWorkspace(workspaceId),
+							addTerminalTab: (workspaceId, worktreePath, branch) =>
+								useTabStore.getState().addTerminalTab(workspaceId, worktreePath, branch),
+							attachTerminal: (workspaceId, terminalId) =>
+								attachTerminal.mutate({ workspaceId, terminalId }),
+						}
+					);
+				}}
+				onRecoveryChange={setRecoveryWorktreeId}
+				onRecoveryLink={() => {
+					if (!recoveryWorktreeId) return;
+					const generation = selectionGeneration;
+					linkWorkspace.mutate(
+						{
+							connectionId,
+							hermesSessionId: sessionId,
+							workspaceId: recoveryWorktreeId,
+							lineageRootId: null,
+						},
+						{
+							onSuccess: () => {
+								runForSelection(generation, () => {
+									setRecoveryWorktreeId("");
+									void utils.hermes.workspaceLinks.invalidate();
+									void utils.hermes.workspaceLinkIndex.invalidate();
+								});
+							},
+						}
+					);
+				}}
+				onRecoveryUnlink={(link) => {
+					const generation = selectionGeneration;
+					unlinkWorkspace.mutate(
+						{
+							connectionId,
+							hermesSessionId: sessionId,
+							workspaceId: link.workspaceId,
+						},
+						{
+							onSuccess: () => {
+								runForSelection(generation, () => {
+									void utils.hermes.workspaceLinks.invalidate();
+									void utils.hermes.workspaceLinkIndex.invalidate();
+								});
+							},
+						}
+					);
+				}}
+			/>
 		</main>
 	);
 }

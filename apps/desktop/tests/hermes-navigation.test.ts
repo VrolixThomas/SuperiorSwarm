@@ -103,7 +103,9 @@ describe("Hermes global navigation", () => {
 		expect(chat).not.toContain("Select a Hermes session");
 		expect(chat).toContain('const connectionId = selection?.connectionId ?? ""');
 		expect(chat).not.toContain("connections.data?.[0]");
-		expect(chat).toContain("Linked workspaces");
+		expect(chat).toContain("HermesSessionTabStrip");
+		expect(chat).toContain("HermesWorktreesPane");
+		expect(chat).not.toContain("Linked workspaces");
 		expect(chat).toContain('aria-label="Session options"');
 		expect(chat).toMatch(
 			/const origin = trpc\.hermes\.origin\.useQuery\([\s\S]*?enabled: Boolean\(connectionId && sessionId && connected\)/
@@ -217,8 +219,12 @@ describe("Hermes global navigation", () => {
 		expect(sidebar).toContain("trpc.hermes.create.useMutation");
 		expect(sidebar).toContain("newTopic");
 		expect(sidebar).toContain("newSessionSubmitting");
-		expect(sidebar).toContain("trpc.tickets.getCachedTickets.useQuery");
-		expect(sidebar).toContain("trpc.tickets.getLinkedTickets.useQuery");
+		expect(sidebar).not.toContain("availableWorkspaces");
+		expect(sidebar).not.toContain("buildHermesTicketChoices");
+		expect(sidebar).not.toContain("trpc.tickets.getCachedTickets.useQuery");
+		expect(sidebar).not.toContain("trpc.tickets.getLinkedTickets.useQuery");
+		expect(sidebar).not.toContain("newWorkspaceId");
+		expect(sidebar).not.toContain("cwd:");
 		expect(sidebar).toContain("Handovers");
 		expect(sidebar).toContain("Sessions");
 		expect(sidebar).toContain("showTokenInput");

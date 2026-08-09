@@ -506,7 +506,7 @@ export class HermesRuntimeService {
 
 	async create(
 		connectionId: string,
-		input: { initialPrompt: string; cwd?: string; profileId?: string }
+		input: { initialPrompt: string; profileId?: string }
 	): Promise<HermesSessionBinding> {
 		const runtime = this.requireRuntime(connectionId);
 		const profileId = input.profileId ?? runtime.profileId;
@@ -515,7 +515,6 @@ export class HermesRuntimeService {
 			source: "superiorswarm",
 			profile: profileId,
 		};
-		if (input.cwd) params["cwd"] = input.cwd;
 		const binding = normalizeHermesSessionBinding(
 			await runtime.client.request("session.create", params),
 			undefined,

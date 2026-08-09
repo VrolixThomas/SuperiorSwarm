@@ -4,7 +4,7 @@ import { EventEmitter } from "node:events";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { _setDbForTesting } from "../src/main/db";
+import { _setDbForTesting, getDb, schema } from "../src/main/db";
 import { HermesAttachmentStore } from "../src/main/hermes/hermes-attachments";
 import {
 	ensureHermesLocalConnection,
@@ -24,6 +24,7 @@ import {
 	HermesRuntimeService,
 } from "../src/main/hermes/hermes-runtime-service";
 import { HermesTokenVault } from "../src/main/hermes/hermes-token-vault";
+import { listHermesWorkspaceLinks } from "../src/main/hermes/hermes-workspace-links";
 import type {
 	HermesRuntimeEvent,
 	HermesRuntimeState,
@@ -706,9 +707,9 @@ describe("HermesRuntimeService stock lifecycle", () => {
 		await service.connect(connectionId);
 
 		const created = await service.create(connectionId, {
-			cwd: "/tmp/worktree",
 			initialPrompt: "Investigate ticket SUP-42 and fix the failing release build",
-		});
+			cwd: "/tmp/worktree",
+		} as { initialPrompt: string });
 
 		expect(created).toMatchObject({
 			runtimeSessionId: "runtime-new",
@@ -732,7 +733,6 @@ describe("HermesRuntimeService stock lifecycle", () => {
 					title: "Investigate ticket SUP-42 and fix the failing release build",
 					source: "superiorswarm",
 					profile: "work",
-					cwd: "/tmp/worktree",
 				},
 			},
 			{
@@ -748,6 +748,74 @@ describe("HermesRuntimeService stock lifecycle", () => {
 		).rejects.toThrow("already active");
 		expect(JSON.stringify(client.requests)).not.toContain("claim");
 		expect(rest.transcriptCalls).toEqual([]);
+	});
+
+	test("auto-links a trusted create-worktree artifact to the durable task session", async () => {
+		const now = new Date();
+		getDb()
+			.insert(schema.projects)
+			.values({
+				id: "project-artifact",
+				name: "Artifact App",
+				repoPath: "/repos/artifact-app",
+				defaultBranch: "main",
+				createdAt: now,
+				updatedAt: now,
+			})
+			.run();
+		getDb()
+			.insert(schema.worktrees)
+			.values({
+				id: "worktree-artifact",
+				projectId: "project-artifact",
+				path: "/repos/artifact-app-worktrees/feat/task",
+				branch: "feat/task",
+				baseBranch: "main",
+				createdAt: now,
+				updatedAt: now,
+			})
+			.run();
+		getDb()
+			.insert(schema.workspaces)
+			.values({
+				id: "workspace-artifact",
+				projectId: "project-artifact",
+				type: "worktree",
+				name: "feat/task",
+				worktreeId: "worktree-artifact",
+				createdAt: now,
+				updatedAt: now,
+			})
+			.run();
+		client.responses.set("session.create", [
+			{ session_id: "runtime-task", stored_session_id: "durable-task", profile: "work" },
+		]);
+		client.responses.set("prompt.submit", [{ status: "streaming" }]);
+		await service.connect(connectionId);
+		await service.create(connectionId, { initialPrompt: "Change every relevant repository" });
+
+		client.emit({
+			type: "tool.result",
+			runtimeSessionId: "runtime-task",
+			workspaceArtifacts: [
+				{
+					kind: "superiorswarm.workspace.created",
+					workspaceId: "workspace-artifact",
+					projectId: "project-artifact",
+					branch: "feat/task",
+					worktreePath: "/repos/artifact-app-worktrees/feat/task",
+				},
+			],
+		});
+
+		expect(listHermesWorkspaceLinks(connectionId, "durable-task")).toEqual([
+			expect.objectContaining({
+				hermesSessionId: "durable-task",
+				workspaceId: "workspace-artifact",
+				source: "tool-artifact",
+			}),
+		]);
+		expect(listHermesWorkspaceLinks(connectionId, "runtime-task")).toEqual([]);
 	});
 
 	test("resumes, attaches local image/PDF/file through stock RPC, then submits resolved context", async () => {
