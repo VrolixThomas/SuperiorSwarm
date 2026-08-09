@@ -91,7 +91,7 @@ export interface HermesTranscriptMessage {
 	active: boolean | null;
 	compacted: boolean | null;
 	displayKind: string | null;
-	displayMetadata: Record<string, unknown> | null;
+	compactionSummaryType: "standalone" | "merged" | "micro" | "legacy" | null;
 	turnId: string | null;
 	role: "user" | "assistant" | "system" | "tool";
 	text: string;

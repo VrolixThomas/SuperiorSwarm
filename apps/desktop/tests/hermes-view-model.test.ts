@@ -77,7 +77,7 @@ const message = (overrides: Partial<HermesTranscriptMessage> = {}): HermesTransc
 	active: null,
 	compacted: null,
 	displayKind: null,
-	displayMetadata: null,
+	compactionSummaryType: null,
 	turnId: "turn-1",
 	role: "assistant",
 	text: "Complete update",
@@ -162,6 +162,70 @@ describe("Hermes renderer view model", () => {
 			[expect.objectContaining({ id: "same-one" })],
 			[expect.objectContaining({ id: "same-two" })],
 		]);
+	});
+
+	test("groups an implicit original ID with explicit canonical copies", () => {
+		const timeline = deriveHermesCanonicalTimeline([
+			message({ id: "7", canonicalMessageId: null, role: "user", text: "Original seven" }),
+			message({
+				id: "91",
+				canonicalMessageId: "7",
+				role: "user",
+				text: "Retained copy",
+			}),
+		]);
+
+		expect(timeline).toHaveLength(1);
+		expect(timeline[0]).toMatchObject({
+			id: "7",
+			text: "Original seven",
+			physicalRows: [{ id: "7" }, { id: "91", canonicalMessageId: "7" }],
+		});
+	});
+
+	test("uses a later original as display source at the copy's earliest timeline position", () => {
+		const timeline = deriveHermesCanonicalTimeline([
+			message({ id: "before", canonicalMessageId: null, text: "Before" }),
+			message({ id: "91", canonicalMessageId: "7", role: "user", text: "Copy first" }),
+			message({ id: "between", canonicalMessageId: null, text: "Between" }),
+			message({ id: "7", canonicalMessageId: null, role: "user", text: "Original later" }),
+			message({ id: "after", canonicalMessageId: null, text: "After" }),
+		]);
+
+		expect(timeline.map((entry) => entry.id)).toEqual(["before", "7", "between", "after"]);
+		expect(timeline[1]).toMatchObject({
+			id: "7",
+			text: "Original later",
+			physicalRows: [{ id: "91" }, { id: "7" }],
+		});
+	});
+
+	test("accumulates a large canonical group without full-array cloning", async () => {
+		const messages = Array.from({ length: 10_000 }, (_, index) =>
+			message({ id: `copy-${index}`, canonicalMessageId: "canonical-large" })
+		);
+
+		const [canonical] = deriveHermesCanonicalTimeline(messages);
+		expect(canonical?.physicalRows).toHaveLength(10_000);
+
+		const source = await Bun.file(
+			new URL("../src/renderer/hermes/hermes-view-model.ts", import.meta.url)
+		).text();
+		expect(source).not.toContain("physicalRows: [...existing.physicalRows");
+	});
+
+	test("does not retain opaque display metadata in canonical physical row state", () => {
+		const unsafeMessage = {
+			...message({ id: "physical-row" }),
+			displayMetadata: {
+				raw: "physical-row-innocent-key-secret",
+			},
+		} as HermesTranscriptMessage;
+
+		const [canonical] = deriveHermesCanonicalTimeline([unsafeMessage]);
+
+		expect(canonical?.physicalRows[0]).not.toHaveProperty("displayMetadata");
+		expect(JSON.stringify(canonical?.physicalRows)).not.toContain("innocent-key-secret");
 	});
 
 	test("projects only user turns and substantive assistant prose into conversation", () => {
@@ -256,18 +320,14 @@ describe("Hermes renderer view model", () => {
 			text: "First compacted context",
 			compactionGeneration: 1,
 			displayKind: "compaction_summary",
-			displayMetadata: {
-				compaction: { generation: 1, summary_type: "standalone" },
-			},
+			compactionSummaryType: "standalone",
 		});
 		const secondSummary = message({
 			id: "summary-two",
 			text: "Second compacted context",
 			compactionGeneration: 2,
 			displayKind: "compaction_summary",
-			displayMetadata: {
-				compaction: { generation: 2, summary_type: "incremental" },
-			},
+			compactionSummaryType: "merged",
 		});
 		const prefixOnly = message({
 			id: "prefix-only",

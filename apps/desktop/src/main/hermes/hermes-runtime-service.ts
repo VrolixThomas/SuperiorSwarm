@@ -220,6 +220,25 @@ function stockCatalog(
 	};
 }
 
+function reconcileHermesHistory(
+	cached: HermesSessionHistory | undefined,
+	incoming: HermesSessionHistory
+): HermesSessionHistory {
+	if (cached?.view !== "durable" || incoming.view !== "active") return incoming;
+	const ids = new Set(cached.messages.map((message) => message.id));
+	const messages = [...cached.messages];
+	for (const message of incoming.messages) {
+		if (ids.has(message.id)) continue;
+		ids.add(message.id);
+		messages.push(message);
+	}
+	return {
+		durableSessionId: incoming.durableSessionId,
+		view: "durable",
+		messages,
+	};
+}
+
 export class HermesRuntimeService {
 	private readonly runtimes = new Map<string, ConnectionRuntime>();
 	private readonly clientFactory: () => HermesRuntimeClientLike;
@@ -463,13 +482,20 @@ export class HermesRuntimeService {
 			);
 		}
 		const profileId = this.profileFor(runtime, durableSessionId);
-		const history = await runtime.rest.getTranscript(durableSessionId, profileId);
+		const cached =
+			runtime.histories.get(hermesSessionId) ?? runtime.histories.get(durableSessionId);
+		const history = reconcileHermesHistory(
+			cached,
+			await runtime.rest.getTranscript(durableSessionId, profileId)
+		);
 		if (draftBinding) draftBinding.persisted = true;
 		if (history.durableSessionId !== durableSessionId) {
 			runtime.aliases.set(hermesSessionId, history.durableSessionId);
 			runtime.aliases.set(durableSessionId, history.durableSessionId);
 		}
 		runtime.histories.set(hermesSessionId, history);
+		runtime.histories.set(durableSessionId, history);
+		runtime.histories.set(history.durableSessionId, history);
 		this.linkArtifacts(
 			connectionId,
 			history.durableSessionId,
@@ -507,7 +533,7 @@ export class HermesRuntimeService {
 					active: null,
 					compacted: null,
 					displayKind: null,
-					displayMetadata: null,
+					compactionSummaryType: null,
 					turnId: null,
 					role: "user",
 					text: input.initialPrompt,

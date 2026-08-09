@@ -86,18 +86,50 @@ function isUnsupportedDurableView(error: unknown): boolean {
 	) {
 		return false;
 	}
-	const hint = error.backendHint.toLocaleLowerCase();
-	return (
-		hint.includes("view") &&
-		[
-			"invalid",
-			"unknown",
-			"unsupported",
-			"unrecognized",
-			"unexpected",
-			"extra_forbidden",
-			"not permitted",
-		].some((word) => hint.includes(word))
+	let payload: unknown = error.backendHint;
+	try {
+		payload = JSON.parse(error.backendHint);
+	} catch {
+		// Plain-text backend errors are matched by the same exact phrase below.
+	}
+	const root = record(payload);
+	const detail = root?.["detail"];
+	if (
+		Array.isArray(detail) &&
+		detail.some((item) => {
+			const validation = record(item);
+			const location = validation?.["loc"];
+			return (
+				validation?.["type"] === "extra_forbidden" &&
+				Array.isArray(location) &&
+				location.length === 2 &&
+				location[0] === "query" &&
+				location[1] === "view"
+			);
+		})
+	) {
+		return true;
+	}
+	const strings: string[] = [];
+	const visit = (value: unknown) => {
+		if (typeof value === "string") {
+			strings.push(value);
+			return;
+		}
+		if (Array.isArray(value)) {
+			for (const child of value) visit(child);
+			return;
+		}
+		const values = record(value);
+		if (values) {
+			for (const child of Object.values(values)) visit(child);
+		}
+	};
+	visit(payload);
+	return strings.some((value) =>
+		/\b(?:unknown|unsupported|unrecognized) query parameter(?:\s+(?:named|called))?\s*(?::|=)?\s*["'`]?view["'`]?(?:\b|$)/i.test(
+			value
+		)
 	);
 }
 
@@ -247,14 +279,27 @@ export class HermesRestClient {
 				},
 				signal
 			);
-			if (record(payload)?.["view"] !== "durable") {
+			const page = this.normalizeMessagePage(payload, 500);
+			const responseView = record(payload)?.["view"];
+			if (pageIndex === 0 && (responseView === undefined || responseView === "active")) {
 				return await this.getActiveTranscript(durableSessionId, profileId, signal);
 			}
-			const page = normalizeHermesMessagePage(payload, 500);
+			if (responseView !== "durable") {
+				throw new HermesRestError(
+					"Hermes returned an unknown transcript view",
+					"malformed-response"
+				);
+			}
 			resolvedDurableSessionId = page.durableSessionId;
+			if (page.hasMore && page.returned === 0) {
+				throw new HermesRestError(
+					"Hermes transcript pagination made no progress",
+					"malformed-response"
+				);
+			}
 			pages.push(page.messages);
 			offset += page.returned;
-			if (page.returned < 500) {
+			if (page.returned < 500 || (page.hasMoreIsAuthoritative && !page.hasMore)) {
 				return normalizeHermesHistory(resolvedDurableSessionId, pages.flat(), "durable");
 			}
 		}
@@ -282,8 +327,14 @@ export class HermesRestClient {
 				},
 				signal
 			);
-			const page = normalizeHermesMessagePage(payload, 500);
+			const page = this.normalizeMessagePage(payload, 500);
 			resolvedDurableSessionId = page.durableSessionId;
+			if (page.hasMore && page.returned === 0) {
+				throw new HermesRestError(
+					"Hermes transcript pagination made no progress",
+					"malformed-response"
+				);
+			}
 			pages.push(page.messages);
 			offset += page.returned;
 			if (!page.hasMore) {
@@ -296,6 +347,21 @@ export class HermesRestClient {
 			"Hermes transcript exceeded the configured pagination bound",
 			"transcript-too-large"
 		);
+	}
+
+	private normalizeMessagePage(payload: unknown, requestedLimit: number) {
+		const root = record(payload);
+		if (!root || (!Array.isArray(root["messages"]) && !Array.isArray(root["data"]))) {
+			throw new HermesRestError("Hermes returned a malformed messages page", "malformed-response");
+		}
+		try {
+			return normalizeHermesMessagePage(payload, requestedLimit);
+		} catch (error) {
+			throw new HermesRestError(
+				safeMessage(error, "Hermes returned a malformed messages page"),
+				"malformed-response"
+			);
+		}
 	}
 
 	private requestUrl(pathname: string, query: Record<string, string>): URL {

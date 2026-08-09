@@ -170,6 +170,150 @@ describe("HermesRestClient", () => {
 		expect(history.messages.map((message) => message.id)).toEqual(["only-row"]);
 	});
 
+	test("uses actual rows rather than advertised returned counts for active and durable offsets", async () => {
+		const durableOffsets: number[] = [];
+		const durable = new HermesRestClient({
+			baseUrl: "http://localhost:9119",
+			profileId: "work",
+			token: "token",
+			fetchImpl: async (input) => {
+				const url = new URL(String(input));
+				const offset = Number(url.searchParams.get("offset"));
+				durableOffsets.push(offset);
+				const messages = Array.from({ length: offset === 0 ? 500 : 1 }, (_, index) => ({
+					id: `durable-${offset + index}`,
+					role: "assistant",
+					content: "row",
+				}));
+				return json({
+					session_id: "durable-offsets",
+					view: "durable",
+					messages,
+					pagination: { offset, returned: offset === 0 ? 7 : 900 },
+				});
+			},
+		});
+
+		expect((await durable.getTranscript("durable-offsets", "work")).messages).toHaveLength(501);
+		expect(durableOffsets).toEqual([0, 500]);
+
+		const activeOffsets: number[] = [];
+		const active = new HermesRestClient({
+			baseUrl: "http://localhost:9119",
+			profileId: "work",
+			token: "token",
+			fetchImpl: async (input) => {
+				const url = new URL(String(input));
+				const offset = Number(url.searchParams.get("offset"));
+				if (url.searchParams.has("view")) {
+					return json({ session_id: "active-offsets", messages: [] });
+				}
+				activeOffsets.push(offset);
+				return json({
+					session_id: "active-offsets",
+					messages: [{ id: `active-${offset}`, role: "assistant", content: "row" }],
+					pagination: { offset, returned: 500, has_more: offset === 0 },
+				});
+			},
+		});
+
+		expect((await active.getTranscript("active-offsets", "work")).messages).toHaveLength(2);
+		expect(activeOffsets).toEqual([0, 1]);
+	});
+
+	test("rejects zero-row pagination that claims more data in active and durable views", async () => {
+		for (const silentlyOld of [false, true]) {
+			let requestCount = 0;
+			const client = new HermesRestClient({
+				baseUrl: "http://localhost:9119",
+				profileId: "work",
+				token: "token",
+				maxTranscriptPages: 3,
+				fetchImpl: async (input) => {
+					requestCount += 1;
+					const url = new URL(String(input));
+					if (silentlyOld && url.searchParams.has("view")) {
+						return json({ session_id: "zero-active", messages: [] });
+					}
+					return json({
+						session_id: silentlyOld ? "zero-active" : "zero-durable",
+						...(silentlyOld ? {} : { view: "durable" }),
+						messages: [],
+						pagination: { offset: 0, returned: 0, has_more: true },
+					});
+				},
+			});
+
+			await expect(
+				client.getTranscript(silentlyOld ? "zero-active" : "zero-durable", "work")
+			).rejects.toMatchObject({ kind: "malformed-response" });
+			expect(requestCount).toBe(silentlyOld ? 2 : 1);
+		}
+	});
+
+	test("accepts an exact full terminal page at a one-page bound for active and durable views", async () => {
+		const fullPage = Array.from({ length: 500 }, (_, index) => ({
+			id: `row-${index}`,
+			role: "assistant",
+			content: "row",
+		}));
+		const durable = new HermesRestClient({
+			baseUrl: "http://localhost:9119",
+			profileId: "work",
+			token: "token",
+			maxTranscriptPages: 1,
+			fetchImpl: async () =>
+				json({
+					session_id: "terminal-durable",
+					view: "durable",
+					messages: fullPage,
+					pagination: { offset: 0, returned: 500, has_more: false },
+				}),
+		});
+		expect((await durable.getTranscript("terminal-durable", "work")).messages).toHaveLength(500);
+
+		const active = new HermesRestClient({
+			baseUrl: "http://localhost:9119",
+			profileId: "work",
+			token: "token",
+			maxTranscriptPages: 1,
+			fetchImpl: async (input) => {
+				const url = new URL(String(input));
+				return url.searchParams.has("view")
+					? json({ session_id: "terminal-active", messages: [] })
+					: json({
+							session_id: "terminal-active",
+							messages: fullPage,
+							pagination: { offset: 0, returned: 500, total: 500 },
+						});
+			},
+		});
+		expect((await active.getTranscript("terminal-active", "work")).messages).toHaveLength(500);
+	});
+
+	test("keeps the transcript page bound for a non-terminal exact full durable page", async () => {
+		const client = new HermesRestClient({
+			baseUrl: "http://localhost:9119",
+			profileId: "work",
+			token: "token",
+			maxTranscriptPages: 1,
+			fetchImpl: async () =>
+				json({
+					session_id: "bounded-durable",
+					view: "durable",
+					messages: Array.from({ length: 500 }, (_, index) => ({
+						id: `row-${index}`,
+						role: "assistant",
+						content: "row",
+					})),
+				}),
+		});
+
+		await expect(client.getTranscript("bounded-durable", "work")).rejects.toMatchObject({
+			kind: "transcript-too-large",
+		});
+	});
+
 	test("preserves numeric message IDs and stock insertion order across 501-row pages", async () => {
 		const offsets: number[] = [];
 		const client = new HermesRestClient({
@@ -258,10 +402,7 @@ describe("HermesRestClient", () => {
 				const url = new URL(String(input));
 				requests.push(url);
 				if (requests.length === 1) {
-					return json(
-						{ error: { code: "invalid_view", message: "unknown messages view: durable" } },
-						400
-					);
+					return json({ error: { message: "unknown query parameter `view`" } }, 400);
 				}
 				return json({
 					session_id: "stored-old",
@@ -278,6 +419,41 @@ describe("HermesRestClient", () => {
 		expect(requests[1]?.searchParams.has("order")).toBe(false);
 		expect(history.view).toBe("active");
 		expect(history.messages.map((message) => message.id)).toEqual(["active-only"]);
+	});
+
+	test("does not downgrade invalid durable offsets or unrelated view validation errors", async () => {
+		for (const [status, body] of [
+			[400, { detail: "invalid offset for durable view" }],
+			[422, { detail: "invalid value for view" }],
+			[
+				422,
+				{
+					detail: [
+						{
+							type: "extra_forbidden",
+							loc: ["query", "offset"],
+							msg: "Extra inputs are not permitted for view",
+						},
+					],
+				},
+			],
+		] as const) {
+			let requestCount = 0;
+			const client = new HermesRestClient({
+				baseUrl: "http://localhost:9119",
+				profileId: "work",
+				token: "token",
+				fetchImpl: async () => {
+					requestCount += 1;
+					return json(body, status);
+				},
+			});
+
+			await expect(client.getTranscript("stored-error", "work")).rejects.toMatchObject({
+				status,
+			});
+			expect(requestCount).toBe(1);
+		}
 	});
 
 	test("falls back when strict old FastAPI rejects the unknown view query field", async () => {
@@ -312,6 +488,68 @@ describe("HermesRestClient", () => {
 
 		expect(requestCount).toBe(2);
 		expect(history.view).toBe("active");
+	});
+
+	test("requires an exact FastAPI query/view rejection before falling back", async () => {
+		for (const detail of [
+			[
+				{
+					type: "extra_forbidden",
+					loc: ["body", "view"],
+					msg: "Extra inputs are not permitted",
+				},
+			],
+			[
+				{
+					type: "value_error",
+					loc: ["query", "view"],
+					msg: "Unknown value",
+				},
+			],
+		] as const) {
+			let requestCount = 0;
+			const client = new HermesRestClient({
+				baseUrl: "http://localhost:9119",
+				profileId: "work",
+				token: "token",
+				fetchImpl: async () => {
+					requestCount += 1;
+					return json({ detail }, 422);
+				},
+			});
+
+			await expect(client.getTranscript("stored-strict", "work")).rejects.toMatchObject({
+				status: 422,
+			});
+			expect(requestCount).toBe(1);
+		}
+	});
+
+	test("does not treat a malformed or unknown-view durable response as an old backend", async () => {
+		for (const payload of [
+			{ messages: [{ id: "row", role: "assistant", content: "Missing session" }] },
+			{
+				session_id: "stored-unknown-view",
+				view: "experimental",
+				messages: [{ id: "row", role: "assistant", content: "Unknown view" }],
+			},
+		] as const) {
+			let requestCount = 0;
+			const client = new HermesRestClient({
+				baseUrl: "http://localhost:9119",
+				profileId: "work",
+				token: "token",
+				fetchImpl: async () => {
+					requestCount += 1;
+					return json(payload);
+				},
+			});
+
+			await expect(client.getTranscript("stored-malformed", "work")).rejects.toMatchObject({
+				kind: "malformed-response",
+			});
+			expect(requestCount).toBe(1);
+		}
 	});
 
 	test("does not hide unrelated client, authentication, network, or server failures", async () => {

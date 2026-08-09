@@ -424,6 +424,17 @@ function transcriptMessageIdentifier(value: unknown): string | null {
 		: null;
 }
 
+const COMPACTION_SUMMARY_TYPES = new Set(["standalone", "merged", "micro", "legacy"]);
+
+function compactionSummaryType(value: unknown): HermesTranscriptMessage["compactionSummaryType"] {
+	const displayMetadata = record(value);
+	const compaction = record(displayMetadata?.["compaction"]);
+	const summaryType = compaction?.["summary_type"];
+	return typeof summaryType === "string" && COMPACTION_SUMMARY_TYPES.has(summaryType)
+		? (summaryType as HermesTranscriptMessage["compactionSummaryType"])
+		: null;
+}
+
 function normalizeTranscriptMessage(value: unknown, index: number): HermesTranscriptMessage | null {
 	const message = record(value);
 	if (!message) return null;
@@ -434,7 +445,6 @@ function normalizeTranscriptMessage(value: unknown, index: number): HermesTransc
 	const text =
 		stringValue(message["text"]) ?? contentText(message["content"] ?? message["message"]);
 	const rawCompactionGeneration = numberValue(message["compaction_generation"]);
-	const sanitizedDisplayMetadata = sanitizeHermesPayload(message["display_metadata"]);
 	return {
 		id:
 			transcriptMessageIdentifier(message["id"]) ??
@@ -450,7 +460,7 @@ function normalizeTranscriptMessage(value: unknown, index: number): HermesTransc
 		active: optionalBooleanValue(message["active"]),
 		compacted: optionalBooleanValue(message["compacted"]),
 		displayKind: sanitizedStringValue(message["display_kind"]),
-		displayMetadata: record(sanitizedDisplayMetadata),
+		compactionSummaryType: compactionSummaryType(message["display_metadata"]),
 		turnId: safeIdentifier(message["turn_id"], message["turnId"]),
 		role,
 		text: sanitizeString(text),
@@ -470,6 +480,24 @@ export interface HermesMessagePage {
 	returned: number;
 	total: number | null;
 	hasMore: boolean;
+	hasMoreIsAuthoritative: boolean;
+}
+
+function paginationCount(name: string, ...values: unknown[]): number | null {
+	for (const value of values) {
+		if (value === null || value === undefined) continue;
+		const numeric =
+			typeof value === "number"
+				? value
+				: typeof value === "string" && value.trim()
+					? Number(value)
+					: Number.NaN;
+		if (!Number.isFinite(numeric) || !Number.isSafeInteger(numeric) || numeric < 0) {
+			throw new Error(`Hermes returned an invalid pagination ${name}`);
+		}
+		return numeric;
+	}
+	return null;
 }
 
 export function normalizeHermesMessagePage(
@@ -490,13 +518,15 @@ export function normalizeHermesMessagePage(
 			? root["data"]
 			: [];
 	const pagination = record(root["pagination"]);
-	const offset = numberValue(pagination?.["offset"], root["offset"]) ?? 0;
+	paginationCount("limit", pagination?.["limit"], root["limit"]);
+	const offset = paginationCount("offset", pagination?.["offset"], root["offset"]) ?? 0;
 	const messages = rows.flatMap((message, index) => {
 		const normalized = normalizeTranscriptMessage(message, offset + index);
 		return normalized ? [normalized] : [];
 	});
-	const returned = numberValue(pagination?.["returned"]) ?? rows.length;
-	const total = numberValue(root["total"], pagination?.["total"]);
+	paginationCount("returned", pagination?.["returned"], root["returned"]);
+	const returned = messages.length;
+	const total = paginationCount("total", root["total"], pagination?.["total"]);
 	const explicitHasMore = optionalBooleanValue(
 		pagination?.["has_more"],
 		pagination?.["hasMore"],
@@ -510,6 +540,7 @@ export function normalizeHermesMessagePage(
 		total,
 		hasMore:
 			explicitHasMore ?? (total === null ? returned >= requestedLimit : offset + returned < total),
+		hasMoreIsAuthoritative: explicitHasMore !== null || total !== null,
 	};
 }
 

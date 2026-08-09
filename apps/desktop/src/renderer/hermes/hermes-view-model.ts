@@ -105,7 +105,7 @@ export interface HermesTranscriptPhysicalRowState {
 	active: boolean | null;
 	compacted: boolean | null;
 	displayKind: string | null;
-	displayMetadata: Record<string, unknown> | null;
+	compactionSummaryType: HermesTranscriptMessage["compactionSummaryType"];
 }
 
 export interface HermesCanonicalTranscriptMessage extends HermesTranscriptMessage {
@@ -120,34 +120,47 @@ function physicalRowState(message: HermesTranscriptMessage): HermesTranscriptPhy
 		active: message.active,
 		compacted: message.compacted,
 		displayKind: message.displayKind,
-		displayMetadata: message.displayMetadata,
+		compactionSummaryType: message.compactionSummaryType,
 	};
 }
 
 export function deriveHermesCanonicalTimeline(
 	messages: HermesTranscriptMessage[]
 ): HermesCanonicalTranscriptMessage[] {
-	const timeline: HermesCanonicalTranscriptMessage[] = [];
-	const canonicalIndexes = new Map<string, number>();
-	for (const message of messages) {
+	const explicitCanonicalIds = new Set(
+		messages.flatMap((message) =>
+			message.canonicalMessageId === null ? [] : [message.canonicalMessageId]
+		)
+	);
+	const groups = new Map<
+		string | number,
+		{
+			displayMessage: HermesTranscriptMessage;
+			physicalRows: HermesTranscriptPhysicalRowState[];
+		}
+	>();
+	for (const [index, message] of messages.entries()) {
 		const physicalRow = physicalRowState(message);
-		const existingIndex = message.canonicalMessageId
-			? canonicalIndexes.get(message.canonicalMessageId)
-			: undefined;
-		const existing = existingIndex === undefined ? undefined : timeline[existingIndex];
-		if (existing && existingIndex !== undefined) {
-			timeline[existingIndex] = {
-				...existing,
-				physicalRows: [...existing.physicalRows, physicalRow],
-			};
+		const canonicalId =
+			message.canonicalMessageId ?? (explicitCanonicalIds.has(message.id) ? message.id : null);
+		const groupKey = canonicalId ?? index;
+		const existing = groups.get(groupKey);
+		if (existing) {
+			existing.physicalRows.push(physicalRow);
+			if (canonicalId !== null && message.id === canonicalId) {
+				existing.displayMessage = message;
+			}
 			continue;
 		}
-		if (message.canonicalMessageId) {
-			canonicalIndexes.set(message.canonicalMessageId, timeline.length);
-		}
-		timeline.push({ ...message, physicalRows: [physicalRow] });
+		groups.set(groupKey, {
+			displayMessage: message,
+			physicalRows: [physicalRow],
+		});
 	}
-	return timeline;
+	return [...groups.values()].map(({ displayMessage, physicalRows }) => ({
+		...displayMessage,
+		physicalRows,
+	}));
 }
 
 export type HermesTranscriptClassification =
@@ -409,25 +422,12 @@ export function projectHermesTranscript(
 		const classification = classifyHermesTranscriptMessage(message);
 		if (classification.kind === "compaction") {
 			flushActivity();
-			const metadata =
-				message.displayMetadata?.["compaction"] !== null &&
-				typeof message.displayMetadata?.["compaction"] === "object" &&
-				!Array.isArray(message.displayMetadata?.["compaction"])
-					? (message.displayMetadata?.["compaction"] as Record<string, unknown>)
-					: null;
-			const metadataGeneration = metadata?.["generation"];
-			const summaryType = metadata?.["summary_type"];
 			projected.push({
 				kind: "compaction",
 				id: `compaction:${message.id}`,
 				text: classification.text,
-				generation:
-					typeof metadataGeneration === "number" &&
-					Number.isSafeInteger(metadataGeneration) &&
-					metadataGeneration >= 0
-						? metadataGeneration
-						: message.compactionGeneration,
-				summaryType: typeof summaryType === "string" ? summaryType : null,
+				generation: message.compactionGeneration,
+				summaryType: message.compactionSummaryType,
 				createdAt: message.createdAt,
 				source: message,
 			});
@@ -480,7 +480,7 @@ export function projectHermesLiveActivity(
 		active: null,
 		compacted: null,
 		displayKind: null,
-		displayMetadata: null,
+		compactionSummaryType: null,
 		turnId: tool.turnId,
 		role: "tool",
 		text: tool.name,
@@ -546,7 +546,7 @@ export function projectHermesLiveCompletions(
 				active: null,
 				compacted: null,
 				displayKind: null,
-				displayMetadata: null,
+				compactionSummaryType: null,
 				turnId: completion.turnId,
 				role: "assistant",
 				text: completion.text,

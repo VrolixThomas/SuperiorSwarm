@@ -103,7 +103,48 @@ describe("stock Hermes protocol adapter", () => {
 		expect("turnResults" in page).toBe(false);
 	});
 
-	test("normalizes durable physical identity and structural display metadata", () => {
+	test("rejects invalid pagination counts and uses normalized message length as returned", () => {
+		for (const pagination of [
+			{ limit: -1 },
+			{ offset: -1 },
+			{ returned: 1.5 },
+			{ total: Number.POSITIVE_INFINITY },
+			{ offset: "tomorrow" },
+		]) {
+			expect(() =>
+				normalizeHermesMessagePage(
+					{
+						session_id: "durable-session",
+						messages: [],
+						pagination,
+					},
+					500
+				)
+			).toThrow("pagination");
+		}
+		expect(() =>
+			normalizeHermesMessagePage(
+				{
+					session_id: "durable-session",
+					messages: [],
+					returned: -1,
+				},
+				500
+			)
+		).toThrow("pagination");
+
+		const page = normalizeHermesMessagePage(
+			{
+				session_id: "durable-session",
+				messages: [{ id: "only-row", role: "assistant", content: "Done" }],
+				pagination: { offset: 0, returned: 500, has_more: true },
+			},
+			500
+		);
+		expect(page.returned).toBe(1);
+	});
+
+	test("projects only allowlisted durable display fields across the renderer boundary", () => {
 		const page = normalizeHermesMessagePage(
 			{
 				session_id: "durable-session",
@@ -117,7 +158,13 @@ describe("stock Hermes protocol adapter", () => {
 						compacted: true,
 						display_kind: "compaction_summary",
 						display_metadata: {
-							compaction: { generation: 2, summary_type: "standalone" },
+							compaction: {
+								generation: 2,
+								summary_type: "standalone",
+								raw: "nested-innocent-key-secret",
+							},
+							raw: { opaque: "raw-innocent-key-secret" },
+							harmless: "arbitrary-innocent-key-secret",
 							token: "must-not-reach-renderer",
 						},
 						role: "user",
@@ -137,14 +184,63 @@ describe("stock Hermes protocol adapter", () => {
 				active: false,
 				compacted: true,
 				displayKind: "compaction_summary",
-				displayMetadata: {
-					compaction: { generation: 2, summary_type: "standalone" },
-				},
+				compactionSummaryType: "standalone",
 				role: "user",
 				text: "Structural summary",
 			})
 		);
-		expect(JSON.stringify(page.messages[0]?.displayMetadata)).not.toContain("must-not-reach");
+		const rendererJson = JSON.stringify(page.messages[0]);
+		expect(rendererJson).not.toContain("displayMetadata");
+		expect(rendererJson).not.toContain("innocent-key-secret");
+		expect(rendererJson).not.toContain("must-not-reach");
+	});
+
+	test("normalizes zero-valued numeric and string transcript identities", () => {
+		const page = normalizeHermesMessagePage(
+			{
+				session_id: "durable-session",
+				messages: [
+					{ id: 0, role: "user", content: "Original" },
+					{ id: "copy", canonical_message_id: 0, role: "user", content: "Numeric copy" },
+					{
+						id: "string-copy",
+						canonical_message_id: "0",
+						role: "user",
+						content: "String copy",
+					},
+				],
+			},
+			500
+		);
+
+		expect(page.messages.map(({ id, canonicalMessageId }) => [id, canonicalMessageId])).toEqual([
+			["0", null],
+			["copy", "0"],
+			["string-copy", "0"],
+		]);
+	});
+
+	test("rejects unknown compaction summary types instead of forwarding opaque strings", () => {
+		const page = normalizeHermesMessagePage(
+			{
+				session_id: "durable-session",
+				messages: [
+					{
+						id: "summary",
+						display_kind: "compaction_summary",
+						display_metadata: {
+							compaction: { summary_type: "private-backend-shape-secret" },
+						},
+						role: "assistant",
+						content: "Summary",
+					},
+				],
+			},
+			500
+		);
+
+		expect(page.messages[0]?.compactionSummaryType).toBeNull();
+		expect(JSON.stringify(page.messages[0])).not.toContain("private-backend-shape-secret");
 	});
 
 	test("keeps stock runtime and durable session identities distinct", () => {

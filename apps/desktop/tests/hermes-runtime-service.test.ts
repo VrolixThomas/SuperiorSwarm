@@ -236,6 +236,29 @@ function session(id = "stored-1"): HermesSessionSummary {
 	};
 }
 
+function historyMessage(
+	id: string,
+	overrides: Partial<HermesSessionHistory["messages"][number]> = {}
+): HermesSessionHistory["messages"][number] {
+	return {
+		id,
+		canonicalMessageId: id,
+		compactionGeneration: 0,
+		active: true,
+		compacted: false,
+		displayKind: null,
+		compactionSummaryType: null,
+		turnId: null,
+		role: "assistant",
+		text: id,
+		createdAt: 1,
+		status: "complete",
+		toolName: null,
+		workspaceArtifacts: [],
+		...overrides,
+	};
+}
+
 describe("HermesRuntimeService stock lifecycle", () => {
 	const temporaryDirectories: string[] = [];
 	let client: FakeRuntimeClient;
@@ -659,7 +682,7 @@ describe("HermesRuntimeService stock lifecycle", () => {
 					active: true,
 					compacted: false,
 					displayKind: null,
-					displayMetadata: null,
+					compactionSummaryType: null,
 					turnId: null,
 					role: "assistant",
 					text: "Persisted",
@@ -1056,7 +1079,7 @@ describe("HermesRuntimeService stock lifecycle", () => {
 				active: false,
 				compacted: true,
 				displayKind: null,
-				displayMetadata: null,
+				compactionSummaryType: null,
 				turnId: "turn-old",
 				role: "user",
 				text: "Archived question",
@@ -1072,9 +1095,7 @@ describe("HermesRuntimeService stock lifecycle", () => {
 				active: true,
 				compacted: false,
 				displayKind: "compaction_summary",
-				displayMetadata: {
-					compaction: { generation: 1, summary_type: "standalone" },
-				},
+				compactionSummaryType: "standalone",
 				turnId: null,
 				role: "assistant",
 				text: "Durable summary",
@@ -1118,6 +1139,51 @@ describe("HermesRuntimeService stock lifecycle", () => {
 		const feed = service.events(connectionId, 0);
 		expect(JSON.stringify(feed)).not.toContain("active-summary-only");
 		expect((await service.history(connectionId, "stored-1")).messages).toEqual(durableMessages);
+	});
+
+	test("retains cached durable archives when resume and reconnect refresh fall back to active", async () => {
+		const archived = historyMessage("archived-original", {
+			active: false,
+			compacted: true,
+			text: "Archived original",
+		});
+		const activeCopy = historyMessage("active-copy", {
+			canonicalMessageId: "archived-original",
+			text: "Active retained copy",
+		});
+		rest.histories.set("stored-1", {
+			durableSessionId: "stored-1",
+			view: "durable",
+			messages: [archived, activeCopy],
+		});
+		client.responses.set("session.resume", [
+			{ session_id: "runtime-1", session_key: "stored-1", profile: "work" },
+			{ session_id: "runtime-2", session_key: "stored-1", profile: "work" },
+		]);
+		await service.connect(connectionId);
+
+		const resumed = await service.resume(connectionId, "stored-1");
+		expect(resumed.history.view).toBe("durable");
+
+		const newActiveTail = historyMessage("new-active-tail", {
+			canonicalMessageId: null,
+			text: "New active tail",
+		});
+		rest.histories.set("stored-1", {
+			durableSessionId: "stored-1",
+			view: "active",
+			messages: [activeCopy, newActiveTail],
+		});
+		client.emit({ type: "runtime.history-refresh-required", status: "reconnected" });
+		await waitFor(() => rest.transcriptCalls.length >= 2, "active fallback was not refreshed");
+
+		const reconciled = await service.history(connectionId, "stored-1");
+		expect(reconciled.view).toBe("durable");
+		expect(reconciled.messages.map((item) => item.id)).toEqual([
+			"archived-original",
+			"active-copy",
+			"new-active-tail",
+		]);
 	});
 
 	test("routes approval, clarification, and interrupt with runtime identity only", async () => {
@@ -1312,7 +1378,7 @@ describe("HermesRuntimeService stock lifecycle", () => {
 					active: true,
 					compacted: false,
 					displayKind: null,
-					displayMetadata: null,
+					compactionSummaryType: null,
 					turnId: "turn-1",
 					role: "assistant",
 					text: "Canonical persisted update",

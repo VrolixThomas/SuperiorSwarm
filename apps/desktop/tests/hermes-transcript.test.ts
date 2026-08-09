@@ -17,7 +17,7 @@ const message = (overrides: Partial<HermesTranscriptMessage>): HermesTranscriptM
 	active: null,
 	compacted: null,
 	displayKind: null,
-	displayMetadata: null,
+	compactionSummaryType: null,
 	turnId: null,
 	role: "assistant",
 	text: "",
@@ -40,9 +40,7 @@ describe("Hermes transcript", () => {
 						createdAt: Date.parse("2026-08-09T10:00:00.000Z"),
 						compactionGeneration: 3,
 						displayKind: "compaction_summary",
-						displayMetadata: {
-							compaction: { generation: 3, summary_type: "standalone" },
-						},
+						compactionSummaryType: "standalone",
 					}),
 				]),
 			})

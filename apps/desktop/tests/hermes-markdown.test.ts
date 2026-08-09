@@ -18,7 +18,7 @@ const message = (overrides: Partial<HermesTranscriptMessage>): HermesTranscriptM
 	active: null,
 	compacted: null,
 	displayKind: null,
-	displayMetadata: null,
+	compactionSummaryType: null,
 	turnId: null,
 	role: "assistant",
 	text: "",
