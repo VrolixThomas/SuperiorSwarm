@@ -1,23 +1,14 @@
 import {
 	HERMES_WORKSPACE_ARTIFACT_KIND,
-	type HermesCatalog,
 	type HermesInteractionChoiceDto,
+	type HermesOriginProjection,
 	type HermesRuntimeEvent,
+	type HermesSessionBinding,
 	type HermesSessionHistory,
+	type HermesSessionSummary,
 	type HermesTranscriptMessage,
-	type HermesTurnResult,
 	type HermesWorkspaceArtifact,
 } from "../../shared/hermes";
-
-export const HERMES_PROTOCOL_VERSION = 1;
-export const HERMES_REQUIRED_CAPABILITIES = [
-	"session.catalog",
-	"session.claim",
-	"session.claim_renew",
-	"session.release",
-	"session.origin",
-	"session.report_to_origin",
-] as const;
 
 type JsonRecord = Record<string, unknown>;
 
@@ -37,11 +28,19 @@ function stringValue(...values: unknown[]): string | null {
 function numberValue(...values: unknown[]): number | null {
 	for (const value of values) {
 		if (typeof value === "number" && Number.isFinite(value)) return value;
-		if (typeof value === "string" && value.trim() && Number.isFinite(Number(value))) {
-			return Number(value);
+		if (typeof value === "string" && value.trim()) {
+			const numeric = Number(value);
+			if (Number.isFinite(numeric)) return numeric;
+			const parsed = Date.parse(value);
+			if (Number.isFinite(parsed)) return parsed;
 		}
 	}
 	return null;
+}
+
+function timestampValue(...values: unknown[]): number {
+	const value = numberValue(...values) ?? 0;
+	return value > 0 && value < 10_000_000_000 ? value * 1_000 : value;
 }
 
 function booleanValue(defaultValue: boolean, ...values: unknown[]): boolean {
@@ -53,24 +52,8 @@ function booleanValue(defaultValue: boolean, ...values: unknown[]): boolean {
 	return defaultValue;
 }
 
-function capabilityList(value: unknown): string[] {
-	if (Array.isArray(value)) return value.filter((item): item is string => typeof item === "string");
-	const values = record(value);
-	if (!values) return [];
-	return Object.entries(values)
-		.filter(([, enabled]) => enabled === true)
-		.map(([name]) => name);
-}
-
-function versionedCapabilityList(value: unknown): string[] {
-	const values = record(value);
-	if (!values) return [];
-	return Object.entries(values)
-		.filter(([, version]) => (numberValue(version) ?? 0) >= HERMES_PROTOCOL_VERSION)
-		.map(([name]) => name);
-}
-
-const SENSITIVE_KEY = /(token|secret|credential|authorization|password|cookie|origin_json)/i;
+const SENSITIVE_KEY =
+	/(token|secret|credential|authorization|password|cookie|origin_json|session_key|chat_id|thread_id|user_id|team_id|scope_id|guild_id|route)/i;
 
 function sanitizeString(value: string): string {
 	return value
@@ -133,26 +116,19 @@ function normalizeWorkspaceArtifact(value: HermesWorkspaceArtifact): HermesWorks
 	};
 }
 
-export type HermesArtifactExtractionSource =
-	| "trusted-envelope"
-	| "tool-event"
-	| "history-message"
-	| "tool-artifacts-result";
+export type HermesArtifactExtractionSource = "trusted-envelope" | "tool-event" | "history-message";
 
 export function extractWorkspaceArtifacts(
 	value: unknown,
 	source: HermesArtifactExtractionSource = "trusted-envelope"
 ): HermesWorkspaceArtifact[] {
 	const found = new Map<string, HermesWorkspaceArtifact>();
-
-	function add(candidate: unknown): void {
-		if (isWorkspaceArtifact(candidate)) {
-			const artifact = normalizeWorkspaceArtifact(candidate);
-			found.set(`${artifact.projectId}:${artifact.workspaceId}`, artifact);
-		}
-	}
-
-	function addProjection(candidate: unknown): void {
+	const add = (candidate: unknown) => {
+		if (!isWorkspaceArtifact(candidate)) return;
+		const artifact = normalizeWorkspaceArtifact(candidate);
+		found.set(`${artifact.projectId}:${artifact.workspaceId}`, artifact);
+	};
+	const addProjection = (candidate: unknown) => {
 		add(candidate);
 		const projection = record(candidate);
 		if (!projection) return;
@@ -160,127 +136,221 @@ export function extractWorkspaceArtifacts(
 		if (Array.isArray(projection["artifacts"])) {
 			for (const artifact of projection["artifacts"]) add(artifact);
 		}
-	}
-
-	function addStructuredContent(envelope: JsonRecord): void {
-		addProjection(envelope["structuredContent"]);
-		addProjection(envelope["structured_content"]);
-	}
-
-	function addResultEnvelope(candidate: unknown): void {
-		addProjection(candidate);
-		const envelope = record(candidate);
-		if (!envelope) return;
-		addStructuredContent(envelope);
-	}
-
+	};
 	const envelope = record(value);
 	if (!envelope) return [];
-	addStructuredContent(envelope);
-	addResultEnvelope(envelope["tool_result"]);
-	addResultEnvelope(envelope["toolResult"]);
-	addResultEnvelope(envelope["result"]);
-	if (source === "tool-artifacts-result" && Array.isArray(envelope["artifacts"])) {
-		for (const artifact of envelope["artifacts"]) add(artifact);
+	addProjection(envelope["structuredContent"]);
+	addProjection(envelope["structured_content"]);
+	for (const key of ["tool_result", "toolResult", "result"] as const) {
+		const result = record(envelope[key]);
+		if (!result) continue;
+		addProjection(result);
+		addProjection(result["structuredContent"]);
+		addProjection(result["structured_content"]);
+	}
+	if (source === "history-message") {
+		addProjection(envelope["metadata"]);
 	}
 	return [...found.values()];
 }
 
-export function normalizeHermesCatalog(value: unknown, protocolInfo?: unknown): HermesCatalog {
-	const root = record(value) ?? {};
-	const protocol = record(root["protocol"]);
-	const protocolVersion = numberValue(
-		root["protocol_version"],
-		root["api_version"],
-		protocol?.["version"]
+function safeIdentifier(...values: unknown[]): string | null {
+	const value = stringValue(...values);
+	const hasControlCharacter = value
+		? Array.from(value).some((character) => {
+				const code = character.charCodeAt(0);
+				return code < 32 || code === 127;
+			})
+		: false;
+	if (!value || value.length > 512 || hasControlCharacter) return null;
+	return value;
+}
+
+function contentText(value: unknown): string {
+	if (typeof value === "string") return value;
+	if (!Array.isArray(value)) return "";
+	return value
+		.map((part) => {
+			if (typeof part === "string") return part;
+			return stringValue(record(part)?.["text"], record(part)?.["content"]) ?? "";
+		})
+		.join("");
+}
+
+function stockOriginProjection(session: JsonRecord, source: string): HermesOriginProjection | null {
+	if (source !== "slack") return null;
+	return {
+		platform: "slack",
+		displayLabel: sanitizedStringValue(session["display_name"]) ?? "Slack",
+		hasThread: safeIdentifier(session["thread_id"]) !== null,
+		canOpenThread: false,
+		canReport: false,
+		openUrl: null,
+	};
+}
+
+function sessionRows(value: unknown): unknown[] {
+	const root = record(value);
+	if (!root) return [];
+	if (Array.isArray(root["sessions"])) return root["sessions"];
+	const sections = ["recents", "cron", "messaging"];
+	return sections.flatMap((section) => {
+		const payload = record(root[section]);
+		return Array.isArray(payload?.["sessions"]) ? payload["sessions"] : [];
+	});
+}
+
+/** Normalize stock Dashboard REST session lists without forwarding routing metadata. */
+export function normalizeHermesSessionList(
+	value: unknown,
+	defaultProfileId: string
+): HermesSessionSummary[] {
+	const deduped = new Map<string, HermesSessionSummary>();
+	for (const row of sessionRows(value)) {
+		const session = record(row);
+		const id = safeIdentifier(session?.["id"], session?.["stored_session_id"]);
+		if (!session || !id) continue;
+		const source = stringValue(session["source"]) ?? "local";
+		const status = stringValue(session["status"]);
+		const summary: HermesSessionSummary = {
+			id,
+			title: sanitizedStringValue(session["title"]) ?? "Untitled session",
+			preview: sanitizedStringValue(session["preview"], session["summary"]) ?? "",
+			profileId: safeIdentifier(session["profile"], session["profile_name"]) ?? defaultProfileId,
+			source: sanitizeString(source),
+			updatedAt: timestampValue(
+				session["last_active"],
+				session["updated_at"],
+				session["ended_at"],
+				session["started_at"]
+			),
+			createdAt: timestampValue(session["started_at"], session["created_at"]),
+			archived: booleanValue(false, session["archived"]),
+			running: booleanValue(status === "streaming", session["running"], session["is_active"]),
+			busy: booleanValue(status === "busy" || status === "queued", session["busy"]),
+			waitingForUser: booleanValue(status === "waiting_for_user", session["waiting_for_user"]),
+			messageCount: numberValue(session["message_count"]) ?? 0,
+			origin: stockOriginProjection(session, source),
+		};
+		const existing = deduped.get(id);
+		if (!existing || summary.updatedAt >= existing.updatedAt) deduped.set(id, summary);
+	}
+	return [...deduped.values()];
+}
+
+function normalizeTranscriptMessage(value: unknown, index: number): HermesTranscriptMessage | null {
+	const message = record(value);
+	if (!message) return null;
+	const rawRole = stringValue(message["role"]) ?? "system";
+	const role = ["user", "assistant", "system", "tool"].includes(rawRole)
+		? (rawRole as HermesTranscriptMessage["role"])
+		: "system";
+	const text =
+		stringValue(message["text"]) ?? contentText(message["content"] ?? message["message"]);
+	return {
+		id: safeIdentifier(message["id"], message["message_id"]) ?? `history-${index}`,
+		turnId: safeIdentifier(message["turn_id"], message["turnId"]),
+		role,
+		text: sanitizeString(text),
+		createdAt:
+			numberValue(message["created_at"], message["timestamp"]) === null
+				? null
+				: timestampValue(message["created_at"], message["timestamp"]),
+		status: sanitizedStringValue(message["status"]),
+		toolName: sanitizedStringValue(message["tool_name"], message["name"]),
+		workspaceArtifacts: extractWorkspaceArtifacts(message, "history-message"),
+	};
+}
+
+export interface HermesMessagePage {
+	durableSessionId: string;
+	messages: HermesTranscriptMessage[];
+	total: number | null;
+	hasMore: boolean;
+}
+
+export function normalizeHermesMessagePage(
+	value: unknown,
+	requestedLimit: number
+): HermesMessagePage {
+	const root = record(value);
+	if (!root) throw new Error("Hermes returned an invalid messages page");
+	const durableSessionId = safeIdentifier(
+		root["session_id"],
+		root["stored_session_id"],
+		root["durable_session_id"]
 	);
-	const protocolRoot = protocolInfo === undefined ? null : record(protocolInfo);
-	const advertisedCapabilities = record(protocolRoot?.["capabilities"]);
-	const sessionHandoff = record(advertisedCapabilities?.["session_handoff"]);
-	const capabilities = sessionHandoff
-		? versionedCapabilityList(sessionHandoff["methods"])
-		: capabilityList(root["capabilities"] ?? protocol?.["capabilities"]);
-	const missingCapabilities = HERMES_REQUIRED_CAPABILITIES.filter(
-		(capability) => !capabilities.includes(capability)
+	if (!durableSessionId) throw new Error("Hermes messages page omitted the durable session ID");
+	const rows = Array.isArray(root["messages"]) ? root["messages"] : [];
+	const messages = rows.flatMap((message, index) => {
+		const normalized = normalizeTranscriptMessage(message, index);
+		return normalized ? [normalized] : [];
+	});
+	const pagination = record(root["pagination"]);
+	const offset = numberValue(pagination?.["offset"], root["offset"]) ?? 0;
+	const total = numberValue(root["total"], pagination?.["total"]);
+	return {
+		durableSessionId,
+		messages,
+		total,
+		hasMore: total === null ? messages.length >= requestedLimit : offset + messages.length < total,
+	};
+}
+
+export function normalizeHermesHistory(
+	durableSessionId: string,
+	messages: HermesTranscriptMessage[]
+): HermesSessionHistory {
+	return { durableSessionId, messages };
+}
+
+export function normalizeHermesSessionBinding(
+	value: unknown,
+	requestedDurableSessionId?: string,
+	requestedProfileId?: string
+): HermesSessionBinding {
+	const result = record(value);
+	if (!result) throw new Error("Hermes returned an invalid session binding");
+	const runtimeSessionId = safeIdentifier(
+		result["runtime_session_id"],
+		result["session_id"],
+		result["sessionId"]
 	);
-	const negotiatedVersionsCompatible =
-		protocolInfo === undefined ||
-		((numberValue(protocolRoot?.["version"]) ?? 0) >= HERMES_PROTOCOL_VERSION &&
-			(numberValue(sessionHandoff?.["version"]) ?? 0) >= HERMES_PROTOCOL_VERSION);
-	const compatible =
-		protocolVersion !== null &&
-		protocolVersion >= HERMES_PROTOCOL_VERSION &&
-		negotiatedVersionsCompatible &&
-		missingCapabilities.length === 0;
-	const rawSessions = Array.isArray(root["sessions"]) ? root["sessions"] : [];
-	const sessions = rawSessions.flatMap((value) => {
-		const session = record(value);
-		const id = stringValue(session?.["id"], session?.["session_id"]);
-		if (!session || !id) return [];
-		const origin = record(session["origin"]);
-		const lineageTipId =
-			stringValue(
-				session["current_tip_id"],
-				session["lineage_tip_id"],
-				session["lineageTipId"],
-				session["tip_id"]
-			) ?? id;
+	if (!runtimeSessionId) throw new Error("Hermes returned an invalid runtime session");
+	const durableSessionId = safeIdentifier(
+		result["stored_session_id"],
+		result["session_key"],
+		result["resumed"],
+		requestedDurableSessionId
+	);
+	if (!durableSessionId) throw new Error("Hermes response omitted the durable session identity");
+	return {
+		runtimeSessionId,
+		durableSessionId,
+		profileId:
+			safeIdentifier(result["profile"], result["profile_name"], requestedProfileId) ?? "default",
+		persisted: requestedDurableSessionId !== undefined,
+	};
+}
+
+function normalizeInteractionChoices(value: unknown): HermesInteractionChoiceDto[] {
+	if (!Array.isArray(value)) return [];
+	return value.flatMap((choice) => {
+		if (typeof choice === "string") {
+			const safe = sanitizeString(choice);
+			return safe ? [{ value: safe, label: safe }] : [];
+		}
+		const item = record(choice);
+		const rawValue = stringValue(item?.["value"]);
+		if (!item || !rawValue) return [];
+		const safeValue = sanitizeString(rawValue);
 		return [
 			{
-				id,
-				lineageTipId,
-				lineageRootId: stringValue(
-					session["lineage_root_id"],
-					session["lineageRootId"],
-					session["root_id"]
-				),
-				title: sanitizedStringValue(session["title"]) ?? "Untitled session",
-				preview: sanitizedStringValue(session["preview"]) ?? "",
-				profileId: stringValue(session["profile_id"], session["profile"]) ?? "default",
-				source: stringValue(session["source_platform"], session["source"]) ?? "local",
-				updatedAt: numberValue(session["updated_at"], session["last_active"]) ?? 0,
-				createdAt: numberValue(session["created_at"], session["started_at"]) ?? 0,
-				open: booleanValue(true, session["open"], session["is_open"]),
-				archived: booleanValue(false, session["archived"], session["is_archived"]),
-				running: booleanValue(false, session["running"]),
-				busy: booleanValue(false, session["busy"]),
-				claimed: booleanValue(false, session["claimed"]),
-				waitingForUser: booleanValue(false, session["waiting_for_user"], session["waitingForUser"]),
-				originLabel: sanitizedStringValue(
-					origin?.["label"],
-					session["origin_label"],
-					session["originLabel"]
-				),
-				canOpenOrigin: booleanValue(
-					false,
-					origin?.["can_open_origin"],
-					session["can_open_origin"],
-					session["canOpenOrigin"]
-				),
-				canReportToOrigin: booleanValue(
-					false,
-					origin?.["can_report_to_origin"],
-					session["can_report_to_origin"],
-					session["canReportToOrigin"]
-				),
-				opaqueOriginRef: stringValue(
-					origin?.["origin_ref"],
-					session["opaque_origin_ref"],
-					session["origin_ref"]
-				),
+				value: safeValue,
+				label: sanitizedStringValue(item["label"], item["description"], item["title"]) ?? safeValue,
 			},
 		];
 	});
-
-	return {
-		compatibility: {
-			state: compatible ? "compatible" : "upgrade-required",
-			protocolVersion,
-			capabilities,
-			missingCapabilities,
-		},
-		sessions,
-	};
 }
 
 export function normalizeHermesEvent(value: unknown): HermesRuntimeEvent | null {
@@ -302,14 +372,15 @@ export function normalizeHermesEvent(value: unknown): HermesRuntimeEvent | null 
 	const choices = normalizeInteractionChoices(payload["choices"]);
 	return {
 		type: sanitizeString(type),
-		sessionId: stringValue(
+		runtimeSessionId: safeIdentifier(
 			params?.["session_id"],
 			params?.["sessionId"],
 			payload["session_id"],
 			payload["sessionId"]
 		),
-		turnId: stringValue(payload["turn_id"], payload["turnId"]),
-		requestId: stringValue(payload["request_id"], payload["requestId"]),
+		durableSessionId: null,
+		turnId: safeIdentifier(payload["turn_id"], payload["turnId"]),
+		requestId: safeIdentifier(payload["request_id"], payload["requestId"], payload["tool_call_id"]),
 		text,
 		toolName: sanitizedStringValue(payload["tool_name"], payload["toolName"], payload["name"]),
 		status: sanitizedStringValue(payload["status"]),
@@ -317,99 +388,4 @@ export function normalizeHermesEvent(value: unknown): HermesRuntimeEvent | null 
 		workspaceArtifacts: extractWorkspaceArtifacts(payload, "tool-event"),
 		receivedAt: Date.now(),
 	};
-}
-
-function normalizeInteractionChoices(value: unknown): HermesInteractionChoiceDto[] {
-	if (!Array.isArray(value)) return [];
-	return value.flatMap((choice) => {
-		if (typeof choice === "string") {
-			const safe = sanitizeString(choice);
-			return safe ? [{ value: safe, label: safe }] : [];
-		}
-		const item = record(choice);
-		const rawValue = stringValue(item?.["value"]);
-		if (!item || !rawValue) return [];
-		const safeValue = sanitizeString(rawValue);
-		const label =
-			sanitizedStringValue(item["label"], item["description"], item["title"]) ?? safeValue;
-		return [{ value: safeValue, label }];
-	});
-}
-
-function contentText(value: unknown): string | null {
-	if (typeof value === "string") return value;
-	if (!Array.isArray(value)) return null;
-	const text = value.map((part) => stringValue(record(part)?.["text"]) ?? "").join("");
-	return text || null;
-}
-
-export interface HermesExactTurnResult {
-	turnId: string;
-	content: string;
-	completedAt: number | null;
-	status: string | null;
-}
-
-export function extractExactHermesTurnResults(value: unknown): HermesExactTurnResult[] {
-	const root = record(value) ?? {};
-	const results = Array.isArray(root["turn_results"])
-		? root["turn_results"]
-		: Array.isArray(root["turnResults"])
-			? root["turnResults"]
-			: [];
-	return results.flatMap((value) => {
-		const result = record(value);
-		const turnId = stringValue(result?.["turn_id"], result?.["turnId"]);
-		const content = contentText(result?.["content"]);
-		if (!result || !turnId || content === null) return [];
-		return [
-			{
-				turnId,
-				content,
-				completedAt: numberValue(result["completed_at"], result["completedAt"]),
-				status: stringValue(result["status"]),
-			},
-		];
-	});
-}
-
-export function normalizeHermesHistory(value: unknown): HermesSessionHistory {
-	const root = record(value) ?? {};
-	const messages = Array.isArray(root["messages"])
-		? root["messages"]
-		: Array.isArray(value)
-			? value
-			: [];
-	const normalizedMessages: HermesTranscriptMessage[] = messages.flatMap((value, index) => {
-		const message = record(value);
-		if (!message) return [];
-		const rawRole = stringValue(message["role"]) ?? "system";
-		const role = ["user", "assistant", "system", "tool"].includes(rawRole)
-			? (rawRole as HermesTranscriptMessage["role"])
-			: "system";
-		const content = message["content"];
-		const text =
-			stringValue(message["text"], content) ??
-			(Array.isArray(content)
-				? content.map((part) => stringValue(record(part)?.["text"]) ?? "").join("")
-				: "");
-		return [
-			{
-				id: stringValue(message["id"], message["message_id"]) ?? `history-${index}`,
-				turnId: stringValue(message["turn_id"], message["turnId"]),
-				role,
-				text: sanitizeString(text),
-				createdAt: numberValue(message["created_at"], message["timestamp"]),
-				status: sanitizedStringValue(message["status"]),
-				toolName: sanitizedStringValue(message["tool_name"], message["name"]),
-				workspaceArtifacts: extractWorkspaceArtifacts(message, "history-message"),
-			},
-		];
-	});
-	const turnResults: HermesTurnResult[] = extractExactHermesTurnResults(value).map((result) => ({
-		...result,
-		content: sanitizeString(result.content),
-		status: result.status === null ? null : sanitizeString(result.status),
-	}));
-	return { messages: normalizedMessages, turnResults };
 }

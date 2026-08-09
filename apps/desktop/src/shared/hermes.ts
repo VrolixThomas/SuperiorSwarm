@@ -13,7 +13,6 @@ export type HermesConnectionStatus =
 	| "connecting"
 	| "connected"
 	| "reconnecting"
-	| "upgrade-required"
 	| "error";
 
 export interface HermesRuntimeState {
@@ -23,33 +22,40 @@ export interface HermesRuntimeState {
 	error: string | null;
 }
 
+/** Local integration capabilities. Stock Hermes does not expose a handoff protocol gate. */
 export interface HermesCompatibility {
-	state: "compatible" | "upgrade-required";
-	protocolVersion: number | null;
-	capabilities: string[];
-	missingCapabilities: string[];
+	state: "compatible";
+	authMode: "token" | "oauth";
+	canBrowse: boolean;
+	canChat: boolean;
+	canReport: boolean;
+	limitations: string[];
 }
 
+export interface HermesOriginProjection {
+	platform: "slack" | string;
+	displayLabel: string | null;
+	hasThread: boolean;
+	canOpenThread: boolean;
+	canReport: boolean;
+	openUrl: string | null;
+}
+
+/** Renderer-safe persisted session summary. `id` is always the durable Hermes ID. */
 export interface HermesSessionSummary {
 	id: string;
-	lineageTipId: string;
-	lineageRootId: string | null;
 	title: string;
 	preview: string;
 	profileId: string;
 	source: string;
 	updatedAt: number;
 	createdAt: number;
-	open: boolean;
 	archived: boolean;
 	running: boolean;
 	busy: boolean;
-	claimed: boolean;
 	waitingForUser: boolean;
-	originLabel: string | null;
-	canOpenOrigin: boolean;
-	canReportToOrigin: boolean;
-	opaqueOriginRef: string | null;
+	messageCount: number;
+	origin: HermesOriginProjection | null;
 }
 
 export interface HermesCatalog {
@@ -68,16 +74,16 @@ export interface HermesTranscriptMessage {
 	workspaceArtifacts: HermesWorkspaceArtifact[];
 }
 
-export interface HermesTurnResult {
-	turnId: string;
-	content: string;
-	completedAt: number | null;
-	status: string | null;
+export interface HermesSessionHistory {
+	durableSessionId: string;
+	messages: HermesTranscriptMessage[];
 }
 
-export interface HermesSessionHistory {
-	messages: HermesTranscriptMessage[];
-	turnResults: HermesTurnResult[];
+export interface HermesSessionBinding {
+	runtimeSessionId: string;
+	durableSessionId: string;
+	profileId: string;
+	persisted: boolean;
 }
 
 export interface HermesInteractionChoiceDto {
@@ -87,10 +93,8 @@ export interface HermesInteractionChoiceDto {
 
 export interface HermesReconnectBindingMetadata {
 	hermesSessionId: string;
-	canonicalSessionId: string;
+	durableSessionId: string;
 	runtimeSessionId: string;
-	claimId: string;
-	bindingGeneration: number;
 }
 
 export interface HermesRuntimeEventPayload {
@@ -99,9 +103,11 @@ export interface HermesRuntimeEventPayload {
 	failedSessionIds?: string[];
 }
 
+/** Runtime events are routed only by the ephemeral WebSocket session ID. */
 export interface HermesRuntimeEvent {
 	type: string;
-	sessionId: string | null;
+	runtimeSessionId: string | null;
+	durableSessionId: string | null;
 	turnId: string | null;
 	requestId: string | null;
 	text: string | null;
@@ -117,25 +123,13 @@ export interface HermesSessionSelection {
 	sessionId: string;
 }
 
-export interface HermesBindingReleaseResult {
-	unbound: boolean;
-	released: boolean;
-	retryable: boolean;
-	error: string | null;
-}
-
-export interface HermesBindingReleaseInput {
-	connectionId: string;
-	hermesSessionId: string;
-	expectedClaimId: string;
-	bindingGeneration: number;
-}
-
 export interface HermesConnectionSummary {
 	id: string;
 	label: string;
 	baseUrl: string;
 	profileId: string;
+	authMode: "token";
+	connectionMode: "loopback" | "remote";
 	hasToken: boolean;
 	tokenStorage: "safe-storage" | "memory";
 	lastConnectedAt: number | null;
@@ -159,21 +153,14 @@ export interface HermesLinkedWorkspace {
 	worktreePath: string | null;
 }
 
-export interface HermesOriginInfo {
-	displayLabel: string | null;
-	canOpen: boolean;
-	canReport: boolean;
-	permalink: string | null;
-}
-
 export interface HermesOriginReportState {
 	connectionId: string;
 	hermesSessionId: string;
-	turnId: string;
-	status: "pending" | "sent" | "failed" | "duplicate-suppressed";
+	messageId: string;
+	status: "pending" | "sending" | "sent" | "failed" | "duplicate-suppressed";
 	retryable: boolean;
-	messageId: string | null;
-	permalink: string | null;
+	providerMessageId: string | null;
 	errorCode: string | null;
+	attemptCount: number;
 	updatedAt: number;
 }
