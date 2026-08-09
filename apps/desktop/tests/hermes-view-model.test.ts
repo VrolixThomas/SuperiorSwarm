@@ -3,6 +3,7 @@ import {
 	HERMES_CHAT_OVERFLOW_CLASSES,
 	applyHermesEvent,
 	classifyHermesTranscriptMessage,
+	createHermesOptimisticUserTurn,
 	createHermesLiveState,
 	deriveHermesCanonicalTimeline,
 	filterHermesSessions,
@@ -18,7 +19,9 @@ import {
 	latestReportableHermesMessage,
 	projectHermesLiveActivity,
 	projectHermesLiveCompletions,
+	projectHermesOptimisticUserTurns,
 	projectHermesTranscript,
+	settleHermesOptimisticUserTurn,
 	reduceHermesComposerAttachments,
 } from "../src/renderer/hermes/hermes-view-model";
 import type {
@@ -126,6 +129,38 @@ describe("Hermes renderer view model", () => {
 				isComposing: true,
 			})
 		).toBe("native");
+	});
+
+	test("shows pending and accepted continuation turns until new canonical history reconciles them", () => {
+		const existing = message({
+			id: "existing-identical-user",
+			turnId: "turn-old",
+			role: "user",
+			text: "Please continue",
+		});
+		const optimistic = createHermesOptimisticUserTurn({
+			id: "optimistic-1",
+			text: "Please continue",
+			attachments: [],
+			canonicalMessages: [existing],
+		});
+
+		expect(projectHermesOptimisticUserTurns([existing], [optimistic])).toMatchObject([
+			{ id: "optimistic-user:optimistic-1", role: "user", text: "Please continue", delivery: "pending" },
+		]);
+		const accepted = settleHermesOptimisticUserTurn([optimistic], "optimistic-1", "accepted");
+		expect(projectHermesOptimisticUserTurns([existing], accepted)).toMatchObject([
+			{ id: "optimistic-user:optimistic-1", delivery: "accepted" },
+		]);
+
+		const durable = message({
+			id: "new-durable-user",
+			turnId: "turn-new",
+			role: "user",
+			text: "Please continue",
+		});
+		expect(projectHermesOptimisticUserTurns([existing, durable], accepted)).toEqual([]);
+		expect(settleHermesOptimisticUserTurn([optimistic], "optimistic-1", "failed")).toEqual([]);
 	});
 
 	test("deduplicates retained physical copies by canonical identity across compactions", () => {

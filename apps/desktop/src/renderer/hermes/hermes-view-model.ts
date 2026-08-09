@@ -175,6 +175,7 @@ export interface HermesProjectedMessage {
 	role: "user" | "assistant";
 	text: string;
 	attachments: HermesProjectedAttachment[];
+	delivery?: "pending" | "accepted";
 	source: HermesTranscriptMessage;
 }
 
@@ -211,6 +212,14 @@ export type HermesTranscriptProjectionItem =
 export interface HermesComposerAttachment extends HermesAttachmentMetadata {
 	status: "ready" | "attaching" | "error";
 	error: string | null;
+}
+
+export interface HermesOptimisticUserTurn {
+	id: string;
+	text: string;
+	attachments: Array<Pick<HermesAttachmentMetadata, "kind" | "name">>;
+	delivery: "pending" | "accepted";
+	knownCanonicalUserMessageIds: string[];
 }
 
 export type HermesComposerAttachmentAction =
@@ -373,6 +382,116 @@ export function extractHermesTranscriptAttachments(
 	const visibleLines = lines.slice(endIndex + 1);
 	if (visibleLines[0] === "") visibleLines.shift();
 	return { text: visibleLines.join("\n"), attachments };
+}
+
+function hermesCanonicalMessageIdentity(message: HermesTranscriptMessage): string {
+	const physicalRows = (message as Partial<HermesCanonicalTranscriptMessage>).physicalRows;
+	return (
+		message.canonicalMessageId ??
+		physicalRows?.find((row) => row.canonicalMessageId !== null)?.canonicalMessageId ??
+		message.id
+	);
+}
+
+export function createHermesOptimisticUserTurn(input: {
+	id: string;
+	text: string;
+	attachments: Array<Pick<HermesAttachmentMetadata, "kind" | "name">>;
+	canonicalMessages: HermesTranscriptMessage[];
+}): HermesOptimisticUserTurn {
+	return {
+		id: input.id,
+		text: input.text.trim() || "Review the attached files.",
+		attachments: input.attachments.map(({ kind, name }) => ({ kind, name })),
+		delivery: "pending",
+		knownCanonicalUserMessageIds: input.canonicalMessages
+			.filter((message) => message.role === "user")
+			.map(hermesCanonicalMessageIdentity),
+	};
+}
+
+export function settleHermesOptimisticUserTurn(
+	turns: HermesOptimisticUserTurn[],
+	id: string,
+	result: "accepted" | "failed"
+): HermesOptimisticUserTurn[] {
+	if (result === "failed") return turns.filter((turn) => turn.id !== id);
+	return turns.map((turn) => (turn.id === id ? { ...turn, delivery: "accepted" } : turn));
+}
+
+function hermesOptimisticTurnMatchesMessage(
+	turn: HermesOptimisticUserTurn,
+	message: HermesTranscriptMessage
+): boolean {
+	if (message.role !== "user") return false;
+	const classification = classifyHermesTranscriptMessage(message);
+	if (classification.kind !== "user") return false;
+	const presentation = extractHermesTranscriptAttachments(classification.text, message.id);
+	return (
+		presentation.text === turn.text &&
+		presentation.attachments.length === turn.attachments.length &&
+		presentation.attachments.every(
+			(attachment, index) =>
+				attachment.kind === turn.attachments[index]?.kind &&
+				attachment.name === turn.attachments[index]?.name
+		)
+	);
+}
+
+export function reconcileHermesOptimisticUserTurns(
+	canonicalMessages: HermesTranscriptMessage[],
+	turns: HermesOptimisticUserTurn[]
+): HermesOptimisticUserTurn[] {
+	const canonicalUsers = canonicalMessages.filter((message) => message.role === "user");
+	const usedCanonicalIndexes = new Set<number>();
+	const unreconciled = turns.filter((turn) => {
+		const knownIds = new Set(turn.knownCanonicalUserMessageIds);
+		const matchIndex = canonicalUsers.findIndex(
+			(message, index) =>
+				!usedCanonicalIndexes.has(index) &&
+				!knownIds.has(hermesCanonicalMessageIdentity(message)) &&
+				hermesOptimisticTurnMatchesMessage(turn, message)
+		);
+		if (matchIndex < 0) return true;
+		usedCanonicalIndexes.add(matchIndex);
+		return false;
+	});
+	return unreconciled.length === turns.length ? turns : unreconciled;
+}
+
+export function projectHermesOptimisticUserTurns(
+	canonicalMessages: HermesTranscriptMessage[],
+	turns: HermesOptimisticUserTurn[]
+): HermesProjectedMessage[] {
+	return reconcileHermesOptimisticUserTurns(canonicalMessages, turns).map((turn) => ({
+		kind: "message",
+		id: `optimistic-user:${turn.id}`,
+		role: "user",
+		text: turn.text,
+		attachments: turn.attachments.map((attachment, index) => ({
+			id: `optimistic-user:${turn.id}:attachment:${index}`,
+			kind: attachment.kind,
+			name: attachment.name,
+			refText: null,
+		})),
+		delivery: turn.delivery,
+		source: {
+			id: `optimistic-user:${turn.id}`,
+			canonicalMessageId: null,
+			compactionGeneration: null,
+			active: true,
+			compacted: false,
+			displayKind: null,
+			compactionSummaryType: null,
+			turnId: null,
+			role: "user",
+			text: turn.text,
+			createdAt: null,
+			status: turn.delivery,
+			toolName: null,
+			workspaceArtifacts: [],
+		},
+	}));
 }
 
 export function classifyHermesTranscriptMessage(

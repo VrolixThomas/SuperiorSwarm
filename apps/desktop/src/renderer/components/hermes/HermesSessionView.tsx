@@ -16,6 +16,7 @@ import {
 	HERMES_CHAT_LAYOUT_CLASSES,
 	HERMES_CHAT_OVERFLOW_CLASSES,
 	applyHermesEvent,
+	createHermesOptimisticUserTurn,
 	createHermesLiveState,
 	deriveHermesCanonicalTimeline,
 	hermesComposerContainsFiles,
@@ -28,8 +29,12 @@ import {
 	latestReportableHermesMessage,
 	projectHermesLiveActivity,
 	projectHermesLiveCompletions,
+	projectHermesOptimisticUserTurns,
 	projectHermesTranscript,
+	reconcileHermesOptimisticUserTurns,
 	reduceHermesComposerAttachments,
+	settleHermesOptimisticUserTurn,
+	type HermesOptimisticUserTurn,
 } from "../../hermes/hermes-view-model";
 import { useTabStore } from "../../stores/tab-store";
 import { trpc } from "../../trpc/client";
@@ -61,6 +66,7 @@ export function HermesSessionView() {
 	const activePane = useTabStore((state) => state.hermesSessionPane);
 	const setActivePane = useTabStore((state) => state.setHermesSessionPane);
 	const [composer, setComposer] = useState("");
+	const [optimisticUserTurns, setOptimisticUserTurns] = useState<HermesOptimisticUserTurn[]>([]);
 	const [clarification, setClarification] = useState("");
 	const [cursor, setCursor] = useState(0);
 	const [live, setLive] = useState(createHermesLiveState);
@@ -74,6 +80,7 @@ export function HermesSessionView() {
 	const processedEventSeq = useRef(0);
 	const transcriptRef = useRef<HTMLDivElement | null>(null);
 	const composerRef = useRef<HTMLTextAreaElement | null>(null);
+	const optimisticTurnSequence = useRef(0);
 	const followingTranscript = useRef(true);
 	const anchoredSelectionKey = useRef<string | null>(null);
 	const attachmentsRef = useRef(attachments);
@@ -161,6 +168,7 @@ export function HermesSessionView() {
 		processedEventSeq.current = 0;
 		setLive(createHermesLiveState());
 		setComposer("");
+		setOptimisticUserTurns([]);
 		setClarification("");
 		setRecoveryWorktreeId("");
 		setManualOriginUrl("");
@@ -262,6 +270,10 @@ export function HermesSessionView() {
 		() => projectHermesTranscript(canonicalMessages),
 		[canonicalMessages]
 	);
+	const optimisticUserItems = useMemo(
+		() => projectHermesOptimisticUserTurns(canonicalMessages, optimisticUserTurns),
+		[canonicalMessages, optimisticUserTurns]
+	);
 	const liveCompletions = useMemo(
 		() => projectHermesLiveCompletions(canonicalMessages, live.completed),
 		[canonicalMessages, live.completed]
@@ -309,6 +321,13 @@ export function HermesSessionView() {
 			return;
 		}
 		const generation = selectionGeneration;
+		const optimisticTurn = createHermesOptimisticUserTurn({
+			id: `${selectionKey}:${++optimisticTurnSequence.current}`,
+			text: composer,
+			attachments,
+			canonicalMessages,
+		});
+		setOptimisticUserTurns((current) => [...current, optimisticTurn]);
 		dispatchAttachments({ type: "submitting" });
 		submit.mutate(
 			{
@@ -320,6 +339,9 @@ export function HermesSessionView() {
 			{
 				onSuccess: () => {
 					runForSelection(generation, () => {
+						setOptimisticUserTurns((current) =>
+							settleHermesOptimisticUserTurn(current, optimisticTurn.id, "accepted")
+						);
 						setComposer("");
 						dispatchAttachments({ type: "succeeded" });
 						setAttachmentLimitError(null);
@@ -335,12 +357,21 @@ export function HermesSessionView() {
 				},
 				onError: (error) => {
 					runForSelection(generation, () => {
+						setOptimisticUserTurns((current) =>
+							settleHermesOptimisticUserTurn(current, optimisticTurn.id, "failed")
+						);
 						dispatchAttachments({ type: "failed", error: error.message });
 					});
 				},
 			}
 		);
 	}
+
+	useEffect(() => {
+		setOptimisticUserTurns((current) =>
+			reconcileHermesOptimisticUserTurns(canonicalMessages, current)
+		);
+	}, [canonicalMessages]);
 
 	useLayoutEffect(() => {
 		const textarea = composerRef.current;
@@ -611,7 +642,7 @@ export function HermesSessionView() {
 							Loading canonical Hermes history…
 						</div>
 					)}
-					<HermesTranscript items={transcriptItems} />
+					<HermesTranscript items={[...transcriptItems, ...optimisticUserItems]} />
 					{liveActivity && (
 						<div className="mt-7 min-w-0">
 							<HermesActivityGroup activity={liveActivity} />

@@ -180,6 +180,14 @@ function HermesUserMessage({ item }: { item: HermesProjectedMessage }) {
 					</button>
 				)}
 			</div>
+			{item.delivery && (
+				<div
+					aria-live="polite"
+					className="mt-1 text-right text-[9px] text-[var(--text-quaternary)]"
+				>
+					{item.delivery === "pending" ? "Sending…" : "Accepted by agent"}
+				</div>
+			)}
 		</div>
 	);
 }
