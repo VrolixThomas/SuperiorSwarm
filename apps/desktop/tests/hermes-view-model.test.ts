@@ -3,8 +3,8 @@ import {
 	HERMES_CHAT_OVERFLOW_CLASSES,
 	applyHermesEvent,
 	classifyHermesTranscriptMessage,
-	createHermesOptimisticUserTurn,
 	createHermesLiveState,
+	createHermesOptimisticUserTurn,
 	deriveHermesCanonicalTimeline,
 	filterHermesSessions,
 	groupHermesSessions,
@@ -21,8 +21,8 @@ import {
 	projectHermesLiveCompletions,
 	projectHermesOptimisticUserTurns,
 	projectHermesTranscript,
-	settleHermesOptimisticUserTurn,
 	reduceHermesComposerAttachments,
+	settleHermesOptimisticUserTurn,
 } from "../src/renderer/hermes/hermes-view-model";
 import type {
 	HermesRuntimeEvent,
@@ -146,7 +146,12 @@ describe("Hermes renderer view model", () => {
 		});
 
 		expect(projectHermesOptimisticUserTurns([existing], [optimistic])).toMatchObject([
-			{ id: "optimistic-user:optimistic-1", role: "user", text: "Please continue", delivery: "pending" },
+			{
+				id: "optimistic-user:optimistic-1",
+				role: "user",
+				text: "Please continue",
+				delivery: "pending",
+			},
 		]);
 		const accepted = settleHermesOptimisticUserTurn([optimistic], "optimistic-1", "accepted");
 		expect(projectHermesOptimisticUserTurns([existing], accepted)).toMatchObject([

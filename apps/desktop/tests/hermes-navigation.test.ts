@@ -243,9 +243,9 @@ describe("Hermes global navigation", () => {
 		);
 		expect(resolveAvailableHermesSelection(selection, [], undefined)).toBeNull();
 		expect(resolveAvailableHermesSelection(selection, ["connection-a"], [])).toBeNull();
-		expect(
-			resolveAvailableHermesSelection(selection, ["connection-a"], ["session-a"])
-		).toEqual(selection);
+		expect(resolveAvailableHermesSelection(selection, ["connection-a"], ["session-a"])).toEqual(
+			selection
+		);
 	});
 
 	test("saves task-first Agents state even when there are no terminals or layouts", async () => {

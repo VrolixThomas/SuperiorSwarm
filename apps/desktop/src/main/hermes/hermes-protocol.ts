@@ -603,7 +603,7 @@ export function normalizeHermesActiveTurnSnapshot(
 						: ["complete", "completed", "done", "success", "succeeded"].includes(status)
 							? ("complete" as const)
 							: ("running" as const),
-			},
+				},
 			];
 		}),
 	};

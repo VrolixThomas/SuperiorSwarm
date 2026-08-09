@@ -15,10 +15,11 @@ import { isHermesChatNearBottom, shouldAnchorHermesChat } from "../../hermes/her
 import {
 	HERMES_CHAT_LAYOUT_CLASSES,
 	HERMES_CHAT_OVERFLOW_CLASSES,
+	type HermesOptimisticUserTurn,
 	applyHermesActiveTurnSnapshot,
 	applyHermesEvent,
-	createHermesOptimisticUserTurn,
 	createHermesLiveState,
+	createHermesOptimisticUserTurn,
 	deriveHermesCanonicalTimeline,
 	hermesComposerContainsFiles,
 	hermesComposerEnterAction,
@@ -35,7 +36,6 @@ import {
 	reconcileHermesOptimisticUserTurns,
 	reduceHermesComposerAttachments,
 	settleHermesOptimisticUserTurn,
-	type HermesOptimisticUserTurn,
 } from "../../hermes/hermes-view-model";
 import { resolveAvailableHermesSelection, useTabStore } from "../../stores/tab-store";
 import { trpc } from "../../trpc/client";
@@ -219,15 +219,7 @@ export function HermesSessionView() {
 				},
 			}
 		);
-	}, [
-		connected,
-		connectionId,
-		resume,
-		selectionGeneration,
-		selectionGuard,
-		selectionKey,
-		sessionId,
-	]);
+	}, [connected, connectionId, resume, selectionGeneration, selectionKey, sessionId]);
 
 	const history = trpc.hermes.history.useQuery(
 		{ connectionId, hermesSessionId: sessionId ?? "" },
@@ -929,11 +921,7 @@ export function HermesSessionView() {
 										? () => interrupt.mutate({ connectionId, hermesSessionId: sessionId })
 										: undefined
 								}
-								disabled={
-									live.running
-										? interrupt.isPending
-										: composerPolicy.sendDisabled
-								}
+								disabled={live.running ? interrupt.isPending : composerPolicy.sendDisabled}
 								aria-label={live.running ? "Stop response" : "Send message"}
 								title={live.running ? "Stop response" : "Send message"}
 								className={`mb-[10px] flex size-9 shrink-0 items-center justify-center rounded-full text-white transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/50 disabled:opacity-35 ${
