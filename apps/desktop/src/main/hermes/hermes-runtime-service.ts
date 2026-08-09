@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import type {
 	HermesCatalog,
 	HermesOriginProjection,
@@ -9,6 +10,13 @@ import type {
 	HermesSessionHistory,
 	HermesSessionSummary,
 } from "../../shared/hermes";
+import {
+	type HermesAttachedResult,
+	type HermesAttachmentStore,
+	type HermesResolvedAttachment,
+	buildHermesAttachmentPromptText,
+	hermesAttachmentStore,
+} from "./hermes-attachments";
 import {
 	getHermesConnectionWithToken,
 	listHermesConnections,
@@ -128,6 +136,7 @@ export interface HermesRuntimeServiceOptions {
 	localBackendManager?: HermesLocalBackendManagerLike;
 	recoveryBaseMs?: number;
 	recoveryMaxMs?: number;
+	attachmentStore?: HermesAttachmentStore;
 }
 
 const MAX_BUFFERED_EVENTS = 1_000;
@@ -219,6 +228,7 @@ export class HermesRuntimeService {
 	private readonly localBackendManager: HermesLocalBackendManagerLike;
 	private readonly recoveryBaseMs: number;
 	private readonly recoveryMaxMs: number;
+	private readonly attachmentStore: HermesAttachmentStore;
 	private readonly connectionGenerations = new Map<string, number>();
 	private readonly connectionOperations = new Map<string, ConnectionOperation>();
 	private readonly connectionStates = new Map<string, HermesRuntimeState>();
@@ -235,6 +245,7 @@ export class HermesRuntimeService {
 		this.localBackendManager = options.localBackendManager ?? hermesLocalBackendManager;
 		this.recoveryBaseMs = options.recoveryBaseMs ?? DEFAULT_RECOVERY_BASE_MS;
 		this.recoveryMaxMs = options.recoveryMaxMs ?? DEFAULT_RECOVERY_MAX_MS;
+		this.attachmentStore = options.attachmentStore ?? hermesAttachmentStore;
 		this.unsubscribeBackendInvalidation = this.localBackendManager.subscribeRuntimeInvalidated(
 			(event) => {
 				this.handleBackendInvalidation(event);
@@ -535,7 +546,12 @@ export class HermesRuntimeService {
 		return { ...binding, history };
 	}
 
-	async submit(connectionId: string, hermesSessionId: string, text: string): Promise<{ ok: true }> {
+	async submit(
+		connectionId: string,
+		hermesSessionId: string,
+		text: string,
+		attachmentHandles: string[] = []
+	): Promise<{ ok: true }> {
 		const runtime = this.requireRuntime(connectionId);
 		let binding = this.bindingFor(runtime, hermesSessionId);
 		if (!binding) {
@@ -543,16 +559,27 @@ export class HermesRuntimeService {
 			binding = this.requireBinding(runtime, hermesSessionId);
 		}
 		if (binding.activeTurn) throw new Error("A Hermes turn is already active for this session");
+		const attachments = await this.attachmentStore.resolve(attachmentHandles);
 		binding.activeTurn = true;
 		try {
+			const attached = [];
+			for (const attachment of attachments) {
+				const result = await this.attachFile(runtime, binding, attachment);
+				attached.push({
+					kind: attachment.kind,
+					name: attachment.name,
+					refText: result.refText,
+				});
+			}
 			await runtime.client.request(
 				"prompt.submit",
 				{
 					session_id: binding.runtimeSessionId,
-					text,
+					text: buildHermesAttachmentPromptText(text, attached),
 				},
 				{ timeoutMs: PROMPT_SUBMIT_TIMEOUT_MS }
 			);
+			this.attachmentStore.release(attachmentHandles);
 			return { ok: true };
 		} catch (error) {
 			binding.activeTurn = false;
@@ -618,7 +645,102 @@ export class HermesRuntimeService {
 		const connectionIds = new Set([...this.runtimes.keys(), ...this.connectionOperations.keys()]);
 		for (const connectionId of connectionIds) this.disconnect(connectionId);
 		this.connectionStates.clear();
+		this.attachmentStore.clear();
 		this.localBackendManager.shutdown();
+	}
+
+	private async attachFile(
+		runtime: ConnectionRuntime,
+		binding: RuntimeBinding,
+		attachment: HermesResolvedAttachment
+	): Promise<HermesAttachedResult> {
+		const cached = this.attachmentStore.attachedResult(attachment.handle, binding.runtimeSessionId);
+		if (cached) return cached;
+		try {
+			let response: unknown;
+			if (attachment.kind === "image") {
+				response =
+					runtime.connectionMode === "remote"
+						? await runtime.client.request("image.attach_bytes", {
+								session_id: binding.runtimeSessionId,
+								content_base64: (await readFile(attachment.path)).toString("base64"),
+								filename: attachment.name,
+							})
+						: await runtime.client.request("image.attach", {
+								session_id: binding.runtimeSessionId,
+								path: attachment.path,
+							});
+				this.assertAttachmentResponse(response, attachment, false);
+			} else if (attachment.kind === "pdf") {
+				response = await runtime.client.request("pdf.attach", {
+					session_id: binding.runtimeSessionId,
+					...(runtime.connectionMode === "remote"
+						? {
+								content_base64: (await readFile(attachment.path)).toString("base64"),
+								filename: attachment.name,
+							}
+						: { path: attachment.path }),
+					first_page: 1,
+					last_page: 25,
+				});
+				this.assertAttachmentResponse(response, attachment, false);
+			} else {
+				response = await runtime.client.request("file.attach", {
+					session_id: binding.runtimeSessionId,
+					...(runtime.connectionMode === "remote"
+						? {
+								data_url: `data:${attachment.mimeType};base64,${(
+									await readFile(attachment.path)
+								).toString("base64")}`,
+							}
+						: { path: attachment.path }),
+					name: attachment.name,
+				});
+				this.assertAttachmentResponse(response, attachment, true);
+			}
+			const values =
+				response !== null && typeof response === "object"
+					? (response as Record<string, unknown>)
+					: {};
+			const refText = typeof values["ref_text"] === "string" ? values["ref_text"] : null;
+			const result = { contextText: refText ?? attachment.name, refText };
+			this.attachmentStore.markAttached(attachment.handle, binding.runtimeSessionId, result);
+			return result;
+		} catch (error) {
+			const raw = error instanceof Error ? error.message : "Hermes rejected the attachment";
+			const sanitized = sanitizeHermesPayload(raw);
+			const safe = (typeof sanitized === "string" ? sanitized : "Hermes rejected the attachment")
+				.replaceAll(attachment.path, attachment.name)
+				.slice(0, 400);
+			throw new Error(`Could not attach “${attachment.name}”: ${safe}`);
+		}
+	}
+
+	private assertAttachmentResponse(
+		response: unknown,
+		attachment: HermesResolvedAttachment,
+		requireRef: boolean
+	): void {
+		const values =
+			response !== null && typeof response === "object"
+				? (response as Record<string, unknown>)
+				: null;
+		const refText = values?.["ref_text"];
+		const validRef =
+			typeof refText === "string" &&
+			refText.startsWith("@file:") &&
+			refText.length <= 4_096 &&
+			!/[\0\r\n]/.test(refText);
+		if (values?.["attached"] === true && (!requireRef || validRef)) {
+			return;
+		}
+		const message =
+			values?.["attached"] === true && requireRef
+				? "Hermes did not return a valid @file reference"
+				: typeof values?.["message"] === "string"
+					? values["message"]
+					: "attach failed";
+		throw new Error(`${attachment.name}: ${message}`);
 	}
 
 	private beginConnectionOperation(

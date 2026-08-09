@@ -217,123 +217,30 @@ export function HermesSidebar() {
 		);
 	}
 
-	if (showAdvanced) {
-		return (
-			<form onSubmit={submitConnection} className="flex min-h-0 flex-1 flex-col gap-2 p-3">
-				<div className="text-[12px] font-medium text-[var(--text-secondary)]">
-					Connect external Hermes
-				</div>
-				{externalConnections && externalConnections.length > 0 && (
-					<select
-						value={activeConnection?.managementMode === "external" ? activeConnection.id : ""}
-						onChange={(event) => {
-							const selected = externalConnections.find(
-								(connection) => connection.id === event.target.value
-							);
-							if (!selected) {
-								setLabel("External Hermes");
-								setBaseUrl("");
-								setProfileId("default");
-								setConnectionId(managedConnection?.id ?? null);
-								return;
-							}
-							setConnectionId(selected.id);
-							setLabel(selected.label);
-							setBaseUrl(selected.baseUrl ?? "");
-							setProfileId(selected.profileId);
-						}}
-						className="rounded-[5px] border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1.5 text-[12px] text-[var(--text)]"
-					>
-						<option value="">New external connection…</option>
-						{externalConnections.map((connection) => (
-							<option key={connection.id} value={connection.id}>
-								{connection.label}
-							</option>
-						))}
-					</select>
-				)}
-				<input
-					value={label}
-					onChange={(event) => setLabel(event.target.value)}
-					placeholder="Label"
-					className="rounded-[5px] border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1.5 text-[12px] text-[var(--text)] outline-none focus:border-[var(--accent)]"
-				/>
-				<input
-					value={baseUrl}
-					onChange={(event) => setBaseUrl(event.target.value)}
-					placeholder="https://hermes.example.com"
-					className="rounded-[5px] border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1.5 text-[12px] text-[var(--text)] outline-none focus:border-[var(--accent)]"
-				/>
-				<input
-					value={profileId}
-					onChange={(event) => setProfileId(event.target.value)}
-					placeholder="Profile"
-					className="rounded-[5px] border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1.5 text-[12px] text-[var(--text)] outline-none focus:border-[var(--accent)]"
-				/>
-				{showTokenInput && (
-					<input
-						type="password"
-						value={token}
-						onChange={(event) => setToken(event.target.value)}
-						placeholder={activeConnection?.hasToken ? "Token unchanged" : "Hermes session token"}
-						autoComplete="off"
-						className="rounded-[5px] border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1.5 text-[12px] text-[var(--text)] outline-none focus:border-[var(--accent)]"
-					/>
-				)}
-				<div className="text-[10px] leading-4 text-[var(--text-quaternary)]">
-					Advanced external connections require an explicit secure URL and token. Stored tokens stay
-					protected and never re-enter renderer state.
-				</div>
-				{saveConnection.error && (
-					<div className="text-[11px] text-[var(--danger)]">{saveConnection.error.message}</div>
-				)}
-				<div className="flex gap-2">
-					<button
-						type="submit"
-						disabled={!canSave || saveConnection.isPending}
-						className="rounded-[5px] bg-[var(--accent)] px-2.5 py-1.5 text-[11px] text-white disabled:opacity-40"
-					>
-						Save & connect
-					</button>
-					<button
-						type="button"
-						onClick={() => setShowAdvanced(false)}
-						className="rounded-[5px] px-2.5 py-1.5 text-[11px] text-[var(--text-tertiary)] hover:bg-[var(--bg-elevated)]"
-					>
-						Cancel
-					</button>
-				</div>
-			</form>
-		);
-	}
-
 	return (
-		<div className="flex min-h-0 flex-1 flex-col">
-			<div className="flex items-center gap-1.5 px-2 pt-2">
+		<div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+			<div className="flex h-11 min-w-0 shrink-0 items-center gap-2 px-3">
 				<div className="min-w-0 flex-1">
-					<div className="truncate text-[11px] font-medium text-[var(--text-secondary)]">
-						{activeConnection?.managementMode === "external"
-							? activeConnection.label
-							: "Local Hermes"}
+					<div className="truncate text-[13px] font-semibold tracking-[-0.01em] text-[var(--text-secondary)]">
+						Agent sessions
 					</div>
-					<div className="truncate text-[9px] text-[var(--text-quaternary)]">
-						{activeConnection?.managementMode === "external" ? "External" : "Automatic"} ·{" "}
-						{activeConnection?.profileId ?? "default"}
+					<div className="flex items-center gap-1 text-[9px] text-[var(--text-quaternary)]">
+						<span
+							className={`size-1.5 rounded-full ${
+								connected
+									? "bg-[var(--success)]"
+									: connecting
+										? "bg-[var(--warning)]"
+										: "bg-[var(--text-quaternary)]"
+							}`}
+						/>
+						<span className="truncate">
+							{activeConnection?.managementMode === "external"
+								? activeConnection.label
+								: "Local Hermes"}
+						</span>
 					</div>
 				</div>
-				{activeConnection?.managementMode === "external" && managedConnection && (
-					<button
-						type="button"
-						onClick={() => {
-							connect.reset();
-							setConnectionId(managedConnection.id);
-							changeConnection(managedConnection.id);
-						}}
-						className="rounded-[5px] px-2 py-1 text-[10px] text-[var(--accent)] hover:bg-[var(--bg-elevated)]"
-					>
-						Use local
-					</button>
-				)}
 				<button
 					type="button"
 					onClick={() => {
@@ -348,112 +255,223 @@ export function HermesSidebar() {
 						}
 						setShowAdvanced(true);
 					}}
-					className="rounded-[5px] px-2 py-1 text-[11px] text-[var(--text-quaternary)] hover:bg-[var(--bg-elevated)]"
+					className="flex size-7 shrink-0 items-center justify-center rounded-full text-[13px] text-[var(--text-quaternary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-secondary)]"
 					title="Connect external Hermes"
+					aria-label="Advanced connection settings"
 				>
-					Advanced
+					•••
 				</button>
 			</div>
 
-			<div className="flex items-center gap-1.5 px-2 py-2">
-				<span
-					className={`size-2 rounded-full ${
-						connected ? "bg-[#30d158]" : connecting ? "bg-[#ffd60a]" : "bg-[var(--text-quaternary)]"
-					}`}
-				/>
-				<span className="flex-1 text-[10px] text-[var(--text-quaternary)]">
-					{connecting ? "connecting" : (status.data?.status ?? "disconnected")}
-				</span>
-				{!connected && !connecting && connectionId && (
-					<button
-						type="button"
-						onClick={() => connect.mutate({ connectionId })}
-						className="text-[10px] text-[var(--accent)] hover:underline"
-					>
-						Retry
-					</button>
-				)}
-			</div>
+			{showAdvanced && (
+				<form
+					onSubmit={submitConnection}
+					className="absolute left-2 right-2 top-11 z-30 flex min-w-0 flex-col gap-2 rounded-[12px] border border-[var(--border)] bg-[var(--bg-elevated)] p-3 shadow-[var(--shadow-lg)]"
+				>
+					<div className="text-[11px] font-medium text-[var(--text-secondary)]">
+						Connect external Hermes
+					</div>
+					{externalConnections && externalConnections.length > 0 && (
+						<select
+							value={activeConnection?.managementMode === "external" ? activeConnection.id : ""}
+							onChange={(event) => {
+								const selected = externalConnections.find(
+									(connection) => connection.id === event.target.value
+								);
+								if (!selected) {
+									setLabel("External Hermes");
+									setBaseUrl("");
+									setProfileId("default");
+									setConnectionId(managedConnection?.id ?? null);
+									return;
+								}
+								setConnectionId(selected.id);
+								setLabel(selected.label);
+								setBaseUrl(selected.baseUrl ?? "");
+								setProfileId(selected.profileId);
+							}}
+							className="min-w-0 max-w-full rounded-[6px] border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1.5 text-[11px] text-[var(--text)]"
+						>
+							<option value="">New external connection…</option>
+							{externalConnections.map((connection) => (
+								<option key={connection.id} value={connection.id}>
+									{connection.label}
+								</option>
+							))}
+						</select>
+					)}
+					<input
+						value={label}
+						onChange={(event) => setLabel(event.target.value)}
+						placeholder="Label"
+						aria-label="Connection label"
+						className="min-w-0 rounded-[6px] border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1.5 text-[11px] text-[var(--text)] outline-none focus:border-[var(--accent)]"
+					/>
+					<input
+						value={baseUrl}
+						onChange={(event) => setBaseUrl(event.target.value)}
+						placeholder="https://hermes.example.com"
+						aria-label="Hermes URL"
+						className="min-w-0 rounded-[6px] border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1.5 text-[11px] text-[var(--text)] outline-none focus:border-[var(--accent)]"
+					/>
+					<input
+						value={profileId}
+						onChange={(event) => setProfileId(event.target.value)}
+						placeholder="Profile"
+						aria-label="Hermes profile"
+						className="min-w-0 rounded-[6px] border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1.5 text-[11px] text-[var(--text)] outline-none focus:border-[var(--accent)]"
+					/>
+					{showTokenInput && (
+						<input
+							type="password"
+							value={token}
+							onChange={(event) => setToken(event.target.value)}
+							placeholder={activeConnection?.hasToken ? "Token unchanged" : "Hermes session token"}
+							autoComplete="off"
+							aria-label="Hermes session token"
+							className="min-w-0 rounded-[6px] border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1.5 text-[11px] text-[var(--text)] outline-none focus:border-[var(--accent)]"
+						/>
+					)}
+					<div className="text-[9px] leading-4 text-[var(--text-quaternary)]">
+						Stored tokens stay protected and never re-enter renderer state.
+					</div>
+					{saveConnection.error && (
+						<div className="text-[10px] text-[var(--danger)] [overflow-wrap:anywhere]">
+							{saveConnection.error.message}
+						</div>
+					)}
+					<div className="flex flex-wrap gap-1.5">
+						<button
+							type="submit"
+							disabled={!canSave || saveConnection.isPending}
+							className="rounded-[6px] bg-[var(--accent)] px-2.5 py-1.5 text-[10px] text-white disabled:opacity-40"
+						>
+							Save & connect
+						</button>
+						{activeConnection?.managementMode === "external" && managedConnection && (
+							<button
+								type="button"
+								onClick={() => {
+									connect.reset();
+									setConnectionId(managedConnection.id);
+									changeConnection(managedConnection.id);
+									setShowAdvanced(false);
+								}}
+								className="rounded-[6px] px-2.5 py-1.5 text-[10px] text-[var(--accent)] hover:bg-[var(--bg-overlay)]"
+							>
+								Use local
+							</button>
+						)}
+						<button
+							type="button"
+							onClick={() => setShowAdvanced(false)}
+							className="rounded-[6px] px-2.5 py-1.5 text-[10px] text-[var(--text-tertiary)] hover:bg-[var(--bg-overlay)]"
+						>
+							Cancel
+						</button>
+					</div>
+				</form>
+			)}
 
 			{!connected ? (
-				<div className="px-3 py-6 text-center text-[11px] leading-5 text-[var(--text-quaternary)]">
-					{connect.error?.message ??
-						status.data?.error ??
-						(activeConnection?.managementMode === "external"
-							? "Connect the external Hermes gateway to load sessions."
-							: "Local Hermes starts automatically when Agents opens.")}
+				<div className="min-w-0 px-3 py-5 text-center text-[10px] leading-5 text-[var(--text-quaternary)] [overflow-wrap:anywhere]">
+					<div>
+						{connect.error?.message ??
+							status.data?.error ??
+							(activeConnection?.managementMode === "external"
+								? "Connect the external Hermes gateway to load sessions."
+								: "Local Hermes starts automatically when Agents opens.")}
+					</div>
+					{!connecting && connectionId && (
+						<button
+							type="button"
+							onClick={() => connect.mutate({ connectionId })}
+							className="mt-2 rounded-[6px] border border-[var(--border)] px-2 py-1 text-[10px] text-[var(--accent)]"
+						>
+							Retry
+						</button>
+					)}
 				</div>
 			) : (
 				<>
-					<div className="px-2 pb-2">
-						<form onSubmit={submitNewSession} className="mb-2 flex flex-col gap-1.5">
-							<div className="text-[10px] font-medium text-[var(--text-tertiary)]">New session</div>
-							<textarea
-								value={newTopic}
-								onChange={(event) => setNewTopic(event.target.value)}
-								placeholder="What should this agent work on? Ticket ID, title, or a full prompt"
-								rows={3}
-								className="w-full resize-y rounded-[5px] border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1.5 text-[11px] text-[var(--text)] outline-none focus:border-[var(--accent)]"
-							/>
-							{ticketChoices.length > 0 && (
-								<select
-									value={newTicketChoice}
-									onChange={(event) => {
-										const value = event.target.value;
-										setNewTicketChoice(value);
-										const choice = ticketChoices.find((candidate) => candidate.value === value);
-										if (!choice) return;
-										setNewTopic(choice.topic);
-										setNewWorkspaceId(choice.workspaceId);
-									}}
-									className="min-w-0 rounded-[5px] border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1 text-[10px] text-[var(--text-tertiary)]"
-								>
-									<option value="">Optional linked ticket…</option>
-									{ticketChoices.map((choice) => (
-										<option key={choice.value} value={choice.value}>
-											{choice.label}
-										</option>
-									))}
-								</select>
-							)}
-							<div className="flex gap-1.5">
-								<select
-									value={newWorkspaceId}
-									onChange={(event) => setNewWorkspaceId(event.target.value)}
-									className="min-w-0 flex-1 rounded-[5px] border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1 text-[10px] text-[var(--text-tertiary)]"
-								>
-									<option value="">No workspace</option>
-									{availableWorkspaces.data?.map((workspace) => (
-										<option key={workspace.id} value={workspace.id}>
-											{workspace.projectName} · {workspace.branch ?? workspace.name}
-										</option>
-									))}
-								</select>
-								<button
-									type="submit"
-									disabled={!connectionId || !newTopic.trim() || create.isPending}
-									className="rounded-[5px] bg-[var(--accent)] px-2 py-1 text-[10px] text-white disabled:opacity-40"
-								>
-									{create.isPending ? "Starting…" : "Start session"}
-								</button>
-							</div>
-						</form>
+					<div className="min-w-0 px-2 pb-2">
+						<details className="group mb-2 min-w-0 rounded-[9px] border border-[var(--border-subtle)] bg-[var(--bg-base)]/35">
+							<summary className="flex h-9 cursor-pointer list-none items-center gap-2 px-2.5 text-[11px] font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--accent)]/50 [&::-webkit-details-marker]:hidden">
+								<span className="text-[16px] leading-none text-[var(--accent)]">+</span>
+								New agent session
+							</summary>
+							<form
+								onSubmit={submitNewSession}
+								className="flex min-w-0 flex-col gap-1.5 border-t border-[var(--border-subtle)] p-2"
+							>
+								<textarea
+									value={newTopic}
+									onChange={(event) => setNewTopic(event.target.value)}
+									placeholder="What should this agent work on? Ticket ID, title, or a full prompt"
+									rows={3}
+									className="min-w-0 resize-y rounded-[6px] border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1.5 text-[11px] text-[var(--text)] outline-none focus:border-[var(--accent)]"
+								/>
+								{ticketChoices.length > 0 && (
+									<select
+										value={newTicketChoice}
+										onChange={(event) => {
+											const value = event.target.value;
+											setNewTicketChoice(value);
+											const choice = ticketChoices.find((candidate) => candidate.value === value);
+											if (!choice) return;
+											setNewTopic(choice.topic);
+											setNewWorkspaceId(choice.workspaceId);
+										}}
+										className="min-w-0 max-w-full rounded-[6px] border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1 text-[10px] text-[var(--text-tertiary)]"
+									>
+										<option value="">Optional linked ticket…</option>
+										{ticketChoices.map((choice) => (
+											<option key={choice.value} value={choice.value}>
+												{choice.label}
+											</option>
+										))}
+									</select>
+								)}
+								<div className="flex gap-1.5">
+									<select
+										value={newWorkspaceId}
+										onChange={(event) => setNewWorkspaceId(event.target.value)}
+										className="w-0 min-w-0 max-w-full flex-1 rounded-[6px] border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1 text-[10px] text-[var(--text-tertiary)]"
+									>
+										<option value="">No workspace</option>
+										{availableWorkspaces.data?.map((workspace) => (
+											<option key={workspace.id} value={workspace.id}>
+												{workspace.projectName} · {workspace.branch ?? workspace.name}
+											</option>
+										))}
+									</select>
+									<button
+										type="submit"
+										disabled={!connectionId || !newTopic.trim() || create.isPending}
+										className="shrink-0 rounded-[6px] bg-[var(--accent)] px-2 py-1 text-[10px] text-white disabled:opacity-40"
+									>
+										{create.isPending ? "Starting…" : "Start session"}
+									</button>
+								</div>
+							</form>
+						</details>
 						{create.error && (
 							<div className="mb-2 text-[10px] text-[var(--danger)]">{create.error.message}</div>
 						)}
 						<input
 							value={query}
 							onChange={(event) => setQuery(event.target.value)}
-							placeholder="Search sessions, source, repo, branch"
-							className="w-full rounded-[5px] border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1.5 text-[11px] text-[var(--text)] outline-none focus:border-[var(--accent)]"
+							placeholder="Search sessions"
+							aria-label="Search agent sessions"
+							className="w-full min-w-0 rounded-[8px] border border-[var(--border-subtle)] bg-[var(--bg-base)] px-2.5 py-2 text-[11px] text-[var(--text)] outline-none placeholder:text-[var(--text-quaternary)] focus:border-[var(--accent)]"
 						/>
-						<div className="mt-1.5 flex gap-1">
+						<div className="mt-1.5 flex gap-0.5">
 							{(["open", "all", "archived"] as const).map((value) => (
 								<button
 									key={value}
 									type="button"
 									onClick={() => setFilter(value)}
-									className={`rounded-[4px] px-2 py-0.5 text-[10px] capitalize ${
+									className={`rounded-[5px] px-2 py-0.5 text-[9px] capitalize ${
 										filter === value
 											? "bg-[var(--bg-elevated)] text-[var(--text-secondary)]"
 											: "text-[var(--text-quaternary)]"
@@ -465,7 +483,7 @@ export function HermesSidebar() {
 						</div>
 					</div>
 
-					<div className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-2">
+					<div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-1.5 pb-2">
 						{catalog.isLoading && (
 							<div className="px-2 py-5 text-center text-[11px] text-[var(--text-quaternary)]">
 								Loading agent threads…
@@ -483,7 +501,7 @@ export function HermesSidebar() {
 							(section) =>
 								section.rows.length > 0 && (
 									<section key={section.title} className="mb-2">
-										<div className="px-2 py-1 text-[9px] font-medium uppercase tracking-wide text-[var(--text-quaternary)]">
+										<div className="px-2 pb-1 pt-2 text-[9px] font-medium uppercase tracking-[0.08em] text-[var(--text-quaternary)]">
 											{section.title}
 										</div>
 										{section.rows.map((session) => {
@@ -495,38 +513,36 @@ export function HermesSidebar() {
 													onClick={() =>
 														connectionId && selectSession({ connectionId, sessionId: session.id })
 													}
-													className={`mb-1 w-full rounded-[6px] px-2 py-2 text-left transition-colors ${
+													className={`mb-0.5 min-h-[56px] w-full min-w-0 rounded-[8px] border-l-2 px-2.5 py-2 text-left transition-colors motion-reduce:transition-none ${
 														selectedSession?.connectionId === connectionId &&
 														selectedSession.sessionId === session.id
-															? "bg-[var(--bg-elevated)]"
-															: "hover:bg-[var(--bg-overlay)]"
+															? "border-l-[var(--accent)] bg-[var(--bg-elevated)]"
+															: session.waitingForUser
+																? "border-l-[var(--warning)] hover:bg-[var(--bg-overlay)]"
+																: "border-l-transparent hover:bg-[var(--bg-overlay)]"
 													}`}
 												>
 													<div className="flex items-center gap-1.5">
 														<span className="text-[10px]" aria-hidden="true">
 															{sourceBadge(session.source)}
 														</span>
-														<span className="min-w-0 flex-1 truncate text-[12px] text-[var(--text-secondary)]">
+														<span className="min-w-0 flex-1 truncate text-[13px] font-medium text-[var(--text-secondary)]">
 															{session.title}
 														</span>
 														<span className="text-[9px] text-[var(--text-quaternary)]">
 															{relativeTime(session.updatedAt)}
 														</span>
 													</div>
-													<div className="mt-1 flex items-center gap-1 text-[9px] text-[var(--text-quaternary)]">
-														{session.running && <span className="text-[#30d158]">running</span>}
-														{session.busy && <span className="text-[#ffd60a]">busy</span>}
-														{session.waitingForUser && (
-															<span className="text-[#ff9f0a]">needs input</span>
-														)}
+													<div className="mt-1 flex min-w-0 items-center gap-1.5 text-[10px] text-[var(--text-quaternary)]">
+														{session.waitingForUser ? (
+															<span className="shrink-0 text-[var(--warning)]">Needs input</span>
+														) : session.running || session.busy ? (
+															<span className="shrink-0 text-[var(--success)]">Active</span>
+														) : null}
 														<span className="truncate">
-															{session.origin?.displayLabel ?? session.source} · {session.profileId}
+															{session.preview || session.origin?.displayLabel || session.source}
+															{links?.branches[0] ? ` · ${links.branches[0]}` : ""}
 														</span>
-														{links && (
-															<span>
-																{links.count} workspace{links.count === 1 ? "" : "s"}
-															</span>
-														)}
 													</div>
 												</button>
 											);

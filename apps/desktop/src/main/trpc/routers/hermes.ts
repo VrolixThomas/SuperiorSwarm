@@ -1,8 +1,9 @@
 import { asc, eq } from "drizzle-orm";
-import { shell } from "electron";
+import { dialog, shell } from "electron";
 import { z } from "zod";
 import { getDb } from "../../db";
 import { hermesSessionWorkspaces, projects, workspaces, worktrees } from "../../db/schema";
+import { HERMES_MAX_ATTACHMENTS, hermesAttachmentStore } from "../../hermes/hermes-attachments";
 import {
 	deleteHermesConnection,
 	ensureHermesLocalConnection,
@@ -22,6 +23,20 @@ const connectionSessionInput = z.object({
 	connectionId: z.string().min(1),
 	hermesSessionId: z.string().min(1),
 });
+
+const submitInput = connectionSessionInput
+	.extend({
+		text: z.string().max(200_000),
+		attachmentHandles: z.array(z.string().min(1).max(200)).max(HERMES_MAX_ATTACHMENTS).default([]),
+	})
+	.superRefine((input, context) => {
+		if (input.text.trim() || input.attachmentHandles.length > 0) return;
+		context.addIssue({
+			code: "custom",
+			message: "Enter a message or attach a file",
+			path: ["text"],
+		});
+	});
 
 function rendererOriginReportState(state: ReturnType<typeof hermesRuntimeService.reports>[number]) {
 	return {
@@ -117,10 +132,50 @@ export const hermesRouter = router({
 		.input(connectionSessionInput)
 		.query(({ input }) => hermesRuntimeService.history(input.connectionId, input.hermesSessionId)),
 
+	pickAttachments: publicProcedure.mutation(async () => {
+		const selected = await dialog.showOpenDialog({
+			properties: ["openFile", "multiSelections"],
+			filters: [
+				{
+					name: "Images, PDFs, and files",
+					extensions: [
+						"png",
+						"jpg",
+						"jpeg",
+						"gif",
+						"webp",
+						"bmp",
+						"tif",
+						"tiff",
+						"heic",
+						"heif",
+						"avif",
+						"pdf",
+						"*",
+					],
+				},
+			],
+		});
+		if (selected.canceled || selected.filePaths.length === 0) return [];
+		return await hermesAttachmentStore.registerPaths(selected.filePaths);
+	}),
+
+	releaseAttachment: publicProcedure
+		.input(z.object({ handle: z.string().min(1).max(200) }))
+		.mutation(({ input }) => {
+			hermesAttachmentStore.release([input.handle]);
+			return { ok: true as const };
+		}),
+
 	submit: publicProcedure
-		.input(connectionSessionInput.extend({ text: z.string().trim().min(1).max(200_000) }))
+		.input(submitInput)
 		.mutation(({ input }) =>
-			hermesRuntimeService.submit(input.connectionId, input.hermesSessionId, input.text)
+			hermesRuntimeService.submit(
+				input.connectionId,
+				input.hermesSessionId,
+				input.text.trim(),
+				input.attachmentHandles
+			)
 		),
 
 	interrupt: publicProcedure

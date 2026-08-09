@@ -100,6 +100,21 @@ export interface HermesSessionHistory {
 	messages: HermesTranscriptMessage[];
 }
 
+export type HermesAttachmentKind = "image" | "pdf" | "file";
+
+export const HERMES_ATTACHMENT_CONTEXT_START = "[SuperiorSwarm attachments]";
+export const HERMES_ATTACHMENT_CONTEXT_END = "[/SuperiorSwarm attachments]";
+
+/** Renderer-safe metadata for a main-owned, temporary attachment handle. */
+export interface HermesAttachmentMetadata {
+	handle: string;
+	name: string;
+	size: number;
+	mimeType: string;
+	kind: HermesAttachmentKind;
+	expiresAt: number;
+}
+
 export interface HermesSessionBinding {
 	runtimeSessionId: string;
 	durableSessionId: string;

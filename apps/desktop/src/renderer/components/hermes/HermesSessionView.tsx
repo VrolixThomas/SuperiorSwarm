@@ -1,38 +1,42 @@
-import { type FormEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { HermesTranscriptMessage } from "../../../shared/hermes";
+import {
+	type FormEvent,
+	useEffect,
+	useLayoutEffect,
+	useMemo,
+	useReducer,
+	useRef,
+	useState,
+} from "react";
 import {
 	type HermesSelectionGeneration,
 	HermesSelectionGuard,
 } from "../../hermes/hermes-binding-lifecycle";
 import { isHermesChatNearBottom, shouldAnchorHermesChat } from "../../hermes/hermes-chat-scroll";
 import {
+	HERMES_CHAT_OVERFLOW_CLASSES,
 	applyHermesEvent,
 	createHermesLiveState,
+	hermesComposerTextareaLayout,
 	hermesOriginActionAvailability,
 	hermesReportRequiresExplicitRetry,
 	latestReportableHermesMessage,
+	projectHermesLiveActivity,
+	projectHermesLiveCompletions,
+	projectHermesTranscript,
+	reduceHermesComposerAttachments,
 } from "../../hermes/hermes-view-model";
 import { useTabStore } from "../../stores/tab-store";
 import { trpc } from "../../trpc/client";
+import { HermesComposerAttachments } from "./HermesComposerAttachments";
 import { HermesApprovalCard, HermesClarificationChoices } from "./HermesInteractionCards";
+import { HermesActivityGroup, HermesTranscript } from "./HermesTranscript";
 
-function TranscriptMessage({ message }: { message: HermesTranscriptMessage }) {
-	return (
-		<div
-			className={`rounded-[8px] border px-3 py-2 ${
-				message.role === "user"
-					? "ml-10 border-[var(--accent)]/20 bg-[var(--accent)]/5"
-					: "mr-10 border-[var(--border-subtle)] bg-[var(--bg-surface)]"
-			}`}
-		>
-			<div className="mb-1 text-[10px] font-medium uppercase tracking-wide text-[var(--text-quaternary)]">
-				{message.toolName ?? message.role}
-			</div>
-			<div className="whitespace-pre-wrap text-[13px] leading-5 text-[var(--text-secondary)]">
-				{message.text || (message.workspaceArtifacts.length > 0 ? "Workspace created" : "")}
-			</div>
-		</div>
-	);
+function scrollToLatest(element: HTMLDivElement, smooth: boolean): void {
+	element.scrollTo({
+		top: element.scrollHeight,
+		behavior:
+			smooth && !window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "smooth" : "auto",
+	});
 }
 
 export function HermesSessionView() {
@@ -44,14 +48,44 @@ export function HermesSessionView() {
 	const [clarification, setClarification] = useState("");
 	const [cursor, setCursor] = useState(0);
 	const [live, setLive] = useState(createHermesLiveState);
+	const [attachments, dispatchAttachments] = useReducer(reduceHermesComposerAttachments, []);
 	const [manualWorkspaceId, setManualWorkspaceId] = useState("");
 	const [manualOriginUrl, setManualOriginUrl] = useState("");
 	const [showReportPreview, setShowReportPreview] = useState(false);
+	const [attachmentLimitError, setAttachmentLimitError] = useState<string | null>(null);
+	const [showJumpToLatest, setShowJumpToLatest] = useState(false);
 	const processedEventSeq = useRef(0);
 	const transcriptRef = useRef<HTMLDivElement | null>(null);
+	const composerRef = useRef<HTMLTextAreaElement | null>(null);
 	const followingTranscript = useRef(true);
 	const anchoredSelectionKey = useRef<string | null>(null);
+	const attachmentsRef = useRef(attachments);
+	attachmentsRef.current = attachments;
 	const utils = trpc.useUtils();
+
+	const submit = trpc.hermes.submit.useMutation();
+	const interrupt = trpc.hermes.interrupt.useMutation();
+	const approval = trpc.hermes.respondApproval.useMutation();
+	const clarify = trpc.hermes.respondClarification.useMutation();
+	const pickAttachments = trpc.hermes.pickAttachments.useMutation({
+		onSuccess: (selected) => {
+			const existing = new Set(attachmentsRef.current.map((attachment) => attachment.handle));
+			const unique = selected.filter((attachment) => !existing.has(attachment.handle));
+			const available = Math.max(0, 10 - attachmentsRef.current.length);
+			const accepted = unique.slice(0, available);
+			const rejected = unique.slice(available);
+			if (accepted.length > 0) {
+				dispatchAttachments({ type: "add", attachments: accepted });
+			}
+			for (const attachment of rejected) {
+				releaseAttachment.mutate({ handle: attachment.handle });
+			}
+			setAttachmentLimitError(rejected.length > 0 ? "Attach up to 10 files to one message." : null);
+		},
+	});
+	const releaseAttachment = trpc.hermes.releaseAttachment.useMutation();
+	const releaseAttachmentRef = useRef(releaseAttachment.mutate);
+	releaseAttachmentRef.current = releaseAttachment.mutate;
 
 	const selectionKey = `${connectionId}:${sessionId ?? ""}`;
 	const previousSelectionKey = useRef(selectionKey);
@@ -77,6 +111,15 @@ export function HermesSessionView() {
 		return () => selectionGuard.dispose();
 	}, [selectionGuard]);
 
+	useEffect(
+		() => () => {
+			for (const attachment of attachmentsRef.current) {
+				releaseAttachmentRef.current({ handle: attachment.handle });
+			}
+		},
+		[]
+	);
+
 	useEffect(() => {
 		if (!selection || !connections.data) return;
 		if (connections.data.some((candidate) => candidate.id === selection.connectionId)) return;
@@ -86,6 +129,10 @@ export function HermesSessionView() {
 	useEffect(() => {
 		if (previousSelectionKey.current === selectionKey) return;
 		previousSelectionKey.current = selectionKey;
+		for (const attachment of attachmentsRef.current) {
+			releaseAttachmentRef.current({ handle: attachment.handle });
+		}
+		dispatchAttachments({ type: "succeeded" });
 		setCursor(0);
 		processedEventSeq.current = 0;
 		setLive(createHermesLiveState());
@@ -94,6 +141,8 @@ export function HermesSessionView() {
 		setManualWorkspaceId("");
 		setManualOriginUrl("");
 		setShowReportPreview(false);
+		setAttachmentLimitError(null);
+		setShowJumpToLatest(false);
 		followingTranscript.current = true;
 		anchoredSelectionKey.current = null;
 	}, [selectionKey]);
@@ -149,11 +198,6 @@ export function HermesSessionView() {
 		}
 	}, [connectionId, eventFeed.data, selectionGeneration, selectionGuard, sessionId, utils]);
 
-	const submit = trpc.hermes.submit.useMutation();
-	const interrupt = trpc.hermes.interrupt.useMutation();
-	const approval = trpc.hermes.respondApproval.useMutation();
-	const clarify = trpc.hermes.respondClarification.useMutation();
-
 	const links = trpc.hermes.workspaceLinks.useQuery(
 		{ connectionId, hermesSessionId: sessionId ?? "" },
 		{ enabled: Boolean(connectionId && sessionId), refetchInterval: connected ? 2_000 : false }
@@ -176,9 +220,22 @@ export function HermesSessionView() {
 		{ enabled: Boolean(connectionId && sessionId && isSlackSession && connected) }
 	);
 	const report = trpc.hermes.reportToOrigin.useMutation();
+	const canonicalMessages = history.data?.messages ?? [];
+	const transcriptItems = useMemo(
+		() => projectHermesTranscript(canonicalMessages),
+		[canonicalMessages]
+	);
+	const liveCompletions = useMemo(
+		() => projectHermesLiveCompletions(canonicalMessages, live.completed),
+		[canonicalMessages, live.completed]
+	);
+	const liveActivity = useMemo(
+		() => projectHermesLiveActivity(live, canonicalMessages),
+		[live, canonicalMessages]
+	);
 	const reportable = useMemo(
-		() => latestReportableHermesMessage(history.data?.messages ?? []),
-		[history.data?.messages]
+		() => latestReportableHermesMessage(canonicalMessages),
+		[canonicalMessages]
 	);
 	const reportState = reportable
 		? report.data?.connectionId === connectionId &&
@@ -203,22 +260,59 @@ export function HermesSessionView() {
 		selectionGuard.runIfCurrent(generation, callback);
 	}
 
-	function send(event: FormEvent) {
+	function send(event: FormEvent<HTMLFormElement>) {
 		event.preventDefault();
-		if (!composer.trim() || !sessionId || !connected || live.running) return;
+		if (
+			(!composer.trim() && attachments.length === 0) ||
+			!sessionId ||
+			!connected ||
+			live.running ||
+			submit.isPending
+		) {
+			return;
+		}
 		const generation = selectionGeneration;
+		dispatchAttachments({ type: "submitting" });
 		submit.mutate(
-			{ connectionId, hermesSessionId: sessionId, text: composer.trim() },
+			{
+				connectionId,
+				hermesSessionId: sessionId,
+				text: composer.trim(),
+				attachmentHandles: attachments.map((attachment) => attachment.handle),
+			},
 			{
 				onSuccess: () => {
 					runForSelection(generation, () => {
 						setComposer("");
-						setLive((current) => ({ ...current, running: true, error: null }));
+						dispatchAttachments({ type: "succeeded" });
+						setAttachmentLimitError(null);
+						setLive((current) => ({
+							...current,
+							running: true,
+							runtimeStatus: "submitting",
+							streamingText: "",
+							tools: [],
+							error: null,
+						}));
+					});
+				},
+				onError: (error) => {
+					runForSelection(generation, () => {
+						dispatchAttachments({ type: "failed", error: error.message });
 					});
 				},
 			}
 		);
 	}
+
+	useLayoutEffect(() => {
+		const textarea = composerRef.current;
+		if (!textarea || textarea.value !== composer) return;
+		textarea.style.height = "0px";
+		const layout = hermesComposerTextareaLayout(textarea.scrollHeight);
+		textarea.style.height = `${layout.height}px`;
+		textarea.style.overflowY = layout.overflowY;
+	}, [composer]);
 
 	useLayoutEffect(() => {
 		const transcript = transcriptRef.current;
@@ -227,13 +321,16 @@ export function HermesSessionView() {
 		if (shouldAnchorHermesChat({ initialHistory, following: followingTranscript.current })) {
 			transcript.scrollTop = transcript.scrollHeight;
 			followingTranscript.current = true;
+			setShowJumpToLatest(false);
 		}
 		if (initialHistory) anchoredSelectionKey.current = selectionKey;
 	});
 
 	if (!sessionId) {
 		return (
-			<main className="flex h-full min-w-0 items-center justify-center overflow-hidden">
+			<main
+				className={`flex h-full items-center justify-center ${HERMES_CHAT_OVERFLOW_CLASSES.ancestor}`}
+			>
 				<div className="max-w-[360px] px-6 text-center">
 					<div className="text-[14px] font-medium text-[var(--text-secondary)]">
 						Select an agent thread
@@ -252,132 +349,127 @@ export function HermesSessionView() {
 		interrupt.error?.message ??
 		approval.error?.message ??
 		clarify.error?.message ??
+		pickAttachments.error?.message ??
+		attachmentLimitError ??
 		report.error?.message ??
 		live.error;
 
 	return (
-		<main className="flex h-full min-w-0 flex-col overflow-hidden bg-[var(--bg-base)]">
-			<header className="app-drag flex min-h-[52px] shrink-0 items-center gap-3 border-b border-[var(--border-subtle)] px-4">
+		<main
+			className={`flex h-full flex-col bg-[var(--bg-base)] ${HERMES_CHAT_OVERFLOW_CLASSES.ancestor}`}
+		>
+			<header className="app-drag relative z-20 flex h-14 min-w-0 shrink-0 items-center gap-3 border-b border-[var(--border-subtle)] px-4 sm:px-5">
 				<div className="min-w-0 flex-1">
-					<div className="truncate text-[13px] font-medium text-[var(--text-secondary)]">
+					<div className="truncate text-[14px] font-medium tracking-[-0.01em] text-[var(--text)]">
 						{session?.title ?? "New agent session"}
 					</div>
-					<div className="truncate text-[10px] text-[var(--text-quaternary)]">
-						Started in {visibleOrigin?.platform ?? session?.source ?? "unknown"}
-						{visibleOriginLabels.length > 0 ? ` · ${visibleOriginLabels.join(" · ")}` : ""}
+					<div className="mt-0.5 flex min-w-0 items-center gap-1.5 overflow-hidden text-[10px] text-[var(--text-quaternary)]">
+						<span className="shrink-0 capitalize">
+							{visibleOrigin?.platform ?? session?.source}
+						</span>
+						{visibleOriginLabels[0] && (
+							<>
+								<span aria-hidden="true">·</span>
+								<span className="truncate">{visibleOriginLabels[0]}</span>
+							</>
+						)}
+						{links.data && links.data.length > 0 && (
+							<>
+								<span aria-hidden="true">·</span>
+								<span className="shrink-0">
+									{links.data.length} workspace{links.data.length === 1 ? "" : "s"}
+								</span>
+							</>
+						)}
+						{live.runtimeStatus && (
+							<>
+								<span aria-hidden="true">·</span>
+								<span className="shrink-0 capitalize">{live.runtimeStatus}</span>
+							</>
+						)}
 					</div>
 				</div>
-				<div className="app-no-drag flex items-center gap-1.5">
-					{isSlackSession && originActions.canOpenOrigin && (
-						<button
-							type="button"
-							onClick={() => openOrigin.mutate({ connectionId, hermesSessionId: sessionId })}
-							className="rounded-[5px] border border-[var(--border)] px-2 py-1 text-[11px] text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]"
-						>
-							Open Slack thread
-						</button>
-					)}
-				</div>
-			</header>
 
-			{isSlackSession && (
-				<div className="shrink-0 border-b border-[var(--border-subtle)] px-4 py-1.5 text-[10px] text-[var(--text-quaternary)]">
-					Slack remains live; continue sequentially to avoid overlapping turns.
-				</div>
-			)}
-
-			{isSlackSession && origin.data && !origin.data.canOpenThread && (
-				<form
-					onSubmit={(event) => {
-						event.preventDefault();
-						if (!manualOriginUrl.trim()) return;
-						saveOriginLink.mutate(
-							{
-								connectionId,
-								hermesSessionId: sessionId,
-								openUrl: manualOriginUrl.trim(),
-							},
-							{
-								onSuccess: () => {
-									setManualOriginUrl("");
-									void utils.hermes.origin.invalidate({
-										connectionId,
-										hermesSessionId: sessionId,
-									});
-								},
-							}
-						);
-					}}
-					className="flex shrink-0 items-center gap-2 border-b border-[var(--border-subtle)] px-4 py-2"
-				>
-					<input
-						value={manualOriginUrl}
-						onChange={(event) => setManualOriginUrl(event.target.value)}
-						placeholder="Optional trusted Slack thread URL"
-						className="min-w-0 flex-1 rounded-[5px] border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1 text-[11px] text-[var(--text)]"
-					/>
-					<button
-						type="submit"
-						disabled={!manualOriginUrl.trim() || saveOriginLink.isPending}
-						className="rounded-[5px] border border-[var(--border)] px-2 py-1 text-[10px] text-[var(--text-secondary)] disabled:opacity-40"
+				<details className="app-no-drag group relative shrink-0">
+					<summary
+						aria-label="Session options"
+						className="flex size-8 cursor-pointer list-none items-center justify-center rounded-full text-[17px] tracking-[2px] text-[var(--text-quaternary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/50 [&::-webkit-details-marker]:hidden"
 					>
-						Save thread link
-					</button>
-				</form>
-			)}
-
-			{visibleError && (
-				<div className="shrink-0 border-b border-[var(--danger)]/20 bg-[var(--danger)]/5 px-4 py-2 text-[11px] text-[var(--danger)]">
-					{visibleError}
-				</div>
-			)}
-
-			<div
-				ref={transcriptRef}
-				onScroll={(event) => {
-					followingTranscript.current = isHermesChatNearBottom(event.currentTarget);
-				}}
-				className="min-h-0 flex-1 overflow-y-auto px-4 py-4"
-			>
-				<div className="mx-auto flex max-w-[860px] flex-col gap-3">
-					{history.isLoading && (
-						<div className="py-8 text-center text-[12px] text-[var(--text-quaternary)]">
-							Loading canonical Hermes history…
+						•••
+					</summary>
+					<div className="absolute right-0 top-10 z-30 max-h-[calc(100vh-88px)] w-[min(360px,calc(100vw-32px))] min-w-0 overflow-x-hidden overflow-y-auto rounded-[14px] border border-[var(--border)] bg-[var(--bg-elevated)] p-3 shadow-[var(--shadow-lg)]">
+						<div className="mb-3 text-[11px] font-medium text-[var(--text-secondary)]">
+							Session options
 						</div>
-					)}
-					{history.data?.messages.map((message) => (
-						<TranscriptMessage key={message.id} message={message} />
-					))}
-					{live.streamingText && (
-						<div className="mr-10 rounded-[8px] border border-[var(--accent)]/20 bg-[var(--bg-surface)] px-3 py-2">
-							<div className="whitespace-pre-wrap text-[13px] leading-5 text-[var(--text-secondary)]">
-								{live.streamingText}
-							</div>
-						</div>
-					)}
-					{live.tools.length > 0 && (
-						<div className="flex flex-wrap gap-1.5">
-							{live.tools.map((tool) => (
-								<span
-									key={tool.id}
-									className="rounded-full border border-[var(--border)] bg-[var(--bg-surface)] px-2 py-1 text-[10px] text-[var(--text-tertiary)]"
-								>
-									{tool.name} · {tool.status}
-								</span>
-							))}
-						</div>
-					)}
 
-					{links.data && links.data.length > 0 && (
-						<section className="rounded-[8px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3">
-							<div className="mb-2 text-[10px] font-medium uppercase tracking-wide text-[var(--text-quaternary)]">
+						{isSlackSession && (
+							<section className="mb-3 min-w-0 border-b border-[var(--border-subtle)] pb-3">
+								<div className="mb-1 text-[10px] font-medium text-[var(--text-tertiary)]">
+									Origin
+								</div>
+								<p className="mb-2 text-[10px] leading-4 text-[var(--text-quaternary)]">
+									Slack remains live. Continue sequentially to avoid overlapping turns.
+								</p>
+								{originActions.canOpenOrigin ? (
+									<button
+										type="button"
+										onClick={() => openOrigin.mutate({ connectionId, hermesSessionId: sessionId })}
+										className="rounded-[6px] border border-[var(--border)] px-2 py-1 text-[10px] text-[var(--text-secondary)] hover:bg-[var(--bg-overlay)]"
+									>
+										Open Slack thread
+									</button>
+								) : (
+									<form
+										onSubmit={(event) => {
+											event.preventDefault();
+											if (!manualOriginUrl.trim()) return;
+											saveOriginLink.mutate(
+												{
+													connectionId,
+													hermesSessionId: sessionId,
+													openUrl: manualOriginUrl.trim(),
+												},
+												{
+													onSuccess: () => {
+														setManualOriginUrl("");
+														void utils.hermes.origin.invalidate({
+															connectionId,
+															hermesSessionId: sessionId,
+														});
+													},
+												}
+											);
+										}}
+										className="flex min-w-0 gap-1.5"
+									>
+										<input
+											value={manualOriginUrl}
+											onChange={(event) => setManualOriginUrl(event.target.value)}
+											placeholder="Trusted Slack thread URL"
+											aria-label="Trusted Slack thread URL"
+											className="min-w-0 flex-1 rounded-[6px] border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1 text-[10px] text-[var(--text)] outline-none focus:border-[var(--accent)]"
+										/>
+										<button
+											type="submit"
+											disabled={!manualOriginUrl.trim() || saveOriginLink.isPending}
+											className="shrink-0 rounded-[6px] border border-[var(--border)] px-2 py-1 text-[10px] text-[var(--text-secondary)] disabled:opacity-40"
+										>
+											Save
+										</button>
+									</form>
+								)}
+							</section>
+						)}
+
+						<section className="mb-3 min-w-0 border-b border-[var(--border-subtle)] pb-3">
+							<div className="mb-1.5 text-[10px] font-medium text-[var(--text-tertiary)]">
 								Linked workspaces
 							</div>
-							<div className="flex flex-wrap gap-2">
-								{links.data.map((link) => (
+							<div className="mb-2 flex min-w-0 flex-col gap-1">
+								{links.data?.map((link) => (
 									<div
 										key={link.id}
-										className="flex items-center gap-1 rounded-[6px] border border-[var(--border)] px-2 py-1"
+										className="flex min-w-0 items-center gap-1 rounded-[6px] bg-[var(--bg-base)]/50 px-2 py-1"
 									>
 										<button
 											type="button"
@@ -403,7 +495,7 @@ export function HermesSessionView() {
 													});
 												}
 											}}
-											className="text-[11px] text-[var(--text-secondary)] hover:text-[var(--text)] disabled:text-[var(--danger)]"
+											className="min-w-0 flex-1 truncate text-left text-[10px] text-[var(--text-secondary)] disabled:text-[var(--danger)]"
 										>
 											{link.missing
 												? `Missing: ${link.workspaceId}`
@@ -411,6 +503,7 @@ export function HermesSessionView() {
 										</button>
 										<button
 											type="button"
+											aria-label="Unlink workspace"
 											onClick={() => {
 												const generation = selectionGeneration;
 												unlinkWorkspace.mutate(
@@ -429,68 +522,194 @@ export function HermesSessionView() {
 													}
 												);
 											}}
-											className="text-[10px] text-[var(--text-quaternary)] hover:text-[var(--danger)]"
-											title="Unlink workspace"
+											className="flex size-5 shrink-0 items-center justify-center rounded-full text-[var(--text-quaternary)] hover:bg-[var(--bg-overlay)] hover:text-[var(--danger)]"
 										>
 											×
 										</button>
 									</div>
 								))}
+								{links.data?.length === 0 && (
+									<div className="text-[10px] text-[var(--text-quaternary)]">
+										No linked workspace
+									</div>
+								)}
+							</div>
+							<div className="flex min-w-0 gap-1.5">
+								<select
+									value={manualWorkspaceId}
+									onChange={(event) => setManualWorkspaceId(event.target.value)}
+									aria-label="Link a recovery workspace"
+									className="w-0 min-w-0 max-w-full flex-1 rounded-[6px] border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1 text-[10px] text-[var(--text-tertiary)]"
+								>
+									<option value="">Link a recovery workspace…</option>
+									{availableWorkspaces.data?.map((workspace) => (
+										<option key={workspace.id} value={workspace.id}>
+											{workspace.projectName} · {workspace.branch ?? workspace.name}
+										</option>
+									))}
+								</select>
+								<button
+									type="button"
+									disabled={!manualWorkspaceId}
+									onClick={() => {
+										const generation = selectionGeneration;
+										linkWorkspace.mutate(
+											{
+												connectionId,
+												hermesSessionId: sessionId,
+												workspaceId: manualWorkspaceId,
+												lineageRootId: null,
+											},
+											{
+												onSuccess: () => {
+													runForSelection(generation, () => {
+														setManualWorkspaceId("");
+														void utils.hermes.workspaceLinks.invalidate();
+														void utils.hermes.workspaceLinkIndex.invalidate();
+													});
+												},
+											}
+										);
+									}}
+									className="shrink-0 rounded-[6px] border border-[var(--border)] px-2 py-1 text-[10px] text-[var(--text-secondary)] disabled:opacity-40"
+								>
+									Link
+								</button>
 							</div>
 						</section>
-					)}
 
-					<section className="flex items-center gap-2 text-[11px]">
-						<select
-							value={manualWorkspaceId}
-							onChange={(event) => setManualWorkspaceId(event.target.value)}
-							className="min-w-0 rounded-[5px] border border-[var(--border)] bg-[var(--bg-surface)] px-2 py-1 text-[var(--text-tertiary)]"
+						{isSlackSession && originActions.canReportToOrigin && reportable && (
+							<section className="min-w-0">
+								<div className="mb-1.5 text-[10px] font-medium text-[var(--text-tertiary)]">
+									Report to origin
+								</div>
+								{showReportPreview ? (
+									<div className="min-w-0">
+										<div className="max-h-32 min-w-0 overflow-x-hidden overflow-y-auto whitespace-pre-wrap rounded-[6px] bg-[var(--bg-base)] p-2 text-[10px] leading-4 text-[var(--text-secondary)] [overflow-wrap:anywhere]">
+											{reportable.text}
+										</div>
+										<div className="mt-2 flex flex-wrap items-center gap-1.5">
+											<button
+												type="button"
+												disabled={report.isPending || reportState?.status === "sent"}
+												onClick={() => {
+													const generation = selectionGeneration;
+													report.mutate(
+														{
+															connectionId,
+															hermesSessionId: sessionId,
+															messageId: reportable.id,
+															explicitRetry: hermesReportRequiresExplicitRetry(reportState),
+														},
+														{
+															onSettled: () => {
+																runForSelection(generation, () => {
+																	void utils.hermes.reports.invalidate();
+																});
+															},
+														}
+													);
+												}}
+												className="rounded-[6px] bg-[var(--accent)] px-2 py-1 text-[10px] text-white disabled:opacity-40"
+											>
+												{report.isPending
+													? "Sending…"
+													: hermesReportRequiresExplicitRetry(reportState)
+														? "Confirm retry to Slack"
+														: "Confirm send to Slack"}
+											</button>
+											<button
+												type="button"
+												onClick={() => setShowReportPreview(false)}
+												className="px-2 py-1 text-[10px] text-[var(--text-quaternary)]"
+											>
+												Cancel
+											</button>
+										</div>
+										{reportState && (
+											<div className="mt-1 text-[9px] text-[var(--text-quaternary)]">
+												Status: {reportState.status}
+											</div>
+										)}
+									</div>
+								) : (
+									<button
+										type="button"
+										onClick={() => setShowReportPreview(true)}
+										className="rounded-[6px] border border-[var(--border)] px-2 py-1 text-[10px] text-[var(--text-secondary)]"
+									>
+										Preview Slack update
+									</button>
+								)}
+							</section>
+						)}
+					</div>
+				</details>
+			</header>
+
+			{visibleError && (
+				<div className="shrink-0 border-b border-[var(--danger)]/15 bg-[var(--danger-subtle)] px-4 py-1.5 text-[11px] text-[var(--danger)] [overflow-wrap:anywhere]">
+					{visibleError}
+				</div>
+			)}
+
+			<div
+				ref={transcriptRef}
+				onScroll={(event) => {
+					const following = isHermesChatNearBottom(event.currentTarget);
+					followingTranscript.current = following;
+					setShowJumpToLatest(!following);
+				}}
+				className={`${HERMES_CHAT_OVERFLOW_CLASSES.transcriptOwner} flex-1 px-4 py-6 sm:px-6 sm:py-7 xl:px-8`}
+			>
+				<div className={`${HERMES_CHAT_OVERFLOW_CLASSES.canvas} pb-6`}>
+					{history.isLoading && (
+						<div className="py-8 text-center text-[12px] text-[var(--text-quaternary)]">
+							Loading canonical Hermes history…
+						</div>
+					)}
+					<HermesTranscript items={transcriptItems} />
+					{liveActivity && (
+						<div className="mt-7 min-w-0">
+							<HermesActivityGroup activity={liveActivity} />
+						</div>
+					)}
+					{liveCompletions.length > 0 && (
+						<div className="mt-7 min-w-0">
+							<HermesTranscript items={liveCompletions} />
+						</div>
+					)}
+					{live.streamingText.trim() && (
+						<div
+							className={`mt-7 max-w-[66ch] whitespace-pre-wrap text-[15px] leading-[22px] text-[var(--text-secondary)] ${HERMES_CHAT_OVERFLOW_CLASSES.arbitraryContent}`}
+							aria-live="polite"
 						>
-							<option value="">Recovery: link a workspace…</option>
-							{availableWorkspaces.data?.map((workspace) => (
-								<option key={workspace.id} value={workspace.id}>
-									{workspace.projectName} · {workspace.branch ?? workspace.name}
-								</option>
-							))}
-						</select>
-						<button
-							type="button"
-							disabled={!manualWorkspaceId}
-							onClick={() => {
-								const generation = selectionGeneration;
-								linkWorkspace.mutate(
-									{
-										connectionId,
-										hermesSessionId: sessionId,
-										workspaceId: manualWorkspaceId,
-										lineageRootId: null,
-									},
-									{
-										onSuccess: () => {
-											runForSelection(generation, () => {
-												setManualWorkspaceId("");
-												void utils.hermes.workspaceLinks.invalidate();
-												void utils.hermes.workspaceLinkIndex.invalidate();
-											});
-										},
-									}
-								);
-							}}
-							className="rounded-[5px] border border-[var(--border)] px-2 py-1 text-[var(--text-tertiary)] disabled:opacity-40"
-						>
-							Link
-						</button>
-					</section>
+							{live.streamingText}
+						</div>
+					)}
 				</div>
 			</div>
 
-			<div className="shrink-0 border-t border-[var(--border-subtle)] bg-[var(--bg-surface)] px-4 py-3">
-				<div className="mx-auto max-w-[860px]">
-					{live.runtimeStatus && (
-						<div className="mb-2 text-[10px] text-[var(--text-quaternary)]">
-							Runtime: {live.runtimeStatus}
-						</div>
-					)}
+			<div className="relative z-10 min-w-0 shrink-0 bg-gradient-to-t from-[var(--bg-base)] via-[var(--bg-base)] to-transparent px-4 pb-4 pt-2 sm:px-6 sm:pb-5 xl:px-8">
+				{showJumpToLatest && (
+					<div className="pointer-events-none absolute -top-9 left-0 right-0 flex justify-center">
+						<button
+							type="button"
+							onClick={() => {
+								const transcript = transcriptRef.current;
+								if (!transcript) return;
+								scrollToLatest(transcript, true);
+								followingTranscript.current = true;
+								setShowJumpToLatest(false);
+							}}
+							className="pointer-events-auto rounded-full border border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-1.5 text-[10px] font-medium text-[var(--text-secondary)] shadow-[var(--shadow-md)] hover:bg-[var(--bg-overlay)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/50"
+						>
+							Jump to latest ↓
+						</button>
+					</div>
+				)}
+
+				<div className={`${HERMES_CHAT_OVERFLOW_CLASSES.canvas}`}>
 					{live.pendingApproval && (
 						<HermesApprovalCard
 							interaction={live.pendingApproval}
@@ -541,9 +760,9 @@ export function HermesSessionView() {
 									}
 								);
 							}}
-							className="mb-2 rounded-[7px] border border-[#ff9f0a]/30 bg-[#ff9f0a]/5 p-2"
+							className="mb-2 min-w-0 rounded-[12px] border border-[var(--warning)]/25 bg-[var(--warning-subtle)] p-3"
 						>
-							<div className="mb-1 whitespace-pre-wrap break-words text-[11px] text-[var(--text-secondary)]">
+							<div className="mb-2 whitespace-pre-wrap text-[11px] leading-4 text-[var(--text-secondary)] [overflow-wrap:anywhere]">
 								{live.pendingClarification.prompt}
 							</div>
 							<HermesClarificationChoices
@@ -572,15 +791,16 @@ export function HermesSessionView() {
 									);
 								}}
 							/>
-							<div className="flex gap-2">
+							<div className="flex min-w-0 gap-2">
 								<input
 									value={clarification}
 									onChange={(event) => setClarification(event.target.value)}
-									className="min-w-0 flex-1 rounded-[5px] border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1 text-[12px] text-[var(--text)]"
+									aria-label="Clarification answer"
+									className="min-w-0 flex-1 rounded-[7px] border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1.5 text-[12px] text-[var(--text)] outline-none focus:border-[var(--accent)]"
 								/>
 								<button
 									type="submit"
-									className="rounded-[5px] bg-[var(--accent)] px-2 py-1 text-[11px] text-white"
+									className="shrink-0 rounded-[7px] bg-[var(--accent)] px-3 py-1.5 text-[11px] text-white"
 								>
 									Answer
 								</button>
@@ -588,110 +808,111 @@ export function HermesSessionView() {
 						</form>
 					)}
 
-					{isSlackSession && originActions.canReportToOrigin && reportable && (
-						<div className="mb-2 rounded-[7px] border border-[var(--border-subtle)] p-2 text-[10px] text-[var(--text-quaternary)]">
-							{showReportPreview ? (
-								<>
-									<div className="mb-1 font-medium text-[var(--text-secondary)]">
-										Preview Slack update
-									</div>
-									<div className="max-h-32 overflow-y-auto whitespace-pre-wrap rounded-[5px] bg-[var(--bg-base)] p-2 text-[11px] text-[var(--text-secondary)]">
-										{reportable.text}
-									</div>
-									<div className="mt-2 flex items-center gap-2">
-										<button
-											type="button"
-											disabled={report.isPending || reportState?.status === "sent"}
-											onClick={() => {
-												const generation = selectionGeneration;
-												report.mutate(
-													{
-														connectionId,
-														hermesSessionId: sessionId,
-														messageId: reportable.id,
-														explicitRetry: hermesReportRequiresExplicitRetry(reportState),
-													},
-													{
-														onSettled: () => {
-															runForSelection(generation, () => {
-																void utils.hermes.reports.invalidate();
-															});
-														},
-													}
-												);
-											}}
-											className="rounded-[5px] bg-[var(--accent)] px-2 py-1 text-white disabled:opacity-40"
-										>
-											{report.isPending
-												? "Sending…"
-												: hermesReportRequiresExplicitRetry(reportState)
-													? "Confirm retry to Slack"
-													: "Confirm send to Slack"}
-										</button>
-										<button
-											type="button"
-											onClick={() => setShowReportPreview(false)}
-											className="px-2 py-1"
-										>
-											Cancel
-										</button>
-										<span>
-											{reportState?.status === "sent"
-												? "Sent locally recorded"
-												: reportState?.status === "duplicate-suppressed"
-													? "Duplicate suppressed locally"
-													: reportState?.status === "failed"
-														? `Failed${reportState.retryable ? "; explicit retry available" : ""}`
-														: reportState?.status === "sending" && reportState.retryable
-															? "Previous send was interrupted; explicit retry available"
-															: "One selected update; delivery is not globally exactly-once"}
-										</span>
-									</div>
-								</>
-							) : (
-								<button
-									type="button"
-									onClick={() => setShowReportPreview(true)}
-									className="rounded-[5px] border border-[var(--border)] px-2 py-1 text-[var(--text-secondary)]"
-								>
-									Preview Slack update
-								</button>
-							)}
-						</div>
-					)}
-
-					<form onSubmit={send} className="flex items-end gap-2">
-						<textarea
-							value={composer}
-							onChange={(event) => setComposer(event.target.value)}
-							onKeyDown={(event) => {
-								if (event.key === "Enter" && !event.shiftKey) {
-									event.preventDefault();
-									if (composer.trim()) send(event);
-								}
+					<form
+						onSubmit={send}
+						className="min-w-0 rounded-[16px] border border-[var(--border)] bg-[var(--bg-elevated)] p-2 shadow-[0_10px_32px_rgba(0,0,0,0.24)] focus-within:border-[var(--border-active)]"
+					>
+						<HermesComposerAttachments
+							attachments={attachments}
+							onRemove={(handle) => {
+								dispatchAttachments({ type: "remove", handle });
+								releaseAttachment.mutate({ handle });
+								setAttachmentLimitError(null);
 							}}
-							placeholder={connected ? "Continue this agent thread…" : "Reconnect to continue…"}
-							disabled={!connected || live.running || submit.isPending}
-							rows={2}
-							className="min-h-[54px] min-w-0 flex-1 resize-none rounded-[8px] border border-[var(--border)] bg-[var(--bg-base)] px-3 py-2 text-[13px] text-[var(--text)] outline-none focus:border-[var(--accent)] disabled:opacity-50"
 						/>
-						{live.running ? (
+						<div className={`flex items-end gap-1.5 ${attachments.length > 0 ? "mt-2" : ""}`}>
 							<button
 								type="button"
-								onClick={() => interrupt.mutate({ connectionId, hermesSessionId: sessionId })}
-								className="rounded-[7px] border border-[var(--danger)]/40 px-3 py-2 text-[12px] text-[var(--danger)]"
+								onClick={() => pickAttachments.mutate()}
+								disabled={
+									!connected || live.running || submit.isPending || pickAttachments.isPending
+								}
+								aria-label="Attach files"
+								title="Attach files"
+								className="mb-[11px] flex size-8 shrink-0 items-center justify-center rounded-full text-[var(--text-tertiary)] hover:bg-[var(--bg-overlay)] hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/50 disabled:opacity-35"
 							>
-								Interrupt
+								<svg
+									aria-hidden="true"
+									width="16"
+									height="16"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									strokeWidth="1.8"
+									strokeLinecap="round"
+									strokeLinejoin="round"
+								>
+									<path d="m21.4 11.6-8.9 8.9a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 1 1-2.8-2.8l8.5-8.5" />
+								</svg>
 							</button>
-						) : (
+							<textarea
+								ref={composerRef}
+								value={composer}
+								onChange={(event) => setComposer(event.target.value)}
+								onKeyDown={(event) => {
+									if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+										event.preventDefault();
+										event.currentTarget.form?.requestSubmit();
+									}
+								}}
+								placeholder={connected ? "Continue this agent thread…" : "Reconnect to continue…"}
+								disabled={!connected || live.running || submit.isPending}
+								rows={1}
+								aria-label="Message"
+								className="min-h-14 min-w-0 flex-1 resize-none bg-transparent px-1.5 py-[17px] text-[14px] leading-[20px] text-[var(--text)] outline-none placeholder:text-[var(--text-quaternary)] disabled:opacity-50 [overflow-wrap:anywhere]"
+							/>
 							<button
-								type="submit"
-								disabled={!composer.trim() || !connected || submit.isPending}
-								className="rounded-[7px] bg-[var(--accent)] px-3 py-2 text-[12px] text-white disabled:opacity-40"
+								type={live.running ? "button" : "submit"}
+								onClick={
+									live.running
+										? () => interrupt.mutate({ connectionId, hermesSessionId: sessionId })
+										: undefined
+								}
+								disabled={
+									live.running
+										? interrupt.isPending
+										: (!composer.trim() && attachments.length === 0) ||
+											!connected ||
+											submit.isPending
+								}
+								aria-label={live.running ? "Stop response" : "Send message"}
+								title={live.running ? "Stop response" : "Send message"}
+								className={`mb-[10px] flex size-9 shrink-0 items-center justify-center rounded-full text-white transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/50 disabled:opacity-35 ${
+									live.running
+										? "bg-[var(--danger)] hover:brightness-110"
+										: "bg-[var(--accent)] hover:bg-[var(--accent-hover)]"
+								}`}
 							>
-								Send
+								{live.running ? (
+									<span className="size-2.5 rounded-[2px] bg-white" aria-hidden="true" />
+								) : (
+									<svg
+										aria-hidden="true"
+										width="16"
+										height="16"
+										viewBox="0 0 24 24"
+										fill="none"
+										stroke="currentColor"
+										strokeWidth="2"
+										strokeLinecap="round"
+										strokeLinejoin="round"
+									>
+										<path d="m7 11 5-5 5 5" />
+										<path d="M12 18V6" />
+									</svg>
+								)}
 							</button>
-						)}
+						</div>
+						<div className="flex min-w-0 items-center gap-1.5 px-2 pb-0.5 text-[9px] text-[var(--text-quaternary)]">
+							<span className="truncate">
+								{isSlackSession ? "Sequential Slack continuation" : "Hermes context preserved"}
+							</span>
+							{attachments.length > 0 && (
+								<span className="ml-auto shrink-0">
+									{attachments.length} attachment{attachments.length === 1 ? "" : "s"}
+								</span>
+							)}
+						</div>
 					</form>
 				</div>
 			</div>

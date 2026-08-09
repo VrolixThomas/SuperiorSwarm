@@ -692,21 +692,21 @@ function AuthenticatedApp() {
 						orientation="horizontal"
 						defaultLayout={defaultLayout}
 						onLayoutChanged={onLayoutChanged}
-						className="h-screen overflow-hidden bg-[var(--bg-base)]"
+						className="h-screen min-w-0 overflow-hidden bg-[var(--bg-base)]"
 					>
 						<Panel
 							id="sidebar"
 							panelRef={sidebarPanelRef}
-							defaultSize="15.3%"
-							minSize="12.5%"
-							maxSize="27.8%"
+							defaultSize="288px"
+							minSize="232px"
+							maxSize="360px"
 							collapsible
-							collapsedSize="3.9%"
+							collapsedSize="56px"
 							onResize={() => {
 								const isCollapsed = sidebarPanelRef.current?.isCollapsed() ?? false;
 								setSidebarCollapsed(isCollapsed);
 							}}
-							className="overflow-hidden bg-[var(--bg-surface)]"
+							className="min-w-0 overflow-hidden bg-[var(--bg-surface)]"
 						>
 							<Sidebar
 								collapsed={sidebarCollapsed}
@@ -716,7 +716,7 @@ function AuthenticatedApp() {
 
 						<Separator className="panel-resize-handle" />
 
-						<Panel id="main" minSize="30%">
+						<Panel id="main" minSize="360px" className="min-w-0 overflow-hidden">
 							<MainContentArea savedScrollback={savedScrollback} />
 						</Panel>
 

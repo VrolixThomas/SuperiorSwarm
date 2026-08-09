@@ -103,7 +103,8 @@ describe("Hermes global navigation", () => {
 		expect(chat).not.toContain("Select a Hermes session");
 		expect(chat).toContain('const connectionId = selection?.connectionId ?? ""');
 		expect(chat).not.toContain("connections.data?.[0]");
-		expect(chat).toContain("Started in");
+		expect(chat).toContain("Linked workspaces");
+		expect(chat).toContain('aria-label="Session options"');
 		expect(chat).toMatch(
 			/const origin = trpc\.hermes\.origin\.useQuery\([\s\S]*?enabled: Boolean\(connectionId && sessionId && connected\)/
 		);
@@ -198,6 +199,10 @@ describe("Hermes global navigation", () => {
 		expect(router).toContain("messageId: z.string().min(1)");
 		expect(router).toContain("explicitRetry: z.boolean()");
 		expect(router).toContain("saveOriginLink");
+		expect(router).toContain("pickAttachments: publicProcedure");
+		expect(router).toContain("releaseAttachment: publicProcedure");
+		expect(router).toMatch(/attachmentHandles:\s*z\s*\.array/);
+		expect(router).toContain("multiSelections");
 		expect(router).not.toContain("bindingReleaseInput");
 		expect(router).not.toContain("release: publicProcedure");
 		expect(router).not.toContain("unbind: publicProcedure");
@@ -208,7 +213,7 @@ describe("Hermes global navigation", () => {
 
 	test("offers passive history and explicit stock session/report actions without claim UI", async () => {
 		const sidebar = await rendererSource("hermes/HermesSidebar.tsx");
-		expect(sidebar).toContain("New session");
+		expect(sidebar).toContain("New agent session");
 		expect(sidebar).toContain("trpc.hermes.create.useMutation");
 		expect(sidebar).toContain("newTopic");
 		expect(sidebar).toContain("newSessionSubmitting");
@@ -233,9 +238,9 @@ describe("Hermes global navigation", () => {
 		expect(view).toContain("Preview Slack update");
 		expect(view).toContain("Confirm send to Slack");
 		expect(view).toContain("hermesReportRequiresExplicitRetry(reportState)");
-		expect(view).toContain("Slack remains live; continue sequentially");
+		expect(view).toContain("Slack remains live. Continue sequentially");
 		expect(view).not.toContain("HermesBindingLifecycle");
-		expect(view).not.toContain("trpc.hermes.release");
+		expect(view).not.toContain("trpc.hermes.release.useMutation");
 		expect(view).not.toContain("trpc.hermes.unbind");
 		expect(view).not.toContain("Claiming and resuming");
 	});

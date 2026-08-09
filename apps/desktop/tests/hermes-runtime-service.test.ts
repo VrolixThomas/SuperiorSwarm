@@ -1,7 +1,11 @@
 import "./preload-electron-mock";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { EventEmitter } from "node:events";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { _setDbForTesting } from "../src/main/db";
+import { HermesAttachmentStore } from "../src/main/hermes/hermes-attachments";
 import {
 	ensureHermesLocalConnection,
 	listHermesConnections,
@@ -233,10 +237,12 @@ function session(id = "stored-1"): HermesSessionSummary {
 }
 
 describe("HermesRuntimeService stock lifecycle", () => {
+	const temporaryDirectories: string[] = [];
 	let client: FakeRuntimeClient;
 	let rest: FakeRestClient;
 	let service: HermesRuntimeService;
 	let sender: FakeSendService;
+	let attachments: HermesAttachmentStore;
 	let connectionId: string;
 	let operations: string[];
 	let vault: HermesTokenVault;
@@ -253,6 +259,7 @@ describe("HermesRuntimeService stock lifecycle", () => {
 			encryptString: (value) => Buffer.from(value),
 			decryptString: (value) => value.toString(),
 		});
+		attachments = new HermesAttachmentStore();
 		connectionId = saveHermesConnection(
 			{
 				label: "Local stock Hermes",
@@ -263,6 +270,7 @@ describe("HermesRuntimeService stock lifecycle", () => {
 			vault
 		).id;
 		service = new HermesRuntimeService({
+			attachmentStore: attachments,
 			clientFactory: () => client,
 			restClientFactory: () => rest,
 			sendService: sender,
@@ -271,10 +279,30 @@ describe("HermesRuntimeService stock lifecycle", () => {
 		});
 	});
 
-	afterEach(() => {
+	afterEach(async () => {
 		service.shutdown();
 		_setDbForTesting(null);
+		await Promise.all(
+			temporaryDirectories.splice(0).map((directory) => rm(directory, { recursive: true }))
+		);
 	});
+
+	async function attachmentFixture(): Promise<{
+		directory: string;
+		filePath: string;
+		imagePath: string;
+		pdfPath: string;
+	}> {
+		const directory = await mkdtemp(join(tmpdir(), "superiorswarm-runtime-attachments-"));
+		temporaryDirectories.push(directory);
+		const imagePath = join(directory, "screen.png");
+		const pdfPath = join(directory, "plan.pdf");
+		const filePath = join(directory, "notes.txt");
+		await writeFile(imagePath, Buffer.from("image-bytes"));
+		await writeFile(pdfPath, Buffer.from("%PDF-test"));
+		await writeFile(filePath, Buffer.from("file-bytes"));
+		return { directory, filePath, imagePath, pdfPath };
+	}
 
 	test("connects without protocol.info or fork-only catalog and browses over REST", async () => {
 		const catalog = await service.connect(connectionId);
@@ -689,6 +717,186 @@ describe("HermesRuntimeService stock lifecycle", () => {
 		).rejects.toThrow("already active");
 		expect(JSON.stringify(client.requests)).not.toContain("claim");
 		expect(rest.transcriptCalls).toEqual([]);
+	});
+
+	test("resumes, attaches local image/PDF/file through stock RPC, then submits resolved context", async () => {
+		const fixture = await attachmentFixture();
+		const selected = await attachments.registerPaths([
+			fixture.imagePath,
+			fixture.pdfPath,
+			fixture.filePath,
+		]);
+		client.responses.set("session.resume", [
+			{ session_id: "runtime-attachments", session_key: "stored-1", profile: "work" },
+		]);
+		client.responses.set("image.attach", [{ attached: true, path: fixture.imagePath }]);
+		client.responses.set("pdf.attach", [
+			{ attached: true, filename: "plan.pdf", pages_attached: 2 },
+		]);
+		client.responses.set("file.attach", [
+			{
+				attached: true,
+				name: "notes.txt",
+				ref_text: "@file:.hermes/attachments/notes.txt",
+			},
+		]);
+		await service.connect(connectionId);
+
+		await service.submit(
+			connectionId,
+			"stored-1",
+			"Review these files",
+			selected.map((item) => item.handle)
+		);
+
+		expect(client.requests.map((request) => request.method)).toEqual([
+			"session.resume",
+			"image.attach",
+			"pdf.attach",
+			"file.attach",
+			"prompt.submit",
+		]);
+		expect(client.requests[1]?.params).toEqual({
+			session_id: "runtime-attachments",
+			path: fixture.imagePath,
+		});
+		expect(client.requests[2]?.params).toEqual({
+			session_id: "runtime-attachments",
+			path: fixture.pdfPath,
+			first_page: 1,
+			last_page: 25,
+		});
+		expect(client.requests[3]?.params).toEqual({
+			session_id: "runtime-attachments",
+			path: fixture.filePath,
+			name: "notes.txt",
+		});
+		const prompt = String(client.requests[4]?.params["text"]);
+		expect(prompt).toContain("Review these files");
+		expect(prompt).toContain("screen.png");
+		expect(prompt).toContain("plan.pdf");
+		expect(prompt).toContain("@file:.hermes/attachments/notes.txt");
+		expect(prompt).not.toContain(fixture.directory);
+		expect(attachments.size).toBe(0);
+	});
+
+	test("uploads remote attachments as stock bytes/data URLs without sending local paths", async () => {
+		const fixture = await attachmentFixture();
+		const selected = await attachments.registerPaths([
+			fixture.imagePath,
+			fixture.pdfPath,
+			fixture.filePath,
+		]);
+		connectionId = saveHermesConnection(
+			{
+				label: "Remote stock Hermes",
+				baseUrl: "https://hermes.example.com",
+				profileId: "work",
+				token: "remote-secret",
+			},
+			vault
+		).id;
+		client.responses.set("session.resume", [
+			{ session_id: "runtime-remote", session_key: "stored-1", profile: "work" },
+		]);
+		client.responses.set("image.attach_bytes", [{ attached: true, path: "remote-image.png" }]);
+		client.responses.set("pdf.attach", [
+			{ attached: true, filename: "plan.pdf", pages_attached: 1 },
+		]);
+		client.responses.set("file.attach", [
+			{ attached: true, ref_text: "@file:attachments/notes.txt" },
+		]);
+		await service.connect(connectionId);
+
+		await service.submit(
+			connectionId,
+			"stored-1",
+			"Inspect",
+			selected.map((item) => item.handle)
+		);
+
+		expect(client.requests.map((request) => request.method)).toEqual([
+			"session.resume",
+			"image.attach_bytes",
+			"pdf.attach",
+			"file.attach",
+			"prompt.submit",
+		]);
+		expect(client.requests[1]?.params).toEqual({
+			session_id: "runtime-remote",
+			content_base64: Buffer.from("image-bytes").toString("base64"),
+			filename: "screen.png",
+		});
+		expect(client.requests[2]?.params).toEqual({
+			session_id: "runtime-remote",
+			content_base64: Buffer.from("%PDF-test").toString("base64"),
+			filename: "plan.pdf",
+			first_page: 1,
+			last_page: 25,
+		});
+		expect(client.requests[3]?.params).toEqual({
+			session_id: "runtime-remote",
+			data_url: `data:text/plain;base64,${Buffer.from("file-bytes").toString("base64")}`,
+			name: "notes.txt",
+		});
+		expect(JSON.stringify(client.requests)).not.toContain(fixture.directory);
+	});
+
+	test("retains failed attachments for retry and does not duplicate an already attached file", async () => {
+		const fixture = await attachmentFixture();
+		const selected = await attachments.registerPaths([fixture.imagePath, fixture.filePath]);
+		client.responses.set("session.resume", [
+			{ session_id: "runtime-retry", session_key: "stored-1", profile: "work" },
+		]);
+		client.responses.set("image.attach", [{ attached: true, path: fixture.imagePath }]);
+		client.responses.set("file.attach", [
+			new Error(`token=hidden-secret failed at ${fixture.filePath}`),
+			{ attached: true, ref_text: "@file:attachments/notes.txt" },
+		]);
+		await service.connect(connectionId);
+		const handles = selected.map((item) => item.handle);
+
+		const firstFailure = await service
+			.submit(connectionId, "stored-1", "Retry safely", handles)
+			.catch((error: unknown) => error);
+
+		expect(firstFailure).toBeInstanceOf(Error);
+		expect((firstFailure as Error).message).not.toContain("hidden-secret");
+		expect((firstFailure as Error).message).not.toContain(fixture.directory);
+		expect(attachments.size).toBe(2);
+
+		await service.submit(connectionId, "stored-1", "Retry safely", handles);
+
+		expect(client.requests.map((request) => request.method)).toEqual([
+			"session.resume",
+			"image.attach",
+			"file.attach",
+			"file.attach",
+			"prompt.submit",
+		]);
+		expect(attachments.size).toBe(0);
+	});
+
+	test("rejects a non-stock general-file reference and keeps the handle retryable", async () => {
+		const fixture = await attachmentFixture();
+		const [selected] = await attachments.registerPaths([fixture.filePath]);
+		client.responses.set("session.resume", [
+			{ session_id: "runtime-bad-ref", session_key: "stored-1", profile: "work" },
+		]);
+		client.responses.set("file.attach", [
+			{ attached: true, ref_text: "file:///private/notes.txt" },
+		]);
+		await service.connect(connectionId);
+
+		await expect(
+			service.submit(connectionId, "stored-1", "Inspect", [selected?.handle ?? ""])
+		).rejects.toThrow("valid @file reference");
+
+		expect(client.requests.map((request) => request.method)).toEqual([
+			"session.resume",
+			"file.attach",
+		]);
+		expect(attachments.size).toBe(1);
 	});
 
 	test("buffers an initial-topic submission failure for the newly selected session", async () => {

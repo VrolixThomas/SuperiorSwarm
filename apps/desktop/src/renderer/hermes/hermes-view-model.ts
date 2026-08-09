@@ -1,10 +1,16 @@
 import type {
+	HermesAttachmentKind,
+	HermesAttachmentMetadata,
 	HermesOriginProjection,
 	HermesRuntimeEvent,
 	HermesSessionSummary,
 	HermesTranscriptMessage,
 } from "../../shared/hermes";
-import { isHermesLoopbackUrl } from "../../shared/hermes";
+import {
+	HERMES_ATTACHMENT_CONTEXT_END,
+	HERMES_ATTACHMENT_CONTEXT_START,
+	isHermesLoopbackUrl,
+} from "../../shared/hermes";
 
 export type HermesSessionFilter = "open" | "all" | "archived";
 
@@ -21,6 +27,7 @@ export interface HermesPendingInteraction {
 
 export interface HermesLiveTool {
 	id: string;
+	turnId: string | null;
 	name: string;
 	status: "running" | "complete" | "failed";
 }
@@ -35,6 +42,357 @@ export interface HermesLiveState {
 	pendingClarification: HermesPendingInteraction | null;
 	historyRefreshRequired: boolean;
 	error: string | null;
+}
+
+const FAILED_TRANSCRIPT_STATUSES = new Set(["cancelled", "error", "failed", "interrupted"]);
+
+const RUNNING_TRANSCRIPT_STATUSES = new Set([
+	"busy",
+	"queued",
+	"running",
+	"streaming",
+	"submitting",
+	"working",
+]);
+
+export const HERMES_CHAT_OVERFLOW_CLASSES = {
+	ancestor: "min-w-0 overflow-hidden",
+	transcriptOwner: "min-h-0 min-w-0 overflow-x-hidden overflow-y-auto",
+	canvas: "mx-auto w-full min-w-0 max-w-[720px]",
+	arbitraryContent: "min-w-0 break-words [overflow-wrap:anywhere]",
+	technicalDetail: "max-h-64 min-w-0 overflow-x-auto overflow-y-auto",
+} as const;
+
+export type HermesTranscriptClassification =
+	| { kind: "user"; text: string }
+	| { kind: "assistant"; text: string }
+	| { kind: "activity"; text: string };
+
+export interface HermesProjectedMessage {
+	kind: "message";
+	id: string;
+	role: "user" | "assistant";
+	text: string;
+	attachments: HermesProjectedAttachment[];
+	source: HermesTranscriptMessage;
+}
+
+export interface HermesProjectedAttachment {
+	id: string;
+	name: string;
+	kind: HermesAttachmentKind;
+	refText: string | null;
+}
+
+export interface HermesProjectedActivity {
+	kind: "activity";
+	id: string;
+	messages: HermesTranscriptMessage[];
+	status: "complete" | "failed" | "running";
+	summary: string;
+}
+
+export type HermesTranscriptProjectionItem = HermesProjectedMessage | HermesProjectedActivity;
+
+export interface HermesComposerAttachment extends HermesAttachmentMetadata {
+	status: "ready" | "attaching" | "error";
+	error: string | null;
+}
+
+export type HermesComposerAttachmentAction =
+	| { type: "add"; attachments: HermesAttachmentMetadata[] }
+	| { type: "remove"; handle: string }
+	| { type: "submitting" }
+	| { type: "failed"; error: string }
+	| { type: "succeeded" };
+
+export function reduceHermesComposerAttachments(
+	attachments: HermesComposerAttachment[],
+	action: HermesComposerAttachmentAction
+): HermesComposerAttachment[] {
+	switch (action.type) {
+		case "add": {
+			const handles = new Set(attachments.map((attachment) => attachment.handle));
+			return [
+				...attachments,
+				...action.attachments
+					.filter((attachment) => !handles.has(attachment.handle))
+					.map((attachment) => ({
+						...attachment,
+						status: "ready" as const,
+						error: null,
+					})),
+			];
+		}
+		case "remove":
+			return attachments.filter((attachment) => attachment.handle !== action.handle);
+		case "submitting":
+			return attachments.map((attachment) => ({
+				...attachment,
+				status: "attaching" as const,
+				error: null,
+			}));
+		case "failed":
+			return attachments.map((attachment) => ({
+				...attachment,
+				status: "error" as const,
+				error: action.error,
+			}));
+		case "succeeded":
+			return [];
+	}
+}
+
+export function hermesComposerTextareaLayout(scrollHeight: number): {
+	height: number;
+	overflowY: "auto" | "hidden";
+} {
+	const height = Math.max(56, Math.min(180, scrollHeight));
+	return { height, overflowY: scrollHeight > 180 ? "auto" : "hidden" };
+}
+
+function unquoteHermesTranscriptText(text: string): string {
+	const trimmed = text.trim();
+	if (!trimmed.startsWith('"') || !trimmed.endsWith('"')) return text;
+	try {
+		const parsed = JSON.parse(trimmed);
+		return typeof parsed === "string" ? parsed : text;
+	} catch {
+		return text;
+	}
+}
+
+function safeProjectedAttachmentName(value: unknown): string | null {
+	if (typeof value !== "string") return null;
+	const name = Array.from(value.trim())
+		.filter((character) => {
+			const code = character.charCodeAt(0);
+			return code >= 32 && code !== 127;
+		})
+		.join("")
+		.slice(0, 255);
+	return name || null;
+}
+
+export function extractHermesTranscriptAttachments(
+	text: string,
+	messageId: string
+): { text: string; attachments: HermesProjectedAttachment[] } {
+	const unquoted = unquoteHermesTranscriptText(text);
+	const lines = unquoted.split(/\r?\n/);
+	if (lines[0] !== HERMES_ATTACHMENT_CONTEXT_START)
+		return { text: unquoted.trim(), attachments: [] };
+	const endIndex = lines.indexOf(HERMES_ATTACHMENT_CONTEXT_END, 1);
+	if (endIndex < 2) return { text: unquoted.trim(), attachments: [] };
+	const attachments: HermesProjectedAttachment[] = [];
+	for (const [index, row] of lines.slice(1, endIndex).entries()) {
+		let parsed: unknown;
+		try {
+			parsed = JSON.parse(row);
+		} catch {
+			return { text: unquoted.trim(), attachments: [] };
+		}
+		if (!parsed || typeof parsed !== "object") return { text: unquoted.trim(), attachments: [] };
+		const values = parsed as Record<string, unknown>;
+		const kind = values["kind"];
+		const name = safeProjectedAttachmentName(values["name"]);
+		const rawRef = values["ref"];
+		const refText =
+			typeof rawRef === "string" && rawRef.startsWith("@file:") && rawRef.length <= 4_096
+				? rawRef
+				: null;
+		if (!name || (kind !== "image" && kind !== "pdf" && kind !== "file")) {
+			return { text: unquoted.trim(), attachments: [] };
+		}
+		attachments.push({
+			id: `${messageId}:attachment:${index}`,
+			name,
+			kind,
+			refText,
+		});
+	}
+	return {
+		text: lines
+			.slice(endIndex + 1)
+			.join("\n")
+			.trim(),
+		attachments,
+	};
+}
+
+export function classifyHermesTranscriptMessage(
+	message: HermesTranscriptMessage
+): HermesTranscriptClassification {
+	const text = unquoteHermesTranscriptText(message.text).trim();
+	const status = message.status?.trim().toLocaleLowerCase() ?? "";
+	if (message.toolName || message.role === "system" || message.role === "tool") {
+		return { kind: "activity", text };
+	}
+	if (message.role === "user") {
+		return text ? { kind: "user", text } : { kind: "activity", text };
+	}
+	if (message.role === "assistant" && text && !FAILED_TRANSCRIPT_STATUSES.has(status)) {
+		return { kind: "assistant", text };
+	}
+	return { kind: "activity", text };
+}
+
+export function isVisibleHermesAssistantMessage(message: HermesTranscriptMessage): boolean {
+	return classifyHermesTranscriptMessage(message).kind === "assistant";
+}
+
+export function hermesActivitySummary(messages: HermesTranscriptMessage[]): {
+	status: "complete" | "failed" | "running";
+	text: string;
+} {
+	const statuses = messages.map((message) => message.status?.trim().toLocaleLowerCase() ?? "");
+	const failed = statuses.some((status) => FAILED_TRANSCRIPT_STATUSES.has(status));
+	const running = !failed && statuses.some((status) => RUNNING_TRANSCRIPT_STATUSES.has(status));
+	const actionCount = messages.filter(
+		(message) => message.role === "tool" || Boolean(message.toolName)
+	).length;
+	const count = actionCount || messages.length;
+	if (failed) {
+		return {
+			status: "failed",
+			text: count === 1 ? "Action failed" : `${count} actions failed`,
+		};
+	}
+	if (running) {
+		return {
+			status: "running",
+			text: count === 1 ? "Running 1 action" : `Running ${count} actions`,
+		};
+	}
+	if (actionCount > 0) {
+		return {
+			status: "complete",
+			text: actionCount === 1 ? "Ran 1 action" : `Ran ${actionCount} actions`,
+		};
+	}
+	return {
+		status: "complete",
+		text: messages.length === 1 ? "Session activity" : `${messages.length} session events`,
+	};
+}
+
+export function projectHermesTranscript(
+	messages: HermesTranscriptMessage[]
+): HermesTranscriptProjectionItem[] {
+	const projected: HermesTranscriptProjectionItem[] = [];
+	let activity: HermesTranscriptMessage[] = [];
+	const flushActivity = () => {
+		const first = activity[0];
+		if (!first) return;
+		const summary = hermesActivitySummary(activity);
+		projected.push({
+			kind: "activity",
+			id: `activity:${first.id}`,
+			messages: activity,
+			status: summary.status,
+			summary: summary.text,
+		});
+		activity = [];
+	};
+
+	for (const message of messages) {
+		if (message.role === "user") flushActivity();
+		const classification = classifyHermesTranscriptMessage(message);
+		if (classification.kind === "activity") {
+			activity.push(message);
+			if (message.role === "user") flushActivity();
+			continue;
+		}
+		flushActivity();
+		const presentation =
+			classification.kind === "user"
+				? extractHermesTranscriptAttachments(classification.text, message.id)
+				: { text: classification.text, attachments: [] };
+		projected.push({
+			kind: "message",
+			id: `${classification.kind}:${message.id}`,
+			role: classification.kind,
+			text: presentation.text,
+			attachments: presentation.attachments,
+			source: message,
+		});
+	}
+	flushActivity();
+	return projected;
+}
+
+export function projectHermesLiveActivity(
+	live: HermesLiveState,
+	canonicalMessages: HermesTranscriptMessage[] = []
+): HermesProjectedActivity | null {
+	if (!live.running || live.tools.length === 0) return null;
+	const durableTools = canonicalMessages.filter(
+		(message) => message.role === "tool" || Boolean(message.toolName)
+	);
+	const visibleTools = live.tools.filter(
+		(tool) =>
+			!durableTools.some(
+				(message) =>
+					message.id === tool.id ||
+					(Boolean(tool.turnId) && message.turnId === tool.turnId && message.toolName === tool.name)
+			)
+	);
+	if (visibleTools.length === 0) return null;
+	const messages: HermesTranscriptMessage[] = visibleTools.map((tool) => ({
+		id: tool.id,
+		turnId: tool.turnId,
+		role: "tool",
+		text: tool.name,
+		createdAt: null,
+		status: tool.status === "complete" ? "complete" : tool.status,
+		toolName: tool.name,
+		workspaceArtifacts: [],
+	}));
+	const summary = hermesActivitySummary(messages);
+	return {
+		kind: "activity",
+		id: `activity:live:${messages[0]?.id ?? "tools"}`,
+		messages,
+		status: summary.status === "complete" ? "running" : summary.status,
+		summary:
+			summary.status === "complete"
+				? messages.length === 1
+					? "Running 1 action"
+					: `Running ${messages.length} actions`
+				: summary.text,
+	};
+}
+
+export function projectHermesLiveCompletions(
+	canonicalMessages: HermesTranscriptMessage[],
+	completed: HermesLiveState["completed"]
+): HermesProjectedMessage[] {
+	const canonicalAssistant = canonicalMessages.filter(isVisibleHermesAssistantMessage);
+	const pending = completed.flatMap((completion, index): HermesTranscriptMessage[] => {
+		const text = completion.text.trim();
+		if (!text) return [];
+		const reconciled = canonicalAssistant.some((message) =>
+			completion.turnId
+				? message.turnId === completion.turnId
+				: classifyHermesTranscriptMessage(message).text === text
+		);
+		if (reconciled) return [];
+		return [
+			{
+				id: `live-complete:${completion.turnId ?? index}`,
+				turnId: completion.turnId,
+				role: "assistant",
+				text,
+				createdAt: null,
+				status: "complete",
+				toolName: null,
+				workspaceArtifacts: [],
+			},
+		];
+	});
+	return projectHermesTranscript(pending).flatMap((item) =>
+		item.kind === "message" ? [item] : []
+	);
 }
 
 export interface HermesTicketChoice {
@@ -132,13 +490,7 @@ export function latestReportableHermesMessage(
 ): HermesTranscriptMessage | null {
 	let latest: HermesTranscriptMessage | null = null;
 	for (const message of messages) {
-		const status = message.status?.toLocaleLowerCase();
-		if (
-			message.role !== "assistant" ||
-			!message.id ||
-			!message.text.trim() ||
-			["error", "failed", "cancelled", "interrupted"].includes(status ?? "")
-		) {
+		if (!message.id || !isVisibleHermesAssistantMessage(message)) {
 			continue;
 		}
 		if (!latest || (message.createdAt ?? 0) >= (latest.createdAt ?? 0)) latest = message;
@@ -206,6 +558,7 @@ export function applyHermesEvent(
 					...state.tools,
 					{
 						id: event.requestId ?? `${event.toolName ?? "tool"}-${state.tools.length}`,
+						turnId: event.turnId,
 						name: event.toolName ?? "Tool",
 						status: "running",
 					},
