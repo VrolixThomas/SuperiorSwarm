@@ -52,6 +52,15 @@ function booleanValue(defaultValue: boolean, ...values: unknown[]): boolean {
 	return defaultValue;
 }
 
+function optionalBooleanValue(...values: unknown[]): boolean | null {
+	for (const value of values) {
+		if (typeof value === "boolean") return value;
+		if (value === 0 || value === "false") return false;
+		if (value === 1 || value === "true") return true;
+	}
+	return null;
+}
+
 const SENSITIVE_KEY =
 	/(token|secret|credential|authorization|password|cookie|origin_json|session_key|chat_id|thread_id|user_id|team_id|scope_id|guild_id|route)/i;
 
@@ -206,10 +215,11 @@ export function normalizeHermesSessionList(
 	defaultProfileId: string
 ): HermesSessionSummary[] {
 	const deduped = new Map<string, HermesSessionSummary>();
+	const ambiguousIds = new Set<string>();
 	for (const row of sessionRows(value)) {
 		const session = record(row);
 		const id = safeIdentifier(session?.["id"], session?.["stored_session_id"]);
-		if (!session || !id) continue;
+		if (!session || !id || ambiguousIds.has(id)) continue;
 		const source = stringValue(session["source"]) ?? "local";
 		const status = stringValue(session["status"]);
 		const summary: HermesSessionSummary = {
@@ -233,6 +243,11 @@ export function normalizeHermesSessionList(
 			origin: stockOriginProjection(session, source),
 		};
 		const existing = deduped.get(id);
+		if (existing && existing.profileId !== summary.profileId) {
+			deduped.delete(id);
+			ambiguousIds.add(id);
+			continue;
+		}
 		if (!existing || summary.updatedAt >= existing.updatedAt) deduped.set(id, summary);
 	}
 	return [...deduped.values()];
@@ -289,11 +304,19 @@ export function normalizeHermesMessagePage(
 	const pagination = record(root["pagination"]);
 	const offset = numberValue(pagination?.["offset"], root["offset"]) ?? 0;
 	const total = numberValue(root["total"], pagination?.["total"]);
+	const explicitHasMore = optionalBooleanValue(
+		pagination?.["has_more"],
+		pagination?.["hasMore"],
+		root["has_more"],
+		root["hasMore"]
+	);
 	return {
 		durableSessionId,
 		messages,
 		total,
-		hasMore: total === null ? messages.length >= requestedLimit : offset + messages.length < total,
+		hasMore:
+			explicitHasMore ??
+			(total === null ? messages.length >= requestedLimit : offset + messages.length < total),
 	};
 }
 

@@ -246,6 +246,45 @@ describe("Hermes persistence services", () => {
 		expect(serialized).not.toContain("slack:C");
 	});
 
+	test("allows an explicit retry of a sending receipt orphaned by process restart", () => {
+		const connection = saveHermesConnection(
+			{
+				label: "Local",
+				baseUrl: "http://localhost:8080",
+				profileId: "work",
+				token: "token",
+			},
+			vault
+		);
+		const identity = {
+			connectionId: connection.id,
+			profileId: "work",
+			hermesSessionId: "stored-after-crash",
+			messageId: "assistant-message-after-crash",
+			content: "Resume this delivery",
+			destinationFingerprint: "opaque-restart-destination",
+		};
+		prepareHermesOriginReport(identity);
+		const prepared = db.select().from(schema.hermesOriginReports).get();
+		expect(prepared).toBeDefined();
+		db.update(schema.hermesOriginReports)
+			.set({ status: "sending", retryable: false, attemptCount: 1 })
+			.where(eq(schema.hermesOriginReports.id, prepared?.id ?? "missing"))
+			.run();
+
+		const passive = beginHermesOriginReportAttempt({ ...identity, explicitRetry: false });
+		expect(passive).toMatchObject({
+			shouldSend: false,
+			state: { status: "sending", retryable: true },
+		});
+
+		const retry = beginHermesOriginReportAttempt({ ...identity, explicitRetry: true });
+		expect(retry).toMatchObject({
+			shouldSend: true,
+			state: { status: "sending", retryable: false, attemptCount: 2 },
+		});
+	});
+
 	test("stores only a validated Slack URL and invalidates it when origin identity changes", () => {
 		const connection = saveHermesConnection(
 			{

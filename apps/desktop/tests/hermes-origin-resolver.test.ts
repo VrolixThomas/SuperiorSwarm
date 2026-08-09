@@ -118,6 +118,37 @@ describe("Hermes Slack origin resolver", () => {
 		expect(malformedSource.projection.platform).toBe("unknown");
 	});
 
+	test("rejects conflicting valid Slack route fields instead of choosing by precedence", () => {
+		const resolved = resolveHermesOrigin(
+			{
+				durableSessionId: "stored",
+				profileId: "work",
+				source: "slack",
+				displayName: "#release",
+				sessionKey: "agent:work:slack:channel:T01234567:C01234567:1786269600.123456",
+				chatId: "C99999999",
+				chatType: "channel",
+				threadId: "1786269600.999999",
+				originJson: {
+					platform: "slack",
+					scope_id: "T01234567",
+					chat_id: "C01234567",
+					thread_id: "1786269600.123456",
+				},
+			},
+			{ connectionMode: "loopback", senderAvailable: true }
+		);
+
+		expect(resolved.projection).toMatchObject({
+			platform: "slack",
+			hasThread: false,
+			canOpenThread: false,
+			canReport: false,
+			openUrl: null,
+		});
+		expect(resolved.target).toBeNull();
+	});
+
 	test("degrades remote, threadless, and unavailable-sender origins without blocking projection", () => {
 		const remote = resolveHermesOrigin(
 			{

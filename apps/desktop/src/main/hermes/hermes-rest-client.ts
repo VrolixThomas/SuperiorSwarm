@@ -194,7 +194,7 @@ export class HermesRestClient {
 			resolvedDurableSessionId = page.durableSessionId;
 			pages.unshift(page.messages);
 			offset += page.messages.length;
-			if (!page.hasMore || page.messages.length < 500) {
+			if (!page.hasMore) {
 				const byId = new Map<string, HermesSessionHistory["messages"][number]>();
 				for (const message of pages.flat()) byId.set(message.id, message);
 				return normalizeHermesHistory(resolvedDurableSessionId, [...byId.values()]);

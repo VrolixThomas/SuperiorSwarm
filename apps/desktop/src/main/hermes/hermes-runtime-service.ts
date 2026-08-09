@@ -542,26 +542,35 @@ export class HermesRuntimeService {
 	}
 
 	private async reacquireBindings(connectionId: string, runtime: ConnectionRuntime): Promise<void> {
-		const durableIds = [
-			...new Set([...runtime.bindings.values()].map((binding) => binding.durableSessionId)),
-		];
+		const previousBindings = new Map(
+			[...runtime.bindings.values()].map((binding) => [binding.durableSessionId, binding])
+		);
+		const durableIds = [...previousBindings.keys()];
 		runtime.bindings.clear();
 		runtime.runtimeToDurable.clear();
 		const bindings: HermesReconnectBindingMetadata[] = [];
 		const failedSessionIds: string[] = [];
 		for (const durableSessionId of durableIds) {
+			let binding: RuntimeBinding;
 			try {
-				await this.history(connectionId, durableSessionId);
-				const binding = await this.resumeBinding(
+				binding = await this.resumeBinding(
 					runtime,
 					this.resolveDurableId(runtime, durableSessionId),
 					this.profileFor(runtime, durableSessionId)
 				);
+				binding.activeTurn = previousBindings.get(durableSessionId)?.activeTurn ?? false;
 				bindings.push({
 					hermesSessionId: durableSessionId,
 					durableSessionId: binding.durableSessionId,
 					runtimeSessionId: binding.runtimeSessionId,
 				});
+			} catch (error) {
+				failedSessionIds.push(durableSessionId);
+				this.pushRuntimeError(connectionId, error);
+				continue;
+			}
+			try {
+				await this.history(connectionId, binding.durableSessionId);
 			} catch (error) {
 				failedSessionIds.push(durableSessionId);
 				this.pushRuntimeError(connectionId, error);

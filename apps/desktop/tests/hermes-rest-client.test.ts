@@ -113,6 +113,35 @@ describe("HermesRestClient", () => {
 		expect(history.messages.at(-1)?.id).toBe("new-499");
 	});
 
+	test("continues a short transcript page when stock has_more says more rows exist", async () => {
+		const offsets: number[] = [];
+		const client = new HermesRestClient({
+			baseUrl: "http://localhost:9119",
+			profileId: "work",
+			token: "token",
+			fetchImpl: async (input) => {
+				const url = new URL(String(input));
+				offsets.push(Number(url.searchParams.get("offset")));
+				return offsets.length === 1
+					? json({
+							session_id: "stored-1",
+							messages: [{ id: "newer", role: "assistant", content: "second" }],
+							pagination: { offset: 0, returned: 1, has_more: true },
+						})
+					: json({
+							session_id: "stored-1",
+							messages: [{ id: "older", role: "user", content: "first" }],
+							pagination: { offset: 1, returned: 1, has_more: false },
+						});
+			},
+		});
+
+		const history = await client.getTranscript("stored-1", "work");
+
+		expect(offsets).toEqual([0, 1]);
+		expect(history.messages.map((message) => message.id)).toEqual(["older", "newer"]);
+	});
+
 	test("maps HTTP and malformed responses to sanitized typed errors", async () => {
 		const unauthorized = new HermesRestClient({
 			baseUrl: "http://localhost:9119",

@@ -65,6 +65,17 @@ function validThreadId(value: unknown): string | null {
 	return typeof value === "string" && /^\d{1,16}\.\d{1,9}$/.test(value) ? value : null;
 }
 
+function reconcileRouteValue(values: Array<string | null>): {
+	value: string | null;
+	ambiguous: boolean;
+} {
+	const candidates = [...new Set(values.filter((value): value is string => value !== null))];
+	return {
+		value: candidates.length === 1 ? (candidates[0] ?? null) : null,
+		ambiguous: candidates.length > 1,
+	};
+}
+
 function stringValue(...values: unknown[]): string | null {
 	return (
 		values.find((value): value is string => typeof value === "string" && value.length > 0) ?? null
@@ -145,30 +156,50 @@ export function resolveHermesOrigin(
 	const originPlatform = stringValue(origin?.["platform"]);
 	const structuredOriginIsSlack = !originPlatform || originPlatform.toLowerCase() === "slack";
 	const fallback = parseStockSlackSessionKey(detail.sessionKey);
-	const teamId = structuredOriginIsSlack
-		? (validTeamId(origin?.["scope_id"] ?? origin?.["team_id"] ?? origin?.["guild_id"]) ??
-			fallback.teamId)
-		: null;
-	const channelId = structuredOriginIsSlack
-		? (validChannelId(detail.chatId) ?? validChannelId(origin?.["chat_id"]) ?? fallback.channelId)
-		: null;
-	const threadId = structuredOriginIsSlack
-		? (validThreadId(detail.threadId) ?? validThreadId(origin?.["thread_id"]) ?? fallback.threadId)
-		: null;
-	const target = channelId && threadId ? { channelId, threadId } : null;
+	const team = structuredOriginIsSlack
+		? reconcileRouteValue([
+				validTeamId(origin?.["scope_id"] ?? origin?.["team_id"] ?? origin?.["guild_id"]),
+				fallback.teamId,
+			])
+		: { value: null, ambiguous: false };
+	const channel = structuredOriginIsSlack
+		? reconcileRouteValue([
+				validChannelId(detail.chatId),
+				validChannelId(origin?.["chat_id"]),
+				fallback.channelId,
+			])
+		: { value: null, ambiguous: false };
+	const thread = structuredOriginIsSlack
+		? reconcileRouteValue([
+				validThreadId(detail.threadId),
+				validThreadId(origin?.["thread_id"]),
+				fallback.threadId,
+			])
+		: { value: null, ambiguous: false };
+	const teamId = team.value;
+	const channelId = channel.value;
+	const threadId = thread.value;
+	const routeAmbiguous = team.ambiguous || channel.ambiguous || thread.ambiguous;
+	const target = !routeAmbiguous && channelId && threadId ? { channelId, threadId } : null;
 	const generatedUrl =
 		teamId && channelId && threadId ? slackAppThreadUrl(teamId, channelId, threadId) : null;
 	const manualUrl = options.manualOpenUrl
 		? validateManualSlackThreadUrl(options.manualOpenUrl)
 		: null;
-	const openUrl = generatedUrl ?? manualUrl;
-	const originFingerprint = fingerprint(["slack", teamId, channelId, threadId]);
+	const openUrl = routeAmbiguous ? null : (generatedUrl ?? manualUrl);
+	const originFingerprint = fingerprint([
+		"slack",
+		teamId,
+		channelId,
+		threadId,
+		routeAmbiguous ? "ambiguous" : null,
+	]);
 
 	return {
 		projection: {
 			platform: "slack",
 			displayLabel: validDisplayLabel(detail.displayName) ?? "Slack",
-			hasThread: threadId !== null,
+			hasThread: !thread.ambiguous && threadId !== null,
 			canOpenThread: openUrl !== null,
 			canReport:
 				options.connectionMode === "loopback" && options.senderAvailable && target !== null,

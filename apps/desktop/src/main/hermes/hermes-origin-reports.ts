@@ -19,6 +19,8 @@ interface ReportIdentity {
 	contentHash: string;
 }
 
+const activeReportAttempts = new Set<string>();
+
 function normalizedContent(value: string): string {
 	return value.replace(/\r\n/g, "\n").trim();
 }
@@ -48,12 +50,13 @@ function toState(
 	row: typeof hermesOriginReports.$inferSelect,
 	statusOverride?: HermesOriginReportState["status"]
 ): HermesOriginReportState {
+	const orphanedSending = row.status === "sending" && !activeReportAttempts.has(row.id);
 	return {
 		connectionId: row.connectionId,
 		hermesSessionId: row.hermesSessionId,
 		messageId: row.messageKey,
 		status: statusOverride ?? row.status,
-		retryable: row.retryable,
+		retryable: orphanedSending || row.retryable,
 		providerMessageId: row.providerMessageId,
 		errorCode: row.errorCode,
 		attemptCount: row.attemptCount,
@@ -131,8 +134,11 @@ export function beginHermesOriginReportAttempt(
 			row = tx.select().from(hermesOriginReports).where(reportWhere(input, identity)).get();
 		}
 		if (!row) throw new Error("Hermes report receipt could not be claimed");
-		if (row.status === "sent" || row.status === "sending") {
+		if (row.status === "sent" || (row.status === "sending" && activeReportAttempts.has(row.id))) {
 			return { state: toState(row, "duplicate-suppressed"), shouldSend: false };
+		}
+		if (row.status === "sending" && !input.explicitRetry) {
+			return { state: toState(row), shouldSend: false };
 		}
 		if (row.status === "failed" && (!input.explicitRetry || !row.retryable)) {
 			return { state: toState(row), shouldSend: false };
@@ -155,6 +161,7 @@ export function beginHermesOriginReportAttempt(
 			.where(eq(hermesOriginReports.id, row.id))
 			.get();
 		if (!sending) throw new Error("Hermes report receipt disappeared during send");
+		activeReportAttempts.add(row.id);
 		return { state: toState(sending), shouldSend: true };
 	});
 }
@@ -180,6 +187,7 @@ export function finishHermesOriginReport(
 		})
 		.where(where)
 		.run();
+	activeReportAttempts.delete(identity.id);
 	const row = db.select().from(hermesOriginReports).where(where).get();
 	if (!row) throw new Error("Hermes report receipt was not found");
 	return toState(row);

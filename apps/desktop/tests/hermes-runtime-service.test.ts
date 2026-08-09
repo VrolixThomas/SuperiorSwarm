@@ -28,6 +28,8 @@ class FakeRuntimeClient implements HermesRuntimeClientLike {
 	};
 	responses = new Map<string, unknown[]>();
 
+	constructor(private readonly operations: string[] = []) {}
+
 	connect(): Promise<void> {
 		return Promise.resolve();
 	}
@@ -37,6 +39,7 @@ class FakeRuntimeClient implements HermesRuntimeClientLike {
 	}
 
 	request(method: string, params: Record<string, unknown>): Promise<unknown> {
+		this.operations.push(`rpc:${method}`);
 		this.requests.push({ method, params });
 		const queued = this.responses.get(method) ?? [];
 		if (queued.length === 0) return Promise.resolve({ ok: true });
@@ -83,12 +86,15 @@ class FakeRestClient implements HermesRestClientLike {
 	listCalls = 0;
 	transcriptCalls: Array<{ durableSessionId: string; profileId: string }> = [];
 
+	constructor(private readonly operations: string[] = []) {}
+
 	listSessions(): Promise<HermesSessionSummary[]> {
 		this.listCalls++;
 		return Promise.resolve(this.sessions);
 	}
 
 	getTranscript(durableSessionId: string, profileId: string): Promise<HermesSessionHistory> {
+		this.operations.push(`rest:history:${durableSessionId}`);
 		this.transcriptCalls.push({ durableSessionId, profileId });
 		return Promise.resolve(
 			this.histories.get(durableSessionId) ?? { durableSessionId, messages: [] }
@@ -155,11 +161,13 @@ describe("HermesRuntimeService stock lifecycle", () => {
 	let service: HermesRuntimeService;
 	let sender: FakeSendService;
 	let connectionId: string;
+	let operations: string[];
 
 	beforeEach(() => {
 		_setDbForTesting(makeTestDb());
-		client = new FakeRuntimeClient();
-		rest = new FakeRestClient();
+		operations = [];
+		client = new FakeRuntimeClient(operations);
+		rest = new FakeRestClient(operations);
 		sender = new FakeSendService();
 		rest.sessions = [session()];
 		const vault = new HermesTokenVault({
@@ -345,6 +353,28 @@ describe("HermesRuntimeService stock lifecycle", () => {
 		expect(client.requests.filter((request) => request.method === "session.resume")).toHaveLength(
 			2
 		);
+	});
+
+	test("preserves an active turn and refreshes canonical history after reconnect resume", async () => {
+		client.responses.set("session.resume", [
+			{ session_id: "runtime-1", session_key: "stored-1", profile: "work" },
+			{ session_id: "runtime-2", session_key: "stored-1", profile: "work" },
+		]);
+		client.responses.set("prompt.submit", [{ status: "streaming" }]);
+		await service.connect(connectionId);
+		await service.resume(connectionId, "stored-1");
+		await service.submit(connectionId, "stored-1", "Keep working");
+		const historyCallsBeforeReconnect = rest.transcriptCalls.length;
+
+		client.emit({ type: "runtime.history-refresh-required", status: "reconnected" });
+		await Bun.sleep(5);
+
+		expect(rest.transcriptCalls.length).toBe(historyCallsBeforeReconnect + 1);
+		expect(operations.at(-1)).toBe("rest:history:stored-1");
+		await expect(service.submit(connectionId, "stored-1", "Duplicate turn")).rejects.toThrow(
+			"already active"
+		);
+		expect(client.requests.filter((request) => request.method === "prompt.submit")).toHaveLength(1);
 	});
 
 	test("maps live events to durable IDs and refreshes REST after terminal completion", async () => {

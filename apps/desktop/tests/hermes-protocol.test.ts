@@ -48,6 +48,24 @@ describe("stock Hermes protocol adapter", () => {
 		expect(rendererJson).not.toContain("U01234567");
 	});
 
+	test("withholds a durable session ID that is ambiguous across profiles", () => {
+		const sessions = normalizeHermesSessionList(
+			{
+				recents: {
+					sessions: [{ id: "duplicate", profile: "work", title: "Work copy", last_active: 20 }],
+				},
+				messaging: {
+					sessions: [
+						{ id: "duplicate", profile: "personal", title: "Personal copy", last_active: 30 },
+					],
+				},
+			},
+			"default"
+		);
+
+		expect(sessions).toEqual([]);
+	});
+
 	test("normalizes a stock messages page without custom turn results", () => {
 		const page = normalizeHermesMessagePage(stockMessagePage, 500);
 
