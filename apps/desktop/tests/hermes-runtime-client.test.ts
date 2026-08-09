@@ -62,7 +62,7 @@ describe("HermesRuntimeClient", () => {
 		client.subscribe((event) => events.push(event.type));
 
 		await client.connect({ baseUrl: "http://127.0.0.1:8080", token: "secret-token" });
-		const request = client.request("session.catalog", {});
+		const request = client.request("session.resume", { session_id: "stored" });
 		const sent = JSON.parse(sockets[0]?.sent[0] ?? "{}") as { id: string };
 		sockets[0]?.message({
 			jsonrpc: "2.0",
@@ -88,7 +88,7 @@ describe("HermesRuntimeClient", () => {
 		});
 		await client.connect({ baseUrl: "http://localhost:8080", token: "token" });
 		const abort = new AbortController();
-		const request = client.request("session.history", {}, { signal: abort.signal });
+		const request = client.request("prompt.submit", {}, { signal: abort.signal });
 		abort.abort();
 
 		await expect(request).rejects.toThrow("cancelled");
@@ -108,7 +108,7 @@ describe("HermesRuntimeClient", () => {
 			reconnect: false,
 		});
 		await client.connect({ baseUrl: "http://localhost:8080", token: "token" });
-		const request = client.request("session.report_to_origin", {});
+		const request = client.request("prompt.submit", {});
 		const sent = JSON.parse(socket?.sent[0] ?? "{}") as { id: string };
 		socket?.message({
 			jsonrpc: "2.0",
@@ -131,6 +131,38 @@ describe("HermesRuntimeClient", () => {
 			expect((error as Error).message).not.toContain("basic-secret");
 			expect((error as Error).message).not.toContain("url-secret");
 		}
+	});
+
+	test("mints a fresh single-use OAuth ticket for every socket open", async () => {
+		const sockets: FakeSocket[] = [];
+		const urls: string[] = [];
+		let ticketNumber = 0;
+		const client = new HermesRuntimeClient({
+			socketFactory: (url) => {
+				urls.push(url);
+				const socket = new FakeSocket();
+				sockets.push(socket);
+				queueMicrotask(() => socket.open());
+				return socket;
+			},
+			reconnectBaseMs: 1,
+			reconnectMaxMs: 1,
+		});
+
+		await client.connect({
+			baseUrl: "https://hermes.example.com",
+			authMode: "oauth",
+			ticketProvider: async () => `ticket-${++ticketNumber}`,
+		});
+		sockets[0]?.close();
+		await Bun.sleep(10);
+
+		expect(urls).toEqual([
+			"wss://hermes.example.com/api/ws?ticket=ticket-1",
+			"wss://hermes.example.com/api/ws?ticket=ticket-2",
+		]);
+		expect(JSON.stringify(client.getState())).not.toContain("ticket-");
+		client.disconnect();
 	});
 
 	test("reconnects with backoff and requests a canonical history refresh", async () => {

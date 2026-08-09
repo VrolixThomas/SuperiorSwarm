@@ -28,10 +28,17 @@ interface PendingRequest {
 	removeAbortListener: () => void;
 }
 
-interface ConnectionSettings {
-	baseUrl: string;
-	token: string;
-}
+export type HermesRuntimeConnectionSettings =
+	| {
+			baseUrl: string;
+			authMode?: "token";
+			token: string;
+	  }
+	| {
+			baseUrl: string;
+			authMode: "oauth";
+			ticketProvider: () => Promise<string>;
+	  };
 
 export class HermesRpcError extends Error {
 	constructor(
@@ -44,7 +51,11 @@ export class HermesRpcError extends Error {
 	}
 }
 
-export function buildHermesWebSocketUrl(baseUrl: string, token: string): string {
+export function buildHermesWebSocketUrl(
+	baseUrl: string,
+	credential: string,
+	authMode: "token" | "oauth" = "token"
+): string {
 	const url = new URL(baseUrl);
 	if (url.protocol === "http:") url.protocol = "ws:";
 	else if (url.protocol === "https:") url.protocol = "wss:";
@@ -55,7 +66,7 @@ export function buildHermesWebSocketUrl(baseUrl: string, token: string): string 
 	url.password = "";
 	if (!url.pathname || url.pathname === "/") url.pathname = "/api/ws";
 	url.search = "";
-	url.searchParams.set("token", token);
+	url.searchParams.set(authMode === "oauth" ? "ticket" : "token", credential);
 	return url.toString();
 }
 
@@ -77,7 +88,7 @@ export class HermesRuntimeClient {
 	private readonly reconnectBaseMs: number;
 	private readonly reconnectMaxMs: number;
 	private socket: HermesSocket | null = null;
-	private settings: ConnectionSettings | null = null;
+	private settings: HermesRuntimeConnectionSettings | null = null;
 	private pending = new Map<string, PendingRequest>();
 	private subscribers = new Set<(event: HermesRuntimeEvent) => void>();
 	private stateSubscribers = new Set<(state: HermesRuntimeState) => void>();
@@ -117,7 +128,7 @@ export class HermesRuntimeClient {
 		return () => this.stateSubscribers.delete(listener);
 	}
 
-	async connect(settings: ConnectionSettings): Promise<void> {
+	async connect(settings: HermesRuntimeConnectionSettings): Promise<void> {
 		const previous = this.socket;
 		this.socket = null;
 		if (previous && previous.readyState < 2) previous.close(1000, "connection replaced");
@@ -194,7 +205,12 @@ export class HermesRuntimeClient {
 			error: null,
 		});
 
-		const socket = this.socketFactory(buildHermesWebSocketUrl(settings.baseUrl, settings.token));
+		const authMode = settings.authMode ?? "token";
+		const credential = authMode === "oauth" ? await settings.ticketProvider() : settings.token;
+		if (!credential) throw new Error("Hermes WebSocket credential is unavailable");
+		const socket = this.socketFactory(
+			buildHermesWebSocketUrl(settings.baseUrl, credential, authMode)
+		);
 		this.socket = socket;
 		await new Promise<void>((resolve, reject) => {
 			let settled = false;
@@ -215,7 +231,8 @@ export class HermesRuntimeClient {
 				if (reconnecting) {
 					this.emit({
 						type: "runtime.history-refresh-required",
-						sessionId: null,
+						runtimeSessionId: null,
+						durableSessionId: null,
 						turnId: null,
 						requestId: null,
 						text: null,
