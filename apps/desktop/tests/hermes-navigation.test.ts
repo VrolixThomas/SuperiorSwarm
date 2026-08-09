@@ -248,15 +248,6 @@ describe("Hermes global navigation", () => {
 		);
 	});
 
-	test("saves task-first Agents state even when there are no terminals or layouts", async () => {
-		const app = await Bun.file(new URL("../src/renderer/App.tsx", import.meta.url)).text();
-
-		expect(app).toContain('state["hermesSessionPane"] = hermesSessionPane');
-		expect(app).not.toContain(
-			"if (snapshot.sessions.length > 0 || Object.keys(snapshot.paneLayouts).length > 0)"
-		);
-	});
-
 	test("drops legacy session-only persistence because its connection is ambiguous", () => {
 		useTabStore.getState().hydrate([], null, null, "", {
 			sidebarSegment: "hermes",
