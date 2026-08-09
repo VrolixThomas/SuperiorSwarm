@@ -39,6 +39,7 @@ import {
 	HermesSessionTabStrip,
 	HermesWorktreesPane,
 	openHermesLinkedWorktree,
+	resolveHermesWorkspaceSessionId,
 } from "./HermesWorktreesPane";
 
 function scrollToLatest(element: HTMLDivElement, smooth: boolean): void {
@@ -170,6 +171,7 @@ export function HermesSessionView() {
 			staleTime: 1_000,
 		}
 	);
+	const workspaceSessionId = resolveHermesWorkspaceSessionId(sessionId, history.data);
 	const physicalMessages = useMemo(() => history.data?.messages ?? [], [history.data?.messages]);
 	const canonicalMessages = useMemo(
 		() => deriveHermesCanonicalTimeline(physicalMessages),
@@ -228,7 +230,7 @@ export function HermesSessionView() {
 	]);
 
 	const links = trpc.hermes.workspaceLinks.useQuery(
-		{ connectionId, hermesSessionId: sessionId ?? "" },
+		{ connectionId, hermesSessionId: workspaceSessionId },
 		{ enabled: Boolean(connectionId && sessionId), refetchInterval: connected ? 2_000 : false }
 	);
 	const availableWorkspaces = trpc.hermes.availableWorkspaces.useQuery();
@@ -894,7 +896,7 @@ export function HermesSessionView() {
 					linkWorkspace.mutate(
 						{
 							connectionId,
-							hermesSessionId: sessionId,
+							hermesSessionId: workspaceSessionId,
 							workspaceId: recoveryWorktreeId,
 							lineageRootId: null,
 						},
@@ -914,7 +916,7 @@ export function HermesSessionView() {
 					unlinkWorkspace.mutate(
 						{
 							connectionId,
-							hermesSessionId: sessionId,
+							hermesSessionId: workspaceSessionId,
 							workspaceId: link.workspaceId,
 						},
 						{

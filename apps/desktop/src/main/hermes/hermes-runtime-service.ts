@@ -51,7 +51,10 @@ import {
 } from "./hermes-runtime-client";
 import { HermesSendError, HermesSendService } from "./hermes-send-service";
 import { type HermesTokenVault, hermesTokenVault } from "./hermes-token-vault";
-import { linkHermesWorkspaceArtifacts } from "./hermes-workspace-links";
+import {
+	canonicalizeHermesWorkspaceLinks,
+	linkHermesWorkspaceArtifacts,
+} from "./hermes-workspace-links";
 
 export interface HermesRuntimeClientLike {
 	connect(settings: HermesRuntimeConnectionSettings): Promise<void>;
@@ -492,6 +495,11 @@ export class HermesRuntimeService {
 		if (history.durableSessionId !== durableSessionId) {
 			runtime.aliases.set(hermesSessionId, history.durableSessionId);
 			runtime.aliases.set(durableSessionId, history.durableSessionId);
+			canonicalizeHermesWorkspaceLinks(
+				connectionId,
+				[hermesSessionId, durableSessionId],
+				history.durableSessionId
+			);
 		}
 		runtime.histories.set(hermesSessionId, history);
 		runtime.histories.set(durableSessionId, history);
@@ -1090,8 +1098,11 @@ export class HermesRuntimeService {
 					this.reconcileAfterReconnect(connectionId, runtime);
 					return;
 				}
-				const durableSessionId = event.runtimeSessionId
+				const mappedSessionId = event.runtimeSessionId
 					? (runtime.runtimeToDurable.get(event.runtimeSessionId) ?? null)
+					: null;
+				const durableSessionId = mappedSessionId
+					? this.resolveDurableId(runtime, mappedSessionId)
 					: null;
 				const mappedEvent = { ...event, durableSessionId };
 				this.pushEvent(connectionId, mappedEvent);

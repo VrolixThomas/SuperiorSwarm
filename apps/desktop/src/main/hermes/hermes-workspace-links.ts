@@ -106,6 +106,77 @@ export function linkHermesWorkspaceArtifacts(input: {
 	return listHermesWorkspaceLinks(input.connectionId, input.hermesSessionId);
 }
 
+export function canonicalizeHermesWorkspaceLinks(
+	connectionId: string,
+	aliasSessionIds: string[],
+	canonicalSessionId: string
+): void {
+	const aliases = [...new Set(aliasSessionIds)].filter(
+		(sessionId) => sessionId && sessionId !== canonicalSessionId
+	);
+	if (aliases.length === 0) return;
+	getDb().transaction((tx) => {
+		for (const aliasSessionId of aliases) {
+			const aliasRows = tx
+				.select()
+				.from(hermesSessionWorkspaces)
+				.where(
+					and(
+						eq(hermesSessionWorkspaces.connectionId, connectionId),
+						eq(hermesSessionWorkspaces.hermesSessionId, aliasSessionId)
+					)
+				)
+				.all();
+			for (const aliasRow of aliasRows) {
+				const canonicalRow = tx
+					.select()
+					.from(hermesSessionWorkspaces)
+					.where(
+						and(
+							eq(hermesSessionWorkspaces.connectionId, connectionId),
+							eq(hermesSessionWorkspaces.hermesSessionId, canonicalSessionId),
+							eq(hermesSessionWorkspaces.workspaceId, aliasRow.workspaceId)
+						)
+					)
+					.get();
+				tx.delete(hermesSessionWorkspaces).where(eq(hermesSessionWorkspaces.id, aliasRow.id)).run();
+				if (canonicalRow) {
+					tx.update(hermesSessionWorkspaces)
+						.set({
+							hermesLineageRootId: canonicalSessionId,
+							source:
+								canonicalRow.source === "tool-artifact" || aliasRow.source === "tool-artifact"
+									? "tool-artifact"
+									: "manual",
+							linkedAt:
+								canonicalRow.linkedAt.getTime() <= aliasRow.linkedAt.getTime()
+									? canonicalRow.linkedAt
+									: aliasRow.linkedAt,
+						})
+						.where(eq(hermesSessionWorkspaces.id, canonicalRow.id))
+						.run();
+					continue;
+				}
+				tx.insert(hermesSessionWorkspaces)
+					.values({
+						id: linkId({
+							connectionId,
+							hermesSessionId: canonicalSessionId,
+							workspaceId: aliasRow.workspaceId,
+						}),
+						connectionId,
+						hermesSessionId: canonicalSessionId,
+						hermesLineageRootId: canonicalSessionId,
+						workspaceId: aliasRow.workspaceId,
+						source: aliasRow.source,
+						linkedAt: aliasRow.linkedAt,
+					})
+					.run();
+			}
+		}
+	});
+}
+
 export function unlinkHermesWorkspace(
 	connectionId: string,
 	hermesSessionId: string,

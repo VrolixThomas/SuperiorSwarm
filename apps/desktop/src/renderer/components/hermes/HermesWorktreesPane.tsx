@@ -1,6 +1,17 @@
-import type { HermesLinkedWorkspace, HermesSessionSelection } from "../../../shared/hermes";
+import type {
+	HermesLinkedWorkspace,
+	HermesSessionHistory,
+	HermesSessionSelection,
+} from "../../../shared/hermes";
 
 export type HermesSessionPane = "chat" | "worktrees";
+
+export function resolveHermesWorkspaceSessionId(
+	selectedSessionId: string | null,
+	history: Pick<HermesSessionHistory, "durableSessionId"> | undefined
+): string {
+	return history?.durableSessionId ?? selectedSessionId ?? "";
+}
 
 export interface HermesRecoveryWorktree {
 	id: string;

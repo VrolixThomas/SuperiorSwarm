@@ -4,6 +4,7 @@ import { EventEmitter } from "node:events";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { eq } from "drizzle-orm";
 import { _setDbForTesting, getDb, schema } from "../src/main/db";
 import { HermesAttachmentStore } from "../src/main/hermes/hermes-attachments";
 import {
@@ -24,7 +25,10 @@ import {
 	HermesRuntimeService,
 } from "../src/main/hermes/hermes-runtime-service";
 import { HermesTokenVault } from "../src/main/hermes/hermes-token-vault";
-import { listHermesWorkspaceLinks } from "../src/main/hermes/hermes-workspace-links";
+import {
+	linkHermesWorkspace,
+	listHermesWorkspaceLinks,
+} from "../src/main/hermes/hermes-workspace-links";
 import type {
 	HermesRuntimeEvent,
 	HermesRuntimeState,
@@ -816,6 +820,89 @@ describe("HermesRuntimeService stock lifecycle", () => {
 			}),
 		]);
 		expect(listHermesWorkspaceLinks(connectionId, "runtime-task")).toEqual([]);
+	});
+
+	test("consolidates selected session aliases onto the canonical durable workspace link", async () => {
+		const now = new Date();
+		getDb()
+			.insert(schema.projects)
+			.values({
+				id: "project-alias",
+				name: "Alias App",
+				repoPath: "/repos/alias-app",
+				defaultBranch: "main",
+				createdAt: now,
+				updatedAt: now,
+			})
+			.run();
+		getDb()
+			.insert(schema.worktrees)
+			.values({
+				id: "worktree-alias",
+				projectId: "project-alias",
+				path: "/repos/alias-app-worktrees/feat/task",
+				branch: "feat/task",
+				baseBranch: "main",
+				createdAt: now,
+				updatedAt: now,
+			})
+			.run();
+		getDb()
+			.insert(schema.workspaces)
+			.values({
+				id: "workspace-alias",
+				projectId: "project-alias",
+				type: "worktree",
+				name: "feat/task",
+				worktreeId: "worktree-alias",
+				createdAt: now,
+				updatedAt: now,
+			})
+			.run();
+		rest.sessions = [session("session-tip")];
+		rest.histories.set("session-tip", {
+			durableSessionId: "session-root",
+			view: "durable",
+			messages: [
+				historyMessage("artifact-message", {
+					workspaceArtifacts: [
+						{
+							kind: "superiorswarm.workspace.created",
+							workspaceId: "workspace-alias",
+							projectId: "project-alias",
+							branch: "feat/task",
+							worktreePath: "/repos/alias-app-worktrees/feat/task",
+						},
+					],
+				}),
+			],
+		});
+		linkHermesWorkspace({
+			connectionId,
+			hermesSessionId: "session-tip",
+			workspaceId: "workspace-alias",
+			source: "tool-artifact",
+		});
+		await service.connect(connectionId);
+
+		const history = await service.history(connectionId, "session-tip");
+
+		expect(history.durableSessionId).toBe("session-root");
+		expect(listHermesWorkspaceLinks(connectionId, "session-root")).toEqual([
+			expect.objectContaining({
+				hermesSessionId: "session-root",
+				workspaceId: "workspace-alias",
+				source: "tool-artifact",
+			}),
+		]);
+		expect(listHermesWorkspaceLinks(connectionId, "session-tip")).toEqual([]);
+		expect(
+			getDb()
+				.select()
+				.from(schema.hermesSessionWorkspaces)
+				.where(eq(schema.hermesSessionWorkspaces.connectionId, connectionId))
+				.all()
+		).toHaveLength(1);
 	});
 
 	test("resumes, attaches local image/PDF/file through stock RPC, then submits resolved context", async () => {

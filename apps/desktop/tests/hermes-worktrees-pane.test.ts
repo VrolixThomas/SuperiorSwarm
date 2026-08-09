@@ -7,6 +7,7 @@ import {
 	HermesWorktreesPane,
 	groupHermesWorktrees,
 	openHermesLinkedWorktree,
+	resolveHermesWorkspaceSessionId,
 } from "../src/renderer/components/hermes/HermesWorktreesPane";
 import type { HermesLinkedWorkspace } from "../src/shared/hermes";
 
@@ -34,6 +35,17 @@ function link(overrides: Partial<HermesLinkedWorkspace> = {}): HermesLinkedWorks
 }
 
 describe("Hermes Worktrees pane", () => {
+	test("targets the authoritative durable history session for links and recovery", () => {
+		expect(
+			resolveHermesWorkspaceSessionId("session-tip", {
+				durableSessionId: "session-root",
+				view: "durable",
+				messages: [],
+			})
+		).toBe("session-root");
+		expect(resolveHermesWorkspaceSessionId("session-tip", undefined)).toBe("session-tip");
+	});
+
 	test("renders an accessible Chat-first tab strip with Worktrees immediately to its right", () => {
 		const html = renderToStaticMarkup(
 			createElement(HermesSessionTabStrip, {

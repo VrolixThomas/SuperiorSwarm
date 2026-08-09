@@ -105,6 +105,8 @@ describe("Hermes global navigation", () => {
 		expect(chat).not.toContain("connections.data?.[0]");
 		expect(chat).toContain("HermesSessionTabStrip");
 		expect(chat).toContain("HermesWorktreesPane");
+		expect(chat).toContain("resolveHermesWorkspaceSessionId(sessionId, history.data)");
+		expect(chat.match(/hermesSessionId: workspaceSessionId/g)).toHaveLength(3);
 		expect(chat).not.toContain("Linked workspaces");
 		expect(chat).toContain('aria-label="Session options"');
 		expect(chat).toMatch(
