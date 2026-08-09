@@ -168,6 +168,7 @@ describe("Hermes Worktrees pane", () => {
 				"workspace-1",
 				"/repos/app-worktrees/feat-one",
 				{ connectionId: "connection-1", sessionId: "session-1" },
+				"worktrees",
 			],
 			["terminal", "workspace-1", "/repos/app-worktrees/feat-one", "feat/one"],
 			["attach", "workspace-1", "terminal-1"],

@@ -1,10 +1,11 @@
 import type {
 	HermesLinkedWorkspace,
 	HermesSessionHistory,
+	HermesSessionPane,
 	HermesSessionSelection,
 } from "../../../shared/hermes";
 
-export type HermesSessionPane = "chat" | "worktrees";
+export type { HermesSessionPane } from "../../../shared/hermes";
 
 export function resolveHermesWorkspaceSessionId(
 	selectedSessionId: string | null,
@@ -59,7 +60,8 @@ export interface HermesWorktreeNavigationActions {
 	openWorkspaceFromHermes: (
 		workspaceId: string,
 		worktreePath: string,
-		selection: HermesSessionSelection
+		selection: HermesSessionSelection,
+		pane: HermesSessionPane
 	) => void;
 	getTabsByWorkspace: (workspaceId: string) => Array<{ kind: string }>;
 	addTerminalTab: (workspaceId: string, worktreePath: string, branch: string) => string;
@@ -72,7 +74,7 @@ export function openHermesLinkedWorktree(
 	actions: HermesWorktreeNavigationActions
 ): boolean {
 	if (link.missing || !link.worktreePath) return false;
-	actions.openWorkspaceFromHermes(link.workspaceId, link.worktreePath, selection);
+	actions.openWorkspaceFromHermes(link.workspaceId, link.worktreePath, selection, "worktrees");
 	const tabs = actions.getTabsByWorkspace(link.workspaceId);
 	if (!tabs.some((tab) => tab.kind === "terminal")) {
 		const terminalId = actions.addTerminalTab(

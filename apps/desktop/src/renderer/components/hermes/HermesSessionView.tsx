@@ -35,7 +35,6 @@ import { HermesApprovalCard, HermesClarificationChoices } from "./HermesInteract
 import { HermesMarkdown } from "./HermesMarkdown";
 import { HermesActivityGroup, HermesTranscript } from "./HermesTranscript";
 import {
-	type HermesSessionPane,
 	HermesSessionTabStrip,
 	HermesWorktreesPane,
 	openHermesLinkedWorktree,
@@ -55,7 +54,8 @@ export function HermesSessionView() {
 	const sessionId = selection?.sessionId ?? null;
 	const connectionId = selection?.connectionId ?? "";
 	const openWorkspaceFromHermes = useTabStore((state) => state.openWorkspaceFromHermes);
-	const [activePane, setActivePane] = useState<HermesSessionPane>("chat");
+	const activePane = useTabStore((state) => state.hermesSessionPane);
+	const setActivePane = useTabStore((state) => state.setHermesSessionPane);
 	const [composer, setComposer] = useState("");
 	const [clarification, setClarification] = useState("");
 	const [cursor, setCursor] = useState(0);
@@ -155,7 +155,6 @@ export function HermesSessionView() {
 		setComposer("");
 		setClarification("");
 		setRecoveryWorktreeId("");
-		setActivePane("chat");
 		setManualOriginUrl("");
 		setShowReportPreview(false);
 		setAttachmentLimitError(null);

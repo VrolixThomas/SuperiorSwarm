@@ -192,6 +192,8 @@ export interface HermesSessionSelection {
 	sessionId: string;
 }
 
+export type HermesSessionPane = "chat" | "worktrees";
+
 export interface HermesConnectionSummary {
 	id: string;
 	label: string;

@@ -48,6 +48,7 @@ function resetStores() {
 		sidebarSegment: "repos",
 		activeWorkspaceBySegment: { repos: null, tickets: null, prs: null, hermes: null },
 		selectedHermesSession: null,
+		hermesSessionPane: "chat",
 	});
 }
 
@@ -114,19 +115,31 @@ describe("Hermes global navigation", () => {
 		);
 	});
 
-	test("opening a linked workspace and going Back returns to the exact connection and session", () => {
+	test("opening a linked workspace round-trips the exact session, Worktrees pane, and workspace", () => {
 		const store = useTabStore.getState();
 		const selection = { connectionId: "connection-b", sessionId: "duplicate-session" };
 		store.selectHermesSession(selection);
-		store.openWorkspaceFromHermes("workspace-1", "/repos/app-worktrees/feat", selection);
+		store.setHermesSessionPane("worktrees");
+		store.openWorkspaceFromHermes(
+			"workspace-1",
+			"/repos/app-worktrees/feat",
+			selection,
+			"worktrees"
+		);
 
 		expect(useTabStore.getState().sidebarSegment).toBe("repos");
 		expect(useTabStore.getState().activeWorkspaceId).toBe("workspace-1");
 		expect(useTabStore.getState().canGoBackWorkspace()).toBe(true);
+		expect(useTabStore.getState().workspaceBackStack.at(-1)).toEqual({
+			kind: "hermes-session",
+			...selection,
+			pane: "worktrees",
+		});
 
 		useTabStore.getState().goBackWorkspace();
 		expect(useTabStore.getState().sidebarSegment).toBe("hermes");
 		expect(useTabStore.getState().selectedHermesSession).toEqual(selection);
+		expect(useTabStore.getState().hermesSessionPane).toBe("worktrees");
 		expect(useTabStore.getState().activeWorkspaceId).toBeNull();
 
 		useTabStore.getState().goForwardWorkspace();
@@ -134,14 +147,27 @@ describe("Hermes global navigation", () => {
 		expect(useTabStore.getState().activeWorkspaceId).toBe("workspace-1");
 	});
 
+	test("defaults newly selected sessions to Chat without persisting pane state", () => {
+		const store = useTabStore.getState();
+		store.selectHermesSession({ connectionId: "connection-a", sessionId: "session-a" });
+		store.setHermesSessionPane("worktrees");
+
+		store.selectHermesSession({ connectionId: "connection-a", sessionId: "session-b" });
+
+		expect(useTabStore.getState().hermesSessionPane).toBe("chat");
+		expect(serializeHermesSessionSelection(useTabStore.getState().selectedHermesSession)).toBe(
+			JSON.stringify({ connectionId: "connection-a", sessionId: "session-b" })
+		);
+	});
+
 	test("keeps duplicate session IDs from two connections unambiguous in history", () => {
 		const first = { connectionId: "connection-a", sessionId: "duplicate-session" };
 		const second = { connectionId: "connection-b", sessionId: "duplicate-session" };
 		const store = useTabStore.getState();
 		store.selectHermesSession(first);
-		store.openWorkspaceFromHermes("workspace-a", "/repos/a", first);
+		store.openWorkspaceFromHermes("workspace-a", "/repos/a", first, "chat");
 		store.selectHermesSession(second);
-		store.openWorkspaceFromHermes("workspace-b", "/repos/b", second);
+		store.openWorkspaceFromHermes("workspace-b", "/repos/b", second, "chat");
 
 		useTabStore.getState().goBackWorkspace();
 		expect(useTabStore.getState().selectedHermesSession).toEqual(second);

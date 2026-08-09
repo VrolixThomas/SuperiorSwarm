@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { type DiffContext, detectLanguage } from "../../shared/diff-types";
 import type { PRContext } from "../../shared/github-types";
-import type { HermesSessionSelection } from "../../shared/hermes";
+import type { HermesSessionPane, HermesSessionSelection } from "../../shared/hermes";
 import type { Pane } from "../../shared/pane-types";
 import { formatPrIdentifier } from "../../shared/pr-identifier";
 import type { ReviewScope } from "../../shared/review-types";
@@ -125,6 +125,7 @@ export interface WorkspaceHistoryEntry {
 
 export interface HermesSessionHistoryEntry extends HermesSessionSelection {
 	kind: "hermes-session";
+	pane: HermesSessionPane;
 }
 
 export type NavigationHistoryEntry = WorkspaceHistoryEntry | HermesSessionHistoryEntry;
@@ -186,7 +187,8 @@ function pushWorkspaceHistoryEntry(
 			(last.kind === "hermes-session" &&
 				entry.kind === "hermes-session" &&
 				last.connectionId === entry.connectionId &&
-				last.sessionId === entry.sessionId))
+				last.sessionId === entry.sessionId &&
+				last.pane === entry.pane))
 	) {
 		return stack;
 	}
@@ -218,6 +220,7 @@ interface TabStore {
 	sidebarSegment: SidebarSegment;
 	activeWorkspaceBySegment: Record<SidebarSegment, { id: string; cwd: string } | null>;
 	selectedHermesSession: HermesSessionSelection | null;
+	hermesSessionPane: HermesSessionPane;
 
 	// Ticket canvas state
 	activeTicketProject: { id: string; provider: "jira" | "linear" } | "all" | null;
@@ -249,10 +252,12 @@ interface TabStore {
 	setSidebarSegment: (segment: SidebarSegment) => void;
 	changeHermesConnection: (connectionId: string) => void;
 	selectHermesSession: (selection: HermesSessionSelection | null) => void;
+	setHermesSessionPane: (pane: HermesSessionPane) => void;
 	openWorkspaceFromHermes: (
 		workspaceId: string,
 		cwd: string,
-		selection: HermesSessionSelection
+		selection: HermesSessionSelection,
+		pane: HermesSessionPane
 	) => void;
 	setActiveWorkspace: (
 		workspaceId: string,
@@ -518,6 +523,7 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 	sidebarSegment: "repos" as SidebarSegment,
 	activeWorkspaceBySegment: { repos: null, tickets: null, prs: null, hermes: null },
 	selectedHermesSession: null,
+	hermesSessionPane: "chat",
 
 	activeTicketProject: "all",
 	activeTicketScope: { kind: "current" },
@@ -685,8 +691,18 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 
 	selectHermesSession: (selection) => {
 		get().setSidebarSegment("hermes");
-		set({ selectedHermesSession: selection });
+		set((state) => ({
+			selectedHermesSession: selection,
+			hermesSessionPane:
+				selection &&
+				state.selectedHermesSession?.connectionId === selection.connectionId &&
+				state.selectedHermesSession.sessionId === selection.sessionId
+					? state.hermesSessionPane
+					: "chat",
+		}));
 	},
+
+	setHermesSessionPane: (pane) => set({ hermesSessionPane: pane }),
 
 	changeHermesConnection: (connectionId) => {
 		set((state) => ({
@@ -694,14 +710,19 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 				state.selectedHermesSession?.connectionId === connectionId
 					? state.selectedHermesSession
 					: null,
+			hermesSessionPane:
+				state.selectedHermesSession?.connectionId === connectionId
+					? state.hermesSessionPane
+					: "chat",
 		}));
 	},
 
-	openWorkspaceFromHermes: (workspaceId, cwd, selection) => {
+	openWorkspaceFromHermes: (workspaceId, cwd, selection, pane) => {
 		set((state) => ({
 			workspaceBackStack: pushWorkspaceHistoryEntry(state.workspaceBackStack, {
 				kind: "hermes-session",
 				...selection,
+				pane,
 			}),
 			workspaceForwardStack: [],
 			sidebarSegment: "repos",
@@ -823,7 +844,11 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 					cwd: state.activeWorkspaceCwd,
 				} as const)
 			: state.sidebarSegment === "hermes" && state.selectedHermesSession
-				? ({ kind: "hermes-session", ...state.selectedHermesSession } as const)
+				? ({
+						kind: "hermes-session",
+						...state.selectedHermesSession,
+						pane: state.hermesSessionPane,
+					} as const)
 				: state.pendingWorkspaceHistoryEntry;
 
 		set({
@@ -840,6 +865,7 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 					connectionId: target.connectionId,
 					sessionId: target.sessionId,
 				},
+				hermesSessionPane: target.pane,
 				activeWorkspaceId: null,
 				activeWorkspaceCwd: "",
 				rightPanel: PANEL_CLOSED,
@@ -862,7 +888,11 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 					cwd: state.activeWorkspaceCwd,
 				} as const)
 			: state.sidebarSegment === "hermes" && state.selectedHermesSession
-				? ({ kind: "hermes-session", ...state.selectedHermesSession } as const)
+				? ({
+						kind: "hermes-session",
+						...state.selectedHermesSession,
+						pane: state.hermesSessionPane,
+					} as const)
 				: state.pendingWorkspaceHistoryEntry;
 
 		set({
@@ -879,6 +909,7 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 					connectionId: target.connectionId,
 					sessionId: target.sessionId,
 				},
+				hermesSessionPane: target.pane,
 				activeWorkspaceId: null,
 				activeWorkspaceCwd: "",
 				rightPanel: PANEL_CLOSED,
@@ -1488,6 +1519,7 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 			sidebarSegment,
 			activeWorkspaceBySegment,
 			selectedHermesSession,
+			hermesSessionPane: "chat",
 			workspaceBackStack: [],
 			workspaceForwardStack: [],
 			pendingWorkspaceHistoryEntry: null,
