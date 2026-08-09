@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { _setDbForTesting } from "../src/main/db";
 import { saveHermesConnection } from "../src/main/hermes/hermes-connections";
 import type { HermesStockSessionDetail } from "../src/main/hermes/hermes-rest-client";
+import type { HermesRuntimeConnectionSettings } from "../src/main/hermes/hermes-runtime-client";
 import type { HermesRestClientLike } from "../src/main/hermes/hermes-runtime-service";
 import {
 	type HermesRuntimeClientLike,
@@ -27,10 +28,12 @@ class FakeRuntimeClient implements HermesRuntimeClientLike {
 		error: null,
 	};
 	responses = new Map<string, unknown[]>();
+	connectionSettings: HermesRuntimeConnectionSettings | null = null;
 
 	constructor(private readonly operations: string[] = []) {}
 
-	connect(): Promise<void> {
+	connect(settings: HermesRuntimeConnectionSettings): Promise<void> {
+		this.connectionSettings = settings;
 		return Promise.resolve();
 	}
 
@@ -162,6 +165,7 @@ describe("HermesRuntimeService stock lifecycle", () => {
 	let sender: FakeSendService;
 	let connectionId: string;
 	let operations: string[];
+	let vault: HermesTokenVault;
 
 	beforeEach(() => {
 		_setDbForTesting(makeTestDb());
@@ -170,7 +174,7 @@ describe("HermesRuntimeService stock lifecycle", () => {
 		rest = new FakeRestClient(operations);
 		sender = new FakeSendService();
 		rest.sessions = [session()];
-		const vault = new HermesTokenVault({
+		vault = new HermesTokenVault({
 			isEncryptionAvailable: () => true,
 			encryptString: (value) => Buffer.from(value),
 			decryptString: (value) => value.toString(),
@@ -189,6 +193,7 @@ describe("HermesRuntimeService stock lifecycle", () => {
 			restClientFactory: () => rest,
 			sendService: sender,
 			tokenVault: vault,
+			loopbackTokenResolver: async () => "secret",
 		});
 	});
 
@@ -204,6 +209,28 @@ describe("HermesRuntimeService stock lifecycle", () => {
 		expect(catalog.compatibility.state).toBe("compatible");
 		expect(client.requests).toEqual([]);
 		expect(rest.listCalls).toBe(1);
+	});
+
+	test("refreshes loopback auth from the served dashboard token before every connect", async () => {
+		service.shutdown();
+		service = new HermesRuntimeService({
+			clientFactory: () => client,
+			restClientFactory: () => rest,
+			sendService: sender,
+			tokenVault: vault,
+			loopbackTokenResolver: async () => "served-current-token",
+		});
+
+		await service.connect(connectionId);
+
+		expect(client.connectionSettings).toEqual({
+			baseUrl: "http://127.0.0.1:9119",
+			authMode: "token",
+			token: "served-current-token",
+		});
+		expect(JSON.stringify(await service.catalog(connectionId))).not.toContain(
+			"served-current-token"
+		);
 	});
 
 	test("reads canonical history without creating a live runtime", async () => {

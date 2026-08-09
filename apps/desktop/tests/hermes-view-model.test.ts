@@ -3,6 +3,7 @@ import {
 	applyHermesEvent,
 	createHermesLiveState,
 	filterHermesSessions,
+	hermesConnectionFormPolicy,
 	hermesOriginActionAvailability,
 	latestReportableHermesMessage,
 } from "../src/renderer/hermes/hermes-view-model";
@@ -64,6 +65,41 @@ const message = (overrides: Partial<HermesTranscriptMessage> = {}): HermesTransc
 });
 
 describe("Hermes renderer view model", () => {
+	test("hides loopback token entry and enables save without renderer credentials", () => {
+		expect(
+			hermesConnectionFormPolicy({
+				baseUrl: "http://127.0.0.1:8080",
+				hasStoredToken: false,
+				storedBaseUrl: null,
+				tokenInput: "",
+			})
+		).toEqual({ showTokenInput: false, canSave: true });
+		expect(
+			hermesConnectionFormPolicy({
+				baseUrl: "https://hermes.example.com",
+				hasStoredToken: false,
+				storedBaseUrl: null,
+				tokenInput: "",
+			})
+		).toEqual({ showTokenInput: true, canSave: false });
+		expect(
+			hermesConnectionFormPolicy({
+				baseUrl: "https://hermes.example.com",
+				hasStoredToken: false,
+				storedBaseUrl: null,
+				tokenInput: "explicit-remote-token",
+			})
+		).toEqual({ showTokenInput: true, canSave: true });
+		expect(
+			hermesConnectionFormPolicy({
+				baseUrl: "https://hermes.example.com",
+				hasStoredToken: true,
+				storedBaseUrl: "http://127.0.0.1:8080",
+				tokenInput: "",
+			})
+		).toEqual({ showTokenInput: true, canSave: false });
+	});
+
 	test("filters active/archived sessions and searches source, profile, origin, or linked branch", () => {
 		const active = session();
 		const archived = session({ id: "session-2", title: "Release", archived: true });

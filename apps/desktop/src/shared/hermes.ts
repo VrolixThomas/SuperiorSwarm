@@ -1,5 +1,20 @@
 export const HERMES_WORKSPACE_ARTIFACT_KIND = "superiorswarm.workspace.created" as const;
 
+export function isHermesLoopbackUrl(value: string): boolean {
+	let hostname: string;
+	try {
+		hostname = new URL(value).hostname.toLowerCase();
+	} catch {
+		return false;
+	}
+	return (
+		hostname === "localhost" ||
+		hostname === "::1" ||
+		hostname === "[::1]" ||
+		/^127(?:\.\d{1,3}){3}$/.test(hostname)
+	);
+}
+
 export interface HermesWorkspaceArtifact {
 	kind: typeof HERMES_WORKSPACE_ARTIFACT_KIND;
 	workspaceId: string;

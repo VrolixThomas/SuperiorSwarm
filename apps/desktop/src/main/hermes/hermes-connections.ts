@@ -1,13 +1,16 @@
 import { eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
-import type { HermesConnectionSummary } from "../../shared/hermes";
+import { type HermesConnectionSummary, isHermesLoopbackUrl } from "../../shared/hermes";
 import { getDb } from "../db";
 import { hermesConnections } from "../db/schema";
+import { discoverHermesDashboardToken } from "./hermes-dashboard-token";
 import {
 	type HermesTokenVault,
 	type ProtectedHermesToken,
 	hermesTokenVault,
 } from "./hermes-token-vault";
+
+export { isHermesLoopbackUrl } from "../../shared/hermes";
 
 export interface SaveHermesConnectionInput {
 	id?: string;
@@ -19,16 +22,6 @@ export interface SaveHermesConnectionInput {
 
 function timestamp(value: Date | null): number | null {
 	return value?.getTime() ?? null;
-}
-
-export function isHermesLoopbackUrl(value: string): boolean {
-	const hostname = new URL(value).hostname.toLowerCase();
-	return (
-		hostname === "localhost" ||
-		hostname === "::1" ||
-		hostname === "[::1]" ||
-		/^127(?:\.\d{1,3}){3}$/.test(hostname)
-	);
 }
 
 function toSummary(
@@ -127,6 +120,27 @@ export function saveHermesConnection(
 		return { ...summary, hasToken: true };
 	}
 	return summary;
+}
+
+export async function saveHermesConnectionWithDiscovery(
+	input: SaveHermesConnectionInput,
+	vault: HermesTokenVault = hermesTokenVault,
+	discoverLoopbackToken: (baseUrl: string) => Promise<string> = discoverHermesDashboardToken
+): Promise<HermesConnectionSummary> {
+	const baseUrl = normalizeHermesBaseUrl(input.baseUrl);
+	if (isHermesLoopbackUrl(baseUrl)) {
+		const token = await discoverLoopbackToken(baseUrl);
+		return saveHermesConnection({ ...input, baseUrl, token }, vault);
+	}
+	const existing = input.id ? getHermesConnectionWithToken(input.id, vault) : null;
+	const canReuseExistingToken =
+		existing?.connectionMode === "remote" &&
+		existing.baseUrl === baseUrl &&
+		existing.profileId === input.profileId.trim();
+	if (!input.token && !canReuseExistingToken) {
+		throw new Error("Remote Hermes connections require an explicit token");
+	}
+	return saveHermesConnection({ ...input, baseUrl }, vault);
 }
 
 export function getHermesConnectionWithToken(

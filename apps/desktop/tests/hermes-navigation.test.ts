@@ -205,6 +205,8 @@ describe("Hermes global navigation", () => {
 		const sidebar = await rendererSource("hermes/HermesSidebar.tsx");
 		expect(sidebar).toContain("New session");
 		expect(sidebar).toContain("trpc.hermes.create.useMutation");
+		expect(sidebar).toContain("showTokenInput");
+		expect(sidebar).toContain("canSave");
 		expect(sidebar).not.toContain('status.data?.status === "upgrade-required"');
 		expect(sidebar).not.toContain("session.claimed");
 

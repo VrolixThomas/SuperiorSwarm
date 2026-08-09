@@ -9,7 +9,13 @@ import type {
 	HermesSessionHistory,
 	HermesSessionSummary,
 } from "../../shared/hermes";
-import { getHermesConnectionWithToken, markHermesConnectionConnected } from "./hermes-connections";
+import {
+	getHermesConnectionWithToken,
+	listHermesConnections,
+	markHermesConnectionConnected,
+	saveHermesConnection,
+} from "./hermes-connections";
+import { discoverHermesDashboardToken } from "./hermes-dashboard-token";
 import { getHermesOriginLink, saveHermesOriginLink } from "./hermes-origin-links";
 import {
 	beginHermesOriginReportAttempt,
@@ -100,6 +106,7 @@ export interface HermesRuntimeServiceOptions {
 	}) => HermesRestClientLike;
 	tokenVault?: HermesTokenVault;
 	sendService?: HermesSendServiceLike;
+	loopbackTokenResolver?: (baseUrl: string) => Promise<string>;
 }
 
 const MAX_BUFFERED_EVENTS = 1_000;
@@ -131,6 +138,7 @@ export class HermesRuntimeService {
 	private readonly restClientFactory: NonNullable<HermesRuntimeServiceOptions["restClientFactory"]>;
 	private readonly tokenVault: HermesTokenVault;
 	private readonly sendService: HermesSendServiceLike;
+	private readonly loopbackTokenResolver: (baseUrl: string) => Promise<string>;
 
 	constructor(options: HermesRuntimeServiceOptions = {}) {
 		this.clientFactory = options.clientFactory ?? (() => new HermesRuntimeClient());
@@ -138,9 +146,27 @@ export class HermesRuntimeService {
 			options.restClientFactory ?? ((settings) => new HermesRestClient(settings));
 		this.tokenVault = options.tokenVault ?? hermesTokenVault;
 		this.sendService = options.sendService ?? new HermesSendService();
+		this.loopbackTokenResolver = options.loopbackTokenResolver ?? discoverHermesDashboardToken;
 	}
 
 	async connect(connectionId: string): Promise<HermesCatalog> {
+		const summary = listHermesConnections(this.tokenVault).find(
+			(connection) => connection.id === connectionId
+		);
+		if (!summary) throw new Error("Hermes connection was not found");
+		if (summary.connectionMode === "loopback") {
+			const token = await this.loopbackTokenResolver(summary.baseUrl);
+			saveHermesConnection(
+				{
+					id: summary.id,
+					label: summary.label,
+					baseUrl: summary.baseUrl,
+					profileId: summary.profileId,
+					token,
+				},
+				this.tokenVault
+			);
+		}
 		const connection = getHermesConnectionWithToken(connectionId, this.tokenVault);
 		if (!connection) {
 			throw new Error("Hermes token is unavailable; enter it again to reconnect");

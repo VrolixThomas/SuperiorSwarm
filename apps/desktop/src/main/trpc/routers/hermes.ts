@@ -6,7 +6,7 @@ import { hermesSessionWorkspaces, projects, workspaces, worktrees } from "../../
 import {
 	deleteHermesConnection,
 	listHermesConnections,
-	saveHermesConnection,
+	saveHermesConnectionWithDiscovery,
 } from "../../hermes/hermes-connections";
 import { validateManualSlackThreadUrl } from "../../hermes/hermes-origin-resolver";
 import { hermesRuntimeService } from "../../hermes/hermes-runtime-service";
@@ -48,7 +48,7 @@ export const hermesRouter = router({
 				token: z.string().max(8_192).optional(),
 			})
 		)
-		.mutation(({ input }) => saveHermesConnection(input)),
+		.mutation(({ input }) => saveHermesConnectionWithDiscovery(input)),
 
 	deleteConnection: publicProcedure
 		.input(z.object({ id: z.string().min(1) }))

@@ -4,6 +4,7 @@ import type {
 	HermesSessionSummary,
 	HermesTranscriptMessage,
 } from "../../shared/hermes";
+import { isHermesLoopbackUrl } from "../../shared/hermes";
 
 export type HermesSessionFilter = "open" | "all" | "archived";
 
@@ -34,6 +35,27 @@ export interface HermesLiveState {
 	pendingClarification: HermesPendingInteraction | null;
 	historyRefreshRequired: boolean;
 	error: string | null;
+}
+
+export function hermesConnectionFormPolicy(input: {
+	baseUrl: string;
+	hasStoredToken: boolean;
+	storedBaseUrl: string | null;
+	profileId?: string;
+	storedProfileId?: string | null;
+	tokenInput: string;
+}): { showTokenInput: boolean; canSave: boolean } {
+	const loopback = isHermesLoopbackUrl(input.baseUrl);
+	const sameStoredScope =
+		input.hasStoredToken &&
+		input.baseUrl.replace(/\/+$/, "") === input.storedBaseUrl?.replace(/\/+$/, "") &&
+		(input.storedProfileId === undefined ||
+			input.storedProfileId === null ||
+			input.profileId === input.storedProfileId);
+	return {
+		showTokenInput: !loopback,
+		canSave: loopback || sameStoredScope || input.tokenInput.length > 0,
+	};
 }
 
 export function createHermesLiveState(): HermesLiveState {

@@ -1,5 +1,9 @@
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { type HermesSessionFilter, filterHermesSessions } from "../../hermes/hermes-view-model";
+import {
+	type HermesSessionFilter,
+	filterHermesSessions,
+	hermesConnectionFormPolicy,
+} from "../../hermes/hermes-view-model";
 import { useTabStore } from "../../stores/tab-store";
 import { trpc } from "../../trpc/client";
 
@@ -49,6 +53,14 @@ export function HermesSidebar() {
 
 	const connections = trpc.hermes.connections.useQuery();
 	const activeConnection = connections.data?.find((connection) => connection.id === connectionId);
+	const { showTokenInput, canSave } = hermesConnectionFormPolicy({
+		baseUrl,
+		hasStoredToken: activeConnection?.hasToken ?? false,
+		storedBaseUrl: activeConnection?.baseUrl ?? null,
+		profileId,
+		storedProfileId: activeConnection?.profileId,
+		tokenInput: token,
+	});
 	const connect = trpc.hermes.connect.useMutation({
 		onSuccess: () => {
 			void utils.hermes.status.invalidate();
@@ -141,7 +153,7 @@ export function HermesSidebar() {
 			label,
 			baseUrl,
 			profileId,
-			...(token ? { token } : {}),
+			...(showTokenInput && token ? { token } : {}),
 		});
 	}
 
@@ -169,17 +181,19 @@ export function HermesSidebar() {
 					placeholder="Profile"
 					className="rounded-[5px] border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1.5 text-[12px] text-[var(--text)] outline-none focus:border-[var(--accent)]"
 				/>
-				<input
-					type="password"
-					value={token}
-					onChange={(event) => setToken(event.target.value)}
-					placeholder={activeConnection?.hasToken ? "Token unchanged" : "Hermes session token"}
-					autoComplete="off"
-					className="rounded-[5px] border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1.5 text-[12px] text-[var(--text)] outline-none focus:border-[var(--accent)]"
-				/>
+				{showTokenInput && (
+					<input
+						type="password"
+						value={token}
+						onChange={(event) => setToken(event.target.value)}
+						placeholder={activeConnection?.hasToken ? "Token unchanged" : "Hermes session token"}
+						autoComplete="off"
+						className="rounded-[5px] border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1.5 text-[12px] text-[var(--text)] outline-none focus:border-[var(--accent)]"
+					/>
+				)}
 				<div className="text-[10px] leading-4 text-[var(--text-quaternary)]">
-					Tokens stay in Electron safe storage and never re-enter renderer state. HTTPS remote
-					connections support stock browsing and chat; Slack reporting stays local-profile only.
+					Loopback connections discover the token served by stock Hermes in Electron. Explicit
+					remote tokens stay in safe storage and never re-enter renderer state.
 				</div>
 				{saveConnection.error && (
 					<div className="text-[11px] text-[var(--danger)]">{saveConnection.error.message}</div>
@@ -187,7 +201,7 @@ export function HermesSidebar() {
 				<div className="flex gap-2">
 					<button
 						type="submit"
-						disabled={!token && !activeConnection?.hasToken}
+						disabled={!canSave || saveConnection.isPending}
 						className="rounded-[5px] bg-[var(--accent)] px-2.5 py-1.5 text-[11px] text-white disabled:opacity-40"
 					>
 						Save & connect
