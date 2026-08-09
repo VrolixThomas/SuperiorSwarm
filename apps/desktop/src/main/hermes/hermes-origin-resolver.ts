@@ -80,6 +80,15 @@ function validThreadId(value: unknown): string | null {
 	return typeof value === "string" && /^\d{1,16}\.\d{1,9}$/.test(value) ? value : null;
 }
 
+function validTelegramChatId(value: unknown): string | null {
+	if (typeof value !== "string") return null;
+	return /^-100([1-9]\d{0,18})$/.exec(value)?.[1] ?? null;
+}
+
+function validTelegramThreadId(value: unknown): string | null {
+	return typeof value === "string" && /^[1-9]\d{0,15}$/.test(value) ? value : null;
+}
+
 function reconcileRouteValue(values: Array<string | null>): {
 	value: string | null;
 	ambiguous: boolean;
@@ -140,6 +149,29 @@ export function validateManualSlackThreadUrl(value: string): string | null {
 	return url.toString();
 }
 
+export function validateHermesOriginOpenUrl(value: string): string | null {
+	const slackUrl = validateManualSlackThreadUrl(value);
+	if (slackUrl) return slackUrl;
+	let url: URL;
+	try {
+		url = new URL(value.trim());
+	} catch {
+		return null;
+	}
+	if (
+		url.protocol !== "https:" ||
+		url.hostname.toLowerCase() !== "t.me" ||
+		url.username ||
+		url.password ||
+		url.search ||
+		url.hash ||
+		!/^\/c\/[1-9]\d{0,18}\/[1-9]\d{0,15}$/.test(url.pathname)
+	) {
+		return null;
+	}
+	return url.toString();
+}
+
 function fingerprint(parts: Array<string | null>): string {
 	return createHash("sha256")
 		.update(parts.map((part) => part ?? "").join("\0"))
@@ -197,6 +229,43 @@ export function resolveHermesOrigin(
 		channelLabel,
 		threadLabel,
 	};
+	if (source === "telegram") {
+		const chat = structuredOriginMatchesSource
+			? reconcileRouteValue([
+					validTelegramChatId(detail.chatId),
+					validTelegramChatId(origin?.["chat_id"]),
+				])
+			: { value: null, ambiguous: false };
+		const thread = structuredOriginMatchesSource
+			? reconcileRouteValue([
+					validTelegramThreadId(detail.threadId),
+					validTelegramThreadId(origin?.["thread_id"]),
+				])
+			: { value: null, ambiguous: false };
+		const routeAmbiguous = chat.ambiguous || thread.ambiguous;
+		const openUrl =
+			!routeAmbiguous && chat.value && thread.value
+				? `https://t.me/c/${chat.value}/${thread.value}`
+				: null;
+		return {
+			projection: {
+				platform: "telegram",
+				...projectionLabels,
+				hasThread: !thread.ambiguous && thread.value !== null,
+				canOpenThread: openUrl !== null,
+				canReport: false,
+			},
+			target: null,
+			openUrl,
+			originFingerprint: fingerprint([
+				"telegram",
+				chat.value,
+				thread.value,
+				routeAmbiguous ? "ambiguous" : null,
+			]),
+		};
+	}
+
 	if (source !== "slack") {
 		return {
 			projection: {

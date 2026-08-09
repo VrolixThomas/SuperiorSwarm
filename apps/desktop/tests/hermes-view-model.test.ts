@@ -889,7 +889,7 @@ describe("Hermes renderer view model", () => {
 				canOpenThread: true,
 				canReport: false,
 			})
-		).toBeNull();
+		).toBe("Return to Telegram");
 		expect(hermesOriginReturnLabel(undefined)).toBeNull();
 	});
 

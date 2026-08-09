@@ -628,8 +628,9 @@ export function hermesOriginReturnLabel(
 ): string | null {
 	if (resolvedOrigin?.canOpenThread !== true) return null;
 	const platform = resolvedOrigin.platform.trim().toLowerCase();
-	if (platform !== "slack") return null;
-	return "Return to Slack";
+	if (platform === "slack") return "Return to Slack";
+	if (platform === "telegram") return "Return to Telegram";
+	return null;
 }
 
 export function hermesReportRequiresExplicitRetry(

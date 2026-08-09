@@ -10,7 +10,7 @@ import {
 	listHermesConnections,
 	saveHermesConnectionWithDiscovery,
 } from "../../hermes/hermes-connections";
-import { validateManualSlackThreadUrl } from "../../hermes/hermes-origin-resolver";
+import { validateHermesOriginOpenUrl } from "../../hermes/hermes-origin-resolver";
 import { hermesRuntimeService } from "../../hermes/hermes-runtime-service";
 import {
 	linkHermesWorkspace,
@@ -209,7 +209,7 @@ export const hermesRouter = router({
 		.query(({ input }) => hermesRuntimeService.origin(input.connectionId, input.hermesSessionId)),
 
 	openOrigin: publicProcedure.input(connectionSessionInput).mutation(async ({ input }) => {
-		const openUrl = validateManualSlackThreadUrl(
+		const openUrl = validateHermesOriginOpenUrl(
 			await hermesRuntimeService.originOpenUrl(input.connectionId, input.hermesSessionId)
 		);
 		if (!openUrl) throw new Error("This Hermes origin link is not trusted");

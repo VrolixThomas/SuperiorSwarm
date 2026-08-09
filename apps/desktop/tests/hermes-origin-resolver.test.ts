@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
 	resolveHermesOrigin,
+	validateHermesOriginOpenUrl,
 	validateManualSlackThreadUrl,
 } from "../src/main/hermes/hermes-origin-resolver";
 import { stockSessionDetail, stockTelegramSessionDetail } from "./fixtures/hermes-stock";
@@ -49,7 +50,7 @@ describe("Hermes Slack origin resolver", () => {
 		expect(rendererJson).not.toContain("app.slack.com");
 	});
 
-	test("projects producer-shaped Telegram origin names without exposing routes or Slack controls", () => {
+	test("projects a producer-shaped Telegram forum topic with a trusted return link", () => {
 		const resolved = resolveHermesOrigin(
 			{
 				durableSessionId: stockTelegramSessionDetail.id,
@@ -75,15 +76,46 @@ describe("Hermes Slack origin resolver", () => {
 			channelLabel: null,
 			threadLabel: "Release incident",
 			hasThread: true,
-			canOpenThread: false,
+			canOpenThread: true,
 			canReport: false,
 		});
 		expect(resolved.target).toBeNull();
-		expect(resolved.openUrl).toBeNull();
+		expect(resolved.openUrl).toBe("https://t.me/c/1234567890/77");
 		const rendererJson = JSON.stringify(resolved.projection);
 		expect(rendererJson).not.toContain("-1001234567890");
 		expect(rendererJson).not.toContain("99887766");
 		expect(rendererJson).not.toContain('"77"');
+	});
+
+	test("does not build Telegram return links from malformed or conflicting routes", () => {
+		const resolveTelegram = (chatId: string, originChatId: string, threadId: string) =>
+			resolveHermesOrigin(
+				{
+					durableSessionId: "stored-telegram",
+					profileId: "personal",
+					source: "telegram",
+					displayName: "Ops room",
+					sessionKey: null,
+					chatId,
+					chatType: "group",
+					threadId,
+					originJson: {
+						platform: "telegram",
+						chat_id: originChatId,
+						thread_id: threadId,
+					},
+				},
+				{ connectionMode: "loopback", senderAvailable: true }
+			);
+
+		for (const resolved of [
+			resolveTelegram("-1001234567890", "-1009999999999", "77"),
+			resolveTelegram("-991234567890", "-991234567890", "77"),
+			resolveTelegram("-1001234567890", "-1001234567890", "0"),
+		]) {
+			expect(resolved.projection.canOpenThread).toBe(false);
+			expect(resolved.openUrl).toBeNull();
+		}
 	});
 
 	test("sanitizes token-like and bearer-like labels in selected Telegram details", () => {
@@ -342,5 +374,19 @@ describe("Hermes Slack origin resolver", () => {
 		expect(validateManualSlackThreadUrl("http://acme.slack.com/archives/C1/p1")).toBeNull();
 		expect(validateManualSlackThreadUrl("https://slack.example.com/archives/C1/p1")).toBeNull();
 		expect(validateManualSlackThreadUrl("https://user:pass@app.slack.com/client/T/C")).toBeNull();
+	});
+
+	test("accepts only trusted Slack and Telegram URLs for origin navigation", () => {
+		expect(validateHermesOriginOpenUrl("https://t.me/c/1234567890/77")).toBe(
+			"https://t.me/c/1234567890/77"
+		);
+		expect(
+			validateHermesOriginOpenUrl(
+				"https://app.slack.com/client/T01234567/C01234567/thread-C01234567-1786269600123456"
+			)
+		).not.toBeNull();
+		expect(validateHermesOriginOpenUrl("http://t.me/c/1234567890/77")).toBeNull();
+		expect(validateHermesOriginOpenUrl("https://t.me/c/1234567890/77?start=payload")).toBeNull();
+		expect(validateHermesOriginOpenUrl("https://evil.example/c/1234567890/77")).toBeNull();
 	});
 });

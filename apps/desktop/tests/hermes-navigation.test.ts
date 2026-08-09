@@ -229,6 +229,7 @@ describe("Hermes global navigation", () => {
 		expect(router).toContain("messageId: z.string().min(1)");
 		expect(router).toContain("explicitRetry: z.boolean()");
 		expect(router).toContain("saveOriginLink");
+		expect(router).toContain("validateHermesOriginOpenUrl");
 		expect(router).toContain("pickAttachments: publicProcedure");
 		expect(router).toContain("releaseAttachment: publicProcedure");
 		expect(router).toMatch(/attachmentHandles:\s*z\s*\.array/);
