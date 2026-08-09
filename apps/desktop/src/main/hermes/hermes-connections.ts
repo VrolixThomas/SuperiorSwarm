@@ -1,8 +1,8 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { type HermesConnectionSummary, isHermesLoopbackUrl } from "../../shared/hermes";
 import { getDb } from "../db";
-import { hermesConnections } from "../db/schema";
+import { crossRepoOrchestrators, hermesConnections } from "../db/schema";
 import { HERMES_PROFILE_ID_PATTERN, normalizeManagedHermesProfileId } from "./hermes-cli";
 import { discoverHermesDashboardToken } from "./hermes-dashboard-token";
 import {
@@ -22,6 +22,7 @@ export interface SaveHermesConnectionInput {
 	baseUrl: string;
 	profileId: string;
 	token?: string;
+	managerId?: string | null;
 }
 
 function timestamp(value: Date | null): number | null {
@@ -39,6 +40,7 @@ function toSummary(
 		label: row.label,
 		baseUrl: managed ? null : row.baseUrl,
 		profileId: row.profileId,
+		managerId: row.managerId,
 		authMode: "token",
 		connectionMode: managed || isHermesLoopbackUrl(row.baseUrl) ? "loopback" : "remote",
 		managementMode: row.managementMode,
@@ -121,6 +123,7 @@ export function ensureHermesLocalConnection(
 		label: input.label?.trim() || existing?.label || "Local Hermes",
 		baseUrl: existing?.baseUrl ?? HERMES_LOCAL_MANAGED_URL,
 		profileId,
+		managerId: existing?.managerId ?? null,
 		managementMode: "managed" as const,
 		encryptedToken: existing?.encryptedToken ?? null,
 		tokenStorage: existing?.tokenStorage ?? ("memory" as const),
@@ -169,6 +172,10 @@ export function saveHermesConnection(
 		label: input.label.trim(),
 		baseUrl: normalizeHermesBaseUrl(input.baseUrl),
 		profileId: input.profileId.trim() || "default",
+		managerId:
+			input.managerId === undefined
+				? (existing?.managerId ?? null)
+				: validateExternalManagerId(input.managerId),
 		managementMode: "external" as const,
 		encryptedToken: protectedToken.ciphertext,
 		tokenStorage: protectedToken.storage,
@@ -183,6 +190,7 @@ export function saveHermesConnection(
 				label: values.label,
 				baseUrl: values.baseUrl,
 				profileId: values.profileId,
+				managerId: values.managerId,
 				managementMode: values.managementMode,
 				encryptedToken: values.encryptedToken,
 				tokenStorage: values.tokenStorage,
@@ -197,6 +205,29 @@ export function saveHermesConnection(
 		return { ...summary, hasToken: true };
 	}
 	return summary;
+}
+
+function validateExternalManagerId(managerId: string | null): string | null {
+	if (managerId === null) return null;
+	const manager = getDb()
+		.select({ id: crossRepoOrchestrators.id })
+		.from(crossRepoOrchestrators)
+		.where(
+			and(eq(crossRepoOrchestrators.id, managerId), eq(crossRepoOrchestrators.kind, "external"))
+		)
+		.get();
+	if (!manager) throw new Error("Select a valid external manager for this Hermes connection");
+	return manager.id;
+}
+
+export function setHermesConnectionManagerId(id: string, managerId: string): void {
+	const resolvedManagerId = validateExternalManagerId(managerId);
+	const result = getDb()
+		.update(hermesConnections)
+		.set({ managerId: resolvedManagerId, updatedAt: new Date() })
+		.where(and(eq(hermesConnections.id, id), eq(hermesConnections.managementMode, "external")))
+		.run();
+	if (result.changes === 0) throw new Error("External Hermes connection was not found");
 }
 
 export async function saveHermesConnectionWithDiscovery(

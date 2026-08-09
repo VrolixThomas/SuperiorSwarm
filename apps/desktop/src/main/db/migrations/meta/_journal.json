@@ -414,6 +414,13 @@
       "when": 1786303507836,
       "tag": "0058_add_hermes_session_admissions",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "6",
+      "when": 1786306532429,
+      "tag": "0059_bind_hermes_connection_manager",
+      "breakpoints": true
     }
   ]
 }

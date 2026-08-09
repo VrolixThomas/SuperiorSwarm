@@ -344,6 +344,89 @@ describe("HermesRuntimeService stock lifecycle", () => {
 		expect(rest.listCalls).toBe(1);
 	});
 
+	test("resolves and persists the manager identity for a live external Telegram session", async () => {
+		const now = new Date();
+		getDb()
+			.insert(schema.crossRepoOrchestrators)
+			.values({
+				id: "external-hermes-manager",
+				name: "External Hermes",
+				workDir: "/tmp/external-hermes-manager",
+				agentKind: "external",
+				status: "idle",
+				sortOrder: 0,
+				kind: "external",
+				tokenHash: "c".repeat(64),
+				accessScope: "all",
+				createdAt: now,
+				updatedAt: now,
+			})
+			.run();
+		admitHermesSession({
+			managerId: "external-hermes-manager",
+			metadata: {
+				schemaVersion: 1,
+				durableSessionId: "live-telegram-dm-topic",
+				profileId: "default",
+				sourcePlatform: "telegram",
+				isCron: false,
+			},
+			reason: "mcp",
+		});
+		rest.sessions = [
+			{
+				...session("live-telegram-dm-topic"),
+				profileId: "default",
+				source: "telegram",
+				handover: false,
+				origin: {
+					platform: "telegram",
+					source: "telegram",
+					displayLabel: "Telegram DM topic",
+					workspaceLabel: null,
+					accountLabel: null,
+					chatLabel: "Telegram DM",
+					channelLabel: null,
+					threadLabel: null,
+					hasThread: true,
+					canOpenThread: false,
+					canReport: false,
+				},
+			},
+			{
+				...session("unrelated-telegram"),
+				profileId: "default",
+				source: "telegram",
+			},
+		];
+		service.shutdown();
+		const resolvedConnectionIds: string[] = [];
+		service = new HermesRuntimeService({
+			clientFactory: () => client,
+			restClientFactory: () => rest,
+			sendService: sender,
+			tokenVault: vault,
+			loopbackTokenResolver: async () => "secret",
+			externalManagerIdResolver: (connection) => {
+				resolvedConnectionIds.push(connection.id);
+				return "external-hermes-manager";
+			},
+		});
+
+		const catalog = await service.connect(connectionId);
+
+		expect(catalog.sessions.map((item) => item.id)).toEqual(["live-telegram-dm-topic"]);
+		expect(catalog.sessions[0]).toMatchObject({
+			source: "telegram",
+			admissionReason: "mcp",
+			origin: { platform: "telegram", hasThread: true },
+		});
+		expect(resolvedConnectionIds).toEqual([connectionId]);
+		expect(
+			listHermesConnections(vault).find((connection) => connection.id === connectionId)?.managerId
+		).toBe("external-hermes-manager");
+	});
+
 	test("refreshes loopback auth from the served dashboard token before every connect", async () => {
 		service.shutdown();
 		service = new HermesRuntimeService({

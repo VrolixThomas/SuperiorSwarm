@@ -48,6 +48,7 @@ export function HermesSidebar() {
 	const [label, setLabel] = useState("External Hermes");
 	const [baseUrl, setBaseUrl] = useState("");
 	const [profileId, setProfileId] = useState("default");
+	const [managerId, setManagerId] = useState<string | null>(null);
 	const [token, setToken] = useState("");
 	const [newTopic, setNewTopic] = useState("");
 	const autoConnectAttempted = useRef(new Set<string>());
@@ -55,6 +56,7 @@ export function HermesSidebar() {
 	const utils = trpc.useUtils();
 
 	const connections = trpc.hermes.connections.useQuery();
+	const externalManagers = trpc.externalManagers.list.useQuery();
 	const activeConnection = connections.data?.find((connection) => connection.id === connectionId);
 	const managedConnection = connections.data?.find(
 		(connection) => connection.managementMode === "managed"
@@ -77,6 +79,7 @@ export function HermesSidebar() {
 		onSuccess: () => {
 			void utils.hermes.status.invalidate();
 			void utils.hermes.catalog.invalidate();
+			void utils.hermes.connections.invalidate();
 		},
 	});
 	const saveConnection = trpc.hermes.saveConnection.useMutation({
@@ -178,6 +181,7 @@ export function HermesSidebar() {
 			label,
 			baseUrl,
 			profileId,
+			managerId,
 			...(showTokenInput && token ? { token } : {}),
 		});
 	}
@@ -207,10 +211,12 @@ export function HermesSidebar() {
 				setLabel(activeConnection.label);
 				setBaseUrl(activeConnection.baseUrl ?? "");
 				setProfileId(activeConnection.profileId);
+				setManagerId(activeConnection.managerId);
 			} else {
 				setLabel("External Hermes");
 				setBaseUrl("");
 				setProfileId(activeConnection?.profileId ?? "default");
+				setManagerId(null);
 			}
 		}
 		setShowAdvanced(open);
@@ -261,6 +267,7 @@ export function HermesSidebar() {
 										setLabel("External Hermes");
 										setBaseUrl("");
 										setProfileId("default");
+										setManagerId(null);
 										setConnectionId(managedConnection?.id ?? null);
 										return;
 									}
@@ -268,6 +275,7 @@ export function HermesSidebar() {
 									setLabel(selected.label);
 									setBaseUrl(selected.baseUrl ?? "");
 									setProfileId(selected.profileId);
+									setManagerId(selected.managerId);
 								}}
 								className="min-w-0 max-w-full rounded-[6px] border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1.5 text-[11px] text-[var(--text)]"
 							>
@@ -300,6 +308,19 @@ export function HermesSidebar() {
 							aria-label="Hermes profile"
 							className="min-w-0 rounded-[6px] border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1.5 text-[11px] text-[var(--text)] outline-none focus:border-[var(--accent)]"
 						/>
+						<select
+							value={managerId ?? ""}
+							onChange={(event) => setManagerId(event.target.value || null)}
+							aria-label="SuperiorSwarm manager"
+							className="min-w-0 max-w-full rounded-[6px] border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1.5 text-[11px] text-[var(--text)]"
+						>
+							<option value="">Auto-detect local MCP identity</option>
+							{externalManagers.data?.map((manager) => (
+								<option key={manager.id} value={manager.id}>
+									{manager.name}
+								</option>
+							))}
+						</select>
 						{showTokenInput && (
 							<input
 								type="password"

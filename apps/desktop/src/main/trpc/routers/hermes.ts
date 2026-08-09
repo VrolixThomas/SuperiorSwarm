@@ -79,6 +79,7 @@ export const hermesRouter = router({
 				baseUrl: z.string().trim().min(1).max(2_000),
 				profileId: z.string().trim().min(1).max(120).default("default"),
 				token: z.string().max(8_192).optional(),
+				managerId: z.string().min(1).nullable().optional(),
 			})
 		)
 		.mutation(({ input }) => saveHermesConnectionWithDiscovery(input)),

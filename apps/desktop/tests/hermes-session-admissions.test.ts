@@ -82,9 +82,10 @@ describe("Hermes session admissions", () => {
 		_setDbForTesting(null);
 	});
 
-	test("persists manager/profile/durable identity without collisions and retains first admission reason", () => {
+	test("persists isolated identity and promotes handover without a later MCP downgrade", () => {
 		const firstSeenAt = new Date("2026-08-09T10:00:00.000Z");
-		const lastSeenAt = new Date("2026-08-09T10:05:00.000Z");
+		const promotedAt = new Date("2026-08-09T10:05:00.000Z");
+		const lastSeenAt = new Date("2026-08-09T10:10:00.000Z");
 		for (const [managerId, profileId] of [
 			["manager-a", "work"],
 			["manager-a", "personal"],
@@ -104,7 +105,7 @@ describe("Hermes session admissions", () => {
 			});
 		}
 
-		admitHermesSession({
+		const promotion = admitHermesSession({
 			managerId: "manager-a",
 			metadata: {
 				schemaVersion: 1,
@@ -114,9 +115,23 @@ describe("Hermes session admissions", () => {
 				isCron: false,
 			},
 			reason: "handover",
+			now: promotedAt,
+		});
+		const attemptedDowngrade = admitHermesSession({
+			managerId: "manager-a",
+			metadata: {
+				schemaVersion: 1,
+				durableSessionId: "same-durable-id",
+				profileId: "work",
+				sourcePlatform: "telegram",
+				isCron: false,
+			},
+			reason: "mcp",
 			now: lastSeenAt,
 		});
 
+		expect(promotion).toMatchObject({ admitted: true, reason: "handover" });
+		expect(attemptedDowngrade).toMatchObject({ admitted: true, reason: "handover" });
 		const rows = getDb().select().from(schema.hermesSessionAdmissions).all();
 		expect(rows).toHaveLength(3);
 		expect(listHermesSessionAdmissions("manager-a")).toEqual(
@@ -124,7 +139,7 @@ describe("Hermes session admissions", () => {
 				expect.objectContaining({
 					profileId: "work",
 					durableSessionId: "same-durable-id",
-					reason: "mcp",
+					reason: "handover",
 					sourcePlatform: "telegram",
 					firstSeenAt,
 					lastSeenAt,

@@ -10,6 +10,7 @@ import type {
 	HermesSessionSummary,
 } from "../../shared/hermes";
 import { isSafeHermesFileReference } from "../../shared/hermes";
+import { resolveInstalledHermesManagerId } from "../services/external-managers";
 import {
 	type HermesAttachedResult,
 	type HermesAttachmentStore,
@@ -22,6 +23,7 @@ import {
 	listHermesConnections,
 	markHermesConnectionConnected,
 	saveHermesConnection,
+	setHermesConnectionManagerId,
 } from "./hermes-connections";
 import { discoverHermesDashboardToken } from "./hermes-dashboard-token";
 import {
@@ -142,6 +144,9 @@ export interface HermesRuntimeServiceOptions {
 	recoveryBaseMs?: number;
 	recoveryMaxMs?: number;
 	attachmentStore?: HermesAttachmentStore;
+	externalManagerIdResolver?: (
+		connection: ReturnType<typeof listHermesConnections>[number]
+	) => string | null;
 }
 
 const MAX_BUFFERED_EVENTS = 1_000;
@@ -256,6 +261,9 @@ export class HermesRuntimeService {
 	private readonly recoveryBaseMs: number;
 	private readonly recoveryMaxMs: number;
 	private readonly attachmentStore: HermesAttachmentStore;
+	private readonly externalManagerIdResolver: NonNullable<
+		HermesRuntimeServiceOptions["externalManagerIdResolver"]
+	>;
 	private readonly connectionGenerations = new Map<string, number>();
 	private readonly connectionOperations = new Map<string, ConnectionOperation>();
 	private readonly connectionStates = new Map<string, HermesRuntimeState>();
@@ -274,6 +282,10 @@ export class HermesRuntimeService {
 		this.recoveryBaseMs = options.recoveryBaseMs ?? DEFAULT_RECOVERY_BASE_MS;
 		this.recoveryMaxMs = options.recoveryMaxMs ?? DEFAULT_RECOVERY_MAX_MS;
 		this.attachmentStore = options.attachmentStore ?? hermesAttachmentStore;
+		this.externalManagerIdResolver =
+			options.externalManagerIdResolver ??
+			((connection) =>
+				connection.connectionMode === "loopback" ? resolveInstalledHermesManagerId() : null);
 		this.unsubscribeBackendInvalidation = this.localBackendManager.subscribeRuntimeInvalidated(
 			(event) => {
 				this.handleBackendInvalidation(event);
@@ -907,7 +919,7 @@ export class HermesRuntimeService {
 		let resolvedBaseUrl: string;
 		let resolvedProfileId = summary.profileId;
 		let resolvedToken: string;
-		let resolvedManagerId: string | null = null;
+		let resolvedManagerId = summary.managerId;
 		if (summary.managementMode === "managed") {
 			const managed = await abortable(
 				this.localBackendManager.ensure(summary.profileId),
@@ -921,6 +933,12 @@ export class HermesRuntimeService {
 			resolvedToken = managed.token;
 			resolvedManagerId = managed.managerId ?? null;
 		} else if (summary.connectionMode === "loopback") {
+			if (!resolvedManagerId) {
+				resolvedManagerId = this.externalManagerIdResolver(summary);
+				if (resolvedManagerId) {
+					setHermesConnectionManagerId(summary.id, resolvedManagerId);
+				}
+			}
 			if (!summary.baseUrl) throw new Error("External Hermes URL is unavailable");
 			const token = await abortable(
 				this.loopbackTokenResolver(summary.baseUrl),

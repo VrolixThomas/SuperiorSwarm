@@ -62,6 +62,18 @@ describe("Hermes persistence migration", () => {
 			.all()
 			.map((row) => (row as { name: string }).name);
 		expect(connectionColumns).toContain("management_mode");
+		expect(connectionColumns).toContain("manager_id");
+		const connectionForeignKeys = sqlite
+			.prepare("PRAGMA foreign_key_list(hermes_connections)")
+			.all()
+			.map((row) => row as { from: string; table: string; on_delete: string });
+		expect(connectionForeignKeys).toContainEqual(
+			expect.objectContaining({
+				from: "manager_id",
+				table: "cross_repo_orchestrators",
+				on_delete: "SET NULL",
+			})
+		);
 
 		sqlite.close();
 	});

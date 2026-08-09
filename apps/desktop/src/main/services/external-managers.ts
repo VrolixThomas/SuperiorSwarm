@@ -288,6 +288,25 @@ function installedHermesManagerToken(configPath: string): string | null {
 	return typeof token === "string" && token.length > 0 ? token : null;
 }
 
+/** Resolve the installed Hermes MCP identity without exposing or persisting its raw token. */
+export function resolveInstalledHermesManagerId(
+	input: { configPath?: string } = {}
+): string | null {
+	const installedToken = installedHermesManagerToken(input.configPath ?? hermesConfigPath());
+	if (!installedToken) return null;
+	const matches = getDb()
+		.select({ id: crossRepoOrchestrators.id })
+		.from(crossRepoOrchestrators)
+		.where(
+			and(
+				eq(crossRepoOrchestrators.kind, "external"),
+				eq(crossRepoOrchestrators.tokenHash, hashToken(installedToken))
+			)
+		)
+		.all();
+	return matches.length === 1 ? (matches[0]?.id ?? null) : null;
+}
+
 /**
  * Ensure the app-owned Hermes backend has a live-inventory manager identity.
  * The raw credential is read from or written to Hermes' standard MCP config;

@@ -713,6 +713,9 @@ export const hermesConnections = sqliteTable("hermes_connections", {
 	label: text("label").notNull(),
 	baseUrl: text("base_url").notNull(),
 	profileId: text("profile_id").notNull(),
+	managerId: text("manager_id").references(() => crossRepoOrchestrators.id, {
+		onDelete: "set null",
+	}),
 	managementMode: text("management_mode", { enum: ["managed", "external"] })
 		.notNull()
 		.default("external"),

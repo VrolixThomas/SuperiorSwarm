@@ -64,6 +64,61 @@ describe("Hermes persistence services", () => {
 		expect(getHermesConnectionWithToken(connection.id, vault)?.token).toBe("hermes-secret");
 	});
 
+	test("persists only an external-manager identity on an external Hermes connection", () => {
+		const now = new Date();
+		for (const [id, kind] of [
+			["external-manager", "external"],
+			["workspace-manager", "workspace"],
+		] as const) {
+			db.insert(schema.crossRepoOrchestrators)
+				.values({
+					id,
+					name: id,
+					workDir: `/tmp/${id}`,
+					agentKind: kind === "external" ? "external" : "claude",
+					status: "idle",
+					sortOrder: 0,
+					kind,
+					tokenHash: kind === "external" ? "d".repeat(64) : null,
+					createdAt: now,
+					updatedAt: now,
+				})
+				.run();
+		}
+
+		const connection = saveHermesConnection(
+			{
+				label: "Remote Hermes",
+				baseUrl: "https://hermes.example.com",
+				profileId: "default",
+				token: "hermes-secret",
+				managerId: "external-manager",
+			},
+			vault
+		);
+
+		expect(connection.managerId).toBe("external-manager");
+		expect(
+			db
+				.select()
+				.from(schema.hermesConnections)
+				.where(eq(schema.hermesConnections.id, connection.id))
+				.get()?.managerId
+		).toBe("external-manager");
+		expect(() =>
+			saveHermesConnection(
+				{
+					label: "Wrong manager kind",
+					baseUrl: "https://hermes.example.com",
+					profileId: "default",
+					token: "hermes-secret",
+					managerId: "workspace-manager",
+				},
+				vault
+			)
+		).toThrow("external manager");
+	});
+
 	test("persists a stable managed-local identity without an ephemeral endpoint or token", () => {
 		const first = ensureHermesLocalConnection({ profileId: "work" }, vault);
 		const second = ensureHermesLocalConnection({}, vault);

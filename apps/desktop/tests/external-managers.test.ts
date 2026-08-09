@@ -29,6 +29,7 @@ import {
 	listExternalManagers,
 	regenerateExternalManagerToken,
 	renameExternalManager,
+	resolveInstalledHermesManagerId,
 	uninstallFromHermesConfig,
 } from "../src/main/services/external-managers";
 import { mergeYamlKey, removeYamlKey } from "../src/main/services/yaml-merge";
@@ -642,11 +643,11 @@ describe("yaml merge + hermes config install", () => {
 		expect(YAML.parse(raw).mcp_servers.superiorswarm.command).toBe("/bin/x");
 	});
 
-	test("installIntoHermesConfig writes launcher command and token env", () => {
+	test("installIntoHermesConfig writes and securely resolves the manager identity", async () => {
 		const file = join(dir, "config.yaml");
-		const token = generateToken();
+		const manager = await seedExternalManager({});
 		const { configPath } = installIntoHermesConfig({
-			managerToken: token,
+			managerToken: manager.token,
 			configPath: file,
 			userDataDir: dir,
 		});
@@ -655,10 +656,15 @@ describe("yaml merge + hermes config install", () => {
 		const parsed = YAML.parse(readFileSync(file, "utf-8"));
 		const entry = parsed.mcp_servers.superiorswarm;
 		expect(entry.command).toContain("superiorswarm-mcp");
-		expect(entry.env.SUPERIORSWARM_MANAGER_TOKEN).toBe(token);
+		expect(entry.env.SUPERIORSWARM_MANAGER_TOKEN).toBe(manager.token);
+		expect(resolveInstalledHermesManagerId({ configPath: file })).toBe(manager.id);
 
 		uninstallFromHermesConfig({ configPath: file });
 		const after = YAML.parse(readFileSync(file, "utf-8"));
 		expect(after.mcp_servers?.superiorswarm).toBeUndefined();
+		getDb()
+			.delete(schema.crossRepoOrchestrators)
+			.where(eq(schema.crossRepoOrchestrators.id, manager.id))
+			.run();
 	});
 });

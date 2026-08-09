@@ -1,4 +1,4 @@
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, sql } from "drizzle-orm";
 import type { HermesSessionMetadata } from "../../shared/control-plane";
 import type { HermesSessionSummary } from "../../shared/hermes";
 import { getDb } from "../db";
@@ -26,7 +26,7 @@ export function admitHermesSession(input: {
 		return { admitted: false, code: "cron_session" };
 	}
 	const now = input.now ?? new Date();
-	getDb()
+	const admission = getDb()
 		.insert(hermesSessionAdmissions)
 		.values({
 			managerId: input.managerId,
@@ -45,19 +45,22 @@ export function admitHermesSession(input: {
 				hermesSessionAdmissions.durableSessionId,
 			],
 			set: {
+				reason: input.reason === "handover" ? "handover" : sql`${hermesSessionAdmissions.reason}`,
 				sourcePlatform: input.metadata.sourcePlatform,
 				isCron: false,
 				lastSeenAt: now,
 			},
 		})
-		.run();
+		.returning({ reason: hermesSessionAdmissions.reason })
+		.get();
+	if (!admission) throw new Error("Failed to persist Hermes session admission");
 
 	return {
 		admitted: true,
 		managerId: input.managerId,
 		profileId: input.metadata.profileId,
 		durableSessionId: input.metadata.durableSessionId,
-		reason: input.reason,
+		reason: admission.reason,
 	};
 }
 

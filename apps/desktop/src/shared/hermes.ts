@@ -201,6 +201,7 @@ export interface HermesConnectionSummary {
 	label: string;
 	baseUrl: string | null;
 	profileId: string;
+	managerId: string | null;
 	authMode: "token";
 	connectionMode: "loopback" | "remote";
 	managementMode: "managed" | "external";
