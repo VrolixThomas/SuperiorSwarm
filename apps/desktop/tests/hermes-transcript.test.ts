@@ -58,6 +58,30 @@ describe("Hermes transcript", () => {
 		expect(html).not.toContain('data-hermes-user-bubble="true"');
 	});
 
+	test("opens merged compaction content by default without attributing it to the human", () => {
+		const html = renderToStaticMarkup(
+			createElement(HermesTranscript, {
+				items: projectHermesTranscript([
+					message({
+						id: "merged-compaction-user-row",
+						role: "user",
+						text: "## Durable summary\n\nRetained **current-turn** content remains visible.",
+						displayKind: "compaction_summary",
+						compactionSummaryType: "merged",
+					}),
+				]),
+			})
+		);
+
+		expect(html).toContain('data-hermes-item="compaction"');
+		expect(html).toContain('data-hermes-role="neutral"');
+		expect(html).toContain("Includes retained turn/context content");
+		expect(html).toMatch(/<details[^>]* open/);
+		expect(html).toContain(">current-turn</strong> content remains visible.");
+		expect(html).not.toContain('data-hermes-turn="user"');
+		expect(html).not.toContain('data-hermes-user-bubble="true"');
+	});
+
 	test("left-aligns assistant prose and right-aligns neutral user bubbles within the frame", () => {
 		const html = renderToStaticMarkup(
 			createElement(HermesTranscript, {

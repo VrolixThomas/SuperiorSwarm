@@ -75,6 +75,7 @@ export function HermesActivityGroup({ activity }: { activity: HermesProjectedAct
 }
 
 function HermesCompactionEvent({ item }: { item: HermesProjectedCompaction }) {
+	const merged = item.summaryType === "merged";
 	const label =
 		item.summaryType === "standalone" ? "Earlier context summarized" : "Context compacted";
 	const preview = item.text.trim().replace(/\s+/g, " ").slice(0, 180);
@@ -88,9 +89,17 @@ function HermesCompactionEvent({ item }: { item: HermesProjectedCompaction }) {
 			data-hermes-role="neutral"
 		>
 			<div aria-hidden="true" className="h-px min-w-4 flex-1 bg-[var(--border-subtle)]" />
-			<details className="group min-w-0 max-w-[66ch] rounded-[10px] px-2 py-1 text-center">
+			<details
+				open={merged}
+				className="group min-w-0 max-w-[66ch] rounded-[10px] px-2 py-1 text-center"
+			>
 				<summary className="cursor-pointer list-none rounded-[6px] outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/50 [&::-webkit-details-marker]:hidden">
 					<span className="font-medium text-[var(--text-tertiary)]">{label}</span>
+					{merged && (
+						<span className="ml-1.5 font-medium text-[var(--text-secondary)]">
+							· Includes retained turn/context content
+						</span>
+					)}
 					<span className="ml-1.5 text-[10px]">
 						{item.generation !== null ? `Generation ${item.generation}` : null}
 						{item.generation !== null && validTimestamp ? " · " : null}
