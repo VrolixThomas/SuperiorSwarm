@@ -86,6 +86,12 @@ export interface HermesCatalog {
 
 export interface HermesTranscriptMessage {
 	id: string;
+	canonicalMessageId: string | null;
+	compactionGeneration: number | null;
+	active: boolean | null;
+	compacted: boolean | null;
+	displayKind: string | null;
+	displayMetadata: Record<string, unknown> | null;
 	turnId: string | null;
 	role: "user" | "assistant" | "system" | "tool";
 	text: string;
@@ -97,6 +103,7 @@ export interface HermesTranscriptMessage {
 
 export interface HermesSessionHistory {
 	durableSessionId: string;
+	view: "active" | "durable";
 	messages: HermesTranscriptMessage[];
 }
 

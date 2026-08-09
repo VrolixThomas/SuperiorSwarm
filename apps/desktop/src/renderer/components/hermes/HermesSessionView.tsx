@@ -17,6 +17,7 @@ import {
 	HERMES_CHAT_OVERFLOW_CLASSES,
 	applyHermesEvent,
 	createHermesLiveState,
+	deriveHermesCanonicalTimeline,
 	hermesComposerContainsFiles,
 	hermesComposerTextareaLayout,
 	hermesOriginActionAvailability,
@@ -161,7 +162,11 @@ export function HermesSessionView() {
 			staleTime: 1_000,
 		}
 	);
-	const canonicalMessages = useMemo(() => history.data?.messages ?? [], [history.data?.messages]);
+	const physicalMessages = useMemo(() => history.data?.messages ?? [], [history.data?.messages]);
+	const canonicalMessages = useMemo(
+		() => deriveHermesCanonicalTimeline(physicalMessages),
+		[physicalMessages]
+	);
 	const eventFeed = trpc.hermes.events.useQuery(
 		{ connectionId, afterSeq: cursor },
 		{ enabled: Boolean(connectionId && sessionId && connected), refetchInterval: 400 }

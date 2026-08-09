@@ -98,9 +98,62 @@ export function hermesUserMessageDisclosure(
 	};
 }
 
+export interface HermesTranscriptPhysicalRowState {
+	id: string;
+	canonicalMessageId: string | null;
+	compactionGeneration: number | null;
+	active: boolean | null;
+	compacted: boolean | null;
+	displayKind: string | null;
+	displayMetadata: Record<string, unknown> | null;
+}
+
+export interface HermesCanonicalTranscriptMessage extends HermesTranscriptMessage {
+	physicalRows: HermesTranscriptPhysicalRowState[];
+}
+
+function physicalRowState(message: HermesTranscriptMessage): HermesTranscriptPhysicalRowState {
+	return {
+		id: message.id,
+		canonicalMessageId: message.canonicalMessageId,
+		compactionGeneration: message.compactionGeneration,
+		active: message.active,
+		compacted: message.compacted,
+		displayKind: message.displayKind,
+		displayMetadata: message.displayMetadata,
+	};
+}
+
+export function deriveHermesCanonicalTimeline(
+	messages: HermesTranscriptMessage[]
+): HermesCanonicalTranscriptMessage[] {
+	const timeline: HermesCanonicalTranscriptMessage[] = [];
+	const canonicalIndexes = new Map<string, number>();
+	for (const message of messages) {
+		const physicalRow = physicalRowState(message);
+		const existingIndex = message.canonicalMessageId
+			? canonicalIndexes.get(message.canonicalMessageId)
+			: undefined;
+		const existing = existingIndex === undefined ? undefined : timeline[existingIndex];
+		if (existing && existingIndex !== undefined) {
+			timeline[existingIndex] = {
+				...existing,
+				physicalRows: [...existing.physicalRows, physicalRow],
+			};
+			continue;
+		}
+		if (message.canonicalMessageId) {
+			canonicalIndexes.set(message.canonicalMessageId, timeline.length);
+		}
+		timeline.push({ ...message, physicalRows: [physicalRow] });
+	}
+	return timeline;
+}
+
 export type HermesTranscriptClassification =
 	| { kind: "user"; text: string }
 	| { kind: "assistant"; text: string }
+	| { kind: "compaction"; text: string }
 	| { kind: "activity"; text: string };
 
 export interface HermesProjectedMessage {
@@ -127,7 +180,20 @@ export interface HermesProjectedActivity {
 	summary: string;
 }
 
-export type HermesTranscriptProjectionItem = HermesProjectedMessage | HermesProjectedActivity;
+export interface HermesProjectedCompaction {
+	kind: "compaction";
+	id: string;
+	text: string;
+	generation: number | null;
+	summaryType: string | null;
+	createdAt: number | null;
+	source: HermesTranscriptMessage;
+}
+
+export type HermesTranscriptProjectionItem =
+	| HermesProjectedMessage
+	| HermesProjectedActivity
+	| HermesProjectedCompaction;
 
 export interface HermesComposerAttachment extends HermesAttachmentMetadata {
 	status: "ready" | "attaching" | "error";
@@ -265,6 +331,9 @@ export function classifyHermesTranscriptMessage(
 	const text = message.text;
 	const substantiveText = text.trim();
 	const status = message.status?.trim().toLocaleLowerCase() ?? "";
+	if (message.displayKind === "compaction_summary") {
+		return { kind: "compaction", text };
+	}
 	if (message.toolName || message.role === "system" || message.role === "tool") {
 		return { kind: "activity", text };
 	}
@@ -338,6 +407,32 @@ export function projectHermesTranscript(
 	for (const message of messages) {
 		if (message.role === "user") flushActivity();
 		const classification = classifyHermesTranscriptMessage(message);
+		if (classification.kind === "compaction") {
+			flushActivity();
+			const metadata =
+				message.displayMetadata?.["compaction"] !== null &&
+				typeof message.displayMetadata?.["compaction"] === "object" &&
+				!Array.isArray(message.displayMetadata?.["compaction"])
+					? (message.displayMetadata?.["compaction"] as Record<string, unknown>)
+					: null;
+			const metadataGeneration = metadata?.["generation"];
+			const summaryType = metadata?.["summary_type"];
+			projected.push({
+				kind: "compaction",
+				id: `compaction:${message.id}`,
+				text: classification.text,
+				generation:
+					typeof metadataGeneration === "number" &&
+					Number.isSafeInteger(metadataGeneration) &&
+					metadataGeneration >= 0
+						? metadataGeneration
+						: message.compactionGeneration,
+				summaryType: typeof summaryType === "string" ? summaryType : null,
+				createdAt: message.createdAt,
+				source: message,
+			});
+			continue;
+		}
 		if (classification.kind === "activity") {
 			activity.push(message);
 			if (message.role === "user") flushActivity();
@@ -380,6 +475,12 @@ export function projectHermesLiveActivity(
 	if (visibleTools.length === 0) return null;
 	const messages: HermesTranscriptMessage[] = visibleTools.map((tool) => ({
 		id: tool.id,
+		canonicalMessageId: null,
+		compactionGeneration: null,
+		active: null,
+		compacted: null,
+		displayKind: null,
+		displayMetadata: null,
 		turnId: tool.turnId,
 		role: "tool",
 		text: tool.name,
@@ -408,6 +509,10 @@ export function projectHermesLiveCompletions(
 	completed: HermesLiveState["completed"]
 ): HermesProjectedMessage[] {
 	const canonicalAssistant = canonicalMessages.filter(isVisibleHermesAssistantMessage);
+	const physicalIds = (message: HermesTranscriptMessage): string[] => {
+		const rows = (message as Partial<HermesCanonicalTranscriptMessage>).physicalRows;
+		return rows ? rows.map((row) => row.id) : [message.id];
+	};
 	const usedCanonicalIndexes = new Set<number>();
 	const reconciledCompletionIndexes = new Set<number>();
 	for (const [completionIndex, completion] of completed.entries()) {
@@ -424,7 +529,7 @@ export function projectHermesLiveCompletions(
 		const canonicalIndex = canonicalAssistant.findIndex(
 			(message, index) =>
 				!usedCanonicalIndexes.has(index) &&
-				!completion.canonicalMessageIds.includes(message.id) &&
+				!physicalIds(message).some((id) => completion.canonicalMessageIds.includes(id)) &&
 				classifyHermesTranscriptMessage(message).text === completion.text
 		);
 		if (canonicalIndex < 0) continue;
@@ -436,6 +541,12 @@ export function projectHermesLiveCompletions(
 		return [
 			{
 				id: `live-complete:${completion.turnId ?? index}`,
+				canonicalMessageId: null,
+				compactionGeneration: null,
+				active: null,
+				compacted: null,
+				displayKind: null,
+				displayMetadata: null,
 				turnId: completion.turnId,
 				role: "assistant",
 				text: completion.text,

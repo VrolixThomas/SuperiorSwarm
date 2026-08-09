@@ -12,6 +12,12 @@ import type { HermesTranscriptMessage } from "../src/shared/hermes";
 
 const message = (overrides: Partial<HermesTranscriptMessage>): HermesTranscriptMessage => ({
 	id: "message-1",
+	canonicalMessageId: null,
+	compactionGeneration: null,
+	active: null,
+	compacted: null,
+	displayKind: null,
+	displayMetadata: null,
 	turnId: null,
 	role: "assistant",
 	text: "",
@@ -23,6 +29,37 @@ const message = (overrides: Partial<HermesTranscriptMessage>): HermesTranscriptM
 });
 
 describe("Hermes transcript", () => {
+	test("renders a role-user compaction summary as a neutral progressive timeline event", () => {
+		const html = renderToStaticMarkup(
+			createElement(HermesTranscript, {
+				items: projectHermesTranscript([
+					message({
+						id: "compaction-user-row",
+						role: "user",
+						text: "## Durable summary\n\nEarlier **durable** context.",
+						createdAt: Date.parse("2026-08-09T10:00:00.000Z"),
+						compactionGeneration: 3,
+						displayKind: "compaction_summary",
+						displayMetadata: {
+							compaction: { generation: 3, summary_type: "standalone" },
+						},
+					}),
+				]),
+			})
+		);
+
+		expect(html).toContain('data-hermes-item="compaction"');
+		expect(html).toContain('data-hermes-role="neutral"');
+		expect(html).toContain("Earlier context summarized");
+		expect(html).toContain("Generation 3");
+		expect(html).toContain("<time");
+		expect(html).toContain("Show full summary");
+		expect(html).toContain(">durable</strong>");
+		expect(html).toMatch(/<details(?![^>]* open)/);
+		expect(html).not.toContain('data-hermes-turn="user"');
+		expect(html).not.toContain('data-hermes-user-bubble="true"');
+	});
+
 	test("left-aligns assistant prose and right-aligns neutral user bubbles within the frame", () => {
 		const html = renderToStaticMarkup(
 			createElement(HermesTranscript, {

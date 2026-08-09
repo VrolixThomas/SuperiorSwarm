@@ -4,6 +4,7 @@ import {
 	HERMES_CHAT_LAYOUT_CLASSES,
 	HERMES_CHAT_OVERFLOW_CLASSES,
 	type HermesProjectedActivity,
+	type HermesProjectedCompaction,
 	type HermesProjectedMessage,
 	type HermesTranscriptProjectionItem,
 	hermesUserMessageDisclosure,
@@ -73,6 +74,50 @@ export function HermesActivityGroup({ activity }: { activity: HermesProjectedAct
 	);
 }
 
+function HermesCompactionEvent({ item }: { item: HermesProjectedCompaction }) {
+	const label =
+		item.summaryType === "standalone" ? "Earlier context summarized" : "Context compacted";
+	const preview = item.text.trim().replace(/\s+/g, " ").slice(0, 180);
+	const timestamp = item.createdAt === null ? null : new Date(item.createdAt);
+	const validTimestamp = timestamp && Number.isFinite(timestamp.getTime()) ? timestamp : null;
+
+	return (
+		<div
+			className="flex w-full min-w-0 items-center gap-3 text-[11px] text-[var(--text-quaternary)]"
+			data-hermes-item="compaction"
+			data-hermes-role="neutral"
+		>
+			<div aria-hidden="true" className="h-px min-w-4 flex-1 bg-[var(--border-subtle)]" />
+			<details className="group min-w-0 max-w-[66ch] rounded-[10px] px-2 py-1 text-center">
+				<summary className="cursor-pointer list-none rounded-[6px] outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/50 [&::-webkit-details-marker]:hidden">
+					<span className="font-medium text-[var(--text-tertiary)]">{label}</span>
+					<span className="ml-1.5 text-[10px]">
+						{item.generation !== null ? `Generation ${item.generation}` : null}
+						{item.generation !== null && validTimestamp ? " · " : null}
+						{validTimestamp && (
+							<time dateTime={validTimestamp.toISOString()}>{validTimestamp.toLocaleString()}</time>
+						)}
+					</span>
+					{preview && (
+						<span className="mt-0.5 block max-w-full truncate text-[10px] text-[var(--text-quaternary)]">
+							{preview}
+						</span>
+					)}
+					<span className="mt-1 block text-[10px] text-[var(--text-tertiary)] group-open:hidden">
+						Show full summary
+					</span>
+				</summary>
+				<div
+					className={`mt-2 min-w-0 border-t border-[var(--border-subtle)] pt-3 text-left text-[13px] leading-5 text-[var(--text-secondary)] ${HERMES_CHAT_OVERFLOW_CLASSES.arbitraryContent}`}
+				>
+					<HermesMarkdown content={item.text} />
+				</div>
+			</details>
+			<div aria-hidden="true" className="h-px min-w-4 flex-1 bg-[var(--border-subtle)]" />
+		</div>
+	);
+}
+
 function HermesUserMessage({ item }: { item: HermesProjectedMessage }) {
 	const [expanded, setExpanded] = useState(false);
 	const disclosure = hermesUserMessageDisclosure(item.text, expanded);
@@ -136,6 +181,9 @@ export function HermesTranscript({ items }: { items: HermesTranscriptProjectionI
 			{items.map((item) => {
 				if (item.kind === "activity") {
 					return <HermesActivityGroup key={item.id} activity={item} />;
+				}
+				if (item.kind === "compaction") {
+					return <HermesCompactionEvent key={item.id} item={item} />;
 				}
 				if (item.role === "user") {
 					return <HermesUserMessage key={item.id} item={item} />;

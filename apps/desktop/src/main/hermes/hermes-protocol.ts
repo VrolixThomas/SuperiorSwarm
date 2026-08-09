@@ -433,11 +433,24 @@ function normalizeTranscriptMessage(value: unknown, index: number): HermesTransc
 		: "system";
 	const text =
 		stringValue(message["text"]) ?? contentText(message["content"] ?? message["message"]);
+	const rawCompactionGeneration = numberValue(message["compaction_generation"]);
+	const sanitizedDisplayMetadata = sanitizeHermesPayload(message["display_metadata"]);
 	return {
 		id:
 			transcriptMessageIdentifier(message["id"]) ??
 			transcriptMessageIdentifier(message["message_id"]) ??
 			`history-${index}`,
+		canonicalMessageId: transcriptMessageIdentifier(message["canonical_message_id"]),
+		compactionGeneration:
+			rawCompactionGeneration !== null &&
+			Number.isSafeInteger(rawCompactionGeneration) &&
+			rawCompactionGeneration >= 0
+				? rawCompactionGeneration
+				: null,
+		active: optionalBooleanValue(message["active"]),
+		compacted: optionalBooleanValue(message["compacted"]),
+		displayKind: sanitizedStringValue(message["display_kind"]),
+		displayMetadata: record(sanitizedDisplayMetadata),
 		turnId: safeIdentifier(message["turn_id"], message["turnId"]),
 		role,
 		text: sanitizeString(text),
@@ -471,7 +484,11 @@ export function normalizeHermesMessagePage(
 		root["durable_session_id"]
 	);
 	if (!durableSessionId) throw new Error("Hermes messages page omitted the durable session ID");
-	const rows = Array.isArray(root["messages"]) ? root["messages"] : [];
+	const rows = Array.isArray(root["messages"])
+		? root["messages"]
+		: Array.isArray(root["data"])
+			? root["data"]
+			: [];
 	const pagination = record(root["pagination"]);
 	const offset = numberValue(pagination?.["offset"], root["offset"]) ?? 0;
 	const messages = rows.flatMap((message, index) => {
@@ -498,9 +515,10 @@ export function normalizeHermesMessagePage(
 
 export function normalizeHermesHistory(
 	durableSessionId: string,
-	messages: HermesTranscriptMessage[]
+	messages: HermesTranscriptMessage[],
+	view: HermesSessionHistory["view"]
 ): HermesSessionHistory {
-	return { durableSessionId, messages };
+	return { durableSessionId, view, messages };
 }
 
 export function normalizeHermesSessionBinding(

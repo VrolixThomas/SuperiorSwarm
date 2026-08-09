@@ -172,7 +172,7 @@ class FakeRestClient implements HermesRestClientLike {
 		this.operations.push(`rest:history:${durableSessionId}`);
 		this.transcriptCalls.push({ durableSessionId, profileId });
 		return Promise.resolve(
-			this.histories.get(durableSessionId) ?? { durableSessionId, messages: [] }
+			this.histories.get(durableSessionId) ?? { durableSessionId, view: "active", messages: [] }
 		);
 	}
 
@@ -650,9 +650,16 @@ describe("HermesRuntimeService stock lifecycle", () => {
 		await service.connect(connectionId);
 		rest.histories.set("stored-1", {
 			durableSessionId: "stored-1",
+			view: "durable",
 			messages: [
 				{
 					id: "message-1",
+					canonicalMessageId: "message-1",
+					compactionGeneration: 0,
+					active: true,
+					compacted: false,
+					displayKind: null,
+					displayMetadata: null,
 					turnId: null,
 					role: "assistant",
 					text: "Persisted",
@@ -687,6 +694,7 @@ describe("HermesRuntimeService stock lifecycle", () => {
 		});
 		expect(await service.history(connectionId, created.durableSessionId)).toEqual({
 			durableSessionId: "stored-new",
+			view: "active",
 			messages: [
 				expect.objectContaining({
 					role: "user",
@@ -1039,6 +1047,79 @@ describe("HermesRuntimeService stock lifecycle", () => {
 		});
 	});
 
+	test("keeps durable physical history authoritative across resume and reconnect refresh", async () => {
+		const durableMessages: HermesSessionHistory["messages"] = [
+			{
+				id: "archived-original",
+				canonicalMessageId: "canonical-question",
+				compactionGeneration: 0,
+				active: false,
+				compacted: true,
+				displayKind: null,
+				displayMetadata: null,
+				turnId: "turn-old",
+				role: "user",
+				text: "Archived question",
+				createdAt: 1,
+				status: "complete",
+				toolName: null,
+				workspaceArtifacts: [],
+			},
+			{
+				id: "summary-one",
+				canonicalMessageId: "canonical-summary",
+				compactionGeneration: 1,
+				active: true,
+				compacted: false,
+				displayKind: "compaction_summary",
+				displayMetadata: {
+					compaction: { generation: 1, summary_type: "standalone" },
+				},
+				turnId: null,
+				role: "assistant",
+				text: "Durable summary",
+				createdAt: 2,
+				status: "complete",
+				toolName: null,
+				workspaceArtifacts: [],
+			},
+		];
+		rest.histories.set("stored-1", {
+			durableSessionId: "stored-1",
+			view: "durable",
+			messages: durableMessages,
+		});
+		client.responses.set("session.resume", [
+			{
+				session_id: "runtime-1",
+				session_key: "stored-1",
+				profile: "work",
+				messages: [{ id: "active-summary-only", role: "assistant", content: "Active context" }],
+			},
+			{
+				session_id: "runtime-2",
+				session_key: "stored-1",
+				profile: "work",
+				messages: [{ id: "active-summary-only", role: "assistant", content: "Active context" }],
+			},
+		]);
+		await service.connect(connectionId);
+
+		const resumed = await service.resume(connectionId, "stored-1");
+		expect(resumed.history.view).toBe("durable");
+		expect(resumed.history.messages.map((message) => message.id)).toEqual([
+			"archived-original",
+			"summary-one",
+		]);
+		expect(client.requests[0]?.params["omit_messages"]).toBe(true);
+
+		client.emit({ type: "runtime.history-refresh-required", status: "reconnected" });
+		await waitFor(() => rest.transcriptCalls.length >= 2, "durable history was not refreshed");
+		const feed = service.events(connectionId, 0);
+		expect(JSON.stringify(feed)).not.toContain("active-summary-only");
+		expect((await service.history(connectionId, "stored-1")).messages).toEqual(durableMessages);
+	});
+
 	test("routes approval, clarification, and interrupt with runtime identity only", async () => {
 		client.responses.set("session.resume", [
 			{ session_id: "runtime-1", session_key: "stored-1", profile: "work" },
@@ -1222,9 +1303,16 @@ describe("HermesRuntimeService stock lifecycle", () => {
 		});
 		rest.histories.set("stored-1", {
 			durableSessionId: "stored-1",
+			view: "durable",
 			messages: [
 				{
 					id: "assistant-1",
+					canonicalMessageId: "assistant-1",
+					compactionGeneration: 0,
+					active: true,
+					compacted: false,
+					displayKind: null,
+					displayMetadata: null,
 					turnId: "turn-1",
 					role: "assistant",
 					text: "Canonical persisted update",

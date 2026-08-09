@@ -21,7 +21,8 @@ export class HermesRestError extends Error {
 	constructor(
 		message: string,
 		readonly kind: HermesRestErrorKind,
-		readonly status: number | null = null
+		readonly status: number | null = null,
+		readonly backendHint: string | null = null
 	) {
 		super(message);
 		this.name = "HermesRestError";
@@ -64,6 +65,40 @@ function stringValue(...values: unknown[]): string | null {
 function safeMessage(value: unknown, fallback: string): string {
 	const sanitized = sanitizeHermesPayload(value instanceof Error ? value.message : value);
 	return typeof sanitized === "string" && sanitized ? sanitized : fallback;
+}
+
+function safeBackendHint(value: unknown): string | null {
+	const sanitized = sanitizeHermesPayload(value);
+	try {
+		const hint = typeof sanitized === "string" ? sanitized : JSON.stringify(sanitized);
+		return hint ? hint.slice(0, 2_000) : null;
+	} catch {
+		return null;
+	}
+}
+
+function isUnsupportedDurableView(error: unknown): boolean {
+	if (
+		!(error instanceof HermesRestError) ||
+		!error.status ||
+		![400, 422].includes(error.status) ||
+		!error.backendHint
+	) {
+		return false;
+	}
+	const hint = error.backendHint.toLocaleLowerCase();
+	return (
+		hint.includes("view") &&
+		[
+			"invalid",
+			"unknown",
+			"unsupported",
+			"unrecognized",
+			"unexpected",
+			"extra_forbidden",
+			"not permitted",
+		].some((word) => hint.includes(word))
+	);
 }
 
 function dashboardBaseUrl(value: string): URL {
@@ -184,6 +219,56 @@ export class HermesRestClient {
 		profileId = this.profileId,
 		signal?: AbortSignal
 	): Promise<HermesSessionHistory> {
+		try {
+			return await this.getDurableTranscript(durableSessionId, profileId, signal);
+		} catch (error) {
+			if (!isUnsupportedDurableView(error)) throw error;
+			return await this.getActiveTranscript(durableSessionId, profileId, signal);
+		}
+	}
+
+	private async getDurableTranscript(
+		durableSessionId: string,
+		profileId: string,
+		signal?: AbortSignal
+	): Promise<HermesSessionHistory> {
+		const pages: HermesSessionHistory["messages"][] = [];
+		let offset = 0;
+		let resolvedDurableSessionId = durableSessionId;
+		for (let pageIndex = 0; pageIndex < this.maxTranscriptPages; pageIndex++) {
+			const payload = await this.requestJson(
+				`/api/sessions/${encodeURIComponent(durableSessionId)}/messages`,
+				{
+					profile: profileId,
+					limit: "500",
+					offset: String(offset),
+					order: "oldest",
+					view: "durable",
+				},
+				signal
+			);
+			if (record(payload)?.["view"] !== "durable") {
+				return await this.getActiveTranscript(durableSessionId, profileId, signal);
+			}
+			const page = normalizeHermesMessagePage(payload, 500);
+			resolvedDurableSessionId = page.durableSessionId;
+			pages.push(page.messages);
+			offset += page.returned;
+			if (page.returned < 500) {
+				return normalizeHermesHistory(resolvedDurableSessionId, pages.flat(), "durable");
+			}
+		}
+		throw new HermesRestError(
+			"Hermes transcript exceeded the configured pagination bound",
+			"transcript-too-large"
+		);
+	}
+
+	private async getActiveTranscript(
+		durableSessionId: string,
+		profileId: string,
+		signal?: AbortSignal
+	): Promise<HermesSessionHistory> {
 		const pages: HermesSessionHistory["messages"][] = [];
 		let offset = 0;
 		let resolvedDurableSessionId = durableSessionId;
@@ -204,7 +289,7 @@ export class HermesRestClient {
 			if (!page.hasMore) {
 				const byId = new Map<string, HermesSessionHistory["messages"][number]>();
 				for (const message of pages.flat()) byId.set(message.id, message);
-				return normalizeHermesHistory(resolvedDurableSessionId, [...byId.values()]);
+				return normalizeHermesHistory(resolvedDurableSessionId, [...byId.values()], "active");
 			}
 		}
 		throw new HermesRestError(
@@ -252,6 +337,12 @@ export class HermesRestClient {
 		}
 
 		if (!response.ok) {
+			let backendHint: string | null = null;
+			try {
+				backendHint = safeBackendHint(await response.clone().json());
+			} catch {
+				// The HTTP status remains authoritative when the error body is not JSON.
+			}
 			const kind: HermesRestErrorKind =
 				response.status === 401 || response.status === 403
 					? "unauthorized"
@@ -263,7 +354,8 @@ export class HermesRestClient {
 					? "Hermes Dashboard authentication failed"
 					: `Hermes Dashboard request failed (${response.status})`,
 				kind,
-				response.status
+				response.status,
+				backendHint
 			);
 		}
 

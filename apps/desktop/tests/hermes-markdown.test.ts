@@ -13,6 +13,12 @@ import type { HermesTranscriptMessage } from "../src/shared/hermes";
 
 const message = (overrides: Partial<HermesTranscriptMessage>): HermesTranscriptMessage => ({
 	id: "message-1",
+	canonicalMessageId: null,
+	compactionGeneration: null,
+	active: null,
+	compacted: null,
+	displayKind: null,
+	displayMetadata: null,
 	turnId: null,
 	role: "assistant",
 	text: "",

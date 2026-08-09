@@ -103,6 +103,50 @@ describe("stock Hermes protocol adapter", () => {
 		expect("turnResults" in page).toBe(false);
 	});
 
+	test("normalizes durable physical identity and structural display metadata", () => {
+		const page = normalizeHermesMessagePage(
+			{
+				session_id: "durable-session",
+				view: "durable",
+				messages: [
+					{
+						id: 91,
+						canonical_message_id: 7,
+						compaction_generation: 2,
+						active: false,
+						compacted: true,
+						display_kind: "compaction_summary",
+						display_metadata: {
+							compaction: { generation: 2, summary_type: "standalone" },
+							token: "must-not-reach-renderer",
+						},
+						role: "user",
+						content: "Structural summary",
+						timestamp: 1_786_291_200,
+					},
+				],
+			},
+			500
+		);
+
+		expect(page.messages[0]).toEqual(
+			expect.objectContaining({
+				id: "91",
+				canonicalMessageId: "7",
+				compactionGeneration: 2,
+				active: false,
+				compacted: true,
+				displayKind: "compaction_summary",
+				displayMetadata: {
+					compaction: { generation: 2, summary_type: "standalone" },
+				},
+				role: "user",
+				text: "Structural summary",
+			})
+		);
+		expect(JSON.stringify(page.messages[0]?.displayMetadata)).not.toContain("must-not-reach");
+	});
+
 	test("keeps stock runtime and durable session identities distinct", () => {
 		const created = normalizeHermesSessionBinding({
 			session_id: "runtime-created",

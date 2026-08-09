@@ -5,6 +5,7 @@ import {
 	buildHermesTicketChoices,
 	classifyHermesTranscriptMessage,
 	createHermesLiveState,
+	deriveHermesCanonicalTimeline,
 	filterHermesSessions,
 	groupHermesSessions,
 	hermesActivitySummary,
@@ -71,6 +72,12 @@ const event = (type: string, payload: Partial<HermesRuntimeEvent> = {}): HermesR
 
 const message = (overrides: Partial<HermesTranscriptMessage> = {}): HermesTranscriptMessage => ({
 	id: "assistant-1",
+	canonicalMessageId: null,
+	compactionGeneration: null,
+	active: null,
+	compacted: null,
+	displayKind: null,
+	displayMetadata: null,
 	turnId: "turn-1",
 	role: "assistant",
 	text: "Complete update",
@@ -82,6 +89,81 @@ const message = (overrides: Partial<HermesTranscriptMessage> = {}): HermesTransc
 });
 
 describe("Hermes renderer view model", () => {
+	test("deduplicates retained physical copies by canonical identity across compactions", () => {
+		const timeline = deriveHermesCanonicalTimeline([
+			message({
+				id: "physical-original",
+				canonicalMessageId: "canonical-question",
+				compactionGeneration: 0,
+				active: false,
+				compacted: true,
+				role: "user",
+				text: "Original question",
+			}),
+			message({ id: "answer-original", canonicalMessageId: "canonical-answer" }),
+			message({
+				id: "summary-one",
+				canonicalMessageId: "canonical-summary-one",
+				displayKind: "compaction_summary",
+				text: "First summary",
+			}),
+			message({
+				id: "physical-copy-one",
+				canonicalMessageId: "canonical-question",
+				compactionGeneration: 1,
+				active: false,
+				compacted: true,
+				role: "user",
+				text: "Copy content must not replace the first row",
+			}),
+			message({
+				id: "summary-two",
+				canonicalMessageId: "canonical-summary-two",
+				displayKind: "compaction_summary",
+				text: "Second summary",
+			}),
+			message({
+				id: "physical-copy-two",
+				canonicalMessageId: "canonical-question",
+				compactionGeneration: 2,
+				active: true,
+				compacted: false,
+				role: "user",
+				text: "Another retained copy",
+			}),
+			message({ id: "new-tail", canonicalMessageId: "canonical-tail", text: "New tail" }),
+		]);
+
+		expect(timeline.map((entry) => entry.id)).toEqual([
+			"physical-original",
+			"answer-original",
+			"summary-one",
+			"summary-two",
+			"new-tail",
+		]);
+		expect(timeline[0]).toMatchObject({
+			text: "Original question",
+			physicalRows: [
+				{ id: "physical-original", active: false, compacted: true, compactionGeneration: 0 },
+				{ id: "physical-copy-one", active: false, compacted: true, compactionGeneration: 1 },
+				{ id: "physical-copy-two", active: true, compacted: false, compactionGeneration: 2 },
+			],
+		});
+	});
+
+	test("keeps same-content physical rows distinct when canonical identity is absent", () => {
+		const timeline = deriveHermesCanonicalTimeline([
+			message({ id: "same-one", canonicalMessageId: null, text: "Repeated" }),
+			message({ id: "same-two", canonicalMessageId: null, text: "Repeated" }),
+		]);
+
+		expect(timeline.map((entry) => entry.id)).toEqual(["same-one", "same-two"]);
+		expect(timeline.map((entry) => entry.physicalRows)).toEqual([
+			[expect.objectContaining({ id: "same-one" })],
+			[expect.objectContaining({ id: "same-two" })],
+		]);
+	});
+
 	test("projects only user turns and substantive assistant prose into conversation", () => {
 		const canonical = [
 			message({ id: "system-1", role: "system", text: "Session resumed" }),
@@ -165,6 +247,53 @@ describe("Hermes renderer view model", () => {
 			kind: "message",
 			text: '"System: quoted prose"',
 		});
+	});
+
+	test("classifies only structural display metadata as ordered compaction events", () => {
+		const firstSummary = message({
+			id: "summary-one",
+			role: "user",
+			text: "First compacted context",
+			compactionGeneration: 1,
+			displayKind: "compaction_summary",
+			displayMetadata: {
+				compaction: { generation: 1, summary_type: "standalone" },
+			},
+		});
+		const secondSummary = message({
+			id: "summary-two",
+			text: "Second compacted context",
+			compactionGeneration: 2,
+			displayKind: "compaction_summary",
+			displayMetadata: {
+				compaction: { generation: 2, summary_type: "incremental" },
+			},
+		});
+		const prefixOnly = message({
+			id: "prefix-only",
+			text: "Summary of the conversation so far: ordinary assistant prose",
+		});
+
+		expect(classifyHermesTranscriptMessage(firstSummary)).toMatchObject({
+			kind: "compaction",
+			text: "First compacted context",
+		});
+		expect(classifyHermesTranscriptMessage(prefixOnly).kind).toBe("assistant");
+		expect(
+			projectHermesTranscript([
+				message({ id: "before", role: "user", text: "Before" }),
+				firstSummary,
+				message({ id: "between", text: "Between" }),
+				secondSummary,
+				prefixOnly,
+			]).map((item) => [item.kind, item.id])
+		).toEqual([
+			["message", "user:before"],
+			["compaction", "compaction:summary-one"],
+			["message", "assistant:between"],
+			["compaction", "compaction:summary-two"],
+			["message", "assistant:prefix-only"],
+		]);
 	});
 
 	test("defines overflow containment for the canvas while isolating technical horizontal scroll", () => {
@@ -284,6 +413,47 @@ describe("Hermes renderer view model", () => {
 				repeated
 			)
 		).toEqual([expect.objectContaining({ id: "assistant:live-complete:turn-b" })]);
+	});
+
+	test("keeps a live reply when durable refresh reveals an equivalent archived physical row", () => {
+		const refreshed = deriveHermesCanonicalTimeline([
+			message({
+				id: "archived-origin",
+				canonicalMessageId: "canonical-old-reply",
+				active: false,
+				compacted: true,
+				turnId: "turn-old",
+				text: "Same reply",
+			}),
+			message({
+				id: "retained-active-copy",
+				canonicalMessageId: "canonical-old-reply",
+				active: true,
+				compacted: false,
+				turnId: "turn-old",
+				text: "Same reply",
+			}),
+			message({
+				id: "summary-after-old-reply",
+				canonicalMessageId: "canonical-summary",
+				displayKind: "compaction_summary",
+				text: "Earlier context",
+			}),
+		]);
+
+		const pending = projectHermesLiveCompletions(refreshed, [
+			{
+				turnId: "turn-new",
+				text: "Same reply",
+				canonicalMessageIds: ["retained-active-copy"],
+			},
+		]);
+
+		expect(refreshed.map((entry) => entry.id)).toEqual([
+			"archived-origin",
+			"summary-after-old-reply",
+		]);
+		expect(pending).toEqual([expect.objectContaining({ id: "assistant:live-complete:turn-new" })]);
 	});
 
 	test("adds multiple opaque attachments and removes one before send", () => {

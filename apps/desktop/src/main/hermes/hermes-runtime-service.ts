@@ -454,7 +454,13 @@ export class HermesRuntimeService {
 		const durableSessionId = this.resolveDurableId(runtime, hermesSessionId);
 		const draftBinding = this.bindingFor(runtime, durableSessionId);
 		if (draftBinding && !draftBinding.persisted) {
-			return runtime.histories.get(durableSessionId) ?? { durableSessionId, messages: [] };
+			return (
+				runtime.histories.get(durableSessionId) ?? {
+					durableSessionId,
+					view: "active",
+					messages: [],
+				}
+			);
 		}
 		const profileId = this.profileFor(runtime, durableSessionId);
 		const history = await runtime.rest.getTranscript(durableSessionId, profileId);
@@ -492,9 +498,16 @@ export class HermesRuntimeService {
 		this.installBinding(runtime, binding);
 		runtime.histories.set(binding.durableSessionId, {
 			durableSessionId: binding.durableSessionId,
+			view: "active",
 			messages: [
 				{
 					id: `draft-${binding.durableSessionId}`,
+					canonicalMessageId: null,
+					compactionGeneration: null,
+					active: null,
+					compacted: null,
+					displayKind: null,
+					displayMetadata: null,
 					turnId: null,
 					role: "user",
 					text: input.initialPrompt,
