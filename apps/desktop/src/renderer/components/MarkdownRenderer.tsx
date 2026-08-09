@@ -6,7 +6,13 @@ import remarkGfm from "remark-gfm";
 interface MarkdownRendererProps {
 	content: string;
 	className?: string;
+	components?: Components;
+	skipHtml?: boolean;
+	syntaxHighlighting?: boolean;
+	variant?: "default" | "unstyled";
 }
+
+export type MarkdownComponents = Components;
 
 const MARKDOWN_COMPONENTS: Components = {
 	a: ({ href, children, ...props }) => (
@@ -26,13 +32,22 @@ const MARKDOWN_COMPONENTS: Components = {
 export const MarkdownRenderer = memo(function MarkdownRenderer({
 	content,
 	className,
+	components,
+	skipHtml = false,
+	syntaxHighlighting = true,
+	variant = "default",
 }: MarkdownRendererProps) {
+	const defaultVariant = variant === "default";
 	return (
-		<div className={`markdown-body ${className ?? ""}`} style={{ lineHeight: 1.7, fontSize: 13 }}>
+		<div
+			className={defaultVariant ? `markdown-body ${className ?? ""}` : className}
+			style={defaultVariant ? { lineHeight: 1.7, fontSize: 13 } : undefined}
+		>
 			<ReactMarkdown
 				remarkPlugins={[remarkGfm]}
-				rehypePlugins={[rehypeHighlight]}
-				components={MARKDOWN_COMPONENTS}
+				rehypePlugins={syntaxHighlighting ? [rehypeHighlight] : []}
+				components={{ ...MARKDOWN_COMPONENTS, ...components }}
+				skipHtml={skipHtml}
 			>
 				{content}
 			</ReactMarkdown>

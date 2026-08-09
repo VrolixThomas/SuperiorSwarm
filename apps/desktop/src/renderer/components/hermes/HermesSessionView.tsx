@@ -31,6 +31,7 @@ import { useTabStore } from "../../stores/tab-store";
 import { trpc } from "../../trpc/client";
 import { HermesComposerAttachments } from "./HermesComposerAttachments";
 import { HermesApprovalCard, HermesClarificationChoices } from "./HermesInteractionCards";
+import { HermesMarkdown } from "./HermesMarkdown";
 import { HermesActivityGroup, HermesTranscript } from "./HermesTranscript";
 
 function scrollToLatest(element: HTMLDivElement, smooth: boolean): void {
@@ -698,11 +699,11 @@ export function HermesSessionView() {
 					)}
 					{live.streamingText.trim() && (
 						<div
-							className={`${HERMES_CHAT_LAYOUT_CLASSES.assistantColumn} mt-7 whitespace-pre-wrap text-[15px] leading-[22px] text-[var(--text-secondary)] ${HERMES_CHAT_OVERFLOW_CLASSES.arbitraryContent}`}
+							className={`${HERMES_CHAT_LAYOUT_CLASSES.assistantColumn} mt-7 text-[15px] leading-[22px] text-[var(--text-secondary)] ${HERMES_CHAT_OVERFLOW_CLASSES.arbitraryContent}`}
 							data-hermes-align="frame-start"
 							aria-live="polite"
 						>
-							{live.streamingText}
+							<HermesMarkdown content={live.streamingText} />
 						</div>
 					)}
 				</div>

@@ -8,6 +8,7 @@ import {
 	type HermesTranscriptProjectionItem,
 	hermesUserMessageDisclosure,
 } from "../../hermes/hermes-view-model";
+import { HermesMarkdown } from "./HermesMarkdown";
 
 function rawActivityDetails(message: HermesTranscriptMessage): string {
 	return JSON.stringify(
@@ -104,7 +105,7 @@ function HermesUserMessage({ item }: { item: HermesProjectedMessage }) {
 					id={contentId}
 					className={disclosure.collapsed ? "relative max-h-[240px] overflow-hidden" : undefined}
 				>
-					<div className="whitespace-pre-wrap">{item.text}</div>
+					<HermesMarkdown content={item.text} />
 					{disclosure.collapsed && (
 						<div
 							aria-hidden="true"
@@ -145,7 +146,7 @@ export function HermesTranscript({ items }: { items: HermesTranscriptProjectionI
 						data-hermes-turn="assistant"
 						data-hermes-align="frame-start"
 					>
-						<div className="whitespace-pre-wrap">{item.text}</div>
+						<HermesMarkdown content={item.text} />
 					</div>
 				);
 			})}

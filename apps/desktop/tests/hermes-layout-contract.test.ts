@@ -25,6 +25,7 @@ describe("Hermes layout contract", () => {
 		expect(view).toContain("onPaste");
 		expect(view).toContain("Use the paperclip to attach files");
 		expect(view).toContain('aria-label={live.running ? "Stop response" : "Send message"}');
+		expect(view).toContain("<HermesMarkdown content={live.streamingText} />");
 		expect(view).not.toMatch(/transcriptOwner[^\n]*overflow-x-auto/);
 
 		expect(HERMES_CHAT_LAYOUT_CLASSES.gutter).toContain("px-4");

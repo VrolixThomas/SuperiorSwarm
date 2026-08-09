@@ -99,7 +99,7 @@ describe("Hermes transcript", () => {
 		expect(html).toContain("Show full message");
 		expect(html).toContain("max-h-[240px]");
 		expect(html).toContain("bg-gradient-to-t");
-		expect(html).toContain(canonicalText);
+		expect(html).toContain(canonicalText.trimEnd());
 		expect(html).toContain("canonical.txt");
 		expect(html).toContain("@file:attachments/canonical.txt");
 		expect(html).not.toContain("SuperiorSwarm attachments");
