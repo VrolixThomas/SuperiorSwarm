@@ -65,7 +65,7 @@ export const HERMES_CHAT_OVERFLOW_CLASSES = {
 
 export const HERMES_CHAT_LAYOUT_CLASSES = {
 	gutter: "px-4 md:px-6 lg:px-12 2xl:px-16",
-	frame: "mr-auto w-full min-w-0 max-w-[1120px]",
+	frame: "w-full min-w-0 max-w-none",
 	assistantColumn: "mr-auto w-full min-w-0 max-w-[66ch]",
 	activityColumn: "mr-auto w-full min-w-0 max-w-[66ch]",
 	composerColumn: "mx-auto w-full min-w-0 max-w-[800px]",

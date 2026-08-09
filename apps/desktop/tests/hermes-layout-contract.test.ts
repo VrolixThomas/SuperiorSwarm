@@ -6,7 +6,7 @@ async function source(path: string): Promise<string> {
 }
 
 describe("Hermes layout contract", () => {
-	test("left-anchors a broad transcript frame and keeps transcript overflow vertical", async () => {
+	test("uses the full pane width for the transcript frame and keeps overflow vertical", async () => {
 		const view = await source("components/hermes/HermesSessionView.tsx");
 
 		expect(view).toContain("HERMES_CHAT_OVERFLOW_CLASSES.transcriptOwner");
@@ -31,8 +31,9 @@ describe("Hermes layout contract", () => {
 		expect(HERMES_CHAT_LAYOUT_CLASSES.gutter).toContain("md:px-6");
 		expect(HERMES_CHAT_LAYOUT_CLASSES.gutter).toContain("lg:px-12");
 		expect(HERMES_CHAT_LAYOUT_CLASSES.gutter).toContain("2xl:px-16");
-		expect(HERMES_CHAT_LAYOUT_CLASSES.frame).toContain("mr-auto");
-		expect(HERMES_CHAT_LAYOUT_CLASSES.frame).toContain("max-w-[1120px]");
+		expect(HERMES_CHAT_LAYOUT_CLASSES.frame).toBe("w-full min-w-0 max-w-none");
+		expect(HERMES_CHAT_LAYOUT_CLASSES.frame).not.toContain("max-w-[840px]");
+		expect(HERMES_CHAT_LAYOUT_CLASSES.frame).not.toContain("max-w-[1120px]");
 		expect(HERMES_CHAT_LAYOUT_CLASSES.frame).not.toContain("mx-auto");
 		expect(HERMES_CHAT_LAYOUT_CLASSES.assistantColumn).toContain("max-w-[66ch]");
 		expect(HERMES_CHAT_LAYOUT_CLASSES.assistantColumn).toContain("mr-auto");
