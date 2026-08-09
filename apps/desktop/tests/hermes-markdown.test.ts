@@ -28,7 +28,7 @@ describe("Hermes Markdown", () => {
 		const source = '{"large":9007199254740993,"exponent":1e+3,"nested":{"ok":true}}';
 
 		expect(prepareHermesCode(source, "JSON")).toEqual({
-			code: [
+			display: [
 				"{",
 				'  "large": 9007199254740993,',
 				'  "exponent": 1e+3,',
@@ -40,17 +40,44 @@ describe("Hermes Markdown", () => {
 			jsonStatus: "valid",
 			label: "JSON",
 			language: "json",
+			source,
 		});
+	});
+
+	test("bounds valid deeply nested JSON formatting with a verbatim fallback", () => {
+		const depth = 2_000;
+		const source = `${"[".repeat(depth)}0${"]".repeat(depth)}`;
+		let prepared: ReturnType<typeof prepareHermesCode> | undefined;
+
+		expect(() => {
+			prepared = prepareHermesCode(source, "json");
+		}).not.toThrow();
+		expect(prepared?.jsonStatus).toBe("valid");
+		expect(prepared?.source).toBe(source);
+		expect(prepared?.display.length).toBeLessThanOrEqual(source.length * 2);
+	});
+
+	test("keeps the complete original JSON source separate from its pretty display for copying", async () => {
+		const source = '{\n\t"answer" : 42,\n "items" : [1, 2]\n}\n';
+		const prepared = prepareHermesCode(source, "json");
+		const componentSource = await Bun.file(
+			new URL("../src/renderer/components/hermes/HermesMarkdown.tsx", import.meta.url)
+		).text();
+
+		expect(prepared.source).toBe(source);
+		expect(prepared.display).not.toBe(source);
+		expect(componentSource).toContain("navigator.clipboard.writeText(presentation.source)");
 	});
 
 	test("keeps invalid JSON verbatim and marks it invalid", () => {
 		const source = '{\n  "answer": 42,\n  trailing: true\n}\n';
 
 		expect(prepareHermesCode(source, "json")).toEqual({
-			code: source,
+			display: source,
 			jsonStatus: "invalid",
 			label: "JSON",
 			language: "json",
+			source,
 		});
 		const html = renderToStaticMarkup(
 			createElement(HermesMarkdown, { content: `\`\`\`json\n${source}\`\`\`` })
@@ -76,6 +103,10 @@ describe("Hermes Markdown", () => {
 		expect(classifyHermesMarkdownLink("http://127.0.0.1:8080/status")).toEqual({
 			kind: "external",
 			href: "http://127.0.0.1:8080/status",
+		});
+		expect(classifyHermesMarkdownLink("HTTP://EXAMPLE.COM/Docs?q=1")).toEqual({
+			kind: "external",
+			href: "http://example.com/Docs?q=1",
 		});
 		for (const href of [
 			"javascript:alert(1)",

@@ -103,6 +103,7 @@ function HermesUserMessage({ item }: { item: HermesProjectedMessage }) {
 				)}
 				<div
 					id={contentId}
+					inert={disclosure.collapsed ? true : undefined}
 					className={disclosure.collapsed ? "relative max-h-[240px] overflow-hidden" : undefined}
 				>
 					<HermesMarkdown content={item.text} />

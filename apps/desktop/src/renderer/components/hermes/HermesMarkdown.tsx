@@ -11,11 +11,16 @@ export type HermesMarkdownLinkClassification =
 	| { kind: "blocked" };
 
 export interface HermesPreparedCode {
-	code: string;
+	display: string;
 	jsonStatus: "valid" | "invalid" | null;
 	label: string;
 	language: string;
+	source: string;
 }
+
+const HERMES_JSON_FORMAT_MAX_DEPTH = 64;
+const HERMES_JSON_FORMAT_MAX_OUTPUT_LENGTH = 1_000_000;
+const HERMES_JSON_FORMAT_MAX_OUTPUT_RATIO = 4;
 
 const LANGUAGE_ALIASES: Readonly<Record<string, string>> = {
 	bash: "shell",
@@ -72,17 +77,35 @@ function adjacentSignificantCharacter(
 	return null;
 }
 
-function formatValidJson(source: string): string {
-	let result = "";
+function formatValidJson(source: string): string | null {
+	const outputBudget = Math.min(
+		HERMES_JSON_FORMAT_MAX_OUTPUT_LENGTH,
+		source.length * HERMES_JSON_FORMAT_MAX_OUTPUT_RATIO
+	);
+	const chunks: string[] = [];
+	let outputLength = 0;
 	let depth = 0;
 	let inString = false;
 	let escaped = false;
+	const append = (value: string): boolean => {
+		if (value.length > outputBudget - outputLength) return false;
+		chunks.push(value);
+		outputLength += value.length;
+		return true;
+	};
+	const appendLineAndIndent = (indentDepth: number): boolean => {
+		const indentationLength = indentDepth * 2;
+		if (1 + indentationLength > outputBudget - outputLength) return false;
+		chunks.push("\n", "  ".repeat(indentDepth));
+		outputLength += 1 + indentationLength;
+		return true;
+	};
 
 	for (let index = 0; index < source.length; index += 1) {
 		const character = source[index];
 		if (character === undefined) continue;
 		if (inString) {
-			result += character;
+			if (!append(character)) return null;
 			if (escaped) {
 				escaped = false;
 			} else if (character === "\\") {
@@ -95,7 +118,7 @@ function formatValidJson(source: string): string {
 
 		if (character === '"') {
 			inString = true;
-			result += character;
+			if (!append(character)) return null;
 			continue;
 		}
 		if (/\s/.test(character)) continue;
@@ -103,11 +126,12 @@ function formatValidJson(source: string): string {
 		switch (character) {
 			case "{":
 			case "[": {
-				result += character;
+				if (!append(character)) return null;
 				depth += 1;
+				if (depth > HERMES_JSON_FORMAT_MAX_DEPTH) return null;
 				const closingCharacter = character === "{" ? "}" : "]";
 				if (adjacentSignificantCharacter(source, index, 1) !== closingCharacter) {
-					result += `\n${"  ".repeat(depth)}`;
+					if (!appendLineAndIndent(depth)) return null;
 				}
 				break;
 			}
@@ -116,23 +140,24 @@ function formatValidJson(source: string): string {
 				depth = Math.max(0, depth - 1);
 				const openingCharacter = character === "}" ? "{" : "[";
 				if (adjacentSignificantCharacter(source, index, -1) !== openingCharacter) {
-					result += `\n${"  ".repeat(depth)}`;
+					if (!appendLineAndIndent(depth)) return null;
 				}
-				result += character;
+				if (!append(character)) return null;
 				break;
 			}
-			case ",":
-				result += `,\n${"  ".repeat(depth)}`;
+			case ",": {
+				if (!append(",") || !appendLineAndIndent(depth)) return null;
 				break;
+			}
 			case ":":
-				result += ": ";
+				if (!append(": ")) return null;
 				break;
 			default:
-				result += character;
+				if (!append(character)) return null;
 		}
 	}
 
-	return result;
+	return chunks.join("");
 }
 
 export function prepareHermesCode(
@@ -142,19 +167,33 @@ export function prepareHermesCode(
 	const normalizedLanguage = normalizeHermesCodeLanguage(language);
 	const label = hermesCodeLanguageLabel(normalizedLanguage);
 	if (normalizedLanguage !== "json") {
-		return { code, jsonStatus: null, label, language: normalizedLanguage };
+		return {
+			display: code,
+			jsonStatus: null,
+			label,
+			language: normalizedLanguage,
+			source: code,
+		};
 	}
 
 	try {
 		JSON.parse(code);
+		const formatted = formatValidJson(code);
 		return {
-			code: formatValidJson(code),
+			display: formatted ?? code,
 			jsonStatus: "valid",
 			label,
 			language: normalizedLanguage,
+			source: code,
 		};
 	} catch {
-		return { code, jsonStatus: "invalid", label, language: normalizedLanguage };
+		return {
+			display: code,
+			jsonStatus: "invalid",
+			label,
+			language: normalizedLanguage,
+			source: code,
+		};
 	}
 }
 
@@ -167,7 +206,7 @@ export function classifyHermesMarkdownLink(
 		if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
 			return { kind: "blocked" };
 		}
-		return { kind: "external", href };
+		return { kind: "external", href: parsed.href };
 	} catch {
 		return { kind: "blocked" };
 	}
@@ -243,7 +282,7 @@ export function HermesCodeBlock({ code, language }: HermesCodeBlockProps) {
 
 	async function copyCode(): Promise<void> {
 		try {
-			await navigator.clipboard.writeText(presentation.code);
+			await navigator.clipboard.writeText(presentation.source);
 			setCopied(true);
 			if (copiedTimer.current !== null) clearTimeout(copiedTimer.current);
 			copiedTimer.current = setTimeout(() => setCopied(false), 1_500);
@@ -285,9 +324,9 @@ export function HermesCodeBlock({ code, language }: HermesCodeBlockProps) {
 				<pre className="w-max min-w-full p-3 font-[var(--font-mono)] text-[12px] leading-5 whitespace-pre selection:bg-[#0a84ff]/35 selection:text-white">
 					<code>
 						{presentation.jsonStatus === "valid" ? (
-							<HermesJsonCode code={presentation.code} />
+							<HermesJsonCode code={presentation.display} />
 						) : (
-							presentation.code
+							presentation.display
 						)}
 					</code>
 				</pre>

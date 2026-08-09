@@ -99,6 +99,14 @@ describe("Hermes transcript", () => {
 		expect(html).toContain("Show full message");
 		expect(html).toContain("max-h-[240px]");
 		expect(html).toContain("bg-gradient-to-t");
+		const collapsedContent = html.match(
+			/<div[^>]*id="hermes-user-message-user:user-disclosure"[^>]*>/
+		)?.[0];
+		const showFullMessageControl = html.match(/<button[^>]*>Show full message<\/button>/)?.[0];
+		expect(collapsedContent).toContain('inert=""');
+		expect(showFullMessageControl).toBeDefined();
+		expect(showFullMessageControl).not.toContain("inert");
+		expect(showFullMessageControl).not.toContain("disabled");
 		expect(html).toContain(canonicalText.trimEnd());
 		expect(html).toContain("canonical.txt");
 		expect(html).toContain("@file:attachments/canonical.txt");
