@@ -1,3 +1,4 @@
+import type { KeyboardEvent } from "react";
 import type {
 	HermesLinkedWorkspace,
 	HermesSessionHistory,
@@ -6,6 +7,23 @@ import type {
 } from "../../../shared/hermes";
 
 export type { HermesSessionPane } from "../../../shared/hermes";
+
+export function nextHermesSessionPane(
+	activePane: HermesSessionPane,
+	key: string
+): HermesSessionPane | null {
+	switch (key) {
+		case "ArrowLeft":
+		case "ArrowRight":
+			return activePane === "chat" ? "worktrees" : "chat";
+		case "Home":
+			return "chat";
+		case "End":
+			return "worktrees";
+		default:
+			return null;
+	}
+}
 
 export function resolveHermesWorkspaceSessionId(
 	selectedSessionId: string | null,
@@ -96,6 +114,16 @@ export function HermesSessionTabStrip({
 	worktreeCount: number;
 	onSelect: (pane: HermesSessionPane) => void;
 }) {
+	function handleKeyDown(event: KeyboardEvent<HTMLButtonElement>, pane: HermesSessionPane) {
+		const nextPane = nextHermesSessionPane(pane, event.key);
+		if (!nextPane) return;
+		event.preventDefault();
+		onSelect(nextPane);
+		event.currentTarget.parentElement
+			?.querySelector<HTMLButtonElement>(`#hermes-${nextPane}-tab`)
+			?.focus();
+	}
+
 	return (
 		<div
 			role="tablist"
@@ -108,7 +136,9 @@ export function HermesSessionTabStrip({
 				role="tab"
 				aria-selected={activePane === "chat"}
 				aria-controls="hermes-chat-panel"
+				tabIndex={activePane === "chat" ? 0 : -1}
 				onClick={() => onSelect("chat")}
+				onKeyDown={(event) => handleKeyDown(event, "chat")}
 				className={`rounded-[6px] px-2.5 py-1 text-[10px] font-medium ${
 					activePane === "chat"
 						? "bg-[var(--bg-overlay)] text-[var(--text)]"
@@ -123,7 +153,9 @@ export function HermesSessionTabStrip({
 				role="tab"
 				aria-selected={activePane === "worktrees"}
 				aria-controls="hermes-worktrees-panel"
+				tabIndex={activePane === "worktrees" ? 0 : -1}
 				onClick={() => onSelect("worktrees")}
+				onKeyDown={(event) => handleKeyDown(event, "worktrees")}
 				className={`flex items-center gap-1.5 rounded-[6px] px-2.5 py-1 text-[10px] font-medium ${
 					activePane === "worktrees"
 						? "bg-[var(--bg-overlay)] text-[var(--text)]"
@@ -211,6 +243,8 @@ export function HermesWorktreesPane({
 									{group.worktrees.map((link) => {
 										const missing = link.missing || !link.worktreePath;
 										const branch = link.branch ?? link.workspaceName ?? link.workspaceId;
+										const statusId = `hermes-worktree-${link.id}-status`;
+										const needsId = link.needs ? `hermes-worktree-${link.id}-needs` : null;
 										return (
 											<button
 												key={link.id}
@@ -218,35 +252,41 @@ export function HermesWorktreesPane({
 												data-worktree-id={link.workspaceId}
 												disabled={missing}
 												onClick={() => onOpen(link)}
-												aria-label={
-													missing
-														? `Missing or deleted worktree ${link.workspaceId}`
-														: `Open worktree ${branch}`
-												}
+												aria-describedby={[statusId, needsId].filter(Boolean).join(" ")}
 												className="min-w-0 rounded-[10px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 py-2.5 text-left hover:border-[var(--border-active)] hover:bg-[var(--bg-overlay)] disabled:cursor-not-allowed disabled:border-[var(--danger)]/20 disabled:bg-[var(--danger-subtle)]"
 											>
-												<div className="flex min-w-0 items-center gap-2">
+												<span className="flex min-w-0 items-center gap-2">
 													<span
 														className={`min-w-0 flex-1 truncate text-[12px] font-medium ${missing ? "text-[var(--danger)]" : "text-[var(--text)]"}`}
 													>
+														{!missing && <span className="sr-only">Branch: </span>}
 														{missing ? "Missing or deleted" : branch}
 													</span>
 													{!missing && (
 														<span
-															aria-label={`Phase: ${link.currentPhase ?? "idle"}`}
 															className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-medium capitalize ${phaseClasses(link.currentPhase)}`}
 														>
+															<span className="sr-only">Phase: </span>
 															{link.currentPhase ?? "idle"}
 														</span>
 													)}
-												</div>
-												<div className="mt-1 truncate text-[10px] text-[var(--text-quaternary)]">
+												</span>
+												<span
+													id={statusId}
+													className="mt-1 block truncate text-[10px] text-[var(--text-quaternary)]"
+												>
+													<span className="sr-only">
+														{missing ? "Missing worktree ID: " : "Status: "}
+													</span>
 													{missing ? link.workspaceId : (link.statusText ?? "No status update")}
-												</div>
+												</span>
 												{!missing && link.needs && (
-													<div className="mt-1 text-[10px] leading-4 text-[var(--warning)] [overflow-wrap:anywhere]">
+													<span
+														id={needsId ?? undefined}
+														className="mt-1 block text-[10px] leading-4 text-[var(--warning)] [overflow-wrap:anywhere]"
+													>
 														<span className="font-medium">Needs:</span> {link.needs}
-													</div>
+													</span>
 												)}
 											</button>
 										);

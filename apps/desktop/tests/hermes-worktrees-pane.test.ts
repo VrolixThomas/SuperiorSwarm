@@ -6,6 +6,7 @@ import {
 	HermesSessionTabStrip,
 	HermesWorktreesPane,
 	groupHermesWorktrees,
+	nextHermesSessionPane,
 	openHermesLinkedWorktree,
 	resolveHermesWorkspaceSessionId,
 } from "../src/renderer/components/hermes/HermesWorktreesPane";
@@ -61,7 +62,19 @@ describe("Hermes Worktrees pane", () => {
 		expect(html).toContain('aria-selected="true"');
 		expect(html).toContain('aria-controls="hermes-chat-panel"');
 		expect(html).toContain('aria-controls="hermes-worktrees-panel"');
+		expect(html).toMatch(/id="hermes-chat-tab"[^>]*tabindex="0"/);
+		expect(html).toMatch(/id="hermes-worktrees-tab"[^>]*tabindex="-1"/);
 		expect(html).toContain("3");
+	});
+
+	test("supports wrapped arrow and boundary-key tab selection", () => {
+		expect(nextHermesSessionPane("chat", "ArrowRight")).toBe("worktrees");
+		expect(nextHermesSessionPane("worktrees", "ArrowRight")).toBe("chat");
+		expect(nextHermesSessionPane("chat", "ArrowLeft")).toBe("worktrees");
+		expect(nextHermesSessionPane("worktrees", "ArrowLeft")).toBe("chat");
+		expect(nextHermesSessionPane("worktrees", "Home")).toBe("chat");
+		expect(nextHermesSessionPane("chat", "End")).toBe("worktrees");
+		expect(nextHermesSessionPane("chat", "Enter")).toBeNull();
 	});
 
 	test("groups every linked worktree by repository", () => {
@@ -143,6 +156,15 @@ describe("Hermes Worktrees pane", () => {
 		expect(html).toContain("CI token");
 		expect(html).toContain("Missing or deleted");
 		expect(html).toMatch(/workspace-missing[\s\S]*disabled/);
+		const card = html.match(/<button[^>]*data-worktree-id="workspace-1"[\s\S]*?<\/button>/)?.[0];
+		expect(card).toBeDefined();
+		expect(card).not.toContain("<div");
+		expect(card).not.toContain('aria-label="Open worktree');
+		expect(card).toContain("aria-describedby=");
+		expect(card).toContain("Branch:");
+		expect(card).toContain("Phase:");
+		expect(card).toContain("Status:");
+		expect(card).toContain("Needs:");
 	});
 
 	test("opens the exact worktree and preserves established terminal attachment behavior", () => {
