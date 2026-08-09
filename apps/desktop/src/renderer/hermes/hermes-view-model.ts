@@ -59,9 +59,16 @@ const RUNNING_TRANSCRIPT_STATUSES = new Set([
 export const HERMES_CHAT_OVERFLOW_CLASSES = {
 	ancestor: "min-w-0 overflow-hidden",
 	transcriptOwner: "min-h-0 min-w-0 overflow-x-hidden overflow-y-auto",
-	canvas: "mx-auto w-full min-w-0 max-w-[720px]",
 	arbitraryContent: "min-w-0 break-words [overflow-wrap:anywhere]",
 	technicalDetail: "max-h-64 min-w-0 overflow-x-auto overflow-y-auto",
+} as const;
+
+export const HERMES_CHAT_LAYOUT_CLASSES = {
+	gutter: "px-4 md:px-6 lg:px-12 2xl:px-16",
+	frame: "mr-auto w-full min-w-0 max-w-[1120px]",
+	assistantColumn: "mr-auto w-full min-w-0 max-w-[66ch]",
+	composerColumn: "mr-auto w-full min-w-0 max-w-[800px]",
+	userBubble: "ml-auto w-fit max-w-[min(640px,76%)]",
 } as const;
 
 export type HermesTranscriptClassification =

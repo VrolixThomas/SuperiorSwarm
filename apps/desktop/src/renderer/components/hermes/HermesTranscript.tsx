@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { HermesTranscriptMessage } from "../../../shared/hermes";
 import {
+	HERMES_CHAT_LAYOUT_CLASSES,
 	HERMES_CHAT_OVERFLOW_CLASSES,
 	type HermesProjectedActivity,
 	type HermesTranscriptProjectionItem,
@@ -31,7 +32,8 @@ export function HermesActivityGroup({ activity }: { activity: HermesProjectedAct
 			open={expanded}
 			onToggle={(event) => setExpanded(event.currentTarget.open)}
 			aria-label={activity.summary}
-			className={`group min-w-0 rounded-[10px] border px-3 py-2 text-[11px] ${
+			data-hermes-align="frame-start"
+			className={`${HERMES_CHAT_LAYOUT_CLASSES.assistantColumn} group rounded-[10px] border px-3 py-2 text-[11px] ${
 				activity.status === "failed"
 					? "border-[var(--danger)]/20 bg-[var(--danger-subtle)] text-[var(--danger)]"
 					: activity.status === "running"
@@ -79,14 +81,15 @@ export function HermesTranscript({ items }: { items: HermesTranscriptProjectionI
 					return (
 						<div key={item.id} className="flex min-w-0 justify-end" data-hermes-turn="user">
 							<div
-								className={`w-fit max-w-[min(560px,78%)] rounded-[16px] rounded-br-[5px] border border-[var(--accent)]/15 bg-[var(--accent-subtle)] px-3.5 py-2.5 text-[14px] leading-5 text-[var(--text)] ${HERMES_CHAT_OVERFLOW_CLASSES.arbitraryContent}`}
+								data-hermes-user-bubble="true"
+								className={`${HERMES_CHAT_LAYOUT_CLASSES.userBubble} rounded-[16px] rounded-br-[5px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3.5 py-2.5 text-[14px] leading-5 text-[var(--text)] ${HERMES_CHAT_OVERFLOW_CLASSES.arbitraryContent}`}
 							>
 								{item.attachments.length > 0 && (
 									<div className="mb-2 flex min-w-0 flex-wrap justify-end gap-1.5">
 										{item.attachments.map((attachment) => (
 											<div
 												key={attachment.id}
-												className="max-w-full min-w-0 rounded-[7px] border border-[var(--accent)]/15 bg-[var(--bg-base)]/35 px-2 py-1 text-left text-[10px] leading-4 text-[var(--text-secondary)] [overflow-wrap:anywhere]"
+												className="max-w-full min-w-0 rounded-[7px] border border-[var(--border-subtle)] bg-[var(--bg-base)]/45 px-2 py-1 text-left text-[10px] leading-4 text-[var(--text-secondary)] [overflow-wrap:anywhere]"
 											>
 												<div className="font-medium">{attachment.name}</div>
 												{attachment.refText && (
@@ -106,8 +109,9 @@ export function HermesTranscript({ items }: { items: HermesTranscriptProjectionI
 				return (
 					<div
 						key={item.id}
-						className={`max-w-[66ch] text-[15px] leading-[22px] text-[var(--text-secondary)] ${HERMES_CHAT_OVERFLOW_CLASSES.arbitraryContent}`}
+						className={`${HERMES_CHAT_LAYOUT_CLASSES.assistantColumn} text-[15px] leading-[22px] text-[var(--text-secondary)] ${HERMES_CHAT_OVERFLOW_CLASSES.arbitraryContent}`}
 						data-hermes-turn="assistant"
+						data-hermes-align="frame-start"
 					>
 						<div className="whitespace-pre-wrap">{item.text}</div>
 					</div>

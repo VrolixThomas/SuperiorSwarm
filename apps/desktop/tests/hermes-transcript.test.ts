@@ -18,7 +18,7 @@ const message = (overrides: Partial<HermesTranscriptMessage>): HermesTranscriptM
 });
 
 describe("Hermes transcript", () => {
-	test("renders user bubbles, unboxed assistant prose, and no role labels", () => {
+	test("left-aligns assistant prose and right-aligns neutral user bubbles within the frame", () => {
 		const html = renderToStaticMarkup(
 			createElement(HermesTranscript, {
 				items: projectHermesTranscript([
@@ -30,9 +30,16 @@ describe("Hermes transcript", () => {
 
 		expect(html).toContain('data-hermes-turn="user"');
 		expect(html).toContain('data-hermes-turn="assistant"');
+		expect(html).toContain('data-hermes-align="frame-start"');
 		expect(html).toContain("max-w-[66ch]");
+		expect(html).toContain("ml-auto");
+		expect(html).toContain("max-w-[min(640px,76%)]");
 		expect(html).toContain("A compact request");
 		expect(html).toContain("A calm, readable response");
+		const userBubble = html.match(/<div[^>]*data-hermes-user-bubble="true"[^>]*>/)?.[0];
+		expect(userBubble).toContain("bg-[var(--bg-elevated)]");
+		expect(userBubble).toContain("border-[var(--border-subtle)]");
+		expect(userBubble).not.toContain("--accent");
 		expect(html).not.toContain(">USER<");
 		expect(html).not.toContain(">ASSISTANT<");
 	});
@@ -104,6 +111,8 @@ describe("Hermes transcript", () => {
 
 		expect(html.match(/<details/g)).toHaveLength(2);
 		expect(html).toContain("Ran 1 action");
+		expect(html).toContain('data-hermes-align="frame-start"');
+		expect(html).toContain("max-w-[66ch]");
 		expect(html).toContain("Raw details");
 		expect(html).toContain("&lt;script&gt;unsafe()&lt;/script&gt;");
 		expect(html).not.toContain("<script>");

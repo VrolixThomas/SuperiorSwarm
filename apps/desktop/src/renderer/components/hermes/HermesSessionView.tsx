@@ -13,6 +13,7 @@ import {
 } from "../../hermes/hermes-binding-lifecycle";
 import { isHermesChatNearBottom, shouldAnchorHermesChat } from "../../hermes/hermes-chat-scroll";
 import {
+	HERMES_CHAT_LAYOUT_CLASSES,
 	HERMES_CHAT_OVERFLOW_CLASSES,
 	applyHermesEvent,
 	createHermesLiveState,
@@ -673,9 +674,12 @@ export function HermesSessionView() {
 					followingTranscript.current = following;
 					setShowJumpToLatest(!following);
 				}}
-				className={`${HERMES_CHAT_OVERFLOW_CLASSES.transcriptOwner} flex-1 px-4 py-6 sm:px-6 sm:py-7 xl:px-8`}
+				className={`${HERMES_CHAT_OVERFLOW_CLASSES.transcriptOwner} ${HERMES_CHAT_LAYOUT_CLASSES.gutter} flex-1 py-6 sm:py-7`}
 			>
-				<div className={`${HERMES_CHAT_OVERFLOW_CLASSES.canvas} pb-6`}>
+				<div
+					className={`${HERMES_CHAT_LAYOUT_CLASSES.frame} pb-6`}
+					data-hermes-alignment-frame="transcript"
+				>
 					{history.isLoading && (
 						<div className="py-8 text-center text-[12px] text-[var(--text-quaternary)]">
 							Loading canonical Hermes history…
@@ -694,7 +698,8 @@ export function HermesSessionView() {
 					)}
 					{live.streamingText.trim() && (
 						<div
-							className={`mt-7 max-w-[66ch] whitespace-pre-wrap text-[15px] leading-[22px] text-[var(--text-secondary)] ${HERMES_CHAT_OVERFLOW_CLASSES.arbitraryContent}`}
+							className={`${HERMES_CHAT_LAYOUT_CLASSES.assistantColumn} mt-7 whitespace-pre-wrap text-[15px] leading-[22px] text-[var(--text-secondary)] ${HERMES_CHAT_OVERFLOW_CLASSES.arbitraryContent}`}
+							data-hermes-align="frame-start"
 							aria-live="polite"
 						>
 							{live.streamingText}
@@ -703,7 +708,9 @@ export function HermesSessionView() {
 				</div>
 			</div>
 
-			<div className="relative z-10 min-w-0 shrink-0 bg-gradient-to-t from-[var(--bg-base)] via-[var(--bg-base)] to-transparent px-4 pb-4 pt-2 sm:px-6 sm:pb-5 xl:px-8">
+			<div
+				className={`relative z-10 min-w-0 shrink-0 bg-gradient-to-t from-[var(--bg-base)] via-[var(--bg-base)] to-transparent pb-4 pt-2 sm:pb-5 ${HERMES_CHAT_LAYOUT_CLASSES.gutter}`}
+			>
 				{showJumpToLatest && (
 					<div className="pointer-events-none absolute -top-9 left-0 right-0 flex justify-center">
 						<button
@@ -722,7 +729,11 @@ export function HermesSessionView() {
 					</div>
 				)}
 
-				<div className={`${HERMES_CHAT_OVERFLOW_CLASSES.canvas}`}>
+				<div
+					className={HERMES_CHAT_LAYOUT_CLASSES.composerColumn}
+					data-hermes-alignment-frame="composer"
+					data-hermes-align="frame-start"
+				>
 					{live.pendingApproval && (
 						<HermesApprovalCard
 							interaction={live.pendingApproval}
