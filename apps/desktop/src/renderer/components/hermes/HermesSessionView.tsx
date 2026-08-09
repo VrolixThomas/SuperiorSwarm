@@ -732,7 +732,6 @@ export function HermesSessionView() {
 				<div
 					className={HERMES_CHAT_LAYOUT_CLASSES.composerColumn}
 					data-hermes-alignment-frame="composer"
-					data-hermes-align="frame-start"
 				>
 					{live.pendingApproval && (
 						<HermesApprovalCard

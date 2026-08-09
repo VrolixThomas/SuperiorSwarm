@@ -6,7 +6,7 @@ async function source(path: string): Promise<string> {
 }
 
 describe("Hermes layout contract", () => {
-	test("left-anchors the responsive conversation frame and keeps transcript overflow vertical", async () => {
+	test("left-anchors a broad transcript frame and keeps transcript overflow vertical", async () => {
 		const view = await source("components/hermes/HermesSessionView.tsx");
 
 		expect(view).toContain("HERMES_CHAT_OVERFLOW_CLASSES.transcriptOwner");
@@ -15,7 +15,6 @@ describe("Hermes layout contract", () => {
 		expect(view).toContain("HERMES_CHAT_LAYOUT_CLASSES.composerColumn");
 		expect(view).toContain('data-hermes-alignment-frame="transcript"');
 		expect(view).toContain('data-hermes-alignment-frame="composer"');
-		expect(view).toContain('data-hermes-align="frame-start"');
 		expect(view).toContain("h-14");
 		expect(view).toContain('aria-label="Session options"');
 		expect(view).toContain("Jump to latest");
@@ -33,11 +32,37 @@ describe("Hermes layout contract", () => {
 		expect(HERMES_CHAT_LAYOUT_CLASSES.gutter).toContain("lg:px-12");
 		expect(HERMES_CHAT_LAYOUT_CLASSES.gutter).toContain("2xl:px-16");
 		expect(HERMES_CHAT_LAYOUT_CLASSES.frame).toContain("mr-auto");
+		expect(HERMES_CHAT_LAYOUT_CLASSES.frame).toContain("max-w-[1120px]");
 		expect(HERMES_CHAT_LAYOUT_CLASSES.frame).not.toContain("mx-auto");
 		expect(HERMES_CHAT_LAYOUT_CLASSES.assistantColumn).toContain("max-w-[66ch]");
 		expect(HERMES_CHAT_LAYOUT_CLASSES.assistantColumn).toContain("mr-auto");
+		expect(HERMES_CHAT_LAYOUT_CLASSES.assistantColumn).not.toContain("ml-auto");
+		expect(HERMES_CHAT_LAYOUT_CLASSES.activityColumn).toContain("w-full");
+		expect(HERMES_CHAT_LAYOUT_CLASSES.activityColumn).toContain("max-w-[66ch]");
+		expect(HERMES_CHAT_LAYOUT_CLASSES.activityColumn).toContain("mr-auto");
+		expect(HERMES_CHAT_LAYOUT_CLASSES.activityColumn).not.toContain("ml-auto");
+	});
+
+	test("right-aligns user messages independently from the assistant rail", () => {
+		expect(HERMES_CHAT_LAYOUT_CLASSES.userBubble).toContain("ml-auto");
+		expect(HERMES_CHAT_LAYOUT_CLASSES.userBubble).toContain("max-w-[min(640px,76%)]");
+		expect(HERMES_CHAT_LAYOUT_CLASSES.userBubble).not.toContain("mr-auto");
+		expect(HERMES_CHAT_LAYOUT_CLASSES.userBubble).not.toContain("ml-6");
+		expect(HERMES_CHAT_LAYOUT_CLASSES.userBubble).not.toContain("ml-8");
+	});
+
+	test("centers the composer independently in the full pane gutter", async () => {
+		const view = await source("components/hermes/HermesSessionView.tsx");
+		const composerOpeningTag = view.match(
+			/<div\s+className=\{HERMES_CHAT_LAYOUT_CLASSES\.composerColumn\}\s+data-hermes-alignment-frame="composer"\s*>/
+		)?.[0];
+
 		expect(HERMES_CHAT_LAYOUT_CLASSES.composerColumn).toContain("max-w-[800px]");
-		expect(HERMES_CHAT_LAYOUT_CLASSES.composerColumn).toContain("mr-auto");
+		expect(HERMES_CHAT_LAYOUT_CLASSES.composerColumn).toContain("mx-auto");
+		expect(HERMES_CHAT_LAYOUT_CLASSES.composerColumn).toContain("w-full");
+		expect(HERMES_CHAT_LAYOUT_CLASSES.composerColumn).not.toContain("mr-auto");
+		expect(composerOpeningTag).toBeDefined();
+		expect(composerOpeningTag).not.toContain('data-hermes-align="frame-start"');
 	});
 
 	test("uses a 288 pixel default sidebar and progressive new-session/advanced controls", async () => {

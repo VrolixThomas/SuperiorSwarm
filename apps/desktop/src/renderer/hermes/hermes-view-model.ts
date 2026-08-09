@@ -67,9 +67,36 @@ export const HERMES_CHAT_LAYOUT_CLASSES = {
 	gutter: "px-4 md:px-6 lg:px-12 2xl:px-16",
 	frame: "mr-auto w-full min-w-0 max-w-[1120px]",
 	assistantColumn: "mr-auto w-full min-w-0 max-w-[66ch]",
-	composerColumn: "mr-auto w-full min-w-0 max-w-[800px]",
+	activityColumn: "mr-auto w-full min-w-0 max-w-[66ch]",
+	composerColumn: "mx-auto w-full min-w-0 max-w-[800px]",
 	userBubble: "ml-auto w-fit max-w-[min(640px,76%)]",
 } as const;
+
+export const HERMES_LONG_USER_MESSAGE_CHAR_THRESHOLD = 1_800;
+export const HERMES_LONG_USER_MESSAGE_LINE_THRESHOLD = 16;
+
+export interface HermesUserMessageDisclosure {
+	collapsible: boolean;
+	collapsed: boolean;
+	ariaExpanded: boolean;
+	label: "Show full message" | "Collapse message";
+}
+
+export function hermesUserMessageDisclosure(
+	text: string,
+	expanded: boolean
+): HermesUserMessageDisclosure {
+	const collapsible =
+		text.length > HERMES_LONG_USER_MESSAGE_CHAR_THRESHOLD ||
+		text.split(/\r\n|\r|\n/).length > HERMES_LONG_USER_MESSAGE_LINE_THRESHOLD;
+	const collapsed = collapsible && !expanded;
+	return {
+		collapsible,
+		collapsed,
+		ariaExpanded: !collapsed,
+		label: collapsed ? "Show full message" : "Collapse message",
+	};
+}
 
 export type HermesTranscriptClassification =
 	| { kind: "user"; text: string }
