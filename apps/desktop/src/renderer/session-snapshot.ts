@@ -91,10 +91,14 @@ export function collectSessionSnapshot(): SessionSnapshot {
 	return { sessions, state, paneLayouts };
 }
 
-export function isSessionSnapshotPersistable(snapshot: SessionSaveData): boolean {
+export function isSessionSnapshotPersistable(
+	snapshot: SessionSaveData,
+	context: { rendererOwnsPersistedState?: boolean } = {}
+): boolean {
 	return (
 		snapshot.sessions.length > 0 ||
 		Object.keys(snapshot.paneLayouts ?? {}).length > 0 ||
-		snapshot.state["sidebarSegment"] === "hermes"
+		snapshot.state["sidebarSegment"] === "hermes" ||
+		context.rendererOwnsPersistedState === true
 	);
 }

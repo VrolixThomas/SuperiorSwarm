@@ -1,0 +1,1 @@
+ALTER TABLE `hermes_connections` ADD `manager_binding_mode` text;

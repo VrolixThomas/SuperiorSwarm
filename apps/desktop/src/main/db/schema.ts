@@ -716,6 +716,9 @@ export const hermesConnections = sqliteTable("hermes_connections", {
 	managerId: text("manager_id").references(() => crossRepoOrchestrators.id, {
 		onDelete: "set null",
 	}),
+	// Null is reserved for legacy rows whose prior manual/automatic intent cannot
+	// be inferred safely; new external connections always persist an explicit mode.
+	managerBindingMode: text("manager_binding_mode", { enum: ["auto", "manual"] }),
 	managementMode: text("management_mode", { enum: ["managed", "external"] })
 		.notNull()
 		.default("external"),

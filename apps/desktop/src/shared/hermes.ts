@@ -168,6 +168,12 @@ export interface HermesReconnectBindingMetadata {
 	status: string | null;
 }
 
+export interface HermesPendingInteractionSnapshot {
+	requestId: string;
+	prompt: string;
+	choices: HermesInteractionChoiceDto[];
+}
+
 export interface HermesActiveTurnSnapshot {
 	durableSessionId: string;
 	runtimeSessionId: string;
@@ -182,6 +188,8 @@ export interface HermesActiveTurnSnapshot {
 		name: string;
 		status: "running" | "complete" | "failed";
 	}>;
+	pendingApproval: HermesPendingInteractionSnapshot | null;
+	pendingClarification: HermesPendingInteractionSnapshot | null;
 }
 
 export interface HermesRuntimeEventPayload {
@@ -219,6 +227,7 @@ export interface HermesConnectionSummary {
 	baseUrl: string | null;
 	profileId: string;
 	managerId: string | null;
+	managerBindingMode: "auto" | "manual" | null;
 	authMode: "token";
 	connectionMode: "loopback" | "remote";
 	managementMode: "managed" | "external";

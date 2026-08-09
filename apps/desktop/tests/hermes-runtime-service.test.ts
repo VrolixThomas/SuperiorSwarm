@@ -425,6 +425,186 @@ describe("HermesRuntimeService stock lifecycle", () => {
 		expect(
 			listHermesConnections(vault).find((connection) => connection.id === connectionId)?.managerId
 		).toBe("external-hermes-manager");
+		expect(
+			listHermesConnections(vault).find((connection) => connection.id === connectionId)
+				?.managerBindingMode
+		).toBe("auto");
+	});
+
+	test("revalidates auto-detected loopback ownership on every connect and fails closed", async () => {
+		const now = new Date();
+		for (const [index, managerId] of ["manager-a", "manager-b"].entries()) {
+			getDb()
+				.insert(schema.crossRepoOrchestrators)
+				.values({
+					id: managerId,
+					name: managerId,
+					workDir: `/tmp/${managerId}`,
+					agentKind: "external",
+					status: "idle",
+					sortOrder: index,
+					kind: "external",
+					tokenHash: `${index + 1}`.repeat(64),
+					accessScope: "all",
+					createdAt: now,
+					updatedAt: now,
+				})
+				.run();
+			admitHermesSession({
+				managerId,
+				metadata: {
+					schemaVersion: 1,
+					durableSessionId: `session-${managerId}`,
+					profileId: "work",
+					sourcePlatform: "telegram",
+					isCron: false,
+				},
+				reason: "mcp",
+			});
+		}
+		rest.sessions = [session("session-manager-a"), session("session-manager-b")];
+		let installedManagerId: string | null = "manager-a";
+		let resolutionCount = 0;
+		service.shutdown();
+		service = new HermesRuntimeService({
+			clientFactory: () => client,
+			restClientFactory: () => rest,
+			sendService: sender,
+			tokenVault: vault,
+			loopbackTokenResolver: async () => "dashboard-secret",
+			externalManagerIdResolver: () => {
+				resolutionCount++;
+				return installedManagerId;
+			},
+		});
+
+		expect((await service.connect(connectionId)).sessions.map((item) => item.id)).toEqual([
+			"session-manager-a",
+		]);
+		installedManagerId = "manager-b";
+		expect((await service.connect(connectionId)).sessions.map((item) => item.id)).toEqual([
+			"session-manager-b",
+		]);
+		expect(
+			listHermesConnections(vault).find((connection) => connection.id === connectionId)
+		).toMatchObject({ managerId: "manager-b", managerBindingMode: "auto" });
+		expect(resolutionCount).toBe(2);
+
+		installedManagerId = null;
+		expect((await service.connect(connectionId)).sessions).toEqual([]);
+		expect(resolutionCount).toBe(3);
+		expect(
+			listHermesConnections(vault).find((connection) => connection.id === connectionId)
+		).toMatchObject({ managerId: null, managerBindingMode: "auto" });
+		expect(JSON.stringify(service.getState(connectionId))).not.toContain("dashboard-secret");
+	});
+
+	test("keeps an explicitly selected loopback manager isolated from auto-detection", async () => {
+		const now = new Date();
+		getDb()
+			.insert(schema.crossRepoOrchestrators)
+			.values({
+				id: "manual-manager",
+				name: "Manual manager",
+				workDir: "/tmp/manual-manager",
+				agentKind: "external",
+				status: "idle",
+				sortOrder: 0,
+				kind: "external",
+				tokenHash: "e".repeat(64),
+				accessScope: "all",
+				createdAt: now,
+				updatedAt: now,
+			})
+			.run();
+		saveHermesConnection(
+			{
+				id: connectionId,
+				label: "Local stock Hermes",
+				baseUrl: "http://127.0.0.1:9119",
+				profileId: "work",
+				managerId: "manual-manager",
+			},
+			vault
+		);
+		let resolverCalled = false;
+		service.shutdown();
+		service = new HermesRuntimeService({
+			clientFactory: () => client,
+			restClientFactory: () => rest,
+			sendService: sender,
+			tokenVault: vault,
+			loopbackTokenResolver: async () => "secret",
+			externalManagerIdResolver: () => {
+				resolverCalled = true;
+				return null;
+			},
+		});
+
+		await service.connect(connectionId);
+
+		expect(resolverCalled).toBe(false);
+		expect(listHermesConnections(vault).find((item) => item.id === connectionId)).toMatchObject({
+			managerId: "manual-manager",
+			managerBindingMode: "manual",
+		});
+	});
+
+	test("fails closed when an ambiguous legacy manager no longer matches the installed identity", async () => {
+		const now = new Date();
+		getDb()
+			.insert(schema.crossRepoOrchestrators)
+			.values({
+				id: "legacy-manager",
+				name: "Legacy manager",
+				workDir: "/tmp/legacy-manager",
+				agentKind: "external",
+				status: "idle",
+				sortOrder: 0,
+				kind: "external",
+				tokenHash: "f".repeat(64),
+				accessScope: "all",
+				createdAt: now,
+				updatedAt: now,
+			})
+			.run();
+		saveHermesConnection(
+			{
+				id: connectionId,
+				label: "Legacy loopback Hermes",
+				baseUrl: "http://127.0.0.1:9119",
+				profileId: "work",
+				managerId: "legacy-manager",
+			},
+			vault
+		);
+		getDb()
+			.update(schema.hermesConnections)
+			.set({ managerBindingMode: null })
+			.where(eq(schema.hermesConnections.id, connectionId))
+			.run();
+		let dashboardTokenRead = false;
+		service.shutdown();
+		service = new HermesRuntimeService({
+			clientFactory: () => client,
+			restClientFactory: () => rest,
+			sendService: sender,
+			tokenVault: vault,
+			loopbackTokenResolver: async () => {
+				dashboardTokenRead = true;
+				return "must-not-leak";
+			},
+			externalManagerIdResolver: () => "new-installed-manager",
+		});
+
+		await expect(service.connect(connectionId)).rejects.toThrow("ownership is ambiguous");
+		expect(dashboardTokenRead).toBe(false);
+		expect(client.connectCalls).toBe(0);
+		expect(listHermesConnections(vault).find((item) => item.id === connectionId)).toMatchObject({
+			managerId: "legacy-manager",
+			managerBindingMode: null,
+		});
+		expect(JSON.stringify(service.getState(connectionId))).not.toContain("must-not-leak");
 	});
 
 	test("refreshes loopback auth from the served dashboard token before every connect", async () => {
@@ -1542,6 +1722,120 @@ describe("HermesRuntimeService stock lifecycle", () => {
 		expect(client.requests.at(-1)).toEqual({
 			method: "session.activate",
 			params: { session_id: "runtime-buffered", omit_messages: false },
+		});
+	});
+
+	test("snapshots only unresolved interactions for their owning session", async () => {
+		client.responses.set("session.resume", [
+			{
+				session_id: "runtime-1",
+				session_key: "stored-1",
+				profile: "work",
+				running: true,
+				status: "working",
+			},
+			{
+				session_id: "runtime-2",
+				session_key: "stored-2",
+				profile: "work",
+				running: true,
+				status: "working",
+			},
+		]);
+		client.responses.set("session.activate", [
+			{
+				session_id: "runtime-1",
+				session_key: "stored-1",
+				profile: "work",
+				running: true,
+				status: "working",
+			},
+			{
+				session_id: "runtime-2",
+				session_key: "stored-2",
+				profile: "work",
+				running: true,
+				status: "working",
+			},
+		]);
+		await service.connect(connectionId);
+		await service.resume(connectionId, "stored-1");
+		await service.resume(connectionId, "stored-2");
+
+		client.emit({
+			type: "approval.request",
+			runtimeSessionId: "runtime-1",
+			requestId: "approval-1",
+			text: "Allow deployment?",
+			payload: { choices: [{ value: "once", label: "Allow once" }] },
+		});
+		client.emit({
+			type: "clarify.request",
+			runtimeSessionId: "runtime-2",
+			requestId: "clarify-2",
+			text: "Which environment?",
+			payload: { choices: [{ value: "staging", label: "Staging" }] },
+		});
+
+		const first = await service.resume(connectionId, "stored-1");
+		const second = await service.resume(connectionId, "stored-2");
+		expect(first.activeTurnSnapshot).toMatchObject({
+			pendingApproval: {
+				requestId: "approval-1",
+				prompt: "Allow deployment?",
+				choices: [{ value: "once", label: "Allow once" }],
+			},
+			pendingClarification: null,
+		});
+		expect(second.activeTurnSnapshot).toMatchObject({
+			pendingApproval: null,
+			pendingClarification: {
+				requestId: "clarify-2",
+				prompt: "Which environment?",
+				choices: [{ value: "staging", label: "Staging" }],
+			},
+		});
+
+		await service.respondToApproval({
+			connectionId,
+			hermesSessionId: "stored-1",
+			requestId: "approval-1",
+			choice: "once",
+		});
+		client.emit({
+			type: "clarify.expire",
+			runtimeSessionId: "runtime-2",
+			requestId: "clarify-2",
+		});
+		client.emit({
+			type: "turn.completed",
+			runtimeSessionId: "runtime-1",
+			status: "complete",
+		});
+
+		client.responses.set("session.activate", [
+			{
+				session_id: "runtime-1",
+				session_key: "stored-1",
+				profile: "work",
+				running: false,
+				status: "complete",
+			},
+			{
+				session_id: "runtime-2",
+				session_key: "stored-2",
+				profile: "work",
+				running: true,
+				status: "working",
+			},
+		]);
+		expect((await service.resume(connectionId, "stored-1")).activeTurnSnapshot).toMatchObject({
+			pendingApproval: null,
+			pendingClarification: null,
+		});
+		expect((await service.resume(connectionId, "stored-2")).activeTurnSnapshot).toMatchObject({
+			pendingApproval: null,
+			pendingClarification: null,
 		});
 	});
 

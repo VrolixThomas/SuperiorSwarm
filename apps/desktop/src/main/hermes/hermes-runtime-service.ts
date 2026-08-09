@@ -3,6 +3,7 @@ import type {
 	HermesCatalog,
 	HermesOriginProjection,
 	HermesOriginReportState,
+	HermesPendingInteractionSnapshot,
 	HermesReconnectBindingMetadata,
 	HermesRuntimeEvent,
 	HermesRuntimeState,
@@ -24,7 +25,7 @@ import {
 	listHermesConnections,
 	markHermesConnectionConnected,
 	saveHermesConnection,
-	setHermesConnectionManagerId,
+	setHermesConnectionAutoManagerId,
 } from "./hermes-connections";
 import { discoverHermesDashboardToken } from "./hermes-dashboard-token";
 import {
@@ -641,6 +642,7 @@ export class HermesRuntimeService {
 				throw new Error("A Hermes turn is already active for this session");
 			}
 			binding.activeTurn = true;
+			this.clearPendingInteractions(binding);
 			ownsActiveTurn = true;
 			const attachments = await this.attachmentStore.resolve(attachmentHandles);
 			const attached = [];
@@ -677,6 +679,7 @@ export class HermesRuntimeService {
 			session_id: binding.runtimeSessionId,
 		});
 		binding.activeTurn = false;
+		this.clearPendingInteractions(binding);
 		return { ok: true };
 	}
 
@@ -693,6 +696,7 @@ export class HermesRuntimeService {
 			request_id: input.requestId,
 			choice: input.choice,
 		});
+		this.clearPendingInteraction(binding, "approval", input.requestId);
 		return { ok: true };
 	}
 
@@ -709,6 +713,7 @@ export class HermesRuntimeService {
 			request_id: input.requestId,
 			answer: input.answer,
 		});
+		this.clearPendingInteraction(binding, "clarification", input.requestId);
 		return { ok: true };
 	}
 
@@ -942,10 +947,23 @@ export class HermesRuntimeService {
 			resolvedToken = managed.token;
 			resolvedManagerId = managed.managerId ?? null;
 		} else if (summary.connectionMode === "loopback") {
-			if (!resolvedManagerId) {
-				resolvedManagerId = this.externalManagerIdResolver(summary);
-				if (resolvedManagerId) {
-					setHermesConnectionManagerId(summary.id, resolvedManagerId);
+			if (summary.managerBindingMode !== "manual") {
+				const installedManagerId = this.externalManagerIdResolver(summary);
+				if (
+					summary.managerBindingMode === null &&
+					summary.managerId !== null &&
+					installedManagerId !== summary.managerId
+				) {
+					throw new Error(
+						"Hermes manager ownership is ambiguous; reselect the manager or auto-detection in connection settings"
+					);
+				}
+				resolvedManagerId = installedManagerId;
+				if (
+					(summary.managerBindingMode === "auto" && summary.managerId !== resolvedManagerId) ||
+					(summary.managerBindingMode === null && summary.managerId === null)
+				) {
+					setHermesConnectionAutoManagerId(summary.id, resolvedManagerId);
 				}
 			}
 			if (!summary.baseUrl) throw new Error("External Hermes URL is unavailable");
@@ -1146,11 +1164,12 @@ export class HermesRuntimeService {
 				const mappedEvent = { ...event, durableSessionId };
 				this.pushEvent(connectionId, mappedEvent);
 				if (!durableSessionId) return;
+				const binding = this.bindingFor(runtime, durableSessionId);
+				if (binding) this.applyInteractionEvent(binding, mappedEvent);
 				if (event.workspaceArtifacts.length > 0) {
 					this.linkArtifacts(connectionId, durableSessionId, event.workspaceArtifacts);
 				}
 				if (this.isTerminalEvent(event)) {
-					const binding = this.bindingFor(runtime, durableSessionId);
 					if (binding) binding.activeTurn = false;
 					void this.refreshAfterTerminal(connectionId, runtime, durableSessionId);
 				}
@@ -1332,6 +1351,10 @@ export class HermesRuntimeService {
 				turnId: null,
 				streamingText: "",
 				tools: [],
+				pendingApproval: activeTurn ? (previous?.activeTurnSnapshot.pendingApproval ?? null) : null,
+				pendingClarification: activeTurn
+					? (previous?.activeTurnSnapshot.pendingClarification ?? null)
+					: null,
 			},
 		};
 		runtime.bindings.set(binding.durableSessionId, installed);
@@ -1344,6 +1367,8 @@ export class HermesRuntimeService {
 		binding: RuntimeBinding,
 		response: unknown
 	): void {
+		const pendingApproval = binding.activeTurnSnapshot.pendingApproval;
+		const pendingClarification = binding.activeTurnSnapshot.pendingClarification;
 		binding.activeTurnSnapshot = normalizeHermesActiveTurnSnapshot(response, {
 			durableSessionId: binding.durableSessionId,
 			runtimeSessionId: binding.runtimeSessionId,
@@ -1351,6 +1376,70 @@ export class HermesRuntimeService {
 			activeTurn: binding.activeTurn,
 			status: binding.runtimeStatus,
 		});
+		if (binding.activeTurn) {
+			binding.activeTurnSnapshot.pendingApproval = pendingApproval;
+			binding.activeTurnSnapshot.pendingClarification = pendingClarification;
+		}
+	}
+
+	private applyInteractionEvent(binding: RuntimeBinding, event: HermesRuntimeEvent): void {
+		if (event.type === "approval.request") {
+			binding.activeTurn = true;
+			binding.activeTurnSnapshot.activeTurn = true;
+			binding.activeTurnSnapshot.pendingApproval = this.pendingInteractionFromEvent(
+				event,
+				"approval",
+				"Hermes needs approval"
+			);
+			return;
+		}
+		if (event.type === "clarify.request") {
+			binding.activeTurn = true;
+			binding.activeTurnSnapshot.activeTurn = true;
+			binding.activeTurnSnapshot.pendingClarification = this.pendingInteractionFromEvent(
+				event,
+				"clarification",
+				"Hermes needs more information"
+			);
+			return;
+		}
+		if (event.type === "approval.expire" || event.type === "approval.expired") {
+			this.clearPendingInteraction(binding, "approval", event.requestId);
+			return;
+		}
+		if (event.type === "clarify.expire" || event.type === "clarify.expired") {
+			this.clearPendingInteraction(binding, "clarification", event.requestId);
+			return;
+		}
+		if (this.isTerminalEvent(event)) this.clearPendingInteractions(binding);
+	}
+
+	private pendingInteractionFromEvent(
+		event: HermesRuntimeEvent,
+		fallbackRequestId: string,
+		fallbackPrompt: string
+	): HermesPendingInteractionSnapshot {
+		return {
+			requestId: event.requestId ?? fallbackRequestId,
+			prompt: event.text ?? fallbackPrompt,
+			choices: event.payload.choices?.map((choice) => ({ ...choice })) ?? [],
+		};
+	}
+
+	private clearPendingInteraction(
+		binding: RuntimeBinding,
+		kind: "approval" | "clarification",
+		requestId: string | null
+	): void {
+		const key = kind === "approval" ? "pendingApproval" : "pendingClarification";
+		const pending = binding.activeTurnSnapshot[key];
+		if (!pending || (requestId && pending.requestId !== requestId)) return;
+		binding.activeTurnSnapshot[key] = null;
+	}
+
+	private clearPendingInteractions(binding: RuntimeBinding): void {
+		binding.activeTurnSnapshot.pendingApproval = null;
+		binding.activeTurnSnapshot.pendingClarification = null;
 	}
 
 	private removeBinding(runtime: ConnectionRuntime, binding: RuntimeBinding): void {

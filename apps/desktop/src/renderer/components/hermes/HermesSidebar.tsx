@@ -211,7 +211,9 @@ export function HermesSidebar() {
 				setLabel(activeConnection.label);
 				setBaseUrl(activeConnection.baseUrl ?? "");
 				setProfileId(activeConnection.profileId);
-				setManagerId(activeConnection.managerId);
+				setManagerId(
+					activeConnection.managerBindingMode === "auto" ? null : activeConnection.managerId
+				);
 			} else {
 				setLabel("External Hermes");
 				setBaseUrl("");
@@ -275,7 +277,7 @@ export function HermesSidebar() {
 									setLabel(selected.label);
 									setBaseUrl(selected.baseUrl ?? "");
 									setProfileId(selected.profileId);
-									setManagerId(selected.managerId);
+									setManagerId(selected.managerBindingMode === "auto" ? null : selected.managerId);
 								}}
 								className="min-w-0 max-w-full rounded-[6px] border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1.5 text-[11px] text-[var(--text)]"
 							>

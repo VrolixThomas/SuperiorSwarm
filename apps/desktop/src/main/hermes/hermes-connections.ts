@@ -41,6 +41,7 @@ function toSummary(
 		baseUrl: managed ? null : row.baseUrl,
 		profileId: row.profileId,
 		managerId: row.managerId,
+		managerBindingMode: row.managerBindingMode,
 		authMode: "token",
 		connectionMode: managed || isHermesLoopbackUrl(row.baseUrl) ? "loopback" : "remote",
 		managementMode: row.managementMode,
@@ -124,6 +125,7 @@ export function ensureHermesLocalConnection(
 		baseUrl: existing?.baseUrl ?? HERMES_LOCAL_MANAGED_URL,
 		profileId,
 		managerId: existing?.managerId ?? null,
+		managerBindingMode: null,
 		managementMode: "managed" as const,
 		encryptedToken: existing?.encryptedToken ?? null,
 		tokenStorage: existing?.tokenStorage ?? ("memory" as const),
@@ -176,6 +178,12 @@ export function saveHermesConnection(
 			input.managerId === undefined
 				? (existing?.managerId ?? null)
 				: validateExternalManagerId(input.managerId),
+		managerBindingMode:
+			input.managerId === undefined
+				? (existing?.managerBindingMode ?? "auto")
+				: input.managerId === null
+					? ("auto" as const)
+					: ("manual" as const),
 		managementMode: "external" as const,
 		encryptedToken: protectedToken.ciphertext,
 		tokenStorage: protectedToken.storage,
@@ -191,6 +199,7 @@ export function saveHermesConnection(
 				baseUrl: values.baseUrl,
 				profileId: values.profileId,
 				managerId: values.managerId,
+				managerBindingMode: values.managerBindingMode,
 				managementMode: values.managementMode,
 				encryptedToken: values.encryptedToken,
 				tokenStorage: values.tokenStorage,
@@ -220,11 +229,11 @@ function validateExternalManagerId(managerId: string | null): string | null {
 	return manager.id;
 }
 
-export function setHermesConnectionManagerId(id: string, managerId: string): void {
+export function setHermesConnectionAutoManagerId(id: string, managerId: string | null): void {
 	const resolvedManagerId = validateExternalManagerId(managerId);
 	const result = getDb()
 		.update(hermesConnections)
-		.set({ managerId: resolvedManagerId, updatedAt: new Date() })
+		.set({ managerId: resolvedManagerId, managerBindingMode: "auto", updatedAt: new Date() })
 		.where(and(eq(hermesConnections.id, id), eq(hermesConnections.managementMode, "external")))
 		.run();
 	if (result.changes === 0) throw new Error("External Hermes connection was not found");

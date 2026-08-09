@@ -849,6 +849,44 @@ describe("Hermes renderer view model", () => {
 		});
 	});
 
+	test("replaces stale interaction controls with the snapshot's unresolved state", () => {
+		const stale = {
+			...createHermesLiveState(),
+			pendingApproval: { requestId: "resolved", prompt: "Old approval", choices: [] },
+			pendingClarification: { requestId: "expired", prompt: "Old question", choices: [] },
+		};
+		const restored = applyHermesEvent(
+			stale,
+			event("runtime.active-turn-snapshot", {
+				payload: {
+					activeTurnSnapshot: {
+						durableSessionId: "session-1",
+						runtimeSessionId: "runtime-2",
+						eventSeq: 42,
+						activeTurn: true,
+						status: "working",
+						turnId: "turn-live",
+						streamingText: "",
+						tools: [],
+						pendingApproval: null,
+						pendingClarification: {
+							requestId: "clarify-current",
+							prompt: "Which environment?",
+							choices: [{ value: "staging", label: "Staging" }],
+						},
+					},
+				} as HermesRuntimeEvent["payload"],
+			})
+		);
+
+		expect(restored.pendingApproval).toBeNull();
+		expect(restored.pendingClarification).toEqual({
+			requestId: "clarify-current",
+			prompt: "Which environment?",
+			choices: [{ value: "staging", label: "Staging" }],
+		});
+	});
+
 	test("reconciles selected-session busy state from authoritative reconnect bindings", () => {
 		const idleReconnect = event("runtime.history-refresh-required", {
 			runtimeSessionId: null,
@@ -901,10 +939,13 @@ describe("Hermes renderer view model", () => {
 			event("session.info", { status: "queued" })
 		);
 		expect(state).toMatchObject({ running: true, runtimeStatus: "queued" });
-		state = applyHermesEvent(
-			{ ...state, pendingApproval: { requestId: "a", prompt: "Approve", choices: [] } },
-			event("approval.expired")
-		);
+		state = {
+			...state,
+			pendingApproval: { requestId: "approval-current", prompt: "Approve", choices: [] },
+		};
+		state = applyHermesEvent(state, event("approval.expire", { requestId: "approval-older" }));
+		expect(state.pendingApproval?.requestId).toBe("approval-current");
+		state = applyHermesEvent(state, event("approval.expire", { requestId: "approval-current" }));
 		expect(state.pendingApproval).toBeNull();
 		state = applyHermesEvent(state, event("turn.failed", { text: "Provider rejected" }));
 		expect(state).toMatchObject({ running: false, error: "Provider rejected" });

@@ -159,6 +159,7 @@ function AuthenticatedApp() {
 	const saveMutateRef = useRef(saveMutation.mutate);
 	saveMutateRef.current = saveMutation.mutate;
 	const lastSubmittedSnapshotRef = useRef<string | null>(null);
+	const rendererOwnsPersistedStateRef = useRef(false);
 	const restoreQuery = trpc.terminalSessions.restore.useQuery(undefined, {
 		staleTime: Number.POSITIVE_INFINITY,
 		refetchOnMount: false,
@@ -190,7 +191,9 @@ function AuthenticatedApp() {
 			}
 		}
 
-		if (!shouldHydrateTabStore(hasSessions, Boolean(hasLayouts), state)) return;
+		const shouldHydrate = shouldHydrateTabStore(hasSessions, Boolean(hasLayouts), state);
+		rendererOwnsPersistedStateRef.current = shouldHydrate;
+		if (!shouldHydrate) return;
 
 		const scrollbacks: Record<string, string> = {};
 		for (const session of sessions) {
@@ -275,7 +278,14 @@ function AuthenticatedApp() {
 	useEffect(() => {
 		const triggerSave = () => {
 			const snapshot = collectSessionSnapshot();
-			if (!isSessionSnapshotPersistable(snapshot)) return;
+			if (
+				!isSessionSnapshotPersistable(snapshot, {
+					rendererOwnsPersistedState: rendererOwnsPersistedStateRef.current,
+				})
+			) {
+				return;
+			}
+			rendererOwnsPersistedStateRef.current = true;
 			const serialized = JSON.stringify(snapshot);
 			if (serialized === lastSubmittedSnapshotRef.current) return;
 			lastSubmittedSnapshotRef.current = serialized;

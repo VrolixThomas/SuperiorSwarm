@@ -57,12 +57,17 @@ describe("Hermes persistence migration", () => {
 		expect(reportColumns).toContain("destination_fingerprint");
 		expect(reportColumns).toContain("attempt_count");
 		expect(reportColumns).toContain("provider_message_id");
-		const connectionColumns = sqlite
+		const connectionColumnRows = sqlite
 			.prepare("PRAGMA table_info(hermes_connections)")
 			.all()
-			.map((row) => (row as { name: string }).name);
+			.map((row) => row as { name: string; notnull: number });
+		const connectionColumns = connectionColumnRows.map((row) => row.name);
 		expect(connectionColumns).toContain("management_mode");
 		expect(connectionColumns).toContain("manager_id");
+		expect(connectionColumns).toContain("manager_binding_mode");
+		expect(connectionColumnRows.find((row) => row.name === "manager_binding_mode")?.notnull).toBe(
+			0
+		);
 		const connectionForeignKeys = sqlite
 			.prepare("PRAGMA foreign_key_list(hermes_connections)")
 			.all()

@@ -810,8 +810,23 @@ export function applyHermesActiveTurnSnapshot(
 		runtimeStatus: snapshot.status ?? (snapshot.activeTurn ? "running" : "idle"),
 		streamingText: snapshot.activeTurn ? snapshot.streamingText : "",
 		tools: snapshot.activeTurn ? snapshot.tools.map((tool) => ({ ...tool })) : [],
-		pendingApproval: snapshot.activeTurn ? state.pendingApproval : null,
-		pendingClarification: snapshot.activeTurn ? state.pendingClarification : null,
+		pendingApproval:
+			snapshot.activeTurn && snapshot.pendingApproval
+				? {
+						...snapshot.pendingApproval,
+						choices:
+							snapshot.pendingApproval.choices.length > 0
+								? snapshot.pendingApproval.choices.map((choice) => ({ ...choice }))
+								: GENERIC_APPROVAL_CHOICES.map((choice) => ({ ...choice })),
+					}
+				: null,
+		pendingClarification:
+			snapshot.activeTurn && snapshot.pendingClarification
+				? {
+						...snapshot.pendingClarification,
+						choices: snapshot.pendingClarification.choices.map((choice) => ({ ...choice })),
+					}
+				: null,
 		error: null,
 	};
 }
@@ -909,10 +924,16 @@ export function applyHermesEvent(
 					choices: choicesFrom(event),
 				},
 			};
+		case "approval.expire":
 		case "approval.expired":
-			return { ...state, pendingApproval: null };
+			return event.requestId && state.pendingApproval?.requestId !== event.requestId
+				? state
+				: { ...state, pendingApproval: null };
+		case "clarify.expire":
 		case "clarify.expired":
-			return { ...state, pendingClarification: null };
+			return event.requestId && state.pendingClarification?.requestId !== event.requestId
+				? state
+				: { ...state, pendingClarification: null };
 		case "session.info": {
 			const runtimeStatus = event.status?.toLocaleLowerCase() ?? null;
 			return {
@@ -928,6 +949,8 @@ export function applyHermesEvent(
 				running: false,
 				runtimeStatus: event.status ?? "complete",
 				historyRefreshRequired: true,
+				pendingApproval: null,
+				pendingClarification: null,
 			};
 		case "turn.failed":
 			return {
@@ -935,6 +958,8 @@ export function applyHermesEvent(
 				running: false,
 				runtimeStatus: "failed",
 				error: event.text ?? "Hermes turn failed",
+				pendingApproval: null,
+				pendingClarification: null,
 			};
 		case "turn.cancelled":
 			return {
@@ -942,6 +967,8 @@ export function applyHermesEvent(
 				running: false,
 				runtimeStatus: "cancelled",
 				error: event.text ?? "Hermes turn was interrupted",
+				pendingApproval: null,
+				pendingClarification: null,
 			};
 		case "runtime.history-refresh-required": {
 			const binding = selectedSessionId

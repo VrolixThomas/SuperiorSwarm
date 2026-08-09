@@ -97,7 +97,10 @@ describe("Hermes persistence services", () => {
 			vault
 		);
 
-		expect(connection.managerId).toBe("external-manager");
+		expect(connection).toMatchObject({
+			managerId: "external-manager",
+			managerBindingMode: "manual",
+		});
 		expect(
 			db
 				.select()
@@ -117,6 +120,33 @@ describe("Hermes persistence services", () => {
 				vault
 			)
 		).toThrow("external manager");
+	});
+
+	test("distinguishes automatic manager ownership and preserves it during token refresh", () => {
+		const connection = saveHermesConnection(
+			{
+				label: "Loopback Hermes",
+				baseUrl: "http://127.0.0.1:9119",
+				profileId: "default",
+				managerId: null,
+				token: "first-token",
+			},
+			vault
+		);
+		expect(connection).toMatchObject({ managerId: null, managerBindingMode: "auto" });
+
+		const refreshed = saveHermesConnection(
+			{
+				id: connection.id,
+				label: connection.label,
+				baseUrl: connection.baseUrl ?? "",
+				profileId: connection.profileId,
+				token: "second-token",
+			},
+			vault
+		);
+		expect(refreshed).toMatchObject({ managerId: null, managerBindingMode: "auto" });
+		expect(getHermesConnectionWithToken(connection.id, vault)?.token).toBe("second-token");
 	});
 
 	test("persists a stable managed-local identity without an ephemeral endpoint or token", () => {

@@ -85,6 +85,37 @@ describe("session navigation persistence", () => {
 		}
 	});
 
+	test("persists clearing an Agents-only route when navigating to an empty repo view", () => {
+		useTabStore.getState().selectHermesSession(selection);
+		const agentsSnapshot = collectSessionSnapshot();
+		expect(isSessionSnapshotPersistable(agentsSnapshot)).toBe(true);
+
+		useTabStore.getState().setSidebarSegment("repos");
+		const clearedSnapshot = collectSessionSnapshot();
+
+		expect(clearedSnapshot.sessions).toEqual([]);
+		expect(clearedSnapshot.paneLayouts).toEqual({});
+		expect(clearedSnapshot.state["sidebarSegment"]).toBe("repos");
+		expect(clearedSnapshot.state["selectedHermesSession"]).toBe(JSON.stringify(selection));
+		expect(
+			isSessionSnapshotPersistable(clearedSnapshot, { rendererOwnsPersistedState: true })
+		).toBe(true);
+	});
+
+	test("persists clearing an empty Agents route without weakening the pristine repo gate", () => {
+		useTabStore.getState().setSidebarSegment("hermes");
+		expect(isSessionSnapshotPersistable(collectSessionSnapshot())).toBe(true);
+
+		useTabStore.getState().setSidebarSegment("repos");
+		const clearedSnapshot = collectSessionSnapshot();
+
+		expect(clearedSnapshot.state["selectedHermesSession"]).toBeUndefined();
+		expect(isSessionSnapshotPersistable(clearedSnapshot)).toBe(false);
+		expect(
+			isSessionSnapshotPersistable(clearedSnapshot, { rendererOwnsPersistedState: true })
+		).toBe(true);
+	});
+
 	test("falls back safely for malformed and unavailable saved selections", () => {
 		useTabStore.getState().hydrate([], null, "stale-workspace", "/repos/stale", {
 			sidebarSegment: "hermes",
