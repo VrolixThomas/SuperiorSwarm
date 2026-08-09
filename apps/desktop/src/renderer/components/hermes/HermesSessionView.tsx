@@ -15,6 +15,7 @@ import { isHermesChatNearBottom, shouldAnchorHermesChat } from "../../hermes/her
 import {
 	HERMES_CHAT_LAYOUT_CLASSES,
 	HERMES_CHAT_OVERFLOW_CLASSES,
+	applyHermesActiveTurnSnapshot,
 	applyHermesEvent,
 	createHermesOptimisticUserTurn,
 	createHermesLiveState,
@@ -69,6 +70,7 @@ export function HermesSessionView() {
 	const [optimisticUserTurns, setOptimisticUserTurns] = useState<HermesOptimisticUserTurn[]>([]);
 	const [clarification, setClarification] = useState("");
 	const [cursor, setCursor] = useState(0);
+	const [eventStreamSelectionKey, setEventStreamSelectionKey] = useState<string | null>(null);
 	const [live, setLive] = useState(createHermesLiveState);
 	const [attachments, dispatchAttachments] = useReducer(reduceHermesComposerAttachments, []);
 	const [recoveryWorktreeId, setRecoveryWorktreeId] = useState("");
@@ -78,6 +80,7 @@ export function HermesSessionView() {
 	const [showJumpToLatest, setShowJumpToLatest] = useState(false);
 	const [sessionOptionsOpen, setSessionOptionsOpen] = useState(false);
 	const processedEventSeq = useRef(0);
+	const resumeAttemptKey = useRef<string | null>(null);
 	const transcriptRef = useRef<HTMLDivElement | null>(null);
 	const composerRef = useRef<HTMLTextAreaElement | null>(null);
 	const optimisticTurnSequence = useRef(0);
@@ -88,6 +91,7 @@ export function HermesSessionView() {
 	const utils = trpc.useUtils();
 
 	const submit = trpc.hermes.submit.useMutation();
+	const resume = trpc.hermes.resume.useMutation();
 	const interrupt = trpc.hermes.interrupt.useMutation();
 	const approval = trpc.hermes.respondApproval.useMutation();
 	const clarify = trpc.hermes.respondClarification.useMutation();
@@ -165,6 +169,8 @@ export function HermesSessionView() {
 		}
 		dispatchAttachments({ type: "succeeded" });
 		setCursor(0);
+		setEventStreamSelectionKey(null);
+		resumeAttemptKey.current = null;
 		processedEventSeq.current = 0;
 		setLive(createHermesLiveState());
 		setComposer("");
@@ -178,6 +184,45 @@ export function HermesSessionView() {
 		followingTranscript.current = true;
 		anchoredSelectionKey.current = null;
 	}, [selectionKey]);
+
+	useEffect(() => {
+		if (!connectionId || !sessionId || !connected) {
+			if (!connected) {
+				resumeAttemptKey.current = null;
+				setEventStreamSelectionKey(null);
+			}
+			return;
+		}
+		if (resumeAttemptKey.current === selectionKey) return;
+		resumeAttemptKey.current = selectionKey;
+		const generation = selectionGeneration;
+		resume.mutate(
+			{ connectionId, hermesSessionId: sessionId },
+			{
+				onSuccess: ({ activeTurnSnapshot }) => {
+					runForSelection(generation, () => {
+						processedEventSeq.current = activeTurnSnapshot.eventSeq;
+						setCursor(activeTurnSnapshot.eventSeq);
+						setLive((current) => applyHermesActiveTurnSnapshot(current, activeTurnSnapshot));
+						setEventStreamSelectionKey(selectionKey);
+					});
+				},
+				onError: () => {
+					runForSelection(generation, () => {
+						setEventStreamSelectionKey(null);
+					});
+				},
+			}
+		);
+	}, [
+		connected,
+		connectionId,
+		resume,
+		selectionGeneration,
+		selectionGuard,
+		selectionKey,
+		sessionId,
+	]);
 
 	const history = trpc.hermes.history.useQuery(
 		{ connectionId, hermesSessionId: sessionId ?? "" },
@@ -194,7 +239,12 @@ export function HermesSessionView() {
 	);
 	const eventFeed = trpc.hermes.events.useQuery(
 		{ connectionId, afterSeq: cursor },
-		{ enabled: Boolean(connectionId && sessionId && connected), refetchInterval: 400 }
+		{
+			enabled: Boolean(
+				connectionId && sessionId && connected && eventStreamSelectionKey === selectionKey
+			),
+			refetchInterval: 400,
+		}
 	);
 
 	useEffect(() => {
@@ -414,6 +464,7 @@ export function HermesSessionView() {
 
 	const visibleError =
 		history.error?.message ??
+		resume.error?.message ??
 		submit.error?.message ??
 		interrupt.error?.message ??
 		approval.error?.message ??

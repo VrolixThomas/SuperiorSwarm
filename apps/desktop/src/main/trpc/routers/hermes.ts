@@ -124,6 +124,7 @@ export const hermesRouter = router({
 			durableSessionId: resumed.durableSessionId,
 			runtimeSessionId: resumed.runtimeSessionId,
 			persisted: resumed.persisted,
+			activeTurnSnapshot: resumed.activeTurnSnapshot,
 		};
 	}),
 

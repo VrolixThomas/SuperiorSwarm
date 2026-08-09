@@ -1,4 +1,5 @@
 import type {
+	HermesActiveTurnSnapshot,
 	HermesAttachmentKind,
 	HermesAttachmentMetadata,
 	HermesOriginProjection,
@@ -800,6 +801,22 @@ const GENERIC_APPROVAL_CHOICES: HermesInteractionChoice[] = [
 	{ value: "deny", label: "Deny" },
 ];
 
+export function applyHermesActiveTurnSnapshot(
+	state: HermesLiveState,
+	snapshot: HermesActiveTurnSnapshot
+): HermesLiveState {
+	return {
+		...state,
+		running: snapshot.activeTurn,
+		runtimeStatus: snapshot.status ?? (snapshot.activeTurn ? "running" : "idle"),
+		streamingText: snapshot.activeTurn ? snapshot.streamingText : "",
+		tools: snapshot.activeTurn ? snapshot.tools.map((tool) => ({ ...tool })) : [],
+		pendingApproval: snapshot.activeTurn ? state.pendingApproval : null,
+		pendingClarification: snapshot.activeTurn ? state.pendingClarification : null,
+		error: null,
+	};
+}
+
 export function applyHermesEvent(
 	state: HermesLiveState,
 	event: HermesRuntimeEvent,
@@ -807,6 +824,10 @@ export function applyHermesEvent(
 	canonicalMessages: HermesTranscriptMessage[] = []
 ): HermesLiveState {
 	switch (event.type) {
+		case "runtime.active-turn-snapshot":
+			return event.payload.activeTurnSnapshot
+				? applyHermesActiveTurnSnapshot(state, event.payload.activeTurnSnapshot)
+				: state;
 		case "message.delta":
 			return {
 				...state,

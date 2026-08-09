@@ -168,10 +168,27 @@ export interface HermesReconnectBindingMetadata {
 	status: string | null;
 }
 
+export interface HermesActiveTurnSnapshot {
+	durableSessionId: string;
+	runtimeSessionId: string;
+	eventSeq: number;
+	activeTurn: boolean;
+	status: string | null;
+	turnId: string | null;
+	streamingText: string;
+	tools: Array<{
+		id: string;
+		turnId: string | null;
+		name: string;
+		status: "running" | "complete" | "failed";
+	}>;
+}
+
 export interface HermesRuntimeEventPayload {
 	choices?: HermesInteractionChoiceDto[];
 	bindings?: HermesReconnectBindingMetadata[];
 	failedSessionIds?: string[];
+	activeTurnSnapshot?: HermesActiveTurnSnapshot;
 }
 
 /** Runtime events are routed only by the ephemeral WebSocket session ID. */

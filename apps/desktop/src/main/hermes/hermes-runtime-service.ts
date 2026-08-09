@@ -1,4 +1,5 @@
 import type {
+	HermesActiveTurnSnapshot,
 	HermesCatalog,
 	HermesOriginProjection,
 	HermesOriginReportState,
@@ -41,6 +42,7 @@ import {
 import { type ResolvedHermesOrigin, resolveHermesOrigin } from "./hermes-origin-resolver";
 import {
 	type extractWorkspaceArtifacts,
+	normalizeHermesActiveTurnSnapshot,
 	normalizeHermesRuntimeActivity,
 	normalizeHermesSessionBinding,
 	sanitizeHermesPayload,
@@ -99,6 +101,7 @@ interface BufferedEvent {
 interface RuntimeBinding extends HermesSessionBinding {
 	activeTurn: boolean;
 	runtimeStatus: string | null;
+	activeTurnSnapshot: HermesActiveTurnSnapshot;
 }
 
 interface ConnectionRuntime {
@@ -576,7 +579,12 @@ export class HermesRuntimeService {
 	async resume(
 		connectionId: string,
 		hermesSessionId: string
-	): Promise<HermesSessionBinding & { history: HermesSessionHistory }> {
+	): Promise<
+		HermesSessionBinding & {
+			history: HermesSessionHistory;
+			activeTurnSnapshot: HermesActiveTurnSnapshot;
+		}
+	> {
 		const runtime = this.requireRuntime(connectionId);
 		if (runtime.reconnectTask) await runtime.reconnectTask;
 		const history = await this.history(connectionId, hermesSessionId);
@@ -587,7 +595,7 @@ export class HermesRuntimeService {
 			try {
 				const response = await runtime.client.request("session.activate", {
 					session_id: existing.runtimeSessionId,
-					omit_messages: true,
+					omit_messages: false,
 				});
 				const activated = normalizeHermesSessionBinding(
 					response,
@@ -599,6 +607,7 @@ export class HermesRuntimeService {
 					activated,
 					normalizeHermesRuntimeActivity(response)
 				);
+				this.captureActiveTurnSnapshot(runtime, installed, response);
 				return { ...installed, history };
 			} catch {
 				this.removeBinding(runtime, existing);
@@ -1203,6 +1212,19 @@ export class HermesRuntimeService {
 					activeTurn: binding.activeTurn,
 					status: binding.runtimeStatus,
 				});
+				this.pushEvent(connectionId, {
+					type: "runtime.active-turn-snapshot",
+					runtimeSessionId: binding.runtimeSessionId,
+					durableSessionId: binding.durableSessionId,
+					turnId: binding.activeTurnSnapshot.turnId,
+					requestId: null,
+					text: null,
+					toolName: null,
+					status: binding.runtimeStatus,
+					payload: { activeTurnSnapshot: binding.activeTurnSnapshot },
+					workspaceArtifacts: [],
+					receivedAt: Date.now(),
+				});
 			} catch (error) {
 				if (this.runtimes.get(connectionId) !== runtime) return;
 				failedSessionIds.push(durableSessionId);
@@ -1244,14 +1266,16 @@ export class HermesRuntimeService {
 			session_id: durableSessionId,
 			profile: profileId,
 			source: "superiorswarm",
-			omit_messages: true,
+			omit_messages: false,
 		});
 		const binding = normalizeHermesSessionBinding(response, durableSessionId, profileId);
 		const activity = normalizeHermesRuntimeActivity(response);
-		return this.installBinding(runtime, binding, {
+		const installed = this.installBinding(runtime, binding, {
 			activeTurn: activity.activeTurn ?? fallbackActivity?.activeTurn ?? null,
 			status: activity.status ?? fallbackActivity?.runtimeStatus ?? null,
 		});
+		this.captureActiveTurnSnapshot(runtime, installed, response);
+		return installed;
 	}
 
 	private async resolveOrigin(
@@ -1293,14 +1317,40 @@ export class HermesRuntimeService {
 	): RuntimeBinding {
 		const previous = runtime.bindings.get(binding.durableSessionId);
 		if (previous) runtime.runtimeToDurable.delete(previous.runtimeSessionId);
+		const activeTurn = activity?.activeTurn ?? previous?.activeTurn ?? false;
+		const runtimeStatus = activity?.status ?? previous?.runtimeStatus ?? null;
 		const installed: RuntimeBinding = {
 			...binding,
-			activeTurn: activity?.activeTurn ?? previous?.activeTurn ?? false,
-			runtimeStatus: activity?.status ?? previous?.runtimeStatus ?? null,
+			activeTurn,
+			runtimeStatus,
+			activeTurnSnapshot: {
+				durableSessionId: binding.durableSessionId,
+				runtimeSessionId: binding.runtimeSessionId,
+				eventSeq: runtime.nextSeq,
+				activeTurn,
+				status: runtimeStatus,
+				turnId: null,
+				streamingText: "",
+				tools: [],
+			},
 		};
 		runtime.bindings.set(binding.durableSessionId, installed);
 		runtime.runtimeToDurable.set(binding.runtimeSessionId, binding.durableSessionId);
 		return installed;
+	}
+
+	private captureActiveTurnSnapshot(
+		runtime: ConnectionRuntime,
+		binding: RuntimeBinding,
+		response: unknown
+	): void {
+		binding.activeTurnSnapshot = normalizeHermesActiveTurnSnapshot(response, {
+			durableSessionId: binding.durableSessionId,
+			runtimeSessionId: binding.runtimeSessionId,
+			eventSeq: runtime.nextSeq,
+			activeTurn: binding.activeTurn,
+			status: binding.runtimeStatus,
+		});
 	}
 
 	private removeBinding(runtime: ConnectionRuntime, binding: RuntimeBinding): void {

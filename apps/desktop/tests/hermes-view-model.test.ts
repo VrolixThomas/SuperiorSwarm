@@ -804,6 +804,46 @@ describe("Hermes renderer view model", () => {
 		expect(state.historyRefreshRequired).toBe(true);
 	});
 
+	test("replaces partial deltas with a complete active-turn snapshot", () => {
+		const partial = {
+			...createHermesLiveState(),
+			running: true,
+			runtimeStatus: "streaming",
+			streamingText: "answer accumulated",
+		};
+		const replayed = applyHermesEvent(
+			partial,
+			event("runtime.active-turn-snapshot", {
+				payload: {
+					activeTurnSnapshot: {
+						durableSessionId: "session-1",
+						runtimeSessionId: "runtime-2",
+						eventSeq: 1_250,
+						activeTurn: true,
+						status: "streaming",
+						turnId: "turn-live",
+						streamingText: "Complete answer accumulated before reconnect",
+						tools: [
+							{
+								id: "tool-live",
+								turnId: "turn-live",
+								name: "terminal",
+								status: "complete",
+							},
+						],
+					},
+				} as HermesRuntimeEvent["payload"],
+			})
+		);
+
+		expect(replayed).toMatchObject({
+			running: true,
+			runtimeStatus: "streaming",
+			streamingText: "Complete answer accumulated before reconnect",
+			tools: [{ id: "tool-live", name: "terminal", status: "complete" }],
+		});
+	});
+
 	test("reconciles selected-session busy state from authoritative reconnect bindings", () => {
 		const idleReconnect = event("runtime.history-refresh-required", {
 			runtimeSessionId: null,

@@ -1,5 +1,6 @@
 import {
 	HERMES_WORKSPACE_ARTIFACT_KIND,
+	type HermesActiveTurnSnapshot,
 	type HermesInteractionChoiceDto,
 	type HermesOriginProjection,
 	type HermesRuntimeEvent,
@@ -547,6 +548,64 @@ export function normalizeHermesRuntimeActivity(value: unknown): {
 				? null
 				: ["busy", "queued", "running", "streaming", "working"].includes(status)),
 		status,
+	};
+}
+
+export function normalizeHermesActiveTurnSnapshot(
+	value: unknown,
+	input: {
+		durableSessionId: string;
+		runtimeSessionId: string;
+		eventSeq: number;
+		activeTurn: boolean;
+		status: string | null;
+	}
+): HermesActiveTurnSnapshot {
+	const result = record(value);
+	const rows = Array.isArray(result?.["messages"]) ? result["messages"] : [];
+	const messages = rows.flatMap((row, index) => {
+		const normalized = normalizeTranscriptMessage(row, index);
+		return normalized ? [normalized] : [];
+	});
+	let lastUserIndex = -1;
+	for (const [index, message] of messages.entries()) {
+		if (message.role === "user") lastUserIndex = index;
+	}
+	const tail = input.activeTurn ? messages.slice(lastUserIndex + 1) : [];
+	const turnId =
+		safeIdentifier(result?.["current_turn_id"], result?.["turn_id"]) ??
+		[...tail].reverse().find((message) => message.turnId)?.turnId ??
+		null;
+	const activeRows = turnId
+		? tail.filter((message) => message.turnId === null || message.turnId === turnId)
+		: tail;
+	return {
+		durableSessionId: input.durableSessionId,
+		runtimeSessionId: input.runtimeSessionId,
+		eventSeq: input.eventSeq,
+		activeTurn: input.activeTurn,
+		status: input.status,
+		turnId,
+		streamingText: activeRows
+			.filter((message) => message.role === "assistant" && message.text.trim())
+			.map((message) => message.text)
+			.join(""),
+		tools: activeRows.flatMap((message) => {
+			if (message.role !== "tool" && !message.toolName) return [];
+			const status = message.status?.trim().toLowerCase() ?? "";
+			return [
+				{
+					id: message.id,
+					turnId: message.turnId,
+					name: message.toolName ?? "tool",
+					status: ["failed", "error", "cancelled", "interrupted"].includes(status)
+						? ("failed" as const)
+						: ["complete", "completed", "done", "success", "succeeded"].includes(status)
+							? ("complete" as const)
+							: ("running" as const),
+			},
+			];
+		}),
 	};
 }
 

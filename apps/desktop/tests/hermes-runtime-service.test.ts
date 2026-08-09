@@ -1430,7 +1430,118 @@ describe("HermesRuntimeService stock lifecycle", () => {
 			session_id: "stored-1",
 			profile: "work",
 			source: "superiorswarm",
-			omit_messages: true,
+			omit_messages: false,
+		});
+	});
+
+	test("returns a complete active-turn snapshot without replacing canonical durable history", async () => {
+		const durableMessage = historyMessage("durable-before-active-turn", {
+			text: "Canonical completed answer",
+		});
+		rest.histories.set("stored-1", {
+			durableSessionId: "stored-1",
+			view: "durable",
+			messages: [durableMessage],
+		});
+		client.responses.set("session.resume", [
+			{
+				session_id: "runtime-active",
+				session_key: "stored-1",
+				profile: "work",
+				running: true,
+				status: "streaming",
+				messages: [
+					{ id: "active-user", turn_id: "turn-live", role: "user", content: "Investigate" },
+					{
+						id: "active-tool",
+						turn_id: "turn-live",
+						role: "tool",
+						name: "terminal",
+						status: "complete",
+						content: "done",
+					},
+					{
+						id: "active-answer",
+						turn_id: "turn-live",
+						role: "assistant",
+						status: "streaming",
+						content: "Complete answer accumulated before this late join",
+					},
+				],
+			},
+		]);
+		await service.connect(connectionId);
+
+		const resumed = await service.resume(connectionId, "stored-1");
+
+		expect(client.requests[0]?.params["omit_messages"]).toBe(false);
+		expect(resumed.activeTurnSnapshot).toMatchObject({
+			durableSessionId: "stored-1",
+			runtimeSessionId: "runtime-active",
+			activeTurn: true,
+			status: "streaming",
+			turnId: "turn-live",
+			streamingText: "Complete answer accumulated before this late join",
+			tools: [{ id: "active-tool", name: "terminal", status: "complete" }],
+		});
+		expect(resumed.history).toEqual({
+			durableSessionId: "stored-1",
+			view: "durable",
+			messages: [durableMessage],
+		});
+	});
+
+	test("late join uses a fresh snapshot instead of depending on the bounded delta buffer", async () => {
+		client.responses.set("session.resume", [
+			{
+				session_id: "runtime-buffered",
+				session_key: "stored-1",
+				profile: "work",
+				running: true,
+				status: "streaming",
+				messages: [],
+			},
+		]);
+		client.responses.set("session.activate", [
+			{
+				session_id: "runtime-buffered",
+				session_key: "stored-1",
+				profile: "work",
+				running: true,
+				status: "streaming",
+				messages: [
+					{ id: "active-user", turn_id: "turn-buffered", role: "user", content: "Work" },
+					{
+						id: "active-answer",
+						turn_id: "turn-buffered",
+						role: "assistant",
+						status: "streaming",
+						content: "Authoritative complete answer after more than one thousand deltas",
+					},
+				],
+			},
+		]);
+		await service.connect(connectionId);
+		await service.resume(connectionId, "stored-1");
+		for (let index = 0; index < 1_100; index++) {
+			client.emit({
+				type: "message.delta",
+				runtimeSessionId: "runtime-buffered",
+				text: "x",
+			});
+		}
+
+		const rejoined = await service.resume(connectionId, "stored-1");
+
+		expect(service.events(connectionId, 0).events).toHaveLength(1_000);
+		expect(rejoined.activeTurnSnapshot).toMatchObject({
+			eventSeq: 1_100,
+			activeTurn: true,
+			streamingText: "Authoritative complete answer after more than one thousand deltas",
+		});
+		expect(client.requests.at(-1)).toEqual({
+			method: "session.activate",
+			params: { session_id: "runtime-buffered", omit_messages: false },
 		});
 	});
 
@@ -1496,7 +1607,7 @@ describe("HermesRuntimeService stock lifecycle", () => {
 			"archived-original",
 			"summary-one",
 		]);
-		expect(client.requests[0]?.params["omit_messages"]).toBe(true);
+		expect(client.requests[0]?.params["omit_messages"]).toBe(false);
 
 		client.emit({ type: "runtime.history-refresh-required", status: "reconnected" });
 		await waitFor(() => rest.transcriptCalls.length >= 2, "durable history was not refreshed");
@@ -1677,6 +1788,16 @@ describe("HermesRuntimeService stock lifecycle", () => {
 				profile: "work",
 				running: true,
 				status: "working",
+				messages: [
+					{ id: "reconnect-user", turn_id: "turn-reconnect", role: "user", content: "Continue" },
+					{
+						id: "reconnect-answer",
+						turn_id: "turn-reconnect",
+						role: "assistant",
+						status: "streaming",
+						content: "Complete answer restored on reconnect",
+					},
+				],
 			},
 		]);
 		await service.connect(connectionId);
@@ -1694,6 +1815,13 @@ describe("HermesRuntimeService stock lifecycle", () => {
 		expect(reconciled?.event.payload.bindings?.[0]).toMatchObject({
 			activeTurn: true,
 			status: "working",
+		});
+		const snapshot = service
+			.events(connectionId, 0)
+			.events.find((entry) => entry.event.type === "runtime.active-turn-snapshot");
+		expect(snapshot?.event.payload.activeTurnSnapshot).toMatchObject({
+			activeTurn: true,
+			streamingText: "Complete answer restored on reconnect",
 		});
 	});
 
