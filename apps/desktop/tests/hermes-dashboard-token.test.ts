@@ -84,6 +84,84 @@ describe("stock Hermes dashboard token discovery", () => {
 		).rejects.toThrow("timed out");
 	});
 
+	test("preserves the configured dashboard path prefix when discovering loopback auth", async () => {
+		const requests: string[] = [];
+		const token = await discoverHermesDashboardToken("http://127.0.0.1:9119/hermes", {
+			fetchImpl: async (input) => {
+				requests.push(String(input));
+				return new Response(
+					'<script>window.__HERMES_SESSION_TOKEN__ = "prefixed-stock-token";</script>'
+				);
+			},
+		});
+
+		expect(token).toBe("prefixed-stock-token");
+		expect(requests).toEqual(["http://127.0.0.1:9119/hermes/"]);
+	});
+
+	test("rejects an oversized declared dashboard response before buffering and cancels it", async () => {
+		let requestSignal: AbortSignal | undefined;
+		let cancelled = false;
+		const body = new ReadableStream<Uint8Array>({
+			start(controller) {
+				controller.enqueue(
+					new TextEncoder().encode(
+						'<script>window.__HERMES_SESSION_TOKEN__ = "declared-secret";</script>'
+					)
+				);
+			},
+			cancel() {
+				cancelled = true;
+			},
+		});
+
+		try {
+			await discoverHermesDashboardToken("http://127.0.0.1:9119", {
+				maxResponseBytes: 32,
+				fetchImpl: async (_input, init) => {
+					requestSignal = init?.signal ?? undefined;
+					return new Response(body, { headers: { "Content-Length": "4096" } });
+				},
+			});
+			expect.unreachable("oversized response should fail");
+		} catch (error) {
+			expect((error as Error).message).toContain("size limit");
+			expect((error as Error).message).not.toContain("declared-secret");
+		}
+		expect(requestSignal?.aborted).toBe(true);
+		expect(cancelled).toBe(true);
+	});
+
+	test("bounds streamed dashboard bytes and cancels a response without Content-Length", async () => {
+		let requestSignal: AbortSignal | undefined;
+		let cancelled = false;
+		const oversizedHtml = `${'<script>window.__HERMES_SESSION_TOKEN__ = "streamed-secret";</script>'}${"x".repeat(128)}`;
+		const body = new ReadableStream<Uint8Array>({
+			start(controller) {
+				controller.enqueue(new TextEncoder().encode(oversizedHtml));
+			},
+			cancel() {
+				cancelled = true;
+			},
+		});
+
+		try {
+			await discoverHermesDashboardToken("http://127.0.0.1:9119", {
+				maxResponseBytes: 64,
+				fetchImpl: async (_input, init) => {
+					requestSignal = init?.signal ?? undefined;
+					return new Response(body);
+				},
+			});
+			expect.unreachable("oversized stream should fail");
+		} catch (error) {
+			expect((error as Error).message).toContain("size limit");
+			expect((error as Error).message).not.toContain("streamed-secret");
+		}
+		expect(requestSignal?.aborted).toBe(true);
+		expect(cancelled).toBe(true);
+	});
+
 	test("discovers and encrypts loopback auth without returning the resolved token", async () => {
 		const connection = await saveHermesConnectionWithDiscovery(
 			{

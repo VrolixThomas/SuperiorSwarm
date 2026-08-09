@@ -190,14 +190,13 @@ export class HermesRestClient {
 					profile: profileId,
 					limit: "500",
 					offset: String(offset),
-					order: "latest",
 				},
 				signal
 			);
 			const page = normalizeHermesMessagePage(payload, 500);
 			resolvedDurableSessionId = page.durableSessionId;
-			pages.unshift(page.messages);
-			offset += page.messages.length;
+			pages.push(page.messages);
+			offset += page.returned;
 			if (!page.hasMore) {
 				const byId = new Map<string, HermesSessionHistory["messages"][number]>();
 				for (const message of pages.flat()) byId.set(message.id, message);

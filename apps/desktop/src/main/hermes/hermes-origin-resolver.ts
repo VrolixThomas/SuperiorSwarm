@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import type { HermesOriginProjection } from "../../shared/hermes";
+import { sanitizeHermesDisplayLabel } from "./hermes-protocol";
 import type { HermesStockSessionDetail } from "./hermes-rest-client";
 
 type JsonRecord = Record<string, unknown>;
@@ -47,16 +48,12 @@ function hasControlCharacter(value: string): boolean {
 	});
 }
 
-function validDisplayLabel(value: unknown): string | null {
-	if (typeof value !== "string") return null;
-	const label = value.trim();
-	if (!label || label.length > 160 || hasControlCharacter(label)) return null;
-	return label;
-}
-
-function firstDisplayLabel(...values: unknown[]): string | null {
+function firstDisplayLabel(
+	suppressedValues: Iterable<unknown>,
+	...values: unknown[]
+): string | null {
 	for (const value of values) {
-		const label = validDisplayLabel(value);
+		const label = sanitizeHermesDisplayLabel(value, suppressedValues);
 		if (label) return label;
 	}
 	return null;
@@ -160,12 +157,26 @@ export function resolveHermesOrigin(
 	const structuredOriginMatchesSource =
 		originPlatform === null || originPlatform.trim().toLowerCase() === source;
 	const origin = structuredOriginMatchesSource ? parsedOrigin : null;
+	const routeValues = [
+		detail.sessionKey,
+		detail.chatId,
+		detail.threadId,
+		origin?.["scope_id"],
+		origin?.["team_id"],
+		origin?.["guild_id"],
+		origin?.["chat_id"],
+		origin?.["channel_id"],
+		origin?.["thread_id"],
+		origin?.["user_id"],
+		origin?.["account_id"],
+	];
+	const displayLabel = (...values: unknown[]) => firstDisplayLabel(routeValues, ...values);
 	const chatType = stringValue(detail.chatType, origin?.["chat_type"])?.trim().toLowerCase();
-	const chatName = firstDisplayLabel(origin?.["chat_name"]);
+	const chatName = displayLabel(origin?.["chat_name"]);
 	const channelLabel =
-		chatType === "channel" ? firstDisplayLabel(origin?.["channel_name"], chatName) : null;
+		chatType === "channel" ? displayLabel(origin?.["channel_name"], chatName) : null;
 	const chatLabel = chatType === "channel" ? null : chatName;
-	const threadLabel = firstDisplayLabel(
+	const threadLabel = displayLabel(
 		origin?.["thread_name"],
 		origin?.["thread_title"],
 		origin?.["chat_topic"]
@@ -173,15 +184,15 @@ export function resolveHermesOrigin(
 	const projectionLabels = {
 		source,
 		displayLabel:
-			firstDisplayLabel(detail.displayName, channelLabel, chatLabel, threadLabel) ??
+			displayLabel(detail.displayName, channelLabel, chatLabel, threadLabel) ??
 			source.replaceAll("_", " "),
-		workspaceLabel: firstDisplayLabel(
+		workspaceLabel: displayLabel(
 			origin?.["workspace_name"],
 			origin?.["team_name"],
 			origin?.["guild_name"],
 			origin?.["scope_name"]
 		),
-		accountLabel: firstDisplayLabel(origin?.["account_name"], origin?.["user_name"]),
+		accountLabel: displayLabel(origin?.["account_name"], origin?.["user_name"]),
 		chatLabel,
 		channelLabel,
 		threadLabel,
@@ -203,11 +214,13 @@ export function resolveHermesOrigin(
 
 	const structuredOriginIsSlack = structuredOriginMatchesSource;
 	const fallback = parseStockSlackSessionKey(detail.sessionKey);
+	const originTeamAliases = reconcileRouteValue([
+		validTeamId(origin?.["scope_id"]),
+		validTeamId(origin?.["team_id"]),
+		validTeamId(origin?.["guild_id"]),
+	]);
 	const team = structuredOriginIsSlack
-		? reconcileRouteValue([
-				validTeamId(origin?.["scope_id"] ?? origin?.["team_id"] ?? origin?.["guild_id"]),
-				fallback.teamId,
-			])
+		? reconcileRouteValue([originTeamAliases.value, fallback.teamId])
 		: { value: null, ambiguous: false };
 	const channel = structuredOriginIsSlack
 		? reconcileRouteValue([
@@ -226,7 +239,8 @@ export function resolveHermesOrigin(
 	const teamId = team.value;
 	const channelId = channel.value;
 	const threadId = thread.value;
-	const routeAmbiguous = team.ambiguous || channel.ambiguous || thread.ambiguous;
+	const routeAmbiguous =
+		originTeamAliases.ambiguous || team.ambiguous || channel.ambiguous || thread.ambiguous;
 	const target = !routeAmbiguous && channelId && threadId ? { channelId, threadId } : null;
 	const generatedUrl =
 		teamId && channelId && threadId ? slackAppThreadUrl(teamId, channelId, threadId) : null;
@@ -246,7 +260,7 @@ export function resolveHermesOrigin(
 		projection: {
 			platform: "slack",
 			...projectionLabels,
-			displayLabel: firstDisplayLabel(detail.displayName, channelLabel, chatLabel) ?? "Slack",
+			displayLabel: displayLabel(detail.displayName, channelLabel, chatLabel) ?? "Slack",
 			hasThread: !thread.ambiguous && threadId !== null,
 			canOpenThread: openUrl !== null,
 			canReport:

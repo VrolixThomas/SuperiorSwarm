@@ -225,6 +225,7 @@ describe("Hermes global navigation", () => {
 		expect(view).toContain("Loading canonical Hermes history");
 		expect(view).toContain("Preview Slack update");
 		expect(view).toContain("Confirm send to Slack");
+		expect(view).toContain("hermesReportRequiresExplicitRetry(reportState)");
 		expect(view).toContain("Slack remains live; continue sequentially");
 		expect(view).not.toContain("HermesBindingLifecycle");
 		expect(view).not.toContain("trpc.hermes.release");

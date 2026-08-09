@@ -53,6 +53,14 @@ export const stockMessagePage = {
 	],
 };
 
+export const stockNumericMessageRows = Array.from({ length: 501 }, (_, index) => ({
+	id: index + 1,
+	session_id: "stored-numeric-history",
+	role: index % 2 === 0 ? "user" : "assistant",
+	content: `message ${index + 1}`,
+	timestamp: 1_786_269_600 + index,
+}));
+
 export const stockSessionDetail = {
 	id: "stored-slack-1-tip",
 	profile: "work",

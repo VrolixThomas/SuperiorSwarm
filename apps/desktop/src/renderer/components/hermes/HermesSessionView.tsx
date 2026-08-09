@@ -9,6 +9,7 @@ import {
 	applyHermesEvent,
 	createHermesLiveState,
 	hermesOriginActionAvailability,
+	hermesReportRequiresExplicitRetry,
 	latestReportableHermesMessage,
 } from "../../hermes/hermes-view-model";
 import { useTabStore } from "../../stores/tab-store";
@@ -126,6 +127,7 @@ export function HermesSessionView() {
 			if (event.type === "runtime.history-refresh-required") {
 				if (event.durableSessionId === null || event.durableSessionId === sessionId) {
 					refreshHistory = true;
+					return [event];
 				}
 				return [];
 			}
@@ -134,7 +136,7 @@ export function HermesSessionView() {
 		setLive((current) => {
 			let next = current;
 			for (const event of relevantEvents) {
-				next = applyHermesEvent(next, event);
+				next = applyHermesEvent(next, event, sessionId);
 				if (event.type === "message.complete") refreshHistory = true;
 			}
 			return next;
@@ -607,8 +609,7 @@ export function HermesSessionView() {
 														connectionId,
 														hermesSessionId: sessionId,
 														messageId: reportable.id,
-														explicitRetry:
-															reportState?.status === "failed" && reportState.retryable,
+														explicitRetry: hermesReportRequiresExplicitRetry(reportState),
 													},
 													{
 														onSettled: () => {
@@ -623,7 +624,7 @@ export function HermesSessionView() {
 										>
 											{report.isPending
 												? "Sending…"
-												: reportState?.status === "failed" && reportState.retryable
+												: hermesReportRequiresExplicitRetry(reportState)
 													? "Confirm retry to Slack"
 													: "Confirm send to Slack"}
 										</button>
@@ -641,7 +642,9 @@ export function HermesSessionView() {
 													? "Duplicate suppressed locally"
 													: reportState?.status === "failed"
 														? `Failed${reportState.retryable ? "; explicit retry available" : ""}`
-														: "One selected update; delivery is not globally exactly-once"}
+														: reportState?.status === "sending" && reportState.retryable
+															? "Previous send was interrupted; explicit retry available"
+															: "One selected update; delivery is not globally exactly-once"}
 										</span>
 									</div>
 								</>

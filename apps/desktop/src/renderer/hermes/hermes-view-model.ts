@@ -155,6 +155,12 @@ export function hermesOriginActionAvailability(
 	};
 }
 
+export function hermesReportRequiresExplicitRetry(
+	state: { status: string; retryable: boolean } | null | undefined
+): boolean {
+	return state?.retryable === true && (state.status === "failed" || state.status === "sending");
+}
+
 const GENERIC_APPROVAL_CHOICES: HermesInteractionChoice[] = [
 	{ value: "allow_once", label: "Allow once" },
 	{ value: "deny", label: "Deny" },
@@ -162,7 +168,8 @@ const GENERIC_APPROVAL_CHOICES: HermesInteractionChoice[] = [
 
 export function applyHermesEvent(
 	state: HermesLiveState,
-	event: HermesRuntimeEvent
+	event: HermesRuntimeEvent,
+	selectedSessionId?: string
 ): HermesLiveState {
 	switch (event.type) {
 		case "message.delta":
@@ -274,8 +281,25 @@ export function applyHermesEvent(
 				runtimeStatus: "cancelled",
 				error: event.text ?? "Hermes turn was interrupted",
 			};
-		case "runtime.history-refresh-required":
-			return { ...state, historyRefreshRequired: true };
+		case "runtime.history-refresh-required": {
+			const binding = selectedSessionId
+				? event.payload.bindings?.find(
+						(candidate) =>
+							candidate.hermesSessionId === selectedSessionId ||
+							candidate.durableSessionId === selectedSessionId
+					)
+				: undefined;
+			if (!binding) return { ...state, historyRefreshRequired: true };
+			return {
+				...state,
+				running: binding.activeTurn,
+				runtimeStatus: binding.status ?? (binding.activeTurn ? "running" : "idle"),
+				streamingText: binding.activeTurn ? state.streamingText : "",
+				pendingApproval: binding.activeTurn ? state.pendingApproval : null,
+				pendingClarification: binding.activeTurn ? state.pendingClarification : null,
+				historyRefreshRequired: true,
+			};
+		}
 		case "runtime.error":
 		case "error":
 			return {

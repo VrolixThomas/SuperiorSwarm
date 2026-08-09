@@ -3,6 +3,7 @@ import {
 	extractWorkspaceArtifacts,
 	normalizeHermesEvent,
 	normalizeHermesMessagePage,
+	normalizeHermesRuntimeActivity,
 	normalizeHermesSessionBinding,
 	normalizeHermesSessionList,
 	sanitizeHermesPayload,
@@ -128,6 +129,17 @@ describe("stock Hermes protocol adapter", () => {
 		});
 		expect("claimId" in created).toBe(false);
 		expect("bindingGeneration" in resumed).toBe(false);
+	});
+
+	test("normalizes authoritative stock running and status fields", () => {
+		expect(normalizeHermesRuntimeActivity({ running: false, status: "idle" })).toEqual({
+			activeTurn: false,
+			status: "idle",
+		});
+		expect(normalizeHermesRuntimeActivity({ running: true, status: "working" })).toEqual({
+			activeTurn: true,
+			status: "working",
+		});
 	});
 
 	test("normalizes stock event frames by ephemeral runtime ID", () => {

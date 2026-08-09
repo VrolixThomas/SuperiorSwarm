@@ -7,6 +7,7 @@ import {
 	groupHermesSessions,
 	hermesConnectionFormPolicy,
 	hermesOriginActionAvailability,
+	hermesReportRequiresExplicitRetry,
 	latestReportableHermesMessage,
 } from "../src/renderer/hermes/hermes-view-model";
 import type {
@@ -203,6 +204,52 @@ describe("Hermes renderer view model", () => {
 		expect(state.historyRefreshRequired).toBe(true);
 	});
 
+	test("reconciles selected-session busy state from authoritative reconnect bindings", () => {
+		const idleReconnect = event("runtime.history-refresh-required", {
+			runtimeSessionId: null,
+			durableSessionId: null,
+			status: "reconnected",
+			payload: {
+				bindings: [
+					{
+						hermesSessionId: "session-1",
+						durableSessionId: "session-1",
+						runtimeSessionId: "runtime-2",
+						activeTurn: false,
+						status: "idle",
+					},
+				],
+			} as HermesRuntimeEvent["payload"],
+		});
+		const idle = applyHermesEvent(
+			{ ...createHermesLiveState(), running: true, runtimeStatus: "streaming" },
+			idleReconnect,
+			"session-1"
+		);
+		expect(idle).toMatchObject({
+			running: false,
+			runtimeStatus: "idle",
+			historyRefreshRequired: true,
+		});
+
+		const runningReconnect = event("runtime.history-refresh-required", {
+			...idleReconnect,
+			payload: {
+				bindings: [
+					{
+						hermesSessionId: "session-1",
+						durableSessionId: "session-1",
+						runtimeSessionId: "runtime-3",
+						activeTurn: true,
+						status: "working",
+					},
+				],
+			} as HermesRuntimeEvent["payload"],
+		});
+		const running = applyHermesEvent(createHermesLiveState(), runningReconnect, "session-1");
+		expect(running).toMatchObject({ running: true, runtimeStatus: "working" });
+	});
+
 	test("surfaces queued, failed, interrupted, and expired stock runtime states", () => {
 		let state = applyHermesEvent(
 			createHermesLiveState(),
@@ -278,5 +325,12 @@ describe("Hermes renderer view model", () => {
 			canOpenOrigin: false,
 			canReportToOrigin: false,
 		});
+	});
+
+	test("requires explicit retry for retryable failed and orphaned-sending receipts", () => {
+		expect(hermesReportRequiresExplicitRetry({ status: "failed", retryable: true })).toBe(true);
+		expect(hermesReportRequiresExplicitRetry({ status: "sending", retryable: true })).toBe(true);
+		expect(hermesReportRequiresExplicitRetry({ status: "sending", retryable: false })).toBe(false);
+		expect(hermesReportRequiresExplicitRetry(null)).toBe(false);
 	});
 });

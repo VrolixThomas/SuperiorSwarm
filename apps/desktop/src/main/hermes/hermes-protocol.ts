@@ -175,6 +175,22 @@ function safeIdentifier(...values: unknown[]): string | null {
 	return value;
 }
 
+export function sanitizeHermesDisplayLabel(
+	value: unknown,
+	suppressedValues: Iterable<unknown> = []
+): string | null {
+	if (typeof value !== "string") return null;
+	const rawLabel = value.trim();
+	if (!rawLabel) return null;
+	for (const suppressed of suppressedValues) {
+		if (typeof suppressed === "string" && suppressed.trim() === rawLabel) return null;
+		if (typeof suppressed === "number" && String(suppressed) === rawLabel) return null;
+	}
+	const label = sanitizeString(rawLabel);
+	if (!label || label.length > 160 || safeIdentifier(label) === null) return null;
+	return label;
+}
+
 function contentText(value: unknown): string {
 	if (typeof value === "string") return value;
 	if (!Array.isArray(value)) return "";
@@ -242,12 +258,13 @@ function parseStockOrigin(value: unknown): JsonRecord | null {
 	}
 }
 
-function safeDisplayValue(...values: unknown[]): string | null {
+function safeDisplayValue(
+	suppressedValues: Iterable<unknown>,
+	...values: unknown[]
+): string | null {
 	for (const value of values) {
-		if (typeof value !== "string") continue;
-		const label = sanitizeString(value.trim());
-		if (!label || label.length > 160 || safeIdentifier(label) === null) continue;
-		return label;
+		const label = sanitizeHermesDisplayLabel(value, suppressedValues);
+		if (label) return label;
 	}
 	return null;
 }
@@ -265,13 +282,29 @@ function stockOriginProjection(
 	const rawOrigin = parseStockOrigin(session["origin_json"]);
 	const originPlatform = normalizedSource(rawOrigin?.["platform"]);
 	const origin = originPlatform === source ? rawOrigin : null;
+	const routeValues = [
+		session["session_key"],
+		session["chat_id"],
+		session["thread_id"],
+		origin?.["scope_id"],
+		origin?.["team_id"],
+		origin?.["guild_id"],
+		origin?.["chat_id"],
+		origin?.["channel_id"],
+		origin?.["thread_id"],
+		origin?.["user_id"],
+		origin?.["account_id"],
+	];
 	const chatType = stringValue(session["chat_type"], origin?.["chat_type"])?.toLowerCase();
-	const chatName = safeDisplayValue(origin?.["chat_name"]);
+	const chatName = safeDisplayValue(routeValues, origin?.["chat_name"]);
 	const channelLabel =
-		chatType === "channel" ? safeDisplayValue(origin?.["channel_name"], chatName) : null;
+		chatType === "channel"
+			? safeDisplayValue(routeValues, origin?.["channel_name"], chatName)
+			: null;
 	const chatLabel = chatType === "channel" ? null : chatName;
 	const displayLabel =
 		safeDisplayValue(
+			routeValues,
 			session["display_name"],
 			channelLabel,
 			chatLabel,
@@ -284,15 +317,17 @@ function stockOriginProjection(
 		source,
 		displayLabel,
 		workspaceLabel: safeDisplayValue(
+			routeValues,
 			origin?.["workspace_name"],
 			origin?.["team_name"],
 			origin?.["guild_name"],
 			origin?.["scope_name"]
 		),
-		accountLabel: safeDisplayValue(origin?.["account_name"], origin?.["user_name"]),
+		accountLabel: safeDisplayValue(routeValues, origin?.["account_name"], origin?.["user_name"]),
 		chatLabel,
 		channelLabel,
 		threadLabel: safeDisplayValue(
+			routeValues,
 			origin?.["thread_name"],
 			origin?.["thread_title"],
 			origin?.["chat_topic"]
@@ -381,6 +416,14 @@ export function normalizeHermesSessionList(
 	return [...deduped.values()];
 }
 
+function transcriptMessageIdentifier(value: unknown): string | null {
+	const identifier = safeIdentifier(value);
+	if (identifier) return identifier;
+	return typeof value === "number" && Number.isSafeInteger(value) && value >= 0
+		? String(value)
+		: null;
+}
+
 function normalizeTranscriptMessage(value: unknown, index: number): HermesTranscriptMessage | null {
 	const message = record(value);
 	if (!message) return null;
@@ -391,7 +434,10 @@ function normalizeTranscriptMessage(value: unknown, index: number): HermesTransc
 	const text =
 		stringValue(message["text"]) ?? contentText(message["content"] ?? message["message"]);
 	return {
-		id: safeIdentifier(message["id"], message["message_id"]) ?? `history-${index}`,
+		id:
+			transcriptMessageIdentifier(message["id"]) ??
+			transcriptMessageIdentifier(message["message_id"]) ??
+			`history-${index}`,
 		turnId: safeIdentifier(message["turn_id"], message["turnId"]),
 		role,
 		text: sanitizeString(text),
@@ -408,6 +454,7 @@ function normalizeTranscriptMessage(value: unknown, index: number): HermesTransc
 export interface HermesMessagePage {
 	durableSessionId: string;
 	messages: HermesTranscriptMessage[];
+	returned: number;
 	total: number | null;
 	hasMore: boolean;
 }
@@ -425,12 +472,13 @@ export function normalizeHermesMessagePage(
 	);
 	if (!durableSessionId) throw new Error("Hermes messages page omitted the durable session ID");
 	const rows = Array.isArray(root["messages"]) ? root["messages"] : [];
-	const messages = rows.flatMap((message, index) => {
-		const normalized = normalizeTranscriptMessage(message, index);
-		return normalized ? [normalized] : [];
-	});
 	const pagination = record(root["pagination"]);
 	const offset = numberValue(pagination?.["offset"], root["offset"]) ?? 0;
+	const messages = rows.flatMap((message, index) => {
+		const normalized = normalizeTranscriptMessage(message, offset + index);
+		return normalized ? [normalized] : [];
+	});
+	const returned = numberValue(pagination?.["returned"]) ?? rows.length;
 	const total = numberValue(root["total"], pagination?.["total"]);
 	const explicitHasMore = optionalBooleanValue(
 		pagination?.["has_more"],
@@ -441,10 +489,10 @@ export function normalizeHermesMessagePage(
 	return {
 		durableSessionId,
 		messages,
+		returned,
 		total,
 		hasMore:
-			explicitHasMore ??
-			(total === null ? messages.length >= requestedLimit : offset + messages.length < total),
+			explicitHasMore ?? (total === null ? returned >= requestedLimit : offset + returned < total),
 	};
 }
 
@@ -481,6 +529,23 @@ export function normalizeHermesSessionBinding(
 		profileId:
 			safeIdentifier(result["profile"], result["profile_name"], requestedProfileId) ?? "default",
 		persisted: requestedDurableSessionId !== undefined,
+	};
+}
+
+export function normalizeHermesRuntimeActivity(value: unknown): {
+	activeTurn: boolean | null;
+	status: string | null;
+} {
+	const result = record(value);
+	const status = sanitizedStringValue(result?.["status"])?.trim().toLowerCase() ?? null;
+	const running = optionalBooleanValue(result?.["running"]);
+	return {
+		activeTurn:
+			running ??
+			(status === null
+				? null
+				: ["busy", "queued", "running", "streaming", "working"].includes(status)),
+		status,
 	};
 }
 

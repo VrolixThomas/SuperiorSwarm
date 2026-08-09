@@ -416,6 +416,8 @@ describe("HermesRuntimeService stock lifecycle", () => {
 				hermesSessionId: "stored-1",
 				durableSessionId: "stored-1",
 				runtimeSessionId: "runtime-2",
+				activeTurn: false,
+				status: null,
 			},
 		]);
 		expect(client.requests.filter((request) => request.method === "session.resume")).toHaveLength(
@@ -423,12 +425,24 @@ describe("HermesRuntimeService stock lifecycle", () => {
 		);
 	});
 
-	test("preserves an active turn and refreshes canonical history after reconnect resume", async () => {
+	test("clears a stale active turn when reconnect resume says the stock session is idle", async () => {
 		client.responses.set("session.resume", [
-			{ session_id: "runtime-1", session_key: "stored-1", profile: "work" },
-			{ session_id: "runtime-2", session_key: "stored-1", profile: "work" },
+			{
+				session_id: "runtime-1",
+				session_key: "stored-1",
+				profile: "work",
+				running: false,
+				status: "idle",
+			},
+			{
+				session_id: "runtime-2",
+				session_key: "stored-1",
+				profile: "work",
+				running: false,
+				status: "idle",
+			},
 		]);
-		client.responses.set("prompt.submit", [{ status: "streaming" }]);
+		client.responses.set("prompt.submit", [{ status: "streaming" }, { status: "streaming" }]);
 		await service.connect(connectionId);
 		await service.resume(connectionId, "stored-1");
 		await service.submit(connectionId, "stored-1", "Keep working");
@@ -439,10 +453,52 @@ describe("HermesRuntimeService stock lifecycle", () => {
 
 		expect(rest.transcriptCalls.length).toBe(historyCallsBeforeReconnect + 1);
 		expect(operations.at(-1)).toBe("rest:history:stored-1");
-		await expect(service.submit(connectionId, "stored-1", "Duplicate turn")).rejects.toThrow(
+		await expect(
+			service.submit(connectionId, "stored-1", "Continue after reconnect")
+		).resolves.toEqual({ ok: true });
+		expect(client.requests.filter((request) => request.method === "prompt.submit")).toHaveLength(2);
+		const reconciled = service
+			.events(connectionId, 0)
+			.events.find((entry) => entry.event.type === "runtime.history-refresh-required");
+		expect(reconciled?.event.payload.bindings?.[0]).toMatchObject({
+			activeTurn: false,
+			status: "idle",
+		});
+	});
+
+	test("keeps the session busy when reconnect resume says a stock turn is running", async () => {
+		client.responses.set("session.resume", [
+			{
+				session_id: "runtime-1",
+				session_key: "stored-1",
+				profile: "work",
+				running: false,
+				status: "idle",
+			},
+			{
+				session_id: "runtime-2",
+				session_key: "stored-1",
+				profile: "work",
+				running: true,
+				status: "working",
+			},
+		]);
+		await service.connect(connectionId);
+		await service.resume(connectionId, "stored-1");
+
+		client.emit({ type: "runtime.history-refresh-required", status: "reconnected" });
+		await Bun.sleep(5);
+
+		await expect(service.submit(connectionId, "stored-1", "Overlapping turn")).rejects.toThrow(
 			"already active"
 		);
-		expect(client.requests.filter((request) => request.method === "prompt.submit")).toHaveLength(1);
+		const reconciled = service
+			.events(connectionId, 0)
+			.events.find((entry) => entry.event.type === "runtime.history-refresh-required");
+		expect(reconciled?.event.payload.bindings?.[0]).toMatchObject({
+			activeTurn: true,
+			status: "working",
+		});
 	});
 
 	test("maps live events to durable IDs and refreshes REST after terminal completion", async () => {

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { HermesRestClient, HermesRestError } from "../src/main/hermes/hermes-rest-client";
+import { stockNumericMessageRows } from "./fixtures/hermes-stock";
 
 function json(value: unknown, status = 200): Response {
 	return new Response(JSON.stringify(value), {
@@ -81,12 +82,12 @@ describe("HermesRestClient", () => {
 		expect(paths[1]).toContain("order=recent");
 	});
 
-	test("paginates latest-first stock transcript pages and restores chronology", async () => {
+	test("paginates stock transcript pages through the resolved compression tip", async () => {
 		const offsets: number[] = [];
-		const newest = Array.from({ length: 500 }, (_, index) => ({
-			id: `new-${index}`,
+		const firstPage = Array.from({ length: 500 }, (_, index) => ({
+			id: `old-${index}`,
 			role: "assistant",
-			content: `new ${index}`,
+			content: `old ${index}`,
 		}));
 		const client = new HermesRestClient({
 			baseUrl: "http://localhost:9119",
@@ -97,12 +98,11 @@ describe("HermesRestClient", () => {
 				offsets.push(Number(url.searchParams.get("offset")));
 				expect(url.searchParams.get("profile")).toBe("work");
 				expect(url.searchParams.get("limit")).toBe("500");
-				expect(url.searchParams.get("order")).toBe("latest");
 				return offsets.length === 1
-					? json({ session_id: "compressed-tip", messages: newest })
+					? json({ session_id: "compressed-tip", messages: firstPage })
 					: json({
 							session_id: "compressed-tip",
-							messages: [{ id: "oldest", role: "user", content: "first" }],
+							messages: [{ id: "newest", role: "user", content: "last" }],
 						});
 			},
 		});
@@ -112,8 +112,40 @@ describe("HermesRestClient", () => {
 		expect(offsets).toEqual([0, 500]);
 		expect(history.durableSessionId).toBe("compressed-tip");
 		expect(history.messages).toHaveLength(501);
-		expect(history.messages[0]?.id).toBe("oldest");
-		expect(history.messages.at(-1)?.id).toBe("new-499");
+		expect(history.messages[0]?.id).toBe("old-0");
+		expect(history.messages.at(-1)?.id).toBe("newest");
+	});
+
+	test("preserves numeric message IDs and stock insertion order across 501-row pages", async () => {
+		const offsets: number[] = [];
+		const client = new HermesRestClient({
+			baseUrl: "http://localhost:9119",
+			profileId: "work",
+			token: "token",
+			fetchImpl: async (input) => {
+				const url = new URL(String(input));
+				const offset = Number(url.searchParams.get("offset"));
+				offsets.push(offset);
+				expect(url.searchParams.has("order")).toBe(false);
+				const messages = stockNumericMessageRows.slice(offset, offset + 500);
+				return json({
+					session_id: "stored-numeric-history",
+					messages,
+					pagination: { limit: 500, offset, returned: messages.length },
+				});
+			},
+		});
+
+		const history = await client.getTranscript("stored-numeric-history", "work");
+
+		expect(offsets).toEqual([0, 500]);
+		expect(history.messages).toHaveLength(501);
+		expect(history.messages.map((message) => message.id)).toEqual(
+			stockNumericMessageRows.map((message) => String(message.id))
+		);
+		expect(history.messages.map((message) => message.text)).toEqual(
+			stockNumericMessageRows.map((message) => message.content)
+		);
 	});
 
 	test("continues a short transcript page when stock has_more says more rows exist", async () => {
@@ -128,12 +160,12 @@ describe("HermesRestClient", () => {
 				return offsets.length === 1
 					? json({
 							session_id: "stored-1",
-							messages: [{ id: "newer", role: "assistant", content: "second" }],
+							messages: [{ id: "older", role: "user", content: "first" }],
 							pagination: { offset: 0, returned: 1, has_more: true },
 						})
 					: json({
 							session_id: "stored-1",
-							messages: [{ id: "older", role: "user", content: "first" }],
+							messages: [{ id: "newer", role: "assistant", content: "second" }],
 							pagination: { offset: 1, returned: 1, has_more: false },
 						});
 			},

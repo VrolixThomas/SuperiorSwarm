@@ -26,6 +26,7 @@ import {
 import { type ResolvedHermesOrigin, resolveHermesOrigin } from "./hermes-origin-resolver";
 import {
 	type extractWorkspaceArtifacts,
+	normalizeHermesRuntimeActivity,
 	normalizeHermesSessionBinding,
 	sanitizeHermesPayload,
 } from "./hermes-protocol";
@@ -78,6 +79,7 @@ interface BufferedEvent {
 
 interface RuntimeBinding extends HermesSessionBinding {
 	activeTurn: boolean;
+	runtimeStatus: string | null;
 }
 
 interface ConnectionRuntime {
@@ -463,16 +465,21 @@ export class HermesRuntimeService {
 			runtime.bindings.get(durableSessionId) ?? runtime.bindings.get(hermesSessionId);
 		if (existing) {
 			try {
+				const response = await runtime.client.request("session.activate", {
+					session_id: existing.runtimeSessionId,
+					omit_messages: true,
+				});
 				const activated = normalizeHermesSessionBinding(
-					await runtime.client.request("session.activate", {
-						session_id: existing.runtimeSessionId,
-						omit_messages: true,
-					}),
+					response,
 					durableSessionId,
 					existing.profileId
 				);
-				this.installBinding(runtime, activated);
-				return { ...activated, history };
+				const installed = this.installBinding(
+					runtime,
+					activated,
+					normalizeHermesRuntimeActivity(response)
+				);
+				return { ...installed, history };
 			} catch {
 				this.removeBinding(runtime, existing);
 			}
@@ -628,16 +635,19 @@ export class HermesRuntimeService {
 		for (const durableSessionId of durableIds) {
 			let binding: RuntimeBinding;
 			try {
+				const previous = previousBindings.get(durableSessionId);
 				binding = await this.resumeBinding(
 					runtime,
 					this.resolveDurableId(runtime, durableSessionId),
-					this.profileFor(runtime, durableSessionId)
+					this.profileFor(runtime, durableSessionId),
+					previous
 				);
-				binding.activeTurn = previousBindings.get(durableSessionId)?.activeTurn ?? false;
 				bindings.push({
 					hermesSessionId: durableSessionId,
 					durableSessionId: binding.durableSessionId,
 					runtimeSessionId: binding.runtimeSessionId,
+					activeTurn: binding.activeTurn,
+					status: binding.runtimeStatus,
 				});
 			} catch (error) {
 				failedSessionIds.push(durableSessionId);
@@ -669,19 +679,21 @@ export class HermesRuntimeService {
 	private async resumeBinding(
 		runtime: ConnectionRuntime,
 		durableSessionId: string,
-		profileId: string
+		profileId: string,
+		fallbackActivity?: Pick<RuntimeBinding, "activeTurn" | "runtimeStatus">
 	): Promise<RuntimeBinding> {
-		const binding = normalizeHermesSessionBinding(
-			await runtime.client.request("session.resume", {
-				session_id: durableSessionId,
-				profile: profileId,
-				source: "superiorswarm",
-				omit_messages: true,
-			}),
-			durableSessionId,
-			profileId
-		);
-		return this.installBinding(runtime, binding);
+		const response = await runtime.client.request("session.resume", {
+			session_id: durableSessionId,
+			profile: profileId,
+			source: "superiorswarm",
+			omit_messages: true,
+		});
+		const binding = normalizeHermesSessionBinding(response, durableSessionId, profileId);
+		const activity = normalizeHermesRuntimeActivity(response);
+		return this.installBinding(runtime, binding, {
+			activeTurn: activity.activeTurn ?? fallbackActivity?.activeTurn ?? null,
+			status: activity.status ?? fallbackActivity?.runtimeStatus ?? null,
+		});
 	}
 
 	private async resolveOrigin(
@@ -718,13 +730,15 @@ export class HermesRuntimeService {
 
 	private installBinding(
 		runtime: ConnectionRuntime,
-		binding: HermesSessionBinding
+		binding: HermesSessionBinding,
+		activity?: { activeTurn: boolean | null; status: string | null }
 	): RuntimeBinding {
 		const previous = runtime.bindings.get(binding.durableSessionId);
 		if (previous) runtime.runtimeToDurable.delete(previous.runtimeSessionId);
 		const installed: RuntimeBinding = {
 			...binding,
-			activeTurn: previous?.activeTurn ?? false,
+			activeTurn: activity?.activeTurn ?? previous?.activeTurn ?? false,
+			runtimeStatus: activity?.status ?? previous?.runtimeStatus ?? null,
 		};
 		runtime.bindings.set(binding.durableSessionId, installed);
 		runtime.runtimeToDurable.set(binding.runtimeSessionId, binding.durableSessionId);

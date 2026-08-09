@@ -86,6 +86,91 @@ describe("Hermes Slack origin resolver", () => {
 		expect(rendererJson).not.toContain('"77"');
 	});
 
+	test("sanitizes token-like and bearer-like labels in selected Telegram details", () => {
+		const resolved = resolveHermesOrigin(
+			{
+				durableSessionId: stockTelegramSessionDetail.id,
+				profileId: stockTelegramSessionDetail.profile,
+				source: stockTelegramSessionDetail.source,
+				displayName: "token=display-secret",
+				sessionKey: stockTelegramSessionDetail.session_key,
+				chatId: stockTelegramSessionDetail.chat_id,
+				chatType: stockTelegramSessionDetail.chat_type,
+				threadId: stockTelegramSessionDetail.thread_id,
+				originJson: JSON.stringify({
+					platform: "telegram",
+					chat_id: stockTelegramSessionDetail.chat_id,
+					chat_name: "Authorization: Bearer chat-secret",
+					chat_type: "group",
+					user_id: "99887766",
+					user_name: "Bearer account-secret",
+					thread_id: stockTelegramSessionDetail.thread_id,
+					chat_topic: "api_key=topic-secret",
+					scope_name: "cookie=workspace-secret",
+				}),
+			},
+			{ connectionMode: "loopback", senderAvailable: true }
+		);
+
+		expect(resolved.projection).toMatchObject({
+			displayLabel: "token=[redacted]",
+			workspaceLabel: "cookie=[redacted]",
+			accountLabel: "[redacted]",
+			chatLabel: "Authorization: [redacted]",
+			threadLabel: "api_key=[redacted]",
+		});
+		const rendererJson = JSON.stringify(resolved.projection);
+		for (const secret of [
+			"display-secret",
+			"workspace-secret",
+			"account-secret",
+			"chat-secret",
+			"topic-secret",
+		]) {
+			expect(rendererJson).not.toContain(secret);
+		}
+	});
+
+	test("suppresses selected Telegram labels equal to stock routing identifiers", () => {
+		const resolved = resolveHermesOrigin(
+			{
+				durableSessionId: stockTelegramSessionDetail.id,
+				profileId: stockTelegramSessionDetail.profile,
+				source: stockTelegramSessionDetail.source,
+				displayName: stockTelegramSessionDetail.chat_id,
+				sessionKey: stockTelegramSessionDetail.session_key,
+				chatId: stockTelegramSessionDetail.chat_id,
+				chatType: stockTelegramSessionDetail.chat_type,
+				threadId: stockTelegramSessionDetail.thread_id,
+				originJson: JSON.stringify({
+					platform: "telegram",
+					chat_id: stockTelegramSessionDetail.chat_id,
+					chat_name: stockTelegramSessionDetail.chat_id,
+					chat_type: "group",
+					user_id: "99887766",
+					user_name: "99887766",
+					thread_id: stockTelegramSessionDetail.thread_id,
+					chat_topic: stockTelegramSessionDetail.thread_id,
+					scope_id: "telegram-scope-route",
+					scope_name: "telegram-scope-route",
+				}),
+			},
+			{ connectionMode: "loopback", senderAvailable: true }
+		);
+
+		expect(resolved.projection).toMatchObject({
+			displayLabel: "telegram",
+			workspaceLabel: null,
+			accountLabel: null,
+			chatLabel: null,
+			threadLabel: null,
+		});
+		const rendererJson = JSON.stringify(resolved.projection);
+		for (const route of ["-1001234567890", "99887766", '"77"', "telegram-scope-route"]) {
+			expect(rendererJson).not.toContain(route);
+		}
+	});
+
 	test("uses a supported stock session-key shape only as a compatibility fallback", () => {
 		const resolved = resolveHermesOrigin(
 			{
@@ -188,6 +273,38 @@ describe("Hermes Slack origin resolver", () => {
 		expect(resolved.projection).toMatchObject({
 			platform: "slack",
 			hasThread: false,
+			canOpenThread: false,
+			canReport: false,
+		});
+		expect(resolved.openUrl).toBeNull();
+		expect(resolved.target).toBeNull();
+	});
+
+	test("rejects conflicts among stock Slack team aliases themselves", () => {
+		const resolved = resolveHermesOrigin(
+			{
+				durableSessionId: "stored",
+				profileId: "work",
+				source: "slack",
+				displayName: "#release",
+				sessionKey: "agent:work:slack:channel:T01234567:C01234567:1786269600.123456",
+				chatId: "C01234567",
+				chatType: "channel",
+				threadId: "1786269600.123456",
+				originJson: {
+					platform: "slack",
+					scope_id: "T01234567",
+					team_id: "T99999999",
+					guild_id: "T88888888",
+					chat_id: "C01234567",
+					thread_id: "1786269600.123456",
+				},
+			},
+			{ connectionMode: "loopback", senderAvailable: true }
+		);
+
+		expect(resolved.projection).toMatchObject({
+			hasThread: true,
 			canOpenThread: false,
 			canReport: false,
 		});

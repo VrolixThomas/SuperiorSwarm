@@ -116,6 +116,8 @@ export interface HermesReconnectBindingMetadata {
 	hermesSessionId: string;
 	durableSessionId: string;
 	runtimeSessionId: string;
+	activeTurn: boolean;
+	status: string | null;
 }
 
 export interface HermesRuntimeEventPayload {
