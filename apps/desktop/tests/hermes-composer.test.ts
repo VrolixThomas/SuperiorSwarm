@@ -50,6 +50,7 @@ describe("Hermes composer", () => {
 					}),
 				],
 				onRemove: () => undefined,
+				removalDisabled: false,
 			})
 		);
 
@@ -61,5 +62,18 @@ describe("Hermes composer", () => {
 		expect(html).toContain('aria-label="Remove screen.png"');
 		expect(html).not.toContain("Uploaded");
 		expect(html).not.toContain("/Users/");
+	});
+
+	test("disables removal controls while file selection or submission owns the attachments", () => {
+		const html = renderToStaticMarkup(
+			createElement(HermesComposerAttachments, {
+				attachments: [attachment({ status: "attaching" })],
+				onRemove: () => undefined,
+				removalDisabled: true,
+			})
+		);
+
+		expect(html).toContain('aria-label="Remove release-notes-with-a-very-long-unbroken-name.txt"');
+		expect(html).toContain('disabled=""');
 	});
 });

@@ -37,6 +37,18 @@ describe("Hermes transcript", () => {
 		expect(html).not.toContain(">ASSISTANT<");
 	});
 
+	test("preserves canonical quoted prose exactly", () => {
+		const html = renderToStaticMarkup(
+			createElement(HermesTranscript, {
+				items: projectHermesTranscript([
+					message({ id: "assistant-quoted", text: '"Keep these quotes"' }),
+				]),
+			})
+		);
+
+		expect(html).toContain("&quot;Keep these quotes&quot;");
+	});
+
 	test("renders submitted attachments as compact chips without raw context markers", () => {
 		const wrapped = [
 			"[SuperiorSwarm attachments]",
@@ -59,6 +71,21 @@ describe("Hermes transcript", () => {
 		expect(html).toContain("@file:attachments/notes.txt");
 		expect(html).toContain("Summarize the release");
 		expect(html).not.toContain("SuperiorSwarm attachments");
+	});
+
+	test("contains pathological prose horizontally while preserving the bounded reading rail", () => {
+		const pathological = `https://example.invalid/${"x".repeat(4_096)}`;
+		const html = renderToStaticMarkup(
+			createElement(HermesTranscript, {
+				items: projectHermesTranscript([
+					message({ id: "user-long", role: "user", text: pathological }),
+					message({ id: "assistant-long", text: pathological }),
+				]),
+			})
+		);
+
+		expect(html).toContain("min-w-0 break-words [overflow-wrap:anywhere]");
+		expect(html).not.toContain("overflow-x-auto");
 	});
 
 	test("renders escaped raw activity in nested native disclosures", () => {

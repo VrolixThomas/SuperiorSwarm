@@ -8,6 +8,7 @@ import {
 	filterHermesSessions,
 	groupHermesSessions,
 	hermesActivitySummary,
+	hermesComposerContainsFiles,
 	hermesConnectionFormPolicy,
 	hermesOriginActionAvailability,
 	hermesReportRequiresExplicitRetry,
@@ -153,16 +154,16 @@ describe("Hermes renderer view model", () => {
 		});
 	});
 
-	test("unwraps a JSON-quoted prose wrapper without using content prefixes for classification", () => {
+	test("preserves JSON-looking quoted prose without using content prefixes for classification", () => {
 		const quoted = message({ id: "assistant-quoted", text: '"System: quoted prose"' });
 
 		expect(classifyHermesTranscriptMessage(quoted)).toMatchObject({
 			kind: "assistant",
-			text: "System: quoted prose",
+			text: '"System: quoted prose"',
 		});
 		expect(projectHermesTranscript([quoted])[0]).toMatchObject({
 			kind: "message",
-			text: "System: quoted prose",
+			text: '"System: quoted prose"',
 		});
 	});
 
@@ -222,7 +223,9 @@ describe("Hermes renderer view model", () => {
 	});
 
 	test("keeps a completed live reply visible only until canonical history reconciles it", () => {
-		const completed = [{ turnId: "turn-live", text: "Finished live reply" }];
+		const completed = [
+			{ turnId: "turn-live", text: "Finished live reply", canonicalMessageIds: [] },
+		];
 
 		expect(projectHermesLiveCompletions([], completed)).toEqual([
 			expect.objectContaining({
@@ -237,6 +240,50 @@ describe("Hermes renderer view model", () => {
 				completed
 			)
 		).toEqual([]);
+	});
+
+	test("reconciles refreshed canonical prose with a missing or different turn ID", () => {
+		const completed = [
+			{ turnId: "turn-live", text: "Authoritative reply", canonicalMessageIds: ["before"] },
+		];
+
+		expect(
+			projectHermesLiveCompletions(
+				[message({ id: "canonical-missing", turnId: null, text: "Authoritative reply" })],
+				completed
+			)
+		).toEqual([]);
+		expect(
+			projectHermesLiveCompletions(
+				[message({ id: "canonical-different", turnId: "turn-stock", text: "Authoritative reply" })],
+				completed
+			)
+		).toEqual([]);
+	});
+
+	test("does not hide distinct same-text turns and consumes canonical fallbacks once", () => {
+		const oldCanonical = message({ id: "canonical-old", turnId: "turn-old", text: "Same reply" });
+		const distinct = [
+			{
+				turnId: "turn-new",
+				text: "Same reply",
+				canonicalMessageIds: ["canonical-old"],
+			},
+		];
+		expect(projectHermesLiveCompletions([oldCanonical], distinct)).toEqual([
+			expect.objectContaining({ id: "assistant:live-complete:turn-new" }),
+		]);
+
+		const repeated = [
+			{ turnId: "turn-a", text: "Same reply", canonicalMessageIds: [] },
+			{ turnId: "turn-b", text: "Same reply", canonicalMessageIds: [] },
+		];
+		expect(
+			projectHermesLiveCompletions(
+				[message({ id: "canonical-one", turnId: "turn-stock", text: "Same reply" })],
+				repeated
+			)
+		).toEqual([expect.objectContaining({ id: "assistant:live-complete:turn-b" })]);
 	});
 
 	test("adds multiple opaque attachments and removes one before send", () => {
@@ -266,6 +313,19 @@ describe("Hermes renderer view model", () => {
 		expect(
 			reduceHermesComposerAttachments(initial, { type: "remove", handle: "opaque-image" })
 		).toEqual([expect.objectContaining({ handle: "opaque-file" })]);
+		const submitting = reduceHermesComposerAttachments(initial, { type: "submitting" });
+		expect(
+			reduceHermesComposerAttachments(submitting, { type: "remove", handle: "opaque-image" })
+		).toEqual(submitting);
+	});
+
+	test("detects dropped and pasted files for the safe paperclip-only composer policy", () => {
+		expect(hermesComposerContainsFiles({ types: ["Files"], files: { length: 0 } })).toBe(true);
+		expect(hermesComposerContainsFiles({ items: { 0: { kind: "file" }, length: 1 } })).toBe(true);
+		expect(hermesComposerContainsFiles({ files: { length: 1 } })).toBe(true);
+		expect(hermesComposerContainsFiles({ types: ["text/plain"], files: { length: 0 } })).toBe(
+			false
+		);
 	});
 
 	test("retains selected attachments with an error for retry and clears only on success", () => {
@@ -303,12 +363,13 @@ describe("Hermes renderer view model", () => {
 			"[SuperiorSwarm attachments]",
 			'{"kind":"image","name":"screen.png"}',
 			'{"kind":"file","name":"notes.txt","ref":"@file:attachments/notes.txt"}',
+			'{"kind":"file","name":"unsafe.txt","ref":"@file:../backend/private.txt"}',
 			"[/SuperiorSwarm attachments]",
 			"",
 			"Please review these",
 		].join("\n");
 		const projected = projectHermesTranscript([
-			message({ id: "user-attachments", role: "user", text: JSON.stringify(wrapped) }),
+			message({ id: "user-attachments", role: "user", text: wrapped }),
 		]);
 
 		expect(projected[0]).toMatchObject({
@@ -327,6 +388,12 @@ describe("Hermes renderer view model", () => {
 					kind: "file",
 					name: "notes.txt",
 					refText: "@file:attachments/notes.txt",
+				},
+				{
+					id: "user-attachments:attachment:2",
+					kind: "file",
+					name: "unsafe.txt",
+					refText: null,
 				},
 			],
 		});
@@ -450,7 +517,11 @@ describe("Hermes renderer view model", () => {
 		);
 		expect(state.running).toBe(false);
 		expect(state.streamingText).toBe("");
-		expect(state.completed.at(-1)).toEqual({ turnId: "turn-1", text: "Hello world" });
+		expect(state.completed.at(-1)).toEqual({
+			turnId: "turn-1",
+			text: "Hello world",
+			canonicalMessageIds: [],
+		});
 		expect(state.tools[0]?.status).toBe("complete");
 	});
 
@@ -564,7 +635,7 @@ describe("Hermes renderer view model", () => {
 					createdAt: 200,
 				}),
 				message({ id: "assistant-failed", status: "failed", createdAt: 300 }),
-				message({ id: "assistant-empty-wrapper", text: '"   "', createdAt: 350 }),
+				message({ id: "assistant-empty", text: "   ", createdAt: 350 }),
 				message({ id: "user-1", role: "user", createdAt: 400 }),
 			])
 		).toMatchObject({ id: "assistant-ok" });

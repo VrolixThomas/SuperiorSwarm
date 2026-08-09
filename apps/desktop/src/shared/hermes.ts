@@ -105,6 +105,30 @@ export type HermesAttachmentKind = "image" | "pdf" | "file";
 export const HERMES_ATTACHMENT_CONTEXT_START = "[SuperiorSwarm attachments]";
 export const HERMES_ATTACHMENT_CONTEXT_END = "[/SuperiorSwarm attachments]";
 
+export function isSafeHermesFileReference(value: unknown): value is string {
+	if (typeof value !== "string" || !value.startsWith("@file:") || value.length > 4_096) {
+		return false;
+	}
+	const relativePath = value.slice("@file:".length);
+	const hasControlCharacter = Array.from(relativePath).some((character) => {
+		const code = character.charCodeAt(0);
+		return code <= 31 || (code >= 127 && code <= 159);
+	});
+	if (
+		!relativePath ||
+		relativePath.startsWith("/") ||
+		relativePath.startsWith("\\") ||
+		relativePath.startsWith("~") ||
+		relativePath.includes("\\") ||
+		hasControlCharacter ||
+		/[:?#%]/u.test(relativePath)
+	) {
+		return false;
+	}
+	const segments = relativePath.split("/");
+	return segments.every((segment) => segment.length > 0 && segment !== "." && segment !== "..");
+}
+
 /** Renderer-safe metadata for a main-owned, temporary attachment handle. */
 export interface HermesAttachmentMetadata {
 	handle: string;

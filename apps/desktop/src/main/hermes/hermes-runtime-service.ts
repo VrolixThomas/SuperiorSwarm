@@ -1,4 +1,3 @@
-import { readFile } from "node:fs/promises";
 import type {
 	HermesCatalog,
 	HermesOriginProjection,
@@ -10,6 +9,7 @@ import type {
 	HermesSessionHistory,
 	HermesSessionSummary,
 } from "../../shared/hermes";
+import { isSafeHermesFileReference } from "../../shared/hermes";
 import {
 	type HermesAttachedResult,
 	type HermesAttachmentStore,
@@ -155,6 +155,8 @@ function sanitizedConnectionError(error: unknown): Error {
 	return new Error(typeof sanitized === "string" ? sanitized : "Hermes connection failed");
 }
 
+class HermesAttachmentRpcError extends Error {}
+
 function abortable<T>(operation: Promise<T>, signal: AbortSignal): Promise<T> {
 	if (signal.aborted) return Promise.reject(connectionCancelledError());
 	return new Promise<T>((resolve, reject) => {
@@ -232,6 +234,7 @@ export class HermesRuntimeService {
 	private readonly connectionGenerations = new Map<string, number>();
 	private readonly connectionOperations = new Map<string, ConnectionOperation>();
 	private readonly connectionStates = new Map<string, HermesRuntimeState>();
+	private readonly submitReservations = new Map<string, Set<string>>();
 	private readonly unsubscribeBackendInvalidation: () => void;
 	private closed = false;
 
@@ -286,6 +289,7 @@ export class HermesRuntimeService {
 		this.invalidateConnectionOperation(connectionId);
 		this.disposeInstalledRuntime(connectionId);
 		this.connectionStates.delete(connectionId);
+		this.submitReservations.delete(connectionId);
 	}
 
 	getState(connectionId: string): HermesRuntimeState {
@@ -553,15 +557,21 @@ export class HermesRuntimeService {
 		attachmentHandles: string[] = []
 	): Promise<{ ok: true }> {
 		const runtime = this.requireRuntime(connectionId);
+		const reservedSessionIds = this.reserveSubmit(runtime, connectionId, hermesSessionId);
 		let binding = this.bindingFor(runtime, hermesSessionId);
-		if (!binding) {
-			await this.resume(connectionId, hermesSessionId);
-			binding = this.requireBinding(runtime, hermesSessionId);
-		}
-		if (binding.activeTurn) throw new Error("A Hermes turn is already active for this session");
-		const attachments = await this.attachmentStore.resolve(attachmentHandles);
-		binding.activeTurn = true;
+		let ownsActiveTurn = false;
 		try {
+			if (!binding) {
+				await this.resume(connectionId, hermesSessionId);
+				binding = this.requireBinding(runtime, hermesSessionId);
+				this.extendSubmitReservation(connectionId, binding.durableSessionId, reservedSessionIds);
+			}
+			if (binding.activeTurn) {
+				throw new Error("A Hermes turn is already active for this session");
+			}
+			binding.activeTurn = true;
+			ownsActiveTurn = true;
+			const attachments = await this.attachmentStore.resolve(attachmentHandles);
 			const attached = [];
 			for (const attachment of attachments) {
 				const result = await this.attachFile(runtime, binding, attachment);
@@ -582,8 +592,10 @@ export class HermesRuntimeService {
 			this.attachmentStore.release(attachmentHandles);
 			return { ok: true };
 		} catch (error) {
-			binding.activeTurn = false;
+			if (binding && ownsActiveTurn) binding.activeTurn = false;
 			throw error;
+		} finally {
+			this.releaseSubmitReservation(connectionId, reservedSessionIds);
 		}
 	}
 
@@ -645,6 +657,7 @@ export class HermesRuntimeService {
 		const connectionIds = new Set([...this.runtimes.keys(), ...this.connectionOperations.keys()]);
 		for (const connectionId of connectionIds) this.disconnect(connectionId);
 		this.connectionStates.clear();
+		this.submitReservations.clear();
 		this.attachmentStore.clear();
 		this.localBackendManager.shutdown();
 	}
@@ -663,84 +676,119 @@ export class HermesRuntimeService {
 					runtime.connectionMode === "remote"
 						? await runtime.client.request("image.attach_bytes", {
 								session_id: binding.runtimeSessionId,
-								content_base64: (await readFile(attachment.path)).toString("base64"),
+								content_base64: (await this.attachmentStore.readBytes(attachment.handle)).toString(
+									"base64"
+								),
 								filename: attachment.name,
 							})
 						: await runtime.client.request("image.attach", {
 								session_id: binding.runtimeSessionId,
 								path: attachment.path,
 							});
-				this.assertAttachmentResponse(response, attachment, false);
+				this.assertAttachmentResponse(response, false);
 			} else if (attachment.kind === "pdf") {
 				response = await runtime.client.request("pdf.attach", {
 					session_id: binding.runtimeSessionId,
 					...(runtime.connectionMode === "remote"
 						? {
-								content_base64: (await readFile(attachment.path)).toString("base64"),
+								content_base64: (await this.attachmentStore.readBytes(attachment.handle)).toString(
+									"base64"
+								),
 								filename: attachment.name,
 							}
 						: { path: attachment.path }),
 					first_page: 1,
 					last_page: 25,
 				});
-				this.assertAttachmentResponse(response, attachment, false);
+				this.assertAttachmentResponse(response, false);
 			} else {
 				response = await runtime.client.request("file.attach", {
 					session_id: binding.runtimeSessionId,
 					...(runtime.connectionMode === "remote"
 						? {
 								data_url: `data:${attachment.mimeType};base64,${(
-									await readFile(attachment.path)
+									await this.attachmentStore.readBytes(attachment.handle)
 								).toString("base64")}`,
 							}
 						: { path: attachment.path }),
 					name: attachment.name,
 				});
-				this.assertAttachmentResponse(response, attachment, true);
+				this.assertAttachmentResponse(response, true);
 			}
 			const values =
 				response !== null && typeof response === "object"
 					? (response as Record<string, unknown>)
 					: {};
-			const refText = typeof values["ref_text"] === "string" ? values["ref_text"] : null;
+			const refText =
+				attachment.kind === "file" && isSafeHermesFileReference(values["ref_text"])
+					? values["ref_text"]
+					: null;
 			const result = { contextText: refText ?? attachment.name, refText };
 			this.attachmentStore.markAttached(attachment.handle, binding.runtimeSessionId, result);
 			return result;
 		} catch (error) {
-			const raw = error instanceof Error ? error.message : "Hermes rejected the attachment";
-			const sanitized = sanitizeHermesPayload(raw);
-			const safe = (typeof sanitized === "string" ? sanitized : "Hermes rejected the attachment")
-				.replaceAll(attachment.path, attachment.name)
-				.slice(0, 400);
-			throw new Error(`Could not attach “${attachment.name}”: ${safe}`);
+			const safeMessage =
+				error instanceof HermesAttachmentRpcError
+					? error.message
+					: "Hermes rejected the attachment";
+			throw new Error(`Could not attach “${attachment.name}”: ${safeMessage}`);
 		}
 	}
 
-	private assertAttachmentResponse(
-		response: unknown,
-		attachment: HermesResolvedAttachment,
-		requireRef: boolean
-	): void {
+	private assertAttachmentResponse(response: unknown, requireRef: boolean): void {
 		const values =
 			response !== null && typeof response === "object"
 				? (response as Record<string, unknown>)
 				: null;
 		const refText = values?.["ref_text"];
-		const validRef =
-			typeof refText === "string" &&
-			refText.startsWith("@file:") &&
-			refText.length <= 4_096 &&
-			!/[\0\r\n]/.test(refText);
+		const validRef = isSafeHermesFileReference(refText);
 		if (values?.["attached"] === true && (!requireRef || validRef)) {
 			return;
 		}
 		const message =
 			values?.["attached"] === true && requireRef
 				? "Hermes did not return a valid @file reference"
-				: typeof values?.["message"] === "string"
-					? values["message"]
-					: "attach failed";
-		throw new Error(`${attachment.name}: ${message}`);
+				: "Hermes rejected the attachment";
+		throw new HermesAttachmentRpcError(message);
+	}
+
+	private reserveSubmit(
+		runtime: ConnectionRuntime,
+		connectionId: string,
+		hermesSessionId: string
+	): Set<string> {
+		const durableSessionId = this.resolveDurableId(runtime, hermesSessionId);
+		let reservations = this.submitReservations.get(connectionId);
+		if (!reservations) {
+			reservations = new Set();
+			this.submitReservations.set(connectionId, reservations);
+		}
+		if (reservations.has(durableSessionId)) {
+			throw new Error("A Hermes turn is already active for this session");
+		}
+		reservations.add(durableSessionId);
+		return new Set([durableSessionId]);
+	}
+
+	private extendSubmitReservation(
+		connectionId: string,
+		durableSessionId: string,
+		reservedSessionIds: Set<string>
+	): void {
+		if (reservedSessionIds.has(durableSessionId)) return;
+		const reservations = this.submitReservations.get(connectionId);
+		if (reservations?.has(durableSessionId)) {
+			throw new Error("A Hermes turn is already active for this session");
+		}
+		reservations?.add(durableSessionId);
+		reservedSessionIds.add(durableSessionId);
+	}
+
+	private releaseSubmitReservation(connectionId: string, reservedSessionIds: Set<string>): void {
+		const reservations = this.submitReservations.get(connectionId);
+		if (!reservations) return;
+		for (const sessionId of reservedSessionIds) reservations.delete(sessionId);
+		if (reservations.size === 0) this.submitReservations.delete(connectionId);
 	}
 
 	private beginConnectionOperation(

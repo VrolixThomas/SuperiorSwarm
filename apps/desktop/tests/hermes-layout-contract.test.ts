@@ -7,6 +7,7 @@ async function source(path: string): Promise<string> {
 describe("Hermes layout contract", () => {
 	test("keeps the reading canvas bounded and the transcript vertically scrollable only", async () => {
 		const view = await source("components/hermes/HermesSessionView.tsx");
+		const viewModel = await source("hermes/hermes-view-model.ts");
 
 		expect(view).toContain("HERMES_CHAT_OVERFLOW_CLASSES.transcriptOwner");
 		expect(view).toContain("HERMES_CHAT_OVERFLOW_CLASSES.canvas");
@@ -15,8 +16,13 @@ describe("Hermes layout contract", () => {
 		expect(view).toContain("Jump to latest");
 		expect(view).toContain("hermesComposerTextareaLayout");
 		expect(view).toContain('aria-label="Attach files"');
+		expect(view).toContain("onDragOver");
+		expect(view).toContain("onDrop");
+		expect(view).toContain("onPaste");
+		expect(view).toContain("Use the paperclip to attach files");
 		expect(view).toContain('aria-label={live.running ? "Stop response" : "Send message"}');
 		expect(view).not.toMatch(/transcriptOwner[^\n]*overflow-x-auto/);
+		expect(viewModel).toContain('canvas: "mx-auto w-full min-w-0 max-w-[720px]"');
 	});
 
 	test("uses a 288 pixel default sidebar and progressive new-session/advanced controls", async () => {

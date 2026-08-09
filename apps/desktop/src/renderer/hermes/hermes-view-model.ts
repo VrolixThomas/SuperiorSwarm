@@ -10,6 +10,7 @@ import {
 	HERMES_ATTACHMENT_CONTEXT_END,
 	HERMES_ATTACHMENT_CONTEXT_START,
 	isHermesLoopbackUrl,
+	isSafeHermesFileReference,
 } from "../../shared/hermes";
 
 export type HermesSessionFilter = "open" | "all" | "archived";
@@ -36,7 +37,7 @@ export interface HermesLiveState {
 	running: boolean;
 	runtimeStatus: string | null;
 	streamingText: string;
-	completed: Array<{ turnId: string | null; text: string }>;
+	completed: Array<{ turnId: string | null; text: string; canonicalMessageIds: string[] }>;
 	tools: HermesLiveTool[];
 	pendingApproval: HermesPendingInteraction | null;
 	pendingClarification: HermesPendingInteraction | null;
@@ -125,6 +126,13 @@ export function reduceHermesComposerAttachments(
 			];
 		}
 		case "remove":
+			if (
+				attachments.some(
+					(attachment) => attachment.handle === action.handle && attachment.status === "attaching"
+				)
+			) {
+				return attachments;
+			}
 			return attachments.filter((attachment) => attachment.handle !== action.handle);
 		case "submitting":
 			return attachments.map((attachment) => ({
@@ -151,15 +159,21 @@ export function hermesComposerTextareaLayout(scrollHeight: number): {
 	return { height, overflowY: scrollHeight > 180 ? "auto" : "hidden" };
 }
 
-function unquoteHermesTranscriptText(text: string): string {
-	const trimmed = text.trim();
-	if (!trimmed.startsWith('"') || !trimmed.endsWith('"')) return text;
-	try {
-		const parsed = JSON.parse(trimmed);
-		return typeof parsed === "string" ? parsed : text;
-	} catch {
-		return text;
+interface HermesFileTransferLike {
+	files?: { length: number };
+	items?: ArrayLike<{ kind: string }>;
+	types?: ArrayLike<string>;
+}
+
+export function hermesComposerContainsFiles(transfer: HermesFileTransferLike): boolean {
+	if ((transfer.files?.length ?? 0) > 0) return true;
+	for (let index = 0; index < (transfer.items?.length ?? 0); index++) {
+		if (transfer.items?.[index]?.kind === "file") return true;
 	}
+	for (let index = 0; index < (transfer.types?.length ?? 0); index++) {
+		if (transfer.types?.[index] === "Files") return true;
+	}
+	return false;
 }
 
 function safeProjectedAttachmentName(value: unknown): string | null {
@@ -178,31 +192,26 @@ export function extractHermesTranscriptAttachments(
 	text: string,
 	messageId: string
 ): { text: string; attachments: HermesProjectedAttachment[] } {
-	const unquoted = unquoteHermesTranscriptText(text);
-	const lines = unquoted.split(/\r?\n/);
-	if (lines[0] !== HERMES_ATTACHMENT_CONTEXT_START)
-		return { text: unquoted.trim(), attachments: [] };
+	const lines = text.split(/\r?\n/);
+	if (lines[0] !== HERMES_ATTACHMENT_CONTEXT_START) return { text, attachments: [] };
 	const endIndex = lines.indexOf(HERMES_ATTACHMENT_CONTEXT_END, 1);
-	if (endIndex < 2) return { text: unquoted.trim(), attachments: [] };
+	if (endIndex < 2) return { text, attachments: [] };
 	const attachments: HermesProjectedAttachment[] = [];
 	for (const [index, row] of lines.slice(1, endIndex).entries()) {
 		let parsed: unknown;
 		try {
 			parsed = JSON.parse(row);
 		} catch {
-			return { text: unquoted.trim(), attachments: [] };
+			return { text, attachments: [] };
 		}
-		if (!parsed || typeof parsed !== "object") return { text: unquoted.trim(), attachments: [] };
+		if (!parsed || typeof parsed !== "object") return { text, attachments: [] };
 		const values = parsed as Record<string, unknown>;
 		const kind = values["kind"];
 		const name = safeProjectedAttachmentName(values["name"]);
 		const rawRef = values["ref"];
-		const refText =
-			typeof rawRef === "string" && rawRef.startsWith("@file:") && rawRef.length <= 4_096
-				? rawRef
-				: null;
+		const refText = isSafeHermesFileReference(rawRef) ? rawRef : null;
 		if (!name || (kind !== "image" && kind !== "pdf" && kind !== "file")) {
-			return { text: unquoted.trim(), attachments: [] };
+			return { text, attachments: [] };
 		}
 		attachments.push({
 			id: `${messageId}:attachment:${index}`,
@@ -211,27 +220,24 @@ export function extractHermesTranscriptAttachments(
 			refText,
 		});
 	}
-	return {
-		text: lines
-			.slice(endIndex + 1)
-			.join("\n")
-			.trim(),
-		attachments,
-	};
+	const visibleLines = lines.slice(endIndex + 1);
+	if (visibleLines[0] === "") visibleLines.shift();
+	return { text: visibleLines.join("\n"), attachments };
 }
 
 export function classifyHermesTranscriptMessage(
 	message: HermesTranscriptMessage
 ): HermesTranscriptClassification {
-	const text = unquoteHermesTranscriptText(message.text).trim();
+	const text = message.text;
+	const substantiveText = text.trim();
 	const status = message.status?.trim().toLocaleLowerCase() ?? "";
 	if (message.toolName || message.role === "system" || message.role === "tool") {
 		return { kind: "activity", text };
 	}
 	if (message.role === "user") {
-		return text ? { kind: "user", text } : { kind: "activity", text };
+		return substantiveText ? { kind: "user", text } : { kind: "activity", text };
 	}
-	if (message.role === "assistant" && text && !FAILED_TRANSCRIPT_STATUSES.has(status)) {
+	if (message.role === "assistant" && substantiveText && !FAILED_TRANSCRIPT_STATUSES.has(status)) {
 		return { kind: "assistant", text };
 	}
 	return { kind: "activity", text };
@@ -368,21 +374,37 @@ export function projectHermesLiveCompletions(
 	completed: HermesLiveState["completed"]
 ): HermesProjectedMessage[] {
 	const canonicalAssistant = canonicalMessages.filter(isVisibleHermesAssistantMessage);
-	const pending = completed.flatMap((completion, index): HermesTranscriptMessage[] => {
-		const text = completion.text.trim();
-		if (!text) return [];
-		const reconciled = canonicalAssistant.some((message) =>
-			completion.turnId
-				? message.turnId === completion.turnId
-				: classifyHermesTranscriptMessage(message).text === text
+	const usedCanonicalIndexes = new Set<number>();
+	const reconciledCompletionIndexes = new Set<number>();
+	for (const [completionIndex, completion] of completed.entries()) {
+		if (!completion.turnId) continue;
+		const canonicalIndex = canonicalAssistant.findIndex(
+			(message, index) => !usedCanonicalIndexes.has(index) && message.turnId === completion.turnId
 		);
-		if (reconciled) return [];
+		if (canonicalIndex < 0) continue;
+		usedCanonicalIndexes.add(canonicalIndex);
+		reconciledCompletionIndexes.add(completionIndex);
+	}
+	for (const [completionIndex, completion] of completed.entries()) {
+		if (reconciledCompletionIndexes.has(completionIndex)) continue;
+		const canonicalIndex = canonicalAssistant.findIndex(
+			(message, index) =>
+				!usedCanonicalIndexes.has(index) &&
+				!completion.canonicalMessageIds.includes(message.id) &&
+				classifyHermesTranscriptMessage(message).text === completion.text
+		);
+		if (canonicalIndex < 0) continue;
+		usedCanonicalIndexes.add(canonicalIndex);
+		reconciledCompletionIndexes.add(completionIndex);
+	}
+	const pending = completed.flatMap((completion, index): HermesTranscriptMessage[] => {
+		if (!completion.text.trim() || reconciledCompletionIndexes.has(index)) return [];
 		return [
 			{
 				id: `live-complete:${completion.turnId ?? index}`,
 				turnId: completion.turnId,
 				role: "assistant",
-				text,
+				text: completion.text,
 				createdAt: null,
 				status: "complete",
 				toolName: null,
@@ -521,7 +543,8 @@ const GENERIC_APPROVAL_CHOICES: HermesInteractionChoice[] = [
 export function applyHermesEvent(
 	state: HermesLiveState,
 	event: HermesRuntimeEvent,
-	selectedSessionId?: string
+	selectedSessionId?: string,
+	canonicalMessages: HermesTranscriptMessage[] = []
 ): HermesLiveState {
 	switch (event.type) {
 		case "message.delta":
@@ -543,7 +566,13 @@ export function applyHermesEvent(
 						? state.completed
 						: [
 								...state.completed,
-								{ turnId: event.turnId, text: event.text ?? state.streamingText },
+								{
+									turnId: event.turnId,
+									text: event.text ?? state.streamingText,
+									canonicalMessageIds: canonicalMessages
+										.filter(isVisibleHermesAssistantMessage)
+										.map((message) => message.id),
+								},
 							],
 				pendingApproval: null,
 				pendingClarification: null,

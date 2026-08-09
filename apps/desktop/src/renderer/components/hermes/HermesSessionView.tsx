@@ -16,6 +16,7 @@ import {
 	HERMES_CHAT_OVERFLOW_CLASSES,
 	applyHermesEvent,
 	createHermesLiveState,
+	hermesComposerContainsFiles,
 	hermesComposerTextareaLayout,
 	hermesOriginActionAvailability,
 	hermesReportRequiresExplicitRetry,
@@ -86,6 +87,10 @@ export function HermesSessionView() {
 	const releaseAttachment = trpc.hermes.releaseAttachment.useMutation();
 	const releaseAttachmentRef = useRef(releaseAttachment.mutate);
 	releaseAttachmentRef.current = releaseAttachment.mutate;
+	const attachmentRemovalDisabled =
+		pickAttachments.isPending ||
+		submit.isPending ||
+		attachments.some((attachment) => attachment.status === "attaching");
 
 	const selectionKey = `${connectionId}:${sessionId ?? ""}`;
 	const previousSelectionKey = useRef(selectionKey);
@@ -154,6 +159,7 @@ export function HermesSessionView() {
 			staleTime: 1_000,
 		}
 	);
+	const canonicalMessages = useMemo(() => history.data?.messages ?? [], [history.data?.messages]);
 	const eventFeed = trpc.hermes.events.useQuery(
 		{ connectionId, afterSeq: cursor },
 		{ enabled: Boolean(connectionId && sessionId && connected), refetchInterval: 400 }
@@ -185,7 +191,7 @@ export function HermesSessionView() {
 		setLive((current) => {
 			let next = current;
 			for (const event of relevantEvents) {
-				next = applyHermesEvent(next, event, sessionId);
+				next = applyHermesEvent(next, event, sessionId, canonicalMessages);
 				if (event.type === "message.complete") refreshHistory = true;
 			}
 			return next;
@@ -196,7 +202,15 @@ export function HermesSessionView() {
 			void utils.hermes.catalog.invalidate({ connectionId });
 			void utils.hermes.workspaceLinks.invalidate();
 		}
-	}, [connectionId, eventFeed.data, selectionGeneration, selectionGuard, sessionId, utils]);
+	}, [
+		canonicalMessages,
+		connectionId,
+		eventFeed.data,
+		selectionGeneration,
+		selectionGuard,
+		sessionId,
+		utils,
+	]);
 
 	const links = trpc.hermes.workspaceLinks.useQuery(
 		{ connectionId, hermesSessionId: sessionId ?? "" },
@@ -220,7 +234,6 @@ export function HermesSessionView() {
 		{ enabled: Boolean(connectionId && sessionId && isSlackSession && connected) }
 	);
 	const report = trpc.hermes.reportToOrigin.useMutation();
-	const canonicalMessages = history.data?.messages ?? [];
 	const transcriptItems = useMemo(
 		() => projectHermesTranscript(canonicalMessages),
 		[canonicalMessages]
@@ -810,11 +823,25 @@ export function HermesSessionView() {
 
 					<form
 						onSubmit={send}
+						onDragOver={(event) => {
+							event.preventDefault();
+							if (hermesComposerContainsFiles(event.dataTransfer)) {
+								event.dataTransfer.dropEffect = "none";
+							}
+						}}
+						onDrop={(event) => {
+							event.preventDefault();
+							if (hermesComposerContainsFiles(event.dataTransfer)) {
+								setAttachmentLimitError("Use the paperclip to attach files.");
+							}
+						}}
 						className="min-w-0 rounded-[16px] border border-[var(--border)] bg-[var(--bg-elevated)] p-2 shadow-[0_10px_32px_rgba(0,0,0,0.24)] focus-within:border-[var(--border-active)]"
 					>
 						<HermesComposerAttachments
 							attachments={attachments}
+							removalDisabled={attachmentRemovalDisabled}
 							onRemove={(handle) => {
+								if (attachmentRemovalDisabled) return;
 								dispatchAttachments({ type: "remove", handle });
 								releaseAttachment.mutate({ handle });
 								setAttachmentLimitError(null);
@@ -849,6 +876,11 @@ export function HermesSessionView() {
 								ref={composerRef}
 								value={composer}
 								onChange={(event) => setComposer(event.target.value)}
+								onPaste={(event) => {
+									if (!hermesComposerContainsFiles(event.clipboardData)) return;
+									event.preventDefault();
+									setAttachmentLimitError("Use the paperclip to attach files.");
+								}}
 								onKeyDown={(event) => {
 									if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
 										event.preventDefault();

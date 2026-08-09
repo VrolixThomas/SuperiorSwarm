@@ -15,9 +15,11 @@ function attachmentStatus(attachment: HermesComposerAttachment): string {
 export function HermesComposerAttachments({
 	attachments,
 	onRemove,
+	removalDisabled,
 }: {
 	attachments: HermesComposerAttachment[];
 	onRemove: (handle: string) => void;
+	removalDisabled: boolean;
 }) {
 	if (attachments.length === 0) return null;
 	return (
@@ -42,8 +44,9 @@ export function HermesComposerAttachments({
 					<button
 						type="button"
 						onClick={() => onRemove(attachment.handle)}
+						disabled={removalDisabled}
 						aria-label={`Remove ${attachment.name}`}
-						className="flex size-5 shrink-0 items-center justify-center rounded-full text-[13px] text-[var(--text-quaternary)] hover:bg-[var(--bg-overlay)] hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/50"
+						className="flex size-5 shrink-0 items-center justify-center rounded-full text-[13px] text-[var(--text-quaternary)] hover:bg-[var(--bg-overlay)] hover:text-[var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/50 disabled:pointer-events-none disabled:opacity-35"
 					>
 						×
 					</button>

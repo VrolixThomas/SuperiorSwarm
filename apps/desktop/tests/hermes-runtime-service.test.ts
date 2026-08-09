@@ -756,28 +756,51 @@ describe("HermesRuntimeService stock lifecycle", () => {
 			"file.attach",
 			"prompt.submit",
 		]);
-		expect(client.requests[1]?.params).toEqual({
-			session_id: "runtime-attachments",
-			path: fixture.imagePath,
-		});
-		expect(client.requests[2]?.params).toEqual({
-			session_id: "runtime-attachments",
-			path: fixture.pdfPath,
-			first_page: 1,
-			last_page: 25,
-		});
-		expect(client.requests[3]?.params).toEqual({
-			session_id: "runtime-attachments",
-			path: fixture.filePath,
-			name: "notes.txt",
-		});
+		const stagedImagePath = String(client.requests[1]?.params["path"]);
+		const stagedPdfPath = String(client.requests[2]?.params["path"]);
+		const stagedFilePath = String(client.requests[3]?.params["path"]);
+		expect([stagedImagePath, stagedPdfPath, stagedFilePath]).not.toContain(fixture.imagePath);
+		expect([stagedImagePath, stagedPdfPath, stagedFilePath]).not.toContain(fixture.pdfPath);
+		expect([stagedImagePath, stagedPdfPath, stagedFilePath]).not.toContain(fixture.filePath);
+		expect(await Bun.file(stagedImagePath).exists()).toBe(false);
+		expect(await Bun.file(stagedPdfPath).exists()).toBe(false);
+		expect(await Bun.file(stagedFilePath).exists()).toBe(false);
 		const prompt = String(client.requests[4]?.params["text"]);
 		expect(prompt).toContain("Review these files");
 		expect(prompt).toContain("screen.png");
 		expect(prompt).toContain("plan.pdf");
 		expect(prompt).toContain("@file:.hermes/attachments/notes.txt");
 		expect(prompt).not.toContain(fixture.directory);
+		expect(prompt).not.toContain(stagedImagePath);
+		expect(prompt).not.toContain(stagedPdfPath);
 		expect(attachments.size).toBe(0);
+	});
+
+	test("reserves a session before deferred attachment resolution and releases it on failure", async () => {
+		client.responses.set("session.resume", [
+			{ session_id: "runtime-concurrent", session_key: "stored-1", profile: "work" },
+		]);
+		await service.connect(connectionId);
+		await service.resume(connectionId, "stored-1");
+		const resolution = new Deferred<Awaited<ReturnType<HermesAttachmentStore["resolve"]>>>();
+		let resolveCalls = 0;
+		attachments.resolve = () => {
+			resolveCalls++;
+			return resolution.promise;
+		};
+
+		const first = service.submit(connectionId, "stored-1", "First", ["opaque-deferred"]);
+		await waitFor(() => resolveCalls === 1, "attachment resolution did not start");
+		await expect(service.submit(connectionId, "stored-1", "Second")).rejects.toThrow(
+			"already active"
+		);
+		expect(resolveCalls).toBe(1);
+
+		resolution.reject(new Error("selection failed"));
+		await expect(first).rejects.toThrow("selection failed");
+		attachments.resolve = () => Promise.resolve([]);
+		await expect(service.submit(connectionId, "stored-1", "Retry")).resolves.toEqual({ ok: true });
+		expect(client.requests.filter((request) => request.method === "prompt.submit")).toHaveLength(1);
 	});
 
 	test("uploads remote attachments as stock bytes/data URLs without sending local paths", async () => {
@@ -897,6 +920,81 @@ describe("HermesRuntimeService stock lifecycle", () => {
 			"file.attach",
 		]);
 		expect(attachments.size).toBe(1);
+	});
+
+	test("rejects unsafe stock file references without leaking selected, staged, or backend paths", async () => {
+		const fixture = await attachmentFixture();
+		const [selected] = await attachments.registerPaths([fixture.filePath]);
+		const stagedPath = (await attachments.resolve([selected?.handle ?? ""]))[0]?.path ?? "";
+		client.responses.set("session.resume", [
+			{ session_id: "runtime-malicious-ref", session_key: "stored-1", profile: "work" },
+		]);
+		const maliciousReferences = [
+			"@file:/etc/passwd",
+			"@file:../private/notes.txt",
+			"@file:attachments/../../private/notes.txt",
+			"@file:file:///private/notes.txt",
+			"@file:C:/private/notes.txt",
+			"@file:attachments/notes.txt\n/private/backend",
+		];
+		client.responses.set("file.attach", [
+			...maliciousReferences.map((ref_text) => ({ attached: true, ref_text })),
+			new Error(
+				`failed selected=${fixture.filePath} staged=${stagedPath} backend=/var/lib/hermes/private.txt`
+			),
+		]);
+		await service.connect(connectionId);
+
+		for (const maliciousReference of maliciousReferences) {
+			const error = await service
+				.submit(connectionId, "stored-1", "Inspect", [selected?.handle ?? ""])
+				.catch((reason: unknown) => reason);
+			expect(error).toBeInstanceOf(Error);
+			expect((error as Error).message).not.toContain(maliciousReference);
+			expect((error as Error).message).not.toContain(fixture.directory);
+			expect((error as Error).message).not.toContain(stagedPath);
+		}
+
+		const backendError = await service
+			.submit(connectionId, "stored-1", "Inspect", [selected?.handle ?? ""])
+			.catch((reason: unknown) => reason);
+		expect(backendError).toBeInstanceOf(Error);
+		expect((backendError as Error).message).toBe(
+			"Could not attach “notes.txt”: Hermes rejected the attachment"
+		);
+		expect((backendError as Error).message).not.toContain(fixture.filePath);
+		expect((backendError as Error).message).not.toContain(stagedPath);
+		expect((backendError as Error).message).not.toContain("/var/lib/hermes");
+	});
+
+	test("never copies image or PDF backend references into transcript attachment metadata", async () => {
+		const fixture = await attachmentFixture();
+		const selected = await attachments.registerPaths([fixture.imagePath, fixture.pdfPath]);
+		client.responses.set("session.resume", [
+			{ session_id: "runtime-media-ref", session_key: "stored-1", profile: "work" },
+		]);
+		client.responses.set("image.attach", [
+			{ attached: true, ref_text: "@file:../../backend/private-image.png" },
+		]);
+		client.responses.set("pdf.attach", [
+			{ attached: true, ref_text: "/var/lib/hermes/private-plan.pdf" },
+		]);
+		await service.connect(connectionId);
+
+		await service.submit(
+			connectionId,
+			"stored-1",
+			"Inspect media",
+			selected.map((item) => item.handle)
+		);
+
+		const prompt = String(
+			client.requests.find((request) => request.method === "prompt.submit")?.params["text"]
+		);
+		expect(prompt).toContain("screen.png");
+		expect(prompt).toContain("plan.pdf");
+		expect(prompt).not.toContain("../../backend");
+		expect(prompt).not.toContain("/var/lib/hermes");
 	});
 
 	test("buffers an initial-topic submission failure for the newly selected session", async () => {
