@@ -1,7 +1,7 @@
 import "./preload-electron-mock";
 import { describe, expect, test } from "bun:test";
 import { spawn } from "node:child_process";
-import { existsSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CLI_PRESETS } from "../src/main/ai-review/cli-presets";
@@ -42,17 +42,14 @@ describe("MCP standalone server boot (smoke test)", () => {
 	const electronBin = join(__dirname, "..", "node_modules", ".bin", "electron");
 
 	test.skipIf(!existsSync(serverPath) || !existsSync(electronBin))(
-		"loads better-sqlite3 under ELECTRON_RUN_AS_NODE without ABI mismatch",
+		"loads better-sqlite3 before failing closed without app discovery",
 		async () => {
-			const dbPath = join(tmpdir(), `mcp-smoke-${process.pid}-${Date.now()}.db`);
-
+			const userDataDir = mkdtempSync(join(tmpdir(), "mcp-smoke-user-data-"));
 			const child = spawn(electronBin, [serverPath], {
 				env: {
 					...process.env,
 					ELECTRON_RUN_AS_NODE: "1",
-					REVIEW_DRAFT_ID: "smoke-test",
-					PR_METADATA: "{}",
-					DB_PATH: dbPath,
+					SUPERIORSWARM_USER_DATA: userDataDir,
 				},
 				stdio: ["pipe", "pipe", "pipe"],
 			});
@@ -61,34 +58,17 @@ describe("MCP standalone server boot (smoke test)", () => {
 			child.stderr.on("data", (chunk) => {
 				stderr += chunk.toString();
 			});
-
-			// Wait for the server to initialize OR crash — whichever comes first.
-			// The event-driven race resolves immediately on crash so we don't wait
-			// the full 2s on a broken binary. The 2s ceiling gives slow CI machines
-			// enough time for Electron to start and hit the native-module load.
-			let timer: ReturnType<typeof setTimeout> | undefined;
 			await Promise.race([
-				new Promise<void>((resolve) => {
-					timer = setTimeout(resolve, 2_000);
-				}),
 				new Promise<void>((resolve) => child.once("exit", resolve)),
+				new Promise<never>((_, reject) =>
+					setTimeout(() => reject(new Error("MCP server did not fail closed")), 2_000)
+				),
 			]);
-			if (timer) clearTimeout(timer);
+			rmSync(userDataDir, { force: true, recursive: true });
 
-			const crashedWithAbiError = stderr.includes("NODE_MODULE_VERSION");
-			const crashedAtAll = child.exitCode !== null;
-
-			if (!crashedAtAll) {
-				child.kill("SIGTERM");
-				await new Promise<void>((resolve) => child.once("exit", resolve));
-			}
-
-			rmSync(dbPath, { force: true });
-			rmSync(`${dbPath}-wal`, { force: true });
-			rmSync(`${dbPath}-shm`, { force: true });
-
-			expect(crashedWithAbiError).toBe(false);
-			expect(crashedAtAll).toBe(false);
+			expect(stderr).not.toContain("NODE_MODULE_VERSION");
+			expect(stderr).toContain("SuperiorSwarm is not running (no control.json)");
+			expect(child.exitCode).toBe(1);
 		},
 		10_000
 	);
