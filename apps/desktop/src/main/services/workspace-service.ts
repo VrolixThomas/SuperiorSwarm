@@ -190,6 +190,7 @@ export async function createWorkspace(
 	}
 	return {
 		workspaceId,
+		projectId: input.projectId,
 		worktreeId,
 		path,
 		branch: input.branch,
@@ -197,6 +198,13 @@ export async function createWorkspace(
 		reusedExistingBranch,
 		createdAt: now,
 		updatedAt: now,
+		artifact: {
+			kind: "superiorswarm.workspace.created",
+			workspaceId,
+			projectId: input.projectId,
+			branch: input.branch,
+			worktreePath: path,
+		},
 	};
 }
 
@@ -685,6 +693,8 @@ export type CallerContext =
 			external?: boolean;
 			/** External managers only: whether dispatch_agent skips the confirm modal. */
 			dispatchPolicy?: "confirm" | "auto";
+			/** Project authorization is either explicit links or the live app inventory. */
+			accessScope?: "selected" | "all";
 	  };
 
 export async function setStatus(

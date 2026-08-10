@@ -32,34 +32,17 @@ import {
 	setupGoToDefinitionHandler,
 	setupServerRestartListener,
 } from "./lsp/monaco-lsp-bridge";
+import { collectSessionSnapshot, isSessionSnapshotPersistable } from "./session-snapshot";
 import { useBranchStore } from "./stores/branch-store";
 import { useEditorSettingsStore } from "./stores/editor-settings";
 import { usePaneStore } from "./stores/pane-store";
 import { useProjectStore } from "./stores/projects";
 import type { TabItem } from "./stores/tab-store";
-import { resetFileTabCounter, useTabStore } from "./stores/tab-store";
+import { resetFileTabCounter, shouldHydrateTabStore, useTabStore } from "./stores/tab-store";
 import { useUpdateStore } from "./stores/update-store";
 import { trpc } from "./trpc/client";
 
 const SAVE_INTERVAL_MS = 30_000;
-
-function serializeLayout(node: LayoutNode): SerializedLayoutNode {
-	if (node.type === "pane") {
-		return {
-			type: "pane",
-			id: node.id,
-			tabs: node.tabs.map((t) => (t.kind === "file" ? { ...t, initialPosition: undefined } : t)),
-			activeTabId: node.activeTabId,
-		};
-	}
-	return {
-		type: "split",
-		id: node.id,
-		direction: node.direction,
-		ratio: node.ratio,
-		children: [serializeLayout(node.children[0]), serializeLayout(node.children[1])],
-	};
-}
 
 function deserializeLayout(
 	node: SerializedLayoutNode,
@@ -137,60 +120,6 @@ function extractMaxIds(node: LayoutNode): {
 	};
 }
 
-function collectSnapshot() {
-	const store = useTabStore.getState();
-	const { activeWorkspaceId, activeWorkspaceCwd, baseBranchByWorkspace, diffMode } = store;
-	const tabs = store.getAllTabs();
-	const activeTabId = store.getActiveTabId();
-
-	const terminalTabs = tabs.filter((t) => t.kind === "terminal" && t.workspaceId);
-	const sessions = terminalTabs.map((tab, i) => ({
-		id: tab.id,
-		workspaceId: tab.workspaceId,
-		title: tab.title,
-		cwd: tab.kind === "terminal" ? tab.cwd : "",
-		// scrollback omitted — daemon owns that column
-		sortOrder: i,
-	}));
-
-	const state: Record<string, string> = {};
-	if (activeTabId) state["activeTabId"] = activeTabId;
-	if (activeWorkspaceId) state["activeWorkspaceId"] = activeWorkspaceId;
-	if (activeWorkspaceCwd) state["activeWorkspaceCwd"] = activeWorkspaceCwd;
-	state["diffMode"] = diffMode;
-	if (Object.keys(baseBranchByWorkspace).length > 0) {
-		state["baseBranchByWorkspace"] = JSON.stringify(baseBranchByWorkspace);
-	}
-	const { sidebarSegment, activeWorkspaceBySegment, workspaceMetadata } = store;
-	if (sidebarSegment) state["sidebarSegment"] = sidebarSegment;
-	state["activeWorkspaceBySegment"] = JSON.stringify(activeWorkspaceBySegment);
-	if (Object.keys(workspaceMetadata).length > 0) {
-		state["workspaceMetadata"] = JSON.stringify(workspaceMetadata);
-	}
-	const { activeTicketProject, activeTicketScope } = store;
-	if (activeTicketProject) {
-		state["activeTicketProject"] = JSON.stringify(activeTicketProject);
-	}
-	state["activeTicketScope"] = JSON.stringify(activeTicketScope);
-
-	const { expandedProjectIds } = useProjectStore.getState();
-	if (expandedProjectIds.size > 0) {
-		state["expandedProjectIds"] = JSON.stringify([...expandedProjectIds]);
-	}
-
-	const { vimEnabled, notificationSoundsEnabled } = useEditorSettingsStore.getState();
-	if (vimEnabled) state["vimMode"] = "true";
-	state["notificationSounds"] = notificationSoundsEnabled ? "true" : "false";
-
-	const paneLayouts: Record<string, string> = {};
-	const layouts = usePaneStore.getState().layouts;
-	for (const [wsId, layout] of Object.entries(layouts)) {
-		paneLayouts[wsId] = JSON.stringify(serializeLayout(layout));
-	}
-
-	return { sessions, state, paneLayouts };
-}
-
 function dismissSplash() {
 	const splash = document.getElementById("splash");
 	if (splash) {
@@ -230,6 +159,7 @@ function AuthenticatedApp() {
 	const saveMutateRef = useRef(saveMutation.mutate);
 	saveMutateRef.current = saveMutation.mutate;
 	const lastSubmittedSnapshotRef = useRef<string | null>(null);
+	const rendererOwnsPersistedStateRef = useRef(false);
 	const restoreQuery = trpc.terminalSessions.restore.useQuery(undefined, {
 		staleTime: Number.POSITIVE_INFINITY,
 		refetchOnMount: false,
@@ -261,7 +191,9 @@ function AuthenticatedApp() {
 			}
 		}
 
-		if (!hasSessions && !hasLayouts) return;
+		const shouldHydrate = shouldHydrateTabStore(hasSessions, Boolean(hasLayouts), state);
+		rendererOwnsPersistedStateRef.current = shouldHydrate;
+		if (!shouldHydrate) return;
 
 		const scrollbacks: Record<string, string> = {};
 		for (const session of sessions) {
@@ -271,17 +203,15 @@ function AuthenticatedApp() {
 		}
 		setSavedScrollback(scrollbacks);
 
-		if (hasSessions) {
-			useTabStore
-				.getState()
-				.hydrate(
-					sessions,
-					state["activeTabId"] ?? null,
-					state["activeWorkspaceId"] ?? null,
-					state["activeWorkspaceCwd"] ?? "",
-					state
-				);
-		}
+		useTabStore
+			.getState()
+			.hydrate(
+				sessions,
+				state["activeTabId"] ?? null,
+				state["activeWorkspaceId"] ?? null,
+				state["activeWorkspaceCwd"] ?? "",
+				state
+			);
 
 		// Backfill workspace metadata from backend for workspaces not already saved client-side
 		if (workspaceMeta) {
@@ -347,19 +277,25 @@ function AuthenticatedApp() {
 	// Periodic save + save-now event listener
 	useEffect(() => {
 		const triggerSave = () => {
-			const snapshot = collectSnapshot();
-			if (snapshot.sessions.length > 0 || Object.keys(snapshot.paneLayouts).length > 0) {
-				const serialized = JSON.stringify(snapshot);
-				if (serialized === lastSubmittedSnapshotRef.current) return;
-				lastSubmittedSnapshotRef.current = serialized;
-				saveMutateRef.current(snapshot, {
-					onError: () => {
-						if (lastSubmittedSnapshotRef.current === serialized) {
-							lastSubmittedSnapshotRef.current = null;
-						}
-					},
-				});
+			const snapshot = collectSessionSnapshot();
+			if (
+				!isSessionSnapshotPersistable(snapshot, {
+					rendererOwnsPersistedState: rendererOwnsPersistedStateRef.current,
+				})
+			) {
+				return;
 			}
+			rendererOwnsPersistedStateRef.current = true;
+			const serialized = JSON.stringify(snapshot);
+			if (serialized === lastSubmittedSnapshotRef.current) return;
+			lastSubmittedSnapshotRef.current = serialized;
+			saveMutateRef.current(snapshot, {
+				onError: () => {
+					if (lastSubmittedSnapshotRef.current === serialized) {
+						lastSubmittedSnapshotRef.current = null;
+					}
+				},
+			});
 		};
 
 		const interval = setInterval(triggerSave, SAVE_INTERVAL_MS);
@@ -604,10 +540,10 @@ function AuthenticatedApp() {
 	});
 
 	// Sync panel collapse/expand with store state.
-	// Always collapse when on tickets segment — the diff panel is not relevant.
+	// Global canvas routes do not use the repository diff panel.
 	useEffect(() => {
 		if (!diffPanelRef.current) return;
-		if (sidebarSegment === "tickets") {
+		if (sidebarSegment === "tickets" || sidebarSegment === "hermes") {
 			if (!diffPanelRef.current.isCollapsed()) diffPanelRef.current.collapse();
 			return;
 		}
@@ -686,21 +622,21 @@ function AuthenticatedApp() {
 						orientation="horizontal"
 						defaultLayout={defaultLayout}
 						onLayoutChanged={onLayoutChanged}
-						className="h-screen overflow-hidden bg-[var(--bg-base)]"
+						className="h-screen min-w-0 overflow-hidden bg-[var(--bg-base)]"
 					>
 						<Panel
 							id="sidebar"
 							panelRef={sidebarPanelRef}
-							defaultSize="15.3%"
-							minSize="12.5%"
-							maxSize="27.8%"
+							defaultSize="288px"
+							minSize="232px"
+							maxSize="360px"
 							collapsible
-							collapsedSize="3.9%"
+							collapsedSize="56px"
 							onResize={() => {
 								const isCollapsed = sidebarPanelRef.current?.isCollapsed() ?? false;
 								setSidebarCollapsed(isCollapsed);
 							}}
-							className="overflow-hidden bg-[var(--bg-surface)]"
+							className="min-w-0 overflow-hidden bg-[var(--bg-surface)]"
 						>
 							<Sidebar
 								collapsed={sidebarCollapsed}
@@ -710,7 +646,7 @@ function AuthenticatedApp() {
 
 						<Separator className="panel-resize-handle" />
 
-						<Panel id="main" minSize="30%">
+						<Panel id="main" minSize="360px" className="min-w-0 overflow-hidden">
 							<MainContentArea savedScrollback={savedScrollback} />
 						</Panel>
 

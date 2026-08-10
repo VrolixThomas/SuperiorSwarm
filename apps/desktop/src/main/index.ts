@@ -32,6 +32,10 @@ import {
 	savePaneLayouts,
 	saveTerminalSessions,
 } from "./db/session-persistence";
+import { setupHermesAttachmentIPC } from "./hermes/hermes-attachment-ipc";
+import { hermesRendererAttachmentUploads } from "./hermes/hermes-attachments";
+import { ensureHermesLocalConnection } from "./hermes/hermes-connections";
+import { hermesRuntimeService } from "./hermes/hermes-runtime-service";
 import { isCloneable, setDebugMode } from "./ipc-safety";
 import { log, setupCrashHandlers } from "./logger";
 import { setupLspIPC } from "./lsp/ipc-handler";
@@ -169,6 +173,7 @@ app.whenReady().then(async () => {
 	// Initialize database early — tRPC handlers depend on it
 	try {
 		initializeDatabase();
+		ensureHermesLocalConnection();
 		await backfillRemoteHosts();
 		ensureTelemetryState(getDb());
 		recoverStuckSessions();
@@ -246,6 +251,7 @@ app.whenReady().then(async () => {
 
 	// Set up tRPC IPC so the renderer can make queries once it loads
 	setupTRPCIPC(appRouter);
+	setupHermesAttachmentIPC();
 
 	setupRepoIPC(getMainWindow);
 
@@ -495,6 +501,8 @@ function teardownServices(t0: number): void {
 	setCleanupDaemonClient(null);
 	stopCommentPoller();
 	teardownUpdater();
+	hermesRuntimeService.shutdown();
+	hermesRendererAttachmentUploads.clear();
 	log.debug(`[quit] timers-stopped +${Date.now() - t0}ms`);
 	// Close chokidar/fsevents watchers BEFORE env teardown so the fsevents
 	// threadsafe-function is gone before Node finalizes it. Bounded so a wedged

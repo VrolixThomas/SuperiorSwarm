@@ -671,6 +671,12 @@ export const crossRepoOrchestrators = sqliteTable("cross_repo_orchestrators", {
 	dispatchPolicy: text("dispatch_policy", { enum: ["confirm", "auto"] })
 		.notNull()
 		.default("confirm"),
+	// "selected" authorizes only cross_repo_orchestrator_projects rows. "all"
+	// resolves against the live projects inventory on every request, so projects
+	// registered later are included without creating synthetic link rows.
+	accessScope: text("access_scope", { enum: ["selected", "all"] })
+		.notNull()
+		.default("selected"),
 	lastSeenAt: integer("last_seen_at", { mode: "timestamp" }),
 	createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
 	updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
@@ -699,3 +705,161 @@ export const crossRepoOrchestratorProjects = sqliteTable(
 
 export type CrossRepoOrchestratorProject = typeof crossRepoOrchestratorProjects.$inferSelect;
 export type NewCrossRepoOrchestratorProject = typeof crossRepoOrchestratorProjects.$inferInsert;
+
+// Hermes owns sessions and transcripts. These tables store only connection
+// metadata, local workspace associations, and origin-delivery receipts.
+export const hermesConnections = sqliteTable("hermes_connections", {
+	id: text("id").primaryKey(),
+	label: text("label").notNull(),
+	baseUrl: text("base_url").notNull(),
+	profileId: text("profile_id").notNull(),
+	managerId: text("manager_id").references(() => crossRepoOrchestrators.id, {
+		onDelete: "set null",
+	}),
+	// Null is reserved for legacy rows whose prior manual/automatic intent cannot
+	// be inferred safely; new external connections always persist an explicit mode.
+	managerBindingMode: text("manager_binding_mode", { enum: ["auto", "manual"] }),
+	managementMode: text("management_mode", { enum: ["managed", "external"] })
+		.notNull()
+		.default("external"),
+	encryptedToken: text("encrypted_token"),
+	tokenStorage: text("token_storage", { enum: ["safe-storage", "memory"] })
+		.notNull()
+		.default("memory"),
+	lastConnectedAt: integer("last_connected_at", { mode: "timestamp_ms" }),
+	createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+	updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+});
+
+export type HermesConnection = typeof hermesConnections.$inferSelect;
+export type NewHermesConnection = typeof hermesConnections.$inferInsert;
+
+// Durable inbox membership for external Hermes sessions. The manager identity
+// is derived from the authenticated control-plane caller, never request metadata.
+export const hermesSessionAdmissions = sqliteTable(
+	"hermes_session_admissions",
+	{
+		managerId: text("manager_id")
+			.notNull()
+			.references(() => crossRepoOrchestrators.id, { onDelete: "cascade" }),
+		profileId: text("profile_id").notNull(),
+		durableSessionId: text("durable_session_id").notNull(),
+		reason: text("admission_reason", { enum: ["agents", "mcp", "handover"] }).notNull(),
+		sourcePlatform: text("source_platform").notNull(),
+		isCron: integer("is_cron", { mode: "boolean" }).notNull().default(false),
+		firstSeenAt: integer("first_seen_at", { mode: "timestamp_ms" }).notNull(),
+		lastSeenAt: integer("last_seen_at", { mode: "timestamp_ms" }).notNull(),
+	},
+	(table) => [
+		primaryKey({ columns: [table.managerId, table.profileId, table.durableSessionId] }),
+		index("hermes_session_admissions_manager_profile_idx").on(
+			table.managerId,
+			table.profileId,
+			table.lastSeenAt
+		),
+	]
+);
+
+export type HermesSessionAdmission = typeof hermesSessionAdmissions.$inferSelect;
+export type NewHermesSessionAdmission = typeof hermesSessionAdmissions.$inferInsert;
+
+export const hermesSessionWorkspaces = sqliteTable(
+	"hermes_session_workspaces",
+	{
+		id: text("id").primaryKey(),
+		connectionId: text("connection_id")
+			.notNull()
+			.references(() => hermesConnections.id, { onDelete: "cascade" }),
+		profileId: text("profile_id").notNull().default("default"),
+		hermesSessionId: text("hermes_session_id").notNull(),
+		hermesLineageRootId: text("hermes_lineage_root_id"),
+		// Deliberately no FK: retain recovery metadata when a workspace is deleted.
+		workspaceId: text("workspace_id").notNull(),
+		source: text("source", { enum: ["tool-artifact", "manual"] }).notNull(),
+		linkedAt: integer("linked_at", { mode: "timestamp_ms" }).notNull(),
+	},
+	(table) => [
+		uniqueIndex("hermes_session_workspaces_unique").on(
+			table.connectionId,
+			table.profileId,
+			table.hermesSessionId,
+			table.workspaceId
+		),
+		index("hermes_session_workspaces_session_idx").on(
+			table.connectionId,
+			table.profileId,
+			table.hermesSessionId
+		),
+		index("hermes_session_workspaces_workspace_idx").on(table.workspaceId),
+	]
+);
+
+export type HermesSessionWorkspace = typeof hermesSessionWorkspaces.$inferSelect;
+export type NewHermesSessionWorkspace = typeof hermesSessionWorkspaces.$inferInsert;
+
+// Optional renderer-safe navigation override. Raw Hermes origin/routing data is
+// never persisted here; a changed origin fingerprint invalidates the URL.
+export const hermesOriginLinks = sqliteTable(
+	"hermes_origin_links",
+	{
+		id: text("id").primaryKey(),
+		connectionId: text("connection_id")
+			.notNull()
+			.references(() => hermesConnections.id, { onDelete: "cascade" }),
+		profileId: text("profile_id").notNull(),
+		hermesSessionId: text("hermes_session_id").notNull(),
+		platform: text("platform").notNull(),
+		openUrl: text("open_url").notNull(),
+		originFingerprint: text("origin_fingerprint").notNull(),
+		createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+		updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+	},
+	(table) => [
+		uniqueIndex("hermes_origin_links_unique").on(
+			table.connectionId,
+			table.profileId,
+			table.hermesSessionId
+		),
+	]
+);
+
+export type HermesOriginLink = typeof hermesOriginLinks.$inferSelect;
+export type NewHermesOriginLink = typeof hermesOriginLinks.$inferInsert;
+
+export const hermesOriginReports = sqliteTable(
+	"hermes_origin_reports",
+	{
+		id: text("id").primaryKey(),
+		connectionId: text("connection_id")
+			.notNull()
+			.references(() => hermesConnections.id, { onDelete: "cascade" }),
+		hermesSessionId: text("hermes_session_id").notNull(),
+		profileId: text("profile_id").notNull(),
+		messageKey: text("message_key").notNull(),
+		contentHash: text("content_hash").notNull(),
+		destinationFingerprint: text("destination_fingerprint").notNull(),
+		status: text("status", {
+			enum: ["pending", "sending", "sent", "failed"],
+		})
+			.notNull()
+			.default("pending"),
+		retryable: integer("retryable", { mode: "boolean" }).notNull().default(false),
+		providerMessageId: text("provider_message_id"),
+		errorCode: text("error_code"),
+		attemptCount: integer("attempt_count").notNull().default(0),
+		createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+		updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+	},
+	(table) => [
+		uniqueIndex("hermes_origin_reports_unique").on(
+			table.connectionId,
+			table.profileId,
+			table.hermesSessionId,
+			table.messageKey,
+			table.destinationFingerprint
+		),
+	]
+);
+
+export type HermesOriginReport = typeof hermesOriginReports.$inferSelect;
+export type NewHermesOriginReport = typeof hermesOriginReports.$inferInsert;

@@ -87,6 +87,7 @@
 		"electron": "^40.0.0",
 		"electron-builder": "^26.8.1",
 		"electron-vite": "^4.0.0",
+		"happy-dom": "^20.11.2",
 		"postcss": "^8.4.49",
 		"tailwindcss": "^4.0.0",
 		"typescript": "^5.7.2",

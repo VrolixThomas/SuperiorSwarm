@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { HermesWorkspaceArtifact } from "./hermes";
 
 // ---- Request schemas ----
 
@@ -77,6 +78,7 @@ export interface WorkspaceDto {
 
 export interface CreateWorkspaceResponse {
 	workspaceId: string;
+	projectId: string;
 	worktreeId: string;
 	path: string;
 	branch: string;
@@ -85,6 +87,8 @@ export interface CreateWorkspaceResponse {
 	reusedExistingBranch: boolean;
 	createdAt: Date;
 	updatedAt: Date;
+	/** Stable cross-runtime correlation record; legacy response fields remain unchanged. */
+	artifact: HermesWorkspaceArtifact;
 }
 
 export interface ListWorkspacesResponse {
@@ -239,6 +243,43 @@ export interface AgentOutputResponse {
 	/** When the scrollback row was last persisted; output may lag live terminal slightly. */
 	capturedAt: string | null;
 }
+
+// ---- Hermes session admission (authenticated external managers only) ----
+
+const hermesDurableSessionIdSchema = z
+	.string()
+	.min(1)
+	.max(512)
+	.regex(/^[A-Za-z0-9][A-Za-z0-9._:@+-]*$/);
+const hermesProfileIdSchema = z
+	.string()
+	.min(1)
+	.max(64)
+	.regex(/^(?:default|custom|[a-z0-9][a-z0-9_-]{0,63})$/);
+const hermesSourcePlatformSchema = z
+	.string()
+	.min(1)
+	.max(64)
+	.regex(/^[a-z0-9][a-z0-9._-]{0,63}$/);
+
+export const hermesSessionMetadataSchema = z
+	.object({
+		schemaVersion: z.literal(1),
+		durableSessionId: hermesDurableSessionIdSchema,
+		profileId: hermesProfileIdSchema,
+		sourcePlatform: hermesSourcePlatformSchema,
+		isCron: z.boolean(),
+	})
+	.strict();
+export type HermesSessionMetadata = z.infer<typeof hermesSessionMetadataSchema>;
+
+export const hermesSessionAdmissionRequestSchema = z
+	.object({
+		metadata: hermesSessionMetadataSchema,
+		reason: z.enum(["mcp", "handover"]),
+	})
+	.strict();
+export type HermesSessionAdmissionRequest = z.infer<typeof hermesSessionAdmissionRequestSchema>;
 
 // ---- Resume ----
 

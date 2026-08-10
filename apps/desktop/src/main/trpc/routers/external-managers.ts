@@ -11,6 +11,7 @@ import {
 	listExternalManagers,
 	regenerateExternalManagerToken,
 	renameExternalManager,
+	setExternalManagerAccessScope,
 	setExternalManagerDispatchPolicy,
 	uninstallFromHermesConfig,
 } from "../../services/external-managers";
@@ -18,6 +19,7 @@ import { launcherPath } from "../../services/global-mcp-launcher";
 import { publicProcedure, router } from "../index";
 
 const dispatchPolicySchema = z.enum(["confirm", "auto"]);
+const accessScopeSchema = z.enum(["selected", "all"]);
 
 export const externalManagersRouter = router({
 	list: publicProcedure.query(() => listExternalManagers()),
@@ -37,6 +39,7 @@ export const externalManagersRouter = router({
 				name: z.string().min(1).max(120),
 				projectIds: z.array(z.string()).default([]),
 				dispatchPolicy: dispatchPolicySchema.default("confirm"),
+				accessScope: accessScopeSchema.default("selected"),
 			})
 		)
 		.mutation(({ input }) => createExternalManager(input)),
@@ -48,6 +51,10 @@ export const externalManagersRouter = router({
 	setDispatchPolicy: publicProcedure
 		.input(z.object({ id: z.string(), dispatchPolicy: dispatchPolicySchema }))
 		.mutation(({ input }) => setExternalManagerDispatchPolicy(input)),
+
+	setAccessScope: publicProcedure
+		.input(z.object({ id: z.string(), accessScope: accessScopeSchema }))
+		.mutation(({ input }) => setExternalManagerAccessScope(input)),
 
 	regenerateToken: publicProcedure
 		.input(z.object({ id: z.string() }))

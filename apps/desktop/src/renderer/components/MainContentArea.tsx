@@ -7,6 +7,7 @@ import { BranchChip } from "./BranchChip";
 import { QuickActionBar } from "./QuickActionBar";
 import { type ContextMenuAction, QuickActionContextMenu } from "./QuickActionContextMenu";
 import { QuickActionPopover } from "./QuickActionPopover";
+import { HermesSessionView } from "./hermes/HermesSessionView";
 import { LayoutRenderer } from "./panes/LayoutRenderer";
 import { ReviewModeShell } from "./review-mode/ReviewModeShell";
 import { TicketsCanvas } from "./tickets/TicketsCanvas";
@@ -57,6 +58,10 @@ export function MainContentArea({ savedScrollback }: { savedScrollback: Record<s
 
 	if (sidebarSegment === "tickets") {
 		return <TicketsCanvas />;
+	}
+
+	if (sidebarSegment === "hermes") {
+		return <HermesSessionView />;
 	}
 
 	if (sidebarSegment === "prs") {

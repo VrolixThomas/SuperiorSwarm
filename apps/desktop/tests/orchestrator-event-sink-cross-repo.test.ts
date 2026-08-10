@@ -9,7 +9,13 @@ import {
 	invalidateCrossRepoLinksCache,
 	setEventsDir,
 } from "../src/main/control-plane/orchestrator-event-sink";
-import { seedCrossRepoOrchestrator, seedProject, setupTestDb, teardownTestDb } from "./helpers/db";
+import {
+	seedCrossRepoOrchestrator,
+	seedExternalManager,
+	seedProject,
+	setupTestDb,
+	teardownTestDb,
+} from "./helpers/db";
 
 describe("orchestrator-event-sink cross-repo aggregation", () => {
 	let tmpDir: string;
@@ -68,6 +74,22 @@ describe("orchestrator-event-sink cross-repo aggregation", () => {
 
 		const file = crossRepoEventsFilePath(xroId);
 		expect(existsSync(file)).toBe(false);
+	});
+
+	test("all-scope managers receive events for a project registered after provisioning", async () => {
+		const manager = await seedExternalManager({ accessScope: "all" });
+		const futureProject = await seedProject();
+
+		bus.emit(futureProject, {
+			event: "status",
+			workspaceId: "ws-future",
+			phase: "working",
+			statusText: null,
+			needs: null,
+			ts: "now",
+		});
+
+		expect(readFileSync(crossRepoEventsFilePath(manager.id), "utf-8")).toContain("ws-future");
 	});
 
 	test("single event reaches multiple cross-repo orchestrators that link the same project", async () => {

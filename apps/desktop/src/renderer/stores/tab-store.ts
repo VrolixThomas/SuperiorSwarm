@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { type DiffContext, detectLanguage } from "../../shared/diff-types";
 import type { PRContext } from "../../shared/github-types";
+import type { HermesSessionPane, HermesSessionSelection } from "../../shared/hermes";
 import type { Pane } from "../../shared/pane-types";
 import { formatPrIdentifier } from "../../shared/pr-identifier";
 import type { ReviewScope } from "../../shared/review-types";
@@ -117,30 +118,156 @@ export interface WorkspaceMetadata {
 }
 
 export interface WorkspaceHistoryEntry {
+	kind: "workspace";
 	id: string;
 	cwd: string;
 }
 
+export interface HermesSessionHistoryEntry extends HermesSessionSelection {
+	kind: "hermes-session";
+	pane: HermesSessionPane;
+}
+
+export type NavigationHistoryEntry = WorkspaceHistoryEntry | HermesSessionHistoryEntry;
+
 const MAX_WORKSPACE_HISTORY = 50;
+
+export function serializeHermesSessionSelection(
+	selection: HermesSessionSelection | null
+): string | undefined {
+	return selection ? JSON.stringify(selection) : undefined;
+}
+
+export function deserializeHermesSessionSelection(
+	value: string | undefined
+): HermesSessionSelection | null {
+	if (!value) return null;
+	try {
+		const parsed: unknown = JSON.parse(value);
+		if (
+			parsed !== null &&
+			typeof parsed === "object" &&
+			"connectionId" in parsed &&
+			typeof parsed.connectionId === "string" &&
+			parsed.connectionId.length > 0 &&
+			"sessionId" in parsed &&
+			typeof parsed.sessionId === "string" &&
+			parsed.sessionId.length > 0
+		) {
+			const profileId =
+				"profileId" in parsed && typeof parsed.profileId === "string" && parsed.profileId.length > 0
+					? parsed.profileId
+					: undefined;
+			return {
+				connectionId: parsed.connectionId,
+				...(profileId ? { profileId } : {}),
+				sessionId: parsed.sessionId,
+			};
+		}
+	} catch {
+		// Invalid and session-only legacy state cannot be restored unambiguously.
+	}
+	return null;
+}
+
+export function normalizeHermesSessionSelection(
+	selection: HermesSessionSelection,
+	sessions: ReadonlyArray<{ id: string; profileId: string }>
+): HermesSessionSelection | null {
+	const matches = sessions.filter(
+		(session) =>
+			session.id === selection.sessionId &&
+			(selection.profileId === undefined || session.profileId === selection.profileId)
+	);
+	if (matches.length !== 1) return null;
+	return {
+		connectionId: selection.connectionId,
+		profileId: matches[0]?.profileId ?? "",
+		sessionId: selection.sessionId,
+	};
+}
+
+function hermesSelectionsEqual(
+	a: HermesSessionSelection | null,
+	b: HermesSessionSelection | null
+): boolean {
+	return (
+		a !== null &&
+		b !== null &&
+		a.connectionId === b.connectionId &&
+		a.profileId === b.profileId &&
+		a.sessionId === b.sessionId
+	);
+}
+
+export function deserializeHermesSessionPane(value: string | undefined): HermesSessionPane {
+	return value === "worktrees" ? "worktrees" : "chat";
+}
+
+export function resolveAvailableHermesSelection(
+	selection: HermesSessionSelection | null,
+	availableConnectionIds: readonly string[] | undefined,
+	availableSessionIds: readonly string[] | undefined
+): HermesSessionSelection | null {
+	if (!selection) return null;
+	if (
+		availableConnectionIds !== undefined &&
+		!availableConnectionIds.includes(selection.connectionId)
+	) {
+		return null;
+	}
+	if (availableSessionIds !== undefined && !availableSessionIds.includes(selection.sessionId)) {
+		return null;
+	}
+	return selection;
+}
+
+export function shouldHydrateTabStore(
+	hasSessions: boolean,
+	hasLayouts: boolean,
+	extraState: Record<string, string>
+): boolean {
+	return hasSessions || hasLayouts || extraState["sidebarSegment"] === "hermes";
+}
 
 function workspaceHistoryEntriesEqual(a: WorkspaceHistoryEntry, b: WorkspaceHistoryEntry): boolean {
 	return a.id === b.id && a.cwd === b.cwd;
 }
 
 function pushWorkspaceHistoryEntry(
-	stack: WorkspaceHistoryEntry[],
-	entry: WorkspaceHistoryEntry
-): WorkspaceHistoryEntry[] {
+	stack: NavigationHistoryEntry[],
+	entry: NavigationHistoryEntry
+): NavigationHistoryEntry[] {
 	const last = stack.at(-1);
-	if (last && workspaceHistoryEntriesEqual(last, entry)) return stack;
+	if (
+		last &&
+		((last.kind === "workspace" &&
+			entry.kind === "workspace" &&
+			workspaceHistoryEntriesEqual(last, entry)) ||
+			(last.kind === "hermes-session" &&
+				entry.kind === "hermes-session" &&
+				hermesSelectionsEqual(last, entry) &&
+				last.pane === entry.pane))
+	) {
+		return stack;
+	}
 	return [...stack, entry].slice(-MAX_WORKSPACE_HISTORY);
 }
 
 function removeWorkspaceFromHistory(
-	stack: WorkspaceHistoryEntry[],
+	stack: NavigationHistoryEntry[],
 	workspaceId: string
-): WorkspaceHistoryEntry[] {
-	return stack.filter((entry) => entry.id !== workspaceId);
+): NavigationHistoryEntry[] {
+	return stack.filter((entry) => entry.kind !== "workspace" || entry.id !== workspaceId);
+}
+
+function removeHermesSessionFromHistory(
+	stack: NavigationHistoryEntry[],
+	selection: HermesSessionSelection
+): NavigationHistoryEntry[] {
+	return stack.filter(
+		(entry) => entry.kind !== "hermes-session" || !hermesSelectionsEqual(entry, selection)
+	);
 }
 
 // ─── Store interface ─────────────────────────────────────────────────────────
@@ -149,8 +276,8 @@ interface TabStore {
 	// UI-level state (not pane-level)
 	activeWorkspaceId: string | null;
 	activeWorkspaceCwd: string;
-	workspaceBackStack: WorkspaceHistoryEntry[];
-	workspaceForwardStack: WorkspaceHistoryEntry[];
+	workspaceBackStack: NavigationHistoryEntry[];
+	workspaceForwardStack: NavigationHistoryEntry[];
 	pendingWorkspaceHistoryEntry: WorkspaceHistoryEntry | null;
 	diffMode: "split" | "inline";
 	rightPanel: RightPanelState;
@@ -160,6 +287,8 @@ interface TabStore {
 	_paneVersion: number;
 	sidebarSegment: SidebarSegment;
 	activeWorkspaceBySegment: Record<SidebarSegment, { id: string; cwd: string } | null>;
+	selectedHermesSession: HermesSessionSelection | null;
+	hermesSessionPane: HermesSessionPane;
 
 	// Ticket canvas state
 	activeTicketProject: { id: string; provider: "jira" | "linear" } | "all" | null;
@@ -189,6 +318,16 @@ interface TabStore {
 	setWorkspaceMetadata: (id: string, meta: WorkspaceMetadata) => void;
 	cleanupWorkspace: (workspaceId: string) => void;
 	setSidebarSegment: (segment: SidebarSegment) => void;
+	changeHermesConnection: (connectionId: string) => void;
+	selectHermesSession: (selection: HermesSessionSelection | null) => void;
+	forgetHermesSession: (selection: HermesSessionSelection) => void;
+	setHermesSessionPane: (pane: HermesSessionPane) => void;
+	openWorkspaceFromHermes: (
+		workspaceId: string,
+		cwd: string,
+		selection: HermesSessionSelection,
+		pane: HermesSessionPane
+	) => void;
 	setActiveWorkspace: (
 		workspaceId: string,
 		cwd: string,
@@ -451,7 +590,9 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 	workspaceMetadata: {},
 	_paneVersion: 0,
 	sidebarSegment: "repos" as SidebarSegment,
-	activeWorkspaceBySegment: { repos: null, tickets: null, prs: null },
+	activeWorkspaceBySegment: { repos: null, tickets: null, prs: null, hermes: null },
+	selectedHermesSession: null,
+	hermesSessionPane: "chat",
 
 	activeTicketProject: "all",
 	activeTicketScope: { kind: "current" },
@@ -571,7 +712,7 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 		const { [workspaceId]: _, ...rest } = state.workspaceMetadata;
 
 		const updatedBySegment = { ...state.activeWorkspaceBySegment };
-		for (const seg of ["repos", "tickets", "prs"] as SidebarSegment[]) {
+		for (const seg of ["repos", "tickets", "prs", "hermes"] as SidebarSegment[]) {
 			if (updatedBySegment[seg]?.id === workspaceId) {
 				updatedBySegment[seg] = null;
 			}
@@ -602,7 +743,11 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 		} else {
 			const current = get();
 			const pendingWorkspaceHistoryEntry = current.activeWorkspaceId
-				? { id: current.activeWorkspaceId, cwd: current.activeWorkspaceCwd }
+				? {
+						kind: "workspace" as const,
+						id: current.activeWorkspaceId,
+						cwd: current.activeWorkspaceCwd,
+					}
 				: current.pendingWorkspaceHistoryEntry;
 			set({
 				activeWorkspaceId: null,
@@ -611,6 +756,62 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 				pendingWorkspaceHistoryEntry,
 			});
 		}
+	},
+
+	selectHermesSession: (selection) => {
+		get().setSidebarSegment("hermes");
+		set((state) => ({
+			selectedHermesSession: selection,
+			hermesSessionPane:
+				selection && hermesSelectionsEqual(state.selectedHermesSession, selection)
+					? state.hermesSessionPane
+					: "chat",
+		}));
+	},
+
+	forgetHermesSession: (selection) => {
+		set((state) => {
+			const selectedMatches = hermesSelectionsEqual(state.selectedHermesSession, selection);
+			return {
+				selectedHermesSession: selectedMatches ? null : state.selectedHermesSession,
+				hermesSessionPane: selectedMatches ? "chat" : state.hermesSessionPane,
+				workspaceBackStack: removeHermesSessionFromHistory(state.workspaceBackStack, selection),
+				workspaceForwardStack: removeHermesSessionFromHistory(
+					state.workspaceForwardStack,
+					selection
+				),
+			};
+		});
+	},
+
+	setHermesSessionPane: (pane) => set({ hermesSessionPane: pane }),
+
+	changeHermesConnection: (connectionId) => {
+		set((state) => ({
+			selectedHermesSession:
+				state.selectedHermesSession?.connectionId === connectionId
+					? state.selectedHermesSession
+					: null,
+			hermesSessionPane:
+				state.selectedHermesSession?.connectionId === connectionId
+					? state.hermesSessionPane
+					: "chat",
+		}));
+	},
+
+	openWorkspaceFromHermes: (workspaceId, cwd, selection, pane) => {
+		set((state) => ({
+			workspaceBackStack: pushWorkspaceHistoryEntry(state.workspaceBackStack, {
+				kind: "hermes-session",
+				...selection,
+				pane,
+			}),
+			workspaceForwardStack: [],
+			sidebarSegment: "repos",
+			selectedHermesSession: selection,
+			pendingWorkspaceHistoryEntry: null,
+		}));
+		get().setActiveWorkspace(workspaceId, cwd, { recordHistory: false });
 	},
 
 	activateReviewWorkspace: (workspaceId, cwd, prCtx) => {
@@ -653,7 +854,11 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 
 		const current = get();
 		const previousEntry = current.activeWorkspaceId
-			? { id: current.activeWorkspaceId, cwd: current.activeWorkspaceCwd }
+			? {
+					kind: "workspace" as const,
+					id: current.activeWorkspaceId,
+					cwd: current.activeWorkspaceCwd,
+				}
 			: current.pendingWorkspaceHistoryEntry;
 		if (options?.recordHistory !== false && previousEntry && previousEntry.id !== workspaceId) {
 			set((s) => ({
@@ -715,8 +920,18 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 		const target = state.workspaceBackStack.at(-1);
 		if (!target) return false;
 		const currentEntry = state.activeWorkspaceId
-			? { id: state.activeWorkspaceId, cwd: state.activeWorkspaceCwd }
-			: state.pendingWorkspaceHistoryEntry;
+			? ({
+					kind: "workspace",
+					id: state.activeWorkspaceId,
+					cwd: state.activeWorkspaceCwd,
+				} as const)
+			: state.sidebarSegment === "hermes" && state.selectedHermesSession
+				? ({
+						kind: "hermes-session",
+						...state.selectedHermesSession,
+						pane: state.hermesSessionPane,
+					} as const)
+				: state.pendingWorkspaceHistoryEntry;
 
 		set({
 			workspaceBackStack: state.workspaceBackStack.slice(0, -1),
@@ -725,7 +940,23 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 				: state.workspaceForwardStack,
 			pendingWorkspaceHistoryEntry: null,
 		});
-		get().setActiveWorkspace(target.id, target.cwd, { recordHistory: false });
+		if (target.kind === "hermes-session") {
+			set({
+				sidebarSegment: "hermes",
+				selectedHermesSession: {
+					connectionId: target.connectionId,
+					...(target.profileId ? { profileId: target.profileId } : {}),
+					sessionId: target.sessionId,
+				},
+				hermesSessionPane: target.pane,
+				activeWorkspaceId: null,
+				activeWorkspaceCwd: "",
+				rightPanel: PANEL_CLOSED,
+			});
+		} else {
+			set({ sidebarSegment: segmentForWorkspace(get().workspaceMetadata[target.id]) });
+			get().setActiveWorkspace(target.id, target.cwd, { recordHistory: false });
+		}
 		return true;
 	},
 
@@ -734,8 +965,18 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 		const target = state.workspaceForwardStack.at(-1);
 		if (!target) return false;
 		const currentEntry = state.activeWorkspaceId
-			? { id: state.activeWorkspaceId, cwd: state.activeWorkspaceCwd }
-			: state.pendingWorkspaceHistoryEntry;
+			? ({
+					kind: "workspace",
+					id: state.activeWorkspaceId,
+					cwd: state.activeWorkspaceCwd,
+				} as const)
+			: state.sidebarSegment === "hermes" && state.selectedHermesSession
+				? ({
+						kind: "hermes-session",
+						...state.selectedHermesSession,
+						pane: state.hermesSessionPane,
+					} as const)
+				: state.pendingWorkspaceHistoryEntry;
 
 		set({
 			workspaceForwardStack: state.workspaceForwardStack.slice(0, -1),
@@ -744,7 +985,23 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 				: state.workspaceBackStack,
 			pendingWorkspaceHistoryEntry: null,
 		});
-		get().setActiveWorkspace(target.id, target.cwd, { recordHistory: false });
+		if (target.kind === "hermes-session") {
+			set({
+				sidebarSegment: "hermes",
+				selectedHermesSession: {
+					connectionId: target.connectionId,
+					...(target.profileId ? { profileId: target.profileId } : {}),
+					sessionId: target.sessionId,
+				},
+				hermesSessionPane: target.pane,
+				activeWorkspaceId: null,
+				activeWorkspaceCwd: "",
+				rightPanel: PANEL_CLOSED,
+			});
+		} else {
+			set({ sidebarSegment: segmentForWorkspace(get().workspaceMetadata[target.id]) });
+			get().setActiveWorkspace(target.id, target.cwd, { recordHistory: false });
+		}
 		return true;
 	},
 
@@ -1252,7 +1509,7 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 		}
 
 		// Restore sidebar segment (validate against known values)
-		const validSegments = new Set<string>(["repos", "tickets", "prs"]);
+		const validSegments = new Set<string>(["repos", "tickets", "prs", "hermes"]);
 		let sidebarSegment: SidebarSegment = validSegments.has(extraState?.["sidebarSegment"] ?? "")
 			? (extraState?.["sidebarSegment"] as SidebarSegment)
 			: "repos";
@@ -1262,6 +1519,7 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 			repos: null,
 			tickets: null,
 			prs: null,
+			hermes: null,
 		};
 		if (extraState?.["activeWorkspaceBySegment"]) {
 			try {
@@ -1328,10 +1586,14 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 
 		// Derive right panel from the active workspace for the restored segment
 		const activeEntry = activeWorkspaceBySegment[sidebarSegment];
-		const activeId = activeEntry?.id ?? activeWs;
+		const activeId = sidebarSegment === "hermes" ? null : (activeEntry?.id ?? activeWs);
 		const activeMeta = activeId ? workspaceMetadata[activeId] : undefined;
-		const activeCwdResolved = activeEntry?.cwd ?? activeCwd;
+		const activeCwdResolved = sidebarSegment === "hermes" ? "" : (activeEntry?.cwd ?? activeCwd);
 		const rightPanel = panelForWorkspace(activeId ?? "", activeCwdResolved, activeMeta);
+		const selectedHermesSession = deserializeHermesSessionSelection(
+			extraState?.["selectedHermesSession"]
+		);
+		const hermesSessionPane = deserializeHermesSessionPane(extraState?.["hermesSessionPane"]);
 
 		set({
 			activeWorkspaceId: activeId ?? null,
@@ -1341,6 +1603,8 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 			workspaceMetadata,
 			sidebarSegment,
 			activeWorkspaceBySegment,
+			selectedHermesSession,
+			hermesSessionPane,
 			workspaceBackStack: [],
 			workspaceForwardStack: [],
 			pendingWorkspaceHistoryEntry: null,

@@ -181,6 +181,11 @@ describe("session persistence diffing", () => {
 			.values([
 				{ key: "activeTabId", value: "same" },
 				{ key: "activeWorkspaceId", value: "remove" },
+				{
+					key: "selectedHermesSession",
+					value: '{"connectionId":"stale","sessionId":"stale"}',
+				},
+				{ key: "hermesSessionPane", value: "worktrees" },
 				{ key: "tickets_visible_teams", value: "[]" },
 				{ key: "tickets_assignee_filter_all", value: "me" },
 				{ key: "lastSeenVersion", value: "0.13.0" },
@@ -193,6 +198,7 @@ describe("session persistence diffing", () => {
 			state: {
 				activeTabId: "same",
 				diffMode: "split",
+				hermesSessionPane: "chat",
 			},
 		});
 
@@ -206,6 +212,7 @@ describe("session persistence diffing", () => {
 		expect(state).toEqual({
 			activeTabId: "same",
 			diffMode: "split",
+			hermesSessionPane: "chat",
 			tickets_visible_teams: "[]",
 			tickets_assignee_filter_all: "me",
 			lastSeenVersion: "0.13.0",

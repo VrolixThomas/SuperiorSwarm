@@ -29,10 +29,17 @@ import {
 	listExternalManagers,
 	regenerateExternalManagerToken,
 	renameExternalManager,
+	resolveInstalledHermesManagerId,
 	uninstallFromHermesConfig,
 } from "../src/main/services/external-managers";
 import { mergeYamlKey, removeYamlKey } from "../src/main/services/yaml-merge";
-import { seedExternalManager, seedProject, seedWorkspace, setupTestDb } from "./helpers/db";
+import {
+	seedCrossRepoOrchestrator,
+	seedExternalManager,
+	seedProject,
+	seedWorkspace,
+	setupTestDb,
+} from "./helpers/db";
 
 beforeAll(() => {
 	setupTestDb();
@@ -187,6 +194,93 @@ describe("external manager control-plane access", () => {
 		expect(res.status).toBe(401);
 	});
 
+	test("Hermes admission binds only to the authenticated manager identity", async () => {
+		const first = await seedExternalManager({ projectIds: [PROJECT_ID] });
+		const second = await seedExternalManager({ projectIds: [PROJECT_ID] });
+		const metadata = {
+			schemaVersion: 1,
+			durableSessionId: "shared-durable-session",
+			profileId: "work",
+			sourcePlatform: "slack",
+			isCron: false,
+		};
+		for (const manager of [first, second]) {
+			const res = await fetch(url("/hermes.sessions.admit"), {
+				method: "POST",
+				headers: { ...authMgr(manager.id, manager.token), "Content-Type": "application/json" },
+				body: JSON.stringify({ metadata, reason: "mcp" }),
+			});
+			expect(res.status).toBe(200);
+			expect(await res.json()).toMatchObject({
+				admitted: true,
+				managerId: manager.id,
+				durableSessionId: metadata.durableSessionId,
+				profileId: metadata.profileId,
+			});
+		}
+
+		const rows = getDb()
+			.select()
+			.from(schema.hermesSessionAdmissions)
+			.all()
+			.filter((row) => row.durableSessionId === metadata.durableSessionId);
+		expect(rows).toHaveLength(2);
+		expect(new Set(rows.map((row) => row.managerId))).toEqual(new Set([first.id, second.id]));
+	});
+
+	test("Hermes admission rejects forged identity, invalid metadata, cron, and non-external callers", async () => {
+		const manager = await seedExternalManager({ projectIds: [PROJECT_ID] });
+		const validMetadata = {
+			schemaVersion: 1,
+			durableSessionId: "external-session",
+			profileId: "work",
+			sourcePlatform: "telegram",
+			isCron: false,
+		};
+		for (const body of [
+			{ metadata: { ...validMetadata, profileId: "not valid" }, reason: "mcp" },
+			{ metadata: validMetadata, reason: "mcp", managerId: "forged-manager" },
+		]) {
+			const res = await fetch(url("/hermes.sessions.admit"), {
+				method: "POST",
+				headers: { ...authMgr(manager.id, manager.token), "Content-Type": "application/json" },
+				body: JSON.stringify(body),
+			});
+			expect(res.status).toBe(400);
+		}
+
+		const cron = await fetch(url("/hermes.sessions.admit"), {
+			method: "POST",
+			headers: { ...authMgr(manager.id, manager.token), "Content-Type": "application/json" },
+			body: JSON.stringify({
+				metadata: { ...validMetadata, durableSessionId: "cron-session", isCron: true },
+				reason: "handover",
+			}),
+		});
+		expect(cron.status).toBe(200);
+		expect(await cron.json()).toMatchObject({ admitted: false, code: "cron_session" });
+
+		const workspaceManager = await seedCrossRepoOrchestrator({ projectIds: [PROJECT_ID] });
+		const nonExternal = await fetch(url("/hermes.sessions.admit"), {
+			method: "POST",
+			headers: {
+				Authorization: `Bearer ${server.token}`,
+				"X-Cross-Repo-Orchestrator-Id": workspaceManager,
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({ metadata: validMetadata, reason: "mcp" }),
+		});
+		expect(nonExternal.status).toBe(403);
+
+		expect(
+			getDb()
+				.select()
+				.from(schema.hermesSessionAdmissions)
+				.all()
+				.filter((row) => row.managerId === manager.id)
+		).toEqual([]);
+	});
+
 	test("projects.list returns only linked projects", async () => {
 		const otherProject = await seedProject();
 		const mgr = await seedExternalManager({ projectIds: [PROJECT_ID] });
@@ -195,6 +289,60 @@ describe("external manager control-plane access", () => {
 		const body = (await res.json()) as { projects: Array<{ id: string }> };
 		expect(body.projects.map((p) => p.id)).toEqual([PROJECT_ID]);
 		expect(body.projects.map((p) => p.id)).not.toContain(otherProject);
+	});
+
+	test("all-scope manager lists current and future projects and can operate on both", async () => {
+		const currentProject = await seedProject();
+		const mgr = await seedExternalManager({
+			accessScope: "all",
+			dispatchPolicy: "auto",
+		});
+
+		const first = await fetch(url("/projects.list"), { headers: authMgr(mgr.id, mgr.token) });
+		expect(first.status).toBe(200);
+		const firstBody = (await first.json()) as { projects: Array<{ id: string }> };
+		expect(firstBody.projects.map((project) => project.id)).toContain(PROJECT_ID);
+		expect(firstBody.projects.map((project) => project.id)).toContain(currentProject);
+
+		const futureProject = await seedProject();
+		const futureRepo = join(TMP, "future-repo");
+		mkdirSync(futureRepo, { recursive: true });
+		getDb()
+			.update(schema.projects)
+			.set({ repoPath: futureRepo })
+			.where(eq(schema.projects.id, futureProject))
+			.run();
+		const futureWorkspace = await seedWorkspace(futureProject, { name: "future-child" });
+		const second = await fetch(url("/projects.list"), { headers: authMgr(mgr.id, mgr.token) });
+		expect(second.status).toBe(200);
+		const secondBody = (await second.json()) as { projects: Array<{ id: string }> };
+		expect(secondBody.projects.map((project) => project.id)).toContain(futureProject);
+
+		const get = await fetch(url(`/workspaces.get?workspaceId=${futureWorkspace}`), {
+			headers: authMgr(mgr.id, mgr.token),
+		});
+		expect(get.status).toBe(200);
+
+		const dispatch = await fetch(url("/workspaces.dispatch"), {
+			method: "POST",
+			headers: { ...authMgr(mgr.id, mgr.token), "Content-Type": "application/json" },
+			body: JSON.stringify({ workspaceId: futureWorkspace, prompt: "future project task" }),
+		});
+		expect(dispatch.status).toBe(200);
+		expect(confirmCalls).toBe(0);
+		const membership = getDb()
+			.select({ orchestratorId: schema.orchestratorMembers.orchestratorId })
+			.from(schema.orchestratorMembers)
+			.where(eq(schema.orchestratorMembers.workspaceId, futureWorkspace))
+			.get();
+		expect(membership?.orchestratorId).toBe(mgr.id);
+		expect(
+			getDb()
+				.select()
+				.from(schema.crossRepoOrchestratorProjects)
+				.where(eq(schema.crossRepoOrchestratorProjects.orchestratorId, mgr.id))
+				.all()
+		).toHaveLength(0);
 	});
 
 	test("events.poll returns events after cursor and advances nextSeq", async () => {
@@ -390,6 +538,7 @@ describe("external manager service CRUD", () => {
 			.get();
 		expect(row?.kind).toBe("external");
 		expect(row?.dispatchPolicy).toBe("auto");
+		expect(row?.accessScope).toBe("selected");
 		expect(tokenMatchesHash(created.token, row?.tokenHash ?? null)).toBe(true);
 
 		const listed = await listExternalManagers();
@@ -417,6 +566,22 @@ describe("external manager service CRUD", () => {
 			.where(eq(schema.crossRepoOrchestrators.id, created.id))
 			.get();
 		expect(gone).toBeUndefined();
+	});
+
+	test("all-project access is explicit while selected remains the safe default", async () => {
+		const selected = await createExternalManager({ name: "Restricted", projectIds: [] });
+		const broad = await createExternalManager({
+			name: "Installation manager",
+			projectIds: [],
+			accessScope: "all",
+		});
+
+		const listed = await listExternalManagers();
+		expect(listed.find((manager) => manager.id === selected.id)?.accessScope).toBe("selected");
+		expect(listed.find((manager) => manager.id === broad.id)?.accessScope).toBe("all");
+
+		await deleteExternalManager({ id: selected.id });
+		await deleteExternalManager({ id: broad.id });
 	});
 });
 
@@ -478,11 +643,11 @@ describe("yaml merge + hermes config install", () => {
 		expect(YAML.parse(raw).mcp_servers.superiorswarm.command).toBe("/bin/x");
 	});
 
-	test("installIntoHermesConfig writes launcher command and token env", () => {
+	test("installIntoHermesConfig writes and securely resolves the manager identity", async () => {
 		const file = join(dir, "config.yaml");
-		const token = generateToken();
+		const manager = await seedExternalManager({});
 		const { configPath } = installIntoHermesConfig({
-			managerToken: token,
+			managerToken: manager.token,
 			configPath: file,
 			userDataDir: dir,
 		});
@@ -491,10 +656,15 @@ describe("yaml merge + hermes config install", () => {
 		const parsed = YAML.parse(readFileSync(file, "utf-8"));
 		const entry = parsed.mcp_servers.superiorswarm;
 		expect(entry.command).toContain("superiorswarm-mcp");
-		expect(entry.env.SUPERIORSWARM_MANAGER_TOKEN).toBe(token);
+		expect(entry.env.SUPERIORSWARM_MANAGER_TOKEN).toBe(manager.token);
+		expect(resolveInstalledHermesManagerId({ configPath: file })).toBe(manager.id);
 
 		uninstallFromHermesConfig({ configPath: file });
 		const after = YAML.parse(readFileSync(file, "utf-8"));
 		expect(after.mcp_servers?.superiorswarm).toBeUndefined();
+		getDb()
+			.delete(schema.crossRepoOrchestrators)
+			.where(eq(schema.crossRepoOrchestrators.id, manager.id))
+			.run();
 	});
 });

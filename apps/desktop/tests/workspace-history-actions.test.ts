@@ -33,7 +33,7 @@ function resetStores() {
 		rightPanel: PANEL_CLOSED,
 		workspaceMetadata: {},
 		sidebarSegment: "repos",
-		activeWorkspaceBySegment: { repos: null, tickets: null, prs: null },
+		activeWorkspaceBySegment: { repos: null, tickets: null, prs: null, hermes: null },
 	});
 }
 

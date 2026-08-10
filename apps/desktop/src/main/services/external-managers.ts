@@ -1,4 +1,4 @@
-import { mkdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { and, asc, eq, inArray, max } from "drizzle-orm";
@@ -28,11 +28,13 @@ import { launcherPath } from "./global-mcp-launcher";
 // exactly once — only its SHA-256 hash is persisted.
 
 export type DispatchPolicy = "confirm" | "auto";
+export type ExternalManagerAccessScope = "selected" | "all";
 
 export interface ExternalManagerDto {
 	id: string;
 	name: string;
 	dispatchPolicy: DispatchPolicy;
+	accessScope: ExternalManagerAccessScope;
 	lastSeenAt: Date | null;
 	createdAt: Date;
 	linkedProjectIds: string[];
@@ -46,10 +48,28 @@ export async function createExternalManager(input: {
 	name: string;
 	projectIds: string[];
 	dispatchPolicy?: DispatchPolicy;
+	accessScope?: ExternalManagerAccessScope;
 }): Promise<{ id: string; token: string }> {
+	const token = generateToken();
+	const id = insertExternalManager(input, token);
+
+	for (const projectId of input.projectIds) {
+		await addProjectToCrossRepoOrchestrator({ orchestratorId: id, projectId });
+	}
+
+	return { id, token };
+}
+
+function insertExternalManager(
+	input: {
+		name: string;
+		dispatchPolicy?: DispatchPolicy;
+		accessScope?: ExternalManagerAccessScope;
+	},
+	token: string
+): string {
 	const db = getDb();
 	const id = `mgr-${nanoid(8)}`;
-	const token = generateToken();
 	const now = new Date();
 	const dir = workDirFor(id);
 	mkdirSync(dir, { recursive: true });
@@ -70,16 +90,12 @@ export async function createExternalManager(input: {
 			kind: "external",
 			tokenHash: hashToken(token),
 			dispatchPolicy: input.dispatchPolicy ?? "confirm",
+			accessScope: input.accessScope ?? "selected",
 			createdAt: now,
 			updatedAt: now,
 		})
 		.run();
-
-	for (const projectId of input.projectIds) {
-		await addProjectToCrossRepoOrchestrator({ orchestratorId: id, projectId });
-	}
-
-	return { id, token };
+	return id;
 }
 
 export async function listExternalManagers(): Promise<ExternalManagerDto[]> {
@@ -89,6 +105,7 @@ export async function listExternalManagers(): Promise<ExternalManagerDto[]> {
 			id: crossRepoOrchestrators.id,
 			name: crossRepoOrchestrators.name,
 			dispatchPolicy: crossRepoOrchestrators.dispatchPolicy,
+			accessScope: crossRepoOrchestrators.accessScope,
 			lastSeenAt: crossRepoOrchestrators.lastSeenAt,
 			createdAt: crossRepoOrchestrators.createdAt,
 		})
@@ -142,6 +159,20 @@ export async function setExternalManagerDispatchPolicy(input: {
 		.where(externalManagerById(input.id))
 		.run();
 	if (res.changes === 0) throw new NotFoundError(input.id);
+	return { ok: true };
+}
+
+export async function setExternalManagerAccessScope(input: {
+	id: string;
+	accessScope: ExternalManagerAccessScope;
+}): Promise<{ ok: true }> {
+	const res = getDb()
+		.update(crossRepoOrchestrators)
+		.set({ accessScope: input.accessScope, updatedAt: new Date() })
+		.where(externalManagerById(input.id))
+		.run();
+	if (res.changes === 0) throw new NotFoundError(input.id);
+	invalidateAllCrossRepoLinks();
 	return { ok: true };
 }
 
@@ -226,6 +257,126 @@ export function installIntoHermesConfig(input: {
 	const launcher = launcherPath(input.userDataDir ?? app.getPath("userData"));
 	installEntryToConfig(configPath, "yaml", launcher, managerEnv(input.managerToken));
 	return { configPath };
+}
+
+export interface ManagedHermesMcpAccessResult {
+	managerId: string;
+	created: boolean;
+	upgraded: boolean;
+}
+
+const MANAGED_HERMES_MANAGER_NAME = "Agents (managed Hermes)";
+const MANAGED_HERMES_UPGRADE_MESSAGE =
+	"Agents could not safely reuse the existing Hermes MCP identity. Open Settings → External managers, install a manager into Hermes, then Retry.";
+
+function installedHermesManagerToken(configPath: string): string | null {
+	if (!existsSync(configPath)) return null;
+	let parsed: unknown;
+	try {
+		parsed = YAML.parse(readFileSync(configPath, "utf-8"));
+	} catch {
+		throw new Error(MANAGED_HERMES_UPGRADE_MESSAGE);
+	}
+	if (!parsed || typeof parsed !== "object") return null;
+	const servers = (parsed as Record<string, unknown>)["mcp_servers"];
+	if (!servers || typeof servers !== "object") return null;
+	const entry = (servers as Record<string, unknown>)["superiorswarm"];
+	if (!entry || typeof entry !== "object") return null;
+	const env = (entry as Record<string, unknown>)["env"];
+	if (!env || typeof env !== "object") return null;
+	const token = (env as Record<string, unknown>)["SUPERIORSWARM_MANAGER_TOKEN"];
+	return typeof token === "string" && token.length > 0 ? token : null;
+}
+
+/** Resolve the installed Hermes MCP identity without exposing or persisting its raw token. */
+export function resolveInstalledHermesManagerId(
+	input: { configPath?: string } = {}
+): string | null {
+	const installedToken = installedHermesManagerToken(input.configPath ?? hermesConfigPath());
+	if (!installedToken) return null;
+	const matches = getDb()
+		.select({ id: crossRepoOrchestrators.id })
+		.from(crossRepoOrchestrators)
+		.where(
+			and(
+				eq(crossRepoOrchestrators.kind, "external"),
+				eq(crossRepoOrchestrators.tokenHash, hashToken(installedToken))
+			)
+		)
+		.all();
+	return matches.length === 1 ? (matches[0]?.id ?? null) : null;
+}
+
+/**
+ * Ensure the app-owned Hermes backend has a live-inventory manager identity.
+ * The raw credential is read from or written to Hermes' standard MCP config;
+ * this service returns only the manager id and persists only its secure hash.
+ */
+export function ensureManagedHermesMcpAccess(
+	input: {
+		configPath?: string;
+		userDataDir?: string;
+	} = {}
+): ManagedHermesMcpAccessResult {
+	const configPath = input.configPath ?? hermesConfigPath();
+	const installedToken = installedHermesManagerToken(configPath);
+	if (installedToken) {
+		const matches = getDb()
+			.select({
+				id: crossRepoOrchestrators.id,
+				accessScope: crossRepoOrchestrators.accessScope,
+			})
+			.from(crossRepoOrchestrators)
+			.where(
+				and(
+					eq(crossRepoOrchestrators.kind, "external"),
+					eq(crossRepoOrchestrators.tokenHash, hashToken(installedToken))
+				)
+			)
+			.all();
+		const match = matches[0];
+		if (matches.length !== 1 || !match) throw new Error(MANAGED_HERMES_UPGRADE_MESSAGE);
+		installIntoHermesConfig({
+			managerToken: installedToken,
+			configPath,
+			userDataDir: input.userDataDir,
+		});
+		if (match.accessScope !== "all") {
+			getDb()
+				.update(crossRepoOrchestrators)
+				.set({ accessScope: "all", updatedAt: new Date() })
+				.where(externalManagerById(match.id))
+				.run();
+			invalidateAllCrossRepoLinks();
+		}
+		return {
+			managerId: match.id,
+			created: false,
+			upgraded: match.accessScope !== "all",
+		};
+	}
+
+	const token = generateToken();
+	const managerId = insertExternalManager(
+		{
+			name: MANAGED_HERMES_MANAGER_NAME,
+			dispatchPolicy: "confirm",
+			accessScope: "all",
+		},
+		token
+	);
+	try {
+		installIntoHermesConfig({
+			managerToken: token,
+			configPath,
+			userDataDir: input.userDataDir,
+		});
+	} catch (error) {
+		void deleteExternalManager({ id: managerId });
+		throw error;
+	}
+	invalidateAllCrossRepoLinks();
+	return { managerId, created: true, upgraded: false };
 }
 
 export function uninstallFromHermesConfig(input: { configPath?: string }): { ok: true } {

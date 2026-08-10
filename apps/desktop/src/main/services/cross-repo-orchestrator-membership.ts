@@ -18,7 +18,10 @@ export async function attachToCrossRepoOrchestrator(input: {
 	const db = getDb();
 
 	const xro = db
-		.select({ id: crossRepoOrchestrators.id })
+		.select({
+			id: crossRepoOrchestrators.id,
+			accessScope: crossRepoOrchestrators.accessScope,
+		})
 		.from(crossRepoOrchestrators)
 		.where(eq(crossRepoOrchestrators.id, input.orchestratorId))
 		.get();
@@ -44,7 +47,7 @@ export async function attachToCrossRepoOrchestrator(input: {
 			)
 		)
 		.get();
-	if (!link) {
+	if (xro.accessScope !== "all" && !link) {
 		throw new ForbiddenError("workspace's project is not linked to this cross-repo orchestrator");
 	}
 

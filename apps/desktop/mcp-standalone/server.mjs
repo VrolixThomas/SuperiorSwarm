@@ -7,6 +7,11 @@ import { join } from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+import {
+	handleHermesSessionHandover,
+	withAutomaticHermesSessionAdmission,
+} from "./hermes-session-admission.mjs";
+import { controlPlaneToolResult } from "./structured-artifact.mjs";
 
 const require = createRequire(import.meta.url);
 const Database = require("better-sqlite3");
@@ -62,6 +67,7 @@ const IS_ORCHESTRATOR = ctx.isOrchestrator === true;
 const ORCHESTRATOR_EVENTS_PATH = ctx.orchestratorEventsPath || null;
 const CROSS_REPO_ID = ctx.crossRepoOrchestratorId || null;
 const LINKED_PROJECT_IDS = Array.isArray(ctx.linkedProjectIds) ? ctx.linkedProjectIds : [];
+const ACCESS_SCOPE = ctx.accessScope === "all" ? "all" : "selected";
 const modeContext = ctx.modeContext || {};
 const REVIEW_DRAFT_ID = modeContext.reviewDraftId;
 const SOLVE_SESSION_ID = modeContext.solveSessionId;
@@ -141,7 +147,7 @@ Coordination tools (superiorswarm namespace):
   - dispatch_agent({workspaceId, prompt, ...}) — workspaceId implies project
   - remove_worktree({workspaceId, force?}) — workspaceId implies project`;
 
-const EXTERNAL_MANAGER_INSTRUCTIONS = `You are an EXTERNAL MANAGER for SuperiorSwarm. You coordinate agent workspaces across your linked projects: ${JSON.stringify(LINKED_PROJECT_IDS)}.
+const EXTERNAL_MANAGER_INSTRUCTIONS = `You are an EXTERNAL MANAGER for SuperiorSwarm. Your project access scope is ${ACCESS_SCOPE === "all" ? "the live SuperiorSwarm installation inventory (including projects registered later)" : `selected projects: ${JSON.stringify(LINKED_PROJECT_IDS)}`}.
 
 Coordination loop:
   1. list_projects / list_workspaces to see current state.
@@ -922,11 +928,42 @@ if (isWorkspaceAgentOrCrossRepo) {
 	// to the result content. Scoped to workspace-agent and cross-repo-orchestrator — review/solve modes are
 	// unaffected.
 	const _origTool = server.tool.bind(server);
-	server.tool = (name, description, schema, handler) =>
-		_origTool(name, description, schema, withRoleReminder(handler));
+	server.tool = (name, description, schema, handler) => {
+		const admittedHandler =
+			isExternalManagerMode && name !== "handover_session"
+				? withAutomaticHermesSessionAdmission(handler, admitHermesSession)
+				: handler;
+		return _origTool(name, description, schema, withRoleReminder(admittedHandler));
+	};
 
 	const baseUrl = `http://127.0.0.1:${SUPERIORSWARM_CONTROL_PORT}`;
 	const authHeader = `Bearer ${SUPERIORSWARM_CONTROL_TOKEN}`;
+
+	async function admitHermesSession(metadata, reason) {
+		const managerToken = process.env.SUPERIORSWARM_MANAGER_TOKEN;
+		if (!isExternalManagerMode || !managerToken) {
+			throw new Error("Hermes session admission is unavailable");
+		}
+		const res = await fetch(`${baseUrl}/hermes.sessions.admit`, {
+			method: "POST",
+			headers: {
+				Authorization: authHeader,
+				"X-Cross-Repo-Orchestrator-Id": CROSS_REPO_ID,
+				"X-Manager-Token": managerToken,
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({ metadata, reason }),
+			signal: AbortSignal.timeout(5_000),
+		});
+		let parsed = {};
+		try {
+			parsed = await res.json();
+		} catch {
+			// Status and a content-free error stay authoritative for malformed responses.
+		}
+		if (!res.ok) throw new Error(`Hermes session admission failed (${res.status})`);
+		return parsed;
+	}
 
 	async function call(method, path, body) {
 		try {
@@ -964,13 +1001,13 @@ if (isWorkspaceAgentOrCrossRepo) {
 					isError: true,
 				};
 			}
-			return { content: [{ type: "text", text: JSON.stringify(parsed) }] };
+			return controlPlaneToolResult(parsed);
 		} catch (err) {
 			return {
 				content: [
 					{
 						type: "text",
-						text: `control plane unreachable — is SuperiorSwarm running? (${err && err.message ? err.message : String(err)})`,
+						text: `control plane unreachable — is SuperiorSwarm running? (${err?.message ? err.message : String(err)})`,
 					},
 				],
 				isError: true,
@@ -978,10 +1015,22 @@ if (isWorkspaceAgentOrCrossRepo) {
 		}
 	}
 
+	if (isExternalManagerMode) {
+		server.tool(
+			"handover_session",
+			"Explicitly admit this non-cron Hermes session to the SuperiorSwarm Agents inbox. The current MCP request must include validated _meta.hermes session metadata.",
+			{},
+			async (_args, extra) =>
+				handleHermesSessionHandover(extra, (metadata, reason) =>
+					admitHermesSession(metadata, reason)
+				)
+		);
+	}
+
 	server.tool(
 		"create_worktree",
 		isCrossRepoMode
-			? "Create an app-managed worktree in one of your linked projects (project_id required). If the branch already exists (locally or on origin) it is checked out instead of created; the response sets reusedExistingBranch=true and base_branch is ignored."
+			? "Create an app-managed worktree in an accessible project (project_id required). If the branch already exists (locally or on origin) it is checked out instead of created; the response sets reusedExistingBranch=true and base_branch is ignored."
 			: "Create an app-managed worktree. If the branch already exists (locally or on origin) it is checked out instead of created; the response sets reusedExistingBranch=true and base_branch is ignored.",
 		{
 			branch: z.string().describe("Branch name to create or check out"),
@@ -1000,11 +1049,6 @@ if (isWorkspaceAgentOrCrossRepo) {
 			const base_branch = args.base_branch;
 			const project_id = args.project_id;
 			const projectId = isCrossRepoMode ? project_id : PROJECT_ID;
-			if (isCrossRepoMode && !LINKED_PROJECT_IDS.includes(projectId)) {
-				throw new Error(
-					`project_id ${projectId} is not in linked projects ${JSON.stringify(LINKED_PROJECT_IDS)}`
-				);
-			}
 			return call("POST", "/workspaces.create", {
 				projectId,
 				branch,
@@ -1016,15 +1060,15 @@ if (isWorkspaceAgentOrCrossRepo) {
 	server.tool(
 		"list_workspaces",
 		isCrossRepoMode
-			? "List workspaces across your linked projects. Pass project_id to scope to one."
+			? "List workspaces across your currently accessible projects. Pass project_id to scope to one."
 			: "List all workspaces in the current project.",
 		isCrossRepoMode
 			? { project_id: z.string().optional().describe("Restrict to one linked project") }
 			: {},
 		async (args) => {
 			if (isCrossRepoMode) {
-				const ids = args && args.project_id ? [args.project_id] : LINKED_PROJECT_IDS;
-				return call("GET", `/workspaces.list?projectIds=${encodeURIComponent(ids.join(","))}`);
+				if (!args?.project_id) return call("GET", "/workspaces.list?accessible=true");
+				return call("GET", `/workspaces.list?projectIds=${encodeURIComponent(args.project_id)}`);
 			}
 			return call("GET", `/workspaces.list?projectId=${encodeURIComponent(PROJECT_ID)}`);
 		}

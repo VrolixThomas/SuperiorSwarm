@@ -1,6 +1,11 @@
 import type { AgentEvent } from "./agent-events";
 import type { AgentProvider } from "./agent-session";
 import type { TerminalDataMeta } from "./daemon-protocol";
+import type {
+	HermesAttachmentMetadata,
+	HermesRendererAttachmentUploadMetadata,
+	HermesRendererAttachmentUploadStart,
+} from "./hermes";
 
 export type { TerminalDataMeta } from "./daemon-protocol";
 
@@ -19,6 +24,20 @@ export interface TerminalAPI {
 
 export interface TrpcAPI {
 	request: (opts: { type: string; path: string; input?: unknown }) => Promise<unknown>;
+}
+
+export interface HermesAttachmentUploadAPI {
+	begin: (
+		attachments: HermesRendererAttachmentUploadMetadata[]
+	) => Promise<HermesRendererAttachmentUploadStart>;
+	append: (input: {
+		uploadId: string;
+		fileId: string;
+		offset: number;
+		bytes: Uint8Array;
+	}) => Promise<{ ok: true }>;
+	finish: (uploadId: string) => Promise<HermesAttachmentMetadata[]>;
+	cancel: (uploadId: string) => Promise<{ ok: true }>;
 }
 
 export interface DialogAPI {
@@ -157,7 +176,7 @@ export interface QuickActionsAPI {
 	) => () => void;
 }
 
-export type SidebarSegment = "repos" | "tickets" | "prs";
+export type SidebarSegment = "repos" | "tickets" | "prs" | "hermes";
 
 export type RepoChangeKind = "working-tree" | "index" | "head" | "refs" | "state";
 

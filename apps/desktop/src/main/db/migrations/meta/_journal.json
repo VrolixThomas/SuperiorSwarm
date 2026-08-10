@@ -379,6 +379,62 @@
       "when": 1785533031802,
       "tag": "0053_add_worktree_cleanup_jobs",
       "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "6",
+      "when": 1786028117653,
+      "tag": "0054_add_hermes_connections_links_reports",
+      "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "6",
+      "when": 1786261303748,
+      "tag": "0055_adapt_hermes_stock_sessions",
+      "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "6",
+      "when": 1786271718989,
+      "tag": "0056_manage_local_hermes_backend",
+      "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "6",
+      "when": 1786301843820,
+      "tag": "0057_add_external_manager_access_scope",
+      "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "6",
+      "when": 1786303507836,
+      "tag": "0058_add_hermes_session_admissions",
+      "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "6",
+      "when": 1786306532429,
+      "tag": "0059_bind_hermes_connection_manager",
+      "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "6",
+      "when": 1786311977745,
+      "tag": "0060_distinguish_hermes_manager_binding",
+      "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "6",
+      "when": 1786390804833,
+      "tag": "0061_isolate_hermes_workspace_links_by_profile",
+      "breakpoints": true
     }
   ]
 }

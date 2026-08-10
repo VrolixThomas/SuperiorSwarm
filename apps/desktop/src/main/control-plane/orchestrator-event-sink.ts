@@ -1,8 +1,8 @@
 import { appendFileSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { and, eq } from "drizzle-orm";
+import { and, eq, or } from "drizzle-orm";
 import { getDb } from "../db";
-import { crossRepoOrchestratorProjects, workspaces } from "../db/schema";
+import { crossRepoOrchestratorProjects, crossRepoOrchestrators, workspaces } from "../db/schema";
 import type { EventBus } from "./event-bus";
 
 // Per-project events live in <userData>/events/<projectId>.jsonl, outside
@@ -20,7 +20,7 @@ let eventsDir: string | null = null;
 // true = write events, false = skip, undefined (missing key) = not yet cached.
 const orchestratorPresence = new Map<string, boolean>();
 
-// Per-project cache: which cross-repo orchestrator IDs link this project?
+// Per-project cache: which cross-repo orchestrator IDs can access this project?
 const crossRepoLinks = new Map<string, string[]>(); // projectId → xro ids
 
 export function setEventsDir(dir: string): void {
@@ -117,12 +117,21 @@ function crossRepoOrchestratorsForProject(projectId: string): string[] {
 	if (cached !== undefined) return cached;
 
 	const rows = getDb()
-		.select({ orchestratorId: crossRepoOrchestratorProjects.orchestratorId })
-		.from(crossRepoOrchestratorProjects)
-		.where(eq(crossRepoOrchestratorProjects.projectId, projectId))
+		.select({ orchestratorId: crossRepoOrchestrators.id })
+		.from(crossRepoOrchestrators)
+		.leftJoin(
+			crossRepoOrchestratorProjects,
+			eq(crossRepoOrchestratorProjects.orchestratorId, crossRepoOrchestrators.id)
+		)
+		.where(
+			or(
+				eq(crossRepoOrchestrators.accessScope, "all"),
+				eq(crossRepoOrchestratorProjects.projectId, projectId)
+			)
+		)
 		.all();
 
-	const ids = rows.map((r) => r.orchestratorId);
+	const ids = [...new Set(rows.map((r) => r.orchestratorId))];
 	crossRepoLinks.set(projectId, ids);
 	return ids;
 }

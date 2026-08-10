@@ -13,6 +13,8 @@ const RENDERER_OWNED_SESSION_KEYS = new Set([
 	"baseBranchByWorkspace",
 	"sidebarSegment",
 	"activeWorkspaceBySegment",
+	"selectedHermesSession",
+	"hermesSessionPane",
 	"workspaceMetadata",
 	"activeTicketProject",
 	"activeTicketScope",
