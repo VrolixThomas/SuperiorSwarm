@@ -36,6 +36,21 @@ describe("Hermes attachment transfers", () => {
 		]);
 	});
 
+	test("deduplicates clipboard wrappers even when browser metadata differs", () => {
+		const filesWrapper = file("screen.png", "same bytes", 123);
+		const itemsWrapper = file("screen.png", "same bytes", 0);
+
+		expect(fileObjectsFromHermesTransfer(transfer([filesWrapper], [itemsWrapper]))).toEqual([
+			filesWrapper,
+		]);
+	});
+
+	test("falls back to file items when the browser file list is empty", () => {
+		const itemFile = file("screen.png", "same bytes");
+
+		expect(fileObjectsFromHermesTransfer(transfer([], [itemFile]))).toEqual([itemFile]);
+	});
+
 	test("preserves two legitimate same-name files from one transfer", () => {
 		const first = file("screen.png", "same bytes");
 		const second = file("screen.png", "same bytes");

@@ -1,36 +1,22 @@
 import { hermesComposerTransferAction } from "./hermes-view-model";
 
-function fileTransferIdentity(file: File): string {
-	return JSON.stringify([
-		file.name,
-		file.size,
-		file.type,
-		file.lastModified,
-		file.webkitRelativePath,
-	]);
-}
-
-/** Reconciles the two browser views of one transfer without reading either payload. */
+/**
+ * DataTransfer exposes the same physical payload through `files` and `items`.
+ * Chromium may assign different metadata to those wrappers, so never merge the
+ * two views. The FileList is authoritative; file items are a fallback for
+ * clipboard producers that leave it empty.
+ */
 export function fileObjectsFromHermesTransfer(transfer: DataTransfer): File[] {
 	const files = Array.from(transfer.files);
-	const filesByIdentity = new Map<string, number>();
-	for (const file of files) {
-		const identity = fileTransferIdentity(file);
-		filesByIdentity.set(identity, (filesByIdentity.get(identity) ?? 0) + 1);
-	}
+	if (files.length > 0) return files;
 
-	const itemOccurrences = new Map<string, number>();
+	const fallback: File[] = [];
 	for (const item of Array.from(transfer.items)) {
 		if (item.kind !== "file") continue;
 		const file = item.getAsFile();
-		if (!file) continue;
-		const identity = fileTransferIdentity(file);
-		const occurrence = (itemOccurrences.get(identity) ?? 0) + 1;
-		itemOccurrences.set(identity, occurrence);
-		if (occurrence <= (filesByIdentity.get(identity) ?? 0)) continue;
-		files.push(file);
+		if (file) fallback.push(file);
 	}
-	return files;
+	return fallback;
 }
 
 function isWithinBoundary(boundary: HTMLElement, target: EventTarget | null): boolean {
