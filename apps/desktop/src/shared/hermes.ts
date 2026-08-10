@@ -35,6 +35,7 @@ export interface HermesRuntimeState {
 	reconnectAttempt: number;
 	lastConnectedAt: number | null;
 	error: string | null;
+	queuedFollowUps?: HermesQueuedFollowUpRuntimeSummary[];
 }
 
 /** Local integration capabilities. Stock Hermes does not expose a handoff protocol gate. */
@@ -110,6 +111,19 @@ export interface HermesSessionHistory {
 }
 
 export type HermesAttachmentKind = "image" | "pdf" | "file";
+
+export const HERMES_MAX_ATTACHMENTS = 10;
+export const HERMES_IMAGE_ATTACHMENT_MAX_BYTES = 16 * 1024 * 1024;
+export const HERMES_PDF_ATTACHMENT_MAX_BYTES = 50 * 1024 * 1024;
+export const HERMES_GENERAL_ATTACHMENT_MAX_BYTES = 32 * 1024 * 1024;
+export const HERMES_ATTACHMENT_IPC_MAX_BYTES = 64 * 1024 * 1024;
+
+export interface HermesRendererAttachmentUpload {
+	name: string;
+	size: number;
+	mimeType: string;
+	bytes: Uint8Array;
+}
 
 export const HERMES_ATTACHMENT_CONTEXT_START = "[SuperiorSwarm attachments]";
 export const HERMES_ATTACHMENT_CONTEXT_END = "[/SuperiorSwarm attachments]";
@@ -190,6 +204,30 @@ export interface HermesActiveTurnSnapshot {
 	}>;
 	pendingApproval: HermesPendingInteractionSnapshot | null;
 	pendingClarification: HermesPendingInteractionSnapshot | null;
+	queuedFollowUps: HermesQueuedFollowUpSummary[];
+}
+
+export type HermesQueuedFollowUpStatus = "queued" | "submitting" | "accepted" | "failed";
+
+/** Renderer-safe queue projection. Attachment handles, bytes, paths, and credentials stay in main. */
+export interface HermesQueuedFollowUpSummary {
+	id: string;
+	durableSessionId: string;
+	profileId: string;
+	text: string;
+	attachments: Array<Pick<HermesAttachmentMetadata, "kind" | "name">>;
+	knownCanonicalUserMessageIds: string[];
+	status: HermesQueuedFollowUpStatus;
+	error: string | null;
+	createdAt: number;
+}
+
+/** Connection-level queue state intentionally omits message and attachment content. */
+export interface HermesQueuedFollowUpRuntimeSummary {
+	durableSessionId: string;
+	profileId: string;
+	queuedCount: number;
+	failedCount: number;
 }
 
 export interface HermesRuntimeEventPayload {
@@ -197,6 +235,7 @@ export interface HermesRuntimeEventPayload {
 	bindings?: HermesReconnectBindingMetadata[];
 	failedSessionIds?: string[];
 	activeTurnSnapshot?: HermesActiveTurnSnapshot;
+	queuedFollowUps?: HermesQueuedFollowUpSummary[];
 }
 
 /** Runtime events are routed only by the ephemeral WebSocket session ID. */

@@ -405,6 +405,12 @@ describe("Hermes global navigation", () => {
 		expect(view).not.toContain("trpc.hermes.release.useMutation");
 		expect(view).not.toContain("trpc.hermes.unbind");
 		expect(view).not.toContain("Claiming and resuming");
+		expect(view).toContain("trpc.hermes.registerAttachments.useMutation");
+		expect(view).toContain("stageTransferredFiles(fileObjectsFromTransfer(event.clipboardData))");
+		expect(view).toContain("stageTransferredFiles(fileObjectsFromTransfer(event.dataTransfer))");
+		expect(view).toContain('event.dataTransfer.dropEffect = "copy"');
+		expect(view).toContain('aria-label={live.running ? "Queue follow-up" : "Send message"}');
+		expect(view).not.toContain("Use the paperclip");
 	});
 
 	test("keeps local workspace link polling active while Hermes is disconnected", async () => {

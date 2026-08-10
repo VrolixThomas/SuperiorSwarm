@@ -1,15 +1,19 @@
+import { randomUUID } from "node:crypto";
 import {
 	type HermesActiveTurnSnapshot,
 	type HermesCatalog,
 	type HermesOriginProjection,
 	type HermesOriginReportState,
 	type HermesPendingInteractionSnapshot,
+	type HermesQueuedFollowUpRuntimeSummary,
+	type HermesQueuedFollowUpSummary,
 	type HermesReconnectBindingMetadata,
 	type HermesRuntimeEvent,
 	type HermesRuntimeState,
 	type HermesSessionBinding,
 	type HermesSessionHistory,
 	type HermesSessionSummary,
+	hermesSessionCompositeIdentityKey,
 	hermesSessionIdentityKey,
 	isSafeHermesFileReference,
 } from "../../shared/hermes";
@@ -123,6 +127,26 @@ interface RuntimeBinding extends HermesSessionBinding {
 	activeTurnSnapshot: HermesActiveTurnSnapshot;
 }
 
+interface QueuedFollowUp extends HermesQueuedFollowUpSummary {
+	attachmentHandles: string[];
+	ownerId: string;
+	wasQueued: boolean;
+	transportUncertain: boolean;
+}
+
+interface SessionFollowUpQueue {
+	connectionId: string;
+	profileId: string;
+	durableSessionId: string;
+	items: QueuedFollowUp[];
+	active: QueuedFollowUp | null;
+	settled: QueuedFollowUp[];
+	draining: Promise<void> | null;
+	admissionTail: Promise<void>;
+	admissions: number;
+	lastTerminalTurnId: string | null;
+}
+
 interface ConnectionRuntime {
 	client: HermesRuntimeClientLike;
 	rest: HermesRestClientLike;
@@ -166,6 +190,8 @@ export interface HermesRuntimeServiceOptions {
 	recoveryBaseMs?: number;
 	recoveryMaxMs?: number;
 	attachmentStore?: HermesAttachmentStore;
+	followUpIdFactory?: () => string;
+	now?: () => number;
 	externalManagerIdResolver?: (
 		connection: ReturnType<typeof listHermesConnections>[number]
 	) => string | null;
@@ -181,6 +207,7 @@ const MAX_BUFFERED_EVENTS = 1_000;
 const PROMPT_SUBMIT_TIMEOUT_MS = 1_800_000;
 const DEFAULT_RECOVERY_BASE_MS = 500;
 const DEFAULT_RECOVERY_MAX_MS = 15_000;
+const SETTLED_FOLLOW_UP_TTL_MS = 5 * 60 * 1_000;
 
 function connectionCancelledError(): Error {
 	return new Error("Hermes connection cancelled");
@@ -289,6 +316,8 @@ export class HermesRuntimeService {
 	private readonly recoveryBaseMs: number;
 	private readonly recoveryMaxMs: number;
 	private readonly attachmentStore: HermesAttachmentStore;
+	private readonly followUpIdFactory: () => string;
+	private readonly now: () => number;
 	private readonly externalManagerIdResolver: NonNullable<
 		HermesRuntimeServiceOptions["externalManagerIdResolver"]
 	>;
@@ -296,6 +325,7 @@ export class HermesRuntimeService {
 	private readonly connectionOperations = new Map<string, ConnectionOperation>();
 	private readonly connectionStates = new Map<string, HermesRuntimeState>();
 	private readonly submitReservations = new Map<string, Set<string>>();
+	private readonly followUpQueues = new Map<string, SessionFollowUpQueue>();
 	private readonly unsubscribeBackendInvalidation: () => void;
 	private closed = false;
 
@@ -310,6 +340,8 @@ export class HermesRuntimeService {
 		this.recoveryBaseMs = options.recoveryBaseMs ?? DEFAULT_RECOVERY_BASE_MS;
 		this.recoveryMaxMs = options.recoveryMaxMs ?? DEFAULT_RECOVERY_MAX_MS;
 		this.attachmentStore = options.attachmentStore ?? hermesAttachmentStore;
+		this.followUpIdFactory = options.followUpIdFactory ?? randomUUID;
+		this.now = options.now ?? Date.now;
 		this.externalManagerIdResolver =
 			options.externalManagerIdResolver ??
 			((connection) =>
@@ -333,6 +365,7 @@ export class HermesRuntimeService {
 		try {
 			const catalog = await this.establishConnection(connectionId, operation);
 			this.finishConnectionOperation(connectionId, operation);
+			this.drainConnectionFollowUps(connectionId);
 			return catalog;
 		} catch (error) {
 			if (!this.isCurrentOperation(connectionId, operation)) {
@@ -353,20 +386,41 @@ export class HermesRuntimeService {
 	disconnect(connectionId: string): void {
 		this.invalidateConnectionOperation(connectionId);
 		this.disposeInstalledRuntime(connectionId);
+		for (const queue of this.followUpQueues.values()) {
+			if (queue.connectionId !== connectionId) continue;
+			const uncertain = queue.items.find((followUp) => followUp.status === "submitting");
+			if (uncertain) {
+				uncertain.status = "failed";
+				uncertain.transportUncertain = true;
+				uncertain.error =
+					"Hermes disconnected before confirming delivery. Retry this follow-up when safe.";
+			}
+			queue.draining = null;
+		}
 		this.connectionStates.delete(connectionId);
 		this.submitReservations.delete(connectionId);
 	}
 
+	forgetConnection(connectionId: string): void {
+		this.disconnect(connectionId);
+		for (const [key, queue] of this.followUpQueues) {
+			if (queue.connectionId !== connectionId) continue;
+			for (const followUp of queue.items) {
+				this.attachmentStore.releaseClaim(followUp.attachmentHandles, followUp.ownerId);
+			}
+			this.followUpQueues.delete(key);
+		}
+	}
+
 	getState(connectionId: string): HermesRuntimeState {
-		return (
-			this.runtimes.get(connectionId)?.client.getState() ??
+		const state = this.runtimes.get(connectionId)?.client.getState() ??
 			this.connectionStates.get(connectionId) ?? {
 				status: "disconnected",
 				reconnectAttempt: 0,
 				lastConnectedAt: null,
 				error: null,
-			}
-		);
+			};
+		return { ...state, queuedFollowUps: this.connectionQueueSummaries(connectionId) };
 	}
 
 	async catalog(connectionId: string): Promise<HermesCatalog> {
@@ -398,6 +452,15 @@ export class HermesRuntimeService {
 		const runtime = this.requireRuntime(connectionId);
 		const durableSessionId = this.resolveDurableId(runtime, hermesSessionId, profileId);
 		const relatedSessionIds = this.relatedSessionIds(runtime, profileId, durableSessionId);
+		const followUpQueue = this.followUpQueues.get(
+			hermesSessionCompositeIdentityKey(connectionId, profileId, durableSessionId)
+		);
+		if (
+			followUpQueue &&
+			(followUpQueue.active || followUpQueue.items.length > 0 || followUpQueue.admissions > 0)
+		) {
+			throw new Error("Cancel this session's queued follow-ups before deleting it");
+		}
 		const deletionReservation = this.reserveSubmit(
 			runtime,
 			connectionId,
@@ -774,12 +837,12 @@ export class HermesRuntimeService {
 					durableSessionId,
 					existing.profileId
 				);
-				const installed = this.installBinding(
-					runtime,
-					activated,
-					normalizeHermesRuntimeActivity(response)
-				);
+				const activity = normalizeHermesRuntimeActivity(response);
+				const installed = this.installBinding(runtime, activated, activity);
 				this.captureActiveTurnSnapshot(runtime, installed, response);
+				if (activity.activeTurn !== null) {
+					this.reconcileUncertainFollowUp(runtime, installed, activity.activeTurn);
+				}
 				return { ...installed, history };
 			} catch {
 				this.removeBinding(runtime, existing);
@@ -796,59 +859,166 @@ export class HermesRuntimeService {
 		attachmentHandles: string[] = [],
 		requestedProfileId?: string
 	): Promise<{ ok: true }> {
-		const runtime = this.requireRuntime(connectionId);
-		const profileId = requestedProfileId ?? this.profileFor(runtime, hermesSessionId);
-		const reservedSessionIds = this.reserveSubmit(
-			runtime,
+		await this.submitFollowUp(
 			connectionId,
 			hermesSessionId,
-			profileId
+			text,
+			attachmentHandles,
+			requestedProfileId
 		);
-		let binding = this.bindingFor(runtime, hermesSessionId, profileId);
-		let ownsActiveTurn = false;
+		return { ok: true };
+	}
+
+	async submitFollowUp(
+		connectionId: string,
+		hermesSessionId: string,
+		text: string,
+		attachmentHandles: string[] = [],
+		requestedProfileId?: string
+	): Promise<{
+		ok: true;
+		disposition: "submitted" | "queued";
+		followUp: HermesQueuedFollowUpSummary;
+	}> {
+		const identity = this.followUpIdentity(connectionId, hermesSessionId, requestedProfileId);
+		const queue = this.ensureFollowUpQueue(identity);
+		const releaseAdmission = await this.acquireQueueAdmission(queue);
+		let followUp: QueuedFollowUp;
+		let shouldDrain = false;
 		try {
-			if (!binding) {
-				await this.resume(connectionId, hermesSessionId, profileId);
-				binding = this.requireBinding(runtime, hermesSessionId, profileId);
-				this.extendSubmitReservation(
-					connectionId,
-					binding.durableSessionId,
-					reservedSessionIds,
-					binding.profileId
-				);
-			}
-			if (binding.activeTurn) {
-				throw new Error("A Hermes turn is already active for this session");
-			}
-			binding.activeTurn = true;
-			this.clearPendingInteractions(binding);
-			ownsActiveTurn = true;
-			const attachments = await this.attachmentStore.resolve(attachmentHandles);
-			const attached = [];
-			for (const attachment of attachments) {
-				const result = await this.attachFile(runtime, binding, attachment);
-				attached.push({
-					kind: attachment.kind,
-					name: attachment.name,
-					refText: result.refText,
-				});
-			}
-			await runtime.client.request(
-				"prompt.submit",
-				{
-					session_id: binding.runtimeSessionId,
-					text: buildHermesAttachmentPromptText(text, attached),
-				},
-				{ timeoutMs: PROMPT_SUBMIT_TIMEOUT_MS }
+			const retryable = queue.items.find(
+				(candidate) =>
+					candidate.status === "failed" &&
+					candidate.text === text &&
+					this.sameHandles(candidate.attachmentHandles, attachmentHandles)
 			);
-			this.attachmentStore.release(attachmentHandles);
-			return { ok: true };
-		} catch (error) {
-			if (binding && ownsActiveTurn) binding.activeTurn = false;
-			throw error;
+			if (retryable) {
+				if (retryable.transportUncertain) {
+					throw new Error("Reconnect and wait for Hermes to confirm delivery before retrying");
+				}
+				retryable.status = "queued";
+				retryable.error = null;
+				retryable.transportUncertain = false;
+				followUp = retryable;
+			} else {
+				const id = this.followUpIdFactory();
+				const metadata = await this.attachmentStore.claim(attachmentHandles, id);
+				const runtime = this.runtimes.get(connectionId);
+				const binding = runtime
+					? this.bindingFor(runtime, identity.durableSessionId, identity.profileId)
+					: null;
+				const wasQueued =
+					!runtime ||
+					binding?.activeTurn === true ||
+					queue.active !== null ||
+					queue.items.length > 0 ||
+					queue.draining !== null;
+				followUp = {
+					id,
+					durableSessionId: identity.durableSessionId,
+					profileId: identity.profileId,
+					text,
+					attachments: metadata.map(({ kind, name }) => ({ kind, name })),
+					knownCanonicalUserMessageIds: this.canonicalUserMessageIds(
+						connectionId,
+						identity.profileId,
+						identity.durableSessionId
+					),
+					status: "queued",
+					error: null,
+					createdAt: this.now(),
+					attachmentHandles: [...attachmentHandles],
+					ownerId: id,
+					wasQueued,
+					transportUncertain: false,
+				};
+				queue.items.push(followUp);
+			}
+			const runtime = this.runtimes.get(connectionId);
+			const binding = runtime
+				? this.bindingFor(runtime, identity.durableSessionId, identity.profileId)
+				: null;
+			shouldDrain = Boolean(runtime && !binding?.activeTurn && queue.active === null);
+			this.pushFollowUpQueueEvent(queue);
 		} finally {
-			this.releaseSubmitReservation(connectionId, reservedSessionIds);
+			releaseAdmission();
+			this.removeEmptyFollowUpQueue(queue);
 		}
+
+		if (shouldDrain) await this.drainFollowUpQueue(queue);
+		return {
+			ok: true,
+			disposition: followUp.wasQueued ? "queued" : "submitted",
+			followUp: this.followUpSummary(followUp),
+		};
+	}
+
+	followUps(
+		connectionId: string,
+		hermesSessionId: string,
+		requestedProfileId?: string
+	): HermesQueuedFollowUpSummary[] {
+		const identity = this.followUpIdentity(connectionId, hermesSessionId, requestedProfileId);
+		const queue = this.followUpQueues.get(
+			hermesSessionCompositeIdentityKey(
+				identity.connectionId,
+				identity.profileId,
+				identity.durableSessionId
+			)
+		);
+		return queue ? this.queueSummaries(queue) : [];
+	}
+
+	async retryFollowUp(
+		connectionId: string,
+		hermesSessionId: string,
+		followUpId: string,
+		requestedProfileId?: string
+	): Promise<{ ok: true; followUp: HermesQueuedFollowUpSummary }> {
+		const queue = this.requireFollowUpQueue(
+			this.followUpIdentity(connectionId, hermesSessionId, requestedProfileId)
+		);
+		const followUp = queue.items.find((candidate) => candidate.id === followUpId);
+		if (!followUp || followUp.status !== "failed") {
+			throw new Error("The queued follow-up is not retryable");
+		}
+		if (followUp.transportUncertain) {
+			throw new Error("Reconnect and wait for Hermes to confirm delivery before retrying");
+		}
+		followUp.status = "queued";
+		followUp.error = null;
+		followUp.transportUncertain = false;
+		this.pushFollowUpQueueEvent(queue);
+		await this.drainFollowUpQueue(queue);
+		return { ok: true, followUp: this.followUpSummary(followUp) };
+	}
+
+	cancelFollowUp(
+		connectionId: string,
+		hermesSessionId: string,
+		followUpId: string,
+		requestedProfileId?: string
+	): { ok: true } {
+		const queue = this.requireFollowUpQueue(
+			this.followUpIdentity(connectionId, hermesSessionId, requestedProfileId)
+		);
+		const index = queue.items.findIndex((candidate) => candidate.id === followUpId);
+		const followUp = queue.items[index];
+		if (!followUp || followUp.status === "submitting") {
+			throw new Error("The queued follow-up can no longer be cancelled");
+		}
+		queue.items.splice(index, 1);
+		this.attachmentStore.releaseClaim(followUp.attachmentHandles, followUp.ownerId);
+		this.pushFollowUpQueueEvent(queue);
+		this.removeEmptyFollowUpQueue(queue);
+		const runtime = this.runtimes.get(connectionId);
+		const binding = runtime
+			? this.bindingFor(runtime, queue.durableSessionId, queue.profileId)
+			: null;
+		if (runtime && !binding?.activeTurn && !queue.active) {
+			this.drainFollowUpQueueInBackground(queue);
+		}
+		return { ok: true };
 	}
 
 	async interrupt(
@@ -919,8 +1089,301 @@ export class HermesRuntimeService {
 		for (const connectionId of connectionIds) this.disconnect(connectionId);
 		this.connectionStates.clear();
 		this.submitReservations.clear();
+		this.followUpQueues.clear();
 		this.attachmentStore.clear();
 		this.localBackendManager.shutdown();
+	}
+
+	private followUpIdentity(
+		connectionId: string,
+		hermesSessionId: string,
+		requestedProfileId?: string
+	): { connectionId: string; profileId: string; durableSessionId: string } {
+		const runtime = this.runtimes.get(connectionId);
+		if (runtime) {
+			const durableSessionId = this.resolveDurableId(runtime, hermesSessionId, requestedProfileId);
+			return {
+				connectionId,
+				profileId: requestedProfileId ?? this.profileFor(runtime, durableSessionId),
+				durableSessionId,
+			};
+		}
+		const connection = listHermesConnections().find((candidate) => candidate.id === connectionId);
+		if (!connection) throw new Error("Hermes connection is unavailable");
+		return {
+			connectionId,
+			profileId: requestedProfileId ?? connection.profileId,
+			durableSessionId: hermesSessionId,
+		};
+	}
+
+	private canonicalUserMessageIds(
+		connectionId: string,
+		profileId: string,
+		durableSessionId: string
+	): string[] {
+		const history = this.runtimes
+			.get(connectionId)
+			?.histories.get(hermesSessionIdentityKey(profileId, durableSessionId));
+		return (
+			history?.messages
+				.filter((message) => message.role === "user")
+				.map((message) => message.canonicalMessageId ?? message.id) ?? []
+		);
+	}
+
+	private ensureFollowUpQueue(identity: {
+		connectionId: string;
+		profileId: string;
+		durableSessionId: string;
+	}): SessionFollowUpQueue {
+		const key = hermesSessionCompositeIdentityKey(
+			identity.connectionId,
+			identity.profileId,
+			identity.durableSessionId
+		);
+		let queue = this.followUpQueues.get(key);
+		if (!queue) {
+			queue = {
+				...identity,
+				items: [],
+				active: null,
+				settled: [],
+				draining: null,
+				admissionTail: Promise.resolve(),
+				admissions: 0,
+				lastTerminalTurnId: null,
+			};
+			this.followUpQueues.set(key, queue);
+		}
+		return queue;
+	}
+
+	private requireFollowUpQueue(identity: {
+		connectionId: string;
+		profileId: string;
+		durableSessionId: string;
+	}): SessionFollowUpQueue {
+		const queue = this.followUpQueues.get(
+			hermesSessionCompositeIdentityKey(
+				identity.connectionId,
+				identity.profileId,
+				identity.durableSessionId
+			)
+		);
+		if (!queue) throw new Error("The queued follow-up is unavailable");
+		return queue;
+	}
+
+	private async acquireQueueAdmission(queue: SessionFollowUpQueue): Promise<() => void> {
+		queue.admissions++;
+		const previous = queue.admissionTail;
+		let release: () => void = () => undefined;
+		const gate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		queue.admissionTail = previous.then(() => gate);
+		await previous;
+		let released = false;
+		return () => {
+			if (released) return;
+			released = true;
+			queue.admissions--;
+			release();
+		};
+	}
+
+	private sameHandles(left: string[], right: string[]): boolean {
+		return left.length === right.length && left.every((handle, index) => handle === right[index]);
+	}
+
+	private followUpSummary(followUp: QueuedFollowUp): HermesQueuedFollowUpSummary {
+		return {
+			id: followUp.id,
+			durableSessionId: followUp.durableSessionId,
+			profileId: followUp.profileId,
+			text: followUp.text,
+			attachments: followUp.attachments.map((attachment) => ({ ...attachment })),
+			knownCanonicalUserMessageIds: [...followUp.knownCanonicalUserMessageIds],
+			status: followUp.status,
+			error: followUp.error,
+			createdAt: followUp.createdAt,
+		};
+	}
+
+	private queueSummaries(queue: SessionFollowUpQueue): HermesQueuedFollowUpSummary[] {
+		queue.settled = queue.settled.filter(
+			(followUp) => this.now() - followUp.createdAt < SETTLED_FOLLOW_UP_TTL_MS
+		);
+		return [
+			...queue.settled.map((followUp) => this.followUpSummary(followUp)),
+			...(queue.active?.wasQueued ? [this.followUpSummary(queue.active)] : []),
+			...queue.items.map((followUp) => this.followUpSummary(followUp)),
+		];
+	}
+
+	private queueSummariesForBinding(
+		runtime: ConnectionRuntime,
+		binding: Pick<HermesSessionBinding, "durableSessionId" | "profileId">
+	): HermesQueuedFollowUpSummary[] {
+		const connectionId = [...this.runtimes].find(([, candidate]) => candidate === runtime)?.[0];
+		if (!connectionId) return [];
+		const queue = this.followUpQueues.get(
+			hermesSessionCompositeIdentityKey(connectionId, binding.profileId, binding.durableSessionId)
+		);
+		return queue ? this.queueSummaries(queue) : [];
+	}
+
+	private connectionQueueSummaries(connectionId: string): HermesQueuedFollowUpRuntimeSummary[] {
+		return [...this.followUpQueues.values()].flatMap((queue) => {
+			if (queue.connectionId !== connectionId) return [];
+			const summaries = this.queueSummaries(queue).filter(
+				(followUp) => followUp.status !== "accepted"
+			);
+			if (summaries.length === 0) return [];
+			return [
+				{
+					durableSessionId: queue.durableSessionId,
+					profileId: queue.profileId,
+					queuedCount: summaries.filter((followUp) => followUp.status !== "failed").length,
+					failedCount: summaries.filter((followUp) => followUp.status === "failed").length,
+				},
+			];
+		});
+	}
+
+	private pushFollowUpQueueEvent(queue: SessionFollowUpQueue): void {
+		const runtime = this.runtimes.get(queue.connectionId);
+		if (!runtime) return;
+		const binding = this.bindingFor(runtime, queue.durableSessionId, queue.profileId);
+		if (binding) binding.activeTurnSnapshot.queuedFollowUps = this.queueSummaries(queue);
+		this.pushEvent(queue.connectionId, {
+			type: "runtime.follow-up-queue",
+			runtimeSessionId: binding?.runtimeSessionId ?? null,
+			durableSessionId: queue.durableSessionId,
+			turnId: binding?.activeTurnSnapshot.turnId ?? null,
+			requestId: null,
+			text: null,
+			toolName: null,
+			status: null,
+			payload: { queuedFollowUps: this.queueSummaries(queue) },
+			workspaceArtifacts: [],
+			receivedAt: Date.now(),
+		});
+	}
+
+	private removeEmptyFollowUpQueue(queue: SessionFollowUpQueue): void {
+		if (
+			queue.active ||
+			queue.settled.length > 0 ||
+			queue.items.length > 0 ||
+			queue.draining ||
+			queue.admissions > 0
+		) {
+			return;
+		}
+		this.followUpQueues.delete(
+			hermesSessionCompositeIdentityKey(queue.connectionId, queue.profileId, queue.durableSessionId)
+		);
+	}
+
+	private async drainFollowUpQueue(queue: SessionFollowUpQueue): Promise<void> {
+		if (queue.draining) return await queue.draining;
+		const task = this.performFollowUpDrain(queue);
+		queue.draining = task;
+		try {
+			await task;
+		} finally {
+			if (queue.draining === task) queue.draining = null;
+			this.removeEmptyFollowUpQueue(queue);
+			const runtime = this.runtimes.get(queue.connectionId);
+			const binding = runtime
+				? this.bindingFor(runtime, queue.durableSessionId, queue.profileId)
+				: null;
+			if (runtime && !binding?.activeTurn && !queue.active && queue.items[0]?.status === "queued") {
+				this.drainFollowUpQueueInBackground(queue);
+			}
+		}
+	}
+
+	private drainFollowUpQueueInBackground(queue: SessionFollowUpQueue): void {
+		void this.drainFollowUpQueue(queue).catch((error) => {
+			this.pushRuntimeError(queue.connectionId, error, queue.durableSessionId);
+		});
+	}
+
+	private async performFollowUpDrain(queue: SessionFollowUpQueue): Promise<void> {
+		const runtime = this.runtimes.get(queue.connectionId);
+		if (!runtime) return;
+		if (runtime.reconnectTask) await runtime.reconnectTask;
+		if (this.runtimes.get(queue.connectionId) !== runtime) return;
+		let binding = this.bindingFor(runtime, queue.durableSessionId, queue.profileId);
+		if (!binding) {
+			await this.resume(queue.connectionId, queue.durableSessionId, queue.profileId);
+			binding = this.requireBinding(runtime, queue.durableSessionId, queue.profileId);
+		}
+		const followUp = queue.items[0];
+		if (!followUp || followUp.status !== "queued") return;
+		if (binding.activeTurn || queue.active) {
+			followUp.wasQueued = true;
+			return;
+		}
+
+		followUp.status = "submitting";
+		followUp.error = null;
+		binding.activeTurn = true;
+		binding.activeTurnSnapshot.activeTurn = true;
+		binding.activeTurnSnapshot.status = "submitting";
+		this.clearPendingInteractions(binding);
+		this.pushFollowUpQueueEvent(queue);
+		try {
+			const attachments = await this.attachmentStore.resolve(followUp.attachmentHandles);
+			const attached = [];
+			for (const attachment of attachments) {
+				const result = await this.attachFile(runtime, binding, attachment);
+				attached.push({
+					kind: attachment.kind,
+					name: attachment.name,
+					refText: result.refText,
+				});
+			}
+			await runtime.client.request(
+				"prompt.submit",
+				{
+					session_id: binding.runtimeSessionId,
+					text: buildHermesAttachmentPromptText(followUp.text, attached),
+				},
+				{ timeoutMs: PROMPT_SUBMIT_TIMEOUT_MS }
+			);
+			if (this.runtimes.get(queue.connectionId) !== runtime) return;
+			queue.items.shift();
+			followUp.status = "accepted";
+			followUp.transportUncertain = false;
+			if (followUp.wasQueued) {
+				if (binding.activeTurn) queue.active = followUp;
+				else queue.settled.push(followUp);
+			}
+			this.attachmentStore.releaseClaim(followUp.attachmentHandles, followUp.ownerId);
+			this.pushFollowUpQueueEvent(queue);
+		} catch (error) {
+			if (this.runtimes.get(queue.connectionId) !== runtime) return;
+			binding.activeTurn = false;
+			binding.activeTurnSnapshot.activeTurn = false;
+			followUp.status = "failed";
+			followUp.transportUncertain = false;
+			const sanitized = sanitizeHermesPayload(
+				error instanceof Error ? error.message : "Hermes follow-up failed"
+			);
+			followUp.error = typeof sanitized === "string" ? sanitized : "Hermes follow-up failed";
+			this.pushFollowUpQueueEvent(queue);
+			throw new Error(followUp.error);
+		}
+	}
+
+	private drainConnectionFollowUps(connectionId: string): void {
+		for (const queue of this.followUpQueues.values()) {
+			if (queue.connectionId === connectionId) this.drainFollowUpQueueInBackground(queue);
+		}
 	}
 
 	private async attachFile(
@@ -1032,22 +1495,6 @@ export class HermesRuntimeService {
 		}
 		reservations.add(reservationKey);
 		return new Set([reservationKey]);
-	}
-
-	private extendSubmitReservation(
-		connectionId: string,
-		durableSessionId: string,
-		reservedSessionIds: Set<string>,
-		profileId: string
-	): void {
-		const reservationKey = hermesSessionIdentityKey(profileId, durableSessionId);
-		if (reservedSessionIds.has(reservationKey)) return;
-		const reservations = this.submitReservations.get(connectionId);
-		if (reservations?.has(reservationKey)) {
-			throw new Error("A Hermes turn is already active for this session");
-		}
-		reservations?.add(reservationKey);
-		reservedSessionIds.add(reservationKey);
 	}
 
 	private releaseSubmitReservation(connectionId: string, reservedSessionIds: Set<string>): void {
@@ -1317,6 +1764,7 @@ export class HermesRuntimeService {
 			try {
 				await this.establishConnection(connectionId, operation);
 				this.finishConnectionOperation(connectionId, operation);
+				this.drainConnectionFollowUps(connectionId);
 				return;
 			} catch (error) {
 				if (!this.isCurrentOperation(connectionId, operation)) return;
@@ -1364,13 +1812,36 @@ export class HermesRuntimeService {
 					this.linkArtifacts(connectionId, durableSessionId, event.workspaceArtifacts);
 				}
 				if (this.isTerminalEvent(event)) {
-					if (binding) binding.activeTurn = false;
+					const queue = mappedIdentity
+						? this.followUpQueues.get(
+								hermesSessionCompositeIdentityKey(
+									connectionId,
+									mappedIdentity.profileId,
+									durableSessionId
+								)
+							)
+						: null;
+					const duplicateTerminal = Boolean(
+						event.turnId && queue?.lastTerminalTurnId === event.turnId
+					);
+					if (duplicateTerminal) return;
+					if (queue && event.turnId) queue.lastTerminalTurnId = event.turnId;
+					if (binding) {
+						binding.activeTurn = false;
+						binding.activeTurnSnapshot.activeTurn = false;
+					}
+					if (queue?.active) {
+						queue.settled.push(queue.active);
+						queue.active = null;
+						this.pushFollowUpQueueEvent(queue);
+					}
 					void this.refreshAfterTerminal(
 						connectionId,
 						runtime,
 						durableSessionId,
 						mappedIdentity?.profileId
 					);
+					if (queue) this.drainFollowUpQueueInBackground(queue);
 				}
 			}),
 			runtime.client.subscribeState((state) => {
@@ -1397,7 +1868,10 @@ export class HermesRuntimeService {
 		const task = this.reacquireBindings(connectionId, runtime);
 		runtime.reconnectTask = task;
 		const clear = () => {
-			if (runtime.reconnectTask === task) runtime.reconnectTask = null;
+			if (runtime.reconnectTask === task) {
+				runtime.reconnectTask = null;
+				this.drainConnectionFollowUps(connectionId);
+			}
 		};
 		void task.then(clear, clear);
 	}
@@ -1490,6 +1964,9 @@ export class HermesRuntimeService {
 			status: activity.status ?? fallbackActivity?.runtimeStatus ?? null,
 		});
 		this.captureActiveTurnSnapshot(runtime, installed, response);
+		if (activity.activeTurn !== null) {
+			this.reconcileUncertainFollowUp(runtime, installed, activity.activeTurn);
+		}
 		return installed;
 	}
 
@@ -1553,6 +2030,7 @@ export class HermesRuntimeService {
 				pendingClarification: activeTurn
 					? (previous?.activeTurnSnapshot.pendingClarification ?? null)
 					: null,
+				queuedFollowUps: this.queueSummariesForBinding(runtime, binding),
 			},
 		};
 		runtime.bindings.set(bindingKey, installed);
@@ -1577,10 +2055,45 @@ export class HermesRuntimeService {
 			activeTurn: binding.activeTurn,
 			status: binding.runtimeStatus,
 		});
+		binding.activeTurnSnapshot.queuedFollowUps = this.queueSummariesForBinding(runtime, binding);
 		if (binding.activeTurn) {
 			binding.activeTurnSnapshot.pendingApproval = pendingApproval;
 			binding.activeTurnSnapshot.pendingClarification = pendingClarification;
 		}
+	}
+
+	private reconcileUncertainFollowUp(
+		runtime: ConnectionRuntime,
+		binding: RuntimeBinding,
+		activeTurn: boolean
+	): void {
+		const connectionId = [...this.runtimes].find(([, candidate]) => candidate === runtime)?.[0];
+		if (!connectionId) return;
+		const queue = this.followUpQueues.get(
+			hermesSessionCompositeIdentityKey(connectionId, binding.profileId, binding.durableSessionId)
+		);
+		if (queue?.active && !activeTurn) {
+			queue.settled.push(queue.active);
+			queue.active = null;
+			this.pushFollowUpQueueEvent(queue);
+		}
+		const followUp = queue?.items[0];
+		if (!queue || !followUp || (followUp.status !== "submitting" && !followUp.transportUncertain)) {
+			return;
+		}
+		if (activeTurn) {
+			queue.items.shift();
+			followUp.status = "accepted";
+			followUp.wasQueued = true;
+			followUp.transportUncertain = false;
+			queue.active = followUp;
+			this.attachmentStore.releaseClaim(followUp.attachmentHandles, followUp.ownerId);
+		} else {
+			followUp.status = "failed";
+			followUp.transportUncertain = false;
+			followUp.error = "Hermes did not confirm delivery after reconnect. Retry this follow-up.";
+		}
+		this.pushFollowUpQueueEvent(queue);
 	}
 
 	private applyInteractionEvent(binding: RuntimeBinding, event: HermesRuntimeEvent): void {

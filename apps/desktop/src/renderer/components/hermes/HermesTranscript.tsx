@@ -127,10 +127,26 @@ function HermesCompactionEvent({ item }: { item: HermesProjectedCompaction }) {
 	);
 }
 
-function HermesUserMessage({ item }: { item: HermesProjectedMessage }) {
+function HermesUserMessage({
+	item,
+	onRetryFollowUp,
+	onCancelFollowUp,
+}: {
+	item: HermesProjectedMessage;
+	onRetryFollowUp?: (followUpId: string) => void;
+	onCancelFollowUp?: (followUpId: string) => void;
+}) {
 	const [expanded, setExpanded] = useState(false);
 	const disclosure = hermesUserMessageDisclosure(item.text, expanded);
 	const contentId = `hermes-user-message-${item.id}`;
+	const deliveryLabel =
+		item.delivery === "queued"
+			? "Queued"
+			: item.delivery === "failed"
+				? "Could not send"
+				: item.delivery === "accepted"
+					? "Accepted by agent"
+					: "Sending…";
 
 	return (
 		<div className="w-full min-w-0" data-hermes-turn="user">
@@ -181,18 +197,45 @@ function HermesUserMessage({ item }: { item: HermesProjectedMessage }) {
 				)}
 			</div>
 			{item.delivery && (
-				<div
-					aria-live="polite"
-					className="mt-1 text-right text-[9px] text-[var(--text-quaternary)]"
-				>
-					{item.delivery === "pending" ? "Sending…" : "Accepted by agent"}
+				<div className="mt-1 flex justify-end gap-2 text-[9px] text-[var(--text-quaternary)]">
+					<span aria-live="polite" title={item.deliveryError ?? undefined}>
+						{deliveryLabel}
+					</span>
+					{item.followUpId && item.delivery === "failed" && onRetryFollowUp && (
+						<button
+							type="button"
+							onClick={() => onRetryFollowUp(item.followUpId ?? "")}
+							className="font-medium text-[var(--accent)] hover:underline"
+						>
+							Retry
+						</button>
+					)}
+					{item.followUpId &&
+						(item.delivery === "queued" || item.delivery === "failed") &&
+						onCancelFollowUp && (
+							<button
+								type="button"
+								onClick={() => onCancelFollowUp(item.followUpId ?? "")}
+								className="hover:text-[var(--text-secondary)] hover:underline"
+							>
+								Cancel
+							</button>
+						)}
 				</div>
 			)}
 		</div>
 	);
 }
 
-export function HermesTranscript({ items }: { items: HermesTranscriptProjectionItem[] }) {
+export function HermesTranscript({
+	items,
+	onRetryFollowUp,
+	onCancelFollowUp,
+}: {
+	items: HermesTranscriptProjectionItem[];
+	onRetryFollowUp?: (followUpId: string) => void;
+	onCancelFollowUp?: (followUpId: string) => void;
+}) {
 	return (
 		<div className="flex min-w-0 flex-col gap-7">
 			{items.map((item) => {
@@ -203,7 +246,14 @@ export function HermesTranscript({ items }: { items: HermesTranscriptProjectionI
 					return <HermesCompactionEvent key={item.id} item={item} />;
 				}
 				if (item.role === "user") {
-					return <HermesUserMessage key={item.id} item={item} />;
+					return (
+						<HermesUserMessage
+							key={item.id}
+							item={item}
+							onRetryFollowUp={onRetryFollowUp}
+							onCancelFollowUp={onCancelFollowUp}
+						/>
+					);
 				}
 				return (
 					<div

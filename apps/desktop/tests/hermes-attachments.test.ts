@@ -12,6 +12,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+	HERMES_ATTACHMENT_IPC_MAX_BYTES,
 	HERMES_GENERAL_ATTACHMENT_MAX_BYTES,
 	HERMES_IMAGE_ATTACHMENT_MAX_BYTES,
 	HERMES_MAX_ATTACHMENTS,
@@ -33,6 +34,87 @@ afterEach(async () => {
 });
 
 describe("Hermes attachment store", () => {
+	test("registers pasted and dropped renderer bytes without accepting a renderer path", async () => {
+		const directory = await temporaryDirectory();
+		let nextId = 0;
+		const store = new HermesAttachmentStore({
+			idFactory: () => `renderer-${++nextId}`,
+			stagingParentDirectory: directory,
+		});
+
+		const selected = await store.registerBytes([
+			{
+				name: "pasted.png",
+				size: 4,
+				mimeType: "image/png",
+				bytes: new Uint8Array([1, 2, 3, 4]),
+			},
+			{
+				name: "dropped.txt",
+				size: 5,
+				mimeType: "text/plain",
+				bytes: new TextEncoder().encode("notes"),
+			},
+		]);
+
+		expect(selected).toEqual([
+			expect.objectContaining({
+				handle: "renderer-1",
+				name: "pasted.png",
+				kind: "image",
+				mimeType: "image/png",
+				size: 4,
+			}),
+			expect.objectContaining({
+				handle: "renderer-2",
+				name: "dropped.txt",
+				kind: "file",
+				mimeType: "text/plain",
+				size: 5,
+			}),
+		]);
+		expect(JSON.stringify(selected)).not.toContain("path");
+		expect(await store.readBytes("renderer-1")).toEqual(Buffer.from([1, 2, 3, 4]));
+		expect(await store.readBytes("renderer-2")).toEqual(Buffer.from("notes"));
+	});
+
+	test("rejects unsafe renderer metadata and aggregate IPC payloads before staging bytes", async () => {
+		const directory = await temporaryDirectory();
+		const store = new HermesAttachmentStore({ stagingParentDirectory: directory });
+		const byte = new Uint8Array([1]);
+
+		await expect(
+			store.registerBytes([{ name: "../secret.txt", size: 1, mimeType: "text/plain", bytes: byte }])
+		).rejects.toThrow("safe file name");
+		await expect(
+			store.registerBytes([{ name: "photo.png", size: 1, mimeType: "text/plain", bytes: byte }])
+		).rejects.toThrow("MIME type");
+		await expect(
+			store.registerBytes([{ name: "notes.txt", size: 2, mimeType: "text/plain", bytes: byte }])
+		).rejects.toThrow("size does not match");
+		await expect(
+			store.registerBytes(
+				Array.from({ length: HERMES_MAX_ATTACHMENTS + 1 }, (_, index) => ({
+					name: `file-${index}.txt`,
+					size: 1,
+					mimeType: "text/plain",
+					bytes: byte,
+				}))
+			)
+		).rejects.toThrow(`up to ${HERMES_MAX_ATTACHMENTS}`);
+		await expect(
+			store.registerBytes([
+				{
+					name: "aggregate.pdf",
+					size: HERMES_ATTACHMENT_IPC_MAX_BYTES + 1,
+					mimeType: "application/pdf",
+					bytes: byte,
+				},
+			])
+		).rejects.toThrow("IPC payload");
+		expect(store.size).toBe(0);
+	});
+
 	test("validates selected regular files and exposes only opaque safe metadata", async () => {
 		const directory = await temporaryDirectory();
 		const imagePath = join(directory, "screen.png");
@@ -141,6 +223,27 @@ describe("Hermes attachment store", () => {
 		const shutdownStagedPath = (await store.resolve(["opaque-retry"]))[0]?.path ?? "";
 		store.clear();
 		expect(await Bun.file(shutdownStagedPath).exists()).toBe(false);
+	});
+
+	test("claims queue ownership before renderer cleanup can release a staged handle", async () => {
+		const directory = await temporaryDirectory();
+		const filePath = join(directory, "refresh.txt");
+		await writeFile(filePath, "survives refresh");
+		const store = new HermesAttachmentStore({
+			idFactory: () => "opaque-refresh",
+			stagingParentDirectory: directory,
+		});
+		await store.registerPaths([filePath]);
+
+		const claiming = store.claim(["opaque-refresh"], "queued-follow-up");
+		store.release(["opaque-refresh"]);
+		await expect(claiming).resolves.toEqual([
+			expect.objectContaining({ handle: "opaque-refresh", name: "refresh.txt" }),
+		]);
+		expect(store.size).toBe(1);
+
+		store.releaseClaim(["opaque-refresh"], "queued-follow-up");
+		expect(store.size).toBe(0);
 	});
 
 	test("keeps an immutable private snapshot when the selected pathname is swapped", async () => {

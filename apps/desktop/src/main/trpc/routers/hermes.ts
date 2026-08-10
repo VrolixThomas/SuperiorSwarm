@@ -1,9 +1,10 @@
 import { asc, eq } from "drizzle-orm";
 import { dialog, shell } from "electron";
 import { z } from "zod";
+import { HERMES_ATTACHMENT_IPC_MAX_BYTES, HERMES_MAX_ATTACHMENTS } from "../../../shared/hermes";
 import { getDb } from "../../db";
 import { hermesSessionWorkspaces, projects, workspaces, worktrees } from "../../db/schema";
-import { HERMES_MAX_ATTACHMENTS, hermesAttachmentStore } from "../../hermes/hermes-attachments";
+import { hermesAttachmentStore } from "../../hermes/hermes-attachments";
 import {
 	deleteHermesConnection,
 	ensureHermesLocalConnection,
@@ -65,6 +66,17 @@ const submitInput = connectionSessionInput
 		});
 	});
 
+const rendererAttachmentUploadInput = z
+	.object({
+		name: z.string().min(1).max(255),
+		size: z.number().int().min(0).max(HERMES_ATTACHMENT_IPC_MAX_BYTES),
+		mimeType: z.string().max(255),
+		bytes: z.custom<Uint8Array>((value) => value instanceof Uint8Array, {
+			message: "Attachment bytes must be a Uint8Array",
+		}),
+	})
+	.strict();
+
 function rendererOriginReportState(state: ReturnType<typeof hermesRuntimeService.reports>[number]) {
 	return {
 		connectionId: state.connectionId,
@@ -106,7 +118,7 @@ export const hermesRouter = router({
 	deleteConnection: publicProcedure
 		.input(z.object({ id: z.string().min(1) }))
 		.mutation(({ input }) => {
-			hermesRuntimeService.disconnect(input.id);
+			hermesRuntimeService.forgetConnection(input.id);
 			deleteHermesConnection(input.id);
 			return { ok: true as const };
 		}),
@@ -207,6 +219,16 @@ export const hermesRouter = router({
 		return await hermesAttachmentStore.registerPaths(selected.filePaths);
 	}),
 
+	registerAttachments: publicProcedure
+		.input(
+			z
+				.object({
+					attachments: z.array(rendererAttachmentUploadInput).max(HERMES_MAX_ATTACHMENTS),
+				})
+				.strict()
+		)
+		.mutation(({ input }) => hermesAttachmentStore.registerBytes(input.attachments)),
+
 	releaseAttachment: publicProcedure
 		.input(z.object({ handle: z.string().min(1).max(200) }))
 		.mutation(({ input }) => {
@@ -217,11 +239,39 @@ export const hermesRouter = router({
 	submit: publicProcedure
 		.input(submitInput)
 		.mutation(({ input }) =>
-			hermesRuntimeService.submit(
+			hermesRuntimeService.submitFollowUp(
 				input.connectionId,
 				input.hermesSessionId,
 				input.text.trim(),
 				input.attachmentHandles,
+				input.profileId
+			)
+		),
+
+	followUps: publicProcedure
+		.input(connectionSessionInput)
+		.query(({ input }) =>
+			hermesRuntimeService.followUps(input.connectionId, input.hermesSessionId, input.profileId)
+		),
+
+	retryFollowUp: publicProcedure
+		.input(connectionSessionInput.extend({ followUpId: z.string().min(1).max(200) }))
+		.mutation(({ input }) =>
+			hermesRuntimeService.retryFollowUp(
+				input.connectionId,
+				input.hermesSessionId,
+				input.followUpId,
+				input.profileId
+			)
+		),
+
+	cancelFollowUp: publicProcedure
+		.input(connectionSessionInput.extend({ followUpId: z.string().min(1).max(200) }))
+		.mutation(({ input }) =>
+			hermesRuntimeService.cancelFollowUp(
+				input.connectionId,
+				input.hermesSessionId,
+				input.followUpId,
 				input.profileId
 			)
 		),

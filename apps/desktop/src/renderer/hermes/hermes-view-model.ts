@@ -3,6 +3,7 @@ import type {
 	HermesAttachmentKind,
 	HermesAttachmentMetadata,
 	HermesOriginProjection,
+	HermesQueuedFollowUpSummary,
 	HermesRuntimeEvent,
 	HermesSessionSummary,
 	HermesTranscriptMessage,
@@ -10,6 +11,11 @@ import type {
 import {
 	HERMES_ATTACHMENT_CONTEXT_END,
 	HERMES_ATTACHMENT_CONTEXT_START,
+	HERMES_ATTACHMENT_IPC_MAX_BYTES,
+	HERMES_GENERAL_ATTACHMENT_MAX_BYTES,
+	HERMES_IMAGE_ATTACHMENT_MAX_BYTES,
+	HERMES_MAX_ATTACHMENTS,
+	HERMES_PDF_ATTACHMENT_MAX_BYTES,
 	isHermesLoopbackUrl,
 	isSafeHermesFileReference,
 } from "../../shared/hermes";
@@ -42,6 +48,7 @@ export interface HermesLiveState {
 	tools: HermesLiveTool[];
 	pendingApproval: HermesPendingInteraction | null;
 	pendingClarification: HermesPendingInteraction | null;
+	queuedFollowUps: HermesQueuedFollowUpSummary[];
 	historyRefreshRequired: boolean;
 	error: string | null;
 }
@@ -176,7 +183,9 @@ export interface HermesProjectedMessage {
 	role: "user" | "assistant";
 	text: string;
 	attachments: HermesProjectedAttachment[];
-	delivery?: "pending" | "accepted";
+	delivery?: "pending" | "queued" | "submitting" | "accepted" | "failed";
+	followUpId?: string;
+	deliveryError?: string | null;
 	source: HermesTranscriptMessage;
 }
 
@@ -299,6 +308,62 @@ export function hermesComposerContainsFiles(transfer: HermesFileTransferLike): b
 	return false;
 }
 
+export function hermesComposerTransferAction(
+	transfer: HermesFileTransferLike
+): "native" | "stage-files" {
+	return hermesComposerContainsFiles(transfer) ? "stage-files" : "native";
+}
+
+interface HermesRendererFileMetadata {
+	name: string;
+	size: number;
+	type: string;
+}
+
+function rendererAttachmentLimit(file: HermesRendererFileMetadata): {
+	maxBytes: number;
+	message: string;
+} {
+	const extension = file.name.split(".").at(-1)?.toLocaleLowerCase() ?? "";
+	if (
+		["avif", "bmp", "gif", "heic", "heif", "jpeg", "jpg", "png", "tif", "tiff", "webp"].includes(
+			extension
+		)
+	) {
+		return {
+			maxBytes: HERMES_IMAGE_ATTACHMENT_MAX_BYTES,
+			message: "Images must be 16 MiB or smaller",
+		};
+	}
+	if (extension === "pdf") {
+		return { maxBytes: HERMES_PDF_ATTACHMENT_MAX_BYTES, message: "PDFs must be 50 MiB or smaller" };
+	}
+	return {
+		maxBytes: HERMES_GENERAL_ATTACHMENT_MAX_BYTES,
+		message: "Files must be 32 MiB or smaller",
+	};
+}
+
+export function hermesRendererAttachmentSelectionError(
+	files: HermesRendererFileMetadata[],
+	existingCount: number
+): string | null {
+	if (existingCount + files.length > HERMES_MAX_ATTACHMENTS) {
+		return `Attach up to ${HERMES_MAX_ATTACHMENTS} files to one message.`;
+	}
+	let aggregateBytes = 0;
+	for (const file of files) {
+		if (!Number.isSafeInteger(file.size) || file.size < 0) return "Attachment size is invalid.";
+		aggregateBytes += file.size;
+		if (aggregateBytes > HERMES_ATTACHMENT_IPC_MAX_BYTES) {
+			return "Pasted and dropped files must total 64 MiB or smaller.";
+		}
+		const limit = rendererAttachmentLimit(file);
+		if (file.size > limit.maxBytes) return `${limit.message}: “${file.name}”`;
+	}
+	return null;
+}
+
 export function hermesComposerInteractionPolicy(input: {
 	connected: boolean;
 	running: boolean;
@@ -312,14 +377,9 @@ export function hermesComposerInteractionPolicy(input: {
 	attachmentMutationDisabled: boolean;
 } {
 	return {
-		textareaDisabled: !input.connected || input.submitPending,
-		sendDisabled: !input.hasPayload || !input.connected || input.running || input.submitPending,
-		attachmentMutationDisabled:
-			!input.connected ||
-			input.running ||
-			input.submitPending ||
-			input.attachmentPickerPending ||
-			input.attachmentAttaching,
+		textareaDisabled: input.submitPending,
+		sendDisabled: !input.hasPayload || input.submitPending,
+		attachmentMutationDisabled: input.attachmentPickerPending || input.attachmentAttaching,
 	};
 }
 
@@ -331,7 +391,7 @@ export function hermesComposerEnterAction(input: {
 	isComposing: boolean;
 }): "native" | "preserve" | "submit" {
 	if (input.shiftKey || input.isComposing) return "native";
-	if (!input.connected || input.running || input.submitPending) return "preserve";
+	if (input.submitPending) return "preserve";
 	return "submit";
 }
 
@@ -488,6 +548,65 @@ export function projectHermesOptimisticUserTurns(
 			text: turn.text,
 			createdAt: null,
 			status: turn.delivery,
+			toolName: null,
+			workspaceArtifacts: [],
+		},
+	}));
+}
+
+export function projectHermesQueuedFollowUps(
+	canonicalMessages: HermesTranscriptMessage[],
+	followUps: HermesQueuedFollowUpSummary[]
+): HermesProjectedMessage[] {
+	const canonicalUsers = canonicalMessages.filter((message) => message.role === "user");
+	const usedCanonicalIndexes = new Set<number>();
+	const visible = followUps.filter((followUp) => {
+		if (followUp.status !== "accepted") return true;
+		const optimistic: HermesOptimisticUserTurn = {
+			id: followUp.id,
+			text: followUp.text.trim() || "Review the attached files.",
+			attachments: followUp.attachments,
+			delivery: "accepted",
+			knownCanonicalUserMessageIds: followUp.knownCanonicalUserMessageIds,
+		};
+		const knownIds = new Set(followUp.knownCanonicalUserMessageIds);
+		const matchIndex = canonicalUsers.findIndex(
+			(message, index) =>
+				!usedCanonicalIndexes.has(index) &&
+				!knownIds.has(hermesCanonicalMessageIdentity(message)) &&
+				hermesOptimisticTurnMatchesMessage(optimistic, message)
+		);
+		if (matchIndex < 0) return true;
+		usedCanonicalIndexes.add(matchIndex);
+		return false;
+	});
+	return visible.map((followUp) => ({
+		kind: "message",
+		id: `queued-user:${followUp.id}`,
+		role: "user",
+		text: followUp.text.trim() || "Review the attached files.",
+		attachments: followUp.attachments.map((attachment, index) => ({
+			id: `queued-user:${followUp.id}:attachment:${index}`,
+			kind: attachment.kind,
+			name: attachment.name,
+			refText: null,
+		})),
+		delivery: followUp.status,
+		followUpId: followUp.id,
+		deliveryError: followUp.error,
+		source: {
+			id: `queued-user:${followUp.id}`,
+			canonicalMessageId: null,
+			compactionGeneration: null,
+			active: true,
+			compacted: false,
+			displayKind: null,
+			compactionSummaryType: null,
+			turnId: null,
+			role: "user",
+			text: followUp.text,
+			createdAt: followUp.createdAt,
+			status: followUp.status,
 			toolName: null,
 			workspaceArtifacts: [],
 		},
@@ -748,6 +867,7 @@ export function createHermesLiveState(): HermesLiveState {
 		tools: [],
 		pendingApproval: null,
 		pendingClarification: null,
+		queuedFollowUps: [],
 		historyRefreshRequired: false,
 		error: null,
 	};
@@ -827,6 +947,11 @@ export function applyHermesActiveTurnSnapshot(
 						choices: snapshot.pendingClarification.choices.map((choice) => ({ ...choice })),
 					}
 				: null,
+		queuedFollowUps:
+			snapshot.queuedFollowUps?.map((followUp) => ({
+				...followUp,
+				attachments: followUp.attachments.map((attachment) => ({ ...attachment })),
+			})) ?? [],
 		error: null,
 	};
 }
@@ -842,6 +967,15 @@ export function applyHermesEvent(
 			return event.payload.activeTurnSnapshot
 				? applyHermesActiveTurnSnapshot(state, event.payload.activeTurnSnapshot)
 				: state;
+		case "runtime.follow-up-queue":
+			return {
+				...state,
+				queuedFollowUps:
+					event.payload.queuedFollowUps?.map((followUp) => ({
+						...followUp,
+						attachments: followUp.attachments.map((attachment) => ({ ...attachment })),
+					})) ?? [],
+			};
 		case "message.delta":
 			return {
 				...state,

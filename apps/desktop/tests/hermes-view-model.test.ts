@@ -12,14 +12,17 @@ import {
 	hermesComposerContainsFiles,
 	hermesComposerEnterAction,
 	hermesComposerInteractionPolicy,
+	hermesComposerTransferAction,
 	hermesConnectionFormPolicy,
 	hermesOriginActionAvailability,
 	hermesOriginReturnLabel,
+	hermesRendererAttachmentSelectionError,
 	hermesReportRequiresExplicitRetry,
 	latestReportableHermesMessage,
 	projectHermesLiveActivity,
 	projectHermesLiveCompletions,
 	projectHermesOptimisticUserTurns,
+	projectHermesQueuedFollowUps,
 	projectHermesTranscript,
 	reduceHermesComposerAttachments,
 	settleHermesOptimisticUserTurn,
@@ -96,7 +99,7 @@ const message = (overrides: Partial<HermesTranscriptMessage> = {}): HermesTransc
 });
 
 describe("Hermes renderer view model", () => {
-	test("keeps the active-turn draft editable while gating send and attachment mutation", () => {
+	test("keeps messaging-style composer controls usable while an active turn runs", () => {
 		const policy = hermesComposerInteractionPolicy({
 			connected: true,
 			running: true,
@@ -108,8 +111,8 @@ describe("Hermes renderer view model", () => {
 
 		expect(policy).toEqual({
 			textareaDisabled: false,
-			sendDisabled: true,
-			attachmentMutationDisabled: true,
+			sendDisabled: false,
+			attachmentMutationDisabled: false,
 		});
 		expect(
 			hermesComposerEnterAction({
@@ -119,7 +122,7 @@ describe("Hermes renderer view model", () => {
 				shiftKey: false,
 				isComposing: false,
 			})
-		).toBe("preserve");
+		).toBe("submit");
 		expect(
 			hermesComposerEnterAction({
 				connected: true,
@@ -166,6 +169,33 @@ describe("Hermes renderer view model", () => {
 		});
 		expect(projectHermesOptimisticUserTurns([existing, durable], accepted)).toEqual([]);
 		expect(settleHermesOptimisticUserTurn([optimistic], "optimistic-1", "failed")).toEqual([]);
+	});
+
+	test("keeps queued bubbles ordered and reconciles accepted follow-ups only with new history", () => {
+		const existing = message({ id: "existing-user", role: "user", text: "Repeat" });
+		const followUp = {
+			id: "follow-up-1",
+			durableSessionId: "session-1",
+			profileId: "work",
+			text: "Repeat",
+			attachments: [],
+			knownCanonicalUserMessageIds: ["existing-user"],
+			status: "accepted" as const,
+			error: null,
+			createdAt: 2,
+		};
+
+		expect(projectHermesQueuedFollowUps([existing], [followUp])).toMatchObject([
+			{ id: "queued-user:follow-up-1", delivery: "accepted", text: "Repeat" },
+		]);
+		const canonical = message({ id: "new-user", role: "user", text: "Repeat" });
+		expect(projectHermesQueuedFollowUps([existing, canonical], [followUp])).toEqual([]);
+		expect(
+			projectHermesQueuedFollowUps(
+				[existing, canonical],
+				[{ ...followUp, id: "follow-up-2", status: "queued" }]
+			)
+		).toMatchObject([{ id: "queued-user:follow-up-2", delivery: "queued" }]);
 	});
 
 	test("deduplicates retained physical copies by canonical identity across compactions", () => {
@@ -628,13 +658,29 @@ describe("Hermes renderer view model", () => {
 		).toEqual(submitting);
 	});
 
-	test("detects dropped and pasted files for the safe paperclip-only composer policy", () => {
+	test("stages pasted and dropped files while leaving text-only paste native", () => {
 		expect(hermesComposerContainsFiles({ types: ["Files"], files: { length: 0 } })).toBe(true);
 		expect(hermesComposerContainsFiles({ items: { 0: { kind: "file" }, length: 1 } })).toBe(true);
 		expect(hermesComposerContainsFiles({ files: { length: 1 } })).toBe(true);
 		expect(hermesComposerContainsFiles({ types: ["text/plain"], files: { length: 0 } })).toBe(
 			false
 		);
+		expect(hermesComposerTransferAction({ files: { length: 1 } })).toBe("stage-files");
+		expect(hermesComposerTransferAction({ types: ["text/plain"], files: { length: 0 } })).toBe(
+			"native"
+		);
+		expect(
+			hermesRendererAttachmentSelectionError(
+				[{ name: "screen.png", size: 4, type: "image/png" }],
+				0
+			)
+		).toBeNull();
+		expect(
+			hermesRendererAttachmentSelectionError(
+				[{ name: "screen.png", size: 17 * 1024 * 1024, type: "image/png" }],
+				0
+			)
+		).toContain("16 MiB");
 	});
 
 	test("retains selected attachments with an error for retry and clears only on success", () => {

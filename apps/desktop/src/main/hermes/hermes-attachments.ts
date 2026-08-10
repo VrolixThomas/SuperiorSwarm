@@ -3,18 +3,28 @@ import { constants, chmodSync, mkdtempSync, rmSync } from "node:fs";
 import { open } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, extname, join } from "node:path";
-import type { HermesAttachmentKind, HermesAttachmentMetadata } from "../../shared/hermes";
+import type {
+	HermesAttachmentKind,
+	HermesAttachmentMetadata,
+	HermesRendererAttachmentUpload,
+} from "../../shared/hermes";
 import {
 	HERMES_ATTACHMENT_CONTEXT_END,
 	HERMES_ATTACHMENT_CONTEXT_START,
+	HERMES_ATTACHMENT_IPC_MAX_BYTES,
+	HERMES_GENERAL_ATTACHMENT_MAX_BYTES,
+	HERMES_IMAGE_ATTACHMENT_MAX_BYTES,
+	HERMES_MAX_ATTACHMENTS,
+	HERMES_PDF_ATTACHMENT_MAX_BYTES,
 } from "../../shared/hermes";
 
-export const HERMES_MAX_ATTACHMENTS = 10;
-export const HERMES_IMAGE_ATTACHMENT_MAX_BYTES = 16 * 1024 * 1024;
-export const HERMES_PDF_ATTACHMENT_MAX_BYTES = 50 * 1024 * 1024;
-// Stock Hermes accepts a larger dedicated remote-file payload. SuperiorSwarm keeps a
-// conservative 32 MiB app cap to bound main-process reads and WebSocket frames.
-export const HERMES_GENERAL_ATTACHMENT_MAX_BYTES = 32 * 1024 * 1024;
+export {
+	HERMES_ATTACHMENT_IPC_MAX_BYTES,
+	HERMES_GENERAL_ATTACHMENT_MAX_BYTES,
+	HERMES_IMAGE_ATTACHMENT_MAX_BYTES,
+	HERMES_MAX_ATTACHMENTS,
+	HERMES_PDF_ATTACHMENT_MAX_BYTES,
+} from "../../shared/hermes";
 export const HERMES_ATTACHMENT_TTL_MS = 30 * 60 * 1_000;
 const IMAGE_MIME_TYPES: Record<string, string> = {
 	".avif": "image/avif",
@@ -84,6 +94,7 @@ export function buildHermesAttachmentPromptText(
 interface StoredAttachment extends HermesResolvedAttachment {
 	maxBytes: number;
 	attachedByRuntime: Map<string, HermesAttachedResult>;
+	owners: Set<string>;
 }
 
 export interface HermesAttachmentStoreOptions {
@@ -104,6 +115,22 @@ function safeFileName(path: string): string {
 		.join("")
 		.trim();
 	return filtered.slice(0, 255) || "attachment";
+}
+
+function rendererFileName(value: string): string {
+	if (value.length > 255) throw new Error("Attachments must have a safe file name");
+	const normalized = value.normalize("NFC");
+	if (
+		value !== normalized ||
+		value !== value.trim() ||
+		basename(value) !== value ||
+		value.includes("/") ||
+		value.includes("\\") ||
+		safeFileName(value) !== value
+	) {
+		throw new Error("Attachments must have a safe file name");
+	}
+	return value;
 }
 
 function attachmentType(path: string): {
@@ -184,6 +211,93 @@ export class HermesAttachmentStore {
 					expiresAt: 0,
 					maxBytes: type.maxBytes,
 					attachedByRuntime: new Map(),
+					owners: new Set(),
+				});
+			}
+		} catch (error) {
+			for (const attachment of pending) this.removeStagedFile(attachment.path);
+			this.removeEmptyStagingDirectory();
+			throw error;
+		}
+
+		const expiresAt = this.now() + this.ttlMs;
+		for (const attachment of pending) {
+			attachment.expiresAt = expiresAt;
+			this.expiredHandles.delete(attachment.handle);
+			this.attachments.set(attachment.handle, attachment);
+		}
+		return pending.map(this.metadata);
+	}
+
+	async registerBytes(
+		uploads: HermesRendererAttachmentUpload[]
+	): Promise<HermesAttachmentMetadata[]> {
+		this.sweepExpired();
+		if (uploads.length > HERMES_MAX_ATTACHMENTS) {
+			throw new Error(`Attach up to ${HERMES_MAX_ATTACHMENTS} files at a time`);
+		}
+		let aggregateBytes = 0;
+		for (const upload of uploads) {
+			if (!(upload.bytes instanceof Uint8Array)) {
+				throw new Error("Attachment bytes must be a Uint8Array");
+			}
+			if (!Number.isSafeInteger(upload.size) || upload.size < 0) {
+				throw new Error("Attachment size is invalid");
+			}
+			aggregateBytes += upload.size;
+			if (aggregateBytes > HERMES_ATTACHMENT_IPC_MAX_BYTES) {
+				throw new Error("Attachment IPC payloads must total 64 MiB or smaller");
+			}
+		}
+		const aggregateActualBytes = uploads.reduce(
+			(total, upload) => total + upload.bytes.byteLength,
+			0
+		);
+		if (aggregateActualBytes > HERMES_ATTACHMENT_IPC_MAX_BYTES) {
+			throw new Error("Attachment IPC payloads must total 64 MiB or smaller");
+		}
+
+		const pending: StoredAttachment[] = [];
+		const reservedHandles = new Set<string>();
+		try {
+			for (const upload of uploads) {
+				const name = rendererFileName(upload.name);
+				const type = attachmentType(name);
+				if (upload.mimeType.length > 255) throw new Error(`“${name}” has an invalid MIME type`);
+				const reportedMimeType = upload.mimeType.trim().toLocaleLowerCase();
+				if (
+					(reportedMimeType &&
+						!/^[a-z0-9][a-z0-9!#$&^_.+-]*\/[a-z0-9][a-z0-9!#$&^_.+-]*$/u.test(reportedMimeType)) ||
+					(type.kind !== "file" &&
+						reportedMimeType !== "" &&
+						reportedMimeType !== type.mimeType &&
+						reportedMimeType !== "application/octet-stream")
+				) {
+					throw new Error(`“${name}” has an invalid MIME type`);
+				}
+				if (upload.bytes.byteLength !== upload.size) {
+					throw new Error(`“${name}” size does not match its bytes`);
+				}
+				if (upload.size > type.maxBytes) {
+					throw new Error(`${type.tooLargeMessage}: “${name}”`);
+				}
+				let handle = this.idFactory();
+				while (this.attachments.has(handle) || reservedHandles.has(handle)) {
+					handle = this.idFactory();
+				}
+				reservedHandles.add(handle);
+				const stagedPath = await this.stageBytes(upload.bytes, name);
+				pending.push({
+					handle,
+					path: stagedPath,
+					name,
+					size: upload.size,
+					mimeType: type.mimeType,
+					kind: type.kind,
+					expiresAt: 0,
+					maxBytes: type.maxBytes,
+					attachedByRuntime: new Map(),
+					owners: new Set(),
 				});
 			}
 		} catch (error) {
@@ -282,8 +396,48 @@ export class HermesAttachmentStore {
 		return result ? { ...result } : null;
 	}
 
+	async claim(handles: string[], ownerId: string): Promise<HermesAttachmentMetadata[]> {
+		if (!ownerId) throw new Error("Attachment owner is required");
+		if (handles.length > HERMES_MAX_ATTACHMENTS) {
+			throw new Error(`Submit up to ${HERMES_MAX_ATTACHMENTS} attachments at a time`);
+		}
+		if (new Set(handles).size !== handles.length) throw new Error("Duplicate attachment handle");
+		this.sweepExpired();
+		const claimed: StoredAttachment[] = [];
+		try {
+			for (const handle of handles) {
+				const attachment = this.attachments.get(handle);
+				if (!attachment) {
+					throw new Error(
+						this.expiredHandles.has(handle)
+							? "An attachment expired. Select it again"
+							: "An attachment is unavailable. Select it again"
+					);
+				}
+				attachment.owners.add(ownerId);
+				claimed.push(attachment);
+			}
+			const resolved = await this.resolve(handles);
+			return resolved.map(({ path: _path, ...metadata }) => metadata);
+		} catch (error) {
+			for (const attachment of claimed) attachment.owners.delete(ownerId);
+			throw error;
+		}
+	}
+
+	releaseClaim(handles: string[], ownerId: string): void {
+		for (const handle of handles) {
+			const attachment = this.attachments.get(handle);
+			if (!attachment) continue;
+			attachment.owners.delete(ownerId);
+			if (attachment.owners.size === 0) this.removeAttachment(handle);
+		}
+	}
+
 	release(handles: string[]): void {
-		for (const handle of handles) this.removeAttachment(handle);
+		for (const handle of handles) {
+			if ((this.attachments.get(handle)?.owners.size ?? 0) === 0) this.removeAttachment(handle);
+		}
 	}
 
 	clear(): void {
@@ -300,7 +454,7 @@ export class HermesAttachmentStore {
 		const now = this.now();
 		let removed = 0;
 		for (const [handle, attachment] of this.attachments) {
-			if (attachment.expiresAt > now) continue;
+			if (attachment.expiresAt > now || attachment.owners.size > 0) continue;
 			this.removeAttachment(handle);
 			this.expiredHandles.add(handle);
 			removed++;
@@ -372,6 +526,33 @@ export class HermesAttachmentStore {
 		} finally {
 			await destination?.close();
 			await source.close();
+			if (!staged) this.removeStagedFile(stagedPath);
+		}
+	}
+
+	private async stageBytes(bytes: Uint8Array, name: string): Promise<string> {
+		const extension = /^\.[a-z0-9]{1,10}$/i.test(extname(name)) ? extname(name) : "";
+		const stagedPath = join(this.ensureStagingDirectory(), `${randomUUID()}${extension}`);
+		let destination: Awaited<ReturnType<typeof open>> | null = null;
+		let staged = false;
+		try {
+			destination = await open(
+				stagedPath,
+				constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
+				0o600
+			);
+			let written = 0;
+			while (written < bytes.byteLength) {
+				const result = await destination.write(bytes, written, bytes.byteLength - written, null);
+				if (result.bytesWritten === 0) throw new Error(`Could not stage “${name}”`);
+				written += result.bytesWritten;
+			}
+			await destination.sync();
+			await destination.chmod(0o400);
+			staged = true;
+			return stagedPath;
+		} finally {
+			await destination?.close();
 			if (!staged) this.removeStagedFile(stagedPath);
 		}
 	}

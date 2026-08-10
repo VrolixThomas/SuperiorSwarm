@@ -26,13 +26,16 @@ import {
 	hermesComposerEnterAction,
 	hermesComposerInteractionPolicy,
 	hermesComposerTextareaLayout,
+	hermesComposerTransferAction,
 	hermesOriginActionAvailability,
 	hermesOriginReturnLabel,
+	hermesRendererAttachmentSelectionError,
 	hermesReportRequiresExplicitRetry,
 	latestReportableHermesMessage,
 	projectHermesLiveActivity,
 	projectHermesLiveCompletions,
 	projectHermesOptimisticUserTurns,
+	projectHermesQueuedFollowUps,
 	projectHermesTranscript,
 	reconcileHermesOptimisticUserTurns,
 	reduceHermesComposerAttachments,
@@ -60,6 +63,19 @@ function scrollToLatest(element: HTMLDivElement, smooth: boolean): void {
 	});
 }
 
+function fileObjectsFromTransfer(transfer: DataTransfer): File[] {
+	const files = Array.from(transfer.files);
+	const seen = new Set(files);
+	for (const item of Array.from(transfer.items)) {
+		if (item.kind !== "file") continue;
+		const file = item.getAsFile();
+		if (!file || seen.has(file)) continue;
+		seen.add(file);
+		files.push(file);
+	}
+	return files;
+}
+
 export function HermesSessionView() {
 	const selection = useTabStore((state) => state.selectedHermesSession);
 	const sessionId = selection?.sessionId ?? null;
@@ -79,6 +95,7 @@ export function HermesSessionView() {
 	const [manualOriginUrl, setManualOriginUrl] = useState("");
 	const [showReportPreview, setShowReportPreview] = useState(false);
 	const [attachmentLimitError, setAttachmentLimitError] = useState<string | null>(null);
+	const [attachmentReadPending, setAttachmentReadPending] = useState(false);
 	const [showJumpToLatest, setShowJumpToLatest] = useState(false);
 	const [sessionOptionsOpen, setSessionOptionsOpen] = useState(false);
 	const processedEventSeq = useRef(0);
@@ -116,6 +133,18 @@ export function HermesSessionView() {
 	const releaseAttachment = trpc.hermes.releaseAttachment.useMutation();
 	const releaseAttachmentRef = useRef(releaseAttachment.mutate);
 	releaseAttachmentRef.current = releaseAttachment.mutate;
+	const registerAttachments = trpc.hermes.registerAttachments.useMutation({
+		onSuccess: (selected) => {
+			const existing = new Set(attachmentsRef.current.map((attachment) => attachment.handle));
+			const unique = selected.filter((attachment) => !existing.has(attachment.handle));
+			const available = Math.max(0, 10 - attachmentsRef.current.length);
+			const accepted = unique.slice(0, available);
+			const rejected = unique.slice(available);
+			if (accepted.length > 0) dispatchAttachments({ type: "add", attachments: accepted });
+			for (const attachment of rejected) releaseAttachment.mutate({ handle: attachment.handle });
+			setAttachmentLimitError(rejected.length > 0 ? "Attach up to 10 files to one message." : null);
+		},
+	});
 	const selectionKey = hermesSessionCompositeIdentityKey(
 		connectionId,
 		profileId ?? "",
@@ -137,7 +166,8 @@ export function HermesSessionView() {
 		connected,
 		running: live.running,
 		submitPending: submit.isPending,
-		attachmentPickerPending: pickAttachments.isPending,
+		attachmentPickerPending:
+			pickAttachments.isPending || registerAttachments.isPending || attachmentReadPending,
 		attachmentAttaching: attachments.some((attachment) => attachment.status === "attaching"),
 		hasPayload: Boolean(composer.trim() || attachments.length > 0),
 	});
@@ -247,6 +277,19 @@ export function HermesSessionView() {
 			staleTime: 1_000,
 		}
 	);
+	const followUps = trpc.hermes.followUps.useQuery(
+		{ connectionId, profileId: profileId ?? undefined, hermesSessionId: sessionId ?? "" },
+		{
+			enabled: Boolean(connectionId && profileId && sessionId),
+			refetchInterval: 750,
+		}
+	);
+	const retryFollowUp = trpc.hermes.retryFollowUp.useMutation({
+		onSettled: () => void followUps.refetch(),
+	});
+	const cancelFollowUp = trpc.hermes.cancelFollowUp.useMutation({
+		onSettled: () => void followUps.refetch(),
+	});
 	const workspaceSessionId = resolveHermesWorkspaceSessionId(sessionId, history.data);
 	const physicalMessages = useMemo(() => history.data?.messages ?? [], [history.data?.messages]);
 	const canonicalMessages = useMemo(
@@ -345,6 +388,10 @@ export function HermesSessionView() {
 		() => projectHermesOptimisticUserTurns(canonicalMessages, optimisticUserTurns),
 		[canonicalMessages, optimisticUserTurns]
 	);
+	const queuedUserItems = useMemo(
+		() => projectHermesQueuedFollowUps(canonicalMessages, followUps.data ?? live.queuedFollowUps),
+		[canonicalMessages, followUps.data, live.queuedFollowUps]
+	);
 	const liveCompletions = useMemo(
 		() => projectHermesLiveCompletions(canonicalMessages, live.completed),
 		[canonicalMessages, live.completed]
@@ -398,7 +445,6 @@ export function HermesSessionView() {
 			(!composer.trim() && attachments.length === 0) ||
 			!sessionId ||
 			!profileId ||
-			!connected ||
 			composerPolicy.sendDisabled
 		) {
 			return;
@@ -421,22 +467,47 @@ export function HermesSessionView() {
 				attachmentHandles: attachments.map((attachment) => attachment.handle),
 			},
 			{
-				onSuccess: () => {
+				onSuccess: (result) => {
 					runForSelection(generation, () => {
 						setOptimisticUserTurns((current) =>
-							settleHermesOptimisticUserTurn(current, optimisticTurn.id, "accepted")
+							settleHermesOptimisticUserTurn(
+								current,
+								optimisticTurn.id,
+								result.disposition === "queued" ? "failed" : "accepted"
+							)
 						);
 						setComposer("");
 						dispatchAttachments({ type: "succeeded" });
 						setAttachmentLimitError(null);
-						setLive((current) => ({
-							...current,
-							running: true,
-							runtimeStatus: "submitting",
-							streamingText: "",
-							tools: [],
-							error: null,
-						}));
+						if (result.disposition === "submitted") {
+							setLive((current) => ({
+								...current,
+								running: true,
+								runtimeStatus: "submitting",
+								streamingText: "",
+								tools: [],
+								error: null,
+							}));
+						} else {
+							utils.hermes.followUps.setData(
+								{
+									connectionId,
+									profileId: profileId ?? undefined,
+									hermesSessionId: sessionId,
+								},
+								(current) => {
+									const existing = current?.findIndex(
+										(followUp) => followUp.id === result.followUp.id
+									);
+									if (existing === undefined || existing < 0)
+										return [...(current ?? []), result.followUp];
+									return current?.map((followUp, index) =>
+										index === existing ? result.followUp : followUp
+									);
+								}
+							);
+						}
+						void followUps.refetch();
 					});
 				},
 				onError: (error) => {
@@ -449,6 +520,39 @@ export function HermesSessionView() {
 				},
 			}
 		);
+	}
+
+	async function stageTransferredFiles(files: File[]): Promise<void> {
+		if (files.length === 0) return;
+		const error = hermesRendererAttachmentSelectionError(files, attachmentsRef.current.length);
+		if (error) {
+			setAttachmentLimitError(error);
+			return;
+		}
+		setAttachmentReadPending(true);
+		try {
+			const uploads = await Promise.all(
+				files.map(async (file) => {
+					const bytes = new Uint8Array(await file.arrayBuffer());
+					if (bytes.byteLength !== file.size)
+						throw new Error(`“${file.name}” changed while reading`);
+					return {
+						name: file.name,
+						size: file.size,
+						mimeType: file.type,
+						bytes,
+					};
+				})
+			);
+			registerAttachments.mutate({ attachments: uploads });
+			setAttachmentLimitError(null);
+		} catch (reason) {
+			setAttachmentLimitError(
+				reason instanceof Error ? reason.message : "Could not read the selected files."
+			);
+		} finally {
+			setAttachmentReadPending(false);
+		}
 	}
 
 	useEffect(() => {
@@ -504,7 +608,11 @@ export function HermesSessionView() {
 		approval.error?.message ??
 		clarify.error?.message ??
 		pickAttachments.error?.message ??
+		registerAttachments.error?.message ??
 		attachmentLimitError ??
+		followUps.error?.message ??
+		retryFollowUp.error?.message ??
+		cancelFollowUp.error?.message ??
 		openOrigin.error?.message ??
 		report.error?.message ??
 		live.error;
@@ -740,7 +848,25 @@ export function HermesSessionView() {
 							Loading canonical Hermes history…
 						</div>
 					)}
-					<HermesTranscript items={[...transcriptItems, ...optimisticUserItems]} />
+					<HermesTranscript
+						items={[...transcriptItems, ...optimisticUserItems, ...queuedUserItems]}
+						onRetryFollowUp={(followUpId) =>
+							retryFollowUp.mutate({
+								connectionId,
+								profileId: profileId ?? undefined,
+								hermesSessionId: sessionId,
+								followUpId,
+							})
+						}
+						onCancelFollowUp={(followUpId) =>
+							cancelFollowUp.mutate({
+								connectionId,
+								profileId: profileId ?? undefined,
+								hermesSessionId: sessionId,
+								followUpId,
+							})
+						}
+					/>
 					{liveActivity && (
 						<div className="mt-7 min-w-0">
 							<HermesActivityGroup activity={liveActivity} />
@@ -895,14 +1021,13 @@ export function HermesSessionView() {
 						onDragOver={(event) => {
 							event.preventDefault();
 							if (hermesComposerContainsFiles(event.dataTransfer)) {
-								event.dataTransfer.dropEffect = "none";
+								event.dataTransfer.dropEffect = "copy";
 							}
 						}}
 						onDrop={(event) => {
+							if (hermesComposerTransferAction(event.dataTransfer) === "native") return;
 							event.preventDefault();
-							if (hermesComposerContainsFiles(event.dataTransfer)) {
-								setAttachmentLimitError("Use the paperclip to attach files.");
-							}
+							void stageTransferredFiles(fileObjectsFromTransfer(event.dataTransfer));
 						}}
 						className="min-w-0 rounded-[16px] border border-[var(--border)] bg-[var(--bg-elevated)] p-2 shadow-[0_10px_32px_rgba(0,0,0,0.24)] focus-within:border-[var(--border-active)]"
 					>
@@ -944,9 +1069,9 @@ export function HermesSessionView() {
 								value={composer}
 								onChange={(event) => setComposer(event.target.value)}
 								onPaste={(event) => {
-									if (!hermesComposerContainsFiles(event.clipboardData)) return;
+									if (hermesComposerTransferAction(event.clipboardData) === "native") return;
 									event.preventDefault();
-									setAttachmentLimitError("Use the paperclip to attach files.");
+									void stageTransferredFiles(fileObjectsFromTransfer(event.clipboardData));
 								}}
 								onKeyDown={(event) => {
 									if (event.key !== "Enter") return;
@@ -961,51 +1086,53 @@ export function HermesSessionView() {
 									event.preventDefault();
 									if (action === "submit") event.currentTarget.form?.requestSubmit();
 								}}
-								placeholder={connected ? "Continue this agent thread…" : "Reconnect to continue…"}
+								placeholder={
+									connected ? "Continue this agent thread…" : "Queue while reconnecting…"
+								}
 								disabled={composerPolicy.textareaDisabled}
 								rows={1}
 								aria-label="Message"
 								className="min-h-14 min-w-0 flex-1 resize-none bg-transparent px-1.5 py-[17px] text-[14px] leading-[20px] text-[var(--text)] outline-none placeholder:text-[var(--text-quaternary)] disabled:opacity-50 [overflow-wrap:anywhere]"
 							/>
-							<button
-								type={live.running ? "button" : "submit"}
-								onClick={
-									live.running
-										? () =>
-												interrupt.mutate({
-													connectionId,
-													profileId: profileId ?? undefined,
-													hermesSessionId: sessionId,
-												})
-										: undefined
-								}
-								disabled={live.running ? interrupt.isPending : composerPolicy.sendDisabled}
-								aria-label={live.running ? "Stop response" : "Send message"}
-								title={live.running ? "Stop response" : "Send message"}
-								className={`mb-[10px] flex size-9 shrink-0 items-center justify-center rounded-full text-white transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/50 disabled:opacity-35 ${
-									live.running
-										? "bg-[var(--danger)] hover:brightness-110"
-										: "bg-[var(--accent)] hover:bg-[var(--accent-hover)]"
-								}`}
-							>
-								{live.running ? (
+							{live.running && (
+								<button
+									type="button"
+									onClick={() =>
+										interrupt.mutate({
+											connectionId,
+											profileId: profileId ?? undefined,
+											hermesSessionId: sessionId,
+										})
+									}
+									disabled={interrupt.isPending}
+									aria-label="Stop response"
+									title="Stop response"
+									className="mb-[10px] flex size-9 shrink-0 items-center justify-center rounded-full bg-[var(--danger)] text-white hover:brightness-110 disabled:opacity-35"
+								>
 									<span className="size-2.5 rounded-[2px] bg-white" aria-hidden="true" />
-								) : (
-									<svg
-										aria-hidden="true"
-										width="16"
-										height="16"
-										viewBox="0 0 24 24"
-										fill="none"
-										stroke="currentColor"
-										strokeWidth="2"
-										strokeLinecap="round"
-										strokeLinejoin="round"
-									>
-										<path d="m7 11 5-5 5 5" />
-										<path d="M12 18V6" />
-									</svg>
-								)}
+								</button>
+							)}
+							<button
+								type="submit"
+								disabled={composerPolicy.sendDisabled}
+								aria-label={live.running ? "Queue follow-up" : "Send message"}
+								title={live.running ? "Queue follow-up" : "Send message"}
+								className="mb-[10px] flex size-9 shrink-0 items-center justify-center rounded-full bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] disabled:opacity-35"
+							>
+								<svg
+									aria-hidden="true"
+									width="16"
+									height="16"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									strokeWidth="2"
+									strokeLinecap="round"
+									strokeLinejoin="round"
+								>
+									<path d="m7 11 5-5 5 5" />
+									<path d="M12 18V6" />
+								</svg>
 							</button>
 						</div>
 						<div className="flex min-w-0 items-center gap-1.5 px-2 pb-0.5 text-[9px] text-[var(--text-quaternary)]">

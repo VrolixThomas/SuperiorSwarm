@@ -1572,6 +1572,10 @@ describe("HermesRuntimeService stock lifecycle", () => {
 				}),
 			],
 		});
+		await waitFor(
+			() => client.requests.some((request) => request.method === "prompt.submit"),
+			"initial topic was not submitted"
+		);
 		expect(client.requests).toEqual([
 			{
 				method: "session.create",
@@ -1589,9 +1593,17 @@ describe("HermesRuntimeService stock lifecycle", () => {
 				},
 			},
 		]);
-		await expect(
-			service.submit(connectionId, created.durableSessionId, "Duplicate")
-		).rejects.toThrow("already active");
+		const queued = await service.submitFollowUp(
+			connectionId,
+			created.durableSessionId,
+			"Queued continuation",
+			[],
+			"work"
+		);
+		expect(queued.disposition).toBe("queued");
+		expect(service.followUps(connectionId, created.durableSessionId, "work")).toEqual([
+			expect.objectContaining({ text: "Queued continuation", status: "queued" }),
+		]);
 		expect(JSON.stringify(client.requests)).not.toContain("claim");
 		expect(rest.transcriptCalls).toEqual([]);
 	});
@@ -1805,6 +1817,8 @@ describe("HermesRuntimeService stock lifecycle", () => {
 	});
 
 	test("reserves a session before deferred attachment resolution and releases it on failure", async () => {
+		const fixture = await attachmentFixture();
+		const [selected] = await attachments.registerPaths([fixture.filePath]);
 		client.responses.set("session.resume", [
 			{ session_id: "runtime-concurrent", session_key: "stored-1", profile: "work" },
 		]);
@@ -1817,18 +1831,391 @@ describe("HermesRuntimeService stock lifecycle", () => {
 			return resolution.promise;
 		};
 
-		const first = service.submit(connectionId, "stored-1", "First", ["opaque-deferred"]);
+		const first = service.submit(connectionId, "stored-1", "First", [selected?.handle ?? ""]);
 		await waitFor(() => resolveCalls === 1, "attachment resolution did not start");
-		await expect(service.submit(connectionId, "stored-1", "Second")).rejects.toThrow(
-			"already active"
-		);
+		const second = service.submit(connectionId, "stored-1", "Second");
 		expect(resolveCalls).toBe(1);
 
+		attachments.resolve = () => Promise.resolve([]);
 		resolution.reject(new Error("selection failed"));
 		await expect(first).rejects.toThrow("selection failed");
-		attachments.resolve = () => Promise.resolve([]);
-		await expect(service.submit(connectionId, "stored-1", "Retry")).resolves.toEqual({ ok: true });
+		await expect(second).resolves.toEqual({ ok: true });
 		expect(client.requests.filter((request) => request.method === "prompt.submit")).toHaveLength(1);
+	});
+
+	test("queues active-turn follow-ups and drains FIFO exactly once on authoritative completion", async () => {
+		client.responses.set("session.resume", [
+			{ session_id: "runtime-fifo", session_key: "stored-1", profile: "work" },
+		]);
+		client.responses.set("prompt.submit", [
+			{ status: "streaming" },
+			{ status: "streaming" },
+			{ status: "streaming" },
+		]);
+		await service.connect(connectionId);
+		await service.resume(connectionId, "stored-1", "work");
+		await service.submit(connectionId, "stored-1", "First", [], "work");
+
+		const second = await service.submitFollowUp(connectionId, "stored-1", "Second", [], "work");
+		const third = await service.submitFollowUp(connectionId, "stored-1", "Third", [], "work");
+
+		expect(second.disposition).toBe("queued");
+		expect(third.disposition).toBe("queued");
+		expect(service.followUps(connectionId, "stored-1", "work").map((item) => item.text)).toEqual([
+			"Second",
+			"Third",
+		]);
+
+		client.emit({
+			type: "message.complete",
+			runtimeSessionId: "runtime-fifo",
+			turnId: "turn-first",
+			text: "First done",
+		});
+		await waitFor(
+			() => client.requests.filter((request) => request.method === "prompt.submit").length === 2,
+			"second follow-up did not drain"
+		);
+		client.emit({
+			type: "turn.completed",
+			runtimeSessionId: "runtime-fifo",
+			turnId: "turn-first",
+		});
+		await Bun.sleep(5);
+		expect(client.requests.filter((request) => request.method === "prompt.submit")).toHaveLength(2);
+
+		client.emit({
+			type: "turn.completed",
+			runtimeSessionId: "runtime-fifo",
+			turnId: "turn-second",
+		});
+		await waitFor(
+			() => client.requests.filter((request) => request.method === "prompt.submit").length === 3,
+			"third follow-up did not drain"
+		);
+		expect(
+			client.requests
+				.filter((request) => request.method === "prompt.submit")
+				.map((request) => request.params["text"])
+		).toEqual(["First", "Second", "Third"]);
+	});
+
+	test("reports a pre-resume submission as queued when Hermes says the durable turn is active", async () => {
+		client.responses.set("session.resume", [
+			{
+				session_id: "runtime-pre-resume",
+				session_key: "stored-1",
+				profile: "work",
+				running: true,
+				status: "working",
+			},
+		]);
+		await service.connect(connectionId);
+
+		const result = await service.submitFollowUp(
+			connectionId,
+			"stored-1",
+			"Queue after authoritative resume",
+			[],
+			"work"
+		);
+
+		expect(result.disposition).toBe("queued");
+		expect(result.followUp.status).toBe("queued");
+		expect(client.requests.filter((request) => request.method === "prompt.submit")).toEqual([]);
+	});
+
+	test("does not duplicate a transport-uncertain submission after reconnect", async () => {
+		const uncertain = new Deferred<unknown>();
+		client.responses.set("session.resume", [
+			{ session_id: "runtime-uncertain-1", session_key: "stored-1", profile: "work" },
+			{
+				session_id: "runtime-uncertain-2",
+				session_key: "stored-1",
+				profile: "work",
+				running: false,
+				status: "idle",
+			},
+		]);
+		client.responses.set("prompt.submit", [{ status: "streaming" }, uncertain.promise]);
+		await service.connect(connectionId);
+		await service.resume(connectionId, "stored-1", "work");
+		await service.submit(connectionId, "stored-1", "Current", [], "work");
+		await service.submitFollowUp(connectionId, "stored-1", "Uncertain", [], "work");
+		client.emit({
+			type: "turn.completed",
+			runtimeSessionId: "runtime-uncertain-1",
+			turnId: "turn-current",
+		});
+		await waitFor(
+			() => service.followUps(connectionId, "stored-1", "work")[0]?.status === "submitting",
+			"queued follow-up did not begin submitting"
+		);
+
+		service.disconnect(connectionId);
+		expect(service.followUps(connectionId, "stored-1", "work")).toEqual([
+			expect.objectContaining({ status: "failed", error: expect.stringContaining("confirming") }),
+		]);
+		const [failed] = service.followUps(connectionId, "stored-1", "work");
+		await expect(
+			service.retryFollowUp(connectionId, "stored-1", failed?.id ?? "", "work")
+		).rejects.toThrow("Reconnect");
+		await expect(
+			service.submitFollowUp(connectionId, "stored-1", "Uncertain", [], "work")
+		).rejects.toThrow("Reconnect");
+		await service.connect(connectionId);
+		await Bun.sleep(5);
+		expect(client.requests.filter((request) => request.method === "prompt.submit")).toHaveLength(2);
+
+		uncertain.resolve({ status: "streaming" });
+		await Bun.sleep(5);
+		expect(client.requests.filter((request) => request.method === "prompt.submit")).toHaveLength(2);
+	});
+
+	test("reconciles a transport-uncertain submission when reconnect confirms it is active", async () => {
+		const uncertain = new Deferred<unknown>();
+		client.responses.set("session.resume", [
+			{ session_id: "runtime-confirmed-1", session_key: "stored-1", profile: "work" },
+			{
+				session_id: "runtime-confirmed-2",
+				session_key: "stored-1",
+				profile: "work",
+				running: true,
+				status: "working",
+			},
+		]);
+		client.responses.set("prompt.submit", [{ status: "streaming" }, uncertain.promise]);
+		await service.connect(connectionId);
+		await service.resume(connectionId, "stored-1", "work");
+		await service.submit(connectionId, "stored-1", "Current", [], "work");
+		await service.submitFollowUp(connectionId, "stored-1", "Uncertain", [], "work");
+		client.emit({
+			type: "turn.completed",
+			runtimeSessionId: "runtime-confirmed-1",
+			turnId: "turn-current",
+		});
+		await waitFor(
+			() => service.followUps(connectionId, "stored-1", "work")[0]?.status === "submitting",
+			"queued follow-up did not begin submitting"
+		);
+
+		service.disconnect(connectionId);
+		await service.connect(connectionId);
+		await waitFor(
+			() => service.followUps(connectionId, "stored-1", "work")[0]?.status === "accepted",
+			"reconnect did not reconcile the uncertain follow-up"
+		);
+
+		expect(service.followUps(connectionId, "stored-1", "work")).toEqual([
+			expect.objectContaining({ text: "Uncertain", status: "accepted" }),
+		]);
+		expect(client.requests.filter((request) => request.method === "prompt.submit")).toHaveLength(2);
+		uncertain.resolve({ status: "streaming" });
+		await Bun.sleep(5);
+		expect(client.requests.filter((request) => request.method === "prompt.submit")).toHaveLength(2);
+	});
+
+	test("drains the next follow-up when terminal completion beats prompt acknowledgement", async () => {
+		const acknowledgement = new Deferred<unknown>();
+		client.responses.set("session.resume", [
+			{ session_id: "runtime-fast-terminal", session_key: "stored-1", profile: "work" },
+		]);
+		client.responses.set("prompt.submit", [
+			{ status: "streaming" },
+			acknowledgement.promise,
+			{ status: "streaming" },
+		]);
+		await service.connect(connectionId);
+		await service.resume(connectionId, "stored-1", "work");
+		await service.submit(connectionId, "stored-1", "Current", [], "work");
+		await service.submitFollowUp(connectionId, "stored-1", "Fast", [], "work");
+		await service.submitFollowUp(connectionId, "stored-1", "Next", [], "work");
+
+		client.emit({
+			type: "turn.completed",
+			runtimeSessionId: "runtime-fast-terminal",
+			turnId: "turn-current",
+		});
+		await waitFor(
+			() => service.followUps(connectionId, "stored-1", "work")[0]?.status === "submitting",
+			"first queued follow-up did not begin submitting"
+		);
+		client.emit({
+			type: "turn.completed",
+			runtimeSessionId: "runtime-fast-terminal",
+			turnId: "turn-fast",
+		});
+		acknowledgement.resolve({ status: "complete" });
+
+		await waitFor(
+			() => client.requests.filter((request) => request.method === "prompt.submit").length === 3,
+			"next follow-up did not drain after the early terminal event"
+		);
+		expect(
+			client.requests
+				.filter((request) => request.method === "prompt.submit")
+				.map((request) => request.params["text"])
+		).toEqual(["Current", "Fast", "Next"]);
+	});
+
+	test("isolates follow-up queues by connection profile and durable session composite", async () => {
+		admitAgentSession("same-session", "work");
+		admitAgentSession("same-session", "personal");
+		rest.sessions = [
+			{ ...session("same-session"), profileId: "work", source: "superiorswarm", origin: null },
+			{
+				...session("same-session"),
+				profileId: "personal",
+				source: "superiorswarm",
+				origin: null,
+			},
+		];
+		client.responses.set("session.resume", [
+			{ session_id: "runtime-work", session_key: "same-session", profile: "work" },
+			{ session_id: "runtime-personal", session_key: "same-session", profile: "personal" },
+		]);
+		client.responses.set("prompt.submit", [{ status: "streaming" }, { status: "streaming" }]);
+		await service.connect(connectionId);
+		await service.resume(connectionId, "same-session", "work");
+		await service.submit(connectionId, "same-session", "Work current", [], "work");
+		await service.submitFollowUp(connectionId, "same-session", "Work queued", [], "work");
+		await service.submitFollowUp(connectionId, "same-session", "Personal direct", [], "personal");
+
+		expect(service.followUps(connectionId, "same-session", "work")).toEqual([
+			expect.objectContaining({ text: "Work queued", profileId: "work" }),
+		]);
+		expect(service.followUps(connectionId, "same-session", "personal")).toEqual([]);
+		expect(
+			client.requests
+				.filter((request) => request.method === "prompt.submit")
+				.map((request) => request.params)
+		).toEqual([
+			{ session_id: "runtime-work", text: "Work current" },
+			{ session_id: "runtime-personal", text: "Personal direct" },
+		]);
+	});
+
+	test("cancels a queued follow-up and releases its claimed attachment handle", async () => {
+		const fixture = await attachmentFixture();
+		const [selected] = await attachments.registerPaths([fixture.filePath]);
+		client.responses.set("session.resume", [
+			{ session_id: "runtime-cancel", session_key: "stored-1", profile: "work" },
+		]);
+		client.responses.set("prompt.submit", [{ status: "streaming" }]);
+		await service.connect(connectionId);
+		await service.resume(connectionId, "stored-1", "work");
+		await service.submit(connectionId, "stored-1", "Current", [], "work");
+		const queued = await service.submitFollowUp(
+			connectionId,
+			"stored-1",
+			"Cancel me",
+			[selected?.handle ?? ""],
+			"work"
+		);
+
+		attachments.release([selected?.handle ?? ""]);
+		expect(attachments.size).toBe(1);
+		expect(service.cancelFollowUp(connectionId, "stored-1", queued.followUp.id, "work")).toEqual({
+			ok: true,
+		});
+		expect(service.followUps(connectionId, "stored-1", "work")).toEqual([]);
+		expect(attachments.size).toBe(0);
+	});
+
+	test("projects queued follow-ups through resume and preserves them across disconnect/reconnect", async () => {
+		client.responses.set("session.resume", [
+			{ session_id: "runtime-before", session_key: "stored-1", profile: "work" },
+			{
+				session_id: "runtime-after",
+				session_key: "stored-1",
+				profile: "work",
+				running: false,
+				status: "idle",
+			},
+		]);
+		client.responses.set("session.activate", [
+			{
+				session_id: "runtime-before",
+				session_key: "stored-1",
+				profile: "work",
+				running: true,
+				status: "working",
+			},
+		]);
+		client.responses.set("prompt.submit", [{ status: "streaming" }, { status: "streaming" }]);
+		await service.connect(connectionId);
+		await service.resume(connectionId, "stored-1", "work");
+		await service.submit(connectionId, "stored-1", "Current", [], "work");
+		await service.submitFollowUp(connectionId, "stored-1", "Survive reload", [], "work");
+
+		const reloadSnapshot = await service.resume(connectionId, "stored-1", "work");
+		expect(reloadSnapshot.activeTurnSnapshot.queuedFollowUps).toEqual([
+			expect.objectContaining({ text: "Survive reload", status: "queued", attachments: [] }),
+		]);
+		service.disconnect(connectionId);
+		expect(service.followUps(connectionId, "stored-1", "work")).toEqual([
+			expect.objectContaining({ text: "Survive reload", status: "queued" }),
+		]);
+		expect(service.getState(connectionId).queuedFollowUps).toEqual([
+			{
+				durableSessionId: "stored-1",
+				profileId: "work",
+				queuedCount: 1,
+				failedCount: 0,
+			},
+		]);
+
+		await service.connect(connectionId);
+		await waitFor(
+			() => client.requests.filter((request) => request.method === "prompt.submit").length === 2,
+			"queued follow-up did not resume after reconnect"
+		);
+		expect(
+			client.requests.filter((request) => request.method === "prompt.submit").at(-1)?.params["text"]
+		).toBe("Survive reload");
+	});
+
+	test("keeps failed queued attachments retryable without duplicate upload and releases on success", async () => {
+		const fixture = await attachmentFixture();
+		const [selected] = await attachments.registerPaths([fixture.imagePath]);
+		client.responses.set("session.resume", [
+			{ session_id: "runtime-queue-retry", session_key: "stored-1", profile: "work" },
+		]);
+		client.responses.set("image.attach", [{ attached: true }]);
+		client.responses.set("prompt.submit", [
+			{ status: "streaming" },
+			new Error("queued send failed"),
+			{ status: "streaming" },
+		]);
+		await service.connect(connectionId);
+		await service.resume(connectionId, "stored-1", "work");
+		await service.submit(connectionId, "stored-1", "Current", [], "work");
+		const queued = await service.submitFollowUp(
+			connectionId,
+			"stored-1",
+			"Retry attachment",
+			[selected?.handle ?? ""],
+			"work"
+		);
+
+		client.emit({
+			type: "turn.completed",
+			runtimeSessionId: "runtime-queue-retry",
+			turnId: "turn-current",
+		});
+		await waitFor(
+			() => service.followUps(connectionId, "stored-1", "work")[0]?.status === "failed",
+			"queued failure was not retained"
+		);
+		expect(attachments.size).toBe(1);
+
+		await service.retryFollowUp(connectionId, "stored-1", queued.followUp.id, "work");
+		await waitFor(
+			() => client.requests.filter((request) => request.method === "prompt.submit").length === 3,
+			"failed follow-up did not retry"
+		);
+		expect(client.requests.filter((request) => request.method === "image.attach")).toHaveLength(1);
+		expect(attachments.size).toBe(0);
 	});
 
 	test("uploads remote attachments as stock bytes/data URLs without sending local paths", async () => {
@@ -2553,9 +2940,17 @@ describe("HermesRuntimeService stock lifecycle", () => {
 		client.emit({ type: "runtime.history-refresh-required", status: "reconnected" });
 		await Bun.sleep(5);
 
-		await expect(service.submit(connectionId, "stored-1", "Overlapping turn")).rejects.toThrow(
-			"already active"
+		const queued = await service.submitFollowUp(
+			connectionId,
+			"stored-1",
+			"Queued after reconnect",
+			[],
+			"work"
 		);
+		expect(queued.disposition).toBe("queued");
+		expect(service.followUps(connectionId, "stored-1", "work")).toEqual([
+			expect.objectContaining({ text: "Queued after reconnect", status: "queued" }),
+		]);
 		const reconciled = service
 			.events(connectionId, 0)
 			.events.find((entry) => entry.event.type === "runtime.history-refresh-required");

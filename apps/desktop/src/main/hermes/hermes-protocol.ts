@@ -608,6 +608,7 @@ export function normalizeHermesActiveTurnSnapshot(
 		}),
 		pendingApproval: null,
 		pendingClarification: null,
+		queuedFollowUps: [],
 	};
 }
 
