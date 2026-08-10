@@ -183,7 +183,50 @@ describe("Hermes session admissions", () => {
 		expect(listHermesSessionAdmissions("manager-a")).toEqual([]);
 	});
 
-	test("includes only local-created, MCP-admitted, and explicit handover sessions", () => {
+	test("requires manager admission even when two installations share a superiorswarm source", () => {
+		admitHermesSession({
+			managerId: "manager-b",
+			metadata: {
+				schemaVersion: 1,
+				durableSessionId: "other-installation-agent",
+				profileId: "work",
+				sourcePlatform: "superiorswarm",
+				isCron: false,
+			},
+			reason: "agents",
+		});
+
+		expect(
+			filterManagedHermesSessionCatalog({
+				managerId: "manager-a",
+				sessions: [session("other-installation-agent", "work", "superiorswarm")],
+			})
+		).toEqual([]);
+		expect(
+			filterManagedHermesSessionCatalog({
+				managerId: "manager-b",
+				sessions: [session("other-installation-agent", "work", "superiorswarm")],
+			})
+		).toEqual([
+			expect.objectContaining({
+				id: "other-installation-agent",
+				admissionReason: "agents",
+			}),
+		]);
+	});
+
+	test("includes only manager-admitted agent, MCP, and explicit handover sessions", () => {
+		admitHermesSession({
+			managerId: "manager-a",
+			metadata: {
+				schemaVersion: 1,
+				durableSessionId: "local-created",
+				profileId: "default",
+				sourcePlatform: "superiorswarm",
+				isCron: false,
+			},
+			reason: "agents",
+		});
 		admitHermesSession({
 			managerId: "manager-a",
 			metadata: {

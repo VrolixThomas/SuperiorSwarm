@@ -744,7 +744,7 @@ export const hermesSessionAdmissions = sqliteTable(
 			.references(() => crossRepoOrchestrators.id, { onDelete: "cascade" }),
 		profileId: text("profile_id").notNull(),
 		durableSessionId: text("durable_session_id").notNull(),
-		reason: text("admission_reason", { enum: ["mcp", "handover"] }).notNull(),
+		reason: text("admission_reason", { enum: ["agents", "mcp", "handover"] }).notNull(),
 		sourcePlatform: text("source_platform").notNull(),
 		isCron: integer("is_cron", { mode: "boolean" }).notNull().default(false),
 		firstSeenAt: integer("first_seen_at", { mode: "timestamp_ms" }).notNull(),

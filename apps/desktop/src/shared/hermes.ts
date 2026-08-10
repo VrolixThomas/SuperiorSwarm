@@ -77,7 +77,7 @@ export interface HermesSessionSummary {
 	messageCount: number;
 	isCron: boolean;
 	handover: boolean;
-	admissionReason: "mcp" | "handover" | null;
+	admissionReason: "agents" | "mcp" | "handover" | null;
 	origin: HermesOriginProjection | null;
 }
 
@@ -216,7 +216,21 @@ export interface HermesRuntimeEvent {
 
 export interface HermesSessionSelection {
 	connectionId: string;
+	/** Present on canonical selections; omitted only while restoring legacy persisted state. */
+	profileId?: string;
 	sessionId: string;
+}
+
+export function hermesSessionIdentityKey(profileId: string, durableSessionId: string): string {
+	return JSON.stringify([profileId, durableSessionId]);
+}
+
+export function hermesSessionCompositeIdentityKey(
+	connectionId: string,
+	profileId: string,
+	durableSessionId: string
+): string {
+	return JSON.stringify([connectionId, profileId, durableSessionId]);
 }
 
 export type HermesSessionPane = "chat" | "worktrees";

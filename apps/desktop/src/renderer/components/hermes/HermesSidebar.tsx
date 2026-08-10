@@ -1,21 +1,27 @@
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import type { HermesSessionSummary } from "../../../shared/hermes";
+import {
+	type HermesSessionSummary,
+	hermesSessionCompositeIdentityKey,
+} from "../../../shared/hermes";
 import {
 	type HermesSessionFilter,
 	filterHermesSessions,
 	groupHermesSessions,
 	hermesConnectionFormPolicy,
 } from "../../hermes/hermes-view-model";
-import { useTabStore } from "../../stores/tab-store";
+import { normalizeHermesSessionSelection, useTabStore } from "../../stores/tab-store";
 import { trpc } from "../../trpc/client";
-import { HermesSessionRow, confirmHermesSessionDeletion } from "./HermesSessionRow";
+import { HermesSessionRow } from "./HermesSessionRow";
 import { OverflowPopover } from "./OverflowPopover";
 
 interface FailedSessionAction {
-	kind: "archive" | "unarchive" | "delete";
+	kind: "archive" | "unarchive";
 	session: HermesSessionSummary;
 	message: string;
 }
+
+const PERMANENT_DELETE_DISABLED_REASON =
+	"Permanent delete is unavailable because stock Hermes cannot atomically verify that a session stayed idle. Archive is the safe cleanup option.";
 
 export function HermesSidebar() {
 	const selectedSession = useTabStore((state) => state.selectedHermesSession);
@@ -33,6 +39,8 @@ export function HermesSidebar() {
 	const [token, setToken] = useState("");
 	const [newTopic, setNewTopic] = useState("");
 	const [failedSessionAction, setFailedSessionAction] = useState<FailedSessionAction | null>(null);
+	const [deleteError, setDeleteError] = useState<string | null>(null);
+	const [reconciliationRequired, setReconciliationRequired] = useState(false);
 	const autoConnectAttempted = useRef(new Set<string>());
 	const newSessionSubmitting = useRef(false);
 	const utils = trpc.useUtils();
@@ -113,7 +121,11 @@ export function HermesSidebar() {
 	const create = trpc.hermes.create.useMutation({
 		onSuccess: (binding) => {
 			if (!connectionId) return;
-			selectSession({ connectionId, sessionId: binding.durableSessionId });
+			selectSession({
+				connectionId,
+				profileId: binding.profileId,
+				sessionId: binding.durableSessionId,
+			});
 			setNewTopic("");
 			void utils.hermes.catalog.invalidate({ connectionId });
 		},
@@ -125,7 +137,9 @@ export function HermesSidebar() {
 			void utils.hermes.catalog.invalidate({ connectionId: variables.connectionId });
 		},
 		onError: (error, variables) => {
-			const session = catalog.data?.sessions.find((item) => item.id === variables.hermesSessionId);
+			const session = catalog.data?.sessions.find(
+				(item) => item.id === variables.hermesSessionId && item.profileId === variables.profileId
+			);
 			if (!session) return;
 			setFailedSessionAction({
 				kind: variables.archived ? "archive" : "unarchive",
@@ -135,20 +149,36 @@ export function HermesSidebar() {
 		},
 	});
 	const deleteSession = trpc.hermes.deleteSession.useMutation({
-		onSuccess: (canonicalCatalog, variables) => {
+		onSuccess: (result, variables) => {
 			setFailedSessionAction(null);
-			utils.hermes.catalog.setData({ connectionId: variables.connectionId }, canonicalCatalog);
+			setDeleteError(null);
+			setReconciliationRequired(result.reconciliationRequired);
+			if (result.catalog) {
+				utils.hermes.catalog.setData({ connectionId: variables.connectionId }, result.catalog);
+			} else {
+				utils.hermes.catalog.setData({ connectionId: variables.connectionId }, (current) =>
+					current
+						? {
+								...current,
+								sessions: current.sessions.filter(
+									(session) =>
+										session.id !== variables.hermesSessionId ||
+										session.profileId !== variables.profileId
+								),
+							}
+						: current
+				);
+			}
 			forgetSession({
 				connectionId: variables.connectionId,
+				profileId: variables.profileId,
 				sessionId: variables.hermesSessionId,
 			});
 			void utils.hermes.catalog.invalidate({ connectionId: variables.connectionId });
 			void utils.hermes.workspaceLinkIndex.invalidate({ connectionId: variables.connectionId });
 		},
-		onError: (error, variables) => {
-			const session = catalog.data?.sessions.find((item) => item.id === variables.hermesSessionId);
-			if (!session) return;
-			setFailedSessionAction({ kind: "delete", session, message: error.message });
+		onError: (error) => {
+			setDeleteError(error.message);
 		},
 	});
 	const linkIndex = trpc.hermes.workspaceLinkIndex.useQuery(
@@ -188,6 +218,16 @@ export function HermesSidebar() {
 		linkedBranches
 	);
 	const groupedSessions = groupHermesSessions(sessions);
+
+	useEffect(() => {
+		if (!selectedSession || selectedSession.connectionId !== connectionId || !catalog.data) return;
+		const normalized = normalizeHermesSessionSelection(selectedSession, catalog.data.sessions);
+		if (!normalized) {
+			selectSession(null);
+			return;
+		}
+		if (normalized.profileId !== selectedSession.profileId) selectSession(normalized);
+	}, [catalog.data, connectionId, selectSession, selectedSession]);
 
 	function submitConnection(event: FormEvent) {
 		event.preventDefault();
@@ -244,6 +284,7 @@ export function HermesSidebar() {
 		setFailedSessionAction(null);
 		setSessionArchived.mutate({
 			connectionId,
+			profileId: session.profileId,
 			hermesSessionId: session.id,
 			archived,
 		});
@@ -254,6 +295,7 @@ export function HermesSidebar() {
 		setFailedSessionAction(null);
 		deleteSession.mutate({
 			connectionId,
+			profileId: session.profileId,
 			hermesSessionId: session.id,
 			confirmed: true,
 		});
@@ -261,12 +303,15 @@ export function HermesSidebar() {
 
 	function retryFailedSessionAction() {
 		if (!failedSessionAction) return;
-		if (failedSessionAction.kind === "delete") {
-			if (!confirmHermesSessionDeletion(failedSessionAction.session.title)) return;
-			mutateSessionDelete(failedSessionAction.session);
-			return;
-		}
 		mutateSessionArchive(failedSessionAction.session, failedSessionAction.kind === "archive");
+	}
+
+	function refreshAfterCommittedDelete() {
+		if (!connectionId) return;
+		void utils.hermes.catalog.invalidate({ connectionId }).then(
+			() => setReconciliationRequired(false),
+			() => undefined
+		);
 	}
 
 	return (
@@ -519,6 +564,23 @@ export function HermesSidebar() {
 								</button>
 							</div>
 						)}
+						{deleteError && (
+							<div role="alert" className="mx-1 mb-1.5 text-[10px] text-[var(--danger)]">
+								{deleteError}
+							</div>
+						)}
+						{reconciliationRequired && (
+							<output className="mx-1 mb-1.5 block text-[10px] text-[var(--warning)]">
+								The session was deleted, but the session list still needs reconciliation.
+								<button
+									type="button"
+									onClick={refreshAfterCommittedDelete}
+									className="ml-1 underline"
+								>
+									Refresh session list
+								</button>
+							</output>
+						)}
 						{catalog.isLoading && (
 							<div className="px-2 py-5 text-center text-[11px] text-[var(--text-quaternary)]">
 								Loading agent threads…
@@ -543,19 +605,32 @@ export function HermesSidebar() {
 											const links = linkIndex.data?.[session.id];
 											return (
 												<HermesSessionRow
-													key={session.id}
+													key={hermesSessionCompositeIdentityKey(
+														connectionId,
+														session.profileId,
+														session.id
+													)}
 													session={session}
 													selected={
 														selectedSession?.connectionId === connectionId &&
+														selectedSession.profileId === session.profileId &&
 														selectedSession.sessionId === session.id
 													}
 													linkedBranch={links?.branches[0] ?? null}
 													actionPending={setSessionArchived.isPending || deleteSession.isPending}
 													onSelect={() =>
-														connectionId && selectSession({ connectionId, sessionId: session.id })
+														connectionId &&
+														selectSession({
+															connectionId,
+															profileId: session.profileId,
+															sessionId: session.id,
+														})
 													}
-													onSetArchived={(archived) => mutateSessionArchive(session, archived)}
+													onSetArchived={(_profileId, _sessionId, archived) =>
+														mutateSessionArchive(session, archived)
+													}
 													onDelete={() => mutateSessionDelete(session)}
+													deleteDisabledReason={PERMANENT_DELETE_DISABLED_REASON}
 												/>
 											);
 										})}

@@ -199,6 +199,7 @@ describe("Agents overflow popovers", () => {
 					selected={false}
 					linkedBranch="feat/release"
 					actionPending={false}
+					deleteDisabledReason={null}
 					onSelect={onSelect}
 					onSetArchived={onSetArchived}
 					onDelete={onDelete}
@@ -225,7 +226,7 @@ describe("Agents overflow popovers", () => {
 		);
 		if (!archive) throw new Error("Missing Archive action");
 		await act(async () => click(archive));
-		expect(onSetArchived).toHaveBeenCalledWith(true);
+		expect(onSetArchived).toHaveBeenCalledWith("work", "session-important", true);
 		expect(onSelect).not.toHaveBeenCalled();
 
 		await act(async () => click(trigger));
@@ -257,6 +258,44 @@ describe("Agents overflow popovers", () => {
 		expect(onSelect).toHaveBeenCalledTimes(1);
 	});
 
+	test("permanent deletion stays disabled with the non-atomic backend reason", async () => {
+		const reason =
+			"Permanent delete is unavailable because stock Hermes cannot atomically verify that a session stayed idle. Archive is the safe cleanup option.";
+		const onDelete = mock(() => undefined);
+		const container = document.createElement("div");
+		document.body.append(container);
+		const root = createRoot(container);
+		mountedRoot = root;
+		await act(async () =>
+			root.render(
+				<HermesSessionRow
+					session={sessionRowFixture}
+					selected
+					linkedBranch={null}
+					actionPending={false}
+					deleteDisabledReason={reason}
+					onSelect={() => undefined}
+					onSetArchived={() => undefined}
+					onDelete={onDelete}
+				/>
+			)
+		);
+		const trigger = document.querySelector<HTMLButtonElement>(
+			'button[aria-label="Actions for Important session"]'
+		);
+		if (!trigger) throw new Error("Missing session actions trigger");
+		await act(async () => click(trigger));
+		const panel = document.querySelector<HTMLDialogElement>("dialog");
+		const deleteButton = Array.from(panel?.querySelectorAll("button") ?? []).find(
+			(button) => button.textContent === "Delete permanently…"
+		);
+		if (!deleteButton) throw new Error("Missing disabled deletion action");
+		expect(deleteButton.disabled).toBe(true);
+		expect(deleteButton.title).toBe(reason);
+		expect(panel?.textContent).toContain("Archive is the safe cleanup option");
+		expect(onDelete).not.toHaveBeenCalled();
+	});
+
 	test("selected and archived session rows expose the trigger and explicit Unarchive action", async () => {
 		const html = renderToStaticMarkup(
 			<HermesSessionRow
@@ -264,6 +303,7 @@ describe("Agents overflow popovers", () => {
 				selected
 				linkedBranch={null}
 				actionPending={false}
+				deleteDisabledReason={null}
 				onSelect={() => undefined}
 				onSetArchived={() => undefined}
 				onDelete={() => undefined}
@@ -285,6 +325,7 @@ describe("Agents overflow popovers", () => {
 					selected
 					linkedBranch={null}
 					actionPending={false}
+					deleteDisabledReason={null}
 					onSelect={() => undefined}
 					onSetArchived={() => undefined}
 					onDelete={() => undefined}

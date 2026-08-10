@@ -4,7 +4,7 @@ import type { HermesSessionSummary } from "../../shared/hermes";
 import { getDb } from "../db";
 import { hermesSessionAdmissions } from "../db/schema";
 
-export type HermesSessionAdmissionReason = "mcp" | "handover";
+export type HermesSessionAdmissionReason = "agents" | "mcp" | "handover";
 
 export type HermesSessionAdmissionResult =
 	| {
@@ -105,9 +105,6 @@ export function filterManagedHermesSessionCatalog(input: {
 
 	return input.sessions.flatMap((session): HermesSessionSummary[] => {
 		if (session.isCron || session.source === "cron") return [];
-		if (session.source === "superiorswarm") {
-			return [{ ...session, handover: false, admissionReason: null }];
-		}
 		const admission = admittedBySession.get(`${session.profileId}\0${session.id}`);
 		if (!admission) return [];
 		return [

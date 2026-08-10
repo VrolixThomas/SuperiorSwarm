@@ -21,6 +21,7 @@ import { publicProcedure, router } from "../index";
 
 const connectionSessionInput = z.object({
 	connectionId: z.string().min(1),
+	profileId: z.string().trim().min(1).max(120).optional(),
 	hermesSessionId: z.string().min(1),
 });
 
@@ -35,6 +36,7 @@ export const hermesCreateInputSchema = z
 export const hermesSetSessionArchivedInputSchema = z
 	.object({
 		connectionId: z.string().min(1),
+		profileId: z.string().trim().min(1).max(120),
 		hermesSessionId: z.string().min(1),
 		archived: z.boolean(),
 	})
@@ -43,6 +45,7 @@ export const hermesSetSessionArchivedInputSchema = z
 export const hermesDeleteSessionInputSchema = z
 	.object({
 		connectionId: z.string().min(1),
+		profileId: z.string().trim().min(1).max(120),
 		hermesSessionId: z.string().min(1),
 		confirmed: z.literal(true),
 	})
@@ -132,6 +135,7 @@ export const hermesRouter = router({
 		.mutation(({ input }) =>
 			hermesRuntimeService.setSessionArchived(
 				input.connectionId,
+				input.profileId,
 				input.hermesSessionId,
 				input.archived
 			)
@@ -140,7 +144,12 @@ export const hermesRouter = router({
 	deleteSession: publicProcedure
 		.input(hermesDeleteSessionInputSchema)
 		.mutation(({ input }) =>
-			hermesRuntimeService.deleteSession(input.connectionId, input.hermesSessionId, input.confirmed)
+			hermesRuntimeService.deleteSession(
+				input.connectionId,
+				input.profileId,
+				input.hermesSessionId,
+				input.confirmed
+			)
 		),
 
 	create: publicProcedure.input(hermesCreateInputSchema).mutation(({ input }) =>
@@ -151,7 +160,11 @@ export const hermesRouter = router({
 	),
 
 	resume: publicProcedure.input(connectionSessionInput).mutation(async ({ input }) => {
-		const resumed = await hermesRuntimeService.resume(input.connectionId, input.hermesSessionId);
+		const resumed = await hermesRuntimeService.resume(
+			input.connectionId,
+			input.hermesSessionId,
+			input.profileId
+		);
 		return {
 			durableSessionId: resumed.durableSessionId,
 			runtimeSessionId: resumed.runtimeSessionId,
@@ -162,7 +175,9 @@ export const hermesRouter = router({
 
 	history: publicProcedure
 		.input(connectionSessionInput)
-		.query(({ input }) => hermesRuntimeService.history(input.connectionId, input.hermesSessionId)),
+		.query(({ input }) =>
+			hermesRuntimeService.history(input.connectionId, input.hermesSessionId, input.profileId)
+		),
 
 	pickAttachments: publicProcedure.mutation(async () => {
 		const selected = await dialog.showOpenDialog({
@@ -206,14 +221,15 @@ export const hermesRouter = router({
 				input.connectionId,
 				input.hermesSessionId,
 				input.text.trim(),
-				input.attachmentHandles
+				input.attachmentHandles,
+				input.profileId
 			)
 		),
 
 	interrupt: publicProcedure
 		.input(connectionSessionInput)
 		.mutation(({ input }) =>
-			hermesRuntimeService.interrupt(input.connectionId, input.hermesSessionId)
+			hermesRuntimeService.interrupt(input.connectionId, input.hermesSessionId, input.profileId)
 		),
 
 	respondApproval: publicProcedure
@@ -240,11 +256,17 @@ export const hermesRouter = router({
 
 	origin: publicProcedure
 		.input(connectionSessionInput)
-		.query(({ input }) => hermesRuntimeService.origin(input.connectionId, input.hermesSessionId)),
+		.query(({ input }) =>
+			hermesRuntimeService.origin(input.connectionId, input.hermesSessionId, input.profileId)
+		),
 
 	openOrigin: publicProcedure.input(connectionSessionInput).mutation(async ({ input }) => {
 		const openUrl = validateHermesOriginOpenUrl(
-			await hermesRuntimeService.originOpenUrl(input.connectionId, input.hermesSessionId)
+			await hermesRuntimeService.originOpenUrl(
+				input.connectionId,
+				input.hermesSessionId,
+				input.profileId
+			)
 		);
 		if (!openUrl) throw new Error("This Hermes origin link is not trusted");
 		await shell.openExternal(openUrl);
@@ -258,7 +280,12 @@ export const hermesRouter = router({
 			})
 		)
 		.mutation(({ input }) =>
-			hermesRuntimeService.saveOriginLink(input.connectionId, input.hermesSessionId, input.openUrl)
+			hermesRuntimeService.saveOriginLink(
+				input.connectionId,
+				input.hermesSessionId,
+				input.openUrl,
+				input.profileId
+			)
 		),
 
 	reportToOrigin: publicProcedure
@@ -276,7 +303,7 @@ export const hermesRouter = router({
 		.input(connectionSessionInput)
 		.query(({ input }) =>
 			hermesRuntimeService
-				.reports(input.connectionId, input.hermesSessionId)
+				.reports(input.connectionId, input.hermesSessionId, input.profileId)
 				.map(rendererOriginReportState)
 		),
 

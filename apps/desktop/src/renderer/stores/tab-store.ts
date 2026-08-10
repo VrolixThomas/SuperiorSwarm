@@ -154,12 +154,50 @@ export function deserializeHermesSessionSelection(
 			typeof parsed.sessionId === "string" &&
 			parsed.sessionId.length > 0
 		) {
-			return { connectionId: parsed.connectionId, sessionId: parsed.sessionId };
+			const profileId =
+				"profileId" in parsed && typeof parsed.profileId === "string" && parsed.profileId.length > 0
+					? parsed.profileId
+					: undefined;
+			return {
+				connectionId: parsed.connectionId,
+				...(profileId ? { profileId } : {}),
+				sessionId: parsed.sessionId,
+			};
 		}
 	} catch {
 		// Invalid and session-only legacy state cannot be restored unambiguously.
 	}
 	return null;
+}
+
+export function normalizeHermesSessionSelection(
+	selection: HermesSessionSelection,
+	sessions: ReadonlyArray<{ id: string; profileId: string }>
+): HermesSessionSelection | null {
+	const matches = sessions.filter(
+		(session) =>
+			session.id === selection.sessionId &&
+			(selection.profileId === undefined || session.profileId === selection.profileId)
+	);
+	if (matches.length !== 1) return null;
+	return {
+		connectionId: selection.connectionId,
+		profileId: matches[0]?.profileId ?? "",
+		sessionId: selection.sessionId,
+	};
+}
+
+function hermesSelectionsEqual(
+	a: HermesSessionSelection | null,
+	b: HermesSessionSelection | null
+): boolean {
+	return (
+		a !== null &&
+		b !== null &&
+		a.connectionId === b.connectionId &&
+		a.profileId === b.profileId &&
+		a.sessionId === b.sessionId
+	);
 }
 
 export function deserializeHermesSessionPane(value: string | undefined): HermesSessionPane {
@@ -208,8 +246,7 @@ function pushWorkspaceHistoryEntry(
 			workspaceHistoryEntriesEqual(last, entry)) ||
 			(last.kind === "hermes-session" &&
 				entry.kind === "hermes-session" &&
-				last.connectionId === entry.connectionId &&
-				last.sessionId === entry.sessionId &&
+				hermesSelectionsEqual(last, entry) &&
 				last.pane === entry.pane))
 	) {
 		return stack;
@@ -229,10 +266,7 @@ function removeHermesSessionFromHistory(
 	selection: HermesSessionSelection
 ): NavigationHistoryEntry[] {
 	return stack.filter(
-		(entry) =>
-			entry.kind !== "hermes-session" ||
-			entry.connectionId !== selection.connectionId ||
-			entry.sessionId !== selection.sessionId
+		(entry) => entry.kind !== "hermes-session" || !hermesSelectionsEqual(entry, selection)
 	);
 }
 
@@ -729,9 +763,7 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 		set((state) => ({
 			selectedHermesSession: selection,
 			hermesSessionPane:
-				selection &&
-				state.selectedHermesSession?.connectionId === selection.connectionId &&
-				state.selectedHermesSession.sessionId === selection.sessionId
+				selection && hermesSelectionsEqual(state.selectedHermesSession, selection)
 					? state.hermesSessionPane
 					: "chat",
 		}));
@@ -739,9 +771,7 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 
 	forgetHermesSession: (selection) => {
 		set((state) => {
-			const selectedMatches =
-				state.selectedHermesSession?.connectionId === selection.connectionId &&
-				state.selectedHermesSession.sessionId === selection.sessionId;
+			const selectedMatches = hermesSelectionsEqual(state.selectedHermesSession, selection);
 			return {
 				selectedHermesSession: selectedMatches ? null : state.selectedHermesSession,
 				hermesSessionPane: selectedMatches ? "chat" : state.hermesSessionPane,
@@ -915,6 +945,7 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 				sidebarSegment: "hermes",
 				selectedHermesSession: {
 					connectionId: target.connectionId,
+					...(target.profileId ? { profileId: target.profileId } : {}),
 					sessionId: target.sessionId,
 				},
 				hermesSessionPane: target.pane,
@@ -959,6 +990,7 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 				sidebarSegment: "hermes",
 				selectedHermesSession: {
 					connectionId: target.connectionId,
+					...(target.profileId ? { profileId: target.profileId } : {}),
 					sessionId: target.sessionId,
 				},
 				hermesSessionPane: target.pane,

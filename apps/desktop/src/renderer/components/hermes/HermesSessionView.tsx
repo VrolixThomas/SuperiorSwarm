@@ -7,6 +7,7 @@ import {
 	useRef,
 	useState,
 } from "react";
+import { hermesSessionCompositeIdentityKey } from "../../../shared/hermes";
 import {
 	type HermesSelectionGeneration,
 	HermesSelectionGuard,
@@ -37,7 +38,7 @@ import {
 	reduceHermesComposerAttachments,
 	settleHermesOptimisticUserTurn,
 } from "../../hermes/hermes-view-model";
-import { resolveAvailableHermesSelection, useTabStore } from "../../stores/tab-store";
+import { normalizeHermesSessionSelection, useTabStore } from "../../stores/tab-store";
 import { trpc } from "../../trpc/client";
 import { HermesComposerAttachments } from "./HermesComposerAttachments";
 import { HermesApprovalCard, HermesClarificationChoices } from "./HermesInteractionCards";
@@ -62,6 +63,7 @@ function scrollToLatest(element: HTMLDivElement, smooth: boolean): void {
 export function HermesSessionView() {
 	const selection = useTabStore((state) => state.selectedHermesSession);
 	const sessionId = selection?.sessionId ?? null;
+	const profileId = selection?.profileId ?? null;
 	const connectionId = selection?.connectionId ?? "";
 	const openWorkspaceFromHermes = useTabStore((state) => state.openWorkspaceFromHermes);
 	const activePane = useTabStore((state) => state.hermesSessionPane);
@@ -114,7 +116,11 @@ export function HermesSessionView() {
 	const releaseAttachment = trpc.hermes.releaseAttachment.useMutation();
 	const releaseAttachmentRef = useRef(releaseAttachment.mutate);
 	releaseAttachmentRef.current = releaseAttachment.mutate;
-	const selectionKey = `${connectionId}:${sessionId ?? ""}`;
+	const selectionKey = hermesSessionCompositeIdentityKey(
+		connectionId,
+		profileId ?? "",
+		sessionId ?? ""
+	);
 	const previousSelectionKey = useRef(selectionKey);
 	const selectionGuardRef = useRef<HermesSelectionGuard | null>(null);
 	if (!selectionGuardRef.current) selectionGuardRef.current = new HermesSelectionGuard();
@@ -139,7 +145,10 @@ export function HermesSessionView() {
 		{ connectionId },
 		{ enabled: Boolean(connectionId) && connected }
 	);
-	const session = catalog.data?.sessions.find((candidate) => candidate.id === sessionId);
+	const session = catalog.data?.sessions.find(
+		(candidate) =>
+			candidate.id === sessionId && (profileId === null || candidate.profileId === profileId)
+	);
 
 	useEffect(() => {
 		selectionGuard.activate();
@@ -157,14 +166,23 @@ export function HermesSessionView() {
 
 	useEffect(() => {
 		if (!selection) return;
-		const available = resolveAvailableHermesSelection(
-			selection,
-			connections.data?.map((candidate) => candidate.id),
-			catalog.data?.sessions.map((candidate) => candidate.id)
-		);
-		if (available) return;
-		useTabStore.getState().selectHermesSession(null);
-	}, [catalog.data?.sessions, connections.data, selection]);
+		if (
+			connections.data &&
+			!connections.data.some((candidate) => candidate.id === selection.connectionId)
+		) {
+			useTabStore.getState().selectHermesSession(null);
+			return;
+		}
+		if (!catalog.data) return;
+		const normalized = normalizeHermesSessionSelection(selection, catalog.data.sessions);
+		if (!normalized) {
+			useTabStore.getState().selectHermesSession(null);
+			return;
+		}
+		if (normalized.profileId !== selection.profileId) {
+			useTabStore.getState().selectHermesSession(normalized);
+		}
+	}, [catalog.data, connections.data, selection]);
 
 	useEffect(() => {
 		if (previousSelectionKey.current === selectionKey) return;
@@ -192,7 +210,7 @@ export function HermesSessionView() {
 	}, [selectionKey]);
 
 	useEffect(() => {
-		if (!connectionId || !sessionId || !connected) {
+		if (!connectionId || !profileId || !sessionId || !connected) {
 			if (!connected) {
 				resumeAttemptKey.current = null;
 				setEventStreamSelectionKey(null);
@@ -203,7 +221,7 @@ export function HermesSessionView() {
 		resumeAttemptKey.current = selectionKey;
 		const generation = selectionGeneration;
 		resume.mutate(
-			{ connectionId, hermesSessionId: sessionId },
+			{ connectionId, profileId, hermesSessionId: sessionId },
 			{
 				onSuccess: ({ activeTurnSnapshot }) => {
 					runForSelection(generation, () => {
@@ -220,12 +238,12 @@ export function HermesSessionView() {
 				},
 			}
 		);
-	}, [connected, connectionId, resume, selectionGeneration, selectionKey, sessionId]);
+	}, [connected, connectionId, profileId, resume, selectionGeneration, selectionKey, sessionId]);
 
 	const history = trpc.hermes.history.useQuery(
-		{ connectionId, hermesSessionId: sessionId ?? "" },
+		{ connectionId, profileId: profileId ?? undefined, hermesSessionId: sessionId ?? "" },
 		{
-			enabled: Boolean(connectionId && sessionId && connected),
+			enabled: Boolean(connectionId && profileId && sessionId && connected),
 			staleTime: 1_000,
 		}
 	);
@@ -278,7 +296,11 @@ export function HermesSessionView() {
 		});
 		setCursor(feed.nextSeq);
 		if (refreshHistory) {
-			void utils.hermes.history.invalidate({ connectionId, hermesSessionId: sessionId });
+			void utils.hermes.history.invalidate({
+				connectionId,
+				profileId: profileId ?? undefined,
+				hermesSessionId: sessionId,
+			});
 			void utils.hermes.catalog.invalidate({ connectionId });
 			void utils.hermes.workspaceLinks.invalidate();
 		}
@@ -286,6 +308,7 @@ export function HermesSessionView() {
 		canonicalMessages,
 		connectionId,
 		eventFeed.data,
+		profileId,
 		selectionGeneration,
 		selectionGuard,
 		sessionId,
@@ -293,7 +316,7 @@ export function HermesSessionView() {
 	]);
 
 	const links = trpc.hermes.workspaceLinks.useQuery(
-		{ connectionId, hermesSessionId: workspaceSessionId },
+		{ connectionId, profileId: profileId ?? undefined, hermesSessionId: workspaceSessionId },
 		{ enabled: Boolean(connectionId && sessionId), refetchInterval: 2_000 }
 	);
 	const availableWorkspaces = trpc.hermes.availableWorkspaces.useQuery();
@@ -303,15 +326,15 @@ export function HermesSessionView() {
 
 	const isSlackSession = session?.source.toLowerCase() === "slack";
 	const origin = trpc.hermes.origin.useQuery(
-		{ connectionId, hermesSessionId: sessionId ?? "" },
-		{ enabled: Boolean(connectionId && sessionId && connected) }
+		{ connectionId, profileId: profileId ?? undefined, hermesSessionId: sessionId ?? "" },
+		{ enabled: Boolean(connectionId && profileId && sessionId && connected) }
 	);
 	const openOrigin = trpc.hermes.openOrigin.useMutation();
 	const saveOriginLink = trpc.hermes.saveOriginLink.useMutation();
 	const originActions = hermesOriginActionAvailability(origin.data);
 	const reports = trpc.hermes.reports.useQuery(
-		{ connectionId, hermesSessionId: sessionId ?? "" },
-		{ enabled: Boolean(connectionId && sessionId && isSlackSession && connected) }
+		{ connectionId, profileId: profileId ?? undefined, hermesSessionId: sessionId ?? "" },
+		{ enabled: Boolean(connectionId && profileId && sessionId && isSlackSession && connected) }
 	);
 	const report = trpc.hermes.reportToOrigin.useMutation();
 	const transcriptItems = useMemo(
@@ -374,6 +397,7 @@ export function HermesSessionView() {
 		if (
 			(!composer.trim() && attachments.length === 0) ||
 			!sessionId ||
+			!profileId ||
 			!connected ||
 			composerPolicy.sendDisabled
 		) {
@@ -391,6 +415,7 @@ export function HermesSessionView() {
 		submit.mutate(
 			{
 				connectionId,
+				profileId: profileId ?? undefined,
 				hermesSessionId: sessionId,
 				text: composer.trim(),
 				attachmentHandles: attachments.map((attachment) => attachment.handle),
@@ -555,7 +580,13 @@ export function HermesSessionView() {
 									<button
 										type="button"
 										data-popover-close
-										onClick={() => openOrigin.mutate({ connectionId, hermesSessionId: sessionId })}
+										onClick={() =>
+											openOrigin.mutate({
+												connectionId,
+												profileId: profileId ?? undefined,
+												hermesSessionId: sessionId,
+											})
+										}
 										className="rounded-[6px] border border-[var(--border)] px-2 py-1 text-[10px] text-[var(--text-secondary)] hover:bg-[var(--bg-overlay)]"
 									>
 										{originReturnLabel}
@@ -568,6 +599,7 @@ export function HermesSessionView() {
 											saveOriginLink.mutate(
 												{
 													connectionId,
+													profileId: profileId ?? undefined,
 													hermesSessionId: sessionId,
 													openUrl: manualOriginUrl.trim(),
 												},
@@ -576,6 +608,7 @@ export function HermesSessionView() {
 														setManualOriginUrl("");
 														void utils.hermes.origin.invalidate({
 															connectionId,
+															profileId: profileId ?? undefined,
 															hermesSessionId: sessionId,
 														});
 													},
@@ -628,6 +661,7 @@ export function HermesSessionView() {
 													report.mutate(
 														{
 															connectionId,
+															profileId: profileId ?? undefined,
 															hermesSessionId: sessionId,
 															messageId: reportable.id,
 															explicitRetry: hermesReportRequiresExplicitRetry(reportState),
@@ -764,6 +798,7 @@ export function HermesSessionView() {
 								approval.mutate(
 									{
 										connectionId,
+										profileId: profileId ?? undefined,
 										hermesSessionId: sessionId,
 										requestId: live.pendingApproval?.requestId ?? "",
 										choice,
@@ -788,6 +823,7 @@ export function HermesSessionView() {
 								clarify.mutate(
 									{
 										connectionId,
+										profileId: profileId ?? undefined,
 										hermesSessionId: sessionId,
 										requestId: live.pendingClarification?.requestId ?? "",
 										answer: clarification,
@@ -818,6 +854,7 @@ export function HermesSessionView() {
 									clarify.mutate(
 										{
 											connectionId,
+											profileId: profileId ?? undefined,
 											hermesSessionId: sessionId,
 											requestId: live.pendingClarification?.requestId ?? "",
 											answer,
@@ -934,7 +971,12 @@ export function HermesSessionView() {
 								type={live.running ? "button" : "submit"}
 								onClick={
 									live.running
-										? () => interrupt.mutate({ connectionId, hermesSessionId: sessionId })
+										? () =>
+												interrupt.mutate({
+													connectionId,
+													profileId: profileId ?? undefined,
+													hermesSessionId: sessionId,
+												})
 										: undefined
 								}
 								disabled={live.running ? interrupt.isPending : composerPolicy.sendDisabled}
@@ -989,7 +1031,7 @@ export function HermesSessionView() {
 				onOpen={(link) => {
 					openHermesLinkedWorktree(
 						link,
-						{ connectionId, sessionId },
+						{ connectionId, profileId: profileId ?? undefined, sessionId },
 						{
 							openWorkspaceFromHermes,
 							getTabsByWorkspace: (workspaceId) =>
@@ -1008,6 +1050,7 @@ export function HermesSessionView() {
 					linkWorkspace.mutate(
 						{
 							connectionId,
+							profileId: profileId ?? undefined,
 							hermesSessionId: workspaceSessionId,
 							workspaceId: recoveryWorktreeId,
 							lineageRootId: null,
@@ -1028,6 +1071,7 @@ export function HermesSessionView() {
 					unlinkWorkspace.mutate(
 						{
 							connectionId,
+							profileId: profileId ?? undefined,
 							hermesSessionId: workspaceSessionId,
 							workspaceId: link.workspaceId,
 						},

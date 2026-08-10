@@ -211,3 +211,23 @@ export function listHermesOriginReports(
 		.all()
 		.map((row) => toState(row));
 }
+
+export function deleteHermesOriginReports(
+	connectionId: string,
+	profileId: string,
+	hermesSessionId: string
+): void {
+	const db = getDb();
+	const predicate = and(
+		eq(hermesOriginReports.connectionId, connectionId),
+		eq(hermesOriginReports.profileId, profileId),
+		eq(hermesOriginReports.hermesSessionId, hermesSessionId)
+	);
+	const rows = db
+		.select({ id: hermesOriginReports.id })
+		.from(hermesOriginReports)
+		.where(predicate)
+		.all();
+	db.delete(hermesOriginReports).where(predicate).run();
+	for (const row of rows) activeReportAttempts.delete(row.id);
+}

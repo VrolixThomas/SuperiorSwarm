@@ -16,6 +16,7 @@ import type { SessionSaveData } from "../src/shared/types";
 
 const selection = {
 	connectionId: "connection-task-first",
+	profileId: "work",
 	sessionId: "session-task-first",
 };
 

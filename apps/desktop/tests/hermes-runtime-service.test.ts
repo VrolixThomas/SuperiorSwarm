@@ -18,6 +18,10 @@ import {
 	type HermesLocalBackendRuntime,
 } from "../src/main/hermes/hermes-local-backend-manager";
 import { saveHermesOriginLink } from "../src/main/hermes/hermes-origin-links";
+import {
+	listHermesOriginReports,
+	prepareHermesOriginReport,
+} from "../src/main/hermes/hermes-origin-reports";
 import type { HermesStockSessionDetail } from "../src/main/hermes/hermes-rest-client";
 import type { HermesRuntimeConnectionSettings } from "../src/main/hermes/hermes-runtime-client";
 import type { HermesRestClientLike } from "../src/main/hermes/hermes-runtime-service";
@@ -172,11 +176,18 @@ class FakeRestClient implements HermesRestClientLike {
 	transcriptCalls: Array<{ durableSessionId: string; profileId: string }> = [];
 	archiveCalls: Array<{ durableSessionId: string; profileId: string; archived: boolean }> = [];
 	deleteCalls: Array<{ durableSessionId: string; profileId: string }> = [];
+	failCatalogRefreshAfterDelete = false;
+	private nextListError: Error | null = null;
 
 	constructor(private readonly operations: string[] = []) {}
 
 	listSessions(): Promise<HermesSessionSummary[]> {
 		this.listCalls++;
+		if (this.nextListError) {
+			const error = this.nextListError;
+			this.nextListError = null;
+			return Promise.reject(error);
+		}
 		return Promise.resolve(this.sessions);
 	}
 
@@ -211,6 +222,9 @@ class FakeRestClient implements HermesRestClientLike {
 		this.sessions = this.sessions.filter(
 			(item) => item.id !== durableSessionId || item.profileId !== profileId
 		);
+		if (this.failCatalogRefreshAfterDelete) {
+			this.nextListError = new Error("catalog refresh unavailable");
+		}
 		return Promise.resolve();
 	}
 }
@@ -294,6 +308,7 @@ function historyMessage(
 }
 
 describe("HermesRuntimeService stock lifecycle", () => {
+	const defaultManagerId = "runtime-test-manager";
 	const temporaryDirectories: string[] = [];
 	let client: FakeRuntimeClient;
 	let rest: FakeRestClient;
@@ -304,8 +319,39 @@ describe("HermesRuntimeService stock lifecycle", () => {
 	let operations: string[];
 	let vault: HermesTokenVault;
 
+	function admitAgentSession(durableSessionId: string, profileId = "work"): void {
+		admitHermesSession({
+			managerId: defaultManagerId,
+			metadata: {
+				schemaVersion: 1,
+				durableSessionId,
+				profileId,
+				sourcePlatform: "superiorswarm",
+				isCron: false,
+			},
+			reason: "agents",
+		});
+	}
+
 	beforeEach(() => {
 		_setDbForTesting(makeTestDb());
+		const now = new Date();
+		getDb()
+			.insert(schema.crossRepoOrchestrators)
+			.values({
+				id: defaultManagerId,
+				name: "Runtime test manager",
+				workDir: "/tmp/runtime-test-manager",
+				agentKind: "external",
+				status: "idle",
+				sortOrder: 0,
+				kind: "external",
+				tokenHash: "e".repeat(64),
+				accessScope: "all",
+				createdAt: now,
+				updatedAt: now,
+			})
+			.run();
 		operations = [];
 		client = new FakeRuntimeClient(operations);
 		rest = new FakeRestClient(operations);
@@ -333,6 +379,7 @@ describe("HermesRuntimeService stock lifecycle", () => {
 			sendService: sender,
 			tokenVault: vault,
 			loopbackTokenResolver: async () => "secret",
+			externalManagerIdResolver: () => defaultManagerId,
 		});
 	});
 
@@ -370,11 +417,68 @@ describe("HermesRuntimeService stock lifecycle", () => {
 		expect(rest.listCalls).toBe(1);
 	});
 
+	test("persists Agents-created admission under the connection's resolved manager", async () => {
+		const now = new Date();
+		getDb()
+			.insert(schema.crossRepoOrchestrators)
+			.values({
+				id: "agents-owner",
+				name: "Agents owner",
+				workDir: "/tmp/agents-owner",
+				agentKind: "external",
+				status: "idle",
+				sortOrder: 0,
+				kind: "external",
+				tokenHash: "d".repeat(64),
+				accessScope: "all",
+				createdAt: now,
+				updatedAt: now,
+			})
+			.run();
+		saveHermesConnection(
+			{
+				id: connectionId,
+				label: "Local stock Hermes",
+				baseUrl: "http://127.0.0.1:9119",
+				profileId: "work",
+				managerId: "agents-owner",
+			},
+			vault
+		);
+		rest.sessions = [];
+		client.responses.set("session.create", [
+			{
+				session_id: "runtime-created",
+				stored_session_id: "durable-created",
+				profile: "work",
+			},
+		]);
+		client.responses.set("prompt.submit", [{ status: "streaming" }]);
+		await service.connect(connectionId);
+
+		await service.create(connectionId, { initialPrompt: "Own this session", profileId: "work" });
+
+		expect(listHermesSessionAdmissions("agents-owner")).toEqual([
+			expect.objectContaining({
+				profileId: "work",
+				durableSessionId: "durable-created",
+				reason: "agents",
+				sourcePlatform: "superiorswarm",
+			}),
+		]);
+	});
+
 	test("archives and unarchives only through Hermes, then reconciles the canonical catalog", async () => {
+		admitAgentSession("managed-session");
 		rest.sessions = [{ ...session("managed-session"), source: "superiorswarm", origin: null }];
 		await service.connect(connectionId);
 
-		const archived = await service.setSessionArchived(connectionId, "managed-session", true);
+		const archived = await service.setSessionArchived(
+			connectionId,
+			"work",
+			"managed-session",
+			true
+		);
 		expect(rest.archiveCalls).toEqual([
 			{ durableSessionId: "managed-session", profileId: "work", archived: true },
 		]);
@@ -382,7 +486,7 @@ describe("HermesRuntimeService stock lifecycle", () => {
 			expect.objectContaining({ id: "managed-session", archived: true }),
 		]);
 
-		const open = await service.setSessionArchived(connectionId, "managed-session", false);
+		const open = await service.setSessionArchived(connectionId, "work", "managed-session", false);
 		expect(rest.archiveCalls.at(-1)).toEqual({
 			durableSessionId: "managed-session",
 			profileId: "work",
@@ -391,10 +495,151 @@ describe("HermesRuntimeService stock lifecycle", () => {
 		expect(open.sessions).toEqual([
 			expect.objectContaining({ id: "managed-session", archived: false }),
 		]);
-		expect(rest.listCalls).toBe(3);
+		expect(rest.listCalls).toBe(5);
+	});
+
+	test("uses profile plus durable ID for mutations when profiles collide", async () => {
+		admitAgentSession("same-session", "work");
+		admitAgentSession("same-session", "personal");
+		rest.sessions = [
+			{ ...session("same-session"), profileId: "work", source: "superiorswarm", origin: null },
+			{
+				...session("same-session"),
+				profileId: "personal",
+				source: "superiorswarm",
+				origin: null,
+			},
+		];
+		await service.connect(connectionId);
+
+		const catalog = await service.setSessionArchived(
+			connectionId,
+			"personal",
+			"same-session",
+			true
+		);
+
+		expect(rest.archiveCalls).toEqual([
+			{ durableSessionId: "same-session", profileId: "personal", archived: true },
+		]);
+		expect(catalog.sessions).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({ id: "same-session", profileId: "work", archived: false }),
+				expect.objectContaining({ id: "same-session", profileId: "personal", archived: true }),
+			])
+		);
+	});
+
+	test("deletion cleanup preserves the colliding profile's runtime maps", async () => {
+		admitAgentSession("same-session", "work");
+		admitAgentSession("same-session", "personal");
+		rest.sessions = [
+			{ ...session("same-session"), profileId: "work", source: "superiorswarm", origin: null },
+			{
+				...session("same-session"),
+				profileId: "personal",
+				source: "superiorswarm",
+				origin: null,
+			},
+		];
+		client.responses.set("session.resume", [
+			{
+				session_id: "runtime-work",
+				session_key: "same-session",
+				profile: "work",
+				running: false,
+				status: "complete",
+			},
+			{
+				session_id: "runtime-personal",
+				session_key: "same-session",
+				profile: "personal",
+				running: false,
+				status: "complete",
+			},
+			{
+				session_id: "runtime-work-fresh",
+				session_key: "same-session",
+				profile: "work",
+				running: false,
+				status: "complete",
+			},
+		]);
+		await service.connect(connectionId);
+		await service.resume(connectionId, "same-session", "work");
+		await service.resume(connectionId, "same-session", "personal");
+
+		const result = await service.deleteSession(connectionId, "work", "same-session", true);
+		await expect(service.interrupt(connectionId, "same-session", "personal")).resolves.toEqual({
+			ok: true,
+		});
+
+		expect(result.catalog?.sessions).toEqual([
+			expect.objectContaining({ id: "same-session", profileId: "personal" }),
+		]);
+		expect(client.requests.at(-1)).toEqual({
+			method: "session.interrupt",
+			params: { session_id: "runtime-personal" },
+		});
+	});
+
+	test("refreshes both canonical and runtime activity and fails closed without idle proof", async () => {
+		admitAgentSession("fresh-guard");
+		rest.sessions = [{ ...session("fresh-guard"), source: "superiorswarm", origin: null }];
+		await service.connect(connectionId);
+		rest.sessions = [
+			{
+				...session("fresh-guard"),
+				source: "superiorswarm",
+				origin: null,
+				running: true,
+				busy: true,
+			},
+		];
+
+		await expect(service.deleteSession(connectionId, "work", "fresh-guard", true)).rejects.toThrow(
+			"active turn"
+		);
+		expect(rest.listCalls).toBe(2);
+		expect(rest.deleteCalls).toEqual([]);
+
+		rest.sessions = [{ ...session("fresh-guard"), source: "superiorswarm", origin: null }];
+		await expect(service.deleteSession(connectionId, "work", "fresh-guard", true)).rejects.toThrow(
+			"could not prove that the session is idle"
+		);
+		expect(rest.deleteCalls).toEqual([]);
+	});
+
+	test("returns committed deletion when reconciliation fails and never repeats DELETE", async () => {
+		admitAgentSession("committed-delete");
+		rest.sessions = [{ ...session("committed-delete"), source: "superiorswarm", origin: null }];
+		client.responses.set("session.resume", [
+			{
+				session_id: "runtime-committed-delete",
+				session_key: "committed-delete",
+				profile: "work",
+				running: false,
+				status: "complete",
+			},
+		]);
+		await service.connect(connectionId);
+		rest.failCatalogRefreshAfterDelete = true;
+
+		const result = await service.deleteSession(connectionId, "work", "committed-delete", true);
+
+		expect(result).toEqual({
+			committed: true,
+			catalog: null,
+			reconciliationRequired: true,
+		});
+		expect(rest.deleteCalls).toEqual([{ durableSessionId: "committed-delete", profileId: "work" }]);
+		expect(await service.catalog(connectionId)).toEqual(expect.objectContaining({ sessions: [] }));
+		expect(rest.deleteCalls).toHaveLength(1);
 	});
 
 	test("blocks permanent deletion for a live turn and for unresolved interactions", async () => {
+		admitAgentSession("live-session");
+		admitAgentSession("pending-session");
 		rest.sessions = [
 			{ ...session("live-session"), source: "superiorswarm", origin: null },
 			{ ...session("pending-session"), source: "superiorswarm", origin: null },
@@ -425,12 +670,12 @@ describe("HermesRuntimeService stock lifecycle", () => {
 			text: "Allow this command?",
 		});
 
-		await expect(service.deleteSession(connectionId, "live-session", true)).rejects.toThrow(
+		await expect(service.deleteSession(connectionId, "work", "live-session", true)).rejects.toThrow(
 			"active turn"
 		);
-		await expect(service.deleteSession(connectionId, "pending-session", true)).rejects.toThrow(
-			"unresolved approval or clarification"
-		);
+		await expect(
+			service.deleteSession(connectionId, "work", "pending-session", true)
+		).rejects.toThrow("unresolved approval or clarification");
 		expect(rest.deleteCalls).toEqual([]);
 	});
 
@@ -489,6 +734,20 @@ describe("HermesRuntimeService stock lifecycle", () => {
 			originFingerprint: "slack-origin",
 			openUrl: "https://workspace.slack.com/archives/C12345/p1234567890000000",
 		});
+		for (const [profileId, hermesSessionId] of [
+			["work", "delete-me"],
+			["personal", "delete-me"],
+			["work", "keep-me"],
+		] as const) {
+			prepareHermesOriginReport({
+				connectionId,
+				profileId,
+				hermesSessionId,
+				messageId: "message-1",
+				content: `${profileId}:${hermesSessionId}`,
+				destinationFingerprint: `destination:${profileId}:${hermesSessionId}`,
+			});
+		}
 		await service.connect(connectionId);
 		client.responses.set("session.resume", [
 			{
@@ -501,13 +760,23 @@ describe("HermesRuntimeService stock lifecycle", () => {
 		]);
 		await service.resume(connectionId, "delete-me");
 
-		await expect(service.deleteSession(connectionId, "delete-me", false)).rejects.toThrow(
+		await expect(service.deleteSession(connectionId, "work", "delete-me", false)).rejects.toThrow(
 			"confirmation"
 		);
-		const catalog = await service.deleteSession(connectionId, "delete-me", true);
+		client.responses.set("session.resume", [
+			{
+				session_id: "runtime-delete-me-fresh",
+				session_key: "delete-me",
+				profile: "work",
+				running: false,
+				status: "complete",
+			},
+		]);
+		const result = await service.deleteSession(connectionId, "work", "delete-me", true);
 
 		expect(rest.deleteCalls).toEqual([{ durableSessionId: "delete-me", profileId: "work" }]);
-		expect(catalog.sessions).toEqual([]);
+		expect(result).toMatchObject({ committed: true, reconciliationRequired: false });
+		expect(result.catalog?.sessions).toEqual([]);
 		expect(listHermesWorkspaceLinks(connectionId, "delete-me")).toEqual([]);
 		expect(
 			getDb()
@@ -520,6 +789,9 @@ describe("HermesRuntimeService stock lifecycle", () => {
 		expect(listHermesSessionAdmissions("other-manager")).toEqual([
 			expect.objectContaining({ durableSessionId: "delete-me" }),
 		]);
+		expect(listHermesOriginReports(connectionId, "work", "delete-me")).toEqual([]);
+		expect(listHermesOriginReports(connectionId, "personal", "delete-me")).toHaveLength(1);
+		expect(listHermesOriginReports(connectionId, "work", "keep-me")).toHaveLength(1);
 		expect(rest.transcriptCalls).toEqual([{ durableSessionId: "delete-me", profileId: "work" }]);
 		await expect(service.interrupt(connectionId, "delete-me")).rejects.toThrow("Resume");
 	});
@@ -866,6 +1138,7 @@ describe("HermesRuntimeService stock lifecycle", () => {
 			})
 			.run();
 		for (const [durableSessionId, profileId, sourcePlatform, reason] of [
+			["local-created", "default", "superiorswarm", "agents"],
 			["mcp-telegram", "work", "telegram", "mcp"],
 			["explicit-slack", "personal", "slack", "handover"],
 		] as const) {

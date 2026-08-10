@@ -8,8 +8,9 @@ export interface HermesSessionRowProps {
 	linkedBranch: string | null;
 	actionPending: boolean;
 	onSelect: () => void;
-	onSetArchived: (archived: boolean) => void;
-	onDelete: () => void;
+	onSetArchived: (profileId: string, durableSessionId: string, archived: boolean) => void;
+	onDelete: (profileId: string, durableSessionId: string) => void;
+	deleteDisabledReason: string | null;
 	confirmDelete?: (message: string) => boolean;
 }
 
@@ -58,6 +59,7 @@ export function HermesSessionRow({
 	onSelect,
 	onSetArchived,
 	onDelete,
+	deleteDisabledReason,
 	confirmDelete,
 }: HermesSessionRowProps) {
 	const [menuOpen, setMenuOpen] = useState(false);
@@ -119,7 +121,7 @@ export function HermesSessionRow({
 						type="button"
 						data-popover-close
 						disabled={actionPending}
-						onClick={() => onSetArchived(!session.archived)}
+						onClick={() => onSetArchived(session.profileId, session.id, !session.archived)}
 						className="rounded-[6px] px-2.5 py-2 text-left text-[11px] text-[var(--text-secondary)] hover:bg-[var(--bg-overlay)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/50 disabled:opacity-40"
 					>
 						{session.archived ? "Unarchive" : "Archive"}
@@ -127,15 +129,21 @@ export function HermesSessionRow({
 					<button
 						type="button"
 						data-popover-close
-						disabled={actionPending}
+						disabled={actionPending || deleteDisabledReason !== null}
+						title={deleteDisabledReason ?? undefined}
 						onClick={() => {
 							if (!confirmHermesSessionDeletion(session.title, confirmDelete)) return;
-							onDelete();
+							onDelete(session.profileId, session.id);
 						}}
 						className="rounded-[6px] px-2.5 py-2 text-left text-[11px] text-[var(--danger)] hover:bg-[var(--bg-overlay)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--danger)]/50 disabled:opacity-40"
 					>
 						Delete permanently…
 					</button>
+					{deleteDisabledReason && (
+						<div className="max-w-56 px-2.5 py-1 text-[9px] leading-4 text-[var(--text-quaternary)]">
+							{deleteDisabledReason}
+						</div>
+					)}
 				</OverflowPopover>
 			</div>
 		</div>

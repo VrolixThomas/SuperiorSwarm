@@ -42,11 +42,13 @@ describe("Hermes task session creation contract", () => {
 		expect(
 			hermesSetSessionArchivedInputSchema.parse({
 				connectionId: "connection-1",
+				profileId: "work",
 				hermesSessionId: "session-1",
 				archived: true,
 			})
 		).toEqual({
 			connectionId: "connection-1",
+			profileId: "work",
 			hermesSessionId: "session-1",
 			archived: true,
 		});
@@ -55,13 +57,20 @@ describe("Hermes task session creation contract", () => {
 				connectionId: "connection-1",
 				hermesSessionId: "session-1",
 				archived: true,
-				profileId: "renderer-controlled",
 				token: "renderer-secret",
+			}).success
+		).toBe(false);
+		expect(
+			hermesSetSessionArchivedInputSchema.safeParse({
+				connectionId: "connection-1",
+				hermesSessionId: "session-1",
+				archived: true,
 			}).success
 		).toBe(false);
 		expect(
 			hermesDeleteSessionInputSchema.safeParse({
 				connectionId: "connection-1",
+				profileId: "work",
 				hermesSessionId: "session-1",
 				confirmed: false,
 			}).success
@@ -69,11 +78,13 @@ describe("Hermes task session creation contract", () => {
 		expect(
 			hermesDeleteSessionInputSchema.parse({
 				connectionId: "connection-1",
+				profileId: "work",
 				hermesSessionId: "session-1",
 				confirmed: true,
 			})
 		).toEqual({
 			connectionId: "connection-1",
+			profileId: "work",
 			hermesSessionId: "session-1",
 			confirmed: true,
 		});
@@ -108,6 +119,7 @@ describe("Hermes task session creation contract", () => {
 			expect(
 				await caller.setSessionArchived({
 					connectionId: "connection-main",
+					profileId: "work",
 					hermesSessionId: "session-main",
 					archived: true,
 				})
@@ -115,12 +127,13 @@ describe("Hermes task session creation contract", () => {
 			expect(
 				await caller.deleteSession({
 					connectionId: "connection-main",
+					profileId: "work",
 					hermesSessionId: "session-main",
 					confirmed: true,
 				})
 			).toBe(catalog);
-			expect(archiveCalls).toEqual([["connection-main", "session-main", true]]);
-			expect(deleteCalls).toEqual([["connection-main", "session-main", true]]);
+			expect(archiveCalls).toEqual([["connection-main", "work", "session-main", true]]);
+			expect(deleteCalls).toEqual([["connection-main", "work", "session-main", true]]);
 		} finally {
 			hermesRuntimeService.setSessionArchived = originalArchive;
 			hermesRuntimeService.deleteSession = originalDelete;

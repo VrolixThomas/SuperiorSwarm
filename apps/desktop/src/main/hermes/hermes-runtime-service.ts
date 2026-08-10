@@ -1,17 +1,18 @@
-import type {
-	HermesActiveTurnSnapshot,
-	HermesCatalog,
-	HermesOriginProjection,
-	HermesOriginReportState,
-	HermesPendingInteractionSnapshot,
-	HermesReconnectBindingMetadata,
-	HermesRuntimeEvent,
-	HermesRuntimeState,
-	HermesSessionBinding,
-	HermesSessionHistory,
-	HermesSessionSummary,
+import {
+	type HermesActiveTurnSnapshot,
+	type HermesCatalog,
+	type HermesOriginProjection,
+	type HermesOriginReportState,
+	type HermesPendingInteractionSnapshot,
+	type HermesReconnectBindingMetadata,
+	type HermesRuntimeEvent,
+	type HermesRuntimeState,
+	type HermesSessionBinding,
+	type HermesSessionHistory,
+	type HermesSessionSummary,
+	hermesSessionIdentityKey,
+	isSafeHermesFileReference,
 } from "../../shared/hermes";
-import { isSafeHermesFileReference } from "../../shared/hermes";
 import { resolveInstalledHermesManagerId } from "../services/external-managers";
 import {
 	type HermesAttachedResult,
@@ -40,6 +41,7 @@ import {
 } from "./hermes-origin-links";
 import {
 	beginHermesOriginReportAttempt,
+	deleteHermesOriginReports,
 	finishHermesOriginReport,
 	listHermesOriginReports,
 	prepareHermesOriginReport,
@@ -60,6 +62,7 @@ import {
 } from "./hermes-runtime-client";
 import { HermesSendError, HermesSendService } from "./hermes-send-service";
 import {
+	admitHermesSession,
 	deleteHermesSessionAdmission,
 	filterManagedHermesSessionCatalog,
 } from "./hermes-session-admissions";
@@ -130,7 +133,7 @@ interface ConnectionRuntime {
 	managedBaseUrl: string | null;
 	catalog: HermesCatalog;
 	bindings: Map<string, RuntimeBinding>;
-	runtimeToDurable: Map<string, string>;
+	runtimeToDurable: Map<string, { durableSessionId: string; profileId: string }>;
 	aliases: Map<string, string>;
 	events: BufferedEvent[];
 	nextSeq: number;
@@ -166,6 +169,12 @@ export interface HermesRuntimeServiceOptions {
 	externalManagerIdResolver?: (
 		connection: ReturnType<typeof listHermesConnections>[number]
 	) => string | null;
+}
+
+export interface HermesDeleteSessionResult {
+	committed: true;
+	catalog: HermesCatalog | null;
+	reconciliationRequired: boolean;
 }
 
 const MAX_BUFFERED_EVENTS = 1_000;
@@ -367,75 +376,106 @@ export class HermesRuntimeService {
 
 	async setSessionArchived(
 		connectionId: string,
+		profileId: string,
 		hermesSessionId: string,
 		archived: boolean
 	): Promise<HermesCatalog> {
 		const runtime = this.requireRuntime(connectionId);
-		const durableSessionId = this.resolveDurableId(runtime, hermesSessionId);
-		const summary = this.requireCatalogSession(runtime, durableSessionId);
+		await this.refreshCatalog(runtime);
+		const durableSessionId = this.resolveDurableId(runtime, hermesSessionId, profileId);
+		const summary = this.requireCatalogSession(runtime, profileId, durableSessionId);
 		await runtime.rest.setSessionArchived(durableSessionId, summary.profileId, archived);
 		return await this.refreshCatalog(runtime);
 	}
 
 	async deleteSession(
 		connectionId: string,
+		profileId: string,
 		hermesSessionId: string,
 		confirmed: boolean
-	): Promise<HermesCatalog> {
+	): Promise<HermesDeleteSessionResult> {
 		if (!confirmed) throw new Error("Permanent Hermes session deletion requires confirmation");
 		const runtime = this.requireRuntime(connectionId);
-		const durableSessionId = this.resolveDurableId(runtime, hermesSessionId);
-		const summary = this.requireCatalogSession(runtime, durableSessionId);
-		const binding = this.bindingFor(runtime, durableSessionId);
-		if (
-			binding?.activeTurnSnapshot.pendingApproval ||
-			binding?.activeTurnSnapshot.pendingClarification
-		) {
-			throw new Error(
-				"Resolve the Hermes session's unresolved approval or clarification before deleting it"
-			);
-		}
-		const relatedSessionIds = this.relatedSessionIds(runtime, durableSessionId);
-		const hasReservedSubmit = [...relatedSessionIds].some((sessionId) =>
-			this.submitReservations.get(connectionId)?.has(sessionId)
+		const durableSessionId = this.resolveDurableId(runtime, hermesSessionId, profileId);
+		const relatedSessionIds = this.relatedSessionIds(runtime, profileId, durableSessionId);
+		const deletionReservation = this.reserveSubmit(
+			runtime,
+			connectionId,
+			durableSessionId,
+			profileId
 		);
-		if (
-			hasReservedSubmit ||
-			binding?.activeTurn ||
-			binding?.activeTurnSnapshot.activeTurn ||
-			summary.running ||
-			summary.busy ||
-			summary.waitingForUser
-		) {
-			throw new Error("Stop the Hermes session's active turn before deleting it");
-		}
-
-		const deletionReservation = this.reserveSubmit(runtime, connectionId, durableSessionId);
 		try {
-			await runtime.rest.deleteSession(durableSessionId, summary.profileId);
-			this.cleanupDeletedSession(
-				connectionId,
-				runtime,
-				durableSessionId,
-				summary.profileId,
-				relatedSessionIds
-			);
-			return await this.refreshCatalog(runtime);
+			const existingBinding = this.bindingFor(runtime, durableSessionId, profileId);
+			if (existingBinding) this.assertLocallyIdle(existingBinding);
+			await this.refreshCatalog(runtime);
+			let summary = this.requireCatalogSession(runtime, profileId, durableSessionId);
+			if (summary.running || summary.busy || summary.waitingForUser) {
+				throw new Error("Stop the Hermes session's active turn before deleting it");
+			}
+			const binding = await this.refreshRuntimeIdleProof(runtime, profileId, durableSessionId);
+			this.assertLocallyIdle(binding);
+
+			// Stock Hermes has no atomic "delete only if idle" precondition. Refreshing both
+			// runtime activity and the REST catalog immediately before DELETE narrows, but
+			// cannot eliminate, an external activation race. The renderer therefore keeps
+			// permanent deletion disabled and directs users to archive instead.
+			await this.refreshCatalog(runtime);
+			summary = this.requireCatalogSession(runtime, profileId, durableSessionId);
+			if (summary.running || summary.busy || summary.waitingForUser) {
+				throw new Error("Stop the Hermes session's active turn before deleting it");
+			}
+			this.assertLocallyIdle(this.bindingFor(runtime, durableSessionId, profileId));
+
+			await runtime.rest.deleteSession(durableSessionId, profileId);
+			let reconciliationRequired = false;
+			try {
+				this.cleanupDeletedSession(
+					connectionId,
+					runtime,
+					durableSessionId,
+					profileId,
+					relatedSessionIds
+				);
+			} catch (error) {
+				reconciliationRequired = true;
+				this.pushRuntimeError(connectionId, error, durableSessionId);
+			}
+			let catalog: HermesCatalog | null = null;
+			try {
+				catalog = await this.refreshCatalog(runtime);
+			} catch (error) {
+				reconciliationRequired = true;
+				this.pushRuntimeError(connectionId, error, durableSessionId);
+			}
+			return { committed: true, catalog, reconciliationRequired };
 		} finally {
 			this.releaseSubmitReservation(connectionId, deletionReservation);
 		}
 	}
 
-	async origin(connectionId: string, hermesSessionId: string): Promise<HermesOriginProjection> {
+	async origin(
+		connectionId: string,
+		hermesSessionId: string,
+		requestedProfileId?: string
+	): Promise<HermesOriginProjection> {
 		const runtime = this.requireRuntime(connectionId);
 		try {
-			const resolved = await this.resolveOrigin(connectionId, runtime, hermesSessionId);
+			const resolved = await this.resolveOrigin(
+				connectionId,
+				runtime,
+				hermesSessionId,
+				requestedProfileId
+			);
 			if (resolved) return resolved.projection;
 		} catch {
 			// Origin controls are optional and must never make stock chat/history unavailable.
 		}
-		const durableSessionId = this.resolveDurableId(runtime, hermesSessionId);
-		const summary = runtime.catalog.sessions.find((session) => session.id === durableSessionId);
+		const durableSessionId = this.resolveDurableId(runtime, hermesSessionId, requestedProfileId);
+		const summary = runtime.catalog.sessions.find(
+			(session) =>
+				session.id === durableSessionId &&
+				(requestedProfileId === undefined || session.profileId === requestedProfileId)
+		);
 		return (
 			summary?.origin ?? {
 				platform: summary?.source ?? "unknown",
@@ -453,9 +493,18 @@ export class HermesRuntimeService {
 		);
 	}
 
-	async originOpenUrl(connectionId: string, hermesSessionId: string): Promise<string> {
+	async originOpenUrl(
+		connectionId: string,
+		hermesSessionId: string,
+		requestedProfileId?: string
+	): Promise<string> {
 		const runtime = this.requireRuntime(connectionId);
-		const resolved = await this.resolveOrigin(connectionId, runtime, hermesSessionId);
+		const resolved = await this.resolveOrigin(
+			connectionId,
+			runtime,
+			hermesSessionId,
+			requestedProfileId
+		);
 		if (!resolved?.projection.canOpenThread || !resolved.openUrl) {
 			throw new Error("This Hermes origin cannot be opened");
 		}
@@ -465,12 +514,19 @@ export class HermesRuntimeService {
 	async saveOriginLink(
 		connectionId: string,
 		hermesSessionId: string,
-		openUrl: string
+		openUrl: string,
+		requestedProfileId?: string
 	): Promise<HermesOriginProjection> {
 		const runtime = this.requireRuntime(connectionId);
-		const durableSessionId = this.resolveDurableId(runtime, hermesSessionId);
-		const profileId = this.profileFor(runtime, durableSessionId);
-		const base = await this.resolveOrigin(connectionId, runtime, durableSessionId, false);
+		const durableSessionId = this.resolveDurableId(runtime, hermesSessionId, requestedProfileId);
+		const profileId = requestedProfileId ?? this.profileFor(runtime, durableSessionId);
+		const base = await this.resolveOrigin(
+			connectionId,
+			runtime,
+			durableSessionId,
+			profileId,
+			false
+		);
 		if (!base || base.projection.platform !== "slack") {
 			throw new Error("Only Slack-origin sessions support a manual thread URL");
 		}
@@ -481,7 +537,13 @@ export class HermesRuntimeService {
 			originFingerprint: base.originFingerprint,
 			openUrl,
 		});
-		const resolved = await this.resolveOrigin(connectionId, runtime, durableSessionId, true);
+		const resolved = await this.resolveOrigin(
+			connectionId,
+			runtime,
+			durableSessionId,
+			profileId,
+			true
+		);
 		if (!resolved) throw new Error("The Slack origin is unavailable");
 		return resolved.projection;
 	}
@@ -489,17 +551,23 @@ export class HermesRuntimeService {
 	async reportToOrigin(input: {
 		connectionId: string;
 		hermesSessionId: string;
+		profileId?: string;
 		messageId: string;
 		explicitRetry: boolean;
 	}): Promise<HermesOriginReportState> {
 		const runtime = this.requireRuntime(input.connectionId);
-		const durableSessionId = this.resolveDurableId(runtime, input.hermesSessionId);
-		const profileId = this.profileFor(runtime, durableSessionId);
-		const resolved = await this.resolveOrigin(input.connectionId, runtime, durableSessionId);
+		const durableSessionId = this.resolveDurableId(runtime, input.hermesSessionId, input.profileId);
+		const profileId = input.profileId ?? this.profileFor(runtime, durableSessionId);
+		const resolved = await this.resolveOrigin(
+			input.connectionId,
+			runtime,
+			durableSessionId,
+			profileId
+		);
 		if (!resolved?.projection.canReport || !resolved.target) {
 			throw new Error("Slack reporting is unavailable for this session");
 		}
-		const history = await this.history(input.connectionId, durableSessionId);
+		const history = await this.history(input.connectionId, durableSessionId, profileId);
 		const message = history.messages.find(
 			(candidate) => candidate.id === input.messageId && candidate.role === "assistant"
 		);
@@ -550,49 +618,62 @@ export class HermesRuntimeService {
 		}
 	}
 
-	reports(connectionId: string, hermesSessionId: string): HermesOriginReportState[] {
+	reports(
+		connectionId: string,
+		hermesSessionId: string,
+		requestedProfileId?: string
+	): HermesOriginReportState[] {
 		const runtime = this.requireRuntime(connectionId);
-		const durableSessionId = this.resolveDurableId(runtime, hermesSessionId);
+		const durableSessionId = this.resolveDurableId(runtime, hermesSessionId, requestedProfileId);
 		return listHermesOriginReports(
 			connectionId,
-			this.profileFor(runtime, durableSessionId),
+			requestedProfileId ?? this.profileFor(runtime, durableSessionId),
 			durableSessionId
 		);
 	}
 
-	async history(connectionId: string, hermesSessionId: string): Promise<HermesSessionHistory> {
+	async history(
+		connectionId: string,
+		hermesSessionId: string,
+		requestedProfileId?: string
+	): Promise<HermesSessionHistory> {
 		const runtime = this.requireRuntime(connectionId);
-		const durableSessionId = this.resolveDurableId(runtime, hermesSessionId);
-		const draftBinding = this.bindingFor(runtime, durableSessionId);
+		const durableSessionId = this.resolveDurableId(runtime, hermesSessionId, requestedProfileId);
+		const profileId = requestedProfileId ?? this.profileFor(runtime, durableSessionId);
+		const durableKey = hermesSessionIdentityKey(profileId, durableSessionId);
+		const draftBinding = this.bindingFor(runtime, durableSessionId, profileId);
 		if (draftBinding && !draftBinding.persisted) {
 			return (
-				runtime.histories.get(durableSessionId) ?? {
+				runtime.histories.get(durableKey) ?? {
 					durableSessionId,
 					view: "active",
 					messages: [],
 				}
 			);
 		}
-		const profileId = this.profileFor(runtime, durableSessionId);
 		const cached =
-			runtime.histories.get(hermesSessionId) ?? runtime.histories.get(durableSessionId);
+			runtime.histories.get(hermesSessionIdentityKey(profileId, hermesSessionId)) ??
+			runtime.histories.get(durableKey);
 		const history = reconcileHermesHistory(
 			cached,
 			await runtime.rest.getTranscript(durableSessionId, profileId)
 		);
 		if (draftBinding) draftBinding.persisted = true;
 		if (history.durableSessionId !== durableSessionId) {
-			runtime.aliases.set(hermesSessionId, history.durableSessionId);
-			runtime.aliases.set(durableSessionId, history.durableSessionId);
+			runtime.aliases.set(
+				hermesSessionIdentityKey(profileId, hermesSessionId),
+				history.durableSessionId
+			);
+			runtime.aliases.set(durableKey, history.durableSessionId);
 			canonicalizeHermesWorkspaceLinks(
 				connectionId,
 				[hermesSessionId, durableSessionId],
 				history.durableSessionId
 			);
 		}
-		runtime.histories.set(hermesSessionId, history);
-		runtime.histories.set(durableSessionId, history);
-		runtime.histories.set(history.durableSessionId, history);
+		runtime.histories.set(hermesSessionIdentityKey(profileId, hermesSessionId), history);
+		runtime.histories.set(durableKey, history);
+		runtime.histories.set(hermesSessionIdentityKey(profileId, history.durableSessionId), history);
 		this.linkArtifacts(
 			connectionId,
 			history.durableSessionId,
@@ -607,6 +688,9 @@ export class HermesRuntimeService {
 	): Promise<HermesSessionBinding> {
 		const runtime = this.requireRuntime(connectionId);
 		const profileId = input.profileId ?? runtime.profileId;
+		if (!runtime.managerId) {
+			throw new Error("Hermes manager ownership is unavailable for this Agents session");
+		}
 		const params: Record<string, unknown> = {
 			title: sessionTitleFromTopic(input.initialPrompt),
 			source: "superiorswarm",
@@ -617,8 +701,19 @@ export class HermesRuntimeService {
 			undefined,
 			profileId
 		);
+		admitHermesSession({
+			managerId: runtime.managerId,
+			metadata: {
+				schemaVersion: 1,
+				durableSessionId: binding.durableSessionId,
+				profileId: binding.profileId,
+				sourcePlatform: "superiorswarm",
+				isCron: false,
+			},
+			reason: "agents",
+		});
 		this.installBinding(runtime, binding);
-		runtime.histories.set(binding.durableSessionId, {
+		runtime.histories.set(hermesSessionIdentityKey(binding.profileId, binding.durableSessionId), {
 			durableSessionId: binding.durableSessionId,
 			view: "active",
 			messages: [
@@ -640,7 +735,13 @@ export class HermesRuntimeService {
 				},
 			],
 		});
-		void this.submit(connectionId, binding.durableSessionId, input.initialPrompt).catch((error) => {
+		void this.submit(
+			connectionId,
+			binding.durableSessionId,
+			input.initialPrompt,
+			[],
+			binding.profileId
+		).catch((error) => {
 			this.pushRuntimeError(connectionId, error, binding.durableSessionId);
 		});
 		return binding;
@@ -648,7 +749,8 @@ export class HermesRuntimeService {
 
 	async resume(
 		connectionId: string,
-		hermesSessionId: string
+		hermesSessionId: string,
+		requestedProfileId?: string
 	): Promise<
 		HermesSessionBinding & {
 			history: HermesSessionHistory;
@@ -657,10 +759,10 @@ export class HermesRuntimeService {
 	> {
 		const runtime = this.requireRuntime(connectionId);
 		if (runtime.reconnectTask) await runtime.reconnectTask;
-		const history = await this.history(connectionId, hermesSessionId);
+		const history = await this.history(connectionId, hermesSessionId, requestedProfileId);
 		const durableSessionId = history.durableSessionId;
-		const existing =
-			runtime.bindings.get(durableSessionId) ?? runtime.bindings.get(hermesSessionId);
+		const profileId = requestedProfileId ?? this.profileFor(runtime, durableSessionId);
+		const existing = this.bindingFor(runtime, durableSessionId, profileId);
 		if (existing) {
 			try {
 				const response = await runtime.client.request("session.activate", {
@@ -683,11 +785,7 @@ export class HermesRuntimeService {
 				this.removeBinding(runtime, existing);
 			}
 		}
-		const binding = await this.resumeBinding(
-			runtime,
-			durableSessionId,
-			this.profileFor(runtime, durableSessionId)
-		);
+		const binding = await this.resumeBinding(runtime, durableSessionId, profileId);
 		return { ...binding, history };
 	}
 
@@ -695,17 +793,29 @@ export class HermesRuntimeService {
 		connectionId: string,
 		hermesSessionId: string,
 		text: string,
-		attachmentHandles: string[] = []
+		attachmentHandles: string[] = [],
+		requestedProfileId?: string
 	): Promise<{ ok: true }> {
 		const runtime = this.requireRuntime(connectionId);
-		const reservedSessionIds = this.reserveSubmit(runtime, connectionId, hermesSessionId);
-		let binding = this.bindingFor(runtime, hermesSessionId);
+		const profileId = requestedProfileId ?? this.profileFor(runtime, hermesSessionId);
+		const reservedSessionIds = this.reserveSubmit(
+			runtime,
+			connectionId,
+			hermesSessionId,
+			profileId
+		);
+		let binding = this.bindingFor(runtime, hermesSessionId, profileId);
 		let ownsActiveTurn = false;
 		try {
 			if (!binding) {
-				await this.resume(connectionId, hermesSessionId);
-				binding = this.requireBinding(runtime, hermesSessionId);
-				this.extendSubmitReservation(connectionId, binding.durableSessionId, reservedSessionIds);
+				await this.resume(connectionId, hermesSessionId, profileId);
+				binding = this.requireBinding(runtime, hermesSessionId, profileId);
+				this.extendSubmitReservation(
+					connectionId,
+					binding.durableSessionId,
+					reservedSessionIds,
+					binding.profileId
+				);
 			}
 			if (binding.activeTurn) {
 				throw new Error("A Hermes turn is already active for this session");
@@ -741,9 +851,13 @@ export class HermesRuntimeService {
 		}
 	}
 
-	async interrupt(connectionId: string, hermesSessionId: string): Promise<{ ok: true }> {
+	async interrupt(
+		connectionId: string,
+		hermesSessionId: string,
+		profileId?: string
+	): Promise<{ ok: true }> {
 		const runtime = this.requireRuntime(connectionId);
-		const binding = this.requireBinding(runtime, hermesSessionId);
+		const binding = this.requireBinding(runtime, hermesSessionId, profileId);
 		await runtime.client.request("session.interrupt", {
 			session_id: binding.runtimeSessionId,
 		});
@@ -755,11 +869,12 @@ export class HermesRuntimeService {
 	async respondToApproval(input: {
 		connectionId: string;
 		hermesSessionId: string;
+		profileId?: string;
 		requestId: string;
 		choice: string;
 	}): Promise<{ ok: true }> {
 		const runtime = this.requireRuntime(input.connectionId);
-		const binding = this.requireBinding(runtime, input.hermesSessionId);
+		const binding = this.requireBinding(runtime, input.hermesSessionId, input.profileId);
 		await runtime.client.request("approval.respond", {
 			session_id: binding.runtimeSessionId,
 			request_id: input.requestId,
@@ -772,11 +887,12 @@ export class HermesRuntimeService {
 	async respondToClarification(input: {
 		connectionId: string;
 		hermesSessionId: string;
+		profileId?: string;
 		requestId: string;
 		answer: string;
 	}): Promise<{ ok: true }> {
 		const runtime = this.requireRuntime(input.connectionId);
-		const binding = this.requireBinding(runtime, input.hermesSessionId);
+		const binding = this.requireBinding(runtime, input.hermesSessionId, input.profileId);
 		await runtime.client.request("clarify.respond", {
 			session_id: binding.runtimeSessionId,
 			request_id: input.requestId,
@@ -900,33 +1016,38 @@ export class HermesRuntimeService {
 	private reserveSubmit(
 		runtime: ConnectionRuntime,
 		connectionId: string,
-		hermesSessionId: string
+		hermesSessionId: string,
+		profileId?: string
 	): Set<string> {
-		const durableSessionId = this.resolveDurableId(runtime, hermesSessionId);
+		const durableSessionId = this.resolveDurableId(runtime, hermesSessionId, profileId);
+		const resolvedProfileId = profileId ?? this.profileFor(runtime, durableSessionId);
+		const reservationKey = hermesSessionIdentityKey(resolvedProfileId, durableSessionId);
 		let reservations = this.submitReservations.get(connectionId);
 		if (!reservations) {
 			reservations = new Set();
 			this.submitReservations.set(connectionId, reservations);
 		}
-		if (reservations.has(durableSessionId)) {
+		if (reservations.has(reservationKey)) {
 			throw new Error("A Hermes turn is already active for this session");
 		}
-		reservations.add(durableSessionId);
-		return new Set([durableSessionId]);
+		reservations.add(reservationKey);
+		return new Set([reservationKey]);
 	}
 
 	private extendSubmitReservation(
 		connectionId: string,
 		durableSessionId: string,
-		reservedSessionIds: Set<string>
+		reservedSessionIds: Set<string>,
+		profileId: string
 	): void {
-		if (reservedSessionIds.has(durableSessionId)) return;
+		const reservationKey = hermesSessionIdentityKey(profileId, durableSessionId);
+		if (reservedSessionIds.has(reservationKey)) return;
 		const reservations = this.submitReservations.get(connectionId);
-		if (reservations?.has(durableSessionId)) {
+		if (reservations?.has(reservationKey)) {
 			throw new Error("A Hermes turn is already active for this session");
 		}
-		reservations?.add(durableSessionId);
-		reservedSessionIds.add(durableSessionId);
+		reservations?.add(reservationKey);
+		reservedSessionIds.add(reservationKey);
 	}
 
 	private releaseSubmitReservation(connectionId: string, reservedSessionIds: Set<string>): void {
@@ -1224,23 +1345,32 @@ export class HermesRuntimeService {
 					this.reconcileAfterReconnect(connectionId, runtime);
 					return;
 				}
-				const mappedSessionId = event.runtimeSessionId
+				const mappedIdentity = event.runtimeSessionId
 					? (runtime.runtimeToDurable.get(event.runtimeSessionId) ?? null)
 					: null;
-				const durableSessionId = mappedSessionId
-					? this.resolveDurableId(runtime, mappedSessionId)
+				const durableSessionId = mappedIdentity
+					? this.resolveDurableId(
+							runtime,
+							mappedIdentity.durableSessionId,
+							mappedIdentity.profileId
+						)
 					: null;
 				const mappedEvent = { ...event, durableSessionId };
 				this.pushEvent(connectionId, mappedEvent);
 				if (!durableSessionId) return;
-				const binding = this.bindingFor(runtime, durableSessionId);
+				const binding = this.bindingFor(runtime, durableSessionId, mappedIdentity?.profileId);
 				if (binding) this.applyInteractionEvent(binding, mappedEvent);
 				if (event.workspaceArtifacts.length > 0) {
 					this.linkArtifacts(connectionId, durableSessionId, event.workspaceArtifacts);
 				}
 				if (this.isTerminalEvent(event)) {
 					if (binding) binding.activeTurn = false;
-					void this.refreshAfterTerminal(connectionId, runtime, durableSessionId);
+					void this.refreshAfterTerminal(
+						connectionId,
+						runtime,
+						durableSessionId,
+						mappedIdentity?.profileId
+					);
 				}
 			}),
 			runtime.client.subscribeState((state) => {
@@ -1273,23 +1403,20 @@ export class HermesRuntimeService {
 	}
 
 	private async reacquireBindings(connectionId: string, runtime: ConnectionRuntime): Promise<void> {
-		const previousBindings = new Map(
-			[...runtime.bindings.values()].map((binding) => [binding.durableSessionId, binding])
-		);
-		const durableIds = [...previousBindings.keys()];
+		const previousBindings = [...runtime.bindings.values()];
 		runtime.bindings.clear();
 		runtime.runtimeToDurable.clear();
 		const bindings: HermesReconnectBindingMetadata[] = [];
 		const failedSessionIds: string[] = [];
-		for (const durableSessionId of durableIds) {
+		for (const previous of previousBindings) {
+			const durableSessionId = previous.durableSessionId;
 			if (this.runtimes.get(connectionId) !== runtime) return;
 			let binding: RuntimeBinding;
 			try {
-				const previous = previousBindings.get(durableSessionId);
 				binding = await this.resumeBinding(
 					runtime,
-					this.resolveDurableId(runtime, durableSessionId),
-					this.profileFor(runtime, durableSessionId),
+					this.resolveDurableId(runtime, durableSessionId, previous.profileId),
+					previous.profileId,
 					previous
 				);
 				if (this.runtimes.get(connectionId) !== runtime) return;
@@ -1320,7 +1447,7 @@ export class HermesRuntimeService {
 				continue;
 			}
 			try {
-				await this.history(connectionId, binding.durableSessionId);
+				await this.history(connectionId, binding.durableSessionId, binding.profileId);
 				if (this.runtimes.get(connectionId) !== runtime) return;
 			} catch (error) {
 				if (this.runtimes.get(connectionId) !== runtime) return;
@@ -1370,10 +1497,11 @@ export class HermesRuntimeService {
 		connectionId: string,
 		runtime: ConnectionRuntime,
 		hermesSessionId: string,
+		requestedProfileId?: string,
 		useStoredLink = true
 	): Promise<ResolvedHermesOrigin | null> {
-		const durableSessionId = this.resolveDurableId(runtime, hermesSessionId);
-		const profileId = this.profileFor(runtime, durableSessionId);
+		const durableSessionId = this.resolveDurableId(runtime, hermesSessionId, requestedProfileId);
+		const profileId = requestedProfileId ?? this.profileFor(runtime, durableSessionId);
 		const detail = await runtime.rest.getSessionDetail(durableSessionId, profileId);
 		const base = resolveHermesOrigin(detail, {
 			connectionMode: runtime.connectionMode,
@@ -1394,7 +1522,7 @@ export class HermesRuntimeService {
 					manualOpenUrl,
 				})
 			: base;
-		runtime.origins.set(detail.durableSessionId, resolved);
+		runtime.origins.set(hermesSessionIdentityKey(profileId, detail.durableSessionId), resolved);
 		return resolved;
 	}
 
@@ -1403,7 +1531,8 @@ export class HermesRuntimeService {
 		binding: HermesSessionBinding,
 		activity?: { activeTurn: boolean | null; status: string | null }
 	): RuntimeBinding {
-		const previous = runtime.bindings.get(binding.durableSessionId);
+		const bindingKey = hermesSessionIdentityKey(binding.profileId, binding.durableSessionId);
+		const previous = runtime.bindings.get(bindingKey);
 		if (previous) runtime.runtimeToDurable.delete(previous.runtimeSessionId);
 		const activeTurn = activity?.activeTurn ?? previous?.activeTurn ?? false;
 		const runtimeStatus = activity?.status ?? previous?.runtimeStatus ?? null;
@@ -1426,8 +1555,11 @@ export class HermesRuntimeService {
 					: null,
 			},
 		};
-		runtime.bindings.set(binding.durableSessionId, installed);
-		runtime.runtimeToDurable.set(binding.runtimeSessionId, binding.durableSessionId);
+		runtime.bindings.set(bindingKey, installed);
+		runtime.runtimeToDurable.set(binding.runtimeSessionId, {
+			durableSessionId: binding.durableSessionId,
+			profileId: binding.profileId,
+		});
 		return installed;
 	}
 
@@ -1512,43 +1644,88 @@ export class HermesRuntimeService {
 	}
 
 	private removeBinding(runtime: ConnectionRuntime, binding: RuntimeBinding): void {
-		runtime.bindings.delete(binding.durableSessionId);
+		runtime.bindings.delete(hermesSessionIdentityKey(binding.profileId, binding.durableSessionId));
 		runtime.runtimeToDurable.delete(binding.runtimeSessionId);
 	}
 
-	private bindingFor(runtime: ConnectionRuntime, hermesSessionId: string): RuntimeBinding | null {
-		const durableSessionId = this.resolveDurableId(runtime, hermesSessionId);
-		return runtime.bindings.get(durableSessionId) ?? runtime.bindings.get(hermesSessionId) ?? null;
+	private bindingFor(
+		runtime: ConnectionRuntime,
+		hermesSessionId: string,
+		profileId?: string
+	): RuntimeBinding | null {
+		if (profileId) {
+			const durableSessionId = this.resolveDurableId(runtime, hermesSessionId, profileId);
+			return runtime.bindings.get(hermesSessionIdentityKey(profileId, durableSessionId)) ?? null;
+		}
+		const matches = [...runtime.bindings.values()].filter(
+			(binding) =>
+				binding.durableSessionId === hermesSessionId ||
+				this.resolveDurableId(runtime, hermesSessionId, binding.profileId) ===
+					binding.durableSessionId
+		);
+		return matches.length === 1 ? (matches[0] ?? null) : null;
 	}
 
-	private requireBinding(runtime: ConnectionRuntime, hermesSessionId: string): RuntimeBinding {
-		const binding = this.bindingFor(runtime, hermesSessionId);
+	private requireBinding(
+		runtime: ConnectionRuntime,
+		hermesSessionId: string,
+		profileId?: string
+	): RuntimeBinding {
+		const binding = this.bindingFor(runtime, hermesSessionId, profileId);
 		if (!binding) throw new Error("Resume the Hermes session before using live controls");
 		return binding;
 	}
 
-	private resolveDurableId(runtime: ConnectionRuntime, hermesSessionId: string): string {
-		return runtime.aliases.get(hermesSessionId) ?? hermesSessionId;
+	private resolveDurableId(
+		runtime: ConnectionRuntime,
+		hermesSessionId: string,
+		profileId?: string
+	): string {
+		if (profileId) {
+			return (
+				runtime.aliases.get(hermesSessionIdentityKey(profileId, hermesSessionId)) ?? hermesSessionId
+			);
+		}
+		const candidates = new Set<string>();
+		for (const session of runtime.catalog.sessions) {
+			if (session.id !== hermesSessionId) continue;
+			candidates.add(
+				runtime.aliases.get(hermesSessionIdentityKey(session.profileId, session.id)) ?? session.id
+			);
+		}
+		if (candidates.size > 1) {
+			throw new Error("Hermes session profile is ambiguous; select an exact profile");
+		}
+		return candidates.values().next().value ?? hermesSessionId;
 	}
 
 	private profileFor(runtime: ConnectionRuntime, durableSessionId: string): string {
-		return (
-			runtime.catalog.sessions.find(
-				(session) =>
-					session.id === durableSessionId || runtime.aliases.get(session.id) === durableSessionId
-			)?.profileId ?? runtime.profileId
+		const profiles = new Set(
+			runtime.catalog.sessions
+				.filter(
+					(session) =>
+						session.id === durableSessionId ||
+						runtime.aliases.get(hermesSessionIdentityKey(session.profileId, session.id)) ===
+							durableSessionId
+				)
+				.map((session) => session.profileId)
 		);
+		if (profiles.size > 1) {
+			throw new Error("Hermes session profile is ambiguous; select an exact profile");
+		}
+		return profiles.values().next().value ?? runtime.profileId;
 	}
 
 	private async refreshAfterTerminal(
 		connectionId: string,
 		runtime: ConnectionRuntime,
-		durableSessionId: string
+		durableSessionId: string,
+		profileId?: string
 	): Promise<void> {
 		try {
-			const binding = this.bindingFor(runtime, durableSessionId);
+			const binding = this.bindingFor(runtime, durableSessionId, profileId);
 			if (binding) binding.persisted = true;
-			await this.history(connectionId, durableSessionId);
+			await this.history(connectionId, durableSessionId, profileId);
 			if (this.runtimes.get(connectionId) !== runtime) return;
 			this.pushEvent(connectionId, {
 				type: "runtime.history-refresh-required",
@@ -1636,20 +1813,74 @@ export class HermesRuntimeService {
 		return runtime.catalog;
 	}
 
-	private requireCatalogSession(
-		runtime: ConnectionRuntime,
-		durableSessionId: string
-	): HermesSessionSummary {
-		const summary = runtime.catalog.sessions.find((session) => session.id === durableSessionId);
-		if (!summary) throw new Error("Hermes session is not present in the canonical catalog");
-		return summary;
+	private assertLocallyIdle(binding: RuntimeBinding | null): void {
+		if (!binding) {
+			throw new Error("Permanent deletion could not prove that the session is idle");
+		}
+		if (
+			binding.activeTurnSnapshot.pendingApproval ||
+			binding.activeTurnSnapshot.pendingClarification
+		) {
+			throw new Error(
+				"Resolve the Hermes session's unresolved approval or clarification before deleting it"
+			);
+		}
+		if (binding.activeTurn || binding.activeTurnSnapshot.activeTurn) {
+			throw new Error("Stop the Hermes session's active turn before deleting it");
+		}
 	}
 
-	private relatedSessionIds(runtime: ConnectionRuntime, durableSessionId: string): Set<string> {
+	private async refreshRuntimeIdleProof(
+		runtime: ConnectionRuntime,
+		profileId: string,
+		durableSessionId: string
+	): Promise<RuntimeBinding> {
+		const response = await runtime.client.request("session.resume", {
+			session_id: durableSessionId,
+			profile: profileId,
+			source: "superiorswarm",
+			omit_messages: false,
+		});
+		const activity = normalizeHermesRuntimeActivity(response);
+		if (activity.activeTurn !== false) {
+			throw new Error("Permanent deletion could not prove that the session is idle");
+		}
+		const binding = normalizeHermesSessionBinding(response, durableSessionId, profileId);
+		if (binding.profileId !== profileId || binding.durableSessionId !== durableSessionId) {
+			throw new Error("Hermes returned a different session identity during the idle check");
+		}
+		const installed = this.installBinding(runtime, binding, activity);
+		this.captureActiveTurnSnapshot(runtime, installed, response);
+		return installed;
+	}
+
+	private requireCatalogSession(
+		runtime: ConnectionRuntime,
+		profileId: string,
+		durableSessionId: string
+	): HermesSessionSummary {
+		const matches = runtime.catalog.sessions.filter(
+			(session) => session.profileId === profileId && session.id === durableSessionId
+		);
+		if (matches.length !== 1) {
+			throw new Error("Hermes session is not present exactly once in the canonical catalog");
+		}
+		return matches[0] as HermesSessionSummary;
+	}
+
+	private relatedSessionIds(
+		runtime: ConnectionRuntime,
+		profileId: string,
+		durableSessionId: string
+	): Set<string> {
 		const sessionIds = new Set([durableSessionId]);
-		for (const [alias, canonical] of runtime.aliases) {
-			if (alias === durableSessionId || canonical === durableSessionId) {
-				sessionIds.add(alias);
+		for (const [aliasKey, canonical] of runtime.aliases) {
+			const identity = this.identityFromKey(aliasKey);
+			if (
+				identity?.profileId === profileId &&
+				(identity.durableSessionId === durableSessionId || canonical === durableSessionId)
+			) {
+				sessionIds.add(identity.durableSessionId);
 				sessionIds.add(canonical);
 			}
 		}
@@ -1665,33 +1896,69 @@ export class HermesRuntimeService {
 	): void {
 		const runtimeSessionIds = new Set<string>();
 		for (const binding of runtime.bindings.values()) {
-			if (!relatedSessionIds.has(binding.durableSessionId)) continue;
+			if (binding.profileId !== profileId || !relatedSessionIds.has(binding.durableSessionId)) {
+				continue;
+			}
 			runtimeSessionIds.add(binding.runtimeSessionId);
 			this.removeBinding(runtime, binding);
 		}
-		for (const [sessionId, history] of runtime.histories) {
-			if (relatedSessionIds.has(sessionId) || relatedSessionIds.has(history.durableSessionId)) {
-				runtime.histories.delete(sessionId);
+		for (const [sessionKey, history] of runtime.histories) {
+			const identity = this.identityFromKey(sessionKey);
+			if (
+				identity?.profileId === profileId &&
+				(relatedSessionIds.has(identity.durableSessionId) ||
+					relatedSessionIds.has(history.durableSessionId))
+			) {
+				runtime.histories.delete(sessionKey);
 			}
 		}
 		for (const sessionId of relatedSessionIds) {
-			runtime.origins.delete(sessionId);
-			deleteHermesSessionWorkspaceLinks(connectionId, sessionId);
+			runtime.origins.delete(hermesSessionIdentityKey(profileId, sessionId));
 			deleteHermesOriginLink(connectionId, profileId, sessionId);
 		}
-		for (const [alias, canonical] of runtime.aliases) {
-			if (relatedSessionIds.has(alias) || relatedSessionIds.has(canonical)) {
-				runtime.aliases.delete(alias);
+		const hasProfileCollision = runtime.catalog.sessions.some(
+			(session) => session.id === durableSessionId && session.profileId !== profileId
+		);
+		if (!hasProfileCollision) {
+			for (const sessionId of relatedSessionIds) {
+				deleteHermesSessionWorkspaceLinks(connectionId, sessionId);
+			}
+		}
+		for (const [aliasKey, canonical] of runtime.aliases) {
+			const identity = this.identityFromKey(aliasKey);
+			if (
+				identity?.profileId === profileId &&
+				(relatedSessionIds.has(identity.durableSessionId) || relatedSessionIds.has(canonical))
+			) {
+				runtime.aliases.delete(aliasKey);
 			}
 		}
 		runtime.events = runtime.events.filter(
 			({ event }) =>
-				!relatedSessionIds.has(event.durableSessionId ?? "") &&
-				!runtimeSessionIds.has(event.runtimeSessionId ?? "")
+				!runtimeSessionIds.has(event.runtimeSessionId ?? "") &&
+				(hasProfileCollision || !relatedSessionIds.has(event.durableSessionId ?? ""))
 		);
+		deleteHermesOriginReports(connectionId, profileId, durableSessionId);
 		if (runtime.managerId) {
 			deleteHermesSessionAdmission(runtime.managerId, profileId, durableSessionId);
 		}
+	}
+
+	private identityFromKey(key: string): { profileId: string; durableSessionId: string } | null {
+		try {
+			const parsed: unknown = JSON.parse(key);
+			if (
+				Array.isArray(parsed) &&
+				parsed.length === 2 &&
+				typeof parsed[0] === "string" &&
+				typeof parsed[1] === "string"
+			) {
+				return { profileId: parsed[0], durableSessionId: parsed[1] };
+			}
+		} catch {
+			// Legacy in-memory maps are discarded unless their composite identity is explicit.
+		}
+		return null;
 	}
 
 	private requireRuntime(connectionId: string): ConnectionRuntime {

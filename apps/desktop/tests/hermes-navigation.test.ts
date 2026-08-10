@@ -4,11 +4,13 @@ import { usePaneStore } from "../src/renderer/stores/pane-store";
 import {
 	PANEL_CLOSED,
 	deserializeHermesSessionSelection,
+	normalizeHermesSessionSelection,
 	resolveAvailableHermesSelection,
 	serializeHermesSessionSelection,
 	shouldHydrateTabStore,
 	useTabStore,
 } from "../src/renderer/stores/tab-store";
+import { hermesSessionCompositeIdentityKey } from "../src/shared/hermes";
 
 (globalThis as typeof globalThis & { matchMedia: typeof matchMedia }).matchMedia = () =>
 	({
@@ -112,7 +114,7 @@ describe("Hermes global navigation", () => {
 		expect(chat).not.toContain("Linked workspaces");
 		expect(chat).toContain('label="Actions for selected agent session"');
 		expect(chat).toMatch(
-			/const origin = trpc\.hermes\.origin\.useQuery\([\s\S]*?enabled: Boolean\(connectionId && sessionId && connected\)/
+			/const origin = trpc\.hermes\.origin\.useQuery\([\s\S]*?enabled: Boolean\(connectionId && profileId && sessionId && connected\)/
 		);
 	});
 
@@ -173,6 +175,60 @@ describe("Hermes global navigation", () => {
 		useTabStore.getState().goBackWorkspace();
 		expect(useTabStore.getState().selectedHermesSession).toEqual(second);
 		expect(useTabStore.getState().selectedHermesSession).not.toEqual(first);
+	});
+
+	test("keeps duplicate session IDs from two profiles on one connection unambiguous", () => {
+		const work = {
+			connectionId: "connection-a",
+			profileId: "work",
+			sessionId: "duplicate-session",
+		};
+		const personal = {
+			connectionId: "connection-a",
+			profileId: "personal",
+			sessionId: "duplicate-session",
+		};
+		useTabStore.getState().selectHermesSession(work);
+		useTabStore.getState().openWorkspaceFromHermes("workspace-a", "/repos/a", work, "chat");
+		useTabStore.getState().selectHermesSession(personal);
+		useTabStore.getState().openWorkspaceFromHermes("workspace-b", "/repos/b", personal, "chat");
+
+		useTabStore.getState().goBackWorkspace();
+		expect(useTabStore.getState().selectedHermesSession).toEqual(personal);
+		expect(useTabStore.getState().selectedHermesSession).not.toEqual(work);
+	});
+
+	test("builds collision-safe React keys from connection, profile, and durable session ID", () => {
+		expect(hermesSessionCompositeIdentityKey("connection:a", "work", "session-1")).not.toBe(
+			hermesSessionCompositeIdentityKey("connection", "a:work", "session-1")
+		);
+		expect(hermesSessionCompositeIdentityKey("connection-a", "work", "session-1")).toBe(
+			JSON.stringify(["connection-a", "work", "session-1"])
+		);
+	});
+
+	test("normalizes legacy selections only for a unique profile and fails closed on collisions", () => {
+		const legacy = { connectionId: "connection-a", sessionId: "duplicate-session" };
+		const work = {
+			id: "duplicate-session",
+			profileId: "work",
+		};
+		const personal = {
+			id: "duplicate-session",
+			profileId: "personal",
+		};
+
+		expect(normalizeHermesSessionSelection(legacy, [work])).toEqual({
+			...legacy,
+			profileId: "work",
+		});
+		expect(normalizeHermesSessionSelection(legacy, [work, personal])).toBeNull();
+		expect(
+			normalizeHermesSessionSelection({ ...legacy, profileId: "personal" }, [work, personal])
+		).toEqual({ ...legacy, profileId: "personal" });
+		expect(
+			normalizeHermesSessionSelection({ ...legacy, profileId: "missing" }, [work, personal])
+		).toBeNull();
 	});
 
 	test("clears a selected session when the active connection changes", () => {
@@ -325,7 +381,13 @@ describe("Hermes global navigation", () => {
 		expect(sidebar).toContain("Retry");
 		expect(sidebar).toContain('role="alert"');
 		expect(sidebar).toContain("retryFailedSessionAction");
-		expect(sidebar).toContain("canonicalCatalog");
+		expect(sidebar).not.toContain('kind: "delete"');
+		expect(sidebar).toContain("reconciliationRequired");
+		expect(sidebar).toContain("Refresh session list");
+		expect(sidebar).toMatch(
+			/hermesSessionCompositeIdentityKey\(\s*connectionId,\s*session\.profileId,\s*session\.id\s*\)/
+		);
+		expect(sidebar).toContain("profileId: session.profileId");
 		expect(sidebar).not.toContain("onMutate:");
 		expect(sidebar).not.toContain("Hermes connection");
 		expect(sidebar).not.toContain("127.0.0.1:8080");
