@@ -67,6 +67,7 @@ const session = (overrides: Partial<HermesSessionSummary> = {}): HermesSessionSu
 
 const event = (type: string, payload: Partial<HermesRuntimeEvent> = {}): HermesRuntimeEvent => ({
 	type,
+	profileId: "work",
 	runtimeSessionId: "runtime-1",
 	durableSessionId: "session-1",
 	turnId: "turn-1",

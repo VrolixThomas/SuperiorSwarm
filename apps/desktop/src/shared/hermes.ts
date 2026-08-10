@@ -117,12 +117,20 @@ export const HERMES_IMAGE_ATTACHMENT_MAX_BYTES = 16 * 1024 * 1024;
 export const HERMES_PDF_ATTACHMENT_MAX_BYTES = 50 * 1024 * 1024;
 export const HERMES_GENERAL_ATTACHMENT_MAX_BYTES = 32 * 1024 * 1024;
 export const HERMES_ATTACHMENT_IPC_MAX_BYTES = 64 * 1024 * 1024;
+export const HERMES_ATTACHMENT_UPLOAD_CHUNK_MAX_BYTES = 256 * 1024;
 
 export interface HermesRendererAttachmentUpload {
 	name: string;
 	size: number;
 	mimeType: string;
 	bytes: Uint8Array;
+}
+
+export type HermesRendererAttachmentUploadMetadata = Omit<HermesRendererAttachmentUpload, "bytes">;
+
+export interface HermesRendererAttachmentUploadStart {
+	uploadId: string;
+	files: Array<{ fileId: string }>;
 }
 
 export const HERMES_ATTACHMENT_CONTEXT_START = "[SuperiorSwarm attachments]";
@@ -177,6 +185,7 @@ export interface HermesInteractionChoiceDto {
 export interface HermesReconnectBindingMetadata {
 	hermesSessionId: string;
 	durableSessionId: string;
+	profileId: string;
 	runtimeSessionId: string;
 	activeTurn: boolean;
 	status: string | null;
@@ -241,6 +250,7 @@ export interface HermesRuntimeEventPayload {
 /** Runtime events are routed only by the ephemeral WebSocket session ID. */
 export interface HermesRuntimeEvent {
 	type: string;
+	profileId: string | null;
 	runtimeSessionId: string | null;
 	durableSessionId: string | null;
 	turnId: string | null;

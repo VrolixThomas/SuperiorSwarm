@@ -1,7 +1,7 @@
 import { asc, eq } from "drizzle-orm";
 import { dialog, shell } from "electron";
 import { z } from "zod";
-import { HERMES_ATTACHMENT_IPC_MAX_BYTES, HERMES_MAX_ATTACHMENTS } from "../../../shared/hermes";
+import { HERMES_MAX_ATTACHMENTS } from "../../../shared/hermes";
 import { getDb } from "../../db";
 import { hermesSessionWorkspaces, projects, workspaces, worktrees } from "../../db/schema";
 import { hermesAttachmentStore } from "../../hermes/hermes-attachments";
@@ -65,17 +65,6 @@ const submitInput = connectionSessionInput
 			path: ["text"],
 		});
 	});
-
-const rendererAttachmentUploadInput = z
-	.object({
-		name: z.string().min(1).max(255),
-		size: z.number().int().min(0).max(HERMES_ATTACHMENT_IPC_MAX_BYTES),
-		mimeType: z.string().max(255),
-		bytes: z.custom<Uint8Array>((value) => value instanceof Uint8Array, {
-			message: "Attachment bytes must be a Uint8Array",
-		}),
-	})
-	.strict();
 
 function rendererOriginReportState(state: ReturnType<typeof hermesRuntimeService.reports>[number]) {
 	return {
@@ -218,16 +207,6 @@ export const hermesRouter = router({
 		if (selected.canceled || selected.filePaths.length === 0) return [];
 		return await hermesAttachmentStore.registerPaths(selected.filePaths);
 	}),
-
-	registerAttachments: publicProcedure
-		.input(
-			z
-				.object({
-					attachments: z.array(rendererAttachmentUploadInput).max(HERMES_MAX_ATTACHMENTS),
-				})
-				.strict()
-		)
-		.mutation(({ input }) => hermesAttachmentStore.registerBytes(input.attachments)),
 
 	releaseAttachment: publicProcedure
 		.input(z.object({ handle: z.string().min(1).max(200) }))

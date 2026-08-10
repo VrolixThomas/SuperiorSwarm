@@ -13,10 +13,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
 	HERMES_ATTACHMENT_IPC_MAX_BYTES,
+	HERMES_ATTACHMENT_UPLOAD_CHUNK_MAX_BYTES,
 	HERMES_GENERAL_ATTACHMENT_MAX_BYTES,
 	HERMES_IMAGE_ATTACHMENT_MAX_BYTES,
 	HERMES_MAX_ATTACHMENTS,
 	HermesAttachmentStore,
+	HermesRendererAttachmentUploadManager,
 } from "../src/main/hermes/hermes-attachments";
 
 const temporaryDirectories: string[] = [];
@@ -113,6 +115,103 @@ describe("Hermes attachment store", () => {
 			])
 		).rejects.toThrow("IPC payload");
 		expect(store.size).toBe(0);
+	});
+
+	test("bounds every renderer upload frame before staging and cleans abandoned main-issued uploads", async () => {
+		const directory = await temporaryDirectory();
+		let nextId = 0;
+		const store = new HermesAttachmentStore({
+			idFactory: () => `attachment-${++nextId}`,
+			stagingParentDirectory: directory,
+		});
+		const uploads = new HermesRendererAttachmentUploadManager(store, {
+			idFactory: () => `upload-${++nextId}`,
+			stagingParentDirectory: directory,
+		});
+		const started = uploads.begin("renderer-1", [
+			{ name: "bounded.txt", size: 4, mimeType: "text/plain" },
+		]);
+		const fileId = started.files[0]?.fileId ?? "";
+
+		await expect(
+			uploads.append("renderer-1", {
+				uploadId: started.uploadId,
+				fileId,
+				offset: 0,
+				bytes: new Uint8Array(HERMES_ATTACHMENT_UPLOAD_CHUNK_MAX_BYTES + 1),
+			})
+		).rejects.toThrow("upload chunk");
+		expect(uploads.activeUploads).toBe(1);
+
+		await uploads.append("renderer-1", {
+			uploadId: started.uploadId,
+			fileId,
+			offset: 0,
+			bytes: new TextEncoder().encode("safe"),
+		});
+		await expect(uploads.finish("renderer-2", started.uploadId)).rejects.toThrow("unavailable");
+		await expect(uploads.finish("renderer-1", started.uploadId)).resolves.toEqual([
+			expect.objectContaining({ name: "bounded.txt", size: 4 }),
+		]);
+		expect(uploads.activeUploads).toBe(0);
+
+		const abandoned = uploads.begin("renderer-1", [
+			{ name: "abandoned.txt", size: 1, mimeType: "text/plain" },
+		]);
+		expect(abandoned.uploadId).toBeTruthy();
+		expect(uploads.cancelOwner("renderer-1")).toBe(1);
+		expect(uploads.activeUploads).toBe(0);
+		store.clear();
+	});
+
+	test("keeps renderer bytes off generic tRPC and rejects oversized frames before main IPC", async () => {
+		const routerSource = await readFile(
+			join(import.meta.dir, "../src/main/trpc/routers/hermes.ts"),
+			"utf8"
+		);
+		const preloadSource = await readFile(join(import.meta.dir, "../src/preload/index.ts"), "utf8");
+		expect(routerSource).not.toContain("registerAttachments");
+		expect(preloadSource).toContain("assertBoundedTrpcInput(opts)");
+		expect(preloadSource).toContain("Binary data is not allowed in generic IPC requests");
+		const frameGuard = preloadSource.indexOf(
+			"input.bytes.byteLength > HERMES_ATTACHMENT_UPLOAD_CHUNK_MAX_BYTES"
+		);
+		const frameInvoke = preloadSource.indexOf(
+			'ipcRenderer.invoke("hermes-attachments:append", input)'
+		);
+		expect(frameGuard).toBeGreaterThan(-1);
+		expect(frameInvoke).toBeGreaterThan(frameGuard);
+	});
+
+	test("enforces aggregate bytes across attachment handles registered in separate batches", async () => {
+		const directory = await temporaryDirectory();
+		const store = new HermesAttachmentStore({ stagingParentDirectory: directory });
+		const stagedPath = join(directory, "aggregate.pdf");
+		await writeFile(stagedPath, "x");
+		const internal = Reflect.get(store, "attachments") as Map<string, unknown>;
+		for (const [handle, size] of [
+			["batch-1", HERMES_ATTACHMENT_IPC_MAX_BYTES],
+			["batch-2", 1],
+		] as const) {
+			internal.set(handle, {
+				handle,
+				path: stagedPath,
+				name: `${handle}.pdf`,
+				size,
+				mimeType: "application/pdf",
+				kind: "pdf",
+				expiresAt: Date.now() + 60_000,
+				maxBytes: HERMES_ATTACHMENT_IPC_MAX_BYTES,
+				attachedByRuntime: new Map(),
+				owners: new Set(),
+			});
+		}
+
+		await expect(store.claim(["batch-1", "batch-2"], "composed-message")).rejects.toThrow(
+			"must total 64 MiB"
+		);
+		expect(store.size).toBe(2);
+		store.clear();
 	});
 
 	test("validates selected regular files and exposes only opaque safe metadata", async () => {

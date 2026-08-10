@@ -651,6 +651,7 @@ export function normalizeHermesEvent(value: unknown): HermesRuntimeEvent | null 
 	const choices = normalizeInteractionChoices(payload["choices"]);
 	return {
 		type: sanitizeString(type),
+		profileId: null,
 		runtimeSessionId: safeIdentifier(
 			params?.["session_id"],
 			params?.["sessionId"],

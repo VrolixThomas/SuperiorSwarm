@@ -405,7 +405,11 @@ describe("Hermes global navigation", () => {
 		expect(view).not.toContain("trpc.hermes.release.useMutation");
 		expect(view).not.toContain("trpc.hermes.unbind");
 		expect(view).not.toContain("Claiming and resuming");
-		expect(view).toContain("trpc.hermes.registerAttachments.useMutation");
+		expect(view).not.toContain("trpc.hermes.registerAttachments.useMutation");
+		expect(view).toContain("window.electron.hermesAttachments.begin");
+		expect(view).toContain("window.electron.hermesAttachments.append");
+		expect(view).toContain("window.electron.hermesAttachments.finish");
+		expect(view).toContain("event.profileId === profileId");
 		expect(view).toContain("stageTransferredFiles(fileObjectsFromTransfer(event.clipboardData))");
 		expect(view).toContain("stageTransferredFiles(fileObjectsFromTransfer(event.dataTransfer))");
 		expect(view).toContain('event.dataTransfer.dropEffect = "copy"');

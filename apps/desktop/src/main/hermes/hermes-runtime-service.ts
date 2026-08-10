@@ -125,6 +125,14 @@ interface RuntimeBinding extends HermesSessionBinding {
 	activeTurn: boolean;
 	runtimeStatus: string | null;
 	activeTurnSnapshot: HermesActiveTurnSnapshot;
+	turnGeneration: number;
+	activeTurnIdentity: {
+		generation: number;
+		runtimeSessionId: string;
+		turnId: string | null;
+	} | null;
+	processedTerminalIdentities: string[];
+	pendingTerminalEvents: HermesRuntimeEvent[];
 }
 
 interface QueuedFollowUp extends HermesQueuedFollowUpSummary {
@@ -132,6 +140,9 @@ interface QueuedFollowUp extends HermesQueuedFollowUpSummary {
 	ownerId: string;
 	wasQueued: boolean;
 	transportUncertain: boolean;
+	deliveryKey: string;
+	deliveryTurnId: string | null;
+	submittedPromptText: string | null;
 }
 
 interface SessionFollowUpQueue {
@@ -144,7 +155,9 @@ interface SessionFollowUpQueue {
 	draining: Promise<void> | null;
 	admissionTail: Promise<void>;
 	admissions: number;
-	lastTerminalTurnId: string | null;
+	generation: number;
+	valid: boolean;
+	activeTurnGeneration: number | null;
 }
 
 interface ConnectionRuntime {
@@ -207,7 +220,71 @@ const MAX_BUFFERED_EVENTS = 1_000;
 const PROMPT_SUBMIT_TIMEOUT_MS = 1_800_000;
 const DEFAULT_RECOVERY_BASE_MS = 500;
 const DEFAULT_RECOVERY_MAX_MS = 15_000;
-const SETTLED_FOLLOW_UP_TTL_MS = 5 * 60 * 1_000;
+const MAX_ACCEPTED_FOLLOW_UP_LEDGER = 100;
+const MAX_PROCESSED_TERMINAL_IDENTITIES = 128;
+const MAX_PENDING_TERMINAL_EVENTS = 16;
+
+function runtimeRecord(value: unknown): Record<string, unknown> | null {
+	return value !== null && typeof value === "object" && !Array.isArray(value)
+		? (value as Record<string, unknown>)
+		: null;
+}
+
+function runtimeString(...values: unknown[]): string | null {
+	for (const value of values) {
+		if (typeof value === "string" && value.trim()) return value.trim();
+	}
+	return null;
+}
+
+function responseTurnId(value: unknown): string | null {
+	const result = runtimeRecord(value);
+	return runtimeString(result?.["current_turn_id"], result?.["turn_id"], result?.["turnId"]);
+}
+
+interface DeliveryEvidenceMessage {
+	id: string | null;
+	turnId: string | null;
+	text: string;
+	deliveryKey: string | null;
+}
+
+function responseDeliveryEvidence(value: unknown): {
+	turnId: string | null;
+	deliveryKeys: Set<string>;
+	userMessages: DeliveryEvidenceMessage[];
+} {
+	const result = runtimeRecord(value);
+	const deliveryKeys = new Set<string>();
+	const rootKey = runtimeString(
+		result?.["idempotency_key"],
+		result?.["idempotencyKey"],
+		result?.["submission_id"]
+	);
+	if (rootKey) deliveryKeys.add(rootKey);
+	const rows = Array.isArray(result?.["messages"]) ? result["messages"] : [];
+	const userMessages = rows.flatMap((value): DeliveryEvidenceMessage[] => {
+		const row = runtimeRecord(value);
+		if (!row || runtimeString(row["role"])?.toLocaleLowerCase() !== "user") return [];
+		const text = runtimeString(row["content"], row["text"], row["message"]);
+		if (!text) return [];
+		const deliveryKey = runtimeString(
+			row["idempotency_key"],
+			row["idempotencyKey"],
+			row["submission_id"]
+		);
+		if (deliveryKey) deliveryKeys.add(deliveryKey);
+		return [
+			{
+				id: runtimeString(row["canonical_message_id"], row["id"]),
+				turnId: runtimeString(row["turn_id"], row["turnId"]),
+				text,
+				deliveryKey,
+			},
+		];
+	});
+	return { turnId: responseTurnId(value), deliveryKeys, userMessages };
+}
 
 function connectionCancelledError(): Error {
 	return new Error("Hermes connection cancelled");
@@ -405,9 +482,15 @@ export class HermesRuntimeService {
 		this.disconnect(connectionId);
 		for (const [key, queue] of this.followUpQueues) {
 			if (queue.connectionId !== connectionId) continue;
+			queue.valid = false;
+			queue.generation++;
 			for (const followUp of queue.items) {
 				this.attachmentStore.releaseClaim(followUp.attachmentHandles, followUp.ownerId);
 			}
+			queue.items = [];
+			queue.active = null;
+			queue.settled = [];
+			queue.activeTurnGeneration = null;
 			this.followUpQueues.delete(key);
 		}
 	}
@@ -501,14 +584,14 @@ export class HermesRuntimeService {
 				);
 			} catch (error) {
 				reconciliationRequired = true;
-				this.pushRuntimeError(connectionId, error, durableSessionId);
+				this.pushRuntimeError(connectionId, error, durableSessionId, profileId);
 			}
 			let catalog: HermesCatalog | null = null;
 			try {
 				catalog = await this.refreshCatalog(runtime);
 			} catch (error) {
 				reconciliationRequired = true;
-				this.pushRuntimeError(connectionId, error, durableSessionId);
+				this.pushRuntimeError(connectionId, error, durableSessionId, profileId);
 			}
 			return { committed: true, catalog, reconciliationRequired };
 		} finally {
@@ -737,6 +820,7 @@ export class HermesRuntimeService {
 		runtime.histories.set(hermesSessionIdentityKey(profileId, hermesSessionId), history);
 		runtime.histories.set(durableKey, history);
 		runtime.histories.set(hermesSessionIdentityKey(profileId, history.durableSessionId), history);
+		this.reconcileFollowUpsFromHistory(connectionId, profileId, history);
 		this.linkArtifacts(
 			connectionId,
 			history.durableSessionId,
@@ -805,7 +889,7 @@ export class HermesRuntimeService {
 			[],
 			binding.profileId
 		).catch((error) => {
-			this.pushRuntimeError(connectionId, error, binding.durableSessionId);
+			this.pushRuntimeError(connectionId, error, binding.durableSessionId, binding.profileId);
 		});
 		return binding;
 	}
@@ -840,9 +924,7 @@ export class HermesRuntimeService {
 				const activity = normalizeHermesRuntimeActivity(response);
 				const installed = this.installBinding(runtime, activated, activity);
 				this.captureActiveTurnSnapshot(runtime, installed, response);
-				if (activity.activeTurn !== null) {
-					this.reconcileUncertainFollowUp(runtime, installed, activity.activeTurn);
-				}
+				this.reconcileUncertainFollowUp(runtime, installed, response);
 				return { ...installed, history };
 			} catch {
 				this.removeBinding(runtime, existing);
@@ -882,10 +964,12 @@ export class HermesRuntimeService {
 	}> {
 		const identity = this.followUpIdentity(connectionId, hermesSessionId, requestedProfileId);
 		const queue = this.ensureFollowUpQueue(identity);
+		const admissionGeneration = queue.generation;
 		const releaseAdmission = await this.acquireQueueAdmission(queue);
 		let followUp: QueuedFollowUp;
 		let shouldDrain = false;
 		try {
+			this.assertQueueCurrent(queue, admissionGeneration);
 			const retryable = queue.items.find(
 				(candidate) =>
 					candidate.status === "failed" &&
@@ -903,6 +987,10 @@ export class HermesRuntimeService {
 			} else {
 				const id = this.followUpIdFactory();
 				const metadata = await this.attachmentStore.claim(attachmentHandles, id);
+				if (!this.isQueueCurrent(queue, admissionGeneration)) {
+					this.attachmentStore.releaseClaim(attachmentHandles, id);
+					throw connectionCancelledError();
+				}
 				const runtime = this.runtimes.get(connectionId);
 				const binding = runtime
 					? this.bindingFor(runtime, identity.durableSessionId, identity.profileId)
@@ -931,6 +1019,9 @@ export class HermesRuntimeService {
 					ownerId: id,
 					wasQueued,
 					transportUncertain: false,
+					deliveryKey: id,
+					deliveryTurnId: null,
+					submittedPromptText: null,
 				};
 				queue.items.push(followUp);
 			}
@@ -938,6 +1029,10 @@ export class HermesRuntimeService {
 			const binding = runtime
 				? this.bindingFor(runtime, identity.durableSessionId, identity.profileId)
 				: null;
+			if (binding?.activeTurn && queue.activeTurnGeneration === null) {
+				queue.activeTurnGeneration =
+					binding.activeTurnIdentity?.generation ?? binding.turnGeneration;
+			}
 			shouldDrain = Boolean(runtime && !binding?.activeTurn && queue.active === null);
 			this.pushFollowUpQueueEvent(queue);
 		} finally {
@@ -1152,7 +1247,9 @@ export class HermesRuntimeService {
 				draining: null,
 				admissionTail: Promise.resolve(),
 				admissions: 0,
-				lastTerminalTurnId: null,
+				generation: 0,
+				valid: true,
+				activeTurnGeneration: null,
 			};
 			this.followUpQueues.set(key, queue);
 		}
@@ -1193,6 +1290,24 @@ export class HermesRuntimeService {
 		};
 	}
 
+	private isQueueCurrent(queue: SessionFollowUpQueue, generation = queue.generation): boolean {
+		return (
+			queue.valid &&
+			queue.generation === generation &&
+			this.followUpQueues.get(
+				hermesSessionCompositeIdentityKey(
+					queue.connectionId,
+					queue.profileId,
+					queue.durableSessionId
+				)
+			) === queue
+		);
+	}
+
+	private assertQueueCurrent(queue: SessionFollowUpQueue, generation = queue.generation): void {
+		if (!this.isQueueCurrent(queue, generation)) throw connectionCancelledError();
+	}
+
 	private sameHandles(left: string[], right: string[]): boolean {
 		return left.length === right.length && left.every((handle, index) => handle === right[index]);
 	}
@@ -1212,14 +1327,40 @@ export class HermesRuntimeService {
 	}
 
 	private queueSummaries(queue: SessionFollowUpQueue): HermesQueuedFollowUpSummary[] {
-		queue.settled = queue.settled.filter(
-			(followUp) => this.now() - followUp.createdAt < SETTLED_FOLLOW_UP_TTL_MS
-		);
+		queue.settled = queue.settled.filter((followUp) => !this.hasCanonicalFollowUp(queue, followUp));
 		return [
 			...queue.settled.map((followUp) => this.followUpSummary(followUp)),
-			...(queue.active?.wasQueued ? [this.followUpSummary(queue.active)] : []),
+			...(queue.active?.wasQueued && !this.hasCanonicalFollowUp(queue, queue.active)
+				? [this.followUpSummary(queue.active)]
+				: []),
 			...queue.items.map((followUp) => this.followUpSummary(followUp)),
 		];
+	}
+
+	private hasCanonicalFollowUp(queue: SessionFollowUpQueue, followUp: QueuedFollowUp): boolean {
+		const history = this.runtimes
+			.get(queue.connectionId)
+			?.histories.get(hermesSessionIdentityKey(queue.profileId, queue.durableSessionId));
+		if (!history) return false;
+		const knownIds = new Set(followUp.knownCanonicalUserMessageIds);
+		return history.messages.some((message) => {
+			if (message.role !== "user") return false;
+			const identity = message.canonicalMessageId ?? message.id;
+			if (knownIds.has(identity)) return false;
+			return (
+				message.text === followUp.text ||
+				(followUp.submittedPromptText !== null && message.text === followUp.submittedPromptText)
+			);
+		});
+	}
+
+	private addSettledFollowUp(queue: SessionFollowUpQueue, followUp: QueuedFollowUp): void {
+		if (!queue.settled.some((candidate) => candidate.id === followUp.id)) {
+			queue.settled.push(followUp);
+		}
+		if (queue.settled.length > MAX_ACCEPTED_FOLLOW_UP_LEDGER) {
+			queue.settled.splice(0, queue.settled.length - MAX_ACCEPTED_FOLLOW_UP_LEDGER);
+		}
 	}
 
 	private queueSummariesForBinding(
@@ -1259,6 +1400,7 @@ export class HermesRuntimeService {
 		if (binding) binding.activeTurnSnapshot.queuedFollowUps = this.queueSummaries(queue);
 		this.pushEvent(queue.connectionId, {
 			type: "runtime.follow-up-queue",
+			profileId: queue.profileId,
 			runtimeSessionId: binding?.runtimeSessionId ?? null,
 			durableSessionId: queue.durableSessionId,
 			turnId: binding?.activeTurnSnapshot.turnId ?? null,
@@ -1274,7 +1416,9 @@ export class HermesRuntimeService {
 
 	private removeEmptyFollowUpQueue(queue: SessionFollowUpQueue): void {
 		if (
+			!queue.valid ||
 			queue.active ||
+			queue.activeTurnGeneration !== null ||
 			queue.settled.length > 0 ||
 			queue.items.length > 0 ||
 			queue.draining ||
@@ -1308,18 +1452,25 @@ export class HermesRuntimeService {
 
 	private drainFollowUpQueueInBackground(queue: SessionFollowUpQueue): void {
 		void this.drainFollowUpQueue(queue).catch((error) => {
-			this.pushRuntimeError(queue.connectionId, error, queue.durableSessionId);
+			this.pushRuntimeError(queue.connectionId, error, queue.durableSessionId, queue.profileId);
 		});
 	}
 
 	private async performFollowUpDrain(queue: SessionFollowUpQueue): Promise<void> {
+		const queueGeneration = queue.generation;
+		this.assertQueueCurrent(queue, queueGeneration);
 		const runtime = this.runtimes.get(queue.connectionId);
 		if (!runtime) return;
 		if (runtime.reconnectTask) await runtime.reconnectTask;
-		if (this.runtimes.get(queue.connectionId) !== runtime) return;
+		if (
+			this.runtimes.get(queue.connectionId) !== runtime ||
+			!this.isQueueCurrent(queue, queueGeneration)
+		)
+			return;
 		let binding = this.bindingFor(runtime, queue.durableSessionId, queue.profileId);
 		if (!binding) {
 			await this.resume(queue.connectionId, queue.durableSessionId, queue.profileId);
+			this.assertQueueCurrent(queue, queueGeneration);
 			binding = this.requireBinding(runtime, queue.durableSessionId, queue.profileId);
 		}
 		const followUp = queue.items[0];
@@ -1334,41 +1485,73 @@ export class HermesRuntimeService {
 		binding.activeTurn = true;
 		binding.activeTurnSnapshot.activeTurn = true;
 		binding.activeTurnSnapshot.status = "submitting";
+		binding.activeTurnSnapshot.turnId = null;
+		binding.turnGeneration++;
+		const turnGeneration = binding.turnGeneration;
+		binding.activeTurnIdentity = {
+			generation: turnGeneration,
+			runtimeSessionId: binding.runtimeSessionId,
+			turnId: null,
+		};
+		queue.activeTurnGeneration = turnGeneration;
 		this.clearPendingInteractions(binding);
 		this.pushFollowUpQueueEvent(queue);
 		try {
 			const attachments = await this.attachmentStore.resolve(followUp.attachmentHandles);
+			this.assertQueueCurrent(queue, queueGeneration);
 			const attached = [];
 			for (const attachment of attachments) {
 				const result = await this.attachFile(runtime, binding, attachment);
+				this.assertQueueCurrent(queue, queueGeneration);
 				attached.push({
 					kind: attachment.kind,
 					name: attachment.name,
 					refText: result.refText,
 				});
 			}
-			await runtime.client.request(
+			followUp.submittedPromptText = buildHermesAttachmentPromptText(followUp.text, attached);
+			const response = await runtime.client.request(
 				"prompt.submit",
 				{
 					session_id: binding.runtimeSessionId,
-					text: buildHermesAttachmentPromptText(followUp.text, attached),
+					text: followUp.submittedPromptText,
+					idempotency_key: followUp.deliveryKey,
 				},
 				{ timeoutMs: PROMPT_SUBMIT_TIMEOUT_MS }
 			);
-			if (this.runtimes.get(queue.connectionId) !== runtime) return;
+			if (
+				this.runtimes.get(queue.connectionId) !== runtime ||
+				!this.isQueueCurrent(queue, queueGeneration)
+			)
+				return;
+			followUp.deliveryTurnId = responseTurnId(response);
+			if (binding.activeTurnIdentity?.generation === turnGeneration && followUp.deliveryTurnId) {
+				binding.activeTurnIdentity.turnId = followUp.deliveryTurnId;
+				binding.activeTurnSnapshot.turnId = followUp.deliveryTurnId;
+			}
 			queue.items.shift();
 			followUp.status = "accepted";
 			followUp.transportUncertain = false;
 			if (followUp.wasQueued) {
 				if (binding.activeTurn) queue.active = followUp;
-				else queue.settled.push(followUp);
+				else this.addSettledFollowUp(queue, followUp);
 			}
 			this.attachmentStore.releaseClaim(followUp.attachmentHandles, followUp.ownerId);
 			this.pushFollowUpQueueEvent(queue);
+			this.processPendingTerminalEvents(queue.connectionId, runtime, binding);
 		} catch (error) {
-			if (this.runtimes.get(queue.connectionId) !== runtime) return;
+			if (
+				this.runtimes.get(queue.connectionId) !== runtime ||
+				!this.isQueueCurrent(queue, queueGeneration)
+			)
+				return;
 			binding.activeTurn = false;
 			binding.activeTurnSnapshot.activeTurn = false;
+			binding.activeTurnSnapshot.turnId = null;
+			if (binding.activeTurnIdentity?.generation === turnGeneration) {
+				binding.activeTurnIdentity = null;
+			}
+			if (queue.activeTurnGeneration === turnGeneration) queue.activeTurnGeneration = null;
 			followUp.status = "failed";
 			followUp.transportUncertain = false;
 			const sanitized = sanitizeHermesPayload(
@@ -1803,51 +1986,31 @@ export class HermesRuntimeService {
 							mappedIdentity.profileId
 						)
 					: null;
-				const mappedEvent = { ...event, durableSessionId };
-				this.pushEvent(connectionId, mappedEvent);
-				if (!durableSessionId) return;
+				const mappedEvent = {
+					...event,
+					profileId: mappedIdentity?.profileId ?? null,
+					durableSessionId,
+				};
+				if (!durableSessionId) {
+					this.pushEvent(connectionId, mappedEvent);
+					return;
+				}
 				const binding = this.bindingFor(runtime, durableSessionId, mappedIdentity?.profileId);
-				if (binding) this.applyInteractionEvent(binding, mappedEvent);
 				if (event.workspaceArtifacts.length > 0) {
 					this.linkArtifacts(connectionId, durableSessionId, event.workspaceArtifacts);
 				}
 				if (this.isTerminalEvent(event)) {
-					const queue = mappedIdentity
-						? this.followUpQueues.get(
-								hermesSessionCompositeIdentityKey(
-									connectionId,
-									mappedIdentity.profileId,
-									durableSessionId
-								)
-							)
-						: null;
-					const duplicateTerminal = Boolean(
-						event.turnId && queue?.lastTerminalTurnId === event.turnId
-					);
-					if (duplicateTerminal) return;
-					if (queue && event.turnId) queue.lastTerminalTurnId = event.turnId;
-					if (binding) {
-						binding.activeTurn = false;
-						binding.activeTurnSnapshot.activeTurn = false;
-					}
-					if (queue?.active) {
-						queue.settled.push(queue.active);
-						queue.active = null;
-						this.pushFollowUpQueueEvent(queue);
-					}
-					void this.refreshAfterTerminal(
-						connectionId,
-						runtime,
-						durableSessionId,
-						mappedIdentity?.profileId
-					);
-					if (queue) this.drainFollowUpQueueInBackground(queue);
+					if (binding) this.processTerminalEvent(connectionId, runtime, binding, mappedEvent);
+					return;
 				}
+				this.pushEvent(connectionId, mappedEvent);
+				if (binding) this.applyInteractionEvent(binding, mappedEvent);
 			}),
 			runtime.client.subscribeState((state) => {
 				const sanitized = sanitizeHermesPayload(state.error);
 				this.pushEvent(connectionId, {
 					type: "runtime.connection",
+					profileId: null,
 					runtimeSessionId: null,
 					durableSessionId: null,
 					turnId: null,
@@ -1861,6 +2024,85 @@ export class HermesRuntimeService {
 				});
 			})
 		);
+	}
+
+	private processTerminalEvent(
+		connectionId: string,
+		runtime: ConnectionRuntime,
+		binding: RuntimeBinding,
+		event: HermesRuntimeEvent
+	): boolean {
+		if (this.runtimes.get(connectionId) !== runtime || !event.turnId || !event.runtimeSessionId) {
+			return false;
+		}
+		const terminalIdentity = JSON.stringify([event.runtimeSessionId, event.turnId]);
+		if (binding.processedTerminalIdentities.includes(terminalIdentity)) return false;
+		const active = binding.activeTurnIdentity;
+		if (!binding.activeTurn || !active || active.runtimeSessionId !== event.runtimeSessionId) {
+			return false;
+		}
+		if (!active.turnId) {
+			if (
+				!binding.pendingTerminalEvents.some(
+					(candidate) =>
+						candidate.runtimeSessionId === event.runtimeSessionId &&
+						candidate.turnId === event.turnId
+				)
+			) {
+				binding.pendingTerminalEvents.push(event);
+				if (binding.pendingTerminalEvents.length > MAX_PENDING_TERMINAL_EVENTS) {
+					binding.pendingTerminalEvents.shift();
+				}
+			}
+			return false;
+		}
+		if (active.turnId !== event.turnId) return false;
+
+		binding.processedTerminalIdentities.push(terminalIdentity);
+		if (binding.processedTerminalIdentities.length > MAX_PROCESSED_TERMINAL_IDENTITIES) {
+			binding.processedTerminalIdentities.splice(
+				0,
+				binding.processedTerminalIdentities.length - MAX_PROCESSED_TERMINAL_IDENTITIES
+			);
+		}
+		binding.activeTurn = false;
+		binding.activeTurnIdentity = null;
+		binding.activeTurnSnapshot.activeTurn = false;
+		binding.activeTurnSnapshot.turnId = null;
+		binding.activeTurnSnapshot.status = event.status ?? "complete";
+		this.clearPendingInteractions(binding);
+		const queue = this.followUpQueues.get(
+			hermesSessionCompositeIdentityKey(connectionId, binding.profileId, binding.durableSessionId)
+		);
+		if (queue?.activeTurnGeneration === active.generation) {
+			queue.activeTurnGeneration = null;
+			if (queue.active) {
+				this.addSettledFollowUp(queue, queue.active);
+				queue.active = null;
+			}
+			this.pushFollowUpQueueEvent(queue);
+		}
+		this.pushEvent(connectionId, event);
+		void this.refreshAfterTerminal(
+			connectionId,
+			runtime,
+			binding.durableSessionId,
+			binding.profileId
+		);
+		if (queue) {
+			this.drainFollowUpQueueInBackground(queue);
+			this.removeEmptyFollowUpQueue(queue);
+		}
+		return true;
+	}
+
+	private processPendingTerminalEvents(
+		connectionId: string,
+		runtime: ConnectionRuntime,
+		binding: RuntimeBinding
+	): void {
+		const pending = binding.pendingTerminalEvents.splice(0);
+		for (const event of pending) this.processTerminalEvent(connectionId, runtime, binding, event);
 	}
 
 	private reconcileAfterReconnect(connectionId: string, runtime: ConnectionRuntime): void {
@@ -1897,12 +2139,14 @@ export class HermesRuntimeService {
 				bindings.push({
 					hermesSessionId: durableSessionId,
 					durableSessionId: binding.durableSessionId,
+					profileId: binding.profileId,
 					runtimeSessionId: binding.runtimeSessionId,
 					activeTurn: binding.activeTurn,
 					status: binding.runtimeStatus,
 				});
 				this.pushEvent(connectionId, {
 					type: "runtime.active-turn-snapshot",
+					profileId: binding.profileId,
 					runtimeSessionId: binding.runtimeSessionId,
 					durableSessionId: binding.durableSessionId,
 					turnId: binding.activeTurnSnapshot.turnId,
@@ -1917,7 +2161,7 @@ export class HermesRuntimeService {
 			} catch (error) {
 				if (this.runtimes.get(connectionId) !== runtime) return;
 				failedSessionIds.push(durableSessionId);
-				this.pushRuntimeError(connectionId, error);
+				this.pushRuntimeError(connectionId, error, durableSessionId, previous.profileId);
 				continue;
 			}
 			try {
@@ -1926,12 +2170,13 @@ export class HermesRuntimeService {
 			} catch (error) {
 				if (this.runtimes.get(connectionId) !== runtime) return;
 				failedSessionIds.push(durableSessionId);
-				this.pushRuntimeError(connectionId, error);
+				this.pushRuntimeError(connectionId, error, binding.durableSessionId, binding.profileId);
 			}
 		}
 		if (this.runtimes.get(connectionId) !== runtime) return;
 		this.pushEvent(connectionId, {
 			type: "runtime.history-refresh-required",
+			profileId: null,
 			runtimeSessionId: null,
 			durableSessionId: null,
 			turnId: null,
@@ -1964,9 +2209,7 @@ export class HermesRuntimeService {
 			status: activity.status ?? fallbackActivity?.runtimeStatus ?? null,
 		});
 		this.captureActiveTurnSnapshot(runtime, installed, response);
-		if (activity.activeTurn !== null) {
-			this.reconcileUncertainFollowUp(runtime, installed, activity.activeTurn);
-		}
+		this.reconcileUncertainFollowUp(runtime, installed, response);
 		return installed;
 	}
 
@@ -2017,6 +2260,10 @@ export class HermesRuntimeService {
 			...binding,
 			activeTurn,
 			runtimeStatus,
+			turnGeneration: previous?.turnGeneration ?? 0,
+			activeTurnIdentity: null,
+			processedTerminalIdentities: [...(previous?.processedTerminalIdentities ?? [])],
+			pendingTerminalEvents: [],
 			activeTurnSnapshot: {
 				durableSessionId: binding.durableSessionId,
 				runtimeSessionId: binding.runtimeSessionId,
@@ -2056,6 +2303,22 @@ export class HermesRuntimeService {
 			status: binding.runtimeStatus,
 		});
 		binding.activeTurnSnapshot.queuedFollowUps = this.queueSummariesForBinding(runtime, binding);
+		if (binding.activeTurn && binding.activeTurnSnapshot.turnId) {
+			const current = binding.activeTurnIdentity;
+			if (
+				current?.runtimeSessionId !== binding.runtimeSessionId ||
+				current.turnId !== binding.activeTurnSnapshot.turnId
+			) {
+				binding.turnGeneration++;
+				binding.activeTurnIdentity = {
+					generation: binding.turnGeneration,
+					runtimeSessionId: binding.runtimeSessionId,
+					turnId: binding.activeTurnSnapshot.turnId,
+				};
+			}
+		} else if (!binding.activeTurn) {
+			binding.activeTurnIdentity = null;
+		}
 		if (binding.activeTurn) {
 			binding.activeTurnSnapshot.pendingApproval = pendingApproval;
 			binding.activeTurnSnapshot.pendingClarification = pendingClarification;
@@ -2065,35 +2328,129 @@ export class HermesRuntimeService {
 	private reconcileUncertainFollowUp(
 		runtime: ConnectionRuntime,
 		binding: RuntimeBinding,
-		activeTurn: boolean
+		response: unknown
 	): void {
 		const connectionId = [...this.runtimes].find(([, candidate]) => candidate === runtime)?.[0];
 		if (!connectionId) return;
 		const queue = this.followUpQueues.get(
 			hermesSessionCompositeIdentityKey(connectionId, binding.profileId, binding.durableSessionId)
 		);
-		if (queue?.active && !activeTurn) {
-			queue.settled.push(queue.active);
-			queue.active = null;
+		if (queue) {
+			queue.activeTurnGeneration = binding.activeTurn
+				? (binding.activeTurnIdentity?.generation ?? null)
+				: null;
+		}
+		if (queue?.active) {
+			const belongsToCurrentTurn = Boolean(
+				binding.activeTurn &&
+					binding.activeTurnIdentity?.turnId &&
+					queue.active.deliveryTurnId === binding.activeTurnIdentity.turnId
+			);
+			if (belongsToCurrentTurn) {
+				queue.activeTurnGeneration = binding.activeTurnIdentity?.generation ?? null;
+			} else {
+				this.addSettledFollowUp(queue, queue.active);
+				queue.active = null;
+				queue.activeTurnGeneration = null;
+			}
 			this.pushFollowUpQueueEvent(queue);
 		}
 		const followUp = queue?.items[0];
 		if (!queue || !followUp || (followUp.status !== "submitting" && !followUp.transportUncertain)) {
 			return;
 		}
-		if (activeTurn) {
-			queue.items.shift();
-			followUp.status = "accepted";
-			followUp.wasQueued = true;
-			followUp.transportUncertain = false;
-			queue.active = followUp;
-			this.attachmentStore.releaseClaim(followUp.attachmentHandles, followUp.ownerId);
-		} else {
+		const evidence = responseDeliveryEvidence(response);
+		const message = evidence.userMessages.find((candidate) =>
+			this.followUpMatchesEvidence(followUp, candidate)
+		);
+		const provedByKey = evidence.deliveryKeys.has(followUp.deliveryKey);
+		const provedByTurn = Boolean(
+			followUp.deliveryTurnId && evidence.turnId === followUp.deliveryTurnId
+		);
+		if (!message && !provedByKey && !provedByTurn) {
 			followUp.status = "failed";
-			followUp.transportUncertain = false;
-			followUp.error = "Hermes did not confirm delivery after reconnect. Retry this follow-up.";
+			followUp.transportUncertain = true;
+			followUp.error =
+				"Hermes reconnect could not confirm or prove this follow-up's delivery. It was not resent.";
+			this.pushFollowUpQueueEvent(queue);
+			return;
 		}
+		this.acceptReconciledFollowUp(queue, followUp, binding, message?.turnId ?? evidence.turnId);
 		this.pushFollowUpQueueEvent(queue);
+	}
+
+	private followUpMatchesEvidence(
+		followUp: QueuedFollowUp,
+		message: DeliveryEvidenceMessage
+	): boolean {
+		if (message.deliveryKey === followUp.deliveryKey) return true;
+		if (message.id && followUp.knownCanonicalUserMessageIds.includes(message.id)) return false;
+		return (
+			message.text === followUp.text ||
+			(followUp.submittedPromptText !== null && message.text === followUp.submittedPromptText)
+		);
+	}
+
+	private acceptReconciledFollowUp(
+		queue: SessionFollowUpQueue,
+		followUp: QueuedFollowUp,
+		binding: RuntimeBinding | null,
+		turnId: string | null
+	): void {
+		const index = queue.items.findIndex((candidate) => candidate.id === followUp.id);
+		if (index >= 0) queue.items.splice(index, 1);
+		followUp.status = "accepted";
+		followUp.wasQueued = true;
+		followUp.transportUncertain = false;
+		followUp.error = null;
+		followUp.deliveryTurnId = followUp.deliveryTurnId ?? turnId;
+		const activeIdentity = binding?.activeTurnIdentity;
+		if (
+			binding?.activeTurn &&
+			activeIdentity &&
+			turnId !== null &&
+			activeIdentity.turnId === turnId
+		) {
+			queue.active = followUp;
+			queue.activeTurnGeneration = activeIdentity.generation;
+		} else {
+			this.addSettledFollowUp(queue, followUp);
+			queue.activeTurnGeneration = null;
+		}
+		this.attachmentStore.releaseClaim(followUp.attachmentHandles, followUp.ownerId);
+	}
+
+	private reconcileFollowUpsFromHistory(
+		connectionId: string,
+		profileId: string,
+		history: HermesSessionHistory
+	): void {
+		const queue = this.followUpQueues.get(
+			hermesSessionCompositeIdentityKey(connectionId, profileId, history.durableSessionId)
+		);
+		if (!queue) return;
+		const runtime = this.runtimes.get(connectionId);
+		const binding = runtime ? this.bindingFor(runtime, history.durableSessionId, profileId) : null;
+		const uncertain = queue.items.find(
+			(followUp) => followUp.status === "submitting" || followUp.transportUncertain
+		);
+		if (uncertain) {
+			const message = history.messages
+				.filter((candidate) => candidate.role === "user")
+				.map(
+					(candidate): DeliveryEvidenceMessage => ({
+						id: candidate.canonicalMessageId ?? candidate.id,
+						turnId: candidate.turnId,
+						text: candidate.text,
+						deliveryKey: null,
+					})
+				)
+				.find((candidate) => this.followUpMatchesEvidence(uncertain, candidate));
+			if (message) this.acceptReconciledFollowUp(queue, uncertain, binding, message.turnId);
+		}
+		this.queueSummaries(queue);
+		this.pushFollowUpQueueEvent(queue);
+		this.removeEmptyFollowUpQueue(queue);
 	}
 
 	private applyInteractionEvent(binding: RuntimeBinding, event: HermesRuntimeEvent): void {
@@ -2235,13 +2592,15 @@ export class HermesRuntimeService {
 		durableSessionId: string,
 		profileId?: string
 	): Promise<void> {
+		const binding = this.bindingFor(runtime, durableSessionId, profileId);
+		const resolvedProfileId = profileId ?? binding?.profileId ?? null;
 		try {
-			const binding = this.bindingFor(runtime, durableSessionId, profileId);
 			if (binding) binding.persisted = true;
 			await this.history(connectionId, durableSessionId, profileId);
 			if (this.runtimes.get(connectionId) !== runtime) return;
 			this.pushEvent(connectionId, {
 				type: "runtime.history-refresh-required",
+				profileId: resolvedProfileId,
 				runtimeSessionId: null,
 				durableSessionId,
 				turnId: null,
@@ -2255,7 +2614,7 @@ export class HermesRuntimeService {
 			});
 		} catch (error) {
 			if (this.runtimes.get(connectionId) !== runtime) return;
-			this.pushRuntimeError(connectionId, error);
+			this.pushRuntimeError(connectionId, error, durableSessionId, resolvedProfileId);
 		}
 	}
 
@@ -2295,13 +2654,15 @@ export class HermesRuntimeService {
 	private pushRuntimeError(
 		connectionId: string,
 		error: unknown,
-		durableSessionId: string | null = null
+		durableSessionId: string | null = null,
+		profileId: string | null = null
 	): void {
 		const sanitized = sanitizeHermesPayload(
 			error instanceof Error ? error.message : "Hermes runtime error"
 		);
 		this.pushEvent(connectionId, {
 			type: "runtime.error",
+			profileId,
 			runtimeSessionId: null,
 			durableSessionId,
 			turnId: null,

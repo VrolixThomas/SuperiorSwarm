@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { constants, chmodSync, mkdtempSync, rmSync } from "node:fs";
+import { constants, chmodSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { open } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, extname, join } from "node:path";
@@ -7,11 +7,14 @@ import type {
 	HermesAttachmentKind,
 	HermesAttachmentMetadata,
 	HermesRendererAttachmentUpload,
+	HermesRendererAttachmentUploadMetadata,
+	HermesRendererAttachmentUploadStart,
 } from "../../shared/hermes";
 import {
 	HERMES_ATTACHMENT_CONTEXT_END,
 	HERMES_ATTACHMENT_CONTEXT_START,
 	HERMES_ATTACHMENT_IPC_MAX_BYTES,
+	HERMES_ATTACHMENT_UPLOAD_CHUNK_MAX_BYTES,
 	HERMES_GENERAL_ATTACHMENT_MAX_BYTES,
 	HERMES_IMAGE_ATTACHMENT_MAX_BYTES,
 	HERMES_MAX_ATTACHMENTS,
@@ -20,6 +23,7 @@ import {
 
 export {
 	HERMES_ATTACHMENT_IPC_MAX_BYTES,
+	HERMES_ATTACHMENT_UPLOAD_CHUNK_MAX_BYTES,
 	HERMES_GENERAL_ATTACHMENT_MAX_BYTES,
 	HERMES_IMAGE_ATTACHMENT_MAX_BYTES,
 	HERMES_MAX_ATTACHMENTS,
@@ -165,6 +169,33 @@ function attachmentType(path: string): {
 	};
 }
 
+function validateRendererAttachmentMetadata(upload: HermesRendererAttachmentUploadMetadata): {
+	name: string;
+	size: number;
+	mimeType: string;
+	type: ReturnType<typeof attachmentType>;
+} {
+	const name = rendererFileName(upload.name);
+	if (!Number.isSafeInteger(upload.size) || upload.size < 0) {
+		throw new Error("Attachment size is invalid");
+	}
+	const type = attachmentType(name);
+	if (upload.mimeType.length > 255) throw new Error(`“${name}” has an invalid MIME type`);
+	const reportedMimeType = upload.mimeType.trim().toLocaleLowerCase();
+	if (
+		(reportedMimeType &&
+			!/^[a-z0-9][a-z0-9!#$&^_.+-]*\/[a-z0-9][a-z0-9!#$&^_.+-]*$/u.test(reportedMimeType)) ||
+		(type.kind !== "file" &&
+			reportedMimeType !== "" &&
+			reportedMimeType !== type.mimeType &&
+			reportedMimeType !== "application/octet-stream")
+	) {
+		throw new Error(`“${name}” has an invalid MIME type`);
+	}
+	if (upload.size > type.maxBytes) throw new Error(`${type.tooLargeMessage}: “${name}”`);
+	return { name, size: upload.size, mimeType: type.mimeType, type };
+}
+
 export class HermesAttachmentStore {
 	private readonly attachments = new Map<string, StoredAttachment>();
 	private readonly expiredHandles = new Set<string>();
@@ -261,25 +292,9 @@ export class HermesAttachmentStore {
 		const reservedHandles = new Set<string>();
 		try {
 			for (const upload of uploads) {
-				const name = rendererFileName(upload.name);
-				const type = attachmentType(name);
-				if (upload.mimeType.length > 255) throw new Error(`“${name}” has an invalid MIME type`);
-				const reportedMimeType = upload.mimeType.trim().toLocaleLowerCase();
-				if (
-					(reportedMimeType &&
-						!/^[a-z0-9][a-z0-9!#$&^_.+-]*\/[a-z0-9][a-z0-9!#$&^_.+-]*$/u.test(reportedMimeType)) ||
-					(type.kind !== "file" &&
-						reportedMimeType !== "" &&
-						reportedMimeType !== type.mimeType &&
-						reportedMimeType !== "application/octet-stream")
-				) {
-					throw new Error(`“${name}” has an invalid MIME type`);
-				}
+				const { name, type } = validateRendererAttachmentMetadata(upload);
 				if (upload.bytes.byteLength !== upload.size) {
 					throw new Error(`“${name}” size does not match its bytes`);
-				}
-				if (upload.size > type.maxBytes) {
-					throw new Error(`${type.tooLargeMessage}: “${name}”`);
 				}
 				let handle = this.idFactory();
 				while (this.attachments.has(handle) || reservedHandles.has(handle)) {
@@ -403,6 +418,15 @@ export class HermesAttachmentStore {
 		}
 		if (new Set(handles).size !== handles.length) throw new Error("Duplicate attachment handle");
 		this.sweepExpired();
+		let aggregateBytes = 0;
+		for (const handle of handles) {
+			const attachment = this.attachments.get(handle);
+			if (!attachment) continue;
+			aggregateBytes += attachment.size;
+			if (aggregateBytes > HERMES_ATTACHMENT_IPC_MAX_BYTES) {
+				throw new Error("Attachments in one message must total 64 MiB or smaller");
+			}
+		}
 		const claimed: StoredAttachment[] = [];
 		try {
 			for (const handle of handles) {
@@ -601,4 +625,233 @@ export class HermesAttachmentStore {
 	}
 }
 
+interface RendererUploadFile {
+	fileId: string;
+	path: string;
+	name: string;
+	size: number;
+	written: number;
+}
+
+interface RendererUploadBatch {
+	uploadId: string;
+	ownerId: string;
+	directory: string;
+	expiresAt: number;
+	declaredBytes: number;
+	files: RendererUploadFile[];
+}
+
+export interface HermesRendererAttachmentUploadManagerOptions {
+	idFactory?: () => string;
+	now?: () => number;
+	ttlMs?: number;
+	stagingParentDirectory?: string;
+}
+
+const MAX_ACTIVE_RENDERER_UPLOADS = 8;
+const MAX_ACTIVE_RENDERER_UPLOAD_BYTES = HERMES_ATTACHMENT_IPC_MAX_BYTES * 4;
+const DEFAULT_RENDERER_UPLOAD_TTL_MS = 5 * 60 * 1_000;
+
+/** Main-owned, disk-backed renderer uploads. IPC frames never exceed the exported chunk bound. */
+export class HermesRendererAttachmentUploadManager {
+	private readonly uploads = new Map<string, RendererUploadBatch>();
+	private readonly idFactory: () => string;
+	private readonly now: () => number;
+	private readonly ttlMs: number;
+	private readonly stagingParentDirectory: string;
+
+	constructor(
+		private readonly store: HermesAttachmentStore,
+		options: HermesRendererAttachmentUploadManagerOptions = {}
+	) {
+		this.idFactory = options.idFactory ?? randomUUID;
+		this.now = options.now ?? Date.now;
+		this.ttlMs = options.ttlMs ?? DEFAULT_RENDERER_UPLOAD_TTL_MS;
+		this.stagingParentDirectory = options.stagingParentDirectory ?? tmpdir();
+	}
+
+	get activeUploads(): number {
+		return this.uploads.size;
+	}
+
+	begin(
+		ownerId: string,
+		attachments: HermesRendererAttachmentUploadMetadata[]
+	): HermesRendererAttachmentUploadStart {
+		this.sweepExpired();
+		if (!ownerId) throw new Error("Renderer upload owner is required");
+		if (attachments.length === 0 || attachments.length > HERMES_MAX_ATTACHMENTS) {
+			throw new Error(`Attach between 1 and ${HERMES_MAX_ATTACHMENTS} files at a time`);
+		}
+		if ([...this.uploads.values()].some((upload) => upload.ownerId === ownerId)) {
+			throw new Error("Finish or cancel the active attachment upload first");
+		}
+		if (this.uploads.size >= MAX_ACTIVE_RENDERER_UPLOADS) {
+			throw new Error("Too many attachment uploads are active");
+		}
+		const validated = attachments.map(validateRendererAttachmentMetadata);
+		const declaredBytes = validated.reduce((total, upload) => total + upload.size, 0);
+		if (declaredBytes > HERMES_ATTACHMENT_IPC_MAX_BYTES) {
+			throw new Error("Attachment IPC payloads must total 64 MiB or smaller");
+		}
+		const activeBytes = [...this.uploads.values()].reduce(
+			(total, upload) => total + upload.declaredBytes,
+			0
+		);
+		if (activeBytes + declaredBytes > MAX_ACTIVE_RENDERER_UPLOAD_BYTES) {
+			throw new Error("Too many attachment upload bytes are active");
+		}
+
+		const uploadId = this.uniqueId();
+		const directory = mkdtempSync(
+			join(this.stagingParentDirectory, "superiorswarm-hermes-upload-")
+		);
+		chmodSync(directory, 0o700);
+		try {
+			const files = validated.map((upload, index) => {
+				const fileId = this.uniqueId();
+				const fileDirectory = join(directory, String(index));
+				mkdirSync(fileDirectory, { mode: 0o700 });
+				return {
+					fileId,
+					path: join(fileDirectory, upload.name),
+					name: upload.name,
+					size: upload.size,
+					written: 0,
+				};
+			});
+			this.uploads.set(uploadId, {
+				uploadId,
+				ownerId,
+				directory,
+				expiresAt: this.now() + this.ttlMs,
+				declaredBytes,
+				files,
+			});
+			return { uploadId, files: files.map(({ fileId }) => ({ fileId })) };
+		} catch (error) {
+			rmSync(directory, { force: true, recursive: true });
+			throw error;
+		}
+	}
+
+	async append(
+		ownerId: string,
+		input: { uploadId: string; fileId: string; offset: number; bytes: Uint8Array }
+	): Promise<void> {
+		this.sweepExpired();
+		if (!(input.bytes instanceof Uint8Array)) {
+			throw new Error("Attachment upload chunk must be a Uint8Array");
+		}
+		if (input.bytes.byteLength > HERMES_ATTACHMENT_UPLOAD_CHUNK_MAX_BYTES) {
+			throw new Error("Attachment upload chunk exceeds 256 KiB");
+		}
+		const batch = this.requireUpload(ownerId, input.uploadId);
+		const file = batch.files.find((candidate) => candidate.fileId === input.fileId);
+		if (!file) throw new Error("Attachment upload is unavailable");
+		if (!Number.isSafeInteger(input.offset) || input.offset !== file.written) {
+			throw new Error("Attachment upload chunk is out of sequence");
+		}
+		if (file.written + input.bytes.byteLength > file.size) {
+			throw new Error("Attachment upload exceeds its declared size");
+		}
+		if (input.bytes.byteLength === 0) return;
+		const flags =
+			file.written === 0
+				? constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW
+				: constants.O_WRONLY | constants.O_NOFOLLOW;
+		const destination = await open(file.path, flags, 0o600);
+		try {
+			let written = 0;
+			while (written < input.bytes.byteLength) {
+				const result = await destination.write(
+					input.bytes,
+					written,
+					input.bytes.byteLength - written,
+					file.written + written
+				);
+				if (result.bytesWritten === 0) throw new Error(`Could not stage “${file.name}”`);
+				written += result.bytesWritten;
+			}
+			file.written += written;
+			batch.expiresAt = this.now() + this.ttlMs;
+		} finally {
+			await destination.close();
+		}
+	}
+
+	async finish(ownerId: string, uploadId: string): Promise<HermesAttachmentMetadata[]> {
+		this.sweepExpired();
+		const batch = this.requireUpload(ownerId, uploadId);
+		for (const file of batch.files) {
+			if (file.written !== file.size) throw new Error(`“${file.name}” upload is incomplete`);
+			if (file.size === 0) {
+				const empty = await open(
+					file.path,
+					constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
+					0o600
+				);
+				await empty.close();
+			}
+		}
+		try {
+			return await this.store.registerPaths(batch.files.map((file) => file.path));
+		} finally {
+			this.removeUpload(batch);
+		}
+	}
+
+	cancel(ownerId: string, uploadId: string): void {
+		const batch = this.requireUpload(ownerId, uploadId);
+		this.removeUpload(batch);
+	}
+
+	cancelOwner(ownerId: string): number {
+		let cancelled = 0;
+		for (const batch of [...this.uploads.values()]) {
+			if (batch.ownerId !== ownerId) continue;
+			this.removeUpload(batch);
+			cancelled++;
+		}
+		return cancelled;
+	}
+
+	clear(): void {
+		for (const batch of [...this.uploads.values()]) this.removeUpload(batch);
+	}
+
+	sweepExpired(): number {
+		const now = this.now();
+		let removed = 0;
+		for (const batch of [...this.uploads.values()]) {
+			if (batch.expiresAt > now) continue;
+			this.removeUpload(batch);
+			removed++;
+		}
+		return removed;
+	}
+
+	private uniqueId(): string {
+		let id = this.idFactory();
+		while (this.uploads.has(id)) id = this.idFactory();
+		return id;
+	}
+
+	private requireUpload(ownerId: string, uploadId: string): RendererUploadBatch {
+		const batch = this.uploads.get(uploadId);
+		if (!batch || batch.ownerId !== ownerId) throw new Error("Attachment upload is unavailable");
+		return batch;
+	}
+
+	private removeUpload(batch: RendererUploadBatch): void {
+		if (this.uploads.get(batch.uploadId) !== batch) return;
+		this.uploads.delete(batch.uploadId);
+		rmSync(batch.directory, { force: true, recursive: true });
+	}
+}
+
 export const hermesAttachmentStore = new HermesAttachmentStore();
+export const hermesRendererAttachmentUploads = new HermesRendererAttachmentUploadManager(
+	hermesAttachmentStore
+);

@@ -7,7 +7,11 @@ import {
 	useRef,
 	useState,
 } from "react";
-import { hermesSessionCompositeIdentityKey } from "../../../shared/hermes";
+import {
+	HERMES_ATTACHMENT_UPLOAD_CHUNK_MAX_BYTES,
+	type HermesAttachmentMetadata,
+	hermesSessionCompositeIdentityKey,
+} from "../../../shared/hermes";
 import {
 	type HermesSelectionGeneration,
 	HermesSelectionGuard,
@@ -116,35 +120,12 @@ export function HermesSessionView() {
 	const clarify = trpc.hermes.respondClarification.useMutation();
 	const pickAttachments = trpc.hermes.pickAttachments.useMutation({
 		onSuccess: (selected) => {
-			const existing = new Set(attachmentsRef.current.map((attachment) => attachment.handle));
-			const unique = selected.filter((attachment) => !existing.has(attachment.handle));
-			const available = Math.max(0, 10 - attachmentsRef.current.length);
-			const accepted = unique.slice(0, available);
-			const rejected = unique.slice(available);
-			if (accepted.length > 0) {
-				dispatchAttachments({ type: "add", attachments: accepted });
-			}
-			for (const attachment of rejected) {
-				releaseAttachment.mutate({ handle: attachment.handle });
-			}
-			setAttachmentLimitError(rejected.length > 0 ? "Attach up to 10 files to one message." : null);
+			acceptRegisteredAttachments(selected);
 		},
 	});
 	const releaseAttachment = trpc.hermes.releaseAttachment.useMutation();
 	const releaseAttachmentRef = useRef(releaseAttachment.mutate);
 	releaseAttachmentRef.current = releaseAttachment.mutate;
-	const registerAttachments = trpc.hermes.registerAttachments.useMutation({
-		onSuccess: (selected) => {
-			const existing = new Set(attachmentsRef.current.map((attachment) => attachment.handle));
-			const unique = selected.filter((attachment) => !existing.has(attachment.handle));
-			const available = Math.max(0, 10 - attachmentsRef.current.length);
-			const accepted = unique.slice(0, available);
-			const rejected = unique.slice(available);
-			if (accepted.length > 0) dispatchAttachments({ type: "add", attachments: accepted });
-			for (const attachment of rejected) releaseAttachment.mutate({ handle: attachment.handle });
-			setAttachmentLimitError(rejected.length > 0 ? "Attach up to 10 files to one message." : null);
-		},
-	});
 	const selectionKey = hermesSessionCompositeIdentityKey(
 		connectionId,
 		profileId ?? "",
@@ -166,8 +147,7 @@ export function HermesSessionView() {
 		connected,
 		running: live.running,
 		submitPending: submit.isPending,
-		attachmentPickerPending:
-			pickAttachments.isPending || registerAttachments.isPending || attachmentReadPending,
+		attachmentPickerPending: pickAttachments.isPending || attachmentReadPending,
 		attachmentAttaching: attachments.some((attachment) => attachment.status === "attaching"),
 		hasPayload: Boolean(composer.trim() || attachments.length > 0),
 	});
@@ -321,13 +301,17 @@ export function HermesSessionView() {
 		const relevantEvents = feed.events.flatMap((entry) => {
 			const event = entry.event;
 			if (event.type === "runtime.history-refresh-required") {
-				if (event.durableSessionId === null || event.durableSessionId === sessionId) {
+				if (event.durableSessionId === null) {
+					refreshHistory = true;
+					return [];
+				}
+				if (event.profileId === profileId && event.durableSessionId === sessionId) {
 					refreshHistory = true;
 					return [event];
 				}
 				return [];
 			}
-			return event.durableSessionId === sessionId ? [event] : [];
+			return event.profileId === profileId && event.durableSessionId === sessionId ? [event] : [];
 		});
 		setLive((current) => {
 			let next = current;
@@ -530,29 +514,53 @@ export function HermesSessionView() {
 			return;
 		}
 		setAttachmentReadPending(true);
+		let uploadId: string | null = null;
 		try {
-			const uploads = await Promise.all(
-				files.map(async (file) => {
-					const bytes = new Uint8Array(await file.arrayBuffer());
-					if (bytes.byteLength !== file.size)
-						throw new Error(`“${file.name}” changed while reading`);
-					return {
-						name: file.name,
-						size: file.size,
-						mimeType: file.type,
-						bytes,
-					};
-				})
+			const started = await window.electron.hermesAttachments.begin(
+				files.map((file) => ({ name: file.name, size: file.size, mimeType: file.type }))
 			);
-			registerAttachments.mutate({ attachments: uploads });
+			uploadId = started.uploadId;
+			for (const [index, file] of files.entries()) {
+				const fileId = started.files[index]?.fileId;
+				if (!fileId) throw new Error("Attachment upload handle is unavailable");
+				let offset = 0;
+				while (offset < file.size) {
+					const end = Math.min(offset + HERMES_ATTACHMENT_UPLOAD_CHUNK_MAX_BYTES, file.size);
+					const bytes = new Uint8Array(await file.slice(offset, end).arrayBuffer());
+					if (bytes.byteLength !== end - offset)
+						throw new Error(`“${file.name}” changed while reading`);
+					await window.electron.hermesAttachments.append({
+						uploadId,
+						fileId,
+						offset,
+						bytes,
+					});
+					offset = end;
+				}
+			}
+			const selected = await window.electron.hermesAttachments.finish(uploadId);
+			uploadId = null;
+			acceptRegisteredAttachments(selected);
 			setAttachmentLimitError(null);
 		} catch (reason) {
+			if (uploadId) void window.electron.hermesAttachments.cancel(uploadId).catch(() => undefined);
 			setAttachmentLimitError(
 				reason instanceof Error ? reason.message : "Could not read the selected files."
 			);
 		} finally {
 			setAttachmentReadPending(false);
 		}
+	}
+
+	function acceptRegisteredAttachments(selected: HermesAttachmentMetadata[]): void {
+		const existing = new Set(attachmentsRef.current.map((attachment) => attachment.handle));
+		const unique = selected.filter((attachment) => !existing.has(attachment.handle));
+		const available = Math.max(0, 10 - attachmentsRef.current.length);
+		const accepted = unique.slice(0, available);
+		const rejected = unique.slice(available);
+		if (accepted.length > 0) dispatchAttachments({ type: "add", attachments: accepted });
+		for (const attachment of rejected) releaseAttachment.mutate({ handle: attachment.handle });
+		setAttachmentLimitError(rejected.length > 0 ? "Attach up to 10 files to one message." : null);
 	}
 
 	useEffect(() => {
@@ -608,7 +616,6 @@ export function HermesSessionView() {
 		approval.error?.message ??
 		clarify.error?.message ??
 		pickAttachments.error?.message ??
-		registerAttachments.error?.message ??
 		attachmentLimitError ??
 		followUps.error?.message ??
 		retryFollowUp.error?.message ??

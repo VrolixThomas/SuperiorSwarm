@@ -101,6 +101,7 @@ class FakeRuntimeClient implements HermesRuntimeClientLike {
 
 	emit(event: Partial<HermesRuntimeEvent> & Pick<HermesRuntimeEvent, "type">): void {
 		this.eventListener?.({
+			profileId: null,
 			runtimeSessionId: null,
 			durableSessionId: null,
 			turnId: null,
@@ -1590,6 +1591,7 @@ describe("HermesRuntimeService stock lifecycle", () => {
 				params: {
 					session_id: "runtime-new",
 					text: "Investigate ticket SUP-42 and fix the failing release build",
+					idempotency_key: expect.any(String),
 				},
 			},
 		]);
@@ -1848,9 +1850,9 @@ describe("HermesRuntimeService stock lifecycle", () => {
 			{ session_id: "runtime-fifo", session_key: "stored-1", profile: "work" },
 		]);
 		client.responses.set("prompt.submit", [
-			{ status: "streaming" },
-			{ status: "streaming" },
-			{ status: "streaming" },
+			{ status: "streaming", turn_id: "turn-first" },
+			{ status: "streaming", turn_id: "turn-second" },
+			{ status: "streaming", turn_id: "turn-third" },
 		]);
 		await service.connect(connectionId);
 		await service.resume(connectionId, "stored-1", "work");
@@ -1900,6 +1902,148 @@ describe("HermesRuntimeService stock lifecycle", () => {
 		).toEqual(["First", "Second", "Third"]);
 	});
 
+	test("does not let null or delayed terminal identities settle a newer generation or double-drain", async () => {
+		client.responses.set("session.resume", [
+			{ session_id: "runtime-terminal-guard", session_key: "stored-1", profile: "work" },
+		]);
+		client.responses.set("prompt.submit", [
+			{ status: "streaming", turn_id: "turn-first" },
+			{ status: "streaming", turn_id: "turn-second" },
+			{ status: "streaming", turn_id: "turn-third" },
+		]);
+		await service.connect(connectionId);
+		await service.resume(connectionId, "stored-1", "work");
+		await service.submit(connectionId, "stored-1", "First", [], "work");
+		await service.submitFollowUp(connectionId, "stored-1", "Second", [], "work");
+		await service.submitFollowUp(connectionId, "stored-1", "Third", [], "work");
+
+		client.emit({
+			type: "turn.completed",
+			runtimeSessionId: "runtime-terminal-guard",
+			turnId: "turn-first",
+		});
+		await waitFor(
+			() => client.requests.filter((request) => request.method === "prompt.submit").length === 2,
+			"second follow-up did not begin"
+		);
+
+		client.emit({ type: "message.complete", runtimeSessionId: "runtime-terminal-guard" });
+		client.emit({
+			type: "turn.completed",
+			runtimeSessionId: "runtime-terminal-guard",
+			turnId: "turn-first",
+		});
+		await Bun.sleep(5);
+		expect(client.requests.filter((request) => request.method === "prompt.submit")).toHaveLength(2);
+
+		client.emit({
+			type: "turn.completed",
+			runtimeSessionId: "runtime-terminal-guard",
+			turnId: "turn-second",
+		});
+		await waitFor(
+			() => client.requests.filter((request) => request.method === "prompt.submit").length === 3,
+			"third follow-up did not begin"
+		);
+	});
+
+	test("retains an uncertain follow-up when reconnect activity belongs to another client turn", async () => {
+		const uncertain = new Deferred<unknown>();
+		client.responses.set("session.resume", [
+			{ session_id: "runtime-identity-1", session_key: "stored-1", profile: "work" },
+			{
+				session_id: "runtime-identity-2",
+				session_key: "stored-1",
+				profile: "work",
+				running: true,
+				status: "working",
+				current_turn_id: "turn-other-client",
+				messages: [
+					{ id: "other-user", turn_id: "turn-other-client", role: "user", content: "Other client" },
+				],
+			},
+		]);
+		client.responses.set("prompt.submit", [
+			{ status: "streaming", turn_id: "turn-current" },
+			uncertain.promise,
+		]);
+		await service.connect(connectionId);
+		await service.resume(connectionId, "stored-1", "work");
+		await service.submit(connectionId, "stored-1", "Current", [], "work");
+		await service.submitFollowUp(connectionId, "stored-1", "Uncertain A", [], "work");
+		client.emit({
+			type: "turn.completed",
+			runtimeSessionId: "runtime-identity-1",
+			turnId: "turn-current",
+		});
+		await waitFor(
+			() => service.followUps(connectionId, "stored-1", "work")[0]?.status === "submitting",
+			"uncertain follow-up did not begin"
+		);
+
+		service.disconnect(connectionId);
+		await service.connect(connectionId);
+		await Bun.sleep(5);
+
+		expect(service.followUps(connectionId, "stored-1", "work")).toEqual([
+			expect.objectContaining({
+				text: "Uncertain A",
+				status: "failed",
+				error: expect.stringContaining("confirm"),
+			}),
+		]);
+		expect(client.requests.filter((request) => request.method === "prompt.submit")).toHaveLength(2);
+		uncertain.resolve({ status: "streaming", turn_id: "turn-uncertain" });
+	});
+
+	test("reconciles an uncertain completed follow-up from authoritative transcript identity", async () => {
+		const uncertain = new Deferred<unknown>();
+		client.responses.set("session.resume", [
+			{ session_id: "runtime-transcript-1", session_key: "stored-1", profile: "work" },
+			{
+				session_id: "runtime-transcript-2",
+				session_key: "stored-1",
+				profile: "work",
+				running: false,
+				status: "idle",
+				messages: [
+					{
+						id: "canonical-uncertain",
+						turn_id: "turn-uncertain",
+						role: "user",
+						content: "Uncertain A",
+					},
+				],
+			},
+		]);
+		client.responses.set("prompt.submit", [
+			{ status: "streaming", turn_id: "turn-current" },
+			uncertain.promise,
+		]);
+		await service.connect(connectionId);
+		await service.resume(connectionId, "stored-1", "work");
+		await service.submit(connectionId, "stored-1", "Current", [], "work");
+		await service.submitFollowUp(connectionId, "stored-1", "Uncertain A", [], "work");
+		client.emit({
+			type: "turn.completed",
+			runtimeSessionId: "runtime-transcript-1",
+			turnId: "turn-current",
+		});
+		await waitFor(
+			() => service.followUps(connectionId, "stored-1", "work")[0]?.status === "submitting",
+			"uncertain follow-up did not begin"
+		);
+
+		service.disconnect(connectionId);
+		await service.connect(connectionId);
+		await waitFor(
+			() => service.followUps(connectionId, "stored-1", "work")[0]?.status === "accepted",
+			"authoritative transcript did not reconcile delivery"
+		);
+		expect(client.requests.filter((request) => request.method === "prompt.submit")).toHaveLength(2);
+		uncertain.resolve({ status: "streaming", turn_id: "turn-uncertain" });
+	});
+
 	test("reports a pre-resume submission as queued when Hermes says the durable turn is active", async () => {
 		client.responses.set("session.resume", [
 			{
@@ -1937,7 +2081,10 @@ describe("HermesRuntimeService stock lifecycle", () => {
 				status: "idle",
 			},
 		]);
-		client.responses.set("prompt.submit", [{ status: "streaming" }, uncertain.promise]);
+		client.responses.set("prompt.submit", [
+			{ status: "streaming", turn_id: "turn-current" },
+			uncertain.promise,
+		]);
 		await service.connect(connectionId);
 		await service.resume(connectionId, "stored-1", "work");
 		await service.submit(connectionId, "stored-1", "Current", [], "work");
@@ -1982,9 +2129,16 @@ describe("HermesRuntimeService stock lifecycle", () => {
 				profile: "work",
 				running: true,
 				status: "working",
+				current_turn_id: "turn-uncertain",
+				messages: [
+					{ id: "uncertain-user", turn_id: "turn-uncertain", role: "user", content: "Uncertain" },
+				],
 			},
 		]);
-		client.responses.set("prompt.submit", [{ status: "streaming" }, uncertain.promise]);
+		client.responses.set("prompt.submit", [
+			{ status: "streaming", turn_id: "turn-current" },
+			uncertain.promise,
+		]);
 		await service.connect(connectionId);
 		await service.resume(connectionId, "stored-1", "work");
 		await service.submit(connectionId, "stored-1", "Current", [], "work");
@@ -2021,9 +2175,9 @@ describe("HermesRuntimeService stock lifecycle", () => {
 			{ session_id: "runtime-fast-terminal", session_key: "stored-1", profile: "work" },
 		]);
 		client.responses.set("prompt.submit", [
-			{ status: "streaming" },
+			{ status: "streaming", turn_id: "turn-current" },
 			acknowledgement.promise,
-			{ status: "streaming" },
+			{ status: "streaming", turn_id: "turn-next" },
 		]);
 		await service.connect(connectionId);
 		await service.resume(connectionId, "stored-1", "work");
@@ -2045,7 +2199,7 @@ describe("HermesRuntimeService stock lifecycle", () => {
 			runtimeSessionId: "runtime-fast-terminal",
 			turnId: "turn-fast",
 		});
-		acknowledgement.resolve({ status: "complete" });
+		acknowledgement.resolve({ status: "complete", turn_id: "turn-fast" });
 
 		await waitFor(
 			() => client.requests.filter((request) => request.method === "prompt.submit").length === 3,
@@ -2090,8 +2244,63 @@ describe("HermesRuntimeService stock lifecycle", () => {
 				.filter((request) => request.method === "prompt.submit")
 				.map((request) => request.params)
 		).toEqual([
-			{ session_id: "runtime-work", text: "Work current" },
-			{ session_id: "runtime-personal", text: "Personal direct" },
+			expect.objectContaining({ session_id: "runtime-work", text: "Work current" }),
+			expect.objectContaining({ session_id: "runtime-personal", text: "Personal direct" }),
+		]);
+	});
+
+	test("projects profile identity on every mapped event when durable session IDs collide", async () => {
+		admitAgentSession("same-session", "work");
+		admitAgentSession("same-session", "personal");
+		rest.sessions = [
+			{ ...session("same-session"), profileId: "work", source: "superiorswarm", origin: null },
+			{
+				...session("same-session"),
+				profileId: "personal",
+				source: "superiorswarm",
+				origin: null,
+			},
+		];
+		client.responses.set("session.resume", [
+			{ session_id: "runtime-work-event", session_key: "same-session", profile: "work" },
+			{
+				session_id: "runtime-personal-event",
+				session_key: "same-session",
+				profile: "personal",
+			},
+		]);
+		await service.connect(connectionId);
+		await service.resume(connectionId, "same-session", "work");
+		await service.resume(connectionId, "same-session", "personal");
+
+		client.emit({
+			type: "message.delta",
+			runtimeSessionId: "runtime-work-event",
+			turnId: "turn-work",
+			text: "work secret",
+		});
+		client.emit({
+			type: "message.delta",
+			runtimeSessionId: "runtime-personal-event",
+			turnId: "turn-personal",
+			text: "personal secret",
+		});
+
+		const deltas = service
+			.events(connectionId, 0)
+			.events.filter((entry) => entry.event.type === "message.delta")
+			.map((entry) => entry.event);
+		expect(deltas).toEqual([
+			expect.objectContaining({
+				profileId: "work",
+				durableSessionId: "same-session",
+				text: "work secret",
+			}),
+			expect.objectContaining({
+				profileId: "personal",
+				durableSessionId: "same-session",
+				text: "personal secret",
+			}),
 		]);
 	});
 
@@ -2120,6 +2329,35 @@ describe("HermesRuntimeService stock lifecycle", () => {
 		});
 		expect(service.followUps(connectionId, "stored-1", "work")).toEqual([]);
 		expect(attachments.size).toBe(0);
+	});
+
+	test("cancels queue admission across attachment claim when the connection is forgotten", async () => {
+		const fixture = await attachmentFixture();
+		const [selected] = await attachments.registerPaths([fixture.filePath]);
+		const claimGate = new Deferred<void>();
+		let claimStarted = false;
+		const originalClaim = attachments.claim.bind(attachments);
+		attachments.claim = async (handles, ownerId) => {
+			claimStarted = true;
+			await claimGate.promise;
+			return await originalClaim(handles, ownerId);
+		};
+		await service.connect(connectionId);
+
+		const admission = service.submitFollowUp(
+			connectionId,
+			"stored-1",
+			"Must be cancelled",
+			[selected?.handle ?? ""],
+			"work"
+		);
+		await waitFor(() => claimStarted, "attachment claim did not start");
+		service.forgetConnection(connectionId);
+		claimGate.resolve();
+
+		await expect(admission).rejects.toThrow("cancelled");
+		expect(attachments.size).toBe(0);
+		expect(service.followUps(connectionId, "stored-1", "work")).toEqual([]);
 	});
 
 	test("projects queued follow-ups through resume and preserves them across disconnect/reconnect", async () => {
@@ -2175,6 +2413,61 @@ describe("HermesRuntimeService stock lifecycle", () => {
 		).toBe("Survive reload");
 	});
 
+	test("retains accepted projections beyond five minutes until canonical history reconciles them", async () => {
+		let clock = 1_000;
+		service.shutdown();
+		service = new HermesRuntimeService({
+			attachmentStore: attachments,
+			clientFactory: () => client,
+			restClientFactory: () => rest,
+			sendService: sender,
+			tokenVault: vault,
+			loopbackTokenResolver: async () => "secret",
+			externalManagerIdResolver: () => defaultManagerId,
+			now: () => clock,
+		});
+		client.responses.set("session.resume", [
+			{ session_id: "runtime-stable-ledger", session_key: "stored-1", profile: "work" },
+		]);
+		client.responses.set("prompt.submit", [
+			{ status: "streaming", turn_id: "turn-current" },
+			{ status: "streaming", turn_id: "turn-accepted" },
+		]);
+		await service.connect(connectionId);
+		await service.resume(connectionId, "stored-1", "work");
+		await service.submit(connectionId, "stored-1", "Current", [], "work");
+		await service.submitFollowUp(connectionId, "stored-1", "Accepted follow-up", [], "work");
+		client.emit({
+			type: "turn.completed",
+			runtimeSessionId: "runtime-stable-ledger",
+			turnId: "turn-current",
+		});
+		await waitFor(
+			() => service.followUps(connectionId, "stored-1", "work")[0]?.status === "accepted",
+			"queued follow-up was not accepted"
+		);
+		client.emit({
+			type: "turn.completed",
+			runtimeSessionId: "runtime-stable-ledger",
+			turnId: "turn-accepted",
+		});
+		clock += 5 * 60 * 1_000 + 1;
+
+		expect(service.followUps(connectionId, "stored-1", "work")).toEqual([
+			expect.objectContaining({ text: "Accepted follow-up", status: "accepted" }),
+		]);
+
+		rest.histories.set("stored-1", {
+			durableSessionId: "stored-1",
+			view: "durable",
+			messages: [
+				historyMessage("canonical-accepted", { role: "user", text: "Accepted follow-up" }),
+			],
+		});
+		await service.history(connectionId, "stored-1", "work");
+		expect(service.followUps(connectionId, "stored-1", "work")).toEqual([]);
+	});
+
 	test("keeps failed queued attachments retryable without duplicate upload and releases on success", async () => {
 		const fixture = await attachmentFixture();
 		const [selected] = await attachments.registerPaths([fixture.imagePath]);
@@ -2183,9 +2476,9 @@ describe("HermesRuntimeService stock lifecycle", () => {
 		]);
 		client.responses.set("image.attach", [{ attached: true }]);
 		client.responses.set("prompt.submit", [
-			{ status: "streaming" },
+			{ status: "streaming", turn_id: "turn-current" },
 			new Error("queued send failed"),
-			{ status: "streaming" },
+			{ status: "streaming", turn_id: "turn-retry" },
 		]);
 		await service.connect(connectionId);
 		await service.resume(connectionId, "stored-1", "work");
@@ -2856,6 +3149,7 @@ describe("HermesRuntimeService stock lifecycle", () => {
 			{
 				hermesSessionId: "stored-1",
 				durableSessionId: "stored-1",
+				profileId: "work",
 				runtimeSessionId: "runtime-2",
 				activeTurn: false,
 				status: null,
@@ -2969,7 +3263,13 @@ describe("HermesRuntimeService stock lifecycle", () => {
 
 	test("maps live events to durable IDs and refreshes REST after terminal completion", async () => {
 		client.responses.set("session.resume", [
-			{ session_id: "runtime-1", session_key: "stored-1", profile: "work" },
+			{
+				session_id: "runtime-1",
+				session_key: "stored-1",
+				profile: "work",
+				running: true,
+				current_turn_id: "turn-1",
+			},
 		]);
 		await service.connect(connectionId);
 		await service.resume(connectionId, "stored-1");
@@ -2978,6 +3278,7 @@ describe("HermesRuntimeService stock lifecycle", () => {
 		client.emit({
 			type: "message.complete",
 			runtimeSessionId: "runtime-1",
+			turnId: "turn-1",
 			text: "Done",
 		});
 		await Bun.sleep(5);

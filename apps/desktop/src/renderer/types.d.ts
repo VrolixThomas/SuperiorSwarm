@@ -4,6 +4,7 @@ import type {
 	AgentDispatchAPI,
 	DaemonAPI,
 	DialogAPI,
+	HermesAttachmentUploadAPI,
 	LspAPI,
 	RepoAPI,
 	SessionAPI,
@@ -16,6 +17,7 @@ import type {
 export interface ElectronAPI {
 	terminal: TerminalAPI;
 	trpc: TrpcAPI;
+	hermesAttachments: HermesAttachmentUploadAPI;
 	dialog: DialogAPI;
 	session: SessionAPI;
 	shell: ShellAPI;

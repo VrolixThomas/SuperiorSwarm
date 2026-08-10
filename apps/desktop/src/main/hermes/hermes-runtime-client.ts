@@ -240,6 +240,7 @@ export class HermesRuntimeClient {
 				if (reconnecting) {
 					this.emit({
 						type: "runtime.history-refresh-required",
+						profileId: null,
 						runtimeSessionId: null,
 						durableSessionId: null,
 						turnId: null,
