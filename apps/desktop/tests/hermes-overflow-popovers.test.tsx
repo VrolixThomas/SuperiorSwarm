@@ -1,57 +1,306 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { Window } from "happy-dom";
+import { act, useState } from "react";
+import type { Root } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
-import { OverflowPopover } from "../src/renderer/components/hermes/OverflowPopover";
+
+const testWindow = new Window({ url: "http://localhost" });
+const browserGlobals: Record<string, unknown> = {
+	window: testWindow,
+	self: testWindow,
+	document: testWindow.document,
+	navigator: testWindow.navigator,
+	Node: testWindow.Node,
+	Element: testWindow.Element,
+	HTMLElement: testWindow.HTMLElement,
+	HTMLButtonElement: testWindow.HTMLButtonElement,
+	HTMLDialogElement: testWindow.HTMLDialogElement,
+	Event: testWindow.Event,
+	MouseEvent: testWindow.MouseEvent,
+	KeyboardEvent: testWindow.KeyboardEvent,
+	MutationObserver: testWindow.MutationObserver,
+	getComputedStyle: testWindow.getComputedStyle.bind(testWindow),
+	requestAnimationFrame: testWindow.requestAnimationFrame.bind(testWindow),
+	cancelAnimationFrame: testWindow.cancelAnimationFrame.bind(testWindow),
+	IS_REACT_ACT_ENVIRONMENT: true,
+};
+
+for (const [key, value] of Object.entries(browserGlobals)) {
+	Object.defineProperty(globalThis, key, { configurable: true, writable: true, value });
+}
+
+const { createRoot } = await import("react-dom/client");
+const { OverflowPopover } = await import("../src/renderer/components/hermes/OverflowPopover");
+
+interface RectInit {
+	left: number;
+	top: number;
+	width: number;
+	height: number;
+}
+
+interface PopoverHarness {
+	trigger: HTMLButtonElement;
+	setTriggerRect: (rect: RectInit) => void;
+}
+
+let mountedRoot: Root | null = null;
+let activeLabel = "";
+let activeTriggerRect: RectInit = { left: 0, top: 0, width: 0, height: 0 };
+let activePanelRect: RectInit = { left: 0, top: 0, width: 360, height: 220 };
+
+function asDomRect({ left, top, width, height }: RectInit): DOMRect {
+	return {
+		x: left,
+		y: top,
+		left,
+		top,
+		width,
+		height,
+		right: left + width,
+		bottom: top + height,
+		toJSON: () => ({}),
+	};
+}
+
+function click(element: Element): void {
+	element.dispatchEvent(new testWindow.MouseEvent("click", { bubbles: true }));
+}
+
+function Harness({ label, onAction }: { label: string; onAction: () => void }) {
+	const [open, setOpen] = useState(false);
+	return (
+		<div data-testid="overflow-ancestor" style={{ overflow: "hidden" }}>
+			<OverflowPopover label={label} open={open} onOpenChange={setOpen}>
+				<button type="button">Keep open</button>
+				<button type="button" data-popover-close onClick={onAction}>
+					Run action
+				</button>
+			</OverflowPopover>
+			<button type="button">Outside control</button>
+		</div>
+	);
+}
+
+async function mountPopover({
+	label,
+	triggerRect,
+	panelRect,
+	onAction = () => undefined,
+}: {
+	label: string;
+	triggerRect: RectInit;
+	panelRect: RectInit;
+	onAction?: () => void;
+}): Promise<PopoverHarness> {
+	activeLabel = label;
+	activeTriggerRect = triggerRect;
+	activePanelRect = panelRect;
+	const container = document.createElement("div");
+	document.body.append(container);
+	const root = createRoot(container);
+	mountedRoot = root;
+	await act(async () => root.render(<Harness label={label} onAction={onAction} />));
+	const trigger = document.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
+	if (!trigger) throw new Error(`Missing ${label} trigger`);
+	return {
+		trigger,
+		setTriggerRect: (rect) => {
+			activeTriggerRect = rect;
+		},
+	};
+}
+
+async function openPopover(trigger: HTMLButtonElement): Promise<HTMLDialogElement> {
+	await act(async () => click(trigger));
+	const panel = document.querySelector<HTMLDialogElement>("dialog");
+	if (!panel) throw new Error("Popover did not open");
+	return panel;
+}
 
 async function source(path: string): Promise<string> {
 	return await Bun.file(new URL(`../src/renderer/${path}`, import.meta.url)).text();
 }
 
+beforeEach(() => {
+	testWindow.innerWidth = 1_000;
+	testWindow.innerHeight = 800;
+	document.body.replaceChildren();
+	testWindow.HTMLElement.prototype.getBoundingClientRect = function getBoundingClientRect() {
+		if (
+			this instanceof testWindow.HTMLButtonElement &&
+			this.getAttribute("aria-label") === activeLabel
+		) {
+			return asDomRect(activeTriggerRect);
+		}
+		if (this instanceof testWindow.HTMLDialogElement) {
+			const styledWidth = Number.parseFloat(this.style.width);
+			const styledMaxHeight = Number.parseFloat(this.style.maxHeight);
+			return asDomRect({
+				...activePanelRect,
+				width: Number.isNaN(styledWidth)
+					? activePanelRect.width
+					: Math.min(activePanelRect.width, styledWidth),
+				height: Number.isNaN(styledMaxHeight)
+					? activePanelRect.height
+					: Math.min(activePanelRect.height, styledMaxHeight),
+			});
+		}
+		return asDomRect({ left: 0, top: 0, width: 0, height: 0 });
+	};
+});
+
+afterEach(async () => {
+	if (mountedRoot) await act(async () => mountedRoot?.unmount());
+	mountedRoot = null;
+	document.body.replaceChildren();
+});
+
 describe("Agents overflow popovers", () => {
-	test("shared controlled popover exposes state and a centered equal-circle icon", () => {
+	test("shared controlled trigger exposes state, an accessible tooltip, and a centered icon", () => {
 		const closed = renderToStaticMarkup(
-			<OverflowPopover label="Options" open={false} onOpenChange={() => undefined}>
-				<div>Actions</div>
-			</OverflowPopover>
-		);
-		const open = renderToStaticMarkup(
-			<OverflowPopover label="Options" open={true} onOpenChange={() => undefined}>
+			<OverflowPopover label="Connection options" open={false} onOpenChange={() => undefined}>
 				<div>Actions</div>
 			</OverflowPopover>
 		);
 
 		expect(closed).toContain('aria-haspopup="dialog"');
 		expect(closed).toContain('aria-expanded="false"');
-		expect(open).toContain('aria-expanded="true"');
-		expect(open).toContain("<dialog");
-		expect(open.match(/<circle/g)).toHaveLength(3);
-		expect(open).toContain("size-7");
-		expect(open).not.toContain("•••");
+		expect(closed).toContain('aria-label="Connection options"');
+		expect(closed).toContain('title="Connection options"');
+		expect(closed.match(/<circle/g)).toHaveLength(3);
+		expect(closed).toContain("size-7");
+		expect(closed).not.toContain("•••");
 	});
 
-	test("both locations use controlled outside-click and Escape dismissal", async () => {
+	const triggerCases = [
+		{
+			location: "connection/sidebar",
+			label: "Manage agent connections",
+			viewportWidth: 1_000,
+			triggerRect: { left: 970, top: 740, width: 28, height: 28 },
+			expectedRightEdgeLeft: 632,
+		},
+		{
+			location: "selected session",
+			label: "Actions for selected agent session",
+			viewportWidth: 1_200,
+			triggerRect: { left: 1_164, top: 740, width: 28, height: 28 },
+			expectedRightEdgeLeft: 832,
+		},
+	] as const;
+
+	for (const triggerCase of triggerCases) {
+		describe(`${triggerCase.location} trigger`, () => {
+			test("portals above clipped surfaces, clamps at the right edge, flips, and repositions", async () => {
+				testWindow.innerWidth = triggerCase.viewportWidth;
+				const harness = await mountPopover({
+					label: triggerCase.label,
+					triggerRect: triggerCase.triggerRect,
+					panelRect: { left: 0, top: 0, width: 360, height: 220 },
+				});
+				const panel = await openPopover(harness.trigger);
+
+				expect(panel.parentElement === document.body).toBe(true);
+				expect(panel.style.position).toBe("fixed");
+				expect(panel.style.left).toBe(`${triggerCase.expectedRightEdgeLeft}px`);
+				expect(panel.style.top).toBe("512px");
+				expect(panel.className).toContain("z-[100]");
+
+				harness.setTriggerRect({ left: 80, top: 100, width: 28, height: 28 });
+				await act(async () => testWindow.dispatchEvent(new testWindow.Event("scroll")));
+				expect(panel.style.left).toBe("8px");
+				expect(panel.style.top).toBe("136px");
+
+				harness.setTriggerRect({ left: 500, top: 200, width: 28, height: 28 });
+				await act(async () => testWindow.dispatchEvent(new testWindow.Event("resize")));
+				expect(panel.style.left).toBe("168px");
+				expect(panel.style.top).toBe("236px");
+			});
+
+			test("fits and locally scrolls the panel in a narrow, short viewport", async () => {
+				const viewportWidth = triggerCase.location === "connection/sidebar" ? 256 : 280;
+				testWindow.innerWidth = viewportWidth;
+				testWindow.innerHeight = 180;
+				const harness = await mountPopover({
+					label: triggerCase.label,
+					triggerRect: { left: viewportWidth - 36, top: 76, width: 28, height: 28 },
+					panelRect: { left: 0, top: 0, width: 360, height: 300 },
+				});
+				const panel = await openPopover(harness.trigger);
+
+				expect(panel.style.left).toBe("8px");
+				expect(panel.style.top).toBe("8px");
+				expect(panel.style.width).toBe(`${viewportWidth - 16}px`);
+				expect(panel.style.maxHeight).toBe("164px");
+				expect(panel.style.overflowY).toBe("auto");
+			});
+
+			test("keeps trigger and portal interactions inside, then dismisses outside, on Escape, and on action", async () => {
+				const onAction = mock(() => undefined);
+				const harness = await mountPopover({
+					label: triggerCase.label,
+					triggerRect: { left: 500, top: 200, width: 28, height: 28 },
+					panelRect: { left: 0, top: 0, width: 360, height: 220 },
+					onAction,
+				});
+				let panel = await openPopover(harness.trigger);
+				const keepOpen = Array.from(panel.querySelectorAll("button")).find(
+					(button) => button.textContent === "Keep open"
+				);
+				if (!keepOpen) throw new Error("Missing inside control");
+
+				await act(async () => {
+					harness.trigger.dispatchEvent(new testWindow.MouseEvent("mousedown", { bubbles: true }));
+					keepOpen.dispatchEvent(new testWindow.MouseEvent("mousedown", { bubbles: true }));
+					click(keepOpen);
+				});
+				expect(document.querySelector("dialog")).toBe(panel);
+
+				const outside = Array.from(document.querySelectorAll("button")).find(
+					(button) => button.textContent === "Outside control"
+				);
+				if (!outside) throw new Error("Missing outside control");
+				outside.focus();
+				await act(async () =>
+					outside.dispatchEvent(new testWindow.MouseEvent("mousedown", { bubbles: true }))
+				);
+				expect(document.querySelector("dialog")).toBeNull();
+				expect(document.activeElement).toBe(outside);
+
+				panel = await openPopover(harness.trigger);
+				await act(async () =>
+					document.dispatchEvent(new testWindow.KeyboardEvent("keydown", { key: "Escape" }))
+				);
+				expect(document.querySelector("dialog")).toBeNull();
+				expect(document.activeElement).toBe(harness.trigger);
+
+				panel = await openPopover(harness.trigger);
+				const action = Array.from(panel.querySelectorAll("button")).find(
+					(button) => button.textContent === "Run action"
+				);
+				if (!action) throw new Error("Missing dismissing action");
+				action.focus();
+				await act(async () => click(action));
+				expect(onAction).toHaveBeenCalledTimes(1);
+				expect(document.querySelector("dialog")).toBeNull();
+				expect(document.activeElement).toBe(harness.trigger);
+			});
+		});
+	}
+
+	test("both callers provide explicit labels and leave placement to the shared fixed layer", async () => {
 		const shared = await source("components/hermes/OverflowPopover.tsx");
 		const session = await source("components/hermes/HermesSessionView.tsx");
 		const sidebar = await source("components/hermes/HermesSidebar.tsx");
 
-		expect(shared).toContain("useClickOutside(rootRef, close, open)");
-		expect(shared).toContain("useEscapeKey(closeAndRestoreFocus, open)");
-		expect(shared).toContain("rootRef.current.contains");
-		expect(session).toContain("<OverflowPopover");
-		expect(session).toContain("open={sessionOptionsOpen}");
-		expect(sidebar).toContain("<OverflowPopover");
-		expect(sidebar).toContain("open={showAdvanced}");
-		expect(session).not.toContain('<details className="app-no-drag');
-		expect(sidebar).not.toContain("•••");
-	});
-
-	test("inside interaction stays open unless the action opts into closing", async () => {
-		const shared = await source("components/hermes/OverflowPopover.tsx");
-		const session = await source("components/hermes/HermesSessionView.tsx");
-		const sidebar = await source("components/hermes/HermesSidebar.tsx");
-
-		expect(shared).not.toMatch(/onClick=\{close\}[^>]*role="dialog"/);
-		expect(shared).toContain('closest("[data-popover-close]")');
-		expect(session).toContain("data-popover-close");
-		expect(sidebar).toContain("data-popover-close");
+		expect(shared).toContain("createPortal");
+		expect(shared).toContain("getBoundingClientRect");
+		expect(session).toContain('label="Actions for selected agent session"');
+		expect(session).toContain("const hasSessionOptions =");
+		expect(session).toContain("{hasSessionOptions && (");
+		expect(sidebar).toContain('label="Manage agent connections"');
+		expect(session).not.toContain('panelClassName="absolute');
+		expect(sidebar).not.toContain('panelClassName="absolute');
 	});
 });

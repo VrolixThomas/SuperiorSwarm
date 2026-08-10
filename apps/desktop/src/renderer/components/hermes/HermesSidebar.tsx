@@ -249,10 +249,10 @@ export function HermesSidebar() {
 					</div>
 				</div>
 				<OverflowPopover
-					label="Advanced connection settings"
+					label="Manage agent connections"
 					open={showAdvanced}
 					onOpenChange={setAdvancedPopoverOpen}
-					panelClassName="absolute right-0 top-9 z-30 flex w-[min(360px,calc(100vw-32px))] min-w-0 flex-col gap-2 rounded-[12px] border border-[var(--border)] bg-[var(--bg-elevated)] p-3 shadow-[var(--shadow-lg)]"
+					panelClassName="flex flex-col gap-2 rounded-[12px] border border-[var(--border)] bg-[var(--bg-elevated)] p-3 shadow-[var(--shadow-lg)]"
 				>
 					<form onSubmit={submitConnection} className="flex min-w-0 flex-col gap-2">
 						<div className="text-[11px] font-medium text-[var(--text-secondary)]">

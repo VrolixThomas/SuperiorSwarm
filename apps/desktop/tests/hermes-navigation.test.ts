@@ -110,7 +110,7 @@ describe("Hermes global navigation", () => {
 		expect(chat).toContain("resolveHermesWorkspaceSessionId(sessionId, history.data)");
 		expect(chat.match(/hermesSessionId: workspaceSessionId/g)).toHaveLength(3);
 		expect(chat).not.toContain("Linked workspaces");
-		expect(chat).toContain('label="Session options"');
+		expect(chat).toContain('label="Actions for selected agent session"');
 		expect(chat).toMatch(
 			/const origin = trpc\.hermes\.origin\.useQuery\([\s\S]*?enabled: Boolean\(connectionId && sessionId && connected\)/
 		);
