@@ -10,6 +10,36 @@ function json(value: unknown, status = 200): Response {
 }
 
 describe("HermesRestClient", () => {
+	test("archives and permanently deletes through the encoded stock session route and profile", async () => {
+		const requests: Array<{ url: URL; init: RequestInit | undefined }> = [];
+		const client = new HermesRestClient({
+			baseUrl: "http://127.0.0.1:9119/dashboard/",
+			profileId: "default",
+			token: "main-owned-secret",
+			fetchImpl: async (input, init) => {
+				requests.push({ url: new URL(String(input)), init });
+				return new Response(null, { status: 204 });
+			},
+		});
+
+		await client.setSessionArchived("folder/session #1", "work profile", true);
+		await client.deleteSession("folder/session #1", "work profile");
+
+		expect(requests).toHaveLength(2);
+		for (const request of requests) {
+			expect(request.url.pathname).toBe("/dashboard/api/sessions/folder%2Fsession%20%231");
+			expect(request.url.searchParams.get("profile")).toBe("work profile");
+			expect(new Headers(request.init?.headers).get("X-Hermes-Session-Token")).toBe(
+				"main-owned-secret"
+			);
+		}
+		expect(requests[0]?.init?.method).toBe("PATCH");
+		expect(new Headers(requests[0]?.init?.headers).get("Content-Type")).toBe("application/json");
+		expect(requests[0]?.init?.body).toBe(JSON.stringify({ archived: true }));
+		expect(requests[1]?.init?.method).toBe("DELETE");
+		expect(requests[1]?.init?.body).toBeUndefined();
+	});
+
 	test("uses stock token auth, sidebar catalog, redacted DTOs, and recent ordering", async () => {
 		const requests: Array<{ url: URL; headers: Headers }> = [];
 		const client = new HermesRestClient({

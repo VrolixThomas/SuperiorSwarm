@@ -32,6 +32,22 @@ export const hermesCreateInputSchema = z
 	})
 	.strict();
 
+export const hermesSetSessionArchivedInputSchema = z
+	.object({
+		connectionId: z.string().min(1),
+		hermesSessionId: z.string().min(1),
+		archived: z.boolean(),
+	})
+	.strict();
+
+export const hermesDeleteSessionInputSchema = z
+	.object({
+		connectionId: z.string().min(1),
+		hermesSessionId: z.string().min(1),
+		confirmed: z.literal(true),
+	})
+	.strict();
+
 const submitInput = connectionSessionInput
 	.extend({
 		text: z.string().max(200_000),
@@ -110,6 +126,22 @@ export const hermesRouter = router({
 	catalog: publicProcedure
 		.input(z.object({ connectionId: z.string().min(1) }))
 		.query(({ input }) => hermesRuntimeService.catalog(input.connectionId)),
+
+	setSessionArchived: publicProcedure
+		.input(hermesSetSessionArchivedInputSchema)
+		.mutation(({ input }) =>
+			hermesRuntimeService.setSessionArchived(
+				input.connectionId,
+				input.hermesSessionId,
+				input.archived
+			)
+		),
+
+	deleteSession: publicProcedure
+		.input(hermesDeleteSessionInputSchema)
+		.mutation(({ input }) =>
+			hermesRuntimeService.deleteSession(input.connectionId, input.hermesSessionId, input.confirmed)
+		),
 
 	create: publicProcedure.input(hermesCreateInputSchema).mutation(({ input }) =>
 		hermesRuntimeService.create(input.connectionId, {

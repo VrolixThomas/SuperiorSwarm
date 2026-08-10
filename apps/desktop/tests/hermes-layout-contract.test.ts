@@ -75,12 +75,13 @@ describe("Hermes layout contract", () => {
 	test("uses a 288 pixel default sidebar and progressive new-session/advanced controls", async () => {
 		const app = await source("App.tsx");
 		const sidebar = await source("components/hermes/HermesSidebar.tsx");
+		const sessionRow = await source("components/hermes/HermesSessionRow.tsx");
 
 		expect(app).toContain('defaultSize="288px"');
 		expect(app).toContain('minSize="232px"');
 		expect(sidebar).toContain("New agent session");
 		expect(sidebar).toContain("<details");
-		expect(sidebar).toContain("min-h-[56px]");
+		expect(sessionRow).toContain("min-h-[56px]");
 		expect(sidebar).toContain('aria-label="Search agent sessions"');
 		expect(sidebar).not.toContain("No workspace");
 		expect(sidebar).not.toContain("Optional linked ticket");

@@ -1,4 +1,4 @@
-import { asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import type { HermesSessionMetadata } from "../../shared/control-plane";
 import type { HermesSessionSummary } from "../../shared/hermes";
 import { getDb } from "../db";
@@ -71,6 +71,23 @@ export function listHermesSessionAdmissions(managerId: string) {
 		.where(eq(hermesSessionAdmissions.managerId, managerId))
 		.orderBy(asc(hermesSessionAdmissions.firstSeenAt))
 		.all();
+}
+
+export function deleteHermesSessionAdmission(
+	managerId: string,
+	profileId: string,
+	durableSessionId: string
+): void {
+	getDb()
+		.delete(hermesSessionAdmissions)
+		.where(
+			and(
+				eq(hermesSessionAdmissions.managerId, managerId),
+				eq(hermesSessionAdmissions.profileId, profileId),
+				eq(hermesSessionAdmissions.durableSessionId, durableSessionId)
+			)
+		)
+		.run();
 }
 
 export function filterManagedHermesSessionCatalog(input: {

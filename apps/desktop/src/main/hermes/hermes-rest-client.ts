@@ -211,6 +211,33 @@ export class HermesRestClient {
 		);
 	}
 
+	async setSessionArchived(
+		durableSessionId: string,
+		profileId: string,
+		archived: boolean,
+		signal?: AbortSignal
+	): Promise<void> {
+		await this.requestJson(
+			`/api/sessions/${encodeURIComponent(durableSessionId)}`,
+			{ profile: profileId },
+			signal,
+			{ method: "PATCH", body: { archived } }
+		);
+	}
+
+	async deleteSession(
+		durableSessionId: string,
+		profileId = this.profileId,
+		signal?: AbortSignal
+	): Promise<void> {
+		await this.requestJson(
+			`/api/sessions/${encodeURIComponent(durableSessionId)}`,
+			{ profile: profileId },
+			signal,
+			{ method: "DELETE" }
+		);
+	}
+
 	async getSessionDetail(
 		durableSessionId: string,
 		profileId = this.profileId,
@@ -376,7 +403,8 @@ export class HermesRestClient {
 	private async requestJson(
 		pathname: string,
 		query: Record<string, string>,
-		externalSignal?: AbortSignal
+		externalSignal?: AbortSignal,
+		request: { method?: "GET" | "PATCH" | "DELETE"; body?: JsonRecord } = {}
 	): Promise<unknown> {
 		const controller = new AbortController();
 		const timer = setTimeout(() => controller.abort(), this.timeoutMs);
@@ -384,12 +412,15 @@ export class HermesRestClient {
 		externalSignal?.addEventListener("abort", onExternalAbort, { once: true });
 		let response: Response;
 		try {
+			const body = request.body === undefined ? undefined : JSON.stringify(request.body);
 			response = await this.fetchImpl(this.requestUrl(pathname, query), {
-				method: "GET",
+				method: request.method ?? "GET",
 				headers: {
 					Accept: "application/json",
+					...(body === undefined ? {} : { "Content-Type": "application/json" }),
 					"X-Hermes-Session-Token": this.token,
 				},
+				body,
 				signal: controller.signal,
 			});
 		} catch (error) {
@@ -424,6 +455,8 @@ export class HermesRestClient {
 				backendHint
 			);
 		}
+
+		if (response.status === 204) return null;
 
 		try {
 			return await response.json();

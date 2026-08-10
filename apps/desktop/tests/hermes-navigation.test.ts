@@ -248,6 +248,28 @@ describe("Hermes global navigation", () => {
 		);
 	});
 
+	test("forgets a permanently deleted Hermes session from selection and navigation history", () => {
+		const deleted = { connectionId: "connection-a", sessionId: "session-deleted" };
+		useTabStore.setState({
+			selectedHermesSession: deleted,
+			hermesSessionPane: "worktrees",
+			workspaceBackStack: [
+				{ kind: "hermes-session", ...deleted, pane: "chat" },
+				{ kind: "workspace", id: "workspace-kept", cwd: "/repo/kept" },
+			],
+			workspaceForwardStack: [{ kind: "hermes-session", ...deleted, pane: "worktrees" }],
+		});
+
+		useTabStore.getState().forgetHermesSession(deleted);
+
+		expect(useTabStore.getState().selectedHermesSession).toBeNull();
+		expect(useTabStore.getState().hermesSessionPane).toBe("chat");
+		expect(useTabStore.getState().workspaceBackStack).toEqual([
+			{ kind: "workspace", id: "workspace-kept", cwd: "/repo/kept" },
+		]);
+		expect(useTabStore.getState().workspaceForwardStack).toEqual([]);
+	});
+
 	test("drops legacy session-only persistence because its connection is ambiguous", () => {
 		useTabStore.getState().hydrate([], null, null, "", {
 			sidebarSegment: "hermes",
@@ -267,6 +289,10 @@ describe("Hermes global navigation", () => {
 		expect(router).toContain("validateHermesOriginOpenUrl");
 		expect(router).toContain("pickAttachments: publicProcedure");
 		expect(router).toContain("releaseAttachment: publicProcedure");
+		expect(router).toContain("setSessionArchived: publicProcedure");
+		expect(router).toContain("deleteSession: publicProcedure");
+		expect(router).toContain("hermesRuntimeService.setSessionArchived");
+		expect(router).toContain("hermesRuntimeService.deleteSession");
 		expect(router).toMatch(/attachmentHandles:\s*z\s*\.array/);
 		expect(router).toContain("multiSelections");
 		expect(router).not.toContain("bindingReleaseInput");
@@ -297,6 +323,10 @@ describe("Hermes global navigation", () => {
 		expect(sidebar).toContain("Connect external Hermes");
 		expect(sidebar).toContain("Local Hermes");
 		expect(sidebar).toContain("Retry");
+		expect(sidebar).toContain('role="alert"');
+		expect(sidebar).toContain("retryFailedSessionAction");
+		expect(sidebar).toContain("canonicalCatalog");
+		expect(sidebar).not.toContain("onMutate:");
 		expect(sidebar).not.toContain("Hermes connection");
 		expect(sidebar).not.toContain("127.0.0.1:8080");
 		expect(sidebar).not.toContain("token discovery failed");

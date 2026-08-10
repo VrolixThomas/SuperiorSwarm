@@ -767,6 +767,17 @@ describe("Hermes renderer view model", () => {
 		expect(filterHermesSessions(sessions, "archived", "default", {})).toEqual([archived]);
 	});
 
+	test("moves a canonically refreshed archive between Open and Archived without local hiding", () => {
+		const open = session({ id: "managed-session", archived: false });
+		const archived = { ...open, archived: true };
+
+		expect(filterHermesSessions([open], "open", "", {})).toEqual([open]);
+		expect(filterHermesSessions([open], "archived", "", {})).toEqual([]);
+		expect(filterHermesSessions([archived], "open", "", {})).toEqual([]);
+		expect(filterHermesSessions([archived], "archived", "", {})).toEqual([archived]);
+		expect(filterHermesSessions([open], "open", "", {})).toEqual([open]);
+	});
+
 	test("reduces streaming, tool, approval, clarification, and completion events", () => {
 		let state = createHermesLiveState();
 		state = applyHermesEvent(state, event("message.delta", { text: "Hel" }));

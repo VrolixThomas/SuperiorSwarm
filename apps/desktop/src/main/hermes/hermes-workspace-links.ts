@@ -194,6 +194,21 @@ export function unlinkHermesWorkspace(
 		.run();
 }
 
+export function deleteHermesSessionWorkspaceLinks(
+	connectionId: string,
+	hermesSessionId: string
+): void {
+	getDb()
+		.delete(hermesSessionWorkspaces)
+		.where(
+			and(
+				eq(hermesSessionWorkspaces.connectionId, connectionId),
+				eq(hermesSessionWorkspaces.hermesSessionId, hermesSessionId)
+			)
+		)
+		.run();
+}
+
 export function listHermesWorkspaceLinks(
 	connectionId: string,
 	hermesSessionId: string

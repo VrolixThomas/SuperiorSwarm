@@ -3,6 +3,7 @@ import { Window } from "happy-dom";
 import { act, useState } from "react";
 import type { Root } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
+import type { HermesSessionSummary } from "../src/shared/hermes";
 
 const testWindow = new Window({ url: "http://localhost" });
 const browserGlobals: Record<string, unknown> = {
@@ -31,6 +32,7 @@ for (const [key, value] of Object.entries(browserGlobals)) {
 
 const { createRoot } = await import("react-dom/client");
 const { OverflowPopover } = await import("../src/renderer/components/hermes/OverflowPopover");
+const { HermesSessionRow } = await import("../src/renderer/components/hermes/HermesSessionRow");
 
 interface RectInit {
 	left: number;
@@ -81,6 +83,25 @@ function Harness({ label, onAction }: { label: string; onAction: () => void }) {
 		</div>
 	);
 }
+
+const sessionRowFixture: HermesSessionSummary = {
+	id: "session-important",
+	title: "Important session",
+	preview: "Review the release",
+	profileId: "work",
+	source: "superiorswarm",
+	updatedAt: Date.now(),
+	createdAt: Date.now(),
+	archived: false,
+	running: false,
+	busy: false,
+	waitingForUser: false,
+	messageCount: 2,
+	isCron: false,
+	handover: false,
+	admissionReason: null,
+	origin: null,
+};
 
 async function mountPopover({
 	label,
@@ -157,6 +178,127 @@ afterEach(async () => {
 });
 
 describe("Agents overflow popovers", () => {
+	test("session row actions are discoverable, keyboard controls that never select the row", async () => {
+		const onSelect = mock(() => undefined);
+		const onSetArchived = mock((_archived: boolean) => undefined);
+		const onDelete = mock(() => undefined);
+		let confirmationCount = 0;
+		const confirmDelete = mock((message: string) => {
+			expect(message).toContain("Important session");
+			confirmationCount++;
+			return confirmationCount > 1;
+		});
+		const container = document.createElement("div");
+		document.body.append(container);
+		const root = createRoot(container);
+		mountedRoot = root;
+		await act(async () =>
+			root.render(
+				<HermesSessionRow
+					session={sessionRowFixture}
+					selected={false}
+					linkedBranch="feat/release"
+					actionPending={false}
+					onSelect={onSelect}
+					onSetArchived={onSetArchived}
+					onDelete={onDelete}
+					confirmDelete={confirmDelete}
+				/>
+			)
+		);
+
+		const trigger = document.querySelector<HTMLButtonElement>(
+			'button[aria-label="Actions for Important session"]'
+		);
+		if (!trigger) throw new Error("Missing session actions trigger");
+		const triggerOwner = trigger.closest<HTMLElement>("[data-session-actions-trigger]");
+		expect(triggerOwner?.className).toContain("opacity-0");
+		expect(triggerOwner?.className).toContain("group-hover:opacity-100");
+		expect(triggerOwner?.className).toContain("group-focus-within:opacity-100");
+
+		await act(async () => click(trigger));
+		expect(onSelect).not.toHaveBeenCalled();
+		let panel = document.querySelector<HTMLDialogElement>("dialog");
+		if (!panel) throw new Error("Missing session actions menu");
+		const archive = Array.from(panel.querySelectorAll("button")).find(
+			(button) => button.textContent === "Archive"
+		);
+		if (!archive) throw new Error("Missing Archive action");
+		await act(async () => click(archive));
+		expect(onSetArchived).toHaveBeenCalledWith(true);
+		expect(onSelect).not.toHaveBeenCalled();
+
+		await act(async () => click(trigger));
+		panel = document.querySelector<HTMLDialogElement>("dialog");
+		const firstDelete = Array.from(panel?.querySelectorAll("button") ?? []).find(
+			(button) => button.textContent === "Delete permanently…"
+		);
+		if (!firstDelete) throw new Error("Missing permanent deletion action");
+		await act(async () => click(firstDelete));
+		expect(confirmDelete).toHaveBeenCalledTimes(1);
+		expect(onDelete).not.toHaveBeenCalled();
+		expect(onSelect).not.toHaveBeenCalled();
+
+		await act(async () => click(trigger));
+		panel = document.querySelector<HTMLDialogElement>("dialog");
+		const confirmedDelete = Array.from(panel?.querySelectorAll("button") ?? []).find(
+			(button) => button.textContent === "Delete permanently…"
+		);
+		if (!confirmedDelete) throw new Error("Missing retry deletion action");
+		await act(async () => click(confirmedDelete));
+		expect(onDelete).toHaveBeenCalledTimes(1);
+		expect(onSelect).not.toHaveBeenCalled();
+
+		const openRow = document.querySelector<HTMLButtonElement>(
+			'button[aria-label="Open Important session"]'
+		);
+		if (!openRow) throw new Error("Missing row selection control");
+		await act(async () => click(openRow));
+		expect(onSelect).toHaveBeenCalledTimes(1);
+	});
+
+	test("selected and archived session rows expose the trigger and explicit Unarchive action", async () => {
+		const html = renderToStaticMarkup(
+			<HermesSessionRow
+				session={{ ...sessionRowFixture, archived: true }}
+				selected
+				linkedBranch={null}
+				actionPending={false}
+				onSelect={() => undefined}
+				onSetArchived={() => undefined}
+				onDelete={() => undefined}
+			/>
+		);
+
+		expect(html).toContain("opacity-100");
+		expect(html).toContain('aria-label="Actions for Important session"');
+		expect(html).not.toContain("Delete session Important session");
+
+		const container = document.createElement("div");
+		document.body.append(container);
+		const root = createRoot(container);
+		mountedRoot = root;
+		await act(async () =>
+			root.render(
+				<HermesSessionRow
+					session={{ ...sessionRowFixture, archived: true }}
+					selected
+					linkedBranch={null}
+					actionPending={false}
+					onSelect={() => undefined}
+					onSetArchived={() => undefined}
+					onDelete={() => undefined}
+				/>
+			)
+		);
+		const trigger = document.querySelector<HTMLButtonElement>(
+			'button[aria-label="Actions for Important session"]'
+		);
+		if (!trigger) throw new Error("Missing selected session trigger");
+		await act(async () => click(trigger));
+		expect(document.querySelector("dialog")?.textContent).toContain("Unarchive");
+	});
+
 	test("shared controlled trigger exposes state, an accessible tooltip, and a centered icon", () => {
 		const closed = renderToStaticMarkup(
 			<OverflowPopover label="Connection options" open={false} onOpenChange={() => undefined}>
@@ -300,6 +442,7 @@ describe("Agents overflow popovers", () => {
 		expect(session).toContain("const hasSessionOptions =");
 		expect(session).toContain("{hasSessionOptions && (");
 		expect(sidebar).toContain('label="Manage agent connections"');
+		expect(sidebar).toContain("<HermesSessionRow");
 		expect(session).not.toContain('panelClassName="absolute');
 		expect(sidebar).not.toContain('panelClassName="absolute');
 	});

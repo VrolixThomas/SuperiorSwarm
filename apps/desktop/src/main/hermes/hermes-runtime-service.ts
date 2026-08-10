@@ -33,7 +33,11 @@ import {
 	type HermesLocalBackendManagerLike,
 	hermesLocalBackendManager,
 } from "./hermes-local-backend-manager";
-import { getHermesOriginLink, saveHermesOriginLink } from "./hermes-origin-links";
+import {
+	deleteHermesOriginLink,
+	getHermesOriginLink,
+	saveHermesOriginLink,
+} from "./hermes-origin-links";
 import {
 	beginHermesOriginReportAttempt,
 	finishHermesOriginReport,
@@ -55,10 +59,14 @@ import {
 	type HermesRuntimeConnectionSettings,
 } from "./hermes-runtime-client";
 import { HermesSendError, HermesSendService } from "./hermes-send-service";
-import { filterManagedHermesSessionCatalog } from "./hermes-session-admissions";
+import {
+	deleteHermesSessionAdmission,
+	filterManagedHermesSessionCatalog,
+} from "./hermes-session-admissions";
 import { type HermesTokenVault, hermesTokenVault } from "./hermes-token-vault";
 import {
 	canonicalizeHermesWorkspaceLinks,
+	deleteHermesSessionWorkspaceLinks,
 	linkHermesWorkspaceArtifacts,
 } from "./hermes-workspace-links";
 
@@ -77,6 +85,13 @@ export interface HermesRuntimeClientLike {
 
 export interface HermesRestClientLike {
 	listSessions(signal?: AbortSignal): Promise<HermesSessionSummary[]>;
+	setSessionArchived(
+		durableSessionId: string,
+		profileId: string,
+		archived: boolean,
+		signal?: AbortSignal
+	): Promise<void>;
+	deleteSession(durableSessionId: string, profileId: string, signal?: AbortSignal): Promise<void>;
 	getSessionDetail(
 		durableSessionId: string,
 		profileId?: string,
@@ -347,14 +362,68 @@ export class HermesRuntimeService {
 
 	async catalog(connectionId: string): Promise<HermesCatalog> {
 		const runtime = this.requireRuntime(connectionId);
-		const sessions = await runtime.rest.listSessions();
-		runtime.catalog = stockCatalog(
-			sessions,
-			runtime.connectionMode,
-			this.sendService.isAvailable(),
-			runtime.managerId
+		return await this.refreshCatalog(runtime);
+	}
+
+	async setSessionArchived(
+		connectionId: string,
+		hermesSessionId: string,
+		archived: boolean
+	): Promise<HermesCatalog> {
+		const runtime = this.requireRuntime(connectionId);
+		const durableSessionId = this.resolveDurableId(runtime, hermesSessionId);
+		const summary = this.requireCatalogSession(runtime, durableSessionId);
+		await runtime.rest.setSessionArchived(durableSessionId, summary.profileId, archived);
+		return await this.refreshCatalog(runtime);
+	}
+
+	async deleteSession(
+		connectionId: string,
+		hermesSessionId: string,
+		confirmed: boolean
+	): Promise<HermesCatalog> {
+		if (!confirmed) throw new Error("Permanent Hermes session deletion requires confirmation");
+		const runtime = this.requireRuntime(connectionId);
+		const durableSessionId = this.resolveDurableId(runtime, hermesSessionId);
+		const summary = this.requireCatalogSession(runtime, durableSessionId);
+		const binding = this.bindingFor(runtime, durableSessionId);
+		if (
+			binding?.activeTurnSnapshot.pendingApproval ||
+			binding?.activeTurnSnapshot.pendingClarification
+		) {
+			throw new Error(
+				"Resolve the Hermes session's unresolved approval or clarification before deleting it"
+			);
+		}
+		const relatedSessionIds = this.relatedSessionIds(runtime, durableSessionId);
+		const hasReservedSubmit = [...relatedSessionIds].some((sessionId) =>
+			this.submitReservations.get(connectionId)?.has(sessionId)
 		);
-		return runtime.catalog;
+		if (
+			hasReservedSubmit ||
+			binding?.activeTurn ||
+			binding?.activeTurnSnapshot.activeTurn ||
+			summary.running ||
+			summary.busy ||
+			summary.waitingForUser
+		) {
+			throw new Error("Stop the Hermes session's active turn before deleting it");
+		}
+
+		const deletionReservation = this.reserveSubmit(runtime, connectionId, durableSessionId);
+		try {
+			await runtime.rest.deleteSession(durableSessionId, summary.profileId);
+			this.cleanupDeletedSession(
+				connectionId,
+				runtime,
+				durableSessionId,
+				summary.profileId,
+				relatedSessionIds
+			);
+			return await this.refreshCatalog(runtime);
+		} finally {
+			this.releaseSubmitReservation(connectionId, deletionReservation);
+		}
 	}
 
 	async origin(connectionId: string, hermesSessionId: string): Promise<HermesOriginProjection> {
@@ -1554,6 +1623,75 @@ export class HermesRuntimeService {
 			workspaceArtifacts: [],
 			receivedAt: Date.now(),
 		});
+	}
+
+	private async refreshCatalog(runtime: ConnectionRuntime): Promise<HermesCatalog> {
+		const sessions = await runtime.rest.listSessions();
+		runtime.catalog = stockCatalog(
+			sessions,
+			runtime.connectionMode,
+			this.sendService.isAvailable(),
+			runtime.managerId
+		);
+		return runtime.catalog;
+	}
+
+	private requireCatalogSession(
+		runtime: ConnectionRuntime,
+		durableSessionId: string
+	): HermesSessionSummary {
+		const summary = runtime.catalog.sessions.find((session) => session.id === durableSessionId);
+		if (!summary) throw new Error("Hermes session is not present in the canonical catalog");
+		return summary;
+	}
+
+	private relatedSessionIds(runtime: ConnectionRuntime, durableSessionId: string): Set<string> {
+		const sessionIds = new Set([durableSessionId]);
+		for (const [alias, canonical] of runtime.aliases) {
+			if (alias === durableSessionId || canonical === durableSessionId) {
+				sessionIds.add(alias);
+				sessionIds.add(canonical);
+			}
+		}
+		return sessionIds;
+	}
+
+	private cleanupDeletedSession(
+		connectionId: string,
+		runtime: ConnectionRuntime,
+		durableSessionId: string,
+		profileId: string,
+		relatedSessionIds: Set<string>
+	): void {
+		const runtimeSessionIds = new Set<string>();
+		for (const binding of runtime.bindings.values()) {
+			if (!relatedSessionIds.has(binding.durableSessionId)) continue;
+			runtimeSessionIds.add(binding.runtimeSessionId);
+			this.removeBinding(runtime, binding);
+		}
+		for (const [sessionId, history] of runtime.histories) {
+			if (relatedSessionIds.has(sessionId) || relatedSessionIds.has(history.durableSessionId)) {
+				runtime.histories.delete(sessionId);
+			}
+		}
+		for (const sessionId of relatedSessionIds) {
+			runtime.origins.delete(sessionId);
+			deleteHermesSessionWorkspaceLinks(connectionId, sessionId);
+			deleteHermesOriginLink(connectionId, profileId, sessionId);
+		}
+		for (const [alias, canonical] of runtime.aliases) {
+			if (relatedSessionIds.has(alias) || relatedSessionIds.has(canonical)) {
+				runtime.aliases.delete(alias);
+			}
+		}
+		runtime.events = runtime.events.filter(
+			({ event }) =>
+				!relatedSessionIds.has(event.durableSessionId ?? "") &&
+				!runtimeSessionIds.has(event.runtimeSessionId ?? "")
+		);
+		if (runtime.managerId) {
+			deleteHermesSessionAdmission(runtime.managerId, profileId, durableSessionId);
+		}
 	}
 
 	private requireRuntime(connectionId: string): ConnectionRuntime {

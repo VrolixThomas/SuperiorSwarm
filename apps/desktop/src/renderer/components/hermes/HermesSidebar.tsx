@@ -1,4 +1,5 @@
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import type { HermesSessionSummary } from "../../../shared/hermes";
 import {
 	type HermesSessionFilter,
 	filterHermesSessions,
@@ -7,39 +8,19 @@ import {
 } from "../../hermes/hermes-view-model";
 import { useTabStore } from "../../stores/tab-store";
 import { trpc } from "../../trpc/client";
+import { HermesSessionRow, confirmHermesSessionDeletion } from "./HermesSessionRow";
 import { OverflowPopover } from "./OverflowPopover";
 
-function relativeTime(timestamp: number): string {
-	if (!timestamp) return "Unknown";
-	const milliseconds = timestamp < 10_000_000_000 ? timestamp * 1_000 : timestamp;
-	const minutes = Math.max(0, Math.round((Date.now() - milliseconds) / 60_000));
-	if (minutes < 1) return "Now";
-	if (minutes < 60) return `${minutes}m`;
-	const hours = Math.round(minutes / 60);
-	if (hours < 24) return `${hours}h`;
-	return `${Math.round(hours / 24)}d`;
-}
-
-function sourceBadge(source: string): string {
-	switch (source.toLowerCase()) {
-		case "slack":
-			return "◫";
-		case "telegram":
-			return "✈";
-		case "desktop":
-			return "▣";
-		case "tui":
-			return ">_";
-		case "superiorswarm":
-			return "A";
-		default:
-			return "◇";
-	}
+interface FailedSessionAction {
+	kind: "archive" | "unarchive" | "delete";
+	session: HermesSessionSummary;
+	message: string;
 }
 
 export function HermesSidebar() {
 	const selectedSession = useTabStore((state) => state.selectedHermesSession);
 	const selectSession = useTabStore((state) => state.selectHermesSession);
+	const forgetSession = useTabStore((state) => state.forgetHermesSession);
 	const changeConnection = useTabStore((state) => state.changeHermesConnection);
 	const [connectionId, setConnectionId] = useState<string | null>(null);
 	const [filter, setFilter] = useState<HermesSessionFilter>("open");
@@ -51,6 +32,7 @@ export function HermesSidebar() {
 	const [managerId, setManagerId] = useState<string | null>(null);
 	const [token, setToken] = useState("");
 	const [newTopic, setNewTopic] = useState("");
+	const [failedSessionAction, setFailedSessionAction] = useState<FailedSessionAction | null>(null);
 	const autoConnectAttempted = useRef(new Set<string>());
 	const newSessionSubmitting = useRef(false);
 	const utils = trpc.useUtils();
@@ -134,6 +116,39 @@ export function HermesSidebar() {
 			selectSession({ connectionId, sessionId: binding.durableSessionId });
 			setNewTopic("");
 			void utils.hermes.catalog.invalidate({ connectionId });
+		},
+	});
+	const setSessionArchived = trpc.hermes.setSessionArchived.useMutation({
+		onSuccess: (canonicalCatalog, variables) => {
+			setFailedSessionAction(null);
+			utils.hermes.catalog.setData({ connectionId: variables.connectionId }, canonicalCatalog);
+			void utils.hermes.catalog.invalidate({ connectionId: variables.connectionId });
+		},
+		onError: (error, variables) => {
+			const session = catalog.data?.sessions.find((item) => item.id === variables.hermesSessionId);
+			if (!session) return;
+			setFailedSessionAction({
+				kind: variables.archived ? "archive" : "unarchive",
+				session,
+				message: error.message,
+			});
+		},
+	});
+	const deleteSession = trpc.hermes.deleteSession.useMutation({
+		onSuccess: (canonicalCatalog, variables) => {
+			setFailedSessionAction(null);
+			utils.hermes.catalog.setData({ connectionId: variables.connectionId }, canonicalCatalog);
+			forgetSession({
+				connectionId: variables.connectionId,
+				sessionId: variables.hermesSessionId,
+			});
+			void utils.hermes.catalog.invalidate({ connectionId: variables.connectionId });
+			void utils.hermes.workspaceLinkIndex.invalidate({ connectionId: variables.connectionId });
+		},
+		onError: (error, variables) => {
+			const session = catalog.data?.sessions.find((item) => item.id === variables.hermesSessionId);
+			if (!session) return;
+			setFailedSessionAction({ kind: "delete", session, message: error.message });
 		},
 	});
 	const linkIndex = trpc.hermes.workspaceLinkIndex.useQuery(
@@ -222,6 +237,36 @@ export function HermesSidebar() {
 			}
 		}
 		setShowAdvanced(open);
+	}
+
+	function mutateSessionArchive(session: HermesSessionSummary, archived: boolean) {
+		if (!connectionId) return;
+		setFailedSessionAction(null);
+		setSessionArchived.mutate({
+			connectionId,
+			hermesSessionId: session.id,
+			archived,
+		});
+	}
+
+	function mutateSessionDelete(session: HermesSessionSummary) {
+		if (!connectionId) return;
+		setFailedSessionAction(null);
+		deleteSession.mutate({
+			connectionId,
+			hermesSessionId: session.id,
+			confirmed: true,
+		});
+	}
+
+	function retryFailedSessionAction() {
+		if (!failedSessionAction) return;
+		if (failedSessionAction.kind === "delete") {
+			if (!confirmHermesSessionDeletion(failedSessionAction.session.title)) return;
+			mutateSessionDelete(failedSessionAction.session);
+			return;
+		}
+		mutateSessionArchive(failedSessionAction.session, failedSessionAction.kind === "archive");
 	}
 
 	return (
@@ -459,6 +504,21 @@ export function HermesSidebar() {
 					</div>
 
 					<div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-1.5 pb-2">
+						{failedSessionAction && (
+							<div
+								role="alert"
+								className="mx-1 mb-1.5 rounded-[7px] border border-[var(--danger)]/30 bg-[var(--danger)]/5 px-2 py-1.5 text-[10px] text-[var(--danger)]"
+							>
+								<div className="[overflow-wrap:anywhere]">{failedSessionAction.message}</div>
+								<button
+									type="button"
+									onClick={retryFailedSessionAction}
+									className="mt-1 rounded-[5px] border border-current px-1.5 py-0.5"
+								>
+									Retry
+								</button>
+							</div>
+						)}
 						{catalog.isLoading && (
 							<div className="px-2 py-5 text-center text-[11px] text-[var(--text-quaternary)]">
 								Loading agent threads…
@@ -482,44 +542,21 @@ export function HermesSidebar() {
 										{section.rows.map((session) => {
 											const links = linkIndex.data?.[session.id];
 											return (
-												<button
+												<HermesSessionRow
 													key={session.id}
-													type="button"
-													onClick={() =>
-														connectionId && selectSession({ connectionId, sessionId: session.id })
-													}
-													className={`mb-0.5 min-h-[56px] w-full min-w-0 rounded-[8px] border-l-2 px-2.5 py-2 text-left transition-colors motion-reduce:transition-none ${
+													session={session}
+													selected={
 														selectedSession?.connectionId === connectionId &&
 														selectedSession.sessionId === session.id
-															? "border-l-[var(--accent)] bg-[var(--bg-elevated)]"
-															: session.waitingForUser
-																? "border-l-[var(--warning)] hover:bg-[var(--bg-overlay)]"
-																: "border-l-transparent hover:bg-[var(--bg-overlay)]"
-													}`}
-												>
-													<div className="flex items-center gap-1.5">
-														<span className="text-[10px]" aria-hidden="true">
-															{sourceBadge(session.source)}
-														</span>
-														<span className="min-w-0 flex-1 truncate text-[13px] font-medium text-[var(--text-secondary)]">
-															{session.title}
-														</span>
-														<span className="text-[9px] text-[var(--text-quaternary)]">
-															{relativeTime(session.updatedAt)}
-														</span>
-													</div>
-													<div className="mt-1 flex min-w-0 items-center gap-1.5 text-[10px] text-[var(--text-quaternary)]">
-														{session.waitingForUser ? (
-															<span className="shrink-0 text-[var(--warning)]">Needs input</span>
-														) : session.running || session.busy ? (
-															<span className="shrink-0 text-[var(--success)]">Active</span>
-														) : null}
-														<span className="truncate">
-															{session.preview || session.origin?.displayLabel || session.source}
-															{links?.branches[0] ? ` · ${links.branches[0]}` : ""}
-														</span>
-													</div>
-												</button>
+													}
+													linkedBranch={links?.branches[0] ?? null}
+													actionPending={setSessionArchived.isPending || deleteSession.isPending}
+													onSelect={() =>
+														connectionId && selectSession({ connectionId, sessionId: session.id })
+													}
+													onSetArchived={(archived) => mutateSessionArchive(session, archived)}
+													onDelete={() => mutateSessionDelete(session)}
+												/>
 											);
 										})}
 									</section>

@@ -224,6 +224,18 @@ function removeWorkspaceFromHistory(
 	return stack.filter((entry) => entry.kind !== "workspace" || entry.id !== workspaceId);
 }
 
+function removeHermesSessionFromHistory(
+	stack: NavigationHistoryEntry[],
+	selection: HermesSessionSelection
+): NavigationHistoryEntry[] {
+	return stack.filter(
+		(entry) =>
+			entry.kind !== "hermes-session" ||
+			entry.connectionId !== selection.connectionId ||
+			entry.sessionId !== selection.sessionId
+	);
+}
+
 // ─── Store interface ─────────────────────────────────────────────────────────
 
 interface TabStore {
@@ -274,6 +286,7 @@ interface TabStore {
 	setSidebarSegment: (segment: SidebarSegment) => void;
 	changeHermesConnection: (connectionId: string) => void;
 	selectHermesSession: (selection: HermesSessionSelection | null) => void;
+	forgetHermesSession: (selection: HermesSessionSelection) => void;
 	setHermesSessionPane: (pane: HermesSessionPane) => void;
 	openWorkspaceFromHermes: (
 		workspaceId: string,
@@ -722,6 +735,23 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 					? state.hermesSessionPane
 					: "chat",
 		}));
+	},
+
+	forgetHermesSession: (selection) => {
+		set((state) => {
+			const selectedMatches =
+				state.selectedHermesSession?.connectionId === selection.connectionId &&
+				state.selectedHermesSession.sessionId === selection.sessionId;
+			return {
+				selectedHermesSession: selectedMatches ? null : state.selectedHermesSession,
+				hermesSessionPane: selectedMatches ? "chat" : state.hermesSessionPane,
+				workspaceBackStack: removeHermesSessionFromHistory(state.workspaceBackStack, selection),
+				workspaceForwardStack: removeHermesSessionFromHistory(
+					state.workspaceForwardStack,
+					selection
+				),
+			};
+		});
 	},
 
 	setHermesSessionPane: (pane) => set({ hermesSessionPane: pane }),

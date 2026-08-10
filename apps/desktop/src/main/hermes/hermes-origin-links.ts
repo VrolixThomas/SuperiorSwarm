@@ -77,3 +77,20 @@ export function saveHermesOriginLink(
 		.run();
 	return openUrl;
 }
+
+export function deleteHermesOriginLink(
+	connectionId: string,
+	profileId: string,
+	hermesSessionId: string
+): void {
+	getDb()
+		.delete(hermesOriginLinks)
+		.where(
+			and(
+				eq(hermesOriginLinks.connectionId, connectionId),
+				eq(hermesOriginLinks.profileId, profileId),
+				eq(hermesOriginLinks.hermesSessionId, hermesSessionId)
+			)
+		)
+		.run();
+}
