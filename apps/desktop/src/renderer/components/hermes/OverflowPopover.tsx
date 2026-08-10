@@ -13,6 +13,16 @@ import { createPortal } from "react-dom";
 const VIEWPORT_MARGIN = 8;
 const TRIGGER_GAP = 8;
 const PANEL_WIDTH = 360;
+const FOCUSABLE_SELECTOR = [
+	"a[href]",
+	"area[href]",
+	"button:not([disabled])",
+	'input:not([disabled]):not([type="hidden"])',
+	"select:not([disabled])",
+	"textarea:not([disabled])",
+	'[contenteditable]:not([contenteditable="false"])',
+	'[tabindex]:not([tabindex="-1"])',
+].join(",");
 
 interface OverflowPopoverPosition {
 	left: number;
@@ -44,26 +54,40 @@ function initialOverflowPopoverPosition(): OverflowPopoverPosition {
 	};
 }
 
+function focusableElements(panel: HTMLDialogElement): HTMLElement[] {
+	return Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
+		(element) =>
+			element.tabIndex >= 0 &&
+			element.getAttribute("aria-disabled") !== "true" &&
+			!element.closest("[hidden], [inert]") &&
+			getComputedStyle(element).display !== "none" &&
+			getComputedStyle(element).visibility !== "hidden"
+	);
+}
+
 function positionOverflowPopover(
 	triggerRect: DOMRect,
 	panelRect: DOMRect,
+	panelScrollHeight: number,
 	viewportWidth: number,
 	viewportHeight: number
 ): OverflowPopoverPosition {
 	const width = Math.min(PANEL_WIDTH, Math.max(0, viewportWidth - VIEWPORT_MARGIN * 2));
-	const maxHeight = Math.max(0, viewportHeight - VIEWPORT_MARGIN * 2);
+	const viewportMaxHeight = Math.max(0, viewportHeight - VIEWPORT_MARGIN * 2);
 	const measuredWidth = Math.min(panelRect.width || width, width);
-	const measuredHeight = Math.min(panelRect.height, maxHeight);
 	const maximumLeft = viewportWidth - VIEWPORT_MARGIN - measuredWidth;
 	const left = clamp(triggerRect.right - measuredWidth, VIEWPORT_MARGIN, maximumLeft);
 
 	const belowTop = triggerRect.bottom + TRIGGER_GAP;
-	const aboveTop = triggerRect.top - TRIGGER_GAP - measuredHeight;
-	const availableBelow = viewportHeight - VIEWPORT_MARGIN - belowTop;
-	const availableAbove = triggerRect.top - TRIGGER_GAP - VIEWPORT_MARGIN;
-	const fitsBelow = measuredHeight <= availableBelow;
-	const fitsAbove = measuredHeight <= availableAbove;
+	const availableBelow = Math.max(0, viewportHeight - VIEWPORT_MARGIN - belowTop);
+	const availableAbove = Math.max(0, triggerRect.top - TRIGGER_GAP - VIEWPORT_MARGIN);
+	const naturalHeight = Math.min(Math.max(panelRect.height, panelScrollHeight), viewportMaxHeight);
+	const fitsBelow = naturalHeight <= availableBelow;
+	const fitsAbove = naturalHeight <= availableAbove;
 	const placeBelow = fitsBelow || (!fitsAbove && availableBelow >= availableAbove);
+	const maxHeight = placeBelow ? availableBelow : availableAbove;
+	const measuredHeight = Math.min(naturalHeight, maxHeight);
+	const aboveTop = triggerRect.top - TRIGGER_GAP - measuredHeight;
 	const desiredTop = placeBelow ? belowTop : aboveTop;
 	const maximumTop = viewportHeight - VIEWPORT_MARGIN - measuredHeight;
 
@@ -103,7 +127,7 @@ export function OverflowPopover({
 	}, [onOpenChange]);
 
 	useLayoutEffect(() => {
-		if (!open) return;
+		if (!open || typeof window === "undefined") return;
 
 		function updatePosition() {
 			const trigger = triggerRef.current;
@@ -112,6 +136,7 @@ export function OverflowPopover({
 			const next = positionOverflowPopover(
 				trigger.getBoundingClientRect(),
 				panel.getBoundingClientRect(),
+				panel.scrollHeight,
 				window.innerWidth,
 				window.innerHeight
 			);
@@ -126,9 +151,19 @@ export function OverflowPopover({
 		}
 
 		updatePosition();
+		const panel = panelRef.current;
+		const firstAction = panel ? focusableElements(panel)[0] : null;
+		(firstAction ?? panel)?.focus();
+		const resizeObserver =
+			typeof ResizeObserver === "undefined" ? null : new ResizeObserver(updatePosition);
+		if (resizeObserver && triggerRef.current && panel) {
+			resizeObserver.observe(triggerRef.current);
+			resizeObserver.observe(panel);
+		}
 		window.addEventListener("resize", updatePosition);
 		window.addEventListener("scroll", updatePosition, true);
 		return () => {
+			resizeObserver?.disconnect();
 			window.removeEventListener("resize", updatePosition);
 			window.removeEventListener("scroll", updatePosition, true);
 		};
@@ -145,9 +180,28 @@ export function OverflowPopover({
 		}
 
 		function handleKeyDown(event: KeyboardEvent) {
-			if (event.key !== "Escape") return;
+			if (event.key === "Escape") {
+				event.preventDefault();
+				closeAndRestoreFocus();
+				return;
+			}
+			if (event.key !== "Tab") return;
+			const panel = panelRef.current;
+			if (!panel) return;
+			const actions = focusableElements(panel);
+			if (actions.length === 0) {
+				event.preventDefault();
+				panel.focus();
+				return;
+			}
+			const activeIndex = actions.indexOf(document.activeElement as HTMLElement);
+			const atBoundary = event.shiftKey
+				? activeIndex <= 0
+				: activeIndex === -1 || activeIndex === actions.length - 1;
+			if (!atBoundary) return;
 			event.preventDefault();
-			closeAndRestoreFocus();
+			const nextAction = event.shiftKey ? actions.at(-1) : actions[0];
+			nextAction?.focus();
 		}
 
 		document.addEventListener("mousedown", handleMouseDown);
@@ -172,6 +226,7 @@ export function OverflowPopover({
 						ref={panelRef}
 						id={panelId}
 						open
+						tabIndex={-1}
 						aria-label={label}
 						onClick={handlePanelClick}
 						className={`app-no-drag fixed z-[100] m-0 min-w-0 overflow-x-hidden overflow-y-auto overscroll-contain ${panelClassName}`}

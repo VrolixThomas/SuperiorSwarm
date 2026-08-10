@@ -43,13 +43,44 @@ interface RectInit {
 
 interface PopoverHarness {
 	trigger: HTMLButtonElement;
+	setPanelRect: (rect: RectInit) => void;
 	setTriggerRect: (rect: RectInit) => void;
+}
+
+class TestResizeObserver {
+	readonly observed = new Set<Element>();
+	disconnected = false;
+
+	constructor(private readonly callback: ResizeObserverCallback) {
+		resizeObserverInstances.push(this);
+	}
+
+	observe(target: Element): void {
+		this.observed.add(target);
+	}
+
+	unobserve(target: Element): void {
+		this.observed.delete(target);
+	}
+
+	disconnect(): void {
+		this.disconnected = true;
+		this.observed.clear();
+	}
+
+	notify(target: Element): void {
+		this.callback(
+			[{ target, contentRect: target.getBoundingClientRect() } as ResizeObserverEntry],
+			this as unknown as ResizeObserver
+		);
+	}
 }
 
 let mountedRoot: Root | null = null;
 let activeLabel = "";
 let activeTriggerRect: RectInit = { left: 0, top: 0, width: 0, height: 0 };
 let activePanelRect: RectInit = { left: 0, top: 0, width: 360, height: 220 };
+let resizeObserverInstances: TestResizeObserver[] = [];
 
 function asDomRect({ left, top, width, height }: RectInit): DOMRect {
 	return {
@@ -74,6 +105,9 @@ function Harness({ label, onAction }: { label: string; onAction: () => void }) {
 	return (
 		<div data-testid="overflow-ancestor" style={{ overflow: "hidden" }}>
 			<OverflowPopover label={label} open={open} onOpenChange={setOpen}>
+				<button type="button" disabled>
+					Unavailable
+				</button>
 				<button type="button">Keep open</button>
 				<button type="button" data-popover-close onClick={onAction}>
 					Run action
@@ -126,6 +160,9 @@ async function mountPopover({
 	if (!trigger) throw new Error(`Missing ${label} trigger`);
 	return {
 		trigger,
+		setPanelRect: (rect) => {
+			activePanelRect = rect;
+		},
 		setTriggerRect: (rect) => {
 			activeTriggerRect = rect;
 		},
@@ -147,6 +184,16 @@ beforeEach(() => {
 	testWindow.innerWidth = 1_000;
 	testWindow.innerHeight = 800;
 	document.body.replaceChildren();
+	resizeObserverInstances = [];
+	Object.defineProperty(globalThis, "ResizeObserver", {
+		configurable: true,
+		writable: true,
+		value: TestResizeObserver,
+	});
+	Object.defineProperty(testWindow.HTMLDialogElement.prototype, "scrollHeight", {
+		configurable: true,
+		get: () => activePanelRect.height,
+	});
 	testWindow.HTMLElement.prototype.getBoundingClientRect = function getBoundingClientRect() {
 		if (
 			this instanceof testWindow.HTMLButtonElement &&
@@ -356,6 +403,34 @@ describe("Agents overflow popovers", () => {
 		expect(closed).not.toContain("•••");
 	});
 
+	test("focuses the dialog itself when no enabled actionable control is available", async () => {
+		function PanelFallbackHarness() {
+			const [open, setOpen] = useState(false);
+			return (
+				<OverflowPopover label="Empty options" open={open} onOpenChange={setOpen}>
+					<button type="button" disabled>
+						Unavailable
+					</button>
+				</OverflowPopover>
+			);
+		}
+
+		activeLabel = "Empty options";
+		activeTriggerRect = { left: 300, top: 200, width: 28, height: 28 };
+		activePanelRect = { left: 0, top: 0, width: 360, height: 80 };
+		const container = document.createElement("div");
+		document.body.append(container);
+		const root = createRoot(container);
+		mountedRoot = root;
+		await act(async () => root.render(<PanelFallbackHarness />));
+		const trigger = document.querySelector<HTMLButtonElement>('button[aria-label="Empty options"]');
+		if (!trigger) throw new Error("Missing empty options trigger");
+		const panel = await openPopover(trigger);
+
+		expect(panel.tabIndex).toBe(-1);
+		expect(document.activeElement).toBe(panel);
+	});
+
 	const triggerCases = [
 		{
 			location: "connection/sidebar",
@@ -375,6 +450,43 @@ describe("Agents overflow popovers", () => {
 
 	for (const triggerCase of triggerCases) {
 		describe(`${triggerCase.location} trigger`, () => {
+			test("moves focus into the dialog and wraps forward and reverse Tab navigation", async () => {
+				const harness = await mountPopover({
+					label: triggerCase.label,
+					triggerRect: { left: 500, top: 200, width: 28, height: 28 },
+					panelRect: { left: 0, top: 0, width: 360, height: 220 },
+				});
+				const panel = await openPopover(harness.trigger);
+				const enabledActions = Array.from(
+					panel.querySelectorAll<HTMLButtonElement>("button:not(:disabled)")
+				);
+				const firstAction = enabledActions[0];
+				const lastAction = enabledActions.at(-1);
+				if (!firstAction || !lastAction) throw new Error("Missing enabled popover actions");
+
+				expect(document.activeElement).toBe(firstAction);
+				lastAction.focus();
+				const forwardTab = new testWindow.KeyboardEvent("keydown", {
+					key: "Tab",
+					bubbles: true,
+					cancelable: true,
+				});
+				await act(async () => document.dispatchEvent(forwardTab));
+				expect(forwardTab.defaultPrevented).toBe(true);
+				expect(document.activeElement).toBe(firstAction);
+
+				firstAction.focus();
+				const reverseTab = new testWindow.KeyboardEvent("keydown", {
+					key: "Tab",
+					shiftKey: true,
+					bubbles: true,
+					cancelable: true,
+				});
+				await act(async () => document.dispatchEvent(reverseTab));
+				expect(reverseTab.defaultPrevented).toBe(true);
+				expect(document.activeElement).toBe(lastAction);
+			});
+
 			test("portals above clipped surfaces, clamps at the right edge, flips, and repositions", async () => {
 				testWindow.innerWidth = triggerCase.viewportWidth;
 				const harness = await mountPopover({
@@ -388,6 +500,7 @@ describe("Agents overflow popovers", () => {
 				expect(panel.style.position).toBe("fixed");
 				expect(panel.style.left).toBe(`${triggerCase.expectedRightEdgeLeft}px`);
 				expect(panel.style.top).toBe("512px");
+				expect(panel.style.maxHeight).toBe("724px");
 				expect(panel.className).toContain("z-[100]");
 
 				harness.setTriggerRect({ left: 80, top: 100, width: 28, height: 28 });
@@ -413,10 +526,46 @@ describe("Agents overflow popovers", () => {
 				const panel = await openPopover(harness.trigger);
 
 				expect(panel.style.left).toBe("8px");
-				expect(panel.style.top).toBe("8px");
+				expect(panel.style.top).toBe("112px");
 				expect(panel.style.width).toBe(`${viewportWidth - 16}px`);
-				expect(panel.style.maxHeight).toBe("164px");
+				expect(panel.style.maxHeight).toBe("60px");
 				expect(panel.style.overflowY).toBe("auto");
+			});
+
+			test("repositions after observed panel and trigger growth and cleans up the observer", async () => {
+				const harness = await mountPopover({
+					label: triggerCase.label,
+					triggerRect: { left: 500, top: 500, width: 28, height: 28 },
+					panelRect: { left: 0, top: 0, width: 360, height: 180 },
+				});
+				const panel = await openPopover(harness.trigger);
+				const observer = resizeObserverInstances.find(
+					(instance) => instance.observed.has(harness.trigger) && instance.observed.has(panel)
+				);
+				expect(observer).toBeDefined();
+				expect(panel.style.top).toBe("536px");
+				expect(panel.style.maxHeight).toBe("256px");
+
+				harness.setPanelRect({ left: 0, top: 0, width: 360, height: 400 });
+				await act(async () => observer?.notify(panel));
+				expect(panel.style.top).toBe("92px");
+				expect(panel.style.maxHeight).toBe("484px");
+
+				harness.setPanelRect({ left: 0, top: 0, width: 360, height: 700 });
+				await act(async () => observer?.notify(panel));
+				expect(panel.style.top).toBe("8px");
+				expect(panel.style.maxHeight).toBe("484px");
+
+				harness.setTriggerRect({ left: 500, top: 100, width: 28, height: 28 });
+				await act(async () => observer?.notify(harness.trigger));
+				expect(panel.style.top).toBe("136px");
+				expect(panel.style.maxHeight).toBe("656px");
+
+				await act(async () =>
+					document.dispatchEvent(new testWindow.KeyboardEvent("keydown", { key: "Escape" }))
+				);
+				expect(document.querySelector("dialog")).toBeNull();
+				expect(observer?.disconnected).toBe(true);
 			});
 
 			test("keeps trigger and portal interactions inside, then dismisses outside, on Escape, and on action", async () => {
