@@ -17,6 +17,19 @@ export function settleHermesSelectionAttachments<T extends { handle: string }>(
 	return false;
 }
 
+export async function settleHermesSelectionAttachmentPromise<T extends { handle: string }>(
+	guard: HermesSelectionGuard,
+	selection: HermesSelectionGeneration,
+	completion: Promise<T[]>,
+	callbacks: {
+		accept: (attachments: T[]) => void;
+		release: (attachment: T) => void;
+	}
+): Promise<boolean> {
+	const attachments = await completion;
+	return settleHermesSelectionAttachments(guard, selection, attachments, callbacks);
+}
+
 /** Guards renderer async callbacks only; it does not own or release Hermes sessions. */
 export class HermesSelectionGuard {
 	private selection: HermesSelectionGeneration = { key: "", generation: 0 };

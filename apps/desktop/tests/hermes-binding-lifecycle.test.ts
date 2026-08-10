@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
 	HermesSelectionGuard,
+	settleHermesSelectionAttachmentPromise,
 	settleHermesSelectionAttachments,
 } from "../src/renderer/hermes/hermes-binding-lifecycle";
 import { hermesSessionCompositeIdentityKey } from "../src/shared/hermes";
@@ -69,6 +70,30 @@ describe("Hermes renderer selection guard", () => {
 			expect(accepted).toEqual([]);
 			expect(released).toEqual(["late-1", "late-2"]);
 		}
+	});
+
+	test("settles picker promises after unmount and releases every returned handle", async () => {
+		const guard = new HermesSelectionGuard();
+		const generation = guard.select(
+			hermesSessionCompositeIdentityKey("connection-a", "profile-a", "session-a")
+		);
+		let resolvePicker!: (attachments: Array<{ handle: string }>) => void;
+		const picker = new Promise<Array<{ handle: string }>>((resolve) => {
+			resolvePicker = resolve;
+		});
+		const accepted: string[] = [];
+		const released: string[] = [];
+		const completion = settleHermesSelectionAttachmentPromise(guard, generation, picker, {
+			accept: (current) => accepted.push(...current.map(({ handle }) => handle)),
+			release: ({ handle }) => released.push(handle),
+		});
+
+		guard.dispose();
+		resolvePicker([{ handle: "picker-finished-after-unmount" }]);
+		await completion;
+
+		expect(accepted).toEqual([]);
+		expect(released).toEqual(["picker-finished-after-unmount"]);
 	});
 
 	test("releases every completion handle after unmount disposal", async () => {

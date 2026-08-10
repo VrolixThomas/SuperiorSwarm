@@ -20,6 +20,7 @@ import {
 import {
 	type HermesSelectionGeneration,
 	HermesSelectionGuard,
+	settleHermesSelectionAttachmentPromise,
 	settleHermesSelectionAttachments,
 } from "../../hermes/hermes-binding-lifecycle";
 import { isHermesChatNearBottom, shouldAnchorHermesChat } from "../../hermes/hermes-chat-scroll";
@@ -573,9 +574,15 @@ export function HermesSessionView() {
 
 	function handlePickAttachments(): void {
 		const generation = selectionGeneration;
-		pickAttachments.mutate(undefined, {
-			onSuccess: (selected) => acceptRegisteredAttachments(selected, generation),
-		});
+		void settleHermesSelectionAttachmentPromise(
+			selectionGuard,
+			generation,
+			pickAttachments.mutateAsync(),
+			{
+				accept: acceptCurrentRegisteredAttachments,
+				release: (attachment) => releaseAttachmentRef.current({ handle: attachment.handle }),
+			}
+		).catch(() => undefined);
 	}
 
 	function handleChatPaste(event: ClipboardEvent<HTMLElement>): void {
