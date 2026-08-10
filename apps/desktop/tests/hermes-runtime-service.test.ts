@@ -531,6 +531,25 @@ describe("HermesRuntimeService stock lifecycle", () => {
 		);
 	});
 
+	test("fails closed when a legacy runtime call omits a colliding session profile", async () => {
+		admitAgentSession("same-session", "work");
+		admitAgentSession("same-session", "personal");
+		rest.sessions = [
+			{ ...session("same-session"), profileId: "work", source: "superiorswarm", origin: null },
+			{
+				...session("same-session"),
+				profileId: "personal",
+				source: "superiorswarm",
+				origin: null,
+			},
+		];
+		await service.connect(connectionId);
+
+		await expect(service.origin(connectionId, "same-session")).rejects.toThrow(
+			"profile is ambiguous"
+		);
+	});
+
 	test("deletion cleanup preserves the colliding profile's runtime maps", async () => {
 		admitAgentSession("same-session", "work");
 		admitAgentSession("same-session", "personal");
@@ -724,6 +743,14 @@ describe("HermesRuntimeService stock lifecycle", () => {
 		rest.sessions = [{ ...session("delete-me"), handover: false }];
 		linkHermesWorkspace({
 			connectionId,
+			profileId: "work",
+			hermesSessionId: "delete-me",
+			workspaceId: "workspace-owned-link",
+			source: "manual",
+		});
+		linkHermesWorkspace({
+			connectionId,
+			profileId: "personal",
 			hermesSessionId: "delete-me",
 			workspaceId: "workspace-owned-link",
 			source: "manual",
@@ -778,7 +805,14 @@ describe("HermesRuntimeService stock lifecycle", () => {
 		expect(rest.deleteCalls).toEqual([{ durableSessionId: "delete-me", profileId: "work" }]);
 		expect(result).toMatchObject({ committed: true, reconciliationRequired: false });
 		expect(result.catalog?.sessions).toEqual([]);
-		expect(listHermesWorkspaceLinks(connectionId, "delete-me")).toEqual([]);
+		expect(listHermesWorkspaceLinks(connectionId, "work", "delete-me")).toEqual([]);
+		expect(listHermesWorkspaceLinks(connectionId, "personal", "delete-me")).toEqual([
+			expect.objectContaining({
+				profileId: "personal",
+				hermesSessionId: "delete-me",
+				workspaceId: "workspace-owned-link",
+			}),
+		]);
 		expect(
 			getDb()
 				.select()
@@ -1668,14 +1702,14 @@ describe("HermesRuntimeService stock lifecycle", () => {
 			],
 		});
 
-		expect(listHermesWorkspaceLinks(connectionId, "durable-task")).toEqual([
+		expect(listHermesWorkspaceLinks(connectionId, "work", "durable-task")).toEqual([
 			expect.objectContaining({
 				hermesSessionId: "durable-task",
 				workspaceId: "workspace-artifact",
 				source: "tool-artifact",
 			}),
 		]);
-		expect(listHermesWorkspaceLinks(connectionId, "runtime-task")).toEqual([]);
+		expect(listHermesWorkspaceLinks(connectionId, "work", "runtime-task")).toEqual([]);
 	});
 
 	test("consolidates selected session aliases onto the canonical durable workspace link", async () => {
@@ -1735,30 +1769,46 @@ describe("HermesRuntimeService stock lifecycle", () => {
 		});
 		linkHermesWorkspace({
 			connectionId,
+			profileId: "work",
 			hermesSessionId: "session-tip",
 			workspaceId: "workspace-alias",
 			source: "tool-artifact",
+		});
+		linkHermesWorkspace({
+			connectionId,
+			profileId: "personal",
+			hermesSessionId: "session-tip",
+			workspaceId: "workspace-alias",
+			source: "manual",
 		});
 		await service.connect(connectionId);
 
 		const history = await service.history(connectionId, "session-tip");
 
 		expect(history.durableSessionId).toBe("session-root");
-		expect(listHermesWorkspaceLinks(connectionId, "session-root")).toEqual([
+		expect(listHermesWorkspaceLinks(connectionId, "work", "session-root")).toEqual([
 			expect.objectContaining({
 				hermesSessionId: "session-root",
 				workspaceId: "workspace-alias",
 				source: "tool-artifact",
 			}),
 		]);
-		expect(listHermesWorkspaceLinks(connectionId, "session-tip")).toEqual([]);
+		expect(listHermesWorkspaceLinks(connectionId, "work", "session-tip")).toEqual([]);
+		expect(listHermesWorkspaceLinks(connectionId, "personal", "session-tip")).toEqual([
+			expect.objectContaining({
+				profileId: "personal",
+				hermesSessionId: "session-tip",
+				workspaceId: "workspace-alias",
+			}),
+		]);
+		expect(listHermesWorkspaceLinks(connectionId, "personal", "session-root")).toEqual([]);
 		expect(
 			getDb()
 				.select()
 				.from(schema.hermesSessionWorkspaces)
 				.where(eq(schema.hermesSessionWorkspaces.connectionId, connectionId))
 				.all()
-		).toHaveLength(1);
+		).toHaveLength(2);
 	});
 
 	test("resumes, attaches local image/PDF/file through stock RPC, then submits resolved context", async () => {
@@ -2249,7 +2299,45 @@ describe("HermesRuntimeService stock lifecycle", () => {
 		]);
 	});
 
-	test("projects profile identity on every mapped event when durable session IDs collide", async () => {
+	test("projects profile identity and isolates artifact links when durable session IDs collide", async () => {
+		const now = new Date();
+		for (const profileId of ["work", "personal"] as const) {
+			getDb()
+				.insert(schema.projects)
+				.values({
+					id: `project-${profileId}-event`,
+					name: `${profileId} event project`,
+					repoPath: `/repos/${profileId}-event`,
+					defaultBranch: "main",
+					createdAt: now,
+					updatedAt: now,
+				})
+				.run();
+			getDb()
+				.insert(schema.worktrees)
+				.values({
+					id: `worktree-${profileId}-event`,
+					projectId: `project-${profileId}-event`,
+					path: `/repos/${profileId}-event-worktrees/feat/${profileId}`,
+					branch: `feat/${profileId}`,
+					baseBranch: "main",
+					createdAt: now,
+					updatedAt: now,
+				})
+				.run();
+			getDb()
+				.insert(schema.workspaces)
+				.values({
+					id: `workspace-${profileId}-event`,
+					projectId: `project-${profileId}-event`,
+					type: "worktree",
+					name: `${profileId} event workspace`,
+					worktreeId: `worktree-${profileId}-event`,
+					createdAt: now,
+					updatedAt: now,
+				})
+				.run();
+		}
 		admitAgentSession("same-session", "work");
 		admitAgentSession("same-session", "personal");
 		rest.sessions = [
@@ -2285,6 +2373,21 @@ describe("HermesRuntimeService stock lifecycle", () => {
 			turnId: "turn-personal",
 			text: "personal secret",
 		});
+		for (const profileId of ["work", "personal"] as const) {
+			client.emit({
+				type: "tool.result",
+				runtimeSessionId: `runtime-${profileId}-event`,
+				workspaceArtifacts: [
+					{
+						kind: "superiorswarm.workspace.created",
+						workspaceId: `workspace-${profileId}-event`,
+						projectId: `project-${profileId}-event`,
+						branch: `feat/${profileId}`,
+						worktreePath: `/repos/${profileId}-event-worktrees/feat/${profileId}`,
+					},
+				],
+			});
+		}
 
 		const deltas = service
 			.events(connectionId, 0)
@@ -2302,6 +2405,24 @@ describe("HermesRuntimeService stock lifecycle", () => {
 				text: "personal secret",
 			}),
 		]);
+		const workLinks = listHermesWorkspaceLinks(connectionId, "work", "same-session");
+		const personalLinks = listHermesWorkspaceLinks(connectionId, "personal", "same-session");
+		expect(workLinks).toEqual([
+			expect.objectContaining({
+				profileId: "work",
+				workspaceId: "workspace-work-event",
+				branch: "feat/work",
+			}),
+		]);
+		expect(personalLinks).toEqual([
+			expect.objectContaining({
+				profileId: "personal",
+				workspaceId: "workspace-personal-event",
+				branch: "feat/personal",
+			}),
+		]);
+		expect(JSON.stringify(workLinks)).not.toContain("workspace-personal-event");
+		expect(JSON.stringify(personalLinks)).not.toContain("workspace-work-event");
 	});
 
 	test("cancels a queued follow-up and releases its claimed attachment handle", async () => {

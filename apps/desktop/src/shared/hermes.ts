@@ -304,6 +304,7 @@ export interface HermesConnectionSummary {
 export interface HermesLinkedWorkspace {
 	id: string;
 	connectionId: string;
+	profileId: string;
 	hermesSessionId: string;
 	hermesLineageRootId: string | null;
 	workspaceId: string;

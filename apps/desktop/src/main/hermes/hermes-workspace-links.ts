@@ -6,6 +6,7 @@ import { hermesSessionWorkspaces, projects, workspaces, worktrees } from "../db/
 
 export interface LinkHermesWorkspaceInput {
 	connectionId: string;
+	profileId: string;
 	hermesSessionId: string;
 	hermesLineageRootId?: string | null;
 	workspaceId: string;
@@ -13,10 +14,15 @@ export interface LinkHermesWorkspaceInput {
 }
 
 function linkId(
-	input: Pick<LinkHermesWorkspaceInput, "connectionId" | "hermesSessionId" | "workspaceId">
+	input: Pick<
+		LinkHermesWorkspaceInput,
+		"connectionId" | "profileId" | "hermesSessionId" | "workspaceId"
+	>
 ) {
 	return `hermes-link-${createHash("sha256")
-		.update(`${input.connectionId}\0${input.hermesSessionId}\0${input.workspaceId}`)
+		.update(
+			`${input.connectionId}\0${input.profileId}\0${input.hermesSessionId}\0${input.workspaceId}`
+		)
 		.digest("hex")
 		.slice(0, 24)}`;
 }
@@ -29,6 +35,7 @@ export function linkHermesWorkspace(input: LinkHermesWorkspaceInput) {
 		.where(
 			and(
 				eq(hermesSessionWorkspaces.connectionId, input.connectionId),
+				eq(hermesSessionWorkspaces.profileId, input.profileId),
 				eq(hermesSessionWorkspaces.hermesSessionId, input.hermesSessionId),
 				eq(hermesSessionWorkspaces.workspaceId, input.workspaceId)
 			)
@@ -41,6 +48,7 @@ export function linkHermesWorkspace(input: LinkHermesWorkspaceInput) {
 		.values({
 			id,
 			connectionId: input.connectionId,
+			profileId: input.profileId,
 			hermesSessionId: input.hermesSessionId,
 			hermesLineageRootId: input.hermesLineageRootId ?? existing?.hermesLineageRootId ?? null,
 			workspaceId: input.workspaceId,
@@ -50,6 +58,7 @@ export function linkHermesWorkspace(input: LinkHermesWorkspaceInput) {
 		.onConflictDoUpdate({
 			target: [
 				hermesSessionWorkspaces.connectionId,
+				hermesSessionWorkspaces.profileId,
 				hermesSessionWorkspaces.hermesSessionId,
 				hermesSessionWorkspaces.workspaceId,
 			],
@@ -62,7 +71,12 @@ export function linkHermesWorkspace(input: LinkHermesWorkspaceInput) {
 	const linked = db
 		.select()
 		.from(hermesSessionWorkspaces)
-		.where(eq(hermesSessionWorkspaces.id, id))
+		.where(
+			and(
+				eq(hermesSessionWorkspaces.id, id),
+				eq(hermesSessionWorkspaces.profileId, input.profileId)
+			)
+		)
 		.get();
 	if (!linked) throw new Error("Hermes workspace link could not be saved");
 	return linked;
@@ -70,6 +84,7 @@ export function linkHermesWorkspace(input: LinkHermesWorkspaceInput) {
 
 export function linkHermesWorkspaceArtifacts(input: {
 	connectionId: string;
+	profileId: string;
 	hermesSessionId: string;
 	hermesLineageRootId?: string | null;
 	artifacts: HermesWorkspaceArtifact[];
@@ -97,17 +112,19 @@ export function linkHermesWorkspaceArtifacts(input: {
 		}
 		linkHermesWorkspace({
 			connectionId: input.connectionId,
+			profileId: input.profileId,
 			hermesSessionId: input.hermesSessionId,
 			hermesLineageRootId: input.hermesLineageRootId,
 			workspaceId: artifact.workspaceId,
 			source: "tool-artifact",
 		});
 	}
-	return listHermesWorkspaceLinks(input.connectionId, input.hermesSessionId);
+	return listHermesWorkspaceLinks(input.connectionId, input.profileId, input.hermesSessionId);
 }
 
 export function canonicalizeHermesWorkspaceLinks(
 	connectionId: string,
+	profileId: string,
 	aliasSessionIds: string[],
 	canonicalSessionId: string
 ): void {
@@ -123,6 +140,7 @@ export function canonicalizeHermesWorkspaceLinks(
 				.where(
 					and(
 						eq(hermesSessionWorkspaces.connectionId, connectionId),
+						eq(hermesSessionWorkspaces.profileId, profileId),
 						eq(hermesSessionWorkspaces.hermesSessionId, aliasSessionId)
 					)
 				)
@@ -134,12 +152,20 @@ export function canonicalizeHermesWorkspaceLinks(
 					.where(
 						and(
 							eq(hermesSessionWorkspaces.connectionId, connectionId),
+							eq(hermesSessionWorkspaces.profileId, profileId),
 							eq(hermesSessionWorkspaces.hermesSessionId, canonicalSessionId),
 							eq(hermesSessionWorkspaces.workspaceId, aliasRow.workspaceId)
 						)
 					)
 					.get();
-				tx.delete(hermesSessionWorkspaces).where(eq(hermesSessionWorkspaces.id, aliasRow.id)).run();
+				tx.delete(hermesSessionWorkspaces)
+					.where(
+						and(
+							eq(hermesSessionWorkspaces.id, aliasRow.id),
+							eq(hermesSessionWorkspaces.profileId, profileId)
+						)
+					)
+					.run();
 				if (canonicalRow) {
 					tx.update(hermesSessionWorkspaces)
 						.set({
@@ -153,7 +179,12 @@ export function canonicalizeHermesWorkspaceLinks(
 									? canonicalRow.linkedAt
 									: aliasRow.linkedAt,
 						})
-						.where(eq(hermesSessionWorkspaces.id, canonicalRow.id))
+						.where(
+							and(
+								eq(hermesSessionWorkspaces.id, canonicalRow.id),
+								eq(hermesSessionWorkspaces.profileId, profileId)
+							)
+						)
 						.run();
 					continue;
 				}
@@ -161,10 +192,12 @@ export function canonicalizeHermesWorkspaceLinks(
 					.values({
 						id: linkId({
 							connectionId,
+							profileId,
 							hermesSessionId: canonicalSessionId,
 							workspaceId: aliasRow.workspaceId,
 						}),
 						connectionId,
+						profileId,
 						hermesSessionId: canonicalSessionId,
 						hermesLineageRootId: canonicalSessionId,
 						workspaceId: aliasRow.workspaceId,
@@ -179,6 +212,7 @@ export function canonicalizeHermesWorkspaceLinks(
 
 export function unlinkHermesWorkspace(
 	connectionId: string,
+	profileId: string,
 	hermesSessionId: string,
 	workspaceId: string
 ): void {
@@ -187,6 +221,7 @@ export function unlinkHermesWorkspace(
 		.where(
 			and(
 				eq(hermesSessionWorkspaces.connectionId, connectionId),
+				eq(hermesSessionWorkspaces.profileId, profileId),
 				eq(hermesSessionWorkspaces.hermesSessionId, hermesSessionId),
 				eq(hermesSessionWorkspaces.workspaceId, workspaceId)
 			)
@@ -196,6 +231,7 @@ export function unlinkHermesWorkspace(
 
 export function deleteHermesSessionWorkspaceLinks(
 	connectionId: string,
+	profileId: string,
 	hermesSessionId: string
 ): void {
 	getDb()
@@ -203,6 +239,7 @@ export function deleteHermesSessionWorkspaceLinks(
 		.where(
 			and(
 				eq(hermesSessionWorkspaces.connectionId, connectionId),
+				eq(hermesSessionWorkspaces.profileId, profileId),
 				eq(hermesSessionWorkspaces.hermesSessionId, hermesSessionId)
 			)
 		)
@@ -211,12 +248,14 @@ export function deleteHermesSessionWorkspaceLinks(
 
 export function listHermesWorkspaceLinks(
 	connectionId: string,
+	profileId: string,
 	hermesSessionId: string
 ): HermesLinkedWorkspace[] {
 	const rows = getDb()
 		.select({
 			id: hermesSessionWorkspaces.id,
 			connectionId: hermesSessionWorkspaces.connectionId,
+			profileId: hermesSessionWorkspaces.profileId,
 			hermesSessionId: hermesSessionWorkspaces.hermesSessionId,
 			hermesLineageRootId: hermesSessionWorkspaces.hermesLineageRootId,
 			workspaceId: hermesSessionWorkspaces.workspaceId,
@@ -241,6 +280,7 @@ export function listHermesWorkspaceLinks(
 		.where(
 			and(
 				eq(hermesSessionWorkspaces.connectionId, connectionId),
+				eq(hermesSessionWorkspaces.profileId, profileId),
 				eq(hermesSessionWorkspaces.hermesSessionId, hermesSessionId)
 			)
 		)
@@ -248,6 +288,7 @@ export function listHermesWorkspaceLinks(
 	return rows.map((row) => ({
 		id: row.id,
 		connectionId: row.connectionId,
+		profileId: row.profileId,
 		hermesSessionId: row.hermesSessionId,
 		hermesLineageRootId: row.hermesLineageRootId,
 		workspaceId: row.workspaceId,

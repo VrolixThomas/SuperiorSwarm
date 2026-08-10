@@ -428,6 +428,13 @@
       "when": 1786311977745,
       "tag": "0060_distinguish_hermes_manager_binding",
       "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "6",
+      "when": 1786390804833,
+      "tag": "0061_isolate_hermes_workspace_links_by_profile",
+      "breakpoints": true
     }
   ]
 }

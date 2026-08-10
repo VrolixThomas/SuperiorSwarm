@@ -340,6 +340,7 @@ describe("Hermes persistence services", () => {
 
 		const first = linkHermesWorkspace({
 			connectionId: connection.id,
+			profileId: "default",
 			hermesSessionId: "session-tip",
 			hermesLineageRootId: "session-root",
 			workspaceId: "workspace-1",
@@ -347,6 +348,7 @@ describe("Hermes persistence services", () => {
 		});
 		const duplicate = linkHermesWorkspace({
 			connectionId: connection.id,
+			profileId: "default",
 			hermesSessionId: "session-tip",
 			hermesLineageRootId: "session-root",
 			workspaceId: "workspace-1",
@@ -354,12 +356,13 @@ describe("Hermes persistence services", () => {
 		});
 		linkHermesWorkspace({
 			connectionId: connection.id,
+			profileId: "default",
 			hermesSessionId: "session-tip",
 			workspaceId: "workspace-2",
 			source: "manual",
 		});
 		expect(duplicate.id).toBe(first.id);
-		const linked = listHermesWorkspaceLinks(connection.id, "session-tip");
+		const linked = listHermesWorkspaceLinks(connection.id, "default", "session-tip");
 		expect(linked).toHaveLength(2);
 		expect(linked.find((link) => link.workspaceId === "workspace-1")).toMatchObject({
 			hasTerminal: true,
@@ -370,7 +373,7 @@ describe("Hermes persistence services", () => {
 		});
 
 		db.delete(schema.workspaces).where(eq(schema.workspaces.id, "workspace-1")).run();
-		const missing = listHermesWorkspaceLinks(connection.id, "session-tip").find(
+		const missing = listHermesWorkspaceLinks(connection.id, "default", "session-tip").find(
 			(link) => link.workspaceId === "workspace-1"
 		);
 		expect(missing?.missing).toBe(true);
@@ -382,8 +385,101 @@ describe("Hermes persistence services", () => {
 			statusUpdatedAt: null,
 		});
 
-		unlinkHermesWorkspace(connection.id, "session-tip", "workspace-1");
-		expect(listHermesWorkspaceLinks(connection.id, "session-tip")).toHaveLength(1);
+		unlinkHermesWorkspace(connection.id, "default", "session-tip", "workspace-1");
+		expect(listHermesWorkspaceLinks(connection.id, "default", "session-tip")).toHaveLength(1);
+	});
+
+	test("isolates workspace metadata and unlinking for colliding sessions in different profiles", () => {
+		const now = new Date();
+		for (const profileId of ["work", "personal"] as const) {
+			const projectId = `project-${profileId}`;
+			const worktreeId = `worktree-${profileId}`;
+			const workspaceId = `workspace-${profileId}`;
+			db.insert(schema.projects)
+				.values({
+					id: projectId,
+					name: `${profileId} project`,
+					repoPath: `/repos/${profileId}`,
+					defaultBranch: "main",
+					createdAt: now,
+					updatedAt: now,
+				})
+				.run();
+			db.insert(schema.worktrees)
+				.values({
+					id: worktreeId,
+					projectId,
+					path: `/repos/${profileId}-worktrees/feat/${profileId}`,
+					branch: `feat/${profileId}`,
+					baseBranch: "main",
+					createdAt: now,
+					updatedAt: now,
+				})
+				.run();
+			db.insert(schema.workspaces)
+				.values({
+					id: workspaceId,
+					projectId,
+					type: "worktree",
+					name: `${profileId} workspace`,
+					worktreeId,
+					createdAt: now,
+					updatedAt: now,
+				})
+				.run();
+		}
+		const connection = saveHermesConnection(
+			{
+				label: "Cross-profile Hermes",
+				baseUrl: "http://localhost:8080",
+				profileId: "work",
+				token: "token",
+			},
+			vault
+		);
+
+		const workLink = linkHermesWorkspace({
+			connectionId: connection.id,
+			profileId: "work",
+			hermesSessionId: "shared-session",
+			workspaceId: "workspace-work",
+			source: "manual",
+		});
+		const personalLink = linkHermesWorkspace({
+			connectionId: connection.id,
+			profileId: "personal",
+			hermesSessionId: "shared-session",
+			workspaceId: "workspace-personal",
+			source: "manual",
+		});
+
+		expect(personalLink.id).not.toBe(workLink.id);
+		const workLinks = listHermesWorkspaceLinks(connection.id, "work", "shared-session");
+		const personalLinks = listHermesWorkspaceLinks(connection.id, "personal", "shared-session");
+		expect(workLinks).toEqual([
+			expect.objectContaining({
+				profileId: "work",
+				projectId: "project-work",
+				branch: "feat/work",
+				worktreePath: "/repos/work-worktrees/feat/work",
+			}),
+		]);
+		expect(personalLinks).toEqual([
+			expect.objectContaining({
+				profileId: "personal",
+				projectId: "project-personal",
+				branch: "feat/personal",
+				worktreePath: "/repos/personal-worktrees/feat/personal",
+			}),
+		]);
+		expect(JSON.stringify(workLinks)).not.toContain("personal-worktrees");
+		expect(JSON.stringify(personalLinks)).not.toContain("work-worktrees");
+
+		unlinkHermesWorkspace(connection.id, "work", "shared-session", "workspace-work");
+		expect(listHermesWorkspaceLinks(connection.id, "work", "shared-session")).toEqual([]);
+		expect(listHermesWorkspaceLinks(connection.id, "personal", "shared-session")).toEqual(
+			personalLinks
+		);
 	});
 
 	test("atomically suppresses duplicate report clicks and requires explicit retry after failure", () => {

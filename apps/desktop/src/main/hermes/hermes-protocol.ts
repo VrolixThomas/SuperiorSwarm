@@ -9,6 +9,7 @@ import {
 	type HermesSessionSummary,
 	type HermesTranscriptMessage,
 	type HermesWorkspaceArtifact,
+	hermesSessionIdentityKey,
 } from "../../shared/hermes";
 
 type JsonRecord = Record<string, unknown>;
@@ -319,19 +320,20 @@ export function normalizeHermesSessionList(
 	defaultProfileId: string
 ): HermesSessionSummary[] {
 	const deduped = new Map<string, HermesSessionSummary>();
-	const ambiguousIds = new Set<string>();
 	for (const row of sessionRows(value)) {
 		const session = record(row.value);
 		const id = safeIdentifier(session?.["stored_session_id"], session?.["id"]);
-		if (!session || !id || ambiguousIds.has(id)) continue;
+		if (!session || !id) continue;
 		const source = normalizedSource(session["source"]);
 		const isCron = row.section === "cron" || source === "cron";
 		const status = stringValue(session["status"]);
+		const profileId =
+			safeIdentifier(session["profile"], session["profile_name"]) ?? defaultProfileId;
 		const summary: HermesSessionSummary = {
 			id,
 			title: sanitizedStringValue(session["title"]) ?? "Untitled session",
 			preview: sanitizedStringValue(session["preview"], session["summary"]) ?? "",
-			profileId: safeIdentifier(session["profile"], session["profile_name"]) ?? defaultProfileId,
+			profileId,
 			source,
 			updatedAt: timestampValue(
 				session["last_active"],
@@ -350,20 +352,20 @@ export function normalizeHermesSessionList(
 			admissionReason: null,
 			origin: source === "superiorswarm" ? null : stockOriginProjection(session, source),
 		};
-		const existing = deduped.get(id);
-		if (existing && existing.profileId !== summary.profileId) {
-			deduped.delete(id);
-			ambiguousIds.add(id);
-			continue;
-		}
+		const identityKey = hermesSessionIdentityKey(profileId, id);
+		const existing = deduped.get(identityKey);
 		if (!existing || summary.updatedAt >= existing.updatedAt) {
-			deduped.set(id, {
+			deduped.set(identityKey, {
 				...summary,
 				handover: summary.handover || existing?.handover === true,
 				origin: summary.origin ?? existing?.origin ?? null,
 			});
 		} else if (summary.handover && !existing.handover) {
-			deduped.set(id, { ...existing, handover: true, origin: existing.origin ?? summary.origin });
+			deduped.set(identityKey, {
+				...existing,
+				handover: true,
+				origin: existing.origin ?? summary.origin,
+			});
 		}
 	}
 	return [...deduped.values()];

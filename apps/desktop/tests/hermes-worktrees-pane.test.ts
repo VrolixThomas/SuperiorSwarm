@@ -16,6 +16,7 @@ function link(overrides: Partial<HermesLinkedWorkspace> = {}): HermesLinkedWorks
 	return {
 		id: "link-1",
 		connectionId: "connection-1",
+		profileId: "work",
 		hermesSessionId: "session-1",
 		hermesLineageRootId: null,
 		workspaceId: "workspace-1",
@@ -190,7 +191,7 @@ describe("Hermes Worktrees pane", () => {
 				"open",
 				"workspace-1",
 				"/repos/app-worktrees/feat-one",
-				{ connectionId: "connection-1", sessionId: "session-1" },
+				{ connectionId: "connection-1", profileId: "work", sessionId: "session-1" },
 				"worktrees",
 			],
 			["terminal", "workspace-1", "/repos/app-worktrees/feat-one", "feat/one"],
@@ -221,7 +222,7 @@ describe("Hermes Worktrees pane", () => {
 				"open",
 				"workspace-1",
 				"/repos/app-worktrees/feat-one",
-				{ connectionId: "connection-1", sessionId: "session-1" },
+				{ connectionId: "connection-1", profileId: "work", sessionId: "session-1" },
 				"worktrees",
 			],
 		]);

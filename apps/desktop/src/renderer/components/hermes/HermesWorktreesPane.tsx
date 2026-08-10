@@ -92,7 +92,12 @@ export function openHermesLinkedWorktree(
 	actions: HermesWorktreeNavigationActions
 ): boolean {
 	if (link.missing || !link.worktreePath) return false;
-	actions.openWorkspaceFromHermes(link.workspaceId, link.worktreePath, selection, "worktrees");
+	actions.openWorkspaceFromHermes(
+		link.workspaceId,
+		link.worktreePath,
+		{ ...selection, profileId: link.profileId },
+		"worktrees"
+	);
 	const tabs = actions.getTabsByWorkspace(link.workspaceId);
 	if (!link.hasTerminal && !tabs.some((tab) => tab.kind === "terminal")) {
 		const terminalId = actions.addTerminalTab(

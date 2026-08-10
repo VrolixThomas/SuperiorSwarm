@@ -770,6 +770,7 @@ export const hermesSessionWorkspaces = sqliteTable(
 		connectionId: text("connection_id")
 			.notNull()
 			.references(() => hermesConnections.id, { onDelete: "cascade" }),
+		profileId: text("profile_id").notNull().default("default"),
 		hermesSessionId: text("hermes_session_id").notNull(),
 		hermesLineageRootId: text("hermes_lineage_root_id"),
 		// Deliberately no FK: retain recovery metadata when a workspace is deleted.
@@ -780,10 +781,15 @@ export const hermesSessionWorkspaces = sqliteTable(
 	(table) => [
 		uniqueIndex("hermes_session_workspaces_unique").on(
 			table.connectionId,
+			table.profileId,
 			table.hermesSessionId,
 			table.workspaceId
 		),
-		index("hermes_session_workspaces_session_idx").on(table.connectionId, table.hermesSessionId),
+		index("hermes_session_workspaces_session_idx").on(
+			table.connectionId,
+			table.profileId,
+			table.hermesSessionId
+		),
 		index("hermes_session_workspaces_workspace_idx").on(table.workspaceId),
 	]
 );

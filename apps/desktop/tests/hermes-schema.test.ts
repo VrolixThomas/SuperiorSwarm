@@ -83,6 +83,87 @@ describe("Hermes persistence migration", () => {
 		sqlite.close();
 	});
 
+	test("backfills legacy workspace links from their connection profile and permits profile collisions", () => {
+		const sqlite = new Database(":memory:");
+		sqlite.exec(`
+			CREATE TABLE hermes_connections (
+				id text PRIMARY KEY NOT NULL,
+				profile_id text NOT NULL
+			);
+			CREATE TABLE hermes_session_workspaces (
+				id text PRIMARY KEY NOT NULL,
+				connection_id text NOT NULL REFERENCES hermes_connections(id) ON DELETE CASCADE,
+				hermes_session_id text NOT NULL,
+				hermes_lineage_root_id text,
+				workspace_id text NOT NULL,
+				source text NOT NULL,
+				linked_at integer NOT NULL
+			);
+			CREATE UNIQUE INDEX hermes_session_workspaces_unique
+				ON hermes_session_workspaces (connection_id, hermes_session_id, workspace_id);
+			CREATE INDEX hermes_session_workspaces_session_idx
+				ON hermes_session_workspaces (connection_id, hermes_session_id);
+			CREATE INDEX hermes_session_workspaces_workspace_idx
+				ON hermes_session_workspaces (workspace_id);
+			INSERT INTO hermes_connections (id, profile_id) VALUES ('connection-1', 'work');
+			INSERT INTO hermes_session_workspaces
+				(id, connection_id, hermes_session_id, workspace_id, source, linked_at)
+				VALUES ('legacy-link', 'connection-1', 'shared-session', 'workspace-1', 'manual', 1);
+		`);
+
+		const migration = readFileSync(
+			join(
+				import.meta.dir,
+				"../src/main/db/migrations/0061_isolate_hermes_workspace_links_by_profile.sql"
+			),
+			"utf8"
+		).replaceAll("--> statement-breakpoint", "");
+		sqlite.exec(migration);
+
+		expect(
+			sqlite
+				.prepare("SELECT profile_id FROM hermes_session_workspaces WHERE id = ?")
+				.get("legacy-link")
+		).toEqual({ profile_id: "work" });
+		const profileColumn = sqlite
+			.prepare("PRAGMA table_info(hermes_session_workspaces)")
+			.all()
+			.map((row) => row as { name: string; notnull: number; dflt_value: string | null })
+			.find((row) => row.name === "profile_id");
+		expect(profileColumn).toMatchObject({ notnull: 1, dflt_value: "'default'" });
+
+		sqlite
+			.prepare(
+				`INSERT INTO hermes_session_workspaces
+				 (id, connection_id, profile_id, hermes_session_id, workspace_id, source, linked_at)
+				 VALUES (?, ?, ?, ?, ?, ?, ?)`
+			)
+			.run(
+				"personal-link",
+				"connection-1",
+				"personal",
+				"shared-session",
+				"workspace-1",
+				"manual",
+				2
+			);
+		sqlite
+			.prepare(
+				`INSERT INTO hermes_session_workspaces
+				 (id, connection_id, hermes_session_id, workspace_id, source, linked_at)
+				 VALUES (?, ?, ?, ?, ?, ?)`
+			)
+			.run("default-link", "connection-1", "new-session", "workspace-2", "manual", 3);
+		expect(
+			sqlite.prepare("SELECT id, profile_id FROM hermes_session_workspaces ORDER BY id").all()
+		).toEqual([
+			{ id: "default-link", profile_id: "default" },
+			{ id: "legacy-link", profile_id: "work" },
+			{ id: "personal-link", profile_id: "personal" },
+		]);
+		sqlite.close();
+	});
+
 	test("migrates only deterministic legacy Local Hermes defaults and preserves rollback data", () => {
 		const sqlite = new Database(":memory:");
 		const migrations = join(import.meta.dir, "../src/main/db/migrations");

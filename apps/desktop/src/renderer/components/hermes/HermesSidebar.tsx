@@ -2,6 +2,7 @@ import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
 	type HermesSessionSummary,
 	hermesSessionCompositeIdentityKey,
+	hermesSessionIdentityKey,
 } from "../../../shared/hermes";
 import {
 	type HermesSessionFilter,
@@ -602,11 +603,12 @@ export function HermesSidebar() {
 											{section.title}
 										</div>
 										{section.rows.map((session) => {
-											const links = linkIndex.data?.[session.id];
+											const links =
+												linkIndex.data?.[hermesSessionIdentityKey(session.profileId, session.id)];
 											return (
 												<HermesSessionRow
 													key={hermesSessionCompositeIdentityKey(
-														connectionId,
+														connectionId ?? "",
 														session.profileId,
 														session.id
 													)}

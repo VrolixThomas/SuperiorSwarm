@@ -16,6 +16,7 @@ import {
 	HERMES_IMAGE_ATTACHMENT_MAX_BYTES,
 	HERMES_MAX_ATTACHMENTS,
 	HERMES_PDF_ATTACHMENT_MAX_BYTES,
+	hermesSessionIdentityKey,
 	isHermesLoopbackUrl,
 	isSafeHermesFileReference,
 } from "../../shared/hermes";
@@ -1158,7 +1159,7 @@ export function filterHermesSessions(
 			session.origin?.chatLabel ?? "",
 			session.origin?.channelLabel ?? "",
 			session.origin?.threadLabel ?? "",
-			...(linkedBranchesBySession[session.id] ?? []),
+			...(linkedBranchesBySession[hermesSessionIdentityKey(session.profileId, session.id)] ?? []),
 		]
 			.join("\n")
 			.toLocaleLowerCase();

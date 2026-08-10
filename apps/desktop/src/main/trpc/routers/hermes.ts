@@ -1,7 +1,7 @@
 import { asc, eq } from "drizzle-orm";
 import { dialog, shell } from "electron";
 import { z } from "zod";
-import { HERMES_MAX_ATTACHMENTS } from "../../../shared/hermes";
+import { HERMES_MAX_ATTACHMENTS, hermesSessionIdentityKey } from "../../../shared/hermes";
 import { getDb } from "../../db";
 import { hermesSessionWorkspaces, projects, workspaces, worktrees } from "../../db/schema";
 import { hermesAttachmentStore } from "../../hermes/hermes-attachments";
@@ -24,6 +24,10 @@ const connectionSessionInput = z.object({
 	connectionId: z.string().min(1),
 	profileId: z.string().trim().min(1).max(120).optional(),
 	hermesSessionId: z.string().min(1),
+});
+
+const workspaceSessionInput = connectionSessionInput.extend({
+	profileId: z.string().trim().min(1).max(120),
 });
 
 export const hermesCreateInputSchema = z
@@ -337,8 +341,10 @@ export const hermesRouter = router({
 		),
 
 	workspaceLinks: publicProcedure
-		.input(connectionSessionInput)
-		.query(({ input }) => listHermesWorkspaceLinks(input.connectionId, input.hermesSessionId)),
+		.input(workspaceSessionInput)
+		.query(({ input }) =>
+			listHermesWorkspaceLinks(input.connectionId, input.profileId, input.hermesSessionId)
+		),
 
 	workspaceLinkIndex: publicProcedure
 		.input(z.object({ connectionId: z.string().min(1) }))
@@ -346,6 +352,7 @@ export const hermesRouter = router({
 			const rows = getDb()
 				.select({
 					sessionId: hermesSessionWorkspaces.hermesSessionId,
+					profileId: hermesSessionWorkspaces.profileId,
 					branch: worktrees.branch,
 					projectName: projects.name,
 				})
@@ -358,20 +365,21 @@ export const hermesRouter = router({
 			const result: Record<string, { count: number; branches: string[]; projectNames: string[] }> =
 				{};
 			for (const row of rows) {
-				const entry = result[row.sessionId] ?? { count: 0, branches: [], projectNames: [] };
+				const identityKey = hermesSessionIdentityKey(row.profileId, row.sessionId);
+				const entry = result[identityKey] ?? { count: 0, branches: [], projectNames: [] };
 				entry.count++;
 				if (row.branch && !entry.branches.includes(row.branch)) entry.branches.push(row.branch);
 				if (row.projectName && !entry.projectNames.includes(row.projectName)) {
 					entry.projectNames.push(row.projectName);
 				}
-				result[row.sessionId] = entry;
+				result[identityKey] = entry;
 			}
 			return result;
 		}),
 
 	linkWorkspace: publicProcedure
 		.input(
-			connectionSessionInput.extend({
+			workspaceSessionInput.extend({
 				workspaceId: z.string().min(1),
 				lineageRootId: z.string().nullable().optional(),
 			})
@@ -385,6 +393,7 @@ export const hermesRouter = router({
 			if (!workspace) throw new Error("Workspace not found");
 			return linkHermesWorkspace({
 				connectionId: input.connectionId,
+				profileId: input.profileId,
 				hermesSessionId: input.hermesSessionId,
 				hermesLineageRootId: input.lineageRootId,
 				workspaceId: input.workspaceId,
@@ -393,9 +402,14 @@ export const hermesRouter = router({
 		}),
 
 	unlinkWorkspace: publicProcedure
-		.input(connectionSessionInput.extend({ workspaceId: z.string().min(1) }))
+		.input(workspaceSessionInput.extend({ workspaceId: z.string().min(1) }))
 		.mutation(({ input }) => {
-			unlinkHermesWorkspace(input.connectionId, input.hermesSessionId, input.workspaceId);
+			unlinkHermesWorkspace(
+				input.connectionId,
+				input.profileId,
+				input.hermesSessionId,
+				input.workspaceId
+			);
 			return { ok: true as const };
 		}),
 

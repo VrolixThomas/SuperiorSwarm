@@ -813,6 +813,7 @@ export class HermesRuntimeService {
 			runtime.aliases.set(durableKey, history.durableSessionId);
 			canonicalizeHermesWorkspaceLinks(
 				connectionId,
+				profileId,
 				[hermesSessionId, durableSessionId],
 				history.durableSessionId
 			);
@@ -823,6 +824,7 @@ export class HermesRuntimeService {
 		this.reconcileFollowUpsFromHistory(connectionId, profileId, history);
 		this.linkArtifacts(
 			connectionId,
+			profileId,
 			history.durableSessionId,
 			history.messages.flatMap((message) => message.workspaceArtifacts)
 		);
@@ -1991,13 +1993,18 @@ export class HermesRuntimeService {
 					profileId: mappedIdentity?.profileId ?? null,
 					durableSessionId,
 				};
-				if (!durableSessionId) {
+				if (!durableSessionId || !mappedIdentity) {
 					this.pushEvent(connectionId, mappedEvent);
 					return;
 				}
 				const binding = this.bindingFor(runtime, durableSessionId, mappedIdentity?.profileId);
 				if (event.workspaceArtifacts.length > 0) {
-					this.linkArtifacts(connectionId, durableSessionId, event.workspaceArtifacts);
+					this.linkArtifacts(
+						connectionId,
+						mappedIdentity.profileId,
+						durableSessionId,
+						event.workspaceArtifacts
+					);
 				}
 				if (this.isTerminalEvent(event)) {
 					if (binding) this.processTerminalEvent(connectionId, runtime, binding, mappedEvent);
@@ -2557,13 +2564,21 @@ export class HermesRuntimeService {
 			);
 		}
 		const candidates = new Set<string>();
+		const profiles = new Set<string>();
 		for (const session of runtime.catalog.sessions) {
 			if (session.id !== hermesSessionId) continue;
+			profiles.add(session.profileId);
 			candidates.add(
 				runtime.aliases.get(hermesSessionIdentityKey(session.profileId, session.id)) ?? session.id
 			);
 		}
-		if (candidates.size > 1) {
+		for (const [aliasKey, canonicalSessionId] of runtime.aliases) {
+			const identity = this.identityFromKey(aliasKey);
+			if (identity?.durableSessionId !== hermesSessionId) continue;
+			profiles.add(identity.profileId);
+			candidates.add(canonicalSessionId);
+		}
+		if (profiles.size > 1 || candidates.size > 1) {
 			throw new Error("Hermes session profile is ambiguous; select an exact profile");
 		}
 		return candidates.values().next().value ?? hermesSessionId;
@@ -2631,12 +2646,14 @@ export class HermesRuntimeService {
 
 	private linkArtifacts(
 		connectionId: string,
+		profileId: string,
 		hermesSessionId: string,
 		artifacts: ReturnType<typeof extractWorkspaceArtifacts>
 	): void {
 		if (artifacts.length === 0) return;
 		linkHermesWorkspaceArtifacts({
 			connectionId,
+			profileId,
 			hermesSessionId,
 			hermesLineageRootId: null,
 			artifacts,
@@ -2793,10 +2810,8 @@ export class HermesRuntimeService {
 		const hasProfileCollision = runtime.catalog.sessions.some(
 			(session) => session.id === durableSessionId && session.profileId !== profileId
 		);
-		if (!hasProfileCollision) {
-			for (const sessionId of relatedSessionIds) {
-				deleteHermesSessionWorkspaceLinks(connectionId, sessionId);
-			}
+		for (const sessionId of relatedSessionIds) {
+			deleteHermesSessionWorkspaceLinks(connectionId, profileId, sessionId);
 		}
 		for (const [aliasKey, canonical] of runtime.aliases) {
 			const identity = this.identityFromKey(aliasKey);

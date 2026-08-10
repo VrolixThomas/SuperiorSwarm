@@ -57,7 +57,7 @@ describe("stock Hermes protocol adapter", () => {
 		expect(rendererJson).not.toContain("U01234567");
 	});
 
-	test("withholds a durable session ID that is ambiguous across profiles", () => {
+	test("retains the same durable session ID in different profiles", () => {
 		const sessions = normalizeHermesSessionList(
 			{
 				recents: {
@@ -72,7 +72,37 @@ describe("stock Hermes protocol adapter", () => {
 			"default"
 		);
 
-		expect(sessions).toEqual([]);
+		expect(sessions.map(({ id, profileId, title }) => ({ id, profileId, title }))).toEqual([
+			{ id: "duplicate", profileId: "work", title: "Work copy" },
+			{ id: "duplicate", profileId: "personal", title: "Personal copy" },
+		]);
+	});
+
+	test("dedupes repeated rows of the same composite session identity deterministically", () => {
+		const sessions = normalizeHermesSessionList(
+			{
+				recents: {
+					sessions: [
+						{ id: "duplicate", profile: "work", title: "Older", last_active: 20 },
+						{ id: "duplicate", profile: "work", title: "Newest first", last_active: 30 },
+					],
+				},
+				messaging: {
+					sessions: [{ id: "duplicate", profile: "work", title: "Newest last", last_active: 30 }],
+				},
+			},
+			"default"
+		);
+
+		expect(sessions).toHaveLength(1);
+		expect(sessions[0]).toEqual(
+			expect.objectContaining({
+				id: "duplicate",
+				profileId: "work",
+				title: "Newest last",
+				updatedAt: 30_000,
+			})
+		);
 	});
 
 	test("preserves messaging provenance without treating every messaging row as a handover", () => {

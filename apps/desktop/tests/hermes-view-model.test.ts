@@ -32,6 +32,7 @@ import type {
 	HermesSessionSummary,
 	HermesTranscriptMessage,
 } from "../src/shared/hermes";
+import { hermesSessionIdentityKey } from "../src/shared/hermes";
 
 const session = (overrides: Partial<HermesSessionSummary> = {}): HermesSessionSummary => ({
 	id: "session-1",
@@ -808,10 +809,26 @@ describe("Hermes renderer view model", () => {
 		expect(filterHermesSessions(sessions, "open", "engineering", {})).toEqual([active]);
 		expect(
 			filterHermesSessions(sessions, "all", "feat/payments", {
-				"session-2": ["feat/payments"],
+				[hermesSessionIdentityKey("default", "session-2")]: ["feat/payments"],
 			})
 		).toEqual([archived]);
 		expect(filterHermesSessions(sessions, "archived", "default", {})).toEqual([archived]);
+	});
+
+	test("searches linked workspace metadata by composite profile and session identity", () => {
+		const work = session({ id: "shared-session", profileId: "work", title: "Shared" });
+		const personal = session({ id: "shared-session", profileId: "personal", title: "Shared" });
+		const linkedMetadata = {
+			[hermesSessionIdentityKey("work", "shared-session")]: ["feat/work-only"],
+			[hermesSessionIdentityKey("personal", "shared-session")]: ["feat/personal-only"],
+		};
+
+		expect(filterHermesSessions([work, personal], "all", "feat/work-only", linkedMetadata)).toEqual(
+			[work]
+		);
+		expect(
+			filterHermesSessions([work, personal], "all", "feat/personal-only", linkedMetadata)
+		).toEqual([personal]);
 	});
 
 	test("moves a canonically refreshed archive between Open and Archived without local hiding", () => {

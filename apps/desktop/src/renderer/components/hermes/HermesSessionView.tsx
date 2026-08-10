@@ -334,8 +334,8 @@ export function HermesSessionView() {
 	]);
 
 	const links = trpc.hermes.workspaceLinks.useQuery(
-		{ connectionId, profileId: profileId ?? undefined, hermesSessionId: workspaceSessionId },
-		{ enabled: Boolean(connectionId && sessionId), refetchInterval: 2_000 }
+		{ connectionId, profileId: profileId ?? "", hermesSessionId: workspaceSessionId },
+		{ enabled: Boolean(connectionId && profileId && sessionId), refetchInterval: 2_000 }
 	);
 	const availableWorkspaces = trpc.hermes.availableWorkspaces.useQuery();
 	const linkWorkspace = trpc.hermes.linkWorkspace.useMutation();
@@ -1199,7 +1199,7 @@ export function HermesSessionView() {
 				onOpen={(link) => {
 					openHermesLinkedWorktree(
 						link,
-						{ connectionId, profileId: profileId ?? undefined, sessionId },
+						{ connectionId, profileId: link.profileId, sessionId },
 						{
 							openWorkspaceFromHermes,
 							getTabsByWorkspace: (workspaceId) =>
@@ -1213,12 +1213,12 @@ export function HermesSessionView() {
 				}}
 				onRecoveryChange={setRecoveryWorktreeId}
 				onRecoveryLink={() => {
-					if (!recoveryWorktreeId) return;
+					if (!recoveryWorktreeId || !profileId) return;
 					const generation = selectionGeneration;
 					linkWorkspace.mutate(
 						{
 							connectionId,
-							profileId: profileId ?? undefined,
+							profileId,
 							hermesSessionId: workspaceSessionId,
 							workspaceId: recoveryWorktreeId,
 							lineageRootId: null,
@@ -1235,11 +1235,12 @@ export function HermesSessionView() {
 					);
 				}}
 				onRecoveryUnlink={(link) => {
+					if (!profileId) return;
 					const generation = selectionGeneration;
 					unlinkWorkspace.mutate(
 						{
 							connectionId,
-							profileId: profileId ?? undefined,
+							profileId,
 							hermesSessionId: workspaceSessionId,
 							workspaceId: link.workspaceId,
 						},

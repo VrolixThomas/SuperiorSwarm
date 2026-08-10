@@ -385,7 +385,7 @@ describe("Hermes global navigation", () => {
 		expect(sidebar).toContain("reconciliationRequired");
 		expect(sidebar).toContain("Refresh session list");
 		expect(sidebar).toMatch(
-			/hermesSessionCompositeIdentityKey\(\s*connectionId,\s*session\.profileId,\s*session\.id\s*\)/
+			/hermesSessionCompositeIdentityKey\(\s*connectionId \?\? "",\s*session\.profileId,\s*session\.id\s*\)/
 		);
 		expect(sidebar).toContain("profileId: session.profileId");
 		expect(sidebar).not.toContain("onMutate:");
@@ -427,12 +427,13 @@ describe("Hermes global navigation", () => {
 		const sidebar = await rendererSource("hermes/HermesSidebar.tsx");
 
 		expect(view).toMatch(
-			/workspaceLinks\.useQuery\([\s\S]*?enabled: Boolean\(connectionId && sessionId\), refetchInterval: 2_000/
+			/workspaceLinks\.useQuery\([\s\S]*?enabled: Boolean\(connectionId && profileId && sessionId\), refetchInterval: 2_000/
 		);
 		expect(view).not.toContain("refetchInterval: connected ? 2_000 : false");
 		expect(sidebar).toMatch(
 			/workspaceLinkIndex\.useQuery\([\s\S]*?enabled: Boolean\(connectionId\), refetchInterval: 3_000/
 		);
+		expect(sidebar).toContain("hermesSessionIdentityKey(session.profileId, session.id)");
 		expect(sidebar).not.toContain("refetchInterval: connected ? 3_000 : false");
 	});
 });
