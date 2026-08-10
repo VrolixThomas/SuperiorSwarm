@@ -410,8 +410,13 @@ describe("Hermes global navigation", () => {
 		expect(view).toContain("window.electron.hermesAttachments.append");
 		expect(view).toContain("window.electron.hermesAttachments.finish");
 		expect(view).toContain("event.profileId === profileId");
-		expect(view).toContain("stageTransferredFiles(fileObjectsFromTransfer(event.clipboardData))");
-		expect(view).toContain("stageTransferredFiles(fileObjectsFromTransfer(event.dataTransfer))");
+		expect(view).toContain(
+			"stageTransferredFiles(fileObjectsFromHermesTransfer(event.clipboardData))"
+		);
+		expect(view).toContain(
+			"stageTransferredFiles(fileObjectsFromHermesTransfer(event.dataTransfer))"
+		);
+		expect(view).toContain("onPaste={handleChatPaste}");
 		expect(view).toContain('event.dataTransfer.dropEffect = "copy"');
 		expect(view).toContain('aria-label={live.running ? "Queue follow-up" : "Send message"}');
 		expect(view).not.toContain("Use the paperclip");

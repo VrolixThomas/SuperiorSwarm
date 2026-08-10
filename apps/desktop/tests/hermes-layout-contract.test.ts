@@ -25,9 +25,11 @@ describe("Hermes layout contract", () => {
 		expect(view).toContain('aria-label="Attach files"');
 		expect(view).toContain("onDragOver");
 		expect(view).toContain("onDrop");
-		expect(view).toContain("onPaste");
-		expect(view).toContain("Use the paperclip to attach files");
-		expect(view).toContain('aria-label={live.running ? "Stop response" : "Send message"}');
+		expect(view).toContain("onPaste={handleChatPaste}");
+		expect(view.match(/onPaste=/g)).toHaveLength(1);
+		expect(view).toContain("const generation = selectionGeneration");
+		expect(view).toContain("acceptRegisteredAttachments(selected, generation)");
+		expect(view).toContain('aria-label={live.running ? "Queue follow-up" : "Send message"}');
 		expect(view).toContain("<HermesMarkdown content={live.streamingText} />");
 		expect(view).toContain("const physicalMessages = useMemo");
 		expect(view).toContain("deriveHermesCanonicalTimeline(physicalMessages)");

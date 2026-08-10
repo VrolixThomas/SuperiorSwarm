@@ -1,4 +1,5 @@
 import {
+	type ClipboardEvent,
 	type FormEvent,
 	useEffect,
 	useLayoutEffect,
@@ -13,8 +14,13 @@ import {
 	hermesSessionCompositeIdentityKey,
 } from "../../../shared/hermes";
 import {
+	fileObjectsFromHermesTransfer,
+	hermesChatPasteAction,
+} from "../../hermes/hermes-attachment-transfer";
+import {
 	type HermesSelectionGeneration,
 	HermesSelectionGuard,
+	settleHermesSelectionAttachments,
 } from "../../hermes/hermes-binding-lifecycle";
 import { isHermesChatNearBottom, shouldAnchorHermesChat } from "../../hermes/hermes-chat-scroll";
 import {
@@ -67,19 +73,6 @@ function scrollToLatest(element: HTMLDivElement, smooth: boolean): void {
 	});
 }
 
-function fileObjectsFromTransfer(transfer: DataTransfer): File[] {
-	const files = Array.from(transfer.files);
-	const seen = new Set(files);
-	for (const item of Array.from(transfer.items)) {
-		if (item.kind !== "file") continue;
-		const file = item.getAsFile();
-		if (!file || seen.has(file)) continue;
-		seen.add(file);
-		files.push(file);
-	}
-	return files;
-}
-
 export function HermesSessionView() {
 	const selection = useTabStore((state) => state.selectedHermesSession);
 	const sessionId = selection?.sessionId ?? null;
@@ -118,11 +111,7 @@ export function HermesSessionView() {
 	const interrupt = trpc.hermes.interrupt.useMutation();
 	const approval = trpc.hermes.respondApproval.useMutation();
 	const clarify = trpc.hermes.respondClarification.useMutation();
-	const pickAttachments = trpc.hermes.pickAttachments.useMutation({
-		onSuccess: (selected) => {
-			acceptRegisteredAttachments(selected);
-		},
-	});
+	const pickAttachments = trpc.hermes.pickAttachments.useMutation();
 	const releaseAttachment = trpc.hermes.releaseAttachment.useMutation();
 	const releaseAttachmentRef = useRef(releaseAttachment.mutate);
 	releaseAttachmentRef.current = releaseAttachment.mutate;
@@ -214,6 +203,7 @@ export function HermesSessionView() {
 		setShowReportPreview(false);
 		setSessionOptionsOpen(false);
 		setAttachmentLimitError(null);
+		setAttachmentReadPending(false);
 		setShowJumpToLatest(false);
 		followingTranscript.current = true;
 		anchoredSelectionKey.current = null;
@@ -508,6 +498,7 @@ export function HermesSessionView() {
 
 	async function stageTransferredFiles(files: File[]): Promise<void> {
 		if (files.length === 0) return;
+		const generation = selectionGeneration;
 		const error = hermesRendererAttachmentSelectionError(files, attachmentsRef.current.length);
 		if (error) {
 			setAttachmentLimitError(error);
@@ -520,6 +511,7 @@ export function HermesSessionView() {
 				files.map((file) => ({ name: file.name, size: file.size, mimeType: file.type }))
 			);
 			uploadId = started.uploadId;
+			if (!selectionGuard.isCurrent(generation)) return;
 			for (const [index, file] of files.entries()) {
 				const fileId = started.files[index]?.fileId;
 				if (!fileId) throw new Error("Attachment upload handle is unavailable");
@@ -527,6 +519,7 @@ export function HermesSessionView() {
 				while (offset < file.size) {
 					const end = Math.min(offset + HERMES_ATTACHMENT_UPLOAD_CHUNK_MAX_BYTES, file.size);
 					const bytes = new Uint8Array(await file.slice(offset, end).arrayBuffer());
+					if (!selectionGuard.isCurrent(generation)) return;
 					if (bytes.byteLength !== end - offset)
 						throw new Error(`“${file.name}” changed while reading`);
 					await window.electron.hermesAttachments.append({
@@ -535,32 +528,70 @@ export function HermesSessionView() {
 						offset,
 						bytes,
 					});
+					if (!selectionGuard.isCurrent(generation)) return;
 					offset = end;
 				}
 			}
+			if (!selectionGuard.isCurrent(generation)) return;
 			const selected = await window.electron.hermesAttachments.finish(uploadId);
 			uploadId = null;
-			acceptRegisteredAttachments(selected);
-			setAttachmentLimitError(null);
+			acceptRegisteredAttachments(selected, generation);
 		} catch (reason) {
-			if (uploadId) void window.electron.hermesAttachments.cancel(uploadId).catch(() => undefined);
-			setAttachmentLimitError(
-				reason instanceof Error ? reason.message : "Could not read the selected files."
-			);
+			runForSelection(generation, () => {
+				setAttachmentLimitError(
+					reason instanceof Error ? reason.message : "Could not read the selected files."
+				);
+			});
 		} finally {
-			setAttachmentReadPending(false);
+			if (uploadId) void window.electron.hermesAttachments.cancel(uploadId).catch(() => undefined);
+			runForSelection(generation, () => setAttachmentReadPending(false));
 		}
 	}
 
-	function acceptRegisteredAttachments(selected: HermesAttachmentMetadata[]): void {
+	function acceptRegisteredAttachments(
+		selected: HermesAttachmentMetadata[],
+		generation: HermesSelectionGeneration
+	): void {
+		settleHermesSelectionAttachments(selectionGuard, generation, selected, {
+			accept: acceptCurrentRegisteredAttachments,
+			release: (attachment) => releaseAttachmentRef.current({ handle: attachment.handle }),
+		});
+	}
+
+	function acceptCurrentRegisteredAttachments(selected: HermesAttachmentMetadata[]): void {
 		const existing = new Set(attachmentsRef.current.map((attachment) => attachment.handle));
 		const unique = selected.filter((attachment) => !existing.has(attachment.handle));
 		const available = Math.max(0, 10 - attachmentsRef.current.length);
 		const accepted = unique.slice(0, available);
 		const rejected = unique.slice(available);
 		if (accepted.length > 0) dispatchAttachments({ type: "add", attachments: accepted });
-		for (const attachment of rejected) releaseAttachment.mutate({ handle: attachment.handle });
+		for (const attachment of rejected) {
+			releaseAttachmentRef.current({ handle: attachment.handle });
+		}
 		setAttachmentLimitError(rejected.length > 0 ? "Attach up to 10 files to one message." : null);
+	}
+
+	function handlePickAttachments(): void {
+		const generation = selectionGeneration;
+		pickAttachments.mutate(undefined, {
+			onSuccess: (selected) => acceptRegisteredAttachments(selected, generation),
+		});
+	}
+
+	function handleChatPaste(event: ClipboardEvent<HTMLElement>): void {
+		if (
+			hermesChatPasteAction({
+				activePane,
+				boundary: event.currentTarget,
+				target: event.target,
+				composer: composerRef.current,
+				transfer: event.clipboardData,
+			}) === "native"
+		) {
+			return;
+		}
+		event.preventDefault();
+		void stageTransferredFiles(fileObjectsFromHermesTransfer(event.clipboardData));
 	}
 
 	useEffect(() => {
@@ -626,6 +657,7 @@ export function HermesSessionView() {
 
 	return (
 		<main
+			onPaste={handleChatPaste}
 			className={`flex h-full flex-col bg-[var(--bg-base)] ${HERMES_CHAT_OVERFLOW_CLASSES.ancestor}`}
 		>
 			<header className="app-drag relative z-20 flex h-14 min-w-0 shrink-0 items-center gap-3 border-b border-[var(--border-subtle)] px-4 sm:px-5">
@@ -1034,7 +1066,7 @@ export function HermesSessionView() {
 						onDrop={(event) => {
 							if (hermesComposerTransferAction(event.dataTransfer) === "native") return;
 							event.preventDefault();
-							void stageTransferredFiles(fileObjectsFromTransfer(event.dataTransfer));
+							void stageTransferredFiles(fileObjectsFromHermesTransfer(event.dataTransfer));
 						}}
 						className="min-w-0 rounded-[16px] border border-[var(--border)] bg-[var(--bg-elevated)] p-2 shadow-[0_10px_32px_rgba(0,0,0,0.24)] focus-within:border-[var(--border-active)]"
 					>
@@ -1051,7 +1083,7 @@ export function HermesSessionView() {
 						<div className={`flex items-end gap-1.5 ${attachments.length > 0 ? "mt-2" : ""}`}>
 							<button
 								type="button"
-								onClick={() => pickAttachments.mutate()}
+								onClick={handlePickAttachments}
 								disabled={composerPolicy.attachmentMutationDisabled}
 								aria-label="Attach files"
 								title="Attach files"
@@ -1075,11 +1107,6 @@ export function HermesSessionView() {
 								ref={composerRef}
 								value={composer}
 								onChange={(event) => setComposer(event.target.value)}
-								onPaste={(event) => {
-									if (hermesComposerTransferAction(event.clipboardData) === "native") return;
-									event.preventDefault();
-									void stageTransferredFiles(fileObjectsFromTransfer(event.clipboardData));
-								}}
 								onKeyDown={(event) => {
 									if (event.key !== "Enter") return;
 									const action = hermesComposerEnterAction({
