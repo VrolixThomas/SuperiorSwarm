@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.19.0 (2026-08-10)
+
+### What's New
+
+SuperiorSwarm now includes a task-first Agents workspace powered by Hermes, so you can start or resume sessions without first choosing a repository or worktree. The redesigned messaging experience adds durable Markdown transcripts, file attachments, project and worktree navigation, session archiving, and handoffs back to Slack or Telegram. Session recovery, active-turn follow-ups, profile isolation, popover accessibility, and local Hermes runtime reliability have also been strengthened.
+
+### Changes
+
+- feat(desktop): add task-first Hermes Agents experience (#137)
+
 ## v0.18.0 (2026-08-02)
 
 ### What's New
