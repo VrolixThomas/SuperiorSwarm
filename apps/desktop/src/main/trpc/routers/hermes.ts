@@ -24,6 +24,11 @@ import {
 import { validateHermesOriginOpenUrl } from "../../hermes/hermes-origin-resolver";
 import { hermesRuntimeService } from "../../hermes/hermes-runtime-service";
 import {
+	HERMES_SESSION_TAG_LIMIT,
+	HERMES_SESSION_TAG_MAX_LENGTH,
+	HERMES_SESSION_TITLE_MAX_LENGTH,
+} from "../../hermes/hermes-session-metadata";
+import {
 	linkHermesWorkspace,
 	listHermesWorkspaceLinks,
 	unlinkHermesWorkspace,
@@ -64,6 +69,35 @@ function composerDraftIdentity(input: z.infer<typeof composerDraftScopeInput>) {
 		durableSessionId: input.durableSessionId,
 	};
 }
+
+const metadataSessionIdentityShape = {
+	connectionId: z.string().min(1).max(200),
+	profileId: z.string().trim().min(1).max(120),
+	hermesSessionId: z.string().min(1).max(512),
+};
+
+export const hermesSetSessionTitleInputSchema = z
+	.object({
+		...metadataSessionIdentityShape,
+		title: z.string().max(HERMES_SESSION_TITLE_MAX_LENGTH),
+		expectedRevision: z.number().int().min(0),
+	})
+	.strict();
+
+export const hermesSetSessionTagsInputSchema = z
+	.object({
+		...metadataSessionIdentityShape,
+		tags: z.array(z.string().max(HERMES_SESSION_TAG_MAX_LENGTH)).max(HERMES_SESSION_TAG_LIMIT),
+		expectedRevision: z.number().int().min(0),
+	})
+	.strict();
+
+export const hermesSessionTagInputSchema = z
+	.object({
+		...metadataSessionIdentityShape,
+		tag: z.string().max(HERMES_SESSION_TAG_MAX_LENGTH),
+	})
+	.strict();
 
 export const hermesCreateInputSchema = z
 	.object({
@@ -189,6 +223,52 @@ export const hermesRouter = router({
 				input.profileId,
 				input.hermesSessionId,
 				input.archived
+			)
+		),
+
+	setSessionTitle: publicProcedure
+		.input(hermesSetSessionTitleInputSchema)
+		.mutation(({ input }) =>
+			hermesRuntimeService.setSessionTitle(
+				input.connectionId,
+				input.profileId,
+				input.hermesSessionId,
+				input.title,
+				input.expectedRevision
+			)
+		),
+
+	setSessionTags: publicProcedure
+		.input(hermesSetSessionTagsInputSchema)
+		.mutation(({ input }) =>
+			hermesRuntimeService.setSessionTags(
+				input.connectionId,
+				input.profileId,
+				input.hermesSessionId,
+				input.tags,
+				input.expectedRevision
+			)
+		),
+
+	addSessionTag: publicProcedure
+		.input(hermesSessionTagInputSchema)
+		.mutation(({ input }) =>
+			hermesRuntimeService.addSessionTag(
+				input.connectionId,
+				input.profileId,
+				input.hermesSessionId,
+				input.tag
+			)
+		),
+
+	removeSessionTag: publicProcedure
+		.input(hermesSessionTagInputSchema)
+		.mutation(({ input }) =>
+			hermesRuntimeService.removeSessionTag(
+				input.connectionId,
+				input.profileId,
+				input.hermesSessionId,
+				input.tag
 			)
 		),
 

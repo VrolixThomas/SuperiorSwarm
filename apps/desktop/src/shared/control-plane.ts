@@ -281,6 +281,29 @@ export const hermesSessionAdmissionRequestSchema = z
 	.strict();
 export type HermesSessionAdmissionRequest = z.infer<typeof hermesSessionAdmissionRequestSchema>;
 
+// ---- Hermes session tags (authenticated current-session MCP only) ----
+
+const hermesSessionTagIdentityShape = {
+	connectionId: z.string().min(1).max(200),
+	metadata: hermesSessionMetadataSchema,
+};
+const hermesSessionTagSchema = z
+	.string()
+	.max(100)
+	.refine((value) => value.trim().length > 0, "Tag cannot be empty");
+
+export const hermesSessionTagsReadRequestSchema = z.object(hermesSessionTagIdentityShape).strict();
+export const hermesSessionTagsSetRequestSchema = z
+	.object({
+		...hermesSessionTagIdentityShape,
+		tags: z.array(hermesSessionTagSchema).max(64),
+		expectedRevision: z.number().int().min(0),
+	})
+	.strict();
+export const hermesSessionTagMutationRequestSchema = z
+	.object({ ...hermesSessionTagIdentityShape, tag: hermesSessionTagSchema })
+	.strict();
+
 // ---- Resume ----
 
 export const resumeAgentRequestSchema = z.object({

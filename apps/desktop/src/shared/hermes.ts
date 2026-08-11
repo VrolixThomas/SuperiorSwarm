@@ -66,6 +66,11 @@ export interface HermesOriginProjection {
 export interface HermesSessionSummary {
 	id: string;
 	title: string;
+	/** Current backend-generated title, retained even when title is a local rename. */
+	generatedTitle: string;
+	titleSource: "generated" | "custom";
+	tags: string[];
+	metadataRevision: number;
 	preview: string;
 	profileId: string;
 	source: string;

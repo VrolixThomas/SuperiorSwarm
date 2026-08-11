@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 import type { HermesSessionSummary } from "../../../shared/hermes";
 import { OverflowPopover } from "./OverflowPopover";
 
@@ -10,6 +10,9 @@ export interface HermesSessionRowProps {
 	onSelect: () => void;
 	onSetArchived: (profileId: string, durableSessionId: string, archived: boolean) => void;
 	onDelete: (profileId: string, durableSessionId: string) => void;
+	onRename: (title: string, expectedRevision: number) => Promise<void>;
+	onAddTag: (tag: string) => Promise<void>;
+	onRemoveTag: (tag: string) => Promise<void>;
 	deleteDisabledReason: string | null;
 	confirmDelete?: (message: string) => boolean;
 }
@@ -59,10 +62,59 @@ export function HermesSessionRow({
 	onSelect,
 	onSetArchived,
 	onDelete,
+	onRename,
+	onAddTag,
+	onRemoveTag,
 	deleteDisabledReason,
 	confirmDelete,
 }: HermesSessionRowProps) {
 	const [menuOpen, setMenuOpen] = useState(false);
+	const [nameEditing, setNameEditing] = useState(false);
+	const [draftName, setDraftName] = useState(session.title);
+	const [tagInput, setTagInput] = useState("");
+	const [metadataPending, setMetadataPending] = useState(false);
+	const [metadataError, setMetadataError] = useState<string | null>(null);
+	const nameInputRef = useRef<HTMLInputElement>(null);
+	const controlsDisabled = actionPending || metadataPending;
+	useEffect(() => {
+		if (nameEditing) nameInputRef.current?.focus();
+	}, [nameEditing]);
+
+	async function runMetadataAction(action: () => Promise<void>, onSuccess?: () => void) {
+		if (metadataPending) return;
+		setMetadataPending(true);
+		setMetadataError(null);
+		try {
+			await action();
+			onSuccess?.();
+		} catch (error) {
+			setMetadataError(
+				error instanceof Error ? error.message : "Session metadata could not be saved"
+			);
+		} finally {
+			setMetadataPending(false);
+		}
+	}
+
+	function submitName(event: FormEvent) {
+		event.preventDefault();
+		const title = draftName.trim();
+		if (!title || controlsDisabled) return;
+		void runMetadataAction(
+			() => onRename(title, session.metadataRevision),
+			() => setNameEditing(false)
+		);
+	}
+
+	function submitTag(event: FormEvent) {
+		event.preventDefault();
+		const tag = tagInput.trim();
+		if (!tag || controlsDisabled) return;
+		void runMetadataAction(
+			() => onAddTag(tag),
+			() => setTagInput("")
+		);
+	}
 
 	return (
 		<div
@@ -102,6 +154,26 @@ export function HermesSessionRow({
 						{linkedBranch ? ` · ${linkedBranch}` : ""}
 					</span>
 				</div>
+				{session.tags.length > 0 && (
+					<div
+						aria-label={`Tags: ${session.tags.join(", ")}`}
+						className="mt-1 flex min-w-0 items-center gap-1 overflow-hidden"
+					>
+						{session.tags.slice(0, 2).map((tag) => (
+							<span
+								key={tag}
+								className="max-w-24 truncate rounded-full bg-[var(--bg-overlay)] px-1.5 py-0.5 text-[9px] text-[var(--text-tertiary)]"
+							>
+								{tag}
+							</span>
+						))}
+						{session.tags.length > 2 && (
+							<span className="text-[9px] text-[var(--text-quaternary)]">
+								+{session.tags.length - 2}
+							</span>
+						)}
+					</div>
+				)}
 			</button>
 			<div
 				data-session-actions-trigger
@@ -119,8 +191,91 @@ export function HermesSessionRow({
 				>
 					<button
 						type="button"
+						disabled={controlsDisabled}
+						onClick={() => {
+							setDraftName(session.title);
+							setMetadataError(null);
+							setNameEditing(true);
+						}}
+						className="rounded-[6px] px-2.5 py-2 text-left text-[11px] text-[var(--text-secondary)] hover:bg-[var(--bg-overlay)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/50 disabled:opacity-40"
+					>
+						Rename…
+					</button>
+					{nameEditing && (
+						<form onSubmit={submitName} className="flex min-w-0 gap-1 px-1 py-1">
+							<input
+								ref={nameInputRef}
+								value={draftName}
+								onChange={(event) => setDraftName(event.target.value)}
+								aria-label="Session name"
+								maxLength={200}
+								disabled={controlsDisabled}
+								className="min-w-0 flex-1 rounded-[6px] border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1.5 text-[11px] text-[var(--text)] outline-none focus:border-[var(--accent)] disabled:opacity-40"
+							/>
+							<button
+								type="submit"
+								disabled={controlsDisabled || !draftName.trim()}
+								className="shrink-0 rounded-[6px] bg-[var(--accent)] px-2 py-1 text-[10px] text-white disabled:opacity-40"
+							>
+								Save name
+							</button>
+						</form>
+					)}
+					<div className="px-2.5 pt-1 text-[9px] font-medium uppercase tracking-[0.08em] text-[var(--text-quaternary)]">
+						Tags
+					</div>
+					{session.tags.length === 0 ? (
+						<div className="px-2.5 py-1 text-[10px] text-[var(--text-quaternary)]">No tags</div>
+					) : (
+						<div className="flex flex-wrap gap-1 px-1 py-1">
+							{session.tags.map((tag) => (
+								<span
+									key={tag}
+									className="inline-flex min-w-0 items-center gap-1 rounded-full bg-[var(--bg-overlay)] pl-2 text-[10px] text-[var(--text-secondary)]"
+								>
+									<span className="max-w-44 truncate">{tag}</span>
+									<button
+										type="button"
+										aria-label={`Remove tag ${tag}`}
+										disabled={controlsDisabled}
+										onClick={() => void runMetadataAction(() => onRemoveTag(tag))}
+										className="rounded-full px-1.5 py-0.5 text-[var(--text-quaternary)] hover:text-[var(--danger)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--danger)]/50 disabled:opacity-40"
+									>
+										<span aria-hidden="true">×</span>
+									</button>
+								</span>
+							))}
+						</div>
+					)}
+					<form onSubmit={submitTag} className="flex min-w-0 gap-1 px-1 py-1">
+						<input
+							value={tagInput}
+							onChange={(event) => setTagInput(event.target.value)}
+							aria-label="Add session tag"
+							maxLength={100}
+							disabled={controlsDisabled || session.tags.length >= 64}
+							className="min-w-0 flex-1 rounded-[6px] border border-[var(--border)] bg-[var(--bg-base)] px-2 py-1.5 text-[11px] text-[var(--text)] outline-none focus:border-[var(--accent)] disabled:opacity-40"
+						/>
+						<button
+							type="submit"
+							disabled={controlsDisabled || session.tags.length >= 64 || !tagInput.trim()}
+							className="shrink-0 rounded-[6px] border border-[var(--border)] px-2 py-1 text-[10px] text-[var(--accent)] disabled:opacity-40"
+						>
+							Add tag
+						</button>
+					</form>
+					{metadataError && (
+						<div
+							role="alert"
+							className="max-w-72 px-2.5 py-1 text-[10px] text-[var(--danger)] [overflow-wrap:anywhere]"
+						>
+							{metadataError}
+						</div>
+					)}
+					<button
+						type="button"
 						data-popover-close
-						disabled={actionPending}
+						disabled={controlsDisabled}
 						onClick={() => onSetArchived(session.profileId, session.id, !session.archived)}
 						className="rounded-[6px] px-2.5 py-2 text-left text-[11px] text-[var(--text-secondary)] hover:bg-[var(--bg-overlay)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/50 disabled:opacity-40"
 					>
@@ -129,7 +284,7 @@ export function HermesSessionRow({
 					<button
 						type="button"
 						data-popover-close
-						disabled={actionPending || deleteDisabledReason !== null}
+						disabled={controlsDisabled || deleteDisabledReason !== null}
 						title={deleteDisabledReason ?? undefined}
 						onClick={() => {
 							if (!confirmHermesSessionDeletion(session.title, confirmDelete)) return;

@@ -796,6 +796,43 @@ export const hermesSessionAdmissions = sqliteTable(
 export type HermesSessionAdmission = typeof hermesSessionAdmissions.$inferSelect;
 export type NewHermesSessionAdmission = typeof hermesSessionAdmissions.$inferInsert;
 
+// SuperiorSwarm-owned presentation metadata for a durable Hermes session. The
+// complete ownership identity is part of the primary key so equal profile and
+// session IDs cannot cross manager or connection boundaries. Hermes remains the
+// owner of generated titles and transcripts; customTitle is null until a user
+// explicitly renames the session.
+export const hermesSessionMetadata = sqliteTable(
+	"hermes_session_metadata",
+	{
+		managerId: text("manager_id")
+			.notNull()
+			.references(() => crossRepoOrchestrators.id, { onDelete: "cascade" }),
+		connectionId: text("connection_id")
+			.notNull()
+			.references(() => hermesConnections.id, { onDelete: "cascade" }),
+		profileId: text("profile_id").notNull(),
+		durableSessionId: text("durable_session_id").notNull(),
+		customTitle: text("custom_title"),
+		tagsJson: text("tags_json").notNull().default("[]"),
+		revision: integer("revision").notNull().default(0),
+		createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+		updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+	},
+	(table) => [
+		primaryKey({
+			columns: [table.managerId, table.connectionId, table.profileId, table.durableSessionId],
+		}),
+		index("hermes_session_metadata_connection_idx").on(
+			table.connectionId,
+			table.profileId,
+			table.durableSessionId
+		),
+	]
+);
+
+export type HermesSessionMetadata = typeof hermesSessionMetadata.$inferSelect;
+export type NewHermesSessionMetadata = typeof hermesSessionMetadata.$inferInsert;
+
 export const hermesSessionWorkspaces = sqliteTable(
 	"hermes_session_workspaces",
 	{

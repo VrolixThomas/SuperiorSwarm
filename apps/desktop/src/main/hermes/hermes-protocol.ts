@@ -329,9 +329,14 @@ export function normalizeHermesSessionList(
 		const status = stringValue(session["status"]);
 		const profileId =
 			safeIdentifier(session["profile"], session["profile_name"]) ?? defaultProfileId;
+		const title = sanitizedStringValue(session["title"]) ?? "Untitled session";
 		const summary: HermesSessionSummary = {
 			id,
-			title: sanitizedStringValue(session["title"]) ?? "Untitled session",
+			title,
+			generatedTitle: title,
+			titleSource: "generated",
+			tags: [],
+			metadataRevision: 0,
 			preview: sanitizedStringValue(session["preview"], session["summary"]) ?? "",
 			profileId,
 			source,

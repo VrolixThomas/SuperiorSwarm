@@ -239,6 +239,17 @@ export function setHermesConnectionAutoManagerId(id: string, managerId: string |
 	if (result.changes === 0) throw new Error("External Hermes connection was not found");
 }
 
+/** Persist the manager resolved for an app-owned managed connection. */
+export function setManagedHermesConnectionManagerId(id: string, managerId: string | null): void {
+	const resolvedManagerId = validateExternalManagerId(managerId);
+	const result = getDb()
+		.update(hermesConnections)
+		.set({ managerId: resolvedManagerId, updatedAt: new Date() })
+		.where(and(eq(hermesConnections.id, id), eq(hermesConnections.managementMode, "managed")))
+		.run();
+	if (result.changes === 0) throw new Error("Managed Hermes connection was not found");
+}
+
 export async function saveHermesConnectionWithDiscovery(
 	input: SaveHermesConnectionInput,
 	vault: HermesTokenVault = hermesTokenVault,

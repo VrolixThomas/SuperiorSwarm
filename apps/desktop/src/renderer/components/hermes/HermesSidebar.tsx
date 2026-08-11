@@ -149,6 +149,48 @@ export function HermesSidebar() {
 			});
 		},
 	});
+	function updateSessionMetadata(
+		variables: { connectionId: string; profileId: string; hermesSessionId: string },
+		metadata: { customTitle: string | null; tags: string[]; revision: number }
+	) {
+		utils.hermes.catalog.setData({ connectionId: variables.connectionId }, (current) =>
+			current
+				? {
+						...current,
+						sessions: current.sessions.map((session) =>
+							session.profileId === variables.profileId && session.id === variables.hermesSessionId
+								? {
+										...session,
+										title: metadata.customTitle ?? session.generatedTitle,
+										titleSource: metadata.customTitle === null ? "generated" : "custom",
+										tags: metadata.tags,
+										metadataRevision: metadata.revision,
+									}
+								: session
+						),
+					}
+				: current
+		);
+		void utils.hermes.catalog.invalidate({ connectionId: variables.connectionId });
+	}
+	const setSessionTitle = trpc.hermes.setSessionTitle.useMutation({
+		onSuccess: (metadata, variables) => updateSessionMetadata(variables, metadata),
+		onError: (_error, variables) => {
+			void utils.hermes.catalog.invalidate({ connectionId: variables.connectionId });
+		},
+	});
+	const addSessionTag = trpc.hermes.addSessionTag.useMutation({
+		onSuccess: (metadata, variables) => updateSessionMetadata(variables, metadata),
+		onError: (_error, variables) => {
+			void utils.hermes.catalog.invalidate({ connectionId: variables.connectionId });
+		},
+	});
+	const removeSessionTag = trpc.hermes.removeSessionTag.useMutation({
+		onSuccess: (metadata, variables) => updateSessionMetadata(variables, metadata),
+		onError: (_error, variables) => {
+			void utils.hermes.catalog.invalidate({ connectionId: variables.connectionId });
+		},
+	});
 	const deleteSession = trpc.hermes.deleteSession.useMutation({
 		onSuccess: (result, variables) => {
 			setFailedSessionAction(null);
@@ -619,7 +661,13 @@ export function HermesSidebar() {
 														selectedSession.sessionId === session.id
 													}
 													linkedBranch={links?.branches[0] ?? null}
-													actionPending={setSessionArchived.isPending || deleteSession.isPending}
+													actionPending={
+														setSessionArchived.isPending ||
+														deleteSession.isPending ||
+														setSessionTitle.isPending ||
+														addSessionTag.isPending ||
+														removeSessionTag.isPending
+													}
 													onSelect={() =>
 														connectionId &&
 														selectSession({
@@ -632,6 +680,34 @@ export function HermesSidebar() {
 														mutateSessionArchive(session, archived)
 													}
 													onDelete={() => mutateSessionDelete(session)}
+													onRename={async (title, expectedRevision) => {
+														if (!connectionId) return;
+														await setSessionTitle.mutateAsync({
+															connectionId,
+															profileId: session.profileId,
+															hermesSessionId: session.id,
+															title,
+															expectedRevision,
+														});
+													}}
+													onAddTag={async (tag) => {
+														if (!connectionId) return;
+														await addSessionTag.mutateAsync({
+															connectionId,
+															profileId: session.profileId,
+															hermesSessionId: session.id,
+															tag,
+														});
+													}}
+													onRemoveTag={async (tag) => {
+														if (!connectionId) return;
+														await removeSessionTag.mutateAsync({
+															connectionId,
+															profileId: session.profileId,
+															hermesSessionId: session.id,
+															tag,
+														});
+													}}
 													deleteDisabledReason={PERMANENT_DELETE_DISABLED_REASON}
 												/>
 											);

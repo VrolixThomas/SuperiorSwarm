@@ -1150,6 +1150,7 @@ export function filterHermesSessions(
 		if (!needle) return true;
 		const haystack = [
 			session.title,
+			...session.tags,
 			session.preview,
 			session.source,
 			session.profileId,

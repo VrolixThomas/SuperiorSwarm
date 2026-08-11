@@ -31,6 +31,7 @@ import {
 	markHermesConnectionConnected,
 	saveHermesConnection,
 	setHermesConnectionAutoManagerId,
+	setManagedHermesConnectionManagerId,
 } from "./hermes-connections";
 import { discoverHermesDashboardToken } from "./hermes-dashboard-token";
 import {
@@ -70,6 +71,14 @@ import {
 	deleteHermesSessionAdmission,
 	filterManagedHermesSessionCatalog,
 } from "./hermes-session-admissions";
+import {
+	addHermesSessionTag,
+	applyHermesSessionMetadata,
+	deleteHermesSessionMetadata,
+	removeHermesSessionTag,
+	setHermesSessionTags,
+	setHermesSessionTitle,
+} from "./hermes-session-metadata";
 import { type HermesTokenVault, hermesTokenVault } from "./hermes-token-vault";
 import {
 	canonicalizeHermesWorkspaceLinks,
@@ -161,6 +170,7 @@ interface SessionFollowUpQueue {
 }
 
 interface ConnectionRuntime {
+	connectionId: string;
 	client: HermesRuntimeClientLike;
 	rest: HermesRestClientLike;
 	profileId: string;
@@ -343,10 +353,12 @@ function sessionTitleFromTopic(topic: string): string {
 
 function stockCatalog(
 	sessions: HermesSessionSummary[],
+	connectionId: string,
 	connectionMode: "loopback" | "remote",
 	senderAvailable: boolean,
 	managerId: string | null
 ): HermesCatalog {
+	const managedSessions = filterManagedHermesSessionCatalog({ managerId, sessions });
 	return {
 		compatibility: {
 			state: "compatible",
@@ -359,7 +371,20 @@ function stockCatalog(
 					? ["Slack reporting requires a sender configured for this remote profile"]
 					: ["Slack reporting is available only for validated threaded origins"],
 		},
-		sessions: filterManagedHermesSessionCatalog({ managerId, sessions }),
+		sessions:
+			managerId === null
+				? managedSessions
+				: managedSessions.map((session) =>
+						applyHermesSessionMetadata(
+							{
+								managerId,
+								connectionId,
+								profileId: session.profileId,
+								durableSessionId: session.id,
+							},
+							session
+						)
+					),
 	};
 }
 
@@ -523,6 +548,48 @@ export class HermesRuntimeService {
 		const summary = this.requireCatalogSession(runtime, profileId, durableSessionId);
 		await runtime.rest.setSessionArchived(durableSessionId, summary.profileId, archived);
 		return await this.refreshCatalog(runtime);
+	}
+
+	async setSessionTitle(
+		connectionId: string,
+		profileId: string,
+		hermesSessionId: string,
+		title: string,
+		expectedRevision: number
+	) {
+		const identity = await this.metadataIdentity(connectionId, profileId, hermesSessionId);
+		return setHermesSessionTitle({ ...identity, title, expectedRevision });
+	}
+
+	async setSessionTags(
+		connectionId: string,
+		profileId: string,
+		hermesSessionId: string,
+		tags: string[],
+		expectedRevision: number
+	) {
+		const identity = await this.metadataIdentity(connectionId, profileId, hermesSessionId);
+		return setHermesSessionTags({ ...identity, tags, expectedRevision });
+	}
+
+	async addSessionTag(
+		connectionId: string,
+		profileId: string,
+		hermesSessionId: string,
+		tag: string
+	) {
+		const identity = await this.metadataIdentity(connectionId, profileId, hermesSessionId);
+		return addHermesSessionTag({ ...identity, tag });
+	}
+
+	async removeSessionTag(
+		connectionId: string,
+		profileId: string,
+		hermesSessionId: string,
+		tag: string
+	) {
+		const identity = await this.metadataIdentity(connectionId, profileId, hermesSessionId);
+		return removeHermesSessionTag({ ...identity, tag });
 	}
 
 	async deleteSession(
@@ -1768,6 +1835,9 @@ export class HermesRuntimeService {
 			resolvedProfileId = managed.profileId;
 			resolvedToken = managed.token;
 			resolvedManagerId = managed.managerId ?? null;
+			if (summary.managerId !== resolvedManagerId) {
+				setManagedHermesConnectionManagerId(summary.id, resolvedManagerId);
+			}
 		} else if (summary.connectionMode === "loopback") {
 			if (summary.managerBindingMode !== "manual") {
 				const installedManagerId = this.externalManagerIdResolver(summary);
@@ -1847,6 +1917,7 @@ export class HermesRuntimeService {
 			this.assertCurrentOperation(connectionId, operation);
 			const previous = operation.previousRuntime;
 			installedRuntime = {
+				connectionId,
 				client,
 				rest,
 				profileId: resolvedProfileId,
@@ -1856,6 +1927,7 @@ export class HermesRuntimeService {
 				managedBaseUrl: summary.managementMode === "managed" ? operation.managedBaseUrl : null,
 				catalog: stockCatalog(
 					sessions,
+					connectionId,
 					summary.connectionMode,
 					this.sendService.isAvailable(),
 					resolvedManagerId
@@ -2697,6 +2769,7 @@ export class HermesRuntimeService {
 		const sessions = await runtime.rest.listSessions();
 		runtime.catalog = stockCatalog(
 			sessions,
+			runtime.connectionId,
 			runtime.connectionMode,
 			this.sendService.isAvailable(),
 			runtime.managerId
@@ -2753,10 +2826,27 @@ export class HermesRuntimeService {
 		const matches = runtime.catalog.sessions.filter(
 			(session) => session.profileId === profileId && session.id === durableSessionId
 		);
+		if (matches.length === 0) throw new Error("Hermes session was not found");
 		if (matches.length !== 1) {
 			throw new Error("Hermes session is not present exactly once in the canonical catalog");
 		}
 		return matches[0] as HermesSessionSummary;
+	}
+
+	private async metadataIdentity(connectionId: string, profileId: string, hermesSessionId: string) {
+		const runtime = this.requireRuntime(connectionId);
+		await this.refreshCatalog(runtime);
+		const durableSessionId = this.resolveDurableId(runtime, hermesSessionId, profileId);
+		const session = this.requireCatalogSession(runtime, profileId, durableSessionId);
+		if (!runtime.managerId) {
+			throw new Error("Hermes manager ownership is unavailable for this session");
+		}
+		return {
+			managerId: runtime.managerId,
+			connectionId,
+			profileId: session.profileId,
+			durableSessionId: session.id,
+		};
 	}
 
 	private relatedSessionIds(
@@ -2829,6 +2919,12 @@ export class HermesRuntimeService {
 		);
 		deleteHermesOriginReports(connectionId, profileId, durableSessionId);
 		if (runtime.managerId) {
+			deleteHermesSessionMetadata({
+				managerId: runtime.managerId,
+				connectionId,
+				profileId,
+				durableSessionId,
+			});
 			deleteHermesSessionAdmission(runtime.managerId, profileId, durableSessionId);
 		}
 	}

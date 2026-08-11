@@ -121,6 +121,10 @@ function Harness({ label, onAction }: { label: string; onAction: () => void }) {
 const sessionRowFixture: HermesSessionSummary = {
 	id: "session-important",
 	title: "Important session",
+	generatedTitle: "Generated important session",
+	titleSource: "custom",
+	tags: ["customer report", "urgent"],
+	metadataRevision: 7,
 	preview: "Review the release",
 	profileId: "work",
 	source: "superiorswarm",
@@ -136,6 +140,15 @@ const sessionRowFixture: HermesSessionSummary = {
 	admissionReason: null,
 	origin: null,
 };
+
+function input(element: HTMLInputElement, value: string): void {
+	const setter = Object.getOwnPropertyDescriptor(
+		testWindow.HTMLInputElement.prototype,
+		"value"
+	)?.set;
+	setter?.call(element, value);
+	element.dispatchEvent(new testWindow.Event("input", { bubbles: true }));
+}
 
 async function mountPopover({
 	label,
@@ -225,9 +238,110 @@ afterEach(async () => {
 });
 
 describe("Agents overflow popovers", () => {
+	test("views tags and provides accessible rename, add, remove, error, and concurrency controls", async () => {
+		const renameCalls: Array<[string, number]> = [];
+		const addCalls: string[] = [];
+		const removeCalls: string[] = [];
+		let resolveRename: (() => void) | null = null;
+		let rejectNextAdd = true;
+		const onRename = mock(
+			(title: string, expectedRevision: number) =>
+				new Promise<void>((resolve) => {
+					renameCalls.push([title, expectedRevision]);
+					resolveRename = resolve;
+				})
+		);
+		const onAddTag = mock(async (tag: string) => {
+			addCalls.push(tag);
+			if (rejectNextAdd) {
+				rejectNextAdd = false;
+				throw new Error("Session metadata changed elsewhere. Refresh and try again.");
+			}
+		});
+		const onRemoveTag = mock(async (tag: string) => {
+			removeCalls.push(tag);
+		});
+		const container = document.createElement("div");
+		document.body.append(container);
+		const root = createRoot(container);
+		mountedRoot = root;
+		await act(async () =>
+			root.render(
+				<HermesSessionRow
+					session={sessionRowFixture}
+					selected
+					linkedBranch={null}
+					actionPending={false}
+					deleteDisabledReason={null}
+					onSelect={() => undefined}
+					onSetArchived={() => undefined}
+					onDelete={() => undefined}
+					onRename={onRename}
+					onAddTag={onAddTag}
+					onRemoveTag={onRemoveTag}
+				/>
+			)
+		);
+
+		expect(container.textContent).toContain("customer report");
+		expect(container.textContent).toContain("urgent");
+		const trigger = document.querySelector<HTMLButtonElement>(
+			'button[aria-label="Actions for Important session"]'
+		);
+		if (!trigger) throw new Error("Missing session actions trigger");
+		await act(async () => click(trigger));
+		const panel = document.querySelector<HTMLDialogElement>("dialog");
+		if (!panel) throw new Error("Missing metadata actions panel");
+
+		const renameButton = Array.from(panel.querySelectorAll("button")).find(
+			(button) => button.textContent === "Rename…"
+		);
+		if (!renameButton) throw new Error("Missing rename action");
+		await act(async () => click(renameButton));
+		const nameInput = panel.querySelector<HTMLInputElement>('input[aria-label="Session name"]');
+		if (!nameInput) throw new Error("Missing accessible session name input");
+		expect(document.activeElement).toBe(nameInput);
+		expect(nameInput.value).toBe("Important session");
+		await act(async () => input(nameInput, "Release readiness"));
+		const saveName = Array.from(panel.querySelectorAll("button")).find(
+			(button) => button.textContent === "Save name"
+		);
+		if (!saveName) throw new Error("Missing save name action");
+		await act(async () => click(saveName));
+		expect(renameCalls).toEqual([["Release readiness", 7]]);
+		expect(saveName.disabled).toBe(true);
+		await act(async () => resolveRename?.());
+
+		const tagInput = panel.querySelector<HTMLInputElement>('input[aria-label="Add session tag"]');
+		if (!tagInput) throw new Error("Missing accessible tag input");
+		await act(async () => input(tagInput, "needs follow-up"));
+		const addTag = Array.from(panel.querySelectorAll("button")).find(
+			(button) => button.textContent === "Add tag"
+		);
+		if (!addTag) throw new Error("Missing add tag action");
+		await act(async () => click(addTag));
+		expect(addCalls).toEqual(["needs follow-up"]);
+		expect(panel.querySelector('[role="alert"]')?.textContent).toContain(
+			"Session metadata changed elsewhere"
+		);
+		expect(tagInput.value).toBe("needs follow-up");
+		await act(async () => click(addTag));
+		expect(addCalls).toEqual(["needs follow-up", "needs follow-up"]);
+		expect(tagInput.value).toBe("");
+
+		const removeUrgent = panel.querySelector<HTMLButtonElement>(
+			'button[aria-label="Remove tag urgent"]'
+		);
+		if (!removeUrgent) throw new Error("Missing accessible remove-tag action");
+		await act(async () => click(removeUrgent));
+		expect(removeCalls).toEqual(["urgent"]);
+	});
+
 	test("session row actions are discoverable, keyboard controls that never select the row", async () => {
 		const onSelect = mock(() => undefined);
-		const onSetArchived = mock((_archived: boolean) => undefined);
+		const onSetArchived = mock(
+			(_profileId: string, _durableSessionId: string, _archived: boolean) => undefined
+		);
 		const onDelete = mock(() => undefined);
 		let confirmationCount = 0;
 		const confirmDelete = mock((message: string) => {
@@ -250,6 +364,9 @@ describe("Agents overflow popovers", () => {
 					onSelect={onSelect}
 					onSetArchived={onSetArchived}
 					onDelete={onDelete}
+					onRename={async () => undefined}
+					onAddTag={async () => undefined}
+					onRemoveTag={async () => undefined}
 					confirmDelete={confirmDelete}
 				/>
 			)
@@ -324,6 +441,9 @@ describe("Agents overflow popovers", () => {
 					onSelect={() => undefined}
 					onSetArchived={() => undefined}
 					onDelete={onDelete}
+					onRename={async () => undefined}
+					onAddTag={async () => undefined}
+					onRemoveTag={async () => undefined}
 				/>
 			)
 		);
@@ -354,6 +474,9 @@ describe("Agents overflow popovers", () => {
 				onSelect={() => undefined}
 				onSetArchived={() => undefined}
 				onDelete={() => undefined}
+				onRename={async () => undefined}
+				onAddTag={async () => undefined}
+				onRemoveTag={async () => undefined}
 			/>
 		);
 
@@ -376,6 +499,9 @@ describe("Agents overflow popovers", () => {
 					onSelect={() => undefined}
 					onSetArchived={() => undefined}
 					onDelete={() => undefined}
+					onRename={async () => undefined}
+					onAddTag={async () => undefined}
+					onRemoveTag={async () => undefined}
 				/>
 			)
 		);

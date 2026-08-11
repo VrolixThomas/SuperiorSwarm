@@ -256,6 +256,10 @@ function session(id = "stored-1"): HermesSessionSummary {
 	return {
 		id,
 		title: "Stock session",
+		generatedTitle: "Stock session",
+		titleSource: "generated",
+		tags: [],
+		metadataRevision: 0,
 		preview: "",
 		profileId: "work",
 		source: "slack",
@@ -497,6 +501,117 @@ describe("HermesRuntimeService stock lifecycle", () => {
 			expect.objectContaining({ id: "managed-session", archived: false }),
 		]);
 		expect(rest.listCalls).toBe(5);
+	});
+
+	test("overlays durable names and tags without changing continuation identity or resume params", async () => {
+		admitAgentSession("stored-1");
+		rest.sessions = [
+			{
+				...session("stored-1"),
+				title: "Generated title",
+				generatedTitle: "Generated title",
+				source: "superiorswarm",
+				origin: null,
+			},
+		];
+		rest.histories.set("stored-1", {
+			durableSessionId: "stored-1",
+			view: "durable",
+			messages: [historyMessage("existing-message")],
+		});
+		client.responses.set("session.resume", [
+			{
+				session_id: "runtime-resumed",
+				session_key: "stored-1",
+				profile: "work",
+				running: false,
+				status: "complete",
+			},
+		]);
+
+		const initial = await service.connect(connectionId);
+		expect(initial.sessions[0]).toMatchObject({
+			title: "Generated title",
+			generatedTitle: "Generated title",
+			titleSource: "generated",
+			tags: [],
+			metadataRevision: 0,
+		});
+		expect(
+			await service.setSessionTitle(connectionId, "work", "stored-1", "  Release plan  ", 0)
+		).toMatchObject({ customTitle: "Release plan", tags: [], revision: 1 });
+		expect(
+			await service.setSessionTags(
+				connectionId,
+				"work",
+				"stored-1",
+				[" ready ", "customer report", "ready"],
+				1
+			)
+		).toMatchObject({ tags: ["ready", "customer report"], revision: 2 });
+		expect(
+			await service.addSessionTag(connectionId, "work", "stored-1", "follow up")
+		).toMatchObject({
+			tags: ["ready", "customer report", "follow up"],
+			revision: 3,
+		});
+		expect(
+			await service.removeSessionTag(connectionId, "work", "stored-1", " customer report ")
+		).toMatchObject({ tags: ["ready", "follow up"], revision: 4 });
+
+		rest.sessions = [
+			{
+				...session("stored-1"),
+				title: "Regenerated backend title",
+				generatedTitle: "Regenerated backend title",
+				source: "superiorswarm",
+				origin: null,
+			},
+		];
+		expect((await service.catalog(connectionId)).sessions[0]).toMatchObject({
+			title: "Release plan",
+			generatedTitle: "Regenerated backend title",
+			titleSource: "custom",
+			tags: ["ready", "follow up"],
+			metadataRevision: 4,
+		});
+		await expect(
+			service.setSessionTitle(connectionId, "work", "stored-1", "Stale rename", 2)
+		).rejects.toThrow("Refresh and try again");
+
+		const resumed = await service.resume(connectionId, "stored-1", "work");
+		expect(resumed).toMatchObject({
+			durableSessionId: "stored-1",
+			runtimeSessionId: "runtime-resumed",
+			history: { durableSessionId: "stored-1" },
+		});
+		expect(client.requests.find((request) => request.method === "session.resume")).toEqual({
+			method: "session.resume",
+			params: {
+				session_id: "stored-1",
+				profile: "work",
+				source: "superiorswarm",
+				omit_messages: false,
+			},
+		});
+		expect(JSON.stringify(client.requests)).not.toContain("Release plan");
+		expect(JSON.stringify(client.requests)).not.toContain("follow up");
+	});
+
+	test("rejects metadata mutation for a session outside the exact connected catalog identity", async () => {
+		admitAgentSession("same-session", "work");
+		rest.sessions = [
+			{ ...session("same-session"), profileId: "work", source: "superiorswarm", origin: null },
+		];
+		await service.connect(connectionId);
+
+		await expect(
+			service.setSessionTitle(connectionId, "personal", "same-session", "Wrong profile", 0)
+		).rejects.toThrow("was not found");
+		await expect(
+			service.addSessionTag(connectionId, "work", "missing-session", "wrong session")
+		).rejects.toThrow("was not found");
+		expect(getDb().select().from(schema.hermesSessionMetadata).all()).toEqual([]);
 	});
 
 	test("uses profile plus durable ID for mutations when profiles collide", async () => {
@@ -1259,6 +1374,9 @@ describe("HermesRuntimeService stock lifecycle", () => {
 
 		const catalog = await service.connect(managed.id);
 
+		expect(
+			listHermesConnections(vault).find((connection) => connection.id === managed.id)
+		).toMatchObject({ managerId: "managed-hermes-manager" });
 		expect(catalog.sessions.map((item) => item.id)).toEqual([
 			"local-created",
 			"mcp-telegram",

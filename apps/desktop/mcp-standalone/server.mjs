@@ -11,6 +11,7 @@ import {
 	handleHermesSessionHandover,
 	withAutomaticHermesSessionAdmission,
 } from "./hermes-session-admission.mjs";
+import { handleHermesSessionTagTool } from "./hermes-session-tags.mjs";
 import { controlPlaneToolResult } from "./structured-artifact.mjs";
 
 const require = createRequire(import.meta.url);
@@ -68,6 +69,8 @@ const ORCHESTRATOR_EVENTS_PATH = ctx.orchestratorEventsPath || null;
 const CROSS_REPO_ID = ctx.crossRepoOrchestratorId || null;
 const LINKED_PROJECT_IDS = Array.isArray(ctx.linkedProjectIds) ? ctx.linkedProjectIds : [];
 const ACCESS_SCOPE = ctx.accessScope === "all" ? "all" : "selected";
+const HERMES_CONNECTION_ID =
+	typeof ctx.hermesConnectionId === "string" ? ctx.hermesConnectionId : null;
 const modeContext = ctx.modeContext || {};
 const REVIEW_DRAFT_ID = modeContext.reviewDraftId;
 const SOLVE_SESSION_ID = modeContext.solveSessionId;
@@ -1024,6 +1027,42 @@ if (isWorkspaceAgentOrCrossRepo) {
 				handleHermesSessionHandover(extra, (metadata, reason) =>
 					admitHermesSession(metadata, reason)
 				)
+		);
+
+		const sessionTagTool = (operation) => async (args, extra) =>
+			handleHermesSessionTagTool({
+				operation,
+				args,
+				extra,
+				connectionId: HERMES_CONNECTION_ID,
+				call: (path, body) => call("POST", path, body),
+			});
+		server.tool(
+			"read_session_tags",
+			"Read the ordered tags for the current durable Hermes session and return its revision.",
+			{},
+			sessionTagTool("read")
+		);
+		server.tool(
+			"set_session_tags",
+			"Replace tags for the current durable Hermes session. Use the expected_revision returned by read_session_tags to prevent lost updates.",
+			{
+				tags: z.array(z.string().max(100)).max(64),
+				expected_revision: z.number().int().min(0),
+			},
+			sessionTagTool("set")
+		);
+		server.tool(
+			"add_session_tag",
+			"Idempotently add one arbitrary-text tag to the current durable Hermes session.",
+			{ tag: z.string().max(100) },
+			sessionTagTool("add")
+		);
+		server.tool(
+			"remove_session_tag",
+			"Idempotently remove one tag from the current durable Hermes session.",
+			{ tag: z.string().max(100) },
+			sessionTagTool("remove")
 		);
 	}
 

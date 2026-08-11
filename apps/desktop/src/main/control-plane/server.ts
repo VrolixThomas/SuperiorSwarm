@@ -12,6 +12,9 @@ import {
 	eventsPollRequestSchema,
 	getWorkspaceRequestSchema,
 	hermesSessionAdmissionRequestSchema,
+	hermesSessionTagMutationRequestSchema,
+	hermesSessionTagsReadRequestSchema,
+	hermesSessionTagsSetRequestSchema,
 	listWorkspacesRequestSchema,
 	readMessagesRequestSchema,
 	removeWorkspaceRequestSchema,
@@ -23,12 +26,21 @@ import { getDb } from "../db";
 import {
 	crossRepoOrchestratorProjects,
 	crossRepoOrchestrators,
+	hermesConnections,
+	hermesSessionAdmissions,
 	projects,
 	terminalSessions,
 	workspaces,
 	worktrees,
 } from "../db/schema";
 import { admitHermesSession } from "../hermes/hermes-session-admissions";
+import {
+	HermesSessionMetadataConflictError,
+	addHermesSessionTag,
+	getHermesSessionMetadata,
+	removeHermesSessionTag,
+	setHermesSessionTags,
+} from "../hermes/hermes-session-metadata";
 import { getOrchestratorAutoDispatch } from "../services/orchestrator-dispatch-policy";
 import {
 	type CallerContext,
@@ -75,6 +87,48 @@ function resolveProjectIdFromWorkspace(workspaceId: string): string | null {
 			.where(eq(workspaces.id, workspaceId))
 			.get()?.projectId ?? null
 	);
+}
+
+function authorizedHermesMetadataIdentity(
+	managerId: string,
+	input: {
+		connectionId: string;
+		metadata: {
+			profileId: string;
+			durableSessionId: string;
+		};
+	}
+) {
+	const connection = getDb()
+		.select({ id: hermesConnections.id })
+		.from(hermesConnections)
+		.where(
+			and(eq(hermesConnections.id, input.connectionId), eq(hermesConnections.managerId, managerId))
+		)
+		.get();
+	if (!connection) return null;
+	const admission = getDb()
+		.select({ managerId: hermesSessionAdmissions.managerId })
+		.from(hermesSessionAdmissions)
+		.where(
+			and(
+				eq(hermesSessionAdmissions.managerId, managerId),
+				eq(hermesSessionAdmissions.profileId, input.metadata.profileId),
+				eq(hermesSessionAdmissions.durableSessionId, input.metadata.durableSessionId)
+			)
+		)
+		.get();
+	if (!admission) return null;
+	return {
+		managerId,
+		connectionId: connection.id,
+		profileId: input.metadata.profileId,
+		durableSessionId: input.metadata.durableSessionId,
+	};
+}
+
+function rendererSessionTags(state: ReturnType<typeof getHermesSessionMetadata>) {
+	return { tags: state.tags, revision: state.revision, updatedAt: state.updatedAt };
 }
 
 /**
@@ -409,12 +463,20 @@ async function handleRequest(
 						.where(eq(crossRepoOrchestrators.id, manager.id))
 						.run();
 					const linkedProjectIds = crossRepoProjectIds(manager.id, manager.accessScope);
+					const managerConnections = getDb()
+						.select({ id: hermesConnections.id })
+						.from(hermesConnections)
+						.where(eq(hermesConnections.managerId, manager.id))
+						.all();
 					respond(res, 200, requestId, {
 						mode: "external-manager",
 						crossRepoOrchestratorId: manager.id,
 						linkedProjectIds,
 						accessScope: manager.accessScope,
 						isOrchestrator: true,
+						...(managerConnections.length === 1
+							? { hermesConnectionId: managerConnections[0]?.id }
+							: {}),
 						modeContext: {},
 					});
 					return;
@@ -517,6 +579,103 @@ async function handleRequest(
 						reason: parsed.data.reason,
 					})
 				);
+				return;
+			}
+			case "POST /hermes.sessions.tags.read": {
+				const parsed = hermesSessionTagsReadRequestSchema.safeParse(await readJson(req, 8_192));
+				if (!parsed.success) {
+					respond(res, 400, requestId, { error: "validation" });
+					return;
+				}
+				const caller = resolveCaller(req, null);
+				if ("error" in caller) {
+					respond(res, 401, requestId, { error: "unauthorized" });
+					return;
+				}
+				if (caller.kind !== "xro" || caller.external !== true) {
+					respond(res, 403, requestId, { error: "forbidden" });
+					return;
+				}
+				const identity = authorizedHermesMetadataIdentity(caller.xroId, parsed.data);
+				if (!identity) {
+					respond(res, 403, requestId, { error: "forbidden" });
+					return;
+				}
+				respond(res, 200, requestId, rendererSessionTags(getHermesSessionMetadata(identity)));
+				return;
+			}
+			case "POST /hermes.sessions.tags.set": {
+				const parsed = hermesSessionTagsSetRequestSchema.safeParse(await readJson(req, 16_384));
+				if (!parsed.success) {
+					respond(res, 400, requestId, { error: "validation" });
+					return;
+				}
+				const caller = resolveCaller(req, null);
+				if ("error" in caller) {
+					respond(res, 401, requestId, { error: "unauthorized" });
+					return;
+				}
+				if (caller.kind !== "xro" || caller.external !== true) {
+					respond(res, 403, requestId, { error: "forbidden" });
+					return;
+				}
+				const identity = authorizedHermesMetadataIdentity(caller.xroId, parsed.data);
+				if (!identity) {
+					respond(res, 403, requestId, { error: "forbidden" });
+					return;
+				}
+				try {
+					respond(
+						res,
+						200,
+						requestId,
+						rendererSessionTags(
+							setHermesSessionTags({
+								...identity,
+								tags: parsed.data.tags,
+								expectedRevision: parsed.data.expectedRevision,
+							})
+						)
+					);
+				} catch (error) {
+					if (error instanceof HermesSessionMetadataConflictError) {
+						respond(res, 409, requestId, { error: "conflict" });
+						return;
+					}
+					respond(res, 400, requestId, { error: "validation" });
+				}
+				return;
+			}
+			case "POST /hermes.sessions.tags.add":
+			case "POST /hermes.sessions.tags.remove": {
+				const parsed = hermesSessionTagMutationRequestSchema.safeParse(await readJson(req, 8_192));
+				if (!parsed.success) {
+					respond(res, 400, requestId, { error: "validation" });
+					return;
+				}
+				const caller = resolveCaller(req, null);
+				if ("error" in caller) {
+					respond(res, 401, requestId, { error: "unauthorized" });
+					return;
+				}
+				if (caller.kind !== "xro" || caller.external !== true) {
+					respond(res, 403, requestId, { error: "forbidden" });
+					return;
+				}
+				const identity = authorizedHermesMetadataIdentity(caller.xroId, parsed.data);
+				if (!identity) {
+					respond(res, 403, requestId, { error: "forbidden" });
+					return;
+				}
+				try {
+					const state =
+						route === "POST /hermes.sessions.tags.add"
+							? addHermesSessionTag({ ...identity, tag: parsed.data.tag })
+							: removeHermesSessionTag({ ...identity, tag: parsed.data.tag });
+					respond(res, 200, requestId, rendererSessionTags(state));
+				} catch {
+					respond(res, 400, requestId, { error: "validation" });
+				}
 				return;
 			}
 			case "GET /workspaces.list": {
