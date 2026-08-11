@@ -11,6 +11,7 @@ import {
 import {
 	HERMES_ATTACHMENT_UPLOAD_CHUNK_MAX_BYTES,
 	type HermesAttachmentMetadata,
+	type HermesComposerDraftIdentity,
 	hermesSessionCompositeIdentityKey,
 } from "../../../shared/hermes";
 import {
@@ -24,6 +25,7 @@ import {
 	settleHermesSelectionAttachments,
 } from "../../hermes/hermes-binding-lifecycle";
 import { isHermesChatNearBottom, shouldAnchorHermesChat } from "../../hermes/hermes-chat-scroll";
+import { hermesComposerDrafts } from "../../hermes/hermes-composer-drafts";
 import {
 	HERMES_CHAT_LAYOUT_CLASSES,
 	HERMES_CHAT_OVERFLOW_CLASSES,
@@ -128,6 +130,20 @@ export function HermesSessionView() {
 	const selectionGeneration = selectionGuard.select(selectionKey);
 
 	const connections = trpc.hermes.connections.useQuery();
+	const draftConnection = connections.data?.find((candidate) => candidate.id === connectionId);
+	const draftIdentity = useMemo<HermesComposerDraftIdentity | null>(
+		() =>
+			draftConnection && profileId && sessionId
+				? {
+						managerId: draftConnection.managerId,
+						projectId: null,
+						connectionId,
+						profileId,
+						durableSessionId: sessionId,
+					}
+				: null,
+		[draftConnection, connectionId, profileId, sessionId]
+	);
 	const status = trpc.hermes.status.useQuery(
 		{ connectionId },
 		{ enabled: Boolean(connectionId), refetchInterval: 1_000 }
@@ -149,6 +165,34 @@ export function HermesSessionView() {
 		(candidate) =>
 			candidate.id === sessionId && (profileId === null || candidate.profileId === profileId)
 	);
+
+	useEffect(() => {
+		if (!draftIdentity) {
+			setComposer("");
+			return;
+		}
+		return hermesComposerDrafts.subscribe(draftIdentity, setComposer);
+	}, [draftIdentity]);
+
+	useEffect(() => {
+		if (activePane !== "chat" && draftIdentity) hermesComposerDrafts.flush(draftIdentity);
+	}, [activePane, draftIdentity]);
+
+	useEffect(() => {
+		const flushDrafts = () => hermesComposerDrafts.flushAll();
+		const flushHiddenDrafts = () => {
+			if (document.visibilityState === "hidden") flushDrafts();
+		};
+		window.addEventListener("beforeunload", flushDrafts);
+		window.addEventListener("pagehide", flushDrafts);
+		document.addEventListener("visibilitychange", flushHiddenDrafts);
+		return () => {
+			flushDrafts();
+			window.removeEventListener("beforeunload", flushDrafts);
+			window.removeEventListener("pagehide", flushDrafts);
+			document.removeEventListener("visibilitychange", flushHiddenDrafts);
+		};
+	}, []);
 
 	useEffect(() => {
 		selectionGuard.activate();
@@ -196,7 +240,6 @@ export function HermesSessionView() {
 		resumeAttemptKey.current = null;
 		processedEventSeq.current = 0;
 		setLive(createHermesLiveState());
-		setComposer("");
 		setOptimisticUserTurns([]);
 		setClarification("");
 		setRecoveryWorktreeId("");
@@ -420,14 +463,17 @@ export function HermesSessionView() {
 			(!composer.trim() && attachments.length === 0) ||
 			!sessionId ||
 			!profileId ||
+			!draftIdentity ||
 			composerPolicy.sendDisabled
 		) {
 			return;
 		}
 		const generation = selectionGeneration;
+		const draftSubmission = hermesComposerDrafts.captureSubmission(draftIdentity);
+		const submittedText = draftSubmission.text;
 		const optimisticTurn = createHermesOptimisticUserTurn({
 			id: `${selectionKey}:${++optimisticTurnSequence.current}`,
-			text: composer,
+			text: submittedText,
 			attachments,
 			canonicalMessages,
 		});
@@ -438,11 +484,12 @@ export function HermesSessionView() {
 				connectionId,
 				profileId: profileId ?? undefined,
 				hermesSessionId: sessionId,
-				text: composer.trim(),
+				text: submittedText.trim(),
 				attachmentHandles: attachments.map((attachment) => attachment.handle),
 			},
 			{
 				onSuccess: (result) => {
+					hermesComposerDrafts.settleSubmission(draftIdentity, draftSubmission, result.disposition);
 					runForSelection(generation, () => {
 						setOptimisticUserTurns((current) =>
 							settleHermesOptimisticUserTurn(
@@ -451,7 +498,6 @@ export function HermesSessionView() {
 								result.disposition === "queued" ? "failed" : "accepted"
 							)
 						);
-						setComposer("");
 						dispatchAttachments({ type: "succeeded" });
 						setAttachmentLimitError(null);
 						if (result.disposition === "submitted") {
@@ -486,6 +532,7 @@ export function HermesSessionView() {
 					});
 				},
 				onError: (error) => {
+					hermesComposerDrafts.settleSubmission(draftIdentity, draftSubmission, "failed");
 					runForSelection(generation, () => {
 						setOptimisticUserTurns((current) =>
 							settleHermesOptimisticUserTurn(current, optimisticTurn.id, "failed")
@@ -1113,7 +1160,9 @@ export function HermesSessionView() {
 							<textarea
 								ref={composerRef}
 								value={composer}
-								onChange={(event) => setComposer(event.target.value)}
+								onChange={(event) => {
+									if (draftIdentity) hermesComposerDrafts.edit(draftIdentity, event.target.value);
+								}}
 								onKeyDown={(event) => {
 									if (event.key !== "Enter") return;
 									const action = hermesComposerEnterAction({
@@ -1130,7 +1179,7 @@ export function HermesSessionView() {
 								placeholder={
 									connected ? "Continue this agent thread…" : "Queue while reconnecting…"
 								}
-								disabled={composerPolicy.textareaDisabled}
+								disabled={composerPolicy.textareaDisabled || !draftIdentity}
 								rows={1}
 								aria-label="Message"
 								className="min-h-14 min-w-0 flex-1 resize-none bg-transparent px-1.5 py-[17px] text-[14px] leading-[20px] text-[var(--text)] outline-none placeholder:text-[var(--text-quaternary)] disabled:opacity-50 [overflow-wrap:anywhere]"

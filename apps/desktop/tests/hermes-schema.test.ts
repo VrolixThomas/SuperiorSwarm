@@ -23,6 +23,7 @@ describe("Hermes persistence migration", () => {
 		expect(tableNames).toContain("hermes_origin_links");
 		expect(tableNames).toContain("hermes_origin_reports");
 		expect(tableNames).toContain("hermes_session_admissions");
+		expect(tableNames).toContain("hermes_composer_drafts");
 
 		const indexes = sqlite
 			.prepare("SELECT name FROM sqlite_master WHERE type = 'index'")
@@ -31,6 +32,25 @@ describe("Hermes persistence migration", () => {
 		expect(indexes).toContain("hermes_session_workspaces_unique");
 		expect(indexes).toContain("hermes_origin_reports_unique");
 		expect(indexes).toContain("hermes_session_admissions_manager_profile_idx");
+		expect(indexes).toContain("hermes_composer_drafts_connection_idx");
+
+		const composerDraftColumns = sqlite
+			.prepare("PRAGMA table_info(hermes_composer_drafts)")
+			.all()
+			.map((row) => (row as { name: string }).name);
+		expect(composerDraftColumns).toEqual([
+			"manager_id",
+			"project_id",
+			"connection_id",
+			"profile_id",
+			"durable_session_id",
+			"text",
+			"updated_at",
+		]);
+		expect(composerDraftColumns).not.toContain("attachment_handles");
+		expect(composerDraftColumns).not.toContain("path");
+		expect(composerDraftColumns).not.toContain("transcript");
+		expect(composerDraftColumns).not.toContain("credentials");
 
 		const admissionColumns = sqlite
 			.prepare("PRAGMA table_info(hermes_session_admissions)")

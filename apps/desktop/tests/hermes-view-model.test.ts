@@ -134,6 +134,21 @@ describe("Hermes renderer view model", () => {
 				isComposing: true,
 			})
 		).toBe("native");
+
+		expect(
+			hermesComposerInteractionPolicy({
+				connected: true,
+				running: true,
+				submitPending: true,
+				attachmentPickerPending: false,
+				attachmentAttaching: false,
+				hasPayload: true,
+			})
+		).toEqual({
+			textareaDisabled: false,
+			sendDisabled: true,
+			attachmentMutationDisabled: false,
+		});
 	});
 
 	test("shows pending and accepted continuation turns until new canonical history reconciles them", () => {
