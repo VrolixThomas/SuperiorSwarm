@@ -117,6 +117,12 @@ describe("Hermes session tag control plane", () => {
 		const ambiguousBody = (await ambiguous.json()) as Record<string, unknown>;
 		expect(ambiguousBody["mode"]).toBe("external-manager");
 		expect(ambiguousBody["hermesConnectionId"]).toBeUndefined();
+		const ambiguousOperation = await request("manager-a", "/hermes.tags.definitions.list", {
+			connectionId: "connection-a",
+			metadata,
+			query: "",
+		});
+		expect(ambiguousOperation.status).toBe(403);
 	});
 
 	test("validates operations and isolates equal sessions across manager plus connection", async () => {
@@ -193,11 +199,191 @@ describe("Hermes session tag control plane", () => {
 			expectedRevision: 0,
 		});
 		expect(stale.status).toBe(409);
-		expect(await stale.json()).toEqual(expect.objectContaining({ error: "conflict" }));
+		expect(await stale.json()).toEqual(
+			expect.objectContaining({ error: "conflict", code: "revision_conflict" })
+		);
 		const read = await request("manager-a", "/hermes.sessions.tags.read", {
 			connectionId: "connection-a",
 			metadata,
 		});
 		expect(await read.json()).toEqual(expect.objectContaining({ tags: ["newer"], revision: 1 }));
+	});
+
+	test("manages reusable definitions and current-session assignments with semantic errors", async () => {
+		const upsert = await request("manager-a", "/hermes.tags.definitions.upsert", {
+			connectionId: "connection-a",
+			metadata,
+			name: " Needs review ",
+			color: "amber",
+		});
+		expect(upsert.status).toBe(200);
+		const upserted = (await upsert.json()) as {
+			created: boolean;
+			definition: { id: string; name: string; color: string; revision: number };
+		};
+		expect(upserted).toEqual(
+			expect.objectContaining({
+				created: true,
+				definition: expect.objectContaining({ name: "Needs review", color: "amber", revision: 0 }),
+			})
+		);
+
+		const idempotent = await request("manager-a", "/hermes.tags.definitions.upsert", {
+			connectionId: "connection-a",
+			metadata,
+			name: "needs review",
+			color: "blue",
+		});
+		expect(await idempotent.json()).toEqual(
+			expect.objectContaining({
+				created: false,
+				definition: expect.objectContaining({
+					id: upserted.definition.id,
+					color: "amber",
+					revision: 0,
+				}),
+			})
+		);
+		const other = (await (
+			await request("manager-a", "/hermes.tags.definitions.upsert", {
+				connectionId: "connection-a",
+				metadata,
+				name: "Other",
+				color: "gray",
+			})
+		).json()) as { definition: { id: string } };
+		const nameConflict = await request("manager-a", "/hermes.tags.definitions.update", {
+			connectionId: "connection-a",
+			metadata,
+			definitionId: other.definition.id,
+			name: "NEEDS REVIEW",
+			expectedRevision: 0,
+		});
+		expect(nameConflict.status).toBe(409);
+		expect(await nameConflict.json()).toEqual(
+			expect.objectContaining({ error: "conflict", code: "tag_name_conflict" })
+		);
+
+		const listA = await request("manager-a", "/hermes.tags.definitions.list", {
+			connectionId: "connection-a",
+			metadata,
+			query: "review",
+		});
+		expect(await listA.json()).toEqual(
+			expect.objectContaining({
+				definitions: [
+					expect.objectContaining({ id: upserted.definition.id, name: "Needs review" }),
+				],
+			})
+		);
+		const listB = await request("manager-b", "/hermes.tags.definitions.list", {
+			connectionId: "connection-b",
+			metadata,
+			query: "",
+		});
+		expect(await listB.json()).toEqual(expect.objectContaining({ definitions: [] }));
+
+		const assigned = await request("manager-a", "/hermes.sessions.tags.assign", {
+			connectionId: "connection-a",
+			metadata,
+			definitionId: upserted.definition.id,
+		});
+		expect(await assigned.json()).toEqual(
+			expect.objectContaining({
+				revision: 1,
+				assignments: [
+					expect.objectContaining({
+						id: upserted.definition.id,
+						name: "Needs review",
+						color: "amber",
+					}),
+				],
+			})
+		);
+		const readAssignments = await request("manager-a", "/hermes.sessions.tags.assignments.read", {
+			connectionId: "connection-a",
+			metadata,
+		});
+		expect(await readAssignments.json()).toEqual(
+			expect.objectContaining({
+				assignments: [expect.objectContaining({ id: upserted.definition.id })],
+			})
+		);
+
+		const updated = await request("manager-a", "/hermes.tags.definitions.update", {
+			connectionId: "connection-a",
+			metadata,
+			definitionId: upserted.definition.id,
+			name: "Reviewed",
+			color: "green",
+			expectedRevision: 0,
+		});
+		expect(await updated.json()).toEqual(
+			expect.objectContaining({ name: "Reviewed", color: "green", revision: 1 })
+		);
+		const stale = await request("manager-a", "/hermes.tags.definitions.update", {
+			connectionId: "connection-a",
+			metadata,
+			definitionId: upserted.definition.id,
+			color: "red",
+			expectedRevision: 0,
+		});
+		expect(stale.status).toBe(409);
+		expect(await stale.json()).toEqual(
+			expect.objectContaining({ error: "conflict", code: "revision_conflict" })
+		);
+
+		const deleted = await request("manager-a", "/hermes.tags.definitions.delete", {
+			connectionId: "connection-a",
+			metadata,
+			definitionId: upserted.definition.id,
+			expectedRevision: 1,
+		});
+		expect(await deleted.json()).toEqual(expect.objectContaining({ detachedSessionCount: 1 }));
+		expect(
+			await (
+				await request("manager-a", "/hermes.sessions.tags.assignments.read", {
+					connectionId: "connection-a",
+					metadata,
+				})
+			).json()
+		).toEqual(expect.objectContaining({ assignments: [], revision: 2 }));
+	});
+
+	test("fails reusable operations closed for invalid palettes, keys, ownership, or admission", async () => {
+		const invalidColor = await request("manager-a", "/hermes.tags.definitions.upsert", {
+			connectionId: "connection-a",
+			metadata,
+			name: "Unsafe",
+			color: "#ff0000",
+		});
+		expect(invalidColor.status).toBe(400);
+		const extraKey = await request("manager-a", "/hermes.tags.definitions.list", {
+			connectionId: "connection-a",
+			metadata,
+			query: "",
+			sessionId: "arbitrary-target",
+		});
+		expect(extraKey.status).toBe(400);
+		const wrongConnection = await request("manager-a", "/hermes.tags.definitions.list", {
+			connectionId: "connection-b",
+			metadata,
+			query: "",
+		});
+		expect(wrongConnection.status).toBe(403);
+		const unadmitted = await request("manager-a", "/hermes.sessions.tags.assignments.read", {
+			connectionId: "connection-a",
+			metadata: { ...metadata, durableSessionId: "not-admitted" },
+		});
+		expect(unadmitted.status).toBe(403);
+		const missing = await request("manager-a", "/hermes.tags.definitions.update", {
+			connectionId: "connection-a",
+			metadata,
+			definitionId: "missing-definition",
+			color: "blue",
+			expectedRevision: 0,
+		});
+		expect(missing.status).toBe(404);
+		expect(await missing.json()).toEqual(expect.objectContaining({ error: "not_found" }));
 	});
 });

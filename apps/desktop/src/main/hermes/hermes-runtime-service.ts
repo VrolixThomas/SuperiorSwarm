@@ -13,6 +13,7 @@ import {
 	type HermesSessionBinding,
 	type HermesSessionHistory,
 	type HermesSessionSummary,
+	type HermesTagColor,
 	hermesSessionCompositeIdentityKey,
 	hermesSessionIdentityKey,
 	isSafeHermesFileReference,
@@ -74,10 +75,16 @@ import {
 import {
 	addHermesSessionTag,
 	applyHermesSessionMetadata,
+	assignHermesSessionTag,
 	deleteHermesSessionMetadata,
+	deleteHermesTagDefinition,
+	listHermesTagDefinitions,
 	removeHermesSessionTag,
 	setHermesSessionTags,
 	setHermesSessionTitle,
+	unassignHermesSessionTag,
+	updateHermesTagDefinition,
+	upsertHermesTagDefinition,
 } from "./hermes-session-metadata";
 import { type HermesTokenVault, hermesTokenVault } from "./hermes-token-vault";
 import {
@@ -590,6 +597,69 @@ export class HermesRuntimeService {
 	) {
 		const identity = await this.metadataIdentity(connectionId, profileId, hermesSessionId);
 		return removeHermesSessionTag({ ...identity, tag });
+	}
+
+	async listTagDefinitions(
+		connectionId: string,
+		profileId: string,
+		hermesSessionId: string,
+		query: string
+	) {
+		const identity = await this.metadataIdentity(connectionId, profileId, hermesSessionId);
+		return listHermesTagDefinitions(identity, query);
+	}
+
+	async upsertTagDefinition(
+		connectionId: string,
+		profileId: string,
+		hermesSessionId: string,
+		name: string,
+		color: HermesTagColor
+	) {
+		const identity = await this.metadataIdentity(connectionId, profileId, hermesSessionId);
+		return upsertHermesTagDefinition({ ...identity, name, color });
+	}
+
+	async updateTagDefinition(
+		connectionId: string,
+		profileId: string,
+		hermesSessionId: string,
+		definitionId: string,
+		update: { name?: string; color?: HermesTagColor; expectedRevision: number }
+	) {
+		const identity = await this.metadataIdentity(connectionId, profileId, hermesSessionId);
+		return updateHermesTagDefinition({ ...identity, definitionId, ...update });
+	}
+
+	async deleteTagDefinition(
+		connectionId: string,
+		profileId: string,
+		hermesSessionId: string,
+		definitionId: string,
+		expectedRevision: number
+	) {
+		const identity = await this.metadataIdentity(connectionId, profileId, hermesSessionId);
+		return deleteHermesTagDefinition({ ...identity, definitionId, expectedRevision });
+	}
+
+	async assignTagDefinition(
+		connectionId: string,
+		profileId: string,
+		hermesSessionId: string,
+		definitionId: string
+	) {
+		const identity = await this.metadataIdentity(connectionId, profileId, hermesSessionId);
+		return assignHermesSessionTag({ ...identity, definitionId });
+	}
+
+	async unassignTagDefinition(
+		connectionId: string,
+		profileId: string,
+		hermesSessionId: string,
+		definitionId: string
+	) {
+		const identity = await this.metadataIdentity(connectionId, profileId, hermesSessionId);
+		return unassignHermesSessionTag({ ...identity, definitionId });
 	}
 
 	async deleteSession(

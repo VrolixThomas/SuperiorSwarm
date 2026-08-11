@@ -132,6 +132,13 @@ describe("Hermes durable session metadata", () => {
 				expectedRevision: 1,
 			})
 		).toThrow("Session name cannot be empty");
+		expect(() =>
+			setHermesSessionTitle({
+				...baseIdentity,
+				title: "ﬃ".repeat(200),
+				expectedRevision: 1,
+			})
+		).toThrow("Session name must be 200 characters or fewer");
 		expect(getHermesSessionMetadata(baseIdentity)).toMatchObject({
 			customTitle: "Release readiness",
 			revision: 1,
@@ -145,7 +152,11 @@ describe("Hermes durable session metadata", () => {
 			expectedRevision: 0,
 		});
 		expect(set).toMatchObject({
-			tags: ["urgent", "customer report", "Urgent", "emoji 🚀"],
+			tags: [
+				expect.objectContaining({ name: "urgent", color: "gray" }),
+				expect.objectContaining({ name: "customer report", color: "gray" }),
+				expect.objectContaining({ name: "emoji 🚀", color: "gray" }),
+			],
 			revision: 1,
 		});
 
@@ -153,12 +164,16 @@ describe("Hermes durable session metadata", () => {
 		expect(duplicate).toMatchObject({ tags: set.tags, revision: 1 });
 		const added = addHermesSessionTag({ ...baseIdentity, tag: " needs follow-up " });
 		expect(added).toMatchObject({
-			tags: [...set.tags, "needs follow-up"],
+			tags: [...set.tags, expect.objectContaining({ name: "needs follow-up", color: "gray" })],
 			revision: 2,
 		});
 		const removed = removeHermesSessionTag({ ...baseIdentity, tag: " customer report " });
 		expect(removed).toMatchObject({
-			tags: ["urgent", "Urgent", "emoji 🚀", "needs follow-up"],
+			tags: [
+				expect.objectContaining({ name: "urgent" }),
+				expect.objectContaining({ name: "emoji 🚀" }),
+				expect.objectContaining({ name: "needs follow-up" }),
+			],
 			revision: 3,
 		});
 		const absent = removeHermesSessionTag({ ...baseIdentity, tag: "not present" });
@@ -219,7 +234,7 @@ describe("Hermes durable session metadata", () => {
 
 		for (const [index, identity] of identities.entries()) {
 			expect(getHermesSessionMetadata(identity)).toMatchObject({
-				tags: [`scope ${index}`],
+				tags: [expect.objectContaining({ name: `scope ${index}` })],
 				revision: 1,
 			});
 		}
@@ -243,7 +258,7 @@ describe("Hermes durable session metadata", () => {
 		const restarted = getHermesSessionMetadata(baseIdentity);
 		expect(restarted).toMatchObject({
 			customTitle: "Durable name",
-			tags: ["durable tag"],
+			tags: [expect.objectContaining({ name: "durable tag", color: "gray" })],
 			revision: 2,
 		});
 		const serializedDto = JSON.stringify(restarted);
@@ -326,7 +341,7 @@ describe("Hermes durable session metadata", () => {
 			.values({
 				...baseIdentity,
 				customTitle: "\t",
-				tagsJson: '["valid", 42]',
+				legacyTagsJson: '["valid", 42]',
 				revision: 7,
 				createdAt: now,
 				updatedAt: now,

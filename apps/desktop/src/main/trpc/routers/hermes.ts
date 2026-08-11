@@ -1,7 +1,11 @@
 import { asc, eq } from "drizzle-orm";
 import { dialog, shell } from "electron";
 import { z } from "zod";
-import { HERMES_MAX_ATTACHMENTS, hermesSessionIdentityKey } from "../../../shared/hermes";
+import {
+	HERMES_MAX_ATTACHMENTS,
+	HERMES_TAG_COLORS,
+	hermesSessionIdentityKey,
+} from "../../../shared/hermes";
 import { getDb } from "../../db";
 import {
 	hermesConnections,
@@ -97,6 +101,49 @@ export const hermesSessionTagInputSchema = z
 		...metadataSessionIdentityShape,
 		tag: z.string().max(HERMES_SESSION_TAG_MAX_LENGTH),
 	})
+	.strict();
+
+const hermesTagDefinitionIdSchema = z
+	.string()
+	.min(1)
+	.max(64)
+	.regex(/^[A-Za-z0-9_-]+$/);
+const hermesTagNameSchema = z
+	.string()
+	.max(HERMES_SESSION_TAG_MAX_LENGTH)
+	.refine((value) => value.trim().length > 0, "Tag cannot be empty");
+
+export const hermesListTagDefinitionsInputSchema = z
+	.object({ ...metadataSessionIdentityShape, query: z.string().max(100).default("") })
+	.strict();
+export const hermesUpsertTagDefinitionInputSchema = z
+	.object({
+		...metadataSessionIdentityShape,
+		name: hermesTagNameSchema,
+		color: z.enum(HERMES_TAG_COLORS),
+	})
+	.strict();
+export const hermesUpdateTagDefinitionInputSchema = z
+	.object({
+		...metadataSessionIdentityShape,
+		definitionId: hermesTagDefinitionIdSchema,
+		name: hermesTagNameSchema.optional(),
+		color: z.enum(HERMES_TAG_COLORS).optional(),
+		expectedRevision: z.number().int().min(0),
+	})
+	.strict()
+	.refine((value) => value.name !== undefined || value.color !== undefined, {
+		message: "A name or color update is required",
+	});
+export const hermesDeleteTagDefinitionInputSchema = z
+	.object({
+		...metadataSessionIdentityShape,
+		definitionId: hermesTagDefinitionIdSchema,
+		expectedRevision: z.number().int().min(0),
+	})
+	.strict();
+export const hermesTagAssignmentInputSchema = z
+	.object({ ...metadataSessionIdentityShape, definitionId: hermesTagDefinitionIdSchema })
 	.strict();
 
 export const hermesCreateInputSchema = z
@@ -269,6 +316,79 @@ export const hermesRouter = router({
 				input.profileId,
 				input.hermesSessionId,
 				input.tag
+			)
+		),
+
+	tagDefinitions: publicProcedure
+		.input(hermesListTagDefinitionsInputSchema)
+		.query(({ input }) =>
+			hermesRuntimeService.listTagDefinitions(
+				input.connectionId,
+				input.profileId,
+				input.hermesSessionId,
+				input.query
+			)
+		),
+
+	upsertTagDefinition: publicProcedure
+		.input(hermesUpsertTagDefinitionInputSchema)
+		.mutation(({ input }) =>
+			hermesRuntimeService.upsertTagDefinition(
+				input.connectionId,
+				input.profileId,
+				input.hermesSessionId,
+				input.name,
+				input.color
+			)
+		),
+
+	updateTagDefinition: publicProcedure
+		.input(hermesUpdateTagDefinitionInputSchema)
+		.mutation(({ input }) =>
+			hermesRuntimeService.updateTagDefinition(
+				input.connectionId,
+				input.profileId,
+				input.hermesSessionId,
+				input.definitionId,
+				{
+					name: input.name,
+					color: input.color,
+					expectedRevision: input.expectedRevision,
+				}
+			)
+		),
+
+	deleteTagDefinition: publicProcedure
+		.input(hermesDeleteTagDefinitionInputSchema)
+		.mutation(({ input }) =>
+			hermesRuntimeService.deleteTagDefinition(
+				input.connectionId,
+				input.profileId,
+				input.hermesSessionId,
+				input.definitionId,
+				input.expectedRevision
+			)
+		),
+
+	assignTagDefinition: publicProcedure
+		.input(hermesTagAssignmentInputSchema)
+		.mutation(({ input }) =>
+			hermesRuntimeService.assignTagDefinition(
+				input.connectionId,
+				input.profileId,
+				input.hermesSessionId,
+				input.definitionId
+			)
+		),
+
+	unassignTagDefinition: publicProcedure
+		.input(hermesTagAssignmentInputSchema)
+		.mutation(({ input }) =>
+			hermesRuntimeService.unassignTagDefinition(
+				input.connectionId,
+				input.profileId,
+				input.hermesSessionId,
+				input.definitionId
 			)
 		),
 

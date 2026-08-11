@@ -141,7 +141,22 @@ describe("Hermes task session creation contract", () => {
 
 	test("routes exact metadata mutations through the connected main runtime service", async () => {
 		const calls: Array<{ operation: string; args: unknown[] }> = [];
-		const result = { customTitle: "Release", tags: ["ready"], revision: 4, updatedAt: 1 };
+		const result = {
+			customTitle: "Release",
+			tags: [
+				{
+					id: "tag-ready",
+					name: "ready",
+					normalizedKey: "ready",
+					color: "green" as const,
+					revision: 0,
+					createdAt: 1,
+					updatedAt: 1,
+				},
+			],
+			revision: 4,
+			updatedAt: 1,
+		};
 		const originals = {
 			setSessionTitle: hermesRuntimeService.setSessionTitle,
 			setSessionTags: hermesRuntimeService.setSessionTags,

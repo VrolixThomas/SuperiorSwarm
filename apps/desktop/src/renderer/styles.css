@@ -42,6 +42,35 @@
 	--warning-subtle: rgba(255, 159, 10, 0.15);
 	--purple-subtle: rgba(191, 90, 242, 0.15);
 
+	/* Reusable Hermes tag palette — fixed, contrast-safe tokens only */
+	--tag-gray-fg: #e5e5ea;
+	--tag-gray-bg: rgba(142, 142, 147, 0.16);
+	--tag-gray-border: rgba(174, 174, 178, 0.42);
+	--tag-blue-fg: #8cc8ff;
+	--tag-blue-bg: rgba(10, 132, 255, 0.16);
+	--tag-blue-border: rgba(100, 170, 255, 0.45);
+	--tag-cyan-fg: #7fdbea;
+	--tag-cyan-bg: rgba(50, 173, 230, 0.16);
+	--tag-cyan-border: rgba(90, 200, 230, 0.45);
+	--tag-green-fg: #80e69c;
+	--tag-green-bg: rgba(48, 209, 88, 0.15);
+	--tag-green-border: rgba(99, 220, 131, 0.43);
+	--tag-amber-fg: #ffd46b;
+	--tag-amber-bg: rgba(255, 214, 10, 0.14);
+	--tag-amber-border: rgba(255, 214, 80, 0.42);
+	--tag-orange-fg: #ffb45c;
+	--tag-orange-bg: rgba(255, 159, 10, 0.15);
+	--tag-orange-border: rgba(255, 180, 92, 0.43);
+	--tag-red-fg: #ff8a84;
+	--tag-red-bg: rgba(255, 69, 58, 0.15);
+	--tag-red-border: rgba(255, 105, 97, 0.44);
+	--tag-pink-fg: #ff8fbe;
+	--tag-pink-bg: rgba(255, 55, 95, 0.15);
+	--tag-pink-border: rgba(255, 117, 173, 0.44);
+	--tag-purple-fg: #d9a0ff;
+	--tag-purple-bg: rgba(191, 90, 242, 0.16);
+	--tag-purple-border: rgba(210, 146, 255, 0.44);
+
 	/* Modal scrim */
 	--scrim: rgba(0, 0, 0, 0.5);
 
@@ -150,6 +179,34 @@ html[data-theme="light"] {
 	--success-subtle: rgba(31, 136, 61, 0.18);
 	--warning-subtle: rgba(191, 105, 0, 0.18);
 	--purple-subtle: rgba(137, 68, 171, 0.18);
+
+	--tag-gray-fg: #4e4e53;
+	--tag-gray-bg: rgba(99, 99, 102, 0.11);
+	--tag-gray-border: rgba(72, 72, 74, 0.3);
+	--tag-blue-fg: #075ca8;
+	--tag-blue-bg: rgba(0, 102, 204, 0.11);
+	--tag-blue-border: rgba(0, 87, 184, 0.3);
+	--tag-cyan-fg: #00677a;
+	--tag-cyan-bg: rgba(0, 145, 170, 0.1);
+	--tag-cyan-border: rgba(0, 103, 122, 0.3);
+	--tag-green-fg: #176b33;
+	--tag-green-bg: rgba(31, 136, 61, 0.11);
+	--tag-green-border: rgba(23, 107, 51, 0.3);
+	--tag-amber-fg: #745000;
+	--tag-amber-bg: rgba(191, 145, 0, 0.12);
+	--tag-amber-border: rgba(116, 80, 0, 0.31);
+	--tag-orange-fg: #8a4300;
+	--tag-orange-bg: rgba(191, 105, 0, 0.11);
+	--tag-orange-border: rgba(138, 67, 0, 0.3);
+	--tag-red-fg: #a82920;
+	--tag-red-bg: rgba(215, 0, 21, 0.1);
+	--tag-red-border: rgba(168, 41, 32, 0.3);
+	--tag-pink-fg: #9c2457;
+	--tag-pink-bg: rgba(211, 15, 93, 0.1);
+	--tag-pink-border: rgba(156, 36, 87, 0.3);
+	--tag-purple-fg: #6b3487;
+	--tag-purple-bg: rgba(137, 68, 171, 0.11);
+	--tag-purple-border: rgba(107, 52, 135, 0.3);
 
 	/* Scrim */
 	--scrim: rgba(0, 0, 0, 0.35);

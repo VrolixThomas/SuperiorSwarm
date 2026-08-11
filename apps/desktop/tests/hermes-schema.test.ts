@@ -25,6 +25,8 @@ describe("Hermes persistence migration", () => {
 		expect(tableNames).toContain("hermes_session_admissions");
 		expect(tableNames).toContain("hermes_composer_drafts");
 		expect(tableNames).toContain("hermes_session_metadata");
+		expect(tableNames).toContain("hermes_tag_definitions");
+		expect(tableNames).toContain("hermes_session_tag_assignments");
 
 		const indexes = sqlite
 			.prepare("SELECT name FROM sqlite_master WHERE type = 'index'")
@@ -54,6 +56,8 @@ describe("Hermes persistence migration", () => {
 		expect(composerDraftColumns).not.toContain("credentials");
 
 		expect(indexes).toContain("hermes_session_metadata_connection_idx");
+		expect(indexes).toContain("hermes_tag_definitions_scope_key_unique");
+		expect(indexes).toContain("hermes_session_tag_assignments_session_idx");
 
 		const metadataColumns = sqlite
 			.prepare("PRAGMA table_info(hermes_session_metadata)")
@@ -139,6 +143,31 @@ describe("Hermes persistence migration", () => {
 			})
 		);
 
+		sqlite.close();
+	});
+
+	test("enforces the fixed reusable-tag palette in persisted definitions", () => {
+		const sqlite = new Database(":memory:");
+		const db = drizzle(sqlite, { schema });
+		migrate(db, { migrationsFolder: join(import.meta.dir, "../src/main/db/migrations") });
+		sqlite.exec(`
+			INSERT INTO cross_repo_orchestrators
+				(id, name, work_dir, agent_kind, sort_order, created_at, updated_at)
+				VALUES ('manager', 'Manager', '/manager', 'external', 0, 1, 1);
+			INSERT INTO hermes_connections
+				(id, label, base_url, profile_id, created_at, updated_at)
+				VALUES ('connection', 'Connection', 'https://example.test', 'work', 1, 1);
+		`);
+
+		expect(() =>
+			sqlite
+				.prepare(`
+					INSERT INTO hermes_tag_definitions
+						(id, manager_id, connection_id, profile_id, name, normalized_key, color, created_at, updated_at)
+						VALUES ('tag', 'manager', 'connection', 'work', 'Unsafe', 'unsafe', '#fff', 1, 1)
+				`)
+				.run()
+		).toThrow(/CHECK constraint failed/);
 		sqlite.close();
 	});
 
@@ -240,7 +269,7 @@ describe("Hermes persistence migration", () => {
 		`);
 
 		const migration = readFileSync(
-			join(import.meta.dir, "../src/main/db/migrations/0062_add_hermes_session_metadata.sql"),
+			join(import.meta.dir, "../src/main/db/migrations/0063_add_hermes_session_metadata.sql"),
 			"utf8"
 		).replaceAll("--> statement-breakpoint", "");
 		sqlite.exec(migration);

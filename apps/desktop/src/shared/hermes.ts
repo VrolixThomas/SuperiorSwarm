@@ -62,6 +62,30 @@ export interface HermesOriginProjection {
 	canReport: boolean;
 }
 
+export const HERMES_TAG_COLORS = [
+	"gray",
+	"blue",
+	"cyan",
+	"green",
+	"amber",
+	"orange",
+	"red",
+	"pink",
+	"purple",
+] as const;
+
+export type HermesTagColor = (typeof HERMES_TAG_COLORS)[number];
+
+export interface HermesTagDefinition {
+	id: string;
+	name: string;
+	normalizedKey: string;
+	color: HermesTagColor;
+	revision: number;
+	createdAt: number;
+	updatedAt: number;
+}
+
 /** Renderer-safe persisted session summary. `id` is always the durable Hermes ID. */
 export interface HermesSessionSummary {
 	id: string;
@@ -69,7 +93,7 @@ export interface HermesSessionSummary {
 	/** Current backend-generated title, retained even when title is a local rename. */
 	generatedTitle: string;
 	titleSource: "generated" | "custom";
-	tags: string[];
+	tags: HermesTagDefinition[];
 	metadataRevision: number;
 	preview: string;
 	profileId: string;

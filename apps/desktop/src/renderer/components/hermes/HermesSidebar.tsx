@@ -1,6 +1,7 @@
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
 	type HermesSessionSummary,
+	type HermesTagDefinition,
 	hermesSessionCompositeIdentityKey,
 	hermesSessionIdentityKey,
 } from "../../../shared/hermes";
@@ -151,7 +152,7 @@ export function HermesSidebar() {
 	});
 	function updateSessionMetadata(
 		variables: { connectionId: string; profileId: string; hermesSessionId: string },
-		metadata: { customTitle: string | null; tags: string[]; revision: number }
+		metadata: { customTitle: string | null; tags: HermesTagDefinition[]; revision: number }
 	) {
 		utils.hermes.catalog.setData({ connectionId: variables.connectionId }, (current) =>
 			current
@@ -179,15 +180,26 @@ export function HermesSidebar() {
 			void utils.hermes.catalog.invalidate({ connectionId: variables.connectionId });
 		},
 	});
-	const addSessionTag = trpc.hermes.addSessionTag.useMutation({
+	const assignTagDefinition = trpc.hermes.assignTagDefinition.useMutation({
 		onSuccess: (metadata, variables) => updateSessionMetadata(variables, metadata),
 		onError: (_error, variables) => {
 			void utils.hermes.catalog.invalidate({ connectionId: variables.connectionId });
 		},
 	});
-	const removeSessionTag = trpc.hermes.removeSessionTag.useMutation({
+	const unassignTagDefinition = trpc.hermes.unassignTagDefinition.useMutation({
 		onSuccess: (metadata, variables) => updateSessionMetadata(variables, metadata),
 		onError: (_error, variables) => {
+			void utils.hermes.catalog.invalidate({ connectionId: variables.connectionId });
+		},
+	});
+	const upsertTagDefinition = trpc.hermes.upsertTagDefinition.useMutation();
+	const updateTagDefinition = trpc.hermes.updateTagDefinition.useMutation({
+		onSuccess: (_definition, variables) => {
+			void utils.hermes.catalog.invalidate({ connectionId: variables.connectionId });
+		},
+	});
+	const deleteTagDefinition = trpc.hermes.deleteTagDefinition.useMutation({
+		onSuccess: (_result, variables) => {
 			void utils.hermes.catalog.invalidate({ connectionId: variables.connectionId });
 		},
 	});
@@ -665,8 +677,11 @@ export function HermesSidebar() {
 														setSessionArchived.isPending ||
 														deleteSession.isPending ||
 														setSessionTitle.isPending ||
-														addSessionTag.isPending ||
-														removeSessionTag.isPending
+														assignTagDefinition.isPending ||
+														unassignTagDefinition.isPending ||
+														upsertTagDefinition.isPending ||
+														updateTagDefinition.isPending ||
+														deleteTagDefinition.isPending
 													}
 													onSelect={() =>
 														connectionId &&
@@ -681,7 +696,7 @@ export function HermesSidebar() {
 													}
 													onDelete={() => mutateSessionDelete(session)}
 													onRename={async (title, expectedRevision) => {
-														if (!connectionId) return;
+														if (!connectionId) throw new Error("Connection is unavailable");
 														await setSessionTitle.mutateAsync({
 															connectionId,
 															profileId: session.profileId,
@@ -690,22 +705,62 @@ export function HermesSidebar() {
 															expectedRevision,
 														});
 													}}
-													onAddTag={async (tag) => {
-														if (!connectionId) return;
-														await addSessionTag.mutateAsync({
+													onListTagDefinitions={async (tagQuery) => {
+														if (!connectionId) throw new Error("Connection is unavailable");
+														return await utils.hermes.tagDefinitions.fetch({
 															connectionId,
 															profileId: session.profileId,
 															hermesSessionId: session.id,
-															tag,
+															query: tagQuery,
 														});
 													}}
-													onRemoveTag={async (tag) => {
-														if (!connectionId) return;
-														await removeSessionTag.mutateAsync({
+													onCreateTag={async (name, color) => {
+														if (!connectionId) throw new Error("Connection is unavailable");
+														const result = await upsertTagDefinition.mutateAsync({
 															connectionId,
 															profileId: session.profileId,
 															hermesSessionId: session.id,
-															tag,
+															name,
+															color,
+														});
+														return result.definition;
+													}}
+													onUpdateTag={async (definitionId, update) => {
+														if (!connectionId) throw new Error("Connection is unavailable");
+														return await updateTagDefinition.mutateAsync({
+															connectionId,
+															profileId: session.profileId,
+															hermesSessionId: session.id,
+															definitionId,
+															...update,
+														});
+													}}
+													onDeleteTag={async (definitionId, expectedRevision) => {
+														if (!connectionId) throw new Error("Connection is unavailable");
+														await deleteTagDefinition.mutateAsync({
+															connectionId,
+															profileId: session.profileId,
+															hermesSessionId: session.id,
+															definitionId,
+															expectedRevision,
+														});
+													}}
+													onAssignTag={async (definitionId) => {
+														if (!connectionId) throw new Error("Connection is unavailable");
+														await assignTagDefinition.mutateAsync({
+															connectionId,
+															profileId: session.profileId,
+															hermesSessionId: session.id,
+															definitionId,
+														});
+													}}
+													onUnassignTag={async (definitionId) => {
+														if (!connectionId) throw new Error("Connection is unavailable");
+														await unassignTagDefinition.mutateAsync({
+															connectionId,
+															profileId: session.profileId,
+															hermesSessionId: session.id,
+															definitionId,
 														});
 													}}
 													deleteDisabledReason={PERMANENT_DELETE_DISABLED_REASON}

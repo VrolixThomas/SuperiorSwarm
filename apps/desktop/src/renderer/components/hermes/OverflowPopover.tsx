@@ -37,19 +37,20 @@ export interface OverflowPopoverProps {
 	onOpenChange: (open: boolean) => void;
 	children: ReactNode;
 	panelClassName?: string;
+	panelWidth?: number;
 }
 
 function clamp(value: number, minimum: number, maximum: number): number {
 	return Math.min(Math.max(value, minimum), Math.max(minimum, maximum));
 }
 
-function initialOverflowPopoverPosition(): OverflowPopoverPosition {
-	const viewportWidth = typeof window === "undefined" ? PANEL_WIDTH : window.innerWidth;
+function initialOverflowPopoverPosition(panelWidth: number): OverflowPopoverPosition {
+	const viewportWidth = typeof window === "undefined" ? panelWidth : window.innerWidth;
 	const viewportHeight = typeof window === "undefined" ? 0 : window.innerHeight;
 	return {
 		left: VIEWPORT_MARGIN,
 		top: VIEWPORT_MARGIN,
-		width: Math.min(PANEL_WIDTH, Math.max(0, viewportWidth - VIEWPORT_MARGIN * 2)),
+		width: Math.min(panelWidth, Math.max(0, viewportWidth - VIEWPORT_MARGIN * 2)),
 		maxHeight: Math.max(0, viewportHeight - VIEWPORT_MARGIN * 2),
 	};
 }
@@ -70,9 +71,10 @@ function positionOverflowPopover(
 	panelRect: DOMRect,
 	panelScrollHeight: number,
 	viewportWidth: number,
-	viewportHeight: number
+	viewportHeight: number,
+	panelWidth: number
 ): OverflowPopoverPosition {
-	const width = Math.min(PANEL_WIDTH, Math.max(0, viewportWidth - VIEWPORT_MARGIN * 2));
+	const width = Math.min(panelWidth, Math.max(0, viewportWidth - VIEWPORT_MARGIN * 2));
 	const viewportMaxHeight = Math.max(0, viewportHeight - VIEWPORT_MARGIN * 2);
 	const measuredWidth = Math.min(panelRect.width || width, width);
 	const maximumLeft = viewportWidth - VIEWPORT_MARGIN - measuredWidth;
@@ -115,11 +117,12 @@ export function OverflowPopover({
 	onOpenChange,
 	children,
 	panelClassName = "",
+	panelWidth = PANEL_WIDTH,
 }: OverflowPopoverProps) {
 	const triggerRef = useRef<HTMLButtonElement>(null);
 	const panelRef = useRef<HTMLDialogElement>(null);
 	const panelId = useId();
-	const [position, setPosition] = useState(initialOverflowPopoverPosition);
+	const [position, setPosition] = useState(() => initialOverflowPopoverPosition(panelWidth));
 	const close = useCallback(() => onOpenChange(false), [onOpenChange]);
 	const closeAndRestoreFocus = useCallback(() => {
 		onOpenChange(false);
@@ -138,7 +141,8 @@ export function OverflowPopover({
 				panel.getBoundingClientRect(),
 				panel.scrollHeight,
 				window.innerWidth,
-				window.innerHeight
+				window.innerHeight,
+				panelWidth
 			);
 			setPosition((current) =>
 				current.left === next.left &&
@@ -167,7 +171,7 @@ export function OverflowPopover({
 			window.removeEventListener("resize", updatePosition);
 			window.removeEventListener("scroll", updatePosition, true);
 		};
-	}, [open]);
+	}, [open, panelWidth]);
 
 	useEffect(() => {
 		if (!open) return;

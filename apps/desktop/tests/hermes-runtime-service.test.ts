@@ -548,16 +548,32 @@ describe("HermesRuntimeService stock lifecycle", () => {
 				[" ready ", "customer report", "ready"],
 				1
 			)
-		).toMatchObject({ tags: ["ready", "customer report"], revision: 2 });
+		).toMatchObject({
+			tags: [
+				expect.objectContaining({ name: "ready" }),
+				expect.objectContaining({ name: "customer report" }),
+			],
+			revision: 2,
+		});
 		expect(
 			await service.addSessionTag(connectionId, "work", "stored-1", "follow up")
 		).toMatchObject({
-			tags: ["ready", "customer report", "follow up"],
+			tags: [
+				expect.objectContaining({ name: "ready" }),
+				expect.objectContaining({ name: "customer report" }),
+				expect.objectContaining({ name: "follow up" }),
+			],
 			revision: 3,
 		});
 		expect(
 			await service.removeSessionTag(connectionId, "work", "stored-1", " customer report ")
-		).toMatchObject({ tags: ["ready", "follow up"], revision: 4 });
+		).toMatchObject({
+			tags: [
+				expect.objectContaining({ name: "ready" }),
+				expect.objectContaining({ name: "follow up" }),
+			],
+			revision: 4,
+		});
 
 		rest.sessions = [
 			{
@@ -572,7 +588,10 @@ describe("HermesRuntimeService stock lifecycle", () => {
 			title: "Release plan",
 			generatedTitle: "Regenerated backend title",
 			titleSource: "custom",
-			tags: ["ready", "follow up"],
+			tags: [
+				expect.objectContaining({ name: "ready" }),
+				expect.objectContaining({ name: "follow up" }),
+			],
 			metadataRevision: 4,
 		});
 		await expect(
@@ -612,6 +631,52 @@ describe("HermesRuntimeService stock lifecycle", () => {
 			service.addSessionTag(connectionId, "work", "missing-session", "wrong session")
 		).rejects.toThrow("was not found");
 		expect(getDb().select().from(schema.hermesSessionMetadata).all()).toEqual([]);
+	});
+
+	test("manages reusable tag definitions and assignments through exact catalog identity", async () => {
+		admitAgentSession("stored-1");
+		rest.sessions = [
+			{ ...session("stored-1"), profileId: "work", source: "superiorswarm", origin: null },
+		];
+		await service.connect(connectionId);
+
+		const upserted = await service.upsertTagDefinition(
+			connectionId,
+			"work",
+			"stored-1",
+			"Review",
+			"amber"
+		);
+		expect(upserted).toEqual({
+			created: true,
+			definition: expect.objectContaining({ name: "Review", color: "amber", revision: 0 }),
+		});
+		expect(await service.listTagDefinitions(connectionId, "work", "stored-1", "rev")).toEqual([
+			expect.objectContaining({ id: upserted.definition.id }),
+		]);
+		expect(
+			await service.assignTagDefinition(connectionId, "work", "stored-1", upserted.definition.id)
+		).toMatchObject({
+			tags: [expect.objectContaining({ id: upserted.definition.id, color: "amber" })],
+			revision: 1,
+		});
+		expect(
+			await service.updateTagDefinition(connectionId, "work", "stored-1", upserted.definition.id, {
+				name: "Reviewed",
+				color: "green",
+				expectedRevision: 0,
+			})
+		).toMatchObject({ name: "Reviewed", color: "green", revision: 1 });
+		expect(
+			await service.unassignTagDefinition(connectionId, "work", "stored-1", upserted.definition.id)
+		).toMatchObject({ tags: [], revision: 2 });
+		expect(
+			await service.deleteTagDefinition(connectionId, "work", "stored-1", upserted.definition.id, 1)
+		).toEqual({ detachedSessionCount: 0 });
+
+		await expect(
+			service.listTagDefinitions(connectionId, "personal", "stored-1", "")
+		).rejects.toThrow("was not found");
 	});
 
 	test("uses profile plus durable ID for mutations when profiles collide", async () => {

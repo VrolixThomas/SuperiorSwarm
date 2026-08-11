@@ -36,6 +36,7 @@ import { setupHermesAttachmentIPC } from "./hermes/hermes-attachment-ipc";
 import { hermesRendererAttachmentUploads } from "./hermes/hermes-attachments";
 import { ensureHermesLocalConnection } from "./hermes/hermes-connections";
 import { hermesRuntimeService } from "./hermes/hermes-runtime-service";
+import { backfillLegacyHermesSessionTags } from "./hermes/hermes-session-metadata";
 import { isCloneable, setDebugMode } from "./ipc-safety";
 import { log, setupCrashHandlers } from "./logger";
 import { setupLspIPC } from "./lsp/ipc-handler";
@@ -173,6 +174,7 @@ app.whenReady().then(async () => {
 	// Initialize database early — tRPC handlers depend on it
 	try {
 		initializeDatabase();
+		backfillLegacyHermesSessionTags();
 		ensureHermesLocalConnection();
 		await backfillRemoteHosts();
 		ensureTelemetryState(getDb());
