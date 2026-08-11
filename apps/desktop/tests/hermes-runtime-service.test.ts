@@ -8,6 +8,7 @@ import { eq } from "drizzle-orm";
 import { _setDbForTesting, getDb, schema } from "../src/main/db";
 import { HermesAttachmentStore } from "../src/main/hermes/hermes-attachments";
 import {
+	deleteHermesConnection,
 	ensureHermesLocalConnection,
 	listHermesConnections,
 	saveHermesConnection,
@@ -17,13 +18,20 @@ import {
 	HermesLocalBackendManager,
 	type HermesLocalBackendRuntime,
 } from "../src/main/hermes/hermes-local-backend-manager";
-import { saveHermesOriginLink } from "../src/main/hermes/hermes-origin-links";
+import { getHermesOriginLink, saveHermesOriginLink } from "../src/main/hermes/hermes-origin-links";
 import {
 	listHermesOriginReports,
 	prepareHermesOriginReport,
 } from "../src/main/hermes/hermes-origin-reports";
-import type { HermesStockSessionDetail } from "../src/main/hermes/hermes-rest-client";
-import type { HermesRuntimeConnectionSettings } from "../src/main/hermes/hermes-runtime-client";
+import {
+	HermesRestClient,
+	type HermesStockSessionDetail,
+} from "../src/main/hermes/hermes-rest-client";
+import {
+	HermesRuntimeClient,
+	type HermesRuntimeConnectionSettings,
+	type HermesSocket,
+} from "../src/main/hermes/hermes-runtime-client";
 import type { HermesRestClientLike } from "../src/main/hermes/hermes-runtime-service";
 import {
 	type HermesRuntimeClientLike,
@@ -114,6 +122,60 @@ class FakeRuntimeClient implements HermesRuntimeClientLike {
 			receivedAt: Date.now(),
 			...event,
 		});
+	}
+}
+
+type RuntimeSocketListener = (event: { data?: unknown }) => void;
+
+class ServiceRuntimeSocket implements HermesSocket {
+	readonly listeners = new Map<string, Set<RuntimeSocketListener>>();
+	readyState = 0;
+
+	constructor(
+		private readonly onSend: (
+			socket: ServiceRuntimeSocket,
+			request: { id: string; method: string; params: Record<string, unknown> }
+		) => void
+	) {}
+
+	addEventListener(type: string, listener: RuntimeSocketListener): void {
+		const listeners = this.listeners.get(type) ?? new Set();
+		listeners.add(listener);
+		this.listeners.set(type, listeners);
+	}
+
+	removeEventListener(type: string, listener: RuntimeSocketListener): void {
+		this.listeners.get(type)?.delete(listener);
+	}
+
+	send(data: string): void {
+		this.onSend(
+			this,
+			JSON.parse(data) as {
+				id: string;
+				method: string;
+				params: Record<string, unknown>;
+			}
+		);
+	}
+
+	close(): void {
+		if (this.readyState >= 2) return;
+		this.readyState = 3;
+		this.emit("close", {});
+	}
+
+	open(): void {
+		this.readyState = 1;
+		this.emit("open", {});
+	}
+
+	message(value: unknown): void {
+		this.emit("message", { data: JSON.stringify(value) });
+	}
+
+	private emit(type: string, event: { data?: unknown }): void {
+		for (const listener of this.listeners.get(type) ?? []) listener(event);
 	}
 }
 
@@ -259,6 +321,7 @@ class FakeRestClient implements HermesRestClientLike {
 
 class FakeSendService {
 	available = true;
+	response: Promise<{ providerMessageId: string | null }> | null = null;
 	sends: Array<{
 		profileId: string;
 		target: { channelId: string; threadId: string };
@@ -275,7 +338,7 @@ class FakeSendService {
 		content: string;
 	}): Promise<{ providerMessageId: string | null }> {
 		this.sends.push(input);
-		return Promise.resolve({ providerMessageId: "provider-1" });
+		return this.response ?? Promise.resolve({ providerMessageId: "provider-1" });
 	}
 }
 
@@ -336,6 +399,31 @@ function historyMessage(
 		toolName: null,
 		workspaceArtifacts: [],
 		...overrides,
+	};
+}
+
+function compressedHistory(
+	parentDurableSessionId: string,
+	childDurableSessionId: string,
+	messages: HermesSessionHistory["messages"] = []
+): HermesSessionHistory & {
+	compressionLineage: {
+		kind: "compression";
+		parentDurableSessionId: string;
+		childDurableSessionId: string;
+		verifiedBy: "durable-transcript";
+	};
+} {
+	return {
+		durableSessionId: childDurableSessionId,
+		view: "durable",
+		messages,
+		compressionLineage: {
+			kind: "compression",
+			parentDurableSessionId,
+			childDurableSessionId,
+			verifiedBy: "durable-transcript",
+		},
 	};
 }
 
@@ -2061,10 +2149,9 @@ describe("HermesRuntimeService stock lifecycle", () => {
 			})
 			.run();
 		rest.sessions = [session("session-tip")];
-		rest.histories.set("session-tip", {
-			durableSessionId: "session-root",
-			view: "durable",
-			messages: [
+		rest.histories.set(
+			"session-tip",
+			compressedHistory("session-tip", "session-root", [
 				historyMessage("artifact-message", {
 					workspaceArtifacts: [
 						{
@@ -2076,8 +2163,8 @@ describe("HermesRuntimeService stock lifecycle", () => {
 						},
 					],
 				}),
-			],
-		});
+			])
+		);
 		linkHermesWorkspace({
 			connectionId,
 			profileId: "work",
@@ -2120,6 +2207,233 @@ describe("HermesRuntimeService stock lifecycle", () => {
 				.where(eq(schema.hermesSessionWorkspaces.connectionId, connectionId))
 				.all()
 		).toHaveLength(2);
+	});
+
+	test("projects only a verified compression child and preserves scoped admission ownership", async () => {
+		const now = new Date();
+		getDb()
+			.insert(schema.crossRepoOrchestrators)
+			.values({
+				id: "other-lineage-manager",
+				name: "Other lineage manager",
+				workDir: "/tmp/other-lineage-manager",
+				agentKind: "external",
+				status: "idle",
+				sortOrder: 1,
+				kind: "external",
+				tokenHash: "9".repeat(64),
+				accessScope: "all",
+				createdAt: now,
+				updatedAt: now,
+			})
+			.run();
+		for (const [managerId, profileId, reason] of [
+			[defaultManagerId, "work", "handover"],
+			[defaultManagerId, "personal", "mcp"],
+			["other-lineage-manager", "work", "mcp"],
+		] as const) {
+			admitHermesSession({
+				managerId,
+				metadata: {
+					schemaVersion: 1,
+					durableSessionId: "compression-parent",
+					profileId,
+					sourcePlatform: "slack",
+					isCron: false,
+				},
+				reason,
+			});
+		}
+		const otherConnectionId = saveHermesConnection(
+			{
+				label: "Other connection",
+				baseUrl: "http://127.0.0.1:9120",
+				profileId: "work",
+				token: "other-secret",
+			},
+			vault
+		).id;
+		for (const [linkedConnectionId, profileId] of [
+			[connectionId, "work"],
+			[connectionId, "personal"],
+			[otherConnectionId, "work"],
+		] as const) {
+			linkHermesWorkspace({
+				connectionId: linkedConnectionId,
+				profileId,
+				hermesSessionId: "compression-parent",
+				workspaceId: "lineage-workspace",
+				source: "manual",
+			});
+		}
+		for (const [linkedConnectionId, profileId, suffix] of [
+			[connectionId, "work", "owned"],
+			[connectionId, "personal", "personal"],
+			[otherConnectionId, "work", "other"],
+		] as const) {
+			saveHermesOriginLink({
+				connectionId: linkedConnectionId,
+				profileId,
+				hermesSessionId: "compression-parent",
+				originFingerprint: `origin-${suffix}`,
+				openUrl: `https://workspace.slack.com/archives/C12345/p123456789000000${suffix.length}`,
+			});
+			prepareHermesOriginReport({
+				connectionId: linkedConnectionId,
+				profileId,
+				hermesSessionId: "compression-parent",
+				messageId: "lineage-message",
+				content: "Lineage report",
+				destinationFingerprint: `destination-${suffix}`,
+			});
+		}
+		getDb()
+			.insert(schema.sessionState)
+			.values({
+				key: "selectedHermesSession",
+				value: JSON.stringify({
+					connectionId,
+					profileId: "work",
+					sessionId: "compression-parent",
+				}),
+			})
+			.run();
+		const parent = {
+			...session("compression-parent"),
+			title: "Shared title",
+			source: "slack",
+		};
+		const child = { ...parent, id: "compression-child" };
+		const unrelatedDelegate = { ...parent, id: "unrelated-delegate" };
+		rest.sessions = [parent, child, unrelatedDelegate];
+		rest.histories.set(
+			"compression-parent",
+			compressedHistory("compression-parent", "compression-child")
+		);
+		await service.connect(connectionId);
+
+		const history = await service.history(connectionId, "compression-parent", "work");
+		const catalog = await service.catalog(connectionId);
+
+		expect(history.durableSessionId).toBe("compression-child");
+		expect(catalog.sessions.map((candidate) => candidate.id)).toEqual(["compression-child"]);
+		expect(listHermesSessionAdmissions(defaultManagerId)).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					profileId: "work",
+					durableSessionId: "compression-child",
+					reason: "handover",
+					sourcePlatform: "slack",
+				}),
+				expect.objectContaining({
+					profileId: "personal",
+					durableSessionId: "compression-parent",
+					reason: "mcp",
+				}),
+			])
+		);
+		expect(listHermesSessionAdmissions(defaultManagerId)).not.toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({ profileId: "work", durableSessionId: "compression-parent" }),
+				expect.objectContaining({ durableSessionId: "unrelated-delegate" }),
+			])
+		);
+		expect(listHermesSessionAdmissions("other-lineage-manager")).toEqual([
+			expect.objectContaining({
+				profileId: "work",
+				durableSessionId: "compression-parent",
+				reason: "mcp",
+			}),
+		]);
+		expect(listHermesWorkspaceLinks(connectionId, "work", "compression-child")).toEqual([
+			expect.objectContaining({ workspaceId: "lineage-workspace" }),
+		]);
+		expect(listHermesWorkspaceLinks(connectionId, "personal", "compression-parent")).toHaveLength(
+			1
+		);
+		expect(listHermesWorkspaceLinks(otherConnectionId, "work", "compression-parent")).toHaveLength(
+			1
+		);
+		expect(
+			getHermesOriginLink({
+				connectionId,
+				profileId: "work",
+				hermesSessionId: "compression-child",
+				originFingerprint: "origin-owned",
+			})
+		).toContain("/archives/C12345/");
+		expect(
+			getHermesOriginLink({
+				connectionId,
+				profileId: "work",
+				hermesSessionId: "compression-parent",
+				originFingerprint: "origin-owned",
+			})
+		).toBeNull();
+		expect(
+			getHermesOriginLink({
+				connectionId,
+				profileId: "personal",
+				hermesSessionId: "compression-parent",
+				originFingerprint: "origin-personal",
+			})
+		).toContain("/archives/C12345/");
+		expect(
+			getHermesOriginLink({
+				connectionId: otherConnectionId,
+				profileId: "work",
+				hermesSessionId: "compression-parent",
+				originFingerprint: "origin-other",
+			})
+		).toContain("/archives/C12345/");
+		expect(listHermesOriginReports(connectionId, "work", "compression-child")).toHaveLength(1);
+		expect(listHermesOriginReports(connectionId, "work", "compression-parent")).toEqual([]);
+		expect(listHermesOriginReports(connectionId, "personal", "compression-parent")).toHaveLength(1);
+		expect(listHermesOriginReports(otherConnectionId, "work", "compression-parent")).toHaveLength(
+			1
+		);
+		expect(
+			getDb()
+				.select({ value: schema.sessionState.value })
+				.from(schema.sessionState)
+				.where(eq(schema.sessionState.key, "selectedHermesSession"))
+				.get()?.value
+		).toBe(
+			JSON.stringify({
+				connectionId,
+				profileId: "work",
+				sessionId: "compression-child",
+			})
+		);
+	});
+
+	test("rejects an unverified or mismatched durable identity without admitting title or source matches", async () => {
+		admitAgentSession("admitted-parent");
+		rest.sessions = [
+			{ ...session("admitted-parent"), title: "Same", source: "superiorswarm", origin: null },
+			{ ...session("lookalike-child"), title: "Same", source: "superiorswarm", origin: null },
+		];
+		rest.histories.set("admitted-parent", {
+			durableSessionId: "lookalike-child",
+			view: "durable",
+			messages: [],
+		});
+		await service.connect(connectionId);
+
+		await expect(service.history(connectionId, "admitted-parent", "work")).rejects.toThrow(
+			"verified compression lineage"
+		);
+		expect(listHermesSessionAdmissions(defaultManagerId)).toEqual([
+			expect.objectContaining({ durableSessionId: "admitted-parent" }),
+		]);
+
+		rest.histories.set("admitted-parent", compressedHistory("different-parent", "lookalike-child"));
+		await expect(service.history(connectionId, "admitted-parent", "work")).rejects.toThrow(
+			"verified compression lineage"
+		);
+		expect((await service.catalog(connectionId)).sessions.map((candidate) => candidate.id)).toEqual(
+			["admitted-parent"]
+		);
 	});
 
 	test("resumes, attaches local image/PDF/file through stock RPC, then submits resolved context", async () => {
@@ -2263,6 +2577,353 @@ describe("HermesRuntimeService stock lifecycle", () => {
 		).toEqual(["First", "Second", "Third"]);
 	});
 
+	test("keeps an interrupted turn active until its terminal event drains the continuation", async () => {
+		client.responses.set("session.resume", [
+			{ session_id: "runtime-interrupt", session_key: "stored-1", profile: "work" },
+		]);
+		client.responses.set("prompt.submit", [
+			{ status: "streaming", turn_id: "turn-current" },
+			{ status: "streaming", turn_id: "turn-continuation" },
+		]);
+		await service.connect(connectionId);
+		await service.resume(connectionId, "stored-1", "work");
+		await service.submit(connectionId, "stored-1", "Current", [], "work");
+		await service.submitFollowUp(connectionId, "stored-1", "Continue", [], "work");
+
+		await service.interrupt(connectionId, "stored-1", "work");
+		client.emit({
+			type: "turn.cancelled",
+			runtimeSessionId: "runtime-interrupt",
+			turnId: "turn-current",
+		});
+
+		await waitFor(
+			() => client.requests.filter((request) => request.method === "prompt.submit").length === 2,
+			"queued continuation did not drain after the interrupted turn ended"
+		);
+		expect(
+			client.requests
+				.filter((request) => request.method === "prompt.submit")
+				.map((request) => request.params["text"])
+		).toEqual(["Current", "Continue"]);
+	});
+
+	test("migrates a compaction-time continuation queue FIFO and drains every item exactly once", async () => {
+		client.responses.set("session.resume", [
+			{ session_id: "runtime-compaction", session_key: "queue-parent", profile: "work" },
+		]);
+		client.responses.set("prompt.submit", [
+			{ status: "streaming", turn_id: "turn-current" },
+			{ status: "streaming", turn_id: "turn-next-a" },
+			{ status: "streaming", turn_id: "turn-next-b" },
+		]);
+		rest.histories.set("queue-parent", {
+			durableSessionId: "queue-parent",
+			view: "durable",
+			messages: [],
+		});
+		await service.connect(connectionId);
+		await service.resume(connectionId, "queue-parent", "work");
+		await service.submit(connectionId, "queue-parent", "Current", [], "work");
+		await service.submitFollowUp(connectionId, "queue-parent", "Next A", [], "work");
+		await service.submitFollowUp(connectionId, "queue-parent", "Next B", [], "work");
+		rest.histories.set("queue-parent", compressedHistory("queue-parent", "queue-child"));
+
+		await service.history(connectionId, "queue-parent", "work");
+
+		expect(service.followUps(connectionId, "queue-child", "work").map((item) => item.text)).toEqual(
+			["Next A", "Next B"]
+		);
+		expect(
+			service.followUps(connectionId, "queue-parent", "work").map((item) => item.text)
+		).toEqual(["Next A", "Next B"]);
+		client.emit({
+			type: "turn.completed",
+			runtimeSessionId: "runtime-compaction",
+			turnId: "turn-current",
+		});
+		await waitFor(
+			() => client.requests.filter((request) => request.method === "prompt.submit").length === 2,
+			"first canonical continuation did not drain"
+		);
+		client.emit({
+			type: "turn.completed",
+			runtimeSessionId: "runtime-compaction",
+			turnId: "turn-next-a",
+		});
+		await waitFor(
+			() => client.requests.filter((request) => request.method === "prompt.submit").length === 3,
+			"second canonical continuation did not drain"
+		);
+		expect(
+			client.requests
+				.filter((request) => request.method === "prompt.submit")
+				.map((request) => request.params["text"])
+		).toEqual(["Current", "Next A", "Next B"]);
+	});
+
+	test("cancels a migrated queued continuation through either canonical identity", async () => {
+		client.responses.set("session.resume", [
+			{ session_id: "runtime-cancel-compaction", session_key: "cancel-parent", profile: "work" },
+		]);
+		client.responses.set("prompt.submit", [{ status: "streaming", turn_id: "turn-current" }]);
+		rest.histories.set("cancel-parent", {
+			durableSessionId: "cancel-parent",
+			view: "durable",
+			messages: [],
+		});
+		await service.connect(connectionId);
+		await service.resume(connectionId, "cancel-parent", "work");
+		await service.submit(connectionId, "cancel-parent", "Current", [], "work");
+		const queued = await service.submitFollowUp(
+			connectionId,
+			"cancel-parent",
+			"Cancel after compaction",
+			[],
+			"work"
+		);
+		rest.histories.set("cancel-parent", compressedHistory("cancel-parent", "cancel-child"));
+		await service.history(connectionId, "cancel-parent", "work");
+
+		expect(
+			service.cancelFollowUp(connectionId, "cancel-child", queued.followUp.id, "work")
+		).toEqual({ ok: true });
+		client.emit({
+			type: "turn.completed",
+			runtimeSessionId: "runtime-cancel-compaction",
+			turnId: "turn-current",
+		});
+		await Bun.sleep(5);
+		expect(client.requests.filter((request) => request.method === "prompt.submit")).toHaveLength(1);
+		expect(service.followUps(connectionId, "cancel-parent", "work")).toEqual([]);
+	});
+
+	test("ignores stale terminals from a retired physical parent binding after compression", async () => {
+		client.responses.set("session.resume", [
+			{ session_id: "runtime-stale-parent", session_key: "stale-parent", profile: "work" },
+			{ session_id: "runtime-canonical-child", session_key: "stale-child", profile: "work" },
+		]);
+		client.responses.set("prompt.submit", [
+			{ status: "streaming", turn_id: "turn-current" },
+			{ status: "streaming", turn_id: "turn-next" },
+		]);
+		rest.histories.set("stale-parent", compressedHistory("stale-parent", "stale-child"));
+		await service.connect(connectionId);
+		await service.resume(connectionId, "stale-parent", "work");
+		await service.resume(connectionId, "stale-child", "work");
+		await service.submit(connectionId, "stale-child", "Current", [], "work");
+		await service.submitFollowUp(connectionId, "stale-child", "Next", [], "work");
+
+		await service.history(connectionId, "stale-parent", "work");
+		client.emit({
+			type: "turn.completed",
+			runtimeSessionId: "runtime-stale-parent",
+			turnId: "turn-current",
+		});
+		await Bun.sleep(5);
+		expect(client.requests.filter((request) => request.method === "prompt.submit")).toHaveLength(1);
+
+		client.emit({
+			type: "turn.completed",
+			runtimeSessionId: "runtime-canonical-child",
+			turnId: "turn-current",
+		});
+		await waitFor(
+			() => client.requests.filter((request) => request.method === "prompt.submit").length === 2,
+			"canonical child terminal did not drain exactly once"
+		);
+		expect(
+			client.requests
+				.filter((request) => request.method === "prompt.submit")
+				.map((request) => request.params["text"])
+		).toEqual(["Current", "Next"]);
+	});
+
+	test("reconciles a missed terminal from canonical history and suppresses its late live duplicate", async () => {
+		client.responses.set("session.resume", [
+			{ session_id: "runtime-history-terminal", session_key: "stored-1", profile: "work" },
+		]);
+		client.responses.set("prompt.submit", [
+			{ status: "streaming", turn_id: "turn-history" },
+			{ status: "streaming", turn_id: "turn-after-history" },
+		]);
+		await service.connect(connectionId);
+		await service.resume(connectionId, "stored-1", "work");
+		await service.submit(connectionId, "stored-1", "Current", [], "work");
+		await service.submitFollowUp(connectionId, "stored-1", "After history", [], "work");
+		const normalizedHistory = await new HermesRestClient({
+			baseUrl: "http://127.0.0.1:9119",
+			profileId: "work",
+			token: "test-token",
+			fetchImpl: async () =>
+				new Response(
+					JSON.stringify({
+						view: "durable",
+						session_id: "stored-1",
+						messages: [
+							{
+								id: "canonical-user-history",
+								role: "user",
+								turn_id: "turn-history",
+								content: "Current",
+							},
+							{
+								id: "canonical-assistant-history",
+								role: "assistant",
+								turn_id: "turn-history",
+								content: "Canonical answer",
+							},
+						],
+					}),
+					{ status: 200, headers: { "content-type": "application/json" } }
+				),
+		}).getTranscript("stored-1", "work");
+		expect(normalizedHistory.messages.at(-1)?.status).toBeNull();
+		rest.histories.set("stored-1", normalizedHistory);
+
+		await service.history(connectionId, "stored-1", "work");
+		await waitFor(
+			() => client.requests.filter((request) => request.method === "prompt.submit").length === 2,
+			"canonical terminal did not drain the continuation"
+		);
+		client.emit({
+			type: "message.complete",
+			runtimeSessionId: "runtime-history-terminal",
+			turnId: "turn-history",
+			text: "Canonical answer",
+		});
+		await Bun.sleep(5);
+
+		expect(client.requests.filter((request) => request.method === "prompt.submit")).toHaveLength(2);
+		expect(
+			service
+				.events(connectionId, 0)
+				.events.filter(
+					(entry) =>
+						entry.event.type === "message.complete" && entry.event.turnId === "turn-history"
+				)
+		).toEqual([]);
+	});
+
+	test("does not infer a statusless terminal from compaction, tool, or conflicting live evidence", async () => {
+		client.responses.set("session.resume", [
+			{ session_id: "runtime-history-guard", session_key: "stored-1", profile: "work" },
+		]);
+		client.responses.set("prompt.submit", [
+			{ status: "streaming", turn_id: "turn-history-guard" },
+			{ status: "streaming", turn_id: "turn-after-guard" },
+		]);
+		await service.connect(connectionId);
+		await service.resume(connectionId, "stored-1", "work");
+		await service.submit(connectionId, "stored-1", "Current", [], "work");
+		await service.submitFollowUp(connectionId, "stored-1", "After guarded history", [], "work");
+
+		const visibleTerminal = historyMessage("guarded-visible", {
+			turnId: "turn-history-guard",
+			text: "Canonical answer",
+			status: null,
+		});
+		rest.histories.set("stored-1", {
+			durableSessionId: "stored-1",
+			view: "durable",
+			messages: [
+				historyMessage("guarded-compaction", {
+					turnId: "turn-history-guard",
+					text: "Compacted context",
+					status: null,
+					displayKind: null,
+					compactionSummaryType: "standalone",
+				}),
+				historyMessage("guarded-tool", {
+					turnId: "turn-history-guard",
+					text: "Tool output",
+					status: null,
+					toolName: "terminal",
+				}),
+			],
+		});
+		await service.history(connectionId, "stored-1", "work");
+		expect(client.requests.filter((request) => request.method === "prompt.submit")).toHaveLength(1);
+
+		rest.histories.set("stored-1", {
+			durableSessionId: "stored-1",
+			view: "durable",
+			messages: [
+				visibleTerminal,
+				historyMessage("guarded-streaming", {
+					turnId: "turn-history-guard",
+					text: "Still streaming",
+					status: "streaming",
+				}),
+			],
+		});
+		await service.history(connectionId, "stored-1", "work");
+		expect(client.requests.filter((request) => request.method === "prompt.submit")).toHaveLength(1);
+
+		rest.histories.set("stored-1", {
+			durableSessionId: "stored-1",
+			view: "durable",
+			messages: [visibleTerminal],
+		});
+		await service.history(connectionId, "stored-1", "work");
+		await waitFor(
+			() => client.requests.filter((request) => request.method === "prompt.submit").length === 2,
+			"unconflicted statusless terminal did not drain"
+		);
+	});
+
+	test("requires matching turn identity for history terminals and preserves identical-text turns", async () => {
+		client.responses.set("session.resume", [
+			{ session_id: "runtime-identical-turns", session_key: "stored-1", profile: "work" },
+		]);
+		client.responses.set("prompt.submit", [
+			{ status: "streaming", turn_id: "turn-same-a" },
+			{ status: "streaming", turn_id: "turn-same-b" },
+		]);
+		await service.connect(connectionId);
+		await service.resume(connectionId, "stored-1", "work");
+		await service.submit(connectionId, "stored-1", "Same", [], "work");
+		await service.submitFollowUp(connectionId, "stored-1", "Same", [], "work");
+		client.emit({
+			type: "turn.completed",
+			runtimeSessionId: "runtime-identical-turns",
+			turnId: "turn-same-a",
+		});
+		await waitFor(
+			() => service.followUps(connectionId, "stored-1", "work")[0]?.status === "accepted",
+			"second identical turn was not accepted"
+		);
+		rest.histories.set("stored-1", {
+			durableSessionId: "stored-1",
+			view: "durable",
+			messages: [
+				historyMessage("same-user-a", { role: "user", turnId: "turn-same-a", text: "Same" }),
+				historyMessage("same-assistant-a", { turnId: "turn-same-a", text: "Same" }),
+				historyMessage("same-assistant-missing", { turnId: null, text: "Same" }),
+				historyMessage("same-assistant-mismatch", { turnId: "turn-other", text: "Same" }),
+			],
+		});
+
+		await service.history(connectionId, "stored-1", "work");
+		expect(service.followUps(connectionId, "stored-1", "work")).toEqual([
+			expect.objectContaining({ text: "Same", status: "accepted" }),
+		]);
+		expect(client.requests.filter((request) => request.method === "prompt.submit")).toHaveLength(2);
+
+		rest.histories.set("stored-1", {
+			durableSessionId: "stored-1",
+			view: "durable",
+			messages: [
+				historyMessage("same-user-a", { role: "user", turnId: "turn-same-a", text: "Same" }),
+				historyMessage("same-assistant-a", { turnId: "turn-same-a", text: "Same" }),
+				historyMessage("same-user-b", { role: "user", turnId: "turn-same-b", text: "Same" }),
+				historyMessage("same-assistant-b", { turnId: "turn-same-b", text: "Same" }),
+			],
+		});
+		await service.history(connectionId, "stored-1", "work");
+		expect(service.followUps(connectionId, "stored-1", "work")).toEqual([]);
+	});
+
 	test("does not let null or delayed terminal identities settle a newer generation or double-drain", async () => {
 		client.responses.set("session.resume", [
 			{ session_id: "runtime-terminal-guard", session_key: "stored-1", profile: "work" },
@@ -2355,6 +3016,204 @@ describe("HermesRuntimeService stock lifecycle", () => {
 		]);
 		expect(client.requests.filter((request) => request.method === "prompt.submit")).toHaveLength(2);
 		uncertain.resolve({ status: "streaming", turn_id: "turn-uncertain" });
+	});
+
+	test("blocks replay when the real runtime socket closes after prompt delivery becomes uncertain", async () => {
+		const sockets: ServiceRuntimeSocket[] = [];
+		let promptCount = 0;
+		const realClient = new HermesRuntimeClient({
+			socketFactory: () => {
+				const socket = new ServiceRuntimeSocket((current, request) => {
+					if (request.method === "session.resume") {
+						queueMicrotask(() =>
+							current.message({
+								jsonrpc: "2.0",
+								id: request.id,
+								result: {
+									session_id: `runtime-transport-${sockets.indexOf(current) + 1}`,
+									session_key: "stored-1",
+									profile: "work",
+									running: false,
+									status: "idle",
+								},
+							})
+						);
+						return;
+					}
+					if (request.method !== "prompt.submit") return;
+					promptCount++;
+					if (promptCount === 2) {
+						queueMicrotask(() => current.close());
+						return;
+					}
+					queueMicrotask(() =>
+						current.message({
+							jsonrpc: "2.0",
+							id: request.id,
+							result: {
+								status: "streaming",
+								turn_id: promptCount === 1 ? "turn-current" : "turn-duplicate",
+							},
+						})
+					);
+				});
+				sockets.push(socket);
+				queueMicrotask(() => socket.open());
+				return socket;
+			},
+			reconnectBaseMs: 1,
+			reconnectMaxMs: 1,
+		});
+		const realService = new HermesRuntimeService({
+			attachmentStore: attachments,
+			clientFactory: () => realClient,
+			restClientFactory: () => rest,
+			sendService: sender,
+			tokenVault: vault,
+			loopbackTokenResolver: async () => "secret",
+			externalManagerIdResolver: () => defaultManagerId,
+		});
+		try {
+			await realService.connect(connectionId);
+			await realService.resume(connectionId, "stored-1", "work");
+			await realService.submit(connectionId, "stored-1", "Current", [], "work");
+			await realService.submitFollowUp(connectionId, "stored-1", "Uncertain", [], "work");
+			sockets[0]?.message({
+				jsonrpc: "2.0",
+				method: "event",
+				params: {
+					type: "turn.completed",
+					session_id: "runtime-transport-1",
+					payload: { turn_id: "turn-current" },
+				},
+			});
+
+			await waitFor(() => promptCount === 2, "uncertain prompt was not put on the socket");
+			await waitFor(
+				() => realService.followUps(connectionId, "stored-1", "work")[0]?.status === "failed",
+				"socket-close delivery was not retained for reconciliation"
+			);
+			const [failed] = realService.followUps(connectionId, "stored-1", "work");
+			await expect(
+				realService.retryFollowUp(connectionId, "stored-1", failed?.id ?? "", "work")
+			).rejects.toThrow("Reconnect");
+			expect(() =>
+				realService.cancelFollowUp(connectionId, "stored-1", failed?.id ?? "", "work")
+			).toThrow("confirm");
+			await expect(
+				realService.submitFollowUp(connectionId, "stored-1", "Uncertain", [], "work")
+			).rejects.toThrow("Reconnect");
+			expect(promptCount).toBe(2);
+		} finally {
+			realService.shutdown();
+		}
+	});
+
+	test("retries safely when the real runtime socket closes before prompt submission", async () => {
+		const fixture = await attachmentFixture();
+		const [selected] = await attachments.registerPaths([fixture.imagePath]);
+		const sockets: ServiceRuntimeSocket[] = [];
+		let attachmentCount = 0;
+		let promptCount = 0;
+		const realClient = new HermesRuntimeClient({
+			socketFactory: () => {
+				const socket = new ServiceRuntimeSocket((current, request) => {
+					if (request.method === "session.resume") {
+						queueMicrotask(() =>
+							current.message({
+								jsonrpc: "2.0",
+								id: request.id,
+								result: {
+									session_id: `runtime-attachment-${sockets.indexOf(current) + 1}`,
+									session_key: "stored-1",
+									profile: "work",
+									running: false,
+									status: "idle",
+								},
+							})
+						);
+						return;
+					}
+					if (request.method === "image.attach") {
+						attachmentCount++;
+						if (attachmentCount === 1) {
+							queueMicrotask(() => current.close());
+							return;
+						}
+						queueMicrotask(() =>
+							current.message({
+								jsonrpc: "2.0",
+								id: request.id,
+								result: { attached: true, path: "screen.png" },
+							})
+						);
+						return;
+					}
+					if (request.method !== "prompt.submit") return;
+					promptCount++;
+					queueMicrotask(() =>
+						current.message({
+							jsonrpc: "2.0",
+							id: request.id,
+							result: {
+								status: "streaming",
+								turn_id: promptCount === 1 ? "turn-current" : "turn-retried",
+							},
+						})
+					);
+				});
+				sockets.push(socket);
+				queueMicrotask(() => socket.open());
+				return socket;
+			},
+			reconnectBaseMs: 1,
+			reconnectMaxMs: 1,
+		});
+		const realService = new HermesRuntimeService({
+			attachmentStore: attachments,
+			clientFactory: () => realClient,
+			restClientFactory: () => rest,
+			sendService: sender,
+			tokenVault: vault,
+			loopbackTokenResolver: async () => "secret",
+			externalManagerIdResolver: () => defaultManagerId,
+		});
+		try {
+			await realService.connect(connectionId);
+			await realService.resume(connectionId, "stored-1", "work");
+			await realService.submit(connectionId, "stored-1", "Current", [], "work");
+			const queued = await realService.submitFollowUp(
+				connectionId,
+				"stored-1",
+				"Retry after attachment transport",
+				[selected?.handle ?? ""],
+				"work"
+			);
+			sockets[0]?.message({
+				jsonrpc: "2.0",
+				method: "event",
+				params: {
+					type: "turn.completed",
+					session_id: "runtime-attachment-1",
+					payload: { turn_id: "turn-current" },
+				},
+			});
+			await waitFor(
+				() => realService.followUps(connectionId, "stored-1", "work")[0]?.status === "failed",
+				"attachment transport failure was not retained"
+			);
+			const [failed] = realService.followUps(connectionId, "stored-1", "work");
+			expect(failed?.error).toContain("Could not attach");
+			expect(failed?.error).not.toContain("confirm");
+			await waitFor(() => sockets.length >= 2, "runtime client did not reconnect");
+			await expect(
+				realService.retryFollowUp(connectionId, "stored-1", queued.followUp.id, "work")
+			).resolves.toMatchObject({ ok: true });
+			expect(attachmentCount).toBe(2);
+			expect(promptCount).toBe(2);
+		} finally {
+			realService.shutdown();
+		}
 	});
 
 	test("reconciles an uncertain completed follow-up from authoritative transcript identity", async () => {
@@ -2893,7 +3752,11 @@ describe("HermesRuntimeService stock lifecycle", () => {
 			durableSessionId: "stored-1",
 			view: "durable",
 			messages: [
-				historyMessage("canonical-accepted", { role: "user", text: "Accepted follow-up" }),
+				historyMessage("canonical-accepted", {
+					role: "user",
+					turnId: "turn-accepted",
+					text: "Accepted follow-up",
+				}),
 			],
 		});
 		await service.history(connectionId, "stored-1", "work");
@@ -3792,5 +4655,334 @@ describe("HermesRuntimeService stock lifecycle", () => {
 		});
 		expect(duplicate.status).toBe("duplicate-suppressed");
 		expect(sender.sends).toHaveLength(1);
+
+		const canonicalMessages = rest.histories.get("stored-1")?.messages ?? [];
+		rest.details.set("compression-child", {
+			...(rest.details.get("stored-1") as HermesStockSessionDetail),
+			durableSessionId: "compression-child",
+		});
+		rest.histories.set(
+			"stored-1",
+			compressedHistory("stored-1", "compression-child", canonicalMessages)
+		);
+		rest.histories.set("compression-child", {
+			durableSessionId: "compression-child",
+			view: "durable",
+			messages: canonicalMessages,
+		});
+		await service.history(connectionId, "stored-1", "work");
+
+		const compressedDuplicate = await service.reportToOrigin({
+			connectionId,
+			hermesSessionId: "compression-child",
+			profileId: "work",
+			messageId: "assistant-1",
+			explicitRetry: false,
+		});
+		expect(compressedDuplicate.status).toBe("duplicate-suppressed");
+		expect(sender.sends).toHaveLength(1);
+	});
+
+	test("finishes an in-flight origin report on the physical compression child", async () => {
+		const sendGate = new Deferred<{ providerMessageId: string | null }>();
+		sender.response = sendGate.promise;
+		const detail: HermesStockSessionDetail = {
+			durableSessionId: "report-parent",
+			profileId: "work",
+			source: "slack",
+			displayName: "Support thread",
+			sessionKey: null,
+			chatId: "C12345",
+			chatType: "channel",
+			threadId: "1234567890.123456",
+			originJson: { platform: "slack", scope_id: "T12345" },
+		};
+		const messages = [
+			historyMessage("assistant-in-flight", {
+				turnId: "turn-report",
+				text: "One canonical update",
+			}),
+		];
+		rest.details.set("report-parent", detail);
+		rest.histories.set("report-parent", {
+			durableSessionId: "report-parent",
+			view: "durable",
+			messages,
+		});
+		await service.connect(connectionId);
+
+		const reporting = service.reportToOrigin({
+			connectionId,
+			hermesSessionId: "report-parent",
+			profileId: "work",
+			messageId: "assistant-in-flight",
+			explicitRetry: false,
+		});
+		await waitFor(() => sender.sends.length === 1, "origin send did not begin");
+		rest.details.set("report-child", { ...detail, durableSessionId: "report-child" });
+		rest.histories.set(
+			"report-parent",
+			compressedHistory("report-parent", "report-child", messages)
+		);
+		rest.histories.set("report-child", {
+			durableSessionId: "report-child",
+			view: "durable",
+			messages,
+		});
+		await service.history(connectionId, "report-parent", "work");
+		sendGate.resolve({ providerMessageId: "provider-in-flight" });
+
+		await expect(reporting).resolves.toMatchObject({
+			hermesSessionId: "report-child",
+			status: "sent",
+			providerMessageId: "provider-in-flight",
+		});
+		await expect(
+			service.reportToOrigin({
+				connectionId,
+				hermesSessionId: "report-child",
+				profileId: "work",
+				messageId: "assistant-in-flight",
+				explicitRetry: false,
+			})
+		).resolves.toMatchObject({ status: "duplicate-suppressed" });
+		expect(sender.sends).toHaveLength(1);
+	});
+
+	test("does not let a migrated in-flight report downgrade an existing canonical sent receipt", async () => {
+		const parentGate = new Deferred<{ providerMessageId: string | null }>();
+		const detail: HermesStockSessionDetail = {
+			durableSessionId: "sent-parent",
+			profileId: "work",
+			source: "slack",
+			displayName: "Support thread",
+			sessionKey: null,
+			chatId: "C12345",
+			chatType: "channel",
+			threadId: "1234567890.123456",
+			originJson: { platform: "slack", scope_id: "T12345" },
+		};
+		const messages = [
+			historyMessage("assistant-sent-collision", {
+				turnId: "turn-sent-collision",
+				text: "One canonical update",
+			}),
+		];
+		rest.details.set("sent-parent", detail);
+		rest.details.set("sent-child", { ...detail, durableSessionId: "sent-child" });
+		rest.histories.set("sent-parent", {
+			durableSessionId: "sent-parent",
+			view: "durable",
+			messages,
+		});
+		rest.histories.set("sent-child", {
+			durableSessionId: "sent-child",
+			view: "durable",
+			messages,
+		});
+		await service.connect(connectionId);
+
+		await expect(
+			service.reportToOrigin({
+				connectionId,
+				hermesSessionId: "sent-child",
+				profileId: "work",
+				messageId: "assistant-sent-collision",
+				explicitRetry: false,
+			})
+		).resolves.toMatchObject({ status: "sent" });
+		sender.response = parentGate.promise;
+		const parentReporting = service.reportToOrigin({
+			connectionId,
+			hermesSessionId: "sent-parent",
+			profileId: "work",
+			messageId: "assistant-sent-collision",
+			explicitRetry: false,
+		});
+		await waitFor(() => sender.sends.length === 2, "parent origin send did not begin");
+		rest.histories.set("sent-parent", compressedHistory("sent-parent", "sent-child", messages));
+		await service.history(connectionId, "sent-parent", "work");
+		parentGate.reject(new Error("late parent failure"));
+
+		await expect(parentReporting).resolves.toMatchObject({
+			hermesSessionId: "sent-child",
+			status: "sent",
+		});
+		await expect(
+			service.reportToOrigin({
+				connectionId,
+				hermesSessionId: "sent-child",
+				profileId: "work",
+				messageId: "assistant-sent-collision",
+				explicitRetry: true,
+			})
+		).resolves.toMatchObject({ status: "duplicate-suppressed" });
+		expect(sender.sends).toHaveLength(2);
+	});
+
+	test("keeps a merged receipt claimed until every colliding in-flight report settles", async () => {
+		const parentGate = new Deferred<{ providerMessageId: string | null }>();
+		const childGate = new Deferred<{ providerMessageId: string | null }>();
+		const detail: HermesStockSessionDetail = {
+			durableSessionId: "dual-parent",
+			profileId: "work",
+			source: "slack",
+			displayName: "Support thread",
+			sessionKey: null,
+			chatId: "C12345",
+			chatType: "channel",
+			threadId: "1234567890.123456",
+			originJson: { platform: "slack", scope_id: "T12345" },
+		};
+		const messages = [
+			historyMessage("assistant-dual-in-flight", {
+				turnId: "turn-dual-in-flight",
+				text: "One canonical update",
+			}),
+		];
+		rest.details.set("dual-parent", detail);
+		rest.details.set("dual-child", { ...detail, durableSessionId: "dual-child" });
+		rest.histories.set("dual-parent", {
+			durableSessionId: "dual-parent",
+			view: "durable",
+			messages,
+		});
+		rest.histories.set("dual-child", {
+			durableSessionId: "dual-child",
+			view: "durable",
+			messages,
+		});
+		await service.connect(connectionId);
+
+		sender.response = parentGate.promise;
+		const parentReporting = service.reportToOrigin({
+			connectionId,
+			hermesSessionId: "dual-parent",
+			profileId: "work",
+			messageId: "assistant-dual-in-flight",
+			explicitRetry: false,
+		});
+		await waitFor(() => sender.sends.length === 1, "parent send did not begin");
+		sender.response = childGate.promise;
+		const childReporting = service.reportToOrigin({
+			connectionId,
+			hermesSessionId: "dual-child",
+			profileId: "work",
+			messageId: "assistant-dual-in-flight",
+			explicitRetry: false,
+		});
+		await waitFor(() => sender.sends.length === 2, "child send did not begin");
+		rest.histories.set("dual-parent", compressedHistory("dual-parent", "dual-child", messages));
+		await service.history(connectionId, "dual-parent", "work");
+		parentGate.reject(new Error("first active attempt failed"));
+		await parentReporting;
+
+		const retryWhileChildActive = service.reportToOrigin({
+			connectionId,
+			hermesSessionId: "dual-child",
+			profileId: "work",
+			messageId: "assistant-dual-in-flight",
+			explicitRetry: true,
+		});
+		await Bun.sleep(5);
+		expect(sender.sends).toHaveLength(2);
+		await expect(retryWhileChildActive).resolves.toMatchObject({
+			status: "duplicate-suppressed",
+		});
+		childGate.resolve({ providerMessageId: "provider-dual-child" });
+		await expect(childReporting).resolves.toMatchObject({
+			status: "sent",
+			providerMessageId: "provider-dual-child",
+		});
+	});
+
+	test("releases migrated report attempts when a deleted connection ID is recreated", async () => {
+		const sendGate = new Deferred<{ providerMessageId: string | null }>();
+		sender.response = sendGate.promise;
+		const detail: HermesStockSessionDetail = {
+			durableSessionId: "deleted-report-parent",
+			profileId: "work",
+			source: "slack",
+			displayName: "Support thread",
+			sessionKey: null,
+			chatId: "C12345",
+			chatType: "channel",
+			threadId: "1234567890.123456",
+			originJson: { platform: "slack", scope_id: "T12345" },
+		};
+		const messages = [
+			historyMessage("assistant-delete-in-flight", {
+				turnId: "turn-delete-in-flight",
+				text: "One canonical update",
+			}),
+		];
+		rest.details.set("deleted-report-parent", detail);
+		rest.details.set("deleted-report-child", {
+			...detail,
+			durableSessionId: "deleted-report-child",
+		});
+		rest.histories.set("deleted-report-parent", {
+			durableSessionId: "deleted-report-parent",
+			view: "durable",
+			messages,
+		});
+		rest.histories.set("deleted-report-child", {
+			durableSessionId: "deleted-report-child",
+			view: "durable",
+			messages,
+		});
+		await service.connect(connectionId);
+
+		const reporting = service.reportToOrigin({
+			connectionId,
+			hermesSessionId: "deleted-report-parent",
+			profileId: "work",
+			messageId: "assistant-delete-in-flight",
+			explicitRetry: false,
+		});
+		await waitFor(() => sender.sends.length === 1, "origin send did not begin before deletion");
+		rest.histories.set(
+			"deleted-report-parent",
+			compressedHistory("deleted-report-parent", "deleted-report-child", messages)
+		);
+		await service.history(connectionId, "deleted-report-parent", "work");
+
+		service.forgetConnection(connectionId);
+		deleteHermesConnection(connectionId, vault);
+		saveHermesConnection(
+			{
+				id: connectionId,
+				label: "Recreated stock Hermes",
+				baseUrl: "http://127.0.0.1:9119",
+				profileId: "work",
+				token: "secret",
+			},
+			vault
+		);
+		sender.response = null;
+		await service.connect(connectionId);
+		await expect(
+			service.reportToOrigin({
+				connectionId,
+				hermesSessionId: "deleted-report-child",
+				profileId: "work",
+				messageId: "assistant-delete-in-flight",
+				explicitRetry: false,
+			})
+		).resolves.toMatchObject({ status: "sent" });
+		expect(sender.sends).toHaveLength(2);
+
+		sendGate.reject(new Error("connection deleted during send"));
+		await expect(reporting).rejects.toThrow("not found");
+		await expect(
+			service.reportToOrigin({
+				connectionId,
+				hermesSessionId: "deleted-report-child",
+				profileId: "work",
+				messageId: "assistant-delete-in-flight",
+				explicitRetry: false,
+			})
+		).resolves.toMatchObject({ status: "duplicate-suppressed" });
+		expect(sender.sends).toHaveLength(2);
 	});
 });

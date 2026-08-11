@@ -52,6 +52,16 @@ export class HermesRpcError extends Error {
 	}
 }
 
+export class HermesTransportError extends Error {
+	constructor(
+		message: string,
+		readonly deliveryUncertain: boolean
+	) {
+		super(message);
+		this.name = "HermesTransportError";
+	}
+}
+
 export function buildHermesWebSocketUrl(
 	baseUrl: string,
 	credential: string,
@@ -135,7 +145,7 @@ export class HermesRuntimeClient {
 		const previous = this.socket;
 		this.socket = null;
 		if (previous && previous.readyState < 2) previous.close(1000, "connection replaced");
-		this.rejectPending(new Error("Hermes connection replaced"));
+		this.rejectPending(new HermesTransportError("Hermes connection replaced", true));
 		this.settings = settings;
 		this.manuallyDisconnected = false;
 		if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
@@ -157,7 +167,7 @@ export class HermesRuntimeClient {
 		const socket = this.socket;
 		this.socket = null;
 		if (socket && socket.readyState < 2) socket.close(1000, "client disconnect");
-		this.rejectPending(new Error("Hermes disconnected"));
+		this.rejectPending(new HermesTransportError("Hermes disconnected", true));
 		this.setState({ status: "disconnected", reconnectAttempt: 0, error: null });
 	}
 
@@ -173,14 +183,14 @@ export class HermesRuntimeClient {
 			const timeoutMs = options.timeoutMs ?? this.requestTimeoutMs;
 			const timer = setTimeout(() => {
 				this.pending.delete(id);
-				reject(new Error(`Hermes request timed out: ${method}`));
+				reject(new HermesTransportError(`Hermes request timed out: ${method}`, true));
 			}, timeoutMs);
 			const onAbort = () => {
 				const pending = this.pending.get(id);
 				if (!pending) return;
 				clearTimeout(pending.timer);
 				this.pending.delete(id);
-				reject(new Error(`Hermes request cancelled: ${method}`));
+				reject(new HermesTransportError(`Hermes request cancelled: ${method}`, true));
 			};
 			options.signal?.addEventListener("abort", onAbort, { once: true });
 			this.pending.set(id, {
@@ -264,7 +274,7 @@ export class HermesRuntimeClient {
 			const onClose = () => {
 				if (this.socket !== socket) return;
 				this.socket = null;
-				this.rejectPending(new Error("Hermes connection closed"));
+				this.rejectPending(new HermesTransportError("Hermes connection closed", true));
 				if (!settled) finish(new Error("Hermes WebSocket closed before connecting"));
 				this.handleClose();
 			};

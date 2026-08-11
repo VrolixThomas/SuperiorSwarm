@@ -238,9 +238,46 @@ describe("HermesRestClient", () => {
 		expect(history.durableSessionId).toBe("compressed-tip");
 		expect(history.view).toBe("durable");
 		expect(history.messageIdsAreStable).toBe(true);
+		expect(history.compressionLineage).toEqual({
+			kind: "compression",
+			parentDurableSessionId: "compression-root",
+			childDurableSessionId: "compressed-tip",
+			verifiedBy: "durable-transcript",
+		});
 		expect(history.messages).toHaveLength(501);
 		expect(history.messages[0]?.id).toBe("old-0");
 		expect(history.messages.at(-1)?.id).toBe("newest");
+	});
+
+	test("rejects a durable transcript whose compression tip changes between pages", async () => {
+		let requestCount = 0;
+		const client = new HermesRestClient({
+			baseUrl: "http://localhost:9119",
+			profileId: "work",
+			token: "token",
+			fetchImpl: async () => {
+				requestCount++;
+				return requestCount === 1
+					? json({
+							session_id: "compression-child-a",
+							view: "durable",
+							messages: Array.from({ length: 500 }, (_, index) => ({
+								id: `message-${index}`,
+								role: "assistant",
+								content: String(index),
+							})),
+						})
+					: json({
+							session_id: "compression-child-b",
+							view: "durable",
+							messages: [],
+						});
+			},
+		});
+
+		await expect(client.getTranscript("compression-parent", "work")).rejects.toThrow(
+			"changed the durable compression tip"
+		);
 	});
 
 	test("accepts the gateway data envelope for durable transcript rows", async () => {

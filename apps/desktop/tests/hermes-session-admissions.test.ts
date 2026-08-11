@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { _setDbForTesting, getDb, schema } from "../src/main/db";
 import {
 	admitHermesSession,
+	canonicalizeHermesCompressionPersistence,
 	filterManagedHermesSessionCatalog,
 	listHermesSessionAdmissions,
 } from "../src/main/hermes/hermes-session-admissions";
@@ -185,6 +186,53 @@ describe("Hermes session admissions", () => {
 			})
 		).toEqual({ admitted: false, code: "cron_session" });
 		expect(listHermesSessionAdmissions("manager-a")).toEqual([]);
+	});
+
+	test("merges an existing physical-child admission without downgrading ownership bookkeeping", () => {
+		admitHermesSession({
+			managerId: "manager-a",
+			metadata: {
+				schemaVersion: 1,
+				durableSessionId: "compression-parent",
+				profileId: "work",
+				sourcePlatform: "slack",
+				isCron: false,
+			},
+			reason: "mcp",
+			now: new Date("2026-08-09T10:00:00.000Z"),
+		});
+		admitHermesSession({
+			managerId: "manager-a",
+			metadata: {
+				schemaVersion: 1,
+				durableSessionId: "compression-child",
+				profileId: "work",
+				sourcePlatform: "slack",
+				isCron: false,
+			},
+			reason: "handover",
+			now: new Date("2026-08-09T10:10:00.000Z"),
+		});
+
+		expect(
+			canonicalizeHermesCompressionPersistence({
+				managerId: "manager-a",
+				connectionId: "connection-a",
+				profileId: "work",
+				parentDurableSessionId: "compression-parent",
+				aliasSessionIds: ["compression-parent"],
+				canonicalSessionId: "compression-child",
+			})
+		).toEqual({ admissionCanonicalized: true });
+		expect(listHermesSessionAdmissions("manager-a")).toEqual([
+			expect.objectContaining({
+				profileId: "work",
+				durableSessionId: "compression-child",
+				reason: "handover",
+				firstSeenAt: new Date("2026-08-09T10:00:00.000Z"),
+				lastSeenAt: new Date("2026-08-09T10:10:00.000Z"),
+			}),
+		]);
 	});
 
 	test("requires manager admission even when two installations share a superiorswarm source", () => {

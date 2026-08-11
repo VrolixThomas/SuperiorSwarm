@@ -355,7 +355,7 @@ export class HermesRestClient {
 		const pages: HermesSessionHistory["messages"][] = [];
 		let messageIdsAreStable = true;
 		let offset = 0;
-		let resolvedDurableSessionId = durableSessionId;
+		let resolvedDurableSessionId: string | null = null;
 		for (let pageIndex = 0; pageIndex < this.maxTranscriptPages; pageIndex++) {
 			const payload = await this.requestJson(
 				`/api/sessions/${encodeURIComponent(durableSessionId)}/messages`,
@@ -379,6 +379,12 @@ export class HermesRestClient {
 					"malformed-response"
 				);
 			}
+			if (resolvedDurableSessionId !== null && resolvedDurableSessionId !== page.durableSessionId) {
+				throw new HermesRestError(
+					"Hermes changed the durable compression tip during transcript pagination",
+					"malformed-response"
+				);
+			}
 			resolvedDurableSessionId = page.durableSessionId;
 			if (page.hasMore && page.returned === 0) {
 				throw new HermesRestError(
@@ -390,10 +396,21 @@ export class HermesRestClient {
 			messageIdsAreStable &&= page.messageIdsAreStable;
 			offset += page.returned;
 			if (page.returned < 500 || (page.hasMoreIsAuthoritative && !page.hasMore)) {
-				return {
+				const history = {
 					...normalizeHermesHistory(resolvedDurableSessionId, pages.flat(), "durable"),
 					messageIdsAreStable,
 				};
+				return resolvedDurableSessionId === durableSessionId
+					? history
+					: {
+							...history,
+							compressionLineage: {
+								kind: "compression",
+								parentDurableSessionId: durableSessionId,
+								childDurableSessionId: resolvedDurableSessionId,
+								verifiedBy: "durable-transcript",
+							},
+						};
 			}
 		}
 		throw new HermesRestError(

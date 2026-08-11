@@ -1015,6 +1015,7 @@ export function projectHermesLiveCompletions(
 		const canonicalIndex = canonicalAssistant.findIndex(
 			(message, index) =>
 				!usedCanonicalIndexes.has(index) &&
+				(completion.turnId === null || message.turnId === null) &&
 				!physicalIds(message).some((id) => completion.canonicalMessageIds.includes(id)) &&
 				classifyHermesTranscriptMessage(message).text === completion.text
 		);
