@@ -458,6 +458,86 @@ describe("HermesRuntimeService stock lifecycle", () => {
 		]);
 	});
 
+	test("rejects old manager revision, resume, and event access after the connection is rebound", async () => {
+		let installedManagerId = "manager-a";
+		const now = new Date();
+		for (const [index, managerId] of ["manager-a", "manager-b"].entries()) {
+			getDb()
+				.insert(schema.crossRepoOrchestrators)
+				.values({
+					id: managerId,
+					name: managerId,
+					workDir: `/tmp/${managerId}`,
+					agentKind: "external",
+					status: "idle",
+					sortOrder: index,
+					kind: "external",
+					tokenHash: `${index + 4}`.repeat(64),
+					accessScope: "all",
+					createdAt: now,
+					updatedAt: now,
+				})
+				.run();
+		}
+		service.shutdown();
+		service = new HermesRuntimeService({
+			clientFactory: () => client,
+			restClientFactory: () => rest,
+			sendService: sender,
+			tokenVault: vault,
+			loopbackTokenResolver: async () => "secret",
+			externalManagerIdResolver: () => installedManagerId,
+		});
+		await service.connect(connectionId);
+		const revision = new Deferred<{
+			durableSessionId: string;
+			latestMessageId: string;
+			latestMessageAt: number;
+			latestMessageIdIsStable: boolean;
+		}>();
+		rest.getSessionRevision = () => revision.promise;
+		const resumed = new Deferred<unknown>();
+		client.responses.set("session.resume", [resumed.promise]);
+		const oldRequest = service.historyRevision(connectionId, "stored-1", "work", "manager-a");
+		const oldResume = service.resume(connectionId, "stored-1", "work", "manager-a");
+		const oldRequestResult = oldRequest.catch((error: unknown) => error);
+		const oldResumeResult = oldResume.catch((error: unknown) => error);
+		await waitFor(
+			() => client.requests.some((request) => request.method === "session.resume"),
+			"old manager resume did not start"
+		);
+
+		installedManagerId = "manager-b";
+		await service.connect(connectionId);
+		revision.resolve({
+			durableSessionId: "stored-1",
+			latestMessageId: "old-manager-message",
+			latestMessageAt: 2_000,
+			latestMessageIdIsStable: true,
+		});
+		resumed.resolve({
+			session_id: "runtime-old-manager",
+			session_key: "stored-1",
+			profile: "work",
+		});
+
+		const [oldRequestError, oldResumeError] = await Promise.all([
+			oldRequestResult,
+			oldResumeResult,
+		]);
+		expect(oldRequestError).toBeInstanceOf(Error);
+		expect(oldResumeError).toBeInstanceOf(Error);
+		expect((oldRequestError as Error).message).toContain("connection cancelled");
+		expect((oldResumeError as Error).message).toContain("connection cancelled");
+		await expect(
+			service.historyRevision(connectionId, "stored-1", "work", "manager-a")
+		).rejects.toThrow("connection cancelled");
+		await expect(service.resume(connectionId, "stored-1", "work", "manager-a")).rejects.toThrow(
+			"connection cancelled"
+		);
+		expect(() => service.events(connectionId, 0, "manager-a")).toThrow("connection cancelled");
+	});
+
 	test("persists Agents-created admission under the connection's resolved manager", async () => {
 		const now = new Date();
 		getDb()

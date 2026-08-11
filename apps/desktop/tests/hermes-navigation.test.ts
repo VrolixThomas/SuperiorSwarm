@@ -409,7 +409,7 @@ describe("Hermes global navigation", () => {
 		expect(view).toContain("window.electron.hermesAttachments.begin");
 		expect(view).toContain("window.electron.hermesAttachments.append");
 		expect(view).toContain("window.electron.hermesAttachments.finish");
-		expect(view).toContain("event.profileId === profileId");
+		expect(view).toContain("isHermesHistoryRevisionActivity(event, profileId, sessionId)");
 		expect(view).toContain(
 			"stageTransferredFiles(fileObjectsFromHermesTransfer(event.clipboardData))"
 		);

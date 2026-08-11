@@ -1,6 +1,9 @@
+import { useQueryClient } from "@tanstack/react-query";
+import { getQueryKey } from "@trpc/react-query";
 import {
 	type ClipboardEvent,
 	type FormEvent,
+	useCallback,
 	useEffect,
 	useLayoutEffect,
 	useMemo,
@@ -12,7 +15,6 @@ import {
 	HERMES_ATTACHMENT_UPLOAD_CHUNK_MAX_BYTES,
 	type HermesAttachmentMetadata,
 	type HermesComposerDraftIdentity,
-	hermesSessionCompositeIdentityKey,
 } from "../../../shared/hermes";
 import {
 	fileObjectsFromHermesTransfer,
@@ -26,6 +28,17 @@ import {
 } from "../../hermes/hermes-binding-lifecycle";
 import { isHermesChatNearBottom, shouldAnchorHermesChat } from "../../hermes/hermes-chat-scroll";
 import { hermesComposerDrafts } from "../../hermes/hermes-composer-drafts";
+import {
+	HermesHistoryRevisionRefreshGate,
+	type HermesHistoryRevisionRefreshReason,
+	hermesHistoryRevisionFailureBackoff,
+	hermesHistoryRevisionIdentityKey,
+	hermesHistoryRevisionPollInterval,
+	hermesSessionResumeAttemptKey,
+	isHermesHistoryRevisionActivity,
+	resolveHermesHistoryRevisionRefreshState,
+	shouldRefreshHermesHistoryRevisionOnVisibilityChange,
+} from "../../hermes/hermes-history-polling";
 import {
 	HERMES_CHAT_LAYOUT_CLASSES,
 	HERMES_CHAT_OVERFLOW_CLASSES,
@@ -77,7 +90,6 @@ function scrollToLatest(element: HTMLDivElement, smooth: boolean): void {
 	});
 }
 
-const HERMES_HISTORY_REVISION_INTERVAL_MS = 1_000;
 const HERMES_HISTORY_TAIL_LIMIT = 500;
 
 export function HermesSessionView() {
@@ -102,6 +114,17 @@ export function HermesSessionView() {
 	const [attachmentReadPending, setAttachmentReadPending] = useState(false);
 	const [showJumpToLatest, setShowJumpToLatest] = useState(false);
 	const [sessionOptionsOpen, setSessionOptionsOpen] = useState(false);
+	const [documentVisible, setDocumentVisible] = useState(
+		() => document.visibilityState === "visible"
+	);
+	const [lastHistoryActivityAt, setLastHistoryActivityAt] = useState<number | null>(null);
+	const [revisionFailureCount, setRevisionFailureCount] = useState(0);
+	const revisionFailureSnapshotRef = useRef({
+		errorUpdatedAt: null as number | null,
+		failureCount: 0,
+		retryAt: null as number | null,
+		successUpdatedAt: 0,
+	});
 	const processedEventSeq = useRef(0);
 	const resumeAttemptKey = useRef<string | null>(null);
 	const transcriptRef = useRef<HTMLDivElement | null>(null);
@@ -112,11 +135,17 @@ export function HermesSessionView() {
 	const historySync = historySyncRef.current;
 	const historySyncRequestSequence = useRef(0);
 	const historySyncInFlight = useRef<string | null>(null);
+	const historyRevisionRefreshGateRef = useRef<HermesHistoryRevisionRefreshGate | null>(null);
+	if (!historyRevisionRefreshGateRef.current) {
+		historyRevisionRefreshGateRef.current = new HermesHistoryRevisionRefreshGate();
+	}
+	const historyRevisionRefreshGate = historyRevisionRefreshGateRef.current;
 	const followingTranscript = useRef(true);
 	const anchoredSelectionKey = useRef<string | null>(null);
 	const attachmentsRef = useRef(attachments);
 	attachmentsRef.current = attachments;
 	const utils = trpc.useUtils();
+	const queryClient = useQueryClient();
 
 	const submit = trpc.hermes.submit.useMutation();
 	const resume = trpc.hermes.resume.useMutation();
@@ -127,7 +156,10 @@ export function HermesSessionView() {
 	const releaseAttachment = trpc.hermes.releaseAttachment.useMutation();
 	const releaseAttachmentRef = useRef(releaseAttachment.mutate);
 	releaseAttachmentRef.current = releaseAttachment.mutate;
-	const selectionKey = hermesSessionCompositeIdentityKey(
+	const connections = trpc.hermes.connections.useQuery();
+	const activeConnection = connections.data?.find((candidate) => candidate.id === connectionId);
+	const selectionKey = hermesHistoryRevisionIdentityKey(
+		activeConnection?.managerId ?? null,
 		connectionId,
 		profileId ?? "",
 		sessionId ?? ""
@@ -138,26 +170,33 @@ export function HermesSessionView() {
 	const selectionGuard = selectionGuardRef.current;
 	const selectionGeneration = selectionGuard.select(selectionKey);
 
-	const connections = trpc.hermes.connections.useQuery();
-	const draftConnection = connections.data?.find((candidate) => candidate.id === connectionId);
 	const draftIdentity = useMemo<HermesComposerDraftIdentity | null>(
 		() =>
-			draftConnection && profileId && sessionId
+			activeConnection && profileId && sessionId
 				? {
-						managerId: draftConnection.managerId,
+						managerId: activeConnection.managerId,
 						projectId: null,
 						connectionId,
 						profileId,
 						durableSessionId: sessionId,
 					}
 				: null,
-		[draftConnection, connectionId, profileId, sessionId]
+		[activeConnection, connectionId, profileId, sessionId]
 	);
+	const historyPollingSelectionKey = selectionKey;
+	const historyPollingSelectionKeyRef = useRef(historyPollingSelectionKey);
+	historyPollingSelectionKeyRef.current = historyPollingSelectionKey;
+	historyRevisionRefreshGate.select(historyPollingSelectionKey);
 	const status = trpc.hermes.status.useQuery(
 		{ connectionId },
 		{ enabled: Boolean(connectionId), refetchInterval: 1_000 }
 	);
 	const connected = status.data?.status === "connected";
+	const resumeAttemptIdentity = hermesSessionResumeAttemptKey({
+		selectionKey,
+		connected,
+		lastConnectedAt: status.data?.lastConnectedAt ?? null,
+	});
 	const composerPolicy = hermesComposerInteractionPolicy({
 		connected,
 		running: live.running,
@@ -207,6 +246,14 @@ export function HermesSessionView() {
 		selectionGuard.activate();
 		return () => selectionGuard.dispose();
 	}, [selectionGuard]);
+
+	useEffect(() => {
+		const handleVisibilityChange = () => {
+			setDocumentVisible(document.visibilityState === "visible");
+		};
+		document.addEventListener("visibilitychange", handleVisibilityChange);
+		return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+	}, []);
 
 	useEffect(
 		() => () => {
@@ -263,24 +310,43 @@ export function HermesSessionView() {
 	}, [selectionKey]);
 
 	useEffect(() => {
-		if (!connectionId || !profileId || !sessionId || !connected) {
+		historySyncRequestSequence.current++;
+		historySyncInFlight.current = null;
+		setLastHistoryActivityAt(null);
+		setRevisionFailureCount(historySync.revisionFailureCount(historyPollingSelectionKey));
+		revisionFailureSnapshotRef.current = {
+			errorUpdatedAt: null,
+			failureCount: 0,
+			retryAt: null,
+			successUpdatedAt: 0,
+		};
+	}, [historyPollingSelectionKey, historySync]);
+
+	useEffect(() => {
+		if (!activeConnection || !connectionId || !profileId || !sessionId || !resumeAttemptIdentity) {
 			if (!connected) {
 				resumeAttemptKey.current = null;
 				setEventStreamSelectionKey(null);
 			}
 			return;
 		}
-		if (resumeAttemptKey.current === selectionKey) return;
-		resumeAttemptKey.current = selectionKey;
+		if (resumeAttemptKey.current === resumeAttemptIdentity) return;
+		resumeAttemptKey.current = resumeAttemptIdentity;
 		const generation = selectionGeneration;
 		resume.mutate(
-			{ connectionId, profileId, hermesSessionId: sessionId },
+			{
+				connectionId,
+				managerId: activeConnection.managerId,
+				profileId,
+				hermesSessionId: sessionId,
+			},
 			{
 				onSuccess: ({ activeTurnSnapshot }) => {
 					runForSelection(generation, () => {
 						processedEventSeq.current = activeTurnSnapshot.eventSeq;
 						setCursor(activeTurnSnapshot.eventSeq);
 						setLive((current) => applyHermesActiveTurnSnapshot(current, activeTurnSnapshot));
+						if (activeTurnSnapshot.activeTurn) setLastHistoryActivityAt(Date.now());
 						setEventStreamSelectionKey(selectionKey);
 					});
 				},
@@ -291,23 +357,134 @@ export function HermesSessionView() {
 				},
 			}
 		);
-	}, [connected, connectionId, profileId, resume, selectionGeneration, selectionKey, sessionId]);
+	}, [
+		activeConnection,
+		connected,
+		connectionId,
+		profileId,
+		resume,
+		resumeAttemptIdentity,
+		selectionGeneration,
+		selectionKey,
+		sessionId,
+	]);
 
-	const history = trpc.hermes.history.useQuery(
-		{ connectionId, profileId: profileId ?? undefined, hermesSessionId: sessionId ?? "" },
-		{
-			enabled: Boolean(connectionId && profileId && sessionId && connected),
-			staleTime: 1_000,
-		}
+	const historyInput = useMemo(
+		() => ({
+			connectionId,
+			managerId: activeConnection?.managerId ?? null,
+			profileId: profileId ?? undefined,
+			hermesSessionId: sessionId ?? "",
+		}),
+		[activeConnection?.managerId, connectionId, profileId, sessionId]
 	);
-	const historyRevision = trpc.hermes.historyRevision.useQuery(
-		{ connectionId, profileId: profileId ?? undefined, hermesSessionId: sessionId ?? "" },
-		{
-			enabled: Boolean(connectionId && profileId && sessionId && connected && history.data),
-			refetchInterval: HERMES_HISTORY_REVISION_INTERVAL_MS,
-			retry: false,
-		}
+	const history = trpc.hermes.history.useQuery(historyInput, {
+		enabled: Boolean(activeConnection && connectionId && profileId && sessionId && connected),
+		staleTime: 1_000,
+	});
+	const historyRevisionPollingEnabled = Boolean(
+		activeConnection &&
+			connectionId &&
+			profileId &&
+			sessionId &&
+			connected &&
+			session &&
+			history.data
 	);
+	const historyRevision = trpc.hermes.historyRevision.useQuery(historyInput, {
+		enabled: historyRevisionPollingEnabled && documentVisible,
+		refetchInterval: () =>
+			hermesHistoryRevisionPollInterval({
+				pollingEnabled: historyRevisionPollingEnabled,
+				documentVisible,
+				sessionRunning: Boolean(session?.running || live.running),
+				sessionBusy: Boolean(session?.busy),
+				lastActivityAt: lastHistoryActivityAt,
+				now: Date.now(),
+				consecutiveFailures: revisionFailureCount,
+			}),
+		refetchIntervalInBackground: false,
+		refetchOnWindowFocus: false,
+		retry: false,
+	});
+	const historyRevisionPollingEnabledRef = useRef(historyRevisionPollingEnabled);
+	historyRevisionPollingEnabledRef.current = historyRevisionPollingEnabled;
+	const refreshHistoryRevisionImmediately = useCallback(
+		(reason: HermesHistoryRevisionRefreshReason, now = Date.now()) => {
+			const recordedFailure = revisionFailureSnapshotRef.current;
+			const refreshState = resolveHermesHistoryRevisionRefreshState({
+				queryState: queryClient.getQueryState(
+					getQueryKey(trpc.hermes.historyRevision, historyInput, "query")
+				),
+				recordedErrorUpdatedAt: recordedFailure.errorUpdatedAt,
+				recordedFailureCount: recordedFailure.failureCount,
+				recordedFailureRetryAt: recordedFailure.retryAt,
+				recordedSuccessUpdatedAt: recordedFailure.successUpdatedAt,
+			});
+			const ticket = historyRevisionRefreshGate.begin({
+				selectionKey: historyPollingSelectionKey,
+				reason,
+				now,
+				failureRetryAt: refreshState.failureRetryAt,
+				pollingEnabled: historyRevisionPollingEnabled,
+				documentVisible,
+				queryFetching: refreshState.queryFetching,
+			});
+			if (!ticket) return;
+			const runRefresh = (refreshTicket: NonNullable<typeof ticket>) => {
+				void historyRevision.refetch({ cancelRefetch: false }).then(
+					(result) => {
+						const followUp = historyRevisionRefreshGate.finish(refreshTicket, result.isSuccess);
+						if (
+							followUp !== "trailing" ||
+							!historyRevisionRefreshGate.isCurrent(refreshTicket) ||
+							!historyRevisionPollingEnabledRef.current ||
+							document.visibilityState !== "visible"
+						) {
+							return;
+						}
+						const trailingTicket = historyRevisionRefreshGate.begin({
+							selectionKey: historyPollingSelectionKeyRef.current,
+							reason: followUp,
+							now: Date.now(),
+							failureRetryAt: null,
+							pollingEnabled: historyRevisionPollingEnabledRef.current,
+							documentVisible: true,
+							queryFetching: false,
+						});
+						if (trailingTicket) runRefresh(trailingTicket);
+					},
+					() => {
+						historyRevisionRefreshGate.finish(refreshTicket, false);
+					}
+				);
+			};
+			runRefresh(ticket);
+		},
+		[
+			documentVisible,
+			historyInput,
+			historyPollingSelectionKey,
+			historyRevision.refetch,
+			historyRevisionPollingEnabled,
+			historyRevisionRefreshGate,
+			queryClient,
+		]
+	);
+	const previousDocumentVisible = useRef(documentVisible);
+	useEffect(() => {
+		const wasVisible = previousDocumentVisible.current;
+		previousDocumentVisible.current = documentVisible;
+		if (
+			shouldRefreshHermesHistoryRevisionOnVisibilityChange({
+				wasVisible,
+				isVisible: documentVisible,
+				pollingEnabled: historyRevisionPollingEnabled,
+			})
+		) {
+			refreshHistoryRevisionImmediately("visibility");
+		}
+	}, [documentVisible, historyRevisionPollingEnabled, refreshHistoryRevisionImmediately]);
 
 	useEffect(() => {
 		const next = historyRevision.data;
@@ -321,16 +498,29 @@ export function HermesSessionView() {
 		) {
 			return;
 		}
-		const decision = historySync.decide(selectionKey, next);
+		const decision = historySync.decide(historyPollingSelectionKey, next);
+		revisionFailureSnapshotRef.current = {
+			errorUpdatedAt: null,
+			failureCount: 0,
+			retryAt: null,
+			successUpdatedAt: historyRevision.dataUpdatedAt,
+		};
+		setRevisionFailureCount(0);
 		if (decision === "none") return;
 
-		const input = { connectionId, profileId, hermesSessionId: sessionId };
-		const revisionKey = JSON.stringify([selectionKey, next]);
+		const input = {
+			connectionId,
+			managerId: activeConnection?.managerId ?? null,
+			profileId,
+			hermesSessionId: sessionId,
+		};
+		const revisionKey = JSON.stringify([historyPollingSelectionKey, next]);
 		if (historySyncInFlight.current === revisionKey) return;
 		historySyncInFlight.current = revisionKey;
 		const requestSequence = ++historySyncRequestSequence.current;
 		const isCurrentRequest = () =>
 			historySyncRequestSequence.current === requestSequence &&
+			historyPollingSelectionKeyRef.current === historyPollingSelectionKey &&
 			selectionGuard.isCurrent(selectionGeneration);
 		const finishRequest = () => {
 			if (historySyncInFlight.current === revisionKey) historySyncInFlight.current = null;
@@ -340,7 +530,7 @@ export function HermesSessionView() {
 				finishRequest();
 				return;
 			}
-			if (!historySync.beginCanonicalRefresh(selectionKey, Date.now())) {
+			if (!historySync.beginCanonicalRefresh(historyPollingSelectionKey, Date.now())) {
 				finishRequest();
 				return;
 			}
@@ -352,7 +542,7 @@ export function HermesSessionView() {
 				if (
 					result.isSuccess &&
 					result.data &&
-					historySync.acceptCanonical(selectionKey, next, result.data)
+					historySync.acceptCanonical(historyPollingSelectionKey, next, result.data)
 				) {
 					void utils.hermes.catalog.invalidate({ connectionId });
 				}
@@ -373,7 +563,7 @@ export function HermesSessionView() {
 				}
 				const current = utils.hermes.history.getData(input);
 				const synchronized = current
-					? historySync.applyTail(selectionKey, next, current, tail)
+					? historySync.applyTail(historyPollingSelectionKey, next, current, tail)
 					: null;
 				if (!synchronized) {
 					refreshCanonicalHistory();
@@ -391,6 +581,7 @@ export function HermesSessionView() {
 				refreshCanonicalHistory();
 			});
 	}, [
+		activeConnection?.managerId,
 		connectionId,
 		history.data,
 		history.refetch,
@@ -398,10 +589,10 @@ export function HermesSessionView() {
 		historyRevision.dataUpdatedAt,
 		historyRevision.error,
 		historySync,
+		historyPollingSelectionKey,
 		profileId,
 		selectionGeneration,
 		selectionGuard,
-		selectionKey,
 		sessionId,
 		utils,
 	]);
@@ -410,17 +601,37 @@ export function HermesSessionView() {
 		if (
 			!historyRevision.error ||
 			!historyRevision.errorUpdatedAt ||
+			!documentVisible ||
 			!sessionId ||
 			!profileId ||
-			!history.data ||
-			!historySync.recordRevisionFailure(selectionKey, historyRevision.errorUpdatedAt, Date.now())
+			!history.data
 		) {
 			return;
 		}
+		const shouldRefreshCanonical = historySync.recordRevisionFailure(
+			historyPollingSelectionKey,
+			historyRevision.errorUpdatedAt,
+			Date.now()
+		);
+		const failures = historySync.revisionFailureCount(historyPollingSelectionKey);
+		const failureRetryAt =
+			historyRevision.errorUpdatedAt + hermesHistoryRevisionFailureBackoff(failures);
+		revisionFailureSnapshotRef.current = {
+			errorUpdatedAt: historyRevision.errorUpdatedAt,
+			failureCount: failures,
+			retryAt: failureRetryAt,
+			successUpdatedAt: Math.max(
+				revisionFailureSnapshotRef.current.successUpdatedAt,
+				historyRevision.dataUpdatedAt
+			),
+		};
+		setRevisionFailureCount(failures);
+		if (!shouldRefreshCanonical) return;
 		const requestSequence = ++historySyncRequestSequence.current;
 		void history.refetch().then((result) => {
 			if (
 				historySyncRequestSequence.current !== requestSequence ||
+				historyPollingSelectionKeyRef.current !== historyPollingSelectionKey ||
 				!selectionGuard.isCurrent(selectionGeneration) ||
 				!result.isSuccess
 			) {
@@ -430,15 +641,17 @@ export function HermesSessionView() {
 		});
 	}, [
 		connectionId,
+		documentVisible,
 		history.data,
 		history.refetch,
+		historyRevision.dataUpdatedAt,
 		historyRevision.error,
 		historyRevision.errorUpdatedAt,
 		historySync,
+		historyPollingSelectionKey,
 		profileId,
 		selectionGeneration,
 		selectionGuard,
-		selectionKey,
 		sessionId,
 		utils,
 	]);
@@ -462,10 +675,14 @@ export function HermesSessionView() {
 		[physicalMessages]
 	);
 	const eventFeed = trpc.hermes.events.useQuery(
-		{ connectionId, afterSeq: cursor },
+		{ connectionId, managerId: activeConnection?.managerId ?? null, afterSeq: cursor },
 		{
 			enabled: Boolean(
-				connectionId && sessionId && connected && eventStreamSelectionKey === selectionKey
+				activeConnection &&
+					connectionId &&
+					sessionId &&
+					connected &&
+					eventStreamSelectionKey === selectionKey
 			),
 			refetchInterval: 400,
 		}
@@ -476,6 +693,7 @@ export function HermesSessionView() {
 		if (
 			!feed ||
 			!sessionId ||
+			!profileId ||
 			!selectionGuard.isCurrent(selectionGeneration) ||
 			feed.nextSeq <= processedEventSeq.current
 		) {
@@ -483,33 +701,41 @@ export function HermesSessionView() {
 		}
 		processedEventSeq.current = feed.nextSeq;
 		let refreshHistory = false;
+		let revisionActivity = false;
 		const relevantEvents = feed.events.flatMap((entry) => {
 			const event = entry.event;
+			const selectedActivity = isHermesHistoryRevisionActivity(event, profileId, sessionId);
+			if (selectedActivity) revisionActivity = true;
 			if (event.type === "runtime.history-refresh-required") {
 				if (event.durableSessionId === null) {
 					refreshHistory = true;
 					return [];
 				}
-				if (event.profileId === profileId && event.durableSessionId === sessionId) {
+				if (selectedActivity) {
 					refreshHistory = true;
 					return [event];
 				}
 				return [];
 			}
-			return event.profileId === profileId && event.durableSessionId === sessionId ? [event] : [];
+			return selectedActivity ? [event] : [];
 		});
 		setLive((current) => {
 			let next = current;
 			for (const event of relevantEvents) {
 				next = applyHermesEvent(next, event, sessionId, canonicalMessages);
-				if (event.type === "message.complete") refreshHistory = true;
 			}
 			return next;
 		});
 		setCursor(feed.nextSeq);
+		if (revisionActivity) {
+			const activityAt = Date.now();
+			setLastHistoryActivityAt(activityAt);
+			refreshHistoryRevisionImmediately("activity", activityAt);
+		}
 		if (refreshHistory) {
 			void utils.hermes.history.invalidate({
 				connectionId,
+				managerId: activeConnection?.managerId ?? null,
 				profileId: profileId ?? undefined,
 				hermesSessionId: sessionId,
 			});
@@ -517,10 +743,12 @@ export function HermesSessionView() {
 			void utils.hermes.workspaceLinks.invalidate();
 		}
 	}, [
+		activeConnection?.managerId,
 		canonicalMessages,
 		connectionId,
 		eventFeed.data,
 		profileId,
+		refreshHistoryRevisionImmediately,
 		selectionGeneration,
 		selectionGuard,
 		sessionId,
@@ -652,6 +880,7 @@ export function HermesSessionView() {
 						dispatchAttachments({ type: "succeeded" });
 						setAttachmentLimitError(null);
 						if (result.disposition === "submitted") {
+							const activityAt = Date.now();
 							setLive((current) => ({
 								...current,
 								running: true,
@@ -660,6 +889,8 @@ export function HermesSessionView() {
 								tools: [],
 								error: null,
 							}));
+							setLastHistoryActivityAt(activityAt);
+							refreshHistoryRevisionImmediately("activity", activityAt);
 						} else {
 							utils.hermes.followUps.setData(
 								{

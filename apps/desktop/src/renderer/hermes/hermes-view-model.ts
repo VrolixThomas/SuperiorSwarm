@@ -157,12 +157,12 @@ export class HermesHistorySyncCoordinator {
 	private selectionKey: string | null = null;
 	private checkpoint: HermesSessionRevision | null = null;
 	private lastCanonicalRefreshAt: number | null = null;
-	private revisionFailureCount = 0;
+	private consecutiveRevisionFailures = 0;
 	private lastRevisionErrorUpdatedAt: number | null = null;
 
 	decide(selectionKey: string, revision: HermesSessionRevision): HermesHistorySyncDecision {
 		this.select(selectionKey);
-		this.revisionFailureCount = 0;
+		this.consecutiveRevisionFailures = 0;
 		this.lastRevisionErrorUpdatedAt = null;
 		return decideHermesHistorySync(this.checkpoint, revision);
 	}
@@ -215,11 +215,16 @@ export class HermesHistorySyncCoordinator {
 		this.select(selectionKey);
 		if (errorUpdatedAt <= 0 || errorUpdatedAt === this.lastRevisionErrorUpdatedAt) return false;
 		this.lastRevisionErrorUpdatedAt = errorUpdatedAt;
-		this.revisionFailureCount++;
+		this.consecutiveRevisionFailures++;
 		return (
-			this.revisionFailureCount >= HERMES_HISTORY_REVISION_FAILURE_THRESHOLD &&
+			this.consecutiveRevisionFailures >= HERMES_HISTORY_REVISION_FAILURE_THRESHOLD &&
 			this.beginCanonicalRefresh(selectionKey, now)
 		);
+	}
+
+	revisionFailureCount(selectionKey: string): number {
+		this.select(selectionKey);
+		return this.consecutiveRevisionFailures;
 	}
 
 	private select(selectionKey: string): void {
@@ -227,7 +232,7 @@ export class HermesHistorySyncCoordinator {
 		this.selectionKey = selectionKey;
 		this.checkpoint = null;
 		this.lastCanonicalRefreshAt = null;
-		this.revisionFailureCount = 0;
+		this.consecutiveRevisionFailures = 0;
 		this.lastRevisionErrorUpdatedAt = null;
 	}
 }
