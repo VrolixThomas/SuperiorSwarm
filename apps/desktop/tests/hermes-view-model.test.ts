@@ -30,6 +30,7 @@ import {
 import type {
 	HermesRuntimeEvent,
 	HermesSessionSummary,
+	HermesTagDefinition,
 	HermesTranscriptMessage,
 } from "../src/shared/hermes";
 import { hermesSessionIdentityKey } from "../src/shared/hermes";
@@ -37,6 +38,10 @@ import { hermesSessionIdentityKey } from "../src/shared/hermes";
 const session = (overrides: Partial<HermesSessionSummary> = {}): HermesSessionSummary => ({
 	id: "session-1",
 	title: "Checkout bug",
+	generatedTitle: "Checkout bug",
+	titleSource: "generated",
+	tags: [],
+	metadataRevision: 0,
 	preview: "Investigating",
 	profileId: "default",
 	source: "slack",
@@ -64,6 +69,16 @@ const session = (overrides: Partial<HermesSessionSummary> = {}): HermesSessionSu
 		canReport: false,
 	},
 	...overrides,
+});
+
+const tag = (id: string, name: string): HermesTagDefinition => ({
+	id,
+	name,
+	normalizedKey: name.toLocaleLowerCase(),
+	color: "gray",
+	revision: 0,
+	createdAt: 1,
+	updatedAt: 1,
 });
 
 const event = (type: string, payload: Partial<HermesRuntimeEvent> = {}): HermesRuntimeEvent => ({
@@ -818,10 +833,13 @@ describe("Hermes renderer view model", () => {
 	});
 
 	test("filters active/archived sessions and searches source, profile, origin, or linked branch", () => {
-		const active = session();
+		const active = session({
+			tags: [tag("customer", "customer report"), tag("follow-up", "needs follow-up")],
+		});
 		const archived = session({ id: "session-2", title: "Release", archived: true });
 		const sessions = [active, archived];
 		expect(filterHermesSessions(sessions, "open", "engineering", {})).toEqual([active]);
+		expect(filterHermesSessions(sessions, "open", "customer report", {})).toEqual([active]);
 		expect(
 			filterHermesSessions(sessions, "all", "feat/payments", {
 				[hermesSessionIdentityKey("default", "session-2")]: ["feat/payments"],

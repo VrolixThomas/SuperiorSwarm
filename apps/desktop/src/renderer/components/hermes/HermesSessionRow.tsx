@@ -1,8 +1,12 @@
 import { useState } from "react";
 import type { HermesSessionSummary } from "../../../shared/hermes";
-import { OverflowPopover } from "./OverflowPopover";
+import {
+	HermesSessionActionsPopover,
+	type HermesSessionTagActions,
+} from "./HermesSessionActionsPopover";
+import { HermesTagChip } from "./HermesTagChip";
 
-export interface HermesSessionRowProps {
+export interface HermesSessionRowProps extends HermesSessionTagActions {
 	session: HermesSessionSummary;
 	selected: boolean;
 	linkedBranch: string | null;
@@ -10,6 +14,7 @@ export interface HermesSessionRowProps {
 	onSelect: () => void;
 	onSetArchived: (profileId: string, durableSessionId: string, archived: boolean) => void;
 	onDelete: (profileId: string, durableSessionId: string) => void;
+	onRename: (title: string, expectedRevision: number) => Promise<void>;
 	deleteDisabledReason: string | null;
 	confirmDelete?: (message: string) => boolean;
 }
@@ -59,11 +64,18 @@ export function HermesSessionRow({
 	onSelect,
 	onSetArchived,
 	onDelete,
+	onRename,
 	deleteDisabledReason,
 	confirmDelete,
+	onListTagDefinitions,
+	onCreateTag,
+	onUpdateTag,
+	onDeleteTag,
+	onAssignTag,
+	onUnassignTag,
 }: HermesSessionRowProps) {
 	const [menuOpen, setMenuOpen] = useState(false);
-
+	const fullTagNames = session.tags.map((tag) => tag.name).join(", ");
 	return (
 		<div
 			className={`group relative mb-0.5 min-h-[56px] min-w-0 rounded-[8px] border-l-2 transition-colors motion-reduce:transition-none ${
@@ -76,9 +88,9 @@ export function HermesSessionRow({
 		>
 			<button
 				type="button"
-				aria-label={`Open ${session.title}`}
+				aria-label={`Open ${session.title}${fullTagNames ? `. Tags: ${fullTagNames}` : ""}`}
 				onClick={onSelect}
-				className="min-h-[56px] w-full min-w-0 rounded-[8px] px-2.5 py-2 pr-10 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--accent)]/50"
+				className="h-[56px] w-full min-w-0 rounded-[8px] px-2.5 py-2 pr-10 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--accent)]/50"
 			>
 				<div className="flex items-center gap-1.5">
 					<span className="text-[10px]" aria-hidden="true">
@@ -91,16 +103,42 @@ export function HermesSessionRow({
 						{relativeTime(session.updatedAt)}
 					</span>
 				</div>
-				<div className="mt-1 flex min-w-0 items-center gap-1.5 text-[10px] text-[var(--text-quaternary)]">
+				<div className="mt-1 flex min-w-0 items-center gap-1 text-[10px] text-[var(--text-quaternary)]">
 					{session.waitingForUser ? (
 						<span className="shrink-0 text-[var(--warning)]">Needs input</span>
 					) : session.running || session.busy ? (
 						<span className="shrink-0 text-[var(--success)]">Active</span>
 					) : null}
-					<span className="truncate">
+					<span className="min-w-0 flex-1 truncate">
 						{session.preview || session.origin?.displayLabel || session.source}
 						{linkedBranch ? ` · ${linkedBranch}` : ""}
 					</span>
+					{session.tags.length > 0 && (
+						<span
+							aria-label={`Tags: ${fullTagNames}`}
+							title={fullTagNames}
+							className="flex min-w-0 shrink-0 items-center gap-0.5"
+						>
+							{session.tags.slice(0, 2).map((tag) => (
+								<HermesTagChip key={tag.id} tag={tag} />
+							))}
+							{session.tags.length > 2 && (
+								<span
+									aria-label={`${session.tags.length - 2} more tags: ${session.tags
+										.slice(2)
+										.map((tag) => tag.name)
+										.join(", ")}`}
+									title={session.tags
+										.slice(2)
+										.map((tag) => tag.name)
+										.join(", ")}
+									className="shrink-0 pl-0.5 text-[9px] font-medium text-[var(--text-tertiary)]"
+								>
+									+{session.tags.length - 2}
+								</span>
+							)}
+						</span>
+					)}
 				</div>
 			</button>
 			<div
@@ -111,40 +149,23 @@ export function HermesSessionRow({
 						: "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
 				}`}
 			>
-				<OverflowPopover
-					label={`Actions for ${session.title}`}
+				<HermesSessionActionsPopover
+					session={session}
 					open={menuOpen}
 					onOpenChange={setMenuOpen}
-					panelClassName="flex flex-col gap-0.5 rounded-[10px] border border-[var(--border)] bg-[var(--bg-elevated)] p-1.5 shadow-[var(--shadow-lg)]"
-				>
-					<button
-						type="button"
-						data-popover-close
-						disabled={actionPending}
-						onClick={() => onSetArchived(session.profileId, session.id, !session.archived)}
-						className="rounded-[6px] px-2.5 py-2 text-left text-[11px] text-[var(--text-secondary)] hover:bg-[var(--bg-overlay)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/50 disabled:opacity-40"
-					>
-						{session.archived ? "Unarchive" : "Archive"}
-					</button>
-					<button
-						type="button"
-						data-popover-close
-						disabled={actionPending || deleteDisabledReason !== null}
-						title={deleteDisabledReason ?? undefined}
-						onClick={() => {
-							if (!confirmHermesSessionDeletion(session.title, confirmDelete)) return;
-							onDelete(session.profileId, session.id);
-						}}
-						className="rounded-[6px] px-2.5 py-2 text-left text-[11px] text-[var(--danger)] hover:bg-[var(--bg-overlay)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--danger)]/50 disabled:opacity-40"
-					>
-						Delete permanently…
-					</button>
-					{deleteDisabledReason && (
-						<div className="max-w-56 px-2.5 py-1 text-[9px] leading-4 text-[var(--text-quaternary)]">
-							{deleteDisabledReason}
-						</div>
-					)}
-				</OverflowPopover>
+					actionPending={actionPending}
+					onSetArchived={onSetArchived}
+					onDelete={onDelete}
+					onRename={onRename}
+					deleteDisabledReason={deleteDisabledReason}
+					confirmDelete={confirmDelete ?? ((message) => window.confirm(message))}
+					onListTagDefinitions={onListTagDefinitions}
+					onCreateTag={onCreateTag}
+					onUpdateTag={onUpdateTag}
+					onDeleteTag={onDeleteTag}
+					onAssignTag={onAssignTag}
+					onUnassignTag={onUnassignTag}
+				/>
 			</div>
 		</div>
 	);

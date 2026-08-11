@@ -38,6 +38,10 @@ function session(
 	return {
 		id,
 		title: id,
+		generatedTitle: id,
+		titleSource: "generated",
+		tags: [],
+		metadataRevision: 0,
 		preview: "",
 		profileId,
 		source,

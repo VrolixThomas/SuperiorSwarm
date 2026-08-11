@@ -1,4 +1,7 @@
+import { sql } from "drizzle-orm";
 import {
+	check,
+	foreignKey,
 	index,
 	integer,
 	primaryKey,
@@ -795,6 +798,138 @@ export const hermesSessionAdmissions = sqliteTable(
 
 export type HermesSessionAdmission = typeof hermesSessionAdmissions.$inferSelect;
 export type NewHermesSessionAdmission = typeof hermesSessionAdmissions.$inferInsert;
+
+export const hermesTagDefinitions = sqliteTable(
+	"hermes_tag_definitions",
+	{
+		id: text("id").primaryKey(),
+		managerId: text("manager_id")
+			.notNull()
+			.references(() => crossRepoOrchestrators.id, { onDelete: "cascade" }),
+		connectionId: text("connection_id")
+			.notNull()
+			.references(() => hermesConnections.id, { onDelete: "cascade" }),
+		profileId: text("profile_id").notNull(),
+		name: text("name").notNull(),
+		normalizedKey: text("normalized_key").notNull(),
+		color: text("color", {
+			enum: ["gray", "blue", "cyan", "green", "amber", "orange", "red", "pink", "purple"],
+		}).notNull(),
+		revision: integer("revision").notNull().default(0),
+		createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+		updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+	},
+	(table) => [
+		check(
+			"hermes_tag_definitions_color_check",
+			sql`${table.color} in ('gray', 'blue', 'cyan', 'green', 'amber', 'orange', 'red', 'pink', 'purple')`
+		),
+		uniqueIndex("hermes_tag_definitions_scope_key_unique").on(
+			table.managerId,
+			table.connectionId,
+			table.profileId,
+			table.normalizedKey
+		),
+		uniqueIndex("hermes_tag_definitions_scope_id_unique").on(
+			table.id,
+			table.managerId,
+			table.connectionId,
+			table.profileId
+		),
+		index("hermes_tag_definitions_scope_name_idx").on(
+			table.managerId,
+			table.connectionId,
+			table.profileId,
+			table.name
+		),
+	]
+);
+
+export type HermesTagDefinition = typeof hermesTagDefinitions.$inferSelect;
+export type NewHermesTagDefinition = typeof hermesTagDefinitions.$inferInsert;
+
+// SuperiorSwarm-owned presentation metadata for a durable Hermes session. The
+// complete ownership identity is part of the primary key so equal profile and
+// session IDs cannot cross manager or connection boundaries. Hermes remains the
+// owner of generated titles and transcripts; customTitle is null until a user
+// explicitly renames the session.
+export const hermesSessionMetadata = sqliteTable(
+	"hermes_session_metadata",
+	{
+		managerId: text("manager_id")
+			.notNull()
+			.references(() => crossRepoOrchestrators.id, { onDelete: "cascade" }),
+		connectionId: text("connection_id")
+			.notNull()
+			.references(() => hermesConnections.id, { onDelete: "cascade" }),
+		profileId: text("profile_id").notNull(),
+		durableSessionId: text("durable_session_id").notNull(),
+		customTitle: text("custom_title"),
+		// Retained as rollback/startup backfill input. Runtime tag reads and writes use
+		// reusable definitions and assignments exclusively.
+		legacyTagsJson: text("tags_json").notNull().default("[]"),
+		revision: integer("revision").notNull().default(0),
+		createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+		updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+	},
+	(table) => [
+		primaryKey({
+			columns: [table.managerId, table.connectionId, table.profileId, table.durableSessionId],
+		}),
+		index("hermes_session_metadata_connection_idx").on(
+			table.connectionId,
+			table.profileId,
+			table.durableSessionId
+		),
+	]
+);
+
+export type HermesSessionMetadata = typeof hermesSessionMetadata.$inferSelect;
+export type NewHermesSessionMetadata = typeof hermesSessionMetadata.$inferInsert;
+
+export const hermesSessionTagAssignments = sqliteTable(
+	"hermes_session_tag_assignments",
+	{
+		managerId: text("manager_id").notNull(),
+		connectionId: text("connection_id").notNull(),
+		profileId: text("profile_id").notNull(),
+		durableSessionId: text("durable_session_id").notNull(),
+		definitionId: text("definition_id").notNull(),
+		position: integer("position").notNull(),
+		assignedAt: integer("assigned_at", { mode: "timestamp_ms" }).notNull(),
+	},
+	(table) => [
+		primaryKey({
+			columns: [
+				table.managerId,
+				table.connectionId,
+				table.profileId,
+				table.durableSessionId,
+				table.definitionId,
+			],
+		}),
+		foreignKey({
+			columns: [table.definitionId, table.managerId, table.connectionId, table.profileId],
+			foreignColumns: [
+				hermesTagDefinitions.id,
+				hermesTagDefinitions.managerId,
+				hermesTagDefinitions.connectionId,
+				hermesTagDefinitions.profileId,
+			],
+			name: "hermes_session_tag_assignments_scoped_definition_fk",
+		}).onDelete("cascade"),
+		index("hermes_session_tag_assignments_session_idx").on(
+			table.managerId,
+			table.connectionId,
+			table.profileId,
+			table.durableSessionId,
+			table.position
+		),
+	]
+);
+
+export type HermesSessionTagAssignment = typeof hermesSessionTagAssignments.$inferSelect;
+export type NewHermesSessionTagAssignment = typeof hermesSessionTagAssignments.$inferInsert;
 
 export const hermesSessionWorkspaces = sqliteTable(
 	"hermes_session_workspaces",

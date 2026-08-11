@@ -442,6 +442,20 @@
       "when": 1786469578683,
       "tag": "0062_add_hermes_composer_drafts",
       "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "6",
+      "when": 1786472516615,
+      "tag": "0063_add_hermes_session_metadata",
+      "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "6",
+      "when": 1786474530091,
+      "tag": "0064_normalize_hermes_session_tags",
+      "breakpoints": true
     }
   ]
 }

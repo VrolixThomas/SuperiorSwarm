@@ -11,10 +11,22 @@ import {
 	handleHermesSessionHandover,
 	withAutomaticHermesSessionAdmission,
 } from "./hermes-session-admission.mjs";
+import { handleHermesReusableTagTool, handleHermesSessionTagTool } from "./hermes-session-tags.mjs";
 import { controlPlaneToolResult } from "./structured-artifact.mjs";
 
 const require = createRequire(import.meta.url);
 const Database = require("better-sqlite3");
+const HERMES_TAG_COLOR_SCHEMA = z.enum([
+	"gray",
+	"blue",
+	"cyan",
+	"green",
+	"amber",
+	"orange",
+	"red",
+	"pink",
+	"purple",
+]);
 
 function defaultUserDataDir() {
 	if (process.env.SUPERIORSWARM_USER_DATA) return process.env.SUPERIORSWARM_USER_DATA;
@@ -68,6 +80,8 @@ const ORCHESTRATOR_EVENTS_PATH = ctx.orchestratorEventsPath || null;
 const CROSS_REPO_ID = ctx.crossRepoOrchestratorId || null;
 const LINKED_PROJECT_IDS = Array.isArray(ctx.linkedProjectIds) ? ctx.linkedProjectIds : [];
 const ACCESS_SCOPE = ctx.accessScope === "all" ? "all" : "selected";
+const HERMES_CONNECTION_ID =
+	typeof ctx.hermesConnectionId === "string" ? ctx.hermesConnectionId : null;
 const modeContext = ctx.modeContext || {};
 const REVIEW_DRAFT_ID = modeContext.reviewDraftId;
 const SOLVE_SESSION_ID = modeContext.solveSessionId;
@@ -1024,6 +1038,103 @@ if (isWorkspaceAgentOrCrossRepo) {
 				handleHermesSessionHandover(extra, (metadata, reason) =>
 					admitHermesSession(metadata, reason)
 				)
+		);
+
+		const sessionTagTool = (operation) => async (args, extra) =>
+			handleHermesSessionTagTool({
+				operation,
+				args,
+				extra,
+				connectionId: HERMES_CONNECTION_ID,
+				call: (path, body) => call("POST", path, body),
+			});
+		server.tool(
+			"read_session_tags",
+			"Read the ordered tags for the current durable Hermes session and return its revision.",
+			{},
+			sessionTagTool("read")
+		);
+		server.tool(
+			"set_session_tags",
+			"Replace tags for the current durable Hermes session. Use the expected_revision returned by read_session_tags to prevent lost updates.",
+			{
+				tags: z.array(z.string().max(100)).max(64),
+				expected_revision: z.number().int().min(0),
+			},
+			sessionTagTool("set")
+		);
+		server.tool(
+			"add_session_tag",
+			"Idempotently add one arbitrary-text tag to the current durable Hermes session.",
+			{ tag: z.string().max(100) },
+			sessionTagTool("add")
+		);
+		server.tool(
+			"remove_session_tag",
+			"Idempotently remove one tag from the current durable Hermes session.",
+			{ tag: z.string().max(100) },
+			sessionTagTool("remove")
+		);
+
+		const reusableTagTool = (operation) => async (args, extra) =>
+			handleHermesReusableTagTool({
+				operation,
+				args,
+				extra,
+				connectionId: HERMES_CONNECTION_ID,
+				call: (path, body) => call("POST", path, body),
+			});
+		const definitionId = z
+			.string()
+			.min(1)
+			.max(64)
+			.regex(/^[A-Za-z0-9_-]+$/);
+		server.tool(
+			"list_tag_definitions",
+			"List or search reusable tag definitions in the current manager, connection, and profile scope.",
+			{ query: z.string().max(100).optional() },
+			reusableTagTool("list_definitions")
+		);
+		server.tool(
+			"upsert_tag_definition",
+			"Create a reusable tag definition, or return the existing normalized-name match in this scope.",
+			{ name: z.string().max(100), color: HERMES_TAG_COLOR_SCHEMA },
+			reusableTagTool("upsert_definition")
+		);
+		server.tool(
+			"update_tag_definition",
+			"Rename or recolor a reusable tag definition using its optimistic expected revision.",
+			{
+				definition_id: definitionId,
+				name: z.string().max(100).optional(),
+				color: HERMES_TAG_COLOR_SCHEMA.optional(),
+				expected_revision: z.number().int().min(0),
+			},
+			reusableTagTool("update_definition")
+		);
+		server.tool(
+			"delete_tag_definition",
+			"Delete a reusable tag definition and atomically detach it in this scope.",
+			{ definition_id: definitionId, expected_revision: z.number().int().min(0) },
+			reusableTagTool("delete_definition")
+		);
+		server.tool(
+			"read_session_tag_assignments",
+			"Read reusable tag assignments for the authenticated current durable Hermes session.",
+			{},
+			reusableTagTool("read_assignments")
+		);
+		server.tool(
+			"assign_session_tag",
+			"Assign one reusable definition to the authenticated current durable Hermes session.",
+			{ definition_id: definitionId },
+			reusableTagTool("assign")
+		);
+		server.tool(
+			"unassign_session_tag",
+			"Unassign one reusable definition from the authenticated current durable Hermes session.",
+			{ definition_id: definitionId },
+			reusableTagTool("unassign")
 		);
 	}
 

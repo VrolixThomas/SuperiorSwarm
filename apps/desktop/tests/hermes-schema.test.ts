@@ -24,6 +24,9 @@ describe("Hermes persistence migration", () => {
 		expect(tableNames).toContain("hermes_origin_reports");
 		expect(tableNames).toContain("hermes_session_admissions");
 		expect(tableNames).toContain("hermes_composer_drafts");
+		expect(tableNames).toContain("hermes_session_metadata");
+		expect(tableNames).toContain("hermes_tag_definitions");
+		expect(tableNames).toContain("hermes_session_tag_assignments");
 
 		const indexes = sqlite
 			.prepare("SELECT name FROM sqlite_master WHERE type = 'index'")
@@ -51,6 +54,46 @@ describe("Hermes persistence migration", () => {
 		expect(composerDraftColumns).not.toContain("path");
 		expect(composerDraftColumns).not.toContain("transcript");
 		expect(composerDraftColumns).not.toContain("credentials");
+
+		expect(indexes).toContain("hermes_session_metadata_connection_idx");
+		expect(indexes).toContain("hermes_tag_definitions_scope_key_unique");
+		expect(indexes).toContain("hermes_session_tag_assignments_session_idx");
+
+		const metadataColumns = sqlite
+			.prepare("PRAGMA table_info(hermes_session_metadata)")
+			.all()
+			.map(
+				(row) => row as { name: string; notnull: number; dflt_value: string | null; pk: number }
+			);
+		expect(metadataColumns).toEqual([
+			expect.objectContaining({ name: "manager_id", notnull: 1, pk: 1 }),
+			expect.objectContaining({ name: "connection_id", notnull: 1, pk: 2 }),
+			expect.objectContaining({ name: "profile_id", notnull: 1, pk: 3 }),
+			expect.objectContaining({ name: "durable_session_id", notnull: 1, pk: 4 }),
+			expect.objectContaining({ name: "custom_title", notnull: 0 }),
+			expect.objectContaining({ name: "tags_json", notnull: 1, dflt_value: "'[]'" }),
+			expect.objectContaining({ name: "revision", notnull: 1, dflt_value: "0" }),
+			expect.objectContaining({ name: "created_at", notnull: 1 }),
+			expect.objectContaining({ name: "updated_at", notnull: 1 }),
+		]);
+		const metadataForeignKeys = sqlite
+			.prepare("PRAGMA foreign_key_list(hermes_session_metadata)")
+			.all()
+			.map((row) => row as { from: string; table: string; on_delete: string });
+		expect(metadataForeignKeys).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					from: "manager_id",
+					table: "cross_repo_orchestrators",
+					on_delete: "CASCADE",
+				}),
+				expect.objectContaining({
+					from: "connection_id",
+					table: "hermes_connections",
+					on_delete: "CASCADE",
+				}),
+			])
+		);
 
 		const admissionColumns = sqlite
 			.prepare("PRAGMA table_info(hermes_session_admissions)")
@@ -100,6 +143,31 @@ describe("Hermes persistence migration", () => {
 			})
 		);
 
+		sqlite.close();
+	});
+
+	test("enforces the fixed reusable-tag palette in persisted definitions", () => {
+		const sqlite = new Database(":memory:");
+		const db = drizzle(sqlite, { schema });
+		migrate(db, { migrationsFolder: join(import.meta.dir, "../src/main/db/migrations") });
+		sqlite.exec(`
+			INSERT INTO cross_repo_orchestrators
+				(id, name, work_dir, agent_kind, sort_order, created_at, updated_at)
+				VALUES ('manager', 'Manager', '/manager', 'external', 0, 1, 1);
+			INSERT INTO hermes_connections
+				(id, label, base_url, profile_id, created_at, updated_at)
+				VALUES ('connection', 'Connection', 'https://example.test', 'work', 1, 1);
+		`);
+
+		expect(() =>
+			sqlite
+				.prepare(`
+					INSERT INTO hermes_tag_definitions
+						(id, manager_id, connection_id, profile_id, name, normalized_key, color, created_at, updated_at)
+						VALUES ('tag', 'manager', 'connection', 'work', 'Unsafe', 'unsafe', '#fff', 1, 1)
+				`)
+				.run()
+		).toThrow(/CHECK constraint failed/);
 		sqlite.close();
 	});
 
@@ -180,6 +248,113 @@ describe("Hermes persistence migration", () => {
 			{ id: "default-link", profile_id: "default" },
 			{ id: "legacy-link", profile_id: "work" },
 			{ id: "personal-link", profile_id: "personal" },
+		]);
+		sqlite.close();
+	});
+
+	test("adds session metadata without rewriting existing manager or connection rows", () => {
+		const sqlite = new Database(":memory:");
+		sqlite.pragma("foreign_keys = ON");
+		sqlite.exec(`
+			CREATE TABLE cross_repo_orchestrators (
+				id text PRIMARY KEY NOT NULL,
+				name text NOT NULL
+			);
+			CREATE TABLE hermes_connections (
+				id text PRIMARY KEY NOT NULL,
+				manager_id text REFERENCES cross_repo_orchestrators(id) ON DELETE SET NULL
+			);
+			INSERT INTO cross_repo_orchestrators (id, name) VALUES ('manager-1', 'Manager');
+			INSERT INTO hermes_connections (id, manager_id) VALUES ('connection-1', 'manager-1');
+		`);
+
+		const migration = readFileSync(
+			join(import.meta.dir, "../src/main/db/migrations/0063_add_hermes_session_metadata.sql"),
+			"utf8"
+		).replaceAll("--> statement-breakpoint", "");
+		sqlite.exec(migration);
+
+		expect(sqlite.prepare("SELECT * FROM cross_repo_orchestrators").all()).toEqual([
+			{ id: "manager-1", name: "Manager" },
+		]);
+		expect(sqlite.prepare("SELECT * FROM hermes_connections").all()).toEqual([
+			{ id: "connection-1", manager_id: "manager-1" },
+		]);
+		sqlite
+			.prepare(
+				`INSERT INTO hermes_session_metadata
+				 (manager_id, connection_id, profile_id, durable_session_id, created_at, updated_at)
+				 VALUES (?, ?, ?, ?, ?, ?)`
+			)
+			.run("manager-1", "connection-1", "work", "session-1", 1, 1);
+		expect(sqlite.prepare("SELECT tags_json, revision FROM hermes_session_metadata").get()).toEqual(
+			{ tags_json: "[]", revision: 0 }
+		);
+		sqlite.close();
+	});
+
+	test("replays the resequenced metadata migration over the rejected fork migration safely", () => {
+		const sqlite = new Database(":memory:");
+		sqlite.exec(`
+			CREATE TABLE cross_repo_orchestrators (id text PRIMARY KEY NOT NULL);
+			CREATE TABLE hermes_connections (id text PRIMARY KEY NOT NULL);
+			INSERT INTO cross_repo_orchestrators (id) VALUES ('manager-1');
+			INSERT INTO hermes_connections (id) VALUES ('connection-1');
+			CREATE TABLE hermes_session_metadata (
+				manager_id text NOT NULL,
+				connection_id text NOT NULL,
+				profile_id text NOT NULL,
+				durable_session_id text NOT NULL,
+				custom_title text,
+				tags_json text DEFAULT '[]' NOT NULL,
+				revision integer DEFAULT 0 NOT NULL,
+				created_at integer NOT NULL,
+				updated_at integer NOT NULL,
+				PRIMARY KEY(manager_id, connection_id, profile_id, durable_session_id),
+				FOREIGN KEY (manager_id) REFERENCES cross_repo_orchestrators(id) ON DELETE cascade,
+				FOREIGN KEY (connection_id) REFERENCES hermes_connections(id) ON DELETE cascade
+			);
+			CREATE INDEX hermes_session_metadata_connection_idx
+				ON hermes_session_metadata (connection_id, profile_id, durable_session_id);
+			INSERT INTO hermes_session_metadata
+				(manager_id, connection_id, profile_id, durable_session_id, custom_title,
+				 tags_json, revision, created_at, updated_at)
+				VALUES ('manager-1', 'connection-1', 'work', 'session-1', 'Keep me',
+					'["Urgent","Customer"]', 3, 1, 2);
+			CREATE TABLE __drizzle_migrations (
+				id SERIAL PRIMARY KEY,
+				hash text NOT NULL,
+				created_at numeric
+			);
+			INSERT INTO __drizzle_migrations (hash, created_at)
+				VALUES ('rejected-0062-session-metadata', 1786468969471);
+		`);
+		const db = drizzle(sqlite, { schema });
+
+		expect(() =>
+			migrate(db, { migrationsFolder: join(import.meta.dir, "../src/main/db/migrations") })
+		).not.toThrow();
+		expect(sqlite.prepare("SELECT * FROM hermes_session_metadata").get()).toEqual({
+			manager_id: "manager-1",
+			connection_id: "connection-1",
+			profile_id: "work",
+			durable_session_id: "session-1",
+			custom_title: "Keep me",
+			tags_json: '["Urgent","Customer"]',
+			revision: 3,
+			created_at: 1,
+			updated_at: 2,
+		});
+		expect(
+			sqlite
+				.prepare(
+					"SELECT name FROM sqlite_master WHERE type = 'table' AND name IN (?, ?, ?) ORDER BY name"
+				)
+				.all("hermes_composer_drafts", "hermes_tag_definitions", "hermes_session_tag_assignments")
+		).toEqual([
+			{ name: "hermes_composer_drafts" },
+			{ name: "hermes_session_tag_assignments" },
+			{ name: "hermes_tag_definitions" },
 		]);
 		sqlite.close();
 	});

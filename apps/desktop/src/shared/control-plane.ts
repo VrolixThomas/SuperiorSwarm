@@ -281,6 +281,85 @@ export const hermesSessionAdmissionRequestSchema = z
 	.strict();
 export type HermesSessionAdmissionRequest = z.infer<typeof hermesSessionAdmissionRequestSchema>;
 
+// ---- Hermes session tags (authenticated current-session MCP only) ----
+
+const hermesSessionTagIdentityShape = {
+	connectionId: z.string().min(1).max(200),
+	metadata: hermesSessionMetadataSchema,
+};
+const hermesSessionTagSchema = z
+	.string()
+	.max(100)
+	.refine((value) => value.trim().length > 0, "Tag cannot be empty");
+
+export const hermesSessionTagsReadRequestSchema = z.object(hermesSessionTagIdentityShape).strict();
+export const hermesSessionTagsSetRequestSchema = z
+	.object({
+		...hermesSessionTagIdentityShape,
+		tags: z.array(hermesSessionTagSchema).max(64),
+		expectedRevision: z.number().int().min(0),
+	})
+	.strict();
+export const hermesSessionTagMutationRequestSchema = z
+	.object({ ...hermesSessionTagIdentityShape, tag: hermesSessionTagSchema })
+	.strict();
+
+export const hermesTagColorSchema = z.enum([
+	"gray",
+	"blue",
+	"cyan",
+	"green",
+	"amber",
+	"orange",
+	"red",
+	"pink",
+	"purple",
+]);
+const hermesTagDefinitionIdSchema = z
+	.string()
+	.min(1)
+	.max(64)
+	.regex(/^[A-Za-z0-9_-]+$/);
+
+export const hermesTagDefinitionsListRequestSchema = z
+	.object({
+		...hermesSessionTagIdentityShape,
+		query: z.string().max(100).default(""),
+	})
+	.strict();
+export const hermesTagDefinitionUpsertRequestSchema = z
+	.object({
+		...hermesSessionTagIdentityShape,
+		name: hermesSessionTagSchema,
+		color: hermesTagColorSchema,
+	})
+	.strict();
+export const hermesTagDefinitionUpdateRequestSchema = z
+	.object({
+		...hermesSessionTagIdentityShape,
+		definitionId: hermesTagDefinitionIdSchema,
+		name: hermesSessionTagSchema.optional(),
+		color: hermesTagColorSchema.optional(),
+		expectedRevision: z.number().int().min(0),
+	})
+	.strict()
+	.refine((value) => value.name !== undefined || value.color !== undefined, {
+		message: "A name or color update is required",
+	});
+export const hermesTagDefinitionDeleteRequestSchema = z
+	.object({
+		...hermesSessionTagIdentityShape,
+		definitionId: hermesTagDefinitionIdSchema,
+		expectedRevision: z.number().int().min(0),
+	})
+	.strict();
+export const hermesSessionTagAssignmentMutationRequestSchema = z
+	.object({
+		...hermesSessionTagIdentityShape,
+		definitionId: hermesTagDefinitionIdSchema,
+	})
+	.strict();
+
 // ---- Resume ----
 
 export const resumeAgentRequestSchema = z.object({

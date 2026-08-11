@@ -1,7 +1,11 @@
 import { asc, eq } from "drizzle-orm";
 import { dialog, shell } from "electron";
 import { z } from "zod";
-import { HERMES_MAX_ATTACHMENTS, hermesSessionIdentityKey } from "../../../shared/hermes";
+import {
+	HERMES_MAX_ATTACHMENTS,
+	HERMES_TAG_COLORS,
+	hermesSessionIdentityKey,
+} from "../../../shared/hermes";
 import { getDb } from "../../db";
 import {
 	hermesConnections,
@@ -23,6 +27,11 @@ import {
 } from "../../hermes/hermes-connections";
 import { validateHermesOriginOpenUrl } from "../../hermes/hermes-origin-resolver";
 import { hermesRuntimeService } from "../../hermes/hermes-runtime-service";
+import {
+	HERMES_SESSION_TAG_LIMIT,
+	HERMES_SESSION_TAG_MAX_LENGTH,
+	HERMES_SESSION_TITLE_MAX_LENGTH,
+} from "../../hermes/hermes-session-metadata";
 import {
 	linkHermesWorkspace,
 	listHermesWorkspaceLinks,
@@ -64,6 +73,78 @@ function composerDraftIdentity(input: z.infer<typeof composerDraftScopeInput>) {
 		durableSessionId: input.durableSessionId,
 	};
 }
+
+const metadataSessionIdentityShape = {
+	connectionId: z.string().min(1).max(200),
+	profileId: z.string().trim().min(1).max(120),
+	hermesSessionId: z.string().min(1).max(512),
+};
+
+export const hermesSetSessionTitleInputSchema = z
+	.object({
+		...metadataSessionIdentityShape,
+		title: z.string().max(HERMES_SESSION_TITLE_MAX_LENGTH),
+		expectedRevision: z.number().int().min(0),
+	})
+	.strict();
+
+export const hermesSetSessionTagsInputSchema = z
+	.object({
+		...metadataSessionIdentityShape,
+		tags: z.array(z.string().max(HERMES_SESSION_TAG_MAX_LENGTH)).max(HERMES_SESSION_TAG_LIMIT),
+		expectedRevision: z.number().int().min(0),
+	})
+	.strict();
+
+export const hermesSessionTagInputSchema = z
+	.object({
+		...metadataSessionIdentityShape,
+		tag: z.string().max(HERMES_SESSION_TAG_MAX_LENGTH),
+	})
+	.strict();
+
+const hermesTagDefinitionIdSchema = z
+	.string()
+	.min(1)
+	.max(64)
+	.regex(/^[A-Za-z0-9_-]+$/);
+const hermesTagNameSchema = z
+	.string()
+	.max(HERMES_SESSION_TAG_MAX_LENGTH)
+	.refine((value) => value.trim().length > 0, "Tag cannot be empty");
+
+export const hermesListTagDefinitionsInputSchema = z
+	.object({ ...metadataSessionIdentityShape, query: z.string().max(100).default("") })
+	.strict();
+export const hermesUpsertTagDefinitionInputSchema = z
+	.object({
+		...metadataSessionIdentityShape,
+		name: hermesTagNameSchema,
+		color: z.enum(HERMES_TAG_COLORS),
+	})
+	.strict();
+export const hermesUpdateTagDefinitionInputSchema = z
+	.object({
+		...metadataSessionIdentityShape,
+		definitionId: hermesTagDefinitionIdSchema,
+		name: hermesTagNameSchema.optional(),
+		color: z.enum(HERMES_TAG_COLORS).optional(),
+		expectedRevision: z.number().int().min(0),
+	})
+	.strict()
+	.refine((value) => value.name !== undefined || value.color !== undefined, {
+		message: "A name or color update is required",
+	});
+export const hermesDeleteTagDefinitionInputSchema = z
+	.object({
+		...metadataSessionIdentityShape,
+		definitionId: hermesTagDefinitionIdSchema,
+		expectedRevision: z.number().int().min(0),
+	})
+	.strict();
+export const hermesTagAssignmentInputSchema = z
+	.object({ ...metadataSessionIdentityShape, definitionId: hermesTagDefinitionIdSchema })
+	.strict();
 
 export const hermesCreateInputSchema = z
 	.object({
@@ -189,6 +270,125 @@ export const hermesRouter = router({
 				input.profileId,
 				input.hermesSessionId,
 				input.archived
+			)
+		),
+
+	setSessionTitle: publicProcedure
+		.input(hermesSetSessionTitleInputSchema)
+		.mutation(({ input }) =>
+			hermesRuntimeService.setSessionTitle(
+				input.connectionId,
+				input.profileId,
+				input.hermesSessionId,
+				input.title,
+				input.expectedRevision
+			)
+		),
+
+	setSessionTags: publicProcedure
+		.input(hermesSetSessionTagsInputSchema)
+		.mutation(({ input }) =>
+			hermesRuntimeService.setSessionTags(
+				input.connectionId,
+				input.profileId,
+				input.hermesSessionId,
+				input.tags,
+				input.expectedRevision
+			)
+		),
+
+	addSessionTag: publicProcedure
+		.input(hermesSessionTagInputSchema)
+		.mutation(({ input }) =>
+			hermesRuntimeService.addSessionTag(
+				input.connectionId,
+				input.profileId,
+				input.hermesSessionId,
+				input.tag
+			)
+		),
+
+	removeSessionTag: publicProcedure
+		.input(hermesSessionTagInputSchema)
+		.mutation(({ input }) =>
+			hermesRuntimeService.removeSessionTag(
+				input.connectionId,
+				input.profileId,
+				input.hermesSessionId,
+				input.tag
+			)
+		),
+
+	tagDefinitions: publicProcedure
+		.input(hermesListTagDefinitionsInputSchema)
+		.query(({ input }) =>
+			hermesRuntimeService.listTagDefinitions(
+				input.connectionId,
+				input.profileId,
+				input.hermesSessionId,
+				input.query
+			)
+		),
+
+	upsertTagDefinition: publicProcedure
+		.input(hermesUpsertTagDefinitionInputSchema)
+		.mutation(({ input }) =>
+			hermesRuntimeService.upsertTagDefinition(
+				input.connectionId,
+				input.profileId,
+				input.hermesSessionId,
+				input.name,
+				input.color
+			)
+		),
+
+	updateTagDefinition: publicProcedure
+		.input(hermesUpdateTagDefinitionInputSchema)
+		.mutation(({ input }) =>
+			hermesRuntimeService.updateTagDefinition(
+				input.connectionId,
+				input.profileId,
+				input.hermesSessionId,
+				input.definitionId,
+				{
+					name: input.name,
+					color: input.color,
+					expectedRevision: input.expectedRevision,
+				}
+			)
+		),
+
+	deleteTagDefinition: publicProcedure
+		.input(hermesDeleteTagDefinitionInputSchema)
+		.mutation(({ input }) =>
+			hermesRuntimeService.deleteTagDefinition(
+				input.connectionId,
+				input.profileId,
+				input.hermesSessionId,
+				input.definitionId,
+				input.expectedRevision
+			)
+		),
+
+	assignTagDefinition: publicProcedure
+		.input(hermesTagAssignmentInputSchema)
+		.mutation(({ input }) =>
+			hermesRuntimeService.assignTagDefinition(
+				input.connectionId,
+				input.profileId,
+				input.hermesSessionId,
+				input.definitionId
+			)
+		),
+
+	unassignTagDefinition: publicProcedure
+		.input(hermesTagAssignmentInputSchema)
+		.mutation(({ input }) =>
+			hermesRuntimeService.unassignTagDefinition(
+				input.connectionId,
+				input.profileId,
+				input.hermesSessionId,
+				input.definitionId
 			)
 		),
 

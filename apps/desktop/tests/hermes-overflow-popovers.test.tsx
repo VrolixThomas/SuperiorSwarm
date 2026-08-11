@@ -3,7 +3,11 @@ import { Window } from "happy-dom";
 import { act, useState } from "react";
 import type { Root } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
-import type { HermesSessionSummary } from "../src/shared/hermes";
+import type {
+	HermesSessionSummary,
+	HermesTagColor,
+	HermesTagDefinition,
+} from "../src/shared/hermes";
 
 const testWindow = new Window({ url: "http://localhost" });
 const browserGlobals: Record<string, unknown> = {
@@ -121,6 +125,14 @@ function Harness({ label, onAction }: { label: string; onAction: () => void }) {
 const sessionRowFixture: HermesSessionSummary = {
 	id: "session-important",
 	title: "Important session",
+	generatedTitle: "Generated important session",
+	titleSource: "custom",
+	tags: [
+		tagDefinition("tag-customer", "Customer report", "blue"),
+		tagDefinition("tag-urgent", "Urgent", "red"),
+		tagDefinition("tag-release", "Release", "purple"),
+	],
+	metadataRevision: 7,
 	preview: "Review the release",
 	profileId: "work",
 	source: "superiorswarm",
@@ -136,6 +148,45 @@ const sessionRowFixture: HermesSessionSummary = {
 	admissionReason: null,
 	origin: null,
 };
+
+function tagDefinition(
+	id: string,
+	name: string,
+	color: HermesTagColor,
+	revision = 0
+): HermesTagDefinition {
+	return {
+		id,
+		name,
+		normalizedKey: name.toLocaleLowerCase(),
+		color,
+		revision,
+		createdAt: 1,
+		updatedAt: 1,
+	};
+}
+
+const noopTagActions = {
+	onListTagDefinitions: async () => sessionRowFixture.tags,
+	onCreateTag: async (name: string, color: HermesTagColor) =>
+		tagDefinition("tag-created", name, color),
+	onUpdateTag: async (
+		_definitionId: string,
+		update: { name?: string; color?: HermesTagColor; expectedRevision: number }
+	) => tagDefinition("tag-updated", update.name ?? "Updated", update.color ?? "gray", 1),
+	onDeleteTag: async (_definitionId: string, _expectedRevision: number) => undefined,
+	onAssignTag: async (_definitionId: string) => undefined,
+	onUnassignTag: async (_definitionId: string) => undefined,
+};
+
+function input(element: HTMLInputElement, value: string): void {
+	const setter = Object.getOwnPropertyDescriptor(
+		testWindow.HTMLInputElement.prototype,
+		"value"
+	)?.set;
+	setter?.call(element, value);
+	element.dispatchEvent(new testWindow.Event("input", { bubbles: true }));
+}
 
 async function mountPopover({
 	label,
@@ -225,9 +276,339 @@ afterEach(async () => {
 });
 
 describe("Agents overflow popovers", () => {
+	test("keeps the main menu compact and gives rename a focused keyboard subview", async () => {
+		const renameCalls: Array<[string, number]> = [];
+		let resolveRename: (() => void) | null = null;
+		const onRename = mock(
+			(title: string, expectedRevision: number) =>
+				new Promise<void>((resolve) => {
+					renameCalls.push([title, expectedRevision]);
+					resolveRename = resolve;
+				})
+		);
+		const container = document.createElement("div");
+		document.body.append(container);
+		const root = createRoot(container);
+		mountedRoot = root;
+		await act(async () =>
+			root.render(
+				<HermesSessionRow
+					session={sessionRowFixture}
+					selected
+					linkedBranch={null}
+					actionPending={false}
+					deleteDisabledReason={null}
+					onSelect={() => undefined}
+					onSetArchived={() => undefined}
+					onDelete={() => undefined}
+					onRename={onRename}
+					{...noopTagActions}
+				/>
+			)
+		);
+
+		expect(container.textContent).toContain("Customer report");
+		expect(container.textContent).toContain("Urgent");
+		expect(container.textContent).toContain("+1");
+		expect(container.textContent).not.toContain("Release");
+		expect(
+			container
+				.querySelector<HTMLButtonElement>('button[aria-label^="Open Important session"]')
+				?.getAttribute("aria-label")
+		).toContain("Tags: Customer report, Urgent, Release");
+		const trigger = document.querySelector<HTMLButtonElement>(
+			'button[aria-label="Actions for Important session"]'
+		);
+		if (!trigger) throw new Error("Missing session actions trigger");
+		await act(async () => click(trigger));
+		const panel = document.querySelector<HTMLDialogElement>("dialog");
+		if (!panel) throw new Error("Missing metadata actions panel");
+		expect(panel.style.width).toBe("304px");
+		expect(panel.textContent).toContain("Rename");
+		expect(panel.textContent).toContain("Tags");
+		expect(panel.textContent).toContain("Archive");
+		expect(panel.querySelector("input")).toBeNull();
+
+		const renameButton = Array.from(panel.querySelectorAll("button")).find((button) =>
+			button.textContent?.trim().startsWith("Rename")
+		);
+		if (!renameButton) throw new Error("Missing rename action");
+		await act(async () => click(renameButton));
+		const nameInput = panel.querySelector<HTMLInputElement>('input[aria-label="Session name"]');
+		if (!nameInput) throw new Error("Missing accessible session name input");
+		expect(document.activeElement).toBe(nameInput);
+		expect(nameInput.value).toBe("Important session");
+		expect(nameInput.className).toContain("h-8");
+		expect(panel.textContent).not.toContain("Archive");
+		await act(async () => input(nameInput, "Release readiness"));
+		const saveName = Array.from(panel.querySelectorAll("button")).find(
+			(button) => button.textContent === "Save"
+		);
+		if (!saveName) throw new Error("Missing save name action");
+		await act(async () => {
+			nameInput.form?.dispatchEvent(
+				new testWindow.Event("submit", {
+					bubbles: true,
+					cancelable: true,
+				}) as unknown as Event
+			);
+		});
+		expect(renameCalls).toEqual([["Release readiness", 7]]);
+		expect(saveName.disabled).toBe(true);
+		await act(async () => resolveRename?.());
+		expect(panel.textContent).toContain("Rename");
+
+		const reopenedRename = Array.from(panel.querySelectorAll("button")).find((button) =>
+			button.textContent?.trim().startsWith("Rename")
+		);
+		if (!reopenedRename) throw new Error("Missing rename action after save");
+		await act(async () => click(reopenedRename));
+		const escapeInput = panel.querySelector<HTMLInputElement>('input[aria-label="Session name"]');
+		if (!escapeInput) throw new Error("Missing rename input after reopening");
+		await act(async () => {
+			escapeInput.dispatchEvent(
+				new testWindow.KeyboardEvent("keydown", {
+					key: "Escape",
+					bubbles: true,
+					cancelable: true,
+				}) as unknown as Event
+			);
+		});
+		expect(document.querySelector("dialog")).toBe(panel);
+		expect(panel.querySelector('input[aria-label="Session name"]')).toBeNull();
+		const focusedRename = Array.from(panel.querySelectorAll("button")).find((button) =>
+			button.textContent?.trim().startsWith("Rename")
+		);
+		expect(document.activeElement === (focusedRename as unknown as Element)).toBe(true);
+	});
+
+	test("searches colored definitions and applies selection immediately without hiding failures", async () => {
+		const definitions = [
+			...sessionRowFixture.tags,
+			tagDefinition("tag-follow-up", "Needs follow-up", "amber"),
+		];
+		const assignCalls: string[] = [];
+		const unassignCalls: string[] = [];
+		let rejectFirstAssign = true;
+		const container = document.createElement("div");
+		document.body.append(container);
+		const root = createRoot(container);
+		mountedRoot = root;
+		await act(async () =>
+			root.render(
+				<HermesSessionRow
+					session={sessionRowFixture}
+					selected
+					linkedBranch={null}
+					actionPending={false}
+					deleteDisabledReason={null}
+					onSelect={() => undefined}
+					onSetArchived={() => undefined}
+					onDelete={() => undefined}
+					onRename={async () => undefined}
+					{...noopTagActions}
+					onListTagDefinitions={async (query) =>
+						definitions.filter((tag) =>
+							tag.name.toLocaleLowerCase().includes(query.toLocaleLowerCase())
+						)
+					}
+					onAssignTag={async (definitionId) => {
+						assignCalls.push(definitionId);
+						if (rejectFirstAssign) {
+							rejectFirstAssign = false;
+							throw new Error("Assignment changed elsewhere. Refresh and try again.");
+						}
+					}}
+					onUnassignTag={async (definitionId) => {
+						unassignCalls.push(definitionId);
+					}}
+				/>
+			)
+		);
+		const trigger = document.querySelector<HTMLButtonElement>(
+			'button[aria-label="Actions for Important session"]'
+		);
+		if (!trigger) throw new Error("Missing session actions trigger");
+		await act(async () => click(trigger));
+		const panel = document.querySelector<HTMLDialogElement>("dialog");
+		if (!panel) throw new Error("Missing session actions panel");
+		const tagsButton = Array.from(panel.querySelectorAll("button")).find((button) =>
+			button.textContent?.trim().startsWith("Tags")
+		);
+		if (!tagsButton) throw new Error("Missing Tags action");
+		await act(async () => click(tagsButton));
+		const search = panel.querySelector<HTMLInputElement>('input[aria-label="Search tags"]');
+		if (!search) throw new Error("Missing tag search");
+		expect(document.activeElement).toBe(search);
+		expect(panel.textContent).toContain("Manage tags…");
+		expect(panel.querySelector('input[type="checkbox"]:checked')).not.toBeNull();
+
+		await act(async () => input(search, "follow"));
+		const followUp = panel.querySelector<HTMLInputElement>(
+			'input[aria-label="Assign Needs follow-up"]'
+		);
+		if (!followUp) throw new Error("Missing filtered tag definition");
+		await act(async () => click(followUp));
+		expect(assignCalls).toEqual(["tag-follow-up"]);
+		expect(panel.querySelector('[role="alert"]')?.textContent).toContain("changed elsewhere");
+		expect(followUp.checked).toBe(false);
+		await act(async () => click(followUp));
+		expect(assignCalls).toEqual(["tag-follow-up", "tag-follow-up"]);
+		expect(followUp.checked).toBe(true);
+
+		await act(async () => input(search, "urgent"));
+		const urgent = panel.querySelector<HTMLInputElement>('input[aria-label="Unassign Urgent"]');
+		if (!urgent) throw new Error("Missing selected tag definition");
+		await act(async () => click(urgent));
+		expect(unassignCalls).toEqual(["tag-urgent"]);
+		expect(urgent.checked).toBe(false);
+	});
+
+	test("creates from search with the fixed palette and manages rename, recolor, and confirmed delete", async () => {
+		const created: Array<[string, HermesTagColor]> = [];
+		const updates: Array<
+			[string, { name?: string; color?: HermesTagColor; expectedRevision: number }]
+		> = [];
+		const deletes: Array<[string, number]> = [];
+		const container = document.createElement("div");
+		document.body.append(container);
+		const root = createRoot(container);
+		mountedRoot = root;
+		await act(async () =>
+			root.render(
+				<HermesSessionRow
+					session={sessionRowFixture}
+					selected
+					linkedBranch={null}
+					actionPending={false}
+					deleteDisabledReason={null}
+					onSelect={() => undefined}
+					onSetArchived={() => undefined}
+					onDelete={() => undefined}
+					onRename={async () => undefined}
+					{...noopTagActions}
+					onCreateTag={async (name, color) => {
+						created.push([name, color]);
+						return tagDefinition("tag-new", name, color);
+					}}
+					onUpdateTag={async (definitionId, update) => {
+						updates.push([definitionId, update]);
+						return tagDefinition(
+							definitionId,
+							update.name ?? "Customer report",
+							update.color ?? "blue",
+							update.expectedRevision + 1
+						);
+					}}
+					onDeleteTag={async (definitionId, revision) => {
+						deletes.push([definitionId, revision]);
+					}}
+				/>
+			)
+		);
+		const trigger = document.querySelector<HTMLButtonElement>(
+			'button[aria-label="Actions for Important session"]'
+		);
+		if (!trigger) throw new Error("Missing session actions trigger");
+		await act(async () => click(trigger));
+		const panel = document.querySelector<HTMLDialogElement>("dialog");
+		if (!panel) throw new Error("Missing session actions panel");
+		const tagsButton = Array.from(panel.querySelectorAll("button")).find((button) =>
+			button.textContent?.trim().startsWith("Tags")
+		);
+		if (!tagsButton) throw new Error("Missing Tags action");
+		await act(async () => click(tagsButton));
+		const search = panel.querySelector<HTMLInputElement>('input[aria-label="Search tags"]');
+		if (!search) throw new Error("Missing tag search");
+		await act(async () => input(search, "Launch"));
+		const create = Array.from(panel.querySelectorAll("button")).find((button) =>
+			button.textContent?.includes("Create “Launch”")
+		);
+		if (!create) throw new Error("Missing create-from-search action");
+		await act(async () => click(create));
+		expect(panel.querySelectorAll('input[type="radio"]')).toHaveLength(9);
+		const gray = panel.querySelector<HTMLInputElement>('input[aria-label="Gray tag color"]');
+		const blue = panel.querySelector<HTMLInputElement>('input[aria-label="Blue tag color"]');
+		if (!gray || !blue) throw new Error("Missing keyboard palette choices");
+		expect(gray.tabIndex).toBe(0);
+		expect(blue.tabIndex).toBe(-1);
+		gray.focus();
+		await act(async () => {
+			gray.dispatchEvent(
+				new testWindow.KeyboardEvent("keydown", {
+					key: "ArrowRight",
+					bubbles: true,
+					cancelable: true,
+				}) as unknown as Event
+			);
+		});
+		expect(document.activeElement).toBe(blue);
+		expect(blue.checked).toBe(true);
+		expect(blue.tabIndex).toBe(0);
+		const purple = panel.querySelector<HTMLInputElement>('input[aria-label="Purple tag color"]');
+		if (!purple) throw new Error("Missing purple palette choice");
+		await act(async () => click(purple));
+		const confirmCreate = Array.from(panel.querySelectorAll("button")).find(
+			(button) => button.textContent === "Create tag"
+		);
+		if (!confirmCreate) throw new Error("Missing create tag confirmation");
+		await act(async () => click(confirmCreate));
+		expect(created).toEqual([["Launch", "purple"]]);
+
+		const manage = Array.from(panel.querySelectorAll("button")).find(
+			(button) => button.textContent === "Manage tags…"
+		);
+		if (!manage) throw new Error("Missing manage-tags action");
+		await act(async () => click(manage));
+		expect(panel.textContent).toContain("Manage tags");
+		const edit = panel.querySelector<HTMLButtonElement>(
+			'button[aria-label="Edit Customer report"]'
+		);
+		if (!edit) throw new Error("Missing tag edit action");
+		await act(async () => click(edit));
+		const name = panel.querySelector<HTMLInputElement>('input[aria-label="Tag name"]');
+		if (!name) throw new Error("Missing tag name editor");
+		await act(async () => input(name, "Customer"));
+		const green = panel.querySelector<HTMLInputElement>('input[aria-label="Green tag color"]');
+		if (!green) throw new Error("Missing green palette choice");
+		await act(async () => click(green));
+		const save = Array.from(panel.querySelectorAll("button")).find(
+			(button) => button.textContent === "Save tag"
+		);
+		if (!save) throw new Error("Missing tag save action");
+		await act(async () => click(save));
+		expect(updates).toEqual([
+			["tag-customer", { name: "Customer", color: "green", expectedRevision: 0 }],
+		]);
+		const updatedEdit = panel.querySelector<HTMLButtonElement>(
+			'button[aria-label="Edit Customer"]'
+		);
+		expect(document.activeElement).toBe(updatedEdit);
+
+		const deleteButton = panel.querySelector<HTMLButtonElement>(
+			'button[aria-label="Delete Customer"]'
+		);
+		if (!deleteButton) throw new Error("Missing tag delete action");
+		await act(async () => click(deleteButton));
+		expect(panel.textContent).toContain("Delete “Customer” and remove it from every session?");
+		expect(deletes).toEqual([]);
+		const cancelDelete = Array.from(panel.querySelectorAll("button")).find(
+			(button) => button.textContent === "Cancel"
+		);
+		expect(document.activeElement === (cancelDelete as unknown as Element)).toBe(true);
+		const confirmDelete = Array.from(panel.querySelectorAll("button")).find(
+			(button) => button.textContent === "Delete tag"
+		);
+		if (!confirmDelete) throw new Error("Missing explicit tag delete confirmation");
+		await act(async () => click(confirmDelete));
+		expect(deletes).toEqual([["tag-customer", 1]]);
+	});
+
 	test("session row actions are discoverable, keyboard controls that never select the row", async () => {
 		const onSelect = mock(() => undefined);
-		const onSetArchived = mock((_archived: boolean) => undefined);
+		const onSetArchived = mock(
+			(_profileId: string, _durableSessionId: string, _archived: boolean) => undefined
+		);
 		const onDelete = mock(() => undefined);
 		let confirmationCount = 0;
 		const confirmDelete = mock((message: string) => {
@@ -250,6 +631,8 @@ describe("Agents overflow popovers", () => {
 					onSelect={onSelect}
 					onSetArchived={onSetArchived}
 					onDelete={onDelete}
+					onRename={async () => undefined}
+					{...noopTagActions}
 					confirmDelete={confirmDelete}
 				/>
 			)
@@ -298,14 +681,14 @@ describe("Agents overflow popovers", () => {
 		expect(onSelect).not.toHaveBeenCalled();
 
 		const openRow = document.querySelector<HTMLButtonElement>(
-			'button[aria-label="Open Important session"]'
+			'button[aria-label^="Open Important session"]'
 		);
 		if (!openRow) throw new Error("Missing row selection control");
 		await act(async () => click(openRow));
 		expect(onSelect).toHaveBeenCalledTimes(1);
 	});
 
-	test("permanent deletion stays disabled with the non-atomic backend reason", async () => {
+	test("permanent deletion stays disabled without expanding the menu with its explanation", async () => {
 		const reason =
 			"Permanent delete is unavailable because stock Hermes cannot atomically verify that a session stayed idle. Archive is the safe cleanup option.";
 		const onDelete = mock(() => undefined);
@@ -324,6 +707,8 @@ describe("Agents overflow popovers", () => {
 					onSelect={() => undefined}
 					onSetArchived={() => undefined}
 					onDelete={onDelete}
+					onRename={async () => undefined}
+					{...noopTagActions}
 				/>
 			)
 		);
@@ -339,7 +724,10 @@ describe("Agents overflow popovers", () => {
 		if (!deleteButton) throw new Error("Missing disabled deletion action");
 		expect(deleteButton.disabled).toBe(true);
 		expect(deleteButton.title).toBe(reason);
-		expect(panel?.textContent).toContain("Archive is the safe cleanup option");
+		expect(panel?.textContent).not.toContain("Archive is the safe cleanup option");
+		expect(
+			panel?.querySelector('[aria-label="Why is permanent delete unavailable?"]')
+		).not.toBeNull();
 		expect(onDelete).not.toHaveBeenCalled();
 	});
 
@@ -354,6 +742,8 @@ describe("Agents overflow popovers", () => {
 				onSelect={() => undefined}
 				onSetArchived={() => undefined}
 				onDelete={() => undefined}
+				onRename={async () => undefined}
+				{...noopTagActions}
 			/>
 		);
 
@@ -376,6 +766,8 @@ describe("Agents overflow popovers", () => {
 					onSelect={() => undefined}
 					onSetArchived={() => undefined}
 					onDelete={() => undefined}
+					onRename={async () => undefined}
+					{...noopTagActions}
 				/>
 			)
 		);

@@ -19,6 +19,10 @@ describe("stock Hermes protocol adapter", () => {
 		expect(sessions[0]).toEqual({
 			id: "stored-slack-1",
 			title: "Slack handoff",
+			generatedTitle: "Slack handoff",
+			titleSource: "generated",
+			tags: [],
+			metadataRevision: 0,
 			preview: "Continue the release plan",
 			profileId: "work",
 			source: "slack",
