@@ -12,6 +12,8 @@ import {
 	type HermesRuntimeState,
 	type HermesSessionBinding,
 	type HermesSessionHistory,
+	type HermesSessionHistoryPage,
+	type HermesSessionRevision,
 	type HermesSessionSummary,
 	hermesSessionCompositeIdentityKey,
 	hermesSessionIdentityKey,
@@ -109,6 +111,17 @@ export interface HermesRestClientLike {
 		profileId?: string,
 		signal?: AbortSignal
 	): Promise<HermesSessionHistory>;
+	getSessionRevision?(
+		durableSessionId: string,
+		profileId?: string,
+		signal?: AbortSignal
+	): Promise<HermesSessionRevision>;
+	getTranscriptTail?(
+		durableSessionId: string,
+		profileId?: string,
+		limit?: number,
+		signal?: AbortSignal
+	): Promise<HermesSessionHistoryPage>;
 }
 
 export interface HermesSendServiceLike {
@@ -378,6 +391,8 @@ function reconcileHermesHistory(
 	return {
 		durableSessionId: incoming.durableSessionId,
 		view: "durable",
+		messageIdsAreStable:
+			cached.messageIdsAreStable === true && incoming.messageIdsAreStable === true,
 		messages,
 	};
 }
@@ -829,6 +844,35 @@ export class HermesRuntimeService {
 			history.messages.flatMap((message) => message.workspaceArtifacts)
 		);
 		return history;
+	}
+
+	async historyRevision(
+		connectionId: string,
+		hermesSessionId: string,
+		requestedProfileId?: string
+	): Promise<HermesSessionRevision> {
+		const runtime = this.requireRuntime(connectionId);
+		const durableSessionId = this.resolveDurableId(runtime, hermesSessionId, requestedProfileId);
+		const profileId = requestedProfileId ?? this.profileFor(runtime, durableSessionId);
+		if (!runtime.rest.getSessionRevision) {
+			throw new Error("Hermes session revision polling is unavailable");
+		}
+		return runtime.rest.getSessionRevision(durableSessionId, profileId);
+	}
+
+	async historyTail(
+		connectionId: string,
+		hermesSessionId: string,
+		requestedProfileId?: string,
+		limit = 100
+	): Promise<HermesSessionHistoryPage> {
+		const runtime = this.requireRuntime(connectionId);
+		const durableSessionId = this.resolveDurableId(runtime, hermesSessionId, requestedProfileId);
+		const profileId = requestedProfileId ?? this.profileFor(runtime, durableSessionId);
+		if (!runtime.rest.getTranscriptTail) {
+			throw new Error("Hermes transcript tail polling is unavailable");
+		}
+		return runtime.rest.getTranscriptTail(durableSessionId, profileId, limit);
 	}
 
 	async create(

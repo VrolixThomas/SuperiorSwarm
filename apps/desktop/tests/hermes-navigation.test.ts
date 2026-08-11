@@ -420,6 +420,16 @@ describe("Hermes global navigation", () => {
 		expect(view).toContain('event.dataTransfer.dropEffect = "copy"');
 		expect(view).toContain('aria-label={live.running ? "Queue follow-up" : "Send message"}');
 		expect(view).not.toContain("Use the paperclip");
+		expect(view).toContain("new HermesHistorySyncCoordinator()");
+		expect(view).toContain("historyRevision.errorUpdatedAt");
+		expect(view).toContain("historySync.applyTail");
+		expect(view).toContain("retry: false");
+		expect(view).toMatch(
+			/const next = historyRevision\.data;[\s\S]*?!next \|\|[\s\S]*?historyRevision\.error \|\|/
+		);
+		expect(view).not.toContain(
+			"previousHistoryRevision.current = { selectionKey, revision: next }"
+		);
 	});
 
 	test("keeps local workspace link polling active while Hermes is disconnected", async () => {

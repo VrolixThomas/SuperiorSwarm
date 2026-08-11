@@ -5,6 +5,9 @@ import type {
 	HermesOriginProjection,
 	HermesQueuedFollowUpSummary,
 	HermesRuntimeEvent,
+	HermesSessionHistory,
+	HermesSessionHistoryPage,
+	HermesSessionRevision,
 	HermesSessionSummary,
 	HermesTranscriptMessage,
 } from "../../shared/hermes";
@@ -80,6 +83,208 @@ export const HERMES_CHAT_LAYOUT_CLASSES = {
 	composerColumn: "mx-auto w-full min-w-0 max-w-[800px]",
 	userBubble: "ml-auto w-fit max-w-[min(640px,76%)]",
 } as const;
+
+export type HermesHistorySyncDecision = "none" | "tail" | "full";
+
+export const HERMES_HISTORY_CANONICAL_FALLBACK_INTERVAL_MS = 15_000;
+const HERMES_HISTORY_REVISION_FAILURE_THRESHOLD = 3;
+
+export function decideHermesHistorySync(
+	previous: HermesSessionRevision | null,
+	next: HermesSessionRevision
+): HermesHistorySyncDecision {
+	if (!next.latestMessageIdIsStable) return "full";
+	if (!previous || previous.durableSessionId !== next.durableSessionId) return "tail";
+	if (
+		previous.latestMessageId === next.latestMessageId &&
+		previous.latestMessageAt === next.latestMessageAt
+	) {
+		return "none";
+	}
+	if (next.latestMessageId === null) {
+		return previous.latestMessageId === null ? "none" : "full";
+	}
+	if (previous.latestMessageId === null) return "tail";
+	if (
+		previous.latestMessageAt !== null &&
+		next.latestMessageAt !== null &&
+		next.latestMessageAt < previous.latestMessageAt
+	) {
+		return "full";
+	}
+	return "tail";
+}
+
+export function mergeHermesHistoryTail(
+	current: HermesSessionHistory,
+	tail: HermesSessionHistoryPage
+): HermesSessionHistory {
+	if (current.durableSessionId !== tail.durableSessionId) return current;
+	if (canReplaceHermesHistoryFromTail(current, tail)) {
+		return {
+			durableSessionId: tail.durableSessionId,
+			view: tail.view,
+			messageIdsAreStable: tail.messageIdsAreStable,
+			messages: tail.messages,
+		};
+	}
+	const continuation = hermesHistoryTailContinuation(current, tail);
+	if (!continuation) return current;
+	return {
+		...current,
+		view: current.view === "durable" || tail.view === "durable" ? "durable" : "active",
+		messages: continuation,
+	};
+}
+
+export function canMergeHermesHistoryTail(
+	current: HermesSessionHistory,
+	tail: HermesSessionHistoryPage
+): boolean {
+	if (current.durableSessionId !== tail.durableSessionId) return false;
+	if (canReplaceHermesHistoryFromTail(current, tail)) return true;
+	return hermesHistoryTailContinuation(current, tail) !== null;
+}
+
+export function applyHermesHistoryTail(
+	current: HermesSessionHistory,
+	tail: HermesSessionHistoryPage
+): HermesSessionHistory | null {
+	return canMergeHermesHistoryTail(current, tail) ? mergeHermesHistoryTail(current, tail) : null;
+}
+
+export class HermesHistorySyncCoordinator {
+	private selectionKey: string | null = null;
+	private checkpoint: HermesSessionRevision | null = null;
+	private lastCanonicalRefreshAt: number | null = null;
+	private revisionFailureCount = 0;
+	private lastRevisionErrorUpdatedAt: number | null = null;
+
+	decide(selectionKey: string, revision: HermesSessionRevision): HermesHistorySyncDecision {
+		this.select(selectionKey);
+		this.revisionFailureCount = 0;
+		this.lastRevisionErrorUpdatedAt = null;
+		return decideHermesHistorySync(this.checkpoint, revision);
+	}
+
+	applyTail(
+		selectionKey: string,
+		revision: HermesSessionRevision,
+		current: HermesSessionHistory,
+		tail: HermesSessionHistoryPage
+	): HermesSessionHistory | null {
+		this.select(selectionKey);
+		if (
+			revision.durableSessionId !== current.durableSessionId ||
+			revision.durableSessionId !== tail.durableSessionId
+		) {
+			return null;
+		}
+		if (!hermesHistoryContainsRevision(tail, revision)) return null;
+		const synchronized = applyHermesHistoryTail(current, tail);
+		if (!synchronized) return null;
+		this.checkpoint = revision;
+		return synchronized;
+	}
+
+	acceptCanonical(
+		selectionKey: string,
+		revision: HermesSessionRevision,
+		history: HermesSessionHistory
+	): boolean {
+		this.select(selectionKey);
+		if (revision.durableSessionId !== history.durableSessionId) return false;
+		if (!hermesHistoryContainsRevision(history, revision)) return false;
+		this.checkpoint = revision;
+		return true;
+	}
+
+	beginCanonicalRefresh(selectionKey: string, now: number): boolean {
+		this.select(selectionKey);
+		if (
+			this.lastCanonicalRefreshAt !== null &&
+			now - this.lastCanonicalRefreshAt < HERMES_HISTORY_CANONICAL_FALLBACK_INTERVAL_MS
+		) {
+			return false;
+		}
+		this.lastCanonicalRefreshAt = now;
+		return true;
+	}
+
+	recordRevisionFailure(selectionKey: string, errorUpdatedAt: number, now: number): boolean {
+		this.select(selectionKey);
+		if (errorUpdatedAt <= 0 || errorUpdatedAt === this.lastRevisionErrorUpdatedAt) return false;
+		this.lastRevisionErrorUpdatedAt = errorUpdatedAt;
+		this.revisionFailureCount++;
+		return (
+			this.revisionFailureCount >= HERMES_HISTORY_REVISION_FAILURE_THRESHOLD &&
+			this.beginCanonicalRefresh(selectionKey, now)
+		);
+	}
+
+	private select(selectionKey: string): void {
+		if (this.selectionKey === selectionKey) return;
+		this.selectionKey = selectionKey;
+		this.checkpoint = null;
+		this.lastCanonicalRefreshAt = null;
+		this.revisionFailureCount = 0;
+		this.lastRevisionErrorUpdatedAt = null;
+	}
+}
+
+function hermesHistoryContainsRevision(
+	history: HermesSessionHistory,
+	revision: HermesSessionRevision
+): boolean {
+	if (!revision.latestMessageIdIsStable) return false;
+	return revision.latestMessageId === null
+		? history.messages.length === 0
+		: history.messageIdsAreStable === true &&
+				history.messages.some((message) => message.id === revision.latestMessageId);
+}
+
+function canReplaceHermesHistoryFromTail(
+	current: HermesSessionHistory,
+	tail: HermesSessionHistoryPage
+): boolean {
+	return tail.complete && (tail.view === "durable" || current.view === "active");
+}
+
+function hermesHistoryTailContinuation(
+	current: HermesSessionHistory,
+	tail: HermesSessionHistoryPage
+): HermesSessionHistory["messages"] | null {
+	if (
+		current.messages.length === 0 ||
+		current.messageIdsAreStable !== true ||
+		tail.messages.length === 0 ||
+		!tail.messageIdsAreStable
+	) {
+		return null;
+	}
+	const currentIds = current.messages.map((message) => message.id);
+	if (new Set(currentIds).size !== currentIds.length) return null;
+	const orientations = [tail.messages];
+	if (tail.messages.length > 1) orientations.push([...tail.messages].reverse());
+	for (const messages of orientations) {
+		const tailIds = messages.map((message) => message.id);
+		if (new Set(tailIds).size !== tailIds.length) continue;
+		const overlapStart = currentIds.indexOf(tailIds[0] ?? "");
+		if (overlapStart < 0) continue;
+		const overlapLength = currentIds.length - overlapStart;
+		if (overlapLength > tailIds.length) continue;
+		if (!currentIds.slice(overlapStart).every((messageId, index) => messageId === tailIds[index])) {
+			continue;
+		}
+		if (tailIds.slice(overlapLength).some((messageId) => currentIds.includes(messageId))) {
+			continue;
+		}
+		const merged = [...current.messages.slice(0, overlapStart), ...messages];
+		if (tail.total !== null && merged.length !== tail.total) continue;
+		return merged;
+	}
+	return null;
+}
 
 export const HERMES_LONG_USER_MESSAGE_CHAR_THRESHOLD = 1_800;
 export const HERMES_LONG_USER_MESSAGE_LINE_THRESHOLD = 16;

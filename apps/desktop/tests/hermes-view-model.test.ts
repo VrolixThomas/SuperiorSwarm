@@ -1,10 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import {
 	HERMES_CHAT_OVERFLOW_CLASSES,
+	HERMES_HISTORY_CANONICAL_FALLBACK_INTERVAL_MS,
+	HermesHistorySyncCoordinator,
 	applyHermesEvent,
+	applyHermesHistoryTail,
+	canMergeHermesHistoryTail,
 	classifyHermesTranscriptMessage,
 	createHermesLiveState,
 	createHermesOptimisticUserTurn,
+	decideHermesHistorySync,
 	deriveHermesCanonicalTimeline,
 	filterHermesSessions,
 	groupHermesSessions,
@@ -19,6 +24,7 @@ import {
 	hermesRendererAttachmentSelectionError,
 	hermesReportRequiresExplicitRetry,
 	latestReportableHermesMessage,
+	mergeHermesHistoryTail,
 	projectHermesLiveActivity,
 	projectHermesLiveCompletions,
 	projectHermesOptimisticUserTurns,
@@ -101,6 +107,356 @@ const message = (overrides: Partial<HermesTranscriptMessage> = {}): HermesTransc
 });
 
 describe("Hermes renderer view model", () => {
+	test("uses bounded tail sync for new platform messages and full refresh for ambiguous changes", () => {
+		const baseline = {
+			durableSessionId: "session-1",
+			latestMessageId: "10",
+			latestMessageAt: 1_000,
+			latestMessageIdIsStable: true,
+		};
+		expect(decideHermesHistorySync(null, baseline)).toBe("tail");
+		expect(decideHermesHistorySync(baseline, baseline)).toBe("none");
+		expect(
+			decideHermesHistorySync(baseline, {
+				...baseline,
+				latestMessageId: "12",
+				latestMessageAt: 2_000,
+			})
+		).toBe("tail");
+		expect(
+			decideHermesHistorySync(baseline, {
+				...baseline,
+				latestMessageId: "9",
+				latestMessageAt: 900,
+			})
+		).toBe("full");
+		expect(
+			decideHermesHistorySync(baseline, {
+				...baseline,
+				latestMessageId: null,
+				latestMessageAt: null,
+			})
+		).toBe("full");
+		expect(
+			decideHermesHistorySync(baseline, {
+				...baseline,
+				latestMessageId: null,
+				latestMessageAt: 2_000,
+				latestMessageIdIsStable: false,
+			})
+		).toBe("full");
+	});
+
+	test("merges a latest history page by physical message identity without duplicates", () => {
+		const current = {
+			durableSessionId: "session-1",
+			view: "durable" as const,
+			messageIdsAreStable: true,
+			messages: [message({ id: "1", text: "old" }), message({ id: "2", text: "stale" })],
+		};
+		const merged = mergeHermesHistoryTail(current, {
+			durableSessionId: "session-1",
+			view: "durable",
+			total: null,
+			complete: false,
+			messageIdsAreStable: true,
+			messages: [
+				message({ id: "2", text: "updated" }),
+				message({ id: "3", text: "new", createdAt: 3 }),
+			],
+		});
+		expect(merged.messages.map((entry) => [entry.id, entry.text])).toEqual([
+			["1", "old"],
+			["2", "updated"],
+			["3", "new"],
+		]);
+		expect(
+			mergeHermesHistoryTail(current, {
+				...current,
+				durableSessionId: "other",
+				total: 2,
+				complete: true,
+				messageIdsAreStable: true,
+			})
+		).toBe(current);
+		expect(
+			canMergeHermesHistoryTail(current, {
+				...current,
+				total: 3,
+				complete: false,
+				messageIdsAreStable: true,
+				messages: [message({ id: "2" }), message({ id: "3" })],
+			})
+		).toBe(true);
+		expect(
+			canMergeHermesHistoryTail(current, {
+				...current,
+				total: 4,
+				complete: false,
+				messageIdsAreStable: true,
+				messages: [message({ id: "2" }), message({ id: "3" })],
+			})
+		).toBe(false);
+		expect(
+			canMergeHermesHistoryTail(current, {
+				...current,
+				total: null,
+				complete: false,
+				messageIdsAreStable: true,
+				messages: [message({ id: "501" })],
+			})
+		).toBe(false);
+	});
+
+	test("rejects unstable or discontinuous partial tails even when one ID overlaps", () => {
+		const current = {
+			durableSessionId: "session-1",
+			view: "durable" as const,
+			messageIdsAreStable: true,
+			messages: [
+				message({ id: "1" }),
+				message({ id: "2" }),
+				message({ id: "3" }),
+				message({ id: "4" }),
+			],
+		};
+		const partial = {
+			durableSessionId: "session-1",
+			view: "durable" as const,
+			total: null,
+			complete: false,
+			messages: [message({ id: "2" }), message({ id: "5" })],
+		};
+
+		expect(canMergeHermesHistoryTail(current, { ...partial, messageIdsAreStable: false })).toBe(
+			false
+		);
+		expect(canMergeHermesHistoryTail(current, { ...partial, messageIdsAreStable: true })).toBe(
+			false
+		);
+	});
+
+	test("never treats synthesized IDs in cached history as physical continuity anchors", () => {
+		const current = {
+			durableSessionId: "session-1",
+			view: "durable" as const,
+			messageIdsAreStable: false,
+			messages: [message({ id: "history-0" }), message({ id: "history-1" })],
+		};
+		const tail = {
+			durableSessionId: "session-1",
+			view: "durable" as const,
+			total: null,
+			complete: false,
+			messageIdsAreStable: true,
+			messages: [message({ id: "history-1" }), message({ id: "physical-2" })],
+		};
+
+		expect(applyHermesHistoryTail(current, tail)).toBeNull();
+	});
+
+	test("replaces canonical history only from an authoritative complete page", () => {
+		const current = {
+			durableSessionId: "session-1",
+			view: "durable" as const,
+			messages: [message({ id: "old", text: "Must disappear" })],
+		};
+		const complete = {
+			durableSessionId: "session-1",
+			view: "durable" as const,
+			total: 1,
+			complete: true,
+			messageIdsAreStable: false,
+			messages: [message({ id: "history-0", text: "Authoritative replacement" })],
+		};
+
+		expect(canMergeHermesHistoryTail(current, complete)).toBe(true);
+		const replaced = mergeHermesHistoryTail(current, complete);
+		expect(replaced.messages).toEqual(complete.messages);
+		expect(replaced.messageIdsAreStable).toBe(false);
+	});
+
+	test("does not replace durable physical history with a complete active-context page", () => {
+		const current = {
+			durableSessionId: "session-1",
+			view: "durable" as const,
+			messages: [message({ id: "durable-1" }), message({ id: "durable-2" })],
+		};
+		const active = {
+			durableSessionId: "session-1",
+			view: "active" as const,
+			total: 1,
+			complete: true,
+			messageIdsAreStable: true,
+			messages: [message({ id: "active-only" })],
+		};
+
+		expect(canMergeHermesHistoryTail(current, active)).toBe(false);
+		expect(applyHermesHistoryTail(current, active)).toBeNull();
+	});
+
+	test("checkpoints a revision only after a tail proves continuity", () => {
+		const sync = new HermesHistorySyncCoordinator();
+		const selectionKey = JSON.stringify(["manager-connection", "work", "session-1"]);
+		const revision = {
+			durableSessionId: "session-1",
+			latestMessageId: "5",
+			latestMessageAt: 5_000,
+			latestMessageIdIsStable: true,
+		};
+		const current = {
+			durableSessionId: "session-1",
+			view: "durable" as const,
+			messageIdsAreStable: true,
+			messages: [message({ id: "1" }), message({ id: "2" }), message({ id: "3" })],
+		};
+
+		expect(sync.decide(selectionKey, revision)).toBe("tail");
+		expect(
+			sync.applyTail(selectionKey, revision, current, {
+				durableSessionId: "session-1",
+				view: "durable",
+				total: 3,
+				complete: false,
+				messageIdsAreStable: true,
+				messages: [message({ id: "2" }), message({ id: "3" })],
+			})
+		).toBeNull();
+		expect(sync.decide(selectionKey, revision)).toBe("tail");
+		expect(
+			sync.applyTail(selectionKey, revision, current, {
+				durableSessionId: "session-1",
+				view: "durable",
+				total: null,
+				complete: false,
+				messageIdsAreStable: true,
+				messages: [message({ id: "2" }), message({ id: "5" })],
+			})
+		).toBeNull();
+		expect(sync.decide(selectionKey, revision)).toBe("tail");
+
+		const synchronized = sync.applyTail(selectionKey, revision, current, {
+			durableSessionId: "session-1",
+			view: "durable",
+			total: 5,
+			complete: false,
+			messageIdsAreStable: true,
+			messages: [message({ id: "3" }), message({ id: "4" }), message({ id: "5" })],
+		});
+		expect(synchronized?.messages.map((entry) => entry.id)).toEqual(["1", "2", "3", "4", "5"]);
+		expect(sync.decide(selectionKey, revision)).toBe("none");
+	});
+
+	test("does not checkpoint an authoritative page older than its triggering revision", () => {
+		const sync = new HermesHistorySyncCoordinator();
+		const selectionKey = JSON.stringify(["manager-connection", "work", "session-1"]);
+		const revision = {
+			durableSessionId: "session-1",
+			latestMessageId: "5",
+			latestMessageAt: 5_000,
+			latestMessageIdIsStable: true,
+		};
+		const current = {
+			durableSessionId: "session-1",
+			view: "durable" as const,
+			messageIdsAreStable: true,
+			messages: [message({ id: "1" }), message({ id: "2" })],
+		};
+
+		expect(
+			sync.applyTail(selectionKey, revision, current, {
+				durableSessionId: "session-1",
+				view: "durable",
+				total: 2,
+				complete: true,
+				messageIdsAreStable: true,
+				messages: current.messages,
+			})
+		).toBeNull();
+		expect(sync.decide(selectionKey, revision)).toBe("tail");
+	});
+
+	test("accepts canonical checkpoints only for the exact durable identity", () => {
+		const sync = new HermesHistorySyncCoordinator();
+		const selectionKey = JSON.stringify(["manager-connection", "work", "session-1"]);
+		const revision = {
+			durableSessionId: "session-1",
+			latestMessageId: "5",
+			latestMessageAt: 5_000,
+			latestMessageIdIsStable: true,
+		};
+
+		expect(
+			sync.acceptCanonical(selectionKey, revision, {
+				durableSessionId: "other-session",
+				view: "durable",
+				messageIdsAreStable: true,
+				messages: [],
+			})
+		).toBe(false);
+		expect(sync.decide(selectionKey, revision)).toBe("tail");
+		expect(
+			sync.acceptCanonical(selectionKey, revision, {
+				durableSessionId: "session-1",
+				view: "durable",
+				messageIdsAreStable: true,
+				messages: [],
+			})
+		).toBe(false);
+		expect(sync.decide(selectionKey, revision)).toBe("tail");
+		expect(
+			sync.acceptCanonical(selectionKey, revision, {
+				durableSessionId: "session-1",
+				view: "durable",
+				messageIdsAreStable: true,
+				messages: [message({ id: "5" })],
+			})
+		).toBe(true);
+		expect(sync.decide(selectionKey, revision)).toBe("none");
+	});
+
+	test("throttles canonical fallback after repeated lightweight revision failures", () => {
+		const sync = new HermesHistorySyncCoordinator();
+		const selectionKey = JSON.stringify(["manager-connection", "work", "session-1"]);
+
+		expect(sync.recordRevisionFailure(selectionKey, 101, 1_000)).toBe(false);
+		expect(sync.recordRevisionFailure(selectionKey, 102, 2_000)).toBe(false);
+		expect(sync.recordRevisionFailure(selectionKey, 103, 3_000)).toBe(true);
+		expect(sync.recordRevisionFailure(selectionKey, 103, 4_000)).toBe(false);
+		expect(
+			sync.recordRevisionFailure(
+				selectionKey,
+				104,
+				3_000 + HERMES_HISTORY_CANONICAL_FALLBACK_INTERVAL_MS - 1
+			)
+		).toBe(false);
+		expect(
+			sync.recordRevisionFailure(
+				selectionKey,
+				105,
+				3_000 + HERMES_HISTORY_CANONICAL_FALLBACK_INTERVAL_MS
+			)
+		).toBe(true);
+	});
+
+	test("returns no synchronized history for an unsafe partial page", () => {
+		const current = {
+			durableSessionId: "session-1",
+			view: "durable" as const,
+			messages: [message({ id: "1" }), message({ id: "2" })],
+		};
+		expect(
+			applyHermesHistoryTail(current, {
+				durableSessionId: "session-1",
+				view: "durable",
+				total: null,
+				complete: false,
+				messageIdsAreStable: false,
+				messages: [message({ id: "2" }), message({ id: "history-1" })],
+			})
+		).toBeNull();
+	});
+
 	test("keeps messaging-style composer controls usable while an active turn runs", () => {
 		const policy = hermesComposerInteractionPolicy({
 			connected: true,
@@ -965,7 +1321,7 @@ describe("Hermes renderer view model", () => {
 							choices: [{ value: "staging", label: "Staging" }],
 						},
 					},
-				} as HermesRuntimeEvent["payload"],
+				} as unknown as HermesRuntimeEvent["payload"],
 			})
 		);
 

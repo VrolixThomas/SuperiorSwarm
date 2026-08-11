@@ -230,6 +230,27 @@ export const hermesRouter = router({
 			hermesRuntimeService.history(input.connectionId, input.hermesSessionId, input.profileId)
 		),
 
+	historyRevision: publicProcedure
+		.input(connectionSessionInput)
+		.query(({ input }) =>
+			hermesRuntimeService.historyRevision(
+				input.connectionId,
+				input.hermesSessionId,
+				input.profileId
+			)
+		),
+
+	historyTail: publicProcedure
+		.input(connectionSessionInput.extend({ limit: z.number().int().min(1).max(500).default(100) }))
+		.query(({ input }) =>
+			hermesRuntimeService.historyTail(
+				input.connectionId,
+				input.hermesSessionId,
+				input.profileId,
+				input.limit
+			)
+		),
+
 	pickAttachments: publicProcedure.mutation(async () => {
 		const selected = await dialog.showOpenDialog({
 			properties: ["openFile", "multiSelections"],
