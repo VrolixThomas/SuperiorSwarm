@@ -441,6 +441,7 @@ export interface HermesMessagePage {
 	total: number | null;
 	hasMore: boolean;
 	hasMoreIsAuthoritative: boolean;
+	messageIdsAreStable: boolean;
 }
 
 function paginationCount(name: string, ...values: unknown[]): number | null {
@@ -480,6 +481,14 @@ export function normalizeHermesMessagePage(
 	const pagination = record(root["pagination"]);
 	paginationCount("limit", pagination?.["limit"], root["limit"]);
 	const offset = paginationCount("offset", pagination?.["offset"], root["offset"]) ?? 0;
+	const messageIdsAreStable = rows.every((value) => {
+		const message = record(value);
+		return Boolean(
+			message &&
+				(transcriptMessageIdentifier(message["id"]) ??
+					transcriptMessageIdentifier(message["message_id"]))
+		);
+	});
 	const messages = rows.flatMap((message, index) => {
 		const normalized = normalizeTranscriptMessage(message, offset + index);
 		return normalized ? [normalized] : [];
@@ -501,6 +510,7 @@ export function normalizeHermesMessagePage(
 		hasMore:
 			explicitHasMore ?? (total === null ? returned >= requestedLimit : offset + returned < total),
 		hasMoreIsAuthoritative: explicitHasMore !== null || total !== null,
+		messageIdsAreStable,
 	};
 }
 

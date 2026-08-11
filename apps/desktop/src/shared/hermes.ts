@@ -136,7 +136,21 @@ export interface HermesTranscriptMessage {
 export interface HermesSessionHistory {
 	durableSessionId: string;
 	view: "active" | "durable";
+	messageIdsAreStable?: boolean;
 	messages: HermesTranscriptMessage[];
+}
+
+export interface HermesSessionRevision {
+	durableSessionId: string;
+	latestMessageId: string | null;
+	latestMessageAt: number | null;
+	latestMessageIdIsStable: boolean;
+}
+
+export interface HermesSessionHistoryPage extends HermesSessionHistory {
+	total: number | null;
+	complete: boolean;
+	messageIdsAreStable: boolean;
 }
 
 export type HermesAttachmentKind = "image" | "pdf" | "file";

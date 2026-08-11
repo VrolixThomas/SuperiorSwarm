@@ -45,6 +45,17 @@ const connectionSessionInput = z.object({
 	hermesSessionId: z.string().min(1),
 });
 
+const managerConnectionSessionInput = connectionSessionInput
+	.extend({ managerId: z.string().min(1).nullable() })
+	.strict();
+
+const managerConnectionInput = z
+	.object({
+		connectionId: z.string().min(1),
+		managerId: z.string().min(1).nullable(),
+	})
+	.strict();
+
 const workspaceSessionInput = connectionSessionInput.extend({
 	profileId: z.string().trim().min(1).max(120),
 });
@@ -410,11 +421,12 @@ export const hermesRouter = router({
 		})
 	),
 
-	resume: publicProcedure.input(connectionSessionInput).mutation(async ({ input }) => {
+	resume: publicProcedure.input(managerConnectionSessionInput).mutation(async ({ input }) => {
 		const resumed = await hermesRuntimeService.resume(
 			input.connectionId,
 			input.hermesSessionId,
-			input.profileId
+			input.profileId,
+			input.managerId
 		);
 		return {
 			durableSessionId: resumed.durableSessionId,
@@ -425,9 +437,41 @@ export const hermesRouter = router({
 	}),
 
 	history: publicProcedure
-		.input(connectionSessionInput)
+		.input(managerConnectionSessionInput)
 		.query(({ input }) =>
-			hermesRuntimeService.history(input.connectionId, input.hermesSessionId, input.profileId)
+			hermesRuntimeService.history(
+				input.connectionId,
+				input.hermesSessionId,
+				input.profileId,
+				input.managerId
+			)
+		),
+
+	historyRevision: publicProcedure
+		.input(managerConnectionSessionInput)
+		.query(({ input }) =>
+			hermesRuntimeService.historyRevision(
+				input.connectionId,
+				input.hermesSessionId,
+				input.profileId,
+				input.managerId
+			)
+		),
+
+	historyTail: publicProcedure
+		.input(
+			managerConnectionSessionInput.extend({
+				limit: z.number().int().min(1).max(500).default(100),
+			})
+		)
+		.query(({ input }) =>
+			hermesRuntimeService.historyTail(
+				input.connectionId,
+				input.hermesSessionId,
+				input.profileId,
+				input.limit,
+				input.managerId
+			)
 		),
 
 	pickAttachments: publicProcedure.mutation(async () => {
@@ -530,8 +574,10 @@ export const hermesRouter = router({
 		.mutation(({ input }) => hermesRuntimeService.respondToClarification(input)),
 
 	events: publicProcedure
-		.input(z.object({ connectionId: z.string().min(1), afterSeq: z.number().int().min(0) }))
-		.query(({ input }) => hermesRuntimeService.events(input.connectionId, input.afterSeq)),
+		.input(managerConnectionInput.extend({ afterSeq: z.number().int().min(0) }))
+		.query(({ input }) =>
+			hermesRuntimeService.events(input.connectionId, input.afterSeq, input.managerId)
+		),
 
 	origin: publicProcedure
 		.input(connectionSessionInput)

@@ -175,6 +175,8 @@ class FakeRestClient implements HermesRestClientLike {
 	details = new Map<string, HermesStockSessionDetail>();
 	listCalls = 0;
 	transcriptCalls: Array<{ durableSessionId: string; profileId: string }> = [];
+	revisionCalls: Array<{ durableSessionId: string; profileId: string }> = [];
+	tailCalls: Array<{ durableSessionId: string; profileId: string; limit: number }> = [];
 	archiveCalls: Array<{ durableSessionId: string; profileId: string; archived: boolean }> = [];
 	deleteCalls: Array<{ durableSessionId: string; profileId: string }> = [];
 	failCatalogRefreshAfterDelete = false;
@@ -198,6 +200,31 @@ class FakeRestClient implements HermesRestClientLike {
 		return Promise.resolve(
 			this.histories.get(durableSessionId) ?? { durableSessionId, view: "active", messages: [] }
 		);
+	}
+
+	getSessionRevision(durableSessionId: string, profileId: string) {
+		this.revisionCalls.push({ durableSessionId, profileId });
+		return Promise.resolve({
+			durableSessionId,
+			latestMessageId: "12",
+			latestMessageAt: 2_000,
+			latestMessageIdIsStable: true,
+		});
+	}
+
+	getTranscriptTail(durableSessionId: string, profileId: string, limit = 100) {
+		this.tailCalls.push({ durableSessionId, profileId, limit });
+		const history = this.histories.get(durableSessionId) ?? {
+			durableSessionId,
+			view: "active" as const,
+			messages: [],
+		};
+		return Promise.resolve({
+			...history,
+			total: history.messages.length,
+			complete: true,
+			messageIdsAreStable: true,
+		});
 	}
 
 	getSessionDetail(durableSessionId: string, profileId: string): Promise<HermesStockSessionDetail> {
@@ -420,6 +447,99 @@ describe("HermesRuntimeService stock lifecycle", () => {
 		expect(catalog.compatibility.state).toBe("compatible");
 		expect(client.requests).toEqual([]);
 		expect(rest.listCalls).toBe(1);
+	});
+
+	test("polls revision and tail using the selected composite profile identity", async () => {
+		await service.connect(connectionId);
+		const revision = await service.historyRevision(connectionId, "same-id", "travel");
+		const tail = await service.historyTail(connectionId, "same-id", "travel", 75);
+
+		expect(revision.durableSessionId).toBe("same-id");
+		expect(tail.durableSessionId).toBe("same-id");
+		expect(rest.revisionCalls).toEqual([{ durableSessionId: "same-id", profileId: "travel" }]);
+		expect(rest.tailCalls).toEqual([
+			{ durableSessionId: "same-id", profileId: "travel", limit: 75 },
+		]);
+	});
+
+	test("rejects old manager revision, resume, and event access after the connection is rebound", async () => {
+		let installedManagerId = "manager-a";
+		const now = new Date();
+		for (const [index, managerId] of ["manager-a", "manager-b"].entries()) {
+			getDb()
+				.insert(schema.crossRepoOrchestrators)
+				.values({
+					id: managerId,
+					name: managerId,
+					workDir: `/tmp/${managerId}`,
+					agentKind: "external",
+					status: "idle",
+					sortOrder: index,
+					kind: "external",
+					tokenHash: `${index + 4}`.repeat(64),
+					accessScope: "all",
+					createdAt: now,
+					updatedAt: now,
+				})
+				.run();
+		}
+		service.shutdown();
+		service = new HermesRuntimeService({
+			clientFactory: () => client,
+			restClientFactory: () => rest,
+			sendService: sender,
+			tokenVault: vault,
+			loopbackTokenResolver: async () => "secret",
+			externalManagerIdResolver: () => installedManagerId,
+		});
+		await service.connect(connectionId);
+		const revision = new Deferred<{
+			durableSessionId: string;
+			latestMessageId: string;
+			latestMessageAt: number;
+			latestMessageIdIsStable: boolean;
+		}>();
+		rest.getSessionRevision = () => revision.promise;
+		const resumed = new Deferred<unknown>();
+		client.responses.set("session.resume", [resumed.promise]);
+		const oldRequest = service.historyRevision(connectionId, "stored-1", "work", "manager-a");
+		const oldResume = service.resume(connectionId, "stored-1", "work", "manager-a");
+		const oldRequestResult = oldRequest.catch((error: unknown) => error);
+		const oldResumeResult = oldResume.catch((error: unknown) => error);
+		await waitFor(
+			() => client.requests.some((request) => request.method === "session.resume"),
+			"old manager resume did not start"
+		);
+
+		installedManagerId = "manager-b";
+		await service.connect(connectionId);
+		revision.resolve({
+			durableSessionId: "stored-1",
+			latestMessageId: "old-manager-message",
+			latestMessageAt: 2_000,
+			latestMessageIdIsStable: true,
+		});
+		resumed.resolve({
+			session_id: "runtime-old-manager",
+			session_key: "stored-1",
+			profile: "work",
+		});
+
+		const [oldRequestError, oldResumeError] = await Promise.all([
+			oldRequestResult,
+			oldResumeResult,
+		]);
+		expect(oldRequestError).toBeInstanceOf(Error);
+		expect(oldResumeError).toBeInstanceOf(Error);
+		expect((oldRequestError as Error).message).toContain("connection cancelled");
+		expect((oldResumeError as Error).message).toContain("connection cancelled");
+		await expect(
+			service.historyRevision(connectionId, "stored-1", "work", "manager-a")
+		).rejects.toThrow("connection cancelled");
+		await expect(service.resume(connectionId, "stored-1", "work", "manager-a")).rejects.toThrow(
+			"connection cancelled"
+		);
+		expect(() => service.events(connectionId, 0, "manager-a")).toThrow("connection cancelled");
 	});
 
 	test("persists Agents-created admission under the connection's resolved manager", async () => {
@@ -728,6 +848,14 @@ describe("HermesRuntimeService stock lifecycle", () => {
 		await expect(service.origin(connectionId, "same-session")).rejects.toThrow(
 			"profile is ambiguous"
 		);
+		await expect(service.historyRevision(connectionId, "same-session")).rejects.toThrow(
+			"profile is ambiguous"
+		);
+		await expect(service.historyTail(connectionId, "same-session")).rejects.toThrow(
+			"profile is ambiguous"
+		);
+		expect(rest.revisionCalls).toEqual([]);
+		expect(rest.tailCalls).toEqual([]);
 	});
 
 	test("deletion cleanup preserves the colliding profile's runtime maps", async () => {

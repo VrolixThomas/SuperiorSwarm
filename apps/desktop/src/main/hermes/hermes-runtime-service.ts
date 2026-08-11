@@ -12,6 +12,8 @@ import {
 	type HermesRuntimeState,
 	type HermesSessionBinding,
 	type HermesSessionHistory,
+	type HermesSessionHistoryPage,
+	type HermesSessionRevision,
 	type HermesSessionSummary,
 	type HermesTagColor,
 	hermesSessionCompositeIdentityKey,
@@ -125,6 +127,17 @@ export interface HermesRestClientLike {
 		profileId?: string,
 		signal?: AbortSignal
 	): Promise<HermesSessionHistory>;
+	getSessionRevision?(
+		durableSessionId: string,
+		profileId?: string,
+		signal?: AbortSignal
+	): Promise<HermesSessionRevision>;
+	getTranscriptTail?(
+		durableSessionId: string,
+		profileId?: string,
+		limit?: number,
+		signal?: AbortSignal
+	): Promise<HermesSessionHistoryPage>;
 }
 
 export interface HermesSendServiceLike {
@@ -410,6 +423,8 @@ function reconcileHermesHistory(
 	return {
 		durableSessionId: incoming.durableSessionId,
 		view: "durable",
+		messageIdsAreStable:
+			cached.messageIdsAreStable === true && incoming.messageIdsAreStable === true,
 		messages,
 	};
 }
@@ -918,9 +933,11 @@ export class HermesRuntimeService {
 	async history(
 		connectionId: string,
 		hermesSessionId: string,
-		requestedProfileId?: string
+		requestedProfileId?: string,
+		expectedManagerId?: string | null
 	): Promise<HermesSessionHistory> {
 		const runtime = this.requireRuntime(connectionId);
+		this.assertRuntimeManagerIdentity(connectionId, runtime, expectedManagerId);
 		const durableSessionId = this.resolveDurableId(runtime, hermesSessionId, requestedProfileId);
 		const profileId = requestedProfileId ?? this.profileFor(runtime, durableSessionId);
 		const durableKey = hermesSessionIdentityKey(profileId, durableSessionId);
@@ -937,10 +954,9 @@ export class HermesRuntimeService {
 		const cached =
 			runtime.histories.get(hermesSessionIdentityKey(profileId, hermesSessionId)) ??
 			runtime.histories.get(durableKey);
-		const history = reconcileHermesHistory(
-			cached,
-			await runtime.rest.getTranscript(durableSessionId, profileId)
-		);
+		const transcript = await runtime.rest.getTranscript(durableSessionId, profileId);
+		this.assertRuntimeManagerIdentity(connectionId, runtime, expectedManagerId);
+		const history = reconcileHermesHistory(cached, transcript);
 		if (draftBinding) draftBinding.persisted = true;
 		if (history.durableSessionId !== durableSessionId) {
 			runtime.aliases.set(
@@ -966,6 +982,43 @@ export class HermesRuntimeService {
 			history.messages.flatMap((message) => message.workspaceArtifacts)
 		);
 		return history;
+	}
+
+	async historyRevision(
+		connectionId: string,
+		hermesSessionId: string,
+		requestedProfileId?: string,
+		expectedManagerId?: string | null
+	): Promise<HermesSessionRevision> {
+		const runtime = this.requireRuntime(connectionId);
+		this.assertRuntimeManagerIdentity(connectionId, runtime, expectedManagerId);
+		const durableSessionId = this.resolveDurableId(runtime, hermesSessionId, requestedProfileId);
+		const profileId = requestedProfileId ?? this.profileFor(runtime, durableSessionId);
+		if (!runtime.rest.getSessionRevision) {
+			throw new Error("Hermes session revision polling is unavailable");
+		}
+		const revision = await runtime.rest.getSessionRevision(durableSessionId, profileId);
+		this.assertRuntimeManagerIdentity(connectionId, runtime, expectedManagerId);
+		return revision;
+	}
+
+	async historyTail(
+		connectionId: string,
+		hermesSessionId: string,
+		requestedProfileId?: string,
+		limit = 100,
+		expectedManagerId?: string | null
+	): Promise<HermesSessionHistoryPage> {
+		const runtime = this.requireRuntime(connectionId);
+		this.assertRuntimeManagerIdentity(connectionId, runtime, expectedManagerId);
+		const durableSessionId = this.resolveDurableId(runtime, hermesSessionId, requestedProfileId);
+		const profileId = requestedProfileId ?? this.profileFor(runtime, durableSessionId);
+		if (!runtime.rest.getTranscriptTail) {
+			throw new Error("Hermes transcript tail polling is unavailable");
+		}
+		const tail = await runtime.rest.getTranscriptTail(durableSessionId, profileId, limit);
+		this.assertRuntimeManagerIdentity(connectionId, runtime, expectedManagerId);
+		return tail;
 	}
 
 	async create(
@@ -1036,7 +1089,8 @@ export class HermesRuntimeService {
 	async resume(
 		connectionId: string,
 		hermesSessionId: string,
-		requestedProfileId?: string
+		requestedProfileId?: string,
+		expectedManagerId?: string | null
 	): Promise<
 		HermesSessionBinding & {
 			history: HermesSessionHistory;
@@ -1044,8 +1098,18 @@ export class HermesRuntimeService {
 		}
 	> {
 		const runtime = this.requireRuntime(connectionId);
-		if (runtime.reconnectTask) await runtime.reconnectTask;
-		const history = await this.history(connectionId, hermesSessionId, requestedProfileId);
+		this.assertRuntimeManagerIdentity(connectionId, runtime, expectedManagerId);
+		if (runtime.reconnectTask) {
+			await runtime.reconnectTask;
+			this.assertRuntimeManagerIdentity(connectionId, runtime, expectedManagerId);
+		}
+		const history = await this.history(
+			connectionId,
+			hermesSessionId,
+			requestedProfileId,
+			expectedManagerId
+		);
+		this.assertRuntimeManagerIdentity(connectionId, runtime, expectedManagerId);
 		const durableSessionId = history.durableSessionId;
 		const profileId = requestedProfileId ?? this.profileFor(runtime, durableSessionId);
 		const existing = this.bindingFor(runtime, durableSessionId, profileId);
@@ -1055,6 +1119,7 @@ export class HermesRuntimeService {
 					session_id: existing.runtimeSessionId,
 					omit_messages: false,
 				});
+				this.assertRuntimeManagerIdentity(connectionId, runtime, expectedManagerId);
 				const activated = normalizeHermesSessionBinding(
 					response,
 					durableSessionId,
@@ -1066,10 +1131,18 @@ export class HermesRuntimeService {
 				this.reconcileUncertainFollowUp(runtime, installed, response);
 				return { ...installed, history };
 			} catch {
+				this.assertRuntimeManagerIdentity(connectionId, runtime, expectedManagerId);
 				this.removeBinding(runtime, existing);
 			}
 		}
-		const binding = await this.resumeBinding(runtime, durableSessionId, profileId);
+		const binding = await this.resumeBinding(
+			connectionId,
+			runtime,
+			durableSessionId,
+			profileId,
+			undefined,
+			expectedManagerId
+		);
 		return { ...binding, history };
 	}
 
@@ -1306,9 +1379,17 @@ export class HermesRuntimeService {
 		return { ok: true };
 	}
 
-	events(connectionId: string, afterSeq: number): { events: BufferedEvent[]; nextSeq: number } {
+	events(
+		connectionId: string,
+		afterSeq: number,
+		expectedManagerId?: string | null
+	): { events: BufferedEvent[]; nextSeq: number } {
 		const runtime = this.runtimes.get(connectionId);
-		if (!runtime) return { events: [], nextSeq: afterSeq };
+		if (!runtime) {
+			if (expectedManagerId !== undefined) throw connectionCancelledError();
+			return { events: [], nextSeq: afterSeq };
+		}
+		this.assertRuntimeManagerIdentity(connectionId, runtime, expectedManagerId);
 		return {
 			events: runtime.events.filter((event) => event.seq > afterSeq),
 			nextSeq: runtime.nextSeq,
@@ -1986,6 +2067,7 @@ export class HermesRuntimeService {
 			);
 			this.assertCurrentOperation(connectionId, operation);
 			const previous = operation.previousRuntime;
+			const preservedRuntime = previous?.managerId === resolvedManagerId ? previous : null;
 			installedRuntime = {
 				connectionId,
 				client,
@@ -2002,22 +2084,22 @@ export class HermesRuntimeService {
 					this.sendService.isAvailable(),
 					resolvedManagerId
 				),
-				bindings: new Map(previous?.bindings),
-				runtimeToDurable: new Map(previous?.runtimeToDurable),
-				aliases: new Map(previous?.aliases),
-				events: previous ? [...previous.events] : [],
+				bindings: new Map(preservedRuntime?.bindings),
+				runtimeToDurable: new Map(preservedRuntime?.runtimeToDurable),
+				aliases: new Map(preservedRuntime?.aliases),
+				events: preservedRuntime ? [...preservedRuntime.events] : [],
 				nextSeq: previous?.nextSeq ?? 0,
 				unsubscribers: [],
 				reconnectTask: null,
-				histories: new Map(previous?.histories),
-				origins: new Map(previous?.origins),
+				histories: new Map(preservedRuntime?.histories),
+				origins: new Map(preservedRuntime?.origins),
 			};
 			this.runtimes.set(connectionId, installedRuntime);
 			this.bindClient(connectionId, installedRuntime);
 			markHermesConnectionConnected(connectionId);
 			this.connectionStates.delete(connectionId);
 			operation.controller.signal.removeEventListener("abort", disposePendingClient);
-			if (previous && installedRuntime.bindings.size > 0) {
+			if (preservedRuntime && installedRuntime.bindings.size > 0) {
 				this.reconcileAfterReconnect(connectionId, installedRuntime);
 			}
 			return installedRuntime.catalog;
@@ -2279,6 +2361,7 @@ export class HermesRuntimeService {
 			let binding: RuntimeBinding;
 			try {
 				binding = await this.resumeBinding(
+					connectionId,
 					runtime,
 					this.resolveDurableId(runtime, durableSessionId, previous.profileId),
 					previous.profileId,
@@ -2340,10 +2423,12 @@ export class HermesRuntimeService {
 	}
 
 	private async resumeBinding(
+		connectionId: string,
 		runtime: ConnectionRuntime,
 		durableSessionId: string,
 		profileId: string,
-		fallbackActivity?: Pick<RuntimeBinding, "activeTurn" | "runtimeStatus">
+		fallbackActivity?: Pick<RuntimeBinding, "activeTurn" | "runtimeStatus">,
+		expectedManagerId?: string | null
 	): Promise<RuntimeBinding> {
 		const response = await runtime.client.request("session.resume", {
 			session_id: durableSessionId,
@@ -2351,6 +2436,7 @@ export class HermesRuntimeService {
 			source: "superiorswarm",
 			omit_messages: false,
 		});
+		this.assertRuntimeManagerIdentity(connectionId, runtime, expectedManagerId);
 		const binding = normalizeHermesSessionBinding(response, durableSessionId, profileId);
 		const activity = normalizeHermesRuntimeActivity(response);
 		const installed = this.installBinding(runtime, binding, {
@@ -3020,6 +3106,19 @@ export class HermesRuntimeService {
 		const runtime = this.runtimes.get(connectionId);
 		if (!runtime) throw new Error("Hermes is disconnected");
 		return runtime;
+	}
+
+	private assertRuntimeManagerIdentity(
+		connectionId: string,
+		runtime: ConnectionRuntime,
+		expectedManagerId?: string | null
+	): void {
+		if (
+			this.runtimes.get(connectionId) !== runtime ||
+			(expectedManagerId !== undefined && runtime.managerId !== expectedManagerId)
+		) {
+			throw connectionCancelledError();
+		}
 	}
 }
 

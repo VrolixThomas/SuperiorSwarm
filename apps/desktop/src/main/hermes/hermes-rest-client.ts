@@ -1,4 +1,9 @@
-import type { HermesSessionHistory, HermesSessionSummary } from "../../shared/hermes";
+import type {
+	HermesSessionHistory,
+	HermesSessionHistoryPage,
+	HermesSessionRevision,
+	HermesSessionSummary,
+} from "../../shared/hermes";
 import {
 	normalizeHermesHistory,
 	normalizeHermesMessagePage,
@@ -273,6 +278,62 @@ export class HermesRestClient {
 		};
 	}
 
+	async getSessionRevision(
+		durableSessionId: string,
+		profileId = this.profileId,
+		signal?: AbortSignal
+	): Promise<HermesSessionRevision> {
+		const latest = await this.getTranscriptTail(durableSessionId, profileId, 1, signal);
+		const message = latest.messages.at(-1) ?? null;
+		return {
+			durableSessionId: latest.durableSessionId,
+			latestMessageId: latest.messageIdsAreStable ? (message?.id ?? null) : null,
+			latestMessageAt: message?.createdAt ?? null,
+			latestMessageIdIsStable: latest.messageIdsAreStable,
+		};
+	}
+
+	async getTranscriptTail(
+		durableSessionId: string,
+		profileId = this.profileId,
+		limit = 100,
+		signal?: AbortSignal
+	): Promise<HermesSessionHistoryPage> {
+		const boundedLimit = Math.max(1, Math.min(500, Math.trunc(limit)));
+		let payload: unknown;
+		try {
+			payload = await this.requestJson(
+				`/api/sessions/${encodeURIComponent(durableSessionId)}/messages`,
+				{
+					profile: profileId,
+					limit: String(boundedLimit),
+					offset: "0",
+					order: "latest",
+					view: "durable",
+				},
+				signal
+			);
+		} catch (error) {
+			if (!isUnsupportedDurableView(error)) throw error;
+			payload = await this.requestJson(
+				`/api/sessions/${encodeURIComponent(durableSessionId)}/messages`,
+				{ profile: profileId, limit: String(boundedLimit), offset: "0", order: "latest" },
+				signal
+			);
+		}
+		const page = this.normalizeMessagePage(payload, boundedLimit);
+		const view = record(payload)?.["view"] === "durable" ? "durable" : "active";
+		return {
+			...normalizeHermesHistory(page.durableSessionId, page.messages, view),
+			total: page.total,
+			complete:
+				page.hasMoreIsAuthoritative &&
+				!page.hasMore &&
+				(page.total === null || page.total === page.returned),
+			messageIdsAreStable: page.messageIdsAreStable,
+		};
+	}
+
 	async getTranscript(
 		durableSessionId: string,
 		profileId = this.profileId,
@@ -292,6 +353,7 @@ export class HermesRestClient {
 		signal?: AbortSignal
 	): Promise<HermesSessionHistory> {
 		const pages: HermesSessionHistory["messages"][] = [];
+		let messageIdsAreStable = true;
 		let offset = 0;
 		let resolvedDurableSessionId = durableSessionId;
 		for (let pageIndex = 0; pageIndex < this.maxTranscriptPages; pageIndex++) {
@@ -325,9 +387,13 @@ export class HermesRestClient {
 				);
 			}
 			pages.push(page.messages);
+			messageIdsAreStable &&= page.messageIdsAreStable;
 			offset += page.returned;
 			if (page.returned < 500 || (page.hasMoreIsAuthoritative && !page.hasMore)) {
-				return normalizeHermesHistory(resolvedDurableSessionId, pages.flat(), "durable");
+				return {
+					...normalizeHermesHistory(resolvedDurableSessionId, pages.flat(), "durable"),
+					messageIdsAreStable,
+				};
 			}
 		}
 		throw new HermesRestError(
@@ -342,6 +408,7 @@ export class HermesRestClient {
 		signal?: AbortSignal
 	): Promise<HermesSessionHistory> {
 		const pages: HermesSessionHistory["messages"][] = [];
+		let messageIdsAreStable = true;
 		let offset = 0;
 		let resolvedDurableSessionId = durableSessionId;
 		for (let pageIndex = 0; pageIndex < this.maxTranscriptPages; pageIndex++) {
@@ -363,11 +430,15 @@ export class HermesRestClient {
 				);
 			}
 			pages.push(page.messages);
+			messageIdsAreStable &&= page.messageIdsAreStable;
 			offset += page.returned;
 			if (!page.hasMore) {
 				const byId = new Map<string, HermesSessionHistory["messages"][number]>();
 				for (const message of pages.flat()) byId.set(message.id, message);
-				return normalizeHermesHistory(resolvedDurableSessionId, [...byId.values()], "active");
+				return {
+					...normalizeHermesHistory(resolvedDurableSessionId, [...byId.values()], "active"),
+					messageIdsAreStable,
+				};
 			}
 		}
 		throw new HermesRestError(

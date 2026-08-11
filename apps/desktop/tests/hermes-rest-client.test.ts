@@ -10,6 +10,98 @@ function json(value: unknown, status = 200): Response {
 }
 
 describe("HermesRestClient", () => {
+	test("polls a cheap session revision and fetches only the latest transcript page", async () => {
+		const requests: URL[] = [];
+		const client = new HermesRestClient({
+			baseUrl: "http://localhost:9119",
+			profileId: "work",
+			token: "token",
+			fetchImpl: async (input) => {
+				const url = new URL(String(input));
+				requests.push(url);
+				const limit = Number(url.searchParams.get("limit"));
+				const data = [
+					{ id: 41, role: "user", content: "New question", timestamp: 123 },
+					{ id: 42, role: "assistant", content: "New answer", timestamp: 124 },
+				];
+				return json({
+					session_id: "stored-slack",
+					view: "durable",
+					data: limit === 1 ? data.slice(-1) : data,
+					pagination: {
+						limit,
+						offset: 0,
+						returned: limit === 1 ? 1 : 2,
+						total: 42,
+						order: "latest",
+					},
+				});
+			},
+		});
+
+		expect(await client.getSessionRevision("stored-slack", "work")).toEqual({
+			durableSessionId: "stored-slack",
+			latestMessageId: "42",
+			latestMessageAt: 124_000,
+			latestMessageIdIsStable: true,
+		});
+		const tail = await client.getTranscriptTail("stored-slack", "work", 100);
+		expect(tail.messages.map((entry) => entry.id)).toEqual(["41", "42"]);
+		expect(tail.total).toBe(42);
+		expect(tail.complete).toBe(false);
+		expect(tail.messageIdsAreStable).toBe(true);
+		expect(requests[0]?.pathname).toEndWith("/messages");
+		expect(requests[0]?.searchParams.get("limit")).toBe("1");
+		expect(requests[1]?.searchParams.get("limit")).toBe("100");
+		expect(requests[1]?.searchParams.get("offset")).toBe("0");
+		expect(requests[1]?.searchParams.get("order")).toBe("latest");
+		expect(requests[1]?.searchParams.get("view")).toBe("durable");
+	});
+
+	test("never exposes a positional fallback ID as a stable revision anchor", async () => {
+		const client = new HermesRestClient({
+			baseUrl: "http://localhost:9119",
+			profileId: "work",
+			token: "token",
+			fetchImpl: async () =>
+				json({
+					session_id: "stored-slack",
+					view: "durable",
+					messages: [{ role: "assistant", content: "No physical ID", timestamp: 124 }],
+					pagination: { total: 12, has_more: true },
+				}),
+		});
+
+		expect(await client.getSessionRevision("stored-slack", "work")).toEqual({
+			durableSessionId: "stored-slack",
+			latestMessageId: null,
+			latestMessageAt: 124_000,
+			latestMessageIdIsStable: false,
+		});
+		expect((await client.getTranscript("stored-slack", "work")).messageIdsAreStable).toBe(false);
+	});
+
+	test("marks only authoritative terminal tail pages complete", async () => {
+		let requestCount = 0;
+		const client = new HermesRestClient({
+			baseUrl: "http://localhost:9119",
+			profileId: "work",
+			token: "token",
+			fetchImpl: async () => {
+				requestCount++;
+				return json({
+					session_id: "stored-slack",
+					view: "durable",
+					messages: [{ id: `physical-${requestCount}`, role: "assistant", content: "Row" }],
+					...(requestCount === 2 ? { pagination: { has_more: false } } : {}),
+				});
+			},
+		});
+
+		expect((await client.getTranscriptTail("stored-slack", "work", 500)).complete).toBe(false);
+		expect((await client.getTranscriptTail("stored-slack", "work", 500)).complete).toBe(true);
+	});
+
 	test("archives and permanently deletes through the encoded stock session route and profile", async () => {
 		const requests: Array<{ url: URL; init: RequestInit | undefined }> = [];
 		const client = new HermesRestClient({
@@ -145,6 +237,7 @@ describe("HermesRestClient", () => {
 		expect(requests.map((request) => Number(request.searchParams.get("offset")))).toEqual([0, 500]);
 		expect(history.durableSessionId).toBe("compressed-tip");
 		expect(history.view).toBe("durable");
+		expect(history.messageIdsAreStable).toBe(true);
 		expect(history.messages).toHaveLength(501);
 		expect(history.messages[0]?.id).toBe("old-0");
 		expect(history.messages.at(-1)?.id).toBe("newest");
@@ -171,6 +264,7 @@ describe("HermesRestClient", () => {
 		const history = await client.getTranscript("gateway-session", "work");
 
 		expect(history.view).toBe("durable");
+		expect(history.messageIdsAreStable).toBe(true);
 		expect(history.messages.map((message) => [message.id, message.text])).toEqual([
 			["41", "Question"],
 			["42", "Answer"],

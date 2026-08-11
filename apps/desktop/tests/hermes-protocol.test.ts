@@ -148,6 +148,7 @@ describe("stock Hermes protocol adapter", () => {
 		expect(page.durableSessionId).toBe("stored-slack-1-tip");
 		expect(page.total).toBe(3);
 		expect(page.hasMore).toBe(true);
+		expect(page.messageIdsAreStable).toBe(true);
 		expect(page.messages).toEqual([
 			expect.objectContaining({ id: "message-3", role: "assistant", text: "Done" }),
 			expect.objectContaining({
@@ -158,6 +159,22 @@ describe("stock Hermes protocol adapter", () => {
 			}),
 		]);
 		expect("turnResults" in page).toBe(false);
+	});
+
+	test("marks positional fallback message IDs as unstable continuity metadata", () => {
+		const page = normalizeHermesMessagePage(
+			{
+				session_id: "durable-session",
+				messages: [
+					{ role: "user", content: "First" },
+					{ id: "physical-2", role: "assistant", content: "Second" },
+				],
+			},
+			500
+		);
+
+		expect(page.messages.map((entry) => entry.id)).toEqual(["history-0", "physical-2"]);
+		expect(page.messageIdsAreStable).toBe(false);
 	});
 
 	test("rejects invalid pagination counts and uses normalized message length as returned", () => {
