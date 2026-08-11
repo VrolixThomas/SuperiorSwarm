@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.20.0 (2026-08-11)
+
+### What's New
+
+Agent sessions in SuperiorSwarm can now have durable names and reusable colored tags, making ongoing work easier to organize and find. Composer drafts now survive navigation and restarts, and Slack handoffs return directly to their originating threads. Live origin history and queued follow-ups also stay synchronized more reliably throughout active Hermes sessions.
+
+### Changes
+
+- fix(desktop): return to native Slack threads (#138)
+- fix(desktop): persist Hermes composer drafts (#139)
+- Feat/session names tags (#140)
+- Fix/hermes origin live sync (#141)
+- fix(desktop): preserve Hermes continuation lifecycle (#142)
+
 ## v0.19.0 (2026-08-10)
 
 ### What's New
