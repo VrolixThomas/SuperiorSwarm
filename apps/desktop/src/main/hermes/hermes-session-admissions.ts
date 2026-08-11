@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { and, asc, eq, sql } from "drizzle-orm";
 import type { HermesSessionMetadata } from "../../shared/control-plane";
-import type { HermesSessionSummary } from "../../shared/hermes";
+import { type HermesSessionSummary, hermesSessionLineageRootId } from "../../shared/hermes";
 import { getDb, schema } from "../db";
 import { hermesSessionAdmissions } from "../db/schema";
 import { remapActiveHermesOriginReportAttempt } from "./hermes-origin-reports";
@@ -481,7 +481,9 @@ export function filterManagedHermesSessionCatalog(input: {
 
 	return input.sessions.flatMap((session): HermesSessionSummary[] => {
 		if (session.isCron || session.source === "cron") return [];
-		const admission = admittedBySession.get(`${session.profileId}\0${session.id}`);
+		const admission = admittedBySession.get(
+			`${session.profileId}\0${hermesSessionLineageRootId(session)}`
+		);
 		if (!admission) return [];
 		return [
 			{

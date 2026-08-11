@@ -38,15 +38,22 @@ function link(overrides: Partial<HermesLinkedWorkspace> = {}): HermesLinkedWorks
 }
 
 describe("Hermes Worktrees pane", () => {
-	test("targets the authoritative durable history session for links and recovery", () => {
+	test("keeps links on the selected lineage root instead of the rotating history tip", () => {
 		expect(
-			resolveHermesWorkspaceSessionId("session-tip", {
-				durableSessionId: "session-root",
+			resolveHermesWorkspaceSessionId("session-root", {
+				durableSessionId: "session-tip",
 				view: "durable",
 				messages: [],
 			})
 		).toBe("session-root");
 		expect(resolveHermesWorkspaceSessionId("session-tip", undefined)).toBe("session-tip");
+		expect(
+			resolveHermesWorkspaceSessionId(null, {
+				durableSessionId: "legacy-session",
+				view: "active",
+				messages: [],
+			})
+		).toBe("legacy-session");
 	});
 
 	test("renders an accessible Chat-first tab strip with Worktrees immediately to its right", () => {

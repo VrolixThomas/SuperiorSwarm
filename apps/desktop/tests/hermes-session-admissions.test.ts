@@ -38,6 +38,8 @@ function session(
 ): HermesSessionSummary {
 	return {
 		id,
+		lineageRootId: id,
+		activeTipId: id,
 		title: id,
 		generatedTitle: id,
 		titleSource: "generated",
@@ -264,6 +266,42 @@ describe("Hermes session admissions", () => {
 				id: "other-installation-agent",
 				admissionReason: "agents",
 			}),
+		]);
+	});
+
+	test("keeps an admitted lineage visible when stock replaces the root with a child tip", () => {
+		admitHermesSession({
+			managerId: "manager-a",
+			metadata: {
+				schemaVersion: 1,
+				durableSessionId: "conversation-root",
+				profileId: "work",
+				sourcePlatform: "superiorswarm",
+				isCron: false,
+			},
+			reason: "agents",
+		});
+
+		expect(
+			filterManagedHermesSessionCatalog({
+				managerId: "manager-a",
+				sessions: [
+					session("continuation-child", "work", "superiorswarm", {
+						activeTipId: "continuation-child",
+						lineageRootId: "conversation-root",
+					}),
+				],
+			})
+		).toEqual([
+			expect.objectContaining({
+				id: "continuation-child",
+				activeTipId: "continuation-child",
+				lineageRootId: "conversation-root",
+				admissionReason: "agents",
+			}),
+		]);
+		expect(listHermesSessionAdmissions("manager-a")).toEqual([
+			expect.objectContaining({ durableSessionId: "conversation-root" }),
 		]);
 	});
 

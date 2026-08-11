@@ -124,6 +124,8 @@ function Harness({ label, onAction }: { label: string; onAction: () => void }) {
 
 const sessionRowFixture: HermesSessionSummary = {
 	id: "session-important",
+	lineageRootId: "session-important",
+	activeTipId: "session-important",
 	title: "Important session",
 	generatedTitle: "Generated important session",
 	titleSource: "custom",

@@ -8,6 +8,7 @@ import {
 	prepareHermesCode,
 } from "../src/renderer/components/hermes/HermesMarkdown";
 import { HermesTranscript } from "../src/renderer/components/hermes/HermesTranscript";
+import { splitHermesStreamingMarkdown } from "../src/renderer/hermes/hermes-markdown-blocks";
 import { projectHermesTranscript } from "../src/renderer/hermes/hermes-view-model";
 import type { HermesTranscriptMessage } from "../src/shared/hermes";
 
@@ -30,6 +31,22 @@ const message = (overrides: Partial<HermesTranscriptMessage>): HermesTranscriptM
 });
 
 describe("Hermes Markdown", () => {
+	test("incrementally splits a 192KB streaming reply without rebuilding settled blocks", () => {
+		const base = Array.from(
+			{ length: 2_400 },
+			(_, index) => `## Section ${index}\n\n${"content ".repeat(8)}\n\n`
+		).join("");
+		const first = splitHermesStreamingMarkdown(base);
+		const second = splitHermesStreamingMarkdown(`${base}new tail`);
+
+		expect(base.length).toBeGreaterThan(192_000);
+		expect(first.join("")).toBe(base);
+		expect(second.join("")).toBe(`${base}new tail`);
+		expect(first.length).toBeGreaterThan(30);
+		expect(second.slice(0, -2)).toEqual(first.slice(0, second.length - 2));
+		expect(splitHermesStreamingMarkdown(base)).toBe(first);
+	});
+
 	test("pretty-prints valid JSON with two spaces without rewriting value tokens", () => {
 		const source = '{"large":9007199254740993,"exponent":1e+3,"nested":{"ok":true}}';
 

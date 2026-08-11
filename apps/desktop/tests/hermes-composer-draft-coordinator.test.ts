@@ -159,7 +159,7 @@ describe("Hermes composer draft coordinator", () => {
 		expect(calls).toEqual(["older", "latest"]);
 	});
 
-	test("clears only a confirmed unchanged submission and retains queued, failed, or newer text", () => {
+	test("clears an accepted queued submission but retains failed or newer text", () => {
 		expect(
 			hermesComposerDraftAfterSubmit({
 				currentText: "same",
@@ -178,16 +178,32 @@ describe("Hermes composer draft coordinator", () => {
 				disposition: "submitted",
 			})
 		).toBe("new edit");
-		for (const disposition of ["queued", "failed"] as const) {
-			expect(
-				hermesComposerDraftAfterSubmit({
-					currentText: "retain me",
-					currentRevision: 1,
-					submittedText: "retain me",
-					submittedRevision: 1,
-					disposition,
-				})
-			).toBe("retain me");
+		expect(
+			hermesComposerDraftAfterSubmit({
+				currentText: "queued follow-up",
+				currentRevision: 1,
+				submittedText: "queued follow-up",
+				submittedRevision: 1,
+				disposition: "queued",
+			})
+		).toBe("");
+		for (const input of [
+			{
+				currentText: "retain me",
+				currentRevision: 1,
+				submittedText: "retain me",
+				submittedRevision: 1,
+				disposition: "failed" as const,
+			},
+			{
+				currentText: "newer edit",
+				currentRevision: 2,
+				submittedText: "queued follow-up",
+				submittedRevision: 1,
+				disposition: "queued" as const,
+			},
+		]) {
+			expect(hermesComposerDraftAfterSubmit(input)).toBe(input.currentText);
 		}
 	});
 

@@ -30,7 +30,7 @@ describe("Hermes layout contract", () => {
 		expect(view).toContain("const generation = selectionGeneration");
 		expect(view).toContain("acceptRegisteredAttachments(selected, generation)");
 		expect(view).toContain('aria-label={live.running ? "Queue follow-up" : "Send message"}');
-		expect(view).toContain("<HermesMarkdown content={live.streamingText} />");
+		expect(view).toContain("<HermesStreamingMarkdown content={live.streamingText} />");
 		expect(view).toContain("const physicalMessages = useMemo");
 		expect(view).toContain("deriveHermesCanonicalTimeline(physicalMessages)");
 		expect(view).not.toMatch(/transcriptOwner[^\n]*overflow-x-auto/);

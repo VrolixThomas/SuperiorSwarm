@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import type { HermesTranscriptMessage } from "../../../shared/hermes";
 import {
 	HERMES_CHAT_LAYOUT_CLASSES,
@@ -227,7 +227,7 @@ function HermesUserMessage({
 	);
 }
 
-export function HermesTranscript({
+export const HermesTranscript = memo(function HermesTranscript({
 	items,
 	onRetryFollowUp,
 	onCancelFollowUp,
@@ -268,4 +268,4 @@ export function HermesTranscript({
 			})}
 		</div>
 	);
-}
+});

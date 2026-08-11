@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
 	extractWorkspaceArtifacts,
+	normalizeHermesActiveTurnSnapshot,
 	normalizeHermesEvent,
 	normalizeHermesMessagePage,
 	normalizeHermesRuntimeActivity,
@@ -18,6 +19,8 @@ describe("stock Hermes protocol adapter", () => {
 		expect(sessions).toHaveLength(2);
 		expect(sessions[0]).toEqual({
 			id: "stored-slack-1",
+			lineageRootId: "stored-slack-1",
+			activeTipId: "stored-slack-1",
 			title: "Slack handoff",
 			generatedTitle: "Slack handoff",
 			titleSource: "generated",
@@ -140,6 +143,63 @@ describe("stock Hermes protocol adapter", () => {
 
 		expect(canonical?.id).toBe("durable-root");
 		expect(canonical?.profileId).toBe("work");
+	});
+
+	test("preserves the stock lineage root while exposing the current continuation tip", () => {
+		const sessions = normalizeHermesSessionList(
+			{
+				sessions: [
+					{
+						id: "continuation-child",
+						_lineage_root_id: "conversation-root",
+						profile: "work",
+						title: "Continued conversation",
+						last_active: 30,
+					},
+				],
+			},
+			"default"
+		);
+
+		expect(sessions).toEqual([
+			expect.objectContaining({
+				id: "continuation-child",
+				activeTipId: "continuation-child",
+				lineageRootId: "conversation-root",
+				profileId: "work",
+			}),
+		]);
+	});
+
+	test("dedupes rotated continuation tips by lineage root and keeps the newest tip", () => {
+		const sessions = normalizeHermesSessionList(
+			{
+				sessions: [
+					{
+						id: "older-child",
+						_lineage_root_id: "conversation-root",
+						profile: "work",
+						last_active: 20,
+					},
+					{
+						id: "current-child",
+						_lineage_root_id: "conversation-root",
+						profile: "work",
+						last_active: 30,
+					},
+				],
+			},
+			"default"
+		);
+
+		expect(sessions).toHaveLength(1);
+		expect(sessions[0]).toEqual(
+			expect.objectContaining({
+				id: "current-child",
+				activeTipId: "current-child",
+				lineageRootId: "conversation-root",
+			})
+		);
 	});
 
 	test("normalizes a stock messages page without custom turn results", () => {
@@ -353,6 +413,48 @@ describe("stock Hermes protocol adapter", () => {
 		expect(normalizeHermesRuntimeActivity({ running: true, status: "working" })).toEqual({
 			activeTurn: true,
 			status: "working",
+		});
+	});
+
+	test("hydrates stock inflight and queued resume projections without turn IDs", () => {
+		const snapshot = normalizeHermesActiveTurnSnapshot(
+			{
+				messages: [],
+				inflight: {
+					user: "current prompt",
+					assistant: "partial answer",
+					corrections: ["steer toward tests"],
+					streaming: true,
+				},
+				queued: { user: "next prompt" },
+			},
+			{
+				durableSessionId: "stored-1",
+				runtimeSessionId: "runtime-1",
+				profileId: "work",
+				eventSeq: 7,
+				activeTurn: true,
+				status: "streaming",
+			}
+		);
+
+		expect(snapshot).toMatchObject({
+			turnId: null,
+			streamingText: "partial answer",
+			queuedFollowUps: [
+				{
+					id: "stock-inflight:stored-1",
+					profileId: "work",
+					text: "current prompt",
+					status: "accepted",
+				},
+				{
+					id: "stock-inflight-correction:stored-1:0",
+					text: "steer toward tests",
+					status: "accepted",
+				},
+				{ id: "stock-queued:stored-1", text: "next prompt", status: "accepted" },
+			],
 		});
 	});
 

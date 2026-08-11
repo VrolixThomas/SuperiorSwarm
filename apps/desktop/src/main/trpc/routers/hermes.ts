@@ -186,6 +186,7 @@ export const hermesDeleteSessionInputSchema = z
 const submitInput = connectionSessionInput
 	.extend({
 		text: z.string().max(200_000),
+		clientTurnId: z.string().trim().min(1).max(200).optional(),
 		attachmentHandles: z.array(z.string().min(1).max(200)).max(HERMES_MAX_ATTACHMENTS).default([]),
 	})
 	.superRefine((input, context) => {
@@ -517,7 +518,8 @@ export const hermesRouter = router({
 				input.hermesSessionId,
 				input.text.trim(),
 				input.attachmentHandles,
-				input.profileId
+				input.profileId,
+				input.clientTurnId
 			)
 		),
 
@@ -576,7 +578,7 @@ export const hermesRouter = router({
 	events: publicProcedure
 		.input(managerConnectionInput.extend({ afterSeq: z.number().int().min(0) }))
 		.query(({ input }) =>
-			hermesRuntimeService.events(input.connectionId, input.afterSeq, input.managerId)
+			hermesRuntimeService.waitForEvents(input.connectionId, input.afterSeq, input.managerId)
 		),
 
 	origin: publicProcedure

@@ -60,6 +60,8 @@ function seedManagerAndConnection(managerId: string, connectionId: string): void
 function session(title: string): HermesSessionSummary {
 	return {
 		id: baseIdentity.durableSessionId,
+		lineageRootId: baseIdentity.durableSessionId,
+		activeTipId: baseIdentity.durableSessionId,
 		title,
 		generatedTitle: title,
 		titleSource: "generated",
