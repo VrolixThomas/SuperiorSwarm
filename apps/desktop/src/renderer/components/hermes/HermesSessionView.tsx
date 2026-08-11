@@ -15,6 +15,7 @@ import {
 	HERMES_ATTACHMENT_UPLOAD_CHUNK_MAX_BYTES,
 	type HermesAttachmentMetadata,
 	type HermesComposerDraftIdentity,
+	hermesSessionMatchesId,
 } from "../../../shared/hermes";
 import {
 	fileObjectsFromHermesTransfer,
@@ -66,13 +67,14 @@ import {
 	projectHermesTranscript,
 	reconcileHermesOptimisticUserTurns,
 	reduceHermesComposerAttachments,
+	selectHermesTranscriptWindow,
 	settleHermesOptimisticUserTurn,
 } from "../../hermes/hermes-view-model";
 import { normalizeHermesSessionSelection, useTabStore } from "../../stores/tab-store";
 import { trpc } from "../../trpc/client";
 import { HermesComposerAttachments } from "./HermesComposerAttachments";
 import { HermesApprovalCard, HermesClarificationChoices } from "./HermesInteractionCards";
-import { HermesMarkdown } from "./HermesMarkdown";
+import { HermesMarkdown, HermesStreamingMarkdown } from "./HermesMarkdown";
 import { HermesActivityGroup, HermesTranscript } from "./HermesTranscript";
 import {
 	HermesSessionTabStrip,
@@ -119,6 +121,10 @@ export function HermesSessionView() {
 	);
 	const [lastHistoryActivityAt, setLastHistoryActivityAt] = useState<number | null>(null);
 	const [revisionFailureCount, setRevisionFailureCount] = useState(0);
+	const [transcriptWindowRequest, setTranscriptWindowRequest] = useState({
+		selectionKey: "",
+		pages: 1,
+	});
 	const revisionFailureSnapshotRef = useRef({
 		errorUpdatedAt: null as number | null,
 		failureCount: 0,
@@ -211,7 +217,8 @@ export function HermesSessionView() {
 	);
 	const session = catalog.data?.sessions.find(
 		(candidate) =>
-			candidate.id === sessionId && (profileId === null || candidate.profileId === profileId)
+			hermesSessionMatchesId(candidate, sessionId ?? "") &&
+			(profileId === null || candidate.profileId === profileId)
 	);
 
 	useEffect(() => {
@@ -275,11 +282,13 @@ export function HermesSessionView() {
 		}
 		if (!catalog.data) return;
 		const normalized = normalizeHermesSessionSelection(selection, catalog.data.sessions);
-		if (!normalized) {
-			useTabStore.getState().selectHermesSession(null);
-			return;
-		}
-		if (normalized.profileId !== selection.profileId) {
+		// Catalog omission is transient under stock continuation/pagination semantics.
+		// Explicit deletion and connection removal are the only selection-clearing authorities.
+		if (!normalized) return;
+		if (
+			normalized.profileId !== selection.profileId ||
+			normalized.sessionId !== selection.sessionId
+		) {
 			useTabStore.getState().selectHermesSession(normalized);
 		}
 	}, [catalog.data, connections.data, selection]);
@@ -659,7 +668,6 @@ export function HermesSessionView() {
 		{ connectionId, profileId: profileId ?? undefined, hermesSessionId: sessionId ?? "" },
 		{
 			enabled: Boolean(connectionId && profileId && sessionId),
-			refetchInterval: 750,
 		}
 	);
 	const retryFollowUp = trpc.hermes.retryFollowUp.useMutation({
@@ -668,6 +676,26 @@ export function HermesSessionView() {
 	const cancelFollowUp = trpc.hermes.cancelFollowUp.useMutation({
 		onSettled: () => void followUps.refetch(),
 	});
+	const retryFollowUpById = useCallback(
+		(followUpId: string) =>
+			retryFollowUp.mutate({
+				connectionId,
+				profileId: profileId ?? undefined,
+				hermesSessionId: sessionId ?? "",
+				followUpId,
+			}),
+		[connectionId, profileId, retryFollowUp.mutate, sessionId]
+	);
+	const cancelFollowUpById = useCallback(
+		(followUpId: string) =>
+			cancelFollowUp.mutate({
+				connectionId,
+				profileId: profileId ?? undefined,
+				hermesSessionId: sessionId ?? "",
+				followUpId,
+			}),
+		[cancelFollowUp.mutate, connectionId, profileId, sessionId]
+	);
 	const workspaceSessionId = resolveHermesWorkspaceSessionId(sessionId, history.data);
 	const physicalMessages = useMemo(() => history.data?.messages ?? [], [history.data?.messages]);
 	const canonicalMessages = useMemo(
@@ -684,7 +712,6 @@ export function HermesSessionView() {
 					connected &&
 					eventStreamSelectionKey === selectionKey
 			),
-			refetchInterval: 400,
 		}
 	);
 
@@ -755,6 +782,29 @@ export function HermesSessionView() {
 		utils,
 	]);
 
+	useEffect(() => {
+		// The main process holds this request until a WebSocket event arrives. Restart
+		// only a completed timeout; a real event advances cursor and creates the next query.
+		void eventFeed.dataUpdatedAt;
+		if (
+			!eventFeed.data ||
+			eventFeed.isFetching ||
+			eventFeed.data.nextSeq !== cursor ||
+			eventStreamSelectionKey !== selectionKey
+		) {
+			return;
+		}
+		void eventFeed.refetch();
+	}, [
+		cursor,
+		eventFeed.data,
+		eventFeed.dataUpdatedAt,
+		eventFeed.isFetching,
+		eventFeed.refetch,
+		eventStreamSelectionKey,
+		selectionKey,
+	]);
+
 	const links = trpc.hermes.workspaceLinks.useQuery(
 		{ connectionId, profileId: profileId ?? "", hermesSessionId: workspaceSessionId },
 		{ enabled: Boolean(connectionId && profileId && sessionId), refetchInterval: 2_000 }
@@ -786,8 +836,23 @@ export function HermesSessionView() {
 		[canonicalMessages, optimisticUserTurns]
 	);
 	const queuedUserItems = useMemo(
-		() => projectHermesQueuedFollowUps(canonicalMessages, followUps.data ?? live.queuedFollowUps),
-		[canonicalMessages, followUps.data, live.queuedFollowUps]
+		() =>
+			projectHermesQueuedFollowUps(
+				canonicalMessages,
+				followUps.data ?? live.queuedFollowUps,
+				new Set(optimisticUserTurns.map((turn) => turn.id))
+			),
+		[canonicalMessages, followUps.data, live.queuedFollowUps, optimisticUserTurns]
+	);
+	const transcriptProjectionItems = useMemo(
+		() => [...transcriptItems, ...optimisticUserItems, ...queuedUserItems],
+		[optimisticUserItems, queuedUserItems, transcriptItems]
+	);
+	const transcriptWindowPages =
+		transcriptWindowRequest.selectionKey === selectionKey ? transcriptWindowRequest.pages : 1;
+	const transcriptWindow = useMemo(
+		() => selectHermesTranscriptWindow(transcriptProjectionItems, transcriptWindowPages),
+		[transcriptProjectionItems, transcriptWindowPages]
 	);
 	const liveCompletions = useMemo(
 		() => projectHermesLiveCompletions(canonicalMessages, live.completed),
@@ -850,8 +915,11 @@ export function HermesSessionView() {
 		const generation = selectionGeneration;
 		const draftSubmission = hermesComposerDrafts.captureSubmission(draftIdentity);
 		const submittedText = draftSubmission.text;
+		const clientTurnId =
+			globalThis.crypto?.randomUUID?.() ??
+			`client-turn-${Date.now()}-${++optimisticTurnSequence.current}`;
 		const optimisticTurn = createHermesOptimisticUserTurn({
-			id: `${selectionKey}:${++optimisticTurnSequence.current}`,
+			id: clientTurnId,
 			text: submittedText,
 			attachments,
 			canonicalMessages,
@@ -865,17 +933,14 @@ export function HermesSessionView() {
 				hermesSessionId: sessionId,
 				text: submittedText.trim(),
 				attachmentHandles: attachments.map((attachment) => attachment.handle),
+				clientTurnId,
 			},
 			{
 				onSuccess: (result) => {
 					hermesComposerDrafts.settleSubmission(draftIdentity, draftSubmission, result.disposition);
 					runForSelection(generation, () => {
 						setOptimisticUserTurns((current) =>
-							settleHermesOptimisticUserTurn(
-								current,
-								optimisticTurn.id,
-								result.disposition === "queued" ? "failed" : "accepted"
-							)
+							settleHermesOptimisticUserTurn(current, optimisticTurn.id, "accepted")
 						);
 						dispatchAttachments({ type: "succeeded" });
 						setAttachmentLimitError(null);
@@ -1045,17 +1110,31 @@ export function HermesSessionView() {
 		textarea.style.overflowY = layout.overflowY;
 	}, [composer]);
 
-	useLayoutEffect(() => {
-		const transcript = transcriptRef.current;
-		if (activePane !== "chat" || !transcript || !history.data || history.isLoading) return;
-		const initialHistory = anchoredSelectionKey.current !== selectionKey;
-		if (shouldAnchorHermesChat({ initialHistory, following: followingTranscript.current })) {
-			transcript.scrollTop = transcript.scrollHeight;
-			followingTranscript.current = true;
-			setShowJumpToLatest(false);
-		}
-		if (initialHistory) anchoredSelectionKey.current = selectionKey;
-	});
+	useEffect(() => {
+		// These projections intentionally drive follow-to-bottom without making composer
+		// keystrokes and unrelated pane state force a transcript layout read.
+		void live.streamingText;
+		void transcriptWindow.items;
+		const frame = requestAnimationFrame(() => {
+			const transcript = transcriptRef.current;
+			if (activePane !== "chat" || !transcript || !history.data || history.isLoading) return;
+			const initialHistory = anchoredSelectionKey.current !== selectionKey;
+			if (shouldAnchorHermesChat({ initialHistory, following: followingTranscript.current })) {
+				transcript.scrollTop = transcript.scrollHeight;
+				followingTranscript.current = true;
+				setShowJumpToLatest(false);
+			}
+			if (initialHistory) anchoredSelectionKey.current = selectionKey;
+		});
+		return () => cancelAnimationFrame(frame);
+	}, [
+		activePane,
+		history.data,
+		history.isLoading,
+		live.streamingText,
+		selectionKey,
+		transcriptWindow.items,
+	]);
 
 	if (!sessionId) {
 		return (
@@ -1323,24 +1402,26 @@ export function HermesSessionView() {
 							Loading canonical Hermes history…
 						</div>
 					)}
+					{transcriptWindow.windowed && (
+						<div className="mb-6 flex justify-center">
+							<button
+								type="button"
+								onClick={() =>
+									setTranscriptWindowRequest((current) => ({
+										selectionKey,
+										pages: current.selectionKey === selectionKey ? current.pages + 1 : 2,
+									}))
+								}
+								className="rounded-[7px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 py-1.5 text-[11px] text-[var(--text-tertiary)] hover:bg-[var(--bg-elevated)]"
+							>
+								Show earlier messages
+							</button>
+						</div>
+					)}
 					<HermesTranscript
-						items={[...transcriptItems, ...optimisticUserItems, ...queuedUserItems]}
-						onRetryFollowUp={(followUpId) =>
-							retryFollowUp.mutate({
-								connectionId,
-								profileId: profileId ?? undefined,
-								hermesSessionId: sessionId,
-								followUpId,
-							})
-						}
-						onCancelFollowUp={(followUpId) =>
-							cancelFollowUp.mutate({
-								connectionId,
-								profileId: profileId ?? undefined,
-								hermesSessionId: sessionId,
-								followUpId,
-							})
-						}
+						items={transcriptWindow.items}
+						onRetryFollowUp={retryFollowUpById}
+						onCancelFollowUp={cancelFollowUpById}
 					/>
 					{liveActivity && (
 						<div className="mt-7 min-w-0">
@@ -1358,7 +1439,7 @@ export function HermesSessionView() {
 							data-hermes-align="frame-start"
 							aria-live="polite"
 						>
-							<HermesMarkdown content={live.streamingText} />
+							<HermesStreamingMarkdown content={live.streamingText} />
 						</div>
 					)}
 				</div>

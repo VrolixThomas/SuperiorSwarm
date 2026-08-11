@@ -1,4 +1,5 @@
 import { Children, type ReactNode, isValidElement, memo, useEffect, useRef, useState } from "react";
+import { splitHermesStreamingMarkdown } from "../../hermes/hermes-markdown-blocks";
 import { type MarkdownComponents, MarkdownRenderer } from "../MarkdownRenderer";
 
 interface HermesMarkdownProps {
@@ -497,6 +498,47 @@ export const HermesMarkdown = memo(function HermesMarkdown({
 				syntaxHighlighting={false}
 				variant="unstyled"
 			/>
+		</div>
+	);
+});
+
+const HermesStreamingMarkdownBlock = memo(function HermesStreamingMarkdownBlock({
+	content,
+}: {
+	content: string;
+}) {
+	return (
+		<MarkdownRenderer
+			content={content}
+			components={HERMES_MARKDOWN_COMPONENTS}
+			skipHtml
+			syntaxHighlighting={false}
+			variant="unstyled"
+		/>
+	);
+});
+
+export const HermesStreamingMarkdown = memo(function HermesStreamingMarkdown({
+	content,
+	className,
+}: HermesMarkdownProps) {
+	const blocks = splitHermesStreamingMarkdown(content);
+	let offset = 0;
+	const keyedBlocks = blocks.map((block) => {
+		const start = offset;
+		offset += block.length;
+		return { block, start };
+	});
+	return (
+		<div
+			className={`min-w-0 max-w-full overflow-x-hidden [overflow-wrap:anywhere] ${className ?? ""}`}
+			data-hermes-markdown="streaming"
+		>
+			{keyedBlocks.map(({ block, start }) => (
+				<div key={start} className={start === 0 ? undefined : "mt-3"}>
+					<HermesStreamingMarkdownBlock content={block} />
+				</div>
+			))}
 		</div>
 	);
 });

@@ -86,9 +86,13 @@ export interface HermesTagDefinition {
 	updatedAt: number;
 }
 
-/** Renderer-safe persisted session summary. `id` is always the durable Hermes ID. */
+/** Renderer-safe stock session summary. `id`/`activeTipId` may rotate after compaction. */
 export interface HermesSessionSummary {
 	id: string;
+	/** Stable identity shared by every continuation segment in this conversation. */
+	lineageRootId: string;
+	/** Current physical stock Hermes segment used for REST/runtime operations. */
+	activeTipId: string;
 	title: string;
 	/** Current backend-generated title, retained even when title is a local rename. */
 	generatedTitle: string;
@@ -334,6 +338,23 @@ export interface HermesComposerDraftIdentity {
 
 export function hermesSessionIdentityKey(profileId: string, durableSessionId: string): string {
 	return JSON.stringify([profileId, durableSessionId]);
+}
+
+export function hermesSessionLineageRootId(
+	session: Pick<HermesSessionSummary, "id" | "lineageRootId">
+): string {
+	return session.lineageRootId || session.id;
+}
+
+export function hermesSessionMatchesId(
+	session: Pick<HermesSessionSummary, "id" | "activeTipId" | "lineageRootId">,
+	storedSessionId: string
+): boolean {
+	return (
+		session.id === storedSessionId ||
+		session.activeTipId === storedSessionId ||
+		hermesSessionLineageRootId(session) === storedSessionId
+	);
 }
 
 export function hermesSessionCompositeIdentityKey(

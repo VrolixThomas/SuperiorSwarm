@@ -29,7 +29,7 @@ export function resolveHermesWorkspaceSessionId(
 	selectedSessionId: string | null,
 	history: Pick<HermesSessionHistory, "durableSessionId"> | undefined
 ): string {
-	return history?.durableSessionId ?? selectedSessionId ?? "";
+	return selectedSessionId ?? history?.durableSessionId ?? "";
 }
 
 export interface HermesRecoveryWorktree {

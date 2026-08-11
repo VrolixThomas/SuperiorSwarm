@@ -172,18 +172,25 @@ export function deserializeHermesSessionSelection(
 
 export function normalizeHermesSessionSelection(
 	selection: HermesSessionSelection,
-	sessions: ReadonlyArray<{ id: string; profileId: string }>
+	sessions: ReadonlyArray<{
+		id: string;
+		profileId: string;
+		activeTipId?: string;
+		lineageRootId?: string;
+	}>
 ): HermesSessionSelection | null {
 	const matches = sessions.filter(
 		(session) =>
-			session.id === selection.sessionId &&
+			(session.id === selection.sessionId ||
+				session.activeTipId === selection.sessionId ||
+				session.lineageRootId === selection.sessionId) &&
 			(selection.profileId === undefined || session.profileId === selection.profileId)
 	);
 	if (matches.length !== 1) return null;
 	return {
 		connectionId: selection.connectionId,
 		profileId: matches[0]?.profileId ?? "",
-		sessionId: selection.sessionId,
+		sessionId: matches[0]?.lineageRootId ?? matches[0]?.id ?? selection.sessionId,
 	};
 }
 

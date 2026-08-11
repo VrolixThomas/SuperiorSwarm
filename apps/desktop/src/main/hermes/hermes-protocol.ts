@@ -3,6 +3,7 @@ import {
 	type HermesActiveTurnSnapshot,
 	type HermesInteractionChoiceDto,
 	type HermesOriginProjection,
+	type HermesQueuedFollowUpSummary,
 	type HermesRuntimeEvent,
 	type HermesSessionBinding,
 	type HermesSessionHistory,
@@ -324,6 +325,7 @@ export function normalizeHermesSessionList(
 		const session = record(row.value);
 		const id = safeIdentifier(session?.["stored_session_id"], session?.["id"]);
 		if (!session || !id) continue;
+		const lineageRootId = safeIdentifier(session["_lineage_root_id"]) ?? id;
 		const source = normalizedSource(session["source"]);
 		const isCron = row.section === "cron" || source === "cron";
 		const status = stringValue(session["status"]);
@@ -332,6 +334,8 @@ export function normalizeHermesSessionList(
 		const title = sanitizedStringValue(session["title"]) ?? "Untitled session";
 		const summary: HermesSessionSummary = {
 			id,
+			lineageRootId,
+			activeTipId: id,
 			title,
 			generatedTitle: title,
 			titleSource: "generated",
@@ -357,7 +361,7 @@ export function normalizeHermesSessionList(
 			admissionReason: null,
 			origin: source === "superiorswarm" ? null : stockOriginProjection(session, source),
 		};
-		const identityKey = hermesSessionIdentityKey(profileId, id);
+		const identityKey = hermesSessionIdentityKey(profileId, lineageRootId);
 		const existing = deduped.get(identityKey);
 		if (!existing || summary.updatedAt >= existing.updatedAt) {
 			deduped.set(identityKey, {
@@ -573,12 +577,15 @@ export function normalizeHermesActiveTurnSnapshot(
 	input: {
 		durableSessionId: string;
 		runtimeSessionId: string;
+		profileId: string;
 		eventSeq: number;
 		activeTurn: boolean;
 		status: string | null;
 	}
 ): HermesActiveTurnSnapshot {
 	const result = record(value);
+	const inflight = record(result?.["inflight"]);
+	const queued = record(result?.["queued"]);
 	const rows = Array.isArray(result?.["messages"]) ? result["messages"] : [];
 	const messages = rows.flatMap((row, index) => {
 		const normalized = normalizeTranscriptMessage(row, index);
@@ -596,6 +603,60 @@ export function normalizeHermesActiveTurnSnapshot(
 	const activeRows = turnId
 		? tail.filter((message) => message.turnId === null || message.turnId === turnId)
 		: tail;
+	const inflightUser = sanitizedStringValue(inflight?.["user"])?.trim() ?? "";
+	const inflightAssistant = sanitizedStringValue(inflight?.["assistant"]) ?? "";
+	const inflightCorrections = Array.isArray(inflight?.["corrections"])
+		? inflight["corrections"].flatMap((correction) => {
+				const text = sanitizedStringValue(correction)?.trim();
+				return text ? [text] : [];
+			})
+		: [];
+	const queuedUser = sanitizedStringValue(queued?.["user"])?.trim() ?? "";
+	const projectionProfileId =
+		safeIdentifier(result?.["profile"], result?.["profile_name"]) ?? input.profileId;
+	const stockUserProjections: HermesQueuedFollowUpSummary[] = [
+		...(inflightUser
+			? [
+					{
+						id: `stock-inflight:${input.durableSessionId}`,
+						durableSessionId: input.durableSessionId,
+						profileId: projectionProfileId,
+						text: inflightUser,
+						attachments: [],
+						knownCanonicalUserMessageIds: [],
+						status: "accepted" as const,
+						error: null,
+						createdAt: 0,
+					},
+				]
+			: []),
+		...inflightCorrections.map((text, index) => ({
+			id: `stock-inflight-correction:${input.durableSessionId}:${index}`,
+			durableSessionId: input.durableSessionId,
+			profileId: projectionProfileId,
+			text,
+			attachments: [],
+			knownCanonicalUserMessageIds: [],
+			status: "accepted" as const,
+			error: null,
+			createdAt: index + 1,
+		})),
+		...(queuedUser
+			? [
+					{
+						id: `stock-queued:${input.durableSessionId}`,
+						durableSessionId: input.durableSessionId,
+						profileId: projectionProfileId,
+						text: queuedUser,
+						attachments: [],
+						knownCanonicalUserMessageIds: [],
+						status: "accepted" as const,
+						error: null,
+						createdAt: inflightCorrections.length + 1,
+					},
+				]
+			: []),
+	];
 	return {
 		durableSessionId: input.durableSessionId,
 		runtimeSessionId: input.runtimeSessionId,
@@ -603,10 +664,12 @@ export function normalizeHermesActiveTurnSnapshot(
 		activeTurn: input.activeTurn,
 		status: input.status,
 		turnId,
-		streamingText: activeRows
-			.filter((message) => message.role === "assistant" && message.text.trim())
-			.map((message) => message.text)
-			.join(""),
+		streamingText:
+			inflightAssistant ||
+			activeRows
+				.filter((message) => message.role === "assistant" && message.text.trim())
+				.map((message) => message.text)
+				.join(""),
 		tools: activeRows.flatMap((message) => {
 			if (message.role !== "tool" && !message.toolName) return [];
 			const status = message.status?.trim().toLowerCase() ?? "";
@@ -625,7 +688,7 @@ export function normalizeHermesActiveTurnSnapshot(
 		}),
 		pendingApproval: null,
 		pendingClarification: null,
-		queuedFollowUps: [],
+		queuedFollowUps: stockUserProjections,
 	};
 }
 

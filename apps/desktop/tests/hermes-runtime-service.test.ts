@@ -345,6 +345,8 @@ class FakeSendService {
 function session(id = "stored-1"): HermesSessionSummary {
 	return {
 		id,
+		lineageRootId: id,
+		activeTipId: id,
 		title: "Stock session",
 		generatedTitle: "Stock session",
 		titleSource: "generated",
@@ -535,6 +537,180 @@ describe("HermesRuntimeService stock lifecycle", () => {
 		expect(catalog.compatibility.state).toBe("compatible");
 		expect(client.requests).toEqual([]);
 		expect(rest.listCalls).toBe(1);
+	});
+
+	test("wakes a long-poll event reader immediately when the stock WebSocket emits", async () => {
+		await service.connect(connectionId);
+		const pending = service.waitForEvents(connectionId, 0, defaultManagerId, 1_000);
+		client.emit({ type: "message.delta", text: "pushed" });
+
+		const feed = await pending;
+		expect(feed.events).toEqual([
+			expect.objectContaining({ event: expect.objectContaining({ type: "message.delta" }) }),
+		]);
+		expect(feed.nextSeq).toBe(1);
+	});
+
+	test("restores the root-scoped FIFO outbox across a full main-process restart", async () => {
+		await service.submitFollowUp(connectionId, "stored-1", "first", [], "work", "client-first");
+		await service.submitFollowUp(connectionId, "stored-1", "second", [], "work", "client-second");
+		service.shutdown();
+
+		client = new FakeRuntimeClient(operations);
+		rest = new FakeRestClient(operations);
+		attachments = new HermesAttachmentStore();
+		service = new HermesRuntimeService({
+			attachmentStore: attachments,
+			clientFactory: () => client,
+			restClientFactory: () => rest,
+			sendService: sender,
+			tokenVault: vault,
+			loopbackTokenResolver: async () => "secret",
+			externalManagerIdResolver: () => defaultManagerId,
+		});
+
+		expect(service.followUps(connectionId, "stored-1", "work")).toEqual([
+			expect.objectContaining({ id: "client-first", text: "first", status: "queued" }),
+			expect.objectContaining({ id: "client-second", text: "second", status: "queued" }),
+		]);
+	});
+
+	test("restores queued attachments as explicit non-sendable recovery rows", async () => {
+		const fixture = await attachmentFixture();
+		const [attachment] = await attachments.registerPaths([fixture.filePath]);
+		if (!attachment) throw new Error("Missing attachment fixture");
+		await service.submitFollowUp(
+			connectionId,
+			"stored-1",
+			"with file",
+			[attachment.handle],
+			"work",
+			"client-attachment"
+		);
+		service.shutdown();
+
+		attachments = new HermesAttachmentStore();
+		service = new HermesRuntimeService({
+			attachmentStore: attachments,
+			clientFactory: () => client,
+			restClientFactory: () => rest,
+			sendService: sender,
+			tokenVault: vault,
+			loopbackTokenResolver: async () => "secret",
+			externalManagerIdResolver: () => defaultManagerId,
+		});
+
+		expect(service.followUps(connectionId, "stored-1", "work")).toEqual([
+			expect.objectContaining({
+				id: "client-attachment",
+				status: "failed",
+				error: "Attachments from the previous app run are unavailable; cancel and resend.",
+			}),
+		]);
+		await expect(
+			service.retryFollowUp(connectionId, "stored-1", "client-attachment", "work")
+		).rejects.toThrow("cancel and resend");
+	});
+
+	test("admits a continuation child from catalog lineage before any history request", async () => {
+		admitAgentSession("conversation-root");
+		rest.sessions = [
+			{
+				...session("continuation-child"),
+				lineageRootId: "conversation-root",
+				activeTipId: "continuation-child",
+				source: "superiorswarm",
+				origin: null,
+			},
+		];
+
+		const catalog = await service.connect(connectionId);
+
+		expect(catalog.sessions).toEqual([
+			expect.objectContaining({
+				id: "continuation-child",
+				lineageRootId: "conversation-root",
+				activeTipId: "continuation-child",
+				admissionReason: "agents",
+			}),
+		]);
+		expect(rest.transcriptCalls).toEqual([]);
+
+		await service.history(connectionId, "conversation-root", "work");
+
+		expect(rest.transcriptCalls).toEqual([
+			{ durableSessionId: "continuation-child", profileId: "work" },
+		]);
+		expect(listHermesSessionAdmissions(defaultManagerId)).toEqual([
+			expect.objectContaining({ durableSessionId: "conversation-root" }),
+		]);
+	});
+
+	test("keeps the continuation outbox on the lineage root while targeting the active tip", async () => {
+		admitAgentSession("conversation-root");
+		rest.sessions = [
+			{
+				...session("continuation-child"),
+				lineageRootId: "conversation-root",
+				activeTipId: "continuation-child",
+				source: "superiorswarm",
+				origin: null,
+			},
+		];
+		client.responses.set("session.resume", [
+			{
+				session_id: "runtime-child",
+				stored_session_id: "continuation-child",
+				profile: "work",
+				running: true,
+				status: "streaming",
+				inflight: { user: "current" },
+			},
+		]);
+		await service.connect(connectionId);
+		const resumed = await service.resume(connectionId, "conversation-root", "work");
+		expect(resumed).toMatchObject({
+			durableSessionId: "continuation-child",
+			activeTurnSnapshot: { durableSessionId: "conversation-root" },
+		});
+
+		await service.submitFollowUp(
+			connectionId,
+			"conversation-root",
+			"next",
+			[],
+			"work",
+			"client-root"
+		);
+
+		expect(service.followUps(connectionId, "conversation-root", "work")).toEqual([
+			expect.objectContaining({
+				id: "client-root",
+				durableSessionId: "conversation-root",
+				status: "queued",
+			}),
+		]);
+		expect(service.followUps(connectionId, "continuation-child", "work")).toEqual(
+			service.followUps(connectionId, "conversation-root", "work")
+		);
+		expect(client.requests[0]).toEqual({
+			method: "session.resume",
+			params: {
+				session_id: "continuation-child",
+				profile: "work",
+				source: "superiorswarm",
+				omit_messages: false,
+			},
+		});
+		client.emit({
+			type: "message.delta",
+			runtimeSessionId: "runtime-child",
+			text: "partial",
+		});
+		expect(service.events(connectionId, 0).events.at(-1)?.event).toMatchObject({
+			type: "message.delta",
+			durableSessionId: "conversation-root",
+		});
 	});
 
 	test("polls revision and tail using the selected composite profile identity", async () => {
@@ -2209,7 +2385,7 @@ describe("HermesRuntimeService stock lifecycle", () => {
 		).toHaveLength(2);
 	});
 
-	test("projects only a verified compression child and preserves scoped admission ownership", async () => {
+	test("projects a stock lineage child without migrating root-scoped ownership", async () => {
 		const now = new Date();
 		getDb()
 			.insert(schema.crossRepoOrchestrators)
@@ -2303,13 +2479,24 @@ describe("HermesRuntimeService stock lifecycle", () => {
 			title: "Shared title",
 			source: "slack",
 		};
-		const child = { ...parent, id: "compression-child" };
-		const unrelatedDelegate = { ...parent, id: "unrelated-delegate" };
-		rest.sessions = [parent, child, unrelatedDelegate];
-		rest.histories.set(
-			"compression-parent",
-			compressedHistory("compression-parent", "compression-child")
-		);
+		const child = {
+			...parent,
+			id: "compression-child",
+			activeTipId: "compression-child",
+			lineageRootId: "compression-parent",
+		};
+		const unrelatedDelegate = {
+			...parent,
+			id: "unrelated-delegate",
+			activeTipId: "unrelated-delegate",
+			lineageRootId: "unrelated-delegate",
+		};
+		rest.sessions = [child, unrelatedDelegate];
+		rest.histories.set("compression-child", {
+			durableSessionId: "compression-child",
+			view: "active",
+			messages: [],
+		});
 		await service.connect(connectionId);
 
 		const history = await service.history(connectionId, "compression-parent", "work");
@@ -2321,7 +2508,7 @@ describe("HermesRuntimeService stock lifecycle", () => {
 			expect.arrayContaining([
 				expect.objectContaining({
 					profileId: "work",
-					durableSessionId: "compression-child",
+					durableSessionId: "compression-parent",
 					reason: "handover",
 					sourcePlatform: "slack",
 				}),
@@ -2334,7 +2521,7 @@ describe("HermesRuntimeService stock lifecycle", () => {
 		);
 		expect(listHermesSessionAdmissions(defaultManagerId)).not.toEqual(
 			expect.arrayContaining([
-				expect.objectContaining({ profileId: "work", durableSessionId: "compression-parent" }),
+				expect.objectContaining({ durableSessionId: "compression-child" }),
 				expect.objectContaining({ durableSessionId: "unrelated-delegate" }),
 			])
 		);
@@ -2345,7 +2532,7 @@ describe("HermesRuntimeService stock lifecycle", () => {
 				reason: "mcp",
 			}),
 		]);
-		expect(listHermesWorkspaceLinks(connectionId, "work", "compression-child")).toEqual([
+		expect(listHermesWorkspaceLinks(connectionId, "work", "compression-parent")).toEqual([
 			expect.objectContaining({ workspaceId: "lineage-workspace" }),
 		]);
 		expect(listHermesWorkspaceLinks(connectionId, "personal", "compression-parent")).toHaveLength(
@@ -2358,7 +2545,7 @@ describe("HermesRuntimeService stock lifecycle", () => {
 			getHermesOriginLink({
 				connectionId,
 				profileId: "work",
-				hermesSessionId: "compression-child",
+				hermesSessionId: "compression-parent",
 				originFingerprint: "origin-owned",
 			})
 		).toContain("/archives/C12345/");
@@ -2366,7 +2553,7 @@ describe("HermesRuntimeService stock lifecycle", () => {
 			getHermesOriginLink({
 				connectionId,
 				profileId: "work",
-				hermesSessionId: "compression-parent",
+				hermesSessionId: "compression-child",
 				originFingerprint: "origin-owned",
 			})
 		).toBeNull();
@@ -2386,8 +2573,8 @@ describe("HermesRuntimeService stock lifecycle", () => {
 				originFingerprint: "origin-other",
 			})
 		).toContain("/archives/C12345/");
-		expect(listHermesOriginReports(connectionId, "work", "compression-child")).toHaveLength(1);
-		expect(listHermesOriginReports(connectionId, "work", "compression-parent")).toEqual([]);
+		expect(listHermesOriginReports(connectionId, "work", "compression-parent")).toHaveLength(1);
+		expect(listHermesOriginReports(connectionId, "work", "compression-child")).toEqual([]);
 		expect(listHermesOriginReports(connectionId, "personal", "compression-parent")).toHaveLength(1);
 		expect(listHermesOriginReports(otherConnectionId, "work", "compression-parent")).toHaveLength(
 			1
@@ -2402,7 +2589,7 @@ describe("HermesRuntimeService stock lifecycle", () => {
 			JSON.stringify({
 				connectionId,
 				profileId: "work",
-				sessionId: "compression-child",
+				sessionId: "compression-parent",
 			})
 		);
 	});
@@ -2533,11 +2720,27 @@ describe("HermesRuntimeService stock lifecycle", () => {
 		await service.resume(connectionId, "stored-1", "work");
 		await service.submit(connectionId, "stored-1", "First", [], "work");
 
-		const second = await service.submitFollowUp(connectionId, "stored-1", "Second", [], "work");
-		const third = await service.submitFollowUp(connectionId, "stored-1", "Third", [], "work");
+		const second = await service.submitFollowUp(
+			connectionId,
+			"stored-1",
+			"Second",
+			[],
+			"work",
+			"client-turn-second"
+		);
+		const third = await service.submitFollowUp(
+			connectionId,
+			"stored-1",
+			"Third",
+			[],
+			"work",
+			"client-turn-third"
+		);
 
 		expect(second.disposition).toBe("queued");
 		expect(third.disposition).toBe("queued");
+		expect(second.followUp.id).toBe("client-turn-second");
+		expect(third.followUp.id).toBe("client-turn-third");
 		expect(service.followUps(connectionId, "stored-1", "work").map((item) => item.text)).toEqual([
 			"Second",
 			"Third",
@@ -2575,6 +2778,54 @@ describe("HermesRuntimeService stock lifecycle", () => {
 				.filter((request) => request.method === "prompt.submit")
 				.map((request) => request.params["text"])
 		).toEqual(["First", "Second", "Third"]);
+	});
+
+	test("resnapshots an untagged stock terminal and advances the FIFO only after idle proof", async () => {
+		client.responses.set("session.resume", [
+			{
+				session_id: "runtime-stock-terminal",
+				session_key: "stored-1",
+				profile: "work",
+				running: false,
+				status: "idle",
+			},
+			{
+				session_id: "runtime-stock-terminal",
+				session_key: "stored-1",
+				profile: "work",
+				running: false,
+				status: "idle",
+				messages: [
+					{ id: "user-current", role: "user", content: "Current" },
+					{ id: "assistant-current", role: "assistant", content: "Done" },
+				],
+			},
+		]);
+		client.responses.set("prompt.submit", [{ status: "streaming" }, { status: "streaming" }]);
+		await service.connect(connectionId);
+		await service.resume(connectionId, "stored-1", "work");
+		await service.submit(connectionId, "stored-1", "Current", [], "work");
+		await service.submitFollowUp(connectionId, "stored-1", "Next", [], "work");
+
+		client.emit({
+			type: "message.complete",
+			runtimeSessionId: "runtime-stock-terminal",
+			turnId: null,
+			text: "Done",
+		});
+
+		await waitFor(
+			() => client.requests.filter((request) => request.method === "prompt.submit").length === 2,
+			"stock terminal reconciliation did not drain the next follow-up"
+		);
+		expect(
+			client.requests
+				.filter((request) => request.method === "prompt.submit")
+				.map((request) => request.params["text"])
+		).toEqual(["Current", "Next"]);
+		expect(client.requests.filter((request) => request.method === "session.resume")).toHaveLength(
+			2
+		);
 	});
 
 	test("keeps an interrupted turn active until its terminal event drains the continuation", async () => {

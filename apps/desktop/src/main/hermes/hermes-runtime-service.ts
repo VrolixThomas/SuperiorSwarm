@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { eq } from "drizzle-orm";
 import {
 	type HermesActiveTurnSnapshot,
 	type HermesCatalog,
@@ -18,8 +19,11 @@ import {
 	type HermesTagColor,
 	hermesSessionCompositeIdentityKey,
 	hermesSessionIdentityKey,
+	hermesSessionLineageRootId,
+	hermesSessionMatchesId,
 	isSafeHermesFileReference,
 } from "../../shared/hermes";
+import { getDb, schema } from "../db";
 import { resolveInstalledHermesManagerId } from "../services/external-managers";
 import {
 	type HermesAttachedResult,
@@ -163,6 +167,7 @@ interface RuntimeBinding extends HermesSessionBinding {
 	} | null;
 	processedTerminalIdentities: string[];
 	pendingTerminalEvents: HermesRuntimeEvent[];
+	terminalReconciliation: Promise<void> | null;
 }
 
 interface QueuedFollowUp extends HermesQueuedFollowUpSummary {
@@ -175,6 +180,7 @@ interface QueuedFollowUp extends HermesQueuedFollowUpSummary {
 	submittedPromptText: string | null;
 	canonicalUserMessageId: string | null;
 	sequence: number;
+	attachmentsUnavailable: boolean;
 }
 
 interface SessionFollowUpQueue {
@@ -404,12 +410,28 @@ function stockCatalog(
 								managerId,
 								connectionId,
 								profileId: session.profileId,
-								durableSessionId: session.id,
+								durableSessionId: hermesSessionLineageRootId(session),
 							},
 							session
 						)
 					),
 	};
+}
+
+function synchronizeStockLineageAliases(
+	aliases: Map<string, string>,
+	sessions: readonly HermesSessionSummary[]
+): void {
+	for (const session of sessions) {
+		const lineageRootId = hermesSessionLineageRootId(session);
+		const activeTipId = session.activeTipId || session.id;
+		const rootKey = hermesSessionIdentityKey(session.profileId, lineageRootId);
+		const previousTipId = aliases.get(rootKey);
+		if (previousTipId && previousTipId !== activeTipId) {
+			aliases.set(hermesSessionIdentityKey(session.profileId, previousTipId), activeTipId);
+		}
+		if (lineageRootId !== activeTipId) aliases.set(rootKey, activeTipId);
+	}
 }
 
 function reconcileHermesHistory(
@@ -454,6 +476,8 @@ export class HermesRuntimeService {
 	private readonly connectionStates = new Map<string, HermesRuntimeState>();
 	private readonly submitReservations = new Map<string, Set<string>>();
 	private readonly followUpQueues = new Map<string, SessionFollowUpQueue>();
+	private readonly eventWaiters = new Map<string, Set<() => void>>();
+	private followUpOutboxHydrated = false;
 	private nextFollowUpSequence = 0;
 	private readonly unsubscribeBackendInvalidation: () => void;
 	private closed = false;
@@ -483,6 +507,7 @@ export class HermesRuntimeService {
 	}
 
 	async connect(connectionId: string): Promise<HermesCatalog> {
+		this.ensureFollowUpOutboxHydrated();
 		if (this.closed) throw new Error("Hermes runtime service is shut down");
 		const operation = this.beginConnectionOperation(connectionId, false);
 		this.connectionStates.set(connectionId, {
@@ -528,9 +553,12 @@ export class HermesRuntimeService {
 		}
 		this.connectionStates.delete(connectionId);
 		this.submitReservations.delete(connectionId);
+		this.notifyEventWaiters(connectionId);
+		this.persistFollowUpOutbox();
 	}
 
 	forgetConnection(connectionId: string): void {
+		this.ensureFollowUpOutboxHydrated();
 		this.disconnect(connectionId);
 		for (const [key, queue] of this.followUpQueues) {
 			if (queue.connectionId !== connectionId) continue;
@@ -545,9 +573,11 @@ export class HermesRuntimeService {
 			queue.activeTurnGeneration = null;
 			this.followUpQueues.delete(key);
 		}
+		this.persistFollowUpOutbox();
 	}
 
 	getState(connectionId: string): HermesRuntimeState {
+		this.ensureFollowUpOutboxHydrated();
 		const state = this.runtimes.get(connectionId)?.client.getState() ??
 			this.connectionStates.get(connectionId) ?? {
 				status: "disconnected",
@@ -692,8 +722,11 @@ export class HermesRuntimeService {
 		const runtime = this.requireRuntime(connectionId);
 		const durableSessionId = this.resolveDurableId(runtime, hermesSessionId, profileId);
 		const relatedSessionIds = this.relatedSessionIds(runtime, profileId, durableSessionId);
-		const followUpQueue = this.followUpQueues.get(
-			hermesSessionCompositeIdentityKey(connectionId, profileId, durableSessionId)
+		const followUpQueue = this.followUpQueueForSession(
+			connectionId,
+			runtime,
+			profileId,
+			durableSessionId
 		);
 		if (
 			followUpQueue &&
@@ -821,29 +854,24 @@ export class HermesRuntimeService {
 		requestedProfileId?: string
 	): Promise<HermesOriginProjection> {
 		const runtime = this.requireRuntime(connectionId);
-		const durableSessionId = this.resolveDurableId(runtime, hermesSessionId, requestedProfileId);
-		const profileId = requestedProfileId ?? this.profileFor(runtime, durableSessionId);
-		const base = await this.resolveOrigin(
-			connectionId,
-			runtime,
-			durableSessionId,
-			profileId,
-			false
-		);
+		const activeTipId = this.resolveDurableId(runtime, hermesSessionId, requestedProfileId);
+		const profileId = requestedProfileId ?? this.profileFor(runtime, activeTipId);
+		const conversationId = this.canonicalConversationId(runtime, profileId, activeTipId);
+		const base = await this.resolveOrigin(connectionId, runtime, conversationId, profileId, false);
 		if (!base || base.projection.platform !== "slack") {
 			throw new Error("Only Slack-origin sessions support a manual thread URL");
 		}
 		saveHermesOriginLink({
 			connectionId,
 			profileId,
-			hermesSessionId: durableSessionId,
+			hermesSessionId: conversationId,
 			originFingerprint: base.originFingerprint,
 			openUrl,
 		});
 		const resolved = await this.resolveOrigin(
 			connectionId,
 			runtime,
-			durableSessionId,
+			conversationId,
 			profileId,
 			true
 		);
@@ -859,18 +887,19 @@ export class HermesRuntimeService {
 		explicitRetry: boolean;
 	}): Promise<HermesOriginReportState> {
 		const runtime = this.requireRuntime(input.connectionId);
-		const durableSessionId = this.resolveDurableId(runtime, input.hermesSessionId, input.profileId);
-		const profileId = input.profileId ?? this.profileFor(runtime, durableSessionId);
+		const activeTipId = this.resolveDurableId(runtime, input.hermesSessionId, input.profileId);
+		const profileId = input.profileId ?? this.profileFor(runtime, activeTipId);
+		const conversationId = this.canonicalConversationId(runtime, profileId, activeTipId);
 		const resolved = await this.resolveOrigin(
 			input.connectionId,
 			runtime,
-			durableSessionId,
+			conversationId,
 			profileId
 		);
 		if (!resolved?.projection.canReport || !resolved.target) {
 			throw new Error("Slack reporting is unavailable for this session");
 		}
-		const history = await this.history(input.connectionId, durableSessionId, profileId);
+		const history = await this.history(input.connectionId, conversationId, profileId);
 		const message = history.messages.find(
 			(candidate) => candidate.id === input.messageId && candidate.role === "assistant"
 		);
@@ -884,7 +913,7 @@ export class HermesRuntimeService {
 		const identity = {
 			connectionId: input.connectionId,
 			profileId,
-			hermesSessionId: history.durableSessionId,
+			hermesSessionId: conversationId,
 			messageId: message.id,
 			content: message.text,
 			destinationFingerprint: resolved.originFingerprint,
@@ -927,12 +956,10 @@ export class HermesRuntimeService {
 		requestedProfileId?: string
 	): HermesOriginReportState[] {
 		const runtime = this.requireRuntime(connectionId);
-		const durableSessionId = this.resolveDurableId(runtime, hermesSessionId, requestedProfileId);
-		return listHermesOriginReports(
-			connectionId,
-			requestedProfileId ?? this.profileFor(runtime, durableSessionId),
-			durableSessionId
-		);
+		const activeTipId = this.resolveDurableId(runtime, hermesSessionId, requestedProfileId);
+		const profileId = requestedProfileId ?? this.profileFor(runtime, activeTipId);
+		const conversationId = this.canonicalConversationId(runtime, profileId, activeTipId);
+		return listHermesOriginReports(connectionId, profileId, conversationId);
 	}
 
 	async history(
@@ -1182,12 +1209,14 @@ export class HermesRuntimeService {
 		hermesSessionId: string,
 		text: string,
 		attachmentHandles: string[] = [],
-		requestedProfileId?: string
+		requestedProfileId?: string,
+		clientTurnId?: string
 	): Promise<{
 		ok: true;
 		disposition: "submitted" | "queued";
 		followUp: HermesQueuedFollowUpSummary;
 	}> {
+		this.ensureFollowUpOutboxHydrated();
 		const identity = this.followUpIdentity(connectionId, hermesSessionId, requestedProfileId);
 		const queue = this.ensureFollowUpQueue(identity);
 		const admissionGeneration = queue.generation;
@@ -1199,6 +1228,7 @@ export class HermesRuntimeService {
 			const retryable = queue.items.find(
 				(candidate) =>
 					candidate.status === "failed" &&
+					!candidate.attachmentsUnavailable &&
 					candidate.text === text &&
 					this.sameHandles(candidate.attachmentHandles, attachmentHandles)
 			);
@@ -1211,7 +1241,7 @@ export class HermesRuntimeService {
 				retryable.transportUncertain = false;
 				followUp = retryable;
 			} else {
-				const id = this.followUpIdFactory();
+				const id = clientTurnId?.trim() || this.followUpIdFactory();
 				const metadata = await this.attachmentStore.claim(attachmentHandles, id);
 				if (!this.isQueueCurrent(queue, admissionGeneration)) {
 					this.attachmentStore.releaseClaim(attachmentHandles, id);
@@ -1250,6 +1280,7 @@ export class HermesRuntimeService {
 					submittedPromptText: null,
 					canonicalUserMessageId: null,
 					sequence: ++this.nextFollowUpSequence,
+					attachmentsUnavailable: false,
 				};
 				queue.items.push(followUp);
 			}
@@ -1281,6 +1312,7 @@ export class HermesRuntimeService {
 		hermesSessionId: string,
 		requestedProfileId?: string
 	): HermesQueuedFollowUpSummary[] {
+		this.ensureFollowUpOutboxHydrated();
 		const identity = this.followUpIdentity(connectionId, hermesSessionId, requestedProfileId);
 		const queue = this.followUpQueues.get(
 			hermesSessionCompositeIdentityKey(
@@ -1298,6 +1330,7 @@ export class HermesRuntimeService {
 		followUpId: string,
 		requestedProfileId?: string
 	): Promise<{ ok: true; followUp: HermesQueuedFollowUpSummary }> {
+		this.ensureFollowUpOutboxHydrated();
 		const queue = this.requireFollowUpQueue(
 			this.followUpIdentity(connectionId, hermesSessionId, requestedProfileId)
 		);
@@ -1307,6 +1340,9 @@ export class HermesRuntimeService {
 		}
 		if (followUp.transportUncertain) {
 			throw new Error("Reconnect and wait for Hermes to confirm delivery before retrying");
+		}
+		if (followUp.attachmentsUnavailable) {
+			throw new Error("Attachments from the previous app run are unavailable; cancel and resend");
 		}
 		followUp.status = "queued";
 		followUp.error = null;
@@ -1322,6 +1358,7 @@ export class HermesRuntimeService {
 		followUpId: string,
 		requestedProfileId?: string
 	): { ok: true } {
+		this.ensureFollowUpOutboxHydrated();
 		const queue = this.requireFollowUpQueue(
 			this.followUpIdentity(connectionId, hermesSessionId, requestedProfileId)
 		);
@@ -1414,6 +1451,43 @@ export class HermesRuntimeService {
 			events: runtime.events.filter((event) => event.seq > afterSeq),
 			nextSeq: runtime.nextSeq,
 		};
+	}
+
+	async waitForEvents(
+		connectionId: string,
+		afterSeq: number,
+		expectedManagerId?: string | null,
+		timeoutMs = 20_000
+	): Promise<{ events: BufferedEvent[]; nextSeq: number }> {
+		const immediate = this.events(connectionId, afterSeq, expectedManagerId);
+		if (immediate.events.length > 0) return immediate;
+		return await new Promise((resolve, reject) => {
+			let settled = false;
+			const waiters = this.eventWaiters.get(connectionId) ?? new Set<() => void>();
+			this.eventWaiters.set(connectionId, waiters);
+			const finish = () => {
+				if (settled) return;
+				settled = true;
+				clearTimeout(timer);
+				waiters.delete(finish);
+				if (waiters.size === 0) this.eventWaiters.delete(connectionId);
+				try {
+					resolve(this.events(connectionId, afterSeq, expectedManagerId));
+				} catch (error) {
+					reject(error);
+				}
+			};
+			const timer = setTimeout(finish, Math.max(1, timeoutMs));
+			waiters.add(finish);
+			// Close the check/register race if an event arrived immediately before add().
+			try {
+				if (this.events(connectionId, afterSeq, expectedManagerId).events.length > 0) {
+					queueMicrotask(finish);
+				}
+			} catch {
+				queueMicrotask(finish);
+			}
+		});
 	}
 
 	shutdown(): void {
@@ -1624,11 +1698,12 @@ export class HermesRuntimeService {
 	): { connectionId: string; profileId: string; durableSessionId: string } {
 		const runtime = this.runtimes.get(connectionId);
 		if (runtime) {
-			const durableSessionId = this.resolveDurableId(runtime, hermesSessionId, requestedProfileId);
+			const activeTipId = this.resolveDurableId(runtime, hermesSessionId, requestedProfileId);
+			const profileId = requestedProfileId ?? this.profileFor(runtime, activeTipId);
 			return {
 				connectionId,
-				profileId: requestedProfileId ?? this.profileFor(runtime, durableSessionId),
-				durableSessionId,
+				profileId,
+				durableSessionId: this.canonicalConversationId(runtime, profileId, activeTipId),
 			};
 		}
 		const connection = listHermesConnections().find((candidate) => candidate.id === connectionId);
@@ -1638,6 +1713,33 @@ export class HermesRuntimeService {
 			profileId: requestedProfileId ?? connection.profileId,
 			durableSessionId: hermesSessionId,
 		};
+	}
+
+	private canonicalConversationId(
+		runtime: ConnectionRuntime,
+		profileId: string,
+		hermesSessionId: string
+	): string {
+		const matches = runtime.catalog.sessions.filter(
+			(session) =>
+				session.profileId === profileId && hermesSessionMatchesId(session, hermesSessionId)
+		);
+		if (matches.length > 1) {
+			throw new Error("Hermes conversation identity is ambiguous in the canonical catalog");
+		}
+		return matches[0] ? hermesSessionLineageRootId(matches[0]) : hermesSessionId;
+	}
+
+	private followUpQueueForSession(
+		connectionId: string,
+		runtime: ConnectionRuntime,
+		profileId: string,
+		hermesSessionId: string
+	): SessionFollowUpQueue | undefined {
+		const conversationId = this.canonicalConversationId(runtime, profileId, hermesSessionId);
+		return this.followUpQueues.get(
+			hermesSessionCompositeIdentityKey(connectionId, profileId, conversationId)
+		);
 	}
 
 	private canonicalUserMessageIds(
@@ -1653,6 +1755,198 @@ export class HermesRuntimeService {
 				.filter((message) => message.role === "user")
 				.map((message) => message.canonicalMessageId ?? message.id) ?? []
 		);
+	}
+
+	private ensureFollowUpOutboxHydrated(): void {
+		if (this.followUpOutboxHydrated) return;
+		this.followUpOutboxHydrated = true;
+		try {
+			const row = getDb()
+				.select({ value: schema.sessionState.value })
+				.from(schema.sessionState)
+				.where(eq(schema.sessionState.key, "hermesFollowUpOutboxV1"))
+				.get();
+			if (!row) return;
+			const parsed: unknown = JSON.parse(row.value);
+			if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return;
+			const queues = (parsed as Record<string, unknown>)["queues"];
+			if (!Array.isArray(queues)) return;
+			const liveConnectionIds = new Set(listHermesConnections().map((connection) => connection.id));
+			const restoredIds = new Set<string>();
+			for (const candidate of queues) {
+				if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) continue;
+				const source = candidate as Record<string, unknown>;
+				const connectionId =
+					typeof source["connectionId"] === "string" ? source["connectionId"] : "";
+				const profileId = typeof source["profileId"] === "string" ? source["profileId"] : "";
+				const durableSessionId =
+					typeof source["durableSessionId"] === "string" ? source["durableSessionId"] : "";
+				if (
+					!connectionId ||
+					!profileId ||
+					!durableSessionId ||
+					!liveConnectionIds.has(connectionId)
+				) {
+					continue;
+				}
+				const queue = this.ensureFollowUpQueue({ connectionId, profileId, durableSessionId });
+				const restoreRows = (value: unknown): QueuedFollowUp[] => {
+					if (!Array.isArray(value)) return [];
+					return value.flatMap((raw) => {
+						if (!raw || typeof raw !== "object" || Array.isArray(raw)) return [];
+						const saved = raw as Record<string, unknown>;
+						const id = typeof saved["id"] === "string" ? saved["id"].trim() : "";
+						const text = typeof saved["text"] === "string" ? saved["text"] : "";
+						if (!id || restoredIds.has(id)) return [];
+						restoredIds.add(id);
+						const attachments = Array.isArray(saved["attachments"])
+							? saved["attachments"].flatMap((attachment) => {
+									if (!attachment || typeof attachment !== "object" || Array.isArray(attachment)) {
+										return [];
+									}
+									const metadata = attachment as Record<string, unknown>;
+									const kind = metadata["kind"];
+									const name = metadata["name"];
+									return (kind === "image" || kind === "pdf" || kind === "file") &&
+										typeof name === "string"
+										? [{ kind, name }]
+										: [];
+								})
+							: [];
+						const savedStatus = saved["status"];
+						let status: QueuedFollowUp["status"] =
+							savedStatus === "queued" ||
+							savedStatus === "submitting" ||
+							savedStatus === "accepted" ||
+							savedStatus === "failed"
+								? savedStatus
+								: "failed";
+						let transportUncertain = saved["transportUncertain"] === true;
+						let attachmentsUnavailable =
+							saved["attachmentsUnavailable"] === true ||
+							(attachments.length > 0 && status !== "accepted");
+						let error = typeof saved["error"] === "string" ? saved["error"] : null;
+						if (status === "submitting") {
+							status = "failed";
+							transportUncertain = true;
+							error =
+								"The app restarted before Hermes confirmed delivery. This follow-up was not resent.";
+						} else if (attachmentsUnavailable) {
+							status = "failed";
+							attachmentsUnavailable = true;
+							error = "Attachments from the previous app run are unavailable; cancel and resend.";
+						}
+						const sequence =
+							typeof saved["sequence"] === "number" && Number.isSafeInteger(saved["sequence"])
+								? saved["sequence"]
+								: ++this.nextFollowUpSequence;
+						this.nextFollowUpSequence = Math.max(this.nextFollowUpSequence, sequence);
+						return [
+							{
+								id,
+								durableSessionId,
+								profileId,
+								text,
+								attachments,
+								knownCanonicalUserMessageIds: Array.isArray(saved["knownCanonicalUserMessageIds"])
+									? saved["knownCanonicalUserMessageIds"].filter(
+											(value): value is string => typeof value === "string"
+										)
+									: [],
+								status,
+								error,
+								createdAt: typeof saved["createdAt"] === "number" ? saved["createdAt"] : this.now(),
+								attachmentHandles: [],
+								ownerId: id,
+								wasQueued: saved["wasQueued"] !== false,
+								transportUncertain,
+								deliveryKey: typeof saved["deliveryKey"] === "string" ? saved["deliveryKey"] : id,
+								deliveryTurnId:
+									typeof saved["deliveryTurnId"] === "string" ? saved["deliveryTurnId"] : null,
+								submittedPromptText:
+									typeof saved["submittedPromptText"] === "string"
+										? saved["submittedPromptText"]
+										: null,
+								canonicalUserMessageId:
+									typeof saved["canonicalUserMessageId"] === "string"
+										? saved["canonicalUserMessageId"]
+										: null,
+								sequence,
+								attachmentsUnavailable,
+							},
+						];
+					});
+				};
+				const items = restoreRows(source["items"]);
+				const active = restoreRows(source["active"])[0] ?? null;
+				const settled = restoreRows(source["settled"]);
+				queue.items = [...items.filter((followUp) => followUp.status !== "accepted")].sort(
+					(left, right) => left.sequence - right.sequence
+				);
+				queue.settled = [
+					...settled,
+					...items.filter((followUp) => followUp.status === "accepted"),
+					...(active ? [active] : []),
+				].sort((left, right) => left.sequence - right.sequence);
+			}
+		} catch {
+			// Persistence is best-effort; a corrupt or pre-migration row must not block chat.
+		}
+	}
+
+	private persistFollowUpOutbox(): void {
+		if (!this.followUpOutboxHydrated) return;
+		try {
+			const serializeFollowUp = (followUp: QueuedFollowUp) => ({
+				id: followUp.id,
+				text: followUp.text,
+				attachments: followUp.attachments,
+				knownCanonicalUserMessageIds: followUp.knownCanonicalUserMessageIds,
+				status: followUp.status,
+				error: followUp.error,
+				createdAt: followUp.createdAt,
+				wasQueued: followUp.wasQueued,
+				transportUncertain: followUp.transportUncertain,
+				deliveryKey: followUp.deliveryKey,
+				deliveryTurnId: followUp.deliveryTurnId,
+				submittedPromptText: followUp.submittedPromptText,
+				canonicalUserMessageId: followUp.canonicalUserMessageId,
+				sequence: followUp.sequence,
+				attachmentsUnavailable: followUp.attachmentsUnavailable,
+			});
+			const queues = [...this.followUpQueues.values()].flatMap((queue) => {
+				if (queue.items.length === 0 && queue.active === null && queue.settled.length === 0) {
+					return [];
+				}
+				return [
+					{
+						connectionId: queue.connectionId,
+						profileId: queue.profileId,
+						durableSessionId: queue.durableSessionId,
+						items: queue.items.map(serializeFollowUp),
+						active: queue.active ? [serializeFollowUp(queue.active)] : [],
+						settled: queue.settled.map(serializeFollowUp),
+					},
+				];
+			});
+			if (queues.length === 0) {
+				getDb()
+					.delete(schema.sessionState)
+					.where(eq(schema.sessionState.key, "hermesFollowUpOutboxV1"))
+					.run();
+				return;
+			}
+			getDb()
+				.insert(schema.sessionState)
+				.values({ key: "hermesFollowUpOutboxV1", value: JSON.stringify({ version: 1, queues }) })
+				.onConflictDoUpdate({
+					target: schema.sessionState.key,
+					set: { value: JSON.stringify({ version: 1, queues }) },
+				})
+				.run();
+		} catch {
+			// Keep the in-memory queue usable if local persistence is temporarily unavailable.
+		}
 	}
 
 	private ensureFollowUpQueue(identity: {
@@ -1781,8 +2075,11 @@ export class HermesRuntimeService {
 	): HermesQueuedFollowUpSummary[] {
 		const connectionId = [...this.runtimes].find(([, candidate]) => candidate === runtime)?.[0];
 		if (!connectionId) return [];
-		const queue = this.followUpQueues.get(
-			hermesSessionCompositeIdentityKey(connectionId, binding.profileId, binding.durableSessionId)
+		const queue = this.followUpQueueForSession(
+			connectionId,
+			runtime,
+			binding.profileId,
+			binding.durableSessionId
 		);
 		return queue ? this.queueSummaries(queue) : [];
 	}
@@ -1806,6 +2103,7 @@ export class HermesRuntimeService {
 	}
 
 	private pushFollowUpQueueEvent(queue: SessionFollowUpQueue): void {
+		this.persistFollowUpOutbox();
 		const runtime = this.runtimes.get(queue.connectionId);
 		if (!runtime) return;
 		const binding = this.bindingFor(runtime, queue.durableSessionId, queue.profileId);
@@ -1841,6 +2139,7 @@ export class HermesRuntimeService {
 		this.followUpQueues.delete(
 			hermesSessionCompositeIdentityKey(queue.connectionId, queue.profileId, queue.durableSessionId)
 		);
+		this.persistFollowUpOutbox();
 	}
 
 	private async drainFollowUpQueue(queue: SessionFollowUpQueue): Promise<void> {
@@ -2276,6 +2575,8 @@ export class HermesRuntimeService {
 			this.assertCurrentOperation(connectionId, operation);
 			const previous = operation.previousRuntime;
 			const preservedRuntime = previous?.managerId === resolvedManagerId ? previous : null;
+			const aliases = new Map(preservedRuntime?.aliases);
+			synchronizeStockLineageAliases(aliases, sessions);
 			installedRuntime = {
 				connectionId,
 				client,
@@ -2295,7 +2596,7 @@ export class HermesRuntimeService {
 				),
 				bindings: new Map(preservedRuntime?.bindings),
 				runtimeToDurable: new Map(preservedRuntime?.runtimeToDurable),
-				aliases: new Map(preservedRuntime?.aliases),
+				aliases,
 				events: preservedRuntime ? [...preservedRuntime.events] : [],
 				nextSeq: previous?.nextSeq ?? 0,
 				unsubscribers: [],
@@ -2414,13 +2715,17 @@ export class HermesRuntimeService {
 				const mappedIdentity = event.runtimeSessionId
 					? (runtime.runtimeToDurable.get(event.runtimeSessionId) ?? null)
 					: null;
-				const durableSessionId = mappedIdentity
+				const activeTipId = mappedIdentity
 					? this.resolveDurableId(
 							runtime,
 							mappedIdentity.durableSessionId,
 							mappedIdentity.profileId
 						)
 					: null;
+				const durableSessionId =
+					activeTipId && mappedIdentity
+						? this.canonicalConversationId(runtime, mappedIdentity.profileId, activeTipId)
+						: null;
 				const mappedEvent = {
 					...event,
 					profileId: mappedIdentity?.profileId ?? null,
@@ -2430,7 +2735,7 @@ export class HermesRuntimeService {
 					this.pushEvent(connectionId, mappedEvent);
 					return;
 				}
-				const binding = this.bindingFor(runtime, durableSessionId, mappedIdentity?.profileId);
+				const binding = this.bindingFor(runtime, activeTipId, mappedIdentity.profileId);
 				if (event.workspaceArtifacts.length > 0) {
 					this.linkArtifacts(
 						connectionId,
@@ -2440,7 +2745,11 @@ export class HermesRuntimeService {
 					);
 				}
 				if (this.isTerminalEvent(event)) {
-					if (binding) this.processTerminalEvent(connectionId, runtime, binding, mappedEvent);
+					if (binding && !mappedEvent.turnId) {
+						this.reconcileUntaggedTerminalEvent(connectionId, runtime, binding, mappedEvent);
+					} else if (binding) {
+						this.processTerminalEvent(connectionId, runtime, binding, mappedEvent);
+					}
 					return;
 				}
 				this.pushEvent(connectionId, mappedEvent);
@@ -2512,8 +2821,11 @@ export class HermesRuntimeService {
 		binding.activeTurnSnapshot.turnId = null;
 		binding.activeTurnSnapshot.status = event.status ?? "complete";
 		this.clearPendingInteractions(binding);
-		const queue = this.followUpQueues.get(
-			hermesSessionCompositeIdentityKey(connectionId, binding.profileId, binding.durableSessionId)
+		const queue = this.followUpQueueForSession(
+			connectionId,
+			runtime,
+			binding.profileId,
+			binding.durableSessionId
 		);
 		if (queue?.activeTurnGeneration === active.generation) {
 			queue.activeTurnGeneration = null;
@@ -2537,6 +2849,65 @@ export class HermesRuntimeService {
 			this.removeEmptyFollowUpQueue(queue);
 		}
 		return true;
+	}
+
+	private reconcileUntaggedTerminalEvent(
+		connectionId: string,
+		runtime: ConnectionRuntime,
+		binding: RuntimeBinding,
+		event: HermesRuntimeEvent
+	): void {
+		const active = binding.activeTurnIdentity;
+		if (
+			this.runtimes.get(connectionId) !== runtime ||
+			!binding.activeTurn ||
+			!active ||
+			event.runtimeSessionId !== binding.runtimeSessionId ||
+			binding.terminalReconciliation
+		) {
+			return;
+		}
+		const generation = active.generation;
+		const runtimeSessionId = binding.runtimeSessionId;
+		const task = (async () => {
+			try {
+				const response = await runtime.client.request("session.resume", {
+					session_id: binding.durableSessionId,
+					profile: binding.profileId,
+					source: "superiorswarm",
+					omit_messages: false,
+				});
+				if (
+					this.runtimes.get(connectionId) !== runtime ||
+					binding.activeTurnIdentity?.generation !== generation ||
+					binding.runtimeSessionId !== runtimeSessionId
+				) {
+					return;
+				}
+				const activity = normalizeHermesRuntimeActivity(response);
+				if (activity.activeTurn !== false) {
+					binding.runtimeStatus = activity.status ?? binding.runtimeStatus;
+					this.captureActiveTurnSnapshot(runtime, binding, response);
+					return;
+				}
+				const reconciledTurnId =
+					binding.activeTurnIdentity.turnId ?? `local-generation:${generation}`;
+				binding.activeTurnIdentity.turnId = reconciledTurnId;
+				this.processTerminalEvent(connectionId, runtime, binding, {
+					...event,
+					turnId: reconciledTurnId,
+					status: event.status ?? activity.status ?? "complete",
+				});
+			} catch (error) {
+				if (this.runtimes.get(connectionId) === runtime) {
+					this.pushRuntimeError(connectionId, error, binding.durableSessionId, binding.profileId);
+				}
+			}
+		})();
+		binding.terminalReconciliation = task;
+		void task.finally(() => {
+			if (binding.terminalReconciliation === task) binding.terminalReconciliation = null;
+		});
 	}
 
 	private processPendingTerminalEvents(
@@ -2569,6 +2940,11 @@ export class HermesRuntimeService {
 		const failedSessionIds: string[] = [];
 		for (const previous of previousBindings) {
 			const durableSessionId = previous.durableSessionId;
+			const conversationId = this.canonicalConversationId(
+				runtime,
+				previous.profileId,
+				durableSessionId
+			);
 			if (this.runtimes.get(connectionId) !== runtime) return;
 			let binding: RuntimeBinding;
 			try {
@@ -2581,7 +2957,7 @@ export class HermesRuntimeService {
 				);
 				if (this.runtimes.get(connectionId) !== runtime) return;
 				bindings.push({
-					hermesSessionId: durableSessionId,
+					hermesSessionId: conversationId,
 					durableSessionId: binding.durableSessionId,
 					profileId: binding.profileId,
 					runtimeSessionId: binding.runtimeSessionId,
@@ -2592,7 +2968,7 @@ export class HermesRuntimeService {
 					type: "runtime.active-turn-snapshot",
 					profileId: binding.profileId,
 					runtimeSessionId: binding.runtimeSessionId,
-					durableSessionId: binding.durableSessionId,
+					durableSessionId: conversationId,
 					turnId: binding.activeTurnSnapshot.turnId,
 					requestId: null,
 					text: null,
@@ -2604,16 +2980,16 @@ export class HermesRuntimeService {
 				});
 			} catch (error) {
 				if (this.runtimes.get(connectionId) !== runtime) return;
-				failedSessionIds.push(durableSessionId);
-				this.pushRuntimeError(connectionId, error, durableSessionId, previous.profileId);
+				failedSessionIds.push(conversationId);
+				this.pushRuntimeError(connectionId, error, conversationId, previous.profileId);
 				continue;
 			}
 			try {
-				await this.history(connectionId, binding.durableSessionId, binding.profileId);
+				await this.history(connectionId, conversationId, binding.profileId);
 				if (this.runtimes.get(connectionId) !== runtime) return;
 			} catch (error) {
 				if (this.runtimes.get(connectionId) !== runtime) return;
-				failedSessionIds.push(durableSessionId);
+				failedSessionIds.push(conversationId);
 				this.pushRuntimeError(connectionId, error, binding.durableSessionId, binding.profileId);
 			}
 		}
@@ -2667,9 +3043,10 @@ export class HermesRuntimeService {
 		requestedProfileId?: string,
 		useStoredLink = true
 	): Promise<ResolvedHermesOrigin | null> {
-		const durableSessionId = this.resolveDurableId(runtime, hermesSessionId, requestedProfileId);
-		const profileId = requestedProfileId ?? this.profileFor(runtime, durableSessionId);
-		const detail = await runtime.rest.getSessionDetail(durableSessionId, profileId);
+		const activeTipId = this.resolveDurableId(runtime, hermesSessionId, requestedProfileId);
+		const profileId = requestedProfileId ?? this.profileFor(runtime, activeTipId);
+		const conversationId = this.canonicalConversationId(runtime, profileId, activeTipId);
+		const detail = await runtime.rest.getSessionDetail(activeTipId, profileId);
 		const base = resolveHermesOrigin(detail, {
 			connectionMode: runtime.connectionMode,
 			senderAvailable: this.sendService.isAvailable(),
@@ -2678,7 +3055,7 @@ export class HermesRuntimeService {
 			? getHermesOriginLink({
 					connectionId,
 					profileId,
-					hermesSessionId: detail.durableSessionId,
+					hermesSessionId: conversationId,
 					originFingerprint: base.originFingerprint,
 				})
 			: null;
@@ -2689,7 +3066,8 @@ export class HermesRuntimeService {
 					manualOpenUrl,
 				})
 			: base;
-		runtime.origins.set(hermesSessionIdentityKey(profileId, detail.durableSessionId), resolved);
+		runtime.origins.set(hermesSessionIdentityKey(profileId, conversationId), resolved);
+		runtime.origins.set(hermesSessionIdentityKey(profileId, activeTipId), resolved);
 		return resolved;
 	}
 
@@ -2708,11 +3086,19 @@ export class HermesRuntimeService {
 			activeTurn,
 			runtimeStatus,
 			turnGeneration: previous?.turnGeneration ?? 0,
-			activeTurnIdentity: null,
+			activeTurnIdentity:
+				activeTurn && previous?.runtimeSessionId === binding.runtimeSessionId
+					? previous.activeTurnIdentity
+					: null,
 			processedTerminalIdentities: [...(previous?.processedTerminalIdentities ?? [])],
 			pendingTerminalEvents: [],
+			terminalReconciliation: null,
 			activeTurnSnapshot: {
-				durableSessionId: binding.durableSessionId,
+				durableSessionId: this.canonicalConversationId(
+					runtime,
+					binding.profileId,
+					binding.durableSessionId
+				),
 				runtimeSessionId: binding.runtimeSessionId,
 				eventSeq: runtime.nextSeq,
 				activeTurn,
@@ -2743,18 +3129,32 @@ export class HermesRuntimeService {
 		const pendingApproval = binding.activeTurnSnapshot.pendingApproval;
 		const pendingClarification = binding.activeTurnSnapshot.pendingClarification;
 		binding.activeTurnSnapshot = normalizeHermesActiveTurnSnapshot(response, {
-			durableSessionId: binding.durableSessionId,
+			durableSessionId: this.canonicalConversationId(
+				runtime,
+				binding.profileId,
+				binding.durableSessionId
+			),
 			runtimeSessionId: binding.runtimeSessionId,
+			profileId: binding.profileId,
 			eventSeq: runtime.nextSeq,
 			activeTurn: binding.activeTurn,
 			status: binding.runtimeStatus,
 		});
-		binding.activeTurnSnapshot.queuedFollowUps = this.queueSummariesForBinding(runtime, binding);
-		if (binding.activeTurn && binding.activeTurnSnapshot.turnId) {
+		const localQueue = this.queueSummariesForBinding(runtime, binding);
+		const localQueueTexts = new Set(localQueue.map((followUp) => followUp.text));
+		binding.activeTurnSnapshot.queuedFollowUps = [
+			...localQueue,
+			...binding.activeTurnSnapshot.queuedFollowUps.filter(
+				(followUp) => !localQueueTexts.has(followUp.text)
+			),
+		];
+		if (binding.activeTurn) {
 			const current = binding.activeTurnIdentity;
 			if (
 				current?.runtimeSessionId !== binding.runtimeSessionId ||
-				current.turnId !== binding.activeTurnSnapshot.turnId
+				(current.turnId !== null &&
+					binding.activeTurnSnapshot.turnId !== null &&
+					current.turnId !== binding.activeTurnSnapshot.turnId)
 			) {
 				binding.turnGeneration++;
 				binding.activeTurnIdentity = {
@@ -2762,6 +3162,8 @@ export class HermesRuntimeService {
 					runtimeSessionId: binding.runtimeSessionId,
 					turnId: binding.activeTurnSnapshot.turnId,
 				};
+			} else if (current && !current.turnId && binding.activeTurnSnapshot.turnId) {
+				current.turnId = binding.activeTurnSnapshot.turnId;
 			}
 		} else if (!binding.activeTurn) {
 			binding.activeTurnIdentity = null;
@@ -2779,8 +3181,11 @@ export class HermesRuntimeService {
 	): void {
 		const connectionId = [...this.runtimes].find(([, candidate]) => candidate === runtime)?.[0];
 		if (!connectionId) return;
-		const queue = this.followUpQueues.get(
-			hermesSessionCompositeIdentityKey(connectionId, binding.profileId, binding.durableSessionId)
+		const queue = this.followUpQueueForSession(
+			connectionId,
+			runtime,
+			binding.profileId,
+			binding.durableSessionId
 		);
 		if (queue) {
 			queue.activeTurnGeneration = binding.activeTurn
@@ -2874,11 +3279,15 @@ export class HermesRuntimeService {
 		profileId: string,
 		history: HermesSessionHistory
 	): void {
-		const queue = this.followUpQueues.get(
-			hermesSessionCompositeIdentityKey(connectionId, profileId, history.durableSessionId)
+		const runtime = this.runtimes.get(connectionId);
+		if (!runtime) return;
+		const queue = this.followUpQueueForSession(
+			connectionId,
+			runtime,
+			profileId,
+			history.durableSessionId
 		);
 		if (!queue) return;
-		const runtime = this.runtimes.get(connectionId);
 		const binding = runtime ? this.bindingFor(runtime, history.durableSessionId, profileId) : null;
 		const messages = history.messages
 			.filter((candidate) => candidate.role === "user")
@@ -3107,9 +3516,9 @@ export class HermesRuntimeService {
 		const candidates = new Set<string>();
 		const profiles = new Set<string>();
 		for (const session of runtime.catalog.sessions) {
-			if (session.id !== hermesSessionId) continue;
+			if (!hermesSessionMatchesId(session, hermesSessionId)) continue;
 			profiles.add(session.profileId);
-			candidates.add(this.resolveDurableId(runtime, session.id, session.profileId));
+			candidates.add(this.resolveDurableId(runtime, session.activeTipId, session.profileId));
 		}
 		for (const [aliasKey, canonicalSessionId] of runtime.aliases) {
 			const identity = this.identityFromKey(aliasKey);
@@ -3128,7 +3537,7 @@ export class HermesRuntimeService {
 			runtime.catalog.sessions
 				.filter(
 					(session) =>
-						session.id === durableSessionId ||
+						hermesSessionMatchesId(session, durableSessionId) ||
 						runtime.aliases.get(hermesSessionIdentityKey(session.profileId, session.id)) ===
 							durableSessionId
 				)
@@ -3150,13 +3559,16 @@ export class HermesRuntimeService {
 		const resolvedProfileId = profileId ?? binding?.profileId ?? null;
 		try {
 			if (binding) binding.persisted = true;
-			await this.history(connectionId, durableSessionId, profileId);
+			const conversationId = resolvedProfileId
+				? this.canonicalConversationId(runtime, resolvedProfileId, durableSessionId)
+				: durableSessionId;
+			await this.history(connectionId, conversationId, profileId);
 			if (this.runtimes.get(connectionId) !== runtime) return;
 			this.pushEvent(connectionId, {
 				type: "runtime.history-refresh-required",
 				profileId: resolvedProfileId,
 				runtimeSessionId: null,
-				durableSessionId,
+				durableSessionId: conversationId,
 				turnId: null,
 				requestId: null,
 				text: null,
@@ -3190,11 +3602,15 @@ export class HermesRuntimeService {
 		artifacts: ReturnType<typeof extractWorkspaceArtifacts>
 	): void {
 		if (artifacts.length === 0) return;
+		const runtime = this.runtimes.get(connectionId);
+		const conversationId = runtime
+			? this.canonicalConversationId(runtime, profileId, hermesSessionId)
+			: hermesSessionId;
 		linkHermesWorkspaceArtifacts({
 			connectionId,
 			profileId,
-			hermesSessionId,
-			hermesLineageRootId: null,
+			hermesSessionId: conversationId,
+			hermesLineageRootId: conversationId,
 			artifacts,
 		});
 	}
@@ -3205,6 +3621,11 @@ export class HermesRuntimeService {
 		runtime.nextSeq++;
 		runtime.events.push({ seq: runtime.nextSeq, event });
 		if (runtime.events.length > MAX_BUFFERED_EVENTS) runtime.events.shift();
+		this.notifyEventWaiters(connectionId);
+	}
+
+	private notifyEventWaiters(connectionId: string): void {
+		for (const notify of [...(this.eventWaiters.get(connectionId) ?? [])]) notify();
 	}
 
 	private pushRuntimeError(
@@ -3213,6 +3634,11 @@ export class HermesRuntimeService {
 		durableSessionId: string | null = null,
 		profileId: string | null = null
 	): void {
+		const runtime = this.runtimes.get(connectionId);
+		const projectedSessionId =
+			runtime && durableSessionId && profileId
+				? this.canonicalConversationId(runtime, profileId, durableSessionId)
+				: durableSessionId;
 		const sanitized = sanitizeHermesPayload(
 			error instanceof Error ? error.message : "Hermes runtime error"
 		);
@@ -3220,7 +3646,7 @@ export class HermesRuntimeService {
 			type: "runtime.error",
 			profileId,
 			runtimeSessionId: null,
-			durableSessionId,
+			durableSessionId: projectedSessionId,
 			turnId: null,
 			requestId: null,
 			text: typeof sanitized === "string" ? sanitized : "Hermes runtime error",
@@ -3234,6 +3660,7 @@ export class HermesRuntimeService {
 
 	private async refreshCatalog(runtime: ConnectionRuntime): Promise<HermesCatalog> {
 		const sessions = await runtime.rest.listSessions();
+		synchronizeStockLineageAliases(runtime.aliases, sessions);
 		runtime.stockSessions = sessions;
 		runtime.catalog = stockCatalog(
 			sessions,
@@ -3292,7 +3719,8 @@ export class HermesRuntimeService {
 		durableSessionId: string
 	): HermesSessionSummary {
 		const matches = runtime.catalog.sessions.filter(
-			(session) => session.profileId === profileId && session.id === durableSessionId
+			(session) =>
+				session.profileId === profileId && hermesSessionMatchesId(session, durableSessionId)
 		);
 		if (matches.length === 0) throw new Error("Hermes session was not found");
 		if (matches.length !== 1) {
@@ -3313,7 +3741,7 @@ export class HermesRuntimeService {
 			managerId: runtime.managerId,
 			connectionId,
 			profileId: session.profileId,
-			durableSessionId: session.id,
+			durableSessionId: hermesSessionLineageRootId(session),
 		};
 	}
 

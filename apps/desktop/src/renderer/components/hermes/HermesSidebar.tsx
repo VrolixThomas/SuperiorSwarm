@@ -1,15 +1,27 @@
-import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import {
+	type FormEvent,
+	useCallback,
+	useEffect,
+	useLayoutEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
 import {
 	type HermesSessionSummary,
 	type HermesTagDefinition,
 	hermesSessionCompositeIdentityKey,
 	hermesSessionIdentityKey,
+	hermesSessionLineageRootId,
+	hermesSessionMatchesId,
 } from "../../../shared/hermes";
 import {
+	HERMES_SESSION_ROW_ESTIMATE_PX,
 	type HermesSessionFilter,
 	filterHermesSessions,
 	groupHermesSessions,
 	hermesConnectionFormPolicy,
+	hermesSessionVirtualRange,
 } from "../../hermes/hermes-view-model";
 import { normalizeHermesSessionSelection, useTabStore } from "../../stores/tab-store";
 import { trpc } from "../../trpc/client";
@@ -45,6 +57,9 @@ export function HermesSidebar() {
 	const [reconciliationRequired, setReconciliationRequired] = useState(false);
 	const autoConnectAttempted = useRef(new Set<string>());
 	const newSessionSubmitting = useRef(false);
+	const sessionScrollerRef = useRef<HTMLDivElement | null>(null);
+	const sessionListRef = useRef<HTMLDivElement | null>(null);
+	const [sessionViewport, setSessionViewport] = useState({ scrollTop: 0, height: 600 });
 	const utils = trpc.useUtils();
 
 	const connections = trpc.hermes.connections.useQuery();
@@ -140,7 +155,9 @@ export function HermesSidebar() {
 		},
 		onError: (error, variables) => {
 			const session = catalog.data?.sessions.find(
-				(item) => item.id === variables.hermesSessionId && item.profileId === variables.profileId
+				(item) =>
+					item.profileId === variables.profileId &&
+					hermesSessionMatchesId(item, variables.hermesSessionId)
 			);
 			if (!session) return;
 			setFailedSessionAction({
@@ -159,7 +176,8 @@ export function HermesSidebar() {
 				? {
 						...current,
 						sessions: current.sessions.map((session) =>
-							session.profileId === variables.profileId && session.id === variables.hermesSessionId
+							session.profileId === variables.profileId &&
+							hermesSessionMatchesId(session, variables.hermesSessionId)
 								? {
 										...session,
 										title: metadata.customTitle ?? session.generatedTitle,
@@ -217,7 +235,7 @@ export function HermesSidebar() {
 								...current,
 								sessions: current.sessions.filter(
 									(session) =>
-										session.id !== variables.hermesSessionId ||
+										!hermesSessionMatchesId(session, variables.hermesSessionId) ||
 										session.profileId !== variables.profileId
 								),
 							}
@@ -266,22 +284,63 @@ export function HermesSidebar() {
 			),
 		[linkIndex.data]
 	);
-	const sessions = filterHermesSessions(
-		catalog.data?.sessions ?? [],
-		filter,
-		query,
-		linkedBranches
+	const sessions = useMemo(
+		() => filterHermesSessions(catalog.data?.sessions ?? [], filter, query, linkedBranches),
+		[catalog.data?.sessions, filter, linkedBranches, query]
 	);
-	const groupedSessions = groupHermesSessions(sessions);
+	const groupedSessions = useMemo(() => groupHermesSessions(sessions), [sessions]);
+	const sessionSections = useMemo(
+		() => [
+			{ title: "Handovers", rows: groupedSessions.handovers, offset: 0 },
+			{
+				title: "Sessions",
+				rows: groupedSessions.sessions,
+				offset: groupedSessions.handovers.length,
+			},
+		],
+		[groupedSessions]
+	);
+	const sessionVirtualRange = hermesSessionVirtualRange(
+		sessions.length,
+		sessionViewport.scrollTop,
+		sessionViewport.height
+	);
+	const updateSessionViewport = useCallback(() => {
+		const scroller = sessionScrollerRef.current;
+		if (!scroller) return;
+		const listOffset = sessionListRef.current?.offsetTop ?? 0;
+		const next = {
+			scrollTop: Math.max(0, scroller.scrollTop - listOffset),
+			height: scroller.clientHeight || 600,
+		};
+		setSessionViewport((current) =>
+			current.scrollTop === next.scrollTop && current.height === next.height ? current : next
+		);
+	}, []);
+
+	useLayoutEffect(() => {
+		// A catalog size change can move the list below transient action banners.
+		void sessions.length;
+		updateSessionViewport();
+		const scroller = sessionScrollerRef.current;
+		if (!scroller || typeof ResizeObserver === "undefined") return;
+		const observer = new ResizeObserver(updateSessionViewport);
+		observer.observe(scroller);
+		return () => observer.disconnect();
+	}, [sessions.length, updateSessionViewport]);
 
 	useEffect(() => {
 		if (!selectedSession || selectedSession.connectionId !== connectionId || !catalog.data) return;
 		const normalized = normalizeHermesSessionSelection(selectedSession, catalog.data.sessions);
-		if (!normalized) {
-			selectSession(null);
-			return;
+		// A stock catalog page is not a deletion authority: compaction and pagination can
+		// temporarily omit the selected row. Explicit delete/connection removal owns clearing.
+		if (!normalized) return;
+		if (
+			normalized.profileId !== selectedSession.profileId ||
+			normalized.sessionId !== selectedSession.sessionId
+		) {
+			selectSession(normalized);
 		}
-		if (normalized.profileId !== selectedSession.profileId) selectSession(normalized);
 	}, [catalog.data, connectionId, selectSession, selectedSession]);
 
 	function submitConnection(event: FormEvent) {
@@ -340,7 +399,7 @@ export function HermesSidebar() {
 		setSessionArchived.mutate({
 			connectionId,
 			profileId: session.profileId,
-			hermesSessionId: session.id,
+			hermesSessionId: hermesSessionLineageRootId(session),
 			archived,
 		});
 	}
@@ -351,7 +410,7 @@ export function HermesSidebar() {
 		deleteSession.mutate({
 			connectionId,
 			profileId: session.profileId,
-			hermesSessionId: session.id,
+			hermesSessionId: hermesSessionLineageRootId(session),
 			confirmed: true,
 		});
 	}
@@ -603,7 +662,11 @@ export function HermesSidebar() {
 						</div>
 					</div>
 
-					<div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-1.5 pb-2">
+					<div
+						ref={sessionScrollerRef}
+						onScroll={updateSessionViewport}
+						className="relative min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-1.5 pb-2"
+					>
 						{failedSessionAction && (
 							<div
 								role="alert"
@@ -646,130 +709,148 @@ export function HermesSidebar() {
 								No matching agent threads
 							</div>
 						)}
-						{[
-							{ title: "Handovers", rows: groupedSessions.handovers },
-							{ title: "Sessions", rows: groupedSessions.sessions },
-						].map(
-							(section) =>
-								section.rows.length > 0 && (
+						<div ref={sessionListRef}>
+							{sessionSections.map((section) => {
+								if (section.rows.length === 0) return null;
+								const visibleStart = Math.min(
+									section.rows.length,
+									Math.max(0, sessionVirtualRange.start - section.offset)
+								);
+								const visibleEnd = Math.max(
+									visibleStart,
+									Math.min(section.rows.length, sessionVirtualRange.end - section.offset)
+								);
+								return (
 									<section key={section.title} className="mb-2">
 										<div className="px-2 pb-1 pt-2 text-[9px] font-medium uppercase tracking-[0.08em] text-[var(--text-quaternary)]">
 											{section.title}
 										</div>
-										{section.rows.map((session) => {
-											const links =
-												linkIndex.data?.[hermesSessionIdentityKey(session.profileId, session.id)];
-											return (
-												<HermesSessionRow
-													key={hermesSessionCompositeIdentityKey(
-														connectionId ?? "",
-														session.profileId,
-														session.id
-													)}
-													session={session}
-													selected={
-														selectedSession?.connectionId === connectionId &&
-														selectedSession.profileId === session.profileId &&
-														selectedSession.sessionId === session.id
-													}
-													linkedBranch={links?.branches[0] ?? null}
-													actionPending={
-														setSessionArchived.isPending ||
-														deleteSession.isPending ||
-														setSessionTitle.isPending ||
-														assignTagDefinition.isPending ||
-														unassignTagDefinition.isPending ||
-														upsertTagDefinition.isPending ||
-														updateTagDefinition.isPending ||
-														deleteTagDefinition.isPending
-													}
-													onSelect={() =>
-														connectionId &&
-														selectSession({
-															connectionId,
-															profileId: session.profileId,
-															sessionId: session.id,
-														})
-													}
-													onSetArchived={(_profileId, _sessionId, archived) =>
-														mutateSessionArchive(session, archived)
-													}
-													onDelete={() => mutateSessionDelete(session)}
-													onRename={async (title, expectedRevision) => {
-														if (!connectionId) throw new Error("Connection is unavailable");
-														await setSessionTitle.mutateAsync({
-															connectionId,
-															profileId: session.profileId,
-															hermesSessionId: session.id,
-															title,
-															expectedRevision,
-														});
-													}}
-													onListTagDefinitions={async (tagQuery) => {
-														if (!connectionId) throw new Error("Connection is unavailable");
-														return await utils.hermes.tagDefinitions.fetch({
-															connectionId,
-															profileId: session.profileId,
-															hermesSessionId: session.id,
-															query: tagQuery,
-														});
-													}}
-													onCreateTag={async (name, color) => {
-														if (!connectionId) throw new Error("Connection is unavailable");
-														const result = await upsertTagDefinition.mutateAsync({
-															connectionId,
-															profileId: session.profileId,
-															hermesSessionId: session.id,
-															name,
-															color,
-														});
-														return result.definition;
-													}}
-													onUpdateTag={async (definitionId, update) => {
-														if (!connectionId) throw new Error("Connection is unavailable");
-														return await updateTagDefinition.mutateAsync({
-															connectionId,
-															profileId: session.profileId,
-															hermesSessionId: session.id,
-															definitionId,
-															...update,
-														});
-													}}
-													onDeleteTag={async (definitionId, expectedRevision) => {
-														if (!connectionId) throw new Error("Connection is unavailable");
-														await deleteTagDefinition.mutateAsync({
-															connectionId,
-															profileId: session.profileId,
-															hermesSessionId: session.id,
-															definitionId,
-															expectedRevision,
-														});
-													}}
-													onAssignTag={async (definitionId) => {
-														if (!connectionId) throw new Error("Connection is unavailable");
-														await assignTagDefinition.mutateAsync({
-															connectionId,
-															profileId: session.profileId,
-															hermesSessionId: session.id,
-															definitionId,
-														});
-													}}
-													onUnassignTag={async (definitionId) => {
-														if (!connectionId) throw new Error("Connection is unavailable");
-														await unassignTagDefinition.mutateAsync({
-															connectionId,
-															profileId: session.profileId,
-															hermesSessionId: session.id,
-															definitionId,
-														});
-													}}
-													deleteDisabledReason={PERMANENT_DELETE_DISABLED_REASON}
-												/>
-											);
-										})}
+										<div
+											style={{
+												paddingTop: visibleStart * HERMES_SESSION_ROW_ESTIMATE_PX,
+												paddingBottom:
+													(section.rows.length - visibleEnd) * HERMES_SESSION_ROW_ESTIMATE_PX,
+											}}
+										>
+											{section.rows.slice(visibleStart, visibleEnd).map((session) => {
+												const conversationId = hermesSessionLineageRootId(session);
+												const links =
+													linkIndex.data?.[
+														hermesSessionIdentityKey(session.profileId, conversationId)
+													];
+												return (
+													<HermesSessionRow
+														key={hermesSessionCompositeIdentityKey(
+															connectionId ?? "",
+															session.profileId,
+															conversationId
+														)}
+														session={session}
+														selected={
+															selectedSession?.connectionId === connectionId &&
+															selectedSession.profileId === session.profileId &&
+															selectedSession.sessionId === conversationId
+														}
+														linkedBranch={links?.branches[0] ?? null}
+														actionPending={
+															setSessionArchived.isPending ||
+															deleteSession.isPending ||
+															setSessionTitle.isPending ||
+															assignTagDefinition.isPending ||
+															unassignTagDefinition.isPending ||
+															upsertTagDefinition.isPending ||
+															updateTagDefinition.isPending ||
+															deleteTagDefinition.isPending
+														}
+														onSelect={() =>
+															connectionId &&
+															selectSession({
+																connectionId,
+																profileId: session.profileId,
+																sessionId: conversationId,
+															})
+														}
+														onSetArchived={(_profileId, _sessionId, archived) =>
+															mutateSessionArchive(session, archived)
+														}
+														onDelete={() => mutateSessionDelete(session)}
+														onRename={async (title, expectedRevision) => {
+															if (!connectionId) throw new Error("Connection is unavailable");
+															await setSessionTitle.mutateAsync({
+																connectionId,
+																profileId: session.profileId,
+																hermesSessionId: conversationId,
+																title,
+																expectedRevision,
+															});
+														}}
+														onListTagDefinitions={async (tagQuery) => {
+															if (!connectionId) throw new Error("Connection is unavailable");
+															return await utils.hermes.tagDefinitions.fetch({
+																connectionId,
+																profileId: session.profileId,
+																hermesSessionId: conversationId,
+																query: tagQuery,
+															});
+														}}
+														onCreateTag={async (name, color) => {
+															if (!connectionId) throw new Error("Connection is unavailable");
+															const result = await upsertTagDefinition.mutateAsync({
+																connectionId,
+																profileId: session.profileId,
+																hermesSessionId: conversationId,
+																name,
+																color,
+															});
+															return result.definition;
+														}}
+														onUpdateTag={async (definitionId, update) => {
+															if (!connectionId) throw new Error("Connection is unavailable");
+															return await updateTagDefinition.mutateAsync({
+																connectionId,
+																profileId: session.profileId,
+																hermesSessionId: conversationId,
+																definitionId,
+																...update,
+															});
+														}}
+														onDeleteTag={async (definitionId, expectedRevision) => {
+															if (!connectionId) throw new Error("Connection is unavailable");
+															await deleteTagDefinition.mutateAsync({
+																connectionId,
+																profileId: session.profileId,
+																hermesSessionId: conversationId,
+																definitionId,
+																expectedRevision,
+															});
+														}}
+														onAssignTag={async (definitionId) => {
+															if (!connectionId) throw new Error("Connection is unavailable");
+															await assignTagDefinition.mutateAsync({
+																connectionId,
+																profileId: session.profileId,
+																hermesSessionId: conversationId,
+																definitionId,
+															});
+														}}
+														onUnassignTag={async (definitionId) => {
+															if (!connectionId) throw new Error("Connection is unavailable");
+															await unassignTagDefinition.mutateAsync({
+																connectionId,
+																profileId: session.profileId,
+																hermesSessionId: conversationId,
+																definitionId,
+															});
+														}}
+														deleteDisabledReason={PERMANENT_DELETE_DISABLED_REASON}
+													/>
+												);
+											})}
+										</div>
 									</section>
-								)
-						)}
+								);
+							})}
+						</div>
 					</div>
 				</>
 			)}

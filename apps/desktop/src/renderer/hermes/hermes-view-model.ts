@@ -430,6 +430,77 @@ export type HermesTranscriptProjectionItem =
 	| HermesProjectedActivity
 	| HermesProjectedCompaction;
 
+// Match stock Hermes' repository window: bound the amount of transcript materialized
+// by estimated render cost, while always retaining enough rows to preserve turn context.
+export const HERMES_TRANSCRIPT_WINDOW_BUDGET = 1_200;
+export const HERMES_TRANSCRIPT_WINDOW_MIN_ITEMS = 30;
+const HERMES_TRANSCRIPT_WEIGHT_CHARS = 512;
+const hermesTranscriptWeightCache = new WeakMap<object, number>();
+
+function hermesTranscriptItemWeight(item: HermesTranscriptProjectionItem): number {
+	const cached = hermesTranscriptWeightCache.get(item);
+	if (cached !== undefined) return cached;
+	const textLength =
+		item.kind === "activity"
+			? item.messages.reduce((total, message) => total + message.text.length, 0)
+			: item.text.length;
+	const rowWeight = item.kind === "activity" ? item.messages.length : 1;
+	const weight = Math.max(1, rowWeight + Math.ceil(textLength / HERMES_TRANSCRIPT_WEIGHT_CHARS));
+	hermesTranscriptWeightCache.set(item, weight);
+	return weight;
+}
+
+export interface HermesTranscriptWindow {
+	items: HermesTranscriptProjectionItem[];
+	windowed: boolean;
+}
+
+export function selectHermesTranscriptWindow(
+	items: readonly HermesTranscriptProjectionItem[],
+	pages = 1
+): HermesTranscriptWindow {
+	if (items.length === 0)
+		return { items: items as HermesTranscriptProjectionItem[], windowed: false };
+	const budget = HERMES_TRANSCRIPT_WINDOW_BUDGET * Math.max(1, Math.floor(pages));
+	let start = items.length;
+	let weight = 0;
+	for (let index = items.length - 1; index >= 0; index -= 1) {
+		const item = items[index];
+		if (!item) continue;
+		weight += hermesTranscriptItemWeight(item);
+		start = index;
+		if (weight >= budget && items.length - index >= HERMES_TRANSCRIPT_WINDOW_MIN_ITEMS) break;
+	}
+	if (start === 0) return { items: items as HermesTranscriptProjectionItem[], windowed: false };
+	return { items: items.slice(start), windowed: true };
+}
+
+export const HERMES_SESSION_VIRTUALIZE_THRESHOLD = 25;
+export const HERMES_SESSION_ROW_ESTIMATE_PX = 58;
+export const HERMES_SESSION_VIRTUAL_OVERSCAN_ROWS = 12;
+
+export interface HermesVirtualRange {
+	start: number;
+	end: number;
+}
+
+export function hermesSessionVirtualRange(
+	count: number,
+	scrollTop: number,
+	viewportHeight: number
+): HermesVirtualRange {
+	if (count < HERMES_SESSION_VIRTUALIZE_THRESHOLD) return { start: 0, end: count };
+	const firstVisible = Math.floor(Math.max(0, scrollTop) / HERMES_SESSION_ROW_ESTIMATE_PX);
+	const lastVisible = Math.ceil(
+		(Math.max(0, scrollTop) + Math.max(HERMES_SESSION_ROW_ESTIMATE_PX, viewportHeight)) /
+			HERMES_SESSION_ROW_ESTIMATE_PX
+	);
+	return {
+		start: Math.max(0, firstVisible - HERMES_SESSION_VIRTUAL_OVERSCAN_ROWS),
+		end: Math.min(count, lastVisible + HERMES_SESSION_VIRTUAL_OVERSCAN_ROWS),
+	};
+}
+
 export interface HermesComposerAttachment extends HermesAttachmentMetadata {
 	status: "ready" | "attaching" | "error";
 	error: string | null;
@@ -767,11 +838,13 @@ export function projectHermesOptimisticUserTurns(
 
 export function projectHermesQueuedFollowUps(
 	canonicalMessages: HermesTranscriptMessage[],
-	followUps: HermesQueuedFollowUpSummary[]
+	followUps: HermesQueuedFollowUpSummary[],
+	suppressedFollowUpIds: ReadonlySet<string> = new Set()
 ): HermesProjectedMessage[] {
 	const canonicalUsers = canonicalMessages.filter((message) => message.role === "user");
 	const usedCanonicalIndexes = new Set<number>();
 	const visible = followUps.filter((followUp) => {
+		if (suppressedFollowUpIds.has(followUp.id)) return false;
 		if (followUp.status !== "accepted") return true;
 		const optimistic: HermesOptimisticUserTurn = {
 			id: followUp.id,

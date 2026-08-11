@@ -23,6 +23,7 @@ import {
 	hermesOriginReturnLabel,
 	hermesRendererAttachmentSelectionError,
 	hermesReportRequiresExplicitRetry,
+	hermesSessionVirtualRange,
 	latestReportableHermesMessage,
 	mergeHermesHistoryTail,
 	projectHermesLiveActivity,
@@ -31,6 +32,7 @@ import {
 	projectHermesQueuedFollowUps,
 	projectHermesTranscript,
 	reduceHermesComposerAttachments,
+	selectHermesTranscriptWindow,
 	settleHermesOptimisticUserTurn,
 } from "../src/renderer/hermes/hermes-view-model";
 import type {
@@ -43,6 +45,8 @@ import { hermesSessionIdentityKey } from "../src/shared/hermes";
 
 const session = (overrides: Partial<HermesSessionSummary> = {}): HermesSessionSummary => ({
 	id: "session-1",
+	lineageRootId: "session-1",
+	activeTipId: "session-1",
 	title: "Checkout bug",
 	generatedTitle: "Checkout bug",
 	titleSource: "generated",
@@ -584,6 +588,23 @@ describe("Hermes renderer view model", () => {
 				[{ ...followUp, id: "follow-up-2", status: "queued" }]
 			)
 		).toMatchObject([{ id: "queued-user:follow-up-2", delivery: "queued" }]);
+	});
+
+	test("keeps the optimistic row authoritative when the queue acknowledges the same client turn", () => {
+		const followUp = {
+			id: "client-turn-1",
+			durableSessionId: "session-1",
+			profileId: "default",
+			text: "queued prompt",
+			attachments: [],
+			knownCanonicalUserMessageIds: [],
+			status: "queued" as const,
+			error: null,
+			createdAt: 1,
+		};
+
+		expect(projectHermesQueuedFollowUps([], [followUp], new Set(["client-turn-1"]))).toEqual([]);
+		expect(projectHermesQueuedFollowUps([], [followUp], new Set())).toHaveLength(1);
 	});
 
 	test("deduplicates retained physical copies by canonical identity across compactions", () => {
@@ -1538,5 +1559,32 @@ describe("Hermes renderer view model", () => {
 		expect(hermesReportRequiresExplicitRetry({ status: "sending", retryable: true })).toBe(true);
 		expect(hermesReportRequiresExplicitRetry({ status: "sending", retryable: false })).toBe(false);
 		expect(hermesReportRequiresExplicitRetry(null)).toBe(false);
+	});
+
+	test("bounds oversized transcripts by render weight while preserving the latest context", () => {
+		const items = projectHermesTranscript(
+			Array.from({ length: 1_500 }, (_, index) =>
+				message({ id: `message-${index}`, text: `${index}:${"x".repeat(1_024)}` })
+			)
+		);
+		const first = selectHermesTranscriptWindow(items);
+		const second = selectHermesTranscriptWindow(items, 2);
+
+		expect(first.windowed).toBe(true);
+		expect(first.items.length).toBeGreaterThanOrEqual(30);
+		expect(first.items.length).toBeLessThan(500);
+		expect(first.items.at(-1)?.id).toBe("assistant:message-1499");
+		expect(second.items.length).toBeGreaterThan(first.items.length);
+		const small = items.slice(-10);
+		expect(selectHermesTranscriptWindow(small).items).toBe(small);
+	});
+
+	test("bounds a 500-session sidebar to the viewport plus stock overscan", () => {
+		expect(hermesSessionVirtualRange(24, 0, 600)).toEqual({ start: 0, end: 24 });
+		const middle = hermesSessionVirtualRange(500, 10_000, 600);
+		expect(middle.start).toBeGreaterThan(0);
+		expect(middle.end).toBeLessThan(500);
+		expect(middle.end - middle.start).toBeLessThan(40);
+		expect(hermesSessionVirtualRange(500, 0, 600)).toEqual({ start: 0, end: 23 });
 	});
 });

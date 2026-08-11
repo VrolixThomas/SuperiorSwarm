@@ -231,6 +231,38 @@ describe("Hermes global navigation", () => {
 		).toBeNull();
 	});
 
+	test("normalizes a continuation selection to the stable lineage root", () => {
+		const sessions = [
+			{
+				id: "current-child",
+				activeTipId: "current-child",
+				lineageRootId: "conversation-root",
+				profileId: "work",
+			},
+		];
+
+		expect(
+			normalizeHermesSessionSelection(
+				{ connectionId: "connection-a", sessionId: "conversation-root" },
+				sessions
+			)
+		).toEqual({
+			connectionId: "connection-a",
+			profileId: "work",
+			sessionId: "conversation-root",
+		});
+		expect(
+			normalizeHermesSessionSelection(
+				{ connectionId: "connection-a", profileId: "work", sessionId: "current-child" },
+				sessions
+			)
+		).toEqual({
+			connectionId: "connection-a",
+			profileId: "work",
+			sessionId: "conversation-root",
+		});
+	});
+
 	test("clears a selected session when the active connection changes", () => {
 		useTabStore.getState().selectHermesSession({
 			connectionId: "connection-a",
@@ -385,7 +417,7 @@ describe("Hermes global navigation", () => {
 		expect(sidebar).toContain("reconciliationRequired");
 		expect(sidebar).toContain("Refresh session list");
 		expect(sidebar).toMatch(
-			/hermesSessionCompositeIdentityKey\(\s*connectionId \?\? "",\s*session\.profileId,\s*session\.id\s*\)/
+			/hermesSessionCompositeIdentityKey\(\s*connectionId \?\? "",\s*session\.profileId,\s*conversationId\s*\)/
 		);
 		expect(sidebar).toContain("profileId: session.profileId");
 		expect(sidebar).not.toContain("onMutate:");
@@ -443,7 +475,7 @@ describe("Hermes global navigation", () => {
 		expect(sidebar).toMatch(
 			/workspaceLinkIndex\.useQuery\([\s\S]*?enabled: Boolean\(connectionId\), refetchInterval: 3_000/
 		);
-		expect(sidebar).toContain("hermesSessionIdentityKey(session.profileId, session.id)");
+		expect(sidebar).toContain("hermesSessionIdentityKey(session.profileId, conversationId)");
 		expect(sidebar).not.toContain("refetchInterval: connected ? 3_000 : false");
 	});
 
