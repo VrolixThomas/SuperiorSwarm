@@ -49,7 +49,7 @@ export function hermesComposerDraftAfterSubmit(input: {
 	submittedRevision: number;
 	disposition: HermesComposerDraftSubmissionDisposition;
 }): string {
-	return input.disposition === "submitted" &&
+	return input.disposition !== "failed" &&
 		input.currentText === input.submittedText &&
 		input.currentRevision === input.submittedRevision
 		? ""
