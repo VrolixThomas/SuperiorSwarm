@@ -75,6 +75,7 @@ export const stockSessionDetail = {
 		chat_name: "#release",
 		chat_type: "channel",
 		thread_id: "1786269600.123456",
+		message_id: "1786269601.654321",
 		user_name: "Maya",
 		scope_id: "T01234567",
 		guild_id: "T01234567",

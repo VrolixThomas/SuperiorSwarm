@@ -127,8 +127,44 @@ function parseStockSlackSessionKey(value: string | null): {
 	};
 }
 
-function slackAppThreadUrl(teamId: string, channelId: string, threadId: string): string {
-	return `https://app.slack.com/client/${teamId}/${channelId}/thread-${channelId}-${threadId.replace(".", "")}`;
+function slackAppThreadUrl(
+	teamId: string,
+	channelId: string,
+	messageId: string,
+	threadId?: string
+): string {
+	const thread = threadId && threadId !== messageId ? `&thread_ts=${threadId}` : "";
+	return `slack://channel?team=${teamId}&id=${channelId}&message=${messageId}${thread}`;
+}
+
+function validateNativeSlackThreadUrl(value: string): string | null {
+	let url: URL;
+	try {
+		url = new URL(value.trim());
+	} catch {
+		return null;
+	}
+	if (
+		url.protocol !== "slack:" ||
+		url.hostname !== "channel" ||
+		url.pathname !== "" ||
+		url.username ||
+		url.password ||
+		url.port ||
+		url.hash
+	) {
+		return null;
+	}
+	const keys = [...url.searchParams.keys()].sort();
+	const keySet = keys.join("\0");
+	if (keySet !== "id\0message\0team" && keySet !== "id\0message\0team\0thread_ts") return null;
+	const teamId = validTeamId(url.searchParams.get("team"));
+	const channelId = validChannelId(url.searchParams.get("id"));
+	const messageId = validThreadId(url.searchParams.get("message"));
+	const requestedThreadId = url.searchParams.get("thread_ts");
+	const threadId = requestedThreadId === null ? null : validThreadId(requestedThreadId);
+	if (!teamId || !channelId || !messageId || (requestedThreadId !== null && !threadId)) return null;
+	return slackAppThreadUrl(teamId, channelId, messageId, threadId ?? undefined);
 }
 
 export function validateManualSlackThreadUrl(value: string): string | null {
@@ -150,6 +186,8 @@ export function validateManualSlackThreadUrl(value: string): string | null {
 }
 
 export function validateHermesOriginOpenUrl(value: string): string | null {
+	const nativeSlackUrl = validateNativeSlackThreadUrl(value);
+	if (nativeSlackUrl) return nativeSlackUrl;
 	const slackUrl = validateManualSlackThreadUrl(value);
 	if (slackUrl) return slackUrl;
 	let url: URL;
@@ -199,6 +237,7 @@ export function resolveHermesOrigin(
 		origin?.["chat_id"],
 		origin?.["channel_id"],
 		origin?.["thread_id"],
+		origin?.["message_id"],
 		origin?.["user_id"],
 		origin?.["account_id"],
 	];
@@ -308,15 +347,20 @@ export function resolveHermesOrigin(
 	const teamId = team.value;
 	const channelId = channel.value;
 	const threadId = thread.value;
+	const messageIdPresent = origin !== null && Object.hasOwn(origin, "message_id");
+	const messageId = messageIdPresent ? validThreadId(origin["message_id"]) : threadId;
+	const messageIdMalformed = messageIdPresent && messageId === null;
 	const routeAmbiguous =
 		originTeamAliases.ambiguous || team.ambiguous || channel.ambiguous || thread.ambiguous;
 	const target = !routeAmbiguous && channelId && threadId ? { channelId, threadId } : null;
 	const generatedUrl =
-		teamId && channelId && threadId ? slackAppThreadUrl(teamId, channelId, threadId) : null;
+		teamId && channelId && threadId && messageId
+			? slackAppThreadUrl(teamId, channelId, messageId, threadId)
+			: null;
 	const manualUrl = options.manualOpenUrl
 		? validateManualSlackThreadUrl(options.manualOpenUrl)
 		: null;
-	const openUrl = routeAmbiguous ? null : (generatedUrl ?? manualUrl);
+	const openUrl = routeAmbiguous || messageIdMalformed ? null : (generatedUrl ?? manualUrl);
 	const originFingerprint = fingerprint([
 		"slack",
 		teamId,
