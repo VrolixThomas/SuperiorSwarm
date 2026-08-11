@@ -37,8 +37,9 @@ describe("Hermes Slack origin resolver", () => {
 			canReport: true,
 		});
 		expect(resolved.openUrl).toBe(
-			"https://app.slack.com/client/T01234567/C01234567/thread-C01234567-1786269600123456"
+			"slack://channel?team=T01234567&id=C01234567&message=1786269601.654321&thread_ts=1786269600.123456"
 		);
+		expect(validateHermesOriginOpenUrl(resolved.openUrl ?? "")).toBe(resolved.openUrl);
 		expect(resolved.target).toEqual({
 			channelId: "C01234567",
 			threadId: "1786269600.123456",
@@ -221,6 +222,78 @@ describe("Hermes Slack origin resolver", () => {
 
 		expect(resolved.projection.hasThread).toBe(true);
 		expect(resolved.target?.channelId).toBe("C01234567");
+		expect(resolved.openUrl).toBe(
+			"slack://channel?team=T01234567&id=C01234567&message=1786269600.123456"
+		);
+	});
+
+	test("uses the trusted thread root when structured origin.message_id is absent", () => {
+		const resolved = resolveHermesOrigin(
+			{
+				durableSessionId: "stored",
+				profileId: "work",
+				source: "slack",
+				displayName: "#release",
+				sessionKey: null,
+				chatId: "C01234567",
+				chatType: "channel",
+				threadId: "1786269600.123456",
+				originJson: {
+					platform: "slack",
+					team_id: "T01234567",
+					chat_id: "C01234567",
+					thread_id: "1786269600.123456",
+				},
+			},
+			{ connectionMode: "loopback", senderAvailable: true }
+		);
+
+		expect(resolved.projection.canOpenThread).toBe(true);
+		expect(resolved.openUrl).toBe(
+			"slack://channel?team=T01234567&id=C01234567&message=1786269600.123456"
+		);
+	});
+
+	test("fails closed when origin.message_id is present but malformed or non-string", () => {
+		const resolveWithMessageId = (messageId: unknown) =>
+			resolveHermesOrigin(
+				{
+					durableSessionId: "stored",
+					profileId: "work",
+					source: "slack",
+					displayName: "#release",
+					sessionKey: "agent:work:slack:channel:T01234567:C01234567:1786269600.123456",
+					chatId: "C01234567",
+					chatType: "channel",
+					threadId: "1786269600.123456",
+					originJson: {
+						platform: "slack",
+						team_id: "T01234567",
+						chat_id: "C01234567",
+						thread_id: "1786269600.123456",
+						message_id: messageId,
+					},
+				},
+				{
+					connectionMode: "loopback",
+					senderAvailable: true,
+					manualOpenUrl: "https://acme.slack.com/archives/C01234567/p1786269600123456",
+				}
+			);
+
+		for (const messageId of ["not-a-timestamp", 1786269600.123456, null, undefined]) {
+			const resolved = resolveWithMessageId(messageId);
+			expect(resolved.projection).toMatchObject({
+				hasThread: true,
+				canOpenThread: false,
+				canReport: true,
+			});
+			expect(resolved.openUrl).toBeNull();
+			expect(resolved.target).toEqual({
+				channelId: "C01234567",
+				threadId: "1786269600.123456",
+			});
+		}
 	});
 
 	test("rejects malformed/control-character routes and never promotes non-Slack rows", () => {
@@ -376,15 +449,52 @@ describe("Hermes Slack origin resolver", () => {
 		expect(validateManualSlackThreadUrl("https://user:pass@app.slack.com/client/T/C")).toBeNull();
 	});
 
+	test.each([
+		["team", "slack://channel?team=workspace&id=C01234567&message=1786269600.123456"],
+		["channel", "slack://channel?team=T01234567&id=channel&message=1786269600.123456"],
+		[
+			"thread",
+			"slack://channel?team=T01234567&id=C01234567&message=1786269600.123456&thread_ts=not-a-timestamp",
+		],
+		["message", "slack://channel?team=T01234567&id=C01234567&message=not-a-timestamp"],
+	])("rejects a malformed native Slack %s parameter", (_parameter, untrustedUrl) => {
+		expect(validateHermesOriginOpenUrl(untrustedUrl)).toBeNull();
+	});
+
+	test.each([
+		[
+			"duplicate query key",
+			"slack://channel?team=T01234567&team=T99999999&id=C01234567&message=1786269600.123456",
+		],
+		["userinfo", "slack://user@channel?team=T01234567&id=C01234567&message=1786269600.123456"],
+		["port", "slack://channel:123?team=T01234567&id=C01234567&message=1786269600.123456"],
+		["fragment", "slack://channel?team=T01234567&id=C01234567&message=1786269600.123456#fragment"],
+		["path", "slack://channel/thread?team=T01234567&id=C01234567&message=1786269600.123456"],
+		["host", "slack://evil?team=T01234567&id=C01234567&message=1786269600.123456"],
+		["protocol", "https://channel?team=T01234567&id=C01234567&message=1786269600.123456"],
+	])("rejects a native Slack URL with an unsafe %s", (_shape, untrustedUrl) => {
+		expect(validateHermesOriginOpenUrl(untrustedUrl)).toBeNull();
+	});
+
 	test("accepts only trusted Slack and Telegram URLs for origin navigation", () => {
 		expect(validateHermesOriginOpenUrl("https://t.me/c/1234567890/77")).toBe(
 			"https://t.me/c/1234567890/77"
 		);
 		expect(
 			validateHermesOriginOpenUrl(
+				"slack://channel?team=T01234567&id=C01234567&message=1786269600.123456"
+			)
+		).toBe("slack://channel?team=T01234567&id=C01234567&message=1786269600.123456");
+		expect(
+			validateHermesOriginOpenUrl(
 				"https://app.slack.com/client/T01234567/C01234567/thread-C01234567-1786269600123456"
 			)
 		).not.toBeNull();
+		expect(
+			validateHermesOriginOpenUrl(
+				"slack://channel?team=T01234567&id=C01234567&message=1786269600.123456&redirect=https%3A%2F%2Fevil.example"
+			)
+		).toBeNull();
 		expect(validateHermesOriginOpenUrl("http://t.me/c/1234567890/77")).toBeNull();
 		expect(validateHermesOriginOpenUrl("https://t.me/c/1234567890/77?start=payload")).toBeNull();
 		expect(validateHermesOriginOpenUrl("https://evil.example/c/1234567890/77")).toBeNull();
