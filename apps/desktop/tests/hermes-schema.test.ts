@@ -293,6 +293,72 @@ describe("Hermes persistence migration", () => {
 		sqlite.close();
 	});
 
+	test("replays the resequenced metadata migration over the rejected fork migration safely", () => {
+		const sqlite = new Database(":memory:");
+		sqlite.exec(`
+			CREATE TABLE cross_repo_orchestrators (id text PRIMARY KEY NOT NULL);
+			CREATE TABLE hermes_connections (id text PRIMARY KEY NOT NULL);
+			INSERT INTO cross_repo_orchestrators (id) VALUES ('manager-1');
+			INSERT INTO hermes_connections (id) VALUES ('connection-1');
+			CREATE TABLE hermes_session_metadata (
+				manager_id text NOT NULL,
+				connection_id text NOT NULL,
+				profile_id text NOT NULL,
+				durable_session_id text NOT NULL,
+				custom_title text,
+				tags_json text DEFAULT '[]' NOT NULL,
+				revision integer DEFAULT 0 NOT NULL,
+				created_at integer NOT NULL,
+				updated_at integer NOT NULL,
+				PRIMARY KEY(manager_id, connection_id, profile_id, durable_session_id),
+				FOREIGN KEY (manager_id) REFERENCES cross_repo_orchestrators(id) ON DELETE cascade,
+				FOREIGN KEY (connection_id) REFERENCES hermes_connections(id) ON DELETE cascade
+			);
+			CREATE INDEX hermes_session_metadata_connection_idx
+				ON hermes_session_metadata (connection_id, profile_id, durable_session_id);
+			INSERT INTO hermes_session_metadata
+				(manager_id, connection_id, profile_id, durable_session_id, custom_title,
+				 tags_json, revision, created_at, updated_at)
+				VALUES ('manager-1', 'connection-1', 'work', 'session-1', 'Keep me',
+					'["Urgent","Customer"]', 3, 1, 2);
+			CREATE TABLE __drizzle_migrations (
+				id SERIAL PRIMARY KEY,
+				hash text NOT NULL,
+				created_at numeric
+			);
+			INSERT INTO __drizzle_migrations (hash, created_at)
+				VALUES ('rejected-0062-session-metadata', 1786468969471);
+		`);
+		const db = drizzle(sqlite, { schema });
+
+		expect(() =>
+			migrate(db, { migrationsFolder: join(import.meta.dir, "../src/main/db/migrations") })
+		).not.toThrow();
+		expect(sqlite.prepare("SELECT * FROM hermes_session_metadata").get()).toEqual({
+			manager_id: "manager-1",
+			connection_id: "connection-1",
+			profile_id: "work",
+			durable_session_id: "session-1",
+			custom_title: "Keep me",
+			tags_json: '["Urgent","Customer"]',
+			revision: 3,
+			created_at: 1,
+			updated_at: 2,
+		});
+		expect(
+			sqlite
+				.prepare(
+					"SELECT name FROM sqlite_master WHERE type = 'table' AND name IN (?, ?, ?) ORDER BY name"
+				)
+				.all("hermes_composer_drafts", "hermes_tag_definitions", "hermes_session_tag_assignments")
+		).toEqual([
+			{ name: "hermes_composer_drafts" },
+			{ name: "hermes_session_tag_assignments" },
+			{ name: "hermes_tag_definitions" },
+		]);
+		sqlite.close();
+	});
+
 	test("migrates only deterministic legacy Local Hermes defaults and preserves rollback data", () => {
 		const sqlite = new Database(":memory:");
 		const migrations = join(import.meta.dir, "../src/main/db/migrations");

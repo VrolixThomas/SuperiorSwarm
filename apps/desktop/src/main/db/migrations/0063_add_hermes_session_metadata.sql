@@ -1,4 +1,4 @@
-CREATE TABLE `hermes_session_metadata` (
+CREATE TABLE IF NOT EXISTS `hermes_session_metadata` (
 	`manager_id` text NOT NULL,
 	`connection_id` text NOT NULL,
 	`profile_id` text NOT NULL,
@@ -13,4 +13,4 @@ CREATE TABLE `hermes_session_metadata` (
 	FOREIGN KEY (`connection_id`) REFERENCES `hermes_connections`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
-CREATE INDEX `hermes_session_metadata_connection_idx` ON `hermes_session_metadata` (`connection_id`,`profile_id`,`durable_session_id`);
+CREATE INDEX IF NOT EXISTS `hermes_session_metadata_connection_idx` ON `hermes_session_metadata` (`connection_id`,`profile_id`,`durable_session_id`);
