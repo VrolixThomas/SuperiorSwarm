@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.21.0 (2026-08-12)
+
+### What's New
+
+SuperiorSwarm's Agents chat now stays in sync throughout long-running and continued conversations, preserving queued follow-ups and session selection across restarts and history rollover. Large transcripts and session lists render more smoothly, with earlier messages available on demand and more stable streaming Markdown. Recovery, scrolling, and return-to-latest behavior have also been hardened.
+
+### Changes
+
+- fix(hermes): match stock chat lifecycle (#144)
+
 ## v0.20.0 (2026-08-11)
 
 ### What's New
