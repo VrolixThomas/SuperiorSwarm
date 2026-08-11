@@ -378,7 +378,7 @@ export function hermesComposerInteractionPolicy(input: {
 	attachmentMutationDisabled: boolean;
 } {
 	return {
-		textareaDisabled: input.submitPending,
+		textareaDisabled: false,
 		sendDisabled: !input.hasPayload || input.submitPending,
 		attachmentMutationDisabled: input.attachmentPickerPending || input.attachmentAttaching,
 	};

@@ -270,6 +270,18 @@ export interface HermesSessionSelection {
 	sessionId: string;
 }
 
+/**
+ * Complete local scope for renderer-authored text that has not been accepted by Hermes yet.
+ * Nullable manager/project values are explicit global scopes, not omitted identity dimensions.
+ */
+export interface HermesComposerDraftIdentity {
+	managerId: string | null;
+	projectId: string | null;
+	connectionId: string;
+	profileId: string;
+	durableSessionId: string;
+}
+
 export function hermesSessionIdentityKey(profileId: string, durableSessionId: string): string {
 	return JSON.stringify([profileId, durableSessionId]);
 }

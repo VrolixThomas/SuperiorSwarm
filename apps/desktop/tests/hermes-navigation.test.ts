@@ -436,4 +436,12 @@ describe("Hermes global navigation", () => {
 		expect(sidebar).toContain("hermesSessionIdentityKey(session.profileId, session.id)");
 		expect(sidebar).not.toContain("refetchInterval: connected ? 3_000 : false");
 	});
+
+	test("flushes the selected composer draft when pane navigation hides Chat", async () => {
+		const view = await rendererSource("hermes/HermesSessionView.tsx");
+
+		expect(view).toMatch(
+			/if \(activePane !== "chat" && draftIdentity\) hermesComposerDrafts\.flush\(draftIdentity\)/
+		);
+	});
 });

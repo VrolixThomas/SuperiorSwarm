@@ -734,6 +734,39 @@ export const hermesConnections = sqliteTable("hermes_connections", {
 export type HermesConnection = typeof hermesConnections.$inferSelect;
 export type NewHermesConnection = typeof hermesConnections.$inferInsert;
 
+// Composer drafts contain only typed text plus the complete local session identity.
+// Empty strings encode explicit global manager/project scopes because SQLite composite
+// keys do not treat nullable columns as unique.
+export const hermesComposerDrafts = sqliteTable(
+	"hermes_composer_drafts",
+	{
+		managerId: text("manager_id").notNull(),
+		projectId: text("project_id").notNull(),
+		connectionId: text("connection_id")
+			.notNull()
+			.references(() => hermesConnections.id, { onDelete: "cascade" }),
+		profileId: text("profile_id").notNull(),
+		durableSessionId: text("durable_session_id").notNull(),
+		text: text("text").notNull(),
+		updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+	},
+	(table) => [
+		primaryKey({
+			columns: [
+				table.managerId,
+				table.projectId,
+				table.connectionId,
+				table.profileId,
+				table.durableSessionId,
+			],
+		}),
+		index("hermes_composer_drafts_connection_idx").on(table.connectionId),
+	]
+);
+
+export type HermesComposerDraft = typeof hermesComposerDrafts.$inferSelect;
+export type NewHermesComposerDraft = typeof hermesComposerDrafts.$inferInsert;
+
 // Durable inbox membership for external Hermes sessions. The manager identity
 // is derived from the authenticated control-plane caller, never request metadata.
 export const hermesSessionAdmissions = sqliteTable(

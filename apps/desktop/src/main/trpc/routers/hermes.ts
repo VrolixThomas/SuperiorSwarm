@@ -3,8 +3,18 @@ import { dialog, shell } from "electron";
 import { z } from "zod";
 import { HERMES_MAX_ATTACHMENTS, hermesSessionIdentityKey } from "../../../shared/hermes";
 import { getDb } from "../../db";
-import { hermesSessionWorkspaces, projects, workspaces, worktrees } from "../../db/schema";
+import {
+	hermesConnections,
+	hermesSessionWorkspaces,
+	projects,
+	workspaces,
+	worktrees,
+} from "../../db/schema";
 import { hermesAttachmentStore } from "../../hermes/hermes-attachments";
+import {
+	getHermesComposerDraft,
+	setHermesComposerDraft,
+} from "../../hermes/hermes-composer-drafts";
 import {
 	deleteHermesConnection,
 	ensureHermesLocalConnection,
@@ -29,6 +39,31 @@ const connectionSessionInput = z.object({
 const workspaceSessionInput = connectionSessionInput.extend({
 	profileId: z.string().trim().min(1).max(120),
 });
+
+const composerDraftScopeInput = z
+	.object({
+		connectionId: z.string().min(1),
+		projectId: z.string().min(1).nullable(),
+		profileId: z.string().trim().min(1).max(120),
+		durableSessionId: z.string().min(1),
+	})
+	.strict();
+
+function composerDraftIdentity(input: z.infer<typeof composerDraftScopeInput>) {
+	const connection = getDb()
+		.select({ managerId: hermesConnections.managerId })
+		.from(hermesConnections)
+		.where(eq(hermesConnections.id, input.connectionId))
+		.get();
+	if (!connection) throw new Error("Hermes connection not found");
+	return {
+		managerId: connection.managerId,
+		projectId: input.projectId,
+		connectionId: input.connectionId,
+		profileId: input.profileId,
+		durableSessionId: input.durableSessionId,
+	};
+}
 
 export const hermesCreateInputSchema = z
 	.object({
@@ -85,6 +120,17 @@ function rendererOriginReportState(state: ReturnType<typeof hermesRuntimeService
 
 export const hermesRouter = router({
 	connections: publicProcedure.query(() => listHermesConnections()),
+
+	composerDraft: publicProcedure
+		.input(composerDraftScopeInput)
+		.query(({ input }) => getHermesComposerDraft(composerDraftIdentity(input))),
+
+	setComposerDraft: publicProcedure
+		.input(composerDraftScopeInput.extend({ text: z.string().max(200_000) }))
+		.mutation(({ input }) => {
+			setHermesComposerDraft(composerDraftIdentity(input), input.text);
+			return { ok: true as const };
+		}),
 
 	configureLocal: publicProcedure
 		.input(
