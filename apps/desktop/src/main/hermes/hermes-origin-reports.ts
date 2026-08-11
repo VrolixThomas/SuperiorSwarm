@@ -19,7 +19,42 @@ interface ReportIdentity {
 	contentHash: string;
 }
 
-const activeReportAttempts = new Set<string>();
+const activeReportAttemptCounts = new Map<string, number>();
+const migratedActiveReportIds = new Map<string, string>();
+
+function activeAttemptCount(id: string): number {
+	return activeReportAttemptCounts.get(id) ?? 0;
+}
+
+function addActiveAttempt(id: string, count = 1): void {
+	activeReportAttemptCounts.set(id, activeAttemptCount(id) + count);
+}
+
+function finishActiveAttempt(id: string): void {
+	const remaining = activeAttemptCount(id) - 1;
+	if (remaining > 0) {
+		activeReportAttemptCounts.set(id, remaining);
+		return;
+	}
+	activeReportAttemptCounts.delete(id);
+	for (const [sourceId, targetId] of migratedActiveReportIds) {
+		if (targetId === id) migratedActiveReportIds.delete(sourceId);
+	}
+}
+
+export function remapActiveHermesOriginReportAttempt(
+	previousId: string,
+	canonicalId: string
+): void {
+	const previousCount = activeAttemptCount(previousId);
+	if (previousCount === 0) return;
+	activeReportAttemptCounts.delete(previousId);
+	addActiveAttempt(canonicalId, previousCount);
+	for (const [sourceId, targetId] of migratedActiveReportIds) {
+		if (targetId === previousId) migratedActiveReportIds.set(sourceId, canonicalId);
+	}
+	migratedActiveReportIds.set(previousId, canonicalId);
+}
 
 function normalizedContent(value: string): string {
 	return value.replace(/\r\n/g, "\n").trim();
@@ -50,7 +85,7 @@ function toState(
 	row: typeof hermesOriginReports.$inferSelect,
 	statusOverride?: HermesOriginReportState["status"]
 ): HermesOriginReportState {
-	const orphanedSending = row.status === "sending" && !activeReportAttempts.has(row.id);
+	const orphanedSending = row.status === "sending" && activeAttemptCount(row.id) === 0;
 	return {
 		connectionId: row.connectionId,
 		hermesSessionId: row.hermesSessionId,
@@ -134,7 +169,7 @@ export function beginHermesOriginReportAttempt(
 			row = tx.select().from(hermesOriginReports).where(reportWhere(input, identity)).get();
 		}
 		if (!row) throw new Error("Hermes report receipt could not be claimed");
-		if (row.status === "sent" || (row.status === "sending" && activeReportAttempts.has(row.id))) {
+		if (row.status === "sent" || activeAttemptCount(row.id) > 0) {
 			return { state: toState(row, "duplicate-suppressed"), shouldSend: false };
 		}
 		if (row.status === "sending" && !input.explicitRetry) {
@@ -161,7 +196,7 @@ export function beginHermesOriginReportAttempt(
 			.where(eq(hermesOriginReports.id, row.id))
 			.get();
 		if (!sending) throw new Error("Hermes report receipt disappeared during send");
-		activeReportAttempts.add(row.id);
+		addActiveAttempt(row.id);
 		return { state: toState(sending), shouldSend: true };
 	});
 }
@@ -176,21 +211,32 @@ export function finishHermesOriginReport(
 ): HermesOriginReportState {
 	const db = getDb();
 	const identity = reportIdentity(input);
-	const where = reportWhere(input, identity);
-	db.update(hermesOriginReports)
-		.set({
-			status: input.status,
-			retryable: input.retryable,
-			providerMessageId: input.providerMessageId ?? null,
-			errorCode: input.errorCode ?? null,
-			updatedAt: new Date(),
-		})
-		.where(where)
-		.run();
-	activeReportAttempts.delete(identity.id);
-	const row = db.select().from(hermesOriginReports).where(where).get();
-	if (!row) throw new Error("Hermes report receipt was not found");
-	return toState(row);
+	const migratedId = migratedActiveReportIds.get(identity.id);
+	const where = migratedId ? eq(hermesOriginReports.id, migratedId) : reportWhere(input, identity);
+	const targetId = migratedId ?? identity.id;
+	try {
+		const current = db.select().from(hermesOriginReports).where(where).get();
+		if (!current) throw new Error("Hermes report receipt was not found");
+		const otherAttemptsRemain = activeAttemptCount(targetId) > 1;
+		if (current.status !== "sent" && !(input.status === "failed" && otherAttemptsRemain)) {
+			db.update(hermesOriginReports)
+				.set({
+					status: input.status,
+					retryable: input.retryable,
+					providerMessageId: input.providerMessageId ?? null,
+					errorCode: input.errorCode ?? null,
+					updatedAt: new Date(),
+				})
+				.where(where)
+				.run();
+		}
+		const row = db.select().from(hermesOriginReports).where(where).get();
+		if (!row) throw new Error("Hermes report receipt was not found");
+		return toState(row);
+	} finally {
+		finishActiveAttempt(targetId);
+		migratedActiveReportIds.delete(identity.id);
+	}
 }
 
 export function listHermesOriginReports(
@@ -212,6 +258,26 @@ export function listHermesOriginReports(
 		.map((row) => toState(row));
 }
 
+function clearActiveReportIds(ids: Iterable<string>): void {
+	for (const id of ids) {
+		activeReportAttemptCounts.delete(id);
+		migratedActiveReportIds.delete(id);
+		for (const [sourceId, targetId] of migratedActiveReportIds) {
+			if (targetId === id) migratedActiveReportIds.delete(sourceId);
+		}
+	}
+}
+
+export function clearHermesOriginReportAttemptsForConnection(connectionId: string): void {
+	const ids = getDb()
+		.select({ id: hermesOriginReports.id })
+		.from(hermesOriginReports)
+		.where(eq(hermesOriginReports.connectionId, connectionId))
+		.all()
+		.map((row) => row.id);
+	clearActiveReportIds(ids);
+}
+
 export function deleteHermesOriginReports(
 	connectionId: string,
 	profileId: string,
@@ -229,5 +295,5 @@ export function deleteHermesOriginReports(
 		.where(predicate)
 		.all();
 	db.delete(hermesOriginReports).where(predicate).run();
-	for (const row of rows) activeReportAttempts.delete(row.id);
+	clearActiveReportIds(rows.map((row) => row.id));
 }

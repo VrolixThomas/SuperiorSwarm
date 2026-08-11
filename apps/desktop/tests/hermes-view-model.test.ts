@@ -928,7 +928,7 @@ describe("Hermes renderer view model", () => {
 		).toEqual([]);
 	});
 
-	test("reconciles refreshed canonical prose with a missing or different turn ID", () => {
+	test("reconciles refreshed canonical prose only when stable turn identity does not conflict", () => {
 		const completed = [
 			{ turnId: "turn-live", text: "Authoritative reply", canonicalMessageIds: ["before"] },
 		];
@@ -944,7 +944,12 @@ describe("Hermes renderer view model", () => {
 				[message({ id: "canonical-different", turnId: "turn-stock", text: "Authoritative reply" })],
 				completed
 			)
-		).toEqual([]);
+		).toEqual([
+			expect.objectContaining({
+				id: "assistant:live-complete:turn-live",
+				text: "Authoritative reply",
+			}),
+		]);
 	});
 
 	test("does not hide distinct same-text turns and consumes canonical fallbacks once", () => {
@@ -967,6 +972,15 @@ describe("Hermes renderer view model", () => {
 		expect(
 			projectHermesLiveCompletions(
 				[message({ id: "canonical-one", turnId: "turn-stock", text: "Same reply" })],
+				repeated
+			)
+		).toEqual([
+			expect.objectContaining({ id: "assistant:live-complete:turn-a" }),
+			expect.objectContaining({ id: "assistant:live-complete:turn-b" }),
+		]);
+		expect(
+			projectHermesLiveCompletions(
+				[message({ id: "canonical-one", turnId: null, text: "Same reply" })],
 				repeated
 			)
 		).toEqual([expect.objectContaining({ id: "assistant:live-complete:turn-b" })]);
@@ -1300,8 +1314,11 @@ describe("Hermes renderer view model", () => {
 								status: "complete",
 							},
 						],
+						pendingApproval: null,
+						pendingClarification: null,
+						queuedFollowUps: [],
 					},
-				} as HermesRuntimeEvent["payload"],
+				},
 			})
 		);
 
@@ -1338,8 +1355,9 @@ describe("Hermes renderer view model", () => {
 							prompt: "Which environment?",
 							choices: [{ value: "staging", label: "Staging" }],
 						},
+						queuedFollowUps: [],
 					},
-				} as unknown as HermesRuntimeEvent["payload"],
+				},
 			})
 		);
 

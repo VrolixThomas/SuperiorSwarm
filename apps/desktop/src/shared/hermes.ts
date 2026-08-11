@@ -138,6 +138,13 @@ export interface HermesSessionHistory {
 	view: "active" | "durable";
 	messageIdsAreStable?: boolean;
 	messages: HermesTranscriptMessage[];
+	/** Present only when the stock durable transcript endpoint proves a compression parent→child. */
+	compressionLineage?: {
+		kind: "compression";
+		parentDurableSessionId: string;
+		childDurableSessionId: string;
+		verifiedBy: "durable-transcript";
+	};
 }
 
 export interface HermesSessionRevision {

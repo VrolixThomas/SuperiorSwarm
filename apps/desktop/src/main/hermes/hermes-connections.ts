@@ -5,6 +5,7 @@ import { getDb } from "../db";
 import { crossRepoOrchestrators, hermesConnections } from "../db/schema";
 import { HERMES_PROFILE_ID_PATTERN, normalizeManagedHermesProfileId } from "./hermes-cli";
 import { discoverHermesDashboardToken } from "./hermes-dashboard-token";
+import { clearHermesOriginReportAttemptsForConnection } from "./hermes-origin-reports";
 import {
 	type HermesTokenVault,
 	type ProtectedHermesToken,
@@ -303,6 +304,7 @@ export function deleteHermesConnection(
 	if (row?.managementMode === "managed") {
 		throw new Error("Managed Local Hermes cannot be deleted");
 	}
+	clearHermesOriginReportAttemptsForConnection(id);
 	getDb().delete(hermesConnections).where(eq(hermesConnections.id, id)).run();
 	vault.forget(id);
 }
