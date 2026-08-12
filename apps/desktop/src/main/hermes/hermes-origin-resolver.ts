@@ -90,7 +90,7 @@ function validThreadId(value: unknown): string | null {
 
 function validTelegramChatId(value: unknown): string | null {
 	if (typeof value !== "string") return null;
-	return /^-100([1-9]\d{0,18})$/.exec(value)?.[1] ?? null;
+	return /^-?[1-9]\d{0,18}$/.test(value) ? value : null;
 }
 
 function validTelegramThreadId(value: unknown): string | null {
@@ -277,30 +277,34 @@ export function resolveHermesOrigin(
 		threadLabel,
 	};
 	if (source === "telegram") {
+		const chatRouteValues = [detail.chatId, origin?.["chat_id"]];
+		const threadRouteValues = [detail.threadId, origin?.["thread_id"]];
 		const chat = structuredOriginMatchesSource
-			? reconcileRouteValue([
-					validTelegramChatId(detail.chatId),
-					validTelegramChatId(origin?.["chat_id"]),
-				])
+			? reconcileRouteValue(chatRouteValues.map(validTelegramChatId))
 			: { value: null, ambiguous: false };
 		const thread = structuredOriginMatchesSource
-			? reconcileRouteValue([
-					validTelegramThreadId(detail.threadId),
-					validTelegramThreadId(origin?.["thread_id"]),
-				])
+			? reconcileRouteValue(threadRouteValues.map(validTelegramThreadId))
 			: { value: null, ambiguous: false };
-		const routeAmbiguous = chat.ambiguous || thread.ambiguous;
+		const routeInvalid =
+			chatRouteValues.some(
+				(value) => value !== null && value !== undefined && validTelegramChatId(value) === null
+			) ||
+			threadRouteValues.some(
+				(value) => value !== null && value !== undefined && validTelegramThreadId(value) === null
+			);
+		const routeAmbiguous = chat.ambiguous || thread.ambiguous || routeInvalid;
 		const target =
 			!routeAmbiguous && chat.value
 				? {
 						platform: "telegram" as const,
-						chatId: `-100${chat.value}`,
+						chatId: chat.value,
 						threadId: thread.value,
 					}
 				: null;
+		const internalChatId = chat.value ? /^-100([1-9]\d{0,18})$/.exec(chat.value)?.[1] : null;
 		const openUrl =
-			!routeAmbiguous && chat.value && thread.value
-				? `https://t.me/c/${chat.value}/${thread.value}`
+			!routeAmbiguous && internalChatId && thread.value
+				? `https://t.me/c/${internalChatId}/${thread.value}`
 				: null;
 		return {
 			projection: {

@@ -70,7 +70,7 @@ function isTelegramTarget(target: HermesOriginTarget): target is HermesTelegramT
 function validTarget(target: HermesOriginTarget): boolean {
 	if (isTelegramTarget(target)) {
 		return (
-			/^-100[1-9]\d{0,18}$/.test(target.chatId) &&
+			/^-?[1-9]\d{0,18}$/.test(target.chatId) &&
 			(target.threadId === null || /^[1-9]\d{0,15}$/.test(target.threadId))
 		);
 	}

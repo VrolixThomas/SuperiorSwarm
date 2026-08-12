@@ -92,6 +92,36 @@ describe("Hermes Slack origin resolver", () => {
 		expect(rendererJson).not.toContain('"77"');
 	});
 
+	test("reports to an exact Telegram private chat without inventing a public navigation URL", () => {
+		const resolved = resolveHermesOrigin(
+			{
+				durableSessionId: "telegram-dm",
+				profileId: "personal",
+				source: "telegram",
+				displayName: "Alex",
+				sessionKey: null,
+				chatId: "99887766",
+				chatType: "dm",
+				threadId: null,
+				originJson: { platform: "telegram", chat_id: "99887766", chat_type: "dm" },
+			},
+			{ connectionMode: "loopback", senderAvailable: true }
+		);
+
+		expect(resolved.projection).toMatchObject({
+			platform: "telegram",
+			hasThread: false,
+			canOpenThread: false,
+			canReport: true,
+		});
+		expect(resolved.target).toEqual({
+			platform: "telegram",
+			chatId: "99887766",
+			threadId: null,
+		});
+		expect(resolved.openUrl).toBeNull();
+	});
+
 	test("does not build Telegram return links from malformed or conflicting routes", () => {
 		const resolveTelegram = (chatId: string, originChatId: string, threadId: string) =>
 			resolveHermesOrigin(
@@ -121,6 +151,9 @@ describe("Hermes Slack origin resolver", () => {
 			expect(resolved.projection.canOpenThread).toBe(false);
 			expect(resolved.openUrl).toBeNull();
 		}
+		expect(resolveTelegram("-1001234567890", "-1001234567890", "0").projection.canReport).toBe(
+			false
+		);
 	});
 
 	test("sanitizes token-like and bearer-like labels in selected Telegram details", () => {

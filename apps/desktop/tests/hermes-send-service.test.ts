@@ -117,6 +117,32 @@ describe("HermesSendService", () => {
 		]);
 	});
 
+	test("sends a Telegram DM update to the exact existing private chat", async () => {
+		const child = new FakeChild();
+		let argv: string[] = [];
+		child.onEnd = () => {
+			queueMicrotask(() => {
+				child.stdout.emit("data", Buffer.from(JSON.stringify({ success: true, message_id: "43" })));
+				child.emit("close", 0, null);
+			});
+		};
+		const service = new HermesSendService({
+			executableResolver: () => "hermes",
+			hermesHomeResolver: () => "/profiles/personal",
+			spawnProcess: (_executable, receivedArgv) => {
+				argv = receivedArgv;
+				return child;
+			},
+		});
+
+		await service.send({
+			profileId: "personal",
+			target: { platform: "telegram", chatId: "99887766", threadId: null },
+			content: "Private update",
+		});
+		expect(argv).toEqual(["-p", "personal", "send", "--to", "telegram:99887766", "--json"]);
+	});
+
 	test("bounds timeout and output and returns sanitized classifications", async () => {
 		const timeoutChild = new FakeChild();
 		const timeoutService = new HermesSendService({
