@@ -15,6 +15,7 @@ import {
 	hermesSessionLineageRootId,
 	hermesSessionMatchesId,
 } from "../../../shared/hermes";
+import { hermesEventRefreshesCatalog } from "../../hermes/hermes-history-polling";
 import {
 	HERMES_SESSION_ROW_ESTIMATE_PX,
 	type HermesSessionFilter,
@@ -60,6 +61,10 @@ export function HermesSidebar() {
 	const sessionScrollerRef = useRef<HTMLDivElement | null>(null);
 	const sessionListRef = useRef<HTMLDivElement | null>(null);
 	const [sessionViewport, setSessionViewport] = useState({ scrollTop: 0, height: 600 });
+	const [connectionEventCursor, setConnectionEventCursor] = useState({
+		connectionId: null as string | null,
+		seq: 0,
+	});
 	const utils = trpc.useUtils();
 
 	const connections = trpc.hermes.connections.useQuery();
@@ -124,6 +129,16 @@ export function HermesSidebar() {
 		{ enabled: Boolean(connectionId), refetchInterval: 1_000 }
 	);
 	const connected = status.data?.status === "connected";
+	const eventCursor =
+		connectionEventCursor.connectionId === connectionId ? connectionEventCursor.seq : 0;
+	const connectionEvents = trpc.hermes.events.useQuery(
+		{
+			connectionId: connectionId ?? "",
+			managerId: activeConnection?.managerId ?? null,
+			afterSeq: eventCursor,
+		},
+		{ enabled: Boolean(connectionId && activeConnection && connected) }
+	);
 	const connecting =
 		connect.isPending ||
 		status.data?.status === "connecting" ||
@@ -135,6 +150,41 @@ export function HermesSidebar() {
 			refetchInterval: connected ? 5_000 : false,
 		}
 	);
+
+	useEffect(() => {
+		if (!connectionId || connectionEventCursor.connectionId === connectionId) return;
+		setConnectionEventCursor({ connectionId, seq: 0 });
+	}, [connectionEventCursor.connectionId, connectionId]);
+
+	useEffect(() => {
+		const feed = connectionEvents.data;
+		if (!connectionId || !feed || feed.nextSeq <= eventCursor) return;
+		setConnectionEventCursor({ connectionId, seq: feed.nextSeq });
+		if (feed.events.some(({ event }) => hermesEventRefreshesCatalog(event))) {
+			void utils.hermes.catalog.invalidate({ connectionId });
+		}
+		if (feed.events.some(({ event }) => event.workspaceArtifacts.length > 0)) {
+			void utils.hermes.workspaceLinkIndex.invalidate({ connectionId });
+		}
+	}, [connectionEvents.data, connectionId, eventCursor, utils]);
+
+	useEffect(() => {
+		void connectionEvents.dataUpdatedAt;
+		if (
+			!connectionEvents.data ||
+			connectionEvents.isFetching ||
+			connectionEvents.data.nextSeq !== eventCursor
+		) {
+			return;
+		}
+		void connectionEvents.refetch();
+	}, [
+		connectionEvents.data,
+		connectionEvents.dataUpdatedAt,
+		connectionEvents.isFetching,
+		connectionEvents.refetch,
+		eventCursor,
+	]);
 	const create = trpc.hermes.create.useMutation({
 		onSuccess: (binding) => {
 			if (!connectionId) return;

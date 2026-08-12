@@ -96,6 +96,22 @@ export function isHermesHistoryRevisionActivity(
 	return event.profileId === profileId && event.durableSessionId === durableSessionId;
 }
 
+const HERMES_CATALOG_LIFECYCLE_EVENTS = new Set([
+	"message.start",
+	"message.complete",
+	"turn.complete",
+	"turn.completed",
+	"turn.failed",
+	"turn.cancelled",
+	"session.info",
+	"runtime.history-refresh-required",
+]);
+
+/** Token/tool deltas stay local; lifecycle boundaries refresh sidebar state immediately. */
+export function hermesEventRefreshesCatalog(event: Pick<HermesRuntimeEvent, "type">): boolean {
+	return HERMES_CATALOG_LIFECYCLE_EVENTS.has(event.type);
+}
+
 export function hermesHistoryRevisionIdentityKey(
 	managerId: string | null,
 	connectionId: string,

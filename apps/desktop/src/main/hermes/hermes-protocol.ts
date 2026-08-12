@@ -8,6 +8,7 @@ import {
 	type HermesSessionBinding,
 	type HermesSessionHistory,
 	type HermesSessionSummary,
+	type HermesSubagentEventPayload,
 	type HermesTranscriptMessage,
 	type HermesWorkspaceArtifact,
 	hermesSessionIdentityKey,
@@ -712,6 +713,60 @@ function normalizeInteractionChoices(value: unknown): HermesInteractionChoiceDto
 	});
 }
 
+function sanitizedStringArray(value: unknown, maxItems = 200): string[] {
+	if (!Array.isArray(value)) return [];
+	return value.slice(0, maxItems).flatMap((entry) => {
+		if (typeof entry !== "string" || !entry) return [];
+		return [sanitizeString(entry).slice(0, 4_096)];
+	});
+}
+
+function normalizeSubagentPayload(
+	type: string,
+	payload: JsonRecord
+): HermesSubagentEventPayload | null {
+	if (!type.startsWith("subagent.")) return null;
+	const subagentId = safeIdentifier(payload["subagent_id"], payload["subagentId"]);
+	if (!subagentId) return null;
+	const rawStatus = stringValue(payload["status"]);
+	const status =
+		rawStatus === "queued" ||
+		rawStatus === "completed" ||
+		rawStatus === "failed" ||
+		rawStatus === "interrupted"
+			? rawStatus
+			: type === "subagent.spawn_requested"
+				? "queued"
+				: type === "subagent.complete"
+					? "completed"
+					: "running";
+	return {
+		subagentId,
+		parentId: safeIdentifier(payload["parent_id"], payload["parentId"]),
+		childSessionId: safeIdentifier(payload["child_session_id"], payload["childSessionId"]),
+		goal: sanitizedStringValue(payload["goal"]),
+		model: sanitizedStringValue(payload["model"]),
+		status,
+		taskIndex: Math.max(
+			0,
+			Math.trunc(numberValue(payload["task_index"], payload["taskIndex"]) ?? 0)
+		),
+		taskCount: Math.max(
+			1,
+			Math.trunc(numberValue(payload["task_count"], payload["taskCount"]) ?? 1)
+		),
+		depth: numberValue(payload["depth"]),
+		toolCount: numberValue(payload["tool_count"], payload["toolCount"]),
+		durationSeconds: numberValue(payload["duration_seconds"], payload["durationSeconds"]),
+		costUsd: numberValue(payload["cost_usd"], payload["costUsd"]),
+		inputTokens: numberValue(payload["input_tokens"], payload["inputTokens"]),
+		outputTokens: numberValue(payload["output_tokens"], payload["outputTokens"]),
+		summary: sanitizedStringValue(payload["summary"]),
+		filesRead: sanitizedStringArray(payload["files_read"] ?? payload["filesRead"]),
+		filesWritten: sanitizedStringArray(payload["files_written"] ?? payload["filesWritten"]),
+	};
+}
+
 export function normalizeHermesEvent(value: unknown): HermesRuntimeEvent | null {
 	const envelope = record(value);
 	if (!envelope || envelope["method"] !== "event") return null;
@@ -729,6 +784,7 @@ export function normalizeHermesEvent(value: unknown): HermesRuntimeEvent | null 
 		text = sanitizedStringValue(payload["question"]) ?? text;
 	}
 	const choices = normalizeInteractionChoices(payload["choices"]);
+	const subagent = normalizeSubagentPayload(type, payload);
 	return {
 		type: sanitizeString(type),
 		profileId: null,
@@ -744,7 +800,10 @@ export function normalizeHermesEvent(value: unknown): HermesRuntimeEvent | null 
 		text,
 		toolName: sanitizedStringValue(payload["tool_name"], payload["toolName"], payload["name"]),
 		status: sanitizedStringValue(payload["status"]),
-		payload: choices.length > 0 ? { choices } : {},
+		payload: {
+			...(choices.length > 0 ? { choices } : {}),
+			...(subagent ? { subagent } : {}),
+		},
 		workspaceArtifacts: extractWorkspaceArtifacts(payload, "tool-event"),
 		receivedAt: Date.now(),
 	};

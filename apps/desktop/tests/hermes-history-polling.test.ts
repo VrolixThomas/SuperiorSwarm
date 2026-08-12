@@ -7,6 +7,7 @@ import {
 	HERMES_HISTORY_REVISION_FAILURE_BACKOFF_MS,
 	HERMES_HISTORY_REVISION_IDLE_INTERVAL_MS,
 	HermesHistoryRevisionRefreshGate,
+	hermesEventRefreshesCatalog,
 	hermesHistoryRevisionIdentityKey,
 	hermesHistoryRevisionPollInterval,
 	hermesSessionResumeAttemptKey,
@@ -46,6 +47,16 @@ const pollInterval = (
 		consecutiveFailures: 0,
 		...overrides,
 	});
+
+test("refreshes the sidebar on lifecycle boundaries without refetching for every token", () => {
+	expect(hermesEventRefreshesCatalog(activity({ type: "message.delta" }))).toBe(false);
+	expect(hermesEventRefreshesCatalog(activity({ type: "tool.start" }))).toBe(false);
+	expect(hermesEventRefreshesCatalog(activity({ type: "message.complete" }))).toBe(true);
+	expect(hermesEventRefreshesCatalog(activity({ type: "turn.failed" }))).toBe(true);
+	expect(hermesEventRefreshesCatalog(activity({ type: "runtime.history-refresh-required" }))).toBe(
+		true
+	);
+});
 
 describe("Hermes history revision polling", () => {
 	test("uses the active cadence while running, busy, or recently active and idles at five seconds", () => {

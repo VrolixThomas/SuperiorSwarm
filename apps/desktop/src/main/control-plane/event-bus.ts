@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { AgentMessageDto, WorkspacePhase } from "../../shared/control-plane";
 
 export interface StatusEvent {
@@ -22,7 +23,14 @@ export interface MessageEvent {
 export type CoordinationEvent = StatusEvent | MessageEvent;
 
 type Subscriber = (ev: CoordinationEvent) => void;
-type WildcardSubscriber = (projectId: string, ev: CoordinationEvent) => void;
+export interface CoordinationEventMetadata {
+	eventId: string;
+}
+type WildcardSubscriber = (
+	projectId: string,
+	ev: CoordinationEvent,
+	metadata: CoordinationEventMetadata
+) => void;
 
 export class EventBus {
 	private subs = new Map<string, Set<Subscriber>>();
@@ -49,6 +57,7 @@ export class EventBus {
 	}
 
 	emit(projectId: string, ev: CoordinationEvent): void {
+		const metadata = { eventId: randomUUID() };
 		const set = this.subs.get(projectId);
 		if (set) {
 			for (const fn of set) {
@@ -61,7 +70,7 @@ export class EventBus {
 		}
 		for (const fn of this.wildcard) {
 			try {
-				fn(projectId, ev);
+				fn(projectId, ev, metadata);
 			} catch {
 				// best-effort: ignore subscriber failures
 			}

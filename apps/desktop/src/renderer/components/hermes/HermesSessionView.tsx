@@ -67,6 +67,7 @@ import {
 	projectHermesTranscript,
 	reconcileHermesOptimisticUserTurns,
 	reduceHermesComposerAttachments,
+	selectHermesFollowUpProjection,
 	selectHermesTranscriptWindow,
 	settleHermesOptimisticUserTurn,
 } from "../../hermes/hermes-view-model";
@@ -831,18 +832,32 @@ export function HermesSessionView() {
 		() => projectHermesTranscript(canonicalMessages),
 		[canonicalMessages]
 	);
+	const authoritativeFollowUps = useMemo(
+		() =>
+			selectHermesFollowUpProjection(
+				followUps.data,
+				live.queuedFollowUps,
+				live.followUpSnapshotReceived
+			),
+		[followUps.data, live.followUpSnapshotReceived, live.queuedFollowUps]
+	);
 	const optimisticUserItems = useMemo(
-		() => projectHermesOptimisticUserTurns(canonicalMessages, optimisticUserTurns),
-		[canonicalMessages, optimisticUserTurns]
+		() =>
+			projectHermesOptimisticUserTurns(
+				canonicalMessages,
+				optimisticUserTurns,
+				authoritativeFollowUps
+			),
+		[authoritativeFollowUps, canonicalMessages, optimisticUserTurns]
 	);
 	const queuedUserItems = useMemo(
 		() =>
 			projectHermesQueuedFollowUps(
 				canonicalMessages,
-				followUps.data ?? live.queuedFollowUps,
+				authoritativeFollowUps,
 				new Set(optimisticUserTurns.map((turn) => turn.id))
 			),
-		[canonicalMessages, followUps.data, live.queuedFollowUps, optimisticUserTurns]
+		[authoritativeFollowUps, canonicalMessages, optimisticUserTurns]
 	);
 	const transcriptProjectionItems = useMemo(
 		() => [...transcriptItems, ...optimisticUserItems, ...queuedUserItems],
@@ -940,7 +955,11 @@ export function HermesSessionView() {
 					hermesComposerDrafts.settleSubmission(draftIdentity, draftSubmission, result.disposition);
 					runForSelection(generation, () => {
 						setOptimisticUserTurns((current) =>
-							settleHermesOptimisticUserTurn(current, optimisticTurn.id, "accepted")
+							settleHermesOptimisticUserTurn(
+								current,
+								optimisticTurn.id,
+								result.disposition === "queued" ? "queued" : "accepted"
+							)
 						);
 						dispatchAttachments({ type: "succeeded" });
 						setAttachmentLimitError(null);
@@ -1209,6 +1228,7 @@ export function HermesSessionView() {
 				<HermesSessionTabStrip
 					activePane={activePane}
 					worktreeCount={links.data?.length ?? 0}
+					nativeAgentCount={live.subagents.length}
 					onSelect={setActivePane}
 				/>
 
@@ -1704,6 +1724,7 @@ export function HermesSessionView() {
 
 			<HermesWorktreesPane
 				links={links.data ?? []}
+				nativeSubagents={live.subagents}
 				availableWorktrees={availableWorkspaces.data ?? []}
 				recoveryWorktreeId={recoveryWorktreeId}
 				recoveryPending={linkWorkspace.isPending || unlinkWorkspace.isPending}

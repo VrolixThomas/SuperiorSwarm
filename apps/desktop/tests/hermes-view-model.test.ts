@@ -32,6 +32,7 @@ import {
 	projectHermesQueuedFollowUps,
 	projectHermesTranscript,
 	reduceHermesComposerAttachments,
+	selectHermesFollowUpProjection,
 	selectHermesTranscriptWindow,
 	settleHermesOptimisticUserTurn,
 } from "../src/renderer/hermes/hermes-view-model";
@@ -603,8 +604,48 @@ describe("Hermes renderer view model", () => {
 			createdAt: 1,
 		};
 
+		const optimistic = settleHermesOptimisticUserTurn(
+			[
+				createHermesOptimisticUserTurn({
+					id: "client-turn-1",
+					text: "queued prompt",
+					attachments: [],
+					canonicalMessages: [],
+				}),
+			],
+			"client-turn-1",
+			"queued"
+		);
+		expect(projectHermesOptimisticUserTurns([], optimistic, [followUp])).toMatchObject([
+			{
+				id: "optimistic-user:client-turn-1",
+				delivery: "queued",
+				followUpId: "client-turn-1",
+			},
+		]);
+		expect(
+			projectHermesOptimisticUserTurns([], optimistic, [{ ...followUp, status: "accepted" }])
+		).toMatchObject([{ id: "optimistic-user:client-turn-1", delivery: "accepted" }]);
 		expect(projectHermesQueuedFollowUps([], [followUp], new Set(["client-turn-1"]))).toEqual([]);
 		expect(projectHermesQueuedFollowUps([], [followUp], new Set())).toHaveLength(1);
+	});
+
+	test("never lets a stale follow-up query regress an authoritative accepted queue event", () => {
+		const queued = {
+			id: "client-turn-1",
+			durableSessionId: "session-1",
+			profileId: "default",
+			text: "what is your fav food",
+			attachments: [],
+			knownCanonicalUserMessageIds: [],
+			status: "queued" as const,
+			error: null,
+			createdAt: 1,
+		};
+		const accepted = { ...queued, status: "accepted" as const };
+
+		expect(selectHermesFollowUpProjection([queued], [accepted], true)).toEqual([accepted]);
+		expect(selectHermesFollowUpProjection([queued], [], false)).toEqual([queued]);
 	});
 
 	test("deduplicates retained physical copies by canonical identity across compactions", () => {
@@ -947,6 +988,25 @@ describe("Hermes renderer view model", () => {
 				completed
 			)
 		).toEqual([]);
+	});
+
+	test("does not duplicate an untagged completion when history refresh wins the terminal race", () => {
+		const before = [message({ id: "old-assistant", text: "Earlier reply" })];
+		const durableReply = message({ id: "new-assistant", text: "Finished live reply" });
+		let state = applyHermesEvent(
+			createHermesLiveState(),
+			event("message.start"),
+			undefined,
+			before
+		);
+		state = applyHermesEvent(
+			state,
+			event("message.complete", { turnId: null, text: "Finished live reply" }),
+			undefined,
+			[...before, durableReply]
+		);
+
+		expect(projectHermesLiveCompletions([...before, durableReply], state.completed)).toEqual([]);
 	});
 
 	test("reconciles refreshed canonical prose only when stable turn identity does not conflict", () => {
@@ -1298,6 +1358,74 @@ describe("Hermes renderer view model", () => {
 			canonicalMessageIds: [],
 		});
 		expect(state.tools[0]?.status).toBe("complete");
+	});
+
+	test("retains native subagent progress and ignores late non-terminal regression", () => {
+		const payload = {
+			subagentId: "child-1",
+			parentId: null,
+			childSessionId: "child-session",
+			goal: "Inspect queue behavior",
+			model: "hermes-test",
+			status: "running" as const,
+			taskIndex: 0,
+			taskCount: 1,
+			depth: 1,
+			toolCount: 2,
+			durationSeconds: null,
+			costUsd: null,
+			inputTokens: null,
+			outputTokens: null,
+			summary: null,
+			filesRead: ["gateway/run.py"],
+			filesWritten: [],
+		};
+		let state = applyHermesEvent(
+			createHermesLiveState(),
+			event("subagent.progress", {
+				text: "Reading the queue",
+				toolName: "search",
+				payload: { subagent: payload },
+				receivedAt: 10,
+			})
+		);
+		expect(state.subagents).toEqual([
+			expect.objectContaining({
+				subagentId: "child-1",
+				status: "running",
+				latestText: "Reading the queue",
+				currentTool: "search",
+			}),
+		]);
+
+		state = applyHermesEvent(
+			state,
+			event("subagent.complete", {
+				text: "Queue inspection complete",
+				payload: {
+					subagent: { ...payload, status: "completed", summary: "Found the race" },
+				},
+				receivedAt: 20,
+			})
+		);
+		state = applyHermesEvent(
+			state,
+			event("subagent.progress", {
+				text: "late progress",
+				payload: { subagent: payload },
+				receivedAt: 21,
+			})
+		);
+		expect(state.subagents[0]).toMatchObject({
+			status: "completed",
+			summary: "Found the race",
+			latestText: "Queue inspection complete",
+			currentTool: null,
+		});
+
+		state = applyHermesEvent(state, event("message.start"));
+		expect(state.subagents).toEqual([]);
+		expect(state.running).toBe(true);
 	});
 
 	test("requests canonical refresh after a reconnect", () => {

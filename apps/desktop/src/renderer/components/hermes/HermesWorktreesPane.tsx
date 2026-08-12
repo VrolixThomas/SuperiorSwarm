@@ -5,6 +5,7 @@ import type {
 	HermesSessionPane,
 	HermesSessionSelection,
 } from "../../../shared/hermes";
+import type { HermesLiveSubagent } from "../../hermes/hermes-view-model";
 
 export type { HermesSessionPane } from "../../../shared/hermes";
 
@@ -113,10 +114,12 @@ export function openHermesLinkedWorktree(
 export function HermesSessionTabStrip({
 	activePane,
 	worktreeCount,
+	nativeAgentCount = 0,
 	onSelect,
 }: {
 	activePane: HermesSessionPane;
 	worktreeCount: number;
+	nativeAgentCount?: number;
 	onSelect: (pane: HermesSessionPane) => void;
 }) {
 	function handleKeyDown(event: KeyboardEvent<HTMLButtonElement>, pane: HermesSessionPane) {
@@ -167,12 +170,12 @@ export function HermesSessionTabStrip({
 						: "text-[var(--text-quaternary)] hover:text-[var(--text-secondary)]"
 				}`}
 			>
-				Worktrees
+				Agents
 				<span
-					aria-label={`${worktreeCount} linked worktrees`}
+					aria-label={`${worktreeCount + nativeAgentCount} linked agents`}
 					className="min-w-4 rounded-full bg-[var(--bg-base)] px-1 text-center text-[9px] tabular-nums text-[var(--text-tertiary)]"
 				>
-					{worktreeCount}
+					{worktreeCount + nativeAgentCount}
 				</span>
 			</button>
 		</div>
@@ -192,8 +195,16 @@ function phaseClasses(phase: HermesLinkedWorkspace["currentPhase"]): string {
 	}
 }
 
+function subagentStatusClasses(status: HermesLiveSubagent["status"]): string {
+	if (status === "running") return "bg-[var(--accent-subtle)] text-[var(--accent)]";
+	if (status === "queued") return "bg-[var(--bg-overlay)] text-[var(--text-tertiary)]";
+	if (status === "completed") return "bg-[var(--success-subtle)] text-[var(--success)]";
+	return "bg-[var(--danger-subtle)] text-[var(--danger)]";
+}
+
 export function HermesWorktreesPane({
 	links,
+	nativeSubagents = [],
 	availableWorktrees,
 	recoveryWorktreeId,
 	recoveryPending,
@@ -204,6 +215,7 @@ export function HermesWorktreesPane({
 	onRecoveryUnlink,
 }: {
 	links: HermesLinkedWorkspace[];
+	nativeSubagents?: HermesLiveSubagent[];
 	availableWorktrees: HermesRecoveryWorktree[];
 	recoveryWorktreeId: string;
 	recoveryPending: boolean;
@@ -228,21 +240,63 @@ export function HermesWorktreesPane({
 			className={`${hidden ? "hidden" : ""} min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-4 py-5 sm:px-6`}
 		>
 			<div className="mx-auto w-full max-w-[960px]">
-				{groups.length === 0 ? (
+				{groups.length === 0 && nativeSubagents.length === 0 ? (
 					<div className="rounded-[14px] border border-dashed border-[var(--border)] px-6 py-12 text-center">
 						<div className="text-[13px] font-medium text-[var(--text-secondary)]">
-							No Worktrees yet
+							No agents yet
 						</div>
 						<p className="mx-auto mt-1 max-w-[480px] text-[11px] leading-5 text-[var(--text-quaternary)]">
-							Hermes will add worktrees here when repository changes are needed.
+							Hermes delegates and SuperiorSwarm worktree agents will appear here as they are
+							dispatched.
 						</p>
 					</div>
 				) : (
 					<div className="flex min-w-0 flex-col gap-5">
+						{nativeSubagents.length > 0 && (
+							<section className="min-w-0" aria-label="Hermes delegates">
+								<h2 className="mb-2 truncate text-[11px] font-semibold text-[var(--text-secondary)]">
+									Hermes delegates
+								</h2>
+								<div className="flex min-w-0 flex-col gap-2">
+									{nativeSubagents.map((subagent) => {
+										const activity =
+											subagent.summary ??
+											subagent.latestText ??
+											(subagent.currentTool ? `Using ${subagent.currentTool}` : "No activity yet");
+										return (
+											<div
+												key={subagent.subagentId}
+												data-subagent-id={subagent.subagentId}
+												className="min-w-0 rounded-[10px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 py-2.5"
+											>
+												<span className="flex min-w-0 items-center gap-2">
+													<span className="min-w-0 flex-1 truncate text-[12px] font-medium text-[var(--text)]">
+														{subagent.goal ?? `Delegate ${subagent.taskIndex + 1}`}
+													</span>
+													<span
+														className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-medium capitalize ${subagentStatusClasses(subagent.status)}`}
+													>
+														{subagent.status}
+													</span>
+												</span>
+												<span className="mt-1 block text-[10px] leading-4 text-[var(--text-quaternary)] [overflow-wrap:anywhere]">
+													{activity}
+												</span>
+												{subagent.model && (
+													<span className="mt-1 block truncate text-[9px] text-[var(--text-quaternary)]">
+														{subagent.model}
+													</span>
+												)}
+											</div>
+										);
+									})}
+								</div>
+							</section>
+						)}
 						{groups.map((group) => (
 							<section key={group.key} className="min-w-0">
 								<h2 className="mb-2 truncate text-[11px] font-semibold text-[var(--text-secondary)]">
-									{group.projectName}
+									Worktree agents · {group.projectName}
 								</h2>
 								<div className="flex min-w-0 flex-col gap-2">
 									{group.worktrees.map((link) => {

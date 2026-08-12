@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
+	handleHermesSessionAdmission,
 	handleHermesSessionHandover,
 	parseHermesSessionMetadata,
 	withAutomaticHermesSessionAdmission,
@@ -104,6 +105,17 @@ describe("Hermes MCP session admission", () => {
 		}
 	});
 
+	test("explicit admission does not classify visibility as a channel handover", async () => {
+		const result = await handleHermesSessionAdmission(validExtra, async (metadata, reason) => ({
+			admitted: true,
+			managerId: "manager-1",
+			profileId: metadata.profileId,
+			durableSessionId: metadata.durableSessionId,
+			reason,
+		}));
+		expect(result.structuredContent).toMatchObject({ admitted: true, reason: "mcp" });
+	});
+
 	test("centrally wraps every coordination tool registered for external managers", () => {
 		const source = readFileSync(join(import.meta.dir, "../mcp-standalone/server.mjs"), "utf8");
 		const coordinationBlock = source.slice(source.indexOf("if (isWorkspaceAgentOrCrossRepo)"));
@@ -113,6 +125,9 @@ describe("Hermes MCP session admission", () => {
 		expect(coordinationBlock.slice(override, firstRegistration)).toContain(
 			"withAutomaticHermesSessionAdmission"
 		);
+		expect(coordinationBlock).toContain('"admit_session"');
 		expect(coordinationBlock).toContain('"handover_session"');
+		expect(coordinationBlock).toContain("Hermes keeps ownership of the existing source route");
+		expect(coordinationBlock).not.toContain("Deprecated alias for admit_session");
 	});
 });

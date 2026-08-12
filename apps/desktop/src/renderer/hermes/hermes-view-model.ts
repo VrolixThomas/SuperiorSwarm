@@ -9,6 +9,7 @@ import type {
 	HermesSessionHistoryPage,
 	HermesSessionRevision,
 	HermesSessionSummary,
+	HermesSubagentEventPayload,
 	HermesTranscriptMessage,
 } from "../../shared/hermes";
 import {
@@ -44,15 +45,24 @@ export interface HermesLiveTool {
 	status: "running" | "complete" | "failed";
 }
 
+export interface HermesLiveSubagent extends HermesSubagentEventPayload {
+	latestText: string | null;
+	currentTool: string | null;
+	updatedAt: number;
+}
+
 export interface HermesLiveState {
 	running: boolean;
 	runtimeStatus: string | null;
 	streamingText: string;
 	completed: Array<{ turnId: string | null; text: string; canonicalMessageIds: string[] }>;
+	activeTurnCanonicalAssistantIds: string[];
 	tools: HermesLiveTool[];
 	pendingApproval: HermesPendingInteraction | null;
 	pendingClarification: HermesPendingInteraction | null;
 	queuedFollowUps: HermesQueuedFollowUpSummary[];
+	followUpSnapshotReceived: boolean;
+	subagents: HermesLiveSubagent[];
 	historyRefreshRequired: boolean;
 	error: string | null;
 }
@@ -510,7 +520,7 @@ export interface HermesOptimisticUserTurn {
 	id: string;
 	text: string;
 	attachments: Array<Pick<HermesAttachmentMetadata, "kind" | "name">>;
-	delivery: "pending" | "accepted";
+	delivery: "pending" | "queued" | "submitting" | "accepted" | "failed";
 	knownCanonicalUserMessageIds: string[];
 }
 
@@ -755,10 +765,10 @@ export function createHermesOptimisticUserTurn(input: {
 export function settleHermesOptimisticUserTurn(
 	turns: HermesOptimisticUserTurn[],
 	id: string,
-	result: "accepted" | "failed"
+	result: "queued" | "accepted" | "failed"
 ): HermesOptimisticUserTurn[] {
 	if (result === "failed") return turns.filter((turn) => turn.id !== id);
-	return turns.map((turn) => (turn.id === id ? { ...turn, delivery: "accepted" } : turn));
+	return turns.map((turn) => (turn.id === id ? { ...turn, delivery: result } : turn));
 }
 
 function hermesOptimisticTurnMatchesMessage(
@@ -803,37 +813,45 @@ export function reconcileHermesOptimisticUserTurns(
 
 export function projectHermesOptimisticUserTurns(
 	canonicalMessages: HermesTranscriptMessage[],
-	turns: HermesOptimisticUserTurn[]
+	turns: HermesOptimisticUserTurn[],
+	followUps: HermesQueuedFollowUpSummary[] = []
 ): HermesProjectedMessage[] {
-	return reconcileHermesOptimisticUserTurns(canonicalMessages, turns).map((turn) => ({
-		kind: "message",
-		id: `optimistic-user:${turn.id}`,
-		role: "user",
-		text: turn.text,
-		attachments: turn.attachments.map((attachment, index) => ({
-			id: `optimistic-user:${turn.id}:attachment:${index}`,
-			kind: attachment.kind,
-			name: attachment.name,
-			refText: null,
-		})),
-		delivery: turn.delivery,
-		source: {
+	const followUpsById = new Map(followUps.map((followUp) => [followUp.id, followUp]));
+	return reconcileHermesOptimisticUserTurns(canonicalMessages, turns).map((turn) => {
+		const followUp = followUpsById.get(turn.id);
+		const delivery = followUp?.status ?? turn.delivery;
+		return {
+			kind: "message",
 			id: `optimistic-user:${turn.id}`,
-			canonicalMessageId: null,
-			compactionGeneration: null,
-			active: true,
-			compacted: false,
-			displayKind: null,
-			compactionSummaryType: null,
-			turnId: null,
 			role: "user",
 			text: turn.text,
-			createdAt: null,
-			status: turn.delivery,
-			toolName: null,
-			workspaceArtifacts: [],
-		},
-	}));
+			attachments: turn.attachments.map((attachment, index) => ({
+				id: `optimistic-user:${turn.id}:attachment:${index}`,
+				kind: attachment.kind,
+				name: attachment.name,
+				refText: null,
+			})),
+			delivery,
+			followUpId: followUp?.id,
+			deliveryError: followUp?.error,
+			source: {
+				id: `optimistic-user:${turn.id}`,
+				canonicalMessageId: null,
+				compactionGeneration: null,
+				active: true,
+				compacted: false,
+				displayKind: null,
+				compactionSummaryType: null,
+				turnId: null,
+				role: "user",
+				text: turn.text,
+				createdAt: null,
+				status: delivery,
+				toolName: null,
+				workspaceArtifacts: [],
+			},
+		};
+	});
 }
 
 export function projectHermesQueuedFollowUps(
@@ -895,6 +913,19 @@ export function projectHermesQueuedFollowUps(
 			workspaceArtifacts: [],
 		},
 	}));
+}
+
+/**
+ * Once the main process has supplied a queue event or resume snapshot it is
+ * authoritative. A slower query response may describe an older queue
+ * generation and must not regress accepted/submitting rows back to queued.
+ */
+export function selectHermesFollowUpProjection(
+	queried: HermesQueuedFollowUpSummary[] | undefined,
+	live: HermesQueuedFollowUpSummary[],
+	followUpSnapshotReceived: boolean
+): HermesQueuedFollowUpSummary[] {
+	return followUpSnapshotReceived ? live : (queried ?? live);
 }
 
 export function classifyHermesTranscriptMessage(
@@ -1149,13 +1180,75 @@ export function createHermesLiveState(): HermesLiveState {
 		runtimeStatus: null,
 		streamingText: "",
 		completed: [],
+		activeTurnCanonicalAssistantIds: [],
 		tools: [],
 		pendingApproval: null,
 		pendingClarification: null,
 		queuedFollowUps: [],
+		followUpSnapshotReceived: false,
+		subagents: [],
 		historyRefreshRequired: false,
 		error: null,
 	};
+}
+
+const TERMINAL_SUBAGENT_STATUSES = new Set(["completed", "failed", "interrupted"]);
+
+function applyHermesSubagentEvent(
+	state: HermesLiveState,
+	event: HermesRuntimeEvent
+): HermesLiveState | null {
+	const payload = event.payload.subagent;
+	if (!payload) return null;
+	const index = state.subagents.findIndex(
+		(candidate) => candidate.subagentId === payload.subagentId
+	);
+	const previous = index >= 0 ? state.subagents[index] : null;
+	if (
+		previous &&
+		TERMINAL_SUBAGENT_STATUSES.has(previous.status) &&
+		!TERMINAL_SUBAGENT_STATUSES.has(payload.status)
+	) {
+		return state;
+	}
+	const next: HermesLiveSubagent = {
+		...payload,
+		parentId: payload.parentId ?? previous?.parentId ?? null,
+		childSessionId: payload.childSessionId ?? previous?.childSessionId ?? null,
+		goal: payload.goal ?? previous?.goal ?? null,
+		model: payload.model ?? previous?.model ?? null,
+		depth: payload.depth ?? previous?.depth ?? null,
+		toolCount: payload.toolCount ?? previous?.toolCount ?? null,
+		durationSeconds: payload.durationSeconds ?? previous?.durationSeconds ?? null,
+		costUsd: payload.costUsd ?? previous?.costUsd ?? null,
+		inputTokens: payload.inputTokens ?? previous?.inputTokens ?? null,
+		outputTokens: payload.outputTokens ?? previous?.outputTokens ?? null,
+		summary: payload.summary ?? previous?.summary ?? null,
+		filesRead: payload.filesRead.length > 0 ? payload.filesRead : (previous?.filesRead ?? []),
+		filesWritten:
+			payload.filesWritten.length > 0 ? payload.filesWritten : (previous?.filesWritten ?? []),
+		latestText: event.text ?? previous?.latestText ?? null,
+		currentTool: TERMINAL_SUBAGENT_STATUSES.has(payload.status)
+			? null
+			: (event.toolName ?? previous?.currentTool ?? null),
+		updatedAt: event.receivedAt,
+	};
+	const subagents = [...state.subagents];
+	if (index >= 0) subagents[index] = next;
+	else subagents.push(next);
+	// Native state is still process-local upstream. Bound the renderer projection
+	// while retaining active rows and the most recently updated completed rows.
+	const bounded =
+		subagents.length <= 100
+			? subagents
+			: [...subagents]
+					.sort((left, right) => {
+						const leftActive = TERMINAL_SUBAGENT_STATUSES.has(left.status) ? 0 : 1;
+						const rightActive = TERMINAL_SUBAGENT_STATUSES.has(right.status) ? 0 : 1;
+						return rightActive - leftActive || right.updatedAt - left.updatedAt;
+					})
+					.slice(0, 100);
+	return { ...state, subagents: bounded };
 }
 
 function choicesFrom(event: HermesRuntimeEvent): HermesInteractionChoice[] {
@@ -1207,8 +1300,12 @@ const GENERIC_APPROVAL_CHOICES: HermesInteractionChoice[] = [
 
 export function applyHermesActiveTurnSnapshot(
 	state: HermesLiveState,
-	snapshot: HermesActiveTurnSnapshot
+	snapshot: HermesActiveTurnSnapshot,
+	canonicalMessages: HermesTranscriptMessage[] = []
 ): HermesLiveState {
+	const canonicalAssistantIds = canonicalMessages
+		.filter(isVisibleHermesAssistantMessage)
+		.map(hermesCanonicalMessageIdentity);
 	return {
 		...state,
 		running: snapshot.activeTurn,
@@ -1237,6 +1334,13 @@ export function applyHermesActiveTurnSnapshot(
 				...followUp,
 				attachments: followUp.attachments.map((attachment) => ({ ...attachment })),
 			})) ?? [],
+		followUpSnapshotReceived: true,
+		activeTurnCanonicalAssistantIds: snapshot.activeTurn
+			? state.running
+				? state.activeTurnCanonicalAssistantIds
+				: canonicalAssistantIds
+			: [],
+		subagents: snapshot.subagents?.map((subagent) => ({ ...subagent })) ?? state.subagents,
 		error: null,
 	};
 }
@@ -1247,10 +1351,12 @@ export function applyHermesEvent(
 	selectedSessionId?: string,
 	canonicalMessages: HermesTranscriptMessage[] = []
 ): HermesLiveState {
+	const subagentState = applyHermesSubagentEvent(state, event);
+	if (subagentState) return subagentState;
 	switch (event.type) {
 		case "runtime.active-turn-snapshot":
 			return event.payload.activeTurnSnapshot
-				? applyHermesActiveTurnSnapshot(state, event.payload.activeTurnSnapshot)
+				? applyHermesActiveTurnSnapshot(state, event.payload.activeTurnSnapshot, canonicalMessages)
 				: state;
 		case "runtime.follow-up-queue":
 			return {
@@ -1260,6 +1366,21 @@ export function applyHermesEvent(
 						...followUp,
 						attachments: followUp.attachments.map((attachment) => ({ ...attachment })),
 					})) ?? [],
+				followUpSnapshotReceived: true,
+			};
+		case "message.start":
+			return {
+				...state,
+				running: true,
+				runtimeStatus: "running",
+				streamingText: "",
+				activeTurnCanonicalAssistantIds: canonicalMessages
+					.filter(isVisibleHermesAssistantMessage)
+					.map(hermesCanonicalMessageIdentity),
+				subagents: state.subagents.filter(
+					(subagent) => subagent.status === "running" || subagent.status === "queued"
+				),
+				error: null,
 			};
 		case "message.delta":
 			return {
@@ -1275,6 +1396,7 @@ export function applyHermesEvent(
 				running: false,
 				runtimeStatus: event.status ?? "complete",
 				streamingText: "",
+				activeTurnCanonicalAssistantIds: [],
 				completed:
 					event.status === "error"
 						? state.completed
@@ -1283,9 +1405,7 @@ export function applyHermesEvent(
 								{
 									turnId: event.turnId,
 									text: event.text ?? state.streamingText,
-									canonicalMessageIds: canonicalMessages
-										.filter(isVisibleHermesAssistantMessage)
-										.map((message) => message.id),
+									canonicalMessageIds: state.activeTurnCanonicalAssistantIds,
 								},
 							],
 				pendingApproval: null,
