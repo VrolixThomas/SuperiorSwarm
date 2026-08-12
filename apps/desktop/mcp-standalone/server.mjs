@@ -1303,7 +1303,7 @@ if (isWorkspaceAgentOrCrossRepo) {
 
 	server.tool(
 		"resume_agent",
-		"ORCHESTRATOR-ONLY. Wake a child workspace agent with a follow-up message. Use this when a child reports phase=done (give it the next task) or phase=blocked (provide the missing input from 'needs'). The control plane runs `claude --resume` in the target workspace's terminal, so the child resumes its existing session with the new message as the next user turn.",
+		"ORCHESTRATOR-ONLY. Wake a child workspace agent with a follow-up message. Use this when a child reports phase=done (give it the next task) or phase=blocked (provide the missing input from 'needs'). SuperiorSwarm briefly waits for a completing managed child, then resumes its exact Claude, Codex, Gemini, or OpenCode provider session with the message as the next user turn.",
 		{
 			workspace_id: z.string(),
 			message: z.string().min(1).max(8192),

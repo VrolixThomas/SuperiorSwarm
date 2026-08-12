@@ -19,6 +19,8 @@ import type {
 import { getAgentSleepSettings } from "./agent-sleep-settings";
 
 const DEFAULT_MINUTE_MS = 60_000;
+const DEFAULT_FOLLOW_UP_READY_TIMEOUT_MS = 5_000;
+const DEFAULT_FOLLOW_UP_POLL_MS = 25;
 
 export interface RegisterManagedAgentInput {
 	terminalId: string;
@@ -34,6 +36,8 @@ interface AgentSessionManagerOptions {
 	onStatus?: (event: AgentSessionStatusEvent) => void;
 	getSettings?: () => AgentSleepSettings;
 	minuteMs?: number;
+	followUpReadyTimeoutMs?: number;
+	followUpPollMs?: number;
 }
 
 export type WorkspaceWakeResult =
@@ -93,11 +97,16 @@ export class AgentSessionManager {
 	private readonly transitions = new Set<string>();
 	private readonly getSettings: () => AgentSleepSettings;
 	private readonly minuteMs: number;
+	private readonly followUpReadyTimeoutMs: number;
+	private readonly followUpPollMs: number;
 	private disposed = false;
 
 	constructor(private readonly options: AgentSessionManagerOptions) {
 		this.getSettings = options.getSettings ?? getAgentSleepSettings;
 		this.minuteMs = options.minuteMs ?? DEFAULT_MINUTE_MS;
+		this.followUpReadyTimeoutMs =
+			options.followUpReadyTimeoutMs ?? DEFAULT_FOLLOW_UP_READY_TIMEOUT_MS;
+		this.followUpPollMs = options.followUpPollMs ?? DEFAULT_FOLLOW_UP_POLL_MS;
 	}
 
 	registerManagedSession(input: RegisterManagedAgentInput): AgentSessionInfo {
@@ -349,14 +358,21 @@ export class AgentSessionManager {
 		}
 
 		const target = targets[0];
-		if (!target || target.state !== "hibernated") return { status: "none" };
-		const result = await this.wake(target.terminalId, prompt);
+		if (!target) return { status: "none" };
+		const ready = await this.waitForFollowUpReady(target.terminalId);
+		if (!ready) return { status: "none" };
+		let sleeping = ready;
+		if (ready.state === "idle") {
+			sleeping = (await this.sleep(ready.terminalId, false)) ?? ready;
+		}
+		if (sleeping.state !== "hibernated") return { status: "none" };
+		const result = await this.wake(sleeping.terminalId, prompt);
 		if (result?.state === "running") {
-			return { status: "woke", terminalId: target.terminalId };
+			return { status: "woke", terminalId: sleeping.terminalId };
 		}
 		return {
 			status: "failed",
-			terminalId: target.terminalId,
+			terminalId: sleeping.terminalId,
 			error: result?.lastError ?? "Agent did not enter the running state",
 		};
 	}
@@ -680,6 +696,19 @@ export class AgentSessionManager {
 		while (this.transitions.has(terminalId) && Date.now() < deadline) {
 			await new Promise((resolve) => setTimeout(resolve, 25));
 		}
+	}
+
+	private async waitForFollowUpReady(terminalId: string): Promise<AgentSessionInfo | null> {
+		const deadline = Date.now() + Math.max(0, this.followUpReadyTimeoutMs);
+		while (!this.disposed) {
+			if (this.transitions.has(terminalId)) await this.waitForTransition(terminalId);
+			const session = this.getSession(terminalId);
+			if (!session) return null;
+			if (session.state === "idle" || session.state === "hibernated") return session;
+			if (Date.now() >= deadline) return session;
+			await new Promise((resolve) => setTimeout(resolve, Math.max(1, this.followUpPollMs)));
+		}
+		return null;
 	}
 
 	private emit(session: AgentSessionInfo): void {
