@@ -78,9 +78,13 @@ describe("Hermes Slack origin resolver", () => {
 			threadLabel: "Release incident",
 			hasThread: true,
 			canOpenThread: true,
-			canReport: false,
+			canReport: true,
 		});
-		expect(resolved.target).toBeNull();
+		expect(resolved.target).toEqual({
+			platform: "telegram",
+			chatId: "-1001234567890",
+			threadId: "77",
+		});
 		expect(resolved.openUrl).toBe("https://t.me/c/1234567890/77");
 		const rendererJson = JSON.stringify(resolved.projection);
 		expect(rendererJson).not.toContain("-1001234567890");

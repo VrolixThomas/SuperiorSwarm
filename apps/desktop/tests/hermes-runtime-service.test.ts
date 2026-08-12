@@ -23,6 +23,7 @@ import {
 	listHermesOriginReports,
 	prepareHermesOriginReport,
 } from "../src/main/hermes/hermes-origin-reports";
+import type { HermesOriginTarget } from "../src/main/hermes/hermes-origin-resolver";
 import {
 	HermesRestClient,
 	type HermesStockSessionDetail,
@@ -324,7 +325,7 @@ class FakeSendService {
 	response: Promise<{ providerMessageId: string | null }> | null = null;
 	sends: Array<{
 		profileId: string;
-		target: { channelId: string; threadId: string };
+		target: HermesOriginTarget;
 		content: string;
 	}> = [];
 
@@ -334,7 +335,7 @@ class FakeSendService {
 
 	send(input: {
 		profileId: string;
-		target: { channelId: string; threadId: string };
+		target: HermesOriginTarget;
 		content: string;
 	}): Promise<{ providerMessageId: string | null }> {
 		this.sends.push(input);
@@ -5004,6 +5005,65 @@ describe("HermesRuntimeService stock lifecycle", () => {
 		});
 		expect(compressedDuplicate.status).toBe("duplicate-suppressed");
 		expect(sender.sends).toHaveLength(1);
+	});
+
+	test("reports canonical persisted assistant content to an exact Telegram forum topic", async () => {
+		rest.details.set("telegram-topic", {
+			durableSessionId: "telegram-topic",
+			profileId: "work",
+			source: "telegram",
+			displayName: "Release coordination",
+			sessionKey: null,
+			chatId: "-1001234567890",
+			chatType: "group",
+			threadId: "77",
+			originJson: {
+				platform: "telegram",
+				chat_id: "-1001234567890",
+				thread_id: "77",
+			},
+		});
+		rest.histories.set("telegram-topic", {
+			durableSessionId: "telegram-topic",
+			view: "durable",
+			messages: [
+				historyMessage("telegram-assistant", {
+					turnId: "telegram-turn",
+					text: "Canonical Telegram update",
+				}),
+			],
+		});
+		await service.connect(connectionId);
+
+		const origin = await service.origin(connectionId, "telegram-topic", "work");
+		expect(origin).toMatchObject({
+			platform: "telegram",
+			displayLabel: "Release coordination",
+			hasThread: true,
+			canOpenThread: true,
+			canReport: true,
+		});
+		expect(origin).not.toHaveProperty("target");
+
+		const sent = await service.reportToOrigin({
+			connectionId,
+			hermesSessionId: "telegram-topic",
+			profileId: "work",
+			messageId: "telegram-assistant",
+			explicitRetry: false,
+		});
+		expect(sent).toMatchObject({ status: "sent", providerMessageId: "provider-1" });
+		expect(sender.sends).toEqual([
+			{
+				profileId: "work",
+				target: {
+					platform: "telegram",
+					chatId: "-1001234567890",
+					threadId: "77",
+				},
+				content: "Canonical Telegram update",
+			},
+		]);
 	});
 
 	test("finishes an in-flight origin report on the physical compression child", async () => {

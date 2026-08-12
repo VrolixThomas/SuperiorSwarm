@@ -78,6 +78,45 @@ describe("HermesSendService", () => {
 		expect(result).toEqual({ providerMessageId: "provider-message-1" });
 	});
 
+	test("sends a Telegram forum update to the exact existing chat and topic", async () => {
+		const child = new FakeChild();
+		let argv: string[] = [];
+		child.onEnd = () => {
+			queueMicrotask(() => {
+				child.stdout.emit("data", Buffer.from(JSON.stringify({ success: true, message_id: "42" })));
+				child.emit("close", 0, null);
+			});
+		};
+		const service = new HermesSendService({
+			executableResolver: () => "hermes",
+			hermesHomeResolver: () => "/profiles/personal",
+			spawnProcess: (_executable, receivedArgv) => {
+				argv = receivedArgv;
+				return child;
+			},
+		});
+
+		await expect(
+			service.send({
+				profileId: "personal",
+				target: {
+					platform: "telegram",
+					chatId: "-1001234567890",
+					threadId: "77",
+				},
+				content: "Release is complete",
+			})
+		).resolves.toEqual({ providerMessageId: "42" });
+		expect(argv).toEqual([
+			"-p",
+			"personal",
+			"send",
+			"--to",
+			"telegram:-1001234567890:77",
+			"--json",
+		]);
+	});
+
 	test("bounds timeout and output and returns sanitized classifications", async () => {
 		const timeoutChild = new FakeChild();
 		const timeoutService = new HermesSendService({

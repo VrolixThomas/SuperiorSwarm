@@ -1,7 +1,9 @@
 import type { HermesRuntimeEvent } from "../../shared/hermes";
 
 export const HERMES_HISTORY_REVISION_ACTIVE_INTERVAL_MS = 2_000;
+export const HERMES_HISTORY_REVISION_EXTERNAL_INTERVAL_MS = 500;
 export const HERMES_HISTORY_REVISION_IDLE_INTERVAL_MS = 5_000;
+export const HERMES_CATALOG_SYNC_INTERVAL_MS = 1_000;
 export const HERMES_HISTORY_ACTIVITY_RECENT_WINDOW_MS = 15_000;
 export const HERMES_HISTORY_ACTIVITY_REFRESH_MIN_INTERVAL_MS = 2_000;
 export const HERMES_HISTORY_REVISION_FAILURE_BACKOFF_MS = [5_000, 15_000, 30_000, 60_000] as const;
@@ -11,6 +13,8 @@ export interface HermesHistoryRevisionPollPolicyInput {
 	documentVisible: boolean;
 	sessionRunning: boolean;
 	sessionBusy: boolean;
+	/** The selected session is routed by Slack, Telegram, or another Hermes gateway source. */
+	externalSource?: boolean;
 	lastActivityAt: number | null;
 	now: number;
 	consecutiveFailures: number;
@@ -23,6 +27,7 @@ export function hermesHistoryRevisionPollInterval(
 	if (input.consecutiveFailures > 0) {
 		return hermesHistoryRevisionFailureBackoff(input.consecutiveFailures);
 	}
+	if (input.externalSource) return HERMES_HISTORY_REVISION_EXTERNAL_INTERVAL_MS;
 	const recentlyActive =
 		input.lastActivityAt !== null &&
 		input.now - input.lastActivityAt <= HERMES_HISTORY_ACTIVITY_RECENT_WINDOW_MS;

@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { resolveHermesExecutable, resolveHermesHomeRoot } from "./hermes-cli";
-import type { HermesSlackTarget } from "./hermes-origin-resolver";
+import type { HermesOriginTarget, HermesTelegramTarget } from "./hermes-origin-resolver";
 
 interface HermesOutputStream {
 	on(event: "data", listener: (chunk: Buffer | string) => void): unknown;
@@ -63,7 +63,17 @@ function defaultSpawnProcess(
 	return spawn(executable, argv, options) as unknown as HermesChildProcess;
 }
 
-function validTarget(target: HermesSlackTarget): boolean {
+function isTelegramTarget(target: HermesOriginTarget): target is HermesTelegramTarget {
+	return "platform" in target && target.platform === "telegram";
+}
+
+function validTarget(target: HermesOriginTarget): boolean {
+	if (isTelegramTarget(target)) {
+		return (
+			/^-100[1-9]\d{0,18}$/.test(target.chatId) &&
+			(target.threadId === null || /^[1-9]\d{0,15}$/.test(target.threadId))
+		);
+	}
 	return (
 		/^[CDG][A-Z0-9]{2,31}$/.test(target.channelId) && /^\d{1,16}\.\d{1,9}$/.test(target.threadId)
 	);
@@ -116,13 +126,13 @@ export class HermesSendService {
 
 	async send(input: {
 		profileId: string;
-		target: HermesSlackTarget;
+		target: HermesOriginTarget;
 		content: string;
 		signal?: AbortSignal;
 	}): Promise<{ providerMessageId: string | null }> {
 		if (!input.content.trim() || Buffer.byteLength(input.content) > this.maxContentBytes) {
 			throw new HermesSendError(
-				"The Slack update content is empty or too large",
+				"The update content is empty or too large",
 				"invalid-content",
 				false
 			);
@@ -131,17 +141,15 @@ export class HermesSendService {
 			!validTarget(input.target) ||
 			!/^(?:default|custom|[a-z0-9][a-z0-9_-]{0,63})$/.test(input.profileId)
 		) {
-			throw new HermesSendError(
-				"The resolved Slack destination is invalid",
-				"invalid-target",
-				false
-			);
+			throw new HermesSendError("The resolved destination is invalid", "invalid-target", false);
 		}
 		const executable = this.executableResolver();
 		if (!executable) {
 			throw new HermesSendError("The stock Hermes sender is unavailable", "unavailable", false);
 		}
-		const target = `slack:${input.target.channelId}:${input.target.threadId}`;
+		const target = isTelegramTarget(input.target)
+			? `telegram:${input.target.chatId}${input.target.threadId ? `:${input.target.threadId}` : ""}`
+			: `slack:${input.target.channelId}:${input.target.threadId}`;
 		const argv = ["-p", input.profileId, "send", "--to", target, "--json"];
 		let child: HermesChildProcess;
 		try {
@@ -193,9 +201,9 @@ export class HermesSendService {
 				if (collect) stdout.push(bytes);
 			};
 			const onAbort = () =>
-				stopWith(new HermesSendError("Slack delivery was cancelled", "cancelled", true));
+				stopWith(new HermesSendError("Origin delivery was cancelled", "cancelled", true));
 			const timer = setTimeout(
-				() => stopWith(new HermesSendError("Slack delivery timed out", "timeout", true)),
+				() => stopWith(new HermesSendError("Origin delivery timed out", "timeout", true)),
 				this.timeoutMs
 			);
 			timer.unref?.();
