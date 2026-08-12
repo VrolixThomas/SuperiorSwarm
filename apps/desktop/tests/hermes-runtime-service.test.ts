@@ -2728,6 +2728,14 @@ describe("HermesRuntimeService stock lifecycle", () => {
 			"work",
 			"client-turn-second"
 		);
+		const duplicateSecond = await service.submitFollowUp(
+			connectionId,
+			"stored-1",
+			"Second",
+			[],
+			"work",
+			"client-turn-second"
+		);
 		const third = await service.submitFollowUp(
 			connectionId,
 			"stored-1",
@@ -2738,6 +2746,7 @@ describe("HermesRuntimeService stock lifecycle", () => {
 		);
 
 		expect(second.disposition).toBe("queued");
+		expect(duplicateSecond.followUp.id).toBe(second.followUp.id);
 		expect(third.disposition).toBe("queued");
 		expect(second.followUp.id).toBe("client-turn-second");
 		expect(third.followUp.id).toBe("client-turn-third");
@@ -4402,6 +4411,69 @@ describe("HermesRuntimeService stock lifecycle", () => {
 			method: "session.activate",
 			params: { session_id: "runtime-buffered", omit_messages: false },
 		});
+	});
+
+	test("late selection recovers native subagents from the main-owned conversation snapshot", async () => {
+		client.responses.set("session.resume", [
+			{
+				session_id: "runtime-subagents",
+				session_key: "stored-1",
+				profile: "work",
+				running: true,
+				status: "streaming",
+				messages: [],
+			},
+		]);
+		client.responses.set("session.activate", [
+			{
+				session_id: "runtime-subagents",
+				session_key: "stored-1",
+				profile: "work",
+				running: true,
+				status: "streaming",
+				messages: [],
+			},
+		]);
+		await service.connect(connectionId);
+		await service.resume(connectionId, "stored-1");
+		client.emit({
+			type: "subagent.progress",
+			runtimeSessionId: "runtime-subagents",
+			text: "Inspecting the gateway",
+			toolName: "search",
+			payload: {
+				subagent: {
+					subagentId: "native-child",
+					parentId: null,
+					childSessionId: "child-session",
+					goal: "Find the queue race",
+					model: "hermes-test",
+					status: "running",
+					taskIndex: 0,
+					taskCount: 1,
+					depth: 1,
+					toolCount: 1,
+					durationSeconds: null,
+					costUsd: null,
+					inputTokens: null,
+					outputTokens: null,
+					summary: null,
+					filesRead: [],
+					filesWritten: [],
+				},
+			},
+			receivedAt: 50,
+		});
+
+		const rejoined = await service.resume(connectionId, "stored-1");
+		expect(rejoined.activeTurnSnapshot.subagents).toEqual([
+			expect.objectContaining({
+				subagentId: "native-child",
+				goal: "Find the queue race",
+				latestText: "Inspecting the gateway",
+				currentTool: "search",
+			}),
+		]);
 	});
 
 	test("snapshots only unresolved interactions for their owning session", async () => {

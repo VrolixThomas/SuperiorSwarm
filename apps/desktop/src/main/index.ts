@@ -35,6 +35,7 @@ import {
 import { setupHermesAttachmentIPC } from "./hermes/hermes-attachment-ipc";
 import { hermesRendererAttachmentUploads } from "./hermes/hermes-attachments";
 import { ensureHermesLocalConnection } from "./hermes/hermes-connections";
+import { attachHermesOrchestrationWake } from "./hermes/hermes-orchestration-wake";
 import { hermesRuntimeService } from "./hermes/hermes-runtime-service";
 import { backfillLegacyHermesSessionTags } from "./hermes/hermes-session-metadata";
 import { isCloneable, setDebugMode } from "./ipc-safety";
@@ -80,6 +81,7 @@ let agentSessionManager: AgentSessionManager | null = null;
 let alertListener: AgentAlertListener | null = null;
 let controlPlane: RunningControlPlane | null = null;
 let detachOrchestratorSink: (() => void) | null = null;
+let detachHermesOrchestrationWake: (() => void) | null = null;
 
 function isHttpUrl(url: string): boolean {
 	return url.startsWith("http://") || url.startsWith("https://");
@@ -343,6 +345,22 @@ app.whenReady().then(async () => {
 		setEventBus(controlPlane.eventBus);
 		setTaskRegistry(controlPlane.taskRegistry);
 		detachOrchestratorSink = attachOrchestratorEventSink(controlPlane.eventBus);
+		detachHermesOrchestrationWake = attachHermesOrchestrationWake(controlPlane.eventBus, {
+			enqueue: async (target) => {
+				await hermesRuntimeService.submitFollowUp(
+					target.connectionId,
+					target.lineageRootId,
+					target.text,
+					[],
+					target.profileId,
+					`superiorswarm-event:${target.eventId}`
+				);
+				const state = hermesRuntimeService.getState(target.connectionId);
+				if (state.status === "disconnected" || state.status === "error") {
+					await hermesRuntimeService.connect(target.connectionId);
+				}
+			},
+		});
 		writeControlDiscovery(userData, {
 			port: controlPlane.port,
 			token: controlPlane.token,
@@ -549,6 +567,10 @@ app.on("before-quit", () => {
 		if (detachOrchestratorSink) {
 			detachOrchestratorSink();
 			detachOrchestratorSink = null;
+		}
+		if (detachHermesOrchestrationWake) {
+			detachHermesOrchestrationWake();
+			detachHermesOrchestrationWake = null;
 		}
 	}
 	log.info(`[quit] before-quit done +${Date.now() - t0}ms`);

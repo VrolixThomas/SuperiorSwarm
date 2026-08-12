@@ -78,7 +78,7 @@ function handoverResult(result, isError) {
 	};
 }
 
-export async function handleHermesSessionHandover(extra, admit) {
+export async function handleHermesSessionAdmission(extra, admit, reason = "mcp") {
 	const parsed = parseHermesSessionMetadata(extra);
 	if (!parsed.ok) {
 		return handoverResult(
@@ -91,7 +91,7 @@ export async function handleHermesSessionHandover(extra, admit) {
 		);
 	}
 	try {
-		const result = await admit(parsed.metadata, "handover");
+		const result = await admit(parsed.metadata, reason);
 		if (result?.admitted !== true) {
 			return handoverResult(
 				{
@@ -116,4 +116,8 @@ export async function handleHermesSessionHandover(extra, admit) {
 			true
 		);
 	}
+}
+
+export function handleHermesSessionHandover(extra, admit) {
+	return handleHermesSessionAdmission(extra, admit, "handover");
 }
