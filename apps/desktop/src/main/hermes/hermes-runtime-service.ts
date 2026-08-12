@@ -897,7 +897,7 @@ export class HermesRuntimeService {
 			profileId
 		);
 		if (!resolved?.projection.canReport || !resolved.target) {
-			throw new Error("Slack reporting is unavailable for this session");
+			throw new Error("Origin reporting is unavailable for this session");
 		}
 		const history = await this.history(input.connectionId, conversationId, profileId);
 		const message = history.messages.find(

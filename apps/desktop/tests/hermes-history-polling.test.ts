@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { QueryClient } from "@tanstack/react-query";
 import {
+	HERMES_CATALOG_SYNC_INTERVAL_MS,
 	HERMES_HISTORY_ACTIVITY_RECENT_WINDOW_MS,
 	HERMES_HISTORY_ACTIVITY_REFRESH_MIN_INTERVAL_MS,
 	HERMES_HISTORY_REVISION_ACTIVE_INTERVAL_MS,
+	HERMES_HISTORY_REVISION_EXTERNAL_INTERVAL_MS,
 	HERMES_HISTORY_REVISION_FAILURE_BACKOFF_MS,
 	HERMES_HISTORY_REVISION_IDLE_INTERVAL_MS,
 	HermesHistoryRevisionRefreshGate,
@@ -74,6 +76,14 @@ describe("Hermes history revision polling", () => {
 				lastActivityAt: 20_000 - HERMES_HISTORY_ACTIVITY_RECENT_WINDOW_MS - 1,
 			})
 		).toBe(5_000);
+	});
+
+	test("tracks a selected Slack or Telegram handoff within half a second", () => {
+		expect(HERMES_CATALOG_SYNC_INTERVAL_MS).toBe(1_000);
+		expect(HERMES_HISTORY_REVISION_EXTERNAL_INTERVAL_MS).toBe(500);
+		expect(pollInterval({ externalSource: true })).toBe(500);
+		expect(pollInterval({ externalSource: true, sessionRunning: true })).toBe(500);
+		expect(pollInterval({ externalSource: true, consecutiveFailures: 1 })).toBe(5_000);
 	});
 
 	test("pauses explicitly when the exact selected session is not pollable or the document is hidden", () => {

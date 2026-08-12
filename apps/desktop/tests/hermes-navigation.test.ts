@@ -429,10 +429,12 @@ describe("Hermes global navigation", () => {
 
 		const view = await rendererSource("hermes/HermesSessionView.tsx");
 		expect(view).toContain("Loading canonical Hermes history");
-		expect(view).toContain("Preview Slack update");
-		expect(view).toContain("Confirm send to Slack");
+		expect(view).toContain("isReportableOriginSession");
+		expect(view).toContain("originPlatformLabel");
+		expect(view).toContain("Preview {originPlatformLabel} update");
+		expect(view).toContain("Confirm send to ${originPlatformLabel}");
 		expect(view).toContain("hermesReportRequiresExplicitRetry(reportState)");
-		expect(view).toContain("Slack remains live. Continue sequentially");
+		expect(view).toContain("Sequential ${originPlatformLabel} continuation");
 		expect(view).not.toContain("HermesBindingLifecycle");
 		expect(view).not.toContain("trpc.hermes.release.useMutation");
 		expect(view).not.toContain("trpc.hermes.unbind");

@@ -15,7 +15,10 @@ import {
 	hermesSessionLineageRootId,
 	hermesSessionMatchesId,
 } from "../../../shared/hermes";
-import { hermesEventRefreshesCatalog } from "../../hermes/hermes-history-polling";
+import {
+	HERMES_CATALOG_SYNC_INTERVAL_MS,
+	hermesEventRefreshesCatalog,
+} from "../../hermes/hermes-history-polling";
 import {
 	HERMES_SESSION_ROW_ESTIMATE_PX,
 	type HermesSessionFilter,
@@ -147,7 +150,7 @@ export function HermesSidebar() {
 		{ connectionId: connectionId ?? "" },
 		{
 			enabled: Boolean(connectionId) && connected,
-			refetchInterval: connected ? 5_000 : false,
+			refetchInterval: connected ? HERMES_CATALOG_SYNC_INTERVAL_MS : false,
 		}
 	);
 

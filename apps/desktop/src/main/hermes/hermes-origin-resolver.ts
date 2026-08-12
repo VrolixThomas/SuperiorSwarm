@@ -10,9 +10,17 @@ export interface HermesSlackTarget {
 	threadId: string;
 }
 
+export interface HermesTelegramTarget {
+	platform: "telegram";
+	chatId: string;
+	threadId: string | null;
+}
+
+export type HermesOriginTarget = HermesSlackTarget | HermesTelegramTarget;
+
 export interface ResolvedHermesOrigin {
 	projection: HermesOriginProjection;
-	target: HermesSlackTarget | null;
+	target: HermesOriginTarget | null;
 	openUrl: string | null;
 	originFingerprint: string;
 }
@@ -282,6 +290,14 @@ export function resolveHermesOrigin(
 				])
 			: { value: null, ambiguous: false };
 		const routeAmbiguous = chat.ambiguous || thread.ambiguous;
+		const target =
+			!routeAmbiguous && chat.value
+				? {
+						platform: "telegram" as const,
+						chatId: `-100${chat.value}`,
+						threadId: thread.value,
+					}
+				: null;
 		const openUrl =
 			!routeAmbiguous && chat.value && thread.value
 				? `https://t.me/c/${chat.value}/${thread.value}`
@@ -292,9 +308,10 @@ export function resolveHermesOrigin(
 				...projectionLabels,
 				hasThread: !thread.ambiguous && thread.value !== null,
 				canOpenThread: openUrl !== null,
-				canReport: false,
+				canReport:
+					options.connectionMode === "loopback" && options.senderAvailable && target !== null,
 			},
-			target: null,
+			target,
 			openUrl,
 			originFingerprint: fingerprint([
 				"telegram",
