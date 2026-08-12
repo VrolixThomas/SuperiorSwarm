@@ -398,8 +398,8 @@ function stockCatalog(
 			canReport: connectionMode === "loopback" && senderAvailable,
 			limitations:
 				connectionMode === "remote"
-					? ["Slack reporting requires a sender configured for this remote profile"]
-					: ["Slack reporting is available only for validated threaded origins"],
+					? ["Origin reporting requires a sender configured for this remote profile"]
+					: ["Origin reporting is available only for exact validated routes"],
 		},
 		sessions:
 			managerId === null
