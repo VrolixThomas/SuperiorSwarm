@@ -8,6 +8,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import {
+	handleHermesSessionAdmission,
 	handleHermesSessionHandover,
 	withAutomaticHermesSessionAdmission,
 } from "./hermes-session-admission.mjs";
@@ -166,15 +167,17 @@ const EXTERNAL_MANAGER_INSTRUCTIONS = `You are an EXTERNAL MANAGER for SuperiorS
 Coordination loop:
   1. list_projects / list_workspaces to see current state.
   2. create_worktree({project_id, branch}) then dispatch_agent({workspace_id, prompt}) to start work.
-  3. wait_for_events({after_seq}) — long-polls the coordination event stream (default 25s). Call it again with the returned next_seq. Events:
-       {"event":"status","workspaceId":"...","phase":"idle|working|blocked|done","statusText":"...","needs":"...","ts":"..."}
-       {"event":"message","messageId":"...","from":"...","to":"...|null","kind":"note|question|result|resume","content":"...","ts":"..."}
+  3. wait_for_events({after_seq, stream_epoch}) — long-polls the coordination event stream (default 25s). Preserve both streamEpoch and nextSeq from every response. Each event has a stable eventId and ownedByRecipient flag:
+	   {"eventId":"...","seq":1,"ownedByRecipient":true,"event":"status","workspaceId":"...","phase":"idle|working|blocked|done","statusText":"...","needs":"...","ts":"..."}
+	   {"eventId":"...","seq":2,"ownedByRecipient":true,"event":"message","messageId":"...","from":"...","to":"...|null","kind":"note|question|result|resume","content":"...","ts":"..."}
   4. Child phase=blocked → resume_agent({workspace_id, message}) with the missing input from 'needs'. Child phase=done → verify (get_workspace, get_agent_output) and resume_agent with the next task, or wrap up.
   5. get_agent_output({workspace_id}) shows a child's recent terminal output when its status is unclear or it has gone silent.
 
 Notes:
   - dispatch_agent may require the user to approve in the SuperiorSwarm app unless auto-dispatch is enabled for this manager.
   - remove_worktree always requires in-app approval.
+  - Act automatically only on ownedByRecipient=true events. Other linked-project events are visibility context, not your child-control authority.
+  - If reset=true, reconcile list_workspaces/current child state before taking action; do not replay an old dispatch or follow-up solely from the reset journal.
   - If you have no pending work, prefer scheduled/periodic wait_for_events checks over tight polling loops.`;
 
 const CHILD_INSTRUCTIONS = `You are a CHILD workspace in a SuperiorSwarm project. The orchestrator workspace coordinates work across the project.
@@ -944,7 +947,7 @@ if (isWorkspaceAgentOrCrossRepo) {
 	const _origTool = server.tool.bind(server);
 	server.tool = (name, description, schema, handler) => {
 		const admittedHandler =
-			isExternalManagerMode && name !== "handover_session"
+			isExternalManagerMode && name !== "admit_session" && name !== "handover_session"
 				? withAutomaticHermesSessionAdmission(handler, admitHermesSession)
 				: handler;
 		return _origTool(name, description, schema, withRoleReminder(admittedHandler));
@@ -1032,10 +1035,19 @@ if (isWorkspaceAgentOrCrossRepo) {
 	if (isExternalManagerMode) {
 		server.tool(
 			"handover_session",
-			"Explicitly admit this non-cron Hermes session to the SuperiorSwarm Agents inbox. The current MCP request must include validated _meta.hermes session metadata.",
+			"Hand off this non-cron Hermes conversation to the SuperiorSwarm Agents inbox. For Slack/Telegram sessions, Hermes keeps ownership of the existing source route so later messages continue through that same route; SuperiorSwarm admits and follows the durable conversation without rebinding it.",
 			{},
 			async (_args, extra) =>
 				handleHermesSessionHandover(extra, (metadata, reason) =>
+					admitHermesSession(metadata, reason)
+				)
+		);
+		server.tool(
+			"admit_session",
+			"Admit this non-cron Hermes conversation to the SuperiorSwarm Agents inbox. This is the visibility-oriented alias of handover_session and preserves any existing Slack/Telegram source route.",
+			{},
+			async (_args, extra) =>
+				handleHermesSessionAdmission(extra, (metadata, reason) =>
 					admitHermesSession(metadata, reason)
 				)
 		);
@@ -1291,7 +1303,7 @@ if (isWorkspaceAgentOrCrossRepo) {
 
 	server.tool(
 		"resume_agent",
-		"ORCHESTRATOR-ONLY. Wake a child workspace agent with a follow-up message. Use this when a child reports phase=done (give it the next task) or phase=blocked (provide the missing input from 'needs'). The control plane runs `claude --resume` in the target workspace's terminal, so the child resumes its existing session with the new message as the next user turn.",
+		"ORCHESTRATOR-ONLY. Wake a child workspace agent with a follow-up message. Use this when a child reports phase=done (give it the next task) or phase=blocked (provide the missing input from 'needs'). SuperiorSwarm briefly waits for a completing managed child, then resumes its exact Claude, Codex, Gemini, or OpenCode provider session with the message as the next user turn.",
 		{
 			workspace_id: z.string(),
 			message: z.string().min(1).max(8192),
@@ -1308,7 +1320,7 @@ if (isWorkspaceAgentOrCrossRepo) {
 	if (IS_ORCHESTRATOR || isCrossRepoMode) {
 		server.tool(
 			"wait_for_events",
-			"Long-poll the coordination event stream. Returns status/message events after your cursor plus next_seq. Call again with after_seq=next_seq. Blocks up to timeout_s (default 25) waiting for new events; returns immediately when events exist.",
+			"Long-poll the coordination event stream. Preserve both streamEpoch and nextSeq from each response and pass them back as stream_epoch and after_seq. If reset=true, discard assumptions derived only from the old stream and reconcile current workspace state before acting. Blocks up to timeout_s (default 25) waiting for new events.",
 			{
 				after_seq: z
 					.number()
@@ -1316,6 +1328,14 @@ if (isWorkspaceAgentOrCrossRepo) {
 					.min(0)
 					.optional()
 					.describe("Cursor from the previous call's next_seq. Omit or 0 to read from the start."),
+				stream_epoch: z
+					.string()
+					.min(1)
+					.max(200)
+					.optional()
+					.describe(
+						"Stream epoch from the previous response. Pass it with after_seq to detect journal resets safely."
+					),
 				timeout_s: z
 					.number()
 					.int()
@@ -1324,9 +1344,10 @@ if (isWorkspaceAgentOrCrossRepo) {
 					.optional()
 					.describe("Seconds to wait for new events before returning empty (default 25)"),
 			},
-			async ({ after_seq, timeout_s }) => {
+			async ({ after_seq, stream_epoch, timeout_s }) => {
 				const params = new URLSearchParams();
 				if (after_seq) params.set("afterSeq", String(after_seq));
+				if (stream_epoch) params.set("streamEpoch", stream_epoch);
 				if (timeout_s !== undefined) params.set("waitMs", String(timeout_s * 1000));
 				return call("GET", `/events.poll?${params.toString()}`);
 			}

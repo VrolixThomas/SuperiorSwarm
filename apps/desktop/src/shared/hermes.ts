@@ -115,6 +115,35 @@ export interface HermesSessionSummary {
 	origin: HermesOriginProjection | null;
 }
 
+/** Stable conversation ownership; physical and runtime identities must never replace this scope. */
+export interface HermesConversationRef {
+	managerId: string;
+	connectionId: string;
+	profileId: string;
+	lineageRootId: string;
+	activeTipId: string;
+}
+
+/** Ephemeral transport binding. A reconnect always creates a new generation. */
+export interface HermesRuntimeRef {
+	runtimeSessionId: string;
+	connectionGeneration: number;
+}
+
+/** One renderer-authored turn from optimistic projection through durable acceptance. */
+export interface HermesTurnRef {
+	clientMessageId: string;
+	deliveryKey: string;
+	turnId: string | null;
+	queueReceiptId: string | null;
+}
+
+export interface HermesChildRef {
+	kind: "native" | "worktree";
+	childHandle: string;
+	parentLineageRootId: string;
+}
+
 export interface HermesCatalog {
 	compatibility: HermesCompatibility;
 	sessions: HermesSessionSummary[];
@@ -268,6 +297,8 @@ export interface HermesActiveTurnSnapshot {
 	pendingApproval: HermesPendingInteractionSnapshot | null;
 	pendingClarification: HermesPendingInteractionSnapshot | null;
 	queuedFollowUps: HermesQueuedFollowUpSummary[];
+	/** Process snapshot of native delegates for late selection/reconnect recovery. */
+	subagents?: HermesSubagentSnapshot[];
 }
 
 export type HermesQueuedFollowUpStatus = "queued" | "submitting" | "accepted" | "failed";
@@ -299,6 +330,36 @@ export interface HermesRuntimeEventPayload {
 	failedSessionIds?: string[];
 	activeTurnSnapshot?: HermesActiveTurnSnapshot;
 	queuedFollowUps?: HermesQueuedFollowUpSummary[];
+	/** Allowlisted native-delegation state used by the unified Agents projection. */
+	subagent?: HermesSubagentEventPayload;
+}
+
+export type HermesSubagentStatus = "queued" | "running" | "completed" | "failed" | "interrupted";
+
+export interface HermesSubagentEventPayload {
+	subagentId: string;
+	parentId: string | null;
+	childSessionId: string | null;
+	goal: string | null;
+	model: string | null;
+	status: HermesSubagentStatus;
+	taskIndex: number;
+	taskCount: number;
+	depth: number | null;
+	toolCount: number | null;
+	durationSeconds: number | null;
+	costUsd: number | null;
+	inputTokens: number | null;
+	outputTokens: number | null;
+	summary: string | null;
+	filesRead: string[];
+	filesWritten: string[];
+}
+
+export interface HermesSubagentSnapshot extends HermesSubagentEventPayload {
+	latestText: string | null;
+	currentTool: string | null;
+	updatedAt: number;
 }
 
 /** Runtime events are routed only by the ephemeral WebSocket session ID. */

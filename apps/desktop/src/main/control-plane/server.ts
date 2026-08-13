@@ -349,6 +349,7 @@ function eventsFileForCaller(caller: CallerContext): string | null {
  */
 class EventFileTail {
 	private offset = 0;
+	private inode: number | null = null;
 	private partial = Buffer.alloc(0);
 	private lines: string[] = [];
 
@@ -356,16 +357,20 @@ class EventFileTail {
 
 	refresh(): string[] {
 		let size = 0;
+		let inode: number | null = null;
 		try {
-			size = statSync(this.path).size;
+			const stat = statSync(this.path);
+			size = stat.size;
+			inode = typeof stat.ino === "number" ? stat.ino : null;
 		} catch {
 			size = 0;
 		}
-		if (size < this.offset) {
+		if ((this.inode !== null && inode !== this.inode) || size < this.offset) {
 			this.offset = 0;
 			this.partial = Buffer.alloc(0);
 			this.lines = [];
 		}
+		this.inode = inode;
 		if (size === this.offset) return this.lines;
 		let appended: Buffer;
 		try {
@@ -397,6 +402,63 @@ class EventFileTail {
 		this.partial = Buffer.from(chunk.subarray(start));
 		return this.lines;
 	}
+}
+
+interface ProjectedJournalEvent {
+	seq: number;
+	value: unknown;
+}
+
+interface ProjectedEventJournal {
+	streamEpoch: string | null;
+	nextSeq: number;
+	events: ProjectedJournalEvent[];
+}
+
+/**
+ * Select only the newest stream epoch from an append-only journal. During a
+ * rolling upgrade, legacy raw events remain readable with line-number cursors.
+ * Once a v2 envelope is present, its explicit sequence is authoritative.
+ */
+function projectEventJournal(lines: string[]): ProjectedEventJournal {
+	const parsed = lines.flatMap((line, index) => {
+		try {
+			return [{ index, value: JSON.parse(line) as unknown }];
+		} catch {
+			return [];
+		}
+	});
+	const activeEpoch = [...parsed].reverse().find(({ value }) => {
+		if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+		const record = value as Record<string, unknown>;
+		return typeof record["streamEpoch"] === "string" && Number.isSafeInteger(record["seq"]);
+	});
+	if (!activeEpoch) {
+		return {
+			streamEpoch: null,
+			nextSeq: lines.length,
+			events: parsed.map(({ index, value }) => ({ seq: index + 1, value })),
+		};
+	}
+	const epoch = (activeEpoch.value as Record<string, unknown>)["streamEpoch"] as string;
+	const events = parsed.flatMap(({ value }) => {
+		if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+		const record = value as Record<string, unknown>;
+		if (
+			record["streamEpoch"] !== epoch ||
+			typeof record["seq"] !== "number" ||
+			!Number.isSafeInteger(record["seq"]) ||
+			record["seq"] < 1
+		) {
+			return [];
+		}
+		return [{ seq: record["seq"], value }];
+	});
+	return {
+		streamEpoch: epoch,
+		nextSeq: events.reduce((max, event) => Math.max(max, event.seq), 0),
+		events,
+	};
 }
 
 function stripAnsi(s: string): string {
@@ -1106,6 +1168,7 @@ async function handleRequest(
 			case "GET /events.poll": {
 				const parsed = eventsPollRequestSchema.safeParse({
 					afterSeq: url.searchParams.get("afterSeq") ?? undefined,
+					streamEpoch: url.searchParams.get("streamEpoch") ?? undefined,
 					waitMs: url.searchParams.get("waitMs") ?? undefined,
 				});
 				if (!parsed.success) {
@@ -1122,7 +1185,7 @@ async function handleRequest(
 					respond(res, 403, requestId, { error: "forbidden" });
 					return;
 				}
-				let afterSeq = parsed.data.afterSeq;
+				const afterSeq = parsed.data.afterSeq;
 				const deadline = Date.now() + parsed.data.waitMs;
 				let clientGone = false;
 				req.on("close", () => {
@@ -1131,21 +1194,23 @@ async function handleRequest(
 				const tail = new EventFileTail(eventsFile);
 				for (;;) {
 					const lines = tail.refresh();
-					// File shrank (orchestrator reset) — restart the cursor.
-					if (lines.length < afterSeq) afterSeq = 0;
-					if (lines.length > afterSeq || Date.now() >= deadline) {
+					const journal = projectEventJournal(lines);
+					const reset =
+						(parsed.data.streamEpoch !== undefined &&
+							parsed.data.streamEpoch !== journal.streamEpoch) ||
+						afterSeq > journal.nextSeq;
+					const effectiveAfterSeq = reset ? 0 : afterSeq;
+					const events = journal.events
+						.filter((event) => event.seq > effectiveAfterSeq)
+						.map((event) => event.value);
+					if (events.length > 0 || reset || Date.now() >= deadline) {
 						if (clientGone) return;
-						const events = lines
-							.slice(afterSeq)
-							.map((l) => {
-								try {
-									return JSON.parse(l) as unknown;
-								} catch {
-									return null;
-								}
-							})
-							.filter((v) => v !== null);
-						respond(res, 200, requestId, { events, nextSeq: lines.length });
+						respond(res, 200, requestId, {
+							events,
+							streamEpoch: journal.streamEpoch,
+							reset,
+							nextSeq: journal.nextSeq,
+						});
 						return;
 					}
 					if (clientGone) return;

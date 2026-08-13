@@ -398,8 +398,8 @@ function stockCatalog(
 			canReport: connectionMode === "loopback" && senderAvailable,
 			limitations:
 				connectionMode === "remote"
-					? ["Slack reporting requires a sender configured for this remote profile"]
-					: ["Slack reporting is available only for validated threaded origins"],
+					? ["Origin reporting requires a sender configured for this remote profile"]
+					: ["Origin reporting is available only for exact validated routes"],
 		},
 		sessions:
 			managerId === null
@@ -897,7 +897,7 @@ export class HermesRuntimeService {
 			profileId
 		);
 		if (!resolved?.projection.canReport || !resolved.target) {
-			throw new Error("Slack reporting is unavailable for this session");
+			throw new Error("Origin reporting is unavailable for this session");
 		}
 		const history = await this.history(input.connectionId, conversationId, profileId);
 		const message = history.messages.find(
@@ -1225,6 +1225,19 @@ export class HermesRuntimeService {
 		let shouldDrain = false;
 		try {
 			this.assertQueueCurrent(queue, admissionGeneration);
+			const explicitId = clientTurnId?.trim();
+			const duplicate = explicitId
+				? [queue.active, ...queue.items, ...queue.settled].find(
+						(candidate): candidate is QueuedFollowUp => candidate?.id === explicitId
+					)
+				: null;
+			if (duplicate) {
+				return {
+					ok: true,
+					disposition: duplicate.wasQueued ? "queued" : "submitted",
+					followUp: this.followUpSummary(duplicate),
+				};
+			}
 			const retryable = queue.items.find(
 				(candidate) =>
 					candidate.status === "failed" &&
@@ -1241,7 +1254,7 @@ export class HermesRuntimeService {
 				retryable.transportUncertain = false;
 				followUp = retryable;
 			} else {
-				const id = clientTurnId?.trim() || this.followUpIdFactory();
+				const id = explicitId || this.followUpIdFactory();
 				const metadata = await this.attachmentStore.claim(attachmentHandles, id);
 				if (!this.isQueueCurrent(queue, admissionGeneration)) {
 					this.attachmentStore.releaseClaim(attachmentHandles, id);
@@ -1799,7 +1812,7 @@ export class HermesRuntimeService {
 						const text = typeof saved["text"] === "string" ? saved["text"] : "";
 						if (!id || restoredIds.has(id)) return [];
 						restoredIds.add(id);
-						const attachments = Array.isArray(saved["attachments"])
+						const attachments: QueuedFollowUp["attachments"] = Array.isArray(saved["attachments"])
 							? saved["attachments"].flatMap((attachment) => {
 									if (!attachment || typeof attachment !== "object" || Array.isArray(attachment)) {
 										return [];
@@ -2731,11 +2744,19 @@ export class HermesRuntimeService {
 					profileId: mappedIdentity?.profileId ?? null,
 					durableSessionId,
 				};
-				if (!durableSessionId || !mappedIdentity) {
+				if (!durableSessionId || !mappedIdentity || !activeTipId) {
 					this.pushEvent(connectionId, mappedEvent);
 					return;
 				}
 				const binding = this.bindingFor(runtime, activeTipId, mappedIdentity.profileId);
+				if (binding && event.type === "message.start") {
+					binding.activeTurnSnapshot.subagents = (
+						binding.activeTurnSnapshot.subagents ?? []
+					).filter((subagent) => subagent.status === "running" || subagent.status === "queued");
+				}
+				if (binding && mappedEvent.payload.subagent) {
+					this.recordSubagentEvent(binding, mappedEvent);
+				}
 				if (event.workspaceArtifacts.length > 0) {
 					this.linkArtifacts(
 						connectionId,
@@ -3111,6 +3132,8 @@ export class HermesRuntimeService {
 					? (previous?.activeTurnSnapshot.pendingClarification ?? null)
 					: null,
 				queuedFollowUps: this.queueSummariesForBinding(runtime, binding),
+				subagents:
+					previous?.activeTurnSnapshot.subagents?.map((subagent) => ({ ...subagent })) ?? [],
 			},
 		};
 		runtime.bindings.set(bindingKey, installed);
@@ -3128,6 +3151,7 @@ export class HermesRuntimeService {
 	): void {
 		const pendingApproval = binding.activeTurnSnapshot.pendingApproval;
 		const pendingClarification = binding.activeTurnSnapshot.pendingClarification;
+		const subagents = binding.activeTurnSnapshot.subagents ?? [];
 		binding.activeTurnSnapshot = normalizeHermesActiveTurnSnapshot(response, {
 			durableSessionId: this.canonicalConversationId(
 				runtime,
@@ -3148,6 +3172,7 @@ export class HermesRuntimeService {
 				(followUp) => !localQueueTexts.has(followUp.text)
 			),
 		];
+		binding.activeTurnSnapshot.subagents = subagents.map((subagent) => ({ ...subagent }));
 		if (binding.activeTurn) {
 			const current = binding.activeTurnIdentity;
 			if (
@@ -3172,6 +3197,44 @@ export class HermesRuntimeService {
 			binding.activeTurnSnapshot.pendingApproval = pendingApproval;
 			binding.activeTurnSnapshot.pendingClarification = pendingClarification;
 		}
+	}
+
+	private recordSubagentEvent(binding: RuntimeBinding, event: HermesRuntimeEvent): void {
+		const payload = event.payload.subagent;
+		if (!payload) return;
+		const subagents = binding.activeTurnSnapshot.subagents ?? [];
+		const index = subagents.findIndex((candidate) => candidate.subagentId === payload.subagentId);
+		const previous = index >= 0 ? subagents[index] : null;
+		const terminal = new Set(["completed", "failed", "interrupted"]);
+		if (previous && terminal.has(previous.status) && !terminal.has(payload.status)) return;
+		const next = {
+			...payload,
+			parentId: payload.parentId ?? previous?.parentId ?? null,
+			childSessionId: payload.childSessionId ?? previous?.childSessionId ?? null,
+			goal: payload.goal ?? previous?.goal ?? null,
+			model: payload.model ?? previous?.model ?? null,
+			depth: payload.depth ?? previous?.depth ?? null,
+			toolCount: payload.toolCount ?? previous?.toolCount ?? null,
+			durationSeconds: payload.durationSeconds ?? previous?.durationSeconds ?? null,
+			costUsd: payload.costUsd ?? previous?.costUsd ?? null,
+			inputTokens: payload.inputTokens ?? previous?.inputTokens ?? null,
+			outputTokens: payload.outputTokens ?? previous?.outputTokens ?? null,
+			summary: payload.summary ?? previous?.summary ?? null,
+			filesRead: payload.filesRead.length > 0 ? payload.filesRead : (previous?.filesRead ?? []),
+			filesWritten:
+				payload.filesWritten.length > 0 ? payload.filesWritten : (previous?.filesWritten ?? []),
+			latestText: event.text ?? previous?.latestText ?? null,
+			currentTool: terminal.has(payload.status)
+				? null
+				: (event.toolName ?? previous?.currentTool ?? null),
+			updatedAt: event.receivedAt,
+		};
+		const updated = [...subagents];
+		if (index >= 0) updated[index] = next;
+		else updated.push(next);
+		binding.activeTurnSnapshot.subagents = updated
+			.sort((left, right) => right.updatedAt - left.updatedAt)
+			.slice(0, 100);
 	}
 
 	private reconcileUncertainFollowUp(

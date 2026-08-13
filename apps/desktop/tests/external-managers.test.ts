@@ -382,6 +382,50 @@ describe("external manager control-plane access", () => {
 		expect(body.events.length).toBe(1);
 	});
 
+	test("events.poll detects a versioned journal replacement without trusting the old cursor", async () => {
+		const mgr = await seedExternalManager({ projectIds: [PROJECT_ID] });
+		const file = crossRepoEventsFilePath(mgr.id);
+		mkdirSync(join(TMP, "events", "cross-repo"), { recursive: true });
+		const envelope = (streamEpoch: string, seq: number, phase: string) => ({
+			schemaVersion: 2,
+			streamEpoch,
+			seq,
+			eventId: `${streamEpoch}-${seq}`,
+			projectId: PROJECT_ID,
+			occurredAt: "now",
+			event: "status",
+			workspaceId: "child",
+			phase,
+		});
+		writeFileSync(
+			file,
+			`${JSON.stringify(envelope("epoch-a", 1, "working"))}\n${JSON.stringify(
+				envelope("epoch-a", 2, "done")
+			)}\n`
+		);
+
+		const current = await fetch(url("/events.poll?afterSeq=1&streamEpoch=epoch-a&waitMs=0"), {
+			headers: authMgr(mgr.id, mgr.token),
+		});
+		expect(await current.json()).toMatchObject({
+			streamEpoch: "epoch-a",
+			reset: false,
+			nextSeq: 2,
+			events: [{ seq: 2, phase: "done" }],
+		});
+
+		writeFileSync(file, `${JSON.stringify(envelope("epoch-b", 1, "blocked"))}\n`);
+		const replaced = await fetch(url("/events.poll?afterSeq=2&streamEpoch=epoch-a&waitMs=0"), {
+			headers: authMgr(mgr.id, mgr.token),
+		});
+		expect(await replaced.json()).toMatchObject({
+			streamEpoch: "epoch-b",
+			reset: true,
+			nextSeq: 1,
+			events: [{ seq: 1, phase: "blocked" }],
+		});
+	});
+
 	test("events.poll delivers events appended while the poll is waiting", async () => {
 		const mgr = await seedExternalManager({ projectIds: [PROJECT_ID] });
 		const file = crossRepoEventsFilePath(mgr.id);

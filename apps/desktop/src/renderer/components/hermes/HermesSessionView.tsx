@@ -67,6 +67,7 @@ import {
 	projectHermesTranscript,
 	reconcileHermesOptimisticUserTurns,
 	reduceHermesComposerAttachments,
+	selectHermesFollowUpProjection,
 	selectHermesTranscriptWindow,
 	settleHermesOptimisticUserTurn,
 } from "../../hermes/hermes-view-model";
@@ -408,6 +409,7 @@ export function HermesSessionView() {
 				documentVisible,
 				sessionRunning: Boolean(session?.running || live.running),
 				sessionBusy: Boolean(session?.busy),
+				externalSource: Boolean(session && session.source !== "superiorswarm"),
 				lastActivityAt: lastHistoryActivityAt,
 				now: Date.now(),
 				consecutiveFailures: revisionFailureCount,
@@ -815,6 +817,9 @@ export function HermesSessionView() {
 	const attachTerminal = trpc.workspaces.attachTerminal.useMutation();
 
 	const isSlackSession = session?.source.toLowerCase() === "slack";
+	const isTelegramSession = session?.source.toLowerCase() === "telegram";
+	const isReportableOriginSession = isSlackSession || isTelegramSession;
+	const originPlatformLabel = isTelegramSession ? "Telegram" : "Slack";
 	const origin = trpc.hermes.origin.useQuery(
 		{ connectionId, profileId: profileId ?? undefined, hermesSessionId: sessionId ?? "" },
 		{ enabled: Boolean(connectionId && profileId && sessionId && connected) }
@@ -824,25 +829,43 @@ export function HermesSessionView() {
 	const originActions = hermesOriginActionAvailability(origin.data);
 	const reports = trpc.hermes.reports.useQuery(
 		{ connectionId, profileId: profileId ?? undefined, hermesSessionId: sessionId ?? "" },
-		{ enabled: Boolean(connectionId && profileId && sessionId && isSlackSession && connected) }
+		{
+			enabled: Boolean(
+				connectionId && profileId && sessionId && isReportableOriginSession && connected
+			),
+		}
 	);
 	const report = trpc.hermes.reportToOrigin.useMutation();
 	const transcriptItems = useMemo(
 		() => projectHermesTranscript(canonicalMessages),
 		[canonicalMessages]
 	);
+	const authoritativeFollowUps = useMemo(
+		() =>
+			selectHermesFollowUpProjection(
+				followUps.data,
+				live.queuedFollowUps,
+				live.followUpSnapshotReceived
+			),
+		[followUps.data, live.followUpSnapshotReceived, live.queuedFollowUps]
+	);
 	const optimisticUserItems = useMemo(
-		() => projectHermesOptimisticUserTurns(canonicalMessages, optimisticUserTurns),
-		[canonicalMessages, optimisticUserTurns]
+		() =>
+			projectHermesOptimisticUserTurns(
+				canonicalMessages,
+				optimisticUserTurns,
+				authoritativeFollowUps
+			),
+		[authoritativeFollowUps, canonicalMessages, optimisticUserTurns]
 	);
 	const queuedUserItems = useMemo(
 		() =>
 			projectHermesQueuedFollowUps(
 				canonicalMessages,
-				followUps.data ?? live.queuedFollowUps,
+				authoritativeFollowUps,
 				new Set(optimisticUserTurns.map((turn) => turn.id))
 			),
-		[canonicalMessages, followUps.data, live.queuedFollowUps, optimisticUserTurns]
+		[authoritativeFollowUps, canonicalMessages, optimisticUserTurns]
 	);
 	const transcriptProjectionItems = useMemo(
 		() => [...transcriptItems, ...optimisticUserItems, ...queuedUserItems],
@@ -880,7 +903,9 @@ export function HermesSessionView() {
 			session?.source !== "superiorswarm" &&
 			((originActions.canOpenOrigin && originReturnLabel) || isSlackSession)
 	);
-	const hasReportAction = Boolean(isSlackSession && originActions.canReportToOrigin && reportable);
+	const hasReportAction = Boolean(
+		isReportableOriginSession && originActions.canReportToOrigin && reportable
+	);
 	const hasSessionOptions = hasOriginAction || hasReportAction;
 	const visibleOriginLabels = [
 		visibleOrigin?.workspaceLabel,
@@ -940,7 +965,11 @@ export function HermesSessionView() {
 					hermesComposerDrafts.settleSubmission(draftIdentity, draftSubmission, result.disposition);
 					runForSelection(generation, () => {
 						setOptimisticUserTurns((current) =>
-							settleHermesOptimisticUserTurn(current, optimisticTurn.id, "accepted")
+							settleHermesOptimisticUserTurn(
+								current,
+								optimisticTurn.id,
+								result.disposition === "queued" ? "queued" : "accepted"
+							)
 						);
 						dispatchAttachments({ type: "succeeded" });
 						setAttachmentLimitError(null);
@@ -1209,6 +1238,7 @@ export function HermesSessionView() {
 				<HermesSessionTabStrip
 					activePane={activePane}
 					worktreeCount={links.data?.length ?? 0}
+					nativeAgentCount={live.subagents.length}
 					onSelect={setActivePane}
 				/>
 
@@ -1303,7 +1333,7 @@ export function HermesSessionView() {
 							</section>
 						)}
 
-						{isSlackSession && originActions.canReportToOrigin && reportable && (
+						{isReportableOriginSession && originActions.canReportToOrigin && reportable && (
 							<section className="min-w-0">
 								<div className="mb-1.5 text-[10px] font-medium text-[var(--text-tertiary)]">
 									Report to origin
@@ -1342,8 +1372,8 @@ export function HermesSessionView() {
 												{report.isPending
 													? "Sending…"
 													: hermesReportRequiresExplicitRetry(reportState)
-														? "Confirm retry to Slack"
-														: "Confirm send to Slack"}
+														? `Confirm retry to ${originPlatformLabel}`
+														: `Confirm send to ${originPlatformLabel}`}
 											</button>
 											<button
 												type="button"
@@ -1365,7 +1395,7 @@ export function HermesSessionView() {
 										onClick={() => setShowReportPreview(true)}
 										className="rounded-[6px] border border-[var(--border)] px-2 py-1 text-[10px] text-[var(--text-secondary)]"
 									>
-										Preview Slack update
+										Preview {originPlatformLabel} update
 									</button>
 								)}
 							</section>
@@ -1690,7 +1720,9 @@ export function HermesSessionView() {
 						</div>
 						<div className="flex min-w-0 items-center gap-1.5 px-2 pb-0.5 text-[9px] text-[var(--text-quaternary)]">
 							<span className="truncate">
-								{isSlackSession ? "Sequential Slack continuation" : "Hermes context preserved"}
+								{isReportableOriginSession
+									? `Sequential ${originPlatformLabel} continuation`
+									: "Hermes context preserved"}
 							</span>
 							{attachments.length > 0 && (
 								<span className="ml-auto shrink-0">
@@ -1704,6 +1736,7 @@ export function HermesSessionView() {
 
 			<HermesWorktreesPane
 				links={links.data ?? []}
+				nativeSubagents={live.subagents}
 				availableWorktrees={availableWorkspaces.data ?? []}
 				recoveryWorktreeId={recoveryWorktreeId}
 				recoveryPending={linkWorkspace.isPending || unlinkWorkspace.isPending}

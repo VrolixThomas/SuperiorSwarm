@@ -203,14 +203,36 @@ export interface ReadMessagesResponse {
 
 export const eventsPollRequestSchema = z.object({
 	afterSeq: z.coerce.number().int().min(0).default(0),
+	/** Epoch returned by the previous poll. Omit for the first/legacy poll. */
+	streamEpoch: z.string().min(1).max(200).optional(),
 	waitMs: z.coerce.number().int().min(0).max(55_000).default(25_000),
 });
 export type EventsPollRequest = z.infer<typeof eventsPollRequestSchema>;
 
+export interface CoordinationEventEnvelope {
+	schemaVersion: 2;
+	/** Changes whenever a journal is replaced or truncated. */
+	streamEpoch: string;
+	/** Monotonic within one stream epoch. */
+	seq: number;
+	/** Stable identity shared by every fan-out copy of this logical event. */
+	eventId: string;
+	projectId: string;
+	occurredAt: string;
+	/** True when this event belongs to a child explicitly attached to the polling manager. */
+	ownedByRecipient?: boolean;
+	event: "status" | "message";
+	[key: string]: unknown;
+}
+
 export interface EventsPollResponse {
-	/** Parsed jsonl event objects after the cursor. Unparseable lines are skipped. */
-	events: unknown[];
-	/** New cursor: total line count of the events file. */
+	/** Versioned event envelopes after the cursor. Legacy raw events remain readable during migration. */
+	events: Array<CoordinationEventEnvelope | unknown>;
+	/** Current durable stream epoch, or null for a legacy-only journal. */
+	streamEpoch: string | null;
+	/** True when the supplied epoch no longer names the current journal. */
+	reset: boolean;
+	/** New cursor within streamEpoch. */
 	nextSeq: number;
 }
 

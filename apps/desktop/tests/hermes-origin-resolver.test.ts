@@ -78,14 +78,48 @@ describe("Hermes Slack origin resolver", () => {
 			threadLabel: "Release incident",
 			hasThread: true,
 			canOpenThread: true,
-			canReport: false,
+			canReport: true,
 		});
-		expect(resolved.target).toBeNull();
+		expect(resolved.target).toEqual({
+			platform: "telegram",
+			chatId: "-1001234567890",
+			threadId: "77",
+		});
 		expect(resolved.openUrl).toBe("https://t.me/c/1234567890/77");
 		const rendererJson = JSON.stringify(resolved.projection);
 		expect(rendererJson).not.toContain("-1001234567890");
 		expect(rendererJson).not.toContain("99887766");
 		expect(rendererJson).not.toContain('"77"');
+	});
+
+	test("reports to an exact Telegram private chat without inventing a public navigation URL", () => {
+		const resolved = resolveHermesOrigin(
+			{
+				durableSessionId: "telegram-dm",
+				profileId: "personal",
+				source: "telegram",
+				displayName: "Alex",
+				sessionKey: null,
+				chatId: "99887766",
+				chatType: "dm",
+				threadId: null,
+				originJson: { platform: "telegram", chat_id: "99887766", chat_type: "dm" },
+			},
+			{ connectionMode: "loopback", senderAvailable: true }
+		);
+
+		expect(resolved.projection).toMatchObject({
+			platform: "telegram",
+			hasThread: false,
+			canOpenThread: false,
+			canReport: true,
+		});
+		expect(resolved.target).toEqual({
+			platform: "telegram",
+			chatId: "99887766",
+			threadId: null,
+		});
+		expect(resolved.openUrl).toBeNull();
 	});
 
 	test("does not build Telegram return links from malformed or conflicting routes", () => {
@@ -117,6 +151,9 @@ describe("Hermes Slack origin resolver", () => {
 			expect(resolved.projection.canOpenThread).toBe(false);
 			expect(resolved.openUrl).toBeNull();
 		}
+		expect(resolveTelegram("-1001234567890", "-1001234567890", "0").projection.canReport).toBe(
+			false
+		);
 	});
 
 	test("sanitizes token-like and bearer-like labels in selected Telegram details", () => {

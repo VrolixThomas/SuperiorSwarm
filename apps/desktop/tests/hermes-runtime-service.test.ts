@@ -23,6 +23,7 @@ import {
 	listHermesOriginReports,
 	prepareHermesOriginReport,
 } from "../src/main/hermes/hermes-origin-reports";
+import type { HermesOriginTarget } from "../src/main/hermes/hermes-origin-resolver";
 import {
 	HermesRestClient,
 	type HermesStockSessionDetail,
@@ -324,7 +325,7 @@ class FakeSendService {
 	response: Promise<{ providerMessageId: string | null }> | null = null;
 	sends: Array<{
 		profileId: string;
-		target: { channelId: string; threadId: string };
+		target: HermesOriginTarget;
 		content: string;
 	}> = [];
 
@@ -334,7 +335,7 @@ class FakeSendService {
 
 	send(input: {
 		profileId: string;
-		target: { channelId: string; threadId: string };
+		target: HermesOriginTarget;
 		content: string;
 	}): Promise<{ providerMessageId: string | null }> {
 		this.sends.push(input);
@@ -2728,6 +2729,14 @@ describe("HermesRuntimeService stock lifecycle", () => {
 			"work",
 			"client-turn-second"
 		);
+		const duplicateSecond = await service.submitFollowUp(
+			connectionId,
+			"stored-1",
+			"Second",
+			[],
+			"work",
+			"client-turn-second"
+		);
 		const third = await service.submitFollowUp(
 			connectionId,
 			"stored-1",
@@ -2738,6 +2747,7 @@ describe("HermesRuntimeService stock lifecycle", () => {
 		);
 
 		expect(second.disposition).toBe("queued");
+		expect(duplicateSecond.followUp.id).toBe(second.followUp.id);
 		expect(third.disposition).toBe("queued");
 		expect(second.followUp.id).toBe("client-turn-second");
 		expect(third.followUp.id).toBe("client-turn-third");
@@ -4404,6 +4414,69 @@ describe("HermesRuntimeService stock lifecycle", () => {
 		});
 	});
 
+	test("late selection recovers native subagents from the main-owned conversation snapshot", async () => {
+		client.responses.set("session.resume", [
+			{
+				session_id: "runtime-subagents",
+				session_key: "stored-1",
+				profile: "work",
+				running: true,
+				status: "streaming",
+				messages: [],
+			},
+		]);
+		client.responses.set("session.activate", [
+			{
+				session_id: "runtime-subagents",
+				session_key: "stored-1",
+				profile: "work",
+				running: true,
+				status: "streaming",
+				messages: [],
+			},
+		]);
+		await service.connect(connectionId);
+		await service.resume(connectionId, "stored-1");
+		client.emit({
+			type: "subagent.progress",
+			runtimeSessionId: "runtime-subagents",
+			text: "Inspecting the gateway",
+			toolName: "search",
+			payload: {
+				subagent: {
+					subagentId: "native-child",
+					parentId: null,
+					childSessionId: "child-session",
+					goal: "Find the queue race",
+					model: "hermes-test",
+					status: "running",
+					taskIndex: 0,
+					taskCount: 1,
+					depth: 1,
+					toolCount: 1,
+					durationSeconds: null,
+					costUsd: null,
+					inputTokens: null,
+					outputTokens: null,
+					summary: null,
+					filesRead: [],
+					filesWritten: [],
+				},
+			},
+			receivedAt: 50,
+		});
+
+		const rejoined = await service.resume(connectionId, "stored-1");
+		expect(rejoined.activeTurnSnapshot.subagents).toEqual([
+			expect.objectContaining({
+				subagentId: "native-child",
+				goal: "Find the queue race",
+				latestText: "Inspecting the gateway",
+				currentTool: "search",
+			}),
+		]);
+	});
+
 	test("snapshots only unresolved interactions for their owning session", async () => {
 		client.responses.set("session.resume", [
 			{
@@ -4932,6 +5005,65 @@ describe("HermesRuntimeService stock lifecycle", () => {
 		});
 		expect(compressedDuplicate.status).toBe("duplicate-suppressed");
 		expect(sender.sends).toHaveLength(1);
+	});
+
+	test("reports canonical persisted assistant content to an exact Telegram forum topic", async () => {
+		rest.details.set("telegram-topic", {
+			durableSessionId: "telegram-topic",
+			profileId: "work",
+			source: "telegram",
+			displayName: "Release coordination",
+			sessionKey: null,
+			chatId: "-1001234567890",
+			chatType: "group",
+			threadId: "77",
+			originJson: {
+				platform: "telegram",
+				chat_id: "-1001234567890",
+				thread_id: "77",
+			},
+		});
+		rest.histories.set("telegram-topic", {
+			durableSessionId: "telegram-topic",
+			view: "durable",
+			messages: [
+				historyMessage("telegram-assistant", {
+					turnId: "telegram-turn",
+					text: "Canonical Telegram update",
+				}),
+			],
+		});
+		await service.connect(connectionId);
+
+		const origin = await service.origin(connectionId, "telegram-topic", "work");
+		expect(origin).toMatchObject({
+			platform: "telegram",
+			displayLabel: "Release coordination",
+			hasThread: true,
+			canOpenThread: true,
+			canReport: true,
+		});
+		expect(origin).not.toHaveProperty("target");
+
+		const sent = await service.reportToOrigin({
+			connectionId,
+			hermesSessionId: "telegram-topic",
+			profileId: "work",
+			messageId: "telegram-assistant",
+			explicitRetry: false,
+		});
+		expect(sent).toMatchObject({ status: "sent", providerMessageId: "provider-1" });
+		expect(sender.sends).toEqual([
+			{
+				profileId: "work",
+				target: {
+					platform: "telegram",
+					chatId: "-1001234567890",
+					threadId: "77",
+				},
+				content: "Canonical Telegram update",
+			},
+		]);
 	});
 
 	test("finishes an in-flight origin report on the physical compression child", async () => {

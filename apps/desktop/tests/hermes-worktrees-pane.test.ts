@@ -56,24 +56,25 @@ describe("Hermes Worktrees pane", () => {
 		).toBe("legacy-session");
 	});
 
-	test("renders an accessible Chat-first tab strip with Worktrees immediately to its right", () => {
+	test("renders an accessible Chat-first tab strip with Agents immediately to its right", () => {
 		const html = renderToStaticMarkup(
 			createElement(HermesSessionTabStrip, {
 				activePane: "chat",
 				worktreeCount: 3,
+				nativeAgentCount: 2,
 				onSelect: () => {},
 			})
 		);
 
 		expect(html).toContain('role="tablist"');
-		expect(html).toMatch(/>Chat<.*>Worktrees</s);
+		expect(html).toMatch(/>Chat<.*>Agents</s);
 		expect(html).toContain('id="hermes-chat-tab"');
 		expect(html).toContain('aria-selected="true"');
 		expect(html).toContain('aria-controls="hermes-chat-panel"');
 		expect(html).toContain('aria-controls="hermes-worktrees-panel"');
 		expect(html).toMatch(/id="hermes-chat-tab"[^>]*tabindex="0"/);
 		expect(html).toMatch(/id="hermes-worktrees-tab"[^>]*tabindex="-1"/);
-		expect(html).toContain("3");
+		expect(html).toContain("5");
 	});
 
 	test("supports wrapped arrow and boundary-key tab selection", () => {
@@ -124,9 +125,55 @@ describe("Hermes Worktrees pane", () => {
 			})
 		);
 
-		expect(html).toContain("Hermes will add worktrees here when repository changes are needed.");
+		expect(html).toContain(
+			"Hermes delegates and SuperiorSwarm worktree agents will appear here as they are dispatched."
+		);
 		expect(html).not.toContain("Select a repository");
 		expect(html).not.toContain("No workspace");
+	});
+
+	test("shows native Hermes delegates beside worktree agents", () => {
+		const html = renderToStaticMarkup(
+			createElement(HermesWorktreesPane, {
+				links: [link()],
+				nativeSubagents: [
+					{
+						subagentId: "native-1",
+						parentId: null,
+						childSessionId: "child-session",
+						goal: "Inspect the gateway queue",
+						model: "hermes-test",
+						status: "running",
+						taskIndex: 0,
+						taskCount: 1,
+						depth: 1,
+						toolCount: 2,
+						durationSeconds: null,
+						costUsd: null,
+						inputTokens: null,
+						outputTokens: null,
+						summary: null,
+						filesRead: [],
+						filesWritten: [],
+						latestText: "Reading gateway/run.py",
+						currentTool: "search",
+						updatedAt: 1,
+					},
+				],
+				availableWorktrees: [],
+				recoveryWorktreeId: "",
+				recoveryPending: false,
+				onOpen: () => {},
+				onRecoveryChange: () => {},
+				onRecoveryLink: () => {},
+				onRecoveryUnlink: () => {},
+			})
+		);
+
+		expect(html).toContain("Hermes delegates");
+		expect(html).toContain("Inspect the gateway queue");
+		expect(html).toContain("Reading gateway/run.py");
+		expect(html).toContain("Worktree agents · App");
 	});
 
 	test("shows phase, status, needs, and a disabled missing/deleted state", () => {

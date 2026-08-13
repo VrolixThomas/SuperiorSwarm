@@ -43,6 +43,8 @@ function event(
 function makeManager(options: {
 	settings?: AgentSleepSettings;
 	minuteMs?: number;
+	followUpReadyTimeoutMs?: number;
+	followUpPollMs?: number;
 	terminationResult?: AgentTerminationResult;
 	inspectionResult?: AgentForegroundInspection | (() => Promise<AgentForegroundInspection>);
 	terminalIds?: string[];
@@ -76,6 +78,8 @@ function makeManager(options: {
 		processController,
 		getSettings: () => options.settings ?? ENABLED_SETTINGS,
 		minuteMs: options.minuteMs ?? 10,
+		followUpReadyTimeoutMs: options.followUpReadyTimeoutMs,
+		followUpPollMs: options.followUpPollMs,
 	});
 	return { manager, writes, terminations };
 }
@@ -248,6 +252,59 @@ describe("AgentSessionManager", () => {
 				data: "codex resume 'codex-session-1' -c approval_policy=never -c sandbox_mode=danger-full-access 'review the failures'\r",
 			},
 		]);
+	});
+
+	test("waits for a completing managed child before resuming the same provider session", async () => {
+		const fixture = makeManager({
+			followUpReadyTimeoutMs: 200,
+			followUpPollMs: 1,
+		});
+		managers.push(fixture.manager);
+		fixture.manager.registerManagedSession({
+			terminalId: "term-1",
+			workspaceId,
+			provider: "gemini",
+			providerSessionId: "gemini-session-1",
+			skipPermissions: true,
+		});
+
+		const followUp = fixture.manager.wakeWorkspace(workspaceId, "continue with verification");
+		await Bun.sleep(5);
+		fixture.manager.handleAgentEvent({
+			...event("term-1", workspaceId),
+			agent: "gemini",
+			providerSessionId: "gemini-session-1",
+		});
+
+		expect(await followUp).toEqual({ status: "woke", terminalId: "term-1" });
+		expect(fixture.terminations).toEqual([{ terminalId: "term-1", provider: "gemini" }]);
+		expect(fixture.writes).toEqual([
+			{
+				id: "term-1",
+				data: "gemini --resume 'gemini-session-1' --yolo 'continue with verification'\r",
+			},
+		]);
+	});
+
+	test("fails closed without writing into a child that remains active", async () => {
+		const fixture = makeManager({
+			followUpReadyTimeoutMs: 5,
+			followUpPollMs: 1,
+		});
+		managers.push(fixture.manager);
+		fixture.manager.registerManagedSession({
+			terminalId: "term-1",
+			workspaceId,
+			provider: "codex",
+			providerSessionId: "codex-session-1",
+			skipPermissions: false,
+		});
+
+		expect(await fixture.manager.wakeWorkspace(workspaceId, "do not inject this")).toEqual({
+			status: "none",
+		});
+		expect(fixture.terminations).toEqual([]);
+		expect(fixture.writes).toEqual([]);
 	});
 
 	test("records a failed automatic sleep without retrying in a tight loop", async () => {

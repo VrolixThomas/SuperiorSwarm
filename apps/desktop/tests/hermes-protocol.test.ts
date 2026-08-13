@@ -481,6 +481,55 @@ describe("stock Hermes protocol adapter", () => {
 		expect(JSON.stringify(event)).not.toContain("secret");
 	});
 
+	test("preserves allowlisted native subagent identity and progress without leaking raw payload", () => {
+		const event = normalizeHermesEvent({
+			jsonrpc: "2.0",
+			method: "event",
+			params: {
+				session_id: "runtime-parent",
+				type: "subagent.progress",
+				payload: {
+					subagent_id: "child-1",
+					parent_id: "parent-child",
+					child_session_id: "durable-child",
+					goal: "Investigate the queue",
+					model: "hermes-test",
+					status: "running",
+					task_index: 1,
+					task_count: 3,
+					depth: 1,
+					tool_count: 4,
+					files_read: ["gateway/run.py"],
+					files_written: ["tests/test_queue.py"],
+					text: "checking FIFO",
+					token: "must-not-leak",
+					origin_json: { chat_id: "must-not-leak" },
+				},
+			},
+		});
+
+		expect(event).toMatchObject({
+			type: "subagent.progress",
+			runtimeSessionId: "runtime-parent",
+			text: "checking FIFO",
+			payload: {
+				subagent: {
+					subagentId: "child-1",
+					parentId: "parent-child",
+					childSessionId: "durable-child",
+					goal: "Investigate the queue",
+					status: "running",
+					taskIndex: 1,
+					taskCount: 3,
+					toolCount: 4,
+					filesRead: ["gateway/run.py"],
+					filesWritten: ["tests/test_queue.py"],
+				},
+			},
+		});
+		expect(JSON.stringify(event)).not.toContain("must-not-leak");
+	});
+
 	test("rejects malformed stock bindings and sanitizes secret-bearing payloads", () => {
 		expect(() => normalizeHermesSessionBinding({ session_id: "runtime-only" })).toThrow(
 			"durable session"
