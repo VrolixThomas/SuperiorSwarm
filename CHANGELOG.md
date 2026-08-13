@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.21.1 (2026-08-13)
+
+### What's New
+
+SuperiorSwarm now handles queued Agent follow-ups more reliably across completion, reconnects, and long conversations while preserving failed drafts and concurrent edits. Slack and Telegram sessions stay synchronized without cluttering the Agents workspace, Telegram private-chat updates return to the correct conversation, and orchestrator follow-ups wake and route more consistently.
+
+### Changes
+
+- fix(hermes): harden queued chat and external session sync (#145)
+
 ## v0.21.0 (2026-08-12)
 
 ### What's New
