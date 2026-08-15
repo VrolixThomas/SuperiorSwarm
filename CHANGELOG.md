@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.22.0 (2026-08-15)
+
+### What's New
+
+SuperiorSwarm can now redirect a new text message into an Agent's active run, letting you correct or refine work immediately instead of waiting for the next turn. The conversation shows an instant acknowledgement and reconstructs corrections accurately after reconnects. Messages with attachments, unsupported runtimes, or confirmed delivery failures continue through the durable queue, with safeguards against duplicate delivery.
+
+### Changes
+
+- feat: redirect messages into active Hermes runs (#146)
+
 ## v0.21.1 (2026-08-13)
 
 ### What's New
