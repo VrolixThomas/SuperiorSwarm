@@ -16,6 +16,7 @@ import {
 	type HermesSessionHistoryPage,
 	type HermesSessionRevision,
 	type HermesSessionSummary,
+	type HermesSubmitResult,
 	type HermesTagColor,
 	hermesSessionCompositeIdentityKey,
 	hermesSessionIdentityKey,
@@ -263,6 +264,28 @@ const DEFAULT_RECOVERY_MAX_MS = 15_000;
 const MAX_ACCEPTED_FOLLOW_UP_LEDGER = 100;
 const MAX_PROCESSED_TERMINAL_IDENTITIES = 128;
 const MAX_PENDING_TERMINAL_EVENTS = 16;
+
+function redirectStatus(value: unknown): "redirected" | "queued" | "rejected" | null {
+	const status = runtimeString(runtimeRecord(value)?.["status"])?.toLocaleLowerCase();
+	return status === "redirected" || status === "queued" || status === "rejected" ? status : null;
+}
+
+function isRedirectUnavailable(error: unknown): boolean {
+	if (error instanceof HermesRpcError) {
+		if (error.code === -32601 || error.code === 4010) return true;
+	}
+	const message = error instanceof Error ? error.message.toLocaleLowerCase() : "";
+	return (
+		message.includes("method not found") ||
+		message.includes("does not support active-turn redirect") ||
+		message.includes("agent does not support redirect")
+	);
+}
+
+function isRuntimeSessionNotFound(error: unknown): boolean {
+	if (error instanceof HermesRpcError && error.code === 4040) return true;
+	return error instanceof Error && error.message.toLocaleLowerCase().includes("session not found");
+}
 
 function runtimeRecord(value: unknown): Record<string, unknown> | null {
 	return value !== null && typeof value === "object" && !Array.isArray(value)
@@ -1194,7 +1217,7 @@ export class HermesRuntimeService {
 		attachmentHandles: string[] = [],
 		requestedProfileId?: string
 	): Promise<{ ok: true }> {
-		await this.submitFollowUp(
+		await this.submitMessage(
 			connectionId,
 			hermesSessionId,
 			text,
@@ -1202,6 +1225,108 @@ export class HermesRuntimeService {
 			requestedProfileId
 		);
 		return { ok: true };
+	}
+
+	async submitMessage(
+		connectionId: string,
+		hermesSessionId: string,
+		text: string,
+		attachmentHandles: string[] = [],
+		requestedProfileId?: string,
+		clientTurnId?: string
+	): Promise<HermesSubmitResult> {
+		const fallback = async (): Promise<HermesSubmitResult> => {
+			const result = await this.submitFollowUp(
+				connectionId,
+				hermesSessionId,
+				text,
+				attachmentHandles,
+				requestedProfileId,
+				clientTurnId
+			);
+			if (result.disposition === "queued") {
+				return { ok: true, disposition: "queued", followUp: result.followUp };
+			}
+			return { ok: true, disposition: "submitted", followUp: null };
+		};
+
+		const runtime = this.runtimes.get(connectionId);
+		if (!runtime || attachmentHandles.length > 0 || !text.trim()) return await fallback();
+		if (runtime.reconnectTask) await runtime.reconnectTask;
+		if (this.runtimes.get(connectionId) !== runtime) return await fallback();
+
+		const identity = this.followUpIdentity(connectionId, hermesSessionId, requestedProfileId);
+		let binding = this.bindingFor(runtime, identity.durableSessionId, identity.profileId);
+		const queue = this.followUpQueueForSession(
+			connectionId,
+			runtime,
+			identity.profileId,
+			identity.durableSessionId
+		);
+		if (
+			!binding?.activeTurn ||
+			queue?.active ||
+			(queue?.items.length ?? 0) > 0 ||
+			queue?.draining ||
+			(queue?.admissions ?? 0) > 0
+		) {
+			return await fallback();
+		}
+
+		const requestRedirect = async (): Promise<unknown> =>
+			await runtime.client.request("session.redirect", {
+				session_id: binding?.runtimeSessionId,
+				text: text.trim(),
+			});
+
+		let response: unknown;
+		try {
+			response = await requestRedirect();
+		} catch (error) {
+			if (isRuntimeSessionNotFound(error)) {
+				try {
+					binding = await this.resumeBinding(
+						connectionId,
+						runtime,
+						this.resolveDurableId(runtime, identity.durableSessionId, identity.profileId),
+						identity.profileId,
+						binding
+					);
+					if (!binding.activeTurn) return await fallback();
+					response = await requestRedirect();
+				} catch (retryError) {
+					if (isRuntimeSessionNotFound(retryError) || isRedirectUnavailable(retryError)) {
+						return await fallback();
+					}
+					if (retryError instanceof HermesTransportError && retryError.deliveryUncertain) {
+						throw new Error(
+							"Hermes could not confirm whether the correction was delivered. Reconnect and check the active turn before retrying."
+						);
+					}
+					if (retryError instanceof HermesTransportError) return await fallback();
+					throw sanitizedConnectionError(retryError);
+				}
+			} else if (isRedirectUnavailable(error)) {
+				return await fallback();
+			} else if (error instanceof HermesTransportError && error.deliveryUncertain) {
+				throw new Error(
+					"Hermes could not confirm whether the correction was delivered. Reconnect and check the active turn before retrying."
+				);
+			} else if (error instanceof HermesTransportError) {
+				return await fallback();
+			} else {
+				throw sanitizedConnectionError(error);
+			}
+		}
+
+		const status = redirectStatus(response);
+		if (status === "redirected") {
+			return { ok: true, disposition: "redirected", followUp: null };
+		}
+		if (status === "queued") {
+			return { ok: true, disposition: "queued", followUp: null };
+		}
+		return await fallback();
 	}
 
 	async submitFollowUp(
@@ -3125,6 +3250,8 @@ export class HermesRuntimeService {
 				activeTurn,
 				status: runtimeStatus,
 				turnId: null,
+				inflightUser: null,
+				corrections: [],
 				streamingText: "",
 				tools: [],
 				pendingApproval: activeTurn ? (previous?.activeTurnSnapshot.pendingApproval ?? null) : null,

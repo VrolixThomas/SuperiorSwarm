@@ -452,7 +452,8 @@ describe("Hermes global navigation", () => {
 		);
 		expect(view).toContain("onPaste={handleChatPaste}");
 		expect(view).toContain('event.dataTransfer.dropEffect = "copy"');
-		expect(view).toContain('aria-label={live.running ? "Queue follow-up" : "Send message"}');
+		expect(view).toContain('"Redirect current run"');
+		expect(view).toContain('"Queue follow-up"');
 		expect(view).not.toContain("Use the paperclip");
 		expect(view).toContain("new HermesHistorySyncCoordinator()");
 		expect(view).toContain("historyRevision.errorUpdatedAt");

@@ -280,6 +280,14 @@ export interface HermesPendingInteractionSnapshot {
 	choices: HermesInteractionChoiceDto[];
 }
 
+export interface HermesActiveTurnCorrectionSnapshot {
+	id: string;
+	text: string;
+	/** Assistant output emitted after the prior correction and before this one. */
+	assistantTextBefore: string;
+	knownCanonicalUserMessageIds: string[];
+}
+
 export interface HermesActiveTurnSnapshot {
 	durableSessionId: string;
 	runtimeSessionId: string;
@@ -287,6 +295,8 @@ export interface HermesActiveTurnSnapshot {
 	activeTurn: boolean;
 	status: string | null;
 	turnId: string | null;
+	inflightUser: HermesQueuedFollowUpSummary | null;
+	corrections: HermesActiveTurnCorrectionSnapshot[];
 	streamingText: string;
 	tools: Array<{
 		id: string;
@@ -302,6 +312,21 @@ export interface HermesActiveTurnSnapshot {
 }
 
 export type HermesQueuedFollowUpStatus = "queued" | "submitting" | "accepted" | "failed";
+
+export type HermesSubmitDisposition = "submitted" | "redirected" | "queued";
+
+export type HermesSubmitResult =
+	| {
+			ok: true;
+			disposition: "submitted" | "redirected";
+			followUp: null;
+	  }
+	| {
+			ok: true;
+			disposition: "queued";
+			/** Null when stock Hermes owns the build-window queue. */
+			followUp: HermesQueuedFollowUpSummary | null;
+	  };
 
 /** Renderer-safe queue projection. Attachment handles, bytes, paths, and credentials stay in main. */
 export interface HermesQueuedFollowUpSummary {

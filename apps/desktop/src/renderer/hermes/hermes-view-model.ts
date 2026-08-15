@@ -1,4 +1,5 @@
 import type {
+	HermesActiveTurnCorrectionSnapshot,
 	HermesActiveTurnSnapshot,
 	HermesAttachmentKind,
 	HermesAttachmentMetadata,
@@ -54,6 +55,8 @@ export interface HermesLiveSubagent extends HermesSubagentEventPayload {
 export interface HermesLiveState {
 	running: boolean;
 	runtimeStatus: string | null;
+	inflightUser: HermesQueuedFollowUpSummary | null;
+	corrections: HermesActiveTurnCorrectionSnapshot[];
 	streamingText: string;
 	completed: Array<{ turnId: string | null; text: string; canonicalMessageIds: string[] }>;
 	activeTurnCanonicalAssistantIds: string[];
@@ -522,6 +525,8 @@ export interface HermesOptimisticUserTurn {
 	attachments: Array<Pick<HermesAttachmentMetadata, "kind" | "name">>;
 	delivery: "pending" | "queued" | "submitting" | "accepted" | "failed";
 	knownCanonicalUserMessageIds: string[];
+	/** Assistant output already visible when this message redirected the live turn. */
+	assistantCheckpoint?: string | null;
 }
 
 export type HermesComposerAttachmentAction =
@@ -750,12 +755,14 @@ export function createHermesOptimisticUserTurn(input: {
 	text: string;
 	attachments: Array<Pick<HermesAttachmentMetadata, "kind" | "name">>;
 	canonicalMessages: HermesTranscriptMessage[];
+	assistantCheckpoint?: string | null;
 }): HermesOptimisticUserTurn {
 	return {
 		id: input.id,
 		text: input.text.trim() || "Review the attached files.",
 		attachments: input.attachments.map(({ kind, name }) => ({ kind, name })),
 		delivery: "pending",
+		assistantCheckpoint: input.assistantCheckpoint?.trim() ? input.assistantCheckpoint : null,
 		knownCanonicalUserMessageIds: input.canonicalMessages
 			.filter((message) => message.role === "user")
 			.map(hermesCanonicalMessageIdentity),
@@ -817,10 +824,10 @@ export function projectHermesOptimisticUserTurns(
 	followUps: HermesQueuedFollowUpSummary[] = []
 ): HermesProjectedMessage[] {
 	const followUpsById = new Map(followUps.map((followUp) => [followUp.id, followUp]));
-	return reconcileHermesOptimisticUserTurns(canonicalMessages, turns).map((turn) => {
+	return reconcileHermesOptimisticUserTurns(canonicalMessages, turns).flatMap((turn) => {
 		const followUp = followUpsById.get(turn.id);
 		const delivery = followUp?.status ?? turn.delivery;
-		return {
+		const userMessage: HermesProjectedMessage = {
 			kind: "message",
 			id: `optimistic-user:${turn.id}`,
 			role: "user",
@@ -851,6 +858,31 @@ export function projectHermesOptimisticUserTurns(
 				workspaceArtifacts: [],
 			},
 		};
+		if (!turn.assistantCheckpoint?.trim()) return [userMessage];
+		const checkpoint: HermesProjectedMessage = {
+			kind: "message",
+			id: `optimistic-assistant-checkpoint:${turn.id}`,
+			role: "assistant",
+			text: turn.assistantCheckpoint,
+			attachments: [],
+			source: {
+				id: `optimistic-assistant-checkpoint:${turn.id}`,
+				canonicalMessageId: null,
+				compactionGeneration: null,
+				active: true,
+				compacted: false,
+				displayKind: null,
+				compactionSummaryType: null,
+				turnId: null,
+				role: "assistant",
+				text: turn.assistantCheckpoint,
+				createdAt: null,
+				status: "redirected-checkpoint",
+				toolName: null,
+				workspaceArtifacts: [],
+			},
+		};
+		return [checkpoint, userMessage];
 	});
 }
 
@@ -870,6 +902,7 @@ export function projectHermesQueuedFollowUps(
 			attachments: followUp.attachments,
 			delivery: "accepted",
 			knownCanonicalUserMessageIds: followUp.knownCanonicalUserMessageIds,
+			assistantCheckpoint: null,
 		};
 		const knownIds = new Set(followUp.knownCanonicalUserMessageIds);
 		const matchIndex = canonicalUsers.findIndex(
@@ -913,6 +946,113 @@ export function projectHermesQueuedFollowUps(
 			workspaceArtifacts: [],
 		},
 	}));
+}
+
+export function projectHermesActiveTurn(
+	state: Pick<HermesLiveState, "inflightUser" | "corrections">,
+	canonicalMessages: HermesTranscriptMessage[]
+): HermesProjectedMessage[] {
+	const projected: HermesProjectedMessage[] = state.inflightUser
+		? projectHermesQueuedFollowUps(canonicalMessages, [state.inflightUser])
+		: [];
+	for (const correction of state.corrections) {
+		if (correction.assistantTextBefore.trim()) {
+			projected.push({
+				kind: "message",
+				id: `active-assistant-before:${correction.id}`,
+				role: "assistant",
+				text: correction.assistantTextBefore,
+				attachments: [],
+				source: {
+					id: `active-assistant-before:${correction.id}`,
+					canonicalMessageId: null,
+					compactionGeneration: null,
+					active: true,
+					compacted: false,
+					displayKind: null,
+					compactionSummaryType: null,
+					turnId: null,
+					role: "assistant",
+					text: correction.assistantTextBefore,
+					createdAt: null,
+					status: "redirected-checkpoint",
+					toolName: null,
+					workspaceArtifacts: [],
+				},
+			});
+		}
+		projected.push(
+			...projectHermesQueuedFollowUps(canonicalMessages, [
+				{
+					id: correction.id,
+					durableSessionId: state.inflightUser?.durableSessionId ?? "active-turn",
+					profileId: state.inflightUser?.profileId ?? "active-turn",
+					text: correction.text,
+					attachments: [],
+					knownCanonicalUserMessageIds: correction.knownCanonicalUserMessageIds,
+					status: "accepted",
+					error: null,
+					createdAt: 0,
+				},
+			])
+		);
+	}
+	return projected;
+}
+
+/** Prefer an authoritative reconnect snapshot over its equivalent local projection. */
+export function reconcileHermesOptimisticTurnsWithActiveTurn(
+	turns: HermesOptimisticUserTurn[],
+	state: Pick<HermesLiveState, "inflightUser" | "corrections">
+): HermesOptimisticUserTurn[] {
+	const remainingActiveTexts = [
+		...(state.inflightUser ? [{ kind: "inflight" as const, text: state.inflightUser.text }] : []),
+		...state.corrections.map((correction) => ({
+			kind: "correction" as const,
+			text: correction.text,
+		})),
+	];
+	return turns.filter((turn) => {
+		if (turn.attachments.length > 0) return true;
+		let matchIndex = turn.assistantCheckpoint?.trim()
+			? remainingActiveTexts.findIndex(
+					(candidate) => candidate.kind === "correction" && candidate.text === turn.text
+				)
+			: remainingActiveTexts.findIndex(
+					(candidate) => candidate.kind === "inflight" && candidate.text === turn.text
+				);
+		if (matchIndex < 0) {
+			matchIndex = remainingActiveTexts.findIndex((candidate) => candidate.text === turn.text);
+		}
+		if (matchIndex < 0) return true;
+		remainingActiveTexts.splice(matchIndex, 1);
+		return false;
+	});
+}
+
+/** Stock's build-window queue has no client turn ID, so reconcile it by safe visible content. */
+export function reconcileHermesOptimisticTurnsWithStockFollowUps(
+	turns: HermesOptimisticUserTurn[],
+	followUps: HermesQueuedFollowUpSummary[]
+): HermesOptimisticUserTurn[] {
+	const remainingStockFollowUps = followUps.filter(
+		(followUp) => !turns.some((turn) => turn.id === followUp.id)
+	);
+	return turns.filter((turn) => {
+		const matchIndex = remainingStockFollowUps.findIndex(
+			(followUp) =>
+				followUp.text.trim() === turn.text &&
+				followUp.attachments.length === turn.attachments.length &&
+				followUp.attachments.every(
+					(attachment, index) =>
+						attachment.kind === turn.attachments[index]?.kind &&
+						attachment.name === turn.attachments[index]?.name
+				)
+		);
+		if (matchIndex < 0) return true;
+		remainingStockFollowUps.splice(matchIndex, 1);
+		return false;
+	});
 }
 
 /**
@@ -1178,6 +1318,8 @@ export function createHermesLiveState(): HermesLiveState {
 	return {
 		running: false,
 		runtimeStatus: null,
+		inflightUser: null,
+		corrections: [],
 		streamingText: "",
 		completed: [],
 		activeTurnCanonicalAssistantIds: [],
@@ -1310,6 +1452,19 @@ export function applyHermesActiveTurnSnapshot(
 		...state,
 		running: snapshot.activeTurn,
 		runtimeStatus: snapshot.status ?? (snapshot.activeTurn ? "running" : "idle"),
+		inflightUser:
+			snapshot.activeTurn && snapshot.inflightUser
+				? {
+						...snapshot.inflightUser,
+						attachments: snapshot.inflightUser.attachments.map((attachment) => ({ ...attachment })),
+					}
+				: null,
+		corrections: snapshot.activeTurn
+			? (snapshot.corrections ?? []).map((correction) => ({
+					...correction,
+					knownCanonicalUserMessageIds: [...correction.knownCanonicalUserMessageIds],
+				}))
+			: [],
 		streamingText: snapshot.activeTurn ? snapshot.streamingText : "",
 		tools: snapshot.activeTurn ? snapshot.tools.map((tool) => ({ ...tool })) : [],
 		pendingApproval:
@@ -1373,6 +1528,8 @@ export function applyHermesEvent(
 				...state,
 				running: true,
 				runtimeStatus: "running",
+				inflightUser: null,
+				corrections: [],
 				streamingText: "",
 				activeTurnCanonicalAssistantIds: canonicalMessages
 					.filter(isVisibleHermesAssistantMessage)
@@ -1395,6 +1552,8 @@ export function applyHermesEvent(
 				...state,
 				running: false,
 				runtimeStatus: event.status ?? "complete",
+				inflightUser: null,
+				corrections: [],
 				streamingText: "",
 				activeTurnCanonicalAssistantIds: [],
 				completed:
@@ -1487,6 +1646,8 @@ export function applyHermesEvent(
 				...state,
 				running: false,
 				runtimeStatus: event.status ?? "complete",
+				inflightUser: null,
+				corrections: [],
 				historyRefreshRequired: true,
 				pendingApproval: null,
 				pendingClarification: null,
@@ -1496,6 +1657,8 @@ export function applyHermesEvent(
 				...state,
 				running: false,
 				runtimeStatus: "failed",
+				inflightUser: null,
+				corrections: [],
 				error: event.text ?? "Hermes turn failed",
 				pendingApproval: null,
 				pendingClarification: null,
@@ -1505,6 +1668,8 @@ export function applyHermesEvent(
 				...state,
 				running: false,
 				runtimeStatus: "cancelled",
+				inflightUser: null,
+				corrections: [],
 				error: event.text ?? "Hermes turn was interrupted",
 				pendingApproval: null,
 				pendingClarification: null,
@@ -1522,6 +1687,8 @@ export function applyHermesEvent(
 				...state,
 				running: binding.activeTurn,
 				runtimeStatus: binding.status ?? (binding.activeTurn ? "running" : "idle"),
+				inflightUser: binding.activeTurn ? state.inflightUser : null,
+				corrections: binding.activeTurn ? state.corrections : [],
 				streamingText: binding.activeTurn ? state.streamingText : "",
 				pendingApproval: binding.activeTurn ? state.pendingApproval : null,
 				pendingClarification: binding.activeTurn ? state.pendingClarification : null,

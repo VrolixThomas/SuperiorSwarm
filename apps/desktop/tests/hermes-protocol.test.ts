@@ -422,8 +422,9 @@ describe("stock Hermes protocol adapter", () => {
 				messages: [],
 				inflight: {
 					user: "current prompt",
-					assistant: "partial answer",
+					assistant: "partial answer continued",
 					corrections: ["steer toward tests"],
+					correction_offsets: [14],
 					streaming: true,
 				},
 				queued: { user: "next prompt" },
@@ -440,22 +441,72 @@ describe("stock Hermes protocol adapter", () => {
 
 		expect(snapshot).toMatchObject({
 			turnId: null,
-			streamingText: "partial answer",
-			queuedFollowUps: [
-				{
-					id: "stock-inflight:stored-1",
-					profileId: "work",
-					text: "current prompt",
-					status: "accepted",
-				},
+			inflightUser: {
+				id: "stock-inflight:stored-1",
+				profileId: "work",
+				text: "current prompt",
+				status: "accepted",
+			},
+			corrections: [
 				{
 					id: "stock-inflight-correction:stored-1:0",
 					text: "steer toward tests",
-					status: "accepted",
+					assistantTextBefore: "partial answer",
 				},
-				{ id: "stock-queued:stored-1", text: "next prompt", status: "accepted" },
 			],
+			streamingText: " continued",
+			queuedFollowUps: [{ id: "stock-queued:stored-1", text: "next prompt", status: "accepted" }],
 		});
+	});
+
+	test("places legacy corrections after the full assistant dump when offsets are unavailable", () => {
+		const snapshot = normalizeHermesActiveTurnSnapshot(
+			{
+				messages: [],
+				inflight: {
+					assistant: "visible before reconnect",
+					corrections: ["first correction", "second correction"],
+				},
+			},
+			{
+				durableSessionId: "stored-1",
+				runtimeSessionId: "runtime-1",
+				profileId: "work",
+				eventSeq: 8,
+				activeTurn: true,
+				status: "streaming",
+			}
+		);
+
+		expect(snapshot.corrections.map((correction) => correction.assistantTextBefore)).toEqual([
+			"visible before reconnect",
+			"",
+		]);
+		expect(snapshot.streamingText).toBe("");
+	});
+
+	test("interprets correction offsets as Unicode character counts", () => {
+		const snapshot = normalizeHermesActiveTurnSnapshot(
+			{
+				messages: [],
+				inflight: {
+					assistant: "A😀B",
+					corrections: ["after emoji"],
+					correction_offsets: [2],
+				},
+			},
+			{
+				durableSessionId: "stored-1",
+				runtimeSessionId: "runtime-1",
+				profileId: "work",
+				eventSeq: 9,
+				activeTurn: true,
+				status: "streaming",
+			}
+		);
+
+		expect(snapshot.corrections[0]?.assistantTextBefore).toBe("A😀");
+		expect(snapshot.streamingText).toBe("B");
 	});
 
 	test("normalizes stock event frames by ephemeral runtime ID", () => {

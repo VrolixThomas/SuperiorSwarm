@@ -60,11 +60,14 @@ import {
 	hermesRendererAttachmentSelectionError,
 	hermesReportRequiresExplicitRetry,
 	latestReportableHermesMessage,
+	projectHermesActiveTurn,
 	projectHermesLiveActivity,
 	projectHermesLiveCompletions,
 	projectHermesOptimisticUserTurns,
 	projectHermesQueuedFollowUps,
 	projectHermesTranscript,
+	reconcileHermesOptimisticTurnsWithActiveTurn,
+	reconcileHermesOptimisticTurnsWithStockFollowUps,
 	reconcileHermesOptimisticUserTurns,
 	reduceHermesComposerAttachments,
 	selectHermesFollowUpProjection,
@@ -75,7 +78,7 @@ import { normalizeHermesSessionSelection, useTabStore } from "../../stores/tab-s
 import { trpc } from "../../trpc/client";
 import { HermesComposerAttachments } from "./HermesComposerAttachments";
 import { HermesApprovalCard, HermesClarificationChoices } from "./HermesInteractionCards";
-import { HermesMarkdown, HermesStreamingMarkdown } from "./HermesMarkdown";
+import { HermesStreamingMarkdown } from "./HermesMarkdown";
 import { HermesActivityGroup, HermesTranscript } from "./HermesTranscript";
 import {
 	HermesSessionTabStrip,
@@ -117,6 +120,7 @@ export function HermesSessionView() {
 	const [attachmentReadPending, setAttachmentReadPending] = useState(false);
 	const [showJumpToLatest, setShowJumpToLatest] = useState(false);
 	const [sessionOptionsOpen, setSessionOptionsOpen] = useState(false);
+	const [redirectAcknowledgement, setRedirectAcknowledgement] = useState<string | null>(null);
 	const [documentVisible, setDocumentVisible] = useState(
 		() => document.visibilityState === "visible"
 	);
@@ -137,6 +141,7 @@ export function HermesSessionView() {
 	const transcriptRef = useRef<HTMLDivElement | null>(null);
 	const composerRef = useRef<HTMLTextAreaElement | null>(null);
 	const optimisticTurnSequence = useRef(0);
+	const redirectAcknowledgementTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const historySyncRef = useRef<HermesHistorySyncCoordinator | null>(null);
 	if (!historySyncRef.current) historySyncRef.current = new HermesHistorySyncCoordinator();
 	const historySync = historySyncRef.current;
@@ -265,6 +270,9 @@ export function HermesSessionView() {
 
 	useEffect(
 		() => () => {
+			if (redirectAcknowledgementTimer.current) {
+				clearTimeout(redirectAcknowledgementTimer.current);
+			}
 			for (const attachment of attachmentsRef.current) {
 				releaseAttachmentRef.current({ handle: attachment.handle });
 			}
@@ -312,6 +320,11 @@ export function HermesSessionView() {
 		setManualOriginUrl("");
 		setShowReportPreview(false);
 		setSessionOptionsOpen(false);
+		setRedirectAcknowledgement(null);
+		if (redirectAcknowledgementTimer.current) {
+			clearTimeout(redirectAcknowledgementTimer.current);
+			redirectAcknowledgementTimer.current = null;
+		}
 		setAttachmentLimitError(null);
 		setAttachmentReadPending(false);
 		setShowJumpToLatest(false);
@@ -849,14 +862,26 @@ export function HermesSessionView() {
 			),
 		[followUps.data, live.followUpSnapshotReceived, live.queuedFollowUps]
 	);
+	const activeTurnItems = useMemo(
+		() => projectHermesActiveTurn(live, canonicalMessages),
+		[canonicalMessages, live]
+	);
+	const visibleOptimisticUserTurns = useMemo(
+		() =>
+			reconcileHermesOptimisticTurnsWithStockFollowUps(
+				reconcileHermesOptimisticTurnsWithActiveTurn(optimisticUserTurns, live),
+				authoritativeFollowUps
+			),
+		[authoritativeFollowUps, live, optimisticUserTurns]
+	);
 	const optimisticUserItems = useMemo(
 		() =>
 			projectHermesOptimisticUserTurns(
 				canonicalMessages,
-				optimisticUserTurns,
+				visibleOptimisticUserTurns,
 				authoritativeFollowUps
 			),
-		[authoritativeFollowUps, canonicalMessages, optimisticUserTurns]
+		[authoritativeFollowUps, canonicalMessages, visibleOptimisticUserTurns]
 	);
 	const queuedUserItems = useMemo(
 		() =>
@@ -868,8 +893,8 @@ export function HermesSessionView() {
 		[authoritativeFollowUps, canonicalMessages, optimisticUserTurns]
 	);
 	const transcriptProjectionItems = useMemo(
-		() => [...transcriptItems, ...optimisticUserItems, ...queuedUserItems],
-		[optimisticUserItems, queuedUserItems, transcriptItems]
+		() => [...transcriptItems, ...activeTurnItems, ...optimisticUserItems, ...queuedUserItems],
+		[activeTurnItems, optimisticUserItems, queuedUserItems, transcriptItems]
 	);
 	const transcriptWindowPages =
 		transcriptWindowRequest.selectionKey === selectionKey ? transcriptWindowRequest.pages : 1;
@@ -943,13 +968,21 @@ export function HermesSessionView() {
 		const clientTurnId =
 			globalThis.crypto?.randomUUID?.() ??
 			`client-turn-${Date.now()}-${++optimisticTurnSequence.current}`;
+		const assistantCheckpoint =
+			live.running && attachments.length === 0 && live.streamingText.trim()
+				? live.streamingText
+				: null;
 		const optimisticTurn = createHermesOptimisticUserTurn({
 			id: clientTurnId,
 			text: submittedText,
 			attachments,
 			canonicalMessages,
+			assistantCheckpoint,
 		});
 		setOptimisticUserTurns((current) => [...current, optimisticTurn]);
+		if (assistantCheckpoint) {
+			setLive((current) => (current.running ? { ...current, streamingText: "" } : current));
+		}
 		dispatchAttachments({ type: "submitting" });
 		submit.mutate(
 			{
@@ -964,13 +997,25 @@ export function HermesSessionView() {
 				onSuccess: (result) => {
 					hermesComposerDrafts.settleSubmission(draftIdentity, draftSubmission, result.disposition);
 					runForSelection(generation, () => {
-						setOptimisticUserTurns((current) =>
-							settleHermesOptimisticUserTurn(
+						setOptimisticUserTurns((current) => {
+							const settled = settleHermesOptimisticUserTurn(
 								current,
 								optimisticTurn.id,
 								result.disposition === "queued" ? "queued" : "accepted"
-							)
-						);
+							);
+							return result.disposition === "queued"
+								? settled.map((turn) =>
+										turn.id === optimisticTurn.id ? { ...turn, assistantCheckpoint: null } : turn
+									)
+								: settled;
+						});
+						if (result.disposition === "queued" && assistantCheckpoint) {
+							setLive((current) =>
+								current.running
+									? { ...current, streamingText: assistantCheckpoint + current.streamingText }
+									: current
+							);
+						}
 						dispatchAttachments({ type: "succeeded" });
 						setAttachmentLimitError(null);
 						if (result.disposition === "submitted") {
@@ -985,7 +1030,8 @@ export function HermesSessionView() {
 							}));
 							setLastHistoryActivityAt(activityAt);
 							refreshHistoryRevisionImmediately("activity", activityAt);
-						} else {
+						} else if (result.followUp) {
+							const acceptedFollowUp = result.followUp;
 							utils.hermes.followUps.setData(
 								{
 									connectionId,
@@ -994,15 +1040,28 @@ export function HermesSessionView() {
 								},
 								(current) => {
 									const existing = current?.findIndex(
-										(followUp) => followUp.id === result.followUp.id
+										(followUp) => followUp.id === acceptedFollowUp.id
 									);
-									if (existing === undefined || existing < 0)
-										return [...(current ?? []), result.followUp];
+									if (existing === undefined || existing < 0) {
+										return [...(current ?? []), acceptedFollowUp];
+									}
 									return current?.map((followUp, index) =>
-										index === existing ? result.followUp : followUp
+										index === existing ? acceptedFollowUp : followUp
 									);
 								}
 							);
+						}
+						if (result.disposition === "redirected") {
+							setRedirectAcknowledgement(
+								"Redirected current run. I'll adjust using your correction."
+							);
+							if (redirectAcknowledgementTimer.current) {
+								clearTimeout(redirectAcknowledgementTimer.current);
+							}
+							redirectAcknowledgementTimer.current = setTimeout(() => {
+								setRedirectAcknowledgement(null);
+								redirectAcknowledgementTimer.current = null;
+							}, 4_000);
 						}
 						void followUps.refetch();
 					});
@@ -1010,6 +1069,13 @@ export function HermesSessionView() {
 				onError: (error) => {
 					hermesComposerDrafts.settleSubmission(draftIdentity, draftSubmission, "failed");
 					runForSelection(generation, () => {
+						if (assistantCheckpoint) {
+							setLive((current) =>
+								current.running
+									? { ...current, streamingText: assistantCheckpoint + current.streamingText }
+									: current
+							);
+						}
 						setOptimisticUserTurns((current) =>
 							settleHermesOptimisticUserTurn(current, optimisticTurn.id, "failed")
 						);
@@ -1602,6 +1668,15 @@ export function HermesSessionView() {
 						</form>
 					)}
 
+					{redirectAcknowledgement && (
+						<output
+							aria-live="polite"
+							className="mb-2 rounded-[9px] border border-[var(--accent)]/20 bg-[var(--accent-subtle)] px-3 py-2 text-[11px] text-[var(--text-secondary)]"
+						>
+							↪ {redirectAcknowledgement}
+						</output>
+					)}
+
 					<form
 						onSubmit={send}
 						onDragOver={(event) => {
@@ -1698,8 +1773,20 @@ export function HermesSessionView() {
 							<button
 								type="submit"
 								disabled={composerPolicy.sendDisabled}
-								aria-label={live.running ? "Queue follow-up" : "Send message"}
-								title={live.running ? "Queue follow-up" : "Send message"}
+								aria-label={
+									live.running
+										? attachments.length > 0
+											? "Queue follow-up"
+											: "Redirect current run"
+										: "Send message"
+								}
+								title={
+									live.running
+										? attachments.length > 0
+											? "Queue follow-up"
+											: "Redirect current run"
+										: "Send message"
+								}
 								className="mb-[10px] flex size-9 shrink-0 items-center justify-center rounded-full bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] disabled:opacity-35"
 							>
 								<svg

@@ -29,9 +29,11 @@ import {
 	type HermesStockSessionDetail,
 } from "../src/main/hermes/hermes-rest-client";
 import {
+	HermesRpcError,
 	HermesRuntimeClient,
 	type HermesRuntimeConnectionSettings,
 	type HermesSocket,
+	HermesTransportError,
 } from "../src/main/hermes/hermes-runtime-client";
 import type { HermesRestClientLike } from "../src/main/hermes/hermes-runtime-service";
 import {
@@ -2706,6 +2708,207 @@ describe("HermesRuntimeService stock lifecycle", () => {
 		await expect(first).rejects.toThrow("selection failed");
 		await expect(second).resolves.toEqual({ ok: true });
 		expect(client.requests.filter((request) => request.method === "prompt.submit")).toHaveLength(1);
+	});
+
+	test("redirects attachment-free text into the active stock turn", async () => {
+		client.responses.set("session.resume", [
+			{
+				session_id: "runtime-1",
+				stored_session_id: "stored-1",
+				profile: "work",
+				running: true,
+				status: "streaming",
+				inflight: { user: "Original", assistant: "Working" },
+			},
+		]);
+		client.responses.set("session.redirect", [{ status: "redirected", text: "Correction" }]);
+		await service.connect(connectionId);
+		await service.resume(connectionId, "stored-1", "work");
+
+		const result = await service.submitMessage(
+			connectionId,
+			"stored-1",
+			"Correction",
+			[],
+			"work",
+			"client-correction"
+		);
+
+		expect(result).toEqual({ ok: true, disposition: "redirected", followUp: null });
+		expect(client.requests.filter((request) => request.method === "session.redirect")).toEqual([
+			{
+				method: "session.redirect",
+				params: { session_id: "runtime-1", text: "Correction" },
+			},
+		]);
+		expect(client.requests.filter((request) => request.method === "prompt.submit")).toEqual([]);
+		expect(service.followUps(connectionId, "stored-1", "work")).toEqual([]);
+	});
+
+	test("accepts a stock build-window queue without duplicating it in the local outbox", async () => {
+		client.responses.set("session.resume", [
+			{
+				session_id: "runtime-1",
+				stored_session_id: "stored-1",
+				profile: "work",
+				running: true,
+				status: "starting",
+			},
+		]);
+		client.responses.set("session.redirect", [{ status: "queued", text: "Correction" }]);
+		await service.connect(connectionId);
+		await service.resume(connectionId, "stored-1", "work");
+
+		const result = await service.submitMessage(connectionId, "stored-1", "Correction", [], "work");
+
+		expect(result).toEqual({ ok: true, disposition: "queued", followUp: null });
+		expect(service.followUps(connectionId, "stored-1", "work")).toEqual([]);
+	});
+
+	test("falls back to the durable queue when active-turn redirect is unsupported", async () => {
+		client.responses.set("session.resume", [
+			{
+				session_id: "runtime-1",
+				stored_session_id: "stored-1",
+				profile: "work",
+				running: true,
+				status: "streaming",
+			},
+		]);
+		client.responses.set("session.redirect", [
+			new HermesRpcError("agent does not support active-turn redirect", 4010, false),
+		]);
+		await service.connect(connectionId);
+		await service.resume(connectionId, "stored-1", "work");
+
+		const result = await service.submitMessage(
+			connectionId,
+			"stored-1",
+			"Queue safely",
+			[],
+			"work",
+			"client-fallback"
+		);
+
+		expect(result).toMatchObject({
+			ok: true,
+			disposition: "queued",
+			followUp: { id: "client-fallback", text: "Queue safely", status: "queued" },
+		});
+		expect(client.requests.filter((request) => request.method === "prompt.submit")).toEqual([]);
+	});
+
+	test("reacquires a stale runtime ID and retries one active-turn redirect", async () => {
+		client.responses.set("session.resume", [
+			{
+				session_id: "runtime-old",
+				stored_session_id: "stored-1",
+				profile: "work",
+				running: true,
+				status: "streaming",
+			},
+			{
+				session_id: "runtime-new",
+				stored_session_id: "stored-1",
+				profile: "work",
+				running: true,
+				status: "streaming",
+			},
+		]);
+		client.responses.set("session.redirect", [
+			new HermesRpcError("session not found", 4040, true),
+			{ status: "redirected" },
+		]);
+		await service.connect(connectionId);
+		await service.resume(connectionId, "stored-1", "work");
+
+		const result = await service.submitMessage(connectionId, "stored-1", "Correction", [], "work");
+
+		expect(result.disposition).toBe("redirected");
+		expect(
+			client.requests
+				.filter((request) => request.method === "session.redirect")
+				.map((request) => request.params["session_id"])
+		).toEqual(["runtime-old", "runtime-new"]);
+	});
+
+	test("never converts a transport-uncertain redirect into a duplicate follow-up", async () => {
+		client.responses.set("session.resume", [
+			{
+				session_id: "runtime-1",
+				stored_session_id: "stored-1",
+				profile: "work",
+				running: true,
+				status: "streaming",
+			},
+		]);
+		client.responses.set("session.redirect", [new HermesTransportError("socket closed", true)]);
+		await service.connect(connectionId);
+		await service.resume(connectionId, "stored-1", "work");
+
+		await expect(
+			service.submitMessage(connectionId, "stored-1", "Uncertain", [], "work")
+		).rejects.toThrow("could not confirm whether the correction was delivered");
+		expect(service.followUps(connectionId, "stored-1", "work")).toEqual([]);
+		expect(client.requests.filter((request) => request.method === "prompt.submit")).toEqual([]);
+	});
+
+	test("falls back to the durable queue when redirect transport fails before delivery", async () => {
+		client.responses.set("session.resume", [
+			{
+				session_id: "runtime-1",
+				stored_session_id: "stored-1",
+				profile: "work",
+				running: true,
+				status: "streaming",
+			},
+		]);
+		client.responses.set("session.redirect", [new HermesTransportError("not sent", false)]);
+		await service.connect(connectionId);
+		await service.resume(connectionId, "stored-1", "work");
+
+		const result = await service.submitMessage(
+			connectionId,
+			"stored-1",
+			"Queue safely",
+			[],
+			"work",
+			"client-safe-fallback"
+		);
+
+		expect(result).toMatchObject({
+			disposition: "queued",
+			followUp: { id: "client-safe-fallback", text: "Queue safely" },
+		});
+	});
+
+	test("queues active-turn attachments instead of attempting a text-only redirect", async () => {
+		const fixture = await attachmentFixture();
+		const [attachment] = await attachments.registerPaths([fixture.filePath]);
+		if (!attachment) throw new Error("Missing attachment fixture");
+		client.responses.set("session.resume", [
+			{
+				session_id: "runtime-1",
+				stored_session_id: "stored-1",
+				profile: "work",
+				running: true,
+				status: "streaming",
+			},
+		]);
+		await service.connect(connectionId);
+		await service.resume(connectionId, "stored-1", "work");
+
+		const result = await service.submitMessage(
+			connectionId,
+			"stored-1",
+			"See attachment",
+			[attachment.handle],
+			"work",
+			"client-attachment-queue"
+		);
+
+		expect(result.disposition).toBe("queued");
+		expect(client.requests.filter((request) => request.method === "session.redirect")).toEqual([]);
 	});
 
 	test("queues active-turn follow-ups and drains FIFO exactly once on authoritative completion", async () => {

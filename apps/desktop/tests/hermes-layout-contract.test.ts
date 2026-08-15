@@ -29,7 +29,9 @@ describe("Hermes layout contract", () => {
 		expect(view.match(/onPaste=/g)).toHaveLength(1);
 		expect(view).toContain("const generation = selectionGeneration");
 		expect(view).toContain("acceptRegisteredAttachments(selected, generation)");
-		expect(view).toContain('aria-label={live.running ? "Queue follow-up" : "Send message"}');
+		expect(view).toContain('"Redirect current run"');
+		expect(view).toContain('"Queue follow-up"');
+		expect(view).toContain("attachments.length > 0");
 		expect(view).toContain("<HermesStreamingMarkdown content={live.streamingText} />");
 		expect(view).toContain("const physicalMessages = useMemo");
 		expect(view).toContain("deriveHermesCanonicalTimeline(physicalMessages)");

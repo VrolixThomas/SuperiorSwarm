@@ -612,36 +612,78 @@ export function normalizeHermesActiveTurnSnapshot(
 				return text ? [text] : [];
 			})
 		: [];
+	const canonicalUserMessages = messages.filter((message) => message.role === "user");
+	const canonicalUserMessageIds = canonicalUserMessages.map(
+		(message) => message.canonicalMessageId ?? message.id
+	);
+	const canonicalInflightUserIndex = inflightUser
+		? [...canonicalUserMessages]
+				.reverse()
+				.findIndex((message) => message.text.trim() === inflightUser)
+		: -1;
+	const knownInflightUserMessageIds =
+		canonicalInflightUserIndex < 0
+			? canonicalUserMessageIds
+			: canonicalUserMessageIds.slice(
+					0,
+					Math.max(0, canonicalUserMessageIds.length - canonicalInflightUserIndex - 1)
+				);
 	const queuedUser = sanitizedStringValue(queued?.["user"])?.trim() ?? "";
 	const projectionProfileId =
 		safeIdentifier(result?.["profile"], result?.["profile_name"]) ?? input.profileId;
-	const stockUserProjections: HermesQueuedFollowUpSummary[] = [
-		...(inflightUser
-			? [
-					{
-						id: `stock-inflight:${input.durableSessionId}`,
-						durableSessionId: input.durableSessionId,
-						profileId: projectionProfileId,
-						text: inflightUser,
-						attachments: [],
-						knownCanonicalUserMessageIds: [],
-						status: "accepted" as const,
-						error: null,
-						createdAt: 0,
-					},
-				]
-			: []),
-		...inflightCorrections.map((text, index) => ({
+	const activeAssistant =
+		inflightAssistant ||
+		activeRows
+			.filter((message) => message.role === "assistant" && message.text.trim())
+			.map((message) => message.text)
+			.join("");
+	const assistantCharacters = Array.from(activeAssistant);
+	const rawCorrectionOffsets = Array.isArray(inflight?.["correction_offsets"])
+		? inflight["correction_offsets"]
+		: [];
+	const correctionOffsets = rawCorrectionOffsets.flatMap((offset) =>
+		typeof offset === "number" && Number.isInteger(offset) ? [offset] : []
+	);
+	const validCorrectionOffsets =
+		correctionOffsets.length === inflightCorrections.length &&
+		correctionOffsets.every(
+			(offset, index) =>
+				offset >= 0 &&
+				offset <= assistantCharacters.length &&
+				(index === 0 || offset >= (correctionOffsets[index - 1] ?? 0))
+		);
+	let previousCorrectionOffset = 0;
+	const corrections = inflightCorrections.map((text, index) => {
+		const offset = validCorrectionOffsets
+			? (correctionOffsets[index] ?? assistantCharacters.length)
+			: index === 0
+				? assistantCharacters.length
+				: previousCorrectionOffset;
+		const assistantTextBefore = assistantCharacters
+			.slice(previousCorrectionOffset, offset)
+			.join("");
+		previousCorrectionOffset = offset;
+		return {
 			id: `stock-inflight-correction:${input.durableSessionId}:${index}`,
-			durableSessionId: input.durableSessionId,
-			profileId: projectionProfileId,
 			text,
-			attachments: [],
-			knownCanonicalUserMessageIds: [],
-			status: "accepted" as const,
-			error: null,
-			createdAt: index + 1,
-		})),
+			assistantTextBefore,
+			knownCanonicalUserMessageIds: canonicalUserMessageIds,
+		};
+	});
+	const inflightUserProjection: HermesQueuedFollowUpSummary | null = inflightUser
+		? {
+				id: `stock-inflight:${input.durableSessionId}`,
+				durableSessionId: input.durableSessionId,
+				profileId: projectionProfileId,
+				text: inflightUser,
+				attachments: [],
+				knownCanonicalUserMessageIds: knownInflightUserMessageIds,
+				status: "accepted",
+				error: null,
+				createdAt: 0,
+			}
+		: null;
+	const stockUserProjections: HermesQueuedFollowUpSummary[] = [
 		...(queuedUser
 			? [
 					{
@@ -650,10 +692,10 @@ export function normalizeHermesActiveTurnSnapshot(
 						profileId: projectionProfileId,
 						text: queuedUser,
 						attachments: [],
-						knownCanonicalUserMessageIds: [],
+						knownCanonicalUserMessageIds: canonicalUserMessageIds,
 						status: "accepted" as const,
 						error: null,
-						createdAt: inflightCorrections.length + 1,
+						createdAt: corrections.length + 1,
 					},
 				]
 			: []),
@@ -665,12 +707,9 @@ export function normalizeHermesActiveTurnSnapshot(
 		activeTurn: input.activeTurn,
 		status: input.status,
 		turnId,
-		streamingText:
-			inflightAssistant ||
-			activeRows
-				.filter((message) => message.role === "assistant" && message.text.trim())
-				.map((message) => message.text)
-				.join(""),
+		inflightUser: inflightUserProjection,
+		corrections,
+		streamingText: assistantCharacters.slice(previousCorrectionOffset).join(""),
 		tools: activeRows.flatMap((message) => {
 			if (message.role !== "tool" && !message.toolName) return [];
 			const status = message.status?.trim().toLowerCase() ?? "";
