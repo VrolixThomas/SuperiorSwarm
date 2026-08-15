@@ -513,7 +513,7 @@ export const hermesRouter = router({
 	submit: publicProcedure
 		.input(submitInput)
 		.mutation(({ input }) =>
-			hermesRuntimeService.submitFollowUp(
+			hermesRuntimeService.submitMessage(
 				input.connectionId,
 				input.hermesSessionId,
 				input.text.trim(),

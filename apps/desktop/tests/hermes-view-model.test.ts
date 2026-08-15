@@ -26,11 +26,14 @@ import {
 	hermesSessionVirtualRange,
 	latestReportableHermesMessage,
 	mergeHermesHistoryTail,
+	projectHermesActiveTurn,
 	projectHermesLiveActivity,
 	projectHermesLiveCompletions,
 	projectHermesOptimisticUserTurns,
 	projectHermesQueuedFollowUps,
 	projectHermesTranscript,
+	reconcileHermesOptimisticTurnsWithActiveTurn,
+	reconcileHermesOptimisticTurnsWithStockFollowUps,
 	reduceHermesComposerAttachments,
 	selectHermesFollowUpProjection,
 	selectHermesTranscriptWindow,
@@ -562,6 +565,128 @@ describe("Hermes renderer view model", () => {
 		});
 		expect(projectHermesOptimisticUserTurns([existing, durable], accepted)).toEqual([]);
 		expect(settleHermesOptimisticUserTurn([optimistic], "optimistic-1", "failed")).toEqual([]);
+	});
+
+	test("keeps the visible assistant checkpoint before a live redirect bubble", () => {
+		const optimistic = createHermesOptimisticUserTurn({
+			id: "correction-1",
+			text: "Focus on the failing test",
+			attachments: [],
+			canonicalMessages: [],
+			assistantCheckpoint: "I was inspecting the build.",
+		});
+
+		expect(projectHermesOptimisticUserTurns([], [optimistic])).toMatchObject([
+			{
+				id: "optimistic-assistant-checkpoint:correction-1",
+				role: "assistant",
+				text: "I was inspecting the build.",
+			},
+			{
+				id: "optimistic-user:correction-1",
+				role: "user",
+				text: "Focus on the failing test",
+			},
+		]);
+	});
+
+	test("projects reconnect corrections at their assistant boundaries and replaces local duplicates", () => {
+		const corrections = [
+			{
+				id: "stock-inflight-correction:session-1:0",
+				text: "Use the corrected command",
+				assistantTextBefore: "I will restart the old service.",
+				knownCanonicalUserMessageIds: [],
+			},
+		];
+		const projected = projectHermesActiveTurn(
+			{
+				inflightUser: {
+					id: "stock-inflight:session-1",
+					durableSessionId: "session-1",
+					profileId: "work",
+					text: "Restart the service",
+					attachments: [],
+					knownCanonicalUserMessageIds: [],
+					status: "accepted",
+					error: null,
+					createdAt: 0,
+				},
+				corrections,
+			},
+			[]
+		);
+
+		expect(projected).toMatchObject([
+			{ role: "user", text: "Restart the service" },
+			{ role: "assistant", text: "I will restart the old service." },
+			{ role: "user", text: "Use the corrected command" },
+		]);
+		const optimistic = createHermesOptimisticUserTurn({
+			id: "local-correction",
+			text: "Use the corrected command",
+			attachments: [],
+			canonicalMessages: [],
+			assistantCheckpoint: "I will restart the old service.",
+		});
+		expect(
+			reconcileHermesOptimisticTurnsWithActiveTurn([optimistic], {
+				inflightUser: null,
+				corrections,
+			})
+		).toEqual([]);
+	});
+
+	test("reconciles optimistic bubbles with stock inflight and build-window queue snapshots", () => {
+		const original = createHermesOptimisticUserTurn({
+			id: "local-original",
+			text: "Start the task",
+			attachments: [],
+			canonicalMessages: [],
+		});
+		const queued = settleHermesOptimisticUserTurn(
+			[
+				createHermesOptimisticUserTurn({
+					id: "local-queued",
+					text: "Run this after startup",
+					attachments: [],
+					canonicalMessages: [],
+				}),
+			],
+			"local-queued",
+			"queued"
+		);
+		const afterInflight = reconcileHermesOptimisticTurnsWithActiveTurn([original, ...queued], {
+			inflightUser: {
+				id: "stock-inflight:session-1",
+				durableSessionId: "session-1",
+				profileId: "work",
+				text: "Start the task",
+				attachments: [],
+				knownCanonicalUserMessageIds: [],
+				status: "accepted",
+				error: null,
+				createdAt: 0,
+			},
+			corrections: [],
+		});
+		expect(afterInflight.map((turn) => turn.id)).toEqual(["local-queued"]);
+
+		expect(
+			reconcileHermesOptimisticTurnsWithStockFollowUps(afterInflight, [
+				{
+					id: "stock-queued:session-1",
+					durableSessionId: "session-1",
+					profileId: "work",
+					text: "Run this after startup",
+					attachments: [],
+					knownCanonicalUserMessageIds: [],
+					status: "accepted",
+					error: null,
+					createdAt: 1,
+				},
+			])
+		).toEqual([]);
 	});
 
 	test("keeps queued bubbles ordered and reconciles accepted follow-ups only with new history", () => {

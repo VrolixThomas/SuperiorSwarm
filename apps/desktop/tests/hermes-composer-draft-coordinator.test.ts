@@ -171,6 +171,15 @@ describe("Hermes composer draft coordinator", () => {
 		).toBe("");
 		expect(
 			hermesComposerDraftAfterSubmit({
+				currentText: "redirect now",
+				currentRevision: 1,
+				submittedText: "redirect now",
+				submittedRevision: 1,
+				disposition: "redirected",
+			})
+		).toBe("");
+		expect(
+			hermesComposerDraftAfterSubmit({
 				currentText: "new edit",
 				currentRevision: 2,
 				submittedText: "sent edit",

@@ -1,6 +1,6 @@
-import type { HermesComposerDraftIdentity } from "../../shared/hermes";
+import type { HermesComposerDraftIdentity, HermesSubmitDisposition } from "../../shared/hermes";
 
-export type HermesComposerDraftSubmissionDisposition = "submitted" | "queued" | "failed";
+export type HermesComposerDraftSubmissionDisposition = HermesSubmitDisposition | "failed";
 
 export interface HermesComposerDraftSubmission {
 	text: string;
