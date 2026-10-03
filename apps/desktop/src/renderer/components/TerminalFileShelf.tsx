@@ -90,7 +90,13 @@ export function TerminalFileShelf({
 						<span className="font-medium text-[var(--text)]">
 							{count} {count === 1 ? "file" : "files"} added
 						</span>
-						<span className="text-[var(--text-tertiary)]">Enter to send</span>
+						<span className="text-[var(--text-tertiary)]">
+							{state.batch?.inputAvailability === "update-required"
+								? "Terminal update required"
+								: state.batch?.inputAvailability === "unverified"
+									? "Prompt access unverified"
+									: "Enter to send"}
+						</span>
 					</>
 				)}
 				<div className="ml-auto flex items-center gap-2">

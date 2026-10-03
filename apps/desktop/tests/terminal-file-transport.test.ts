@@ -83,3 +83,11 @@ test("explicit submit uses one guarded frame with the user's send request", asyn
 		{ payload: " '/tmp/a' ", submit: true },
 	]);
 });
+
+test("the main process can report an old terminal service without stopping its sessions", async () => {
+	const messages = await setup(true);
+	expect(client.needsFileInputUpdate).toBe(true);
+	expect(messages.some((message) => message["type"] === "dispose")).toBe(false);
+	client.disconnect();
+	expect(client.needsFileInputUpdate).toBe(false);
+});

@@ -87,6 +87,9 @@ export class DaemonClient {
 	get supportsFileSubmit(): boolean {
 		return this.isConnected && this.fileSubmitCapable;
 	}
+	get needsFileInputUpdate(): boolean {
+		return this.isConnected && this.remoteProtocolVersion < DAEMON_PROTOCOL_VERSION;
+	}
 	private fileRequests = new Map<
 		string,
 		(response: Extract<DaemonMessage, { type: "file-result" }> | null) => void

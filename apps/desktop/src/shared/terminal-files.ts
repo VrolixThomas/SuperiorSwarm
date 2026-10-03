@@ -72,6 +72,14 @@ export interface TerminalFileBatch {
 	id: string;
 	target: TerminalFileTarget;
 	entries: TerminalFileEntry[];
+	inputAvailability?: "ready" | "update-required" | "unverified";
+}
+export function fileInputProblem(availability: TerminalFileBatch["inputAvailability"]): string {
+	if (availability === "update-required")
+		return "This terminal needs an updated terminal service. Save your work, close running terminals, then restart SuperiorSwarm. Copy paths is available for manual paste. No paths were sent.";
+	if (availability === "unverified")
+		return "This prompt or terminal service could not be verified. Use Copy paths, then paste into your local prompt. Remote access remains unverified. No paths were sent.";
+	return "";
 }
 export interface TerminalOwnedCopy {
 	status?: "complete" | "incomplete";

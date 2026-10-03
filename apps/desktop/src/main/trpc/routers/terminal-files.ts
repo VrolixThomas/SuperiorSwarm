@@ -5,6 +5,7 @@ import { z } from "zod";
 import {
 	FILE_PASTE_MAX_BYTES,
 	FILE_PATH_MAX_BYTES,
+	fileInputProblem,
 	isFilePaste,
 } from "../../../shared/terminal-files";
 import { getWorkspaceCwdOrThrow } from "../../agent-launch/workspace-cwd-lookup";
@@ -28,6 +29,7 @@ const leases = new Map<
 	{
 		generation: string;
 		supported: boolean;
+		needsUpdate: boolean;
 		expires: number;
 		requestedSubmit?: boolean;
 		atomicSubmit?: boolean;
@@ -72,13 +74,24 @@ export const terminalFilesRouter = router({
 		.mutation(async ({ ctx, input }) => {
 			const bound = target(input.terminalId, ctx.fileCaller);
 			const managedAgent = getAgentSessionManager()?.getSession(input.terminalId)?.managed === true;
-			const daemonTarget = await getDaemonClient()?.fileTarget(input.terminalId, managedAgent);
+			const daemon = getDaemonClient();
+			const daemonTarget = await daemon?.fileTarget(input.terminalId, managedAgent);
 			terminalFileOwners.assert(ctx.fileCaller, bound);
 			const batch = await service.prepare(ctx.fileCaller, bound, input.paths);
+			const needsUpdate = daemon?.needsFileInputUpdate === true;
+			batch.inputAvailability = daemonTarget?.supported
+				? "ready"
+				: needsUpdate
+					? "update-required"
+					: "unverified";
 			for (const [key, lease] of leases) if (lease.expires < Date.now()) leases.delete(key);
 			if (leases.size >= 128) leases.delete(leases.keys().next().value as string);
 			if (daemonTarget)
-				leases.set(batch.id, { ...daemonTarget, expires: Date.now() + 10 * 60 * 1000 });
+				leases.set(batch.id, {
+					...daemonTarget,
+					needsUpdate,
+					expires: Date.now() + 10 * 60 * 1000,
+				});
 			return batch;
 		}),
 	append: fileProcedure
@@ -100,9 +113,7 @@ export const terminalFilesRouter = router({
 		ready(result.target.terminalId, input.submit);
 		const lease = leases.get(input.batchId);
 		if (!lease?.supported)
-			throw new Error(
-				"This prompt or terminal service could not be verified. Use Copy paths, then paste into your local prompt. Remote access remains unverified. No paths were sent."
-			);
+			throw new Error(fileInputProblem(lease?.needsUpdate ? "update-required" : "unverified"));
 		lease.requestedSubmit = input.submit === true;
 		lease.atomicSubmit = lease.requestedSubmit && getDaemonClient()?.supportsFileSubmit === true;
 		return { ...result, submit: lease.atomicSubmit };

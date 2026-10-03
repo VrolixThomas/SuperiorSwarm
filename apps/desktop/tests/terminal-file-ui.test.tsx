@@ -83,3 +83,22 @@ test("unsupported entries need attention; labels are escaped and bidi isolated",
 	expect(html).toContain("Needs attention");
 	expect(html).not.toContain("Insert paths");
 });
+
+test("a blocked native-agent batch shows the update requirement instead of promising Enter will send", () => {
+	const html = renderToStaticMarkup(
+		<TerminalFileShelf
+			terminalId="t1"
+			controller={controller()}
+			state={{
+				batch: { ...batch, inputAvailability: "update-required" },
+				busy: false,
+				status: "Update needed",
+			}}
+			onFiles={() => {}}
+		/>
+	);
+	expect(html).toContain("Terminal update required");
+	expect(html).not.toContain("Enter to send");
+	expect(html).toContain("Copy paths");
+	expect(html).toContain('aria-label="Remove a.mov"');
+});

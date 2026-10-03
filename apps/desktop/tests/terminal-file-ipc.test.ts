@@ -14,6 +14,7 @@ let probes = 0;
 let managed = false;
 let submitCapable = true;
 let supported = true;
+let needsFileInputUpdate = false;
 let requestedManaged = false;
 let exposed: { terminalFiles: { nativePaths: (files: File[]) => Array<string | null> } };
 mock.module("electron", () => ({
@@ -40,6 +41,9 @@ mock.module("../src/main/services/agent-session-manager-handle", () => ({
 mock.module("../src/main/terminal/daemon-instance", () => ({
 	getDaemonClient: () => ({
 		isConnected: true,
+		get needsFileInputUpdate() {
+			return needsFileInputUpdate;
+		},
 		get supportsFileSubmit() {
 			return submitCapable;
 		},
@@ -220,5 +224,32 @@ test("validated paths can be copied manually without a supported daemon or any P
 		await expect(api.copyPaths(selection)).rejects.toThrow();
 	} finally {
 		supported = true;
+	}
+});
+
+test("old-service Claude rejection is explained when adding files, retained after append, and never bypasses the guard", async () => {
+	terminalFileOwners.attach("old-claude", caller, "ws", root);
+	supported = false;
+	needsFileInputUpdate = true;
+	const before = writes.length;
+	try {
+		const batch = await api.prepare({ terminalId: "old-claude", paths: [source] });
+		expect(batch.inputAvailability).toBe("update-required");
+		const next = await api.append({
+			batchId: batch.id,
+			paths: [source],
+			retainedIds: batch.entries.map((e) => e.id),
+		});
+		expect(next.inputAvailability).toBe("update-required");
+		await expect(
+			api.resolve({ batchId: batch.id, ids: next.entries.map((e) => e.id), submit: true })
+		).rejects.toThrow("restart SuperiorSwarm");
+		expect(writes).toHaveLength(before);
+		supported = true;
+		const codex = await api.prepare({ terminalId: "old-claude", paths: [source] });
+		expect(codex.inputAvailability).toBe("ready");
+	} finally {
+		supported = true;
+		needsFileInputUpdate = false;
 	}
 });

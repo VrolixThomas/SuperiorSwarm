@@ -4,6 +4,7 @@ import {
 	type TerminalFileBatch,
 	type TerminalFileDraft,
 	type TerminalFileTarget,
+	fileInputProblem,
 } from "../../shared/terminal-files";
 export interface FileShelfState {
 	batch: TerminalFileBatch | null;
@@ -75,7 +76,7 @@ export class TerminalFileController {
 			status: "Files restored. Review the prompt before sending.",
 		});
 	}
-	suspend(status = "Files kept. Review the prompt before sending."): void {
+	suspend(status?: string): void {
 		const batch = this.state.batch;
 		this.epoch++;
 		this.staging = null;
@@ -86,7 +87,11 @@ export class TerminalFileController {
 		this.update({
 			batch: batch ? { ...batch, id: "", target: { ...batch.target, generation: "" } } : null,
 			busy: false,
-			status: batch ? status : "",
+			status: batch
+				? (status ??
+					(fileInputProblem(batch.inputAvailability) ||
+						"Files kept. Review the prompt before sending."))
+				: "",
 		});
 	}
 	focusInput(): void {
@@ -186,7 +191,12 @@ export class TerminalFileController {
 					void this.operations.cancel(batch.id).catch(() => {});
 					return;
 				}
-				this.update({ batch, status: "Files will be included when you press Enter." });
+				this.update({
+					batch,
+					status:
+						fileInputProblem(batch.inputAvailability) ||
+						"Files will be included when you press Enter.",
+				});
 			} catch (error) {
 				if (this.current(epoch))
 					this.reportError(
@@ -237,7 +247,9 @@ export class TerminalFileController {
 				this.update({
 					batch: { ...copied, entries: copied.entries.filter((entry) => selected.has(entry.id)) },
 					busy: false,
-					status: "Workspace copy ready. Press Enter to include it with your message.",
+					status:
+						fileInputProblem(copied.inputAvailability) ||
+						"Workspace copy ready. Press Enter to include it with your message.",
 				});
 			}
 		} catch (error) {

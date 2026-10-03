@@ -45,6 +45,7 @@ function harness() {
 		}
 	);
 	const cancel = mock(async () => {});
+	const copy = mock(async () => structuredClone(batch));
 	const copyPaths = mock(async () => " '/workspace/a' '/workspace/b' ");
 	const clipboard = mock(async (_text: string) => {});
 	const append = mock(async (_id: string, _paths: Array<string | null>, ids: string[]) => ({
@@ -61,7 +62,7 @@ function harness() {
 			resolve,
 			insert,
 			cancel,
-			copy: async () => structuredClone(batch),
+			copy,
 			copyPaths,
 			clipboard,
 			ready: () => active,
@@ -81,6 +82,7 @@ function harness() {
 		cancel,
 		copyPaths,
 		clipboard,
+		copy,
 		deactivate: () => {
 			active = false;
 			controller.clear();
@@ -354,5 +356,33 @@ test("manual clipboard failure keeps files; stale validation cannot write clipbo
 	await operation;
 	expect(h.clipboard).toHaveBeenCalledTimes(1);
 	expect(h.focus).not.toHaveBeenCalled();
+	expect(h.writes).toEqual([]);
+});
+
+test("service-update guidance appears as files are added and survives tab suspension", async () => {
+	const h = harness();
+	h.prepare.mockImplementation(async () => ({
+		...structuredClone(batch),
+		inputAvailability: "update-required",
+	}));
+	await h.controller.stage(["/native/a"]);
+	expect(h.controller.state.status).toContain("restart SuperiorSwarm");
+	h.controller.suspend();
+	expect(h.controller.state.status).toContain("restart SuperiorSwarm");
+	expect(h.controller.state.batch?.entries).toHaveLength(2);
+	expect(h.writes).toEqual([]);
+});
+
+test("workspace copy does not replace an unavailable-service diagnosis with a promise to send", async () => {
+	const h = harness();
+	const unavailable: TerminalFileBatch = {
+		...structuredClone(batch),
+		inputAvailability: "update-required",
+	};
+	h.prepare.mockImplementation(async () => unavailable);
+	h.copy.mockImplementation(async () => unavailable);
+	await h.controller.stage(["/native/a"]);
+	await h.controller.copy("a");
+	expect(h.controller.state.status).toContain("restart SuperiorSwarm");
 	expect(h.writes).toEqual([]);
 });
