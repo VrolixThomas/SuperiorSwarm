@@ -95,7 +95,14 @@ export function TerminalFileShelf({
 				)}
 				<div className="ml-auto flex items-center gap-2">
 					{(state.batch || state.busy) && (
-						<button className={button} type="button" onClick={() => controller?.clear()}>
+						<button
+							className={button}
+							type="button"
+							onClick={() => {
+								controller?.clear();
+								controller?.focusInput();
+							}}
+						>
 							{state.busy ? "Cancel" : "Clear files"}
 						</button>
 					)}
@@ -142,7 +149,10 @@ export function TerminalFileShelf({
 								className="self-stretch rounded-r-md px-2 hover:bg-[var(--bg-elevated)] focus-visible:outline-2 disabled:opacity-50"
 								disabled={state.busy}
 								aria-label={`Remove ${entry.label}`}
-								onClick={() => controller?.remove(entry.id)}
+								onClick={() => {
+									controller?.remove(entry.id);
+									controller?.focusInput();
+								}}
 							>
 								<span aria-hidden="true">×</span>
 							</button>

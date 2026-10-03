@@ -52,6 +52,7 @@ export interface TerminalFileTarget {
 	generation: string;
 	workspaceId: string;
 	root: string;
+	rootIdentity?: string;
 }
 export interface TerminalFileEntry {
 	id: string;
@@ -65,6 +66,7 @@ export interface TerminalFileEntry {
 	copyAllowed: boolean;
 	error?: string;
 	copyId?: string;
+	identity?: string;
 }
 export interface TerminalFileBatch {
 	id: string;
@@ -84,3 +86,10 @@ export interface TerminalFilesAPI {
 	nativePaths: (files: File[]) => Array<string | null>;
 }
 export type FileDelivery = "admitted" | "rejected" | "uncertain";
+
+/** Selection metadata only. No batch/session token, prepared input or send intent. */
+export interface TerminalFileDraft {
+	version: 1;
+	target: Pick<TerminalFileTarget, "terminalId" | "workspaceId" | "root" | "rootIdentity">;
+	entries: Array<Omit<TerminalFileEntry, "id">>;
+}

@@ -17,6 +17,7 @@ import { interceptPaste } from "./terminal-paste";
 import { trpcVanilla } from "../trpc/client";
 import { TerminalFileShelf } from "./TerminalFileShelf";
 import { type FileShelfState, TerminalFileController } from "./terminal-file-controller";
+import { TerminalFileDraftStore } from "./terminal-file-draft";
 import { collectFilePaste, installFileDrop } from "./terminal-file-drop";
 
 function buildTerminalTheme(): ITheme {
@@ -83,6 +84,7 @@ export function Terminal({
 	const stageFiles = (files: File[]) => {
 		try {
 			void controllerRef.current?.stage(window.electron.terminalFiles.nativePaths(files));
+			controllerRef.current?.focusInput();
 		} catch (error) {
 			controllerRef.current?.reportError(
 				error instanceof Error ? error.message : "Unable to resolve local files."
@@ -183,6 +185,14 @@ export function Terminal({
 		let created = false;
 		let disposed = false;
 		const filePaste = collectFilePaste();
+		let draftStore: TerminalFileDraftStore | null = null;
+		try {
+			if (workspaceId)
+				draftStore = new TerminalFileDraftStore(window.localStorage, workspaceId, id);
+		} catch {
+			/* Some environments disable local storage. */
+		}
+		const savedSelection = draftStore?.load();
 		const files = new TerminalFileController(
 			{
 				prepare: (paths) => trpcVanilla.terminalFiles.prepare.mutate({ terminalId: id, paths }),
@@ -206,9 +216,21 @@ export function Terminal({
 				},
 			},
 			(state) => {
-				if (!disposed) setFileState(state);
+				const saved = draftStore?.save(state.batch) ?? true;
+				if (!disposed)
+					setFileState(
+						!saved && state.batch
+							? {
+									...state,
+									status:
+										"Files are selected, but cannot be retained across refresh in this window.",
+								}
+							: state
+					);
 			}
 		);
+		if (savedSelection) files.restore(savedSelection);
+		else setFileState(files.state);
 		controllerRef.current = files;
 		setController(files);
 		const cleanupDrop = hostRef.current
@@ -238,7 +260,7 @@ export function Terminal({
 		host?.addEventListener("keydown", escapeFiles, true);
 		const cleanupConnection = window.electron?.daemon.onStatus((value) => {
 			connected = value;
-			files.clear("Connection changed. Pending paths were discarded.");
+			files.suspend("Connection changed. Files are kept; review the prompt before sending.");
 		});
 
 		const resetStaleModes = () => {
@@ -289,9 +311,14 @@ export function Terminal({
 			let fileEnterPending = false;
 			term.attachCustomKeyEventHandler((event: KeyboardEvent) => {
 				if (event.key === "Enter" && fileEnterPending) {
-					if (event.type === "keyup") fileEnterPending = false;
-					event.preventDefault();
-					return false;
+					if (event.type === "keydown" && !event.repeat) {
+						// Focus can move before keyup; a new physical press must still work.
+						fileEnterPending = false;
+					} else {
+						if (event.type === "keyup") fileEnterPending = false;
+						event.preventDefault();
+						return false;
+					}
 				}
 				if (
 					event.key === "Enter" &&
@@ -327,7 +354,7 @@ export function Terminal({
 
 			cleanupData = api.terminal.onData(id, (data, meta) => {
 				if (meta?.replay) {
-					files.clear();
+					files.suspend();
 					suppressDepth++;
 					term.write(data, () => {
 						suppressDepth--;
@@ -373,10 +400,7 @@ export function Terminal({
 			term.onData((data) => {
 				if (filePaste.capture(data)) return;
 				if (suppressDepth > 0) return;
-				if (/[\r\n]/.test(data))
-					files.clear(
-						files.state.batch ? "Terminal input changed. Add the files again before sending." : ""
-					);
+				if (/[\r\n]/.test(data)) files.suspend();
 				// Suppress the \r that xterm may still emit after our
 				// Shift+Enter handler already sent the CSI u sequence.
 				if (shiftEnterPending) {
@@ -405,7 +429,7 @@ export function Terminal({
 
 		return () => {
 			disposed = true;
-			files.clear();
+			files.suspend();
 			controllerRef.current = null;
 			cleanupDrop?.();
 			cleanupConnection?.();
@@ -425,7 +449,7 @@ export function Terminal({
 
 	useEffect(() => {
 		if (!active) {
-			controllerRef.current?.clear();
+			controllerRef.current?.suspend();
 			setDragging(false);
 		}
 		void window.electron?.terminal.setVisible(id, active);

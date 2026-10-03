@@ -12,6 +12,7 @@ let state = "idle";
 let nativeCalled = 0;
 let probes = 0;
 let managed = false;
+let submitCapable = true;
 let requestedManaged = false;
 let exposed: { terminalFiles: { nativePaths: (files: File[]) => Array<string | null> } };
 mock.module("electron", () => ({
@@ -38,7 +39,9 @@ mock.module("../src/main/services/agent-session-manager-handle", () => ({
 mock.module("../src/main/terminal/daemon-instance", () => ({
 	getDaemonClient: () => ({
 		isConnected: true,
-		supportsFileSubmit: true,
+		get supportsFileSubmit() {
+			return submitCapable;
+		},
 		fileTarget: async (_id: string, allowManaged = false) => {
 			requestedManaged = allowManaged;
 			probes++;
@@ -171,6 +174,28 @@ test("explicit send accepts the running state caused by ordinary draft typing, b
 			await api.insert({ batchId: batch.id, text: ready.text, payload: ready.text, submit: true })
 		).toBe("admitted");
 	} finally {
+		state = "idle";
+	}
+});
+
+test("existing insertion-only daemon remains usable without restarting terminals or sending an unguarded Enter", async () => {
+	terminalFileOwners.attach("legacy-term", caller, "ws", root);
+	submitCapable = false;
+	try {
+		const batch = await api.prepare({ terminalId: "legacy-term", paths: [source] });
+		state = "running";
+		const ready = await api.resolve({
+			batchId: batch.id,
+			ids: batch.entries.map((e) => e.id),
+			submit: true,
+		});
+		expect(ready.submit).toBe(false);
+		expect(
+			await api.insert({ batchId: batch.id, text: ready.text, payload: ready.text, submit: true })
+		).toBe("admitted");
+		expect(writes.at(-1)).toBe(ready.text);
+	} finally {
+		submitCapable = true;
 		state = "idle";
 	}
 });

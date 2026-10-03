@@ -1,4 +1,4 @@
-import { afterAll, afterEach, expect, mock, test } from "bun:test";
+import { afterAll, afterEach, beforeEach, expect, mock, test } from "bun:test";
 import { Window } from "happy-dom";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
@@ -20,6 +20,10 @@ Object.assign(globalThis, {
 	IS_REACT_ACT_ENVIRONMENT: true,
 });
 afterAll(() => dom.close());
+beforeEach(() => {
+	window.localStorage.clear();
+	atomicSubmit = true;
+});
 let terminal: FakeTerminal;
 class FakeTerminal {
 	textarea = document.createElement("textarea");
@@ -80,6 +84,7 @@ for (const [module, name] of [
 	}));
 let selected: TerminalFileBatch;
 let nextId = 0;
+let atomicSubmit = true;
 const ordinary: string[] = [];
 const submitted: Array<{ payload: string; submit?: boolean }> = [];
 const entries = (paths: Array<string | null>) =>
@@ -128,6 +133,7 @@ mock.module("../src/renderer/trpc/client", () => ({
 						selected.entries.filter((e) => ids.includes(e.id)).map((e) => e.path as string)
 					),
 					target: selected.target,
+					submit: atomicSubmit,
 				}),
 			},
 			insert: {
@@ -219,7 +225,7 @@ test("drop adds removable chips; the next Enter sends the surviving files with t
 	expect(submitted).toMatchObject([
 		{ payload: "\x1b[200~ '/fixture/second.mov' \x1b[201~", submit: true },
 	]);
-	expect(document.activeElement).toBe(terminal.textarea);
+	expect(document.activeElement === terminal.textarea).toBe(true);
 });
 test("details stay collapsed by default; removing all files restores ordinary Enter and Shift+Enter stays unchanged", async () => {
 	await mount();
@@ -273,4 +279,90 @@ test("a rejected file-picker addition keeps the earlier file chips", async () =>
 	});
 	expect(host.textContent).toContain("keep.pdf");
 	expect(host.textContent).toContain("Cannot add this file");
+});
+
+test("a new Enter press is not swallowed when keyup was lost after the file send", async () => {
+	await mount();
+	await drop("once.pdf");
+	await enter();
+	await enter();
+	expect(submitted).toHaveLength(1);
+	expect(ordinary).toEqual(["\r"]);
+});
+
+test("refresh keeps selected file chips without automatically submitting or reusing the old batch", async () => {
+	window.localStorage.clear();
+	await mount();
+	await drop("kept-on-refresh.pdf");
+	await act(async () => root?.unmount());
+	host.remove();
+	root = undefined;
+	await mount();
+	expect(host.textContent).toContain("kept-on-refresh.pdf");
+	expect(submitted).toEqual([]);
+	await enter();
+	expect(submitted).toHaveLength(1);
+});
+test("choosing a local file returns focus to the terminal so Enter can send", async () => {
+	window.localStorage.clear();
+	await mount();
+	const picker = host.querySelector('input[type="file"]') as HTMLInputElement;
+	(host.querySelector("button") as HTMLButtonElement).focus();
+	Object.defineProperty(picker, "files", {
+		value: [new File([], "chosen.pdf")],
+		configurable: true,
+	});
+	await act(async () => {
+		picker.dispatchEvent(new dom.Event("change", { bubbles: true }) as unknown as Event);
+	});
+	expect(document.activeElement === terminal.textarea).toBe(true);
+	expect(ordinary).toEqual([]);
+});
+
+test("pasting multiline draft text keeps the selected files and preserves ordinary paste bytes", async () => {
+	await mount();
+	await drop("kept.pdf");
+	const text = "\x1b[200~review these\nplease\x1b[201~";
+	await act(async () => {
+		terminal.data(text);
+	});
+	expect(host.textContent).toContain("kept.pdf");
+	expect(ordinary).toEqual([text]);
+	expect(submitted).toEqual([]);
+	await enter();
+	expect(submitted).toHaveLength(1);
+});
+test("removing a file restores composer focus without emitting terminal focus bytes", async () => {
+	await mount();
+	await drop("first.pdf");
+	await drop("second.pdf");
+	const remove = host.querySelector('[aria-label="Remove first.pdf"]') as HTMLButtonElement;
+	remove.focus();
+	await act(async () => remove.click());
+	expect(document.activeElement === terminal.textarea).toBe(true);
+	expect(ordinary).toEqual([]);
+});
+
+test("the observed older daemon flow adds paths on Enter and permits the next Enter to send normally", async () => {
+	atomicSubmit = false;
+	await mount();
+	await drop("legacy.pdf");
+	terminal.data("review this");
+	await enter();
+	expect(host.textContent).toContain("Press Enter again");
+	expect(ordinary).toEqual(["review this"]);
+	await enter();
+	expect(ordinary).toEqual(["review this", "\r"]);
+	expect(submitted).toHaveLength(1);
+});
+test("refresh after an attempted delivery cannot restore a send intent or duplicate file input", async () => {
+	await mount();
+	await drop("sent.pdf");
+	await enter();
+	await act(async () => root?.unmount());
+	host.remove();
+	root = undefined;
+	await mount();
+	expect(host.textContent).not.toContain("sent.pdf");
+	expect(submitted).toEqual([]);
 });

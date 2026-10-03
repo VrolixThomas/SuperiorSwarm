@@ -23,7 +23,16 @@ const copies = () => {
 	);
 	return store;
 };
-const leases = new Map<string, { generation: string; supported: boolean; expires: number }>();
+const leases = new Map<
+	string,
+	{
+		generation: string;
+		supported: boolean;
+		expires: number;
+		requestedSubmit?: boolean;
+		atomicSubmit?: boolean;
+	}
+>();
 const progress = new Map<string, number>();
 const id = z.string().min(1).max(200);
 const batchInput = z.object({ batchId: id });
@@ -86,10 +95,6 @@ export const terminalFilesRouter = router({
 			return service.append(ctx.fileCaller, input.batchId, input.paths, input.retainedIds);
 		}),
 	resolve: fileProcedure.input(selection).mutation(async ({ ctx, input }) => {
-		if (input.submit && !getDaemonClient()?.supportsFileSubmit)
-			throw new Error(
-				"This terminal service needs an update to send files with a message. Nothing was sent; your draft and selected files are kept."
-			);
 		const result = await service.resolve(ctx.fileCaller, input.batchId, input.ids);
 		target(result.target.terminalId, ctx.fileCaller);
 		ready(result.target.terminalId, input.submit);
@@ -98,7 +103,9 @@ export const terminalFilesRouter = router({
 			throw new Error(
 				"Access unverified: remote or unknown prompt, or older daemon. Use a supported local POSIX prompt and current daemon. No paths were sent."
 			);
-		return result;
+		lease.requestedSubmit = input.submit === true;
+		lease.atomicSubmit = lease.requestedSubmit && getDaemonClient()?.supportsFileSubmit === true;
+		return { ...result, submit: lease.atomicSubmit };
 	}),
 	insert: fileProcedure
 		.input(
@@ -111,8 +118,10 @@ export const terminalFilesRouter = router({
 		.mutation(async ({ ctx, input }) => {
 			if (!isFilePaste(input.text, input.payload))
 				throw new Error("Unexpected terminal paste payload.");
-			const bound = service.consume(ctx.fileCaller, input.batchId, input.text);
 			const lease = leases.get(input.batchId);
+			if (!lease || lease.requestedSubmit !== (input.submit === true))
+				throw new Error("Prepare this file action again before sending.");
+			const bound = service.consume(ctx.fileCaller, input.batchId, input.text);
 			leases.delete(input.batchId);
 			target(bound.terminalId, ctx.fileCaller);
 			ready(bound.terminalId, input.submit);
@@ -124,7 +133,7 @@ export const terminalFilesRouter = router({
 					lease.generation,
 					input.text,
 					input.payload,
-					input.submit
+					lease.atomicSubmit
 				)) ?? "rejected"
 			);
 		}),

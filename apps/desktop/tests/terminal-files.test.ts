@@ -246,3 +246,15 @@ test("append rejects another owner and cannot complete after a terminal generati
 	owners.invalidate("term", "replay");
 	await expect(pending).rejects.toThrow();
 });
+
+test("prepared file and workspace identity metadata can detect replacements after refresh", async () => {
+	const path = file("restore.pdf");
+	const target = owners.target("term", caller);
+	expect(target.rootIdentity).toBeTypeOf("string");
+	const first = await service.prepare(caller, target, [path]);
+	expect(first.entries[0]?.identity).toBeTypeOf("string");
+	unlinkSync(path);
+	writeFileSync(path, "replacement fixture");
+	const second = await service.prepare(caller, target, [path]);
+	expect(second.entries[0]?.identity).not.toBe(first.entries[0]?.identity);
+});

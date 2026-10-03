@@ -2,6 +2,7 @@ import {
 	FILE_DROP_MAX_ITEMS,
 	type FileDelivery,
 	type TerminalFileBatch,
+	type TerminalFileDraft,
 	type TerminalFileTarget,
 } from "../../shared/terminal-files";
 export interface FileShelfState {
@@ -20,7 +21,7 @@ interface Operations {
 		batchId: string,
 		ids: string[],
 		submit?: boolean
-	) => Promise<{ text: string; target: TerminalFileTarget }>;
+	) => Promise<{ text: string; target: TerminalFileTarget; submit?: boolean }>;
 	insert: (
 		batchId: string,
 		text: string,
@@ -36,6 +37,7 @@ interface Operations {
 export class TerminalFileController {
 	state: FileShelfState = { batch: null, busy: false, status: "" };
 	private epoch = 0;
+	private needsPreparation = false;
 	private staging: Promise<void> | null = null;
 	private pendingPaths = 0;
 	private activity: "stage" | "copy" | "insert" | null = null;
@@ -55,9 +57,85 @@ export class TerminalFileController {
 		this.staging = null;
 		this.pendingPaths = 0;
 		this.activity = null;
-		if (this.state.batch) void this.operations.cancel(this.state.batch.id).catch(() => {});
+		if (this.state.batch?.id) void this.operations.cancel(this.state.batch.id).catch(() => {});
+		this.needsPreparation = false;
 		this.update({ batch: null, busy: false, status });
 	}
+	restore(draft: TerminalFileDraft): void {
+		this.needsPreparation = true;
+		this.update({
+			batch: {
+				id: "",
+				target: { ...draft.target, generation: "" },
+				entries: draft.entries.map((entry, index) => ({ ...entry, id: `restored-${index}` })),
+			},
+			busy: false,
+			status: "Files restored. Review the prompt before sending.",
+		});
+	}
+	suspend(status = "Files kept. Review the prompt before sending."): void {
+		const batch = this.state.batch;
+		this.epoch++;
+		this.staging = null;
+		this.pendingPaths = 0;
+		this.activity = null;
+		if (batch?.id) void this.operations.cancel(batch.id).catch(() => {});
+		this.needsPreparation = Boolean(batch);
+		this.update({
+			batch: batch ? { ...batch, id: "", target: { ...batch.target, generation: "" } } : null,
+			busy: false,
+			status: batch ? status : "",
+		});
+	}
+	focusInput(): void {
+		if (this.operations.ready()) this.operations.focus();
+	}
+	private async prepareRestored(epoch: number): Promise<TerminalFileBatch | null> {
+		const previous = this.state.batch;
+		if (!previous || !this.needsPreparation) return previous;
+		const fresh = await this.operations.prepare(previous.entries.map((entry) => entry.path));
+		if (!this.current(epoch)) {
+			void this.operations.cancel(fresh.id).catch(() => {});
+			return null;
+		}
+		try {
+			if (
+				fresh.target.terminalId !== previous.target.terminalId ||
+				fresh.target.workspaceId !== previous.target.workspaceId ||
+				fresh.target.root !== previous.target.root ||
+				(previous.target.rootIdentity && fresh.target.rootIdentity !== previous.target.rootIdentity)
+			)
+				throw new Error("The workspace changed. Remove these files and add them again.");
+			for (let index = 0; index < previous.entries.length; index++) {
+				const old = previous.entries[index];
+				const entry = fresh.entries[index];
+				if (
+					!old ||
+					!entry ||
+					(old.identity && entry.identity !== old.identity) ||
+					(old.path && entry.path && entry.path !== old.path)
+				)
+					throw new Error("A selected file changed or is missing. Remove it and add it again.");
+				// Keep the reviewed copy's original display label; authority remains with fresh metadata.
+				if (old.copyId && old.path === entry.path)
+					fresh.entries[index] = {
+						...entry,
+						label: old.label,
+						copyId: old.copyId,
+						copyAllowed: false,
+					};
+				else if (!old.referenceAllowed && old.copyAllowed)
+					fresh.entries[index] = { ...entry, referenceAllowed: false };
+			}
+			this.needsPreparation = false;
+			this.update({ batch: fresh });
+			return fresh;
+		} catch (error) {
+			void this.operations.cancel(fresh.id).catch(() => {});
+			throw error;
+		}
+	}
+
 	reportError(status: string): void {
 		this.update({ status });
 	}
@@ -91,7 +169,10 @@ export class TerminalFileController {
 		const run = async () => {
 			if (!this.current(epoch)) return;
 			try {
-				const existing = this.state.batch;
+				const existing = this.needsPreparation
+					? await this.prepareRestored(epoch)
+					: this.state.batch;
+				if (!this.current(epoch)) return;
 				const batch = existing
 					? await this.operations.append(
 							existing.id,
@@ -136,13 +217,19 @@ export class TerminalFileController {
 		else this.update({ batch: { ...this.state.batch, entries } });
 	}
 	async copy(id: string): Promise<void> {
-		const batch = this.state.batch;
+		let selectedId = id;
+		let batch = this.state.batch;
 		if (!batch || this.state.busy || !this.operations.ready()) return;
 		const epoch = this.epoch;
 		this.activity = "copy";
 		this.update({ busy: true, status: "Copying into workspace… Cancel stops this operation." });
 		try {
-			const copied = await this.operations.copy(batch.id, id);
+			const index = batch.entries.findIndex((entry) => entry.id === id);
+			const prepared = this.needsPreparation ? await this.prepareRestored(epoch) : this.state.batch;
+			if (!prepared || !this.current(epoch)) return;
+			batch = prepared;
+			selectedId = batch.entries[index]?.id ?? id;
+			const copied = await this.operations.copy(batch.id, selectedId);
 			if (this.current(epoch)) {
 				const selected = new Set(batch.entries.map((entry) => entry.id));
 				this.update({
@@ -158,7 +245,7 @@ export class TerminalFileController {
 					batch: {
 						...batch,
 						entries: batch.entries.map((entry) =>
-							entry.id === id ? { ...entry, referenceAllowed: false } : entry
+							entry.id === selectedId ? { ...entry, referenceAllowed: false } : entry
 						),
 					},
 					status:
@@ -178,13 +265,22 @@ export class TerminalFileController {
 		await this.insert(true);
 	}
 	async insert(submit = false): Promise<void> {
-		const batch = this.state.batch;
+		let batch = this.state.batch;
 		if (!batch || this.state.busy || !this.operations.ready()) return;
 		const epoch = this.epoch;
 		this.activity = "insert";
 		this.update({ busy: true, status: "Checking this terminal and the selected paths…" });
 		let consumed = false;
 		try {
+			const refreshed = this.needsPreparation
+				? await this.prepareRestored(epoch)
+				: this.state.batch;
+			if (!refreshed || !this.current(epoch)) return;
+			batch = refreshed;
+			if (batch.entries.some((entry) => !entry.referenceAllowed))
+				throw new Error(
+					"Review the files that need attention: copy or remove them before sending."
+				);
 			const ids = batch.entries.map((entry) => entry.id);
 			const prepared = submit
 				? await this.operations.resolve(batch.id, ids, true)
@@ -195,28 +291,34 @@ export class TerminalFileController {
 			const payload = this.operations.paste(prepared.text);
 			const delivery = await this.operations.insert(batch.id, prepared.text, payload, submit);
 			if (!this.current(epoch)) return;
+			if (delivery === "rejected") {
+				this.update({ batch });
+				this.suspend(
+					"Nothing was sent. Files are kept; check this terminal and press Enter to try again."
+				);
+				return;
+			}
 			if (delivery === "admitted") this.operations.focus();
 			this.update({
 				busy: false,
 				status:
 					delivery === "admitted"
 						? submit
-							? "File paths sent with your message."
+							? prepared.submit !== true
+								? "Files added to your prompt. Press Enter again to send with this terminal service."
+								: "File paths sent with your message."
 							: "Paths added to your prompt. Press Enter to send."
-						: delivery === "rejected"
-							? "Nothing inserted: terminal changed or unavailable. Drop again when ready."
-							: "Delivery uncertain — check the terminal. This batch will not be retried.",
+						: "Delivery uncertain — check the terminal. This batch will not be retried.",
 			});
 		} catch (error) {
-			if (this.current(epoch))
-				this.update({
-					busy: false,
-					status: consumed
-						? "Delivery uncertain — check the terminal. This batch will not be retried."
-						: error instanceof Error
-							? error.message
-							: "Unable to prepare insertion.",
-				});
+			if (this.current(epoch)) {
+				if (consumed)
+					this.update({
+						busy: false,
+						status: "Delivery uncertain — check the terminal. This batch will not be retried.",
+					});
+				else this.suspend(error instanceof Error ? error.message : "Unable to prepare insertion.");
+			}
 		} finally {
 			if (this.epoch === epoch) this.activity = null;
 		}

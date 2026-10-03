@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { lstatSync, realpathSync } from "node:fs";
 import { lstat, realpath, stat } from "node:fs/promises";
 import { isAbsolute, relative } from "node:path";
@@ -43,7 +43,13 @@ export class TerminalFileOwners {
 			rootDev: info.dev,
 			rootIno: info.ino,
 			caller,
-			target: { terminalId, generation: randomUUID(), workspaceId, root },
+			target: {
+				terminalId,
+				generation: randomUUID(),
+				workspaceId,
+				root,
+				rootIdentity: `${info.dev}:${info.ino}`,
+			},
 		});
 	}
 	target(terminalId: string, caller: FileCaller): TerminalFileTarget {
@@ -132,6 +138,10 @@ export async function snapshotFile(path: string): Promise<FileSnapshot> {
 		ctimeMs: info.ctimeMs,
 		kind: info.isFile() ? "file" : "directory",
 	};
+}
+function fileIdentity(snapshot: FileSnapshot): string {
+	// Metadata only: never hash or read a reference's file contents.
+	return createHash("sha256").update(JSON.stringify(snapshot)).digest("hex");
 }
 export function sameFile(a: FileSnapshot, b: FileSnapshot): boolean {
 	return (
@@ -223,6 +233,7 @@ export class TerminalFileService {
 					id,
 					label: displayFilePath(path.slice(path.lastIndexOf("/") + 1) || path),
 					path: snapshot.path,
+					identity: fileIdentity(snapshot),
 					size: snapshot.size,
 					kind: snapshot.kind,
 					external: !isContained(root, snapshot.path),
@@ -325,6 +336,7 @@ export class TerminalFileService {
 		stored.snapshots.set(id, snapshot);
 		Object.assign(entry, {
 			path,
+			identity: fileIdentity(snapshot),
 			copyId,
 			size: snapshot.size,
 			referenceAllowed: isSafeTerminalPath(path),

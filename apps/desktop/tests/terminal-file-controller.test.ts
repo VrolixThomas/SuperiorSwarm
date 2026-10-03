@@ -1,6 +1,6 @@
 import { expect, mock, test } from "bun:test";
 import { TerminalFileController } from "../src/renderer/components/terminal-file-controller";
-import type { TerminalFileBatch } from "../src/shared/terminal-files";
+import type { FileDelivery, TerminalFileBatch } from "../src/shared/terminal-files";
 const batch: TerminalFileBatch = {
 	id: "batch",
 	target: { terminalId: "term", generation: "g1", workspaceId: "ws", root: "/workspace" },
@@ -38,10 +38,12 @@ function harness() {
 		text: " '/workspace/a' '/workspace/b' ",
 		target: batch.target,
 	}));
-	const insert = mock(async (_id: string, _text: string, payload: string) => {
-		writes.push(payload);
-		return "admitted" as const;
-	});
+	const insert = mock(
+		async (_id: string, _text: string, payload: string): Promise<FileDelivery> => {
+			writes.push(payload);
+			return "admitted" as const;
+		}
+	);
 	const cancel = mock(async () => {});
 	const append = mock(async (_id: string, _paths: Array<string | null>, ids: string[]) => ({
 		...structuredClone(batch),
@@ -212,4 +214,101 @@ test("Enter during file resolution cannot send the text alone or submit automati
 	finish(structuredClone(batch));
 	await staging;
 	expect(h.insert).not.toHaveBeenCalled();
+});
+
+test("legacy insertion-only service adds paths without falsely reporting a send or retrying Enter", async () => {
+	const h = harness();
+	h.resolve.mockImplementation(async () => ({
+		text: " '/workspace/a' ",
+		target: batch.target,
+		submit: false,
+	}));
+	await h.controller.stage(["/native/a"]);
+	await h.controller.submit();
+	expect(h.controller.state.status).toContain("Press Enter again");
+	expect(h.controller.state.status).not.toContain("sent with your message");
+	expect(h.controller.hasFilesForSubmit()).toBe(false);
+	expect(h.insert).toHaveBeenCalledTimes(1);
+});
+
+test("suspending for refresh retains file chips but discards live handles and never replays a send", async () => {
+	const h = harness();
+	await h.controller.stage(["/native/a"]);
+	h.controller.suspend("Refreshed");
+	expect(h.controller.state.batch?.entries.map((e) => e.id)).toEqual(["a", "b"]);
+	expect(h.writes).toEqual([]);
+	await h.controller.submit();
+	expect(h.prepare).toHaveBeenCalledWith(["/workspace/a", "/workspace/b"]);
+	expect(h.insert).toHaveBeenCalledTimes(1);
+});
+test("restored selection does no input or metadata work until the user's next action", async () => {
+	const h = harness();
+	h.controller.restore({
+		version: 1,
+		target: { terminalId: "term", workspaceId: "ws", root: "/workspace" },
+		entries: batch.entries.map(({ id, ...entry }) => entry),
+	});
+	expect(h.prepare).not.toHaveBeenCalled();
+	expect(h.resolve).not.toHaveBeenCalled();
+	expect(h.writes).toEqual([]);
+	await h.controller.submit();
+	expect(h.prepare).toHaveBeenCalledTimes(1);
+	expect(h.insert).toHaveBeenCalledTimes(1);
+});
+test("restored references refuse a changed workspace root or file identity", async () => {
+	const h = harness();
+	h.controller.restore({
+		version: 1,
+		target: { terminalId: "term", workspaceId: "ws", root: "/different" },
+		entries: batch.entries.map(({ id, ...entry }) => entry),
+	});
+	await h.controller.submit();
+	expect(h.insert).not.toHaveBeenCalled();
+	expect(h.controller.state.status).toContain("workspace");
+});
+
+test("failed preparation can be revalidated on a later user action without an automatic retry", async () => {
+	const h = harness();
+	await h.controller.stage(["/native/a"]);
+	h.resolve.mockImplementationOnce(async () => {
+		throw new Error("Pending files expired");
+	});
+	await h.controller.submit();
+	expect(h.insert).not.toHaveBeenCalled();
+	expect(h.prepare).toHaveBeenCalledTimes(1);
+	await h.controller.submit();
+	expect(h.prepare).toHaveBeenCalledTimes(2);
+	expect(h.insert).toHaveBeenCalledTimes(1);
+});
+test("refresh never silently turns a failed or required copy back into an original-path reference", async () => {
+	const h = harness();
+	h.controller.restore({
+		version: 1,
+		target: { terminalId: "term", workspaceId: "ws", root: "/workspace" },
+		entries: batch.entries.map(({ id, ...entry }) => ({ ...entry, referenceAllowed: false })),
+	});
+	await h.controller.submit();
+	expect(h.insert).not.toHaveBeenCalled();
+	expect(h.controller.state.status).toContain("copy");
+});
+
+test("a definite rejection keeps selected files for an explicit later attempt", async () => {
+	const h = harness();
+	await h.controller.stage(["/native/a"]);
+	h.insert.mockImplementation(async () => "rejected");
+	await h.controller.submit();
+	expect(h.controller.state.batch?.entries).toHaveLength(2);
+	expect(h.controller.state.status).toContain("Nothing was sent");
+	expect(h.insert).toHaveBeenCalledTimes(1);
+});
+test("a restored file identity mismatch cannot deliver a replacement with the same name", async () => {
+	const h = harness();
+	h.controller.restore({
+		version: 1,
+		target: { terminalId: "term", workspaceId: "ws", root: "/workspace" },
+		entries: batch.entries.map(({ id, ...entry }) => ({ ...entry, identity: "old-file" })),
+	});
+	await h.controller.submit();
+	expect(h.insert).not.toHaveBeenCalled();
+	expect(h.controller.state.status).toContain("changed");
 });
