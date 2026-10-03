@@ -2,7 +2,13 @@ import { initTRPC } from "@trpc/server";
 import superjson from "superjson";
 import { ZodError } from "zod";
 
-export const t = initTRPC.create({
+import type { FileCaller } from "../terminal/terminal-files";
+
+export interface TrpcContext {
+	fileCaller?: FileCaller;
+}
+
+export const t = initTRPC.context<TrpcContext>().create({
 	transformer: superjson,
 	errorFormatter({ shape, error }) {
 		return {

@@ -11,6 +11,7 @@ import {
 import { getDb } from "../db";
 import { agentSessions, terminalSessions, workspaces } from "../db/schema";
 import type { DaemonClient } from "../terminal/daemon-client";
+import { terminalFileOwners } from "../terminal/terminal-files";
 import type {
 	AgentForegroundInspection,
 	AgentProcessController,
@@ -712,6 +713,8 @@ export class AgentSessionManager {
 	}
 
 	private emit(session: AgentSessionInfo): void {
+		if (["hibernating", "hibernated", "resuming", "error", "needs-input"].includes(session.state))
+			terminalFileOwners.invalidate(session.terminalId, session.state);
 		this.options.onStatus?.({
 			terminalId: session.terminalId,
 			state: session.state,

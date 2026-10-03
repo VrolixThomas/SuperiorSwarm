@@ -1,14 +1,18 @@
+import { realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { eq } from "drizzle-orm";
 import { BrowserWindow, ipcMain } from "electron";
 import type { TerminalDataMeta } from "../../shared/daemon-protocol";
 import { getAgentNotifyPort, getAgentNotifyToken } from "../agent-hooks/port";
+import { getWorkspaceCwdOrThrow } from "../agent-launch/workspace-cwd-lookup";
 import { getDb } from "../db";
 import { terminalSessions } from "../db/schema";
 import { ensureTerminalSessionRow } from "../db/session-persistence";
 import type { AgentSessionManager } from "../services/agent-session-manager";
 import { incrementCounter } from "../telemetry/state";
 import type { DaemonClient } from "./daemon-client";
+import { rendererTrust } from "./renderer-trust";
+import { terminalFileOwners } from "./terminal-files";
 
 function assertNonEmptyString(value: unknown, name: string): asserts value is string {
 	if (typeof value !== "string" || value.length === 0) {
@@ -42,12 +46,32 @@ export function setupTerminalIPC(
 					})
 				: false;
 
+			const caller = rendererTrust.authorize({
+				id: event.sender.id,
+				url: event.senderFrame?.url ?? "",
+				frameId: event.senderFrame?.routingId ?? -1,
+				mainFrameId: event.sender.mainFrame.routingId,
+				destroyed: event.sender.isDestroyed(),
+			});
+			const row = getDb().select().from(terminalSessions).where(eq(terminalSessions.id, id)).get();
+			if (row?.workspaceId && row.workspaceId !== wsId)
+				throw new Error("Terminal workspace mismatch.");
+			if (row?.workspaceId)
+				terminalFileOwners.attach(
+					id,
+					caller,
+					row.workspaceId,
+					realpathSync(getWorkspaceCwdOrThrow(row.workspaceId))
+				);
+
 			const onData = (data: string, meta?: TerminalDataMeta) => {
+				if (meta?.replay) terminalFileOwners.invalidate(id, "replay");
 				if (!window.isDestroyed()) {
 					window.webContents.send("terminal:data", id, data, meta);
 				}
 			};
 			const onExit = (exitCode: number) => {
+				terminalFileOwners.detach(id);
 				if (!window.isDestroyed()) {
 					window.webContents.send("terminal:exit", id, exitCode);
 				}
@@ -93,6 +117,7 @@ export function setupTerminalIPC(
 		if (typeof data !== "string") {
 			throw new Error("data must be a string");
 		}
+		if (/[\r\n]/.test(data)) terminalFileOwners.invalidate(id, "submitted input");
 		await agentSessionManager?.beforeTerminalInput(id);
 		// false = daemon not connected, nothing delivered. Callers that need
 		// delivery confirmation (e.g. inline-comment send) check this; the
@@ -113,11 +138,13 @@ export function setupTerminalIPC(
 
 	ipcMain.handle("terminal:detach", (_event, id: unknown) => {
 		assertNonEmptyString(id, "id");
+		terminalFileOwners.detach(id);
 		daemonClient.detach(id);
 	});
 
 	ipcMain.handle("terminal:dispose", (_event, id: unknown) => {
 		assertNonEmptyString(id, "id");
+		terminalFileOwners.detach(id);
 		daemonClient.dispose(id);
 		agentSessionManager?.removeSession(id);
 		// Also remove the DB session record so it doesn't reappear as stale
@@ -134,11 +161,13 @@ export function setupTerminalIPC(
 		if (typeof visible !== "boolean") {
 			throw new Error("visible must be a boolean");
 		}
+		if (!visible) terminalFileOwners.invalidate(id, "hidden");
 		await agentSessionManager?.setVisible(id, visible);
 	});
 
 	ipcMain.handle("terminal:wake", async (_event, id: unknown) => {
 		assertNonEmptyString(id, "id");
+		terminalFileOwners.invalidate(id, "wake");
 		await agentSessionManager?.wake(id);
 	});
 
@@ -154,6 +183,7 @@ export function setupTerminalIPC(
 	});
 
 	daemonClient.addConnectionStatusListener((connected: boolean) => {
+		terminalFileOwners.invalidateAll();
 		if (connected && agentSessionManager) {
 			void agentSessionManager.reconcile().catch((error) => {
 				console.error("[agent-session] failed to reconcile terminal processes:", error);

@@ -7,6 +7,8 @@ import {
 import { ipcMain } from "electron";
 import { isCloneable } from "../ipc-safety";
 import { log } from "../logger";
+import { rendererTrust } from "../terminal/renderer-trust";
+import type { FileCaller } from "../terminal/terminal-files";
 
 const errorResponse = (message: string, code: string) => ({
 	error: { message, code, data: { code, httpStatus: 500 } },
@@ -15,14 +17,24 @@ const errorResponse = (message: string, code: string) => ({
 export function setupTRPCIPC(appRouter: AnyRouter): void {
 	ipcMain.handle(
 		"trpc:request",
-		async (_event, { type, path, input }: { type: string; path: string; input?: unknown }) => {
+		async (event, { type, path, input }: { type: string; path: string; input?: unknown }) => {
 			const label = `trpc:${path}`;
 			try {
+				let fileCaller: FileCaller | undefined;
+				if (path.startsWith("terminalFiles.")) {
+					fileCaller = rendererTrust.authorize({
+						id: event.sender.id,
+						url: event.senderFrame?.url ?? "",
+						frameId: event.senderFrame?.routingId ?? -1,
+						mainFrameId: event.sender.mainFrame.routingId,
+						destroyed: event.sender.isDestroyed(),
+					});
+				}
 				const result = await callTRPCProcedure({
 					router: appRouter,
 					path,
 					getRawInput: async () => input,
-					ctx: {},
+					ctx: { fileCaller },
 					type: type as "query" | "mutation",
 					signal: undefined,
 					batchIndex: 0,

@@ -39,7 +39,20 @@ export function daemonPaths(instanceId: string): DaemonPaths {
 	};
 }
 
+export interface DaemonFileTarget {
+	generation: string;
+	foreground: string;
+	supported: boolean;
+}
 export type ClientMessage =
+	| { type: "file-target"; id: string; requestId: string }
+	| {
+			type: "file-input";
+			id: string;
+			requestId: string;
+			generation: string;
+			payload: string;
+	  }
 	| { type: "create"; id: string; cwd?: string; env?: Record<string, string> }
 	| { type: "attach"; id: string }
 	| { type: "detach"; id: string }
@@ -52,8 +65,14 @@ export type ClientMessage =
 export type DaemonSession = { id: string; cwd: string; pid: number };
 
 export type DaemonMessage =
+	| {
+			type: "file-result";
+			requestId: string;
+			target?: DaemonFileTarget | null;
+			delivery?: "admitted" | "rejected" | "uncertain";
+	  }
 	// protocolVersion is absent on protocol-1 daemons.
-	| { type: "ready"; protocolVersion?: number }
+	| { type: "ready"; protocolVersion?: number; capabilities?: string[] }
 	| { type: "sessions"; sessions: DaemonSession[] }
 	// base64-encoded PTY output. replay=true marks a scrollback replay sent on
 	// attach (not live output); fg is the PTY's foreground process name at

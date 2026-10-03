@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import react from "@vitejs/plugin-react";
@@ -51,9 +52,33 @@ function copyMigrationsPlugin() {
 	};
 }
 
+function terminalFileHelperPlugin() {
+	return {
+		name: "terminal-file-helper",
+		closeBundle() {
+			const output = resolve(__dirname, "out/main/terminal-file-copy");
+			mkdirSync(resolve(__dirname, "out/main"), { recursive: true });
+			execFileSync("cc", [
+				"-std=c11",
+				"-Wall",
+				"-Wextra",
+				"-Werror",
+				"-O2",
+				resolve(__dirname, "src/main/terminal/terminal-file-copy.c"),
+				"-o",
+				output,
+			]);
+		},
+	};
+}
+
 export default defineConfig({
 	main: {
-		plugins: [externalizeDepsPlugin({ exclude: ["electron-updater"] }), copyMigrationsPlugin()],
+		plugins: [
+			externalizeDepsPlugin({ exclude: ["electron-updater"] }),
+			copyMigrationsPlugin(),
+			terminalFileHelperPlugin(),
+		],
 		define: {
 			"process.env.JIRA_CLIENT_ID": JSON.stringify(process.env.JIRA_CLIENT_ID ?? ""),
 			"process.env.JIRA_CLIENT_SECRET": JSON.stringify(process.env.JIRA_CLIENT_SECRET ?? ""),

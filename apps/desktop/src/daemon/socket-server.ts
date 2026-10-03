@@ -55,7 +55,11 @@ export class SocketServer {
 		const clientId = `client-${++this.clientIdCounter}`;
 		this.clients.set(clientId, socket);
 
-		this.send(socket, { type: "ready", protocolVersion: DAEMON_PROTOCOL_VERSION });
+		this.send(socket, {
+			type: "ready",
+			protocolVersion: DAEMON_PROTOCOL_VERSION,
+			capabilities: ["file-input-v1"],
+		});
 
 		let lineBuffer = "";
 		let droppingOversizedFrame = false;
@@ -179,6 +183,32 @@ export class SocketServer {
 						fg: attached.process,
 					});
 				}
+				break;
+			}
+			case "file-target": {
+				this.send(socket, {
+					type: "file-result",
+					requestId: msg.requestId,
+					target: this.ptyManager.fileInputs.target(msg.id, clientId),
+				});
+				break;
+			}
+			case "file-input": {
+				this.send(socket, {
+					type: "file-result",
+					requestId: msg.requestId,
+					delivery: this.ptyManager.fileInputs.insert(
+						msg.id,
+						clientId,
+						msg.generation,
+						typeof msg.payload === "string" &&
+							msg.payload.startsWith("\x1b[200~") &&
+							msg.payload.endsWith("\x1b[201~")
+							? msg.payload.slice(6, -6)
+							: msg.payload,
+						msg.payload
+					),
+				});
 				break;
 			}
 			case "write": {

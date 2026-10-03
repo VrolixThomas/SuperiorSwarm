@@ -82,7 +82,12 @@ export function TerminalDrawer() {
 				</button>
 			</div>
 			<div className="h-[calc(100%-36px)]">
-				<Terminal id={terminal.tabId} cwd={terminal.cwd} workspaceId={terminal.workspaceId} />
+				<Terminal
+					id={terminal.tabId}
+					cwd={terminal.cwd}
+					workspaceId={terminal.workspaceId}
+					active={true}
+				/>
 			</div>
 		</section>
 	);
@@ -103,7 +108,12 @@ export function TerminalTab() {
 
 	return (
 		<div className="h-full min-h-0 bg-[var(--bg-base)]">
-			<Terminal id={terminal.tabId} cwd={terminal.cwd} workspaceId={terminal.workspaceId} />
+			<Terminal
+				id={terminal.tabId}
+				cwd={terminal.cwd}
+				workspaceId={terminal.workspaceId}
+				active={true}
+			/>
 		</div>
 	);
 }

@@ -5,6 +5,8 @@ import { MAX_SCROLLBACK_CHARS } from "../shared/daemon-protocol";
 
 const MAX_BUFFER_CHARS = MAX_SCROLLBACK_CHARS;
 
+import { FileInputSessions } from "./file-input-sessions";
+
 interface TerminalEntry {
 	pty: pty.IPty;
 	cwd: string;
@@ -41,6 +43,7 @@ function resolveEnv(extra?: Record<string, string>): Record<string, string> {
 
 export class PtyManager {
 	private terminals = new Map<string, TerminalEntry>();
+	readonly fileInputs = new FileInputSessions();
 
 	create(
 		id: string,
@@ -86,10 +89,18 @@ export class PtyManager {
 			if (this.terminals.get(id) !== entry) return;
 			const finalBuffer = entry.buffer;
 			this.terminals.delete(id);
+			this.fileInputs.remove(id);
 			for (const cb of entry.exitListeners.values()) cb(exitCode, finalBuffer);
 		});
 
 		this.terminals.set(id, entry);
+		this.fileInputs.create(
+			id,
+			clientId,
+			shell,
+			() => ptyProcess.process ?? "",
+			(data) => ptyProcess.write(data)
+		);
 	}
 
 	// Returns the buffered content and current foreground process name,
@@ -102,6 +113,7 @@ export class PtyManager {
 	): { buffer: string; process: string } | null {
 		const entry = this.terminals.get(id);
 		if (!entry) return null;
+		this.fileInputs.attach(id, clientId);
 		entry.dataListeners.set(clientId, onData);
 		entry.exitListeners.set(clientId, onExit);
 		return { buffer: entry.buffer, process: entry.pty.process ?? "" };
@@ -112,6 +124,7 @@ export class PtyManager {
 	detachSession(clientId: string, id: string): boolean {
 		const entry = this.terminals.get(id);
 		if (!entry) return false;
+		this.fileInputs.detach(id, clientId);
 		const had = entry.dataListeners.delete(clientId);
 		entry.exitListeners.delete(clientId);
 		return had;
@@ -129,6 +142,7 @@ export class PtyManager {
 			console.warn(`[pty-manager] write: terminal "${id}" not found`);
 			return;
 		}
+		this.fileInputs.input(id, data);
 		terminal.pty.write(data);
 	}
 
@@ -152,6 +166,7 @@ export class PtyManager {
 				entry.pty.kill("SIGKILL");
 			} catch {}
 			this.terminals.delete(id);
+			this.fileInputs.remove(id);
 		}
 	}
 
@@ -208,5 +223,6 @@ export class PtyManager {
 			} catch {}
 		}
 		this.terminals.clear();
+		this.fileInputs.clear();
 	}
 }
