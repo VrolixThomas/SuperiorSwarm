@@ -55,6 +55,7 @@ import { deleteControlDiscovery, writeControlDiscovery } from "./services/contro
 import { runGlobalMcpInstall } from "./services/global-mcp-install";
 import { writeLauncherScript } from "./services/global-mcp-launcher";
 import { runGlobalMcpMigration } from "./services/global-mcp-migration";
+import { keepAwakeService } from "./services/keep-awake";
 import { setTaskRegistry } from "./services/task-registry-handle";
 import { defaultSpawnFn, setDispatchBroadcaster, setEventBus } from "./services/workspace-service";
 import { initializeWorktreeCleanup } from "./services/worktree-cleanup-controller";
@@ -508,6 +509,11 @@ app.whenReady().then(async () => {
 // detached process that intentionally outlives the app so background agent PTYs
 // survive quit and can be re-attached on next launch (see src/daemon/index.ts).
 function teardownServices(t0: number): void {
+	try {
+		keepAwakeService.dispose();
+	} catch (error) {
+		log.error("[quit] Failed to release keep-awake lease:", error);
+	}
 	// Out-of-process guard: a detached process SIGKILLs us if the main thread
 	// wedges in native teardown (e.g. the fsevents finalizer) where an in-process
 	// timer can never fire because the event loop is being destroyed.

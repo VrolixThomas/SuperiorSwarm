@@ -6,6 +6,7 @@ import { getDb } from "../../db";
 import { appSettings } from "../../db/schema";
 import { getAgentSessionManager } from "../../services/agent-session-manager-handle";
 import { getAgentSleepSettings, setAgentSleepSettings } from "../../services/agent-sleep-settings";
+import { keepAwakeService } from "../../services/keep-awake";
 import {
 	getOrchestratorAutoDispatch,
 	setOrchestratorAutoDispatch,
@@ -46,6 +47,11 @@ function broadcastTheme(value: ThemePref): void {
 }
 
 export const settingsRouter = router({
+	getKeepAwake: publicProcedure.query(() => keepAwakeService.getCurrentState()),
+	setKeepAwake: publicProcedure
+		.input(z.boolean())
+		.mutation(({ input }) => keepAwakeService.setEnabled(input)),
+
 	getTheme: publicProcedure.query(() => readTheme()),
 	setTheme: publicProcedure.input(themeSchema).mutation(({ input }) => {
 		writeTheme(input);
