@@ -53,13 +53,13 @@ function target(terminalId: string, caller: { senderId: number; frameId: number 
 		throw new Error("Workspace root changed. Reopen the terminal.");
 	return current;
 }
-function ready(terminalId: string, explicitSubmit = false): void {
+function ready(terminalId: string): void {
 	const state = getAgentSessionManager()?.getSession(terminalId)?.state;
 	// Ordinary draft typing calls beforeTerminalInput and marks an idle agent running.
-	// A user-requested send must not mistake that bookkeeping for an unavailable prompt.
-	if (state && state !== "idle" && !(explicitSubmit && state === "running"))
+	// Explicit path insertion must not mistake that bookkeeping for an unavailable prompt.
+	if (state && state !== "idle" && state !== "running")
 		throw new Error(
-			"Bring an idle local prompt into view first. File sends never wake sleeping sessions or answer approval prompts."
+			"Bring an idle local prompt into view first. File insertion never wakes sleeping sessions or answers approval prompts."
 		);
 	if (!getDaemonClient()?.isConnected)
 		throw new Error("Terminal disconnected. Drop files again after reconnecting.");
@@ -110,7 +110,7 @@ export const terminalFilesRouter = router({
 	resolve: fileProcedure.input(selection).mutation(async ({ ctx, input }) => {
 		const result = await service.resolve(ctx.fileCaller, input.batchId, input.ids);
 		target(result.target.terminalId, ctx.fileCaller);
-		ready(result.target.terminalId, input.submit);
+		ready(result.target.terminalId);
 		const lease = leases.get(input.batchId);
 		if (!lease?.supported)
 			throw new Error(fileInputProblem(lease?.needsUpdate ? "update-required" : "unverified"));
@@ -141,7 +141,7 @@ export const terminalFilesRouter = router({
 			const bound = service.consume(ctx.fileCaller, input.batchId, input.text);
 			leases.delete(input.batchId);
 			target(bound.terminalId, ctx.fileCaller);
-			ready(bound.terminalId, input.submit);
+			ready(bound.terminalId);
 			terminalFileOwners.assert(ctx.fileCaller, bound);
 			if (!lease?.supported || lease.expires < Date.now()) return "rejected" as const;
 			return (

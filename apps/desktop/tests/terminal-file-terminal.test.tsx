@@ -86,6 +86,7 @@ let selected: TerminalFileBatch;
 let nextId = 0;
 let atomicSubmit = true;
 const ordinary: string[] = [];
+const inputTrace: string[] = [];
 const copied: string[] = [];
 Object.defineProperty(navigator.clipboard, "writeText", {
 	value: async (text: string) => {
@@ -151,6 +152,7 @@ mock.module("../src/renderer/trpc/client", () => ({
 			insert: {
 				mutate: async (value: { payload: string; submit?: boolean }) => {
 					submitted.push(value);
+					inputTrace.push(value.submit ? `${value.payload}\r` : value.payload);
 					return "admitted";
 				},
 			},
@@ -168,6 +170,7 @@ afterEach(async () => {
 });
 async function mount() {
 	ordinary.length = 0;
+	inputTrace.length = 0;
 	submitted.length = 0;
 	Object.assign(window, {
 		electron: {
@@ -185,6 +188,7 @@ async function mount() {
 				onExit: () => () => {},
 				write: async (_id: string, data: string) => {
 					ordinary.push(data);
+					inputTrace.push(data);
 					return true;
 				},
 			},
@@ -217,7 +221,7 @@ async function enter(shiftKey = false) {
 		);
 	});
 }
-test("drop adds removable chips; the next Enter sends the surviving files with the existing draft", async () => {
+test("drop adds removable chips; the first Enter inserts surviving files and the next Enter sends the draft", async () => {
 	await mount();
 	terminal.data("what files did I link?");
 	await drop("first.pdf");
@@ -234,9 +238,13 @@ test("drop adds removable chips; the next Enter sends the surviving files with t
 	await enter();
 	expect(ordinary).toEqual(["what files did I link?"]);
 	expect(submitted).toMatchObject([
-		{ payload: "\x1b[200~ '/fixture/second.mov' \x1b[201~", submit: true },
+		{ payload: "\x1b[200~ '/fixture/second.mov' \x1b[201~", submit: false },
 	]);
 	expect(document.activeElement === terminal.textarea).toBe(true);
+	expect(inputTrace.join("")).not.toContain("\r");
+	await enter();
+	expect(ordinary.at(-1)).toBe("\r");
+	expect(submitted).toHaveLength(1);
 });
 test("details stay collapsed by default; removing all files restores ordinary Enter and Shift+Enter stays unchanged", async () => {
 	await mount();
@@ -260,7 +268,7 @@ test("details stay collapsed by default; removing all files restores ordinary En
 	expect(submitted).toEqual([]);
 });
 
-test("holding Enter after a successful file send cannot forward a second submit", async () => {
+test("holding Enter after path insertion cannot submit the draft", async () => {
 	await mount();
 	await drop("once.pdf");
 	await enter();
@@ -293,7 +301,7 @@ test("a rejected file-picker addition keeps the earlier file chips", async () =>
 	expect(host.textContent).toContain("Cannot add this file");
 });
 
-test("a new Enter press is not swallowed when keyup was lost after the file send", async () => {
+test("a new Enter press submits normally when keyup was lost after path insertion", async () => {
 	await mount();
 	await drop("once.pdf");
 	await enter();
@@ -315,7 +323,7 @@ test("refresh keeps selected file chips without automatically submitting or reus
 	await enter();
 	expect(submitted).toHaveLength(1);
 });
-test("choosing a local file returns focus to the terminal so Enter can send", async () => {
+test("choosing a local file returns focus to the terminal so Enter can insert paths", async () => {
 	window.localStorage.clear();
 	await mount();
 	const picker = host.querySelector('input[type="file"]') as HTMLInputElement;
@@ -400,4 +408,23 @@ test("manual Copy paths preserves the draft, restores focus, and leaves the user
 	await enter();
 	expect(ordinary).toEqual(["review these ", "\r"]);
 	expect(submitted).toEqual([]);
+});
+
+test("files can be inserted between pieces of prose without sending until Enter has no pending files", async () => {
+	await mount();
+	terminal.data("look at");
+	await drop("A.pdf");
+	await enter();
+	expect(inputTrace.join("")).toBe("look at\x1b[200~ '/fixture/A.pdf' \x1b[201~");
+	terminal.data("then compare with");
+	await drop("B.mov");
+	await enter();
+	const draft =
+		"look at\x1b[200~ '/fixture/A.pdf' \x1b[201~then compare with\x1b[200~ '/fixture/B.mov' \x1b[201~";
+	expect(inputTrace.join("")).toBe(draft);
+	expect(submitted).toHaveLength(2);
+	expect(submitted.every((request) => request.submit === false)).toBe(true);
+	await enter();
+	expect(inputTrace.join("")).toBe(`${draft}\r`);
+	expect(submitted).toHaveLength(2);
 });

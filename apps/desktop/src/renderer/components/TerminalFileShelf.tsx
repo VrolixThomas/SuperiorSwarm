@@ -59,7 +59,7 @@ export function TerminalFileShelf({
 								? "Terminal update required"
 								: state.batch?.inputAvailability === "unverified"
 									? "Prompt access unverified"
-									: "Enter to send"}
+									: "Enter to insert paths"}
 						</span>
 					</>
 				)}

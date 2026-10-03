@@ -253,3 +253,31 @@ test("old-service Claude rejection is explained when adding files, retained afte
 		needsFileInputUpdate = false;
 	}
 });
+
+test("insertion-only Enter accepts draft typing state and sends no CR, while sleeping and approval states stay blocked", async () => {
+	terminalFileOwners.attach("insert-draft", caller, "ws", root);
+	const batch = await api.prepare({ terminalId: "insert-draft", paths: [source] });
+	const ids = batch.entries.map((entry) => entry.id);
+	state = "running";
+	try {
+		const prepared = await api.resolve({ batchId: batch.id, ids, submit: false });
+		expect(prepared.submit).toBe(false);
+		for (const unavailable of ["hibernated", "hibernating", "resuming", "needs-input", "error"]) {
+			state = unavailable;
+			await expect(api.resolve({ batchId: batch.id, ids, submit: false })).rejects.toThrow();
+		}
+		state = "running";
+		expect(
+			await api.insert({
+				batchId: batch.id,
+				text: prepared.text,
+				payload: prepared.text,
+				submit: false,
+			})
+		).toBe("admitted");
+		expect(writes.at(-1)).toBe(prepared.text);
+		expect(writes.at(-1)).not.toContain("\r");
+	} finally {
+		state = "idle";
+	}
+});

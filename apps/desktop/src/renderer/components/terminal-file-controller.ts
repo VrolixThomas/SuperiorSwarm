@@ -20,15 +20,9 @@ interface Operations {
 	) => Promise<TerminalFileBatch>;
 	resolve: (
 		batchId: string,
-		ids: string[],
-		submit?: boolean
-	) => Promise<{ text: string; target: TerminalFileTarget; submit?: boolean }>;
-	insert: (
-		batchId: string,
-		text: string,
-		payload: string,
-		submit?: boolean
-	) => Promise<FileDelivery>;
+		ids: string[]
+	) => Promise<{ text: string; target: TerminalFileTarget }>;
+	insert: (batchId: string, text: string, payload: string) => Promise<FileDelivery>;
 	copy: (batchId: string, id: string) => Promise<TerminalFileBatch>;
 	copyPaths: (batchId: string, ids: string[]) => Promise<string>;
 	clipboard: (text: string) => Promise<void>;
@@ -146,7 +140,7 @@ export class TerminalFileController {
 	reportError(status: string): void {
 		this.update({ status });
 	}
-	hasFilesForSubmit(): boolean {
+	hasPendingFiles(): boolean {
 		return this.state.batch !== null || this.state.busy;
 	}
 	stage(paths: Array<string | null>): Promise<void> {
@@ -195,7 +189,7 @@ export class TerminalFileController {
 					batch,
 					status:
 						fileInputProblem(batch.inputAvailability) ||
-						"Files will be included when you press Enter.",
+						"Press Enter to insert the paths into your draft. Nothing is submitted yet.",
 				});
 			} catch (error) {
 				if (this.current(epoch))
@@ -271,12 +265,12 @@ export class TerminalFileController {
 			if (this.epoch === epoch) this.activity = null;
 		}
 	}
-	async submit(): Promise<void> {
+	async insertPending(): Promise<void> {
 		if (this.state.busy) {
 			this.reportError("Files are still being prepared. Press Enter again when they are ready.");
 			return;
 		}
-		await this.insert(true);
+		await this.insert();
 	}
 	async copyPaths(): Promise<void> {
 		if (!this.state.batch || this.state.busy || !this.operations.ready()) return;
@@ -312,7 +306,7 @@ export class TerminalFileController {
 			}
 		}
 	}
-	async insert(submit = false): Promise<void> {
+	async insert(): Promise<void> {
 		let batch = this.state.batch;
 		if (!batch || this.state.busy || !this.operations.ready()) return;
 		const epoch = this.epoch;
@@ -330,14 +324,12 @@ export class TerminalFileController {
 					"Review the files that need attention: remove them, or rename their paths and add them again."
 				);
 			const ids = batch.entries.map((entry) => entry.id);
-			const prepared = submit
-				? await this.operations.resolve(batch.id, ids, true)
-				: await this.operations.resolve(batch.id, ids);
+			const prepared = await this.operations.resolve(batch.id, ids);
 			if (!this.current(epoch)) return;
 			consumed = true;
 			this.update({ batch: null });
 			const payload = this.operations.paste(prepared.text);
-			const delivery = await this.operations.insert(batch.id, prepared.text, payload, submit);
+			const delivery = await this.operations.insert(batch.id, prepared.text, payload);
 			if (!this.current(epoch)) return;
 			if (delivery === "rejected") {
 				this.update({ batch });
@@ -351,11 +343,7 @@ export class TerminalFileController {
 				busy: false,
 				status:
 					delivery === "admitted"
-						? submit
-							? prepared.submit !== true
-								? "Files added to your prompt. Press Enter again to send with this terminal service."
-								: "File paths sent with your message."
-							: "Paths added to your prompt. Press Enter to send."
+						? "Paths added to your prompt. Press Enter again to send, or keep typing."
 						: "Delivery uncertain — check the terminal. This batch will not be retried.",
 			});
 		} catch (error) {

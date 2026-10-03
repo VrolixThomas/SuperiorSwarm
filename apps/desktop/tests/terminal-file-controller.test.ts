@@ -191,19 +191,24 @@ test("cancelled picker and failed additional drop preserve earlier files", async
 	expect(h.controller.state.status).toContain("Cannot add file");
 	expect(h.cancel).not.toHaveBeenCalled();
 });
-test("explicit Enter sends paths with that message once; dropping alone does not paste or submit", async () => {
+test("Enter inserts paths once without submitting even when the daemon supports atomic send", async () => {
 	const h = harness();
+	h.resolve.mockImplementation(async () => ({
+		text: " '/workspace/a' '/workspace/b' ",
+		target: batch.target,
+		submit: true,
+	}));
 	await h.controller.stage(["/native/a"]);
 	expect(h.insert).not.toHaveBeenCalled();
-	await h.controller.submit();
+	await h.controller.insertPending();
 	expect(h.insert).toHaveBeenCalledWith(
 		"batch",
 		" '/workspace/a' '/workspace/b' ",
-		" '/workspace/a' '/workspace/b' ",
-		true
+		" '/workspace/a' '/workspace/b' "
 	);
+	expect(h.resolve).toHaveBeenCalledWith("batch", ["a", "b"]);
 	expect(h.controller.state.batch).toBeNull();
-	await h.controller.submit();
+	await h.controller.insertPending();
 	expect(h.insert).toHaveBeenCalledTimes(1);
 });
 test("Enter during file resolution cannot send the text alone or submit automatically later", async () => {
@@ -216,8 +221,8 @@ test("Enter during file resolution cannot send the text alone or submit automati
 			})
 	);
 	const staging = h.controller.stage(["/native/a"]);
-	expect(h.controller.hasFilesForSubmit()).toBe(true);
-	await h.controller.submit();
+	expect(h.controller.hasPendingFiles()).toBe(true);
+	await h.controller.insertPending();
 	expect(h.insert).not.toHaveBeenCalled();
 	finish(structuredClone(batch));
 	await staging;
@@ -232,10 +237,10 @@ test("legacy insertion-only service adds paths without falsely reporting a send 
 		submit: false,
 	}));
 	await h.controller.stage(["/native/a"]);
-	await h.controller.submit();
+	await h.controller.insertPending();
 	expect(h.controller.state.status).toContain("Press Enter again");
 	expect(h.controller.state.status).not.toContain("sent with your message");
-	expect(h.controller.hasFilesForSubmit()).toBe(false);
+	expect(h.controller.hasPendingFiles()).toBe(false);
 	expect(h.insert).toHaveBeenCalledTimes(1);
 });
 
@@ -245,7 +250,7 @@ test("suspending for refresh retains file chips but discards live handles and ne
 	h.controller.suspend("Refreshed");
 	expect(h.controller.state.batch?.entries.map((e) => e.id)).toEqual(["a", "b"]);
 	expect(h.writes).toEqual([]);
-	await h.controller.submit();
+	await h.controller.insertPending();
 	expect(h.prepare).toHaveBeenCalledWith(["/workspace/a", "/workspace/b"]);
 	expect(h.insert).toHaveBeenCalledTimes(1);
 });
@@ -259,7 +264,7 @@ test("restored selection does no input or metadata work until the user's next ac
 	expect(h.prepare).not.toHaveBeenCalled();
 	expect(h.resolve).not.toHaveBeenCalled();
 	expect(h.writes).toEqual([]);
-	await h.controller.submit();
+	await h.controller.insertPending();
 	expect(h.prepare).toHaveBeenCalledTimes(1);
 	expect(h.insert).toHaveBeenCalledTimes(1);
 });
@@ -270,7 +275,7 @@ test("restored references refuse a changed workspace root or file identity", asy
 		target: { terminalId: "term", workspaceId: "ws", root: "/different" },
 		entries: batch.entries.map(({ id, ...entry }) => entry),
 	});
-	await h.controller.submit();
+	await h.controller.insertPending();
 	expect(h.insert).not.toHaveBeenCalled();
 	expect(h.controller.state.status).toContain("workspace");
 });
@@ -281,10 +286,10 @@ test("failed preparation can be revalidated on a later user action without an au
 	h.resolve.mockImplementationOnce(async () => {
 		throw new Error("Pending files expired");
 	});
-	await h.controller.submit();
+	await h.controller.insertPending();
 	expect(h.insert).not.toHaveBeenCalled();
 	expect(h.prepare).toHaveBeenCalledTimes(1);
-	await h.controller.submit();
+	await h.controller.insertPending();
 	expect(h.prepare).toHaveBeenCalledTimes(2);
 	expect(h.insert).toHaveBeenCalledTimes(1);
 });
@@ -295,7 +300,7 @@ test("refresh never silently turns a failed or required copy back into an origin
 		target: { terminalId: "term", workspaceId: "ws", root: "/workspace" },
 		entries: batch.entries.map(({ id, ...entry }) => ({ ...entry, referenceAllowed: false })),
 	});
-	await h.controller.submit();
+	await h.controller.insertPending();
 	expect(h.insert).not.toHaveBeenCalled();
 	expect(h.controller.state.status).toContain("rename");
 });
@@ -304,7 +309,7 @@ test("a definite rejection keeps selected files for an explicit later attempt", 
 	const h = harness();
 	await h.controller.stage(["/native/a"]);
 	h.insert.mockImplementation(async () => "rejected");
-	await h.controller.submit();
+	await h.controller.insertPending();
 	expect(h.controller.state.batch?.entries).toHaveLength(2);
 	expect(h.controller.state.status).toContain("Nothing was sent");
 	expect(h.insert).toHaveBeenCalledTimes(1);
@@ -316,7 +321,7 @@ test("a restored file identity mismatch cannot deliver a replacement with the sa
 		target: { terminalId: "term", workspaceId: "ws", root: "/workspace" },
 		entries: batch.entries.map(({ id, ...entry }) => ({ ...entry, identity: "old-file" })),
 	});
-	await h.controller.submit();
+	await h.controller.insertPending();
 	expect(h.insert).not.toHaveBeenCalled();
 	expect(h.controller.state.status).toContain("changed");
 });

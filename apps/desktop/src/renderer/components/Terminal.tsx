@@ -198,10 +198,10 @@ export function Terminal({
 				prepare: (paths) => trpcVanilla.terminalFiles.prepare.mutate({ terminalId: id, paths }),
 				append: (batchId, paths, retainedIds) =>
 					trpcVanilla.terminalFiles.append.mutate({ batchId, paths, retainedIds }),
-				resolve: (batchId, ids, submit) =>
-					trpcVanilla.terminalFiles.resolve.mutate({ batchId, ids, submit }),
-				insert: (batchId, text, payload, submit) =>
-					trpcVanilla.terminalFiles.insert.mutate({ batchId, text, payload, submit }),
+				resolve: (batchId, ids) =>
+					trpcVanilla.terminalFiles.resolve.mutate({ batchId, ids, submit: false }),
+				insert: (batchId, text, payload) =>
+					trpcVanilla.terminalFiles.insert.mutate({ batchId, text, payload, submit: false }),
 				copy: (batchId, id) => trpcVanilla.terminalFiles.copy.mutate({ batchId, id }),
 				copyPaths: (batchId, ids) => trpcVanilla.terminalFiles.copyPaths.mutate({ batchId, ids }),
 				clipboard: (text) => navigator.clipboard.writeText(text),
@@ -329,12 +329,14 @@ export function Terminal({
 					!event.altKey &&
 					!event.metaKey &&
 					!event.isComposing &&
-					files.hasFilesForSubmit()
+					files.hasPendingFiles()
 				) {
 					event.preventDefault();
 					if (event.type === "keydown" && !event.repeat) {
 						fileEnterPending = true;
-						void files.submit();
+						// Consume this Enter to insert paths. A later Enter with no pending files
+						// follows xterm's ordinary input path and submits the completed draft.
+						void files.insertPending();
 					}
 					return false;
 				}

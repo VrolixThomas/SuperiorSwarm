@@ -55,7 +55,8 @@ test("shelf renders destination-labelled region, live status, keyboard controls 
 	expect(html).toContain("1 file added");
 	expect(html).not.toContain("Saved copies");
 	expect(html).not.toContain("Copy into workspace");
-	expect(html).toContain("Enter to send");
+	expect(html).toContain("Enter to insert paths");
+	expect(html).not.toContain("Enter to send");
 	expect(html).not.toContain("Insert paths");
 	expect(html).not.toContain("/generated/a.mov</bdi>");
 	expect(html).not.toContain("2 GiB/file, 4 GiB/workspace");

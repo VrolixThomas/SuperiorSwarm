@@ -13,7 +13,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
 test.skipIf(process.platform !== "darwin")(
-	"real Electron file selection and Enter reach a version-named native TUI through the guarded daemon",
+	"real Electron inserts files between draft text and requires a separate Enter to submit",
 	async () => {
 		const root = realpathSync(mkdtempSync(join(tmpdir(), "ss-file-electron-")));
 		const fixture = resolve(import.meta.dir, "fixtures/terminal-file-electron");
@@ -131,6 +131,8 @@ test.skipIf(process.platform !== "darwin")(
 				zeroBytesOnSelection: true,
 				exactOrderedPaste: true,
 				explicitEnter: true,
+				twoStepEnter: true,
+				interleavedDraft: true,
 			});
 			expect(code).toBe(0);
 		} finally {

@@ -114,26 +114,53 @@ async function run() {
 	await until(() =>
 		contents.executeJavaScript("document.body.textContent.includes('1 file added')")
 	);
+
+	if (readFileSync(capture, "utf8") !== "") throw new Error("Selecting files wrote terminal input");
+	await contents.executeJavaScript("document.querySelector('.xterm-helper-textarea').focus()");
+	const enter = () => {
+		contents.sendInputEvent({ type: "keyDown", keyCode: "Return" });
+		contents.sendInputEvent({ type: "keyUp", keyCode: "Return" });
+	};
+	const type = (text: string) => {
+		for (const char of text) contents.sendInputEvent({ type: "char", keyCode: char });
+	};
+	type("look at");
+	step = "first draft";
+	await until(() => readFileSync(capture, "utf8") === "look at");
+	enter();
+	const first = `look at\x1b[200~${formatFilePaths([paths[0]!])}\x1b[201~`;
+	step = "first insertion without submit";
+	await until(() => readFileSync(capture, "utf8").length >= first.length);
+	if (readFileSync(capture, "utf8") !== first)
+		throw new Error("First Enter must only insert paths, without CR");
+	await until(() =>
+		contents.executeJavaScript("document.body.textContent.includes('Paths added to your prompt')")
+	);
+	type("then compare with");
+	const prose = `${first}then compare with`;
+	await until(() => readFileSync(capture, "utf8") === prose);
 	await contents.debugger.sendCommand("DOM.setFileInputFiles", { nodeId, files: paths.slice(1) });
 	step = "second selection";
 	await until(() =>
-		contents.executeJavaScript("document.body.textContent.includes('3 files added')")
+		contents.executeJavaScript("document.body.textContent.includes('2 files added')")
 	);
-	if (readFileSync(capture, "utf8") !== "") throw new Error("Selecting files wrote terminal input");
-	await contents.executeJavaScript("document.querySelector('.xterm-helper-textarea').focus()");
-	// Chromium's real input event and xterm keyboard handler preserve an existing draft.
-	for (const char of "review these") contents.sendInputEvent({ type: "char", keyCode: char });
-	step = "draft input";
-	await until(() => readFileSync(capture, "utf8") === "review these");
-	contents.sendInputEvent({ type: "keyDown", keyCode: "Return" });
-	contents.sendInputEvent({ type: "keyUp", keyCode: "Return" });
-	step = "Enter delivery";
-	await until(() => readFileSync(capture, "utf8").includes("\r"));
-	const expected = `review these\x1b[200~${formatFilePaths(paths)}\x1b[201~\r`;
-	if (readFileSync(capture, "utf8") !== expected) throw new Error("Unexpected file input bytes");
+	if (readFileSync(capture, "utf8") !== prose)
+		throw new Error("Second selection wrote terminal input");
+	enter();
+	const draft = `${prose}\x1b[200~${formatFilePaths(paths.slice(1))}\x1b[201~`;
+	step = "second insertion without submit";
+	await until(() => readFileSync(capture, "utf8").length >= draft.length);
+	if (readFileSync(capture, "utf8") !== draft)
+		throw new Error("Second batch must only insert paths, without CR");
 	await until(() =>
-		contents.executeJavaScript("!document.querySelector('[aria-label=\"Files in this message\"]')")
+		contents.executeJavaScript("document.body.textContent.includes('Paths added to your prompt')")
 	);
+	enter();
+	step = "separate submit";
+	await until(() => readFileSync(capture, "utf8").includes("\r"));
+	if (readFileSync(capture, "utf8") !== `${draft}\r`)
+		throw new Error("Only Enter with no pending files should submit");
+
 	writeFileSync(
 		join(root!, "result.json"),
 		JSON.stringify({
@@ -142,6 +169,8 @@ async function run() {
 			zeroBytesOnSelection: true,
 			exactOrderedPaste: true,
 			explicitEnter: true,
+			twoStepEnter: true,
+			interleavedDraft: true,
 		})
 	);
 }
