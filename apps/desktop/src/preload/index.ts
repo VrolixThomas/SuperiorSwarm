@@ -24,6 +24,7 @@ import type {
 	TerminalDataMeta,
 	TrpcAPI,
 } from "../shared/types";
+import { createTerminalInputAPI } from "./terminal-input";
 
 function createDispatcher<T extends unknown[]>(channel: string) {
 	const listeners = new Map<string, (...args: T) => void>();
@@ -44,7 +45,7 @@ const exitDispatcher = createDispatcher<[number]>("terminal:exit");
 const terminalAPI: TerminalAPI = {
 	create: (id: string, cwd?: string, workspaceId?: string) =>
 		ipcRenderer.invoke("terminal:create", id, cwd, workspaceId),
-	write: (id: string, data: string) => ipcRenderer.invoke("terminal:write", id, data),
+	...createTerminalInputAPI((channel, id, data) => ipcRenderer.invoke(channel, id, data)),
 	resize: (id: string, cols: number, rows: number) =>
 		ipcRenderer.invoke("terminal:resize", id, cols, rows),
 	detach: (id: string) => ipcRenderer.invoke("terminal:detach", id),

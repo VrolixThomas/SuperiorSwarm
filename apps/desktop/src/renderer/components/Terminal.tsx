@@ -11,8 +11,10 @@ import { useEffect, useRef } from "react";
 import { CmdBuffer } from "../../shared/lib/cmd-buffer";
 import { RESET_STALE_MODES, isShellProcess } from "../../shared/lib/terminal-modes";
 import { useTabStore } from "../stores/tab-store";
+import { installTerminalInput } from "./terminal-input";
 import { createTerminalLinkHandler } from "./terminal-links";
 import { interceptPaste } from "./terminal-paste";
+import { installTerminalWheelHandler } from "./terminal-wheel";
 
 function buildTerminalTheme(): ITheme {
 	const s = getComputedStyle(document.documentElement);
@@ -64,6 +66,8 @@ export function Terminal({
 	active: boolean;
 }) {
 	const ref = useRef<HTMLDivElement>(null);
+	const activeRef = useRef(active);
+	activeRef.current = active;
 	const cwdRef = useRef(cwd);
 	const initialContentRef = useRef(initialContent);
 	const workspaceIdRef = useRef(workspaceId);
@@ -88,6 +92,9 @@ export function Terminal({
 				activate: openExternalLink,
 			},
 			scrollback: 10000,
+			scrollSensitivity: 1,
+			fastScrollSensitivity: 5,
+			smoothScrollDuration: 0,
 			theme: buildTerminalTheme(),
 		});
 
@@ -102,6 +109,7 @@ export function Terminal({
 		term.unicode.activeVersion = "11";
 
 		term.open(ref.current);
+		const cleanupWheel = installTerminalWheelHandler(ref.current, term, () => activeRef.current);
 
 		// WebGL: load after open(), fall back on any failure
 		let webgl: WebglAddon | null = null;
@@ -170,6 +178,7 @@ export function Terminal({
 		let cleanupData: (() => void) | undefined;
 		let cleanupExit: (() => void) | undefined;
 		let cleanupPaste: (() => void) | undefined;
+		let cleanupInput: (() => void) | undefined;
 
 		if (api) {
 			api.terminal
@@ -259,22 +268,28 @@ export function Terminal({
 			// for shells that don't emit OSC titles (vanilla zsh/bash on macOS).
 			const cmd = new CmdBuffer();
 
-			term.onData((data) => {
-				if (suppressDepth > 0) return;
-				// Suppress the \r that xterm may still emit after our
-				// Shift+Enter handler already sent the CSI u sequence.
-				if (shiftEnterPending) {
-					shiftEnterPending = false;
-					if (data === "\r") return;
-				}
-				api.terminal.write(id, data);
-				if (term.buffer.active.type === "alternate") return;
+			cleanupInput = installTerminalInput(
+				term,
+				() => suppressDepth > 0,
+				(data) => {
+					// Suppress the \r that xterm may still emit after our
+					// Shift+Enter handler already sent the CSI u sequence.
+					if (shiftEnterPending) {
+						shiftEnterPending = false;
+						if (data === "\r") return;
+					}
+					api.terminal.write(id, data);
+					if (term.buffer.active.type === "alternate") return;
 
-				const name = cmd.feed(data);
-				if (name && Date.now() - oscTitleAt > 1000) {
-					setTitle(truncTitle(name));
+					const name = cmd.feed(data);
+					if (name && Date.now() - oscTitleAt > 1000) {
+						setTitle(truncTitle(name));
+					}
+				},
+				(data) => {
+					void api.terminal.writeBinary(id, data);
 				}
-			});
+			);
 
 			term.onResize(({ cols, rows }) => api.terminal.resize(id, cols, rows));
 			api.terminal.resize(id, term.cols, term.rows);
@@ -291,6 +306,8 @@ export function Terminal({
 			cleanupData?.();
 			cleanupExit?.();
 			cleanupPaste?.();
+			cleanupInput?.();
+			cleanupWheel();
 			window.removeEventListener("resize", onResize);
 			observer.disconnect();
 			themeObserver.disconnect();
