@@ -10,6 +10,9 @@ writeFileSync(source, "generated fixture");
 const writes: string[] = [];
 let state = "idle";
 let nativeCalled = 0;
+let probes = 0;
+let managed = false;
+let requestedManaged = false;
 let exposed: { terminalFiles: { nativePaths: (files: File[]) => Array<string | null> } };
 mock.module("electron", () => ({
 	app: { getPath: () => root },
@@ -30,14 +33,25 @@ mock.module("../src/main/agent-launch/workspace-cwd-lookup", () => ({
 	getWorkspaceCwdOrThrow: () => root,
 }));
 mock.module("../src/main/services/agent-session-manager-handle", () => ({
-	getAgentSessionManager: () => ({ getSession: () => ({ state }) }),
+	getAgentSessionManager: () => ({ getSession: () => ({ state, managed }) }),
 }));
 mock.module("../src/main/terminal/daemon-instance", () => ({
 	getDaemonClient: () => ({
 		isConnected: true,
-		fileTarget: async () => ({ generation: "pty-generation", supported: true, foreground: "zsh" }),
-		insertFiles: async (_id: string, _generation: string, _text: string, payload: string) => {
-			writes.push(payload);
+		supportsFileSubmit: true,
+		fileTarget: async (_id: string, allowManaged = false) => {
+			requestedManaged = allowManaged;
+			probes++;
+			return { generation: "pty-generation", supported: true, foreground: "zsh" };
+		},
+		insertFiles: async (
+			_id: string,
+			_generation: string,
+			_text: string,
+			payload: string,
+			submit = false
+		) => {
+			writes.push(submit ? `${payload}\r` : payload);
 			return "admitted";
 		},
 	}),
@@ -91,4 +105,72 @@ test("hibernated insertion never wakes; valid explicit paste is one-use and reje
 		api.insert({ batchId: batch.id, text: ready.text, payload: ready.text })
 	).rejects.toThrow();
 	expect(writes).toEqual([ready.text]);
+});
+
+test("append keeps the original daemon lease and an explicit send includes all selected references", async () => {
+	terminalFileOwners.attach("append-term", caller, "ws", root);
+	const first = await api.prepare({ terminalId: "append-term", paths: [source] });
+	const calls = probes;
+	const second = join(root, "second.mov");
+	writeFileSync(second, "generated fixture");
+	const appended = await api.append({
+		batchId: first.id,
+		paths: [second],
+		retainedIds: first.entries.map((e) => e.id),
+	});
+	expect(probes).toBe(calls);
+	expect(appended.id).toBe(first.id);
+	expect(appended.entries.map((e) => e.path)).toEqual([source, second]);
+	const prepared = await api.resolve({
+		batchId: appended.id,
+		ids: appended.entries.map((e) => e.id),
+		submit: true,
+	});
+	expect(
+		await api.insert({
+			batchId: appended.id,
+			text: prepared.text,
+			payload: prepared.text,
+			submit: true,
+		})
+	).toBe("admitted");
+	expect(writes.at(-1)).toBe(` '${source}' '${second}' \r`);
+});
+
+test("managed runtime permission comes from main session ownership, never renderer assertions", async () => {
+	terminalFileOwners.attach("runtime-term", caller, "ws", root);
+	await api.prepare({
+		terminalId: "runtime-term",
+		paths: [source],
+		managedAgent: true,
+	} as Parameters<typeof api.prepare>[0]);
+	expect(requestedManaged).toBe(false);
+	managed = true;
+	try {
+		await api.prepare({ terminalId: "runtime-term", paths: [source] });
+		expect(requestedManaged).toBe(true);
+	} finally {
+		managed = false;
+	}
+});
+
+test("explicit send accepts the running state caused by ordinary draft typing, but still rejects sleep and approval states", async () => {
+	terminalFileOwners.attach("draft-term", caller, "ws", root);
+	const batch = await api.prepare({ terminalId: "draft-term", paths: [source] });
+	const ids = batch.entries.map((e) => e.id);
+	state = "running";
+	try {
+		const ready = await api.resolve({ batchId: batch.id, ids, submit: true });
+		expect(ready.text).toContain(source);
+		for (const unavailable of ["hibernated", "hibernating", "resuming", "needs-input", "error"]) {
+			state = unavailable;
+			await expect(api.resolve({ batchId: batch.id, ids, submit: true })).rejects.toThrow();
+		}
+		state = "running";
+		expect(
+			await api.insert({ batchId: batch.id, text: ready.text, payload: ready.text, submit: true })
+		).toBe("admitted");
+	} finally {
+		state = "idle";
+	}
 });

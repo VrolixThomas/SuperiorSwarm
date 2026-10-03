@@ -27,7 +27,10 @@ const leases = new Map<string, { generation: string; supported: boolean; expires
 const progress = new Map<string, number>();
 const id = z.string().min(1).max(200);
 const batchInput = z.object({ batchId: id });
-const selection = batchInput.extend({ ids: z.array(id).min(1).max(64) });
+const selection = batchInput.extend({
+	ids: z.array(id).min(1).max(64),
+	submit: z.boolean().optional(),
+});
 const targetInput = z.object({ terminalId: id });
 const fileProcedure = publicProcedure.use(({ ctx, next }) => {
 	if (!ctx.fileCaller) throw new Error("Terminal file caller is not authorized.");
@@ -39,11 +42,13 @@ function target(terminalId: string, caller: { senderId: number; frameId: number 
 		throw new Error("Workspace root changed. Reopen the terminal.");
 	return current;
 }
-function ready(terminalId: string): void {
+function ready(terminalId: string, explicitSubmit = false): void {
 	const state = getAgentSessionManager()?.getSession(terminalId)?.state;
-	if (state && state !== "idle")
+	// Ordinary draft typing calls beforeTerminalInput and marks an idle agent running.
+	// A user-requested send must not mistake that bookkeeping for an unavailable prompt.
+	if (state && state !== "idle" && !(explicitSubmit && state === "running"))
 		throw new Error(
-			"Bring an idle local prompt into view first. Files never wake or submit to a session."
+			"Bring an idle local prompt into view first. File sends never wake sleeping sessions or answer approval prompts."
 		);
 	if (!getDaemonClient()?.isConnected)
 		throw new Error("Terminal disconnected. Drop files again after reconnecting.");
@@ -57,7 +62,8 @@ export const terminalFilesRouter = router({
 		)
 		.mutation(async ({ ctx, input }) => {
 			const bound = target(input.terminalId, ctx.fileCaller);
-			const daemonTarget = await getDaemonClient()?.fileTarget(input.terminalId);
+			const managedAgent = getAgentSessionManager()?.getSession(input.terminalId)?.managed === true;
+			const daemonTarget = await getDaemonClient()?.fileTarget(input.terminalId, managedAgent);
 			terminalFileOwners.assert(ctx.fileCaller, bound);
 			const batch = await service.prepare(ctx.fileCaller, bound, input.paths);
 			for (const [key, lease] of leases) if (lease.expires < Date.now()) leases.delete(key);
@@ -66,10 +72,27 @@ export const terminalFilesRouter = router({
 				leases.set(batch.id, { ...daemonTarget, expires: Date.now() + 10 * 60 * 1000 });
 			return batch;
 		}),
+	append: fileProcedure
+		.input(
+			batchInput.extend({
+				paths: z.array(z.string().max(FILE_PATH_MAX_BYTES).nullable()).min(1).max(64),
+				retainedIds: z.array(id).max(64),
+			})
+		)
+		.mutation(async ({ ctx, input }) => {
+			const bound = service.batchTarget(ctx.fileCaller, input.batchId);
+			target(bound.terminalId, ctx.fileCaller);
+			// Retain the original daemon generation; adding a file never obtains a new lease.
+			return service.append(ctx.fileCaller, input.batchId, input.paths, input.retainedIds);
+		}),
 	resolve: fileProcedure.input(selection).mutation(async ({ ctx, input }) => {
+		if (input.submit && !getDaemonClient()?.supportsFileSubmit)
+			throw new Error(
+				"This terminal service needs an update to send files with a message. Nothing was sent; your draft and selected files are kept."
+			);
 		const result = await service.resolve(ctx.fileCaller, input.batchId, input.ids);
 		target(result.target.terminalId, ctx.fileCaller);
-		ready(result.target.terminalId);
+		ready(result.target.terminalId, input.submit);
 		const lease = leases.get(input.batchId);
 		if (!lease?.supported)
 			throw new Error(
@@ -82,6 +105,7 @@ export const terminalFilesRouter = router({
 			batchInput.extend({
 				text: z.string().max(FILE_PASTE_MAX_BYTES),
 				payload: z.string().max(FILE_PASTE_MAX_BYTES + 12),
+				submit: z.boolean().optional(),
 			})
 		)
 		.mutation(async ({ ctx, input }) => {
@@ -91,7 +115,7 @@ export const terminalFilesRouter = router({
 			const lease = leases.get(input.batchId);
 			leases.delete(input.batchId);
 			target(bound.terminalId, ctx.fileCaller);
-			ready(bound.terminalId);
+			ready(bound.terminalId, input.submit);
 			terminalFileOwners.assert(ctx.fileCaller, bound);
 			if (!lease?.supported || lease.expires < Date.now()) return "rejected" as const;
 			return (
@@ -99,7 +123,8 @@ export const terminalFilesRouter = router({
 					bound.terminalId,
 					lease.generation,
 					input.text,
-					input.payload
+					input.payload,
+					input.submit
 				)) ?? "rejected"
 			);
 		}),

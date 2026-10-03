@@ -58,7 +58,7 @@ export class SocketServer {
 		this.send(socket, {
 			type: "ready",
 			protocolVersion: DAEMON_PROTOCOL_VERSION,
-			capabilities: ["file-input-v1"],
+			capabilities: ["file-input-v1", "file-submit-v1"],
 		});
 
 		let lineBuffer = "";
@@ -189,7 +189,7 @@ export class SocketServer {
 				this.send(socket, {
 					type: "file-result",
 					requestId: msg.requestId,
-					target: this.ptyManager.fileInputs.target(msg.id, clientId),
+					target: this.ptyManager.fileInputs.target(msg.id, clientId, msg.managedAgent === true),
 				});
 				break;
 			}
@@ -206,7 +206,8 @@ export class SocketServer {
 							msg.payload.endsWith("\x1b[201~")
 							? msg.payload.slice(6, -6)
 							: msg.payload,
-						msg.payload
+						msg.payload,
+						msg.submit === true
 					),
 				});
 				break;

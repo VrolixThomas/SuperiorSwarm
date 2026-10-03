@@ -155,6 +155,7 @@ interface StoredBatch {
 	snapshots: Map<string, FileSnapshot>;
 	abort: AbortController;
 	insertion?: string;
+	editing?: boolean;
 }
 export class TerminalFileService {
 	private batches = new Map<string, StoredBatch>();
@@ -197,51 +198,92 @@ export class TerminalFileService {
 		};
 		this.batches.set(batch.id, stored);
 		try {
-			for (const path of paths) {
-				const id = randomUUID();
-				try {
-					if (!path) throw new Error("Save this file locally, then drop it again.");
-					const snapshot = await snapshotFile(path);
-					const source = await lstat(path);
-					stored.snapshots.set(id, snapshot);
-					batch.entries.push({
-						id,
-						label: displayFilePath(path.slice(path.lastIndexOf("/") + 1) || path),
-						path: snapshot.path,
-						size: snapshot.size,
-						kind: snapshot.kind,
-						external: !isContained(target.root, snapshot.path),
-						symlink: source.isSymbolicLink() || path !== snapshot.path,
-						referenceAllowed: isSafeTerminalPath(path) && isSafeTerminalPath(snapshot.path),
-						copyAllowed: snapshot.kind === "file",
-					});
-				} catch (error) {
-					// Do not expose OS error strings (they can contain unescaped paths).
-					batch.entries.push({
-						id,
-						label: displayFilePath(
-							path ? path.slice(path.lastIndexOf("/") + 1) || path : "Virtual file"
-						),
-						path: null,
-						size: 0,
-						kind: "unsupported",
-						external: false,
-						symlink: false,
-						referenceAllowed: false,
-						copyAllowed: false,
-						error: path
-							? "File unavailable or unsupported. Only existing regular files and directory references are supported."
-							: "Save this file locally, then drop it again.",
-					});
-				}
-			}
+			const prepared = await this.describe(paths, target.root);
 			this.get(caller, batch.id);
+			batch.entries = prepared.entries;
+			stored.snapshots = prepared.snapshots;
 			return batch;
 		} catch (error) {
 			this.batches.delete(batch.id);
 			throw error;
 		}
 	}
+
+	private async describe(paths: Array<string | null>, root: string) {
+		const entries: TerminalFileEntry[] = [];
+		const snapshots = new Map<string, FileSnapshot>();
+		for (const path of paths) {
+			const id = randomUUID();
+			try {
+				if (!path) throw new Error("Save this file locally, then drop it again.");
+				const snapshot = await snapshotFile(path);
+				const source = await lstat(path);
+				snapshots.set(id, snapshot);
+				entries.push({
+					id,
+					label: displayFilePath(path.slice(path.lastIndexOf("/") + 1) || path),
+					path: snapshot.path,
+					size: snapshot.size,
+					kind: snapshot.kind,
+					external: !isContained(root, snapshot.path),
+					symlink: source.isSymbolicLink() || path !== snapshot.path,
+					referenceAllowed: isSafeTerminalPath(path) && isSafeTerminalPath(snapshot.path),
+					copyAllowed: snapshot.kind === "file",
+				});
+			} catch (error) {
+				// Do not expose OS error strings (they can contain unescaped paths).
+				entries.push({
+					id,
+					label: displayFilePath(
+						path ? path.slice(path.lastIndexOf("/") + 1) || path : "Virtual file"
+					),
+					path: null,
+					size: 0,
+					kind: "unsupported",
+					external: false,
+					symlink: false,
+					referenceAllowed: false,
+					copyAllowed: false,
+					error: path
+						? "File unavailable or unsupported. Only existing regular files and directory references are supported."
+						: "Save this file locally, then drop it again.",
+				});
+			}
+		}
+		return { entries, snapshots };
+	}
+	batchTarget(caller: FileCaller, batchId: string): TerminalFileTarget {
+		return { ...this.get(caller, batchId).batch.target };
+	}
+	async append(
+		caller: FileCaller,
+		batchId: string,
+		paths: Array<string | null>,
+		retainedIds: string[]
+	): Promise<TerminalFileBatch> {
+		const stored = this.get(caller, batchId);
+		if (stored.editing) throw new Error("Files are already being added. Try again when ready.");
+		if (!paths.length || paths.length + retainedIds.length > FILE_DROP_MAX_ITEMS)
+			throw new Error("Choose at most 64 files in total. Earlier files are still selected.");
+		const selected = new Set(retainedIds);
+		const retained = stored.batch.entries.filter((entry) => selected.has(entry.id));
+		if (selected.size !== retainedIds.length || retained.length !== retainedIds.length)
+			throw new Error("Invalid file selection.");
+		stored.editing = true;
+		try {
+			const prepared = await this.describe(paths, stored.batch.target.root);
+			this.get(caller, batchId);
+			stored.batch = { ...stored.batch, entries: [...retained, ...prepared.entries] };
+			stored.snapshots = new Map(
+				[...stored.snapshots].filter(([id]) => selected.has(id)).concat([...prepared.snapshots])
+			);
+			stored.insertion = undefined;
+			return stored.batch;
+		} finally {
+			stored.editing = false;
+		}
+	}
+
 	private get(caller: FileCaller, id: string): StoredBatch {
 		const stored = this.batches.get(id);
 		if (!stored || stored.abort.signal.aborted || stored.expires < Date.now())
@@ -253,6 +295,7 @@ export class TerminalFileService {
 	}
 	select(caller: FileCaller, batchId: string, ids: string[]): TerminalFileEntry[] {
 		const stored = this.get(caller, batchId);
+		if (stored.editing) throw new Error("Wait for files to finish being added.");
 		if (!ids.length || ids.length > FILE_DROP_MAX_ITEMS || new Set(ids).size !== ids.length)
 			throw new Error("Invalid file selection.");
 		const entries = ids.map((id) => stored.batch.entries.find((e) => e.id === id));
@@ -299,19 +342,22 @@ export class TerminalFileService {
 	): Promise<{ text: string; target: TerminalFileTarget }> {
 		const entries = this.select(caller, batchId, ids);
 		const stored = this.get(caller, batchId);
+		const reviewedBatch = stored.batch;
 		for (const entry of entries) {
 			const snapshot = stored.snapshots.get(entry.id);
 			if (!snapshot) throw new Error("File metadata unavailable.");
 			await recheckFile(snapshot);
 		}
 		this.get(caller, batchId);
+		if (stored.editing || stored.batch !== reviewedBatch)
+			throw new Error("File selection changed. Review it before sending.");
 		const text = formatFilePaths(entries.map((entry) => entry.path as string));
 		stored.insertion = text;
 		return { text, target: stored.batch.target };
 	}
 	consume(caller: FileCaller, batchId: string, text: string): TerminalFileTarget {
 		const stored = this.get(caller, batchId);
-		if (!stored.insertion || stored.insertion !== text)
+		if (stored.editing || !stored.insertion || stored.insertion !== text)
 			throw new Error("Insertion was not prepared.");
 		this.batches.delete(batchId);
 		return stored.batch.target;

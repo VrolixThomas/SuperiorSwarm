@@ -92,3 +92,52 @@ test("ordinary submitted commands and per-client lifecycle invalidate pending da
 	);
 	expect(writes).toEqual([]);
 });
+
+test("one explicit send includes paths then one Enter for every supported agent", () => {
+	for (const foreground of ["claude", "codex", "gemini", "opencode", "zsh"]) {
+		const writes: string[] = [];
+		const sessions = new FileInputSessions();
+		sessions.create(
+			"term",
+			"client",
+			"/bin/zsh",
+			() => foreground,
+			(data) => writes.push(data)
+		);
+		const target = sessions.target("term", "client")!;
+		expect(target.supported).toBe(true);
+		const text = " '/tmp/first.pdf' '/tmp/second.mov' ";
+		const paste = `\x1b[200~${text}\x1b[201~`;
+		expect(sessions.insert("term", "client", target.generation, text, paste, true)).toBe(
+			"admitted"
+		);
+		expect(writes).toEqual([`${paste}\r`]);
+		expect(sessions.insert("term", "client", target.generation, text, paste, true)).toBe(
+			"rejected"
+		);
+	}
+});
+
+test("app-managed agents launched through Node or Bun are supported without admitting unknown remote prompts", () => {
+	for (const foreground of ["node", "bun", "deno"]) {
+		const sessions = new FileInputSessions();
+		sessions.create(
+			"term",
+			"client",
+			"/bin/zsh",
+			() => foreground,
+			() => {}
+		);
+		expect(sessions.target("term", "client")?.supported).toBe(false);
+		expect(sessions.target("term", "client", true)?.supported).toBe(true);
+	}
+	const remote = new FileInputSessions();
+	remote.create(
+		"term",
+		"client",
+		"/bin/zsh",
+		() => "ssh",
+		() => {}
+	);
+	expect(remote.target("term", "client", true)?.supported).toBe(false);
+});

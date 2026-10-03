@@ -19,6 +19,7 @@ interface Session {
 	clients: Map<string, FileInputTarget | null>;
 }
 const POSIX = new Set(["sh", "bash", "zsh", "dash"]);
+const AGENT_RUNTIMES = new Set(["node", "bun", "deno"]);
 const LOCAL_INPUT = new Set([...POSIX, "claude", "codex", "gemini", "opencode"]);
 const name = (process: string) => basename(process).replace(/^-/, "");
 /** Optional capability; old daemons never receive these operations. */
@@ -50,14 +51,17 @@ export class FileInputSessions {
 	remove(id: string): void {
 		this.sessions.delete(id);
 	}
-	target(id: string, client: string): FileInputTarget | null {
+	target(id: string, client: string, managedAgent = false): FileInputTarget | null {
 		const session = this.sessions.get(id);
 		if (!session?.clients.has(client)) return null;
 		const foreground = session.foreground();
 		const target = {
 			generation: randomUUID(),
 			foreground,
-			supported: POSIX.has(name(session.shell)) && LOCAL_INPUT.has(name(foreground)),
+			supported:
+				POSIX.has(name(session.shell)) &&
+				(LOCAL_INPUT.has(name(foreground)) ||
+					(managedAgent && AGENT_RUNTIMES.has(name(foreground)))),
 		};
 		session.clients.set(client, target);
 		return target;
@@ -67,7 +71,8 @@ export class FileInputSessions {
 		client: string,
 		generation: string,
 		text: string,
-		payload: string
+		payload: string,
+		submit = false
 	): FileDelivery {
 		const session = this.sessions.get(id);
 		const target = session?.clients.get(client);
@@ -85,7 +90,8 @@ export class FileInputSessions {
 		)
 			return "rejected";
 		try {
-			session.write(payload);
+			// Only the explicit send operation may forward the user's Enter.
+			session.write(submit === true ? `${payload}\r` : payload);
 			return "admitted";
 		} catch {
 			return "uncertain";

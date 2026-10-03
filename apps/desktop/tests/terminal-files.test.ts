@@ -200,3 +200,49 @@ test("invalid Unicode cannot silently resolve to another file via UTF-8 replacem
 	expect(batch.entries[0]).toMatchObject({ referenceAllowed: false, copyAllowed: false });
 	expect(batch.entries[0]?.label).toBe("replacement-\\ud800.mov");
 });
+
+test("append retains reviewed copies and order without reviving removed entries or old insertion text", async () => {
+	const a = file("first.pdf");
+	const b = file("removed.mov");
+	const c = file("second.docx");
+	const batch = await service.prepare(caller, owners.target("term", caller), [a, b]);
+	const kept = batch.entries[0]!.id;
+	const copied = file("safe-copy");
+	await service.copied(caller, batch.id, kept, "owned-copy", copied);
+	const prior = await service.resolve(caller, batch.id, [kept]);
+	const result = await service.append(caller, batch.id, [c], [kept]);
+	expect(result.id).toBe(batch.id);
+	expect(result.entries.map((e) => e.path)).toEqual([copied, c]);
+	expect(result.entries[0]).toMatchObject({ id: kept, copyId: "owned-copy", copyAllowed: false });
+	expect(() => service.consume(caller, batch.id, prior.text)).toThrow();
+	expect(
+		(
+			await service.resolve(
+				caller,
+				batch.id,
+				result.entries.map((e) => e.id)
+			)
+		).text
+	).toBe(` '${copied}' '${c}' `);
+});
+test("append bounds the entire selection and preserves the earlier batch on failure", async () => {
+	const path = file("file.pdf");
+	const batch = await service.prepare(caller, owners.target("term", caller), Array(64).fill(path));
+	const ids = batch.entries.map((e) => e.id);
+	await expect(service.append(caller, batch.id, [path], ids)).rejects.toThrow("64");
+	expect(service.select(caller, batch.id, ids)).toHaveLength(64);
+	await expect(service.append(caller, batch.id, [path], ["forged"])).rejects.toThrow();
+	const result = await service.append(caller, batch.id, [path], ids.slice(0, 63));
+	expect(result.entries).toHaveLength(64);
+});
+test("append rejects another owner and cannot complete after a terminal generation change", async () => {
+	const path = file("first");
+	const batch = await service.prepare(caller, owners.target("term", caller), [path]);
+	const ids = batch.entries.map((e) => e.id);
+	await expect(
+		service.append({ senderId: 11, frameId: 1 }, batch.id, [path], ids)
+	).rejects.toThrow();
+	const pending = service.append(caller, batch.id, [path], ids);
+	owners.invalidate("term", "replay");
+	await expect(pending).rejects.toThrow();
+});

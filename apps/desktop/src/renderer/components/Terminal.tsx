@@ -84,7 +84,7 @@ export function Terminal({
 		try {
 			void controllerRef.current?.stage(window.electron.terminalFiles.nativePaths(files));
 		} catch (error) {
-			controllerRef.current?.clear(
+			controllerRef.current?.reportError(
 				error instanceof Error ? error.message : "Unable to resolve local files."
 			);
 		}
@@ -186,9 +186,12 @@ export function Terminal({
 		const files = new TerminalFileController(
 			{
 				prepare: (paths) => trpcVanilla.terminalFiles.prepare.mutate({ terminalId: id, paths }),
-				resolve: (batchId, ids) => trpcVanilla.terminalFiles.resolve.mutate({ batchId, ids }),
-				insert: (batchId, text, payload) =>
-					trpcVanilla.terminalFiles.insert.mutate({ batchId, text, payload }),
+				append: (batchId, paths, retainedIds) =>
+					trpcVanilla.terminalFiles.append.mutate({ batchId, paths, retainedIds }),
+				resolve: (batchId, ids, submit) =>
+					trpcVanilla.terminalFiles.resolve.mutate({ batchId, ids, submit }),
+				insert: (batchId, text, payload, submit) =>
+					trpcVanilla.terminalFiles.insert.mutate({ batchId, text, payload, submit }),
 				copy: (batchId, id) => trpcVanilla.terminalFiles.copy.mutate({ batchId, id }),
 				cancel: (batchId) => trpcVanilla.terminalFiles.cancel.mutate({ batchId }),
 				ready: () => !disposed && created && connected && activeRef.current && suppressDepth === 0,
@@ -215,11 +218,13 @@ export function Terminal({
 						try {
 							void files.stage(window.electron.terminalFiles.nativePaths(dropped));
 						} catch (error) {
-							files.clear(error instanceof Error ? error.message : "Unable to resolve files.");
+							files.reportError(
+								error instanceof Error ? error.message : "Unable to resolve files."
+							);
 						}
 					},
 					setDragging,
-					(message) => files.clear(message)
+					(message) => files.reportError(message)
 				)
 			: undefined;
 		const escapeFiles = (event: KeyboardEvent) => {
@@ -281,7 +286,29 @@ export function Terminal({
 			// We suppress both keydown and keyup to prevent xterm from
 			// also emitting \r through its onData path.
 			let shiftEnterPending = false;
+			let fileEnterPending = false;
 			term.attachCustomKeyEventHandler((event: KeyboardEvent) => {
+				if (event.key === "Enter" && fileEnterPending) {
+					if (event.type === "keyup") fileEnterPending = false;
+					event.preventDefault();
+					return false;
+				}
+				if (
+					event.key === "Enter" &&
+					!event.shiftKey &&
+					!event.ctrlKey &&
+					!event.altKey &&
+					!event.metaKey &&
+					!event.isComposing &&
+					files.hasFilesForSubmit()
+				) {
+					event.preventDefault();
+					if (event.type === "keydown" && !event.repeat) {
+						fileEnterPending = true;
+						void files.submit();
+					}
+					return false;
+				}
 				if (
 					event.key === "Enter" &&
 					event.shiftKey &&
@@ -346,7 +373,10 @@ export function Terminal({
 			term.onData((data) => {
 				if (filePaste.capture(data)) return;
 				if (suppressDepth > 0) return;
-				if (/[\r\n]/.test(data)) files.clear();
+				if (/[\r\n]/.test(data))
+					files.clear(
+						files.state.batch ? "Terminal input changed. Add the files again before sending." : ""
+					);
 				// Suppress the \r that xterm may still emit after our
 				// Shift+Enter handler already sent the CSI u sequence.
 				if (shiftEnterPending) {
@@ -414,10 +444,11 @@ export function Terminal({
 					aria-live="polite"
 					className="pointer-events-none absolute inset-2 z-40 flex items-center justify-center rounded border-2 border-dashed border-[var(--accent)] bg-[var(--bg-base)] text-sm"
 				>
-					Drop local files to review paths — nothing will be sent
+					Drop files to add to your message
 				</output>
 			)}
 			<TerminalFileShelf
+				key={`${id}:${workspaceId}`}
 				terminalId={id}
 				controller={controller}
 				state={fileState}

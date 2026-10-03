@@ -25,6 +25,7 @@ function controller() {
 	return new TerminalFileController(
 		{
 			prepare: async () => batch,
+			append: async () => batch,
 			resolve: async () => ({ text: " '/generated/a.mov' ", target: batch.target }),
 			insert: async () => "admitted",
 			cancel: async () => {},
@@ -46,16 +47,17 @@ test("shelf renders destination-labelled region, live status, keyboard controls 
 		/>
 	);
 	expect(html).toContain('aria-label="Files for terminal t1"');
-	expect(html).toContain('<output aria-live="polite">');
+	expect(html).toMatch(/<output[^>]*aria-live="polite"/);
 	expect(html).toContain('aria-label="Remove a.mov"');
-	expect(html).toContain('aria-label="Copy a.mov into workspace"');
+	expect(html).toContain('aria-label="Details for a.mov"');
 	expect(html).toContain('type="file" multiple=""');
-	expect(html).toContain("Insert paths (1)");
-	expect(html).toContain("provider understanding and access are unverified");
-	expect(html).toContain("unmatched quotes");
-	expect(html).toContain("2 GiB/file, 4 GiB/workspace");
+	expect(html).toContain("1 file added");
+	expect(html).toContain("Enter to send");
+	expect(html).not.toContain("Insert paths");
+	expect(html).not.toContain("/generated/a.mov</bdi>");
+	expect(html).not.toContain("2 GiB/file, 4 GiB/workspace");
 });
-test("unsupported entries disable insertion; labels are escaped and bidi isolated", () => {
+test("unsupported entries need attention; labels are escaped and bidi isolated", () => {
 	const unsafe = {
 		...batch,
 		entries: [
@@ -76,5 +78,6 @@ test("unsupported entries disable insertion; labels are escaped and bidi isolate
 		/>
 	);
 	expect(html).toContain("<bdi>&lt;img src=x&gt;</bdi>");
-	expect(html).toMatch(/<button[^>]*disabled=""[^>]*>Insert paths/);
+	expect(html).toContain("Needs attention");
+	expect(html).not.toContain("Insert paths");
 });

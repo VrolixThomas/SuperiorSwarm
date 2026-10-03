@@ -45,13 +45,14 @@ export interface DaemonFileTarget {
 	supported: boolean;
 }
 export type ClientMessage =
-	| { type: "file-target"; id: string; requestId: string }
+	| { type: "file-target"; id: string; requestId: string; managedAgent?: boolean }
 	| {
 			type: "file-input";
 			id: string;
 			requestId: string;
 			generation: string;
 			payload: string;
+			submit?: boolean;
 	  }
 	| { type: "create"; id: string; cwd?: string; env?: Record<string, string> }
 	| { type: "attach"; id: string }

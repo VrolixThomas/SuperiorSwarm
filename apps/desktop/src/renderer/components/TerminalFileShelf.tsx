@@ -26,6 +26,7 @@ export function TerminalFileShelf({
 	onFiles: (files: File[]) => void;
 }) {
 	const picker = useRef<HTMLInputElement>(null);
+	const [detailsId, setDetailsId] = useState<string | null>(null);
 	const [copyChoice, setCopyChoice] = useState<string | null>(null);
 	const [owned, setOwned] = useState<TerminalOwnedCopy[] | null>(null);
 	const [deleteChoice, setDeleteChoice] = useState<string | null>(null);
@@ -57,10 +58,12 @@ export function TerminalFileShelf({
 			setProgress(null);
 		}
 	};
+	const selected = state.batch?.entries.find((entry) => entry.id === detailsId);
+	const count = state.batch?.entries.length ?? 0;
 	return (
 		<section
 			aria-label={`Files for terminal ${terminalId}`}
-			className="max-h-[45%] shrink-0 overflow-auto border-t border-[var(--border)] bg-[var(--bg-base)] p-2 text-xs text-[var(--text-secondary)]"
+			className="shrink-0 border-t border-[var(--border)] bg-[var(--bg-base)] px-3 py-2 text-xs text-[var(--text-secondary)]"
 		>
 			<div className="flex flex-wrap items-center gap-2">
 				<input
@@ -68,7 +71,7 @@ export function TerminalFileShelf({
 					type="file"
 					multiple
 					className="hidden"
-					aria-label="Choose local files to link"
+					aria-label="Choose local files to add"
 					onChange={(event) => {
 						onFiles(Array.from(event.currentTarget.files ?? []));
 						event.currentTarget.value = "";
@@ -80,127 +83,154 @@ export function TerminalFileShelf({
 					disabled={!controller || state.busy}
 					onClick={() => picker.current?.click()}
 				>
-					Link files…
+					Add files…
 				</button>
-				<button
-					className={button}
-					type="button"
-					onClick={() => (owned ? setOwned(null) : void loadOwned())}
-				>
-					Workspace copies
-				</button>
-				{(state.batch || state.busy || state.status) && (
-					<button className={button} type="button" onClick={() => controller?.clear()}>
-						Clear / Cancel
-					</button>
+				{count > 0 && (
+					<>
+						<span className="font-medium text-[var(--text)]">
+							{count} {count === 1 ? "file" : "files"} added
+						</span>
+						<span className="text-[var(--text-tertiary)]">Enter to send</span>
+					</>
 				)}
-				<output aria-live="polite">
-					{displayFilePath(state.status)}
-					{progress !== null ? ` ${bytes(progress)} copied` : ""}
-				</output>
-			</div>
-			{state.batch && (
-				<>
-					<p className="my-1">
-						Local path references; provider understanding and access are unverified. Review the
-						current shell/TUI input, including any unmatched quotes. Nothing is submitted
-						automatically.
-					</p>
-					<p>
-						Workspace: <bdi>{displayFilePath(state.batch.target.root)}</bdi>. Copy limits: 2
-						GiB/file, 4 GiB/workspace. Copies persist until explicitly deleted and may be read by
-						workspace tools immediately.
-					</p>
-					<ul className="my-1 space-y-1">
-						{state.batch.entries.map((entry) => (
-							<li key={entry.id} className="break-all rounded border border-[var(--border)] p-1">
-								<bdi>{entry.label}</bdi> — {bytes(entry.size)}
-								{entry.external
-									? " · external; access unverified"
-									: " · workspace; access unverified"}
-								{entry.path && !entry.copyId && (
-									<p>
-										{entry.symlink ? "Canonical target" : "Reference path"}:{" "}
-										<bdi>{displayFilePath(entry.path ?? "")}</bdi>
-									</p>
-								)}
-								{entry.copyId && (
-									<p>
-										Retained copy: <bdi>{displayFilePath(entry.path ?? "")}</bdi>
-									</p>
-								)}
-								{entry.error && <p>{entry.error}</p>}
-								{!entry.referenceAllowed && entry.copyAllowed && (
-									<p>
-										Unsafe path for terminal input. Make a safe-name workspace copy or remove this
-										entry.
-									</p>
-								)}
-								<div className="flex flex-wrap gap-2">
-									<button
-										className={button}
-										type="button"
-										disabled={state.busy}
-										aria-label={`Remove ${entry.label}`}
-										onClick={() => controller?.remove(entry.id)}
-									>
-										Remove
-									</button>
-									{entry.copyAllowed && (
-										<button
-											className={button}
-											type="button"
-											disabled={state.busy}
-											aria-label={`Copy ${entry.label} into workspace`}
-											onClick={() => setCopyChoice(entry.id)}
-										>
-											Copy into workspace
-										</button>
-									)}
-								</div>
-								{copyChoice === entry.id && (
-									<fieldset className="p-2" aria-label="Review workspace copy">
-										<p>
-											Copy {bytes(entry.size)} to a generated file under{" "}
-											<bdi>
-												{displayFilePath(state.batch?.target.root ?? "")}
-												/.superiorswarm/attachments/
-											</bdi>
-											? The original stays in place. Copies are excluded from ordinary Git adds;
-											backups, forced adds and agent tools can still see them.
-										</p>
-										{entry.size >= FILE_COPY_WARNING_BYTES && (
-											<p>Large copy: allow time and sufficient disk space.</p>
-										)}
-										<button
-											className={button}
-											type="button"
-											disabled={state.busy}
-											onClick={() => void copy(entry.id)}
-										>
-											Confirm workspace copy
-										</button>{" "}
-										<button className={button} type="button" onClick={() => setCopyChoice(null)}>
-											Keep original reference
-										</button>
-									</fieldset>
-								)}
-							</li>
-						))}
-					</ul>
+				<div className="ml-auto flex items-center gap-2">
+					{(state.batch || state.busy) && (
+						<button className={button} type="button" onClick={() => controller?.clear()}>
+							{state.busy ? "Cancel" : "Clear files"}
+						</button>
+					)}
 					<button
 						className={button}
 						type="button"
-						disabled={state.busy || state.batch.entries.some((entry) => !entry.referenceAllowed)}
-						onClick={() => void controller?.insert()}
+						aria-expanded={owned !== null}
+						onClick={() => (owned ? setOwned(null) : void loadOwned())}
 					>
-						Insert paths ({state.batch.entries.length})
+						Saved copies
 					</button>
-				</>
+				</div>
+			</div>
+			{count > 0 && (
+				<ul
+					aria-label="Files in this message"
+					className="mt-2 flex max-h-24 flex-wrap gap-1.5 overflow-y-auto"
+				>
+					{state.batch?.entries.map((entry) => (
+						<li
+							key={entry.id}
+							className="flex max-w-full items-center rounded-md border border-[var(--border)] bg-[var(--bg-surface)]"
+						>
+							<button
+								type="button"
+								className="flex min-w-0 items-center gap-2 rounded-l-md px-2 py-1.5 hover:bg-[var(--bg-elevated)] focus-visible:outline-2"
+								aria-label={`Details for ${entry.label}`}
+								aria-expanded={selected?.id === entry.id}
+								title={displayFilePath(entry.path ?? entry.label)}
+								onClick={() => {
+									setDetailsId(selected?.id === entry.id ? null : entry.id);
+									setCopyChoice(null);
+								}}
+							>
+								<span className="max-w-48 truncate">
+									<bdi>{entry.label}</bdi>
+								</span>
+								{!entry.referenceAllowed && (
+									<span className="text-[var(--text)]">Needs attention</span>
+								)}
+							</button>
+							<button
+								type="button"
+								className="self-stretch rounded-r-md px-2 hover:bg-[var(--bg-elevated)] focus-visible:outline-2 disabled:opacity-50"
+								disabled={state.busy}
+								aria-label={`Remove ${entry.label}`}
+								onClick={() => controller?.remove(entry.id)}
+							>
+								<span aria-hidden="true">×</span>
+							</button>
+						</li>
+					))}
+				</ul>
+			)}
+			<output aria-live="polite" className="mt-1 block empty:hidden text-[var(--text-tertiary)]">
+				{displayFilePath(state.status)}
+				{progress !== null ? ` ${bytes(progress)} copied` : ""}
+			</output>
+			{selected && (
+				<div
+					className="mt-2 max-h-48 space-y-2 overflow-y-auto break-all rounded-md border border-[var(--border)] bg-[var(--bg-surface)] p-2"
+					aria-label={`File details for ${selected.label}`}
+				>
+					<div className="flex items-center justify-between gap-2">
+						<bdi className="font-medium">{selected.label}</bdi>
+						<span>
+							{bytes(selected.size)} · {selected.external ? "External file" : "Workspace file"}
+						</span>
+					</div>
+					{selected.path && (
+						<p>
+							{selected.symlink ? "Canonical target" : selected.copyId ? "Saved copy" : "Path"}:{" "}
+							<bdi>{displayFilePath(selected.path)}</bdi>
+						</p>
+					)}
+					<p>
+						Sent as a local path. Reading the file depends on the CLI’s tools and permissions.
+						Review shell quotes or unusual prompts before sending.
+					</p>
+					{selected.error && <p role="alert">{selected.error}</p>}
+					{!selected.referenceAllowed && selected.copyAllowed && (
+						<p>This filename needs a safe-name workspace copy before it can be sent.</p>
+					)}
+					{selected.copyAllowed && (
+						<button
+							className={button}
+							type="button"
+							disabled={state.busy}
+							aria-label={`Copy ${selected.label} into workspace`}
+							onClick={() => setCopyChoice(selected.id)}
+						>
+							Copy into workspace
+						</button>
+					)}
+					{copyChoice === selected.id && (
+						<fieldset
+							className="space-y-2 rounded border border-[var(--border)] p-2"
+							aria-label="Review workspace copy"
+						>
+							<p>
+								Copy {bytes(selected.size)} under{" "}
+								<bdi>
+									{displayFilePath(state.batch?.target.root ?? "")}/.superiorswarm/attachments/
+								</bdi>
+								?
+							</p>
+							<p>
+								The original stays in place. The copy remains until deleted and workspace tools can
+								read it immediately. Limits: 2 GiB per file, 4 GiB per workspace. Ordinary Git adds
+								exclude copies; backups and forced adds can include them.
+							</p>
+							{selected.size >= FILE_COPY_WARNING_BYTES && (
+								<p>Large copy: allow time and sufficient disk space.</p>
+							)}
+							<button
+								className={button}
+								type="button"
+								disabled={state.busy}
+								onClick={() => void copy(selected.id)}
+							>
+								Confirm copy
+							</button>{" "}
+							<button className={button} type="button" onClick={() => setCopyChoice(null)}>
+								Cancel
+							</button>
+						</fieldset>
+					)}
+				</div>
 			)}
 			{copyError && <p role="alert">{copyError}</p>}
 			{owned && (
-				<div aria-label="Retained workspace copies">
+				<div
+					aria-label="Retained workspace copies"
+					className="mt-2 max-h-48 overflow-auto rounded border border-[var(--border)] p-2"
+				>
 					<p>
 						Retained copies survive app restart. Deleting one can break old prompts. No saved copy
 						is automatically inserted.

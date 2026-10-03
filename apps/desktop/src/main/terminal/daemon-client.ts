@@ -83,28 +83,44 @@ export class DaemonClient {
 	// some frames must be suppressed or translated while one is kept alive.
 	private remoteProtocolVersion = DAEMON_PROTOCOL_VERSION;
 	private fileInputCapable = false;
+	private fileSubmitCapable = false;
+	get supportsFileSubmit(): boolean {
+		return this.isConnected && this.fileSubmitCapable;
+	}
 	private fileRequests = new Map<
 		string,
 		(response: Extract<DaemonMessage, { type: "file-result" }> | null) => void
 	>();
 
-	async fileTarget(id: string): Promise<DaemonFileTarget | null> {
-		const response = await this.fileRequest({ type: "file-target", id, requestId: randomUUID() });
+	async fileTarget(id: string, managedAgent = false): Promise<DaemonFileTarget | null> {
+		const response = await this.fileRequest({
+			type: "file-target",
+			id,
+			requestId: randomUUID(),
+			managedAgent,
+		});
 		return response?.target ?? null;
 	}
 	async insertFiles(
 		id: string,
 		generation: string,
 		text: string,
-		payload: string
+		payload: string,
+		submit = false
 	): Promise<FileDelivery> {
-		if (!this.canSendFileInput() || !isFilePaste(text, payload) || this.fileRequests.size >= 64)
+		if (
+			!this.canSendFileInput() ||
+			(submit && !this.supportsFileSubmit) ||
+			!isFilePaste(text, payload) ||
+			this.fileRequests.size >= 64
+		)
 			return "rejected";
 		const message = {
 			type: "file-input",
 			id,
 			generation,
 			payload,
+			submit,
 			requestId: randomUUID(),
 		} as const;
 		if (Buffer.byteLength(JSON.stringify(message)) + 1 > MAX_FRAME_BYTES) return "rejected";
@@ -163,6 +179,7 @@ export class DaemonClient {
 	private notifyConnectionStatus(connected: boolean): void {
 		if (!connected) {
 			this.fileInputCapable = false;
+			this.fileSubmitCapable = false;
 			for (const resolve of this.fileRequests.values()) resolve(null);
 		}
 		for (const listener of this.connectionStatusListeners) {
@@ -201,6 +218,7 @@ export class DaemonClient {
 		const ready = await this.waitForMessage("ready");
 		this.remoteProtocolVersion = ready.protocolVersion ?? 1;
 		this.fileInputCapable = ready.capabilities?.includes("file-input-v1") === true;
+		this.fileSubmitCapable = ready.capabilities?.includes("file-submit-v1") === true;
 
 		// The session list is needed both to decide whether a stale daemon can be
 		// restarted and to seed liveSessions — fetch it once.

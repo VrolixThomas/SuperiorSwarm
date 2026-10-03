@@ -14,14 +14,14 @@ afterEach(() => {
 	server?.close();
 	if (fixture) rmSync(fixture, { recursive: true, force: true });
 });
-async function setup(reply: boolean) {
+async function setup(reply: boolean, submitCapable = false) {
 	fixture = mkdtempSync(join(tmpdir(), "terminal-file-wire-"));
 	const path = join(fixture, "daemon.sock");
 	const messages: Record<string, unknown>[] = [];
 	server = createServer((s) => {
 		socket = s;
 		s.write(
-			`${JSON.stringify({ type: "ready", protocolVersion: 2, capabilities: ["file-input-v1"] })}\n`
+			`${JSON.stringify({ type: "ready", protocolVersion: 2, capabilities: submitCapable ? ["file-input-v1", "file-submit-v1"] : ["file-input-v1"] })}\n`
 		);
 		let buffer = "";
 		s.on("data", (chunk) => {
@@ -69,4 +69,17 @@ test("socket disconnect after handoff is uncertain and never auto-replayed", asy
 	expect(await delivery).toBe("uncertain");
 	expect(messages.filter((m) => m["type"] === "file-input")).toHaveLength(1);
 	expect(await client.insertFiles("term", "g1", " '/tmp/a' ", " '/tmp/a' ")).toBe("rejected");
+});
+
+test("explicit submit is capability-gated and never downgraded into an insertion on an older daemon", async () => {
+	const messages = await setup(true);
+	expect(await client.insertFiles("term", "g1", " '/tmp/a' ", " '/tmp/a' ", true)).toBe("rejected");
+	expect(messages.filter((m) => m["type"] === "file-input")).toHaveLength(0);
+});
+test("explicit submit uses one guarded frame with the user's send request", async () => {
+	const messages = await setup(true, true);
+	expect(await client.insertFiles("term", "g1", " '/tmp/a' ", " '/tmp/a' ", true)).toBe("admitted");
+	expect(messages.filter((m) => m["type"] === "file-input")).toMatchObject([
+		{ payload: " '/tmp/a' ", submit: true },
+	]);
 });
