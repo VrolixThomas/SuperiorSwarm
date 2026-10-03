@@ -184,3 +184,37 @@ test("large browser listings retain all filenames and filename search without co
 		await h.cleanup();
 	}
 }, 15000);
+
+test("linked env files are labeled, searchable and hideable without resolving or reading targets", async () => {
+	const h = await renderBrowserTest(
+		createElement(RepoFileTree, { repoPath: "/fixture/links", workspaceId: "links" }),
+		[{ path: "apps/desktop/.env", type: "symlink" }]
+	);
+	try {
+		const row = h.container.querySelector<HTMLElement>('[data-path="apps/desktop/.env"]');
+		expect(row?.getAttribute("aria-label")).toContain("symbolic link");
+		expect(row?.querySelector('[title="Symbolic link"]')).not.toBeNull();
+		const input = h.container.querySelector("input");
+		if (!input) throw new Error("Missing search input");
+		await act(async () => {
+			Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set?.call(
+				input,
+				".env"
+			);
+			input.dispatchEvent(new window.Event("input", { bubbles: true }));
+			row?.dispatchEvent(new window.MouseEvent("mouseover", { bubbles: true }));
+		});
+		expect(h.container.textContent).toContain("1/1");
+		expect(
+			h.calls.every((call) =>
+				["diff.listAllFiles", "diff.getWorkingTreeStatus"].includes(call.path)
+			)
+		).toBe(true);
+		await act(async () =>
+			h.container.querySelector<HTMLButtonElement>('[title="Hide dotfiles"]')?.click()
+		);
+		expect(h.container.querySelector('[data-path="apps/desktop/.env"]')).toBeNull();
+	} finally {
+		await h.cleanup();
+	}
+});

@@ -12,7 +12,7 @@ import { trpc } from "../trpc/client";
 interface TreeNode {
 	name: string;
 	path: string;
-	type: "file" | "directory";
+	type: FlatEntry["type"];
 	children: TreeNode[];
 }
 
@@ -243,7 +243,8 @@ function buildTree(entries: FlatEntry[]): TreeNode[] {
 
 	function sortNodes(nodes: TreeNode[]) {
 		nodes.sort((a, b) => {
-			if (a.type !== b.type) return a.type === "directory" ? -1 : 1;
+			if ((a.type === "directory") !== (b.type === "directory"))
+				return a.type === "directory" ? -1 : 1;
 			return a.name.localeCompare(b.name);
 		});
 		for (const node of nodes) {
@@ -267,9 +268,9 @@ function compactTreeNodes(nodes: TreeNode[]): TreeNode[] {
 				pathParts.push(current.name);
 			}
 
-			// If the final dir has exactly one file child, merge it too
-			if (current.children.length === 1 && current.children[0]?.type === "file") {
-				const file = current.children[0];
+			// A leaf link compacts like a file; its target is never traversed.
+			const file = current.children.length === 1 ? current.children[0] : undefined;
+			if (file && file.type !== "directory") {
 				return {
 					...file,
 					name: [...pathParts, file.name].join("/"),
@@ -314,7 +315,7 @@ function hasGitStatusInSubtree(
 	node: TreeNode,
 	gitStatusMap: Map<string, DiffFile["status"]>
 ): boolean {
-	if (node.type === "file") return gitStatusMap.has(node.path);
+	if (node.type !== "directory") return gitStatusMap.has(node.path);
 	return node.children.some((child) => hasGitStatusInSubtree(child, gitStatusMap));
 }
 
@@ -711,7 +712,7 @@ function TreeNodeRow({
 			tabIndex={-1}
 			data-path={node.path}
 			aria-expanded={isDir ? expanded : undefined}
-			aria-label={node.path}
+			aria-label={node.type === "symlink" ? `${node.path} (symbolic link)` : node.path}
 			aria-selected={isActive}
 			onClick={(e) => {
 				e.stopPropagation();
@@ -775,6 +776,16 @@ function TreeNodeRow({
 					displayName
 				)}
 			</span>
+
+			{node.type === "symlink" && (
+				<span
+					title="Symbolic link"
+					aria-hidden="true"
+					className="shrink-0 text-[var(--text-quaternary)]"
+				>
+					↗
+				</span>
+			)}
 
 			{/* Git status dot */}
 			{gitStatus && (
@@ -1018,7 +1029,7 @@ function WorkspaceFileTree({
 
 	// ── Search ─────────────────────────────────────────────────
 	const visibleFilePaths = useMemo(
-		() => visibleEntries.filter((e) => e.type === "file").map((e) => e.path),
+		() => visibleEntries.filter((e) => e.type !== "directory").map((e) => e.path),
 		[visibleEntries]
 	);
 	const searchResults = useMemo(
@@ -1449,7 +1460,8 @@ function WorkspaceFileTree({
 			<details className="px-3 text-[11px] text-[var(--text-quaternary)]">
 				<summary>Files browser exclusions</summary>
 				Git metadata, node_modules, dist, out, build, .next, .cache, ~, .turbo, target, coverage,
-				graphify-out directories, OS noise, symlinks and special files are omitted.
+				graphify-out directories, OS noise and special files are omitted. Symbolic links are shown;
+				linked directories are not expanded.
 			</details>
 
 			{/* Tree */}

@@ -61,7 +61,7 @@ test("directory browser mode includes ignored names without changing the default
 	).toContain("ignored-parent/.env");
 });
 
-test("browser prunes explicit generated directories, Git metadata, OS noise, links and special files", async () => {
+test("browser prunes generated directories, Git metadata and special files but lists links without traversing them", async () => {
 	const { symlink } = await import("node:fs/promises");
 	const excluded = [
 		"node_modules",
@@ -91,17 +91,19 @@ test("browser prunes explicit generated directories, Git metadata, OS noise, lin
 	expect(fifo.exitCode).toBe(0);
 	const paths = (await listAllEntries(root, { mode: "browser" })).map((e) => e.path);
 	for (const name of excluded) expect(paths).not.toContain(`nested/${name}`);
-	for (const name of [
-		".git",
-		".DS_Store",
-		"nested/Thumbs.db",
-		".env.link",
-		"cycle",
-		"broken",
-		"outside",
-		"pipe",
-	])
+	for (const name of [".git", ".DS_Store", "nested/Thumbs.db", "pipe"])
 		expect(paths).not.toContain(name);
+	for (const name of [".env.link", "cycle", "broken", "outside"]) {
+		expect(await listAllEntries(root, { mode: "browser" })).toContainEqual({
+			path: name,
+			type: "symlink",
+		});
+		expect(
+			(await listDirectory(root, "", { mode: "browser" })).find((entry) => entry.path === name)
+		).toEqual({ name, path: name, type: "symlink" });
+		expect(paths.some((path) => path.startsWith(`${name}/`))).toBe(false);
+		expect((await listAllEntries(root)).some((entry) => entry.path === name)).toBe(false);
+	}
 	expect(paths).toContain("dist");
 	expect((await listDirectory(root, "nested", { mode: "browser" })).map((e) => e.name)).toEqual([
 		".env",

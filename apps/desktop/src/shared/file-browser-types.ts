@@ -2,7 +2,7 @@ export type FileListingMode = "git-visible" | "browser";
 
 export interface FlatEntry {
 	path: string;
-	type: "file" | "directory";
+	type: "file" | "directory" | "symlink";
 }
 
 export interface FileEntry extends FlatEntry {

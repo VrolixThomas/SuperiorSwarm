@@ -43,7 +43,9 @@ export async function listDirectory(
 		// Skip gitignored entries
 		if (ignoredPaths.has(relativePath) || ignoredPaths.has(`${relativePath}/`)) continue;
 
-		if (dirent.isDirectory()) {
+		if (options.mode === "browser" && dirent.isSymbolicLink()) {
+			entries.push({ name: dirent.name, path: relativePath, type: "symlink" });
+		} else if (dirent.isDirectory()) {
 			entries.push({
 				name: dirent.name,
 				path: relativePath,
@@ -74,7 +76,8 @@ export async function listDirectory(
 
 	// Sort: directories first, then alphabetical
 	entries.sort((a, b) => {
-		if (a.type !== b.type) return a.type === "directory" ? -1 : 1;
+		if ((a.type === "directory") !== (b.type === "directory"))
+			return a.type === "directory" ? -1 : 1;
 		return a.name.localeCompare(b.name);
 	});
 
@@ -117,7 +120,9 @@ export async function listAllEntries(
 
 			if (ignoredPaths.has(relativePath) || ignoredPaths.has(`${relativePath}/`)) continue;
 
-			if (dirent.isDirectory()) {
+			if (options.mode === "browser" && dirent.isSymbolicLink()) {
+				results.push({ path: relativePath, type: "symlink" });
+			} else if (dirent.isDirectory()) {
 				results.push({ path: relativePath, type: "directory" });
 				await walk(relativePath);
 			} else if (dirent.isFile()) {
