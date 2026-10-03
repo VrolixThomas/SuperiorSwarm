@@ -1,9 +1,26 @@
-export function Toggle({ checked, onChange }: { checked: boolean; onChange: () => void }) {
+export function Toggle({
+	checked,
+	onChange,
+	disabled = false,
+	label,
+	describedBy,
+}: {
+	checked: boolean;
+	onChange: () => void;
+	disabled?: boolean;
+	label?: string;
+	describedBy?: string;
+}) {
 	return (
 		<button
 			type="button"
+			role="switch"
+			aria-checked={checked}
+			aria-label={label}
+			aria-describedby={describedBy}
+			disabled={disabled}
 			onClick={onChange}
-			className={`relative h-[22px] w-[40px] shrink-0 cursor-pointer rounded-full border-none transition-colors ${
+			className={`relative h-[22px] w-[40px] shrink-0 cursor-pointer rounded-full border-none transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
 				checked ? "bg-[var(--accent)]" : "bg-[var(--bg-overlay)]"
 			}`}
 		>

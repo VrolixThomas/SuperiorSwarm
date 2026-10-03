@@ -23,6 +23,7 @@ import {
 	type TerminalDataMeta,
 } from "../../shared/daemon-protocol";
 import { type FileDelivery, isFilePaste } from "../../shared/terminal-files";
+import { BINARY_INPUT_CAPABILITY, isBinaryInput } from "../../shared/terminal-input";
 import {
 	DaemonOwnershipMismatchError,
 	isDaemonOwnershipMismatchError,
@@ -84,6 +85,11 @@ export class DaemonClient {
 	private remoteProtocolVersion = DAEMON_PROTOCOL_VERSION;
 	private fileInputCapable = false;
 	private fileSubmitCapable = false;
+	private pendingInputTerminals = new Set<string>();
+	setInputPending(id: string, pending: boolean): void {
+		if (pending) this.pendingInputTerminals.add(id);
+		else this.pendingInputTerminals.delete(id);
+	}
 	get supportsFileSubmit(): boolean {
 		return this.isConnected && this.fileSubmitCapable;
 	}
@@ -113,6 +119,7 @@ export class DaemonClient {
 	): Promise<FileDelivery> {
 		if (
 			!this.canSendFileInput() ||
+			this.pendingInputTerminals.has(id) ||
 			(submit && !this.supportsFileSubmit) ||
 			!isFilePaste(text, payload) ||
 			this.fileRequests.size >= 64
@@ -160,6 +167,7 @@ export class DaemonClient {
 			}
 		});
 	}
+	private binaryInputSupported = false;
 
 	constructor(
 		private socketPath: string,
@@ -222,6 +230,10 @@ export class DaemonClient {
 		this.remoteProtocolVersion = ready.protocolVersion ?? 1;
 		this.fileInputCapable = ready.capabilities?.includes("file-input-v1") === true;
 		this.fileSubmitCapable = ready.capabilities?.includes("file-submit-v1") === true;
+		this.binaryInputSupported =
+			(ready.protocolVersion === 2 || ready.protocolVersion === DAEMON_PROTOCOL_VERSION) &&
+			Array.isArray(ready.capabilities) &&
+			ready.capabilities.includes(BINARY_INPUT_CAPABILITY);
 
 		// The session list is needed both to decide whether a stale daemon can be
 		// restarted and to seed liveSessions — fetch it once.
@@ -298,6 +310,8 @@ export class DaemonClient {
 	private teardownSocket(): void {
 		const socket = this.socket;
 		this.socket = null;
+		this.binaryInputSupported = false;
+		this.pendingInputTerminals.clear();
 		socket?.destroy();
 		this.lineBuffer = "";
 		this.pendingListeners.clear();
@@ -349,6 +363,7 @@ export class DaemonClient {
 	}
 
 	disconnect(): void {
+		// A destroyed socket can still have queued input while its close event is pending.
 		this.notifyConnectionStatus(false);
 		if (this.reconnectTimer) {
 			clearTimeout(this.reconnectTimer);
@@ -459,6 +474,22 @@ export class DaemonClient {
 		}
 		this.sendWriteGroup(id, frames);
 		return true;
+	}
+
+	/** False means unsupported, invalid, disconnected, or rejected by backpressure.
+	 * No UTF-8 fallback: that would corrupt legacy coordinates above 0x7f.
+	 */
+	writeBinary(id: string, data: string): boolean {
+		if (!this.isConnected || !this.binaryInputSupported || !isBinaryInput(id, data)) return false;
+		const encoded = `${JSON.stringify({ type: "write-binary", id, data: Buffer.from(data, "latin1").toString("base64") })}\n`;
+		return this.dispatchFrame(
+			"write-binary",
+			id,
+			encoded,
+			Buffer.byteLength(encoded),
+			true,
+			undefined
+		);
 	}
 
 	// The daemon discards frames over MAX_FRAME_BYTES, so a large paste sent as
@@ -605,7 +636,7 @@ export class DaemonClient {
 	private send(msg: ClientMessage): void {
 		const encoded = `${JSON.stringify(msg)}\n`;
 		const messageBytes = Buffer.byteLength(encoded, "utf-8");
-		const droppable = msg.type === "write" || msg.type === "resize";
+		const droppable = msg.type === "write" || msg.type === "write-binary" || msg.type === "resize";
 		this.dispatchFrame(
 			msg.type,
 			"id" in msg ? msg.id : undefined,
@@ -623,7 +654,7 @@ export class DaemonClient {
 		messageBytes: number,
 		droppable: boolean,
 		groupId: number | undefined
-	): void {
+	): boolean {
 		if (!this.socket || this.socket.destroyed) {
 			throw new Error("Daemon not connected");
 		}
@@ -641,12 +672,11 @@ export class DaemonClient {
 			console.warn(
 				`[daemon-client] outbound ${type} frame ${messageBytes}B exceeds daemon frame limit ${MAX_FRAME_BYTES}B; dropping message`
 			);
-			return;
+			return false;
 		}
 
 		if (this.waitingForDrain || this.outboundQueue.length > 0) {
-			this.enqueueOutbound(type, id, encoded, messageBytes, droppable, groupId);
-			return;
+			return this.enqueueOutbound(type, id, encoded, messageBytes, droppable, groupId);
 		}
 
 		const ok = this.socket.write(encoded);
@@ -654,6 +684,7 @@ export class DaemonClient {
 			this.waitingForDrain = true;
 			console.warn("[daemon-client] socket backpressure detected");
 		}
+		return true;
 	}
 
 	private setupMessageHandler(): void {
@@ -700,6 +731,7 @@ export class DaemonClient {
 			if (this.socket !== socket) return;
 			console.warn("[daemon-client] connection to daemon lost");
 			this.socket = null;
+			this.binaryInputSupported = false;
 			this.waitingForDrain = false;
 			this.resetOutboundQueue();
 			this.notifyConnectionStatus(false);
@@ -898,7 +930,7 @@ export class DaemonClient {
 		messageBytes: number,
 		droppable: boolean,
 		groupId: number | undefined
-	): void {
+	): boolean {
 		if (type === "resize") {
 			for (let i = 0; i < this.outboundQueue.length; i++) {
 				const queued = this.outboundQueue[i];
@@ -919,7 +951,7 @@ export class DaemonClient {
 				console.warn(
 					`[daemon-client] outbound queue full (${this.outboundQueuedBytes}/${MAX_OUTBOUND_QUEUE_BYTES}B); dropping message`
 				);
-				return;
+				return false;
 			}
 			// Control frames must never vanish silently, but queuing past the
 			// budget would grow without bound while the daemon is not reading.
@@ -931,6 +963,7 @@ export class DaemonClient {
 
 		this.outboundQueue.push({ encoded, bytes: messageBytes, droppable, type, id, groupId });
 		this.outboundQueuedBytes += messageBytes;
+		return true;
 	}
 
 	private evictDroppableForControl(controlBytes: number): void {

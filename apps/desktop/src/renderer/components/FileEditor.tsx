@@ -1,6 +1,8 @@
 import * as monaco from "monaco-editor";
 import { initVimMode } from "monaco-vim";
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { WorkspaceFileContent } from "../../shared/file-browser-types";
+import { isSensitiveFilePath } from "../../shared/sensitive-file-path";
 import { ensureThemeRegistered } from "../lib/monacoTheme";
 import { useEditorSettingsStore } from "../stores/editor-settings";
 import { useProjectStore } from "../stores/projects";
@@ -13,6 +15,7 @@ import { useFileEditorLsp } from "./editor/useFileEditorLsp";
 
 interface FileEditorProps {
 	tabId: string;
+	workspaceId: string;
 	/** Pane the editor lives in. Required so we can scope the review-edit Escape handler
 	 *  to the single FileEditor that IS the review edit-split; other editors leave Esc alone. */
 	paneId?: string;
@@ -24,12 +27,20 @@ interface FileEditorProps {
 
 export function FileEditor({
 	tabId,
+	workspaceId,
 	paneId,
 	repoPath,
 	filePath,
-	language,
+	language: requestedLanguage,
 	initialPosition,
 }: FileEditorProps) {
+	const [initialFile, setInitialFile] = useState<WorkspaceFileContent | null>(null);
+	const initialContent = initialFile?.content ?? null;
+	const symlinkTarget = initialFile?.symlinkTarget;
+	const hasInitialFile = initialFile !== null;
+	const sensitive = isSensitiveFilePath(filePath) || isSensitiveFilePath(symlinkTarget ?? "");
+	const localOnly = sensitive || symlinkTarget !== undefined;
+	const language = sensitive ? "plaintext" : requestedLanguage;
 	const containerRef = useRef<HTMLDivElement>(null);
 	const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
 	const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -52,12 +63,12 @@ export function FileEditor({
 			utils.diff.getWorkingTreeStatus.invalidate({ repoPath });
 			// Clear overlay so the review diff reads server truth
 			const rs = useReviewSessionStore.getState();
-			if (rs.activeSession) rs.clearOptimisticContent(filePath);
+			if (!localOnly && rs.activeSession) rs.clearOptimisticContent(filePath);
 		},
 		onError: () => {
 			// Save failed — revert the review diff to server truth
 			const rs = useReviewSessionStore.getState();
-			if (rs.activeSession) rs.clearOptimisticContent(filePath);
+			if (!localOnly && rs.activeSession) rs.clearOptimisticContent(filePath);
 		},
 	});
 	const {
@@ -66,7 +77,7 @@ export function FileEditor({
 		canTrust,
 		trustRepo,
 		onContentChanged: onLspContentChanged,
-	} = useFileEditorLsp(currentModel, repoPath, language, filePath);
+	} = useFileEditorLsp(localOnly ? null : currentModel, repoPath, language, filePath);
 	const utilsForLsp = trpc.useUtils();
 	const dismissLanguageMut = trpc.lsp.dismissLanguage.useMutation({
 		onSuccess: () => utilsForLsp.lsp.getDismissedLanguages.invalidate(),
@@ -103,14 +114,14 @@ export function FileEditor({
 		applyPendingInitialPosition();
 	}, [initialPosition, applyPendingInitialPosition]);
 
-	const { data, isLoading } = trpc.diff.getFileContent.useQuery(
-		{ repoPath, ref: "", filePath },
-		{ staleTime: 30_000 }
+	const { data, isLoading, isFetching, isError, refetch } = trpc.diff.getFileContent.useQuery(
+		{ repoPath, workspaceId, ref: "", filePath },
+		{ staleTime: 30_000, retry: false, refetchOnMount: "always" }
 	);
 
-	// Create editor once on mount
+	// Create an editable surface only after a successful read.
 	useEffect(() => {
-		if (!containerRef.current) return;
+		if (!containerRef.current || !hasInitialFile) return;
 		const theme = ensureThemeRegistered();
 		const editor = monaco.editor.create(containerRef.current, {
 			theme,
@@ -144,18 +155,19 @@ export function FileEditor({
 			editor.dispose();
 			editorRef.current = null;
 		};
-	}, [paneId]);
+	}, [paneId, hasInitialFile]);
 
-	// Snapshot content once on first data arrival. Subsequent query refetches
+	// Snapshot content and the link target after the initial fresh read. Subsequent query refetches
 	// (triggered by save invalidations, polling, etc.) DO NOT update this snapshot —
 	// the live in-memory Monaco model is the source of truth while editing; disk is
 	// synced via save. This prevents the model from being disposed/recreated mid-typing,
 	// which would kill cursor and focus.
-	const [initialContent, setInitialContent] = useState<string | null>(null);
 	useEffect(() => {
-		if (initialContent !== null) return;
-		if (data) setInitialContent(data.content);
-	}, [data, initialContent]);
+		if (initialFile !== null) return;
+		if (data && !isFetching && !isError) {
+			setInitialFile({ content: data.content, symlinkTarget: data.symlinkTarget });
+		}
+	}, [data, initialFile, isFetching, isError]);
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: saveMutation.mutate identity is stable; pendingInitialPositionRef is a ref (intentionally excluded)
 	useEffect(() => {
@@ -168,7 +180,7 @@ export function FileEditor({
 		const model = monaco.editor.createModel(initialContent, language, fileUri);
 		editor.setModel(model);
 		setCurrentModel(model);
-		setPreviewContent(initialContent);
+		if (!localOnly) setPreviewContent(initialContent);
 
 		applyPendingInitialPosition();
 
@@ -180,13 +192,21 @@ export function FileEditor({
 				// Push optimistic overlay before mutating so ReviewTab's DiffEditor
 				// reflects the edit immediately (before the server refetch settles).
 				const rs = useReviewSessionStore.getState();
-				if (rs.activeSession) rs.pushOptimisticContent(filePath, content);
-				saveMutation.mutate({ repoPath, filePath, content });
+				if (!localOnly && rs.activeSession) rs.pushOptimisticContent(filePath, content);
+				saveMutation.mutate({
+					repoPath,
+					workspaceId,
+					filePath,
+					content,
+					...(symlinkTarget ? { expectedSymlinkTarget: symlinkTarget } : {}),
+				});
 			}, 500);
 			if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
-			previewTimerRef.current = setTimeout(() => {
-				setPreviewContent(model.getValue());
-			}, 300);
+			if (!localOnly) {
+				previewTimerRef.current = setTimeout(() => {
+					setPreviewContent(model.getValue());
+				}, 300);
+			}
 
 			version++;
 			onLspContentChangedRef.current(version);
@@ -199,7 +219,16 @@ export function FileEditor({
 			setCurrentModel(null);
 			model.dispose();
 		};
-	}, [initialContent, language, repoPath, filePath, applyPendingInitialPosition]);
+	}, [
+		initialContent,
+		language,
+		localOnly,
+		symlinkTarget,
+		repoPath,
+		workspaceId,
+		filePath,
+		applyPendingInitialPosition,
+	]);
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: editorReady is an intentional trigger to re-run after editor creation
 	useEffect(() => {
@@ -218,7 +247,7 @@ export function FileEditor({
 
 	// Sync scroll between Monaco and the markdown preview pane in split mode
 	useEffect(() => {
-		if (markdownPreviewMode !== "split") return;
+		if (!editorReady || markdownPreviewMode !== "split") return;
 		const editor = editorRef.current;
 		if (!editor) return;
 
@@ -238,18 +267,37 @@ export function FileEditor({
 		});
 
 		return () => scrollSub.dispose();
-	}, [markdownPreviewMode]);
+	}, [markdownPreviewMode, editorReady]);
 
 	return (
-		<>
-			{isLoading && (
+		<div className="flex h-full w-full flex-col">
+			{isError && (
+				<p role="alert" className="p-3 text-[12px]">
+					Unable to open file. Check the workspace, link target and file permissions.
+					<button type="button" onClick={() => void refetch()} className="ml-2 underline">
+						Retry
+					</button>
+				</p>
+			)}
+			{symlinkTarget && (
+				<p className="px-3 py-1 text-[11px] text-[var(--text-tertiary)]" title={symlinkTarget}>
+					Saves update the linked file: {symlinkTarget}
+				</p>
+			)}
+			{saveMutation.isError && (
+				<p role="alert" className="p-3 text-[12px]">
+					Unable to save file. Your edits are still in this editor; the file or link target may have
+					changed.
+				</p>
+			)}
+			{!hasInitialFile && (isLoading || isFetching) && (
 				<div className="flex h-full items-center justify-center text-[13px] text-[var(--text-quaternary)]">
 					Loading…
 				</div>
 			)}
 			<div
-				className="flex h-full w-full flex-col"
-				style={isLoading ? { display: "none" } : undefined}
+				className="flex min-h-0 w-full flex-1 flex-col"
+				style={!hasInitialFile ? { display: "none" } : undefined}
 			>
 				{lspMessage && !isLanguageDismissed && (
 					<div className="flex items-center justify-between gap-2 border-b border-[rgba(255,159,10,0.35)] bg-[var(--warning-subtle)] px-3 py-2 text-[12px] text-[var(--color-warning)]">
@@ -285,7 +333,7 @@ export function FileEditor({
 						</div>
 					</div>
 				)}
-				{language === "markdown" && (
+				{!localOnly && language === "markdown" && (
 					<div className="flex h-8 shrink-0 items-center justify-end gap-2 border-b border-[var(--border)] bg-[var(--bg-surface)] px-3">
 						<MarkdownPreviewButton language={language} />
 					</div>
@@ -297,7 +345,7 @@ export function FileEditor({
 					<div
 						className="flex min-h-0 flex-1 flex-col overflow-hidden"
 						style={
-							language === "markdown" && markdownPreviewMode === "rendered"
+							!localOnly && language === "markdown" && markdownPreviewMode === "rendered"
 								? { display: "none" }
 								: undefined
 						}
@@ -310,7 +358,8 @@ export function FileEditor({
 							/>
 						)}
 					</div>
-					{language === "markdown" &&
+					{!localOnly &&
+						language === "markdown" &&
 						(markdownPreviewMode === "split" || markdownPreviewMode === "rendered") && (
 							<div
 								ref={markdownPaneRef}
@@ -336,6 +385,6 @@ export function FileEditor({
 						)}
 				</div>
 			</div>
-		</>
+		</div>
 	);
 }

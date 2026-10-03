@@ -138,7 +138,7 @@ export class PtyManager {
 		}
 	}
 
-	write(id: string, data: string): void {
+	write(id: string, data: string | Buffer): void {
 		const terminal = this.terminals.get(id);
 		if (!terminal) {
 			console.warn(`[pty-manager] write: terminal "${id}" not found`);

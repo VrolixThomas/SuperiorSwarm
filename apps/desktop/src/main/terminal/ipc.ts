@@ -11,6 +11,7 @@ import { ensureTerminalSessionRow } from "../db/session-persistence";
 import type { AgentSessionManager } from "../services/agent-session-manager";
 import { incrementCounter } from "../telemetry/state";
 import type { DaemonClient } from "./daemon-client";
+import { registerTerminalInputIPC } from "./input-ipc";
 import { rendererTrust } from "./renderer-trust";
 import { terminalFileOwners } from "./terminal-files";
 
@@ -112,18 +113,14 @@ export function setupTerminalIPC(
 		}
 	);
 
-	ipcMain.handle("terminal:write", async (_event, id: unknown, data: unknown) => {
-		assertNonEmptyString(id, "id");
-		if (typeof data !== "string") {
-			throw new Error("data must be a string");
+	const input = registerTerminalInputIPC(
+		ipcMain,
+		daemonClient,
+		(id) => agentSessionManager?.beforeTerminalInput(id) ?? Promise.resolve(),
+		(id, data, binary) => {
+			if (!binary && /[\r\n]/.test(data)) terminalFileOwners.invalidate(id, "submitted input");
 		}
-		if (/[\r\n]/.test(data)) terminalFileOwners.invalidate(id, "submitted input");
-		await agentSessionManager?.beforeTerminalInput(id);
-		// false = daemon not connected, nothing delivered. Callers that need
-		// delivery confirmation (e.g. inline-comment send) check this; the
-		// keystroke path ignores it.
-		return daemonClient.write(id, data);
-	});
+	);
 
 	ipcMain.handle("terminal:resize", (_event, id: unknown, cols: unknown, rows: unknown) => {
 		assertNonEmptyString(id, "id");
@@ -139,12 +136,14 @@ export function setupTerminalIPC(
 	ipcMain.handle("terminal:detach", (_event, id: unknown) => {
 		assertNonEmptyString(id, "id");
 		terminalFileOwners.detach(id);
+		input.invalidate(id);
 		daemonClient.detach(id);
 	});
 
 	ipcMain.handle("terminal:dispose", (_event, id: unknown) => {
 		assertNonEmptyString(id, "id");
 		terminalFileOwners.detach(id);
+		input.invalidate(id);
 		daemonClient.dispose(id);
 		agentSessionManager?.removeSession(id);
 		// Also remove the DB session record so it doesn't reappear as stale
@@ -184,6 +183,7 @@ export function setupTerminalIPC(
 
 	daemonClient.addConnectionStatusListener((connected: boolean) => {
 		terminalFileOwners.invalidateAll();
+		if (!connected) input.clear();
 		if (connected && agentSessionManager) {
 			void agentSessionManager.reconcile().catch((error) => {
 				console.error("[agent-session] failed to reconcile terminal processes:", error);

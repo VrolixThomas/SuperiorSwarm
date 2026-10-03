@@ -59,7 +59,7 @@ export class FileInputSessions {
 	detach(id: string, client: string): void {
 		this.sessions.get(id)?.clients.delete(client);
 	}
-	input(id: string, data: string): void {
+	input(id: string, data: string | Buffer): void {
 		if (!data.includes("\r") && !data.includes("\n") && !data.includes("\x03")) return;
 		const session = this.sessions.get(id);
 		if (session) for (const client of session.clients.keys()) session.clients.set(client, null);

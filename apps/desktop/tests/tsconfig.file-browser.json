@@ -1,0 +1,13 @@
+{
+	"extends": "./tsconfig.json",
+	"compilerOptions": { "jsx": "react-jsx" },
+	"include": [
+		"../src/renderer/types.d.ts",
+		"file-tree.test.ts",
+		"file-browser-*.test.ts",
+		"file-editor-privacy.test.ts",
+		"repo-file-tree.test.ts",
+		"repo-ipc-file-browser.test.ts",
+		"use-repo-subscription.test.ts"
+	]
+}

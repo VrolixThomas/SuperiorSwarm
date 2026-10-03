@@ -4,10 +4,9 @@ import { join } from "node:path";
 
 export const SUPERIORSWARM_DIR = join(homedir(), ".superiorswarm");
 
-// Bumped whenever the daemon's wire behavior changes. The daemon reports it in
-// "ready"; a client seeing a mismatch (or no version — protocol 1 daemons)
-// replaces an idle daemon so fixes apply across app upgrades. A daemon with
-// live sessions is retained. Version 3 adds native executable identity checks.
+// Additive features are negotiated through capabilities. Version 3 also lets
+// idle daemons upgrade to native executable identity checks; live sessions
+// are retained. Binary-input-v1 has the same wire format in versions 2 and 3.
 export const DAEMON_PROTOCOL_VERSION = 3;
 
 // Hard per-frame limit enforced by the daemon on inbound lines. The client
@@ -59,6 +58,8 @@ export type ClientMessage =
 	| { type: "detach"; id: string }
 	| { type: "detach-all" }
 	| { type: "write"; id: string; data: string }
+	// Canonical base64, only sent after binary-input-v1 is advertised in ready.
+	| { type: "write-binary"; id: string; data: string }
 	| { type: "resize"; id: string; cols: number; rows: number }
 	| { type: "dispose"; id: string }
 	| { type: "list" };

@@ -1,6 +1,9 @@
+import { isSensitiveDocumentUri } from "../../shared/sensitive-file-path";
+
 const modelRepoMap = new Map<string, string>();
 
 export function setModelRepoPath(uri: string, repoPath: string): void {
+	if (isSensitiveDocumentUri(uri)) return;
 	modelRepoMap.set(uri, repoPath);
 }
 
@@ -9,10 +12,12 @@ export function clearModelRepoPath(uri: string): void {
 }
 
 export function getModelRepoPath(uri: string): string | null {
+	if (isSensitiveDocumentUri(uri)) return null;
 	return modelRepoMap.get(uri) ?? null;
 }
 
 export function findRepoPathFromUri(uri: string): string | null {
+	if (isSensitiveDocumentUri(uri)) return null;
 	for (const [, repoPath] of modelRepoMap) {
 		if (uri.startsWith(`file://${repoPath}`)) return repoPath;
 	}

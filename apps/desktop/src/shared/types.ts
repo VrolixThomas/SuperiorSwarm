@@ -11,8 +11,10 @@ export type { TerminalDataMeta } from "./daemon-protocol";
 
 export interface TerminalAPI {
 	create: (id: string, cwd?: string, workspaceId?: string) => Promise<{ wasAttached: boolean }>;
-	/** Resolves false when the PTY daemon is not connected (nothing delivered). */
+	/** False when disconnected or the bounded pending-input queue rejects the write. */
 	write: (id: string, data: string) => Promise<boolean>;
+	/** Byte-valued string; false if unsupported, disconnected, invalid, or queue full. */
+	writeBinary: (id: string, data: string) => Promise<boolean>;
 	resize: (id: string, cols: number, rows: number) => Promise<void>;
 	detach: (id: string) => Promise<void>;
 	dispose: (id: string) => Promise<void>;

@@ -8,6 +8,7 @@ import type { DaemonInspectorData } from "../../../shared/types";
 import { usePaneStore } from "../../stores/pane-store";
 import { useTabStore } from "../../stores/tab-store";
 import { trpc } from "../../trpc/client";
+import { KeepAwakeSettings } from "./KeepAwakeSettings";
 import { PageHeading, SectionLabel } from "./SectionHeading";
 import { ToggleRow } from "./ToggleRow";
 import { ErrorBanner, Stat, shortPath } from "./shared";
@@ -251,6 +252,7 @@ export function TerminalsSettings() {
 	return (
 		<div>
 			<PageHeading title="Terminals" subtitle="Manage terminal sessions and daemon processes" />
+			<KeepAwakeSettings />
 
 			<SectionLabel>Agent sleep</SectionLabel>
 			<div className="mb-6 overflow-hidden rounded-[10px] border border-[var(--border)] bg-[var(--bg-surface)]">

@@ -6,6 +6,7 @@ import type { ScrollbackStore } from "../../../src/daemon/scrollback-store";
 import { SocketServer } from "../../../src/daemon/socket-server";
 import { DaemonClient } from "../../../src/main/terminal/daemon-client";
 import { setDaemonClient } from "../../../src/main/terminal/daemon-instance";
+import { registerTerminalInputIPC } from "../../../src/main/terminal/input-ipc";
 import { terminalFileOwners } from "../../../src/main/terminal/terminal-files";
 import { terminalFilesRouter } from "../../../src/main/trpc/routers/terminal-files";
 import { formatFilePaths } from "../../../src/shared/terminal-files";
@@ -70,9 +71,10 @@ async function run() {
 		);
 		return { wasAttached: false };
 	});
-	ipcMain.handle("fixture:write", (_event, terminalId: string, data: string) =>
-		client.write(terminalId, data)
-	);
+	registerTerminalInputIPC(ipcMain, client, undefined, (terminalId, data, binary) => {
+		if (!binary && /[\r\n]/.test(data))
+			terminalFileOwners.invalidate(terminalId, "submitted input");
+	});
 	ipcMain.handle("fixture:resize", (_event, terminalId: string, cols: number, rows: number) =>
 		client.resize(terminalId, cols, rows)
 	);

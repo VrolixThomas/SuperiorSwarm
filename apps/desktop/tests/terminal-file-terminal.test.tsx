@@ -33,6 +33,7 @@ class FakeTerminal {
 	cols = 80;
 	rows = 24;
 	data: (text: string) => void = () => {};
+	binary: (data: string) => void = () => {};
 	key: (event: KeyboardEvent) => boolean = () => true;
 	constructor() {
 		terminal = this;
@@ -60,6 +61,19 @@ class FakeTerminal {
 	}
 	onData(fn: (text: string) => void) {
 		this.data = fn;
+		return {
+			dispose: () => {
+				this.data = () => {};
+			},
+		};
+	}
+	onBinary(fn: (data: string) => void) {
+		this.binary = fn;
+		return {
+			dispose: () => {
+				this.binary = () => {};
+			},
+		};
 	}
 	attachCustomKeyEventHandler(fn: (event: KeyboardEvent) => boolean) {
 		this.key = fn;
@@ -86,6 +100,7 @@ let selected: TerminalFileBatch;
 let nextId = 0;
 let atomicSubmit = true;
 const ordinary: string[] = [];
+const binaryWrites: string[] = [];
 const inputTrace: string[] = [];
 const copied: string[] = [];
 Object.defineProperty(navigator.clipboard, "writeText", {
@@ -170,6 +185,7 @@ afterEach(async () => {
 });
 async function mount() {
 	ordinary.length = 0;
+	binaryWrites.length = 0;
 	inputTrace.length = 0;
 	submitted.length = 0;
 	Object.assign(window, {
@@ -186,6 +202,10 @@ async function mount() {
 				resize: async () => {},
 				onData: () => () => {},
 				onExit: () => () => {},
+				writeBinary: async (_id: string, data: string) => {
+					binaryWrites.push(data);
+					return true;
+				},
 				write: async (_id: string, data: string) => {
 					ordinary.push(data);
 					inputTrace.push(data);
@@ -427,4 +447,20 @@ test("files can be inserted between pieces of prose without sending until Enter 
 	await enter();
 	expect(inputTrace.join("")).toBe(`${draft}\r`);
 	expect(submitted).toHaveLength(2);
+});
+
+test("binary mouse input coexists with pending files without changing their insertion-only Enter", async () => {
+	await mount();
+	await drop("mouse-safe.pdf");
+	const report = "\x1b[M\x80\xff";
+	await act(async () => terminal.binary(report));
+	expect(binaryWrites).toEqual([report]);
+	expect(ordinary).toEqual([]);
+	expect(host.textContent).toContain("mouse-safe.pdf");
+	await enter();
+	expect(submitted).toHaveLength(1);
+	expect(submitted[0]?.submit).toBe(false);
+	expect(ordinary).toEqual([]);
+	await enter();
+	expect(ordinary).toEqual(["\r"]);
 });

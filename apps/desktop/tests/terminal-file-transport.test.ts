@@ -91,3 +91,17 @@ test("the main process can report an old terminal service without stopping its s
 	client.disconnect();
 	expect(client.needsFileInputUpdate).toBe(false);
 });
+
+test("explicit disconnect still cancels pending file delivery when the socket has already been destroyed", async () => {
+	await setup(false);
+	const changes: boolean[] = [];
+	client.addConnectionStatusListener((value) => changes.push(value));
+	const delivery = client.insertFiles("term", "g1", " '/tmp/a' ", " '/tmp/a' ");
+	const underlying = (client as unknown as { socket: Socket }).socket;
+	underlying.destroy();
+	client.disconnect();
+	expect(changes).toEqual([false]);
+	expect(
+		await Promise.race([delivery, new Promise((resolve) => setTimeout(() => resolve("late"), 50))])
+	).toBe("uncertain");
+});

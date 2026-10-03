@@ -18,7 +18,9 @@ contextBridge.exposeInMainWorld("electron", {
 	daemon: { onStatus: () => () => {} },
 	terminal: {
 		create: (id: string) => ipcRenderer.invoke("fixture:create", id),
-		write: (id: string, data: string) => ipcRenderer.invoke("fixture:write", id, data),
+		write: (id: string, data: string) => ipcRenderer.invoke("terminal:write", id, data),
+		writeBinary: (id: string, data: string) =>
+			ipcRenderer.invoke("terminal:write-binary", id, data),
 		resize: (id: string, cols: number, rows: number) =>
 			ipcRenderer.invoke("fixture:resize", id, cols, rows),
 		setVisible: async () => {},

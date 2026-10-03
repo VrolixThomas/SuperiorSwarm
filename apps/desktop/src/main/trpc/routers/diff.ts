@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import simpleGit from "simple-git";
 import { z } from "zod";
+import type { WorkspaceFileContent } from "../../../shared/file-browser-types";
 import { atlassianFetch } from "../../atlassian/auth";
 import { getDb } from "../../db";
 import { extensionPaths } from "../../db/schema";
@@ -16,6 +17,7 @@ import {
 	renameFile,
 	saveWorkingTreeFile,
 } from "../../git/file-ops";
+import { resolveWorkspaceFilePath } from "../../git/file-path";
 import { listAllEntries, listDirectory } from "../../git/file-tree";
 import {
 	commitChanges,
@@ -28,6 +30,8 @@ import {
 } from "../../git/operations";
 import { push } from "../../git/remote-ops";
 import { searchText } from "../../git/search-text";
+import { readWorkspaceFile, saveWorkspaceFile } from "../../git/workspace-file-ops";
+import { resolveWorkspaceFileRoot } from "../../git/workspace-file-root";
 import { publicProcedure, router } from "../index";
 
 function computeStats(files: ReturnType<typeof parseUnifiedDiff>) {
@@ -60,7 +64,7 @@ export const diffRouter = router({
 		}),
 
 	getWorkingTreeStatus: publicProcedure
-		.input(z.object({ repoPath: z.string() }))
+		.input(z.object({ repoPath: z.string(), metadataOnly: z.boolean().optional() }))
 		.query(({ input }) => getWorkingTreeStatusCached(input)),
 
 	stageFiles: publicProcedure
@@ -89,16 +93,22 @@ export const diffRouter = router({
 		.input(
 			z.object({
 				repoPath: z.string(),
+				workspaceId: z.string().optional(),
 				ref: z.string(),
 				filePath: z.string(),
 			})
 		)
-		.query(async ({ input }) => {
+		.query(async ({ input }): Promise<WorkspaceFileContent & { language: string }> => {
 			const language = detectLanguage(input.filePath);
 			// Empty ref means read from working tree (unstaged file on disk)
 			if (input.ref === "") {
-				const content = await readWorkingTreeFile(input.repoPath, input.filePath);
-				return { content, language };
+				if (input.workspaceId) {
+					return {
+						...(await readWorkspaceFile(await resolveWorkspaceFileRoot(input), input.filePath)),
+						language,
+					};
+				}
+				return { content: await readWorkingTreeFile(input.repoPath, input.filePath), language };
 			}
 			const git = simpleGit(input.repoPath);
 			// Try the ref as-is first, then fall back to origin/<ref> for remote
@@ -119,12 +129,23 @@ export const diffRouter = router({
 		.input(
 			z.object({
 				repoPath: z.string(),
+				workspaceId: z.string().optional(),
 				filePath: z.string(),
 				content: z.string(),
+				expectedSymlinkTarget: z.string().min(1).optional(),
 			})
 		)
 		.mutation(async ({ input }) => {
-			await saveWorkingTreeFile(input.repoPath, input.filePath, input.content);
+			if (input.workspaceId) {
+				await saveWorkspaceFile(
+					await resolveWorkspaceFileRoot(input),
+					input.filePath,
+					input.content,
+					input.expectedSymlinkTarget
+				);
+			} else {
+				await saveWorkingTreeFile(input.repoPath, input.filePath, input.content);
+			}
 			return { ok: true };
 		}),
 
@@ -202,10 +223,14 @@ export const diffRouter = router({
 			z.object({
 				repoPath: z.string(),
 				dirPath: z.string().optional(),
+				mode: z.enum(["git-visible", "browser"]).optional(),
+				workspaceId: z.string().optional(),
 			})
 		)
 		.query(async ({ input }) => {
-			const entries = await listDirectory(input.repoPath, input.dirPath);
+			const root =
+				input.mode === "browser" ? await resolveWorkspaceFileRoot(input) : input.repoPath;
+			const entries = await listDirectory(root, input.dirPath, { mode: input.mode });
 			return { entries };
 		}),
 
@@ -228,9 +253,17 @@ export const diffRouter = router({
 		}),
 
 	listAllFiles: publicProcedure
-		.input(z.object({ repoPath: z.string() }))
+		.input(
+			z.object({
+				repoPath: z.string(),
+				mode: z.enum(["git-visible", "browser"]).optional(),
+				workspaceId: z.string().optional(),
+			})
+		)
 		.query(async ({ input }) => {
-			const entries = await listAllEntries(input.repoPath);
+			const root =
+				input.mode === "browser" ? await resolveWorkspaceFileRoot(input) : input.repoPath;
+			const entries = await listAllEntries(root, { mode: input.mode });
 			return { entries };
 		}),
 
@@ -246,26 +279,40 @@ export const diffRouter = router({
 		}),
 
 	createFile: publicProcedure
-		.input(z.object({ repoPath: z.string(), filePath: z.string() }))
+		.input(z.object({ repoPath: z.string(), workspaceId: z.string(), filePath: z.string() }))
 		.mutation(async ({ input }) => {
-			await saveWorkingTreeFile(input.repoPath, input.filePath, "");
+			await saveWorkspaceFile(await resolveWorkspaceFileRoot(input), input.filePath, "");
 		}),
 
 	createFolder: publicProcedure
-		.input(z.object({ repoPath: z.string(), dirPath: z.string() }))
+		.input(z.object({ repoPath: z.string(), workspaceId: z.string(), dirPath: z.string() }))
 		.mutation(async ({ input }) => {
-			await createDirectory(input.repoPath, input.dirPath);
+			const root = await resolveWorkspaceFileRoot(input);
+			await resolveWorkspaceFilePath(root, input.dirPath, { allowMissing: true });
+			await createDirectory(root, input.dirPath);
 		}),
 
 	deleteFileOrFolder: publicProcedure
-		.input(z.object({ repoPath: z.string(), targetPath: z.string() }))
+		.input(z.object({ repoPath: z.string(), workspaceId: z.string(), targetPath: z.string() }))
 		.mutation(async ({ input }) => {
-			await deleteFile(input.repoPath, input.targetPath);
+			const root = await resolveWorkspaceFileRoot(input);
+			await resolveWorkspaceFilePath(root, input.targetPath, { allowMissing: false });
+			await deleteFile(root, input.targetPath);
 		}),
 
 	renameFileOrFolder: publicProcedure
-		.input(z.object({ repoPath: z.string(), oldPath: z.string(), newPath: z.string() }))
+		.input(
+			z.object({
+				repoPath: z.string(),
+				workspaceId: z.string(),
+				oldPath: z.string(),
+				newPath: z.string(),
+			})
+		)
 		.mutation(async ({ input }) => {
-			await renameFile(input.repoPath, input.oldPath, input.newPath);
+			const root = await resolveWorkspaceFileRoot(input);
+			await resolveWorkspaceFilePath(root, input.oldPath, { allowMissing: false });
+			await resolveWorkspaceFilePath(root, input.newPath, { allowMissing: true });
+			await renameFile(root, input.oldPath, input.newPath);
 		}),
 });

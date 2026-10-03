@@ -4,6 +4,7 @@ import { type Socket, connect } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SocketServer } from "../../src/daemon/socket-server";
+import { DAEMON_PROTOCOL_VERSION } from "../../src/shared/daemon-protocol";
 import type { DaemonMessage } from "../../src/shared/daemon-protocol";
 
 const TEST_SOCKET = join(tmpdir(), `superiorswarm-test-${process.pid}.sock`);
@@ -35,8 +36,8 @@ class MockPtyManager {
 	dispose(id: string): void {
 		this.disposed.push(id);
 	}
-	written: Array<{ id: string; data: string }> = [];
-	write(id: string, data: string): void {
+	written: Array<{ id: string; data: string | Buffer }> = [];
+	write(id: string, data: string | Buffer): void {
 		this.written.push({ id, data });
 	}
 	resize(_id: string, _c: number, _r: number): void {}
@@ -129,6 +130,67 @@ describe("SocketServer", () => {
 		const msgs = await collectMessages(socket);
 		socket.destroy();
 		expect(msgs.some((m) => m.type === "ready")).toBe(true);
+	});
+
+	test("advertises file and binary capabilities together on the current protocol", async () => {
+		const socket = connect(TEST_SOCKET);
+		try {
+			const ready = (await collectMessages(socket)).find((m) => m.type === "ready");
+			expect(ready).toMatchObject({ protocolVersion: DAEMON_PROTOCOL_VERSION });
+			expect(ready && "capabilities" in ready ? ready.capabilities : []).toEqual(
+				expect.arrayContaining(["binary-input-v1", "file-input-v1", "file-submit-v1"])
+			);
+		} finally {
+			socket.destroy();
+		}
+	});
+
+	test("binary reports preserve all bytes and ordering with Unicode text", async () => {
+		const socket = connect(TEST_SOCKET);
+		try {
+			await collectMessages(socket);
+			const bytes = Buffer.from(Array.from({ length: 256 }, (_, i) => i));
+			sendMsg(socket, { type: "write", id: "t1", data: "猫🐟" });
+			sendMsg(socket, { type: "write-binary", id: "t1", data: bytes.toString("base64") });
+			sendMsg(socket, { type: "write", id: "t1", data: "after" });
+			await collectMessages(socket);
+			expect(mockPty.written).toEqual([
+				{ id: "t1", data: "猫🐟" },
+				{ id: "t1", data: bytes },
+				{ id: "t1", data: "after" },
+			]);
+		} finally {
+			socket.destroy();
+		}
+	});
+
+	test("rejects malformed or oversized binary payloads without poisoning subsequent input", async () => {
+		const socket = connect(TEST_SOCKET);
+		try {
+			await collectMessages(socket);
+			for (const data of [
+				null,
+				123,
+				"",
+				"%%%",
+				"AA",
+				"AB==",
+				"AA==\n",
+				"é===",
+				"AAAA".repeat(16000),
+				Buffer.alloc(16385).toString("base64"),
+			]) {
+				sendMsg(socket, { type: "write-binary", id: "t1", data });
+			}
+			for (const id of [null, "", "x".repeat(1025)]) {
+				sendMsg(socket, { type: "write-binary", id, data: "AA==" });
+			}
+			sendMsg(socket, { type: "write", id: "t1", data: "still alive" });
+			await collectMessages(socket);
+			expect(mockPty.written).toEqual([{ id: "t1", data: "still alive" }]);
+		} finally {
+			socket.destroy();
+		}
 	});
 
 	test("flush persists only dirty buffers and marks them clean", () => {

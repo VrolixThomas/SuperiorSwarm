@@ -1,0 +1,52 @@
+Terminal mouse-scroll implementation verification — 2026-10-03
+Workspace: Hxwgne_XNkol2V8M3rugT / investigate/terminal-mouse-scroll
+
+Implementation
+- Binary xterm events use a separate byte-valued API, Latin-1 -> canonical base64 -> Buffer, and the same PTY as Unicode text.
+- Additive binary-input-v1 capability keeps protocol version 2. Old/live daemons continue text service and return false for binary; no fallback encoding and no restart for this feature. Old clients ignore the new ready field.
+- Main input serializes text/binary around agent wake, bounds retained input (512,000 bytes / 1,024 calls), and invalidates stale work on detach/dispose/disconnect. Binary reports are capped at 16,384 bytes; socket queue/frame limits remain enforced.
+- Terminal-local capture handles only LINE/PAGE with signed residue, reversal/unit/buffer resets, rows-1 page cap, and Alt x5 once. Alternate screen without tracking uses public input with bounded CSI/SS3 repetitions. Pixel input and application tracking are delegated unchanged.
+- No sensitivity preference, automatic device classifier, coordinate packet generation, forced SGR, private xterm core API, or global wheel hook.
+
+RED -> GREEN -> REFACTOR evidence (logs in this directory)
+01-binary-red/green: actual socket-server dropped all 256 binary byte values; missing client capability/API; 4 intended failures -> 5 pass.
+02-routing-red/green: extracted existing onData-only behavior dropped onBinary, text overtook a wake gate, and binary lacked that gate; 3 intended failures -> 3 pass.
+03-wheel-red/green: LINE/PAGE behavior absent; 4 intended failures plus 2 passthrough baselines -> 6 pass.
+05-review-red + review-green: ten decimal fractions lost a row due to floating-point rounding; symmetric epsilon correction.
+06-disconnect-red + review-green: input received while disconnected could survive until reconnect; reject before wake.
+08-overlay-red/green: nested textarea was treated as terminal-owned; exclude interactive textarea targets.
+09-geometry-red/green: zero-height xterm screen inside a sized wrapper accepted navigation; cache rendered-screen geometry instead.
+10-lifecycle-red/green: explicit disconnect omitted status notification, so input lifecycle guards could miss it; now notifies before reconnect.
+Refactoring: factored renderer/preload/main seams; shared binary validation/capability; pure unit conversion; public-API DOM adapter; Biome formatting.
+
+Final verification
+- focused-final.log: 66 tests pass across wheel/input/modes/paste/links/injection/exit-message/cmd-buffer suites (includes isolated Electron DOM harness).
+- daemon-final.log: 116 tests pass across daemon client/socket/PTY/ownership/path/stale-cleanup suites.
+- electron-final.log: final harness rerun passes. Actual versions: xterm 6.0.0, Electron 40.8.5, Chromium 144.0.7559.236.
+- 07-transport.log: renderer -> preload -> main -> actual Unix socket -> daemon -> real PtyManager.write -> fake writable PTY sink retains every byte 0x00..0xff and Unicode text ordering.
+- changed-path-types.log: zero diagnostics on changed paths. Full projects still report errors outside this change: main 71, renderer 94, tests 254; preload 0.
+- biome-final.log: changed files pass (one pre-existing non-null assertion warning in daemon-client.ts).
+- build-final.log: production desktop build passes. Build only; no product launch or daemon restart.
+- git diff --check passes. No isolated Electron/mock-daemon test processes left by the final process check.
+- Full daemon directory also attempted: four ScrollbackStore tests cannot load better-sqlite3 under Bun. The remaining 116 tests pass independently. No dependency installation/rebuild performed.
+- neighbors.log: cleanup-daemon-client and terminal-sessions-remove-worktree cannot import Electron's app export under Bun in this environment.
+
+Review performed as a separate pass over input encoding, capability upgrade/rollback, bounded queues, stale wake/reconnect input, fractional arithmetic, ownership/double-handling, geometry, focus, disposal/remount, and test process cleanup. Findings were reproduced test-first and rerun.
+
+Validation limits / manual hardware matrix
+All physical-device cells remain UNTESTED. Synthetic DOM events are not trusted hardware and do not measure native coalescing, wheel cadence, momentum feel, GPU-specific behavior, or physical-mouse speed.
+The unchanged plan ../plans/terminal-mouse-scroll.md contains the full manual matrix; use disposable terminals only.
+- macOS detented USB/Bluetooth mouse: 1/5/10 isolated notches, slow/fast rotation, natural direction on/off — UNTESTED.
+- macOS high-resolution/free-spin mouse: ratchet/free-spin and existing vendor driver — UNTESTED.
+- Apple trackpad: slow movement, rapid gesture and momentum; compare pixel distance with baseline within 5% or one row — UNTESTED.
+- DPR 1/2, display change, zoom 80/100/125%, WebGL/fallback, screen reader and keyboard selection — UNTESTED.
+- Windows/Linux renderer hardware units/scaling and touchpads — UNTESTED; no assertion of native Windows PTY support.
+- Each primary device: normal shell history/empty buffer; alternate pager/editor without tracking; legacy 1000 and SGR 1000/1002/1003/1016; X10; encoding-only 1006; tmux; panes/overlays/restoration/boundaries — hardware UNTESTED. Synthetic mode/ownership coverage passes in Electron.
+- No claim that this resolves low native PIXEL deltas in an ordinary shell, or xterm's remaining pixel application quantization. Those paths remain unchanged pending hardware evidence.
+
+Operational notes
+Only this worktree's source/tests are committed. The existing untracked plan and these logs remain separate. Already-installed dependencies were referenced temporarily for verification; no installation, credentials/Keychain access, push, PR, merge, deployment, release, or production app/daemon restart was performed. The disposable Electron harness used an isolated temporary profile and blocked network requests. Workspace status was published through the available SuperiorSwarm status tool.
+
+Commit: fbd95c61 — fix(terminal): preserve binary mouse input and normalize line/page wheels
+Post-commit status: only .hermes/ remains untracked; plan excluded from commit.
+The repository's optional Graphify post-commit hook ran and could not rebuild because the graphify Python module is unavailable. The commit succeeded; no dependency was installed to repair the optional hook.
