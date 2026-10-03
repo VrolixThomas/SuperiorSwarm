@@ -29,6 +29,8 @@ interface Operations {
 		submit?: boolean
 	) => Promise<FileDelivery>;
 	copy: (batchId: string, id: string) => Promise<TerminalFileBatch>;
+	copyPaths: (batchId: string, ids: string[]) => Promise<string>;
+	clipboard: (text: string) => Promise<void>;
 	cancel: (batchId: string) => Promise<unknown>;
 	ready: () => boolean;
 	paste: (text: string) => string;
@@ -263,6 +265,38 @@ export class TerminalFileController {
 			return;
 		}
 		await this.insert(true);
+	}
+	async copyPaths(): Promise<void> {
+		if (!this.state.batch || this.state.busy || !this.operations.ready()) return;
+		const epoch = this.epoch;
+		this.activity = "copy";
+		this.update({ busy: true, status: "Checking paths for the clipboard…" });
+		try {
+			const batch = this.needsPreparation ? await this.prepareRestored(epoch) : this.state.batch;
+			if (!batch || !this.current(epoch)) return;
+			if (batch.entries.some((entry) => !entry.referenceAllowed))
+				throw new Error("Copy or remove files that need attention first.");
+			const text = await this.operations.copyPaths(
+				batch.id,
+				batch.entries.map((entry) => entry.id)
+			);
+			if (!this.current(epoch)) return;
+			await this.operations.clipboard(text);
+			if (!this.current(epoch)) return;
+			// Remove the app's send intent so the user's subsequent paste/Enter cannot duplicate paths.
+			this.clear("Paths copied. Paste into the prompt, then press Enter. Nothing has been sent.");
+			this.operations.focus();
+		} catch (error) {
+			if (this.current(epoch))
+				this.reportError(
+					error instanceof Error ? error.message : "Clipboard unavailable. Files kept."
+				);
+		} finally {
+			if (this.epoch === epoch) {
+				this.activity = null;
+				this.update({ busy: false });
+			}
+		}
 	}
 	async insert(submit = false): Promise<void> {
 		let batch = this.state.batch;

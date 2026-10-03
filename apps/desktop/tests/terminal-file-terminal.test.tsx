@@ -86,6 +86,12 @@ let selected: TerminalFileBatch;
 let nextId = 0;
 let atomicSubmit = true;
 const ordinary: string[] = [];
+const copied: string[] = [];
+Object.defineProperty(navigator.clipboard, "writeText", {
+	value: async (text: string) => {
+		copied.push(text);
+	},
+});
 const submitted: Array<{ payload: string; submit?: boolean }> = [];
 const entries = (paths: Array<string | null>) =>
 	paths.map((path) => ({
@@ -126,6 +132,12 @@ mock.module("../src/renderer/trpc/client", () => ({
 					};
 					return structuredClone(selected);
 				},
+			},
+			copyPaths: {
+				mutate: async ({ ids }: { ids: string[] }) =>
+					formatFilePaths(
+						selected.entries.filter((e) => ids.includes(e.id)).map((e) => e.path as string)
+					),
 			},
 			resolve: {
 				mutate: async ({ ids }: { ids: string[] }) => ({
@@ -364,5 +376,28 @@ test("refresh after an attempted delivery cannot restore a send intent or duplic
 	root = undefined;
 	await mount();
 	expect(host.textContent).not.toContain("sent.pdf");
+	expect(submitted).toEqual([]);
+});
+
+test("manual Copy paths preserves the draft, restores focus, and leaves the user's next Enter untouched", async () => {
+	await mount();
+	copied.length = 0;
+	terminal.data("review these ");
+	await drop("first.pdf");
+	await drop("second.mov");
+	const button = [...host.querySelectorAll("button")].find(
+		(button) => button.textContent === "Copy paths"
+	);
+	expect(Boolean(button)).toBe(true);
+	button!.focus();
+	await act(async () => button!.click());
+	expect(copied).toEqual([" '/fixture/first.pdf' '/fixture/second.mov' "]);
+	expect(ordinary).toEqual(["review these "]);
+	expect(submitted).toEqual([]);
+	expect(document.activeElement === terminal.textarea).toBe(true);
+	expect(host.querySelector('[aria-label="Files in this message"]')).toBeNull();
+	expect(host.textContent).toContain("Paste into the prompt");
+	await enter();
+	expect(ordinary).toEqual(["review these ", "\r"]);
 	expect(submitted).toEqual([]);
 });

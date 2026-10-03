@@ -94,6 +94,17 @@ export function TerminalFileShelf({
 					</>
 				)}
 				<div className="ml-auto flex items-center gap-2">
+					{count > 0 && (
+						<button
+							className={button}
+							type="button"
+							disabled={!controller || state.busy}
+							title="Copy validated paths to paste into your prompt manually"
+							onClick={() => void controller?.copyPaths()}
+						>
+							Copy paths
+						</button>
+					)}
 					{(state.batch || state.busy) && (
 						<button
 							className={button}

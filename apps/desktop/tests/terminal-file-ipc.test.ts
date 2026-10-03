@@ -13,6 +13,7 @@ let nativeCalled = 0;
 let probes = 0;
 let managed = false;
 let submitCapable = true;
+let supported = true;
 let requestedManaged = false;
 let exposed: { terminalFiles: { nativePaths: (files: File[]) => Array<string | null> } };
 mock.module("electron", () => ({
@@ -45,7 +46,7 @@ mock.module("../src/main/terminal/daemon-instance", () => ({
 		fileTarget: async (_id: string, allowManaged = false) => {
 			requestedManaged = allowManaged;
 			probes++;
-			return { generation: "pty-generation", supported: true, foreground: "zsh" };
+			return { generation: "pty-generation", supported, foreground: "zsh" };
 		},
 		insertFiles: async (
 			_id: string,
@@ -197,5 +198,27 @@ test("existing insertion-only daemon remains usable without restarting terminals
 	} finally {
 		submitCapable = true;
 		state = "idle";
+	}
+});
+
+test("validated paths can be copied manually without a supported daemon or any PTY input", async () => {
+	terminalFileOwners.attach("manual-paths", caller, "ws", root);
+	supported = false;
+	try {
+		const batch = await api.prepare({ terminalId: "manual-paths", paths: [source] });
+		const selection = { batchId: batch.id, ids: batch.entries.map((e) => e.id) };
+		const before = writes.length;
+		await expect(api.resolve(selection)).rejects.toThrow("Copy paths");
+		expect(await api.copyPaths(selection)).toBe(` '${source}' `);
+		expect(writes).toHaveLength(before);
+		await expect(
+			terminalFilesRouter
+				.createCaller({ fileCaller: { senderId: 45, frameId: 7 } })
+				.copyPaths(selection)
+		).rejects.toThrow();
+		terminalFileOwners.invalidate("manual-paths", "detach");
+		await expect(api.copyPaths(selection)).rejects.toThrow();
+	} finally {
+		supported = true;
 	}
 });

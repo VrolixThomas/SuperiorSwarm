@@ -93,3 +93,11 @@ export interface TerminalFileDraft {
 	target: Pick<TerminalFileTarget, "terminalId" | "workspaceId" | "root" | "rootIdentity">;
 	entries: Array<Omit<TerminalFileEntry, "id">>;
 }
+
+/** OS-reported foreground identity; never supplied by the renderer. */
+export interface TerminalProcessIdentity {
+	pid: number;
+	startedAt: string;
+	name: string;
+	executable: string;
+}

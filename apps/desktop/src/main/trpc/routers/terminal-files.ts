@@ -101,11 +101,17 @@ export const terminalFilesRouter = router({
 		const lease = leases.get(input.batchId);
 		if (!lease?.supported)
 			throw new Error(
-				"Access unverified: remote or unknown prompt, or older daemon. Use a supported local POSIX prompt and current daemon. No paths were sent."
+				"This prompt or terminal service could not be verified. Use Copy paths, then paste into your local prompt. Remote access remains unverified. No paths were sent."
 			);
 		lease.requestedSubmit = input.submit === true;
 		lease.atomicSubmit = lease.requestedSubmit && getDaemonClient()?.supportsFileSubmit === true;
 		return { ...result, submit: lease.atomicSubmit };
+	}),
+	copyPaths: fileProcedure.input(selection).mutation(async ({ ctx, input }) => {
+		// Clipboard text is explicitly reviewed/pasted by the user. It does not grant a PTY lease.
+		const result = await service.resolve(ctx.fileCaller, input.batchId, input.ids);
+		target(result.target.terminalId, ctx.fileCaller);
+		return result.text;
 	}),
 	insert: fileProcedure
 		.input(

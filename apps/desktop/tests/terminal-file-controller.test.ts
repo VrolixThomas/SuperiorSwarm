@@ -45,6 +45,8 @@ function harness() {
 		}
 	);
 	const cancel = mock(async () => {});
+	const copyPaths = mock(async () => " '/workspace/a' '/workspace/b' ");
+	const clipboard = mock(async (_text: string) => {});
 	const append = mock(async (_id: string, _paths: Array<string | null>, ids: string[]) => ({
 		...structuredClone(batch),
 		entries: [
@@ -60,6 +62,8 @@ function harness() {
 			insert,
 			cancel,
 			copy: async () => structuredClone(batch),
+			copyPaths,
+			clipboard,
 			ready: () => active,
 			paste: (text) => text,
 			focus,
@@ -75,6 +79,8 @@ function harness() {
 		resolve,
 		insert,
 		cancel,
+		copyPaths,
+		clipboard,
 		deactivate: () => {
 			active = false;
 			controller.clear();
@@ -311,4 +317,42 @@ test("a restored file identity mismatch cannot deliver a replacement with the sa
 	await h.controller.submit();
 	expect(h.insert).not.toHaveBeenCalled();
 	expect(h.controller.state.status).toContain("changed");
+});
+
+test("explicit manual copy validates ordered paths, writes only clipboard, clears send intent and focuses the prompt", async () => {
+	const h = harness();
+	await h.controller.stage(["/native/a", "/native/b"]);
+	expect(h.clipboard).not.toHaveBeenCalled();
+	await h.controller.copyPaths();
+	expect(h.copyPaths).toHaveBeenCalledWith("batch", ["a", "b"]);
+	expect(h.clipboard).toHaveBeenCalledWith(" '/workspace/a' '/workspace/b' ");
+	expect(h.writes).toEqual([]);
+	expect(h.resolve).not.toHaveBeenCalled();
+	expect(h.controller.state.batch).toBeNull();
+	expect(h.controller.state.status).toContain("Paste into the prompt");
+	expect(h.focus).toHaveBeenCalledTimes(1);
+});
+test("manual clipboard failure keeps files; stale validation cannot write clipboard or refocus", async () => {
+	const h = harness();
+	await h.controller.stage(["/native/a"]);
+	h.clipboard.mockImplementation(async () => {
+		throw new Error("Clipboard unavailable");
+	});
+	await h.controller.copyPaths();
+	expect(h.controller.state.batch?.entries).toHaveLength(2);
+	expect(h.controller.state.status).toContain("Clipboard unavailable");
+	let finish!: (value: string) => void;
+	h.copyPaths.mockImplementation(
+		() =>
+			new Promise((resolve) => {
+				finish = resolve;
+			})
+	);
+	const operation = h.controller.copyPaths();
+	h.deactivate();
+	finish(" '/workspace/a' ");
+	await operation;
+	expect(h.clipboard).toHaveBeenCalledTimes(1);
+	expect(h.focus).not.toHaveBeenCalled();
+	expect(h.writes).toEqual([]);
 });

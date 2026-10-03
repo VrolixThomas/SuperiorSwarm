@@ -6,9 +6,9 @@ export const SUPERIORSWARM_DIR = join(homedir(), ".superiorswarm");
 
 // Bumped whenever the daemon's wire behavior changes. The daemon reports it in
 // "ready"; a client seeing a mismatch (or no version — protocol 1 daemons)
-// restarts the daemon so fixes apply to long-lived daemons that survive app
-// upgrades. Keep in sync mentally with detach/frame semantics changes.
-export const DAEMON_PROTOCOL_VERSION = 2;
+// replaces an idle daemon so fixes apply across app upgrades. A daemon with
+// live sessions is retained. Version 3 adds native executable identity checks.
+export const DAEMON_PROTOCOL_VERSION = 3;
 
 // Hard per-frame limit enforced by the daemon on inbound lines. The client
 // must validate outbound frames against this — anything larger is discarded

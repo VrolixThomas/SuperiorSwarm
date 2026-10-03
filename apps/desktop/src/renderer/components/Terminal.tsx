@@ -203,6 +203,8 @@ export function Terminal({
 				insert: (batchId, text, payload, submit) =>
 					trpcVanilla.terminalFiles.insert.mutate({ batchId, text, payload, submit }),
 				copy: (batchId, id) => trpcVanilla.terminalFiles.copy.mutate({ batchId, id }),
+				copyPaths: (batchId, ids) => trpcVanilla.terminalFiles.copyPaths.mutate({ batchId, ids }),
+				clipboard: (text) => navigator.clipboard.writeText(text),
 				cancel: (batchId) => trpcVanilla.terminalFiles.cancel.mutate({ batchId }),
 				ready: () => !disposed && created && connected && activeRef.current && suppressDepth === 0,
 				paste: (text) => filePaste.paste(term, text),

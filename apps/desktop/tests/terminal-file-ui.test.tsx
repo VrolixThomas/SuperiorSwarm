@@ -30,6 +30,8 @@ function controller() {
 			insert: async () => "admitted",
 			cancel: async () => {},
 			copy: async () => batch,
+			copyPaths: async () => " '/generated/a.mov' ",
+			clipboard: async () => {},
 			ready: () => true,
 			paste: (text) => text,
 			focus: () => {},

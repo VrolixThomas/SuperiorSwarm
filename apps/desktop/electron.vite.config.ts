@@ -56,18 +56,22 @@ function terminalFileHelperPlugin() {
 	return {
 		name: "terminal-file-helper",
 		closeBundle() {
-			const output = resolve(__dirname, "out/main/terminal-file-copy");
 			mkdirSync(resolve(__dirname, "out/main"), { recursive: true });
-			execFileSync("cc", [
-				"-std=c11",
-				"-Wall",
-				"-Wextra",
-				"-Werror",
-				"-O2",
-				resolve(__dirname, "src/main/terminal/terminal-file-copy.c"),
-				"-o",
-				output,
-			]);
+			for (const [source, name] of [
+				["src/main/terminal/terminal-file-copy.c", "terminal-file-copy"],
+				["src/daemon/terminal-process-info.c", "terminal-process-info"],
+			] as const) {
+				execFileSync("cc", [
+					"-std=c11",
+					"-Wall",
+					"-Wextra",
+					"-Werror",
+					"-O2",
+					resolve(__dirname, source),
+					"-o",
+					resolve(__dirname, "out/main", name),
+				]);
+			}
 		},
 	};
 }

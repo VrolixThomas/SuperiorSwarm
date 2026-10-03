@@ -6,6 +6,7 @@ import { MAX_SCROLLBACK_CHARS } from "../shared/daemon-protocol";
 const MAX_BUFFER_CHARS = MAX_SCROLLBACK_CHARS;
 
 import { FileInputSessions } from "./file-input-sessions";
+import { readTerminalProcessIdentity } from "./terminal-process-identity";
 
 interface TerminalEntry {
 	pty: pty.IPty;
@@ -99,7 +100,8 @@ export class PtyManager {
 			clientId,
 			shell,
 			() => ptyProcess.process ?? "",
-			(data) => ptyProcess.write(data)
+			(data) => ptyProcess.write(data),
+			process.platform === "darwin" ? () => readTerminalProcessIdentity(ptyProcess.pid) : undefined
 		);
 	}
 
