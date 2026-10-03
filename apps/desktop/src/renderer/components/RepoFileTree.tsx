@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import type { DiffFile } from "../../shared/diff-types";
 import { detectLanguage } from "../../shared/diff-types";
+import type { FlatEntry } from "../../shared/file-browser-types";
+import { useRepoSubscription } from "../hooks/useRepoSubscription";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 
@@ -10,7 +12,7 @@ import { trpc } from "../trpc/client";
 interface TreeNode {
 	name: string;
 	path: string;
-	type: "file" | "directory";
+	type: FlatEntry["type"];
 	children: TreeNode[];
 }
 
@@ -209,11 +211,6 @@ function searchFiles(query: string, files: string[]): FuzzyResult[] {
 
 // ─── Tree Building ──────────────────────────────────────────────────────────────
 
-interface FlatEntry {
-	path: string;
-	type: "file" | "directory";
-}
-
 function buildTree(entries: FlatEntry[]): TreeNode[] {
 	const root: TreeNode[] = [];
 
@@ -246,7 +243,8 @@ function buildTree(entries: FlatEntry[]): TreeNode[] {
 
 	function sortNodes(nodes: TreeNode[]) {
 		nodes.sort((a, b) => {
-			if (a.type !== b.type) return a.type === "directory" ? -1 : 1;
+			if ((a.type === "directory") !== (b.type === "directory"))
+				return a.type === "directory" ? -1 : 1;
 			return a.name.localeCompare(b.name);
 		});
 		for (const node of nodes) {
@@ -270,9 +268,9 @@ function compactTreeNodes(nodes: TreeNode[]): TreeNode[] {
 				pathParts.push(current.name);
 			}
 
-			// If the final dir has exactly one file child, merge it too
-			if (current.children.length === 1 && current.children[0]?.type === "file") {
-				const file = current.children[0];
+			// A leaf link compacts like a file; its target is never traversed.
+			const file = current.children.length === 1 ? current.children[0] : undefined;
+			if (file && file.type !== "directory") {
 				return {
 					...file,
 					name: [...pathParts, file.name].join("/"),
@@ -317,7 +315,7 @@ function hasGitStatusInSubtree(
 	node: TreeNode,
 	gitStatusMap: Map<string, DiffFile["status"]>
 ): boolean {
-	if (node.type === "file") return gitStatusMap.has(node.path);
+	if (node.type !== "directory") return gitStatusMap.has(node.path);
 	return node.children.some((child) => hasGitStatusInSubtree(child, gitStatusMap));
 }
 
@@ -405,6 +403,7 @@ function ContextMenu({
 		>
 			{items.map((item, i) =>
 				item === "separator" ? (
+					// biome-ignore lint/suspicious/noArrayIndexKey: separators are static decorations within the current menu
 					<div key={`sep-${i}`} className="my-1 border-t border-[var(--border-subtle)]" />
 				) : (
 					<button
@@ -634,6 +633,8 @@ function Toolbar({
 				type="button"
 				onClick={onToggleHidden}
 				title={showHidden ? "Hide dotfiles" : "Show dotfiles"}
+				aria-label="Show dotfiles"
+				aria-pressed={showHidden}
 				className={showHidden ? toolbarBtnActive : toolbarBtnInactive}
 			>
 				<svg
@@ -711,6 +712,8 @@ function TreeNodeRow({
 			tabIndex={-1}
 			data-path={node.path}
 			aria-expanded={isDir ? expanded : undefined}
+			aria-label={node.type === "symlink" ? `${node.path} (symbolic link)` : node.path}
+			aria-selected={isActive}
 			onClick={(e) => {
 				e.stopPropagation();
 				if (isDir) onToggle();
@@ -746,6 +749,7 @@ function TreeNodeRow({
 			{depth > 0 &&
 				Array.from({ length: depth }, (_, i) => (
 					<span
+						// biome-ignore lint/suspicious/noArrayIndexKey: indent guides are static levels
 						key={`guide-${i}`}
 						className="absolute top-0 bottom-0 w-px bg-[var(--border-subtle)] opacity-50"
 						style={{ left: i * 16 + 14 }}
@@ -772,6 +776,16 @@ function TreeNodeRow({
 					displayName
 				)}
 			</span>
+
+			{node.type === "symlink" && (
+				<span
+					title="Symbolic link"
+					aria-hidden="true"
+					className="shrink-0 text-[var(--text-quaternary)]"
+				>
+					↗
+				</span>
+			)}
 
 			{/* Git status dot */}
 			{gitStatus && (
@@ -906,18 +920,23 @@ type InlineInputMode =
 
 // ─── Main Component ─────────────────────────────────────────────────────────────
 
-export function RepoFileTree({
+export function RepoFileTree(props: { repoPath: string; workspaceId: string }) {
+	return <WorkspaceFileTree key={`${props.workspaceId}:${props.repoPath}`} {...props} />;
+}
+
+function WorkspaceFileTree({
 	repoPath,
 	workspaceId,
 }: {
 	repoPath: string;
 	workspaceId: string;
 }) {
+	useRepoSubscription(repoPath);
 	// ── State ──────────────────────────────────────────────────
 	const [searchQuery, setSearchQuery] = useState("");
 	const [matchIndex, setMatchIndex] = useState(0);
 	const [compact, setCompact] = useState(true);
-	const [showHidden, setShowHidden] = useState(false);
+	const [showHidden, setShowHidden] = useState(true);
 	const [expanded, setExpanded] = useState<Set<string>>(new Set());
 	const [focusedPath, setFocusedPath] = useState<string | null>(null);
 	const [contextMenu, setContextMenu] = useState<{
@@ -943,14 +962,21 @@ export function RepoFileTree({
 
 	// ── Queries ────────────────────────────────────────────────
 	const utils = trpc.useUtils();
-	const filesQuery = trpc.diff.listAllFiles.useQuery({ repoPath }, { staleTime: 60_000 });
-	const statusQuery = trpc.diff.getWorkingTreeStatus.useQuery({ repoPath }, { staleTime: 30_000 });
+	const filesQuery = trpc.diff.listAllFiles.useQuery(
+		{ repoPath, workspaceId, mode: "browser" },
+		{ staleTime: 60_000 }
+	);
+	const statusQuery = trpc.diff.getWorkingTreeStatus.useQuery(
+		{ repoPath, metadataOnly: true },
+		{ staleTime: 30_000 }
+	);
 
 	const allEntries: FlatEntry[] = filesQuery.data?.entries ?? [];
 
 	// ── Mutations ──────────────────────────────────────────────
 	const invalidateFiles = useCallback(() => {
 		utils.diff.listAllFiles.invalidate({ repoPath });
+		utils.diff.listDirectory.invalidate({ repoPath });
 		utils.diff.getWorkingTreeStatus.invalidate({ repoPath });
 		utils.diff.getWorkingTreeDiff.invalidate({ repoPath });
 	}, [utils, repoPath]);
@@ -1003,7 +1029,7 @@ export function RepoFileTree({
 
 	// ── Search ─────────────────────────────────────────────────
 	const visibleFilePaths = useMemo(
-		() => visibleEntries.filter((e) => e.type === "file").map((e) => e.path),
+		() => visibleEntries.filter((e) => e.type !== "directory").map((e) => e.path),
 		[visibleEntries]
 	);
 	const searchResults = useMemo(
@@ -1035,14 +1061,15 @@ export function RepoFileTree({
 		const result = searchResults[safeIndex];
 		if (!result) return;
 
-		const ancestors = getAncestorPaths(result.path);
+		const resultPath = result.path;
+		const ancestors = getAncestorPaths(resultPath);
 		setExpanded((prev) => {
 			const next = new Set(prev);
 			for (const anc of ancestors) next.add(anc);
 			function findCompactPaths(nodes: TreeNode[]) {
 				for (const node of nodes) {
 					if (node.type === "directory") {
-						if (result.path.startsWith(`${node.path}/`)) next.add(node.path);
+						if (resultPath.startsWith(`${node.path}/`)) next.add(node.path);
 						findCompactPaths(node.children);
 					}
 				}
@@ -1197,10 +1224,10 @@ export function RepoFileTree({
 				`Delete ${isDir ? "folder" : "file"} "${name}"? This cannot be undone.`
 			);
 			if (confirmed) {
-				deleteMutation.mutate({ repoPath, targetPath: node.path });
+				deleteMutation.mutate({ repoPath, workspaceId, targetPath: node.path });
 			}
 		},
-		[deleteMutation, repoPath]
+		[deleteMutation, repoPath, workspaceId]
 	);
 
 	const handleRename = useCallback((node: TreeNode, depth: number) => {
@@ -1213,10 +1240,10 @@ export function RepoFileTree({
 
 			if (inlineInput.type === "new-file") {
 				const filePath = inlineInput.parentPath ? `${inlineInput.parentPath}/${value}` : value;
-				createFileMutation.mutate({ repoPath, filePath });
+				createFileMutation.mutate({ repoPath, workspaceId, filePath });
 			} else if (inlineInput.type === "new-folder") {
 				const dirPath = inlineInput.parentPath ? `${inlineInput.parentPath}/${value}` : value;
-				createFolderMutation.mutate({ repoPath, dirPath });
+				createFolderMutation.mutate({ repoPath, workspaceId, dirPath });
 				// Auto-expand the new folder
 				setExpanded((prev) => new Set([...prev, dirPath]));
 			} else if (inlineInput.type === "rename") {
@@ -1226,12 +1253,12 @@ export function RepoFileTree({
 					: "";
 				const newPath = parentDir ? `${parentDir}/${value}` : value;
 				if (newPath !== oldPath) {
-					renameMutation.mutate({ repoPath, oldPath, newPath });
+					renameMutation.mutate({ repoPath, workspaceId, oldPath, newPath });
 				}
 			}
 			setInlineInput(null);
 		},
-		[inlineInput, repoPath, createFileMutation, createFolderMutation, renameMutation]
+		[inlineInput, repoPath, workspaceId, createFileMutation, createFolderMutation, renameMutation]
 	);
 
 	// ── Handlers ───────────────────────────────────────────────
@@ -1383,42 +1410,6 @@ export function RepoFileTree({
 		invalidateFiles();
 	}, [invalidateFiles]);
 
-	// ── Loading state ──────────────────────────────────────────
-	if (filesQuery.isLoading) {
-		return (
-			<div className="flex h-full flex-col">
-				<div className="flex items-center justify-center py-8 text-[12px] text-[var(--text-quaternary)]">
-					<svg
-						aria-hidden="true"
-						className="mr-2 size-4 animate-spin"
-						viewBox="0 0 16 16"
-						fill="none"
-					>
-						<circle
-							cx="8"
-							cy="8"
-							r="6"
-							stroke="var(--text-quaternary)"
-							strokeWidth="1.5"
-							strokeDasharray="28"
-							strokeDashoffset="8"
-							strokeLinecap="round"
-						/>
-					</svg>
-					Loading files...
-				</div>
-			</div>
-		);
-	}
-
-	if (allEntries.length === 0) {
-		return (
-			<div className="flex h-full items-center justify-center py-8 text-[12px] text-[var(--text-quaternary)]">
-				Empty repository
-			</div>
-		);
-	}
-
 	// ── Render ──────────────────────────────────────────────────
 	return (
 		<div ref={panelRef} className="flex h-full flex-col overflow-hidden">
@@ -1446,11 +1437,41 @@ export function RepoFileTree({
 				onRefresh={handleRefresh}
 			/>
 
+			{!showHidden && (
+				<output className="px-3 py-1 text-[11px] text-[var(--text-tertiary)]">
+					Dotfiles hidden — filename search excludes dotfiles.
+				</output>
+			)}
+			{filesQuery.isFetching && <output className="px-3 py-1 text-[11px]">Loading files...</output>}
+			{filesQuery.isError ? (
+				<p role="alert" className="px-3 py-2 text-[12px]">
+					Unable to load files. Refresh to retry.
+				</p>
+			) : (
+				!filesQuery.isLoading &&
+				visibleEntries.length === 0 && (
+					<output className="px-3 py-2 text-[12px]">
+						{allEntries.length
+							? "No files visible. Show dotfiles to see hidden entries."
+							: "Empty workspace"}
+					</output>
+				)
+			)}
+			<details className="px-3 text-[11px] text-[var(--text-quaternary)]">
+				<summary>Files browser exclusions</summary>
+				Git metadata, node_modules, dist, out, build, .next, .cache, ~, .turbo, target, coverage,
+				graphify-out directories, OS noise and special files are omitted. Symbolic links are shown;
+				linked directories are not expanded.
+			</details>
+
 			{/* Tree */}
 			<div
 				ref={treeContainerRef}
 				className="flex-1 overflow-y-auto px-1 py-1 outline-none"
 				role="tree"
+				aria-label={`Files in ${repoPath}`}
+				aria-busy={filesQuery.isFetching}
+				// biome-ignore lint/a11y/noNoninteractiveTabindex: tree container handles arrow-key navigation
 				tabIndex={0}
 				onKeyDown={handleTreeKeyDown}
 				onFocus={() => {

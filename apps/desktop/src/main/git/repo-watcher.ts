@@ -1,5 +1,8 @@
-import { join } from "node:path";
+import type { Stats } from "node:fs";
+import { realpath } from "node:fs/promises";
+import { basename, join, relative } from "node:path";
 import { type FSWatcher, watch } from "chokidar";
+import { isExcludedBrowserEntry } from "../../shared/file-browser-policy";
 import type { RepoChangeKind } from "../../shared/types";
 import { log } from "../logger";
 import { resolveGitDir } from "./operations";
@@ -29,43 +32,40 @@ export class RepoWatcher {
 
 	async start(): Promise<void> {
 		this.closed = false;
-		const gitDir = await resolveGitDir(this.repoPath);
+		const worktreeRoot = await realpath(this.repoPath);
+		const gitDir = await resolveGitDir(this.repoPath).catch(() => null);
 
-		this.gitDirWatcher = watch(
-			[
-				join(gitDir, "HEAD"),
-				join(gitDir, "index"),
-				join(gitDir, "MERGE_HEAD"),
-				join(gitDir, "CHERRY_PICK_HEAD"),
-				join(gitDir, "REBASE_HEAD"),
-				join(gitDir, "rebase-apply"),
-				join(gitDir, "rebase-merge"),
-				join(gitDir, "packed-refs"),
-				join(gitDir, "refs"),
-			],
-			{ ignoreInitial: true, persistent: true, depth: 8 }
-		);
+		if (gitDir) {
+			this.gitDirWatcher = watch(
+				[
+					join(gitDir, "HEAD"),
+					join(gitDir, "index"),
+					join(gitDir, "MERGE_HEAD"),
+					join(gitDir, "CHERRY_PICK_HEAD"),
+					join(gitDir, "REBASE_HEAD"),
+					join(gitDir, "rebase-apply"),
+					join(gitDir, "rebase-merge"),
+					join(gitDir, "packed-refs"),
+					join(gitDir, "refs"),
+				],
+				{ ignoreInitial: true, persistent: true, depth: 8 }
+			);
 
-		this.gitDirWatcher.on("all", (_event, path) => this.classifyGitDirEvent(path));
-		this.gitDirWatcher.on("error", (err) => log.error("[RepoWatcher] gitDir watcher error", err));
+			this.gitDirWatcher.on("all", (_event, path) => this.classifyGitDirEvent(path));
+			this.gitDirWatcher.on("error", (err) => log.error("[RepoWatcher] gitDir watcher error", err));
+		}
 
-		this.worktreeWatcher = watch(this.repoPath, {
+		this.worktreeWatcher = watch(worktreeRoot, {
+			followSymlinks: false,
 			ignoreInitial: true,
 			persistent: true,
-			ignored: [
-				/(^|[\\/])\.git([\\/]|$)/,
-				/(^|[\\/])node_modules([\\/]|$)/,
-				/(^|[\\/])dist([\\/]|$)/,
-				/(^|[\\/])out([\\/]|$)/,
-				/(^|[\\/])build([\\/]|$)/,
-				/(^|[\\/])\.next([\\/]|$)/,
-				/(^|[\\/])\.cache([\\/]|$)/,
-				/(^|[\\/])~([\\/]|$)/,
-				/(^|[\\/])\.turbo([\\/]|$)/,
-				/(^|[\\/])target([\\/]|$)/,
-				/(^|[\\/])coverage([\\/]|$)/,
-				/(^|[\\/])graphify-out([\\/]|$)/,
-			],
+			ignored: (path: string, stats?: Stats) => {
+				const local = relative(worktreeRoot, path);
+				if (!local) return false;
+				const parts = local.split(/[\\/]/);
+				if (parts.slice(0, -1).some((part) => isExcludedBrowserEntry(part, true))) return true;
+				return isExcludedBrowserEntry(basename(path), stats?.isDirectory() ?? false);
+			},
 		});
 
 		this.worktreeWatcher.on("all", () => this.queue("working-tree"));
@@ -74,7 +74,10 @@ export class RepoWatcher {
 		);
 
 		try {
-			await Promise.all([waitReady(this.gitDirWatcher), waitReady(this.worktreeWatcher)]);
+			await Promise.all([
+				this.gitDirWatcher ? waitReady(this.gitDirWatcher) : Promise.resolve(),
+				waitReady(this.worktreeWatcher),
+			]);
 		} catch (err) {
 			await this.close();
 			throw err;

@@ -978,6 +978,7 @@ export function PRControlRail({ prCtx }: { prCtx: PRContext }) {
 
 	// ── Active file detection ─────────────────────────────────────────────
 	const activeWorkspaceId = useTabStore((s) => s.activeWorkspaceId);
+	const activeWorkspaceCwd = useTabStore((s) => s.activeWorkspaceCwd);
 	const openPROverview = useTabStore((s) => s.openPROverview);
 	// biome-ignore lint/correctness/useExhaustiveDependencies: prCtx primitives only — avoid recompute on new prCtx ref
 	const sessionKey = useMemo(
@@ -1089,8 +1090,8 @@ export function PRControlRail({ prCtx }: { prCtx: PRContext }) {
 					}
 				/>
 			)}
-			{tab === "files" && prCtx.repoPath && activeWorkspaceId && (
-				<RepoFileTree repoPath={prCtx.repoPath} workspaceId={activeWorkspaceId} />
+			{tab === "files" && activeWorkspaceCwd && activeWorkspaceId && (
+				<RepoFileTree repoPath={activeWorkspaceCwd} workspaceId={activeWorkspaceId} />
 			)}
 
 			{/* Pinned bottom bar */}
