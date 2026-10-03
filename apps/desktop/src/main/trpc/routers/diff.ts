@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import simpleGit from "simple-git";
 import { z } from "zod";
+import type { WorkspaceFileContent } from "../../../shared/file-browser-types";
 import { atlassianFetch } from "../../atlassian/auth";
 import { getDb } from "../../db";
 import { extensionPaths } from "../../db/schema";
@@ -97,14 +98,17 @@ export const diffRouter = router({
 				filePath: z.string(),
 			})
 		)
-		.query(async ({ input }) => {
+		.query(async ({ input }): Promise<WorkspaceFileContent & { language: string }> => {
 			const language = detectLanguage(input.filePath);
 			// Empty ref means read from working tree (unstaged file on disk)
 			if (input.ref === "") {
-				const content = input.workspaceId
-					? await readWorkspaceFile(await resolveWorkspaceFileRoot(input), input.filePath)
-					: await readWorkingTreeFile(input.repoPath, input.filePath);
-				return { content, language };
+				if (input.workspaceId) {
+					return {
+						...(await readWorkspaceFile(await resolveWorkspaceFileRoot(input), input.filePath)),
+						language,
+					};
+				}
+				return { content: await readWorkingTreeFile(input.repoPath, input.filePath), language };
 			}
 			const git = simpleGit(input.repoPath);
 			// Try the ref as-is first, then fall back to origin/<ref> for remote
@@ -128,6 +132,7 @@ export const diffRouter = router({
 				workspaceId: z.string().optional(),
 				filePath: z.string(),
 				content: z.string(),
+				expectedSymlinkTarget: z.string().min(1).optional(),
 			})
 		)
 		.mutation(async ({ input }) => {
@@ -135,7 +140,8 @@ export const diffRouter = router({
 				await saveWorkspaceFile(
 					await resolveWorkspaceFileRoot(input),
 					input.filePath,
-					input.content
+					input.content,
+					input.expectedSymlinkTarget
 				);
 			} else {
 				await saveWorkingTreeFile(input.repoPath, input.filePath, input.content);

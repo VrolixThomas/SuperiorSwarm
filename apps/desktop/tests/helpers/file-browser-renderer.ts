@@ -25,14 +25,19 @@ export async function renderBrowserTest(
 	options: {
 		request?: (path: string, input: unknown) => unknown;
 		electron?: Record<string, unknown>;
+		retry?: boolean | number;
+		seedQueries?: (client: QueryClient) => void;
 	} = {}
 ) {
 	const calls: { path: string; input: unknown }[] = [];
 	const lifecycle: string[] = [];
 	const listeners = new Set<(event: RepoInvalidateEvent) => void>();
 	const queryClient = new QueryClient({
-		defaultOptions: { queries: { retry: false, gcTime: Number.POSITIVE_INFINITY } },
+		defaultOptions: {
+			queries: { retry: options.retry ?? false, gcTime: Number.POSITIVE_INFINITY },
+		},
 	});
+	options.seedQueries?.(queryClient);
 	Object.assign(dom, {
 		electron: {
 			repo: {

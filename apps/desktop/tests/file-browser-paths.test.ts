@@ -118,10 +118,10 @@ test("browser enumeration requires matching workspace registration; plain folder
 	});
 });
 
-test("scoped editor routes reject symlink files/parents, special files and escaping/root paths", async () => {
+test("scoped editor routes reject linked parents, special files and escaping/root paths", async () => {
 	await symlink(a, join(b, "link"));
 	await symlink(join(a, ".env"), join(b, ".env.link"));
-	for (const filePath of ["link/.env", ".env.link", "../main/.env", join(b, ".env"), "", "."]) {
+	for (const filePath of ["link/.env", "../main/.env", join(b, ".env"), "", "."]) {
 		await expect(
 			caller.getFileContent({ workspaceId: "b", repoPath: b, filePath, ref: "" })
 		).rejects.toThrow();
@@ -160,4 +160,116 @@ test("browser create/rename/delete cannot mutate another workspace or a linked p
 	await expect(
 		caller.deleteFileOrFolder({ workspaceId: "b", repoPath: b, targetPath: "." })
 	).rejects.toThrow();
+});
+
+test("explicit editor opens file links and saves to the opened target while preserving the link", async () => {
+	const { lstat } = await import("node:fs/promises");
+	await symlink(join(a, ".env"), join(b, ".env.link"));
+	const opened = await caller.getFileContent({
+		workspaceId: "b",
+		repoPath: b,
+		filePath: ".env.link",
+		ref: "",
+	});
+	expect(opened.content).toBe("SYNTHETIC_ONLY=main\n");
+	expect(opened.symlinkTarget).toBe(join(a, ".env"));
+	await caller.saveFileContent({
+		workspaceId: "b",
+		repoPath: b,
+		filePath: ".env.link",
+		content: "SYNTHETIC_ONLY=linked edit\n",
+		expectedSymlinkTarget: opened.symlinkTarget,
+	});
+	expect(await readFile(join(a, ".env"), "utf8")).toBe("SYNTHETIC_ONLY=linked edit\n");
+	expect((await lstat(join(b, ".env.link"))).isSymbolicLink()).toBe(true);
+	expect(await readFile(join(b, ".env"), "utf8")).toBe("SYNTHETIC_ONLY=worktree\n");
+});
+
+test("linked saves require the opened target and reject a link retargeted since opening", async () => {
+	await symlink(join(a, ".env"), join(b, ".env.link"));
+	const opened = await caller.getFileContent({
+		workspaceId: "b",
+		repoPath: b,
+		filePath: ".env.link",
+		ref: "",
+	});
+	await expect(
+		caller.saveFileContent({
+			workspaceId: "b",
+			repoPath: b,
+			filePath: ".env.link",
+			content: "wrong",
+		})
+	).rejects.toThrow();
+	await rm(join(b, ".env.link"));
+	await symlink(join(b, ".env"), join(b, ".env.link"));
+	await expect(
+		caller.saveFileContent({
+			workspaceId: "b",
+			repoPath: b,
+			filePath: ".env.link",
+			content: "wrong",
+			expectedSymlinkTarget: opened.symlinkTarget,
+		})
+	).rejects.toThrow();
+	await rm(join(b, ".env.link"));
+	await writeFile(join(b, ".env.link"), "replacement");
+	await expect(
+		caller.saveFileContent({
+			workspaceId: "b",
+			repoPath: b,
+			filePath: ".env.link",
+			content: "wrong",
+			expectedSymlinkTarget: opened.symlinkTarget,
+		})
+	).rejects.toThrow();
+	expect(await readFile(join(a, ".env"), "utf8")).toBe("SYNTHETIC_ONLY=main\n");
+	expect(await readFile(join(b, ".env"), "utf8")).toBe("SYNTHETIC_ONLY=worktree\n");
+	expect(await readFile(join(b, ".env.link"), "utf8")).toBe("replacement");
+});
+
+test("explicit linked opens support relative targets but reject dangling links, directories and cycles", async () => {
+	await symlink(".env", join(b, "relative"));
+	expect(
+		(await caller.getFileContent({ workspaceId: "b", repoPath: b, filePath: "relative", ref: "" }))
+			.content
+	).toBe("SYNTHETIC_ONLY=worktree\n");
+	await symlink("absent", join(b, "broken"));
+	await symlink(a, join(b, "directory"));
+	await symlink("cycle", join(b, "cycle"));
+	for (const filePath of ["broken", "directory", "cycle"]) {
+		await expect(
+			caller.getFileContent({ workspaceId: "b", repoPath: b, filePath, ref: "" })
+		).rejects.toThrow();
+	}
+	await expect(
+		caller.createFile({ workspaceId: "b", repoPath: b, filePath: "relative" })
+	).rejects.toThrow();
+});
+
+test("link targets cannot be directories or special files, and deleted targets are not recreated by save", async () => {
+	const fifo = Bun.spawnSync(["mkfifo", join(a, "pipe")]);
+	expect(fifo.exitCode).toBe(0);
+	await symlink(join(a, "pipe"), join(b, "pipe-link"));
+	await expect(
+		caller.getFileContent({ workspaceId: "b", repoPath: b, filePath: "pipe-link", ref: "" })
+	).rejects.toThrow();
+	await symlink(join(a, ".env"), join(b, ".env.link"));
+	const opened = await caller.getFileContent({
+		workspaceId: "b",
+		repoPath: b,
+		filePath: ".env.link",
+		ref: "",
+	});
+	await rm(join(a, ".env"));
+	await expect(
+		caller.saveFileContent({
+			workspaceId: "b",
+			repoPath: b,
+			filePath: ".env.link",
+			content: "wrong",
+			expectedSymlinkTarget: opened.symlinkTarget,
+		})
+	).rejects.toThrow();
+	await expect(readFile(join(a, ".env"), "utf8")).rejects.toThrow();
 });
