@@ -311,7 +311,7 @@ export class TerminalFileService {
 			throw new Error("Invalid file selection.");
 		const entries = ids.map((id) => stored.batch.entries.find((e) => e.id === id));
 		if (entries.some((e) => !e?.referenceAllowed || !e.path))
-			throw new Error("Selected files need a safe workspace copy or removal before insertion.");
+			throw new Error("Remove files with unsupported paths, or rename them and add them again.");
 		return entries as TerminalFileEntry[];
 	}
 	copySource(caller: FileCaller, batchId: string, id: string) {

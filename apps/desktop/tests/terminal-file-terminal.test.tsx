@@ -155,7 +155,6 @@ mock.module("../src/renderer/trpc/client", () => ({
 				},
 			},
 			cancel: { mutate: async () => {} },
-			listCopies: { query: async () => [] },
 		},
 	},
 }));
@@ -247,7 +246,8 @@ test("details stay collapsed by default; removing all files restores ordinary En
 		(host.querySelector('[aria-label="Details for example.pdf"]') as HTMLButtonElement).click();
 	});
 	expect(host.textContent).toContain("/fixture/example.pdf");
-	expect(host.textContent).toContain("Copy into workspace");
+	expect(host.textContent).not.toContain("Copy into workspace");
+	expect(host.textContent).not.toContain("Saved copies");
 	await enter(true);
 	expect(ordinary).toEqual(["\x1b[13;2u"]);
 	expect(submitted).toEqual([]);

@@ -33,7 +33,7 @@ describe("terminal file references", () => {
 		]) {
 			const path = `/tmp/parent${char}/file.pdf`;
 			expect(isSafeTerminalPath(path)).toBe(false);
-			expect(() => formatFilePaths([path])).toThrow();
+			expect(() => formatFilePaths([path])).toThrow("Rename");
 			expect(displayFilePath(path)).not.toContain(char);
 		}
 	});

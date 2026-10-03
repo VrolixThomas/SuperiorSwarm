@@ -297,7 +297,7 @@ test("refresh never silently turns a failed or required copy back into an origin
 	});
 	await h.controller.submit();
 	expect(h.insert).not.toHaveBeenCalled();
-	expect(h.controller.state.status).toContain("copy");
+	expect(h.controller.state.status).toContain("rename");
 });
 
 test("a definite rejection keeps selected files for an explicit later attempt", async () => {

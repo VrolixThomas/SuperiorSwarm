@@ -35,7 +35,7 @@ export function formatFilePaths(paths: string[]): string {
 		paths.some((p) => !isSafeTerminalPath(p))
 	) {
 		throw new Error(
-			"Choose 1–64 absolute paths without terminal controls. Unsafe names require a workspace copy."
+			"Choose 1–64 absolute paths without terminal controls. Rename unsafe files or folders and add them again."
 		);
 	}
 	const text = ` ${paths.map((p) => `'${p.replaceAll("'", "'\\''")}'`).join(" ")} `;

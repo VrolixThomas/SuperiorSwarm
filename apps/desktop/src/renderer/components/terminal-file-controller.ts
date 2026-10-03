@@ -287,7 +287,9 @@ export class TerminalFileController {
 			const batch = this.needsPreparation ? await this.prepareRestored(epoch) : this.state.batch;
 			if (!batch || !this.current(epoch)) return;
 			if (batch.entries.some((entry) => !entry.referenceAllowed))
-				throw new Error("Copy or remove files that need attention first.");
+				throw new Error(
+					"Remove files that need attention, or rename their paths and add them again."
+				);
 			const text = await this.operations.copyPaths(
 				batch.id,
 				batch.entries.map((entry) => entry.id)
@@ -325,7 +327,7 @@ export class TerminalFileController {
 			batch = refreshed;
 			if (batch.entries.some((entry) => !entry.referenceAllowed))
 				throw new Error(
-					"Review the files that need attention: copy or remove them before sending."
+					"Review the files that need attention: remove them, or rename their paths and add them again."
 				);
 			const ids = batch.entries.map((entry) => entry.id);
 			const prepared = submit

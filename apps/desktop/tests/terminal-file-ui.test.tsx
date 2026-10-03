@@ -1,9 +1,8 @@
-import { expect, mock, test } from "bun:test";
+import { expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
+import { TerminalFileShelf } from "../src/renderer/components/TerminalFileShelf";
 import { TerminalFileController } from "../src/renderer/components/terminal-file-controller";
 import type { TerminalFileBatch } from "../src/shared/terminal-files";
-mock.module("../src/renderer/trpc/client", () => ({ trpcVanilla: { terminalFiles: {} } }));
-const { TerminalFileShelf } = await import("../src/renderer/components/TerminalFileShelf");
 const batch: TerminalFileBatch = {
 	id: "batch",
 	target: { terminalId: "t1", workspaceId: "ws", generation: "g1", root: "/generated" },
@@ -54,6 +53,8 @@ test("shelf renders destination-labelled region, live status, keyboard controls 
 	expect(html).toContain('aria-label="Details for a.mov"');
 	expect(html).toContain('type="file" multiple=""');
 	expect(html).toContain("1 file added");
+	expect(html).not.toContain("Saved copies");
+	expect(html).not.toContain("Copy into workspace");
 	expect(html).toContain("Enter to send");
 	expect(html).not.toContain("Insert paths");
 	expect(html).not.toContain("/generated/a.mov</bdi>");
