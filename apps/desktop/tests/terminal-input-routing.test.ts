@@ -129,6 +129,45 @@ describe("terminal input routing", () => {
 		dispose();
 	});
 
+	test("an idle large paste is preserved while additional wake input stays bounded", async () => {
+		const handlers = new Map<
+			string,
+			(e: unknown, id: unknown, data: unknown) => Promise<boolean>
+		>();
+		const gate = deferred();
+		const received: string[] = [];
+		registerTerminalInputIPC(
+			{ handle: (channel, cb) => handlers.set(channel, cb) },
+			{
+				isConnected: true,
+				write: (_id, data) => {
+					received.push(data);
+					return true;
+				},
+				writeBinary: () => true,
+			},
+			() => gate.promise
+		);
+		const handler = handlers.get("terminal:write");
+		if (!handler) throw Error("missing text handler");
+		const paste = `${"x".repeat(600_000)}猫🐟`;
+		const first = handler(null, "t", paste);
+		const queued = handler(null, "t", "queued");
+		const other = handler(null, "other", paste);
+		try {
+			await Promise.resolve();
+			expect(received).toEqual([]);
+		} finally {
+			gate.resolve();
+		}
+		expect(await first).toBe(true);
+		expect(await queued).toBe(false);
+		expect(await other).toBe(false);
+		expect(received).toEqual([paste]);
+		expect(await handler(null, "t", paste)).toBe(true);
+		expect(received).toEqual([paste, paste]);
+	});
+
 	test("input received while disconnected is dropped before wake and cannot replay on reconnect", async () => {
 		const handlers = new Map<
 			string,

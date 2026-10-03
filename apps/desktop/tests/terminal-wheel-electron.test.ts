@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 test("pinned xterm in isolated Electron: propagation, modes, bytes, focus and lifecycle", async () => {
@@ -24,8 +24,15 @@ test("pinned xterm in isolated Electron: propagation, modes, bytes, focus and li
 		const env = { ...process.env };
 		// biome-ignore lint/performance/noDelete: Electron requires absence.
 		delete env["ELECTRON_RUN_AS_NODE"];
+		// The desktop preload mocks require("electron"); use its installed path metadata.
+		const electronDir = dirname(require.resolve("electron/package.json"));
+		const executable = (await readFile(join(electronDir, "path.txt"), "utf8")).trim();
+		const electronPath = join(
+			env["ELECTRON_OVERRIDE_DIST_PATH"] || join(electronDir, "dist"),
+			executable
+		);
 		child = Bun.spawn(
-			[require("electron"), resolve(import.meta.dir, "fixtures/terminal-wheel-electron.cjs"), dir],
+			[electronPath, resolve(import.meta.dir, "fixtures/terminal-wheel-electron.cjs"), dir],
 			{ env, stdin: "ignore", stdout: "pipe", stderr: "pipe" }
 		);
 		const timer = setTimeout(() => child?.kill(), 25000);

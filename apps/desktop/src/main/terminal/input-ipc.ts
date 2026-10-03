@@ -33,7 +33,12 @@ export function registerTerminalInputIPC(
 		if (typeof id !== "string" || !id.length) throw new Error("id must be a non-empty string");
 		if (typeof data !== "string") throw new Error("data must be a string");
 		const bytes = Buffer.byteLength(data, binary ? "latin1" : "utf8") + Buffer.byteLength(id);
-		if (pendingBytes + bytes > MAX_PENDING_BYTES || pendingWrites >= MAX_PENDING_WRITES)
+		// Admit one idle paste at any size so DaemonClient can chunk it. Count
+		// it against the budget while waking to bound additional queued input.
+		if (
+			(pendingWrites > 0 && pendingBytes + bytes > MAX_PENDING_BYTES) ||
+			pendingWrites >= MAX_PENDING_WRITES
+		)
 			return false;
 		pendingBytes += bytes;
 		pendingWrites++;

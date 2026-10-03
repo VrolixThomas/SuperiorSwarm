@@ -73,6 +73,13 @@ test("renderer/preload/main/socket/daemon/PtyManager delivers exact bytes to the
 		await client.listSessionsStrict();
 		expect(sink).toEqual(["猫🐟", bytes, "after"]);
 		expect(Buffer.isBuffer(sink[1])).toBe(true);
+		const paste = `${"x".repeat(600_000)}猫🐟`;
+		expect(await api.write("target", paste)).toBe(true);
+		await client.listSessionsStrict();
+		const chunks = sink.slice(3);
+		expect(chunks.length).toBeGreaterThan(1);
+		expect(chunks.every((chunk) => typeof chunk === "string")).toBe(true);
+		expect(chunks.join("")).toBe(paste);
 	} finally {
 		cleanup();
 		client.disconnect();
