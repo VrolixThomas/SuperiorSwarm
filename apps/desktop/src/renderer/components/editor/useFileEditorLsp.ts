@@ -1,5 +1,6 @@
 import type * as monaco from "monaco-editor";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { isSensitiveFilePath } from "../../../shared/sensitive-file-path";
 import {
 	clearModelRepoPath,
 	registerLspProviders,
@@ -36,7 +37,7 @@ export function useFileEditorLsp(
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: refreshKey is an intentional trigger to re-run the support check after trusting the repo
 	useEffect(() => {
-		if (!model) {
+		if (!model || isSensitiveFilePath(filePath)) {
 			stateRef.current = { enabled: false, uri: "" };
 			setMessage(null);
 			setReason(null);

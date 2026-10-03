@@ -18,7 +18,6 @@ export function useRepoSubscription(repoPath: string | null | undefined): void {
 
 	useEffect(() => {
 		if (!repoPath) return;
-		void window.electron.repo.subscribe(repoPath);
 
 		const off = window.electron.repo.onInvalidate((event) => {
 			if (event.repoPath !== repoPath) return;
@@ -28,6 +27,8 @@ export function useRepoSubscription(repoPath: string | null | undefined): void {
 			}
 
 			if (targets.has("workingTree")) {
+				void utils.diff.listAllFiles.invalidate({ repoPath });
+				void utils.diff.listDirectory.invalidate({ repoPath });
 				void utils.diff.getWorkingTreeStatus.invalidate({ repoPath });
 				void utils.diff.getWorkingTreeDiff.invalidate({ repoPath });
 			}
@@ -41,6 +42,8 @@ export function useRepoSubscription(repoPath: string | null | undefined): void {
 				void utils.branches.getStatus.invalidate();
 			}
 		});
+
+		void window.electron.repo.subscribe(repoPath);
 
 		return () => {
 			off();

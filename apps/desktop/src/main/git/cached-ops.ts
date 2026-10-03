@@ -1,4 +1,6 @@
 import simpleGit from "simple-git";
+import type { DiffFile } from "../../shared/diff-types";
+import { isExcludedBrowserEntry } from "../../shared/file-browser-policy";
 import { getBranchStatus } from "./branch-ops";
 import { createGitCache } from "./git-cache";
 import {
@@ -57,10 +59,41 @@ export async function getBranchDiffCached(input: {
 	});
 }
 
-export async function getWorkingTreeStatusCached(input: { repoPath: string }) {
-	const key = `wt-status:${input.repoPath}`;
+export async function getWorkingTreeStatusCached(input: {
+	repoPath: string;
+	metadataOnly?: boolean;
+}) {
+	const key = `wt-status:${input.repoPath}:${input.metadataOnly ? "metadata" : "diff"}`;
 	return workingTreeStatusCache.get(key, getRepoStateVersion(input.repoPath), async () => {
 		const git = simpleGit(input.repoPath);
+		if (input.metadataOnly) {
+			// The Files browser needs decoration metadata, never patches or file contents.
+			const status = await git.status(["--untracked-files=normal"]);
+			const stagedFiles: DiffFile[] = [];
+			const unstagedFiles: DiffFile[] = [];
+			for (const file of status.files) {
+				const parts = file.path.split("/");
+				if (parts.some((part, index) => isExcludedBrowserEntry(part, index < parts.length - 1)))
+					continue;
+				const entry = (code: string): DiffFile => ({
+					path: file.path,
+					status:
+						code === "D"
+							? "deleted"
+							: code === "R"
+								? "renamed"
+								: code === "A" || code === "?"
+									? "added"
+									: "modified",
+					additions: 0,
+					deletions: 0,
+					hunks: [],
+				});
+				if (file.index.trim() && file.index !== "?") stagedFiles.push(entry(file.index));
+				if (file.working_dir.trim()) unstagedFiles.push(entry(file.working_dir));
+			}
+			return { stagedFiles, unstagedFiles, branch: status.current ?? "" };
+		}
 		const [stagedRaw, unstagedRaw, untrackedPaths, branch] = await Promise.all([
 			git.diff(["--cached", "--unified=3", "--no-color"]),
 			git.diff(["--unified=3", "--no-color"]),

@@ -1,6 +1,7 @@
 import * as monaco from "monaco-editor";
 import { initVimMode } from "monaco-vim";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { isSensitiveFilePath } from "../../shared/sensitive-file-path";
 import { ensureThemeRegistered } from "../lib/monacoTheme";
 import { useEditorSettingsStore } from "../stores/editor-settings";
 import { useProjectStore } from "../stores/projects";
@@ -13,6 +14,7 @@ import { useFileEditorLsp } from "./editor/useFileEditorLsp";
 
 interface FileEditorProps {
 	tabId: string;
+	workspaceId: string;
 	/** Pane the editor lives in. Required so we can scope the review-edit Escape handler
 	 *  to the single FileEditor that IS the review edit-split; other editors leave Esc alone. */
 	paneId?: string;
@@ -24,12 +26,15 @@ interface FileEditorProps {
 
 export function FileEditor({
 	tabId,
+	workspaceId,
 	paneId,
 	repoPath,
 	filePath,
-	language,
+	language: requestedLanguage,
 	initialPosition,
 }: FileEditorProps) {
+	const sensitive = isSensitiveFilePath(filePath);
+	const language = sensitive ? "plaintext" : requestedLanguage;
 	const containerRef = useRef<HTMLDivElement>(null);
 	const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
 	const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -52,12 +57,12 @@ export function FileEditor({
 			utils.diff.getWorkingTreeStatus.invalidate({ repoPath });
 			// Clear overlay so the review diff reads server truth
 			const rs = useReviewSessionStore.getState();
-			if (rs.activeSession) rs.clearOptimisticContent(filePath);
+			if (!sensitive && rs.activeSession) rs.clearOptimisticContent(filePath);
 		},
 		onError: () => {
 			// Save failed — revert the review diff to server truth
 			const rs = useReviewSessionStore.getState();
-			if (rs.activeSession) rs.clearOptimisticContent(filePath);
+			if (!sensitive && rs.activeSession) rs.clearOptimisticContent(filePath);
 		},
 	});
 	const {
@@ -103,8 +108,8 @@ export function FileEditor({
 		applyPendingInitialPosition();
 	}, [initialPosition, applyPendingInitialPosition]);
 
-	const { data, isLoading } = trpc.diff.getFileContent.useQuery(
-		{ repoPath, ref: "", filePath },
+	const { data, isLoading, isError } = trpc.diff.getFileContent.useQuery(
+		{ repoPath, workspaceId, ref: "", filePath },
 		{ staleTime: 30_000 }
 	);
 
@@ -168,7 +173,7 @@ export function FileEditor({
 		const model = monaco.editor.createModel(initialContent, language, fileUri);
 		editor.setModel(model);
 		setCurrentModel(model);
-		setPreviewContent(initialContent);
+		if (!sensitive) setPreviewContent(initialContent);
 
 		applyPendingInitialPosition();
 
@@ -180,13 +185,15 @@ export function FileEditor({
 				// Push optimistic overlay before mutating so ReviewTab's DiffEditor
 				// reflects the edit immediately (before the server refetch settles).
 				const rs = useReviewSessionStore.getState();
-				if (rs.activeSession) rs.pushOptimisticContent(filePath, content);
-				saveMutation.mutate({ repoPath, filePath, content });
+				if (!sensitive && rs.activeSession) rs.pushOptimisticContent(filePath, content);
+				saveMutation.mutate({ repoPath, workspaceId, filePath, content });
 			}, 500);
 			if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
-			previewTimerRef.current = setTimeout(() => {
-				setPreviewContent(model.getValue());
-			}, 300);
+			if (!sensitive) {
+				previewTimerRef.current = setTimeout(() => {
+					setPreviewContent(model.getValue());
+				}, 300);
+			}
 
 			version++;
 			onLspContentChangedRef.current(version);
@@ -199,7 +206,15 @@ export function FileEditor({
 			setCurrentModel(null);
 			model.dispose();
 		};
-	}, [initialContent, language, repoPath, filePath, applyPendingInitialPosition]);
+	}, [
+		initialContent,
+		language,
+		sensitive,
+		repoPath,
+		workspaceId,
+		filePath,
+		applyPendingInitialPosition,
+	]);
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: editorReady is an intentional trigger to re-run after editor creation
 	useEffect(() => {
@@ -242,6 +257,11 @@ export function FileEditor({
 
 	return (
 		<>
+			{isError && (
+				<p role="alert" className="p-3 text-[12px]">
+					Unable to open file. Check the workspace and file permissions, then reopen it.
+				</p>
+			)}
 			{isLoading && (
 				<div className="flex h-full items-center justify-center text-[13px] text-[var(--text-quaternary)]">
 					Loading…

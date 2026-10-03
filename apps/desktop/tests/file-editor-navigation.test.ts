@@ -13,3 +13,11 @@ test("FileEditor reacts to new initialPosition props after mount", async () => {
 		/useEffect\(\(\) => \{\s*if \(!initialPosition\) return;\s*pendingInitialPositionRef\.current = initialPosition;\s*applyPendingInitialPosition\(\);/s
 	);
 });
+
+test("PR Files browser uses the active workspace cwd, including review worktrees", async () => {
+	const source = await Bun.file(
+		new URL("../src/renderer/components/PRControlRail.tsx", import.meta.url)
+	).text();
+	expect(source.includes("repoPath={activeWorkspaceCwd}")).toBe(true);
+	expect(source.includes("<RepoFileTree repoPath={prCtx.repoPath}")).toBe(false);
+});

@@ -9,6 +9,7 @@ import type {
 	PublishDiagnosticsParams,
 } from "vscode-languageserver-protocol";
 import { detectLanguage } from "../../shared/diff-types";
+import { isSensitiveDocumentUri } from "../../shared/sensitive-file-path";
 import { useTabStore } from "../stores/tab-store";
 import {
 	clearAllModelRepoPaths,
@@ -64,8 +65,7 @@ export function registerLspProviders(languageId: string): void {
 					suggestions: items.map((item) => ({
 						label: item.label,
 						kind: item.kind ?? monaco.languages.CompletionItemKind.Text,
-						insertText:
-							item.insertText ?? (typeof item.label === "string" ? item.label : item.label.label),
+						insertText: item.insertText ?? item.label,
 						insertTextRules:
 							item.insertTextFormat === 2
 								? monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet
@@ -221,6 +221,7 @@ export function sendDidOpen(
 	content: string,
 	version = 1
 ): void {
+	if (isSensitiveDocumentUri(uri)) return;
 	window.electron.lsp.sendNotification({
 		languageId,
 		repoPath,
@@ -238,6 +239,7 @@ export function sendDidChange(
 	content: string,
 	version: number
 ): void {
+	if (isSensitiveDocumentUri(uri)) return;
 	window.electron.lsp.sendNotification({
 		languageId,
 		repoPath,
@@ -250,6 +252,7 @@ export function sendDidChange(
 }
 
 export function sendDidClose(repoPath: string, languageId: string, uri: string): void {
+	if (isSensitiveDocumentUri(uri)) return;
 	window.electron.lsp.sendNotification({
 		languageId,
 		repoPath,
@@ -328,10 +331,7 @@ export function setupDiagnosticsListener(): void {
 			message: d.message,
 			severity: convertSeverity(d.severity),
 			source: d.source,
-			code:
-				typeof d.code === "object" && d.code !== null
-					? d.code.value?.toString()
-					: d.code?.toString(),
+			code: d.code?.toString(),
 		}));
 
 		monaco.editor.setModelMarkers(model, "lsp", markers);
@@ -356,6 +356,7 @@ function convertSeverity(severity?: number): monaco.MarkerSeverity {
 export function setupServerRestartListener(): () => void {
 	return window.electron.lsp.onServerRestarted((_configId, repoPath, uris) => {
 		for (const uri of uris) {
+			if (isSensitiveDocumentUri(uri)) continue;
 			const model = monaco.editor.getModel(monaco.Uri.parse(uri));
 			if (!model) continue;
 			const languageId = model.getLanguageId();
