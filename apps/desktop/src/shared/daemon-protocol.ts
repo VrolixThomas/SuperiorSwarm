@@ -4,10 +4,9 @@ import { join } from "node:path";
 
 export const SUPERIORSWARM_DIR = join(homedir(), ".superiorswarm");
 
-// Bumped whenever the daemon's wire behavior changes. The daemon reports it in
-// "ready"; a client seeing a mismatch (or no version — protocol 1 daemons)
-// restarts the daemon so fixes apply to long-lived daemons that survive app
-// upgrades. Keep in sync mentally with detach/frame semantics changes.
+// Incompatible changes use the existing idle-daemon upgrade policy. Additive
+// capabilities keep this version stable on upgrade AND rollback: old clients
+// ignore them, and new clients disable features absent from the ready frame.
 export const DAEMON_PROTOCOL_VERSION = 2;
 
 // Hard per-frame limit enforced by the daemon on inbound lines. The client
@@ -45,6 +44,8 @@ export type ClientMessage =
 	| { type: "detach"; id: string }
 	| { type: "detach-all" }
 	| { type: "write"; id: string; data: string }
+	// Canonical base64, only sent after binary-input-v1 is advertised in ready.
+	| { type: "write-binary"; id: string; data: string }
 	| { type: "resize"; id: string; cols: number; rows: number }
 	| { type: "dispose"; id: string }
 	| { type: "list" };
@@ -53,7 +54,7 @@ export type DaemonSession = { id: string; cwd: string; pid: number };
 
 export type DaemonMessage =
 	// protocolVersion is absent on protocol-1 daemons.
-	| { type: "ready"; protocolVersion?: number }
+	| { type: "ready"; protocolVersion?: number; capabilities?: string[] }
 	| { type: "sessions"; sessions: DaemonSession[] }
 	// base64-encoded PTY output. replay=true marks a scrollback replay sent on
 	// attach (not live output); fg is the PTY's foreground process name at

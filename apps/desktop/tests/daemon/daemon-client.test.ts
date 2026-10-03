@@ -18,7 +18,8 @@ function startMockDaemon(
 	sessions?: Array<{ id: string; cwd: string; pid: number }>,
 	socketPath?: string,
 	// null simulates a protocol-1 daemon whose ready message has no version
-	protocolVersion: number | null = DAEMON_PROTOCOL_VERSION
+	protocolVersion: number | null = DAEMON_PROTOCOL_VERSION,
+	capabilities?: string[]
 ): Promise<{ server: Server; lastSocket: () => Socket | null }> {
 	const sessionList = sessions ?? [{ id: "term-1", cwd: "/tmp", pid: 99 }];
 	const listenPath = socketPath ?? TEST_SOCKET;
@@ -28,7 +29,9 @@ function startMockDaemon(
 			lastSock = socket;
 			// Send ready (protocolVersion omitted simulates a protocol-1 daemon)
 			const ready =
-				protocolVersion === null ? { type: "ready" } : { type: "ready", protocolVersion };
+				protocolVersion === null
+					? { type: "ready" }
+					: { type: "ready", protocolVersion, capabilities };
 			socket.write(`${JSON.stringify(ready)}\n`);
 			// Handle list request → respond with sessions
 			let buf = "";
@@ -188,6 +191,119 @@ describe("DaemonClient", () => {
 		if (existsSync(TEST_LOG)) rmSync(TEST_LOG);
 	});
 
+	test("explicit disconnect notifies input lifecycle guards before a later reconnect", async () => {
+		const changes: boolean[] = [];
+		client.addConnectionStatusListener((connected) => changes.push(connected));
+		client.disconnect();
+		expect(changes).toEqual([false]);
+		await client.connect();
+		expect(changes).toEqual([false, true]);
+	});
+
+	test("old live daemon rejects binary explicitly and keeps text working without upgrade", async () => {
+		expect(client.writeBinary("term-1", "\x1b[M\x80\xff")).toBe(false);
+		expect(client.write("term-1", "猫🐟")).toBe(true);
+		expect(client.hasLiveSession("term-1")).toBe(true);
+	});
+
+	test("binary backpressure is bounded and drops queued input/capability on reconnect", async () => {
+		const path = `${TEST_SOCKET}.pressure`;
+		const received: Array<Record<string, unknown>> = [];
+		const capabilities = ["binary-input-v1"];
+		const remote = await startMockDaemon(
+			(m) => received.push(m as Record<string, unknown>),
+			undefined,
+			path,
+			2,
+			capabilities
+		);
+		const c = new DaemonClient(path, TEST_PID, TEST_LOG);
+		try {
+			await c.connect();
+			const pressure = forceBackpressureOnce(c);
+			try {
+				c.write("term-1", "primer");
+				const accepted = Array.from({ length: 30 }, () =>
+					c.writeBinary("term-1", "\xff".repeat(16384))
+				);
+				expect(accepted.filter(Boolean)).toHaveLength(23);
+				pressure.socket.emit("drain");
+				await c.listSessionsStrict();
+				expect(received.filter((m) => m["type"] === "write-binary")).toHaveLength(23);
+			} finally {
+				pressure.restore();
+			}
+			const pressure2 = forceBackpressureOnce(c);
+			try {
+				c.write("term-1", "primer2");
+				expect(c.writeBinary("term-1", "stale")).toBe(true);
+				c.disconnect();
+				capabilities.length = 0;
+			} finally {
+				pressure2.restore();
+			}
+			await c.connect();
+			expect(c.writeBinary("term-1", "new")).toBe(false);
+			await c.listSessionsStrict();
+			expect(received.filter((m) => m["type"] === "write-binary")).toHaveLength(23);
+		} finally {
+			c.disconnect();
+			remote.lastSocket()?.destroy();
+			remote.server.close();
+			if (existsSync(path)) rmSync(path);
+		}
+	});
+
+	test("negotiates binary bytes, bounds frames, and queues in order with text", async () => {
+		const path = `${TEST_SOCKET}.binary`;
+		const received: Array<Record<string, unknown>> = [];
+		const binaryDaemon = await startMockDaemon(
+			(m) => received.push(m as Record<string, unknown>),
+			undefined,
+			path,
+			2,
+			["binary-input-v1"]
+		);
+		const binaryClient = new DaemonClient(path, TEST_PID, TEST_LOG);
+		try {
+			await binaryClient.connect();
+			const { socket, restore } = forceBackpressureOnce(binaryClient);
+			try {
+				expect(binaryClient.write("term-1", "猫🐟")).toBe(true);
+				const payload = String.fromCharCode(...Array.from({ length: 256 }, (_, i) => i));
+				expect(binaryClient.writeBinary("term-1", payload)).toBe(true);
+				expect(binaryClient.writeBinary("term-1", "\xff".repeat(16384))).toBe(true);
+				expect(binaryClient.write("term-1", "end")).toBe(true);
+				socket.emit("drain");
+				await new Promise<void>((r) => setTimeout(r, 80));
+				const writes = received.filter((m) => String(m["type"]).startsWith("write"));
+				expect(writes.map((m) => m["type"])).toEqual([
+					"write",
+					"write-binary",
+					"write-binary",
+					"write",
+				]);
+				expect(writes[0]?.["data"]).toBe("猫🐟");
+				expect(Buffer.from(String(writes[1]?.["data"]), "base64")).toEqual(
+					Buffer.from(payload, "latin1")
+				);
+				for (const m of writes)
+					expect(Buffer.byteLength(JSON.stringify(m)) + 1).toBeLessThanOrEqual(64000);
+				for (const bad of ["猫", "\ud800", "x".repeat(16385)])
+					expect(binaryClient.writeBinary("term-1", bad)).toBe(false);
+				binaryClient.disconnect();
+				expect(binaryClient.writeBinary("term-1", payload)).toBe(false);
+			} finally {
+				restore();
+			}
+		} finally {
+			binaryClient.disconnect();
+			binaryDaemon.lastSocket()?.destroy();
+			binaryDaemon.server.close();
+			if (existsSync(path)) rmSync(path);
+		}
+	});
+
 	test("strict session listing rejects instead of treating disconnect as an empty daemon", async () => {
 		client.disconnect();
 		await expect(client.listSessions()).resolves.toEqual([]);
@@ -320,7 +436,7 @@ describe("DaemonClient", () => {
 		await new Promise<void>((r) => setTimeout(r, 2_000));
 
 		// The client should have called onExit(-1) for the dead session
-		expect(exitCode).toBe(-1);
+		expect<number | null>(exitCode).toBe(-1);
 		// And it should no longer be in liveSessions
 		expect(client.hasLiveSession("term-1")).toBe(false);
 	}, 10_000);
@@ -861,7 +977,7 @@ describe("DaemonClient", () => {
 		);
 		await new Promise<void>((r) => setTimeout(r, 100));
 
-		expect(exitCode).toBe(-1);
+		expect<number | null>(exitCode).toBe(-1);
 		expect(client.getCallbackIds()).not.toContain("term-2");
 	});
 
@@ -1096,7 +1212,7 @@ describe("DaemonClient", () => {
 		);
 		await new Promise<void>((r) => setTimeout(r, 100));
 
-		expect(exitCode).toBe(-1);
+		expect<number | null>(exitCode).toBe(-1);
 		expect(client.hasLiveSession("bad-term")).toBe(false);
 		expect(client.getCallbackIds()).not.toContain("bad-term");
 	});

@@ -6,6 +6,11 @@ import {
 	type DaemonMessage,
 	MAX_FRAME_BYTES,
 } from "../shared/daemon-protocol";
+import {
+	BINARY_INPUT_CAPABILITY,
+	MAX_BINARY_INPUT_BYTES,
+	isBinaryInput,
+} from "../shared/terminal-input";
 import type { PtyManager } from "./pty-manager";
 import type { ScrollbackStore } from "./scrollback-store";
 
@@ -55,7 +60,11 @@ export class SocketServer {
 		const clientId = `client-${++this.clientIdCounter}`;
 		this.clients.set(clientId, socket);
 
-		this.send(socket, { type: "ready", protocolVersion: DAEMON_PROTOCOL_VERSION });
+		this.send(socket, {
+			type: "ready",
+			protocolVersion: DAEMON_PROTOCOL_VERSION,
+			capabilities: [BINARY_INPUT_CAPABILITY],
+		});
 
 		let lineBuffer = "";
 		let droppingOversizedFrame = false;
@@ -183,6 +192,25 @@ export class SocketServer {
 			}
 			case "write": {
 				this.ptyManager.write(msg.id, msg.data);
+				break;
+			}
+			case "write-binary": {
+				// Buffer.from is permissive: check canonical encoding and size before
+				// touching the PTY. Bad input must not kill a valid live session.
+				if (
+					typeof msg.data !== "string" ||
+					!msg.data.length ||
+					msg.data.length > Math.ceil(MAX_BINARY_INPUT_BYTES / 3) * 4 ||
+					!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(msg.data)
+				)
+					break;
+				const bytes = Buffer.from(msg.data, "base64");
+				if (
+					bytes.toString("base64") !== msg.data ||
+					!isBinaryInput(msg.id, bytes.toString("latin1"))
+				)
+					break;
+				this.ptyManager.write(msg.id, bytes);
 				break;
 			}
 			case "resize": {
