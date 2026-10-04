@@ -35,6 +35,7 @@ Full-suite `bun test` (159 files) is unreliable locally: ~100+ failures are 5s-t
 - **tRPC router** → `src/main/trpc/` (over Electron IPC via `ipcLink`, not HTTP)
 - **Terminal PTY daemon** → `src/daemon/` (Unix socket; spawned with `SUPERIORSWARM_SOCKET_PATH`, `SUPERIORSWARM_DB_PATH`, `SUPERIORSWARM_DEV_MODE`)
 - **Build-time env injection** → `electron.vite.config.ts` `define` block (OAuth + Supabase credentials are NOT in runtime `process.env`)
+- **Desktop releases** → `.github/workflows/release-desktop.yml`; the manual `tag` input rebuilds that exact Git tag with pinned signing tooling.
 - **MCP server** → `mcp-standalone/` (native modules rebuilt against Electron ABI; launched via `ELECTRON_RUN_AS_NODE=1`)
 - **Shared worktree file links** → `src/main/shared-files.ts`; metadata-only browser link rows → `src/main/git/file-tree.ts`; explicit link reads/saves → `src/main/git/workspace-file-ops.ts`.
 - **Files browser vs legacy enumeration** → `src/shared/file-browser-types.ts`, `src/shared/file-browser-policy.ts`; registered file roots → `src/main/git/workspace-file-root.ts`; focused type-check → `tests/tsconfig.file-browser.json`.
