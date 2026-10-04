@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import {
 	closeSync,
 	existsSync,
@@ -10,6 +11,7 @@ import {
 } from "node:fs";
 import { type Socket, connect } from "node:net";
 import { StringDecoder } from "node:string_decoder";
+import type { DaemonFileTarget } from "../../shared/daemon-protocol";
 import {
 	type ClientMessage,
 	DAEMON_PROTOCOL_VERSION,
@@ -20,6 +22,7 @@ import {
 	SUPERIORSWARM_DIR,
 	type TerminalDataMeta,
 } from "../../shared/daemon-protocol";
+import { type FileDelivery, isFilePaste } from "../../shared/terminal-files";
 import { BINARY_INPUT_CAPABILITY, isBinaryInput } from "../../shared/terminal-input";
 import {
 	DaemonOwnershipMismatchError,
@@ -80,6 +83,90 @@ export class DaemonClient {
 	// different wire semantics (per-session detach means detach-from-ALL), so
 	// some frames must be suppressed or translated while one is kept alive.
 	private remoteProtocolVersion = DAEMON_PROTOCOL_VERSION;
+	private fileInputCapable = false;
+	private fileSubmitCapable = false;
+	private pendingInputTerminals = new Set<string>();
+	setInputPending(id: string, pending: boolean): void {
+		if (pending) this.pendingInputTerminals.add(id);
+		else this.pendingInputTerminals.delete(id);
+	}
+	get supportsFileSubmit(): boolean {
+		return this.isConnected && this.fileSubmitCapable;
+	}
+	get needsFileInputUpdate(): boolean {
+		return this.isConnected && this.remoteProtocolVersion < DAEMON_PROTOCOL_VERSION;
+	}
+	private fileRequests = new Map<
+		string,
+		(response: Extract<DaemonMessage, { type: "file-result" }> | null) => void
+	>();
+
+	async fileTarget(id: string, managedAgent = false): Promise<DaemonFileTarget | null> {
+		const response = await this.fileRequest({
+			type: "file-target",
+			id,
+			requestId: randomUUID(),
+			managedAgent,
+		});
+		return response?.target ?? null;
+	}
+	async insertFiles(
+		id: string,
+		generation: string,
+		text: string,
+		payload: string,
+		submit = false
+	): Promise<FileDelivery> {
+		if (
+			!this.canSendFileInput() ||
+			this.pendingInputTerminals.has(id) ||
+			(submit && !this.supportsFileSubmit) ||
+			!isFilePaste(text, payload) ||
+			this.fileRequests.size >= 64
+		)
+			return "rejected";
+		const message = {
+			type: "file-input",
+			id,
+			generation,
+			payload,
+			submit,
+			requestId: randomUUID(),
+		} as const;
+		if (Buffer.byteLength(JSON.stringify(message)) + 1 > MAX_FRAME_BYTES) return "rejected";
+		const response = await this.fileRequest(message);
+		return response?.delivery ?? "uncertain";
+	}
+	private canSendFileInput(): boolean {
+		return (
+			this.fileInputCapable &&
+			this.isConnected &&
+			!this.waitingForDrain &&
+			this.outboundQueue.length === 0
+		);
+	}
+	private async fileRequest(
+		message: Extract<ClientMessage, { type: "file-target" | "file-input" }>
+	): Promise<Extract<DaemonMessage, { type: "file-result" }> | null> {
+		if (!this.canSendFileInput() || this.fileRequests.size >= 64) return null;
+		const encoded = `${JSON.stringify(message)}\n`;
+		if (Buffer.byteLength(encoded) > MAX_FRAME_BYTES) return null;
+		return new Promise((resolve) => {
+			const finish = (response: Extract<DaemonMessage, { type: "file-result" }> | null) => {
+				clearTimeout(timer);
+				this.fileRequests.delete(message.requestId);
+				resolve(response);
+			};
+			const timer = setTimeout(() => finish(null), 3000);
+			this.fileRequests.set(message.requestId, finish);
+			// Never put file input in the evictable/reconnecting keystroke queue.
+			try {
+				if (!this.socket?.write(encoded)) this.waitingForDrain = true;
+			} catch {
+				finish(null);
+			}
+		});
+	}
 	private binaryInputSupported = false;
 
 	constructor(
@@ -101,6 +188,11 @@ export class DaemonClient {
 	}
 
 	private notifyConnectionStatus(connected: boolean): void {
+		if (!connected) {
+			this.fileInputCapable = false;
+			this.fileSubmitCapable = false;
+			for (const resolve of this.fileRequests.values()) resolve(null);
+		}
 		for (const listener of this.connectionStatusListeners) {
 			try {
 				listener(connected);
@@ -136,8 +228,10 @@ export class DaemonClient {
 
 		const ready = await this.waitForMessage("ready");
 		this.remoteProtocolVersion = ready.protocolVersion ?? 1;
+		this.fileInputCapable = ready.capabilities?.includes("file-input-v1") === true;
+		this.fileSubmitCapable = ready.capabilities?.includes("file-submit-v1") === true;
 		this.binaryInputSupported =
-			ready.protocolVersion === DAEMON_PROTOCOL_VERSION &&
+			(ready.protocolVersion === 2 || ready.protocolVersion === DAEMON_PROTOCOL_VERSION) &&
 			Array.isArray(ready.capabilities) &&
 			ready.capabilities.includes(BINARY_INPUT_CAPABILITY);
 
@@ -217,6 +311,7 @@ export class DaemonClient {
 		const socket = this.socket;
 		this.socket = null;
 		this.binaryInputSupported = false;
+		this.pendingInputTerminals.clear();
 		socket?.destroy();
 		this.lineBuffer = "";
 		this.pendingListeners.clear();
@@ -268,14 +363,14 @@ export class DaemonClient {
 	}
 
 	disconnect(): void {
-		const wasConnected = this.isConnected;
+		// A destroyed socket can still have queued input while its close event is pending.
+		this.notifyConnectionStatus(false);
 		if (this.reconnectTimer) {
 			clearTimeout(this.reconnectTimer);
 			this.reconnectTimer = null;
 		}
 		this.reconnecting = false;
 		this.teardownSocket();
-		if (wasConnected) this.notifyConnectionStatus(false);
 	}
 
 	hasLiveSession(id: string): boolean {
@@ -649,6 +744,10 @@ export class DaemonClient {
 	}
 
 	private handleMessage(msg: DaemonMessage): void {
+		if (msg.type === "file-result") {
+			this.fileRequests.get(msg.requestId)?.(msg);
+			return;
+		}
 		// Resolve pending one-shot listeners first
 		const pending = this.pendingListeners.get(msg.type);
 		if (pending && pending.length > 0) {

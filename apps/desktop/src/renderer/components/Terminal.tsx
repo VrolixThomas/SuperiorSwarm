@@ -7,7 +7,7 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
 import type { ITheme } from "@xterm/xterm";
 import { Terminal as XTerm } from "@xterm/xterm";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CmdBuffer } from "../../shared/lib/cmd-buffer";
 import { RESET_STALE_MODES, isShellProcess } from "../../shared/lib/terminal-modes";
 import { useTabStore } from "../stores/tab-store";
@@ -15,6 +15,12 @@ import { installTerminalInput } from "./terminal-input";
 import { createTerminalLinkHandler } from "./terminal-links";
 import { interceptPaste } from "./terminal-paste";
 import { installTerminalWheelHandler } from "./terminal-wheel";
+
+import { trpcVanilla } from "../trpc/client";
+import { TerminalFileShelf } from "./TerminalFileShelf";
+import { type FileShelfState, TerminalFileController } from "./terminal-file-controller";
+import { TerminalFileDraftStore } from "./terminal-file-draft";
+import { collectFilePaste, installFileDrop } from "./terminal-file-drop";
 
 function buildTerminalTheme(): ITheme {
 	const s = getComputedStyle(document.documentElement);
@@ -66,14 +72,31 @@ export function Terminal({
 	active: boolean;
 }) {
 	const ref = useRef<HTMLDivElement>(null);
+	const hostRef = useRef<HTMLDivElement>(null);
 	const activeRef = useRef(active);
 	activeRef.current = active;
+	const controllerRef = useRef<TerminalFileController | null>(null);
+	const [controller, setController] = useState<TerminalFileController | null>(null);
+	const [fileState, setFileState] = useState<FileShelfState>({
+		batch: null,
+		busy: false,
+		status: "",
+	});
+	const [dragging, setDragging] = useState(false);
+	const stageFiles = (files: File[]) => {
+		try {
+			void controllerRef.current?.stage(window.electron.terminalFiles.nativePaths(files));
+			controllerRef.current?.focusInput();
+		} catch (error) {
+			controllerRef.current?.reportError(
+				error instanceof Error ? error.message : "Unable to resolve local files."
+			);
+		}
+	};
 	const cwdRef = useRef(cwd);
 	const initialContentRef = useRef(initialContent);
-	const workspaceIdRef = useRef(workspaceId);
 	cwdRef.current = cwd;
 	initialContentRef.current = initialContent;
-	workspaceIdRef.current = workspaceId;
 
 	useEffect(() => {
 		if (!ref.current) return;
@@ -164,6 +187,89 @@ export function Terminal({
 		// asked already got its answers when the bytes were live.
 		// Counter (not boolean) so back-to-back replay chunks can't clear each other's gate.
 		let suppressDepth = 0;
+		let connected = true;
+		let created = false;
+		let disposed = false;
+		const filePaste = collectFilePaste();
+		let draftStore: TerminalFileDraftStore | null = null;
+		try {
+			if (workspaceId)
+				draftStore = new TerminalFileDraftStore(window.localStorage, workspaceId, id);
+		} catch {
+			/* Some environments disable local storage. */
+		}
+		const savedSelection = draftStore?.load();
+		const files = new TerminalFileController(
+			{
+				prepare: (paths) => trpcVanilla.terminalFiles.prepare.mutate({ terminalId: id, paths }),
+				append: (batchId, paths, retainedIds) =>
+					trpcVanilla.terminalFiles.append.mutate({ batchId, paths, retainedIds }),
+				resolve: (batchId, ids) =>
+					trpcVanilla.terminalFiles.resolve.mutate({ batchId, ids, submit: false }),
+				insert: (batchId, text, payload) =>
+					trpcVanilla.terminalFiles.insert.mutate({ batchId, text, payload, submit: false }),
+				copy: (batchId, id) => trpcVanilla.terminalFiles.copy.mutate({ batchId, id }),
+				copyPaths: (batchId, ids) => trpcVanilla.terminalFiles.copyPaths.mutate({ batchId, ids }),
+				clipboard: (text) => navigator.clipboard.writeText(text),
+				cancel: (batchId) => trpcVanilla.terminalFiles.cancel.mutate({ batchId }),
+				ready: () => !disposed && created && connected && activeRef.current && suppressDepth === 0,
+				paste: (text) => filePaste.paste(term, text),
+				focus: () => {
+					suppressDepth++;
+					try {
+						term.focus();
+					} finally {
+						suppressDepth--;
+					}
+				},
+			},
+			(state) => {
+				const saved = draftStore?.save(state.batch) ?? true;
+				if (!disposed)
+					setFileState(
+						!saved && state.batch
+							? {
+									...state,
+									status:
+										"Files are selected, but cannot be retained across refresh in this window.",
+								}
+							: state
+					);
+			}
+		);
+		if (savedSelection) files.restore(savedSelection);
+		else setFileState(files.state);
+		controllerRef.current = files;
+		setController(files);
+		const cleanupDrop = hostRef.current
+			? installFileDrop(
+					hostRef.current,
+					(dropped) => {
+						try {
+							void files.stage(window.electron.terminalFiles.nativePaths(dropped));
+						} catch (error) {
+							files.reportError(
+								error instanceof Error ? error.message : "Unable to resolve files."
+							);
+						}
+					},
+					setDragging,
+					(message) => files.reportError(message)
+				)
+			: undefined;
+		const escapeFiles = (event: KeyboardEvent) => {
+			if (event.key === "Escape" && (files.state.batch || files.state.busy)) {
+				event.preventDefault();
+				event.stopImmediatePropagation();
+				files.clear();
+			}
+		};
+		const host = hostRef.current;
+		host?.addEventListener("keydown", escapeFiles, true);
+		const cleanupConnection = window.electron?.daemon.onStatus((value) => {
+			connected = value;
+			files.suspend("Connection changed. Files are kept; review the prompt before sending.");
+		});
 
 		const resetStaleModes = () => {
 			// Written into xterm only — never the PTY.
@@ -182,8 +288,10 @@ export function Terminal({
 
 		if (api) {
 			api.terminal
-				.create(id, cwdRef.current || undefined, workspaceIdRef.current)
+				.create(id, cwdRef.current || undefined, workspaceId)
 				.then(({ wasAttached }) => {
+					if (disposed) return;
+					created = true;
 					// Only replay saved scrollback for fresh sessions.
 					// Attached sessions (live background PTYs) send their current buffer
 					// via onData — writing initialContent too would stack old content
@@ -209,7 +317,36 @@ export function Terminal({
 			// We suppress both keydown and keyup to prevent xterm from
 			// also emitting \r through its onData path.
 			let shiftEnterPending = false;
+			let fileEnterPending = false;
 			term.attachCustomKeyEventHandler((event: KeyboardEvent) => {
+				if (event.key === "Enter" && fileEnterPending) {
+					if (event.type === "keydown" && !event.repeat) {
+						// Focus can move before keyup; a new physical press must still work.
+						fileEnterPending = false;
+					} else {
+						if (event.type === "keyup") fileEnterPending = false;
+						event.preventDefault();
+						return false;
+					}
+				}
+				if (
+					event.key === "Enter" &&
+					!event.shiftKey &&
+					!event.ctrlKey &&
+					!event.altKey &&
+					!event.metaKey &&
+					!event.isComposing &&
+					files.hasPendingFiles()
+				) {
+					event.preventDefault();
+					if (event.type === "keydown" && !event.repeat) {
+						fileEnterPending = true;
+						// Consume this Enter to insert paths. A later Enter with no pending files
+						// follows xterm's ordinary input path and submits the completed draft.
+						void files.insertPending();
+					}
+					return false;
+				}
 				if (
 					event.key === "Enter" &&
 					event.shiftKey &&
@@ -228,6 +365,7 @@ export function Terminal({
 
 			cleanupData = api.terminal.onData(id, (data, meta) => {
 				if (meta?.replay) {
+					files.suspend();
 					suppressDepth++;
 					term.write(data, () => {
 						suppressDepth--;
@@ -242,6 +380,8 @@ export function Terminal({
 			});
 
 			cleanupExit = api.terminal.onExit(id, (code) => {
+				created = false;
+				files.clear("Terminal closed. Pending paths discarded.");
 				// Empty write = barrier: the buffer check inside resetStaleModes must
 				// run after any still-queued replay chunk has parsed.
 				term.write("", () => {
@@ -272,6 +412,8 @@ export function Terminal({
 				term,
 				() => suppressDepth > 0,
 				(data) => {
+					if (filePaste.capture(data)) return;
+					if (/[\r\n]/.test(data)) files.suspend();
 					// Suppress the \r that xterm may still emit after our
 					// Shift+Enter handler already sent the CSI u sequence.
 					if (shiftEnterPending) {
@@ -303,6 +445,12 @@ export function Terminal({
 		observer.observe(ref.current);
 
 		return () => {
+			disposed = true;
+			files.suspend();
+			controllerRef.current = null;
+			cleanupDrop?.();
+			cleanupConnection?.();
+			host?.removeEventListener("keydown", escapeFiles, true);
 			cleanupData?.();
 			cleanupExit?.();
 			cleanupPaste?.();
@@ -316,14 +464,39 @@ export function Terminal({
 			webgl?.dispose();
 			term.dispose();
 		};
-	}, [id]);
+	}, [id, workspaceId]);
 
 	useEffect(() => {
+		if (!active) {
+			controllerRef.current?.suspend();
+			setDragging(false);
+		}
 		void window.electron?.terminal.setVisible(id, active);
 		return () => {
 			void window.electron?.terminal.setVisible(id, false);
 		};
 	}, [active, id]);
 
-	return <div ref={ref} className="xterm-container" />;
+	return (
+		<div ref={hostRef} className="relative flex h-full min-h-0 flex-col">
+			<div className="min-h-0 flex-1">
+				<div ref={ref} className="xterm-container" />
+			</div>
+			{dragging && (
+				<output
+					aria-live="polite"
+					className="pointer-events-none absolute inset-2 z-40 flex items-center justify-center rounded border-2 border-dashed border-[var(--accent)] bg-[var(--bg-base)] text-sm"
+				>
+					Drop files to add to your message
+				</output>
+			)}
+			<TerminalFileShelf
+				key={`${id}:${workspaceId}`}
+				terminalId={id}
+				controller={controller}
+				state={fileState}
+				onFiles={stageFiles}
+			/>
+		</div>
+	);
 }

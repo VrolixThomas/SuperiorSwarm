@@ -26,6 +26,7 @@ import { settingsRouter } from "./settings";
 import { sharedFilesRouter } from "./shared-files";
 import { systemRouter } from "./system";
 import { telemetryRouter } from "./telemetry";
+import { terminalFilesRouter } from "./terminal-files";
 import { terminalSessionsRouter } from "./terminal-sessions";
 import { ticketsRouter } from "./tickets";
 import { updatesRouter } from "./updates";
@@ -48,6 +49,7 @@ export const appRouter = router({
 	remote: remoteRouter,
 	review: reviewRouter,
 	terminalSessions: terminalSessionsRouter,
+	terminalFiles: terminalFilesRouter,
 	atlassian: atlassianRouter,
 	diff: diffRouter,
 	sharedFiles: sharedFilesRouter,

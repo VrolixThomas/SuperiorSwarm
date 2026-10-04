@@ -10,6 +10,7 @@ import {
 	worktrees,
 } from "../db/schema";
 import { getDaemonClient } from "../terminal/daemon-instance";
+import { terminalFileOwners } from "../terminal/terminal-files";
 import { getAgentSessionManager } from "./agent-session-manager-handle";
 import { prepareWorktreeDeletion, startWorktreeDeletion } from "./worktree-deletion-coordinator";
 
@@ -73,6 +74,9 @@ export async function deleteWorkspaceRecords(input: DeleteWorkspaceRecordsInput)
 
 	getAgentSessionManager()?.removeSessions(agentTerminalIds);
 	const daemon = getDaemonClient();
-	for (const session of sessions) daemon?.dispose(session.id);
+	for (const session of sessions) {
+		terminalFileOwners.detach(session.id);
+		daemon?.dispose(session.id);
+	}
 	if (cleanupJob) startWorktreeDeletion(cleanupJob);
 }

@@ -1,3 +1,4 @@
+import type { TerminalFilesAPI } from "../shared/terminal-files";
 import type {
 	AgentAlertAPI,
 	AgentConfirmAPI,
@@ -16,6 +17,7 @@ import type {
 
 export interface ElectronAPI {
 	terminal: TerminalAPI;
+	terminalFiles: TerminalFilesAPI;
 	trpc: TrpcAPI;
 	hermesAttachments: HermesAttachmentUploadAPI;
 	dialog: DialogAPI;

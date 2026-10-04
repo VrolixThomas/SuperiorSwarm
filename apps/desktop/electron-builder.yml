@@ -16,6 +16,8 @@ files:
 
 asar: true
 asarUnpack:
+  - "out/main/terminal-file-copy"
+  - "out/main/terminal-process-info"
   - "node_modules/better-sqlite3/**/*"
   - "node_modules/node-pty/**/*"
   - "node_modules/bindings/**/*"

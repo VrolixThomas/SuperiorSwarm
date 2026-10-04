@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { eq } from "drizzle-orm";
 import { BrowserWindow, app, dialog, ipcMain, session, shell, systemPreferences } from "electron";
 import { AGENT_NOTIFY_PORT } from "../shared/agent-events";
@@ -64,7 +65,9 @@ import { ensureTelemetryState } from "./telemetry/state";
 import { DaemonClient } from "./terminal/daemon-client";
 import { setDaemonClient } from "./terminal/daemon-instance";
 import { setupTerminalIPC } from "./terminal/ipc";
+import { rendererTrust } from "./terminal/renderer-trust";
 import { cleanupStaleDaemons } from "./terminal/stale-daemon-cleanup";
+import { terminalFileOwners } from "./terminal/terminal-files";
 import { setupTRPCIPC } from "./trpc/ipc-link";
 import { appRouter } from "./trpc/routers";
 import { listQuickActions } from "./trpc/routers/quick-actions";
@@ -118,6 +121,18 @@ function createWindow() {
 		},
 	});
 	setMainWindow(win);
+	const rendererURL =
+		process.env["ELECTRON_RENDERER_URL"] ??
+		pathToFileURL(join(__dirname, "../renderer/index.html")).href;
+	rendererTrust.register(win.webContents.id, rendererURL);
+	const rendererId = win.webContents.id;
+	win.webContents.once("destroyed", () => {
+		rendererTrust.remove(rendererId);
+		terminalFileOwners.invalidateSender(rendererId);
+	});
+	win.webContents.on("did-start-navigation", (_event, _url, isInPlace, isMainFrame) => {
+		if (isMainFrame && !isInPlace) terminalFileOwners.invalidateSender(rendererId);
+	});
 
 	win.on("ready-to-show", () => {
 		win.show();
@@ -135,14 +150,7 @@ function createWindow() {
 	});
 
 	win.webContents.on("will-navigate", (event, url) => {
-		const devURL = process.env["ELECTRON_RENDERER_URL"];
-		const isDevURL = Boolean(devURL) && url.startsWith(devURL ?? "");
-		if (!isDevURL && !url.startsWith("file://")) {
-			event.preventDefault();
-			if (isHttpUrl(url)) {
-				void shell.openExternal(url);
-			}
-		}
+		if (!rendererTrust.navigationAllowed(win.webContents.id, url)) event.preventDefault();
 	});
 
 	if (process.env["ELECTRON_RENDERER_URL"]) {

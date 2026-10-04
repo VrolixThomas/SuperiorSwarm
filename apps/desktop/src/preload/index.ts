@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, webUtils } from "electron";
 import {
 	HERMES_ATTACHMENT_IPC_MAX_BYTES,
 	HERMES_ATTACHMENT_UPLOAD_CHUNK_MAX_BYTES,
@@ -24,6 +24,7 @@ import type {
 	TerminalDataMeta,
 	TrpcAPI,
 } from "../shared/types";
+import { resolveNativeFiles } from "./terminal-files";
 import { createTerminalInputAPI } from "./terminal-input";
 
 function createDispatcher<T extends unknown[]>(channel: string) {
@@ -284,6 +285,10 @@ const repoAPI: RepoAPI = {
 
 contextBridge.exposeInMainWorld("electron", {
 	terminal: terminalAPI,
+	terminalFiles: {
+		nativePaths: (files: File[]) =>
+			resolveNativeFiles(files, (file) => webUtils.getPathForFile(file)),
+	},
 	trpc: trpcAPI,
 	hermesAttachments: hermesAttachmentsAPI,
 	dialog: dialogAPI,

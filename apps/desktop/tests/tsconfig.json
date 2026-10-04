@@ -2,9 +2,10 @@
 	"extends": "@superiorswarm/typescript-config/base.json",
 	"compilerOptions": {
 		"target": "ES2022",
+		"jsx": "react-jsx",
 		"module": "ESNext",
 		"moduleResolution": "bundler",
 		"types": ["bun"]
 	},
-	"include": ["./**/*", "../src/shared/**/*"]
+	"include": ["./**/*", "../src/shared/**/*", "../src/renderer/types.d.ts"]
 }

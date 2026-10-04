@@ -4,6 +4,7 @@ import { type Socket, connect } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SocketServer } from "../../src/daemon/socket-server";
+import { DAEMON_PROTOCOL_VERSION } from "../../src/shared/daemon-protocol";
 import type { DaemonMessage } from "../../src/shared/daemon-protocol";
 
 const TEST_SOCKET = join(tmpdir(), `superiorswarm-test-${process.pid}.sock`);
@@ -131,11 +132,14 @@ describe("SocketServer", () => {
 		expect(msgs.some((m) => m.type === "ready")).toBe(true);
 	});
 
-	test("advertises optional binary capability without changing protocol 2", async () => {
+	test("advertises file and binary capabilities together on the current protocol", async () => {
 		const socket = connect(TEST_SOCKET);
 		try {
 			const ready = (await collectMessages(socket)).find((m) => m.type === "ready");
-			expect(ready).toMatchObject({ protocolVersion: 2, capabilities: ["binary-input-v1"] });
+			expect(ready).toMatchObject({ protocolVersion: DAEMON_PROTOCOL_VERSION });
+			expect(ready && "capabilities" in ready ? ready.capabilities : []).toEqual(
+				expect.arrayContaining(["binary-input-v1", "file-input-v1", "file-submit-v1"])
+			);
 		} finally {
 			socket.destroy();
 		}

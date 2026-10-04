@@ -4,6 +4,7 @@ interface InputDaemon {
 	readonly isConnected: boolean;
 	write(id: string, data: string): boolean;
 	writeBinary(id: string, data: string): boolean;
+	setInputPending?(id: string, pending: boolean): void;
 }
 interface InputIPC {
 	handle(
@@ -19,7 +20,8 @@ const MAX_PENDING_WRITES = 1_024;
 export function registerTerminalInputIPC(
 	ipc: InputIPC,
 	daemon: InputDaemon,
-	beforeInput?: (id: string) => Promise<void>
+	beforeInput?: (id: string) => Promise<void>,
+	onAcceptedInput?: (id: string, data: string, binary: boolean) => void
 ) {
 	const sessions = new Map<string, { tail: Promise<unknown> }>();
 	let pendingBytes = 0;
@@ -40,12 +42,15 @@ export function registerTerminalInputIPC(
 			pendingWrites >= MAX_PENDING_WRITES
 		)
 			return false;
+		// Invalidate pending file intents before any asynchronous wake/queue work.
+		onAcceptedInput?.(id, data, binary);
 		pendingBytes += bytes;
 		pendingWrites++;
 		let session = sessions.get(id);
 		if (!session) {
 			session = { tail: Promise.resolve() };
 			sessions.set(id, session);
+			daemon.setInputPending?.(id, true);
 		}
 		const current = session;
 		const task = current.tail.then(async () => {
@@ -61,7 +66,10 @@ export function registerTerminalInputIPC(
 		} finally {
 			pendingBytes -= bytes;
 			pendingWrites--;
-			if (sessions.get(id) === current && current.tail === tail) sessions.delete(id);
+			if (sessions.get(id) === current && current.tail === tail) {
+				sessions.delete(id);
+				daemon.setInputPending?.(id, false);
+			}
 		}
 	}
 	ipc.handle("terminal:write", (_event, id, data) => write(id, data, false));
@@ -69,8 +77,10 @@ export function registerTerminalInputIPC(
 	return {
 		invalidate: (id: string) => {
 			sessions.delete(id);
+			daemon.setInputPending?.(id, false);
 		},
 		clear: () => {
+			for (const id of sessions.keys()) daemon.setInputPending?.(id, false);
 			sessions.clear();
 		},
 	};

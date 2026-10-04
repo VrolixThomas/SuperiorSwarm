@@ -254,3 +254,79 @@ describe("terminal input routing", () => {
 		expect(received).toEqual(["\xff"]);
 	});
 });
+
+test("accepted input notifies lifecycle guards synchronously before queued wake work", async () => {
+	const handlers = new Map<
+		string,
+		(event: unknown, id: unknown, data: unknown) => Promise<boolean>
+	>();
+	const gate = deferred();
+	const accepted: Array<[string, string, boolean]> = [];
+	const delivered: string[] = [];
+	let connected = true;
+	registerTerminalInputIPC(
+		{ handle: (channel, handler) => handlers.set(channel, handler) },
+		{
+			get isConnected() {
+				return connected;
+			},
+			write: (_id, data) => {
+				delivered.push(data);
+				return true;
+			},
+			writeBinary: () => true,
+		},
+		() => gate.promise,
+		(id, data, binary) => accepted.push([id, data, binary])
+	);
+	const write = handlers.get("terminal:write")!;
+	const result = write(null, "terminal", "command\r");
+	try {
+		expect(accepted).toEqual([["terminal", "command\r", false]]);
+		expect(delivered).toEqual([]);
+		expect(await handlers.get("terminal:write-binary")!(null, "terminal", "雪")).toBe(false);
+		connected = false;
+		expect(await write(null, "terminal", "late\r")).toBe(false);
+		expect(accepted).toHaveLength(1);
+	} finally {
+		gate.resolve();
+		await result;
+	}
+});
+
+test("cancelling an old input queue cannot clear the pending marker for its replacement", async () => {
+	const handlers = new Map<
+		string,
+		(event: unknown, id: unknown, data: unknown) => Promise<boolean>
+	>();
+	const first = deferred();
+	const second = deferred();
+	const pending = new Set<string>();
+	let calls = 0;
+	const input = registerTerminalInputIPC(
+		{ handle: (channel, handler) => handlers.set(channel, handler) },
+		{
+			isConnected: true,
+			write: () => true,
+			writeBinary: () => true,
+			setInputPending: (id, value) => {
+				if (value) pending.add(id);
+				else pending.delete(id);
+			},
+		},
+		() => (++calls === 1 ? first.promise : second.promise)
+	);
+	const write = handlers.get("terminal:write")!;
+	const old = write(null, "term", "old");
+	await Promise.resolve();
+	expect(pending.has("term")).toBe(true);
+	input.invalidate("term");
+	expect(pending.has("term")).toBe(false);
+	const fresh = write(null, "term", "new");
+	first.resolve();
+	expect(await old).toBe(false);
+	expect(pending.has("term")).toBe(true);
+	second.resolve();
+	expect(await fresh).toBe(true);
+	expect(pending.size).toBe(0);
+});

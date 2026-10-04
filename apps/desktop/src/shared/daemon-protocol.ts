@@ -4,10 +4,10 @@ import { join } from "node:path";
 
 export const SUPERIORSWARM_DIR = join(homedir(), ".superiorswarm");
 
-// Incompatible changes use the existing idle-daemon upgrade policy. Additive
-// capabilities keep this version stable on upgrade AND rollback: old clients
-// ignore them, and new clients disable features absent from the ready frame.
-export const DAEMON_PROTOCOL_VERSION = 2;
+// Additive features are negotiated through capabilities. Version 3 also lets
+// idle daemons upgrade to native executable identity checks; live sessions
+// are retained. Binary-input-v1 has the same wire format in versions 2 and 3.
+export const DAEMON_PROTOCOL_VERSION = 3;
 
 // Hard per-frame limit enforced by the daemon on inbound lines. The client
 // must validate outbound frames against this — anything larger is discarded
@@ -38,7 +38,21 @@ export function daemonPaths(instanceId: string): DaemonPaths {
 	};
 }
 
+export interface DaemonFileTarget {
+	generation: string;
+	foreground: string;
+	supported: boolean;
+}
 export type ClientMessage =
+	| { type: "file-target"; id: string; requestId: string; managedAgent?: boolean }
+	| {
+			type: "file-input";
+			id: string;
+			requestId: string;
+			generation: string;
+			payload: string;
+			submit?: boolean;
+	  }
 	| { type: "create"; id: string; cwd?: string; env?: Record<string, string> }
 	| { type: "attach"; id: string }
 	| { type: "detach"; id: string }
@@ -53,6 +67,12 @@ export type ClientMessage =
 export type DaemonSession = { id: string; cwd: string; pid: number };
 
 export type DaemonMessage =
+	| {
+			type: "file-result";
+			requestId: string;
+			target?: DaemonFileTarget | null;
+			delivery?: "admitted" | "rejected" | "uncertain";
+	  }
 	// protocolVersion is absent on protocol-1 daemons.
 	| { type: "ready"; protocolVersion?: number; capabilities?: string[] }
 	| { type: "sessions"; sessions: DaemonSession[] }
