@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.23.0 (2026-10-04)
+
+### What's New
+
+SuperiorSwarm now lets you add local files to terminal prompts, review their paths, and insert them before sending. A new optional Mac setting keeps commands and agents running with the lid closed. The Files browser now shows ignored dotfiles and symbolic links, including support for opening and saving linked files. Terminal mouse scrolling, large pastes, and file delivery are more reliable.
+
+### Changes
+
+- Investigate/env file viewer (#147)
+- Investigate/terminal mouse scroll (#148)
+- feat: add macOS closed-lid keep-awake setting (#149)
+- Investigate/terminal file drop (#150)
+- chore: make release skill available to agents
+
 ## v0.22.0 (2026-08-15)
 
 ### What's New
