@@ -39,6 +39,7 @@ Full-suite `bun test` (159 files) is unreliable locally: ~100+ failures are 5s-t
 - **MCP server** → `mcp-standalone/` (native modules rebuilt against Electron ABI; launched via `ELECTRON_RUN_AS_NODE=1`)
 - **Shared worktree file links** → `src/main/shared-files.ts`; metadata-only browser link rows → `src/main/git/file-tree.ts`; explicit link reads/saves → `src/main/git/workspace-file-ops.ts`.
 - **Files browser vs legacy enumeration** → `src/shared/file-browser-types.ts`, `src/shared/file-browser-policy.ts`; registered file roots → `src/main/git/workspace-file-root.ts`; focused type-check → `tests/tsconfig.file-browser.json`.
+- **Diff Markdown previews** → `DiffFileTab.tsx`, `PRReviewFileTab.tsx`, `review/ReviewTab.tsx`, `review-mode/views/ChangesView.tsx`; the global `markdownPreviewMode` must be scoped to each file's language before hiding Monaco or rendering previews.
 - **DB schema + migrations** → `src/main/db/` (auto-applied on startup via `initializeDatabase()`). **Always name migrations descriptively** — use `bun run db:generate --name <descriptive_name>` (e.g., `add_review_viewed_table`, not the default timestamped auto-name).
 
 ## Code Style
