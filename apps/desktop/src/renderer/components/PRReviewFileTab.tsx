@@ -10,7 +10,6 @@ import type {
 	UnifiedThread,
 } from "../../shared/github-types";
 import { formatPrIdentifier } from "../../shared/pr-identifier";
-import { basename } from "../lib/format";
 import { emitPRReviewEvent, subscribePRReviewEvent } from "../lib/pr-review-events";
 import { prReviewSessionKey, usePRReviewSessionStore } from "../stores/pr-review-session-store";
 import { useTabStore } from "../stores/tab-store";
@@ -790,6 +789,7 @@ export function PRReviewFileTab({ prCtx, filePath, language }: PRReviewFileTabPr
 	const diffMode = useTabStore((s) => s.diffMode);
 	const setDiffMode = useTabStore((s) => s.setDiffMode);
 	const markdownPreviewMode = useTabStore((s) => s.markdownPreviewMode);
+	const effectiveMarkdownPreviewMode = language === "markdown" ? markdownPreviewMode : "off";
 	const activeWorkspaceId = useTabStore((s) => s.activeWorkspaceId);
 	// biome-ignore lint/correctness/useExhaustiveDependencies: prCtx primitives only — avoid recompute on new prCtx ref
 	const sessionKey = useMemo(
@@ -812,14 +812,15 @@ export function PRReviewFileTab({ prCtx, filePath, language }: PRReviewFileTabPr
 	const markdownPaneRef = useRef<HTMLDivElement>(null);
 	const isSyncingScrollRef = useRef(false);
 
-	const hideEditor = markdownPreviewMode === "rendered" || markdownPreviewMode === "rich-diff";
+	const hideEditor =
+		effectiveMarkdownPreviewMode === "rendered" || effectiveMarkdownPreviewMode === "rich-diff";
 
 	useEffect(() => {
 		if (hideEditor) {
 			setEditorInstance(null);
 			return;
 		}
-		if (!editorInstance || markdownPreviewMode !== "split") return;
+		if (!editorInstance || effectiveMarkdownPreviewMode !== "split") return;
 		const modEditor = editorInstance.getModifiedEditor();
 
 		const scrollSub = modEditor.onDidScrollChange((e) => {
@@ -838,7 +839,7 @@ export function PRReviewFileTab({ prCtx, filePath, language }: PRReviewFileTabPr
 		});
 
 		return () => scrollSub.dispose();
-	}, [editorInstance, hideEditor, markdownPreviewMode]);
+	}, [editorInstance, hideEditor, effectiveMarkdownPreviewMode]);
 
 	const [pendingLine, setPendingLine] = useState<number | null>(null);
 
@@ -1027,9 +1028,6 @@ export function PRReviewFileTab({ prCtx, filePath, language }: PRReviewFileTabPr
 		},
 		[unresolvedLines, editorInstance]
 	);
-
-	// Get current HEAD commit SHA for review comments (needed by GitHub API)
-	const commitId = prDetails?.headCommitOid ?? "";
 
 	const handleReply = useCallback(
 		(threadId: string, body: string) => {
@@ -1325,18 +1323,18 @@ export function PRReviewFileTab({ prCtx, filePath, language }: PRReviewFileTabPr
 					<div className="flex h-full items-center justify-center text-[13px] text-[var(--text-quaternary)]">
 						Loading…
 					</div>
-				) : markdownPreviewMode === "rich-diff" ? (
+				) : effectiveMarkdownPreviewMode === "rich-diff" ? (
 					<div className="h-full overflow-y-auto p-4">
 						<MarkdownRenderedDiff
 							original={originalQuery.data?.content ?? ""}
 							modified={modifiedQuery.data?.content ?? ""}
 						/>
 					</div>
-				) : markdownPreviewMode === "rendered" ? (
+				) : effectiveMarkdownPreviewMode === "rendered" ? (
 					<div className="h-full overflow-y-auto p-4">
 						<MarkdownRenderer content={modifiedQuery.data?.content ?? ""} />
 					</div>
-				) : markdownPreviewMode === "split" ? (
+				) : effectiveMarkdownPreviewMode === "split" ? (
 					<div className="flex h-full overflow-hidden">
 						<div className="flex-1 overflow-hidden">
 							<DiffEditor
