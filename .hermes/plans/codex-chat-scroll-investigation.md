@@ -51,9 +51,53 @@ standard fields and checks that the viewport actually moves.
   this setting, restoring a three-row step; page events remain one page and
   Alt acceleration is applied once. Pixel movement remains owned by xterm.
 
-The separate upstream application-wheel damping/single-report behavior remains
-in xterm. It did not explain the inspected normal-buffer chat, whose mouse
-tracking was off. See [xterm issue #6105](https://github.com/xtermjs/xterm.js/issues/6105).
+## Follow-up: scrolling speed after 0.23.1
+
+The installed 0.23.1 app contained the sensitivity-3 change, but inspection of
+the running Codex pane now found `buffer=alternate`, `mouseTrackingMode=any`,
+and `encoding=SGR`. This differs from the normal-buffer instance inspected for
+the history-loss issue. The prior fix did not cover this application-owned path.
+
+The release comparison confirms that 0.23 added the line/page adapter in
+`fbd95c61`. That adapter explicitly bypassed mouse tracking and pixel events.
+The xterm version and its default sensitivity did not change from 0.22 to 0.23;
+the underlying application-wheel cap is also present in 0.22. There is no
+evidence that 0.23 introduced that upstream cap. The adapter and the subsequent
+sensitivity-only fix both left the relevant path untouched.
+
+In xterm 6, application pixel deltas below 50px receive 0.3 damping, and the
+calculated row count is used only as a yes/no gate: at most one arrow/mouse
+report reaches the program per event. Increasing sensitivity does not remove
+that cap. See [xterm issue #6105](https://github.com/xtermjs/xterm.js/issues/6105).
+
+The adapter now normalizes alternate-screen pixel input and SGR/SGR-pixel wheel
+input into proportional, bounded repetitions through `Terminal.input`. It uses
+the measured cell height, accumulates fractional movement, preserves modifiers,
+and resets fractions on direction, buffer, encoding, or geometry changes.
+Vertical trackpad movement can include small horizontal deltas. Public parser
+hooks observe mouse encoding changes; clicks and pointer motion remain owned by
+xterm. Normal-buffer pixel scrollback and legacy binary/X10 behavior remain
+unchanged. Listener replacement retains the encoding for the same terminal.
+
+`tests/terminal-wheel-native.test.ts` injects trusted wheel events through
+Chromium's input dispatch, preserving the browser's native legacy fields. At
+18px cell height and sensitivity 3:
+
+| Input | Previous application path | Fixed application path |
+| --- | ---: | ---: |
+| Ten -4px events | 1 report | 6 reports |
+| One -120px event | 1 report | 20 reports |
+
+These results cover alternate arrow input, SGR, and SGR pixels. Normal terminal
+scrollback matches its baseline. The running pane was also given a temporary
+copy of the fix: a 120px probe generated 19 reports at its measured geometry.
+The probe intercepted `Terminal.input`, so it did not send test input to the PTY.
+The temporary handler is cleaned up when that terminal is disposed; the source
+change is required for persistence and other panes.
+
+Validation: 22 tests passed across the wheel, native Electron, and input-routing
+files. The native test includes 24 mode/sensitivity/input combinations. The
+focused TypeScript check and production build passed.
 
 ## Compatibility and activation
 

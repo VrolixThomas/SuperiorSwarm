@@ -44,7 +44,7 @@ test("pinned xterm in isolated Electron: propagation, modes, bytes, focus and li
 			]);
 			if (code !== 0) throw Error(`Electron exited ${code}\n${stdout}\n${stderr}`);
 			const report = JSON.parse(stdout.trim().split("\n").at(-1) ?? "{}");
-			expect(report.results).toHaveLength(7);
+			expect(report.results).toHaveLength(8);
 			console.log(
 				`xterm 6.0.0; Electron ${report.versions.electron}; Chromium ${report.versions.chrome}: ${report.results.join("; ")}`
 			);
