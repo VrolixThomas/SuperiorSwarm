@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.23.1 (2026-10-09)
+
+### What's New
+
+SuperiorSwarm now preserves terminal chat history more reliably when switching tabs or reconnecting to sessions, and restores the expected terminal scrolling speed. Code diffs now remain visible when Markdown preview is enabled for another file.
+
+### Changes
+
+- Fix dif viewer (#151)
+- Fix scroll (#152)
+- fix(ci): repair macOS signing and allow tagged release rebuilds
+- docs: update CLAUDE.md
+
 ## v0.23.0 (2026-10-04)
 
 ### What's New
