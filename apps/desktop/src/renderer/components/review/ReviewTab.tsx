@@ -285,7 +285,9 @@ export function ReviewTab({
 	}
 
 	const language = selectedFile ? detectLanguage(selectedFile.path) : "plaintext";
-	const hideEditor = markdownPreviewMode === "rendered" || markdownPreviewMode === "rich-diff";
+	const effectiveMarkdownPreviewMode = language === "markdown" ? markdownPreviewMode : "off";
+	const hideEditor =
+		effectiveMarkdownPreviewMode === "rendered" || effectiveMarkdownPreviewMode === "rich-diff";
 
 	const header = (
 		<div className="flex flex-col" data-review-tab>
@@ -365,15 +367,15 @@ export function ReviewTab({
 		<div className="flex h-full flex-col" data-review-tab>
 			{header}
 			<div className="min-h-0 flex-1 overflow-hidden">
-				{markdownPreviewMode === "rich-diff" ? (
+				{effectiveMarkdownPreviewMode === "rich-diff" ? (
 					<div className="h-full overflow-y-auto p-4">
 						<MarkdownRenderedDiff original={original} modified={modifiedContent} />
 					</div>
-				) : markdownPreviewMode === "rendered" ? (
+				) : effectiveMarkdownPreviewMode === "rendered" ? (
 					<div className="h-full overflow-y-auto p-4">
 						<MarkdownRenderer content={modifiedContent} />
 					</div>
-				) : markdownPreviewMode === "split" && language === "markdown" ? (
+				) : effectiveMarkdownPreviewMode === "split" ? (
 					<div className="flex h-full overflow-hidden">
 						<div className="flex-1 overflow-hidden">
 							<DiffEditor

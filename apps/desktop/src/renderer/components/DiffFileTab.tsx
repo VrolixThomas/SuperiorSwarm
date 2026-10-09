@@ -22,6 +22,7 @@ export function DiffFileTab({ diffCtx, filePath, language, workspaceId }: DiffFi
 	const diffMode = useTabStore((s) => s.diffMode);
 	const setDiffMode = useTabStore((s) => s.setDiffMode);
 	const markdownPreviewMode = useTabStore((s) => s.markdownPreviewMode);
+	const effectiveMarkdownPreviewMode = language === "markdown" ? markdownPreviewMode : "off";
 	const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const markdownPaneRef = useRef<HTMLDivElement>(null);
 	const isSyncingScrollRef = useRef(false);
@@ -68,7 +69,8 @@ export function DiffFileTab({ diffCtx, filePath, language, workspaceId }: DiffFi
 	// Commit-scoped diffs are historical — never editable. PR diffs also stay read-only.
 	const isEditable = diffCtx.type === "working-tree" || diffCtx.type === "branch";
 	const isLoading = originalQuery.isLoading || modifiedQuery.isLoading;
-	const hideEditor = markdownPreviewMode === "rendered" || markdownPreviewMode === "rich-diff";
+	const hideEditor =
+		effectiveMarkdownPreviewMode === "rendered" || effectiveMarkdownPreviewMode === "rich-diff";
 
 	const commentingEnabled =
 		!!workspaceId && (diffCtx.type === "working-tree" || diffCtx.type === "branch");
@@ -200,18 +202,18 @@ export function DiffFileTab({ diffCtx, filePath, language, workspaceId }: DiffFi
 					<div className="flex h-full items-center justify-center text-[13px] text-[var(--text-quaternary)]">
 						Loading…
 					</div>
-				) : markdownPreviewMode === "rich-diff" ? (
+				) : effectiveMarkdownPreviewMode === "rich-diff" ? (
 					<div className="h-full overflow-y-auto p-4">
 						<MarkdownRenderedDiff
 							original={originalQuery.data?.content ?? ""}
 							modified={modifiedQuery.data?.content ?? ""}
 						/>
 					</div>
-				) : markdownPreviewMode === "rendered" ? (
+				) : effectiveMarkdownPreviewMode === "rendered" ? (
 					<div className="h-full overflow-y-auto p-4">
 						<MarkdownRenderer content={modifiedQuery.data?.content ?? ""} />
 					</div>
-				) : markdownPreviewMode === "split" ? (
+				) : effectiveMarkdownPreviewMode === "split" ? (
 					<div className="flex h-full overflow-hidden">
 						<div className="flex-1 overflow-hidden">
 							<DiffEditor
