@@ -1,0 +1,22 @@
+{
+	"extends": "../tsconfig.main.json",
+	"compilerOptions": {
+		"types": ["bun", "node"]
+	},
+	"include": [
+		"../src/daemon/pty-manager.ts",
+		"../src/daemon/terminal-replay-buffer.ts",
+		"../src/daemon/socket-server.ts",
+		"../src/main/terminal/daemon-client.ts",
+		"../src/renderer/components/terminal-replay.ts",
+		"../src/renderer/components/terminal-wheel.ts",
+		"./daemon/terminal-replay-buffer.test.ts",
+		"./daemon/daemon-client.test.ts",
+		"./terminal-wheel.test.ts",
+		"./fixtures/terminal-wheel-browser.ts",
+		"./daemon/terminal-output-framer.test.ts",
+		"./terminal-replay-pty.test.ts",
+		"./fixtures/terminal-replay-pty.ts",
+		"./daemon-built-startup.test.ts"
+	]
+}

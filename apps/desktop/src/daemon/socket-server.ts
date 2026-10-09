@@ -11,6 +11,7 @@ import {
 	MAX_BINARY_INPUT_BYTES,
 	isBinaryInput,
 } from "../shared/terminal-input";
+import { TERMINAL_SNAPSHOT_CAPABILITY } from "../shared/terminal-replay";
 import type { PtyManager } from "./pty-manager";
 import type { ScrollbackStore } from "./scrollback-store";
 
@@ -63,7 +64,12 @@ export class SocketServer {
 		this.send(socket, {
 			type: "ready",
 			protocolVersion: DAEMON_PROTOCOL_VERSION,
-			capabilities: ["file-input-v1", "file-submit-v1", BINARY_INPUT_CAPABILITY],
+			capabilities: [
+				"file-input-v1",
+				"file-submit-v1",
+				BINARY_INPUT_CAPABILITY,
+				TERMINAL_SNAPSHOT_CAPABILITY,
+			],
 		});
 
 		let lineBuffer = "";
@@ -175,7 +181,8 @@ export class SocketServer {
 							this.scrollbackStore.flush([{ id: msg.id, buffer: finalBuffer }]);
 						}
 					},
-					clientId
+					clientId,
+					msg.snapshot === true
 				);
 				if (attached === null) {
 					this.send(socket, { type: "error", id: msg.id, message: "session not found" });

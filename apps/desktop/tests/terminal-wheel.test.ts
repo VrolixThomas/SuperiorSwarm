@@ -13,7 +13,7 @@ function fixture() {
 			mouseTrackingMode: "none" as "none" | "x10" | "vt200" | "drag" | "any",
 			applicationCursorKeysMode: false,
 		},
-		options: { macOptionClickForcesSelection: false, disableStdin: false },
+		options: { macOptionClickForcesSelection: false, disableStdin: false, scrollSensitivity: 1 },
 		scrollLines(n: number) {
 			calls.push(n);
 			normal.viewportY = Math.max(0, Math.min(normal.baseY, normal.viewportY + n));
@@ -68,6 +68,17 @@ function fixture() {
 }
 
 describe("terminal LINE/PAGE wheel ownership", () => {
+	test("configured speed restores three-row line wheels without multiplying pages", () => {
+		const f = fixture();
+		f.term.options.scrollSensitivity = 3;
+		f.wheel(-1);
+		expect(f.calls).toEqual([-3]);
+		f.wheel(1, 2);
+		expect(f.calls).toEqual([-3, 23]);
+		f.wheel(-1, 1, { altKey: true });
+		expect(f.calls).toEqual([-3, 23, -15]);
+	});
+
 	test("signed lines and pages scroll exactly once, with Alt once and a one-page cap", () => {
 		const f = fixture();
 		for (const [dy, mode, alt, expected] of [

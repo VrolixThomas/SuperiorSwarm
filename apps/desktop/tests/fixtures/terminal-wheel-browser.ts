@@ -1,6 +1,9 @@
+import { SerializeAddon } from "@xterm/addon-serialize";
 import { Terminal } from "@xterm/xterm";
 import { installTerminalInput } from "../../src/renderer/components/terminal-input";
+import { writeTerminalReplay } from "../../src/renderer/components/terminal-replay";
 import { installTerminalWheelHandler } from "../../src/renderer/components/terminal-wheel";
+import { encodeTerminalReplay } from "../../src/shared/terminal-replay";
 
 const assert = (condition: unknown, label: string) => {
 	if (!condition) throw Error(label);
@@ -54,6 +57,13 @@ async function run() {
 			clientX: rect.left + rect.width / 2,
 			clientY: rect.top + 20,
 			...extra,
+		});
+		// Chromium synthetic wheels expose zero-valued legacy deltas. Omit them
+		// so xterm exercises the standard deltaY path instead of a no-op.
+		Object.defineProperties(event, {
+			wheelDelta: { value: undefined },
+			wheelDeltaX: { value: undefined },
+			wheelDeltaY: { value: undefined },
 		});
 		target.dispatchEvent(event);
 		return event;
@@ -144,10 +154,14 @@ async function run() {
 				for (const pair of pairs) {
 					const target = pair.host.querySelector(".xterm-screen");
 					if (!target) throw Error("missing paired screen");
+					const before = pair.terminal.buffer.active.viewportY;
 					const event = wheel(dy, 0, target);
 					await tick();
 					positions.push(pair.terminal.buffer.active.viewportY);
 					prevented.push(event.defaultPrevented);
+					if (dy >= 49) {
+						assert(pair.terminal.buffer.active.viewportY > before, "pixel input actually scrolls");
+					}
 				}
 				assert(
 					positions[0] === positions[1] && prevented[0] === prevented[1],
@@ -162,6 +176,75 @@ async function run() {
 			}
 		}
 		results.push("real xterm pixel baseline equivalence");
+
+		// A long-running agent can fill scrollback and continue repainting its
+		// prompt while the user reads older output.
+		term.options.scrollback = 10_000;
+		await write("history\r\n".repeat(11_000));
+		await tick();
+		for (const withAdapter of [false, true]) {
+			cleanup();
+			if (withAdapter) cleanup = installTerminalWheelHandler(container, term, () => visible);
+			term.scrollToBottom();
+			await tick();
+			for (const unit of withAdapter ? [0, 1, 2] : [0, 1]) {
+				const before = term.buffer.active.viewportY;
+				wheel(unit === 0 ? -100 : -1, unit);
+				await tick();
+				const after = term.buffer.active.viewportY;
+				assert(after < before, `full scrollback moves up: adapter=${withAdapter}, unit=${unit}`);
+				await write("\x1b[?2026h\x1b[24;1Hstatus\x1b[?25h\x1b[?2026l");
+				await tick();
+				assert(term.buffer.active.viewportY === after, "prompt redraw preserves scroll position");
+				await write("\r\nmore output\r\n");
+				await tick();
+				assert(term.buffer.active.viewportY <= after, "buffer trimming preserves scrolled-up view");
+			}
+		}
+		results.push("full scrollback, ongoing output and prompt redraws");
+
+		const serializer = new SerializeAddon();
+		term.loadAddon(serializer);
+		const snapshot = encodeTerminalReplay(serializer.serialize(), term.cols, term.rows);
+		term.resize(120, 30);
+		term.write("stale output");
+		const short = encodeTerminalReplay("restored\r\n", 80, 24);
+		await new Promise<void>((resolve) => writeTerminalReplay(term, short, resolve));
+		assert(
+			term.buffer.active.getLine(0)?.translateToString(true) === "restored",
+			"reset follows queued output"
+		);
+		// Different source sizes must apply in parser order even when both arrive
+		// before either has finished writing.
+		await Promise.all([
+			new Promise<void>((resolve) =>
+				writeTerminalReplay(term, encodeTerminalReplay("x".repeat(80), 80, 24), resolve)
+			),
+			new Promise<void>((resolve) =>
+				writeTerminalReplay(term, encodeTerminalReplay("final", 60, 20), resolve)
+			),
+		]);
+		assert(term.cols === 120 && term.rows === 30, "back-to-back snapshots preserve pane size");
+		assert(
+			term.buffer.active.getLine(0)?.translateToString(true) === "final",
+			"last replay wins without interleaving"
+		);
+		for (let i = 0; i < 2; i++) {
+			replay = true;
+			await new Promise<void>((resolve) => writeTerminalReplay(term, snapshot, resolve));
+			replay = false;
+			await tick();
+			assert(term.cols === 120 && term.rows === 30, "replay restores the current pane dimensions");
+			assert(term.buffer.active.baseY > 9000, "replay preserves long history");
+			assert(term.buffer.active.length <= 10030, "repeated attachment does not duplicate history");
+			term.scrollToBottom();
+			const before = term.buffer.active.viewportY;
+			wheel(-3, 1);
+			await tick();
+			assert(term.buffer.active.viewportY === before - 3, "replayed history can be scrolled");
+		}
+		term.resize(240, 24);
+		results.push("snapshot restore, pane resize, repeated attach and scrolling");
 
 		await write("\x1b[?1049h");
 		text.length = 0;

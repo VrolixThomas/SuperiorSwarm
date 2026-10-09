@@ -10,10 +10,12 @@ import { Terminal as XTerm } from "@xterm/xterm";
 import { useEffect, useRef, useState } from "react";
 import { CmdBuffer } from "../../shared/lib/cmd-buffer";
 import { RESET_STALE_MODES, isShellProcess } from "../../shared/lib/terminal-modes";
+import { TERMINAL_SCROLLBACK_LINES } from "../../shared/terminal-replay";
 import { useTabStore } from "../stores/tab-store";
 import { installTerminalInput } from "./terminal-input";
 import { createTerminalLinkHandler } from "./terminal-links";
 import { interceptPaste } from "./terminal-paste";
+import { writeTerminalReplay } from "./terminal-replay";
 import { installTerminalWheelHandler } from "./terminal-wheel";
 
 import { trpcVanilla } from "../trpc/client";
@@ -114,8 +116,8 @@ export function Terminal({
 			linkHandler: {
 				activate: openExternalLink,
 			},
-			scrollback: 10000,
-			scrollSensitivity: 1,
+			scrollback: TERMINAL_SCROLLBACK_LINES,
+			scrollSensitivity: 3,
 			fastScrollSensitivity: 5,
 			smoothScrollDuration: 0,
 			theme: buildTerminalTheme(),
@@ -298,10 +300,11 @@ export function Terminal({
 					// before the live buffer and misplace the cursor inside TUI apps.
 					if (!wasAttached && initialContentRef.current) {
 						suppressDepth++;
-						term.write(initialContentRef.current, () => {
+						writeTerminalReplay(term, initialContentRef.current, () => {
 							suppressDepth--;
 							// Fresh PTY: the saved scrollback's app is gone by definition.
 							resetStaleModes();
+							fit.fit();
 						});
 					}
 				})
@@ -367,12 +370,13 @@ export function Terminal({
 				if (meta?.replay) {
 					files.suspend();
 					suppressDepth++;
-					term.write(data, () => {
+					writeTerminalReplay(term, data, () => {
 						suppressDepth--;
 						// Shell in the foreground means whatever set those modes is gone.
 						if (isShellProcess(meta.fg)) {
 							resetStaleModes();
 						}
+						fit.fit();
 					});
 				} else {
 					term.write(data);
@@ -433,15 +437,20 @@ export function Terminal({
 				}
 			);
 
-			term.onResize(({ cols, rows }) => api.terminal.resize(id, cols, rows));
+			term.onResize(({ cols, rows }) => {
+				// Snapshot dimensions are temporary and must never resize the live PTY.
+				if (suppressDepth === 0) api.terminal.resize(id, cols, rows);
+			});
 			api.terminal.resize(id, term.cols, term.rows);
 			cleanupPaste = interceptPaste(term, (data) => api.terminal.write(id, data));
 		}
 
 		// Resize handling
-		const onResize = () => fit.fit();
+		const onResize = () => {
+			if (suppressDepth === 0) fit.fit();
+		};
 		window.addEventListener("resize", onResize);
-		const observer = new ResizeObserver(() => requestAnimationFrame(() => fit.fit()));
+		const observer = new ResizeObserver(() => requestAnimationFrame(onResize));
 		observer.observe(ref.current);
 
 		return () => {
