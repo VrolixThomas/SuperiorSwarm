@@ -12,10 +12,14 @@ export function normalizeWheelToRows(
 	unit: number,
 	rows: number,
 	alt: boolean,
-	residue: number
+	residue: number,
+	sensitivity = 1,
+	fastSensitivity = 5
 ) {
 	const page = Math.max(1, rows - 1);
-	const raw = deltaY * (unit === 2 ? page : 1) * (alt ? 5 : 1);
+	// Page events already describe a whole viewport. Line events share the
+	// configured wheel speed with xterm's pixel path.
+	const raw = deltaY * (unit === 2 ? page : sensitivity) * (alt ? fastSensitivity : 1);
 	let total = residue + Math.max(-page, Math.min(page, raw));
 	// Decimal wheel fractions (e.g. ten 0.1 rows) can land just below an
 	// integer in IEEE-754. Correct rounding error without a minimum step.
@@ -38,6 +42,7 @@ export function createTerminalWheelHandler(
 	let rows = 0;
 	let applicationCursor = false;
 	let alt = false;
+	let sensitivity = 1;
 	const reset = () => {
 		residue = 0;
 		direction = 0;
@@ -74,7 +79,8 @@ export function createTerminalWheelHandler(
 			buffer !== active ||
 			rows !== term.rows ||
 			applicationCursor !== term.modes.applicationCursorKeysMode ||
-			alt !== event.altKey
+			alt !== event.altKey ||
+			sensitivity !== (term.options.scrollSensitivity ?? 1)
 		)
 			residue = 0;
 		direction = sign;
@@ -83,6 +89,7 @@ export function createTerminalWheelHandler(
 		rows = term.rows;
 		applicationCursor = term.modes.applicationCursorKeysMode;
 		alt = event.altKey;
+		sensitivity = term.options.scrollSensitivity ?? 1;
 
 		// Owned vertical input stays inside this pane, even at a boundary.
 		event.preventDefault();
@@ -96,7 +103,15 @@ export function createTerminalWheelHandler(
 			reset();
 			return;
 		}
-		const result = normalizeWheelToRows(event.deltaY, unit, rows, alt, residue);
+		const result = normalizeWheelToRows(
+			event.deltaY,
+			unit,
+			rows,
+			alt,
+			residue,
+			sensitivity,
+			term.options.fastScrollSensitivity ?? 5
+		);
 		residue = result.residue;
 		if (!result.lines) return;
 		if (active.type === "normal") term.scrollLines(result.lines);

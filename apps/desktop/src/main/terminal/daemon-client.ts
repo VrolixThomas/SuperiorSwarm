@@ -25,6 +25,10 @@ import {
 import { type FileDelivery, isFilePaste } from "../../shared/terminal-files";
 import { BINARY_INPUT_CAPABILITY, isBinaryInput } from "../../shared/terminal-input";
 import {
+	MAX_TERMINAL_REPLAY_CHARS,
+	TERMINAL_SNAPSHOT_CAPABILITY,
+} from "../../shared/terminal-replay";
+import {
 	DaemonOwnershipMismatchError,
 	isDaemonOwnershipMismatchError,
 	isOwnerRecordCurrent,
@@ -85,6 +89,7 @@ export class DaemonClient {
 	private remoteProtocolVersion = DAEMON_PROTOCOL_VERSION;
 	private fileInputCapable = false;
 	private fileSubmitCapable = false;
+	private snapshotCapable = false;
 	private pendingInputTerminals = new Set<string>();
 	setInputPending(id: string, pending: boolean): void {
 		if (pending) this.pendingInputTerminals.add(id);
@@ -191,6 +196,7 @@ export class DaemonClient {
 		if (!connected) {
 			this.fileInputCapable = false;
 			this.fileSubmitCapable = false;
+			this.snapshotCapable = false;
 			for (const resolve of this.fileRequests.values()) resolve(null);
 		}
 		for (const listener of this.connectionStatusListeners) {
@@ -230,6 +236,7 @@ export class DaemonClient {
 		this.remoteProtocolVersion = ready.protocolVersion ?? 1;
 		this.fileInputCapable = ready.capabilities?.includes("file-input-v1") === true;
 		this.fileSubmitCapable = ready.capabilities?.includes("file-submit-v1") === true;
+		this.snapshotCapable = ready.capabilities?.includes(TERMINAL_SNAPSHOT_CAPABILITY) === true;
 		this.binaryInputSupported =
 			(ready.protocolVersion === 2 || ready.protocolVersion === DAEMON_PROTOCOL_VERSION) &&
 			Array.isArray(ready.capabilities) &&
@@ -238,7 +245,7 @@ export class DaemonClient {
 		// The session list is needed both to decide whether a stale daemon can be
 		// restarted and to seed liveSessions — fetch it once.
 		let sessions: DaemonSession[] | null = null;
-		if (ready.protocolVersion !== DAEMON_PROTOCOL_VERSION) {
+		if (ready.protocolVersion !== DAEMON_PROTOCOL_VERSION || !this.snapshotCapable) {
 			// A daemon from a previous app version survives upgrades (spawnDaemon
 			// skips spawning while its pid is alive) and keeps its old behavior.
 			// Restart it so protocol fixes actually reach the user — but only when
@@ -247,6 +254,10 @@ export class DaemonClient {
 			// (deleting the socket under an unkillable daemon orphans it and leaks
 			// a second daemon on the next spawn).
 			const staleVersion = this.remoteProtocolVersion;
+			const staleReason =
+				staleVersion !== DAEMON_PROTOCOL_VERSION
+					? `daemon speaks protocol v${staleVersion}, expected v${DAEMON_PROTOCOL_VERSION}`
+					: "daemon does not support terminal history snapshots";
 			if (allowStaleRestart && dbPath && daemonScriptPath) {
 				// Read the pid before the list so the kill follows the zero-session
 				// answer immediately — a session created by another client in that
@@ -256,20 +267,16 @@ export class DaemonClient {
 				const staleSessions = await this.waitForMessage("sessions");
 				sessions = staleSessions.type === "sessions" ? staleSessions.sessions : [];
 				if (sessions.length === 0 && stalePid !== null) {
-					console.warn(
-						`[daemon-client] daemon speaks protocol v${staleVersion}, expected v${DAEMON_PROTOCOL_VERSION}; restarting daemon`
-					);
+					console.warn(`[daemon-client] ${staleReason}; restarting daemon`);
 					await this.killStaleDaemon(stalePid);
 					await this.connectInternal(dbPath, daemonScriptPath, false);
 					return;
 				}
 				console.warn(
-					`[daemon-client] daemon speaks protocol v${staleVersion}, expected v${DAEMON_PROTOCOL_VERSION}; keeping it (${sessions.length} live sessions, pid ${stalePid ?? "unknown"})`
+					`[daemon-client] ${staleReason}; keeping it (${sessions.length} live sessions, pid ${stalePid ?? "unknown"})`
 				);
 			} else {
-				console.warn(
-					`[daemon-client] daemon speaks protocol v${staleVersion}, expected v${DAEMON_PROTOCOL_VERSION}; cannot restart (no spawn params)`
-				);
+				console.warn(`[daemon-client] ${staleReason}; cannot restart (no spawn params)`);
 			}
 		}
 
@@ -293,7 +300,7 @@ export class DaemonClient {
 		// callbacks survive for that retry instead of being killed off.
 		for (const [id, cb] of this.callbacks) {
 			if (this.liveSessions.has(id)) {
-				this.send({ type: "attach", id });
+				this.send({ type: "attach", id, ...(this.snapshotCapable ? { snapshot: true } : {}) });
 			} else {
 				cb.onExit(-1);
 				this.callbacks.delete(id);
@@ -452,7 +459,7 @@ export class DaemonClient {
 	): Promise<void> {
 		this.callbacks.set(id, { onData, onExit, cwd, env });
 		try {
-			this.send({ type: "attach", id });
+			this.send({ type: "attach", id, ...(this.snapshotCapable ? { snapshot: true } : {}) });
 		} catch (err) {
 			this.callbacks.delete(id);
 			throw err;
@@ -713,7 +720,10 @@ export class DaemonClient {
 			// Complete lines are parsed above, so anything left is one partial
 			// frame. The largest legitimate daemon frame is a full-scrollback
 			// replay; anything bigger is garbage that would otherwise grow forever.
-			if (this.lineBuffer.length > MAX_INBOUND_BUFFER_CHARS) {
+			const inboundLimit = this.snapshotCapable
+				? MAX_TERMINAL_REPLAY_CHARS * 4 + 4_096
+				: MAX_INBOUND_BUFFER_CHARS;
+			if (this.lineBuffer.length > inboundLimit) {
 				console.warn("[daemon-client] inbound frame exceeds buffer cap, discarding");
 				this.lineBuffer = "";
 			}

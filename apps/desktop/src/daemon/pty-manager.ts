@@ -7,11 +7,13 @@ const MAX_BUFFER_CHARS = MAX_SCROLLBACK_CHARS;
 
 import { FileInputSessions } from "./file-input-sessions";
 import { readTerminalProcessIdentity } from "./terminal-process-identity";
+import { TerminalReplayBuffer } from "./terminal-replay-buffer";
 
 interface TerminalEntry {
 	pty: pty.IPty;
 	cwd: string;
 	buffer: string;
+	replay: TerminalReplayBuffer;
 	dirty: boolean;
 	dataListeners: Map<string, (data: string) => void>;
 	exitListeners: Map<string, (code: number, finalBuffer: string) => void>;
@@ -72,15 +74,29 @@ export class PtyManager {
 			pty: ptyProcess,
 			cwd: resolvedCwd,
 			buffer: "",
+			replay: new TerminalReplayBuffer(),
 			dirty: false,
 			dataListeners: new Map([[clientId, onData]]),
 			exitListeners: new Map([[clientId, onExit]]),
 		};
 
 		ptyProcess.onData((data) => {
-			entry.buffer = trimBuffer(entry.buffer + data, MAX_BUFFER_CHARS);
-			entry.dirty = true;
-			for (const cb of entry.dataListeners.values()) cb(data);
+			if (this.terminals.get(id) !== entry) return;
+			entry.replay.write(data, (output) => {
+				if (this.terminals.get(id) !== entry || !output) return;
+				entry.buffer = trimBuffer(entry.buffer + output, MAX_BUFFER_CHARS);
+				entry.dirty = true;
+				// Framing can join a large OSC/DCS split across PTY chunks. Keep
+				// live transport frames within the limit accepted by old clients.
+				for (let start = 0; start < output.length; ) {
+					let end = Math.min(start + MAX_BUFFER_CHARS, output.length);
+					const last = output.charCodeAt(end - 1);
+					if (end < output.length && last >= 0xd800 && last <= 0xdbff) end--;
+					const chunk = output.slice(start, end);
+					for (const cb of entry.dataListeners.values()) cb(chunk);
+					start = end;
+				}
+			});
 		});
 
 		ptyProcess.onExit(({ exitCode }) => {
@@ -88,10 +104,14 @@ export class PtyManager {
 			// A dispose() followed by create() with the same id can replace the entry
 			// before this callback fires, and we must not delete or notify for the new one.
 			if (this.terminals.get(id) !== entry) return;
-			const finalBuffer = entry.buffer;
-			this.terminals.delete(id);
-			this.fileInputs.remove(id);
-			for (const cb of entry.exitListeners.values()) cb(exitCode, finalBuffer);
+			entry.replay.afterWrites(() => {
+				if (this.terminals.get(id) !== entry) return;
+				const finalBuffer = entry.replay.snapshot();
+				this.terminals.delete(id);
+				this.fileInputs.remove(id);
+				for (const cb of entry.exitListeners.values()) cb(exitCode, finalBuffer);
+				entry.replay.dispose();
+			});
 		});
 
 		this.terminals.set(id, entry);
@@ -111,14 +131,18 @@ export class PtyManager {
 		id: string,
 		onData: (data: string) => void,
 		onExit: (code: number, finalBuffer: string) => void,
-		clientId: string
+		clientId: string,
+		snapshot = false
 	): { buffer: string; process: string } | null {
 		const entry = this.terminals.get(id);
 		if (!entry) return null;
 		this.fileInputs.attach(id, clientId);
 		entry.dataListeners.set(clientId, onData);
 		entry.exitListeners.set(clientId, onExit);
-		return { buffer: entry.buffer, process: entry.pty.process ?? "" };
+		return {
+			buffer: snapshot ? entry.replay.snapshot() : entry.buffer,
+			process: entry.pty.process ?? "",
+		};
 	}
 
 	// Detach one client from one session. Returns true if the client had
@@ -154,6 +178,7 @@ export class PtyManager {
 			console.warn(`[pty-manager] resize: terminal "${id}" not found`);
 			return;
 		}
+		terminal.replay.resize(cols, rows);
 		terminal.pty.resize(cols, rows);
 	}
 
@@ -168,6 +193,7 @@ export class PtyManager {
 				entry.pty.kill("SIGKILL");
 			} catch {}
 			this.terminals.delete(id);
+			entry.replay.dispose();
 			this.fileInputs.remove(id);
 		}
 	}
@@ -189,14 +215,14 @@ export class PtyManager {
 	}
 
 	getBuffer(id: string): string {
-		return this.terminals.get(id)?.buffer ?? "";
+		return this.terminals.get(id)?.replay.snapshot() ?? "";
 	}
 
 	getAllBuffers(): Array<{ id: string; cwd: string; buffer: string }> {
 		return [...this.terminals.entries()].map(([id, e]) => ({
 			id,
 			cwd: e.cwd,
-			buffer: e.buffer,
+			buffer: e.replay.snapshot(),
 		}));
 	}
 
@@ -206,7 +232,7 @@ export class PtyManager {
 			.map(([id, entry]) => ({
 				id,
 				cwd: entry.cwd,
-				buffer: entry.buffer,
+				buffer: entry.replay.snapshot(),
 			}));
 	}
 
@@ -220,6 +246,7 @@ export class PtyManager {
 	disposeAll(): void {
 		for (const [, entry] of this.terminals) {
 			entry.exitListeners.clear();
+			entry.replay.dispose();
 			try {
 				entry.pty.kill("SIGKILL");
 			} catch {}

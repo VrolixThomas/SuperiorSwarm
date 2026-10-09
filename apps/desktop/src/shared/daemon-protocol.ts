@@ -54,7 +54,7 @@ export type ClientMessage =
 			submit?: boolean;
 	  }
 	| { type: "create"; id: string; cwd?: string; env?: Record<string, string> }
-	| { type: "attach"; id: string }
+	| { type: "attach"; id: string; snapshot?: boolean }
 	| { type: "detach"; id: string }
 	| { type: "detach-all" }
 	| { type: "write"; id: string; data: string }

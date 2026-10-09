@@ -34,6 +34,8 @@ Full-suite `bun test` (159 files) is unreliable locally: ~100+ failures are 5s-t
 - **Cross-process types** → `src/shared/` (define new types here, not inline in process code)
 - **tRPC router** → `src/main/trpc/` (over Electron IPC via `ipcLink`, not HTTP)
 - **Terminal PTY daemon** → `src/daemon/` (Unix socket; spawned with `SUPERIORSWARM_SOCKET_PATH`, `SUPERIORSWARM_DB_PATH`, `SUPERIORSWARM_DEV_MODE`)
+- **Terminal replay/history** → `src/daemon/terminal-replay-buffer.ts`, `src/shared/terminal-replay.ts`, `src/renderer/components/terminal-replay.ts`; snapshot-capable clients restore rendered history at its original dimensions, with legacy daemon compatibility. See `.hermes/plans/codex-chat-scroll-investigation.md`.
+- **Built daemon startup / external CommonJS imports** → `tests/daemon-built-startup.test.ts`; exercises Electron's native ESM loader, unlike Bun-bundled source tests.
 - **Build-time env injection** → `electron.vite.config.ts` `define` block (OAuth + Supabase credentials are NOT in runtime `process.env`)
 - **Desktop releases** → `.github/workflows/release-desktop.yml`; the manual `tag` input rebuilds that exact Git tag with pinned signing tooling.
 - **MCP server** → `mcp-standalone/` (native modules rebuilt against Electron ABI; launched via `ELECTRON_RUN_AS_NODE=1`)

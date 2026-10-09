@@ -8,6 +8,7 @@ import { StringDecoder } from "node:string_decoder";
 import { DaemonClient } from "../../src/main/terminal/daemon-client";
 import { DaemonOwnershipMismatchError } from "../../src/main/terminal/daemon-ownership";
 import { DAEMON_PROTOCOL_VERSION, type TerminalDataMeta } from "../../src/shared/daemon-protocol";
+import { TERMINAL_SNAPSHOT_CAPABILITY } from "../../src/shared/terminal-replay";
 
 const TEST_SOCKET = join(tmpdir(), `superiorswarm-client-test-${process.pid}.sock`);
 const TEST_PID = join(tmpdir(), `superiorswarm-client-test-${process.pid}.pid`);
@@ -204,6 +205,46 @@ describe("DaemonClient", () => {
 		expect(client.writeBinary("term-1", "\x1b[M\x80\xff")).toBe(false);
 		expect(client.write("term-1", "猫🐟")).toBe(true);
 		expect(client.hasLiveSession("term-1")).toBe(true);
+	});
+
+	test("negotiates snapshots and accepts a rendered replay larger than the old raw limit", async () => {
+		const path = `${TEST_SOCKET}.snapshot`;
+		const received: Array<Record<string, unknown>> = [];
+		const remote = await startMockDaemon(
+			(m) => received.push(m as Record<string, unknown>),
+			undefined,
+			path,
+			DAEMON_PROTOCOL_VERSION,
+			[TERMINAL_SNAPSHOT_CAPABILITY]
+		);
+		const c = new DaemonClient(path, TEST_PID, TEST_LOG);
+		try {
+			await c.connect();
+			const delivered: string[] = [];
+			await c.attach(
+				"term-1",
+				(data) => delivered.push(data),
+				() => {},
+				"/tmp"
+			);
+			await Bun.sleep(20);
+			expect(received).toContainEqual({ type: "attach", id: "term-1", snapshot: true });
+			const replay = "history\r\n".repeat(150_000);
+			const frame = `${JSON.stringify({ type: "data", id: "term-1", data: Buffer.from(replay).toString("base64"), replay: true })}\n`;
+			const socket = remote.lastSocket();
+			if (!socket) throw Error("Missing socket");
+			// Force a partial frame beyond the former 804KB limit.
+			socket.write(frame.slice(0, 900_000));
+			await Bun.sleep(20);
+			socket.write(frame.slice(900_000));
+			for (let i = 0; i < 100 && delivered.length === 0; i++) await Bun.sleep(10);
+			expect(c.isConnected).toBe(true);
+			expect(delivered).toEqual([replay]);
+		} finally {
+			c.disconnect();
+			remote.server.close();
+			if (existsSync(path)) rmSync(path);
+		}
 	});
 
 	test("binary backpressure is bounded and drops queued input/capability on reconnect", async () => {
