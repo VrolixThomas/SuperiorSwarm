@@ -248,7 +248,9 @@ export function Terminal({
 					hostRef.current,
 					(dropped) => {
 						try {
-							void files.stage(window.electron.terminalFiles.nativePaths(dropped));
+							void files
+								.stage(window.electron.terminalFiles.nativePaths(dropped))
+								.then(() => files.focusInput());
 						} catch (error) {
 							files.reportError(
 								error instanceof Error ? error.message : "Unable to resolve files."
@@ -339,7 +341,7 @@ export function Terminal({
 					!event.altKey &&
 					!event.metaKey &&
 					!event.isComposing &&
-					files.hasPendingFiles()
+					files.shouldHandleEnter()
 				) {
 					event.preventDefault();
 					if (event.type === "keydown" && !event.repeat) {

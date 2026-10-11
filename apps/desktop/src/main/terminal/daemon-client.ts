@@ -11,6 +11,8 @@ import {
 } from "node:fs";
 import { type Socket, connect } from "node:net";
 import { StringDecoder } from "node:string_decoder";
+import { sameTerminalProcess, supportsLocalFileInput } from "../../daemon/file-input-sessions";
+import { readTerminalProcessIdentity } from "../../daemon/terminal-process-identity";
 import type { DaemonFileTarget } from "../../shared/daemon-protocol";
 import {
 	type ClientMessage,
@@ -22,7 +24,13 @@ import {
 	SUPERIORSWARM_DIR,
 	type TerminalDataMeta,
 } from "../../shared/daemon-protocol";
-import { type FileDelivery, isFilePaste } from "../../shared/terminal-files";
+import {
+	FILE_PASTE_MAX_BYTES,
+	type FileDelivery,
+	type TerminalProcessIdentity,
+	hasUnsafeTerminalText,
+	isFilePaste,
+} from "../../shared/terminal-files";
 import { BINARY_INPUT_CAPABILITY, isBinaryInput } from "../../shared/terminal-input";
 import {
 	MAX_TERMINAL_REPLAY_CHARS,
@@ -90,6 +98,10 @@ export class DaemonClient {
 	private fileInputCapable = false;
 	private fileSubmitCapable = false;
 	private snapshotCapable = false;
+	private legacyFileTargets = new Map<
+		string,
+		{ generation: string; pid?: number; identity?: TerminalProcessIdentity }
+	>();
 	private pendingInputTerminals = new Set<string>();
 	setInputPending(id: string, pending: boolean): void {
 		if (pending) this.pendingInputTerminals.add(id);
@@ -99,7 +111,7 @@ export class DaemonClient {
 		return this.isConnected && this.fileSubmitCapable;
 	}
 	get needsFileInputUpdate(): boolean {
-		return this.isConnected && this.remoteProtocolVersion < DAEMON_PROTOCOL_VERSION;
+		return this.isConnected && !this.fileInputCapable;
 	}
 	private fileRequests = new Map<
 		string,
@@ -107,6 +119,8 @@ export class DaemonClient {
 	>();
 
 	async fileTarget(id: string, managedAgent = false): Promise<DaemonFileTarget | null> {
+		this.legacyFileTargets.delete(id);
+		if (!this.fileInputCapable) return this.legacyFileTarget(id, managedAgent);
 		const response = await this.fileRequest({
 			type: "file-target",
 			id,
@@ -115,6 +129,40 @@ export class DaemonClient {
 		});
 		return response?.target ?? null;
 	}
+	private async legacyFileTarget(
+		id: string,
+		managedAgent: boolean
+	): Promise<DaemonFileTarget | null> {
+		// Live daemons survive app updates. Inspect their PTY locally instead of
+		// requiring users to close every terminal just to paste a file reference.
+		const socket = this.socket;
+		const owner = this.callbacks.get(id);
+		if (!socket || !owner || !this.canWriteFileInput()) return null;
+		const lease: { generation: string; pid?: number; identity?: TerminalProcessIdentity } = {
+			generation: randomUUID(),
+		};
+		this.legacyFileTargets.set(id, lease);
+		try {
+			const session = (await this.listSessionsStrict()).find((session) => session.id === id);
+			if (
+				!session ||
+				this.socket !== socket ||
+				this.callbacks.get(id) !== owner ||
+				this.legacyFileTargets.get(id) !== lease ||
+				!this.canWriteFileInput()
+			)
+				return null;
+			const identity = readTerminalProcessIdentity(session.pid);
+			const supported = identity !== null && supportsLocalFileInput(identity, managedAgent);
+			if (supported) Object.assign(lease, { pid: session.pid, identity });
+			return { generation: lease.generation, foreground: identity?.name ?? "", supported };
+		} catch {
+			return null;
+		} finally {
+			if (!lease.identity && this.legacyFileTargets.get(id) === lease)
+				this.legacyFileTargets.delete(id);
+		}
+	}
 	async insertFiles(
 		id: string,
 		generation: string,
@@ -122,6 +170,8 @@ export class DaemonClient {
 		payload: string,
 		submit = false
 	): Promise<FileDelivery> {
+		if (!this.fileInputCapable)
+			return this.insertLegacyFiles(id, generation, text, payload, submit);
 		if (
 			!this.canSendFileInput() ||
 			this.pendingInputTerminals.has(id) ||
@@ -142,13 +192,47 @@ export class DaemonClient {
 		const response = await this.fileRequest(message);
 		return response?.delivery ?? "uncertain";
 	}
+	private insertLegacyFiles(
+		id: string,
+		generation: string,
+		text: string,
+		payload: string,
+		submit: boolean
+	): FileDelivery {
+		const lease = this.legacyFileTargets.get(id);
+		if (!lease || lease.generation !== generation) return "rejected";
+		this.legacyFileTargets.delete(id);
+		if (
+			submit ||
+			!lease.pid ||
+			!lease.identity ||
+			!this.callbacks.has(id) ||
+			!this.canWriteFileInput() ||
+			this.pendingInputTerminals.has(id) ||
+			!text.length ||
+			Buffer.byteLength(text) > FILE_PASTE_MAX_BYTES ||
+			hasUnsafeTerminalText(text) ||
+			!isFilePaste(text, payload)
+		)
+			return "rejected";
+		const encoded = `${JSON.stringify({ type: "write", id, data: payload })}\n`;
+		if (Buffer.byteLength(encoded) > MAX_FRAME_BYTES) return "rejected";
+		const current = readTerminalProcessIdentity(lease.pid);
+		if (!current || !sameTerminalProcess(lease.identity, current)) return "rejected";
+		try {
+			// One insertion-only frame, never queued or replayed. Old daemons cannot
+			// acknowledge PTY admission; the user must check the draft before sending.
+			if (!this.socket?.write(encoded)) this.waitingForDrain = true;
+			return "unconfirmed";
+		} catch {
+			return "uncertain";
+		}
+	}
 	private canSendFileInput(): boolean {
-		return (
-			this.fileInputCapable &&
-			this.isConnected &&
-			!this.waitingForDrain &&
-			this.outboundQueue.length === 0
-		);
+		return this.fileInputCapable && this.canWriteFileInput();
+	}
+	private canWriteFileInput(): boolean {
+		return this.isConnected && !this.waitingForDrain && this.outboundQueue.length === 0;
 	}
 	private async fileRequest(
 		message: Extract<ClientMessage, { type: "file-target" | "file-input" }>
@@ -194,6 +278,7 @@ export class DaemonClient {
 
 	private notifyConnectionStatus(connected: boolean): void {
 		if (!connected) {
+			this.legacyFileTargets.clear();
 			this.fileInputCapable = false;
 			this.fileSubmitCapable = false;
 			this.snapshotCapable = false;
@@ -315,6 +400,7 @@ export class DaemonClient {
 	// the socket field before destroying so the close handler recognizes the
 	// teardown as intentional (socket identity mismatch) and does not reconnect.
 	private teardownSocket(): void {
+		this.legacyFileTargets.clear();
 		const socket = this.socket;
 		this.socket = null;
 		this.binaryInputSupported = false;
@@ -417,6 +503,7 @@ export class DaemonClient {
 	}
 
 	detachAll(): void {
+		this.legacyFileTargets.clear();
 		try {
 			if (this.remoteProtocolVersion < 2) {
 				// v1 daemons have no "detach-all" handler; their per-session "detach"
@@ -438,6 +525,7 @@ export class DaemonClient {
 		onExit: (code: number) => void,
 		env?: Record<string, string>
 	): Promise<void> {
+		this.legacyFileTargets.delete(id);
 		this.callbacks.set(id, { onData, onExit, cwd, env });
 		this.liveSessions.add(id);
 		try {
@@ -457,6 +545,7 @@ export class DaemonClient {
 		cwd?: string,
 		env?: Record<string, string>
 	): Promise<void> {
+		this.legacyFileTargets.delete(id);
 		this.callbacks.set(id, { onData, onExit, cwd, env });
 		try {
 			this.send({ type: "attach", id, ...(this.snapshotCapable ? { snapshot: true } : {}) });
@@ -472,6 +561,8 @@ export class DaemonClient {
 	 * the keystroke path calls this for every keypress and ignores the result.
 	 */
 	write(id: string, data: string): boolean {
+		// biome-ignore lint/suspicious/noControlCharactersInRegex: input invalidates a pending file lease.
+		if (/[\r\n\x03]/.test(data)) this.legacyFileTargets.delete(id);
 		if (!this.isConnected) return false;
 		const frames = this.buildWriteFrames(id, data);
 		const first = frames[0];
@@ -487,6 +578,8 @@ export class DaemonClient {
 	 * No UTF-8 fallback: that would corrupt legacy coordinates above 0x7f.
 	 */
 	writeBinary(id: string, data: string): boolean {
+		// biome-ignore lint/suspicious/noControlCharactersInRegex: binary input follows the same invalidation rules.
+		if (/[\r\n\x03]/.test(data)) this.legacyFileTargets.delete(id);
 		if (!this.isConnected || !this.binaryInputSupported || !isBinaryInput(id, data)) return false;
 		const encoded = `${JSON.stringify({ type: "write-binary", id, data: Buffer.from(data, "latin1").toString("base64") })}\n`;
 		return this.dispatchFrame(
@@ -571,6 +664,7 @@ export class DaemonClient {
 
 	/** Detach from a PTY without killing it. The PTY keeps running in the daemon. */
 	detach(id: string): void {
+		this.legacyFileTargets.delete(id);
 		this.callbacks.delete(id);
 		// Keep id in liveSessions so re-attach works on next create call
 		if (this.remoteProtocolVersion < 2) {
@@ -588,6 +682,7 @@ export class DaemonClient {
 
 	/** Kill a PTY in the daemon. Used when the user explicitly closes a tab. */
 	dispose(id: string): void {
+		this.legacyFileTargets.delete(id);
 		this.callbacks.delete(id);
 		this.liveSessions.delete(id);
 		try {
@@ -779,6 +874,7 @@ export class DaemonClient {
 				break;
 			}
 			case "exit": {
+				this.legacyFileTargets.delete(msg.id);
 				const cb = this.callbacks.get(msg.id);
 				if (cb) {
 					cb.onExit(msg.code);
@@ -788,6 +884,7 @@ export class DaemonClient {
 				break;
 			}
 			case "error": {
+				this.legacyFileTargets.delete(msg.id);
 				console.error(`[daemon-client] error for terminal ${msg.id}: ${msg.message}`);
 				// If attach failed because the session wasn't found, fall back to create
 				if (msg.message === "session not found" && this.callbacks.has(msg.id)) {

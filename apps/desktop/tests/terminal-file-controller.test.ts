@@ -313,6 +313,8 @@ test("a definite rejection keeps selected files for an explicit later attempt", 
 	expect(h.controller.state.batch?.entries).toHaveLength(2);
 	expect(h.controller.state.status).toContain("Nothing was sent");
 	expect(h.insert).toHaveBeenCalledTimes(1);
+	expect(h.controller.hasPendingFiles()).toBe(true);
+	expect(h.controller.shouldHandleEnter()).toBe(false);
 });
 test("a restored file identity mismatch cannot deliver a replacement with the same name", async () => {
 	const h = harness();

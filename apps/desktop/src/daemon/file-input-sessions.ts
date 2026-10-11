@@ -30,10 +30,23 @@ function nativeClaude(executable: string): boolean {
 		executable
 	);
 }
-function sameIdentity(a: TerminalProcessIdentity, b: TerminalProcessIdentity): boolean {
+export function sameTerminalProcess(
+	a: TerminalProcessIdentity,
+	b: TerminalProcessIdentity
+): boolean {
 	return a.pid === b.pid && a.startedAt === b.startedAt && a.executable === b.executable;
 }
 const name = (process: string) => basename(process).replace(/^-/, "");
+export function supportsLocalFileInput(
+	identity: TerminalProcessIdentity,
+	managedAgent = false
+): boolean {
+	return (
+		LOCAL_INPUT.has(name(identity.executable)) ||
+		nativeClaude(identity.executable) ||
+		(managedAgent && AGENT_RUNTIMES.has(name(identity.executable)))
+	);
+}
 /** Optional capability; old daemons never receive these operations. */
 export class FileInputSessions {
 	private sessions = new Map<string, Session>();
@@ -75,16 +88,16 @@ export class FileInputSessions {
 		if (!session?.clients.has(client)) return null;
 		const foreground = session.foreground();
 		const identity = session.inspect?.() ?? undefined;
-		const executable = identity?.executable ?? foreground;
 		const target = {
 			generation: randomUUID(),
 			foreground,
 			supported:
 				POSIX.has(name(session.shell)) &&
 				(!session.inspect || Boolean(identity)) &&
-				(LOCAL_INPUT.has(name(executable)) ||
-					(identity !== undefined && nativeClaude(executable)) ||
-					(managedAgent && AGENT_RUNTIMES.has(name(executable)))),
+				(identity
+					? supportsLocalFileInput(identity, managedAgent)
+					: LOCAL_INPUT.has(name(foreground)) ||
+						(managedAgent && AGENT_RUNTIMES.has(name(foreground)))),
 		};
 		session.clients.set(client, { ...target, identity });
 		return target;
@@ -96,7 +109,7 @@ export class FileInputSessions {
 		text: string,
 		payload: string,
 		submit = false
-	): FileDelivery {
+	): Exclude<FileDelivery, "unconfirmed"> {
 		const session = this.sessions.get(id);
 		const target = session?.clients.get(client);
 		if (!session || !target || target.generation !== generation) return "rejected";
@@ -105,7 +118,7 @@ export class FileInputSessions {
 		if (
 			!target.supported ||
 			(target.identity
-				? !current || !sameIdentity(target.identity, current)
+				? !current || !sameTerminalProcess(target.identity, current)
 				: session.foreground() !== target.foreground) ||
 			typeof text !== "string" ||
 			typeof payload !== "string" ||

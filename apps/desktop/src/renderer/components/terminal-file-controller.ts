@@ -10,6 +10,14 @@ export interface FileShelfState {
 	batch: TerminalFileBatch | null;
 	busy: boolean;
 	status: string;
+	insertionBlocked?: boolean;
+}
+export function fileInsertionBlocked(state: FileShelfState): boolean {
+	return Boolean(
+		state.insertionBlocked ||
+			fileInputProblem(state.batch?.inputAvailability) ||
+			state.batch?.entries.some((entry) => !entry.referenceAllowed)
+	);
 }
 interface Operations {
 	prepare: (paths: Array<string | null>) => Promise<TerminalFileBatch>;
@@ -56,7 +64,7 @@ export class TerminalFileController {
 		this.activity = null;
 		if (this.state.batch?.id) void this.operations.cancel(this.state.batch.id).catch(() => {});
 		this.needsPreparation = false;
-		this.update({ batch: null, busy: false, status });
+		this.update({ batch: null, busy: false, status, insertionBlocked: false });
 	}
 	restore(draft: TerminalFileDraft): void {
 		this.needsPreparation = true;
@@ -67,6 +75,7 @@ export class TerminalFileController {
 				entries: draft.entries.map((entry, index) => ({ ...entry, id: `restored-${index}` })),
 			},
 			busy: false,
+			insertionBlocked: false,
 			status: "Files restored. Review the prompt before sending.",
 		});
 	}
@@ -143,6 +152,9 @@ export class TerminalFileController {
 	hasPendingFiles(): boolean {
 		return this.state.batch !== null || this.state.busy;
 	}
+	shouldHandleEnter(): boolean {
+		return this.state.busy || (this.state.batch !== null && !fileInsertionBlocked(this.state));
+	}
 	stage(paths: Array<string | null>): Promise<void> {
 		if (!paths.length) return Promise.resolve();
 		if (!this.operations.ready()) {
@@ -187,6 +199,7 @@ export class TerminalFileController {
 				}
 				this.update({
 					batch,
+					insertionBlocked: false,
 					status:
 						fileInputProblem(batch.inputAvailability) ||
 						"Press Enter to insert the paths into your draft. Nothing is submitted yet.",
@@ -309,6 +322,7 @@ export class TerminalFileController {
 	async insert(): Promise<void> {
 		let batch = this.state.batch;
 		if (!batch || this.state.busy || !this.operations.ready()) return;
+		if (fileInputProblem(batch.inputAvailability)) this.needsPreparation = true;
 		const epoch = this.epoch;
 		this.activity = "insert";
 		this.update({ busy: true, status: "Checking this terminal and the selected paths…" });
@@ -333,18 +347,19 @@ export class TerminalFileController {
 			if (!this.current(epoch)) return;
 			if (delivery === "rejected") {
 				this.update({ batch });
-				this.suspend(
-					"Nothing was sent. Files are kept; check this terminal and press Enter to try again."
-				);
+				this.suspend("Nothing was sent. Files are kept; use Retry files to try insertion again.");
+				this.update({ insertionBlocked: true });
 				return;
 			}
-			if (delivery === "admitted") this.operations.focus();
+			if (delivery === "admitted" || delivery === "unconfirmed") this.operations.focus();
 			this.update({
 				busy: false,
 				status:
 					delivery === "admitted"
 						? "Paths added to your prompt. Press Enter again to send, or keep typing."
-						: "Delivery uncertain — check the terminal. This batch will not be retried.",
+						: delivery === "unconfirmed"
+							? "Check that the paths appeared in your prompt before pressing Enter to send."
+							: "Delivery uncertain — check the terminal. This batch will not be retried.",
 			});
 		} catch (error) {
 			if (this.current(epoch)) {
@@ -353,7 +368,10 @@ export class TerminalFileController {
 						busy: false,
 						status: "Delivery uncertain — check the terminal. This batch will not be retried.",
 					});
-				else this.suspend(error instanceof Error ? error.message : "Unable to prepare insertion.");
+				else {
+					this.suspend(error instanceof Error ? error.message : "Unable to prepare insertion.");
+					this.update({ insertionBlocked: true });
+				}
 			}
 		} finally {
 			if (this.epoch === epoch) this.activity = null;

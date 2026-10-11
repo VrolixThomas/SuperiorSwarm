@@ -84,9 +84,9 @@ test("explicit submit uses one guarded frame with the user's send request", asyn
 	]);
 });
 
-test("the main process can report an old terminal service without stopping its sessions", async () => {
+test("an older protocol with file-input capability does not require a file-input update", async () => {
 	const messages = await setup(true);
-	expect(client.needsFileInputUpdate).toBe(true);
+	expect(client.needsFileInputUpdate).toBe(false);
 	expect(messages.some((message) => message["type"] === "dispose")).toBe(false);
 	client.disconnect();
 	expect(client.needsFileInputUpdate).toBe(false);

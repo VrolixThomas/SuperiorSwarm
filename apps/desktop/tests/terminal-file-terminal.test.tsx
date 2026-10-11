@@ -23,6 +23,9 @@ afterAll(() => dom.close());
 beforeEach(() => {
 	window.localStorage.clear();
 	atomicSubmit = true;
+	availability = "ready";
+	resolveError = "";
+	delivery = "admitted";
 });
 let terminal: FakeTerminal;
 class FakeTerminal {
@@ -99,6 +102,9 @@ for (const [module, name] of [
 let selected: TerminalFileBatch;
 let nextId = 0;
 let atomicSubmit = true;
+let availability: TerminalFileBatch["inputAvailability"] = "ready";
+let resolveError = "";
+let delivery = "admitted";
 const ordinary: string[] = [];
 const binaryWrites: string[] = [];
 const inputTrace: string[] = [];
@@ -130,6 +136,7 @@ mock.module("../src/renderer/trpc/client", () => ({
 						id: "batch",
 						target: { terminalId: "t1", workspaceId: "ws", generation: "g1", root: "/fixture" },
 						entries: entries(paths),
+						inputAvailability: availability,
 					};
 					return structuredClone(selected);
 				},
@@ -156,19 +163,22 @@ mock.module("../src/renderer/trpc/client", () => ({
 					),
 			},
 			resolve: {
-				mutate: async ({ ids }: { ids: string[] }) => ({
-					text: formatFilePaths(
-						selected.entries.filter((e) => ids.includes(e.id)).map((e) => e.path as string)
-					),
-					target: selected.target,
-					submit: atomicSubmit,
-				}),
+				mutate: async ({ ids }: { ids: string[] }) => {
+					if (resolveError) throw new Error(resolveError);
+					return {
+						text: formatFilePaths(
+							selected.entries.filter((e) => ids.includes(e.id)).map((e) => e.path as string)
+						),
+						target: selected.target,
+						submit: atomicSubmit,
+					};
+				},
 			},
 			insert: {
 				mutate: async (value: { payload: string; submit?: boolean }) => {
 					submitted.push(value);
 					inputTrace.push(value.submit ? `${value.payload}\r` : value.payload);
-					return "admitted";
+					return delivery;
 				},
 			},
 			cancel: { mutate: async () => {} },
@@ -182,6 +192,65 @@ afterEach(async () => {
 	await act(async () => root?.unmount());
 	host?.remove();
 	root = undefined;
+});
+
+test("unavailable file input leaves Enter usable and Retry files obtains a fresh target", async () => {
+	availability = "update-required";
+	await mount();
+	terminal.data("review this");
+	await drop("legacy.pdf");
+	expect(host.textContent).toContain("Enter sends your prompt without these files");
+	await enter();
+	await enter();
+	expect(ordinary.filter((data) => data === "\r")).toHaveLength(2);
+	expect(submitted).toEqual([]);
+	expect(host.textContent).toContain("legacy.pdf");
+	availability = "ready";
+	const retry = [...host.querySelectorAll("button")].find(
+		(button) => button.textContent === "Retry files"
+	);
+	expect(retry).toBeDefined();
+	await act(async () => retry?.click());
+	expect(submitted).toHaveLength(1);
+	await enter();
+	expect(ordinary.filter((data) => data === "\r")).toHaveLength(3);
+});
+
+test("a failed insertion does not trap subsequent Enter presses or retry without an explicit action", async () => {
+	await mount();
+	await drop("failed.pdf");
+	resolveError = "The terminal changed";
+	await enter();
+	expect(ordinary).toEqual([]);
+	expect(host.textContent).toContain("The terminal changed");
+	expect(host.textContent).toContain("Enter sends your prompt without these files");
+	await enter();
+	await enter();
+	expect(ordinary).toEqual(["\r", "\r"]);
+	expect(submitted).toEqual([]);
+	expect(host.textContent).toContain("failed.pdf");
+});
+
+test("an unacknowledged legacy paste clears the attachment intent and the next Enter submits normally", async () => {
+	delivery = "unconfirmed";
+	await mount();
+	await drop("legacy.pdf");
+	await enter();
+	expect(host.textContent).toContain("Check that the paths appeared");
+	expect(host.querySelector('[aria-label="Files in this message"]')).toBeNull();
+	expect(submitted).toHaveLength(1);
+	expect(ordinary).toEqual([]);
+	await enter();
+	expect(ordinary).toEqual(["\r"]);
+	expect(submitted).toHaveLength(1);
+});
+
+test("dropping a file restores terminal focus without forwarding focus-report bytes", async () => {
+	await mount();
+	(host.querySelector("button") as HTMLButtonElement).focus();
+	await drop("focus.pdf");
+	expect(document.activeElement === terminal.textarea).toBe(true);
+	expect(ordinary).toEqual([]);
 });
 async function mount() {
 	ordinary.length = 0;
