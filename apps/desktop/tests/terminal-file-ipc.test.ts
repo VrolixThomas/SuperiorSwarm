@@ -14,6 +14,7 @@ let probes = 0;
 let managed = false;
 let submitCapable = true;
 let supported = true;
+let missingTarget = false;
 let needsFileInputUpdate = false;
 let requestedManaged = false;
 let exposed: { terminalFiles: { nativePaths: (files: File[]) => Array<string | null> } };
@@ -50,6 +51,7 @@ mock.module("../src/main/terminal/daemon-instance", () => ({
 		fileTarget: async (_id: string, allowManaged = false) => {
 			requestedManaged = allowManaged;
 			probes++;
+			if (missingTarget) return null;
 			return { generation: "pty-generation", supported, foreground: "zsh" };
 		},
 		insertFiles: async (
@@ -75,6 +77,22 @@ test("preload uses webUtils only, never File.path, names, MIME or renderer desti
 	Object.assign(virtual, { path: source });
 	expect(exposed.terminalFiles.nativePaths([native, virtual])).toEqual([source, null]);
 	expect(nativeCalled).toBe(2);
+});
+
+test("a daemon without file-target support retains the update diagnosis after Enter", async () => {
+	terminalFileOwners.attach("missing-capability", caller, "ws", root);
+	missingTarget = true;
+	needsFileInputUpdate = true;
+	try {
+		const batch = await api.prepare({ terminalId: "missing-capability", paths: [source] });
+		expect(batch.inputAvailability).toBe("update-required");
+		await expect(
+			api.resolve({ batchId: batch.id, ids: batch.entries.map((entry) => entry.id) })
+		).rejects.toThrow("restart SuperiorSwarm");
+	} finally {
+		missingTarget = false;
+		needsFileInputUpdate = false;
+	}
 });
 test("real tRPC procedures reject absent/cross-window context and wrong generation", async () => {
 	terminalFileOwners.attach("term", caller, "ws", root);

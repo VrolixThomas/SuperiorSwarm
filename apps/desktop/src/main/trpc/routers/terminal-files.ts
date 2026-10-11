@@ -86,12 +86,12 @@ export const terminalFilesRouter = router({
 					: "unverified";
 			for (const [key, lease] of leases) if (lease.expires < Date.now()) leases.delete(key);
 			if (leases.size >= 128) leases.delete(leases.keys().next().value as string);
-			if (daemonTarget)
-				leases.set(batch.id, {
-					...daemonTarget,
-					needsUpdate,
-					expires: Date.now() + 10 * 60 * 1000,
-				});
+			leases.set(batch.id, {
+				generation: daemonTarget?.generation ?? "",
+				supported: daemonTarget?.supported === true,
+				needsUpdate,
+				expires: Date.now() + 10 * 60 * 1000,
+			});
 			return batch;
 		}),
 	append: fileProcedure

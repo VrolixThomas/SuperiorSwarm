@@ -1,6 +1,10 @@
 import { useRef, useState } from "react";
 import { displayFilePath } from "../../shared/terminal-files";
-import type { FileShelfState, TerminalFileController } from "./terminal-file-controller";
+import {
+	type FileShelfState,
+	type TerminalFileController,
+	fileInsertionBlocked,
+} from "./terminal-file-controller";
 const button =
 	"rounded border border-[var(--border)] px-2 py-1 text-xs focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-50";
 const bytes = (n: number) =>
@@ -24,6 +28,7 @@ export function TerminalFileShelf({
 	const [detailsId, setDetailsId] = useState<string | null>(null);
 	const selected = state.batch?.entries.find((entry) => entry.id === detailsId);
 	const count = state.batch?.entries.length ?? 0;
+	const blocked = fileInsertionBlocked(state);
 	return (
 		<section
 			aria-label={`Files for terminal ${terminalId}`}
@@ -59,11 +64,23 @@ export function TerminalFileShelf({
 								? "Terminal update required"
 								: state.batch?.inputAvailability === "unverified"
 									? "Prompt access unverified"
-									: "Enter to insert paths"}
+									: blocked
+										? "Files not inserted"
+										: "Enter to insert paths"}
 						</span>
 					</>
 				)}
 				<div className="ml-auto flex items-center gap-2">
+					{count > 0 && blocked && (
+						<button
+							className={button}
+							type="button"
+							disabled={!controller || state.busy}
+							onClick={() => void controller?.insertPending()}
+						>
+							Retry files
+						</button>
+					)}
 					{count > 0 && (
 						<button
 							className={button}
@@ -134,6 +151,7 @@ export function TerminalFileShelf({
 			)}
 			<output aria-live="polite" className="mt-1 block empty:hidden text-[var(--text-tertiary)]">
 				{displayFilePath(state.status)}
+				{count > 0 && blocked && !state.busy && " Enter sends your prompt without these files."}
 			</output>
 			{selected && (
 				<div

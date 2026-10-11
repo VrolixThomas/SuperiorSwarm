@@ -93,7 +93,8 @@ export interface TerminalOwnedCopy {
 export interface TerminalFilesAPI {
 	nativePaths: (files: File[]) => Array<string | null>;
 }
-export type FileDelivery = "admitted" | "rejected" | "uncertain";
+// Legacy daemons accept a paste frame but cannot acknowledge PTY admission.
+export type FileDelivery = "admitted" | "unconfirmed" | "rejected" | "uncertain";
 
 /** Selection metadata only. No batch/session token, prepared input or send intent. */
 export interface TerminalFileDraft {
