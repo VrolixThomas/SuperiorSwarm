@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.23.2 (2026-10-11)
+
+### What's New
+
+SuperiorSwarm restores reliable file insertion in terminal sessions kept open across app updates. Failed attachments no longer block sending your prompt, and you can retry adding the files separately. Scrolling in Codex's full-screen view now follows mouse wheel and trackpad movement at the expected speed.
+
+### Changes
+
+- Adding files not working (#153)
+- fix(terminal): restore Codex full-screen scrolling speed (#154)
+
 ## v0.23.1 (2026-10-09)
 
 ### What's New
