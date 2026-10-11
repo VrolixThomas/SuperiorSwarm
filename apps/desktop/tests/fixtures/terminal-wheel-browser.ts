@@ -317,6 +317,37 @@ async function run() {
 			"encoding alone does not own scrollback"
 		);
 		results.push("legacy high bits, SGR, SGR pixels, X10, encoding-only");
+
+		await write("\x1b[?1049h\x1b[?1003h\x1b[?1006h");
+		await tick();
+		// Replacing the adapter on a live terminal retains the negotiated encoding.
+		const prior = cleanup;
+		cleanup = installTerminalWheelHandler(container, term, () => visible);
+		prior();
+		text.length = 0;
+		binary.length = 0;
+		wheel(-1, 1, screen, { altKey: true });
+		assert(
+			text.join("").split("\x1b[<72;").length - 1 === 5,
+			"SGR Alt speed and modifier apply once"
+		);
+		assert(binary.length === 0, "SGR wheel remains text input");
+		replay = true;
+		text.length = 0;
+		wheel(-120, 0);
+		assert(text.length === 0, "replay gate suppresses normalized SGR wheel input");
+		replay = false;
+		await write("\x1b[?1016h\x1b[?1006l");
+		text.length = 0;
+		wheel(-3, 1);
+		assert(binary.length === 1 && text.length === 0, "encoding disable returns to legacy binary");
+		await write("\x1b[?1006h\x1bc\x1b[?1049h\x1b[?1000h");
+		await tick();
+		binary.length = 0;
+		text.length = 0;
+		wheel(-3, 1);
+		assert(binary.length === 1 && text.length === 0, "RIS clears the SGR encoding observer");
+		results.push("SGR acceleration, replay suppression and encoding resets");
 		sub.dispose();
 		return results;
 	} finally {

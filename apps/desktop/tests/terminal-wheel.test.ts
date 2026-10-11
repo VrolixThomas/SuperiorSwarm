@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { createTerminalWheelHandler } from "../src/renderer/components/terminal-wheel";
 
-function fixture() {
+function fixture(withApplication = false) {
 	const normal = { type: "normal" as const, baseY: 100, viewportY: 50 };
 	const alternate = { type: "alternate" as const, baseY: 0, viewportY: 0 };
 	const calls: number[] = [];
@@ -23,7 +23,21 @@ function fixture() {
 		},
 	};
 	let visible = true;
-	const handler = createTerminalWheelHandler(term, () => visible, true);
+	let cellHeight = 18;
+	const reports: number[] = [];
+	const handler = createTerminalWheelHandler(
+		term,
+		() => visible,
+		true,
+		withApplication
+			? {
+					cellHeight: () => cellHeight,
+					mouseReporter: () => (lines) => {
+						reports.push(lines);
+					},
+				}
+			: undefined
+	);
 	const event = (deltaY: number, deltaMode = 1, extra: Partial<WheelEvent> = {}) => {
 		const e = {
 			deltaY,
@@ -61,6 +75,10 @@ function fixture() {
 		handler,
 		wheel,
 		event,
+		reports,
+		setCellHeight: (height: number) => {
+			cellHeight = height;
+		},
 		hide: () => {
 			visible = false;
 		},
@@ -182,7 +200,7 @@ describe("terminal LINE/PAGE wheel ownership", () => {
 			{ ctrlKey: true },
 			{ metaKey: true },
 			{ shiftKey: true },
-			{ deltaX: 0.01 },
+			{ deltaX: 4 },
 			{ deltaZ: 1 },
 			{ cancelable: false },
 			{ defaultPrevented: true },
@@ -201,6 +219,64 @@ describe("terminal LINE/PAGE wheel ownership", () => {
 		expect(f.wheel(3).stopped).toBe(false);
 		expect(f.calls).toEqual([]);
 		expect(f.input).toEqual([]);
+	});
+
+	test("application pixel distance produces multiple bounded arrow inputs", () => {
+		const f = fixture(true);
+		f.term.buffer.active = f.alternate;
+		f.term.options.scrollSensitivity = 3;
+		expect(f.wheel(-120, 0).stopped).toBe(true);
+		expect(f.input).toEqual([["\x1b[A".repeat(20), true]]);
+		f.wheel(-10000, 0);
+		expect(f.input.at(-1)).toEqual(["\x1b[A".repeat(23), true]);
+		f.term.modes.applicationCursorKeysMode = true;
+		f.wheel(120, 0);
+		expect(f.input.at(-1)).toEqual(["\x1bOB".repeat(20), true]);
+		expect(f.calls).toEqual([]);
+	});
+
+	test("mouse reporting owns wheel input even in a normal buffer with no history", () => {
+		const f = fixture(true);
+		f.term.modes.mouseTrackingMode = "any";
+		f.term.options.scrollSensitivity = 3;
+		f.normal.baseY = 0;
+		expect(f.wheel(-120, 0).stopped).toBe(true);
+		f.wheel(1, 2);
+		expect(f.reports).toEqual([-20, 23]);
+		expect(f.calls).toEqual([]);
+		expect(f.input).toEqual([]);
+		f.term.options.disableStdin = true;
+		expect(f.wheel(-120, 0).stopped).toBe(false);
+		expect(f.reports).toEqual([-20, 23]);
+	});
+
+	test("small diagonal pixel events accumulate without damping", () => {
+		const f = fixture(true);
+		f.term.buffer.active = f.alternate;
+		f.term.options.scrollSensitivity = 3;
+		for (let i = 0; i < 10; i++) f.wheel(-4, 0, { deltaX: 1 });
+		expect(f.input.map(([s]) => s).join("")).toBe("\x1b[A".repeat(6));
+		expect(f.wheel(-4, 0, { deltaX: 5 }).stopped).toBe(false);
+	});
+
+	test("pixel fractions reset when direction, cell size or mouse mode changes", () => {
+		const f = fixture(true);
+		f.term.buffer.active = f.alternate;
+		f.term.options.scrollSensitivity = 3;
+		f.wheel(4, 0);
+		f.wheel(-4, 0);
+		expect(f.input).toEqual([]);
+		f.setCellHeight(30);
+		f.wheel(-4, 0);
+		expect(f.input).toEqual([]);
+		f.term.modes.mouseTrackingMode = "any";
+		f.wheel(-4, 0);
+		expect(f.reports).toEqual([]);
+		f.setCellHeight(18);
+		f.wheel(-4, 0);
+		expect(f.reports).toEqual([]);
+		f.wheel(-4, 0);
+		expect(f.reports).toEqual([-1]);
 	});
 
 	test("alternate screen tracking-off uses bounded CSI/SS3 repetitions through public input", () => {

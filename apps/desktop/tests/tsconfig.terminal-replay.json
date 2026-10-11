@@ -17,6 +17,8 @@
 		"./daemon/terminal-output-framer.test.ts",
 		"./terminal-replay-pty.test.ts",
 		"./fixtures/terminal-replay-pty.ts",
-		"./daemon-built-startup.test.ts"
+		"./daemon-built-startup.test.ts",
+		"./terminal-wheel-native.test.ts",
+		"./fixtures/terminal-wheel-native-browser.ts"
 	]
 }
