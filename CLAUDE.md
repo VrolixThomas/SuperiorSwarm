@@ -38,6 +38,7 @@ Full-suite `bun test` (159 files) is unreliable locally: ~100+ failures are 5s-t
 - **Terminal file insertion** → `src/main/terminal/daemon-client.ts`, `src/renderer/components/terminal-file-controller.ts`; live daemons without file-input capabilities use locally inspected, insertion-only pastes. Failed attachments must not capture ordinary Enter; verify legacy delivery with `tests/terminal-file-legacy.test.ts`.
 - **Built daemon startup / external CommonJS imports** → `tests/daemon-built-startup.test.ts`; exercises Electron's native ESM loader, unlike Bun-bundled source tests.
 - **Codex application scrolling / SGR wheel reports** → `src/renderer/components/terminal-wheel.ts`, `tests/terminal-wheel-native.test.ts`; native Chromium input coverage includes alternate-screen and mouse-reporting modes.
+- **Returning to chats on older daemons** → `src/main/terminal/view-sessions.ts`; retain parsed state and the daemon subscription while a renderer is detached. Explicit tab/pane closure → `src/renderer/lib/pane-lifecycle.ts` and `src/main/terminal/ipc.ts`.
 - **Build-time env injection** → `electron.vite.config.ts` `define` block (OAuth + Supabase credentials are NOT in runtime `process.env`)
 - **Desktop releases** → `.github/workflows/release-desktop.yml`; the manual `tag` input rebuilds that exact Git tag with pinned signing tooling.
 - **MCP server** → `mcp-standalone/` (native modules rebuilt against Electron ABI; launched via `ELECTRON_RUN_AS_NODE=1`)
