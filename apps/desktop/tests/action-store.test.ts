@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import { shouldSkipShortcutHandling } from "../src/renderer/hooks/useShortcutListener";
 import { useActionStore } from "../src/renderer/stores/action-store";
+import { usePaneStore } from "../src/renderer/stores/pane-store";
 import { useSearchEverywhereStore } from "../src/renderer/stores/search-everywhere-store";
 import { useTabStore } from "../src/renderer/stores/tab-store";
 
@@ -20,6 +21,57 @@ import { useTabStore } from "../src/renderer/stores/tab-store";
 };
 
 const { registerCoreActions } = await import("../src/renderer/actions/core-actions");
+
+test("Cmd+W disposes the active terminal before removing its tab", () => {
+	const globals = globalThis as unknown as {
+		electron?: { terminal: { dispose: (id: string) => Promise<void> } };
+	};
+	const previous = globals.electron;
+	const disposed: string[] = [];
+	usePaneStore.setState({ layouts: {}, focusedPaneId: null });
+	useTabStore.setState({ activeWorkspaceId: "close-test", activeWorkspaceCwd: "/tmp" });
+	const store = usePaneStore.getState();
+	const pane = store.ensureLayout("close-test");
+	if (pane.type !== "pane") throw Error("Missing pane");
+	for (const id of ["keep", "close"])
+		store.addTabToPane("close-test", pane.id, {
+			kind: "terminal",
+			id,
+			title: id,
+			workspaceId: "close-test",
+			cwd: "/tmp",
+		});
+	store.setFocusedPane(pane.id);
+	globals.electron = {
+		terminal: {
+			dispose: async (id) => {
+				expect(usePaneStore.getState().findPaneForTab("close-test", id)).not.toBeNull();
+				disposed.push(id);
+			},
+		},
+	};
+	try {
+		registerCoreActions();
+		useActionStore.getState().execute("terminal.closeTab");
+		expect(disposed).toEqual(["close"]);
+		expect(usePaneStore.getState().findPaneForTab("close-test", "close")).toBeNull();
+		expect(usePaneStore.getState().findPaneForTab("close-test", "keep")).not.toBeNull();
+		store.addTabToPane("close-test", pane.id, {
+			kind: "file",
+			id: "file",
+			title: "file",
+			workspaceId: "close-test",
+			repoPath: "/tmp",
+			filePath: "file.ts",
+			language: "typescript",
+		});
+		useActionStore.getState().execute("terminal.closeTab");
+		expect(disposed).toEqual(["close"]);
+		expect(usePaneStore.getState().findPaneForTab("close-test", "file")).toBeNull();
+	} finally {
+		globals.electron = previous;
+	}
+});
 
 function resetStore() {
 	useActionStore.setState({

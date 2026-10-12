@@ -240,6 +240,9 @@ describe("DaemonClient", () => {
 			for (let i = 0; i < 100 && delivered.length === 0; i++) await Bun.sleep(10);
 			expect(c.isConnected).toBe(true);
 			expect(delivered).toEqual([replay]);
+			expect(c.supportsTerminalSnapshots).toBe(true);
+			c.disconnect();
+			expect(c.supportsTerminalSnapshots).toBe(false);
 		} finally {
 			c.disconnect();
 			remote.server.close();

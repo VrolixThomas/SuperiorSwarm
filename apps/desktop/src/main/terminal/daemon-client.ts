@@ -98,6 +98,9 @@ export class DaemonClient {
 	private fileInputCapable = false;
 	private fileSubmitCapable = false;
 	private snapshotCapable = false;
+	get supportsTerminalSnapshots(): boolean {
+		return this.isConnected && this.snapshotCapable;
+	}
 	private legacyFileTargets = new Map<
 		string,
 		{ generation: string; pid?: number; identity?: TerminalProcessIdentity }
@@ -404,6 +407,7 @@ export class DaemonClient {
 		const socket = this.socket;
 		this.socket = null;
 		this.binaryInputSupported = false;
+		this.snapshotCapable = false;
 		this.pendingInputTerminals.clear();
 		socket?.destroy();
 		this.lineBuffer = "";

@@ -3,9 +3,11 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { TerminalViewSessions } from "../src/main/terminal/view-sessions";
+import { LegacyDaemon } from "./fixtures/legacy-terminal-daemon";
 
 interface Result {
-	mode: "normal" | "alternate" | "sgr" | "sgr-pixels";
+	mode: "normal" | "alternate" | "sgr" | "sgr-pixels" | "legacy-return";
 	adapter: boolean;
 	sensitivity: number;
 	deltaY: number;
@@ -14,12 +16,40 @@ interface Result {
 	movement: number;
 	text: string[];
 	events: Array<{ trusted: boolean; mode: number }>;
+	buffer: string;
+	mouse: string;
 }
 
 test("native Chromium wheel events scroll terminal history and application views", async () => {
 	const dir = await mkdtemp(join(tmpdir(), "ss-native-wheel-"));
 	let child: Bun.Subprocess<"ignore", "pipe", "pipe"> | undefined;
 	try {
+		const daemon = new LegacyDaemon();
+		const views = new TerminalViewSessions(daemon);
+		let replay = "";
+		try {
+			await views.create(
+				"chat",
+				"/tmp",
+				() => {},
+				() => {}
+			);
+			daemon.emit(`${"history\r\n".repeat(100)}\x1b[?1049h\x1b[?1003h\x1b[?1006hREADY`);
+			daemon.emit("\x1b[?2026h\x1b[24;1Hstatus\x1b[?2026l".repeat(7000));
+			views.detach("chat");
+			daemon.emit("\x1b[1;1HUpdated while hidden");
+			await views.attach(
+				"chat",
+				(data) => {
+					replay = data;
+				},
+				() => {}
+			);
+			expect(daemon.raw).not.toContain("\x1b[?1006h");
+			await writeFile(join(dir, "legacy-replay.json"), JSON.stringify(replay));
+		} finally {
+			views.dispose("chat");
+		}
 		const build = await Bun.build({
 			entrypoints: [resolve(import.meta.dir, "fixtures/terminal-wheel-native-browser.ts")],
 			outdir: dir,
@@ -53,15 +83,19 @@ test("native Chromium wheel events scroll terminal history and application views
 			]);
 			if (code !== 0) throw Error(`${stdout}\n${stderr}`);
 			const results = JSON.parse(stdout.trim().split("\n").at(-1) ?? "[]") as Result[];
-			expect(results).toHaveLength(24);
+			expect(results).toHaveLength(25);
 			for (const result of results) {
 				expect(result.events).toHaveLength(result.count);
 				expect(result.events.every((event) => event.trusted && event.mode === 0)).toBe(true);
 				if (!result.adapter) continue;
+				if (result.mode === "legacy-return") {
+					expect(result.buffer).toBe("alternate");
+					expect(result.mouse).toBe("any");
+				}
 				const baseline = results.find(
 					(r) =>
 						!r.adapter &&
-						r.mode === result.mode &&
+						r.mode === (result.mode === "legacy-return" ? "sgr" : result.mode) &&
 						r.deltaY === result.deltaY &&
 						r.sensitivity === 3
 				);

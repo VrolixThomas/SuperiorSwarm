@@ -1,5 +1,5 @@
 import type { LayoutNode } from "../../shared/pane-types";
-import { closePaneWithTerminalCleanup } from "../lib/pane-lifecycle";
+import { closePaneWithTerminalCleanup, closeTabWithTerminalCleanup } from "../lib/pane-lifecycle";
 import { useActionStore } from "../stores/action-store";
 import { useBranchStore } from "../stores/branch-store";
 import { findParentSplit, findSplitById, getAllPanes, usePaneStore } from "../stores/pane-store";
@@ -387,7 +387,7 @@ export function registerCoreActions() {
 				const paneState = usePaneStore.getState();
 				const focused = paneState.getFocusedPane(wsId);
 				if (focused?.activeTabId) {
-					paneState.removeTabFromPane(wsId, focused.id, focused.activeTabId);
+					closeTabWithTerminalCleanup(wsId, focused.id, focused.activeTabId);
 				}
 			},
 			keywords: ["close", "remove"],

@@ -105,8 +105,10 @@ focused TypeScript check and production build passed.
 snapshots only when advertised, and accept the larger replay frame. Old daemons
 and old persisted raw buffers remain readable. An outdated daemon is upgraded
 when idle; live sessions are preserved rather than terminated to upgrade it.
-Consequently, installing a new renderer alone cannot enable snapshots on an
-already-running old daemon. The updated terminal service must also start.
+Installing a new renderer alone cannot enable native snapshots on an
+already-running old daemon. The updated terminal service must also start for
+that capability. The compatibility layer described below now preserves state
+in the app's main process while an old daemon remains alive.
 
 History already discarded by the old daemon cannot be reconstructed from that
 raw suffix. Resuming the Codex session once after upgrading can rebuild its
@@ -118,6 +120,59 @@ serialize inline image payloads or OSC 8 hyperlink destinations; plain URLs
 remain recognizable by the renderer's WebLinksAddon. This is a limitation of
 restored snapshots, not live rendering. Headless history adds memory bounded by
 terminal dimensions and the retained line count.
+
+## October 12: returning to a chat and Cmd+W
+
+The installed app was 0.23.2, but its production daemon was still the process
+started September 29. Its live handshake was `protocolVersion: 2` with no
+capabilities, and it still owned 33 PTYs. Thus the earlier native-daemon snapshot
+fix was not active for these sessions. Two affected Codex replay responses each
+contained 200,000 characters and `fg=codex`, but no alternate-screen or mouse
+tracking/encoding setup sequences. A recreated xterm starts in normal mode with
+mouse reporting disabled, while the existing Codex process still expects SGR
+wheel input. Showing the latest screen does not restore that input state.
+
+`src/main/terminal/view-sessions.ts` now retains a headless terminal and the live
+daemon subscription for a viewed legacy session. Leaving a workspace detaches
+the renderer only. Output continues to update the retained terminal, and a
+returning renderer receives a serialized snapshot before newer live output.
+Snapshot-capable daemons keep their existing direct attach/detach path. Tab
+closure, process exit, resize ordering, stale shell modes, and cancelled view
+attachments are covered. Disposing a replay buffer settles pending writes so
+closing a view cannot leave an attachment promise hung.
+
+This is an app-process cache for legacy daemons. It cannot reconstruct mode
+setup/history already missing when the app first attaches to an old raw replay,
+nor can it provide a durable daemon snapshot across quitting the app. A chat
+already in that broken state needs one Codex resume after the updated app starts;
+subsequent view changes retain the restored state. Native daemon snapshots still
+provide the durable path after the old service can be replaced.
+
+The Cmd+W action also had a separate resource leak: it called only
+`removeTabFromPane`, whereas the tab's close button first disposed the PTY.
+That left invisible processes keeping the old daemon alive. Both paths now use
+`closeTabWithTerminalCleanup`. The main dispose handler clears workspace links
+to the specific closed terminal. Layout moves and ordinary navigation remain
+non-destructive. Existing background/orphaned PTYs were not killed during this
+investigation.
+
+Verification:
+
+- The legacy return-to-chat regression failed before the change: expected
+  `alternate`, received `normal`, despite the latest text being visible.
+- Three leave/return cycles now preserve alternate screen, mouse tracking,
+  SGR encoding, normal-buffer history, and output written while hidden.
+- Native Chromium wheel input after the recreated legacy view produces the
+  expected 20 SGR reports for the test's 120px movement. The native matrix now
+  contains 24 baseline/application cases plus the legacy return case.
+- Cmd+W's regression failed before the change with zero disposal calls; it now
+  disposes the selected terminal before metadata removal and leaves other
+  terminals/non-terminal tabs alone.
+- 149 tests passed in the combined focused run. Its real-PTY test hit a Bun
+  bundler `EISDIR` error; rerunning that test in isolation passed. The earlier
+  daemon-focused batch also passed all 66 tests, including that PTY test.
+- The production build and focused terminal TypeScript check passed. Full
+  repository type checking still reports unrelated existing errors.
 
 ## Validation
 

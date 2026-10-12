@@ -1,5 +1,6 @@
 const { app, BrowserWindow } = require("electron");
 const path = require("node:path");
+const fs = require("node:fs");
 app.setPath("userData", path.join(process.argv[2], "profile"));
 app.dock?.hide();
 const deadline = setTimeout(() => app.exit(1), 25000);
@@ -49,6 +50,32 @@ app.whenReady().then(async () => {
 				}
 			}
 		}
+		const replay = JSON.parse(
+			fs.readFileSync(path.join(process.argv[2], "legacy-replay.json"), "utf8")
+		);
+		const { x, y, cellHeight } = await window.webContents.executeJavaScript(
+			'window.nativeWheel.setup(true, "normal", 3)'
+		);
+		await window.webContents.executeJavaScript(
+			`window.nativeWheel.restore(${JSON.stringify(replay)})`
+		);
+		await window.webContents.debugger.sendCommand("Input.dispatchMouseEvent", {
+			type: "mouseWheel",
+			x,
+			y,
+			deltaX: 0,
+			deltaY: -120,
+		});
+		const returned = await window.webContents.executeJavaScript("window.nativeWheel.result()");
+		results.push({
+			mode: "legacy-return",
+			adapter: true,
+			sensitivity: 3,
+			deltaY: -120,
+			count: 1,
+			cellHeight,
+			...returned,
+		});
 		console.log(JSON.stringify(results));
 		window.destroy();
 		clearTimeout(deadline);

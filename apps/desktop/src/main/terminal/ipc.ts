@@ -6,7 +6,7 @@ import type { TerminalDataMeta } from "../../shared/daemon-protocol";
 import { getAgentNotifyPort, getAgentNotifyToken } from "../agent-hooks/port";
 import { getWorkspaceCwdOrThrow } from "../agent-launch/workspace-cwd-lookup";
 import { getDb } from "../db";
-import { terminalSessions } from "../db/schema";
+import { terminalSessions, workspaces } from "../db/schema";
 import { ensureTerminalSessionRow } from "../db/session-persistence";
 import type { AgentSessionManager } from "../services/agent-session-manager";
 import { incrementCounter } from "../telemetry/state";
@@ -14,6 +14,7 @@ import type { DaemonClient } from "./daemon-client";
 import { registerTerminalInputIPC } from "./input-ipc";
 import { rendererTrust } from "./renderer-trust";
 import { terminalFileOwners } from "./terminal-files";
+import { TerminalViewSessions } from "./view-sessions";
 
 function assertNonEmptyString(value: unknown, name: string): asserts value is string {
 	if (typeof value !== "string" || value.length === 0) {
@@ -25,6 +26,7 @@ export function setupTerminalIPC(
 	daemonClient: DaemonClient,
 	agentSessionManager?: AgentSessionManager
 ): void {
+	const views = new TerminalViewSessions(daemonClient);
 	ipcMain.handle(
 		"terminal:create",
 		async (event, id: unknown, cwd: unknown, workspaceId: unknown) => {
@@ -97,10 +99,10 @@ export function setupTerminalIPC(
 
 			try {
 				if (daemonClient.hasLiveSession(id)) {
-					await daemonClient.attach(id, onData, onExit, cwdStr, env);
+					await views.attach(id, onData, onExit, cwdStr, env);
 					return { wasAttached: true };
 				}
-				await daemonClient.create(id, cwdStr, onData, onExit, env);
+				await views.create(id, cwdStr, onData, onExit, env);
 				incrementCounter(getDb(), "lifetimeSessionsStarted");
 				return { wasAttached: false };
 			} catch (error) {
@@ -130,25 +132,31 @@ export function setupTerminalIPC(
 		if (!Number.isInteger(rows) || (rows as number) < 1 || (rows as number) > 500) {
 			throw new Error("rows must be an integer between 1 and 500");
 		}
-		daemonClient.resize(id, cols as number, rows as number);
+		views.resize(id, cols as number, rows as number);
 	});
 
 	ipcMain.handle("terminal:detach", (_event, id: unknown) => {
 		assertNonEmptyString(id, "id");
 		terminalFileOwners.detach(id);
 		input.invalidate(id);
-		daemonClient.detach(id);
+		views.detach(id);
 	});
 
 	ipcMain.handle("terminal:dispose", (_event, id: unknown) => {
 		assertNonEmptyString(id, "id");
 		terminalFileOwners.detach(id);
 		input.invalidate(id);
-		daemonClient.dispose(id);
+		views.dispose(id);
 		agentSessionManager?.removeSession(id);
 		// Also remove the DB session record so it doesn't reappear as stale
 		try {
 			const db = getDb();
+			// All close paths (keyboard, tab button, pane) clear only links to
+			// this PTY, rather than detaching an unrelated tab in the workspace.
+			db.update(workspaces)
+				.set({ terminalId: null, updatedAt: new Date() })
+				.where(eq(workspaces.terminalId, id))
+				.run();
 			db.delete(terminalSessions).where(eq(terminalSessions.id, id)).run();
 		} catch {
 			// DB may not be initialized yet during early startup
