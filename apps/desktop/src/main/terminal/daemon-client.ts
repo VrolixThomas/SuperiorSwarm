@@ -130,7 +130,11 @@ export class DaemonClient {
 			requestId: randomUUID(),
 			managedAgent,
 		});
-		return response?.target ?? null;
+		if (response?.target?.supported) return response.target;
+		// A daemon from a previous release can advertise file input while its
+		// bundled inspector is broken. Recheck locally with this app's helper;
+		// replacing the app does not replace code in an already-running daemon.
+		return (await this.legacyFileTarget(id, managedAgent)) ?? response?.target ?? null;
 	}
 	private async legacyFileTarget(
 		id: string,
@@ -173,7 +177,7 @@ export class DaemonClient {
 		payload: string,
 		submit = false
 	): Promise<FileDelivery> {
-		if (!this.fileInputCapable)
+		if (!this.fileInputCapable || this.legacyFileTargets.get(id)?.generation === generation)
 			return this.insertLegacyFiles(id, generation, text, payload, submit);
 		if (
 			!this.canSendFileInput() ||

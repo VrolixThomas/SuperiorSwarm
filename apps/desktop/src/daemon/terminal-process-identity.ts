@@ -12,7 +12,9 @@ export function readTerminalProcessIdentity(
 		const value: unknown = JSON.parse(
 			execFileSync(helper, [String(shellPid)], {
 				encoding: "utf8",
-				timeout: 1000,
+				// Cold helper launches on macOS can exceed one second. Keep this
+				// bounded below the daemon client's three-second file request timeout.
+				timeout: 2000,
 				maxBuffer: 16 * 1024,
 				stdio: ["ignore", "pipe", "ignore"],
 				env: {},

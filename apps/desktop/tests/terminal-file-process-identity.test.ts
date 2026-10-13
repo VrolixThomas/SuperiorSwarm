@@ -130,6 +130,23 @@ test("native helper inspects a generated executable without reading command argu
 		expect(result?.executable.endsWith("/.local/share/claude/versions/2.1.227")).toBe(true);
 		expect(result?.pid).toBe(child.pid);
 		expect(JSON.stringify(result)).not.toContain("generated-argument");
+		// Cold native launches can exceed the old one-second deadline. Delay
+		// before inspecting, so we still require a fresh OS identity, not a cache.
+		const delayedSource = join(root, "delayed-inspector.c");
+		const delayedHelper = join(root, "delayed-inspector");
+		writeFileSync(
+			delayedSource,
+			`#define main inspect_main
+#include ${JSON.stringify(helperSource)}
+#undef main
+int main(int argc, char **argv) { usleep(1100000); return inspect_main(argc, argv); }
+`
+		);
+		execFileSync("cc", ["-Wall", "-Wextra", "-Werror", delayedSource, "-o", delayedHelper]);
+		// Isolate the deliberate delay from this freshly compiled fixture's
+		// own first launch. The Electron integration tests cover cold launches.
+		execFileSync(delayedHelper, [String(child.pid)], { timeout: 10000 });
+		expect(readTerminalProcessIdentity(child.pid, delayedHelper)).toEqual(result);
 		// Emulate exec() between native metadata reads. PID/start time remain the same.
 		const racedSource = join(root, "raced-inspector.c");
 		const racedHelper = join(root, "raced-inspector");
@@ -152,4 +169,4 @@ static int changing_path(int pid, void *buffer, uint32_t size) {
 	} finally {
 		child.kill("SIGKILL");
 	}
-});
+}, 15000);

@@ -48,7 +48,12 @@ afterEach(() => {
 afterAll(() => rmSync(root, { recursive: true, force: true }));
 
 async function setup(
-	options: { nativePid?: number; onWrite?: (data: string) => void; protocolVersion?: number } = {}
+	options: {
+		nativePid?: number;
+		onWrite?: (data: string) => void;
+		protocolVersion?: number;
+		brokenFileInspector?: boolean;
+	} = {}
 ) {
 	messages.length = 0;
 	if (options.nativePid) {
@@ -75,7 +80,11 @@ async function setup(
 		sockets.add(socket);
 		// Match the observed live daemon: v2, no capability list or file frames.
 		socket.write(
-			`${JSON.stringify({ type: "ready", protocolVersion: options.protocolVersion ?? 2 })}\n`
+			`${JSON.stringify({
+				type: "ready",
+				protocolVersion: options.protocolVersion ?? 2,
+				capabilities: options.brokenFileInspector ? ["file-input-v1"] : undefined,
+			})}\n`
 		);
 		let buffer = "";
 		socket.on("data", (data) => {
@@ -86,6 +95,14 @@ async function setup(
 				const message = JSON.parse(buffer.slice(0, newline));
 				buffer = buffer.slice(newline + 1);
 				messages.push(message);
+				if (message.type === "file-target")
+					socket.write(
+						`${JSON.stringify({
+							type: "file-result",
+							requestId: message.requestId,
+							target: { generation: "old-inspector", foreground: "codex", supported: false },
+						})}\n`
+					);
 				if (message.type === "list")
 					socket.write(
 						`${JSON.stringify({
@@ -161,6 +178,30 @@ legacyTest(
 		}
 		await flush();
 		expect(writes()).toEqual([]);
+	}
+);
+
+legacyTest(
+	"a surviving capable daemon with a broken inspector uses a locally verified lease",
+	async () => {
+		await setup({ protocolVersion: 3, brokenFileInspector: true });
+		expect(client.needsFileInputUpdate).toBe(false);
+		// An advertised local name is insufficient; the new app must inspect the OS process.
+		writeFileSync(
+			join(root, "identity.json"),
+			JSON.stringify({ ...identity, executable: "/usr/bin/ssh" })
+		);
+		expect((await client.fileTarget("term"))?.supported).toBe(false);
+		writeFileSync(join(root, "identity.json"), JSON.stringify(identity));
+		const changed = await generation();
+		writeFileSync(join(root, "identity.json"), JSON.stringify({ ...identity, pid: 999 }));
+		expect(await client.insertFiles("term", changed, text, payload)).toBe("rejected");
+		writeFileSync(join(root, "identity.json"), JSON.stringify(identity));
+		const token = await generation();
+		expect(await client.insertFiles("term", token, text, payload)).toBe("unconfirmed");
+		await flush();
+		expect(writes()).toEqual([{ type: "write", id: "term", data: payload }]);
+		expect(messages.some((message) => message.type === "file-input")).toBe(false);
 	}
 );
 
