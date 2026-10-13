@@ -1,5 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import type { Socket } from "node:net";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { BrowserWindow, app, ipcMain, session } from "electron";
 import { PtyManager } from "../../../src/daemon/pty-manager";
 import type { ScrollbackStore } from "../../../src/daemon/scrollback-store";
@@ -7,8 +9,12 @@ import { SocketServer } from "../../../src/daemon/socket-server";
 import { DaemonClient } from "../../../src/main/terminal/daemon-client";
 import { setDaemonClient } from "../../../src/main/terminal/daemon-instance";
 import { registerTerminalInputIPC } from "../../../src/main/terminal/input-ipc";
+import { rendererTrust } from "../../../src/main/terminal/renderer-trust";
 import { terminalFileOwners } from "../../../src/main/terminal/terminal-files";
+import { router } from "../../../src/main/trpc";
+import { setupTRPCIPC } from "../../../src/main/trpc/ipc-link";
 import { terminalFilesRouter } from "../../../src/main/trpc/routers/terminal-files";
+import type { DaemonMessage } from "../../../src/shared/daemon-protocol";
 import { formatFilePaths } from "../../../src/shared/terminal-files";
 
 const root = process.env["SS_FIXTURE_ROOT"];
@@ -26,6 +32,13 @@ const server = new SocketServer(
 	{ flush: () => [] } as unknown as ScrollbackStore,
 	socketPath
 );
+const legacy = process.env["SS_FIXTURE_DAEMON"] === "legacy";
+if (legacy) {
+	const transport = server as unknown as { send: (socket: Socket, message: DaemonMessage) => void };
+	const send = transport.send.bind(server);
+	transport.send = (socket, message) =>
+		send(socket, message.type === "ready" ? { type: "ready", protocolVersion: 2 } : message);
+}
 const client = new DaemonClient(socketPath, join(root, "pid"), join(root, "log"));
 const id = "fixture-terminal";
 const capture = join(root, "input");
@@ -59,6 +72,8 @@ async function run() {
 		},
 	});
 	const contents = window.webContents;
+	rendererTrust.register(contents.id, pathToFileURL(join(root!, "index.html")).href);
+	setupTRPCIPC(router({ terminalFiles: terminalFilesRouter }));
 	const caller = { senderId: contents.id, frameId: contents.mainFrame.routingId };
 	ipcMain.handle("fixture:create", async (_event, terminalId: string) => {
 		if (terminalId !== id) throw new Error("Unexpected terminal");
@@ -78,23 +93,6 @@ async function run() {
 	ipcMain.handle("fixture:resize", (_event, terminalId: string, cols: number, rows: number) =>
 		client.resize(terminalId, cols, rows)
 	);
-	ipcMain.handle("fixture:files", async (_event, method: string, input: unknown) => {
-		const api = terminalFilesRouter.createCaller({ fileCaller: caller });
-		switch (method) {
-			case "prepare":
-				return api.prepare(input as Parameters<typeof api.prepare>[0]);
-			case "append":
-				return api.append(input as Parameters<typeof api.append>[0]);
-			case "resolve":
-				return api.resolve(input as Parameters<typeof api.resolve>[0]);
-			case "insert":
-				return api.insert(input as Parameters<typeof api.insert>[0]);
-			case "cancel":
-				return api.cancel(input as Parameters<typeof api.cancel>[0]);
-			default:
-				throw new Error("Unsupported fixture operation");
-		}
-	});
 	await window.loadFile(join(root!, "index.html"));
 	step = "TUI ready";
 	await until(() => manager.getBuffer(id).includes("FIXTURE_READY"));
@@ -110,8 +108,19 @@ async function run() {
 		nodeId: documentRoot.nodeId,
 		selector: 'input[type="file"]',
 	});
-	// Chromium supplies real File objects; preload must resolve them through webUtils.
-	await contents.debugger.sendCommand("DOM.setFileInputFiles", { nodeId, files: [paths[0]] });
+	// A native drag supplies real File objects and only advertises copy, as some
+	// macOS drag sources do. Exercise drop handling rather than the file picker.
+	const dropPoint = await contents.executeJavaScript(`(() => {
+		const rect = document.querySelector('.xterm-screen').getBoundingClientRect();
+		return {x: rect.x + 40, y: rect.y + 40};
+	})()`);
+	for (const type of ["dragEnter", "dragOver", "drop"]) {
+		await contents.debugger.sendCommand("Input.dispatchDragEvent", {
+			type,
+			...dropPoint,
+			data: { items: [], files: [paths[0]], dragOperationsMask: 1 },
+		});
+	}
 	step = "first selection";
 	await until(() =>
 		contents.executeJavaScript("document.body.textContent.includes('1 file added')")
@@ -136,7 +145,7 @@ async function run() {
 	if (readFileSync(capture, "utf8") !== first)
 		throw new Error("First Enter must only insert paths, without CR");
 	await until(() =>
-		contents.executeJavaScript("document.body.textContent.includes('Paths added to your prompt')")
+		contents.executeJavaScript("!document.querySelector('[aria-label=\"Files in this message\"]')")
 	);
 	type("then compare with");
 	const prose = `${first}then compare with`;
@@ -155,7 +164,7 @@ async function run() {
 	if (readFileSync(capture, "utf8") !== draft)
 		throw new Error("Second batch must only insert paths, without CR");
 	await until(() =>
-		contents.executeJavaScript("document.body.textContent.includes('Paths added to your prompt')")
+		contents.executeJavaScript("!document.querySelector('[aria-label=\"Files in this message\"]')")
 	);
 	enter();
 	step = "separate submit";

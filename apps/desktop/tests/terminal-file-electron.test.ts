@@ -12,9 +12,9 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
-test.skipIf(process.platform !== "darwin")(
-	"real Electron inserts files between draft text and requires a separate Enter to submit",
-	async () => {
+test.skipIf(process.platform !== "darwin").each(["current", "legacy"])(
+	"real Electron inserts dropped files through production tRPC with a %s daemon",
+	async (daemonVersion) => {
 		const root = realpathSync(mkdtempSync(join(tmpdir(), "ss-file-electron-")));
 		const fixture = resolve(import.meta.dir, "fixtures/terminal-file-electron");
 		try {
@@ -42,6 +42,9 @@ test.skipIf(process.platform !== "darwin")(
 			const plugin: Bun.BunPlugin = {
 				name: "fixture-app-boundaries",
 				setup(build) {
+					build.onResolve({ filter: /^\.\.\/ipc-safety$/ }, (args) => ({
+						path: resolve(import.meta.dir, "../src/main", `${args.path.slice(3)}.ts`),
+					}));
 					build.onResolve({ filter: /^\.\.\/index$/ }, (args) =>
 						args.importer.endsWith("/trpc/routers/terminal-files.ts")
 							? { path: resolve(import.meta.dir, "../src/main/trpc/index.ts") }
@@ -54,14 +57,14 @@ test.skipIf(process.platform !== "darwin")(
 					build.onResolve(
 						{
 							filter:
-								/(?:trpc\/client|stores\/tab-store|workspace-cwd-lookup|agent-session-manager-handle)$/,
+								/(?:stores\/tab-store|workspace-cwd-lookup|agent-session-manager-handle|logger)$/,
 						},
 						(args) => ({ path: args.path, namespace: "fixture" })
 					);
 					build.onLoad({ filter: /.*/, namespace: "fixture" }, (args) => ({
 						loader: "js",
-						contents: args.path.endsWith("trpc/client")
-							? "export const trpcVanilla = {terminalFiles: new Proxy({}, {get: (_, method) => ({mutate: input => window.electron.fixtureFiles(method,input), query: input => window.electron.fixtureFiles(method,input)})})};"
+						contents: args.path.endsWith("logger")
+							? "export const log = {info(){}, error(){}, warn(){}};"
 							: args.path.endsWith("stores/tab-store")
 								? "export const useTabStore = {getState: () => ({updateTabTitle: () => {}})};"
 								: args.path.endsWith("workspace-cwd-lookup")
@@ -94,13 +97,19 @@ test.skipIf(process.platform !== "darwin")(
 			);
 			const code = await new Promise<number | null>((done, reject) => {
 				let diagnostics = "";
-				const child = spawn(require("electron") as string, [join(root, "main.cjs")], {
+				const electronDir = dirname(require.resolve("electron/package.json"));
+				const electronPath = join(
+					process.env["ELECTRON_OVERRIDE_DIST_PATH"] || join(electronDir, "dist"),
+					readFileSync(join(electronDir, "path.txt"), "utf8").trim()
+				);
+				const child = spawn(electronPath, [join(root, "main.cjs")], {
 					cwd: root,
 					env: {
 						PATH: "/usr/bin:/bin:/usr/sbin:/sbin",
 						SHELL: join(root, "sh"),
 						SS_FIXTURE_ROOT: root,
 						SS_FIXTURE_CAPTURE: join(root, "input"),
+						SS_FIXTURE_DAEMON: daemonVersion,
 					},
 					stdio: ["ignore", "pipe", "pipe"],
 				});
