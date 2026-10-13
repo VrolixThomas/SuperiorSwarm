@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.23.4 (2026-10-13)
+
+### What's New
+
+SuperiorSwarm fixes misaligned terminal text after closing or interrupting a chat in newly opened terminals. Adding files to terminal prompts now works reliably in the installed app, including sessions kept open across updates.
+
+### Changes
+
+- Weird terminal text (#160)
+- Terminal add files (#161)
+
 ## v0.23.3 (2026-10-13)
 
 ### What's New
