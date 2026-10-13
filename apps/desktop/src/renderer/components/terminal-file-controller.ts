@@ -153,7 +153,10 @@ export class TerminalFileController {
 		return this.state.batch !== null || this.state.busy;
 	}
 	shouldHandleEnter(): boolean {
-		return this.state.busy || (this.state.batch !== null && !fileInsertionBlocked(this.state));
+		return (
+			this.operations.ready() &&
+			(this.state.busy || (this.state.batch !== null && !fileInsertionBlocked(this.state)))
+		);
 	}
 	stage(paths: Array<string | null>): Promise<void> {
 		if (!paths.length) return Promise.resolve();
@@ -180,8 +183,8 @@ export class TerminalFileController {
 		this.activity = "stage";
 		this.update({ busy: true, status: "Adding files…" });
 		const run = async () => {
-			if (!this.current(epoch)) return;
 			try {
+				if (!this.current(epoch)) return;
 				const existing = this.needsPreparation
 					? await this.prepareRestored(epoch)
 					: this.state.batch;
@@ -275,12 +278,22 @@ export class TerminalFileController {
 							: "Copy failed. Remove the file or retry copying explicitly.",
 				});
 		} finally {
-			if (this.epoch === epoch) this.activity = null;
+			if (this.epoch === epoch) {
+				this.activity = null;
+				this.update({ busy: false });
+			}
 		}
 	}
 	async insertPending(): Promise<void> {
 		if (this.state.busy) {
 			this.reportError("Files are still being prepared. Press Enter again when they are ready.");
+			return;
+		}
+		if (this.state.batch && !this.operations.ready()) {
+			this.suspend(
+				"Terminal is not ready to insert files. Files kept; use Retry files when ready."
+			);
+			this.update({ insertionBlocked: true });
 			return;
 		}
 		await this.insert();
@@ -374,7 +387,24 @@ export class TerminalFileController {
 				}
 			}
 		} finally {
-			if (this.epoch === epoch) this.activity = null;
+			if (this.epoch === epoch) {
+				this.activity = null;
+				// Readiness can change while IPC is in flight. Every early return
+				// must release Enter, even if no lifecycle event suspended the batch.
+				if (this.state.busy) {
+					if (consumed)
+						this.update({
+							busy: false,
+							status: "Delivery uncertain — check the terminal. This batch will not be retried.",
+						});
+					else {
+						this.suspend(
+							"File insertion was interrupted. Files kept; use Retry files to try again."
+						);
+						this.update({ insertionBlocked: true });
+					}
+				}
+			}
 		}
 	}
 }
