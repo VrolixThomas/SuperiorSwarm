@@ -25,6 +25,7 @@ import { WhatsNewModal } from "./components/WhatsNewModal";
 import { PRReviewKeyboardListener } from "./components/review/PRReviewKeyboardListener";
 import { SettingsPage } from "./components/settings/SettingsPage";
 import { TicketRefreshCoordinator } from "./components/tickets/TicketRefreshCoordinator";
+import { useUpdaterStatus } from "./hooks/use-updater";
 import { useAgentAlertListener } from "./hooks/useAgentAlertListener";
 import { useShortcutListener } from "./hooks/useShortcutListener";
 import {
@@ -39,7 +40,6 @@ import { usePaneStore } from "./stores/pane-store";
 import { useProjectStore } from "./stores/projects";
 import type { TabItem } from "./stores/tab-store";
 import { resetFileTabCounter, shouldHydrateTabStore, useTabStore } from "./stores/tab-store";
-import { useUpdateStore } from "./stores/update-store";
 import { trpc } from "./trpc/client";
 
 const SAVE_INTERVAL_MS = 30_000;
@@ -488,42 +488,7 @@ function AuthenticatedApp() {
 		);
 	}
 
-	// Query update status on mount and poll when an update is being downloaded
-	const updateStore = useUpdateStore();
-	const isDownloading = updateStore.toastState === "downloading";
-	const updateStatus = trpc.updates.getStatus.useQuery(undefined, {
-		staleTime: isDownloading ? 5_000 : Number.POSITIVE_INFINITY,
-		refetchInterval: isDownloading ? 5_000 : false,
-		refetchOnMount: false,
-		refetchOnWindowFocus: false,
-		refetchOnReconnect: false,
-	});
-
-	const hasCheckedUpdate = useRef(false);
-	useEffect(() => {
-		const data = updateStatus.data;
-		if (!data) return;
-
-		const dismissedVersion = data.dismissedUpdateVersion ?? null;
-		useUpdateStore.getState().setDismissedUpdateVersion(dismissedVersion);
-
-		// One-time: process pending notification from startup
-		if (!hasCheckedUpdate.current) {
-			hasCheckedUpdate.current = true;
-			if (data.pendingNotification) {
-				const { type, version, summary } = data.pendingNotification;
-				const toastType = type === "patch" ? "patch" : "new-version";
-				useUpdateStore.getState().showToast(toastType, version, summary);
-			}
-		}
-
-		// Sync download/ready state from main process
-		if (data.updateDownloaded && data.updateVersion && data.updateVersion !== dismissedVersion) {
-			useUpdateStore.getState().setUpdateReadyIfNotDismissed(data.updateVersion);
-		} else if (data.updateAvailable && data.downloadProgress != null && data.updateVersion) {
-			useUpdateStore.getState().setDownloadProgress(data.downloadProgress);
-		}
-	}, [updateStatus.data]);
+	useUpdaterStatus();
 
 	const sidebarPanelRef = usePanelRef();
 	const diffPanelRef = usePanelRef();
