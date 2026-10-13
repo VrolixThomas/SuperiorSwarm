@@ -11,7 +11,17 @@ type Viewer = {
 	onData: (data: string, meta?: TerminalDataMeta) => void;
 	onExit: (code: number) => void;
 };
+type Batch = { chunks: string[]; chars: number };
+const MAX_PENDING_CHARS = 4_000_000;
+
 interface LegacySession {
+	id: string;
+	cols: number;
+	rows: number;
+	recovery?: TerminalDataMeta["recovery"];
+	batch?: Batch;
+	batches: Set<Batch>;
+	pendingChars: number;
 	replay: TerminalReplayBuffer;
 	viewer?: Viewer;
 	version: number;
@@ -54,12 +64,13 @@ export class TerminalViewSessions {
 		const existing = this.legacy.get(id);
 		if (existing) {
 			existing.viewer = undefined;
+			existing.batch = undefined;
 			const version = ++existing.version;
 			await this.enqueue(existing, async () => {
 				if (existing.version !== version) return;
 				existing.viewer = { onData, onExit };
 				const data = existing.replay.snapshot();
-				if (data) onData(data, { replay: true });
+				if (data || existing.recovery) onData(data, { replay: true, recovery: existing.recovery });
 			});
 			return;
 		}
@@ -92,10 +103,13 @@ export class TerminalViewSessions {
 	resize(id: string, cols: number, rows: number): void {
 		const entry = this.legacy.get(id);
 		if (entry && !this.daemon.supportsTerminalSnapshots) {
+			entry.batch = undefined;
 			void this.enqueue(
 				entry,
 				() =>
 					new Promise<void>((resolve) => {
+						entry.cols = cols;
+						entry.rows = rows;
 						entry.replay.resize(cols, rows);
 						entry.replay.afterWrites(resolve);
 					})
@@ -111,6 +125,11 @@ export class TerminalViewSessions {
 
 	private start(id: string, viewer: Viewer): LegacySession {
 		const entry: LegacySession = {
+			id,
+			cols: 80,
+			rows: 24,
+			batches: new Set(),
+			pendingChars: 0,
 			replay: new TerminalReplayBuffer(),
 			viewer,
 			version: 0,
@@ -125,28 +144,81 @@ export class TerminalViewSessions {
 		const work = entry.pending.then(() => (entry.stopped ? undefined : operation()));
 		entry.pending = work.catch((error) => {
 			console.error("[terminal-view-sessions] Failed to update terminal state:", error);
+			this.fail(entry);
 		});
 		return work;
 	}
 
 	private receive(entry: LegacySession, data: string, meta?: TerminalDataMeta): void {
-		void this.enqueue(entry, async () => {
-			if (this.daemon.supportsTerminalSnapshots) {
+		if (entry.stopped) return;
+		if (this.daemon.supportsTerminalSnapshots) {
+			entry.batch = undefined;
+			void this.enqueue(entry, async () => {
 				entry.viewer?.onData(data, meta);
-				return;
-			}
-			const output = await new Promise<string>((resolve) => entry.replay.write(data, resolve));
-			if (entry.stopped) return;
-			if (meta?.replay && isShellProcess(meta.fg)) {
-				await new Promise<void>((resolve) => entry.replay.resetStaleModes(resolve));
-			}
-			if (entry.stopped) return;
-			if (meta?.replay) entry.viewer?.onData(entry.replay.snapshot(), meta);
-			else if (output) entry.viewer?.onData(output);
+			});
+			return;
+		}
+		if (entry.pendingChars + data.length > MAX_PENDING_CHARS) {
+			this.fail(entry);
+			return;
+		}
+		entry.pendingChars += data.length;
+		// A replay is a new baseline, never an incremental part of the old
+		// stream. Old daemons cannot prove what was missed while disconnected.
+		if (meta?.replay) {
+			entry.batch = undefined;
+			void this.enqueue(entry, async () => {
+				entry.replay.dispose();
+				entry.replay = new TerminalReplayBuffer();
+				entry.replay.resize(entry.cols, entry.rows);
+				entry.recovery = "legacy-replay";
+				await new Promise<string>((resolve) => entry.replay.write(data, resolve));
+				entry.pendingChars -= data.length;
+				if (entry.stopped) return;
+				if (isShellProcess(meta.fg))
+					await new Promise<void>((resolve) => entry.replay.resetStaleModes(resolve));
+				if (!entry.stopped)
+					entry.viewer?.onData(entry.replay.snapshot(), { ...meta, recovery: entry.recovery });
+			});
+			return;
+		}
+		if (entry.batch) {
+			entry.batch.chunks.push(data);
+			entry.batch.chars += data.length;
+			return;
+		}
+		const batch: Batch = { chunks: [data], chars: data.length };
+		entry.batch = batch;
+		entry.batches.add(batch);
+		void this.enqueue(entry, async () => {
+			if (entry.batch === batch) entry.batch = undefined;
+			const joined = batch.chunks.join("");
+			batch.chunks = [];
+			const output = await new Promise<string>((resolve) => entry.replay.write(joined, resolve));
+			entry.pendingChars -= batch.chars;
+			entry.batches.delete(batch);
+			if (!entry.stopped && output) entry.viewer?.onData(output);
 		});
 	}
 
+	private fail(entry: LegacySession): void {
+		if (entry.stopped) return;
+		const viewer = entry.viewer;
+		this.drop(entry.id);
+		// The PTY stays alive; the view can explicitly reattach. Never allow an
+		// unbounded parser queue or disguise discarded output as a healthy view.
+		viewer?.onData("", { replay: true, recovery: "output-overflow" });
+	}
+
+	diagnostics(id: string) {
+		const entry = this.legacy.get(id);
+		return entry
+			? { pendingChars: entry.pendingChars, recovery: entry.recovery, attached: !!entry.viewer }
+			: null;
+	}
+
 	private exit(id: string, entry: LegacySession, code: number): void {
+		entry.batch = undefined;
 		void this.enqueue(entry, async () => {
 			if (this.legacy.get(id) !== entry) return;
 			try {
@@ -163,6 +235,9 @@ export class TerminalViewSessions {
 		this.legacy.delete(id);
 		entry.stopped = true;
 		entry.viewer = undefined;
+		entry.batch = undefined;
+		for (const batch of entry.batches) batch.chunks = [];
+		entry.batches.clear();
 		entry.replay.dispose();
 	}
 }

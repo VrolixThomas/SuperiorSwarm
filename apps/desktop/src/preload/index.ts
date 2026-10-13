@@ -35,7 +35,9 @@ function createDispatcher<T extends unknown[]>(channel: string) {
 	return {
 		add(id: string, callback: (...args: T) => void): () => void {
 			listeners.set(id, callback);
-			return () => listeners.delete(id);
+			return () => {
+				if (listeners.get(id) === callback) listeners.delete(id);
+			};
 		},
 	};
 }
@@ -44,6 +46,7 @@ const dataDispatcher = createDispatcher<[string, TerminalDataMeta | undefined]>(
 const exitDispatcher = createDispatcher<[number]>("terminal:exit");
 
 const terminalAPI: TerminalAPI = {
+	diagnostics: (id: string) => ipcRenderer.invoke("terminal:diagnostics", id),
 	create: (id: string, cwd?: string, workspaceId?: string) =>
 		ipcRenderer.invoke("terminal:create", id, cwd, workspaceId),
 	...createTerminalInputAPI((channel, id, data) => ipcRenderer.invoke(channel, id, data)),

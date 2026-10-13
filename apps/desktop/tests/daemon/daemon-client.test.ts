@@ -701,6 +701,7 @@ describe("DaemonClient", () => {
 			for (let i = 0; i < 120; i++) {
 				client.write("term-1", "x".repeat(6_000));
 			}
+			expect(client.write("term-1", "x".repeat(6_000))).toBe(false);
 			client.dispose("term-1");
 
 			internalSocket.emit("drain");
@@ -1277,7 +1278,7 @@ describe("DaemonClient", () => {
 			}
 			// ~300KB paste → ~5 chunks; only ~3 fit the remaining budget. Partial
 			// delivery would hand the shell a spliced command, so ALL must drop.
-			client.write("term-1", "p".repeat(300_000));
+			expect(client.write("term-1", "p".repeat(300_000))).toBe(false);
 
 			internalSocket.emit("drain");
 			await new Promise<void>((r) => setTimeout(r, 300));

@@ -85,4 +85,10 @@ export type DaemonMessage =
 
 // Metadata attached to PTY data delivered to consumers. Present only for
 // attach-time scrollback replay.
-export type TerminalDataMeta = { replay: true; fg?: string };
+export type TerminalDataMeta = {
+	replay: true;
+	fg?: string;
+	// Main-process compatibility status; never inferred terminal input modes.
+	recovery?: "legacy-replay" | "output-overflow";
+	resumeCommand?: string;
+};

@@ -330,3 +330,64 @@ test("cancelling an old input queue cannot clear the pending marker for its repl
 	expect(await fresh).toBe(true);
 	expect(pending.size).toBe(0);
 });
+
+test("cancelling blocked input immediately releases global admission and settles callers", async () => {
+	const handlers = new Map<
+		string,
+		(event: unknown, id: unknown, data: unknown) => Promise<boolean>
+	>();
+	const gate = deferred();
+	const delivered: string[] = [];
+	const input = registerTerminalInputIPC(
+		{ handle: (name, handler) => handlers.set(name, handler) },
+		{
+			isConnected: true,
+			write: (id) => {
+				delivered.push(id);
+				return true;
+			},
+			writeBinary: () => true,
+		},
+		(id) => (id === "old" ? gate.promise : Promise.resolve())
+	);
+	const write = handlers.get("terminal:write");
+	if (!write) throw Error("Missing input handler");
+	const pending = Array.from({ length: 1024 }, () => write(null, "old", "x"));
+	await Promise.resolve();
+	expect(await write(null, "other", "responsive")).toBe(true);
+	input.invalidate("old");
+	try {
+		expect(await write(null, "new", "hello")).toBe(true);
+		expect(
+			await Promise.race([Promise.all(pending).then(() => true), Bun.sleep(100).then(() => false)])
+		).toBe(true);
+		expect(delivered).toEqual(["other", "new"]);
+	} finally {
+		gate.resolve();
+		await Promise.all(pending);
+	}
+	expect(await write(null, "new", "later")).toBe(true);
+	expect(delivered).toEqual(["other", "new", "new"]);
+});
+
+test("pending terminal count is bounded and disconnect releases every cancelled request", async () => {
+	const handlers = new Map<
+		string,
+		(event: unknown, id: unknown, data: unknown) => Promise<boolean>
+	>();
+	const gate = deferred();
+	const input = registerTerminalInputIPC(
+		{ handle: (name, handler) => handlers.set(name, handler) },
+		{ isConnected: true, write: () => true, writeBinary: () => true },
+		() => gate.promise
+	);
+	const write = handlers.get("terminal:write");
+	if (!write) throw Error("Missing handler");
+	const pending = Array.from({ length: 64 }, (_, i) => write(null, `terminal-${i}`, "x"));
+	expect(await write(null, "overflow", "x")).toBe(false);
+	input.clear();
+	expect(await Promise.all(pending)).toEqual(Array(64).fill(false));
+	expect(input.diagnostics()).toEqual({ pendingBytes: 0, pendingWrites: 0, sessions: 0 });
+	gate.resolve();
+	expect(await write(null, "fresh", "x")).toBe(true);
+});

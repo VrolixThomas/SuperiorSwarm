@@ -184,3 +184,121 @@ test("snapshot-capable daemons retain their existing attach/detach behavior", as
 		sessions.dispose("chat");
 	}
 });
+
+test("legacy reconnect replay replaces retained state without duplicating history", async () => {
+	const daemon = new LegacyDaemon();
+	const sessions = new TerminalViewSessions(daemon);
+	const pane = view();
+	try {
+		await sessions.create("chat", "/tmp", pane.onData, pane.onExit);
+		daemon.emit(Array.from({ length: 100 }, (_, i) => `line ${i}\r\n`).join(""));
+		sessions.detach("chat");
+		await sessions.attach("chat", pane.onData, pane.onExit);
+		await until(() => pane.terminal.buffer.normal.baseY === 77);
+		daemon.onData?.(daemon.raw, { replay: true, fg: "zsh" });
+		sessions.detach("chat");
+		await sessions.attach("chat", pane.onData, pane.onExit);
+		await new Promise<void>((resolve) => pane.terminal.write("", resolve));
+		expect(pane.terminal.buffer.normal.baseY).toBe(77);
+	} finally {
+		pane.terminal.dispose();
+		sessions.dispose("chat");
+	}
+});
+
+test("small output bursts are parsed in batches before a returning view attaches", async () => {
+	const daemon = new LegacyDaemon();
+	const sessions = new TerminalViewSessions(daemon);
+	const pane = view();
+	try {
+		await sessions.create("chat", "/tmp", pane.onData, pane.onExit);
+		const start = performance.now();
+		for (let i = 0; i < 2000; i++) daemon.emit("\x1b[1;1Hworking");
+		sessions.detach("chat");
+		await sessions.attach("chat", pane.onData, pane.onExit);
+		expect(performance.now() - start).toBeLessThan(500);
+		await until(
+			() => pane.terminal.buffer.active.getLine(0)?.translateToString(true) === "working"
+		);
+	} finally {
+		pane.terminal.dispose();
+		sessions.dispose("chat");
+	}
+});
+
+test("cold legacy replay declares incomplete state without inventing mouse modes", async () => {
+	const daemon = new LegacyDaemon();
+	daemon.raw = "\x1b[1;1HLATEST".repeat(20000).slice(-200000);
+	const sessions = new TerminalViewSessions(daemon);
+	const pane = view();
+	try {
+		await sessions.attach("chat", pane.onData, pane.onExit);
+		await until(() => pane.frames.length === 1);
+		expect(pane.frames[0]?.meta?.recovery).toBe("legacy-replay");
+		expect(pane.terminal.modes.mouseTrackingMode).toBe("none");
+		sessions.detach("chat");
+		await sessions.attach("chat", pane.onData, pane.onExit);
+		expect(pane.frames.at(-1)?.meta?.recovery).toBe("legacy-replay");
+	} finally {
+		pane.terminal.dispose();
+		sessions.dispose("chat");
+	}
+});
+
+test("parser backlog is bounded and a failed view can explicitly reattach without killing the PTY", async () => {
+	const daemon = new LegacyDaemon();
+	const sessions = new TerminalViewSessions(daemon);
+	const pane = view();
+	try {
+		await sessions.create("chat", "/tmp", pane.onData, pane.onExit);
+		for (let i = 0; i < 50; i++) daemon.emit("x".repeat(100000));
+		expect(pane.frames.at(-1)?.meta?.recovery).toBe("output-overflow");
+		expect(sessions.diagnostics("chat")).toBe(null);
+		expect(daemon.disposals).toBe(0);
+		daemon.raw = "fresh\r\n";
+		await sessions.attach("chat", pane.onData, pane.onExit);
+		await until(() => pane.frames.at(-1)?.meta?.recovery === "legacy-replay");
+	} finally {
+		pane.terminal.dispose();
+		sessions.dispose("chat");
+	}
+});
+
+test("disposing a renderer releases its pending replay callback exactly once", async () => {
+	const terminal = new headless.Terminal({ allowProposedApi: true });
+	const errors: Array<Error | undefined> = [];
+	const cancel = writeTerminalReplay(
+		terminal as unknown as Terminal,
+		encodeTerminalReplay("history", 80, 24),
+		(error) => errors.push(error)
+	);
+	cancel();
+	terminal.dispose();
+	cancel();
+	await Bun.sleep(5);
+	expect(errors).toHaveLength(1);
+	expect(errors[0]?.message).toContain("closed during restoration");
+});
+
+test("a replay resize failure releases completion instead of leaving input suppressed", async () => {
+	const terminal = new headless.Terminal({ allowProposedApi: true });
+	const original = terminal.resize.bind(terminal);
+	terminal.resize = () => {
+		throw Error("resize failed");
+	};
+	let completions = 0;
+	const error = await new Promise<Error | undefined>((resolve) => {
+		writeTerminalReplay(
+			terminal as unknown as Terminal,
+			encodeTerminalReplay("history", 100, 30),
+			(error) => {
+				completions++;
+				resolve(error);
+			}
+		);
+	});
+	expect(error?.message).toBe("resize failed");
+	expect(completions).toBe(1);
+	terminal.resize = original;
+	terminal.dispose();
+});

@@ -8,7 +8,10 @@ import { getWorkspaceCwdOrThrow } from "../agent-launch/workspace-cwd-lookup";
 import { getDb } from "../db";
 import { terminalSessions, workspaces } from "../db/schema";
 import { ensureTerminalSessionRow } from "../db/session-persistence";
-import type { AgentSessionManager } from "../services/agent-session-manager";
+import {
+	type AgentSessionManager,
+	buildAgentResumeCommand,
+} from "../services/agent-session-manager";
 import { incrementCounter } from "../telemetry/state";
 import type { DaemonClient } from "./daemon-client";
 import { registerTerminalInputIPC } from "./input-ipc";
@@ -68,9 +71,15 @@ export function setupTerminalIPC(
 				);
 
 			const onData = (data: string, meta?: TerminalDataMeta) => {
+				let deliveryMeta = meta;
 				if (meta?.replay) terminalFileOwners.invalidate(id, "replay");
+				if (meta?.recovery) {
+					const session = agentSessionManager?.getSession(id);
+					if (session?.providerSessionId)
+						deliveryMeta = { ...meta, resumeCommand: buildAgentResumeCommand(session) };
+				}
 				if (!window.isDestroyed()) {
-					window.webContents.send("terminal:data", id, data, meta);
+					window.webContents.send("terminal:data", id, data, deliveryMeta);
 				}
 			};
 			const onExit = (exitCode: number) => {
@@ -123,6 +132,17 @@ export function setupTerminalIPC(
 			if (!binary && /[\r\n]/.test(data)) terminalFileOwners.invalidate(id, "submitted input");
 		}
 	);
+
+	ipcMain.handle("terminal:diagnostics", (_event, id: unknown) => {
+		assertNonEmptyString(id, "id");
+		return {
+			connected: daemonClient.isConnected,
+			snapshots: daemonClient.supportsTerminalSnapshots,
+			binaryInput: daemonClient.supportsBinaryInput,
+			view: views.diagnostics(id),
+			input: input.diagnostics(),
+		};
+	});
 
 	ipcMain.handle("terminal:resize", (_event, id: unknown, cols: unknown, rows: unknown) => {
 		assertNonEmptyString(id, "id");
