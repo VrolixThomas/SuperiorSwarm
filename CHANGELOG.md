@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.23.3 (2026-10-13)
+
+### What's New
+
+SuperiorSwarm restores normal terminal scrolling and improves chat recovery when switching tabs or reconnecting. Dragging files into terminal prompts is more reliable, and interrupted attachments no longer block Enter. Folder workspaces now support automatic task dispatch reliably, and coordinators spanning multiple repositories start and restore their terminals in the correct location. Updating the app keeps your workspace visible during validation and provides clearer recovery options if installation fails.
+
+### Changes
+
+- fix(terminal): restore normal scrolling and harden chat recovery (#155)
+- fix(terminal): accept native file drops and unblock Enter after interruptions (#156)
+- fix(mcp): support folder workspace identity and auto-dispatch (#157)
+- Fix/updater validation window lifecycle (#158)
+- Fix/cross repo coordinator terminal resolution (#159)
+
 ## v0.23.2 (2026-10-11)
 
 ### What's New
