@@ -33,7 +33,9 @@ export function installFileDrop(
 		if (!isFileDrag(event.dataTransfer)) return;
 		event.preventDefault();
 		event.stopPropagation?.();
-		if (event.dataTransfer) event.dataTransfer.dropEffect = "link";
+		// Finder and other native sources may only offer copy. Requesting link
+		// makes Chromium reject the drop before a File ever reaches this handler.
+		if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
 		hover(true);
 	};
 	const leave = (event: DragEvent) => {

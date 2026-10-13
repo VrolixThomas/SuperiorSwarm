@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { useUpdateStore } from "../src/renderer/stores/update-store";
+import { initialUpdateLifecycle } from "../src/shared/updater";
 
 afterEach(() => {
 	useUpdateStore.setState(useUpdateStore.getInitialState());
@@ -114,4 +115,90 @@ describe("update-store", () => {
 		store.setUpdateReadyIfNotDismissed("2.0.0");
 		expect(useUpdateStore.getState().toastState).toBe("ready");
 	});
+});
+
+describe("authoritative updater status", () => {
+	test("late validation failure replaces optimistic installing and survives stale polling", () => {
+		const store = useUpdateStore.getState();
+		store.applyUpdaterStatus({
+			...initialUpdateLifecycle,
+			revision: 1,
+			phase: "downloaded",
+			updateDownloaded: true,
+			updateVersion: "0.23.2",
+		});
+		expect(store.beginInstall()).toBe(true);
+		expect(store.beginInstall()).toBe(false);
+		store.applyUpdaterStatus({
+			...initialUpdateLifecycle,
+			revision: 3,
+			phase: "validation-failed",
+			recovery: "reinstall",
+			message: "Use the signed download.",
+		});
+		expect(useUpdateStore.getState().toastState).toBe("error");
+		expect(useUpdateStore.getState().installRequested).toBe(false);
+		store.applyUpdaterStatus({
+			...initialUpdateLifecycle,
+			revision: 2,
+			phase: "downloaded",
+			updateDownloaded: true,
+		});
+		expect(useUpdateStore.getState().toastState).toBe("error");
+	});
+
+	test("a new renderer receives failure instead of restart-ready, even for a dismissed version", () => {
+		const store = useUpdateStore.getState();
+		store.setDismissedUpdateVersion("0.23.2");
+		store.applyUpdaterStatus({
+			...initialUpdateLifecycle,
+			revision: 5,
+			phase: "error",
+			recovery: "retry",
+			message: "Check your connection.",
+			updateVersion: "0.23.2",
+		});
+		expect(useUpdateStore.getState().toastState).toBe("error");
+		expect(useUpdateStore.getState().lifecycle.recovery).toBe("retry");
+	});
+});
+
+test("late dismissal rollback cannot resurrect ready after native failure", () => {
+	const store = useUpdateStore.getState();
+	store.applyUpdaterStatus({
+		...initialUpdateLifecycle,
+		revision: 8,
+		phase: "validation-failed",
+		recovery: "reinstall",
+	});
+	store.setUpdateReadyIfNotDismissed("0.23.2");
+	expect(useUpdateStore.getState().toastState).toBe("error");
+});
+
+test("idle polling preserves the release notification version", () => {
+	const store = useUpdateStore.getState();
+	store.showToast("patch", "0.23.2", "Fixes");
+	store.applyUpdaterStatus({ ...initialUpdateLifecycle, revision: 1 });
+	expect(useUpdateStore.getState().toastVersion).toBe("0.23.2");
+});
+
+test("startup notification cannot overwrite an update failure", () => {
+	const store = useUpdateStore.getState();
+	store.applyUpdaterStatus({
+		...initialUpdateLifecycle,
+		revision: 3,
+		phase: "validation-failed",
+		recovery: "reinstall",
+	});
+	store.showStartupNotification({ type: "minor", version: "0.23.0", summary: "Features" });
+	expect(useUpdateStore.getState().toastState).toBe("error");
+});
+
+test("startup notification is shown once across remounts", () => {
+	const store = useUpdateStore.getState();
+	store.showStartupNotification({ type: "patch", version: "0.23.0", summary: null });
+	expect(useUpdateStore.getState().toastState).toBe("patch");
+	store.dismissToast();
+	store.showStartupNotification({ type: "patch", version: "0.23.0", summary: null });
+	expect(useUpdateStore.getState().toastState).toBe("hidden");
 });

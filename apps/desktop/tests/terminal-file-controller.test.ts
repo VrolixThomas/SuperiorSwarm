@@ -83,6 +83,9 @@ function harness() {
 		copyPaths,
 		clipboard,
 		copy,
+		setReady: (value: boolean) => {
+			active = value;
+		},
 		deactivate: () => {
 			active = false;
 			controller.clear();
@@ -100,6 +103,51 @@ test("drop writes/focuses nothing; explicit insert preserves order and is single
 	expect(h.focus).toHaveBeenCalledTimes(1);
 	await h.controller.insert();
 	expect(h.writes).toHaveLength(1);
+});
+
+test("pending files cannot swallow Enter when the terminal is not ready to insert", async () => {
+	const h = harness();
+	await h.controller.stage(["/native/a"]);
+	h.setReady(false);
+	expect(h.controller.shouldHandleEnter()).toBe(false);
+	await h.controller.insertPending();
+	expect(h.insert).not.toHaveBeenCalled();
+	expect(h.controller.state.status).toContain("not ready");
+});
+
+test("losing readiness during insertion clears busy state and keeps an explicit retry", async () => {
+	const h = harness();
+	await h.controller.stage(["/native/a"]);
+	h.resolve.mockImplementation(async () => {
+		h.setReady(false);
+		return { text: " '/workspace/a' ", target: batch.target };
+	});
+	await h.controller.insertPending();
+	expect(h.controller.state.busy).toBe(false);
+	expect(h.controller.state.batch?.entries).toHaveLength(2);
+	expect(h.insert).not.toHaveBeenCalled();
+	h.setReady(true);
+	expect(h.controller.shouldHandleEnter()).toBe(false);
+});
+
+test("queued drops release busy state when readiness changes before the next preparation", async () => {
+	const h = harness();
+	let finish!: (value: TerminalFileBatch) => void;
+	h.prepare.mockImplementation(
+		() =>
+			new Promise((resolve) => {
+				finish = resolve;
+			})
+	);
+	const first = h.controller.stage(["/native/a"]);
+	const second = h.controller.stage(["/native/b"]);
+	h.setReady(false);
+	finish(structuredClone(batch));
+	await Promise.all([first, second]);
+	expect(h.controller.state.busy).toBe(false);
+	h.setReady(true);
+	expect(h.controller.shouldHandleEnter()).toBe(false);
+	expect(h.append).not.toHaveBeenCalled();
 });
 test("stale prepare/resolve after tab switch, replay/disconnect or unmount cannot deliver", async () => {
 	const h = harness();

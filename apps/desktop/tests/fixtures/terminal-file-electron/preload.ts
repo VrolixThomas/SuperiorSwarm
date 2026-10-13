@@ -12,8 +12,7 @@ contextBridge.exposeInMainWorld("electron", {
 	terminalFiles: {
 		nativePaths: (files: File[]) => resolveNativeFiles(files, webUtils.getPathForFile),
 	},
-	fixtureFiles: (method: string, input: unknown) =>
-		ipcRenderer.invoke("fixture:files", method, input),
+	trpc: { request: (request: unknown) => ipcRenderer.invoke("trpc:request", request) },
 	shell: { openExternal: async () => {} },
 	daemon: { onStatus: () => () => {} },
 	terminal: {

@@ -1,7 +1,9 @@
 import { Database as BunDatabase } from "bun:sqlite";
 import { mock } from "bun:test";
+import { EventEmitter } from "node:events";
 
 mock.module("electron", () => ({
+	autoUpdater: new EventEmitter(),
 	safeStorage: {
 		isEncryptionAvailable: () => false,
 		encryptString: (s: string) => Buffer.from(s),
