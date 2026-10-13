@@ -1,4 +1,6 @@
 import { useEffect, useRef } from "react";
+import { SIGNED_DOWNLOAD_URL } from "../../shared/updater";
+import { useUpdateActions } from "../hooks/use-updater";
 import { useUpdateStore } from "../stores/update-store";
 import { trpc } from "../trpc/client";
 
@@ -12,6 +14,9 @@ export function UpdateToast() {
 	const dismissToast = useUpdateStore((s) => s.dismissToast);
 	const openWhatsNew = useUpdateStore((s) => s.openWhatsNew);
 
+	const lifecycle = useUpdateStore((s) => s.lifecycle);
+	const requestError = useUpdateStore((s) => s.requestError);
+	const actions = useUpdateActions();
 	const utils = trpc.useUtils();
 	const markSeen = trpc.updates.markVersionSeen.useMutation();
 	const dismissUpdate = trpc.updates.dismissUpdate.useMutation({
@@ -27,7 +32,6 @@ export function UpdateToast() {
 			}
 		},
 	});
-	const installUpdate = trpc.updates.installUpdate.useMutation();
 
 	const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -59,27 +63,48 @@ export function UpdateToast() {
 		}
 	};
 
-	const handleRestart = () => {
-		useUpdateStore.getState().setInstalling();
-		// Best-effort final save while the app is still responsive. The
-		// periodic autosave in App.tsx is the durable path; this dispatches
-		// one extra mutation so any work since the last interval may land.
-		window.dispatchEvent(new Event("superiorswarm:save-now"));
-		// Wait for two animation frames so React commits + the browser paints
-		// the overlay before the main process starts shutting down. A single
-		// macrotask isn't a paint guarantee.
-		requestAnimationFrame(() => {
-			requestAnimationFrame(() => {
-				installUpdate.mutate();
-			});
-		});
-	};
-
 	const handleLater = () => {
 		if (version) {
 			dismissUpdate.mutate({ version });
 		}
 	};
+
+	if (toastState === "validating" || toastState === "error") {
+		return (
+			<div className="fixed bottom-4 right-4 z-50 w-[340px] rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-surface)] p-4 shadow-[var(--shadow-lg)]">
+				<p
+					role={toastState === "error" ? "alert" : "status"}
+					className="text-[12px] text-[var(--text)]"
+				>
+					{toastState === "validating"
+						? "Validating update before restart. You can keep working."
+						: (requestError ?? lifecycle.message)}
+				</p>
+				{toastState === "error" && (
+					<div className="mt-3 flex gap-3 text-[11px] text-[var(--accent)]">
+						{lifecycle.recovery === "retry" && (
+							<button type="button" disabled={actions.checking} onClick={actions.check}>
+								Check for updates
+							</button>
+						)}
+						{requestError && lifecycle.phase === "downloaded" && (
+							<button type="button" onClick={actions.install}>
+								Retry restart
+							</button>
+						)}
+						{(lifecycle.recovery === "reinstall" || lifecycle.recovery === "restart-app") && (
+							<a href={SIGNED_DOWNLOAD_URL} target="_blank" rel="noreferrer">
+								Get signed download
+							</a>
+						)}
+						<button type="button" onClick={dismissToast}>
+							Dismiss
+						</button>
+					</div>
+				)}
+			</div>
+		);
+	}
 
 	// State 1: Major/Minor update
 	if (toastState === "new-version") {
@@ -161,15 +186,16 @@ export function UpdateToast() {
 			<div className="fixed bottom-4 right-4 z-50 w-[300px] rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-surface)] p-[14px_18px] shadow-[var(--shadow-lg)]">
 				<div className="mb-2 flex items-center gap-2">
 					<div className="size-[7px] shrink-0 rounded-full bg-[#30d158]" />
-					<span className="text-[13px] font-semibold text-[var(--text)]">Update ready</span>
+					<span className="text-[13px] font-semibold text-[var(--text)]">Update downloaded</span>
 				</div>
 				<p className="mb-2.5 text-[11px] leading-[1.5] text-[var(--text-secondary)]">
-					v{version} has been downloaded. Restart to apply the update.
+					v{version} has been downloaded. Compatibility validation is still pending. Restart to
+					validate and install.
 				</p>
 				<div className="flex items-center">
 					<button
 						type="button"
-						onClick={handleRestart}
+						onClick={actions.install}
 						className="rounded-[var(--radius-sm)] bg-[var(--accent)] px-3 py-[5px] text-[11px] font-medium text-[var(--accent-foreground)] transition-colors hover:bg-[var(--accent-hover)]"
 					>
 						Restart now
