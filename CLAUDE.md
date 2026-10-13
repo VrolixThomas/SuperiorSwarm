@@ -39,6 +39,7 @@ Full-suite `bun test` (159 files) is unreliable locally: ~100+ failures are 5s-t
 - **Built daemon startup / external CommonJS imports** → `tests/daemon-built-startup.test.ts`; exercises Electron's native ESM loader, unlike Bun-bundled source tests.
 - **Codex application scrolling / SGR wheel reports** → `src/renderer/components/terminal-wheel.ts`, `tests/terminal-wheel-native.test.ts`; native Chromium input coverage includes alternate-screen and mouse-reporting modes.
 - **Build-time env injection** → `electron.vite.config.ts` `define` block (OAuth + Supabase credentials are NOT in runtime `process.env`)
+- **Updater validation / window lifecycle** → `src/main/updater-lifecycle.ts`, `src/renderer/hooks/use-updater.ts`, `tests/updater-validation.md`; MacUpdater’s downloaded event precedes native validation, and its early quit callback persists across errors.
 - **Desktop releases** → `.github/workflows/release-desktop.yml`; the manual `tag` input rebuilds that exact Git tag with pinned signing tooling.
 - **MCP server** → `mcp-standalone/` (native modules rebuilt against Electron ABI; launched via `ELECTRON_RUN_AS_NODE=1`)
 - **Shared worktree file links** → `src/main/shared-files.ts`; metadata-only browser link rows → `src/main/git/file-tree.ts`; explicit link reads/saves → `src/main/git/workspace-file-ops.ts`.
