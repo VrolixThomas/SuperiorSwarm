@@ -42,7 +42,23 @@ export function entryFor(
 	env?: Record<string, string>
 ): Record<string, unknown> {
 	if (format === "opencode") return { type: "local", command: [launcherPath] };
-	return { command: launcherPath, args: [], ...(env ? { env } : {}) };
+	return {
+		command: launcherPath,
+		args: [],
+		// Codex filters the MCP process environment. Forward names so every
+		// launch receives its own terminal/task identity, never a saved value.
+		...(format === "toml"
+			? {
+					env_vars: [
+						"AGENT_NOTIFY_WORKSPACE_ID",
+						"SUPERIORSWARM_TASK_TOKEN",
+						"SUPERIORSWARM_MANAGER_TOKEN",
+						"SUPERIORSWARM_USER_DATA",
+					],
+				}
+			: {}),
+		...(env ? { env } : {}),
+	};
 }
 
 export function keyPathFor(format: McpFormat): string[] {

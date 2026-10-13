@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { parse } from "@iarna/toml";
 import {
 	cliConfigPaths,
 	installEntryForCli,
@@ -58,5 +59,23 @@ describe("global-mcp-install", () => {
 		const text = readFileSync(cliConfigPaths("codex", { home }), "utf-8");
 		expect(text).toMatch(/\[mcp_servers\.superiorswarm\]/);
 		expect(text).toMatch(/command = "\/launcher"/);
+	});
+
+	test("reinstall upgrades Codex to forward per-terminal MCP identity without saving values", () => {
+		installEntryForCli("codex", "/old-launcher", { home });
+		const file = cliConfigPaths("codex", { home });
+		writeFileSync(file, '[mcp_servers.superiorswarm]\ncommand = "/old-launcher"\n');
+		installEntryForCli("codex", "/launcher", { home });
+		const config = parse(readFileSync(file, "utf-8")) as {
+			mcp_servers: { superiorswarm: { command: string; env_vars: string[]; env?: unknown } };
+		};
+		expect(config.mcp_servers.superiorswarm.command).toBe("/launcher");
+		expect(config.mcp_servers.superiorswarm.env_vars).toEqual([
+			"AGENT_NOTIFY_WORKSPACE_ID",
+			"SUPERIORSWARM_TASK_TOKEN",
+			"SUPERIORSWARM_MANAGER_TOKEN",
+			"SUPERIORSWARM_USER_DATA",
+		]);
+		expect(config.mcp_servers.superiorswarm.env).toBeUndefined();
 	});
 });

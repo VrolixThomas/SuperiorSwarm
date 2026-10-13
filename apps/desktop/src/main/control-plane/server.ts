@@ -92,6 +92,33 @@ function crossRepoProjectIds(orchestratorId: string, accessScope: CrossRepoAcces
 		.map((row) => row.projectId);
 }
 
+function workspaceAgentContext(row: {
+	projectId: string;
+	workspaceId: string;
+	isOrchestrator: boolean;
+}) {
+	return {
+		mode: "workspace-agent",
+		...row,
+		orchestratorEventsPath: row.isOrchestrator
+			? eventsFilePathForProject(row.projectId)
+			: undefined,
+		modeContext: {},
+	};
+}
+
+function crossRepoContext(row: { id: string; accessScope: CrossRepoAccessScope }) {
+	return {
+		mode: "cross-repo-orchestrator",
+		crossRepoOrchestratorId: row.id,
+		linkedProjectIds: crossRepoProjectIds(row.id, row.accessScope),
+		accessScope: row.accessScope,
+		orchestratorEventsPath: crossRepoEventsFilePath(row.id),
+		isOrchestrator: true,
+		modeContext: {},
+	};
+}
+
 function resolveProjectIdFromWorkspace(workspaceId: string): string | null {
 	return (
 		getDb()
@@ -580,6 +607,51 @@ async function handleRequest(
 					});
 					return;
 				}
+				// App terminals supply their workspace identity independently of cwd.
+				// Folder tabs can share a directory, and an agent may have changed
+				// directories before starting MCP. Never guess a replacement identity
+				// when a supplied workspace has been deleted.
+				const workspaceId = req.headers["x-workspace-id"];
+				if (typeof workspaceId === "string" && workspaceId.length > 0) {
+					const workspace = getDb()
+						.select({
+							projectId: workspaces.projectId,
+							workspaceId: workspaces.id,
+							isOrchestrator: workspaces.isOrchestrator,
+						})
+						.from(workspaces)
+						.where(eq(workspaces.id, workspaceId))
+						.get();
+					if (workspace) {
+						respond(res, 200, requestId, workspaceAgentContext(workspace));
+						return;
+					}
+					// Coordinator terminal tabs use their cross-repo ID as workspaceId.
+					// External managers still require their token above.
+					const coordinator = getDb()
+						.select({
+							id: crossRepoOrchestrators.id,
+							accessScope: crossRepoOrchestrators.accessScope,
+						})
+						.from(crossRepoOrchestrators)
+						.where(
+							and(
+								eq(crossRepoOrchestrators.id, workspaceId),
+								ne(crossRepoOrchestrators.kind, "external")
+							)
+						)
+						.get();
+					if (coordinator) {
+						respond(res, 200, requestId, crossRepoContext(coordinator));
+						return;
+					}
+					respond(res, 401, requestId, {
+						error: "unauthorized",
+						message:
+							"The terminal's workspace no longer exists. Open a terminal in an existing SuperiorSwarm workspace.",
+					});
+					return;
+				}
 				let realCwd = cwd;
 				try {
 					realCwd = cwd ? realpathSync(cwd) : "";
@@ -604,15 +676,16 @@ async function handleRequest(
 							})
 					: undefined;
 				if (row?.workspaceId) {
-					const isOrch = row.isOrchestrator ?? false;
-					respond(res, 200, requestId, {
-						mode: "workspace-agent",
-						projectId: row.projectId,
-						workspaceId: row.workspaceId,
-						isOrchestrator: isOrch,
-						orchestratorEventsPath: isOrch ? eventsFilePathForProject(row.projectId) : undefined,
-						modeContext: {},
-					});
+					respond(
+						res,
+						200,
+						requestId,
+						workspaceAgentContext({
+							projectId: row.projectId,
+							workspaceId: row.workspaceId,
+							isOrchestrator: row.isOrchestrator ?? false,
+						})
+					);
 					return;
 				}
 				if (realCwd) {
@@ -636,16 +709,49 @@ async function handleRequest(
 							}
 						});
 					if (xro) {
-						const linkedProjectIds = crossRepoProjectIds(xro.id, xro.accessScope);
-						respond(res, 200, requestId, {
-							mode: "cross-repo-orchestrator",
-							crossRepoOrchestratorId: xro.id,
-							linkedProjectIds,
-							accessScope: xro.accessScope,
-							orchestratorEventsPath: crossRepoEventsFilePath(xro.id),
-							isOrchestrator: true,
-							modeContext: {},
+						respond(res, 200, requestId, crossRepoContext(xro));
+						return;
+					}
+					const folders = getDb()
+						.select({
+							projectId: workspaces.projectId,
+							workspaceId: workspaces.id,
+							isOrchestrator: workspaces.isOrchestrator,
+							folderPath: workspaces.folderPath,
+							repoPath: projects.repoPath,
+						})
+						.from(workspaces)
+						.innerJoin(projects, eq(workspaces.projectId, projects.id))
+						.where(eq(workspaces.type, "folder"))
+						.all()
+						.filter((folder) => {
+							const path = folder.folderPath ?? folder.repoPath;
+							try {
+								return realpathSync(path) === realCwd;
+							} catch {
+								return path === realCwd;
+							}
 						});
+					if (folders.length > 1) {
+						respond(res, 409, requestId, {
+							error: "conflict",
+							message:
+								"Multiple folder workspaces share this directory. Start MCP from a terminal in the intended SuperiorSwarm workspace.",
+						});
+						return;
+					}
+					const folder = folders[0];
+					if (folder) {
+						respond(
+							res,
+							200,
+							requestId,
+							workspaceAgentContext({
+								projectId: folder.projectId,
+								workspaceId: folder.workspaceId,
+								isOrchestrator: folder.isOrchestrator,
+							})
+						);
 						return;
 					}
 				}
