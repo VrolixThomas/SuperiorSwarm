@@ -1,39 +1,25 @@
+import { SIGNED_DOWNLOAD_URL, canCheckForUpdates } from "../../../shared/updater";
+import { useUpdateActions, useUpdaterStatus } from "../../hooks/use-updater";
 import { useUpdateStore } from "../../stores/update-store";
 import { trpc } from "../../trpc/client";
 import { PageHeading } from "./SectionHeading";
 
 export function AboutSettings() {
-	const statusQuery = trpc.updates.getStatus.useQuery(undefined, {
-		staleTime: 30_000,
-	});
+	const statusQuery = useUpdaterStatus();
 	const systemQuery = trpc.system.getAgentNotifyPort.useQuery(undefined, {
 		staleTime: 30_000,
 	});
-	const checkForUpdates = trpc.updates.checkForUpdates.useMutation({
-		onSuccess: () => statusQuery.refetch(),
-	});
-	const installUpdate = trpc.updates.installUpdate.useMutation();
-
+	const actions = useUpdateActions();
+	const lifecycle = useUpdateStore((s) => s.lifecycle);
+	const installRequested = useUpdateStore((s) => s.installRequested);
+	const requestError = useUpdateStore((s) => s.requestError);
 	const openWhatsNew = useUpdateStore((s) => s.openWhatsNew);
-
 	const currentVersion = statusQuery.data?.currentVersion ?? "—";
-	const updateDownloaded = statusQuery.data?.updateDownloaded ?? false;
-
-	const checkResult = checkForUpdates.data;
-	const updateAvailable =
-		checkResult?.updateAvailable ?? statusQuery.data?.updateAvailable ?? false;
-	const updateVersion = checkResult?.version ?? statusQuery.data?.updateVersion;
-	const checkError = checkResult?.error ?? null;
-
-	const handleCheckForUpdates = () => {
-		checkForUpdates.mutate();
-	};
-
-	const handleUpdateNow = () => {
-		if (updateDownloaded) {
-			installUpdate.mutate();
-		}
-	};
+	const { updateAvailable, updateVersion } = lifecycle;
+	const updateDownloaded = lifecycle.phase === "downloaded" && !installRequested;
+	const busy =
+		installRequested || lifecycle.phase === "validating" || lifecycle.phase === "installing";
+	const checkError = requestError ?? lifecycle.message;
 
 	return (
 		<div>
@@ -63,16 +49,24 @@ export function AboutSettings() {
 								{updateVersion}
 							</div>
 						) : (
-							<div className="mt-0.5 text-[14px] font-semibold text-[var(--color-success)]">
-								{currentVersion} ✓
-							</div>
+							<div className="mt-0.5 text-[14px] font-semibold text-[var(--text-tertiary)]">—</div>
 						)}
 					</div>
 				</div>
 
-				{updateAvailable ? (
+				{checkError ? (
+					<p role="alert" className="text-[11px] text-[var(--color-danger)]">
+						{checkError}
+					</p>
+				) : updateAvailable ? (
 					<div className="flex items-center justify-between">
-						<span className="text-[11px] text-[var(--accent)]">Update available</span>
+						<span className="text-[11px] text-[var(--accent)]">
+							{busy
+								? "Validating / restarting…"
+								: lifecycle.phase === "downloaded"
+									? "Downloaded; validation pending"
+									: "Update available"}
+						</span>
 						<div className="flex gap-2">
 							<button
 								type="button"
@@ -86,32 +80,41 @@ export function AboutSettings() {
 							{updateDownloaded && (
 								<button
 									type="button"
-									onClick={handleUpdateNow}
+									onClick={actions.install}
 									className="rounded-[5px] bg-[var(--accent)] px-2.5 py-1 text-[11px] font-medium text-[var(--accent-foreground)] transition-colors hover:bg-[var(--accent-hover)]"
 								>
-									Update now
+									Restart to validate and install
 								</button>
 							)}
 						</div>
 					</div>
-				) : checkError ? (
-					<div className="text-[11px] text-[var(--color-danger)]">
-						Update check failed: {checkError}
-					</div>
 				) : (
-					<div className="text-[11px] text-[var(--text-tertiary)]">You're up to date</div>
+					<div className="text-[11px] text-[var(--text-tertiary)]">
+						{lifecycle.phase === "checking" ? "Checking for updates…" : "No pending update"}
+					</div>
 				)}
 			</div>
+
+			{(lifecycle.recovery === "reinstall" || lifecycle.recovery === "restart-app") && (
+				<a
+					className="mt-3 inline-block text-[12px] text-[var(--accent)]"
+					href={SIGNED_DOWNLOAD_URL}
+					target="_blank"
+					rel="noreferrer"
+				>
+					Get signed download
+				</a>
+			)}
 
 			{/* Actions */}
 			<div className="mt-4 flex gap-2">
 				<button
 					type="button"
-					onClick={handleCheckForUpdates}
-					disabled={checkForUpdates.isPending}
+					onClick={actions.check}
+					disabled={actions.checking || !canCheckForUpdates(lifecycle)}
 					className="rounded-[var(--radius-sm)] bg-[var(--bg-elevated)] px-3 py-1.5 text-[11px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-overlay)] disabled:opacity-50"
 				>
-					{checkForUpdates.isPending ? "Checking..." : "Check for updates"}
+					{lifecycle.phase === "checking" ? "Checking..." : "Check for updates"}
 				</button>
 				<button
 					type="button"
@@ -130,7 +133,8 @@ export function AboutSettings() {
 			<div className="mt-6 border-t border-[var(--border)] pt-4">
 				<div className="text-[10px] leading-[1.6] text-[var(--text-quaternary)]">
 					SuperiorSwarm v{currentVersion} ·{" "}
-					{navigator.userAgentData?.platform ?? navigator.platform}
+					{(navigator as Navigator & { userAgentData?: { platform: string } }).userAgentData
+						?.platform ?? navigator.platform}
 					<br />
 					Agent notify port: {systemQuery.data?.port ?? "—"}
 					<br />© {new Date().getFullYear()} SuperiorSwarm

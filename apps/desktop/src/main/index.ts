@@ -43,7 +43,7 @@ import { isCloneable, setDebugMode } from "./ipc-safety";
 import { log, setupCrashHandlers } from "./logger";
 import { setupLspIPC } from "./lsp/ipc-handler";
 import { serverManager, warmShellPathCache } from "./lsp/server-manager";
-import { getMainWindow, setMainWindow } from "./main-window";
+import { getMainWindow, recoverMainWindow, setMainWindow } from "./main-window";
 import { armKillWatchdog } from "./process-watchdog";
 import { syncShortcuts } from "./quick-actions/shortcuts";
 import { disposeRepoIPCWithTimeout, setupRepoIPC } from "./repo-ipc";
@@ -505,7 +505,7 @@ app.whenReady().then(async () => {
 		}
 	}
 
-	initializeUpdater().catch((err) => {
+	initializeUpdater({ restoreWindow: () => recoverMainWindow(createWindow) }).catch((err) => {
 		log.error("[main] Failed to initialize updater:", err);
 	});
 });

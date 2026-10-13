@@ -1,13 +1,19 @@
 import { eq } from "drizzle-orm";
-import { app } from "electron";
+import { app, autoUpdater as nativeUpdater } from "electron";
 import { autoUpdater } from "electron-updater";
 import * as semver from "semver";
+import { type UpdateNotification, initialUpdateLifecycle } from "../shared/updater";
 import { getDb } from "./db";
 import { sessionState } from "./db/schema";
 import { GITHUB_API_BASE } from "./github/constants";
 import { log } from "./logger";
+import { createUpdaterLifecycle } from "./updater-lifecycle";
 
 const UPDATE_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000;
+let lifecycle: ReturnType<typeof createUpdaterLifecycle> | null = null;
+let initialization: Promise<void> | null = null;
+let generation = 0;
+
 let updateCheckTimer: ReturnType<typeof setInterval> | null = null;
 
 // --- Pure utility functions (exported for testing) ---
@@ -77,21 +83,12 @@ export async function fetchReleaseNotes(
 
 // --- Updater state ---
 
-export interface PendingNotification {
-	type: VersionDiffType;
-	version: string;
-	releaseNotes: string | null;
-	summary: string | null;
-}
+export type PendingNotification = UpdateNotification;
 
 interface UpdaterState {
 	currentVersion: string;
 	lastSeenVersion: string | null;
 	pendingNotification: PendingNotification | null;
-	updateAvailable: boolean;
-	updateVersion: string | null;
-	downloadProgress: number | null;
-	updateDownloaded: boolean;
 	dismissedUpdateVersion: string | null;
 }
 
@@ -99,15 +96,11 @@ const state: UpdaterState = {
 	currentVersion: "",
 	lastSeenVersion: null,
 	pendingNotification: null,
-	updateAvailable: false,
-	updateVersion: null,
-	downloadProgress: null,
-	updateDownloaded: false,
 	dismissedUpdateVersion: null,
 };
 
-export function getUpdaterState(): Readonly<UpdaterState> {
-	return state;
+export function getUpdaterState() {
+	return { ...state, ...(lifecycle?.getState() ?? initialUpdateLifecycle) };
 }
 
 export function clearPendingNotification(): void {
@@ -167,6 +160,10 @@ export function dismissUpdateVersion(version: string): void {
 }
 
 export function teardownUpdater(): void {
+	generation++;
+	lifecycle?.dispose();
+	lifecycle = null;
+	initialization = null;
 	if (updateCheckTimer) {
 		clearInterval(updateCheckTimer);
 		updateCheckTimer = null;
@@ -175,7 +172,28 @@ export function teardownUpdater(): void {
 
 // --- Initialization ---
 
-export async function initializeUpdater(): Promise<void> {
+export function initializeUpdater(options: { restoreWindow?: () => void } = {}): Promise<void> {
+	if (initialization) return initialization;
+	const pending = initialize(options);
+	initialization = pending;
+	void pending.catch(() => {
+		if (initialization === pending) initialization = null;
+	});
+	return pending;
+}
+
+export async function checkForUpdates() {
+	await lifecycle?.check();
+	return getUpdaterState();
+}
+
+export function installUpdate() {
+	lifecycle?.install();
+	return getUpdaterState();
+}
+
+async function initialize(options: { restoreWindow?: () => void }): Promise<void> {
+	const currentGeneration = ++generation;
 	state.currentVersion = app.getVersion();
 	state.lastSeenVersion = getLastSeenVersion();
 	state.dismissedUpdateVersion = getDismissedUpdateVersion();
@@ -190,13 +208,13 @@ export async function initializeUpdater(): Promise<void> {
 	if (!state.lastSeenVersion) {
 		setLastSeenVersion(state.currentVersion);
 		state.lastSeenVersion = state.currentVersion;
-		return;
 	}
 
 	// Check if version changed since last seen
 	const diffType = getVersionDiffType(state.lastSeenVersion, state.currentVersion);
 	if (diffType) {
 		const release = await fetchReleaseNotes(state.currentVersion);
+		if (currentGeneration !== generation) return;
 		const releaseNotes = release?.body ?? null;
 		const summary = extractReleaseSummary(releaseNotes);
 
@@ -220,35 +238,11 @@ export async function initializeUpdater(): Promise<void> {
 		return;
 	}
 
-	autoUpdater.autoDownload = true;
-	autoUpdater.autoInstallOnAppQuit = true;
-
-	autoUpdater.on("update-available", (info) => {
-		state.updateAvailable = true;
-		state.updateVersion = info.version;
+	lifecycle = createUpdaterLifecycle(autoUpdater, nativeUpdater, {
+		platform: process.platform,
+		restoreWindow: options.restoreWindow,
 	});
-
-	autoUpdater.on("download-progress", (progress) => {
-		state.downloadProgress = Math.round(progress.percent);
-	});
-
-	autoUpdater.on("update-downloaded", () => {
-		state.updateDownloaded = true;
-		state.downloadProgress = null;
-	});
-
-	autoUpdater.on("error", (err) => {
-		log.error("[updater] Auto-update error:", err);
-	});
-
-	autoUpdater.checkForUpdates().catch((err) => {
-		log.error("[updater] Failed to check for updates:", err);
-	});
-
-	if (updateCheckTimer) clearInterval(updateCheckTimer);
-	updateCheckTimer = setInterval(() => {
-		autoUpdater.checkForUpdates().catch((err) => {
-			log.error("[updater] Failed to check for updates:", err);
-		});
-	}, UPDATE_CHECK_INTERVAL_MS);
+	void checkForUpdates();
+	updateCheckTimer = setInterval(() => void checkForUpdates(), UPDATE_CHECK_INTERVAL_MS);
+	updateCheckTimer.unref();
 }

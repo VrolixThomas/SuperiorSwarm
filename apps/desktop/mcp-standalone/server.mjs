@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+import { resolveContext } from "./context.mjs";
 import {
 	handleHermesSessionAdmission,
 	handleHermesSessionHandover,
@@ -54,25 +55,7 @@ if (!discovery) {
 	process.exit(1);
 }
 
-async function resolveContext(taskToken) {
-	const params = new URLSearchParams({ cwd: process.cwd() });
-	if (taskToken) params.set("taskToken", taskToken);
-	const headers = { Authorization: `Bearer ${discovery.token}` };
-	// External managers (e.g. Hermes) authenticate via token, not cwd. Sent as
-	// a header, never a query param — the control plane logs request URLs. A
-	// task token wins: a task launch that inherited the manager env var must
-	// resolve as its task, not as the manager.
-	if (!taskToken && process.env.SUPERIORSWARM_MANAGER_TOKEN) {
-		headers["X-Manager-Token"] = process.env.SUPERIORSWARM_MANAGER_TOKEN;
-	}
-	const res = await fetch(`http://127.0.0.1:${discovery.port}/context.resolve?${params}`, {
-		headers,
-	});
-	if (!res.ok) throw new Error(`/context.resolve ${res.status}`);
-	return res.json();
-}
-
-const ctx = await resolveContext(process.env.SUPERIORSWARM_TASK_TOKEN);
+const ctx = await resolveContext(discovery);
 const MODE = ctx.mode;
 const PROJECT_ID = ctx.projectId;
 const WORKSPACE_ID = ctx.workspaceId;
@@ -1215,7 +1198,7 @@ if (isWorkspaceAgentOrCrossRepo) {
 
 	server.tool(
 		"dispatch_agent",
-		"Open a terminal in the target workspace and run the configured CLI agent with a prompt. User must approve via app modal.",
+		"Open a terminal in the target workspace and run the configured CLI agent with a prompt. Requires app approval unless auto-dispatch is enabled for the calling orchestrator or external manager.",
 		{
 			workspace_id: z.string().describe("Workspace ID to dispatch into"),
 			prompt: z.string().describe("Prompt to send to the CLI agent"),
