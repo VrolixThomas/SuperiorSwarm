@@ -1,10 +1,12 @@
 import { Fragment, useCallback, useRef, useState } from "react";
 import type { Pane } from "../../../shared/pane-types";
-import { closePaneWithTerminalCleanup } from "../../lib/pane-lifecycle";
+import {
+	closePaneWithTerminalCleanup,
+	closeTabWithTerminalCleanup,
+} from "../../lib/pane-lifecycle";
 import { usePaneStore } from "../../stores/pane-store";
 import type { TabItem } from "../../stores/tab-store";
 import { useTabStore } from "../../stores/tab-store";
-import { trpc } from "../../trpc/client";
 import { TAB_DRAG_MIME } from "./DropZoneOverlay";
 import { PaneContextMenu } from "./PaneContextMenu";
 
@@ -136,7 +138,6 @@ export function PaneTabBar({
 	paneIndex: number;
 }) {
 	const setActiveTabInPane = usePaneStore((s) => s.setActiveTabInPane);
-	const removeTabFromPane = usePaneStore((s) => s.removeTabFromPane);
 	const setFocusedPane = usePaneStore((s) => s.setFocusedPane);
 	const splitPane = usePaneStore((s) => s.splitPane);
 	const addTerminalTab = useTabStore((s) => s.addTerminalTab);
@@ -146,8 +147,6 @@ export function PaneTabBar({
 		const layout = s.layouts[workspaceId];
 		return layout ? layout.type === "split" : false;
 	});
-
-	const detachMutation = trpc.workspaces.detachTerminal.useMutation();
 
 	const [contextMenu, setContextMenu] = useState<{
 		x: number;
@@ -198,18 +197,7 @@ export function PaneTabBar({
 								isActive={isActive}
 								paneId={pane.id}
 								onSelect={() => setActiveTabInPane(workspaceId, pane.id, tab.id)}
-								onClose={() => {
-									if (tab.kind === "terminal") {
-										// Kill the PTY before removing the tab
-										window.electron.terminal.dispose(tab.id);
-										if (tab.workspaceId) {
-											detachMutation.mutate({
-												workspaceId: tab.workspaceId,
-											});
-										}
-									}
-									removeTabFromPane(workspaceId, pane.id, tab.id);
-								}}
+								onClose={() => closeTabWithTerminalCleanup(workspaceId, pane.id, tab.id)}
 								onContextMenu={(e) => handleTabContextMenu(e, tab)}
 							/>
 						</Fragment>

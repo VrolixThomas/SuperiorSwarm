@@ -240,6 +240,9 @@ describe("DaemonClient", () => {
 			for (let i = 0; i < 100 && delivered.length === 0; i++) await Bun.sleep(10);
 			expect(c.isConnected).toBe(true);
 			expect(delivered).toEqual([replay]);
+			expect(c.supportsTerminalSnapshots).toBe(true);
+			c.disconnect();
+			expect(c.supportsTerminalSnapshots).toBe(false);
 		} finally {
 			c.disconnect();
 			remote.server.close();
@@ -698,6 +701,7 @@ describe("DaemonClient", () => {
 			for (let i = 0; i < 120; i++) {
 				client.write("term-1", "x".repeat(6_000));
 			}
+			expect(client.write("term-1", "x".repeat(6_000))).toBe(false);
 			client.dispose("term-1");
 
 			internalSocket.emit("drain");
@@ -1274,7 +1278,7 @@ describe("DaemonClient", () => {
 			}
 			// ~300KB paste → ~5 chunks; only ~3 fit the remaining budget. Partial
 			// delivery would hand the shell a spliced command, so ALL must drop.
-			client.write("term-1", "p".repeat(300_000));
+			expect(client.write("term-1", "p".repeat(300_000))).toBe(false);
 
 			internalSocket.emit("drain");
 			await new Promise<void>((r) => setTimeout(r, 300));

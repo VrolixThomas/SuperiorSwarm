@@ -8,16 +8,18 @@ import { WebglAddon } from "@xterm/addon-webgl";
 import type { ITheme } from "@xterm/xterm";
 import { Terminal as XTerm } from "@xterm/xterm";
 import { useEffect, useRef, useState } from "react";
+import type { TerminalDataMeta } from "../../shared/daemon-protocol";
 import { CmdBuffer } from "../../shared/lib/cmd-buffer";
 import { RESET_STALE_MODES, isShellProcess } from "../../shared/lib/terminal-modes";
 import { terminalCreateErrorCode, terminalCreateErrorMessage } from "../../shared/terminal-create";
 import { TERMINAL_SCROLLBACK_LINES } from "../../shared/terminal-replay";
 import { useTabStore } from "../stores/tab-store";
+import { readTerminalDiagnostics, registerTerminalDiagnostics } from "./terminal-diagnostics";
 import { installTerminalInput } from "./terminal-input";
 import { createTerminalLinkHandler } from "./terminal-links";
 import { interceptPaste } from "./terminal-paste";
 import { writeTerminalReplay } from "./terminal-replay";
-import { installTerminalWheelHandler } from "./terminal-wheel";
+import { TERMINAL_SCROLL_OPTIONS, installTerminalWheelHandler } from "./terminal-wheel";
 
 import { trpcVanilla } from "../trpc/client";
 import { TerminalFileShelf } from "./TerminalFileShelf";
@@ -75,6 +77,16 @@ export function Terminal({
 	active: boolean;
 }) {
 	const ref = useRef<HTMLDivElement>(null);
+	const [viewRevision, setViewRevision] = useState(0);
+	const [recovery, setRecovery] = useState<{
+		reason:
+			| NonNullable<TerminalDataMeta["recovery"]>
+			| "restore-failed"
+			| "input-failed"
+			| "old-input";
+		resumeCommand?: string;
+	} | null>(null);
+	const [recoveryAction, setRecoveryAction] = useState("");
 	const hostRef = useRef<HTMLDivElement>(null);
 	const activeRef = useRef(active);
 	activeRef.current = active;
@@ -120,9 +132,7 @@ export function Terminal({
 				activate: openExternalLink,
 			},
 			scrollback: TERMINAL_SCROLLBACK_LINES,
-			scrollSensitivity: 3,
-			fastScrollSensitivity: 5,
-			smoothScrollDuration: 0,
+			...TERMINAL_SCROLL_OPTIONS,
 			theme: buildTerminalTheme(),
 		});
 
@@ -182,7 +192,8 @@ export function Terminal({
 		});
 
 		requestAnimationFrame(() => {
-			fit.fit();
+			if (disposed) return;
+			if (suppressDepth === 0) fit.fit();
 			term.focus();
 		});
 
@@ -192,6 +203,8 @@ export function Terminal({
 		// asked already got its answers when the bytes were live.
 		// Counter (not boolean) so back-to-back replay chunks can't clear each other's gate.
 		let suppressDepth = 0;
+		let replayStartedAt = 0;
+		const restores = new Set<() => void>();
 		let connected = true;
 		let created = false;
 		let disposed = false;
@@ -294,6 +307,43 @@ export function Terminal({
 			term.write(RESET_STALE_MODES);
 		};
 
+		const restore = (data: string, clearModes: boolean) => {
+			suppressDepth++;
+			replayStartedAt ||= Date.now();
+			let finished = false;
+			let cancel = () => {};
+			cancel = writeTerminalReplay(term, data, (error) => {
+				finished = true;
+				restores.delete(cancel);
+				suppressDepth--;
+				if (suppressDepth === 0) replayStartedAt = 0;
+				if (disposed) return;
+				try {
+					if (error) throw error;
+					if (clearModes) resetStaleModes();
+					if (suppressDepth === 0) fit.fit();
+				} catch {
+					setRecovery({ reason: "restore-failed" });
+				}
+			});
+			if (!finished) restores.add(cancel);
+		};
+		const cleanupDiagnostics = registerTerminalDiagnostics(id, async () => ({
+			id,
+			viewRevision,
+			buffer: term.buffer.active.type,
+			baseY: term.buffer.active.baseY,
+			normalBaseY: term.buffer.normal.baseY,
+			viewportY: term.buffer.active.viewportY,
+			mouse: term.modes.mouseTrackingMode,
+			cols: term.cols,
+			rows: term.rows,
+			visible: activeRef.current,
+			replayDepth: suppressDepth,
+			replayAgeMs: replayStartedAt ? Date.now() - replayStartedAt : 0,
+			transport: await window.electron.terminal.diagnostics(id),
+		}));
+
 		// Wire up PTY if running inside Electron
 		const api = window.electron;
 		let cleanupData: (() => void) | undefined;
@@ -302,6 +352,23 @@ export function Terminal({
 		let cleanupInput: (() => void) | undefined;
 
 		if (api) {
+			const inputFailed = async (binary: boolean) => {
+				const status = binary ? await api.terminal.diagnostics(id).catch(() => null) : null;
+				if (disposed) return;
+				const reason = status?.connected && !status.binaryInput ? "old-input" : "input-failed";
+				setRecovery((current) => (current?.reason === reason ? current : { reason }));
+			};
+			const sendInput = (data: string, binary = false) => {
+				const result = binary ? api.terminal.writeBinary(id, data) : api.terminal.write(id, data);
+				void result.then(
+					(accepted) => {
+						if (!accepted) void inputFailed(binary);
+					},
+					() => {
+						void inputFailed(binary);
+					}
+				);
+			};
 			const startTerminal = () => {
 				if (disposed || creating || created) return;
 				creating = true;
@@ -317,15 +384,7 @@ export function Terminal({
 						// Attached sessions (live background PTYs) send their current buffer
 						// via onData — writing initialContent too would stack old content
 						// before the live buffer and misplace the cursor inside TUI apps.
-						if (!wasAttached && initialContentRef.current) {
-							suppressDepth++;
-							writeTerminalReplay(term, initialContentRef.current, () => {
-								suppressDepth--;
-								// Fresh PTY: the saved scrollback's app is gone by definition.
-								resetStaleModes();
-								fit.fit();
-							});
-						}
+						if (!wasAttached && initialContentRef.current) restore(initialContentRef.current, true);
 					})
 					.catch((err: unknown) => {
 						if (disposed) return;
@@ -394,7 +453,7 @@ export function Terminal({
 				) {
 					if (event.type === "keydown") {
 						shiftEnterPending = true;
-						api.terminal.write(id, "\x1b[13;2u");
+						sendInput("\x1b[13;2u");
 					}
 					return false;
 				}
@@ -404,15 +463,11 @@ export function Terminal({
 			cleanupData = api.terminal.onData(id, (data, meta) => {
 				if (meta?.replay) {
 					files.suspend();
-					suppressDepth++;
-					writeTerminalReplay(term, data, () => {
-						suppressDepth--;
-						// Shell in the foreground means whatever set those modes is gone.
-						if (isShellProcess(meta.fg)) {
-							resetStaleModes();
-						}
-						fit.fit();
-					});
+					setRecovery(
+						meta.recovery ? { reason: meta.recovery, resumeCommand: meta.resumeCommand } : null
+					);
+					setRecoveryAction("");
+					restore(data, isShellProcess(meta.fg));
 				} else {
 					term.write(data);
 				}
@@ -459,7 +514,7 @@ export function Terminal({
 						shiftEnterPending = false;
 						if (data === "\r") return;
 					}
-					api.terminal.write(id, data);
+					sendInput(data);
 					if (term.buffer.active.type === "alternate") return;
 
 					const name = cmd.feed(data);
@@ -468,7 +523,7 @@ export function Terminal({
 					}
 				},
 				(data) => {
-					void api.terminal.writeBinary(id, data);
+					sendInput(data, true);
 				}
 			);
 
@@ -477,12 +532,12 @@ export function Terminal({
 				if (suppressDepth === 0) api.terminal.resize(id, cols, rows);
 			});
 			api.terminal.resize(id, term.cols, term.rows);
-			cleanupPaste = interceptPaste(term, (data) => api.terminal.write(id, data));
+			cleanupPaste = interceptPaste(term, (data) => sendInput(data));
 		}
 
 		// Resize handling
 		const onResize = () => {
-			if (suppressDepth === 0) fit.fit();
+			if (!disposed && suppressDepth === 0) fit.fit();
 		};
 		window.addEventListener("resize", onResize);
 		const observer = new ResizeObserver(() => requestAnimationFrame(onResize));
@@ -490,6 +545,8 @@ export function Terminal({
 
 		return () => {
 			disposed = true;
+			cleanupDiagnostics();
+			for (const cancel of restores) cancel();
 			files.suspend();
 			controllerRef.current = null;
 			cleanupDrop?.();
@@ -508,7 +565,7 @@ export function Terminal({
 			webgl?.dispose();
 			term.dispose();
 		};
-	}, [id, workspaceId]);
+	}, [id, workspaceId, viewRevision]);
 
 	useEffect(() => {
 		if (!active) {
@@ -523,6 +580,70 @@ export function Terminal({
 
 	return (
 		<div ref={hostRef} className="relative flex h-full min-h-0 flex-col">
+			{recovery && (
+				<div
+					aria-live="polite"
+					className="flex flex-wrap items-center gap-2 border-b border-[var(--border-subtle)] px-3 py-2 text-xs text-[var(--text-secondary)]"
+				>
+					<span>
+						{recovery.reason === "legacy-replay"
+							? "This restored chat may be missing history. If scrolling is stuck, finish the current task, then resume the chat."
+							: recovery.reason === "old-input"
+								? "This older session cannot receive mouse input. Finish and close the older terminal sessions, then reopen the app."
+								: recovery.reason === "input-failed"
+									? "Input could not be delivered. Reload the view before trying again."
+									: "The terminal view could not keep up or finish restoring. Reload the view to reconnect."}
+					</span>
+					{recovery.resumeCommand && (
+						<button
+							className="rounded border border-[var(--border)] px-2 py-1 hover:bg-[var(--bg-elevated)] focus-visible:outline-2"
+							type="button"
+							onClick={() => {
+								void navigator.clipboard.writeText(recovery.resumeCommand ?? "").then(
+									() =>
+										setRecoveryAction(
+											"Resume command copied. Run it after exiting the current agent."
+										),
+									() => setRecoveryAction("Could not copy the resume command.")
+								);
+							}}
+						>
+							Copy resume command
+						</button>
+					)}
+					{recovery.reason !== "legacy-replay" && recovery.reason !== "old-input" && (
+						<button
+							className="rounded border border-[var(--border)] px-2 py-1 hover:bg-[var(--bg-elevated)] focus-visible:outline-2"
+							type="button"
+							onClick={() => setViewRevision((value) => value + 1)}
+						>
+							Reload view
+						</button>
+					)}
+					<button
+						className="rounded border border-[var(--border)] px-2 py-1 hover:bg-[var(--bg-elevated)] focus-visible:outline-2"
+						type="button"
+						onClick={() => {
+							void readTerminalDiagnostics(id)
+								.then((data) => navigator.clipboard.writeText(JSON.stringify(data, null, 2)))
+								.then(
+									() => setRecoveryAction("Diagnostics copied."),
+									() => setRecoveryAction("Could not copy diagnostics.")
+								);
+						}}
+					>
+						Copy diagnostics
+					</button>
+					<button
+						className="rounded border border-[var(--border)] px-2 py-1 hover:bg-[var(--bg-elevated)] focus-visible:outline-2"
+						type="button"
+						onClick={() => setRecovery(null)}
+					>
+						Dismiss
+					</button>
+					{recoveryAction && <span>{recoveryAction}</span>}
+				</div>
+			)}
 			<div className="min-h-0 flex-1">
 				<div ref={ref} className="xterm-container" />
 			</div>

@@ -9,7 +9,16 @@ import type {
 
 export type { TerminalDataMeta } from "./daemon-protocol";
 
+export interface TerminalDiagnostics {
+	binaryInput: boolean;
+	connected: boolean;
+	snapshots: boolean;
+	view: { pendingChars: number; recovery?: TerminalDataMeta["recovery"]; attached: boolean } | null;
+	input: { pendingBytes: number; pendingWrites: number; sessions: number };
+}
+
 export interface TerminalAPI {
+	diagnostics: (id: string) => Promise<TerminalDiagnostics>;
 	create: (id: string, cwd?: string, workspaceId?: string) => Promise<{ wasAttached: boolean }>;
 	/** False when disconnected or the bounded pending-input queue rejects the write. */
 	write: (id: string, data: string) => Promise<boolean>;

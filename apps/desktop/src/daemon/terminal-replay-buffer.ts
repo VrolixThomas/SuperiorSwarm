@@ -2,6 +2,7 @@ import { SerializeAddon } from "@xterm/addon-serialize";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import headless from "@xterm/headless";
 import type { Terminal } from "@xterm/headless";
+import { RESET_STALE_MODES } from "../shared/lib/terminal-modes";
 import {
 	MAX_TERMINAL_REPLAY_CHARS,
 	TERMINAL_SCROLLBACK_LINES,
@@ -27,6 +28,7 @@ export class TerminalReplayBuffer {
 	private cursorVisible = true;
 	private framer = new TerminalOutputFramer();
 	private disposed = false;
+	private pendingWrites = new Set<() => void>();
 	private regions: Record<"normal" | "alternate", string> = { normal: "", alternate: "" };
 
 	constructor() {
@@ -74,15 +76,27 @@ export class TerminalReplayBuffer {
 	}
 
 	write(data: string, onParsed: (output: string) => void): void {
+		if (this.disposed) {
+			onParsed("");
+			return;
+		}
 		const output = this.framer.push(data);
-		this.terminal.write(output, () => {
-			this.hasOutput ||= output.length > 0;
-			onParsed(output);
-		});
+		const complete = () => {
+			if (!this.pendingWrites.delete(complete)) return;
+			this.hasOutput ||= !this.disposed && output.length > 0;
+			onParsed(this.disposed ? "" : output);
+		};
+		this.pendingWrites.add(complete);
+		try {
+			this.terminal.write(output, complete);
+		} catch (error) {
+			this.pendingWrites.delete(complete);
+			throw error;
+		}
 	}
 
 	resize(cols: number, rows: number): void {
-		this.terminal.write("", () => {
+		this.afterWrites(() => {
 			if (!this.disposed && (cols !== this.terminal.cols || rows !== this.terminal.rows)) {
 				this.terminal.resize(cols, rows);
 				this.regions = { normal: "", alternate: "" };
@@ -91,11 +105,16 @@ export class TerminalReplayBuffer {
 	}
 
 	afterWrites(callback: () => void): void {
-		this.terminal.write("", callback);
+		this.write("", () => callback());
+	}
+
+	resetStaleModes(callback: () => void): void {
+		const leaveAlternate = this.terminal.buffer.active.type === "alternate" ? "\x1b[?1049l" : "";
+		this.write(leaveAlternate + RESET_STALE_MODES, () => callback());
 	}
 
 	snapshot(): string {
-		if (!this.hasOutput) return "";
+		if (!this.hasOutput || this.disposed) return "";
 		let scrollback = TERMINAL_SCROLLBACK_LINES;
 		let data = this.serializer.serialize({ scrollback });
 		// Bound pathological styled histories by dropping whole oldest rows,
@@ -123,7 +142,11 @@ export class TerminalReplayBuffer {
 	}
 
 	dispose(): void {
+		if (this.disposed) return;
 		this.disposed = true;
 		this.terminal.dispose();
+		// Settle queued operations when a tab closes, even if xterm cancels its
+		// parser timer. Each completion removes itself and can only run once.
+		for (const complete of [...this.pendingWrites]) complete();
 	}
 }

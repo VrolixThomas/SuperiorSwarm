@@ -1,5 +1,9 @@
 import { Terminal } from "@xterm/xterm";
-import { installTerminalWheelHandler } from "../../src/renderer/components/terminal-wheel";
+import { writeTerminalReplay } from "../../src/renderer/components/terminal-replay";
+import {
+	TERMINAL_SCROLL_OPTIONS,
+	installTerminalWheelHandler,
+} from "../../src/renderer/components/terminal-wheel";
 
 let term: Terminal | undefined;
 let cleanup: (() => void) | undefined;
@@ -42,7 +46,7 @@ const api = {
 			fontSize: 13,
 			lineHeight: 1.2,
 			scrollback: 1000,
-			scrollSensitivity: sensitivity,
+			...(adapter ? TERMINAL_SCROLL_OPTIONS : { scrollSensitivity: sensitivity }),
 			smoothScrollDuration: 0,
 		});
 		term.open(host);
@@ -68,7 +72,22 @@ const api = {
 	},
 	async result() {
 		await tick();
-		return { movement: (term?.buffer.active.viewportY ?? start) - start, text, events };
+		return {
+			movement: (term?.buffer.active.viewportY ?? start) - start,
+			text,
+			events,
+			buffer: term?.buffer.active.type,
+			mouse: term?.modes.mouseTrackingMode,
+		};
+	},
+	async restore(data: string) {
+		const target = term;
+		if (!target) throw Error("Missing terminal");
+		await new Promise<void>((resolve) => writeTerminalReplay(target, data, () => resolve()));
+		await tick();
+		text = [];
+		events = [];
+		start = target.buffer.active.viewportY;
 	},
 };
 (window as unknown as { nativeWheel: typeof api }).nativeWheel = api;

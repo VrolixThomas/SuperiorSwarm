@@ -14,14 +14,18 @@ import {
 	getWorkspaceCwdOrThrow,
 } from "../agent-launch/workspace-cwd-lookup";
 import { getDb } from "../db";
-import { terminalSessions } from "../db/schema";
+import { terminalSessions, workspaces } from "../db/schema";
 import { ensureTerminalSessionRow } from "../db/session-persistence";
-import type { AgentSessionManager } from "../services/agent-session-manager";
+import {
+	type AgentSessionManager,
+	buildAgentResumeCommand,
+} from "../services/agent-session-manager";
 import { incrementCounter } from "../telemetry/state";
 import type { DaemonClient } from "./daemon-client";
 import { registerTerminalInputIPC } from "./input-ipc";
 import { rendererTrust } from "./renderer-trust";
 import { type FileCaller, terminalFileOwners } from "./terminal-files";
+import { TerminalViewSessions } from "./view-sessions";
 
 function assertNonEmptyString(value: unknown, name: string): asserts value is string {
 	if (typeof value !== "string" || value.length === 0) {
@@ -33,6 +37,7 @@ export function setupTerminalIPC(
 	daemonClient: DaemonClient,
 	agentSessionManager?: AgentSessionManager
 ): void {
+	const views = new TerminalViewSessions(daemonClient);
 	ipcMain.handle(
 		"terminal:create",
 		async (
@@ -101,8 +106,15 @@ export function setupTerminalIPC(
 					insertedSessionRow = ensureTerminalSessionRow({ id, workspaceId: wsId, cwd });
 				}
 				const onData = (data: string, meta?: TerminalDataMeta) => {
+					let deliveryMeta = meta;
 					if (meta?.replay) terminalFileOwners.invalidate(id, "replay");
-					if (!window.isDestroyed()) window.webContents.send("terminal:data", id, data, meta);
+					if (meta?.recovery) {
+						const session = agentSessionManager?.getSession(id);
+						if (session?.providerSessionId)
+							deliveryMeta = { ...meta, resumeCommand: buildAgentResumeCommand(session) };
+					}
+					if (!window.isDestroyed())
+						window.webContents.send("terminal:data", id, data, deliveryMeta);
 				};
 				const onExit = (exitCode: number) => {
 					terminalFileOwners.detach(id);
@@ -118,9 +130,9 @@ export function setupTerminalIPC(
 				if (wsId) env["AGENT_NOTIFY_WORKSPACE_ID"] = wsId;
 				if (notifyToken) env["AGENT_NOTIFY_TOKEN"] = notifyToken;
 				if (wasAttached) {
-					await daemonClient.attach(id, onData, onExit, cwd, env);
+					await views.attach(id, onData, onExit, cwd, env);
 				} else {
-					await daemonClient.create(id, cwd, onData, onExit, env);
+					await views.create(id, cwd, onData, onExit, env);
 					incrementCounter(db, "lifetimeSessionsStarted");
 				}
 				return { wasAttached };
@@ -145,6 +157,17 @@ export function setupTerminalIPC(
 		}
 	);
 
+	ipcMain.handle("terminal:diagnostics", (_event, id: unknown) => {
+		assertNonEmptyString(id, "id");
+		return {
+			connected: daemonClient.isConnected,
+			snapshots: daemonClient.supportsTerminalSnapshots,
+			binaryInput: daemonClient.supportsBinaryInput,
+			view: views.diagnostics(id),
+			input: input.diagnostics(),
+		};
+	});
+
 	ipcMain.handle("terminal:resize", (_event, id: unknown, cols: unknown, rows: unknown) => {
 		assertNonEmptyString(id, "id");
 		if (!Number.isInteger(cols) || (cols as number) < 1 || (cols as number) > 500) {
@@ -153,25 +176,31 @@ export function setupTerminalIPC(
 		if (!Number.isInteger(rows) || (rows as number) < 1 || (rows as number) > 500) {
 			throw new Error("rows must be an integer between 1 and 500");
 		}
-		daemonClient.resize(id, cols as number, rows as number);
+		views.resize(id, cols as number, rows as number);
 	});
 
 	ipcMain.handle("terminal:detach", (_event, id: unknown) => {
 		assertNonEmptyString(id, "id");
 		terminalFileOwners.detach(id);
 		input.invalidate(id);
-		daemonClient.detach(id);
+		views.detach(id);
 	});
 
 	ipcMain.handle("terminal:dispose", (_event, id: unknown) => {
 		assertNonEmptyString(id, "id");
 		terminalFileOwners.detach(id);
 		input.invalidate(id);
-		daemonClient.dispose(id);
+		views.dispose(id);
 		agentSessionManager?.removeSession(id);
 		// Also remove the DB session record so it doesn't reappear as stale
 		try {
 			const db = getDb();
+			// All close paths (keyboard, tab button, pane) clear only links to
+			// this PTY, rather than detaching an unrelated tab in the workspace.
+			db.update(workspaces)
+				.set({ terminalId: null, updatedAt: new Date() })
+				.where(eq(workspaces.terminalId, id))
+				.run();
 			db.delete(terminalSessions).where(eq(terminalSessions.id, id)).run();
 		} catch {
 			// DB may not be initialized yet during early startup

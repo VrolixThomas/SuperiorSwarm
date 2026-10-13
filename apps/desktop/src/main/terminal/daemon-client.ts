@@ -98,6 +98,9 @@ export class DaemonClient {
 	private fileInputCapable = false;
 	private fileSubmitCapable = false;
 	private snapshotCapable = false;
+	get supportsTerminalSnapshots(): boolean {
+		return this.isConnected && this.snapshotCapable;
+	}
 	private legacyFileTargets = new Map<
 		string,
 		{ generation: string; pid?: number; identity?: TerminalProcessIdentity }
@@ -257,6 +260,9 @@ export class DaemonClient {
 		});
 	}
 	private binaryInputSupported = false;
+	get supportsBinaryInput(): boolean {
+		return this.isConnected && this.binaryInputSupported;
+	}
 
 	constructor(
 		private socketPath: string,
@@ -404,6 +410,7 @@ export class DaemonClient {
 		const socket = this.socket;
 		this.socket = null;
 		this.binaryInputSupported = false;
+		this.snapshotCapable = false;
 		this.pendingInputTerminals.clear();
 		socket?.destroy();
 		this.lineBuffer = "";
@@ -567,11 +574,9 @@ export class DaemonClient {
 		const frames = this.buildWriteFrames(id, data);
 		const first = frames[0];
 		if (frames.length === 1 && first) {
-			this.dispatchFrame("write", id, first.encoded, first.bytes, true, undefined);
-			return true;
+			return this.dispatchFrame("write", id, first.encoded, first.bytes, true, undefined);
 		}
-		this.sendWriteGroup(id, frames);
-		return true;
+		return this.sendWriteGroup(id, frames);
 	}
 
 	/** False means unsupported, invalid, disconnected, or rejected by backpressure.
@@ -627,8 +632,8 @@ export class DaemonClient {
 
 	// Deliver a multi-frame write all-or-nothing: a partially delivered paste
 	// would hand the shell a spliced version of the input.
-	private sendWriteGroup(id: string, frames: Array<{ encoded: string; bytes: number }>): void {
-		if (!this.socket || this.socket.destroyed) return;
+	private sendWriteGroup(id: string, frames: Array<{ encoded: string; bytes: number }>): boolean {
+		if (!this.socket || this.socket.destroyed) return false;
 
 		if (this.waitingForDrain || this.outboundQueue.length > 0) {
 			const totalBytes = frames.reduce((sum, f) => sum + f.bytes, 0);
@@ -636,13 +641,13 @@ export class DaemonClient {
 				console.warn(
 					`[daemon-client] outbound queue full (${this.outboundQueuedBytes}/${MAX_OUTBOUND_QUEUE_BYTES}B); dropping chunked write whole (${frames.length} frames, ${totalBytes}B)`
 				);
-				return;
+				return false;
 			}
 			const groupId = ++this.writeGroupCounter;
 			for (const f of frames) {
 				this.enqueueOutbound("write", id, f.encoded, f.bytes, true, groupId);
 			}
-			return;
+			return true;
 		}
 
 		// Socket idle: write every chunk directly. Node buffers under transient
@@ -655,6 +660,7 @@ export class DaemonClient {
 				console.warn("[daemon-client] socket backpressure detected");
 			}
 		}
+		return true;
 	}
 
 	resize(id: string, cols: number, rows: number): void {
