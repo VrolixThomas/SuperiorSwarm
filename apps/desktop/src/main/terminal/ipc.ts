@@ -1,6 +1,7 @@
 import { homedir } from "node:os";
 import { eq } from "drizzle-orm";
 import { BrowserWindow, ipcMain } from "electron";
+import { shellIntegrationEnv } from "../../daemon/shell-integration";
 import type { TerminalDataMeta } from "../../shared/daemon-protocol";
 import {
 	TerminalCreateError,
@@ -122,7 +123,13 @@ export function setupTerminalIPC(
 				};
 				const notifyPort = getAgentNotifyPort();
 				const notifyToken = getAgentNotifyToken();
+				const shellEnv: Record<string, string> = {};
+				for (const key of ["ZDOTDIR", "SUPERIORSWARM_SHELL_INTEGRATION"]) {
+					const value = process.env[key];
+					if (value !== undefined) shellEnv[key] = value;
+				}
 				const env: Record<string, string> = {
+					...shellIntegrationEnv(process.env["SHELL"] ?? "/bin/zsh", shellEnv),
 					AGENT_NOTIFY_TERMINAL_ID: id,
 					AGENT_NOTIFY_SESSION_ID: id,
 				};

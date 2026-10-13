@@ -6,6 +6,7 @@ import { MAX_SCROLLBACK_CHARS } from "../shared/daemon-protocol";
 const MAX_BUFFER_CHARS = MAX_SCROLLBACK_CHARS;
 
 import { FileInputSessions } from "./file-input-sessions";
+import { shellIntegrationEnv } from "./shell-integration";
 import { readTerminalProcessIdentity } from "./terminal-process-identity";
 import { TerminalReplayBuffer } from "./terminal-replay-buffer";
 
@@ -67,7 +68,7 @@ export class PtyManager {
 			cols: 80,
 			rows: 24,
 			cwd: resolvedCwd,
-			env: resolveEnv(env),
+			env: shellIntegrationEnv(shell, resolveEnv(env)),
 		});
 
 		const entry: TerminalEntry = {
