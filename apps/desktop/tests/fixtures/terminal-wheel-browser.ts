@@ -39,7 +39,7 @@ async function run() {
 	);
 	let cleanup = installTerminalWheelHandler(container, term, () => visible);
 	const results: string[] = [];
-	const write = (data: string) => new Promise<void>((resolve) => term.write(data, resolve));
+	const write = (data: string) => new Promise<void>((resolve) => term.write(data, () => resolve()));
 	const screen = container.querySelector(".xterm-screen");
 	if (!screen) throw Error("missing xterm screen");
 	const wheel = (
@@ -209,7 +209,7 @@ async function run() {
 		term.resize(120, 30);
 		term.write("stale output");
 		const short = encodeTerminalReplay("restored\r\n", 80, 24);
-		await new Promise<void>((resolve) => writeTerminalReplay(term, short, resolve));
+		await new Promise<void>((resolve) => writeTerminalReplay(term, short, () => resolve()));
 		assert(
 			term.buffer.active.getLine(0)?.translateToString(true) === "restored",
 			"reset follows queued output"
@@ -218,10 +218,10 @@ async function run() {
 		// before either has finished writing.
 		await Promise.all([
 			new Promise<void>((resolve) =>
-				writeTerminalReplay(term, encodeTerminalReplay("x".repeat(80), 80, 24), resolve)
+				writeTerminalReplay(term, encodeTerminalReplay("x".repeat(80), 80, 24), () => resolve())
 			),
 			new Promise<void>((resolve) =>
-				writeTerminalReplay(term, encodeTerminalReplay("final", 60, 20), resolve)
+				writeTerminalReplay(term, encodeTerminalReplay("final", 60, 20), () => resolve())
 			),
 		]);
 		assert(term.cols === 120 && term.rows === 30, "back-to-back snapshots preserve pane size");
@@ -231,7 +231,7 @@ async function run() {
 		);
 		for (let i = 0; i < 2; i++) {
 			replay = true;
-			await new Promise<void>((resolve) => writeTerminalReplay(term, snapshot, resolve));
+			await new Promise<void>((resolve) => writeTerminalReplay(term, snapshot, () => resolve()));
 			replay = false;
 			await tick();
 			assert(term.cols === 120 && term.rows === 30, "replay restores the current pane dimensions");
@@ -250,11 +250,11 @@ async function run() {
 		text.length = 0;
 		wheel(3, 1);
 		wheel(-1, 2);
-		assert(text.join("") === "\x1b[B".repeat(3) + "\x1b[A".repeat(23), "alternate CSI repetitions");
+		assert(text.join("") === "\x1b[B" + "\x1b[A", "native alternate CSI");
 		await write("\x1b[?1h");
 		text.length = 0;
 		wheel(-2, 1);
-		assert(text.join("") === "\x1bOA".repeat(2), "alternate SS3 repetitions");
+		assert(text.join("") === "\x1bOA", "native alternate SS3");
 		replay = true;
 		text.length = 0;
 		wheel(3, 1);
@@ -320,7 +320,7 @@ async function run() {
 
 		await write("\x1b[?1049h\x1b[?1003h\x1b[?1006h");
 		await tick();
-		// Replacing the adapter on a live terminal retains the negotiated encoding.
+		// Replacing the normal-scrollback adapter leaves xterm mouse handling alone.
 		const prior = cleanup;
 		cleanup = installTerminalWheelHandler(container, term, () => visible);
 		prior();
@@ -328,8 +328,8 @@ async function run() {
 		binary.length = 0;
 		wheel(-1, 1, screen, { altKey: true });
 		assert(
-			text.join("").split("\x1b[<72;").length - 1 === 5,
-			"SGR Alt speed and modifier apply once"
+			text.join("").split("\x1b[<72;").length - 1 === 1,
+			"native SGR modifier and event count"
 		);
 		assert(binary.length === 0, "SGR wheel remains text input");
 		replay = true;

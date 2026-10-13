@@ -16,7 +16,7 @@ import { installTerminalInput } from "./terminal-input";
 import { createTerminalLinkHandler } from "./terminal-links";
 import { interceptPaste } from "./terminal-paste";
 import { writeTerminalReplay } from "./terminal-replay";
-import { installTerminalWheelHandler } from "./terminal-wheel";
+import { TERMINAL_SCROLL_OPTIONS, installTerminalWheelHandler } from "./terminal-wheel";
 
 import { trpcVanilla } from "../trpc/client";
 import { TerminalFileShelf } from "./TerminalFileShelf";
@@ -117,9 +117,7 @@ export function Terminal({
 				activate: openExternalLink,
 			},
 			scrollback: TERMINAL_SCROLLBACK_LINES,
-			scrollSensitivity: 3,
-			fastScrollSensitivity: 5,
-			smoothScrollDuration: 0,
+			...TERMINAL_SCROLL_OPTIONS,
 			theme: buildTerminalTheme(),
 		});
 

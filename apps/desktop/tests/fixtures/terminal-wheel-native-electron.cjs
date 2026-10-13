@@ -26,12 +26,15 @@ app.whenReady().then(async () => {
 		for (const mode of ["normal", "alternate", "sgr", "sgr-pixels"]) {
 			for (const [adapter, sensitivity] of [
 				[false, 1],
-				[false, 3],
-				[true, 3],
+				[true, 1],
 			]) {
-				for (const [deltaY, count] of [
+				for (const [deltaY, count, deltaX = 0] of [
 					[-4, 10],
 					[-120, 1],
+					[-120, 1, 119],
+					[-120, 1, 121],
+					[-1, 10],
+					[-1200, 1],
 				]) {
 					const { x, y, cellHeight } = await window.webContents.executeJavaScript(
 						`window.nativeWheel.setup(${adapter}, ${JSON.stringify(mode)}, ${sensitivity})`
@@ -41,12 +44,21 @@ app.whenReady().then(async () => {
 							type: "mouseWheel",
 							x,
 							y,
-							deltaX: 0,
+							deltaX,
 							deltaY,
 						});
 					}
 					const result = await window.webContents.executeJavaScript("window.nativeWheel.result()");
-					results.push({ mode, adapter, sensitivity, deltaY, count, cellHeight, ...result });
+					results.push({
+						mode,
+						adapter,
+						sensitivity,
+						deltaY,
+						deltaX,
+						count,
+						cellHeight,
+						...result,
+					});
 				}
 			}
 		}
@@ -54,7 +66,7 @@ app.whenReady().then(async () => {
 			fs.readFileSync(path.join(process.argv[2], "legacy-replay.json"), "utf8")
 		);
 		const { x, y, cellHeight } = await window.webContents.executeJavaScript(
-			'window.nativeWheel.setup(true, "normal", 3)'
+			'window.nativeWheel.setup(true, "normal", 1)'
 		);
 		await window.webContents.executeJavaScript(
 			`window.nativeWheel.restore(${JSON.stringify(replay)})`
@@ -70,8 +82,9 @@ app.whenReady().then(async () => {
 		results.push({
 			mode: "legacy-return",
 			adapter: true,
-			sensitivity: 3,
+			sensitivity: 1,
 			deltaY: -120,
+			deltaX: 0,
 			count: 1,
 			cellHeight,
 			...returned,

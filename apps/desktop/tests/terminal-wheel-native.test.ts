@@ -11,6 +11,7 @@ interface Result {
 	adapter: boolean;
 	sensitivity: number;
 	deltaY: number;
+	deltaX: number;
 	count: number;
 	cellHeight: number;
 	movement: number;
@@ -83,7 +84,7 @@ test("native Chromium wheel events scroll terminal history and application views
 			]);
 			if (code !== 0) throw Error(`${stdout}\n${stderr}`);
 			const results = JSON.parse(stdout.trim().split("\n").at(-1) ?? "[]") as Result[];
-			expect(results).toHaveLength(25);
+			expect(results).toHaveLength(49);
 			for (const result of results) {
 				expect(result.events).toHaveLength(result.count);
 				expect(result.events.every((event) => event.trusted && event.mode === 0)).toBe(true);
@@ -97,28 +98,15 @@ test("native Chromium wheel events scroll terminal history and application views
 						!r.adapter &&
 						r.mode === (result.mode === "legacy-return" ? "sgr" : result.mode) &&
 						r.deltaY === result.deltaY &&
-						r.sensitivity === 3
+						r.sensitivity === 1 &&
+						r.deltaX === result.deltaX
 				);
 				if (!baseline) throw Error("Missing xterm baseline");
-				if (result.mode === "normal") {
-					expect(result.movement).toBeLessThan(0);
-					expect(result.movement).toBe(baseline.movement);
-				} else {
-					const countReports = (r: Result) =>
-						r.text
-							.join("")
-							.split("\x1b")
-							.filter((s) => s === "[A" || /^\[<64;\d+;\d+M$/.test(s)).length;
-					const expected = Math.trunc(
-						(Math.abs(result.deltaY) * result.count * 3) / result.cellHeight
-					);
-					expect(countReports(result)).toBe(expected);
-					expect(countReports(result)).toBeGreaterThan(countReports(baseline));
-					const report = baseline.text.join("");
-					expect(result.text.join("")).toBe(report.repeat(expected));
-					console.log(
-						`${result.mode}: ${result.count} × ${result.deltaY}px → ${countReports(baseline)} reports before, ${countReports(result)} after`
-					);
+				expect(result.movement).toBe(baseline.movement);
+				expect(result.text).toEqual(baseline.text);
+				if (result.mode === "normal") expect(result.movement).toBeLessThan(0);
+				if (result.mode === "legacy-return") {
+					expect(result.text.join("").split("\x1b[<64;").length - 1).toBe(1);
 				}
 			}
 		} finally {
