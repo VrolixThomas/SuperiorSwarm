@@ -7,7 +7,8 @@ import { BrowserWindow, app } from "electron";
 import { PtyManager } from "../../../src/daemon/pty-manager";
 import type { ScrollbackStore } from "../../../src/daemon/scrollback-store";
 import { SocketServer } from "../../../src/daemon/socket-server";
-import { initializeDatabase } from "../../../src/main/db";
+import { getDb, initializeDatabase } from "../../../src/main/db";
+import { projects, workspaces } from "../../../src/main/db/schema";
 import { DaemonClient } from "../../../src/main/terminal/daemon-client";
 import { setupTerminalIPC } from "../../../src/main/terminal/ipc";
 import { rendererTrust } from "../../../src/main/terminal/renderer-trust";
@@ -73,6 +74,30 @@ async function until(check: () => boolean | Promise<boolean>) {
 async function run() {
 	await app.whenReady();
 	initializeDatabase();
+	// Reattachment now validates the persisted workspace binding. Exercise
+	// that contract with a real isolated workspace, not an unbound terminal.
+	const db = getDb();
+	const now = new Date();
+	db.insert(projects)
+		.values({
+			id: "lifecycle-project",
+			name: "Fixture",
+			repoPath: dir,
+			kind: "folder",
+			createdAt: now,
+			updatedAt: now,
+		})
+		.run();
+	db.insert(workspaces)
+		.values({
+			id: "lifecycle-workspace",
+			projectId: "lifecycle-project",
+			name: "Fixture",
+			type: "branch",
+			createdAt: now,
+			updatedAt: now,
+		})
+		.run();
 	server.listen();
 	if (legacy) await new Promise<void>((resolve) => proxy.listen(join(dir, "legacy.sock"), resolve));
 	await client.connect();

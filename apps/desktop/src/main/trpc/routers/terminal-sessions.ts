@@ -80,9 +80,15 @@ export const terminalSessionsRouter = router({
 			})
 			.from(schema.workspaces)
 			.all();
+		const coordinators = db.select().from(schema.crossRepoOrchestrators).all();
 		const validWorkspaceIds = new Set(allWorkspaces.map((workspace) => workspace.id));
-		const sessions = persistedSessions.filter((session) =>
-			validWorkspaceIds.has(session.workspaceId)
+		for (const coordinator of coordinators) validWorkspaceIds.add(coordinator.id);
+		// Keep stale coordinator tabs visible so terminal:create can explain the
+		// missing record. The prefix is a UI retention convention, never authority
+		// to resolve a directory or attach a terminal.
+		const sessions = persistedSessions.filter(
+			(session) =>
+				validWorkspaceIds.has(session.workspaceId) || session.workspaceId.startsWith("xro-")
 		);
 		for (const workspaceId of Object.keys(paneLayouts)) {
 			if (!validWorkspaceIds.has(workspaceId)) delete paneLayouts[workspaceId];
@@ -107,6 +113,13 @@ export const terminalSessionsRouter = router({
 				prProvider: ws.prProvider ?? undefined,
 				prIdentifier: ws.prIdentifier ?? undefined,
 			};
+		}
+		for (const coordinator of coordinators) {
+			if (coordinator.kind !== "workspace" || allWorkspaces.some((ws) => ws.id === coordinator.id))
+				continue;
+			// Display metadata only. Launch and file access validate the registered
+			// root through getWorkspaceCwdOrThrow, including after restoration.
+			workspaceMeta[coordinator.id] = { type: "repo", cwd: coordinator.workDir };
 		}
 
 		return { sessions, state, paneLayouts, workspaceMeta };

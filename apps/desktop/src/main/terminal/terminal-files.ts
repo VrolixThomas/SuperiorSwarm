@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { lstatSync, realpathSync } from "node:fs";
 import { lstat, realpath, stat } from "node:fs/promises";
 import { isAbsolute, relative } from "node:path";
+import { TerminalCreateError } from "../../shared/terminal-create";
 import {
 	FILE_BATCH_TTL_MS,
 	FILE_DROP_MAX_ITEMS,
@@ -13,6 +14,7 @@ import {
 	formatFilePaths,
 	isSafeTerminalPath,
 } from "../../shared/terminal-files";
+import { WorkspaceError } from "../../shared/workspace-errors";
 
 export interface FileCaller {
 	senderId: number;
@@ -24,6 +26,18 @@ interface Owner {
 	caller: FileCaller;
 	target: TerminalFileTarget;
 }
+
+function canonicalRootInfo(root: string) {
+	try {
+		const info = lstatSync(root);
+		if (!info.isDirectory() || info.isSymbolicLink() || realpathSync(root) !== root)
+			throw new WorkspaceError("WORKSPACE_ROOT_CHANGED");
+		return info;
+	} catch (error) {
+		console.error("[terminal-files] Workspace root validation failed:", { root, error });
+		throw new WorkspaceError("WORKSPACE_ROOT_CHANGED");
+	}
+}
 export class TerminalFileOwners {
 	private owners = new Map<string, Owner>();
 	private listeners = new Set<(id: string) => void>();
@@ -34,12 +48,22 @@ export class TerminalFileOwners {
 	private notify(id: string): void {
 		for (const listener of this.listeners) listener(id);
 	}
-	attach(terminalId: string, caller: FileCaller, workspaceId: string, root: string): void {
+	attach(
+		terminalId: string,
+		caller: FileCaller,
+		workspaceId: string,
+		root: string
+	): { assertCurrent: () => void; rollback: () => void } {
+		const existing = this.owners.get(terminalId);
+		if (
+			existing &&
+			(existing.caller.senderId !== caller.senderId || existing.caller.frameId !== caller.frameId)
+		)
+			throw new TerminalCreateError("TERMINAL_NOT_AUTHORIZED");
 		this.notify(terminalId);
-		const info = lstatSync(root);
-		if (!info.isDirectory() || info.isSymbolicLink() || realpathSync(root) !== root)
-			throw new Error("Workspace root is not canonical.");
-		this.owners.set(terminalId, {
+		this.owners.delete(terminalId);
+		const info = canonicalRootInfo(root);
+		const owner: Owner = {
 			rootDev: info.dev,
 			rootIno: info.ino,
 			caller,
@@ -50,7 +74,20 @@ export class TerminalFileOwners {
 				root,
 				rootIdentity: `${info.dev}:${info.ino}`,
 			},
-		});
+		};
+		this.owners.set(terminalId, owner);
+		return {
+			assertCurrent: () => {
+				// Visibility, input and replay invalidate file batches, but do not
+				// replace this attachment's owner registration or workspace root.
+				if (this.owners.get(terminalId) !== owner) throw new Error("Terminal attachment changed.");
+				this.target(terminalId, caller);
+			},
+			rollback: () => {
+				// A failed older attach must not revoke a newer mount's registration.
+				if (this.owners.get(terminalId) === owner) this.detach(terminalId);
+			},
+		};
 	}
 	target(terminalId: string, caller: FileCaller): TerminalFileTarget {
 		const owner = this.owners.get(terminalId);
@@ -60,15 +97,9 @@ export class TerminalFileOwners {
 			owner.caller.frameId !== caller.frameId
 		)
 			throw new Error("This terminal belongs to another window or is no longer attached.");
-		const info = lstatSync(owner.target.root);
-		if (
-			!info.isDirectory() ||
-			info.isSymbolicLink() ||
-			info.dev !== owner.rootDev ||
-			info.ino !== owner.rootIno ||
-			realpathSync(owner.target.root) !== owner.target.root
-		)
-			throw new Error("Workspace root changed. Reopen the terminal.");
+		const info = canonicalRootInfo(owner.target.root);
+		if (info.dev !== owner.rootDev || info.ino !== owner.rootIno)
+			throw new WorkspaceError("WORKSPACE_ROOT_CHANGED");
 		return { ...owner.target };
 	}
 	assert(caller: FileCaller, target: TerminalFileTarget): void {

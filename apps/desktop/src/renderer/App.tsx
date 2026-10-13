@@ -33,7 +33,11 @@ import {
 	setupGoToDefinitionHandler,
 	setupServerRestartListener,
 } from "./lsp/monaco-lsp-bridge";
-import { collectSessionSnapshot, isSessionSnapshotPersistable } from "./session-snapshot";
+import {
+	collectSessionSnapshot,
+	deserializeLayout,
+	isSessionSnapshotPersistable,
+} from "./session-snapshot";
 import { useBranchStore } from "./stores/branch-store";
 import { useEditorSettingsStore } from "./stores/editor-settings";
 import { usePaneStore } from "./stores/pane-store";
@@ -43,57 +47,6 @@ import { resetFileTabCounter, shouldHydrateTabStore, useTabStore } from "./store
 import { trpc } from "./trpc/client";
 
 const SAVE_INTERVAL_MS = 30_000;
-
-function deserializeLayout(
-	node: SerializedLayoutNode,
-	terminalMap: Map<string, TabItem>
-): LayoutNode | null {
-	if (node.type === "pane") {
-		const paneTabs = node.tabs
-			.map((saved) => {
-				if (saved.kind === "terminal") {
-					// Terminal tabs: use fresh session data from backend
-					return terminalMap.get(saved.id) ?? null;
-				}
-				// Filter out stale ai-review-summary tabs from previous versions
-				if ((saved as { kind: string }).kind === "ai-review-summary") {
-					return null;
-				}
-				// Merge-conflict tabs are transient — the merge state doesn't survive restart
-				if ((saved as { kind: string }).kind === "merge-conflict") {
-					return null;
-				}
-				// Solve-review tabs are transient — solve sessions don't survive restart
-				if ((saved as { kind: string }).kind === "solve-review") {
-					return null;
-				}
-				// Cross-repo orchestrator canvas tabs are re-opened on demand, not restored
-				if ((saved as { kind: string }).kind === "xro-canvas") {
-					return null;
-				}
-				// File tabs: use directly from serialized data
-				return saved;
-			})
-			.filter((t): t is TabItem => t != null);
-		if (paneTabs.length === 0) return null;
-		return {
-			type: "pane",
-			id: node.id,
-			tabs: paneTabs,
-			activeTabId: paneTabs.find((t) => t.id === node.activeTabId)?.id ?? paneTabs[0]?.id ?? null,
-		};
-	}
-	const first = deserializeLayout(node.children[0], terminalMap);
-	const second = deserializeLayout(node.children[1], terminalMap);
-	if (!first || !second) return first || second || null;
-	return {
-		type: "split",
-		id: node.id,
-		direction: node.direction,
-		ratio: node.ratio,
-		children: [first, second],
-	};
-}
 
 function extractMaxIds(node: LayoutNode): {
 	maxPaneId: number;

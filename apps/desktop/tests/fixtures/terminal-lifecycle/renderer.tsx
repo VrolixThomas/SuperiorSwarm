@@ -14,7 +14,7 @@ const api = {
 		root.render(
 			mounted ? (
 				<div style={{ visibility: active ? "visible" : "hidden" }}>
-					<Terminal id="lifecycle" active={active} />
+					<Terminal id="lifecycle" workspaceId="lifecycle-workspace" active={active} />
 				</div>
 			) : (
 				<div>Another workspace</div>

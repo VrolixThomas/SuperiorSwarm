@@ -4,6 +4,7 @@ import {
 	HERMES_ATTACHMENT_UPLOAD_CHUNK_MAX_BYTES,
 	HERMES_MAX_ATTACHMENTS,
 } from "../shared/hermes";
+import { unwrapTerminalCreateResult } from "../shared/terminal-create";
 import type {
 	AgentAlertAPI,
 	AgentConfirmAPI,
@@ -48,7 +49,7 @@ const exitDispatcher = createDispatcher<[number]>("terminal:exit");
 const terminalAPI: TerminalAPI = {
 	diagnostics: (id: string) => ipcRenderer.invoke("terminal:diagnostics", id),
 	create: (id: string, cwd?: string, workspaceId?: string) =>
-		ipcRenderer.invoke("terminal:create", id, cwd, workspaceId),
+		ipcRenderer.invoke("terminal:create", id, cwd, workspaceId).then(unwrapTerminalCreateResult),
 	...createTerminalInputAPI((channel, id, data) => ipcRenderer.invoke(channel, id, data)),
 	resize: (id: string, cols: number, rows: number) =>
 		ipcRenderer.invoke("terminal:resize", id, cols, rows),
