@@ -1,4 +1,3 @@
-import { realpathSync } from "node:fs";
 import { join } from "node:path";
 import { app } from "electron";
 import { z } from "zod";
@@ -49,7 +48,7 @@ const fileProcedure = publicProcedure.use(({ ctx, next }) => {
 });
 function target(terminalId: string, caller: { senderId: number; frameId: number }) {
 	const current = terminalFileOwners.target(terminalId, caller);
-	if (realpathSync(getWorkspaceCwdOrThrow(current.workspaceId)) !== current.root)
+	if (getWorkspaceCwdOrThrow(current.workspaceId) !== current.root)
 		throw new Error("Workspace root changed. Reopen the terminal.");
 	return current;
 }

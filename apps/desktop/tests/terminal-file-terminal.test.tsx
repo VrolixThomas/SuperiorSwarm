@@ -26,7 +26,12 @@ beforeEach(() => {
 	availability = "ready";
 	resolveError = "";
 	delivery = "admitted";
+	createError = undefined;
+	createCalls = 0;
 });
+let createError: Error | undefined;
+let createCalls = 0;
+let daemonStatus: (connected: boolean) => void = () => {};
 let terminal: FakeTerminal;
 class FakeTerminal {
 	textarea = document.createElement("textarea");
@@ -38,6 +43,7 @@ class FakeTerminal {
 	data: (text: string) => void = () => {};
 	binary: (data: string) => void = () => {};
 	key: (event: KeyboardEvent) => boolean = () => true;
+	output = "";
 	constructor() {
 		terminal = this;
 	}
@@ -50,6 +56,7 @@ class FakeTerminal {
 	}
 	refresh() {}
 	write(_text: string, done?: () => void) {
+		this.output += _text;
 		done?.();
 	}
 	dispose() {}
@@ -263,9 +270,18 @@ async function mount() {
 			terminalFiles: {
 				nativePaths: (files: File[]) => files.map((file) => `/fixture/${file.name}`),
 			},
-			daemon: { onStatus: () => () => {} },
+			daemon: {
+				onStatus: (callback: typeof daemonStatus) => {
+					daemonStatus = callback;
+					return () => {};
+				},
+			},
 			terminal: {
-				create: async () => ({ wasAttached: false }),
+				create: async () => {
+					createCalls++;
+					if (createError) throw createError;
+					return { wasAttached: false };
+				},
 				setVisible: async () => {},
 				detach: async () => {},
 				resize: async () => {},
@@ -334,6 +350,48 @@ test("drop adds removable chips; the first Enter inserts surviving files and the
 	await enter();
 	expect(ordinary.at(-1)).toBe("\r");
 	expect(submitted).toHaveLength(1);
+});
+
+for (const message of [
+	"Error invoking remote method 'terminal:create': Error: Workspace not found: xro-fixture",
+	"[TERMINAL_CREATE:WORKSPACE_FOLDER_MISSING] Workspace folder no longer exists.",
+	"[TERMINAL_CREATE:WORKSPACE_NOT_DIRECTORY] Workspace folder is not a directory.",
+	"[TERMINAL_CREATE:TERMINAL_WORKSPACE_MISMATCH] Terminal workspace mismatch.",
+])
+	test(`terminal creation presents workspace problems truthfully: ${message}`, async () => {
+		createError = new Error(message);
+		await mount();
+		expect(terminal.output).toContain("[Workspace unavailable]");
+		expect(terminal.output).not.toContain("daemon is unavailable");
+		expect(terminal.output).not.toContain("Reconnection");
+		await act(async () => daemonStatus(true));
+		expect(createCalls).toBe(1);
+		const retry = [...host.querySelectorAll("button")].find(
+			(button) => button.textContent === "Retry terminal"
+		);
+		expect(retry).toBeDefined();
+		createError = undefined;
+		await act(async () => retry?.click());
+		expect(createCalls).toBe(2);
+		expect(host.textContent).not.toContain("Retry terminal");
+	});
+
+test("a genuine daemon connection failure retains the unavailable state and retries on reconnect", async () => {
+	createError = new Error("[TERMINAL_CREATE:DAEMON_UNAVAILABLE] Terminal daemon is unavailable.");
+	await mount();
+	expect(terminal.output).toContain("[Terminal daemon is unavailable]");
+	expect(terminal.output).toContain("Reconnection will be attempted automatically");
+	createError = undefined;
+	await act(async () => daemonStatus(true));
+	expect(createCalls).toBe(2);
+});
+
+test("unknown create failures use generic copy and never print raw paths or promise reconnection", async () => {
+	createError = new Error("spawn failed at /private/sensitive/fixture");
+	await mount();
+	expect(terminal.output).toContain("[Terminal could not start]");
+	expect(terminal.output).not.toContain("Reconnection");
+	expect(terminal.output).not.toContain("/private/sensitive");
 });
 test("details stay collapsed by default; removing all files restores ordinary Enter and Shift+Enter stays unchanged", async () => {
 	await mount();
@@ -486,8 +544,8 @@ test("manual Copy paths preserves the draft, restores focus, and leaves the user
 		(button) => button.textContent === "Copy paths"
 	);
 	expect(Boolean(button)).toBe(true);
-	button!.focus();
-	await act(async () => button!.click());
+	button?.focus();
+	await act(async () => button?.click());
 	expect(copied).toEqual([" '/fixture/first.pdf' '/fixture/second.mov' "]);
 	expect(ordinary).toEqual(["review these "]);
 	expect(submitted).toEqual([]);

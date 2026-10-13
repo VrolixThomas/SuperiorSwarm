@@ -149,20 +149,15 @@ export function saveTerminalSessions(data: SessionSaveData): void {
 				continue;
 			}
 
-			if (
-				existing.workspaceId === session.workspaceId &&
-				existing.title === session.title &&
-				existing.cwd === session.cwd &&
-				existing.sortOrder === session.sortOrder
-			) {
+			if (existing.title === session.title && existing.sortOrder === session.sortOrder) {
 				continue;
 			}
 
 			tx.update(schema.terminalSessions)
 				.set({
-					workspaceId: session.workspaceId,
 					title: session.title,
-					cwd: session.cwd,
+					// Identity and launch root are bound when the terminal is created.
+					// A renderer snapshot may rename/reorder it, never rebind it.
 					sortOrder: session.sortOrder,
 				})
 				.where(eq(schema.terminalSessions.id, session.id))
