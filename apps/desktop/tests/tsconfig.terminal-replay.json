@@ -16,6 +16,8 @@
 		"./fixtures/terminal-wheel-browser.ts",
 		"./daemon/terminal-output-framer.test.ts",
 		"./terminal-replay-pty.test.ts",
+		"./terminal-output-recovery.test.ts",
+		"./fixtures/terminal-output-recovery.ts",
 		"./fixtures/terminal-replay-pty.ts",
 		"./daemon-built-startup.test.ts",
 		"./terminal-wheel-native.test.ts",
