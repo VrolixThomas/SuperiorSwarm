@@ -99,6 +99,11 @@ export default defineConfig({
 		},
 		build: {
 			rollupOptions: {
+				output: {
+					// Shared modules resolve native helpers and migrations relative to
+					// __dirname. Keep chunks beside the entrypoints and their resources.
+					chunkFileNames: "[name]-[hash].js",
+				},
 				input: {
 					index: resolve(__dirname, "src/main/index.ts"),
 					daemon: resolve(__dirname, "src/daemon/index.ts"),

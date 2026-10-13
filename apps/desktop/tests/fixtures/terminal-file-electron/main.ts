@@ -33,11 +33,19 @@ const server = new SocketServer(
 	socketPath
 );
 const legacy = process.env["SS_FIXTURE_DAEMON"] === "legacy";
-if (legacy) {
+const staleInspector = process.env["SS_FIXTURE_DAEMON"] === "stale-current";
+if (legacy || staleInspector) {
 	const transport = server as unknown as { send: (socket: Socket, message: DaemonMessage) => void };
 	const send = transport.send.bind(server);
 	transport.send = (socket, message) =>
-		send(socket, message.type === "ready" ? { type: "ready", protocolVersion: 2 } : message);
+		send(
+			socket,
+			legacy && message.type === "ready"
+				? { type: "ready", protocolVersion: 2 }
+				: staleInspector && message.type === "file-result" && message.target
+					? { ...message, target: { ...message.target, supported: false } }
+					: message
+		);
 }
 const client = new DaemonClient(socketPath, join(root, "pid"), join(root, "log"));
 const id = "fixture-terminal";
@@ -99,8 +107,6 @@ async function run() {
 	await until(() =>
 		contents.executeJavaScript("!!document.querySelector('.xterm-helper-textarea')")
 	);
-	const target = await client.fileTarget(id);
-	if (!target?.supported) throw new Error("Native versioned fixture was not recognized");
 	const paths = [join(root!, "first file.pdf"), join(root!, "second's.mov"), join(root!, "雪.txt")];
 	contents.debugger.attach("1.3");
 	const { root: documentRoot } = await contents.debugger.sendCommand("DOM.getDocument");
@@ -125,6 +131,12 @@ async function run() {
 	await until(() =>
 		contents.executeJavaScript("document.body.textContent.includes('1 file added')")
 	);
+	if (
+		!(await contents.executeJavaScript(
+			"document.body.textContent.includes('Enter to insert paths')"
+		))
+	)
+		throw new Error("Dropped files are blocked from insertion");
 
 	if (readFileSync(capture, "utf8") !== "") throw new Error("Selecting files wrote terminal input");
 	await contents.executeJavaScript("document.querySelector('.xterm-helper-textarea').focus()");

@@ -11,19 +11,21 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { resolveConfig } from "electron-vite";
+import { type Plugin, build as viteBuild } from "vite";
 
-test.skipIf(process.platform !== "darwin").each(["current", "legacy"])(
+test.skipIf(process.platform !== "darwin").each(["current", "legacy", "stale-current"])(
 	"real Electron inserts dropped files through production tRPC with a %s daemon",
 	async (daemonVersion) => {
 		const root = realpathSync(mkdtempSync(join(tmpdir(), "ss-file-electron-")));
+		const desktop = resolve(import.meta.dir, "..");
+		const mainDir = join(root, "out/main");
 		const fixture = resolve(import.meta.dir, "fixtures/terminal-file-electron");
 		try {
 			mkdirSync(join(root, "profile"));
-			mkdirSync(join(root, "node_modules"));
-			symlinkSync(
-				dirname(dirname(require.resolve("node-pty"))),
-				join(root, "node_modules/node-pty")
-			);
+			mkdirSync(mainDir, { recursive: true });
+			symlinkSync(join(desktop, "node_modules"), join(root, "node_modules"));
+			writeFileSync(join(root, "package.json"), '{"type":"module"}');
 			const nativeDir = join(root, ".local/share/claude/versions");
 			mkdirSync(nativeDir, { recursive: true });
 			const native = join(nativeDir, "2.1.288");
@@ -34,47 +36,76 @@ test.skipIf(process.platform !== "darwin").each(["current", "legacy"])(
 				"-Werror",
 				resolve(import.meta.dir, "../src/daemon/terminal-process-info.c"),
 				"-o",
-				join(root, "terminal-process-info"),
+				join(mainDir, "terminal-process-info"),
 			]);
 			symlinkSync(native, join(root, "sh"));
 			for (const name of ["first file.pdf", "second's.mov", "雪.txt"])
 				writeFileSync(join(root, name), "Disposable fixture");
+			const boundaries: Plugin = {
+				name: "fixture-main-boundaries",
+				enforce: "pre",
+				resolveId(source) {
+					if (/(?:workspace-cwd-lookup|agent-session-manager-handle|logger)$/.test(source))
+						return `\0fixture:${source}`;
+				},
+				load(id) {
+					if (!id.startsWith("\0fixture:")) return;
+					return id.endsWith("logger")
+						? "export const log = {info(){}, error(){}, warn(){}};"
+						: id.endsWith("workspace-cwd-lookup")
+							? "export const getWorkspaceCwdOrThrow = () => process.env.SS_FIXTURE_ROOT;"
+							: "export const getAgentSessionManager = () => undefined;";
+				},
+			};
+			const resolved = await resolveConfig(
+				{ root: desktop, configFile: join(desktop, "electron.vite.config.ts"), logLevel: "silent" },
+				"build"
+			);
+			const main = resolved.config?.main;
+			if (!main) throw new Error("Missing production main build configuration");
+			await viteBuild({
+				...main,
+				plugins: [
+					...(main.plugins ?? []).filter(
+						(plugin) =>
+							!(
+								plugin &&
+								typeof plugin === "object" &&
+								"name" in plugin &&
+								["copy-drizzle-migrations", "terminal-file-helper"].includes(String(plugin.name))
+							)
+					),
+					boundaries,
+				],
+				build: {
+					...main.build,
+					outDir: mainDir,
+					emptyOutDir: false,
+					rollupOptions: {
+						...main.build?.rollupOptions,
+						// Both entrypoints must share code, just as the release does. A
+						// single Bun bundle with a forced __dirname hid helper lookup failures.
+						input: {
+							main: join(fixture, "main.ts"),
+							daemon: join(desktop, "src/daemon/index.ts"),
+						},
+					},
+				},
+			});
 			const plugin: Bun.BunPlugin = {
 				name: "fixture-app-boundaries",
 				setup(build) {
-					build.onResolve({ filter: /^\.\.\/ipc-safety$/ }, (args) => ({
-						path: resolve(import.meta.dir, "../src/main", `${args.path.slice(3)}.ts`),
+					build.onResolve({ filter: /stores\/tab-store$/ }, (args) => ({
+						path: args.path,
+						namespace: "fixture",
 					}));
-					build.onResolve({ filter: /^\.\.\/index$/ }, (args) =>
-						args.importer.endsWith("/trpc/routers/terminal-files.ts")
-							? { path: resolve(import.meta.dir, "../src/main/trpc/index.ts") }
-							: undefined
-					);
-					build.onResolve({ filter: /^node-pty$/ }, () => ({
-						path: require.resolve("node-pty"),
-						external: true,
-					}));
-					build.onResolve(
-						{
-							filter:
-								/(?:stores\/tab-store|workspace-cwd-lookup|agent-session-manager-handle|logger)$/,
-						},
-						(args) => ({ path: args.path, namespace: "fixture" })
-					);
-					build.onLoad({ filter: /.*/, namespace: "fixture" }, (args) => ({
+					build.onLoad({ filter: /.*/, namespace: "fixture" }, () => ({
 						loader: "js",
-						contents: args.path.endsWith("logger")
-							? "export const log = {info(){}, error(){}, warn(){}};"
-							: args.path.endsWith("stores/tab-store")
-								? "export const useTabStore = {getState: () => ({updateTabTitle: () => {}})};"
-								: args.path.endsWith("workspace-cwd-lookup")
-									? "export const getWorkspaceCwdOrThrow = () => process.env.SS_FIXTURE_ROOT;"
-									: "export const getAgentSessionManager = () => undefined;",
+						contents: "export const useTabStore = {getState: () => ({updateTabTitle: () => {}})};",
 					}));
 				},
 			};
 			for (const [entry, target, format, extension] of [
-				["main.ts", "node", "cjs", ".cjs"],
 				["preload.ts", "browser", "cjs", ".cjs"],
 				["renderer.tsx", "browser", "esm", ".[ext]"],
 			] as const) {
@@ -86,8 +117,6 @@ test.skipIf(process.platform !== "darwin").each(["current", "legacy"])(
 					naming: `[name]${extension}`,
 					external: ["electron"],
 					plugins: [plugin],
-					// Match electron-vite: native helpers live alongside the bundled main script.
-					define: { __dirname: JSON.stringify(root) },
 				});
 				if (!build.success) throw new Error(build.logs.map(String).join("\n"));
 			}
@@ -102,7 +131,7 @@ test.skipIf(process.platform !== "darwin").each(["current", "legacy"])(
 					process.env["ELECTRON_OVERRIDE_DIST_PATH"] || join(electronDir, "dist"),
 					readFileSync(join(electronDir, "path.txt"), "utf8").trim()
 				);
-				const child = spawn(electronPath, [join(root, "main.cjs")], {
+				const child = spawn(electronPath, [join(mainDir, "main.js")], {
 					cwd: root,
 					env: {
 						PATH: "/usr/bin:/bin:/usr/sbin:/sbin",
