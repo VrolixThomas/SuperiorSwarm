@@ -490,9 +490,11 @@ Remaining release checks:
 - Physical mouse and trackpad feel has not been validated by a person on the
   affected devices. Browser-injected baseline equivalence is not a hardware test.
 - Legacy file-insertion checks intermittently fail their native process-identity
-  probe before insertion. Current-daemon insertion passes; a main baseline and
-  isolated diagnostic runs also passed. Record the failures rather than claiming
-  an entirely green file-insertion suite; they need follow-up before release.
+  probe before insertion. The same first-probe failure was reproduced with the
+  unmodified main-branch client (6 passed, 1 failed); this is not newly introduced
+  by the scrolling patch. Current-daemon insertion and isolated diagnostic runs
+  passed. Record the failures rather than claiming an entirely green file-input
+  suite; they need follow-up before release.
 - Already-missing legacy history/modes are not recoverable from the suffix. The
   recovery guidance does not hot-upgrade a running daemon. Finish/resume affected
   chats as needed; finish and close older sessions, then reopen the app to allow
