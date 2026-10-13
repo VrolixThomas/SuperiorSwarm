@@ -48,7 +48,12 @@ export class TerminalFileOwners {
 	private notify(id: string): void {
 		for (const listener of this.listeners) listener(id);
 	}
-	attach(terminalId: string, caller: FileCaller, workspaceId: string, root: string): () => void {
+	attach(
+		terminalId: string,
+		caller: FileCaller,
+		workspaceId: string,
+		root: string
+	): { assertCurrent: () => void; rollback: () => void } {
 		const existing = this.owners.get(terminalId);
 		if (
 			existing &&
@@ -71,10 +76,17 @@ export class TerminalFileOwners {
 			},
 		};
 		this.owners.set(terminalId, owner);
-		// An older asynchronous attach may fail after a newer mount has taken
-		// ownership. Its rollback must only revoke its own registration.
-		return () => {
-			if (this.owners.get(terminalId) === owner) this.detach(terminalId);
+		return {
+			assertCurrent: () => {
+				// Visibility, input and replay invalidate file batches, but do not
+				// replace this attachment's owner registration or workspace root.
+				if (this.owners.get(terminalId) !== owner) throw new Error("Terminal attachment changed.");
+				this.target(terminalId, caller);
+			},
+			rollback: () => {
+				// A failed older attach must not revoke a newer mount's registration.
+				if (this.owners.get(terminalId) === owner) this.detach(terminalId);
+			},
 		};
 	}
 	target(terminalId: string, caller: FileCaller): TerminalFileTarget {

@@ -28,9 +28,22 @@ beforeEach(() => {
 	delivery = "admitted";
 	createError = undefined;
 	createCalls = 0;
+	pendingCreate = undefined;
 });
 let createError: Error | undefined;
 let createCalls = 0;
+let pendingCreate: Promise<{ wasAttached: boolean }> | undefined;
+function deferCreate() {
+	let resolve: (result: { wasAttached: boolean }) => void = () => {};
+	let reject: (error: Error) => void = () => {};
+	pendingCreate = new Promise((resolveAttempt, rejectAttempt) => {
+		resolve = resolveAttempt;
+		reject = rejectAttempt;
+	});
+	return { resolve, reject };
+}
+const daemonUnavailable = () =>
+	new Error("[TERMINAL_CREATE:DAEMON_UNAVAILABLE] Terminal daemon is unavailable.");
 let daemonStatus: (connected: boolean) => void = () => {};
 let terminal: FakeTerminal;
 class FakeTerminal {
@@ -279,6 +292,11 @@ async function mount() {
 			terminal: {
 				create: async () => {
 					createCalls++;
+					if (pendingCreate) {
+						const attempt = pendingCreate;
+						pendingCreate = undefined;
+						return attempt;
+					}
 					if (createError) throw createError;
 					return { wasAttached: false };
 				},
@@ -384,6 +402,89 @@ test("a genuine daemon connection failure retains the unavailable state and retr
 	createError = undefined;
 	await act(async () => daemonStatus(true));
 	expect(createCalls).toBe(2);
+});
+
+test("reconnections during pending creation retry once after a late daemon failure", async () => {
+	const attempt = deferCreate();
+	await mount();
+	await act(async () => {
+		daemonStatus(false);
+		daemonStatus(true);
+		daemonStatus(true);
+	});
+	expect(createCalls).toBe(1);
+	await act(async () => attempt.reject(daemonUnavailable()));
+	expect(createCalls).toBe(2);
+	expect(host.textContent).not.toContain("Retry terminal");
+});
+
+test("a remembered reconnect is consumed once even if the retry also fails", async () => {
+	const attempt = deferCreate();
+	await mount();
+	createError = daemonUnavailable();
+	await act(async () => {
+		daemonStatus(false);
+		daemonStatus(true);
+		attempt.reject(daemonUnavailable());
+	});
+	expect(createCalls).toBe(2);
+	expect(host.textContent).toContain("Retry terminal");
+	createError = undefined;
+	await act(async () => daemonStatus(true));
+	expect(createCalls).toBe(3);
+	expect(host.textContent).not.toContain("Retry terminal");
+});
+
+test("a later disconnect defers the pending retry until the next connection", async () => {
+	const attempt = deferCreate();
+	await mount();
+	await act(async () => {
+		daemonStatus(false);
+		daemonStatus(true);
+		daemonStatus(false);
+		attempt.reject(daemonUnavailable());
+	});
+	expect(createCalls).toBe(1);
+	await act(async () => daemonStatus(true));
+	expect(createCalls).toBe(2);
+});
+
+test("a successful pending creation does not retry a remembered reconnect", async () => {
+	const attempt = deferCreate();
+	await mount();
+	await act(async () => {
+		daemonStatus(false);
+		daemonStatus(true);
+		attempt.resolve({ wasAttached: true });
+	});
+	expect(createCalls).toBe(1);
+	expect(host.textContent).not.toContain("Retry terminal");
+});
+
+test("a remembered reconnect does not retry workspace failures", async () => {
+	const attempt = deferCreate();
+	await mount();
+	await act(async () => {
+		daemonStatus(false);
+		daemonStatus(true);
+		attempt.reject(new Error("[TERMINAL_CREATE:WORKSPACE_NOT_FOUND] Workspace not found."));
+	});
+	expect(createCalls).toBe(1);
+	expect(terminal.output).toContain("[Workspace unavailable]");
+	expect(host.textContent).toContain("Retry terminal");
+});
+
+test("unmounting cancels a remembered reconnect before the pending attempt settles", async () => {
+	const attempt = deferCreate();
+	await mount();
+	await act(async () => {
+		daemonStatus(false);
+		daemonStatus(true);
+		root?.unmount();
+	});
+	root = undefined;
+	await act(async () => attempt.reject(daemonUnavailable()));
+	expect(createCalls).toBe(1);
 });
 
 test("unknown create failures use generic copy and never print raw paths or promise reconnection", async () => {

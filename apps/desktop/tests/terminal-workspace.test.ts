@@ -1,6 +1,14 @@
 import "./preload-electron-mock";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+	mkdirSync,
+	mkdtempSync,
+	realpathSync,
+	renameSync,
+	rmSync,
+	symlinkSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { eq } from "drizzle-orm";
@@ -12,6 +20,10 @@ import { ensureTerminalSessionRow, saveTerminalSessions } from "../src/main/db/s
 import type { DaemonClient } from "../src/main/terminal/daemon-client";
 import { rendererTrust } from "../src/main/terminal/renderer-trust";
 import { terminalFileOwners } from "../src/main/terminal/terminal-files";
+import { collectSessionSnapshot, deserializeLayout } from "../src/renderer/session-snapshot";
+import { usePaneStore } from "../src/renderer/stores/pane-store";
+import { useTabStore } from "../src/renderer/stores/tab-store";
+import type { SerializedLayoutNode } from "../src/shared/pane-types";
 import { makeRawTestDb } from "./test-db";
 
 type Handler = (request: typeof event, ...args: unknown[]) => unknown;
@@ -55,6 +67,7 @@ beforeEach(() => {
 	setupTerminalIPC({
 		hasLiveSession: () => live,
 		isConnected: true,
+		write: () => true,
 		listSessionsStrict: async () => {
 			await duringList();
 			return db
@@ -263,9 +276,70 @@ describe("real terminal:create ownership seam", () => {
 		await handler("terminal:detach")(event, "restored");
 		expect(() => terminalFileOwners.target("restored", caller)).toThrow("no longer attached");
 	});
+	for (const invalidation of ["hidden", "submitted input", "connection changed"]) {
+		test(`pending live attachment survives ${invalidation} while invalidating file intents`, async () => {
+			const ws = workspace();
+			ensureTerminalSessionRow({ id: "restored", workspaceId: ws.id, cwd: ws.repoPath });
+			live = true;
+			duringList = async () => {
+				const target = terminalFileOwners.target("restored", caller);
+				if (invalidation === "hidden")
+					await handler("terminal:set-visible")(event, "restored", false);
+				else if (invalidation === "submitted input")
+					await handler("terminal:write")(event, "restored", "\r");
+				else terminalFileOwners.invalidateAll();
+				expect(() => terminalFileOwners.assert(caller, target)).toThrow("Terminal session changed");
+			};
+			expect(await create("restored", ws.id)).toEqual({ wasAttached: true });
+			expect(attached).toEqual([{ id: "restored", cwd: ws.repoPath }]);
+			expect(created).toEqual([]);
+		});
+	}
 });
 
 describe("coordinator session restoration", () => {
+	test("save and renderer restoration retain coordinator identity when reopening", async () => {
+		const xro = coordinator();
+		usePaneStore.setState({ layouts: {}, focusedPaneId: null });
+		useTabStore.setState({ activeWorkspaceId: null, activeWorkspaceCwd: "" });
+		try {
+			const first = useTabStore.getState().openXroWorkspace(xro.id, "Fixture", xro.workDir);
+			const shell = useTabStore.getState().addTerminalTab(xro.id, xro.workDir);
+			// Titles can change with shell output; identity must come from the saved marker.
+			useTabStore.getState().updateTabTitle(first.terminalTabId, "agent output");
+			useTabStore.getState().updateTabTitle(shell, "Coordinator");
+			const api = terminalSessionsRouter.createCaller({});
+			await api.save(collectSessionSnapshot());
+			const restored = await api.restore();
+			usePaneStore.setState({ layouts: {}, focusedPaneId: null });
+			useTabStore.getState().hydrate(restored.sessions, shell, xro.id, xro.workDir, restored.state);
+			const terminalMap = new Map(
+				useTabStore
+					.getState()
+					.getAllTabs()
+					.map((tab) => [tab.id, tab])
+			);
+			const saved = restored.paneLayouts[xro.id];
+			if (!saved) throw new Error("Missing coordinator layout");
+			const layout = deserializeLayout(JSON.parse(saved) as SerializedLayoutNode, terminalMap);
+			if (!layout) throw new Error("Missing restored layout");
+			usePaneStore.getState().hydrateLayout(xro.id, layout);
+
+			const reopened = useTabStore.getState().openXroWorkspace(xro.id, "Fixture", xro.workDir);
+			expect(reopened).toEqual({ terminalTabId: first.terminalTabId, started: false });
+			expect(useTabStore.getState().getActiveTabId()).toBe(first.terminalTabId);
+			const tabs = useTabStore.getState().getTabsByWorkspace(xro.id);
+			expect(tabs.filter((tab) => tab.kind === "terminal")).toHaveLength(2);
+			expect(tabs.filter((tab) => tab.kind === "xro-canvas")).toHaveLength(1);
+			expect(tabs.find((tab) => tab.id === shell)).not.toHaveProperty(
+				"presetName",
+				"xro-coordinator"
+			);
+		} finally {
+			usePaneStore.setState({ layouts: {}, focusedPaneId: null });
+			useTabStore.setState({ activeWorkspaceId: null, activeWorkspaceCwd: "" });
+		}
+	});
 	test("restart keeps coordinator sessions and pane layouts and supplies stored cwd metadata", async () => {
 		const xro = coordinator();
 		ensureTerminalSessionRow({ id: "restored", workspaceId: xro.id, cwd: xro.workDir });
@@ -370,6 +444,25 @@ describe("terminal root and record isolation", () => {
 		};
 		expectFailure(await create("restored", xro.id), "WORKSPACE_ROOT_CHANGED");
 		expect(() => terminalFileOwners.target("restored", caller)).toThrow("no longer attached");
+	});
+	test("replacing the directory inode at the same path rejects a pending attachment", async () => {
+		const xro = coordinator();
+		ensureTerminalSessionRow({ id: "restored", workspaceId: xro.id, cwd: xro.workDir });
+		live = true;
+		duringList = () => {
+			renameSync(xro.workDir, join(root, "previous-root"));
+			mkdirSync(xro.workDir);
+		};
+		expectFailure(await create("restored", xro.id), "WORKSPACE_ROOT_CHANGED");
+	});
+	test("detaching while checking a live session still cancels attachment", async () => {
+		const xro = coordinator();
+		ensureTerminalSessionRow({ id: "restored", workspaceId: xro.id, cwd: xro.workDir });
+		live = true;
+		duringList = async () => {
+			await handler("terminal:detach")(event, "restored");
+		};
+		expectFailure(await create("restored", xro.id), "WORKSPACE_ROOT_CHANGED");
 	});
 	test("daemon transport failure is classified and rolls back new owner and session row", async () => {
 		const xro = coordinator();

@@ -274,11 +274,16 @@ export function Terminal({
 		const host = hostRef.current;
 		host?.addEventListener("keydown", escapeFiles, true);
 		let failedCreate: unknown;
+		let creating = false;
+		let reconnectPending = false;
 		const cleanupConnection = window.electron?.daemon.onStatus((value) => {
-			if (value && terminalCreateErrorCode(failedCreate) === "DAEMON_UNAVAILABLE")
-				retryCreateRef.current();
 			connected = value;
 			files.suspend("Connection changed. Files are kept; review the prompt before sending.");
+			if (value) {
+				if (creating) reconnectPending = true;
+				else if (terminalCreateErrorCode(failedCreate) === "DAEMON_UNAVAILABLE")
+					retryCreateRef.current();
+			}
 		});
 
 		const resetStaleModes = () => {
@@ -297,10 +302,10 @@ export function Terminal({
 		let cleanupInput: (() => void) | undefined;
 
 		if (api) {
-			let creating = false;
 			const startTerminal = () => {
 				if (disposed || creating || created) return;
 				creating = true;
+				reconnectPending = false;
 				api.terminal
 					.create(id, cwdRef.current || undefined, workspaceId)
 					.then(({ wasAttached }) => {
@@ -331,6 +336,14 @@ export function Terminal({
 					})
 					.finally(() => {
 						creating = false;
+						// A reconnect can precede an inventory timeout from this attempt.
+						// Consume it once, after the failure is known and creation has settled.
+						if (
+							reconnectPending &&
+							connected &&
+							terminalCreateErrorCode(failedCreate) === "DAEMON_UNAVAILABLE"
+						)
+							startTerminal();
 					});
 			};
 			retryCreateRef.current = startTerminal;

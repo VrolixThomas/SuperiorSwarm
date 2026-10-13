@@ -42,7 +42,7 @@ export function setupTerminalIPC(
 			workspaceId: unknown
 		): Promise<TerminalCreateResult> => {
 			let insertedSessionRow = false;
-			let rollbackOwner: (() => void) | undefined;
+			let owner: ReturnType<typeof terminalFileOwners.attach> | undefined;
 			try {
 				assertNonEmptyString(id, "id");
 				if (daemonClient.quitting) return { wasAttached: false };
@@ -72,9 +72,8 @@ export function setupTerminalIPC(
 				if (row && canonicalWorkspaceDirectory(row.cwd) !== cwd)
 					throw new WorkspaceError("WORKSPACE_ROOT_CHANGED");
 				if (wsId) {
-					rollbackOwner = terminalFileOwners.attach(id, caller, wsId, cwd);
+					owner = terminalFileOwners.attach(id, caller, wsId, cwd);
 				}
-				const bound = wsId ? terminalFileOwners.target(id, caller) : undefined;
 				if (wasAttached) {
 					const sessions = await daemonClient.listSessionsStrict();
 					const live = sessions.find((session) => session.id === id);
@@ -84,11 +83,11 @@ export function setupTerminalIPC(
 				}
 				// The daemon inventory query yields. Recheck both record identity and
 				// the directory inode before handing the bound root to the daemon.
-				if (wsId && bound) {
+				if (wsId && owner) {
 					if (getWorkspaceCwdOrThrow(wsId) !== cwd)
 						throw new WorkspaceError("WORKSPACE_ROOT_CHANGED");
 					try {
-						terminalFileOwners.assert(caller, bound);
+						owner.assertCurrent();
 					} catch {
 						throw new WorkspaceError("WORKSPACE_ROOT_CHANGED");
 					}
@@ -127,7 +126,7 @@ export function setupTerminalIPC(
 				return { wasAttached };
 			} catch (error) {
 				if (typeof id === "string") {
-					rollbackOwner?.();
+					owner?.rollback();
 					if (insertedSessionRow)
 						getDb().delete(terminalSessions).where(eq(terminalSessions.id, id)).run();
 				}
