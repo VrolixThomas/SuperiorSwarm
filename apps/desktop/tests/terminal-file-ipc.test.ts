@@ -3,6 +3,7 @@ import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { terminalFileOwners } from "../src/main/terminal/terminal-files";
+import { type TerminalCreateResult, terminalCreateErrorCode } from "../src/shared/terminal-create";
 const root = realpathSync(mkdtempSync(join(tmpdir(), "terminal-file-ipc-")));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
 const source = join(root, "a.pdf");
@@ -17,7 +18,13 @@ let supported = true;
 let missingTarget = false;
 let needsFileInputUpdate = false;
 let requestedManaged = false;
-let exposed: { terminalFiles: { nativePaths: (files: File[]) => Array<string | null> } };
+let createResult: TerminalCreateResult = { wasAttached: false };
+let exposed: {
+	terminalFiles: { nativePaths: (files: File[]) => Array<string | null> };
+	terminal: {
+		create: (id: string, cwd?: string, workspaceId?: string) => Promise<{ wasAttached: boolean }>;
+	};
+};
 mock.module("electron", () => ({
 	app: { getPath: () => root },
 	contextBridge: {
@@ -25,7 +32,7 @@ mock.module("electron", () => ({
 			exposed = api;
 		},
 	},
-	ipcRenderer: { on: () => {}, invoke: async () => {} },
+	ipcRenderer: { on: () => {}, invoke: async () => structuredClone(createResult) },
 	webUtils: {
 		getPathForFile: (file: File) => {
 			nativeCalled++;
@@ -77,6 +84,31 @@ test("preload uses webUtils only, never File.path, names, MIME or renderer desti
 	Object.assign(virtual, { path: source });
 	expect(exposed.terminalFiles.nativePaths([native, virtual])).toEqual([source, null]);
 	expect(nativeCalled).toBe(2);
+});
+
+test("terminal:create error classification survives IPC clone and contextBridge message-only errors", async () => {
+	await import("../src/preload/index");
+	for (const code of [
+		"WORKSPACE_NOT_FOUND",
+		"WORKSPACE_FOLDER_MISSING",
+		"TERMINAL_WORKSPACE_MISMATCH",
+		"DAEMON_UNAVAILABLE",
+	] as const) {
+		createResult = { error: { code, message: "/private/untrusted/path should not be rendered" } };
+		let received: unknown;
+		try {
+			await exposed.terminal.create("fixture", "/fixture", "xro-fixture");
+		} catch (error) {
+			received = error;
+		}
+		expect(received).toBeInstanceOf(Error);
+		const bridged = new Error((received as Error).message);
+		expect(terminalCreateErrorCode(bridged)).toBe(code);
+		expect(bridged.message).not.toContain("/private");
+	}
+	createResult = { wasAttached: true };
+	expect(await exposed.terminal.create("fixture")).toEqual({ wasAttached: true });
+	createResult = { wasAttached: false };
 });
 
 test("a daemon without file-target support retains the update diagnosis after Enter", async () => {

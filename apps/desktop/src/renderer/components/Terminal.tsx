@@ -10,6 +10,7 @@ import { Terminal as XTerm } from "@xterm/xterm";
 import { useEffect, useRef, useState } from "react";
 import { CmdBuffer } from "../../shared/lib/cmd-buffer";
 import { RESET_STALE_MODES, isShellProcess } from "../../shared/lib/terminal-modes";
+import { terminalCreateErrorCode, terminalCreateErrorMessage } from "../../shared/terminal-create";
 import { TERMINAL_SCROLLBACK_LINES } from "../../shared/terminal-replay";
 import { useTabStore } from "../stores/tab-store";
 import { installTerminalInput } from "./terminal-input";
@@ -85,6 +86,8 @@ export function Terminal({
 		status: "",
 	});
 	const [dragging, setDragging] = useState(false);
+	const [createFailed, setCreateFailed] = useState(false);
+	const retryCreateRef = useRef<() => void>(() => {});
 	const stageFiles = (files: File[]) => {
 		try {
 			void controllerRef.current?.stage(window.electron.terminalFiles.nativePaths(files));
@@ -270,9 +273,17 @@ export function Terminal({
 		};
 		const host = hostRef.current;
 		host?.addEventListener("keydown", escapeFiles, true);
+		let failedCreate: unknown;
+		let creating = false;
+		let reconnectPending = false;
 		const cleanupConnection = window.electron?.daemon.onStatus((value) => {
 			connected = value;
 			files.suspend("Connection changed. Files are kept; review the prompt before sending.");
+			if (value) {
+				if (creating) reconnectPending = true;
+				else if (terminalCreateErrorCode(failedCreate) === "DAEMON_UNAVAILABLE")
+					retryCreateRef.current();
+			}
 		});
 
 		const resetStaleModes = () => {
@@ -291,31 +302,53 @@ export function Terminal({
 		let cleanupInput: (() => void) | undefined;
 
 		if (api) {
-			api.terminal
-				.create(id, cwdRef.current || undefined, workspaceId)
-				.then(({ wasAttached }) => {
-					if (disposed) return;
-					created = true;
-					// Only replay saved scrollback for fresh sessions.
-					// Attached sessions (live background PTYs) send their current buffer
-					// via onData — writing initialContent too would stack old content
-					// before the live buffer and misplace the cursor inside TUI apps.
-					if (!wasAttached && initialContentRef.current) {
-						suppressDepth++;
-						writeTerminalReplay(term, initialContentRef.current, () => {
-							suppressDepth--;
-							// Fresh PTY: the saved scrollback's app is gone by definition.
-							resetStaleModes();
-							fit.fit();
-						});
-					}
-				})
-				.catch((err: Error) => {
-					console.error("Failed to create PTY:", err);
-					term.write(
-						`\r\n\x1b[31m[Terminal daemon is unavailable]\x1b[0m\r\n\x1b[90mThe background terminal daemon could not be reached.\r\nReconnection will be attempted automatically.\r\nError: ${err.message}\x1b[0m\r\n`
-					);
-				});
+			const startTerminal = () => {
+				if (disposed || creating || created) return;
+				creating = true;
+				reconnectPending = false;
+				api.terminal
+					.create(id, cwdRef.current || undefined, workspaceId)
+					.then(({ wasAttached }) => {
+						if (disposed) return;
+						created = true;
+						failedCreate = undefined;
+						setCreateFailed(false);
+						// Only replay saved scrollback for fresh sessions.
+						// Attached sessions (live background PTYs) send their current buffer
+						// via onData — writing initialContent too would stack old content
+						// before the live buffer and misplace the cursor inside TUI apps.
+						if (!wasAttached && initialContentRef.current) {
+							suppressDepth++;
+							writeTerminalReplay(term, initialContentRef.current, () => {
+								suppressDepth--;
+								// Fresh PTY: the saved scrollback's app is gone by definition.
+								resetStaleModes();
+								fit.fit();
+							});
+						}
+					})
+					.catch((err: unknown) => {
+						if (disposed) return;
+						failedCreate = err;
+						setCreateFailed(true);
+						console.error("Failed to create PTY:", err);
+						term.write(terminalCreateErrorMessage(err));
+					})
+					.finally(() => {
+						creating = false;
+						// A reconnect can precede an inventory timeout from this attempt.
+						// Consume it once, after the failure is known and creation has settled.
+						if (
+							reconnectPending &&
+							connected &&
+							terminalCreateErrorCode(failedCreate) === "DAEMON_UNAVAILABLE"
+						)
+							startTerminal();
+					});
+			};
+			retryCreateRef.current = startTerminal;
+			setCreateFailed(false);
+			startTerminal();
 
 			// Shift+Enter: send CSI u sequence for multiline editing
 			// in raw-mode applications (Claude Code, fish, zsh, etc.).
@@ -500,6 +533,13 @@ export function Terminal({
 				>
 					Drop files to add to your message
 				</output>
+			)}
+			{createFailed && (
+				<div role="alert" className="px-3 py-2 text-sm">
+					<button type="button" onClick={() => retryCreateRef.current()}>
+						Retry terminal
+					</button>
+				</div>
 			)}
 			<TerminalFileShelf
 				key={`${id}:${workspaceId}`}

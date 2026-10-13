@@ -1,10 +1,18 @@
-import { realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { eq } from "drizzle-orm";
 import { BrowserWindow, ipcMain } from "electron";
 import type { TerminalDataMeta } from "../../shared/daemon-protocol";
+import {
+	TerminalCreateError,
+	type TerminalCreateResult,
+	terminalCreateFailure,
+} from "../../shared/terminal-create";
+import { WorkspaceError } from "../../shared/workspace-errors";
 import { getAgentNotifyPort, getAgentNotifyToken } from "../agent-hooks/port";
-import { getWorkspaceCwdOrThrow } from "../agent-launch/workspace-cwd-lookup";
+import {
+	canonicalWorkspaceDirectory,
+	getWorkspaceCwdOrThrow,
+} from "../agent-launch/workspace-cwd-lookup";
 import { getDb } from "../db";
 import { terminalSessions } from "../db/schema";
 import { ensureTerminalSessionRow } from "../db/session-persistence";
@@ -13,7 +21,7 @@ import { incrementCounter } from "../telemetry/state";
 import type { DaemonClient } from "./daemon-client";
 import { registerTerminalInputIPC } from "./input-ipc";
 import { rendererTrust } from "./renderer-trust";
-import { terminalFileOwners } from "./terminal-files";
+import { type FileCaller, terminalFileOwners } from "./terminal-files";
 
 function assertNonEmptyString(value: unknown, name: string): asserts value is string {
 	if (typeof value !== "string" || value.length === 0) {
@@ -27,88 +35,103 @@ export function setupTerminalIPC(
 ): void {
 	ipcMain.handle(
 		"terminal:create",
-		async (event, id: unknown, cwd: unknown, workspaceId: unknown) => {
-			assertNonEmptyString(id, "id");
-			// During quit the renderer may still resolve an in-flight session
-			// restore and fire terminal:create after we have already detached from
-			// the daemon. Short-circuit so it does not throw "Daemon not connected".
-			if (daemonClient.quitting) return { wasAttached: false };
-			const cwdStr = typeof cwd === "string" && cwd.length > 0 ? cwd : undefined;
-			const wsId = typeof workspaceId === "string" ? workspaceId : undefined;
-			const persistedCwd = cwdStr ?? homedir();
-
-			const window = BrowserWindow.fromWebContents(event.sender);
-			if (!window) return { wasAttached: false };
-			const insertedSessionRow = wsId
-				? ensureTerminalSessionRow({
-						id,
-						workspaceId: wsId,
-						cwd: persistedCwd,
-					})
-				: false;
-
-			const caller = rendererTrust.authorize({
-				id: event.sender.id,
-				url: event.senderFrame?.url ?? "",
-				frameId: event.senderFrame?.routingId ?? -1,
-				mainFrameId: event.sender.mainFrame.routingId,
-				destroyed: event.sender.isDestroyed(),
-			});
-			const row = getDb().select().from(terminalSessions).where(eq(terminalSessions.id, id)).get();
-			if (row?.workspaceId && row.workspaceId !== wsId)
-				throw new Error("Terminal workspace mismatch.");
-			if (row?.workspaceId)
-				terminalFileOwners.attach(
-					id,
-					caller,
-					row.workspaceId,
-					realpathSync(getWorkspaceCwdOrThrow(row.workspaceId))
-				);
-
-			const onData = (data: string, meta?: TerminalDataMeta) => {
-				if (meta?.replay) terminalFileOwners.invalidate(id, "replay");
-				if (!window.isDestroyed()) {
-					window.webContents.send("terminal:data", id, data, meta);
-				}
-			};
-			const onExit = (exitCode: number) => {
-				terminalFileOwners.detach(id);
-				if (!window.isDestroyed()) {
-					window.webContents.send("terminal:exit", id, exitCode);
-				}
-			};
-
-			const notifyPort = getAgentNotifyPort();
-			const notifyToken = getAgentNotifyToken();
-			const env: Record<string, string> = {
-				AGENT_NOTIFY_TERMINAL_ID: id,
-				// Legacy alias retained for existing generated hook scripts.
-				AGENT_NOTIFY_SESSION_ID: id,
-			};
-			if (notifyPort) {
-				env["AGENT_NOTIFY_PORT"] = String(notifyPort);
-			}
-			if (wsId) {
-				env["AGENT_NOTIFY_WORKSPACE_ID"] = wsId;
-			}
-			if (notifyToken) {
-				env["AGENT_NOTIFY_TOKEN"] = notifyToken;
-			}
-
+		async (
+			event,
+			id: unknown,
+			_cwd: unknown,
+			workspaceId: unknown
+		): Promise<TerminalCreateResult> => {
+			let insertedSessionRow = false;
+			let owner: ReturnType<typeof terminalFileOwners.attach> | undefined;
 			try {
-				if (daemonClient.hasLiveSession(id)) {
-					await daemonClient.attach(id, onData, onExit, cwdStr, env);
-					return { wasAttached: true };
+				assertNonEmptyString(id, "id");
+				if (daemonClient.quitting) return { wasAttached: false };
+				const window = BrowserWindow.fromWebContents(event.sender);
+				if (!window) throw new TerminalCreateError("TERMINAL_NOT_AUTHORIZED");
+				let caller: FileCaller;
+				try {
+					caller = rendererTrust.authorize({
+						id: event.sender.id,
+						url: event.senderFrame?.url ?? "",
+						frameId: event.senderFrame?.routingId ?? -1,
+						mainFrameId: event.sender.mainFrame.routingId,
+						destroyed: event.sender.isDestroyed(),
+					});
+				} catch {
+					throw new TerminalCreateError("TERMINAL_NOT_AUTHORIZED");
 				}
-				await daemonClient.create(id, cwdStr, onData, onExit, env);
-				incrementCounter(getDb(), "lifetimeSessionsStarted");
-				return { wasAttached: false };
+				const wsId =
+					typeof workspaceId === "string" && workspaceId.length > 0 ? workspaceId : undefined;
+				const db = getDb();
+				const row = db.select().from(terminalSessions).where(eq(terminalSessions.id, id)).get();
+				let wasAttached = daemonClient.hasLiveSession(id);
+				if ((row && row.workspaceId !== wsId) || (wasAttached && !row))
+					throw new TerminalCreateError("TERMINAL_WORKSPACE_MISMATCH");
+				// Renderer cwd is display metadata, never authority to select a root.
+				const cwd = wsId ? getWorkspaceCwdOrThrow(wsId) : canonicalWorkspaceDirectory(homedir());
+				if (row && canonicalWorkspaceDirectory(row.cwd) !== cwd)
+					throw new WorkspaceError("WORKSPACE_ROOT_CHANGED");
+				if (wsId) {
+					owner = terminalFileOwners.attach(id, caller, wsId, cwd);
+				}
+				if (wasAttached) {
+					const sessions = await daemonClient.listSessionsStrict();
+					const live = sessions.find((session) => session.id === id);
+					if (live && canonicalWorkspaceDirectory(live.cwd) !== cwd)
+						throw new WorkspaceError("WORKSPACE_ROOT_CHANGED");
+					wasAttached = Boolean(live);
+				}
+				// The daemon inventory query yields. Recheck both record identity and
+				// the directory inode before handing the bound root to the daemon.
+				if (wsId && owner) {
+					if (getWorkspaceCwdOrThrow(wsId) !== cwd)
+						throw new WorkspaceError("WORKSPACE_ROOT_CHANGED");
+					try {
+						owner.assertCurrent();
+					} catch {
+						throw new WorkspaceError("WORKSPACE_ROOT_CHANGED");
+					}
+					const current = db
+						.select()
+						.from(terminalSessions)
+						.where(eq(terminalSessions.id, id))
+						.get();
+					if (row && (!current || current.workspaceId !== wsId || current.cwd !== row.cwd))
+						throw new TerminalCreateError("TERMINAL_WORKSPACE_MISMATCH");
+					insertedSessionRow = ensureTerminalSessionRow({ id, workspaceId: wsId, cwd });
+				}
+				const onData = (data: string, meta?: TerminalDataMeta) => {
+					if (meta?.replay) terminalFileOwners.invalidate(id, "replay");
+					if (!window.isDestroyed()) window.webContents.send("terminal:data", id, data, meta);
+				};
+				const onExit = (exitCode: number) => {
+					terminalFileOwners.detach(id);
+					if (!window.isDestroyed()) window.webContents.send("terminal:exit", id, exitCode);
+				};
+				const notifyPort = getAgentNotifyPort();
+				const notifyToken = getAgentNotifyToken();
+				const env: Record<string, string> = {
+					AGENT_NOTIFY_TERMINAL_ID: id,
+					AGENT_NOTIFY_SESSION_ID: id,
+				};
+				if (notifyPort) env["AGENT_NOTIFY_PORT"] = String(notifyPort);
+				if (wsId) env["AGENT_NOTIFY_WORKSPACE_ID"] = wsId;
+				if (notifyToken) env["AGENT_NOTIFY_TOKEN"] = notifyToken;
+				if (wasAttached) {
+					await daemonClient.attach(id, onData, onExit, cwd, env);
+				} else {
+					await daemonClient.create(id, cwd, onData, onExit, env);
+					incrementCounter(db, "lifetimeSessionsStarted");
+				}
+				return { wasAttached };
 			} catch (error) {
-				if (insertedSessionRow) {
-					getDb().delete(terminalSessions).where(eq(terminalSessions.id, id)).run();
+				if (typeof id === "string") {
+					owner?.rollback();
+					if (insertedSessionRow)
+						getDb().delete(terminalSessions).where(eq(terminalSessions.id, id)).run();
 				}
-				console.error(`Failed to create/attach terminal ${id}:`, error);
-				throw error;
+				console.error("Failed to create/attach terminal:", { id, workspaceId, error });
+				return terminalCreateFailure(error);
 			}
 		}
 	);

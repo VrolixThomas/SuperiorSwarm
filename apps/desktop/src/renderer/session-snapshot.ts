@@ -3,7 +3,7 @@ import type { SessionSaveData } from "../shared/types";
 import { useEditorSettingsStore } from "./stores/editor-settings";
 import { usePaneStore } from "./stores/pane-store";
 import { useProjectStore } from "./stores/projects";
-import { serializeHermesSessionSelection, useTabStore } from "./stores/tab-store";
+import { type TabItem, serializeHermesSessionSelection, useTabStore } from "./stores/tab-store";
 
 export type SessionSnapshot = SessionSaveData & {
 	paneLayouts: Record<string, string>;
@@ -26,6 +26,60 @@ function serializeLayout(node: LayoutNode): SerializedLayoutNode {
 		direction: node.direction,
 		ratio: node.ratio,
 		children: [serializeLayout(node.children[0]), serializeLayout(node.children[1])],
+	};
+}
+
+export function deserializeLayout(
+	node: SerializedLayoutNode,
+	terminalMap: Map<string, TabItem>
+): LayoutNode | null {
+	if (node.type === "pane") {
+		const paneTabs = node.tabs
+			.map((saved): TabItem | null => {
+				if (saved.kind === "terminal") {
+					const terminal = terminalMap.get(saved.id);
+					if (terminal?.kind !== "terminal" || terminal.workspaceId !== saved.workspaceId)
+						return null;
+					// The backend owns session identity and cwd; the layout owns UI metadata.
+					return { ...terminal, presetName: saved.presetName ?? terminal.presetName };
+				}
+				// Filter out stale ai-review-summary tabs from previous versions
+				if ((saved as { kind: string }).kind === "ai-review-summary") {
+					return null;
+				}
+				// Merge-conflict tabs are transient — the merge state doesn't survive restart
+				if ((saved as { kind: string }).kind === "merge-conflict") {
+					return null;
+				}
+				// Solve-review tabs are transient — solve sessions don't survive restart
+				if ((saved as { kind: string }).kind === "solve-review") {
+					return null;
+				}
+				// Cross-repo orchestrator canvas tabs are re-opened on demand, not restored
+				if ((saved as { kind: string }).kind === "xro-canvas") {
+					return null;
+				}
+				// File tabs: use directly from serialized data
+				return saved;
+			})
+			.filter((t): t is TabItem => t != null);
+		if (paneTabs.length === 0) return null;
+		return {
+			type: "pane",
+			id: node.id,
+			tabs: paneTabs,
+			activeTabId: paneTabs.find((t) => t.id === node.activeTabId)?.id ?? paneTabs[0]?.id ?? null,
+		};
+	}
+	const first = deserializeLayout(node.children[0], terminalMap);
+	const second = deserializeLayout(node.children[1], terminalMap);
+	if (!first || !second) return first || second || null;
+	return {
+		type: "split",
+		id: node.id,
+		direction: node.direction,
+		ratio: node.ratio,
+		children: [first, second],
 	};
 }
 
