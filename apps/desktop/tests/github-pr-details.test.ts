@@ -106,3 +106,31 @@ describe("mapPRDetails", () => {
 		expect(result.checks).toHaveLength(0);
 	});
 });
+
+test("preserves provider revision OIDs without substituting a branch or stale commit node", () => {
+	const raw = {
+		title: "Pinned",
+		body: "",
+		state: "OPEN",
+		isDraft: false,
+		author: { login: "alice", avatarUrl: "" },
+		reviewDecision: null,
+		commits: { nodes: [{ commit: { oid: "c".repeat(40), statusCheckRollup: null } }] },
+		reviewRequests: { nodes: [] },
+		reviews: { nodes: [] },
+		reviewThreads: { nodes: [] },
+		comments: { nodes: [] },
+		files: { nodes: [] },
+		headRefName: "feature",
+		baseRefName: "main",
+		headRefOid: "a".repeat(40),
+		baseRefOid: "b".repeat(40),
+	};
+	const result = mapPRDetails(raw as unknown as Parameters<typeof mapPRDetails>[0]);
+	expect(result.headCommitOid).toBe(raw.headRefOid);
+	expect(result.baseCommitOid).toBe(raw.baseRefOid);
+	expect(
+		mapPRDetails({ ...raw, baseRefOid: undefined } as unknown as Parameters<typeof mapPRDetails>[0])
+			.baseCommitOid
+	).toBeUndefined();
+});
