@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { readGit } from "../src/main/review-explanation/git-reader";
 import { ReviewSnapshotService } from "../src/main/review-explanation/snapshot";
 import { snapshotFixture } from "./helpers/review-snapshot-fixture";
 
@@ -363,4 +364,48 @@ test("bounds concurrent requests and recovers after completion", async () => {
 	}
 	await Promise.all([first, second]);
 	expect((await service.create(request())).files).toHaveLength(4);
+});
+
+test("cancels a live Git object-reader subprocess", async () => {
+	const controller = new AbortController();
+	const pending = readGit(fixture.root, ["cat-file", "--batch"], controller.signal);
+	const timer = setTimeout(() => controller.abort(), 50);
+	try {
+		await expect(pending).rejects.toMatchObject({ reason: "cancelled" });
+	} finally {
+		clearTimeout(timer);
+	}
+});
+
+test("does not inherit Git directory overrides or replacement objects", async () => {
+	const oldDir = process.env["GIT_DIR"];
+	process.env["GIT_DIR"] = join(fixture.directory, "not-a-repository");
+	try {
+		expect((await service.create(request())).headOid).toBe(fixture.head);
+	} finally {
+		if (oldDir === undefined) {
+			// biome-ignore lint/performance/noDelete: process.env stringifies undefined; restore absence.
+			delete process.env["GIT_DIR"];
+		} else process.env["GIT_DIR"] = oldDir;
+	}
+	fixture.git("replace", fixture.head, fixture.base);
+	service = new ReviewSnapshotService({ resolveRoot: async () => fixture.root });
+	expect((await service.create(request())).files).toHaveLength(4);
+});
+
+test("preserves the exact text including a UTF-8 BOM and CRLF", async () => {
+	fixture.git("checkout", "change");
+	const content = "\uFEFFexport const value = 1;\r\n";
+	fixture.write("bom.ts", content);
+	const snapshot = await service.create({ ...request(), headOid: fixture.commit() });
+	const file = snapshot.files.find((entry) => entry.path === "bom.ts");
+	if (!file) throw new Error("missing BOM file");
+	expect(
+		await service.read({
+			workspaceId: "ws",
+			snapshotId: snapshot.id,
+			fileId: file.id,
+			side: "head",
+		})
+	).toMatchObject({ kind: "text", content });
 });
