@@ -34,7 +34,13 @@ Use existing installed dependencies without running installation scripts. Preser
 - [x] Inspect current checkout and record implementation sequence.
 - [x] Snapshot/metadata tests demonstrate RED: snapshot module absent (intended compile-time RED); metadata test returns the stale commit-node OID. Run from `apps/desktop` to apply its Electron test preload.
 - [x] Local RED checkpoint: tests and this plan only, before implementation.
-- [ ] Snapshot service and API pass GREEN.
-- [ ] Coverage, type checks, lint and boundary review.
-- [ ] Update durable source index and verification evidence.
-- [ ] Local GREEN checkpoint; report exact completed slice and remaining increments.
+- [x] Snapshot service and API pass GREEN; initial checkpoint `4e75159d`, cancellation/cache corrections `ab2ac36e`, and subsequent BOM preservation regression fixed.
+- [x] Coverage, focused type checks, lint and boundary review. 69 tests pass; full main type-check has the same 66 diagnostics as baseline, with no additions.
+- [x] Update durable source index and [verification evidence](../verification/2026-11-10-review-snapshot-foundation.md).
+- [x] Local GREEN checkpoints preserved; report snapshot foundation as completed and increments 2–6 as remaining.
+
+## Current handoff
+
+The `reviewExplanation.resolveSnapshot` and `getSnapshotFile` tRPC procedures are implemented. Cache: eight snapshots, at most 10,000 changed files each, two simultaneous requests, 15-second request deadline / 10-second Git subprocess deadline, 8 MiB subprocess output cap, 1 MiB text-blob limit. Oversized manifests fail explicitly rather than truncating. Cache eviction/restart requires re-resolving the revision.
+
+The next increment starts at `ReviewSnapshot.files`: add changed-hunk/symbol extraction and deterministic flow planning. Keep the current renderer unchanged until it can switch manifest, content, progress and navigation together. The existing provider file-list cap, branch-based Changes view and legacy viewed-state semantics are not fixed by this backend increment. No UI, model transport, persistent schema, submission change or hosted analysis has shipped.

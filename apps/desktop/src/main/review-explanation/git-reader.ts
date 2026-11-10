@@ -42,6 +42,8 @@ export function readGit(root: string, args: string[], signal: AbortSignal): Prom
 					GIT_ATTR_NOSYSTEM: "1",
 					GIT_NO_REPLACE_OBJECTS: "1",
 					GIT_NO_LAZY_FETCH: "1",
+					// Deny every transport, including locally enabled protocol-specific overrides.
+					GIT_ALLOW_PROTOCOL: "",
 					GIT_TERMINAL_PROMPT: "0",
 					GIT_OPTIONAL_LOCKS: "0",
 				},
