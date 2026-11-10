@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { ReviewSnapshotService } from "../src/main/review-explanation/snapshot";
 import { snapshotFixture } from "./helpers/review-snapshot-fixture";
@@ -274,4 +274,93 @@ describe("immutable review snapshots", () => {
 			)
 		).rejects.toMatchObject({ code: "CANCELLED" });
 	});
+});
+
+test("a delayed read cannot resurrect an evicted cache entry", async () => {
+	let release: (() => void) | undefined;
+	let holdNext = false;
+	service = new ReviewSnapshotService({
+		maxSnapshots: 1,
+		resolveRoot: async () => {
+			if (holdNext) {
+				holdNext = false;
+				await new Promise<void>((resolve) => {
+					release = resolve;
+				});
+			}
+			return fixture.root;
+		},
+	});
+	const snapshot = await service.create(request());
+	holdNext = true;
+	const pending = service.read({
+		workspaceId: "ws",
+		snapshotId: snapshot.id,
+		fileId: snapshot.files[0]?.id ?? "",
+		side: "base",
+	});
+	try {
+		await service.create({ ...request(), headOid: fixture.base });
+	} finally {
+		release?.();
+	}
+	await expect(pending).rejects.toMatchObject({ code: "SNAPSHOT_UNAVAILABLE" });
+});
+
+test("cancellation releases a waiting root lookup and does not occupy the request budget", async () => {
+	const releases: Array<() => void> = [];
+	service = new ReviewSnapshotService({
+		resolveRoot: async () => {
+			await new Promise<void>((resolve) => releases.push(resolve));
+			return fixture.root;
+		},
+	});
+	const controller = new AbortController();
+	const pending = service.create(request(), controller.signal).then(
+		() => "returned",
+		(error: { code: string }) => error.code
+	);
+	controller.abort();
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	try {
+		const outcome = await Promise.race([
+			pending,
+			new Promise<string>((resolve) => {
+				timer = setTimeout(() => resolve("still waiting"), 100);
+			}),
+		]);
+		expect(outcome).toBe("CANCELLED");
+	} finally {
+		clearTimeout(timer);
+		for (const release of releases) release();
+		await pending;
+	}
+});
+
+test("accepts a registered repository root with trailing whitespace", async () => {
+	const movedRoot = `${fixture.root} `;
+	renameSync(fixture.root, movedRoot);
+	service = new ReviewSnapshotService({ resolveRoot: async () => movedRoot });
+	expect((await service.create(request())).files).toHaveLength(4);
+});
+
+test("bounds concurrent requests and recovers after completion", async () => {
+	const releases: Array<() => void> = [];
+	let pause = true;
+	service = new ReviewSnapshotService({
+		resolveRoot: async () => {
+			if (pause) await new Promise<void>((resolve) => releases.push(resolve));
+			return fixture.root;
+		},
+	});
+	const first = service.create(request());
+	const second = service.create(request());
+	try {
+		await expect(service.create(request())).rejects.toMatchObject({ code: "BUSY" });
+	} finally {
+		pause = false;
+		for (const release of releases) release();
+	}
+	await Promise.all([first, second]);
+	expect((await service.create(request())).files).toHaveLength(4);
 });
