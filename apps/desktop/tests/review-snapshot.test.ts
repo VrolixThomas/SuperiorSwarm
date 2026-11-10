@@ -409,3 +409,10 @@ test("preserves the exact text including a UTF-8 BOM and CRLF", async () => {
 		})
 	).toMatchObject({ kind: "text", content });
 });
+
+test("denies Git transports even when repository config explicitly enables one", async () => {
+	fixture.git("config", "protocol.file.allow", "always");
+	await expect(
+		readGit(fixture.root, ["ls-remote", fixture.root], new AbortController().signal)
+	).rejects.toMatchObject({ reason: "failed" });
+});
