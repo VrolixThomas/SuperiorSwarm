@@ -35,7 +35,8 @@ export class ReviewSnapshotError extends Error {
 
 const OID = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
-const decode = (buffer: Buffer) => new TextDecoder("utf-8", { fatal: true }).decode(buffer);
+const decode = (buffer: Buffer) =>
+	new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(buffer);
 
 interface CachedSnapshot {
 	root: string;
