@@ -113,12 +113,20 @@ export class ReviewSnapshotService {
 		if (callerSignal?.aborted) throw new ReviewSnapshotError("CANCELLED");
 		if (this.active >= 2) throw new ReviewSnapshotError("BUSY");
 		this.active++;
-		const signal = AbortSignal.any([
-			AbortSignal.timeout(15_000),
-			...(callerSignal ? [callerSignal] : []),
-		]);
+		const deadline = new AbortController();
+		const timer = setTimeout(() => deadline.abort(), 15_000);
+		timer.unref();
+		const signal = callerSignal
+			? AbortSignal.any([deadline.signal, callerSignal])
+			: deadline.signal;
+		let onAbort = () => {};
+		const cancelled = new Promise<never>((_resolve, reject) => {
+			onAbort = () => reject(new ReviewSnapshotError("CANCELLED"));
+			signal.addEventListener("abort", onAbort, { once: true });
+			if (signal.aborted) onAbort();
+		});
 		try {
-			const result = await action(signal);
+			const result = await Promise.race([action(signal), cancelled]);
 			if (signal.aborted) throw new ReviewSnapshotError("CANCELLED");
 			return result;
 		} catch (error) {
@@ -126,6 +134,8 @@ export class ReviewSnapshotService {
 				throw new ReviewSnapshotError("CANCELLED");
 			throw error;
 		} finally {
+			clearTimeout(timer);
+			signal.removeEventListener("abort", onAbort);
 			this.active--;
 		}
 	}
@@ -143,6 +153,7 @@ export class ReviewSnapshotService {
 			if (!OID.test(input.targetTipOid) || !OID.test(input.headOid))
 				throw new ReviewSnapshotError("INVALID_REVISION");
 			const root = await this.root(input.workspaceId);
+			if (signal.aborted) throw new ReviewSnapshotError("CANCELLED");
 			const repositoryKey = hash(root);
 			const id = hash([1, input.workspaceId, repositoryKey, input.targetTipOid, input.headOid]);
 			const existing = this.cache.get(id);
@@ -152,7 +163,10 @@ export class ReviewSnapshotService {
 				return structuredClone(existing.snapshot);
 			}
 			try {
-				const top = decode(await readGit(root, ["rev-parse", "--show-toplevel"], signal)).trimEnd();
+				const top = decode(await readGit(root, ["rev-parse", "--show-toplevel"], signal)).replace(
+					/\n$/,
+					""
+				);
 				if ((await realpath(top)) !== root) throw new ReviewSnapshotError("WORKSPACE_UNAVAILABLE");
 			} catch {
 				throw new ReviewSnapshotError("WORKSPACE_UNAVAILABLE");
@@ -244,7 +258,11 @@ export class ReviewSnapshotService {
 			if (!cached || cached.snapshot.workspaceId !== input.workspaceId)
 				throw new ReviewSnapshotError("SNAPSHOT_UNAVAILABLE");
 			const root = await this.root(input.workspaceId);
+			if (signal.aborted) throw new ReviewSnapshotError("CANCELLED");
 			if (root !== cached.root) throw new ReviewSnapshotError("WORKSPACE_CHANGED");
+			// Root lookup can yield while another request evicts this snapshot.
+			if (this.cache.get(input.snapshotId) !== cached)
+				throw new ReviewSnapshotError("SNAPSHOT_UNAVAILABLE");
 			const file = cached.snapshot.files.find((entry) => entry.id === input.fileId);
 			if (!file || (input.side !== "base" && input.side !== "head"))
 				throw new ReviewSnapshotError("FILE_UNAVAILABLE");

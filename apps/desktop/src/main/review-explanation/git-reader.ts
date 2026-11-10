@@ -22,6 +22,8 @@ export function readGit(root: string, args: string[], signal: AbortSignal): Prom
 				"core.attributesFile=/dev/null",
 				"-c",
 				"credential.helper=",
+				"-c",
+				"protocol.allow=never",
 				...args,
 			],
 			{
