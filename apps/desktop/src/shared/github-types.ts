@@ -92,6 +92,8 @@ export interface GitHubPRDetails {
 	sourceBranch: string;
 	targetBranch: string;
 	headCommitOid: string;
+	/** Exact target tip supplied by the provider; absent when unavailable. */
+	baseCommitOid?: string;
 }
 
 /** A single item within a file group card — either an AI draft comment or a GitHub thread */

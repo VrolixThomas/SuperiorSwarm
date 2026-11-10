@@ -1,0 +1,61 @@
+import { execFile } from "node:child_process";
+
+export class GitReadError extends Error {
+	constructor(readonly reason: "cancelled" | "limit" | "failed") {
+		super("Unable to read local Git objects");
+	}
+}
+
+/** Do not inherit GIT_DIR, config injection, SSH commands, external diffs or credentials. */
+export function readGit(root: string, args: string[], signal: AbortSignal): Promise<Buffer> {
+	if (signal.aborted) return Promise.reject(new GitReadError("cancelled"));
+	return new Promise((resolve, reject) => {
+		execFile(
+			"git",
+			[
+				"--no-pager",
+				"-c",
+				"core.fsmonitor=false",
+				"-c",
+				"core.hooksPath=/dev/null",
+				"-c",
+				"core.attributesFile=/dev/null",
+				"-c",
+				"credential.helper=",
+				...args,
+			],
+			{
+				cwd: root,
+				encoding: "buffer",
+				maxBuffer: 8 * 1024 * 1024,
+				timeout: 10_000,
+				signal,
+				env: {
+					PATH: process.env["PATH"],
+					SystemRoot: process.env["SystemRoot"],
+					LANG: "C",
+					GIT_CONFIG_NOSYSTEM: "1",
+					GIT_CONFIG_SYSTEM: "/dev/null",
+					GIT_CONFIG_GLOBAL: "/dev/null",
+					GIT_ATTR_NOSYSTEM: "1",
+					GIT_NO_REPLACE_OBJECTS: "1",
+					GIT_NO_LAZY_FETCH: "1",
+					GIT_TERMINAL_PROMPT: "0",
+					GIT_OPTIONAL_LOCKS: "0",
+				},
+			},
+			(error, stdout) => {
+				if (!error && !signal.aborted) return resolve(stdout);
+				reject(
+					new GitReadError(
+						signal.aborted
+							? "cancelled"
+							: error?.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER"
+								? "limit"
+								: "failed"
+					)
+				);
+			}
+		);
+	});
+}

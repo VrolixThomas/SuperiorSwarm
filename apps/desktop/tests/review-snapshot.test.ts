@@ -100,8 +100,13 @@ describe("immutable review snapshots", () => {
 			"pointer",
 			`version https://git-lfs.github.com/spec/v1\noid sha256:${"a".repeat(64)}\nsize 123\n`
 		);
+		fixture.git("add", "--all");
 		fixture.git("update-index", "--add", "--cacheinfo", `160000,${fixture.base},module`);
-		const snapshot = await service.create({ ...request(), headOid: fixture.commit() });
+		fixture.git("-c", "commit.gpgsign=false", "commit", "-m", "gitlink fixture");
+		const snapshot = await service.create({
+			...request(),
+			headOid: fixture.git("rev-parse", "HEAD"),
+		});
 		for (const [path, reason] of [
 			["link", "symlink"],
 			["module", "submodule"],

@@ -152,6 +152,8 @@ interface RawGQLPR {
 	files: { nodes: { path: string; additions: number; deletions: number; changeType: string }[] };
 	headRefName: string;
 	baseRefName: string;
+	headRefOid?: string;
+	baseRefOid?: string;
 }
 
 // ── Mapping ───────────────────────────────────────────────────────────────────
@@ -231,7 +233,8 @@ export function mapPRDetails(raw: RawGQLPR): import("../../shared/github-types")
 		})),
 		sourceBranch: raw.headRefName,
 		targetBranch: raw.baseRefName,
-		headCommitOid: headCommit?.oid ?? "",
+		headCommitOid: raw.headRefOid ?? headCommit?.oid ?? "",
+		baseCommitOid: raw.baseRefOid,
 	};
 }
 
@@ -423,7 +426,7 @@ const PR_DETAILS_QUERY = `
         title body state isDraft
         author { login avatarUrl }
         reviewDecision
-        headRefName baseRefName
+        headRefName baseRefName headRefOid baseRefOid
         commits(last: 1) {
           nodes {
             commit {
