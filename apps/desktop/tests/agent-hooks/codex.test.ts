@@ -9,6 +9,20 @@ describe("codexConfig.mapEvent", () => {
 		expect(codexConfig.mapEvent("SessionStart")).toBe("active");
 	});
 
+	test("maps per-turn activity, approvals and compaction without treating subagent stop as parent", () => {
+		for (const event of [
+			"UserPromptSubmit",
+			"PreToolUse",
+			"PostToolUse",
+			"PreCompact",
+			"PostCompact",
+		])
+			expect(codexConfig.mapEvent(event)).toBe("active");
+		expect(codexConfig.mapEvent("PermissionRequest")).toBe("needs-input");
+		expect(codexConfig.mapEvent("SubagentStop")).toBeNull();
+		expect(codexConfig.mapEvent("Interrupt")).toBe("task-complete");
+	});
+
 	test("maps Stop to task-complete", () => {
 		expect(codexConfig.mapEvent("Stop")).toBe("task-complete");
 	});
@@ -36,6 +50,13 @@ describe("mergeCodexHooks", () => {
 		expect(settings.hooks.Stop[0].hooks[0].command).toBe("test-hook-cmd");
 	});
 
+	test("preserves malformed settings instead of silently overwriting them", () => {
+		mkdirSync(testDir, { recursive: true });
+		writeFileSync(settingsPath, "{ invalid settings");
+		expect(() => mergeCodexHooks(settingsPath, "test-hook-cmd")).toThrow();
+		expect(readFileSync(settingsPath, "utf-8")).toBe("{ invalid settings");
+	});
+
 	test("preserves existing settings", () => {
 		mkdirSync(testDir, { recursive: true });
 		writeFileSync(settingsPath, JSON.stringify({ model: "gpt-4", hooks: {} }));
@@ -54,7 +75,7 @@ describe("mergeCodexHooks", () => {
 		mergeCodexHooks(settingsPath, cmd);
 
 		const settings = JSON.parse(readFileSync(settingsPath, "utf-8"));
-		expect(settings.hooks.Stop).toHaveLength(1);
+		for (const event of codexConfig.hookEvents) expect(settings.hooks[event]).toHaveLength(1);
 		expect(settings.hooks.Stop[0].hooks[0].command).toBe(cmd);
 	});
 });

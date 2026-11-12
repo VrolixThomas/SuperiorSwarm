@@ -8,6 +8,9 @@ import {
 	workspaceSourceId,
 } from "../src/main/activity-queue/agent-source";
 import { ActivityQueueService } from "../src/main/activity-queue/service";
+import { claudeConfig } from "../src/main/agent-hooks/agents/claude";
+import { codexConfig } from "../src/main/agent-hooks/agents/codex";
+import { createAlertListener } from "../src/main/agent-hooks/listener";
 import { closeDb, getDb } from "../src/main/db";
 import {
 	agentMessages,
@@ -22,6 +25,7 @@ import { setStatus } from "../src/main/services/workspace-service";
 import type { DaemonClient } from "../src/main/terminal/daemon-client";
 import { activityQueueRouter } from "../src/main/trpc/routers/activity-queue";
 import { workspacesRouter } from "../src/main/trpc/routers/workspaces";
+import { agentRegistry } from "../src/shared/agent-events";
 import type { AgentEvent } from "../src/shared/agent-events";
 import { seedProject, seedWorkspace, setupTestDb } from "./helpers/db";
 
@@ -317,4 +321,190 @@ test("workspace navigation lookup exposes authoritative path and review identity
 		type: "review",
 	});
 	expect(await api.getById({ id: "missing-workspace" })).toBeNull();
+});
+
+for (const provider of ["codex", "claude"] as const) {
+	test(`${provider}: 55 turns through listener, manager and durable queue survive approvals, compaction and restart`, async () => {
+		const agent = manager();
+		register(agent, "one");
+		getDb()
+			.update(agentSessions)
+			.set({ provider })
+			.where(eq(agentSessions.terminalId, "one"))
+			.run();
+		agentRegistry.set(provider, provider === "codex" ? codexConfig : claudeConfig);
+		const listener = createAlertListener(0, "lifecycle-token");
+		await listener.start();
+		let accepted = 0;
+		listener.onEvent((incoming) => {
+			if (agent.handleAgentEvent(incoming)) accepted++;
+		});
+		// Producer time is independent of receipt; it is retained when simulating delayed delivery.
+		let produced = Date.now();
+		const deliver = async (
+			rawEvent: string,
+			turn: number,
+			time = ++produced,
+			extra: Record<string, string> = {}
+		) => {
+			const query = new URLSearchParams({
+				rawEvent,
+				agent: provider,
+				terminalId: "one",
+				workspaceId,
+				providerSessionId: "one-provider",
+				producerTimestamp: String(time),
+				...(provider === "codex" ? { turnId: `turn-${turn}` } : {}),
+				...extra,
+			});
+			const response = await fetch(`http://127.0.0.1:${listener.getPort()}/event?${query}`, {
+				headers: { Authorization: "Bearer lifecycle-token" },
+			});
+			expect(response.ok).toBe(true);
+		};
+		try {
+			await deliver("SessionStart", 0, ++produced, { sessionSource: "startup" });
+			let previousStop = 0;
+			for (let turn = 1; turn <= 55; turn++) {
+				await deliver("UserPromptSubmit", turn);
+				expect(agent.getSession("one")?.state).toBe("running");
+				expect(queue().list().totalPending).toBe(0);
+				if (turn > 1) {
+					const before = accepted;
+					await deliver("Stop", turn - 1, previousStop);
+					expect(accepted).toBe(before);
+					expect(agent.getSession("one")?.state).toBe("running");
+				}
+				if (provider === "codex" && turn > 1 && turn % 15 === 0) {
+					const before = accepted;
+					await deliver("Stop", turn - 1); // later receipt AND producer time; stale turn identity wins
+					expect(accepted).toBe(before);
+				}
+				await deliver("PreToolUse", turn);
+				if (turn % 5 === 0) {
+					await deliver("PermissionRequest", turn);
+					expect(agent.getSession("one")?.state).toBe("needs-input");
+					expect(queue().list().items[0]?.kind).toBe("agent-input");
+				}
+				await deliver("PostToolUse", turn);
+				if (turn % 10 === 0) {
+					await deliver("PreCompact", turn);
+					await deliver("PostCompact", turn);
+				}
+				if (turn === 25) {
+					closeDb();
+					reconcileAgentSources();
+				}
+				previousStop = ++produced;
+				await deliver("Stop", turn, previousStop);
+				expect(agent.getSession("one")?.state).toBe("idle");
+				const ready = queue().list().items[0];
+				expect(ready?.summary).toBe("Ready for next input");
+				queue().acknowledge({ id: ready?.id ?? "", revision: ready?.revision ?? 0 });
+				await deliver("Stop", turn, previousStop);
+				expect(queue().list().totalPending).toBe(0);
+				if (turn % 10 === 0) {
+					await deliver("PostCompact", turn);
+					expect(agent.getSession("one")?.state).toBe("idle");
+				}
+				if (turn === 40) {
+					closeDb();
+					reconcileAgentSources();
+					expect(queue().list().totalPending).toBe(0);
+				}
+			}
+			await deliver("SessionStart", 55, ++produced, { sessionSource: "resume" });
+			expect(agent.getSession("one")?.state).toBe("running");
+			await deliver("UserPromptSubmit", 56);
+			await deliver("Stop", 56);
+			expect(queue().list().totalPending).toBe(1);
+			if (provider === "claude") {
+				await deliver("UserPromptSubmit", 57);
+				await deliver("StopFailure", 57);
+				expect(queue().list().items[0]?.summary).toBe("Agent turn failed; needs attention");
+				expect(agent.getSession("one")?.state).toBe("needs-input");
+			}
+		} finally {
+			listener.stop();
+			agent.dispose();
+		}
+	}, 20_000);
+}
+
+test("fresh explicit generation start can reuse a terminal; delayed old generation cannot reclaim it", () => {
+	const agent = manager();
+	register(agent, "one");
+	const stamp = Date.now();
+	agent.handleAgentEvent({
+		...event("one"),
+		rawEvent: "Stop",
+		producerTimestamp: stamp,
+		timestamp: stamp,
+		turnId: "old-turn",
+	});
+	expect(
+		agent.handleAgentEvent({
+			...event("one", "active"),
+			providerSessionId: "new-provider",
+			rawEvent: "SessionStart",
+			sessionSource: "startup",
+			producerTimestamp: stamp + 1,
+			timestamp: stamp + 1,
+		})
+	).not.toBeNull();
+	expect(agent.getSession("one")?.providerSessionId).toBe("new-provider");
+	expect(agent.getSession("one")?.managed).toBe(false);
+	expect(
+		agent.handleAgentEvent({
+			...event("one", "active"),
+			rawEvent: "SessionStart",
+			sessionSource: "resume",
+			producerTimestamp: stamp,
+			timestamp: stamp + 2,
+		})
+	).toBeNull();
+	expect(
+		agent.handleAgentEvent({
+			...event("one"),
+			timestamp: stamp + 3,
+			producerTimestamp: stamp,
+			turnId: "old-turn",
+		})
+	).toBeNull();
+	expect(agent.getSession("one")?.providerSessionId).toBe("new-provider");
+	agent.dispose();
+});
+
+test("newer timed activity recovers a missed prompt; an unknown Stop cannot invent the next turn", () => {
+	const agent = manager();
+	register(agent, "one");
+	const stamp = Date.now();
+	const deliver = (alert: AgentEvent["alert"], turnId: string, rawEvent: string, delta: number) =>
+		agent.handleAgentEvent({
+			...event("one", alert),
+			turnId,
+			rawEvent,
+			producerTimestamp: stamp + delta,
+			timestamp: stamp + delta,
+		});
+	deliver("task-complete", "first", "Stop", 0);
+	expect(deliver("task-complete", "unseen", "Stop", 1)).toBeNull();
+	expect(deliver("active", "second", "PostToolUse", 2)).not.toBeNull();
+	expect(agent.getSession("one")?.state).toBe("running");
+	expect(deliver("task-complete", "first", "Stop", 3)).toBeNull();
+	expect(deliver("task-complete", "second", "Stop", 4)).not.toBeNull();
+	expect(agent.getSession("one")?.state).toBe("idle");
+	agent.dispose();
+});
+
+test("failure supersedes a handled approval request without claiming task success", () => {
+	const agent = manager();
+	register(agent, "one");
+	agent.handleAgentEvent({ ...event("one", "needs-input"), rawEvent: "PermissionRequest" });
+	const input = queue().list().items[0];
+	queue().acknowledge({ id: input?.id ?? "", revision: input?.revision ?? 0 });
+	agent.handleAgentEvent({ ...event("one", "needs-input"), rawEvent: "StopFailure" });
+	expect(queue().list().items[0]?.reasons[0]?.code).toBe("turn-failed");
+	expect(queue().list().items[0]?.kind).toBe("agent-input");
+	agent.dispose();
 });

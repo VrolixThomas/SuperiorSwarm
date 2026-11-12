@@ -4,17 +4,27 @@ import type { AgentAlert, AgentHookConfig } from "../../../shared/agent-events";
 import { mergeAgentSettings } from "./shared";
 
 const EVENT_MAP: Record<string, AgentAlert> = {
+	SessionStart: "active",
+	PreToolUse: "active",
+	PreCompact: "active",
+	PostCompact: "active",
 	UserPromptSubmit: "active",
 	PostToolUse: "active",
 	PostToolUseFailure: "active",
 	Stop: "task-complete",
+	StopFailure: "needs-input",
 	PermissionRequest: "needs-input",
 };
 
 const HOOK_EVENTS = Object.keys(EVENT_MAP);
 
 // Events that apply to all tools (need matcher: "*")
-const TOOL_EVENTS = new Set(["PostToolUse", "PostToolUseFailure", "PermissionRequest"]);
+const TOOL_EVENTS = new Set([
+	"PreToolUse",
+	"PostToolUse",
+	"PostToolUseFailure",
+	"PermissionRequest",
+]);
 
 export function mergeClaudeHooks(settingsPath: string, hookCommand: string): void {
 	mergeAgentSettings(settingsPath, hookCommand, HOOK_EVENTS, TOOL_EVENTS);

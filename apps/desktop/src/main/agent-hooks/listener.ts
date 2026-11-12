@@ -3,6 +3,14 @@ import { type Server, createServer } from "node:http";
 import { type AgentEvent, agentRegistry } from "../../shared/agent-events";
 import { log } from "../logger";
 
+function parseProducerTimestamp(value: string | null): number | undefined {
+	if (!value) return undefined;
+	const parsed = Number(value);
+	return Number.isSafeInteger(parsed) && parsed > 0 && parsed <= Date.now() + 60_000
+		? parsed
+		: undefined;
+}
+
 const APP_IDENTIFIER = "superiorswarm";
 
 type EventHandler = (event: AgentEvent) => void;
@@ -89,6 +97,10 @@ export function createAlertListener(port: number, authToken?: string): AgentAler
 			alert,
 			agent,
 			timestamp: Date.now(),
+			rawEvent,
+			turnId: url.searchParams.get("turnId") || undefined,
+			sessionSource: url.searchParams.get("sessionSource") || undefined,
+			producerTimestamp: parseProducerTimestamp(url.searchParams.get("producerTimestamp")),
 		};
 
 		for (const handler of handlers) {

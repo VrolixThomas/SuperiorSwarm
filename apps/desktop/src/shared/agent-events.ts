@@ -11,7 +11,13 @@ export interface AgentEvent {
 	cwd: string;
 	alert: AgentAlert;
 	agent: string;
+	/** Listener receipt time; never use it as proof of producer/turn ordering. */
 	timestamp: number;
+	rawEvent?: string;
+	turnId?: string;
+	/** Hook bridge invocation time, distinct from listener receipt time. */
+	producerTimestamp?: number;
+	sessionSource?: string;
 }
 
 export const AGENT_NOTIFY_PORT = 27392;
