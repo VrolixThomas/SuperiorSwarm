@@ -5,6 +5,7 @@ import { AGENT_PROVIDERS } from "../../shared/agent-session";
 import { getDb } from "../db";
 import { agentMessages, agentSessions, projects, terminalSessions, workspaces } from "../db/schema";
 import { activityQueueSources } from "../db/schema-activity-queue";
+import { nextAgentEventSnapshot } from "./agent-event-order";
 import { ActivityQueueService } from "./service";
 
 const ownedTypes = ["agent-workspace", "agent-question", "agent-session"];
@@ -56,11 +57,23 @@ export function observeValidatedAgentEvent(event: AgentEvent): boolean {
 		.where(eq(terminalSessions.id, terminalId))
 		.get();
 	const workspaceId = known?.workspaceId ?? terminal?.workspaceId;
+	// An exact terminal can start/resume another conversation. Only a fresh,
+	// explicit producer-stamped SessionStart may replace its registered generation.
+	const newGeneration = Boolean(
+		known &&
+			(event.terminalId || event.sessionId) &&
+			event.rawEvent === "SessionStart" &&
+			["startup", "resume", "clear", "fork"].includes(event.sessionSource ?? "") &&
+			event.providerSessionId &&
+			event.producerTimestamp !== undefined &&
+			event.producerTimestamp >= (known.lastEventAt?.getTime() ?? 0)
+	);
 	if (
 		!workspaceId ||
 		(event.workspaceId && workspaceId !== event.workspaceId) ||
 		(terminal && terminal.workspaceId !== workspaceId) ||
 		(known &&
+			!newGeneration &&
 			(known.provider !== event.agent ||
 				(known.providerSessionId &&
 					event.providerSessionId &&
@@ -73,21 +86,39 @@ export function observeValidatedAgentEvent(event: AgentEvent): boolean {
 	const providerSessionId = event.providerSessionId || known?.providerSessionId || null;
 	const sourceId = sessionSourceId(workspaceId, terminalId, event.agent, providerSessionId);
 	const queue = new ActivityQueueService(db);
+	const snapshot = nextAgentEventSnapshot(queue.read(sourceId)?.snapshot, event);
+	if (!snapshot) return false;
+	if (
+		newGeneration &&
+		known &&
+		(known.provider !== event.agent || known.providerSessionId !== providerSessionId)
+	) {
+		queue.resolve(
+			sessionSourceId(known.workspaceId, known.terminalId, known.provider, known.providerSessionId),
+			event.timestamp
+		);
+	}
 	const needsInput = event.alert === "needs-input";
+	const failed = event.rawEvent === "StopFailure";
+	const label = failed
+		? "Agent turn failed; needs attention"
+		: needsInput
+			? "Agent needs input"
+			: "Ready for next input";
 	const candidate: ActivityQueueCandidate | null =
 		event.alert === "active"
 			? null
 			: {
 					kind: needsInput ? "agent-input" : "agent-ready",
 					title: workspace.name,
-					summary: needsInput ? "Agent needs input" : "Ready for next input",
+					summary: label,
 					projectId: workspace.projectId,
 					projectName: project?.name,
 					occurredAt: event.timestamp,
 					reasons: [
 						{
-							code: needsInput ? "session-needs-input" : "turn-ended",
-							label: needsInput ? "Agent needs input" : "Ready for next input",
+							code: failed ? "turn-failed" : needsInput ? "session-needs-input" : "turn-ended",
+							label,
 						},
 					],
 					target: {
@@ -101,8 +132,8 @@ export function observeValidatedAgentEvent(event: AgentEvent): boolean {
 	queue.observe({
 		sourceId,
 		sourceType: "agent-session",
-		snapshot: { version: 1, alert: event.alert },
-		fingerprint: event.alert,
+		snapshot,
+		fingerprint: JSON.stringify([event.alert, snapshot.turnId, failed ? "turn-failed" : null]),
 		candidate,
 		observedAt: event.timestamp,
 	});

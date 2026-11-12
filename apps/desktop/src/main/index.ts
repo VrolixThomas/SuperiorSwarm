@@ -7,6 +7,7 @@ import { AGENT_NOTIFY_PORT } from "../shared/agent-events";
 import { SUPERIORSWARM_DIR, daemonInstanceId, daemonPaths } from "../shared/daemon-protocol";
 import { updateOpenCodePluginConfig } from "./agent-hooks/agents/opencode";
 import { getOrCreateAgentNotifyToken } from "./agent-hooks/auth-token";
+import { publishCurrentHookEndpoint } from "./agent-hooks/endpoint";
 import { type AgentAlertListener, createAlertListener, reclaimPort } from "./agent-hooks/listener";
 import { setAgentNotifyPort, setAgentNotifyToken } from "./agent-hooks/port";
 import { setupAgentHooks } from "./agent-hooks/setup";
@@ -236,6 +237,18 @@ app.whenReady().then(async () => {
 
 	const agentNotifyToken = getOrCreateAgentNotifyToken();
 	setAgentNotifyToken(agentNotifyToken);
+	const refreshHookEndpoints = async () => {
+		if (!daemonClient.isConnected) return;
+		try {
+			for (const terminal of await daemonClient.listSessions())
+				publishCurrentHookEndpoint(terminal.id);
+		} catch (error) {
+			log.warn("[agent-hooks] could not refresh recovered terminal endpoints", error);
+		}
+	};
+	daemonClient.addConnectionStatusListener((connected) => {
+		if (connected) void refreshHookEndpoints();
+	});
 	agentSessionManager = new AgentSessionManager({
 		daemonClient,
 		processController: new PosixAgentProcessController(daemonClient),
@@ -421,19 +434,20 @@ app.whenReady().then(async () => {
 		await reclaimPort(AGENT_NOTIFY_PORT);
 	}
 	alertListener = createAlertListener(listenerPort, agentNotifyToken);
+	alertListener.onEvent((event) => {
+		const normalizedEvent = agentSessionManager?.handleAgentEvent(event);
+		if (normalizedEvent) broadcastToWindows("agent:alert", normalizedEvent);
+	});
 	try {
 		await alertListener.start();
 		const port = alertListener.getPort();
 		if (port) {
 			setAgentNotifyPort(port);
+			await refreshHookEndpoints();
 			// Always rewrite the generated plugin after binding so both its port
 			// and persisted local authentication token are current.
 			updateOpenCodePluginConfig(port, agentNotifyToken);
 		}
-		alertListener.onEvent((event) => {
-			const normalizedEvent = agentSessionManager?.handleAgentEvent(event);
-			if (normalizedEvent) broadcastToWindows("agent:alert", normalizedEvent);
-		});
 	} catch (err) {
 		log.error("[agent-notify] failed to start listener:", err);
 		alertListener = null;

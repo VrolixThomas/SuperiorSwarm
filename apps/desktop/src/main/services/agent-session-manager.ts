@@ -9,6 +9,8 @@ import {
 	type AgentSleepSettings,
 } from "../../shared/agent-session";
 import { observeValidatedAgentEvent } from "../activity-queue/agent-source";
+import { recordAcceptedHookEvent } from "../agent-hooks/diagnostics";
+import { publishCurrentHookEndpoint } from "../agent-hooks/endpoint";
 import { getDb } from "../db";
 import { agentSessions, terminalSessions, workspaces } from "../db/schema";
 import type { DaemonClient } from "../terminal/daemon-client";
@@ -165,11 +167,16 @@ export class AgentSessionManager {
 		});
 		const session = this.getSession(input.terminalId);
 		if (!session) throw new Error("Failed to persist managed agent session");
+		publishCurrentHookEndpoint(input.terminalId);
 		this.emit(session);
 		return session;
 	}
 
 	handleAgentEvent(event: AgentEvent): AgentEvent | null {
+		return getDb().transaction(() => this.applyAgentEvent(event));
+	}
+
+	private applyAgentEvent(event: AgentEvent): AgentEvent | null {
 		if (!isAgentProvider(event.agent)) return null;
 		if (!observeValidatedAgentEvent(event)) return null;
 		const resolved = this.resolveEventTarget(event, event.agent);
@@ -205,6 +212,14 @@ export class AgentSessionManager {
 
 		const providerSessionId =
 			event.providerSessionId || existing?.providerSessionId || resolved.providerSessionId || null;
+		const generationChanged = Boolean(
+			existing &&
+				(existing.provider !== event.agent ||
+					(existing.providerSessionId && providerSessionId !== existing.providerSessionId))
+		);
+		// A manual replacement in a managed terminal is not the orchestrator's dispatched child.
+		const managed = !generationChanged && (existing?.managed ?? false);
+		const skipPermissions = !generationChanged && (existing?.skipPermissions ?? false);
 		const db = getDb();
 		db.insert(agentSessions)
 			.values({
@@ -213,9 +228,9 @@ export class AgentSessionManager {
 				provider: event.agent,
 				providerSessionId,
 				state,
-				managed: existing?.managed ?? false,
+				managed,
 				keepRunning: existing?.keepRunning ?? false,
-				skipPermissions: existing?.skipPermissions ?? false,
+				skipPermissions,
 				lastEventAt: now,
 				idleSince,
 				hibernatedAt: existing?.hibernatedAt ?? null,
@@ -229,6 +244,8 @@ export class AgentSessionManager {
 					workspaceId: resolved.workspaceId,
 					provider: event.agent,
 					providerSessionId,
+					managed,
+					skipPermissions,
 					state,
 					lastEventAt: now,
 					idleSince,
@@ -245,6 +262,8 @@ export class AgentSessionManager {
 			this.emit(session);
 		}
 
+		recordAcceptedHookEvent(event);
+		publishCurrentHookEndpoint(resolved.terminalId);
 		return {
 			...event,
 			sessionId: resolved.terminalId,

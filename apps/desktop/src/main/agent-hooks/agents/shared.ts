@@ -31,14 +31,19 @@ export function mergeAgentSettings(
 
 	let settings: Record<string, unknown> = {};
 	if (existsSync(settingsPath)) {
-		try {
-			settings = JSON.parse(readFileSync(settingsPath, "utf-8"));
-		} catch {
-			settings = {};
-		}
+		const parsed: unknown = JSON.parse(readFileSync(settingsPath, "utf-8"));
+		if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
+			throw new Error("Hook settings must be a JSON object; existing file was preserved");
+		settings = parsed as Record<string, unknown>;
 	}
 
-	const hooks = (settings["hooks"] ?? {}) as Record<string, unknown[]>;
+	const existingHooks = settings["hooks"];
+	if (
+		existingHooks !== undefined &&
+		(!existingHooks || typeof existingHooks !== "object" || Array.isArray(existingHooks))
+	)
+		throw new Error("Hook settings.hooks must be an object; existing file was preserved");
+	const hooks = (existingHooks ?? {}) as Record<string, unknown[]>;
 
 	for (const event of hookEvents) {
 		const existing = Array.isArray(hooks[event]) ? hooks[event] : [];
@@ -58,5 +63,7 @@ export function mergeAgentSettings(
 	}
 
 	settings["hooks"] = hooks;
-	writeFileSync(settingsPath, `${JSON.stringify(settings, null, "\t")}\n`);
+	const content = `${JSON.stringify(settings, null, "\t")}\n`;
+	if (!existsSync(settingsPath) || readFileSync(settingsPath, "utf-8") !== content)
+		writeFileSync(settingsPath, content);
 }
