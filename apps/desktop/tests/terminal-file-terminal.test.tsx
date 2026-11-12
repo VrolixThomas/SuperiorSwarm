@@ -2,6 +2,8 @@ import { afterAll, afterEach, beforeEach, expect, mock, test } from "bun:test";
 import { Window } from "happy-dom";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
+import { useTabStore } from "../src/renderer/stores/tab-store";
+import type { TerminalCreateIntent } from "../src/shared/terminal-create";
 import { type TerminalFileBatch, formatFilePaths } from "../src/shared/terminal-files";
 const dom = new Window();
 Object.assign(globalThis, {
@@ -28,10 +30,13 @@ beforeEach(() => {
 	delivery = "admitted";
 	createError = undefined;
 	createCalls = 0;
+	createIntents.length = 0;
+	useTabStore.setState({ terminalCreateIntents: {} });
 	pendingCreate = undefined;
 });
 let createError: Error | undefined;
 let createCalls = 0;
+const createIntents: Array<TerminalCreateIntent | undefined> = [];
 let pendingCreate: Promise<{ wasAttached: boolean }> | undefined;
 function deferCreate() {
 	let resolve: (result: { wasAttached: boolean }) => void = () => {};
@@ -290,8 +295,14 @@ async function mount() {
 				},
 			},
 			terminal: {
-				create: async () => {
+				create: async (
+					_id: string,
+					_cwd: string,
+					_workspace: string,
+					intent?: TerminalCreateIntent
+				) => {
 					createCalls++;
+					createIntents.push(intent);
 					if (pendingCreate) {
 						const attempt = pendingCreate;
 						pendingCreate = undefined;
@@ -691,4 +702,27 @@ test("binary mouse input coexists with pending files without changing their inse
 	expect(ordinary).toEqual([]);
 	await enter();
 	expect(ordinary).toEqual(["\r"]);
+});
+
+test("Queue mount, reconnect and manual retry retain attach-only; ordinary mount keeps default", async () => {
+	useTabStore.setState({ terminalCreateIntents: { t1: "attach-existing-only" } });
+	createError = daemonUnavailable();
+	await mount();
+	await act(async () => daemonStatus(true));
+	createError = new Error("[TERMINAL_CREATE:TERMINAL_NOT_RUNNING] Missing PTY");
+	const retry = [...host.querySelectorAll("button")].find(
+		(button) => button.textContent === "Retry terminal"
+	);
+	await act(async () => retry?.click());
+	expect(createIntents).toEqual([
+		"attach-existing-only",
+		"attach-existing-only",
+		"attach-existing-only",
+	]);
+	expect(terminal.output).toContain("Queue will not create a replacement shell");
+	// Reopening through ordinary navigation is explicit authorization to restore.
+	useTabStore.setState({ terminalCreateIntents: {} });
+	createError = undefined;
+	await act(async () => retry?.click());
+	expect(createIntents.at(-1)).toBeUndefined();
 });

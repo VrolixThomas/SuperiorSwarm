@@ -24,6 +24,7 @@ import { collectSessionSnapshot, deserializeLayout } from "../src/renderer/sessi
 import { usePaneStore } from "../src/renderer/stores/pane-store";
 import { useTabStore } from "../src/renderer/stores/tab-store";
 import type { SerializedLayoutNode } from "../src/shared/pane-types";
+import { TerminalCreateError, type TerminalCreateIntent } from "../src/shared/terminal-create";
 import { makeRawTestDb } from "./test-db";
 
 type Handler = (request: typeof event, ...args: unknown[]) => unknown;
@@ -50,7 +51,7 @@ let liveCwd: string | undefined;
 let daemonError: Error | undefined;
 let duringList: () => void | Promise<void> = () => {};
 const created: Array<{ id: string; cwd: string | undefined }> = [];
-const attached: Array<{ id: string; cwd: string | undefined }> = [];
+const attached: Array<{ id: string; cwd: string | undefined; intent?: TerminalCreateIntent }> = [];
 const now = new Date();
 beforeEach(() => {
 	root = realpathSync(mkdtempSync(join(tmpdir(), "coordinator-terminal-")));
@@ -80,8 +81,16 @@ beforeEach(() => {
 			if (daemonError) throw daemonError;
 			created.push({ id, cwd });
 		},
-		attach: async (id: string, _data: unknown, _exit: unknown, cwd: string | undefined) => {
-			attached.push({ id, cwd });
+		attach: async (
+			id: string,
+			_data: unknown,
+			_exit: unknown,
+			cwd: string | undefined,
+			_env: unknown,
+			intent?: TerminalCreateIntent
+		) => {
+			if (daemonError) throw daemonError;
+			attached.push(intent === "attach-existing-only" ? { id, cwd, intent } : { id, cwd });
 		},
 		detach: () => {},
 		addConnectionStatusListener: () => {},
@@ -581,4 +590,50 @@ describe("terminal root and record isolation", () => {
 		expect(await older).toMatchObject({ error: { code: "WORKSPACE_ROOT_CHANGED" } });
 		expect(terminalFileOwners.target("restored", caller)).toEqual(latest);
 	});
+});
+
+for (const cachedLive of [false, true]) {
+	test(`Queue IPC cannot create after preflight with live cache ${cachedLive}`, async () => {
+		const ws = workspace();
+		ensureTerminalSessionRow({ id: "restored", workspaceId: ws.id, cwd: ws.repoPath });
+		live = cachedLive;
+		// Inventory was live, but the actual atomic attach loses the PTY.
+		duringList = () => {
+			daemonError = new TerminalCreateError("TERMINAL_NOT_RUNNING");
+		};
+		const result = await handler("terminal:create")(
+			event,
+			"restored",
+			ws.repoPath,
+			ws.id,
+			"attach-existing-only"
+		);
+		expect(result).toMatchObject({ error: { code: "TERMINAL_NOT_RUNNING" } });
+		expect(created).toEqual([]);
+		expect(db.select().from(schema.terminalSessions).all()).toHaveLength(1);
+	});
+}
+test("Queue IPC always forwards attach-only even without a cached live PTY", async () => {
+	const ws = workspace();
+	ensureTerminalSessionRow({ id: "restored", workspaceId: ws.id, cwd: ws.repoPath });
+	const result = await handler("terminal:create")(
+		event,
+		"restored",
+		ws.repoPath,
+		ws.id,
+		"attach-existing-only"
+	);
+	expect(result).toEqual({ wasAttached: true });
+	expect(created).toEqual([]);
+	expect(attached).toEqual([{ id: "restored", cwd: ws.repoPath, intent: "attach-existing-only" }]);
+});
+test("Queue IPC rejects missing identity and invalid intent without inserting rows or creating", async () => {
+	const ws = workspace();
+	for (const intent of ["attach-existing-only", "unknown"])
+		expect(
+			await handler("terminal:create")(event, "missing", ws.repoPath, ws.id, intent)
+		).toHaveProperty("error");
+	expect(created).toEqual([]);
+	expect(attached).toEqual([]);
+	expect(db.select().from(schema.terminalSessions).all()).toEqual([]);
 });

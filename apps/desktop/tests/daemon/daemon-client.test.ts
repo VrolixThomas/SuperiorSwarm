@@ -192,6 +192,136 @@ describe("DaemonClient", () => {
 		if (existsSync(TEST_LOG)) rmSync(TEST_LOG);
 	});
 
+	for (const version of [null, DAEMON_PROTOCOL_VERSION]) {
+		test(`attach-only rejects a vanished session without fallback on protocol ${version ?? 1}`, async () => {
+			client.disconnect();
+			daemon.server.close();
+			rmSync(TEST_SOCKET, { force: true });
+			const frames: Array<{ type: string }> = [];
+			daemon = await startMockDaemon(
+				(value) => {
+					const msg = value as { type: string; id: string };
+					frames.push(msg);
+					if (msg.type === "attach")
+						daemon
+							.lastSocket()
+							?.write(
+								`${JSON.stringify({ type: "error", id: msg.id, message: "session not found" })}\n`
+							);
+				},
+				undefined,
+				undefined,
+				version
+			);
+			await client.connect();
+			// The cached/preflight list still claims this session is alive.
+			expect(client.hasLiveSession("term-1")).toBe(true);
+			await expect(
+				client.attach(
+					"term-1",
+					() => {},
+					() => {},
+					"/tmp",
+					undefined,
+					"attach-existing-only"
+				)
+			).rejects.toMatchObject({ code: "TERMINAL_NOT_RUNNING" });
+			expect(frames.filter((frame) => frame.type === "create")).toHaveLength(0);
+			expect(client.getCallbackIds()).toEqual([]);
+		});
+		test(`attach-only accepts a live empty-buffer session on protocol ${version ?? 1}`, async () => {
+			client.disconnect();
+			daemon.server.close();
+			rmSync(TEST_SOCKET, { force: true });
+			const frames: Array<{ type: string }> = [];
+			daemon = await startMockDaemon(
+				(value) => frames.push(value as { type: string }),
+				undefined,
+				undefined,
+				version
+			);
+			await client.connect();
+			await client.attach(
+				"term-1",
+				() => {},
+				() => {},
+				"/tmp",
+				undefined,
+				"attach-existing-only"
+			);
+			expect(frames.slice(-2).map((frame) => frame.type)).toEqual(["attach", "list"]);
+			expect(client.getCallbackIds()).toEqual(["term-1"]);
+		});
+	}
+
+	for (const version of [null, DAEMON_PROTOCOL_VERSION]) {
+		test(`attach-only survives reconnect inventory/attach race on protocol ${version ?? 1}`, async () => {
+			client.disconnect();
+			daemon.server.close();
+			rmSync(TEST_SOCKET, { force: true });
+			const frames: Array<{ type: string }> = [];
+			let attaches = 0;
+			const exits: number[] = [];
+			daemon = await startMockDaemon(
+				(value) => {
+					const msg = value as { type: string; id: string };
+					frames.push(msg);
+					if (msg.type === "attach" && ++attaches > 1)
+						daemon
+							.lastSocket()
+							?.write(
+								`${JSON.stringify({ type: "error", id: msg.id, message: "session not found" })}\n`
+							);
+				},
+				undefined,
+				undefined,
+				version
+			);
+			await client.connect();
+			await client.attach(
+				"term-1",
+				() => {},
+				(code) => exits.push(code),
+				"/tmp",
+				undefined,
+				"attach-existing-only"
+			);
+			daemon.lastSocket()?.destroy();
+			for (let i = 0; i < 200 && exits.length === 0; i++) await Bun.sleep(10);
+			expect(exits).toEqual([-1]);
+			expect(attaches).toBe(2);
+			expect(frames.filter((frame) => frame.type === "create")).toEqual([]);
+			expect(client.getCallbackIds()).toEqual([]);
+		});
+	}
+
+	test("attach-only rejects non-missing daemon errors even when inventory still contains the PTY", async () => {
+		client.disconnect();
+		daemon.server.close();
+		rmSync(TEST_SOCKET, { force: true });
+		const frames: Array<{ type: string }> = [];
+		daemon = await startMockDaemon((value) => {
+			const msg = value as { type: string; id: string };
+			frames.push(msg);
+			if (msg.type === "attach")
+				daemon
+					.lastSocket()
+					?.write(`${JSON.stringify({ type: "error", id: msg.id, message: "attach refused" })}\n`);
+		});
+		await client.connect();
+		await expect(
+			client.attach(
+				"term-1",
+				() => {},
+				() => {},
+				"/tmp",
+				undefined,
+				"attach-existing-only"
+			)
+		).rejects.toMatchObject({ code: "TERMINAL_NOT_RUNNING" });
+		expect(frames.some((frame) => frame.type === "create")).toBe(false);
+	});
+
 	test("explicit disconnect notifies input lifecycle guards before a later reconnect", async () => {
 		const changes: boolean[] = [];
 		client.addConnectionStatusListener((connected) => changes.push(connected));
