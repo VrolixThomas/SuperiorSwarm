@@ -124,6 +124,16 @@ function apiFixture(type = "worktree") {
 			},
 		},
 		agentSessions: { list: { query: sessions } },
+		daemon: {
+			listSessions: mock(async () => ({
+				daemonSessions: [
+					{ id: "terminal-1", cwd: "/target", pid: 1 },
+					{ id: "terminal-2", cwd: "/target", pid: 2 },
+				],
+				liveSessions: [],
+				callbackIds: [],
+			})),
+		},
 	};
 	return { api: api as unknown as QueueNavigationApi, raw: api, review, sessions, workspace };
 }
@@ -256,4 +266,32 @@ test("missing PR branches are resolved before creating a review workspace", asyn
 	expect(review).toHaveBeenCalledWith(
 		expect.objectContaining({ sourceBranch: "feature", targetBranch: "main" })
 	);
+});
+
+test("missing live PTYs cannot be recreated by Queue navigation", async () => {
+	const { api, raw } = apiFixture();
+	const store = useTabStore.getState();
+	store.addTerminalTab("target", "/target", "Stored", "terminal-2");
+	store.setActiveWorkspace("current", "/current");
+	raw.daemon.listSessions.mockResolvedValue({
+		daemonSessions: [],
+		liveSessions: [],
+		callbackIds: [],
+	});
+	await expect(openQueueTarget(terminalTarget, api)).rejects.toThrow("no longer running");
+	expect(useTabStore.getState().activeWorkspaceId).toBe("current");
+	await expect(openQueueTarget({ type: "workspace", workspaceId: "target" }, api)).rejects.toThrow(
+		"no longer running"
+	);
+	expect(useTabStore.getState().activeWorkspaceId).toBe("current");
+});
+
+test("terminal service errors retain the current workspace", async () => {
+	const { api, raw } = apiFixture();
+	const store = useTabStore.getState();
+	store.addTerminalTab("target", "/target", "Stored", "terminal-2");
+	store.setActiveWorkspace("current", "/current");
+	raw.daemon.listSessions.mockRejectedValue(new Error("Disconnected"));
+	await expect(openQueueTarget(terminalTarget, api)).rejects.toThrow("could not be verified");
+	expect(useTabStore.getState().activeWorkspaceId).toBe("current");
 });

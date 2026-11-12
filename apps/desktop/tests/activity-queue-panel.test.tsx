@@ -242,3 +242,50 @@ describe("Queue presentation and actions", () => {
 		expect(button("Mark Waiting for input handled").disabled).toBe(false);
 	});
 });
+
+test("a project disappearing on refresh preserves an explicit empty filter", async () => {
+	const props = await mount();
+	const project = document.querySelectorAll("select")[1];
+	if (!project) throw new Error("Missing project filter");
+	await act(() => {
+		project.value = "p1";
+		project.dispatchEvent(new Event("change", { bubbles: true }));
+	});
+	await act(() => root?.render(<ActivityQueuePanel {...props} data={data([])} />));
+	expect(project.value).toBe("p1");
+	expect(project.selectedOptions[0]?.textContent).toBe("Selected project (no items)");
+	await act(() => {
+		project.value = "all";
+		project.dispatchEvent(new Event("change", { bubbles: true }));
+	});
+	expect(project.value).toBe("all");
+});
+
+test("Tab and Shift+Tab wrap inside the modal including its initial panel focus", async () => {
+	await mount();
+	const dialog = document.querySelector("dialog");
+	if (!dialog) throw new Error("Missing dialog");
+	const controls = dialog.querySelectorAll<HTMLElement>("button:not([disabled]),select,input");
+	const first = controls[0];
+	const last = controls[controls.length - 1];
+	if (!first || !last) throw new Error("Missing dialog controls");
+	dialog.focus();
+	await act(() =>
+		dialog.dispatchEvent(
+			new KeyboardEvent("keydown", { key: "Tab", shiftKey: true, bubbles: true, cancelable: true })
+		)
+	);
+	expect(document.activeElement).toBe(last);
+	await act(() =>
+		last?.dispatchEvent(
+			new KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true })
+		)
+	);
+	expect(document.activeElement).toBe(first);
+	await act(() =>
+		first?.dispatchEvent(
+			new KeyboardEvent("keydown", { key: "Tab", shiftKey: true, bubbles: true, cancelable: true })
+		)
+	);
+	expect(document.activeElement).toBe(last);
+});

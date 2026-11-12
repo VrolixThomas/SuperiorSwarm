@@ -113,6 +113,21 @@ export function ActivityQueuePanel({
 				event.preventDefault();
 				onClose();
 			}}
+			onKeyDown={(event) => {
+				if (event.key !== "Tab") return;
+				const controls = event.currentTarget.querySelectorAll<HTMLElement>(
+					"button:not([disabled]), select:not([disabled]), input:not([disabled])"
+				);
+				const first = controls[0];
+				const last = controls[controls.length - 1];
+				if (event.shiftKey && (event.target === first || event.target === event.currentTarget)) {
+					event.preventDefault();
+					last?.focus();
+				} else if (!event.shiftKey && event.target === last) {
+					event.preventDefault();
+					first?.focus();
+				}
+			}}
 			className="fixed m-0 flex-col rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] p-0 text-[var(--text)] shadow-[var(--shadow-lg)] backdrop:bg-black/20 open:flex focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
 			style={{
 				left: 8,
@@ -172,6 +187,9 @@ export function ActivityQueuePanel({
 							className={`${queueControlClass} max-w-[220px] border border-[var(--border)] bg-[var(--bg-elevated)]`}
 						>
 							<option value="all">All projects</option>
+							{projectId !== "all" && !projects.some(([id]) => id === projectId) && (
+								<option value={projectId}>Selected project (no items)</option>
+							)}
 							{projects.map(([value, label]) => (
 								<option key={value} value={value}>
 									{label}
