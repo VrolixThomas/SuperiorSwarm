@@ -12,6 +12,7 @@ import {
 	worktrees,
 } from "../../db/schema";
 import { checkoutBranchWorktree } from "../../git/operations";
+import { resolveWorkspaceCwd } from "../../services/workspace-cwd";
 import { assertWorktreePathAvailable } from "../../services/worktree-cleanup-job-store";
 import { resumeWorktreeServices } from "../../services/worktree-deletion-coordinator";
 import { symlinkSharedFiles } from "../../shared-files";
@@ -26,7 +27,7 @@ function worktreeBasePath(repoPath: string): string {
 export const workspacesRouter = router({
 	getById: publicProcedure.input(z.object({ id: z.string() })).query(({ input }) => {
 		const db = getDb();
-		return (
+		const row =
 			db
 				.select({
 					id: workspaces.id,
@@ -39,12 +40,20 @@ export const workspacesRouter = router({
 					isOrchestrator: workspaces.isOrchestrator,
 					cliPreset: workspaces.cliPreset,
 					baseBranch: worktrees.baseBranch,
+					prProvider: workspaces.prProvider,
+					prIdentifier: workspaces.prIdentifier,
+					worktreePath: worktrees.path,
+					folderPath: workspaces.folderPath,
+					repoPath: projects.repoPath,
 				})
 				.from(workspaces)
+				.innerJoin(projects, eq(workspaces.projectId, projects.id))
 				.leftJoin(worktrees, eq(workspaces.worktreeId, worktrees.id))
 				.where(eq(workspaces.id, input.id))
-				.get() ?? null
-		);
+				.get() ?? null;
+		if (!row) return null;
+		const { worktreePath, folderPath, repoPath, ...workspace } = row;
+		return { ...workspace, path: resolveWorkspaceCwd({ worktreePath, folderPath, repoPath }) };
 	}),
 
 	listByProject: publicProcedure

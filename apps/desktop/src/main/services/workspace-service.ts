@@ -30,6 +30,7 @@ import type {
 } from "../../shared/control-plane";
 import { ForbiddenError, NotFoundError, ResumeNotSupportedError } from "../../shared/control-plane";
 import type { ProjectWorkspaceTree, VisibleWorkspaceTreeRow } from "../../shared/types";
+import { reconcileAgentSources } from "../activity-queue/agent-source";
 import { CLI_PRESETS } from "../ai-review/cli-presets";
 import type { EventBus } from "../control-plane/event-bus";
 import {
@@ -744,16 +745,20 @@ export async function setStatus(
 	if (!ws) throw new NotFoundError(ctx.workspaceId);
 	if (ws.projectId !== ctx.projectId) throw new ForbiddenError();
 
-	db.update(workspaces)
-		.set({
-			currentPhase: input.phase,
-			statusText: input.statusText ?? null,
-			needs: input.needs ?? null,
-			statusUpdatedAt: now,
-			updatedAt: now,
-		})
-		.where(eq(workspaces.id, ctx.workspaceId))
-		.run();
+	db.transaction(() => {
+		db.update(workspaces)
+			.set({
+				currentPhase: input.phase,
+				statusText: input.statusText ?? null,
+				needs: input.needs ?? null,
+				statusUpdatedAt: now,
+				updatedAt: now,
+			})
+			.where(eq(workspaces.id, ctx.workspaceId))
+			.run();
+
+		reconcileAgentSources();
+	});
 
 	eventBus?.emit(ctx.projectId, {
 		event: "status",

@@ -431,8 +431,8 @@ app.whenReady().then(async () => {
 			updateOpenCodePluginConfig(port, agentNotifyToken);
 		}
 		alertListener.onEvent((event) => {
-			const normalizedEvent = agentSessionManager?.handleAgentEvent(event) ?? event;
-			broadcastToWindows("agent:alert", normalizedEvent);
+			const normalizedEvent = agentSessionManager?.handleAgentEvent(event);
+			if (normalizedEvent) broadcastToWindows("agent:alert", normalizedEvent);
 		});
 	} catch (err) {
 		log.error("[agent-notify] failed to start listener:", err);
