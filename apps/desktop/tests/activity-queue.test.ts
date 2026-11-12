@@ -1,7 +1,7 @@
 import "./preload-electron-mock";
 import { beforeAll, beforeEach, expect, test } from "bun:test";
 import { ActivityQueueService } from "../src/main/activity-queue/service";
-import { getDb } from "../src/main/db";
+import { closeDb, getDb } from "../src/main/db";
 import { activityQueueSources } from "../src/main/db/schema-activity-queue";
 import type { ActivityQueueObservation } from "../src/shared/activity-queue";
 import { setupTestDb } from "./helpers/db";
@@ -31,6 +31,7 @@ test("durable snapshot and handled state survive service recreation; duplicates 
 	let queue = new ActivityQueueService();
 	queue.observe(observation());
 	expect(queue.acknowledge({ id: "test", revision: 1 }).status).toBe("acknowledged");
+	closeDb();
 	queue = new ActivityQueueService();
 	queue.observe(observation("A", 2));
 	expect(queue.read("test")?.snapshot).toEqual({ version: 1, fingerprint: "A" });

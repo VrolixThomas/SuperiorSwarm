@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { ACTIVITY_QUEUE_KINDS } from "../../../shared/activity-queue";
+import { reconcileAgentSources } from "../../activity-queue/agent-source";
 import { getActivityQueueService } from "../../activity-queue/service";
 import { publicProcedure, router } from "../index";
 
@@ -14,8 +15,14 @@ export const activityQueueRouter = router({
 				})
 				.optional()
 		)
-		.query(({ input }) => getActivityQueueService().list(input)),
+		.query(({ input }) => {
+			reconcileAgentSources();
+			return getActivityQueueService().list(input);
+		}),
 	acknowledge: publicProcedure
 		.input(z.object({ id: z.string().min(1), revision: z.number().int().positive() }))
-		.mutation(({ input }) => getActivityQueueService().acknowledge(input)),
+		.mutation(({ input }) => {
+			reconcileAgentSources();
+			return getActivityQueueService().acknowledge(input);
+		}),
 });
