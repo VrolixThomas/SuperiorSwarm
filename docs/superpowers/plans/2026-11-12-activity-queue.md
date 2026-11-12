@@ -1,6 +1,6 @@
 # Activity queue: investigation and implementation plan
 
-Status: investigation complete; all three implementation lanes dispatched through SuperiorSwarm with `cli_preset=codex`. Implementation is not yet integrated or released.
+Status: all three Codex implementation lanes integrated locally on `activity-queue`, including the terminal attachment guard and native Electron regression. Build and focused acceptance checks pass. Live authenticated Codex session acceptance remains limited by the account/workspace-routing startup timeout reported below. Nothing has been pushed or released.
 
 Parent: `activity-queue`, workspace `ixF_z5zm1lQJvV0ltE9_p`, project `r5z5VhZC2XuA29LGyuTfy`.
 Source baseline: `17a316bf5fd73c0c6883128637398aa14bb81c05`.
@@ -105,7 +105,7 @@ Implementation dispatch receipts (2026-11-12, SuperiorSwarm returned `status: st
 | B: PR sources | `CKayMnkFL5BJEXfS78g55` | Pure classification/provider work now; consume A's contract for persistence integration |
 | C: UI/navigation | `WoCm5oOrxo4xswAXDU1SW` | Presentation/navigation work now; consume A's contract for typed tRPC integration |
 
-Next integration checkpoint: receive A's contract commit, confirm B/C use the same types and lifecycle semantics, then collect all implementation SHAs and run the integrated acceptance checks. Dispatch success is not implementation or test completion.
+Integration consumed A's three commits, B's two commits and C's three commits, then added C's atomic terminal guard (`ab721e01`, integrated as `a36512de`). The parent added readable source labels and real Electron coverage. Dependency-only cherry-picks in child worktrees were not duplicated.
 
 ## Added acceptance gate: Codex/Claude status reliability
 
@@ -124,4 +124,25 @@ Lane A owns producer mappings/setup and main-process processing. Lane C owns ren
 - Verify renderer remount/reconnect and main restart converge to authoritative state. Unattributed events must never fall back to the currently selected workspace. Keep explicit task phase distinct from terminal activity; no completion inference from silence or transport failure.
 - Inspect hook delivery failures, persisted auth-token reuse and listener-port changes for surviving terminals. Document transport/version limitations and distinguish controlled replay evidence from an actual long-lived native session check.
 
-The status gate remains pending until the lanes return their fixes and verification. Parent sent the reproduction, official event evidence and these acceptance conditions to both owners through SuperiorSwarm.
+The controlled status acceptance gate now passes: 55 sequential turns per provider exercise HTTP listener, manager and SQLite state, while the generated hook bridge is tested as a real process. Live authenticated CLI verification remains a separate limitation; these controlled fixtures do not claim a real 55-turn Codex/Claude conversation.
+
+## Integrated acceptance results
+
+- All eight original implementation commits integrated without conflicts. The remaining native navigation race is closed by an explicit `attach-existing-only` intent carried through every restored terminal pane, production preload/main IPC and the daemon client. Existing daemon attach is atomic and never creates a PTY; legacy empty-buffer success uses an ordered attach/list response barrier. Ordinary terminal creation retains its existing behavior.
+- Production desktop build passes after integration, including the final guard and UI polish.
+- Parent reran 95 core/agent/hook tests, including 55 turns for each provider. PR checks passed in isolated processes: 130 provider/classification/source tests, one actual poll integration test and one actual GitHub adapter test. Renderer queue/live/identity and existing tab-store checks passed. These groups overlap other lane coverage; their counts should not be summed as one unique total.
+- Parent reran all 321 focused guard tests: 54 daemon; 161 navigation/store; 62 IPC/legacy/native-PTY; 13 preload; 31 Terminal component. The native PTY case initially exposed missing executable mode on the dependency's spawn-helper after script-free installation; restoring the package's expected local executable mode made that test pass. No user configuration was modified.
+- New `tests/activity-queue-electron.test.ts` uses the production preload, real Electron/Chromium, real SQLite migrations and the production tRPC/router/service stack in an isolated home/profile. It verifies hook→UI updates, durable acknowledgment after DB reopen, duplicate/late Stop rejection, next-turn input after compaction, agent+PR rows together, Open preserving attention, and Escape/focus return. It additionally runs the real PTY/server/client through production terminal IPC, disposes a terminal inside atomic attach, and verifies the clone-safe failure plus zero replacement shells. This native regression passes.
+- Biome checks all 78 changed TypeScript/JSON source/test files with zero errors; three existing non-null assertion warnings remain. Diff whitespace checks pass.
+- Final TypeScript checks retain inherited failures: main 61 versus baseline 66; renderer 81 versus 86; tests 203 versus 208; preload 0. Comparing diagnostic file/code multisets gives no new diagnostics. The five removed errors were in PR source typing; unrelated baseline errors were not broadened into this feature.
+- Dependency installation initially stalled at resolution; parent reused an isolated filesystem clone of the same-lockfile lane dependencies. Native testing used the existing Electron 40.8.5 runtime and an ABI-compatible local SQLite addon. No lockfile or global profile changes were needed.
+
+Reproduce from `apps/desktop`: `bun run build`, then `bun test tests/activity-queue-electron.test.ts` with the repository's native dependencies installed. `ELECTRON_OVERRIDE_DIST_PATH` can select an existing compatible Electron distribution; `SS_KEEP_QUEUE_FIXTURE=1` retains the disposable profile/result/screenshot for inspection. Focused tests use the existing `tests/preload-electron-mock.ts`; native Electron itself does not use that shim.
+
+Remaining limits:
+
+- A newly dispatched reviewer failed twice before starting: Codex `account/read` reported `workspace routing discovery timed out (code -32603)`. Parent verified the failure, retried once in the same terminal, then performed the source review locally. The other Codex worker completed the guard. A successful SuperiorSwarm dispatch receipt was not counted as a running or completed review.
+- Live Codex hook trust/reload and real authenticated CLI sessions were not changed or claimed verified. Supported hooks and processing are covered by generated-script, transport, manager and native UI fixtures. Changed nonmanaged Codex hooks may require review in `/hooks` after installation. Existing terminal processes may still run an older CLI version.
+- Hooks emitted while the whole app/listener is unavailable are not replayed. Legacy payloads without turn/producer metadata retain arrival-order limitations. Hermes ingestion/recovery is deferred.
+- GitHub PR updates cover head/state/draft/current requests, latest submitted review and latest conversation comment/count. Older edits and inline-thread resolution are not comprehensively observed. Bitbucket covers head/state/draft/participants/comment count; edits and unchanged-participant repeated reviews are not comprehensive. UI labels describe observed activity rather than claiming complete provider history.
+- The repository's optional graphify post-commit hook cannot rebuild because its Python package is unavailable; source commits and verification succeed.
