@@ -8,6 +8,7 @@ import {
 	type AgentSessionStatusEvent,
 	type AgentSleepSettings,
 } from "../../shared/agent-session";
+import { observeValidatedAgentEvent } from "../activity-queue/agent-source";
 import { getDb } from "../db";
 import { agentSessions, terminalSessions, workspaces } from "../db/schema";
 import type { DaemonClient } from "../terminal/daemon-client";
@@ -168,10 +169,11 @@ export class AgentSessionManager {
 		return session;
 	}
 
-	handleAgentEvent(event: AgentEvent): AgentEvent {
-		if (!isAgentProvider(event.agent)) return event;
+	handleAgentEvent(event: AgentEvent): AgentEvent | null {
+		if (!isAgentProvider(event.agent)) return null;
+		if (!observeValidatedAgentEvent(event)) return null;
 		const resolved = this.resolveEventTarget(event, event.agent);
-		if (!resolved) return event;
+		if (!resolved) return null;
 
 		const existing = this.getSession(resolved.terminalId);
 		const now = new Date(event.timestamp);
@@ -184,9 +186,22 @@ export class AgentSessionManager {
 				state = "needs-input";
 				break;
 			case "task-complete":
-				state = existing?.state === "hibernating" ? "hibernating" : "idle";
+				state =
+					existing?.state === "hibernating" || existing?.state === "hibernated"
+						? existing.state
+						: "idle";
 				break;
 		}
+
+		// Duplicate Stop delivery must not postpone sleep or wake a hibernated session.
+		const idleSince =
+			state === "idle"
+				? existing?.state === "idle"
+					? (existing.idleSince ?? now)
+					: now
+				: state === "hibernating" || state === "hibernated"
+					? (existing?.idleSince ?? null)
+					: null;
 
 		const providerSessionId =
 			event.providerSessionId || existing?.providerSessionId || resolved.providerSessionId || null;
@@ -202,7 +217,7 @@ export class AgentSessionManager {
 				keepRunning: existing?.keepRunning ?? false,
 				skipPermissions: existing?.skipPermissions ?? false,
 				lastEventAt: now,
-				idleSince: state === "idle" ? now : null,
+				idleSince,
 				hibernatedAt: existing?.hibernatedAt ?? null,
 				lastError: null,
 				createdAt: now,
@@ -216,7 +231,7 @@ export class AgentSessionManager {
 					providerSessionId,
 					state,
 					lastEventAt: now,
-					idleSince: state === "idle" ? now : null,
+					idleSince,
 					lastError: null,
 					updatedAt: now,
 				},
@@ -448,7 +463,8 @@ export class AgentSessionManager {
 		provider: AgentProvider
 	): { terminalId: string; workspaceId: string; providerSessionId: string | null } | null {
 		let terminalId = event.terminalId || event.sessionId;
-		let workspaceId = event.workspaceId;
+		let workspaceId =
+			event.workspaceId || (terminalId ? this.getSession(terminalId)?.workspaceId : "") || "";
 
 		if (!terminalId && event.providerSessionId) {
 			const known = getDb()

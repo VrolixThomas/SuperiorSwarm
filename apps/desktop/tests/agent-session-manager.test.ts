@@ -429,7 +429,10 @@ describe("AgentSessionManager", () => {
 				skipPermissions: false,
 			});
 		}
-		fixture.manager.handleAgentEvent(event("term-1", workspaceId));
+		fixture.manager.handleAgentEvent({
+			...event("term-1", workspaceId),
+			providerSessionId: "term-1-provider",
+		});
 		await fixture.manager.setVisible("term-2", true);
 		const internal = fixture.manager as unknown as {
 			timers: Map<string, ReturnType<typeof setTimeout>>;
