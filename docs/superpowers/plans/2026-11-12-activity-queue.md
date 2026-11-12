@@ -1,6 +1,6 @@
 # Activity queue: investigation and implementation plan
 
-Status: investigation complete; implementation handoff defined below. Implementation is not yet integrated or released.
+Status: investigation complete; all three implementation lanes dispatched through SuperiorSwarm with `cli_preset=codex`. Implementation is not yet integrated or released.
 
 Parent: `activity-queue`, workspace `ixF_z5zm1lQJvV0ltE9_p`, project `r5z5VhZC2XuA29LGyuTfy`.
 Source baseline: `17a316bf5fd73c0c6883128637398aa14bb81c05`.
@@ -96,3 +96,13 @@ Three Codex investigation sessions were started and verified in the correct proj
 Research results: lane A ran 80 existing tests successfully (hook listener, Codex hook mapping, Hermes view model); five additional suites could not load missing dependencies. Lane B's seven selected suites could not load `drizzle-orm`. Lane C completed a read-only navigation/accessibility audit. These are investigation checks, not evidence that the new queue works. Implementation lanes may install dependencies with Bun using the existing lockfile; report setup or baseline failures separately from changed behavior.
 
 The implementation prompts authorize local implementation, focused validation and scoped commits; no merges, pushes, releases, review submissions or unrelated repairs. The parent owns final integration. Because legacy workspace `cliPreset` can remain `claude` after a Codex dispatch, each implementation launch must explicitly set `cli_preset=codex`; do not use a legacy resume fallback that could select Claude.
+
+Implementation dispatch receipts (2026-11-12, SuperiorSwarm returned `status: started`):
+
+| Lane | Codex terminal/session ID | Contract dependency |
+| --- | --- | --- |
+| A: core + agents | `CFFIXWdw8Vlq8QIb1xlDq` | Publish contract/API commit first, then continue core implementation |
+| B: PR sources | `CKayMnkFL5BJEXfS78g55` | Pure classification/provider work now; consume A's contract for persistence integration |
+| C: UI/navigation | `WoCm5oOrxo4xswAXDU1SW` | Presentation/navigation work now; consume A's contract for typed tRPC integration |
+
+Next integration checkpoint: receive A's contract commit, confirm B/C use the same types and lifecycle semantics, then collect all implementation SHAs and run the integrated acceptance checks. Dispatch success is not implementation or test completion.
