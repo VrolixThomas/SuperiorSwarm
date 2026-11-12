@@ -2,6 +2,7 @@ import type { TerminalDataMeta } from "../../src/shared/daemon-protocol";
 
 export type Data = (data: string, meta?: TerminalDataMeta) => void;
 export class LegacyDaemon {
+	setAttachIntent(_id: string, _intent: string) {}
 	supportsTerminalSnapshots = false;
 	raw = "";
 	onData: Data | undefined;

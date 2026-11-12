@@ -1,11 +1,18 @@
 import { TerminalReplayBuffer } from "../../daemon/terminal-replay-buffer";
 import type { TerminalDataMeta } from "../../shared/daemon-protocol";
 import { isShellProcess } from "../../shared/lib/terminal-modes";
+import type { TerminalCreateIntent } from "../../shared/terminal-create";
 import type { DaemonClient } from "./daemon-client";
 
 type Transport = Pick<
 	DaemonClient,
-	"create" | "attach" | "detach" | "dispose" | "resize" | "supportsTerminalSnapshots"
+	| "create"
+	| "attach"
+	| "setAttachIntent"
+	| "detach"
+	| "dispose"
+	| "resize"
+	| "supportsTerminalSnapshots"
 >;
 type Viewer = {
 	onData: (data: string, meta?: TerminalDataMeta) => void;
@@ -15,6 +22,7 @@ type Batch = { chunks: string[]; chars: number };
 const MAX_PENDING_CHARS = 4_000_000;
 
 interface LegacySession {
+	intent?: TerminalCreateIntent;
 	id: string;
 	cols: number;
 	rows: number;
@@ -56,7 +64,7 @@ export class TerminalViewSessions {
 	}
 
 	async attach(...args: Parameters<Transport["attach"]>): Promise<void> {
-		const [id, onData, onExit, cwd, env] = args;
+		const [id, onData, onExit, cwd, env, intent] = args;
 		if (this.daemon.supportsTerminalSnapshots) {
 			this.drop(id);
 			return this.daemon.attach(...args);
@@ -66,6 +74,33 @@ export class TerminalViewSessions {
 			existing.viewer = undefined;
 			existing.batch = undefined;
 			const version = ++existing.version;
+			if (intent === "attach-existing-only") {
+				existing.intent = intent;
+				// The retained stream cannot authorize a new Queue view. Atomically
+				// reattach with no fallback, preserving our complete legacy replay
+				// instead of replacing it with the daemon's truncated raw suffix.
+				let confirming = true;
+				try {
+					await this.daemon.attach(
+						id,
+						(data, meta) => {
+							if (!(confirming && meta?.replay)) this.receive(existing, data, meta);
+						},
+						(code) => this.exit(id, existing, code),
+						cwd,
+						env,
+						intent
+					);
+				} catch (error) {
+					if (this.legacy.get(id) === existing) this.drop(id);
+					throw error;
+				} finally {
+					confirming = false;
+				}
+			} else if (existing.intent === "attach-existing-only") {
+				this.daemon.setAttachIntent(id, "create-or-attach");
+				existing.intent = intent;
+			}
 			await this.enqueue(existing, async () => {
 				if (existing.version !== version) return;
 				existing.viewer = { onData, onExit };
@@ -75,13 +110,15 @@ export class TerminalViewSessions {
 			return;
 		}
 		const entry = this.start(id, { onData, onExit });
+		entry.intent = intent;
 		try {
 			await this.daemon.attach(
 				id,
 				(data, meta) => this.receive(entry, data, meta),
 				(code) => this.exit(id, entry, code),
 				cwd,
-				env
+				env,
+				intent
 			);
 		} catch (error) {
 			if (this.legacy.get(id) === entry) this.drop(id);

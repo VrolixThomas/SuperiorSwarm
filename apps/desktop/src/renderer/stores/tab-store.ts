@@ -5,6 +5,7 @@ import type { HermesSessionPane, HermesSessionSelection } from "../../shared/her
 import type { Pane } from "../../shared/pane-types";
 import { formatPrIdentifier } from "../../shared/pr-identifier";
 import type { ReviewScope } from "../../shared/review-types";
+import type { TerminalCreateIntent } from "../../shared/terminal-create";
 import { type TicketScope, isTicketScope } from "../../shared/tickets";
 import type { SidebarSegment } from "../../shared/types";
 import { basename } from "../lib/format";
@@ -281,6 +282,8 @@ function removeHermesSessionFromHistory(
 
 interface TabStore {
 	// UI-level state (not pane-level)
+	/** Ephemeral intent for existing tabs restored by navigation; new tabs retain normal creation. */
+	terminalCreateIntents: Record<string, TerminalCreateIntent>;
 	activeWorkspaceId: string | null;
 	activeWorkspaceCwd: string;
 	workspaceBackStack: NavigationHistoryEntry[];
@@ -338,11 +341,24 @@ interface TabStore {
 	setActiveWorkspace: (
 		workspaceId: string,
 		cwd: string,
-		options?: { rightPanel?: RightPanelState; recordHistory?: boolean }
+		options?: {
+			rightPanel?: RightPanelState;
+			recordHistory?: boolean;
+			terminalIntent?: TerminalCreateIntent;
+		}
 	) => void;
-	activateReviewWorkspace: (workspaceId: string, cwd: string, prCtx: PRContext) => void;
+	activateReviewWorkspace: (
+		workspaceId: string,
+		cwd: string,
+		prCtx: PRContext,
+		terminalIntent?: TerminalCreateIntent
+	) => void;
 	/** Navigate directly, without restoring an intermediate workspace from a sidebar segment. */
-	navigateToWorkspace: (workspaceId: string, cwd: string) => void;
+	navigateToWorkspace: (
+		workspaceId: string,
+		cwd: string,
+		terminalIntent?: TerminalCreateIntent
+	) => void;
 	canGoBackWorkspace: () => boolean;
 	canGoForwardWorkspace: () => boolean;
 	goBackWorkspace: () => boolean;
@@ -587,6 +603,7 @@ function findTabInWorkspace(
 
 export const useTabStore = create<TabStore>()((set, get) => ({
 	// UI-level state
+	terminalCreateIntents: {},
 	activeWorkspaceId: null,
 	activeWorkspaceCwd: "",
 	workspaceBackStack: [],
@@ -823,7 +840,8 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 		get().setActiveWorkspace(workspaceId, cwd, { recordHistory: false });
 	},
 
-	navigateToWorkspace: (workspaceId, cwd) => {
+	navigateToWorkspace: (workspaceId, cwd, terminalIntent) => {
+		set({ terminalCreateIntents: navigationTerminalIntents(get(), workspaceId, terminalIntent) });
 		const state = get();
 		if (state.sidebarSegment === "hermes" && state.selectedHermesSession) {
 			set({
@@ -838,10 +856,12 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 		set({ sidebarSegment: segmentForWorkspace(state.workspaceMetadata[workspaceId]) });
 		get().setActiveWorkspace(workspaceId, cwd, {
 			recordHistory: state.sidebarSegment !== "hermes" || !state.selectedHermesSession,
+			terminalIntent,
 		});
 	},
 
-	activateReviewWorkspace: (workspaceId, cwd, prCtx) => {
+	activateReviewWorkspace: (workspaceId, cwd, prCtx, terminalIntent) => {
+		set({ terminalCreateIntents: navigationTerminalIntents(get(), workspaceId, terminalIntent) });
 		const resolvedPrCtx = { ...prCtx, repoPath: cwd };
 		get().setWorkspaceMetadata(workspaceId, {
 			type: "review",
@@ -864,17 +884,25 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 						: state.activeWorkspaceBySegment.tickets,
 			},
 		}));
-		get().navigateToWorkspace(workspaceId, cwd);
+		get().navigateToWorkspace(workspaceId, cwd, terminalIntent);
 		useReviewModeStore.getState().open(workspaceId, resolvedPrCtx);
 	},
 
 	setActiveWorkspace: (workspaceId, cwd, options) => {
+		set({
+			terminalCreateIntents: navigationTerminalIntents(get(), workspaceId, options?.terminalIntent),
+		});
 		if (
 			options?.rightPanel?.open &&
 			options.rightPanel.mode === "pr-review" &&
 			options.rightPanel.prCtx
 		) {
-			get().activateReviewWorkspace(workspaceId, cwd, options.rightPanel.prCtx);
+			get().activateReviewWorkspace(
+				workspaceId,
+				cwd,
+				options.rightPanel.prCtx,
+				options.terminalIntent
+			);
 			return;
 		}
 
@@ -1654,3 +1682,26 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 usePaneStore.subscribe(() => {
 	useTabStore.setState((s) => ({ _paneVersion: s._paneVersion + 1 }));
 });
+
+/** Capture every existing pane and review terminal before any activation can mount it. */
+function navigationTerminalIntents(
+	state: Pick<
+		ReturnType<typeof useTabStore.getState>,
+		"terminalCreateIntents" | "getTabsByWorkspace"
+	>,
+	workspaceId: string,
+	intent?: TerminalCreateIntent
+): Record<string, TerminalCreateIntent> {
+	const next = { ...state.terminalCreateIntents };
+	const ids = state
+		.getTabsByWorkspace(workspaceId)
+		.filter((tab) => tab.kind === "terminal")
+		.map((tab) => tab.id);
+	const review = useReviewModeStore.getState().terminals[workspaceId];
+	if (review) ids.push(review.tabId);
+	for (const id of ids) {
+		if (intent === "attach-existing-only") next[id] = intent;
+		else delete next[id];
+	}
+	return next;
+}

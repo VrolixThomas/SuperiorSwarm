@@ -374,7 +374,12 @@ export function Terminal({
 				creating = true;
 				reconnectPending = false;
 				api.terminal
-					.create(id, cwdRef.current || undefined, workspaceId)
+					.create(
+						id,
+						cwdRef.current || undefined,
+						workspaceId,
+						useTabStore.getState().terminalCreateIntents[id]
+					)
 					.then(({ wasAttached }) => {
 						if (disposed) return;
 						created = true;

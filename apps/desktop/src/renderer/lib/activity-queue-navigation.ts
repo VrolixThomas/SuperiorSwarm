@@ -22,7 +22,7 @@ const navigationApi: QueueNavigationApi = {
 	daemon: { listSessions: () => window.electron.daemon.listSessions() },
 };
 
-/** Existing layouts remount their terminals. Refuse stale tabs before that can recreate a shell. */
+/** Early feedback only; mount carries attach-only intent through to the atomic daemon attach. */
 async function requireExistingTerminals(
 	workspaceId: string,
 	review: boolean,
@@ -73,7 +73,7 @@ function activateWorkspace(workspace: Awaited<ReturnType<typeof resolveWorkspace
 		prProvider: workspace.prProvider ?? undefined,
 		prIdentifier: workspace.prIdentifier ?? undefined,
 	});
-	store.navigateToWorkspace(workspace.id, workspace.path);
+	store.navigateToWorkspace(workspace.id, workspace.path, "attach-existing-only");
 	useProjectStore.getState().closeSettings();
 }
 
@@ -134,16 +134,21 @@ export async function openQueueTarget(
 			});
 			const cwd = workspace.worktreePath ?? project.repoPath;
 			await requireExistingTerminals(workspace.id, true, api);
-			useTabStore.getState().activateReviewWorkspace(workspace.id, cwd, {
-				provider: target.provider,
-				owner: target.owner,
-				repo: target.repo,
-				number: target.number,
-				title: target.title ?? details?.title ?? identifier,
-				sourceBranch,
-				targetBranch,
-				repoPath: cwd,
-			});
+			useTabStore.getState().activateReviewWorkspace(
+				workspace.id,
+				cwd,
+				{
+					provider: target.provider,
+					owner: target.owner,
+					repo: target.repo,
+					number: target.number,
+					title: target.title ?? details?.title ?? identifier,
+					sourceBranch,
+					targetBranch,
+					repoPath: cwd,
+				},
+				"attach-existing-only"
+			);
 			useProjectStore.getState().closeSettings();
 			return { workspaceId: workspace.id };
 		})();

@@ -24,6 +24,7 @@ import {
 	SUPERIORSWARM_DIR,
 	type TerminalDataMeta,
 } from "../../shared/daemon-protocol";
+import { TerminalCreateError, type TerminalCreateIntent } from "../../shared/terminal-create";
 import {
 	FILE_PASTE_MAX_BYTES,
 	type FileDelivery,
@@ -65,6 +66,7 @@ interface OutboundQueueEntry {
 }
 
 interface TerminalCallbacks {
+	intent?: TerminalCreateIntent;
 	onData: (data: string, meta?: TerminalDataMeta) => void;
 	onExit: (code: number) => void;
 	cwd?: string;
@@ -554,16 +556,37 @@ export class DaemonClient {
 		onData: (data: string, meta?: TerminalDataMeta) => void,
 		onExit: (code: number) => void,
 		cwd?: string,
-		env?: Record<string, string>
+		env?: Record<string, string>,
+		intent: TerminalCreateIntent = "create-or-attach"
 	): Promise<void> {
 		this.legacyFileTargets.delete(id);
-		this.callbacks.set(id, { onData, onExit, cwd, env });
+		const callbacks = { onData, onExit, cwd, env, intent };
+		this.callbacks.set(id, callbacks);
+		const socket = this.socket;
 		try {
 			this.send({ type: "attach", id, ...(this.snapshotCapable ? { snapshot: true } : {}) });
+			if (intent === "attach-existing-only") {
+				// attach is already an atomic lookup + listener registration, never a
+				// create, on every supported daemon. Older daemons do not acknowledge
+				// empty-buffer attaches. Their ordered list reply is a barrier AFTER
+				// attach (and its error), not a preflight decision to create a shell.
+				const sessions = await this.listSessionsStrict();
+				if (this.socket !== socket || !this.isConnected)
+					throw new TerminalCreateError("DAEMON_UNAVAILABLE");
+				if (this.callbacks.get(id) !== callbacks || !sessions.some((s) => s.id === id))
+					throw new TerminalCreateError("TERMINAL_NOT_RUNNING");
+				this.liveSessions.add(id);
+			}
 		} catch (err) {
-			this.callbacks.delete(id);
+			if (this.callbacks.get(id) === callbacks) this.callbacks.delete(id);
 			throw err;
 		}
+	}
+
+	/** A retained legacy stream can change viewer intent without replaying raw history. */
+	setAttachIntent(id: string, intent: TerminalCreateIntent): void {
+		const callbacks = this.callbacks.get(id);
+		if (callbacks) callbacks.intent = intent;
 	}
 
 	/**
@@ -897,7 +920,11 @@ export class DaemonClient {
 				this.legacyFileTargets.delete(msg.id);
 				console.error(`[daemon-client] error for terminal ${msg.id}: ${msg.message}`);
 				// If attach failed because the session wasn't found, fall back to create
-				if (msg.message === "session not found" && this.callbacks.has(msg.id)) {
+				if (
+					msg.message === "session not found" &&
+					this.callbacks.has(msg.id) &&
+					this.callbacks.get(msg.id)?.intent !== "attach-existing-only"
+				) {
 					const stored = this.callbacks.get(msg.id);
 					try {
 						this.send({ type: "create", id: msg.id, cwd: stored?.cwd, env: stored?.env });

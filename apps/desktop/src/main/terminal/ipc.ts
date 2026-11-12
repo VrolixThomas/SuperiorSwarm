@@ -45,13 +45,20 @@ export function setupTerminalIPC(
 			event,
 			id: unknown,
 			_cwd: unknown,
-			workspaceId: unknown
+			workspaceId: unknown,
+			intent: unknown = "create-or-attach"
 		): Promise<TerminalCreateResult> => {
 			let insertedSessionRow = false;
 			let owner: ReturnType<typeof terminalFileOwners.attach> | undefined;
 			try {
 				assertNonEmptyString(id, "id");
-				if (daemonClient.quitting) return { wasAttached: false };
+				if (intent !== "create-or-attach" && intent !== "attach-existing-only")
+					throw new TerminalCreateError("TERMINAL_CREATE_FAILED");
+				const attachOnly = intent === "attach-existing-only";
+				if (daemonClient.quitting) {
+					if (attachOnly) throw new TerminalCreateError("DAEMON_UNAVAILABLE");
+					return { wasAttached: false };
+				}
 				const window = BrowserWindow.fromWebContents(event.sender);
 				if (!window) throw new TerminalCreateError("TERMINAL_NOT_AUTHORIZED");
 				let caller: FileCaller;
@@ -70,6 +77,7 @@ export function setupTerminalIPC(
 					typeof workspaceId === "string" && workspaceId.length > 0 ? workspaceId : undefined;
 				const db = getDb();
 				const row = db.select().from(terminalSessions).where(eq(terminalSessions.id, id)).get();
+				if (attachOnly && !row) throw new TerminalCreateError("TERMINAL_NOT_RUNNING");
 				let wasAttached = daemonClient.hasLiveSession(id);
 				if ((row && row.workspaceId !== wsId) || (wasAttached && !row))
 					throw new TerminalCreateError("TERMINAL_WORKSPACE_MISMATCH");
@@ -80,7 +88,7 @@ export function setupTerminalIPC(
 				if (wsId) {
 					owner = terminalFileOwners.attach(id, caller, wsId, cwd);
 				}
-				if (wasAttached) {
+				if (wasAttached || attachOnly) {
 					const sessions = await daemonClient.listSessionsStrict();
 					const live = sessions.find((session) => session.id === id);
 					if (live && canonicalWorkspaceDirectory(live.cwd) !== cwd)
@@ -104,7 +112,8 @@ export function setupTerminalIPC(
 						.get();
 					if (row && (!current || current.workspaceId !== wsId || current.cwd !== row.cwd))
 						throw new TerminalCreateError("TERMINAL_WORKSPACE_MISMATCH");
-					insertedSessionRow = ensureTerminalSessionRow({ id, workspaceId: wsId, cwd });
+					if (!attachOnly)
+						insertedSessionRow = ensureTerminalSessionRow({ id, workspaceId: wsId, cwd });
 				}
 				const onData = (data: string, meta?: TerminalDataMeta) => {
 					let deliveryMeta = meta;
@@ -136,8 +145,9 @@ export function setupTerminalIPC(
 				if (notifyPort) env["AGENT_NOTIFY_PORT"] = String(notifyPort);
 				if (wsId) env["AGENT_NOTIFY_WORKSPACE_ID"] = wsId;
 				if (notifyToken) env["AGENT_NOTIFY_TOKEN"] = notifyToken;
-				if (wasAttached) {
-					await views.attach(id, onData, onExit, cwd, env);
+				if (wasAttached || attachOnly) {
+					await views.attach(id, onData, onExit, cwd, env, intent);
+					wasAttached = true;
 				} else {
 					await views.create(id, cwd, onData, onExit, env);
 					incrementCounter(db, "lifetimeSessionsStarted");

@@ -302,3 +302,61 @@ test("a replay resize failure releases completion instead of leaving input suppr
 	terminal.resize = original;
 	terminal.dispose();
 });
+
+test("Queue checks cached legacy streams atomically while preserving complete replay", async () => {
+	const daemon = new LegacyDaemon();
+	const sessions = new TerminalViewSessions(daemon);
+	const first = view();
+	const second = view();
+	const intents: unknown[] = [];
+	daemon.setAttachIntent = (_id, intent) => {
+		intents.push(intent);
+	};
+	const attach = daemon.attach.bind(daemon);
+	let missing = false;
+	daemon.attach = async (...args: Parameters<typeof attach>) => {
+		intents.push((args as unknown[])[5]);
+		if (missing) throw new Error("session not found");
+		await attach(...args);
+	};
+	try {
+		await sessions.create("chat", "/tmp", first.onData, first.onExit);
+		daemon.emit("\x1b[?1049h\x1b[?1003h\x1b[?1006hREADY");
+		await until(() => first.terminal.modes.mouseTrackingMode === "any");
+		sessions.detach("chat");
+		daemon.raw = "truncated suffix";
+		await sessions.attach(
+			"chat",
+			second.onData,
+			second.onExit,
+			"/tmp",
+			undefined,
+			"attach-existing-only"
+		);
+		await until(() => second.terminal.modes.mouseTrackingMode === "any");
+		expect(second.terminal.buffer.active.type).toBe("alternate");
+		expect(intents).toEqual(["attach-existing-only"]);
+		expect(second.frames.some((frame) => frame.data.includes("truncated suffix"))).toBe(false);
+		// An explicit ordinary restoration also resets the retained stream policy.
+		sessions.detach("chat");
+		await sessions.attach("chat", second.onData, second.onExit, "/tmp");
+		expect(intents).toEqual(["attach-existing-only", "create-or-attach"]);
+		sessions.detach("chat");
+		missing = true;
+		await expect(
+			sessions.attach(
+				"chat",
+				second.onData,
+				second.onExit,
+				"/tmp",
+				undefined,
+				"attach-existing-only"
+			)
+		).rejects.toThrow("session not found");
+		expect(sessions.diagnostics("chat")).toBeNull();
+	} finally {
+		first.terminal.dispose();
+		second.terminal.dispose();
+		sessions.dispose("chat");
+	}
+});

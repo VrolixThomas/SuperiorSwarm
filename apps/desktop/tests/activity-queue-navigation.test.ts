@@ -10,6 +10,7 @@ beforeEach(() => {
 		activeWorkspaceCwd: "",
 		sidebarSegment: "repos",
 		workspaceMetadata: {},
+		terminalCreateIntents: {},
 		activeWorkspaceBySegment: { repos: null, tickets: null, prs: null, hermes: null },
 		workspaceBackStack: [],
 		workspaceForwardStack: [],
@@ -174,6 +175,16 @@ describe("Queue source targeting", () => {
 		const { api } = apiFixture();
 		const destination = await openQueueTarget(terminalTarget, api);
 		expect(destination).toEqual({ workspaceId: "target", terminalId: "terminal-2" });
+		expect(useTabStore.getState().terminalCreateIntents).toEqual({
+			"terminal-1": "attach-existing-only",
+			"terminal-2": "attach-existing-only",
+		});
+		store.addTerminalTab("target", "/target", "Explicit new shell", "new-terminal");
+		expect(useTabStore.getState().terminalCreateIntents["new-terminal"]).toBeUndefined();
+		store.removeTab("new-terminal");
+		// Explicit ordinary navigation restores the usual creation behavior.
+		store.navigateToWorkspace("target", "/target");
+		expect(useTabStore.getState().terminalCreateIntents).toEqual({});
 		expect(usePaneStore.getState().getFocusedPane("target")?.activeTabId).toBe("terminal-2");
 		expect(
 			store
@@ -191,6 +202,7 @@ describe("Queue source targeting", () => {
 		expect(useTabStore.getState().sidebarSegment).toBe("prs");
 		expect(useReviewModeStore.getState().active?.workspaceId).toBe("target");
 		expect(useReviewModeStore.getState().drawerOpen).toBe(true);
+		expect(useTabStore.getState().terminalCreateIntents["terminal-2"]).toBe("attach-existing-only");
 		expect(useTabStore.getState().getTabsByWorkspace("target")).toHaveLength(0);
 	});
 	test("missing terminal and changed provider session preserve active work", async () => {
@@ -294,4 +306,35 @@ test("terminal service errors retain the current workspace", async () => {
 	raw.daemon.listSessions.mockRejectedValue(new Error("Disconnected"));
 	await expect(openQueueTarget(terminalTarget, api)).rejects.toThrow("could not be verified");
 	expect(useTabStore.getState().activeWorkspaceId).toBe("current");
+});
+
+test("Queue marks terminals added during preflight before any destination activation", async () => {
+	const store = useTabStore.getState();
+	store.setActiveWorkspace("target", "/target");
+	store.addTerminalTab("target", "/target", "First", "terminal-1");
+	store.setActiveWorkspace("previous", "/previous");
+	const { api, raw } = apiFixture();
+	raw.daemon.listSessions.mockImplementationOnce(async () => {
+		store.addTerminalTab("target", "/target", "Restored while awaiting inventory", "terminal-2");
+		return {
+			daemonSessions: [{ id: "terminal-1", cwd: "/target", pid: 1 }],
+			liveSessions: [],
+			callbackIds: [],
+		};
+	});
+	const observations: boolean[] = [];
+	const unsubscribe = useTabStore.subscribe((state) => {
+		if (state.activeWorkspaceId === "target")
+			observations.push(
+				state.terminalCreateIntents["terminal-1"] === "attach-existing-only" &&
+					state.terminalCreateIntents["terminal-2"] === "attach-existing-only"
+			);
+	});
+	try {
+		await openQueueTarget({ type: "workspace", workspaceId: "target" }, api);
+		expect(observations.length).toBeGreaterThan(0);
+		expect(observations.every(Boolean)).toBe(true);
+	} finally {
+		unsubscribe();
+	}
 });

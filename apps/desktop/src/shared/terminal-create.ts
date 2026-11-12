@@ -1,9 +1,14 @@
 import { WorkspaceError, workspaceErrorMessages } from "./workspace-errors";
 
+/** Queue navigation must never replace an absent PTY with a new shell. */
+export type TerminalCreateIntent = "create-or-attach" | "attach-existing-only";
+
 const messages = {
 	...workspaceErrorMessages,
 	TERMINAL_WORKSPACE_MISMATCH:
 		"Terminal workspace mismatch. Reopen the terminal from its workspace.",
+	TERMINAL_NOT_RUNNING:
+		"This terminal is no longer running. Queue will not create a replacement shell.",
 	TERMINAL_NOT_AUTHORIZED: "This terminal is not authorized for this window.",
 	DAEMON_UNAVAILABLE: "The background terminal daemon could not be reached.",
 	TERMINAL_CREATE_FAILED:
