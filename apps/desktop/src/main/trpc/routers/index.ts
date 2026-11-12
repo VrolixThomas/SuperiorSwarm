@@ -1,4 +1,5 @@
 import { router } from "../index";
+import { activityQueueRouter } from "./activity-queue";
 import { agentLaunchRouter } from "./agent-launch";
 import { agentSessionsRouter } from "./agent-sessions";
 import { aiReviewRouter } from "./ai-review";
@@ -33,6 +34,7 @@ import { updatesRouter } from "./updates";
 import { workspacesRouter } from "./workspaces";
 
 export const appRouter = router({
+	activityQueue: activityQueueRouter,
 	auth: authRouter,
 	agentLaunch: agentLaunchRouter,
 	aiReview: aiReviewRouter,
