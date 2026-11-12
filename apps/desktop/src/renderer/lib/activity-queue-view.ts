@@ -32,17 +32,17 @@ export function queueAge(occurredAt: number, now = Date.now()): string {
 }
 
 export function queueLocation(item: ActivityQueueItem): string {
-	const project = item.projectName ?? item.projectId;
+	const project = item.projectName;
 	const target = item.target;
 	const location =
 		target.type === "pr"
 			? `${target.owner}/${target.repo} #${target.number}`
 			: target.type === "terminal"
-				? `Workspace ${target.workspaceId} · Terminal ${target.terminalId}`
+				? `${({ codex: "Codex", claude: "Claude", gemini: "Gemini", opencode: "OpenCode" } as Record<string, string>)[target.provider] ?? "Agent"} session`
 				: target.type === "workspace"
-					? `Workspace ${target.workspaceId}`
+					? "Workspace"
 					: target.type === "hermes"
-						? `Profile ${target.profileId} · Session ${target.sessionId}`
+						? "Hermes session"
 						: "Destination unavailable";
 	return project ? `${project} · ${location}` : location;
 }

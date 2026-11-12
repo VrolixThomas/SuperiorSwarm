@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import type { CachedPR } from "../../shared/review-types";
 import { getDb } from "../db";
-import { reviewDrafts } from "../db/schema";
+import { projects, reviewDrafts } from "../db/schema";
 import { type PRActivityFacts, prIdentity } from "../providers/pr-activity";
 import { classifyPR, readPRSnapshot } from "./pr-classification";
 import { type ActivityQueueService, getActivityQueueService } from "./service";
@@ -19,7 +19,8 @@ export function observePRActivity(
 	readyDraftIds: string[],
 	observedAt = Date.now(),
 	queue: ActivityQueueService = getActivityQueueService(),
-	error?: string
+	error?: string,
+	projectName?: string
 ): void {
 	const sourceId = prSourceId(pr);
 	const source = queue.read(sourceId);
@@ -43,6 +44,7 @@ export function observePRActivity(
 					title: pr.title,
 					summary: result.reasons.join(" · "),
 					projectId: pr.projectId || undefined,
+					projectName,
 					occurredAt: result.snapshot.occurredAt,
 					reasons: result.reasons.map((label) => ({
 						code: `pr-${label.toLowerCase().replaceAll(" ", "-")}`,
@@ -74,6 +76,13 @@ export function observePRPoll(
 	const drafts = getDb().select().from(reviewDrafts).where(eq(reviewDrafts.status, "ready")).all();
 	const now = Date.now();
 	const queue = getActivityQueueService();
+	const names = new Map(
+		getDb()
+			.select({ id: projects.id, name: projects.name })
+			.from(projects)
+			.all()
+			.map((project) => [project.id, project.name])
+	);
 	for (const pr of prs) {
 		const id = prIdentity(pr.provider, pr.repoOwner, pr.repoName, pr.number);
 		const facts = observations.get(id);
@@ -96,7 +105,8 @@ export function observePRPoll(
 					? "PR status not confirmed in this poll"
 					: partial
 						? "Some PR review metadata is unavailable"
-						: undefined)
+						: undefined),
+			names.get(pr.projectId)
 		);
 	}
 }

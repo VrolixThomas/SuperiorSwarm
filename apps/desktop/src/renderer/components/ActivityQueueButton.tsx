@@ -32,7 +32,7 @@ export function ActivityQueueButton({ compact = false }: { compact?: boolean }) 
 				aria-expanded={open}
 				title={label}
 				onClick={show}
-				className={`${queueControlClass} ${compact ? "mx-1 mb-2 flex shrink-0 flex-col items-center" : "mx-2 mb-1 flex shrink-0 items-center justify-between"} border border-[var(--border)] bg-[var(--bg-elevated)] py-2 font-medium`}
+				className={`${queueControlClass} ${compact ? "mx-1 mb-2 flex shrink-0 flex-col items-center" : "mx-2 mb-1 flex shrink-0 items-center justify-between gap-2"} border border-[var(--border)] bg-[var(--bg-elevated)] py-2 font-medium`}
 			>
 				<span>Queue</span>
 				<span className="text-[var(--text-secondary)]">{count ?? (query.isError ? "!" : "…")}</span>

@@ -51,8 +51,8 @@ export function ActivityQueuePanel({
 			[
 				...new Map(
 					items
-						.filter((i) => i.projectId)
-						.map((i) => [i.projectId as string, i.projectName ?? (i.projectId as string)])
+						.filter((i) => i.projectId && i.projectName)
+						.map((i) => [i.projectId as string, i.projectName as string])
 				).entries(),
 			].sort((a, b) => a[1].localeCompare(b[1])),
 		[items]
@@ -227,7 +227,8 @@ export function ActivityQueuePanel({
 						<ul>
 							{data.sourceErrors.map((source) => (
 								<li key={source.sourceId} className="break-words">
-									{source.sourceId}: {source.error}
+									{items.find((item) => item.id === source.sourceId)?.title ?? "Activity source"}:{" "}
+									{source.error}
 								</li>
 							))}
 						</ul>
@@ -281,9 +282,11 @@ export function ActivityQueuePanel({
 											</p>
 											<p className="mt-2 break-words text-xs">{item.summary}</p>
 											<ul className="mt-1 text-xs text-[var(--text-secondary)]">
-												{item.reasons.map((reason, index) => (
-													<li key={`${reason.code}-${index}`}>{reason.label}</li>
-												))}
+												{item.reasons
+													.filter((reason) => !item.summary.includes(reason.label))
+													.map((reason, index) => (
+														<li key={`${reason.code}-${index}`}>{reason.label}</li>
+													))}
 											</ul>
 											{item.stale && (
 												<p className="mt-2 text-xs">
