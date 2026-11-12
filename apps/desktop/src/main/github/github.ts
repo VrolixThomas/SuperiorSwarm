@@ -1,9 +1,15 @@
 import type { GitHubPREnriched } from "../../shared/github-types";
+import {
+	type GitHubCompactPR,
+	type PRActivityFacts,
+	githubActivity,
+} from "../providers/pr-activity";
 import { githubFetch, githubGraphQL } from "./auth";
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
 export interface GitHubPR {
+	activity?: PRActivityFacts;
 	id: number;
 	number: number;
 	title: string;
@@ -279,75 +285,62 @@ async function searchPRs(query: string): Promise<RawSearchIssueNode[]> {
 
 // ── Public API functions ──────────────────────────────────────────────────────
 
-/**
- * Fetch head branch names for a batch of PRs using a single GraphQL query.
- * Builds a multi-alias query: { pr0: repository(...) { pullRequest(...) { headRefName } } }
- * Returns a map of "repository_url#number" -> branchName.
- */
-async function fetchBranchNames(
+const COMPACT_PR_FIELDS = `headRefName baseRefName headRefOid isDraft state
+ reviewRequests(first: 100) { pageInfo { hasNextPage } nodes { requestedReviewer { ... on User { login } ... on Team { slug organization { login } } } } }
+ reviews(last: 1) { totalCount nodes { id state submittedAt } }
+ comments(last: 1) { totalCount nodes { id updatedAt } }`;
+
+async function fetchCompactPRs(
 	nodes: { node: RawSearchIssueNode }[]
-): Promise<Map<string, string>> {
-	if (nodes.length === 0) return new Map();
-
-	const aliases: string[] = [];
-	for (let i = 0; i < nodes.length; i++) {
-		const { node } = nodes[i]!;
-		// repository_url is like "https://api.github.com/repos/owner/repo"
-		const parts = node.repository_url?.split("/");
-		const owner = parts?.[parts.length - 2];
-		const repo = parts?.[parts.length - 1];
-		if (!owner || !repo || !node.number) continue;
-		aliases.push(
-			`pr${i}: repository(owner: ${JSON.stringify(owner)}, name: ${JSON.stringify(repo)}) { pullRequest(number: ${node.number}) { headRefName } }`
-		);
-	}
-
-	if (aliases.length === 0) return new Map();
-
-	const query = `{ ${aliases.join("\n")} }`;
-
-	const data = await githubGraphQL<
-		Record<string, { pullRequest: { headRefName: string } | null } | null>
-	>(query, {});
-
-	const result = new Map<string, string>();
-	for (let i = 0; i < nodes.length; i++) {
-		const { node } = nodes[i]!;
-		const entry = data[`pr${i}`];
-		const headRefName = entry?.pullRequest?.headRefName;
-		if (headRefName) {
-			result.set(`${node.repository_url}#${node.number}`, headRefName);
+): Promise<Map<string, GitHubCompactPR>> {
+	const result = new Map<string, GitHubCompactPR>();
+	// Bounded aliases; an unavailable batch leaves its facts unknown.
+	for (let start = 0; start < nodes.length; start += 25) {
+		const batch = nodes.slice(start, start + 25);
+		const aliases = batch.map(({ node }, i) => {
+			const parts = node.repository_url.split("/");
+			return `pr${i}: repository(owner: ${JSON.stringify(parts.at(-2))}, name: ${JSON.stringify(parts.at(-1))}) { pullRequest(number: ${node.number}) { ${COMPACT_PR_FIELDS} } }`;
+		});
+		try {
+			const data = await githubGraphQL<
+				Record<string, { pullRequest: GitHubCompactPR | null } | null>
+			>(`{ ${aliases.join("\n")} }`, {});
+			batch.forEach(({ node }, i) => {
+				const pr = data[`pr${i}`]?.pullRequest;
+				if (pr) result.set(`${node.repository_url}#${node.number}`, pr);
+			});
+		} catch (error) {
+			console.error("[github] Compact PR batch unavailable", error);
 		}
 	}
 	return result;
 }
 
-export async function getMyPRs(): Promise<GitHubPR[]> {
-	// Resolve actual username — @me may not work for review-requested in all token types
-	let username = "@me";
+async function getReviewIdentity(): Promise<{ login?: string; teams?: string[] }> {
+	const result: { login?: string; teams?: string[] } = {};
 	try {
-		const userRes = await githubFetch("/user");
-		if (userRes.ok) {
-			const user = (await userRes.json()) as { login: string };
-			username = user.login;
+		const res = await githubFetch("/user");
+		if (res.ok) result.login = ((await res.json()) as { login: string }).login;
+	} catch {
+		/* unknown */
+	}
+	try {
+		const res = await githubFetch("/user/teams?per_page=100");
+		if (res.ok && !res.headers.get("link")?.includes('rel="next"')) {
+			result.teams = (
+				(await res.json()) as { slug: string; organization: { login: string } }[]
+			).map((t) => `${t.organization.login}/${t.slug}`);
 		}
 	} catch {
-		// Fall back to @me
+		/* incomplete team membership cannot prove request removal */
 	}
+	return result;
+}
 
-	// Fetch user's team memberships for team-based review requests
-	const teamSlugs: string[] = [];
-	try {
-		const teamsRes = await githubFetch("/user/teams?per_page=100");
-		if (teamsRes.ok) {
-			const teams = (await teamsRes.json()) as { slug: string; organization: { login: string } }[];
-			for (const t of teams) {
-				teamSlugs.push(`${t.organization.login}/${t.slug}`);
-			}
-		}
-	} catch {
-		// Non-critical — team review requests just won't be found
-	}
+export async function getMyPRs(): Promise<GitHubPR[]> {
+	const identity = await getReviewIdentity();
+	const username = identity.login ?? "@me";
+	const teamSlugs = identity.teams ?? [];
 
 	const searches: Promise<RawSearchIssueNode[]>[] = [
 		searchPRs("is:pr is:open author:@me"),
@@ -360,7 +353,7 @@ export async function getMyPRs(): Promise<GitHubPR[]> {
 		searches.push(searchPRs(`is:pr is:open team-review-requested:${slug}`));
 	}
 
-	const [authoredNodes, reviewRequestedNodes, reviewedByNodes, ...teamNodes] =
+	const [authoredNodes = [], reviewRequestedNodes = [], reviewedByNodes = [], ...teamNodes] =
 		await Promise.all(searches);
 
 	const seen = new Set<number>();
@@ -379,14 +372,12 @@ export async function getMyPRs(): Promise<GitHubPR[]> {
 		}
 	}
 
-	const branchNames = await fetchBranchNames(nodes).catch((err: unknown) => {
-		console.error("Failed to batch-fetch branch names:", err);
-		return new Map<string, string>();
-	});
-
+	const compact = await fetchCompactPRs(nodes);
 	return nodes.map(({ node, role }) => {
-		const branchName = branchNames.get(`${node.repository_url}#${node.number}`) ?? "unknown";
-		return mapPRNode(node, role, branchName);
+		const raw = compact.get(`${node.repository_url}#${node.number}`);
+		const pr = mapPRNode(node, role, raw?.headRefName ?? "unknown");
+		pr.activity = raw ? githubActivity(raw, identity.login, identity.teams) : {};
+		return pr;
 	});
 }
 
@@ -550,10 +541,10 @@ export async function createReviewThread(params: {
 	};
 
 	if (params.line != null) {
-		payload.line = params.line;
-		payload.side = params.side ?? "RIGHT";
+		payload["line"] = params.line;
+		payload["side"] = params.side ?? "RIGHT";
 	} else {
-		payload.subject_type = "file";
+		payload["subject_type"] = "file";
 	}
 
 	const res = await githubFetch(
@@ -659,11 +650,37 @@ export async function getPRState(
 	owner: string,
 	repo: string,
 	prNumber: number
-): Promise<{ headSha: string; state: string; merged: boolean }> {
+): Promise<{ headSha: string; state: string; merged: boolean; activity: PRActivityFacts }> {
 	const res = await githubFetch(`/repos/${owner}/${repo}/pulls/${prNumber}`);
 	if (!res.ok) throw new Error(`GitHub get PR failed: ${res.status}`);
 	const data = (await res.json()) as { head: { sha: string }; state: string; merged: boolean };
-	return { headSha: data.head.sha, state: data.state, merged: data.merged };
+	const activity: PRActivityFacts = {
+		headSha: data.head?.sha,
+		state: data.merged
+			? "merged"
+			: data.state === "open"
+				? "open"
+				: data.state === "closed"
+					? "closed"
+					: undefined,
+	};
+	if (!activity.state) throw new Error("GitHub PR state missing");
+	// Only disappearance/enrichment checks use this path, not every listed PR.
+	try {
+		const identity = await getReviewIdentity();
+		const raw = await githubGraphQL<{ repository: { pullRequest: GitHubCompactPR | null } | null }>(
+			`query($owner:String!, $repo:String!, $number:Int!) { repository(owner:$owner, name:$repo) { pullRequest(number:$number) { ${COMPACT_PR_FIELDS} } } }`,
+			{ owner, repo, number: prNumber }
+		);
+		if (raw.repository?.pullRequest)
+			Object.assign(
+				activity,
+				githubActivity(raw.repository.pullRequest, identity.login, identity.teams)
+			);
+	} catch {
+		/* preserve confirmed REST state/head; other facts remain unknown */
+	}
+	return { headSha: data.head?.sha ?? "", state: data.state, merged: data.merged, activity };
 }
 
 export async function getGitHubReviewThreads(

@@ -1,10 +1,16 @@
 import { getDb } from "../db";
 import { projects } from "../db/schema";
 import { parseRemoteUrl } from "../git/operations";
+import {
+	type BitbucketCompactPR,
+	type PRActivityFacts,
+	bitbucketActivity,
+} from "../providers/pr-activity";
 import { atlassianFetch, getAuth } from "./auth";
 import { BITBUCKET_API_BASE } from "./constants";
 
 export interface BitbucketPullRequest {
+	activity?: PRActivityFacts;
 	id: number;
 	title: string;
 	state: string;
@@ -20,7 +26,7 @@ export interface BitbucketPullRequest {
 	headCommitSha: string;
 }
 
-interface BitbucketApiPR {
+interface BitbucketApiPR extends BitbucketCompactPR {
 	id: number;
 	title: string;
 	state: string;
@@ -52,6 +58,7 @@ function mapPR(pr: BitbucketApiPR, workspace: string, repoSlug: string): Bitbuck
 			? { branch: { name: pr.destination.branch.name ?? "" } }
 			: undefined,
 		headCommitSha: pr.source.commit?.hash ?? "",
+		activity: bitbucketActivity(pr, getAuth("bitbucket")?.accountId),
 	};
 }
 
@@ -167,17 +174,16 @@ export async function getPRState(
 	workspace: string,
 	repoSlug: string,
 	prId: number
-): Promise<{ headSha: string; state: string }> {
+): Promise<{ headSha: string; state: string; activity: PRActivityFacts }> {
 	const res = await atlassianFetch(
 		"bitbucket",
 		`${BITBUCKET_API_BASE}/repositories/${workspace}/${repoSlug}/pullrequests/${prId}`
 	);
 	if (!res.ok) throw new Error(`Bitbucket get PR failed: ${res.status}`);
-	const data = (await res.json()) as {
-		source: { commit: { hash: string } };
-		state: string;
-	};
-	return { headSha: data.source.commit.hash, state: data.state };
+	const data = (await res.json()) as BitbucketCompactPR;
+	const activity = bitbucketActivity(data, getAuth("bitbucket")?.accountId);
+	if (!activity.state) throw new Error("Bitbucket PR state missing");
+	return { headSha: activity.headSha ?? "", state: activity.state.toUpperCase(), activity };
 }
 
 /** Post a comment on a Bitbucket pull request */
