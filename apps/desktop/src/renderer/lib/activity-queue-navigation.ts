@@ -1,4 +1,5 @@
 import type { ActivityQueueTarget } from "../../shared/activity-queue";
+import type { DaemonAPI } from "../../shared/types";
 import { usePaneStore } from "../stores/pane-store";
 import { useProjectStore } from "../stores/projects";
 import { useReviewModeStore } from "../stores/review-mode-store";
@@ -10,9 +11,49 @@ export interface QueueNavigationApi {
 	workspaces: Pick<typeof trpcVanilla.workspaces, "getById" | "getOrCreateReview">;
 	projects: Pick<typeof trpcVanilla.projects, "getByRepo" | "getPRDetails">;
 	agentSessions: Pick<typeof trpcVanilla.agentSessions, "list">;
+	daemon: Pick<DaemonAPI, "listSessions">;
 }
 export type QueueDestination = { workspaceId: string; terminalId?: string };
 const openingPRs = new Map<string, Promise<QueueDestination>>();
+const navigationApi: QueueNavigationApi = {
+	workspaces: trpcVanilla.workspaces,
+	projects: trpcVanilla.projects,
+	agentSessions: trpcVanilla.agentSessions,
+	daemon: { listSessions: () => window.electron.daemon.listSessions() },
+};
+
+/** Existing layouts remount their terminals. Refuse stale tabs before that can recreate a shell. */
+async function requireExistingTerminals(
+	workspaceId: string,
+	review: boolean,
+	api: QueueNavigationApi
+): Promise<void> {
+	const reviewTerminal = useReviewModeStore.getState().terminals[workspaceId];
+	const ids = review
+		? reviewTerminal
+			? [reviewTerminal.tabId]
+			: []
+		: useTabStore
+				.getState()
+				.getTabsByWorkspace(workspaceId)
+				.filter((tab) => tab.kind === "terminal")
+				.map((tab) => tab.id);
+	if (ids.length === 0) return;
+	let live: Awaited<ReturnType<DaemonAPI["listSessions"]>>;
+	try {
+		live = await api.daemon.listSessions();
+	} catch {
+		throw new Error(
+			"Existing terminals could not be verified. Reconnect the terminal service and retry."
+		);
+	}
+	const existing = new Set(live.daemonSessions.map((session) => session.id));
+	if (ids.some((id) => !existing.has(id))) {
+		throw new Error(
+			"A terminal in this workspace is no longer running. Open the workspace explicitly to restore it."
+		);
+	}
+}
 
 async function resolveWorkspace(workspaceId: string, api: QueueNavigationApi) {
 	const record = await api.workspaces.getById.query({ id: workspaceId });
@@ -39,7 +80,7 @@ function activateWorkspace(workspace: Awaited<ReturnType<typeof resolveWorkspace
 /** Open is navigation only. There is deliberately no acknowledgment API in this helper. */
 export async function openQueueTarget(
 	target: ActivityQueueTarget,
-	api: QueueNavigationApi = trpcVanilla
+	api: QueueNavigationApi = navigationApi
 ): Promise<QueueDestination> {
 	if (target.type === "unavailable") throw new Error(target.reason);
 	if (target.type === "hermes")
@@ -92,6 +133,7 @@ export async function openQueueTarget(
 				targetBranch,
 			});
 			const cwd = workspace.worktreePath ?? project.repoPath;
+			await requireExistingTerminals(workspace.id, true, api);
 			useTabStore.getState().activateReviewWorkspace(workspace.id, cwd, {
 				provider: target.provider,
 				owner: target.owner,
@@ -139,6 +181,7 @@ export async function openQueueTarget(
 			);
 		if (workspace.type === "review" && review?.tabId !== target.terminalId)
 			throw new Error("This terminal is not attached to the review drawer.");
+		await requireExistingTerminals(workspace.id, workspace.type === "review", api);
 		activateWorkspace(workspace);
 		if (workspace.type === "review") {
 			const reviewStore = useReviewModeStore.getState();
@@ -146,6 +189,7 @@ export async function openQueueTarget(
 		} else useTabStore.getState().setActiveTab(target.terminalId);
 		return { workspaceId: target.workspaceId, terminalId: target.terminalId };
 	}
+	await requireExistingTerminals(workspace.id, workspace.type === "review", api);
 	activateWorkspace(workspace);
 	return { workspaceId: target.workspaceId };
 }

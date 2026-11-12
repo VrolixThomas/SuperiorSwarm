@@ -144,7 +144,10 @@ export function registerCoreActions() {
 			id: "nav.queue",
 			label: "Open Queue",
 			category: "Navigation",
-			execute: () => useActivityQueueStore.getState().show(),
+			execute: () => {
+				useProjectStore.getState().closeSettings();
+				useActivityQueueStore.getState().show();
+			},
 			keywords: ["attention", "needs input", "review", "ready", "activity"],
 		},
 		{

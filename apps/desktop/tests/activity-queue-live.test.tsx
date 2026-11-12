@@ -250,6 +250,8 @@ test("Queue command opens the panel without selecting a workspace or segment", a
 	});
 	const { registerCoreActions } = await import("../src/renderer/actions/core-actions");
 	const { useActionStore } = await import("../src/renderer/stores/action-store");
+	const { useProjectStore } = await import("../src/renderer/stores/projects");
+	useProjectStore.getState().openSettings();
 	projection = { items: [], totalPending: 0, updatedAt: 0, sourceErrors: [] };
 	useTabStore.setState({ activeWorkspaceId: "ongoing", sidebarSegment: "hermes" });
 	await mount();
@@ -257,6 +259,7 @@ test("Queue command opens the panel without selecting a workspace or segment", a
 	await act(() => useActionStore.getState().execute("nav.queue"));
 	await flush();
 	expect(document.querySelector("dialog")?.open).toBe(true);
+	expect(useProjectStore.getState().sidebarView).toBe("main");
 	expect(useTabStore.getState().activeWorkspaceId).toBe("ongoing");
 	expect(useTabStore.getState().sidebarSegment).toBe("hermes");
 });
