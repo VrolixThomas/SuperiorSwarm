@@ -1,8 +1,10 @@
 import type { GitHubPRDetails } from "../../shared/github-types";
+import type { PRActivityFacts } from "./pr-activity";
 
 // ── Normalized types ────────────────────────────────────────────────────────
 
 export interface NormalizedPR {
+	activity?: PRActivityFacts;
 	id: number;
 	title: string;
 	state: "open" | "closed" | "merged" | "declined";
@@ -17,6 +19,7 @@ export interface NormalizedPR {
 }
 
 export interface PRState {
+	activity?: PRActivityFacts;
 	headSha: string;
 	state: "open" | "closed" | "merged" | "declined";
 }

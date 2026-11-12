@@ -38,10 +38,12 @@ export class GitHubAdapter implements GitProvider {
 
 	async getMyPRs(): Promise<NormalizedPR[]> {
 		const prs = await getMyPRs();
+		if (prs.some((pr) => pr.state !== "open" && pr.state !== "closed"))
+			throw new Error("GitHub listing contained an unknown PR state");
 		return prs.map((pr) => ({
 			id: pr.number,
 			title: pr.title ?? "",
-			state: pr.state === "open" ? ("open" as const) : ("closed" as const),
+			state: pr.activity?.state ?? pr.state,
 			author: pr.repoOwner ?? "Unknown",
 			webUrl: pr.url ?? "",
 			sourceBranch: pr.branchName ?? "",
@@ -49,7 +51,8 @@ export class GitHubAdapter implements GitProvider {
 			role: pr.role ?? "author",
 			repoOwner: pr.repoOwner ?? "",
 			repoName: pr.repoName ?? "",
-			headCommitSha: "",
+			headCommitSha: pr.activity?.headSha ?? "",
+			activity: pr.activity,
 		}));
 	}
 
@@ -57,6 +60,7 @@ export class GitHubAdapter implements GitProvider {
 		const result = await getPRState(owner, repo, prNumber);
 		return {
 			headSha: result.headSha ?? "",
+			activity: result.activity,
 			state: result.merged ? "merged" : result.state === "open" ? "open" : "closed",
 		};
 	}
