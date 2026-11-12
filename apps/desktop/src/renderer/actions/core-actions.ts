@@ -1,6 +1,7 @@
 import type { LayoutNode } from "../../shared/pane-types";
 import { closePaneWithTerminalCleanup, closeTabWithTerminalCleanup } from "../lib/pane-lifecycle";
 import { useActionStore } from "../stores/action-store";
+import { useActivityQueueStore } from "../stores/activity-queue-store";
 import { useBranchStore } from "../stores/branch-store";
 import { findParentSplit, findSplitById, getAllPanes, usePaneStore } from "../stores/pane-store";
 import { useProjectStore } from "../stores/projects";
@@ -139,6 +140,13 @@ export function registerCoreActions() {
 		},
 
 		// ── Navigation ──────────────────────────────────────────────────────
+		{
+			id: "nav.queue",
+			label: "Open Queue",
+			category: "Navigation",
+			execute: () => useActivityQueueStore.getState().show(),
+			keywords: ["attention", "needs input", "review", "ready", "activity"],
+		},
 		{
 			id: "nav.repos",
 			label: "Repos",
