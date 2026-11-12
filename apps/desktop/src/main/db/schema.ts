@@ -1031,3 +1031,5 @@ export const hermesOriginReports = sqliteTable(
 
 export type HermesOriginReport = typeof hermesOriginReports.$inferSelect;
 export type NewHermesOriginReport = typeof hermesOriginReports.$inferInsert;
+
+export { activityQueueSources } from "./schema-activity-queue";
