@@ -341,6 +341,8 @@ interface TabStore {
 		options?: { rightPanel?: RightPanelState; recordHistory?: boolean }
 	) => void;
 	activateReviewWorkspace: (workspaceId: string, cwd: string, prCtx: PRContext) => void;
+	/** Navigate directly, without restoring an intermediate workspace from a sidebar segment. */
+	navigateToWorkspace: (workspaceId: string, cwd: string) => void;
 	canGoBackWorkspace: () => boolean;
 	canGoForwardWorkspace: () => boolean;
 	goBackWorkspace: () => boolean;
@@ -821,6 +823,24 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 		get().setActiveWorkspace(workspaceId, cwd, { recordHistory: false });
 	},
 
+	navigateToWorkspace: (workspaceId, cwd) => {
+		const state = get();
+		if (state.sidebarSegment === "hermes" && state.selectedHermesSession) {
+			set({
+				workspaceBackStack: pushWorkspaceHistoryEntry(state.workspaceBackStack, {
+					kind: "hermes-session",
+					...state.selectedHermesSession,
+					pane: state.hermesSessionPane,
+				}),
+				workspaceForwardStack: [],
+			});
+		}
+		set({ sidebarSegment: segmentForWorkspace(state.workspaceMetadata[workspaceId]) });
+		get().setActiveWorkspace(workspaceId, cwd, {
+			recordHistory: state.sidebarSegment !== "hermes" || !state.selectedHermesSession,
+		});
+	},
+
 	activateReviewWorkspace: (workspaceId, cwd, prCtx) => {
 		const resolvedPrCtx = { ...prCtx, repoPath: cwd };
 		get().setWorkspaceMetadata(workspaceId, {
@@ -832,7 +852,6 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 			targetBranch: resolvedPrCtx.targetBranch,
 		});
 		set((state) => ({
-			sidebarSegment: "prs",
 			activeWorkspaceBySegment: {
 				...state.activeWorkspaceBySegment,
 				repos:
@@ -845,7 +864,7 @@ export const useTabStore = create<TabStore>()((set, get) => ({
 						: state.activeWorkspaceBySegment.tickets,
 			},
 		}));
-		get().setActiveWorkspace(workspaceId, cwd);
+		get().navigateToWorkspace(workspaceId, cwd);
 		useReviewModeStore.getState().open(workspaceId, resolvedPrCtx);
 	},
 

@@ -8,6 +8,7 @@ import { useProjectStore } from "../stores/projects";
 import { useTabStore } from "../stores/tab-store";
 import { trpc } from "../trpc/client";
 import { flattenWorkspaceTree } from "../utils/workspace-tree";
+import { ActivityQueueButton } from "./ActivityQueueButton";
 import { CreateBranchFromIssueModal } from "./CreateBranchFromIssueModal";
 import { CreateWorktreeFromPRModal, type LinkablePR } from "./CreateWorktreeFromPRModal";
 import { ProjectItem } from "./ProjectItem";
@@ -752,6 +753,7 @@ export function SidebarRail({ onExpand }: SidebarRailProps) {
 		<div ref={railRef} className="flex h-full w-full flex-col items-center bg-[var(--bg-surface)]">
 			{/* Traffic light clearance */}
 			<div className="app-drag h-[52px] w-full shrink-0" />
+			<ActivityQueueButton compact />
 
 			{/* Project groups + Tickets + PRs */}
 			<div className="flex flex-1 flex-col items-center gap-2 overflow-y-auto px-1 py-1">

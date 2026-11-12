@@ -263,8 +263,9 @@ function ActiveReviewModeShell({ active }: { active: ActiveReview }) {
 	return (
 		<div
 			ref={shellRef}
+			data-queue-workspace={workspaceId}
 			tabIndex={-1}
-			className="flex h-full min-h-0 min-w-0 flex-col bg-[var(--bg-base)] outline-none"
+			className="flex h-full min-h-0 min-w-0 flex-col bg-[var(--bg-base)] outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--accent)]"
 		>
 			<ReviewHeader
 				prCtx={prCtx}

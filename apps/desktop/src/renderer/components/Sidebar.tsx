@@ -3,6 +3,7 @@ import { useProjectStore } from "../stores/projects";
 import { useTabStore } from "../stores/tab-store";
 import { useUpdateStore } from "../stores/update-store";
 import { trpc } from "../trpc/client";
+import { ActivityQueueButton } from "./ActivityQueueButton";
 import { FolderList } from "./FolderList";
 import { OrchestratorList } from "./OrchestratorList";
 import { PullRequestsTab } from "./PullRequestsTab";
@@ -194,7 +195,9 @@ export function Sidebar({ collapsed, onExpand }: SidebarProps) {
 				</div>
 			</div>
 
-			{/* Segmented control — always at top */}
+			<ActivityQueueButton />
+
+			{/* Segmented control */}
 			<div className="flex gap-1 border-b border-[var(--border-subtle)] px-2 py-1.5">
 				{(["repos", "tickets", "prs", "hermes"] as const).map((seg) => {
 					const actionIds = {
