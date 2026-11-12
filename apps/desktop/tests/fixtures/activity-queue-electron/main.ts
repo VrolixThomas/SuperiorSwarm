@@ -1,7 +1,11 @@
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { BrowserWindow, app, session } from "electron";
+import { PtyManager } from "../../../src/daemon/pty-manager";
+import type { ScrollbackStore } from "../../../src/daemon/scrollback-store";
+import { SocketServer } from "../../../src/daemon/socket-server";
 import { observePRActivity } from "../../../src/main/activity-queue/pr-source";
 import { ActivityQueueService } from "../../../src/main/activity-queue/service";
 import { codexConfig } from "../../../src/main/agent-hooks/agents/codex";
@@ -9,12 +13,15 @@ import { createAlertListener } from "../../../src/main/agent-hooks/listener";
 import { closeDb, getDb } from "../../../src/main/db";
 import { projects, terminalSessions, workspaces } from "../../../src/main/db/schema";
 import { AgentSessionManager } from "../../../src/main/services/agent-session-manager";
-import type { DaemonClient } from "../../../src/main/terminal/daemon-client";
+import { DaemonClient } from "../../../src/main/terminal/daemon-client";
+import { setupTerminalIPC } from "../../../src/main/terminal/ipc";
+import { rendererTrust } from "../../../src/main/terminal/renderer-trust";
 import { router } from "../../../src/main/trpc";
 import { setupTRPCIPC } from "../../../src/main/trpc/ipc-link";
 import { activityQueueRouter } from "../../../src/main/trpc/routers/activity-queue";
 import { agentRegistry } from "../../../src/shared/agent-events";
 import type { CachedPR } from "../../../src/shared/review-types";
+import { terminalCreateErrorCode } from "../../../src/shared/terminal-create";
 
 const root = requireEnvironment("SS_QUEUE_FIXTURE_ROOT");
 function requireEnvironment(key: string): string {
@@ -29,6 +36,26 @@ app.disableHardwareAcceleration();
 const listener = createAlertListener(0, "fixture-only-token");
 let win: BrowserWindow | undefined;
 let manager: AgentSessionManager | undefined;
+const ptys = new PtyManager();
+const socketPath = join(root, "terminal.sock");
+const socketServer = new SocketServer(
+	ptys,
+	{ flush: () => [] } as unknown as ScrollbackStore,
+	socketPath
+);
+const daemon = new DaemonClient(socketPath, join(root, "pid"), join(root, "daemon.log"));
+let createdPtys = 0;
+let disappearOnAttach = false;
+const createPty = ptys.create.bind(ptys);
+ptys.create = (...args) => {
+	createdPtys++;
+	return createPty(...args);
+};
+const attachPty = ptys.attach.bind(ptys);
+ptys.attach = (...args) => {
+	if (disappearOnAttach && args[0] === "terminal") ptys.dispose(args[0]);
+	return attachPty(...args);
+};
 let step = "startup";
 const until = async (condition: () => boolean | Promise<boolean>) => {
 	for (let i = 0; i < 200; i++) {
@@ -39,6 +66,8 @@ const until = async (condition: () => boolean | Promise<boolean>) => {
 };
 async function run() {
 	await app.whenReady();
+	socketServer.listen();
+	await daemon.connect();
 	session.defaultSession.webRequest.onBeforeRequest((details, done) =>
 		done({ cancel: !details.url.startsWith("file://") && !details.url.startsWith("devtools://") })
 	);
@@ -77,7 +106,7 @@ async function run() {
 		})
 		.run();
 	manager = new AgentSessionManager({
-		daemonClient: {} as DaemonClient,
+		daemonClient: daemon,
 		processController: {
 			inspectForeground: async () => ({ status: "missing" }),
 			terminateForeground: async () => ({ ok: true }),
@@ -110,6 +139,8 @@ async function run() {
 		},
 	});
 	const contents = win.webContents;
+	rendererTrust.register(contents.id, pathToFileURL(join(root, "index.html")).href);
+	setupTerminalIPC(daemon, manager);
 	await win.loadFile(join(root, "index.html"));
 	const js = <T = unknown>(source: string): Promise<T> => contents.executeJavaScript(source);
 	const hasCount = (count: number) =>
@@ -216,15 +247,32 @@ async function run() {
 	);
 	if (new ActivityQueueService().list().totalPending !== before)
 		throw new Error("Open acknowledged attention");
-	await contents
-		.capturePage()
-		.then((capture) => writeFileSync(join(root, "queue.png"), capture.toPNG()));
 	contents.sendInputEvent({ type: "keyDown", keyCode: "Escape" });
 	contents.sendInputEvent({ type: "keyUp", keyCode: "Escape" });
 	await until(() => js<boolean>("!document.querySelector('dialog[open]')"));
 	await until(() =>
 		js<boolean>("document.activeElement?.getAttribute('aria-label') === 'Queue 2'")
 	);
+	step = "atomic attach through production preload and main IPC";
+	await daemon.create(
+		"terminal",
+		root,
+		() => {},
+		() => {},
+		{ SHELL: "/bin/sh", HOME: root }
+	);
+	await daemon.listSessionsStrict();
+	if (createdPtys !== 1) throw new Error("Expected one fixture shell");
+	const attachScript = `window.electron.terminal.create('terminal', ${JSON.stringify(root)}, 'workspace', 'attach-existing-only')`;
+	const attached = await js<{ wasAttached: boolean }>(attachScript);
+	if (!attached.wasAttached || createdPtys !== 1) throw new Error("Guarded attach created a shell");
+	disappearOnAttach = true;
+	const message = await js<string>(
+		`${attachScript}.then(() => 'unexpected-success', error => error.message)`
+	);
+	const code = terminalCreateErrorCode(new Error(message));
+	if (code !== "TERMINAL_NOT_RUNNING" || createdPtys !== 1 || ptys.has("terminal"))
+		throw new Error(`Native IPC race failed: ${code}, creates=${createdPtys}`);
 	writeFileSync(
 		join(root, "result.json"),
 		JSON.stringify({
@@ -236,6 +284,7 @@ async function run() {
 			prProjection: true,
 			openDoesNotAcknowledge: true,
 			focusReturn: true,
+			atomicAttachOnly: true,
 		})
 	);
 }
@@ -249,6 +298,9 @@ run().then(
 function finish(code: number) {
 	listener.stop();
 	manager?.dispose();
+	daemon.disconnect();
+	socketServer.close();
+	ptys.disposeAll();
 	closeDb();
 	win?.destroy();
 	app.exit(code);

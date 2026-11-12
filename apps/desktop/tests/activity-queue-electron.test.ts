@@ -87,6 +87,7 @@ test.skipIf(process.platform !== "darwin")(
 					env: {
 						PATH: "/usr/bin:/bin",
 						HOME: root,
+						SHELL: "/bin/sh",
 						SS_QUEUE_FIXTURE_ROOT: root,
 						SS_QUEUE_MIGRATIONS: join(desktop, "src/main/db/migrations"),
 					},
@@ -123,6 +124,7 @@ test.skipIf(process.platform !== "darwin")(
 				prProjection: true,
 				openDoesNotAcknowledge: true,
 				focusReturn: true,
+				atomicAttachOnly: true,
 			});
 		} finally {
 			if (keep) console.log(`Native queue fixture: ${root}`);
