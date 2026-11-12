@@ -106,3 +106,22 @@ Implementation dispatch receipts (2026-11-12, SuperiorSwarm returned `status: st
 | C: UI/navigation | `WoCm5oOrxo4xswAXDU1SW` | Presentation/navigation work now; consume A's contract for typed tRPC integration |
 
 Next integration checkpoint: receive A's contract commit, confirm B/C use the same types and lifecycle semantics, then collect all implementation SHAs and run the integrated acceptance checks. Dispatch success is not implementation or test completion.
+
+## Added acceptance gate: Codex/Claude status reliability
+
+User report: in longer Codex threads, agent status does not always update. This is a required part of the feature, not an optional queue polish task.
+
+Parent reproduced an adapter defect on the source baseline: `SessionStart -> Stop -> UserPromptSubmit -> PostToolUse -> PermissionRequest` leaves Codex at `task-complete`, because every event after Stop maps to null. Both repository code and the installed SuperiorSwarm entries in `~/.codex/hooks.json` register only SessionStart/Stop. Claude's current mapping correctly returns to active on subsequent prompts/tools and needs-input on permission requests. This confirms missing event coverage; it does not establish that every reported long-thread failure has the same cause.
+
+Official sources checked on 2026-11-12: [Codex hooks](https://learn.chatgpt.com/docs/hooks) and [Claude hooks](https://code.claude.com/docs/en/hooks). Installed CLI reports `codex-cli 0.167.2`; older long-lived processes may still use 0.166.0. Use provider-supported events and preserve turn/session identity through the generated hook script, listener, manager, queue and renderer. Codex per-turn events expose `turn_id`; compaction is not completion. New/changed nonmanaged Codex hooks require review/trust, so installation alone does not prove delivery. Do not bypass trust or silently change global user configuration while testing this branch.
+
+Lane A owns producer mappings/setup and main-process processing. Lane C owns renderer convergence. Required tests and evidence:
+
+- Run at least 50 sequential turns using the same provider session through the real manager/queue ingestion path. Include prompt, tool success/failure where supported, approval waiting, completion, compaction, resume and interruption. Do not test only the event-map dictionary.
+- Assert each subsequent turn becomes active, only its own completion becomes ready, and permission waiting is visible. Acknowledge an earlier completion and ensure the next genuine completion returns.
+- Inject duplicate and delayed prior-turn events, a replaced provider session, two terminals in one workspace, and subagent events. Reject invalid identity/obsolete generations before broadcasting to the renderer, not only in queue persistence.
+- Test the generated hook parser and HTTP delivery with real JSON fixtures, including nested similarly named fields. Preserve top-level provider/turn identity; do not infer it from matching text in transcript/tool payloads.
+- Verify renderer remount/reconnect and main restart converge to authoritative state. Unattributed events must never fall back to the currently selected workspace. Keep explicit task phase distinct from terminal activity; no completion inference from silence or transport failure.
+- Inspect hook delivery failures, persisted auth-token reuse and listener-port changes for surviving terminals. Document transport/version limitations and distinguish controlled replay evidence from an actual long-lived native session check.
+
+The status gate remains pending until the lanes return their fixes and verification. Parent sent the reproduction, official event evidence and these acceptance conditions to both owners through SuperiorSwarm.
