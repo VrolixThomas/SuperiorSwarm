@@ -180,7 +180,7 @@ describe("Queue presentation and actions", () => {
 						],
 					}),
 				]),
-				sourceErrors: [{ sourceId: "github", error: "Offline", observedAt: 1000 }],
+				sourceErrors: [{ sourceId: "pr", error: "Offline", observedAt: 1000 }],
 			},
 			error: "Disconnected",
 		});
@@ -193,6 +193,35 @@ describe("Queue presentation and actions", () => {
 			"Showing the last available queue",
 		])
 			expect(document.body.textContent).toContain(text);
+	});
+	test("many stale sources produce a collapsed, grouped summary for pending rows only", async () => {
+		const rows = Array.from({ length: 100 }, (_, i) => item({ id: `pr-${i}`, title: `PR ${i}` }));
+		await mount({
+			data: {
+				...data(rows),
+				sourceErrors: [
+					...rows.map((row) => ({
+						sourceId: row.id,
+						error: "PR status not confirmed",
+						observedAt: 1,
+					})),
+					{ sourceId: "no-item", error: "Historical noise", observedAt: 1 },
+				],
+			},
+		});
+		const details = document.querySelector("details");
+		expect(details?.open).toBe(false);
+		expect(details?.querySelector("summary")?.textContent).toContain(
+			"100 pending items could not be refreshed"
+		);
+		expect(details?.querySelectorAll("li")).toHaveLength(1);
+		expect(details?.textContent).toContain("PR status not confirmed (100)");
+		expect(document.body.textContent).not.toContain("Historical noise");
+	});
+	test("unknown agent inventory does not claim the queue is empty", async () => {
+		await mount({ data: { ...data([]), agentStatusAvailable: false } });
+		expect(document.body.textContent).toContain("Agent status is unavailable");
+		expect(document.body.textContent).not.toContain("All caught up");
 	});
 	test("loading, empty and initial error have different messages", async () => {
 		const props = await mount({ data: undefined, loading: true });

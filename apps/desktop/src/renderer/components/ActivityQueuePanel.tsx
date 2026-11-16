@@ -63,6 +63,11 @@ export function ActivityQueuePanel({
 			(kind === "all" || i.kind === kind) &&
 			(projectId === "all" || i.projectId === projectId)
 	);
+	const pendingIds = new Set(visible.filter((item) => !item.acknowledged).map((item) => item.id));
+	const warnings = (data?.sourceErrors ?? []).filter((source) => pendingIds.has(source.sourceId));
+	const warningGroups = new Map<string, number>();
+	for (const warning of warnings)
+		warningGroups.set(warning.error, (warningGroups.get(warning.error) ?? 0) + 1);
 	useEffect(() => {
 		mounted.current = true;
 		const panel = dialog.current;
@@ -218,21 +223,25 @@ export function ActivityQueuePanel({
 						{data ? " Showing the last available queue." : ""}
 					</p>
 				)}
-				{!!data?.sourceErrors.length && (
-					<div
-						aria-live="polite"
-						className="mb-3 rounded border border-[var(--border)] p-2 text-xs"
-					>
-						<p>Some sources are unavailable. Pending items are retained.</p>
-						<ul>
-							{data.sourceErrors.map((source) => (
-								<li key={source.sourceId} className="break-words">
-									{items.find((item) => item.id === source.sourceId)?.title ?? "Activity source"}:{" "}
-									{source.error}
+				{data?.agentStatusAvailable === false && (
+					<p aria-live="polite" className="mb-3 text-xs text-[var(--text-secondary)]">
+						Agent status is unavailable. The last confirmed agent list is shown.
+					</p>
+				)}
+				{warnings.length > 0 && (
+					<details className="mb-3 rounded border border-[var(--border)] p-2 text-xs">
+						<summary className="cursor-pointer focus-visible:outline-2 focus-visible:outline-[var(--accent)]">
+							{warnings.length} pending {warnings.length === 1 ? "item could" : "items could"} not
+							be refreshed. Existing items are kept.
+						</summary>
+						<ul className="mt-2 max-h-32 overflow-y-auto">
+							{[...warningGroups].map(([message, count]) => (
+								<li key={message} className="break-words">
+									{message} ({count})
 								</li>
 							))}
 						</ul>
-					</div>
+					</details>
 				)}
 				{data && (
 					<p aria-live="polite" className="mb-3 text-xs text-[var(--text-secondary)]">
@@ -243,9 +252,11 @@ export function ActivityQueuePanel({
 				)}
 				{!loading && data && visible.length === 0 && (
 					<p className="py-6 text-sm">
-						{data.totalPending === 0 && !includeHandled
-							? "All caught up. No pending items."
-							: "No items match these filters."}
+						{data.agentStatusAvailable === false && data.totalPending === 0
+							? "No confirmed items to show. Agent status is still unavailable."
+							: data.totalPending === 0 && !includeHandled
+								? "All caught up. No pending items."
+								: "No items match these filters."}
 					</p>
 				)}
 				{QUEUE_GROUPS.map((group) => {

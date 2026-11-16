@@ -83,30 +83,35 @@ export class ActivityQueueService {
 			.run();
 	}
 
-	list(input: ActivityQueueListInput = {}): ActivityQueueListResult {
+	list(
+		input: ActivityQueueListInput = {},
+		isCurrent: (item: ActivityQueueItem) => boolean = () => true
+	): ActivityQueueListResult {
 		const sources = this.db.select().from(activityQueueSources).all();
 		const allItems = sources.flatMap((source) => {
 			const value = item(source);
-			return value ? [value] : [];
+			return value && isCurrent(value) ? [value] : [];
 		});
+		const visible = allItems.filter(
+			(value) =>
+				(input.includeAcknowledged || !value.acknowledged) &&
+				(!input.projectId || value.projectId === input.projectId) &&
+				(!input.kinds?.length || input.kinds.includes(value.kind))
+		);
+		const pendingIds = new Set(
+			visible.filter((value) => !value.acknowledged).map((value) => value.id)
+		);
 		return {
-			items: allItems
-				.filter(
-					(value) =>
-						(input.includeAcknowledged || !value.acknowledged) &&
-						(!input.projectId || value.projectId === input.projectId) &&
-						(!input.kinds?.length || input.kinds.includes(value.kind))
-				)
-				.sort(
-					(a, b) =>
-						priority[a.kind] - priority[b.kind] ||
-						b.occurredAt - a.occurredAt ||
-						a.id.localeCompare(b.id)
-				),
+			items: visible.sort(
+				(a, b) =>
+					priority[a.kind] - priority[b.kind] ||
+					b.occurredAt - a.occurredAt ||
+					a.id.localeCompare(b.id)
+			),
 			totalPending: allItems.filter((value) => !value.acknowledged).length,
 			updatedAt: sources.length ? Math.max(...sources.map((source) => source.observedAt)) : null,
 			sourceErrors: sources.flatMap((source) =>
-				source.error
+				source.error && pendingIds.has(source.sourceId)
 					? [{ sourceId: source.sourceId, error: source.error, observedAt: source.observedAt }]
 					: []
 			),

@@ -68,3 +68,17 @@ test("unavailable preserves baseline and pending; global count ignores filters",
 	expect(queue.list().sourceErrors).toHaveLength(0);
 	expect(queue.read("test")?.revision).toBe(1);
 });
+
+test("warnings exclude inactive, handled and filtered sources", () => {
+	const queue = new ActivityQueueService();
+	queue.observe(observation());
+	queue.markUnavailable("test", "offline");
+	for (let i = 0; i < 100; i++) {
+		queue.observe({ ...observation(), sourceId: `baseline-${i}`, candidate: null });
+		queue.markUnavailable(`baseline-${i}`, "PR status not confirmed in this poll");
+	}
+	expect(queue.list().sourceErrors.map((error) => error.sourceId)).toEqual(["test"]);
+	expect(queue.list({ projectId: "other" }).sourceErrors).toEqual([]);
+	queue.acknowledge({ id: "test", revision: 1 });
+	expect(queue.list({ includeAcknowledged: true }).sourceErrors).toEqual([]);
+});

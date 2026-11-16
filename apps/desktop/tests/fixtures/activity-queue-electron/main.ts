@@ -6,7 +6,8 @@ import { BrowserWindow, app, session } from "electron";
 import { PtyManager } from "../../../src/daemon/pty-manager";
 import type { ScrollbackStore } from "../../../src/daemon/scrollback-store";
 import { SocketServer } from "../../../src/daemon/socket-server";
-import { observePRActivity } from "../../../src/main/activity-queue/pr-source";
+import { listCurrentActivityQueue } from "../../../src/main/activity-queue/current-items";
+import { observePRActivity, prSourceId } from "../../../src/main/activity-queue/pr-source";
 import { ActivityQueueService } from "../../../src/main/activity-queue/service";
 import { codexConfig } from "../../../src/main/agent-hooks/agents/codex";
 import { createAlertListener } from "../../../src/main/agent-hooks/listener";
@@ -14,6 +15,7 @@ import { closeDb, getDb } from "../../../src/main/db";
 import { projects, terminalSessions, workspaces } from "../../../src/main/db/schema";
 import { AgentSessionManager } from "../../../src/main/services/agent-session-manager";
 import { DaemonClient } from "../../../src/main/terminal/daemon-client";
+import { setDaemonClient } from "../../../src/main/terminal/daemon-instance";
 import { setupTerminalIPC } from "../../../src/main/terminal/ipc";
 import { rendererTrust } from "../../../src/main/terminal/renderer-trust";
 import { router } from "../../../src/main/trpc";
@@ -68,6 +70,15 @@ async function run() {
 	await app.whenReady();
 	socketServer.listen();
 	await daemon.connect();
+	setDaemonClient(daemon);
+	await daemon.create(
+		"terminal",
+		root,
+		() => {},
+		() => {},
+		{ SHELL: "/bin/sh", HOME: root }
+	);
+	await daemon.listSessionsStrict();
 	session.defaultSession.webRequest.onBeforeRequest((details, done) =>
 		done({ cancel: !details.url.startsWith("file://") && !details.url.startsWith("devtools://") })
 	);
@@ -94,6 +105,42 @@ async function run() {
 			updatedAt: now,
 		})
 		.run();
+	// Historical reports and stored terminal rows must not become current tasks.
+	getDb()
+		.insert(workspaces)
+		.values({
+			id: "retired",
+			projectId: "project",
+			type: "branch",
+			name: "Retired workspace",
+			currentPhase: "done",
+			createdAt: now,
+			updatedAt: now,
+		})
+		.run();
+	getDb()
+		.insert(terminalSessions)
+		.values({
+			id: "retired-terminal",
+			workspaceId: "retired",
+			cwd: root,
+			title: "Retired",
+			sortOrder: 0,
+			updatedAt: now,
+		})
+		.run();
+	for (let i = 0; i < 100; i++) {
+		const queue = new ActivityQueueService();
+		queue.observe({
+			sourceId: `historical-pr-${i}`,
+			sourceType: "pr",
+			fingerprint: "baseline",
+			snapshot: {},
+			observedAt: 1,
+			candidate: null,
+		});
+		queue.markUnavailable(`historical-pr-${i}`, "PR status not confirmed in this poll");
+	}
 	getDb()
 		.insert(terminalSessions)
 		.values({
@@ -173,16 +220,22 @@ async function run() {
 	await until(() => hasCount(1));
 	await click("Queue 1");
 	await until(() => js<boolean>("!!document.querySelector('dialog[open]')"));
+	if (
+		await js<boolean>(
+			"document.body.textContent.includes('Retired workspace') || document.body.textContent.includes('PR status not confirmed in this poll')"
+		)
+	)
+		throw new Error("Historical workspace or inactive PR errors leaked into queue");
 	if (!(await js<boolean>("document.body.textContent.includes('Ready for next input')")))
 		throw new Error("Missing turn-ready label");
 	await click("Handled");
 	step = "acknowledgment persisted via real IPC";
 	await until(() => hasCount(0));
 	closeDb();
-	if (new ActivityQueueService().list().totalPending !== 0)
+	if ((await listCurrentActivityQueue()).totalPending !== 0)
 		throw new Error("Receipt lost after SQLite reopen");
 	await hook("Stop", "turn-1");
-	if (new ActivityQueueService().list().totalPending !== 0)
+	if ((await listCurrentActivityQueue()).totalPending !== 0)
 		throw new Error("Duplicate Stop resurrected handled row");
 	await hook("UserPromptSubmit", "turn-2");
 	await hook("PreCompact", "turn-2");
@@ -192,7 +245,7 @@ async function run() {
 	await until(() => hasCount(1));
 	await until(() => js<boolean>("document.body.textContent.includes('Agent needs input')"));
 	await hook("Stop", "turn-1");
-	if (new ActivityQueueService().list().items[0]?.kind !== "agent-input")
+	if ((await listCurrentActivityQueue()).items[0]?.kind !== "agent-input")
 		throw new Error("Late prior-turn Stop overwrote input");
 	const pr: CachedPR = {
 		provider: "github",
@@ -225,6 +278,10 @@ async function run() {
 		undefined,
 		"Native queue"
 	);
+	new ActivityQueueService().markUnavailable(
+		prSourceId(pr),
+		"Some PR review metadata is unavailable"
+	);
 	await until(() =>
 		js<boolean>(
 			"[...document.querySelectorAll('button')].some(b => b.textContent.trim() === 'Refresh' && !b.disabled)"
@@ -234,10 +291,16 @@ async function run() {
 	step = "PR and agent rows together";
 	await until(() => hasCount(2));
 	await until(() => js<boolean>("document.body.textContent.includes('Native review request')"));
+	if (
+		!(await js<boolean>(
+			"!!document.querySelector('details') && !document.querySelector('details').open && document.querySelectorAll('details li').length === 1"
+		))
+	)
+		throw new Error("PR warnings are not compact and collapsed");
 	await contents
 		.capturePage()
 		.then((capture) => writeFileSync(join(root, "queue.png"), capture.toPNG()));
-	const before = new ActivityQueueService().list().totalPending;
+	const before = (await listCurrentActivityQueue()).totalPending;
 	await click("Open");
 	step = "failed navigation does not handle item";
 	await until(() =>
@@ -245,7 +308,7 @@ async function run() {
 			"!!document.querySelector('li [role=alert]') || document.body.textContent.includes('Unable') || document.body.textContent.includes('No procedure')"
 		)
 	);
-	if (new ActivityQueueService().list().totalPending !== before)
+	if ((await listCurrentActivityQueue()).totalPending !== before)
 		throw new Error("Open acknowledged attention");
 	contents.sendInputEvent({ type: "keyDown", keyCode: "Escape" });
 	contents.sendInputEvent({ type: "keyUp", keyCode: "Escape" });
@@ -254,14 +317,6 @@ async function run() {
 		js<boolean>("document.activeElement?.getAttribute('aria-label') === 'Queue 2'")
 	);
 	step = "atomic attach through production preload and main IPC";
-	await daemon.create(
-		"terminal",
-		root,
-		() => {},
-		() => {},
-		{ SHELL: "/bin/sh", HOME: root }
-	);
-	await daemon.listSessionsStrict();
 	if (createdPtys !== 1) throw new Error("Expected one fixture shell");
 	const attachScript = `window.electron.terminal.create('terminal', ${JSON.stringify(root)}, 'workspace', 'attach-existing-only')`;
 	const attached = await js<{ wasAttached: boolean }>(attachScript);
@@ -299,6 +354,7 @@ function finish(code: number) {
 	listener.stop();
 	manager?.dispose();
 	daemon.disconnect();
+	setDaemonClient(null);
 	socketServer.close();
 	ptys.disposeAll();
 	closeDb();

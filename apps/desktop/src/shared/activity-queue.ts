@@ -58,6 +58,8 @@ export interface ActivityQueueListInput {
 }
 export interface ActivityQueueListResult {
 	items: ActivityQueueItem[];
+	/** False when current agent inventory could not be confirmed. */
+	agentStatusAvailable?: boolean;
 	/** Global pending count, independent of filters. */
 	totalPending: number;
 	updatedAt: number | null;

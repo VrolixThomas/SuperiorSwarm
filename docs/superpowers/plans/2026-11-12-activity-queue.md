@@ -146,3 +146,15 @@ Remaining limits:
 - Hooks emitted while the whole app/listener is unavailable are not replayed. Legacy payloads without turn/producer metadata retain arrival-order limitations. Hermes ingestion/recovery is deferred.
 - GitHub PR updates cover head/state/draft/current requests, latest submitted review and latest conversation comment/count. Older edits and inline-thread resolution are not comprehensively observed. Bitbucket covers head/state/draft/participants/comment count; edits and unchanged-participant repeated reviews are not comprehensive. UI labels describe observed activity rather than claiming complete provider history.
 - The repository's optional graphify post-commit hook cannot rebuild because its Python package is unavailable; source commits and verification succeed.
+
+## Local feedback repair — 2026-11-16
+
+The user's local test exposed a missing lifecycle case: workspace reports and terminal rows can remain in SQLite after the actual terminal is gone. Initial queue reconciliation treated those historical reports and unanswered messages as current tasks. Earlier tests covered deleted rows, but not retained rows without a live terminal. Separately, `sourceErrors` included hundreds of PR baselines with no candidate, and the panel rendered every message before the task list.
+
+`current-items.ts` now filters agent candidates using the connected daemon's confirmed terminal inventory and registered workspace ownership. The pending count uses the same eligibility rule. It does not delete historical source data or receipts. A disconnected/failed inventory query retains the last confirmed view; a cold unknown inventory is explicitly unavailable instead of claiming an empty queue or advertising all historical tasks. PR items remain independent of local terminal availability.
+
+Source warnings now refer only to pending visible candidates. The renderer also filters warnings to the selected category/project, groups identical messages and keeps the details collapsed with bounded height. This replaces the long repeated error list.
+
+A read-only check against the user's development daemon and database found 136 saved pending candidates, of which only 3 had current targets under this rule; 2 PR warnings applied. The four obsolete examples in the screenshots had stored terminal records but zero live terminals. No live database rows or user files were deleted during diagnosis.
+
+Regression coverage: 23 core/current-inventory tests pass, including both provider 55-turn cases; 18 panel/live-renderer tests pass. The native Electron fixture seeds retained inactive workspace/terminal rows and 100 unrelated PR warnings, verifies they stay out of the queue, and checks the remaining warning is collapsed. Existing acknowledgment/restart/turn ordering and atomic native attachment checks still pass. Main/tests TypeScript diagnostics remain at 61/203, with no diagnostics in the changed queue paths.

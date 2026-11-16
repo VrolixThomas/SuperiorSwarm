@@ -23,6 +23,7 @@ import { activityQueueSources } from "../src/main/db/schema-activity-queue";
 import { AgentSessionManager } from "../src/main/services/agent-session-manager";
 import { setStatus } from "../src/main/services/workspace-service";
 import type { DaemonClient } from "../src/main/terminal/daemon-client";
+import { getDaemonClient, setDaemonClient } from "../src/main/terminal/daemon-instance";
 import { activityQueueRouter } from "../src/main/trpc/routers/activity-queue";
 import { workspacesRouter } from "../src/main/trpc/routers/workspaces";
 import { agentRegistry } from "../src/shared/agent-events";
@@ -239,21 +240,31 @@ test("newly persisted generic idle session is not treated as turn completion; de
 });
 
 test("router checks authoritative revision before handling; exact terminal works without workspace hint", async () => {
-	const api = activityQueueRouter.createCaller({});
-	const ctx = { kind: "workspace" as const, projectId, workspaceId };
-	await setStatus(ctx, { phase: "blocked", needs: "First" });
-	const displayed = (await api.list()).items[0];
-	await setStatus(ctx, { phase: "blocked", needs: "Second" });
-	expect(
-		(await api.acknowledge({ id: displayed?.id ?? "", revision: displayed?.revision ?? 0 })).status
-	).toBe("conflict");
-	expect((await api.list()).totalPending).toBe(1);
-	await setStatus(ctx, { phase: "working" });
+	const previousDaemon = getDaemonClient();
+	setDaemonClient({
+		isConnected: true,
+		listSessionsStrict: async () => [{ id: "one", cwd: "/tmp", pid: 1 }],
+	} as DaemonClient);
 	const agent = manager();
 	register(agent, "one");
-	agent.handleAgentEvent({ ...event("one", "needs-input"), workspaceId: "" });
-	expect((await api.list()).items[0]?.kind).toBe("agent-input");
-	agent.dispose();
+	try {
+		const api = activityQueueRouter.createCaller({});
+		const ctx = { kind: "workspace" as const, projectId, workspaceId };
+		await setStatus(ctx, { phase: "blocked", needs: "First" });
+		const displayed = (await api.list()).items[0];
+		await setStatus(ctx, { phase: "blocked", needs: "Second" });
+		expect(
+			(await api.acknowledge({ id: displayed?.id ?? "", revision: displayed?.revision ?? 0 }))
+				.status
+		).toBe("conflict");
+		expect((await api.list()).totalPending).toBe(1);
+		await setStatus(ctx, { phase: "working" });
+		agent.handleAgentEvent({ ...event("one", "needs-input"), workspaceId: "" });
+		expect((await api.list()).items[0]?.kind).toBe("agent-input");
+	} finally {
+		agent.dispose();
+		setDaemonClient(previousDaemon);
+	}
 });
 
 test("restart bootstrap recovers explicit persisted needs-input but not generic idle", () => {
