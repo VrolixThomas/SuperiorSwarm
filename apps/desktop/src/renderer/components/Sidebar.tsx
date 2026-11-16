@@ -195,8 +195,6 @@ export function Sidebar({ collapsed, onExpand }: SidebarProps) {
 				</div>
 			</div>
 
-			<ActivityQueueButton />
-
 			{/* Segmented control */}
 			<div className="flex gap-1 border-b border-[var(--border-subtle)] px-2 py-1.5">
 				{(["repos", "tickets", "prs", "hermes"] as const).map((seg) => {
@@ -249,8 +247,9 @@ export function Sidebar({ collapsed, onExpand }: SidebarProps) {
 				{segment === "hermes" && <HermesSidebar />}
 			</div>
 
-			{/* Footer — Settings */}
-			<div className="flex items-center border-t border-[var(--border-subtle)] p-2">
+			{/* Global utilities stay below project navigation. */}
+			<div className="flex items-center gap-1 border-t border-[var(--border-subtle)] p-2">
+				<ActivityQueueButton />
 				<Tooltip
 					label={hasDismissedUpdate ? "Settings — update ready" : "Settings"}
 					actionId="general.settings"

@@ -9,7 +9,7 @@ Source baseline: `17a316bf5fd73c0c6883128637398aa14bb81c05`.
 
 Give the operator one list answering “what needs my attention next?” across projects: agents waiting for input, agents ready for another instruction, PRs requesting review, and PRs with meaningful updates since they were handled.
 
-Use a persistent **Queue N** button above the existing sidebar segments, with the same entry point in the collapsed rail. Open a compact, viewport-bounded panel without changing the active workspace. Keep the four existing segments. Adding a fifth segment would couple the queue to workspace restoration and crowd the current 232–360px sidebar.
+The November 16 design iteration moves **Queue** beside Settings in the pinned sidebar footer, with an icon/count entry at the bottom of the collapsed rail. It opens a persistent right dock in the existing utility panel. Opening a source keeps this dock visible; closing it restores the ordinary utility panel. The four existing navigation segments remain unchanged.
 
 This first version derives tasks from existing agent and PR activity. Manual todos, scheduling, snoozing, automated replies, automatic review submission, and automatic agent dispatch are follow-up features.
 
@@ -24,7 +24,7 @@ This first version derives tasks from existing agent and PR activity. Manual tod
 
 Default to all projects. Provide category and project filters and a way to inspect handled items. Order by needs-input, PR-review-needed, PR-updated, ready-agent; newest meaningful activity first within each group, with deterministic ID tie-breaking. Keep all reasons on a PR row, but count that PR once and place it in its highest-priority group. Preserve distinct terminal/session identities within one workspace.
 
-Rows show action, title, project/workspace or repository/PR number, reason, and relative age. **Open** navigates; **Handled** acknowledges the displayed revision. Merely viewing the panel, changing filters, opening a workspace, or opening a PR does not acknowledge anything. Acknowledging an older revision must not hide activity arriving concurrently. “Handled” is local attention state, never agent task completion, GitHub approval, or review submission.
+Compact rows show title, readable location, reason, and relative age. Selecting a row or **Open source** navigates without closing the dock. **Handle & next** acknowledges the displayed revision, refreshes the projection, then opens the next pending item in the filtered sequence. Previous/Next navigate without acknowledgment. Merely viewing the panel, changing filters, opening a workspace, or opening a PR does not acknowledge anything. Acknowledging an older revision must not hide activity arriving concurrently. “Handled” is local attention state, never agent task completion, GitHub approval, or review submission.
 
 ## Evidence from the current implementation
 
@@ -158,3 +158,13 @@ Source warnings now refer only to pending visible candidates. The renderer also 
 A read-only check against the user's development daemon and database found 136 saved pending candidates, of which only 3 had current targets under this rule; 2 PR warnings applied. The four obsolete examples in the screenshots had stored terminal records but zero live terminals. No live database rows or user files were deleted during diagnosis.
 
 Regression coverage: 23 core/current-inventory tests pass, including both provider 55-turn cases; 18 panel/live-renderer tests pass. The native Electron fixture seeds retained inactive workspace/terminal rows and 100 unrelated PR warnings, verifies they stay out of the queue, and checks the remaining warning is collapsed. Existing acknowledgment/restart/turn ordering and atomic native attachment checks still pass. Main/tests TypeScript diagnostics remain at 61/203, with no diagnostics in the changed queue paths.
+
+## Design iteration — 2026-11-16
+
+User feedback: reopening the modal after every item interrupts the workflow, and the button above project navigation is misplaced. Replaced it with a persistent, resizable right utility dock and footer entry. Existing source work remains interactive; the queue does not trap keyboard focus. Its compact grouped list highlights one selected item, preserves that selection on incoming activity, and keeps detail/Previous/Next/Handle & next controls at the bottom. List arrow/Home/End keys select rows without opening them; Enter opens the selected source. Escape closes only when focus is within the dock, and returns focus to its footer entry.
+
+The receipt workflow is version-safe: it waits for acknowledgment and a fresh projection before choosing a successor. A conflict, failed acknowledgment, or newer occurrence of the same item prevents automatic advancement. A failure opening the successor keeps that item selected and pending. Closing the dock during an acknowledgment cancels automatic successor navigation. Handling the final item shows completion without closing the dock. The right panel's prior size/content is restored on close; the queue remains open across source/segment navigation.
+
+Validation: 37 focused panel/live-query/navigation tests pass. Native Electron coverage opens an actual registered source through production navigation/router/preload without closing the dock, checks exact-version handling and next-item failure retention, preserves atomic PTY attachment, and verifies scoped Escape/focus return. Native fixtures render at 800×600 and 1440×900, measure bounds and keyboard focus, and check long titles/errors at 800×600 without obscuring the action bar. Actual running-app UI inspection also confirmed footer placement and restoration of the Git panel; no real queue items were acknowledged. Renderer/tests TypeScript checks retain the baseline 81/203 diagnostics with no new queue diagnostics.
+
+Sanitized design contract, screenshots and evidence checker result are in `.hermes/verification/queue-design-iteration/`. The screenshots use production queue components with an isolated native backend and a lightweight source-input fixture. The running development process still had the old backend projection while its renderer hot-reloaded; one `bun run dev` restart is required to load the earlier history filter. No dependency changes were included; the user's existing `bun.lock` modification is preserved.

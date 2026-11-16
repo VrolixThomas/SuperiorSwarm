@@ -753,7 +753,6 @@ export function SidebarRail({ onExpand }: SidebarRailProps) {
 		<div ref={railRef} className="flex h-full w-full flex-col items-center bg-[var(--bg-surface)]">
 			{/* Traffic light clearance */}
 			<div className="app-drag h-[52px] w-full shrink-0" />
-			<ActivityQueueButton compact />
 
 			{/* Project groups + Tickets + PRs */}
 			<div className="flex flex-1 flex-col items-center gap-2 overflow-y-auto px-1 py-1">
@@ -816,7 +815,8 @@ export function SidebarRail({ onExpand }: SidebarRailProps) {
 			</div>
 
 			{/* Settings — pinned to bottom */}
-			<div className="shrink-0 border-t border-[var(--border-subtle)] p-2">
+			<div className="flex shrink-0 flex-col gap-2 border-t border-[var(--border-subtle)] p-2">
+				<ActivityQueueButton compact />
 				<button
 					type="button"
 					title="Settings"

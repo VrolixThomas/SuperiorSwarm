@@ -61,6 +61,7 @@ for (const [key, value] of Object.entries({
 }))
 	Object.defineProperty(globalThis, key, { configurable: true, writable: true, value });
 const { createRoot } = await import("react-dom/client");
+const { ActivityQueueDock } = await import("../src/renderer/components/ActivityQueueDock");
 const { ActivityQueueButton } = await import("../src/renderer/components/ActivityQueueButton");
 let root: Root | undefined;
 let client: QueryClient;
@@ -108,6 +109,7 @@ async function mount(compact = false) {
 			<trpc.Provider client={trpcVanilla} queryClient={client}>
 				<QueryClientProvider client={client}>
 					<ActivityQueueButton compact={compact} />
+					<ActivityQueueDock />
 				</QueryClientProvider>
 			</trpc.Provider>
 		)
@@ -115,7 +117,7 @@ async function mount(compact = false) {
 	await flush();
 }
 function trigger() {
-	const button = document.querySelector<HTMLButtonElement>('button[aria-haspopup="dialog"]');
+	const button = document.querySelector<HTMLButtonElement>("[data-queue-trigger]");
 	if (!button) throw new Error("Missing Queue trigger");
 	return button;
 }
@@ -161,15 +163,17 @@ test("collapsed entrypoint opens labelled panel; Escape returns focus without na
 		sourceErrors: [],
 	};
 	await mount(true);
-	expect(trigger().textContent).toBe("Queue1");
+	expect(trigger().getAttribute("aria-label")).toBe("Queue 1");
 	trigger().focus();
 	await act(() => trigger().click());
-	const dialog = document.querySelector("dialog");
-	if (!dialog) throw new Error("Missing dialog");
+	const dialog = document.querySelector("aside");
+	if (!dialog) throw new Error("Missing dock");
 	expect(document.activeElement).toBe(dialog);
-	await act(() => dialog.dispatchEvent(new Event("cancel", { cancelable: true })));
+	await act(() =>
+		dialog.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }))
+	);
 	await flush();
-	expect(document.querySelector("dialog")).toBeNull();
+	expect(document.querySelector("aside")).toBeNull();
 	expect(document.activeElement).toBe(trigger());
 	expect(calls.every((c) => c.path === "activityQueue.list")).toBe(true);
 });
@@ -186,7 +190,7 @@ test("Handled calls the real mutation with displayed revision and keeps concurre
 	// Backend has advanced but the displayed row still represents revision 3.
 	projection = { ...projection, items: [row("codex", 4, "agent-input")] };
 	ackStatus = "conflict";
-	const handle = document.querySelector<HTMLButtonElement>('button[aria-label^="Mark "]');
+	const handle = document.querySelector<HTMLButtonElement>('button[aria-label^="Handle "]');
 	if (!handle) throw new Error("Missing Handled button");
 	await act(() => handle.click());
 	await flush();
@@ -221,7 +225,7 @@ test("remount and reconnect invalidation recover missed source changes", async (
 	expect(document.body.textContent).toContain("codex turn 3");
 });
 
-test("destination focus selects the exact terminal after the panel closes", async () => {
+test("destination focus selects the exact terminal while the dock stays open", async () => {
 	await mount();
 	const workspace = document.createElement("div");
 	workspace.setAttribute("data-queue-workspace", "target");
@@ -258,7 +262,7 @@ test("Queue command opens the panel without selecting a workspace or segment", a
 	registerCoreActions();
 	await act(() => useActionStore.getState().execute("nav.queue"));
 	await flush();
-	expect(document.querySelector("dialog")?.open).toBe(true);
+	expect(!!document.querySelector("aside")).toBe(true);
 	expect(useProjectStore.getState().sidebarView).toBe("main");
 	expect(useTabStore.getState().activeWorkspaceId).toBe("ongoing");
 	expect(useTabStore.getState().sidebarSegment).toBe("hermes");

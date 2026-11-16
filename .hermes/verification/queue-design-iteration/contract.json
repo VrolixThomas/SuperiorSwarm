@@ -1,0 +1,39 @@
+{
+  "surface": "SuperiorSwarm activity queue",
+  "job": "Work through agent and PR items without closing the list or blocking the source workspace",
+  "primaryAction": "Handle the displayed revision and open the next pending item",
+  "direction": "Quiet, compact desktop utility: persistent right dock, clear selection, stable action bar, footer entry",
+  "hierarchy": [
+    "Queue count and close",
+    "Filters and previous/next position",
+    "Compact grouped list",
+    "Selected item details and Handle & next"
+  ],
+  "viewports": [
+    "800x600",
+    "1440x900"
+  ],
+  "references": [
+    "User says modal must be reopened after every item",
+    "User dislikes Queue above sidebar segments",
+    "Existing app has a collapsible right utility panel and pinned sidebar footer"
+  ],
+  "constraints": [
+    "Reuse right utility panel rather than add a fourth split",
+    "Keep queue open during workspace/PR navigation",
+    "Preserve atomic attach-only navigation",
+    "Opening never acknowledges; Handle & next acknowledges exact revision",
+    "Do not advance on stale acknowledgment or failure",
+    "New incoming activity must not jump current selection",
+    "No global keyboard interception in terminals",
+    "Preserve filters and scroll while navigating"
+  ],
+  "states": {
+    "loading": "Stable dock and loading label",
+    "empty": "Completion state with filters still accessible",
+    "error": "Visible error and Refresh",
+    "partial": "Collapsed warning summary; current list remains",
+    "success": "Next pending item opens after successful receipt",
+    "permission": "No new permission surface; unavailable source shows existing navigation error"
+  }
+}

@@ -4,6 +4,7 @@ import type { MergeResult, RebaseResult } from "../shared/branch-types";
 import type { LayoutNode, SerializedLayoutNode } from "../shared/pane-types";
 import { registerCoreActions } from "./actions/core-actions";
 import { registerReviewActions } from "./actions/review-actions";
+import { ActivityQueueDock } from "./components/ActivityQueueDock";
 import { AddRepositoryModal } from "./components/AddRepositoryModal";
 import { BranchActionMenu } from "./components/BranchActionMenu";
 import { BranchPalette } from "./components/BranchPalette";
@@ -38,6 +39,7 @@ import {
 	deserializeLayout,
 	isSessionSnapshotPersistable,
 } from "./session-snapshot";
+import { useActivityQueueStore } from "./stores/activity-queue-store";
 import { useBranchStore } from "./stores/branch-store";
 import { useEditorSettingsStore } from "./stores/editor-settings";
 import { usePaneStore } from "./stores/pane-store";
@@ -445,6 +447,9 @@ function AuthenticatedApp() {
 
 	const sidebarPanelRef = usePanelRef();
 	const diffPanelRef = usePanelRef();
+	const queueOpen = useActivityQueueStore((s) => s.open);
+	const closeQueue = useActivityQueueStore((s) => s.close);
+	const previousUtilitySize = useRef<number | null>(null);
 	const setSidebarCollapsed = useProjectStore((s) => s.setSidebarCollapsed);
 	const sidebarCollapsed = useProjectStore((s) => s.sidebarCollapsed);
 	const sidebarView = useProjectStore((s) => s.sidebarView);
@@ -460,7 +465,24 @@ function AuthenticatedApp() {
 	// Sync panel collapse/expand with store state.
 	// Global canvas routes do not use the repository diff panel.
 	useEffect(() => {
+		if (sidebarView === "settings") {
+			previousUtilitySize.current = null;
+			return;
+		}
 		if (!diffPanelRef.current) return;
+		if (queueOpen) {
+			if (previousUtilitySize.current === null) {
+				previousUtilitySize.current = diffPanelRef.current.getSize().inPixels;
+				diffPanelRef.current.expand();
+				diffPanelRef.current.resize("360px");
+			}
+			return;
+		}
+		if (previousUtilitySize.current !== null) {
+			if (rightPanelOpen && previousUtilitySize.current > 0)
+				diffPanelRef.current.resize(previousUtilitySize.current);
+			previousUtilitySize.current = null;
+		}
 		if (sidebarSegment === "tickets" || sidebarSegment === "hermes") {
 			if (!diffPanelRef.current.isCollapsed()) diffPanelRef.current.collapse();
 			return;
@@ -470,7 +492,7 @@ function AuthenticatedApp() {
 		} else if (!rightPanelOpen && !diffPanelRef.current.isCollapsed()) {
 			diffPanelRef.current.collapse();
 		}
-	}, [rightPanelOpen, diffPanelRef, sidebarSegment]);
+	}, [queueOpen, rightPanelOpen, diffPanelRef, sidebarSegment, sidebarView]);
 
 	// Handle toggle-sidebar action from keyboard shortcut
 	useEffect(() => {
@@ -564,7 +586,11 @@ function AuthenticatedApp() {
 
 						<Separator className="panel-resize-handle" />
 
-						<Panel id="main" minSize="360px" className="min-w-0 overflow-hidden">
+						<Panel
+							id="main"
+							minSize={queueOpen ? "240px" : "360px"}
+							className="min-w-0 overflow-hidden"
+						>
 							<MainContentArea savedScrollback={savedScrollback} />
 						</Panel>
 
@@ -573,19 +599,22 @@ function AuthenticatedApp() {
 							id="diff"
 							panelRef={diffPanelRef}
 							defaultSize="19.4%"
-							minSize={200}
-							maxSize="40%"
+							minSize={queueOpen ? "280px" : 200}
+							maxSize={queueOpen ? "480px" : "40%"}
 							collapsible
 							collapsedSize="0%"
 							onResize={() => {
 								const collapsed = diffPanelRef.current?.isCollapsed() ?? false;
-								if (collapsed && rightPanelOpen) closeDiffPanel();
+								if (collapsed && queueOpen && previousUtilitySize.current !== null) closeQueue();
+								else if (collapsed && rightPanelOpen) closeDiffPanel();
 							}}
 						>
-							<DiffPanel onClose={closeDiffPanel} />
+							<ActivityQueueDock />
+							{!queueOpen && <DiffPanel onClose={closeDiffPanel} />}
 						</Panel>
 					</Group>
 					{!rightPanelOpen &&
+						!queueOpen &&
 						sidebarSegment === "repos" &&
 						!activeWorkspaceId?.startsWith("xro-") && (
 							<button

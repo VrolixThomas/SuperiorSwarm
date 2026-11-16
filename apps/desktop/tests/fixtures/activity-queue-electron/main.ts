@@ -14,6 +14,7 @@ import { createAlertListener } from "../../../src/main/agent-hooks/listener";
 import { closeDb, getDb } from "../../../src/main/db";
 import { projects, terminalSessions, workspaces } from "../../../src/main/db/schema";
 import { AgentSessionManager } from "../../../src/main/services/agent-session-manager";
+import { setAgentSessionManager } from "../../../src/main/services/agent-session-manager-handle";
 import { DaemonClient } from "../../../src/main/terminal/daemon-client";
 import { setDaemonClient } from "../../../src/main/terminal/daemon-instance";
 import { setupTerminalIPC } from "../../../src/main/terminal/ipc";
@@ -21,6 +22,8 @@ import { rendererTrust } from "../../../src/main/terminal/renderer-trust";
 import { router } from "../../../src/main/trpc";
 import { setupTRPCIPC } from "../../../src/main/trpc/ipc-link";
 import { activityQueueRouter } from "../../../src/main/trpc/routers/activity-queue";
+import { agentSessionsRouter } from "../../../src/main/trpc/routers/agent-sessions";
+import { workspacesRouter } from "../../../src/main/trpc/routers/workspaces";
 import { agentRegistry } from "../../../src/shared/agent-events";
 import type { CachedPR } from "../../../src/shared/review-types";
 import { terminalCreateErrorCode } from "../../../src/shared/terminal-create";
@@ -173,7 +176,14 @@ async function run() {
 		if (normalized) win?.webContents.send("agent:alert", normalized);
 	});
 	await listener.start();
-	setupTRPCIPC(router({ activityQueue: activityQueueRouter }));
+	setAgentSessionManager(manager);
+	setupTRPCIPC(
+		router({
+			activityQueue: activityQueueRouter,
+			workspaces: workspacesRouter,
+			agentSessions: agentSessionsRouter,
+		})
+	);
 	win = new BrowserWindow({
 		show: false,
 		width: 850,
@@ -189,6 +199,8 @@ async function run() {
 	rendererTrust.register(contents.id, pathToFileURL(join(root, "index.html")).href);
 	setupTerminalIPC(daemon, manager);
 	await win.loadFile(join(root, "index.html"));
+	win.show();
+	win.focus();
 	const js = <T = unknown>(source: string): Promise<T> => contents.executeJavaScript(source);
 	const hasCount = (count: number) =>
 		js<boolean>(`!!document.querySelector('button[aria-label="Queue ${count}"]')`);
@@ -219,7 +231,7 @@ async function run() {
 	step = "hook delivery to rendered queue";
 	await until(() => hasCount(1));
 	await click("Queue 1");
-	await until(() => js<boolean>("!!document.querySelector('dialog[open]')"));
+	await until(() => js<boolean>("!!document.querySelector('#activity-queue-panel')"));
 	if (
 		await js<boolean>(
 			"document.body.textContent.includes('Retired workspace') || document.body.textContent.includes('PR status not confirmed in this poll')"
@@ -228,7 +240,7 @@ async function run() {
 		throw new Error("Historical workspace or inactive PR errors leaked into queue");
 	if (!(await js<boolean>("document.body.textContent.includes('Ready for next input')")))
 		throw new Error("Missing turn-ready label");
-	await click("Handled");
+	await click("Handle & next");
 	step = "acknowledgment persisted via real IPC";
 	await until(() => hasCount(0));
 	closeDb();
@@ -284,10 +296,10 @@ async function run() {
 	);
 	await until(() =>
 		js<boolean>(
-			"[...document.querySelectorAll('button')].some(b => b.textContent.trim() === 'Refresh' && !b.disabled)"
+			"[...document.querySelectorAll('button')].some(b => b.getAttribute('aria-label') === 'Refresh queue' && !b.disabled)"
 		)
 	);
-	await click("Refresh");
+	await click("Refresh queue");
 	step = "PR and agent rows together";
 	await until(() => hasCount(2));
 	await until(() => js<boolean>("document.body.textContent.includes('Native review request')"));
@@ -297,24 +309,119 @@ async function run() {
 		))
 	)
 		throw new Error("PR warnings are not compact and collapsed");
+	for (const [width, height] of [
+		[800, 600],
+		[1440, 900],
+	]) {
+		if (!width || !height) throw new Error("Missing viewport");
+		win.setContentSize(width, height);
+		await new Promise((resolve) => setTimeout(resolve, 80));
+		const bounds = await js<{
+			width: number;
+			height: number;
+			right: number;
+			bottom: number;
+			viewportWidth: number;
+			viewportHeight: number;
+		}>(
+			"(() => { const r = document.querySelector('#activity-queue-panel').getBoundingClientRect(); return { width:r.width, height:r.height, right:r.right,bottom:r.bottom,viewportWidth:innerWidth,viewportHeight:innerHeight }; })()"
+		);
+		if (
+			bounds.width < 280 ||
+			bounds.right > bounds.viewportWidth + 1 ||
+			bounds.bottom > bounds.viewportHeight + 1
+		)
+			throw new Error("Queue does not fit viewport");
+		await js("document.querySelector('#activity-queue-panel').focus()");
+		contents.sendInputEvent({ type: "keyDown", keyCode: "Tab" });
+		contents.sendInputEvent({ type: "keyUp", keyCode: "Tab" });
+		await until(() =>
+			js<boolean>("document.activeElement?.getAttribute('aria-label') === 'Refresh queue'")
+		);
+		if (
+			!(await js<boolean>("parseFloat(getComputedStyle(document.activeElement).outlineWidth) >= 2"))
+		)
+			throw new Error(
+				`Keyboard focus is not visible: ${await js<string>("JSON.stringify({hasFocus:document.hasFocus(),visible:document.activeElement.matches(':focus-visible'),style:getComputedStyle(document.activeElement).outlineStyle,width:getComputedStyle(document.activeElement).outlineWidth})")}`
+			);
+		await contents
+			.capturePage()
+			.then((capture) =>
+				writeFileSync(join(root, `queue-${width}x${height}.png`), capture.toPNG())
+			);
+	}
+	const longTitle =
+		"Review payment reconciliation after failed retries across multiple linked repositories and long-running workspace sessions";
+	observePRActivity(
+		{ ...pr, title: longTitle },
+		{ state: "open", isDraft: false, reviewRequested: true, headSha: "a" },
+		[],
+		Date.now(),
+		new ActivityQueueService(),
+		undefined,
+		"Native queue"
+	);
+	await until(() =>
+		js<boolean>("!document.querySelector('button[aria-label=\"Refresh queue\"]').disabled")
+	);
+	await click("Refresh queue");
+	await until(() =>
+		js<boolean>(`document.body.textContent.includes(${JSON.stringify(longTitle)})`)
+	);
+	await click(`Open ${longTitle}`);
+	await until(() => js<boolean>("!!document.querySelector('#activity-queue-panel [role=alert]')"));
+	win.setContentSize(800, 600);
+	await new Promise((resolve) => setTimeout(resolve, 80));
+	if (
+		!(await js<boolean>(
+			"document.documentElement.scrollWidth <= innerWidth && document.querySelector('button[aria-label^=\"Handle \"]').getBoundingClientRect().bottom <= innerHeight"
+		))
+	)
+		throw new Error("Long content overflows the dock actions");
 	await contents
 		.capturePage()
-		.then((capture) => writeFileSync(join(root, "queue.png"), capture.toPNG()));
-	const before = (await listCurrentActivityQueue()).totalPending;
-	await click("Open");
-	step = "failed navigation does not handle item";
-	await until(() =>
-		js<boolean>(
-			"!!document.querySelector('li [role=alert]') || document.body.textContent.includes('Unable') || document.body.textContent.includes('No procedure')"
-		)
+		.then((capture) => writeFileSync(join(root, "queue-800x600-long.png"), capture.toPNG()));
+	observePRActivity(
+		pr,
+		{ state: "open", isDraft: false, reviewRequested: true, headSha: "a" },
+		[],
+		Date.now(),
+		new ActivityQueueService(),
+		undefined,
+		"Native queue"
 	);
-	if ((await listCurrentActivityQueue()).totalPending !== before)
-		throw new Error("Open acknowledged attention");
+	await click("Refresh queue");
+	await until(() => js<boolean>("document.body.textContent.includes('Native review request')"));
+	const before = (await listCurrentActivityQueue()).totalPending;
+	await click("Open Codex native turn");
+	step = "source navigation keeps dock open";
+	await until(() =>
+		js<boolean>("document.activeElement?.classList.contains('xterm-helper-textarea')")
+	);
+	if (!(await js<boolean>("!!document.querySelector('#activity-queue-panel')")))
+		throw new Error("Opening source closed the dock");
 	contents.sendInputEvent({ type: "keyDown", keyCode: "Escape" });
 	contents.sendInputEvent({ type: "keyUp", keyCode: "Escape" });
-	await until(() => js<boolean>("!document.querySelector('dialog[open]')"));
+	if (!(await js<boolean>("!!document.querySelector('#activity-queue-panel')")))
+		throw new Error("Queue intercepted terminal Escape");
+	if ((await listCurrentActivityQueue()).totalPending !== before)
+		throw new Error("Open acknowledged attention");
+	await click("Handle & next");
+	step = "next item remains visible when navigation fails";
+	await until(() => hasCount(1));
+	await until(() => js<boolean>("!!document.querySelector('#activity-queue-panel [role=alert]')"));
+	if (
+		!(await js<boolean>(
+			"document.querySelector('button[aria-current=true]')?.getAttribute('aria-label') === 'Open Native review request'"
+		))
+	)
+		throw new Error("Handle and next did not select the next item");
+	await js("document.querySelector('#activity-queue-panel').focus()");
+	contents.sendInputEvent({ type: "keyDown", keyCode: "Escape" });
+	contents.sendInputEvent({ type: "keyUp", keyCode: "Escape" });
+	await until(() => js<boolean>("!document.querySelector('#activity-queue-panel')"));
 	await until(() =>
-		js<boolean>("document.activeElement?.getAttribute('aria-label') === 'Queue 2'")
+		js<boolean>("document.activeElement?.getAttribute('aria-label') === 'Queue 1'")
 	);
 	step = "atomic attach through production preload and main IPC";
 	if (createdPtys !== 1) throw new Error("Expected one fixture shell");
@@ -353,6 +460,7 @@ run().then(
 function finish(code: number) {
 	listener.stop();
 	manager?.dispose();
+	setAgentSessionManager(null);
 	daemon.disconnect();
 	setDaemonClient(null);
 	socketServer.close();

@@ -1,0 +1,63 @@
+{
+  "contract": "contract.json: persistent right utility dock; footer entry; current source remains interactive; exact-revision Handle & next; no advance on conflicts; stable selection; compact rows and fixed action area.",
+  "targetViewports": [
+    "800x600",
+    "1440x900"
+  ],
+  "accessibility": {
+    "status": "pass",
+    "evidence": "Native Electron keyboard Tab reaches Refresh with computed outline >=2px; Escape in source input does not close the dock; Escape in dock returns focus to footer trigger. Arrow/Home/End row selection and no acknowledgment on navigation pass React tests. Native labels and high-contrast primary action inspected. No motion beyond existing color transitions; no animated scrolling."
+  },
+  "responsive": {
+    "status": "pass",
+    "evidence": "Native fixture measured dock within viewport at 800x600 and 1440x900. Selected long title/error checked at 800x600: no document horizontal overflow and Handle & next remains within viewport. Actual running app opened the right dock and restored its previous Git utility panel on close; source terminal and its draft remained unchanged."
+  },
+  "contentStates": {
+    "loading": {
+      "status": "pass",
+      "evidence": "Rendered React test retains the dock frame and Loading queue label until data arrives; trigger distinguishes loading and unavailable."
+    },
+    "empty": {
+      "status": "pass",
+      "evidence": "Native first acknowledgment reaches empty pending state without closing the dock. Renderer last-item test confirms All caught up and no successor navigation."
+    },
+    "error": {
+      "status": "pass",
+      "evidence": "Native Handle & next acknowledges current item then retains/selects successor when its source API is unavailable. Long-content screenshot shows the error within selected details; retry remains available. Receipt-conflict tests never advance."
+    },
+    "partial": {
+      "status": "pass",
+      "evidence": "Native screenshots show one collapsed warning summary with current rows retained. Tests group 100 repeated warnings and omit unrelated sources."
+    },
+    "success": {
+      "status": "pass",
+      "evidence": "Native source navigation moves focus to the source input while keeping queue mounted. Handle & next advances to the next pending item; tests prove receipt-before-open order and retain newer same-item revisions."
+    },
+    "permission": {
+      "status": "not-applicable",
+      "reason": "The dock does not grant permissions or add a consent flow. Existing PermissionRequest hooks render an Agent needs input row in the native fixture; failed source navigation is covered under error."
+    }
+  },
+  "renderedEvidence": [
+    {
+      "viewport": "800x600",
+      "artifact": "queue-800x600.png",
+      "observation": "Production Queue components in a sanitized native Electron workspace fixture. Footer entry, selected row, warning summary and fixed actions fit beside an interactive source."
+    },
+    {
+      "viewport": "1440x900",
+      "artifact": "queue-1440x900.png",
+      "observation": "Wide native fixture preserves source working area. Compact rows stay in the right dock and actions stay at its bottom."
+    },
+    {
+      "viewport": "800x600",
+      "artifact": "queue-800x600-long.png",
+      "observation": "Long title wraps in the selected detail area, truncates in the list, and source error does not push actions outside the narrow viewport."
+    }
+  ],
+  "limits": [
+    "Native screenshots use the actual queue with an isolated backend and a lightweight source-input fixture, not the entire authenticated app.",
+    "Actual app placement and closing/restoring the Git panel were checked separately through native UI. No real queue items were acknowledged.",
+    "The running development main process still serves the earlier history projection; restart bun run dev to load the committed backend filter."
+  ]
+}
