@@ -10,7 +10,10 @@ class SpawnedProcessError extends Error {}
 
 import { FileInputSessions } from "./file-input-sessions";
 import { shellIntegrationEnv } from "./shell-integration";
-import { readTerminalProcessIdentity } from "./terminal-process-identity";
+import {
+	readTerminalProcessEnvironment,
+	readTerminalProcessIdentity,
+} from "./terminal-process-identity";
 import { TerminalReplayBuffer } from "./terminal-replay-buffer";
 
 interface TerminalEntry {
@@ -61,6 +64,7 @@ export class PtyManager {
 			inspect?: (pid: number) => TerminalProcessIdentity | null;
 			replay?: () => TerminalReplayBuffer;
 			signal?: (pid: number) => void;
+			environment?: (identity: TerminalProcessIdentity) => Record<string, string> | null;
 		} = {}
 	) {}
 	private spawnProcess: typeof pty.spawn = (...args) => (this.backend.spawn ?? pty.spawn)(...args);
@@ -68,7 +72,9 @@ export class PtyManager {
 		(this.backend.inspect ?? readTerminalProcessIdentity)(pid);
 
 	private terminals = new Map<string, TerminalEntry>();
-	readonly fileInputs = new FileInputSessions();
+	readonly fileInputs = new FileInputSessions((identity) =>
+		(this.backend.environment ?? readTerminalProcessEnvironment)(identity)
+	);
 
 	create(
 		id: string,
@@ -171,7 +177,8 @@ export class PtyManager {
 		previous: TerminalEntry,
 		executable: string,
 		args: string[],
-		kind: "shell" | "provider"
+		kind: "shell" | "provider",
+		environment?: Record<string, string>
 	): TerminalEntry {
 		if (this.terminals.get(id) !== previous) throw Error("Terminal generation changed");
 		const process = this.spawnProcess(executable, args, {
@@ -179,7 +186,7 @@ export class PtyManager {
 			cols: previous.cols,
 			rows: previous.rows,
 			cwd: previous.cwd,
-			env: kind === "shell" ? shellIntegrationEnv(previous.shell, previous.env) : previous.env,
+			env: kind === "shell" ? shellIntegrationEnv(previous.shell, previous.env) : environment,
 		});
 		const next: TerminalEntry = { ...previous, pty: process, kind, dirty: true };
 		try {
@@ -259,7 +266,14 @@ export class PtyManager {
 		const launch = this.fileInputs.takeResume(id, client, generation, content, owner);
 		if (!launch) return "rejected";
 		try {
-			this.replaceProcess(id, previous, launch.executable, launch.args, "provider");
+			this.replaceProcess(
+				id,
+				previous,
+				launch.executable,
+				launch.args,
+				"provider",
+				launch.environment
+			);
 			this.fileInputs.admittedArgvPrompt(id, launch.provider, launch.providerSessionId, content);
 			try {
 				previous.pty.kill("SIGKILL");

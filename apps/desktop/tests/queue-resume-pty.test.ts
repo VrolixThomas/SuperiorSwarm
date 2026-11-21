@@ -40,6 +40,12 @@ function setup(promptless = false) {
 	}[] = [];
 	const signals: number[] = [];
 	const manager = new PtyManager({
+		environment: () => ({
+			AGENT_NOTIFY_TERMINAL_ID: "owner",
+			QUEUE_SYNTHETIC_ENV: "retained",
+			CODEX_HOME: "/synthetic-shell-profile",
+			QUEUE_AUTH_MARKER: "synthetic-credential",
+		}),
 		signal: (pid) => {
 			signals.push(pid);
 			const p = processes.find((p) => p.pid === pid);
@@ -240,6 +246,8 @@ test("one-PTY resume preserves listeners, dimensions, cwd, callback environment 
 	expect(child.rows).toBe(41);
 	expect(child.env["QUEUE_SYNTHETIC_ENV"]).toBe("retained");
 	expect(child.env["AGENT_NOTIFY_TERMINAL_ID"]).toBe("owner");
+	expect(child.env["CODEX_HOME"]).toBe("/synthetic-shell-profile");
+	expect(child.env["QUEUE_AUTH_MARKER"]).toBe("synthetic-credential");
 	expect(child.args).toEqual([
 		"--tools",
 		"",
@@ -279,6 +287,7 @@ test("a directly resumed provider parks and resumes again without closing any te
 	if (!sleep) throw Error("No sleep");
 	expect(await f.manager.parkQueueRoot("owner", sleep.generation)).toBe(true);
 	expect(f.manager.completeQueueSleep("owner", sleep.generation)).toBe(true);
+	expect(f.processes.at(-1)?.env["QUEUE_AUTH_MARKER"]).toBeUndefined();
 	expect(f.manager.resumeQueueProcess("owner", "c", f.lease(), "third", f.owner)).toBe("admitted");
 	expect(f.manager.terminalCount).toBe(2);
 	expect(f.exits()).toBe(0);

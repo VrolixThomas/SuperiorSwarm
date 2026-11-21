@@ -33,6 +33,7 @@ interface Session {
 		identity?: TerminalProcessIdentity;
 		trustedPid?: number;
 		binaryStamp: string;
+		environment: Record<string, string>;
 	};
 	sleep?: {
 		generation: string;
@@ -97,6 +98,11 @@ export function supportsLocalFileInput(
 }
 /** Optional capability; old daemons never receive these operations. */
 export class FileInputSessions {
+	constructor(
+		private readonly environmentSnapshot?: (
+			identity: TerminalProcessIdentity
+		) => Record<string, string> | null
+	) {}
 	private sessions = new Map<string, Session>();
 	create(
 		id: string,
@@ -246,6 +252,20 @@ export class FileInputSessions {
 		} catch {
 			return false;
 		}
+		const environment = this.environmentSnapshot?.(identity);
+		if (!environment || Object.keys(environment).length === 0) return false;
+		if (
+			environment["AGENT_NOTIFY_TERMINAL_ID"] !== undefined &&
+			environment["AGENT_NOTIFY_TERMINAL_ID"] !== id
+		)
+			return false;
+		if (
+			environment["AGENT_NOTIFY_WORKSPACE_ID"] !== undefined &&
+			environment["AGENT_NOTIFY_WORKSPACE_ID"] !== owner.workspaceId
+		)
+			return false;
+		const after = session.inspect?.();
+		if (!after || !sameTerminalProcess(identity, after)) return false;
 		if (!session.launch && descriptor.initialPrompt === false) session.submittedVersions.shift();
 		session.launch = {
 			descriptor: structuredClone(descriptor),
@@ -254,13 +274,14 @@ export class FileInputSessions {
 			executable: identity.executable,
 			identity,
 			binaryStamp,
+			environment,
 		};
 		return true;
 	}
 
 	private binaryStamp(executable: string): string {
 		const s = statSync(executable);
-		return JSON.stringify([s.dev, s.ino, s.size, s.mtimeMs]);
+		return JSON.stringify([s.dev, s.ino, s.size, s.mtimeMs, s.mode]);
 	}
 	private launchIdentity(session: Session, identity: TerminalProcessIdentity): boolean {
 		const launch = session.launch;
@@ -300,6 +321,11 @@ export class FileInputSessions {
 			return null;
 		const identity = session.inspect?.();
 		if (!identity || !this.launchIdentity(session, identity)) return null;
+		try {
+			if (this.binaryStamp(session.launch.executable) !== session.launch.binaryStamp) return null;
+		} catch {
+			return null;
+		}
 		const generation = randomUUID();
 		session.sleep = {
 			generation,
@@ -404,7 +430,13 @@ export class FileInputSessions {
 		generation: string,
 		prompt: string | undefined,
 		owner: QueueLaunchOwner
-	): { executable: string; args: string[]; provider: string; providerSessionId: string } | null {
+	): {
+		executable: string;
+		environment: Record<string, string>;
+		args: string[];
+		provider: string;
+		providerSessionId: string;
+	} | null {
 		const s = this.sessions.get(id);
 		const lease = s?.clients.get(client);
 		const proof = s?.sleep;
@@ -431,6 +463,7 @@ export class FileInputSessions {
 		const args = queueResumeArgs(s.launch.descriptor, s.launch.providerSessionId, prompt);
 		return {
 			executable: s.launch.executable,
+			environment: { ...s.launch.environment },
 			args,
 			provider: s.launch.descriptor.provider,
 			providerSessionId: s.launch.providerSessionId,

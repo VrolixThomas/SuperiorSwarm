@@ -44,7 +44,7 @@ function fixture(provider: "claude" | "codex" = "claude") {
 		executable: "/bin/zsh",
 	};
 	const writes: string[] = [];
-	const sessions = new FileInputSessions();
+	const sessions = new FileInputSessions(() => ({ QUEUE_TEST_ENV: "synthetic" }));
 	const owner: QueueLaunchOwner = {
 		type: "terminal",
 		entity: { kind: "workspace", id: "workspace" },
