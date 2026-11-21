@@ -147,7 +147,7 @@ async function run() {
 	// Observe the real MCP's first context response without changing it or its pinned identity.
 	writeFileSync(
 		join(root, "mcp-observer.mjs"),
-		`import fs from 'node:fs'; const original = globalThis.fetch; globalThis.fetch = async (...args) => { const response = await original(...args); if(String(args[0]).includes('/context.resolve?')) { const context = await response.clone().json(); const record = phase => fs.appendFileSync(${JSON.stringify(join(root, "mcp-startup.jsonl"))}, JSON.stringify({phase,at:Date.now(),terminal:process.env.AGENT_NOTIFY_TERMINAL_ID,reporter:context.queueReporter??null,mode:context.mode})+'\\n'); record('context-response'); await new Promise(resolve=>setTimeout(resolve, ${Number(process.env["SS_QUEUE_CONTEXT_DELAY_MS"] ?? 0)})); record('context-released'); } return response; }; await import(${JSON.stringify(pathToFileURL(join(desktop, "mcp-standalone/server.mjs")).href)});`
+		`import fs from 'node:fs'; const original = globalThis.fetch; globalThis.fetch = async (...args) => { if(String(args[0]).includes('/workspaces.set_status')) { const body=JSON.parse(args[1]?.body??'{}'); if(body.phase!=='blocked'||body.needs!=='Choose amber or blue'||Object.keys(body).some(key=>!['phase','needs'].includes(key))) throw new Error('Outside the exactly authorized synthetic status action'); } const response = await original(...args); if(String(args[0]).includes('/context.resolve?')) { const context = await response.clone().json(); const record = phase => fs.appendFileSync(${JSON.stringify(join(root, "mcp-startup.jsonl"))}, JSON.stringify({phase,at:Date.now(),terminal:process.env.AGENT_NOTIFY_TERMINAL_ID,reporter:context.queueReporter??null,admissionOffered:!!context.queueAdmission,mode:context.mode})+'\\n'); record('context-response'); await new Promise(resolve=>setTimeout(resolve, ${Number(process.env["SS_QUEUE_CONTEXT_DELAY_MS"] ?? 0)})); record('context-released'); } return response; }; await import(${JSON.stringify(pathToFileURL(join(desktop, "mcp-standalone/server.mjs")).href)});`
 	);
 	mergeClaudeHooks(
 		join(root, "settings.json"),
@@ -323,7 +323,7 @@ async function run() {
 								"-c",
 								`hooks=${TOML.stringify.value({ state })}`,
 								"-c",
-								`mcp_servers=${TOML.stringify.value({ superiorswarm: mcp })}`,
+								`mcp_servers=${TOML.stringify.value({ superiorswarm: { ...mcp, enabled_tools: ["set_status"], tools: { set_status: { approval_mode: "approve" } } } })}`,
 								"--ignore-rules",
 								"--skip-git-repo-check",
 								"--sandbox",
@@ -378,9 +378,7 @@ async function run() {
 					);
 				}
 				const prompt =
-					provider === "claude"
-						? "Isolated synthetic verification. Use ONLY superiorswarm set_status with phase blocked and needs 'Choose amber or blue'. Do not use any other tools or send messages. Ask exactly Which color: amber or blue? Then end your turn."
-						: "Do not use any tools. Ask exactly Which color: amber or blue? Then end your turn.";
+					"Isolated synthetic verification. Use ONLY superiorswarm set_status with phase blocked and needs 'Choose amber or blue'. Do not use any other tools or send messages. Ask exactly Which color: amber or blue? Then end your turn.";
 				const launch = async (content: string) => {
 					const script = join(root, `launch-${name}.sh`);
 					writeFileSync(script, content);
@@ -427,9 +425,13 @@ async function run() {
 					.filter((row) => row.terminal === terminal);
 				assert(startup.length > 0, "Actual CLI must initialize the isolated MCP");
 				assert.equal(
-					startup[0]?.reporter?.providerSessionId,
+					(
+						new ActivityQueueService().read(`agent-workspace:${id}`)?.snapshot as {
+							reporter?: { providerSessionId: string };
+						}
+					)?.reporter?.providerSessionId,
 					first.session,
-					"First actual MCP must bind the CLI session"
+					"First actual MCP status action must bind the CLI session"
 				);
 				const own = async () =>
 					(await listWorkspaceQueue()).items.filter((i) => i.context.workspaceId === id);
@@ -441,8 +443,8 @@ async function run() {
 					initial[0]?.target.type === "terminal" ? initial[0].target.terminalId : null,
 					terminal
 				);
+				assert(initial[0]?.evidence.some((s) => s.includes("Choose amber or blue")));
 				if (provider === "claude") {
-					assert(initial[0]?.evidence.some((s) => s.includes("Choose amber or blue")));
 					assert(
 						initial[0]?.providerEvidence?.some((e) =>
 							e.text.includes("Which color: amber or blue?")
@@ -473,6 +475,10 @@ async function run() {
 						`window.queueProbe.active().terminal===${JSON.stringify(terminal)}&&!!document.querySelector('textarea')`
 					)
 				);
+				const attached = await js<{ wasAttached: boolean }>(
+					`window.electron.terminal.create(${JSON.stringify(terminal)},${JSON.stringify(cwd)},${JSON.stringify(id)},'attach-existing-only')`
+				);
+				assert.equal(attached.wasAttached, true);
 				assert.equal((await own()).length, 1);
 				await js(`window.electron.terminal.setVisible(${JSON.stringify(terminal)},true)`);
 				assert.equal((await own()).length, 1);
@@ -482,7 +488,13 @@ async function run() {
 				assert.equal((await own()).length, 1);
 				contents.sendInputEvent({ type: "keyDown", keyCode: "Enter" });
 				contents.sendInputEvent({ type: "keyUp", keyCode: "Enter" });
-				await until(() => output.includes("NATIVE_LIVE_TURN_2"));
+				await until(() => {
+					try {
+						return JSON.parse(readFileSync(resultPath, "utf8")).turn === 2;
+					} catch {
+						return false;
+					}
+				});
 				const second = JSON.parse(readFileSync(resultPath, "utf8"));
 				assert.equal(second.code, 0);
 				assert.equal(second.followup, true);
@@ -497,10 +509,10 @@ async function run() {
 				assert(!after[0]?.id.startsWith("agent-workspace:"));
 				closeDb();
 				assert.equal((await own()).length, 1);
-				daemon.write(terminal, "__fixture_exit__\r");
-				ptys.dispose(terminal);
-				assert.equal((await own()).length, 0);
-				ptys.dispose(sibling);
+				await js(`window.electron.terminal.dispose(${JSON.stringify(terminal)})`);
+				await until(async () => (await own()).length === 0);
+				assert.equal(manager.getSession(terminal), null);
+				await js(`window.electron.terminal.dispose(${JSON.stringify(sibling)})`);
 				results.push({
 					name,
 					status: "pass",
