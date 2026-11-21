@@ -509,6 +509,7 @@ export interface SpawnArgs {
 	launchScriptContent: string;
 	workspaceId: string;
 	agent?: {
+		queueLaunchId?: string;
 		provider: AgentProvider;
 		providerSessionId: string | null;
 		skipPermissions: boolean;
@@ -536,6 +537,7 @@ function escapeShellSingleQuote(s: string): string {
 // session restarts. See apps/desktop/mcp-standalone/server.mjs.
 
 export function buildLaunchScript(opts: {
+	queueLaunchId?: string;
 	cwd: string;
 	cliPreset: "claude" | "codex" | "gemini" | "opencode";
 	prompt: string;
@@ -552,7 +554,15 @@ export function buildLaunchScript(opts: {
 	// reserves the positional slot for `[project]` (a directory) and requires the
 	// `run` subcommand to deliver a prompt as a message.
 	const invocation = opts.cliPreset === "opencode" ? "opencode run" : opts.cliPreset;
-	const cmd = `${invocation} ${sessionFlag}${flag}'${escapeShellSingleQuote(opts.prompt)}'`;
+	if (
+		opts.queueLaunchId &&
+		!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(opts.queueLaunchId)
+	)
+		throw Error("Invalid app launch identity");
+	const launchEnv = opts.queueLaunchId
+		? `AGENT_NOTIFY_LAUNCH_ID='${opts.queueLaunchId.toLowerCase()}' `
+		: "";
+	const cmd = `${launchEnv}${invocation} ${sessionFlag}${flag}'${escapeShellSingleQuote(opts.prompt)}'`;
 	return ["#!/bin/bash", `cd '${escapeShellSingleQuote(opts.cwd)}'`, "", cmd, ""].join("\n");
 }
 
@@ -596,17 +606,19 @@ async function dispatchCoordinator(
 	if (!provider) throw new Error(`Unsupported coordinator provider: ${target.agentKind}`);
 	const providerSessionId = provider === "claude" ? randomUUID() : null;
 	const skipPermissions = input.skipPermissions ?? false;
+	const queueLaunchId = randomUUID();
 	const result = await (deps.spawnFn ?? defaultSpawnFn)({
 		workspaceId: target.id,
 		cwd: target.workDir,
 		launchScriptContent: buildLaunchScript({
+			queueLaunchId,
 			cwd: target.workDir,
 			cliPreset: provider,
 			prompt: input.prompt,
 			skipPermissions,
 			cliSessionId: providerSessionId,
 		}),
-		agent: { provider, providerSessionId, skipPermissions },
+		agent: { provider, providerSessionId, skipPermissions, queueLaunchId },
 	});
 	// defaultSpawnFn persists the real terminal/managed session. Dispatch alone does not
 	// clear another conversation's pending report or invent a workspace/session surrogate.
@@ -670,7 +682,9 @@ export async function dispatchAgent(
 	// Persisting up-front poisons future resumeAgent calls if the spawn throws.
 	const cliSessionId = cliPreset === "claude" ? (ws.cliSessionId ?? randomUUID()) : null;
 
+	const queueLaunchId = randomUUID();
 	const launchScriptContent = buildLaunchScript({
+		queueLaunchId,
 		cwd,
 		cliPreset,
 		prompt: input.prompt,
@@ -686,6 +700,7 @@ export async function dispatchAgent(
 		launchScriptContent,
 		workspaceId: input.workspaceId,
 		agent: {
+			queueLaunchId,
 			provider: cliPreset,
 			providerSessionId: cliSessionId,
 			skipPermissions: input.skipPermissions ?? true,
@@ -761,6 +776,7 @@ export async function defaultSpawnFn(args: SpawnArgs): Promise<SpawnResult> {
 				provider: args.agent.provider,
 				providerSessionId: args.agent.providerSessionId,
 				skipPermissions: args.agent.skipPermissions,
+				queueLaunchId: args.agent.queueLaunchId,
 			});
 		}
 		// Freshly allocated dispatch terminal has no renderer view yet; bind to this exact managed generation.

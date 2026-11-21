@@ -37,6 +37,8 @@ export interface AgentEvent {
 	providerEventId?: string;
 	/** SHA256 of the exact submitted prompt, when available. Never prompt plaintext. */
 	promptHash?: string;
+	/** Correlates an app-owned launch; supplied by its per-command environment only. */
+	launchId?: string;
 	providerTimestamp?: number;
 	evidence?: AgentEvidence[];
 	permission?: AgentPermission;

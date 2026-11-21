@@ -52,6 +52,7 @@ try {
     actionSummary: action?.text,
     actionReviewable: action?.reviewable,
     rawEvent,
+    launchId: /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(env.AGENT_NOTIFY_LAUNCH_ID || "") ? env.AGENT_NOTIFY_LAUNCH_ID.toLowerCase() : undefined,
     terminalId,
     providerSessionId: field("session_id") || field("sessionID"),
     workspaceId: env.AGENT_NOTIFY_WORKSPACE_ID || "",
