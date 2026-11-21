@@ -40,6 +40,7 @@ export type AutoReviewLedger = {
 };
 
 type AutoTriggerDeps = {
+	autoMap: (pr: CachedPR, ledger: AutoReviewLedger) => Promise<boolean>;
 	getSettings: () => {
 		autoReviewEnabled: number | boolean;
 		autoReReviewOnCommit?: number | boolean;
@@ -68,6 +69,8 @@ type AutoTriggerDeps = {
 };
 
 const defaultDeps: AutoTriggerDeps = {
+	autoMap: async (pr, ledger) =>
+		(await import("../review-path/auto-map-runtime")).maybeAutoMap(pr, ledger),
 	getSettings,
 	getReviewDrafts,
 	getProjectIdByRepo: (repoOwner, repoName) => {
@@ -178,6 +181,7 @@ export async function maybeAutoTriggerReview(args: {
 	deps?: Partial<AutoTriggerDeps>;
 }): Promise<ReviewLaunchInfo | null> {
 	const deps = { ...defaultDeps, ...args.deps };
+	if (await deps.autoMap(args.pr, deps.ledger)) return null;
 	const settings = deps.getSettings();
 	const draftsByIdentifier = new Map<string, string>();
 	for (const draft of deps.getReviewDrafts()) {
@@ -288,4 +292,9 @@ export async function maybeAutoReReview(args: {
 	}
 
 	return launchInfo;
+}
+
+/** Called on later successful poll cycles so interrupted launches can reconcile after restart. */
+export async function maybeAutoMapReviewRequest(pr: CachedPR): Promise<void> {
+	await defaultDeps.autoMap(pr, defaultDeps.ledger);
 }

@@ -69,11 +69,20 @@ if (
 		useReviewPathSettingsStore.setState({ defaultRailMode: "auto" });
 		useReviewModeStore.getState().open("workspace", prCtx);
 	}
-	function request(path: string) {
+	function request(path: string, input: unknown) {
 		if (path === "projects.getPRDetails") return details;
 		if (path === "github.getStatus") return { connected: false };
 		if (path === "atlassian.getStatus") return { bitbucket: { connected: false } };
 		if (path === "aiReview.getSettings") return { cliPreset: "codex" };
+		if (path === "reviewPath.getSettings" || path === "reviewPath.importLegacySettings") {
+			const state = useReviewPathSettingsStore.getState();
+			return {
+				autoMapOnReviewRequest: state.autoMapOnReviewRequest,
+				alsoReview: state.alsoReview,
+				defaultRailMode: state.defaultRailMode,
+			};
+		}
+		if (path === "reviewPath.updateSettings") return input;
 		if (path === "github.markFileViewed") return { success: true };
 		return [];
 	}
@@ -137,6 +146,7 @@ if (
 			expect(useReviewModeStore.getState().panel).toBe("threads");
 			await key("Escape");
 			await key("f");
+			await h.settle();
 			expect(useReviewPathSettingsStore.getState().defaultRailMode).toBe("files");
 		} finally {
 			await h.cleanup();
