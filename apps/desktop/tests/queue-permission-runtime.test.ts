@@ -9,6 +9,7 @@ import {
 	queuePermissions,
 	resolvePermissionEvent,
 } from "../src/main/agent-hooks/permission-runtime";
+import { setPermissionTerminalVisibility } from "../src/main/agent-hooks/permission-visibility";
 import { getDb } from "../src/main/db";
 import { agentSessions, projects, terminalSessions, workspaces } from "../src/main/db/schema";
 import { AgentSessionManager } from "../src/main/services/agent-session-manager";
@@ -78,6 +79,7 @@ async function fixture(provider: "claude" | "codex", kind: string) {
 		sessionSource: "startup",
 	};
 	manager.handleAgentEvent(base);
+	setPermissionTerminalVisibility(terminalId, false);
 	manager.handleAgentEvent({ ...base, rawEvent: "UserPromptSubmit", turnId: "turn" });
 	const event: AgentEvent = {
 		...base,
@@ -155,6 +157,7 @@ for (const provider of ["claude", "codex"] as const)
 		test(`${provider}/${kind}: sibling cannot decide owner; closing owner releases only its wait`, async () => {
 			const f = await fixture(provider, kind);
 			const sibling = randomUUID();
+
 			const conversation = randomUUID();
 			getDb()
 				.insert(terminalSessions)
@@ -181,6 +184,7 @@ for (const provider of ["claude", "codex"] as const)
 				alert: "active" as const,
 			};
 			f.manager.handleAgentEvent({ ...base, rawEvent: "SessionStart", turnId: undefined });
+			setPermissionTerminalVisibility(sibling, false);
 			f.manager.handleAgentEvent({ ...base, rawEvent: "UserPromptSubmit", turnId: "sibling-turn" });
 			const requestId = randomUUID();
 			const event = {
@@ -231,3 +235,120 @@ for (const provider of ["claude", "codex"] as const)
 			f.manager.dispose();
 		});
 	}
+
+test("visible/unknown terminals never hold a hook; navigating to a pending request releases without deciding or clearing", async () => {
+	const f = await fixture("claude", "worktree");
+	setPermissionTerminalVisibility(f.terminalId, true);
+	expect(f.replies).toEqual([{ requestId: f.event.permission!.requestId! }]);
+	expect(getQueuePermissionCapability(f.item).state).toBe("cancelled");
+	expect(resolvePermissionEvent(f.event)).toBeNull();
+	expect((await listWorkspaceQueue()).items.some((i) => i.id === f.item.id)).toBe(true);
+	setPermissionTerminalVisibility(f.terminalId, undefined);
+	expect(resolvePermissionEvent(f.event)).toBeNull();
+	f.manager.dispose();
+});
+
+test.each(["claude", "codex"] as const)(
+	"%s fresh background dispatch establishes exact hidden generation without renderer mount",
+	async (provider) => {
+		const { defaultSpawnFn, setDispatchBroadcaster } = await import(
+			"../src/main/services/workspace-service"
+		);
+		const { setAgentSessionManager } = await import(
+			"../src/main/services/agent-session-manager-handle"
+		);
+		const { permissionTerminalHidden } = await import(
+			"../src/main/agent-hooks/permission-visibility"
+		);
+		const f = await fixture(provider, "worktree");
+		setAgentSessionManager(f.manager);
+		let published = false;
+		setDispatchBroadcaster((payload) => {
+			published = true;
+			expect(permissionTerminalHidden(payload.terminalId)).toBe(true);
+		});
+		try {
+			const sessionId = randomUUID();
+			const child = await defaultSpawnFn({
+				workspaceId: f.workspaceId,
+				cwd: "/tmp",
+				launchScriptContent: "#!/bin/sh\nexit 0\n",
+				agent: { provider, providerSessionId: sessionId, skipPermissions: false },
+			});
+			expect(published).toBe(true);
+			expect(permissionTerminalHidden(child.terminalId)).toBe(true);
+			getDb()
+				.update(agentSessions)
+				.set({ providerSessionId: "replacement" })
+				.where(eq(agentSessions.terminalId, child.terminalId))
+				.run();
+			expect(permissionTerminalHidden(child.terminalId)).toBe(false);
+			setPermissionTerminalVisibility(child.terminalId, true);
+			expect(permissionTerminalHidden(child.terminalId)).toBe(false);
+		} finally {
+			setDispatchBroadcaster(() => {});
+			setAgentSessionManager(null);
+			f.manager.dispose();
+		}
+	}
+);
+
+test.each(["claude", "codex"] as const)(
+	"%s cold background dispatch admits only its first validated provider conversation",
+	async (provider) => {
+		const { defaultSpawnFn, setDispatchBroadcaster } = await import(
+			"../src/main/services/workspace-service"
+		);
+		const { setAgentSessionManager } = await import(
+			"../src/main/services/agent-session-manager-handle"
+		);
+		const { permissionTerminalHidden } = await import(
+			"../src/main/agent-hooks/permission-visibility"
+		);
+		const f = await fixture(provider, "folder");
+		setAgentSessionManager(f.manager);
+		setDispatchBroadcaster(() => {});
+		try {
+			const child = await defaultSpawnFn({
+				workspaceId: f.workspaceId,
+				cwd: "/tmp",
+				launchScriptContent: "#!/bin/sh\nexit 0\n",
+				agent: { provider, providerSessionId: null, skipPermissions: false },
+			});
+			expect(permissionTerminalHidden(child.terminalId)).toBe(false);
+			const base = {
+				...f.event,
+				timestamp: Date.now(),
+				terminalId: child.terminalId,
+				sessionId: child.terminalId,
+				providerSessionId: randomUUID(),
+				permission: undefined,
+				alert: "active" as const,
+				rawEvent: "SessionStart",
+				turnId: undefined,
+			};
+			expect(f.manager.handleAgentEvent(base)).not.toBeNull();
+			expect(permissionTerminalHidden(child.terminalId)).toBe(true);
+			f.manager.handleAgentEvent({ ...base, rawEvent: "UserPromptSubmit", turnId: "first" });
+			const request = {
+				...base,
+				rawEvent: "PermissionRequest",
+				turnId: "first",
+				alert: "needs-input" as const,
+				permission: { requestId: randomUUID(), outcome: "pending" as const },
+			};
+			f.manager.handleAgentEvent(request);
+			expect(resolvePermissionEvent(request)).not.toBeNull();
+			getDb()
+				.update(agentSessions)
+				.set({ providerSessionId: "replacement" })
+				.where(eq(agentSessions.terminalId, child.terminalId))
+				.run();
+			expect(permissionTerminalHidden(child.terminalId)).toBe(false);
+			expect(resolvePermissionEvent(request)).toBeNull();
+		} finally {
+			setAgentSessionManager(null);
+			f.manager.dispose();
+		}
+	}
+);

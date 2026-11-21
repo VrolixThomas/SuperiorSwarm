@@ -38,6 +38,7 @@ import {
 	workspaceSourceId,
 } from "../activity-queue/agent-source";
 import { getActivityQueueService } from "../activity-queue/service";
+import { setPermissionBackgroundDispatchHidden } from "../agent-hooks/permission-visibility";
 import { CLI_PRESETS } from "../ai-review/cli-presets";
 import type { EventBus } from "../control-plane/event-bus";
 import {
@@ -762,6 +763,8 @@ export async function defaultSpawnFn(args: SpawnArgs): Promise<SpawnResult> {
 				skipPermissions: args.agent.skipPermissions,
 			});
 		}
+		// Freshly allocated dispatch terminal has no renderer view yet; bind to this exact managed generation.
+		setPermissionBackgroundDispatchHidden(terminalId);
 		dispatchBroadcaster({
 			workspaceId: args.workspaceId,
 			cwd: args.cwd,

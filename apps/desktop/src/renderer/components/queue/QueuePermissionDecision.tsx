@@ -95,13 +95,12 @@ export function QueuePermissionDecision({
 			>
 				Open conversation
 			</button>
-			{message?.id === requestId && <output>{message?.text}</output>}
-			{capability.state === "delivered-to-hook" && (
-				<output>
-					The bridge wrote the decision to the provider hook. Provider acceptance and action outcome
-					remain unknown.
-				</output>
-			)}
+			{message &&
+				message.id === requestId &&
+				message.text !== capability.detail &&
+				capability.state !== "delivered-to-hook" && (
+					<output className="block">{message.text}</output>
+				)}
 		</section>
 	);
 }

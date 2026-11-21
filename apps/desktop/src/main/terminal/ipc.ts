@@ -9,6 +9,7 @@ import {
 	terminalCreateFailure,
 } from "../../shared/terminal-create";
 import { WorkspaceError } from "../../shared/workspace-errors";
+import { setPermissionTerminalVisibility } from "../agent-hooks/permission-visibility";
 import { getAgentNotifyPort, getAgentNotifyToken } from "../agent-hooks/port";
 import {
 	canonicalWorkspaceDirectory,
@@ -205,6 +206,7 @@ export function setupTerminalIPC(
 
 	ipcMain.handle("terminal:dispose", (_event, id: unknown) => {
 		assertNonEmptyString(id, "id");
+		setPermissionTerminalVisibility(id, undefined);
 		terminalFileOwners.detach(id);
 		input.invalidate(id);
 		views.dispose(id);
@@ -229,6 +231,7 @@ export function setupTerminalIPC(
 		if (typeof visible !== "boolean") {
 			throw new Error("visible must be a boolean");
 		}
+		setPermissionTerminalVisibility(id, visible);
 		if (!visible) terminalFileOwners.invalidate(id, "hidden");
 		await agentSessionManager?.setVisible(id, visible);
 	});

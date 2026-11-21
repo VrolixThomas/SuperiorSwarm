@@ -11,6 +11,7 @@ import { getActivityQueueService } from "../activity-queue/service";
 import { listWorkspaceQueue } from "../activity-queue/workspace-queue";
 import { getDb } from "../db";
 import { agentSessions, terminalSessions } from "../db/schema";
+import { onPermissionTerminalVisibility, permissionTerminalHidden } from "./permission-visibility";
 import { type PermissionTarget, QueuePermissions } from "./queue-permissions";
 
 function snapshot(target: PermissionTarget) {
@@ -24,6 +25,7 @@ function snapshot(target: PermissionTarget) {
 	)?.snapshot as AgentEventSnapshot | undefined;
 }
 function currentGeneration(target: PermissionTarget): string | null {
+	if (!permissionTerminalHidden(target.terminalId)) return null;
 	const session = getDb()
 		.select()
 		.from(agentSessions)
@@ -51,6 +53,9 @@ function currentGeneration(target: PermissionTarget): string | null {
 	return JSON.stringify([session.createdAt.getTime(), source.turnId, source.permission.requestId]);
 }
 export const queuePermissions = new QueuePermissions({ currentGeneration });
+onPermissionTerminalVisibility((terminalId, visible) => {
+	if (visible !== false) queuePermissions.invalidate(terminalId);
+});
 export function resolvePermissionEvent(event: AgentEvent) {
 	const target = workspaceReporter(event.workspaceId, event.terminalId);
 	if (

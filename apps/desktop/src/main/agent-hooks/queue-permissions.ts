@@ -170,9 +170,11 @@ export class QueuePermissions {
 					? entry.allowOnce
 						? "Allow once or deny this specific request. Open releases this wait to the native prompt."
 						: "Full action details are unavailable or redacted. Allow once is unavailable; deny or open the native prompt to review."
-					: ["sent", "delivered-to-hook", "uncertain"].includes(entry.state)
-						? unknownOutcome
-						: "This request is no longer waiting. Open the conversation; no decision was made here.",
+					: entry.state === "delivered-to-hook"
+						? "The bridge wrote the decision to the provider hook. Provider acceptance and action outcome remain unknown."
+						: ["sent", "uncertain"].includes(entry.state)
+							? unknownOutcome
+							: "This request is no longer waiting. Open the conversation; no decision was made here.",
 		};
 	}
 	decide(
