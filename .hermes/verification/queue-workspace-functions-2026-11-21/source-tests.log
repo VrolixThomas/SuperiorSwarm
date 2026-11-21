@@ -1,0 +1,287 @@
+bun test v1.3.9 (cf6cdbbb)
+
+tests/activity-queue-agent-source.test.ts:
+(pass) idle shell is not ready; explicit blocked and done are durable and working resolves [448.32ms]
+(pass) answers resolve only their exact question; opening and reconciling do not handle [33.55ms]
+(pass) two terminals remain independent; Stop means next input and active clears only that session [610.41ms]
+(pass) codex: direct chat input clears dispatched attention and identical later completion returns [989.59ms]
+(pass) claude: direct chat input clears dispatched attention and identical later completion returns [544.13ms]
+(pass) direct input in a sibling chat and background tool activity leave dispatched reports pending [179.39ms]
+(pass) a prompt produced before a newer workspace report cannot clear it on delayed delivery [427.89ms]
+(pass) typing and waking to read do not resolve session attention before a provider continuation [248.08ms]
+(pass) ordinary chat input does not invent an answer; only a reply delivered to the asker resolves the question [44.67ms]
+(pass) missing/mismatched identities never create or clear attention [218.99ms]
+(pass) unique provider identity is accepted, ambiguous provider identity is rejected [238.23ms]
+(pass) newly persisted generic idle session is not treated as turn completion; deletion resolves [80.13ms]
+(pass) router checks authoritative revision before handling; exact terminal works without workspace hint [114.28ms]
+(pass) restart bootstrap recovers explicit persisted needs-input but not generic idle [60.61ms]
+(pass) repeated turns reappear while duplicate and out-of-order events preserve current state [191.78ms]
+(pass) workspace navigation lookup exposes authoritative path and review identity [12.12ms]
+(pass) codex: 55 turns through listener, manager and durable queue survive approvals, compaction and restart [11844.14ms]
+(pass) claude: 55 turns through listener, manager and durable queue survive approvals, compaction and restart [10826.98ms]
+(pass) fresh explicit generation start can reuse a terminal; delayed old generation cannot reclaim it [62.08ms]
+(pass) bridge invocation time cannot recover a missed prompt or invent the next turn [413.26ms]
+(pass) failure retains unresolved permission and reopens its revised evidence [255.44ms]
+(pass) codex: a direct reply clears the exact manual chat's bound workspace report [1005.33ms]
+(pass) claude: a direct reply clears the exact manual chat's bound workspace report [222.83ms]
+(pass) working status clears its chat's old turn, rejects replay, and allows the next completion [232.10ms]
+(pass) working status without a valid reporter cannot clear arbitrary chats [98.39ms]
+(pass) replacement retires even a registered generation that never emitted its first callback [292.31ms]
+
+tests/queue-permission-runtime.test.ts:
+(pass) claude/worktree: admitted exact source request responds without clearing attention [184.15ms]
+(pass) claude/worktree: replacement while inventory awaits refuses original decision [313.60ms]
+(pass) claude/worktree: sibling cannot decide owner; closing owner releases only its wait [1002.08ms]
+(pass) claude/folder: admitted exact source request responds without clearing attention [246.74ms]
+(pass) claude/folder: replacement while inventory awaits refuses original decision [180.31ms]
+(pass) claude/folder: sibling cannot decide owner; closing owner releases only its wait [1233.54ms]
+(pass) claude/orchestrator: admitted exact source request responds without clearing attention [858.01ms]
+(pass) claude/orchestrator: replacement while inventory awaits refuses original decision [426.71ms]
+(pass) claude/orchestrator: sibling cannot decide owner; closing owner releases only its wait [1075.21ms]
+(pass) claude/coordinator: admitted exact source request responds without clearing attention [1123.50ms]
+(pass) claude/coordinator: replacement while inventory awaits refuses original decision [472.39ms]
+(pass) claude/coordinator: sibling cannot decide owner; closing owner releases only its wait [1305.19ms]
+(pass) codex/worktree: admitted exact source request responds without clearing attention [1612.61ms]
+(pass) codex/worktree: replacement while inventory awaits refuses original decision [929.64ms]
+(pass) codex/worktree: sibling cannot decide owner; closing owner releases only its wait [2274.25ms]
+(pass) codex/folder: admitted exact source request responds without clearing attention [1647.31ms]
+(pass) codex/folder: replacement while inventory awaits refuses original decision [721.69ms]
+(pass) codex/folder: sibling cannot decide owner; closing owner releases only its wait [1934.02ms]
+(pass) codex/orchestrator: admitted exact source request responds without clearing attention [2420.27ms]
+(pass) codex/orchestrator: replacement while inventory awaits refuses original decision [786.64ms]
+(pass) codex/orchestrator: sibling cannot decide owner; closing owner releases only its wait [1712.93ms]
+(pass) codex/coordinator: admitted exact source request responds without clearing attention [1022.15ms]
+(pass) codex/coordinator: replacement while inventory awaits refuses original decision [783.63ms]
+(pass) codex/coordinator: sibling cannot decide owner; closing owner releases only its wait [1840.21ms]
+(pass) visible/unknown terminals never hold a hook; navigating to a pending request releases without deciding or clearing [1576.55ms]
+(pass) claude fresh background dispatch establishes exact hidden generation without renderer mount [611.35ms]
+(pass) codex fresh background dispatch establishes exact hidden generation without renderer mount [556.09ms]
+(pass) claude cold background dispatch admits only its first validated provider conversation [504.22ms]
+(pass) codex cold background dispatch admits only its first validated provider conversation [1102.02ms]
+
+tests/queue-permission-summary.test.ts:
+(pass) action preview bounds and redacts quoted credentials without forwarding arbitrary tool input [2.21ms]
+(pass) complete known arguments can be reviewed, unknown or long ones cannot [0.62ms]
+(pass) Allow requires a complete nonempty tool name [0.11ms]
+
+tests/queue-delivery-native.test.ts:
+(pass) native SQLite immediate admission excludes competing WAL writers before the PTY side effect [547.91ms]
+
+tests/queue-permission-open.test.ts:
+(pass) explicit permission Open releases exact displayed receipt without deciding [0.81ms]
+(pass) expired/unsupported/non-permission Open performs no decision [0.18ms]
+(pass) uncertain release blocks navigation instead of silently claiming native prompt [2.60ms]
+(pass) unavailable after a live wait was observed cannot silently navigate with that wait held [0.33ms]
+
+tests/activity-queue-workspace.test.ts:
+(pass) public workspace list excludes external sources from items, counts, errors and update time [116.55ms]
+(pass) workspace/project rename and color enrich context without bumping revisions or fingerprints [35.20ms]
+(pass) classification uses structured permission/failure/question evidence, never summary instructions [108.78ms]
+(pass) workspace mutations reject missing, external and mismatched source targets [430.71ms]
+(pass) Done refuses wrong revision, failed inventory, disconnect and retired work [294.45ms]
+(pass) fresh state is reconciled after inventory wait, so an old click cannot acknowledge new work [157.91ms]
+(pass) terminal identity must match the current workspace and provider generation [245.76ms]
+(pass) unavailable source is visible with its own error but cannot be acknowledged or deferred [458.96ms]
+(pass) Later persists across DB reopen, expires at the boundary and never affects generic counts [398.30ms]
+(pass) new revision returns pending and a stale bringBack cannot delete the newer snooze [407.97ms]
+(pass) Done and Undo require the same current revision and acknowledgement [681.62ms]
+(pass) failed inventory cannot restore handled work or remove its deferral [109.16ms]
+(pass) Later validates future bounded timestamps or untilChange, including invalid numeric values [51.28ms]
+(pass) removed source cascades its snooze and retired terminals do not contribute Later counts [80.93ms]
+(pass) confirmed exact managed terminal can be handled and undone without sending provider input [189.11ms]
+(pass) exact terminal binding is required even when another terminal keeps its old workspace live [438.96ms]
+(pass) global counts combine pending, snoozed and handled work independently of project/view filters [293.11ms]
+(pass) expiry uses the time after waiting for inventory [148.68ms]
+(pass) concurrent Done then Later rejects deferral so Undo returns the item to pending [184.91ms]
+(pass) concurrent restore mutations use persisted receipts rather than their pre-await views [172.04ms]
+(pass) chat titles identify the conversation without changing its source revision [71.82ms]
+(pass) a sibling terminal cannot keep a closed reporting chat's workspace item current [135.39ms]
+
+tests/queue-navigation-session.test.ts:
+(pass) canonical pending excludes Later and acknowledged rows [0.73ms]
+(pass) next stops at end and does not skip shifted successor after current resolves [2.50ms]
+(pass) new occurrence and grouped receipt change require explicit selection [1.09ms]
+(pass) destination matches exact entity chat provider and conversation [0.91ms]
+
+tests/coordinator-resume.test.ts:
+(pass) claude: coordinator resume uses its exact managed conversation and own audit log [99.28ms]
+(pass) claude: missing/ambiguous/replaced coordinator session never falls back or writes to a sibling [191.72ms]
+(pass) claude: coordinator resume denies project-only and revoked authority [273.51ms]
+(pass) codex: coordinator resume uses its exact managed conversation and own audit log [322.44ms]
+(pass) codex: missing/ambiguous/replaced coordinator session never falls back or writes to a sibling [233.55ms]
+(pass) codex: coordinator resume denies project-only and revoked authority [379.43ms]
+[control-plane] POST /workspaces.resume_agent 200 request_id=559aff45-e9fd-4502-a81f-a64b510b22c5 latency=359ms
+(pass) claude: authenticated resume_agent HTTP reaches the exact managed coordinator [446.07ms]
+[control-plane] POST /workspaces.resume_agent 200 request_id=4fbbd7b5-dfb0-4274-ab5b-497aa35ad570 latency=122ms
+(pass) codex: authenticated resume_agent HTTP reaches the exact managed coordinator [210.04ms]
+
+tests/agent-session-manager.test.ts:
+(pass) buildAgentResumeCommand > builds provider-specific resume commands [122.07ms]
+(pass) AgentSessionManager > sleeps a hidden idle agent and wakes it in the preserved shell [201.32ms]
+(pass) AgentSessionManager > does not auto-sleep a visible terminal, then schedules it when hidden [91.31ms]
+(pass) AgentSessionManager > needs-input cancels a pending automatic sleep [259.20ms]
+(pass) AgentSessionManager > keeps orchestrator workspaces awake by default [64.22ms]
+(pass) AgentSessionManager > wakes a non-Claude workspace when an orchestrator sends follow-up work [92.90ms]
+(pass) AgentSessionManager > waits for a completing managed child before resuming the same provider session [245.23ms]
+(pass) AgentSessionManager > fails closed without writing into a child that remains active [56.62ms]
+(pass) AgentSessionManager > records a failed automatic sleep without retrying in a tight loop [54.53ms]
+(pass) AgentSessionManager > keeps exactly one managed dispatch target and ignores newer unmanaged sessions [77.58ms]
+(pass) AgentSessionManager > fails closed when persisted data has multiple managed targets [34.52ms]
+(pass) AgentSessionManager > treats a cascaded session as a harmless automatic-sleep no-op [281.37ms]
+(pass) AgentSessionManager > clears pre-captured in-memory state after database rows cascade away [207.27ms]
+(pass) AgentSessionManager > recovers an interrupted hibernation from the retained shell and wakes it [32.54ms]
+(pass) AgentSessionManager > does not overwrite a hook event that wins a reconciliation race [71.70ms]
+(pass) unidentified legacy completion cannot schedule automatic sleep [89.84ms]
+
+tests/queue-conversation-replies.test.ts:
+(pass) actual persisted daemon admission admits once; repeated/concurrent/reconnected requests cannot duplicate [1340.75ms]
+(pass) busy, hibernated, legacy daemon, stale source and provider replacement never submit [1358.80ms]
+(pass) busy transition at atomic daemon boundary rejects without delivery [1874.50ms]
+(pass) a later occurrence during admission survives, and its old receipt is rejected [1012.91ms]
+(pass) lost daemon response uses committed receipt and never resubmits [871.93ms]
+(pass) crash before receipt remains uncertain and blocks retry with any request ID [640.73ms]
+(pass) a definitely rejected request remains immutable while an explicit fresh attempt may retry [1217.07ms]
+(pass) a newly appearing structured question at admission blocks ordinary free-form input [601.29ms]
+(pass) claude worktree: exact delivery preserves sibling, identity and later occurrence [772.80ms]
+(pass) claude folder: exact delivery preserves sibling, identity and later occurrence [1061.78ms]
+(pass) claude orchestrator: exact delivery preserves sibling, identity and later occurrence [1511.09ms]
+(pass) claude coordinator: exact delivery preserves sibling, identity and later occurrence [1357.05ms]
+(pass) codex worktree: exact delivery preserves sibling, identity and later occurrence [827.99ms]
+(pass) codex folder: exact delivery preserves sibling, identity and later occurrence [701.32ms]
+(pass) codex orchestrator: exact delivery preserves sibling, identity and later occurrence [867.88ms]
+(pass) codex coordinator: exact delivery preserves sibling, identity and later occurrence [686.06ms]
+(pass) a newly grouped same-conversation receipt cannot be omitted at daemon admission [237.20ms]
+(pass) admitted: report after handoff survives delayed provider prompt without upgrading delivery [788.59ms]
+(pass) uncertain: report after handoff survives delayed provider prompt without upgrading delivery [785.58ms]
+(pass) only the exact prompt digest and conversation can establish provider receipt [289.17ms]
+(pass) read-only receipt recovery never creates or retries an absent intent [377.27ms]
+(pass) a different explicit prompt digest never inherits an uncertain queued cleanup ceiling [435.03ms]
+(pass) reply cap rejects 4,001 characters and submits the trimmed 4,000-character boundary [232.47ms]
+
+tests/queue-jump.test.tsx:
+(pass) peek owns focus, suppresses letter actions during typing, restores terminal focus on Escape [166.22ms]
+(pass) refresh never adopts changed occurrence; explicit selection accepts latest receipt [68.06ms]
+(pass) peek limits rows, excludes Later, does not navigate or acknowledge on viewing or refresh [62.13ms]
+(pass) Tab and Shift Tab wrap within peek [44.62ms]
+(pass) queue bar is buttons only: terminal letter input never dismisses activity [10.06ms]
+
+tests/queue-permissions.test.ts:
+(pass) permission request lifecycle (transport stand-ins) > exact waiting request sends once; stdout receipt is not execution [1.35ms]
+(pass) permission request lifecycle (transport stand-ins) > specific deny response [0.46ms]
+(pass) permission request lifecycle (transport stand-ins) > specific open response [0.04ms]
+(pass) permission request lifecycle (transport stand-ins) > rejects revision [0.41ms]
+(pass) permission request lifecycle (transport stand-ins) > rejects members [0.40ms]
+(pass) permission request lifecycle (transport stand-ins) > rejects sibling [0.07ms]
+(pass) permission request lifecycle (transport stand-ins) > rejects generation [0.16ms]
+(pass) permission request lifecycle (transport stand-ins) > rejects expiry [0.27ms]
+(pass) permission request lifecycle (transport stand-ins) > rejects disconnect [0.23ms]
+(pass) permission request lifecycle (transport stand-ins) > concurrent ambiguous requests cancel both; replay cannot rebind [0.27ms]
+(pass) permission request lifecycle (transport stand-ins) > lost response stays uncertain without retry [0.23ms]
+(pass) permission request lifecycle (transport stand-ins) > legacy/provider unsupported requests have Open fallback [0.16ms]
+(pass) incomplete action summary blocks Allow server-side but preserves Deny [0.15ms]
+(pass) resolved request retention is bounded without a 512/4096 lifetime exhaustion [177.65ms]
+(pass) replacement cancels eagerly without a queue observer [301.30ms]
+(pass) periodic monitors avoid expensive process inspection but decisions recheck exactly [325.54ms]
+
+tests/activity-queue-current-items.test.ts:
+(pass) old reports and questions without live terminals are hidden without deleting their data [47.96ms]
+(pass) disconnects retain the last confirmed list; cold unavailable state never advertises historical work [42.66ms]
+(pass) failed refresh is not removal, and returning sessions retain handled receipts [39.81ms]
+
+tests/queue-permission-actions.test.tsx:
+(pass) changed permission occurrence never exposes preceding request's controls during capability fetch [189.38ms]
+(pass) stable queue item refreshes cancelled permission capability without a source revision [1166.55ms]
+
+tests/queue-linked-context-ui.test.tsx:
+(pass) context shows title and cache status; unknown scoped link has no open button [54.60ms]
+(pass) browser failures are visible without dismissing the linked work [28.80ms]
+(pass) compact header keeps complete context discoverable; no empty header control [16.77ms]
+
+tests/queue-jump-permission-open.test.tsx:
+(pass) jump/peek Open releases exact permission wait before navigation [909.05ms]
+
+tests/shortcut-matching.test.ts:
+(pass) matchesShortcut > queue chords match Cmd/Ctrl and uppercase shifted keys from terminals [1.23ms]
+(pass) matchesShortcut > matches Cmd+K [0.02ms]
+(pass) matchesShortcut > rejects when meta not pressed [0.02ms]
+(pass) matchesShortcut > matches Cmd+Shift+B
+(pass) matchesShortcut > rejects when shift not pressed [0.05ms]
+(pass) matchesShortcut > matches Cmd+Option+ArrowLeft [0.11ms]
+(pass) matchesShortcut > matches by e.code when key differs (Backslash) [0.15ms]
+(pass) matchesShortcut > matches Ctrl as meta on non-macOS [0.03ms]
+(pass) matchesShortcut > rejects extra alt when not expected
+(pass) matchesShortcut > rejects extra shift when not expected
+(pass) matchesShortcut > matches Cmd+Enter
+(pass) matchesShortcut > matches Cmd+, (comma)
+(pass) matchesShortcut > matches Cmd+1
+(pass) matchesShortcut > matches Cmd+Shift+] via code [0.35ms]
+(pass) matchesShortcut > matches Cmd+[ via code [0.15ms]
+(pass) matchesShortcut > matches Cmd+] via code [0.02ms]
+(pass) matchesShortcut > skips terminal Ctrl+[ so xterm receives Escape [0.02ms]
+(pass) matchesShortcut > skips terminal Ctrl+] so xterm receives the control sequence
+
+tests/queue-conversation-reply-ui.test.tsx:
+(pass) reply submits displayed full group once and labels only terminal admission [191.89ms]
+(pass) transport error check uses identical request/content and preserves draft [205.81ms]
+(pass) group member or exact conversation replacement cannot rebase a typed reply [155.33ms]
+(pass) definite unavailable permits editing and an explicit new attempt without automatic send [55.40ms]
+
+tests/coordinator-dispatch.test.ts:
+(pass) claude: production coordinator dispatch persists exact managed ownership without a surrogate workspace [120.12ms]
+(pass) codex: production coordinator dispatch persists exact managed ownership without a surrogate workspace [47.40ms]
+(pass) coordinator service rejects project-scoped or external-manager targets before spawn [29.23ms]
+[control-plane] POST /workspaces.dispatch 403 request_id=430e9ec1-c994-4702-be2e-b38584736bf9 latency=22ms
+[control-plane] POST /workspaces.dispatch 403 request_id=509b46d1-6115-406c-9084-a0fe75e30ad1 latency=20ms
+[control-plane] POST /workspaces.dispatch 401 request_id=41af2b3c-e6d3-4b8d-a5af-9db5caba8ea9 latency=2ms
+[control-plane] POST /workspaces.dispatch 403 request_id=b596d74a-80b2-49f9-b54c-fa5dfec71019 latency=9ms
+[control-plane] POST /workspaces.dispatch 200 request_id=6509968c-262b-47f1-9f98-60e9664ba61b latency=18ms
+[control-plane] POST /workspaces.dispatch 403 request_id=33f9e567-4615-4701-83ea-0e522a9587c5 latency=5ms
+[control-plane] POST /workspaces.dispatch 499 request_id=b0414377-1ed3-49ad-a803-92612e1fa3ab latency=7ms
+[control-plane] POST /workspaces.dispatch 200 request_id=480619ce-8ded-48a3-9fbb-020a54934330 latency=7ms
+(pass) HTTP coordinator dispatch preserves token, linked scope, all-scope and confirmation policy [367.29ms]
+[control-plane] POST /workspaces.dispatch 403 request_id=a2be24a3-5818-4d1c-9093-f0aa2052f1ff latency=6ms
+(pass) coordinator authority is rechecked after confirmation and spawn failure preserves status [25.19ms]
+
+tests/queue-conversation-admission.test.ts:
+(pass) conversation admission requires exact provider executable, excludes shells and generic runtimes [1.54ms]
+(pass) admission is single-use, bracketed, and invalidated by any ordinary typing
+(pass) process replacement and controls fail closed with no write [0.33ms]
+(pass) an existing user draft cannot be combined with a queue reply [0.02ms]
+(pass) multiline paste, Enter, Ctrl-C and a queued draft never reset dirty state [0.04ms]
+(pass) only a fresh correlated completed turn restores admission, other conversations do not [0.05ms]
+(pass) read-only capability polling cannot replace an in-flight admission lease [0.12ms]
+(pass) two submissions before the first hook cannot attribute the second Enter to the first turn [0.28ms]
+(pass) multiple uncorrelated submissions in one chunk remain unavailable [0.14ms]
+(pass) provider slash commands and shell shortcuts are not ordinary Queue replies [0.14ms]
+(pass) daemon also rejects overlong replies before any terminal write [0.11ms]
+
+tests/queue-actions.test.ts:
+(pass) queue chords do not collide with registered core bindings or replace existing navigation [1.68ms]
+(pass) shortcut gestures only request navigation and peek; they do not select or mutate receipts [0.54ms]
+(pass) opening a Later or absent occurrence does not bind a pending navigation session [0.20ms]
+
+tests/queue-linked-context.test.ts:
+(pass) multiple explicit links use exact global Linear ID; siblings and coordinators do not inherit [36.00ms]
+(pass) Jira site-local key never imports another site cache; malformed/mismatched Linear stays explicit [11.11ms]
+(pass) PR lookup is provider/repository-specific and explicit review link deduplicates [11.31ms]
+(pass) missing details retain links; unsafe URLs/control text and path traversal never escape [9.73ms]
+(pass) link removal and metadata refresh reflect immediately without mutating source tables [6.33ms]
+(pass) read-time context refresh preserves exact queue receipt and Done stays dismissed [662.06ms]
+
+tests/queue-permission-transport.test.ts:
+(pass) native Node HTTP and real bridge subprocess: both provider stand-ins, allow/deny/Open/timeout/cancel [7282.50ms]
+
+tests/queue-permission-decision.test.tsx:
+(pass) view/hover do nothing; double click carries all exact receipts only once [98.32ms]
+(pass) unsupported capabilities expose Open only [4.10ms]
+(pass) response loss cannot retry [11.38ms]
+(pass) explicit Open releases wait before navigation [4.61ms]
+(pass) a stable request expires in place and Open navigates without a stale decision [151.06ms]
+
+tests/agent-hooks/bridge.test.ts:
+(pass) generated launcher parses top-level identities and sends authenticated turn metadata [1895.74ms]
+
+ 220 pass
+ 0 fail
+ 11682 expect() calls
+Ran 220 tests across 25 files. [108.19s]

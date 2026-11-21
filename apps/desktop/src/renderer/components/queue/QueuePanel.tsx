@@ -1,6 +1,9 @@
 import { useEffect, useRef } from "react";
 import type { WorkspaceQueueItem } from "../../../shared/activity-queue";
 import { queueAge } from "../../lib/activity-queue-view";
+import { type QueueConversationActions, QueueConversationReply } from "./QueueConversationReply";
+import { QueueLinkedWorkContext } from "./QueueLinkedWorkContext";
+import { QueuePermissionActions, type QueuePermissionActionsAPI } from "./QueuePermissionActions";
 import { type AnswerQuestion, QueueQuestionReply } from "./QueueQuestionReply";
 import { queueFocus } from "./QueueRow";
 export const queueButton = `rounded-md px-3 py-2 text-[12px] transition-colors hover:bg-[var(--bg-elevated)] disabled:opacity-40 ${queueFocus}`;
@@ -16,6 +19,8 @@ export function QueuePanel({
 	expanded,
 	close,
 	answer,
+	conversationActions,
+	permissionActions,
 	refresh,
 }: {
 	item: WorkspaceQueueItem;
@@ -29,6 +34,8 @@ export function QueuePanel({
 	expanded?: boolean;
 	close?: () => void;
 	answer?: AnswerQuestion;
+	conversationActions?: QueueConversationActions;
+	permissionActions?: QueuePermissionActionsAPI;
 	refresh: () => Promise<unknown>;
 }) {
 	const closeButton = useRef<HTMLButtonElement>(null);
@@ -109,6 +116,7 @@ export function QueuePanel({
 							{project.path}
 						</p>
 					))}
+					<QueueLinkedWorkContext items={item.context.linkedWork} />
 					{!!item.providerEvidence?.length && (
 						<details className="text-[10px] text-[var(--text-tertiary)]">
 							<summary className="cursor-pointer">Source details</summary>
@@ -194,6 +202,19 @@ export function QueuePanel({
 						both updates.
 					</p>
 				)}
+				<QueuePermissionActions
+					item={item}
+					available={canAct && !busy}
+					actions={permissionActions}
+					onOpen={open}
+					refresh={refresh}
+				/>
+				<QueueConversationReply
+					item={item}
+					available={canAct && !busy}
+					actions={conversationActions}
+					refresh={refresh}
+				/>
 				<QueueQuestionReply
 					item={item}
 					available={canAct && !busy}

@@ -1,0 +1,81 @@
+{
+  "passed": true,
+  "provider": "claude",
+  "mode": "actual interactive provider TUI",
+  "target": {
+    "type": "terminal",
+    "entity": {
+      "kind": "workspace",
+      "id": "workspace"
+    },
+    "workspaceId": "workspace",
+    "terminalId": "actual-provider",
+    "provider": "claude",
+    "providerSessionId": "da9fa123-cf6e-4e50-9b53-9bd7dad62f07"
+  },
+  "delivery": "admitted",
+  "trace": [
+    {
+      "event": "SessionStart",
+      "provider": "claude",
+      "conversation": "da9fa123-cf6e-4e50-9b53-9bd7dad62f07",
+      "terminal": "actual-provider",
+      "accepted": true,
+      "evidence": []
+    },
+    {
+      "event": "UserPromptSubmit",
+      "provider": "claude",
+      "conversation": "da9fa123-cf6e-4e50-9b53-9bd7dad62f07",
+      "terminal": "actual-provider",
+      "accepted": true,
+      "evidence": [],
+      "promptHash": "3bf49e2fc880aeac2ce66c84e1f8926a57ce1dbb7f7b33009b68f9e9ee6b2bfd"
+    },
+    {
+      "event": "Stop",
+      "provider": "claude",
+      "conversation": "da9fa123-cf6e-4e50-9b53-9bd7dad62f07",
+      "terminal": "actual-provider",
+      "accepted": true,
+      "evidence": [
+        {
+          "kind": "reply",
+          "text": "QUEUE_TUI_INITIAL",
+          "sourceField": "last_assistant_message",
+          "provider": "claude",
+          "rawEvent": "Stop",
+          "truncated": false,
+          "redacted": false
+        }
+      ]
+    },
+    {
+      "event": "UserPromptSubmit",
+      "provider": "claude",
+      "conversation": "da9fa123-cf6e-4e50-9b53-9bd7dad62f07",
+      "terminal": "actual-provider",
+      "accepted": true,
+      "evidence": [],
+      "promptHash": "47a4e811ca0d2370df7d99e1983001ae76a594437e4e6a261bb004c4cf820ff2"
+    },
+    {
+      "event": "Stop",
+      "provider": "claude",
+      "conversation": "da9fa123-cf6e-4e50-9b53-9bd7dad62f07",
+      "terminal": "actual-provider",
+      "accepted": true,
+      "evidence": [
+        {
+          "kind": "reply",
+          "text": "QUEUE_TUI_FOLLOWUP",
+          "sourceField": "last_assistant_message",
+          "provider": "claude",
+          "rawEvent": "Stop",
+          "truncated": false,
+          "redacted": false
+        }
+      ]
+    }
+  ]
+}

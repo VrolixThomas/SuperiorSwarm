@@ -1,0 +1,44 @@
+bun test v1.3.9 (cf6cdbbb)
+
+tests/queue-view.test.tsx:
+(pass) Open only navigates; Done sends displayed revision and Undo restores it [747.60ms]
+(pass) conflict refreshes same item without advancing or opening another [198.10ms]
+(pass) Later then Bring back use exact revisions and keyboard options [469.20ms]
+(pass) selection survives refresh and typing never runs quick actions [213.77ms]
+(pass) new revision closes the Later menu instead of acting on unseen activity [99.73ms]
+(pass) loading, empty and fetch errors offer honest recovery states [73.16ms]
+(pass) unavailable permission items remain readable but cannot be handled [152.63ms]
+(pass) keyboard focus follows the next row after Done [445.84ms]
+(pass) Later keeps category counts tied to pending items [212.09ms]
+(pass) Later does not offer an Undo receipt for a different previously completed item [161.83ms]
+(pass) selected item keeps its source and next action visible [75.04ms]
+(pass) narrow details action exposes full context and returns keyboard focus [151.85ms]
+(pass) canonical grouped actions preserve every displayed member receipt including Undo [247.94ms]
+(pass) provider request evidence keeps provenance and does not claim permission execution [82.24ms]
+(pass) handling an item from narrow details returns focus to the visible next row [83.92ms]
+(pass) unconfirmed permission outcome is shown as unknown without invented success [26.03ms]
+(pass) an in-flight answer blocks other queue actions and preserves its draft on failure [111.92ms]
+(pass) question, reply and command error evidence preserve multiline plain text [21.61ms]
+An update to QueueConversationReply inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+(pass) R focuses the direct reply without handling; typing keeps queue shortcuts inert [178.63ms]
+
+tests/queue-conversation-reply-ui.test.tsx:
+(pass) reply submits displayed full group once and labels only terminal admission [83.65ms]
+(pass) transport error check uses identical request/content and preserves draft [66.09ms]
+(pass) group member or exact conversation replacement cannot rebase a typed reply [44.32ms]
+(pass) definite unavailable permits editing and an explicit new attempt without automatic send [40.76ms]
+(pass) Enter submits an ordinary reply while Shift, modifiers, repeats and IME never submit [34.67ms]
+
+ 24 pass
+ 0 fail
+ 105 expect() calls
+Ran 24 tests across 2 files. [4.94s]

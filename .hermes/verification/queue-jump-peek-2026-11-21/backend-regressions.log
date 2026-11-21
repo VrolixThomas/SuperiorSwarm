@@ -1,0 +1,83 @@
+bun test v1.3.9 (cf6cdbbb)
+
+tests/activity-queue-ownership.test.ts:
+(pass) claude/workspace: correlated reply is saved, isolated and retired only on exact MCP retrieval [137.16ms]
+(pass) claude/workspace: closed/replaced question owner cannot receive or mutate [35.99ms]
+(pass) claude/coordinator: correlated reply is saved, isolated and retired only on exact MCP retrieval [183.62ms]
+(pass) claude/coordinator: closed/replaced question owner cannot receive or mutate [47.42ms]
+(pass) codex/workspace: correlated reply is saved, isolated and retired only on exact MCP retrieval [216.76ms]
+(pass) codex/workspace: closed/replaced question owner cannot receive or mutate [113.62ms]
+(pass) codex/coordinator: correlated reply is saved, isolated and retired only on exact MCP retrieval [672.94ms]
+(pass) codex/coordinator: closed/replaced question owner cannot receive or mutate [154.73ms]
+(pass) report and turn receipt group atomically; stale member rejects all actions and Undo retains exact revisions [612.64ms]
+(pass) legacy question/report remains explicitly unavailable for safe reply and never binds to sibling [147.78ms]
+(pass) polymorphic session constraints reject nonexistent owners and cascade both real entity kinds [8.99ms]
+(pass) wrong project, sibling, timestamp and recipient cannot poison reply metadata or resolution [239.30ms]
+(pass) ordinary MCP correlated answer routes to coordinator owner and waits for exact retrieval [152.41ms]
+(pass) grouped report retains reply provenance and member errors; delayed member acknowledgment rejects Later atomically [706.07ms]
+
+tests/activity-queue-workspace.test.ts:
+(pass) public workspace list excludes external sources from items, counts, errors and update time [95.76ms]
+(pass) workspace/project rename and color enrich context without bumping revisions or fingerprints [49.68ms]
+(pass) classification uses structured permission/failure/question evidence, never summary instructions [65.93ms]
+(pass) workspace mutations reject missing, external and mismatched source targets [228.27ms]
+(pass) Done refuses wrong revision, failed inventory, disconnect and retired work [258.51ms]
+(pass) fresh state is reconciled after inventory wait, so an old click cannot acknowledge new work [19.80ms]
+(pass) terminal identity must match the current workspace and provider generation [66.88ms]
+(pass) unavailable source is visible with its own error but cannot be acknowledged or deferred [63.73ms]
+(pass) Later persists across DB reopen, expires at the boundary and never affects generic counts [104.47ms]
+(pass) new revision returns pending and a stale bringBack cannot delete the newer snooze [169.76ms]
+(pass) Done and Undo require the same current revision and acknowledgement [177.88ms]
+(pass) failed inventory cannot restore handled work or remove its deferral [67.42ms]
+(pass) Later validates future bounded timestamps or untilChange, including invalid numeric values [33.14ms]
+(pass) removed source cascades its snooze and retired terminals do not contribute Later counts [29.74ms]
+(pass) confirmed exact managed terminal can be handled and undone without sending provider input [119.62ms]
+(pass) exact terminal binding is required even when another terminal keeps its old workspace live [65.87ms]
+(pass) global counts combine pending, snoozed and handled work independently of project/view filters [109.26ms]
+(pass) expiry uses the time after waiting for inventory [36.53ms]
+(pass) concurrent Done then Later rejects deferral so Undo returns the item to pending [47.67ms]
+(pass) concurrent restore mutations use persisted receipts rather than their pre-await views [81.46ms]
+(pass) chat titles identify the conversation without changing its source revision [24.86ms]
+(pass) a sibling terminal cannot keep a closed reporting chat's workspace item current [21.63ms]
+
+tests/queue-conversation-replies.test.ts:
+(pass) actual persisted daemon admission admits once; repeated/concurrent/reconnected requests cannot duplicate [84.19ms]
+(pass) busy, hibernated, legacy daemon, stale source and provider replacement never submit [96.67ms]
+(pass) busy transition at atomic daemon boundary rejects without delivery [36.77ms]
+(pass) a later occurrence during admission survives, and its old receipt is rejected [40.18ms]
+(pass) lost daemon response uses committed receipt and never resubmits [29.45ms]
+(pass) crash before receipt remains uncertain and blocks retry with any request ID [31.05ms]
+(pass) a definitely rejected request remains immutable while an explicit fresh attempt may retry [86.35ms]
+(pass) a newly appearing structured question at admission blocks ordinary free-form input [29.91ms]
+(pass) claude worktree: exact delivery preserves sibling, identity and later occurrence [99.83ms]
+(pass) claude folder: exact delivery preserves sibling, identity and later occurrence [102.50ms]
+(pass) claude orchestrator: exact delivery preserves sibling, identity and later occurrence [95.22ms]
+(pass) claude coordinator: exact delivery preserves sibling, identity and later occurrence [126.38ms]
+(pass) codex worktree: exact delivery preserves sibling, identity and later occurrence [118.23ms]
+(pass) codex folder: exact delivery preserves sibling, identity and later occurrence [131.26ms]
+(pass) codex orchestrator: exact delivery preserves sibling, identity and later occurrence [212.77ms]
+(pass) codex coordinator: exact delivery preserves sibling, identity and later occurrence [248.22ms]
+(pass) a newly grouped same-conversation receipt cannot be omitted at daemon admission [46.50ms]
+(pass) admitted: report after handoff survives delayed provider prompt without upgrading delivery [72.67ms]
+(pass) uncertain: report after handoff survives delayed provider prompt without upgrading delivery [64.34ms]
+(pass) only the exact prompt digest and conversation can establish provider receipt [46.44ms]
+
+tests/activity-queue-current-items.test.ts:
+(pass) old reports and questions without live terminals are hidden without deleting their data [20.21ms]
+(pass) disconnects retain the last confirmed list; cold unavailable state never advertises historical work [24.15ms]
+(pass) failed refresh is not removal, and returning sessions retain handled receipts [22.20ms]
+
+tests/queue-inbox-scope.test.ts:
+(pass) workspace: sibling-only rows are filtered before the bounded inbox limit [20.23ms]
+(pass) workspace: unread exact answers drain deterministically beyond 200 without acknowledging unreturned rows [194.37ms]
+(pass) workspace: wrong generation/provider/entity/project is never visible or retrieved [21.84ms]
+(pass) coordinator: sibling-only rows are filtered before the bounded inbox limit [35.20ms]
+(pass) coordinator: unread exact answers drain deterministically beyond 200 without acknowledging unreturned rows [172.56ms]
+(pass) coordinator: wrong generation/provider/entity/project is never visible or retrieved [9.92ms]
+(pass) all-project coordinator scope follows current inventory and keeps its own directory [5.23ms]
+(pass) selected coordinator scope stays limited to current explicit links [8.62ms]
+
+ 67 pass
+ 0 fail
+ 860 expect() calls
+Ran 67 tests across 5 files. [7.96s]

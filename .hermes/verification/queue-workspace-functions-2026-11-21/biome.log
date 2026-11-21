@@ -1,0 +1,843 @@
+apps/desktop/src/main/activity-queue/conversation-replies.ts:68:3 lint/style/noNonNullAssertion ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+
+    66 │ 		t.terminalId,
+    67 │ 		t.provider,
+  > 68 │ 		t.providerSessionId!,
+       │ 		^^^^^^^^^^^^^^^^^^^^
+    69 │ 		false
+    70 │ 	);
+
+
+apps/desktop/src/main/activity-queue/conversation-replies.ts:167:3 lint/style/noNonNullAssertion ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+
+    165 │ 		target.terminalId,
+    166 │ 		target.provider,
+  > 167 │ 		target.providerSessionId!
+        │ 		^^^^^^^^^^^^^^^^^^^^^^^^^
+    168 │ 	);
+    169 │ 	if (!lease?.supported || !daemon)
+
+
+apps/desktop/tests/queue-permissions.test.ts:99:36 lint/style/noNonNullAssertion ━━━━━━━━━━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+
+     97 │ 			if (variant === "revision") item = { ...item, revision: 2 };
+     98 │ 			if (variant === "members")
+   > 99 │ 				item = { ...item, members: [...item.members!, { id: "sibling-source", revision: 1 }] };
+        │ 				                               ^^^^^^^^^^^^^
+    100 │ 			if (variant === "sibling")
+    101 │ 				item = { ...item, target: { ...f.request.target, providerSessionId: "other" } };
+
+
+apps/desktop/src/renderer/components/queue/QueueConversationReply.tsx:92:15 lint/style/noNonNullAssertion ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+
+    90 │ 										...all,
+    91 │ 										[item.id]: {
+  > 92 │ 											...all[item.id]!,
+       │ 											   ^^^^^^^^^^^^^
+    93 │ 											result,
+    94 │ 											requestId: result.status === "rejected" ? undefined : requestId,
+
+
+apps/desktop/src/main/terminal/daemon-client.ts:950:20 lint/style/noNonNullAssertion ━━━━━━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+
+    948 │ 		const pending = this.pendingListeners.get(msg.type);
+    949 │ 		if (pending && pending.length > 0) {
+  > 950 │ 			const handler = pending.shift()!;
+        │ 			                ^^^^^^^^^^^^^^^^
+    951 │ 			if (pending.length === 0) this.pendingListeners.delete(msg.type);
+    952 │ 			handler(msg);
+
+
+apps/desktop/tests/queue-permission-runtime.test.ts:97:7 lint/style/noNonNullAssertion ━━━━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+
+    95 │ 	expect(
+    96 │ 		queuePermissions.register({
+  > 97 │ 			...binding!,
+       │ 			   ^^^^^^^^
+    98 │ 			issuedAt: Date.now(),
+    99 │ 			allowOnce: true,
+
+
+apps/desktop/tests/queue-permission-runtime.test.ts:100:15 lint/style/noNonNullAssertion ━━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+
+     98 │ 			issuedAt: Date.now(),
+     99 │ 			allowOnce: true,
+  > 100 │ 			requestId: event.permission!.requestId!,
+        │ 			           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    101 │ 			summary: "Synthetic operation",
+    102 │ 			reply: (v) => {
+
+
+apps/desktop/tests/queue-permission-runtime.test.ts:100:15 lint/style/noNonNullAssertion  FIXABLE  ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+
+     98 │ 			issuedAt: Date.now(),
+     99 │ 			allowOnce: true,
+  > 100 │ 			requestId: event.permission!.requestId!,
+        │ 			           ^^^^^^^^^^^^^^^^^
+    101 │ 			summary: "Synthetic operation",
+    102 │ 			reply: (v) => {
+
+  i Unsafe fix: Replace with optional chain operator ?. This operator includes runtime checks, so it is safer than the compile-only non-null assertion operator
+
+     98  98 │   			issuedAt: Date.now(),
+     99  99 │   			allowOnce: true,
+    100     │ - → → → requestId:·event.permission!.requestId!,
+        100 │ + → → → requestId:·event.permission?.requestId!,
+    101 101 │   			summary: "Synthetic operation",
+    102 102 │   			reply: (v) => {
+
+
+apps/desktop/tests/queue-permission-runtime.test.ts:113:17 lint/style/noNonNullAssertion ━━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+
+    111 │ 	);
+    112 │ 	expect(item).toBeDefined();
+  > 113 │ 	return { item: item!, event, replies, manager, terminalId, daemon, workspaceId };
+        │ 	               ^^^^^
+    114 │ }
+    115 │ for (const provider of ["claude", "codex"] as const)
+
+
+apps/desktop/tests/queue-permission-runtime.test.ts:125:16 lint/style/noNonNullAssertion ━━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+
+    123 │ 				revision: f.item.revision,
+    124 │ 				members: f.item.members,
+  > 125 │ 				requestId: f.event.permission!.requestId!,
+        │ 				           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    126 │ 				action: "allow-once" as const,
+    127 │ 			};
+
+
+apps/desktop/tests/queue-permission-runtime.test.ts:125:16 lint/style/noNonNullAssertion  FIXABLE  ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+
+    123 │ 				revision: f.item.revision,
+    124 │ 				members: f.item.members,
+  > 125 │ 				requestId: f.event.permission!.requestId!,
+        │ 				           ^^^^^^^^^^^^^^^^^^^
+    126 │ 				action: "allow-once" as const,
+    127 │ 			};
+
+  i Unsafe fix: Replace with optional chain operator ?. This operator includes runtime checks, so it is safer than the compile-only non-null assertion operator
+
+    123 123 │   				revision: f.item.revision,
+    124 124 │   				members: f.item.members,
+    125     │ - → → → → requestId:·f.event.permission!.requestId!,
+        125 │ + → → → → requestId:·f.event.permission?.requestId!,
+    126 126 │   				action: "allow-once" as const,
+    127 127 │   			};
+
+
+apps/desktop/tests/queue-permission-runtime.test.ts:149:18 lint/style/noNonNullAssertion ━━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+
+    147 │ 						id: f.item.id,
+    148 │ 						revision: f.item.revision,
+  > 149 │ 						requestId: f.event.permission!.requestId!,
+        │ 						           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    150 │ 						action: "deny",
+    151 │ 					})
+
+
+apps/desktop/tests/queue-permission-runtime.test.ts:149:18 lint/style/noNonNullAssertion  FIXABLE  ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+
+    147 │ 						id: f.item.id,
+    148 │ 						revision: f.item.revision,
+  > 149 │ 						requestId: f.event.permission!.requestId!,
+        │ 						           ^^^^^^^^^^^^^^^^^^^
+    150 │ 						action: "deny",
+    151 │ 					})
+
+  i Unsafe fix: Replace with optional chain operator ?. This operator includes runtime checks, so it is safer than the compile-only non-null assertion operator
+
+    147 147 │   						id: f.item.id,
+    148 148 │   						revision: f.item.revision,
+    149     │ - → → → → → → requestId:·f.event.permission!.requestId!,
+        149 │ + → → → → → → requestId:·f.event.permission?.requestId!,
+    150 150 │   						action: "deny",
+    151 151 │   					})
+
+
+apps/desktop/tests/queue-permission-runtime.test.ts:222:18 lint/style/noNonNullAssertion ━━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+
+    220 │ 						revision: siblingItem.revision,
+    221 │ 						members: siblingItem.members,
+  > 222 │ 						requestId: f.event.permission!.requestId!,
+        │ 						           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    223 │ 						action: "allow-once",
+    224 │ 					})
+
+
+apps/desktop/tests/queue-permission-runtime.test.ts:222:18 lint/style/noNonNullAssertion  FIXABLE  ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+
+    220 │ 						revision: siblingItem.revision,
+    221 │ 						members: siblingItem.members,
+  > 222 │ 						requestId: f.event.permission!.requestId!,
+        │ 						           ^^^^^^^^^^^^^^^^^^^
+    223 │ 						action: "allow-once",
+    224 │ 					})
+
+  i Unsafe fix: Replace with optional chain operator ?. This operator includes runtime checks, so it is safer than the compile-only non-null assertion operator
+
+    220 220 │   						revision: siblingItem.revision,
+    221 221 │   						members: siblingItem.members,
+    222     │ - → → → → → → requestId:·f.event.permission!.requestId!,
+        222 │ + → → → → → → requestId:·f.event.permission?.requestId!,
+    223 223 │   						action: "allow-once",
+    224 224 │   					})
+
+
+apps/desktop/tests/queue-permission-runtime.test.ts:231:44 lint/style/noNonNullAssertion ━━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+
+    229 │ 			getDb().delete(terminalSessions).where(eq(terminalSessions.id, f.terminalId)).run();
+    230 │ 			await Bun.sleep(300);
+  > 231 │ 			expect(f.replies).toEqual([{ requestId: f.event.permission!.requestId! }]);
+        │ 			                                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    232 │ 			expect(replies).toEqual([]);
+    233 │ 			expect(getQueuePermissionCapability(siblingItem).state).toBe("waiting");
+
+
+apps/desktop/tests/queue-permission-runtime.test.ts:231:44 lint/style/noNonNullAssertion  FIXABLE  ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+
+    229 │ 			getDb().delete(terminalSessions).where(eq(terminalSessions.id, f.terminalId)).run();
+    230 │ 			await Bun.sleep(300);
+  > 231 │ 			expect(f.replies).toEqual([{ requestId: f.event.permission!.requestId! }]);
+        │ 			                                        ^^^^^^^^^^^^^^^^^^^
+    232 │ 			expect(replies).toEqual([]);
+    233 │ 			expect(getQueuePermissionCapability(siblingItem).state).toBe("waiting");
+
+  i Unsafe fix: Replace with optional chain operator ?. This operator includes runtime checks, so it is safer than the compile-only non-null assertion operator
+
+    229 229 │   			getDb().delete(terminalSessions).where(eq(terminalSessions.id, f.terminalId)).run();
+    230 230 │   			await Bun.sleep(300);
+    231     │ - → → → expect(f.replies).toEqual([{·requestId:·f.event.permission!.requestId!·}]);
+        231 │ + → → → expect(f.replies).toEqual([{·requestId:·f.event.permission?.requestId!·}]);
+    232 232 │   			expect(replies).toEqual([]);
+    233 233 │   			expect(getQueuePermissionCapability(siblingItem).state).toBe("waiting");
+
+
+apps/desktop/tests/queue-permission-runtime.test.ts:242:42 lint/style/noNonNullAssertion ━━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+
+    240 │ 	const f = await fixture("claude", "worktree");
+    241 │ 	setPermissionTerminalVisibility(f.terminalId, true);
+  > 242 │ 	expect(f.replies).toEqual([{ requestId: f.event.permission!.requestId! }]);
+        │ 	                                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    243 │ 	expect(getQueuePermissionCapability(f.item).state).toBe("cancelled");
+    244 │ 	expect(resolvePermissionEvent(f.event)).toBeNull();
+
+
+apps/desktop/tests/queue-permission-runtime.test.ts:242:42 lint/style/noNonNullAssertion  FIXABLE  ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+
+    240 │ 	const f = await fixture("claude", "worktree");
+    241 │ 	setPermissionTerminalVisibility(f.terminalId, true);
+  > 242 │ 	expect(f.replies).toEqual([{ requestId: f.event.permission!.requestId! }]);
+        │ 	                                        ^^^^^^^^^^^^^^^^^^^
+    243 │ 	expect(getQueuePermissionCapability(f.item).state).toBe("cancelled");
+    244 │ 	expect(resolvePermissionEvent(f.event)).toBeNull();
+
+  i Unsafe fix: Replace with optional chain operator ?. This operator includes runtime checks, so it is safer than the compile-only non-null assertion operator
+
+    240 240 │   	const f = await fixture("claude", "worktree");
+    241 241 │   	setPermissionTerminalVisibility(f.terminalId, true);
+    242     │ - → expect(f.replies).toEqual([{·requestId:·f.event.permission!.requestId!·}]);
+        242 │ + → expect(f.replies).toEqual([{·requestId:·f.event.permission?.requestId!·}]);
+    243 243 │   	expect(getQueuePermissionCapability(f.item).state).toBe("cancelled");
+    244 244 │   	expect(resolvePermissionEvent(f.event)).toBeNull();
+
+
+apps/desktop/tests/fixtures/queue-permissions/transport.ts:88:21 lint/style/noNonNullAssertion ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+
+    86 │ 				for (let i = 0; i < 100 && !item; i++) await sleep(10);
+    87 │ 				assert.ok(item);
+  > 88 │ 				const current = item!;
+       │ 				                ^^^^^
+    89 │ 				assert.ok(service.capability(current).summary?.includes("printf synthetic"));
+    90 │ 				assert.ok(!service.capability(current).summary?.includes("do-not-forward"));
+
+
+apps/desktop/tests/fixtures/queue-permissions/transport.ts:95:43 lint/style/noNonNullAssertion ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+
+    93 │ 					assert.equal(
+    94 │ 						service.decide(
+  > 95 │ 							{ id: "s", revision: 1, requestId: current.permission!.requestId!, action },
+       │ 							                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    96 │ 							current
+    97 │ 						).status,
+
+
+apps/desktop/tests/fixtures/queue-permissions/transport.ts:95:43 lint/style/noNonNullAssertion  FIXABLE  ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+
+    93 │ 					assert.equal(
+    94 │ 						service.decide(
+  > 95 │ 							{ id: "s", revision: 1, requestId: current.permission!.requestId!, action },
+       │ 							                                   ^^^^^^^^^^^^^^^^^^^
+    96 │ 							current
+    97 │ 						).status,
+
+  i Unsafe fix: Replace with optional chain operator ?. This operator includes runtime checks, so it is safer than the compile-only non-null assertion operator
+
+     93  93 │   					assert.equal(
+     94  94 │   						service.decide(
+     95     │ - → → → → → → → {·id:·"s",·revision:·1,·requestId:·current.permission!.requestId!,·action·},
+         95 │ + → → → → → → → {·id:·"s",·revision:·1,·requestId:·current.permission?.requestId!,·action·},
+     96  96 │   							current
+     97  97 │   						).status,
+
+
+apps/desktop/tests/fixtures/queue-permissions/live.ts:53:49 lint/suspicious/noExplicitAny ━━━━━━━━━━
+
+  ! Unexpected any. Specify a different type.
+
+    51 │ 	});
+    52 │ 	let next = 0;
+  > 53 │ 	const pending = new Map<number, { resolve: (v: any) => void; reject: (v: any) => void }>();
+       │ 	                                               ^^^
+    54 │ 	const rpc = (method: string, params: unknown) =>
+    55 │ 		new Promise<any>((resolve, reject) => {
+
+  i any disables many type checking rules. Its use should be avoided.
+
+
+apps/desktop/tests/fixtures/queue-permissions/live.ts:53:75 lint/suspicious/noExplicitAny ━━━━━━━━━━
+
+  ! Unexpected any. Specify a different type.
+
+    51 │ 	});
+    52 │ 	let next = 0;
+  > 53 │ 	const pending = new Map<number, { resolve: (v: any) => void; reject: (v: any) => void }>();
+       │ 	                                                                         ^^^
+    54 │ 	const rpc = (method: string, params: unknown) =>
+    55 │ 		new Promise<any>((resolve, reject) => {
+
+  i any disables many type checking rules. Its use should be avoided.
+
+
+apps/desktop/tests/fixtures/queue-permissions/live.ts:55:15 lint/suspicious/noExplicitAny ━━━━━━━━━━
+
+  ! Unexpected any. Specify a different type.
+
+    53 │ 	const pending = new Map<number, { resolve: (v: any) => void; reject: (v: any) => void }>();
+    54 │ 	const rpc = (method: string, params: unknown) =>
+  > 55 │ 		new Promise<any>((resolve, reject) => {
+       │ 		            ^^^
+    56 │ 			const id = ++next;
+    57 │ 			pending.set(id, { resolve, reject });
+
+  i any disables many type checking rules. Its use should be avoided.
+
+
+apps/desktop/tests/fixtures/queue-permissions/live.ts:79:17 lint/suspicious/noExplicitAny ━━━━━━━━━━
+
+  ! Unexpected any. Specify a different type.
+
+    77 │ 		writeFileSync(join(root, "hook-catalog.json"), JSON.stringify(list, null, 2));
+    78 │ 		const hooks = list.data
+  > 79 │ 			.flatMap((v: any) => v.hooks)
+       │ 			             ^^^
+    80 │ 			.filter((v: any) => v.command?.includes(join(root, "bridge.cjs")));
+    81 │ 		assert.ok(hooks.length > 0);
+
+  i any disables many type checking rules. Its use should be avoided.
+
+
+apps/desktop/tests/fixtures/queue-permissions/live.ts:80:16 lint/suspicious/noExplicitAny ━━━━━━━━━━
+
+  ! Unexpected any. Specify a different type.
+
+    78 │ 		const hooks = list.data
+    79 │ 			.flatMap((v: any) => v.hooks)
+  > 80 │ 			.filter((v: any) => v.command?.includes(join(root, "bridge.cjs")));
+       │ 			            ^^^
+    81 │ 		assert.ok(hooks.length > 0);
+    82 │ 		return Object.fromEntries(
+
+  i any disables many type checking rules. Its use should be avoided.
+
+
+apps/desktop/tests/fixtures/queue-permissions/live.ts:83:18 lint/suspicious/noExplicitAny ━━━━━━━━━━
+
+  ! Unexpected any. Specify a different type.
+
+    81 │ 		assert.ok(hooks.length > 0);
+    82 │ 		return Object.fromEntries(
+  > 83 │ 			hooks.map((h: any) => [h.key, { enabled: true, trusted_hash: h.currentHash }])
+       │ 			              ^^^
+    84 │ 		);
+    85 │ 	} finally {
+
+  i any disables many type checking rules. Its use should be avoided.
+
+
+apps/desktop/tests/fixtures/queue-permissions/live.ts:148:13 lint/style/noNonNullAssertion ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+
+    146 │ 					{
+    147 │ 						hostname: "127.0.0.1",
+  > 148 │ 						port: listener.getPort()!,
+        │ 						      ^^^^^^^^^^^^^^^^^^^
+    149 │ 						path: req.url,
+    150 │ 						method: req.method,
+
+
+apps/desktop/tests/fixtures/queue-permissions/live.ts:170:41 lint/style/noNonNullAssertion  FIXABLE  ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+
+    168 │ 				req.pipe(upstream);
+    169 │ 			});
+  > 170 │ 			await new Promise<void>((resolve) => proxy!.listen(0, "127.0.0.1", resolve));
+        │ 			                                     ^^^^^^
+    171 │ 			port = (proxy.address() as { port: number }).port;
+    172 │ 		}
+
+  i Unsafe fix: Replace with optional chain operator ?. This operator includes runtime checks, so it is safer than the compile-only non-null assertion operator
+
+    168 168 │   				req.pipe(upstream);
+    169 169 │   			});
+    170     │ - → → → await·new·Promise<void>((resolve)·=>·proxy!.listen(0,·"127.0.0.1",·resolve));
+        170 │ + → → → await·new·Promise<void>((resolve)·=>·proxy?.listen(0,·"127.0.0.1",·resolve));
+    171 171 │   			port = (proxy.address() as { port: number }).port;
+    172 172 │   		}
+
+
+apps/desktop/tests/fixtures/queue-reply-tui/main.ts:38:14 lint/style/noNonNullAssertion ━━━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+
+    36 │ import { agentRegistry } from "../../../src/shared/agent-events";
+    37 │ import { codexHookTrust } from "./codex-hooks";
+  > 38 │ const root = process.env["SS_QUEUE_FIXTURE_ROOT"]!;
+       │              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    39 │ app.setPath("userData", join(root, "profile"));
+    40 │ app.setPath("sessionData", join(root, "profile"));
+
+
+apps/desktop/tests/fixtures/queue-reply-tui/main.ts:77:39 lint/style/noNonNullAssertion ━━━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+
+    75 │ async function run() {
+    76 │ 	await app.whenReady();
+  > 77 │ 	migrate(getDb(), { migrationsFolder: process.env["SS_QUEUE_MIGRATIONS"]! });
+       │ 	                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    78 │ 	socket = new SocketServer(
+    79 │ 		ptys,
+
+
+apps/desktop/tests/fixtures/queue-reply-tui/main.ts:234:4 lint/style/noNonNullAssertion ━━━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+
+    232 │ 		);
+    233 │ 		const state = await codexHookTrust(
+  > 234 │ 			process.env["SS_QUEUE_CODEX_BIN"]!,
+        │ 			^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    235 │ 			cwd,
+    236 │ 			hookEvents,
+
+
+apps/desktop/tests/fixtures/queue-reply-tui/main.ts:264:14 lint/style/noNonNullAssertion ━━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+
+    262 │ 		];
+    263 │ 	}
+  > 264 │ 	const bin = process.env[provider === "claude" ? "SS_QUEUE_CLAUDE_BIN" : "SS_QUEUE_CODEX_BIN"]!;
+        │ 	            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    265 │ 	writeFileSync(
+    266 │ 		join(root, "launch.sh"),
+
+
+apps/desktop/tests/fixtures/queue-reply-tui/main.ts:280:15 lint/style/noNonNullAssertion ━━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+
+    278 │ 		)
+    279 │ 	);
+  > 280 │ 	const item = (await listWorkspaceQueue()).items.find(
+        │ 	             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  > 281 │ 		(i) => i.target.type === "terminal" && i.target.terminalId === terminalId
+  > 282 │ 	)!;
+        │ 	^^
+    283 │ 	const capability = await workspaceReplyCapability(item);
+    284 │ 	assert.equal(capability.status, "available", JSON.stringify(capability));
+
+
+apps/desktop/tests/fixtures/queue-reply-tui/main.ts:322:19 lint/style/noNonNullAssertion ━━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+
+    320 │ 			.some((r) => r.state === "admitted")
+    321 │ 	);
+  > 322 │ 	const delivery = getDb().select().from(activityQueueDeliveries).all()[0]!;
+        │ 	                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    323 │ 	assert(
+    324 │ 		["admitted", "received"].includes(
+
+
+apps/desktop/tests/queue-conversation-admission.test.ts:48:16 lint/style/noNonNullAssertion ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+
+    46 │ test("admission is single-use, bracketed, and invalidated by any ordinary typing", () => {
+    47 │ 	const f = fixture();
+  > 48 │ 	const lease = f.sessions.conversationTarget("t", "c", "claude", "chat")!;
+       │ 	              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    49 │ 	expect(f.sessions.insertConversation("t", "c", lease.generation, "hello\nworld")).toBe(
+    50 │ 		"admitted"
+
+
+apps/desktop/tests/queue-conversation-admission.test.ts:54:15 lint/style/noNonNullAssertion ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+
+    52 │ 	expect(f.writes).toEqual(["\x1b[200~hello\nworld\x1b[201~\r"]);
+    53 │ 	expect(f.sessions.insertConversation("t", "c", lease.generation, "again")).toBe("rejected");
+  > 54 │ 	const next = f.sessions.conversationTarget("t", "c", "claude", "chat")!;
+       │ 	             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    55 │ 	f.sessions.input("t", "x");
+    56 │ 	expect(f.sessions.insertConversation("t", "c", next.generation, "again")).toBe("rejected");
+
+
+apps/desktop/tests/queue-conversation-admission.test.ts:60:16 lint/style/noNonNullAssertion ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+
+    58 │ test("process replacement and controls fail closed with no write", () => {
+    59 │ 	const f = fixture();
+  > 60 │ 	const lease = f.sessions.conversationTarget("t", "c", "claude", "chat")!;
+       │ 	              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    61 │ 	f.replace({ ...claude, startedAt: "two" });
+    62 │ 	expect(f.sessions.insertConversation("t", "c", lease.generation, "hello")).toBe("rejected");
+
+
+apps/desktop/tests/queue-conversation-admission.test.ts:63:15 lint/style/noNonNullAssertion ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+
+    61 │ 	f.replace({ ...claude, startedAt: "two" });
+    62 │ 	expect(f.sessions.insertConversation("t", "c", lease.generation, "hello")).toBe("rejected");
+  > 63 │ 	const next = f.sessions.conversationTarget("t", "c", "claude", "chat")!;
+       │ 	             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    64 │ 	expect(f.sessions.insertConversation("t", "c", next.generation, "\x1b[201~oops")).toBe(
+    65 │ 		"rejected"
+
+
+apps/desktop/tests/queue-conversation-admission.test.ts:133:16 lint/style/noNonNullAssertion ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+
+    131 │ test("read-only capability polling cannot replace an in-flight admission lease", () => {
+    132 │ 	const f = fixture();
+  > 133 │ 	const lease = f.sessions.conversationTarget("t", "c", "claude", "chat")!;
+        │ 	              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    134 │ 	f.sessions.conversationTarget("t", "c", "claude", "chat", false);
+    135 │ 	f.sessions.conversationTarget("t", "c", "claude", "chat", false);
+
+
+apps/desktop/tests/queue-conversation-admission.test.ts:198:17 lint/style/noNonNullAssertion ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+
+    196 │ 	for (const text of ["/resume other-chat", "  /clear", "!echo unsafe", "\n!pwd"]) {
+    197 │ 		const f = fixture();
+  > 198 │ 		const lease = f.sessions.conversationTarget("t", "c", "claude", "chat")!;
+        │ 		              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    199 │ 		expect(f.sessions.insertConversation("t", "c", lease.generation, text)).toBe("rejected");
+    200 │ 		expect(f.writes).toHaveLength(0);
+
+
+apps/desktop/tests/queue-conversation-reply-ui.test.tsx:85:15 lint/style/noNonNullAssertion ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+
+    83 │ 	const type = async (text: string) =>
+    84 │ 		act(() => {
+  > 85 │ 			const el = browser.document.querySelector("textarea")!;
+       │ 			           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    86 │ 			Object.getOwnPropertyDescriptor(browser.HTMLTextAreaElement.prototype, "value")?.set?.call(
+    87 │ 				el,
+
+
+apps/desktop/tests/queue-conversation-reply-ui.test.tsx:94:4 lint/style/noNonNullAssertion  FIXABLE  ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+
+    92 │ 	const click = async () =>
+    93 │ 		act(async () => {
+  > 94 │ 			document
+       │ 			^^^^^^^^
+  > 95 │ 				.querySelectorAll("button")
+  > 96 │ 				.item(document.querySelectorAll("button").length - 1)!
+       │ 				^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    97 │ 				.click();
+    98 │ 			await new Promise((resolve) => setTimeout(resolve, 0));
+
+  i Unsafe fix: Replace with optional chain operator ?. This operator includes runtime checks, so it is safer than the compile-only non-null assertion operator
+
+     94  94 │   			document
+     95  95 │   				.querySelectorAll("button")
+     96     │ - → → → → .item(document.querySelectorAll("button").length·-·1)!
+     97     │ - → → → → .click();
+         96 │ + → → → → .item(document.querySelectorAll("button").length·-·1)?.click();
+     98  97 │   			await new Promise((resolve) => setTimeout(resolve, 0));
+     99  98 │   		});
+
+
+apps/desktop/tests/queue-conversation-reply-ui.test.tsx:170:16 lint/style/noNonNullAssertion ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+
+    168 │ 	const f = await fixture();
+    169 │ 	await f.type("keyboard reply");
+  > 170 │ 	const input = browser.document.querySelector("textarea")!;
+        │ 	              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    171 │ 	for (const options of [
+    172 │ 		{ shiftKey: true },
+
+
+apps/desktop/tests/queue-jump.test.tsx:117:20 lint/style/noNonNullAssertion ━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+
+    115 │ async function key(
+    116 │ 	key: string,
+  > 117 │ 	target: Element = document.querySelector('[aria-label="Queue peek"]')!,
+        │ 	                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    118 │ 	extras = {}
+    119 │ ) {
+
+
+apps/desktop/tests/queue-jump.test.tsx:134:16 lint/style/noNonNullAssertion ━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+
+    132 │ 	const state = await mountPeek();
+    133 │ 	expect(document.activeElement?.tagName).toBe("DIALOG");
+  > 134 │ 	const input = document.querySelector("[aria-label=Reply]")!;
+        │ 	              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    135 │ 	await key("e", input);
+    136 │ 	expect(state.calls).toEqual([]);
+
+
+apps/desktop/tests/queue-jump.test.tsx:174:17 lint/style/noNonNullAssertion ━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+
+    172 │ test("Tab and Shift Tab wrap within peek", async () => {
+    173 │ 	await mountPeek();
+  > 174 │ 	const dialog = document.querySelector('[aria-label="Queue peek"]')!;
+        │ 	               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    175 │ 	await key("Tab", dialog);
+    176 │ 	expect(document.activeElement?.textContent).toBe("Close · Esc");
+
+
+apps/desktop/tests/queue-jump.test.tsx:177:19 lint/style/noNonNullAssertion ━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+
+    175 │ 	await key("Tab", dialog);
+    176 │ 	expect(document.activeElement?.textContent).toBe("Close · Esc");
+  > 177 │ 	await key("Tab", document.activeElement!, { shiftKey: true });
+        │ 	                 ^^^^^^^^^^^^^^^^^^^^^^^
+    178 │ 	expect(document.activeElement?.textContent).toBe("Open Queue");
+    179 │ 	await key("Tab", document.activeElement!);
+
+
+apps/desktop/tests/queue-jump.test.tsx:179:19 lint/style/noNonNullAssertion ━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+
+    177 │ 	await key("Tab", document.activeElement!, { shiftKey: true });
+    178 │ 	expect(document.activeElement?.textContent).toBe("Open Queue");
+  > 179 │ 	await key("Tab", document.activeElement!);
+        │ 	                 ^^^^^^^^^^^^^^^^^^^^^^^
+    180 │ 	expect(document.activeElement?.textContent).toBe("Close · Esc");
+    181 │ });
+
+
+apps/desktop/tests/queue-permission-decision.test.tsx:70:2 lint/style/noNonNullAssertion ━━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+
+    68 │ }
+    69 │ const button = (label: string) =>
+  > 70 │ 	Array.from(document.querySelectorAll("button")).find((b) => b.textContent === label)!;
+       │ 	^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    71 │ test("view/hover do nothing; double click carries all exact receipts only once", async () => {
+    72 │ 	const f = await mount();
+
+
+apps/desktop/tests/queue-conversation-replies.test.ts:105:9 lint/style/noNonNullAssertion ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+
+    103 │ 	daemon = fakeDaemon();
+    104 │ 	setDaemonClient(daemon as unknown as DaemonClient);
+  > 105 │ 	item = (await listWorkspaceQueue()).items.find(
+        │ 	       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  > 106 │ 		(i) => i.target.type === "terminal" && i.target.terminalId === "owner"
+  > 107 │ 	)!;
+        │ 	^^
+    108 │ 	expect(item).toBeDefined();
+    109 │ });
+
+
+apps/desktop/tests/queue-conversation-replies.test.ts:217:18 lint/style/noNonNullAssertion ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+
+    215 │ test("a newly appearing structured question at admission blocks ordinary free-form input", async () => {
+    216 │ 	beforeAdmission = () => {
+  > 217 │ 		const source = getDb()
+        │ 		               ^^^^^^^
+  > 218 │ 			.select()
+  > 219 │ 			.from(activityQueueSources)
+  > 220 │ 			.where(eq(activityQueueSources.sourceId, item.id))
+  > 221 │ 			.get()!;
+        │ 			^^^^^^^
+    222 │ 		getDb()
+    223 │ 			.insert(activityQueueSources)
+
+
+apps/desktop/tests/queue-conversation-replies.test.ts:229:9 lint/style/noNonNullAssertion ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+
+    227 │ 				sourceType: "agent-question",
+    228 │ 				candidate: {
+  > 229 │ 					...source.candidate!,
+        │ 					   ^^^^^^^^^^^^^^^^^
+    230 │ 					kind: "agent-input",
+    231 │ 					reasons: [{ code: "question", label: "Question" }],
+
+
+apps/desktop/tests/queue-conversation-replies.test.ts:302:18 lint/style/noNonNullAssertion ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+
+    300 │ 					.map((t, index) => ({ id: t.id, cwd: t.cwd, pid: index + 1 }));
+    301 │ 			const queue = (await listWorkspaceQueue()).items;
+  > 302 │ 			const exact = queue.find(
+        │ 			              ^^^^^^^^^^^
+  > 303 │ 				(i) => i.target.type === "terminal" && i.target.terminalId === owner
+  > 304 │ 			)!;
+        │ 			^^
+    305 │ 			const siblingItem = queue.find(
+    306 │ 				(i) => i.target.type === "terminal" && i.target.terminalId === sibling
+
+
+apps/desktop/tests/queue-conversation-replies.test.ts:305:24 lint/style/noNonNullAssertion ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+
+    303 │ 				(i) => i.target.type === "terminal" && i.target.terminalId === owner
+    304 │ 			)!;
+  > 305 │ 			const siblingItem = queue.find(
+        │ 			                    ^^^^^^^^^^^
+  > 306 │ 				(i) => i.target.type === "terminal" && i.target.terminalId === sibling
+  > 307 │ 			)!;
+        │ 			^^
+    308 │ 			expect(exact.context.entity).toEqual({ kind: entityKind, id: entityId });
+    309 │ 			expect(exact.context.provider).toBe(provider);
+
+
+apps/desktop/tests/queue-conversation-replies.test.ts:361:18 lint/style/noNonNullAssertion ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+
+    359 │ test("a newly grouped same-conversation receipt cannot be omitted at daemon admission", async () => {
+    360 │ 	beforeAdmission = () => {
+  > 361 │ 		const source = getDb()
+        │ 		               ^^^^^^^
+  > 362 │ 			.select()
+  > 363 │ 			.from(activityQueueSources)
+  > 364 │ 			.where(eq(activityQueueSources.sourceId, item.id))
+  > 365 │ 			.get()!;
+        │ 			^^^^^^^
+    366 │ 		getDb()
+    367 │ 			.delete(activityQueueSources)
+
+
+apps/desktop/tests/queue-conversation-replies.test.ts:377:9 lint/style/noNonNullAssertion ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+
+    375 │ 				sourceType: "agent-workspace",
+    376 │ 				candidate: {
+  > 377 │ 					...source.candidate!,
+        │ 					   ^^^^^^^^^^^^^^^^^
+    378 │ 					kind: "agent-ready",
+    379 │ 					reasons: [{ code: "workspace-done", label: "Task done" }],
+
+
+apps/desktop/tests/queue-conversation-replies.test.ts:397:21 lint/style/noNonNullAssertion  FIXABLE  ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+
+    395 │ 		expect((await workspaceReply(input())).status).toBe(delivery);
+    396 │ 		await new Promise((resolve) => setTimeout(resolve, 5));
+  > 397 │ 		const projectId = getDb()
+        │ 		                  ^^^^^^^
+  > 398 │ 			.select()
+  > 399 │ 			.from(workspaces)
+  > 400 │ 			.where(eq(workspaces.id, workspaceId))
+  > 401 │ 			.get()!.projectId;
+        │ 			^^^^^^^
+    402 │ 		await setStatus(
+    403 │ 			{ kind: "workspace", workspaceId, projectId, terminalId: "owner" },
+
+  i Unsafe fix: Replace with optional chain operator ?. This operator includes runtime checks, so it is safer than the compile-only non-null assertion operator
+
+    399 399 │   			.from(workspaces)
+    400 400 │   			.where(eq(workspaces.id, workspaceId))
+    401     │ - → → → .get()!.projectId;
+        401 │ + → → → .get()?.projectId;
+    402 402 │   		await setStatus(
+    403 403 │   			{ kind: "workspace", workspaceId, projectId, terminalId: "owner" },
+
+
+Checked 94 files in 63ms. No fixes applied.
+Found 59 warnings.

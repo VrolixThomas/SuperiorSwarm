@@ -1,16 +1,27 @@
 import { z } from "zod";
-import { ACTIVITY_QUEUE_KINDS } from "../../../shared/activity-queue";
+import { ACTIVITY_QUEUE_KINDS, QUEUE_REPLY_MAX_CHARACTERS } from "../../../shared/activity-queue";
 import { reconcileAgentSources } from "../../activity-queue/agent-source";
+import {
+	workspaceReply,
+	workspaceReplyCapability,
+	workspaceReplyReceipt,
+} from "../../activity-queue/conversation-replies";
 import { listCurrentActivityQueue } from "../../activity-queue/current-items";
+import { linkedWorkForEntity } from "../../activity-queue/linked-context";
 import { getActivityQueueService } from "../../activity-queue/service";
 import {
 	bringBack,
+	currentQueueAction,
 	later,
 	listWorkspaceQueue,
 	undoDone,
 	workspaceAnswer,
 	workspaceDone,
 } from "../../activity-queue/workspace-queue";
+import {
+	decideQueuePermission,
+	getQueuePermissionCapability,
+} from "../../agent-hooks/permission-runtime";
 import { publicProcedure, router } from "../index";
 
 const workspaceRevision = z.object({
@@ -23,6 +34,42 @@ const workspaceRevision = z.object({
 });
 
 export const activityQueueRouter = router({
+	workspaceReplyReceipt: publicProcedure
+		.input(z.object({ requestId: z.string().min(1).max(128) }))
+		.query(({ input }) => workspaceReplyReceipt(input.requestId)),
+	workspacePermissionCapability: publicProcedure
+		.input(workspaceRevision)
+		.query(async ({ input }) => {
+			const item = await currentQueueAction(input);
+			return item
+				? getQueuePermissionCapability(item)
+				: {
+						capability: "unavailable" as const,
+						detail: "This queue update changed. Refresh before responding.",
+					};
+		}),
+	workspacePermissionDecision: publicProcedure
+		.input(
+			workspaceRevision.extend({
+				requestId: z.string().min(1).max(256),
+				action: z.enum(["allow-once", "deny", "open"]),
+			})
+		)
+		.mutation(({ input }) => decideQueuePermission(input)),
+	workspaceLinkedContext: publicProcedure
+		.input(z.object({ kind: z.enum(["workspace", "coordinator"]), id: z.string().min(1) }))
+		.query(({ input }) => linkedWorkForEntity(input)),
+	workspaceReplyCapability: publicProcedure
+		.input(workspaceRevision)
+		.query(({ input }) => workspaceReplyCapability(input)),
+	workspaceReply: publicProcedure
+		.input(
+			workspaceRevision.extend({
+				requestId: z.string().min(1).max(128),
+				content: z.string().trim().min(1).max(QUEUE_REPLY_MAX_CHARACTERS),
+			})
+		)
+		.mutation(({ input }) => workspaceReply(input)),
 	workspaceList: publicProcedure
 		.input(
 			z

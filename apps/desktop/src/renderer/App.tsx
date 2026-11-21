@@ -23,6 +23,7 @@ import { SharedFilesPanel } from "./components/SharedFilesPanel";
 import { Sidebar } from "./components/Sidebar";
 import { UpdateToast } from "./components/UpdateToast";
 import { WhatsNewModal } from "./components/WhatsNewModal";
+import { QueueNavigationRuntime } from "./components/queue/QueueNavigationRuntime";
 import { PRReviewKeyboardListener } from "./components/review/PRReviewKeyboardListener";
 import { SettingsPage } from "./components/settings/SettingsPage";
 import { TicketRefreshCoordinator } from "./components/tickets/TicketRefreshCoordinator";
@@ -500,6 +501,7 @@ function AuthenticatedApp() {
 		<>
 			<TicketRefreshCoordinator />
 			<WorkspaceQueueSync />
+			<QueueNavigationRuntime />
 			<NavRail />
 			<div className="ml-[72px] min-w-0">
 				{sidebarView === "settings" ? (

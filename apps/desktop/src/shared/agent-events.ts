@@ -35,6 +35,8 @@ export interface AgentEvent {
 	sessionSource?: string;
 	/** Stable provider metadata only; bridge invocation/receipt time is not identity. */
 	providerEventId?: string;
+	/** SHA256 of the exact submitted prompt, when available. Never prompt plaintext. */
+	promptHash?: string;
 	providerTimestamp?: number;
 	evidence?: AgentEvidence[];
 	permission?: AgentPermission;

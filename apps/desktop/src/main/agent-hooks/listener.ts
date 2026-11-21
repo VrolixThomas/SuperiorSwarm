@@ -3,6 +3,8 @@ import { type Server, createServer } from "node:http";
 import { type AgentEvent, agentRegistry } from "../../shared/agent-events";
 import { validateAgentEvidence } from "../../shared/agent-evidence";
 import { log } from "../logger";
+import { permissionProcessAlive, permissionProcessExists } from "./permission-process";
+import type { PermissionTarget, QueuePermissions } from "./queue-permissions";
 
 function parseProducerTimestamp(value: string | null): number | undefined {
 	if (!value) return undefined;
@@ -23,7 +25,14 @@ export interface AgentAlertListener {
 	getPort: () => number | null;
 }
 
-export function createAlertListener(port: number, authToken?: string): AgentAlertListener {
+export function createAlertListener(
+	port: number,
+	authToken?: string,
+	permissionChannel?: {
+		service: QueuePermissions;
+		resolve: (event: AgentEvent) => { target: PermissionTarget; generation: string } | null;
+	}
+): AgentAlertListener {
 	const handlers = new Set<EventHandler>();
 	let server: Server | null = null;
 
@@ -49,7 +58,7 @@ export function createAlertListener(port: number, authToken?: string): AgentAler
 			return;
 		}
 
-		if (url.pathname !== "/event") {
+		if (url.pathname !== "/event" && url.pathname !== "/permission-receipt") {
 			res.writeHead(404, { "Content-Type": "application/json" });
 			res.end(JSON.stringify({ ok: false, error: "not found" }));
 			return;
@@ -87,6 +96,17 @@ export function createAlertListener(port: number, authToken?: string): AgentAler
 				res.end();
 				return;
 			}
+		}
+		if (url.pathname === "/permission-receipt") {
+			const accepted =
+				!!authToken &&
+				req.method === "POST" &&
+				typeof body["requestId"] === "string" &&
+				typeof body["receipt"] === "string" &&
+				permissionChannel?.service.received(body["requestId"], body["receipt"]);
+			res.writeHead(accepted ? 200 : 409);
+			res.end();
+			return;
 		}
 		const rawEvent = url.searchParams.get("rawEvent");
 		const terminalId =
@@ -131,6 +151,11 @@ export function createAlertListener(port: number, authToken?: string): AgentAler
 			producerTimestamp: parseProducerTimestamp(url.searchParams.get("producerTimestamp")),
 			providerTimestamp: parseProducerTimestamp(url.searchParams.get("providerTimestamp")),
 			providerEventId: url.searchParams.get("providerEventId")?.slice(0, 256) || undefined,
+			promptHash:
+				rawEvent === "UserPromptSubmit" &&
+				/^[a-f0-9]{64}$/.test(url.searchParams.get("promptHash") ?? "")
+					? (url.searchParams.get("promptHash") ?? undefined)
+					: undefined,
 			evidence: validateAgentEvidence(body["evidence"], agent, rawEvent),
 			// Registered hooks report requests, not decisions. Generic tool activity/Stop
 			// must never be promoted to an allowed/denied permission outcome.
@@ -154,6 +179,56 @@ export function createAlertListener(port: number, authToken?: string): AgentAler
 			}
 		}
 
+		if (
+			authToken &&
+			req.method === "POST" &&
+			body["permissionResponse"] === 1 &&
+			rawEvent === "PermissionRequest" &&
+			permissionChannel &&
+			event.permission?.requestId &&
+			event.producerTimestamp &&
+			Math.abs(Date.now() - event.producerTimestamp) < 5000
+		) {
+			const binding = permissionChannel.resolve(event);
+			if (
+				binding &&
+				permissionProcessAlive(body["providerProcess"]) &&
+				permissionChannel.service.register({
+					...binding,
+					issuedAt: event.producerTimestamp,
+					allowOnce:
+						body["actionReviewable"] === true &&
+						typeof body["actionSummary"] === "string" &&
+						body["actionSummary"].length <= 2048,
+					alive: () => permissionProcessAlive(body["providerProcess"]),
+					quickAlive: () => permissionProcessExists(body["providerProcess"]),
+					requestId: event.permission.requestId,
+					summary:
+						typeof body["actionSummary"] === "string"
+							? (validateAgentEvidence(
+									[{ sourceField: "permission_prompt", text: body["actionSummary"] }],
+									agent,
+									rawEvent
+								)[0]?.text ?? "Requested action details unavailable")
+							: "Requested action details unavailable",
+					reply: (value) => {
+						if (res.destroyed || res.writableEnded) return false;
+						res.writeHead(200, { "Content-Type": "application/json" });
+						res.end(JSON.stringify(value));
+						return true;
+					},
+				})
+			) {
+				const id = event.permission.requestId;
+				res.on("close", () => {
+					if (!res.writableFinished) permissionChannel.service.disconnected(id);
+				});
+				req.socket.once("close", () => {
+					if (!res.writableFinished) permissionChannel.service.disconnected(id);
+				});
+				return;
+			}
+		}
 		res.writeHead(200, { "Content-Type": "application/json" });
 		res.end(JSON.stringify({ ok: true, alert }));
 	});
@@ -191,6 +266,7 @@ export function createAlertListener(port: number, authToken?: string): AgentAler
 			});
 		},
 		stop() {
+			permissionChannel?.service.close();
 			server?.close();
 			server = null;
 		},

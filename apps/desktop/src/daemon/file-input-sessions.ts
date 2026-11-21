@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { basename } from "node:path";
+import { QUEUE_REPLY_MAX_CHARACTERS } from "../shared/activity-queue";
 import {
 	FILE_PASTE_MAX_BYTES,
 	type FileDelivery,
@@ -14,11 +15,24 @@ export interface FileInputTarget {
 	supported: boolean;
 }
 interface Session {
+	inputVersion: number;
+	submittedVersions: number[];
+	ambiguousInput?: boolean;
+	prompt?: { key: string; version: number; identity: TerminalProcessIdentity };
+	readyKey?: string;
+	inputDirty: boolean;
 	shell: string;
 	foreground: () => string;
 	write: (data: string) => void;
 	inspect?: () => TerminalProcessIdentity | null;
-	clients: Map<string, (FileInputTarget & { identity?: TerminalProcessIdentity }) | null>;
+	clients: Map<
+		string,
+		(FileInputTarget & { identity?: TerminalProcessIdentity; conversation?: boolean }) | null
+	>;
+}
+function recordSubmission(session: Session): void {
+	if (session.submittedVersions.length >= 64) session.ambiguousInput = true;
+	else session.submittedVersions.push(session.inputVersion);
 }
 const POSIX = new Set(["sh", "bash", "zsh", "dash"]);
 const AGENT_RUNTIMES = new Set(["node", "bun", "deno"]);
@@ -59,6 +73,9 @@ export class FileInputSessions {
 		inspect?: () => TerminalProcessIdentity | null
 	): void {
 		this.sessions.set(id, {
+			inputDirty: true,
+			inputVersion: 0,
+			submittedVersions: [],
 			shell,
 			foreground,
 			write,
@@ -73,6 +90,20 @@ export class FileInputSessions {
 		this.sessions.get(id)?.clients.delete(client);
 	}
 	input(id: string, data: string | Buffer): void {
+		// Terminal device replies are protocol traffic, not a user draft.
+		// biome-ignore lint/suspicious/noControlCharactersInRegex: exact ANSI cursor-position reply
+		if (/^\x1b\[\d{1,5};\d{1,5}R$/.test(String(data))) return;
+		const active = this.sessions.get(id);
+		if (active && data.length) {
+			active.inputDirty = true;
+			if ((String(data).match(/\r/g)?.length ?? 0) > 1) active.ambiguousInput = true;
+			active.inputVersion += data.length;
+			if (String(data).endsWith("\r")) recordSubmission(active);
+		}
+		if (data.length && active)
+			for (const [client, lease] of active.clients) {
+				if (lease?.conversation) active.clients.set(client, null);
+			}
 		if (!data.includes("\r") && !data.includes("\n") && !data.includes("\x03")) return;
 		const session = this.sessions.get(id);
 		if (session) for (const client of session.clients.keys()) session.clients.set(client, null);
@@ -82,6 +113,125 @@ export class FileInputSessions {
 	}
 	remove(id: string): void {
 		this.sessions.delete(id);
+	}
+	conversationState(
+		id: string,
+		state: import("../shared/queue-terminal-state").QueueTerminalState
+	): void {
+		const session = this.sessions.get(id);
+		if (
+			!session ||
+			!state ||
+			![state.provider, state.providerSessionId, state.turnId].every(
+				(value) => typeof value === "string" && value.length > 0 && value.length <= 256
+			)
+		)
+			return;
+		const key = JSON.stringify([state.provider, state.providerSessionId, state.turnId]);
+		if (state.phase === "reset") {
+			session.prompt = undefined;
+			session.readyKey = undefined;
+			session.inputDirty = true;
+			return;
+		}
+		if (state.phase === "blocked") {
+			session.readyKey = undefined;
+			session.inputDirty = true;
+			return;
+		}
+		if (state.phase === "prompt") {
+			session.readyKey = undefined;
+			if (session.prompt?.key === key) return;
+			const identity = session.inspect?.();
+			const version = session.submittedVersions.shift();
+			session.prompt = identity && version !== undefined ? { key, version, identity } : undefined;
+			return;
+		}
+		if (state.phase !== "idle") return;
+		const identity = session.inspect?.();
+		if (
+			session.prompt?.key === key &&
+			session.prompt.version === session.inputVersion &&
+			identity &&
+			sameTerminalProcess(session.prompt.identity, identity)
+		) {
+			session.inputDirty = false;
+			session.readyKey = key;
+		}
+	}
+	/** No shell/runtime heuristics: require OS-inspected native provider identity. */
+	conversationTarget(
+		id: string,
+		client: string,
+		provider: string,
+		providerSessionId: string,
+		reserve = true
+	): FileInputTarget | null {
+		const session = this.sessions.get(id);
+		if (!session?.clients.has(client)) return null;
+		const identity = session.inspect?.();
+		const target = {
+			generation: randomUUID(),
+			foreground: identity?.name ?? "",
+			supported:
+				!session.inputDirty &&
+				!session.ambiguousInput &&
+				!!session.readyKey &&
+				JSON.parse(session.readyKey)[0] === provider &&
+				JSON.parse(session.readyKey)[1] === providerSessionId &&
+				!!identity &&
+				!!session.prompt &&
+				sameTerminalProcess(session.prompt.identity, identity) &&
+				((provider === "claude" &&
+					(name(identity.executable) === "claude" || nativeClaude(identity.executable))) ||
+					(provider === "codex" && name(identity.executable) === "codex")),
+		};
+		if (reserve)
+			session.clients.set(client, {
+				...target,
+				identity: identity ?? undefined,
+				conversation: true,
+			});
+		return target;
+	}
+	insertConversation(
+		id: string,
+		client: string,
+		generation: string,
+		text: string
+	): Exclude<FileDelivery, "unconfirmed"> {
+		const session = this.sessions.get(id);
+		const target = session?.clients.get(client);
+		if (!session || !target?.conversation || target.generation !== generation) return "rejected";
+		session.clients.set(client, null);
+		const current = session.inspect?.();
+		if (
+			!target.supported ||
+			session.inputDirty ||
+			!target.identity ||
+			!current ||
+			!sameTerminalProcess(target.identity, current) ||
+			typeof text !== "string" ||
+			!text.trim() ||
+			/^[!/]/.test(text.trimStart()) ||
+			text.length > QUEUE_REPLY_MAX_CHARACTERS ||
+			Buffer.byteLength(text) > 16000 ||
+			hasUnsafeTerminalText(text.replaceAll("\n", ""))
+		)
+			return "rejected";
+		try {
+			// Invalidate every client's lease before the single handoff.
+			for (const owner of session.clients.keys()) session.clients.set(owner, null);
+			const payload = `\x1b[200~${text}\x1b[201~\r`;
+			session.inputDirty = true;
+			session.readyKey = undefined;
+			session.inputVersion += payload.length;
+			recordSubmission(session);
+			session.write(payload);
+			return "admitted";
+		} catch {
+			return "uncertain";
+		}
 	}
 	target(id: string, client: string, managedAgent = false): FileInputTarget | null {
 		const session = this.sessions.get(id);
@@ -112,7 +262,8 @@ export class FileInputSessions {
 	): Exclude<FileDelivery, "unconfirmed"> {
 		const session = this.sessions.get(id);
 		const target = session?.clients.get(client);
-		if (!session || !target || target.generation !== generation) return "rejected";
+		if (!session || !target || target.conversation || target.generation !== generation)
+			return "rejected";
 		session.clients.set(client, null); // consume before any handoff, never retry
 		const current = target.identity ? session.inspect?.() : undefined;
 		if (
@@ -129,6 +280,12 @@ export class FileInputSessions {
 		)
 			return "rejected";
 		try {
+			// File insertion invalidates a competing Queue lease and preserves draft safety.
+			session.inputDirty = true;
+			session.inputVersion += payload.length + (submit ? 1 : 0);
+			if (submit) recordSubmission(session);
+			for (const [owner, lease] of session.clients)
+				if (lease?.conversation) session.clients.set(owner, null);
 			// Only the explicit send operation may forward the user's Enter.
 			session.write(submit === true ? `${payload}\r` : payload);
 			return "admitted";

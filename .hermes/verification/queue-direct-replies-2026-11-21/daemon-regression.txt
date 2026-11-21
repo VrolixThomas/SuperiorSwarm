@@ -1,0 +1,357 @@
+bun test v1.3.9 (cf6cdbbb)
+
+tests/terminal-file-legacy.test.ts:
+[daemon-client] daemon speaks protocol v2, expected v3; cannot restart (no spawn params)
+(pass) the observed v2 daemon accepts one insertion without Enter, file frames, retries, or a restart [388.85ms]
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+(pass) capability detection also handles a current protocol without file-input support [13.30ms]
+[daemon-client] daemon speaks protocol v2, expected v3; cannot restart (no spawn params)
+(pass) legacy insertion refuses submission, terminal controls, malformed paste, and oversized frames [28.59ms]
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+(pass) a surviving capable daemon with a broken inspector uses a locally verified lease [24.68ms]
+[daemon-client] daemon speaks protocol v2, expected v3; cannot restart (no spawn params)
+(pass) legacy inspection rejects SSH, unknown runtimes, missing helpers and changed process identity [71.53ms]
+[daemon-client] daemon speaks protocol v2, expected v3; cannot restart (no spawn params)
+(pass) ordinary submit, detach, disconnect and backpressure invalidate or reject legacy file input [167.99ms]
+[daemon-client] daemon speaks protocol v2, expected v3; cannot restart (no spawn params)
+(pass) a detached or submitted session cannot gain a lease from a late list response [2.31ms]
+[daemon-client] daemon speaks protocol v2, expected v3; cannot restart (no spawn params)
+(pass) real native inspection and legacy socket delivery insert exactly once before a separate Enter [892.51ms]
+
+tests/daemon/daemon-owner-file.test.ts:
+(pass) daemon owner file > writeOwnerFile writes pid/startedAtMs/appDirHash payload [0.32ms]
+(pass) daemon owner file > writeOwnerFile is backward compatible when env-derived values are missing
+(pass) daemon owner file > removeOwnerFile removes existing owner file [0.18ms]
+(pass) daemon owner file > removeOwnerFile is best effort [0.05ms]
+
+tests/daemon/pty-manager.test.ts:
+(pass) trimBuffer > returns buffer unchanged when under limit
+(pass) trimBuffer > trims to last maxBytes when over limit
+(pass) trimBuffer > handles empty string
+(pass) trimBuffer > preserves tail content, not head [0.01ms]
+(pass) PtyManager > create registers a terminal with has() and list() [5.40ms]
+(pass) PtyManager > create throws on duplicate ID [1.30ms]
+(pass) PtyManager > create with explicit cwd records that cwd [0.91ms]
+(pass) PtyManager > attach returns buffer and process for existing session [1.60ms]
+(pass) PtyManager > attach returns null for nonexistent session
+(pass) PtyManager > attach does not duplicate the terminal entry [1.13ms]
+(pass) PtyManager > detachClient does not remove the terminal itself [0.98ms]
+(pass) PtyManager > detachSession removes only that session's listeners, leaving other sessions attached [1.85ms]
+(pass) PtyManager > detachSession does not remove the terminal itself [0.98ms]
+(pass) PtyManager > detachSession returns false for unknown session or client [0.73ms]
+(pass) PtyManager > detachSession leaves other clients attached to the same session [0.88ms]
+(pass) PtyManager > detachClient on unknown client does not throw [1.04ms]
+(pass) PtyManager > dispose removes terminal from map [0.87ms]
+(pass) PtyManager > dispose is idempotent for nonexistent ID
+(pass) PtyManager > dispose followed by create with same ID works [1.19ms]
+[pty-manager] write: terminal "nope" not found
+(pass) PtyManager > write to nonexistent terminal warns but does not throw [0.05ms]
+(pass) PtyManager > write to existing terminal does not throw [0.90ms]
+[pty-manager] resize: terminal "nope" not found
+(pass) PtyManager > resize to nonexistent terminal warns but does not throw [0.05ms]
+(pass) PtyManager > resize to existing terminal does not throw [1.00ms]
+(pass) PtyManager > list returns all active terminals [1.76ms]
+(pass) PtyManager > list returns empty array when no terminals exist
+(pass) PtyManager > disposeAll clears all terminals [1.57ms]
+(pass) PtyManager > disposeAll is safe when no terminals exist [0.01ms]
+(pass) PtyManager > getBuffer returns empty string for nonexistent terminal [0.03ms]
+(pass) PtyManager > getBuffer returns empty string for newly created terminal [0.66ms]
+(pass) PtyManager > getAllBuffers returns entries for all terminals [1.54ms]
+(pass) PtyManager > getAllBuffers returns empty array when no terminals exist [0.02ms]
+(pass) PtyManager > new terminals are not dirty until they produce output [0.84ms]
+(pass) PtyManager > create passes custom env to spawned PTY [0.79ms]
+(pass) PtyManager > each terminal gets a unique PID [1.54ms]
+(pass) PtyManager > attach returns null for unknown session [0.02ms]
+
+tests/daemon/daemon-ownership.test.ts:
+(pass) daemon ownership > parseOwnerRecord returns parsed record for valid JSON [0.09ms]
+(pass) daemon ownership > parseOwnerRecord returns null for malformed data [0.07ms]
+(pass) daemon ownership > isPidAlive returns true for current process and false for invalid pid
+(pass) daemon ownership > isPidAlive treats EPERM as alive
+(pass) daemon ownership > isPidAlive treats ESRCH as dead
+
+tests/daemon/daemon-client.test.ts:
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+[daemon-client] daemon speaks protocol v1, expected v3; cannot restart (no spawn params)
+[daemon-client] error for terminal term-1: session not found
+[daemon-client] daemon error for term-1 failed: session not found
+(pass) DaemonClient > attach-only rejects a vanished session without fallback on protocol 1 [4.78ms]
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+[daemon-client] daemon speaks protocol v1, expected v3; cannot restart (no spawn params)
+(pass) DaemonClient > attach-only accepts a live empty-buffer session on protocol 1 [3.18ms]
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+[daemon-client] error for terminal term-1: session not found
+[daemon-client] daemon error for term-1 failed: session not found
+(pass) DaemonClient > attach-only rejects a vanished session without fallback on protocol 3 [3.08ms]
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+(pass) DaemonClient > attach-only accepts a live empty-buffer session on protocol 3 [3.89ms]
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+[daemon-client] daemon speaks protocol v1, expected v3; cannot restart (no spawn params)
+[daemon-client] connection to daemon lost
+[daemon-client] reconnecting in 1000ms (attempt 1/10)
+[daemon-client] daemon speaks protocol v1, expected v3; cannot restart (no spawn params)
+[daemon-client] reconnected to daemon
+[daemon-client] error for terminal term-1: session not found
+[daemon-client] daemon error for term-1 failed: session not found
+(pass) DaemonClient > attach-only survives reconnect inventory/attach race on protocol 1 [1007.16ms]
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+[daemon-client] connection to daemon lost
+[daemon-client] reconnecting in 1000ms (attempt 1/10)
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+[daemon-client] reconnected to daemon
+[daemon-client] error for terminal term-1: session not found
+[daemon-client] daemon error for term-1 failed: session not found
+(pass) DaemonClient > attach-only survives reconnect inventory/attach race on protocol 3 [1006.56ms]
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+[daemon-client] error for terminal term-1: attach refused
+[daemon-client] daemon error for term-1 failed: attach refused
+(pass) DaemonClient > attach-only rejects non-missing daemon errors even when inventory still contains the PTY [4.17ms]
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+(pass) DaemonClient > explicit disconnect notifies input lifecycle guards before a later reconnect [2.10ms]
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+(pass) DaemonClient > old live daemon rejects binary explicitly and keeps text working without upgrade [2.79ms]
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+(pass) DaemonClient > negotiates snapshots and accepts a rendered replay larger than the old raw limit [71.67ms]
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+[daemon-client] daemon speaks protocol v2, expected v3; cannot restart (no spawn params)
+[daemon-client] socket backpressure detected
+[daemon-client] outbound queue full (503608/512000B); dropping message
+[daemon-client] outbound queue full (503608/512000B); dropping message
+[daemon-client] outbound queue full (503608/512000B); dropping message
+[daemon-client] outbound queue full (503608/512000B); dropping message
+[daemon-client] outbound queue full (503608/512000B); dropping message
+[daemon-client] outbound queue full (503608/512000B); dropping message
+[daemon-client] outbound queue full (503608/512000B); dropping message
+[daemon-client] socket backpressure detected while draining queue
+[daemon-client] socket backpressure detected while draining queue
+[daemon-client] socket backpressure detected while draining queue
+[daemon-client] socket backpressure detected while draining queue
+[daemon-client] socket backpressure detected while draining queue
+[daemon-client] socket backpressure detected while draining queue
+[daemon-client] socket backpressure detected while draining queue
+[daemon-client] socket backpressure detected
+[daemon-client] daemon speaks protocol v2, expected v3; cannot restart (no spawn params)
+(pass) DaemonClient > binary backpressure is bounded and drops queued input/capability on reconnect [7.32ms]
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+[daemon-client] daemon speaks protocol v2, expected v3; cannot restart (no spawn params)
+[daemon-client] socket backpressure detected
+(pass) DaemonClient > negotiates binary bytes, bounds frames, and queues in order with text [85.81ms]
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+(pass) DaemonClient > strict session listing rejects instead of treating disconnect as an empty daemon [2.43ms]
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+(pass) DaemonClient > hasLiveSession returns true for daemon-reported sessions [1.77ms]
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+(pass) DaemonClient > hasLiveSession returns false for unknown sessions [1.52ms]
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+(pass) DaemonClient > dispose sends message even after setQuitting [83.05ms]
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+(pass) DaemonClient > create sends a create message to the daemon [83.21ms]
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+[daemon-client] connection to daemon lost
+[daemon-client] reconnecting in 1000ms (attempt 1/10)
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+[daemon-client] reconnected to daemon
+(pass) DaemonClient > reconnects after daemon connection is lost [2209.96ms]
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+[daemon-client] connection to daemon lost
+[daemon-client] reconnecting in 1000ms (attempt 1/10)
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+[daemon-client] reconnected to daemon
+(pass) DaemonClient > re-attaches sessions with callbacks after reconnect [2209.52ms]
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+[daemon-client] connection to daemon lost
+[daemon-client] reconnecting in 1000ms (attempt 1/10)
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+[daemon-client] reconnected to daemon
+(pass) DaemonClient > calls onExit(-1) for sessions that died during disconnect [2208.96ms]
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+(pass) DaemonClient > create throws when socket is disconnected [2.14ms]
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+(pass) DaemonClient > attach throws when socket is disconnected [1.79ms]
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+(pass) DaemonClient > write silently no-ops when socket is disconnected [1.50ms]
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+(pass) DaemonClient > resize silently no-ops when socket is disconnected [1.61ms]
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+(pass) DaemonClient > isConnected returns true when socket is active [1.38ms]
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+(pass) DaemonClient > isConnected returns false after disconnect [1.64ms]
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+(pass) DaemonClient > disconnect does not schedule reconnect attempts [52.52ms]
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+(pass) DaemonClient > connects successfully when stale socket file exists [3.51ms]
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+[daemon-client] reconnecting in 1000ms (attempt 1/10)
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+[daemon-client] reconnected to daemon
+(pass) DaemonClient > startReconnecting connects to a daemon that appears later [2510.26ms]
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+[daemon-client] socket backpressure detected
+(pass) DaemonClient > queues outbound messages during backpressure and flushes on drain [207.74ms]
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+[daemon-client] socket backpressure detected
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+(pass) DaemonClient > disconnect during backpressure clears drain state so reconnect writes are sent [294.96ms]
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+(pass) DaemonClient > preserves control-plane messages when queued bytes limit is exceeded [126.55ms]
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+[daemon-client] socket backpressure detected
+[daemon-client] socket backpressure detected while draining queue
+[daemon-client] socket backpressure detected while draining queue
+[daemon-client] socket backpressure detected while draining queue
+[daemon-client] socket backpressure detected while draining queue
+[daemon-client] socket backpressure detected while draining queue
+(pass) DaemonClient > create rejects with a queue-full error once the byte budget is exhausted [205.98ms]
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+[daemon-client] socket backpressure detected
+(pass) DaemonClient > chunks an oversized write into multiple frames that all arrive in order [305.23ms]
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+(pass) DaemonClient > re-attach send failure propagates so callbacks survive for the next reconnect [2.86ms]
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+[daemon-client] socket backpressure detected
+(pass) DaemonClient > create rejects when its frame exceeds the daemon frame limit [2.29ms]
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+[daemon-client] daemon speaks protocol v1, expected v3; restarting daemon
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+(pass) DaemonClient > restarts a session-less stale daemon and the fresh connection stays up [1669.72ms]
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+[daemon-client] daemon speaks protocol v1, expected v3; keeping it (1 live sessions, pid 34526)
+(pass) DaemonClient > keeps a stale daemon running when it still hosts live sessions [5.98ms]
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+[daemon-client] daemon speaks protocol v1, expected v3; keeping it (0 live sessions, pid unknown)
+(pass) DaemonClient > does not delete the socket of a stale daemon whose pid is unknown [3.87ms]
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+[daemon-client] daemon speaks protocol v1, expected v3; cannot restart (no spawn params)
+(pass) DaemonClient > connects with a warning to a versionless daemon when it cannot restart it [3.31ms]
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+[daemon-client] error for terminal term-1: session not found
+[daemon-client] error for terminal term-2: session not found
+[daemon-client] fallback create for term-2 failed: 856 | 		// reply, so an oversized frame can never be delivered. Control messages
+857 | 		// (create/attach/dispose/...) must never vanish silently — a dropped
+858 | 		// create leaves a permanently blank terminal tab.
+859 | 		if (messageBytes > MAX_FRAME_BYTES) {
+860 | 			if (!droppable) {
+861 | 				throw new Error(
+                    ^
+error: Outbound create frame (100066B) exceeds daemon frame limit 64000B
+      at dispatchFrame (/Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/feat/queue-direct-conversation-actions/apps/desktop/src/main/terminal/daemon-client.ts:861:15)
+      at send (/Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/feat/queue-direct-conversation-actions/apps/desktop/src/main/terminal/daemon-client.ts:833:8)
+      at handleMessage (/Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/feat/queue-direct-conversation-actions/apps/desktop/src/main/terminal/daemon-client.ts:988:12)
+      at <anonymous> (/Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/feat/queue-direct-conversation-actions/apps/desktop/src/main/terminal/daemon-client.ts:901:11)
+      at emit (node:events:95:22)
+      at addChunk (internal:streams/readable:264:47)
+      at readableAddChunkPushByteMode (internal:streams/readable:242:18)
+      at data (node:net:280:52)
+
+(pass) DaemonClient > fallback create resends the stored env and failure surfaces onExit(-1) [203.92ms]
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+(pass) DaemonClient > refuses to hijack daemon owned by another app dir hash [2.20ms]
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+(pass) DaemonClient > onData receives replay metadata for scrollback messages [83.87ms]
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+(pass) DaemonClient > sends per-session detach frames to a current-protocol daemon [82.75ms]
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+[daemon-client] daemon speaks protocol v1, expected v3; keeping it (1 live sessions, pid 34542)
+(pass) DaemonClient > suppresses per-session detach frames to a v1 daemon [105.78ms]
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+[daemon-client] daemon speaks protocol v1, expected v3; keeping it (1 live sessions, pid 34551)
+(pass) DaemonClient > translates detach-all to the v1 wire form for a v1 daemon [105.78ms]
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+[daemon-client] daemon speaks protocol v1, expected v3; keeping it (1 live sessions, pid 34552)
+(pass) DaemonClient > fetches the session list only once when keeping a stale v1 daemon [4.50ms]
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+[daemon-client] error for terminal bad-term: Error: spawn failed
+[daemon-client] daemon error for bad-term failed: Error: spawn failed
+(pass) DaemonClient > daemon-reported create error surfaces onExit(-1) instead of a frozen tab [103.91ms]
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+[daemon-client] socket backpressure detected
+[daemon-client] outbound queue full (302050/512000B); dropping chunked write whole (5 frames, 300205B)
+[daemon-client] socket backpressure detected while draining queue
+[daemon-client] socket backpressure detected while draining queue
+[daemon-client] socket backpressure detected while draining queue
+[daemon-client] socket backpressure detected while draining queue
+(pass) DaemonClient > drops a chunked paste whole when the queue cannot hold every chunk [305.89ms]
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+[daemon-client] socket backpressure detected
+[daemon-client] outbound queue full (181230/512000B); dropping 5 chunked write frames to prioritize control message
+[daemon-client] socket backpressure detected while draining queue
+[daemon-client] socket backpressure detected while draining queue
+[daemon-client] socket backpressure detected while draining queue
+(pass) DaemonClient > evicts a queued chunked paste as a whole group for a control frame [304.60ms]
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+[daemon-client] socket backpressure detected
+(pass) DaemonClient > reassembles a multibyte paste across chunked frames without corruption [305.47ms]
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+(pass) DaemonClient > decodes multibyte characters split across inbound socket chunks [156.94ms]
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+(pass) DaemonClient > delivers a scrollback replay frame larger than 512KB intact [506.22ms]
+[daemon-client] daemon does not support terminal history snapshots; cannot restart (no spawn params)
+(pass) DaemonClient > allows foreign owner record when startedAtMs is obviously invalid [3.84ms]
+
+tests/daemon/scrollback-store.test.ts:
+(pass) ScrollbackStore > flush updates scrollback for existing rows [4.80ms]
+(pass) ScrollbackStore > flush is a no-op for missing rows (does not throw)
+(pass) ScrollbackStore > flush skips entries with empty buffer [0.56ms]
+(pass) ScrollbackStore > flush handles multiple sessions in a single transaction [0.42ms]
+
+tests/daemon/terminal-replay-buffer.test.ts:
+(pass) rendered terminal replay > prompt redraws cannot evict conversation history [27.30ms]
+(pass) rendered terminal replay > history is bounded by rendered rows instead of raw redraw traffic [40.85ms]
+(pass) rendered terminal replay > a snapshot followed by queued live output contains each line exactly once [4.87ms]
+(pass) rendered terminal replay > resize is ordered between output chunks and stored with the snapshot [5.34ms]
+(pass) rendered terminal replay > alternate screen, normal history, cursor and input modes survive replay [8.15ms]
+(pass) rendered terminal replay > attach between control/Unicode fragments: "\u001b[31" [6.90ms]
+(pass) rendered terminal replay > attach between control/Unicode fragments: "\u001b]0;title" [7.14ms]
+(pass) rendered terminal replay > attach between control/Unicode fragments: "\u001bPignored" [7.55ms]
+(pass) rendered terminal replay > attach between control/Unicode fragments: "\ud83d" [6.77ms]
+(pass) rendered terminal replay > device-query answers are never emitted as live PTY output [1.78ms]
+(pass) rendered terminal replay > live output after replay respects the application's scrolling region [6.27ms]
+
+tests/daemon/stale-daemon-cleanup.test.ts:
+(pass) readPidFile > parses a valid pid with surrounding whitespace [0.63ms]
+(pass) readPidFile > returns null for zero [0.20ms]
+(pass) readPidFile > returns null for negative and non-integer values [0.28ms]
+(pass) readPidFile > returns null for garbage content [0.12ms]
+(pass) readPidFile > returns null when the file does not exist
+(pass) removeFiles > removes existing files and ignores missing ones [0.10ms]
+
+tests/daemon/socket-server.test.ts:
+(pass) SocketServer > sends ready on connect [52.78ms]
+(pass) SocketServer > advertises file and binary capabilities together on the current protocol [53.61ms]
+(pass) SocketServer > binary reports preserve all bytes and ordering with Unicode text [352.56ms]
+(pass) SocketServer > rejects malformed or oversized binary payloads without poisoning subsequent input [357.10ms]
+(pass) SocketServer > flush persists only dirty buffers and marks them clean [0.59ms]
+(pass) SocketServer > list returns sessions from PtyManager [105.09ms]
+(pass) SocketServer > attach streams buffered content as base64 data message [104.82ms]
+(pass) SocketServer > dispose calls ptyManager.dispose [354.87ms]
+(pass) SocketServer > detach with id detaches only that session, not the whole client [354.03ms]
+(pass) SocketServer > detach-all detaches the client from all sessions [352.89ms]
+(pass) SocketServer > drops oversized inbound line, warns, and continues parsing subsequent frames [105.98ms]
+(pass) SocketServer > accepts multibyte frames a char-bounded v1 client could legitimately send [452.54ms]
+(pass) SocketServer > drops inbound frames beyond the v1 char-based envelope in bytes [104.92ms]
+(pass) SocketServer > decodes multibyte characters split across inbound socket chunks [405.77ms]
+(pass) SocketServer > attach sends buffered content marked as replay with fg process [103.06ms]
+(pass) SocketServer > parses complete frames before bounding oversized partial frame [104.90ms]
+
+tests/daemon/daemon-paths.test.ts:
+(pass) daemonPaths > daemonInstanceId is deterministic [0.07ms]
+(pass) daemonPaths > daemonInstanceId differs for different paths
+(pass) daemonPaths > daemonInstanceId is 12 hex chars [0.29ms]
+(pass) daemonPaths > daemonPaths returns scoped filenames
+
+tests/daemon/terminal-output-framer.test.ts:
+(pass) framing preserves bytes for every split of mixed Unicode and terminal controls
+(pass) an oversized unfinished control string is discarded through its terminator
+
+ 149 pass
+ 0 fail
+ 455 expect() calls
+Ran 149 tests across 11 files. [21.89s]

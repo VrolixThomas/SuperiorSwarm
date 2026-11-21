@@ -27,6 +27,7 @@ import {
 import { listCurrentActivityQueue } from "./current-items";
 import { describeWorkspaceItem } from "./describe-workspace-item";
 import { queueEntities } from "./entities";
+import { linkedWorkByWorkspace } from "./linked-context";
 import { isQuestionAnswer } from "./question-answers";
 import { getActivityQueueService } from "./service";
 
@@ -87,6 +88,15 @@ async function currentWorkspaceItems(daemon?: Inventory) {
 			.map((source) => [source.sourceId, source])
 	);
 	const contexts = new Map([...queueEntities()].map(([id, row]) => [id, row.context]));
+	const linkedWork = linkedWorkByWorkspace(
+		[...contexts.values()]
+			.filter((context) => context.entity?.kind === "workspace")
+			.map((context) => context.workspaceId)
+	);
+	for (const context of contexts.values()) {
+		context.linkedWork =
+			context.entity?.kind === "workspace" ? (linkedWork.get(context.workspaceId) ?? []) : [];
+	}
 	const terminals = new Map(
 		db
 			.select()
@@ -522,5 +532,23 @@ export async function workspaceAnswer(
 			delivery: "saved",
 			detail: "Saved for this conversation. The agent has not read or acted on it yet.",
 		};
+	});
+}
+
+/** Reusable action admission. Every grouped member must still be the displayed occurrence. */
+export async function currentQueueAction(
+	input: WorkspaceQueueRevisionInput,
+	daemon?: Inventory
+): Promise<WorkspaceQueueItem | null> {
+	const current = await currentWorkspaceItems(daemon);
+	return getDb().transaction(() => {
+		const checked = validateCurrent(input, current);
+		if (
+			checked.status !== "current" ||
+			checked.source.acknowledgedRevision === input.revision ||
+			!validateMembers(input, current)
+		)
+			return null;
+		return current.items.find((item) => item.id === input.id) ?? null;
 	});
 }

@@ -1,3 +1,5 @@
+export const QUEUE_REPLY_MAX_CHARACTERS = 4_000;
+
 /** All activity queue timestamps are Unix milliseconds, including across tRPC. */
 export const ACTIVITY_QUEUE_KINDS = [
 	"agent-input",
@@ -114,6 +116,7 @@ export interface WorkspaceQueueItem extends ActivityQueueItem {
 		answer?: { messageId: string; delivery: "saved" | "retrieved"; content?: string };
 	};
 	context: {
+		linkedWork?: import("./queue-linked-context").QueueLinkedWork[];
 		entity?: QueueEntity;
 		linkedProjects?: { id: string; name: string; kind: "repo" | "folder"; path: string }[];
 		projectKind?: "repo" | "folder";
@@ -172,3 +175,16 @@ export interface WorkspaceQueueAnswerInput extends WorkspaceQueueRevisionInput {
 export type WorkspaceQueueAnswerResult =
 	| { status: "saved"; messageId: string; delivery: "saved"; detail: string }
 	| { status: "conflict" | "not-found" | "unavailable"; reason?: string };
+
+/** A capability is advisory; admission revalidates the entire occurrence and target. */
+export type WorkspaceQueueReplyCapability =
+	| { status: "available"; mode: "reply" | "resume"; detail: string }
+	| { status: "unavailable"; reason: string };
+export interface WorkspaceQueueReplyInput extends WorkspaceQueueRevisionInput {
+	/** Persist this ID across transport errors. Never retry an uncertain send with a new ID. */
+	requestId: string;
+	content: string;
+}
+export type WorkspaceQueueReplyResult =
+	| { status: "admitted" | "uncertain" | "received"; requestId: string; detail: string }
+	| { status: "conflict" | "not-found" | "unavailable" | "rejected"; reason: string };

@@ -10,6 +10,7 @@ import {
 } from "../../shared/agent-session";
 import { observeValidatedAgentEvent, workspaceReporter } from "../activity-queue/agent-source";
 import { queueEntities } from "../activity-queue/entities";
+import { queueReplyContinuationTime } from "../activity-queue/reply-continuation";
 import { reporterAdmissions } from "../activity-queue/reporter-admission";
 import { recordAcceptedHookEvent } from "../agent-hooks/diagnostics";
 import { publishCurrentHookEndpoint } from "../agent-hooks/endpoint";
@@ -189,9 +190,11 @@ export class AgentSessionManager {
 		let event = incoming;
 		if (!isAgentProvider(event.agent)) return null;
 		let confirmedPrompt = false;
+		let identifiedTurn: string | null = null;
 		if (
 			!observeValidatedAgentEvent(event, (normalized, snapshot) => {
 				event = normalized;
+				identifiedTurn = snapshot.ordering === "identified" ? snapshot.turnId : null;
 				confirmedPrompt = snapshot.ordering === "identified" && snapshot.continuation === "prompt";
 			})
 		)
@@ -274,6 +277,20 @@ export class AgentSessionManager {
 			})
 			.run();
 
+		if (providerSessionId && identifiedTurn)
+			this.options.daemonClient.queueProviderState?.(resolved.terminalId, {
+				provider: event.agent,
+				providerSessionId,
+				turnId: identifiedTurn,
+				phase:
+					event.rawEvent === "UserPromptSubmit" && confirmedPrompt
+						? "prompt"
+						: ["Stop", "StopFailure"].includes(event.rawEvent ?? "")
+							? "idle"
+							: event.rawEvent === "SessionStart"
+								? "reset"
+								: "blocked",
+			});
 		// A submitted follow-up handles the report from this exact chat. Bound
 		// manual reports and legacy managed dispatches are checked in the service;
 		// a sibling terminal must not advance another chat's workspace status.
@@ -286,7 +303,19 @@ export class AgentSessionManager {
 		) {
 			continueWorkspaceAfterPrompt(
 				resolved.workspaceId,
-				event.providerTimestamp ?? event.timestamp,
+				queueReplyContinuationTime(
+					{
+						type: "terminal",
+						entity: queueEntities().get(resolved.workspaceId)?.entity,
+						workspaceId: resolved.workspaceId,
+						terminalId: resolved.terminalId,
+						provider: event.agent,
+						providerSessionId: event.providerSessionId,
+					},
+					event.turnId,
+					event.providerTimestamp ?? event.timestamp,
+					event.promptHash
+				),
 				{
 					type: "terminal",
 					workspaceId: resolved.workspaceId,

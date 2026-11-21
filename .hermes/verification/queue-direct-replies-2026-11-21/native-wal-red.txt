@@ -1,0 +1,53 @@
+bun test v1.3.9 (cf6cdbbb)
+
+tests/queue-delivery-native.test.ts:
+ 9 |  symlinkSync(resolve(import.meta.dir,"../node_modules"),join(root,"node_modules"));
+10 |  const built=await Bun.build({entrypoints:[join(import.meta.dir,"fixtures/queue-delivery-native/main.ts")],outdir:root,naming:"main.mjs",target:"node",format:"esm",external:["better-sqlite3"]});expect(built.success).toBe(true);
+11 |  const electronDir=dirname(require.resolve("electron/package.json"));
+12 |  const electron=join(electronDir,"dist",readFileSync(join(electronDir,"path.txt"),"utf8").trim());
+13 |  const result=spawnSync(electron,[join(root,"main.mjs")],{cwd:root,env:{...process.env,ELECTRON_RUN_AS_NODE:"1"},encoding:"utf8",timeout:15000});
+14 |  expect({status:result.status,stderr:result.stderr}).toEqual({status:0,stderr:""});expect(result.stdout).toContain("PASS");
+                                                          ^
+error: expect(received).toEqual(expected)
+
+  {
+-   "status": 0,
+-   "stderr": "",
++   "status": 1,
++   "stderr":
++ "node:internal/modules/run_main:122
++     triggerUncaughtException(
++     ^
++
++ AssertionError [ERR_ASSERTION]: Missing expected exception: competing WAL writer must not commit between validation and PTY handoff
++     at file:///private/var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/queue-native-admission-Tc2UoZ/main.mjs:82:10
++     at file:///private/var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/queue-native-admission-Tc2UoZ/main.mjs:27:18
++     at sqliteTransaction (/Users/Werk/Documents/Repositories/SuperiorSwarm/node_modules/.bun/better-sqlite3@12.8.0/node_modules/better-sqlite3/lib/methods/transaction.js:65:24)
++     at QueueDeliveryAdmission.admit (file:///private/var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/queue-native-admission-Tc2UoZ/main.mjs:32:7)
++     at file:///private/var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/queue-native-admission-Tc2UoZ/main.mjs:80:24
++     at ModuleJob.run (node:internal/modules/esm/module_job:430:25)
++     at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:661:26)
++     at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:116:5) {
++   generatedMessage: false,
++   code: 'ERR_ASSERTION',
++   actual: undefined,
++   expected: /locked|busy/i,
++   operator: 'throws',
++   diff: 'simple'
++ }
++
++ Node.js v24.14.0
++ "
++ ,
+  }
+
+- Expected  - 2
++ Received  + 26
+
+      at <anonymous> (/Users/Werk/Documents/Repositories/SuperiorSwarm-worktrees/feat/queue-direct-conversation-actions/apps/desktop/tests/queue-delivery-native.test.ts:14:54)
+(fail) native SQLite immediate admission excludes competing WAL writers before the PTY side effect [68.58ms]
+
+ 0 pass
+ 1 fail
+ 2 expect() calls
+Ran 1 test across 1 file. [82.00ms]

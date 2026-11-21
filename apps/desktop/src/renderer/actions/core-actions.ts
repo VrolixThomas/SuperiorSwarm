@@ -5,6 +5,7 @@ import { useActivityQueueStore } from "../stores/activity-queue-store";
 import { useBranchStore } from "../stores/branch-store";
 import { findParentSplit, findSplitById, getAllPanes, usePaneStore } from "../stores/pane-store";
 import { useProjectStore } from "../stores/projects";
+import { useQueueNavigationStore } from "../stores/queue-navigation-store";
 import { useSearchEverywhereStore } from "../stores/search-everywhere-store";
 import { useTabStore } from "../stores/tab-store";
 import { useThemeStore } from "../stores/theme-store";
@@ -140,6 +141,24 @@ export function registerCoreActions() {
 		},
 
 		// ── Navigation ──────────────────────────────────────────────────────
+		{
+			id: "queue.next",
+			label: "Jump to Next Queue Item",
+			category: "Navigation",
+			shortcut: { key: "j", meta: true },
+			execute: () => useQueueNavigationStore.getState().next(),
+		},
+		{
+			id: "queue.peek",
+			label: "Peek at Queue",
+			category: "Navigation",
+			shortcut: { key: "j", meta: true, shift: true },
+			execute: () => {
+				const queue = useQueueNavigationStore.getState();
+				if (queue.peekOpen) queue.closePeek();
+				else queue.peek();
+			},
+		},
 		{
 			id: "nav.queue",
 			label: "Open Queue",

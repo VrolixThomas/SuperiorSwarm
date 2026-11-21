@@ -5,6 +5,11 @@ import { join } from "node:path";
 import { log } from "../logger";
 import { getAgentNotifyPort, getAgentNotifyToken } from "./port";
 
+let permissionResponseEnabled = false;
+export function setPermissionResponseEnabled(enabled: boolean): void {
+	permissionResponseEnabled = enabled;
+}
+
 export function hookEndpointName(token: string, terminalId: string): string {
 	return `${createHash("sha256").update(`${token}\0${terminalId}`).digest("hex")}.json`;
 }
@@ -20,7 +25,10 @@ export function publishHookEndpoint(
 		throw new Error("Invalid hook endpoint identity");
 	mkdirSync(directory, { recursive: true, mode: 0o700 });
 	const path = join(directory, hookEndpointName(token, terminalId));
-	const content = JSON.stringify({ port });
+	const content = JSON.stringify({
+		port,
+		...(permissionResponseEnabled ? { permissionResponse: 1 } : {}),
+	});
 	if (existsSync(path) && readFileSync(path, "utf8") === content) return;
 	const temporary = `${path}.${process.pid}.tmp`;
 	writeFileSync(temporary, content, { mode: 0o600 });

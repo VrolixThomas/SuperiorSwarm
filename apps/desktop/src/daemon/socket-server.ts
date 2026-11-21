@@ -67,6 +67,7 @@ export class SocketServer {
 			capabilities: [
 				"file-input-v1",
 				"file-submit-v1",
+				"queue-reply-v1",
 				BINARY_INPUT_CAPABILITY,
 				TERMINAL_SNAPSHOT_CAPABILITY,
 			],
@@ -195,6 +196,39 @@ export class SocketServer {
 						fg: attached.process,
 					});
 				}
+				break;
+			}
+			case "queue-state": {
+				this.ptyManager.fileInputs.conversationState(msg.id, msg.state);
+				break;
+			}
+			case "queue-target": {
+				this.send(socket, {
+					type: "file-result",
+					requestId: msg.requestId,
+					target: this.ptyManager.fileInputs.conversationTarget(
+						msg.id,
+						clientId,
+						msg.provider,
+						msg.providerSessionId,
+						msg.reserve !== false
+					),
+				});
+				break;
+			}
+			case "queue-input": {
+				let delivery: "admitted" | "rejected" | "uncertain" = "uncertain";
+				try {
+					delivery = this.scrollbackStore.admitQueueReply(msg.deliveryId, msg.id, msg.content, () =>
+						this.ptyManager.fileInputs.insertConversation(
+							msg.id,
+							clientId,
+							msg.generation,
+							msg.content
+						)
+					);
+				} catch {}
+				this.send(socket, { type: "file-result", requestId: msg.requestId, delivery });
 				break;
 			}
 			case "file-target": {

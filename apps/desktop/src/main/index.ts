@@ -8,7 +8,9 @@ import { SUPERIORSWARM_DIR, daemonInstanceId, daemonPaths } from "../shared/daem
 import { updateOpenCodePluginConfig } from "./agent-hooks/agents/opencode";
 import { getOrCreateAgentNotifyToken } from "./agent-hooks/auth-token";
 import { publishCurrentHookEndpoint } from "./agent-hooks/endpoint";
+import { setPermissionResponseEnabled } from "./agent-hooks/endpoint";
 import { type AgentAlertListener, createAlertListener, reclaimPort } from "./agent-hooks/listener";
+import { queuePermissions, resolvePermissionEvent } from "./agent-hooks/permission-runtime";
 import { setAgentNotifyPort, setAgentNotifyToken } from "./agent-hooks/port";
 import { setupAgentHooks } from "./agent-hooks/setup";
 import { maybeAutoReReview, maybeAutoTriggerReview } from "./ai-review/auto-trigger";
@@ -433,16 +435,29 @@ app.whenReady().then(async () => {
 	if (!import.meta.env.DEV) {
 		await reclaimPort(AGENT_NOTIFY_PORT);
 	}
-	alertListener = createAlertListener(listenerPort, agentNotifyToken);
+	alertListener = createAlertListener(listenerPort, agentNotifyToken, {
+		service: queuePermissions,
+		resolve: resolvePermissionEvent,
+	});
 	alertListener.onEvent((event) => {
 		const normalizedEvent = agentSessionManager?.handleAgentEvent(event);
-		if (normalizedEvent) broadcastToWindows("agent:alert", normalizedEvent);
+		if (normalizedEvent) {
+			if (
+				["Interrupt", "Stop", "StopFailure", "UserPromptSubmit", "SessionStart"].includes(
+					normalizedEvent.rawEvent ?? ""
+				) &&
+				normalizedEvent.sessionSource !== "compact"
+			)
+				queuePermissions.invalidate(normalizedEvent.terminalId);
+			broadcastToWindows("agent:alert", normalizedEvent);
+		}
 	});
 	try {
 		await alertListener.start();
 		const port = alertListener.getPort();
 		if (port) {
 			setAgentNotifyPort(port);
+			setPermissionResponseEnabled(true);
 			await refreshHookEndpoints();
 			// Always rewrite the generated plugin after binding so both its port
 			// and persisted local authentication token are current.

@@ -1,0 +1,40 @@
+bun test v1.3.9 (cf6cdbbb)
+
+tests/queue-conversation-replies.test.ts:
+(pass) actual persisted daemon admission admits once; repeated/concurrent/reconnected requests cannot duplicate [44.85ms]
+(pass) busy, hibernated, legacy daemon, stale source and provider replacement never submit [37.15ms]
+(pass) busy transition at atomic daemon boundary rejects without delivery [13.44ms]
+(pass) a later occurrence during admission survives, and its old receipt is rejected [19.10ms]
+(pass) lost daemon response uses committed receipt and never resubmits [13.19ms]
+(pass) crash before receipt remains uncertain and blocks retry with any request ID [15.99ms]
+(pass) a definitely rejected request remains immutable while an explicit fresh attempt may retry [20.01ms]
+(pass) a newly appearing structured question at admission blocks ordinary free-form input [15.50ms]
+(pass) claude worktree: exact delivery preserves sibling, identity and later occurrence [38.80ms]
+(pass) claude folder: exact delivery preserves sibling, identity and later occurrence [36.09ms]
+(pass) claude orchestrator: exact delivery preserves sibling, identity and later occurrence [37.18ms]
+(pass) claude coordinator: exact delivery preserves sibling, identity and later occurrence [54.84ms]
+(pass) codex worktree: exact delivery preserves sibling, identity and later occurrence [42.98ms]
+(pass) codex folder: exact delivery preserves sibling, identity and later occurrence [41.90ms]
+(pass) codex orchestrator: exact delivery preserves sibling, identity and later occurrence [40.87ms]
+(pass) codex coordinator: exact delivery preserves sibling, identity and later occurrence [98.82ms]
+(pass) a newly grouped same-conversation receipt cannot be omitted at daemon admission [20.23ms]
+(pass) admitted: report after handoff survives delayed provider prompt without upgrading delivery [91.69ms]
+(pass) uncertain: report after handoff survives delayed provider prompt without upgrading delivery [57.10ms]
+(pass) only the exact prompt digest and conversation can establish provider receipt [18.55ms]
+(pass) read-only receipt recovery never creates or retries an absent intent [19.69ms]
+(pass) a different explicit prompt digest never inherits an uncertain queued cleanup ceiling [18.97ms]
+
+tests/queue-permission-actions.test.tsx:
+(pass) changed permission occurrence never exposes preceding request's controls during capability fetch [30.20ms]
+(pass) stable queue item refreshes cancelled permission capability without a source revision [1120.83ms]
+
+tests/queue-conversation-reply-ui.test.tsx:
+(pass) reply submits displayed full group once and labels only terminal admission [19.61ms]
+(pass) transport error check uses identical request/content and preserves draft [19.93ms]
+(pass) group member or exact conversation replacement cannot rebase a typed reply [6.16ms]
+(pass) definite unavailable permits editing and an explicit new attempt without automatic send [5.28ms]
+
+ 28 pass
+ 0 fail
+ 175 expect() calls
+Ran 28 tests across 3 files. [2.17s]
