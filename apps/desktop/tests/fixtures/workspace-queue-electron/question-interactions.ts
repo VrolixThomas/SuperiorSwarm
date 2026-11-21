@@ -30,16 +30,38 @@ export async function checkQuestionInteractions(
 	win.setContentSize(800, 600);
 	await click("Details / reply");
 	await until(() => js<boolean>("!!document.querySelector('#queue-question-answer')"));
+	const readableRecipient = await js<boolean>(`(() => {
+		const section=document.querySelector('[aria-label="Reply to this question"]');
+		const recipient=section.querySelector('[aria-label="Answer recipient"]').innerText;
+		const details=section.querySelector('details');
+		return recipient==='Recipient: SuperiorSwarm / Choose the workspace restore behavior · Codex'
+			&& !details.open && details.querySelector('summary').innerText==='Technical details'
+			&& !['w1','terminal-w1','provider-w1',${JSON.stringify(questionId)}].some(id=>section.innerText.includes(id));
+	})()`);
+	if (!readableRecipient)
+		throw Error("Default reply context exposes technical IDs or repeats the chat name");
+	await js("document.querySelector('[aria-label=\"Reply to this question\"] summary').click()");
+	if (
+		!(await js<boolean>(
+			`document.querySelector('[aria-label="Reply to this question"]').innerText.includes(${JSON.stringify(questionId)})`
+		))
+	)
+		throw Error("Technical details lost question binding");
+	await js("document.querySelector('[aria-label=\"Reply to this question\"] summary').click()");
 	await js(
 		"document.querySelector('#queue-question-answer').scrollIntoView({block:'center'}); document.querySelector('#queue-question-answer').focus()"
 	);
-	await contents.insertText("Use the exact reporting conversation. e h z are answer text.");
+	const answerText =
+		"Use the exact reporting conversation.\n  Keep the isolated fixture.\ne h z are answer text.";
+	await contents.insertText(answerText);
 	if ((await listWorkspaceQueue()).totalPending !== 3)
 		throw Error("Typing cleared queue attention");
 	// Mutate between display and submit. The real backend refuses the displayed old receipt.
+	const questionText =
+		"Updated question: restore the exact reporting conversation?\nOptions:\n  exact reporter\n  selected sibling";
 	getDb()
 		.update(agentMessages)
-		.set({ content: "Updated question: restore the exact reporting conversation?" })
+		.set({ content: questionText })
 		.where(eq(agentMessages.id, questionId))
 		.run();
 	await click("Send answer");
@@ -58,6 +80,14 @@ export async function checkQuestionInteractions(
 	await until(() =>
 		js<boolean>("document.body.textContent.includes('has not read this answer yet')")
 	);
+	const multiline = await js<boolean>(`(() => {
+		const paragraphs=[...document.querySelectorAll('[aria-label="Queue item details"] p')];
+		return [${JSON.stringify(questionText)}, ${JSON.stringify(`Your answer: ${answerText}`)}].every(text=>{
+			const p=paragraphs.find(p=>p.textContent===text);
+			return p && getComputedStyle(p).whiteSpace==='pre-wrap' && p.innerText.includes('\\n');
+		});
+	})()`);
+	if (!multiline) throw Error("Question or saved answer lost its original line breaks");
 	await contents
 		.capturePage()
 		.then((c) => writeFileSync(join(root, "queue-question-saved.png"), c.toPNG()));

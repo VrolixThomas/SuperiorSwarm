@@ -494,3 +494,21 @@ test("an in-flight answer blocks other queue actions and preserves its draft on 
 	expect(input.value).toBe("Preserve this draft");
 	expect(document.body.textContent).toContain("Delivery failed");
 });
+
+test("question, reply and command error evidence preserve multiline plain text", async () => {
+	const item = row("multiline-question");
+	item.situation = "agent-question";
+	item.evidence = [
+		"Which command should run?\nbun test tests/example.test.ts\n  --timeout 5000",
+		"Reply:\nKeep the fixture isolated.",
+		"Error:\n<command> failed\n  at fixture.ts:4",
+	];
+	await mount([item]);
+	const panel = document.querySelector('[aria-label="Queue item details"]');
+	for (const text of item.evidence) {
+		const paragraph = [...(panel?.querySelectorAll("p") ?? [])].find((p) => p.textContent === text);
+		expect(paragraph).toBeDefined();
+		expect(paragraph?.className).toContain("whitespace-pre-wrap");
+	}
+	expect(panel?.querySelector("command")).toBeNull();
+});

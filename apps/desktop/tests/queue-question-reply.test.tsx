@@ -120,11 +120,14 @@ test("correlated answer uses displayed message, owner and revision; saved is not
 });
 test("transport error preserves input; stale revision refuses send until explicitly reviewed", async () => {
 	const f = await mount();
-	f.result(Error("Inbox unavailable"));
+	f.result(Error("Inbox unavailable\nRetry after reconnecting."));
 	await type("Amber");
 	await click("Send answer");
 	expect(document.querySelector("textarea")?.value).toBe("Amber");
-	expect(document.body.textContent).toContain("Inbox unavailable");
+	expect(document.querySelector('[role="alert"]')?.textContent).toBe(
+		"Inbox unavailable\nRetry after reconnecting."
+	);
+	expect(document.querySelector('[role="alert"]')?.className).toContain("whitespace-pre-wrap");
 	await f.update({ ...item, revision: 8 });
 	await click("Send answer");
 	expect(f.calls).toHaveLength(1);
@@ -179,4 +182,58 @@ test("persisted saved answer remains readable after remount without claiming tas
 	expect(document.body.textContent).toContain("has not read this answer yet");
 	expect(document.querySelector("textarea")).toBeNull();
 	expect(f.calls).toHaveLength(0);
+});
+
+test("recipient uses human names once and keeps binding identifiers in collapsed technical details", async () => {
+	const f = await mount();
+	await f.update({
+		...item,
+		context: {
+			...item.context,
+			projectName: "Color project",
+			workspaceName: "Choose a color",
+			terminalTitle: "Choose a color",
+		},
+	});
+	const recipient = document.querySelector('[aria-label="Answer recipient"]');
+	expect(recipient?.textContent).toBe("Recipient: Color project / Choose a color · Codex");
+	const details = document.querySelector("details");
+	expect(details?.querySelector("summary")?.textContent).toBe("Technical details");
+	expect(details?.open).toBe(false);
+	for (const id of ["owner", "reporter", "conversation-2", "question-42"]) {
+		expect(details?.textContent).toContain(id);
+		expect(recipient?.textContent).not.toContain(id);
+	}
+	const visibleCopy = document.querySelector("section")?.cloneNode(true) as HTMLElement;
+	visibleCopy.querySelector("details")?.remove();
+	for (const id of ["owner", "reporter", "conversation-2", "question-42"])
+		expect(visibleCopy.textContent).not.toContain(id);
+	await type("Blue\nKeep the second line.");
+	await click("Send answer");
+	expect(f.calls[0]).toEqual({
+		id: "question-item",
+		revision: 7,
+		questionId: "question-42",
+		content: "Blue\nKeep the second line.",
+	});
+	const saved = document.querySelector("output p");
+	expect(saved?.textContent).toBe("Your answer: Blue\nKeep the second line.");
+	expect(saved?.className).toContain("whitespace-pre-wrap");
+});
+
+test("coordinator recipient names its own chat rather than a linked project", async () => {
+	const f = await mount();
+	await f.update({
+		...item,
+		context: {
+			...item.context,
+			role: "coordinator",
+			projectName: "Cross-repository coordinator",
+			workspaceName: "Release coordinator",
+			terminalTitle: "Release planning",
+		},
+	});
+	expect(document.querySelector('[aria-label="Answer recipient"]')?.textContent).toBe(
+		"Recipient: Release coordinator · Codex · Release planning"
+	);
 });

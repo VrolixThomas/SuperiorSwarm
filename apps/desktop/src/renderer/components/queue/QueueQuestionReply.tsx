@@ -46,6 +46,30 @@ export function QueueQuestionReply({
 	const savedContent = question.answer?.content ?? draft.content;
 	const canReply = available && question.replyCapability === "mcp-inbox" && !!answer && !saved;
 	const target = item.target.type === "terminal" ? item.target : null;
+	const coordinator = item.context.role === "coordinator";
+	const workspaceName = item.context.workspaceName.trim();
+	const projectName = coordinator ? "" : (item.context.projectName?.trim() ?? "");
+	const chatTitle = item.context.terminalTitle?.trim() ?? "";
+	const sameName = (a: string, b: string) => a.toLocaleLowerCase() === b.toLocaleLowerCase();
+	const location = [projectName, workspaceName]
+		.filter(
+			(name, index, names) => name && !names.slice(0, index).some((other) => sameName(name, other))
+		)
+		.join(" / ");
+	const provider = target?.provider ?? item.context.provider;
+	const providerLabel =
+		provider === "codex"
+			? "Codex"
+			: provider === "claude"
+				? "Claude"
+				: provider === "gemini"
+					? "Gemini"
+					: provider === "opencode"
+						? "OpenCode"
+						: (provider ?? "Agent");
+	const distinctChat =
+		chatTitle && ![projectName, workspaceName].some((name) => sameName(chatTitle, name));
+
 	const submit = async () => {
 		if (!canReply || changed || !draft.content.trim() || running.current || !answer) return;
 		running.current = true;
@@ -95,19 +119,29 @@ export function QueueQuestionReply({
 			className="my-5 space-y-3 border-y border-[var(--border-subtle)] py-4 text-[12px]"
 		>
 			<h3 className="font-medium">Reply to this question</h3>
-			<p className="break-words text-[var(--text-secondary)]">
-				Recipient: {item.context.workspaceName} ·{" "}
-				{item.context.terminalTitle ?? "Chat title unavailable"}
+			<p aria-label="Answer recipient" className="break-words text-[var(--text-secondary)]">
+				Recipient: {location || (coordinator ? "Coordinator" : "Workspace")} · {providerLabel}
+				{distinctChat ? ` · ${chatTitle}` : ""}
 			</p>
-			<p className="break-all text-[11px] text-[var(--text-tertiary)]">
-				{item.context.role ?? "workspace"} {item.context.entity?.id ?? item.context.workspaceId}
-				{target
-					? ` · ${target.provider} · ${target.terminalId} · conversation ${target.providerSessionId ?? "unknown"}`
-					: " · Exact chat unavailable"}
-			</p>
-			<p className="break-all text-[11px] text-[var(--text-tertiary)]">
-				Question {question.messageId}
-			</p>
+			<details
+				key={`${item.id}:${question.messageId}`}
+				className="break-all text-[11px] text-[var(--text-tertiary)]"
+			>
+				<summary className={`cursor-pointer ${queueFocus}`}>Technical details</summary>
+				<p>
+					{coordinator ? "Coordinator" : "Workspace"} ID:{" "}
+					{item.context.entity?.id ?? item.context.workspaceId}
+				</p>
+				{target ? (
+					<>
+						<p>Terminal ID: {target.terminalId}</p>
+						<p>Provider conversation ID: {target.providerSessionId ?? "unknown"}</p>
+					</>
+				) : (
+					<p>Exact chat unavailable</p>
+				)}
+				<p>Question ID: {question.messageId}</p>
+			</details>
 			{saved ? (
 				<output className="block space-y-2">
 					{savedContent && (
@@ -167,7 +201,7 @@ export function QueueQuestionReply({
 						</div>
 					)}
 					{draft.error && (
-						<p role="alert" className="text-[var(--st-blocked)]">
+						<p role="alert" className="whitespace-pre-wrap break-words text-[var(--st-blocked)]">
 							{draft.error}
 						</p>
 					)}
