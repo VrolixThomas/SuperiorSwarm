@@ -531,3 +531,30 @@ test("expiry uses the time after waiting for inventory", async () => {
 		Date.now = originalNow;
 	}
 });
+
+test("concurrent Done then Later rejects deferral so Undo returns the item to pending", async () => {
+	const receipt = { id, revision: await revision() };
+	const [done, deferred] = await Promise.all([
+		workspaceDone(receipt, daemon),
+		later({ ...receipt, untilChange: true }, daemon),
+	]);
+	expect(done.status).toBe("acknowledged");
+	expect(deferred.status).toBe("conflict");
+	expect(getDb().select().from(activityQueueSnoozes).all()).toEqual([]);
+	expect((await undoDone(receipt, daemon)).status).toBe("restored");
+	const pending = await caller.workspaceList();
+	expect(pending).toMatchObject({ totalPending: 1, laterCount: 0 });
+	expect(pending.items.map((item) => item.id)).toEqual([id]);
+	expect((await caller.workspaceList({ view: "later" })).items).toEqual([]);
+});
+
+test("concurrent restore mutations use persisted receipts rather than their pre-await views", async () => {
+	const receipt = { id, revision: await revision() };
+	await workspaceDone(receipt, daemon);
+	const undone = await Promise.all([undoDone(receipt, daemon), undoDone(receipt, daemon)]);
+	expect(undone.map((result) => result.status).sort()).toEqual(["conflict", "restored"]);
+	await later({ ...receipt, untilChange: true }, daemon);
+	const restored = await Promise.all([bringBack(receipt, daemon), bringBack(receipt, daemon)]);
+	expect(restored.map((result) => result.status).sort()).toEqual(["conflict", "restored"]);
+	expect(await caller.workspaceList()).toMatchObject({ totalPending: 1, laterCount: 0 });
+});
