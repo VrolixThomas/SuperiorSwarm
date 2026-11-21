@@ -24,3 +24,16 @@ export const activityQueueSnoozes = sqliteTable("activity_queue_snoozes", {
 	untilChange: integer("until_change", { mode: "boolean" }).notNull(),
 	createdAt: integer("created_at").notNull(),
 });
+
+/** Durable intent precedes PTY admission. Uncertainty never permits automatic resubmission. */
+export const activityQueueDeliveries = sqliteTable("activity_queue_deliveries", {
+	requestId: text("request_id").primaryKey(),
+	occurrenceKey: text("occurrence_key").notNull().unique(),
+	fingerprint: text("fingerprint").notNull(),
+	target: text("target", { mode: "json" })
+		.$type<import("../../shared/activity-queue").ActivityQueueTarget>()
+		.notNull(),
+	members: text("members", { mode: "json" }).$type<{ id: string; revision: number }[]>().notNull(),
+	state: text("state", { enum: ["reserved", "uncertain", "admitted", "rejected"] }).notNull(),
+	createdAt: integer("created_at").notNull(),
+});

@@ -1,6 +1,8 @@
 import { useEffect, useRef } from "react";
 import type { WorkspaceQueueItem } from "../../../shared/activity-queue";
 import { queueAge } from "../../lib/activity-queue-view";
+import { type QueueConversationActions, QueueConversationReply } from "./QueueConversationReply";
+import { QueueLinkedWorkContext } from "./QueueLinkedWorkContext";
 import { type AnswerQuestion, QueueQuestionReply } from "./QueueQuestionReply";
 import { queueFocus } from "./QueueRow";
 export const queueButton = `rounded-md px-3 py-2 text-[12px] transition-colors hover:bg-[var(--bg-elevated)] disabled:opacity-40 ${queueFocus}`;
@@ -16,6 +18,7 @@ export function QueuePanel({
 	expanded,
 	close,
 	answer,
+	conversationActions,
 	refresh,
 }: {
 	item: WorkspaceQueueItem;
@@ -29,6 +32,7 @@ export function QueuePanel({
 	expanded?: boolean;
 	close?: () => void;
 	answer?: AnswerQuestion;
+	conversationActions?: QueueConversationActions;
 	refresh: () => Promise<unknown>;
 }) {
 	const closeButton = useRef<HTMLButtonElement>(null);
@@ -109,6 +113,7 @@ export function QueuePanel({
 							{project.path}
 						</p>
 					))}
+					<QueueLinkedWorkContext items={item.context.linkedWork} />
 					{!!item.providerEvidence?.length && (
 						<details className="text-[10px] text-[var(--text-tertiary)]">
 							<summary className="cursor-pointer">Source details</summary>
@@ -194,6 +199,12 @@ export function QueuePanel({
 						both updates.
 					</p>
 				)}
+				<QueueConversationReply
+					item={item}
+					available={canAct && !busy}
+					actions={conversationActions}
+					refresh={refresh}
+				/>
 				<QueueQuestionReply
 					item={item}
 					available={canAct && !busy}

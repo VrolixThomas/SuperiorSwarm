@@ -534,3 +534,21 @@ export async function workspaceAnswer(
 		};
 	});
 }
+
+/** Reusable action admission. Every grouped member must still be the displayed occurrence. */
+export async function currentQueueAction(
+	input: WorkspaceQueueRevisionInput,
+	daemon?: Inventory
+): Promise<WorkspaceQueueItem | null> {
+	const current = await currentWorkspaceItems(daemon);
+	return getDb().transaction(() => {
+		const checked = validateCurrent(input, current);
+		if (
+			checked.status !== "current" ||
+			checked.source.acknowledgedRevision === input.revision ||
+			!validateMembers(input, current)
+		)
+			return null;
+		return current.items.find((item) => item.id === input.id) ?? null;
+	});
+}

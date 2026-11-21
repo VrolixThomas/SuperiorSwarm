@@ -189,9 +189,11 @@ export class AgentSessionManager {
 		let event = incoming;
 		if (!isAgentProvider(event.agent)) return null;
 		let confirmedPrompt = false;
+		let identifiedTurn: string | null = null;
 		if (
 			!observeValidatedAgentEvent(event, (normalized, snapshot) => {
 				event = normalized;
+				identifiedTurn = snapshot.ordering === "identified" ? snapshot.turnId : null;
 				confirmedPrompt = snapshot.ordering === "identified" && snapshot.continuation === "prompt";
 			})
 		)
@@ -274,6 +276,20 @@ export class AgentSessionManager {
 			})
 			.run();
 
+		if (providerSessionId && identifiedTurn)
+			this.options.daemonClient.queueProviderState?.(resolved.terminalId, {
+				provider: event.agent,
+				providerSessionId,
+				turnId: identifiedTurn,
+				phase:
+					event.rawEvent === "UserPromptSubmit" && confirmedPrompt
+						? "prompt"
+						: ["Stop", "StopFailure"].includes(event.rawEvent ?? "")
+							? "idle"
+							: event.rawEvent === "SessionStart"
+								? "reset"
+								: "blocked",
+			});
 		// A submitted follow-up handles the report from this exact chat. Bound
 		// manual reports and legacy managed dispatches are checked in the service;
 		// a sibling terminal must not advance another chat's workspace status.

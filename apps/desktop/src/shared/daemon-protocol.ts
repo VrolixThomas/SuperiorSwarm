@@ -44,6 +44,22 @@ export interface DaemonFileTarget {
 	supported: boolean;
 }
 export type ClientMessage =
+	| { type: "queue-state"; id: string; state: import("./queue-terminal-state").QueueTerminalState }
+	| {
+			type: "queue-target";
+			id: string;
+			requestId: string;
+			provider: string;
+			providerSessionId: string;
+	  }
+	| {
+			type: "queue-input";
+			id: string;
+			requestId: string;
+			deliveryId: string;
+			generation: string;
+			content: string;
+	  }
 	| { type: "file-target"; id: string; requestId: string; managedAgent?: boolean }
 	| {
 			type: "file-input";

@@ -1,7 +1,12 @@
 import { z } from "zod";
 import { ACTIVITY_QUEUE_KINDS } from "../../../shared/activity-queue";
 import { reconcileAgentSources } from "../../activity-queue/agent-source";
+import {
+	workspaceReply,
+	workspaceReplyCapability,
+} from "../../activity-queue/conversation-replies";
 import { listCurrentActivityQueue } from "../../activity-queue/current-items";
+import { linkedWorkForEntity } from "../../activity-queue/linked-context";
 import { getActivityQueueService } from "../../activity-queue/service";
 import {
 	bringBack,
@@ -23,6 +28,20 @@ const workspaceRevision = z.object({
 });
 
 export const activityQueueRouter = router({
+	workspaceLinkedContext: publicProcedure
+		.input(z.object({ kind: z.enum(["workspace", "coordinator"]), id: z.string().min(1) }))
+		.query(({ input }) => linkedWorkForEntity(input)),
+	workspaceReplyCapability: publicProcedure
+		.input(workspaceRevision)
+		.query(({ input }) => workspaceReplyCapability(input)),
+	workspaceReply: publicProcedure
+		.input(
+			workspaceRevision.extend({
+				requestId: z.string().min(1).max(128),
+				content: z.string().min(1).max(16000),
+			})
+		)
+		.mutation(({ input }) => workspaceReply(input)),
 	workspaceList: publicProcedure
 		.input(
 			z

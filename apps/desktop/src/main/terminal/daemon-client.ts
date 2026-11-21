@@ -99,6 +99,57 @@ export class DaemonClient {
 	private remoteProtocolVersion = DAEMON_PROTOCOL_VERSION;
 	private fileInputCapable = false;
 	private fileSubmitCapable = false;
+	private queueReplyCapable = false;
+	queueProviderState(
+		id: string,
+		state: import("../../shared/queue-terminal-state").QueueTerminalState
+	): void {
+		if (!this.supportsQueueReply || !this.canWriteFileInput()) return;
+		try {
+			this.socket?.write(`${JSON.stringify({ type: "queue-state", id, state })}\n`);
+		} catch {}
+	}
+	get supportsQueueReply(): boolean {
+		return this.isConnected && this.queueReplyCapable;
+	}
+	async queueReplyTarget(
+		id: string,
+		provider: string,
+		providerSessionId: string
+	): Promise<DaemonFileTarget | null> {
+		if (!this.supportsQueueReply || this.pendingInputTerminals.has(id)) return null;
+		return (
+			(
+				await this.fileRequest({
+					type: "queue-target",
+					id,
+					provider,
+					providerSessionId,
+					requestId: randomUUID(),
+				})
+			)?.target ?? null
+		);
+	}
+	async submitQueueReply(
+		id: string,
+		generation: string,
+		deliveryId: string,
+		content: string
+	): Promise<"admitted" | "rejected" | "uncertain"> {
+		if (!this.supportsQueueReply || this.pendingInputTerminals.has(id)) return "rejected";
+		return (
+			(
+				await this.fileRequest({
+					type: "queue-input",
+					id,
+					generation,
+					deliveryId,
+					content,
+					requestId: randomUUID(),
+				})
+			)?.delivery ?? "uncertain"
+		);
+	}
 	private snapshotCapable = false;
 	get supportsTerminalSnapshots(): boolean {
 		return this.isConnected && this.snapshotCapable;
@@ -244,7 +295,10 @@ export class DaemonClient {
 		return this.isConnected && !this.waitingForDrain && this.outboundQueue.length === 0;
 	}
 	private async fileRequest(
-		message: Extract<ClientMessage, { type: "file-target" | "file-input" }>
+		message: Extract<
+			ClientMessage,
+			{ type: "file-target" | "file-input" | "queue-target" | "queue-input" }
+		>
 	): Promise<Extract<DaemonMessage, { type: "file-result" }> | null> {
 		if (!this.canSendFileInput() || this.fileRequests.size >= 64) return null;
 		const encoded = `${JSON.stringify(message)}\n`;
@@ -293,6 +347,7 @@ export class DaemonClient {
 			this.legacyFileTargets.clear();
 			this.fileInputCapable = false;
 			this.fileSubmitCapable = false;
+			this.queueReplyCapable = false;
 			this.snapshotCapable = false;
 			for (const resolve of this.fileRequests.values()) resolve(null);
 		}
@@ -333,6 +388,7 @@ export class DaemonClient {
 		this.remoteProtocolVersion = ready.protocolVersion ?? 1;
 		this.fileInputCapable = ready.capabilities?.includes("file-input-v1") === true;
 		this.fileSubmitCapable = ready.capabilities?.includes("file-submit-v1") === true;
+		this.queueReplyCapable = ready.capabilities?.includes("queue-reply-v1") === true;
 		this.snapshotCapable = ready.capabilities?.includes(TERMINAL_SNAPSHOT_CAPABILITY) === true;
 		this.binaryInputSupported =
 			(ready.protocolVersion === 2 || ready.protocolVersion === DAEMON_PROTOCOL_VERSION) &&

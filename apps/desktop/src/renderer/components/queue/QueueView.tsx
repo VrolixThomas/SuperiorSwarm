@@ -20,6 +20,9 @@ import { QueuePanel, queueButton } from "./QueuePanel";
 import type { AnswerQuestion } from "./QueueQuestionReply";
 import { QueueRow, queueFocus } from "./QueueRow";
 
+import { useQueueConversationActions } from "../../hooks/useQueueConversationActions";
+import type { QueueConversationActions } from "./QueueConversationReply";
+
 const EMPTY: WorkspaceQueueItem[] = [];
 type Receipt = WorkspaceQueueRevisionInput;
 type Result = { status: string };
@@ -40,6 +43,7 @@ export interface QueueScreenProps {
 	bringBack: (receipt: Receipt) => Promise<Result>;
 	undoDone: (receipt: Receipt) => Promise<Result>;
 	answer?: AnswerQuestion;
+	conversationActions?: QueueConversationActions;
 }
 export function QueueScreen({
 	data,
@@ -57,6 +61,7 @@ export function QueueScreen({
 	bringBack,
 	undoDone,
 	answer,
+	conversationActions,
 }: QueueScreenProps) {
 	const [filter, setFilter] = useState<WorkspaceQueueFilter>("all");
 	const [group, setGroup] = useState(false);
@@ -539,6 +544,7 @@ export function QueueScreen({
 							detailsButton.current?.focus();
 						}}
 						answer={sendAnswer}
+						conversationActions={conversationActions}
 						refresh={refresh}
 						item={selected}
 						later={view === "later"}
@@ -635,6 +641,7 @@ export function QueueScreen({
 }
 
 export function QueueView() {
+	const conversationActions = useQueueConversationActions();
 	const selectedId = useActivityQueueStore((s) => s.selectedWorkspaceItemId);
 	const [view, setView] = useState<"pending" | "later">("pending");
 	const query = useWorkspaceQueue(view);
@@ -670,6 +677,7 @@ export function QueueView() {
 			bringBack={(input) => bringBack.mutateAsync(input)}
 			undoDone={(input) => undoDone.mutateAsync(input)}
 			answer={(input) => answer.mutateAsync(input)}
+			conversationActions={conversationActions}
 		/>
 	);
 }

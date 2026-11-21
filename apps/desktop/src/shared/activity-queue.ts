@@ -114,6 +114,7 @@ export interface WorkspaceQueueItem extends ActivityQueueItem {
 		answer?: { messageId: string; delivery: "saved" | "retrieved"; content?: string };
 	};
 	context: {
+		linkedWork?: import("./queue-linked-context").QueueLinkedWork[];
 		entity?: QueueEntity;
 		linkedProjects?: { id: string; name: string; kind: "repo" | "folder"; path: string }[];
 		projectKind?: "repo" | "folder";

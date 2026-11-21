@@ -1,4 +1,5 @@
 import Database from "better-sqlite3";
+import { QueueDeliveryAdmission } from "./queue-delivery";
 
 export class ScrollbackStore {
 	private db: Database.Database;
@@ -22,6 +23,15 @@ export class ScrollbackStore {
 		this.stmt = this.db.prepare(
 			"UPDATE terminal_sessions SET scrollback = ?, updated_at = ? WHERE id = ?"
 		);
+	}
+
+	admitQueueReply(
+		requestId: string,
+		terminalId: string,
+		content: string,
+		write: () => "admitted" | "rejected" | "uncertain"
+	) {
+		return new QueueDeliveryAdmission(this.db).admit(requestId, terminalId, content, write);
 	}
 
 	flush(sessions: Array<{ id: string; buffer: string }>): string[] {
