@@ -193,6 +193,9 @@ export const agentSessions = sqliteTable(
 	"agent_sessions",
 	{
 		terminalId: text("terminal_id").primaryKey(),
+		entityKind: text("entity_kind", { enum: ["workspace", "coordinator"] })
+			.notNull()
+			.default("workspace"),
 		// Polymorphic entity ID; migration triggers enforce workspace/coordinator ownership.
 		workspaceId: text("workspace_id").notNull(),
 		provider: text("provider", {

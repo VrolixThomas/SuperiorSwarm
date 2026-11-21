@@ -1004,6 +1004,16 @@ if (isWorkspaceAgentOrCrossRepo) {
 			} catch {
 				parsed = { raw: text };
 			}
+			if (res.ok && ["/workspaces.set_status", "/workspaces.send_message"].includes(path)) {
+				parsed.queue_identity = {
+					protocol: 1,
+					capability: ctx.queueReporter ? "exact-conversation" : "missing-owner",
+					detail: ctx.queueReporter
+						? "Bound to the conversation registered when this MCP process started."
+						: "Conversation identity was unavailable at MCP startup. Exact question replies are unavailable; restart MCP after the conversation is registered.",
+				};
+			}
+
 			if (!res.ok) {
 				return {
 					content: [{ type: "text", text: JSON.stringify({ status: res.status, ...parsed }) }],

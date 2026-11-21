@@ -111,7 +111,7 @@ export interface WorkspaceQueueItem extends ActivityQueueItem {
 		messageId: string;
 		replyCapability: "mcp-inbox" | "unavailable";
 		unavailableReason?: string;
-		answer?: { messageId: string; delivery: "saved" | "retrieved" };
+		answer?: { messageId: string; delivery: "saved" | "retrieved"; content?: string };
 	};
 	context: {
 		entity?: QueueEntity;

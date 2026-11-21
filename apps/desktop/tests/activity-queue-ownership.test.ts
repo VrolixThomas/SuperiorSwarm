@@ -1,10 +1,15 @@
+import { ActivityQueueService } from "../src/main/activity-queue/service";
 import "./preload-electron-mock";
 import { beforeAll, expect, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { eq } from "drizzle-orm";
-import { questionSourceId, workspaceSourceId } from "../src/main/activity-queue/agent-source";
+import {
+	observeValidatedAgentEvent,
+	questionSourceId,
+	workspaceSourceId,
+} from "../src/main/activity-queue/agent-source";
 import {
 	bringBack,
 	later,
@@ -59,6 +64,7 @@ async function fixture(coordinator: boolean, provider: "claude" | "codex") {
 			.values({
 				terminalId: terminal,
 				workspaceId: id,
+				entityKind: coordinator ? "coordinator" : "workspace",
 				provider,
 				providerSessionId: `conversation-${terminal}`,
 				createdAt: new Date(),
@@ -254,4 +260,171 @@ test("polymorphic session constraints reject nonexistent owners and cascade both
 			getDb().select().from(agentSessions).where(eq(agentSessions.terminalId, f.terminalId)).get()
 		).toBeUndefined();
 	}
+});
+
+test("wrong project, sibling, timestamp and recipient cannot poison reply metadata or resolution", async () => {
+	const f = await fixture(false, "codex");
+	const { messageId } = await sendMessage(f.ctx, { kind: "question", content: "Exact routing?" });
+	const question = getDb()
+		.select()
+		.from(agentMessages)
+		.where(eq(agentMessages.id, messageId))
+		.get()!;
+	if (question.reporter?.type !== "terminal") throw new Error("Missing reporter");
+	const otherProject = await seedProject();
+	const base = {
+		projectId: f.projectId,
+		kind: "answer" as const,
+		content: "Wrong answer",
+		inReplyTo: messageId,
+		toWorkspaceId: f.id,
+		recipient: question.reporter,
+		createdAt: new Date(),
+		retrievedAt: new Date(),
+	};
+	for (const [index, override] of [
+		{ projectId: otherProject },
+		{
+			recipient: {
+				...question.reporter,
+				terminalId: `${f.terminalId}-sibling`,
+				providerSessionId: `conversation-${f.terminalId}-sibling`,
+			},
+		},
+		{ createdAt: new Date(question.createdAt.getTime() - 1) },
+		{ toWorkspaceId: null },
+		{ recipient: { ...question.reporter, providerSessionId: "old-generation" } },
+	].entries())
+		getDb()
+			.insert(agentMessages)
+			.values({ ...base, ...override, id: `wrong-${messageId}-${index}` })
+			.run();
+	const item = (await f.items())[0]!;
+	expect(item.question?.answer).toBeUndefined();
+	expect(
+		(
+			await workspaceAnswer(
+				{ id: item.id, revision: item.revision, questionId: messageId, content: "Valid answer" },
+				f.inventory
+			)
+		).status
+	).toBe("saved");
+	const saved = (await f.items())[0]!;
+	expect(saved.question?.answer?.delivery).toBe("saved");
+	await readMessages(f.ctx, { includeBroadcasts: false });
+	expect(await f.items()).toHaveLength(0);
+});
+
+test("ordinary MCP correlated answer routes to coordinator owner and waits for exact retrieval", async () => {
+	const f = await fixture(true, "claude");
+	await sendMessage(f.ctx, { kind: "question", content: "Coordinator decision" });
+	const item = (await f.items())[0]!;
+	const child = await seedWorkspace(f.projectId, { name: "Replying child" });
+	await sendMessage(
+		{ kind: "workspace", workspaceId: child, projectId: f.projectId },
+		{
+			kind: "answer",
+			inReplyTo: item.question!.messageId,
+			toWorkspaceId: f.id,
+			content: "Synthetic reply",
+		}
+	);
+	expect((await f.items())[0]?.question?.answer?.delivery).toBe("saved");
+	expect(
+		(
+			await readMessages(
+				{ ...f.ctx, terminalId: `${f.terminalId}-sibling` },
+				{ includeBroadcasts: false }
+			)
+		).messages
+	).toHaveLength(0);
+	expect((await readMessages(f.ctx, { includeBroadcasts: false })).messages[0]?.content).toBe(
+		"Synthetic reply"
+	);
+	expect(await f.items()).toHaveLength(0);
+});
+
+test("grouped report retains reply provenance and member errors; delayed member acknowledgment rejects Later atomically", async () => {
+	const f = await fixture(false, "codex");
+	observeValidatedAgentEvent({
+		terminalId: f.terminalId,
+		sessionId: f.terminalId,
+		workspaceId: f.id,
+		providerSessionId: `conversation-${f.terminalId}`,
+		agent: "codex",
+		alert: "task-complete",
+		rawEvent: "Stop",
+		turnId: "first",
+		timestamp: Date.now(),
+		cwd: "/tmp",
+		evidence: [
+			{
+				kind: "reply",
+				sourceField: "last_assistant_message",
+				text: "Synthetic provider reply",
+				provider: "codex",
+				rawEvent: "Stop",
+				truncated: false,
+				redacted: false,
+			},
+		],
+	});
+	await setStatus(f.ctx, { phase: "done", statusText: "Synthetic task report" });
+	const item = (await f.items())[0]!;
+	expect(item.members).toHaveLength(2);
+	expect(item.providerEvidence?.[0]).toMatchObject({
+		text: "Synthetic provider reply",
+		provider: "codex",
+		rawEvent: "Stop",
+	});
+	const turn = item.members!.find((member) => member.id !== item.id)!;
+	let release!: () => void;
+	let entered!: () => void;
+	const started = new Promise<void>((resolve) => {
+		entered = resolve;
+	});
+	const blocked = {
+		isConnected: true,
+		async listSessionsStrict() {
+			entered();
+			await new Promise<void>((resolve) => {
+				release = resolve;
+			});
+			return f.inventory.listSessionsStrict();
+		},
+	};
+	const pending = later(
+		{ id: item.id, revision: item.revision, members: item.members, untilChange: true },
+		blocked
+	);
+	await started;
+	new ActivityQueueService().acknowledge(turn);
+	release();
+	expect((await pending).status).toBe("conflict");
+	expect(
+		(await listWorkspaceQueue({ view: "later" }, f.inventory)).items.filter(
+			(row) => row.context.workspaceId === f.id
+		)
+	).toHaveLength(0);
+	expect((await f.items()).find((row) => row.id === item.id)?.acknowledged).toBe(false);
+	// Restore the separate member and verify grouped stale/error presentation.
+	expect((await undoDone(turn, f.inventory)).status).toBe("restored");
+	getDb()
+		.update(agentSessions)
+		.set({ state: "error", lastError: "Synthetic transport error" })
+		.where(eq(agentSessions.terminalId, f.terminalId))
+		.run();
+	const grouped = await listWorkspaceQueue({}, f.inventory);
+	expect(grouped.items.find((row) => row.id === item.id)?.stale).toBe(true);
+	expect(grouped.sourceErrors.find((error) => error.sourceId === turn.id)?.error).toBe(
+		"Synthetic transport error"
+	);
+	expect(
+		(
+			await workspaceDone(
+				{ id: item.id, revision: item.revision, members: item.members },
+				f.inventory
+			)
+		).status
+	).toBe("conflict");
 });

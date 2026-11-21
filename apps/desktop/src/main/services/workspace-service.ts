@@ -973,12 +973,33 @@ export async function sendMessage(
 	}): { messageId: string } {
 		const messageId = nanoid();
 		const now = new Date();
+		const question =
+			input.kind === "answer" && input.inReplyTo
+				? db
+						.select()
+						.from(agentMessages)
+						.where(
+							and(
+								eq(agentMessages.id, input.inReplyTo),
+								eq(agentMessages.projectId, opts.projectId),
+								eq(agentMessages.kind, "question")
+							)
+						)
+						.get()
+				: undefined;
+		const recipient =
+			question?.reporter?.type === "terminal" &&
+			(!opts.toWorkspaceId || opts.toWorkspaceId === question.fromWorkspaceId)
+				? question.reporter
+				: null;
+		const toWorkspaceId = recipient?.workspaceId ?? opts.toWorkspaceId;
 		db.insert(agentMessages)
 			.values({
 				id: messageId,
 				projectId: opts.projectId,
 				fromWorkspaceId: opts.fromId,
-				toWorkspaceId: opts.toWorkspaceId,
+				toWorkspaceId,
+				recipient,
 				kind: input.kind,
 				content: input.content,
 				inReplyTo: input.inReplyTo ?? null,
@@ -990,12 +1011,37 @@ export async function sendMessage(
 			event: "message",
 			messageId,
 			from: opts.fromId,
-			to: opts.toWorkspaceId,
+			to: toWorkspaceId,
 			kind: input.kind,
 			content: input.content,
 			ts: now.toISOString(),
 		});
 		return { messageId };
+	}
+
+	// A correlated reply to a coordinator or workspace derives the exact recipient from the question.
+	if (input.kind === "answer" && input.inReplyTo) {
+		const question = db
+			.select()
+			.from(agentMessages)
+			.where(eq(agentMessages.id, input.inReplyTo))
+			.get();
+		if (
+			question?.kind === "question" &&
+			question.reporter?.type === "terminal" &&
+			(!input.toWorkspaceId || input.toWorkspaceId === question.fromWorkspaceId)
+		) {
+			const allowed =
+				ctx.kind === "xro"
+					? ctx.linkedProjectIds.includes(question.projectId)
+					: ctx.projectId === question.projectId;
+			if (!allowed) throw new ForbiddenError("cross-project answer");
+			return insertAndEmitDm({
+				projectId: question.projectId,
+				fromId: ctx.kind === "xro" ? ctx.xroId : ctx.workspaceId,
+				toWorkspaceId: question.fromWorkspaceId,
+			});
+		}
 	}
 
 	if (ctx.kind === "xro") {

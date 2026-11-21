@@ -1,4 +1,4 @@
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import type { ActivityQueueCandidate, ActivityQueueTarget } from "../../shared/activity-queue";
 import type { AgentEvent } from "../../shared/agent-events";
 import { AGENT_PROVIDERS } from "../../shared/agent-session";
@@ -8,6 +8,7 @@ import { activityQueueSources } from "../db/schema-activity-queue";
 import { type AgentEventSnapshot, nextAgentEventSnapshot } from "./agent-event-order";
 import { transitionAgentEvent } from "./agent-event-transition";
 import { queueEntities } from "./entities";
+import { isQuestionAnswer } from "./question-answers";
 import { ActivityQueueService } from "./service";
 
 export type WorkspaceReporter = Extract<ActivityQueueTarget, { type: "terminal" }>;
@@ -32,7 +33,8 @@ export function workspaceReporter(
 	if (
 		terminal?.workspaceId !== workspaceId ||
 		session?.workspaceId !== workspaceId ||
-		!session.providerSessionId
+		!session.providerSessionId ||
+		session.entityKind !== queueEntities().get(workspaceId)?.entity.kind
 	)
 		return null;
 	return {
@@ -134,16 +136,14 @@ export function observeValidatedAgentEvent(
 		.where(eq(terminalSessions.id, terminalId))
 		.get();
 	const workspaceId = known?.workspaceId ?? terminal?.workspaceId;
-	// An exact terminal can start/resume another conversation. Only a fresh,
-	// explicit producer-stamped SessionStart may replace its registered generation.
+	// An explicit terminal-bound SessionStart may register a previously unseen generation.
+	// Previously observed generations cannot reclaim it; bridge invocation time is not evidence.
 	const newGeneration = Boolean(
 		known &&
 			(event.terminalId || event.sessionId) &&
 			event.rawEvent === "SessionStart" &&
 			["startup", "resume", "clear", "fork"].includes(event.sessionSource ?? "") &&
-			event.providerSessionId &&
-			event.producerTimestamp !== undefined &&
-			event.producerTimestamp >= (known.lastEventAt?.getTime() ?? 0)
+			event.providerSessionId
 	);
 	if (
 		!workspaceId ||
@@ -158,7 +158,7 @@ export function observeValidatedAgentEvent(
 	)
 		return false;
 	const workspace = queueEntities().get(workspaceId);
-	if (!workspace) return false;
+	if (!workspace || (known && known.entityKind !== workspace.entity.kind)) return false;
 
 	const providerSessionId = event.providerSessionId || known?.providerSessionId || null;
 	const sourceId = sessionSourceId(workspaceId, terminalId, event.agent, providerSessionId);
@@ -219,7 +219,8 @@ export function observeValidatedAgentEvent(
 		sourceId,
 		sourceType: "agent-session",
 		snapshot,
-		fingerprint: transition.fingerprint,
+		fingerprint:
+			transition.preserveRevision && previous ? previous.fingerprint : transition.fingerprint,
 		candidate,
 		observedAt: event.timestamp,
 	});
@@ -317,16 +318,19 @@ export function reconcileAgentSources(statusChange?: {
 						: null,
 			});
 		}
+		const answers = db.select().from(agentMessages).where(eq(agentMessages.kind, "answer")).all();
 		const questions = db
 			.select()
 			.from(agentMessages)
-			.where(
-				and(
-					eq(agentMessages.kind, "question"),
-					sql`NOT EXISTS (SELECT 1 FROM agent_messages AS answer WHERE answer.kind = 'answer' AND answer.in_reply_to = ${agentMessages.id} AND answer.project_id = ${agentMessages.projectId} AND (answer.to_workspace_id = ${agentMessages.fromWorkspaceId} OR answer.to_workspace_id IS NULL) AND answer.created_at >= ${agentMessages.createdAt} AND (answer.recipient IS NULL OR answer.retrieved_at IS NOT NULL))`
-				)
-			)
-			.all();
+			.where(eq(agentMessages.kind, "question"))
+			.all()
+			.filter(
+				(question) =>
+					!answers.some(
+						(answer) =>
+							isQuestionAnswer(question, answer) && (!answer.recipient || answer.retrievedAt)
+					)
+			);
 		const projectNames = new Map(
 			db
 				.select()

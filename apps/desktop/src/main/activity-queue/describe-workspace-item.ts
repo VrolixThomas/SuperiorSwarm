@@ -34,6 +34,10 @@ export function describeWorkspaceItem(
 						? "agent-done"
 						: "agent-input";
 	const chat = source.sourceType === "agent-session";
+	const entityText = (text: string) =>
+		context.role === "coordinator"
+			? text.replace(/workspace/g, "coordinator").replace(/Workspace/g, "Coordinator")
+			: text;
 	const provider =
 		context.provider === "codex"
 			? "Codex"
@@ -44,7 +48,7 @@ export function describeWorkspaceItem(
 		? `${provider ?? "Agent"} chat`
 		: situation === "agent-question"
 			? "Agent question"
-			: "Workspace update";
+			: entityText("Workspace update");
 	const descriptions = {
 		"agent-question": {
 			why: "Answer the question",
@@ -112,11 +116,24 @@ export function describeWorkspaceItem(
 		"Unanswered question",
 	]);
 	const summary = item.summary.trim();
-	const providerEvidence = validateAgentEvidence(
-		eventSnapshot?.evidence,
-		context.provider ?? "",
-		typeof rawEvent === "string" ? rawEvent : ""
-	);
+	// Each retained field keeps the provider event that admitted it (e.g. permission + later Stop).
+	let remaining = 4096;
+	const providerEvidence = (Array.isArray(eventSnapshot?.evidence) ? eventSnapshot.evidence : [])
+		.slice(0, 4)
+		.flatMap((entry) => {
+			if (
+				!entry ||
+				typeof entry !== "object" ||
+				typeof entry.rawEvent !== "string" ||
+				remaining <= 0
+			)
+				return [];
+			return validateAgentEvidence([entry], context.provider ?? "", entry.rawEvent).map((value) => {
+				const text = value.text.slice(0, remaining);
+				remaining -= text.length;
+				return { ...value, text, truncated: value.truncated || text.length < value.text.length };
+			});
+		});
 	const evidence = [
 		...new Set([
 			...(summary && !generic.has(summary) ? [summary] : []),
@@ -143,10 +160,13 @@ export function describeWorkspaceItem(
 		situation,
 		subject,
 		why: description.why,
-		nextAction: description.nextAction,
-		openLabel: description.openLabel,
+		nextAction: entityText(description.nextAction),
+		openLabel:
+			item.target.type === "terminal"
+				? description.openLabel.replace("workspace", "chat")
+				: entityText(description.openLabel),
 		detailLabel: description.detailLabel,
-		missingContext: evidence.length ? undefined : description.missingContext,
+		missingContext: evidence.length ? undefined : entityText(description.missingContext),
 		sourceLabel,
 		clearsWhen:
 			"Done removes this item from the queue. It does not send a reply or finish the task.",

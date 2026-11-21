@@ -300,7 +300,18 @@ function resolveCaller(
 	let pinned: ReturnType<typeof workspaceReporter> = null;
 	if (typeof pinnedHeader === "string") {
 		try {
-			pinned = JSON.parse(pinnedHeader);
+			const value = JSON.parse(pinnedHeader);
+			if (
+				value !== null &&
+				(!value ||
+					value.type !== "terminal" ||
+					typeof value.workspaceId !== "string" ||
+					typeof value.terminalId !== "string" ||
+					typeof value.provider !== "string" ||
+					typeof value.providerSessionId !== "string")
+			)
+				return { error: "invalid queue reporter" };
+			pinned = value;
 		} catch {
 			return { error: "invalid queue reporter" };
 		}

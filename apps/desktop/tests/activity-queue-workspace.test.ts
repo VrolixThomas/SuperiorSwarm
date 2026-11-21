@@ -130,6 +130,7 @@ function session(rawEvent: string, alert: "needs-input" | "task-complete" = "nee
 		alert,
 		timestamp: Date.now(),
 		rawEvent,
+		turnId: "current-turn",
 		cwd: "/tmp",
 	});
 	return sessionSourceId(workspaceId, "live", "codex", "conversation");

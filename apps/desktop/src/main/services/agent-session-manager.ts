@@ -9,6 +9,7 @@ import {
 	type AgentSleepSettings,
 } from "../../shared/agent-session";
 import { observeValidatedAgentEvent } from "../activity-queue/agent-source";
+import { queueEntities } from "../activity-queue/entities";
 import { recordAcceptedHookEvent } from "../agent-hooks/diagnostics";
 import { publishCurrentHookEndpoint } from "../agent-hooks/endpoint";
 import { getDb } from "../db";
@@ -135,6 +136,7 @@ export class AgentSessionManager {
 				.values({
 					terminalId: input.terminalId,
 					workspaceId: input.workspaceId,
+					entityKind: queueEntities().get(input.workspaceId)?.entity.kind ?? "workspace",
 					provider: input.provider,
 					providerSessionId: input.providerSessionId,
 					state: "running",
@@ -152,6 +154,7 @@ export class AgentSessionManager {
 					target: agentSessions.terminalId,
 					set: {
 						workspaceId: input.workspaceId,
+						entityKind: queueEntities().get(input.workspaceId)?.entity.kind ?? "workspace",
 						provider: input.provider,
 						providerSessionId: input.providerSessionId,
 						state: "running",
@@ -234,6 +237,7 @@ export class AgentSessionManager {
 			.values({
 				terminalId: resolved.terminalId,
 				workspaceId: resolved.workspaceId,
+				entityKind: queueEntities().get(resolved.workspaceId)?.entity.kind ?? "workspace",
 				provider: event.agent,
 				providerSessionId,
 				state,
@@ -251,6 +255,7 @@ export class AgentSessionManager {
 				target: agentSessions.terminalId,
 				set: {
 					workspaceId: resolved.workspaceId,
+					entityKind: queueEntities().get(resolved.workspaceId)?.entity.kind ?? "workspace",
 					provider: event.agent,
 					providerSessionId,
 					managed,
@@ -272,12 +277,11 @@ export class AgentSessionManager {
 			confirmedPrompt &&
 			event.turnId &&
 			event.providerSessionId &&
-			event.providerSessionId === existing?.providerSessionId &&
-			event.producerTimestamp !== undefined
+			event.providerSessionId === existing?.providerSessionId
 		) {
 			continueWorkspaceAfterPrompt(
 				resolved.workspaceId,
-				event.producerTimestamp,
+				event.providerTimestamp ?? event.timestamp,
 				{
 					type: "terminal",
 					workspaceId: resolved.workspaceId,
