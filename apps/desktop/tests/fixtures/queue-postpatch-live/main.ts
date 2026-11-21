@@ -144,6 +144,11 @@ async function run() {
 	);
 	const bridge = join(root, "bridge.cjs");
 	writeFileSync(bridge, HOOK_BRIDGE_SOURCE);
+	// Observe the real MCP's first context response without changing it or its pinned identity.
+	writeFileSync(
+		join(root, "mcp-observer.mjs"),
+		`import fs from 'node:fs'; const original = globalThis.fetch; globalThis.fetch = async (...args) => { const response = await original(...args); if(String(args[0]).includes('/context.resolve?')) { const context = await response.clone().json(); fs.appendFileSync(${JSON.stringify(join(root, "mcp-startup.jsonl"))}, JSON.stringify({at:Date.now(),terminal:process.env.AGENT_NOTIFY_TERMINAL_ID,reporter:context.queueReporter??null,mode:context.mode})+'\\n'); } return response; }; await import(${JSON.stringify(pathToFileURL(join(desktop, "mcp-standalone/server.mjs")).href)});`
+	);
 	mergeClaudeHooks(
 		join(root, "settings.json"),
 		`ELECTRON_RUN_AS_NODE=1 ${quote(process.execPath)} ${quote(bridge)}`
@@ -277,7 +282,7 @@ async function run() {
 				const resultPath = join(root, `driver-${name}.json`);
 				const mcp = {
 					command: process.execPath,
-					args: [join(desktop, "mcp-standalone/server.mjs")],
+					args: [join(root, "mcp-observer.mjs")],
 					env: {
 						ELECTRON_RUN_AS_NODE: "1",
 						SUPERIORSWARM_USER_DATA: root,
@@ -317,6 +322,8 @@ async function run() {
 								"--ignore-user-config",
 								"-c",
 								`hooks=${TOML.stringify.value({ state })}`,
+								"-c",
+								`mcp_servers=${TOML.stringify.value({ superiorswarm: mcp })}`,
 								"--ignore-rules",
 								"--skip-git-repo-check",
 								"--sandbox",
@@ -413,6 +420,17 @@ async function run() {
 				assert.equal(first.code, 0);
 				assert.equal(first.question, true);
 				assert.equal(manager.getSession(terminal)?.managed, managed);
+				const startup = readFileSync(join(root, "mcp-startup.jsonl"), "utf8")
+					.trim()
+					.split("\n")
+					.map((line) => JSON.parse(line))
+					.filter((row) => row.terminal === terminal);
+				assert(startup.length > 0, "Actual CLI must initialize the isolated MCP");
+				assert.equal(
+					startup[0]?.reporter?.providerSessionId,
+					first.session,
+					"First actual MCP must bind the CLI session"
+				);
 				const own = async () =>
 					(await listWorkspaceQueue()).items.filter((i) => i.context.workspaceId === id);
 				await until(async () => (await own()).length > 0);
@@ -486,6 +504,7 @@ async function run() {
 				results.push({
 					name,
 					status: "pass",
+					mcpStartup: startup,
 					followupRoute: managed ? "queue navigation" : "direct original conversation",
 					launch: managed
 						? "production dispatchAgent with isolated PTY spawnFn"
@@ -511,6 +530,12 @@ async function run() {
 	writeFileSync(join(root, "result.json"), JSON.stringify({ passed: true }));
 }
 async function finish(code: number) {
+	try {
+		writeFileSync(
+			join(evidence, "native-mcp-startup.jsonl"),
+			readFileSync(join(root, "mcp-startup.jsonl"))
+		);
+	} catch {}
 	writeFileSync(
 		join(evidence, "native-live-results.json"),
 		JSON.stringify({ checkedHead, stagingHeadAtLaunch, root, step, results, trace }, null, 2)
