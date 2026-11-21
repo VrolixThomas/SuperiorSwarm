@@ -1,7 +1,11 @@
 import { and, eq } from "drizzle-orm";
 import type { CachedPR } from "../../shared/review-types";
 import type { AutoReviewLedger } from "../ai-review/auto-trigger";
-import { getReviewDrafts, getSettings as getReviewSettings } from "../ai-review/orchestrator";
+import {
+	getReviewDraft,
+	getReviewDrafts,
+	getSettings as getReviewSettings,
+} from "../ai-review/orchestrator";
 import { ensureReviewWorkspace } from "../ai-review/review-workspace";
 import { getDb } from "../db";
 import { workspaces } from "../db/schema";
@@ -57,7 +61,14 @@ export async function maybeAutoMap(pr: CachedPR, ledger: AutoReviewLedger): Prom
 					alsoReview,
 					auto: true,
 				});
-				return { claimed: !!result.launch };
+				const draft = getReviewDraft(`reading-path-${result.run.id}`);
+				const reviewIncluded =
+					!!draft &&
+					draft.prProvider === identity.provider &&
+					draft.prIdentifier === `${identity.owner}/${identity.repo}#${identity.prNumber}` &&
+					draft.commitSha === identity.headSha &&
+					["in_progress", "ready", "submitted"].includes(draft.status);
+				return { claimed: !!result.launch, reviewIncluded };
 			},
 			markReviewed: (pr) => ledger.markFirstTriggered(pr.provider, pr.identifier),
 		});

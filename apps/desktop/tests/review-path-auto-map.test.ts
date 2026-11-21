@@ -36,12 +36,12 @@ function harness() {
 			workspaces++;
 			return "w";
 		},
-		start: async (identity) => {
+		start: async (identity, alsoReview) => {
 			const key = identity.headSha;
 			const duplicate = claims.has(key);
 			claims.add(key);
 			if (!duplicate) launches++;
-			return { claimed: !duplicate };
+			return { claimed: !duplicate, reviewIncluded: alsoReview };
 		},
 		markReviewed: () => {
 			ledger++;
@@ -81,9 +81,16 @@ test("existing review disables additional findings but still maps", async () => 
 	const requested: boolean[] = [];
 	h.deps.start = async (_id, alsoReview) => {
 		requested.push(alsoReview);
-		return { claimed: true };
+		return { claimed: true, reviewIncluded: false };
 	};
 	expect(await createAutoMapper(h.deps)(pr)).toBe(false);
 	expect(requested).toEqual([false]);
+	expect(h.stats().ledger).toBe(0);
+});
+
+test("an old map-only claim never marks a code review as performed", async () => {
+	const h = harness();
+	h.deps.start = async () => ({ claimed: false, reviewIncluded: false });
+	expect(await createAutoMapper(h.deps)(pr)).toBe(false);
 	expect(h.stats().ledger).toBe(0);
 });

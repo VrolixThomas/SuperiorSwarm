@@ -7,7 +7,10 @@ export interface AutoMapDeps {
 	wasReviewed(pr: CachedPR): boolean;
 	ensureWorkspace(pr: CachedPR): Promise<string>;
 	/** Persistence atomically claims provider/workspace/repo/PR/head, including after restart. */
-	start(identity: ReviewPathIdentity, alsoReview: boolean): Promise<{ claimed: boolean }>;
+	start(
+		identity: ReviewPathIdentity,
+		alsoReview: boolean
+	): Promise<{ claimed: boolean; reviewIncluded: boolean }>;
 	markReviewed(pr: CachedPR): void;
 }
 export function createAutoMapper(deps: AutoMapDeps) {
@@ -36,7 +39,7 @@ export function createAutoMapper(deps: AutoMapDeps) {
 		const result = (async () => {
 			const workspaceId = await deps.ensureWorkspace(pr);
 			const alsoReview = settings.alsoReview && !deps.hasReview(pr) && !deps.wasReviewed(pr);
-			await deps.start(
+			const result = await deps.start(
 				{
 					workspaceId,
 					provider: pr.provider,
@@ -48,8 +51,8 @@ export function createAutoMapper(deps: AutoMapDeps) {
 				alsoReview
 			);
 			// Even a durable duplicate map claim must suppress a second legacy review launch.
-			if (alsoReview) deps.markReviewed(pr);
-			return alsoReview;
+			if (result.reviewIncluded) deps.markReviewed(pr);
+			return result.reviewIncluded;
 		})().finally(() => pending.delete(key));
 		pending.set(key, result);
 		return result;
