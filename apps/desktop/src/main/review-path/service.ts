@@ -5,6 +5,7 @@ import { getDb } from "../db";
 import { workspaces } from "../db/schema";
 import { getGitProvider } from "../providers/git-provider";
 import { ReviewPathApplication } from "./application";
+import { requireCompleteChangedFiles } from "./metadata";
 import { ReviewPathStorage } from "./storage";
 
 let runtime: ReviewPathRuntimePort | undefined;
@@ -43,7 +44,7 @@ export function getReviewPathApplication() {
 			if (!details.headCommitOid) throw new Error("PR head is unknown");
 			return {
 				identity: { ...identity, headSha: details.headCommitOid },
-				changedFiles: details.files.map((file) => file.path),
+				changedFiles: requireCompleteChangedFiles(details),
 			};
 		},
 	});
