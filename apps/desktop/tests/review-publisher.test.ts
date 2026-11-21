@@ -56,7 +56,8 @@ function insertDraft(
 			sourceBranch: "feature",
 			targetBranch: "main",
 			status: "ready",
-			commitSha: "stored-sha",
+			// Success/retry fixtures describe the current revision; stale drafts have separate probes.
+			commitSha: "head-sha",
 			createdAt: now,
 			updatedAt: now,
 			...overrides,
