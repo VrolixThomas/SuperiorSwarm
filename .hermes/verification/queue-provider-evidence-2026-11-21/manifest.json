@@ -1,0 +1,52 @@
+{
+  "sourceHeadBeforeEvidenceCommit": "2984ae83",
+  "ownedCommits": [
+    "cfbb3d37",
+    "7987ecab",
+    "66a6442c",
+    "c72b033e",
+    "dd97c16d",
+    "7cddb2f5",
+    "1e5f1c41",
+    "c8a9fa93",
+    "42462514",
+    "62d60436",
+    "2984ae83"
+  ],
+  "laneADependencies": {
+    "52fbe6cb": "8a03f798",
+    "b328b6f0": "149baa48",
+    "9aa52a89": "331ab24f",
+    "d416ad8c": "846a1ace"
+  },
+  "coverage": {
+    "focusedAcceptance": {
+      "passed": 107,
+      "failed": 0,
+      "assertions": 503
+    },
+    "nativeStandIns": {
+      "passed": 2,
+      "failed": 0,
+      "afterBuild": true
+    },
+    "liveHarness": {
+      "passed": 1,
+      "failed": 0,
+      "assertions": 34,
+      "scope": "3 synthetic authenticated cases, same-session followups; not automatic approval-cleanup acceptance"
+    },
+    "automaticPositivePermissionCleanup": "limited: Claude PermissionRequest lacks a correlatable request/tool ID; outcome remains unconfirmed",
+    "actualCodexNewBridgeTransport": "unverified: uses existing reviewed global hook bridge",
+    "fullAuthenticatedGuiDispatch": "unverified"
+  },
+  "constraints": {
+    "globalHookTrustChanged": false,
+    "unsafePermissionBypass": false,
+    "sharedDbPolicyChanged": false,
+    "appsStopped": false,
+    "lockfileChanged": false,
+    "pushedMergedReleased": false,
+    "subagents": false
+  }
+}
