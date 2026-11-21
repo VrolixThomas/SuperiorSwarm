@@ -10,7 +10,7 @@ import { sessionSourceId, workspaceReporter } from "../activity-queue/agent-sour
 import { getActivityQueueService } from "../activity-queue/service";
 import { listWorkspaceQueue } from "../activity-queue/workspace-queue";
 import { getDb } from "../db";
-import { agentSessions } from "../db/schema";
+import { agentSessions, terminalSessions } from "../db/schema";
 import { type PermissionTarget, QueuePermissions } from "./queue-permissions";
 
 function snapshot(target: PermissionTarget) {
@@ -24,23 +24,25 @@ function snapshot(target: PermissionTarget) {
 	)?.snapshot as AgentEventSnapshot | undefined;
 }
 function currentGeneration(target: PermissionTarget): string | null {
-	const current = workspaceReporter(target.workspaceId, target.terminalId);
-	if (
-		!current ||
-		current.entity?.kind !== target.entity?.kind ||
-		current.entity?.id !== target.entity?.id ||
-		current.provider !== target.provider ||
-		current.providerSessionId !== target.providerSessionId
-	)
-		return null;
 	const session = getDb()
 		.select()
 		.from(agentSessions)
 		.where(eq(agentSessions.terminalId, target.terminalId))
 		.get();
+	const terminal = getDb()
+		.select()
+		.from(terminalSessions)
+		.where(eq(terminalSessions.id, target.terminalId))
+		.get();
 	const source = snapshot(target);
 	if (
 		!session ||
+		terminal?.workspaceId !== target.workspaceId ||
+		session.workspaceId !== target.workspaceId ||
+		session.entityKind !== target.entity?.kind ||
+		target.entity.id !== target.workspaceId ||
+		session.provider !== target.provider ||
+		session.providerSessionId !== target.providerSessionId ||
 		session.state !== "needs-input" ||
 		source?.permission?.outcome !== "pending" ||
 		source.continuation !== "none"

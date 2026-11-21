@@ -162,3 +162,24 @@ test("replacement cancels eagerly without a queue observer", async () => {
 	expect(f.replies).toEqual([{ requestId: f.request.requestId }]);
 	f.service.close();
 });
+test("periodic monitors avoid expensive process inspection but decisions recheck exactly", async () => {
+	const f = fixture();
+	let checks = 0;
+	let exists = true;
+	f.service.register({
+		...f.request,
+		alive: () => {
+			checks++;
+			return false;
+		},
+		quickAlive: () => exists,
+	});
+	await Bun.sleep(300);
+	f.service.capability(f.item);
+	expect(checks).toBe(0);
+	expect(f.service.decide(f.input, f.item).status).toBe("conflict");
+	expect(checks).toBe(1);
+	expect(f.replies.some((v) => (v as { behavior?: string }).behavior)).toBe(false);
+	exists = false;
+	f.service.close();
+});

@@ -30,3 +30,9 @@ test("complete known arguments can be reviewed, unknown or long ones cannot", ()
 	])
 		expect(permissionActionSummary({ tool_name: "Bash", tool_input }).reviewable).toBe(false);
 });
+test("Allow requires a complete nonempty tool name", () => {
+	for (const tool_name of [undefined, "", " ", "x".repeat(129)])
+		expect(
+			permissionActionSummary({ tool_name, tool_input: { command: "printf safe" } }).reviewable
+		).toBe(false);
+});

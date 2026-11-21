@@ -52,3 +52,15 @@ export function permissionProcessAlive(value: unknown): boolean {
 		current.command === proof.command
 	);
 }
+
+/** Cheap periodic exit detection; exact fingerprint is still checked immediately before decisions. */
+export function permissionProcessExists(value: unknown): boolean {
+	const pid = (value as { pid?: unknown } | null)?.pid;
+	if (typeof pid !== "number" || !Number.isSafeInteger(pid) || pid < 2) return false;
+	try {
+		process.kill(pid, 0);
+		return true;
+	} catch {
+		return false;
+	}
+}

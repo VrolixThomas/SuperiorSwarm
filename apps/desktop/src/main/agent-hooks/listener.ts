@@ -3,7 +3,7 @@ import { type Server, createServer } from "node:http";
 import { type AgentEvent, agentRegistry } from "../../shared/agent-events";
 import { validateAgentEvidence } from "../../shared/agent-evidence";
 import { log } from "../logger";
-import { permissionProcessAlive } from "./permission-process";
+import { permissionProcessAlive, permissionProcessExists } from "./permission-process";
 import type { PermissionTarget, QueuePermissions } from "./queue-permissions";
 
 function parseProducerTimestamp(value: string | null): number | undefined {
@@ -151,6 +151,11 @@ export function createAlertListener(
 			producerTimestamp: parseProducerTimestamp(url.searchParams.get("producerTimestamp")),
 			providerTimestamp: parseProducerTimestamp(url.searchParams.get("providerTimestamp")),
 			providerEventId: url.searchParams.get("providerEventId")?.slice(0, 256) || undefined,
+			promptHash:
+				rawEvent === "UserPromptSubmit" &&
+				/^[a-f0-9]{64}$/.test(url.searchParams.get("promptHash") ?? "")
+					? (url.searchParams.get("promptHash") ?? undefined)
+					: undefined,
 			evidence: validateAgentEvidence(body["evidence"], agent, rawEvent),
 			// Registered hooks report requests, not decisions. Generic tool activity/Stop
 			// must never be promoted to an allowed/denied permission outcome.
@@ -196,6 +201,7 @@ export function createAlertListener(
 						typeof body["actionSummary"] === "string" &&
 						body["actionSummary"].length <= 2048,
 					alive: () => permissionProcessAlive(body["providerProcess"]),
+					quickAlive: () => permissionProcessExists(body["providerProcess"]),
 					requestId: event.permission.requestId,
 					summary:
 						typeof body["actionSummary"] === "string"

@@ -28,6 +28,9 @@ export function permissionActionSummary(payload: Record<string, unknown>): {
 	const keys =
 		input && typeof input === "object" && !Array.isArray(input) ? Object.keys(input) : [];
 	const reviewable =
+		typeof payload["tool_name"] === "string" &&
+		!!payload["tool_name"].trim() &&
+		payload["tool_name"].length <= 128 &&
 		!!evidence &&
 		!evidence.truncated &&
 		!evidence.redacted &&

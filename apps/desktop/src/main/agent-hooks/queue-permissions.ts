@@ -25,6 +25,7 @@ interface WaitingRequest {
 	generation: string;
 	summary: string;
 	alive?: () => boolean;
+	quickAlive?: () => boolean;
 	reply: (reply: PermissionReply) => boolean;
 }
 interface Entry extends WaitingRequest {
@@ -120,16 +121,23 @@ export class QueuePermissions {
 			expiresAt: this.now() + timeoutMs,
 			receipt: randomUUID(),
 			timer: setTimeout(() => this.cancel(entry, "expired"), timeoutMs),
-			monitor: setInterval(() => this.valid(entry), 250),
+			monitor: setInterval(() => {
+				try {
+					this.valid(entry);
+				} catch {
+					this.cancel(entry, "cancelled");
+				}
+			}, 250),
 		};
 		entry.timer.unref?.();
 		entry.monitor.unref?.();
 		this.entries.set(request.requestId, entry);
 		return true;
 	}
-	private valid(entry: Entry): boolean {
+	private valid(entry: Entry, exactProcess = false): boolean {
 		if (entry.state !== "waiting") return false;
-		if (entry.alive && !entry.alive()) {
+		const alive = exactProcess ? entry.alive : entry.quickAlive;
+		if (alive && !alive()) {
 			this.cancel(entry, "cancelled");
 			return false;
 		}
@@ -185,7 +193,7 @@ export class QueuePermissions {
 			current.permission?.requestId !== input.requestId ||
 			identity(current.target) !== identity(entry.target) ||
 			revisions(input) !== revisions(current) ||
-			!this.valid(entry)
+			!this.valid(entry, true)
 		)
 			return conflict;
 		if (!["allow-once", "deny", "open"].includes(input.action)) return conflict;
