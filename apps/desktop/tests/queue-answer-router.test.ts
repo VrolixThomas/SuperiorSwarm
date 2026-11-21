@@ -34,6 +34,11 @@ async function fixture(provider: "claude" | "codex", scope: string, sleeping = f
 					name: "Answer routing",
 					isOrchestrator: scope === "orchestrator",
 				});
+	if (scope === "folder")
+		db.update(workspaces)
+			.set({ type: "folder", folderPath: "/tmp" })
+			.where(eq(workspaces.id, workspaceId))
+			.run();
 	const ids = [`${workspaceId}-owner`, `${workspaceId}-sibling`];
 	for (const terminalId of ids) {
 		db.insert(terminalSessions)
